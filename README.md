@@ -129,6 +129,8 @@ make image VERSION=0.1.0         # 构建 nervewiki:0.1.0
 make image-smoke VERSION=0.1.0   # 在镜像上跑 S1、S3：迁移、启动、探针、实例信息、非 root、优雅停机
 ```
 
+镜像的提交信息取自构建上下文中的 `.git`，所以要在普通的克隆中构建：`git worktree` 的 `.git` 是指向别处的文件，`make image` 会直接报错。
+
 - 镜像默认 `NWIKI_ENV=prod`。配置用环境变量提供（也可以挂载一个目录并设置 `NWIKI_CONFIG_DIR`），至少要有数据库地址 `NWIKI_DATABASE__URL`；其余配置项见 `server/configs/config.yaml`，合并规则见上文"配置"。
 - prod 配置不自动迁移。每次升级先执行迁移，再启动服务：
 

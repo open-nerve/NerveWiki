@@ -74,11 +74,13 @@ build: build-web ## 构建 bin/nervewiki，前端内嵌在其中，版本号取 
 e2e: build ## 构建 bin/nervewiki，运行端到端故事（需要 Docker 与 Playwright 的 Chromium，见 README）
 	cd e2e && NWIKI_E2E_VERSION=$(VERSION) pnpm exec playwright test
 
-# 镜像的标签跟着 VERSION；构建上下文是仓库根目录，见 deploy/Dockerfile 与 .dockerignore
+# 镜像的标签跟着 VERSION；构建上下文是仓库根目录，见 deploy/Dockerfile 与 .dockerignore。
+# 提交信息取自带进构建上下文的 .git：git worktree 的 .git 是指向别处的文件，在那里构建会失败，所以先检查
 IMAGE ?= nervewiki:$(VERSION)
 
 .PHONY: image
 image: ## 构建镜像 $(IMAGE)，版本号取 VERSION（只需要 Docker）
+	@test -d .git || { echo "make image 要在普通的克隆中运行：这里的 .git 不是目录（git worktree），镜像构建取不到提交信息"; exit 1; }
 	docker build -f deploy/Dockerfile --build-arg VERSION=$(VERSION) -t $(IMAGE) .
 
 .PHONY: image-smoke
