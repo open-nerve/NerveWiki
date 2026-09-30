@@ -118,6 +118,42 @@ func TestTouchAPIToken(t *testing.T) {
 	}
 }
 
+// A touch skips a row that another transaction holds instead of waiting for
+// it; once the row is free, the next touch writes.
+func TestTouchAPITokenSkipsARowInUse(t *testing.T) {
+	s, pool := newStore(t)
+	u := newUser("alice@corp.com")
+	mustCreate(t, s, u)
+	n, _ := newToken(t, s, u.ID, "CI")
+	tx, err := pool.Begin(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback(context.Background()) }()
+	if _, err := tx.Exec(context.Background(), "SELECT 1 FROM api_tokens WHERE id = $1 FOR UPDATE", n.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := s.TouchAPIToken(ctx, n.ID, later(), later().Add(-time.Minute)); err != nil {
+		t.Fatalf("touch while the row is held = %v, want no wait", err)
+	}
+	if r := readToken(t, pool, n.ID); r.used != nil {
+		t.Errorf("last used %v while the row is held, want unset", r.used)
+	}
+
+	if err := tx.Rollback(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.TouchAPIToken(context.Background(), n.ID, later(), later().Add(-time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if r := readToken(t, pool, n.ID); r.used == nil || !r.used.Equal(later()) {
+		t.Errorf("last used %v once the row is free, want %v", r.used, later())
+	}
+}
+
 // RevokeSessions revokes the account's live sessions but keep, and leaves
 // revoked and expired ones, and other accounts', as they are.
 func TestRevokeSessions(t *testing.T) {

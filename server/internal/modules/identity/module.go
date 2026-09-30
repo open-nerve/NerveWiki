@@ -98,10 +98,8 @@ func New(d Deps) (*Module, error) {
 		SessionTTL: d.SessionTTL,
 	}
 	rules := domain.NewPasswordRules()
-	password := app.CurrentPassword{
-		Accounts: store, Verifier: hasher, Tx: d.Tx,
-		Lock: app.CredentialLock{Locker: store, Sessions: store, APITokens: store},
-	}
+	lock := app.CredentialLock{Locker: store, Sessions: store, APITokens: store}
+	password := app.CurrentPassword{Accounts: store, Verifier: hasher, Lock: lock, Tx: d.Tx}
 	return &Module{
 		uc: httpadapter.UseCases{
 			Register: app.NewRegister(app.RegisterDeps{
@@ -121,7 +119,7 @@ func New(d Deps) (*Module, error) {
 				Password: password, Rules: rules, Hasher: hasher, Passwords: store, Sessions: store, Clock: d.Clock, Logger: d.Logger,
 			}),
 			Deactivate: app.NewDeactivate(app.DeactivateDeps{
-				Lock: password.Lock, Users: store, Sessions: store, Vetoers: d.DeactivationVetoers,
+				Lock: lock, Users: store, Sessions: store, Vetoers: d.DeactivationVetoers,
 				Subscribers: d.DeactivationSubscribers, Tx: d.Tx, Clock: d.Clock, Logger: d.Logger,
 			}),
 			ListAPITokens: app.NewListAPITokens(store),

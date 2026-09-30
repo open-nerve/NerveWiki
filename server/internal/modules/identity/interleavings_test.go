@@ -240,7 +240,9 @@ func (a *account) tokens(t *testing.T) int {
 // that holds the account row lock, then revokes the session that login
 // created: signing in with the old password leaves no live session behind.
 // The login stops inside its transaction, before it inserts its session;
-// the test lets it go on once the change waits for the lock.
+// the test lets it go on once the change waits for the lock. The change's
+// UPDATE of the row would wait for the login as well: this guards what the
+// change revokes, not the lock itself, which interleaving 4 guards.
 func TestAPasswordChangeWaitsForALoginThatHoldsTheLock(t *testing.T) {
 	a := newAccount(t, "hashed:Tr0ub4dor&3:0", 1)
 	g := newGate()
@@ -338,5 +340,34 @@ func TestAPasswordChangeWhileALoginHashesThePasswordAgain(t *testing.T) {
 	}
 	if want := []string{"old:Tr0ub4dor&3", "hashed:Tr0ub4dor&3:login"}; !slices.Equal(changeHasher.verified, want) {
 		t.Errorf("the change verified %q, want %q", changeHasher.verified, want)
+	}
+}
+
+// Interleaving 4: two password changes, the second from a personal access
+// token, which the first does not revoke. The second verified the current
+// password against the old hash; it waits for the lock while the first holds
+// it, then finds the hash changed, and the current password it was given no
+// longer matches: 422, and the first's hash stays. Without the lock the
+// second would wait only at its UPDATE, then write over the first's hash.
+func TestAPasswordChangeWaitsForAnotherThatHoldsTheLock(t *testing.T) {
+	a := newAccount(t, "hashed:Tr0ub4dor&3:0", 1)
+	_, tokenID := insertToken(t, a.pool, nil)
+	g := newGate()
+
+	first := async(func() error {
+		return a.changePassword(&gatedHasher{salt: "first"}, gatedRevoker{a.store, g}).Execute(a.as(0), changeInput())
+	})
+	g.await(t)
+	second := async(func() error {
+		ctx := shared.WithActor(context.Background(), shared.Actor{UserID: a.id, APITokenID: tokenID})
+		return a.changePassword(&gatedHasher{salt: "second"}, a.store).Execute(ctx, changeInput())
+	})
+	pgtest.WaitForLockWaits(t, a.pool, 1, waitLimit)
+	g.open()
+	firstErr, secondErr := await(t, first), await(t, second)
+
+	hash, _ := a.state(t)
+	if firstErr != nil || !errors.Is(secondErr, domain.ErrCurrentPasswordIncorrect) || hash != "hashed:N3w-Passw0rd!:first" {
+		t.Errorf("first %v, second %v, hash %q; want the first done, the second %v, the first's hash", firstErr, secondErr, hash, domain.ErrCurrentPasswordIncorrect)
 	}
 }

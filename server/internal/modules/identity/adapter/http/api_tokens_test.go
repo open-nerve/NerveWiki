@@ -54,8 +54,11 @@ func (f *fakeRevokeToken) Execute(_ context.Context, id uuid.UUID) error {
 }
 
 // withToken sends req with the bearer token fakeAuth accepts.
-func withToken(req *http.Request) *http.Request {
-	req.Header.Set("Authorization", "Bearer valid")
+func withToken(req *http.Request) *http.Request { return withCredential(req, "valid") }
+
+// withCredential sends credential, one fakeAuth accepts.
+func withCredential(req *http.Request, credential string) *http.Request {
+	req.Header.Set("Authorization", "Bearer "+credential)
 	return req
 }
 
@@ -130,25 +133,31 @@ func TestCreateAPITokenProblems(t *testing.T) {
 	}
 }
 
-// password_user counts attempts per account, before the use case runs: a
-// wrong password costs a unit like a right one.
+// password_user counts attempts per account, whatever the credential, before
+// the use case runs: a wrong password costs a unit like a right one, a token
+// of the account draws on the units of its session, and another account has
+// units of its own. The refusal logs the account.
 func TestCreateAPITokenIsLimitedPerAccount(t *testing.T) {
 	uc := &fakeCreateToken{err: domain.ErrCurrentPasswordIncorrect}
 	var logs bytes.Buffer
 	h := limitedServer(t, httpadapter.UseCases{CreateAPIToken: uc}, &logs)
-	create := func() (*http.Response, string) {
-		return do(t, h, withToken(postJSON("/api/v0/me/api-tokens", `{"name":"CI","current_password":"x"}`)))
+	create := func(credential string) (*http.Response, string) {
+		return do(t, h, withCredential(postJSON("/api/v0/me/api-tokens", `{"name":"CI","current_password":"x"}`), credential))
 	}
 
-	create()
-	create()
-	res, body := create()
+	create("valid")
+	create("token")
+	res, body := create("valid")
+	other, _ := create("bob")
 
-	if res.StatusCode != http.StatusTooManyRequests || !strings.Contains(body, `"code":"rate_limited"`) || uc.calls != 2 {
-		t.Errorf("third attempt = %d %s after %d calls; want 429 rate_limited, the use case called twice", res.StatusCode, body, uc.calls)
+	if res.StatusCode != http.StatusTooManyRequests || !strings.Contains(body, `"code":"rate_limited"`) {
+		t.Errorf("third attempt of the account = %d %s, want 429 rate_limited", res.StatusCode, body)
 	}
-	if entries := rateLimitLogs(t, &logs); len(entries) != 1 || entries[0]["bucket"] != "password_user" {
-		t.Errorf("rate limited logs = %v, want password_user", entries)
+	if other.StatusCode != http.StatusUnprocessableEntity || uc.calls != 3 {
+		t.Errorf("another account's attempt = %d after %d calls; want 422, the use case called three times", other.StatusCode, uc.calls)
+	}
+	if entries := rateLimitLogs(t, &logs); len(entries) != 1 || entries[0]["bucket"] != "password_user" || entries[0]["user_id"] != userIDText {
+		t.Errorf("rate limited logs = %v, want password_user with the account", entries)
 	}
 }
 

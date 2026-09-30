@@ -15,10 +15,15 @@ WHERE t.id = sqlc.arg(id);
 
 -- name: TouchAPIToken :exec
 -- last_used_at, written at most once a minute: only when it is older than stale_before. Using a token changes
--- nothing of it, so updated_at stays.
+-- nothing of it, so updated_at stays. Best effort: a row another transaction holds (a revocation, another
+-- request's touch) is skipped rather than waited for, so authentication never waits on it; a later use writes it.
 UPDATE api_tokens
 SET last_used_at = sqlc.arg(now)::timestamptz
-WHERE id = sqlc.arg(id) AND (last_used_at IS NULL OR last_used_at < sqlc.arg(stale_before)::timestamptz);
+WHERE id = (
+    SELECT t.id FROM api_tokens t
+    WHERE t.id = sqlc.arg(id) AND (t.last_used_at IS NULL OR t.last_used_at < sqlc.arg(stale_before)::timestamptz)
+    FOR NO KEY UPDATE SKIP LOCKED
+);
 
 -- name: CreateAPIToken :exec
 INSERT INTO api_tokens (id, user_id, token_hash, name, expires_at, created_at, updated_at)

@@ -168,7 +168,11 @@ func (q *Queries) RevokeAPIToken(ctx context.Context, arg RevokeAPITokenParams) 
 const touchAPIToken = `-- name: TouchAPIToken :exec
 UPDATE api_tokens
 SET last_used_at = $1::timestamptz
-WHERE id = $2 AND (last_used_at IS NULL OR last_used_at < $3::timestamptz)
+WHERE id = (
+    SELECT t.id FROM api_tokens t
+    WHERE t.id = $2 AND (t.last_used_at IS NULL OR t.last_used_at < $3::timestamptz)
+    FOR NO KEY UPDATE SKIP LOCKED
+)
 `
 
 type TouchAPITokenParams struct {
@@ -178,7 +182,8 @@ type TouchAPITokenParams struct {
 }
 
 // last_used_at, written at most once a minute: only when it is older than stale_before. Using a token changes
-// nothing of it, so updated_at stays.
+// nothing of it, so updated_at stays. Best effort: a row another transaction holds (a revocation, another
+// request's touch) is skipped rather than waited for, so authentication never waits on it; a later use writes it.
 func (q *Queries) TouchAPIToken(ctx context.Context, arg TouchAPITokenParams) error {
 	_, err := q.db.Exec(ctx, touchAPIToken, arg.Now, arg.ID, arg.StaleBefore)
 	return err

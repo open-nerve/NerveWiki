@@ -52,7 +52,7 @@ func TestLockForCredentials(t *testing.T) {
 			return err
 		})
 	}()
-	<-holding
+	awaitHolding(t, holding, locked)
 
 	second := make(chan error, 1)
 	go func() {

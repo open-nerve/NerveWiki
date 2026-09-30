@@ -72,7 +72,8 @@ func (s *Store) APITokenByID(ctx context.Context, id uuid.UUID) (app.APITokenCre
 }
 
 // TouchAPIToken sets token id's last_used_at to now when it is unset or
-// older than staleBefore.
+// older than staleBefore, unless another transaction holds the row: it does
+// not wait for it.
 func (s *Store) TouchAPIToken(ctx context.Context, id uuid.UUID, now, staleBefore time.Time) error {
 	if err := s.queries(ctx).TouchAPIToken(ctx, gen.TouchAPITokenParams{Now: now, ID: id, StaleBefore: staleBefore}); err != nil {
 		return fmt.Errorf("touch API token: %w", err)

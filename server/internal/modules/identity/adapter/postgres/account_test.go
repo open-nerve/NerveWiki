@@ -129,7 +129,7 @@ func TestShareAccount(t *testing.T) {
 			return nil
 		})
 	}()
-	<-holding
+	awaitHolding(t, holding, first)
 
 	second := tx.WithinTx(ctx, func(ctx context.Context) error {
 		_, err := s.ShareAccount(ctx, u.ID)

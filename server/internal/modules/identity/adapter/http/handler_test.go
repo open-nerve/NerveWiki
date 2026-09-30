@@ -97,15 +97,27 @@ func (f fakeGetMe) Execute(ctx context.Context) (domain.User, error) {
 }
 
 // fakeAuth accepts the token "valid" as a session of the account
-// userIDText.
+// userIDText, "token" as a personal access token of that account, and "bob"
+// as a session of another account.
 type fakeAuth struct{}
 
 func (fakeAuth) Authenticate(ctx context.Context, token string) (context.Context, string, error) {
-	if token != "valid" {
+	var actor shared.Actor
+	switch token {
+	case "valid":
+		actor = shared.Actor{UserID: uuid.MustParse(userIDText), SessionID: uuid.MustParse(sessionIDText)}
+	case "token":
+		actor = shared.Actor{UserID: uuid.MustParse(userIDText), APITokenID: uuid.MustParse("0199a2b4-0000-7000-8000-000000000003")}
+	case "bob":
+		actor = shared.Actor{UserID: uuid.MustParse("0199a2b4-0000-7000-8000-000000000004"), SessionID: uuid.MustParse("0199a2b4-0000-7000-8000-000000000005")}
+	default:
 		return nil, "", shared.Unauthenticated()
 	}
-	actor := shared.Actor{UserID: uuid.MustParse(userIDText), SessionID: uuid.MustParse(sessionIDText)}
-	return shared.WithActor(ctx, actor), "session:" + sessionIDText, nil
+	key := "session:" + actor.SessionID.String()
+	if actor.APITokenID != uuid.Nil() {
+		key = "pat:" + actor.APITokenID.String()
+	}
+	return shared.WithActor(ctx, actor), key, nil
 }
 
 // newServer serves the module with uc and buckets no test here empties; a

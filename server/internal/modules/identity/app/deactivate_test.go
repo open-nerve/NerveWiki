@@ -86,26 +86,31 @@ func newDeactivate(log *steps, logs *bytes.Buffer, vetoers []app.DeactivationVet
 }
 
 // In one transaction: the lock, the vetoers in order, the writes, the
-// subscribers in order. The vetoers see the address read under the lock and
-// the deactivation's instant.
+// subscribers in order. Every session ends, the caller's own too, whatever
+// the credential. The vetoers see the address read under the lock and the
+// deactivation's instant.
 func TestDeactivateInOrder(t *testing.T) {
-	log, logs := &steps{}, &bytes.Buffer{}
-	var got app.Deactivation
-	uc := newDeactivate(log, logs,
-		[]app.DeactivationVetoer{stepVetoer{name: "a", log: log, got: &got}, stepVetoer{name: "b", log: log}},
-		[]app.DeactivationSubscriber{stepSubscriber{name: "a", log: log}, stepSubscriber{name: "b", log: log}})
+	for name, actor := range map[string]shared.Actor{"session": sessionActor(), "token": tokenActor()} {
+		t.Run(name, func(t *testing.T) {
+			log, logs := &steps{}, &bytes.Buffer{}
+			var got app.Deactivation
+			uc := newDeactivate(log, logs,
+				[]app.DeactivationVetoer{stepVetoer{name: "a", log: log, got: &got}, stepVetoer{name: "b", log: log}},
+				[]app.DeactivationSubscriber{stepSubscriber{name: "a", log: log}, stepSubscriber{name: "b", log: log}})
 
-	err := uc.Execute(asCaller(tokenActor()))
+			err := uc.Execute(asCaller(actor))
 
-	want := []string{"lock", "veto a", "veto b", "deactivate", "revoke all for deactivated, keeping " + uuid.Nil().String(), "follow a", "follow b"}
-	if err != nil || !slices.Equal(log.done, want) {
-		t.Errorf("Execute() = %v, did %q; want %q", err, log.done, want)
-	}
-	if got != (app.Deactivation{UserID: testUserID(), Email: "alice@corp.com", At: testNow()}) {
-		t.Errorf("the vetoer got %+v, want the account's id and address at the clock's now", got)
-	}
-	if out := logs.String(); !strings.Contains(out, `"msg":"account deactivated"`) || !strings.Contains(out, `"revoked_sessions":3`) {
-		t.Errorf("logs = %s, want the deactivation with the count", out)
+			want := []string{"lock", "veto a", "veto b", "deactivate", "revoke all for deactivated, keeping " + uuid.Nil().String(), "follow a", "follow b"}
+			if err != nil || !slices.Equal(log.done, want) {
+				t.Errorf("Execute() = %v, did %q; want %q", err, log.done, want)
+			}
+			if got != (app.Deactivation{UserID: testUserID(), Email: "alice@corp.com", At: testNow()}) {
+				t.Errorf("the vetoer got %+v, want the account's id and address at the clock's now", got)
+			}
+			if out := logs.String(); !strings.Contains(out, `"msg":"account deactivated"`) || !strings.Contains(out, `"revoked_sessions":3`) {
+				t.Errorf("logs = %s, want the deactivation with the count", out)
+			}
+		})
 	}
 }
 

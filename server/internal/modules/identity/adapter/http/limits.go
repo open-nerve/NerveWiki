@@ -57,15 +57,21 @@ func (h handler) limitPassword(ctx context.Context) error {
 
 // allow answers 429 rate_limited with Retry-After when a bucket refuses,
 // and logs which bucket turned the client away, as the platform does for
-// its own.
+// its own, with the account when the caller is signed in: password_user's
+// refusals tell which account someone guesses the password of.
 func (h handler) allow(ctx context.Context, checks ...ratelimit.Check) error {
 	denied, retry := h.s.Limits.Limiter.AllowAll(checks...)
 	if denied == nil {
 		return nil
 	}
-	h.s.Logger.LogAttrs(ctx, slog.LevelInfo, "rate limited",
+	attrs := []slog.Attr{
 		slog.String("request_id", httpserver.RequestID(ctx)), slog.String("bucket", denied.Name()),
-		slog.String("ip", httpserver.RequestMetaFrom(ctx).ClientIP.String()))
+		slog.String("ip", httpserver.RequestMetaFrom(ctx).ClientIP.String()),
+	}
+	if actor, err := shared.RequireActor(ctx); err == nil {
+		attrs = append(attrs, slog.String("user_id", actor.UserID.String()))
+	}
+	h.s.Logger.LogAttrs(ctx, slog.LevelInfo, "rate limited", attrs...)
 	return shared.RateLimited(retry)
 }
 
