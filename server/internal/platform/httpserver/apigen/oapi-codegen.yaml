@@ -1,0 +1,13 @@
+# oapi-codegen 配置：api/common.yaml → components.gen.go（只有类型）。
+# 由 make gen-go 在 server/ 下执行，路径相对于 server/。
+package: apigen
+output: internal/platform/httpserver/apigen/components.gen.go
+generate:
+  models: true
+compatibility:
+  # 枚举常量总是带类型名前缀：以后别的枚举出现同名的值，也不会改掉已有常量的名字
+  always-prefix-enum-values: true
+output-options:
+  # common.yaml 没有 paths：默认的裁剪会把没被路径引用的组件全部删掉
+  skip-prune: true
+  name-normalizer: ToCamelCaseWithInitialisms

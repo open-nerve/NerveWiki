@@ -1,0 +1,63 @@
+# instance 模块的接口。生成的 Go 代码在
+# server/internal/modules/instance/adapter/http/gen（make gen-go）。
+openapi: 3.1.0
+info:
+  title: Nerve Wiki instance API
+  version: v0
+paths:
+  /api/v0/instance:
+    get:
+      operationId: getInstance
+      tags: [instance]
+      summary: Describe this instance
+      description: >-
+        Reports the product, the build and the API version this instance
+        runs. Public: needs no authentication.
+      security: []
+      x-problem-codes: []
+      responses:
+        "200":
+          description: What this instance runs.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InstanceInfo"
+        default:
+          $ref: "#/components/responses/Problem"
+components:
+  responses:
+    Problem:
+      description: Error (RFC 9457 problem details).
+      headers:
+        Retry-After:
+          description: >-
+            Whole seconds to wait before trying again, rounded up; sent with
+            rate_limited and server_busy.
+          schema:
+            type: integer
+            minimum: 1
+      content:
+        application/problem+json:
+          schema:
+            $ref: "../common.yaml#/components/schemas/Problem"
+  schemas:
+    InstanceInfo:
+      type: object
+      additionalProperties: false
+      required: [product, version, commit, api_version]
+      properties:
+        product:
+          description: Product name.
+          type: string
+          examples: [Nerve Wiki]
+        version:
+          description: Product version of the running build.
+          type: string
+          examples: [0.1.0-dev]
+        commit:
+          description: Git revision of the running build; "unknown" when the build carries no VCS stamp.
+          type: string
+        api_version:
+          description: Version of this HTTP API; every path starts with /api/{api_version}.
+          type: string
+          enum: [v0]

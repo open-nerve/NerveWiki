@@ -2,5 +2,12 @@
   "printWidth": 120,
   "tabWidth": 2,
   "trailingComma": "es5",
-  "ignorePatterns": ["docs/**", "pnpm-lock.yaml", "tools/md-fixtures/cases/**", "tools/md-fixtures/rename/**"]
+  "ignorePatterns": [
+    "docs/**",
+    "pnpm-lock.yaml",
+    "tools/md-fixtures/cases/**",
+    "tools/md-fixtures/rename/**",
+    "api/dist/**",
+    "web/packages/api-client/src/schema.gen.ts"
+  ]
 }

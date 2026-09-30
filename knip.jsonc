@@ -6,5 +6,9 @@
       // 样例集自检由 make lint-web 调用，与 Obsidian 的核对由人手动运行，package.json 的脚本中都看不到
       "entry": ["tools/md-fixtures/check.mjs", "tools/md-fixtures/obsidian/verify.mjs"],
     },
+    "web/packages/api-client": {
+      // 只参与类型检查、不被导入的用例
+      "entry": ["test/*.typecheck.ts"],
+    },
   },
 }

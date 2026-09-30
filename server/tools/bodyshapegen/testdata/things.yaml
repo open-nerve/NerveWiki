@@ -1,0 +1,99 @@
+# Every construct bodyshapegen supports, across two operations with a body,
+# one without, and a reference into another file.
+openapi: 3.1.0
+info:
+  title: bodyshapegen test
+  version: v0
+paths:
+  /api/v0/things:
+    get:
+      operationId: listThings
+      responses:
+        "204":
+          description: none
+    post:
+      operationId: createThing
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateThing"
+      responses:
+        "204":
+          description: none
+  /api/v0/things/{thing_id}:
+    patch:
+      operationId: updateThing
+      parameters:
+        - name: thing_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                name:
+                  type: string
+                owner_id:
+                  type: [string, "null"]
+                  format: uuid
+                settings:
+                  anyOf:
+                    - $ref: "#/components/schemas/Settings"
+                    - type: "null"
+      responses:
+        "204":
+          description: none
+components:
+  schemas:
+    CreateThing:
+      type: object
+      additionalProperties: false
+      required: [name, email, settings]
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        count:
+          type: integer
+        ratio:
+          type: number
+        total:
+          type: integer
+          format: int64
+        weight:
+          type: number
+          format: double
+        due:
+          type: string
+          format: date-time
+        tags:
+          type: array
+          items:
+            $ref: "common.yaml#/components/schemas/Tag"
+        labels:
+          type: object
+          additionalProperties:
+            type: string
+        extra:
+          type: object
+          additionalProperties: true
+        anything: {}
+        settings:
+          $ref: "#/components/schemas/Settings"
+    Settings:
+      type: object
+      additionalProperties: false
+      properties:
+        notify:
+          type: boolean

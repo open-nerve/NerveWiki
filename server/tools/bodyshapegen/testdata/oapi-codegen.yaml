@@ -1,0 +1,20 @@
+# The module template's options that matter to bodyshapegen.
+package: gen
+output: internal/modules/things/adapter/http/gen/server.gen.go
+generate:
+  models: true
+  std-http-server: true
+  strict-server: true
+output-options:
+  nullable-type: true
+  type-mapping:
+    number:
+      default:
+        type: float64
+    string:
+      formats:
+        uuid:
+          type: uuid.UUID
+          import: uuid
+        email:
+          type: string

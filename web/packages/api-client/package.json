@@ -1,0 +1,21 @@
+{
+  "name": "@nervewiki/api-client",
+  "private": true,
+  "description": "Typed client for the Nerve Wiki API, generated from api/dist/openapi.yaml",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "gen": "openapi-typescript ../../../api/dist/openapi.yaml --root-types --root-types-no-schema-prefix --output src/schema.gen.ts",
+    "check:types": "tsc --noEmit"
+  },
+  "dependencies": {
+    "openapi-fetch": "0.17.0"
+  },
+  "devDependencies": {
+    "openapi-typescript": "7.13.0",
+    "typescript": "5.9.3"
+  }
+}

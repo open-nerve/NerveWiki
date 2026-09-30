@@ -1,0 +1,15 @@
+openapi: 3.1.0
+info:
+  title: shared components of the bodyshapegen test
+  version: v0
+components:
+  schemas:
+    Tag:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name:
+          type: string
+        color:
+          type: [string, "null"]

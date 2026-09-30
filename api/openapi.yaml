@@ -1,0 +1,22 @@
+# Nerve Wiki 接口描述的入口：列出所有路径，指向各模块的描述文件，是整个接口的目录。
+# make gen-web 用 Redocly 把它打包成 dist/openapi.yaml。写法约定见 docs/v0.1/M0-foundation/04-P4-api-contract.md 3.2。
+openapi: 3.1.0
+info:
+  title: Nerve Wiki API
+  version: v0
+  description: >-
+    The HTTP API of Nerve Wiki. The web app is one client of it; every account
+    can use every endpoint the same way. Every operation lists the problem
+    codes it can answer in x-problem-codes; the top-level x-problem-codes can
+    come from every operation.
+  license:
+    name: AGPL-3.0-only
+    identifier: AGPL-3.0-only
+# 每个操作都可能返回的平台错误码，只写在这里
+x-problem-codes: [bad_request, payload_too_large, internal_error]
+tags:
+  - name: instance
+    description: What this instance runs.
+paths:
+  /api/v0/instance:
+    $ref: "modules/instance.yaml#/paths/~1api~1v0~1instance"

@@ -21,6 +21,7 @@
       }
     ]
   },
+  "ignorePatterns": ["web/packages/api-client/src/schema.gen.ts"],
   "overrides": [
     {
       "files": ["tools/**"],
