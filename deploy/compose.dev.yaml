@@ -1,0 +1,30 @@
+# 本地开发数据库。账号密码只在本机使用，不是机密。
+name: nervewiki-dev
+
+services:
+  db:
+    # 镜像带上发行版名，固定 glibc 的大版本：pg_trgm 按 LC_CTYPE 分类字符，glibc 大版本变化后三元组索引需要 REINDEX
+    # （总体设计 7.1）。测试容器、端到端测试与部署文档使用同一个镜像
+    image: postgres:18.6-trixie
+    environment:
+      POSTGRES_USER: nervewiki
+      POSTGRES_PASSWORD: nervewiki
+      POSTGRES_DB: nervewiki
+      # 数据库 locale：builtin provider 的 C.UTF-8，LC_COLLATE 与 LC_CTYPE 同为 C.UTF-8（总体设计 7.1）。
+      # pg_trgm 按 LC_CTYPE 判断字母，LC_CTYPE 为 C 时切不出中文
+      POSTGRES_INITDB_ARGS: --locale-provider=builtin --locale=C.UTF-8
+    ports:
+      # 默认 55433：避开 5432 以及本机其他项目常用的端口；需要时用 NWIKI_DEV_DB_PORT 修改
+      - "127.0.0.1:${NWIKI_DEV_DB_PORT:-55433}:5432"
+    volumes:
+      # PostgreSQL 18 起数据目录为 /var/lib/postgresql/18/docker，
+      # 数据卷必须挂在 /var/lib/postgresql，挂在旧路径 /var/lib/postgresql/data 数据不会进卷。
+      - db-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U nervewiki -d nervewiki"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+volumes:
+  db-data:

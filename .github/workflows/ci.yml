@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+# 其他分支上的新推送取消同一分支较早的运行。main 的每次运行各占一个组：同一组里只保留一个排队的运行，
+# 共用一个组时，排队中的运行会被更晚的推送替换掉，只靠 cancel-in-progress 保不住每个提交的结果。
+concurrency:
+  group: ${{ github.ref == 'refs/heads/main' && format('ci-main-{0}', github.run_id) || format('ci-{0}', github.ref) }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  server:
+    name: server
+    # 同仓库分支的 PR 已由 push 事件在同一个提交上跑过；pull_request 事件只为 fork 的 PR 运行
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      # 按完整的提交 SHA 引用 actions（tag 可以被改指），注释中写明对应的版本
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # 之后的步骤会运行第三方代码（pnpm install、golangci-lint 的安装脚本），不在 .git/config 里留下令牌
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: server/go.mod
+          # 缓存键取自 go.mod：没有依赖的模块没有 go.sum，匹配不到文件时 setup-go 会失败
+          cache-dependency-path: server/**/go.mod
+      - name: Go version
+        working-directory: server
+        run: go version
+      - name: Lint
+        run: make lint-go
+      - name: Test
+        run: make test
+
+  web:
+    name: web
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+      - name: Enable corepack
+        run: corepack enable
+      # pnpm 的包存储按锁文件缓存：锁文件变了就换一个缓存，旧的包不会越积越多
+      - name: Locate the pnpm store
+        id: pnpm-store
+        run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+      - name: Cache the pnpm store
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.pnpm-store.outputs.path }}
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Lint
+        run: make lint-web
+      - name: Unused code
+        run: make knip
