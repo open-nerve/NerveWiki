@@ -6,7 +6,8 @@ linters:
   enable:
     - depguard
     # 禁止 init() 与包级变量（全局可变状态），对应总体设计 8.1。
-    # 例外逐个用带理由的 //nolint:gochecknoglobals 标出；以 err 开头的错误变量、_ 断言不算
+    # 例外逐个用带理由的 //nolint:gochecknoglobals 标出。linter 自己放过：以 err 开头的错误变量、_ 断言、
+    # 名为 version 的变量（buildinfo.version 供 -ldflags -X 注入）
     - gochecknoinits
     - gochecknoglobals
     # 错误用 errors.Is / errors.As 判断，不直接比较或断言类型：被包装的错误也要认出来

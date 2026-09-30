@@ -115,8 +115,8 @@ func TestSecurityHeadersOnEveryResponse(t *testing.T) {
 }
 
 // Every response under /api/ carries Cache-Control: no-store: an answer, a
-// problem, the platform's /api/ fallback and the 500 of a panic. Other responses get no caching from the chain: the web UI sets its
-// own.
+// problem, the platform's /api/ fallback and the 500 of a panic. Other
+// responses get no caching from the chain: the web UI sets its own.
 func TestAPIResponsesAreNotStored(t *testing.T) {
 	discard := slog.New(slog.DiscardHandler)
 	answer := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("{}")) })
@@ -232,6 +232,36 @@ func TestPanicAfterResponseStartedAbortsConnection(t *testing.T) {
 	}()
 	serve(h, httptest.NewRequest(http.MethodGet, "/", nil))
 	t.Error("ServeHTTP returned normally, want a panic")
+}
+
+// A flush commits the response as a write does: a panic after it aborts the
+// connection too, rather than appending a 500 problem to the 200 the client
+// has already received. Event streams flush without writing first.
+func TestPanicAfterFlushAbortsConnection(t *testing.T) {
+	for name, flush := range map[string]func(http.ResponseWriter){
+		"ResponseController": func(w http.ResponseWriter) { _ = http.NewResponseController(w).Flush() },
+		"http.Flusher":       func(w http.ResponseWriter) { w.(http.Flusher).Flush() },
+	} {
+		t.Run(name, func(t *testing.T) {
+			h := middleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "text/event-stream")
+				flush(w)
+				panic("boom")
+			}), slog.New(slog.DiscardHandler))
+			rec := httptest.NewRecorder()
+
+			defer func() {
+				if v := recover(); v != http.ErrAbortHandler { //nolint:errorlint // net/http recognises only this exact value
+					t.Errorf("recovered %v, want http.ErrAbortHandler", v)
+				}
+				if !rec.Flushed || rec.Code != http.StatusOK || rec.Body.Len() != 0 {
+					t.Errorf("response = %d flushed %t body %q, want the flushed 200 alone", rec.Code, rec.Flushed, rec.Body)
+				}
+			}()
+			h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/events", nil))
+			t.Error("ServeHTTP returned normally, want a panic")
+		})
+	}
 }
 
 func TestAbortHandlerPanicIsNotRecovered(t *testing.T) {

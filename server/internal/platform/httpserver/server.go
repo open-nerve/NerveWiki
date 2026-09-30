@@ -79,15 +79,14 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 }
 
 // writeAddrFile writes addr to path through a temporary file and a rename,
-// so a reader never sees a partial address. The error leaves the path out:
-// like every *_file key, server.addr_file is not logged.
+// so a reader never sees a partial address.
 func writeAddrFile(path, addr string) error {
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, []byte(addr), 0o600); err != nil {
-		return fmt.Errorf("server.addr_file: write: %w", errors.Unwrap(err))
+		return fmt.Errorf("server.addr_file: %w", err)
 	}
 	if err := os.Rename(tmp, path); err != nil {
-		return fmt.Errorf("server.addr_file: rename: %w", errors.Unwrap(err))
+		return fmt.Errorf("server.addr_file: %w", err)
 	}
 	return nil
 }

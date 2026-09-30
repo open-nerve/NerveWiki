@@ -167,10 +167,11 @@ func withAccessLog(logger *slog.Logger, next http.Handler) http.Handler {
 	})
 }
 
-// statusRecorder remembers the final status code written through it.
+// statusRecorder remembers the final status code written through it. A
+// write or a flush commits the response, with 200 unless a status was set.
 type statusRecorder struct {
 	http.ResponseWriter
-	status int // 0 until a final (non-1xx) status is written
+	status int // 0 until the response is committed
 }
 
 func (s *statusRecorder) WriteHeader(code int) {
@@ -181,10 +182,27 @@ func (s *statusRecorder) WriteHeader(code int) {
 }
 
 func (s *statusRecorder) Write(b []byte) (int, error) {
+	s.commit()
+	return s.ResponseWriter.Write(b)
+}
+
+// FlushError is what http.ResponseController calls to flush: the flush sends
+// the status and headers, so it commits the response as a write does.
+func (s *statusRecorder) FlushError() error {
+	s.commit()
+	return http.NewResponseController(s.ResponseWriter).Flush()
+}
+
+// Flush serves handlers and libraries that assert http.Flusher, such as
+// event streams.
+func (s *statusRecorder) Flush() {
+	_ = s.FlushError()
+}
+
+func (s *statusRecorder) commit() {
 	if s.status == 0 {
 		s.status = http.StatusOK
 	}
-	return s.ResponseWriter.Write(b)
 }
 
 // Unwrap lets http.ResponseController reach the underlying writer.

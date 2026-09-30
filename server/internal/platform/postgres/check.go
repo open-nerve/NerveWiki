@@ -87,7 +87,8 @@ func CheckDatabase(ctx context.Context, db Querier) error {
 		return nil
 	}
 	return fmt.Errorf("database %s is not set up for nervewiki:\n- %s\n"+
-		"create it with: CREATE DATABASE %s TEMPLATE template0 ENCODING 'UTF8' LOCALE_PROVIDER builtin LOCALE 'C.UTF-8'\n"+
+		"a database cannot change these settings: recreate it (dump, create, restore) with\n"+
+		"CREATE DATABASE %s TEMPLATE template0 ENCODING 'UTF8' LOCALE_PROVIDER builtin LOCALE 'C.UTF-8'\n"+
 		"(with the official image, initialise the cluster with POSTGRES_INITDB_ARGS=\"--locale-provider=builtin --locale=C.UTF-8\")",
 		name, strings.Join(problems, "\n- "), pgx.Identifier{name}.Sanitize())
 }

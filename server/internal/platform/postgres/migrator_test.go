@@ -159,23 +159,58 @@ func TestMigratorReportsFailingMigration(t *testing.T) {
 	}
 }
 
-func TestMigratorWithoutMigrationsIsNoOp(t *testing.T) {
-	ctx := context.Background()
-	// Nothing may touch the database: this pool points nowhere.
+// The production set is never empty (server/migrations tests it), so an
+// empty set is a wiring mistake.
+func TestNewMigratorRejectsAnEmptySet(t *testing.T) {
 	pool := newPool(t, "postgres://nobody@127.0.0.1:1/nowhere")
-	m := newMigrator(t, pool, fstest.MapFS{".gitkeep": {}})
 
-	if ran, err := m.Up(ctx); err != nil || len(ran) != 0 {
-		t.Errorf("Up() = %v, %v; want nothing", ran, err)
+	if _, err := postgres.NewMigrator(pool, fstest.MapFS{".gitkeep": {}}); err == nil {
+		t.Error("NewMigrator() error = nil, want an error for no migrations")
 	}
-	if back, err := m.Down(ctx); err != nil || back != nil {
-		t.Errorf("Down() = %v, %v; want nothing", back, err)
+}
+
+// Processes that migrate one database at once, such as several instances
+// starting with auto_migrate, take turns on a lock: each migration is
+// applied once, and neither process fails. The database is already at
+// version 1, and migration 2 takes half a second, so the two runs overlap:
+// without the lock, both would see it pending and the second would fail on
+// the table the first created.
+func TestConcurrentUpAppliesEachMigrationOnce(t *testing.T) {
+	url := pgtest.NewEmptyDatabase(t)
+	first := fstest.MapFS{"00001_probe_create_widgets.sql": sampleMigrations()["00001_probe_create_widgets.sql"]}
+	if _, err := newMigrator(t, newPool(t, url), first).Up(context.Background()); err != nil {
+		t.Fatal(err)
 	}
-	if statuses, err := m.Status(ctx); err != nil || len(statuses) != 0 {
-		t.Errorf("Status() = %v, %v; want nothing", statuses, err)
+	both := fstest.MapFS{
+		"00001_probe_create_widgets.sql": first["00001_probe_create_widgets.sql"],
+		"00002_probe_slow_gadgets.sql": {Data: []byte(
+			"-- +goose Up\nSELECT pg_sleep(0.5);\nCREATE TABLE gadgets (id bigint);\n-- +goose Down\nDROP TABLE gadgets;\n")},
 	}
-	if err := m.CheckUpToDate(ctx); err != nil {
-		t.Errorf("CheckUpToDate() = %v, want nil", err)
+	type result struct {
+		ran []postgres.Migration
+		err error
+	}
+	start, results := make(chan struct{}), make(chan result, 2)
+	for range 2 {
+		m := newMigrator(t, newPool(t, url), both)
+		go func() {
+			<-start
+			ran, err := m.Up(context.Background())
+			results <- result{ran, err}
+		}()
+	}
+	close(start)
+
+	applied := 0
+	for range 2 {
+		r := <-results
+		if r.err != nil {
+			t.Errorf("Up() error = %v, want both processes to succeed", r.err)
+		}
+		applied += len(r.ran)
+	}
+	if applied != 1 {
+		t.Errorf("the two Up() calls applied %d migrations between them, want migration 2 once", applied)
 	}
 }
 

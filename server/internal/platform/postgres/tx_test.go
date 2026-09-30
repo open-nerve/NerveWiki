@@ -239,3 +239,29 @@ func TestWithinTxRollsBackAfterAFailedStatementAndCancel(t *testing.T) {
 		t.Errorf("notes = %d, want 0", n)
 	}
 }
+
+// A deadline that passes while a statement runs makes pgx close the
+// connection, so the ROLLBACK cannot run; the server rolls the transaction
+// back itself. The caller still recognises the deadline, rather than a
+// rollback fault, and the pool stays usable.
+func TestWithinTxReportsADeadlineDuringAStatement(t *testing.T) {
+	pool := newNotes(t, 1)
+	tm := postgres.NewTxManager(pool, commitTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+
+	err := tm.WithinTx(ctx, func(ctx context.Context) error {
+		if err := insertNote(ctx, pool, 1); err != nil {
+			return err
+		}
+		_, err := postgres.DB(ctx, pool).Exec(ctx, "SELECT pg_sleep(5)")
+		return err
+	})
+
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("WithinTx() = %v, want it to match context.DeadlineExceeded", err)
+	}
+	if n := countNotes(t, pool); n != 0 {
+		t.Errorf("notes = %d, want 0: the abandoned transaction is rolled back", n)
+	}
+}

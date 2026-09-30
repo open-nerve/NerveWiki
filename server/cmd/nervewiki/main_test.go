@@ -3,8 +3,9 @@ package main
 import (
 	"bytes"
 	"context"
-	"net"
 	"net/http"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -88,16 +89,12 @@ func TestMigrateUpThenStatus(t *testing.T) {
 // nervewiki serve runs until it is cancelled, as by the first SIGINT or
 // SIGTERM, and then exits 0.
 func TestServeUntilCancelled(t *testing.T) {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	addr := ln.Addr().String()
-	_ = ln.Close()
+	addrFile := filepath.Join(t.TempDir(), "addr")
 	environ := []string{
 		"NWIKI_ENV=test",
 		"NWIKI_DATABASE__URL=" + pgtest.NewEmptyDatabase(t),
-		"NWIKI_SERVER__ADDR=" + addr,
+		"NWIKI_SERVER__ADDR=127.0.0.1:0",
+		"NWIKI_SERVER__ADDR_FILE=" + addrFile,
 		"NWIKI_LOG__LEVEL=info",
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -115,7 +112,11 @@ func TestServeUntilCancelled(t *testing.T) {
 	client := &http.Client{Timeout: time.Second}
 	ready := false
 	for deadline := time.Now().Add(15 * time.Second); !ready && time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
-		if resp, err := client.Get("http://" + addr + "/readyz"); err == nil {
+		addr, err := os.ReadFile(addrFile)
+		if err != nil {
+			continue
+		}
+		if resp, err := client.Get("http://" + string(addr) + "/readyz"); err == nil {
 			_ = resp.Body.Close()
 			ready = resp.StatusCode == http.StatusOK
 		}

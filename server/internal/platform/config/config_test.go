@@ -22,7 +22,7 @@ func TestLogValueMasksDatabaseURL(t *testing.T) {
 		"config.server.read_timeout=30s",
 		"config.server.write_timeout=1m0s",
 		"config.server.shutdown_timeout=20s",
-		"config.server.addr_file_set=false",
+		`config.server.addr_file=""`,
 		"config.database.url=xxxxx",
 		"config.database.max_conns=10",
 		"config.database.auto_migrate=true",
@@ -36,20 +36,15 @@ func TestLogValueMasksDatabaseURL(t *testing.T) {
 	}
 }
 
-// Every *_file key logs whether it is set, never the path: a path can tell
-// where secrets live.
-func TestLogValueHidesFilePaths(t *testing.T) {
-	cfg := validConfig()
-	cfg.Server.AddrFile = "/run/nervewiki/addr-secret-dir"
+// JSON logs render durations as "5s" too, not as nanoseconds.
+func TestLogValueRendersReadableDurationsInJSON(t *testing.T) {
 	var buf bytes.Buffer
-	slog.New(slog.NewTextHandler(&buf, nil)).Info("configuration loaded", "config", cfg)
+	slog.New(slog.NewJSONHandler(&buf, nil)).Info("configuration loaded", "config", validConfig())
 
-	out := buf.String()
-	if strings.Contains(out, "secret-dir") {
-		t.Errorf("log output shows a file path: %s", out)
-	}
-	if !strings.Contains(out, "config.server.addr_file_set=true") {
-		t.Errorf("log output lacks config.server.addr_file_set=true: %s", out)
+	for _, want := range []string{`"read_header_timeout":"5s"`, `"write_timeout":"1m0s"`, `"commit_timeout":"2s"`} {
+		if !strings.Contains(buf.String(), want) {
+			t.Errorf("log output lacks %s: %s", want, buf.String())
+		}
 	}
 }
 

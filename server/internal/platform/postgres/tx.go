@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -39,11 +40,16 @@ func DB(ctx context.Context, pool *pgxpool.Pool) Querier {
 // commitTimeout (database.commit_timeout). A transaction whose statements
 // have all finished therefore commits even if the request is cancelled
 // meanwhile, and a failed one is rolled back and its connection returned to
-// the pool in a known state. A COMMIT that gets no answer
-// within commitTimeout has an unknown outcome and returns an error. A ROLLBACK
-// that fails is an infrastructure fault: WithinTx returns an error that wraps
-// the failure and keeps only the text of fn's error, so a domain error behind
-// it is answered as a logged 500, not as itself.
+// the pool in a known state. A COMMIT that gets no answer within
+// commitTimeout has an unknown outcome and returns an error.
+//
+// A ROLLBACK that fails is an infrastructure fault: WithinTx returns an error
+// that wraps the failure and keeps only the text of fn's error, so a domain
+// error behind it is answered as a logged 500, not as itself. One case is
+// not a fault: when the caller's context ends while a statement runs, pgx
+// closes the connection, the server rolls the abandoned transaction back, and
+// the ROLLBACK fails for want of a connection. The error then wraps the
+// context's error, so the caller recognises a deadline or a disconnect.
 type TxManager struct {
 	pool          *pgxpool.Pool
 	commitTimeout time.Duration
@@ -77,6 +83,9 @@ func (m *TxManager) WithinTx(ctx context.Context, fn func(ctx context.Context) e
 		if rbErr := m.end(ctx, tx.Rollback); rbErr != nil {
 			// fn's error keeps only its text: a domain error must not
 			// hide the infrastructure fault behind its own answer.
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return fmt.Errorf("transaction abandoned after %v: %w", err, errors.Join(ctxErr, rbErr)) //nolint:errorlint // see above
+			}
 			return fmt.Errorf("roll back transaction after %v: %w", err, rbErr) //nolint:errorlint // see above
 		}
 		return err

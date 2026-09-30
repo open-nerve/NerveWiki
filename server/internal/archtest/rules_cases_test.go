@@ -21,7 +21,7 @@ func TestRules(t *testing.T) {
 		entry    = "only bootstrap imports modules"
 		gen      = "generated code is imported only by its own adapter"
 		platform = "platform packages do not import each other, except config"
-		testOnly = "test helpers (pgtest, clocktest) are imported only by tests"
+		testOnly = "test helpers (pgtest) are imported only by tests"
 	)
 	tests := []struct {
 		from, to string
@@ -95,8 +95,6 @@ func TestRules(t *testing.T) {
 		// Test helpers.
 		{m("internal/bootstrap"), m("internal/platform/postgres/pgtest"), []string{testOnly}},
 		{m("internal/platform/httpserver"), m("internal/platform/postgres/pgtest"), []string{platform, testOnly}},
-		{m("internal/bootstrap"), m("internal/platform/clock/clocktest"), []string{testOnly}},
-		{m("internal/platform/clock/clocktest"), "time", nil},
 	}
 	fired := map[string]bool{}
 	for _, tt := range tests {

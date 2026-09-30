@@ -56,17 +56,17 @@ type LogConfig struct {
 
 // LogValue renders the configuration for logs with secrets masked, so the
 // effective configuration can be logged at startup. Only the keys listed here
-// reach the log; every *_file key logs whether it is set, never its path.
+// reach the log. Durations are strings such as "5s", in JSON logs too.
 func (c Config) LogValue() slog.Value {
 	return slog.GroupValue(
 		slog.String("env", c.Env),
 		slog.Group("server",
 			slog.String("addr", c.Server.Addr),
-			slog.Duration("read_header_timeout", c.Server.ReadHeaderTimeout),
-			slog.Duration("read_timeout", c.Server.ReadTimeout),
-			slog.Duration("write_timeout", c.Server.WriteTimeout),
-			slog.Duration("shutdown_timeout", c.Server.ShutdownTimeout),
-			slog.Bool("addr_file_set", c.Server.AddrFile != ""),
+			duration("read_header_timeout", c.Server.ReadHeaderTimeout),
+			duration("read_timeout", c.Server.ReadTimeout),
+			duration("write_timeout", c.Server.WriteTimeout),
+			duration("shutdown_timeout", c.Server.ShutdownTimeout),
+			slog.String("addr_file", c.Server.AddrFile),
 		),
 		slog.Any("database", c.Database),
 		slog.Group("log",
@@ -93,6 +93,11 @@ func (d DatabaseConfig) LogValue() slog.Value {
 		slog.String("url", url),
 		slog.Int("max_conns", int(d.MaxConns)),
 		slog.Bool("auto_migrate", d.AutoMigrate),
-		slog.Duration("commit_timeout", d.CommitTimeout),
+		duration("commit_timeout", d.CommitTimeout),
 	)
+}
+
+// duration renders d as "5s" rather than slog's nanoseconds in JSON.
+func duration(key string, d time.Duration) slog.Attr {
+	return slog.String(key, d.String())
 }

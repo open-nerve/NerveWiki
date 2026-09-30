@@ -26,7 +26,8 @@ func withStopping(ctx, stopping context.Context) context.Context {
 // The read deadline stays: it still bounds reading the request body, so a
 // client cannot trickle one in forever. Once the body has been read, net/http
 // lifts the read deadline itself while it watches the connection for the
-// client going away.
+// client going away. It starts watching only then: h must read the body to
+// the end to learn, through its context, that the client has gone.
 //
 // Other requests are left alone: they finish normally during shutdown.
 // Without a Server, as under httptest, only the write deadline is lifted. A

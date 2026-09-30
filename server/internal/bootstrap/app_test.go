@@ -6,11 +6,13 @@ import (
 	"encoding/json"
 	"io/fs"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"testing/fstest"
 	"time"
@@ -206,6 +208,70 @@ func TestRunFailsWhenAutoMigrateFails(t *testing.T) {
 
 	if err := a.run(ctx); err == nil {
 		t.Error("run() = nil, want the migration error")
+	}
+}
+
+// silentServer accepts TCP connections and never answers, as a database
+// host behind a firewall that drops packets looks to a client.
+func silentServer(t *testing.T) string {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var mu sync.Mutex
+	var conns []net.Conn
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			mu.Lock()
+			conns = append(conns, c)
+			mu.Unlock()
+		}
+	}()
+	t.Cleanup(func() {
+		_ = ln.Close()
+		mu.Lock()
+		defer mu.Unlock()
+		for _, c := range conns {
+			_ = c.Close()
+		}
+	})
+	return "postgres://nobody@" + ln.Addr().String() + "/nowhere?sslmode=disable"
+}
+
+// Startup gives up on a database that does not answer after databaseWait,
+// rather than when the operating system drops the connection.
+func TestRunGivesUpOnASilentDatabase(t *testing.T) {
+	a := buildApp(t, testConfig(t, silentServer(t), false), sampleMigrations())
+	a.databaseWait = 200 * time.Millisecond
+	begin := time.Now()
+
+	err := a.run(context.Background())
+
+	if err == nil || !strings.HasPrefix(err.Error(), "database unreachable (waited up to 200ms): ") {
+		t.Errorf("run() = %v, want the database to be reported unreachable", err)
+	}
+	if elapsed := time.Since(begin); elapsed > 2*time.Second {
+		t.Errorf("run() took %s, want about the 200ms wait", elapsed)
+	}
+}
+
+// Without auto_migrate, serve still needs the database at startup: the
+// database check runs before it listens.
+func TestRunRefusesAnUnreachableDatabase(t *testing.T) {
+	a := buildApp(t, testConfig(t, unreachableDB, false), sampleMigrations())
+
+	err := a.run(context.Background())
+
+	if err == nil || !strings.HasPrefix(err.Error(), "database unreachable") {
+		t.Errorf("run() = %v, want the database to be reported unreachable", err)
+	}
+	if _, statErr := os.Stat(a.cfg.Server.AddrFile); statErr == nil {
+		t.Error("run() listened without a database")
 	}
 }
 

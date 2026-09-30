@@ -24,9 +24,8 @@ var errUnusableURL = errors.New("database.url: pgx cannot use it; check its synt
 	"(sslrootcert, sslcert, sslkey) and any PG* environment variables (details not shown, as they may contain the password)")
 
 // NewPool creates a connection pool for database.url with at most
-// database.max_conns connections. It connects lazily: an unreachable database
-// shows up on first use, e.g. in the /readyz check. Every connection scans
-// timestamptz values in UTC (scanTimestamptzInUTC).
+// database.max_conns connections. It connects lazily, on first use. Every
+// connection scans timestamptz values in UTC (scanTimestamptzInUTC).
 func NewPool(ctx context.Context, cfg config.DatabaseConfig) (*pgxpool.Pool, error) {
 	pc, err := pgxpool.ParseConfig(cfg.URL)
 	if err != nil {

@@ -19,7 +19,8 @@ func TestCheckDatabaseAcceptsTheTestDatabase(t *testing.T) {
 }
 
 func TestCheckDatabaseReportsEveryProblem(t *testing.T) {
-	const fix = "create it with: CREATE DATABASE %s TEMPLATE template0 ENCODING 'UTF8' LOCALE_PROVIDER builtin LOCALE 'C.UTF-8'\n" +
+	const fix = "a database cannot change these settings: recreate it (dump, create, restore) with\n" +
+		"CREATE DATABASE %s TEMPLATE template0 ENCODING 'UTF8' LOCALE_PROVIDER builtin LOCALE 'C.UTF-8'\n" +
 		`(with the official image, initialise the cluster with POSTGRES_INITDB_ARGS="--locale-provider=builtin --locale=C.UTF-8")`
 	tests := []struct {
 		name     string

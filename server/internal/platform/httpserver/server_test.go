@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"io/fs"
 	"log/slog"
 	"net"
 	"net/http"
@@ -247,14 +248,15 @@ func TestListenAndServeWritesTheAddrFile(t *testing.T) {
 	}
 }
 
-// The error names the key, never the path: *_file keys are not logged.
+// The error names the key and the path it could not write.
 func TestListenAndServeReportsAnUnwritableAddrFile(t *testing.T) {
-	addrFile := filepath.Join(t.TempDir(), "secret-dir", "missing", "addr")
+	addrFile := filepath.Join(t.TempDir(), "missing", "addr")
 	cfg := config.ServerConfig{Addr: "127.0.0.1:0", AddrFile: addrFile, ReadHeaderTimeout: time.Second, ShutdownTimeout: time.Second}
 
 	err := NewServer(cfg, http.NotFoundHandler(), slog.New(slog.DiscardHandler)).ListenAndServe(context.Background())
 
-	if err == nil || !strings.HasPrefix(err.Error(), "server.addr_file: ") || strings.Contains(err.Error(), "secret-dir") {
-		t.Errorf("ListenAndServe() = %v, want a server.addr_file error without the path", err)
+	if err == nil || !strings.HasPrefix(err.Error(), "server.addr_file: ") || !strings.Contains(err.Error(), addrFile) ||
+		!errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("ListenAndServe() = %v, want a server.addr_file error naming %s", err, addrFile)
 	}
 }

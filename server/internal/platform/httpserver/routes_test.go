@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestHealthzDoesNotRunChecks(t *testing.T) {
@@ -71,6 +72,27 @@ func TestReadyzReportsFirstFailingCheck(t *testing.T) {
 	entry := findLog(logs(), "readiness check failed")
 	if entry == nil || entry["check"] != "database" || entry["error"] != "connection refused" {
 		t.Errorf("log = %v, want the failing check and its error", entry)
+	}
+}
+
+// A check that hangs until its context ends answers 503 once the readiness
+// budget is spent, so a hung dependency cannot hang the probe.
+func TestReadyzGivesUpOnAHungCheck(t *testing.T) {
+	t.Parallel()
+	router := NewRouter(slog.New(slog.DiscardHandler), Check{Name: "database", Run: func(ctx context.Context) error {
+		<-ctx.Done()
+		return ctx.Err()
+	}})
+	begin := time.Now()
+
+	rec := serve(router, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+
+	elapsed := time.Since(begin)
+	if rec.Code != http.StatusServiceUnavailable || !strings.Contains(rec.Body.String(), `"detail":"database is not ready"`) {
+		t.Errorf("GET /readyz = %d %s, want 503 for database", rec.Code, rec.Body)
+	}
+	if elapsed < readinessTimeout || elapsed > readinessTimeout+time.Second {
+		t.Errorf("GET /readyz took %s, want about the %s budget", elapsed, readinessTimeout)
 	}
 }
 

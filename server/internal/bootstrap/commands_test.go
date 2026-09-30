@@ -71,31 +71,6 @@ func TestMigrateUpReportsMigrationsAppliedBeforeAFailure(t *testing.T) {
 	}
 }
 
-func TestMigrateCommandsWithoutMigrations(t *testing.T) {
-	cfg := testConfig(t, pgtest.NewDatabase(t), false)
-	tests := []struct {
-		name string
-		cmd  migrationCommand
-		want string
-	}{
-		{"status", migrateStatus, "no migrations\n"},
-		{"up", migrateUp, "no pending migrations\n"},
-		{"down", migrateDown, "no applied migrations to roll back\n"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var out bytes.Buffer
-			// An empty set of its own: the production set is not empty.
-			if err := runMigration(context.Background(), cfg, fstest.MapFS{}, &out, tt.cmd); err != nil {
-				t.Fatalf("error = %v", err)
-			}
-			if out.String() != tt.want {
-				t.Errorf("output = %q, want %q", out.String(), tt.want)
-			}
-		})
-	}
-}
-
 func TestMigrateCommandReportsBadURL(t *testing.T) {
 	err := MigrateStatus(context.Background(), testConfig(t, "postgres://nervewiki:secret@localhost:notaport/nervewiki", false), &bytes.Buffer{})
 	if err == nil || strings.Contains(err.Error(), "secret") {

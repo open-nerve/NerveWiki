@@ -69,6 +69,9 @@ func runMigration(ctx context.Context, cfg config.Config, files fs.FS, out io.Wr
 		return err
 	}
 	defer pool.Close()
+	if err := awaitDatabase(ctx, pool, databaseWait); err != nil {
+		return err
+	}
 	m, err := postgres.NewMigrator(pool, files)
 	if err != nil {
 		return err
@@ -111,9 +114,6 @@ func migrateStatus(ctx context.Context, _ *pgxpool.Pool, m *postgres.Migrator, o
 	statuses, err := m.Status(ctx)
 	if err != nil {
 		return err
-	}
-	if len(statuses) == 0 {
-		return writeLine(out, "no migrations")
 	}
 	tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
 	// tabwriter buffers; write errors are reported by Flush.

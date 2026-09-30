@@ -4,6 +4,7 @@ package bootstrap
 
 import (
 	"context"
+	"fmt"
 	"io/fs"
 	"log/slog"
 	"time"
@@ -24,6 +25,11 @@ var _ shared.TxManager = (*postgres.TxManager)(nil)
 // a handler that ignores its context may still hold one.
 const poolCloseTimeout = 5 * time.Second
 
+// databaseWait bounds how long startup waits for the database to answer. A
+// host that drops packets would otherwise hold serve, or a migrate command,
+// until the operating system gives up on the TCP connection, minutes later.
+const databaseWait = 10 * time.Second
+
 // app is a fully wired nervewiki server.
 type app struct {
 	cfg      config.Config
@@ -31,8 +37,9 @@ type app struct {
 	pool     *pgxpool.Pool
 	migrator *postgres.Migrator
 	router   *httpserver.Router
-	// poolCloseTimeout is the package's, but for tests.
+	// poolCloseTimeout and databaseWait are the package's, but for tests.
 	poolCloseTimeout time.Duration
+	databaseWait     time.Duration
 }
 
 // newApp wires the server described by cfg around the given migrations.
@@ -64,14 +71,18 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrati
 		migrator:         migrator,
 		router:           router,
 		poolCloseTimeout: poolCloseTimeout,
+		databaseWait:     databaseWait,
 	}, nil
 }
 
-// run applies pending migrations when database.auto_migrate is on, checks
-// the database, and serves HTTP on server.addr until ctx is done. HTTP stops
-// first (see httpserver.Server.Serve); close then releases the migrator and
-// the pool.
+// run waits for the database, applies pending migrations when
+// database.auto_migrate is on, checks the database, and serves HTTP on
+// server.addr until ctx is done. HTTP stops first (see
+// httpserver.Server.Serve); close then releases the migrator and the pool.
 func (a *app) run(ctx context.Context) error {
+	if err := awaitDatabase(ctx, a.pool, a.databaseWait); err != nil {
+		return err
+	}
 	if a.cfg.Database.AutoMigrate {
 		applied, err := a.migrator.Up(ctx)
 		// Log what was applied even when a later migration failed.
@@ -86,6 +97,16 @@ func (a *app) run(ctx context.Context) error {
 		return err
 	}
 	return httpserver.NewServer(a.cfg.Server, a.router, a.logger).ListenAndServe(ctx)
+}
+
+// awaitDatabase fails when the database does not answer within wait.
+func awaitDatabase(ctx context.Context, pool *pgxpool.Pool, wait time.Duration) error {
+	ctx, cancel := context.WithTimeout(ctx, wait)
+	defer cancel()
+	if err := pool.Ping(ctx); err != nil {
+		return fmt.Errorf("database unreachable (waited up to %s): %w", wait, err)
+	}
+	return nil
 }
 
 // close releases the database resources: the migrator, then the pool, whose

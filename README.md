@@ -20,7 +20,7 @@
 
 ```bash
 pnpm install  # 安装 Node 依赖（检查工具要用）
-make dev-db   # 启动本地 PostgreSQL 18（端口 55433，可用 NWIKI_DEV_DB_PORT 修改）
+make dev-db   # 启动本地 PostgreSQL 18（端口 55433；用 NWIKI_DEV_DB_PORT 修改时，同时覆盖 database.url，见下文"配置"）
 make check    # 持续集成的全部门禁：静态检查、未使用代码检查、测试
 make          # 查看所有命令
 ```
@@ -39,7 +39,7 @@ make dev-db   # 先启动开发数据库
 make run      # 以 dev 配置启动 nervewiki serve，监听 127.0.0.1:8080；Ctrl-C 优雅停止
 ```
 
-`serve` 启动时按配置执行迁移（dev、test 默认执行，prod 默认不执行），然后自检数据库的编码与 locale，不满足就拒绝启动并给出建库命令。`GET /healthz` 表示进程存活；`GET /readyz` 在数据库可用、迁移已是最新时返回 200，否则 503。
+`serve` 启动时要连上数据库（最多等 10 秒，连不上就退出），按配置执行迁移（dev、test 默认执行，prod 默认不执行），然后自检数据库的编码与 locale，不满足就拒绝启动并给出建库命令。`GET /healthz` 表示进程存活；`GET /readyz` 在数据库可用、迁移已是最新时返回 200，否则 503。
 
 其他命令在 `server/` 下用 `go run ./cmd/nervewiki <命令>` 执行：
 
@@ -58,7 +58,7 @@ make run      # 以 dev 配置启动 nervewiki serve，监听 127.0.0.1:8080；C
 1. 内置的 `server/configs/config.yaml`（列出全部配置项及默认值）；
 2. 内置的 `server/configs/config.<env>.yaml`；
 3. `$NWIKI_CONFIG_DIR` 下的 `config.yaml`、`config.<env>.yaml`（设置了且文件存在时）；
-4. `server/configs/config.local.yaml`（只在 dev 生效，不进仓库）；
+4. 个人覆盖文件 `configs/config.local.yaml`，相对于工作目录，也就是 `server/` 下启动时（`make run` 就是）的 `server/configs/config.local.yaml`；只在 dev 生效，不进仓库；
 5. 环境变量 `NWIKI_<节>__<键>`，例如 `database.url` 对应 `NWIKI_DATABASE__URL`。
 
 `NWIKI_ENV` 选择环境（`dev`、`test`、`prod`，默认 `dev`）。未知的键、空值、越界的数字、不带单位的时长都会报错，所有无效的键一次列出。日志里的数据库地址整体脱敏。
