@@ -199,7 +199,7 @@ M1 结束时：
 | P1 | 身份基础与默认拒绝 | 已完成 | [01-P1-identity-foundation.md](01-P1-identity-foundation.md) | [P1 审查](reviews/P1-identity-foundation-review.md) |
 | P2 | 会话与限流 | 已完成 | [02-P2-sessions-ratelimit.md](02-P2-sessions-ratelimit.md) | [P2 审查](reviews/P2-sessions-ratelimit-review.md) |
 | P3 | 账户、PAT 与停用 | 已完成 | [03-P3-accounts-tokens.md](03-P3-accounts-tokens.md) | [P3 审查](reviews/P3-accounts-tokens-review.md) |
-| P4 | 管理命令与后台任务 | 未开始 | — | — |
+| P4 | 管理命令与后台任务 | 进行中 | [04-P4-admin-jobs.md](04-P4-admin-jobs.md) | — |
 | P5 | 前端会话、登录与引导 | 未开始 | — | — |
 | P6 | 前端个人设置 | 未开始 | — | — |
 | — | M1 收尾审查 | 未开始 | — | — |
