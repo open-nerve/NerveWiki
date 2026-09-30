@@ -2,8 +2,9 @@ import { Link, Outlet } from "react-router";
 
 import { LanguageMenu } from "./language-menu";
 import { ThemeMenu } from "./theme-menu";
+import { UserMenu } from "./user-menu";
 
-/** Layout is the shell around every page: the top bar and the page below it. */
+/** Layout is the shell around every page: the top bar (with the account once signed in) and the page below it. */
 export function Layout() {
   return (
     <div className="flex min-h-svh flex-col">
@@ -14,6 +15,7 @@ export function Layout() {
         <div className="flex items-center gap-1">
           <LanguageMenu />
           <ThemeMenu />
+          <UserMenu />
         </div>
       </header>
       <main className="flex-1 p-6">

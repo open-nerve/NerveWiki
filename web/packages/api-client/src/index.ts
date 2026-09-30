@@ -1,5 +1,8 @@
 import createFetchClient, { type ClientOptions } from "openapi-fetch";
 
+// What the web app's session puts on its clients (client.use).
+export type { Middleware } from "openapi-fetch";
+
 import type { paths } from "./schema.gen";
 
 // The schemas under their own names (InstanceInfo, Problem …): openapi-typescript's --root-types.

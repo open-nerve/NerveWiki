@@ -4,7 +4,7 @@ import { expect, test, vi } from "vitest";
 
 import { ApiError } from "../services/api";
 import { RootStore } from "../stores/root.store";
-import { fakeApi, json, preferences } from "../test/fakes";
+import { testApp } from "../test/fakes";
 import { renderApp } from "../test/render";
 import { AppProviders } from "./providers";
 import { RouteError } from "./route-error";
@@ -37,14 +37,7 @@ test("an ApiError thrown while rendering shows its code", async () => {
   vi.spyOn(console, "error").mockImplementation(() => {});
   const router = createMemoryRouter([{ path: "/", Component: Refused, ErrorBoundary: RouteError }]);
   render(
-    <AppProviders
-      store={
-        new RootStore(
-          preferences(),
-          fakeApi(() => json({}))
-        )
-      }
-    >
+    <AppProviders store={new RootStore(testApp(), undefined)}>
       <RouterProvider router={router} />
     </AppProviders>
   );

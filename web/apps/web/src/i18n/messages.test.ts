@@ -21,7 +21,7 @@ test("t fills each placeholder", () => {
   const t = translator("en");
 
   expect(t("home.version", { version: "1.2.3", commit: "4f2a9c1" })).toBe("Version 1.2.3 (4f2a9c1)");
-  expect(t("home.loading")).toBe("Loading…");
+  expect(t("status.loading")).toBe("Loading…");
 });
 
 // Checked by the type checker; the calls themselves only need not throw.
@@ -32,6 +32,6 @@ test("t takes exactly the placeholders of its key", () => {
   t("home.version");
   // @ts-expect-error: commit is missing
   t("home.version", { version: "1.2.3" });
-  // @ts-expect-error: home.loading has no placeholder
-  t("home.loading", { version: "1.2.3" });
+  // @ts-expect-error: status.loading has no placeholder
+  t("status.loading", { version: "1.2.3" });
 });

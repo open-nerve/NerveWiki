@@ -1,4 +1,6 @@
-import type { Problem } from "@nervewiki/api-client";
+import type { FieldError, Problem } from "@nervewiki/api-client";
+
+export type { FieldError, Problem };
 
 /**
  * ApiError is an answer of the API that is not a success: its status, and
@@ -9,28 +11,22 @@ import type { Problem } from "@nervewiki/api-client";
 export class ApiError extends Error {
   readonly status: number;
   readonly problem: Problem | undefined;
+  /** Seconds to wait before trying again, from Retry-After (429 rate_limited, 503 server_busy). */
+  readonly retryAfter: number | undefined;
 
-  constructor(status: number, body: unknown) {
+  constructor(status: number, body: unknown, retryAfter?: number) {
     const problem = isProblem(body) ? body : undefined;
     super(problem?.detail ?? problem?.title ?? `HTTP ${status}`);
     this.name = "ApiError";
     this.status = status;
     this.problem = problem;
+    this.retryAfter = retryAfter;
   }
 
   /** code is the problem's code, the one clients branch on. */
   get code(): string | undefined {
     return this.problem?.code;
   }
-}
-
-/**
- * isRetryable tells SWR which failed loads to try again: not a request the
- * API refused (4xx), which it would refuse again; an answer of 5xx and a
- * network failure may pass later.
- */
-export function isRetryable(error: unknown): boolean {
-  return !(error instanceof ApiError && error.status < 500);
 }
 
 function isProblem(body: unknown): body is Problem {
@@ -45,13 +41,23 @@ interface Result<T> {
 }
 
 /**
- * unwrap returns the data of an openapi-fetch result for an operation that
- * answers with a body, or throws its error as an ApiError. A network failure
- * has already thrown, as fetch's TypeError.
+ * unwrap returns the data of an openapi-fetch result, undefined for a 204,
+ * or throws its error as an ApiError; a success without the body the
+ * operation declares is an error too. A network failure has already thrown,
+ * as fetch's TypeError.
  */
 export function unwrap<T>({ data, error, response }: Result<T>): T {
-  if (!response.ok || data === undefined) {
+  if (!response.ok) {
+    throw new ApiError(response.status, error, retryAfterOf(response));
+  }
+  if (data === undefined && response.status !== 204) {
     throw new ApiError(response.status, error);
   }
-  return data;
+  return data as T;
+}
+
+/** The seconds of the response's Retry-After, which the API sends as a whole number. */
+function retryAfterOf(response: Response): number | undefined {
+  const value = response.headers.get("Retry-After");
+  return value !== null && /^\d+$/.test(value) ? Number(value) : undefined;
 }

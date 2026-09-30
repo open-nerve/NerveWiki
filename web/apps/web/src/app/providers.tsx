@@ -3,18 +3,18 @@ import type { ReactNode } from "react";
 import { SWRConfig, type SWRConfiguration } from "swr";
 
 import { I18nProvider } from "../i18n/i18n";
-import { isRetryable } from "../services/api";
 import { StoreProvider } from "../stores/context";
 import type { RootStore } from "../stores/root.store";
 import { DocumentSync } from "./document-sync";
+import { onErrorRetry } from "./retry";
 
 // SWR drives the loading of the stores. SWR makes its cache when SWRConfig
-// mounts and keeps it for as long as it stays mounted: a new RootStore (from
-// M1 on, one per login) needs AppProviders mounted anew, with a key, so that
-// it starts with nothing cached.
+// mounts and keeps it for as long as it stays mounted: each generation of
+// RootStore (one per login) mounts AppProviders anew, with its loginId as
+// the key, so that it starts with nothing cached (M1/P5 design 3.3).
 const swr: SWRConfiguration = {
   provider: () => new Map(),
-  shouldRetryOnError: isRetryable,
+  onErrorRetry,
 };
 
 export const AppProviders = observer(function AppProviders({

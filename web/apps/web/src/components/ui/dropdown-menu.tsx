@@ -23,6 +23,18 @@ export function DropdownMenuContent({ className, sideOffset = 4, ...props }: Com
   );
 }
 
+export function DropdownMenuItem({ className, ...props }: ComponentProps<typeof Primitive.Item>) {
+  return (
+    <Primitive.Item
+      className={cn(
+        "relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none select-none focus:bg-accent focus:text-accent-foreground [&_svg]:size-4",
+        className
+      )}
+      {...props}
+    />
+  );
+}
+
 export function DropdownMenuRadioItem({ className, children, ...props }: ComponentProps<typeof Primitive.RadioItem>) {
   return (
     <Primitive.RadioItem

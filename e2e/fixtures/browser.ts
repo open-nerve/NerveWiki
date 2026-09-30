@@ -1,3 +1,5 @@
+import { STATUS_CODES } from "node:http";
+
 import { expect, type Page, type Request } from "@playwright/test";
 
 /** What a page did that a story checks: its API calls, and what went wrong in it. */
@@ -14,6 +16,19 @@ export interface PageWatch {
   readonly consoleWarnings: string[];
   /** Content-Security-Policy violations, as "<directive> <blocked URI>". */
   readonly cspViolations: string[];
+  /** The console errors and warnings the story said would come, in order: see expectConsole. */
+  readonly expectedConsole: { readonly errors: string[]; readonly warnings: string[] };
+  /**
+   * Declares what the page will log that is no fault of the app, in the order it comes: the errors the
+   * browser logs about what the story makes happen, such as its report of each answer of 400 or more
+   * (failedToLoad). The check as the test ends (expectQuietPage) expects exactly what was declared.
+   */
+  expectConsole(expected: { errors?: readonly string[]; warnings?: readonly string[] }): void;
+}
+
+/** What Chromium logs on the console when the page gets an answer of status, 400 or more, to a request. */
+export function failedToLoad(status: number): string {
+  return `Failed to load resource: the server responded with a status of ${status} (${STATUS_CODES[status]})`;
 }
 
 function apiPath(request: Request): string | undefined {
@@ -33,6 +48,11 @@ export async function watchPage(page: Page): Promise<PageWatch> {
     consoleErrors: [],
     consoleWarnings: [],
     cspViolations: [],
+    expectedConsole: { errors: [], warnings: [] },
+    expectConsole: ({ errors = [], warnings = [] }) => {
+      watch.expectedConsole.errors.push(...errors);
+      watch.expectedConsole.warnings.push(...warnings);
+    },
   };
   page.on("request", (request) => {
     const path = apiPath(request);
@@ -80,10 +100,23 @@ export async function watchPage(page: Page): Promise<PageWatch> {
 }
 
 /**
+ * Follows the access token page sends from now on, in the Authorization header of its requests: the function
+ * returned gives the last one sent, or "" before the first.
+ */
+export function followAccessToken(page: Page): () => string {
+  let last = "";
+  page.on("request", (request) => {
+    last = request.headers().authorization?.replace(/^Bearer /, "") ?? last;
+  });
+  return () => last;
+}
+
+/**
  * Checks that nothing went wrong in page since watch began: no uncaught exception, no Content-Security-Policy
- * violation, and no console error or warning, such as React Router's warning about a missing HydrateFallback.
- * It logs a probe of each kind first and expects to find it, so that a watch that does not hear the console
- * cannot pass.
+ * violation, and no console error or warning but the ones the story declared (expectConsole), such as React
+ * Router's warning about a missing HydrateFallback. It logs a probe of each kind first and expects to find it
+ * after them, so that a watch that does not hear the console cannot pass, and a declared line that stops
+ * coming fails as an undeclared one does.
  */
 export async function expectQuietPage(page: Page, watch: PageWatch): Promise<void> {
   expect(watch.pageErrors, "uncaught exceptions in the page").toEqual([]);
@@ -95,5 +128,8 @@ export async function expectQuietPage(page: Page, watch: PageWatch): Promise<voi
   }, probe);
   await expect
     .poll(() => ({ errors: watch.consoleErrors, warnings: watch.consoleWarnings }))
-    .toEqual({ errors: [probe], warnings: [probe] });
+    .toEqual({
+      errors: [...watch.expectedConsole.errors, probe],
+      warnings: [...watch.expectedConsole.warnings, probe],
+    });
 }

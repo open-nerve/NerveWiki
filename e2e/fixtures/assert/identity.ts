@@ -30,6 +30,11 @@ function parseRefreshToken(token: string): RefreshTokenParts {
   };
 }
 
+/** The generation of refreshToken: 0 for the one a sign-in gives, one more for each refresh since. */
+export function generationOf(refreshToken: string): number {
+  return parseRefreshToken(refreshToken).generation;
+}
+
 /** The SHA-256 of a refresh token's secret: what auth_sessions.token_hash holds of its generation. */
 function secretHash(refreshToken: string): Buffer {
   return createHash("sha256").update(parseRefreshToken(refreshToken).secret).digest();

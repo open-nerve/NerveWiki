@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { ApiError, isRetryable } from "./api";
+import { ApiError, unwrap } from "./api";
 
 describe("ApiError", () => {
   test("keeps the problem, with its field errors", () => {
@@ -23,18 +23,34 @@ describe("ApiError", () => {
   });
 });
 
-describe("isRetryable", () => {
-  test.each([
-    ["a refusal (404)", new ApiError(404, { status: 404, code: "not_found", title: "Not Found" }), false],
-    ["a refusal (400)", new ApiError(400, undefined), false],
-    [
-      "a server failure (503)",
-      new ApiError(503, { status: 503, code: "server_busy", title: "Service Unavailable" }),
-      true,
-    ],
-    ["a proxy's 502", new ApiError(502, "<html>"), true],
-    ["a network failure", new TypeError("Failed to fetch"), true],
-  ])("%s: %s", (_name, error, want) => {
-    expect(isRetryable(error)).toBe(want);
+const ok = (status: number, data?: unknown) => ({ data, response: new Response(null, { status }) });
+
+/** The error unwrap throws for a 429 with retryAfter as its Retry-After. */
+function refused(retryAfter?: string) {
+  try {
+    unwrap({
+      error: { status: 429, code: "rate_limited", title: "Too Many Requests" },
+      response: new Response(null, { status: 429, headers: retryAfter ? { "Retry-After": retryAfter } : {} }),
+    });
+  } catch (error) {
+    return error;
+  }
+  return undefined;
+}
+
+describe("unwrap", () => {
+  test("returns the data, and undefined for a 204", () => {
+    expect(unwrap(ok(200, { id: 1 }))).toEqual({ id: 1 });
+    expect(unwrap(ok(204))).toBeUndefined();
+  });
+
+  test("throws a success without the body it declares", () => {
+    expect(() => unwrap(ok(200))).toThrow(ApiError);
+  });
+
+  test("throws a refusal as an ApiError with the seconds of Retry-After", () => {
+    expect(refused("7")).toMatchObject({ status: 429, code: "rate_limited", retryAfter: 7 });
+    expect(refused()).toMatchObject({ status: 429, retryAfter: undefined });
+    expect(refused("Wed, 21 Oct 2026 07:28:00 GMT")).toMatchObject({ retryAfter: undefined });
   });
 });

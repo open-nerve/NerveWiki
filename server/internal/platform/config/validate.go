@@ -9,8 +9,10 @@ import (
 )
 
 // webRefreshTimeout is how long the web client waits for a refresh (M1/P2
-// design 3.5). The server must have finished a refresh before that:
-// committed, rolled back, or given up on its COMMIT.
+// design 3.5): REQUEST_TIMEOUT_MS in
+// web/apps/web/src/session/token-manager.ts; change both together. The
+// server must have finished a refresh before that: committed, rolled back,
+// or given up on its COMMIT.
 const webRefreshTimeout = 8 * time.Second
 
 // validate reports every invalid key at once, one "key: problem" line each.
