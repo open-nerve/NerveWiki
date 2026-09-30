@@ -55,8 +55,8 @@
       }
     },
     {
-      // 只有 services 调用接口，只有 main.tsx 创建客户端（测试另建假的）：没有模块级的客户端，
-      // 从 M1 起每次登录重建 RootStore 时，旧的客户端不会留在别处
+      // 只有 services 调用接口，只有会话模块 src/session 创建客户端（测试另建假的）：没有模块级的客户端，
+      // 每次登录一代 RootStore，旧一代的客户端不会留在别处（M1/P5 设计 3.2）
       "files": ["web/apps/web/src/**"],
       "rules": {
         "no-restricted-imports": [
@@ -83,7 +83,7 @@
               {
                 "name": "@nervewiki/api-client",
                 "importNames": ["createClient"],
-                "message": "只有 main.tsx 创建客户端，经由 RootStore 交给 service"
+                "message": "只有 src/session 创建客户端，经由 RootStore 交给 service"
               }
             ],
             "patterns": [{ "group": ["**/packages/api-client/**"], "message": "从 @nervewiki/api-client 导入" }]
@@ -92,7 +92,7 @@
       }
     },
     {
-      "files": ["web/apps/web/src/main.tsx", "web/apps/web/src/test/**"],
+      "files": ["web/apps/web/src/session/**", "web/apps/web/src/test/**"],
       "rules": {
         "no-restricted-imports": [
           "error",
