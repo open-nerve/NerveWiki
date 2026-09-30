@@ -3,9 +3,9 @@
   "private": true,
   "license": "AGPL-3.0-only",
   "scripts": {
-    "check:format": "pnpm run fix:format --check",
+    "check:format": "oxfmt --check .",
     "check:lint": "oxlint --max-warnings=0 tools",
-    "fix:format": "oxfmt tools package.json pnpm-workspace.yaml knip.jsonc .oxlintrc.json .oxfmtrc.json"
+    "fix:format": "oxfmt ."
   },
   "devDependencies": {
     "knip": "6.38.0",

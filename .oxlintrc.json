@@ -1,103 +1,15 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "jsx-a11y", "import", "promise", "unicorn", "oxc"],
+  "plugins": ["typescript", "import", "promise", "unicorn", "oxc"],
   "categories": {
     "correctness": "warn",
     "suspicious": "warn",
     "perf": "warn"
   },
   "env": {
-    "browser": true,
-    "node": true,
     "es2024": true
   },
-  "settings": {
-    "react": {
-      "version": "19.0"
-    },
-    "jsx-a11y": {
-      "polymorphicPropName": "as"
-    }
-  },
-  "ignorePatterns": [
-    ".cache/**",
-    ".react-router/**",
-    ".turbo/**",
-    ".vite/**",
-    "*.config.{js,mjs,cjs,ts}",
-    "build/**",
-    "coverage/**",
-    "dist/**",
-    "**/public/**",
-    "tools/md-fixtures/cases/**",
-    "tools/md-fixtures/rename/**"
-  ],
   "rules": {
-    "react/react-in-jsx-scope": "off",
-    "react/jsx-curly-brace-presence": "error",
-    "unicorn/filename-case": "off",
-    "unicorn/no-null": "off",
-    "no-restricted-globals": [
-      "error",
-      "addEventListener",
-      "blur",
-      "close",
-      "closed",
-      "confirm",
-      "defaultStatus",
-      "defaultstatus",
-      "event",
-      "external",
-      "find",
-      "focus",
-      "frameElement",
-      "frames",
-      "history",
-      "innerHeight",
-      "innerWidth",
-      "length",
-      "location",
-      "locationbar",
-      "menubar",
-      "moveBy",
-      "moveTo",
-      "name",
-      "onblur",
-      "onerror",
-      "onfocus",
-      "onload",
-      "onresize",
-      "onunload",
-      "open",
-      "opener",
-      "opera",
-      "outerHeight",
-      "outerWidth",
-      "pageXOffset",
-      "pageYOffset",
-      "parent",
-      "print",
-      "removeEventListener",
-      "resizeBy",
-      "resizeTo",
-      "screen",
-      "screenLeft",
-      "screenTop",
-      "screenX",
-      "screenY",
-      "scroll",
-      "scrollbars",
-      "scrollBy",
-      "scrollTo",
-      "scrollX",
-      "scrollY",
-      "self",
-      "status",
-      "statusbar",
-      "stop",
-      "toolbar",
-      "top"
-    ],
     "no-unused-vars": [
       "warn",
       {
@@ -108,5 +20,13 @@
         "ignoreRestSiblings": true
       }
     ]
-  }
+  },
+  "overrides": [
+    {
+      "files": ["tools/**"],
+      "env": {
+        "node": true
+      }
+    }
+  ]
 }

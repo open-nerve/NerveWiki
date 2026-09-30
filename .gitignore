@@ -15,7 +15,7 @@ config.local.yaml
 .playwright-mcp/
 
 # 构建与依赖产物
-bin/
+/bin/
 node_modules/
 coverage/
 *.test

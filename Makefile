@@ -1,7 +1,7 @@
 # Nerve Wiki 开发命令入口。运行 `make` 或 `make help` 查看所有命令。
 # 需兼容 macOS 自带的 GNU Make 3.81。
 # 命令按工具链分区：*-go 只需要 Go，*-web 需要 Node（先执行 pnpm install）；
-# 不带后缀的 lint 依次执行两个分区，供本地使用。
+# 不带后缀的 lint、fmt 依次执行两个分区；check 执行持续集成的全部门禁，推送前在本地跑它。
 
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
@@ -36,12 +36,22 @@ tools: ## 安装锁定版本的 golangci-lint 到 ./bin
 		curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/v$(GOLANGCI_LINT_VERSION)/install.sh | sh -s -- -b $(BIN_DIR) v$(GOLANGCI_LINT_VERSION); \
 	fi
 
-.PHONY: lint
-lint: lint-go lint-web ## 运行全部静态检查
+.PHONY: check
+check: lint knip test ## 持续集成的全部门禁：静态检查、未使用代码检查、测试
 
+.PHONY: lint
+lint: lint-go lint-web ## 全部静态检查
+
+.PHONY: fmt
+fmt: tools ## 修正全部格式：Go（gofmt、goimports）与其余文件（oxfmt，需要 Node）
+	cd server && $(GOLANGCI_LINT) fmt ./...
+	pnpm run fix:format
+
+# config verify 按 schema 校验 .golangci.yml：run 会静默忽略拼错的键。go mod tidy -diff 在 go.mod 或 go.sum 不整洁时失败
 .PHONY: lint-go
-lint-go: tools ## 运行 golangci-lint（含格式检查）
-	cd server && $(GOLANGCI_LINT) run ./...
+lint-go: tools ## 校验 golangci-lint 配置并运行（含格式检查）；检查 go.mod 整洁
+	cd server && $(GOLANGCI_LINT) config verify && $(GOLANGCI_LINT) run ./...
+	cd server && go mod tidy -diff
 
 .PHONY: lint-web
 lint-web: ## Markdown 样例集自检；tools/ 下脚本的 oxlint（零警告）；格式检查（需要 Node）
@@ -54,6 +64,7 @@ lint-web: ## Markdown 样例集自检；tools/ 下脚本的 oxlint（零警告�
 knip: ## 检查未使用的文件、导出和依赖（需要 Node）
 	pnpm exec knip --treat-config-hints-as-errors
 
+# -race 需要 cgo：macOS 需要 Xcode 命令行工具，Linux 需要 gcc
 .PHONY: test
-test: ## 运行 Go 测试（不用测试缓存）
-	cd server && go test -count=1 ./...
+test: ## 运行 Go 测试（开启竞态检测，不用测试缓存）
+	cd server && go test -race -count=1 ./...

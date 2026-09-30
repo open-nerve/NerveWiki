@@ -4,7 +4,11 @@ packages:
   - web/packages/*
   - e2e
 
-# 供应链：新发布的版本满 1 天才会被解析；依赖的安装脚本默认不运行，需要的在 allowBuilds 中逐个放行。
-# 两项都是 pnpm 11 起的默认值，写出来是为了让策略显式可见，默认值变化时也不会悄悄失效。
+# 供应链：
+# - minimumReleaseAge：新发布的版本满 1 天才会被解析。显式写出时 minimumReleaseAgeStrict 随之默认为 true，
+#   太新的版本直接报错，而不是被悄悄放过；需要例外时写进 minimumReleaseAgeExclude 并注明理由。
+# - strictDepBuilds：依赖的安装脚本默认不运行，没有在 allowBuilds 中放行的一律报错。
+# - trustPolicy: no-downgrade：新版本的发布可信度（例如是否有来源证明）低于旧版本时拒绝安装，这是发布账号被盗的典型信号。
 minimumReleaseAge: 1440
 strictDepBuilds: true
+trustPolicy: no-downgrade

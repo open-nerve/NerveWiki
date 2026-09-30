@@ -1,3 +1,6 @@
-# Markdown 样例集的输入是逐字节的规范：不做换行符转换，否则 core.autocrlf=true 时检出会把 LF 换成 CRLF，字节偏移全错
+# 仓库中的文本文件一律以 LF 检出：否则 core.autocrlf=true（Git for Windows 的默认值）时检出为 CRLF，gofmt 与 oxfmt 的检查全部失败
+* text=auto eol=lf
+
+# Markdown 样例集的输入是逐字节的规范（CRLF、BOM 都是有意的）：不做任何换行符转换。写在后面，覆盖上一条
 tools/md-fixtures/cases/** -text
 tools/md-fixtures/rename/** -text

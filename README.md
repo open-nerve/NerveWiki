@@ -21,14 +21,15 @@
 ```bash
 pnpm install  # 安装 Node 依赖（检查工具要用）
 make dev-db   # 启动本地 PostgreSQL 18（端口 55433，可用 NWIKI_DEV_DB_PORT 修改）
-make lint     # 全部静态检查
-make test     # Go 测试
+make check    # 持续集成的全部门禁：静态检查、未使用代码检查、测试
 make          # 查看所有命令
 ```
 
-- 命令按工具链分区：`*-go` 只需要 Go，`*-web` 需要 Node。`make lint` 依次执行 `make lint-go`（golangci-lint，含格式检查）和 `make lint-web`（Markdown 样例集自检、`tools/` 下脚本的 oxlint、格式检查）。
-- `make knip` 检查未使用的文件、导出与依赖，是门禁；配置里过时的条目也算失败。
-- 格式有问题时执行 `pnpm run fix:format`。
+- 命令按工具链分区：`*-go` 只需要 Go，`*-web` 需要 Node。
+  - `make lint` 依次执行 `make lint-go` 和 `make lint-web`。前者校验 golangci-lint 的配置并运行它（含格式检查），并检查 `go.mod` 是否整洁；后者做 Markdown 样例集自检、`tools/` 下脚本的 oxlint（零警告）和格式检查。
+  - `make knip` 检查未使用的文件、导出与依赖；配置里过时的条目也算失败。
+  - `make test` 运行 Go 测试，开启竞态检测（需要 cgo：macOS 装有 Xcode 命令行工具即可）。
+- 格式有问题时执行 `make fmt`，它修正 Go 与其余文件的格式。`docs/` 不参与格式化。
 - 开发数据库以 builtin provider 的 `C.UTF-8` 初始化（`LC_CTYPE` 同为 `C.UTF-8`），与生产环境的要求相同，见[总体设计](docs/v0.1/v0.1-design.md) 7.1。
 
 ## Markdown 样例集
