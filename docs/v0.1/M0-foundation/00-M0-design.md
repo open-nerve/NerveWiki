@@ -76,11 +76,9 @@ nerve-wiki/
       archtest/               架构测试
     tools/                    独立的 Go 模块：代码生成工具（bodyshapegen 等）
   web/
-    apps/web/                 前端应用
+    apps/web/                 前端应用（文案与 UI 组件都在其中）
     packages/api-client/      生成的 TS 客户端
-    packages/i18n/            文案与一致性检查
-    packages/ui/              shadcn/ui 组件与主题
-    packages/tsconfig/        共享的 TypeScript 配置
+    tsconfig.base.json        共享的 TypeScript 配置
   e2e/                        Playwright：fixtures、global-setup、stories/smoke
   deploy/
     compose.dev.yaml          本地 PostgreSQL 18
@@ -92,14 +90,14 @@ nerve-wiki/
   README.md                   项目说明与开发环境
 ```
 
-`web/packages/` 下的具体划分在 P5 定稿；只有被两个以上的使用方共用、或者有独立的检查规则时才拆成包，否则留在 `apps/web` 里。
+`web/packages/` 下的划分由 P5 定稿：只有被两个以上的使用方共用、或者有独立的检查规则时才拆成包，否则留在 `apps/web` 里。M0 结束时只有 `api-client` 一个包，文案、UI 组件只有 `apps/web` 一个使用方。
 
 ## 5. 关键选型
 
 | 方面 | 选型 |
 |---|---|
 | 后端 | Go 1.27；PostgreSQL 18；pgx v5；goose v3；koanf v2；cobra；oapi-codegen v2（strict server）；kin-openapi；testcontainers-go；golangci-lint（含 depguard） |
-| 前端 | Node 24；pnpm + turbo；React 19；React Router 7（SPA 模式）；Vite；TypeScript；Tailwind CSS 4；shadcn/ui（Radix）；MobX；SWR；openapi-typescript + openapi-fetch；vitest；oxlint；oxfmt；knip |
+| 前端 | Node 24；pnpm；React 19；React Router 8（数据路由）；Vite；TypeScript；Tailwind CSS 4；shadcn/ui（Radix）；MobX；SWR；openapi-typescript + openapi-fetch；vitest；oxlint；oxfmt；knip |
 | 端到端 | Playwright（Chromium）+ testcontainers |
 | 交付 | 多阶段 Dockerfile；镜像以非 root 用户运行 |
 
@@ -117,7 +115,7 @@ nerve-wiki/
 |---|---|---|
 | `Makefile`、`.editorconfig`、`.gitignore`、`.node-version`、`.oxlintrc.json`、`.oxfmtrc.json`、`pnpm-workspace.yaml`、`knip.jsonc`、`.github/workflows/ci.yml`、`deploy/compose.dev.yaml` | 拷贝后按本项目裁剪：去掉 Plane 相关的目标、关键词守卫、oxlint 警告上限（本项目从零警告起步） | P2 |
 | `server/internal/platform/buildinfo` | 拷贝、改名（门禁需要一个真实的 Go 包，从 P3 提前） | P2 |
-| `turbo.json` | 随第一个工作区包引入，按需裁剪 | P5 |
+| `turbo.json` | 不引入：P5 评估后，两个包用 `pnpm -r` 足够 | P5 |
 | `server/internal/platform/{clock,config,logging,postgres}` | 拷贝、改名、裁剪 | P3 |
 | `server/internal/platform/httpserver`（不含认证与限流的接入） | 拷贝、改名、裁剪；SSE 所需的调整按 P1 的结论处理。接口操作的逐路由中间件（请求期限、请求体上限）与 `APIErrors` 随 P4 | P3、P4 |
 | `server/internal/platform/webui` | 拷贝、改名、裁剪 | P5 |
@@ -142,7 +140,7 @@ nerve-wiki/
 | P2 | 仓库与工具链 | 空仓库能跑通全部门禁 | 仓库布局、LICENSE、README 开发环境一节；Go 模块 `server`（第一个包 `buildinfo`）、golangci-lint；pnpm 工作区、oxlint、oxfmt、knip；Makefile；开发用 compose（PostgreSQL 18，数据库 locale 按 P1 结论）；持续集成的 lint 任务（含样例集自检） | 本地与持续集成的门禁为绿 |
 | P3 | 服务端平台层 | 一个能启动、能迁移、能优雅停机的 `nervewiki` | 平台层各包、组合根、`serve` 与 `migrate` 命令、`/healthz` 与 `/readyz`、数据库 locale 自检、长连接路由的豁免、集成测试工具（`pgtest`：模板库复制）、架构测试 | 单元、集成、架构测试为绿；二进制启动后健康检查可用 |
 | P4 | 接口契约与代码生成 | 走通"描述 → 生成 → 实现 → 契约测试" | `server/tools` 模块、`api/` 结构、oapi-codegen 与 bodyshape 生成、接口操作的逐路由中间件与 `APIErrors`、`apitest`、`instance` 模块、TS 客户端生成、`make gen` 与 `make gen-check` | 生成物一致性检查为绿；`instance` 的 handler 测试与契约测试为绿 |
-| P5 | 前端外壳与内嵌 | 前端能构建、内嵌进二进制、在浏览器里运行 | `webui`（内嵌前端、页面 CSP、前端路由兜底）、turbo、应用骨架、路由与兜底、UI 基座与主题、zh-CN 与 en、分层样板（instance 的 service / store / 组件）、错误边界与 404、页面 CSP、`make build` | 前端全部门禁为绿；二进制提供页面并显示实例版本 |
+| P5 | 前端外壳与内嵌 | 前端能构建、内嵌进二进制、在浏览器里运行 | `webui`（内嵌前端、页面 CSP、前端路由兜底）、应用骨架、路由与兜底、UI 基座与主题、zh-CN 与 en、分层样板（instance 的 service / store / 组件）、错误边界与 404、页面 CSP、`make build` | 前端全部门禁为绿；二进制提供页面并显示实例版本 |
 | P6 | 端到端测试与交付 | 冒烟故事在本地和持续集成里通过，产出镜像 | e2e 包（模板库、每个 worker 一个 `nervewiki`、页面与数据库 fixture、控制台与 CSP 监视）、S1–S4、持续集成的 e2e 任务与失败时的产物上传、Dockerfile、镜像构建 | `make e2e` 本地与持续集成为绿；镜像通过 S1、S3 |
 
 P1 放在最前面：它的结论会影响 P2（数据库 locale）、P3（SSE 与 MCP 对 HTTP 中间件的要求，例如长连接不受请求期限限制），以及 M4 之后的多个 M，先验证可以避免返工。
@@ -159,7 +157,7 @@ P1 放在最前面：它的结论会影响 P2（数据库 locale）、P3（SSE �
 
 ### 前序 Phase 对后续 Phase 的要求
 
-P1 的实验结论、P2 到 P4 的审查和实施留下的要求，开工时逐条落实（M0 之外的留给 M1，见 M1 的移交：[P3 平台层](../M1-auth/handoffs/M0-P3-platform.md)、[P4 接口契约](../M1-auth/handoffs/M0-P4-api-contract.md)）：
+P1 的实验结论、P2 到 P5 的审查和实施留下的要求，开工时逐条落实（M0 之外的留给 M1，见 M1 的移交：[P3 平台层](../M1-auth/handoffs/M0-P3-platform.md)、[P4 接口契约](../M1-auth/handoffs/M0-P4-api-contract.md)、[P5 前端外壳](../M1-auth/handoffs/M0-P5-web-shell.md)）：
 
 | Phase | 要求 | 来源 |
 |---|---|---|
@@ -179,6 +177,7 @@ P1 的实验结论、P2 到 P4 的审查和实施留下的要求，开工时逐�
 | P4 | `apitest` 引入 kin-openapi 时，把它加进架构测试 `binary_test` 的禁用清单；引入生成代码时，恢复 Nerve 的 `generated_test`（生成代码只用标准库的 `uuid`）。oapi-codegen runtime 的例外随第一个带参数的操作移到 M1 | P3 |
 | P5 | `webui` 挂在组合根的 `/`（不带方法），不遮住平台的 `/api/` 兜底；页面 CSP 与静态文件的缓存由 `webui` 设置，安全头由中间件链统一设置 | P3 |
 | P5 | 前端整体用哪个 TypeScript 版本：api-client 因 openapi-typescript 调用 TypeScript 的 JS API 停在 5.9.3；`make lint-web` 已执行各包的 `check:types` | P4 |
+| P6 | 持续集成中完整的 `make build`（同时需要 Go 与 Node）由 e2e 任务执行；`make build` 以 `VERSION` 注入版本号，S3 核对它。S2 的"控制台没有警告"会拦住 React Router 缺 `HydrateFallback` 这类警告 | P5 |
 | P6 | `serve` 启动时要连上数据库（先迁移、再自检），连不上就拒绝启动。S1 的"数据库不可用"要在启动之后制造（例如删掉该 worker 的数据库）；"迁移未完成"用 `auto_migrate: false` 启动在未迁移的库上 | P3 |
 
 ## 8. 本 M 建立的平台约定
@@ -219,7 +218,7 @@ P1 的实验结论、P2 到 P4 的审查和实施留下的要求，开工时逐�
 | P2 | 仓库与工具链 | 已完成 | [02-P2-repo-toolchain.md](02-P2-repo-toolchain.md) | [P2-repo-toolchain-review.md](reviews/P2-repo-toolchain-review.md) |
 | P3 | 服务端平台层 | 已完成 | [03-P3-server-platform.md](03-P3-server-platform.md) | [P3-server-platform-review.md](reviews/P3-server-platform-review.md) |
 | P4 | 接口契约与代码生成 | 已完成 | [04-P4-api-contract.md](04-P4-api-contract.md) | [P4-api-contract-review.md](reviews/P4-api-contract-review.md) |
-| P5 | 前端外壳与内嵌 | 进行中 | [05-P5-web-shell.md](05-P5-web-shell.md) | — |
+| P5 | 前端外壳与内嵌 | 已完成 | [05-P5-web-shell.md](05-P5-web-shell.md) | [P5-web-shell-review.md](reviews/P5-web-shell-review.md) |
 | P6 | 端到端测试与交付 | 未开始 | — | — |
 | — | M0 收尾审查 | 未开始 | — | — |
 
@@ -232,3 +231,4 @@ P1 的实验结论、P2 到 P4 的审查和实施留下的要求，开工时逐�
 | 2026-09-30 | P2 完成：`server/tools` 推迟到 P4、turbo 推迟到 P5、`buildinfo` 提前到 P2（第 6、7 节）；"P1 结论对 M0 各 Phase 的要求"改为"前序 Phase 对后续 Phase 的要求"，加入 P2 审查给 P3、P5、P6 的提示 | P2 的实施与审查，见 [P2 审查记录](reviews/P2-repo-toolchain-review.md) |
 | 2026-09-30 | P3 完成：`webui` 移到 P5，接口操作的逐路由中间件与 `APIErrors` 移到 P4（第 6、7 节）；"前序 Phase 对后续 Phase 的要求"加入 P3 给 P4、P5、P6 的要求；M0 之外的移交 M1 | P3 的实施与审查，见 [P3 审查记录](reviews/P3-server-platform-review.md) |
 | 2026-09-30 | P4 完成：认证相关、参数与请求体的整个程序测试、oapi-codegen runtime 的例外移到 M1（第 7 节）；模块接入契约的措辞按实现修订（第 8 节）；"前序 Phase 对后续 Phase 的要求"加入 P4 给 P5 的 TypeScript 版本 | P4 的实施与审查，见 [P4 审查记录](reviews/P4-api-contract-review.md) |
+| 2026-09-30 | P5 完成：不引入 turbo，React Router 取 8 并用数据路由，`web/packages/` 只有 `api-client`（第 4、5、6、7 节）；"前序 Phase 对后续 Phase 的要求"加入 P5 给 P6 的要求 | P5 的实施与审查，见 [P5 审查记录](reviews/P5-web-shell-review.md) |

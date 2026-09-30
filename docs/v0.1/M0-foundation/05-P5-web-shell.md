@@ -3,7 +3,7 @@
 | 项 | 内容 |
 |---|---|
 | Phase | M0/P5 前端外壳与内嵌 |
-| 状态 | 进行中 |
+| 状态 | 已完成 |
 | 基线 | `eff461d`（P4 完成：接口契约、代码生成、`instance` 模块、TS 客户端） |
 | 上级文档 | [M0 总设计](00-M0-design.md) 第 4、5、7 节；[总体设计](../v0.1-design.md) 第 9 节 |
 
@@ -55,38 +55,43 @@ pnpm 工作区只有 `web/packages/api-client` 一个包；还没有前端应用
 web/
   tsconfig.base.json          共享的编译选项（api-client 与 apps/web 继承）
   apps/web/                   @nervewiki/web
-    index.html                只有一个模块脚本；主题初始化脚本 /theme-init.js
+    index.html                一个模块脚本；<head> 中同步加载 /theme-init.js
     public/theme-init.js      在首次绘制前按偏好设置 <html class="dark">
-    vite.config.ts            React、Tailwind 插件；开发服务器代理 /api、/healthz、/readyz
+    public/favicon.svg
+    vite.config.ts            React、Tailwind 插件；react 块；开发服务器代理；vitest
     src/
-      main.tsx                入口：创建 RootStore、路由器，渲染 Providers
+      main.tsx                入口：创建 PreferencesStore、API 客户端、RootStore，渲染路由器
       app/
-        providers.tsx         StoreProvider、SWRConfig、I18nProvider
-        router.tsx            路由表：布局、首页、404；每个页面 lazy 加载
-        layout.tsx            外壳：顶栏（产品名、语言与主题切换）+ <Outlet>
-        error-boundary.tsx    路由错误边界：错误页，可重试
+        providers.tsx         AppProviders：StoreProvider、SWRConfig、I18nProvider、DocumentSync
+        document-sync.tsx     <html lang> 与深色类跟随偏好
+        routes.tsx            路由表：布局、首页、404；页面按需加载；错误边界
+        layout.tsx            外壳：顶栏（产品名、语言与主题菜单）+ <Outlet>
+        language-menu.tsx、theme-menu.tsx
+        route-error.tsx       路由错误边界：错误页，可重新加载
       pages/
         home.tsx              首页：显示实例版本
         not-found.tsx         应用内 404
       services/
-        api.ts                ApiError；把 openapi-fetch 的结果转成值或异常
+        api.ts                ApiError（status、problem、code）；unwrap；isRetryable
         instance.service.ts   InstanceService：GET /api/v0/instance
       stores/
-        root.store.ts         RootStore：各个 store 与 service 的唯一装配处
+        root.store.ts         RootStore：各个 service 与 store 的唯一装配处
         instance.store.ts     InstanceStore：实例信息
         preferences.store.ts  PreferencesStore：主题与语言，存在 localStorage
         context.tsx           StoreProvider、useStore
       i18n/
+        locale.ts             Locale、语言清单、按浏览器语言选择
         messages/en.ts        文案的源头：键的集合由它决定
         messages/zh-CN.ts     类型为 Messages，缺键、多键编译失败
-        i18n.tsx              t()、插值、I18nProvider、useT
-      components/ui/          shadcn/ui 风格的基础组件（Button、DropdownMenu …），按需加入
+        i18n.tsx              t()（参数按键定类型）、I18nProvider、useT
+      components/ui/          shadcn/ui 风格的基础组件（Button、DropdownMenu），按需加入
       lib/cn.ts               clsx + tailwind-merge
+      test/                   假的存储、媒体查询与 API；renderApp；setup（清理与控制台检查）
       styles.css              Tailwind 入口、主题变量（浅色、深色）
   packages/api-client/        P4
 server/internal/platform/webui/
   embed.go                    //go:embed all:dist；FS()
-  handler.go                  静态文件、SPA 兜底、缓存头、页面 CSP
+  handler.go                  静态文件、SPA 兜底、缓存头与 ETag、页面 CSP
   csp.go                      页面的 Content-Security-Policy
   dist/.gitkeep               make build 把前端复制到这里
 ```
@@ -96,10 +101,11 @@ server/internal/platform/webui/
 ```
 pages / components ──► stores（useStore）──► services ──► @nervewiki/api-client
 pages / components ──► i18n、components/ui
-app/ ──► pages、stores、i18n
+stores ──► i18n/locale
+app/ ──► pages、stores、i18n、services（ApiError、isRetryable）
 ```
 
-组件不直接调用 service 或 api-client；service 没有状态，只做请求与结果转换；store 持有状态，由 SWR 驱动加载。
+`i18n` 不依赖别的目录，是叶子。组件不直接调用 service 或 api-client；service 没有状态，只做请求与结果转换；store 持有状态，由 SWR 驱动加载。
 
 服务端新增的边：`bootstrap ──► platform/webui`。`webui` 只依赖标准库。
 
@@ -113,16 +119,16 @@ app/ ──► pages、stores、i18n
 | `*` | 应用内 404：说明页面不存在，链接回首页 |
 
 - 每个页面 `lazy` 加载，构建时各自成块。
-- 错误边界（`ErrorBoundary`）接住渲染与加载中的异常：显示错误页与"重试"，`ApiError` 显示它的 `code`；不把异常细节显示给用户，写进 `console.error`。
+- 错误边界（`ErrorBoundary`）接住渲染与加载中的异常：显示错误页与"重新加载"，`ApiError` 显示它的 `code`；不把异常细节显示给用户，写进 `console.error`。
 - 未知路径不请求服务端：服务端对所有非 `/api/` 路径返回 `index.html`，由前端路由决定显示 404。
 
 ### 3.3 service → store → 组件
 
 照总体设计 9.4 定下以后的写法；M0 没有登录，只有一代 `RootStore`，会话相关的部分（按会话重建、`loginId`、`SessionChangedError`）随 M1：
 
-- **service**：构造函数拿 `ApiClient`，方法返回领域值或抛出 `ApiError`（带 `status`、`code`、`problem`）。网络错误照原样抛出。没有模块级的客户端。
+- **service**：构造函数拿 `ApiClient`，方法返回领域值或抛出 `ApiError`（带 `status`、`problem` 与取自它的 `code`）。网络错误照原样抛出。没有模块级的客户端：只有 services 导入 api-client，只有 `main.tsx` 创建客户端（oxlint 检查）。
 - **store**：MobX 的可观察状态与 action；`InstanceStore.fetch()` 调 service，结果写进 `info`。store 之间只经由 `RootStore` 互相引用。
-- **RootStore**：唯一的装配处：创建 `ApiClient`（同源，`baseUrl` 为空）、各个 service 与 store。测试用假的 service 构造 store。
+- **RootStore**：唯一的装配处：从构造函数拿 `PreferencesStore` 与 `ApiClient`（`main.tsx` 创建，同源），创建各个 service 与 store。测试传入假的 API 客户端。
 - **组件**：`observer` 包裹，读 store；需要的接口类型从 service 导出，不直接导入 api-client（oxlint 检查）；加载由 SWR 驱动：`useSWR(key, () => store.instance.fetch())`，SWR 负责去重、重试、聚焦时刷新，store 负责保存与派生。页面据 SWR 的 `error`、`isLoading` 显示加载与错误状态。
 
 ### 3.4 多语言
@@ -130,7 +136,8 @@ app/ ──► pages、stores、i18n
 - 文案的源头是 `messages/en.ts`（`as const`），`Messages` 是它的类型；`messages/zh-CN.ts` 声明为 `Messages`，缺键、多键、键名拼错都在类型检查时失败。
 - `t(key, params?)`：键是 `keyof Messages` 的联合类型；插值写 `{name}`。vitest 检查两种语言的同一个键有相同的占位符、没有空串。
 - 语言的选择：用户保存的偏好（`PreferencesStore`，localStorage）→ 浏览器语言（`zh` 开头为 `zh-CN`）→ `en`。切换语言时更新 `<html lang>`。
-- `I18nProvider` 是 `observer`，读当前语言，经 React context 提供 `t`：语言变化时每个用 `useT()` 的组件都重新渲染，不依赖组件自己是不是 `observer`。
+- `I18nProvider` 接收当前语言（`AppProviders` 从 `PreferencesStore` 读出），经 React context 提供 `t`：语言变化时每个用 `useT()` 的组件都重新渲染，不依赖组件自己是不是 `observer`。`i18n` 因此不依赖 stores。
+- `t` 的参数按键定类型：带占位符的键必须恰好给出它们的值。
 - 日期、数字用 `Intl`，不引入 i18n 库：M0 的需求只有键值与插值；复数、日期格式到了用得上的 M 再用 `Intl.PluralRules` 等补上。
 
 ### 3.5 主题与 UI 基座
@@ -153,7 +160,7 @@ app/ ──► pages、stores、i18n
 | 项 | 做法 |
 |---|---|
 | TypeScript | `apps/web` 用 7.x（原生编译器）；`api-client` 仍用 5.9.3（openapi-typescript 调用 TypeScript 的 JS API）。`apps/web` 的类型检查也检查它导入的 `api-client` 源码 |
-| oxlint | 加 `react`、`react-perf`、`jsx-a11y` 插件；`web/**` 的运行环境是浏览器，配置文件（`vite.config.ts` 等）是 Node。`no-restricted-globals` 禁止与局部变量容易混淆的浏览器全局名（`name`、`event`、`status`、`length`、`top`、`parent`、`self`、`close`、`open`），要用时写 `window.name`。`no-restricted-imports`：`pages/`、`components/`、`app/` 不导入 `@nervewiki/api-client`，类型从 service 取 |
+| oxlint | 加 `react`、`jsx-a11y` 插件（`react-perf` 试过后不用：它把惯用的内联回调都报成问题）。<br>`web/**` 的运行环境是浏览器，配置文件（`vite.config.ts` 等）是 Node。<br>`no-restricted-globals` 禁止与局部变量容易混淆的浏览器全局名（`name`、`event`、`status`、`length`、`top`、`parent`、`self`、`close`、`open`），要用时写 `window.name`。<br>`no-restricted-imports` 默认禁止：只有 `services/` 与 `root.store.ts` 导入 `@nervewiki/api-client`，只有 `main.tsx` 与 `test/` 导入 `createClient`；任何位置都不以相对路径进入 `packages/api-client` |
 | knip | `apps/web` 工作区：入口由 Vite 插件识别（`index.html`、`src/main.tsx`）；`public/theme-init.js` 作为入口 |
 | vitest | `apps/web`，jsdom 环境，Testing Library；`make test` 执行 `pnpm -r run test` |
 | 构建 | `pnpm --filter @nervewiki/web build`，产物在 `web/apps/web/dist`（加入 `.gitignore` 与 oxlint、oxfmt 的忽略） |
@@ -163,12 +170,12 @@ app/ ──► pages、stores、i18n
 
 | 命令 | 作用 |
 |---|---|
-| `make build` | 构建前端 → 复制到 `server/internal/platform/webui/dist` → 构建 `bin/nervewiki`（版本号用 ldflags 注入） |
+| `make build` | 构建前端 → 复制到 `server/internal/platform/webui/dist` → 构建 `bin/nervewiki`（版本号取 `VERSION`，用 ldflags 注入） |
 | `make web-dev` | Vite 开发服务器（127.0.0.1:5173），`/api`、`/healthz`、`/readyz` 代理到 127.0.0.1:8080 |
 | `make dev` | `make dev-db`，然后同时运行 `make run` 与 `make web-dev`；Ctrl-C 一起停止 |
 | `make test` | 另跑 `pnpm -r run test`（`test-web`） |
 
-持续集成的 `web` 任务：`make lint-web`（含类型检查）→ `make gen-check-web` → `make knip` → `make test-web` → `make build-web`。
+持续集成的 `web` 任务：`make lint-web`（含类型检查）→ `make gen-check-web` → `make knip` → `make test-web` → `make build-web`。完整的 `make build` 同时需要 Go 与 Node，由 P6 的 e2e 任务执行。
 
 ### 3.9 依赖版本
 
@@ -181,11 +188,11 @@ app/ ──► pages、stores、i18n
 | vite / @vitejs/plugin-react | 8.3.1 / 6.1.1 |
 | typescript（apps/web） | 7.0.2 |
 | tailwindcss、@tailwindcss/vite | 4.3.3 |
-| radix-ui / class-variance-authority / clsx / tailwind-merge / lucide-react | 1.6.7 / 0.7.1 / 2.1.1 / 3.7.0 / 实施时取满 1 天的最新版 |
+| radix-ui / class-variance-authority / clsx / tailwind-merge / lucide-react | 1.6.7 / 0.7.1 / 2.1.1 / 3.7.0 / 1.48.0 |
 | mobx / mobx-react-lite | 7.0.5 / 5.1.0 |
 | swr | 2.5.1 |
 | vitest / jsdom | 5.0.2 / 30.1.1 |
-| @testing-library/react / user-event / jest-dom | 16.3.3 / 14.6.7 / 7.0.1 |
+| @testing-library/react / dom / user-event | 16.3.3 / 10.4.2 / 14.6.7 |
 
 ## 4. 实施步骤
 
@@ -230,4 +237,33 @@ app/ ──► pages、stores、i18n
 
 ## 7. 结果
 
-（完成后补写）
+**完成**：第 5 节全部通过，反向对照按预期失败。`make check`、`make gen-check` 本地与持续集成（run 36707183052）为绿。`make build` 出的二进制在 Chromium 中检查过：
+- 首页显示实例版本；
+- 语言与主题的切换在刷新后保持；
+- `/nope` 与深链接显示应用内 404；
+- 控制台没有消息，没有 CSP 违规，没有失败的请求。
+
+**与设计的差异**（第 3 节已是修订后的版本）：
+1. `react-perf` 插件不用：它把惯用的内联回调都报成问题。
+2. 共享的 TypeScript 目标与 lib 提升到 ES2023。
+3. React 与路由单独成块，主块因此低于 Vite 的 500 kB 提示线，只改应用时这一块的缓存不失效。
+4. 首个页面按需加载时，数据路由需要 `HydrateFallback`，否则 React Router 在控制台警告：页面外那层无路径路由给了一个空的。这一条在浏览器中实测发现，现在由测试的控制台检查固定。
+5. pnpm 的 catalog 没有启用：还没有两个包共用的依赖（TypeScript 两个版本不同）。
+6. `StoreProvider` 与 `PreferencesStore` 从 S4 提前到 S3：布局的主题菜单需要它们。
+7. `make build` 在持续集成中由 P6 的 e2e 任务执行（它同时需要 Go 与 Node）；`web` 任务只构建前端。
+8. 审查之后的修订：
+   - api-client 的导入改为默认禁止；
+   - `i18n` 成为叶子，`<html>` 的同步挪到路由器之上；
+   - `ApiError` 保留 `problem`；
+   - `t` 的参数按键定类型；
+   - web 测试检查控制台；
+   - revalidate 的文件带 ETag；
+   - `make build` 注入版本号。
+
+**审查**：[P5 审查记录](reviews/P5-web-shell-review.md)，8 项 Minor、7 项 Nit，全部处理；持续集成另外发现一项测试的时序问题，已修复。
+
+**移交**：[M1 的移交](../M1-auth/handoffs/M0-P5-web-shell.md)，包括以下几项：
+- 每次登录一代 `RootStore`；
+- SWR 缓存随之重建；
+- 429 的重试；
+- 客户端的创建位置。
