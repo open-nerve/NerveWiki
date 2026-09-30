@@ -29,3 +29,8 @@ insert_final_newline = unset
 trim_trailing_whitespace = unset
 indent_style = unset
 indent_size = unset
+
+# River 的迁移是锁定版本原样导出的（M1/P4 设计 3.2），带行尾空白；迁移的测试逐字核对它，编辑器不能改动
+[server/migrations/sql/00005_river_main_v2_to_v7.sql]
+trim_trailing_whitespace = false
+insert_final_newline = unset

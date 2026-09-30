@@ -50,6 +50,8 @@ ratelimit:
   login_ip_email: {per_minute: 10, burst: 5}
   register_ip: {per_minute: 10, burst: 5}
   password_user: {per_minute: 5, burst: 5}
+jobs:
+  shutdown_timeout: 10s
 log:
   level: info
   format: json
@@ -132,7 +134,8 @@ func TestLoadAppliesLayersInOrder(t *testing.T) {
 			RegisterIP:    BucketConfig{PerMinute: 10, Burst: 5},
 			PasswordUser:  BucketConfig{PerMinute: 5, Burst: 5},
 		},
-		Log: LogConfig{Level: "debug", Format: "text"},
+		Jobs: JobsConfig{ShutdownTimeout: 10 * time.Second},
+		Log:  LogConfig{Level: "debug", Format: "text"},
 	}
 	if !reflect.DeepEqual(cfg, want) {
 		t.Errorf("Load() =\n%+v\nwant\n%+v", cfg, want)

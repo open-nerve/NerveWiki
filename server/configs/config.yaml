@@ -71,6 +71,11 @@ ratelimit:
   # 校验当前密码的已认证操作（改密码、创建 PAT）：按账户
   password_user: { per_minute: 5, burst: 5 }
 
+jobs:
+  # 停机时给正在执行的后台任务留的时间，到期后取消它们。停机的宽限期要长于
+  # server.shutdown_timeout 加上它再加 6 秒（默认 36 秒）：docker stop -t 40
+  shutdown_timeout: 10s
+
 log:
   level: info # debug | info | warn | error
   format: json # text | json

@@ -44,6 +44,7 @@ func rules() []rule {
 		{"test helpers (pgtest, apitest, clocktest) are imported only by tests", testHelpersOnlyInTests},
 		{"module packages live in domain, app or adapter, or at the module root", moduleLayoutIsKnown},
 		{"internal/shared imports only the standard library (not net/http or database/sql) and internal/shared", sharedKernelIsPure},
+		{"River is imported only by platform/jobs and a module's adapter/river", riverStaysInJobs},
 	}
 }
 
@@ -256,6 +257,20 @@ func platformPackagesAreIndependent(from, to string) bool {
 	}
 	tp, ok := platformOf(to)
 	return ok && tp != fp && tp != "config"
+}
+
+// riverStaysInJobs keeps the job queue behind two doors (M1/P4 design 3.2):
+// platform/jobs runs River, and a module's adapter/river turns its use cases
+// into River's workers and periodic jobs. The rest of a module sees jobs
+// through them, as it sees SQL through adapter/postgres.
+func riverStaysInJobs(from, to string) bool {
+	if !within(to, "github.com/riverqueue/river") || inModuleDir(from, "internal/platform/jobs") {
+		return false
+	}
+	r, _ := local(from)
+	parts := strings.Split(r, "/")
+	// internal/modules/<m>/adapter/river[/...]
+	return len(parts) < 5 || parts[0] != "internal" || parts[1] != "modules" || parts[3] != "adapter" || parts[4] != "river"
 }
 
 func testHelpersOnlyInTests(_, to string) bool {

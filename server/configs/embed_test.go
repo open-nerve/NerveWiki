@@ -64,6 +64,7 @@ func TestBuiltInProfiles(t *testing.T) {
 					Password:        tt.argon2,
 				},
 				RateLimit: tt.limits,
+				Jobs:      config.JobsConfig{ShutdownTimeout: 10 * time.Second},
 				Log:       config.LogConfig{Level: tt.level, Format: tt.format},
 			}
 			if !reflect.DeepEqual(cfg, want) {

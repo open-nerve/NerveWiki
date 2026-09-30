@@ -1,7 +1,8 @@
 // Package migrations embeds the SQL schema migrations. Files live in sql/ and
 // are named NNNNN_<owner>_<description>.sql. The owner is the module whose
-// table the migration changes, or platform for what belongs to no module,
-// such as an extension (v0.1 design 7.1).
+// table the migration changes, platform for what belongs to no module, such
+// as an extension, or river for River's own tables, which platform/jobs uses
+// (v0.1 design 7.1).
 package migrations
 
 import (
