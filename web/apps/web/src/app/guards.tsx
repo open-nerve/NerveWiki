@@ -3,10 +3,11 @@ import { useSyncExternalStore } from "react";
 import { Navigate, Outlet, useLocation, useSearchParams } from "react-router";
 import useSWR from "swr";
 
+import { pendingSteps } from "../onboarding/steps";
 import { SessionChangedError } from "../session/token-manager";
-import { useStore } from "../stores/context";
+import { useAccount, useStore } from "../stores/context";
 import type { SessionState } from "../stores/auth.store";
-import { safeNextPath, signInPath } from "./next-path";
+import { safeNextPath, withNext } from "./next-path";
 import { Loading, SessionUnavailable } from "./session-unavailable";
 
 // The route guards (M1/P5 design 3.5): the only place that decides where
@@ -48,7 +49,7 @@ export function SignedIn() {
     case "unavailable":
       return <SessionUnavailable onRetry={() => void auth.retry()} />;
     case "signed-out":
-      return <Navigate replace to={signInPath(pathname + search + hash)} />;
+      return <Navigate replace to={withNext("/sign-in", pathname + search + hash)} />;
     case "signed-in":
       return <Account />;
   }
@@ -69,4 +70,18 @@ const Account = observer(function Account() {
     return <Loading />;
   }
   return <SessionUnavailable onRetry={() => void mutate()} />;
+});
+
+/**
+ * Onboarded shows the pages of an account done with onboarding; one with a
+ * step left goes to the onboarding page, which comes back here (M1/P5
+ * design 3.7).
+ */
+export const Onboarded = observer(function Onboarded() {
+  const { me } = useAccount();
+  const { pathname, search, hash } = useLocation();
+  if (pendingSteps(me).length > 0) {
+    return <Navigate replace to={withNext("/onboarding", pathname + search + hash)} />;
+  }
+  return <Outlet />;
 });

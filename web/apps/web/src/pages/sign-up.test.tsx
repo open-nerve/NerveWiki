@@ -15,7 +15,7 @@ function signUpWith(register: Answer, instance = instanceJSON) {
         sent.push(await request.json());
         return register(request);
       },
-      "GET /api/v0/me": () => json(userJSON),
+      "GET /api/v0/me": () => json({ ...userJSON, display_name: "ada", onboarding_steps: [] }),
     })
   );
   return { app, sent };
@@ -33,14 +33,15 @@ function noteOf(label: string): string | null | undefined {
   return document.getElementById(field.getAttribute("aria-describedby") ?? "")?.textContent;
 }
 
-test("signing up signs in to the new account", async () => {
+test("signing up signs in to the new account, which starts onboarding and then goes to next", async () => {
   const { app, sent } = signUpWith(() => json(tokensJSON, 201));
-  const { router } = renderApp("/sign-up", app);
+  const { router } = renderApp("/sign-up?next=%2Facme", app);
 
   await fillIn("ada@example.com", "correct horse");
 
-  expect(await screen.findByRole("button", { name: "Ada" })).toBeTruthy();
-  expect(router.state.location.pathname).toBe("/");
+  expect(await screen.findByRole("heading", { name: "Your name" })).toBeTruthy();
+  expect(router.state.location.pathname + router.state.location.search).toBe("/onboarding?next=%2Facme");
+  expect(screen.getByRole("button", { name: "ada" })).toBeTruthy();
   expect(sent).toEqual([{ email: "ada@example.com", password: "correct horse" }]);
 });
 

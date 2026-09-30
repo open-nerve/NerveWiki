@@ -103,3 +103,20 @@ test("a sign-in page leaves for next when the session starts from elsewhere", as
   expect(await screen.findByRole("heading", { name: "Page not found" })).toBeTruthy();
   expect(where(router)).toBe("/acme");
 });
+
+test("an account with a step left goes to onboarding, which comes back to the page", async () => {
+  const { router } = renderApp(
+    "/acme?view=list",
+    signedInApp({ "GET /api/v0/me": () => json({ ...userJSON, onboarding_steps: [] }) })
+  );
+
+  expect(await screen.findByText("Step 1 of 1")).toBeTruthy();
+  expect(where(router)).toBe(`/onboarding?next=${encodeURIComponent("/acme?view=list")}`);
+});
+
+test("an account done with onboarding leaves the onboarding page for next", async () => {
+  const { router } = renderApp("/onboarding?next=%2Facme", signedInApp());
+
+  expect(await screen.findByRole("heading", { name: "Page not found" })).toBeTruthy();
+  expect(where(router)).toBe("/acme");
+});

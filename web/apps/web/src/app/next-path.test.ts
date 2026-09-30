@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { keepNext, safeNextPath, signInPath } from "./next-path";
+import { keepNext, safeNextPath, withNext } from "./next-path";
 
 // The cases of Nerve's isValidNextPath, with this app's parameter (M1/P5
 // design 3.5).
@@ -35,9 +35,9 @@ describe("safeNextPath", () => {
   });
 });
 
-test("signInPath comes back to the path, its query and its fragment, as one value", () => {
-  expect(signInPath("/settings/profile?tab=x#y")).toBe("/sign-in?next=%2Fsettings%2Fprofile%3Ftab%3Dx%23y");
-  expect(signInPath("/")).toBe("/sign-in");
+test("withNext comes back to the path, its query and its fragment, as one value", () => {
+  expect(withNext("/sign-in", "/settings/profile?tab=x#y")).toBe("/sign-in?next=%2Fsettings%2Fprofile%3Ftab%3Dx%23y");
+  expect(withNext("/sign-in", "/")).toBe("/sign-in");
 });
 
 test("keepNext passes next on as it came, and nothing else", () => {

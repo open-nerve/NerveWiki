@@ -1,5 +1,7 @@
 import { createContext, use, type ReactNode } from "react";
 
+import type { User } from "../services/account.service";
+import type { AccountStore } from "./account.store";
 import type { RootStore } from "./root.store";
 
 const StoreContext = createContext<RootStore | null>(null);
@@ -15,4 +17,14 @@ export function useStore(): RootStore {
     throw new Error("useStore is used outside a StoreProvider");
   }
   return store;
+}
+
+/** useAccount is the signed-in account, loaded: only for the pages the SignedIn guard shows. */
+export function useAccount(): { account: AccountStore; me: User } {
+  const { account } = useStore();
+  const me = account?.me;
+  if (account === undefined || me === undefined) {
+    throw new Error("useAccount is used outside SignedIn");
+  }
+  return { account, me };
 }

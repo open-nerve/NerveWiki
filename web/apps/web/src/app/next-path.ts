@@ -19,9 +19,9 @@ export function safeNextPath(next: string | null): string | undefined {
   return path;
 }
 
-/** signInPath is the sign-in page that comes back to path, its query and fragment included. */
-export function signInPath(path: string): string {
-  return path === "/" ? "/sign-in" : `/sign-in?next=${encodeURIComponent(path)}`;
+/** withNext is page, coming back to path (its query and fragment included) once done; to the home page by default. */
+export function withNext(page: string, path: string): string {
+  return path === "/" ? page : `${page}?next=${encodeURIComponent(path)}`;
 }
 
 /** keepNext is path with the next parameter of search, if it has one: the sign-in and sign-up pages link to each other with it. */

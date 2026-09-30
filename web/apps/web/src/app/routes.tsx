@@ -1,6 +1,6 @@
 import type { RouteObject } from "react-router";
 
-import { GuestOnly, SignedIn } from "./guards";
+import { GuestOnly, Onboarded, SignedIn } from "./guards";
 import { Layout } from "./layout";
 import { RouteError } from "./route-error";
 
@@ -49,18 +49,30 @@ export const routes: RouteObject[] = [
             Component: SignedIn,
             children: [
               {
-                index: true,
+                path: "onboarding",
                 lazy: async () => {
-                  const { HomePage } = await import("../pages/home");
-                  return { Component: HomePage };
+                  const { OnboardingPage } = await import("../pages/onboarding");
+                  return { Component: OnboardingPage };
                 },
               },
               {
-                path: "*",
-                lazy: async () => {
-                  const { NotFoundPage } = await import("../pages/not-found");
-                  return { Component: NotFoundPage };
-                },
+                Component: Onboarded,
+                children: [
+                  {
+                    index: true,
+                    lazy: async () => {
+                      const { HomePage } = await import("../pages/home");
+                      return { Component: HomePage };
+                    },
+                  },
+                  {
+                    path: "*",
+                    lazy: async () => {
+                      const { NotFoundPage } = await import("../pages/not-found");
+                      return { Component: NotFoundPage };
+                    },
+                  },
+                ],
               },
             ],
           },
