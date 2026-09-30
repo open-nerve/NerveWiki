@@ -52,16 +52,23 @@ type cluster struct {
 // migration applied. The database is dropped when the test ends. Under
 // go test -short the test is skipped instead.
 func NewDatabase(t testing.TB) string {
-	return newDatabase(t, templateDB)
+	return newDatabase(t, "TEMPLATE "+templateDB)
 }
 
 // NewEmptyDatabase returns the URL of a new database without any migration,
 // for tests that bring their own schema, such as the migrator's.
 func NewEmptyDatabase(t testing.TB) string {
-	return newDatabase(t, "template0")
+	return newDatabase(t, "TEMPLATE template0")
 }
 
-func newDatabase(t testing.TB, template string) string {
+// NewEmptyDatabaseWith is NewEmptyDatabase with the given CREATE DATABASE
+// options, such as ENCODING or a locale, for tests of databases nervewiki
+// must refuse.
+func NewEmptyDatabaseWith(t testing.TB, options string) string {
+	return newDatabase(t, "TEMPLATE template0 "+options)
+}
+
+func newDatabase(t testing.TB, options string) string {
 	t.Helper()
 	if testing.Short() {
 		t.Skip("integration test: needs Docker")
@@ -71,7 +78,7 @@ func newDatabase(t testing.TB, template string) string {
 		t.Fatalf("pgtest: %v", err)
 	}
 	name := fmt.Sprintf("test_%d", c.counter.Add(1))
-	create := "CREATE DATABASE " + pgx.Identifier{name}.Sanitize() + " TEMPLATE " + pgx.Identifier{template}.Sanitize()
+	create := "CREATE DATABASE " + pgx.Identifier{name}.Sanitize() + " " + options
 	if _, err := c.admin.Exec(context.Background(), create); err != nil {
 		t.Fatalf("pgtest: create database: %v", err)
 	}

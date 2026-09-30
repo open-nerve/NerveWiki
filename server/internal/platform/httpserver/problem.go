@@ -12,7 +12,7 @@ import (
 const ContentTypeProblem = "application/problem+json"
 
 // Codes of the problems the platform itself reports. Module codes are
-// namespaced by module, e.g. "pages.title_taken" (v0.1 design 6.1).
+// namespaced by module, e.g. "page.locked" (v0.1 design 6.1).
 const (
 	CodeNotFound = "not_found"
 	CodeInternal = "internal_error"

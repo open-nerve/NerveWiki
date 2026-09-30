@@ -10,7 +10,7 @@ func TestWriteProblem(t *testing.T) {
 	rec := httptest.NewRecorder()
 	WriteProblem(rec, Problem{
 		Status: http.StatusUnprocessableEntity,
-		Code:   "pages.title_taken",
+		Code:   "page.title_taken",
 		Title:  "The title is taken",
 		Errors: []FieldError{{Field: "title", Code: "taken", Message: "another page has this title"}},
 	})
@@ -21,7 +21,7 @@ func TestWriteProblem(t *testing.T) {
 	if ct := rec.Result().Header.Get("Content-Type"); ct != "application/problem+json" {
 		t.Errorf("Content-Type = %q, want application/problem+json", ct)
 	}
-	want := `{"status":422,"code":"pages.title_taken","title":"The title is taken",` +
+	want := `{"status":422,"code":"page.title_taken","title":"The title is taken",` +
 		`"errors":[{"field":"title","code":"taken","message":"another page has this title"}]}` + "\n"
 	if got := rec.Body.String(); got != want {
 		t.Errorf("body = %s, want %s", got, want)
