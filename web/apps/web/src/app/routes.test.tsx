@@ -1,11 +1,11 @@
-import { render, screen } from "@testing-library/react";
-import { createMemoryRouter, RouterProvider } from "react-router";
+import { screen } from "@testing-library/react";
 import { expect, test } from "vitest";
 
-import { routes } from "./routes";
+import { renderApp } from "../test/render";
 
-test("the home page is the index route", async () => {
-  render(<RouterProvider router={createMemoryRouter(routes, { initialEntries: ["/"] })} />);
+test("the home page is the index route, inside the layout", async () => {
+  renderApp("/");
 
   expect(await screen.findByRole("heading", { name: "Nerve Wiki" })).toBeTruthy();
+  expect(screen.getByRole("banner").textContent).toContain("Nerve Wiki");
 });

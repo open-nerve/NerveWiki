@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["typescript", "import", "promise", "unicorn", "oxc", "react", "react-perf", "jsx-a11y"],
+  "plugins": ["typescript", "import", "promise", "unicorn", "oxc", "react", "jsx-a11y"],
   "categories": {
     "correctness": "warn",
     "suspicious": "warn",
@@ -12,6 +12,8 @@
   "rules": {
     // React 17 起的 JSX 自动运行时不需要 React 在作用域内
     "react/react-in-jsx-scope": "off",
+    // 样式表只为副作用导入
+    "import/no-unassigned-import": ["warn", { "allow": ["**/*.css"] }],
     "no-unused-vars": [
       "warn",
       {
@@ -32,7 +34,7 @@
       }
     },
     {
-      "files": ["web/**/src/**", "web/**/test/**"],
+      "files": ["web/**/src/**", "web/**/test/**", "web/**/public/**"],
       "env": {
         "browser": true
       },
