@@ -2,13 +2,13 @@ import "./styles.css";
 
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { createBrowserRouter, RouterProvider } from "react-router";
+import { createBrowserRouter } from "react-router";
 
-import { AppProviders } from "./app/providers";
 import { routes } from "./app/routes";
+import { SessionRoot } from "./app/session-root";
 import { browserSessionDeps, Session, type SessionDeps } from "./session/session";
 import { PreferencesStore } from "./stores/preferences.store";
-import { RootStore } from "./stores/root.store";
+import { AppStores } from "./stores/root.store";
 
 const root = document.getElementById("root");
 if (!root) {
@@ -23,12 +23,9 @@ const preferences = new PreferencesStore({
 // The page's one session: the clients of the API, on the page's own origin, and the tokens.
 const session = new Session(browserSessionDeps(storage));
 void session.start();
-const store = new RootStore(preferences, session.public);
 createRoot(root).render(
   <StrictMode>
-    <AppProviders store={store}>
-      <RouterProvider router={createBrowserRouter(routes)} />
-    </AppProviders>
+    <SessionRoot app={new AppStores(preferences, session)} router={createBrowserRouter(routes)} />
   </StrictMode>
 );
 

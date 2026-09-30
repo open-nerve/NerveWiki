@@ -2,8 +2,7 @@ import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 
-import { RootStore } from "../stores/root.store";
-import { fakeApi, json, preferences } from "../test/fakes";
+import { json, testApp } from "../test/fakes";
 import { renderApp } from "../test/render";
 
 test("the home page shows what the instance runs, inside the layout", async () => {
@@ -19,10 +18,7 @@ test("the home page says so when the instance cannot be loaded", async () => {
   const problem = { status: 404, code: "not_found", title: "Not Found" };
   renderApp(
     "/",
-    new RootStore(
-      preferences(),
-      fakeApi(() => json(problem, 404, "application/problem+json"))
-    )
+    testApp(() => json(problem, 404, "application/problem+json"))
   );
 
   expect((await screen.findByRole("alert")).textContent).toBe("The instance information could not be loaded.");
@@ -39,13 +35,13 @@ test("a path that is no page shows the app's 404, with a way home", async () => 
 
 test("choosing a language changes the text and <html lang>", async () => {
   const user = userEvent.setup();
-  const { store } = renderApp("/");
+  const { app } = renderApp("/");
   await screen.findByText("Version 1.2.3 (4f2a9c1)");
 
   await user.click(screen.getByRole("button", { name: "Language" }));
   await user.click(await screen.findByRole("menuitemradio", { name: "简体中文" }));
 
-  expect(store.preferences.locale).toBe("zh-CN");
+  expect(app.preferences.locale).toBe("zh-CN");
   expect(screen.getByText("版本 1.2.3（4f2a9c1）")).toBeTruthy();
   expect(screen.getByRole("button", { name: "主题" })).toBeTruthy();
   expect(document.documentElement.lang).toBe("zh-CN");
