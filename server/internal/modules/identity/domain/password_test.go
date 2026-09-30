@@ -31,9 +31,9 @@ func TestPasswordLength(t *testing.T) {
 		// Length is UTF-16 code units, like password.length in the web app.
 		{"four emoji make 8 units", "😀🎉🔑🌊", ""},
 		{"three emoji and a letter make 7 units", "😀🎉🔑w", shared.FieldTooShort},
-		{"64 emoji are 128 units", strings.Repeat("😀", 64), ""},
-		{"64 emoji and a letter are 129 units", strings.Repeat("😀", 64) + "w", shared.FieldTooLong},
-		{"white space counts and stays", "        ", ""},
+		{"64 emoji are 128 units", strings.Repeat("😀🎉", 32), ""},
+		{"64 emoji and a letter are 129 units", strings.Repeat("😀🎉", 32) + "w", shared.FieldTooLong},
+		{"white space counts and stays", "   xq7 vbnz  ", ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -56,7 +56,35 @@ func TestCommonPasswords(t *testing.T) {
 			t.Errorf("Check(%q) = %q, want common_password", p, got)
 		}
 	}
-	for _, p := range []string{"Tr0ub4dor&3", "Correct-Horse-9", "correcthorsebatterystaple", "xq7vbnzk"} {
+	// A common word decorated with digits and symbols: the core of a
+	// common password (tools/password-blocklist keeps the cores).
+	for _, p := range []string{
+		"Qwerty123!", "Summer2024!", "Welcome1!", "Letmein1!", "Admin123!", "Monkey123!", "Dragon2024!", "Michael1!",
+	} {
+		if got := checkCode(t, rules, p, "someone@example.com"); got != shared.FieldCommonPassword {
+			t.Errorf("Check(%q) = %q, want common_password", p, got)
+		}
+	}
+	for _, p := range []string{"Tr0ub4dor&3", "Correct-Horse-9", "correcthorsebatterystaple", "xq7vbnzk", "Love2026!!"} {
+		if got := checkCode(t, rules, p, "someone@example.com"); got != "" {
+			t.Errorf("Check(%q) = %q, want accepted", p, got)
+		}
+	}
+}
+
+// One character repeated, or blanks and control characters alone, are
+// common whatever the list holds.
+func TestTrivialPasswords(t *testing.T) {
+	rules := NewPasswordRules()
+	for _, p := range []string{
+		"        ", "\t\t\t\t\t\t\t\t", " \t \n \r  ", strings.Repeat("\x00", 8), "\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000",
+		"ééééééééé", strings.Repeat("😀", 4), "zzzzzzzzzzzz",
+	} {
+		if got := checkCode(t, rules, p, "someone@example.com"); got != shared.FieldCommonPassword {
+			t.Errorf("Check(%q) = %q, want common_password", p, got)
+		}
+	}
+	for _, p := range []string{"zzzzzzzzzzzy", "        x", "\x00\x00\x00\x00\x00\x00\x00k"} {
 		if got := checkCode(t, rules, p, "someone@example.com"); got != "" {
 			t.Errorf("Check(%q) = %q, want accepted", p, got)
 		}
@@ -101,8 +129,8 @@ func TestCore(t *testing.T) {
 
 // The list is what tools/password-blocklist/build.mjs writes: the header
 // names the pinned source, its checksum and its licence; the entries are
-// sorted by bytes, unique, lowercase and 8–128 UTF-16 units long, the only
-// ones a password can equal.
+// sorted by bytes, unique and lowercase, and each is 8–128 UTF-16 units
+// long, the only ones a password can equal, or a core of 5 units or more.
 func TestCommonPasswordList(t *testing.T) {
 	header, _, _ := strings.Cut(commonPasswordsFile, "\n\n")
 	for _, want := range []string{
@@ -116,15 +144,17 @@ func TestCommonPasswordList(t *testing.T) {
 		}
 	}
 	list := NewPasswordRules().common
-	if len(list) != 46483 {
-		t.Errorf("the list has %d entries, want 46483", len(list))
+	if len(list) != 67396 {
+		t.Errorf("the list has %d entries, want 67396", len(list))
 	}
 	if !slices.IsSorted(list) || len(slices.Compact(slices.Clone(list))) != len(list) {
 		t.Error("the list is not sorted by bytes without duplicates")
 	}
 	for _, e := range list {
-		if units := len(utf16.Encode([]rune(e))); strings.ToLower(e) != e || units < MinPasswordLength || units > MaxPasswordLength {
-			t.Errorf("entry %q is not lowercase or not 8-128 units long", e)
+		units := len(utf16.Encode([]rune(e)))
+		password := units >= MinPasswordLength && units <= MaxPasswordLength
+		if strings.ToLower(e) != e || (!password && (core(e) != e || units < 5)) {
+			t.Errorf("entry %q is not lowercase, or neither 8-128 units long nor a core of 5 units or more", e)
 		}
 	}
 }

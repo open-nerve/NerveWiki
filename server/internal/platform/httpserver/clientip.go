@@ -14,10 +14,9 @@ type clientIPs struct {
 	logger  *slog.Logger
 	trusted []netip.Prefix // server.trusted_proxies
 	// Each misconfiguration warning is logged once per process: bootstrap
-	// builds one API. untrusted: X-Forwarded-For from a peer that is not a
-	// trusted proxy; missing: a trusted proxy that forwards no
-	// X-Forwarded-For; malformed: a trusted proxy that forwards an entry
-	// that is not a bare address.
+	// builds one API. untrusted: X-Forwarded-For while no proxy is trusted;
+	// missing: a trusted proxy that forwards no X-Forwarded-For; malformed:
+	// a trusted proxy that forwards an entry that is not a bare address.
 	warnedUntrusted sync.Once
 	warnedMissing   sync.Once
 	warnedMalformed sync.Once
@@ -46,6 +45,12 @@ func (c *clientIPs) of(r *http.Request) netip.Addr {
 		})
 		return client
 	case len(forwarded) == 0:
+		return client
+	case !trusted && len(c.trusted) > 0:
+		// Proxies are configured and this peer is none of them: a client
+		// that writes the header itself. Warning would let any client name
+		// itself in the log, and use up the warning a real misconfiguration
+		// needs.
 		return client
 	case !trusted:
 		c.warnedUntrusted.Do(func() {

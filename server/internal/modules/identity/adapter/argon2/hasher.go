@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"golang.org/x/crypto/argon2"
+	"golang.org/x/text/unicode/norm"
 
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
@@ -55,7 +56,15 @@ func New(p Params, logger *slog.Logger) *Hasher {
 	return &Hasher{p: p, logger: logger, slots: make(chan struct{}, p.MaxConcurrent), unusable: unusable}
 }
 
-// Hash returns the PHC string of password:
+// secret is what argon2id hashes of a password: its NFKC form (NIST SP
+// 800-63B 5.1.1.2), so that the same password typed as precomposed or
+// decomposed accents, or in full-width letters, is the same credential on
+// every device.
+func secret(password string) []byte {
+	return []byte(norm.NFKC.String(password))
+}
+
+// Hash returns the PHC string of password's NFKC form:
 // $argon2id$v=19$m=<KiB>,t=<iterations>,p=<lanes>$<salt>$<key>, base64
 // without padding. When no slot frees up within MaxWait it returns 503
 // server_busy with Retry-After: 1 and logs the queue length.
@@ -66,13 +75,13 @@ func (h *Hasher) Hash(ctx context.Context, password string) (string, error) {
 	defer func() { <-h.slots }()
 	salt := make([]byte, saltLen)
 	_, _ = rand.Read(salt) // never fails since Go 1.24
-	key := argon2.IDKey([]byte(password), salt, h.p.Iterations, h.p.MemoryKiB, h.p.Parallelism, keyLen)
+	key := argon2.IDKey(secret(password), salt, h.p.Iterations, h.p.MemoryKiB, h.p.Parallelism, keyLen)
 	return fmt.Sprintf("$argon2id$v=%d$m=%d,t=%d,p=%d$%s$%s", argon2.Version, h.p.MemoryKiB, h.p.Iterations, h.p.Parallelism,
 		base64.RawStdEncoding.EncodeToString(salt), base64.RawStdEncoding.EncodeToString(key)), nil
 }
 
-// Verify reports whether password matches hash, a PHC string that Hash
-// wrote, and whether hash has other parameters than the current ones, so
+// Verify reports whether password, in its NFKC form, matches hash, a PHC
+// string that Hash wrote, and whether hash has other parameters than the current ones, so
 // that login hashes the password again. It takes a slot like
 // Hash, with the same wait and the same 503.
 //
@@ -90,7 +99,7 @@ func (h *Hasher) Verify(ctx context.Context, password, hash string) (ok, rehash 
 		return false, false, err
 	}
 	defer func() { <-h.slots }()
-	key := argon2.IDKey([]byte(password), p.salt, p.iterations, p.memoryKiB, p.parallelism, keyLen)
+	key := argon2.IDKey(secret(password), p.salt, p.iterations, p.memoryKiB, p.parallelism, keyLen)
 	if parseErr != nil {
 		h.logger.WarnContext(ctx, "a stored password hash is not an argon2id PHC string: no password matches it")
 		return false, false, nil

@@ -184,6 +184,8 @@ func TestChecksRejectCounterexamples(t *testing.T) {
 		{"step of 33 characters", steps("ARRAY['" + strings.Repeat("a", 33) + "']"), "users_onboarding_steps_check"},
 		{"NULL step", steps("ARRAY['profile', NULL]"), "users_onboarding_steps_check"},
 		{"33 steps", steps("(SELECT array_agg('s' || i) FROM generate_series(1, 33) i)"), "users_onboarding_steps_check"},
+		{"two steps in one element", steps(`'{"profile,workspace"}'`), "users_onboarding_steps_check"},
+		{"40 steps in one element", steps("ARRAY[(SELECT string_agg('s' || i, ',') FROM generate_series(1, 40) i)]"), "users_onboarding_steps_check"},
 		{"token hash not 32 bytes", "UPDATE auth_sessions SET token_hash = '\\x00'", "auth_sessions_token_hash_check"},
 		{"negative generation", "UPDATE auth_sessions SET generation = -1", "auth_sessions_generation_check"},
 		{"unknown revoke reason", "UPDATE auth_sessions SET revoke_reason = 'expired'", "auth_sessions_revoke_reason_check"},

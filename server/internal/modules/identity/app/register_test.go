@@ -115,7 +115,8 @@ func TestRegisterCreatesTheAccountAndSignsIn(t *testing.T) {
 		t.Errorf("RefreshExpiresAt = %v, want the session's %v", tokens.RefreshExpiresAt, s.ExpiresAt)
 	}
 
-	want := app.AccessClaims{UserID: u.ID, SessionID: s.ID, ExpiresAt: now.Add(15 * time.Minute)}
+	// exp is whole seconds, rounded up: 10:15:00.123456 becomes 10:15:01.
+	want := app.AccessClaims{UserID: u.ID, SessionID: s.ID, ExpiresAt: time.Date(2026, 9, 25, 10, 15, 1, 0, time.UTC)}
 	if len(f.tokens.issued) != 1 || f.tokens.issued[0] != want || tokens.AccessToken != "access:"+s.ID.String() || tokens.AccessExpiresIn != 15*time.Minute {
 		t.Errorf("access token %q expiring in %v, claims %+v; want claims %+v", tokens.AccessToken, tokens.AccessExpiresIn, f.tokens.issued, want)
 	}

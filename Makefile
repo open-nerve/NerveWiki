@@ -24,8 +24,9 @@ SQLC := CGO_ENABLED=0 go tool -modfile=tools/go.mod sqlc
 BODYSHAPEGEN := go -C server/tools run ./bodyshapegen
 # 每个模块一个描述文件 api/modules/<模块>.yaml，生成到该模块的 adapter/http/gen
 API_MODULES := $(basename $(notdir $(wildcard api/modules/*.yaml)))
-# 在读 Makefile 时展开：每个模块的 gen 目录里先有 oapi-codegen.yaml，所以新模块的目录也在其中。
-# git 的 pathspec 不展开 *，这里必须是展开后的路径
+# 在读 Makefile 时展开：每个模块的 http/gen 目录里先有 oapi-codegen.yaml，所以新模块的目录也在其中。
+# postgres/gen 没有这样的文件：模块第一次有 sqlc 查询时，这个目录要到 gen-go 运行后才出现，不在检查之列；
+# 那时没提交的生成代码会让持续集成的编译失败，由编译兜底。git 的 pathspec 不展开 *，这里必须是展开后的路径
 GEN_GO_OUT := server/internal/platform/httpserver/apigen $(wildcard server/internal/modules/*/adapter/http/gen) \
 	$(wildcard server/internal/modules/*/adapter/postgres/gen)
 GEN_WEB_OUT := api/dist web/packages/api-client/src/schema.gen.ts

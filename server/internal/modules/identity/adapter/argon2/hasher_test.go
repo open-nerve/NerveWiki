@@ -136,6 +136,32 @@ func TestVerify(t *testing.T) {
 	}
 }
 
+// A password is its NFKC form: precomposed and decomposed accents, and
+// full-width and ASCII letters, are one password; letters that only look
+// alike are not.
+func TestVerifyComparesTheNFKCForm(t *testing.T) {
+	h := New(testParams(), slog.New(slog.DiscardHandler))
+	tests := []struct {
+		name, hashed, typed string
+		ok                  bool
+	}{
+		{"decomposed accent", "caf\u00e9-au-lait", "cafe\u0301-au-lait", true},
+		{"precomposed accent", "cafe\u0301-au-lait", "caf\u00e9-au-lait", true},
+		{"full-width letters", "\uff50\uff41\uff53\uff53\uff57\uff4f\uff52\uff44-42", "password-42", true},
+		{"a ligature", "\ufb01ne-wine-42", "fine-wine-42", true},
+		{"Cyrillic a for Latin a", "p\u0430ssword-42", "password-42", false},
+	}
+	for _, tt := range tests {
+		hash, err := h.Hash(context.Background(), tt.hashed)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ok, _, err := h.Verify(context.Background(), tt.typed, hash); ok != tt.ok || err != nil {
+			t.Errorf("%s: Verify() = %v, %v; want %v", tt.name, ok, err, tt.ok)
+		}
+	}
+}
+
 // A hash with other parameters still verifies, and asks for a new hash
 // with the current ones.
 func TestVerifyAsksForARehashWhenTheParametersChanged(t *testing.T) {

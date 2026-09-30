@@ -33,6 +33,7 @@ function parseRefreshToken(token: string): RefreshTokenParts {
 export interface SignIn {
   /** The address as typed; the account holds it trimmed and lowercased. */
   email: string;
+  accessToken: string;
   refreshToken: string;
   userAgent: string;
   ip: string;
@@ -66,9 +67,9 @@ export async function expectNewAccount(db: Database, typed: string): Promise<str
 
 /**
  * auth_sessions: the account userId has exactly one session, the one of
- * s.refreshToken: generation 0, holding the hash of the token's secret, with
- * the caller's User-Agent and IP, never refreshed, live, ending 30 days after
- * it began.
+ * s.refreshToken and of s.accessToken's claims: generation 0, holding the
+ * hash of the token's secret, with the caller's User-Agent and IP, never
+ * refreshed, live, ending 30 days after it began.
  */
 export async function expectNewSession(db: Database, userId: string, s: SignIn): Promise<void> {
   const token = parseRefreshToken(s.refreshToken);
@@ -92,6 +93,10 @@ export async function expectNewSession(db: Database, userId: string, s: SignIn):
   expect(sessions).toHaveLength(1);
   const [session] = sessions;
   expect(session?.id).toBe(token.sessionId);
+  // The access token's claims name the account and the session; the
+  // signature is the server's to check.
+  const claims: unknown = JSON.parse(Buffer.from(s.accessToken.split(".")[1] ?? "", "base64url").toString());
+  expect(claims).toMatchObject({ sub: userId, sid: token.sessionId });
   expect(token.generation).toBe(0);
   expect(session?.generation).toBe(0);
   expect(session?.token_hash.equals(createHash("sha256").update(token.secret).digest())).toBe(true);

@@ -81,20 +81,36 @@ func warnings(entries []map[string]any, prefix string) []map[string]any {
 	return out
 }
 
-// X-Forwarded-For from a peer that is not trusted most likely means a proxy
-// missing from server.trusted_proxies: warned once per process, never again.
-// A direct request without the header is no such sign, and is not warned.
+// X-Forwarded-For while no proxy is trusted most likely means a reverse
+// proxy that server.trusted_proxies lacks: warned once per process, never
+// again. A direct request without the header is no such sign, and is not
+// warned.
 func TestUntrustedForwardingIsWarnedOnce(t *testing.T) {
 	logger, logs := captureLogs(t)
-	c := clientsTrusting(logger, "10.0.0.0/8")
+	c := clientsTrusting(logger)
 
 	c.of(requestFrom("203.0.113.6:5555"))
 	c.of(requestFrom("203.0.113.7:5555", "198.51.100.1"))
 	c.of(requestFrom("203.0.113.8:5555", "198.51.100.2"))
-	c.of(requestFrom("10.0.0.1:5555", "198.51.100.3"))
 
 	if all := warnings(logs(), ""); len(all) != 1 || all[0]["peer"] != "203.0.113.7" {
 		t.Errorf("warnings = %v, want one, naming the peer 203.0.113.7", all)
+	}
+}
+
+// Once proxies are configured, a peer outside them that sends the header is
+// a client writing it itself: ignored without a warning, which it could
+// otherwise use up and fill with its own address.
+func TestForwardingFromAClientIsIgnoredSilently(t *testing.T) {
+	logger, logs := captureLogs(t)
+	c := clientsTrusting(logger, "10.0.0.0/8")
+
+	got := c.of(requestFrom("203.0.113.7:5555", "198.51.100.1"))
+	c.of(requestFrom("10.0.0.1:5555"))                    // the proxy's own request: warned
+	c.of(requestFrom("203.0.113.8:5555", "198.51.100.2")) // still silent
+
+	if all := warnings(logs(), ""); got != netip.MustParseAddr("203.0.113.7") || len(all) != 1 || all[0]["peer"] != "10.0.0.1" {
+		t.Errorf("client = %v, warnings = %v; want 203.0.113.7 and only the proxy's missing header", got, all)
 	}
 }
 

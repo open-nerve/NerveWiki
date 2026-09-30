@@ -206,6 +206,12 @@ func TestAccessTokenVerifyGivesOnlyFixedReasons(t *testing.T) {
 		}
 		return s
 	}
+	// respelled sets an unused low bit of the signature's last character:
+	// 64 bytes take 86 characters, 4 bits more than they need. A lenient
+	// decoder reads the same signature; the strict one refuses it.
+	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+	last := strings.IndexByte(alphabet, parts[2][len(parts[2])-1])
+	respelled := parts[0] + "." + parts[1] + "." + parts[2][:len(parts[2])-1] + string(alphabet[last^1])
 	sub, sid, exp := userID.String(), sessionID.String(), now.Add(time.Minute).Unix()
 	expJSON := `"exp":` + strconv.FormatInt(exp, 10)
 	withTimes := func(times string) string { return `{"sub":"` + sub + `","sid":"` + sid + `",` + times + `}` }
@@ -219,6 +225,7 @@ func TestAccessTokenVerifyGivesOnlyFixedReasons(t *testing.T) {
 		{"iat is a string", forge(withTimes(expJSON + `,"iat":"` + marker + `"`)), errMalformed},
 		{"payload is not JSON", forge(marker), errMalformed},
 		{"header is not JSON", b64(marker) + "." + parts[1] + "." + parts[2], errMalformed},
+		{"signature in a non-canonical spelling", respelled, errMalformed},
 		{"bad signature", forge(`{"sub":"` + marker + `",` + expJSON + `}`), errSignatureInvalid},
 		{"signature is not a signature", parts[0] + "." + parts[1] + "." + b64(marker), errSignatureInvalid},
 		{"alg none", b64(`{"alg":"none","typ":"JWT"}`) + "." + parts[1] + ".", errSignatureInvalid},

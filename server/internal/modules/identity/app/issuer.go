@@ -35,9 +35,15 @@ func (i Issuance) refreshToken(sessionID uuid.UUID, generation uint32) domain.Re
 }
 
 // tokens returns refresh with a new access token of userID; sessionEnd is
-// the session's absolute end.
+// the session's absolute end. The access token's exp is a JWT NumericDate,
+// whole seconds: it is rounded up, so the token lives at least AccessTTL,
+// what the response's access_token_expires_in says.
 func (i Issuance) tokens(userID uuid.UUID, refresh domain.RefreshToken, now, sessionEnd time.Time) (Tokens, error) {
-	access, err := i.Tokens.Issue(AccessClaims{UserID: userID, SessionID: refresh.SessionID, ExpiresAt: now.Add(i.AccessTTL)})
+	exp := now.Add(i.AccessTTL)
+	if whole := exp.Truncate(time.Second); whole.Before(exp) {
+		exp = whole.Add(time.Second)
+	}
+	access, err := i.Tokens.Issue(AccessClaims{UserID: userID, SessionID: refresh.SessionID, ExpiresAt: exp})
 	if err != nil {
 		return Tokens{}, err
 	}

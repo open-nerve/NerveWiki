@@ -13,7 +13,13 @@ test("A1 (API): a caller signs up and gets a session", async ({ api, db }, testI
   expect(tokens.token_type).toBe("Bearer");
   expect(tokens.access_token_expires_in).toBe(15 * 60);
   const userId = await expectNewAccount(db, email);
-  await expectNewSession(db, userId, { email, refreshToken: tokens.refresh_token, userAgent, ip: "127.0.0.1" });
+  await expectNewSession(db, userId, {
+    email,
+    accessToken: tokens.access_token,
+    refreshToken: tokens.refresh_token,
+    userAgent,
+    ip: "127.0.0.1",
+  });
 
   // The access token works at once.
   const me = await api.GET("/api/v0/me", { headers: bearer(tokens.access_token) });
