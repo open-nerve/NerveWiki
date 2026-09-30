@@ -47,12 +47,12 @@ func TestLongLivedOutlastsTheConnectionDeadlines(t *testing.T) {
 	})))
 	url, _, _ := startServerWith(t, cfg, mux)
 
-	if resp, err := client.Get(url + "/late"); err == nil {
+	if resp, err := client().Get(url + "/late"); err == nil {
 		_ = resp.Body.Close()
 		t.Errorf("GET /late = %d, want the connection cut off after the 200ms write_timeout", resp.StatusCode)
 	}
 
-	resp, err := client.Get(url + "/stream")
+	resp, err := client().Get(url + "/stream")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +94,7 @@ func TestShutdownEndsLongLivedResponses(t *testing.T) {
 	})
 	url, cancel, done := startServerWith(t, cfg, mux)
 
-	stream, err := client.Get(url + "/stream") // returns once the headers are flushed
+	stream, err := client().Get(url + "/stream") // returns once the headers are flushed
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,7 +102,7 @@ func TestShutdownEndsLongLivedResponses(t *testing.T) {
 	<-streaming
 	slow := make(chan string, 1)
 	go func() {
-		resp, err := client.Get(url + "/slow")
+		resp, err := client().Get(url + "/slow")
 		if err != nil {
 			slow <- err.Error()
 			return

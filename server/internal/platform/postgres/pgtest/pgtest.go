@@ -40,7 +40,7 @@ const templateDB = "nervewiki_template"
 // shared is the one container of this test binary, started on first use.
 // A package-level singleton is inherent to "one container per test binary";
 // pgtest is test-only code.
-var shared = sync.OnceValues(startCluster)
+var shared = sync.OnceValues(startCluster) //nolint:gochecknoglobals // one container per test binary
 
 type cluster struct {
 	admin   *pgxpool.Pool // connected to the maintenance database "postgres"

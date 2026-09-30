@@ -16,7 +16,8 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
 )
 
-var client = &http.Client{Timeout: 5 * time.Second}
+// client bounds every request of a test.
+func client() *http.Client { return &http.Client{Timeout: 5 * time.Second} }
 
 // startServer runs a Server on a random local port. Cancelling the returned
 // context starts the shutdown; done yields the result of Serve.
@@ -61,7 +62,7 @@ func wait(t *testing.T, done <-chan error) error {
 func TestServeAppliesMiddlewareAndStopsOnCancel(t *testing.T) {
 	url, cancel, done := startServer(t, time.Second, NewRouter(slog.New(slog.DiscardHandler)))
 
-	resp, err := client.Get(url + "/healthz")
+	resp, err := client().Get(url + "/healthz")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +90,7 @@ func TestShutdownDrainsInFlightRequests(t *testing.T) {
 	}
 	got := make(chan result, 1)
 	go func() {
-		resp, err := client.Get(url + "/slow")
+		resp, err := client().Get(url + "/slow")
 		if err != nil {
 			got <- result{err: err}
 			return
@@ -131,7 +132,7 @@ func TestShutdownGivesUpAfterTimeout(t *testing.T) {
 		<-release
 	}))
 	go func() {
-		if resp, err := client.Get(url + "/stuck"); err == nil {
+		if resp, err := client().Get(url + "/stuck"); err == nil {
 			_ = resp.Body.Close()
 		}
 	}()
@@ -198,7 +199,7 @@ func TestWriteTimeoutCutsOffALateResponse(t *testing.T) {
 		_, _ = io.WriteString(w, "late")
 	}))
 
-	resp, err := client.Get(url + "/late")
+	resp, err := client().Get(url + "/late")
 	if err == nil {
 		_ = resp.Body.Close()
 		t.Fatalf("GET /late = %d, want the connection cut off after the 200ms write_timeout", resp.StatusCode)
@@ -235,7 +236,7 @@ func TestListenAndServeWritesTheAddrFile(t *testing.T) {
 	for deadline := time.Now().Add(5 * time.Second); len(addr) == 0 && time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
 		addr, _ = os.ReadFile(addrFile)
 	}
-	resp, err := client.Get("http://" + string(addr) + "/healthz")
+	resp, err := client().Get("http://" + string(addr) + "/healthz")
 	if err != nil {
 		t.Fatalf("GET /healthz at the address in addr_file %q: %v", addr, err)
 	}

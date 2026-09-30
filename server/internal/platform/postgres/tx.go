@@ -77,7 +77,7 @@ func (m *TxManager) WithinTx(ctx context.Context, fn func(ctx context.Context) e
 		if rbErr := m.end(ctx, tx.Rollback); rbErr != nil {
 			// fn's error keeps only its text: a domain error must not
 			// hide the infrastructure fault behind its own answer.
-			return fmt.Errorf("roll back transaction after %v: %w", err, rbErr)
+			return fmt.Errorf("roll back transaction after %v: %w", err, rbErr) //nolint:errorlint // see above
 		}
 		return err
 	}

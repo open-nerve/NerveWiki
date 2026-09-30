@@ -100,7 +100,10 @@ func withRecover(logger *slog.Logger, next http.Handler) http.Handler {
 			if v == nil {
 				return
 			}
-			if v == http.ErrAbortHandler { // deliberate abort: let net/http handle it
+			// A deliberate abort: let net/http handle it. net/http recognises
+			// only this exact value, so errors.Is would claim wrapped ones it
+			// then logs as panics.
+			if v == http.ErrAbortHandler { //nolint:errorlint // must match net/http's identity check
 				panic(v)
 			}
 			logger.ErrorContext(r.Context(), "panic serving request",

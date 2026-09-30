@@ -14,7 +14,7 @@ import (
 func runCommand(t *testing.T, dbURL string, cmd migrationCommand) string {
 	t.Helper()
 	var out bytes.Buffer
-	if err := runMigration(context.Background(), testConfig(t, dbURL, false), sampleMigrations, &out, cmd); err != nil {
+	if err := runMigration(context.Background(), testConfig(t, dbURL, false), sampleMigrations(), &out, cmd); err != nil {
 		t.Fatalf("command error = %v", err)
 	}
 	return out.String()
@@ -56,7 +56,7 @@ func TestMigrateCommandsOutput(t *testing.T) {
 
 func TestMigrateUpReportsMigrationsAppliedBeforeAFailure(t *testing.T) {
 	files := fstest.MapFS{
-		"00001_probe_create_widgets.sql": sampleMigrations["00001_probe_create_widgets.sql"],
+		"00001_probe_create_widgets.sql": sampleMigrations()["00001_probe_create_widgets.sql"],
 		"00002_probe_broken.sql":         {Data: []byte("-- +goose Up\nCREATE TABLE broken (;\n")},
 	}
 	var out bytes.Buffer
@@ -108,7 +108,7 @@ func TestMigrateCommandReportsBadURL(t *testing.T) {
 func TestMigrateUpChecksTheDatabase(t *testing.T) {
 	var out bytes.Buffer
 
-	err := runMigration(context.Background(), testConfig(t, pgtest.NewEmptyDatabaseWith(t, ctypeC), false), sampleMigrations, &out, migrateUp)
+	err := runMigration(context.Background(), testConfig(t, pgtest.NewEmptyDatabaseWith(t, ctypeC), false), sampleMigrations(), &out, migrateUp)
 
 	if err == nil || !strings.Contains(err.Error(), "LC_CTYPE is \"C\", want C.UTF-8") {
 		t.Errorf("migrate up error = %v, want the database check's error", err)

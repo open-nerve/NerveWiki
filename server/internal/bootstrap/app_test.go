@@ -22,9 +22,11 @@ import (
 
 // sampleMigrations are two probe tables, for the tests of how the app applies
 // and reports migrations, whatever the production set holds.
-var sampleMigrations = fstest.MapFS{
-	"00001_probe_create_widgets.sql": {Data: []byte("-- +goose Up\nCREATE TABLE widgets (id bigint);\n-- +goose Down\nDROP TABLE widgets;\n")},
-	"00002_probe_create_gadgets.sql": {Data: []byte("-- +goose Up\nCREATE TABLE gadgets (id bigint);\n-- +goose Down\nDROP TABLE gadgets;\n")},
+func sampleMigrations() fstest.MapFS {
+	return fstest.MapFS{
+		"00001_probe_create_widgets.sql": {Data: []byte("-- +goose Up\nCREATE TABLE widgets (id bigint);\n-- +goose Down\nDROP TABLE widgets;\n")},
+		"00002_probe_create_gadgets.sql": {Data: []byte("-- +goose Up\nCREATE TABLE gadgets (id bigint);\n-- +goose Down\nDROP TABLE gadgets;\n")},
+	}
 }
 
 const unreachableDB = "postgres://nobody@127.0.0.1:1/nowhere"
@@ -32,7 +34,8 @@ const unreachableDB = "postgres://nobody@127.0.0.1:1/nowhere"
 // ctypeC is a database whose LC_CTYPE is C: the database check refuses it.
 const ctypeC = "LOCALE_PROVIDER builtin BUILTIN_LOCALE 'C.UTF-8' LC_COLLATE 'C' LC_CTYPE 'C'"
 
-var client = &http.Client{Timeout: 5 * time.Second}
+// client bounds every request of a test.
+func client() *http.Client { return &http.Client{Timeout: 5 * time.Second} }
 
 // testConfig listens on a port the system picks and reports it through
 // server.addr_file.
@@ -79,7 +82,7 @@ func waitHealthy(t *testing.T, addrFile string, done <-chan error) string {
 			continue
 		}
 		base := "http://" + string(addr)
-		if resp, err := client.Get(base + "/healthz"); err == nil {
+		if resp, err := client().Get(base + "/healthz"); err == nil {
 			_ = resp.Body.Close()
 			if resp.StatusCode == http.StatusOK {
 				return base
@@ -134,7 +137,7 @@ func TestServeRunsUntilCancelled(t *testing.T) {
 	go func() { done <- Serve(ctx, cfg, &logs) }()
 
 	base := waitHealthy(t, cfg.Server.AddrFile, done)
-	resp, err := client.Get(base + "/readyz")
+	resp, err := client().Get(base + "/readyz")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,7 +166,7 @@ func TestServeRunsUntilCancelled(t *testing.T) {
 }
 
 func TestNotReadyWithPendingMigrations(t *testing.T) {
-	a := buildApp(t, testConfig(t, pgtest.NewEmptyDatabase(t), false), sampleMigrations)
+	a := buildApp(t, testConfig(t, pgtest.NewEmptyDatabase(t), false), sampleMigrations())
 
 	status, p := getReadyz(t, a.router)
 	if status != http.StatusServiceUnavailable || p.Code != httpserver.CodeNotReady || p.Detail != "migrations is not ready" {
@@ -172,7 +175,7 @@ func TestNotReadyWithPendingMigrations(t *testing.T) {
 }
 
 func TestNotReadyWhenDatabaseIsUnavailable(t *testing.T) {
-	a := buildApp(t, testConfig(t, unreachableDB, false), sampleMigrations)
+	a := buildApp(t, testConfig(t, unreachableDB, false), sampleMigrations())
 
 	status, p := getReadyz(t, a.router)
 	if status != http.StatusServiceUnavailable || p.Code != httpserver.CodeNotReady || p.Detail != "database is not ready" {
@@ -183,9 +186,9 @@ func TestNotReadyWhenDatabaseIsUnavailable(t *testing.T) {
 // With database.auto_migrate off, serve still starts on a database behind
 // the migrations, and /readyz tells the orchestrator to wait.
 func TestServesNotReadyWithoutAutoMigrate(t *testing.T) {
-	base := startApp(t, testConfig(t, pgtest.NewEmptyDatabase(t), false), sampleMigrations)
+	base := startApp(t, testConfig(t, pgtest.NewEmptyDatabase(t), false), sampleMigrations())
 
-	resp, err := client.Get(base + "/readyz")
+	resp, err := client().Get(base + "/readyz")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -196,7 +199,7 @@ func TestServesNotReadyWithoutAutoMigrate(t *testing.T) {
 }
 
 func TestRunFailsWhenAutoMigrateFails(t *testing.T) {
-	a := buildApp(t, testConfig(t, unreachableDB, true), sampleMigrations)
+	a := buildApp(t, testConfig(t, unreachableDB, true), sampleMigrations())
 	// Bounded: should run succeed instead, it would serve until ctx is done.
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -234,7 +237,7 @@ func TestServeRefusesADatabaseThatFailsTheCheck(t *testing.T) {
 func TestNewAppLogsTheDatabaseTarget(t *testing.T) {
 	var logs bytes.Buffer
 	cfg := testConfig(t, "postgres://nobody:secret@127.0.0.1:1/nowhere?password=secret;more", false)
-	a, err := newApp(context.Background(), cfg, slog.New(slog.NewTextHandler(&logs, nil)), sampleMigrations)
+	a, err := newApp(context.Background(), cfg, slog.New(slog.NewTextHandler(&logs, nil)), sampleMigrations())
 	if err != nil {
 		t.Fatalf("newApp() error = %v", err)
 	}
@@ -253,7 +256,7 @@ func TestNewAppLogsTheDatabaseTarget(t *testing.T) {
 // handler that ignores its context may hold one.
 func TestCloseDoesNotWaitForAConnectionInUse(t *testing.T) {
 	var logs bytes.Buffer
-	a, err := newApp(context.Background(), testConfig(t, pgtest.NewDatabase(t), false), slog.New(slog.NewTextHandler(&logs, nil)), sampleMigrations)
+	a, err := newApp(context.Background(), testConfig(t, pgtest.NewDatabase(t), false), slog.New(slog.NewTextHandler(&logs, nil)), sampleMigrations())
 	if err != nil {
 		t.Fatalf("newApp() error = %v", err)
 	}

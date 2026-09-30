@@ -193,7 +193,7 @@ func TestPanicDiscardsHeadersSetBeforeIt(t *testing.T) {
 	}
 	req.Header.Set(HeaderRequestID, "req-3")
 
-	resp, err := client.Do(req)
+	resp, err := client().Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -226,7 +226,7 @@ func TestPanicAfterResponseStartedAbortsConnection(t *testing.T) {
 	}), slog.New(slog.DiscardHandler))
 
 	defer func() {
-		if v := recover(); v != http.ErrAbortHandler {
+		if v := recover(); v != http.ErrAbortHandler { //nolint:errorlint // net/http recognises only this exact value
 			t.Errorf("recovered %v, want http.ErrAbortHandler", v)
 		}
 	}()
@@ -241,7 +241,7 @@ func TestAbortHandlerPanicIsNotRecovered(t *testing.T) {
 	}), logger)
 
 	defer func() {
-		if v := recover(); v != http.ErrAbortHandler {
+		if v := recover(); v != http.ErrAbortHandler { //nolint:errorlint // net/http recognises only this exact value
 			t.Errorf("recovered %v, want http.ErrAbortHandler", v)
 		}
 		if findLog(logs(), "panic serving request") != nil {

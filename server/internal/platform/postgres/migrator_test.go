@@ -15,19 +15,21 @@ import (
 
 // sampleMigrations is a test-only migration set, independent of the
 // production schema (whose own up/down test is in server/migrations).
-var sampleMigrations = fstest.MapFS{
-	"00001_probe_create_widgets.sql": {Data: []byte(`-- +goose Up
+func sampleMigrations() fstest.MapFS {
+	return fstest.MapFS{
+		"00001_probe_create_widgets.sql": {Data: []byte(`-- +goose Up
 CREATE TABLE widgets (id bigint PRIMARY KEY);
 
 -- +goose Down
 DROP TABLE widgets;
 `)},
-	"00002_probe_add_color.sql": {Data: []byte(`-- +goose Up
+		"00002_probe_add_color.sql": {Data: []byte(`-- +goose Up
 ALTER TABLE widgets ADD COLUMN color text;
 
 -- +goose Down
 ALTER TABLE widgets DROP COLUMN color;
 `)},
+	}
 }
 
 func newPool(t *testing.T, url string) *pgxpool.Pool {
@@ -85,7 +87,7 @@ func applied(t *testing.T, m *postgres.Migrator) []bool {
 func TestMigratorUpStatusDown(t *testing.T) {
 	ctx := context.Background()
 	pool := newPool(t, pgtest.NewEmptyDatabase(t))
-	m := newMigrator(t, pool, sampleMigrations)
+	m := newMigrator(t, pool, sampleMigrations())
 
 	if got := applied(t, m); len(got) != 2 || got[0] || got[1] {
 		t.Fatalf("applied before Up = %v, want [false false]", got)
@@ -140,7 +142,7 @@ func TestMigratorUpStatusDown(t *testing.T) {
 func TestMigratorReportsFailingMigration(t *testing.T) {
 	pool := newPool(t, pgtest.NewEmptyDatabase(t))
 	m := newMigrator(t, pool, fstest.MapFS{
-		"00001_probe_create_widgets.sql": sampleMigrations["00001_probe_create_widgets.sql"],
+		"00001_probe_create_widgets.sql": sampleMigrations()["00001_probe_create_widgets.sql"],
 		"00002_probe_broken.sql":         {Data: []byte("-- +goose Up\nCREATE TABLE broken (;\n")},
 	})
 
@@ -179,7 +181,7 @@ func TestMigratorWithoutMigrationsIsNoOp(t *testing.T) {
 
 func TestCheckUpToDateFailsWhenDatabaseIsUnreachable(t *testing.T) {
 	pool := newPool(t, "postgres://nobody@127.0.0.1:1/nowhere")
-	m := newMigrator(t, pool, sampleMigrations)
+	m := newMigrator(t, pool, sampleMigrations())
 
 	err := m.CheckUpToDate(context.Background())
 	if err == nil || errors.Is(err, postgres.ErrPendingMigrations) {
