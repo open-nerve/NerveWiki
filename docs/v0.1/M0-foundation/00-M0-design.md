@@ -219,7 +219,7 @@ P1 的实验结论、P2 到 P5 的审查和实施留下的要求，开工时逐�
 | P3 | 服务端平台层 | 已完成 | [03-P3-server-platform.md](03-P3-server-platform.md) | [P3-server-platform-review.md](reviews/P3-server-platform-review.md) |
 | P4 | 接口契约与代码生成 | 已完成 | [04-P4-api-contract.md](04-P4-api-contract.md) | [P4-api-contract-review.md](reviews/P4-api-contract-review.md) |
 | P5 | 前端外壳与内嵌 | 已完成 | [05-P5-web-shell.md](05-P5-web-shell.md) | [P5-web-shell-review.md](reviews/P5-web-shell-review.md) |
-| P6 | 端到端测试与交付 | 未开始 | — | — |
+| P6 | 端到端测试与交付 | 进行中 | [06-P6-e2e-delivery.md](06-P6-e2e-delivery.md) | — |
 | — | M0 收尾审查 | 未开始 | — | — |
 
 ## 12. 变更记录
