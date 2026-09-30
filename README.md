@@ -133,13 +133,15 @@ make build     # 构建前端并内嵌进 bin/nervewiki
 - 文案在 `src/i18n/messages/`：`en.ts` 是源头，`zh-CN.ts` 缺键、多键时类型检查失败，占位符不一致时 vitest 失败。组件用 `useT()`。
 - 页面在 `src/app/routes.tsx` 中按需加载，写成 `const { Page } = await import(…)`，knip 才看得出用到了哪些导出。
 
-登录、会话与引导：
+登录、会话、引导与设置：
 
 - **会话**：`src/session/` 是唯一创建 API 客户端的地方（oxlint 检查）：公开客户端（登录、注册、实例信息）与带访问令牌的客户端。浏览器只在 localStorage 的 `nwiki.auth` 中存刷新令牌与本次登录的 `login_id`；访问令牌只在内存中，到期前 30 秒续期。同一浏览器的标签页经 Web Locks 一次一个续期，没有 `navigator.locks` 的非安全上下文（如局域网地址的 HTTP）退回 localStorage 租约；一个标签页登录、退出或换了账户，其他标签页跟着变。
 - **每次登录一代**：`SessionRoot` 按 `loginId` 新建一代 `RootStore`，SWR 缓存随之清空；上一代没有完成的请求以 `SessionChangedError` 结束，不写入新一代。设备偏好与实例信息跨代保留。
 - **路由与守卫**（`src/app/guards.tsx`）：除登录、注册外所有页面都要登录，不存在的路径也是先登录再显示 404。去向只由守卫决定：页面在登录、注册、退出之后不自己跳转。登录页的 `next` 只接受本站路径，否则去 `/`。
 - **新手引导**：步骤注册在 `src/onboarding/steps.ts`，服务端只记录完成的步骤 id。加一步就是写它的组件、追加到 `onboardingSteps`；已经完成前面步骤的用户下次访问只看到新的一步。
 - **请求的错误**：problem 码与字段码到文案的映射在 `src/app/problem-messages.ts`；vitest 读 `api/dist/openapi.yaml`，契约中各操作列出的码没有文案时失败。
+- **表单**：`src/app/form.ts` 的 `useForm` 是所有表单的发送：本地检查不通过就不发；服务端的字段错误在字段下方（个别 problem 码也可以指定字段，例如当前密码不对），其余在表单上方；发送中按钮禁用；失败之后焦点移到第一个有错误的字段。
+- **设置**（`src/pages/settings/`）：`/settings/profile`（显示名；主题与语言是这个浏览器的偏好，与顶栏的菜单是同一份，只存在设备上）、`/settings/security`（改密码、停用账户）、`/settings/tokens`（个人访问令牌）。新令牌只在创建对话框中显示一次，对话框关闭即卸载，列表从不持有令牌本身；停用成功之后本浏览器忘掉会话（服务端已经结束了它），所有标签页回到登录页。
 
 ## 端到端测试
 

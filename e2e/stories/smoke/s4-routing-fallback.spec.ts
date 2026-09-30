@@ -1,4 +1,4 @@
-import { completeOnboarding, emailFor, password, register } from "../../fixtures/auth";
+import { emailFor, password, registerOnboarded } from "../../fixtures/auth";
 import { signInWith } from "../../fixtures/auth-pages";
 import { expect, test } from "../../fixtures/test";
 
@@ -12,7 +12,7 @@ test("S4: a user opens a deep link that is no page, signs in, and gets the app's
   api,
 }, testInfo) => {
   const email = emailFor(testInfo);
-  await completeOnboarding(api, (await register(api, email)).access_token);
+  await registerOnboarded(api, email);
 
   const document = await page.goto(deepLink);
 

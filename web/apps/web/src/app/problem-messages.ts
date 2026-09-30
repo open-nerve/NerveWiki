@@ -20,6 +20,8 @@ export const problemMessages = {
   "identity.email_taken": "problem.identity.email_taken",
   "identity.invalid_credentials": "problem.identity.invalid_credentials",
   "identity.account_deactivated": "problem.identity.account_deactivated",
+  "identity.current_password_incorrect": "problem.identity.current_password_incorrect",
+  "identity.api_token_not_found": "problem.identity.api_token_not_found",
 } as const satisfies Record<string, MessageKey>;
 
 /** The message of each field code; `field.<field>.<code>` says it better for one field. */
@@ -84,16 +86,22 @@ function isFieldMessage(key: `field.${string}`): key is FieldMessage {
  * formErrors is what a form that shows the fields shown makes of error:
  * each field's problem under it, and the rest above the form. A 422 whose
  * problems are all on fields shown shows nothing above; a problem on a
- * field the form does not show goes above as the 422's text. No error
- * shows nothing.
+ * field the form does not show goes above as the 422's text. A problem
+ * code in onField shows under its field instead, such as a wrong current
+ * password under the current password. No error shows nothing.
  */
 export function formErrors(
   error: unknown,
   t: Translate,
-  shown: readonly string[]
+  shown: readonly string[],
+  onField: Readonly<Record<string, string>> = {}
 ): { banner: string | undefined; fields: Record<string, string> } {
   if (error === undefined) {
     return { banner: undefined, fields: {} };
+  }
+  const codeField = error instanceof ApiError && error.code !== undefined ? onField[error.code] : undefined;
+  if (codeField !== undefined) {
+    return { banner: undefined, fields: { [codeField]: errorText(error, t) ?? "" } };
   }
   const fields = fieldErrors(error, t);
   const onFields = Object.keys(fields);

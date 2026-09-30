@@ -1,5 +1,7 @@
 import type { Locator, Page } from "@playwright/test";
 
+import { answerTo } from "./browser";
+
 // The onboarding page as a user works it (M1/P5 design 3.7).
 
 /** The heading of the profile step, the first of onboarding. */
@@ -17,12 +19,7 @@ export function displayNameField(page: Page): Locator {
  * session ended, and the step will not be recorded.
  */
 export async function saveProfileStep(page: Page): Promise<number | "signed out"> {
-  const recorded = page
-    .waitForResponse(
-      (response) =>
-        response.request().method() === "POST" && new URL(response.url()).pathname === "/api/v0/me/onboarding-steps"
-    )
-    .then((response) => response.status());
+  const recorded = answerTo(page, "POST", "/api/v0/me/onboarding-steps").then((response) => response.status());
   const signedOut = page
     .getByRole("heading", { level: 1, name: "Sign in" })
     .waitFor()

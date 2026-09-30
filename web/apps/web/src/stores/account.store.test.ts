@@ -10,6 +10,12 @@ const user = (display_name: string, onboarding_steps: string[] = []): User => ({
   onboarding_steps,
 });
 
+/** The service's calls these tests do not make. */
+const notCalled = {
+  changePassword: () => Promise.reject(new Error("not called")),
+  deactivate: () => Promise.reject(new Error("not called")),
+};
+
 // The changes go out one at a time (M1/P5 design 3.3): the second is sent
 // only once the first is answered, and the account kept is the last one
 // answered.
@@ -22,6 +28,7 @@ test("sends the changes one at a time and keeps the last answer", async () => {
       answers.push(resolve);
     });
   const store = new AccountStore({
+    ...notCalled,
     getMe: () => answer("get"),
     updateMe: (changes) => answer(`update ${changes.display_name}`),
     recordStep: (step) => answer(`record ${step}`),
@@ -47,6 +54,7 @@ test("sends the changes one at a time and keeps the last answer", async () => {
 test("a read answered after a change keeps the change", async () => {
   let answerRead: ((u: User) => void) | undefined;
   const store = new AccountStore({
+    ...notCalled,
     getMe: () => new Promise<User>((resolve) => (answerRead = resolve)),
     updateMe: async () => user("Ada"),
     recordStep: async (step) => user("ada", [step]),

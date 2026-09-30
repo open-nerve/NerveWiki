@@ -11,17 +11,9 @@ import {
 } from "../components/ui/dropdown-menu";
 import { useT } from "../i18n/i18n";
 import { useStore } from "../stores/context";
-import type { ThemePreference } from "../stores/preferences.store";
+import { isThemePreference, themePreferences } from "../stores/preferences.store";
 
-const choices = [
-  { value: "system", label: "theme.system", icon: Monitor },
-  { value: "light", label: "theme.light", icon: Sun },
-  { value: "dark", label: "theme.dark", icon: Moon },
-] as const;
-
-function isThemePreference(value: string): value is ThemePreference {
-  return choices.some((choice) => choice.value === value);
-}
+const icons = { system: Monitor, light: Sun, dark: Moon } as const;
 
 export const ThemeMenu = observer(function ThemeMenu() {
   const { preferences } = useStore();
@@ -38,12 +30,15 @@ export const ThemeMenu = observer(function ThemeMenu() {
           value={preferences.theme}
           onValueChange={(value) => isThemePreference(value) && preferences.setTheme(value)}
         >
-          {choices.map(({ value, label, icon: Icon }) => (
-            <DropdownMenuRadioItem key={value} value={value}>
-              <Icon />
-              {t(label)}
-            </DropdownMenuRadioItem>
-          ))}
+          {themePreferences.map((value) => {
+            const Icon = icons[value];
+            return (
+              <DropdownMenuRadioItem key={value} value={value}>
+                <Icon />
+                {t(`theme.${value}`)}
+              </DropdownMenuRadioItem>
+            );
+          })}
         </DropdownMenuRadioGroup>
       </DropdownMenuContent>
     </DropdownMenu>

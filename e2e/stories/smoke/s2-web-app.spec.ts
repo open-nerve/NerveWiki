@@ -1,4 +1,4 @@
-import { completeOnboarding, emailFor, password, register } from "../../fixtures/auth";
+import { emailFor, password, registerOnboarded } from "../../fixtures/auth";
 import { signInWith } from "../../fixtures/auth-pages";
 import { expect, stampedVersion, test } from "../../fixtures/test";
 
@@ -18,7 +18,7 @@ test("S2: a user opens the home page, signs in, and sees what the instance runs"
   api,
 }, testInfo) => {
   const email = emailFor(testInfo);
-  await completeOnboarding(api, (await register(api, email)).access_token);
+  await registerOnboarded(api, email);
   const { data: instance } = await api.GET("/api/v0/instance");
 
   const requested: string[] = [];

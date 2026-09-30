@@ -30,6 +30,9 @@ export default defineConfig({
   },
   test: {
     environment: "jsdom",
+    // Dates are written in the browser's time zone: the tests' is fixed, so
+    // that they pass wherever they run.
+    env: { TZ: "UTC" },
     setupFiles: ["src/test/setup.ts"],
     restoreMocks: true,
     unstubGlobals: true,

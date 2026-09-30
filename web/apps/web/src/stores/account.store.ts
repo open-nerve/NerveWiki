@@ -14,7 +14,12 @@ export class AccountStore {
   /** How many changes have been answered: a read that overlaps one may have read the account before it. */
   private changesAnswered = 0;
 
-  constructor(private readonly service: Pick<AccountService, "getMe" | "updateMe" | "recordStep">) {
+  constructor(
+    private readonly service: Pick<
+      AccountService,
+      "getMe" | "updateMe" | "recordStep" | "changePassword" | "deactivate"
+    >
+  ) {
     makeAutoObservable<this, "service" | "changes" | "changesAnswered">(this, {
       service: false,
       changes: false,
@@ -42,6 +47,16 @@ export class AccountStore {
 
   recordStep(step: string): Promise<User> {
     return this.changes(async () => this.keepChange(await this.service.recordStep(step)));
+  }
+
+  /** changePassword changes nothing the store holds: the account's other sessions end on the server. */
+  changePassword(current: string, next: string): Promise<void> {
+    return this.service.changePassword(current, next);
+  }
+
+  /** deactivate deactivates the account; the session is over once it resolves (M1/P6 design 3.5). */
+  deactivate(): Promise<void> {
+    return this.service.deactivate();
   }
 
   private keepChange(me: User): User {

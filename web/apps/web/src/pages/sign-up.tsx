@@ -3,22 +3,17 @@ import { Link, useSearchParams } from "react-router";
 import useSWR from "swr";
 
 import { keepNext } from "../app/next-path";
+import { passwordLength } from "../app/password-length";
 import { Loading } from "../components/loading";
 import { useT } from "../i18n/i18n";
 import { useStore } from "../stores/context";
 import { CredentialsForm, type Credentials, type LocalProblems } from "./credentials-form";
 
-// The server's rules that can be checked here: the length of the password
-// in UTF-16 code units, as the server counts it. Whether it is too common
-// only the server knows.
-const MIN_PASSWORD = 8;
-const MAX_PASSWORD = 128;
-
 function check({ email, password }: Credentials): LocalProblems {
+  const length = passwordLength(password);
   return {
     ...(email.trim() === "" && { email: "field.required" }),
-    ...(password.length < MIN_PASSWORD && { password: "field.password.too_short" }),
-    ...(password.length > MAX_PASSWORD && { password: "field.password.too_long" }),
+    ...(length !== undefined && { password: `field.password.${length}` as const }),
   };
 }
 
