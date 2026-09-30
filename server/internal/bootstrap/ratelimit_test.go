@@ -48,3 +48,32 @@ func TestTheConfiguredBucketsLimitTheWholeApp(t *testing.T) {
 		}
 	}
 }
+
+// The module's buckets are sized by the configuration too: login_ip and
+// register_ip each refuse the client once empty.
+func TestTheConfiguredModuleBucketsLimitSignInAndSignUp(t *testing.T) {
+	contract := apitest.Load(t)
+	cfg := testConfig(t, pgtest.NewDatabase(t), true)
+	cfg.RateLimit.RegisterIP = config.BucketConfig{PerMinute: 1, Burst: 1}
+	cfg.RateLimit.LoginIP = config.BucketConfig{PerMinute: 1, Burst: 1}
+	base := startApp(t, cfg, migrations.FS())
+	registerAccount(t, contract, base, "alice@example.com")
+
+	steps := []struct {
+		name, path, body string
+		want             int
+	}{
+		{"register_ip, empty", "/api/v0/auth/register", `{"email":"bob@example.com","password":"Tr0ub4dor&3"}`, http.StatusTooManyRequests},
+		{"login_ip", "/api/v0/auth/login", `{"email":"alice@example.com","password":"Tr0ub4dor&3"}`, http.StatusOK},
+		{"login_ip, empty", "/api/v0/auth/login", `{"email":"alice@example.com","password":"Tr0ub4dor&3"}`, http.StatusTooManyRequests},
+	}
+	for _, s := range steps {
+		req := newRequest(t, http.MethodPost, base+s.path, "", []byte(s.body))
+		res, body := sendRequest(t, req)
+		contract.CheckResponse(t, req, res)
+
+		if res.StatusCode != s.want {
+			t.Errorf("%s: POST %s = %d %s, want %d", s.name, s.path, res.StatusCode, body, s.want)
+		}
+	}
+}

@@ -40,10 +40,15 @@ func (f *fakeTx) WithinTx(ctx context.Context, fn func(ctx context.Context) erro
 
 func inTx(ctx context.Context) bool { return ctx.Value(inTxKey{}) == true }
 
-// fakeHasher "hashes" by prefixing "hashed:". It counts its calls.
+// fakeHasher "hashes" by prefixing "hashed:"; a hash "old:<password>" has
+// other parameters, so it verifies and asks for a rehash. It counts its
+// calls and records the hashes it verified against.
 type fakeHasher struct {
-	calls int
-	err   error
+	calls     int // Hash calls
+	err       error
+	verified  []string // the hashes Verify was given
+	verifyErr error
+	onVerify  func() // runs inside every Verify: a transaction that commits meanwhile
 }
 
 func (h *fakeHasher) Hash(_ context.Context, password string) (string, error) {
@@ -55,7 +60,20 @@ func (h *fakeHasher) Hash(_ context.Context, password string) (string, error) {
 }
 
 func (h *fakeHasher) Verify(_ context.Context, password, hash string) (bool, bool, error) {
-	return hash == "hashed:"+password, false, nil
+	h.verified = append(h.verified, hash)
+	if h.onVerify != nil {
+		h.onVerify()
+	}
+	if h.verifyErr != nil {
+		return false, false, h.verifyErr
+	}
+	switch hash {
+	case "hashed:" + password:
+		return true, false, nil
+	case "old:" + password:
+		return true, true, nil
+	}
+	return false, false, nil
 }
 
 // fakeTokens issues "access:<sid>" and verifies what it issued at the instant

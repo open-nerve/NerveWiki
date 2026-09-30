@@ -78,6 +78,10 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrati
 		pool.Close()
 		return nil, err
 	}
+	// One limiter holds every bucket (M1/P2 design 3.2). It reads the
+	// monotonic clock, which a jump of the wall clock does not move.
+	limiter := ratelimit.New(time.Now)
+	limits := cfg.RateLimit
 	ident, err := identity.New(identity.Deps{
 		Pool:           pool,
 		Tx:             postgres.NewTxManager(pool, cfg.Database.CommitTimeout),
@@ -88,6 +92,12 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrati
 		AccessTokenTTL: cfg.Auth.AccessTokenTTL,
 		SessionTTL:     cfg.Auth.SessionTTL,
 		Password:       passwordHashing(cfg.Auth.Password),
+		RateLimits: identity.RateLimits{
+			Limiter:      limiter,
+			LoginIP:      bucket(limiter, "login_ip", limits.LoginIP),
+			LoginIPEmail: bucket(limiter, "login_ip_email", limits.LoginIPEmail),
+			RegisterIP:   bucket(limiter, "register_ip", limits.RegisterIP),
+		},
 	})
 	if err != nil {
 		_ = migrator.Close()
@@ -95,10 +105,6 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrati
 		return nil, err
 	}
 	inst := instance.New(instance.Deps{SignupEnabled: cfg.Auth.SignupEnabled})
-	// One limiter holds every bucket (M1/P2 design 3.2). It reads the
-	// monotonic clock, which a jump of the wall clock does not move.
-	limiter := ratelimit.New(time.Now)
-	limits := cfg.RateLimit
 	api, err := httpserver.NewAPI(httpserver.APIConfig{
 		Logger:           logger,
 		Authenticator:    ident.Authenticator(),

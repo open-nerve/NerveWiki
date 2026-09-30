@@ -23,6 +23,8 @@ tags:
 paths:
   /api/v0/auth/register:
     $ref: "modules/identity.yaml#/paths/~1api~1v0~1auth~1register"
+  /api/v0/auth/login:
+    $ref: "modules/identity.yaml#/paths/~1api~1v0~1auth~1login"
   /api/v0/me:
     $ref: "modules/identity.yaml#/paths/~1api~1v0~1me"
   /api/v0/instance:

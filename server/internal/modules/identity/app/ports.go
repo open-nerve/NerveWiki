@@ -49,6 +49,43 @@ type UserReader interface {
 	GetUser(ctx context.Context, id uuid.UUID) (domain.User, error)
 }
 
+// LoginAccount is what login reads of an account before its transaction:
+// the hash is the snapshot it verifies the password against (M1/P2 design
+// 3.4).
+type LoginAccount struct {
+	ID           uuid.UUID
+	PasswordHash string
+}
+
+// LoginAccountReader finds the account of an address.
+type LoginAccountReader interface {
+	// FindLoginAccount returns ErrNotFound when no account has email, a
+	// normalized address.
+	FindLoginAccount(ctx context.Context, email string) (LoginAccount, error)
+}
+
+// LockedAccount is an account's row under the account row lock.
+type LockedAccount struct {
+	PasswordHash string
+	Active       bool
+}
+
+// CredentialLocker takes the account row lock that every transaction
+// issuing or changing a credential takes first (M1 design 4): login here,
+// changing the password and creating a token from P3.
+type CredentialLocker interface {
+	// LockForCredentials locks account id's row until the transaction ends
+	// (SELECT … FOR NO KEY UPDATE) and returns it; ErrNotFound when there
+	// is none. Call it inside a transaction, before any statement on the
+	// account's sessions.
+	LockForCredentials(ctx context.Context, id uuid.UUID) (LockedAccount, error)
+}
+
+// PasswordHashWriter stores a new hash of an account's password.
+type PasswordHashWriter interface {
+	UpdatePasswordHash(ctx context.Context, id uuid.UUID, hash string, now time.Time) error
+}
+
 // NewSession is a sign-in to insert, at generation 0.
 type NewSession struct {
 	ID        uuid.UUID
@@ -79,11 +116,16 @@ type SessionReader interface {
 	SessionCredential(ctx context.Context, id uuid.UUID) (SessionCredential, error)
 }
 
-// PasswordHasher hashes and verifies passwords with argon2id. Both return a
+// PasswordHasher hashes passwords with argon2id. It returns a
 // *shared.Error of 503 server_busy when no slot frees up within the wait
 // limit (M1/P1 design 3.4).
 type PasswordHasher interface {
 	Hash(ctx context.Context, password string) (string, error)
+}
+
+// PasswordVerifier verifies passwords against their argon2id hashes, with
+// the same slots and the same 503 as PasswordHasher.
+type PasswordVerifier interface {
 	// Verify reports whether password matches hash, and whether hash has
 	// other parameters than the current ones: then login hashes the
 	// password again.

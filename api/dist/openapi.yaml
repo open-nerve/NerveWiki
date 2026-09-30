@@ -18,7 +18,7 @@ paths:
       tags:
         - identity
       summary: Create an account and sign in
-      description: 'Creates an account and signs it in: the response holds a new session''s tokens. While sign-up is off, a well-formed request answers identity.signup_disabled before the address or the password is looked at, so the answer never depends on whether the address is registered. The password needs 8–128 characters and must be neither a common password nor made of the address''s local part.'
+      description: 'Creates an account and signs it in: the response holds a new session''s tokens. While sign-up is off, a well-formed request answers identity.signup_disabled before the address or the password is looked at, so the answer never depends on whether the address is registered. The password needs 8–128 characters and must be neither a common password nor made of the address''s local part. Sign-ups have a rate limit of their own, per client IP.'
       security: []
       x-problem-codes:
         - identity.signup_disabled
@@ -34,6 +34,33 @@ paths:
       responses:
         '201':
           description: The account exists and is signed in.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthTokens'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v0/auth/login:
+    post:
+      operationId: login
+      tags:
+        - identity
+      summary: Sign in with an e-mail address and a password
+      description: 'Starts a new session and returns its tokens. An unknown address and a wrong password get the same identity.invalid_credentials; a deactivated account answers identity.account_deactivated only to the right password. Sign-ins have rate limits of their own: per client IP, and per client IP and address together.'
+      security: []
+      x-problem-codes:
+        - identity.invalid_credentials
+        - identity.account_deactivated
+        - server_busy
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: The new session's tokens.
           content:
             application/json:
               schema:
@@ -175,6 +202,18 @@ components:
           description: When the session ends; refreshing never extends it.
           type: string
           format: date-time
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - email
+        - password
+      properties:
+        email:
+          description: 'The sign-in address, in any case, with or without surrounding blanks. It is not checked for form: an address no account has answers identity.invalid_credentials.'
+          type: string
+        password:
+          type: string
     User:
       type: object
       additionalProperties: false

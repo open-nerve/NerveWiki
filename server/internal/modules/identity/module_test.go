@@ -44,16 +44,18 @@ func newServer(t *testing.T) (http.Handler, *pgxpool.Pool) {
 	}
 	t.Cleanup(pool.Close)
 	logger := slog.New(slog.DiscardHandler)
+	limiter := ratelimit.New(time.Now)
+	limit := limiter.Bucket("test", ratelimit.Rate{PerMinute: 600000, Burst: 100000})
 	m, err := identity.New(identity.Deps{
 		Pool: pool, Tx: postgres.NewTxManager(pool, 2*time.Second), Clock: fixedClock{}, Logger: logger,
 		SignupPolicy: openSignup{}, AccessTokenTTL: 15 * time.Minute, SessionTTL: 720 * time.Hour,
 		// The ephemeral key: the tests' tokens live as long as the module.
-		Password: identity.PasswordHashing{MemoryKiB: 64, Iterations: 1, Parallelism: 1, MaxConcurrent: 4, MaxWait: 2 * time.Second},
+		Password:   testPassword(),
+		RateLimits: identity.RateLimits{Limiter: limiter, LoginIP: limit, LoginIPEmail: limit, RegisterIP: limit},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	limit := ratelimit.New(time.Now).Bucket("test", ratelimit.Rate{PerMinute: 600000, Burst: 100000})
 	api, err := httpserver.NewAPI(httpserver.APIConfig{
 		Logger: logger, Authenticator: m.Authenticator(), PublicOperations: m.PublicOperations(),
 		MaxBodyBytes: 1 << 20, RequestTimeout: 5 * time.Second,
@@ -65,6 +67,11 @@ func newServer(t *testing.T) (http.Handler, *pgxpool.Pool) {
 	router := httpserver.NewRouter(logger)
 	m.Register(router, api)
 	return router, pool
+}
+
+// testPassword is the test profile's argon2id: cheap.
+func testPassword() identity.PasswordHashing {
+	return identity.PasswordHashing{MemoryKiB: 64, Iterations: 1, Parallelism: 1, MaxConcurrent: 4, MaxWait: 2 * time.Second}
 }
 
 type authTokens struct {

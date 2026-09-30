@@ -15,9 +15,29 @@ export interface paths {
         put?: never;
         /**
          * Create an account and sign in
-         * @description Creates an account and signs it in: the response holds a new session's tokens. While sign-up is off, a well-formed request answers identity.signup_disabled before the address or the password is looked at, so the answer never depends on whether the address is registered. The password needs 8–128 characters and must be neither a common password nor made of the address's local part.
+         * @description Creates an account and signs it in: the response holds a new session's tokens. While sign-up is off, a well-formed request answers identity.signup_disabled before the address or the password is looked at, so the answer never depends on whether the address is registered. The password needs 8–128 characters and must be neither a common password nor made of the address's local part. Sign-ups have a rate limit of their own, per client IP.
          */
         post: operations["register"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v0/auth/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sign in with an e-mail address and a password
+         * @description Starts a new session and returns its tokens. An unknown address and a wrong password get the same identity.invalid_credentials; a deactivated account answers identity.account_deactivated only to the right password. Sign-ins have rate limits of their own: per client IP, and per client IP and address together.
+         */
+        post: operations["login"];
         delete?: never;
         options?: never;
         head?: never;
@@ -112,6 +132,11 @@ export interface components {
              */
             refresh_token_expires_at: string;
         };
+        LoginRequest: {
+            /** @description The sign-in address, in any case, with or without surrounding blanks. It is not checked for form: an address no account has answers identity.invalid_credentials. */
+            email: string;
+            password: string;
+        };
         User: {
             /** Format: uuid */
             id: string;
@@ -167,6 +192,7 @@ export type RegisterRequest = components['schemas']['RegisterRequest'];
 export type FieldError = components['schemas']['FieldError'];
 export type Problem = components['schemas']['Problem'];
 export type AuthTokens = components['schemas']['AuthTokens'];
+export type LoginRequest = components['schemas']['LoginRequest'];
 export type User = components['schemas']['User'];
 export type InstanceInfo = components['schemas']['InstanceInfo'];
 export type ResponseProblem = components['responses']['Problem'];
@@ -187,6 +213,31 @@ export interface operations {
         responses: {
             /** @description The account exists and is signed in. */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthTokens"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    login: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LoginRequest"];
+            };
+        };
+        responses: {
+            /** @description The new session's tokens. */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };

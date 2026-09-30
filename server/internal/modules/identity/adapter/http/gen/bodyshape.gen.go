@@ -13,9 +13,13 @@ func BodyShapes() *bodyshape.Table {
 			/* 0 */ {Types: bodyshape.Object, Extra: bodyshape.Closed, Items: bodyshape.Open, Props: map[string]int{"email": 1, "password": 2}, Required: []string{"email", "password"}},
 			/* 1 */ {Types: bodyshape.String, Extra: bodyshape.Open, Items: bodyshape.Open},
 			/* 2 */ {Types: bodyshape.String, Extra: bodyshape.Open, Items: bodyshape.Open},
+			/* 3 */ {Types: bodyshape.Object, Extra: bodyshape.Closed, Items: bodyshape.Open, Props: map[string]int{"email": 4, "password": 5}, Required: []string{"email", "password"}},
+			/* 4 */ {Types: bodyshape.String, Extra: bodyshape.Open, Items: bodyshape.Open},
+			/* 5 */ {Types: bodyshape.String, Extra: bodyshape.Open, Items: bodyshape.Open},
 		},
 		Roots: map[string]int{
-			"POST /api/v0/auth/register": 0,
+			"POST /api/v0/auth/login":    0,
+			"POST /api/v0/auth/register": 3,
 		},
 	}
 }

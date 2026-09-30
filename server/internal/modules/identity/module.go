@@ -5,6 +5,8 @@
 package identity
 
 import (
+	"context"
+	"crypto/rand"
 	"fmt"
 	"log/slog"
 	"time"
@@ -19,6 +21,7 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/modules/identity/app"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/identity/domain"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/ratelimit"
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
@@ -36,6 +39,7 @@ type Deps struct {
 	AccessTokenTTL time.Duration
 	SessionTTL     time.Duration
 	Password       PasswordHashing
+	RateLimits     RateLimits
 }
 
 // PasswordHashing is auth.password: argon2id's parameters and the limits on
@@ -48,9 +52,19 @@ type PasswordHashing struct {
 	MaxWait       time.Duration
 }
 
+// RateLimits are the module's own buckets, on the limiter they belong to
+// (M1/P2 design 3.2).
+type RateLimits struct {
+	Limiter      httpadapter.RateLimiter
+	LoginIP      *ratelimit.Bucket
+	LoginIPEmail *ratelimit.Bucket
+	RegisterIP   *ratelimit.Bucket
+}
+
 // Module is the wired identity module.
 type Module struct {
 	uc            httpadapter.UseCases
+	settings      httpadapter.Settings
 	authenticator *authn.Authenticator
 }
 
@@ -61,27 +75,41 @@ func New(d Deps) (*Module, error) {
 	if err != nil {
 		return nil, err
 	}
+	hasher := argon2adapter.New(argon2adapter.Params(d.Password), d.Logger)
+	// Login verifies an unknown address against this, so that it takes as
+	// long as a known one (M1/P2 design 3.4).
+	dummy, err := hasher.Hash(context.Background(), rand.Text())
+	if err != nil {
+		return nil, fmt.Errorf("hash the dummy password: %w", err)
+	}
 	store := postgresadapter.New(d.Pool)
 	tokens := signing.NewAccessTokens(keys)
+	issuance := app.Issuance{
+		Tokens:     tokens,
+		MAC:        signing.NewRefreshTokenMAC(keys),
+		AccessTTL:  d.AccessTokenTTL,
+		SessionTTL: d.SessionTTL,
+	}
 	return &Module{
 		uc: httpadapter.UseCases{
 			Register: app.NewRegister(app.RegisterDeps{
-				Policy:   d.SignupPolicy,
-				Rules:    domain.NewPasswordRules(),
-				Hasher:   argon2adapter.New(argon2adapter.Params(d.Password), d.Logger),
-				Tx:       d.Tx,
-				Users:    store,
-				Sessions: store,
-				Issuance: app.Issuance{
-					Tokens:     tokens,
-					MAC:        signing.NewRefreshTokenMAC(keys),
-					AccessTTL:  d.AccessTokenTTL,
-					SessionTTL: d.SessionTTL,
-				},
-				Clock:  d.Clock,
-				Logger: d.Logger,
+				Policy: d.SignupPolicy, Rules: domain.NewPasswordRules(), Hasher: hasher, Tx: d.Tx,
+				Users: store, Sessions: store, Issuance: issuance, Clock: d.Clock, Logger: d.Logger,
+			}),
+			Login: app.NewLogin(app.LoginDeps{
+				Accounts: store, Locker: store, Passwords: store, Sessions: store, Verifier: hasher, Hasher: hasher, Tx: d.Tx,
+				Issuance: issuance, Clock: d.Clock, Logger: d.Logger, DummyHash: dummy,
 			}),
 			GetMe: app.NewGetMe(store),
+		},
+		settings: httpadapter.Settings{
+			Limits: httpadapter.Limits{
+				Limiter:      d.RateLimits.Limiter,
+				LoginIP:      d.RateLimits.LoginIP,
+				LoginIPEmail: d.RateLimits.LoginIPEmail,
+				RegisterIP:   d.RateLimits.RegisterIP,
+			},
+			Logger: d.Logger,
 		},
 		authenticator: authn.New(app.NewAuthenticate(app.AuthenticateDeps{
 			AccessTokens: tokens, Sessions: store, Clock: d.Clock,
@@ -114,5 +142,5 @@ func (m *Module) Authenticator() httpserver.Authenticator {
 
 // Register mounts the module's API on router behind api's middlewares.
 func (m *Module) Register(router *httpserver.Router, api *httpserver.API) {
-	httpadapter.Register(router, api, m.uc)
+	httpadapter.Register(router, api, m.uc, m.settings)
 }
