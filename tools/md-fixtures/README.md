@@ -34,9 +34,7 @@ obsidian/verify.mjs    与真实的 Obsidian 核对
   "description": "这个样例在验证什么",
   "source": "obsidian-verified",
   "frontmatter": null,
-  "links": [
-    { "kind": "wikilink", "target": "a", "anchor": null, "display": null, "key": null, "range": [3, 4] }
-  ],
+  "links": [{ "kind": "wikilink", "target": "a", "anchor": null, "display": null, "key": null, "range": [3, 4] }],
   "tags": ["tag"]
 }
 ```
@@ -72,6 +70,7 @@ obsidian/verify.mjs    与真实的 Obsidian 核对
    - 图片的说明文字。
 
    Markdown 链接的文字照常识别：里面的 wikilink 和标签都算。
+
 5. **数学公式**
    - 行内 `$…$`：开头的 `$` 后面不是空白；结尾的 `$` 前面不是空白，后面也不是数字。不满足条件的 `$` 不结束公式，继续向后找。可以跨行，但不跨段落。`\$` 是普通字符。
    - 行内 `$$…$$`：两侧允许有空白，可以跨行。
@@ -127,4 +126,5 @@ obsidian/verify.mjs    与真实的 Obsidian 核对
    ```
 
    `obsidian-verified` 样例必须一致。`nerve-defined` 样例只报告差异；如果 Obsidian 其实一致，把来源改成 `obsidian-verified`。
+
 4. 运行提取器的测试。结果与期望不一致时，先判断是样例写错了还是实现有问题。
