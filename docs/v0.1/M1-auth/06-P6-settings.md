@@ -3,7 +3,7 @@
 | 项 | 内容 |
 |---|---|
 | Phase | M1/P6 前端个人设置 |
-| 状态 | 进行中 |
+| 状态 | 已完成 |
 | 基线 | P5 合并之后的 main（`a991330`） |
 | 上级文档 | [M1 总设计](00-M1-design.md) 第 3、4、7 节；[P5 文档](05-P5-web-session.md) |
 
@@ -37,6 +37,11 @@ Nerve 的设置页（Plane 的分支）用 react-hook-form、headlessui、date-f
 web/apps/web/src/
   app/routes.tsx                            /settings 与三个子页，挂在 Onboarded 之下
   app/user-menu.tsx                         加"设置"
+  app/form.ts                               useForm：本地检查、发送中、错误与焦点（登录、注册、引导与设置的表单共用）
+  app/display-name-form.tsx                 显示名的表单（引导的一步与资料页共用）
+  app/confirm-dialog.tsx                    确认对话框：停用与撤销共用
+  app/password-length.ts                    新密码的长度检查（注册与改密码共用）
+  onboarding/profile-step.tsx               改用 DisplayNameForm
   pages/settings/
     settings-layout.tsx                     导航（NavLink）与内容；窄屏时导航在上方
     profile-page.tsx                        显示名的表单；偏好（主题、语言）
@@ -51,11 +56,15 @@ web/apps/web/src/
   stores/api-token.store.ts                 本次登录的令牌列表
   stores/root.store.ts                      一代另有 apiTokens（登录时）
   stores/auth.store.ts                      另有 endSession：服务端已经结束的会话，在本浏览器忘掉它
+  stores/context.tsx                        另有 useApiTokens
+  stores/preferences.store.ts               主题的选项（themePreferences）从顶栏的菜单移来
   app/problem-messages.ts                   formErrors 可以把 problem 码放到字段下方
   i18n/format.ts                            日期按界面语言格式化
-  components/ui/dialog.tsx、alert-dialog.tsx
+  components/ui/dialog.tsx、alert-dialog.tsx；button.tsx 加 destructive 变体
   i18n/messages/{en,zh-CN}.ts
-e2e/fixtures/settings-pages.ts；stories/identity/a7、a8、a10、a11（页面版本）
+web/apps/web/vite.config.ts                 测试的时区固定为 UTC
+e2e/fixtures/settings-pages.ts；auth.ts 的 registerOnboarded；browser.ts 的 answerTo、noteOf
+e2e/stories/identity/a7、a8、a10、a11（页面版本）
 ```
 
 ### 3.2 路由与布局
@@ -71,18 +80,18 @@ SignedIn
 ```
 
 - 设置页只有路由一个入口（Nerve 另有同样内容的对话框，两处呈现同一内容）：用户菜单的"设置"就是到 `/settings/profile` 的链接（radix 的 `DropdownMenuItem asChild` 包一个 `Link`）。
-- 三个子页各自按需加载，布局与导航随第一个子页进入同一个 chunk。
+- 布局与三个子页各自按需加载：布局是自己的 chunk，与子页并行取回。
 - 页面宽度与首页一致；宽屏时导航在左侧，窄屏时在上方横排。
 
 ### 3.3 资料与偏好
 
-- **显示名**：预填当前的，本地只查非空；保存调 `account.update({ display_name })`（经 `oneAtATime`，P5 审查 M1 的读写保护同样适用：保存之后 SWR 的重新读取不会让名字回弹）。422 显示在字段下方；成功在按钮旁显示"已保存"（`role=status`），顶栏的用户菜单随 `me` 更新。没改就不发请求，直接显示"已保存"。
+- **显示名**（`DisplayNameForm`，与引导的一步共用）：预填当前的，本地只查非空；保存调 `account.update({ display_name })`（经 `oneAtATime`，P5 审查 M1 的读写保护同样适用：保存之后 SWR 的重新读取不会让名字回弹）。422 显示在字段下方；成功在按钮旁显示"已保存"（`role=status`，状态区域一直挂载，只换文字，读屏才能可靠地读出），顶栏的用户菜单随 `me` 更新。没改就不发请求，直接显示"已保存"。
 - **邮箱**：只读显示，说明"邮箱由服务器管理员修改"（改邮箱是 `users set-email`，M1/P4）。
 - **偏好**：主题（跟随系统、浅色、深色）与语言（English、简体中文）用单选组，选中即调 `preferences.setTheme`、`setLocale`，与顶栏的菜单是同一个 store，互相同步；保存在设备上，刷新之后保持，不经服务端（M1 总设计第 2 节）。
 
 ### 3.4 安全：改密码
 
-- 字段：当前密码、新密码（都可切换明文；不要确认框，与注册一致）。本地检查：两者非空，新密码 8–128 个字符（UTF-16 长度，与注册共用常量）。常见密码与"由邮箱构成"只有服务端知道。
+- 字段：当前密码、新密码（都可切换明文；不要确认框，与注册一致）。本地检查：两者非空，新密码 8–128 个字符（UTF-16 长度，与注册共用 `passwordLength`）。常见密码与"由邮箱构成"只有服务端知道。表单带一个隐藏的只读用户名字段（邮箱，`autocomplete="username"`），密码管理器据此更新对应的条目。
 - **problem 码放到字段下方**：`formErrors(error, t, shown, onField?)` 增加可选的 `onField: { [code]: field }`。改密码传 `{ "identity.current_password_incorrect": "current_password" }`，创建令牌同样；字段下方显示它的文案，上方不再重复。其余照旧：422 的字段错误在字段下方，429（按账户的限流，带秒数）、503 在上方。
 - **成功**：清空两个字段，在表单下方显示"密码已修改。其他会话已退出；这个会话与访问令牌照常可用"（`role=status`）。页面不退出、不刷新：服务端保留当前会话（同一浏览器的其他标签页共用它，照常工作）；其他浏览器的会话在下一次续期时答 401，由它们的令牌管理器回到登录页。
 - 写请求经 `AccountStore.changePassword`，不改 `me`。
@@ -90,7 +99,7 @@ SignedIn
 ### 3.5 安全：停用
 
 - 区块说明后果：所有会话退出、访问令牌停止工作、只有服务器管理员能重新启用；按钮"停用账户"打开 `AlertDialog`。
-- **确认**：对话框重复后果，"取消"与"停用"（危险样式）。不要求密码，也不要求键入确认词（接口不要求密码，M1 总设计第 4 节；Nerve 同样只有确认）。发送中按钮禁用并显示"停用中"，双击只发一次。
+- **确认**：对话框重复后果，"取消"与"停用"（危险样式）。不要求密码，也不要求键入确认词（接口不要求密码，M1 总设计第 4 节；Nerve 同样只有确认）。发送中按钮禁用并显示"停用中"，双击只发一次，Esc 与点击外部不关闭对话框（`ConfirmDialog`，撤销共用）。
 - **成功**：`account.deactivate()` 答 204 之后 `auth.endSession()`：服务端已经结束了会话，本浏览器删除记录、状态变为 `signed-out`，所有标签页经 storage 事件跟上；守卫把页面带到 `/sign-in?next=/settings/security`。不调 `logout`（会话已经结束，多一个请求没有意义）。登录页不另显示"已停用"：对话框已经说明，此后登录答 403 时有文案。
 - **失败**：对话框保持打开，错误显示在对话框里（`Alert`），会话保留。M2 的否决者答出的码经文案表显示（契约核对覆盖 `deactivateMe`）。
 - `AuthStore.endSession()` 调令牌管理器已有的 `endSession(loginId)`（认证中间件在 401 时也用它）。
@@ -98,11 +107,11 @@ SignedIn
 ### 3.6 访问令牌
 
 - **列表**（`ApiTokenStore.load`，SWR 的键 `api-tokens`，缓存按代）：每行名称；"创建于 {日期}"；"{日期} 到期"、"已于 {日期} 过期"（`expires_at <= now`，另显示"已过期"标记）或"永不过期"；"最后使用 {日期时间}"或"从未使用"（服务端精确到分钟）。空列表显示说明与创建按钮。加载失败显示错误与"重试"（SWR 的 `mutate`）。
-- **日期**：`i18n/format.ts` 的 `formatDateTime(iso, locale)`、`formatDate`，用 `Intl.DateTimeFormat`（`dateStyle: "medium"`，时间 `timeStyle: "short"`），按界面语言与浏览器时区；不引入日期库。
+- **日期**：`i18n/format.ts` 的 `formatDateTime(iso, locale, timeZone?)`、`formatDate`，用 `Intl.DateTimeFormat`（`dateStyle: "medium"`，时间 `timeStyle: "short"`），按界面语言与浏览器时区（测试传入时区；vitest 的时区固定为 UTC，测试在任何时区都通过）；不引入日期库。
 - **创建**（`Dialog`）：名称（必填，本地只查非空）；有效期：原生 `<select>`，30 天、90 天（默认）、1 年、永不过期；当前密码。提交时按所选天数从现在算出 `expires_at`（`Date.now() + days * 86_400_000`，服务端只要求在将来）。`identity.current_password_incorrect` 显示在密码下方，名称与到期的 422 在各自字段下方。
-- **只显示一次**：201 之后对话框换成令牌视图：只读的输入框显示令牌（聚焦即全选），"复制"按钮（`navigator.clipboard` 存在时才显示：局域网 HTTP 这类非安全上下文没有它，用户自己选中复制），警告"现在复制它，关闭之后不会再显示"；只有"完成"关闭（Esc 与点击外部在这个视图不关闭）。令牌只在对话框组件的 state 里：store 把新令牌（不含秘密）加到列表开头，不保存秘密；对话框关闭即卸载，秘密随之消失。
+- **只显示一次**：201 之后对话框换成令牌视图：只读的输入框显示令牌（出现时得到焦点，聚焦即全选，Ctrl+C 立即可用），"复制"按钮（`navigator.clipboard` 存在时才显示：局域网 HTTP 这类非安全上下文没有它，用户自己复制；复制之后显示"已复制"），警告"请现在复制，关闭之后不会再显示"；只有"完成"关闭（Esc 与点击外部在这个视图不关闭）。令牌只在对话框组件的 state 里：store 把新令牌（不含秘密）加到列表开头，不保存秘密；对话框关闭即卸载，秘密随之消失。
 - **迟到的答复**：创建发出之后用户取消了对话框，答复到达时组件已经卸载，令牌不会显示在任何地方；列表照样得到这个令牌（不含秘密），用户可以撤销它。不需要 Nerve 的代数计数与延时清理：它们是因为 Nerve 的对话框关闭之后仍挂载着做淡出。
-- **撤销**：每行"撤销"（`aria-label` 带名称）打开 `AlertDialog`："使用它的程序将立即失去访问，不能撤回"。204 之后从列表删除；404 `identity.api_token_not_found`（别的标签页已撤销）同样从列表删除、关闭对话框：结果就是用户要的。其余错误显示在对话框里。
+- **撤销**：每行"撤销"（`aria-label` 带名称）打开 `AlertDialog`："使用它的程序将立即失去访问，不能撤回"。204 之后从列表删除；404 `identity.api_token_not_found`（别的标签页已撤销）同样从列表删除、关闭对话框：结果就是用户要的。其余错误显示在对话框里。撤销之后行与它的按钮都已不在，焦点移到区块的标题（`ConfirmDialog` 的 `focusAfter`）。
 - **store**：`ApiTokenStore { tokens; load(); create(); revoke() }`。写与读的交错按 `AccountStore` 的办法：读出去之后有写答复了，丢弃读的答复（否则刚创建的令牌会从列表消失）。创建与撤销之间不需要排队：各自改列表中不同的项。
 
 ### 3.7 前端的测试（vitest）
@@ -110,17 +119,17 @@ SignedIn
 | 测试 | 守住 |
 |---|---|
 | 设置的路由：未完成引导去 `/onboarding`；`/settings` 转到资料；导航的当前页 | 3.2 |
-| 资料：非空检查、422 在字段下方、已保存、用户菜单随之更新、没改不发请求；偏好与顶栏同步、写入设备 | 3.3 |
+| 资料：非空检查、422 在字段下方、已保存、用户菜单随之更新、没改不发请求；偏好与顶栏同步（写入设备由偏好 store 的测试守着） | 3.3 |
 | 改密码：本地检查、`current_password_incorrect` 在字段下方、429 的秒数、成功清空并提示 | 3.4 |
-| 停用：确认之后 `signed-out` 并到登录页、记录被删；失败时对话框保持、会话保留；双击只发一次 | 3.5 |
-| 令牌：列表的日期与状态、空状态；创建的本地检查与字段错误；令牌只在对话框里、完成之后不在页面上；迟到的答复不显示令牌；撤销与 404 | 3.6 |
+| 停用：确认之后 `signed-out` 并到登录页、记录被删；失败时对话框保持、会话保留；双击只发一次，发送中 Esc 不关闭 | 3.5 |
+| 令牌：列表的日期与状态、空状态、加载失败与重试；创建的本地检查与字段错误、各有效期；令牌只在对话框里、完成之后不在页面上，Esc 与点击外部不关闭，没有剪贴板时没有"复制"、令牌字段得到焦点并全选；迟到的答复不显示令牌；撤销与 404、撤销之后的焦点 | 3.6 |
 | `ApiTokenStore`：读不覆盖之后答复的写；创建加在开头、不存秘密 | 3.6 |
 | `formErrors` 的 `onField`；契约核对加上 `changePassword`、`deactivateMe`、`listApiTokens`、`createApiToken`、`revokeApiToken` | 3.4 |
 | `formatDateTime` 按语言 | 3.6 |
 
 ### 3.8 端到端
 
-**夹具** `settings-pages.ts`：`changePasswordWith(page, current, next)`（等接口的答复）、`createTokenWith(page, {name, expiry?, password})`、`holdAnswer(page, method, path)`（`page.route` 扣住答复，返回放行的函数）；`registerOnboarded(api, email)`（P5 的 `completeOnboarding` 之上）。
+**夹具** `settings-pages.ts`：`changePasswordWith(page, current, next)`（答复的状态码）、`createTokenWith(page, {name, expiry?, password})`、`holdAnswer(page, method, path)`（`page.route` 扣住每个匹配的答复，返回放行的函数）；`browser.ts` 的 `answerTo(page, method, path)`（下一个答复）、`noteOf(field)`（字段下方的提示或错误），登录与引导的夹具也用 `answerTo`；`auth.ts` 的 `registerOnboarded(api, email)`（P5 的 `completeOnboarding` 之上，改为私有）。
 
 **故事的页面版本**：
 
@@ -167,4 +176,20 @@ SignedIn
 
 ## 7. 结果
 
-（完成后补写）
+分支 `m1-p6-settings`：S1 `cfae1c4`、S2 `797ca2f`、S3 `bb58645`、S4 `e1aa1d9`，审查修复 `e4dbd42`。第 5 节全部通过，反向对照按预期失败；`make check`（vitest 406 个）、`make gen-check`、`make e2e`（47 个；S4 时全部故事另跑 `--repeat-each 3` 与 `--workers 1`，审查修复之后设置的四个故事与 A1、A9 另跑 `--repeat-each 4`）、`make image-smoke`（在克隆上，`modified=false`）本地与持续集成为绿。审查见 [P6 审查记录](reviews/P6-settings-review.md)：1 项 Important、3 项 Minor、10 项 Nit，全部已处理；审查者列出的"偏好写入设备没有单元测试"不另加（理由见审查记录）。规模（新增行数）：生产代码约 1,320 行，测试约 700 行，端到端约 400 行。生产代码比估计多，因为 `useForm`、`DisplayNameForm` 收拢了 P5 的表单；测试与端到端比估计少，因为表单的共同行为已由 P5 的测试守着，端到端复用了 P5 的夹具。
+
+与设计的出入（已同步进上文）：
+
+1. 导航的项随各自的 Step 加入（S1 只有资料），没有先放占位页。
+2. 表单：`useForm`（`app/form.ts`）让登录、注册、引导的一步与设置的表单共用本地检查、发送中、错误与焦点；`DisplayNameForm` 由引导的一步与资料页共用（引导的按钮全宽，审查 N3）；`passwordLength` 由注册与改密码共用；改密码表单带隐藏的用户名字段（N10）。
+3. `ConfirmDialog`（N2）：停用与撤销共用，发送中什么也不能关闭它；`focusAfter` 决定成功之后的焦点，撤销之后是区块的标题（M1）。它用 `errorText`，所以在 `app/`。
+4. store 与 UI：`useApiTokens` 在 `stores/context.tsx`；`Button` 加 `destructive` 变体；主题的选项从顶栏的菜单移到偏好的 store（N5）。
+5. 布局是自己的 lazy chunk，与子页并行取回（3.2 原来写与第一个子页同一个 chunk）。
+6. 日期：`formatDate`、`formatDateTime` 可以传时区；vitest 的时区固定为 UTC（I1）。
+7. 状态区域（"已保存"、"密码已修改"、"已复制"）一直挂载，只换文字（M2）；新令牌的字段出现时得到焦点（N1）；只显示一次的警告按设计的"关闭之后不会再显示"（N9）。
+8. 端到端：`registerOnboarded` 在 `fixtures/auth.ts`，P5 的 `completeOnboarding` 改为私有，A3、A6、S2、S4 也用它；`answerTo`、`noteOf` 在 `fixtures/browser.ts`（N8）；`changePasswordWith` 返回状态码。A11 核对命令行的输出 "1 API token is usable again"。
+9. 审查之后补的测试（M3）：令牌视图点外部不关闭；没有剪贴板时没有"复制"；发送中按 Esc 确认框保持；各有效期的到期时间；列表加载失败与重试；撤销之后的焦点；A8 核对顶栏的主题菜单。各有反向对照，都按预期失败。
+
+浏览器实测（S4，临时的 Playwright 脚本，没有提交）：服务监听局域网地址 `10.10.20.104`，页面经 HTTP 打开，`isSecureContext` 为 false、没有 `navigator.clipboard`。创建令牌之后没有"复制"按钮，令牌字段聚焦即全选（令牌不在页面上的检查由 A10 在本机地址上做）。审查之后令牌字段出现时就得到焦点，由单元测试守着。
+
+留给之后的：M2 注册停用的否决者之后，它答出的码经文案表显示在停用对话框里（契约核对要求它们列在 `deactivateMe` 的 `x-problem-codes` 中），由 M1 收尾写进移交。

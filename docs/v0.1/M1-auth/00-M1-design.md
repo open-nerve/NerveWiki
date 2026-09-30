@@ -202,7 +202,7 @@ M1 结束时：
 | P3 | 账户、PAT 与停用 | 已完成 | [03-P3-accounts-tokens.md](03-P3-accounts-tokens.md) | [P3 审查](reviews/P3-accounts-tokens-review.md) |
 | P4 | 管理命令与后台任务 | 已完成 | [04-P4-admin-jobs.md](04-P4-admin-jobs.md) | [P4 审查](reviews/P4-admin-jobs-review.md) |
 | P5 | 前端会话、登录与引导 | 已完成 | [05-P5-web-session.md](05-P5-web-session.md) | [P5 审查](reviews/P5-web-session-review.md) |
-| P6 | 前端个人设置 | 进行中 | [06-P6-settings.md](06-P6-settings.md) | — |
+| P6 | 前端个人设置 | 已完成 | [06-P6-settings.md](06-P6-settings.md) | [P6 审查](reviews/P6-settings-review.md) |
 | — | M1 收尾审查 | 未开始 | — | — |
 
 ## 12. 变更记录
