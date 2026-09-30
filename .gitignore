@@ -21,5 +21,8 @@ web/apps/web/dist/
 server/internal/platform/webui/dist/*
 !server/internal/platform/webui/dist/.gitkeep
 coverage/
+# 端到端测试的报告、trace、截图与服务日志
+e2e/playwright-report/
+e2e/test-results/
 *.test
 *.out

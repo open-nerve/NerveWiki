@@ -4,6 +4,10 @@ packages:
   - web/packages/*
   - e2e
 
+# 两个以上的包共用的依赖版本，包里写 "catalog:"
+catalog:
+  typescript: 7.0.2
+
 # 供应链：
 # - minimumReleaseAge：新发布的版本满 1 天才会被解析。显式写出时 minimumReleaseAgeStrict 随之默认为 true，
 #   太新的版本直接报错，而不是被悄悄放过；需要例外时写进 minimumReleaseAgeExclude 并注明理由。
@@ -12,3 +16,10 @@ packages:
 minimumReleaseAge: 1440
 strictDepBuilds: true
 trustPolicy: no-downgrade
+
+# 依赖的安装脚本一律不运行，这里逐个列出并注明理由。以下三项是端到端测试的 testcontainers 经 dockerode 间接依赖的包：
+# 它们的安装脚本编译通过 SSH 连接 Docker 时用的可选扩展（cpu-features、ssh2），或只检查版本号（protobufjs），都用不到
+allowBuilds:
+  cpu-features: false
+  protobufjs: false
+  ssh2: false

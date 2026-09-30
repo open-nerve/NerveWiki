@@ -1,0 +1,200 @@
+import { execFile, spawn, type ChildProcess } from "node:child_process";
+import { once } from "node:events";
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, rmSync } from "node:fs";
+import path from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
+import { promisify } from "node:util";
+
+/** The binary under test: make build compiles it with the web frontend embedded. */
+const binary = path.resolve(import.meta.dirname, "../../bin/nervewiki");
+
+/** nervewiki connects with this application_name, so its sessions show in pg_stat_activity. */
+export const applicationName = "nervewiki";
+
+const startTimeoutMs = 30_000;
+const stopTimeoutMs = 30_000;
+const commandTimeoutMs = 60_000;
+const pollIntervalMs = 100;
+
+/**
+ * The worker-fixture timeout for nervewiki in test.ts: Playwright's default
+ * (30 s, shared by setup and teardown) leaves no room for startTimeoutMs and
+ * stopTimeoutMs together, so the fixture's own timeouts — and the "(log: …)"
+ * errors they produce — could never fire first.
+ */
+export const nervewikiFixtureTimeoutMs = startTimeoutMs + stopTimeoutMs + 10_000;
+
+/** A nervewiki serve process of this run. */
+export interface Nervewiki {
+  readonly baseURL: string;
+  /** Sends SIGTERM and waits for nervewiki to exit with code 0. */
+  stop(): Promise<void>;
+}
+
+export interface StartOptions {
+  /** Variables added to the test configuration, e.g. NWIKI_DATABASE__AUTO_MIGRATE=false. */
+  env?: Record<string, string>;
+  /**
+   * What the start waits for: "ready", /readyz answering 200 (the default);
+   * "live", /healthz answering 200, for a nervewiki that is meant not to be ready.
+   */
+  until?: "ready" | "live";
+}
+
+/** Fails with what to do when bin/nervewiki has not been built: global setup calls it first. */
+export function requireBinary(): void {
+  if (!existsSync(binary)) {
+    throw new Error(`${binary} does not exist: run the stories with make e2e, which runs make build first`);
+  }
+}
+
+/**
+ * Runs a nervewiki command, such as migrate up, with the test configuration
+ * on the database at databaseUrl. It rejects when the command exits non-zero,
+ * with the exit code as the error's code and its stdout and stderr, and kills
+ * it after commandTimeoutMs: global setup runs it before any Playwright
+ * timeout applies.
+ */
+export async function runNervewiki(args: string[], databaseUrl: string): Promise<{ stdout: string; stderr: string }> {
+  return promisify(execFile)(binary, args, {
+    env: nervewikiEnv(databaseUrl),
+    timeout: commandTimeoutMs,
+    killSignal: "SIGKILL",
+  });
+}
+
+/**
+ * Starts nervewiki serve with the test configuration on the database at
+ * databaseUrl and waits until it is ready (or live, see StartOptions).
+ * nervewiki listens on a port the system picks and writes its address to
+ * server.addr_file, next to logFile, which gets its output.
+ */
+export async function startNervewiki(
+  databaseUrl: string,
+  logFile: string,
+  { env = {}, until = "ready" }: StartOptions = {}
+): Promise<Nervewiki> {
+  mkdirSync(path.dirname(logFile), { recursive: true });
+  const addrFile = logFile.replace(/\.log$/, "") + ".addr";
+  rmSync(addrFile, { force: true });
+  const log = openSync(logFile, "w");
+  const child = spawn(binary, ["serve"], {
+    env: {
+      ...nervewikiEnv(databaseUrl),
+      NWIKI_SERVER__ADDR: "127.0.0.1:0",
+      NWIKI_SERVER__ADDR_FILE: addrFile,
+      ...env,
+    },
+    stdio: ["ignore", log, log],
+  });
+  closeSync(log); // the child has its own copy
+  // A spawn failure (ENOENT/EACCES) emits "error" instead of "exit"; capture it
+  // so waitFor can surface it through the same log-path error below.
+  let spawnError: Error | undefined;
+  child.once("error", (err) => {
+    spawnError = err;
+  });
+  const probe = until === "ready" ? "/readyz" : "/healthz";
+  try {
+    const baseURL = await waitFor(probe, child, addrFile, Date.now() + startTimeoutMs, () => spawnError);
+    return { baseURL, stop: () => stop(child, logFile) };
+  } catch (err) {
+    await kill(child);
+    throw new Error(`nervewiki did not answer ${probe} with 200 (log: ${logFile})`, { cause: err });
+  }
+}
+
+/**
+ * The test configuration on the given database, logging at info: the log goes
+ * to a file, and a failed test's log shows its requests. The caller's own
+ * NWIKI_* variables are left out.
+ */
+function nervewikiEnv(databaseUrl: string): NodeJS.ProcessEnv {
+  const url = new URL(databaseUrl);
+  url.searchParams.set("application_name", applicationName);
+  const inherited = Object.entries(process.env).filter(([name]) => !name.startsWith("NWIKI_"));
+  return {
+    ...Object.fromEntries(inherited),
+    NWIKI_ENV: "test",
+    NWIKI_LOG__LEVEL: "info",
+    NWIKI_DATABASE__URL: url.toString(),
+  };
+}
+
+/** The address nervewiki wrote to addrFile; undefined until it has. nervewiki renames the file into place, so it is never partial. */
+function readAddr(addrFile: string): string | undefined {
+  try {
+    return readFileSync(addrFile, "utf8");
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+      return undefined;
+    }
+    throw err;
+  }
+}
+
+/**
+ * Waits until nervewiki has written its address and probe there answers 200,
+ * and returns the base URL; fails when nervewiki exits, fails to spawn, or
+ * the deadline passes. Each request may only use the time left, so a server
+ * that accepts the connection but never answers cannot hold the wait past
+ * the deadline.
+ */
+async function waitFor(
+  probe: string,
+  child: ChildProcess,
+  addrFile: string,
+  deadline: number,
+  spawnError: () => Error | undefined
+): Promise<string> {
+  const failure = spawnError();
+  if (failure) {
+    throw failure;
+  }
+  if (child.exitCode !== null) {
+    throw new Error(`nervewiki exited with code ${child.exitCode}`);
+  }
+  const timeLeft = deadline - Date.now();
+  if (timeLeft <= 0) {
+    throw new Error(`no 200 from ${probe} within ${startTimeoutMs} ms`);
+  }
+  const addr = readAddr(addrFile);
+  if (addr !== undefined) {
+    const baseURL = `http://${addr}`;
+    const ok = await fetch(`${baseURL}${probe}`, { signal: AbortSignal.timeout(timeLeft) }).then(
+      (res) => res.ok,
+      () => false // no answer before the deadline
+    );
+    if (ok) {
+      return baseURL;
+    }
+  }
+  await sleep(pollIntervalMs);
+  return waitFor(probe, child, addrFile, deadline, spawnError);
+}
+
+/** Kills a nervewiki that never started and waits until it is gone. */
+async function kill(child: ChildProcess): Promise<void> {
+  // No pid: the spawn failed, so there is no process and no "exit" to wait for.
+  if (child.pid === undefined || child.exitCode !== null || child.signalCode !== null) {
+    return;
+  }
+  const exited = once(child, "exit");
+  child.kill("SIGKILL");
+  await exited;
+}
+
+async function stop(child: ChildProcess, logFile: string): Promise<void> {
+  if (child.exitCode === null && child.signalCode === null) {
+    const exited = once(child, "exit");
+    child.kill("SIGTERM");
+    const timer = setTimeout(() => child.kill("SIGKILL"), stopTimeoutMs);
+    await exited;
+    clearTimeout(timer);
+  }
+  if (child.exitCode !== 0) {
+    throw new Error(
+      `nervewiki did not exit cleanly: code ${child.exitCode}, signal ${child.signalCode} (log: ${logFile})`
+    );
+  }
+}

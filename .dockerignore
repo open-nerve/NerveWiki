@@ -1,0 +1,32 @@
+# 镜像的构建上下文（deploy/Dockerfile）。排除的正好是 .gitignore 忽略的：构建阶段里 git 看到的工作区与本地
+# 相同，二进制的提交信息（vcs.modified）才如实，image-smoke.sh 核对这一点；本地的依赖、产物、机密也不进上下文。
+# 改 .gitignore 时同步这里。.dockerignore 的模式从上下文的根目录算起，任意层级的要写成 **/。
+# .git 不排除：Go 工具链从中取提交信息。
+
+# 系统与编辑器
+**/.DS_Store
+**/.idea/
+**/.vscode/
+
+# 本地环境变量
+**/.env
+**/.env.*
+
+# 个人本地配置覆盖
+**/config.local.yaml
+
+# 工具产物
+.claude/worktrees/
+.playwright-mcp/
+
+# 构建与依赖产物。webui/dist 里只提交 .gitkeep
+bin/
+**/node_modules/
+web/apps/web/dist/
+server/internal/platform/webui/dist/*
+!server/internal/platform/webui/dist/.gitkeep
+**/coverage/
+**/*.test
+**/*.out
+e2e/playwright-report/
+e2e/test-results/
