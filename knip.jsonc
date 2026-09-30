@@ -1,0 +1,10 @@
+// knip：找出未使用的文件、导出和依赖，是门禁（make knip）。构建产物都在 .gitignore 中，knip 读取 .gitignore，不需要另外忽略。
+{
+  "$schema": "https://unpkg.com/knip@6/schema-jsonc.json",
+  "workspaces": {
+    ".": {
+      // 样例集自检由 make lint-web 调用，与 Obsidian 的核对由人手动运行，package.json 的脚本中都看不到
+      "entry": ["tools/md-fixtures/check.mjs", "tools/md-fixtures/obsidian/verify.mjs"],
+    },
+  },
+}

@@ -1,0 +1,29 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+[*.go]
+indent_style = tab
+indent_size = 4
+
+[Makefile]
+indent_style = tab
+
+[*.md]
+trim_trailing_whitespace = false
+
+[{go.mod,go.sum,go.work}]
+indent_style = tab
+
+# Markdown 样例集的输入是逐字节的规范（CRLF、BOM、行尾空白、缺少末尾换行都是有意的），编辑器不能改动
+[tools/md-fixtures/{cases,rename}/**]
+charset = unset
+end_of_line = unset
+insert_final_newline = unset
+trim_trailing_whitespace = unset

@@ -1,0 +1,37 @@
+version: "2"
+
+linters:
+  # standard = errcheck、govet、ineffassign、staticcheck、unused
+  default: standard
+  enable:
+    - depguard
+    # 禁止 init()，对应总体设计 8.1
+    - gochecknoinits
+  settings:
+    depguard:
+      rules:
+        # 整个项目都禁止使用的库。模块边界和分层方向由架构测试检查（P3 起）。
+        banned:
+          deny:
+            - pkg: github.com/google/uuid
+              desc: 用标准库 uuid
+            - pkg: github.com/gofrs/uuid
+              desc: 用标准库 uuid
+            - pkg: github.com/satori/go.uuid
+              desc: 用标准库 uuid
+            - pkg: github.com/spf13/viper
+              desc: 用 koanf（platform/config）
+            - pkg: github.com/pkg/errors
+              desc: 用标准库 errors
+            # 末尾的 $ 表示精确匹配：只禁止 log，不影响 log/slog
+            - pkg: log$
+              desc: 用 log/slog
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/open-nerve/NerveWiki

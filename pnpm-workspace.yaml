@@ -1,0 +1,10 @@
+# pnpm 工作区的根。前端的应用与包（P5）、端到端测试（P6）出现后，依赖的共享版本写进 catalog。
+packages:
+  - web/apps/*
+  - web/packages/*
+  - e2e
+
+# 供应链：新发布的版本满 1 天才会被解析；依赖的安装脚本默认不运行，需要的在 allowBuilds 中逐个放行。
+# 两项都是 pnpm 11 起的默认值，写出来是为了让策略显式可见，默认值变化时也不会悄悄失效。
+minimumReleaseAge: 1440
+strictDepBuilds: true
