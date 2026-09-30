@@ -1,25 +1,31 @@
 import { render } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router";
 
+import { AppProviders } from "../app/providers";
 import { routes } from "../app/routes";
-import { StoreProvider } from "../stores/context";
-import { PreferencesStore } from "../stores/preferences.store";
 import { RootStore } from "../stores/root.store";
-import { darkScheme, memoryStorage } from "./fakes";
+import { fakeApi, instanceJSON, json, preferences } from "./fakes";
 
-/** renderApp renders the app's routes at path, over stores made of fakes. */
+/**
+ * renderApp renders the app's routes at path, over a RootStore whose API
+ * answers GET /api/v0/instance with instanceJSON unless the test passes
+ * another store.
+ */
 export function renderApp(
   path: string,
-  store = new RootStore(new PreferencesStore(memoryStorage(), darkScheme(false)))
+  store = new RootStore(
+    preferences(),
+    fakeApi(() => json(instanceJSON))
+  )
 ) {
   const router = createMemoryRouter(routes, { initialEntries: [path] });
   return {
     store,
     router,
     ...render(
-      <StoreProvider store={store}>
+      <AppProviders store={store}>
         <RouterProvider router={router} />
-      </StoreProvider>
+      </AppProviders>
     ),
   };
 }

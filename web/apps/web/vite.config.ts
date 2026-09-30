@@ -15,8 +15,20 @@ export default defineConfig({
     strictPort: true,
     proxy: { "/api": backend, "/healthz": backend, "/readyz": backend },
   },
+  build: {
+    rolldownOptions: {
+      output: {
+        // React and the router change less often than the app: their own chunk
+        // stays cached across releases that change only the app.
+        advancedChunks: {
+          groups: [{ name: "react", test: /node_modules[\\/](react|react-dom|react-router|scheduler)[\\/]/ }],
+        },
+      },
+    },
+  },
   test: {
     environment: "jsdom",
+    setupFiles: ["src/test/setup.ts"],
     restoreMocks: true,
     unstubGlobals: true,
   },

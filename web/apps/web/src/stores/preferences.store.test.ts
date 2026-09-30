@@ -1,33 +1,40 @@
 import { describe, expect, test } from "vitest";
 
 import { darkScheme, memoryStorage } from "../test/fakes";
-import { PreferencesStore, themeKey } from "./preferences.store";
+import { PreferencesStore, themeKey, type PreferenceSources } from "./preferences.store";
+
+function store(sources: Partial<PreferenceSources> = {}) {
+  return new PreferencesStore({
+    storage: memoryStorage(),
+    darkScheme: darkScheme(false),
+    languages: ["en-US"],
+    ...sources,
+  });
+}
 
 describe("PreferencesStore theme", () => {
   test("follows the system until a theme is chosen", () => {
     const system = darkScheme(true);
-    const store = new PreferencesStore(memoryStorage(), system);
+    const prefs = store({ darkScheme: system });
 
-    expect([store.theme, store.resolvedTheme]).toEqual(["system", "dark"]);
+    expect([prefs.theme, prefs.resolvedTheme]).toEqual(["system", "dark"]);
     system.change(false);
-    expect(store.resolvedTheme).toBe("light");
+    expect(prefs.resolvedTheme).toBe("light");
   });
 
   test("keeps the chosen theme, and stores it for the next visit", () => {
     const storage = memoryStorage();
-    const store = new PreferencesStore(storage, darkScheme(true));
+    const prefs = store({ storage, darkScheme: darkScheme(true) });
 
-    store.setTheme("light");
+    prefs.setTheme("light");
 
-    expect(store.resolvedTheme).toBe("light");
+    expect(prefs.resolvedTheme).toBe("light");
     expect(storage.values[themeKey]).toBe("light");
-    expect(new PreferencesStore(storage, darkScheme(true)).theme).toBe("light");
+    expect(store({ storage }).theme).toBe("light");
   });
 
   test("ignores a stored value that is not a theme", () => {
-    const store = new PreferencesStore(memoryStorage({ [themeKey]: "sepia" }), darkScheme(false));
-
-    expect(store.theme).toBe("system");
+    expect(store({ storage: memoryStorage({ [themeKey]: "sepia" }) }).theme).toBe("system");
   });
 
   test("works for this page when storage throws", () => {
@@ -39,10 +46,32 @@ describe("PreferencesStore theme", () => {
         throw new DOMException("blocked", "SecurityError");
       },
     };
-    const store = new PreferencesStore(blocked, darkScheme(false));
+    const prefs = store({ storage: blocked });
 
-    store.setTheme("dark");
+    prefs.setTheme("dark");
+    prefs.setLocale("zh-CN");
 
-    expect([store.theme, store.resolvedTheme]).toEqual(["dark", "dark"]);
+    expect([prefs.resolvedTheme, prefs.locale]).toEqual(["dark", "zh-CN"]);
+  });
+});
+
+describe("PreferencesStore locale", () => {
+  test.each([
+    [["zh-TW", "en"], "zh-CN"],
+    [["fr-FR", "en-GB", "zh-CN"], "en"],
+    [["de", "ZH"], "zh-CN"],
+    [["fr"], "en"],
+    [[], "en"],
+  ])("follows the browser's languages %j: %s", (languages, want) => {
+    expect(store({ languages }).locale).toBe(want);
+  });
+
+  test("keeps the chosen language, and stores it for the next visit", () => {
+    const storage = memoryStorage();
+    const prefs = store({ storage, languages: ["en"] });
+
+    prefs.setLocale("zh-CN");
+
+    expect(store({ storage, languages: ["en"] }).locale).toBe("zh-CN");
   });
 });

@@ -88,6 +88,23 @@ make run      # 以 dev 配置启动 nervewiki serve，监听 127.0.0.1:8080；C
 3. 在 `adapter/http` 中实现生成的 `StrictServerInterface`，由模块的 `Register` 挂到路由器上，在 `bootstrap` 中调用。
 4. `adapter/http` 的测试以 `apitest.Main(m, "<模块>")` 为 `TestMain`：操作声明的每个错误码都要有测试答过。
 
+## 前端
+
+`web/apps/web` 是 React 应用（Vite、React Router 的数据路由、TypeScript、Tailwind CSS、shadcn/ui 的组件写法、MobX、SWR），构建后内嵌进 `nervewiki`，与接口同源。
+
+```bash
+make dev       # 开发数据库 + 后端 + 前端热更新：打开 http://127.0.0.1:5173
+make web-dev   # 只起前端开发服务器；/api、/healthz、/readyz 代理到 127.0.0.1:8080 上 make run 起的后端
+make build     # 构建前端并内嵌进 bin/nervewiki
+```
+
+写法：
+
+- 组件经由 store 取数据，store 经由 service 调接口，service 从构造函数拿 API 客户端。`RootStore`（`src/stores/root.store.ts`）是唯一装配它们的地方。组件不导入 `@nervewiki/api-client`，oxlint 检查这一点，接口类型从 service 导出。
+- 加载由 SWR 驱动：页面 `useSWR(key, () => store.x.fetch())`，store 保存结果。示例见 `src/pages/home.tsx`。
+- 文案在 `src/i18n/messages/`：`en.ts` 是源头，`zh-CN.ts` 缺键、多键时类型检查失败，占位符不一致时 vitest 失败。组件用 `useT()`。
+- 页面在 `src/app/routes.tsx` 中按需加载，写成 `const { Page } = await import(…)`，knip 才看得出用到了哪些导出。
+
 ## Markdown 样例集
 
 `tools/md-fixtures/` 定义了 Markdown 的提取与改写规则，是服务端实现的验收标准。样例的输入逐字节有意义（CRLF、BOM、行尾空白），`.gitattributes` 与 `.editorconfig` 已经禁止工具改动它们。修改规则前先读它的 [README](tools/md-fixtures/README.md)。

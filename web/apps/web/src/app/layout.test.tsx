@@ -1,12 +1,8 @@
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, expect, test } from "vitest";
+import { expect, test } from "vitest";
 
 import { renderApp } from "../test/render";
-
-afterEach(() => {
-  document.documentElement.className = "";
-});
 
 test("choosing a theme in the top bar applies it to the page", async () => {
   const user = userEvent.setup();

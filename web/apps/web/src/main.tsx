@@ -1,11 +1,12 @@
 import "./styles.css";
 
+import { createClient } from "@nervewiki/api-client";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { createBrowserRouter, RouterProvider } from "react-router";
 
+import { AppProviders } from "./app/providers";
 import { routes } from "./app/routes";
-import { StoreProvider } from "./stores/context";
 import { PreferencesStore, type PreferenceStorage } from "./stores/preferences.store";
 import { RootStore } from "./stores/root.store";
 
@@ -13,12 +14,18 @@ const root = document.getElementById("root");
 if (!root) {
   throw new Error("index.html has no #root element");
 }
-const preferences = new PreferencesStore(browserStorage(), window.matchMedia("(prefers-color-scheme: dark)"));
+const preferences = new PreferencesStore({
+  storage: browserStorage(),
+  darkScheme: window.matchMedia("(prefers-color-scheme: dark)"),
+  languages: navigator.languages,
+});
+// The API is on the page's own origin.
+const store = new RootStore(preferences, createClient());
 createRoot(root).render(
   <StrictMode>
-    <StoreProvider store={new RootStore(preferences)}>
+    <AppProviders store={store}>
       <RouterProvider router={createBrowserRouter(routes)} />
-    </StoreProvider>
+    </AppProviders>
   </StrictMode>
 );
 
