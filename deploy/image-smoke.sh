@@ -3,7 +3,7 @@
 # PostgreSQL，用镜像执行 migrate up、启动 serve，核对探针、内嵌的前端、实例信息、提交信息与进程的用户，
 # 最后停止服务并核对它正常退出。无论成败都清理容器与网络；失败时打印服务的日志。
 # 镜像要由当前工作区构建：提交信息与本地的 git 核对（make image-smoke 先执行 make image）。
-# 需要 Docker、curl、jq。
+# 需要 Docker、curl、jq、openssl。
 set -euo pipefail
 
 usage="用法：deploy/image-smoke.sh <镜像> <期望的版本号>"
@@ -24,6 +24,9 @@ app=$name-app
 # 本机临时的账号密码，不是机密
 database_url="postgres://nervewiki:nervewiki@$db:5432/nervewiki?sslmode=disable"
 timeout_s=60
+# prod 必须有签名私钥：临时生成一个（见下文），只读挂载进容器
+keydir=$(mktemp -d)
+key=(-v "$keydir/jwt.pem:/run/secrets/jwt.pem:ro" -e NWIKI_AUTH__JWT__PRIVATE_KEY_FILE=/run/secrets/jwt.pem)
 
 fail() {
   echo "image-smoke: $*" >&2
@@ -39,6 +42,7 @@ cleanup() {
   # -v：PostgreSQL 镜像声明了数据卷，不带 -v 每次都会留下一个匿名卷
   docker rm -fv "$app" "$migrate" "$db" >/dev/null 2>&1 || true
   docker network rm "$name" >/dev/null 2>&1 || true
+  rm -rf "$keydir"
   # 否则脚本的退出码是上一行的，set -u 之类的失败会被当成通过
   exit "$status"
 }
@@ -74,9 +78,14 @@ docker run -d --name "$db" --network "$name" \
   postgres:18.6-trixie >/dev/null
 wait_for docker exec "$db" pg_isready -h 127.0.0.1 -U nervewiki -d nervewiki || fail "PostgreSQL 没有就绪"
 
+# 容器里的非 root 用户要能读私钥
+openssl genpkey -algorithm ed25519 -out "$keydir/jwt.pem" 2>/dev/null
+chmod 755 "$keydir"
+chmod 644 "$keydir/jwt.pem"
+
 # 部署的顺序：prod 配置不自动迁移，先 migrate up，再 serve
-docker run --name "$migrate" --network "$name" -e NWIKI_DATABASE__URL="$database_url" "$image" migrate up
-docker run -d --name "$app" --network "$name" -e NWIKI_DATABASE__URL="$database_url" -p 127.0.0.1::8080 "$image" >/dev/null
+docker run --name "$migrate" --network "$name" -e NWIKI_DATABASE__URL="$database_url" "${key[@]}" "$image" migrate up
+docker run -d --name "$app" --network "$name" -e NWIKI_DATABASE__URL="$database_url" "${key[@]}" -p 127.0.0.1::8080 "$image" >/dev/null
 base="http://$(docker port "$app" 8080/tcp | head -n 1)"
 wait_for get "$base/readyz" || fail "/readyz 在 ${timeout_s} 秒内没有答 200"
 
@@ -89,11 +98,14 @@ page=$(get -D - "$base/") || fail "/ 没有答 200：镜像里没有内嵌前端
 grep -qi "^content-security-policy: default-src 'self'; script-src 'self';" <<<"$page" || fail "/ 没有页面的 CSP"
 grep -q '<div id="root"></div>' <<<"$page" || fail "/ 不是前端的 index.html"
 
-# S3：注入的版本号，构建它的提交
+# S3：注入的版本号，构建它的提交；prod 默认关闭注册
 instance=$(get "$base/api/v0/instance")
 jq -e --arg version "$version" --arg commit "$commit" \
-  '. == {product: "Nerve Wiki", version: $version, commit: $commit, api_version: "v0"}' \
+  '. == {product: "Nerve Wiki", version: $version, commit: $commit, api_version: "v0", signup_enabled: false}' \
   <<<"$instance" >/dev/null || fail "/api/v0/instance 与预期不符：$instance"
+signup=$(curl -sS --max-time 5 -H 'Content-Type: application/json' -d '{"email":"a@example.com","password":"correct horse battery"}' \
+  "$base/api/v0/auth/register")
+[[ $(jq -r .code <<<"$signup") == identity.signup_disabled ]] || fail "prod 的注册不是 identity.signup_disabled：$signup"
 
 # 进程以非 root 用户运行（distroless 的 nonroot，uid 65532）
 uid=$(docker top "$app" -o pid,uid | awk 'NR > 1 { print $2 }')

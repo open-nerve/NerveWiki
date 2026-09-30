@@ -10,5 +10,7 @@ test("S3: a caller reads the instance information with the typed client", async 
     version: stampedVersion(),
     commit: expect.stringMatching(/^[0-9a-f]{40}$/),
     api_version: "v0",
+    // The test configuration opens sign-up; prod's closes it.
+    signup_enabled: true,
   });
 });
