@@ -9,6 +9,7 @@ sql:
     schema:
       - migrations/sql/00002_identity_users.sql
       - migrations/sql/00003_identity_auth_sessions.sql
+      - migrations/sql/00004_identity_api_tokens.sql
     queries: internal/modules/identity/adapter/postgres/queries
     gen:
       go:

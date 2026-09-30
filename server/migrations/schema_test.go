@@ -122,6 +122,15 @@ func TestConstraintAndIndexNames(t *testing.T) {
 	// DELETE CASCADE), c check. An index is i, then u when it is unique and w
 	// when it is partial (has a WHERE).
 	want := []string{
+		"api_tokens_expires_at_check c",
+		"api_tokens_name_check c",
+		"api_tokens_pkey iu",
+		"api_tokens_pkey p",
+		"api_tokens_token_hash_check c",
+		"api_tokens_token_hash_key iu",
+		"api_tokens_token_hash_key u",
+		"api_tokens_user_id_created_at_idx iw",
+		"api_tokens_user_id_fkey f c",
 		"auth_sessions_expires_at_idx i",
 		"auth_sessions_generation_check c",
 		"auth_sessions_pkey iu",
@@ -155,6 +164,8 @@ func TestChecksRejectCounterexamples(t *testing.T) {
 		"INSERT INTO auth_sessions (id, user_id, token_hash, expires_at, created_at, updated_at) VALUES " +
 			"('0199a2b4-0000-7000-8000-000000000003', " + user + ", sha256('x'), now(), now(), now())",
 		"UPDATE auth_sessions SET revoked_at = now(), revoke_reason = 'logout'",
+		"INSERT INTO api_tokens (id, user_id, token_hash, name, expires_at, created_at, updated_at) VALUES " +
+			"('0199a2b4-0000-7000-8000-000000000004', " + user + ", sha256('y'), 'CI', now() + interval '1 day', now(), now())",
 	} {
 		if _, err := pool.Exec(ctx, stmt); err != nil {
 			t.Fatalf("%s: %v", stmt, err)
@@ -191,6 +202,9 @@ func TestChecksRejectCounterexamples(t *testing.T) {
 		{"unknown revoke reason", "UPDATE auth_sessions SET revoke_reason = 'expired'", "auth_sessions_revoke_reason_check"},
 		{"revoked without a reason", "UPDATE auth_sessions SET revoke_reason = NULL", "auth_sessions_revoked_consistent_check"},
 		{"a reason without revoked_at", "UPDATE auth_sessions SET revoked_at = NULL", "auth_sessions_revoked_consistent_check"},
+		{"PAT hash not 32 bytes", "UPDATE api_tokens SET token_hash = '\\x00'", "api_tokens_token_hash_check"},
+		{"empty PAT name", "UPDATE api_tokens SET name = ''", "api_tokens_name_check"},
+		{"PAT expiring when created", "UPDATE api_tokens SET expires_at = created_at", "api_tokens_expires_at_check"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

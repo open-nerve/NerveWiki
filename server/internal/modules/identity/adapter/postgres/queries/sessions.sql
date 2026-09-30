@@ -41,3 +41,11 @@ UPDATE auth_sessions
 SET updated_at = sqlc.arg(now), revoked_at = sqlc.arg(now), revoke_reason = 'logout'
 WHERE id = sqlc.arg(id) AND generation = sqlc.arg(generation) AND token_hash = sqlc.arg(token_hash)
   AND revoked_at IS NULL AND expires_at > sqlc.arg(now);
+
+-- name: RevokeSessions :execrows
+-- Every live session of the account but keep, the nil uuid to keep none, with reason (M1/P3 design 3.5). A session
+-- revoked or expired already keeps what it has.
+UPDATE auth_sessions
+SET updated_at = sqlc.arg(now), revoked_at = sqlc.arg(now), revoke_reason = sqlc.arg(reason)::text
+WHERE user_id = sqlc.arg(user_id) AND id <> sqlc.arg(keep)
+  AND revoked_at IS NULL AND expires_at > sqlc.arg(now);

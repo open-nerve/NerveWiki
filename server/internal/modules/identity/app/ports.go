@@ -66,15 +66,16 @@ type LoginAccountReader interface {
 
 // LockedAccount is an account's row under the account row lock.
 type LockedAccount struct {
+	Email        string // normalized
 	PasswordHash string
 	Active       bool
 }
 
 // CredentialLocker takes the account row lock that every transaction
-// issuing or changing a credential of an existing account takes first (M1
-// design 4): login here, changing the password and creating a token from
-// P3. Registration creates the account in its transaction: there is no row
-// to lock yet.
+// issuing or changing a credential of an existing account takes first
+// (M1/P3 design 3.3): login, and through CredentialLock the operations that
+// act with the caller's credential. Registration creates the account in its
+// transaction: there is no row to lock yet.
 type CredentialLocker interface {
 	// LockForCredentials locks account id's row until the transaction ends
 	// (SELECT … FOR NO KEY UPDATE) and returns it; ErrNotFound when there
@@ -137,6 +138,14 @@ type SessionEnder interface {
 	// EndSession revokes the session with reason logout while it is at g;
 	// false when it is not.
 	EndSession(ctx context.Context, g SessionGeneration) (bool, error)
+}
+
+// SessionRevoker revokes an account's sessions at once (M1/P3 design 3.5).
+type SessionRevoker interface {
+	// RevokeSessions revokes at now, with reason, every session of userID
+	// that is neither revoked nor expired, except keep (uuid.Nil() keeps
+	// none), and returns how many it revoked.
+	RevokeSessions(ctx context.Context, userID, keep uuid.UUID, reason domain.RevokeReason, now time.Time) (int, error)
 }
 
 // SessionCredential is what authentication checks of a session.

@@ -82,13 +82,14 @@ func (q *Queries) GetUser(ctx context.Context, id uuid.UUID) (GetUserRow, error)
 }
 
 const lockUserForCredentials = `-- name: LockUserForCredentials :one
-SELECT password, is_active
+SELECT email, password, is_active
 FROM users
 WHERE id = $1
 FOR NO KEY UPDATE
 `
 
 type LockUserForCredentialsRow struct {
+	Email    string
 	Password string
 	IsActive bool
 }
@@ -96,11 +97,11 @@ type LockUserForCredentialsRow struct {
 // The account row lock (M1 design 4, M1/P2 design 3.4). FOR NO KEY UPDATE conflicts with itself
 // and with FOR UPDATE, so the credential transactions of one account run one after another; it
 // does not conflict with the FOR KEY SHARE that foreign-key checks take, so inserting rows that
-// reference the account does not wait. Lock order: users, then auth_sessions.
+// reference the account does not wait. Lock order: users, then auth_sessions, then api_tokens.
 func (q *Queries) LockUserForCredentials(ctx context.Context, id uuid.UUID) (LockUserForCredentialsRow, error) {
 	row := q.db.QueryRow(ctx, lockUserForCredentials, id)
 	var i LockUserForCredentialsRow
-	err := row.Scan(&i.Password, &i.IsActive)
+	err := row.Scan(&i.Email, &i.Password, &i.IsActive)
 	return i, err
 }
 

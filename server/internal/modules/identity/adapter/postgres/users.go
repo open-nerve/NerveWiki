@@ -59,7 +59,7 @@ func (s *Store) LockForCredentials(ctx context.Context, id uuid.UUID) (app.Locke
 	if err != nil {
 		return app.LockedAccount{}, notFound(err)
 	}
-	return app.LockedAccount{PasswordHash: row.Password, Active: row.IsActive}, nil
+	return app.LockedAccount{Email: row.Email, PasswordHash: row.Password, Active: row.IsActive}, nil
 }
 
 // UpdatePasswordHash stores hash as account id's password, at now.

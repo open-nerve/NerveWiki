@@ -21,4 +21,15 @@ var (
 	// ErrRefreshTokenInvalid answers every refresh that does not rotate:
 	// unknown, expired, revoked, reused or forged (M1/P2 design 3.5).
 	ErrRefreshTokenInvalid = shared.NewError(shared.KindUnauthenticated, "identity.refresh_token_invalid", "The refresh token is not valid; sign in again.")
+	// ErrCurrentPasswordIncorrect answers a change of password or a new
+	// token whose current password is wrong. It is 422, not 401: a client
+	// takes a 401 for the end of its session (M1/P3 design 3.4).
+	ErrCurrentPasswordIncorrect = shared.NewError(shared.KindInvalid, "identity.current_password_incorrect", "The current password is incorrect.")
+	// ErrAPITokenNotFound answers a revocation of a token that does not
+	// exist, is revoked already, or is another account's: the three look
+	// the same (M1/P3 design 3.2).
+	ErrAPITokenNotFound = shared.NewError(shared.KindNotFound, "identity.api_token_not_found", "The API token does not exist.")
+	// ErrAccountNotFound answers a request about an account that does not
+	// exist: ShareActiveAccount's, and the administrator's commands' (P4).
+	ErrAccountNotFound = shared.NewError(shared.KindNotFound, "identity.account_not_found", "The account does not exist.")
 )
