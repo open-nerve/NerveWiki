@@ -211,7 +211,7 @@ P1 的实验结论与 P2 的审查提示，开工时逐条落实：
 |---|---|---|---|---|
 | P1 | 技术验证 | 已完成 | [01-P1-spikes.md](01-P1-spikes.md) | [P1-spikes-review.md](reviews/P1-spikes-review.md) |
 | P2 | 仓库与工具链 | 已完成 | [02-P2-repo-toolchain.md](02-P2-repo-toolchain.md) | [P2-repo-toolchain-review.md](reviews/P2-repo-toolchain-review.md) |
-| P3 | 服务端平台层 | 未开始 | — | — |
+| P3 | 服务端平台层 | 进行中 | [03-P3-server-platform.md](03-P3-server-platform.md) | — |
 | P4 | 接口契约与代码生成 | 未开始 | — | — |
 | P5 | 前端外壳与内嵌 | 未开始 | — | — |
 | P6 | 端到端测试与交付 | 未开始 | — | — |
