@@ -1,5 +1,6 @@
-import { createClient, type ApiClient } from "@nervewiki/api-client";
+import { createClient, type ApiClient, type AuthTokens } from "@nervewiki/api-client";
 
+import type { User } from "../services/account.service";
 import type { InstanceInfo } from "../services/instance.service";
 import { Session, type SessionDeps } from "../session/session";
 import { AUTH_KEY } from "../session/token-manager";
@@ -50,6 +51,23 @@ export const instanceJSON: InstanceInfo = {
   signup_enabled: true,
 };
 
+/** tokensJSON is a valid answer to a sign-in, a sign-up or a refresh. */
+export const tokensJSON: AuthTokens = {
+  token_type: "Bearer",
+  access_token: "at-1",
+  access_token_expires_in: 900,
+  refresh_token: "rt-1",
+  refresh_token_expires_at: "2026-10-31T00:00:00Z",
+};
+
+/** userJSON is a valid answer to GET /api/v0/me: an account done with onboarding. */
+export const userJSON: User = {
+  id: "0199a2b4-0000-7000-8000-000000000001",
+  email: "ada@example.com",
+  display_name: "Ada",
+  onboarding_steps: ["profile"],
+};
+
 /** Answer answers a request of the fake API. */
 export type Answer = (request: Request) => Response | Promise<Response>;
 
@@ -80,6 +98,31 @@ function testSession(answer: Answer, stored: Record<string, string> = {}): Sessi
   });
 }
 
+/** byRoute answers each request by its "METHOD /path" in routes; any other request is not found. */
+export function byRoute(routes: Record<string, Answer>): Answer {
+  return (request) => {
+    const answer = routes[`${request.method} ${new URL(request.url).pathname}`];
+    return answer === undefined ? problem(404, "not_found") : answer(request);
+  };
+}
+
+/**
+ * signedInApp is the page's stores of a tab signed in (from its stored
+ * session, login-0) as userJSON; routes adds to or replaces the answers
+ * to the refresh, GET /me and GET /instance.
+ */
+export function signedInApp(routes: Record<string, Answer> = {}): AppStores {
+  return testApp(
+    byRoute({
+      "POST /api/v0/auth/refresh": () => json(tokensJSON),
+      "GET /api/v0/me": () => json(userJSON),
+      "GET /api/v0/instance": () => json(instanceJSON),
+      ...routes,
+    }),
+    storedSession("login-0")
+  );
+}
+
 /** testApp is the page's stores over testSession(answer, stored). */
 export function testApp(answer: Answer = () => json(instanceJSON), stored?: Record<string, string>): AppStores {
   return new AppStores(preferences(), testSession(answer, stored));
@@ -87,4 +130,17 @@ export function testApp(answer: Answer = () => json(instanceJSON), stored?: Reco
 
 export function json(body: unknown, status = 200, contentType = "application/json"): Response {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": contentType } });
+}
+
+/** problem is an application/problem+json answer with code, and more members if given. */
+export function problem(
+  status: number,
+  code: string,
+  more: Record<string, unknown> = {},
+  headers: HeadersInit = {}
+): Response {
+  return new Response(JSON.stringify({ status, code, title: code, ...more }), {
+    status,
+    headers: { "Content-Type": "application/problem+json", ...headers },
+  });
 }

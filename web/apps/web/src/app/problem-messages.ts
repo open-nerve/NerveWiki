@@ -73,9 +73,26 @@ export function fieldErrors(error: unknown, t: Translate): Record<string, string
   return byField;
 }
 
-/** The keys of the fields' messages, none of which has a placeholder. */
-type FieldMessage = Extract<MessageKey, `field.${string}`>;
+/** FieldMessage is the key of a field's problem's text; none has a placeholder. */
+export type FieldMessage = Extract<MessageKey, `field.${string}`>;
 
 function isFieldMessage(key: `field.${string}`): key is FieldMessage {
   return Object.hasOwn(en, key);
+}
+
+/**
+ * formErrors is what a form shows of error: each field's problem under it,
+ * and the rest above the form. A 422 whose problems are all on fields shows
+ * nothing above; no error shows nothing.
+ */
+export function formErrors(
+  error: unknown,
+  t: Translate
+): { banner: string | undefined; fields: Record<string, string> } {
+  if (error === undefined) {
+    return { banner: undefined, fields: {} };
+  }
+  const fields = fieldErrors(error, t);
+  const onFields = error instanceof ApiError && error.code === "validation_failed" && Object.keys(fields).length > 0;
+  return { banner: onFields ? undefined : errorText(error, t), fields };
 }

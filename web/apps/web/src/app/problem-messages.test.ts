@@ -4,7 +4,7 @@ import spec from "../../../../../api/dist/openapi.yaml?raw";
 import { translator } from "../i18n/i18n";
 import { ApiError } from "../services/api";
 import { SessionChangedError, SessionUnavailableError } from "../session/token-manager";
-import { errorText, fieldErrors, problemMessages } from "./problem-messages";
+import { errorText, fieldErrors, formErrors, problemMessages } from "./problem-messages";
 
 const t = translator("en");
 
@@ -99,4 +99,20 @@ test("fieldErrors says each field's first problem, better for the fields it know
     step: "Not in the right form.",
   });
   expect(fieldErrors(new TypeError("Failed to fetch"), t)).toEqual({});
+});
+
+test("formErrors puts a 422's problems under the fields only, and the rest above the form", () => {
+  const onFields = new ApiError(422, {
+    ...problem(422, "validation_failed"),
+    errors: [{ field: "email", code: "invalid_format" }],
+  });
+  const conflict = new ApiError(409, problem(409, "identity.email_taken"));
+
+  expect(formErrors(undefined, t)).toEqual({ banner: undefined, fields: {} });
+  expect(formErrors(onFields, t)).toEqual({ banner: undefined, fields: { email: "Not a valid e-mail address." } });
+  expect(formErrors(new ApiError(422, problem(422, "validation_failed")), t).banner).toBe("Some values are not valid.");
+  expect(formErrors(conflict, t)).toEqual({
+    banner: "An account with this e-mail address already exists.",
+    fields: {},
+  });
 });
