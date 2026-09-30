@@ -41,6 +41,10 @@ type Deps struct {
 	RefreshDeadline time.Duration // auth.refresh_deadline
 	Password        PasswordHashing
 	RateLimits      RateLimits
+	// The registrants of the deactivation's extension point (M1 design 8),
+	// built from the pool alone; M2 brings the first.
+	DeactivationVetoers     []DeactivationVetoer
+	DeactivationSubscribers []DeactivationSubscriber
 }
 
 // PasswordHashing is auth.password: argon2id's parameters and the limits on
@@ -115,6 +119,10 @@ func New(d Deps) (*Module, error) {
 			RecordOnboardingStep: app.NewRecordOnboardingStep(store, d.Clock),
 			ChangePassword: app.NewChangePassword(app.ChangePasswordDeps{
 				Password: password, Rules: rules, Hasher: hasher, Passwords: store, Sessions: store, Clock: d.Clock, Logger: d.Logger,
+			}),
+			Deactivate: app.NewDeactivate(app.DeactivateDeps{
+				Lock: password.Lock, Users: store, Sessions: store, Vetoers: d.DeactivationVetoers,
+				Subscribers: d.DeactivationSubscribers, Tx: d.Tx, Clock: d.Clock, Logger: d.Logger,
 			}),
 			ListAPITokens: app.NewListAPITokens(store),
 			CreateAPIToken: app.NewCreateAPIToken(app.CreateAPITokenDeps{

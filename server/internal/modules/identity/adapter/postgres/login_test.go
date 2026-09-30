@@ -45,7 +45,10 @@ func TestLockForCredentials(t *testing.T) {
 				err = errors.New("the lock read the wrong row")
 			}
 			close(holding)
-			<-release
+			select { // a failed test never releases: give up rather than hold the pool's close
+			case <-release:
+			case <-time.After(10 * time.Second):
+			}
 			return err
 		})
 	}()

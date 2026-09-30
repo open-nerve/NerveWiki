@@ -175,6 +175,9 @@ func serverWith(t *testing.T, uc httpadapter.UseCases, s httpadapter.Settings) h
 	if uc.ChangePassword == nil {
 		uc.ChangePassword = &fakeChangePassword{}
 	}
+	if uc.Deactivate == nil {
+		uc.Deactivate = &fakeDeactivate{}
+	}
 	if uc.ListAPITokens == nil {
 		uc.ListAPITokens = &fakeListTokens{}
 	}

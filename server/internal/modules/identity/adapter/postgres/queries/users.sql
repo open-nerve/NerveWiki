@@ -54,3 +54,18 @@ SET onboarding_steps = CASE WHEN sqlc.arg(step)::text = ANY (onboarding_steps) T
                             ELSE sqlc.arg(now)::timestamptz END
 WHERE id = sqlc.arg(id)
 RETURNING id, email, display_name, onboarding_steps;
+
+-- name: DeactivateUser :exec
+-- Under the account row lock (M1/P3 design 3.6).
+UPDATE users
+SET is_active = false, updated_at = sqlc.arg(now)
+WHERE id = sqlc.arg(id);
+
+-- name: ShareAccount :one
+-- ShareActiveAccount (M1 design 8, M1/P3 design 3.6): the first lock of a transaction that gives the account new
+-- access. FOR SHARE conflicts with the FOR NO KEY UPDATE of deactivation, so the two run one after the other and
+-- is_active is read under the lock; two FOR SHARE do not wait for each other.
+SELECT is_active
+FROM users
+WHERE id = sqlc.arg(id)
+FOR SHARE;

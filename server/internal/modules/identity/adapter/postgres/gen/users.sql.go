@@ -37,6 +37,23 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) error {
 	return err
 }
 
+const deactivateUser = `-- name: DeactivateUser :exec
+UPDATE users
+SET is_active = false, updated_at = $1
+WHERE id = $2
+`
+
+type DeactivateUserParams struct {
+	Now time.Time
+	ID  uuid.UUID
+}
+
+// Under the account row lock (M1/P3 design 3.6).
+func (q *Queries) DeactivateUser(ctx context.Context, arg DeactivateUserParams) error {
+	_, err := q.db.Exec(ctx, deactivateUser, arg.Now, arg.ID)
+	return err
+}
+
 const findLoginAccount = `-- name: FindLoginAccount :one
 SELECT id, password
 FROM users
@@ -161,6 +178,23 @@ func (q *Queries) RecordOnboardingStep(ctx context.Context, arg RecordOnboarding
 		&i.OnboardingSteps,
 	)
 	return i, err
+}
+
+const shareAccount = `-- name: ShareAccount :one
+SELECT is_active
+FROM users
+WHERE id = $1
+FOR SHARE
+`
+
+// ShareActiveAccount (M1 design 8, M1/P3 design 3.6): the first lock of a transaction that gives the account new
+// access. FOR SHARE conflicts with the FOR NO KEY UPDATE of deactivation, so the two run one after the other and
+// is_active is read under the lock; two FOR SHARE do not wait for each other.
+func (q *Queries) ShareAccount(ctx context.Context, id uuid.UUID) (bool, error) {
+	row := q.db.QueryRow(ctx, shareAccount, id)
+	var is_active bool
+	err := row.Scan(&is_active)
+	return is_active, err
 }
 
 const updateDisplayName = `-- name: UpdateDisplayName :one

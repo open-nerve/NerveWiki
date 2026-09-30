@@ -67,6 +67,25 @@ func (s *Store) RecordOnboardingStep(ctx context.Context, id uuid.UUID, step str
 	return domain.User{ID: row.ID, Email: row.Email, DisplayName: row.DisplayName, OnboardingSteps: row.OnboardingSteps}, nil
 }
 
+// DeactivateUser sets account id inactive at now.
+func (s *Store) DeactivateUser(ctx context.Context, id uuid.UUID, now time.Time) error {
+	if err := s.queries(ctx).DeactivateUser(ctx, gen.DeactivateUserParams{Now: now, ID: id}); err != nil {
+		return fmt.Errorf("deactivate user: %w", err)
+	}
+	return nil
+}
+
+// ShareAccount locks account id's row FOR SHARE until the transaction ends
+// and reports whether it is active; app.ErrNotFound when there is none.
+// Outside a transaction the lock would end with the statement.
+func (s *Store) ShareAccount(ctx context.Context, id uuid.UUID) (bool, error) {
+	active, err := s.queries(ctx).ShareAccount(ctx, id)
+	if err != nil {
+		return false, notFound(err)
+	}
+	return active, nil
+}
+
 // FindLoginAccount reads the account of email, a normalized address;
 // app.ErrNotFound when there is none.
 func (s *Store) FindLoginAccount(ctx context.Context, email string) (app.LoginAccount, error) {

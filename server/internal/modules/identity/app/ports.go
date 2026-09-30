@@ -59,6 +59,20 @@ type UserUpdater interface {
 	RecordOnboardingStep(ctx context.Context, id uuid.UUID, step string, now time.Time) (domain.User, error)
 }
 
+// UserDeactivator deactivates accounts.
+type UserDeactivator interface {
+	// DeactivateUser sets account id inactive at now.
+	DeactivateUser(ctx context.Context, id uuid.UUID, now time.Time) error
+}
+
+// AccountSharer takes the shared lock of an account row (M1/P3 design 3.6).
+type AccountSharer interface {
+	// ShareAccount locks account id's row FOR SHARE until the transaction
+	// ends and reports whether the account is active; ErrNotFound when
+	// there is none.
+	ShareAccount(ctx context.Context, id uuid.UUID) (bool, error)
+}
+
 // LoginAccount is what login reads of an account before its transaction:
 // the hash is the snapshot it verifies the password against (M1/P2 design
 // 3.4).

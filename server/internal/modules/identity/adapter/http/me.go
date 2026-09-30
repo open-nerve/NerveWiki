@@ -47,6 +47,14 @@ func (h handler) ChangePassword(ctx context.Context, req gen.ChangePasswordReque
 	return gen.ChangePassword204Response{}, nil
 }
 
+// DeactivateMe serves POST /api/v0/me/deactivate.
+func (h handler) DeactivateMe(ctx context.Context, _ gen.DeactivateMeRequestObject) (gen.DeactivateMeResponseObject, error) {
+	if err := h.uc.Deactivate.Execute(ctx); err != nil {
+		return nil, err
+	}
+	return gen.DeactivateMe204Response{}, nil
+}
+
 func user(u domain.User) gen.User {
 	steps := u.OnboardingSteps
 	if steps == nil {

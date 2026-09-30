@@ -205,6 +205,21 @@ paths:
           description: The password is changed.
         default:
           $ref: '#/components/responses/Problem'
+  /api/v0/me/deactivate:
+    post:
+      operationId: deactivateMe
+      tags:
+        - identity
+      summary: Deactivate the caller's account
+      description: 'Deactivates the account: every session ends, and the personal access tokens stop working while it is inactive. Only the server''s administrator can activate it again; sign-in then answers identity.account_deactivated. No password is asked for. The modules that keep the account''s access elsewhere may refuse the deactivation with a code of their own, listed here.'
+      security:
+        - bearer: []
+      x-problem-codes: []
+      responses:
+        '204':
+          description: The account is deactivated.
+        default:
+          $ref: '#/components/responses/Problem'
   /api/v0/me/api-tokens:
     get:
       operationId: listApiTokens

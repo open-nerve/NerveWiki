@@ -145,6 +145,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v0/me/deactivate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Deactivate the caller's account
+         * @description Deactivates the account: every session ends, and the personal access tokens stop working while it is inactive. Only the server's administrator can activate it again; sign-in then answers identity.account_deactivated. No password is asked for. The modules that keep the account's access elsewhere may refuse the deactivation with a code of their own, listed here.
+         */
+        post: operations["deactivateMe"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v0/me/api-tokens": {
         parameters: {
             query?: never;
@@ -592,6 +612,25 @@ export interface operations {
         };
         responses: {
             /** @description The password is changed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    deactivateMe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The account is deactivated. */
             204: {
                 headers: {
                     [name: string]: unknown;

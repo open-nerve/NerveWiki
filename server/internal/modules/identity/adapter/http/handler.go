@@ -57,6 +57,11 @@ type ChangePasswordUseCase interface {
 	Execute(ctx context.Context, in app.ChangePasswordInput) error
 }
 
+// DeactivateUseCase is app.Deactivate.
+type DeactivateUseCase interface {
+	Execute(ctx context.Context) error
+}
+
 // ListAPITokensUseCase is app.ListAPITokens.
 type ListAPITokensUseCase interface {
 	Execute(ctx context.Context) ([]domain.APIToken, error)
@@ -82,6 +87,7 @@ type UseCases struct {
 	UpdateMe             UpdateMeUseCase
 	RecordOnboardingStep RecordOnboardingStepUseCase
 	ChangePassword       ChangePasswordUseCase
+	Deactivate           DeactivateUseCase
 	ListAPITokens        ListAPITokensUseCase
 	CreateAPIToken       CreateAPITokenUseCase
 	RevokeAPIToken       RevokeAPITokenUseCase

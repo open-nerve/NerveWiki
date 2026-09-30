@@ -149,3 +149,21 @@ func TestChangePasswordIsLimitedPerAccount(t *testing.T) {
 		t.Errorf("third attempt = %d after %d calls; want 429, the bucket shared with creating a token", res.StatusCode, uc.calls)
 	}
 }
+
+type fakeDeactivate struct{ calls int }
+
+func (f *fakeDeactivate) Execute(context.Context) error {
+	f.calls++
+	return nil
+}
+
+func TestDeactivateMe(t *testing.T) {
+	uc := &fakeDeactivate{}
+	h := newServer(t, httpadapter.UseCases{Deactivate: uc})
+
+	res, body := do(t, h, withToken(postJSON("/api/v0/me/deactivate", "")))
+
+	if res.StatusCode != http.StatusNoContent || body != "" || uc.calls != 1 {
+		t.Errorf("deactivate = %d %q after %d calls, want 204 once", res.StatusCode, body, uc.calls)
+	}
+}

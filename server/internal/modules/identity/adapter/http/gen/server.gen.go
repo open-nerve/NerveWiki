@@ -212,6 +212,9 @@ type ServerInterface interface {
 	// ChangePassword Change the caller's password
 	// (POST /api/v0/me/change-password)
 	ChangePassword(w http.ResponseWriter, r *http.Request)
+	// DeactivateMe Deactivate the caller's account
+	// (POST /api/v0/me/deactivate)
+	DeactivateMe(w http.ResponseWriter, r *http.Request)
 	// RecordOnboardingStep Record a completed onboarding step
 	// (POST /api/v0/me/onboarding-steps)
 	RecordOnboardingStep(w http.ResponseWriter, r *http.Request)
@@ -378,6 +381,20 @@ func (siw *ServerInterfaceWrapper) ChangePassword(w http.ResponseWriter, r *http
 	handler.ServeHTTP(w, r)
 }
 
+// DeactivateMe operation middleware
+func (siw *ServerInterfaceWrapper) DeactivateMe(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeactivateMe(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // RecordOnboardingStep operation middleware
 func (siw *ServerInterfaceWrapper) RecordOnboardingStep(w http.ResponseWriter, r *http.Request) {
 
@@ -520,6 +537,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/v0/me", wrapper.UpdateMe)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v0/me/onboarding-steps", wrapper.RecordOnboardingStep)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v0/me/change-password", wrapper.ChangePassword)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v0/me/deactivate", wrapper.DeactivateMe)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v0/me/api-tokens", wrapper.ListAPITokens)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v0/me/api-tokens", wrapper.CreateAPIToken)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v0/api-tokens/{token_id}", wrapper.RevokeAPIToken)
@@ -977,6 +995,45 @@ func (response ChangePassworddefaultApplicationProblemPlusJSONResponse) VisitCha
 	return err
 }
 
+type DeactivateMeRequestObject struct {
+}
+
+type DeactivateMeResponseObject interface {
+	VisitDeactivateMeResponse(w http.ResponseWriter) error
+}
+
+type DeactivateMe204Response struct {
+}
+
+func (response DeactivateMe204Response) VisitDeactivateMeResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeactivateMedefaultApplicationProblemPlusJSONResponse struct {
+	Body       externalRef0.Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response DeactivateMedefaultApplicationProblemPlusJSONResponse) VisitDeactivateMeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	if response.Headers.WWWAuthenticate != nil {
+		w.Header().Set("WWW-Authenticate", fmt.Sprint(*response.Headers.WWWAuthenticate))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type RecordOnboardingStepRequestObject struct {
 	Body *RecordOnboardingStepJSONRequestBody
 }
@@ -1055,6 +1112,9 @@ type StrictServerInterface interface {
 	// ChangePassword Change the caller's password
 	// (POST /api/v0/me/change-password)
 	ChangePassword(ctx context.Context, request ChangePasswordRequestObject) (ChangePasswordResponseObject, error)
+	// DeactivateMe Deactivate the caller's account
+	// (POST /api/v0/me/deactivate)
+	DeactivateMe(ctx context.Context, request DeactivateMeRequestObject) (DeactivateMeResponseObject, error)
 	// RecordOnboardingStep Record a completed onboarding step
 	// (POST /api/v0/me/onboarding-steps)
 	RecordOnboardingStep(ctx context.Context, request RecordOnboardingStepRequestObject) (RecordOnboardingStepResponseObject, error)
@@ -1383,6 +1443,30 @@ func (sh *strictHandler) ChangePassword(w http.ResponseWriter, r *http.Request) 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ChangePasswordResponseObject); ok {
 		if err := validResponse.VisitChangePasswordResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeactivateMe operation middleware
+func (sh *strictHandler) DeactivateMe(w http.ResponseWriter, r *http.Request) {
+	var request DeactivateMeRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeactivateMe(ctx, request.(DeactivateMeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeactivateMe")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeactivateMeResponseObject); ok {
+		if err := validResponse.VisitDeactivateMeResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
