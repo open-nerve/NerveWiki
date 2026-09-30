@@ -11,6 +11,7 @@
 2. 新写 `longlived.go`：
    - `Server` 在 `BaseContext` 中放入"开始停机"的信号，用 `RegisterOnShutdown` 发出；
    - `LongLived(logger, h)` 解除连接的读写期限，并在停机开始时取消 handler 的 context。解除期限失败（写入器不支持）时记录错误并回答 500。
+   - 实施时修正：只解除写期限，读期限保留以约束请求体，见 P3 文档 3.4。
 
 ## 测试
 

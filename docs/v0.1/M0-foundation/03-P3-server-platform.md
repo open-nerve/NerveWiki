@@ -3,7 +3,7 @@
 | 项 | 内容 |
 |---|---|
 | Phase | M0/P3 服务端平台层 |
-| 状态 | 进行中 |
+| 状态 | 已完成 |
 | 基线 | `9d29741`（P2 完成：工具链、门禁、持续集成；Go 代码只有 `buildinfo`） |
 | 上级文档 | [M0 总设计](00-M0-design.md) 第 7 节 |
 
@@ -63,7 +63,7 @@ P2 留下的：
 | `internal/platform/config` | 分层加载（内置 `config.yaml` → `config.<env>.yaml` → `$NWIKI_CONFIG_DIR` → 个人覆盖文件 → 环境变量）。严格解码：未知键、空值、越界数字、裸数字的时长都报错。一次报告所有无效键。日志中的数据库地址整体脱敏 | Nerve，裁剪到 `server`、`database`、`log` 三节 |
 | `configs`（`server/configs`） | 内置配置文件与 `embed` | Nerve，改名、裁剪 |
 | `internal/platform/logging` | 按配置建 `slog.Logger`（text / json），不碰默认 logger | Nerve |
-| `internal/platform/clock` | 系统时钟：UTC，截到微秒 | Nerve |
+| `internal/platform/clock` | 系统时钟：UTC，截到微秒。测试用的固定时钟 `clocktest` 随第一个用到它的 M 引入 | Nerve |
 | `internal/platform/postgres` | 连接池（`timestamptz` 按 UTC 扫描；地址出错时不回显原文）；事务管理器（COMMIT、ROLLBACK 脱离请求的取消、自带期限）；goose 迁移器；**数据库自检**（新写，3.3） | Nerve + 新写 |
 | `internal/platform/postgres/pgtest` | 集成测试的数据库：每个测试二进制一个容器，模板库复制出每个测试的独立库 | Nerve；镜像与建库参数按 P1 结论改 |
 | `internal/platform/httpserver` | 服务生命周期（监听、`addr_file`、优雅停机）；全局中间件链（请求 ID → recover → 访问日志 → 安全头）；路由（`/healthz`、`/readyz`、`/api/` 兜底 404）；problem+json；**长连接路由**（新写，3.4） | Nerve，裁剪 + 新写 |
@@ -77,6 +77,7 @@ P2 留下的：
 
 ```
 cmd/nervewiki ──► bootstrap ──► platform/* ,  shared ,  migrations ,  (P4 起) modules/*
+cmd/nervewiki ──► configs、platform/config、platform/buildinfo（加载配置、打印版本）
                  configs ──► （只有 embed）
 platform/*    ──► 标准库、第三方库；平台包之间互不依赖，config 除外
 shared        ──► 只有标准库（不含 net/http、database/sql）
@@ -86,7 +87,7 @@ shared        ──► 只有标准库（不含 net/http、database/sql）
 
 ### 3.3 数据库
 
-- **连接池**：`database.url`、`database.max_conns`；惰性连接，数据库不可达时在第一次使用（例如 `/readyz`）暴露。
+- **连接池**：`database.url`、`database.max_conns`；惰性连接。`serve` 在启动时迁移、自检，所以启动时连不上数据库就拒绝启动；运行中数据库不可用，由 `/readyz` 暴露。
 - **事务管理器**：语句随调用方的 context 取消；COMMIT、ROLLBACK 在 `context.WithoutCancel` 下执行，受 `database.commit_timeout` 约束。嵌套调用加入同一个事务；panic 时回滚。
 - **迁移**：goose 的 Provider，不用它的全局注册表。`serve` 在 `database.auto_migrate` 为真时（dev、test 默认；prod 关闭）先迁移。第一条迁移 `00001_platform_pg_trgm.sql`：`CREATE EXTENSION IF NOT EXISTS pg_trgm`。它的归属是 `platform`，因为扩展是数据库能力，不属于任何模块的表。
 - **数据库自检**（`postgres.CheckDatabase`）：
@@ -94,6 +95,7 @@ shared        ──► 只有标准库（不含 net/http、database/sql）
   - 检查项（总体设计 7.1）：
     - 编码为 `UTF8`；
     - `datlocprovider = 'b'`；
+    - `datlocale = 'C.UTF-8'`：builtin 的 `C` 只转换 ASCII 字母的大小写（实施时补充）；
     - `datctype = 'C.UTF-8'`，`datcollate = 'C.UTF-8'`；
     - pg_trgm 已安装时，`show_trgm('中文')` 不为空。
   - pg_trgm 尚未安装，只可能是 prod 没有先执行 `migrate up` 就启动了服务，这时 `/readyz` 因迁移未完成返回 503。
@@ -115,7 +117,7 @@ shared        ──► 只有标准库（不含 net/http、database/sql）
   - `/api/` 下没有被模块认领的路径：404 problem+json。
   - 路由器记录注册过的全部 pattern，P4 起用于与接口描述对照。
 - **长连接路由**（新写，P1 实验 ③⑤ 的结论）：`httpserver.LongLived(logger, h)` 包装一个会长时间保持响应的 handler（M5 的 SSE、M9 的 MCP 流），做两件事：
-  1. 用 `http.ResponseController` 解除这条连接的读、写期限。否则写期限到期后，写入全部失败；读期限到期时，net/http 在后台读连接会出错，取消请求的 context。
+  1. 用 `http.ResponseController` 解除这条连接的写期限，否则写期限到期后写入全部失败。读期限保留：它仍然约束读取请求体，客户端不能无限期地慢慢发送请求体；请求体读完之后，net/http 在后台读连接之前自己解除读期限（Go 1.27 `connReader.startBackgroundRead`），读期限不会取消长连接的 context。（实施时修正：初稿要求同时解除读期限，那样既无必要，又让长连接路由失去对请求体的时间约束。）
   2. 服务开始停机时，取消 handler 的 context。`http.Server.Shutdown` 会一直等连接变为空闲，而长连接永远不会空闲；通知它们主动结束，停机才不会拖到 `shutdown_timeout` 再强制关闭。
 
   实现方式：`Server` 用 `http.Server.BaseContext` 把一个"开始停机"的信号放进每个请求的 context，用 `RegisterOnShutdown` 在停机开始时发出它。`LongLived` 从请求 context 中取这个信号，所以路由注册不必依赖 `Server` 实例，也不影响普通请求：普通请求在停机时照常完成。
@@ -159,7 +161,7 @@ shared        ──► 只有标准库（不含 net/http、database/sql）
 规则 1、2、3、5、6、9 在 P4 有了第一个模块之后才有真实的边，现在由构造的边覆盖。
 
 静态检查新增两项：
-- `gochecknoglobals`：落实总体设计 8.1 的"禁止全局可变状态"。例外逐个用带理由的 `//nolint` 标出：`buildinfo.version` 需要 `-ldflags -X` 注入；`pgtest` 的共享容器本来就是"每个测试二进制一个"。
+- `gochecknoglobals`：落实总体设计 8.1 的"禁止全局可变状态"。例外逐个用带理由的 `//nolint` 标出：`pgtest` 的共享容器本来就是"每个测试二进制一个"。`buildinfo.version` 不需要标：这个 linter 本身就放过名为 `version` 的变量（供 `-ldflags -X` 注入）。
 - `errorlint`：错误要用 `errors.Is` / `errors.As` 判断，不能直接比较或断言类型。
 
 ### 3.7 配置项（M0）
@@ -212,7 +214,7 @@ log:
 - 平台包导入 `shared`、平台包互相导入 → 架构测试失败；
 - 新增一个包级变量 → `gochecknoglobals` 失败；
 - 用 `==` 比较错误 → `errorlint` 失败；
-- 去掉 `LongLived` 的解除期限 → 长连接测试失败；
+- 去掉 `LongLived` 的解除写期限 → 长连接测试失败；加上解除读期限 → 请求体期限的测试失败；
 - 去掉停机信号 → 停机测试超时。
 
 ## 6. 完成标准
@@ -224,4 +226,29 @@ log:
 
 ## 7. 结果
 
-（完成后补写）
+**交付**：分支 `m0-p3-server-platform`，5 个 Step 各一次提交，另有一次审查修复（`ddcd96f..92bc423`）。Go 代码约 6200 行，最大的文件是 357 行的测试；115 个测试函数。
+
+- 平台层：`config`、`logging`、`clock`、`postgres`（连接池、事务、迁移器、数据库自检、`pgtest`）、`httpserver`（生命周期、中间件链、路由与健康检查、problem+json、`LongLived`）；`migrations` 与第一条迁移 `00001_platform_pg_trgm.sql`；`shared`；`bootstrap`；`cmd/nervewiki`；`archtest`。
+- 门禁：`gochecknoglobals`、`errorlint`；持续集成的 `server` 任务跑集成测试，约 2 分钟。
+- README 的运行、命令与配置说明；`make run`。
+
+**验证**：
+- 本地 `make check` 为绿；持续集成 run 36687643375（S5）与 36690330653（审查修复）为绿。
+- 冒烟：`make dev-db` + `make run` 后 `/healthz`、`/readyz` 为 200，未知的 `/api/` 路径为 problem+json 404；停掉开发库后 `/readyz` 为 503；SIGINT 后依次停 HTTP、关连接池，退出码 0。
+- 第 5 节的反向对照全部按预期失败；审查修复的每一项另有反向对照，见审查记录。
+
+**与设计的差异**（均已写回本文与相关文档）：
+1. `LongLived` 只解除写期限，读期限保留以约束请求体（3.4）。
+2. 数据库自检加查 `datlocale`；`migrate up` 之后也自检；错误信息改为"导出、重建、导入"（3.3）。
+3. 启动时最多等数据库 10 秒，连不上就退出；不再像 Nerve 那样先启动、再由 `/readyz` 报告（3.3）。
+4. 迁移持有 PostgreSQL 会话锁，并发的迁移轮流执行；空的迁移集合是错误（审查 M6、M7）。
+5. `buildinfo.version` 由 linter 自带的放行规则覆盖，不需要 `//nolint`（3.6）。
+6. 没有拷贝：`clocktest`（审查时删掉，移交 M1）、`pgtest` 的 `NewDatabaseFrom` 与 `lockwait`、架构测试的 `composition_test`、`generated_test` 与 sqlc 规则、`warnIfExposed`、`time/tzdata`。新增 `pgtest.NewEmptyDatabaseWith`，供自检与启动的反例库使用。
+7. `server.addr_file` 在日志和错误中显示路径（审查 N2）；配置日志中的时长输出为 `"5s"`。
+8. 命令行除组合根外，还直接依赖 `configs`、`platform/config`、`platform/buildinfo`（3.2）。
+
+**审查**：[P3-server-platform-review.md](reviews/P3-server-platform-review.md)，2 项 Important、7 项 Minor、9 项 Nit，全部处理。
+
+**遗留**：
+- 给 P4、P5、P6 的要求写进 M0 总设计"前序 Phase 对后续 Phase 的要求"：逐路由中间件、`APIErrors` 与契约核对，长连接路由不经过逐路由中间件，kin-openapi 与生成代码的架构测试（P4）；`webui` 的挂载（P5）；冒烟故事 S1 在启动之后制造数据库不可用（P6）。
+- 给 M1 的移交：[M1-auth/handoffs/M0-P3-platform.md](../M1-auth/handoffs/M0-P3-platform.md)。
