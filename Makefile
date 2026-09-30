@@ -89,7 +89,7 @@ image: ## 构建镜像 $(IMAGE)，版本号取 VERSION（只需要 Docker）
 	docker build -f deploy/Dockerfile --build-arg VERSION=$(VERSION) -t $(IMAGE) .
 
 .PHONY: image-smoke
-image-smoke: image ## 在镜像上跑 S1、S3：迁移、探针、前端、实例与提交信息、非 root、优雅停机（需要 Docker、curl、jq）
+image-smoke: image ## 在镜像上跑 S1、S3：迁移、探针、前端、实例与提交信息、管理员建账户、非 root、优雅停机（需要 Docker、curl、jq、openssl）
 	deploy/image-smoke.sh $(IMAGE) $(VERSION)
 
 .PHONY: tools

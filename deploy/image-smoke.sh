@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 在镜像上跑 S1、S3（docs/v0.1/M0-foundation/06-P6-e2e-delivery.md 3.5）：在临时的 Docker 网络里启动
-# PostgreSQL，用镜像执行 migrate up、启动 serve，核对探针、内嵌的前端、实例信息、提交信息与进程的用户，
-# 最后停止服务并核对它正常退出。无论成败都清理容器与网络；失败时打印服务的日志。
+# PostgreSQL，用镜像执行 migrate up、启动 serve，核对探针、内嵌的前端、实例信息、提交信息、管理员建的账户
+# 与进程的用户，最后停止服务并核对它正常退出。无论成败都清理容器与网络；失败时打印服务的日志。
 # 镜像要由当前工作区构建：提交信息与本地的 git 核对（make image-smoke 先执行 make image）。
 # 需要 Docker、curl、jq、openssl。
 set -euo pipefail
@@ -106,6 +106,14 @@ jq -e --arg version "$version" --arg commit "$commit" \
 signup=$(curl -sS --max-time 5 -H 'Content-Type: application/json' -d '{"email":"a@example.com","password":"correct horse battery"}' \
   "$base/api/v0/auth/register")
 [[ $(jq -r .code <<<"$signup") == identity.signup_disabled ]] || fail "prod 的注册不是 identity.signup_disabled：$signup"
+
+# 注册关闭时，第一个账户由管理员命令建（M1/P4 设计 3.7）：没有终端时密码是标准输入的一行；建好的账户能登录
+created=$(printf '%s\n' 'correct horse battery' |
+  docker run -i --rm --network "$name" -e NWIKI_DATABASE__URL="$database_url" "${key[@]}" "$image" users create --email admin@example.com)
+[[ $created =~ ^created\ admin@example\.com\ \([0-9a-f-]{36}\)$ ]] || fail "users create 输出 \"$created\""
+login=$(curl -sS --max-time 5 -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' \
+  -d '{"email":"admin@example.com","password":"correct horse battery"}' "$base/api/v0/auth/login")
+[[ $login == 200 ]] || fail "管理员建的账户登录答 $login，应为 200"
 
 # 进程以非 root 用户运行（distroless 的 nonroot，uid 65532）
 uid=$(docker top "$app" -o pid,uid | awk 'NR > 1 { print $2 }')

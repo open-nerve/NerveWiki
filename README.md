@@ -52,6 +52,7 @@ make run      # 以 dev 配置启动 nervewiki serve，监听 127.0.0.1:8080；C
 | `migrate up`     | 执行全部待执行的迁移，然后自检数据库                           |
 | `migrate down`   | 回滚最近一条迁移                                               |
 | `migrate status` | 列出迁移及其状态                                               |
+| `users …`        | 服务器管理员的账户命令，见下文"账户与认证"                     |
 | `version`        | 打印版本号与构建信息                                           |
 
 ### 配置
@@ -75,6 +76,19 @@ make run      # 以 dev 配置启动 nervewiki serve，监听 127.0.0.1:8080；C
 - **个人访问令牌（PAT）**：给脚本与集成用。`POST /api/v0/me/api-tokens` 创建，要求当前密码（`current_password`），可选期限 `expires_at`；响应里的 `token`（`nwk_pat_` 开头）只出现这一次，服务端只存它的 SHA-256。`GET /api/v0/me/api-tokens` 列出未撤销的令牌（不含令牌本身，含 `last_used_at`，每分钟至多更新一次），`DELETE /api/v0/api-tokens/{token_id}` 撤销，立即失效。PAT 与访问令牌一样用在 `Authorization: Bearer`，能做账户能做的一切，包括再创建 PAT。
 - **账户**：`PATCH /api/v0/me` 改显示名；`POST /api/v0/me/onboarding-steps` 记录完成的引导步骤（步骤由前端定义）；`POST /api/v0/me/change-password` 要求当前密码，改后其他会话全部结束，当前会话保留（用 PAT 调用时全部结束），PAT 照常可用；`POST /api/v0/me/deactivate` 停用账户，所有会话结束，PAT 不能再用，登录答 403 `identity.account_deactivated`，只有管理员能重新启用。
 - **限流**：`ratelimit` 节的令牌桶，超出时答 429 `rate_limited` 与 `Retry-After`。公开操作按客户端 IP（`anonymous`），其余按凭证（会话或 PAT，`authenticated`）；校验当前密码的操作（改密码、创建 PAT）另按账户（`password_user`）；带令牌的请求在认证之前先过失败闸门（`auth_failure`，按客户端 IP：只有认证失败的令牌消耗名额，过期的访问令牌不算）；登录另按 IP 与"IP 加邮箱"（`login_ip`、`login_ip_email`），注册按 IP（`register_ip`）。IPv6 客户端按 `/64` 前缀计数（`ratelimit.ipv6_prefix_len`）。桶在进程内存中：多实例部署时每个实例各算各的。被拒绝的请求在访问日志中是 429；哪个桶拒绝的，平台的桶记在 debug 级，登录、注册与 `password_user` 的桶记在 info 级（`password_user` 另记账户 `user_id`）。
+- **会话清理**：过期的会话由后台任务删除，服务启动时一次，之后每 `auth.session_cleanup_interval`（默认 1 小时）一次；多个实例时只有一个执行。
+- **管理员命令**：服务器管理员在能连上数据库的机器上执行，与 `migrate` 一样加载配置（带上服务的那些变量），只连数据库，不启动 HTTP 与后台任务，服务不必停。账户用 `--email` 指定：
+
+  | 命令                                                  | 作用                                                                                       |
+  | ----------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+  | `users create --email <地址>`                         | 建账户，不看注册开关，不建会话                                                             |
+  | `users reset-password --email <地址>`                 | 设新密码，撤销账户的全部会话与 PAT                                                         |
+  | `users set-email --email <地址> --new-email <新地址>` | 改邮箱，撤销全部会话；PAT 照常可用，账户可能被盗时另执行 `reset-password`                  |
+  | `users deactivate --email <地址>`                     | 停用，与自助停用相同：会话全部结束，PAT 在重新启用之前不能用                               |
+  | `users activate --email <地址>`                       | 重新启用：未撤销、未过期的 PAT 恢复可用，会话不恢复；账户可能被盗时另执行 `reset-password` |
+
+  `create` 与 `reset-password` 的密码从标准输入读，不接受参数与环境变量（会从 `ps` 泄露）：标准输入是终端时不回显地提示两次，两次要相同；否则读一行，只去掉行尾的换行，首尾空格是密码的一部分，例如 `printf '%s\n' "$PASSWORD" | nervewiki users create --email alice@corp.com`。结果一行写到标准输出（如 `password reset for alice@corp.com: revoked 2 sessions, 1 API token`），日志写到标准错误；失败时打印 `nervewiki: <原因>`，退出码 1。输出与日志里没有密码，日志只记账户的 `user_id`，不记邮箱。停用、启用在状态不变时什么也不做（`… is already deactivated`、`… is already active`）。
+
 - **签名私钥**：`auth.jwt.private_key_file`，PKCS#8 PEM 的 Ed25519 私钥，用 `openssl genpkey -algorithm ed25519 -out jwt.pem` 生成。prod 必须提供，缺了拒绝启动；dev、test 不提供时每次启动生成临时密钥，重启后已签发的令牌全部失效。日志只记是否设置，不记路径。
 - **反向代理**：`server.trusted_proxies` 列出代理的 CIDR（环境变量用逗号分隔，例如 `NWIKI_SERVER__TRUSTED_PROXIES=10.0.0.0/8`）。只有来自它们的 `X-Forwarded-For` 被采信，代理写入的必须是不带端口的 IP；会话记录的就是这样认出的客户端 IP。配置不对时服务各告警一次。
 - 非 prod 的服务监听在回环地址之外时，启动时告警：这多半是忘了设 `NWIKI_ENV=prod` 的部署，注册开放、签名密钥是临时的。
@@ -140,7 +154,7 @@ cd e2e && pnpm exec playwright show-report                      # 查看上一�
 
 ```bash
 make image VERSION=0.1.0         # 构建 nervewiki:0.1.0
-make image-smoke VERSION=0.1.0   # 在镜像上跑 S1、S3：迁移、探针、前端、实例与提交信息、注册关闭、非 root、优雅停机（另需 curl、jq、openssl）
+make image-smoke VERSION=0.1.0   # 在镜像上跑 S1、S3：迁移、探针、前端、实例与提交信息、注册关闭、管理员建账户、非 root、优雅停机（另需 curl、jq、openssl）
 ```
 
 镜像的提交信息取自构建上下文中的 `.git`，所以要在普通的克隆中构建：`git worktree` 的 `.git` 是指向别处的文件，`make image` 会直接报错。`.dockerignore` 排除的正好是 `.gitignore` 忽略的，改一个时同步另一个：否则镜像里的二进制报告的 `modified` 与工作区不符，`make image-smoke` 失败。
