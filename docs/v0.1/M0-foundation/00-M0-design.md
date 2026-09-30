@@ -115,8 +115,10 @@ nerve-wiki/
 
 | Nerve 中的位置 | 处理 | 所在 Phase |
 |---|---|---|
-| `Makefile`、`.editorconfig`、`.gitattributes`、`.gitignore`、`.node-version`、`.oxlintrc.json`、`.oxfmtrc.json`、`turbo.json`、`pnpm-workspace.yaml`、`knip.jsonc`、`.github/workflows/ci.yml`、`deploy/compose.dev.yaml` | 拷贝后按本项目裁剪：去掉 Plane 相关的目标、关键词守卫、oxlint 警告上限（本项目从零警告起步） | P2 |
-| `server/internal/platform/{buildinfo,clock,config,logging,postgres,webui}` | 拷贝、改名、裁剪 | P3 |
+| `Makefile`、`.editorconfig`、`.gitignore`、`.node-version`、`.oxlintrc.json`、`.oxfmtrc.json`、`pnpm-workspace.yaml`、`knip.jsonc`、`.github/workflows/ci.yml`、`deploy/compose.dev.yaml` | 拷贝后按本项目裁剪：去掉 Plane 相关的目标、关键词守卫、oxlint 警告上限（本项目从零警告起步） | P2 |
+| `server/internal/platform/buildinfo` | 拷贝、改名（门禁需要一个真实的 Go 包，从 P3 提前） | P2 |
+| `turbo.json` | 随第一个工作区包引入，按需裁剪 | P5 |
+| `server/internal/platform/{clock,config,logging,postgres,webui}` | 拷贝、改名、裁剪 | P3 |
 | `server/internal/platform/httpserver`（不含认证与限流的接入） | 拷贝、改名、裁剪；SSE 所需的调整按 P1 的结论处理 | P3 |
 | `server/internal/archtest` | 拷贝；规则按本项目的模块清单调整；sqlc 相关规则随 M1 | P3 |
 | `server/internal/bootstrap`（组合根骨架与命令） | 只拷贝骨架 | P3 |
@@ -136,10 +138,10 @@ nerve-wiki/
 | P | 名称 | 目标 | 主要交付 | 验证 |
 |---|---|---|---|---|
 | P1 | 技术验证 | 在打地基之前验证五项风险 | 五份结论（写在 P1 文档的"结果"一节）；`tools/md-fixtures/`（与 Obsidian 核对）；必要时修订总体设计。实验代码是一次性的，不进入产品代码 | 每项有明确的"可行 / 不可行 / 替代方案"结论 |
-| P2 | 仓库与工具链 | 空仓库能跑通全部门禁 | 仓库布局、LICENSE、README 开发环境一节；Go 模块（`server`、`server/tools`）、golangci-lint；pnpm 工作区、turbo、oxlint、oxfmt、knip；Makefile；开发用 compose（PostgreSQL 18，数据库 locale 按 P1 结论）；持续集成的 lint 任务（含样例集自检） | 本地与持续集成的门禁为绿 |
+| P2 | 仓库与工具链 | 空仓库能跑通全部门禁 | 仓库布局、LICENSE、README 开发环境一节；Go 模块 `server`（第一个包 `buildinfo`）、golangci-lint；pnpm 工作区、oxlint、oxfmt、knip；Makefile；开发用 compose（PostgreSQL 18，数据库 locale 按 P1 结论）；持续集成的 lint 任务（含样例集自检） | 本地与持续集成的门禁为绿 |
 | P3 | 服务端平台层 | 一个能启动、能迁移、能优雅停机的 `nervewiki` | 平台层各包、组合根、`serve` 与 `migrate` 命令、`/healthz` 与 `/readyz`、数据库 locale 自检、长连接路由的豁免、集成测试工具（`pgtest`：模板库复制）、架构测试 | 单元、集成、架构测试为绿；二进制启动后健康检查可用 |
-| P4 | 接口契约与代码生成 | 走通"描述 → 生成 → 实现 → 契约测试" | `api/` 结构、oapi-codegen 与 bodyshape 生成、`apitest`、`instance` 模块、TS 客户端生成、`make gen` 与 `make gen-check` | 生成物一致性检查为绿；`instance` 的 handler 测试与契约测试为绿 |
-| P5 | 前端外壳与内嵌 | 前端能构建、内嵌进二进制、在浏览器里运行 | 应用骨架、路由与兜底、UI 基座与主题、zh-CN 与 en、分层样板（instance 的 service / store / 组件）、错误边界与 404、页面 CSP、`make build` | 前端全部门禁为绿；二进制提供页面并显示实例版本 |
+| P4 | 接口契约与代码生成 | 走通"描述 → 生成 → 实现 → 契约测试" | `server/tools` 模块、`api/` 结构、oapi-codegen 与 bodyshape 生成、`apitest`、`instance` 模块、TS 客户端生成、`make gen` 与 `make gen-check` | 生成物一致性检查为绿；`instance` 的 handler 测试与契约测试为绿 |
+| P5 | 前端外壳与内嵌 | 前端能构建、内嵌进二进制、在浏览器里运行 | turbo、应用骨架、路由与兜底、UI 基座与主题、zh-CN 与 en、分层样板（instance 的 service / store / 组件）、错误边界与 404、页面 CSP、`make build` | 前端全部门禁为绿；二进制提供页面并显示实例版本 |
 | P6 | 端到端测试与交付 | 冒烟故事在本地和持续集成里通过，产出镜像 | e2e 包（模板库、每个 worker 一个 `nervewiki`、页面与数据库 fixture、控制台与 CSP 监视）、S1–S4、持续集成的 e2e 任务与失败时的产物上传、Dockerfile、镜像构建 | `make e2e` 本地与持续集成为绿；镜像通过 S1、S3 |
 
 P1 放在最前面：它的结论会影响 P2（数据库 locale）、P3（SSE 与 MCP 对 HTTP 中间件的要求，例如长连接不受请求期限限制），以及 M4 之后的多个 M，先验证可以避免返工。
@@ -154,7 +156,9 @@ P1 放在最前面：它的结论会影响 P2（数据库 locale）、P3（SSE �
 | ④ | CodeMirror 6 与 React 19 的集成：挂载与卸载、受控与非受控、Markdown 语言包与高亮、扩展的组合方式（对应编辑器扩展管线）、**中文输入法**的组合输入 | M4 编辑器 | 可行：只创建一次 `EditorView`，切换页面时新建 `EditorState`；真实输入法与扩展管线移交 M4 |
 | ⑤ | Go 的 MCP SDK：Streamable HTTP 挂在自己的路由上、`Authorization` 头认证、每个请求取得当前账户、instructions、prompts、clientInfo；用 Claude Code 与 Codex 实际连接 | P3 的路由挂载方式；M9 | 可行：go-sdk v1.8.0；关闭回环保护、设置会话超时；重启恢复移交 M9 |
 
-### P1 结论对 M0 各 Phase 的要求
+### 前序 Phase 对后续 Phase 的要求
+
+P1 的实验结论与 P2 的审查提示，开工时逐条落实：
 
 | Phase | 要求 | 来源 |
 |---|---|---|
@@ -163,6 +167,13 @@ P1 放在最前面：它的结论会影响 P2（数据库 locale）、P3（SSE �
 | P3 | HTTP 平台层支持按路由豁免请求期限；处理器可以通过 `http.ResponseController` 在连接上解除写超时。M5 的 SSE 与 M9 的 MCP 都挂在这类路由上；M0 用测试路由验证豁免与不豁免两种行为 | ③、⑤ |
 | P5 | 前端不引入 unified / remark / rehype；编辑器（CodeMirror 6）不在 M0 引入 | ②、④ |
 | P6 | e2e 的 PostgreSQL 容器同样按 builtin `C.UTF-8` 初始化 | ① |
+| P3 | `pgtest` 使用与开发库相同的镜像 `postgres:18.6-trixie`（镜像带发行版名，固定 glibc 基线） | P2 审查 |
+| P3 | 配置的环境变量覆盖只处理带 `__` 的 `NWIKI_` 变量（例如 `NWIKI_DATABASE__URL`），并保留对应测试；否则开发用的 `NWIKI_DEV_DB_PORT` 会被当成未知配置键，服务拒绝启动 | P2 审查 |
+| P3 | 架构测试"禁止全局可变状态"要把 `buildinfo.version` 列为例外：它是 `-ldflags -X` 注入所必需的包级变量 | P2 审查 |
+| P3 | 需要时只加 `errorlint`；P2 审查在 Nerve 平台层的副本上试过另外 14 个 linter，非测试代码的报告基本是噪音 | P2 审查 |
+| P5 | oxlint 加入 React、jsx-a11y 插件与浏览器全局变量的限制，按路径设定 `web/**` 的运行环境；`.gitignore`、`.oxlintrc.json` 加入前端产物目录；评估 turbo 是否真的需要（`pnpm -r` 可能够用） | P2 审查 |
+| P5 | 升级到 Node 26 时注意：Node 25 起不再自带 corepack，`corepack enable` 这一步与 README 要调整 | P2 审查 |
+| P6 | e2e 与镜像使用 `postgres:18.6-trixie`；在 Docker 中构建时没有 `.git`，`buildinfo` 的提交信息要用 ldflags 注入，或者把 `.git` 带进构建上下文 | P2 审查 |
 
 ## 8. 本 M 建立的平台约定
 
@@ -199,7 +210,7 @@ P1 放在最前面：它的结论会影响 P2（数据库 locale）、P3（SSE �
 | P | 名称 | 状态 | Phase 文档 | 审查 |
 |---|---|---|---|---|
 | P1 | 技术验证 | 已完成 | [01-P1-spikes.md](01-P1-spikes.md) | [P1-spikes-review.md](reviews/P1-spikes-review.md) |
-| P2 | 仓库与工具链 | 未开始 | — | — |
+| P2 | 仓库与工具链 | 已完成 | [02-P2-repo-toolchain.md](02-P2-repo-toolchain.md) | [P2-repo-toolchain-review.md](reviews/P2-repo-toolchain-review.md) |
 | P3 | 服务端平台层 | 未开始 | — | — |
 | P4 | 接口契约与代码生成 | 未开始 | — | — |
 | P5 | 前端外壳与内嵌 | 未开始 | — | — |
@@ -212,3 +223,4 @@ P1 放在最前面：它的结论会影响 P2（数据库 locale）、P3（SSE �
 |---|---|---|
 | 2026-09-30 | 初版 | M0 启动 |
 | 2026-09-30 | 接住 P1 的结论：P1 验证表加"结论"一列；新增"P1 结论对 M0 各 Phase 的要求"（P2 的建库参数与样例集自检，P3 的 pg_trgm 迁移、locale 自检、长连接路由的豁免，P5 不引入 remark，P6 的建库参数）；范围、仓库布局、测试策略、风险与进度表相应更新 | M0/P1 完成，见 [P1 审查记录](reviews/P1-spikes-review.md) |
+| 2026-09-30 | P2 完成：`server/tools` 推迟到 P4、turbo 推迟到 P5、`buildinfo` 提前到 P2（第 6、7 节）；"P1 结论对 M0 各 Phase 的要求"改为"前序 Phase 对后续 Phase 的要求"，加入 P2 审查给 P3、P5、P6 的提示 | P2 的实施与审查，见 [P2 审查记录](reviews/P2-repo-toolchain-review.md) |

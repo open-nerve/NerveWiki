@@ -3,7 +3,7 @@
 | 项 | 内容 |
 |---|---|
 | Phase | M0/P2 仓库与工具链 |
-| 状态 | 进行中 |
+| 状态 | 已完成 |
 | 基线 | `610d0c7`（设计文档与 `tools/md-fixtures/`，没有代码） |
 | 上级文档 | [M0 总设计](00-M0-design.md) 第 7 节 |
 
@@ -13,7 +13,7 @@
 
 仓库里有设计文档和 P1 留下的 `tools/md-fixtures/`：61 个提取样例、4 个改写样例，以及两个 Node 脚本，`check.mjs` 和 `obsidian/verify.mjs`。此外没有代码、没有工具链配置、没有持续集成。
 
-P1 对本 Phase 的要求（M0 总设计"P1 结论对 M0 各 Phase 的要求"）：
+P1 对本 Phase 的要求（M0 总设计"前序 Phase 对后续 Phase 的要求"）：
 - 开发用 compose 以 builtin `C.UTF-8` 初始化 PostgreSQL；
 - 持续集成运行样例集自检；
 - `.gitignore` 忽略 `.playwright-mcp/` 这类工具产物。
@@ -52,12 +52,12 @@ P1 对本 Phase 的要求（M0 总设计"P1 结论对 M0 各 Phase 的要求"）
 | `LICENSE` | Nerve | AGPL-3.0 全文，原样 |
 | `README.md` | 新写 | 项目简介、开发环境、常用命令；之后每个 Phase 补充自己的部分 |
 | `.editorconfig` | Nerve | 去掉 River 迁移的条目；新增样例集的条目（3.3） |
-| `.gitattributes` | 新写 | 样例集不做换行符转换（3.3） |
-| `.gitignore` | Nerve | 去掉参考代码目录；前端产物随 P5 加入；新增 `.playwright-mcp/` |
+| `.gitattributes` | 新写 | 文本文件一律以 LF 检出；样例集不做换行符转换（3.3） |
+| `.gitignore` | Nerve | 去掉参考代码目录；前端产物随 P5 加入；新增 `.playwright-mcp/`；`/bin/` 只匹配根目录 |
 | `.node-version` | Nerve | `24` |
 | `Makefile` | Nerve | 只保留本 Phase 用得到的命令（3.4） |
 | `package.json`、`pnpm-workspace.yaml` | Nerve | 只有根目录；Plane 的 catalog、overrides、补丁全部不要 |
-| `.oxlintrc.json`、`.oxfmtrc.json`、`knip.jsonc` | Nerve | 去掉 Plane 的路径；oxlint 从零警告起步，不设警告上限 |
+| `.oxlintrc.json`、`.oxfmtrc.json`、`knip.jsonc` | Nerve | 去掉 Plane 的设置与路径；React、浏览器相关的规则随 P5；oxlint 从零警告起步，不设警告上限 |
 | `server/go.mod`、`server/.golangci.yml` | Nerve | 模块路径 `github.com/open-nerve/NerveWiki/server`；depguard 只保留本项目适用的禁用项 |
 | `server/internal/platform/buildinfo` | Nerve | 拷贝、改名 |
 | `deploy/compose.dev.yaml` | Nerve | 改名；建库参数按 P1 结论；默认端口改为 55433 |
@@ -74,15 +74,15 @@ P1 对本 Phase 的要求（M0 总设计"P1 结论对 M0 各 Phase 的要求"）
 | Node | 24（LTS） | Node 26 仍是 Current，10 月下旬才成为 LTS；那之后单独评估升级 |
 | pnpm | 12.8.1 | 由 `package.json` 的 `packageManager` 锁定，经 corepack 启用 |
 | oxlint / oxfmt / knip | 1.86.0 / 0.71.0 / 6.38.0 | 精确版本 |
-| PostgreSQL | 18.6 | 开发用 compose；与 P1 实验相同 |
-| GitHub Actions | checkout v7、setup-go v7、setup-node v7、cache v6 | |
+| PostgreSQL | `postgres:18.6-trixie` | 镜像带上发行版名（Debian 13，glibc 2.41），固定 pg_trgm 依赖的字符分类；测试容器、端到端测试、部署文档使用同一个镜像 |
+| GitHub Actions | checkout v7.0.1、setup-go v7.0.0、setup-node v7.0.0、cache v6.1.0 | 按完整的提交 SHA 引用，注释写明版本 |
 
 ### 3.3 样例集的字节保护
 
-样例集的输入是逐字节的规范，包括 CRLF、BOM、行尾空格和缺失的末尾换行，任何工具都不能改动它们：
+样例集的输入是逐字节的规范，包括 CRLF、BOM、行尾空格和缺失的末尾换行，任何工具都不能改动它们；其余文本文件则一律用 LF：
 
-- `.gitattributes`：`tools/md-fixtures/cases/**` 与 `tools/md-fixtures/rename/**` 设为 `-text`。否则在 `core.autocrlf=true` 的 Windows 上检出时，LF 会被换成 CRLF，全部字节偏移都会错。
-- `.editorconfig`：这两个目录的 `end_of_line`、`charset`、`trim_trailing_whitespace`、`insert_final_newline` 设为 `unset`，编辑器不改动换行、BOM 和空白。
+- `.gitattributes`：第一行 `* text=auto eol=lf`，所有文本文件以 LF 检出。否则在 `core.autocrlf=true`（Git for Windows 的默认值）的机器上检出为 CRLF，gofmt 与 oxfmt 的检查全部失败。随后 `tools/md-fixtures/cases/**` 与 `tools/md-fixtures/rename/**` 设为 `-text`，覆盖第一行，不做任何转换，否则 LF 会被换成 CRLF，全部字节偏移都会错。
+- `.editorconfig`：这两个目录的 `end_of_line`、`charset`、`trim_trailing_whitespace`、`insert_final_newline`、`indent_*` 设为 `unset`，编辑器不改动换行、BOM 和空白。
 - `.oxfmtrc.json`：忽略这两个目录。
 
 ### 3.4 Makefile
@@ -94,11 +94,13 @@ P1 对本 Phase 的要求（M0 总设计"P1 结论对 M0 各 Phase 的要求"）
 | `help`（默认） | 列出所有命令 |
 | `dev-db` / `dev-db-down` / `dev-db-reset` | 启动（等待就绪）/ 停止 / 停止并删除数据卷 |
 | `tools` | 把锁定版本的 golangci-lint 装到 `./bin` |
+| `check` | 持续集成的全部门禁：`lint`、`knip`、`test`；推送前在本地跑它 |
 | `lint` | 依次执行 `lint-go`、`lint-web` |
-| `lint-go` | golangci-lint（含格式检查） |
+| `fmt` | 修正全部格式：`golangci-lint fmt` 与 `oxfmt` |
+| `lint-go` | 按 schema 校验 golangci-lint 的配置（`run` 会静默忽略拼错的键），再运行它（含格式检查）；`go mod tidy -diff` 检查 `go.mod` 整洁 |
 | `lint-web` | 样例集自检（`node tools/md-fixtures/check.mjs`）、oxlint（零警告）、oxfmt 格式检查 |
 | `knip` | 未使用的文件、导出与依赖；配置里过时的条目也算失败 |
-| `test` | `server` 下的 `go test -count=1 ./...` |
+| `test` | `server` 下的 `go test -race -count=1 ./...`：P3 起有事务、监听、长连接这类并发代码，竞态检测从第一天就开着 |
 
 ### 3.5 Go
 
@@ -114,11 +116,14 @@ P1 对本 Phase 的要求（M0 总设计"P1 结论对 M0 各 Phase 的要求"）
 
 - `package.json`：`private`、`AGPL-3.0-only`、`engines.node ^24`、`packageManager` 锁定 pnpm。脚本：
   - `check:lint`：`oxlint --max-warnings=0 tools`；
-  - `check:format` / `fix:format`：oxfmt 作用于 `tools`、根目录的 JSON 与 YAML 配置。
+  - `check:format` / `fix:format`：`oxfmt --check .` / `oxfmt .`，覆盖整个仓库（遵守 `.gitignore`），之后新增的目录不需要改清单。排除三类：`docs/`（oxfmt 会重排中文表格的对齐，产生大量无意义的 diff）、`pnpm-lock.yaml`（由 pnpm 维护）、样例集。
 - `pnpm-workspace.yaml`：`packages` 列出 `web/apps/*`、`web/packages/*`、`e2e`（目录随 P5、P6 出现）；供应链相关的设置放在这里：
-  - 新发布的包要等一段时间才能安装（`minimumReleaseAge`）；
-  - 默认不运行依赖的安装脚本，需要的逐个放行。
-- `.oxlintrc.json`：插件与规则沿用 Nerve（correctness、suspicious、perf 三类，禁用易误用的全局变量），去掉 Plane 路径；以 `--max-warnings=0` 运行，任何警告都是失败。
+  - `minimumReleaseAge: 1440`：新发布的版本满 1 天才会被解析。显式写出时 `minimumReleaseAgeStrict` 随之为真，太新的版本直接报错；
+  - `strictDepBuilds: true`：依赖的安装脚本默认不运行，需要的逐个放行；
+  - `trustPolicy: no-downgrade`：新版本的发布可信度低于旧版本时拒绝安装。
+
+  pnpm 12 遇到不认识的设置会报错，这些设置因此能自我校验。
+- `.oxlintrc.json`：correctness、suspicious、perf 三类规则，以 `--max-warnings=0` 运行，任何警告都是失败。运行环境按路径设定：`tools/**` 是 Node。React、jsx-a11y、浏览器全局变量的限制以及前端产物目录随 P5 加入。不再沿用 Nerve 对 `*.config.*` 的忽略：前端和端到端测试的配置文件里有真实的逻辑。
 - `knip.jsonc`：`tools/md-fixtures/check.mjs` 由 Makefile 调用，`obsidian/verify.mjs` 由人手动运行，`package.json` 的脚本里都看不到，登记为入口。
 
 ### 3.7 开发用 compose
@@ -127,7 +132,7 @@ P1 对本 Phase 的要求（M0 总设计"P1 结论对 M0 各 Phase 的要求"）
 name: nervewiki-dev
 services:
   db:
-    image: postgres:18.6
+    image: postgres:18.6-trixie
     environment:
       POSTGRES_USER: nervewiki
       POSTGRES_PASSWORD: nervewiki
@@ -136,7 +141,7 @@ services:
     ports: ["127.0.0.1:${NWIKI_DEV_DB_PORT:-55433}:5432"]
 ```
 
-- 默认端口 55433：Nerve 的开发库用 55432，两个项目常在同一台机器上同时开发。
+- 默认端口 55433：避开 5432 以及本机其他项目常用的端口。
 - 数据卷挂在 `/var/lib/postgresql`：PostgreSQL 18 的镜像把数据目录改到了 `/var/lib/postgresql/18/docker`。
 - 健康检查用 `pg_isready`，`make dev-db` 用 `--wait` 等待就绪。
 
@@ -146,6 +151,7 @@ services:
 - `server` 任务：`setup-go`（版本取自 `server/go.mod`）→ `make lint-go` → `make test`。
 - `web` 任务：`setup-node`（版本取自 `.node-version`）→ `corepack enable` → 按锁文件缓存 pnpm 的包存储 → `pnpm install --frozen-lockfile` → `make lint-web` → `make knip`。
 - 权限只读（`contents: read`）；每个任务设超时。
+- actions 按完整的提交 SHA 引用（tag 可以被改指）；checkout 设 `persist-credentials: false`：之后的步骤会运行第三方代码，不在 `.git/config` 里留下令牌。
 
 ## 4. 实施步骤
 
@@ -171,7 +177,8 @@ services:
 | oxfmt | 格式检查通过 | 打乱一个配置文件的缩进 → 失败 |
 | knip | 为绿 | 加一个没有用到的依赖 → 失败 |
 | 样例集自检 | 通过 | P1 已做过反向对照 |
-| 样例集的字节保护 | `git check-attr` 显示 `text: unset` | 以 `core.autocrlf=true` 克隆一份，样例的字节与仓库中完全一致 |
+| 换行符与样例集的字节保护 | `git check-attr` 显示样例集 `text: unset`，其余 `eol: lf` | 以 `core.autocrlf=true` 克隆一份：样例的字节与仓库中完全一致，其余文件没有 CR，`make lint` 为绿 |
+| golangci 配置校验、`go.mod` 整洁 | 为绿 | 配置里拼错一个键 → 失败；`go.mod` 多一个用不到的依赖 → 失败 |
 | 开发库 | `make dev-db` 就绪 | 查询 `datlocprovider`、`datctype`，`show_trgm('中文')` 不为空 |
 | 持续集成 | 分支推送后 `server`、`web` 为绿 | — |
 
@@ -184,4 +191,26 @@ services:
 
 ## 7. 结果
 
-（完成后补写）
+2026-09-30 完成，合并提交 `8b8a8a0`。持续集成在分支上两次运行都为绿（`server` 约 28 秒，`web` 约 15 秒）。
+
+**与设计的差异**：第 2 节列出的三项差异照计划执行。审查之后修订了设计（第 3 节已是修订后的版本）：
+
+- 换行符统一为 LF；
+- 格式检查覆盖整个仓库；
+- `lint-go` 增加配置校验与 `go.mod` 整洁检查；
+- `test` 开启竞态检测，新增 `check` 与 `fmt` 两个命令；
+- oxlint 的配置清理；pnpm 增加 `trustPolicy`；
+- actions 按 SHA 引用；PostgreSQL 镜像带上发行版名。
+
+**验证**：第 5 节的每一项都通过，反向对照都按预期失败：
+
+- depguard、gochecknoinits、goimports 的本地前缀分组、测试断言、配置里拼错的键、`go.mod` 多余的依赖；
+- oxlint 的零警告、oxfmt、knip 的未使用依赖；
+- 开发库为 PG 18.6（Debian 13），provider `b`、`datctype` 为 `C.UTF-8`，`show_trgm('中文')` 正常；
+- 以 `core.autocrlf=true` 克隆后，样例逐字节一致，其余文件没有 CR，`make lint` 为绿。
+
+另外，P1 留下的两个脚本在零警告标准下暴露了 5 处 `Array#sort`，已改为 `toSorted`；oxfmt 统一了它们的格式。
+
+**审查**：[P2 审查记录](reviews/P2-repo-toolchain-review.md)。2 项 Important、9 项 Minor、3 项 Nit，都已处理；给后续 Phase 的提示已写进 [M0 总设计](00-M0-design.md)的"前序 Phase 对后续 Phase 的要求"。
+
+**遗留**：无。
