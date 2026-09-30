@@ -160,6 +160,9 @@ test("a deactivation goes out once, however often it is pressed; cancel sends no
   const sending = await screen.findByRole("button", { name: "Deactivating…" });
   expect(sending).toHaveProperty("disabled", true);
   await user.click(sending);
+  // Nothing closes the dialog while it is out.
+  await user.keyboard("{Escape}");
+  expect(screen.getByRole("alertdialog")).toBeTruthy();
 
   release?.(new Response(null, { status: 204 }));
   expect(await screen.findByRole("heading", { name: "Sign in" })).toBeTruthy();

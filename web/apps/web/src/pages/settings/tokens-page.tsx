@@ -1,4 +1,5 @@
 import { observer } from "mobx-react-lite";
+import { useRef } from "react";
 import useSWR from "swr";
 
 import { errorText } from "../../app/problem-messages";
@@ -15,6 +16,9 @@ export const TokensPage = observer(function TokensPage() {
   const apiTokens = useApiTokens();
   const t = useT();
   const { error, mutate } = useSWR("api-tokens", () => apiTokens.load());
+  // A revoked token's row leaves with its button: the focus comes to the section's heading instead of the page.
+  const heading = useRef<HTMLHeadingElement>(null);
+  const revoked = () => heading.current?.focus();
   const tokens = apiTokens.tokens;
   const failed = error === undefined ? undefined : errorText(error, t);
 
@@ -37,7 +41,7 @@ export const TokensPage = observer(function TokensPage() {
     list = (
       <ul className="divide-y rounded-md border">
         {tokens.map((token) => (
-          <TokenRow key={token.id} token={token} />
+          <TokenRow key={token.id} token={token} revoked={revoked} />
         ))}
       </ul>
     );
@@ -47,7 +51,9 @@ export const TokensPage = observer(function TokensPage() {
     <section className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="max-w-xl space-y-1">
-          <h2 className="text-lg font-semibold">{t("settings.tokens")}</h2>
+          <h2 ref={heading} tabIndex={-1} className="text-lg font-semibold outline-none">
+            {t("settings.tokens")}
+          </h2>
           <p className="text-sm text-muted-foreground">{t("tokens.body")}</p>
         </div>
         {tokens !== undefined && <CreateTokenDialog />}

@@ -71,7 +71,7 @@ test("a new display name is saved, and the user menu shows it", async () => {
   expect(sent).toEqual([{ display_name: "Ada Lovelace" }]);
   // Editing again takes the saved state away.
   await user.type(name, "!");
-  expect(screen.queryByRole("status")).toBeNull();
+  expect(screen.getByRole("status").textContent).toBe("");
 });
 
 test("a name left as it was is saved without a request", async () => {
@@ -103,7 +103,7 @@ test("an empty or refused name is marked under the field, which gets the focus",
   await user.click(screen.getByRole("button", { name: "Save" }));
   expect(await screen.findByText("At most 100 characters.")).toBeTruthy();
   expect(document.activeElement).toBe(name);
-  expect(screen.queryByRole("status")).toBeNull();
+  expect(screen.getByRole("status").textContent).toBe("");
   expect(screen.queryByRole("alert")).toBeNull();
 });
 

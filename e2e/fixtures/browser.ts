@@ -1,6 +1,6 @@
 import { STATUS_CODES } from "node:http";
 
-import { expect, type Page, type Request } from "@playwright/test";
+import { expect, type Locator, type Page, type Request, type Response } from "@playwright/test";
 
 /** What a page did that a story checks: its API calls, and what went wrong in it. */
 export interface PageWatch {
@@ -24,6 +24,21 @@ export interface PageWatch {
    * (failedToLoad). The check as the test ends (expectQuietPage) expects exactly what was declared.
    */
   expectConsole(expected: { errors?: readonly string[]; warnings?: readonly string[] }): void;
+}
+
+/** The next answer page gets to method path. */
+export function answerTo(page: Page, method: string, path: string): Promise<Response> {
+  return page.waitForResponse(
+    (response) => response.request().method() === method && new URL(response.url()).pathname === path
+  );
+}
+
+/** The note under field: its problem when it has one, else its hint; null without either. */
+export function noteOf(field: Locator): Promise<string | null> {
+  return field.evaluate((input) => {
+    const id = input.getAttribute("aria-describedby");
+    return id === null ? null : (document.getElementById(id)?.textContent ?? null);
+  });
 }
 
 /** What Chromium logs on the console when the page gets an answer of status, 400 or more, to a request. */

@@ -1,5 +1,7 @@
 import type { Locator, Page, Response } from "@playwright/test";
 
+import { answerTo } from "./browser";
+
 // The sign-in and sign-up pages as a user works them (M1/P5 design 3.6).
 
 /** Fills the sign-in form of page with email and password, sends it, and resolves the API's answer. */
@@ -21,9 +23,7 @@ async function sendCredentials(
 ): Promise<Response> {
   await emailField(page).fill(email);
   await passwordField(page).fill(password);
-  const answer = page.waitForResponse(
-    (response) => response.request().method() === "POST" && new URL(response.url()).pathname === path
-  );
+  const answer = answerTo(page, "POST", path);
   await page.getByRole("button", { name: button, exact: true }).click();
   return answer;
 }

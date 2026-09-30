@@ -1,16 +1,6 @@
 import { observer } from "mobx-react-lite";
-import { useState } from "react";
 
-import { errorText } from "../../app/problem-messages";
-import { Alert } from "../../components/ui/alert";
-import {
-  AlertDialog,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "../../components/ui/alert-dialog";
+import { ConfirmDialog } from "../../app/confirm-dialog";
 import { Button } from "../../components/ui/button";
 import { formatDate, formatDateTime } from "../../i18n/format";
 import { useT } from "../../i18n/i18n";
@@ -20,9 +10,10 @@ import { useApiTokens, useStore } from "../../stores/context";
 /**
  * TokenRow is a personal access token of the list: its name, when it was
  * created, when it expires (or expired), when it was last used (to the
- * minute), and the way to revoke it.
+ * minute), and the way to revoke it; revoked, it leaves the list, and the
+ * focus goes where revoked puts it.
  */
-export const TokenRow = observer(function TokenRow({ token }: { token: ApiToken }) {
+export const TokenRow = observer(function TokenRow({ token, revoked }: { token: ApiToken; revoked: () => void }) {
   const { preferences } = useStore();
   const t = useT();
   const locale = preferences.locale;
@@ -52,65 +43,29 @@ export const TokenRow = observer(function TokenRow({ token }: { token: ApiToken 
             : t("tokens.lastUsed", { date: formatDateTime(token.last_used_at, locale) })}
         </p>
       </div>
-      <RevokeTokenDialog token={token} />
+      <RevokeTokenDialog token={token} revoked={revoked} />
     </li>
   );
 });
 
-/**
- * RevokeTokenDialog confirms revoking token; once revoked it leaves the
- * list, which takes the row and the dialog with it. A refusal stays in the
- * dialog.
- */
-function RevokeTokenDialog({ token }: { token: ApiToken }) {
+/** RevokeTokenDialog confirms revoking token; once revoked it leaves the list, which takes the row with it. */
+function RevokeTokenDialog({ token, revoked }: { token: ApiToken; revoked: () => void }) {
   const apiTokens = useApiTokens();
   const t = useT();
-  const [open, setOpen] = useState(false);
-  const [failure, setFailure] = useState<unknown>();
-  const [sending, setSending] = useState(false);
-  const failed = failure === undefined ? undefined : errorText(failure, t);
-
-  async function revoke() {
-    setSending(true);
-    setFailure(undefined);
-    try {
-      await apiTokens.revoke(token.id);
-    } catch (error) {
-      setFailure(error);
-      setSending(false);
-    }
-  }
-
   return (
-    <AlertDialog
-      open={open}
-      onOpenChange={(next) => {
-        if (!sending) {
-          setOpen(next);
-          setFailure(undefined);
-        }
-      }}
-    >
-      <AlertDialogTrigger asChild>
+    <ConfirmDialog
+      trigger={
         <Button variant="outline" aria-label={t("tokens.revokeLabel", { name: token.name })}>
           {t("tokens.revoke")}
         </Button>
-      </AlertDialogTrigger>
-      <AlertDialogContent>
-        <AlertDialogTitle>{t("tokens.revokeTitle", { name: token.name })}</AlertDialogTitle>
-        <AlertDialogDescription>{t("tokens.revokeBody")}</AlertDialogDescription>
-        {failed !== undefined && <Alert>{failed}</Alert>}
-        <div className="flex justify-end gap-2">
-          <AlertDialogCancel asChild>
-            <Button variant="outline" disabled={sending}>
-              {t("tokens.cancel")}
-            </Button>
-          </AlertDialogCancel>
-          <Button variant="destructive" disabled={sending} onClick={() => void revoke()}>
-            {sending ? t("tokens.revoking") : t("tokens.revoke")}
-          </Button>
-        </div>
-      </AlertDialogContent>
-    </AlertDialog>
+      }
+      title={t("tokens.revokeTitle", { name: token.name })}
+      description={t("tokens.revokeBody")}
+      confirmLabel={t("tokens.revoke")}
+      sendingLabel={t("tokens.revoking")}
+      cancelLabel={t("tokens.cancel")}
+      confirm={() => apiTokens.revoke(token.id)}
+      focusAfter={revoked}
+    />
   );
 }

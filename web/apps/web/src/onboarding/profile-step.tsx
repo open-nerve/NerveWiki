@@ -10,6 +10,6 @@ import { useT } from "../i18n/i18n";
 export function ProfileStep({ complete }: { complete: () => Promise<void> }) {
   const t = useT();
   return (
-    <DisplayNameForm hint={t("onboarding.profile.hint")} submitLabel={t("onboarding.continue")} saved={complete} />
+    <DisplayNameForm wide hint={t("onboarding.profile.hint")} submitLabel={t("onboarding.continue")} saved={complete} />
   );
 }

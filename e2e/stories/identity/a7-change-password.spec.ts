@@ -17,8 +17,8 @@ import {
   registerOnboarded,
 } from "../../fixtures/auth";
 import { accountMenu } from "../../fixtures/auth-pages";
-import { failedToLoad } from "../../fixtures/browser";
-import { changePasswordWith, noteOf } from "../../fixtures/settings-pages";
+import { failedToLoad, noteOf } from "../../fixtures/browser";
+import { changePasswordWith } from "../../fixtures/settings-pages";
 import { expect, test } from "../../fixtures/test";
 
 // A7, change the password (M1 design 3).

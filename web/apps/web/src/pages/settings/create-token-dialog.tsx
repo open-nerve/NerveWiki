@@ -1,4 +1,4 @@
-import { useId, useState, type FormEvent } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 
 import { useForm } from "../../app/form";
 import { FormField } from "../../components/form-field";
@@ -160,9 +160,14 @@ function CreateTokenForm({ onCreated, cancel }: { onCreated: (created: ApiTokenC
 function NewToken({ token, done }: { token: string; done: () => void }) {
   const t = useT();
   const id = useId();
+  const field = useRef<HTMLInputElement>(null);
   const [copied, setCopied] = useState<boolean>();
+  // The token has the focus, selected: copying it is one keystroke, the Copy button or not.
+  useEffect(() => field.current?.focus(), []);
 
   async function copy() {
+    // Emptied first, the status says it again on every copy.
+    setCopied(undefined);
     try {
       await navigator.clipboard.writeText(token);
       setCopied(true);
@@ -179,6 +184,7 @@ function NewToken({ token, done }: { token: string; done: () => void }) {
         <Label htmlFor={id}>{t("tokens.secret")}</Label>
         <div className="flex gap-2">
           <Input
+            ref={field}
             id={id}
             readOnly
             value={token}
@@ -191,11 +197,9 @@ function NewToken({ token, done }: { token: string; done: () => void }) {
             </Button>
           )}
         </div>
-        {copied !== undefined && (
-          <output className="block text-sm text-muted-foreground">
-            {copied ? t("tokens.copied") : t("tokens.copyFailed")}
-          </output>
-        )}
+        <output className="block text-sm text-muted-foreground">
+          {copied === undefined ? "" : copied ? t("tokens.copied") : t("tokens.copyFailed")}
+        </output>
       </div>
       <div className="flex justify-end">
         <Button onClick={done}>{t("tokens.done")}</Button>

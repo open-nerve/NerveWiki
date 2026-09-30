@@ -2,10 +2,10 @@ import { observer } from "mobx-react-lite";
 import { useState } from "react";
 
 import { DisplayNameForm } from "../../app/display-name-form";
-import { isThemePreference, themeChoices } from "../../app/theme-menu";
 import { useT } from "../../i18n/i18n";
 import { isLocale, locales } from "../../i18n/locale";
 import { useAccount, useStore } from "../../stores/context";
+import { isThemePreference, themePreferences } from "../../stores/preferences.store";
 
 /** ProfilePage shows the account's name and address, and this browser's preferences (M1/P6 design 3.3). */
 export function ProfilePage() {
@@ -29,7 +29,7 @@ const ProfileSection = observer(function ProfileSection() {
         submitLabel={t("profile.save")}
         saved={() => setSaved(true)}
         onEdit={() => setSaved(false)}
-        status={saved && <output className="text-sm text-muted-foreground">{t("profile.saved")}</output>}
+        status={<output className="text-sm text-muted-foreground">{saved ? t("profile.saved") : ""}</output>}
       />
       <div className="space-y-1">
         <h3 className="text-sm font-medium">{t("form.email")}</h3>
@@ -56,7 +56,7 @@ const PreferencesSection = observer(function PreferencesSection() {
       </div>
       <fieldset className="space-y-2">
         <legend className="mb-2 text-sm font-medium">{t("theme.label")}</legend>
-        {themeChoices.map(({ value, label }) => (
+        {themePreferences.map((value) => (
           <label key={value} className="flex items-center gap-2 text-sm">
             <input
               type="radio"
@@ -65,7 +65,7 @@ const PreferencesSection = observer(function PreferencesSection() {
               checked={preferences.theme === value}
               onChange={(event) => isThemePreference(event.target.value) && preferences.setTheme(event.target.value)}
             />
-            {t(label)}
+            {t(`theme.${value}`)}
           </label>
         ))}
       </fieldset>

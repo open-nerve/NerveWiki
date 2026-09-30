@@ -2,7 +2,13 @@ import { makeAutoObservable } from "mobx";
 
 import { isLocale, localeFor, type Locale } from "../i18n/locale";
 
-export type ThemePreference = "system" | "light" | "dark";
+/** The theme preferences, in the order the app offers them. */
+export const themePreferences = ["system", "light", "dark"] as const;
+export type ThemePreference = (typeof themePreferences)[number];
+
+export function isThemePreference(value: unknown): value is ThemePreference {
+  return themePreferences.some((theme) => theme === value);
+}
 export type Theme = "light" | "dark";
 
 /**
@@ -43,7 +49,7 @@ export class PreferencesStore {
   constructor({ storage, darkScheme, languages }: PreferenceSources) {
     this.storage = storage;
     const theme = read(storage, themeKey);
-    this.theme = theme === "light" || theme === "dark" ? theme : "system";
+    this.theme = isThemePreference(theme) ? theme : "system";
     const locale = read(storage, localeKey);
     this.locale = isLocale(locale) ? locale : localeFor(languages);
     this.systemDark = darkScheme.matches;

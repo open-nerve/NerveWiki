@@ -10,8 +10,7 @@ import {
   registerOnboarded,
 } from "../../fixtures/auth";
 import { formError, signInWith } from "../../fixtures/auth-pages";
-import { failedToLoad } from "../../fixtures/browser";
-import { answerTo } from "../../fixtures/settings-pages";
+import { answerTo, failedToLoad } from "../../fixtures/browser";
 import { expect, test } from "../../fixtures/test";
 import { nervewikiUsers } from "../../fixtures/users";
 

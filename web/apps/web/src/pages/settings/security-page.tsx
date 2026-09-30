@@ -38,7 +38,7 @@ const fields: readonly (keyof Passwords)[] = ["current_password", "new_password"
  * page stays as it is, with the fields emptied.
  */
 function ChangePasswordForm() {
-  const { account } = useAccount();
+  const { account, me } = useAccount();
   const t = useT();
   const [passwords, setPasswords] = useState<Passwords>({ current_password: "", new_password: "" });
   const [changed, setChanged] = useState(false);
@@ -69,6 +69,8 @@ function ChangePasswordForm() {
   return (
     <form ref={ref} noValidate onSubmit={(event) => void onSubmit(event)} className="space-y-4">
       {banner !== undefined && <Alert>{banner}</Alert>}
+      {/* The account whose password this is: password managers update the entry of this username. */}
+      <input type="text" name="username" autoComplete="username" value={me.email} readOnly hidden />
       <FormField
         label={t("security.currentPassword")}
         type="password"
@@ -91,7 +93,7 @@ function ChangePasswordForm() {
       <Button type="submit" disabled={sending}>
         {t("security.change")}
       </Button>
-      {changed && <output className="block text-sm text-muted-foreground">{t("security.changed")}</output>}
+      <output className="block text-sm text-muted-foreground">{changed ? t("security.changed") : ""}</output>
     </form>
   );
 }

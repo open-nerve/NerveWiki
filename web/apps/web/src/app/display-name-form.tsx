@@ -17,7 +17,8 @@ type DisplayNameFormProps = {
   status?: ReactNode;
   /** Called on every edit, before the name is saved again. */
   onEdit?: () => void;
-  className?: string;
+  /** The button spans the form, as onboarding's steps have it. */
+  wide?: boolean;
 };
 
 /**
@@ -33,7 +34,7 @@ export const DisplayNameForm = observer(function DisplayNameForm({
   saved,
   status,
   onEdit,
-  className,
+  wide = false,
 }: DisplayNameFormProps) {
   const { account, me } = useAccount();
   const t = useT();
@@ -52,7 +53,7 @@ export const DisplayNameForm = observer(function DisplayNameForm({
   }
 
   return (
-    <form ref={ref} noValidate onSubmit={onSubmit} className={className ?? "space-y-4"}>
+    <form ref={ref} noValidate onSubmit={onSubmit} className="space-y-4">
       {banner !== undefined && <Alert>{banner}</Alert>}
       <FormField
         label={t("account.displayName")}
@@ -67,7 +68,7 @@ export const DisplayNameForm = observer(function DisplayNameForm({
         }}
       />
       <div className="flex items-center gap-3">
-        <Button type="submit" disabled={sending}>
+        <Button type="submit" className={wide ? "w-full" : undefined} disabled={sending}>
           {submitLabel}
         </Button>
         {status}

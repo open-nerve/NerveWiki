@@ -143,8 +143,11 @@ test("a new token is shown once, in the dialog; after Done it is nowhere, and th
   await user.click(within(shown).getByRole("button", { name: "Copy" }));
   expect(await navigator.clipboard.readText()).toBe(secret);
   expect(within(shown).getByRole("status").textContent).toBe("Copied.");
-  // Only Done closes it: not Escape.
+  // Only Done closes it: not Escape, not a click outside.
   await user.keyboard("{Escape}");
+  expect(screen.getByRole("dialog", { name: "Your new token" })).toBeTruthy();
+  const overlay = shown.parentElement?.querySelector<HTMLElement>(":scope > [data-state='open']:not([role])");
+  await user.click(overlay ?? document.body);
   expect(screen.getByRole("dialog", { name: "Your new token" })).toBeTruthy();
 
   await user.click(within(shown).getByRole("button", { name: "Done" }));
@@ -157,7 +160,11 @@ test("a new token is shown once, in the dialog; after Done it is nowhere, and th
   await expectEmptyForm(user);
 });
 
-test("a token lasts 90 days unless another lifetime is chosen", async () => {
+test.each([
+  [undefined, 90],
+  ["In 30 days", 30],
+  ["In a year", 365],
+])("a token lasts as long as chosen (%s), 90 days by default", async (expiry, want) => {
   let expiresAt = "";
   tokensPage([], {
     create: async (request) => {
@@ -165,14 +172,50 @@ test("a token lasts 90 days unless another lifetime is chosen", async () => {
       return json({ ...listed("CI", { expires_at: expiresAt }), token: secret }, 201);
     },
   });
-  const { user, dialog } = await fillCreateForm("CI", "correct horse battery");
+  const { user, dialog } = await fillCreateForm("CI", "correct horse battery", expiry);
 
   await user.click(within(dialog).getByRole("button", { name: "Create" }));
 
   await screen.findByRole("dialog", { name: "Your new token" });
   const days = (Date.parse(expiresAt) - Date.now()) / 86_400_000;
-  expect(days).toBeGreaterThan(89.9);
-  expect(days).toBeLessThanOrEqual(90);
+  expect(days).toBeGreaterThan(want - 0.1);
+  expect(days).toBeLessThanOrEqual(want);
+});
+
+// Without the clipboard (plain HTTP at a LAN address) there is no Copy:
+// the token has the focus, selected, to copy by hand.
+test("without the clipboard the token is selected for copying, and there is no Copy", async () => {
+  tokensPage();
+  const { user, dialog } = await fillCreateForm("CI", "correct horse battery");
+  Reflect.deleteProperty(navigator, "clipboard");
+  expect("clipboard" in navigator).toBe(false);
+
+  await user.click(within(dialog).getByRole("button", { name: "Create" }));
+
+  const shown = await screen.findByRole("dialog", { name: "Your new token" });
+  const field = within(shown).getByLabelText<HTMLInputElement>("Token");
+  expect(within(shown).queryByRole("button", { name: "Copy" })).toBeNull();
+  await waitFor(() => expect(document.activeElement).toBe(field));
+  expect(field.value.slice(field.selectionStart ?? 0, field.selectionEnd ?? 0)).toBe(secret);
+});
+
+test("a list that cannot be loaded says so, and loads again on Try again", async () => {
+  const user = userEvent.setup();
+  let down = true;
+  renderApp(
+    "/settings/tokens",
+    signedInApp({
+      "GET /api/v0/me/api-tokens": () => (down ? problem(404, "not_found") : json({ data: [listed("deploy")] })),
+    })
+  );
+  expect((await screen.findByRole("alert")).textContent).toBe("Something went wrong (not_found).");
+  expect(screen.queryByRole("button", { name: "Create token" })).toBeNull();
+
+  down = false;
+  await user.click(screen.getByRole("button", { name: "Try again" }));
+
+  expect(await screen.findByRole("listitem")).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Create token" })).toBeTruthy();
 });
 
 // The dialog is cancelled while the creation is out: the token it answers
@@ -210,6 +253,8 @@ test("a revoked token leaves the list, and so does one another tab revoked alrea
   const confirm = await screen.findByRole("alertdialog", { name: "Revoke deploy?" });
   await user.click(within(confirm).getByRole("button", { name: "Revoke" }));
   await waitFor(() => expect(screen.getAllByRole("listitem")).toHaveLength(1));
+  // The row went with its button: the focus is on the section, not lost to the page.
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Access tokens" })));
 
   gone = true;
   await user.click(screen.getByRole("button", { name: "Revoke agent" }));

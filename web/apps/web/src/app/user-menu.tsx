@@ -14,8 +14,9 @@ import { useStore } from "../stores/context";
 
 /**
  * UserMenu is the signed-in account in the top bar: its display name, the
- * way to the settings, and signing out, which ends the session in every tab of the browser; each
- * tab's guard then takes it to the sign-in page (M1/P5 design 3.6).
+ * way to the settings, and signing out, which ends the session in every
+ * tab of the browser; each tab's guard then takes it to the sign-in page
+ * (M1/P5 design 3.6).
  */
 export const UserMenu = observer(function UserMenu() {
   const { account, auth } = useStore();

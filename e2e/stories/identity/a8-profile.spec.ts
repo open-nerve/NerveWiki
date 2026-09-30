@@ -1,8 +1,7 @@
 import { accountIdOf, expectDisplayName } from "../../fixtures/assert/identity";
 import { bearer, createToken, displayNameOf, emailFor, register, registerOnboarded } from "../../fixtures/auth";
 import { accountMenu } from "../../fixtures/auth-pages";
-import { failedToLoad } from "../../fixtures/browser";
-import { answerTo, noteOf } from "../../fixtures/settings-pages";
+import { answerTo, failedToLoad, noteOf } from "../../fixtures/browser";
 import { expect, test } from "../../fixtures/test";
 
 // A8, the profile and the preferences (M1 design 3); the theme and the language are this browser's (M1/P6 design 3.3).
@@ -70,7 +69,7 @@ test("A8 (page): the settings change the display name, and this browser's theme 
   await expect(accountMenu(page, "Ada Lovelace")).toBeVisible();
   await expectDisplayName(db, userId, "Ada Lovelace");
 
-  // The theme and the language apply at once, as the top bar's menus show them.
+  // The theme and the language apply at once.
   const html = page.locator("html");
   await page.getByRole("radio", { name: "Dark" }).check();
   await expect(html).toHaveClass(/\bdark\b/);
@@ -78,11 +77,15 @@ test("A8 (page): the settings change the display name, and this browser's theme 
   await expect(page.getByRole("heading", { level: 1, name: "设置" })).toBeVisible();
   await expect(html).toHaveAttribute("lang", "zh-CN");
 
-  // All of it holds after a reload: the name on the server, the preferences in this browser.
+  // All of it holds after a reload: the name on the server, the preferences in this browser, as the top bar's
+  // theme menu shows too.
   await page.reload();
   await expect(page.getByRole("heading", { level: 1, name: "设置" })).toBeVisible();
   await expect(html).toHaveClass(/\bdark\b/);
   await expect(page.getByRole("radio", { name: "深色" })).toBeChecked();
+  await page.getByRole("button", { name: "主题" }).click();
+  await expect(page.getByRole("menuitemradio", { name: "深色" })).toBeChecked();
+  await page.keyboard.press("Escape");
   await expect(page.getByLabel("显示名", { exact: true })).toHaveValue("Ada Lovelace");
   await expect(accountMenu(page, "Ada Lovelace")).toBeVisible();
 });

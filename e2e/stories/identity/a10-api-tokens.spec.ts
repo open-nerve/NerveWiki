@@ -10,8 +10,8 @@ import type { ApiTokenCreated } from "@nervewiki/api-client";
 import type { Page } from "@playwright/test";
 
 import { bearer, createToken, emailFor, password, register, registerOnboarded } from "../../fixtures/auth";
-import { failedToLoad } from "../../fixtures/browser";
-import { answerTo, createTokenWith, holdAnswer, noteOf } from "../../fixtures/settings-pages";
+import { answerTo, failedToLoad, noteOf } from "../../fixtures/browser";
+import { createTokenWith, holdAnswer } from "../../fixtures/settings-pages";
 import { expect, test } from "../../fixtures/test";
 
 // A10, personal access tokens (M1 design 3).

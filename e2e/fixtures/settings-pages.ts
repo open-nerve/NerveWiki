@@ -1,21 +1,8 @@
-import type { Locator, Page, Response } from "@playwright/test";
+import type { Page, Response } from "@playwright/test";
+
+import { answerTo } from "./browser";
 
 // The settings pages as a user works them (M1/P6 design 3.8).
-
-/** The next answer page gets to method path. */
-export function answerTo(page: Page, method: string, path: string): Promise<Response> {
-  return page.waitForResponse(
-    (response) => response.request().method() === method && new URL(response.url()).pathname === path
-  );
-}
-
-/** The note under field: its problem when it has one, else its hint; null without either. */
-export function noteOf(field: Locator): Promise<string | null> {
-  return field.evaluate((input) => {
-    const id = input.getAttribute("aria-describedby");
-    return id === null ? null : (document.getElementById(id)?.textContent ?? null);
-  });
-}
 
 /** Fills the security page's password form of page, sends it, and resolves the status of its answer. */
 export async function changePasswordWith(page: Page, current: string, next: string): Promise<number> {
@@ -44,9 +31,9 @@ export async function createTokenWith(
 }
 
 /**
- * Holds the answer to the page's next method path: the server handles the
- * request at once, the page gets its answer only when the function returned
- * is called.
+ * Holds the answers to page's requests of method to path: the server handles
+ * each request at once, the page gets every answer only when the function
+ * returned is called.
  */
 export async function holdAnswer(page: Page, method: string, path: string): Promise<() => void> {
   let release: (() => void) | undefined;
