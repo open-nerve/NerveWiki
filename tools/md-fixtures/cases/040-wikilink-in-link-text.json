@@ -1,0 +1,30 @@
+{
+  "description": "Markdown 链接文字里的 wikilink 照常计入，外层的 Markdown 链接也计入。",
+  "source": "obsidian-verified",
+  "frontmatter": null,
+  "links": [
+    {
+      "kind": "wikilink",
+      "target": "x",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        7,
+        8
+      ]
+    },
+    {
+      "kind": "link",
+      "target": "y.md",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        12,
+        16
+      ]
+    }
+  ],
+  "tags": []
+}

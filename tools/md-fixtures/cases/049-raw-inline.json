@@ -1,0 +1,19 @@
+{
+  "description": "行内 HTML 标签和 HTML 注释、尖括号自动链接都是原始内容。",
+  "source": "obsidian-verified",
+  "frontmatter": null,
+  "links": [
+    {
+      "kind": "wikilink",
+      "target": "z",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        68,
+        69
+      ]
+    }
+  ],
+  "tags": []
+}

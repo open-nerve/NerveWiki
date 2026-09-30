@@ -1,0 +1,19 @@
+{
+  "description": "没有结束的 --- 时不是 frontmatter，整篇按 Markdown 解析。",
+  "source": "obsidian-verified",
+  "frontmatter": null,
+  "links": [
+    {
+      "kind": "wikilink",
+      "target": "x",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        11,
+        12
+      ]
+    }
+  ],
+  "tags": []
+}

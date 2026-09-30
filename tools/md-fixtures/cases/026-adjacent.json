@@ -1,0 +1,41 @@
+{
+  "description": "相邻的 wikilink，以及多出来的右方括号。",
+  "source": "obsidian-verified",
+  "frontmatter": null,
+  "links": [
+    {
+      "kind": "wikilink",
+      "target": "a",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        2,
+        3
+      ]
+    },
+    {
+      "kind": "wikilink",
+      "target": "b",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        7,
+        8
+      ]
+    },
+    {
+      "kind": "wikilink",
+      "target": "c",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        13,
+        14
+      ]
+    }
+  ],
+  "tags": []
+}

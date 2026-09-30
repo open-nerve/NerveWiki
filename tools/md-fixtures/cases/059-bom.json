@@ -1,0 +1,26 @@
+{
+  "description": "文件以 BOM 开头时 frontmatter 照常识别；range 是文件原始字节的偏移，包含 BOM 的 3 个字节（Obsidian 读取时去掉 BOM，核对时已换算）。",
+  "source": "obsidian-verified",
+  "frontmatter": {
+    "valid": true,
+    "properties": {
+      "a": 1
+    }
+  },
+  "links": [
+    {
+      "kind": "wikilink",
+      "target": "y",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        18,
+        19
+      ]
+    }
+  ],
+  "tags": [
+    "t"
+  ]
+}

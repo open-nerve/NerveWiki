@@ -1,0 +1,28 @@
+{
+  "description": "CRLF 换行：frontmatter 照常识别，字节偏移包含 \\r。",
+  "source": "obsidian-verified",
+  "frontmatter": {
+    "valid": true,
+    "properties": {
+      "tags": [
+        "a"
+      ]
+    }
+  },
+  "links": [
+    {
+      "kind": "wikilink",
+      "target": "x",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        30,
+        31
+      ]
+    }
+  ],
+  "tags": [
+    "t"
+  ]
+}

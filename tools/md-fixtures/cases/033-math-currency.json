@@ -1,0 +1,19 @@
+{
+  "description": "开头的 $ 后面是非空白、结尾的 $ 前面是非空白，才构成公式；价格里的 $ 不是公式。",
+  "source": "obsidian-verified",
+  "frontmatter": null,
+  "links": [
+    {
+      "kind": "wikilink",
+      "target": "预算",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        16,
+        22
+      ]
+    }
+  ],
+  "tags": []
+}

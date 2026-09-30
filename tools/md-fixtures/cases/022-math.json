@@ -1,0 +1,21 @@
+{
+  "description": "行内公式、行内的 $$ 公式和公式块里没有链接和标签。",
+  "source": "obsidian-verified",
+  "frontmatter": null,
+  "links": [
+    {
+      "kind": "wikilink",
+      "target": "yes",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        38,
+        41
+      ]
+    }
+  ],
+  "tags": [
+    "t"
+  ]
+}

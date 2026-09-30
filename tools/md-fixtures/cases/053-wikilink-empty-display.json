@@ -1,0 +1,31 @@
+{
+  "description": "空的显示文字等于没有显示文字。",
+  "source": "nerve-defined",
+  "note": "Obsidian 把空的显示文字当真，渲染出一个看不见的空链接。我们视同没有显示文字，显示目标标题。",
+  "frontmatter": null,
+  "links": [
+    {
+      "kind": "wikilink",
+      "target": "a",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        2,
+        3
+      ]
+    },
+    {
+      "kind": "wikilink",
+      "target": "b",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        10,
+        11
+      ]
+    }
+  ],
+  "tags": []
+}

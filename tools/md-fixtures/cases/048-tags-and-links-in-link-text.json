@@ -1,0 +1,54 @@
+{
+  "description": "Markdown 链接文字里的标签照常算；wikilink 的显示文字、链接标题、图片说明文字里的内容都不算。",
+  "source": "obsidian-verified",
+  "frontmatter": null,
+  "links": [
+    {
+      "kind": "link",
+      "target": "a.md",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        5,
+        9
+      ]
+    },
+    {
+      "kind": "wikilink",
+      "target": "b",
+      "anchor": null,
+      "display": "#t2",
+      "key": null,
+      "range": [
+        13,
+        14
+      ]
+    },
+    {
+      "kind": "link",
+      "target": "c.md",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        25,
+        29
+      ]
+    },
+    {
+      "kind": "image",
+      "target": "d.png",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        56,
+        61
+      ]
+    }
+  ],
+  "tags": [
+    "t"
+  ]
+}

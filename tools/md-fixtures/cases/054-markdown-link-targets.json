@@ -1,0 +1,85 @@
+{
+  "description": "Markdown 链接的目标和锚点按 decodeURI 解码（%2F 这类保留字符保持原样）；以 / 开头的路径、没有扩展名的目标照常计入；目标含空格又没有尖括号时不是链接；![t](f.md) 是图片写法。",
+  "source": "obsidian-verified",
+  "frontmatter": null,
+  "links": [
+    {
+      "kind": "link",
+      "target": "a.md",
+      "anchor": "中 x",
+      "display": null,
+      "key": null,
+      "range": [
+        4,
+        8
+      ]
+    },
+    {
+      "kind": "link",
+      "target": "/abs.md",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        28,
+        35
+      ]
+    },
+    {
+      "kind": "link",
+      "target": "a%2Fb.md",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        41,
+        49
+      ]
+    },
+    {
+      "kind": "link",
+      "target": "c d.md",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        68,
+        74
+      ]
+    },
+    {
+      "kind": "link",
+      "target": "e",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        81,
+        82
+      ]
+    },
+    {
+      "kind": "image",
+      "target": "f.md",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        89,
+        93
+      ]
+    },
+    {
+      "kind": "embed",
+      "target": "g.md",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        98,
+        102
+      ]
+    }
+  ],
+  "tags": []
+}

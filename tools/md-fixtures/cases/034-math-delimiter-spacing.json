@@ -1,0 +1,30 @@
+{
+  "description": "$ 后面是空白时不开始公式；$ 前面是空白时不结束公式，公式继续向后找。",
+  "source": "obsidian-verified",
+  "frontmatter": null,
+  "links": [
+    {
+      "kind": "wikilink",
+      "target": "a",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        4,
+        5
+      ]
+    },
+    {
+      "kind": "wikilink",
+      "target": "c",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        31,
+        32
+      ]
+    }
+  ],
+  "tags": []
+}

@@ -1,0 +1,21 @@
+{
+  "description": "YAML 不是映射时，这一段是 frontmatter，但没有属性。",
+  "source": "obsidian-verified",
+  "frontmatter": {
+    "valid": false
+  },
+  "links": [
+    {
+      "kind": "wikilink",
+      "target": "x",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        18,
+        19
+      ]
+    }
+  ],
+  "tags": []
+}

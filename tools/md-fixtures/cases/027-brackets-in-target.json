@@ -1,0 +1,20 @@
+{
+  "description": "目标不能含 [ 或 ]（标题禁止这两个字符），这样的文字不是链接。",
+  "source": "nerve-defined",
+  "note": "Obsidian 把 [[a [b] c]] 记为目标 a [b] c 的链接。标题不允许含方括号，这样的目标永远解析不到，我们不计入。",
+  "frontmatter": null,
+  "links": [
+    {
+      "kind": "wikilink",
+      "target": "ok",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        14,
+        16
+      ]
+    }
+  ],
+  "tags": []
+}

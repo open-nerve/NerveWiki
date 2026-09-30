@@ -1,0 +1,19 @@
+{
+  "description": "第一个方括号前有反斜杠时，不是 wikilink。",
+  "source": "obsidian-verified",
+  "frontmatter": null,
+  "links": [
+    {
+      "kind": "wikilink",
+      "target": "yes",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        14,
+        17
+      ]
+    }
+  ],
+  "tags": []
+}

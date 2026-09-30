@@ -1,0 +1,31 @@
+{
+  "description": "被使用的引用定义是一条链接，range 在定义里；同一个定义被引用多次只算一条；没有被使用的定义不是链接。",
+  "source": "nerve-defined",
+  "note": "Obsidian 不索引引用式链接，阅读视图也把它们当作外部链接。我们与行内链接同等对待，重命名时定义行也会被改写。",
+  "frontmatter": null,
+  "links": [
+    {
+      "kind": "link",
+      "target": "target.md",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        71,
+        80
+      ]
+    },
+    {
+      "kind": "link",
+      "target": "other.md",
+      "anchor": "sec",
+      "display": null,
+      "key": null,
+      "range": [
+        94,
+        102
+      ]
+    }
+  ],
+  "tags": []
+}

@@ -1,0 +1,7 @@
+{
+  "description": "行内的 $$…$$ 允许两侧有空白；以 $$ 开头的行开始公式块，没有结束行时延续到文末。",
+  "source": "obsidian-verified",
+  "frontmatter": null,
+  "links": [],
+  "tags": []
+}

@@ -1,0 +1,63 @@
+{
+  "description": "wikilink 的基本写法：裸链接、显示文字、标题锚点、锚点加显示文字、路径。",
+  "source": "obsidian-verified",
+  "frontmatter": null,
+  "links": [
+    {
+      "kind": "wikilink",
+      "target": "a",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        6,
+        7
+      ]
+    },
+    {
+      "kind": "wikilink",
+      "target": "b",
+      "anchor": null,
+      "display": "显示文字",
+      "key": null,
+      "range": [
+        14,
+        15
+      ]
+    },
+    {
+      "kind": "wikilink",
+      "target": "c",
+      "anchor": "标题",
+      "display": null,
+      "key": null,
+      "range": [
+        35,
+        36
+      ]
+    },
+    {
+      "kind": "wikilink",
+      "target": "d",
+      "anchor": "h",
+      "display": "x",
+      "key": null,
+      "range": [
+        50,
+        51
+      ]
+    },
+    {
+      "kind": "wikilink",
+      "target": "目录/e",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        64,
+        72
+      ]
+    }
+  ],
+  "tags": []
+}

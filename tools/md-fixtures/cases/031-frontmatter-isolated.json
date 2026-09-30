@@ -1,0 +1,36 @@
+{
+  "description": "frontmatter 永远不影响正文：YAML 里未闭合的代码围栏留在 frontmatter 内；整个值是一个 Markdown 链接的字符串是属性链接。",
+  "source": "obsidian-verified",
+  "frontmatter": {
+    "valid": true,
+    "properties": {
+      "note": "```\n",
+      "link": "[t](fm.md)"
+    }
+  },
+  "links": [
+    {
+      "kind": "link",
+      "target": "fm.md",
+      "anchor": null,
+      "display": null,
+      "key": "link",
+      "range": [
+        29,
+        34
+      ]
+    },
+    {
+      "kind": "wikilink",
+      "target": "body",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        50,
+        54
+      ]
+    }
+  ],
+  "tags": []
+}

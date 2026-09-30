@@ -1,0 +1,55 @@
+{
+  "description": "注释只影响显示：%% 之间的链接和标签照常提取，行内注释和块注释都一样。",
+  "source": "obsidian-verified",
+  "frontmatter": null,
+  "links": [
+    {
+      "kind": "wikilink",
+      "target": "c1",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        11,
+        13
+      ]
+    },
+    {
+      "kind": "wikilink",
+      "target": "v1",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        26,
+        28
+      ]
+    },
+    {
+      "kind": "wikilink",
+      "target": "c2",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        37,
+        39
+      ]
+    },
+    {
+      "kind": "wikilink",
+      "target": "v2",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        56,
+        58
+      ]
+    }
+  ],
+  "tags": [
+    "ctag",
+    "ctag2"
+  ]
+}

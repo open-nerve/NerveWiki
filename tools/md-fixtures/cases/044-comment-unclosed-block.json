@@ -1,0 +1,42 @@
+{
+  "description": "未闭合的块注释延续到文末（只影响显示），其中的链接照常提取。",
+  "source": "nerve-defined",
+  "note": "Obsidian 在未闭合的块注释里只提取了空行之前的 [[x]]，漏掉了 [[y]]。注释不影响提取，我们照常提取全部。",
+  "frontmatter": null,
+  "links": [
+    {
+      "kind": "wikilink",
+      "target": "a",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        9,
+        10
+      ]
+    },
+    {
+      "kind": "wikilink",
+      "target": "x",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        19,
+        20
+      ]
+    },
+    {
+      "kind": "wikilink",
+      "target": "y",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        31,
+        32
+      ]
+    }
+  ],
+  "tags": []
+}

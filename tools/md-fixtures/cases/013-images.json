@@ -1,0 +1,19 @@
+{
+  "description": "指向笔记本内文件的 Markdown 图片计入；外部图片不计入。",
+  "source": "obsidian-verified",
+  "frontmatter": null,
+  "links": [
+    {
+      "kind": "image",
+      "target": "pic.png",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        7,
+        14
+      ]
+    }
+  ],
+  "tags": []
+}

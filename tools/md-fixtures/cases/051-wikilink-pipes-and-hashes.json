@@ -1,0 +1,52 @@
+{
+  "description": "表格外的 \\| 同样是显示文字的分隔符；第一个 | 之后都是显示文字；目标中第一个 # 之后都是锚点。",
+  "source": "obsidian-verified",
+  "frontmatter": null,
+  "links": [
+    {
+      "kind": "wikilink",
+      "target": "a",
+      "anchor": null,
+      "display": "b",
+      "key": null,
+      "range": [
+        2,
+        3
+      ]
+    },
+    {
+      "kind": "wikilink",
+      "target": "c",
+      "anchor": null,
+      "display": "d|e",
+      "key": null,
+      "range": [
+        11,
+        12
+      ]
+    },
+    {
+      "kind": "wikilink",
+      "target": "f",
+      "anchor": "h1#h2",
+      "display": null,
+      "key": null,
+      "range": [
+        21,
+        22
+      ]
+    },
+    {
+      "kind": "wikilink",
+      "target": "g",
+      "anchor": null,
+      "display": "h#i",
+      "key": null,
+      "range": [
+        33,
+        34
+      ]
+    }
+  ],
+  "tags": []
+}

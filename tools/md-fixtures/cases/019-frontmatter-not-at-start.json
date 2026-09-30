@@ -1,0 +1,19 @@
+{
+  "description": "frontmatter 必须从第一个字节开始，否则 --- 是普通的 Markdown。",
+  "source": "obsidian-verified",
+  "frontmatter": null,
+  "links": [
+    {
+      "kind": "wikilink",
+      "target": "y",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        20,
+        21
+      ]
+    }
+  ],
+  "tags": []
+}

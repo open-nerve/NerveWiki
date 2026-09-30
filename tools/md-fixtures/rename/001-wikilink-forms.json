@@ -1,0 +1,6 @@
+{
+  "description": "wikilink 与嵌入改写为新标题；别名、锚点、目标两侧的空白保留；大小写不同的写法同样改写；代码里的不改；注释里的照样改。",
+  "source": "nerve-defined",
+  "from": "Old",
+  "to": "New 名字"
+}

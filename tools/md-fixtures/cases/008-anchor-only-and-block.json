@@ -1,0 +1,20 @@
+{
+  "description": "只有锚点的链接指向本页，不计入；块锚点照常记录。",
+  "source": "nerve-defined",
+  "note": "Obsidian 把 [[#本页标题]] 和 [t](#h) 记为指向本页的链接。它们不是页面之间的关系，我们不计入。",
+  "frontmatter": null,
+  "links": [
+    {
+      "kind": "wikilink",
+      "target": "a",
+      "anchor": "^blk1",
+      "display": null,
+      "key": null,
+      "range": [
+        28,
+        29
+      ]
+    }
+  ],
+  "tags": []
+}

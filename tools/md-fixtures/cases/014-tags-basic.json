@@ -1,0 +1,13 @@
+{
+  "description": "标签：拉丁字母、中文、用 / 分层、连字符、下划线。",
+  "source": "obsidian-verified",
+  "frontmatter": null,
+  "links": [],
+  "tags": [
+    "tag",
+    "中文标签",
+    "a/b",
+    "with-dash",
+    "under_score"
+  ]
+}

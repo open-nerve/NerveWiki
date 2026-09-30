@@ -1,0 +1,19 @@
+{
+  "description": "行内脚注 ^[…] 里的 wikilink 照常算。",
+  "source": "obsidian-verified",
+  "frontmatter": null,
+  "links": [
+    {
+      "kind": "wikilink",
+      "target": "fn",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        15,
+        17
+      ]
+    }
+  ],
+  "tags": []
+}

@@ -1,0 +1,30 @@
+{
+  "description": "! 被转义时，后面是普通的 wikilink，不是嵌入。",
+  "source": "obsidian-verified",
+  "frontmatter": null,
+  "links": [
+    {
+      "kind": "wikilink",
+      "target": "x",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        4,
+        5
+      ]
+    },
+    {
+      "kind": "embed",
+      "target": "y",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        11,
+        12
+      ]
+    }
+  ],
+  "tags": []
+}
