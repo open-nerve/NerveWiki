@@ -4,9 +4,9 @@
 
 ## 任务
 
-1. `deploy/Dockerfile`：web → server → runtime 三个阶段，基础镜像按摘要固定；运行时 distroless `nonroot`。
-2. `.dockerignore`：排除 `node_modules`、构建产物、`e2e` 的结果与报告；保留 `.git`（VCS 信息）。
-3. `deploy/image-smoke.sh`：临时网络、PostgreSQL、`migrate up`、`serve`、S1 与 S3 的检查、非 root、清理。
+1. `deploy/Dockerfile`：web → server → runtime 三个阶段，基础镜像按摘要固定；运行时 distroless（默认变体）加 `USER 65532:65532`。
+2. `.dockerignore`：排除的正好是 `.gitignore` 忽略的（依赖、构建产物、`e2e` 的结果与报告、本地的机密）；保留 `.git`（VCS 信息）。
+3. `deploy/image-smoke.sh`：提交信息、临时网络、PostgreSQL、`migrate up`、`serve`、S1、内嵌的前端、S3、非 root、优雅停机、清理。
 4. Makefile：`make image`、`make image-smoke`。
 5. 持续集成：`image` 任务。
 6. README：部署一节（镜像、先 `migrate up` 再 `serve`、探针、配置用环境变量）。

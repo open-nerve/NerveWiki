@@ -14,7 +14,7 @@
 
 ## 测试
 
-- `make e2e` 本地通过，重复运行（`--repeat-each 3`）也通过。
+- `make e2e` 本地通过，重复运行（`--repeat-each 3`）也通过；另配合 `--workers 1`，检验同一个 worker 复用库与服务（`--repeat-each` 每轮换新的 worker）。
 - 反向对照：P6 文档第 5 节中与 S1–S4 相关的各项。
 
 ## 完成检查

@@ -82,7 +82,9 @@ nerve-wiki/
   e2e/                        Playwright：fixtures、global-setup、stories/smoke
   deploy/
     compose.dev.yaml          本地 PostgreSQL 18
-    Dockerfile
+    Dockerfile                镜像：前端 → Go → distroless，非 root
+    image-smoke.sh            在镜像上跑 S1、S3
+  .dockerignore               与 .gitignore 对应
   tools/md-fixtures/          Markdown 样例集：规范、自检、与 Obsidian 核对的工具（P1 建立，M4、M6 使用）
   docs/
   Makefile                    所有命令的入口
@@ -127,7 +129,7 @@ nerve-wiki/
 | `server/tools/bodyshapegen`、`platform/httpserver/{apitest,bodyshape,apigen}` | 拷贝 | P4 |
 | `server/internal/modules/instance`（只取实例信息，不取时区列表） | 拷贝、裁剪 | P4 |
 | `api/{openapi.yaml,common.yaml,redocly.yaml,modules/instance.yaml}` | 拷贝、裁剪 | P4 |
-| `e2e/{playwright.config.ts,global-setup.ts,fixtures/{server,db,browser,api,test}.ts,stories/smoke}` | 拷贝、改写 | P6 |
+| `e2e/{playwright.config.ts,global-setup.ts,fixtures/{server,db,browser,test}.ts,stories/smoke}` | 拷贝、改写：去掉认证与工作区；`api.ts` 并进 `test.ts` 的 `api` fixture。Nerve 没有镜像，`deploy/Dockerfile` 与 `image-smoke.sh` 全新编写 | P6 |
 | `web/` | **不拷贝**（Plane 系代码）；前端外壳全新编写 | P5 |
 
 ## 7. Phase 划分
@@ -178,7 +180,7 @@ P1 的实验结论、P2 到 P5 的审查和实施留下的要求，开工时逐�
 | P5 | `webui` 挂在组合根的 `/`（不带方法），不遮住平台的 `/api/` 兜底；页面 CSP 与静态文件的缓存由 `webui` 设置，安全头由中间件链统一设置 | P3 |
 | P5 | 前端整体用哪个 TypeScript 版本：api-client 因 openapi-typescript 调用 TypeScript 的 JS API 停在 5.9.3；`make lint-web` 已执行各包的 `check:types` | P4 |
 | P6 | 持续集成中完整的 `make build`（同时需要 Go 与 Node）由 e2e 任务执行；`make build` 以 `VERSION` 注入版本号，S3 核对它。S2 的"控制台没有警告"会拦住 React Router 缺 `HydrateFallback` 这类警告 | P5 |
-| P6 | `serve` 启动时要连上数据库（先迁移、再自检），连不上就拒绝启动。S1 的"数据库不可用"要在启动之后制造（例如删掉该 worker 的数据库）；"迁移未完成"用 `auto_migrate: false` 启动在未迁移的库上 | P3 |
+| P6 | `serve` 启动时要连上数据库（先迁移、再自检），连不上就拒绝启动。S1 的"数据库不可用"要在启动之后制造（P6 在复制出的另一个库上起服务，再删掉那个库，不破坏 worker 共用的库）；"迁移未完成"用 `auto_migrate: false` 启动在未迁移的库上 | P3 |
 
 ## 8. 本 M 建立的平台约定
 
@@ -219,7 +221,7 @@ P1 的实验结论、P2 到 P5 的审查和实施留下的要求，开工时逐�
 | P3 | 服务端平台层 | 已完成 | [03-P3-server-platform.md](03-P3-server-platform.md) | [P3-server-platform-review.md](reviews/P3-server-platform-review.md) |
 | P4 | 接口契约与代码生成 | 已完成 | [04-P4-api-contract.md](04-P4-api-contract.md) | [P4-api-contract-review.md](reviews/P4-api-contract-review.md) |
 | P5 | 前端外壳与内嵌 | 已完成 | [05-P5-web-shell.md](05-P5-web-shell.md) | [P5-web-shell-review.md](reviews/P5-web-shell-review.md) |
-| P6 | 端到端测试与交付 | 进行中 | [06-P6-e2e-delivery.md](06-P6-e2e-delivery.md) | — |
+| P6 | 端到端测试与交付 | 已完成 | [06-P6-e2e-delivery.md](06-P6-e2e-delivery.md) | [P6-e2e-delivery-review.md](reviews/P6-e2e-delivery-review.md) |
 | — | M0 收尾审查 | 未开始 | — | — |
 
 ## 12. 变更记录
@@ -232,3 +234,4 @@ P1 的实验结论、P2 到 P5 的审查和实施留下的要求，开工时逐�
 | 2026-09-30 | P3 完成：`webui` 移到 P5，接口操作的逐路由中间件与 `APIErrors` 移到 P4（第 6、7 节）；"前序 Phase 对后续 Phase 的要求"加入 P3 给 P4、P5、P6 的要求；M0 之外的移交 M1 | P3 的实施与审查，见 [P3 审查记录](reviews/P3-server-platform-review.md) |
 | 2026-09-30 | P4 完成：认证相关、参数与请求体的整个程序测试、oapi-codegen runtime 的例外移到 M1（第 7 节）；模块接入契约的措辞按实现修订（第 8 节）；"前序 Phase 对后续 Phase 的要求"加入 P4 给 P5 的 TypeScript 版本 | P4 的实施与审查，见 [P4 审查记录](reviews/P4-api-contract-review.md) |
 | 2026-09-30 | P5 完成：不引入 turbo，React Router 取 8 并用数据路由，`web/packages/` 只有 `api-client`（第 4、5、6、7 节）；"前序 Phase 对后续 Phase 的要求"加入 P5 给 P6 的要求 | P5 的实施与审查，见 [P5 审查记录](reviews/P5-web-shell-review.md) |
+| 2026-09-30 | P6 完成：e2e 的 fixtures 裁掉 `api.ts`（并进 `test.ts`），镜像全新编写，仓库布局加入 `image-smoke.sh` 与 `.dockerignore`（第 4、6 节）；P6 的"数据库不可用"改在复制出的另一个库上制造（第 7 节）；镜像的附件目录与发布移交 M7、M12 | P6 的实施与审查，见 [P6 审查记录](reviews/P6-e2e-delivery-review.md) |
