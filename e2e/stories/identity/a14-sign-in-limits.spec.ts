@@ -2,6 +2,8 @@ import { createClient } from "@nervewiki/api-client";
 
 import { countIdentity, expectNothingAdded } from "../../fixtures/assert/identity";
 import { bearer, createToken, emailFor, register } from "../../fixtures/auth";
+import { formError, signInWith } from "../../fixtures/auth-pages";
+import { failedToLoad } from "../../fixtures/browser";
 import { expect, test } from "../../fixtures/test";
 
 // A14, sign-in limits (M1 design 3, M1/P2 design 3.2, 3.3).
@@ -119,4 +121,30 @@ test("A14 (API): an expired access token is the cue to refresh, not a failure: t
   expect((await me("not-a-token")).response.status).toBe(401);
   expect((await me("still-not-a-token")).response.status).toBe(401);
   expect((await me("not-a-token")).response.status).toBe(429);
+});
+
+test("A14 (page): the sign-in form says how long to wait once the attempts run out", async ({
+  page,
+  pageWatch,
+  api,
+  db,
+  nervewikiWith,
+}, testInfo) => {
+  const limited = await nervewikiWith(db.url, {
+    env: { NWIKI_RATELIMIT__LOGIN_IP_EMAIL__PER_MINUTE: "1", NWIKI_RATELIMIT__LOGIN_IP_EMAIL__BURST: "2" },
+  });
+  const email = emailFor(testInfo);
+  await register(api, email);
+  await page.goto(new URL("/sign-in", limited.baseURL).href);
+
+  const refused = async () => {
+    expect((await signInWith(page, email, "Wr0ng-password")).status()).toBe(401);
+    await expect(formError(page)).toHaveText("The e-mail address or the password is incorrect.");
+  };
+  await refused();
+  await refused();
+  expect((await signInWith(page, email, "Wr0ng-password")).status()).toBe(429);
+  await expect(formError(page)).toHaveText(/^Too many attempts\. Try again in (59|60) s\.$/);
+
+  pageWatch.expectConsole({ errors: [failedToLoad(401), failedToLoad(401), failedToLoad(429)] });
 });

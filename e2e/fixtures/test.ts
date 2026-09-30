@@ -1,8 +1,9 @@
 import path from "node:path";
 
-import { createClient, type ApiClient } from "@nervewiki/api-client";
+import { createClient, type ApiClient, type AuthTokens } from "@nervewiki/api-client";
 import { test as base, type Page } from "@playwright/test";
 
+import { signInContext } from "./auth";
 import { expectQuietPage, watchPage, type PageWatch } from "./browser";
 import { createDatabase, dropDatabase, openDatabase, templateDatabase, type Database } from "./db";
 import { nervewikiFixtureTimeoutMs, startNervewiki, type Nervewiki, type StartOptions } from "./server";
@@ -41,6 +42,12 @@ interface TestFixtures {
    * fixture's own timeouts fire first.
    */
   nervewikiWith: (databaseUrl: string, options?: StartOptions) => Promise<Nervewiki>;
+  /**
+   * Signs the test's browser context in with tokens, at the worker's nervewiki or at baseURL (see
+   * signInContext), and returns the test's page, which has loaded nothing yet: its first page refreshes
+   * the session.
+   */
+  signedInPage: (tokens: AuthTokens, baseURL?: string) => Promise<Page>;
   /**
    * When the test fails, a pg_dump of the worker's database joins its trace and screenshot. The logs are
    * in test-results/: the worker's nervewiki's at its root, those of nervewikiWith in the test's directory.
@@ -139,6 +146,12 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
       return nervewiki;
     });
     await Promise.all(started.map((nervewiki) => nervewiki.stop()));
+  },
+  signedInPage: async ({ page, nervewiki }, use) => {
+    await use(async (tokens, baseURL = nervewiki.baseURL) => {
+      await signInContext(page.context(), baseURL, tokens);
+      return page;
+    });
   },
   databaseSnapshot: [
     async ({ db }, use, testInfo) => {

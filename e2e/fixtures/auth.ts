@@ -1,5 +1,7 @@
+import { randomBytes } from "node:crypto";
+
 import type { ApiClient, ApiTokenCreated, AuthTokens } from "@nervewiki/api-client";
-import { expect, type TestInfo } from "@playwright/test";
+import { expect, type BrowserContext, type Page, type TestInfo } from "@playwright/test";
 
 /** A password that meets the rules: 8–128 characters, not a common one. */
 export const password = "correct horse battery";
@@ -76,4 +78,48 @@ export async function createToken(
     throw new Error("create a token answered 201 without the token");
   }
   return data;
+}
+
+/** The key of the session's record in the page's localStorage (M1/P5 design 3.2). */
+const authKey = "nwiki.auth";
+
+/** The session's record: the refresh token, and the login_id of the sign-in it came from. */
+interface AuthRecord {
+  refresh_token: string;
+  login_id: string;
+}
+
+/**
+ * Signs the pages of context in with tokens at the nervewiki of baseURL (M1/P5 design 3.9): before the
+ * first page there loads, its localStorage gets the record a sign-in writes (a new login_id), and the page
+ * refreshes it itself; the access token never reaches the browser. Only that first load writes it: later
+ * loads, reloads and other tabs find the record the pages keep, refreshed or removed, as in a browser.
+ */
+export async function signInContext(context: BrowserContext, baseURL: string, tokens: AuthTokens): Promise<void> {
+  const record: AuthRecord = { refresh_token: tokens.refresh_token, login_id: randomBytes(16).toString("hex") };
+  await context.addInitScript(
+    ({ origin, key, text }) => {
+      const seeded = `${key}.e2e-seeded`;
+      if (window.location.origin !== origin || localStorage.getItem(seeded) !== null) {
+        return;
+      }
+      localStorage.setItem(seeded, "1");
+      localStorage.setItem(key, text);
+    },
+    { origin: new URL(baseURL).origin, key: authKey, text: JSON.stringify(record) }
+  );
+}
+
+/** The session's record in the localStorage of page, as it is stored; null when there is none. */
+export async function recordOf(page: Page): Promise<string | null> {
+  return page.evaluate((key) => localStorage.getItem(key), authKey);
+}
+
+/** Records the step of onboarding for the account of accessToken, as the web app does once the step is done. */
+export async function completeOnboarding(api: ApiClient, accessToken: string, step = "profile"): Promise<void> {
+  const { response, error } = await api.POST("/api/v0/me/onboarding-steps", {
+    body: { step },
+    headers: bearer(accessToken),
+  });
+  expect(response.status, `record ${step}: ${JSON.stringify(error)}`).toBe(200);
 }

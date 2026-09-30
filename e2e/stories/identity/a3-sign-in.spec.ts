@@ -1,7 +1,9 @@
 import { createClient } from "@nervewiki/api-client";
 
 import { accountIdOf, countIdentity, expectNewSession, expectNothingAdded } from "../../fixtures/assert/identity";
-import { bearer, emailFor, login, password, register } from "../../fixtures/auth";
+import { bearer, completeOnboarding, emailFor, login, password, register } from "../../fixtures/auth";
+import { emailField, formError, passwordField, signInWith } from "../../fixtures/auth-pages";
+import { failedToLoad } from "../../fixtures/browser";
 import { expect, test } from "../../fixtures/test";
 
 // A3, sign-in (M1 design 3).
@@ -92,4 +94,42 @@ test("A3 (API): a deactivated account does not sign in; only the right password 
   expect(wrong.response.status).toBe(401);
   expect(wrong.error?.code).toBe("identity.invalid_credentials");
   await expectNothingAdded(db, before);
+});
+
+test("A3 (page): a deep link signs in and comes back; a refused sign-in keeps what was typed; next stays on the site", async ({
+  page,
+  pageWatch,
+  api,
+}, testInfo) => {
+  const email = emailFor(testInfo);
+  await completeOnboarding(api, (await register(api, email)).access_token);
+  const deepLink = "/acme/notebooks/1?view=list#part";
+  await page.goto(deepLink);
+  await expect(page).toHaveURL(`/sign-in?next=${encodeURIComponent(deepLink)}`);
+
+  // A wrong password and an unknown address get the same words.
+  const refused = async (address: string, typed: string) => {
+    expect((await signInWith(page, address, typed)).status()).toBe(401);
+    await expect(formError(page)).toHaveText("The e-mail address or the password is incorrect.");
+    await expect(emailField(page)).toHaveValue(address);
+    await expect(passwordField(page)).toHaveValue(typed);
+  };
+  await refused(email, "Wr0ng-password");
+  await refused(emailFor(testInfo, "nobody"), password);
+  pageWatch.expectConsole({ errors: [failedToLoad(401), failedToLoad(401)] });
+
+  expect((await signInWith(page, email, password)).status()).toBe(200);
+  await expect(page).toHaveURL(deepLink);
+  await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
+
+  // A next that would leave the site, or run script, goes home instead.
+  const goesHome = async (next: string) => {
+    await page.goto(`/sign-in?next=${encodeURIComponent(next)}`);
+    await expect(page, next).toHaveURL("/");
+    await expect(page.getByRole("heading", { level: 1, name: "Nerve Wiki" })).toBeVisible();
+  };
+  await goesHome("//evil.example");
+  await goesHome("/\\evil.example");
+  await goesHome("javascript:alert(1)");
+  await goesHome("/\t/evil.example");
 });
