@@ -103,10 +103,11 @@ lint-go: tools ## 校验 golangci-lint 配置并运行（含格式检查，serve
 	cd server/tools && go mod tidy -diff
 
 .PHONY: lint-web
-lint-web: ## Markdown 样例集自检；tools/ 下脚本的 oxlint（零警告）；格式检查（需要 Node）
+lint-web: ## Markdown 样例集自检；oxlint（零警告）；格式检查；各包的类型检查（需要 Node）
 	node tools/md-fixtures/check.mjs
 	pnpm run check:lint
 	pnpm run check:format
+	pnpm -r run check:types
 
 # 门禁：有未使用的文件、导出、依赖，或配置本身过时（例如不再需要的忽略项），都会失败
 .PHONY: knip

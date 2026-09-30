@@ -29,12 +29,18 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: server/go.mod
-          cache-dependency-path: server/go.sum
+          # server/tools 是独立的 Go 模块（oapi-codegen），生成物检查要用它
+          cache-dependency-path: |
+            server/go.sum
+            server/tools/go.sum
       - name: Go version
         working-directory: server
         run: go version
       - name: Lint
         run: make lint-go
+      # 由 api/ 重新生成 Go 接口层，生成物必须已提交且没有差异
+      - name: Generated code
+        run: make gen-check-go
       # 集成测试用 testcontainers 启动 PostgreSQL：ubuntu runner 自带 Docker
       - name: Test
         run: make test
@@ -66,5 +72,8 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Lint
         run: make lint-web
+      # 重新打包 api/dist 并生成 TS 类型，生成物必须已提交且没有差异
+      - name: Generated code
+        run: make gen-check-web
       - name: Unused code
         run: make knip
