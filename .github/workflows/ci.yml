@@ -132,3 +132,21 @@ jobs:
           path: |
             e2e/playwright-report/
             e2e/test-results/
+
+  image:
+    name: image
+    needs: [server, web]
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      # 与 e2e 任务相同：与默认值不同，image-smoke.sh 由此确认镜像里的版本号是注入的
+      VERSION: 0.0.0-ci.${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # .git 进入镜像的构建阶段（取提交信息），其中不能有令牌
+          persist-credentials: false
+      # 构建镜像，在它上面跑 S1、S3，核对进程不是 root、停机时退出码为 0
+      - name: Image smoke
+        run: make image-smoke

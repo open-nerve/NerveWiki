@@ -120,6 +120,27 @@ cd e2e && pnpm exec playwright show-report                      # 查看上一�
 - 失败的测试在 `e2e/playwright-report/` 中带着 trace 与截图；`e2e/test-results/` 中有每个 worker 的服务日志和失败时导出的数据库。持续集成在失败时把两者作为 artifact 上传。
 - `make e2e` 把 `VERSION` 交给故事核对注入的版本号；持续集成用 `0.0.0-ci.<运行号>`，与默认值不同。
 
+## 部署
+
+镜像由 `deploy/Dockerfile` 构建：前端与服务端都在其中，运行时是 distroless 镜像，只有 `/nervewiki` 一个程序，以非 root 用户（uid 65532）运行，监听 8080。
+
+```bash
+make image VERSION=0.1.0         # 构建 nervewiki:0.1.0
+make image-smoke VERSION=0.1.0   # 在镜像上跑 S1、S3：迁移、启动、探针、实例信息、非 root、优雅停机
+```
+
+- 镜像默认 `NWIKI_ENV=prod`。配置用环境变量提供（也可以挂载一个目录并设置 `NWIKI_CONFIG_DIR`），至少要有数据库地址 `NWIKI_DATABASE__URL`；其余配置项见 `server/configs/config.yaml`，合并规则见上文"配置"。
+- prod 配置不自动迁移。每次升级先执行迁移，再启动服务：
+
+  ```bash
+  docker run --rm -e NWIKI_DATABASE__URL=… nervewiki:0.1.0 migrate up
+  docker run -d -p 8080:8080 -e NWIKI_DATABASE__URL=… nervewiki:0.1.0
+  ```
+
+- 数据库必须以 builtin provider 的 `C.UTF-8` 初始化，否则服务拒绝启动，见[总体设计](docs/v0.1/v0.1-design.md) 7.1。
+- 探针：存活用 `GET /healthz`（不访问任何依赖），就绪用 `GET /readyz`（数据库可用、迁移已执行完）。镜像里没有 shell 与 curl，所以没有写 `HEALTHCHECK`，由编排系统探测。
+- 停止时发 SIGTERM：服务停止接收新连接，等正在处理的请求结束（最多 `server.shutdown_timeout`，默认 20 秒）后退出。停机的宽限期要比它长：`docker stop` 默认只等 10 秒，用 `docker stop -t 30`。
+
 ## Markdown 样例集
 
 `tools/md-fixtures/` 定义了 Markdown 的提取与改写规则，是服务端实现的验收标准。样例的输入逐字节有意义（CRLF、BOM、行尾空白），`.gitattributes` 与 `.editorconfig` 已经禁止工具改动它们。修改规则前先读它的 [README](tools/md-fixtures/README.md)。

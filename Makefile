@@ -74,6 +74,17 @@ build: build-web ## 构建 bin/nervewiki，前端内嵌在其中，版本号取 
 e2e: build ## 构建 bin/nervewiki，运行端到端故事（需要 Docker 与 Playwright 的 Chromium，见 README）
 	cd e2e && NWIKI_E2E_VERSION=$(VERSION) pnpm exec playwright test
 
+# 镜像的标签跟着 VERSION；构建上下文是仓库根目录，见 deploy/Dockerfile 与 .dockerignore
+IMAGE ?= nervewiki:$(VERSION)
+
+.PHONY: image
+image: ## 构建镜像 $(IMAGE)，版本号取 VERSION（只需要 Docker）
+	docker build -f deploy/Dockerfile --build-arg VERSION=$(VERSION) -t $(IMAGE) .
+
+.PHONY: image-smoke
+image-smoke: image ## 在镜像上跑 S1、S3：迁移、启动、探针、实例信息、非 root、优雅停机（需要 Docker）
+	deploy/image-smoke.sh $(IMAGE) $(VERSION)
+
 .PHONY: tools
 tools: ## 安装锁定版本的 golangci-lint 到 ./bin
 	@set -o pipefail; \
