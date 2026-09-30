@@ -205,15 +205,15 @@ func TestTheAnswerToABrokenBodyStaysSmall(t *testing.T) {
 
 // Every path or query parameter whose Go type rejects some strings answers
 // a wrong value with 400 that names it (M1/P1 design 3.9), before
-// authentication: parameters bind first, so no token is sent. The v0.1
-// contract of P1 has no such parameter yet; ParamCases' own tests hold the
-// derivation.
+// authentication: parameters bind first, so no token is sent.
 func TestParametersThatDoNotBindAnswer400(t *testing.T) {
 	contract := apitest.Load(t)
 	base := startApp(t, testConfig(t, pgtest.NewDatabase(t), false), migrations.FS())
 
+	cases := 0
 	for _, op := range contract.Operations() {
 		for _, c := range op.ParamCases() {
+			cases++
 			t.Run(op.Pattern()+"/"+c.Name, func(t *testing.T) {
 				req := newRequest(t, op.Method, base+c.Target, "", nil)
 				res, body := sendRequest(t, req)
@@ -233,6 +233,64 @@ func TestParametersThatDoNotBindAnswer400(t *testing.T) {
 			})
 		}
 	}
+	// revokeApiToken has a uuid in its path (M1/P3): none found means the
+	// derivation broke.
+	if cases == 0 {
+		t.Fatal("no parameter case derived from the contract")
+	}
+}
+
+// Every operation that needs a token takes a personal access token as it
+// takes an access token (M1/P3 design 3.9): called with a valid one of an
+// account of its own, it answers anything but 401. The body, when there is
+// one, is empty: the structure check answers after the authentication.
+func TestEveryOperationAcceptsAPersonalAccessToken(t *testing.T) {
+	contract := apitest.Load(t)
+	base := startApp(t, testConfig(t, pgtest.NewDatabase(t), false), migrations.FS())
+
+	protected := 0
+	for i, op := range contract.Operations() {
+		if op.Public {
+			continue
+		}
+		protected++
+		t.Run(op.Pattern(), func(t *testing.T) {
+			access := registerAccount(t, contract, base, fmt.Sprintf("pat-%d@example.com", i)).AccessToken
+			pat := createToken(t, contract, base, access)
+			var body []byte
+			if op.HasJSONBody() {
+				body = []byte(`{}`)
+			}
+			req := newRequest(t, op.Method, base+op.Target(), pat, body)
+			res, answer := sendRequest(t, req)
+
+			contract.CheckResponse(t, req, res)
+			if res.StatusCode == http.StatusUnauthorized {
+				t.Errorf("%s with a personal access token = 401 %s, want it authenticated", op.Pattern(), answer)
+			}
+		})
+	}
+	if protected == 0 {
+		t.Fatal("no operation needs a token")
+	}
+}
+
+// createToken creates a personal access token with accessToken, the
+// password being registerAccount's, and returns it.
+func createToken(t *testing.T, contract *apitest.Contract, base, accessToken string) string {
+	t.Helper()
+	req := newRequest(t, http.MethodPost, base+"/api/v0/me/api-tokens", accessToken,
+		[]byte(`{"name":"whole program","current_password":"Tr0ub4dor&3"}`))
+	contract.CheckRequest(t, req)
+	res, body := sendRequest(t, req)
+	contract.CheckResponse(t, req, res)
+	var created struct {
+		Token string `json:"token"`
+	}
+	if res.StatusCode != http.StatusCreated || json.Unmarshal(body, &created) != nil {
+		t.Fatalf("create a token = %d %s, want 201 with the token", res.StatusCode, body)
+	}
+	return created.Token
 }
 
 // authTokens is the AuthTokens answer.

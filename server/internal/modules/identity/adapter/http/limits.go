@@ -26,6 +26,7 @@ type Limits struct {
 	LoginIP      *ratelimit.Bucket // ratelimit.login_ip, by client IP key
 	LoginIPEmail *ratelimit.Bucket // ratelimit.login_ip_email, by client IP key and address
 	RegisterIP   *ratelimit.Bucket // ratelimit.register_ip, by client IP key
+	PasswordUser *ratelimit.Bucket // ratelimit.password_user, by account
 }
 
 // limitLogin takes a unit of login_ip and one of login_ip_email, or
@@ -43,17 +44,34 @@ func (h handler) limitRegister(ctx context.Context) error {
 	return h.allow(ctx, ratelimit.Check{Bucket: h.s.Limits.RegisterIP, Key: httpserver.RequestMetaFrom(ctx).IPKey})
 }
 
+// limitPassword takes a unit of password_user. Its key is the caller's
+// account, which authentication verified: no one else can use up its units
+// (M1/P3 design 3.4).
+func (h handler) limitPassword(ctx context.Context) error {
+	actor, err := shared.RequireActor(ctx)
+	if err != nil {
+		return err
+	}
+	return h.allow(ctx, ratelimit.Check{Bucket: h.s.Limits.PasswordUser, Key: actor.UserID.String()})
+}
+
 // allow answers 429 rate_limited with Retry-After when a bucket refuses,
 // and logs which bucket turned the client away, as the platform does for
-// its own.
+// its own, with the account when the caller is signed in: password_user's
+// refusals tell which account someone guesses the password of.
 func (h handler) allow(ctx context.Context, checks ...ratelimit.Check) error {
 	denied, retry := h.s.Limits.Limiter.AllowAll(checks...)
 	if denied == nil {
 		return nil
 	}
-	h.s.Logger.LogAttrs(ctx, slog.LevelInfo, "rate limited",
+	attrs := []slog.Attr{
 		slog.String("request_id", httpserver.RequestID(ctx)), slog.String("bucket", denied.Name()),
-		slog.String("ip", httpserver.RequestMetaFrom(ctx).ClientIP.String()))
+		slog.String("ip", httpserver.RequestMetaFrom(ctx).ClientIP.String()),
+	}
+	if actor, err := shared.RequireActor(ctx); err == nil {
+		attrs = append(attrs, slog.String("user_id", actor.UserID.String()))
+	}
+	h.s.Logger.LogAttrs(ctx, slog.LevelInfo, "rate limited", attrs...)
 	return shared.RateLimited(retry)
 }
 

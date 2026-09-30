@@ -11,6 +11,18 @@ import (
 	"uuid"
 )
 
+type ApiToken struct {
+	ID         uuid.UUID
+	UserID     uuid.UUID
+	TokenHash  []byte
+	Name       string
+	ExpiresAt  *time.Time
+	LastUsedAt *time.Time
+	RevokedAt  *time.Time
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
+}
+
 type AuthSession struct {
 	ID              uuid.UUID
 	UserID          uuid.UUID

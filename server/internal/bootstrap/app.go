@@ -98,6 +98,7 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrati
 			LoginIP:      bucket(limiter, "login_ip", limits.LoginIP),
 			LoginIPEmail: bucket(limiter, "login_ip_email", limits.LoginIPEmail),
 			RegisterIP:   bucket(limiter, "register_ip", limits.RegisterIP),
+			PasswordUser: bucket(limiter, "password_user", limits.PasswordUser),
 		},
 	})
 	if err != nil {

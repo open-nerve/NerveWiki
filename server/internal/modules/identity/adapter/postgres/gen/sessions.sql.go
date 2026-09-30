@@ -143,6 +143,35 @@ func (q *Queries) RevokeSessionForReuse(ctx context.Context, arg RevokeSessionFo
 	return err
 }
 
+const revokeSessions = `-- name: RevokeSessions :execrows
+UPDATE auth_sessions
+SET updated_at = $1, revoked_at = $1, revoke_reason = $2::text
+WHERE user_id = $3 AND id <> $4
+  AND revoked_at IS NULL AND expires_at > $1
+`
+
+type RevokeSessionsParams struct {
+	Now    time.Time
+	Reason string
+	UserID uuid.UUID
+	Keep   uuid.UUID
+}
+
+// Every live session of the account but keep, the nil uuid to keep none, with reason (M1/P3 design 3.5). A session
+// revoked or expired already keeps what it has.
+func (q *Queries) RevokeSessions(ctx context.Context, arg RevokeSessionsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, revokeSessions,
+		arg.Now,
+		arg.Reason,
+		arg.UserID,
+		arg.Keep,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const rotateSession = `-- name: RotateSession :execrows
 UPDATE auth_sessions
 SET updated_at = $1, last_refreshed_at = $1,

@@ -92,3 +92,13 @@ func (s *Store) EndSession(ctx context.Context, g app.SessionGeneration) (bool, 
 	}
 	return n == 1, nil
 }
+
+// RevokeSessions revokes at now, with reason, every live session of userID
+// but keep, and returns how many.
+func (s *Store) RevokeSessions(ctx context.Context, userID, keep uuid.UUID, reason domain.RevokeReason, now time.Time) (int, error) {
+	n, err := s.queries(ctx).RevokeSessions(ctx, gen.RevokeSessionsParams{Now: now, Reason: string(reason), UserID: userID, Keep: keep})
+	if err != nil {
+		return 0, fmt.Errorf("revoke sessions: %w", err)
+	}
+	return int(n), nil
+}

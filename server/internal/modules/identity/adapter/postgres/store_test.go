@@ -210,3 +210,17 @@ func TestUnknownSessionCredential(t *testing.T) {
 		t.Errorf("SessionCredential() = %v, want app.ErrNotFound", err)
 	}
 }
+
+// awaitHolding waits until a transaction running in the background holds
+// its lock and closes holding; it fails the test when the transaction ends
+// first, with done, or takes too long.
+func awaitHolding(t *testing.T, holding <-chan struct{}, done <-chan error) {
+	t.Helper()
+	select {
+	case <-holding:
+	case err := <-done:
+		t.Fatalf("the transaction ended before it held the lock: %v", err)
+	case <-time.After(10 * time.Second):
+		t.Fatal("the transaction did not hold the lock within 10s")
+	}
+}

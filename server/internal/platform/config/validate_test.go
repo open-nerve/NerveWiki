@@ -43,6 +43,7 @@ func validConfig() Config {
 			LoginIP:       BucketConfig{PerMinute: 30, Burst: 10},
 			LoginIPEmail:  BucketConfig{PerMinute: 10, Burst: 5},
 			RegisterIP:    BucketConfig{PerMinute: 10, Burst: 5},
+			PasswordUser:  BucketConfig{PerMinute: 5, Burst: 5},
 		},
 		Log: LogConfig{Level: "info", Format: "json"},
 	}
@@ -98,6 +99,8 @@ func TestValidateReportsEveryInvalidKey(t *testing.T) {
 		"ratelimit.login_ip_email.burst: must be at least 1, got 0",
 		"ratelimit.register_ip.per_minute: must be at least 1, got 0",
 		"ratelimit.register_ip.burst: must be at least 1, got 0",
+		"ratelimit.password_user.per_minute: must be at least 1, got 0",
+		"ratelimit.password_user.burst: must be at least 1, got 0",
 		`log.level: must be one of debug, info, warn, error, got "verbose"`,
 		`log.format: must be text or json, got "xml"`,
 	}

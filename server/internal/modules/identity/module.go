@@ -41,6 +41,10 @@ type Deps struct {
 	RefreshDeadline time.Duration // auth.refresh_deadline
 	Password        PasswordHashing
 	RateLimits      RateLimits
+	// The registrants of the deactivation's extension point (M1 design 8),
+	// built from the pool alone; M2 brings the first.
+	DeactivationVetoers     []DeactivationVetoer
+	DeactivationSubscribers []DeactivationSubscriber
 }
 
 // PasswordHashing is auth.password: argon2id's parameters and the limits on
@@ -60,6 +64,7 @@ type RateLimits struct {
 	LoginIP      *ratelimit.Bucket
 	LoginIPEmail *ratelimit.Bucket
 	RegisterIP   *ratelimit.Bucket
+	PasswordUser *ratelimit.Bucket
 }
 
 // Module is the wired identity module.
@@ -92,19 +97,36 @@ func New(d Deps) (*Module, error) {
 		AccessTTL:  d.AccessTokenTTL,
 		SessionTTL: d.SessionTTL,
 	}
+	rules := domain.NewPasswordRules()
+	lock := app.CredentialLock{Locker: store, Sessions: store, APITokens: store}
+	password := app.CurrentPassword{Accounts: store, Verifier: hasher, Lock: lock, Tx: d.Tx}
 	return &Module{
 		uc: httpadapter.UseCases{
 			Register: app.NewRegister(app.RegisterDeps{
-				Policy: d.SignupPolicy, Rules: domain.NewPasswordRules(), Hasher: hasher, Tx: d.Tx,
+				Policy: d.SignupPolicy, Rules: rules, Hasher: hasher, Tx: d.Tx,
 				Users: store, Sessions: store, Issuance: issuance, Clock: d.Clock, Logger: d.Logger,
 			}),
 			Login: app.NewLogin(app.LoginDeps{
 				Accounts: store, Locker: store, Passwords: store, Sessions: store, Verifier: hasher, Hasher: hasher, Tx: d.Tx,
 				Issuance: issuance, Clock: d.Clock, Logger: d.Logger, DummyHash: dummy,
 			}),
-			Refresh: app.NewRefresh(app.RefreshDeps{Sessions: store, Tx: d.Tx, Issuance: issuance, Clock: d.Clock, Logger: d.Logger}),
-			Logout:  app.NewLogout(store, d.Clock, d.Logger),
-			GetMe:   app.NewGetMe(store),
+			Refresh:              app.NewRefresh(app.RefreshDeps{Sessions: store, Tx: d.Tx, Issuance: issuance, Clock: d.Clock, Logger: d.Logger}),
+			Logout:               app.NewLogout(store, d.Clock, d.Logger),
+			GetMe:                app.NewGetMe(store),
+			UpdateMe:             app.NewUpdateMe(store, store, d.Clock),
+			RecordOnboardingStep: app.NewRecordOnboardingStep(store, d.Clock),
+			ChangePassword: app.NewChangePassword(app.ChangePasswordDeps{
+				Password: password, Rules: rules, Hasher: hasher, Passwords: store, Sessions: store, Clock: d.Clock, Logger: d.Logger,
+			}),
+			Deactivate: app.NewDeactivate(app.DeactivateDeps{
+				Lock: lock, Users: store, Sessions: store, Vetoers: d.DeactivationVetoers,
+				Subscribers: d.DeactivationSubscribers, Tx: d.Tx, Clock: d.Clock, Logger: d.Logger,
+			}),
+			ListAPITokens: app.NewListAPITokens(store),
+			CreateAPIToken: app.NewCreateAPIToken(app.CreateAPITokenDeps{
+				Password: password, Tokens: store, Clock: d.Clock, Logger: d.Logger,
+			}),
+			RevokeAPIToken: app.NewRevokeAPIToken(store, d.Clock, d.Logger),
 		},
 		settings: httpadapter.Settings{
 			Limits: httpadapter.Limits{
@@ -112,12 +134,13 @@ func New(d Deps) (*Module, error) {
 				LoginIP:      d.RateLimits.LoginIP,
 				LoginIPEmail: d.RateLimits.LoginIPEmail,
 				RegisterIP:   d.RateLimits.RegisterIP,
+				PasswordUser: d.RateLimits.PasswordUser,
 			},
 			Logger: d.Logger,
 		},
 		refreshDeadline: d.RefreshDeadline,
 		authenticator: authn.New(app.NewAuthenticate(app.AuthenticateDeps{
-			AccessTokens: tokens, Sessions: store, Clock: d.Clock,
+			AccessTokens: tokens, Sessions: store, APITokens: store, Touch: store, Clock: d.Clock, Logger: d.Logger,
 		})),
 	}, nil
 }

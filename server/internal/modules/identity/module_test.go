@@ -57,22 +57,33 @@ func newPool(t *testing.T) *pgxpool.Pool {
 // and after a change of the key.
 func newServerOn(t *testing.T, pool *pgxpool.Pool, clock *clocktest.Fixed) http.Handler {
 	t.Helper()
-	return newServerWithDeadline(t, pool, clock, 4*time.Second)
+	return newServerWith(t, pool, clock, nil)
 }
 
 // newServerWithDeadline is newServerOn with auth.refresh_deadline set to
 // refreshDeadline.
 func newServerWithDeadline(t *testing.T, pool *pgxpool.Pool, clock *clocktest.Fixed, refreshDeadline time.Duration) http.Handler {
 	t.Helper()
+	return newServerWith(t, pool, clock, func(d *identity.Deps) { d.RefreshDeadline = refreshDeadline })
+}
+
+// newServerWith is newServerOn with the module's Deps changed by change,
+// when it is not nil.
+func newServerWith(t *testing.T, pool *pgxpool.Pool, clock *clocktest.Fixed, change func(*identity.Deps)) http.Handler {
+	t.Helper()
 	logger := slog.New(slog.DiscardHandler)
 	limiter := ratelimit.New(time.Now)
 	limit := limiter.Bucket("test", ratelimit.Rate{PerMinute: 600000, Burst: 100000})
-	m, err := identity.New(identity.Deps{
+	deps := identity.Deps{
 		Pool: pool, Tx: postgres.NewTxManager(pool, 2*time.Second), Clock: clock, Logger: logger,
-		SignupPolicy: openSignup{}, AccessTokenTTL: 15 * time.Minute, SessionTTL: 720 * time.Hour, RefreshDeadline: refreshDeadline,
+		SignupPolicy: openSignup{}, AccessTokenTTL: 15 * time.Minute, SessionTTL: 720 * time.Hour, RefreshDeadline: 4 * time.Second,
 		Password:   testPassword(),
-		RateLimits: identity.RateLimits{Limiter: limiter, LoginIP: limit, LoginIPEmail: limit, RegisterIP: limit},
-	})
+		RateLimits: identity.RateLimits{Limiter: limiter, LoginIP: limit, LoginIPEmail: limit, RegisterIP: limit, PasswordUser: limit},
+	}
+	if change != nil {
+		change(&deps)
+	}
+	m, err := identity.New(deps)
 	if err != nil {
 		t.Fatal(err)
 	}

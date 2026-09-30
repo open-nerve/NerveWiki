@@ -1,7 +1,7 @@
 import { createClient } from "@nervewiki/api-client";
 
 import { countIdentity, expectNothingAdded } from "../../fixtures/assert/identity";
-import { bearer, emailFor, register } from "../../fixtures/auth";
+import { bearer, createToken, emailFor, register } from "../../fixtures/auth";
 import { expect, test } from "../../fixtures/test";
 
 // A14, sign-in limits (M1 design 3, M1/P2 design 3.2, 3.3).
@@ -75,9 +75,15 @@ test("A14 (API): tokens that fail empty the gate before authentication; a valid 
   expect((await me(tokens.access_token)).response.status).toBe(200);
   expect((await me(tokens.access_token)).response.status).toBe(200);
   expect((await me(tokens.access_token)).response.status).toBe(200);
-  // Two failed credentials empty it.
+  // Two failed credentials empty it: a revoked personal access token fails like any other.
+  const revoked = await createToken(gated, tokens.access_token, { name: "A14" });
+  const revoke = await gated.DELETE("/api/v0/api-tokens/{token_id}", {
+    params: { path: { token_id: revoked.id } },
+    headers: bearer(tokens.access_token),
+  });
+  expect(revoke.response.status).toBe(204);
+  expect((await me(revoked.token)).response.status).toBe(401);
   expect((await me("not-a-token")).response.status).toBe(401);
-  expect((await me("still-not-a-token")).response.status).toBe(401);
 
   // Then every token from this client is turned away before it is looked at, a valid one too.
   for (const { response, error } of await Promise.all([me("not-a-token"), me(tokens.access_token)])) {

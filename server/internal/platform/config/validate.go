@@ -142,6 +142,7 @@ func (r RateLimitConfig) validate(fail func(key, format string, args ...any)) {
 		{"login_ip", r.LoginIP},
 		{"login_ip_email", r.LoginIPEmail},
 		{"register_ip", r.RegisterIP},
+		{"password_user", r.PasswordUser},
 	} {
 		if b.bucket.PerMinute < 1 {
 			fail("ratelimit."+b.name+".per_minute", "must be at least 1, got %d", b.bucket.PerMinute)

@@ -49,6 +49,30 @@ type UserReader interface {
 	GetUser(ctx context.Context, id uuid.UUID) (domain.User, error)
 }
 
+// UserUpdater changes what the caller may change of its account (M1/P3
+// design 3.5). Each method is one statement and returns the account after
+// it; ErrNotFound when there is no account id.
+type UserUpdater interface {
+	UpdateDisplayName(ctx context.Context, id uuid.UUID, name string, now time.Time) (domain.User, error)
+	// RecordOnboardingStep appends step unless it is recorded already;
+	// domain.ErrTooManyOnboardingSteps beyond the bound.
+	RecordOnboardingStep(ctx context.Context, id uuid.UUID, step string, now time.Time) (domain.User, error)
+}
+
+// UserDeactivator deactivates accounts.
+type UserDeactivator interface {
+	// DeactivateUser sets account id inactive at now.
+	DeactivateUser(ctx context.Context, id uuid.UUID, now time.Time) error
+}
+
+// AccountSharer takes the shared lock of an account row (M1/P3 design 3.6).
+type AccountSharer interface {
+	// ShareAccount locks account id's row FOR SHARE until the transaction
+	// ends and reports whether the account is active; ErrNotFound when
+	// there is none.
+	ShareAccount(ctx context.Context, id uuid.UUID) (bool, error)
+}
+
 // LoginAccount is what login reads of an account before its transaction:
 // the hash is the snapshot it verifies the password against (M1/P2 design
 // 3.4).
@@ -64,17 +88,32 @@ type LoginAccountReader interface {
 	FindLoginAccount(ctx context.Context, email string) (LoginAccount, error)
 }
 
+// PasswordAccount is what an operation that asks for the current password
+// reads of the account before its transaction: the address, for the
+// password rules, and the hash, as the snapshot (M1/P3 design 3.4).
+type PasswordAccount struct {
+	Email        string // normalized
+	PasswordHash string
+}
+
+// PasswordAccountReader reads the account whose password is asked for.
+type PasswordAccountReader interface {
+	// PasswordAccount returns ErrNotFound when there is no account id.
+	PasswordAccount(ctx context.Context, id uuid.UUID) (PasswordAccount, error)
+}
+
 // LockedAccount is an account's row under the account row lock.
 type LockedAccount struct {
+	Email        string // normalized
 	PasswordHash string
 	Active       bool
 }
 
 // CredentialLocker takes the account row lock that every transaction
-// issuing or changing a credential of an existing account takes first (M1
-// design 4): login here, changing the password and creating a token from
-// P3. Registration creates the account in its transaction: there is no row
-// to lock yet.
+// issuing or changing a credential of an existing account takes first
+// (M1/P3 design 3.3): login, and through CredentialLock the operations that
+// act with the caller's credential. Registration creates the account in its
+// transaction: there is no row to lock yet.
 type CredentialLocker interface {
 	// LockForCredentials locks account id's row until the transaction ends
 	// (SELECT … FOR NO KEY UPDATE) and returns it; ErrNotFound when there
@@ -137,6 +176,14 @@ type SessionEnder interface {
 	// EndSession revokes the session with reason logout while it is at g;
 	// false when it is not.
 	EndSession(ctx context.Context, g SessionGeneration) (bool, error)
+}
+
+// SessionRevoker revokes an account's sessions at once (M1/P3 design 3.5).
+type SessionRevoker interface {
+	// RevokeSessions revokes at now, with reason, every session of userID
+	// that is neither revoked nor expired, except keep (uuid.Nil() keeps
+	// none), and returns how many it revoked.
+	RevokeSessions(ctx context.Context, userID, keep uuid.UUID, reason domain.RevokeReason, now time.Time) (int, error)
 }
 
 // SessionCredential is what authentication checks of a session.

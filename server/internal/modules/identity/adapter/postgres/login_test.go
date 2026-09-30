@@ -41,15 +41,18 @@ func TestLockForCredentials(t *testing.T) {
 	go func() {
 		locked <- tx.WithinTx(ctx, func(ctx context.Context) error {
 			got, err := s.LockForCredentials(ctx, u.ID)
-			if err == nil && (got.PasswordHash != u.PasswordHash || got.Active) {
+			if err == nil && (got.Email != u.Email || got.PasswordHash != u.PasswordHash || got.Active) {
 				err = errors.New("the lock read the wrong row")
 			}
 			close(holding)
-			<-release
+			select { // a failed test never releases: give up rather than hold the pool's close
+			case <-release:
+			case <-time.After(10 * time.Second):
+			}
 			return err
 		})
 	}()
-	<-holding
+	awaitHolding(t, holding, locked)
 
 	second := make(chan error, 1)
 	go func() {

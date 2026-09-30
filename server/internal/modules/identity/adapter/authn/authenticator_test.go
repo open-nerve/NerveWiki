@@ -35,6 +35,18 @@ func TestAuthenticatePutsTheActorInTheContext(t *testing.T) {
 	}
 }
 
+// A personal access token is its own rate-limit key.
+func TestAPersonalAccessTokenIsItsOwnKey(t *testing.T) {
+	actor := shared.Actor{UserID: uuid.NewV7(), APITokenID: uuid.NewV7()}
+
+	ctx, key, err := authn.New(fakeUseCase{actor: actor}).Authenticate(context.Background(), "nwk_pat_x")
+
+	got, _ := shared.RequireActor(ctx)
+	if err != nil || got != actor || key != "pat:"+actor.APITokenID.String() {
+		t.Errorf("Authenticate() = key %q, %v; actor %+v; want pat:%s and %+v", key, err, got, actor.APITokenID, actor)
+	}
+}
+
 // expiredCredential is the platform's optional interface on a 401.
 type expiredCredential interface{ ExpiredCredential() bool }
 
@@ -50,6 +62,7 @@ func TestAuthenticatePassesFailuresThrough(t *testing.T) {
 	}{
 		{"invalid credential", fmt.Errorf("%w: %w", shared.Unauthenticated(), errors.New("session is revoked")), true, false},
 		{"expired access token", fmt.Errorf("%w: %w", shared.Unauthenticated(), app.ErrAccessTokenExpired), true, true},
+		{"expired personal access token", fmt.Errorf("%w: %w", shared.Unauthenticated(), errors.New("personal access token has expired")), true, false},
 		{"internal fault", errors.New("database is down"), false, false},
 	}
 	for _, tt := range tests {

@@ -95,6 +95,7 @@ func defaultLimits() config.RateLimitConfig {
 		LoginIP:       config.BucketConfig{PerMinute: 30, Burst: 10},
 		LoginIPEmail:  config.BucketConfig{PerMinute: 10, Burst: 5},
 		RegisterIP:    config.BucketConfig{PerMinute: 10, Burst: 5},
+		PasswordUser:  config.BucketConfig{PerMinute: 5, Burst: 5},
 	}
 }
 
@@ -103,7 +104,7 @@ func unlimited() config.RateLimitConfig {
 	huge := config.BucketConfig{PerMinute: 600000, Burst: 100000}
 	return config.RateLimitConfig{
 		IPv6PrefixLen: 64, Anonymous: huge, AuthFailure: huge, Authenticated: huge,
-		LoginIP: huge, LoginIPEmail: huge, RegisterIP: huge,
+		LoginIP: huge, LoginIPEmail: huge, RegisterIP: huge, PasswordUser: huge,
 	}
 }
 

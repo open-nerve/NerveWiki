@@ -124,6 +124,23 @@ func JudgeRefresh(s SessionState, token RefreshToken, tagValid bool, now time.Ti
 	return Reject
 }
 
+// RevokeReason is why a session was revoked: auth_sessions.revoke_reason,
+// whose CHECK lists the same values. A revoked session keeps it.
+type RevokeReason string
+
+// The reasons a session is revoked. Logout and reuse detection write theirs
+// in their own statements (M1/P2 design 3.5, 3.6); the others revoke every
+// session of an account at once (M1/P3 design 3.5, 3.6; the administrator's
+// commands of P4).
+const (
+	RevokeLogout          RevokeReason = "logout"
+	RevokePasswordChanged RevokeReason = "password_changed"
+	RevokePasswordReset   RevokeReason = "password_reset"
+	RevokeEmailChanged    RevokeReason = "email_changed"
+	RevokeDeactivated     RevokeReason = "deactivated"
+	RevokeReuseDetected   RevokeReason = "reuse_detected"
+)
+
 // MaxUserAgentLength bounds auth_sessions.user_agent, in characters.
 const MaxUserAgentLength = 512
 

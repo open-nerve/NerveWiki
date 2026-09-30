@@ -37,6 +37,23 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) error {
 	return err
 }
 
+const deactivateUser = `-- name: DeactivateUser :exec
+UPDATE users
+SET is_active = false, updated_at = $1
+WHERE id = $2
+`
+
+type DeactivateUserParams struct {
+	Now time.Time
+	ID  uuid.UUID
+}
+
+// Under the account row lock (M1/P3 design 3.6).
+func (q *Queries) DeactivateUser(ctx context.Context, arg DeactivateUserParams) error {
+	_, err := q.db.Exec(ctx, deactivateUser, arg.Now, arg.ID)
+	return err
+}
+
 const findLoginAccount = `-- name: FindLoginAccount :one
 SELECT id, password
 FROM users
@@ -53,6 +70,26 @@ func (q *Queries) FindLoginAccount(ctx context.Context, email string) (FindLogin
 	row := q.db.QueryRow(ctx, findLoginAccount, email)
 	var i FindLoginAccountRow
 	err := row.Scan(&i.ID, &i.Password)
+	return i, err
+}
+
+const getPasswordAccount = `-- name: GetPasswordAccount :one
+SELECT email, password
+FROM users
+WHERE id = $1
+`
+
+type GetPasswordAccountRow struct {
+	Email    string
+	Password string
+}
+
+// What an operation that asks for the current password reads before its transaction: the address for the password
+// rules, the hash as the snapshot (M1/P3 design 3.4).
+func (q *Queries) GetPasswordAccount(ctx context.Context, id uuid.UUID) (GetPasswordAccountRow, error) {
+	row := q.db.QueryRow(ctx, getPasswordAccount, id)
+	var i GetPasswordAccountRow
+	err := row.Scan(&i.Email, &i.Password)
 	return i, err
 }
 
@@ -82,13 +119,14 @@ func (q *Queries) GetUser(ctx context.Context, id uuid.UUID) (GetUserRow, error)
 }
 
 const lockUserForCredentials = `-- name: LockUserForCredentials :one
-SELECT password, is_active
+SELECT email, password, is_active
 FROM users
 WHERE id = $1
 FOR NO KEY UPDATE
 `
 
 type LockUserForCredentialsRow struct {
+	Email    string
 	Password string
 	IsActive bool
 }
@@ -96,11 +134,99 @@ type LockUserForCredentialsRow struct {
 // The account row lock (M1 design 4, M1/P2 design 3.4). FOR NO KEY UPDATE conflicts with itself
 // and with FOR UPDATE, so the credential transactions of one account run one after another; it
 // does not conflict with the FOR KEY SHARE that foreign-key checks take, so inserting rows that
-// reference the account does not wait. Lock order: users, then auth_sessions.
+// reference the account does not wait. Lock order: users, then auth_sessions, then api_tokens.
 func (q *Queries) LockUserForCredentials(ctx context.Context, id uuid.UUID) (LockUserForCredentialsRow, error) {
 	row := q.db.QueryRow(ctx, lockUserForCredentials, id)
 	var i LockUserForCredentialsRow
-	err := row.Scan(&i.Password, &i.IsActive)
+	err := row.Scan(&i.Email, &i.Password, &i.IsActive)
+	return i, err
+}
+
+const recordOnboardingStep = `-- name: RecordOnboardingStep :one
+UPDATE users
+SET onboarding_steps = CASE WHEN $1::text = ANY (onboarding_steps) THEN onboarding_steps
+                            ELSE array_append(onboarding_steps, $1::text) END,
+    updated_at       = CASE WHEN $1::text = ANY (onboarding_steps) THEN updated_at
+                            ELSE $2::timestamptz END
+WHERE id = $3
+RETURNING id, email, display_name, onboarding_steps
+`
+
+type RecordOnboardingStepParams struct {
+	Step string
+	Now  time.Time
+	ID   uuid.UUID
+}
+
+type RecordOnboardingStepRow struct {
+	ID              uuid.UUID
+	Email           string
+	DisplayName     string
+	OnboardingSteps []string
+}
+
+// A completed step is appended once (M1/P3 design 3.5): a step recorded already changes nothing, updated_at
+// included. A concurrent record waits for the row and appends to what it left. users_onboarding_steps_check bounds
+// the count.
+func (q *Queries) RecordOnboardingStep(ctx context.Context, arg RecordOnboardingStepParams) (RecordOnboardingStepRow, error) {
+	row := q.db.QueryRow(ctx, recordOnboardingStep, arg.Step, arg.Now, arg.ID)
+	var i RecordOnboardingStepRow
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.DisplayName,
+		&i.OnboardingSteps,
+	)
+	return i, err
+}
+
+const shareAccount = `-- name: ShareAccount :one
+SELECT is_active
+FROM users
+WHERE id = $1
+FOR SHARE
+`
+
+// ShareActiveAccount (M1 design 8, M1/P3 design 3.6): the first lock of a transaction that gives the account new
+// access. FOR SHARE conflicts with the FOR NO KEY UPDATE of deactivation, so the two run one after the other and
+// is_active is read under the lock; two FOR SHARE do not wait for each other.
+func (q *Queries) ShareAccount(ctx context.Context, id uuid.UUID) (bool, error) {
+	row := q.db.QueryRow(ctx, shareAccount, id)
+	var is_active bool
+	err := row.Scan(&is_active)
+	return is_active, err
+}
+
+const updateDisplayName = `-- name: UpdateDisplayName :one
+UPDATE users
+SET display_name = $1, updated_at = $2
+WHERE id = $3
+RETURNING id, email, display_name, onboarding_steps
+`
+
+type UpdateDisplayNameParams struct {
+	DisplayName string
+	Now         time.Time
+	ID          uuid.UUID
+}
+
+type UpdateDisplayNameRow struct {
+	ID              uuid.UUID
+	Email           string
+	DisplayName     string
+	OnboardingSteps []string
+}
+
+// PATCH /me (M1/P3 design 3.5): one statement.
+func (q *Queries) UpdateDisplayName(ctx context.Context, arg UpdateDisplayNameParams) (UpdateDisplayNameRow, error) {
+	row := q.db.QueryRow(ctx, updateDisplayName, arg.DisplayName, arg.Now, arg.ID)
+	var i UpdateDisplayNameRow
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.DisplayName,
+		&i.OnboardingSteps,
+	)
 	return i, err
 }
 

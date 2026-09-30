@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 
+import type { ApiTokenCreated } from "@nervewiki/api-client";
 import { expect } from "@playwright/test";
 
 import type { Database } from "../db";
@@ -173,15 +174,136 @@ export async function expectRevoked(
   expect(session.revoke_reason).toBe(reason);
 }
 
+/**
+ * auth_sessions: the account's sessions, oldest first, each with the
+ * reason it was revoked for, or "" while it is live.
+ */
+async function sessionReasonsOf(db: Database, userId: string): Promise<string[]> {
+  const rows = await db.query<{ reason: string }>(
+    "SELECT coalesce(revoke_reason, '') AS reason FROM auth_sessions WHERE user_id = $1 ORDER BY created_at, id",
+    [userId]
+  );
+  return rows.map((r) => r.reason);
+}
+
+/** The row of an account, as the account assertions read it. */
+interface AccountRow {
+  display_name: string;
+  is_active: boolean;
+  onboarding_steps: string[];
+  password: string;
+}
+
+export async function accountOf(db: Database, userId: string): Promise<AccountRow> {
+  const rows = await db.query<AccountRow>(
+    "SELECT display_name, is_active, onboarding_steps, password FROM users WHERE id = $1",
+    [userId]
+  );
+  expect(rows, `the account ${userId}`).toHaveLength(1);
+  return rows[0] as AccountRow;
+}
+
+/** A8: the account's display name is name. */
+export async function expectDisplayName(db: Database, userId: string, name: string): Promise<void> {
+  expect((await accountOf(db, userId)).display_name).toBe(name);
+}
+
+/** A9: the account has recorded steps, in that order, each once. */
+export async function expectOnboardingSteps(db: Database, userId: string, steps: string[]): Promise<void> {
+  expect((await accountOf(db, userId)).onboarding_steps).toEqual(steps);
+}
+
+/**
+ * A7: the password changed (another argon2id hash than before) and every
+ * session but kept is revoked for password_changed; kept, when given, is
+ * the caller's own session and stays live.
+ */
+export async function expectPasswordChanged(
+  db: Database,
+  userId: string,
+  hashBefore: string,
+  kept?: string
+): Promise<void> {
+  const account = await accountOf(db, userId);
+  expect(account.password).toMatch(/^\$argon2id\$/);
+  expect(account.password).not.toBe(hashBefore);
+  const keptId = kept === undefined ? undefined : parseRefreshToken(kept).sessionId;
+  const sessions = await db.query<{ id: string; reason: string | null }>(
+    "SELECT id, revoke_reason AS reason FROM auth_sessions WHERE user_id = $1",
+    [userId]
+  );
+  for (const session of sessions) {
+    expect(session.reason, `session ${session.id}`).toBe(session.id === keptId ? null : "password_changed");
+  }
+}
+
+/** A11: the account is inactive and every session of it is revoked for deactivated. */
+export async function expectDeactivated(db: Database, userId: string): Promise<void> {
+  expect((await accountOf(db, userId)).is_active).toBe(false);
+  for (const reason of await sessionReasonsOf(db, userId)) {
+    expect(reason).toBe("deactivated");
+  }
+}
+
+/** A personal access token's row. */
+interface TokenRow {
+  user_id: string;
+  token_hash: Buffer;
+  name: string;
+  expires_at: Date | null;
+  last_used_at: Date | null;
+  revoked_at: Date | null;
+  created_at: Date;
+}
+
+async function tokenOf(db: Database, id: string): Promise<TokenRow> {
+  const rows = await db.query<TokenRow>(
+    "SELECT user_id, token_hash, name, expires_at, last_used_at, revoked_at, created_at FROM api_tokens WHERE id = $1",
+    [id]
+  );
+  expect(rows, `the token ${id}`).toHaveLength(1);
+  return rows[0] as TokenRow;
+}
+
+/**
+ * A10: api_tokens has the token answered, of the account userId: the
+ * SHA-256 of the whole token, never the token, with the name and expiry
+ * answered, created when the answer says, never used, live.
+ */
+export async function expectNewToken(db: Database, userId: string, created: ApiTokenCreated): Promise<void> {
+  expect(created.token).toMatch(/^nwk_pat_[A-Za-z0-9_-]{43}$/);
+  expect(created.last_used_at).toBeNull();
+  const row = await tokenOf(db, created.id);
+  expect(row.user_id).toBe(userId);
+  expect(row.token_hash.equals(createHash("sha256").update(created.token).digest())).toBe(true);
+  expect(row.name).toBe(created.name);
+  expect(row.expires_at?.toISOString() ?? null).toBe(created.expires_at && new Date(created.expires_at).toISOString());
+  expect(row.created_at.getTime()).toBe(new Date(created.created_at).getTime());
+  expect(row.last_used_at).toBeNull();
+  expect(row.revoked_at).toBeNull();
+}
+
+/** A10: the token has authenticated a request: last_used_at is set. */
+export async function expectTokenUsed(db: Database, id: string): Promise<void> {
+  expect((await tokenOf(db, id)).last_used_at).not.toBeNull();
+}
+
+/** A10: the token is revoked (a soft delete: the row stays). */
+export async function expectTokenRevoked(db: Database, id: string): Promise<void> {
+  expect((await tokenOf(db, id)).revoked_at).not.toBeNull();
+}
+
 /** The rows of the identity tables. */
 export interface IdentityCounts {
   users: number;
   sessions: number;
+  tokens: number;
 }
 
 export async function countIdentity(db: Database): Promise<IdentityCounts> {
   const [counts] = await db.query<IdentityCounts>(
-    `SELECT (SELECT count(*)::int FROM users) AS users, (SELECT count(*)::int FROM auth_sessions) AS sessions`
+    `SELECT (SELECT count(*)::int FROM users) AS users, (SELECT count(*)::int FROM auth_sessions) AS sessions,
+      (SELECT count(*)::int FROM api_tokens) AS tokens`
   );
   if (!counts) {
     throw new Error("the counts query returned no row");
@@ -189,7 +311,7 @@ export async function countIdentity(db: Database): Promise<IdentityCounts> {
   return counts;
 }
 
-/** A refused sign-up or sign-in added no account and no session. */
+/** A refused sign-up, sign-in or token creation added no account, session or token. */
 export async function expectNothingAdded(db: Database, before: IdentityCounts): Promise<void> {
   expect(await countIdentity(db)).toEqual(before);
 }
