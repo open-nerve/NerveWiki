@@ -1,5 +1,5 @@
 ```yaml
-status: open
+status: done
 from: M0/P4
 to: M1
 created: 2026-09-30
@@ -20,4 +20,5 @@ M0/P4 只做了 `instance` 用得到的部分（[P4 文档](../../M0-foundation/
 - M1/P1（2026-09-30）：第 1 项（401 与 `WWW-Authenticate`、`securitySchemes.bearer`、两个整个程序测试的断言）、第 2 项（`PublicOperations()` 与行为式的整个程序测试，`apitest.Operation.Public`）、第 3 项（三个整个程序测试与 `operations.go`、两条写法规则）、第 5 项的认证部分（请求信息 → 请求期限 → 请求体上限 → 认证 → 请求体结构检查）。见 [P1 文档](../01-P1-identity-foundation.md)第 7 节。
 - M1/P2（2026-09-30）：第 5 项的限流部分（认证之后的限流中间件，顺序为请求信息 → 请求期限 → 请求体上限 → 失败闸门与认证 → 限流 → 请求体结构检查）。见 [P2 文档](../02-P2-sessions-ratelimit.md)第 7 节。
 - M1/P3（2026-10-01）：第 4 项（`revokeApiToken` 的路径参数让生成代码导入 runtime；`binary_test` 按导入者判断，只有 runtime 及其子包可以导入 `google/uuid`；参数用例加"至少一个"的守卫）。见 [P3 文档](../03-P3-accounts-tokens.md)第 7 节。
-- 五项都已完成。状态在 M1 收尾时改为 done。
+- 五项都已完成。
+- M1 收尾（2026-10-01）：收尾审查逐项对照代码，全部落实，状态改为 done。见 [M1 收尾审查记录](../reviews/M1-closeout-review.md)。

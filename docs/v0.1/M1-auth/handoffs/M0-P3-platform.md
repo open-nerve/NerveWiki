@@ -1,5 +1,5 @@
 ```yaml
-status: open
+status: done
 from: M0/P3
 to: M1
 created: 2026-09-30
@@ -22,7 +22,8 @@ M0/P3 只做了 M0 用得到的平台层（[P3 文档](../../M0-foundation/03-P3
 
 ## 处理进展
 
-- M1/P1（2026-09-30）：第 1 项（`clientip.go`、`server.trusted_proxies` 与列表、`netip.Prefix` 的解码）、第 3 项（`Authenticator`、`PublicOperations`、认证中间件；`LongLived` 的认证仍由 M5 决定）、第 5 项（`warnIfExposed`）、第 7 项（`sqlc_test`、`rawsql_test`）、第 10 项（`auth.jwt.private_key_file` 只记 `private_key_file_set`，有日志测试）。见 [P1 文档](../01-P1-identity-foundation.md)第 7 节。
+- M1/P1（2026-09-30）：第 1 项（`clientip.go`、`server.trusted_proxies` 与列表、`netip.Prefix` 的解码）、第 3 项（`Authenticator`、`PublicOperations`、认证中间件；`LongLived` 的认证仍由 M5、M9 决定）、第 5 项（`warnIfExposed`）、第 7 项（`sqlc_test`、`rawsql_test`）、第 10 项（`auth.jwt.private_key_file` 只记 `private_key_file_set`，有日志测试）。见 [P1 文档](../01-P1-identity-foundation.md)第 7 节。
 - M1/P2（2026-09-30）：第 2 项（`platform/ratelimit`、平台与模块的桶、失败闸门、IPv6 前缀）、第 8 项（`clocktest.Fixed`，加锁，列入架构测试的测试辅助包）。见 [P2 文档](../02-P2-sessions-ratelimit.md)第 7 节。
 - M1/P4（2026-10-01）：第 4 项（`platform/jobs`、`jobs.shutdown_timeout`、停机顺序 HTTP → 后台任务 → 迁移器 → 连接池、River 的迁移与业务表同一条链）、第 6 项（`nervewiki users` 只组合连接池与管理用例，`archtest/composition_test.go`）。见 [P4 文档](../04-P4-admin-jobs.md)第 7 节。
-- 其余：第 9 项已在 M1 总设计第 2 节关闭（不做服务端时区）。全部落实，状态在 M1 收尾时改为 done。
+- 其余：第 9 项已在 M1 总设计第 2 节关闭（不做服务端时区）。
+- M1 收尾（2026-10-01）：收尾审查逐项对照代码，全部落实，状态改为 done。见 [M1 收尾审查记录](../reviews/M1-closeout-review.md)。

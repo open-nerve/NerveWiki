@@ -33,7 +33,7 @@ M0 移交给本 Phase 的（M1 总设计第 7 节）：[P3 平台层](handoffs/M
 - `deploy/runtime-grants.sql` 与它的测试。
 - 端到端：A11 的命令行部分、A12、A13；README。
 
-**不做**：前端（P5、P6）；M2 的真实注册者；只投递的 River 客户端（M2 以后第一个由请求投递的任务出现时）；会话之外的清理（撤销的 PAT 与会话保留，理由见 3.4）。
+**不做**：前端（P5、P6）；M2 的真实注册者；只投递的 River 客户端（M2 以后第一个由请求投递的任务出现时）；会话之外的清理（撤销的 PAT 与会话保留，理由见 3.5）。
 
 ## 3. 设计
 
@@ -56,6 +56,7 @@ server/
     module.go                                     New；Jobs()
     admin.go                                      NewAdmin、AdminDeps、Admin 的五个方法
     parts.go                                      New 与 NewAdmin 共用的部件（store、argon2、规则、停用的步骤）
+    app/admin.go                                  管理用例共用的部件：按邮箱锁账户（lockAccount）、执行者 cli（byCLI）
     app/create_account.go                         注册与 CreateUser 共用的"建账户"
     app/create_user.go、reset_password.go、set_email.go、activate.go
     app/deactivate.go                             按邮箱的停用（与自助停用共用 deactivate）

@@ -16,3 +16,4 @@ M0/P1 的实验 ⑤（[结果](../../M0-foundation/01-P1-spikes.md) 第 7 节）
 3. **审批设置的建议。** 在 Codex 与 Claude Code 上核对工具注解的效果：`readOnlyHint` 的工具能否免审批。据此在接入文档里给出各审批选项的建议，不一律推荐 `approve`。
 
 4. **长连接路由绕过的中间件**（M0 收尾审查）：MCP 的 Streamable HTTP 路由用 `httpserver.LongLived` 挂载，它绕过全部逐路由中间件（总体设计 13.1 第 14 条），包括请求体上限、认证与限流。MCP 的 POST 带请求体，要自己限制大小（例如 `http.MaxBytesReader`），自己完成 PAT 认证与限流，并有测试覆盖。
+   M1 之后逐路由的链上还有请求信息（经 `server.trusted_proxies` 认出的客户端 IP；`LongLived` 上 `RequestMetaFrom` 是零值）、认证之前的失败闸门与按凭证的限流，都在 httpserver 未导出的中间件里（M1 收尾审查）。第一个挂载长连接路由的 M 由平台导出一个复用这些部件的入口（请求信息、失败闸门、`Authenticator`、按凭证的限流、请求体上限），不在模块里重写（总体设计 13.1 第 14 条）。`httpserver.Authenticator` 同时接受会话的访问令牌与 PAT，而总体设计 6.3 说 MCP 只收 PAT：是否拒绝访问令牌由 M9 决定。

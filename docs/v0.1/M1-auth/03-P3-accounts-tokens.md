@@ -45,8 +45,8 @@ server/
   internal/archtest/binary_test.go                    google/uuid 只允许由 oapi-codegen/runtime 导入
   internal/platform/config/                           ratelimit.password_user
   internal/modules/identity/
-    module.go                                         Deps 加否决者、订阅者、password_user；扩展点的类型别名
-    accounts.go                                       NewAccounts：ShareActiveAccount，只凭连接池构造
+    module.go                                         Deps 加否决者、订阅者、password_user
+    accounts.go                                       NewAccounts：ShareActiveAccount，只凭连接池构造；扩展点的类型别名
     domain/api_token.go                               PAT 的格式、解析、哈希；名称与期限的规则
     domain/name.go                                    名称的规则 CheckName（显示名与 PAT 名共用）
     domain/user.go                                    资料的补丁；引导步骤 id 的规则与个数上限
@@ -71,7 +71,7 @@ e2e/fixtures/auth.ts、assert/identity.ts；stories/identity/a7–a11，a3 补�
 ### 3.2 PAT
 
 - **格式**：`nwk_pat_` 加 32 个随机字节的 base64url（无填充），共 51 个字符。数据库只存整个令牌的 SHA-256：随机串有 256 位熵，不需要慢哈希。解析只接受这一种写法（前缀、43 个字符、末位未用的比特为零），不查库。
-- **表 `api_tokens`**：`id`、`user_id`、`token_hash`（唯一，32 字节）、`name`、`expires_at`（空为永不过期，晚于 `created_at`）、`last_used_at`、`revoked_at`、`created_at`、`updated_at`。撤销是软删除（总体设计 6.1）：行留下，认证能说出"已撤销"而不是"不存在"（只进调试日志）。列表用部分索引 `(user_id, created_at DESC, id DESC) WHERE revoked_at IS NULL`。
+- **表 `api_tokens`**：`id`、`user_id`、`token_hash`（唯一，32 字节）、`name`、`expires_at`（空为永不过期，晚于 `created_at`）、`last_used_at`、`revoked_at`、`created_at`、`updated_at`。撤销记下 `revoked_at`、行留下（接口的 DELETE，但不是总体设计 7.1 那种会被清理的软删除，见 13.1 第 6 条）：认证能说出"已撤销"而不是"不存在"（只进调试日志）。列表用部分索引 `(user_id, created_at DESC, id DESC) WHERE revoked_at IS NULL`。
 - **名称**：去掉两端空白之后 1–100 个字符，不含改变周围文字读法的字符：控制字符（Cc）、行与段落分隔符（会断行）、双向控制字符（能把名字倒着显示、冒充别人）；其他格式字符保留，emoji 序列与波斯文等要用连接符。同形字不由服务端处理。显示名用同一条规则（`CheckName`）。**期限**：可省略；给出时必须晚于当前时刻，按数据库的精度（UTC、微秒）截断之后再比较与存储，创建时的回答与之后的列表读到同一个时刻。
 - **创建**（`POST /me/api-tokens`，任何凭证，PAT 也可以）：`{name, expires_at?, current_password}`。先查名称与期限（422），再按 3.4 校验当前密码，锁下插入。明文只在 201 的回答中出现一次；日志记 `user_id`、`token_id`。
 - **列出**（`GET /me/api-tokens`）：未撤销的令牌，已过期的也列出（用户据此撤销），新的在前；不分页（总体设计 6.1 的小集合）。不设个数上限：创建要求密码，并受 `password_user` 限制。
