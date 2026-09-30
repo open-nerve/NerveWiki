@@ -22,6 +22,7 @@ func TestRules(t *testing.T) {
 		gen      = "generated code is imported only by its own adapter"
 		platform = "platform packages do not import each other, except config"
 		testOnly = "test helpers (pgtest, apitest, clocktest) are imported only by tests"
+		river    = "River is imported only by platform/jobs and a module's adapter/river"
 	)
 	tests := []struct {
 		from, to string
@@ -83,6 +84,16 @@ func TestRules(t *testing.T) {
 		{m("internal/modules/notebook/adapter/http"), m("internal/modules/page/adapter/http/gen"), []string{isolated, gen}},
 		// sqlc's code under adapter/postgres/gen follows the same rule.
 		{m("internal/modules/page/adapter/postgres"), m("internal/modules/page/adapter/postgres/gen"), nil},
+
+		// River stays in platform/jobs and the modules' river adapters.
+		{m("internal/platform/jobs"), "github.com/riverqueue/river", nil},
+		{m("internal/platform/jobs"), "github.com/riverqueue/river/riverdriver/riverpgxv5", nil},
+		{m("internal/modules/page/adapter/river"), "github.com/riverqueue/river", nil},
+		{m("internal/modules/page/adapter/http"), "github.com/riverqueue/river", []string{river}},
+		{m("internal/modules/page"), "github.com/riverqueue/river", []string{river}},
+		{m("internal/modules/page/app"), "github.com/riverqueue/river", []string{pure, river}},
+		{m("internal/bootstrap"), "github.com/riverqueue/river/rivertype", []string{river}},
+		{m("internal/modules/page/adapter/postgres"), "github.com/riverqueue/riverfake", nil},
 		{m("internal/modules/page/adapter/postgres/gen"), "github.com/jackc/pgx/v5", nil},
 		{m("internal/modules/page/adapter/http"), m("internal/modules/page/adapter/postgres/gen"), []string{gen}},
 		{m("internal/modules/page"), m("internal/modules/page/adapter/postgres/gen"), []string{gen}},

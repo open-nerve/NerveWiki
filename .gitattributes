@@ -4,3 +4,6 @@
 # Markdown 样例集的输入是逐字节的规范（CRLF、BOM 都是有意的）：不做任何换行符转换。写在后面，覆盖上一条
 tools/md-fixtures/cases/** -text
 tools/md-fixtures/rename/** -text
+
+# River 的迁移是原样导出的生成物（M1/P4 设计 3.2）：代码评审时折叠
+server/migrations/sql/00005_river_main_v2_to_v7.sql linguist-generated=true

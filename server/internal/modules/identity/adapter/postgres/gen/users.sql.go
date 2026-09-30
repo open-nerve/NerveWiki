@@ -12,6 +12,41 @@ import (
 	"uuid"
 )
 
+const activateUser = `-- name: ActivateUser :exec
+UPDATE users
+SET is_active = true, updated_at = $1
+WHERE id = $2
+`
+
+type ActivateUserParams struct {
+	Now time.Time
+	ID  uuid.UUID
+}
+
+// Under the account row lock (M1/P4 design 3.6).
+func (q *Queries) ActivateUser(ctx context.Context, arg ActivateUserParams) error {
+	_, err := q.db.Exec(ctx, activateUser, arg.Now, arg.ID)
+	return err
+}
+
+const changeEmail = `-- name: ChangeEmail :exec
+UPDATE users
+SET email = $1, updated_at = $2
+WHERE id = $3
+`
+
+type ChangeEmailParams struct {
+	Email string
+	Now   time.Time
+	ID    uuid.UUID
+}
+
+// Under the account row lock (M1/P4 design 3.6); users_email_key refuses an address in use.
+func (q *Queries) ChangeEmail(ctx context.Context, arg ChangeEmailParams) error {
+	_, err := q.db.Exec(ctx, changeEmail, arg.Email, arg.Now, arg.ID)
+	return err
+}
+
 const createUser = `-- name: CreateUser :exec
 INSERT INTO users (id, email, password, display_name, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $5)
@@ -114,6 +149,34 @@ func (q *Queries) GetUser(ctx context.Context, id uuid.UUID) (GetUserRow, error)
 		&i.Email,
 		&i.DisplayName,
 		&i.OnboardingSteps,
+	)
+	return i, err
+}
+
+const lockUserByEmail = `-- name: LockUserByEmail :one
+SELECT id, email, password, is_active
+FROM users
+WHERE email = $1
+FOR NO KEY UPDATE
+`
+
+type LockUserByEmailRow struct {
+	ID       uuid.UUID
+	Email    string
+	Password string
+	IsActive bool
+}
+
+// The account row lock of the administrator's commands, which name the account by its address (M1/P4 design
+// 3.6): the same lock as LockUserForCredentials, first in their transactions.
+func (q *Queries) LockUserByEmail(ctx context.Context, email string) (LockUserByEmailRow, error) {
+	row := q.db.QueryRow(ctx, lockUserByEmail, email)
+	var i LockUserByEmailRow
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.Password,
+		&i.IsActive,
 	)
 	return i, err
 }

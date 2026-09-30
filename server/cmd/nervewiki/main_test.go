@@ -18,8 +18,13 @@ import (
 )
 
 func execute(ctx context.Context, environ []string, args ...string) (code int, stdout, stderr string) {
+	return executeWithInput(ctx, environ, "", args...)
+}
+
+// executeWithInput is execute with input on standard input.
+func executeWithInput(ctx context.Context, environ []string, input string, args ...string) (code int, stdout, stderr string) {
 	var out, errOut bytes.Buffer
-	code = run(ctx, args, environ, &out, &errOut)
+	code = run(ctx, args, environ, strings.NewReader(input), &out, &errOut)
 	return code, out.String(), errOut.String()
 }
 

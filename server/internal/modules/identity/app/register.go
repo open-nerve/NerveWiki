@@ -4,7 +4,6 @@ import (
 	"context"
 	"log/slog"
 	"net/netip"
-	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/identity/domain"
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
@@ -25,12 +24,13 @@ type RegisterDeps struct {
 
 // Register creates an account and signs it in: POST /api/v0/auth/register.
 type Register struct {
-	d RegisterDeps
+	d        RegisterDeps
+	accounts accountCreator
 }
 
 // NewRegister returns the use case.
 func NewRegister(d RegisterDeps) *Register {
-	return &Register{d: d}
+	return &Register{d: d, accounts: accountCreator{rules: d.Rules, hasher: d.Hasher, clock: d.Clock}}
 }
 
 // RegisterInput is a registration and where it comes from.
@@ -58,17 +58,11 @@ func (r *Register) Execute(ctx context.Context, in RegisterInput) (Tokens, error
 	if !allowed {
 		return Tokens{}, domain.ErrSignupDisabled
 	}
-	email, err := domain.NewAccount(r.d.Rules, in.Email, in.Password)
+	user, err := r.accounts.prepare(ctx, in.Email, in.Password)
 	if err != nil {
 		return Tokens{}, err
 	}
-	hash, err := r.d.Hasher.Hash(ctx, in.Password)
-	if err != nil {
-		return Tokens{}, err
-	}
-	now := r.d.Clock.Now()
-	user := NewUser{ID: uuid.NewV7(), Email: email, PasswordHash: hash, DisplayName: domain.DisplayNameFromEmail(email), Now: now}
-	session, tokens, err := r.d.Issuance.newSession(user.ID, in.UserAgent, in.IP, now)
+	session, tokens, err := r.d.Issuance.newSession(user.ID, in.UserAgent, in.IP, user.Now)
 	if err != nil {
 		return Tokens{}, err
 	}

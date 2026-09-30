@@ -34,6 +34,7 @@ func TestLogValueMasksDatabaseURL(t *testing.T) {
 		"config.auth.access_token_ttl=15m0s",
 		"config.auth.session_ttl=720h0m0s",
 		"config.auth.refresh_deadline=4s",
+		"config.auth.session_cleanup_interval=1h0m0s",
 		"config.auth.jwt.private_key_file_set=true",
 		"config.auth.password.argon2_memory_kib=19456",
 		"config.auth.password.argon2_iterations=2",
@@ -49,6 +50,7 @@ func TestLogValueMasksDatabaseURL(t *testing.T) {
 		"config.ratelimit.login_ip_email.burst=5",
 		"config.ratelimit.register_ip.per_minute=10",
 		"config.ratelimit.password_user.burst=5",
+		"config.jobs.shutdown_timeout=10s",
 		"config.log.level=info",
 		"config.log.format=json",
 	} {

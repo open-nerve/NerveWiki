@@ -65,6 +65,27 @@ type UserDeactivator interface {
 	DeactivateUser(ctx context.Context, id uuid.UUID, now time.Time) error
 }
 
+// UserActivator makes an account active again (M1/P4 design 3.6).
+type UserActivator interface {
+	ActivateUser(ctx context.Context, id uuid.UUID, now time.Time) error
+}
+
+// EmailChanger changes an account's address (M1/P4 design 3.6).
+type EmailChanger interface {
+	// ChangeEmail returns domain.ErrEmailTaken when another account has
+	// email.
+	ChangeEmail(ctx context.Context, id uuid.UUID, email string, now time.Time) error
+}
+
+// AccountLocker takes the account row lock of an account named by its
+// address, for the administrator's commands (M1/P4 design 3.6).
+type AccountLocker interface {
+	// LockAccountByEmail locks the row of the account of email, normalized,
+	// until the transaction ends and returns what it read under the lock;
+	// ErrNotFound when there is none.
+	LockAccountByEmail(ctx context.Context, email string) (LockedAccount, error)
+}
+
 // AccountSharer takes the shared lock of an account row (M1/P3 design 3.6).
 type AccountSharer interface {
 	// ShareAccount locks account id's row FOR SHARE until the transaction
@@ -104,6 +125,7 @@ type PasswordAccountReader interface {
 
 // LockedAccount is an account's row under the account row lock.
 type LockedAccount struct {
+	ID           uuid.UUID
 	Email        string // normalized
 	PasswordHash string
 	Active       bool
@@ -176,6 +198,15 @@ type SessionEnder interface {
 	// EndSession revokes the session with reason logout while it is at g;
 	// false when it is not.
 	EndSession(ctx context.Context, g SessionGeneration) (bool, error)
+}
+
+// ExpiredSessionDeleter deletes the sessions that have expired (M1/P4
+// design 3.5).
+type ExpiredSessionDeleter interface {
+	// DeleteExpiredSessions deletes up to limit sessions that expired before
+	// now, skipping those another transaction holds, and returns how many it
+	// deleted.
+	DeleteExpiredSessions(ctx context.Context, now time.Time, limit int) (int, error)
 }
 
 // SessionRevoker revokes an account's sessions at once (M1/P3 design 3.5).

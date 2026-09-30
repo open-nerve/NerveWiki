@@ -58,6 +58,22 @@ type APITokenReader interface {
 	APITokenByID(ctx context.Context, id uuid.UUID) (APITokenCredential, error)
 }
 
+// AllAPITokensRevoker revokes every token of an account, for the
+// administrator's password reset (M1/P4 design 3.6).
+type AllAPITokensRevoker interface {
+	// RevokeAllAPITokens revokes at now every token of userID not revoked
+	// yet, expired ones too, and returns how many.
+	RevokeAllAPITokens(ctx context.Context, userID uuid.UUID, now time.Time) (int, error)
+}
+
+// UsableAPITokenCounter counts the tokens that authenticate again once an
+// account is active (M1/P4 design 3.6).
+type UsableAPITokenCounter interface {
+	// CountUsableAPITokens counts userID's tokens neither revoked nor
+	// expired at now.
+	CountUsableAPITokens(ctx context.Context, userID uuid.UUID, now time.Time) (int, error)
+}
+
 // APITokenToucher records that a token was used.
 type APITokenToucher interface {
 	// TouchAPIToken sets token id's last_used_at to now when it is unset or

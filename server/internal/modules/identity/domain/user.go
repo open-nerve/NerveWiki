@@ -86,6 +86,17 @@ func NewAccount(rules *PasswordRules, email, password string) (string, error) {
 	return email, nil
 }
 
+// NewEmail checks an address that the server's administrator gives an
+// account (M1/P4 design 3.6) and returns it normalized; a problem is 422
+// validation_failed on field.
+func NewEmail(field, email string) (string, error) {
+	email = shared.NormalizeEmail(email)
+	if f := checkEmail(field, email); f != nil {
+		return "", shared.Invalid(*f)
+	}
+	return email, nil
+}
+
 // checkEmail checks a normalized address.
 func checkEmail(field, email string) *shared.FieldError {
 	switch {

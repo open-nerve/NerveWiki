@@ -24,6 +24,7 @@ type Config struct {
 	Database  DatabaseConfig  `koanf:"database"`
 	Auth      AuthConfig      `koanf:"auth"`
 	RateLimit RateLimitConfig `koanf:"ratelimit"`
+	Jobs      JobsConfig      `koanf:"jobs"`
 	Log       LogConfig       `koanf:"log"`
 }
 
@@ -68,9 +69,12 @@ type AuthConfig struct {
 	// RefreshDeadline bounds a refresh or a logout; with
 	// database.commit_timeout it must end before the web client gives up on
 	// a refresh (M1/P2 design 3.5).
-	RefreshDeadline time.Duration  `koanf:"refresh_deadline"`
-	JWT             JWTConfig      `koanf:"jwt"`
-	Password        PasswordConfig `koanf:"password"`
+	RefreshDeadline time.Duration `koanf:"refresh_deadline"`
+	// SessionCleanupInterval is how often the expired sessions are deleted
+	// (M1/P4 design 3.5).
+	SessionCleanupInterval time.Duration  `koanf:"session_cleanup_interval"`
+	JWT                    JWTConfig      `koanf:"jwt"`
+	Password               PasswordConfig `koanf:"password"`
 }
 
 // JWTConfig locates the Ed25519 signing key.
@@ -123,6 +127,13 @@ func (b BucketConfig) LogValue() slog.Value {
 	return slog.GroupValue(slog.Int("per_minute", b.PerMinute), slog.Int("burst", b.Burst))
 }
 
+// JobsConfig configures the background jobs (M1/P4 design 3.3).
+type JobsConfig struct {
+	// ShutdownTimeout is how long a stop lets the running jobs finish
+	// before it cancels them.
+	ShutdownTimeout time.Duration `koanf:"shutdown_timeout"`
+}
+
 // LogConfig configures the process logger.
 type LogConfig struct {
 	Level  string `koanf:"level"`  // debug, info, warn or error
@@ -157,6 +168,7 @@ func (c Config) LogValue() slog.Value {
 			duration("access_token_ttl", c.Auth.AccessTokenTTL),
 			duration("session_ttl", c.Auth.SessionTTL),
 			duration("refresh_deadline", c.Auth.RefreshDeadline),
+			duration("session_cleanup_interval", c.Auth.SessionCleanupInterval),
 			slog.Group("jwt",
 				slog.Bool("private_key_file_set", c.Auth.JWT.PrivateKeyFile != ""),
 			),
@@ -177,6 +189,9 @@ func (c Config) LogValue() slog.Value {
 			slog.Any("login_ip_email", c.RateLimit.LoginIPEmail),
 			slog.Any("register_ip", c.RateLimit.RegisterIP),
 			slog.Any("password_user", c.RateLimit.PasswordUser),
+		),
+		slog.Group("jobs",
+			duration("shutdown_timeout", c.Jobs.ShutdownTimeout),
 		),
 		slog.Group("log",
 			slog.String("level", c.Log.Level),

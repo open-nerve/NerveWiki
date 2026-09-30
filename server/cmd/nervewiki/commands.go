@@ -19,7 +19,7 @@ const localConfigFile = "configs/config.local.yaml"
 
 type configLoader func() (config.Config, error)
 
-func newRootCommand(environ []string) *cobra.Command {
+func newRootCommand(environ []string, stdin io.Reader) *cobra.Command {
 	root := &cobra.Command{
 		Use:           "nervewiki",
 		Short:         "Nerve Wiki: a self-hosted team notes server",
@@ -31,7 +31,7 @@ func newRootCommand(environ []string) *cobra.Command {
 	load := func() (config.Config, error) {
 		return config.Load(config.Sources{Embedded: configs.FS(), Environ: environ, LocalFile: localConfigFile})
 	}
-	root.AddCommand(newServeCommand(load), newMigrateCommand(load), newVersionCommand())
+	root.AddCommand(newServeCommand(load), newMigrateCommand(load), newUsersCommand(load, stdin, realTerminal{}), newVersionCommand())
 	return root
 }
 

@@ -18,13 +18,23 @@ import (
 	"github.com/open-nerve/NerveWiki/server/migrations"
 )
 
-// objectsQuery lists the schema's objects: tables but goose's own, and
-// extensions but the built-in plpgsql.
+// objectsQuery lists the schema's objects: tables but goose's own;
+// extensions but the built-in plpgsql; types and functions (River creates
+// both) but the extensions' own and the types that stand for a table or an
+// array.
 const objectsQuery = `
 	SELECT 'table ' || table_name FROM information_schema.tables
 	WHERE table_schema = 'public' AND table_name <> 'goose_db_version'
 	UNION ALL
 	SELECT 'extension ' || extname FROM pg_extension WHERE extname <> 'plpgsql'
+	UNION ALL
+	SELECT 'type ' || t.typname FROM pg_type t
+	WHERE t.typnamespace = 'public'::regnamespace AND t.typrelid = 0 AND t.typelem = 0
+		AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.classid = 'pg_type'::regclass AND d.objid = t.oid AND d.deptype = 'e')
+	UNION ALL
+	SELECT 'function ' || p.oid::regprocedure::text FROM pg_proc p
+	WHERE p.pronamespace = 'public'::regnamespace
+		AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.classid = 'pg_proc'::regclass AND d.objid = p.oid AND d.deptype = 'e')
 	ORDER BY 1`
 
 func newPool(t *testing.T, url string) *pgxpool.Pool {
@@ -70,8 +80,8 @@ func TestMigrationsGoUpDownAndUpAgain(t *testing.T) {
 		t.Fatalf("Up() = %d migrations, %v; want all %d", len(up), err, len(files))
 	}
 	schema := objects(t, pool)
-	if !slices.Contains(schema, "extension pg_trgm") {
-		t.Errorf("after Up, the schema holds %q, want pg_trgm among it", schema)
+	if !slices.Contains(schema, "extension pg_trgm") || !slices.Contains(schema, "type river_job_state") {
+		t.Errorf("after Up, the schema holds %q, want pg_trgm and River's job state among it", schema)
 	}
 	for range up {
 		if _, err := m.Down(ctx); err != nil {
@@ -93,15 +103,16 @@ func TestMigrationsGoUpDownAndUpAgain(t *testing.T) {
 // migrations drop them by name. Each index is pinned with what it is too,
 // unique and partial or not, so a partial unique key cannot turn into a plain
 // or a total one unseen. The tables are every table of the schema but goose's
-// own, read from the catalog: a new table's constraints and indexes fail here
-// until they are in want.
+// and River's own, read from the catalog: a new table's constraints and
+// indexes fail here until they are in want. River names its own, and its
+// migration is checked against River's SQL (river_test.go).
 func TestConstraintAndIndexNames(t *testing.T) {
 	pool := newPool(t, pgtest.NewDatabase(t))
 	rows, err := pool.Query(context.Background(), `
 		WITH tables AS (
 			SELECT oid FROM pg_class
 			WHERE relnamespace = 'public'::regnamespace AND relkind IN ('r', 'p')
-				AND relname <> 'goose_db_version'
+				AND relname <> 'goose_db_version' AND relname NOT LIKE 'river\_%'
 		)
 		SELECT conname || ' ' || contype::text || CASE WHEN contype = 'f' THEN ' ' || confdeltype::text ELSE '' END FROM pg_constraint
 		WHERE conrelid IN (SELECT oid FROM tables)

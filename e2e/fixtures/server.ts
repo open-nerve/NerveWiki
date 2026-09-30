@@ -48,6 +48,13 @@ export function requireBinary(): void {
   }
 }
 
+export interface RunOptions {
+  /** The command's standard input, e.g. the password of nervewiki users create; empty by default. */
+  input?: string;
+  /** Variables added to the test configuration, e.g. NWIKI_LOG__LEVEL=debug. */
+  env?: Record<string, string>;
+}
+
 /**
  * Runs a nervewiki command, such as migrate up, with the test configuration
  * on the database at databaseUrl. It rejects when the command exits non-zero,
@@ -55,12 +62,18 @@ export function requireBinary(): void {
  * it after commandTimeoutMs: global setup runs it before any Playwright
  * timeout applies.
  */
-export async function runNervewiki(args: string[], databaseUrl: string): Promise<{ stdout: string; stderr: string }> {
-  return promisify(execFile)(binary, args, {
-    env: nervewikiEnv(databaseUrl),
+export async function runNervewiki(
+  args: string[],
+  databaseUrl: string,
+  { input = "", env = {} }: RunOptions = {}
+): Promise<{ stdout: string; stderr: string }> {
+  const run = promisify(execFile)(binary, args, {
+    env: { ...nervewikiEnv(databaseUrl), ...env },
     timeout: commandTimeoutMs,
     killSignal: "SIGKILL",
   });
+  run.child.stdin?.end(input);
+  return run;
 }
 
 /**

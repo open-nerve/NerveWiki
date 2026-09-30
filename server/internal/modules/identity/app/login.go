@@ -54,8 +54,10 @@ type LoginInput struct {
 //     401 identity.invalid_credentials, like a wrong password;
 //  2. the password is verified against the snapshot outside the
 //     transaction, and hashed again there when the parameters changed;
-//  3. one transaction locks the account row, checks that the hash still
-//     equals the snapshot and that the account is active (403
+//  3. one transaction locks the account row, checks that the account still
+//     has the address it was found by (the administrator may have changed
+//     it: 401 as for an unknown address, M1/P4 design 3.6), that the hash
+//     still equals the snapshot and that the account is active (403
 //     identity.account_deactivated, only now that the password is known to
 //     be right), writes the new hash if any, and inserts the session.
 //
@@ -63,7 +65,8 @@ type LoginInput struct {
 // again, or the password changed: the password is verified against the new
 // hash, and step 3 is done once more. A second change fails with 401.
 func (l *Login) Execute(ctx context.Context, in LoginInput) (Tokens, error) {
-	account, err := l.find(ctx, shared.NormalizeEmail(in.Email))
+	email := shared.NormalizeEmail(in.Email)
+	account, err := l.find(ctx, email)
 	if errors.Is(err, ErrNotFound) {
 		if _, _, err := l.d.Verifier.Verify(ctx, in.Password, l.d.DummyHash); err != nil {
 			return Tokens{}, err
@@ -101,6 +104,9 @@ func (l *Login) Execute(ctx context.Context, in LoginInput) (Tokens, error) {
 			if err != nil {
 				return err
 			}
+			if locked.Email != email {
+				return errAddressChanged
+			}
 			if current = locked.PasswordHash; current != snapshot {
 				return nil
 			}
@@ -117,6 +123,8 @@ func (l *Login) Execute(ctx context.Context, in LoginInput) (Tokens, error) {
 		switch {
 		case errors.Is(err, domain.ErrAccountDeactivated):
 			return Tokens{}, l.failed(ctx, err, "deactivated", in.IP, account.ID)
+		case errors.Is(err, errAddressChanged):
+			return Tokens{}, l.failed(ctx, domain.ErrInvalidCredentials, "email_changed", in.IP, account.ID)
 		case err != nil:
 			return Tokens{}, err
 		case current == snapshot:
@@ -128,6 +136,10 @@ func (l *Login) Execute(ctx context.Context, in LoginInput) (Tokens, error) {
 	}
 	return Tokens{}, l.failed(ctx, domain.ErrInvalidCredentials, "invalid_credentials", in.IP, account.ID)
 }
+
+// errAddressChanged ends a sign-in whose account no longer has the address
+// it was found by.
+var errAddressChanged = errors.New("the account's address changed")
 
 // find reads the account of email. An address that cannot be valid is not
 // looked up, so the database never sees what it could not store (a NUL, a

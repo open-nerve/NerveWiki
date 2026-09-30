@@ -13,6 +13,7 @@ import (
 type fakeLogins struct {
 	account     app.LoginAccount // found by email
 	email       string           // the account's normalized address
+	renamed     string           // when set, the address LockForCredentials reads: changed since the lookup
 	active      bool
 	hash        string      // the row's hash, as LockForCredentials reads it
 	lookedUp    []string    // addresses FindLoginAccount was given
@@ -39,7 +40,11 @@ func (f *fakeLogins) LockForCredentials(ctx context.Context, id uuid.UUID) (app.
 	if id != f.account.ID {
 		return app.LockedAccount{}, app.ErrNotFound
 	}
-	return app.LockedAccount{PasswordHash: f.hash, Active: f.active}, nil
+	email := f.email
+	if f.renamed != "" {
+		email = f.renamed
+	}
+	return app.LockedAccount{ID: id, Email: email, PasswordHash: f.hash, Active: f.active}, nil
 }
 
 func (f *fakeLogins) UpdatePasswordHash(ctx context.Context, id uuid.UUID, hash string, now time.Time) error {

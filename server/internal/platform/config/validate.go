@@ -84,6 +84,9 @@ func (c Config) validate() error {
 		fail("auth.refresh_deadline", "must be at most server.request_timeout (%s), got %s", c.Server.RequestTimeout, c.Auth.RefreshDeadline)
 	}
 	c.RateLimit.validate(fail)
+	if c.Jobs.ShutdownTimeout <= 0 {
+		fail("jobs.shutdown_timeout", "must be positive, got %s", c.Jobs.ShutdownTimeout)
+	}
 	var level slog.Level
 	if err := level.UnmarshalText([]byte(c.Log.Level)); err != nil {
 		fail("log.level", "must be one of debug, info, warn, error, got %q", c.Log.Level)
@@ -103,6 +106,11 @@ func (a AuthConfig) validate(env string, fail func(key, format string, args ...a
 		fail("auth.session_ttl", "must be positive, got %s", a.SessionTTL)
 	case a.SessionTTL <= a.AccessTokenTTL:
 		fail("auth.session_ttl", "must be longer than auth.access_token_ttl (%s), got %s", a.AccessTokenTTL, a.SessionTTL)
+	}
+	// River advises periodic intervals of a second or more and does not
+	// enforce it.
+	if a.SessionCleanupInterval < time.Second {
+		fail("auth.session_cleanup_interval", "must be at least 1s, got %s", a.SessionCleanupInterval)
 	}
 	if env == EnvProd && a.JWT.PrivateKeyFile == "" {
 		// The file itself is read when nervewiki starts (bootstrap), not here.

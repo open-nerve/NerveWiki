@@ -1,7 +1,7 @@
 // Package identity is the accounts module (M1 design): accounts, sessions
-// and, from P3, personal access tokens. It brings registration, sign-in,
-// refresh and sign-out, the caller's account, and the authentication every
-// other operation goes through.
+// and personal access tokens. It brings registration, sign-in, refresh and
+// sign-out, the caller's account and tokens, the authentication every other
+// operation goes through, and the periodic cleanup of expired sessions.
 package identity
 
 import (
@@ -13,14 +13,13 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	argon2adapter "github.com/open-nerve/NerveWiki/server/internal/modules/identity/adapter/argon2"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/identity/adapter/authn"
 	httpadapter "github.com/open-nerve/NerveWiki/server/internal/modules/identity/adapter/http"
-	postgresadapter "github.com/open-nerve/NerveWiki/server/internal/modules/identity/adapter/postgres"
+	riveradapter "github.com/open-nerve/NerveWiki/server/internal/modules/identity/adapter/river"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/identity/adapter/signing"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/identity/app"
-	"github.com/open-nerve/NerveWiki/server/internal/modules/identity/domain"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/jobs"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/ratelimit"
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
@@ -39,8 +38,11 @@ type Deps struct {
 	AccessTokenTTL  time.Duration
 	SessionTTL      time.Duration
 	RefreshDeadline time.Duration // auth.refresh_deadline
-	Password        PasswordHashing
-	RateLimits      RateLimits
+	// SessionCleanupInterval is auth.session_cleanup_interval: how often the
+	// expired sessions are deleted.
+	SessionCleanupInterval time.Duration
+	Password               PasswordHashing
+	RateLimits             RateLimits
 	// The registrants of the deactivation's extension point (M1 design 8),
 	// built from the pool alone; M2 brings the first.
 	DeactivationVetoers     []DeactivationVetoer
@@ -73,6 +75,7 @@ type Module struct {
 	settings        httpadapter.Settings
 	refreshDeadline time.Duration
 	authenticator   *authn.Authenticator
+	jobs            []jobs.Job
 }
 
 // New wires the module. A signing key that cannot be parsed is an error
@@ -82,14 +85,13 @@ func New(d Deps) (*Module, error) {
 	if err != nil {
 		return nil, err
 	}
-	hasher := argon2adapter.New(argon2adapter.Params(d.Password), d.Logger)
+	p := newParts(d.Pool, d.Password, d.Logger, d.DeactivationVetoers, d.DeactivationSubscribers)
 	// Login verifies an unknown address against this, so that it takes as
 	// long as a known one (M1/P2 design 3.4).
-	dummy, err := hasher.Hash(context.Background(), rand.Text())
+	dummy, err := p.hasher.Hash(context.Background(), rand.Text())
 	if err != nil {
 		return nil, fmt.Errorf("hash the dummy password: %w", err)
 	}
-	store := postgresadapter.New(d.Pool)
 	tokens := signing.NewAccessTokens(keys)
 	issuance := app.Issuance{
 		Tokens:     tokens,
@@ -97,37 +99,8 @@ func New(d Deps) (*Module, error) {
 		AccessTTL:  d.AccessTokenTTL,
 		SessionTTL: d.SessionTTL,
 	}
-	rules := domain.NewPasswordRules()
-	lock := app.CredentialLock{Locker: store, Sessions: store, APITokens: store}
-	password := app.CurrentPassword{Accounts: store, Verifier: hasher, Lock: lock, Tx: d.Tx}
 	return &Module{
-		uc: httpadapter.UseCases{
-			Register: app.NewRegister(app.RegisterDeps{
-				Policy: d.SignupPolicy, Rules: rules, Hasher: hasher, Tx: d.Tx,
-				Users: store, Sessions: store, Issuance: issuance, Clock: d.Clock, Logger: d.Logger,
-			}),
-			Login: app.NewLogin(app.LoginDeps{
-				Accounts: store, Locker: store, Passwords: store, Sessions: store, Verifier: hasher, Hasher: hasher, Tx: d.Tx,
-				Issuance: issuance, Clock: d.Clock, Logger: d.Logger, DummyHash: dummy,
-			}),
-			Refresh:              app.NewRefresh(app.RefreshDeps{Sessions: store, Tx: d.Tx, Issuance: issuance, Clock: d.Clock, Logger: d.Logger}),
-			Logout:               app.NewLogout(store, d.Clock, d.Logger),
-			GetMe:                app.NewGetMe(store),
-			UpdateMe:             app.NewUpdateMe(store, store, d.Clock),
-			RecordOnboardingStep: app.NewRecordOnboardingStep(store, d.Clock),
-			ChangePassword: app.NewChangePassword(app.ChangePasswordDeps{
-				Password: password, Rules: rules, Hasher: hasher, Passwords: store, Sessions: store, Clock: d.Clock, Logger: d.Logger,
-			}),
-			Deactivate: app.NewDeactivate(app.DeactivateDeps{
-				Lock: lock, Users: store, Sessions: store, Vetoers: d.DeactivationVetoers,
-				Subscribers: d.DeactivationSubscribers, Tx: d.Tx, Clock: d.Clock, Logger: d.Logger,
-			}),
-			ListAPITokens: app.NewListAPITokens(store),
-			CreateAPIToken: app.NewCreateAPIToken(app.CreateAPITokenDeps{
-				Password: password, Tokens: store, Clock: d.Clock, Logger: d.Logger,
-			}),
-			RevokeAPIToken: app.NewRevokeAPIToken(store, d.Clock, d.Logger),
-		},
+		uc: useCases(d, p, issuance, dummy),
 		settings: httpadapter.Settings{
 			Limits: httpadapter.Limits{
 				Limiter:      d.RateLimits.Limiter,
@@ -140,9 +113,45 @@ func New(d Deps) (*Module, error) {
 		},
 		refreshDeadline: d.RefreshDeadline,
 		authenticator: authn.New(app.NewAuthenticate(app.AuthenticateDeps{
-			AccessTokens: tokens, Sessions: store, APITokens: store, Touch: store, Clock: d.Clock, Logger: d.Logger,
+			AccessTokens: tokens, Sessions: p.store, APITokens: p.store, Touch: p.store, Clock: d.Clock, Logger: d.Logger,
 		})),
+		jobs: []jobs.Job{
+			riveradapter.CleanupJob(app.NewCleanupSessions(p.store, d.Clock, d.Logger), d.SessionCleanupInterval),
+		},
 	}, nil
+}
+
+// useCases wires the use cases of the module's API.
+func useCases(d Deps, p parts, issuance app.Issuance, dummy string) httpadapter.UseCases {
+	store := p.store
+	lock := app.CredentialLock{Locker: store, Sessions: store, APITokens: store}
+	password := app.CurrentPassword{Accounts: store, Verifier: p.hasher, Lock: lock, Tx: d.Tx}
+	return httpadapter.UseCases{
+		Register: app.NewRegister(app.RegisterDeps{
+			Policy: d.SignupPolicy, Rules: p.rules, Hasher: p.hasher, Tx: d.Tx,
+			Users: store, Sessions: store, Issuance: issuance, Clock: d.Clock, Logger: d.Logger,
+		}),
+		Login: app.NewLogin(app.LoginDeps{
+			Accounts: store, Locker: store, Passwords: store, Sessions: store, Verifier: p.hasher, Hasher: p.hasher, Tx: d.Tx,
+			Issuance: issuance, Clock: d.Clock, Logger: d.Logger, DummyHash: dummy,
+		}),
+		Refresh:              app.NewRefresh(app.RefreshDeps{Sessions: store, Tx: d.Tx, Issuance: issuance, Clock: d.Clock, Logger: d.Logger}),
+		Logout:               app.NewLogout(store, d.Clock, d.Logger),
+		GetMe:                app.NewGetMe(store),
+		UpdateMe:             app.NewUpdateMe(store, store, d.Clock),
+		RecordOnboardingStep: app.NewRecordOnboardingStep(store, d.Clock),
+		ChangePassword: app.NewChangePassword(app.ChangePasswordDeps{
+			Password: password, Rules: p.rules, Hasher: p.hasher, Passwords: store, Sessions: store, Clock: d.Clock, Logger: d.Logger,
+		}),
+		Deactivate: app.NewDeactivate(app.DeactivateDeps{
+			Lock: lock, Steps: p.steps, Tx: d.Tx, Clock: d.Clock, Logger: d.Logger,
+		}),
+		ListAPITokens: app.NewListAPITokens(store),
+		CreateAPIToken: app.NewCreateAPIToken(app.CreateAPITokenDeps{
+			Password: password, Tokens: store, Clock: d.Clock, Logger: d.Logger,
+		}),
+		RevokeAPIToken: app.NewRevokeAPIToken(store, d.Clock, d.Logger),
+	}
 }
 
 func signingKeys(d Deps) (*signing.Keys, error) {
@@ -171,6 +180,11 @@ func (m *Module) RequestTimeouts() map[string]time.Duration {
 // Authenticator checks the bearer token of every non-public operation.
 func (m *Module) Authenticator() httpserver.Authenticator {
 	return m.authenticator
+}
+
+// Jobs are the module's background jobs, for the server's jobs runner.
+func (m *Module) Jobs() []jobs.Job {
+	return m.jobs
 }
 
 // Register mounts the module's API on router behind api's middlewares.

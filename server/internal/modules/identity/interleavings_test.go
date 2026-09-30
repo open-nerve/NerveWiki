@@ -13,6 +13,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/open-nerve/NerveWiki/server/internal/modules/identity"
 	postgresadapter "github.com/open-nerve/NerveWiki/server/internal/modules/identity/adapter/postgres"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/identity/adapter/signing"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/identity/app"
@@ -125,6 +126,20 @@ func (r gatedRevoker) RevokeSessions(ctx context.Context, userID, keep uuid.UUID
 	return r.SessionRevoker.RevokeSessions(ctx, userID, keep, reason, now)
 }
 
+// gatedTokenCreator stops a token creation inside its transaction, holding
+// the account row lock, once it inserted the token.
+type gatedTokenCreator struct {
+	app.APITokenCreator
+	gate *gate
+}
+
+func (c gatedTokenCreator) CreateAPIToken(ctx context.Context, n app.NewAPIToken) error {
+	if err := c.APITokenCreator.CreateAPIToken(ctx, n); err != nil {
+		return err
+	}
+	return c.gate.stop()
+}
+
 // account is alice@corp.com, whose password is Tr0ub4dor&3 and whose
 // stored hash is given, with live sessions, on a database of its own.
 type account struct {
@@ -184,9 +199,28 @@ func (a *account) changePassword(h *gatedHasher, sessions app.SessionRevoker) *a
 }
 
 func (a *account) createToken(h *gatedHasher) *app.CreateAPIToken {
+	return a.createTokenWith(h, a.store)
+}
+
+func (a *account) createTokenWith(h *gatedHasher, tokens app.APITokenCreator) *app.CreateAPIToken {
 	return app.NewCreateAPIToken(app.CreateAPITokenDeps{
-		Password: a.currentPassword(h), Tokens: a.store, Clock: clock.System{}, Logger: slog.New(slog.DiscardHandler),
+		Password: a.currentPassword(h), Tokens: tokens, Clock: clock.System{}, Logger: slog.New(slog.DiscardHandler),
 	})
+}
+
+// admin is the administrator's commands on the account's database.
+func (a *account) admin() *identity.Admin {
+	return identity.NewAdmin(identity.AdminDeps{
+		Pool: a.pool, Tx: a.tx, Clock: clock.System{}, Logger: slog.New(slog.DiscardHandler), Password: testPassword(),
+	})
+}
+
+// createCI creates a token named CI as the account's i-th session.
+func (a *account) createCI(h *gatedHasher, tokens app.APITokenCreator, i int) error {
+	_, err := a.createTokenWith(h, tokens).Execute(a.as(i), app.CreateAPITokenInput{
+		Spec: domain.APITokenSpec{Name: "CI"}, CurrentPassword: "Tr0ub4dor&3",
+	})
+	return err
 }
 
 // async runs fn and returns where its error arrives.
@@ -231,6 +265,15 @@ func (a *account) tokens(t *testing.T) int {
 	t.Helper()
 	var n int
 	if err := a.pool.QueryRow(context.Background(), `SELECT count(*) FROM api_tokens`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	return n
+}
+
+func (a *account) liveTokens(t *testing.T) int {
+	t.Helper()
+	var n int
+	if err := a.pool.QueryRow(context.Background(), `SELECT count(*) FROM api_tokens WHERE revoked_at IS NULL`).Scan(&n); err != nil {
 		t.Fatal(err)
 	}
 	return n
@@ -369,5 +412,89 @@ func TestAPasswordChangeWaitsForAnotherThatHoldsTheLock(t *testing.T) {
 	hash, _ := a.state(t)
 	if firstErr != nil || !errors.Is(secondErr, domain.ErrCurrentPasswordIncorrect) || hash != "hashed:N3w-Passw0rd!:first" {
 		t.Errorf("first %v, second %v, hash %q; want the first done, the second %v, the first's hash", firstErr, secondErr, hash, domain.ErrCurrentPasswordIncorrect)
+	}
+}
+
+// Interleaving 5: the administrator's password reset waits for a token
+// creation that holds the account row lock, its token inserted, then
+// revokes that token with the others: a reset leaves no token made with
+// the old password (M1/P4 design 3.6).
+func TestAResetWaitsForATokenCreationThatHoldsTheLock(t *testing.T) {
+	a := newAccount(t, "hashed:Tr0ub4dor&3:0", 1)
+	g := newGate()
+
+	create := async(func() error { return a.createCI(&gatedHasher{}, gatedTokenCreator{a.store, g}, 0) })
+	g.await(t)
+	reset := async(func() error {
+		_, err := a.admin().ResetPassword(context.Background(), "alice@corp.com", "N3w-Passw0rd!")
+		return err
+	})
+	pgtest.WaitForLockWaits(t, a.pool, 1, waitLimit)
+	g.open()
+	createErr, resetErr := await(t, create), await(t, reset)
+
+	if createErr != nil || resetErr != nil || a.tokens(t) != 1 || a.liveTokens(t) != 0 {
+		t.Errorf("creation %v, reset %v; %d tokens, %d live; want both done, the token revoked", createErr, resetErr, a.tokens(t), a.liveTokens(t))
+	}
+}
+
+// Interleaving 6: a reset waits for a sign-in that holds the lock, then
+// revokes the session it created.
+func TestAResetWaitsForALoginThatHoldsTheLock(t *testing.T) {
+	a := newAccount(t, "hashed:Tr0ub4dor&3:0", 0)
+	g := newGate()
+
+	login := async(func() error { return a.signIn(a.login(&gatedHasher{salt: "login"}, gatedSessionCreator{a.store, g})) })
+	g.await(t)
+	reset := async(func() error {
+		_, err := a.admin().ResetPassword(context.Background(), "alice@corp.com", "N3w-Passw0rd!")
+		return err
+	})
+	pgtest.WaitForLockWaits(t, a.pool, 1, waitLimit)
+	g.open()
+	loginErr, resetErr := await(t, login), await(t, reset)
+
+	if _, reasons := a.state(t); loginErr != nil || resetErr != nil || !slices.Equal(reasons, []string{"password_reset"}) {
+		t.Errorf("login %v, reset %v, sessions %q; want both done, the login's session revoked", loginErr, resetErr, reasons)
+	}
+}
+
+// A token creation that verified the old password before a reset finds, under
+// the lock, its session revoked: 401, no token.
+func TestATokenCreationThatVerifiedBeforeAReset(t *testing.T) {
+	a := newAccount(t, "hashed:Tr0ub4dor&3:0", 1)
+	g := newGate()
+
+	create := async(func() error { return a.createCI(&gatedHasher{gate: g}, a.store, 0) })
+	g.await(t)
+	if _, err := a.admin().ResetPassword(context.Background(), "alice@corp.com", "N3w-Passw0rd!"); err != nil {
+		t.Fatal(err)
+	}
+	g.open()
+	err := await(t, create)
+
+	var se *shared.Error
+	if !errors.As(err, &se) || se.ProblemStatus() != 401 || a.tokens(t) != 0 {
+		t.Errorf("creation = %v with %d tokens, want 401 and none", err, a.tokens(t))
+	}
+}
+
+// A sign-in that found the account by an address the administrator changes
+// before its transaction answers as for an unknown address, and starts no
+// session: the old address no longer signs in (M1/P4 design 3.6).
+func TestASignInWhoseAddressChangesMeanwhile(t *testing.T) {
+	a := newAccount(t, "hashed:Tr0ub4dor&3:0", 0)
+	g := newGate()
+
+	login := async(func() error { return a.signIn(a.login(&gatedHasher{salt: "login", gate: g}, a.store)) })
+	g.await(t)
+	if _, err := a.admin().SetEmail(context.Background(), "alice@corp.com", "alice@example.org"); err != nil {
+		t.Fatal(err)
+	}
+	g.open()
+	err := await(t, login)
+
+	if _, reasons := a.state(t); !errors.Is(err, domain.ErrInvalidCredentials) || len(reasons) != 0 {
+		t.Errorf("login = %v with sessions %q, want identity.invalid_credentials and none", err, reasons)
 	}
 }

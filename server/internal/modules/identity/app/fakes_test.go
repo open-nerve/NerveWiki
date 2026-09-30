@@ -53,15 +53,19 @@ func inTx(ctx context.Context) bool { return ctx.Value(inTxKey{}) == true }
 // other parameters, so it verifies and asks for a rehash. It counts its
 // calls and records the hashes it verified against.
 type fakeHasher struct {
-	calls     int // Hash calls
-	err       error
-	verified  []string // the hashes Verify was given
-	verifyErr error
-	onVerify  func() // runs inside every Verify: a transaction that commits meanwhile
+	calls      int // Hash calls
+	calledInTx int // Hash calls inside a transaction: a hash holds no lock
+	err        error
+	verified   []string // the hashes Verify was given
+	verifyErr  error
+	onVerify   func() // runs inside every Verify: a transaction that commits meanwhile
 }
 
-func (h *fakeHasher) Hash(_ context.Context, password string) (string, error) {
+func (h *fakeHasher) Hash(ctx context.Context, password string) (string, error) {
 	h.calls++
+	if inTx(ctx) {
+		h.calledInTx++
+	}
 	if h.err != nil {
 		return "", h.err
 	}

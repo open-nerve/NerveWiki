@@ -93,6 +93,17 @@ func (s *Store) EndSession(ctx context.Context, g app.SessionGeneration) (bool, 
 	return n == 1, nil
 }
 
+// DeleteExpiredSessions deletes up to limit sessions that expired before
+// now, skipping those another transaction holds, and returns how many it
+// deleted.
+func (s *Store) DeleteExpiredSessions(ctx context.Context, now time.Time, limit int) (int, error) {
+	n, err := s.queries(ctx).DeleteExpiredSessions(ctx, gen.DeleteExpiredSessionsParams{Now: now, Batch: int32(limit)})
+	if err != nil {
+		return 0, fmt.Errorf("delete expired sessions: %w", err)
+	}
+	return int(n), nil
+}
+
 // RevokeSessions revokes at now, with reason, every live session of userID
 // but keep, and returns how many.
 func (s *Store) RevokeSessions(ctx context.Context, userID, keep uuid.UUID, reason domain.RevokeReason, now time.Time) (int, error) {
