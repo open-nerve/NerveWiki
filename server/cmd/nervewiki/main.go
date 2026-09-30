@@ -12,7 +12,7 @@ import (
 
 func main() {
 	ctx, stop := signalContext()
-	code := run(ctx, os.Args[1:], os.Environ(), os.Stdout, os.Stderr)
+	code := run(ctx, os.Args[1:], os.Environ(), os.Stdin, os.Stdout, os.Stderr)
 	stop()
 	os.Exit(code)
 }
@@ -35,10 +35,11 @@ func signalContext() (context.Context, context.CancelFunc) {
 	return ctx, cancel
 }
 
-// run executes one command line and returns the process exit code. Results
-// go to stdout; logs and errors go to stderr.
-func run(ctx context.Context, args, environ []string, stdout, stderr io.Writer) int {
-	root := newRootCommand(environ)
+// run executes one command line and returns the process exit code. A
+// password comes from stdin; results go to stdout; logs, prompts and errors
+// go to stderr.
+func run(ctx context.Context, args, environ []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	root := newRootCommand(environ, stdin)
 	root.SetArgs(args)
 	root.SetOut(stdout)
 	root.SetErr(stderr)

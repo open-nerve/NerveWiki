@@ -90,6 +90,7 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrati
 	// monotonic clock, which a jump of the wall clock does not move.
 	limiter := ratelimit.New(time.Now)
 	limits := cfg.RateLimit
+	vetoers, subscribers := deactivationRegistrants()
 	ident, err := identity.New(identity.Deps{
 		Pool:                   pool,
 		Tx:                     postgres.NewTxManager(pool, cfg.Database.CommitTimeout),
@@ -109,6 +110,8 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrati
 			RegisterIP:   bucket(limiter, "register_ip", limits.RegisterIP),
 			PasswordUser: bucket(limiter, "password_user", limits.PasswordUser),
 		},
+		DeactivationVetoers:     vetoers,
+		DeactivationSubscribers: subscribers,
 	})
 	if err != nil {
 		_ = migrator.Close()
