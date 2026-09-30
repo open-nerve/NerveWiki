@@ -2,6 +2,7 @@ import { createContext, use, type ReactNode } from "react";
 
 import type { User } from "../services/account.service";
 import type { AccountStore } from "./account.store";
+import type { ApiTokenStore } from "./api-token.store";
 import type { RootStore } from "./root.store";
 
 const StoreContext = createContext<RootStore | null>(null);
@@ -27,4 +28,13 @@ export function useAccount(): { account: AccountStore; me: User } {
     throw new Error("useAccount is used outside SignedIn");
   }
   return { account, me };
+}
+
+/** useApiTokens is the signed-in account's personal access tokens: only for the pages the SignedIn guard shows. */
+export function useApiTokens(): ApiTokenStore {
+  const { apiTokens } = useStore();
+  if (apiTokens === undefined) {
+    throw new Error("useApiTokens is used outside SignedIn");
+  }
+  return apiTokens;
 }

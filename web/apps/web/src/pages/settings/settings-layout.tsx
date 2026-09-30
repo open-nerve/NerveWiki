@@ -8,6 +8,7 @@ import { cn } from "../../lib/cn";
 const sections: readonly { path: string; label: Extract<MessageKey, `settings.${string}`> }[] = [
   { path: "/settings/profile", label: "settings.profile" },
   { path: "/settings/security", label: "settings.security" },
+  { path: "/settings/tokens", label: "settings.tokens" },
 ];
 
 /**

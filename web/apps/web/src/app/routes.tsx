@@ -87,6 +87,13 @@ export const routes: RouteObject[] = [
                           return { Component: SecurityPage };
                         },
                       },
+                      {
+                        path: "tokens",
+                        lazy: async () => {
+                          const { TokensPage } = await import("../pages/settings/tokens-page");
+                          return { Component: TokensPage };
+                        },
+                      },
                     ],
                   },
                   {

@@ -47,6 +47,9 @@ test.each([
   "recordOnboardingStep",
   "changePassword",
   "deactivateMe",
+  "listApiTokens",
+  "createApiToken",
+  "revokeApiToken",
 ])("%s: every problem code has a message", (operationId) => {
   const codes = codesOf(operationId);
   expect(codes.length).toBeGreaterThan(0);
