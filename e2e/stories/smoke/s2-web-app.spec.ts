@@ -1,4 +1,3 @@
-import { expectQuietConsole, watchPage } from "../../fixtures/browser";
 import { expect, stampedVersion, test } from "../../fixtures/test";
 
 /** The Content-Security-Policy of every page (server/internal/platform/webui/csp.go). */
@@ -11,10 +10,9 @@ function isStatic(url: string): boolean {
   return !new URL(url).pathname.startsWith("/api/");
 }
 
-test("S2: a user opens the home page and sees what the instance runs", async ({ page, api }) => {
+test("S2: a user opens the home page and sees what the instance runs", async ({ page, pageWatch, api }) => {
   const { data: instance } = await api.GET("/api/v0/instance");
 
-  const watch = await watchPage(page);
   const requested: string[] = [];
   const loaded: string[] = [];
   const failed: string[] = [];
@@ -47,10 +45,8 @@ test("S2: a user opens the home page and sees what the instance runs", async ({ 
   expect(loaded).toContainEqual(expect.stringMatching(/^200 .*\/assets\/[^/]+\.js$/));
   expect(loaded).toContainEqual(expect.stringMatching(/^200 .*\/theme-init\.js$/));
   expect(failed).toEqual([]);
-  // The app asks nervewiki for one thing as it starts: the instance information.
-  expect(watch.apiRequests).toEqual(["GET /api/v0/instance"]);
-  expect(watch.apiFailures).toEqual([]);
-  expect(watch.cspViolations).toEqual([]);
-  expect(watch.pageErrors).toEqual([]);
-  await expectQuietConsole(page, watch);
+  // The app asks nervewiki for one thing as it starts: the instance information. The page must also stay
+  // quiet, which the page fixture checks as the test ends.
+  expect(pageWatch.apiRequests).toEqual(["GET /api/v0/instance"]);
+  expect(pageWatch.apiFailures).toEqual([]);
 });

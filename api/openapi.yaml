@@ -1,5 +1,5 @@
 # Nerve Wiki 接口描述的入口：列出所有路径，指向各模块的描述文件，是整个接口的目录。
-# make gen-web 用 Redocly 把它打包成 dist/openapi.yaml。写法约定见 docs/v0.1/M0-foundation/04-P4-api-contract.md 3.2。
+# make gen-web 用 Redocly 把它打包成 dist/openapi.yaml。写法约定由 server/internal/platform/httpserver/apitest/rules_test.go 检查。
 openapi: 3.1.0
 info:
   title: Nerve Wiki API

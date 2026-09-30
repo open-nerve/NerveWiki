@@ -26,6 +26,7 @@ RUN go mod download
 COPY . /src/
 COPY --from=web /src/web/apps/web/dist/ internal/platform/webui/dist/
 ARG VERSION=0.1.0-dev
+# 构建参数与 Makefile 的 build 相同，改一处要同步另一处
 RUN CGO_ENABLED=0 go build -trimpath \
     -ldflags "-X github.com/open-nerve/NerveWiki/server/internal/platform/buildinfo.version=${VERSION}" \
     -o /out/nervewiki ./cmd/nervewiki
