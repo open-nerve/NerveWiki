@@ -94,7 +94,7 @@ deploy/
 | S3 实例接口 | 类型化客户端 `GET /api/v0/instance`：200，`{product: "Nerve Wiki", version: 注入的版本, commit: 40 位十六进制, api_version: "v0"}` |
 | S4 路由兜底 | 直接打开深层链接（例如 `/acme/notebooks/1`）：文档与 `/` 的字节相同，页面显示应用内 404，刷新后仍是；控制台安静。`GET /api/v0/nope`：404 problem+json，内容确切 |
 
-"控制台安静"先写一条探针消息再断言，证明监视确实在听。M0 的故事没有需要放过的浏览器日志，`expectQuietConsole` 不带参数；以后的故事遇到第三方库的警告、刻意引起的 4xx 在控制台的报告时，再给它加上逐条点名的参数。
+"控制台安静"先写一条探针消息再断言，证明监视确实在听。M0 的故事没有需要放过的浏览器日志，`expectQuietPage` 不带参数；以后的故事遇到第三方库的警告、刻意引起的 4xx 在控制台的报告时，再加上逐条点名的办法（M1/P5 加了 `pageWatch.expectConsole`）。
 
 ### 3.4 版本注入
 
@@ -201,7 +201,7 @@ testcontainers 经 dockerode 间接依赖 `cpu-features`、`protobufjs`、`ssh2`
 **与设计的差异**（第 3 节已是修订后的版本）：
 1. `e2e` 包不设 `test` 脚本，端到端故事只由 `make e2e` 运行。
 2. 测试级 fixture 改为 `newDatabase` 加 `nervewikiWith(databaseUrl, { env, until })`：S1 的两个变体一个要复制出的库，一个要空库，其中一个服务不会就绪（只等 `/healthz`）。
-3. `expectQuietConsole` 不带"预期的日志"参数：M0 没有要放过的浏览器日志。
+3. `expectQuietPage` 不带"预期的日志"参数：M0 没有要放过的浏览器日志。
 4. 运行时镜像用 distroless 的默认变体加 `USER 65532:65532`，不用 `:nonroot` 变体；不设监听地址；加了 OCI labels。
 5. 镜像的构建阶段复制整个上下文，`.dockerignore` 与 `.gitignore` 对应（审查 I1）；`make image` 在 `git worktree` 中直接报错。
 6. image-smoke 比设计多核对：提交与 `modified` 与本地一致、内嵌的前端、uid 等于 65532（比"不是 root"更严）、SIGTERM 之后退出码为 0。
