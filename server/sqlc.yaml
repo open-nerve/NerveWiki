@@ -1,0 +1,29 @@
+# sqlc 配置：每个模块一条，由 make gen-go 在 server/ 下执行
+#   CGO_ENABLED=0 go tool -modfile=tools/go.mod sqlc generate
+# schema 只列本模块的迁移：查询碰到别的模块的表，生成时就失败。archtest 的 sqlc_test 核对这份配置。
+# 类型：uuid 用标准库的 uuid.UUID，timestamptz 用 time.Time（db_type 要写 timestamptz，写 pg_catalog.timestamptz 不匹配）；
+# 可为空的列用指针。
+version: "2"
+sql:
+  - engine: postgresql
+    schema:
+      - migrations/sql/00002_identity_users.sql
+      - migrations/sql/00003_identity_auth_sessions.sql
+    queries: internal/modules/identity/adapter/postgres/queries
+    gen:
+      go:
+        package: gen
+        out: internal/modules/identity/adapter/postgres/gen
+        sql_package: pgx/v5
+        emit_pointers_for_null_types: true
+        overrides:
+          - db_type: uuid
+            go_type: { import: uuid, type: UUID }
+          - db_type: uuid
+            nullable: true
+            go_type: { import: uuid, type: UUID, pointer: true }
+          - db_type: timestamptz
+            go_type: { import: time, type: Time }
+          - db_type: timestamptz
+            nullable: true
+            go_type: { import: time, type: Time, pointer: true }
