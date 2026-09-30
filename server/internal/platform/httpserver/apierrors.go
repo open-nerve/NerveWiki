@@ -144,7 +144,11 @@ func (e APIErrors) BodyError(w http.ResponseWriter, r *http.Request, err error) 
 //   - *http.MaxBytesError: 413 payload_too_large;
 //   - context.Canceled while the request's context is cancelled: the client
 //     went away; logged at debug level, no 500;
-//   - anything else: logged, and 500 internal_error without detail.
+//   - context.DeadlineExceeded once the request's deadline has passed:
+//     logged at warn level as a request that ran out of time, so that it is
+//     not taken for an infrastructure fault; 500 internal_error;
+//   - anything else: logged at error level, and 500 internal_error without
+//     detail.
 //
 // If the response has already started (the generated code reports a failed
 // write that way), a problem appended would corrupt it: the connection is
@@ -180,14 +184,22 @@ func (e APIErrors) Write(w http.ResponseWriter, r *http.Request, err error) {
 	case errors.Is(err, context.Canceled) && r.Context().Err() != nil:
 		e.logger.LogAttrs(r.Context(), slog.LevelDebug, "client went away", attrs...)
 		w.WriteHeader(statusClientClosedRequest)
+	case errors.Is(err, context.DeadlineExceeded) && errors.Is(r.Context().Err(), context.DeadlineExceeded):
+		e.logger.LogAttrs(r.Context(), slog.LevelWarn, "API request deadline exceeded", attrs...)
+		writeInternal(w)
 	default:
 		e.logger.LogAttrs(r.Context(), slog.LevelError, "API handler failed", attrs...)
-		WriteProblem(w, Problem{
-			Status: http.StatusInternalServerError,
-			Code:   CodeInternal,
-			Title:  http.StatusText(http.StatusInternalServerError),
-		})
+		writeInternal(w)
 	}
+}
+
+// writeInternal answers 500 internal_error, without detail.
+func writeInternal(w http.ResponseWriter) {
+	WriteProblem(w, Problem{
+		Status: http.StatusInternalServerError,
+		Code:   CodeInternal,
+		Title:  http.StatusText(http.StatusInternalServerError),
+	})
 }
 
 // problemOf builds the problem for pe and returns its retry delay.

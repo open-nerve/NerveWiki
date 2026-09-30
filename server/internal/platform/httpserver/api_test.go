@@ -32,6 +32,7 @@ func thingBody() *bodyshape.Table {
 
 type reached struct {
 	called bool
+	at     time.Time // when the handler ran
 	ctx    context.Context
 	body   string
 }
@@ -42,7 +43,7 @@ type reached struct {
 func mount(api *API) (*Router, *reached) {
 	got := &reached{}
 	var h http.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		got.called, got.ctx = true, r.Context()
+		got.called, got.at, got.ctx = true, time.Now(), r.Context()
 		data, err := io.ReadAll(r.Body)
 		if err != nil {
 			api.Errors.BodyError(w, r, err)
@@ -112,6 +113,34 @@ func TestOperationsRunUnderTheRequestDeadline(t *testing.T) {
 	deadline, ok := got.ctx.Deadline()
 	if !ok || deadline.Before(begin.Add(2*time.Second)) || deadline.After(end.Add(2*time.Second)) {
 		t.Errorf("handler deadline = %v (set %v), want 2s after the request arrived", deadline, ok)
+	}
+}
+
+// slowBody delivers its content only after a pause, as a slow client does.
+type slowBody struct {
+	pause time.Duration
+	r     io.Reader
+}
+
+func (b *slowBody) Read(p []byte) (int, error) {
+	time.Sleep(b.pause)
+	b.pause = 0
+	return b.r.Read(p)
+}
+
+// The deadline is the outermost per-route middleware: the time spent reading
+// the body (in the body check) counts against it, as the time M1's
+// authentication and rate limiting spend will.
+func TestTheRequestDeadlineCoversReadingTheBody(t *testing.T) {
+	router, got := mount(newTestAPI(t))
+	const pause = 300 * time.Millisecond
+	req := httptest.NewRequest(http.MethodPost, "/api/v0/things", &slowBody{pause: pause, r: strings.NewReader(`{"name":"a"}`)})
+
+	serve(router, req)
+
+	deadline, ok := got.ctx.Deadline()
+	if left := deadline.Sub(got.at); !ok || left > 2*time.Second-pause {
+		t.Errorf("the handler had %v of the 2s budget left (deadline set %v), want at most %v: the body was read before the deadline started", left, ok, 2*time.Second-pause)
 	}
 }
 

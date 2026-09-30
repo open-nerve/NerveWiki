@@ -1,6 +1,9 @@
 package apitest
 
 import (
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"io"
 	"maps"
 	"net/http"
@@ -97,14 +100,20 @@ func TestValidateResponseChecksTheProblemCode(t *testing.T) {
 	}
 }
 
+// forget drops what r recorded for operationID: a test that asserts what the
+// recorder holds starts from nothing, however often -count runs it.
+func (r *recorder) forget(operationID string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.codes, operationID)
+}
+
 // The operation and its code are this test's own: no other test answers
 // them, so what the recorder holds for them is what CheckResponse put there.
 func TestCheckResponseRecordsTheAnsweredCode(t *testing.T) {
 	doc := strings.NewReplacer("operationId: createThing", "operationId: recordThing", "[things.taken]", "[things.recorded]").Replace(thingsContract)
 	c := contractFrom(t, doc)
-	if got := answered.snapshot()["recordThing"]; got != nil {
-		t.Fatalf("recordThing has answers %v before CheckResponse", got)
-	}
+	answered.forget("recordThing")
 	rec := httptest.NewRecorder()
 	rec.Header().Set("Content-Type", "application/problem+json")
 	rec.WriteHeader(http.StatusConflict)
@@ -154,4 +163,75 @@ func TestValidateRequest(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestModuleOf(t *testing.T) {
+	tests := []struct {
+		file, want string
+		ok         bool
+	}{
+		{"/src/server/internal/modules/instance/adapter/http/main_test.go", "instance", true},
+		{"/src/server/internal/modules/page/adapter/http/handler_test.go", "page", true},
+		{"/src/server/internal/modules/page/app/main_test.go", "page", false},
+		{"/src/server/internal/modules/page/adapter/http/gen/x_test.go", "page", false},
+		{"/src/server/internal/bootstrap/main_test.go", "", false},
+	}
+	for _, tt := range tests {
+		if got, ok := moduleOf(tt.file); ok != tt.ok || (ok && got != tt.want) {
+			t.Errorf("moduleOf(%s) = %q, %v; want %q, %v", tt.file, got, ok, tt.want, tt.ok)
+		}
+	}
+}
+
+// Main is what checks, after a module's HTTP adapter tests, that every code
+// the module declares was answered: a module whose adapter tests do not run
+// it would drop that half of the check without failing.
+func TestEveryModuleRunsMain(t *testing.T) {
+	names, err := moduleNames()
+	if err != nil || len(names) == 0 {
+		t.Fatalf("module files = %q, %v; want at least one", names, err)
+	}
+	for _, name := range names {
+		dir := filepath.Join(apiDir(), "..", "server", "internal", "modules", name, "adapter", "http")
+		if !runsMain(t, dir) {
+			t.Errorf("api/modules/%s.yaml: no test file in %s has func TestMain(m *testing.M) { apitest.Main(m) }", name, dir)
+		}
+	}
+}
+
+// runsMain reports whether a test file in dir declares a TestMain that calls
+// apitest.Main.
+func runsMain(t *testing.T, dir string) bool {
+	t.Helper()
+	files, err := filepath.Glob(filepath.Join(dir, "*_test.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range files {
+		f, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.SkipObjectResolution)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, decl := range f.Decls {
+			fn, ok := decl.(*ast.FuncDecl)
+			if !ok || fn.Name.Name != "TestMain" || fn.Body == nil {
+				continue
+			}
+			found := false
+			ast.Inspect(fn.Body, func(n ast.Node) bool {
+				if call, ok := n.(*ast.CallExpr); ok {
+					if sel, ok := call.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == "Main" {
+						if id, ok := sel.X.(*ast.Ident); ok && id.Name == "apitest" {
+							found = true
+						}
+					}
+				}
+				return !found
+			})
+			if found {
+				return true
+			}
+		}
+	}
+	return false
 }

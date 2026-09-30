@@ -21,7 +21,7 @@
 ```bash
 pnpm install  # 安装 Node 依赖（检查工具要用）
 make dev-db   # 启动本地 PostgreSQL 18（端口 55433；用 NWIKI_DEV_DB_PORT 修改时，同时覆盖 database.url，见下文"配置"）
-make check    # 持续集成的全部门禁：静态检查、未使用代码检查、测试
+make check    # 静态检查、未使用代码检查、测试；与提交之后的 make gen-check 合起来是持续集成的全部门禁
 make          # 查看所有命令
 ```
 

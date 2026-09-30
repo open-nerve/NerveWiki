@@ -8,4 +8,4 @@ import (
 
 // Every problem code the module's operations declare must be answered by a
 // test here (v0.1 design 6.1).
-func TestMain(m *testing.M) { apitest.Main(m, "instance") }
+func TestMain(m *testing.M) { apitest.Main(m) }

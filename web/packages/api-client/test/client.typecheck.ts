@@ -10,6 +10,9 @@ export async function describeInstance(): Promise<InstanceInfo> {
   const { data, error } = await client.GET("/api/v0/instance");
   if (error) {
     const problem: Problem = error;
+    // @ts-expect-error: error is the Problem of the default response, not never
+    const unreachable: never = error;
+    void unreachable;
     throw new Error(problem.code);
   }
   const apiVersion: "v0" = data.api_version;

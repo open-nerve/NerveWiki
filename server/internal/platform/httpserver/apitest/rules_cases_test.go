@@ -54,7 +54,7 @@ components:
         note: {type: [string, 'null']}
         labels: {type: array, items: {type: string}}
     Target:
-      oneOf:
+      anyOf:
         - $ref: '#/components/schemas/Thing'
         - {type: 'null'}
     Named:
@@ -89,7 +89,7 @@ func TestAuthoringRulesReportViolations(t *testing.T) {
 		noProblem = "GET /api/v0/things: has no default response whose application/problem+json schema is the Problem component"
 		nullable  = ": uses nullable, the OpenAPI 3.0 keyword; write type: [T, 'null']"
 		constant  = ": uses const, which oapi-codegen turns into interface{}; write a single-value enum"
-		nullEnum  = `: has null in enum, which adds a "<nil>" Go constant; write oneOf: [{$ref: …}, {type: 'null'}]`
+		nullEnum  = `: has null in enum, which adds a "<nil>" Go constant; write anyOf: [{$ref: …}, {type: 'null'}]`
 		open      = ": object schema does not set additionalProperties: false"
 		thing     = "    Thing:\n      type: object\n      additionalProperties: false\n"
 	)
@@ -97,6 +97,7 @@ func TestAuthoringRulesReportViolations(t *testing.T) {
 		name, old, new, want string
 	}{
 		{"path outside /api/v0/", "  /api/v0/things:", "  /things:", "/things: does not start with /api/v0/"},
+		{"path ending with /", "  /api/v0/things:", "  /api/v0/things/:", "/api/v0/things/: ends with /"},
 		{"operationId not lower camelCase", "operationId: listThings", "operationId: ListThings",
 			`GET /api/v0/things: operationId "ListThings" is not lower camelCase`},
 		{"no operationId", "      operationId: listThings\n", "", `GET /api/v0/things: operationId "" is not lower camelCase`},
@@ -111,7 +112,7 @@ func TestAuthoringRulesReportViolations(t *testing.T) {
 		{"const: null", "name: {type: string}", "name: {const: null}", "components/schemas/Thing/properties/name" + constant},
 		{"null in enum", "note: {type: [string, 'null']}", "note: {type: [string, 'null'], enum: [a, null]}", "components/schemas/Thing/properties/note" + nullEnum},
 		{"in items", "items: {type: string}", "items: {type: string, nullable: true}", "components/schemas/Thing/properties/labels/items" + nullable},
-		{"in oneOf", "- {type: 'null'}", "- {const: null}", "components/schemas/Target/oneOf/1" + constant},
+		{"in anyOf", "- {type: 'null'}", "- {const: null}", "components/schemas/Target/anyOf/1" + constant},
 		{"in allOf", "- {required: [name]}", "- {required: [name], nullable: true}", "components/schemas/Named/allOf/1" + nullable},
 		{"in a parameter", "enum: [a, b]", "enum: [a, null]", "GET /api/v0/things parameters/kind" + nullEnum},
 		{"in an inline response schema", "schema: {$ref: '#/components/schemas/Thing'}", "schema: {type: string, const: x}",

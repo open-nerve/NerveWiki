@@ -9,7 +9,9 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 
@@ -111,10 +113,18 @@ func (r *recorder) snapshot() map[string]map[string]bool {
 // x-problem-codes was answered by some test through CheckResponse (v0.1
 // design 6.1): a declared code that nothing answers is a wrong contract. A
 // run that failed already, or was narrowed by -run, -skip or -short, is not
-// checked. Every module's adapter/http tests use it:
+// checked. The module is the one whose adapter/http calls Main, so a TestMain
+// copied from another module checks its own codes. Every module's
+// adapter/http tests use it:
 //
-//	func TestMain(m *testing.M) { apitest.Main(m, "instance") }
-func Main(m *testing.M, module string) {
+//	func TestMain(m *testing.M) { apitest.Main(m) }
+func Main(m *testing.M) {
+	_, file, _, _ := runtime.Caller(1)
+	module, ok := moduleOf(file)
+	if !ok {
+		fmt.Fprintf(os.Stderr, "apitest.Main is called from %s, outside a module's adapter/http\n", file)
+		os.Exit(2)
+	}
 	code := m.Run()
 	if code == 0 && !narrowed() {
 		doc, err := loadModule(module)
@@ -131,6 +141,14 @@ func Main(m *testing.M, module string) {
 		}
 	}
 	os.Exit(code)
+}
+
+// moduleOf returns the module whose HTTP adapter holds the source file file,
+// e.g. "instance" for …/internal/modules/instance/adapter/http/main_test.go.
+func moduleOf(file string) (string, bool) {
+	_, rest, ok := strings.Cut(filepath.ToSlash(filepath.Dir(file)), "/internal/modules/")
+	name, dir, _ := strings.Cut(rest, "/")
+	return name, ok && name != "" && dir == "adapter/http"
 }
 
 // narrowed reports whether this run leaves tests out.

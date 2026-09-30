@@ -12,9 +12,9 @@ import (
 // contract, operation by operation, so an operation added later is covered
 // without a new test.
 
-// The routes registered under /api/v0 are the contract's operations: a route
-// the contract does not describe, or an operation no module serves, fails
-// here.
+// The routes registered under /api/, but for the platform's fallback, are the
+// contract's operations: a route the contract does not describe, or an
+// operation no module serves, fails here.
 func TestAPIRoutesAreTheContractsOperations(t *testing.T) {
 	contract := apitest.Load(t)
 	a := buildApp(t, testConfig(t, unreachableDB, false), sampleMigrations())
@@ -25,7 +25,7 @@ func TestAPIRoutesAreTheContractsOperations(t *testing.T) {
 		if _, rest, ok := strings.Cut(pattern, " "); ok {
 			path = rest
 		}
-		if strings.HasPrefix(path, "/api/v0/") {
+		if strings.HasPrefix(path, "/api/") && pattern != "/api/" {
 			got = append(got, pattern)
 		}
 	}
@@ -35,7 +35,7 @@ func TestAPIRoutesAreTheContractsOperations(t *testing.T) {
 		want = append(want, op.Pattern())
 	}
 	if len(want) == 0 || !slices.Equal(got, want) {
-		t.Errorf("routes under /api/v0 = %q, want the contract's operations %q", got, want)
+		t.Errorf("routes under /api/ = %q, want the contract's operations %q", got, want)
 	}
 }
 

@@ -1,5 +1,8 @@
 # oapi-codegen 配置：api/common.yaml → components.gen.go（只有类型）。
 # 由 make gen-go 在 server/ 下执行，路径相对于 server/。
+# 模块的请求体引用公共组件时，strict handler 解码进这里生成的类型，而 bodyshapegen 按模块配置的
+# type-mapping 建结构表：compatibility、name-normalizer、nullable-type、type-mapping 必须与模块模板
+# （modules/instance/adapter/http/gen/oapi-codegen.yaml）一致，bodyshapegen 的测试核对这一点。
 package: apigen
 output: internal/platform/httpserver/apigen/components.gen.go
 generate:
@@ -11,3 +14,19 @@ output-options:
   # common.yaml 没有 paths：默认的裁剪会把没被路径引用的组件全部删掉
   skip-prune: true
   name-normalizer: ToCamelCaseWithInitialisms
+  # 可为空又可省略的字段生成 nullable.Nullable[T]：PATCH 能区分"没传"和"传 null"
+  nullable-type: true
+  type-mapping:
+    # 不带 format 的 number 默认生成 float32，bodyshape 查不了它的范围；bodyshapegen 只接受 int、int64 和 float64
+    number:
+      default:
+        type: float64
+    string:
+      formats:
+        # 标准库的 uuid：默认的 openapi_types.UUID 会带进 github.com/google/uuid
+        uuid:
+          type: uuid.UUID
+          import: uuid
+        # 邮箱的格式由领域层校验（422）；默认的 openapi_types.Email 在解码时自己校验，绕过这一层
+        email:
+          type: string

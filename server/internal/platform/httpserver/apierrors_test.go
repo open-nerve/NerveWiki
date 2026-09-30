@@ -42,8 +42,7 @@ func (minimalErr) ProblemStatus() int  { return http.StatusNotFound }
 func (minimalErr) ProblemCode() string { return "things.not_found" }
 
 // Lookalikes of the binding errors that oapi-codegen declares in each
-// module's gen package (identity's server.gen.go): the platform sees only
-// their shape.
+// module's gen package (server.gen.go): the platform sees only their shape.
 type (
 	InvalidParamFormatError struct {
 		ParamName string
@@ -121,7 +120,7 @@ func TestAPIErrorsBadRequestNamesTheParameter(t *testing.T) {
 }
 
 // The decoder's messages name Go types: the answer is generic and the
-// message goes to the debug log (M0-P3 handoff 2).
+// message goes to the debug log.
 func TestAPIErrorsBodyErrorHidesTheDecoderMessage(t *testing.T) {
 	logger, logs := captureLogs(t)
 	errs := NewAPIErrors(logger)
@@ -231,8 +230,7 @@ func TestWriteLogsAndHidesAnInternalError(t *testing.T) {
 	}
 }
 
-// A client that went away is not a server fault: no 500, no ERROR line
-// (M0-P3 handoff 2).
+// A client that went away is not a server fault: no 500, no ERROR line.
 func TestWriteOfACancelledRequestIsNot500(t *testing.T) {
 	logger, logs := captureLogs(t)
 	errs := NewAPIErrors(logger)
@@ -255,6 +253,41 @@ func TestWriteOfACancelledRequestIsNot500(t *testing.T) {
 	}
 	if entry := findLog(logs(), "client went away"); entry == nil || entry["level"] != "DEBUG" {
 		t.Errorf("log = %v, want the cancellation at debug level", entry)
+	}
+}
+
+// A request that ran out of its deadline answers 500, logged as such at warn
+// level; a DeadlineExceeded of the handler's own shorter timeout, while the
+// request still has time, is an ordinary server fault.
+func TestWriteOfARequestPastItsDeadline(t *testing.T) {
+	expired, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer cancel()
+	tests := []struct {
+		name       string
+		ctx        context.Context
+		msg, level string
+	}{
+		{"the request's deadline passed", expired, "API request deadline exceeded", "WARN"},
+		{"the request still has time", context.Background(), "API handler failed", "ERROR"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logger, logs := captureLogs(t)
+			errs := NewAPIErrors(logger)
+			req := httptest.NewRequest(http.MethodGet, "/api/v0/things", nil).WithContext(tt.ctx)
+			h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				errs.Write(w, r, fmt.Errorf("query things: %w", context.DeadlineExceeded))
+			})
+
+			rec := serve(h, req)
+
+			if p := decodeProblem(t, rec); rec.Code != http.StatusInternalServerError || p.Code != CodeInternal {
+				t.Errorf("response = %d %+v, want 500 internal_error", rec.Code, p)
+			}
+			if entry := findLog(logs(), tt.msg); entry == nil || entry["level"] != tt.level {
+				t.Errorf("log = %v, want %q at level %s", logs(), tt.msg, tt.level)
+			}
+		})
 	}
 }
 

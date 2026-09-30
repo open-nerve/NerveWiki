@@ -151,6 +151,11 @@ func (r *ruleCheck) path(path string, item *openapi3.PathItem) {
 	if !strings.HasPrefix(path, "/api/v0/") {
 		r.report(path, "does not start with /api/v0/")
 	}
+	// ServeMux registers a pattern ending in / as a subtree: it would take
+	// every path below it, and hide the platform's /api/ fallback there.
+	if strings.HasSuffix(path, "/") {
+		r.report(path, "ends with /")
+	}
 	for _, p := range item.Parameters {
 		r.parameter(path+" parameters/"+p.Value.Name, p)
 	}
@@ -353,7 +358,7 @@ func (r *ruleCheck) schema(where string, ref *openapi3.SchemaRef) {
 		r.report(where, "uses const, which oapi-codegen turns into interface{}; write a single-value enum")
 	}
 	if slices.Contains(s.Enum, nil) {
-		r.report(where, `has null in enum, which adds a "<nil>" Go constant; write oneOf: [{$ref: …}, {type: 'null'}]`)
+		r.report(where, `has null in enum, which adds a "<nil>" Go constant; write anyOf: [{$ref: …}, {type: 'null'}]`)
 	}
 	for _, name := range slices.Sorted(maps.Keys(s.Properties)) {
 		r.schema(where+"/properties/"+name, s.Properties[name])

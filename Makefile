@@ -1,7 +1,8 @@
 # Nerve Wiki 开发命令入口。运行 `make` 或 `make help` 查看所有命令。
 # 需兼容 macOS 自带的 GNU Make 3.81。
 # 命令按工具链分区：*-go 只需要 Go，*-web 需要 Node（先执行 pnpm install）；
-# 不带后缀的 gen、gen-check、lint、fmt 依次执行两个分区；check 执行持续集成的全部门禁，推送前在本地跑它。
+# 不带后缀的 gen、gen-check、lint、fmt 依次执行两个分区。推送前在本地跑 check 与 gen-check，两者合起来是
+# 持续集成的全部门禁；gen-check 要求生成物已提交，所以不并进 check，在提交之后运行。
 
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
@@ -17,7 +18,9 @@ OAPI_CODEGEN := go tool -modfile=tools/go.mod oapi-codegen
 BODYSHAPEGEN := go -C server/tools run ./bodyshapegen
 # 每个模块一个描述文件 api/modules/<模块>.yaml，生成到该模块的 adapter/http/gen
 API_MODULES := $(basename $(notdir $(wildcard api/modules/*.yaml)))
-GEN_GO_OUT := server/internal/platform/httpserver/apigen server/internal/modules/*/adapter/http/gen
+# 在读 Makefile 时展开：每个模块的 gen 目录里先有 oapi-codegen.yaml，所以新模块的目录也在其中。
+# git 的 pathspec 不展开 *，这里必须是展开后的路径
+GEN_GO_OUT := server/internal/platform/httpserver/apigen $(wildcard server/internal/modules/*/adapter/http/gen)
 GEN_WEB_OUT := api/dist web/packages/api-client/src/schema.gen.ts
 # 生成物必须已提交且没有差异（未跟踪的新文件也算）；$(1) 是生成物的路径
 check-committed = test -z "$$(git status --porcelain -- $(1))" || { git status --short -- $(1); git --no-pager diff -- $(1); echo "生成物与接口描述不一致：执行 make gen，并提交生成的文件"; exit 1; }
@@ -83,7 +86,7 @@ gen-check-web: gen-web ## 重新生成 api/dist 和 TS 类型并检查（持续�
 	@$(call check-committed,$(GEN_WEB_OUT))
 
 .PHONY: check
-check: lint knip test ## 持续集成的全部门禁：静态检查、未使用代码检查、测试
+check: lint knip test ## 静态检查、未使用代码检查、测试（生成物一致性另跑 gen-check）
 
 .PHONY: lint
 lint: lint-go lint-web ## 全部静态检查
