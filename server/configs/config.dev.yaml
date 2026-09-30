@@ -1,0 +1,13 @@
+# 开发环境（NWIKI_ENV=dev，默认）。个人覆盖项写在 config.local.yaml 中（不进仓库）。
+server:
+  # 开发环境只监听本机，与开发库一样不对局域网开放。
+  addr: "127.0.0.1:8080"
+
+database:
+  # make dev-db 启动的本地开发库。账号密码只在本机使用，不是机密。
+  # 用 NWIKI_DEV_DB_PORT 换了端口时，要同时覆盖这一项（NWIKI_DATABASE__URL 或 config.local.yaml）。
+  url: postgres://nervewiki:nervewiki@localhost:55433/nervewiki?sslmode=disable
+
+log:
+  level: debug
+  format: text

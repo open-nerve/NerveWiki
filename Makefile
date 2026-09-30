@@ -27,6 +27,10 @@ dev-db-down: ## 停止开发数据库，保留数据
 dev-db-reset: ## 停止开发数据库并删除数据卷
 	$(DEV_COMPOSE) down -v
 
+.PHONY: run
+run: ## 以 dev 配置启动服务（先执行 make dev-db）；Ctrl-C 优雅停止
+	cd server && NWIKI_ENV=dev go run ./cmd/nervewiki serve
+
 .PHONY: tools
 tools: ## 安装锁定版本的 golangci-lint 到 ./bin
 	@set -o pipefail; \
@@ -64,7 +68,8 @@ lint-web: ## Markdown 样例集自检；tools/ 下脚本的 oxlint（零警告�
 knip: ## 检查未使用的文件、导出和依赖（需要 Node）
 	pnpm exec knip --treat-config-hints-as-errors
 
-# -race 需要 cgo：macOS 需要 Xcode 命令行工具，Linux 需要 gcc
+# -race 需要 cgo：macOS 需要 Xcode 命令行工具，Linux 需要 gcc。
+# 集成测试用 testcontainers 启动 PostgreSQL，需要 Docker；只跑单元测试用 cd server && go test -short ./...
 .PHONY: test
-test: ## 运行 Go 测试（开启竞态检测，不用测试缓存）
+test: ## 运行 Go 测试，含集成测试（开启竞态检测，不用测试缓存；需要 Docker）
 	cd server && go test -race -count=1 ./...

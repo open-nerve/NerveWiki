@@ -29,13 +29,13 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: server/go.mod
-          # 缓存键取自 go.mod：没有依赖的模块没有 go.sum，匹配不到文件时 setup-go 会失败
-          cache-dependency-path: server/**/go.mod
+          cache-dependency-path: server/go.sum
       - name: Go version
         working-directory: server
         run: go version
       - name: Lint
         run: make lint-go
+      # 集成测试用 testcontainers 启动 PostgreSQL：ubuntu runner 自带 Docker
       - name: Test
         run: make test
 

@@ -1,0 +1,4 @@
+# 生产环境（NWIKI_ENV=prod）。数据库地址通过 NWIKI_DATABASE__URL 提供。
+database:
+  # 生产环境先执行 nervewiki migrate up，再启动 nervewiki serve
+  auto_migrate: false
