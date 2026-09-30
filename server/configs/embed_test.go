@@ -20,13 +20,14 @@ func TestBuiltInProfiles(t *testing.T) {
 		autoMigrate bool
 		signup      bool
 		argon2      config.PasswordConfig
+		limits      config.RateLimitConfig
 		keyFile     string
 		level       string
 		format      string
 	}{
-		{env: "dev", addr: "127.0.0.1:8080", url: devURL, autoMigrate: true, signup: true, argon2: owasp(), level: "debug", format: "text"},
-		{env: "test", addr: ":8080", url: "postgres://from-env", autoMigrate: true, signup: true, argon2: cheap(), level: "warn", format: "text"},
-		{env: "prod", addr: ":8080", url: "postgres://from-env", autoMigrate: false, signup: false, argon2: owasp(), keyFile: "/run/secrets/jwt.pem", level: "info", format: "json"},
+		{env: "dev", addr: "127.0.0.1:8080", url: devURL, autoMigrate: true, signup: true, argon2: owasp(), limits: defaultLimits(), level: "debug", format: "text"},
+		{env: "test", addr: ":8080", url: "postgres://from-env", autoMigrate: true, signup: true, argon2: cheap(), limits: unlimited(), level: "warn", format: "text"},
+		{env: "prod", addr: ":8080", url: "postgres://from-env", autoMigrate: false, signup: false, argon2: owasp(), limits: defaultLimits(), keyFile: "/run/secrets/jwt.pem", level: "info", format: "json"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.env, func(t *testing.T) {
@@ -55,13 +56,15 @@ func TestBuiltInProfiles(t *testing.T) {
 				},
 				Database: config.DatabaseConfig{URL: tt.url, MaxConns: 10, AutoMigrate: tt.autoMigrate, CommitTimeout: 2 * time.Second},
 				Auth: config.AuthConfig{
-					SignupEnabled:  tt.signup,
-					AccessTokenTTL: 15 * time.Minute,
-					SessionTTL:     30 * 24 * time.Hour,
-					JWT:            config.JWTConfig{PrivateKeyFile: tt.keyFile},
-					Password:       tt.argon2,
+					SignupEnabled:   tt.signup,
+					AccessTokenTTL:  15 * time.Minute,
+					SessionTTL:      30 * 24 * time.Hour,
+					RefreshDeadline: 4 * time.Second,
+					JWT:             config.JWTConfig{PrivateKeyFile: tt.keyFile},
+					Password:        tt.argon2,
 				},
-				Log: config.LogConfig{Level: tt.level, Format: tt.format},
+				RateLimit: tt.limits,
+				Log:       config.LogConfig{Level: tt.level, Format: tt.format},
 			}
 			if !reflect.DeepEqual(cfg, want) {
 				t.Errorf("Load() =\n%+v\nwant\n%+v", cfg, want)
@@ -80,6 +83,28 @@ func cheap() config.PasswordConfig {
 	p := owasp()
 	p.Argon2MemoryKiB, p.Argon2Iterations = 64, 1
 	return p
+}
+
+// defaultLimits are the buckets of M1/P2 design 3.7.
+func defaultLimits() config.RateLimitConfig {
+	return config.RateLimitConfig{
+		IPv6PrefixLen: 64,
+		Anonymous:     config.BucketConfig{PerMinute: 600, Burst: 100},
+		AuthFailure:   config.BucketConfig{PerMinute: 60, Burst: 60},
+		Authenticated: config.BucketConfig{PerMinute: 1200, Burst: 200},
+		LoginIP:       config.BucketConfig{PerMinute: 30, Burst: 10},
+		LoginIPEmail:  config.BucketConfig{PerMinute: 10, Burst: 5},
+		RegisterIP:    config.BucketConfig{PerMinute: 10, Burst: 5},
+	}
+}
+
+// unlimited is the test profile's buckets: tests sign up and in a lot.
+func unlimited() config.RateLimitConfig {
+	huge := config.BucketConfig{PerMinute: 600000, Burst: 100000}
+	return config.RateLimitConfig{
+		IPv6PrefixLen: 64, Anonymous: huge, AuthFailure: huge, Authenticated: huge,
+		LoginIP: huge, LoginIPEmail: huge, RegisterIP: huge,
+	}
 }
 
 // prod has no ephemeral signing key: a restart would sign every user out.

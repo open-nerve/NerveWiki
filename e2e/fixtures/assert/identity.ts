@@ -29,7 +29,50 @@ function parseRefreshToken(token: string): RefreshTokenParts {
   };
 }
 
-/** What a sign-up sent and got back. */
+/** The SHA-256 of a refresh token's secret: what auth_sessions.token_hash holds of its generation. */
+function secretHash(refreshToken: string): Buffer {
+  return createHash("sha256").update(parseRefreshToken(refreshToken).secret).digest();
+}
+
+/**
+ * refreshToken's generation with a random secret and tag: what someone who saw only the session id
+ * could make of an older generation (A5).
+ */
+export function forgedFrom(refreshToken: string, generation = 0): string {
+  const raw = Buffer.from(refreshToken.slice(refreshTokenPrefix.length), "base64url");
+  raw.writeUInt32BE(generation, 16);
+  raw.set(Buffer.from(Array.from({ length: 48 }, () => Math.floor(Math.random() * 256))), 20);
+  return refreshTokenPrefix + raw.toString("base64url");
+}
+
+/** A session's row, as the session assertions read it. */
+export interface SessionRow {
+  id: string;
+  user_id: string;
+  token_hash: Buffer;
+  generation: number;
+  user_agent: string;
+  ip: string;
+  expires_at: Date;
+  created_at: Date;
+  last_refreshed_at: Date | null;
+  revoked_at: Date | null;
+  revoke_reason: string | null;
+}
+
+/** The row of the session that refreshToken belongs to. */
+export async function sessionOf(db: Database, refreshToken: string): Promise<SessionRow> {
+  const rows = await db.query<SessionRow>(
+    `SELECT id, user_id, token_hash, generation, user_agent, host(ip) AS ip, expires_at, created_at,
+            last_refreshed_at, revoked_at, revoke_reason
+       FROM auth_sessions WHERE id = $1`,
+    [parseRefreshToken(refreshToken).sessionId]
+  );
+  expect(rows, "the session of the refresh token").toHaveLength(1);
+  return rows[0] as SessionRow;
+}
+
+/** What a sign-up or a sign-in sent and got back. */
 export interface SignIn {
   /** The address as typed; the account holds it trimmed and lowercased. */
   email: string;
@@ -65,48 +108,69 @@ export async function expectNewAccount(db: Database, typed: string): Promise<str
   return user.id;
 }
 
+/** The id of the account of the address typed. */
+export async function accountIdOf(db: Database, typed: string): Promise<string> {
+  const users = await db.query<{ id: string }>("SELECT id FROM users WHERE email = $1", [typed.trim().toLowerCase()]);
+  expect(users, `the account of ${typed}`).toHaveLength(1);
+  return (users[0] as { id: string }).id;
+}
+
 /**
- * auth_sessions: the account userId has exactly one session, the one of
- * s.refreshToken and of s.accessToken's claims: generation 0, holding the
- * hash of the token's secret, with the caller's User-Agent and IP, never
- * refreshed, live, ending 30 days after it began.
+ * auth_sessions: the session of s.refreshToken, which s.accessToken's claims
+ * name too, is new: generation 0 of the account userId, holding the hash of
+ * the token's secret, with the caller's User-Agent and IP, never refreshed,
+ * live, ending 30 days after it began.
  */
 export async function expectNewSession(db: Database, userId: string, s: SignIn): Promise<void> {
   const token = parseRefreshToken(s.refreshToken);
-  const sessions = await db.query<{
-    id: string;
-    token_hash: Buffer;
-    generation: number;
-    user_agent: string;
-    ip: string;
-    expires_at: Date;
-    created_at: Date;
-    last_refreshed_at: Date | null;
-    revoked_at: Date | null;
-    revoke_reason: string | null;
-  }>(
-    `SELECT id, token_hash, generation, user_agent, host(ip) AS ip, expires_at, created_at, last_refreshed_at,
-            revoked_at, revoke_reason
-       FROM auth_sessions WHERE user_id = $1`,
-    [userId]
-  );
-  expect(sessions).toHaveLength(1);
-  const [session] = sessions;
-  expect(session?.id).toBe(token.sessionId);
+  const session = await sessionOf(db, s.refreshToken);
+  expect(session.user_id).toBe(userId);
   // The access token's claims name the account and the session; the
   // signature is the server's to check.
   const claims: unknown = JSON.parse(Buffer.from(s.accessToken.split(".")[1] ?? "", "base64url").toString());
   expect(claims).toMatchObject({ sub: userId, sid: token.sessionId });
   expect(token.generation).toBe(0);
-  expect(session?.generation).toBe(0);
-  expect(session?.token_hash.equals(createHash("sha256").update(token.secret).digest())).toBe(true);
-  expect(session?.user_agent).toBe(s.userAgent);
-  expect(session?.ip).toBe(s.ip);
+  expect(session.generation).toBe(0);
+  expect(session.token_hash.equals(secretHash(s.refreshToken))).toBe(true);
+  expect(session.user_agent).toBe(s.userAgent);
+  expect(session.ip).toBe(s.ip);
   // auth.session_ttl is 720h: the session ends 30 days after it began.
-  expect((session?.expires_at.getTime() ?? 0) - (session?.created_at.getTime() ?? 0)).toBe(30 * dayMs);
-  expect(session?.last_refreshed_at).toBeNull();
-  expect(session?.revoked_at).toBeNull();
-  expect(session?.revoke_reason).toBeNull();
+  expect(session.expires_at.getTime() - session.created_at.getTime()).toBe(30 * dayMs);
+  expect(session.last_refreshed_at).toBeNull();
+  expect(session.revoked_at).toBeNull();
+  expect(session.revoke_reason).toBeNull();
+}
+
+/**
+ * A4: after `refreshes` refreshes, each with the token the last one
+ * returned, the session is live at that generation, holds the hash of the
+ * latest token's secret, was refreshed, and still ends at sessionEnd, the
+ * refresh_token_expires_at of the sign-in (M1/P2 design 3.5).
+ */
+export async function expectRefreshed(
+  db: Database,
+  latest: string,
+  refreshes: number,
+  sessionEnd: string
+): Promise<void> {
+  const session = await sessionOf(db, latest);
+  expect(parseRefreshToken(latest).generation).toBe(refreshes);
+  expect(session.generation).toBe(refreshes);
+  expect(session.token_hash.equals(secretHash(latest))).toBe(true);
+  expect(session.last_refreshed_at).not.toBeNull();
+  expect(session.expires_at.getTime()).toBe(new Date(sessionEnd).getTime());
+  expect(session.revoked_at).toBeNull();
+}
+
+/** A5, A6: the session of refreshToken is revoked for reason. */
+export async function expectRevoked(
+  db: Database,
+  refreshToken: string,
+  reason: "logout" | "reuse_detected"
+): Promise<void> {
+  const session = await sessionOf(db, refreshToken);
+  expect(session.revoked_at).not.toBeNull();
+  expect(session.revoke_reason).toBe(reason);
 }
 
 /** The rows of the identity tables. */
@@ -125,7 +189,7 @@ export async function countIdentity(db: Database): Promise<IdentityCounts> {
   return counts;
 }
 
-/** A refused sign-up added no account and no session. */
+/** A refused sign-up or sign-in added no account and no session. */
 export async function expectNothingAdded(db: Database, before: IdentityCounts): Promise<void> {
   expect(await countIdentity(db)).toEqual(before);
 }

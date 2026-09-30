@@ -37,6 +37,9 @@ auth:
   access_token_ttl: 15m
   # 会话的期限从登录起算，续期不延长
   session_ttl: 720h
+  # 续期与退出的服务端期限。加上 database.commit_timeout 必须短于前端放弃续期的 8 秒：
+  # 前端放弃之后服务端才提交的轮换，会让客户端手里的令牌成为旧的一代
+  refresh_deadline: 4s
   jwt:
     # 签名私钥：PKCS#8 PEM 的 Ed25519 私钥（openssl genpkey -algorithm ed25519）。
     # prod 必须提供；dev、test 为空时每次启动生成临时密钥，重启后已签发的令牌全部失效
@@ -49,6 +52,22 @@ auth:
     # 同时进行的哈希计算的上限；拿不到名额的请求最多等 max_wait，然后 503 server_busy
     max_concurrent_hashes: 4
     max_wait: 2s
+
+ratelimit:
+  # IPv6 的客户端按这个长度的前缀计数：一台主机通常拿到整个 /64
+  ipv6_prefix_len: 64
+  # 每个桶最多存 burst 个单位，每分钟补充 per_minute 个；取不到时 429 rate_limited 与 Retry-After
+  # 公开操作（注册、登录、续期、退出、实例信息），按客户端 IP
+  anonymous: { per_minute: 600, burst: 100 }
+  # 认证之前的失败闸门：带了令牌、认证却失败的请求，按客户端 IP
+  auth_failure: { per_minute: 60, burst: 60 }
+  # 需要令牌的操作，按凭证（会话）
+  authenticated: { per_minute: 1200, burst: 200 }
+  # 登录：按客户端 IP，以及按客户端 IP 加邮箱，两个桶全取或全不取
+  login_ip: { per_minute: 30, burst: 10 }
+  login_ip_email: { per_minute: 10, burst: 5 }
+  # 注册：按客户端 IP
+  register_ip: { per_minute: 10, burst: 5 }
 
 log:
   level: info # debug | info | warn | error

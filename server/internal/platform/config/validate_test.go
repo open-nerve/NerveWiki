@@ -26,13 +26,23 @@ func validConfig() Config {
 			CommitTimeout: 2 * time.Second,
 		},
 		Auth: AuthConfig{
-			AccessTokenTTL: 15 * time.Minute,
-			SessionTTL:     720 * time.Hour,
-			JWT:            JWTConfig{PrivateKeyFile: "/run/secrets/jwt-key.pem"},
+			AccessTokenTTL:  15 * time.Minute,
+			SessionTTL:      720 * time.Hour,
+			RefreshDeadline: 4 * time.Second,
+			JWT:             JWTConfig{PrivateKeyFile: "/run/secrets/jwt-key.pem"},
 			Password: PasswordConfig{
 				Argon2MemoryKiB: 19456, Argon2Iterations: 2, Argon2Parallelism: 1,
 				MaxConcurrentHashes: 4, MaxWait: 2 * time.Second,
 			},
+		},
+		RateLimit: RateLimitConfig{
+			IPv6PrefixLen: 64,
+			Anonymous:     BucketConfig{PerMinute: 600, Burst: 100},
+			AuthFailure:   BucketConfig{PerMinute: 60, Burst: 60},
+			Authenticated: BucketConfig{PerMinute: 1200, Burst: 200},
+			LoginIP:       BucketConfig{PerMinute: 30, Burst: 10},
+			LoginIPEmail:  BucketConfig{PerMinute: 10, Burst: 5},
+			RegisterIP:    BucketConfig{PerMinute: 10, Burst: 5},
 		},
 		Log: LogConfig{Level: "info", Format: "json"},
 	}
@@ -74,6 +84,20 @@ func TestValidateReportsEveryInvalidKey(t *testing.T) {
 		"auth.password.argon2_memory_kib: must be at least 8 per lane (8), got 0",
 		"auth.password.max_concurrent_hashes: must be at least 1, got 0",
 		"auth.password.max_wait: must be positive, got 0s",
+		"auth.refresh_deadline: must be positive, got 0s",
+		"ratelimit.ipv6_prefix_len: must be from 1 to 128, got 0",
+		"ratelimit.anonymous.per_minute: must be at least 1, got 0",
+		"ratelimit.anonymous.burst: must be at least 1, got 0",
+		"ratelimit.auth_failure.per_minute: must be at least 1, got 0",
+		"ratelimit.auth_failure.burst: must be at least 1, got 0",
+		"ratelimit.authenticated.per_minute: must be at least 1, got 0",
+		"ratelimit.authenticated.burst: must be at least 1, got 0",
+		"ratelimit.login_ip.per_minute: must be at least 1, got 0",
+		"ratelimit.login_ip.burst: must be at least 1, got 0",
+		"ratelimit.login_ip_email.per_minute: must be at least 1, got 0",
+		"ratelimit.login_ip_email.burst: must be at least 1, got 0",
+		"ratelimit.register_ip.per_minute: must be at least 1, got 0",
+		"ratelimit.register_ip.burst: must be at least 1, got 0",
 		`log.level: must be one of debug, info, warn, error, got "verbose"`,
 		`log.format: must be text or json, got "xml"`,
 	}
@@ -127,6 +151,37 @@ func TestValidateCrossKeyRules(t *testing.T) {
 		{
 			name:   "dev and test may sign with an ephemeral key",
 			mutate: func(c *Config) { c.Env, c.Auth.JWT.PrivateKeyFile = EnvDev, "" },
+		},
+		{
+			name: "a refresh ends before the web client gives up",
+			mutate: func(c *Config) {
+				c.Auth.RefreshDeadline, c.Database.CommitTimeout = 5*time.Second, 3*time.Second-time.Millisecond
+			},
+		},
+		{
+			name: "a refresh that the web client may give up on",
+			mutate: func(c *Config) {
+				c.Auth.RefreshDeadline, c.Database.CommitTimeout = 5*time.Second, 3*time.Second
+			},
+			want: "auth.refresh_deadline: plus database.commit_timeout (3s) must be less than 8s, the web client's refresh timeout, got 5s",
+		},
+		{
+			name:   "a refresh deadline as long as the request timeout",
+			mutate: func(c *Config) { c.Auth.RefreshDeadline, c.Server.RequestTimeout = 4*time.Second, 4*time.Second },
+		},
+		{
+			name:   "a refresh deadline beyond the request timeout",
+			mutate: func(c *Config) { c.Auth.RefreshDeadline, c.Server.RequestTimeout = 4*time.Second, 3*time.Second },
+			want:   "auth.refresh_deadline: must be at most server.request_timeout (3s), got 4s",
+		},
+		{
+			name:   "an IPv6 prefix of a single address",
+			mutate: func(c *Config) { c.RateLimit.IPv6PrefixLen = 128 },
+		},
+		{
+			name:   "an IPv6 prefix longer than an address",
+			mutate: func(c *Config) { c.RateLimit.IPv6PrefixLen = 129 },
+			want:   "ratelimit.ipv6_prefix_len: must be from 1 to 128, got 129",
 		},
 		{
 			name:   "trusted proxies",

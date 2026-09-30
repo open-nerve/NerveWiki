@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -24,22 +26,85 @@ const (
 
 type callerKey struct{}
 
-// fakeAuth accepts every token except "bad" (401) and "boom" (a fault).
+// fakeAuth accepts every token except "bad" (401), "expired" (401 with
+// ExpiredCredential) and "boom" (a fault). The credential of token is
+// session:<token>.
 type fakeAuth struct {
 	calls int
 	ctx   context.Context // what Authenticate was given
 }
 
-func (f *fakeAuth) Authenticate(ctx context.Context, token string) (context.Context, error) {
+func (f *fakeAuth) Authenticate(ctx context.Context, token string) (context.Context, string, error) {
 	f.calls++
 	f.ctx = ctx
 	switch token {
 	case "bad":
-		return nil, problemErr{status: http.StatusUnauthorized, code: "unauthorized", detail: "Authentication is required."}
+		return nil, "", problemErr{status: http.StatusUnauthorized, code: "unauthorized", detail: "Authentication is required."}
+	case "expired":
+		return nil, "", fmt.Errorf("check token: %w", expiredErr{problemErr{status: http.StatusUnauthorized, code: "unauthorized", detail: "expired"}})
 	case "boom":
-		return nil, errors.New("database is down")
+		return nil, "", errors.New("database is down")
 	}
-	return context.WithValue(ctx, callerKey{}, "caller-"+token), nil
+	return context.WithValue(ctx, callerKey{}, "caller-"+token), "session:" + token, nil
+}
+
+// expiredErr is the 401 of an access token whose exp has passed.
+type expiredErr struct{ problemErr }
+
+func (expiredErr) ExpiredCredential() bool { return true }
+
+// fakeLimiter gives each key burst units and never refills them. It records
+// the keys it took a unit of and the keys it gave one back for.
+type fakeLimiter struct {
+	mu      sync.Mutex
+	burst   int
+	used    map[string]int
+	taken   []string
+	refunds []string
+}
+
+func newFakeLimiter(burst int) *fakeLimiter {
+	return &fakeLimiter{burst: burst, used: map[string]int{}}
+}
+
+// take is Allow under f.mu; a refusal waits 1.5 s, Retry-After 2.
+func (f *fakeLimiter) take(key string) (time.Duration, bool) {
+	if f.used[key] == f.burst {
+		return 1500 * time.Millisecond, false
+	}
+	f.used[key]++
+	f.taken = append(f.taken, key)
+	return 0, true
+}
+
+func (f *fakeLimiter) Allow(key string) (time.Duration, bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.take(key)
+}
+
+func (f *fakeLimiter) Reserve(key string) (func(), time.Duration, bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if retry, ok := f.take(key); !ok {
+		return nil, retry, false
+	}
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			f.mu.Lock()
+			defer f.mu.Unlock()
+			f.used[key]--
+			f.refunds = append(f.refunds, key)
+		})
+	}, 0, true
+}
+
+// left is what key has of its burst.
+func (f *fakeLimiter) left(key string) int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.burst - f.used[key]
 }
 
 // thingBody is a table as bodyshapegen writes it: {"name": string}, closed.
@@ -84,7 +149,8 @@ func mount(api *API) (*Router, *reached) {
 	return router, got
 }
 
-// testAPIConfig trusts the proxies of fd00::/8; openRoute is public.
+// testAPIConfig trusts the proxies of fd00::/8; openRoute is public; its
+// buckets never run out in these tests.
 func testAPIConfig(auth Authenticator, logger *slog.Logger) APIConfig {
 	return APIConfig{
 		Logger:           logger,
@@ -93,6 +159,10 @@ func testAPIConfig(auth Authenticator, logger *slog.Logger) APIConfig {
 		MaxBodyBytes:     64,
 		RequestTimeout:   2 * time.Second,
 		TrustedProxies:   []netip.Prefix{netip.MustParsePrefix("fd00::/8")},
+		IPv6PrefixLen:    64,
+		Anonymous:        newFakeLimiter(100),
+		Authenticated:    newFakeLimiter(100),
+		AuthFailure:      newFakeLimiter(100),
 	}
 }
 
@@ -131,9 +201,22 @@ func decodeProblem(t *testing.T, rec *httptest.ResponseRecorder) Problem {
 func TestNewAPIRequiresItsSettings(t *testing.T) {
 	_, err := NewAPI(APIConfig{})
 
-	want := "httpserver: APIConfig: no Logger\nno Authenticator\nMaxBodyBytes must be positive\nRequestTimeout must be positive"
+	want := "httpserver: APIConfig: no Logger\nno Authenticator\nno Anonymous\nno Authenticated\nno AuthFailure\n" +
+		"IPv6PrefixLen 0 is outside 1-128\nMaxBodyBytes must be positive\nRequestTimeout must be positive"
 	if err == nil || err.Error() != want {
 		t.Errorf("NewAPI() error = %v, want %q", err, want)
+	}
+}
+
+// A prefix length that cannot key an IPv6 client is refused at startup.
+func TestNewAPIRequiresAnIPv6PrefixLenFrom1To128(t *testing.T) {
+	for n, ok := range map[int]bool{0: false, 1: true, 128: true, 129: false} {
+		cfg := testAPIConfig(&fakeAuth{}, slog.New(slog.DiscardHandler))
+		cfg.IPv6PrefixLen = n
+		want := fmt.Sprintf("httpserver: APIConfig: IPv6PrefixLen %d is outside 1-128", n)
+		if _, err := NewAPI(cfg); ok != (err == nil) || (err != nil && err.Error() != want) {
+			t.Errorf("NewAPI(IPv6PrefixLen %d) error = %v, want ok %v", n, err, ok)
+		}
 	}
 }
 
@@ -159,6 +242,55 @@ func TestOperationsRunUnderTheRequestDeadline(t *testing.T) {
 	deadline, ok := got.ctx.Deadline()
 	if !ok || deadline.Before(begin.Add(2*time.Second)) || deadline.After(end.Add(2*time.Second)) {
 		t.Errorf("handler deadline = %v (set %v), want 2s after the request arrived", deadline, ok)
+	}
+}
+
+// A route of RequestTimeouts runs under its own, shorter deadline; the
+// others keep RequestTimeout. When it expires, the answer and the log are
+// those of any request deadline (M1/P2 review M1): a warning, not a fault.
+func TestARouteTimeoutBoundsItsRoute(t *testing.T) {
+	logger, logs := captureLogs(t)
+	cfg := testAPIConfig(&fakeAuth{}, logger)
+	cfg.RequestTimeouts = map[string]time.Duration{openRoute: 50 * time.Millisecond}
+	api := buildAPI(t, cfg)
+	var h http.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done() // a statement waiting for a lock
+		api.Errors.Write(w, r, fmt.Errorf("rotate session: %w", r.Context().Err()))
+	})
+	for _, m := range api.Middlewares(thingBody()) {
+		h = m(h)
+	}
+	router := NewRouter(slog.New(slog.DiscardHandler))
+	router.Handle(openRoute, h)
+	begin := time.Now()
+
+	rec := serve(router, post("/api/v0/open", `{"name":"a"}`))
+
+	if took := time.Since(begin); took < 50*time.Millisecond || took > time.Second {
+		t.Errorf("the route answered after %v, want its 50ms deadline", took)
+	}
+	if p := decodeProblem(t, rec); rec.Code != http.StatusInternalServerError || p.Code != CodeInternal {
+		t.Errorf("response = %d %+v, want 500 internal_error", rec.Code, p)
+	}
+	if entry := findLog(logs(), "API request deadline exceeded"); entry == nil || entry["level"] != "WARN" {
+		t.Errorf("logs = %v, want a warning that the request ran out of time", logs())
+	}
+	other, got := mount(api)
+	serve(other, post("/api/v0/things", `{"name":"a"}`))
+	if deadline, ok := got.ctx.Deadline(); !ok || time.Until(deadline) < time.Second {
+		t.Errorf("another route's deadline = %v (set %v), want RequestTimeout's 2s", deadline, ok)
+	}
+}
+
+// A route timeout must be positive and no longer than RequestTimeout.
+func TestNewAPIChecksRouteTimeouts(t *testing.T) {
+	for d, ok := range map[time.Duration]bool{0: false, time.Millisecond: true, 2 * time.Second: true, 3 * time.Second: false} {
+		cfg := testAPIConfig(&fakeAuth{}, slog.New(slog.DiscardHandler))
+		cfg.RequestTimeouts = map[string]time.Duration{openRoute: d}
+		want := fmt.Sprintf(`httpserver: APIConfig: RequestTimeouts["POST /api/v0/open"] %v is outside (0, RequestTimeout 2s]`, d)
+		if _, err := NewAPI(cfg); ok != (err == nil) || (err != nil && err.Error() != want) {
+			t.Errorf("NewAPI(RequestTimeouts %v) error = %v, want ok %v", d, err, ok)
+		}
 	}
 }
 
@@ -261,6 +393,7 @@ func TestAuthenticationDeniesByDefault(t *testing.T) {
 		{"empty bearer", "/api/v0/things", "Bearer ", 401, "Bearer", 0},
 		{"a token with a space", "/api/v0/things", "Bearer tok en", 401, "Bearer", 0},
 		{"invalid token", "/api/v0/things", "Bearer bad", 401, `Bearer error="invalid_token"`, 1},
+		{"expired access token", "/api/v0/things", "Bearer expired", 401, `Bearer error="invalid_token"`, 1},
 		{"valid token", "/api/v0/things", "Bearer tok", 204, "", 1},
 		{"scheme in lower case", "/api/v0/things", "bearer tok", 204, "", 1},
 		{"authenticator fault", "/api/v0/things", "Bearer boom", 500, "", 1},
@@ -349,7 +482,7 @@ func TestRequestMetaCarriesTheClient(t *testing.T) {
 
 	serve(router, req)
 
-	want := RequestMeta{ClientIP: netip.MustParseAddr("2001:db8:1:2::7"), UserAgent: "agent/1.0"}
+	want := RequestMeta{ClientIP: netip.MustParseAddr("2001:db8:1:2::7"), IPKey: "2001:db8:1:2::/64", UserAgent: "agent/1.0"}
 	if meta := RequestMetaFrom(got.ctx); meta != want {
 		t.Errorf("meta = %+v, want %+v", meta, want)
 	}

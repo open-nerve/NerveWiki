@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"net/netip"
+	"time"
 	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/identity/adapter/postgres/gen"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/identity/app"
+	"github.com/open-nerve/NerveWiki/server/internal/modules/identity/domain"
 )
 
 // CreateSession inserts a sign-in at generation 0. An unknown client IP is
@@ -39,4 +41,54 @@ func (s *Store) SessionCredential(ctx context.Context, id uuid.UUID) (app.Sessio
 		Revoked:    row.RevokedAt != nil,
 		UserActive: row.UserActive,
 	}, nil
+}
+
+// SessionForRefresh reads what a refresh judges of session id;
+// app.ErrNotFound when there is none.
+func (s *Store) SessionForRefresh(ctx context.Context, id uuid.UUID) (app.RefreshSession, error) {
+	row, err := s.queries(ctx).GetSessionForRefresh(ctx, id)
+	if err != nil {
+		return app.RefreshSession{}, notFound(err)
+	}
+	return app.RefreshSession{UserID: row.UserID, State: domain.SessionState{
+		Generation: uint32(row.Generation), // CHECK (generation >= 0)
+		TokenHash:  row.TokenHash,
+		Revoked:    row.RevokedAt != nil,
+		ExpiresAt:  row.ExpiresAt,
+	}}, nil
+}
+
+// RotateSession moves the session from g to the next generation with
+// newHash, stamping last_refreshed_at; false when it is no longer at g.
+// g.Generation fits the column's integer: domain.ParseRefreshToken bounds
+// it.
+func (s *Store) RotateSession(ctx context.Context, g app.SessionGeneration, newHash []byte) (bool, error) {
+	n, err := s.queries(ctx).RotateSession(ctx, gen.RotateSessionParams{
+		Now: g.Now, NewTokenHash: newHash, ID: g.ID, Generation: int32(g.Generation), TokenHash: g.TokenHash,
+	})
+	if err != nil {
+		return false, fmt.Errorf("rotate session: %w", err)
+	}
+	return n == 1, nil
+}
+
+// RevokeForReuse revokes session id with reason reuse_detected, unless it
+// is revoked already.
+func (s *Store) RevokeForReuse(ctx context.Context, id uuid.UUID, now time.Time) error {
+	if err := s.queries(ctx).RevokeSessionForReuse(ctx, gen.RevokeSessionForReuseParams{Now: now, ID: id}); err != nil {
+		return fmt.Errorf("revoke session: %w", err)
+	}
+	return nil
+}
+
+// EndSession revokes the session with reason logout while it is at g;
+// false when it is not.
+func (s *Store) EndSession(ctx context.Context, g app.SessionGeneration) (bool, error) {
+	n, err := s.queries(ctx).EndSession(ctx, gen.EndSessionParams{
+		Now: g.Now, ID: g.ID, Generation: int32(g.Generation), TokenHash: g.TokenHash,
+	})
+	if err != nil {
+		return false, fmt.Errorf("end session: %w", err)
+	}
+	return n == 1, nil
 }

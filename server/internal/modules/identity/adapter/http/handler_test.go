@@ -17,6 +17,7 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/modules/identity/domain"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver/apitest"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/ratelimit"
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
@@ -39,6 +40,51 @@ func (f *fakeRegister) Execute(_ context.Context, in app.RegisterInput) (app.Tok
 	return f.tokens, f.err
 }
 
+type fakeLogin struct {
+	got    app.LoginInput
+	calls  int
+	tokens app.Tokens
+	err    error
+}
+
+func (f *fakeLogin) Execute(_ context.Context, in app.LoginInput) (app.Tokens, error) {
+	f.got = in
+	f.calls++
+	return f.tokens, f.err
+}
+
+// fakeRefresh records the token, the client, and how long the request had
+// left: the refresh deadline.
+type fakeRefresh struct {
+	token  string
+	ip     netip.Addr
+	left   time.Duration
+	tokens app.Tokens
+	err    error
+}
+
+func (f *fakeRefresh) Execute(ctx context.Context, token string, ip netip.Addr) (app.Tokens, error) {
+	f.token, f.ip = token, ip
+	if deadline, ok := ctx.Deadline(); ok {
+		f.left = time.Until(deadline)
+	}
+	return f.tokens, f.err
+}
+
+type fakeLogout struct {
+	token string
+	left  time.Duration
+	err   error
+}
+
+func (f *fakeLogout) Execute(ctx context.Context, token string) error {
+	f.token = token
+	if deadline, ok := ctx.Deadline(); ok {
+		f.left = time.Until(deadline)
+	}
+	return f.err
+}
+
 // fakeGetMe answers the actor's account with steps.
 type fakeGetMe struct{ steps []string }
 
@@ -54,24 +100,52 @@ func (f fakeGetMe) Execute(ctx context.Context) (domain.User, error) {
 // userIDText.
 type fakeAuth struct{}
 
-func (fakeAuth) Authenticate(ctx context.Context, token string) (context.Context, error) {
+func (fakeAuth) Authenticate(ctx context.Context, token string) (context.Context, string, error) {
 	if token != "valid" {
-		return nil, shared.Unauthenticated()
+		return nil, "", shared.Unauthenticated()
 	}
-	return shared.WithActor(ctx, shared.Actor{UserID: uuid.MustParse(userIDText), SessionID: uuid.MustParse(sessionIDText)}), nil
+	actor := shared.Actor{UserID: uuid.MustParse(userIDText), SessionID: uuid.MustParse(sessionIDText)}
+	return shared.WithActor(ctx, actor), "session:" + sessionIDText, nil
 }
 
-// newServer serves the module with uc; a nil use case gets an idle fake.
+// newServer serves the module with uc and buckets no test here empties; a
+// nil use case gets an idle fake.
 func newServer(t *testing.T, uc httpadapter.UseCases) http.Handler {
+	t.Helper()
+	limiter := ratelimit.New(time.Now)
+	roomy := func(name string) *ratelimit.Bucket {
+		return limiter.Bucket(name, ratelimit.Rate{PerMinute: 600, Burst: 100})
+	}
+	return serverWith(t, uc, httpadapter.Settings{
+		Limits: httpadapter.Limits{
+			Limiter: limiter, LoginIP: roomy("login_ip"), LoginIPEmail: roomy("login_ip_email"), RegisterIP: roomy("register_ip"),
+		},
+		Logger: slog.New(slog.DiscardHandler),
+	})
+}
+
+// refreshDeadline is the request deadline of refresh and logout, shorter
+// than the request timeout of serverWith.
+const refreshDeadline = 3 * time.Second
+
+// serverWith serves the module with uc and s behind the platform's
+// middlewares, whose own buckets no test here empties.
+func serverWith(t *testing.T, uc httpadapter.UseCases, s httpadapter.Settings) http.Handler {
 	t.Helper()
 	logger := slog.New(slog.DiscardHandler)
 	router := httpserver.NewRouter(logger)
+	limit := ratelimit.New(time.Now).Bucket("test", ratelimit.Rate{PerMinute: 600, Burst: 100})
 	api, err := httpserver.NewAPI(httpserver.APIConfig{
 		Logger:           logger,
 		Authenticator:    fakeAuth{},
 		PublicOperations: httpadapter.PublicOperations(),
 		MaxBodyBytes:     1024,
 		RequestTimeout:   5 * time.Second,
+		RequestTimeouts:  httpadapter.RequestTimeouts(refreshDeadline),
+		IPv6PrefixLen:    64,
+		Anonymous:        limit,
+		Authenticated:    limit,
+		AuthFailure:      limit,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -79,10 +153,19 @@ func newServer(t *testing.T, uc httpadapter.UseCases) http.Handler {
 	if uc.Register == nil {
 		uc.Register = &fakeRegister{}
 	}
+	if uc.Login == nil {
+		uc.Login = &fakeLogin{}
+	}
+	if uc.Refresh == nil {
+		uc.Refresh = &fakeRefresh{}
+	}
+	if uc.Logout == nil {
+		uc.Logout = &fakeLogout{}
+	}
 	if uc.GetMe == nil {
 		uc.GetMe = fakeGetMe{}
 	}
-	httpadapter.Register(router, api, uc)
+	httpadapter.Register(router, api, uc, s)
 	return router
 }
 
@@ -96,28 +179,38 @@ func do(t *testing.T, h http.Handler, req *http.Request) (*http.Response, string
 	return res, string(body)
 }
 
-// registerRequest is a registration from 203.0.113.7 with agent/1.
-func registerRequest(body string) *http.Request {
-	req := httptest.NewRequest(http.MethodPost, "/api/v0/auth/register", strings.NewReader(body))
+// postJSON is a POST of body to path from 203.0.113.7 with agent/1.
+func postJSON(path, body string) *http.Request {
+	req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "agent/1")
 	req.RemoteAddr = "203.0.113.7:5555"
 	return req
 }
 
+// registerRequest is a registration from 203.0.113.7 with agent/1.
+func registerRequest(body string) *http.Request {
+	return postJSON("/api/v0/auth/register", body)
+}
+
+// sampleTokens are what a use case returns, and sampleTokensJSON how the
+// API answers them.
+func sampleTokens() app.Tokens {
+	return app.Tokens{AccessToken: "access", AccessExpiresIn: 15 * time.Minute, RefreshToken: "nwk_rt_x", RefreshExpiresAt: created().Add(720 * time.Hour)}
+}
+
+const sampleTokensJSON = `{"access_token":"access","access_token_expires_in":900,"refresh_token":"nwk_rt_x",` +
+	`"refresh_token_expires_at":"2026-10-25T10:00:00.123456Z","token_type":"Bearer"}` + "\n"
+
 func TestRegisterAnswers201WithTheTokens(t *testing.T) {
-	register := &fakeRegister{tokens: app.Tokens{
-		AccessToken: "access", AccessExpiresIn: 15 * time.Minute, RefreshToken: "nwk_rt_x", RefreshExpiresAt: created().Add(720 * time.Hour),
-	}}
+	register := &fakeRegister{tokens: sampleTokens()}
 	req := registerRequest(`{"email":"Alice@Corp.com","password":"Tr0ub4dor&3"}`)
 	apitest.Load(t).CheckRequest(t, req)
 
 	res, body := do(t, newServer(t, httpadapter.UseCases{Register: register}), req)
 
-	want := `{"access_token":"access","access_token_expires_in":900,"refresh_token":"nwk_rt_x",` +
-		`"refresh_token_expires_at":"2026-10-25T10:00:00.123456Z","token_type":"Bearer"}` + "\n"
-	if res.StatusCode != http.StatusCreated || body != want {
-		t.Errorf("POST /auth/register = %d %s, want 201 %s", res.StatusCode, body, want)
+	if res.StatusCode != http.StatusCreated || body != sampleTokensJSON {
+		t.Errorf("POST /auth/register = %d %s, want 201 %s", res.StatusCode, body, sampleTokensJSON)
 	}
 	// The use case normalizes the address.
 	wantIn := app.RegisterInput{Email: "Alice@Corp.com", Password: "Tr0ub4dor&3", UserAgent: "agent/1", IP: netip.MustParseAddr("203.0.113.7")}

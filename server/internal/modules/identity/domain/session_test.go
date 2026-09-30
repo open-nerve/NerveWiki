@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf8"
 	"uuid"
 )
@@ -110,6 +111,45 @@ func TestSanitizeUserAgent(t *testing.T) {
 		got := SanitizeUserAgent(tt.in)
 		if got != tt.want || !utf8.ValidString(got) {
 			t.Errorf("SanitizeUserAgent(%.20q) = %.20q (%d runes), want %.20q", tt.in, got, utf8.RuneCountInString(got), tt.want)
+		}
+	}
+}
+
+// M1/P2 design 3.5's table, row by row.
+func TestJudgeRefresh(t *testing.T) {
+	now := time.Date(2026, 9, 26, 10, 0, 0, 0, time.UTC)
+	current := sampleToken()
+	current.Generation = 5
+	live := SessionState{Generation: 5, TokenHash: current.SecretHash(), ExpiresAt: now.Add(time.Hour)}
+	older, newer, otherSecret := current, current, current
+	older.Generation, newer.Generation = 4, 6
+	otherSecret.Secret[0] ^= 1
+	revoked, expired, lastInstant := live, live, live
+	revoked.Revoked = true
+	expired.ExpiresAt = now
+	lastInstant.ExpiresAt = now.Add(time.Microsecond)
+	tests := []struct {
+		name     string
+		state    SessionState
+		token    RefreshToken
+		tagValid bool
+		want     Verdict
+	}{
+		{"current generation", live, current, false, Rotate},
+		{"current generation, tag valid too", live, current, true, Rotate},
+		{"current generation, another secret", live, otherSecret, true, Reject},
+		{"older generation the session issued", live, older, true, Reuse},
+		{"older generation, forged", live, older, false, Reject},
+		{"newer generation", live, newer, true, Reject},
+		{"revoked, current generation", revoked, current, false, Reject},
+		{"revoked, older generation the session issued", revoked, older, true, Reject},
+		{"expired at this instant", expired, current, false, Reject},
+		{"expired, older generation the session issued", expired, older, true, Reject},
+		{"a microsecond before expiry", lastInstant, current, false, Rotate},
+	}
+	for _, tt := range tests {
+		if got := JudgeRefresh(tt.state, tt.token, tt.tagValid, now); got != tt.want {
+			t.Errorf("%s: JudgeRefresh() = %d, want %d", tt.name, got, tt.want)
 		}
 	}
 }

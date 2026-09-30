@@ -29,6 +29,29 @@ export async function register(
   return data;
 }
 
+/** Signs email in through the API with the password of register and returns the new session's tokens. */
+export async function login(api: ApiClient, email: string, headers: Record<string, string> = {}): Promise<AuthTokens> {
+  const { data, error, response } = await api.POST("/api/v0/auth/login", {
+    body: { email, password },
+    headers,
+  });
+  expect(response.status, `login ${email}: ${JSON.stringify(error)}`).toBe(200);
+  if (!data) {
+    throw new Error(`login ${email} answered 200 without tokens`);
+  }
+  return data;
+}
+
+/** Exchanges refreshToken for the session's next tokens. */
+export async function refresh(api: ApiClient, refreshToken: string): Promise<AuthTokens> {
+  const { data, error, response } = await api.POST("/api/v0/auth/refresh", { body: { refresh_token: refreshToken } });
+  expect(response.status, `refresh: ${JSON.stringify(error)}`).toBe(200);
+  if (!data) {
+    throw new Error("refresh answered 200 without tokens");
+  }
+  return data;
+}
+
 /** The Authorization header of a bearer token. */
 export function bearer(token: string): Record<string, string> {
   return { Authorization: `Bearer ${token}` };

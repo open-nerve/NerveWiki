@@ -13,9 +13,19 @@ func BodyShapes() *bodyshape.Table {
 			/* 0 */ {Types: bodyshape.Object, Extra: bodyshape.Closed, Items: bodyshape.Open, Props: map[string]int{"email": 1, "password": 2}, Required: []string{"email", "password"}},
 			/* 1 */ {Types: bodyshape.String, Extra: bodyshape.Open, Items: bodyshape.Open},
 			/* 2 */ {Types: bodyshape.String, Extra: bodyshape.Open, Items: bodyshape.Open},
+			/* 3 */ {Types: bodyshape.Object, Extra: bodyshape.Closed, Items: bodyshape.Open, Props: map[string]int{"refresh_token": 4}, Required: []string{"refresh_token"}},
+			/* 4 */ {Types: bodyshape.String, Extra: bodyshape.Open, Items: bodyshape.Open},
+			/* 5 */ {Types: bodyshape.Object, Extra: bodyshape.Closed, Items: bodyshape.Open, Props: map[string]int{"refresh_token": 6}, Required: []string{"refresh_token"}},
+			/* 6 */ {Types: bodyshape.String, Extra: bodyshape.Open, Items: bodyshape.Open},
+			/* 7 */ {Types: bodyshape.Object, Extra: bodyshape.Closed, Items: bodyshape.Open, Props: map[string]int{"email": 8, "password": 9}, Required: []string{"email", "password"}},
+			/* 8 */ {Types: bodyshape.String, Extra: bodyshape.Open, Items: bodyshape.Open},
+			/* 9 */ {Types: bodyshape.String, Extra: bodyshape.Open, Items: bodyshape.Open},
 		},
 		Roots: map[string]int{
-			"POST /api/v0/auth/register": 0,
+			"POST /api/v0/auth/login":    0,
+			"POST /api/v0/auth/logout":   3,
+			"POST /api/v0/auth/refresh":  5,
+			"POST /api/v0/auth/register": 7,
 		},
 	}
 }

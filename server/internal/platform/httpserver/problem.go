@@ -21,6 +21,7 @@ const (
 	CodeUnauthorized    = "unauthorized"
 	CodeNotFound        = "not_found"
 	CodePayloadTooLarge = "payload_too_large"
+	CodeRateLimited     = "rate_limited"
 	CodeInternal        = "internal_error"
 	CodeNotReady        = "not_ready"
 )

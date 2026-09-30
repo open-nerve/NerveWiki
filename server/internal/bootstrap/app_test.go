@@ -65,14 +65,25 @@ func testConfig(t *testing.T, dbURL string, autoMigrate bool) config.Config {
 		},
 		Database: config.DatabaseConfig{URL: dbURL, MaxConns: 4, AutoMigrate: autoMigrate, CommitTimeout: 2 * time.Second},
 		Auth: config.AuthConfig{
-			SignupEnabled:  true,
-			AccessTokenTTL: 15 * time.Minute,
-			SessionTTL:     720 * time.Hour,
+			SignupEnabled:   true,
+			AccessTokenTTL:  15 * time.Minute,
+			SessionTTL:      720 * time.Hour,
+			RefreshDeadline: 3 * time.Second,
 			Password: config.PasswordConfig{
 				Argon2MemoryKiB: 64, Argon2Iterations: 1, Argon2Parallelism: 1, MaxConcurrentHashes: 4, MaxWait: 2 * time.Second,
 			},
 		},
-		Log: config.LogConfig{Level: "error", Format: "text"},
+		RateLimit: roomyLimits(),
+		Log:       config.LogConfig{Level: "error", Format: "text"},
+	}
+}
+
+// roomyLimits are buckets that the tests of this package never empty.
+func roomyLimits() config.RateLimitConfig {
+	roomy := config.BucketConfig{PerMinute: 600000, Burst: 100000}
+	return config.RateLimitConfig{
+		IPv6PrefixLen: 64, Anonymous: roomy, AuthFailure: roomy, Authenticated: roomy,
+		LoginIP: roomy, LoginIPEmail: roomy, RegisterIP: roomy,
 	}
 }
 

@@ -19,6 +19,15 @@ const (
 
 func testNow() time.Time { return time.Date(2026, 9, 25, 10, 0, 0, 123456000, time.UTC) }
 
+// accessExpiry is the exp of an access token issued at testNow: 15 minutes
+// later, rounded up to the second.
+func accessExpiry() time.Time { return time.Date(2026, 9, 25, 10, 15, 1, 0, time.UTC) }
+
+// testIssuance is auth's default TTLs, 15 minutes and 30 days, with mac.
+func testIssuance(tokens *fakeTokens, mac fakeMAC) app.Issuance {
+	return app.Issuance{Tokens: tokens, MAC: mac, AccessTTL: 15 * time.Minute, SessionTTL: 720 * time.Hour}
+}
+
 func testUserID() uuid.UUID    { return uuid.MustParse(userIDText) }
 func testSessionID() uuid.UUID { return uuid.MustParse(sessionIDText) }
 
@@ -40,10 +49,15 @@ func (f *fakeTx) WithinTx(ctx context.Context, fn func(ctx context.Context) erro
 
 func inTx(ctx context.Context) bool { return ctx.Value(inTxKey{}) == true }
 
-// fakeHasher "hashes" by prefixing "hashed:". It counts its calls.
+// fakeHasher "hashes" by prefixing "hashed:"; a hash "old:<password>" has
+// other parameters, so it verifies and asks for a rehash. It counts its
+// calls and records the hashes it verified against.
 type fakeHasher struct {
-	calls int
-	err   error
+	calls     int // Hash calls
+	err       error
+	verified  []string // the hashes Verify was given
+	verifyErr error
+	onVerify  func() // runs inside every Verify: a transaction that commits meanwhile
 }
 
 func (h *fakeHasher) Hash(_ context.Context, password string) (string, error) {
@@ -55,7 +69,20 @@ func (h *fakeHasher) Hash(_ context.Context, password string) (string, error) {
 }
 
 func (h *fakeHasher) Verify(_ context.Context, password, hash string) (bool, bool, error) {
-	return hash == "hashed:"+password, false, nil
+	h.verified = append(h.verified, hash)
+	if h.onVerify != nil {
+		h.onVerify()
+	}
+	if h.verifyErr != nil {
+		return false, false, h.verifyErr
+	}
+	switch hash {
+	case "hashed:" + password:
+		return true, false, nil
+	case "old:" + password:
+		return true, true, nil
+	}
+	return false, false, nil
 }
 
 // fakeTokens issues "access:<sid>" and verifies what it issued at the instant
@@ -92,12 +119,13 @@ func (f *fakeTokens) Verify(token string, now time.Time) (app.AccessClaims, erro
 	return c, nil
 }
 
-// fakeMAC tags with the first 16 bytes of SHA-256 over the message:
-// deterministic, and different for every message.
-type fakeMAC struct{}
+// fakeMAC tags with the first 16 bytes of SHA-256 over its key and the
+// message: deterministic, different for every message, and for every key
+// (a change of the signing key).
+type fakeMAC struct{ key string }
 
-func (fakeMAC) Tag(message []byte) [16]byte {
-	sum := sha256.Sum256(message)
+func (m fakeMAC) Tag(message []byte) [16]byte {
+	sum := sha256.Sum256(append([]byte(m.key), message...))
 	return [16]byte(sum[:16])
 }
 

@@ -32,6 +32,7 @@ auth:
   signup_enabled: false
   access_token_ttl: 15m
   session_ttl: 720h
+  refresh_deadline: 4s
   jwt:
     private_key_file: ""
   password:
@@ -40,6 +41,14 @@ auth:
     argon2_parallelism: 1
     max_concurrent_hashes: 4
     max_wait: 2s
+ratelimit:
+  ipv6_prefix_len: 64
+  anonymous: {per_minute: 600, burst: 100}
+  auth_failure: {per_minute: 60, burst: 60}
+  authenticated: {per_minute: 1200, burst: 200}
+  login_ip: {per_minute: 30, burst: 10}
+  login_ip_email: {per_minute: 10, burst: 5}
+  register_ip: {per_minute: 10, burst: 5}
 log:
   level: info
   format: json
@@ -77,6 +86,7 @@ func TestLoadAppliesLayersInOrder(t *testing.T) {
 			"NWIKI_DATABASE__COMMIT_TIMEOUT=3s",
 			"NWIKI_SERVER__TRUSTED_PROXIES=10.0.0.0/8,fd00::/8",
 			"NWIKI_AUTH__PASSWORD__ARGON2_ITERATIONS=3",
+			"NWIKI_RATELIMIT__LOGIN_IP__BURST=3",
 		},
 		LocalFile: local,
 	})
@@ -103,12 +113,22 @@ func TestLoadAppliesLayersInOrder(t *testing.T) {
 			CommitTimeout: 3 * time.Second,           // environment
 		},
 		Auth: AuthConfig{
-			AccessTokenTTL: 15 * time.Minute,
-			SessionTTL:     720 * time.Hour,
+			AccessTokenTTL:  15 * time.Minute,
+			SessionTTL:      720 * time.Hour,
+			RefreshDeadline: 4 * time.Second,
 			Password: PasswordConfig{
 				Argon2MemoryKiB: 19456, Argon2Iterations: 3, Argon2Parallelism: 1, // iterations: environment
 				MaxConcurrentHashes: 4, MaxWait: 2 * time.Second,
 			},
+		},
+		RateLimit: RateLimitConfig{
+			IPv6PrefixLen: 64,
+			Anonymous:     BucketConfig{PerMinute: 600, Burst: 100},
+			AuthFailure:   BucketConfig{PerMinute: 60, Burst: 60},
+			Authenticated: BucketConfig{PerMinute: 1200, Burst: 200},
+			LoginIP:       BucketConfig{PerMinute: 30, Burst: 3}, // burst: environment, inside a flow mapping
+			LoginIPEmail:  BucketConfig{PerMinute: 10, Burst: 5},
+			RegisterIP:    BucketConfig{PerMinute: 10, Burst: 5},
 		},
 		Log: LogConfig{Level: "debug", Format: "text"},
 	}

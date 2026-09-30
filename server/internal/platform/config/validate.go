@@ -5,7 +5,13 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"time"
 )
+
+// webRefreshTimeout is how long the web client waits for a refresh (M1/P2
+// design 3.5). The server must have finished a refresh before that:
+// committed, rolled back, or given up on its COMMIT.
+const webRefreshTimeout = 8 * time.Second
 
 // validate reports every invalid key at once, one "key: problem" line each.
 func (c Config) validate() error {
@@ -67,6 +73,17 @@ func (c Config) validate() error {
 		fail("database.commit_timeout", "must be positive, got %s", c.Database.CommitTimeout)
 	}
 	c.Auth.validate(c.Env, fail)
+	switch {
+	case c.Auth.RefreshDeadline <= 0:
+		fail("auth.refresh_deadline", "must be positive, got %s", c.Auth.RefreshDeadline)
+	case c.Auth.RefreshDeadline+c.Database.CommitTimeout >= webRefreshTimeout:
+		fail("auth.refresh_deadline", "plus database.commit_timeout (%s) must be less than %s, the web client's refresh timeout, got %s",
+			c.Database.CommitTimeout, webRefreshTimeout, c.Auth.RefreshDeadline)
+	case c.Server.RequestTimeout > 0 && c.Auth.RefreshDeadline > c.Server.RequestTimeout:
+		// It is the request deadline of refresh and logout: a shorter one.
+		fail("auth.refresh_deadline", "must be at most server.request_timeout (%s), got %s", c.Server.RequestTimeout, c.Auth.RefreshDeadline)
+	}
+	c.RateLimit.validate(fail)
 	var level slog.Level
 	if err := level.UnmarshalText([]byte(c.Log.Level)); err != nil {
 		fail("log.level", "must be one of debug, info, warn, error, got %q", c.Log.Level)
@@ -108,5 +125,29 @@ func (a AuthConfig) validate(env string, fail func(key, format string, args ...a
 	}
 	if p.MaxWait <= 0 {
 		fail("auth.password.max_wait", "must be positive, got %s", p.MaxWait)
+	}
+}
+
+func (r RateLimitConfig) validate(fail func(key, format string, args ...any)) {
+	if r.IPv6PrefixLen < 1 || r.IPv6PrefixLen > 128 {
+		fail("ratelimit.ipv6_prefix_len", "must be from 1 to 128, got %d", r.IPv6PrefixLen)
+	}
+	for _, b := range []struct {
+		name   string
+		bucket BucketConfig
+	}{
+		{"anonymous", r.Anonymous},
+		{"auth_failure", r.AuthFailure},
+		{"authenticated", r.Authenticated},
+		{"login_ip", r.LoginIP},
+		{"login_ip_email", r.LoginIPEmail},
+		{"register_ip", r.RegisterIP},
+	} {
+		if b.bucket.PerMinute < 1 {
+			fail("ratelimit."+b.name+".per_minute", "must be at least 1, got %d", b.bucket.PerMinute)
+		}
+		if b.bucket.Burst < 1 {
+			fail("ratelimit."+b.name+".burst", "must be at least 1, got %d", b.bucket.Burst)
+		}
 	}
 }

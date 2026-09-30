@@ -22,6 +22,7 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/ratelimit"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/webui"
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
@@ -77,16 +78,27 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrati
 		pool.Close()
 		return nil, err
 	}
+	// One limiter holds every bucket (M1/P2 design 3.2). It reads the
+	// monotonic clock, which a jump of the wall clock does not move.
+	limiter := ratelimit.New(time.Now)
+	limits := cfg.RateLimit
 	ident, err := identity.New(identity.Deps{
-		Pool:           pool,
-		Tx:             postgres.NewTxManager(pool, cfg.Database.CommitTimeout),
-		Clock:          clock.System{},
-		Logger:         logger,
-		SignupPolicy:   signupSwitch(cfg.Auth.SignupEnabled),
-		SigningKeyPEM:  signingKey,
-		AccessTokenTTL: cfg.Auth.AccessTokenTTL,
-		SessionTTL:     cfg.Auth.SessionTTL,
-		Password:       passwordHashing(cfg.Auth.Password),
+		Pool:            pool,
+		Tx:              postgres.NewTxManager(pool, cfg.Database.CommitTimeout),
+		Clock:           clock.System{},
+		Logger:          logger,
+		SignupPolicy:    signupSwitch(cfg.Auth.SignupEnabled),
+		SigningKeyPEM:   signingKey,
+		AccessTokenTTL:  cfg.Auth.AccessTokenTTL,
+		SessionTTL:      cfg.Auth.SessionTTL,
+		RefreshDeadline: cfg.Auth.RefreshDeadline,
+		Password:        passwordHashing(cfg.Auth.Password),
+		RateLimits: identity.RateLimits{
+			Limiter:      limiter,
+			LoginIP:      bucket(limiter, "login_ip", limits.LoginIP),
+			LoginIPEmail: bucket(limiter, "login_ip_email", limits.LoginIPEmail),
+			RegisterIP:   bucket(limiter, "register_ip", limits.RegisterIP),
+		},
 	})
 	if err != nil {
 		_ = migrator.Close()
@@ -100,7 +112,12 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrati
 		PublicOperations: slices.Concat(ident.PublicOperations(), inst.PublicOperations()),
 		MaxBodyBytes:     cfg.Server.MaxBodyBytes,
 		RequestTimeout:   cfg.Server.RequestTimeout,
+		RequestTimeouts:  ident.RequestTimeouts(),
 		TrustedProxies:   cfg.Server.TrustedProxies,
+		IPv6PrefixLen:    limits.IPv6PrefixLen,
+		Anonymous:        bucket(limiter, "anonymous", limits.Anonymous),
+		Authenticated:    bucket(limiter, "authenticated", limits.Authenticated),
+		AuthFailure:      bucket(limiter, "auth_failure", limits.AuthFailure),
 	})
 	if err != nil {
 		_ = migrator.Close()
@@ -179,6 +196,11 @@ func passwordHashing(p config.PasswordConfig) identity.PasswordHashing {
 		MaxConcurrent: p.MaxConcurrentHashes,
 		MaxWait:       p.MaxWait,
 	}
+}
+
+// bucket is limiter's bucket of the configured rate, named after its key.
+func bucket(limiter *ratelimit.Limiter, name string, c config.BucketConfig) *ratelimit.Bucket {
+	return limiter.Bucket(name, ratelimit.Rate{PerMinute: c.PerMinute, Burst: c.Burst})
 }
 
 // signupSwitch is auth.signup_enabled as identity's SignupPolicy.

@@ -11,8 +11,9 @@ import (
 
 // clientIPs tells who the client of a request is (M1/P1 design 3.5).
 type clientIPs struct {
-	logger  *slog.Logger
-	trusted []netip.Prefix // server.trusted_proxies
+	logger   *slog.Logger
+	trusted  []netip.Prefix // server.trusted_proxies
+	v6Prefix int            // ratelimit.ipv6_prefix_len, 1-128
 	// Each misconfiguration warning is logged once per process: bootstrap
 	// builds one API. untrusted: X-Forwarded-For while no proxy is trusted;
 	// missing: a trusted proxy that forwards no X-Forwarded-For; malformed:
@@ -81,6 +82,21 @@ func (c *clientIPs) of(r *http.Request) netip.Addr {
 
 func (c *clientIPs) isTrusted(ip netip.Addr) bool {
 	return ip.IsValid() && slices.ContainsFunc(c.trusted, func(p netip.Prefix) bool { return p.Contains(ip) })
+}
+
+// key is what the per-IP rate-limit buckets count ip by (M1/P2 design
+// 3.2): an IPv4 address itself, an IPv6 address by its prefix of v6Prefix
+// bits, since a host usually holds a whole /64. The zero Addr is the empty
+// key: the clients whose peer address does not parse share one bucket.
+func (c *clientIPs) key(ip netip.Addr) string {
+	switch {
+	case !ip.IsValid():
+		return ""
+	case ip.Is4():
+		return ip.String()
+	}
+	p, _ := ip.Prefix(c.v6Prefix) // NewAPI holds it to 1-128
+	return p.String()
 }
 
 // peerAddr is the address of RemoteAddr without its port; the zero Addr

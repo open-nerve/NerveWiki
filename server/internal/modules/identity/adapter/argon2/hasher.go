@@ -37,7 +37,7 @@ const (
 	retryAfter = time.Second
 )
 
-// Hasher implements app.PasswordHasher.
+// Hasher implements app.PasswordHasher and app.PasswordVerifier.
 type Hasher struct {
 	p       Params
 	logger  *slog.Logger

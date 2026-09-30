@@ -43,6 +43,34 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) er
 	return err
 }
 
+const endSession = `-- name: EndSession :execrows
+UPDATE auth_sessions
+SET updated_at = $1, revoked_at = $1, revoke_reason = 'logout'
+WHERE id = $2 AND generation = $3 AND token_hash = $4
+  AND revoked_at IS NULL AND expires_at > $1
+`
+
+type EndSessionParams struct {
+	Now        time.Time
+	ID         uuid.UUID
+	Generation int32
+	TokenHash  []byte
+}
+
+// Logout: the same conditions as the rotation (M1/P2 design 3.6).
+func (q *Queries) EndSession(ctx context.Context, arg EndSessionParams) (int64, error) {
+	result, err := q.db.Exec(ctx, endSession,
+		arg.Now,
+		arg.ID,
+		arg.Generation,
+		arg.TokenHash,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const getSessionCredential = `-- name: GetSessionCredential :one
 SELECT s.user_id, s.expires_at, s.revoked_at, u.is_active AS user_active
 FROM auth_sessions s
@@ -68,4 +96,84 @@ func (q *Queries) GetSessionCredential(ctx context.Context, id uuid.UUID) (GetSe
 		&i.UserActive,
 	)
 	return i, err
+}
+
+const getSessionForRefresh = `-- name: GetSessionForRefresh :one
+SELECT user_id, generation, token_hash, expires_at, revoked_at
+FROM auth_sessions
+WHERE id = $1
+`
+
+type GetSessionForRefreshRow struct {
+	UserID     uuid.UUID
+	Generation int32
+	TokenHash  []byte
+	ExpiresAt  time.Time
+	RevokedAt  *time.Time
+}
+
+// What a refresh judges its token against, by primary key (M1/P2 design 3.5).
+func (q *Queries) GetSessionForRefresh(ctx context.Context, id uuid.UUID) (GetSessionForRefreshRow, error) {
+	row := q.db.QueryRow(ctx, getSessionForRefresh, id)
+	var i GetSessionForRefreshRow
+	err := row.Scan(
+		&i.UserID,
+		&i.Generation,
+		&i.TokenHash,
+		&i.ExpiresAt,
+		&i.RevokedAt,
+	)
+	return i, err
+}
+
+const revokeSessionForReuse = `-- name: RevokeSessionForReuse :exec
+UPDATE auth_sessions
+SET updated_at = $1, revoked_at = $1, revoke_reason = 'reuse_detected'
+WHERE id = $2 AND revoked_at IS NULL
+`
+
+type RevokeSessionForReuseParams struct {
+	Now time.Time
+	ID  uuid.UUID
+}
+
+// A revoked session keeps the reason it was revoked for.
+func (q *Queries) RevokeSessionForReuse(ctx context.Context, arg RevokeSessionForReuseParams) error {
+	_, err := q.db.Exec(ctx, revokeSessionForReuse, arg.Now, arg.ID)
+	return err
+}
+
+const rotateSession = `-- name: RotateSession :execrows
+UPDATE auth_sessions
+SET updated_at = $1, last_refreshed_at = $1,
+    generation = generation + 1, token_hash = $2
+WHERE id = $3 AND generation = $4 AND token_hash = $5
+  AND revoked_at IS NULL AND expires_at > $1
+`
+
+type RotateSessionParams struct {
+	Now          time.Time
+	NewTokenHash []byte
+	ID           uuid.UUID
+	Generation   int32
+	TokenHash    []byte
+}
+
+// The conditional rotation of M1/P2 design 3.5: it hits only while the session is still at the
+// generation and hash the refresh judged, unrevoked and unexpired. A concurrent writer's commit
+// makes it re-evaluate the WHERE on the new row, and miss.
+// sqlc types a parameter by its first use: updated_at (NOT NULL) comes first in each SET below,
+// so that now is a time.Time, not a *time.Time.
+func (q *Queries) RotateSession(ctx context.Context, arg RotateSessionParams) (int64, error) {
+	result, err := q.db.Exec(ctx, rotateSession,
+		arg.Now,
+		arg.NewTokenHash,
+		arg.ID,
+		arg.Generation,
+		arg.TokenHash,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
