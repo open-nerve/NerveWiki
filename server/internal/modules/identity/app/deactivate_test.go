@@ -80,8 +80,8 @@ func (l stepLocker) LockForCredentials(ctx context.Context, _ uuid.UUID) (app.Lo
 func newDeactivate(log *steps, logs *bytes.Buffer, vetoers []app.DeactivationVetoer, subscribers []app.DeactivationSubscriber) *app.Deactivate {
 	return app.NewDeactivate(app.DeactivateDeps{
 		Lock:  app.CredentialLock{Locker: stepLocker{log: log, active: true}, Sessions: &fakeStore{credential: validCredential()}, APITokens: newFakeAPITokens(validToken())},
-		Users: stepUsers{log}, Sessions: stepSessions{log}, Vetoers: vetoers, Subscribers: subscribers,
-		Tx: &fakeTx{}, Clock: fixedClock(testNow()), Logger: slog.New(slog.NewJSONHandler(logs, nil)),
+		Steps: app.DeactivationSteps{Users: stepUsers{log}, Sessions: stepSessions{log}, Vetoers: vetoers, Subscribers: subscribers},
+		Tx:    &fakeTx{}, Clock: fixedClock(testNow()), Logger: slog.New(slog.NewJSONHandler(logs, nil)),
 	})
 }
 

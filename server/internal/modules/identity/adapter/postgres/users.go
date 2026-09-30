@@ -114,7 +114,39 @@ func (s *Store) LockForCredentials(ctx context.Context, id uuid.UUID) (app.Locke
 	if err != nil {
 		return app.LockedAccount{}, notFound(err)
 	}
-	return app.LockedAccount{Email: row.Email, PasswordHash: row.Password, Active: row.IsActive}, nil
+	return app.LockedAccount{ID: id, Email: row.Email, PasswordHash: row.Password, Active: row.IsActive}, nil
+}
+
+// LockAccountByEmail takes the account row lock of the account of email,
+// normalized, until the transaction ends, and returns what it read under
+// it; app.ErrNotFound when there is none.
+func (s *Store) LockAccountByEmail(ctx context.Context, email string) (app.LockedAccount, error) {
+	row, err := s.queries(ctx).LockUserByEmail(ctx, email)
+	if err != nil {
+		return app.LockedAccount{}, notFound(err)
+	}
+	return app.LockedAccount{ID: row.ID, Email: row.Email, PasswordHash: row.Password, Active: row.IsActive}, nil
+}
+
+// ActivateUser makes account id active again, at now.
+func (s *Store) ActivateUser(ctx context.Context, id uuid.UUID, now time.Time) error {
+	if err := s.queries(ctx).ActivateUser(ctx, gen.ActivateUserParams{Now: now, ID: id}); err != nil {
+		return fmt.Errorf("activate user: %w", err)
+	}
+	return nil
+}
+
+// ChangeEmail sets account id's address to email, normalized, at now;
+// domain.ErrEmailTaken when another account has it.
+func (s *Store) ChangeEmail(ctx context.Context, id uuid.UUID, email string, now time.Time) error {
+	err := s.queries(ctx).ChangeEmail(ctx, gen.ChangeEmailParams{Email: email, Now: now, ID: id})
+	switch {
+	case uniqueViolation(err, "users_email_key"):
+		return domain.ErrEmailTaken
+	case err != nil:
+		return fmt.Errorf("change email: %w", err)
+	}
+	return nil
 }
 
 // UpdatePasswordHash stores hash as account id's password, at now.

@@ -80,3 +80,23 @@ func (s *Store) TouchAPIToken(ctx context.Context, id uuid.UUID, now, staleBefor
 	}
 	return nil
 }
+
+// RevokeAllAPITokens revokes at now every token of userID not revoked yet,
+// expired ones too, and returns how many.
+func (s *Store) RevokeAllAPITokens(ctx context.Context, userID uuid.UUID, now time.Time) (int, error) {
+	n, err := s.queries(ctx).RevokeAllAPITokens(ctx, gen.RevokeAllAPITokensParams{Now: now, UserID: userID})
+	if err != nil {
+		return 0, fmt.Errorf("revoke all API tokens: %w", err)
+	}
+	return int(n), nil
+}
+
+// CountUsableAPITokens counts userID's tokens that are neither revoked nor
+// expired at now.
+func (s *Store) CountUsableAPITokens(ctx context.Context, userID uuid.UUID, now time.Time) (int, error) {
+	n, err := s.queries(ctx).CountUsableAPITokens(ctx, gen.CountUsableAPITokensParams{UserID: userID, Now: now})
+	if err != nil {
+		return 0, fmt.Errorf("count usable API tokens: %w", err)
+	}
+	return int(n), nil
+}

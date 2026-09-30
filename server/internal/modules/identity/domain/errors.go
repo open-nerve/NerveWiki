@@ -38,4 +38,7 @@ var (
 	// ErrAccountNotFound answers a request about an account that does not
 	// exist: ShareActiveAccount's, and the administrator's commands' (P4).
 	ErrAccountNotFound = shared.NewError(shared.KindNotFound, "identity.account_not_found", "The account does not exist.")
+	// ErrEmailUnchanged answers the administrator's set-email with the
+	// address the account has already (M1/P4 design 3.6).
+	ErrEmailUnchanged = shared.NewError(shared.KindInvalid, "identity.email_unchanged", "The account has this e-mail address already.")
 )

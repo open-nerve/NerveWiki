@@ -12,6 +12,25 @@ import (
 	"uuid"
 )
 
+const countUsableAPITokens = `-- name: CountUsableAPITokens :one
+SELECT count(*)
+FROM api_tokens
+WHERE user_id = $1 AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > $2::timestamptz)
+`
+
+type CountUsableAPITokensParams struct {
+	UserID uuid.UUID
+	Now    time.Time
+}
+
+// The tokens that authenticate again once the account is active: neither revoked nor expired.
+func (q *Queries) CountUsableAPITokens(ctx context.Context, arg CountUsableAPITokensParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countUsableAPITokens, arg.UserID, arg.Now)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createAPIToken = `-- name: CreateAPIToken :exec
 INSERT INTO api_tokens (id, user_id, token_hash, name, expires_at, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $6,
@@ -159,6 +178,27 @@ type RevokeAPITokenParams struct {
 // Revoking is a soft delete. Another account's token, or one revoked already, is not hit.
 func (q *Queries) RevokeAPIToken(ctx context.Context, arg RevokeAPITokenParams) (int64, error) {
 	result, err := q.db.Exec(ctx, revokeAPIToken, arg.Now, arg.ID, arg.UserID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const revokeAllAPITokens = `-- name: RevokeAllAPITokens :execrows
+UPDATE api_tokens
+SET updated_at = $1, revoked_at = $1
+WHERE user_id = $2 AND revoked_at IS NULL
+`
+
+type RevokeAllAPITokensParams struct {
+	Now    time.Time
+	UserID uuid.UUID
+}
+
+// The administrator's password reset (M1/P4 design 3.6): every token of the account not revoked yet, expired
+// ones too, which would otherwise be listed as live forever.
+func (q *Queries) RevokeAllAPITokens(ctx context.Context, arg RevokeAllAPITokensParams) (int64, error) {
+	result, err := q.db.Exec(ctx, revokeAllAPITokens, arg.Now, arg.UserID)
 	if err != nil {
 		return 0, err
 	}

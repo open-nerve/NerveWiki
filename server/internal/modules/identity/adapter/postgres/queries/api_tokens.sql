@@ -42,3 +42,16 @@ ORDER BY created_at DESC, id DESC;
 UPDATE api_tokens
 SET updated_at = sqlc.arg(now), revoked_at = sqlc.arg(now)
 WHERE id = sqlc.arg(id) AND user_id = sqlc.arg(user_id) AND revoked_at IS NULL;
+
+-- name: RevokeAllAPITokens :execrows
+-- The administrator's password reset (M1/P4 design 3.6): every token of the account not revoked yet, expired
+-- ones too, which would otherwise be listed as live forever.
+UPDATE api_tokens
+SET updated_at = sqlc.arg(now), revoked_at = sqlc.arg(now)
+WHERE user_id = sqlc.arg(user_id) AND revoked_at IS NULL;
+
+-- name: CountUsableAPITokens :one
+-- The tokens that authenticate again once the account is active: neither revoked nor expired.
+SELECT count(*)
+FROM api_tokens
+WHERE user_id = sqlc.arg(user_id) AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > sqlc.arg(now)::timestamptz);

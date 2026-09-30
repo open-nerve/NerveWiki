@@ -24,6 +24,14 @@ FROM users
 WHERE id = sqlc.arg(id)
 FOR NO KEY UPDATE;
 
+-- name: LockUserByEmail :one
+-- The account row lock of the administrator's commands, which name the account by its address (M1/P4 design
+-- 3.6): the same lock as LockUserForCredentials, first in their transactions.
+SELECT id, email, password, is_active
+FROM users
+WHERE email = sqlc.arg(email)
+FOR NO KEY UPDATE;
+
 -- name: UpdatePasswordHash :exec
 UPDATE users
 SET password = sqlc.arg(password), updated_at = sqlc.arg(now)
@@ -59,6 +67,18 @@ RETURNING id, email, display_name, onboarding_steps;
 -- Under the account row lock (M1/P3 design 3.6).
 UPDATE users
 SET is_active = false, updated_at = sqlc.arg(now)
+WHERE id = sqlc.arg(id);
+
+-- name: ActivateUser :exec
+-- Under the account row lock (M1/P4 design 3.6).
+UPDATE users
+SET is_active = true, updated_at = sqlc.arg(now)
+WHERE id = sqlc.arg(id);
+
+-- name: ChangeEmail :exec
+-- Under the account row lock (M1/P4 design 3.6); users_email_key refuses an address in use.
+UPDATE users
+SET email = sqlc.arg(email), updated_at = sqlc.arg(now)
 WHERE id = sqlc.arg(id);
 
 -- name: ShareAccount :one

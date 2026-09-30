@@ -133,6 +133,24 @@ func TestLoginFailsAlikeForAnUnknownAddressAndAWrongPassword(t *testing.T) {
 	}
 }
 
+// An account whose address changed between the lookup and the lock (the
+// administrator's set-email, M1/P4 design 3.6) no longer answers to the old
+// address: 401 as for an unknown one, and no session.
+func TestLoginFailsWhenTheAddressChangedMeanwhile(t *testing.T) {
+	f := newLogin("hashed:Tr0ub4dor&3", true)
+	f.logins.renamed = "alice@example.org"
+
+	_, err := f.uc.Execute(context.Background(), loginInput())
+
+	if !errors.Is(err, domain.ErrInvalidCredentials) || f.logins.locks != 1 || len(f.logins.sessions) != 0 {
+		t.Errorf("Execute() = %v after %d locks with %d sessions; want identity.invalid_credentials under the lock, no session",
+			err, f.logins.locks, len(f.logins.sessions))
+	}
+	if !strings.Contains(f.logs.String(), `"reason":"email_changed"`) {
+		t.Errorf("logs = %s, want the reason", f.logs.String())
+	}
+}
+
 // A deactivated account is told only to whoever knows its password, and
 // only inside the transaction (M1/P2 design 3.4).
 func TestLoginRevealsDeactivationOnlyWithTheRightPassword(t *testing.T) {
