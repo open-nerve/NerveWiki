@@ -1,7 +1,10 @@
 package bootstrap
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -10,6 +13,8 @@ import (
 
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver/apitest"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres/pgtest"
+	"github.com/open-nerve/NerveWiki/server/migrations"
 )
 
 // The whole-program tests (M0/P4 design 3.6): the wired app against the
@@ -69,7 +74,7 @@ func TestPublicOperationsAreTheContractsPublicOperations(t *testing.T) {
 	a := buildApp(t, testConfig(t, unreachableDB, false), sampleMigrations())
 
 	for _, op := range contract.Operations() {
-		req := httptest.NewRequest(op.Method, op.Path, nil)
+		req := httptest.NewRequest(op.Method, op.Target(), nil)
 		rec := httptest.NewRecorder()
 
 		a.router.ServeHTTP(rec, req)
@@ -87,4 +92,203 @@ func TestPublicOperationsAreTheContractsPublicOperations(t *testing.T) {
 				op.Pattern(), res.StatusCode, rec.Body, res.Header.Get("WWW-Authenticate"), op.Public)
 		}
 	}
+}
+
+// Every operation with a JSON body answers a body that breaks its structure
+// with 400 and every broken field, and lets null through where the schema
+// allows it; a body that can be read two ways (a property twice, at the top
+// and in a nested object; bytes that are not UTF-8) gets 400 too, before its
+// structure is checked (M1/P1 design 3.9). Operations that need a token get
+// a valid one, so the body check, not the authentication, answers.
+func TestBodiesThatBreakTheStructureAnswer400(t *testing.T) {
+	contract := apitest.Load(t)
+	base := startApp(t, testConfig(t, pgtest.NewDatabase(t), false), migrations.FS())
+	token := registerAccount(t, contract, base, "body-cases@example.com").AccessToken
+
+	cases := 0
+	for _, op := range contract.Operations() {
+		if !op.HasJSONBody() {
+			continue
+		}
+		for _, c := range op.BodyCases() {
+			cases++
+			t.Run(op.Pattern()+"/"+c.Name, func(t *testing.T) {
+				auth := token
+				if op.Public {
+					auth = ""
+				}
+				req := newRequest(t, op.Method, base+op.Target(), auth, c.Body)
+				res, body := sendRequest(t, req)
+
+				contract.CheckResponse(t, req, res)
+				if c.Accepted {
+					if res.StatusCode == http.StatusBadRequest {
+						t.Errorf("%s = 400 %s, want it accepted", c.Body, body)
+					}
+					return
+				}
+				var p struct {
+					Code   string                 `json:"code"`
+					Errors []apitest.FieldProblem `json:"errors"`
+				}
+				if err := json.Unmarshal(body, &p); err != nil {
+					t.Fatalf("decode %s: %v", body, err)
+				}
+				if res.StatusCode != http.StatusBadRequest || p.Code != "bad_request" || !slices.Equal(p.Errors, c.Fields) {
+					t.Errorf("%s = %d %s, want 400 bad_request with %v", c.Body, res.StatusCode, body, c.Fields)
+				}
+			})
+		}
+	}
+	// register has a body: none found means the derivation broke.
+	if cases == 0 {
+		t.Fatal("no body case derived from the contract")
+	}
+}
+
+// The answer to a body that breaks the structure stays small, whatever the
+// body (M1/P1 design 3.9): each problem at a path of at most 256 bytes, at
+// most 16 problems. Nerve's review sent such bodies to an anonymous
+// operation: 16 problems under one name of about 1 MiB, each repeating the
+// name, got an answer of about 100 MB. 32 KiB holds 16 paths of 256 bytes
+// that the encoding writes 6 bytes each, with their messages.
+func TestTheAnswerToABrokenBodyStaysSmall(t *testing.T) {
+	contract := apitest.Load(t)
+	base := startApp(t, testConfig(t, pgtest.NewDatabase(t), false), migrations.FS())
+
+	angles := strings.Repeat("<", 1<<20-400)
+	var twice, notUTF8 []string
+	for i := range 16 {
+		key := fmt.Sprintf(`"k%02d"`, i)
+		twice = append(twice, key+":1,"+key+":1")
+		notUTF8 = append(notUTF8, key+":\"\xff\"")
+	}
+	tests := []struct {
+		name string
+		body string
+	}{
+		{"names twice under a name of 1 MiB", `{"` + angles + `":{` + strings.Join(twice, ",") + `}}`},
+		{"strings that are not UTF-8 under a name of 1 MiB", `{"` + angles + `":{` + strings.Join(notUTF8, ",") + `}}`},
+		{"names twice under 9,990 names of 90 bytes",
+			strings.Repeat(`{"`+angles[:90]+`":`, 9990) + `{` + strings.Join(twice, ",") + `}` + strings.Repeat("}", 9990)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := newRequest(t, http.MethodPost, base+"/api/v0/auth/register", "", []byte(tt.body))
+			res, body := sendRequest(t, req)
+
+			// The answer is not printed: on a failure it may be 100 MB.
+			contract.CheckResponse(t, req, res)
+			var p struct {
+				Code   string                 `json:"code"`
+				Errors []apitest.FieldProblem `json:"errors"`
+			}
+			if err := json.Unmarshal(body, &p); err != nil {
+				t.Fatalf("decode the answer of %d bytes: %v", len(body), err)
+			}
+			if res.StatusCode != http.StatusBadRequest || p.Code != "bad_request" || len(p.Errors) == 0 {
+				t.Errorf("answer = %d %s with %d problems, want 400 bad_request with some", res.StatusCode, p.Code, len(p.Errors))
+			}
+			if len(body) > 32<<10 {
+				t.Errorf("the answer is %d bytes, want at most 32 KiB", len(body))
+			}
+			longest := 0
+			for _, f := range p.Errors {
+				longest = max(longest, len(f.Field))
+			}
+			if longest > 256 {
+				t.Errorf("a path of %d bytes, want at most 256", longest)
+			}
+		})
+	}
+}
+
+// Every path or query parameter whose Go type rejects some strings answers
+// a wrong value with 400 that names it (M1/P1 design 3.9), before
+// authentication: parameters bind first, so no token is sent. The v0.1
+// contract of P1 has no such parameter yet; ParamCases' own tests hold the
+// derivation.
+func TestParametersThatDoNotBindAnswer400(t *testing.T) {
+	contract := apitest.Load(t)
+	base := startApp(t, testConfig(t, pgtest.NewDatabase(t), false), migrations.FS())
+
+	for _, op := range contract.Operations() {
+		for _, c := range op.ParamCases() {
+			t.Run(op.Pattern()+"/"+c.Name, func(t *testing.T) {
+				req := newRequest(t, op.Method, base+c.Target, "", nil)
+				res, body := sendRequest(t, req)
+
+				contract.CheckResponse(t, req, res)
+				var p struct {
+					Code   string                 `json:"code"`
+					Errors []apitest.FieldProblem `json:"errors"`
+				}
+				if err := json.Unmarshal(body, &p); err != nil {
+					t.Fatalf("decode %s: %v", body, err)
+				}
+				want := []apitest.FieldProblem{{Field: c.Field, Code: "invalid_format"}}
+				if res.StatusCode != http.StatusBadRequest || p.Code != "bad_request" || !slices.Equal(p.Errors, want) {
+					t.Errorf("%s = %d %s, want 400 bad_request with %v", c.Target, res.StatusCode, body, want)
+				}
+			})
+		}
+	}
+}
+
+// authTokens is the AuthTokens answer.
+type authTokens struct {
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+}
+
+// registerAccount signs up email through the app and returns its tokens.
+func registerAccount(t *testing.T, contract *apitest.Contract, base, email string) authTokens {
+	t.Helper()
+	req := newRequest(t, http.MethodPost, base+"/api/v0/auth/register", "",
+		[]byte(`{"email":"`+email+`","password":"Tr0ub4dor&3"}`))
+	contract.CheckRequest(t, req)
+	res, body := sendRequest(t, req)
+	contract.CheckResponse(t, req, res)
+	var tokens authTokens
+	if res.StatusCode != http.StatusCreated || json.Unmarshal(body, &tokens) != nil {
+		t.Fatalf("register %s = %d %s, want 201 with tokens", email, res.StatusCode, body)
+	}
+	return tokens
+}
+
+// newRequest builds a request with an optional bearer token and JSON body.
+func newRequest(t *testing.T, method, url, token string, body []byte) *http.Request {
+	t.Helper()
+	var r io.Reader
+	if body != nil {
+		r = bytes.NewReader(body)
+	}
+	req, err := http.NewRequest(method, url, r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	return req
+}
+
+// sendRequest sends req and returns the response with its body read, which
+// also stays readable in res.Body.
+func sendRequest(t *testing.T, req *http.Request) (*http.Response, []byte) {
+	t.Helper()
+	res, err := client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := io.ReadAll(res.Body)
+	_ = res.Body.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body = io.NopCloser(bytes.NewReader(body))
+	return res, body
 }

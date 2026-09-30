@@ -119,12 +119,18 @@ func startApp(t *testing.T, cfg config.Config, migrations fs.FS) string {
 	t.Helper()
 	a := buildApp(t, cfg, migrations)
 	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan error, 1)
-	go func() { done <- a.run(ctx) }()
+	// run's result goes to both: waitHealthy takes it from done when the
+	// server stops early, and the cleanup still finds it in stopped.
+	done, stopped := make(chan error, 1), make(chan error, 1)
+	go func() {
+		err := a.run(ctx)
+		done <- err
+		stopped <- err
+	}()
 	// Cleanups run last-in first-out: run stops before buildApp's close.
 	t.Cleanup(func() {
 		cancel()
-		if err := <-done; err != nil {
+		if err := <-stopped; err != nil {
 			t.Errorf("run() = %v, want nil after cancel", err)
 		}
 	})
