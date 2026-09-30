@@ -71,8 +71,10 @@ type LockedAccount struct {
 }
 
 // CredentialLocker takes the account row lock that every transaction
-// issuing or changing a credential takes first (M1 design 4): login here,
-// changing the password and creating a token from P3.
+// issuing or changing a credential of an existing account takes first (M1
+// design 4): login here, changing the password and creating a token from
+// P3. Registration creates the account in its transaction: there is no row
+// to lock yet.
 type CredentialLocker interface {
 	// LockForCredentials locks account id's row until the transaction ends
 	// (SELECT … FOR NO KEY UPDATE) and returns it; ErrNotFound when there

@@ -179,6 +179,41 @@ func TestConcurrentRefreshesOfOneToken(t *testing.T) {
 	}
 }
 
+// A refresh that cannot finish within auth.refresh_deadline answers 500
+// and changes nothing: its statements are abandoned before COMMIT, so the
+// token it was given is still the current one, and a retry rotates (M1/P2
+// design 3.5, review M1).
+func TestARefreshPastItsDeadlineChangesNothing(t *testing.T) {
+	ctx := context.Background()
+	pool := newPool(t)
+	h := newServerWithDeadline(t, pool, clocktest.At(testStart()), 200*time.Millisecond)
+	_, tokens := register(h, "alice@corp.com")
+	held, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = held.Rollback(ctx) }()
+	if _, err := held.Exec(ctx, `SELECT 1 FROM auth_sessions FOR UPDATE`); err != nil {
+		t.Fatal(err)
+	}
+
+	begin := time.Now()
+	late, _ := refresh(h, tokens.RefreshToken)
+	took := time.Since(begin)
+	if err := held.Rollback(ctx); err != nil {
+		t.Fatal(err)
+	}
+	retry, _ := refresh(h, tokens.RefreshToken)
+
+	// The request timeout is 5 seconds: the refresh deadline answered.
+	if late.Code != http.StatusInternalServerError || took > 2*time.Second || retry.Code != http.StatusOK {
+		t.Errorf("refresh past the deadline = %d %s after %v, the retry = %d; want 500 within the deadline, then 200", late.Code, late.Body, took, retry.Code)
+	}
+	if s := onlySession(t, pool); s.generation != 1 || s.reason != nil {
+		t.Errorf("session = %+v, want generation 1 from the retry alone, live", s)
+	}
+}
+
 // A session ends at its expiry, however recently it was refreshed.
 func TestRefreshEndsWithTheSession(t *testing.T) {
 	pool := newPool(t)

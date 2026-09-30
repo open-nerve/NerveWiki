@@ -9,7 +9,7 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/modules/identity/domain"
 )
 
-// Tokens are what registration (and, from P2, login and refresh) return.
+// Tokens are what registration, login and refresh return.
 type Tokens struct {
 	AccessToken      string
 	AccessExpiresIn  time.Duration

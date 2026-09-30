@@ -1,7 +1,7 @@
 // Package identity is the accounts module (M1 design): accounts, sessions
-// and, from P3, personal access tokens. It brings registration, the
-// caller's account, and the authentication every other operation goes
-// through.
+// and, from P3, personal access tokens. It brings registration, sign-in,
+// refresh and sign-out, the caller's account, and the authentication every
+// other operation goes through.
 package identity
 
 import (
@@ -64,9 +64,10 @@ type RateLimits struct {
 
 // Module is the wired identity module.
 type Module struct {
-	uc            httpadapter.UseCases
-	settings      httpadapter.Settings
-	authenticator *authn.Authenticator
+	uc              httpadapter.UseCases
+	settings        httpadapter.Settings
+	refreshDeadline time.Duration
+	authenticator   *authn.Authenticator
 }
 
 // New wires the module. A signing key that cannot be parsed is an error
@@ -112,9 +113,9 @@ func New(d Deps) (*Module, error) {
 				LoginIPEmail: d.RateLimits.LoginIPEmail,
 				RegisterIP:   d.RateLimits.RegisterIP,
 			},
-			RefreshDeadline: d.RefreshDeadline,
-			Logger:          d.Logger,
+			Logger: d.Logger,
 		},
+		refreshDeadline: d.RefreshDeadline,
 		authenticator: authn.New(app.NewAuthenticate(app.AuthenticateDeps{
 			AccessTokens: tokens, Sessions: store, Clock: d.Clock,
 		})),
@@ -137,6 +138,11 @@ func signingKeys(d Deps) (*signing.Keys, error) {
 // PublicOperations are the module's routes that need no token.
 func (m *Module) PublicOperations() []string {
 	return httpadapter.PublicOperations()
+}
+
+// RequestTimeouts are the module's routes with a deadline of their own.
+func (m *Module) RequestTimeouts() map[string]time.Duration {
+	return httpadapter.RequestTimeouts(m.refreshDeadline)
 }
 
 // Authenticator checks the bearer token of every non-public operation.

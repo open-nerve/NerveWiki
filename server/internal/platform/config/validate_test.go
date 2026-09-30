@@ -166,6 +166,15 @@ func TestValidateCrossKeyRules(t *testing.T) {
 			want: "auth.refresh_deadline: plus database.commit_timeout (3s) must be less than 8s, the web client's refresh timeout, got 5s",
 		},
 		{
+			name:   "a refresh deadline as long as the request timeout",
+			mutate: func(c *Config) { c.Auth.RefreshDeadline, c.Server.RequestTimeout = 4*time.Second, 4*time.Second },
+		},
+		{
+			name:   "a refresh deadline beyond the request timeout",
+			mutate: func(c *Config) { c.Auth.RefreshDeadline, c.Server.RequestTimeout = 4*time.Second, 3*time.Second },
+			want:   "auth.refresh_deadline: must be at most server.request_timeout (3s), got 4s",
+		},
+		{
 			name:   "an IPv6 prefix of a single address",
 			mutate: func(c *Config) { c.RateLimit.IPv6PrefixLen = 128 },
 		},

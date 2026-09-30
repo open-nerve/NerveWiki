@@ -34,7 +34,7 @@ func limitedServer(t *testing.T, uc httpadapter.UseCases, logs *bytes.Buffer) ht
 
 func serverWithLimits(t *testing.T, uc httpadapter.UseCases, limits httpadapter.Limits, logs *bytes.Buffer) http.Handler {
 	t.Helper()
-	return serverWith(t, uc, httpadapter.Settings{Limits: limits, RefreshDeadline: refreshDeadline, Logger: slog.New(slog.NewJSONHandler(logs, nil))})
+	return serverWith(t, uc, httpadapter.Settings{Limits: limits, Logger: slog.New(slog.NewJSONHandler(logs, nil))})
 }
 
 // rateLimitLogs are the "rate limited" entries of logs.

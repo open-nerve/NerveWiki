@@ -79,6 +79,9 @@ func (c Config) validate() error {
 	case c.Auth.RefreshDeadline+c.Database.CommitTimeout >= webRefreshTimeout:
 		fail("auth.refresh_deadline", "plus database.commit_timeout (%s) must be less than %s, the web client's refresh timeout, got %s",
 			c.Database.CommitTimeout, webRefreshTimeout, c.Auth.RefreshDeadline)
+	case c.Server.RequestTimeout > 0 && c.Auth.RefreshDeadline > c.Server.RequestTimeout:
+		// It is the request deadline of refresh and logout: a shorter one.
+		fail("auth.refresh_deadline", "must be at most server.request_timeout (%s), got %s", c.Server.RequestTimeout, c.Auth.RefreshDeadline)
 	}
 	c.RateLimit.validate(fail)
 	var level slog.Level

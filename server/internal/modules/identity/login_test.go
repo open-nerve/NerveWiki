@@ -95,8 +95,10 @@ func TestLoginOfADeactivatedAccount(t *testing.T) {
 }
 
 // A hash of other parameters is replaced at the next sign-in; concurrent
-// sign-ins all succeed, whichever writes the new hash (the loser verifies
-// again against it, M1/P2 design 3.4).
+// sign-ins all succeed and leave one hash of the current parameters. The
+// order is not forced: that a login whose snapshot changed verifies again
+// (M1/P2 design 3.4) is the use case's test with a hash that changes
+// meanwhile.
 func TestLoginRehashesAnOldHash(t *testing.T) {
 	h, pool := newServer(t)
 	register(h, "alice@corp.com")

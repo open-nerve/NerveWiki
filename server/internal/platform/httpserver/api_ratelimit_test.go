@@ -81,8 +81,8 @@ func TestRateLimitedRequestIs429(t *testing.T) {
 					rec.Code, rec.Body, retry, got.called, want)
 			}
 			entry := findLog(logs(), "rate limited")
-			if entry == nil || entry["level"] != "INFO" || entry["bucket"] != tt.bucket || entry["ip"] != "203.0.113.7" {
-				t.Errorf("log = %v, want bucket %s and the client at info level", entry, tt.bucket)
+			if entry == nil || entry["level"] != "DEBUG" || entry["bucket"] != tt.bucket || entry["ip"] != "203.0.113.7" {
+				t.Errorf("log = %v, want bucket %s and the client at debug level", entry, tt.bucket)
 			}
 		})
 	}
@@ -145,8 +145,8 @@ func TestFailureGateTurnsAwayWithoutAuthenticating(t *testing.T) {
 		t.Errorf("authenticator called %d times, handler called %v; want 2 and false", auth.calls, got.called)
 	}
 	entry := findLog(logs(), "rate limited")
-	if entry == nil || entry["level"] != "INFO" || entry["bucket"] != "auth_failure" || entry["ip"] != "203.0.113.7" {
-		t.Errorf("log = %v, want the auth_failure bucket and the client at info level", entry)
+	if entry == nil || entry["level"] != "DEBUG" || entry["bucket"] != "auth_failure" || entry["ip"] != "203.0.113.7" {
+		t.Errorf("log = %v, want the auth_failure bucket and the client at debug level", entry)
 	}
 
 	other := request("/api/v0/things", "tok")

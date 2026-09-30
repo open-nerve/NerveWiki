@@ -36,9 +36,11 @@ func (a *API) rateLimit(next http.Handler) http.Handler {
 }
 
 // tooManyRequests answers 429 rate_limited with Retry-After and logs which
-// bucket turned the client away.
+// bucket turned the client away, at debug level: the access log has the 429
+// at info already, and a line more per refused request would let a client
+// that no bucket stops double the log (M1/P2 review M2).
 func (a *API) tooManyRequests(w http.ResponseWriter, r *http.Request, bucket string, retry time.Duration) {
-	a.logger.LogAttrs(r.Context(), slog.LevelInfo, "rate limited",
+	a.logger.LogAttrs(r.Context(), slog.LevelDebug, "rate limited",
 		slog.String("request_id", RequestID(r.Context())), slog.String("bucket", bucket),
 		slog.String("ip", RequestMetaFrom(r.Context()).ClientIP.String()))
 	a.Errors.Write(w, r, rateLimited(retry))

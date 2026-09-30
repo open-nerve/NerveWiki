@@ -112,6 +112,7 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrati
 		PublicOperations: slices.Concat(ident.PublicOperations(), inst.PublicOperations()),
 		MaxBodyBytes:     cfg.Server.MaxBodyBytes,
 		RequestTimeout:   cfg.Server.RequestTimeout,
+		RequestTimeouts:  ident.RequestTimeouts(),
 		TrustedProxies:   cfg.Server.TrustedProxies,
 		IPv6PrefixLen:    limits.IPv6PrefixLen,
 		Anonymous:        bucket(limiter, "anonymous", limits.Anonymous),

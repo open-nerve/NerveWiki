@@ -43,8 +43,10 @@ func TestTheConfiguredBucketsLimitTheWholeApp(t *testing.T) {
 		if res.StatusCode != s.want {
 			t.Errorf("%s: %s %s = %d %s, want %d", s.name, s.method, s.path, res.StatusCode, body, s.want)
 		}
-		if retry := res.Header.Get("Retry-After"); s.want == http.StatusTooManyRequests && retry != "60" {
-			t.Errorf("%s: Retry-After %q, want 60 (a unit a minute)", s.name, retry)
+		// A unit a minute: 60 seconds from the first unit taken, rounded up;
+		// 59 once a second has passed since (M1/P2 review N2).
+		if retry := res.Header.Get("Retry-After"); s.want == http.StatusTooManyRequests && retry != "60" && retry != "59" {
+			t.Errorf("%s: Retry-After %q, want 59 or 60 (a unit a minute)", s.name, retry)
 		}
 	}
 }

@@ -23,13 +23,17 @@ func WaitForLockWaits(t testing.TB, pool *pgxpool.Pool, n int, limit time.Durati
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), limit)
 	defer cancel()
+	seen := 0 // the last count read: at the deadline, the query itself fails
 	for {
 		var waiting int
 		err := pool.QueryRow(ctx,
 			"SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'").Scan(&waiting)
+		if err == nil {
+			seen = waiting
+		}
 		switch {
 		case ctx.Err() != nil:
-			t.Fatalf("fewer than %d statements waited for a lock within %v", n, limit)
+			t.Fatalf("%d statement(s) waited for a lock within %v, want at least %d", seen, limit, n)
 		case err != nil:
 			t.Fatal(err)
 		case waiting >= n:

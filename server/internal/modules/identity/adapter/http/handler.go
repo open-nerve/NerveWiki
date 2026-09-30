@@ -53,11 +53,7 @@ type UseCases struct {
 // Settings are what the handler applies around the use cases.
 type Settings struct {
 	Limits Limits
-	// RefreshDeadline bounds refresh and logout (auth.refresh_deadline): it
-	// is part of the rotation protocol, shorter than the web client's
-	// timeout (M1/P2 design 3.5).
-	RefreshDeadline time.Duration
-	Logger          *slog.Logger
+	Logger *slog.Logger
 }
 
 // PublicOperations are the module's routes that need no token (M1/P1
@@ -68,6 +64,17 @@ func PublicOperations() []string {
 		"POST /api/v0/auth/login",
 		"POST /api/v0/auth/refresh",
 		"POST /api/v0/auth/logout",
+	}
+}
+
+// RequestTimeouts are the module's routes that answer sooner than the
+// request timeout (M1/P2 design 3.5): refresh and logout, within
+// refreshDeadline (auth.refresh_deadline). It is part of the rotation
+// protocol: the server answers before the web client gives up.
+func RequestTimeouts(refreshDeadline time.Duration) map[string]time.Duration {
+	return map[string]time.Duration{
+		"POST /api/v0/auth/refresh": refreshDeadline,
+		"POST /api/v0/auth/logout":  refreshDeadline,
 	}
 }
 

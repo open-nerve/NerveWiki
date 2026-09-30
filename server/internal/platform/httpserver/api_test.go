@@ -245,6 +245,55 @@ func TestOperationsRunUnderTheRequestDeadline(t *testing.T) {
 	}
 }
 
+// A route of RequestTimeouts runs under its own, shorter deadline; the
+// others keep RequestTimeout. When it expires, the answer and the log are
+// those of any request deadline (M1/P2 review M1): a warning, not a fault.
+func TestARouteTimeoutBoundsItsRoute(t *testing.T) {
+	logger, logs := captureLogs(t)
+	cfg := testAPIConfig(&fakeAuth{}, logger)
+	cfg.RequestTimeouts = map[string]time.Duration{openRoute: 50 * time.Millisecond}
+	api := buildAPI(t, cfg)
+	var h http.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done() // a statement waiting for a lock
+		api.Errors.Write(w, r, fmt.Errorf("rotate session: %w", r.Context().Err()))
+	})
+	for _, m := range api.Middlewares(thingBody()) {
+		h = m(h)
+	}
+	router := NewRouter(slog.New(slog.DiscardHandler))
+	router.Handle(openRoute, h)
+	begin := time.Now()
+
+	rec := serve(router, post("/api/v0/open", `{"name":"a"}`))
+
+	if took := time.Since(begin); took < 50*time.Millisecond || took > time.Second {
+		t.Errorf("the route answered after %v, want its 50ms deadline", took)
+	}
+	if p := decodeProblem(t, rec); rec.Code != http.StatusInternalServerError || p.Code != CodeInternal {
+		t.Errorf("response = %d %+v, want 500 internal_error", rec.Code, p)
+	}
+	if entry := findLog(logs(), "API request deadline exceeded"); entry == nil || entry["level"] != "WARN" {
+		t.Errorf("logs = %v, want a warning that the request ran out of time", logs())
+	}
+	other, got := mount(api)
+	serve(other, post("/api/v0/things", `{"name":"a"}`))
+	if deadline, ok := got.ctx.Deadline(); !ok || time.Until(deadline) < time.Second {
+		t.Errorf("another route's deadline = %v (set %v), want RequestTimeout's 2s", deadline, ok)
+	}
+}
+
+// A route timeout must be positive and no longer than RequestTimeout.
+func TestNewAPIChecksRouteTimeouts(t *testing.T) {
+	for d, ok := range map[time.Duration]bool{0: false, time.Millisecond: true, 2 * time.Second: true, 3 * time.Second: false} {
+		cfg := testAPIConfig(&fakeAuth{}, slog.New(slog.DiscardHandler))
+		cfg.RequestTimeouts = map[string]time.Duration{openRoute: d}
+		want := fmt.Sprintf(`httpserver: APIConfig: RequestTimeouts["POST /api/v0/open"] %v is outside (0, RequestTimeout 2s]`, d)
+		if _, err := NewAPI(cfg); ok != (err == nil) || (err != nil && err.Error() != want) {
+			t.Errorf("NewAPI(RequestTimeouts %v) error = %v, want ok %v", d, err, ok)
+		}
+	}
+}
+
 // slowBody delivers its content only after a pause, as a slow client does.
 type slowBody struct {
 	pause time.Duration

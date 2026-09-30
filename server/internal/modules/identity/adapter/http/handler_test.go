@@ -120,12 +120,12 @@ func newServer(t *testing.T, uc httpadapter.UseCases) http.Handler {
 		Limits: httpadapter.Limits{
 			Limiter: limiter, LoginIP: roomy("login_ip"), LoginIPEmail: roomy("login_ip_email"), RegisterIP: roomy("register_ip"),
 		},
-		RefreshDeadline: refreshDeadline,
-		Logger:          slog.New(slog.DiscardHandler),
+		Logger: slog.New(slog.DiscardHandler),
 	})
 }
 
-// refreshDeadline is shorter than the request timeout of serverWith.
+// refreshDeadline is the request deadline of refresh and logout, shorter
+// than the request timeout of serverWith.
 const refreshDeadline = 3 * time.Second
 
 // serverWith serves the module with uc and s behind the platform's
@@ -141,6 +141,7 @@ func serverWith(t *testing.T, uc httpadapter.UseCases, s httpadapter.Settings) h
 		PublicOperations: httpadapter.PublicOperations(),
 		MaxBodyBytes:     1024,
 		RequestTimeout:   5 * time.Second,
+		RequestTimeouts:  httpadapter.RequestTimeouts(refreshDeadline),
 		IPv6PrefixLen:    64,
 		Anonymous:        limit,
 		Authenticated:    limit,

@@ -45,10 +45,9 @@ func (h handler) Login(ctx context.Context, req gen.LoginRequestObject) (gen.Log
 }
 
 // RefreshTokens serves POST /api/v0/auth/refresh, within the refresh
-// deadline. Only the platform's anonymous bucket limits it.
+// deadline (RequestTimeouts). Only the platform's anonymous bucket limits
+// it.
 func (h handler) RefreshTokens(ctx context.Context, req gen.RefreshTokensRequestObject) (gen.RefreshTokensResponseObject, error) {
-	ctx, cancel := context.WithTimeout(ctx, h.s.RefreshDeadline)
-	defer cancel()
 	tokens, err := h.uc.Refresh.Execute(ctx, req.Body.RefreshToken, httpserver.RequestMetaFrom(ctx).ClientIP)
 	if err != nil {
 		return nil, err
@@ -56,11 +55,9 @@ func (h handler) RefreshTokens(ctx context.Context, req gen.RefreshTokensRequest
 	return gen.RefreshTokens200JSONResponse(authTokens(tokens)), nil
 }
 
-// Logout serves POST /api/v0/auth/logout, within the refresh deadline. Only
-// the platform's anonymous bucket limits it.
+// Logout serves POST /api/v0/auth/logout, within the refresh deadline
+// (RequestTimeouts). Only the platform's anonymous bucket limits it.
 func (h handler) Logout(ctx context.Context, req gen.LogoutRequestObject) (gen.LogoutResponseObject, error) {
-	ctx, cancel := context.WithTimeout(ctx, h.s.RefreshDeadline)
-	defer cancel()
 	if err := h.uc.Logout.Execute(ctx, req.Body.RefreshToken); err != nil {
 		return nil, err
 	}

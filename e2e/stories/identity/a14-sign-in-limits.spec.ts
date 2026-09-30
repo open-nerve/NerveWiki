@@ -6,6 +6,11 @@ import { expect, test } from "../../fixtures/test";
 
 // A14, sign-in limits (M1 design 3, M1/P2 design 3.2, 3.3).
 
+/** A bucket that regains a unit a minute: 60 seconds, or 59 once a second has passed since its first unit went. */
+function expectAMinute(retryAfter: string | null): void {
+  expect(["59", "60"], `Retry-After ${retryAfter}`).toContain(retryAfter);
+}
+
 test("A14 (API): sign-ins are limited per client IP and address, then per client IP", async ({
   db,
   nervewikiWith,
@@ -33,7 +38,7 @@ test("A14 (API): sign-ins are limited per client IP and address, then per client
     expect(response.status, address).toBe(want);
     if (want === 429) {
       expect(error?.code).toBe("rate_limited");
-      expect(response.headers.get("Retry-After")).toBe("60");
+      expectAMinute(response.headers.get("Retry-After"));
     }
   };
 
@@ -78,7 +83,7 @@ test("A14 (API): tokens that fail empty the gate before authentication; a valid 
   for (const { response, error } of await Promise.all([me("not-a-token"), me(tokens.access_token)])) {
     expect(response.status).toBe(429);
     expect(error?.code).toBe("rate_limited");
-    expect(response.headers.get("Retry-After")).toBe("60");
+    expectAMinute(response.headers.get("Retry-After"));
   }
 });
 

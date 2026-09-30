@@ -24,7 +24,8 @@ func TestWaitForLockWaitsCountsItsOwnDatabase(t *testing.T) {
 	three := fatalOf(func(tb testing.TB) { pgtest.WaitForLockWaits(tb, pool, 3, 300*time.Millisecond) })
 	other := fatalOf(func(tb testing.TB) { pgtest.WaitForLockWaits(tb, idlePool, 1, 300*time.Millisecond) })
 
-	if three != "fewer than 3 statements waited for a lock within 300ms" || other != "fewer than 1 statements waited for a lock within 300ms" {
+	if three != "2 statement(s) waited for a lock within 300ms, want at least 3" ||
+		other != "0 statement(s) waited for a lock within 300ms, want at least 1" {
 		t.Errorf("3 waits failed with %q, the other database with %q; want both to fail at their deadline", three, other)
 	}
 }
@@ -56,7 +57,7 @@ func TestWaitForLockWaitsFailsAtItsDeadlineOnAnExhaustedPool(t *testing.T) {
 	}()
 	select {
 	case got := <-failed:
-		if got != "fewer than 1 statements waited for a lock within 300ms" {
+		if got != "0 statement(s) waited for a lock within 300ms, want at least 1" {
 			t.Errorf("WaitForLockWaits failed with %q, want it to fail at its deadline", got)
 		}
 	case <-time.After(10 * time.Second):

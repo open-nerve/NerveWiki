@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net/http"
 	"net/netip"
 	"slices"
@@ -40,10 +41,15 @@ type APIConfig struct {
 	// PublicOperations are the route patterns that need no token, e.g.
 	// "POST /api/v0/auth/register": the union of every module's list.
 	PublicOperations []string
-	MaxBodyBytes     int64          // server.max_body_bytes
-	RequestTimeout   time.Duration  // server.request_timeout
-	TrustedProxies   []netip.Prefix // server.trusted_proxies
-	IPv6PrefixLen    int            // ratelimit.ipv6_prefix_len
+	MaxBodyBytes     int64         // server.max_body_bytes
+	RequestTimeout   time.Duration // server.request_timeout
+	// RequestTimeouts are the route patterns whose deadline is shorter
+	// than RequestTimeout, with that deadline: a module's protocol can need
+	// an answer sooner (M1/P2 design 3.5). Their expiry is a request
+	// deadline like any other.
+	RequestTimeouts map[string]time.Duration
+	TrustedProxies  []netip.Prefix // server.trusted_proxies
+	IPv6PrefixLen   int            // ratelimit.ipv6_prefix_len
 	// The platform's rate-limit buckets (M1/P2 design 3.2).
 	Anonymous     Limiter // ratelimit.anonymous: public operations, by client IP
 	Authenticated Limiter // ratelimit.authenticated: the rest, by credential
@@ -59,6 +65,7 @@ type API struct {
 	public         map[string]bool
 	maxBodyBytes   int64
 	requestTimeout time.Duration
+	timeouts       map[string]time.Duration
 	clients        *clientIPs
 	anonymous      Limiter
 	authenticated  Limiter
@@ -67,7 +74,8 @@ type API struct {
 
 // NewAPI returns the API value for cfg. It needs a logger, an
 // authenticator, the three buckets, a body limit and a request timeout
-// above zero, and an IPv6 prefix length from 1 to 128.
+// above zero, route timeouts above zero and at most the request timeout,
+// and an IPv6 prefix length from 1 to 128.
 func NewAPI(cfg APIConfig) (*API, error) {
 	var errs []error
 	for _, dep := range []struct {
@@ -93,6 +101,11 @@ func NewAPI(cfg APIConfig) (*API, error) {
 	if cfg.RequestTimeout <= 0 {
 		errs = append(errs, errors.New("RequestTimeout must be positive"))
 	}
+	for _, route := range slices.Sorted(maps.Keys(cfg.RequestTimeouts)) {
+		if d := cfg.RequestTimeouts[route]; d <= 0 || d > cfg.RequestTimeout {
+			errs = append(errs, fmt.Errorf("RequestTimeouts[%q] %v is outside (0, RequestTimeout %v]", route, d, cfg.RequestTimeout))
+		}
+	}
 	if len(errs) > 0 {
 		return nil, fmt.Errorf("httpserver: APIConfig: %w", errors.Join(errs...))
 	}
@@ -107,6 +120,7 @@ func NewAPI(cfg APIConfig) (*API, error) {
 		public:         public,
 		maxBodyBytes:   cfg.MaxBodyBytes,
 		requestTimeout: cfg.RequestTimeout,
+		timeouts:       maps.Clone(cfg.RequestTimeouts),
 		clients:        &clientIPs{logger: cfg.Logger, trusted: cfg.TrustedProxies, v6Prefix: cfg.IPv6PrefixLen},
 		anonymous:      cfg.Anonymous,
 		authenticated:  cfg.Authenticated,
@@ -169,10 +183,15 @@ func (a *API) requestMeta(next http.Handler) http.Handler {
 
 // deadline bounds the handler: server.write_timeout only fails the writes
 // and never cancels the request's context, so without it a handler's
-// database calls could outlive the response.
+// database calls could outlive the response. A route of RequestTimeouts
+// gets its own, shorter deadline.
 func (a *API) deadline(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx, cancel := context.WithTimeout(r.Context(), a.requestTimeout)
+		timeout, ok := a.timeouts[r.Pattern]
+		if !ok {
+			timeout = a.requestTimeout
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), timeout)
 		defer cancel()
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})

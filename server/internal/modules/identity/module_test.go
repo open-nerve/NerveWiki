@@ -57,12 +57,19 @@ func newPool(t *testing.T) *pgxpool.Pool {
 // and after a change of the key.
 func newServerOn(t *testing.T, pool *pgxpool.Pool, clock *clocktest.Fixed) http.Handler {
 	t.Helper()
+	return newServerWithDeadline(t, pool, clock, 4*time.Second)
+}
+
+// newServerWithDeadline is newServerOn with auth.refresh_deadline set to
+// refreshDeadline.
+func newServerWithDeadline(t *testing.T, pool *pgxpool.Pool, clock *clocktest.Fixed, refreshDeadline time.Duration) http.Handler {
+	t.Helper()
 	logger := slog.New(slog.DiscardHandler)
 	limiter := ratelimit.New(time.Now)
 	limit := limiter.Bucket("test", ratelimit.Rate{PerMinute: 600000, Burst: 100000})
 	m, err := identity.New(identity.Deps{
 		Pool: pool, Tx: postgres.NewTxManager(pool, 2*time.Second), Clock: clock, Logger: logger,
-		SignupPolicy: openSignup{}, AccessTokenTTL: 15 * time.Minute, SessionTTL: 720 * time.Hour, RefreshDeadline: 4 * time.Second,
+		SignupPolicy: openSignup{}, AccessTokenTTL: 15 * time.Minute, SessionTTL: 720 * time.Hour, RefreshDeadline: refreshDeadline,
 		Password:   testPassword(),
 		RateLimits: identity.RateLimits{Limiter: limiter, LoginIP: limit, LoginIPEmail: limit, RegisterIP: limit},
 	})
@@ -71,7 +78,7 @@ func newServerOn(t *testing.T, pool *pgxpool.Pool, clock *clocktest.Fixed) http.
 	}
 	api, err := httpserver.NewAPI(httpserver.APIConfig{
 		Logger: logger, Authenticator: m.Authenticator(), PublicOperations: m.PublicOperations(),
-		MaxBodyBytes: 1 << 20, RequestTimeout: 5 * time.Second,
+		MaxBodyBytes: 1 << 20, RequestTimeout: 5 * time.Second, RequestTimeouts: m.RequestTimeouts(),
 		IPv6PrefixLen: 64, Anonymous: limit, Authenticated: limit, AuthFailure: limit,
 	})
 	if err != nil {
