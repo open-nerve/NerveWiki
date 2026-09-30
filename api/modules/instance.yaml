@@ -12,7 +12,8 @@ paths:
       summary: Describe this instance
       description: >-
         Reports the product, the build and the API version this instance
-        runs. Public: needs no authentication.
+        runs, and whether it is open for sign-up. Public: needs no
+        authentication.
       security: []
       x-problem-codes: []
       responses:
@@ -36,6 +37,14 @@ components:
           schema:
             type: integer
             minimum: 1
+        WWW-Authenticate:
+          description: >-
+            Sent with every 401 (RFC 9110 15.5.2): Bearer error="invalid_token"
+            (RFC 6750 3) when the bearer token sent is refused before the
+            operation runs, being invalid or expired; plain Bearer for every
+            other 401.
+          schema:
+            type: string
       content:
         application/problem+json:
           schema:
@@ -44,7 +53,7 @@ components:
     InstanceInfo:
       type: object
       additionalProperties: false
-      required: [product, version, commit, api_version]
+      required: [product, version, commit, api_version, signup_enabled]
       properties:
         product:
           description: Product name.
@@ -61,3 +70,8 @@ components:
           description: Version of this HTTP API; every path starts with /api/{api_version}.
           type: string
           enum: [v0]
+        signup_enabled:
+          description: >-
+            Whether anyone may register (auth.signup_enabled); when off, the
+            server's administrator creates the accounts.
+          type: boolean

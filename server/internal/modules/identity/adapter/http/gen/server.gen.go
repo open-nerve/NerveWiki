@@ -11,58 +11,76 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
+	"uuid"
 
 	externalRef0 "github.com/open-nerve/NerveWiki/server/internal/platform/httpserver/apigen"
 )
 
-// Defines values for InstanceInfoAPIVersion.
+// Defines values for AuthTokensTokenType.
 const (
-	InstanceInfoAPIVersionV0 InstanceInfoAPIVersion = "v0"
+	AuthTokensTokenTypeBearer AuthTokensTokenType = "Bearer"
 )
 
-// Valid indicates whether the value is a known member of the InstanceInfoAPIVersion enum.
-func (e InstanceInfoAPIVersion) Valid() bool {
+// Valid indicates whether the value is a known member of the AuthTokensTokenType enum.
+func (e AuthTokensTokenType) Valid() bool {
 	switch e {
-	case InstanceInfoAPIVersionV0:
+	case AuthTokensTokenTypeBearer:
 		return true
 	default:
 		return false
 	}
 }
 
-// InstanceInfo defines model for InstanceInfo.
-type InstanceInfo struct {
-	// APIVersion Version of this HTTP API; every path starts with /api/{api_version}.
-	APIVersion InstanceInfoAPIVersion `json:"api_version"`
+// AuthTokens A session's tokens. Send access_token as "Authorization: Bearer"; access_token_expires_in counts from the response, so a client's clock does not matter.
+type AuthTokens struct {
+	AccessToken string `json:"access_token"`
 
-	// Commit Git revision of the running build; "unknown" when the build carries no VCS stamp.
-	Commit string `json:"commit"`
+	// AccessTokenExpiresIn Seconds from this response until the access token expires.
+	AccessTokenExpiresIn int `json:"access_token_expires_in"`
 
-	// Product Product name.
-	//
-	// Examples: Nerve Wiki
-	Product string `json:"product"`
+	// RefreshToken An opaque nwk_rt_ token.
+	RefreshToken string `json:"refresh_token"`
 
-	// SignupEnabled Whether anyone may register (auth.signup_enabled); when off, the server's administrator creates the accounts.
-	SignupEnabled bool `json:"signup_enabled"`
-
-	// Version Product version of the running build.
-	//
-	// Examples: 0.1.0-dev
-	Version string `json:"version"`
+	// RefreshTokenExpiresAt When the session ends; refreshing never extends it.
+	RefreshTokenExpiresAt time.Time           `json:"refresh_token_expires_at"`
+	TokenType             AuthTokensTokenType `json:"token_type"`
 }
 
-// InstanceInfoAPIVersion Version of this HTTP API; every path starts with /api/{api_version}.
-type InstanceInfoAPIVersion string
+// AuthTokensTokenType defines model for AuthTokens.TokenType.
+type AuthTokensTokenType string
+
+// RegisterRequest defines model for RegisterRequest.
+type RegisterRequest struct {
+	// Email The sign-in address; stored trimmed and in lower case.
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
+// User defines model for User.
+type User struct {
+	DisplayName string    `json:"display_name"`
+	Email       string    `json:"email"`
+	ID          uuid.UUID `json:"id"`
+
+	// OnboardingSteps The ids of the onboarding steps the account has completed; the web app defines the steps.
+	OnboardingSteps []string `json:"onboarding_steps"`
+}
 
 // Problem RFC 9457 problem details. `title` is the HTTP status phrase, `detail` explains this occurrence, and clients branch on `code`. Must match httpserver.Problem; the platform's contract test checks it.
 type Problem = externalRef0.Problem
 
+// RegisterJSONRequestBody defines body for Register for application/json ContentType.
+type RegisterJSONRequestBody = RegisterRequest
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
-	// GetInstance Describe this instance
-	// (GET /api/v0/instance)
-	GetInstance(w http.ResponseWriter, r *http.Request)
+	// Register Create an account and sign in
+	// (POST /api/v0/auth/register)
+	Register(w http.ResponseWriter, r *http.Request)
+	// GetMe Read the caller's account
+	// (GET /api/v0/me)
+	GetMe(w http.ResponseWriter, r *http.Request)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -74,11 +92,25 @@ type ServerInterfaceWrapper struct {
 
 type MiddlewareFunc func(http.Handler) http.Handler
 
-// GetInstance operation middleware
-func (siw *ServerInterfaceWrapper) GetInstance(w http.ResponseWriter, r *http.Request) {
+// Register operation middleware
+func (siw *ServerInterfaceWrapper) Register(w http.ResponseWriter, r *http.Request) {
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetInstance(w, r)
+		siw.Handler.Register(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetMe operation middleware
+func (siw *ServerInterfaceWrapper) GetMe(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetMe(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -208,7 +240,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
-	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v0/instance", wrapper.GetInstance)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v0/auth/register", wrapper.Register)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v0/me", wrapper.GetMe)
 
 	return m
 }
@@ -223,16 +256,62 @@ type ProblemApplicationProblemPlusJSONResponse struct {
 	Headers ProblemResponseHeaders
 }
 
-type GetInstanceRequestObject struct {
+type RegisterRequestObject struct {
+	Body *RegisterJSONRequestBody
 }
 
-type GetInstanceResponseObject interface {
-	VisitGetInstanceResponse(w http.ResponseWriter) error
+type RegisterResponseObject interface {
+	VisitRegisterResponse(w http.ResponseWriter) error
 }
 
-type GetInstance200JSONResponse InstanceInfo
+type Register201JSONResponse AuthTokens
 
-func (response GetInstance200JSONResponse) VisitGetInstanceResponse(w http.ResponseWriter) error {
+func (response Register201JSONResponse) VisitRegisterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RegisterdefaultApplicationProblemPlusJSONResponse struct {
+	Body       externalRef0.Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response RegisterdefaultApplicationProblemPlusJSONResponse) VisitRegisterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	if response.Headers.WWWAuthenticate != nil {
+		w.Header().Set("WWW-Authenticate", fmt.Sprint(*response.Headers.WWWAuthenticate))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMeRequestObject struct {
+}
+
+type GetMeResponseObject interface {
+	VisitGetMeResponse(w http.ResponseWriter) error
+}
+
+type GetMe200JSONResponse User
+
+func (response GetMe200JSONResponse) VisitGetMeResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -244,13 +323,13 @@ func (response GetInstance200JSONResponse) VisitGetInstanceResponse(w http.Respo
 	return err
 }
 
-type GetInstancedefaultApplicationProblemPlusJSONResponse struct {
+type GetMedefaultApplicationProblemPlusJSONResponse struct {
 	Body       externalRef0.Problem
 	Headers    ProblemResponseHeaders
 	StatusCode int
 }
 
-func (response GetInstancedefaultApplicationProblemPlusJSONResponse) VisitGetInstanceResponse(w http.ResponseWriter) error {
+func (response GetMedefaultApplicationProblemPlusJSONResponse) VisitGetMeResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -270,9 +349,12 @@ func (response GetInstancedefaultApplicationProblemPlusJSONResponse) VisitGetIns
 
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
-	// GetInstance Describe this instance
-	// (GET /api/v0/instance)
-	GetInstance(ctx context.Context, request GetInstanceRequestObject) (GetInstanceResponseObject, error)
+	// Register Create an account and sign in
+	// (POST /api/v0/auth/register)
+	Register(ctx context.Context, request RegisterRequestObject) (RegisterResponseObject, error)
+	// GetMe Read the caller's account
+	// (GET /api/v0/me)
+	GetMe(ctx context.Context, request GetMeRequestObject) (GetMeResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -314,23 +396,54 @@ type strictHandler struct {
 	options     StrictHTTPServerOptions
 }
 
-// GetInstance operation middleware
-func (sh *strictHandler) GetInstance(w http.ResponseWriter, r *http.Request) {
-	var request GetInstanceRequestObject
+// Register operation middleware
+func (sh *strictHandler) Register(w http.ResponseWriter, r *http.Request) {
+	var request RegisterRequestObject
+
+	var body RegisterJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.GetInstance(ctx, request.(GetInstanceRequestObject))
+		return sh.ssi.Register(ctx, request.(RegisterRequestObject))
 	}
 	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "GetInstance")
+		handler = middleware(handler, "Register")
 	}
 
 	response, err := handler(r.Context(), w, r, request)
 
 	if err != nil {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(GetInstanceResponseObject); ok {
-		if err := validResponse.VisitGetInstanceResponse(w); err != nil {
+	} else if validResponse, ok := response.(RegisterResponseObject); ok {
+		if err := validResponse.VisitRegisterResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetMe operation middleware
+func (sh *strictHandler) GetMe(w http.ResponseWriter, r *http.Request) {
+	var request GetMeRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetMe(ctx, request.(GetMeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetMe")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetMeResponseObject); ok {
+		if err := validResponse.VisitGetMeResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

@@ -12,6 +12,7 @@ type Operation struct {
 	ID     string // operationId
 	Method string // upper case
 	Path   string
+	Public bool // security: [], needs no token
 	// ProblemHeaders are the headers its default response, the problem,
 	// declares, sorted.
 	ProblemHeaders []string
@@ -26,7 +27,7 @@ func (c *Contract) Operations() []Operation {
 	var ops []Operation
 	for path, item := range c.doc.Paths.Map() {
 		for method, op := range item.Operations() {
-			o := Operation{ID: op.OperationID, Method: strings.ToUpper(method), Path: path}
+			o := Operation{ID: op.OperationID, Method: strings.ToUpper(method), Path: path, Public: !needsToken(op)}
 			if problem := op.Responses.Default(); problem != nil && problem.Value != nil {
 				o.ProblemHeaders = slices.Sorted(maps.Keys(problem.Value.Headers))
 			}

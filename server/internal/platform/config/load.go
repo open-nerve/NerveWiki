@@ -188,7 +188,7 @@ func decode(k *koanf.Koanf, cfg *Config) error {
 	return k.UnmarshalWithConf("", cfg, koanf.UnmarshalConf{
 		DecoderConfig: &mapstructure.DecoderConfig{
 			DecodeHook: mapstructure.ComposeDecodeHookFunc(
-				emptyValueHook, durationHook, numberHook),
+				emptyValueHook, durationHook, numberHook, listHook, mapstructure.StringToNetIPPrefixHookFunc()),
 			ErrorUnused:      true,
 			WeaklyTypedInput: true, // environment values are strings
 		},
@@ -264,4 +264,23 @@ func numberHook(_ reflect.Type, to reflect.Type, data any) (any, error) {
 		return nil, fmt.Errorf("must be a whole number from %d to %d, got %v", lo, hi, data)
 	}
 	return data, nil
+}
+
+// listHook splits a string into a list at its commas, so that an environment
+// variable can set a list key, e.g.
+// NWIKI_SERVER__TRUSTED_PROXIES=10.0.0.0/8,fd00::/8. The empty string is the
+// empty list.
+func listHook(from reflect.Type, to reflect.Type, data any) (any, error) {
+	if from.Kind() != reflect.String || to.Kind() != reflect.Slice {
+		return data, nil
+	}
+	s := reflect.ValueOf(data).String()
+	if s == "" {
+		return []string{}, nil
+	}
+	items := strings.Split(s, ",")
+	for i, item := range items {
+		items[i] = strings.TrimSpace(item)
+	}
+	return items, nil
 }

@@ -16,6 +16,18 @@ import (
 // ErrNotFound is what a repository returns for a missing row.
 var ErrNotFound = errors.New("not found")
 
+// Clock tells the time: every business time comes from it and goes to SQL
+// as a parameter (M1/P1 design 3.7). platform/clock implements it.
+type Clock interface {
+	Now() time.Time
+}
+
+// SignupPolicy decides whether registration is open (M1/P1 design 3.7).
+// From bootstrap it is auth.signup_enabled; M2 extends it to invitations.
+type SignupPolicy interface {
+	AllowSignup(ctx context.Context) (bool, error)
+}
+
 // NewUser is an account to insert. Its audit columns are Now.
 type NewUser struct {
 	ID           uuid.UUID

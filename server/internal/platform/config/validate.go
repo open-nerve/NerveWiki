@@ -45,6 +45,18 @@ func (c Config) validate() error {
 	if c.Server.MaxBodyBytes < 1 {
 		fail("server.max_body_bytes", "must be at least 1, got %d", c.Server.MaxBodyBytes)
 	}
+	for _, p := range c.Server.TrustedProxies {
+		switch {
+		case p.Bits() == 0:
+			// Every client would be a trusted proxy and could write its own
+			// address into X-Forwarded-For.
+			fail("server.trusted_proxies", "%s trusts every address, so any client could choose its own IP; list only your proxies' addresses", p)
+		case p.Addr().Is4In6():
+			// Client addresses are compared unmapped, so such a prefix would
+			// silently match nothing.
+			fail("server.trusted_proxies", "%s is an IPv4-mapped IPv6 prefix, which no address matches: write the IPv4 prefix", p)
+		}
+	}
 	if c.Database.URL == "" {
 		fail("database.url", "is required")
 	}
@@ -54,6 +66,7 @@ func (c Config) validate() error {
 	if c.Database.CommitTimeout <= 0 {
 		fail("database.commit_timeout", "must be positive, got %s", c.Database.CommitTimeout)
 	}
+	c.Auth.validate(c.Env, fail)
 	var level slog.Level
 	if err := level.UnmarshalText([]byte(c.Log.Level)); err != nil {
 		fail("log.level", "must be one of debug, info, warn, error, got %q", c.Log.Level)
@@ -62,4 +75,38 @@ func (c Config) validate() error {
 		fail("log.format", "must be text or json, got %q", c.Log.Format)
 	}
 	return errors.Join(errs...)
+}
+
+func (a AuthConfig) validate(env string, fail func(key, format string, args ...any)) {
+	if a.AccessTokenTTL <= 0 {
+		fail("auth.access_token_ttl", "must be positive, got %s", a.AccessTokenTTL)
+	}
+	switch {
+	case a.SessionTTL <= 0:
+		fail("auth.session_ttl", "must be positive, got %s", a.SessionTTL)
+	case a.SessionTTL <= a.AccessTokenTTL:
+		fail("auth.session_ttl", "must be longer than auth.access_token_ttl (%s), got %s", a.AccessTokenTTL, a.SessionTTL)
+	}
+	if env == EnvProd && a.JWT.PrivateKeyFile == "" {
+		// The file itself is read when nervewiki starts (bootstrap), not here.
+		fail("auth.jwt.private_key_file", "is required in prod: a PKCS#8 PEM Ed25519 private key, e.g. from openssl genpkey -algorithm ed25519")
+	}
+	p := a.Password
+	// golang.org/x/crypto/argon2 panics below one iteration or one lane, and
+	// silently raises memory below 8 KiB per lane: reject those instead.
+	if p.Argon2Iterations < 1 {
+		fail("auth.password.argon2_iterations", "must be at least 1, got %d", p.Argon2Iterations)
+	}
+	if p.Argon2Parallelism < 1 {
+		fail("auth.password.argon2_parallelism", "must be at least 1, got %d", p.Argon2Parallelism)
+	}
+	if least := max(8*uint32(p.Argon2Parallelism), 8); p.Argon2MemoryKiB < least {
+		fail("auth.password.argon2_memory_kib", "must be at least 8 per lane (%d), got %d", least, p.Argon2MemoryKiB)
+	}
+	if p.MaxConcurrentHashes < 1 {
+		fail("auth.password.max_concurrent_hashes", "must be at least 1, got %d", p.MaxConcurrentHashes)
+	}
+	if p.MaxWait <= 0 {
+		fail("auth.password.max_wait", "must be positive, got %s", p.MaxWait)
+	}
 }

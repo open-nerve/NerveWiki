@@ -20,4 +20,6 @@ type Info struct {
 	Version    string
 	Commit     string
 	APIVersion string
+	// SignupEnabled is auth.signup_enabled: whether anyone may register.
+	SignupEnabled bool
 }

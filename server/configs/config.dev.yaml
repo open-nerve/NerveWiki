@@ -8,6 +8,9 @@ database:
   # 用 NWIKI_DEV_DB_PORT 换了端口时，要同时覆盖这一项（NWIKI_DATABASE__URL 或 config.local.yaml）。
   url: postgres://nervewiki:nervewiki@localhost:55433/nervewiki?sslmode=disable
 
+auth:
+  signup_enabled: true
+
 log:
   level: debug
   format: text

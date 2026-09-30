@@ -1,6 +1,7 @@
 package config
 
 import (
+	"net/netip"
 	"strings"
 	"testing"
 	"time"
@@ -23,6 +24,15 @@ func validConfig() Config {
 			MaxConns:      10,
 			AutoMigrate:   true,
 			CommitTimeout: 2 * time.Second,
+		},
+		Auth: AuthConfig{
+			AccessTokenTTL: 15 * time.Minute,
+			SessionTTL:     720 * time.Hour,
+			JWT:            JWTConfig{PrivateKeyFile: "/run/secrets/jwt-key.pem"},
+			Password: PasswordConfig{
+				Argon2MemoryKiB: 19456, Argon2Iterations: 2, Argon2Parallelism: 1,
+				MaxConcurrentHashes: 4, MaxWait: 2 * time.Second,
+			},
 		},
 		Log: LogConfig{Level: "info", Format: "json"},
 	}
@@ -56,6 +66,14 @@ func TestValidateReportsEveryInvalidKey(t *testing.T) {
 		"database.url: is required",
 		"database.max_conns: must be at least 1, got 0",
 		"database.commit_timeout: must be positive, got 0s",
+		"auth.access_token_ttl: must be positive, got 0s",
+		"auth.session_ttl: must be positive, got 0s",
+		"auth.jwt.private_key_file: is required in prod: a PKCS#8 PEM Ed25519 private key, e.g. from openssl genpkey -algorithm ed25519",
+		"auth.password.argon2_iterations: must be at least 1, got 0",
+		"auth.password.argon2_parallelism: must be at least 1, got 0",
+		"auth.password.argon2_memory_kib: must be at least 8 per lane (8), got 0",
+		"auth.password.max_concurrent_hashes: must be at least 1, got 0",
+		"auth.password.max_wait: must be positive, got 0s",
 		`log.level: must be one of debug, info, warn, error, got "verbose"`,
 		`log.format: must be text or json, got "xml"`,
 	}
@@ -92,6 +110,38 @@ func TestValidateCrossKeyRules(t *testing.T) {
 			name:   "a host is optional in the address",
 			mutate: func(c *Config) { c.Server.Addr = "127.0.0.1:0" },
 		},
+		{
+			name:   "a session must outlive its access tokens",
+			mutate: func(c *Config) { c.Auth.SessionTTL = c.Auth.AccessTokenTTL },
+			want:   "auth.session_ttl: must be longer than auth.access_token_ttl (15m0s), got 15m0s",
+		},
+		{
+			name:   "argon2 needs 8 KiB per lane",
+			mutate: func(c *Config) { c.Auth.Password.Argon2Parallelism, c.Auth.Password.Argon2MemoryKiB = 4, 31 },
+			want:   "auth.password.argon2_memory_kib: must be at least 8 per lane (32), got 31",
+		},
+		{
+			name:   "argon2 at 8 KiB per lane",
+			mutate: func(c *Config) { c.Auth.Password.Argon2Parallelism, c.Auth.Password.Argon2MemoryKiB = 4, 32 },
+		},
+		{
+			name:   "dev and test may sign with an ephemeral key",
+			mutate: func(c *Config) { c.Env, c.Auth.JWT.PrivateKeyFile = EnvDev, "" },
+		},
+		{
+			name:   "trusted proxies",
+			mutate: func(c *Config) { c.Server.TrustedProxies = prefixes("10.0.0.0/8", "fd00::/8", "192.0.2.7/32") },
+		},
+		{
+			name:   "a proxy prefix that trusts everyone",
+			mutate: func(c *Config) { c.Server.TrustedProxies = prefixes("10.0.0.0/8", "::/0") },
+			want:   "server.trusted_proxies: ::/0 trusts every address, so any client could choose its own IP; list only your proxies' addresses",
+		},
+		{
+			name:   "an IPv4-mapped proxy prefix",
+			mutate: func(c *Config) { c.Server.TrustedProxies = prefixes("::ffff:10.0.0.0/104") },
+			want:   "server.trusted_proxies: ::ffff:10.0.0.0/104 is an IPv4-mapped IPv6 prefix, which no address matches: write the IPv4 prefix",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -106,4 +156,12 @@ func TestValidateCrossKeyRules(t *testing.T) {
 			}
 		})
 	}
+}
+
+func prefixes(ss ...string) []netip.Prefix {
+	out := make([]netip.Prefix, len(ss))
+	for i, s := range ss {
+		out[i] = netip.MustParsePrefix(s)
+	}
+	return out
 }

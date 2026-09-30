@@ -2,21 +2,69 @@ openapi: 3.1.0
 info:
   title: Nerve Wiki API
   version: v0
-  description: The HTTP API of Nerve Wiki. The web app is one client of it; every account can use every endpoint the same way. Every operation lists the problem codes it can answer in x-problem-codes; the top-level x-problem-codes can come from every operation.
+  description: The HTTP API of Nerve Wiki. The web app is one client of it; every account can use every endpoint the same way. Every operation lists the problem codes it can answer in x-problem-codes; the top-level x-problem-codes can come from every operation, and an operation that needs a bearer token can also answer unauthorized.
   license:
     name: AGPL-3.0-only
     identifier: AGPL-3.0-only
 tags:
+  - name: identity
+    description: Accounts, sign-in and sessions.
   - name: instance
     description: What this instance runs.
 paths:
+  /api/v0/auth/register:
+    post:
+      operationId: register
+      tags:
+        - identity
+      summary: Create an account and sign in
+      description: 'Creates an account and signs it in: the response holds a new session''s tokens. While sign-up is off, a well-formed request answers identity.signup_disabled before the address or the password is looked at, so the answer never depends on whether the address is registered. The password needs 8–128 characters and must be neither a common password nor made of the address''s local part.'
+      security: []
+      x-problem-codes:
+        - identity.signup_disabled
+        - validation_failed
+        - identity.email_taken
+        - server_busy
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: The account exists and is signed in.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthTokens'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v0/me:
+    get:
+      operationId: getMe
+      tags:
+        - identity
+      summary: Read the caller's account
+      security:
+        - bearer: []
+      x-problem-codes: []
+      responses:
+        '200':
+          description: The caller's account.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        default:
+          $ref: '#/components/responses/Problem'
   /api/v0/instance:
     get:
       operationId: getInstance
       tags:
         - instance
       summary: Describe this instance
-      description: 'Reports the product, the build and the API version this instance runs. Public: needs no authentication.'
+      description: 'Reports the product, the build and the API version this instance runs, and whether it is open for sign-up. Public: needs no authentication.'
       security: []
       x-problem-codes: []
       responses:
@@ -29,7 +77,25 @@ paths:
         default:
           $ref: '#/components/responses/Problem'
 components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      description: An access token (JWT) from register.
   schemas:
+    RegisterRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - email
+        - password
+      properties:
+        email:
+          description: The sign-in address; stored trimmed and in lower case.
+          type: string
+          format: email
+        password:
+          type: string
     FieldError:
       description: One invalid field of a request. Clients show text looked up by `code`; `message` is an English explanation for developers. Must match httpserver.FieldError and the field codes of internal/shared.
       type: object
@@ -82,6 +148,55 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/FieldError'
+    AuthTokens:
+      description: 'A session''s tokens. Send access_token as "Authorization: Bearer"; access_token_expires_in counts from the response, so a client''s clock does not matter.'
+      type: object
+      additionalProperties: false
+      required:
+        - token_type
+        - access_token
+        - access_token_expires_in
+        - refresh_token
+        - refresh_token_expires_at
+      properties:
+        token_type:
+          type: string
+          enum:
+            - Bearer
+        access_token:
+          type: string
+        access_token_expires_in:
+          description: Seconds from this response until the access token expires.
+          type: integer
+        refresh_token:
+          description: An opaque nwk_rt_ token.
+          type: string
+        refresh_token_expires_at:
+          description: When the session ends; refreshing never extends it.
+          type: string
+          format: date-time
+    User:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - email
+        - display_name
+        - onboarding_steps
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        display_name:
+          type: string
+        onboarding_steps:
+          description: The ids of the onboarding steps the account has completed; the web app defines the steps.
+          type: array
+          items:
+            type: string
     InstanceInfo:
       type: object
       additionalProperties: false
@@ -90,6 +205,7 @@ components:
         - version
         - commit
         - api_version
+        - signup_enabled
       properties:
         product:
           description: Product name.
@@ -109,6 +225,9 @@ components:
           type: string
           enum:
             - v0
+        signup_enabled:
+          description: Whether anyone may register (auth.signup_enabled); when off, the server's administrator creates the accounts.
+          type: boolean
   responses:
     Problem:
       description: Error (RFC 9457 problem details).
@@ -118,6 +237,10 @@ components:
           schema:
             type: integer
             minimum: 1
+        WWW-Authenticate:
+          description: 'Sent with every 401 (RFC 9110 15.5.2): Bearer error="invalid_token" (RFC 6750 3) when the bearer token sent is refused before the operation runs, being invalid or expired; plain Bearer for every other 401.'
+          schema:
+            type: string
       content:
         application/problem+json:
           schema:

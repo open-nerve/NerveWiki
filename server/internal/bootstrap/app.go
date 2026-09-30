@@ -4,14 +4,21 @@ package bootstrap
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"net"
+	"net/netip"
+	"os"
+	"slices"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/open-nerve/NerveWiki/server/internal/modules/identity"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/instance"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/clock"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres"
@@ -51,11 +58,7 @@ type app struct {
 // web frontend: the platform routes, each module's API behind the per-route
 // middlewares, and the frontend on every other path. close releases it.
 func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrationFiles, webFiles fs.FS) (*app, error) {
-	api, err := httpserver.NewAPI(httpserver.APIConfig{
-		Logger:         logger,
-		MaxBodyBytes:   cfg.Server.MaxBodyBytes,
-		RequestTimeout: cfg.Server.RequestTimeout,
-	})
+	signingKey, err := readSigningKey(cfg.Auth.JWT.PrivateKeyFile)
 	if err != nil {
 		return nil, err
 	}
@@ -74,11 +77,42 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrati
 		pool.Close()
 		return nil, err
 	}
+	ident, err := identity.New(identity.Deps{
+		Pool:           pool,
+		Tx:             postgres.NewTxManager(pool, cfg.Database.CommitTimeout),
+		Clock:          clock.System{},
+		Logger:         logger,
+		SignupPolicy:   signupSwitch(cfg.Auth.SignupEnabled),
+		SigningKeyPEM:  signingKey,
+		AccessTokenTTL: cfg.Auth.AccessTokenTTL,
+		SessionTTL:     cfg.Auth.SessionTTL,
+		Password:       passwordHashing(cfg.Auth.Password),
+	})
+	if err != nil {
+		_ = migrator.Close()
+		pool.Close()
+		return nil, err
+	}
+	inst := instance.New(instance.Deps{SignupEnabled: cfg.Auth.SignupEnabled})
+	api, err := httpserver.NewAPI(httpserver.APIConfig{
+		Logger:           logger,
+		Authenticator:    ident.Authenticator(),
+		PublicOperations: slices.Concat(ident.PublicOperations(), inst.PublicOperations()),
+		MaxBodyBytes:     cfg.Server.MaxBodyBytes,
+		RequestTimeout:   cfg.Server.RequestTimeout,
+		TrustedProxies:   cfg.Server.TrustedProxies,
+	})
+	if err != nil {
+		_ = migrator.Close()
+		pool.Close()
+		return nil, err
+	}
 	router := httpserver.NewRouter(logger,
 		httpserver.Check{Name: "database", Run: pool.Ping},
 		httpserver.Check{Name: "migrations", Run: migrator.CheckUpToDate},
 	)
-	instance.New().Register(router, api)
+	ident.Register(router, api)
+	inst.Register(router, api)
 	// "/" without a method is the least specific pattern: /api/ and the
 	// probes keep their routes, and a wrong method on a page path gets the
 	// frontend's 405 rather than a 404.
@@ -99,6 +133,7 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrati
 // server.addr until ctx is done. HTTP stops first (see
 // httpserver.Server.Serve); close then releases the migrator and the pool.
 func (a *app) run(ctx context.Context) error {
+	warnIfExposed(ctx, a.logger, a.cfg)
 	if err := awaitDatabase(ctx, a.pool, a.databaseWait); err != nil {
 		return err
 	}
@@ -116,6 +151,65 @@ func (a *app) run(ctx context.Context) error {
 		return err
 	}
 	return httpserver.NewServer(a.cfg.Server, a.router, a.logger).ListenAndServe(ctx)
+}
+
+// readSigningKey returns the content of auth.jwt.private_key_file, or nil
+// when it is not set. Errors name the key, never the path or the content.
+func readSigningKey(path string) ([]byte, error) {
+	if path == "" {
+		return nil, nil
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		var pathErr *fs.PathError
+		if errors.As(err, &pathErr) {
+			err = pathErr.Err
+		}
+		return nil, fmt.Errorf("auth.jwt.private_key_file: %w", err)
+	}
+	return data, nil
+}
+
+// passwordHashing is auth.password as identity takes it.
+func passwordHashing(p config.PasswordConfig) identity.PasswordHashing {
+	return identity.PasswordHashing{
+		MemoryKiB:     p.Argon2MemoryKiB,
+		Iterations:    p.Argon2Iterations,
+		Parallelism:   p.Argon2Parallelism,
+		MaxConcurrent: p.MaxConcurrentHashes,
+		MaxWait:       p.MaxWait,
+	}
+}
+
+// signupSwitch is auth.signup_enabled as identity's SignupPolicy.
+type signupSwitch bool
+
+func (s signupSwitch) AllowSignup(context.Context) (bool, error) { return bool(s), nil }
+
+// warnIfExposed warns once when a non-prod nervewiki listens beyond
+// loopback (M1/P1 design 3.6): most likely a deployment without
+// NWIKI_ENV=prod, with sign-up open and, without a key file, an ephemeral
+// signing key.
+func warnIfExposed(ctx context.Context, logger *slog.Logger, cfg config.Config) {
+	if cfg.Env == config.EnvProd || loopback(cfg.Server.Addr) {
+		return
+	}
+	logger.WarnContext(ctx, "not running as prod but listening beyond this machine; set NWIKI_ENV=prod to deploy",
+		slog.String("env", cfg.Env), slog.String("addr", cfg.Server.Addr),
+		slog.Bool("signup_enabled", cfg.Auth.SignupEnabled),
+		slog.Bool("ephemeral_signing_key", cfg.Auth.JWT.PrivateKeyFile == ""))
+}
+
+func loopback(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return false
+	}
+	if host == "localhost" {
+		return true
+	}
+	ip, err := netip.ParseAddr(host)
+	return err == nil && ip.IsLoopback()
 }
 
 // awaitDatabase fails when the database does not answer within wait.

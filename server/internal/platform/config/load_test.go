@@ -2,6 +2,7 @@ package config
 
 import (
 	"math"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -21,11 +22,24 @@ server:
   request_timeout: 15s
   max_body_bytes: 1048576
   addr_file: ""
+  trusted_proxies: []
 database:
   url: ""
   max_conns: 10
   auto_migrate: true
   commit_timeout: 2s
+auth:
+  signup_enabled: false
+  access_token_ttl: 15m
+  session_ttl: 720h
+  jwt:
+    private_key_file: ""
+  password:
+    argon2_memory_kib: 19456
+    argon2_iterations: 2
+    argon2_parallelism: 1
+    max_concurrent_hashes: 4
+    max_wait: 2s
 log:
   level: info
   format: json
@@ -61,6 +75,8 @@ func TestLoadAppliesLayersInOrder(t *testing.T) {
 			"NWIKI_SERVER__READ_HEADER_TIMEOUT=9s",
 			"NWIKI_DATABASE__AUTO_MIGRATE=false",
 			"NWIKI_DATABASE__COMMIT_TIMEOUT=3s",
+			"NWIKI_SERVER__TRUSTED_PROXIES=10.0.0.0/8,fd00::/8",
+			"NWIKI_AUTH__PASSWORD__ARGON2_ITERATIONS=3",
 		},
 		LocalFile: local,
 	})
@@ -78,6 +94,7 @@ func TestLoadAppliesLayersInOrder(t *testing.T) {
 			ShutdownTimeout:   40 * time.Second, // config.local.yaml beats the config dir
 			RequestTimeout:    15 * time.Second,
 			MaxBodyBytes:      1 << 20,
+			TrustedProxies:    []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8"), netip.MustParsePrefix("fd00::/8")}, // environment
 		},
 		Database: DatabaseConfig{
 			URL:           "postgres://embedded-dev", // built-in config.dev.yaml
@@ -85,10 +102,47 @@ func TestLoadAppliesLayersInOrder(t *testing.T) {
 			AutoMigrate:   false,                     // environment
 			CommitTimeout: 3 * time.Second,           // environment
 		},
+		Auth: AuthConfig{
+			AccessTokenTTL: 15 * time.Minute,
+			SessionTTL:     720 * time.Hour,
+			Password: PasswordConfig{
+				Argon2MemoryKiB: 19456, Argon2Iterations: 3, Argon2Parallelism: 1, // iterations: environment
+				MaxConcurrentHashes: 4, MaxWait: 2 * time.Second,
+			},
+		},
 		Log: LogConfig{Level: "debug", Format: "text"},
 	}
 	if !reflect.DeepEqual(cfg, want) {
 		t.Errorf("Load() =\n%+v\nwant\n%+v", cfg, want)
+	}
+}
+
+// A list key comes from YAML as a list and from the environment as one
+// comma-separated value; the empty value is the empty list.
+func TestLoadReadsTrustedProxies(t *testing.T) {
+	yaml := "server:\n  trusted_proxies: [192.0.2.0/24, \"2001:db8::/32\"]\n"
+	both := []netip.Prefix{netip.MustParsePrefix("192.0.2.0/24"), netip.MustParsePrefix("2001:db8::/32")}
+	tests := []struct {
+		name    string
+		profile string
+		environ []string
+		want    []netip.Prefix
+	}{
+		{"from YAML", yaml, nil, both},
+		{"from the environment", "", []string{"NWIKI_SERVER__TRUSTED_PROXIES= 192.0.2.0/24 ,2001:db8::/32"}, both},
+		{"emptied by the environment", yaml, []string{"NWIKI_SERVER__TRUSTED_PROXIES="}, []netip.Prefix{}},
+		{"none", "", nil, []netip.Prefix{}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg, err := Load(Sources{
+				Embedded: embedded(map[string]string{"test": tt.profile}),
+				Environ:  append([]string{"NWIKI_ENV=test", "NWIKI_DATABASE__URL=postgres://x"}, tt.environ...),
+			})
+			if err != nil || !reflect.DeepEqual(cfg.Server.TrustedProxies, tt.want) {
+				t.Errorf("Load() = %#v, %v; want %v", cfg.Server.TrustedProxies, err, tt.want)
+			}
+		})
 	}
 }
 
@@ -130,6 +184,7 @@ func TestLoadSkipsVariablesThatAreNotKeys(t *testing.T) {
 			"NWIKI_CONFIG_DIR=" + t.TempDir(),
 			"NWIKI_DEV_DB_PORT=55434",
 			"NWIKI_DATABASE__URL=postgres://from-env",
+			"NWIKI_AUTH__JWT__PRIVATE_KEY_FILE=/run/secrets/jwt-key.pem",
 			"OTHER__VAR=ignored",
 		},
 	})
@@ -248,6 +303,28 @@ func TestLoadErrors(t *testing.T) {
 			environ: []string{"NWIKI_ENV=test", "NWIKI_DATABASE__URL=postgres://x"},
 			dirFile: "database:\n  max_conns: 1.5\n",
 			want:    "'database.max_conns' must be a whole number from -2147483648 to 2147483647, got 1.5",
+		},
+		{
+			name:    "float past an unsigned key",
+			environ: []string{"NWIKI_ENV=test", "NWIKI_DATABASE__URL=postgres://x"},
+			dirFile: "auth:\n  password:\n    argon2_parallelism: 256.0\n",
+			want:    "'auth.password.argon2_parallelism' must be a whole number from 0 to 255, got 256",
+		},
+		{
+			name:    "negative number for an unsigned key in the environment",
+			environ: []string{"NWIKI_ENV=test", "NWIKI_DATABASE__URL=postgres://x", "NWIKI_AUTH__PASSWORD__ARGON2_ITERATIONS=-1"},
+			want:    "'auth.password.argon2_iterations' cannot parse value as 'uint32'",
+		},
+		{
+			name:    "malformed CIDR",
+			environ: []string{"NWIKI_ENV=test", "NWIKI_DATABASE__URL=postgres://x", "NWIKI_SERVER__TRUSTED_PROXIES=10.0.0.1"},
+			want:    "'server.trusted_proxies[0]' netip.ParsePrefix: no '/'",
+		},
+		{
+			name:    "null in a list in YAML",
+			environ: []string{"NWIKI_ENV=test", "NWIKI_DATABASE__URL=postgres://x"},
+			dirFile: "server:\n  trusted_proxies: [10.0.0.0/8, ~]\n",
+			want:    "invalid configuration:\nserver.trusted_proxies[1]: must not be null (a key without a value in YAML)",
 		},
 	}
 	for _, tt := range tests {

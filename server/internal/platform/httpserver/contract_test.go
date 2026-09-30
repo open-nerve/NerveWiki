@@ -42,8 +42,9 @@ func TestPlatformProblemsMatchTheContract(t *testing.T) {
 		{"body not decoded", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			errs.BodyError(w, r, errors.New("EOF"))
 		}), http.MethodPost, "/api/v0/things", "", http.StatusBadRequest},
-		{"body of the wrong shape", shaped, http.MethodPost, "/api/v0/things", `{"extra":1}`, http.StatusBadRequest},
-		{"body too large", shaped, http.MethodPost, "/api/v0/things", `{"name":"` + strings.Repeat("a", 100) + `"}`, http.StatusRequestEntityTooLarge},
+		{"body of the wrong shape", shaped, http.MethodPost, "/api/v0/open", `{"extra":1}`, http.StatusBadRequest},
+		{"body too large", shaped, http.MethodPost, "/api/v0/open", `{"name":"` + strings.Repeat("a", 100) + `"}`, http.StatusRequestEntityTooLarge},
+		{"no bearer token", shaped, http.MethodPost, "/api/v0/things", `{"name":"a"}`, http.StatusUnauthorized},
 		{"internal error", writing(errors.New("boom")), http.MethodGet, "/api/v0/things", "", http.StatusInternalServerError},
 		{"domain error", writing(minimalErr{}), http.MethodGet, "/api/v0/things", "", http.StatusNotFound},
 		{"field errors", writing(problemErr{

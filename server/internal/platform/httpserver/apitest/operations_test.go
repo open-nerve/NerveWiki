@@ -33,23 +33,26 @@ paths:
       - {name: thing_id, in: path, required: true, schema: {type: string, format: uuid}}
     get:
       operationId: getThing
-      security: []
+      security: [{bearer: []}]
       x-problem-codes: []
       responses:
         '204': {description: none}
+components:
+  securitySchemes:
+    bearer: {type: http, scheme: bearer}
 `
 
 func TestOperations(t *testing.T) {
 	ops := contractFrom(t, operationsContract).Operations()
 
 	want := []Operation{
-		{ID: "listThings", Method: "GET", Path: "/api/v0/things", ProblemHeaders: []string{"Retry-After", "X-Trace"}},
+		{ID: "listThings", Method: "GET", Path: "/api/v0/things", Public: true, ProblemHeaders: []string{"Retry-After", "X-Trace"}},
 		{ID: "getThing", Method: "GET", Path: "/api/v0/things/{thing_id}"},
-		{ID: "createThing", Method: "POST", Path: "/api/v0/things"},
+		{ID: "createThing", Method: "POST", Path: "/api/v0/things", Public: true},
 	}
 	if !slices.EqualFunc(ops, want, func(a, b Operation) bool {
-		return a.ID == b.ID && a.Pattern() == b.Pattern() && slices.Equal(a.ProblemHeaders, b.ProblemHeaders)
+		return a.ID == b.ID && a.Pattern() == b.Pattern() && a.Public == b.Public && slices.Equal(a.ProblemHeaders, b.ProblemHeaders)
 	}) {
-		t.Errorf("Operations() =\n%+v\nwant, sorted by pattern and with the default response's headers,\n%+v", ops, want)
+		t.Errorf("Operations() =\n%+v\nwant, sorted by pattern, public or not, and with the default response's headers,\n%+v", ops, want)
 	}
 }

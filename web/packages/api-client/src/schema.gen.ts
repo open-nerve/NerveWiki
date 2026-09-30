@@ -4,6 +4,43 @@
  */
 
 export interface paths {
+    "/api/v0/auth/register": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create an account and sign in
+         * @description Creates an account and signs it in: the response holds a new session's tokens. While sign-up is off, a well-formed request answers identity.signup_disabled before the address or the password is looked at, so the answer never depends on whether the address is registered. The password needs 8–128 characters and must be neither a common password nor made of the address's local part.
+         */
+        post: operations["register"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v0/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read the caller's account */
+        get: operations["getMe"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v0/instance": {
         parameters: {
             query?: never;
@@ -13,7 +50,7 @@ export interface paths {
         };
         /**
          * Describe this instance
-         * @description Reports the product, the build and the API version this instance runs. Public: needs no authentication.
+         * @description Reports the product, the build and the API version this instance runs, and whether it is open for sign-up. Public: needs no authentication.
          */
         get: operations["getInstance"];
         put?: never;
@@ -28,6 +65,14 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        RegisterRequest: {
+            /**
+             * Format: email
+             * @description The sign-in address; stored trimmed and in lower case.
+             */
+            email: string;
+            password: string;
+        };
         /** @description One invalid field of a request. Clients show text looked up by `code`; `message` is an English explanation for developers. Must match httpserver.FieldError and the field codes of internal/shared. */
         FieldError: {
             /** @description The field's path in the request, e.g. title or properties.status. A path longer than 256 bytes is cut short and ends with `…`. */
@@ -52,6 +97,30 @@ export interface components {
             /** @description The invalid fields of the request. */
             errors?: components["schemas"]["FieldError"][];
         };
+        /** @description A session's tokens. Send access_token as "Authorization: Bearer"; access_token_expires_in counts from the response, so a client's clock does not matter. */
+        AuthTokens: {
+            /** @enum {string} */
+            token_type: "Bearer";
+            access_token: string;
+            /** @description Seconds from this response until the access token expires. */
+            access_token_expires_in: number;
+            /** @description An opaque nwk_rt_ token. */
+            refresh_token: string;
+            /**
+             * Format: date-time
+             * @description When the session ends; refreshing never extends it.
+             */
+            refresh_token_expires_at: string;
+        };
+        User: {
+            /** Format: uuid */
+            id: string;
+            /** Format: email */
+            email: string;
+            display_name: string;
+            /** @description The ids of the onboarding steps the account has completed; the web app defines the steps. */
+            onboarding_steps: string[];
+        };
         InstanceInfo: {
             /**
              * @description Product name.
@@ -70,6 +139,8 @@ export interface components {
              * @enum {string}
              */
             api_version: "v0";
+            /** @description Whether anyone may register (auth.signup_enabled); when off, the server's administrator creates the accounts. */
+            signup_enabled: boolean;
         };
     };
     responses: {
@@ -78,6 +149,8 @@ export interface components {
             headers: {
                 /** @description Whole seconds to wait before trying again, rounded up; sent with rate_limited and server_busy. */
                 "Retry-After"?: number;
+                /** @description Sent with every 401 (RFC 9110 15.5.2): Bearer error="invalid_token" (RFC 6750 3) when the bearer token sent is refused before the operation runs, being invalid or expired; plain Bearer for every other 401. */
+                "WWW-Authenticate"?: string;
                 [name: string]: unknown;
             };
             content: {
@@ -90,12 +163,61 @@ export interface components {
     headers: never;
     pathItems: never;
 }
+export type RegisterRequest = components['schemas']['RegisterRequest'];
 export type FieldError = components['schemas']['FieldError'];
 export type Problem = components['schemas']['Problem'];
+export type AuthTokens = components['schemas']['AuthTokens'];
+export type User = components['schemas']['User'];
 export type InstanceInfo = components['schemas']['InstanceInfo'];
 export type ResponseProblem = components['responses']['Problem'];
 export type $defs = Record<string, never>;
 export interface operations {
+    register: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RegisterRequest"];
+            };
+        };
+        responses: {
+            /** @description The account exists and is signed in. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthTokens"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    getMe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The caller's account. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["User"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
     getInstance: {
         parameters: {
             query?: never;

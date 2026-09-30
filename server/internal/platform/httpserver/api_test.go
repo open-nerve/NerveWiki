@@ -3,10 +3,12 @@ package httpserver
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"strings"
 	"testing"
 	"time"
@@ -16,8 +18,29 @@ import (
 
 const (
 	thingRoute  = "POST /api/v0/things"
+	openRoute   = "POST /api/v0/open" // public
 	eventsRoute = "GET /api/v0/events"
 )
+
+type callerKey struct{}
+
+// fakeAuth accepts every token except "bad" (401) and "boom" (a fault).
+type fakeAuth struct {
+	calls int
+	ctx   context.Context // what Authenticate was given
+}
+
+func (f *fakeAuth) Authenticate(ctx context.Context, token string) (context.Context, error) {
+	f.calls++
+	f.ctx = ctx
+	switch token {
+	case "bad":
+		return nil, problemErr{status: http.StatusUnauthorized, code: "unauthorized", detail: "Authentication is required."}
+	case "boom":
+		return nil, errors.New("database is down")
+	}
+	return context.WithValue(ctx, callerKey{}, "caller-"+token), nil
+}
 
 // thingBody is a table as bodyshapegen writes it: {"name": string}, closed.
 func thingBody() *bodyshape.Table {
@@ -26,7 +49,7 @@ func thingBody() *bodyshape.Table {
 			{Types: bodyshape.Object, Extra: bodyshape.Closed, Items: bodyshape.Open, Props: map[string]int{"name": 1}, Required: []string{"name"}},
 			{Types: bodyshape.String, Extra: bodyshape.Open, Items: bodyshape.Open},
 		},
-		Roots: map[string]int{thingRoute: 0},
+		Roots: map[string]int{thingRoute: 0, openRoute: 0},
 	}
 }
 
@@ -57,20 +80,43 @@ func mount(api *API) (*Router, *reached) {
 	}
 	router := NewRouter(slog.New(slog.DiscardHandler))
 	router.Handle(thingRoute, h)
+	router.Handle(openRoute, h)
 	return router, got
 }
 
-func newTestAPI(t *testing.T) *API {
+// testAPIConfig trusts the proxies of fd00::/8; openRoute is public.
+func testAPIConfig(auth Authenticator, logger *slog.Logger) APIConfig {
+	return APIConfig{
+		Logger:           logger,
+		Authenticator:    auth,
+		PublicOperations: []string{openRoute},
+		MaxBodyBytes:     64,
+		RequestTimeout:   2 * time.Second,
+		TrustedProxies:   []netip.Prefix{netip.MustParsePrefix("fd00::/8")},
+	}
+}
+
+func buildAPI(t *testing.T, cfg APIConfig) *API {
 	t.Helper()
-	api, err := NewAPI(APIConfig{Logger: slog.New(slog.DiscardHandler), MaxBodyBytes: 64, RequestTimeout: 2 * time.Second})
+	api, err := NewAPI(cfg)
 	if err != nil {
 		t.Fatalf("NewAPI() error = %v", err)
 	}
 	return api
 }
 
+func newTestAPI(t *testing.T) *API {
+	t.Helper()
+	return buildAPI(t, testAPIConfig(&fakeAuth{}, slog.New(slog.DiscardHandler)))
+}
+
+// post is a request with a valid token, from 203.0.113.7.
 func post(path, body string) *http.Request {
-	return httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
+	r := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
+	r.RemoteAddr = "203.0.113.7:5555"
+	r.Header.Set("User-Agent", "agent/1.0")
+	r.Header.Set("Authorization", "Bearer tok")
+	return r
 }
 
 func decodeProblem(t *testing.T, rec *httptest.ResponseRecorder) Problem {
@@ -85,7 +131,7 @@ func decodeProblem(t *testing.T, rec *httptest.ResponseRecorder) Problem {
 func TestNewAPIRequiresItsSettings(t *testing.T) {
 	_, err := NewAPI(APIConfig{})
 
-	want := "httpserver: APIConfig: no Logger\nMaxBodyBytes must be positive\nRequestTimeout must be positive"
+	want := "httpserver: APIConfig: no Logger\nno Authenticator\nMaxBodyBytes must be positive\nRequestTimeout must be positive"
 	if err == nil || err.Error() != want {
 		t.Errorf("NewAPI() error = %v, want %q", err, want)
 	}
@@ -134,7 +180,8 @@ func (b *slowBody) Read(p []byte) (int, error) {
 func TestTheRequestDeadlineCoversReadingTheBody(t *testing.T) {
 	router, got := mount(newTestAPI(t))
 	const pause = 300 * time.Millisecond
-	req := httptest.NewRequest(http.MethodPost, "/api/v0/things", &slowBody{pause: pause, r: strings.NewReader(`{"name":"a"}`)})
+	req := post("/api/v0/things", "")
+	req.Body = io.NopCloser(&slowBody{pause: pause, r: strings.NewReader(`{"name":"a"}`)})
 
 	serve(router, req)
 
@@ -198,5 +245,112 @@ func TestBodyThatIsNotJSONIs400WithAGenericDetail(t *testing.T) {
 
 	if p := decodeProblem(t, rec); rec.Code != http.StatusBadRequest || p.Detail != "The request body could not be decoded." || len(p.Errors) != 0 {
 		t.Errorf("response = %d %+v, want 400 with the generic detail", rec.Code, p)
+	}
+}
+
+func TestAuthenticationDeniesByDefault(t *testing.T) {
+	tests := []struct {
+		name         string
+		path, header string
+		status       int
+		challenge    string
+		authCalls    int
+	}{
+		{"no token", "/api/v0/things", "", 401, "Bearer", 0},
+		{"another scheme", "/api/v0/things", "Basic dXNlcjpwYXNz", 401, "Bearer", 0},
+		{"empty bearer", "/api/v0/things", "Bearer ", 401, "Bearer", 0},
+		{"a token with a space", "/api/v0/things", "Bearer tok en", 401, "Bearer", 0},
+		{"invalid token", "/api/v0/things", "Bearer bad", 401, `Bearer error="invalid_token"`, 1},
+		{"valid token", "/api/v0/things", "Bearer tok", 204, "", 1},
+		{"scheme in lower case", "/api/v0/things", "bearer tok", 204, "", 1},
+		{"authenticator fault", "/api/v0/things", "Bearer boom", 500, "", 1},
+		{"public without a token", "/api/v0/open", "", 204, "", 0},
+		{"public ignores a bad token", "/api/v0/open", "Bearer bad", 204, "", 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			auth := &fakeAuth{}
+			router, got := mount(buildAPI(t, testAPIConfig(auth, slog.New(slog.DiscardHandler))))
+			req := post(tt.path, `{"name":"a"}`)
+			req.Header.Set("Authorization", tt.header)
+
+			rec := serve(router, req)
+
+			challenge := rec.Result().Header.Get("WWW-Authenticate")
+			if rec.Code != tt.status || challenge != tt.challenge || auth.calls != tt.authCalls || got.called != (tt.status == 204) {
+				t.Errorf("response = %d, WWW-Authenticate %q, authenticator called %d times, handler called %v; want %d, %q, %d",
+					rec.Code, challenge, auth.calls, got.called, tt.status, tt.challenge, tt.authCalls)
+			}
+			if tt.status == 401 {
+				if p := decodeProblem(t, rec); p.Code != CodeUnauthorized {
+					t.Errorf("problem code = %q, want unauthorized", p.Code)
+				}
+			}
+		})
+	}
+}
+
+// The handler runs with the context the authenticator returned: the caller
+// that authentication put in it.
+func TestTheHandlerSeesTheAuthenticatedCaller(t *testing.T) {
+	router, got := mount(newTestAPI(t))
+
+	serve(router, post("/api/v0/things", `{"name":"a"}`))
+
+	if caller, _ := got.ctx.Value(callerKey{}).(string); caller != "caller-tok" {
+		t.Errorf("caller = %q, want caller-tok", caller)
+	}
+}
+
+// Why a credential failed goes to the debug log, never into the response.
+func TestAuthenticationFailureIsLoggedAtDebugLevel(t *testing.T) {
+	logger, logs := captureLogs(t)
+	router, _ := mount(buildAPI(t, testAPIConfig(&fakeAuth{}, logger)))
+	req := post("/api/v0/things", `{"name":"a"}`)
+	req.Header.Set("Authorization", "Bearer bad")
+
+	rec := serve(router, req)
+
+	entry := findLog(logs(), "authentication failed")
+	if entry == nil || entry["level"] != "DEBUG" || entry["route"] != thingRoute || entry["error"] != "Authentication is required." {
+		t.Errorf("log = %v, want the reason at debug level", entry)
+	}
+	if strings.Contains(rec.Body.String(), "Authentication is required.") {
+		t.Errorf("body %s carries the authenticator's reason", rec.Body)
+	}
+}
+
+// Authentication runs inside the request deadline, with the request meta
+// in its context, and before the body is read: a request without a token
+// never gets its body checked.
+func TestAuthenticationRunsUnderTheDeadlineBeforeTheBodyCheck(t *testing.T) {
+	auth := &fakeAuth{}
+	router, _ := mount(buildAPI(t, testAPIConfig(auth, slog.New(slog.DiscardHandler))))
+
+	serve(router, post("/api/v0/things", `{"name":"a"}`))
+	if _, ok := auth.ctx.Deadline(); !ok || !RequestMetaFrom(auth.ctx).ClientIP.IsValid() {
+		t.Errorf("the authenticator's context has deadline %v and meta %+v; want both", ok, RequestMetaFrom(auth.ctx))
+	}
+
+	req := post("/api/v0/things", `{"extra":1}`)
+	req.Header.Del("Authorization")
+	if rec := serve(router, req); rec.Code != http.StatusUnauthorized {
+		t.Errorf("a broken body without a token: status %d, want 401", rec.Code)
+	}
+}
+
+// The request meta middleware puts the client in the context: the address a
+// trusted proxy forwarded, and the User-Agent.
+func TestRequestMetaCarriesTheClient(t *testing.T) {
+	router, got := mount(newTestAPI(t))
+	req := post("/api/v0/things", `{"name":"a"}`)
+	req.RemoteAddr = "[fd00::1]:443"
+	req.Header.Set("X-Forwarded-For", "2001:db8:1:2::7")
+
+	serve(router, req)
+
+	want := RequestMeta{ClientIP: netip.MustParseAddr("2001:db8:1:2::7"), UserAgent: "agent/1.0"}
+	if meta := RequestMetaFrom(got.ctx); meta != want {
+		t.Errorf("meta = %+v, want %+v", meta, want)
 	}
 }

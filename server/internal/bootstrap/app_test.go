@@ -64,7 +64,15 @@ func testConfig(t *testing.T, dbURL string, autoMigrate bool) config.Config {
 			MaxBodyBytes:      1 << 20,
 		},
 		Database: config.DatabaseConfig{URL: dbURL, MaxConns: 4, AutoMigrate: autoMigrate, CommitTimeout: 2 * time.Second},
-		Log:      config.LogConfig{Level: "error", Format: "text"},
+		Auth: config.AuthConfig{
+			SignupEnabled:  true,
+			AccessTokenTTL: 15 * time.Minute,
+			SessionTTL:     720 * time.Hour,
+			Password: config.PasswordConfig{
+				Argon2MemoryKiB: 64, Argon2Iterations: 1, Argon2Parallelism: 1, MaxConcurrentHashes: 4, MaxWait: 2 * time.Second,
+			},
+		},
+		Log: config.LogConfig{Level: "error", Format: "text"},
 	}
 }
 
