@@ -37,13 +37,14 @@ P1 有意推迟到这里的：`Authenticator` 返回凭证的限流键、过期�
 server/
   internal/platform/ratelimit/ratelimit.go      Limiter、Bucket（Allow、Reserve）、AllowAll、满桶的清扫
   internal/platform/clock/clocktest/            Fixed：At、Now、Advance，互斥锁保护
+  internal/platform/postgres/pgtest/lockwait.go WaitForLockWaits：等到本库有 n 个语句在等锁（确定性的交错测试）
   internal/platform/config/                     ratelimit 节；auth.refresh_deadline 与跨栈的时间约束
   internal/platform/httpserver/
     clientip.go                                 key：IPv4 取地址，IPv6 取前缀
     api.go                                      请求信息加 IPKey；失败闸门并入认证；限流中间件的位置
     limit.go                                    Limiter 端口、限流中间件、429
   internal/modules/identity/
-    domain/session.go                           判定表 JudgeRefresh；撤销原因
+    domain/session.go                           判定表 JudgeRefresh
     domain/errors.go                            invalid_credentials、account_deactivated、refresh_token_invalid
     app/login.go、refresh.go、logout.go；ports.go 加账户行锁的端口（P3 的 CredentialLock 也用它）
     adapter/postgres/                           登录读账户、锁账户行、改哈希；续期读、轮换、撤销；退出
@@ -69,7 +70,7 @@ e2e/fixtures/auth.ts（login、refresh）、assert/identity.ts（会话的代数
 请求信息 → 请求期限 → 请求体上限 → 失败闸门与认证 → 限流 → 请求体结构检查
 ```
 
-- **失败闸门**：带令牌的请求在认证之前先从客户端 IP 的 `auth_failure` 预留一个单位，取不到就答 429，不运行认证。凭证失败保留这个单位；认证成功、访问令牌仅仅过期、内部故障都退还。先预留再认证，并发的请求也不会让失败次数超过桶的容量。公开操作与没有令牌的请求不经过闸门。
+- **失败闸门**：带令牌的请求在认证之前先从客户端 IP 的 `auth_failure` 预留一个单位，取不到就答 429，不运行认证。凭证失败保留这个单位；认证成功、访问令牌仅仅过期、内部故障都退还。先预留再认证，并发的请求也不会让失败次数超过桶的容量。代价：同一个 IP 同时处于认证中的请求至多是桶的容量（默认 60）；认证只是一次主键查询，名额在它之后立即退还，只有一个 NAT 后面极高的并发才会碰到。公开操作与没有令牌的请求不经过闸门。
 - **`Authenticator`** 改为返回 `(ctx, credentialKey, error)`：键供限流中间件使用；过期的访问令牌是 `ProblemStatus() 401` 且 `ExpiredCredential() true` 的错误。identity 的 `authn` 把 `app.ErrAccessTokenExpired` 包装成这样的错误。
 - **为什么过期不计入失败**：访问令牌 15 分钟过期是客户端续期的正常信号，多个标签页会同时碰上；计入会让正常使用的用户被闸门挡住。
 
@@ -147,7 +148,8 @@ ratelimit:
 | 测试 | 守住 |
 |---|---|
 | 续期的判定表（领域，逐行）与真实数据库上的续期：伪造的旧代不撤销、真实的旧代撤销、换钥之后当前代仍可续期而旧代不再触发撤销 | 3.5 |
-| 并发续期：同一令牌并发两次，恰有一次轮换，另一次被认成重复使用；会话最终被撤销 | 条件轮换与重读 |
+| 并发续期：测试持有会话行，两个续期都读到同一代、都等在条件更新上（`WaitForLockWaits`）之后放行；恰有一次轮换，另一次被认成重复使用，会话被撤销 | 条件轮换与重读 |
+| 仓储：轮换与退出的每个条件各破坏一次，语句都不碰这一行 | 条件更新的每个条件 |
 | 登录的快照重试：用测试替身在校验与加锁之间改哈希 | 3.4 第 5 步 |
 | 不存在的邮箱与错误的密码：同一个码、同一个回答；不存在的邮箱对哑哈希校验恰好一次，哑哈希的参数是当前配置的 | 等时 |
 | 失败闸门：50 个并发的无效令牌、容量 3，恰好 3 次认证、47 个 429；过期的访问令牌退还 | 3.3 |
