@@ -38,14 +38,20 @@ function codesOf(operationId: string): string[] {
 
 // Every code of the operations whose errors a page shows has a message: a
 // code added to the contract fails here until it has one (M1/P5 design 3.4).
-test.each(["getInstance", "register", "login", "getMe", "updateMe", "recordOnboardingStep"])(
-  "%s: every problem code has a message",
-  (operationId) => {
-    const codes = codesOf(operationId);
-    expect(codes.length).toBeGreaterThan(0);
-    expect(codes.filter((code) => !Object.hasOwn(problemMessages, code))).toEqual([]);
-  }
-);
+test.each([
+  "getInstance",
+  "register",
+  "login",
+  "getMe",
+  "updateMe",
+  "recordOnboardingStep",
+  "changePassword",
+  "deactivateMe",
+])("%s: every problem code has a message", (operationId) => {
+  const codes = codesOf(operationId);
+  expect(codes.length).toBeGreaterThan(0);
+  expect(codes.filter((code) => !Object.hasOwn(problemMessages, code))).toEqual([]);
+});
 
 const problem = (status: number, code: string) => ({ status, code, title: "" });
 
@@ -122,4 +128,15 @@ test("formErrors puts a 422's problems under the fields shown only, and the rest
     banner: "An account with this e-mail address already exists.",
     fields: {},
   });
+});
+
+test("formErrors shows a problem code of onField under its field, and nothing above", () => {
+  const wrong = new ApiError(422, problem(422, "identity.current_password_incorrect"));
+  const onField = { "identity.current_password_incorrect": "current_password" };
+
+  expect(formErrors(wrong, t, ["current_password"], onField)).toEqual({
+    banner: undefined,
+    fields: { current_password: "The current password is incorrect." },
+  });
+  expect(formErrors(wrong, t, ["current_password"]).banner).toBe("The current password is incorrect.");
 });

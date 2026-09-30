@@ -7,6 +7,7 @@ import { cn } from "../../lib/cn";
 /** The settings' pages, in the order the navigation lists them (M1/P6 design 3.2). */
 const sections: readonly { path: string; label: Extract<MessageKey, `settings.${string}`> }[] = [
   { path: "/settings/profile", label: "settings.profile" },
+  { path: "/settings/security", label: "settings.security" },
 ];
 
 /**

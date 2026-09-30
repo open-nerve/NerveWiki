@@ -2,8 +2,8 @@ import { useState, type FormEvent } from "react";
 
 import { Alert } from "../components/ui/alert";
 import { Button } from "../components/ui/button";
-import { FormField, useFocusOnInvalid } from "../components/form-field";
-import { formErrors, type FieldMessage } from "../app/problem-messages";
+import { FormField } from "../components/form-field";
+import { useForm, type LocalProblems as FormProblems } from "../app/form";
 import { useT } from "../i18n/i18n";
 
 export type Credentials = { email: string; password: string };
@@ -12,7 +12,7 @@ export type Credentials = { email: string; password: string };
 const fields: readonly (keyof Credentials)[] = ["email", "password"];
 
 /** The fields' problems found before sending: a message for each field that has one. */
-export type LocalProblems = Partial<Record<keyof Credentials, FieldMessage>>;
+export type LocalProblems = FormProblems<keyof Credentials>;
 
 type CredentialsFormProps = {
   /** "current-password" signs in, "new-password" signs up: password managers fill or offer by it. */
@@ -39,40 +39,16 @@ export function CredentialsForm({
 }: CredentialsFormProps) {
   const t = useT();
   const [credentials, setCredentials] = useState<Credentials>({ email: "", password: "" });
-  const [local, setLocal] = useState<LocalProblems>({});
-  const [failure, setFailure] = useState<unknown>();
-  const [sending, setSending] = useState(false);
-  const [failures, setFailures] = useState(0);
-  const form = useFocusOnInvalid(failures);
-  const server = formErrors(failure, t, fields);
+  const { ref, sending, banner, problemOf, submit: send } = useForm(fields);
 
-  function problemOf(field: keyof Credentials): string | undefined {
-    const key = local[field];
-    return key === undefined ? server.fields[field] : t(key);
-  }
-
-  async function onSubmit(event: FormEvent<HTMLFormElement>) {
+  function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const found = check(credentials);
-    setLocal(found);
-    setFailure(undefined);
-    if (Object.keys(found).length > 0) {
-      setFailures(failures + 1);
-      return;
-    }
-    setSending(true);
-    try {
-      await submit(credentials);
-    } catch (error) {
-      setFailure(error);
-      setFailures(failures + 1);
-      setSending(false);
-    }
+    void send(check(credentials), () => submit(credentials));
   }
 
   return (
-    <form ref={form} noValidate onSubmit={(event) => void onSubmit(event)} className="space-y-4">
-      {server.banner !== undefined && <Alert>{server.banner}</Alert>}
+    <form ref={ref} noValidate onSubmit={onSubmit} className="space-y-4">
+      {banner !== undefined && <Alert>{banner}</Alert>}
       <FormField
         label={t("form.email")}
         type="email"

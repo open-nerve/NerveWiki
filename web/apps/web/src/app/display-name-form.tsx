@@ -1,12 +1,12 @@
 import { observer } from "mobx-react-lite";
 import { useState, type FormEvent, type ReactNode } from "react";
 
-import { FormField, useFocusOnInvalid } from "../components/form-field";
+import { FormField } from "../components/form-field";
 import { Alert } from "../components/ui/alert";
 import { Button } from "../components/ui/button";
 import { useT } from "../i18n/i18n";
 import { useAccount } from "../stores/context";
-import { formErrors, type FieldMessage } from "./problem-messages";
+import { useForm } from "./form";
 
 type DisplayNameFormProps = {
   hint: string;
@@ -38,45 +38,28 @@ export const DisplayNameForm = observer(function DisplayNameForm({
   const { account, me } = useAccount();
   const t = useT();
   const [name, setName] = useState(me.display_name);
-  const [local, setLocal] = useState<FieldMessage>();
-  const [failure, setFailure] = useState<unknown>();
-  const [sending, setSending] = useState(false);
-  const [failures, setFailures] = useState(0);
-  const form = useFocusOnInvalid(failures);
-  const server = formErrors(failure, t, ["display_name"]);
+  const { ref, sending, banner, problemOf, submit } = useForm(["display_name"]);
 
-  async function onSubmit(event: FormEvent<HTMLFormElement>) {
+  function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const displayName = name.trim();
-    setLocal(displayName === "" ? "field.required" : undefined);
-    setFailure(undefined);
-    if (displayName === "") {
-      setFailures(failures + 1);
-      return;
-    }
-    setSending(true);
-    try {
+    void submit(displayName === "" ? { display_name: "field.required" } : {}, async () => {
       if (displayName !== me.display_name) {
         await account.update({ display_name: displayName });
       }
       await saved();
-    } catch (error) {
-      setFailure(error);
-      setFailures(failures + 1);
-    } finally {
-      setSending(false);
-    }
+    });
   }
 
   return (
-    <form ref={form} noValidate onSubmit={(event) => void onSubmit(event)} className={className ?? "space-y-4"}>
-      {server.banner !== undefined && <Alert>{server.banner}</Alert>}
+    <form ref={ref} noValidate onSubmit={onSubmit} className={className ?? "space-y-4"}>
+      {banner !== undefined && <Alert>{banner}</Alert>}
       <FormField
         label={t("account.displayName")}
         name="display_name"
         autoComplete="nickname"
         value={name}
-        error={local === undefined ? server.fields.display_name : t(local)}
+        error={problemOf("display_name")}
         hint={hint}
         onChange={(event) => {
           setName(event.target.value);

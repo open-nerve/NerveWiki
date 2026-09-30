@@ -43,7 +43,7 @@ export class RootStore {
   ) {
     this.preferences = app.preferences;
     this.instance = app.instance;
-    this.auth = new AuthStore(new AuthService(app.session.public), app.session.tokens);
+    this.auth = new AuthStore(new AuthService(app.session.public), app.session.tokens, loginId);
     this.account =
       loginId === undefined ? undefined : new AccountStore(new AccountService(app.session.clientFor(loginId)));
   }

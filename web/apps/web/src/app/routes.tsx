@@ -80,6 +80,13 @@ export const routes: RouteObject[] = [
                           return { Component: ProfilePage };
                         },
                       },
+                      {
+                        path: "security",
+                        lazy: async () => {
+                          const { SecurityPage } = await import("../pages/settings/security-page");
+                          return { Component: SecurityPage };
+                        },
+                      },
                     ],
                   },
                   {
