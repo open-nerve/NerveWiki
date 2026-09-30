@@ -15,6 +15,7 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/webui"
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
@@ -46,10 +47,10 @@ type app struct {
 	databaseWait     time.Duration
 }
 
-// newApp wires the server described by cfg around the given migrations: the
-// platform routes, and each module's API behind the per-route middlewares.
-// close releases it.
-func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrationFiles fs.FS) (*app, error) {
+// newApp wires the server described by cfg around the given migrations and
+// web frontend: the platform routes, each module's API behind the per-route
+// middlewares, and the frontend on every other path. close releases it.
+func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrationFiles, webFiles fs.FS) (*app, error) {
 	api, err := httpserver.NewAPI(httpserver.APIConfig{
 		Logger:         logger,
 		MaxBodyBytes:   cfg.Server.MaxBodyBytes,
@@ -78,6 +79,10 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrati
 		httpserver.Check{Name: "migrations", Run: migrator.CheckUpToDate},
 	)
 	instance.New().Register(router, api)
+	// "/" without a method is the least specific pattern: /api/ and the
+	// probes keep their routes, and a wrong method on a page path gets the
+	// frontend's 405 rather than a 404.
+	router.Handle("/", webui.Handler(webFiles))
 	return &app{
 		cfg:              cfg,
 		logger:           logger,

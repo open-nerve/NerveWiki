@@ -8,6 +8,7 @@
     "tools/md-fixtures/cases/**",
     "tools/md-fixtures/rename/**",
     "api/dist/**",
-    "web/packages/api-client/src/schema.gen.ts"
+    "web/packages/api-client/src/schema.gen.ts",
+    "web/apps/web/dist/**"
   ]
 }

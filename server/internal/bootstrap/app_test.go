@@ -31,6 +31,14 @@ func sampleMigrations() fstest.MapFS {
 	}
 }
 
+// testWebUI is a built frontend: its index.html and one hashed asset.
+func testWebUI() fstest.MapFS {
+	return fstest.MapFS{
+		"index.html":         {Data: []byte("<!doctype html><title>Nerve Wiki</title>")},
+		"assets/index-a1.js": {Data: []byte("export {};")},
+	}
+}
+
 const unreachableDB = "postgres://nobody@127.0.0.1:1/nowhere"
 
 // ctypeC is a database whose LC_CTYPE is C: the database check refuses it.
@@ -63,7 +71,7 @@ func testConfig(t *testing.T, dbURL string, autoMigrate bool) config.Config {
 // buildApp wires the app and closes it when the test ends.
 func buildApp(t *testing.T, cfg config.Config, migrations fs.FS) *app {
 	t.Helper()
-	a, err := newApp(context.Background(), cfg, slog.New(slog.DiscardHandler), migrations)
+	a, err := newApp(context.Background(), cfg, slog.New(slog.DiscardHandler), migrations, testWebUI())
 	if err != nil {
 		t.Fatalf("newApp() error = %v", err)
 	}
@@ -305,7 +313,7 @@ func TestServeRefusesADatabaseThatFailsTheCheck(t *testing.T) {
 func TestNewAppLogsTheDatabaseTarget(t *testing.T) {
 	var logs bytes.Buffer
 	cfg := testConfig(t, "postgres://nobody:secret@127.0.0.1:1/nowhere?password=secret;more", false)
-	a, err := newApp(context.Background(), cfg, slog.New(slog.NewTextHandler(&logs, nil)), sampleMigrations())
+	a, err := newApp(context.Background(), cfg, slog.New(slog.NewTextHandler(&logs, nil)), sampleMigrations(), testWebUI())
 	if err != nil {
 		t.Fatalf("newApp() error = %v", err)
 	}
@@ -324,7 +332,7 @@ func TestNewAppLogsTheDatabaseTarget(t *testing.T) {
 // handler that ignores its context may hold one.
 func TestCloseDoesNotWaitForAConnectionInUse(t *testing.T) {
 	var logs bytes.Buffer
-	a, err := newApp(context.Background(), testConfig(t, pgtest.NewDatabase(t), false), slog.New(slog.NewTextHandler(&logs, nil)), sampleMigrations())
+	a, err := newApp(context.Background(), testConfig(t, pgtest.NewDatabase(t), false), slog.New(slog.NewTextHandler(&logs, nil)), sampleMigrations(), testWebUI())
 	if err != nil {
 		t.Fatalf("newApp() error = %v", err)
 	}

@@ -14,9 +14,12 @@ config.local.yaml
 .claude/worktrees/
 .playwright-mcp/
 
-# 构建与依赖产物
+# 构建与依赖产物。make build 把前端复制进 webui/dist，那里只提交 .gitkeep
 /bin/
 node_modules/
+web/apps/web/dist/
+server/internal/platform/webui/dist/*
+!server/internal/platform/webui/dist/.gitkeep
 coverage/
 *.test
 *.out

@@ -1,0 +1,42 @@
+import type { RouteObject } from "react-router";
+
+import { Layout } from "./layout";
+import { RouteError } from "./route-error";
+
+// The app's pages. Each is loaded on first visit, as its own chunk; the
+// import names what it takes, so knip still sees which exports are used.
+//
+// A page's error shows inside the layout, by the error boundary of the
+// pathless route around the pages; an error of the layout itself replaces
+// it. While the first page's chunk loads, the layout shows with nothing
+// below it: without a HydrateFallback, React Router also warns on the
+// console on every first load. A path that is no page gets the app's 404:
+// the server answers index.html for every page path.
+export const routes: RouteObject[] = [
+  {
+    Component: Layout,
+    ErrorBoundary: RouteError,
+    children: [
+      {
+        ErrorBoundary: RouteError,
+        HydrateFallback: () => null,
+        children: [
+          {
+            index: true,
+            lazy: async () => {
+              const { HomePage } = await import("../pages/home");
+              return { Component: HomePage };
+            },
+          },
+          {
+            path: "*",
+            lazy: async () => {
+              const { NotFoundPage } = await import("../pages/not-found");
+              return { Component: NotFoundPage };
+            },
+          },
+        ],
+      },
+    ],
+  },
+];

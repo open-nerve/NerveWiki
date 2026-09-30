@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["typescript", "import", "promise", "unicorn", "oxc"],
+  "plugins": ["typescript", "import", "promise", "unicorn", "oxc", "react", "jsx-a11y"],
   "categories": {
     "correctness": "warn",
     "suspicious": "warn",
@@ -10,6 +10,10 @@
     "es2024": true
   },
   "rules": {
+    // React 17 起的 JSX 自动运行时不需要 React 在作用域内
+    "react/react-in-jsx-scope": "off",
+    // 样式表只为副作用导入
+    "import/no-unassigned-import": ["warn", { "allow": ["**/*.css"] }],
     "no-unused-vars": [
       "warn",
       {
@@ -21,12 +25,79 @@
       }
     ]
   },
-  "ignorePatterns": ["web/packages/api-client/src/schema.gen.ts"],
+  "ignorePatterns": ["web/packages/api-client/src/schema.gen.ts", "web/apps/web/dist/**"],
   "overrides": [
     {
-      "files": ["tools/**"],
+      "files": ["tools/**", "web/**/*.config.ts"],
       "env": {
         "node": true
+      }
+    },
+    {
+      "files": ["web/**/src/**", "web/**/test/**", "web/**/public/**"],
+      "env": {
+        "browser": true
+      },
+      "rules": {
+        // 这些浏览器全局名与局部变量很容易混淆：漏声明一个 name 不会报错，而是读到 window.name。要用时写 window.name
+        "no-restricted-globals": [
+          "error",
+          "name",
+          "event",
+          "status",
+          "length",
+          "top",
+          "parent",
+          "self",
+          "close",
+          "open"
+        ]
+      }
+    },
+    {
+      // 只有 services 调用接口，只有 main.tsx 创建客户端（测试另建假的）：没有模块级的客户端，
+      // 从 M1 起每次登录重建 RootStore 时，旧的客户端不会留在别处
+      "files": ["web/apps/web/src/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "@nervewiki/api-client",
+                "message": "只有 services 调用接口：组件与 store 经由 service，类型也从 service 导入"
+              }
+            ],
+            "patterns": [{ "group": ["**/packages/api-client/**"], "message": "从 @nervewiki/api-client 导入" }]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["web/apps/web/src/services/**", "web/apps/web/src/stores/root.store.ts"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "@nervewiki/api-client",
+                "importNames": ["createClient"],
+                "message": "只有 main.tsx 创建客户端，经由 RootStore 交给 service"
+              }
+            ],
+            "patterns": [{ "group": ["**/packages/api-client/**"], "message": "从 @nervewiki/api-client 导入" }]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["web/apps/web/src/main.tsx", "web/apps/web/src/test/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          { "patterns": [{ "group": ["**/packages/api-client/**"], "message": "从 @nervewiki/api-client 导入" }] }
+        ]
       }
     }
   ]

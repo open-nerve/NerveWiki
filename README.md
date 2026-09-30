@@ -28,7 +28,7 @@ make          # 查看所有命令
 - 命令按工具链分区：`*-go` 只需要 Go，`*-web` 需要 Node。
   - `make lint` 依次执行 `make lint-go` 和 `make lint-web`。前者校验 golangci-lint 的配置并运行它（含格式检查），并检查 `server/` 与 `server/tools/` 的 `go.mod` 是否整洁；后者做 Markdown 样例集自检、`tools/` 与 `web/` 的 oxlint（零警告）、格式检查和各前端包的类型检查。
   - `make knip` 检查未使用的文件、导出与依赖；配置里过时的条目也算失败。
-  - `make test` 运行 Go 测试，开启竞态检测（需要 cgo：macOS 装有 Xcode 命令行工具即可）。集成测试用 testcontainers 启动与开发库相同的 PostgreSQL 镜像，需要 Docker；只跑单元测试用 `cd server && go test -short ./...`。
+  - `make test` 依次执行 `make test-go` 和 `make test-web`。前者运行 Go 测试，开启竞态检测（需要 cgo：macOS 装有 Xcode 命令行工具即可）。集成测试用 testcontainers 启动与开发库相同的 PostgreSQL 镜像，需要 Docker；只跑单元测试用 `cd server && go test -short ./...`。后者运行前端各包的 vitest。
 - 格式有问题时执行 `make fmt`，它修正 Go 与其余文件的格式。`docs/` 不参与格式化。
 - 开发数据库以 builtin provider 的 `C.UTF-8` 初始化（`LC_CTYPE` 同为 `C.UTF-8`），与生产环境的要求相同，见[总体设计](docs/v0.1/v0.1-design.md) 7.1。
 
@@ -38,6 +38,8 @@ make          # 查看所有命令
 make dev-db   # 先启动开发数据库
 make run      # 以 dev 配置启动 nervewiki serve，监听 127.0.0.1:8080；Ctrl-C 优雅停止
 ```
+
+`make build` 构建前端并把它内嵌进 `bin/nervewiki`（版本号取 `VERSION`，默认 `0.1.0-dev`）。`make run` 启动的服务提供上一次 `make build` 复制进去的前端，从未构建时页面路径答 404 并提示；开发前端用 `make web-dev` 或 `make dev`，见下文"前端"。
 
 `serve` 启动时要连上数据库（最多等 10 秒，连不上就退出），按配置执行迁移（dev、test 默认执行，prod 默认不执行），然后自检数据库的编码与 locale，不满足就拒绝启动并给出建库命令。`GET /healthz` 表示进程存活；`GET /readyz` 在数据库可用、迁移已是最新时返回 200，否则 503。`GET /api/v0/instance` 返回产品名、版本与接口版本；`/api/` 下没有的路径返回 404 problem+json。
 
@@ -85,6 +87,23 @@ make run      # 以 dev 配置启动 nervewiki serve，监听 127.0.0.1:8080；C
 2. 照抄 `instance` 的 `adapter/http/gen/oapi-codegen.yaml`，改掉输出路径，执行 `make gen`。
 3. 在 `adapter/http` 中实现生成的 `StrictServerInterface`，由模块的 `Register` 挂到路由器上，在 `bootstrap` 中调用。
 4. `adapter/http` 的测试以 `apitest.Main(m, "<模块>")` 为 `TestMain`：操作声明的每个错误码都要有测试答过。
+
+## 前端
+
+`web/apps/web` 是 React 应用（Vite、React Router 的数据路由、TypeScript、Tailwind CSS、shadcn/ui 的组件写法、MobX、SWR），构建后内嵌进 `nervewiki`，与接口同源。
+
+```bash
+make dev       # 开发数据库 + 后端 + 前端热更新：打开 http://127.0.0.1:5173
+make web-dev   # 只起前端开发服务器；/api、/healthz、/readyz 代理到 127.0.0.1:8080 上 make run 起的后端
+make build     # 构建前端并内嵌进 bin/nervewiki
+```
+
+写法：
+
+- 组件经由 store 取数据，store 经由 service 调接口，service 从构造函数拿 API 客户端。`RootStore`（`src/stores/root.store.ts`）是唯一装配它们的地方。组件不导入 `@nervewiki/api-client`，oxlint 检查这一点，接口类型从 service 导出。
+- 加载由 SWR 驱动：页面 `useSWR(key, () => store.x.fetch())`，store 保存结果。示例见 `src/pages/home.tsx`。
+- 文案在 `src/i18n/messages/`：`en.ts` 是源头，`zh-CN.ts` 缺键、多键时类型检查失败，占位符不一致时 vitest 失败。组件用 `useT()`。
+- 页面在 `src/app/routes.tsx` 中按需加载，写成 `const { Page } = await import(…)`，knip 才看得出用到了哪些导出。
 
 ## Markdown 样例集
 

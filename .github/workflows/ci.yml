@@ -43,7 +43,7 @@ jobs:
         run: make gen-check-go
       # 集成测试用 testcontainers 启动 PostgreSQL：ubuntu runner 自带 Docker
       - name: Test
-        run: make test
+        run: make test-go
 
   web:
     name: web
@@ -77,3 +77,7 @@ jobs:
         run: make gen-check-web
       - name: Unused code
         run: make knip
+      - name: Test
+        run: make test-web
+      - name: Build
+        run: make build-web
