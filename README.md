@@ -28,7 +28,7 @@ make          # 查看所有命令
 - 命令按工具链分区：`*-go` 只需要 Go，`*-web` 需要 Node。
   - `make lint` 依次执行 `make lint-go` 和 `make lint-web`。前者校验 golangci-lint 的配置并运行它（含格式检查），并检查 `server/` 与 `server/tools/` 的 `go.mod` 是否整洁；后者做 Markdown 样例集自检、`tools/` 与 `web/` 的 oxlint（零警告）、格式检查和各前端包的类型检查。
   - `make knip` 检查未使用的文件、导出与依赖；配置里过时的条目也算失败。
-  - `make test` 运行 Go 测试，开启竞态检测（需要 cgo：macOS 装有 Xcode 命令行工具即可）。集成测试用 testcontainers 启动与开发库相同的 PostgreSQL 镜像，需要 Docker；只跑单元测试用 `cd server && go test -short ./...`。
+  - `make test` 依次执行 `make test-go` 和 `make test-web`。前者运行 Go 测试，开启竞态检测（需要 cgo：macOS 装有 Xcode 命令行工具即可）。集成测试用 testcontainers 启动与开发库相同的 PostgreSQL 镜像，需要 Docker；只跑单元测试用 `cd server && go test -short ./...`。后者运行前端各包的 vitest。
 - 格式有问题时执行 `make fmt`，它修正 Go 与其余文件的格式。`docs/` 不参与格式化。
 - 开发数据库以 builtin provider 的 `C.UTF-8` 初始化（`LC_CTYPE` 同为 `C.UTF-8`），与生产环境的要求相同，见[总体设计](docs/v0.1/v0.1-design.md) 7.1。
 

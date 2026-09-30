@@ -45,6 +45,19 @@ dev-db-reset: ## 停止开发数据库并删除数据卷
 run: ## 以 dev 配置启动服务（先执行 make dev-db）；Ctrl-C 优雅停止
 	cd server && NWIKI_ENV=dev go run ./cmd/nervewiki serve
 
+.PHONY: web-dev
+web-dev: ## 前端开发服务器 127.0.0.1:5173（热更新），接口代理到 make run 的后端
+	pnpm --filter @nervewiki/web dev
+
+# 两个进程都在前台，Ctrl-C 同时发给它们
+.PHONY: dev
+dev: dev-db ## 一条命令起开发环境：开发数据库、后端（make run）、前端热更新（make web-dev）
+	$(MAKE) -j2 run web-dev
+
+.PHONY: build-web
+build-web: ## 构建前端，产物在 web/apps/web/dist（需要 Node）
+	pnpm --filter @nervewiki/web build
+
 .PHONY: tools
 tools: ## 安装锁定版本的 golangci-lint 到 ./bin
 	@set -o pipefail; \
@@ -122,8 +135,15 @@ knip: ## 检查未使用的文件、导出和依赖（需要 Node）
 # 不用测试缓存：它不跟踪 server/ 之外的文件，契约测试读取的 api/dist/openapi.yaml 改了也会重放旧结果。
 # server/tools 是嵌套的独立模块，另跑一次
 .PHONY: test
-test: ## 运行 Go 测试，含集成测试与 server/tools（开启竞态检测，不用测试缓存；需要 Docker）
+test: test-go test-web ## 全部测试
+
+.PHONY: test-go
+test-go: ## 运行 Go 测试，含集成测试与 server/tools（开启竞态检测，不用测试缓存；需要 Docker）
 	cd server && go test -race -count=1 ./...
 	@# 竞态检测让同一段代码的分配多出数倍：分配的预算在不带它的构建中另测一次
 	cd server && go test -count=1 -run '^TestCheckCostsAboutTheBody$$' ./internal/platform/httpserver/bodyshape
 	go -C server/tools test -race -count=1 ./...
+
+.PHONY: test-web
+test-web: ## 运行前端各包的测试（vitest；需要 Node）
+	pnpm -r run test
