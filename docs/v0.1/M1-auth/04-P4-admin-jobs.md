@@ -3,7 +3,7 @@
 | 项 | 内容 |
 |---|---|
 | Phase | M1/P4 管理命令与后台任务 |
-| 状态 | 进行中 |
+| 状态 | 已完成 |
 | 基线 | P3 合并之后的 main |
 | 上级文档 | [M1 总设计](00-M1-design.md) 第 1、3、6–8 节；[P3 文档](03-P3-accounts-tokens.md) 3.3、3.6；[总体设计](../v0.1-design.md) 7.1、12.4 |
 
@@ -50,13 +50,12 @@ server/
   internal/archtest/composition_test.go           命令行的组合到不了 HTTP、限流、后台任务
   internal/bootstrap/
     app.go                                        后台任务的启动（等迁移）与停机顺序
-    users.go                                      管理命令的组合与输出
+    users.go                                      管理命令的组合、输出与错误格式
     registrants.go                                停用的注册者：serve 与命令行共用一处
-    commands.go                                   命令的错误格式
   internal/modules/identity/
     module.go                                     New；Jobs()
     admin.go                                      NewAdmin、AdminDeps、Admin 的五个方法
-    parts.go                                      New 与 NewAdmin 共用的部件（store、argon2、规则、锁）
+    parts.go                                      New 与 NewAdmin 共用的部件（store、argon2、规则、停用的步骤）
     app/create_account.go                         注册与 CreateUser 共用的"建账户"
     app/create_user.go、reset_password.go、set_email.go、activate.go
     app/deactivate.go                             按邮箱的停用（与自助停用共用 deactivate）
@@ -65,7 +64,7 @@ server/
     domain/user.go                                NewEmail；errors.go：email_unchanged
     adapter/postgres/                             按邮箱锁账户、改邮箱、启用、全部撤销 PAT、可用 PAT 计数、删除过期会话
     adapter/river/cleanup.go                      清理的 worker 与定时任务
-  cmd/nervewiki/users.go                          五个命令、读取密码
+  cmd/nervewiki/users.go、password.go             五个命令；读取密码（终端经小接口）
 deploy/runtime-grants.sql                         运行时角色的授权
 e2e/fixtures/server.ts、users.ts；stories/identity/a11（命令行一段）、a12、a13
 ```
@@ -75,9 +74,9 @@ e2e/fixtures/server.ts、users.ts；stories/identity/a11（命令行一段）、
 - **版本**：River v0.47.0 与 `riverdriver/riverpgxv5` v0.47.0（与 Nerve 相同；River 要求 Go ≥1.26、pgx ≥5.10，都满足）。
 - **迁移** `00005_river_main_v2_to_v7.sql`：`river migrate-get --line main --all --exclude-version 1 --up/--down`（锁定版本的命令行）的输出原样放进一个 goose 文件；Up 与 Down 各包在一对 `StatementBegin/End` 里（goose 按分号切分会切断 `$$` 函数体）。第 1 版（`river_migration` 表）不导出，第 5 版容忍它不存在。建出 `river_job`、`river_leader`、`river_queue`、`river_notification` 与它们的类型、函数。以后升级 River 另写一个迁移（`--version N`）。
 - **核对**：`migrations/river_test.go` 用 River 的 `rivermigrate` 取 go.mod 中版本内嵌的 v2–v7 的 SQL，与文件的 Up、Down 两段逐字比较：文件被改动、或者 River 升级而迁移没跟上，测试失败。
-- 迁移文件有行尾空格：`.gitattributes`（`-text linguist-generated=true`）与 `.editorconfig` 各加一段保护它。
+- 迁移文件有行尾空格：`.gitattributes`（`linguist-generated=true`；全局的 `* text=auto eol=lf` 保证 LF）与 `.editorconfig` 各加一段保护它。
 - `schema_test`：约束与索引名的测试排除 `river_` 开头的表（River 的命名不归我们管）；up/down 的对象清单加上类型与函数（排除扩展的成员），确认 down 之后什么也不剩。
-- 架构测试：`github.com/riverqueue/river` 只由 `platform/jobs`、模块的 `adapter/river` 与 bootstrap 导入（领域与用例不知道 River）。
+- 架构测试：`github.com/riverqueue/river` 只由 `platform/jobs` 与模块的 `adapter/river` 导入（领域与用例不知道 River；bootstrap 只经 `platform/jobs`）。
 
 ### 3.3 `platform/jobs`
 
@@ -96,8 +95,8 @@ awaitDatabase → auto_migrate 时迁移 → CheckDatabase
 ctx 结束：HTTP 先停（等请求结束）→ 后台任务停 → 迁移器 → 连接池
 ```
 
-- **等迁移再启动后台任务**：M0 允许 `auto_migrate` 关闭时服务照常启动、就绪检查答 503，由运维另行 `migrate up`。River 的 `Start` 只做 `SELECT 1`，在没有 River 表的库上会启动成功、然后反复记错误。所以有待执行的迁移时记一次 warn "background jobs wait for the pending migrations"，每 2 秒用 `migrator.CheckUpToDate` 查一次，迁移完成后启动；运维迁移之后不必重启，任务也不会悄悄缺席。没有待执行的迁移（通常情况）时第一次检查就启动。
-- 启动失败是故障：取消 serve 的 ctx（带原因），HTTP 随之停下，serve 以这个错误退出。
+- **等迁移再启动后台任务**：M0 允许 `auto_migrate` 关闭时服务照常启动、就绪检查答 503，由运维另行 `migrate up`。River 的 `Start` 在没有 River 表的库上同步失败（`relation "river_queue" does not exist`），而启动失败会停下 serve。所以迁移检查不通过时记一次 warn "background jobs wait for the migration check to pass"（带原因：待执行的迁移，或还不能读 `goose_db_version` 的角色；serve 已在停止时不记），每 2 秒用 `migrator.CheckUpToDate` 查一次，通过之后启动；运维迁移之后不必重启，任务也不会悄悄缺席。没有待执行的迁移（通常情况）时第一次检查就启动。
+- 启动失败是故障：取消 serve 的 ctx（带原因），HTTP 随之停下，serve 以这个错误退出。例如运行时角色少了 `river_queue` 的权限（3.9）。HTTP 自己先停下时（地址被占用），同样不再等迁移。
 - **停机顺序**：HTTP 的 `ListenAndServe` 返回（请求已结束）之后，等"等迁移再启动"的协程返回，再 `jobs.Stop`，然后 `close`（迁移器 → 连接池）。HTTP 先于任务停：正在处理的请求可能投递任务（M2 以后），任务先停会让它失败。
 - 迁移器先于连接池关闭，功能上看不出来（`stdlib.OpenDBFromPool` 不留空闲连接），只由日志与代码顺序保证，与 Nerve 相同。
 - 最坏停机时间：`server.shutdown_timeout`（20 秒）+ `jobs.shutdown_timeout`（10 秒）+ 1 秒 + 连接池的 5 秒 = 36 秒。README 与 `image-smoke.sh` 的 `docker stop -t` 改为 40。
@@ -112,7 +111,7 @@ ctx 结束：HTTP 先停（等请求结束）→ 后台任务停 → 迁移器 �
 
 ### 3.6 管理用例
 
-都按邮箱锁账户行（新查询 `LockUserByEmail … FOR NO KEY UPDATE`，返回 id、邮箱、哈希、是否可用），哈希在事务之外算；日志记 `user_id` 与 `by: "cli"`，从不记邮箱。地址不是合法 UTF-8 时不查库，直接 `account_not_found`（与登录的 `find` 相同）。
+都按邮箱锁账户行（新查询 `LockUserByEmail … FOR NO KEY UPDATE`，返回 id、邮箱、哈希、是否可用），哈希在事务之外算；日志记 `user_id` 与 `by: "cli"`，从不记邮箱。不可能合法的地址（`ValidEmail` 不通过，包括不是合法 UTF-8 的）不查库，直接 `account_not_found`（与登录的 `find` 相同）。
 
 | 用例 | 做什么 | 结果 |
 |---|---|---|
@@ -127,7 +126,7 @@ ctx 结束：HTTP 先停（等请求结束）→ 后台任务停 → 迁移器 �
 - **登录在锁下另核对邮箱**：登录按地址找到账户、在事务外校验密码，锁下原本只比较哈希的快照。改邮箱在两者之间提交时，用旧地址的登录仍会建出会话，而改邮箱刚撤销了全部会话。锁下读到的邮箱（P3 已让 `LockForCredentials` 返回它）与找到账户时的不同，就答 `invalid_credentials`，与不存在的地址相同。
 - 错误码：`identity.account_not_found`（已有，说明 "The account does not exist."）、新增 `identity.email_unchanged`（只由命令行答出，不进契约）。
 - **"建账户"一步**：`app/create_account.go` 的 `accountCreator{Rules, Hasher}`：`prepare(ctx, email, password)` 检查并哈希，返回待插入的 `NewUser`；注册在自己的事务里插入账户与会话，`CreateUser` 只插入账户。
-- **组合**：`identity.NewAdmin(AdminDeps{Pool, Tx, Clock, Logger, Password, DeactivationVetoers, DeactivationSubscribers}) *Admin`，只凭连接池，不要签名密钥、限流与注册开关。它是模块根的包级函数：命令行不能先 `New` 出 HTTP 那一侧。`Admin` 的五个方法是命令行唯一的入口，参数与结果的类型在模块根以别名公开。`New` 与 `NewAdmin` 共用 `parts.go` 的部件（store、argon2 哈希器、密码规则、`CredentialLock`）；`New` 的用例装配抽成辅助函数（P3 审查 N6）。
+- **组合**：`identity.NewAdmin(AdminDeps{Pool, Tx, Clock, Logger, Password, DeactivationVetoers, DeactivationSubscribers}) *Admin`，只凭连接池，不要签名密钥、限流与注册开关。它是模块根的包级函数：命令行不能先 `New` 出 HTTP 那一侧。`Admin` 的五个方法是命令行唯一的入口，参数与结果的类型在模块根以别名公开。`New` 与 `NewAdmin` 共用 `parts.go` 的部件（store、argon2 哈希器、密码规则、停用的步骤 `DeactivationSteps`）；`CredentialLock` 只有 `New` 的用例用到，在它的装配辅助函数 `useCases` 中构造（P3 审查 N6）。
 - **注册者一处组合**：bootstrap 的 `registrants.go` 构造停用的否决者与订阅者（M1 没有，返回空），serve 与命令行都从它取，M2 加注册者时两边不会漏掉一边。
 
 ### 3.7 命令行
@@ -144,7 +143,7 @@ nervewiki users activate --email <addr>
 - **密码**（`create`、`reset-password`）：不接受参数或环境变量（会从 `ps`、`/proc` 泄露）。标准输入是终端时不回显地提示两次（提示写到 stderr），两次不同就失败；否则读一行，只去掉行尾的 `\n` 或 `\r\n`（首尾空格保留，是密码的一部分）；什么也读不到报 EOF。空密码交给密码规则。
 - **终端与 Ctrl-C**：`term.ReadPassword` 期间终端的回显是关着的，而 SIGINT 被 serve 的信号处理接住、读取继续阻塞，第二次 Ctrl-C 杀掉进程时回显仍然关着。读取放在协程里，ctx 取消时用 `term.Restore` 恢复终端并返回。终端的操作经一个小接口（`IsTerminal`、`GetState`、`ReadPassword`、`Restore`），这条路径用替身测试。
 - 顺序：加载配置 → 读取密码 → `awaitDatabase` → 组合与执行。配置错误在提示输入密码之前报出。
-- **错误格式**（bootstrap `commandError`）：`*shared.Error` 有字段时每个写成 `<命令行的名字> <message>`，用 `; ` 连接（`email` → `--email`，`new_email` → `--new-email`，`password` → `the password`）；没有字段时是它的说明。其他错误原样。
+- **错误格式**（bootstrap `users.go` 的 `commandError`）：`*shared.Error` 有字段时每个写成 `<命令行的名字> <message>`，用 `; ` 连接（`email` → `--email`，`new_email` → `--new-email`，`password` → `the password`）；没有字段时是它的说明。其他错误原样。
 - **输出**：`created alice@corp.com (<id>)`、`password reset for alice@corp.com: revoked 2 sessions, 1 API token`、`e-mail changed to …: revoked 1 session`、`deactivated alice@corp.com: revoked 2 sessions` 或 `alice@corp.com is already deactivated`、`activated alice@corp.com: 1 API token is usable again` 或 `… is already active`。邮箱只出现在管理员自己终端的输出里，不进日志。
 
 ### 3.8 命令行的组合检查
@@ -186,7 +185,7 @@ test 配置：`session_cleanup_interval: 2s`。两项都进 `LogValue`。
 | `platform/jobs`：定时任务按间隔运行；停机等正在执行的任务、超过期限报错；最多 2 个 worker；同种 worker 重复被拒；启动之后 serve 的 ctx 取消不停止 River，只有 `Stop` 停止它 | 3.3 |
 | serve：有待执行的迁移时不启动任务、迁移之后启动（不重启）；没有待执行的迁移时立即启动 | 3.4 |
 | 停机：一个请求卡在账户行锁上时取消 serve，任务在请求结束之前不停止（`WaitForLockWaitsOn("users")`，River 也在这个库上，按表计数）；日志顺序 `http server stopped` → `jobs stopped` → `database pool closed` | 3.4 |
-| 清理：删除的边界（`expires_at` 等于现在的不删）；分批；持有行锁时跳过（`lock_timeout` 之内返回）；worker 的失败让任务失败；按配置运行（bootstrap） | 3.5 |
+| 清理：删除的边界（`expires_at` 等于现在的不删）；分批；持有行锁时跳过（2 秒的期限之内返回）；worker 的失败让任务失败；按配置运行（bootstrap） | 3.5 |
 | 管理用例：每个用例的成功与每种失败；重置撤销全部会话与 PAT（其他账户不变）；改邮箱保留 PAT；停用、启用在状态不变时什么也不做、否决者与订阅者不被调用 | 3.6 |
 | 交错：重置等待持锁的创建 PAT（插入之后停住），放行之后撤销它的令牌；重置等待持锁的登录，放行之后撤销它的会话；在重置之前校验了旧密码的创建 PAT 答 401、没有令牌；改邮箱在登录的校验与事务之间提交，登录答 401、没有会话 | 3.6 的锁与核对 |
 | 命令行：五个命令依次作用于一个账户，另一个账户不变；标准输入的各种行尾，存下的 argon2 参数来自配置；每种失败的退出码与消息；只输入 `users` 打印帮助；终端路径（替身）：两次不同失败、ctx 取消时恢复终端 | 3.7 |
@@ -196,7 +195,7 @@ test 配置：`session_cleanup_interval: 2s`。两项都进 `LogValue`。
 
 ### 3.12 端到端
 
-- `e2e/fixtures/server.ts` 的 `runNervewiki` 增加标准输入与额外的环境变量；`fixtures/users.ts`：`nervewikiUsers(db, args, password?)` 以 debug 日志运行，断言 stderr 有日志行、stdout 与 stderr 都查不到密码（原文、大小写十六进制、base64、base64url）；`nervewikiUsersFails` 断言退出码 1、stdout 为空、stderr 以 `nervewiki: <message>` 结尾。
+- `e2e/fixtures/server.ts` 的 `runNervewiki` 增加标准输入与额外的环境变量；`fixtures/users.ts`：`nervewikiUsers(db, args, password?)` 以 debug 日志运行；设置密码的命令断言 stderr 有日志行、stdout 与 stderr 都查不到密码（原文、大小写十六进制、base64、base64url），状态没变的命令不记日志；`nervewikiUsersFails` 断言退出码 1、stdout 为空、stderr 以 `nervewiki: <message>` 结尾。
 - A11（命令行一段）：自助停用之后 `users activate`：两个 PAT 恢复 200，旧的访问令牌与刷新令牌仍然 401，密码登录 200。
 - A12：`users create`（之后能登录）；`reset-password`（全部会话与 PAT 撤销，旧密码不能登录，新密码能）；`set-email`（会话撤销，PAT 照常，新地址登录）；失败：不存在的账户、地址不变、地址已占用、弱密码。
 - A13：把一个会话的 `expires_at` 改到过去，`expect.poll` 等到它被删除（test 配置每 2 秒一次）；未过期的会话仍在。
@@ -207,8 +206,8 @@ test 配置：`session_cleanup_interval: 2s`。两项都进 `LogValue`。
 
 | Step | 内容 | 计划 |
 |---|---|---|
-| S1 | River 与后台任务：依赖、迁移与它的核对、`schema_test`、`platform/jobs`、`jobs` 配置、serve 等迁移再启动、停机顺序、`WaitForLockWaitsOn` | [P4-S1-jobs.md](plans/P4-S1-jobs.md) |
-| S2 | 会话清理：查询、用例、River 的 worker 与定时任务、`Jobs()`、配置 | [P4-S2-session-cleanup.md](plans/P4-S2-session-cleanup.md) |
+| S1 | River 与后台任务：依赖、迁移与它的核对、`schema_test`、`platform/jobs`、`jobs` 配置、`WaitForLockWaitsOn`（serve 的接线随 S2，见第 7 节） | [P4-S1-jobs.md](plans/P4-S1-jobs.md) |
+| S2 | 会话清理：查询、用例、River 的 worker 与定时任务、`Jobs()`、配置；serve 等迁移再启动任务、停机顺序 | [P4-S2-session-cleanup.md](plans/P4-S2-session-cleanup.md) |
 | S3 | 管理用例：按邮箱锁、五个用例、"建账户"、`NewAdmin` 与部件、`New` 的拆分、登录核对邮箱；交错 | [P4-S3-admin.md](plans/P4-S3-admin.md) |
 | S4 | 命令行：`users` 五个命令、读取密码、错误格式、注册者一处组合、`composition_test`、没有机密的测试 | [P4-S4-cli.md](plans/P4-S4-cli.md) |
 | S5 | 运行时角色：`runtime-grants.sql` 与测试；README 的部署 | [P4-S5-runtime-role.md](plans/P4-S5-runtime-role.md) |
@@ -246,4 +245,20 @@ test 配置：`session_cleanup_interval: 2s`。两项都进 `LogValue`。
 
 ## 7. 结果
 
-（完成后补写）
+分支 `m1-p4-admin-jobs`：S1 `cbc8923`、S2 `5da0f15`、S3 `dc36cb9`、S4 `af1aaad`、S5 `6905ae6`、S6 `0678c93`，审查修复 `8335740`。第 5 节全部通过，反向对照按预期失败；`make check`、`make gen-check`、`make e2e`（另跑 `--repeat-each 3` 与 `--workers 1`）、`make image-smoke`（在克隆上，`modified=false`）本地与持续集成为绿。组合检查本身约 0.5 秒，`-race` 下整个 archtest 包约 4 秒，不必拆出单独的目标。审查见 [P4 审查记录](reviews/P4-admin-jobs-review.md)：2 项 Minor、4 项 Nit，N4 不做，其余已修复。规模：生产代码（Go、SQL 与配置，不含生成物与 River 迁移）约 1,600 行，比估计多出的主要是注释与五个管理用例各自的文件；测试约 2,900 行；端到端约 260 行；River 迁移 521 行，生成代码 130 行。
+
+与设计的出入（已同步进上文）：
+
+1. 后台任务的接线从 S1 移到 S2：River 拒绝启动没有 worker 的客户端，serve 要启动任务就得先有清理的 worker。
+2. 停用的步骤抽成 `DeactivationSteps`（否决者 → 写入 → 订阅者），自助停用与管理员的停用共用；拒绝与成功的日志都带 `by`（`self` 或 `cli`）。
+3. 按邮箱加锁要返回账户的 id：`LockedAccount` 增加 `ID`。
+4. 错误格式在 bootstrap 的 `users.go`，读取密码在 `cmd/nervewiki/password.go`（设计 3.1 原写 `commands.go`、`users.go`）。
+5. 组合检查另断言 `bootstrap.Users` 与 `bootstrap.newApp` 都到达 `deactivationRegistrants`。它只证明调用了；M2 的第一个注册者要加经命令行的行为测试（写进 M1→M2 的移交）。
+6. 端到端的 `nervewikiUsers` 只对设置密码的命令断言有日志行：状态没变的命令（启用已可用的账户）什么也不记。
+7. `image-smoke` 另以 `users create` 建第一个账户并登录：prod 关闭注册时这就是第一个账户的来历。
+8. 运行时角色的测试另以该角色走一遍接口（注册、登录、续期、PAT、引导步骤、改密码、停用）与五个管理命令，授权文件执行两次（幂等）；审查之后另加"缺 `river_queue` 的授权时 serve 以错误退出"（审查 M2）。
+9. `WaitForLockWaits` 与 `WaitForLockWaitsOn` 共用一个轮询函数；`migrations/embed.go` 的注释写明 River 的迁移归 River。
+10. 审查之后：管理员停用的 `FOR SHARE` 交错（M1）；等迁移的 warn 改为 "background jobs wait for the migration check to pass"，serve 停止时不记（N1）；HTTP 自己停下时 `run` 返回的测试（N2）。
+11. README：River 在停机时可能记的 ERROR 与它的触发条件；缺少各项授权的表现；授权文件在启动服务之前执行。
+
+留给之后的：M2 的第一个停用注册者要有经命令行的行为测试（上文第 5 项）；注册者的构造函数不能叫 `New`（组合检查把模块根的 `New` 当作 HTTP 一侧）。

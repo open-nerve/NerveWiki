@@ -6,7 +6,7 @@
 
 1. `cmd/nervewiki`：`run` 增加标准输入；`users` 与五个子命令（`--email` 必填，`set-email` 另要 `--new-email`）。
 2. 读取密码：终端经小接口（不回显、两次、ctx 取消时恢复终端）；否则读一行，只去掉行尾。`golang.org/x/term` 进 require。
-3. bootstrap：`users.go`（配置 → `awaitDatabase` → `NewAdmin` → 执行 → 一行输出）；`registrants.go`（serve 与命令行共用）；`commands.go` 的 `commandError`。
+3. bootstrap：`users.go`（配置 → `awaitDatabase` → `NewAdmin` → 执行 → 一行输出）；`registrants.go`（serve 与命令行共用）；`users.go` 的 `commandError`。
 4. `archtest/composition_test.go`：从 `bootstrap.Users` 的静态调用图。
 
 ## 测试

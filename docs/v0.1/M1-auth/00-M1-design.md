@@ -161,7 +161,7 @@ M1 结束时：
 - 否决者：`VetoDeactivation(ctx, d) error`，在账户行锁之后、任何写入之前按顺序调用；返回 `*shared.Error` 时整个停用回滚，接口答出它的码，命令行打印原因、退出码 1。注册者把自己的码追加到 `deactivateMe` 的 `x-problem-codes`。
 - 订阅者：`AccountDeactivated(ctx, d) error`，在停用的写入之后、同一事务内逐个调用；返回错误同样整体回滚。
 - 增长路径：任何让账户获得新的访问（加入工作区、接受邀请）的写事务，先经 identity 提供的 `ShareActiveAccount(ctx, userID)` 对账户行取 `FOR SHARE` 并确认账户可用；于是它与停用串行，否决者总能看到已提交的成员关系。
-- M1 用测试替身证明：否决时整体回滚并答出码；事件在事务内、订阅者失败即回滚；持有 `FOR SHARE` 的事务让并发的停用等待，提交之后停用的否决者看到它的结果。
+- M1 用测试替身证明：否决时整体回滚并答出码；事件在事务内、订阅者失败即回滚；持有 `FOR SHARE` 的事务让并发的停用等待，提交之后停用的否决者看到它的结果（自助停用与管理员的 `users deactivate` 两路都有）。
 
 **新手引导的步骤列表**（总体设计 12.4，M2、M3 注册）：
 
@@ -200,7 +200,7 @@ M1 结束时：
 | P1 | 身份基础与默认拒绝 | 已完成 | [01-P1-identity-foundation.md](01-P1-identity-foundation.md) | [P1 审查](reviews/P1-identity-foundation-review.md) |
 | P2 | 会话与限流 | 已完成 | [02-P2-sessions-ratelimit.md](02-P2-sessions-ratelimit.md) | [P2 审查](reviews/P2-sessions-ratelimit-review.md) |
 | P3 | 账户、PAT 与停用 | 已完成 | [03-P3-accounts-tokens.md](03-P3-accounts-tokens.md) | [P3 审查](reviews/P3-accounts-tokens-review.md) |
-| P4 | 管理命令与后台任务 | 进行中 | [04-P4-admin-jobs.md](04-P4-admin-jobs.md) | — |
+| P4 | 管理命令与后台任务 | 已完成 | [04-P4-admin-jobs.md](04-P4-admin-jobs.md) | [P4 审查](reviews/P4-admin-jobs-review.md) |
 | P5 | 前端会话、登录与引导 | 未开始 | — | — |
 | P6 | 前端个人设置 | 未开始 | — | — |
 | — | M1 收尾审查 | 未开始 | — | — |
