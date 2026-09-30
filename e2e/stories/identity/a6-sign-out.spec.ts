@@ -9,7 +9,6 @@ import {
 } from "../../fixtures/assert/identity";
 import {
   bearer,
-  completeOnboarding,
   displayNameOf,
   emailFor,
   login,
@@ -18,6 +17,7 @@ import {
   recordOf,
   refresh,
   register,
+  registerOnboarded,
   writeRecord,
 } from "../../fixtures/auth";
 import { accountMenu, signInWith, signOutThroughMenu } from "../../fixtures/auth-pages";
@@ -38,16 +38,9 @@ async function openSignedIn(tab: Page, email: string): Promise<void> {
   await expect(tab.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
 }
 
-/** Registers email through the API, done with onboarding, and returns its tokens. */
-async function onboardedAccount(api: Parameters<typeof register>[0], email: string) {
-  const tokens = await register(api, email);
-  await completeOnboarding(api, tokens.access_token);
-  return tokens;
-}
-
 test("A6 (page): signing out in one tab signs every tab out", async ({ api, db, context, signedInPage }, testInfo) => {
   const email = emailFor(testInfo);
-  const tabA = await signedInPage(await onboardedAccount(api, email));
+  const tabA = await signedInPage(await registerOnboarded(api, email));
   const sentAccessToken = followAccessToken(tabA);
   await openSignedIn(tabA, email);
   const tabB = await context.newPage();
@@ -121,8 +114,8 @@ test("A6 (page): another tab signs out, then signs another account in: every tab
 }, testInfo) => {
   const x = emailFor(testInfo, "x");
   const y = emailFor(testInfo, "y");
-  const tabA = await signedInPage(await onboardedAccount(api, x));
-  await onboardedAccount(api, y);
+  const tabA = await signedInPage(await registerOnboarded(api, x));
+  await registerOnboarded(api, y);
   await openSignedIn(tabA, x);
   const tabB = await context.newPage();
   const watchB = await watchPage(tabB);

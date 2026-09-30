@@ -5,7 +5,20 @@ import {
   expectNothingAdded,
   expectPasswordChanged,
 } from "../../fixtures/assert/identity";
-import { bearer, createToken, emailFor, login, password, register } from "../../fixtures/auth";
+import {
+  bearer,
+  createToken,
+  displayNameOf,
+  emailFor,
+  login,
+  password,
+  recordOf,
+  register,
+  registerOnboarded,
+} from "../../fixtures/auth";
+import { accountMenu } from "../../fixtures/auth-pages";
+import { failedToLoad } from "../../fixtures/browser";
+import { changePasswordWith, noteOf } from "../../fixtures/settings-pages";
 import { expect, test } from "../../fixtures/test";
 
 // A7, change the password (M1 design 3).
@@ -61,4 +74,49 @@ test("A7 (API): a new password ends the other sessions, keeps the caller's own a
   expect(await status(own.access_token)).toBe(401);
   expect(await status(signedIn.data?.access_token ?? "")).toBe(401);
   expect(await status(token.token)).toBe(200);
+});
+
+test("A7 (page): the settings change the password: the other sessions end, this one and the tokens go on", async ({
+  api,
+  db,
+  pageWatch,
+  signedInPage,
+}, testInfo) => {
+  const email = emailFor(testInfo);
+  const own = await registerOnboarded(api, email);
+  const other = await login(api, email);
+  const token = await createToken(api, own.access_token, { name: "deploy" });
+  const userId = await accountIdOf(db, email);
+  const status = async (credential: string) =>
+    (await api.GET("/api/v0/me", { headers: bearer(credential) })).response.status;
+  const page = await signedInPage(own);
+  await page.goto("/settings/security");
+  const current = page.getByLabel("Current password", { exact: true });
+  const next = page.getByLabel("New password", { exact: true });
+
+  // A wrong current password and a common new one show under their fields; nothing changes.
+  const hashBefore = (await accountOf(db, userId)).password;
+  expect(await changePasswordWith(page, "Wr0ng-password", "new horse battery")).toBe(422);
+  await expect.poll(() => noteOf(current)).toBe("The current password is incorrect.");
+  expect(await changePasswordWith(page, password, "password")).toBe(422);
+  await expect.poll(() => noteOf(next)).toBe("Too common, or too close to the e-mail address.");
+  expect((await accountOf(db, userId)).password).toBe(hashBefore);
+  pageWatch.expectConsole({ errors: [failedToLoad(422), failedToLoad(422)] });
+
+  expect(await changePasswordWith(page, password, "new horse battery")).toBe(204);
+  await expect(page.getByRole("status")).toContainText("Password changed.");
+  await expect(current).toHaveValue("");
+  await expect(next).toHaveValue("");
+
+  // The page's own session goes on; the other one is over; the token works.
+  await expectPasswordChanged(db, userId, hashBefore, (await recordOf(page))?.refresh_token);
+  expect(await status(other.access_token)).toBe(401);
+  const refreshed = await api.POST("/api/v0/auth/refresh", { body: { refresh_token: other.refresh_token } });
+  expect(refreshed.response.status).toBe(401);
+  await page.reload();
+  await expect(accountMenu(page, displayNameOf(email))).toBeVisible();
+  await expect(page).toHaveURL("/settings/security");
+  expect(await status(token.token)).toBe(200);
+  const old = await api.POST("/api/v0/auth/login", { body: { email, password } });
+  expect(old.response.status).toBe(401);
 });

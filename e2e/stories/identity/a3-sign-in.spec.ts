@@ -1,7 +1,7 @@
 import { createClient } from "@nervewiki/api-client";
 
 import { accountIdOf, countIdentity, expectNewSession, expectNothingAdded } from "../../fixtures/assert/identity";
-import { bearer, completeOnboarding, emailFor, login, password, register } from "../../fixtures/auth";
+import { bearer, emailFor, login, password, register, registerOnboarded } from "../../fixtures/auth";
 import { emailField, formError, passwordField, signInWith } from "../../fixtures/auth-pages";
 import { failedToLoad } from "../../fixtures/browser";
 import { expect, test } from "../../fixtures/test";
@@ -102,7 +102,7 @@ test("A3 (page): a deep link signs in and comes back; a refused sign-in keeps wh
   api,
 }, testInfo) => {
   const email = emailFor(testInfo);
-  await completeOnboarding(api, (await register(api, email)).access_token);
+  await registerOnboarded(api, email);
   const deepLink = "/acme/notebooks/1?view=list#part";
   await page.goto(deepLink);
   await expect(page).toHaveURL(`/sign-in?next=${encodeURIComponent(deepLink)}`);
