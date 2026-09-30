@@ -1,0 +1,28 @@
+# 基础配置：列出所有配置项及其默认值。各环境的覆盖项在 config.<env>.yaml 中。
+# 任何一项都可以用环境变量覆盖：NWIKI_ 加上配置路径，层级之间用双下划线，
+# 例如 database.url 对应 NWIKI_DATABASE__URL。
+server:
+  addr: ":8080"
+  # 连接上的读写都有上限：读请求头、读整个请求（含请求体）、写响应。
+  # 长连接路由（SSE、MCP 流）自己解除这些上限，其余路由不要为个别接口调大全局值。
+  # handler 自身的执行时间不受这些上限约束，它里面的阻塞调用要自带期限。
+  read_header_timeout: 5s
+  read_timeout: 30s
+  write_timeout: 60s
+  # 停机时给正在处理的请求留的时间，到期后强制关闭连接
+  shutdown_timeout: 20s
+  # 非空时，监听成功后把实际地址写进这个文件（端到端测试用 127.0.0.1:0 监听）
+  addr_file: ""
+
+database:
+  # 必须提供。dev 环境写在 config.dev.yaml 中；test 和 prod 通过 NWIKI_DATABASE__URL 提供。
+  url: ""
+  max_conns: 10
+  # nervewiki serve 启动前是否自动执行迁移
+  auto_migrate: true
+  # COMMIT、ROLLBACK 自己的期限：它们不随请求期限取消
+  commit_timeout: 2s
+
+log:
+  level: info # debug | info | warn | error
+  format: json # text | json
