@@ -21,14 +21,15 @@
 ```bash
 pnpm install  # 安装 Node 依赖（检查工具要用）
 make dev-db   # 启动本地 PostgreSQL 18（端口 55433；用 NWIKI_DEV_DB_PORT 修改时，同时覆盖 database.url，见下文"配置"）
-make check    # 静态检查、未使用代码检查、测试；与提交之后的 make gen-check 合起来是持续集成的全部门禁
+make check    # 静态检查、未使用代码检查、测试；与提交之后的 make gen-check 合起来是持续集成 server、web 任务的门禁
 make          # 查看所有命令
 ```
 
 - 命令按工具链分区：`*-go` 只需要 Go，`*-web` 需要 Node。
-  - `make lint` 依次执行 `make lint-go` 和 `make lint-web`。前者校验 golangci-lint 的配置并运行它（含格式检查），并检查 `server/` 与 `server/tools/` 的 `go.mod` 是否整洁；后者做 Markdown 样例集自检、`tools/` 与 `web/` 的 oxlint（零警告）、格式检查和各前端包的类型检查。
+  - `make lint` 依次执行 `make lint-go` 和 `make lint-web`。前者校验 golangci-lint 的配置并运行它（含格式检查），并检查 `server/` 与 `server/tools/` 的 `go.mod` 是否整洁；后者做 Markdown 样例集自检、`tools/`、`web/` 与 `e2e/` 的 oxlint（零警告）、格式检查和各 Node 包的类型检查。
   - `make knip` 检查未使用的文件、导出与依赖；配置里过时的条目也算失败。
   - `make test` 依次执行 `make test-go` 和 `make test-web`。前者运行 Go 测试，开启竞态检测（需要 cgo：macOS 装有 Xcode 命令行工具即可）。集成测试用 testcontainers 启动与开发库相同的 PostgreSQL 镜像，需要 Docker；只跑单元测试用 `cd server && go test -short ./...`。后者运行前端各包的 vitest。
+  - 端到端测试另跑 `make e2e`，见下文"端到端测试"。
 - 格式有问题时执行 `make fmt`，它修正 Go 与其余文件的格式。`docs/` 不参与格式化。
 - 开发数据库以 builtin provider 的 `C.UTF-8` 初始化（`LC_CTYPE` 同为 `C.UTF-8`），与生产环境的要求相同，见[总体设计](docs/v0.1/v0.1-design.md) 7.1。
 
@@ -104,6 +105,20 @@ make build     # 构建前端并内嵌进 bin/nervewiki
 - 加载由 SWR 驱动：页面 `useSWR(key, () => store.x.fetch())`，store 保存结果。示例见 `src/pages/home.tsx`。
 - 文案在 `src/i18n/messages/`：`en.ts` 是源头，`zh-CN.ts` 缺键、多键时类型检查失败，占位符不一致时 vitest 失败。组件用 `useT()`。
 - 页面在 `src/app/routes.tsx` 中按需加载，写成 `const { Page } = await import(…)`，knip 才看得出用到了哪些导出。
+
+## 端到端测试
+
+`e2e/` 用 Playwright（Chromium）驱动 `make build` 构建的 `bin/nervewiki`，数据库由 testcontainers 启动（需要 Docker）。一次运行启动一个 PostgreSQL、迁移一个模板库；每个 worker 复制出自己的库，运行自己的 `nervewiki serve`。
+
+```bash
+pnpm --filter @nervewiki/e2e exec playwright install chromium   # 第一次运行前安装浏览器
+make e2e                                                        # make build，然后运行 e2e/stories 下的全部故事
+cd e2e && pnpm exec playwright show-report                      # 查看上一次运行的报告
+```
+
+- 故事在 `e2e/stories/<分组>/`，从 `e2e/fixtures/test.ts` 取 `test` 与 `expect`：`db`（本 worker 的库）、`nervewiki`（本 worker 的服务）、`api`（类型化的客户端）、`newDatabase` 与 `nervewikiWith`（另起一个库、一个服务）。浏览器中的故事用 `fixtures/browser.ts` 的 `watchPage` 与 `expectQuietConsole`：控制台出现任何错误或警告都算失败。
+- 失败的测试在 `e2e/playwright-report/` 中带着 trace 与截图；`e2e/test-results/` 中有每个 worker 的服务日志和失败时导出的数据库。持续集成在失败时把两者作为 artifact 上传。
+- `make e2e` 把 `VERSION` 交给故事核对注入的版本号；持续集成用 `0.0.0-ci.<运行号>`，与默认值不同。
 
 ## Markdown 样例集
 

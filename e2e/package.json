@@ -1,0 +1,19 @@
+{
+  "name": "@nervewiki/e2e",
+  "private": true,
+  "description": "End-to-end stories: Playwright against the built bin/nervewiki and PostgreSQL",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "scripts": {
+    "check:types": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@nervewiki/api-client": "workspace:*",
+    "@playwright/test": "1.63.0",
+    "@testcontainers/postgresql": "12.2.0",
+    "@types/node": "24.19.0",
+    "@types/pg": "8.23.1",
+    "pg": "8.23.0",
+    "typescript": "catalog:"
+  }
+}

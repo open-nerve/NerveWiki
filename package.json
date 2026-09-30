@@ -5,7 +5,7 @@
   "scripts": {
     "bundle:api": "redocly bundle --config api/redocly.yaml",
     "check:format": "oxfmt --check .",
-    "check:lint": "oxlint --max-warnings=0 tools web",
+    "check:lint": "oxlint --max-warnings=0 tools web e2e",
     "fix:format": "oxfmt ."
   },
   "devDependencies": {

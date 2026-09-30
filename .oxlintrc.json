@@ -28,7 +28,7 @@
   "ignorePatterns": ["web/packages/api-client/src/schema.gen.ts", "web/apps/web/dist/**"],
   "overrides": [
     {
-      "files": ["tools/**", "web/**/*.config.ts"],
+      "files": ["tools/**", "web/**/*.config.ts", "e2e/**"],
       "env": {
         "node": true
       }

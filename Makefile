@@ -2,7 +2,8 @@
 # 需兼容 macOS 自带的 GNU Make 3.81。
 # 命令按工具链分区：*-go 只需要 Go，*-web 需要 Node（先执行 pnpm install）；
 # 不带后缀的 gen、gen-check、lint、fmt 依次执行两个分区。推送前在本地跑 check 与 gen-check，两者合起来是
-# 持续集成的全部门禁；gen-check 要求生成物已提交，所以不并进 check，在提交之后运行。
+# 持续集成 server、web 任务的门禁；gen-check 要求生成物已提交，所以不并进 check，在提交之后运行。
+# 端到端测试 e2e 另跑（需要 Docker 与 Chromium），对应持续集成的 e2e 任务。
 
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
@@ -67,6 +68,11 @@ build: build-web ## 构建 bin/nervewiki，前端内嵌在其中，版本号取 
 	find server/internal/platform/webui/dist -mindepth 1 ! -name .gitkeep -delete
 	cp -R web/apps/web/dist/. server/internal/platform/webui/dist/
 	cd server && go build -ldflags "$(GO_LDFLAGS)" -o ../bin/nervewiki ./cmd/nervewiki
+
+# 故事读 NWIKI_E2E_VERSION，核对 make build 注入的版本号（docs/v0.1/M0-foundation/06-P6-e2e-delivery.md 3.4）
+.PHONY: e2e
+e2e: build ## 构建 bin/nervewiki，运行端到端故事（需要 Docker 与 Playwright 的 Chromium，见 README）
+	cd e2e && NWIKI_E2E_VERSION=$(VERSION) pnpm exec playwright test
 
 .PHONY: tools
 tools: ## 安装锁定版本的 golangci-lint 到 ./bin
