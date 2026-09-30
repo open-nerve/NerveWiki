@@ -20,6 +20,7 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres/pgtest"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/ratelimit"
 )
 
 // The module wired as bootstrap wires it, on a real database: registration,
@@ -52,9 +53,11 @@ func newServer(t *testing.T) (http.Handler, *pgxpool.Pool) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	limit := ratelimit.New(time.Now).Bucket("test", ratelimit.Rate{PerMinute: 600000, Burst: 100000})
 	api, err := httpserver.NewAPI(httpserver.APIConfig{
 		Logger: logger, Authenticator: m.Authenticator(), PublicOperations: m.PublicOperations(),
 		MaxBodyBytes: 1 << 20, RequestTimeout: 5 * time.Second,
+		IPv6PrefixLen: 64, Anonymous: limit, Authenticated: limit, AuthFailure: limit,
 	})
 	if err != nil {
 		t.Fatal(err)

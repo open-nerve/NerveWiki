@@ -17,6 +17,7 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/modules/identity/domain"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver/apitest"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/ratelimit"
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
@@ -54,11 +55,12 @@ func (f fakeGetMe) Execute(ctx context.Context) (domain.User, error) {
 // userIDText.
 type fakeAuth struct{}
 
-func (fakeAuth) Authenticate(ctx context.Context, token string) (context.Context, error) {
+func (fakeAuth) Authenticate(ctx context.Context, token string) (context.Context, string, error) {
 	if token != "valid" {
-		return nil, shared.Unauthenticated()
+		return nil, "", shared.Unauthenticated()
 	}
-	return shared.WithActor(ctx, shared.Actor{UserID: uuid.MustParse(userIDText), SessionID: uuid.MustParse(sessionIDText)}), nil
+	actor := shared.Actor{UserID: uuid.MustParse(userIDText), SessionID: uuid.MustParse(sessionIDText)}
+	return shared.WithActor(ctx, actor), "session:" + sessionIDText, nil
 }
 
 // newServer serves the module with uc; a nil use case gets an idle fake.
@@ -66,12 +68,17 @@ func newServer(t *testing.T, uc httpadapter.UseCases) http.Handler {
 	t.Helper()
 	logger := slog.New(slog.DiscardHandler)
 	router := httpserver.NewRouter(logger)
+	limit := ratelimit.New(time.Now).Bucket("test", ratelimit.Rate{PerMinute: 600, Burst: 100})
 	api, err := httpserver.NewAPI(httpserver.APIConfig{
 		Logger:           logger,
 		Authenticator:    fakeAuth{},
 		PublicOperations: httpadapter.PublicOperations(),
 		MaxBodyBytes:     1024,
 		RequestTimeout:   5 * time.Second,
+		IPv6PrefixLen:    64,
+		Anonymous:        limit,
+		Authenticated:    limit,
+		AuthFailure:      limit,
 	})
 	if err != nil {
 		t.Fatal(err)

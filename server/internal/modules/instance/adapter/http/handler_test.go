@@ -16,6 +16,7 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/modules/instance/domain"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver/apitest"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/ratelimit"
 )
 
 type fixedSource domain.Build
@@ -23,8 +24,8 @@ type fixedSource domain.Build
 // noTokens accepts no token: the module's operations are public.
 type noTokens struct{}
 
-func (noTokens) Authenticate(context.Context, string) (context.Context, error) {
-	return nil, errors.New("no token is valid here")
+func (noTokens) Authenticate(context.Context, string) (context.Context, string, error) {
+	return nil, "", errors.New("no token is valid here")
 }
 
 func (s fixedSource) Build() domain.Build { return domain.Build(s) }
@@ -35,9 +36,11 @@ func get(t *testing.T, uc httpadapter.UseCases, path string) (*http.Response, st
 	t.Helper()
 	logger := slog.New(slog.DiscardHandler)
 	router := httpserver.NewRouter(logger)
+	limit := ratelimit.New(time.Now).Bucket("test", ratelimit.Rate{PerMinute: 600, Burst: 100})
 	api, err := httpserver.NewAPI(httpserver.APIConfig{
 		Logger: logger, Authenticator: noTokens{}, PublicOperations: httpadapter.PublicOperations(),
 		MaxBodyBytes: 1 << 20, RequestTimeout: time.Second,
+		IPv6PrefixLen: 64, Anonymous: limit, Authenticated: limit, AuthFailure: limit,
 	})
 	if err != nil {
 		t.Fatal(err)

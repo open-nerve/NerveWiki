@@ -248,4 +248,5 @@ components:
 x-problem-codes:
   - bad_request
   - payload_too_large
+  - rate_limited
   - internal_error

@@ -22,6 +22,7 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/ratelimit"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/webui"
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
@@ -94,6 +95,10 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrati
 		return nil, err
 	}
 	inst := instance.New(instance.Deps{SignupEnabled: cfg.Auth.SignupEnabled})
+	// One limiter holds every bucket (M1/P2 design 3.2). It reads the
+	// monotonic clock, which a jump of the wall clock does not move.
+	limiter := ratelimit.New(time.Now)
+	limits := cfg.RateLimit
 	api, err := httpserver.NewAPI(httpserver.APIConfig{
 		Logger:           logger,
 		Authenticator:    ident.Authenticator(),
@@ -101,6 +106,10 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrati
 		MaxBodyBytes:     cfg.Server.MaxBodyBytes,
 		RequestTimeout:   cfg.Server.RequestTimeout,
 		TrustedProxies:   cfg.Server.TrustedProxies,
+		IPv6PrefixLen:    limits.IPv6PrefixLen,
+		Anonymous:        bucket(limiter, "anonymous", limits.Anonymous),
+		Authenticated:    bucket(limiter, "authenticated", limits.Authenticated),
+		AuthFailure:      bucket(limiter, "auth_failure", limits.AuthFailure),
 	})
 	if err != nil {
 		_ = migrator.Close()
@@ -179,6 +188,11 @@ func passwordHashing(p config.PasswordConfig) identity.PasswordHashing {
 		MaxConcurrent: p.MaxConcurrentHashes,
 		MaxWait:       p.MaxWait,
 	}
+}
+
+// bucket is limiter's bucket of the configured rate, named after its key.
+func bucket(limiter *ratelimit.Limiter, name string, c config.BucketConfig) *ratelimit.Bucket {
+	return limiter.Bucket(name, ratelimit.Rate{PerMinute: c.PerMinute, Burst: c.Burst})
 }
 
 // signupSwitch is auth.signup_enabled as identity's SignupPolicy.

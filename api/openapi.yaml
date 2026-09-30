@@ -13,8 +13,8 @@ info:
   license:
     name: AGPL-3.0-only
     identifier: AGPL-3.0-only
-# 每个操作都可能返回的平台错误码，只写在这里
-x-problem-codes: [bad_request, payload_too_large, internal_error]
+# 每个操作都可能返回的平台错误码，只写在这里。rate_limited：平台的桶（公开操作按客户端 IP，其余按凭证）
+x-problem-codes: [bad_request, payload_too_large, rate_limited, internal_error]
 tags:
   - name: identity
     description: Accounts, sign-in and sessions.

@@ -152,3 +152,26 @@ func TestMalformedForwardingIsWarnedOnce(t *testing.T) {
 		}
 	}
 }
+
+// The per-IP buckets count an IPv4 client by its address and an IPv6 one by
+// its prefix (M1/P2 design 3.2); a mapped address is already its IPv4
+// address, and a peer that does not parse is the empty key.
+func TestIPKey(t *testing.T) {
+	tests := []struct {
+		prefix int
+		ip     netip.Addr
+		want   string
+	}{
+		{64, netip.MustParseAddr("203.0.113.7"), "203.0.113.7"},
+		{64, netip.MustParseAddr("2001:db8:1:2:aaaa::7"), "2001:db8:1:2::/64"},
+		{48, netip.MustParseAddr("2001:db8:1:2::7"), "2001:db8:1::/48"},
+		{128, netip.MustParseAddr("2001:db8::7"), "2001:db8::7/128"},
+		{64, netip.Addr{}, ""},
+	}
+	for _, tt := range tests {
+		c := &clientIPs{v6Prefix: tt.prefix}
+		if got := c.key(tt.ip); got != tt.want {
+			t.Errorf("key(%v) with prefix %d = %q, want %q", tt.ip, tt.prefix, got, tt.want)
+		}
+	}
+}

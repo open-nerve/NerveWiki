@@ -6,6 +6,15 @@ auth:
     argon2_memory_kib: 64
     argon2_iterations: 1
 
+# 测试大量注册、登录：桶大到用不完。限流本身的测试自己设小桶
+ratelimit:
+  anonymous: { per_minute: 600000, burst: 100000 }
+  auth_failure: { per_minute: 600000, burst: 100000 }
+  authenticated: { per_minute: 600000, burst: 100000 }
+  login_ip: { per_minute: 600000, burst: 100000 }
+  login_ip_email: { per_minute: 600000, burst: 100000 }
+  register_ip: { per_minute: 600000, burst: 100000 }
+
 log:
   level: warn
   format: text

@@ -14,13 +14,23 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver/bodyshape"
 )
 
-// Authenticator checks a bearer token (M1/P1 design 3.5). The identity
-// module implements it; the platform does not know what an account is.
+// Authenticator checks a bearer token (M1/P1 design 3.5, M1/P2 design 3.3).
+// The identity module implements it; the platform does not know what an
+// account is.
 type Authenticator interface {
-	// Authenticate returns a context carrying the caller. An invalid token
-	// is an error with ProblemStatus() 401; any other error is an internal
-	// fault.
-	Authenticate(ctx context.Context, token string) (context.Context, error)
+	// Authenticate returns a context carrying the caller, and the caller's
+	// rate-limit key (session:<id>). An invalid token is an error with
+	// ProblemStatus() 401; for a token that is valid but for its expiry, the
+	// error also has ExpiredCredential() true. Any other error is an
+	// internal fault.
+	Authenticate(ctx context.Context, token string) (context.Context, string, error)
+}
+
+// expiredCredential is optional on the 401 error of an Authenticator: a
+// validly signed access token whose exp has passed is the client's normal
+// cue to refresh, and does not count as a failure.
+type expiredCredential interface {
+	ExpiredCredential() bool
 }
 
 // APIConfig is what the per-route middlewares need.
@@ -33,6 +43,11 @@ type APIConfig struct {
 	MaxBodyBytes     int64          // server.max_body_bytes
 	RequestTimeout   time.Duration  // server.request_timeout
 	TrustedProxies   []netip.Prefix // server.trusted_proxies
+	IPv6PrefixLen    int            // ratelimit.ipv6_prefix_len
+	// The platform's rate-limit buckets (M1/P2 design 3.2).
+	Anonymous     Limiter // ratelimit.anonymous: public operations, by client IP
+	Authenticated Limiter // ratelimit.authenticated: the rest, by credential
+	AuthFailure   Limiter // ratelimit.auth_failure: the gate before authentication, by client IP
 }
 
 // API is what the platform hands to every module's HTTP adapter: the error
@@ -45,17 +60,32 @@ type API struct {
 	maxBodyBytes   int64
 	requestTimeout time.Duration
 	clients        *clientIPs
+	anonymous      Limiter
+	authenticated  Limiter
+	authFailure    Limiter
 }
 
 // NewAPI returns the API value for cfg. It needs a logger, an
-// authenticator, and a body limit and a request timeout above zero.
+// authenticator, the three buckets, a body limit and a request timeout
+// above zero, and an IPv6 prefix length from 1 to 128.
 func NewAPI(cfg APIConfig) (*API, error) {
 	var errs []error
-	if cfg.Logger == nil {
-		errs = append(errs, errors.New("no Logger"))
+	for _, dep := range []struct {
+		name  string
+		unset bool
+	}{
+		{"Logger", cfg.Logger == nil},
+		{"Authenticator", cfg.Authenticator == nil},
+		{"Anonymous", cfg.Anonymous == nil},
+		{"Authenticated", cfg.Authenticated == nil},
+		{"AuthFailure", cfg.AuthFailure == nil},
+	} {
+		if dep.unset {
+			errs = append(errs, errors.New("no "+dep.name))
+		}
 	}
-	if cfg.Authenticator == nil {
-		errs = append(errs, errors.New("no Authenticator"))
+	if cfg.IPv6PrefixLen < 1 || cfg.IPv6PrefixLen > 128 {
+		errs = append(errs, fmt.Errorf("IPv6PrefixLen %d is outside 1-128", cfg.IPv6PrefixLen))
 	}
 	if cfg.MaxBodyBytes <= 0 {
 		errs = append(errs, errors.New("MaxBodyBytes must be positive"))
@@ -77,16 +107,19 @@ func NewAPI(cfg APIConfig) (*API, error) {
 		public:         public,
 		maxBodyBytes:   cfg.MaxBodyBytes,
 		requestTimeout: cfg.RequestTimeout,
-		clients:        &clientIPs{logger: cfg.Logger, trusted: cfg.TrustedProxies},
+		clients:        &clientIPs{logger: cfg.Logger, trusted: cfg.TrustedProxies, v6Prefix: cfg.IPv6PrefixLen},
+		anonymous:      cfg.Anonymous,
+		authenticated:  cfg.Authenticated,
+		authFailure:    cfg.AuthFailure,
 	}, nil
 }
 
 // Middlewares returns the per-route middlewares for a module's generated
 // StdHTTPServerOptions.Middlewares; bodies is the module's generated
-// bodyshape table. They run in this order (M1/P1 design 3.5):
+// bodyshape table. They run in this order (M1/P2 design 3.3):
 //
-//	request meta → request deadline → body limit → authentication →
-//	body structure
+//	request meta → request deadline → body limit → failure gate and
+//	authentication → rate limit → body structure
 //
 // The generated code wraps the last middleware of its list outermost, so
 // the list is in reverse. Only API operations get them: a long-lived route
@@ -97,6 +130,7 @@ func (a *API) Middlewares(bodies *bodyshape.Table) []func(http.Handler) http.Han
 		a.deadline,
 		a.bodyLimit,
 		a.authenticate,
+		a.rateLimit,
 		bodyshape.Middleware(bodies, a.Errors.BodyError),
 	}
 	slices.Reverse(inOrder)
@@ -107,9 +141,12 @@ func (a *API) Middlewares(bodies *bodyshape.Table) []func(http.Handler) http.Han
 type RequestMeta struct {
 	// ClientIP is the client's address: the connection's peer, or what a
 	// trusted proxy forwarded; without zone, and an IPv4-mapped IPv6
-	// address is its IPv4 address. Sessions record it. The zero Addr when
-	// the peer address does not parse.
-	ClientIP  netip.Addr
+	// address is its IPv4 address. Logs and sessions record it. The zero
+	// Addr when the peer address does not parse.
+	ClientIP netip.Addr
+	// IPKey is what the per-IP rate-limit buckets count the client by: an
+	// IPv4 address, or the prefix of an IPv6 one (ratelimit.ipv6_prefix_len).
+	IPKey     string
 	UserAgent string
 }
 
@@ -124,7 +161,8 @@ func RequestMetaFrom(ctx context.Context) RequestMeta {
 
 func (a *API) requestMeta(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		meta := RequestMeta{ClientIP: a.clients.of(r), UserAgent: r.UserAgent()}
+		ip := a.clients.of(r)
+		meta := RequestMeta{ClientIP: ip, IPKey: a.clients.key(ip), UserAgent: r.UserAgent()}
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), metaKey{}, meta)))
 	})
 }
@@ -149,8 +187,19 @@ func (a *API) bodyLimit(next http.Handler) http.Handler {
 	})
 }
 
+// credentialKey carries the rate-limit key of the request's credential from
+// authenticate to rateLimit.
+type credentialKey struct{}
+
 // authenticate denies by default (M1/P1 design 3.5): every operation needs a
 // valid bearer token, except the public ones, which never look at it.
+//
+// The failure gate comes first (M1/P2 design 3.3): a request with a token
+// reserves a unit of its client IP's auth_failure bucket before the
+// authenticator runs, and gets 429 without running it when the bucket is
+// empty. A credential that fails keeps the unit; success, an expired access
+// token and an internal fault give it back. Reserving first holds
+// concurrent requests to the bucket too, so failures never exceed it.
 func (a *API) authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if a.public[r.Pattern] {
@@ -162,17 +211,28 @@ func (a *API) authenticate(next http.Handler) http.Handler {
 			a.unauthorized(w, r, errors.New("no bearer token"), false)
 			return
 		}
-		ctx, err := a.authenticator.Authenticate(r.Context(), token)
+		refund, retry, ok := a.authFailure.Reserve(RequestMetaFrom(r.Context()).IPKey)
+		if !ok {
+			a.tooManyRequests(w, r, "auth_failure", retry)
+			return
+		}
+		ctx, credential, err := a.authenticator.Authenticate(r.Context(), token)
 		if err != nil {
 			var pe ProblemError
 			if errors.As(err, &pe) && pe.ProblemStatus() == http.StatusUnauthorized {
+				var ec expiredCredential
+				if errors.As(err, &ec) && ec.ExpiredCredential() {
+					refund()
+				}
 				a.unauthorized(w, r, err, true)
 				return
 			}
+			refund()
 			a.Errors.Write(w, r, err)
 			return
 		}
-		next.ServeHTTP(w, r.WithContext(ctx))
+		refund()
+		next.ServeHTTP(w, r.WithContext(context.WithValue(ctx, credentialKey{}, credential)))
 	})
 }
 
