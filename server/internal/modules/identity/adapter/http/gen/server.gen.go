@@ -97,6 +97,14 @@ type AuthTokens struct {
 // AuthTokensTokenType defines model for AuthTokens.TokenType.
 type AuthTokensTokenType string
 
+// ChangePasswordRequest defines model for ChangePasswordRequest.
+type ChangePasswordRequest struct {
+	CurrentPassword string `json:"current_password"`
+
+	// NewPassword 8–128 characters, neither a common password nor made of the address's local part.
+	NewPassword string `json:"new_password"`
+}
+
 // LoginRequest defines model for LoginRequest.
 type LoginRequest struct {
 	// Email The sign-in address, in any case, with or without surrounding blanks. It is not checked for form: an address no account has answers identity.invalid_credentials.
@@ -110,6 +118,12 @@ type LogoutRequest struct {
 	RefreshToken string `json:"refresh_token"`
 }
 
+// OnboardingStepRequest defines model for OnboardingStepRequest.
+type OnboardingStepRequest struct {
+	// Step The step's id: a lower-case letter, then lower-case letters, digits and underscores, 32 characters at most.
+	Step string `json:"step"`
+}
+
 // RefreshRequest defines model for RefreshRequest.
 type RefreshRequest struct {
 	// RefreshToken The refresh_token of the session's last AuthTokens.
@@ -121,6 +135,12 @@ type RegisterRequest struct {
 	// Email The sign-in address; stored trimmed and in lower case.
 	Email    string `json:"email"`
 	Password string `json:"password"`
+}
+
+// UpdateMeRequest defines model for UpdateMeRequest.
+type UpdateMeRequest struct {
+	// DisplayName 1–100 characters after the surrounding blanks are trimmed, without control characters.
+	DisplayName *string `json:"display_name,omitempty"`
 }
 
 // User defines model for User.
@@ -148,8 +168,17 @@ type RefreshTokensJSONRequestBody = RefreshRequest
 // RegisterJSONRequestBody defines body for Register for application/json ContentType.
 type RegisterJSONRequestBody = RegisterRequest
 
+// UpdateMeJSONRequestBody defines body for UpdateMe for application/json ContentType.
+type UpdateMeJSONRequestBody = UpdateMeRequest
+
 // CreateAPITokenJSONRequestBody defines body for CreateAPIToken for application/json ContentType.
 type CreateAPITokenJSONRequestBody = APITokenCreate
+
+// ChangePasswordJSONRequestBody defines body for ChangePassword for application/json ContentType.
+type ChangePasswordJSONRequestBody = ChangePasswordRequest
+
+// RecordOnboardingStepJSONRequestBody defines body for RecordOnboardingStep for application/json ContentType.
+type RecordOnboardingStepJSONRequestBody = OnboardingStepRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
@@ -171,12 +200,21 @@ type ServerInterface interface {
 	// GetMe Read the caller's account
 	// (GET /api/v0/me)
 	GetMe(w http.ResponseWriter, r *http.Request)
+	// UpdateMe Change the caller's profile
+	// (PATCH /api/v0/me)
+	UpdateMe(w http.ResponseWriter, r *http.Request)
 	// ListAPITokens List the caller's personal access tokens
 	// (GET /api/v0/me/api-tokens)
 	ListAPITokens(w http.ResponseWriter, r *http.Request)
 	// CreateAPIToken Create a personal access token
 	// (POST /api/v0/me/api-tokens)
 	CreateAPIToken(w http.ResponseWriter, r *http.Request)
+	// ChangePassword Change the caller's password
+	// (POST /api/v0/me/change-password)
+	ChangePassword(w http.ResponseWriter, r *http.Request)
+	// RecordOnboardingStep Record a completed onboarding step
+	// (POST /api/v0/me/onboarding-steps)
+	RecordOnboardingStep(w http.ResponseWriter, r *http.Request)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -284,6 +322,20 @@ func (siw *ServerInterfaceWrapper) GetMe(w http.ResponseWriter, r *http.Request)
 	handler.ServeHTTP(w, r)
 }
 
+// UpdateMe operation middleware
+func (siw *ServerInterfaceWrapper) UpdateMe(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateMe(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListAPITokens operation middleware
 func (siw *ServerInterfaceWrapper) ListAPITokens(w http.ResponseWriter, r *http.Request) {
 
@@ -303,6 +355,34 @@ func (siw *ServerInterfaceWrapper) CreateAPIToken(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.CreateAPIToken(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ChangePassword operation middleware
+func (siw *ServerInterfaceWrapper) ChangePassword(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ChangePassword(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RecordOnboardingStep operation middleware
+func (siw *ServerInterfaceWrapper) RecordOnboardingStep(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RecordOnboardingStep(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -437,6 +517,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v0/auth/refresh", wrapper.RefreshTokens)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v0/auth/logout", wrapper.Logout)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v0/me", wrapper.GetMe)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/v0/me", wrapper.UpdateMe)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v0/me/onboarding-steps", wrapper.RecordOnboardingStep)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v0/me/change-password", wrapper.ChangePassword)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v0/me/api-tokens", wrapper.ListAPITokens)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v0/me/api-tokens", wrapper.CreateAPIToken)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v0/api-tokens/{token_id}", wrapper.RevokeAPIToken)
@@ -717,6 +800,52 @@ func (response GetMedefaultApplicationProblemPlusJSONResponse) VisitGetMeRespons
 	return err
 }
 
+type UpdateMeRequestObject struct {
+	Body *UpdateMeJSONRequestBody
+}
+
+type UpdateMeResponseObject interface {
+	VisitUpdateMeResponse(w http.ResponseWriter) error
+}
+
+type UpdateMe200JSONResponse User
+
+func (response UpdateMe200JSONResponse) VisitUpdateMeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateMedefaultApplicationProblemPlusJSONResponse struct {
+	Body       externalRef0.Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response UpdateMedefaultApplicationProblemPlusJSONResponse) VisitUpdateMeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	if response.Headers.WWWAuthenticate != nil {
+		w.Header().Set("WWW-Authenticate", fmt.Sprint(*response.Headers.WWWAuthenticate))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListAPITokensRequestObject struct {
 }
 
@@ -808,6 +937,92 @@ func (response CreateAPITokendefaultApplicationProblemPlusJSONResponse) VisitCre
 	return err
 }
 
+type ChangePasswordRequestObject struct {
+	Body *ChangePasswordJSONRequestBody
+}
+
+type ChangePasswordResponseObject interface {
+	VisitChangePasswordResponse(w http.ResponseWriter) error
+}
+
+type ChangePassword204Response struct {
+}
+
+func (response ChangePassword204Response) VisitChangePasswordResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type ChangePassworddefaultApplicationProblemPlusJSONResponse struct {
+	Body       externalRef0.Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response ChangePassworddefaultApplicationProblemPlusJSONResponse) VisitChangePasswordResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	if response.Headers.WWWAuthenticate != nil {
+		w.Header().Set("WWW-Authenticate", fmt.Sprint(*response.Headers.WWWAuthenticate))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RecordOnboardingStepRequestObject struct {
+	Body *RecordOnboardingStepJSONRequestBody
+}
+
+type RecordOnboardingStepResponseObject interface {
+	VisitRecordOnboardingStepResponse(w http.ResponseWriter) error
+}
+
+type RecordOnboardingStep200JSONResponse User
+
+func (response RecordOnboardingStep200JSONResponse) VisitRecordOnboardingStepResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RecordOnboardingStepdefaultApplicationProblemPlusJSONResponse struct {
+	Body       externalRef0.Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response RecordOnboardingStepdefaultApplicationProblemPlusJSONResponse) VisitRecordOnboardingStepResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	if response.Headers.WWWAuthenticate != nil {
+		w.Header().Set("WWW-Authenticate", fmt.Sprint(*response.Headers.WWWAuthenticate))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// RevokeAPIToken Revoke a personal access token
@@ -828,12 +1043,21 @@ type StrictServerInterface interface {
 	// GetMe Read the caller's account
 	// (GET /api/v0/me)
 	GetMe(ctx context.Context, request GetMeRequestObject) (GetMeResponseObject, error)
+	// UpdateMe Change the caller's profile
+	// (PATCH /api/v0/me)
+	UpdateMe(ctx context.Context, request UpdateMeRequestObject) (UpdateMeResponseObject, error)
 	// ListAPITokens List the caller's personal access tokens
 	// (GET /api/v0/me/api-tokens)
 	ListAPITokens(ctx context.Context, request ListAPITokensRequestObject) (ListAPITokensResponseObject, error)
 	// CreateAPIToken Create a personal access token
 	// (POST /api/v0/me/api-tokens)
 	CreateAPIToken(ctx context.Context, request CreateAPITokenRequestObject) (CreateAPITokenResponseObject, error)
+	// ChangePassword Change the caller's password
+	// (POST /api/v0/me/change-password)
+	ChangePassword(ctx context.Context, request ChangePasswordRequestObject) (ChangePasswordResponseObject, error)
+	// RecordOnboardingStep Record a completed onboarding step
+	// (POST /api/v0/me/onboarding-steps)
+	RecordOnboardingStep(ctx context.Context, request RecordOnboardingStepRequestObject) (RecordOnboardingStepResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -1049,6 +1273,37 @@ func (sh *strictHandler) GetMe(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// UpdateMe operation middleware
+func (sh *strictHandler) UpdateMe(w http.ResponseWriter, r *http.Request) {
+	var request UpdateMeRequestObject
+
+	var body UpdateMeJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateMe(ctx, request.(UpdateMeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateMe")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateMeResponseObject); ok {
+		if err := validResponse.VisitUpdateMeResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListAPITokens operation middleware
 func (sh *strictHandler) ListAPITokens(w http.ResponseWriter, r *http.Request) {
 	var request ListAPITokensRequestObject
@@ -1097,6 +1352,68 @@ func (sh *strictHandler) CreateAPIToken(w http.ResponseWriter, r *http.Request) 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(CreateAPITokenResponseObject); ok {
 		if err := validResponse.VisitCreateAPITokenResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ChangePassword operation middleware
+func (sh *strictHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
+	var request ChangePasswordRequestObject
+
+	var body ChangePasswordJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ChangePassword(ctx, request.(ChangePasswordRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ChangePassword")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ChangePasswordResponseObject); ok {
+		if err := validResponse.VisitChangePasswordResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RecordOnboardingStep operation middleware
+func (sh *strictHandler) RecordOnboardingStep(w http.ResponseWriter, r *http.Request) {
+	var request RecordOnboardingStepRequestObject
+
+	var body RecordOnboardingStepJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RecordOnboardingStep(ctx, request.(RecordOnboardingStepRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RecordOnboardingStep")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RecordOnboardingStepResponseObject); ok {
+		if err := validResponse.VisitRecordOnboardingStepResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

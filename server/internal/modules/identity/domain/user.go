@@ -4,6 +4,7 @@
 package domain
 
 import (
+	"regexp"
 	"strings"
 	"unicode/utf8"
 	"uuid"
@@ -24,6 +25,48 @@ type User struct {
 // MaxDisplayNameLength is the length of users.display_name, varchar(100),
 // in characters.
 const MaxDisplayNameLength = 100
+
+// UserPatch is a partial update of the caller's account: a nil field stays
+// as it is. The address is not in it: only the administrator's command
+// changes it (P4).
+type UserPatch struct {
+	DisplayName *string
+}
+
+// CheckUserPatch checks p (M1/P3 design 3.5) and returns it as it is
+// stored: the display name without its surrounding white space, 1–100
+// characters, no control character. A problem is 422 validation_failed.
+func CheckUserPatch(p UserPatch) (UserPatch, error) {
+	if p.DisplayName == nil {
+		return p, nil
+	}
+	name, f := CheckName("display_name", *p.DisplayName, MaxDisplayNameLength)
+	if f != nil {
+		return UserPatch{}, shared.Invalid(*f)
+	}
+	return UserPatch{DisplayName: &name}, nil
+}
+
+// MaxOnboardingSteps is how many steps an account records at most:
+// users_onboarding_steps_check's bound.
+const MaxOnboardingSteps = 32
+
+// onboardingStepID is the form of a step id: a lower-case letter, then
+// letters, digits and underscores, 32 characters at most (M1 design 8).
+var onboardingStepID = regexp.MustCompile(`^[a-z][a-z0-9_]{0,31}$`)
+
+// CheckOnboardingStep checks the id of a completed onboarding step; the
+// server does not know the steps, the web app's registry does (M1 design
+// 8). A problem is 422 validation_failed on step.
+func CheckOnboardingStep(step string) error {
+	if !onboardingStepID.MatchString(step) {
+		return shared.Invalid(shared.FieldError{
+			Field: "step", Code: shared.FieldInvalidFormat,
+			Message: "must be a lower-case letter, then lower-case letters, digits and underscores, 32 characters at most",
+		})
+	}
+	return nil
+}
 
 // NewAccount checks the e-mail address and the password of a new account
 // and returns the normalized address. Every problem is reported at once, as

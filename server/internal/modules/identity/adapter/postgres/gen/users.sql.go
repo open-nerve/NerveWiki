@@ -125,6 +125,77 @@ func (q *Queries) LockUserForCredentials(ctx context.Context, id uuid.UUID) (Loc
 	return i, err
 }
 
+const recordOnboardingStep = `-- name: RecordOnboardingStep :one
+UPDATE users
+SET onboarding_steps = CASE WHEN $1::text = ANY (onboarding_steps) THEN onboarding_steps
+                            ELSE array_append(onboarding_steps, $1::text) END,
+    updated_at       = CASE WHEN $1::text = ANY (onboarding_steps) THEN updated_at
+                            ELSE $2::timestamptz END
+WHERE id = $3
+RETURNING id, email, display_name, onboarding_steps
+`
+
+type RecordOnboardingStepParams struct {
+	Step string
+	Now  time.Time
+	ID   uuid.UUID
+}
+
+type RecordOnboardingStepRow struct {
+	ID              uuid.UUID
+	Email           string
+	DisplayName     string
+	OnboardingSteps []string
+}
+
+// A completed step is appended once (M1/P3 design 3.5): a step recorded already changes nothing, updated_at
+// included. A concurrent record waits for the row and appends to what it left. users_onboarding_steps_check bounds
+// the count.
+func (q *Queries) RecordOnboardingStep(ctx context.Context, arg RecordOnboardingStepParams) (RecordOnboardingStepRow, error) {
+	row := q.db.QueryRow(ctx, recordOnboardingStep, arg.Step, arg.Now, arg.ID)
+	var i RecordOnboardingStepRow
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.DisplayName,
+		&i.OnboardingSteps,
+	)
+	return i, err
+}
+
+const updateDisplayName = `-- name: UpdateDisplayName :one
+UPDATE users
+SET display_name = $1, updated_at = $2
+WHERE id = $3
+RETURNING id, email, display_name, onboarding_steps
+`
+
+type UpdateDisplayNameParams struct {
+	DisplayName string
+	Now         time.Time
+	ID          uuid.UUID
+}
+
+type UpdateDisplayNameRow struct {
+	ID              uuid.UUID
+	Email           string
+	DisplayName     string
+	OnboardingSteps []string
+}
+
+// PATCH /me (M1/P3 design 3.5): one statement.
+func (q *Queries) UpdateDisplayName(ctx context.Context, arg UpdateDisplayNameParams) (UpdateDisplayNameRow, error) {
+	row := q.db.QueryRow(ctx, updateDisplayName, arg.DisplayName, arg.Now, arg.ID)
+	var i UpdateDisplayNameRow
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.DisplayName,
+		&i.OnboardingSteps,
+	)
+	return i, err
+}
+
 const updatePasswordHash = `-- name: UpdatePasswordHash :exec
 UPDATE users
 SET password = $1, updated_at = $2

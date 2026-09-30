@@ -41,6 +41,32 @@ func (s *Store) GetUser(ctx context.Context, id uuid.UUID) (domain.User, error) 
 	}, nil
 }
 
+// UpdateDisplayName sets account id's display name at now and returns the
+// account; app.ErrNotFound when there is none.
+func (s *Store) UpdateDisplayName(ctx context.Context, id uuid.UUID, name string, now time.Time) (domain.User, error) {
+	row, err := s.queries(ctx).UpdateDisplayName(ctx, gen.UpdateDisplayNameParams{DisplayName: name, Now: now, ID: id})
+	if err != nil {
+		return domain.User{}, notFound(err)
+	}
+	return domain.User{ID: row.ID, Email: row.Email, DisplayName: row.DisplayName, OnboardingSteps: row.OnboardingSteps}, nil
+}
+
+// RecordOnboardingStep appends step to account id's completed steps unless
+// it is there, at now, and returns the account; app.ErrNotFound when there
+// is none. A step beyond the CHECK's bound is
+// domain.ErrTooManyOnboardingSteps: the domain checked the step's form, so
+// only the count can break the CHECK.
+func (s *Store) RecordOnboardingStep(ctx context.Context, id uuid.UUID, step string, now time.Time) (domain.User, error) {
+	row, err := s.queries(ctx).RecordOnboardingStep(ctx, gen.RecordOnboardingStepParams{Step: step, Now: now, ID: id})
+	switch {
+	case checkViolation(err, "users_onboarding_steps_check"):
+		return domain.User{}, domain.ErrTooManyOnboardingSteps
+	case err != nil:
+		return domain.User{}, notFound(err)
+	}
+	return domain.User{ID: row.ID, Email: row.Email, DisplayName: row.DisplayName, OnboardingSteps: row.OnboardingSteps}, nil
+}
+
 // FindLoginAccount reads the account of email, a normalized address;
 // app.ErrNotFound when there is none.
 func (s *Store) FindLoginAccount(ctx context.Context, email string) (app.LoginAccount, error) {

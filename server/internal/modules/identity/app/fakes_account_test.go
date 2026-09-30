@@ -87,3 +87,64 @@ func (f *fakeTokenStore) RevokeAPIToken(_ context.Context, id, userID uuid.UUID,
 	f.revokeAt = append(f.revokeAt, now)
 	return f.revokes, f.err
 }
+
+// fakeUsers is the test account's profile.
+type fakeUsers struct {
+	user  domain.User
+	err   error
+	names []string    // display names written
+	steps []string    // steps recorded
+	times []time.Time // at
+	reads int
+}
+
+func (f *fakeUsers) UpdateDisplayName(_ context.Context, id uuid.UUID, name string, now time.Time) (domain.User, error) {
+	if f.err != nil {
+		return domain.User{}, f.err
+	}
+	f.names, f.times = append(f.names, name), append(f.times, now)
+	f.user.DisplayName = name
+	return f.user, nil
+}
+
+func (f *fakeUsers) RecordOnboardingStep(_ context.Context, id uuid.UUID, step string, now time.Time) (domain.User, error) {
+	if f.err != nil {
+		return domain.User{}, f.err
+	}
+	f.steps, f.times = append(f.steps, step), append(f.times, now)
+	return f.user, nil
+}
+
+func (f *fakeUsers) GetUser(_ context.Context, id uuid.UUID) (domain.User, error) {
+	f.reads++
+	return f.user, f.err
+}
+
+// fakeSessionRevoker records the revocations.
+type fakeSessionRevoker struct {
+	keeps     []uuid.UUID
+	reasons   []domain.RevokeReason
+	outsideTx int
+}
+
+func (f *fakeSessionRevoker) RevokeSessions(ctx context.Context, _, keep uuid.UUID, reason domain.RevokeReason, _ time.Time) (int, error) {
+	if !inTx(ctx) {
+		f.outsideTx++
+	}
+	f.keeps, f.reasons = append(f.keeps, keep), append(f.reasons, reason)
+	return 2, nil
+}
+
+// fakePasswordWriter records the hashes written.
+type fakePasswordWriter struct {
+	hashes    []string
+	outsideTx int
+}
+
+func (f *fakePasswordWriter) UpdatePasswordHash(ctx context.Context, _ uuid.UUID, hash string, _ time.Time) error {
+	if !inTx(ctx) {
+		f.outsideTx++
+	}
+	f.hashes = append(f.hashes, hash)
+	return nil
+}

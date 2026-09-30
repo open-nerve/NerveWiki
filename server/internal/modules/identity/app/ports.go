@@ -49,6 +49,16 @@ type UserReader interface {
 	GetUser(ctx context.Context, id uuid.UUID) (domain.User, error)
 }
 
+// UserUpdater changes what the caller may change of its account (M1/P3
+// design 3.5). Each method is one statement and returns the account after
+// it; ErrNotFound when there is no account id.
+type UserUpdater interface {
+	UpdateDisplayName(ctx context.Context, id uuid.UUID, name string, now time.Time) (domain.User, error)
+	// RecordOnboardingStep appends step unless it is recorded already;
+	// domain.ErrTooManyOnboardingSteps beyond the bound.
+	RecordOnboardingStep(ctx context.Context, id uuid.UUID, step string, now time.Time) (domain.User, error)
+}
+
 // LoginAccount is what login reads of an account before its transaction:
 // the hash is the snapshot it verifies the password against (M1/P2 design
 // 3.4).

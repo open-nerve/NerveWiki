@@ -29,6 +29,12 @@ var (
 	// exist, is revoked already, or is another account's: the three look
 	// the same (M1/P3 design 3.2).
 	ErrAPITokenNotFound = shared.NewError(shared.KindNotFound, "identity.api_token_not_found", "The API token does not exist.")
+	// ErrTooManyOnboardingSteps answers a step beyond MaxOnboardingSteps
+	// recorded: users_onboarding_steps_check decides, so concurrent
+	// records cannot pass it (M1/P3 design 3.5).
+	ErrTooManyOnboardingSteps = shared.Invalid(shared.FieldError{
+		Field: "step", Code: shared.FieldOutOfRange, Message: "at most 32 steps can be recorded",
+	})
 	// ErrAccountNotFound answers a request about an account that does not
 	// exist: ShareActiveAccount's, and the administrator's commands' (P4).
 	ErrAccountNotFound = shared.NewError(shared.KindNotFound, "identity.account_not_found", "The account does not exist.")

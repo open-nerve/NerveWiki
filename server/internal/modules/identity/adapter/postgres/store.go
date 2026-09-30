@@ -37,6 +37,12 @@ func uniqueViolation(err error, constraint string) bool {
 	return errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == constraint
 }
 
+// checkViolation reports whether err broke the CHECK constraint name.
+func checkViolation(err error, constraint string) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23514" && pgErr.ConstraintName == constraint
+}
+
 // notFound turns pgx.ErrNoRows into app.ErrNotFound.
 func notFound(err error) error {
 	if errors.Is(err, pgx.ErrNoRows) {

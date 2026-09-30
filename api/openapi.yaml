@@ -31,6 +31,10 @@ paths:
     $ref: "modules/identity.yaml#/paths/~1api~1v0~1auth~1logout"
   /api/v0/me:
     $ref: "modules/identity.yaml#/paths/~1api~1v0~1me"
+  /api/v0/me/onboarding-steps:
+    $ref: "modules/identity.yaml#/paths/~1api~1v0~1me~1onboarding-steps"
+  /api/v0/me/change-password:
+    $ref: "modules/identity.yaml#/paths/~1api~1v0~1me~1change-password"
   /api/v0/me/api-tokens:
     $ref: "modules/identity.yaml#/paths/~1api~1v0~1me~1api-tokens"
   /api/v0/api-tokens/{token_id}:

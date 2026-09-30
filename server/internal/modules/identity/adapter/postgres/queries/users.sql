@@ -35,3 +35,22 @@ WHERE id = sqlc.arg(id);
 SELECT email, password
 FROM users
 WHERE id = sqlc.arg(id);
+
+-- name: UpdateDisplayName :one
+-- PATCH /me (M1/P3 design 3.5): one statement.
+UPDATE users
+SET display_name = sqlc.arg(display_name), updated_at = sqlc.arg(now)
+WHERE id = sqlc.arg(id)
+RETURNING id, email, display_name, onboarding_steps;
+
+-- name: RecordOnboardingStep :one
+-- A completed step is appended once (M1/P3 design 3.5): a step recorded already changes nothing, updated_at
+-- included. A concurrent record waits for the row and appends to what it left. users_onboarding_steps_check bounds
+-- the count.
+UPDATE users
+SET onboarding_steps = CASE WHEN sqlc.arg(step)::text = ANY (onboarding_steps) THEN onboarding_steps
+                            ELSE array_append(onboarding_steps, sqlc.arg(step)::text) END,
+    updated_at       = CASE WHEN sqlc.arg(step)::text = ANY (onboarding_steps) THEN updated_at
+                            ELSE sqlc.arg(now)::timestamptz END
+WHERE id = sqlc.arg(id)
+RETURNING id, email, display_name, onboarding_steps;

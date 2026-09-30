@@ -93,6 +93,7 @@ func New(d Deps) (*Module, error) {
 		AccessTTL:  d.AccessTokenTTL,
 		SessionTTL: d.SessionTTL,
 	}
+	rules := domain.NewPasswordRules()
 	password := app.CurrentPassword{
 		Accounts: store, Verifier: hasher, Tx: d.Tx,
 		Lock: app.CredentialLock{Locker: store, Sessions: store, APITokens: store},
@@ -100,16 +101,21 @@ func New(d Deps) (*Module, error) {
 	return &Module{
 		uc: httpadapter.UseCases{
 			Register: app.NewRegister(app.RegisterDeps{
-				Policy: d.SignupPolicy, Rules: domain.NewPasswordRules(), Hasher: hasher, Tx: d.Tx,
+				Policy: d.SignupPolicy, Rules: rules, Hasher: hasher, Tx: d.Tx,
 				Users: store, Sessions: store, Issuance: issuance, Clock: d.Clock, Logger: d.Logger,
 			}),
 			Login: app.NewLogin(app.LoginDeps{
 				Accounts: store, Locker: store, Passwords: store, Sessions: store, Verifier: hasher, Hasher: hasher, Tx: d.Tx,
 				Issuance: issuance, Clock: d.Clock, Logger: d.Logger, DummyHash: dummy,
 			}),
-			Refresh:       app.NewRefresh(app.RefreshDeps{Sessions: store, Tx: d.Tx, Issuance: issuance, Clock: d.Clock, Logger: d.Logger}),
-			Logout:        app.NewLogout(store, d.Clock, d.Logger),
-			GetMe:         app.NewGetMe(store),
+			Refresh:              app.NewRefresh(app.RefreshDeps{Sessions: store, Tx: d.Tx, Issuance: issuance, Clock: d.Clock, Logger: d.Logger}),
+			Logout:               app.NewLogout(store, d.Clock, d.Logger),
+			GetMe:                app.NewGetMe(store),
+			UpdateMe:             app.NewUpdateMe(store, store, d.Clock),
+			RecordOnboardingStep: app.NewRecordOnboardingStep(store, d.Clock),
+			ChangePassword: app.NewChangePassword(app.ChangePasswordDeps{
+				Password: password, Rules: rules, Hasher: hasher, Passwords: store, Sessions: store, Clock: d.Clock, Logger: d.Logger,
+			}),
 			ListAPITokens: app.NewListAPITokens(store),
 			CreateAPIToken: app.NewCreateAPIToken(app.CreateAPITokenDeps{
 				Password: password, Tokens: store, Clock: d.Clock, Logger: d.Logger,

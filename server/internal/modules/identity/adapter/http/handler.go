@@ -42,6 +42,21 @@ type GetMeUseCase interface {
 	Execute(ctx context.Context) (domain.User, error)
 }
 
+// UpdateMeUseCase is app.UpdateMe.
+type UpdateMeUseCase interface {
+	Execute(ctx context.Context, p domain.UserPatch) (domain.User, error)
+}
+
+// RecordOnboardingStepUseCase is app.RecordOnboardingStep.
+type RecordOnboardingStepUseCase interface {
+	Execute(ctx context.Context, step string) (domain.User, error)
+}
+
+// ChangePasswordUseCase is app.ChangePassword.
+type ChangePasswordUseCase interface {
+	Execute(ctx context.Context, in app.ChangePasswordInput) error
+}
+
 // ListAPITokensUseCase is app.ListAPITokens.
 type ListAPITokensUseCase interface {
 	Execute(ctx context.Context) ([]domain.APIToken, error)
@@ -59,14 +74,17 @@ type RevokeAPITokenUseCase interface {
 
 // UseCases are the use cases behind the module's operations.
 type UseCases struct {
-	Register       RegisterUseCase
-	Login          LoginUseCase
-	Refresh        RefreshUseCase
-	Logout         LogoutUseCase
-	GetMe          GetMeUseCase
-	ListAPITokens  ListAPITokensUseCase
-	CreateAPIToken CreateAPITokenUseCase
-	RevokeAPIToken RevokeAPITokenUseCase
+	Register             RegisterUseCase
+	Login                LoginUseCase
+	Refresh              RefreshUseCase
+	Logout               LogoutUseCase
+	GetMe                GetMeUseCase
+	UpdateMe             UpdateMeUseCase
+	RecordOnboardingStep RecordOnboardingStepUseCase
+	ChangePassword       ChangePasswordUseCase
+	ListAPITokens        ListAPITokensUseCase
+	CreateAPIToken       CreateAPITokenUseCase
+	RevokeAPIToken       RevokeAPITokenUseCase
 }
 
 // Settings are what the handler applies around the use cases.

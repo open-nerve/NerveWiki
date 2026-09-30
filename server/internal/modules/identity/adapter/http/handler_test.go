@@ -166,6 +166,15 @@ func serverWith(t *testing.T, uc httpadapter.UseCases, s httpadapter.Settings) h
 	if uc.GetMe == nil {
 		uc.GetMe = fakeGetMe{}
 	}
+	if uc.UpdateMe == nil {
+		uc.UpdateMe = &fakeUpdateMe{}
+	}
+	if uc.RecordOnboardingStep == nil {
+		uc.RecordOnboardingStep = &fakeRecordStep{}
+	}
+	if uc.ChangePassword == nil {
+		uc.ChangePassword = &fakeChangePassword{}
+	}
 	if uc.ListAPITokens == nil {
 		uc.ListAPITokens = &fakeListTokens{}
 	}

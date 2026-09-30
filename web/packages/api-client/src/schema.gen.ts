@@ -98,6 +98,50 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /**
+         * Change the caller's profile
+         * @description Changes the fields sent and answers the account. A body without any field changes nothing. The address cannot change here: the server's administrator changes it.
+         */
+        patch: operations["updateMe"];
+        trace?: never;
+    };
+    "/api/v0/me/onboarding-steps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record a completed onboarding step
+         * @description Adds the step to the account's onboarding_steps and answers the account; a step recorded already changes nothing. The web app defines the steps: the server checks the id's form, and records 32 steps at most.
+         */
+        post: operations["recordOnboardingStep"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v0/me/change-password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Change the caller's password
+         * @description Replaces the password once the current one is confirmed. Every other session of the account ends; the caller's own session goes on, and a caller with a personal access token ends them all. Personal access tokens keep working. Attempts have a rate limit of their own, per account.
+         */
+        post: operations["changePassword"];
+        delete?: never;
+        options?: never;
+        head?: never;
         patch?: never;
         trace?: never;
     };
@@ -240,6 +284,19 @@ export interface components {
             /** @description The ids of the onboarding steps the account has completed; the web app defines the steps. */
             onboarding_steps: string[];
         };
+        UpdateMeRequest: {
+            /** @description 1–100 characters after the surrounding blanks are trimmed, without control characters. */
+            display_name?: string;
+        };
+        OnboardingStepRequest: {
+            /** @description The step's id: a lower-case letter, then lower-case letters, digits and underscores, 32 characters at most. */
+            step: string;
+        };
+        ChangePasswordRequest: {
+            current_password: string;
+            /** @description 8–128 characters, neither a common password nor made of the address's local part. */
+            new_password: string;
+        };
         /** @description A personal access token as the list shows it. The token itself appears only in ApiTokenCreated. */
         ApiToken: {
             /** Format: uuid */
@@ -341,6 +398,9 @@ export type LoginRequest = components['schemas']['LoginRequest'];
 export type RefreshRequest = components['schemas']['RefreshRequest'];
 export type LogoutRequest = components['schemas']['LogoutRequest'];
 export type User = components['schemas']['User'];
+export type UpdateMeRequest = components['schemas']['UpdateMeRequest'];
+export type OnboardingStepRequest = components['schemas']['OnboardingStepRequest'];
+export type ChangePasswordRequest = components['schemas']['ChangePasswordRequest'];
 export type ApiToken = components['schemas']['ApiToken'];
 export type ApiTokenList = components['schemas']['ApiTokenList'];
 export type ApiTokenCreate = components['schemas']['ApiTokenCreate'];
@@ -464,6 +524,79 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["User"];
                 };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    updateMe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateMeRequest"];
+            };
+        };
+        responses: {
+            /** @description The caller's account, changed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["User"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    recordOnboardingStep: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OnboardingStepRequest"];
+            };
+        };
+        responses: {
+            /** @description The caller's account, with the step. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["User"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    changePassword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangePasswordRequest"];
+            };
+        };
+        responses: {
+            /** @description The password is changed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             default: components["responses"]["Problem"];
         };
