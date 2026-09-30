@@ -3,7 +3,7 @@
 | 项 | 内容 |
 |---|---|
 | Phase | M0/P4 接口契约与代码生成 |
-| 状态 | 进行中 |
+| 状态 | 已完成 |
 | 基线 | `91c6fb7`（P3 完成：平台层、组合根、命令行、架构测试） |
 | 上级文档 | [M0 总设计](00-M0-design.md) 第 7 节；[总体设计](../v0.1-design.md) 6.1 |
 
@@ -42,8 +42,8 @@ P3 留下的：
 
 | 内容 | 去处 | 理由 |
 |---|---|---|
-| 认证相关：`Authenticator`、公开操作清单 `PublicOperations()`、401 的 `WWW-Authenticate`、`security: [bearer]` 的 scheme | M1 | 第一个需要令牌的操作在 M1。本 Phase 要求每个操作显式声明 `security`（`instance` 是 `[]`），为 M1 留好位置 |
-| 整个程序的"参数绑定失败答 400""请求体结构不对答 400"两项测试，以及 `apitest` 为它们推导用例的部分；oapi-codegen `runtime` 在二进制依赖检查中的例外 | M1 | `instance` 没有参数、没有请求体，这两项测试没有对象；第一个带参数或请求体的操作引入 `runtime`，也在 M1。`bodyshape` 与 `bodyshapegen` 本身在本 Phase 就位，由它们自己的单元测试和样例覆盖 |
+| 认证相关：`Authenticator`、公开操作清单 `PublicOperations()`、401 的 `WWW-Authenticate`（以及 problem 响应对这个头的声明）、`security: [bearer]` 的 scheme | M1 | 第一个需要令牌的操作在 M1。本 Phase 要求每个操作显式声明 `security`（`instance` 是 `[]`），为 M1 留好位置 |
+| 整个程序的"参数绑定失败答 400""请求体结构不对答 400"两项测试，`apitest` 为它们推导用例的部分，以及只为它们服务的两条写法规则（参数写 `schema` 不写 `content`；JSON 请求体是对象）；oapi-codegen `runtime` 在二进制依赖检查中的例外 | M1 | `instance` 没有参数、没有请求体，这两项测试没有对象；第一个带参数或请求体的操作引入 `runtime`，也在 M1。`bodyshape` 与 `bodyshapegen` 本身在本 Phase 就位，由它们自己的单元测试和样例覆盖 |
 | 分页的公共组件（`Limit`、`Cursor`、`NextCursor`） | 第一个列表接口 | 没有使用者 |
 
 ## 3. 设计
@@ -99,17 +99,18 @@ platform/httpserver/apitest ──► kin-openapi（只被测试导入）
 | 场景 | 这样写 | 不要这样写 | 原因 |
 |---|---|---|---|
 | 可为空的标量 | `type: [string, 'null']` | `nullable: true` | 3.0 的写法 |
-| 可为空的枚举或对象 | `oneOf: [{$ref: …}, {type: 'null'}]` | `enum: [a, b, null]` | 后者让 Go 多出一个 `"<nil>"` 常量 |
+| 可为空的枚举或对象 | `anyOf: [{$ref: …}, {type: 'null'}]` | `enum: [a, b, null]`；`oneOf` | 前者让 Go 多出一个 `"<nil>"` 常量；bodyshapegen 在请求体中只认 `anyOf`（两者生成的 Go 与 TS 相同） |
 | 固定值、`discriminator` 的属性 | `type: string` + 单值 `enum` | `const` | `const` 在 Go 中生成 `interface{}` |
 | 引用公共组件 | `../common.yaml#/components/schemas/…`、`…/parameters/…` | `…/responses/…` | 跨文件引用 response，oapi-codegen 生成的代码编译失败 |
 | 组件名 | PascalCase，所有模块文件中唯一 | 同名不同义 | Redocly 打包时静默改名为 `Name-2` |
 | 对象 schema | `additionalProperties: false` | — | 契约测试才能发现多出来的字段 |
+| 路径 | 不以 `/` 结尾 | `/api/v0/pages/` | ServeMux 把它注册成子树，吞掉其下所有路径，也遮住 `/api/` 兜底 |
 
 ### 3.3 代码生成
 
 | 描述 | 生成器与配置 | 输出 |
 |---|---|---|
-| `api/common.yaml` | oapi-codegen，`platform/httpserver/apigen/oapi-codegen.yaml`（只生成 models，`skip-prune`） | `apigen/components.gen.go` |
+| `api/common.yaml` | oapi-codegen，`platform/httpserver/apigen/oapi-codegen.yaml`（只生成 models，`skip-prune`；决定类型的选项与模块模板相同） | `apigen/components.gen.go` |
 | `api/modules/<m>.yaml` | oapi-codegen，`modules/<m>/adapter/http/gen/oapi-codegen.yaml`（models + std-http-server + strict-server；`import-mapping` 把 `../common.yaml` 指向 `apigen`） | `gen/server.gen.go` |
 | `api/modules/<m>.yaml` | bodyshapegen，读同一份 oapi-codegen 配置 | `gen/bodyshape.gen.go` |
 | `api/openapi.yaml` | Redocly `bundle` | `api/dist/openapi.yaml` |
@@ -119,6 +120,8 @@ platform/httpserver/apitest ──► kin-openapi（只被测试导入）
 - `always-prefix-enum-values: true`、`name-normalizer: ToCamelCaseWithInitialisms`；
 - `nullable-type: true`：可为空又可省略的字段生成 `nullable.Nullable[T]`，PATCH 能区分"没传"和"传 `null`"；
 - `type-mapping`：`format: uuid` 映射到标准库 `uuid.UUID`（否则引入 `github.com/google/uuid`）；`format: email` 生成 `string`（格式由领域层校验）；不带 format 的 `number` 生成 `float64`（`bodyshape` 覆盖得到它的范围）。
+
+模块的请求体引用公共组件时，strict handler 解码进 `apigen` 的类型，而 bodyshapegen 按模块配置建结构表，所以 `apigen` 与每个模块的配置在 `compatibility`、`name-normalizer`、`nullable-type`、`type-mapping` 上必须一致，由 bodyshapegen 的测试核对。
 
 Go 的生成只需要 Go（直接读 `api/common.yaml` 与模块文件，不读 `dist`）；`dist` 与 TS 类型需要 Node。生成的文件都以 `Code generated … DO NOT EDIT.` 开头，golangci-lint 跳过它们。
 
@@ -132,7 +135,7 @@ Go 的生成只需要 Go（直接读 `api/common.yaml` 与模块文件，不读 
 |---|---|---|
 | `BadRequest`（生成代码的 `ErrorHandlerFunc`） | 路径、查询、头部参数绑定失败 | 400 `bad_request`，`errors` 中给出参数名；细节只进 debug 日志（它含 Go 的类型名） |
 | `BodyError`（`RequestErrorHandlerFunc` 与 bodyshape） | 请求体读不出、不是 JSON、结构不对 | `ProblemError` 与 `*http.MaxBytesError` 交给 `Write`；其余 400 `bad_request`，细节只进 debug 日志 |
-| `Write`（`ResponseErrorHandlerFunc`，以及中间件） | 处理器返回的错误 | `ProblemError`：它的状态、码、detail、fields、`Retry-After`；`*http.MaxBytesError`：413 `payload_too_large`；客户端已断开的 `context.Canceled`：debug 日志，不记 500；其余：error 日志，500 `internal_error`，不带 detail |
+| `Write`（`ResponseErrorHandlerFunc`，以及中间件） | 处理器返回的错误 | `ProblemError`：它的状态、码、detail、fields、`Retry-After`；`*http.MaxBytesError`：413 `payload_too_large`；客户端已断开的 `context.Canceled`：debug 日志，不记 500；请求已过期限的 `context.DeadlineExceeded`：warn 日志，500 `internal_error`；其余：error 日志，500 `internal_error`，不带 detail |
 
 响应已经开始时（`statusRecorder` 显示状态已发出），`Write` 记 warn 日志并中断连接，不在已发出的响应后面追加 problem。
 
@@ -142,7 +145,7 @@ Go 的生成只需要 Go（直接读 `api/common.yaml` 与模块文件，不读 
 请求期限（server.request_timeout，取消请求的 context）→ 请求体上限（server.max_body_bytes）→ 请求体结构检查（bodyshape）
 ```
 
-它们只经由生成代码的 `StdHTTPServerOptions.Middlewares` 挂在接口操作上（生成代码把列表的最后一个包在最外层，所以 `Middlewares` 按相反顺序返回）。长连接路由直接注册在路由器上，不经过它们；测试固定"接口操作的 context 带请求期限、长连接路由的 context 没有"。
+它们只经由生成代码的 `StdHTTPServerOptions.Middlewares` 挂在接口操作上（生成代码把列表的最后一个包在最外层，所以 `Middlewares` 按相反顺序返回）。请求期限在最外层：读请求体的时间（以及 M1 的认证、限流）都算在期限内，由测试固定。长连接路由直接注册在路由器上，不经过它们；测试固定"接口操作的 context 带请求期限、长连接路由的 context 没有"。
 
 **`bodyshape`**：在生成的 strict 处理器解码之前检查 JSON 请求体的结构：能否唯一地读出（同名成员、非法 UTF-8）、JSON 类型、未声明的属性、不允许的 `null`、缺少的必填属性，以及生成代码会解码成 Go 类型的字符串格式（`date-time`、`uuid`）。同一类问题一次收集，最多 16 个，路径最长 256 字节。取值（长度、枚举、范围）归领域层。每个模块的结构表由 `bodyshapegen` 生成。
 
@@ -166,10 +169,10 @@ modules/instance/
   adapter/buildinfo/source.go   InfoSource 的实现：读取 platform/buildinfo
   adapter/http/handler.go       实现生成的 StrictServerInterface；Register 挂载路由
   adapter/http/gen/             oapi-codegen.yaml；server.gen.go、bodyshape.gen.go（生成）
-  module.go                     New(Deps) *Module；(*Module).Register(router, api)
+  module.go                     New() *Module；(*Module).Register(router, api)
 ```
 
-- `module.go` 是模块唯一的入口：`New` 装配用例与适配器，`Register` 把生成的路由挂在根路由器上（比平台的 `/api/` 兜底更具体），接上 `api.Errors` 与 `api.Middlewares(gen.BodyShapes())`。
+- `module.go` 是模块唯一的入口：`New` 装配用例与适配器（`instance` 没有依赖；有依赖的模块写成 `New(Deps)`），`Register` 把生成的路由挂在根路由器上（比平台的 `/api/` 兜底更具体），接上 `api.Errors` 与 `api.Middlewares(gen.BodyShapes())`。
 - 处理器只做类型转换；用例没有 I/O 就不带 `ctx` 和 `error`。
 - `GET /api/v0/instance` 返回 `product`（`Nerve Wiki`）、`version`、`commit`（没有 VCS 信息时为 `unknown`）、`api_version`（`v0`）。实例的设置项（例如是否开放注册）随提供它们的 M 加入。
 
@@ -179,7 +182,7 @@ modules/instance/
 - `Load`：读取并校验 `api/dist/openapi.yaml`；位置由 `runtime.Caller` 求出。`go test` 的缓存不跟踪 `server/` 之外的文件，`make test` 已经带 `-count=1`。
 - `CheckResponse`：按请求找到操作，校验状态码、`Content-Type`、响应体；problem 的码必须在该操作可能返回的码中（操作的 `x-problem-codes` 加顶层的），并记下来。
 - `CheckRequest`、`CheckSchema`、`Enum`。
-- `Main(m, module)`：模块 HTTP 适配器的 `TestMain`。测试跑完后，该模块每个操作声明的每个码都必须被某个测试答过一次（总体设计 6.1 的"双向核对"：答出的码必须已声明，声明的码必须被答过）。
+- `Main(m)`：模块 HTTP 适配器的 `TestMain`，模块名取自调用者所在的目录。测试跑完后，该模块每个操作声明的每个码都必须被某个测试答过一次（总体设计 6.1 的"双向核对"：答出的码必须已声明，声明的码必须被答过）。每个模块的 `adapter/http` 都必须调用它，由测试检查。
 - 规则测试：3.2 的写法约定，以及每个路径以 `/api/v0/` 开头、`operationId`、tag、显式的 `security`、`x-problem-codes`、`default` 响应与它的头、组件名。每条规则先在手写的小文档上证明会报错，再作用于 `dist`。
 - 入口文件列出模块文件的全部路径。
 
@@ -189,7 +192,7 @@ modules/instance/
 |---|---|
 | 平台 `httpserver/contract_test` | 平台写出的每一种 problem（兜底 404、`/readyz` 503、panic 500、`BadRequest`、`BodyError`、`Write` 的各分支、带 `errors` 的）都符合 `Problem` schema |
 | 模块 `instance/adapter/http` | 响应符合契约，内容正确；`apitest.Main` 核对错误码 |
-| 整个程序 `bootstrap` | `GET /api/v0/instance` 经完整的中间件链返回 200 并符合契约；挂上模块后兜底仍然有效（未知路径、方法不对都是 404 problem）；`/api/v0` 下注册的路由正好是契约中的操作；`shared` 的每个 `Kind` 答成对应的 problem；`shared.FieldCodes()` 与契约的 `FieldError.code` 枚举是同一个集合；每个操作的 problem 响应声明了它可能带的头 |
+| 整个程序 `bootstrap` | `GET /api/v0/instance` 经完整的中间件链返回 200 并符合契约；挂上模块后兜底仍然有效（未知路径、方法不对都是 404 problem）；`/api/` 下注册的路由（平台兜底除外）正好是契约中的操作；`shared` 的每个 `Kind` 答成对应的 problem；`shared.FieldCodes()` 与契约的 `FieldError.code` 枚举是同一个集合；每个操作的 problem 响应声明了它可能带的头 |
 
 **架构测试**：规则 8 的测试辅助包加入 `apitest`；二进制禁用清单加入 kin-openapi；恢复"生成代码不使用 `oapi-codegen/runtime/types` 的 `UUID`"的检查。
 
@@ -268,4 +271,25 @@ modules/instance/
 
 ## 7. 结果
 
-（完成后补写）
+**完成**：第 5 节全部通过，反向对照按预期失败。`make check`、`make gen-check` 本地与持续集成（run 36702688431）为绿。`make run` 之后第 6 节的三个请求如设计：`GET /api/v0/instance` 答 200 与版本信息，`POST /api/v0/instance` 与 `/api/v0/nope` 答 404 problem+json。
+
+**与设计的差异**：
+
+1. bodyshape、bodyshapegen 与 api-client 的骨架提前到 S1：生成代码导入 bodyshape，`gen-web` 需要 api-client 这个包。
+2. `instance.New()` 不带参数，因为模块没有依赖；有依赖的模块写 `New(Deps)`（3.5 已改）。
+3. 长连接路由的测试经过全局中间件链，验证的是真实的组合，而不只是路由器。
+4. apitest 的平台码清单、码的拼写规则、模块清单只有规则测试使用，放在测试文件中。
+5. 审查之后的修订，第 3 节已是修订后的版本：
+   - `apigen` 决定类型的选项与模块模板一致（3.3）；
+   - 可为空的对象写 `anyOf`，路径不以 `/` 结尾（3.2）；
+   - 请求期限在最外层由测试固定，已过期限的请求单独记 warn 日志（3.4）；
+   - `Main(m)` 自己得出模块名，每个模块必须调用它（3.6）；
+   - 整个程序的测试比较 `/api/` 下的全部路由（3.6）。
+
+**审查**：[P4 审查记录](reviews/P4-api-contract-review.md)，1 项 Important、7 项 Minor、6 项 Nit，全部处理。
+
+**移交**：[M1 的移交](../M1-auth/handoffs/M0-P4-api-contract.md)，包括以下几项：
+- 认证与公开操作；
+- 参数与请求体的整个程序测试，以及只为它们服务的两条写法规则；
+- 二进制禁用清单对 runtime 的例外；
+- 逐路由中间件的扩充。

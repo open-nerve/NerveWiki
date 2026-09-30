@@ -159,7 +159,7 @@ P1 放在最前面：它的结论会影响 P2（数据库 locale）、P3（SSE �
 
 ### 前序 Phase 对后续 Phase 的要求
 
-P1 的实验结论、P2 与 P3 的审查和实施留下的要求，开工时逐条落实（M0 之外的留给 M1，见 [M1 的移交](../M1-auth/handoffs/M0-P3-platform.md)）：
+P1 的实验结论、P2 到 P4 的审查和实施留下的要求，开工时逐条落实（M0 之外的留给 M1，见 M1 的移交：[P3 平台层](../M1-auth/handoffs/M0-P3-platform.md)、[P4 接口契约](../M1-auth/handoffs/M0-P4-api-contract.md)）：
 
 | Phase | 要求 | 来源 |
 |---|---|---|
@@ -176,15 +176,16 @@ P1 的实验结论、P2 与 P3 的审查和实施留下的要求，开工时逐�
 | P5 | 升级到 Node 26 时注意：Node 25 起不再自带 corepack，`corepack enable` 这一步与 README 要调整 | P2 审查 |
 | P6 | e2e 与镜像使用 `postgres:18.6-trixie`；在 Docker 中构建时没有 `.git`，`buildinfo` 的提交信息要用 ldflags 注入，或者把 `.git` 带进构建上下文 | P2 审查 |
 | P4 | 接口操作的逐路由中间件（请求期限、请求体上限）与 `APIErrors`，配置项 `server.request_timeout`（必须短于 `write_timeout`）、`server.max_body_bytes`；`httpserver.ProblemError` 与组合根中 `*shared.Error` 满足它的编译期断言；契约测试核对 `shared.FieldCodes()` 与接口描述的字段错误码、`Router.Patterns()` 与接口描述的路径。长连接路由（`LongLived`）不经过逐路由中间件，用测试固定这一点 | P3 |
-| P4 | `apitest` 引入 kin-openapi 时，把它加进架构测试 `binary_test` 的禁用清单；引入生成代码时，恢复 Nerve 的 `generated_test`（生成代码只用标准库的 `uuid`）与 oapi-codegen runtime 的例外 | P3 |
+| P4 | `apitest` 引入 kin-openapi 时，把它加进架构测试 `binary_test` 的禁用清单；引入生成代码时，恢复 Nerve 的 `generated_test`（生成代码只用标准库的 `uuid`）。oapi-codegen runtime 的例外随第一个带参数的操作移到 M1 | P3 |
 | P5 | `webui` 挂在组合根的 `/`（不带方法），不遮住平台的 `/api/` 兜底；页面 CSP 与静态文件的缓存由 `webui` 设置，安全头由中间件链统一设置 | P3 |
+| P5 | 前端整体用哪个 TypeScript 版本：api-client 因 openapi-typescript 调用 TypeScript 的 JS API 停在 5.9.3；`make lint-web` 已执行各包的 `check:types` | P4 |
 | P6 | `serve` 启动时要连上数据库（先迁移、再自检），连不上就拒绝启动。S1 的"数据库不可用"要在启动之后制造（例如删掉该 worker 的数据库）；"迁移未完成"用 `auto_migrate: false` 启动在未迁移的库上 | P3 |
 
 ## 8. 本 M 建立的平台约定
 
 总体设计的扩展点表（12.4）中没有 M0 的条目。M0 建立的是每个模块都要遵守的平台约定，在 M0 收尾时补进总体设计第 13 节：
 
-- **模块接入契约**：`module.go` 提供 `New(依赖)`、`Register(router, api)`、`PublicOperations()`；只有组合根导入模块。
+- **模块接入契约**：`module.go` 提供 `New`（有依赖时 `New(Deps)`）与 `Register(router, api)`，M1 加入认证时再加 `PublicOperations()`；只有组合根导入模块。
 - **接口契约**：每个操作声明 `security` 与 `x-problem-codes`；契约测试双向核对错误码。
 - **配置**：每个模块的配置是 `config.yaml` 中的一节，强类型、启动时校验。
 - **测试**：集成测试从模板库复制独立的数据库；端到端故事的写法（页面版本 + 接口版本、数据库断言函数按表放在 `e2e/fixtures/assert/`）。
@@ -217,7 +218,7 @@ P1 的实验结论、P2 与 P3 的审查和实施留下的要求，开工时逐�
 | P1 | 技术验证 | 已完成 | [01-P1-spikes.md](01-P1-spikes.md) | [P1-spikes-review.md](reviews/P1-spikes-review.md) |
 | P2 | 仓库与工具链 | 已完成 | [02-P2-repo-toolchain.md](02-P2-repo-toolchain.md) | [P2-repo-toolchain-review.md](reviews/P2-repo-toolchain-review.md) |
 | P3 | 服务端平台层 | 已完成 | [03-P3-server-platform.md](03-P3-server-platform.md) | [P3-server-platform-review.md](reviews/P3-server-platform-review.md) |
-| P4 | 接口契约与代码生成 | 进行中 | [04-P4-api-contract.md](04-P4-api-contract.md) | — |
+| P4 | 接口契约与代码生成 | 已完成 | [04-P4-api-contract.md](04-P4-api-contract.md) | [P4-api-contract-review.md](reviews/P4-api-contract-review.md) |
 | P5 | 前端外壳与内嵌 | 未开始 | — | — |
 | P6 | 端到端测试与交付 | 未开始 | — | — |
 | — | M0 收尾审查 | 未开始 | — | — |
@@ -230,3 +231,4 @@ P1 的实验结论、P2 与 P3 的审查和实施留下的要求，开工时逐�
 | 2026-09-30 | 接住 P1 的结论：P1 验证表加"结论"一列；新增"P1 结论对 M0 各 Phase 的要求"（P2 的建库参数与样例集自检，P3 的 pg_trgm 迁移、locale 自检、长连接路由的豁免，P5 不引入 remark，P6 的建库参数）；范围、仓库布局、测试策略、风险与进度表相应更新 | M0/P1 完成，见 [P1 审查记录](reviews/P1-spikes-review.md) |
 | 2026-09-30 | P2 完成：`server/tools` 推迟到 P4、turbo 推迟到 P5、`buildinfo` 提前到 P2（第 6、7 节）；"P1 结论对 M0 各 Phase 的要求"改为"前序 Phase 对后续 Phase 的要求"，加入 P2 审查给 P3、P5、P6 的提示 | P2 的实施与审查，见 [P2 审查记录](reviews/P2-repo-toolchain-review.md) |
 | 2026-09-30 | P3 完成：`webui` 移到 P5，接口操作的逐路由中间件与 `APIErrors` 移到 P4（第 6、7 节）；"前序 Phase 对后续 Phase 的要求"加入 P3 给 P4、P5、P6 的要求；M0 之外的移交 M1 | P3 的实施与审查，见 [P3 审查记录](reviews/P3-server-platform-review.md) |
+| 2026-09-30 | P4 完成：认证相关、参数与请求体的整个程序测试、oapi-codegen runtime 的例外移到 M1（第 7 节）；模块接入契约的措辞按实现修订（第 8 节）；"前序 Phase 对后续 Phase 的要求"加入 P4 给 P5 的 TypeScript 版本 | P4 的实施与审查，见 [P4 审查记录](reviews/P4-api-contract-review.md) |
