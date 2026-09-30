@@ -23,4 +23,5 @@ M0/P3 只做了 M0 用得到的平台层（[P3 文档](../../M0-foundation/03-P3
 ## 处理进展
 
 - M1/P1（2026-09-30）：第 1 项（`clientip.go`、`server.trusted_proxies` 与列表、`netip.Prefix` 的解码）、第 3 项（`Authenticator`、`PublicOperations`、认证中间件；`LongLived` 的认证仍由 M5 决定）、第 5 项（`warnIfExposed`）、第 7 项（`sqlc_test`、`rawsql_test`）、第 10 项（`auth.jwt.private_key_file` 只记 `private_key_file_set`，有日志测试）。见 [P1 文档](../01-P1-identity-foundation.md)第 7 节。
-- 其余：第 2、8 项随 P2，第 4、6 项随 P4；第 9 项已在 M1 总设计第 2 节关闭（不做服务端时区）。状态在 M1 收尾时改为 done。
+- M1/P2（2026-09-30）：第 2 项（`platform/ratelimit`、平台与模块的桶、失败闸门、IPv6 前缀）、第 8 项（`clocktest.Fixed`，加锁，列入架构测试的测试辅助包）。见 [P2 文档](../02-P2-sessions-ratelimit.md)第 7 节。
+- 其余：第 4、6 项随 P4；第 9 项已在 M1 总设计第 2 节关闭（不做服务端时区）。状态在 M1 收尾时改为 done。

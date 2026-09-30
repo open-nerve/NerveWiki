@@ -7,7 +7,7 @@
 1. 领域：`JudgeRefresh`（第 3.5 节的判定表）。撤销原因不建类型：本 Phase 的两条语句在 SQL 中写明 `reuse_detected`、`logout`，类型随 P3 的批量撤销加入。
 2. 查询：按 id 读会话、条件轮换、为重复使用撤销、条件退出；生成。
 3. `app`：`refresh.go`（解析、事务内读判、条件轮换、未命中时重读重判一次、重复使用的撤销先提交）；`logout.go`；错误码 `identity.refresh_token_invalid`。
-4. 契约：`refresh`、`logout`；handler 设 `auth.refresh_deadline`。
+4. 契约：`refresh`、`logout`；两者的请求期限是 `auth.refresh_deadline`（审查 M1 之后由平台按路由施加，模块声明 `RequestTimeouts`）。
 
 ## 测试
 

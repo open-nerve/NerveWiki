@@ -111,7 +111,7 @@ M1 结束时：
 | `platform/ratelimit` | 拷贝 | P2 |
 | `platform/jobs`（River） | 拷贝；去掉启动失败的重试循环（M0 启动前已确认数据库可用） | P4 |
 | `platform/clock/clocktest` | 拷贝，加锁（并发安全），列入架构测试规则 8 | P2 |
-| `platform/postgres/pgtest/lockwait.go` | 拷贝（确定性的交错测试） | P3 |
+| `platform/postgres/pgtest/lockwait.go` | 拷贝（确定性的交错测试）；改为计数版 | P2（从 P3 提前） |
 | `platform/config` 的列表解码、`netip.Prefix`、auth / ratelimit / jobs 三节 | 拷贝、裁剪 | P1、P2、P4 |
 | `shared` 的 `Actor`、邮箱规则 | 拷贝；不拷贝 `url.go`、`timezone.go`、`cursor.go` | P1 |
 | `modules/identity` | 拷贝、裁剪：去掉 `profiles`、时区、Plane 字段、PAT 分页、M3 加入的 `provide.go` 与 `accounts.go`；密码规则按第 4 节改写；停用改为扩展点 | P1–P4 |
@@ -133,7 +133,7 @@ M1 结束时：
 | P2 | 会话与限流 | `login`（等时的不存在邮箱、快照重试）、`refresh`（重复使用检测、条件轮换、服务端期限）、`logout`；`platform/ratelimit`；认证之前的失败闸门；各个桶与 IPv6 前缀；`clocktest` | 续期的判定表（伪造旧代、真实旧代、换钥）、并发续期；登录耗时与邮箱是否存在无关；并发下失败闸门不超额；经可信代理的客户端 IP。e2e：A3–A6、A14 的接口版本 |
 | P3 | 账户、PAT 与停用 | 迁移 `api_tokens`；`updateMe`、`onboarding-steps`、`changePassword`、`deactivateMe` 与停用的扩展点、`ShareActiveAccount`；PAT 的创建（要求密码）、列出、撤销，PAT 认证与 `last_used_at`；账户行锁协议；`lockwait`；oapi-codegen runtime 的例外 | 每个需要登录的操作都有 PAT 的测试；账户行锁的确定性交错测试；用测试替身证明否决会整体回滚并答出它的码、事件在事务内、`FOR SHARE` 挡住并发的停用。e2e：A7–A11 的 PAT 接口版本 |
 | P4 | 管理命令与后台任务 | `nervewiki users` 五个命令、只凭连接池的管理组合、`composition_test`、密码的读取（终端不回显）；River 迁移、`platform/jobs`、停机顺序 HTTP → 后台任务 → 迁移器 → 连接池、会话清理任务；`runtime-grants.sql` 与测试 | 停机顺序的测试；命令行的组合到不了 HTTP 与 River；命令的输出与各级日志里查不到密码（含十六进制、base64）。e2e：A11 的命令行部分、A12、A13 |
-| P5 | 前端会话、登录与引导 | `src/session/`（拷贝令牌管理器、续期锁、认证中间件，编写会话装配）；`RootStore` 分代与 `AppProviders` 的 key；oxlint 的放行移到会话模块；204 与 429（按 `Retry-After` 重试）；路由守卫；登录、注册、会话暂不可用三个页面；新手引导的步骤注册表与资料一步；e2e 的 `signedInPage`、预期控制台输出的声明、冒烟故事的调整 | vitest：拷来的认证测试（先确认运行环境）、会话装配、分代隔离。浏览器实测：局域网 HTTP（走租约）、两个账户两个标签页。e2e：A1–A6、A9、A14 的页面版本 |
+| P5 | 前端会话、登录与引导 | `src/session/`（拷贝令牌管理器、续期锁、认证中间件，编写会话装配）；`RootStore` 分代与 `AppProviders` 的 key；oxlint 的放行移到会话模块；204 与 429（按 `Retry-After` 重试）；路由守卫；登录、注册、会话暂不可用三个页面；新手引导的步骤注册表与资料一步；e2e 的 `signedInPage`、预期控制台输出的声明、冒烟故事的调整。令牌管理器的续期超时是 8 秒，与服务端配置校验的 `webRefreshTimeout` 相同（P2 审查） | vitest：拷来的认证测试（先确认运行环境）、会话装配、分代隔离。浏览器实测：局域网 HTTP（走租约）、两个账户两个标签页。e2e：A1–A6、A9、A14 的页面版本 |
 | P6 | 前端个人设置 | 设置页布局；资料与偏好；安全（改密码、停用）；PAT 管理（一次性显示、撤销）；顶栏的用户菜单 | e2e：A7、A8、A10、A11 的页面版本；本 M 与 M0 的全部故事通过 |
 
 ### M0 移交的落实
@@ -196,8 +196,8 @@ M1 结束时：
 | P | 名称 | 状态 | Phase 文档 | 审查 |
 |---|---|---|---|---|
 | P1 | 身份基础与默认拒绝 | 已完成 | [01-P1-identity-foundation.md](01-P1-identity-foundation.md) | [P1 审查](reviews/P1-identity-foundation-review.md) |
-| P2 | 会话与限流 | 进行中 | [02-P2-sessions-ratelimit.md](02-P2-sessions-ratelimit.md) | — |
-| P3 | 账户、PAT 与停用 | 未开始 | — | — |
+| P2 | 会话与限流 | 已完成 | [02-P2-sessions-ratelimit.md](02-P2-sessions-ratelimit.md) | [P2 审查](reviews/P2-sessions-ratelimit-review.md) |
+| P3 | 账户、PAT 与停用 | 进行中 | [03-P3-accounts-tokens.md](03-P3-accounts-tokens.md) | — |
 | P4 | 管理命令与后台任务 | 未开始 | — | — |
 | P5 | 前端会话、登录与引导 | 未开始 | — | — |
 | P6 | 前端个人设置 | 未开始 | — | — |
@@ -209,3 +209,4 @@ M1 结束时：
 |---|---|---|
 | 2026-09-30 | 初版 | M1 启动 |
 | 2026-09-30 | 第 4 节密码规则：名单另收条目的主干，拒绝同一字符的重复与只有空白的密码，哈希前做 NFKC 规范化 | P1 审查 M1、M4、N3：只收 8 位以上的条目时主干规则放过 `Qwerty123!` 一类；NFC 与 NFD 的同一密码哈希不同 |
+| 2026-09-30 | 第 6 节 `lockwait` 从 P3 提前到 P2；第 7 节 P5 的续期超时写明 8 秒 | P2 的并发续期需要确定性的交错；P2 审查：前端的 8 秒要与服务端的配置校验一致 |

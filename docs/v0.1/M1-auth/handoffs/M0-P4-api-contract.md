@@ -18,4 +18,5 @@ M0/P4 只做了 `instance` 用得到的部分（[P4 文档](../../M0-foundation/
 ## 处理进展
 
 - M1/P1（2026-09-30）：第 1 项（401 与 `WWW-Authenticate`、`securitySchemes.bearer`、两个整个程序测试的断言）、第 2 项（`PublicOperations()` 与行为式的整个程序测试，`apitest.Operation.Public`）、第 3 项（三个整个程序测试与 `operations.go`、两条写法规则）、第 5 项的认证部分（请求信息 → 请求期限 → 请求体上限 → 认证 → 请求体结构检查）。见 [P1 文档](../01-P1-identity-foundation.md)第 7 节。
-- 其余：第 5 项的限流部分随 P2；第 4 项随第一个带路径参数的操作（P3）。状态在 M1 收尾时改为 done。
+- M1/P2（2026-09-30）：第 5 项的限流部分（认证之后的限流中间件，顺序为请求信息 → 请求期限 → 请求体上限 → 失败闸门与认证 → 限流 → 请求体结构检查）。见 [P2 文档](../02-P2-sessions-ratelimit.md)第 7 节。
+- 其余：第 4 项随第一个带路径参数的操作（P3）。状态在 M1 收尾时改为 done。
