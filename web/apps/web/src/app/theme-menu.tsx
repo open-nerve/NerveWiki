@@ -13,14 +13,15 @@ import { useT } from "../i18n/i18n";
 import { useStore } from "../stores/context";
 import type { ThemePreference } from "../stores/preferences.store";
 
-const choices = [
+/** The theme preferences, in the order the app offers them. */
+export const themeChoices = [
   { value: "system", label: "theme.system", icon: Monitor },
   { value: "light", label: "theme.light", icon: Sun },
   { value: "dark", label: "theme.dark", icon: Moon },
 ] as const;
 
-function isThemePreference(value: string): value is ThemePreference {
-  return choices.some((choice) => choice.value === value);
+export function isThemePreference(value: string): value is ThemePreference {
+  return themeChoices.some((choice) => choice.value === value);
 }
 
 export const ThemeMenu = observer(function ThemeMenu() {
@@ -38,7 +39,7 @@ export const ThemeMenu = observer(function ThemeMenu() {
           value={preferences.theme}
           onValueChange={(value) => isThemePreference(value) && preferences.setTheme(value)}
         >
-          {choices.map(({ value, label, icon: Icon }) => (
+          {themeChoices.map(({ value, label, icon: Icon }) => (
             <DropdownMenuRadioItem key={value} value={value}>
               <Icon />
               {t(label)}

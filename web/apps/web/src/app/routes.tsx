@@ -1,4 +1,4 @@
-import type { RouteObject } from "react-router";
+import { Navigate, type RouteObject } from "react-router";
 
 import { GuestOnly, Onboarded, SignedIn } from "./guards";
 import { Layout } from "./layout";
@@ -64,6 +64,23 @@ export const routes: RouteObject[] = [
                       const { HomePage } = await import("../pages/home");
                       return { Component: HomePage };
                     },
+                  },
+                  {
+                    path: "settings",
+                    lazy: async () => {
+                      const { SettingsLayout } = await import("../pages/settings/settings-layout");
+                      return { Component: SettingsLayout };
+                    },
+                    children: [
+                      { index: true, Component: () => <Navigate replace to="/settings/profile" /> },
+                      {
+                        path: "profile",
+                        lazy: async () => {
+                          const { ProfilePage } = await import("../pages/settings/profile-page");
+                          return { Component: ProfilePage };
+                        },
+                      },
+                    ],
                   },
                   {
                     path: "*",
