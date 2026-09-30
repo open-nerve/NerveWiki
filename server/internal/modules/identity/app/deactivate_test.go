@@ -107,8 +107,9 @@ func TestDeactivateInOrder(t *testing.T) {
 			if got != (app.Deactivation{UserID: testUserID(), Email: "alice@corp.com", At: testNow()}) {
 				t.Errorf("the vetoer got %+v, want the account's id and address at the clock's now", got)
 			}
-			if out := logs.String(); !strings.Contains(out, `"msg":"account deactivated"`) || !strings.Contains(out, `"revoked_sessions":3`) {
-				t.Errorf("logs = %s, want the deactivation with the count", out)
+			if out := logs.String(); !strings.Contains(out, `"msg":"account deactivated"`) || !strings.Contains(out, `"revoked_sessions":3`) ||
+				!strings.Contains(out, `"by":"self"`) {
+				t.Errorf("logs = %s, want the deactivation with the count, by the account itself", out)
 			}
 		})
 	}
@@ -129,8 +130,8 @@ func TestDeactivateStops(t *testing.T) {
 	if !errors.Is(err, refusal) || !slices.Equal(log.done, []string{"lock", "veto a"}) {
 		t.Errorf("Execute() = %v, did %q; want the refusal after the first vetoer", err, log.done)
 	}
-	if !strings.Contains(logs.String(), `"code":"test.sole_admin"`) {
-		t.Errorf("logs = %s, want the refusal's code", logs.String())
+	if out := logs.String(); !strings.Contains(out, `"code":"test.sole_admin"`) || !strings.Contains(out, `"by":"self"`) {
+		t.Errorf("logs = %s, want the refusal's code, by the account itself", out)
 	}
 
 	boom := errors.New("subscriber failed")

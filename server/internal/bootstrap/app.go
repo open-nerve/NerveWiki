@@ -207,11 +207,13 @@ func (a *app) run(ctx context.Context) error {
 	return errors.Join(serveErr, startErr, a.jobs.Stop(context.WithoutCancel(ctx)))
 }
 
-// startJobs starts the background jobs once no migration is pending: with
-// database.auto_migrate off, serve starts on a database behind the
+// startJobs starts the background jobs once the migration check passes:
+// with database.auto_migrate off, serve starts on a database behind the
 // migrations and waits, not ready, for the operator to apply them (M0), and
-// River needs its tables. It looks every migrationPoll, and returns nil when
-// ctx ends first, the jobs never started.
+// River needs its tables. It looks every migrationPoll, warns once with the
+// reason the check fails (pending migrations, or a role that cannot read
+// goose's record yet), and returns nil when ctx ends first, the jobs never
+// started.
 func (a *app) startJobs(ctx context.Context) error {
 	for waiting := false; ; waiting = true {
 		err := a.migrator.CheckUpToDate(ctx)
@@ -221,8 +223,11 @@ func (a *app) startJobs(ctx context.Context) error {
 			}
 			return nil
 		}
+		if ctx.Err() != nil {
+			return nil
+		}
 		if !waiting {
-			a.logger.WarnContext(ctx, "background jobs wait for the pending migrations", slog.Any("reason", err))
+			a.logger.WarnContext(ctx, "background jobs wait for the migration check to pass", slog.Any("reason", err))
 		}
 		select {
 		case <-ctx.Done():

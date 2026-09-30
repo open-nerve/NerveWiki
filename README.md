@@ -170,8 +170,8 @@ make image-smoke VERSION=0.1.0   # 在镜像上跑 S1、S3：迁移、探针、�
 
 - **迁移与服务分用两个数据库角色时**（表的所有者执行迁移，服务用另一个角色登录，`database.auto_migrate` 关闭），服务需要的权限全部写在 [`deploy/runtime-grants.sql`](deploy/runtime-grants.sql)，授予组角色 `nervewiki_runtime`：业务表逐表的读写（不给 `TRUNCATE`、`REFERENCES`、`TRIGGER` 与 DDL），River 的表与序列，`river_job` 的 `MAINTAIN`（River 每天用 `REINDEX INDEX CONCURRENTLY` 重建它的索引，需要 PostgreSQL 17 起），`goose_db_version` 的读（`/readyz` 靠它判断迁移是否执行完）。函数与类型不在文件里，靠 PostgreSQL 默认给 PUBLIC 的权限。
   - 组角色建一次，服务登录的角色加入它：`CREATE ROLE nervewiki_runtime NOLOGIN;`、`CREATE ROLE nervewiki_app LOGIN PASSWORD '…' IN ROLE nervewiki_runtime;`。
-  - **每次 `migrate up` 之后**，以表的所有者执行一次这个文件，例如 `psql -v ON_ERROR_STOP=1 -f deploy/runtime-grants.sql`：新的迁移可能加了表，文件逐个列出；重复执行没有影响。
-  - 少了业务表的权限时接口答 500；少了 River 的权限时 `/readyz` 仍是 200，会话清理与索引重建因 `permission denied` 失败，只记在日志里；少了 `goose_db_version` 的读时 `/readyz` 是 503。`server/internal/bootstrap/runtime_role_test.go` 以恰好这些权限的角色运行服务与管理命令，`public` 里任何表、视图、序列或函数的权限与文件不符时失败。
+  - **每次 `migrate up` 之后、启动服务之前**，以表的所有者执行一次这个文件，例如 `psql -v ON_ERROR_STOP=1 -f deploy/runtime-grants.sql`：新的迁移可能加了表，文件逐个列出；重复执行没有影响。
+  - 少了业务表的权限时接口答 500；少了 `goose_db_version` 的读时 `/readyz` 是 503，后台任务一直等着不启动。少了 `river_queue` 的权限时 River 启动失败，服务随之退出（`start the jobs: … permission denied`）；少了 River 其他表的，`/readyz` 仍是 200，会话清理与索引重建因 `permission denied` 失败，只记在日志里（`river_notification` 目前 River 不写，少了它看不出来）。`server/internal/bootstrap/runtime_role_test.go` 以恰好这些权限的角色运行服务与管理命令，`public` 里任何表、视图、序列或函数的权限与文件不符时失败。
   - 索引属于表的所有者：停机打断 River 的索引重建时留下的 `*_ccnew` 索引，服务的角色删不掉，River 此后每天记 WARN `Found reindex artifact`，由表的所有者执行 `DROP INDEX CONCURRENTLY` 删除。
 
 - 在反向代理之后运行时设置 `NWIKI_SERVER__TRUSTED_PROXIES`，否则每个客户端都被当成代理。
@@ -179,7 +179,7 @@ make image-smoke VERSION=0.1.0   # 在镜像上跑 S1、S3：迁移、探针、�
 - 数据库必须以 builtin provider 的 `C.UTF-8` 初始化，否则服务拒绝启动，见[总体设计](docs/v0.1/v0.1-design.md) 7.1。
 - 探针：存活用 `GET /healthz`（不访问任何依赖），就绪用 `GET /readyz`（数据库可用、迁移已执行完）。镜像里没有 shell 与 curl，所以没有写 `HEALTHCHECK`，由编排系统探测。
 - 后台任务（River，目前只有每小时一次的过期会话清理 `auth.session_cleanup_interval`）随 `serve` 运行，表在同一条迁移链上。关闭自动迁移时，服务在迁移执行完之前不启动后台任务，迁移之后自动启动，不必重启。River 从连接池里借走一个连接专门监听通知，数据库要为每个实例多留一个连接（`database.max_conns` + 1）。
-- 停止时发 SIGTERM：服务停止接收新连接，等正在处理的请求结束（最多 `server.shutdown_timeout`，默认 20 秒），再等正在执行的后台任务（最多 `jobs.shutdown_timeout`，默认 10 秒，之后取消它们，再宽限 1 秒），最后关闭连接池（最多 5 秒）后退出。停机的宽限期要比这些之和长：`docker stop` 默认只等 10 秒，用 `docker stop -t 40`。停止时 River 可能记一条 ERROR `maintenance.PeriodicJobEnqueuer: Error starting transaction`（`context canceled`，它的定时任务入队被停机打断），退出码仍是 0。
+- 停止时发 SIGTERM：服务停止接收新连接，等正在处理的请求结束（最多 `server.shutdown_timeout`，默认 20 秒），再等正在执行的后台任务（最多 `jobs.shutdown_timeout`，默认 10 秒，之后取消它们，再宽限 1 秒），最后关闭连接池（最多 5 秒）后退出。停机的宽限期要比这些之和长：`docker stop` 默认只等 10 秒，用 `docker stop -t 40`。启动之后不久就停止时（重启循环、端到端测试），River 通常记一条 ERROR `maintenance.PeriodicJobEnqueuer: Error starting transaction`（`context canceled`，它启动时的定时任务入队被停机打断），退出码仍是 0；运行了一段时间的服务停止时一般没有。
 
 ## Markdown 样例集
 

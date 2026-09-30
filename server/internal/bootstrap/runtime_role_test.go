@@ -259,3 +259,26 @@ func TestTheGrantsFileCoversEveryRelationAndFunction(t *testing.T) {
 		t.Fatalf("the schema public has %v tables (r), sequences (S) and functions (f), want some of each", seen)
 	}
 }
+
+// A role without River's grants cannot start the jobs: River's start reads
+// river_queue, fails, and serve stops with that error rather than serve
+// without its jobs (M1/P4 design 3.4); HTTP stops with it. README "部署"
+// says which missing grant does this and which only log.
+func TestServeStopsWhenTheJobsCannotStart(t *testing.T) {
+	roles := newSplitRoles(t)
+	if _, err := roles.owner.Exec(context.Background(), "REVOKE ALL ON river_queue FROM nervewiki_runtime"); err != nil {
+		t.Fatal(err)
+	}
+	a := buildApp(t, testConfig(t, roles.serverURL, false), migrations.FS())
+	done := make(chan error, 1)
+	go func() { done <- a.run(context.Background()) }()
+
+	select {
+	case err := <-done:
+		if err == nil || !strings.Contains(err.Error(), "start the jobs: ") || !strings.Contains(err.Error(), "permission denied for table river_queue") {
+			t.Errorf("run() = %v, want the jobs' start refused on river_queue", err)
+		}
+	case <-time.After(15 * time.Second):
+		t.Fatal("serve still runs 15s later, want it stopped by the jobs' failure")
+	}
+}

@@ -13,6 +13,7 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/modules/identity"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/clock/clocktest"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres/pgtest"
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
@@ -179,5 +180,50 @@ func TestAdminDeactivatesAndActivates(t *testing.T) {
 	}
 	if _, err := admin.Activate(ctx, "nobody@corp.com"); codeOf(err) != "identity.account_not_found" {
 		t.Errorf("Activate(unknown) = %v, want identity.account_not_found", err)
+	}
+}
+
+// The administrator's commands lock the account row first, as the
+// self-service ones do (M1 design 8): a transaction that shares the
+// account makes the deactivation wait, and its vetoers then see what that
+// transaction did. Without the lock the vetoers would run while the join
+// is still open, find no membership, and the deactivation would go through
+// once the join commits: the join's FOR SHARE would hold only its UPDATE.
+func TestAnAdminDeactivationWaitsForATransactionThatSharesTheAccount(t *testing.T) {
+	ctx := context.Background()
+	pool := newPool(t)
+	createMemberships(t, pool)
+	admin := newAdmin(pool, []identity.DeactivationVetoer{membershipVetoer{pool}})
+	if _, err := admin.CreateUser(ctx, "alice@corp.com", "correct horse battery"); err != nil {
+		t.Fatal(err)
+	}
+	id := accountID(t, pool)
+	tx := postgres.NewTxManager(pool, 2*time.Second)
+	g := newGate()
+
+	join := async(func() error {
+		return tx.WithinTx(ctx, func(ctx context.Context) error {
+			if err := identity.NewAccounts(pool).ShareActiveAccount(ctx, id); err != nil {
+				return err
+			}
+			if _, err := postgres.DB(ctx, pool).Exec(ctx, `INSERT INTO memberships VALUES ($1)`, id); err != nil {
+				return err
+			}
+			return g.stop()
+		})
+	})
+	g.await(t)
+	refused := async(func() error {
+		_, err := admin.Deactivate(ctx, "alice@corp.com")
+		return err
+	})
+	pgtest.WaitForLockWaits(t, pool, 1, waitLimit)
+	g.open()
+	joinErr := await(t, join)
+	err := await(t, refused)
+
+	if joinErr != nil || codeOf(err) != "test.has_memberships" || !isActive(t, pool) {
+		t.Errorf("join %v; Deactivate() = %v, active %v; want the join, then the vetoer's refusal, the account active",
+			joinErr, err, isActive(t, pool))
 	}
 }

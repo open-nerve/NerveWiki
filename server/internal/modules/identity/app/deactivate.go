@@ -46,6 +46,9 @@ func (s DeactivationSteps) run(ctx context.Context, d Deactivation) (int, error)
 	return revoked, nil
 }
 
+// bySelf marks in the logs a deactivation the account asked for itself.
+const bySelf = "self"
+
 // logDeactivation logs how a deactivation of userID by by ended once it had
 // the lock: a refusal with its code, or the deactivation with the sessions
 // it revoked. A failure of the caller's credential is not a refusal, and a
@@ -101,7 +104,7 @@ func (u *Deactivate) Execute(ctx context.Context) error {
 		revoked, err = u.d.Steps.run(ctx, Deactivation{UserID: actor.UserID, Email: locked.Email, At: now})
 		return err
 	})
-	logDeactivation(ctx, u.d.Logger, actor.UserID, "self", revoked, err)
+	logDeactivation(ctx, u.d.Logger, actor.UserID, bySelf, revoked, err)
 	return err
 }
 

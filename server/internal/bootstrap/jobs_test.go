@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"log/slog"
+	"net"
 	"net/http"
 	"strings"
 	"testing"
@@ -60,11 +61,14 @@ func TestJobsStartOnceTheMigrationsAreApplied(t *testing.T) {
 	a.migrationPoll = 50 * time.Millisecond
 	base := runApp(t, a)
 
-	logs.waitFor(t, `msg="background jobs wait for the pending migrations"`, 10*time.Second)
+	logs.waitFor(t, `msg="background jobs wait for the migration check to pass"`, 10*time.Second)
 	time.Sleep(200 * time.Millisecond) // a few polls
 	if status := getStatus(t, base+"/readyz"); status != http.StatusServiceUnavailable || strings.Contains(logs.String(), `msg="jobs started"`) {
 		t.Fatalf("GET /readyz = %d with the jobs started: %v; want 503 and the jobs waiting:\n%s",
 			status, strings.Contains(logs.String(), `msg="jobs started"`), logs.String())
+	}
+	if warnings := strings.Count(logs.String(), `msg="background jobs wait`); warnings != 1 {
+		t.Errorf("%d warnings over a few polls, want one", warnings)
 	}
 
 	m, err := postgres.NewMigrator(connect(t, url), migrations.FS())
@@ -79,6 +83,32 @@ func TestJobsStartOnceTheMigrationsAreApplied(t *testing.T) {
 	logs.waitFor(t, `msg="jobs started"`, 10*time.Second)
 	if status := getStatus(t, base+"/readyz"); status != http.StatusOK {
 		t.Errorf("GET /readyz = %d after the migrations, want 200", status)
+	}
+}
+
+// HTTP may stop on its own, as when its address is taken: serve then stops
+// waiting for the migrations to start the jobs and returns HTTP's error,
+// rather than wait for migrations nobody is going to apply.
+func TestRunReturnsWhenHTTPStopsWhileTheJobsWait(t *testing.T) {
+	taken, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = taken.Close() }()
+	cfg := testConfig(t, pgtest.NewEmptyDatabase(t), false)
+	cfg.Server.Addr = taken.Addr().String()
+	a := buildApp(t, cfg, migrations.FS())
+	a.migrationPoll = 50 * time.Millisecond
+	done := make(chan error, 1)
+	go func() { done <- a.run(context.Background()) }()
+
+	select {
+	case err := <-done:
+		if err == nil || !strings.Contains(err.Error(), "address already in use") {
+			t.Errorf("run() = %v, want HTTP's error: the address is in use", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("run() still waits 10s after HTTP failed to start")
 	}
 }
 
