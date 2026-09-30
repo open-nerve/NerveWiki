@@ -142,18 +142,22 @@ export function displayNameOf(email: string): string {
   return email.trim().toLowerCase().slice(0, email.trim().indexOf("@"));
 }
 
+/**
+ * The ids of the web app's onboarding steps, in order (web/apps/web/src/onboarding/steps.ts): a step added
+ * there is added here, or the stories of onboarded accounts land on onboarding (A9 counts the steps).
+ */
+const onboardingSteps = ["profile"];
+
 /** Signs email up through the API, done with onboarding as the web app would have it, and returns its tokens. */
 export async function registerOnboarded(api: ApiClient, email: string): Promise<AuthTokens> {
   const tokens = await register(api, email);
-  await completeOnboarding(api, tokens.access_token);
+  const recorded = await Promise.all(
+    onboardingSteps.map((step) =>
+      api.POST("/api/v0/me/onboarding-steps", { body: { step }, headers: bearer(tokens.access_token) })
+    )
+  );
+  for (const [i, { response, error }] of recorded.entries()) {
+    expect(response.status, `record ${onboardingSteps[i]}: ${JSON.stringify(error)}`).toBe(200);
+  }
   return tokens;
-}
-
-/** Records the step of onboarding for the account of accessToken, as the web app does once the step is done. */
-async function completeOnboarding(api: ApiClient, accessToken: string, step = "profile"): Promise<void> {
-  const { response, error } = await api.POST("/api/v0/me/onboarding-steps", {
-    body: { step },
-    headers: bearer(accessToken),
-  });
-  expect(response.status, `record ${step}: ${JSON.stringify(error)}`).toBe(200);
 }

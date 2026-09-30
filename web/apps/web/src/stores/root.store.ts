@@ -27,10 +27,10 @@ export class AppStores {
 
 /**
  * RootStore is one generation of the app's stores: one per login, made
- * anew whenever the tab's session changes (M1/P5 design 3.3), and the only
- * place where services and stores are wired: each service gets its client
- * from here. Components reach it through useStore. The page's AppStores
- * are shared by every generation.
+ * anew whenever the tab's session changes (M1/P5 design 3.3). With the
+ * page's AppStores, shared by every generation, it is the only place where
+ * services and stores are wired: each service gets its client from here.
+ * Components reach it through useStore.
  */
 export class RootStore {
   readonly preferences: PreferencesStore;

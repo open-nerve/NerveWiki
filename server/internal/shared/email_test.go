@@ -84,6 +84,14 @@ func TestValidEmail(t *testing.T) {
 		"a@😀.com",
 		`"a b"@example.com`,
 		"a@ex\xe3\x80\x80ample.com", // U+3000: Django accepts it in a domain; white space is refused first
+		// Format characters, which Django accepts in a domain: bidirectional
+		// controls, zero-width characters, the soft hyphen.
+		"alice@exa\u202emple.com",
+		"alice@example.c\u202eom",
+		"alice@ex\u2066ample.com",
+		"alice@exa\u200bmple.com",
+		"alice@exa\u200dmple.com",
+		"alice@exa\u00admple.com",
 		strings.Repeat("a", 64) + "@" + strings.Repeat("b", 63) + "." + strings.Repeat("c", 63) + "." + strings.Repeat("d", 60) + ".com",
 	}
 	for _, e := range validEmails {

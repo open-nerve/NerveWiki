@@ -91,6 +91,25 @@ func TestTrivialPasswords(t *testing.T) {
 	}
 }
 
+// The rules judge the form the hasher hashes (CanonicalPassword): a
+// full-width password signs in as its ASCII twin, and decomposed accents
+// are fewer characters than they are code units.
+func TestRulesJudgeTheCanonicalForm(t *testing.T) {
+	rules := NewPasswordRules()
+	tests := []struct{ password, email, want string }{
+		{"ｐａｓｓｗｏｒｄ１２３", "someone@example.com", shared.FieldCommonPassword},
+		{"Ｐａｓｓｗｏｒｄ１！", "someone@example.com", shared.FieldCommonPassword},
+		{"ａｌｉｃｅ２０２６", "alice@example.com", shared.FieldCommonPassword},
+		{strings.Repeat("e\u0301", 4), "someone@example.com", shared.FieldTooShort}, // 8 units, 4 characters: éééé
+		{"ｘｑ７ｖｂｎｚｋ", "someone@example.com", ""},
+	}
+	for _, tt := range tests {
+		if got := checkCode(t, rules, tt.password, tt.email); got != tt.want {
+			t.Errorf("Check(%q, %q) = %q, want %q", tt.password, tt.email, got, tt.want)
+		}
+	}
+}
+
 func TestPasswordWhoseCoreIsTheEmailsLocalPart(t *testing.T) {
 	rules := NewPasswordRules()
 	tests := []struct{ password, email, want string }{

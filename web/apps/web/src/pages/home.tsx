@@ -9,7 +9,7 @@ import { useStore } from "../stores/context";
 export const HomePage = observer(function HomePage() {
   const { instance } = useStore();
   const t = useT();
-  const { error } = useSWR("instance", () => instance.fetch());
+  const { error } = useSWR("instance", () => instance.load());
   const info = instance.info;
 
   if (!info) {

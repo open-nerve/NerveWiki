@@ -113,7 +113,7 @@ make run      # 以 dev 配置启动 nervewiki serve，监听 127.0.0.1:8080；C
 
 1. 写 `api/modules/<模块>.yaml`，在 `api/openapi.yaml` 的 `tags` 与 `paths` 中列出；写法约定由 `apitest` 的规则测试（`server/internal/platform/httpserver/apitest/rules_test.go`）检查，要点见[总体设计](docs/v0.1/v0.1-design.md) 13.1。
 2. 照抄 `instance` 的 `adapter/http/gen/oapi-codegen.yaml`，改掉输出路径，执行 `make gen`。
-3. 在 `adapter/http` 中实现生成的 `StrictServerInterface`，由模块的 `Register` 挂到路由器上，在 `bootstrap` 中调用。
+3. 在 `adapter/http` 中实现生成的 `StrictServerInterface`，由模块的 `Register` 挂到路由器上，在 `bootstrap` 中调用。接口默认要求令牌：不要令牌的操作在契约中写 `security: []`，同时列进模块的 `PublicOperations()`，由 `bootstrap` 并进 `APIConfig`；整个程序的测试核对两者一致。
 4. `adapter/http` 的测试以 `apitest.Main(m)` 为 `TestMain`（模块名取自测试所在的路径）：操作声明的每个错误码都要有测试经 `apitest.CheckResponse` 答过。
 
 ## 前端
@@ -128,8 +128,8 @@ make build     # 构建前端并内嵌进 bin/nervewiki
 
 写法：
 
-- 组件经由 store 取数据，store 经由 service 调接口，service 从构造函数拿 API 客户端。`RootStore`（`src/stores/root.store.ts`）是唯一装配它们的地方。组件不导入 `@nervewiki/api-client`，oxlint 检查这一点，接口类型从 service 导出。
-- 加载由 SWR 驱动：页面 `useSWR(key, () => store.x.fetch())`，store 保存结果。示例见 `src/pages/home.tsx`。
+- 组件经由 store 取数据，store 经由 service 调接口，service 从构造函数拿 API 客户端。`src/stores/root.store.ts` 是唯一装配它们的地方：页面一生的 `AppStores` 与每次登录一代的 `RootStore`。组件不导入 `@nervewiki/api-client`，oxlint 检查这一点，接口类型从 service 导出。
+- 加载由 SWR 驱动：页面 `useSWR(key, () => store.x.load())`，store 保存结果。示例见 `src/pages/home.tsx`。
 - 文案在 `src/i18n/messages/`：`en.ts` 是源头，`zh-CN.ts` 缺键、多键时类型检查失败，占位符不一致时 vitest 失败。组件用 `useT()`。
 - 页面在 `src/app/routes.tsx` 中按需加载，写成 `const { Page } = await import(…)`，knip 才看得出用到了哪些导出。
 
@@ -139,7 +139,7 @@ make build     # 构建前端并内嵌进 bin/nervewiki
 - **每次登录一代**：`SessionRoot` 按 `loginId` 新建一代 `RootStore`，SWR 缓存随之清空；上一代没有完成的请求以 `SessionChangedError` 结束，不写入新一代。设备偏好与实例信息跨代保留。
 - **路由与守卫**（`src/app/guards.tsx`）：除登录、注册外所有页面都要登录，不存在的路径也是先登录再显示 404。去向只由守卫决定：页面在登录、注册、退出之后不自己跳转。登录页的 `next` 只接受本站路径，否则去 `/`。
 - **新手引导**：步骤注册在 `src/onboarding/steps.ts`，服务端只记录完成的步骤 id。加一步就是写它的组件、追加到 `onboardingSteps`；已经完成前面步骤的用户下次访问只看到新的一步。
-- **请求的错误**：problem 码与字段码到文案的映射在 `src/app/problem-messages.ts`；vitest 读 `api/dist/openapi.yaml`，契约中各操作列出的码没有文案时失败。
+- **请求的错误**：problem 码与字段码到文案的映射在 `src/app/problem-messages.ts`；vitest 读 `api/dist/openapi.yaml`，契约中任何一个操作列出的码没有文案时失败（只有页面不显示其错误的续期与退出除外）。
 - **表单**：`src/app/form.ts` 的 `useForm` 是所有表单的发送：本地检查不通过就不发；服务端的字段错误在字段下方（个别 problem 码也可以指定字段，例如当前密码不对），其余在表单上方；发送中按钮禁用；失败之后焦点移到第一个有错误的字段。
 - **设置**（`src/pages/settings/`）：`/settings/profile`（显示名；主题与语言是这个浏览器的偏好，与顶栏的菜单是同一份，只存在设备上）、`/settings/security`（改密码、停用账户）、`/settings/tokens`（个人访问令牌）。新令牌只在创建对话框中显示一次，对话框关闭即卸载，列表从不持有令牌本身；停用成功之后本浏览器忘掉会话（服务端已经结束了它），所有标签页回到登录页。
 

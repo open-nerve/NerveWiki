@@ -16,8 +16,8 @@ import (
 	"time"
 
 	"golang.org/x/crypto/argon2"
-	"golang.org/x/text/unicode/norm"
 
+	"github.com/open-nerve/NerveWiki/server/internal/modules/identity/domain"
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
@@ -56,12 +56,10 @@ func New(p Params, logger *slog.Logger) *Hasher {
 	return &Hasher{p: p, logger: logger, slots: make(chan struct{}, p.MaxConcurrent), unusable: unusable}
 }
 
-// secret is what argon2id hashes of a password: its NFKC form (NIST SP
-// 800-63B 5.1.1.2), so that the same password typed as precomposed or
-// decomposed accents, or in full-width letters, is the same credential on
-// every device.
+// secret is what argon2id hashes of a password: its canonical form, the
+// one the password rules checked.
 func secret(password string) []byte {
-	return []byte(norm.NFKC.String(password))
+	return []byte(domain.CanonicalPassword(password))
 }
 
 // Hash returns the PHC string of password's NFKC form:

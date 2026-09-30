@@ -55,7 +55,14 @@ test("A1 (page): a visitor signs up, lands on onboarding, and the browser keeps 
   await expect(page.getByRole("heading", { level: 1, name: "Your name" })).toBeVisible();
   // The app went there itself: the document is still the one that signed up.
   expect(await page.evaluate(() => (window as { nervewikiE2eDocument?: string }).nervewikiE2eDocument)).toBe("sign-up");
-  await expectNewAccount(db, email);
+  const userId = await expectNewAccount(db, email);
+  await expectNewSession(db, userId, {
+    email,
+    accessToken: tokens.access_token,
+    refreshToken: tokens.refresh_token,
+    userAgent: await page.evaluate(() => navigator.userAgent),
+    ip: "127.0.0.1",
+  });
 
   // The session lives in the record alone: its refresh token and a login_id of the tab's making. The
   // access token stays in the page's memory; neither token is anywhere else.

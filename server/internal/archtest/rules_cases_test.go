@@ -14,11 +14,13 @@ func TestRules(t *testing.T) {
 	const (
 		inward   = "module layers point inward: adapter -> app -> domain"
 		layout   = "module packages live in domain, app or adapter, or at the module root"
-		pure     = "domain and app import only the standard library (not net/http or database/sql), their own module's inner layers and internal/shared"
+		pure     = "domain and app import only the standard library (not net/http or database/sql), Unicode normalization, their own module's inner layers and internal/shared"
 		kernel   = "internal/shared imports only the standard library (not net/http or database/sql) and internal/shared"
 		isolated = "modules do not import each other"
 		business = "platform does not import modules, bootstrap or internal/shared"
 		entry    = "only bootstrap imports modules"
+		roots    = "bootstrap imports only a module's root"
+		adapters = "a module's adapters do not import each other"
 		gen      = "generated code is imported only by its own adapter"
 		platform = "platform packages do not import each other, except config"
 		testOnly = "test helpers (pgtest, apitest, clocktest) are imported only by tests"
@@ -50,6 +52,8 @@ func TestRules(t *testing.T) {
 		{m("internal/modules/page/domain"), "database/sql/driver", []string{pure}},
 		{m("internal/modules/page/domain"), "github.com/jackc/pgx/v5", []string{pure}},
 		{m("internal/modules/page/domain"), m("internal/platform/config"), []string{pure}},
+		{m("internal/modules/page/domain"), "golang.org/x/text/unicode/norm", nil},
+		{m("internal/modules/page/domain"), "golang.org/x/text/language", []string{pure}},
 		{m("internal/modules/page/app"), "context", nil},
 		{m("internal/modules/page/app"), m("internal/shared/id"), nil},
 		{m("internal/modules/page/app"), "net/http", []string{pure}},
@@ -73,6 +77,15 @@ func TestRules(t *testing.T) {
 		{m("internal/modules/page/app"), m("internal/modules/notebook/domain"), []string{isolated}},
 		{m("internal/bootstrap"), m("internal/modules/page"), nil},
 		{m("cmd/nervewiki"), m("internal/modules/page"), []string{entry}},
+
+		// The composition root reaches a module through its root alone, and a
+		// module's adapters meet only in its app layer.
+		{m("internal/bootstrap"), m("internal/modules/page"), nil},
+		{m("internal/bootstrap"), m("internal/modules/page/adapter/postgres"), []string{roots}},
+		{m("internal/bootstrap"), m("internal/modules/page/domain"), []string{roots}},
+		{m("internal/modules/page/adapter/http"), m("internal/modules/page/adapter/postgres"), []string{adapters}},
+		{m("internal/modules/page/adapter/postgres"), m("internal/modules/page/adapter/postgres/gen"), nil},
+		{m("internal/modules/page/adapter/river"), m("internal/modules/page/app"), nil},
 		{m("internal/platform/httpserver"), m("internal/modules/page"), []string{business, entry}},
 		{m("internal/platform/httpserver"), m("internal/bootstrap"), []string{business}},
 
@@ -80,7 +93,7 @@ func TestRules(t *testing.T) {
 		{m("internal/modules/page/adapter/http"), m("internal/modules/page/adapter/http/gen"), nil},
 		{m("internal/modules/page/adapter/http/gen"), m("internal/platform/httpserver/apigen"), nil},
 		{m("internal/modules/page/app"), m("internal/modules/page/adapter/http/gen"), []string{inward, gen}},
-		{m("internal/modules/page/adapter/postgres"), m("internal/modules/page/adapter/http/gen"), []string{gen}},
+		{m("internal/modules/page/adapter/postgres"), m("internal/modules/page/adapter/http/gen"), []string{gen, adapters}},
 		{m("internal/modules/notebook/adapter/http"), m("internal/modules/page/adapter/http/gen"), []string{isolated, gen}},
 		// sqlc's code under adapter/postgres/gen follows the same rule.
 		{m("internal/modules/page/adapter/postgres"), m("internal/modules/page/adapter/postgres/gen"), nil},
@@ -95,7 +108,7 @@ func TestRules(t *testing.T) {
 		{m("internal/bootstrap"), "github.com/riverqueue/river/rivertype", []string{river}},
 		{m("internal/modules/page/adapter/postgres"), "github.com/riverqueue/riverfake", nil},
 		{m("internal/modules/page/adapter/postgres/gen"), "github.com/jackc/pgx/v5", nil},
-		{m("internal/modules/page/adapter/http"), m("internal/modules/page/adapter/postgres/gen"), []string{gen}},
+		{m("internal/modules/page/adapter/http"), m("internal/modules/page/adapter/postgres/gen"), []string{gen, adapters}},
 		{m("internal/modules/page"), m("internal/modules/page/adapter/postgres/gen"), []string{gen}},
 
 		// Platform packages.

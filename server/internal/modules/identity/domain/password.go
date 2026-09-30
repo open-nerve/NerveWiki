@@ -8,6 +8,8 @@ import (
 	"unicode/utf16"
 	"unicode/utf8"
 
+	"golang.org/x/text/unicode/norm"
+
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
@@ -19,6 +21,16 @@ const (
 
 //go:embed common_passwords.txt
 var commonPasswordsFile string
+
+// CanonicalPassword is the form of a password that counts: its NFKC form
+// (NIST SP 800-63B 5.1.1.2), so that the same password typed as precomposed
+// or decomposed accents, or in full-width letters, is one credential on every
+// device. The rules check this form and the hasher hashes it: checking what
+// was typed would let ｐａｓｓｗｏｒｄ１２３ pass and then sign in as
+// password123.
+func CanonicalPassword(password string) string {
+	return norm.NFKC.String(password)
+}
 
 // PasswordRules are the server's password rules (M1/P1 design 3.4): a length
 // and the common-password list, no composition rules (NIST SP 800-63B).
@@ -36,13 +48,15 @@ func NewPasswordRules() *PasswordRules {
 }
 
 // Check returns the field error for a new password of the account with the
-// given normalized e-mail address, or nil when it is acceptable:
+// given normalized e-mail address, or nil when it is acceptable. It judges
+// the password's canonical form:
 //
 //   - too_short, too_long: not 8–128 characters;
 //   - common_password: the lowercased password or its core is on the list,
 //     or its core is the core of the address's local part, or it is one
 //     character repeated, or white space and control characters alone.
 func (p *PasswordRules) Check(field, password, email string) *shared.FieldError {
+	password = CanonicalPassword(password)
 	n := len(utf16.Encode([]rune(password)))
 	switch {
 	case password == "":

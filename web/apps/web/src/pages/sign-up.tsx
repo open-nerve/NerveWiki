@@ -25,7 +25,7 @@ export const SignUpPage = observer(function SignUpPage() {
   const { auth, instance } = useStore();
   const t = useT();
   const [params] = useSearchParams();
-  const { error } = useSWR("instance", () => instance.fetch());
+  const { error } = useSWR("instance", () => instance.load());
   const signInLink = (
     <Link to={keepNext("/sign-in", params)} className="underline underline-offset-4">
       {t("signUp.signIn")}

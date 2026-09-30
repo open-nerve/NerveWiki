@@ -20,7 +20,7 @@ import (
 // account is.
 type Authenticator interface {
 	// Authenticate returns a context carrying the caller, and the caller's
-	// rate-limit key (session:<id>). An invalid token is an error with
+	// rate-limit key (session:<id> or pat:<id>). An invalid token is an error with
 	// ProblemStatus() 401; for a token that is valid but for its expiry, the
 	// error also has ExpiredCredential() true. Any other error is an
 	// internal fault.
