@@ -22,6 +22,8 @@ func TestLogValueMasksDatabaseURL(t *testing.T) {
 		"config.server.read_timeout=30s",
 		"config.server.write_timeout=1m0s",
 		"config.server.shutdown_timeout=20s",
+		"config.server.request_timeout=15s",
+		"config.server.max_body_bytes=1048576",
 		`config.server.addr_file=""`,
 		"config.database.url=xxxxx",
 		"config.database.max_conns=10",

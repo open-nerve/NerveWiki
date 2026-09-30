@@ -18,6 +18,8 @@ server:
   read_timeout: 30s
   write_timeout: 60s
   shutdown_timeout: 20s
+  request_timeout: 15s
+  max_body_bytes: 1048576
   addr_file: ""
 database:
   url: ""
@@ -74,6 +76,8 @@ func TestLoadAppliesLayersInOrder(t *testing.T) {
 			ReadTimeout:       30 * time.Second,
 			WriteTimeout:      60 * time.Second,
 			ShutdownTimeout:   40 * time.Second, // config.local.yaml beats the config dir
+			RequestTimeout:    15 * time.Second,
+			MaxBodyBytes:      1 << 20,
 		},
 		Database: DatabaseConfig{
 			URL:           "postgres://embedded-dev", // built-in config.dev.yaml

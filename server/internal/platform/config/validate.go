@@ -34,6 +34,17 @@ func (c Config) validate() error {
 	if c.Server.ShutdownTimeout <= 0 {
 		fail("server.shutdown_timeout", "must be positive, got %s", c.Server.ShutdownTimeout)
 	}
+	switch {
+	case c.Server.RequestTimeout <= 0:
+		fail("server.request_timeout", "must be positive, got %s", c.Server.RequestTimeout)
+	case c.Server.WriteTimeout > 0 && c.Server.RequestTimeout >= c.Server.WriteTimeout:
+		// A request that runs into its deadline still has to write its error
+		// response before write_timeout cuts the connection.
+		fail("server.request_timeout", "must be less than server.write_timeout (%s), got %s", c.Server.WriteTimeout, c.Server.RequestTimeout)
+	}
+	if c.Server.MaxBodyBytes < 1 {
+		fail("server.max_body_bytes", "must be at least 1, got %d", c.Server.MaxBodyBytes)
+	}
 	if c.Database.URL == "" {
 		fail("database.url", "is required")
 	}

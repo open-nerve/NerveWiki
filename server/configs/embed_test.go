@@ -42,6 +42,8 @@ func TestBuiltInProfiles(t *testing.T) {
 					ReadTimeout:       30 * time.Second,
 					WriteTimeout:      60 * time.Second,
 					ShutdownTimeout:   20 * time.Second,
+					RequestTimeout:    15 * time.Second,
+					MaxBodyBytes:      1 << 20,
 				},
 				Database: config.DatabaseConfig{URL: tt.url, MaxConns: 10, AutoMigrate: tt.autoMigrate, CommitTimeout: 2 * time.Second},
 				Log:      config.LogConfig{Level: tt.level, Format: tt.format},
