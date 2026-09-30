@@ -19,3 +19,8 @@ M0/P3 只做了 M0 用得到的平台层（[P3 文档](../../M0-foundation/03-P3
 8. **测试用的固定时钟**：Nerve 的 `clock/clocktest`。M0 没有用到它的代码，P3 审查时删掉了。它不是并发安全的，而会话过期这类测试会在 HTTP 集成测试中与处理请求的 goroutine 同时读它，引入时加锁，并把它加进架构测试规则 8（测试辅助包只被测试导入）。
 9. **时区数据库**：个人偏好里如果有时区，二进制要内嵌 `time/tzdata`，并恢复 Nerve 检查它的架构测试；否则可以接受的时区会随宿主机变化。
 10. **指向机密的 `*_file` 配置键**（例如 JWT 私钥文件）：M0 唯一的 `*_file` 键 `server.addr_file` 不是机密，启动日志与错误信息都显示它的路径（P3 审查 N2）。Nerve 对所有 `*_file` 键只记录"是否设置"；M1 加入私钥文件时按键决定，并补上对应的日志测试。
+
+## 处理进展
+
+- M1/P1（2026-09-30）：第 1 项（`clientip.go`、`server.trusted_proxies` 与列表、`netip.Prefix` 的解码）、第 3 项（`Authenticator`、`PublicOperations`、认证中间件；`LongLived` 的认证仍由 M5 决定）、第 5 项（`warnIfExposed`）、第 7 项（`sqlc_test`、`rawsql_test`）、第 10 项（`auth.jwt.private_key_file` 只记 `private_key_file_set`，有日志测试）。见 [P1 文档](../01-P1-identity-foundation.md)第 7 节。
+- 其余：第 2、8 项随 P2，第 4、6 项随 P4；第 9 项已在 M1 总设计第 2 节关闭（不做服务端时区）。状态在 M1 收尾时改为 done。

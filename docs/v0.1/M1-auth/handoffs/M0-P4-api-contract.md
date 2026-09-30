@@ -14,3 +14,8 @@ M0/P4 只做了 `instance` 用得到的部分（[P4 文档](../../M0-foundation/
 3. **参数与请求体的整个程序测试**：Nerve 的 `TestParametersThatDoNotBindAnswer400`、`TestBodiesThatBreakTheStructureAnswer400`、`TestTheAnswerToABrokenBodyStaysSmall`，以及 `apitest` 为它们推导用例的 `Operation.Target`、`ParamCases`、`BodyCases`、`HasJSONBody`（`operations.go` 的其余部分）和对应的测试。同时恢复两条只为它们服务的写法规则：参数写 `schema` 不写 `content`；JSON 请求体是对象。
 4. **oapi-codegen runtime 的例外**：第一个带参数的操作让生成代码导入 `github.com/oapi-codegen/runtime`，它会把 `github.com/google/uuid` 带进二进制，架构测试 `binary_test` 的禁用清单要为这条路径开例外（Nerve 的 `isBannedFromBinary` 按导入者判断）。`generated_test` 已经保证生成代码本身不用 runtime 的 `UUID`。
 5. **逐路由中间件的扩充**：按 Nerve 的顺序插进 `API.Middlewares`：客户端信息（IP、User-Agent）→ 请求期限 → 请求体上限 → 认证 → 限流 → 请求体结构检查。`APIConfig` 随之加 `Authenticator`、`PublicOperations`、限流桶与 IPv6 前缀长度；`NewAPI` 的参数校验与测试同步。
+
+## 处理进展
+
+- M1/P1（2026-09-30）：第 1 项（401 与 `WWW-Authenticate`、`securitySchemes.bearer`、两个整个程序测试的断言）、第 2 项（`PublicOperations()` 与行为式的整个程序测试，`apitest.Operation.Public`）、第 3 项（三个整个程序测试与 `operations.go`、两条写法规则）、第 5 项的认证部分（请求信息 → 请求期限 → 请求体上限 → 认证 → 请求体结构检查）。见 [P1 文档](../01-P1-identity-foundation.md)第 7 节。
+- 其余：第 5 项的限流部分随 P2；第 4 项随第一个带路径参数的操作（P3）。状态在 M1 收尾时改为 done。
