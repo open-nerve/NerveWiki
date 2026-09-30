@@ -1,0 +1,19 @@
+{
+  "description": "同名的引用定义不影响 wikilink。",
+  "source": "obsidian-verified",
+  "frontmatter": null,
+  "links": [
+    {
+      "kind": "wikilink",
+      "target": "x",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        2,
+        3
+      ]
+    }
+  ],
+  "tags": []
+}

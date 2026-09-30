@@ -1,0 +1,19 @@
+{
+  "description": "转义的 \\$ 不是公式的边界。",
+  "source": "obsidian-verified",
+  "frontmatter": null,
+  "links": [
+    {
+      "kind": "wikilink",
+      "target": "f",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        4,
+        5
+      ]
+    }
+  ],
+  "tags": []
+}

@@ -1,0 +1,19 @@
+{
+  "description": "HTML 块是原始内容，里面没有链接；行内 HTML 标签之间的文字仍按 Markdown 处理。",
+  "source": "obsidian-verified",
+  "frontmatter": null,
+  "links": [
+    {
+      "kind": "wikilink",
+      "target": "yes",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        29,
+        32
+      ]
+    }
+  ],
+  "tags": []
+}

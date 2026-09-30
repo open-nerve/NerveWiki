@@ -1,0 +1,6 @@
+{
+  "description": "CRLF 原样保留；属性链接同样改写。",
+  "source": "nerve-defined",
+  "from": "Old",
+  "to": "New"
+}

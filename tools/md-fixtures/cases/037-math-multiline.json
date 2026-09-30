@@ -1,0 +1,19 @@
+{
+  "description": "行内公式可以跨行，但不跨段落。",
+  "source": "obsidian-verified",
+  "frontmatter": null,
+  "links": [
+    {
+      "kind": "wikilink",
+      "target": "z",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        19,
+        20
+      ]
+    }
+  ],
+  "tags": []
+}

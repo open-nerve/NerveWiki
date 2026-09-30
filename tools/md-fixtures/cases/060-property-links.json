@@ -1,0 +1,101 @@
+{
+  "description": "属性链接：字符串标量的整个值恰好是一个 wikilink 或一个 Markdown 链接；嵌入、夹带其他文字、YAML 注释、嵌套列表都不算。range 是目标在原文中的写法（单引号里的 '' 按原样计入）。",
+  "source": "obsidian-verified",
+  "frontmatter": {
+    "valid": true,
+    "properties": {
+      "a": "see [[x]] here",
+      "c": "[t](m.md)",
+      "d": "[[w]]",
+      "g": "[[blk]]\n",
+      "h": "  [[sp]]  ",
+      "i": "![[emb.png]]",
+      "j": "[[a|b]]",
+      "k": "https://x.com",
+      "l": [
+        {
+          "m": "[[deep]]"
+        }
+      ],
+      "n": "[[p#h]]",
+      "o": "see [t](m2.md) here",
+      "comment": 1,
+      "up": [
+        [
+          "parent"
+        ]
+      ],
+      "q": "[[Bob's]]",
+      "r": "[[s]]x"
+    }
+  },
+  "links": [
+    {
+      "kind": "link",
+      "target": "m.md",
+      "anchor": null,
+      "display": null,
+      "key": "c",
+      "range": [
+        32,
+        36
+      ]
+    },
+    {
+      "kind": "wikilink",
+      "target": "w",
+      "anchor": null,
+      "display": null,
+      "key": "d",
+      "range": [
+        45,
+        46
+      ]
+    },
+    {
+      "kind": "wikilink",
+      "target": "a",
+      "anchor": null,
+      "display": "b",
+      "key": "j",
+      "range": [
+        105,
+        106
+      ]
+    },
+    {
+      "kind": "wikilink",
+      "target": "deep",
+      "anchor": null,
+      "display": null,
+      "key": "l.0.m",
+      "range": [
+        144,
+        148
+      ]
+    },
+    {
+      "kind": "wikilink",
+      "target": "p",
+      "anchor": "h",
+      "display": null,
+      "key": "n",
+      "range": [
+        158,
+        159
+      ]
+    },
+    {
+      "kind": "wikilink",
+      "target": "Bob's",
+      "anchor": null,
+      "display": null,
+      "key": "q",
+      "range": [
+        230,
+        236
+      ]
+    }
+  ],
+  "tags": []
+}

@@ -1,0 +1,19 @@
+{
+  "description": "后面紧跟数字的 $ 不结束公式。",
+  "source": "obsidian-verified",
+  "frontmatter": null,
+  "links": [
+    {
+      "kind": "wikilink",
+      "target": "w",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        32,
+        33
+      ]
+    }
+  ],
+  "tags": []
+}

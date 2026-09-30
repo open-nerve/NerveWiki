@@ -1,0 +1,30 @@
+{
+  "description": "目标和显示文字去掉首尾空白；range 只覆盖去掉空白后的目标。",
+  "source": "obsidian-verified",
+  "frontmatter": null,
+  "links": [
+    {
+      "kind": "wikilink",
+      "target": "spaced title",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        4,
+        16
+      ]
+    },
+    {
+      "kind": "wikilink",
+      "target": "x",
+      "anchor": null,
+      "display": "y",
+      "key": null,
+      "range": [
+        24,
+        25
+      ]
+    }
+  ],
+  "tags": []
+}

@@ -1,0 +1,58 @@
+{
+  "description": "frontmatter 解析成属性；整个值恰好是一个 wikilink 的字符串是属性链接，key 是属性路径。",
+  "source": "obsidian-verified",
+  "frontmatter": {
+    "valid": true,
+    "properties": {
+      "tags": [
+        "x",
+        "y"
+      ],
+      "aliases": [
+        "别名"
+      ],
+      "type": "concept",
+      "summary": "一句话摘要",
+      "sources": [
+        "[[raw/a]]",
+        "[[raw/b|B]]"
+      ]
+    }
+  },
+  "links": [
+    {
+      "kind": "wikilink",
+      "target": "raw/a",
+      "anchor": null,
+      "display": null,
+      "key": "sources.0",
+      "range": [
+        87,
+        92
+      ]
+    },
+    {
+      "kind": "wikilink",
+      "target": "raw/b",
+      "anchor": null,
+      "display": "B",
+      "key": "sources.1",
+      "range": [
+        100,
+        105
+      ]
+    },
+    {
+      "kind": "wikilink",
+      "target": "body",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        125,
+        129
+      ]
+    }
+  ],
+  "tags": []
+}

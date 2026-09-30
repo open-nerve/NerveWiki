@@ -1,0 +1,63 @@
+{
+  "description": "指向笔记本内文件的 Markdown 链接计入；外部网址、mailto、尖括号自动链接不计入。目标做百分号解码；range 覆盖原文中的目标写法，不含锚点。",
+  "source": "obsidian-verified",
+  "frontmatter": null,
+  "links": [
+    {
+      "kind": "link",
+      "target": "a.md",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        4,
+        8
+      ]
+    },
+    {
+      "kind": "link",
+      "target": "sub/b.md",
+      "anchor": "h",
+      "display": null,
+      "key": null,
+      "range": [
+        14,
+        22
+      ]
+    },
+    {
+      "kind": "link",
+      "target": "c d.md",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        30,
+        38
+      ]
+    },
+    {
+      "kind": "link",
+      "target": "e f.md",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        45,
+        51
+      ]
+    },
+    {
+      "kind": "link",
+      "target": "../up.md",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        58,
+        66
+      ]
+    }
+  ],
+  "tags": []
+}

@@ -1,0 +1,65 @@
+{
+  "description": "注释只影响显示：行内注释、落单的 %%、代码里的 %% 都不影响提取。",
+  "source": "obsidian-verified",
+  "frontmatter": null,
+  "links": [
+    {
+      "kind": "wikilink",
+      "target": "h1",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        4,
+        6
+      ]
+    },
+    {
+      "kind": "wikilink",
+      "target": "s1",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        13,
+        15
+      ]
+    },
+    {
+      "kind": "wikilink",
+      "target": "b1",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        33,
+        35
+      ]
+    },
+    {
+      "kind": "wikilink",
+      "target": "a1",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        43,
+        45
+      ]
+    },
+    {
+      "kind": "wikilink",
+      "target": "c1",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        56,
+        58
+      ]
+    }
+  ],
+  "tags": [
+    "htag"
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "description": "GFM 字面自动链接是外部链接，不计入；其中的 # 不是标签。",
+  "source": "obsidian-verified",
+  "frontmatter": null,
+  "links": [
+    {
+      "kind": "wikilink",
+      "target": "y",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        60,
+        61
+      ]
+    }
+  ],
+  "tags": []
+}

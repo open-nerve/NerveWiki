@@ -1,0 +1,19 @@
+{
+  "description": "不是标签：纯数字、词中间的 #、ATX 标题、网址片段、##、链接锚点。",
+  "source": "obsidian-verified",
+  "frontmatter": null,
+  "links": [
+    {
+      "kind": "link",
+      "target": "a.md",
+      "anchor": "anchor",
+      "display": null,
+      "key": null,
+      "range": [
+        41,
+        45
+      ]
+    }
+  ],
+  "tags": []
+}

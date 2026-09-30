@@ -1,0 +1,7 @@
+{
+  "description": "表格里没有转义的 | 先切分单元格，[[p|q]] 被拆开，不是链接。",
+  "source": "obsidian-verified",
+  "frontmatter": null,
+  "links": [],
+  "tags": []
+}

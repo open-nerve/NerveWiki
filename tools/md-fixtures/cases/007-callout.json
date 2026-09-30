@@ -1,0 +1,32 @@
+{
+  "description": "callout 的类型标记不是链接；callout 标题和内容里的链接、标签照常算。",
+  "source": "obsidian-verified",
+  "frontmatter": null,
+  "links": [
+    {
+      "kind": "wikilink",
+      "target": "c1",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        19,
+        21
+      ]
+    },
+    {
+      "kind": "wikilink",
+      "target": "c2",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        35,
+        37
+      ]
+    }
+  ],
+  "tags": [
+    "callout-tag"
+  ]
+}

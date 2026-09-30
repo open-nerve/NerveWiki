@@ -1,0 +1,19 @@
+{
+  "description": "==高亮== 里的 wikilink 照常算。",
+  "source": "obsidian-verified",
+  "frontmatter": null,
+  "links": [
+    {
+      "kind": "wikilink",
+      "target": "x",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        11,
+        12
+      ]
+    }
+  ],
+  "tags": []
+}

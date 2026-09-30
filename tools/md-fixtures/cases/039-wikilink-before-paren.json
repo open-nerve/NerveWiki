@@ -1,0 +1,19 @@
+{
+  "description": "wikilink 先于 Markdown 链接识别：[[Page]](2023) 是 wikilink 后跟文字。",
+  "source": "obsidian-verified",
+  "frontmatter": null,
+  "links": [
+    {
+      "kind": "wikilink",
+      "target": "Page",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        2,
+        6
+      ]
+    }
+  ],
+  "tags": []
+}

@@ -1,0 +1,41 @@
+{
+  "description": "链接前有多字节文字：range 是 UTF-8 字节偏移。",
+  "source": "obsidian-verified",
+  "frontmatter": null,
+  "links": [
+    {
+      "kind": "wikilink",
+      "target": "目标页",
+      "anchor": null,
+      "display": "显示",
+      "key": null,
+      "range": [
+        20,
+        29
+      ]
+    },
+    {
+      "kind": "embed",
+      "target": "图片.png",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        49,
+        59
+      ]
+    },
+    {
+      "kind": "link",
+      "target": "文件.md",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        71,
+        80
+      ]
+    }
+  ],
+  "tags": []
+}

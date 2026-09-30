@@ -1,0 +1,23 @@
+{
+  "description": "空的 frontmatter 是没有属性的有效 frontmatter。",
+  "source": "nerve-defined",
+  "note": "Obsidian 不为空的 frontmatter 产生属性对象。区分“写坏了”和“没写属性”对 lint 有用。",
+  "frontmatter": {
+    "valid": true,
+    "properties": {}
+  },
+  "links": [
+    {
+      "kind": "wikilink",
+      "target": "x",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        10,
+        11
+      ]
+    }
+  ],
+  "tags": []
+}

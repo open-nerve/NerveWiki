@@ -1,0 +1,20 @@
+{
+  "description": "空目标、只有空白的目标、目标含方括号、跨行，都不是 wikilink。",
+  "source": "nerve-defined",
+  "note": "Obsidian 把 [[ ]] 记为目标为空的链接，把 [[a] [b]] 记为目标 a] [b 的链接。空目标不指向任何页面，标题也不允许含方括号，所以都不计入。跨行的写法两边一致。",
+  "frontmatter": null,
+  "links": [
+    {
+      "kind": "wikilink",
+      "target": "ok",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        31,
+        33
+      ]
+    }
+  ],
+  "tags": []
+}

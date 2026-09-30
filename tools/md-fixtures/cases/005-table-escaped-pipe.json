@@ -1,0 +1,30 @@
+{
+  "description": "表格里显示文字的分隔符写作 \\|，仍然是显示文字。",
+  "source": "obsidian-verified",
+  "frontmatter": null,
+  "links": [
+    {
+      "kind": "wikilink",
+      "target": "a",
+      "anchor": null,
+      "display": "别名",
+      "key": null,
+      "range": [
+        35,
+        36
+      ]
+    },
+    {
+      "kind": "wikilink",
+      "target": "b",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        51,
+        52
+      ]
+    }
+  ],
+  "tags": []
+}

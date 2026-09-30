@@ -1,0 +1,52 @@
+{
+  "description": "嵌入：附件、带尺寸的附件、页面、带锚点的页面。",
+  "source": "obsidian-verified",
+  "frontmatter": null,
+  "links": [
+    {
+      "kind": "embed",
+      "target": "图.png",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        3,
+        10
+      ]
+    },
+    {
+      "kind": "embed",
+      "target": "img 2.png",
+      "anchor": null,
+      "display": "100",
+      "key": null,
+      "range": [
+        17,
+        26
+      ]
+    },
+    {
+      "kind": "embed",
+      "target": "doc",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        37,
+        40
+      ]
+    },
+    {
+      "kind": "embed",
+      "target": "doc2",
+      "anchor": "小节",
+      "display": null,
+      "key": null,
+      "range": [
+        46,
+        50
+      ]
+    }
+  ],
+  "tags": []
+}

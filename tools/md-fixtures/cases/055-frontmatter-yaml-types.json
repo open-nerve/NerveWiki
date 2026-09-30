@@ -1,0 +1,25 @@
+{
+  "description": "属性值按 YAML 1.2 core schema 解析：日期是字符串，010 是十进制，yes 是字符串。",
+  "source": "obsidian-verified",
+  "frontmatter": {
+    "valid": true,
+    "properties": {
+      "date": "2024-01-01",
+      "num": 10,
+      "oct": 8,
+      "hex": 31,
+      "flag": "yes",
+      "t": true,
+      "nothing": null,
+      "n": null,
+      "float": 1.0,
+      "list": [
+        1,
+        "2",
+        "a"
+      ]
+    }
+  },
+  "links": [],
+  "tags": []
+}

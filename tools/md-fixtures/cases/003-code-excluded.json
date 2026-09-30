@@ -1,0 +1,19 @@
+{
+  "description": "行内代码、围栏代码块、缩进代码块里的 wikilink 和标签都不算。",
+  "source": "obsidian-verified",
+  "frontmatter": null,
+  "links": [
+    {
+      "kind": "wikilink",
+      "target": "yes",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        35,
+        38
+      ]
+    }
+  ],
+  "tags": []
+}

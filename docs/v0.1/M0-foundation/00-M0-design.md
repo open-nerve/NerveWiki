@@ -26,7 +26,7 @@ M0 结束时，项目具备以下条件，此后每个 M 只需要在上面加�
 **做**：
 
 - 仓库、工具链、持续集成、开发用 compose。
-- 服务端平台层：配置、日志、PostgreSQL 连接池与事务管理、迁移、HTTP 服务（中间件链、problem+json、请求体结构检查）、时钟、构建信息、前端内嵌；组合根；命令行（`serve`、`migrate`）；`/healthz`、`/readyz`；优雅停机；架构测试。
+- 服务端平台层：配置、日志、PostgreSQL 连接池与事务管理、迁移、数据库 locale 自检、HTTP 服务（中间件链、problem+json、请求体结构检查、长连接路由的豁免）、时钟、构建信息、前端内嵌；组合根；命令行（`serve`、`migrate`）；`/healthz`、`/readyz`；优雅停机；架构测试。
 - 接口契约工具链与试点模块 `instance`（`GET /api/v0/instance`）。
 - 前端外壳：应用骨架、路由、Tailwind + shadcn/ui、zh-CN 与 en、生成的 TS 客户端、错误边界与 404、明暗主题。
 - 端到端测试骨架与冒烟故事；Dockerfile 与镜像构建。
@@ -66,7 +66,7 @@ nerve-wiki/
   server/
     cmd/nervewiki/            命令行入口
     configs/                  config.yaml、config.{dev,test,prod}.yaml（go:embed）
-    migrations/               goose 迁移（M0 为空，只建立机制）
+    migrations/               goose 迁移（M0 只有一条：建 pg_trgm 扩展）
     internal/
       bootstrap/              组合根
       platform/               buildinfo、clock、config、httpserver（含 apitest、bodyshape）、
@@ -85,7 +85,7 @@ nerve-wiki/
   deploy/
     compose.dev.yaml          本地 PostgreSQL 18
     Dockerfile
-  tools/md-fixtures/          Markdown 共享样例集（P1 建立雏形，M6 正式使用）
+  tools/md-fixtures/          Markdown 样例集：规范、自检、与 Obsidian 核对的工具（P1 建立，M4、M6 使用）
   docs/
   Makefile                    所有命令的入口
   LICENSE                     AGPL-3.0
@@ -135,24 +135,34 @@ nerve-wiki/
 
 | P | 名称 | 目标 | 主要交付 | 验证 |
 |---|---|---|---|---|
-| P1 | 技术验证 | 在打地基之前验证五项风险 | 五份结论（写在 P1 文档的"结果"一节）；`tools/md-fixtures/` 雏形；必要时修订总体设计。实验代码是一次性的，不进入产品代码 | 每项有明确的"可行 / 不可行 / 替代方案"结论 |
-| P2 | 仓库与工具链 | 空仓库能跑通全部门禁 | 仓库布局、LICENSE、README 开发环境一节；Go 模块（`server`、`server/tools`）、golangci-lint；pnpm 工作区、turbo、oxlint、oxfmt、knip；Makefile；开发用 compose（PostgreSQL 18，数据库 locale 按 P1 结论）；持续集成的 lint 任务 | 本地与持续集成的门禁为绿 |
-| P3 | 服务端平台层 | 一个能启动、能迁移、能优雅停机的 `nervewiki` | 平台层各包、组合根、`serve` 与 `migrate` 命令、`/healthz` 与 `/readyz`、集成测试工具（`pgtest`：模板库复制）、架构测试 | 单元、集成、架构测试为绿；二进制启动后健康检查可用 |
+| P1 | 技术验证 | 在打地基之前验证五项风险 | 五份结论（写在 P1 文档的"结果"一节）；`tools/md-fixtures/`（与 Obsidian 核对）；必要时修订总体设计。实验代码是一次性的，不进入产品代码 | 每项有明确的"可行 / 不可行 / 替代方案"结论 |
+| P2 | 仓库与工具链 | 空仓库能跑通全部门禁 | 仓库布局、LICENSE、README 开发环境一节；Go 模块（`server`、`server/tools`）、golangci-lint；pnpm 工作区、turbo、oxlint、oxfmt、knip；Makefile；开发用 compose（PostgreSQL 18，数据库 locale 按 P1 结论）；持续集成的 lint 任务（含样例集自检） | 本地与持续集成的门禁为绿 |
+| P3 | 服务端平台层 | 一个能启动、能迁移、能优雅停机的 `nervewiki` | 平台层各包、组合根、`serve` 与 `migrate` 命令、`/healthz` 与 `/readyz`、数据库 locale 自检、长连接路由的豁免、集成测试工具（`pgtest`：模板库复制）、架构测试 | 单元、集成、架构测试为绿；二进制启动后健康检查可用 |
 | P4 | 接口契约与代码生成 | 走通"描述 → 生成 → 实现 → 契约测试" | `api/` 结构、oapi-codegen 与 bodyshape 生成、`apitest`、`instance` 模块、TS 客户端生成、`make gen` 与 `make gen-check` | 生成物一致性检查为绿；`instance` 的 handler 测试与契约测试为绿 |
 | P5 | 前端外壳与内嵌 | 前端能构建、内嵌进二进制、在浏览器里运行 | 应用骨架、路由与兜底、UI 基座与主题、zh-CN 与 en、分层样板（instance 的 service / store / 组件）、错误边界与 404、页面 CSP、`make build` | 前端全部门禁为绿；二进制提供页面并显示实例版本 |
 | P6 | 端到端测试与交付 | 冒烟故事在本地和持续集成里通过，产出镜像 | e2e 包（模板库、每个 worker 一个 `nervewiki`、页面与数据库 fixture、控制台与 CSP 监视）、S1–S4、持续集成的 e2e 任务与失败时的产物上传、Dockerfile、镜像构建 | `make e2e` 本地与持续集成为绿；镜像通过 S1、S3 |
 
-P1 放在最前面：它的结论会影响 P2（数据库 locale）、P3（SSE 对 HTTP 中间件的要求，例如长连接不受请求期限限制）和 P5（CodeMirror 6 的集成方式），先验证可以避免返工。
+P1 放在最前面：它的结论会影响 P2（数据库 locale）、P3（SSE 与 MCP 对 HTTP 中间件的要求，例如长连接不受请求期限限制），以及 M4 之后的多个 M，先验证可以避免返工。
 
 ### P1 的五项技术验证
 
-| # | 验证什么 | 影响哪里 |
+| # | 验证什么 | 影响哪里 | 结论（详见 [P1 文档](01-P1-spikes.md) 第 7 节） |
+|---|---|---|---|
+| ① | PostgreSQL 18 在不同 locale / collation 下，pg_trgm 对中文的三元组切分；1、2、3 个字及中英混合的查询；是否用上 GIN 索引（`EXPLAIN`）。定出所有环境统一使用的数据库 locale | P2 的 compose、测试容器与部署文档；M8 搜索 | 可行：builtin `C.UTF-8`，`LC_CTYPE` 同为 `C.UTF-8`；启动时自检。1–2 个字的查询只能顺序扫描，M8 前用真实语料复核 |
+| ② | goldmark 与 remark 对同一批 Markdown 的链接、嵌入、标签、frontmatter 提取是否一致（覆盖嵌套、转义、代码块中的链接、URL 中的 `#`、`[[a\|b]]`、`[[a#h]]` 等边界）；goldmark 能否给出精确的字节位置，供链接改写使用 | M6 的解析与改写；`tools/md-fixtures/` | 做不到对任意输入一致：改为服务端唯一解析（提取与渲染共用 `Parse`），前端不做语义解析；样例集与 Obsidian 核对 |
+| ③ | 写入事务中的 `NOTIFY` 在提交后送达；pgx 的 `LISTEN` 连接管理与断线重连；浏览器用 `fetch` 流式读取带 Bearer 的 SSE；经过 Caddy 时的缓冲与超时；请求期限中间件对长连接的影响；`NOTIFY` 负载上限 | P3 的 HTTP 中间件；M5 推送 | 可行：长连接路由豁免请求期限、解除写超时；每个浏览器一条事件流，令牌到期时关闭 |
+| ④ | CodeMirror 6 与 React 19 的集成：挂载与卸载、受控与非受控、Markdown 语言包与高亮、扩展的组合方式（对应编辑器扩展管线）、**中文输入法**的组合输入 | M4 编辑器 | 可行：只创建一次 `EditorView`，切换页面时新建 `EditorState`；真实输入法与扩展管线移交 M4 |
+| ⑤ | Go 的 MCP SDK：Streamable HTTP 挂在自己的路由上、`Authorization` 头认证、每个请求取得当前账户、instructions、prompts、clientInfo；用 Claude Code 与 Codex 实际连接 | P3 的路由挂载方式；M9 | 可行：go-sdk v1.8.0；关闭回环保护、设置会话超时；重启恢复移交 M9 |
+
+### P1 结论对 M0 各 Phase 的要求
+
+| Phase | 要求 | 来源 |
 |---|---|---|
-| ① | PostgreSQL 18 在不同 locale / collation 下，pg_trgm 对中文的三元组切分；1、2、3 个字及中英混合的查询；是否用上 GIN 索引（`EXPLAIN`）。定出所有环境统一使用的数据库 locale | P2 的 compose、测试容器与部署文档；M8 搜索 |
-| ② | goldmark 与 remark 对同一批 Markdown 的链接、嵌入、标签、frontmatter 提取是否一致（覆盖嵌套、转义、代码块中的链接、URL 中的 `#`、`[[a|b]]`、`[[a#h]]` 等边界）；goldmark 能否给出精确的字节位置，供链接改写使用 | M6 的解析与改写；`tools/md-fixtures/` |
-| ③ | 写入事务中的 `NOTIFY` 在提交后送达；pgx 的 `LISTEN` 连接管理与断线重连；浏览器用 `fetch` 流式读取带 Bearer 的 SSE；经过 Caddy 时的缓冲与超时；请求期限中间件对长连接的影响；`NOTIFY` 负载上限 | P3 的 HTTP 中间件；M5 推送 |
-| ④ | CodeMirror 6 与 React 19 的集成：挂载与卸载、受控与非受控、Markdown 语言包与高亮、扩展的组合方式（对应编辑器扩展管线）、**中文输入法**的组合输入 | P5 的依赖；M4 编辑器 |
-| ⑤ | Go 的 MCP SDK：Streamable HTTP 挂在自己的路由上、`Authorization` 头认证、每个请求取得当前账户、instructions、prompts、clientInfo；用 Claude Code 与 Codex 实际连接 | P3 的路由挂载方式；M9 |
+| P2 | 开发用 compose 以 `POSTGRES_INITDB_ARGS="--locale-provider=builtin --locale=C.UTF-8"` 初始化 PostgreSQL；持续集成的 lint 任务运行 `node tools/md-fixtures/check.mjs`；`.gitignore` 忽略 `.playwright-mcp/` 这类工具产物 | ①、② |
+| P3 | 第一条迁移 `CREATE EXTENSION IF NOT EXISTS pg_trgm`。迁移之后做数据库 locale 自检（编码 UTF8、`datlocprovider = 'b'`、`datctype = 'C.UTF-8'`、`show_trgm('中文')` 不为空），不满足就拒绝启动并给出建库命令；自检有集成测试（包括一个 `LC_CTYPE 'C'` 的反例库）。`pgtest` 的容器同样按 builtin `C.UTF-8` 初始化 | ① |
+| P3 | HTTP 平台层支持按路由豁免请求期限；处理器可以通过 `http.ResponseController` 在连接上解除写超时。M5 的 SSE 与 M9 的 MCP 都挂在这类路由上；M0 用测试路由验证豁免与不豁免两种行为 | ③、⑤ |
+| P5 | 前端不引入 unified / remark / rehype；编辑器（CodeMirror 6）不在 M0 引入 | ②、④ |
+| P6 | e2e 的 PostgreSQL 容器同样按 builtin `C.UTF-8` 初始化 | ① |
 
 ## 8. 本 M 建立的平台约定
 
@@ -168,7 +178,7 @@ P1 放在最前面：它的结论会影响 P2（数据库 locale）、P3（SSE �
 | 层次 | M0 覆盖 |
 |---|---|
 | 单元 | 平台层各包：配置加载与校验、problem+json、中间件顺序、请求体结构检查、迁移器、webui 的 CSP 与路由兜底；表格驱动 |
-| 集成 | 连接池、事务管理器（提交、回滚、提交不受请求期限取消）、迁移；testcontainers 启动 PostgreSQL 18，每个测试从模板库复制独立数据库 |
+| 集成 | 连接池、事务管理器（提交、回滚、提交不受请求期限取消）、迁移、数据库 locale 自检；testcontainers 启动 PostgreSQL 18（builtin `C.UTF-8`），每个测试从模板库复制独立数据库 |
 | 契约 | `instance` 的响应符合打包后的接口描述；声明的错误码都被测试返回过 |
 | 架构 | 依赖方向、模块边界、平台包之间互不依赖、生成代码只被所属适配器导入 |
 | 前端 | vitest：文案一致性检查、客户端封装、instance store |
@@ -181,17 +191,24 @@ P1 放在最前面：它的结论会影响 P2（数据库 locale）、P3（SSE �
 | 风险 | 应对 |
 |---|---|
 | 拷贝的代码带着 Nerve 的隐含假设 | "拷贝即接管"：P3、P4、P6 的审查逐个文件过一遍 |
-| P1 的结论推翻总体设计的某个选择（例如 pg_trgm 不能处理中文） | P1 在最前面；结论直接修订总体设计并记入变更记录，再开始 P2 |
+| P1 的结论推翻总体设计的某个选择（例如 pg_trgm 不能处理中文） | P1 在最前面；结论直接修订总体设计并记入变更记录，再开始 P2。已发生：② 改为服务端唯一解析，① 固定 `LC_CTYPE`，均已修订 |
 | 持续集成里的 testcontainers 与 Playwright 耗时 | 集成测试共用一个容器、按测试复制模板库；e2e 按 worker 并行 |
 
 ## 11. Phase 进度表
 
 | P | 名称 | 状态 | Phase 文档 | 审查 |
 |---|---|---|---|---|
-| P1 | 技术验证 | 未开始 | — | — |
+| P1 | 技术验证 | 已完成 | [01-P1-spikes.md](01-P1-spikes.md) | [P1-spikes-review.md](reviews/P1-spikes-review.md) |
 | P2 | 仓库与工具链 | 未开始 | — | — |
 | P3 | 服务端平台层 | 未开始 | — | — |
 | P4 | 接口契约与代码生成 | 未开始 | — | — |
 | P5 | 前端外壳与内嵌 | 未开始 | — | — |
 | P6 | 端到端测试与交付 | 未开始 | — | — |
 | — | M0 收尾审查 | 未开始 | — | — |
+
+## 12. 变更记录
+
+| 日期 | 修订 | 原因 |
+|---|---|---|
+| 2026-09-30 | 初版 | M0 启动 |
+| 2026-09-30 | 接住 P1 的结论：P1 验证表加"结论"一列；新增"P1 结论对 M0 各 Phase 的要求"（P2 的建库参数与样例集自检，P3 的 pg_trgm 迁移、locale 自检、长连接路由的豁免，P5 不引入 remark，P6 的建库参数）；范围、仓库布局、测试策略、风险与进度表相应更新 | M0/P1 完成，见 [P1 审查记录](reviews/P1-spikes-review.md) |

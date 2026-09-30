@@ -1,0 +1,16 @@
+{
+  "description": "标签字符包括组合用字符（\\p{M}）；大小写原样保留，每次出现都列出；全角空格和制表符也是空白。",
+  "source": "obsidian-verified",
+  "frontmatter": null,
+  "links": [],
+  "tags": [
+    "café",
+    "हिन्दी",
+    "Tag",
+    "tag",
+    "TAG",
+    "全角空格后",
+    "t4",
+    "tab"
+  ]
+}

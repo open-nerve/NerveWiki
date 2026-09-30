@@ -1,0 +1,6 @@
+{
+  "description": "Markdown 链接保持原来的写法：尖括号写法原样写入新标题；其他写法只编码空格、%、( 和 )，中文原样保留；锚点保留；引用定义同样改写。",
+  "source": "nerve-defined",
+  "from": "Old Name",
+  "to": "新 名字 (1)"
+}

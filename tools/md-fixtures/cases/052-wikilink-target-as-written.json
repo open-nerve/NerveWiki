@@ -1,0 +1,41 @@
+{
+  "description": "目标按写法记录：扩展名、Unicode 规范化形式都不变（解析时再处理）。",
+  "source": "obsidian-verified",
+  "frontmatter": null,
+  "links": [
+    {
+      "kind": "wikilink",
+      "target": "p.md",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        2,
+        6
+      ]
+    },
+    {
+      "kind": "wikilink",
+      "target": "q.png",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        11,
+        16
+      ]
+    },
+    {
+      "kind": "wikilink",
+      "target": "café",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        21,
+        27
+      ]
+    }
+  ],
+  "tags": []
+}

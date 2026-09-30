@@ -1,0 +1,12 @@
+{
+  "description": "全角标点和 emoji 结束标签。",
+  "source": "nerve-defined",
+  "note": "Obsidian 把全角标点和 emoji 并进标签，得到 标签，后面、emoji😀tag、尾巴。。中文正文里标签后面常紧跟标点，我们在标点和符号处截断。",
+  "frontmatter": null,
+  "links": [],
+  "tags": [
+    "标签",
+    "emoji",
+    "尾巴"
+  ]
+}

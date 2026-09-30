@@ -1,0 +1,30 @@
+{
+  "description": "行内结构从左到右识别，先开始的优先：wikilink 先开始时，里面的反引号不构成代码；网址先开始时，里面的 [[…]] 属于网址。",
+  "source": "obsidian-verified",
+  "frontmatter": null,
+  "links": [
+    {
+      "kind": "wikilink",
+      "target": "a `b` c",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        2,
+        9
+      ]
+    },
+    {
+      "kind": "wikilink",
+      "target": "d `",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        15,
+        18
+      ]
+    }
+  ],
+  "tags": []
+}

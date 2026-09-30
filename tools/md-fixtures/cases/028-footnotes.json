@@ -1,0 +1,19 @@
+{
+  "description": "脚注引用不是链接；脚注定义里的 wikilink 照常算。",
+  "source": "obsidian-verified",
+  "frontmatter": null,
+  "links": [
+    {
+      "kind": "wikilink",
+      "target": "in-footnote",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        36,
+        47
+      ]
+    }
+  ],
+  "tags": []
+}

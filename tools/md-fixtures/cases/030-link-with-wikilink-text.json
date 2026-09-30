@@ -1,0 +1,31 @@
+{
+  "description": "[[[x]]](real.md)：目标不能含方括号，所以 [[x]] 是 wikilink，外面一层是 Markdown 链接，两条都计入。",
+  "source": "nerve-defined",
+  "note": "Obsidian 从第一个 [[ 开始贪婪匹配，得到目标 [x，(real.md) 成了普通文字。我们的目标不含方括号，结果与 040 的规则一致。",
+  "frontmatter": null,
+  "links": [
+    {
+      "kind": "wikilink",
+      "target": "x",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        3,
+        4
+      ]
+    },
+    {
+      "kind": "link",
+      "target": "real.md",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        8,
+        15
+      ]
+    }
+  ],
+  "tags": []
+}

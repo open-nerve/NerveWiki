@@ -1,0 +1,21 @@
+{
+  "description": "YAML 写坏了：没有属性，这一段仍然是 frontmatter，正文照常解析。",
+  "source": "obsidian-verified",
+  "frontmatter": {
+    "valid": false
+  },
+  "links": [
+    {
+      "kind": "wikilink",
+      "target": "x",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        32,
+        33
+      ]
+    }
+  ],
+  "tags": []
+}

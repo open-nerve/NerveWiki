@@ -1,0 +1,11 @@
+{
+  "description": "ASCII 标点结束标签；# 前面不是空白也不是一段文字的开头时，不是标签。",
+  "source": "obsidian-verified",
+  "frontmatter": null,
+  "links": [],
+  "tags": [
+    "tag",
+    "tag2",
+    "t4"
+  ]
+}
