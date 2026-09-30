@@ -37,8 +37,7 @@ func newRegister(policy app.SignupPolicy) *registerFixture {
 		Tx:       f.tx,
 		Users:    f.store,
 		Sessions: f.store,
-		// auth's default TTLs: 15 minutes, 30 days.
-		Issuance: app.Issuance{Tokens: f.tokens, MAC: fakeMAC{}, AccessTTL: 15 * time.Minute, SessionTTL: 720 * time.Hour},
+		Issuance: testIssuance(f.tokens, fakeMAC{}),
 		Clock:    fixedClock(testNow()),
 		Logger:   slog.New(slog.NewJSONHandler(f.logs, nil)),
 	})
@@ -115,8 +114,7 @@ func TestRegisterCreatesTheAccountAndSignsIn(t *testing.T) {
 		t.Errorf("RefreshExpiresAt = %v, want the session's %v", tokens.RefreshExpiresAt, s.ExpiresAt)
 	}
 
-	// exp is whole seconds, rounded up: 10:15:00.123456 becomes 10:15:01.
-	want := app.AccessClaims{UserID: u.ID, SessionID: s.ID, ExpiresAt: time.Date(2026, 9, 25, 10, 15, 1, 0, time.UTC)}
+	want := app.AccessClaims{UserID: u.ID, SessionID: s.ID, ExpiresAt: accessExpiry()}
 	if len(f.tokens.issued) != 1 || f.tokens.issued[0] != want || tokens.AccessToken != "access:"+s.ID.String() || tokens.AccessExpiresIn != 15*time.Minute {
 		t.Errorf("access token %q expiring in %v, claims %+v; want claims %+v", tokens.AccessToken, tokens.AccessExpiresIn, f.tokens.issued, want)
 	}

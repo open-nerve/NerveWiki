@@ -67,6 +67,51 @@ paths:
                 $ref: '#/components/schemas/AuthTokens'
         default:
           $ref: '#/components/responses/Problem'
+  /api/v0/auth/refresh:
+    post:
+      operationId: refreshTokens
+      tags:
+        - identity
+      summary: Exchange a refresh token for the next pair
+      description: 'Returns new tokens of the same session and retires the refresh token sent: the next refresh uses the refresh_token of this response. The session''s end, refresh_token_expires_at, never moves. Any refresh token but the current one of a session that has not ended answers identity.refresh_token_invalid; one this session issued before under the current signing key also ends the session, since someone else holds a copy of it. The server answers within a few seconds, before a client that waits 8 seconds gives up.'
+      security: []
+      x-problem-codes:
+        - identity.refresh_token_invalid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '200':
+          description: The session's next tokens.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthTokens'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v0/auth/logout:
+    post:
+      operationId: logout
+      tags:
+        - identity
+      summary: End the session of a refresh token
+      description: Ends the session when refresh_token is its current one; its access tokens stop working at once. Any other token changes nothing and gets the same answer, which tells nothing about the token.
+      security: []
+      x-problem-codes: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LogoutRequest'
+      responses:
+        '204':
+          description: Done, whatever the token was.
+        default:
+          $ref: '#/components/responses/Problem'
   /api/v0/me:
     get:
       operationId: getMe
@@ -176,7 +221,7 @@ components:
           items:
             $ref: '#/components/schemas/FieldError'
     AuthTokens:
-      description: 'A session''s tokens. Send access_token as "Authorization: Bearer"; access_token_expires_in counts from the response, so a client''s clock does not matter.'
+      description: 'A session''s tokens. Send access_token as "Authorization: Bearer"; access_token_expires_in counts from the response, so a client''s clock does not matter. When it expires, exchange refresh_token for the next pair at POST /api/v0/auth/refresh.'
       type: object
       additionalProperties: false
       required:
@@ -213,6 +258,24 @@ components:
           description: 'The sign-in address, in any case, with or without surrounding blanks. It is not checked for form: an address no account has answers identity.invalid_credentials.'
           type: string
         password:
+          type: string
+    RefreshRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - refresh_token
+      properties:
+        refresh_token:
+          description: The refresh_token of the session's last AuthTokens.
+          type: string
+    LogoutRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - refresh_token
+      properties:
+        refresh_token:
+          description: The refresh_token of the session's last AuthTokens.
           type: string
     User:
       type: object

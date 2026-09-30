@@ -35,11 +35,12 @@ type Deps struct {
 	SignupPolicy app.SignupPolicy
 	// SigningKeyPEM is the content of auth.jwt.private_key_file; nil for
 	// none, then the key is ephemeral (dev and test only).
-	SigningKeyPEM  []byte
-	AccessTokenTTL time.Duration
-	SessionTTL     time.Duration
-	Password       PasswordHashing
-	RateLimits     RateLimits
+	SigningKeyPEM   []byte
+	AccessTokenTTL  time.Duration
+	SessionTTL      time.Duration
+	RefreshDeadline time.Duration // auth.refresh_deadline
+	Password        PasswordHashing
+	RateLimits      RateLimits
 }
 
 // PasswordHashing is auth.password: argon2id's parameters and the limits on
@@ -100,7 +101,9 @@ func New(d Deps) (*Module, error) {
 				Accounts: store, Locker: store, Passwords: store, Sessions: store, Verifier: hasher, Hasher: hasher, Tx: d.Tx,
 				Issuance: issuance, Clock: d.Clock, Logger: d.Logger, DummyHash: dummy,
 			}),
-			GetMe: app.NewGetMe(store),
+			Refresh: app.NewRefresh(app.RefreshDeps{Sessions: store, Tx: d.Tx, Issuance: issuance, Clock: d.Clock, Logger: d.Logger}),
+			Logout:  app.NewLogout(store, d.Clock, d.Logger),
+			GetMe:   app.NewGetMe(store),
 		},
 		settings: httpadapter.Settings{
 			Limits: httpadapter.Limits{
@@ -109,7 +112,8 @@ func New(d Deps) (*Module, error) {
 				LoginIPEmail: d.RateLimits.LoginIPEmail,
 				RegisterIP:   d.RateLimits.RegisterIP,
 			},
-			Logger: d.Logger,
+			RefreshDeadline: d.RefreshDeadline,
+			Logger:          d.Logger,
 		},
 		authenticator: authn.New(app.NewAuthenticate(app.AuthenticateDeps{
 			AccessTokens: tokens, Sessions: store, Clock: d.Clock,

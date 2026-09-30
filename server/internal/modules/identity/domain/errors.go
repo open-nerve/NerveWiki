@@ -18,4 +18,7 @@ var (
 	// deactivated account; only then is the state revealed (M1/P2 design
 	// 3.4).
 	ErrAccountDeactivated = shared.NewError(shared.KindForbidden, "identity.account_deactivated", "This account is deactivated.")
+	// ErrRefreshTokenInvalid answers every refresh that does not rotate:
+	// unknown, expired, revoked, reused or forged (M1/P2 design 3.5).
+	ErrRefreshTokenInvalid = shared.NewError(shared.KindUnauthenticated, "identity.refresh_token_invalid", "The refresh token is not valid; sign in again.")
 )

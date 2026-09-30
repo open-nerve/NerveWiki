@@ -1,11 +1,13 @@
 package domain
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/binary"
 	"math"
 	"strings"
+	"time"
 	"unicode/utf8"
 	"uuid"
 )
@@ -81,6 +83,45 @@ func ParseRefreshToken(s string) (RefreshToken, bool) {
 		return RefreshToken{}, false
 	}
 	return t, true
+}
+
+// SessionState is what a refresh judges a token against: the session's row.
+type SessionState struct {
+	Generation uint32
+	TokenHash  []byte // SHA-256 of the current generation's secret
+	Revoked    bool
+	ExpiresAt  time.Time
+}
+
+// Verdict is what a refresh does with the token it is given.
+type Verdict int
+
+// The verdicts of M1/P2 design 3.5's table.
+const (
+	// Rotate: the current generation with its secret, of a live session.
+	Rotate Verdict = iota + 1
+	// Reuse: an older generation that the session did issue (its tag
+	// holds), of a live session: revoke the session.
+	Reuse
+	// Reject: anything else; the session stays as it is.
+	Reject
+)
+
+// JudgeRefresh applies M1/P2 design 3.5's table to token and the state of
+// its session at now. tagValid is whether token's MAC tag holds; only an
+// older generation needs it: the stored hash proves the current one, which
+// keeps working across a change of the signing key. A session that does not
+// exist is the caller's Reject.
+func JudgeRefresh(s SessionState, token RefreshToken, tagValid bool, now time.Time) Verdict {
+	switch {
+	case s.Revoked || !now.Before(s.ExpiresAt):
+		return Reject
+	case token.Generation == s.Generation && bytes.Equal(token.SecretHash(), s.TokenHash):
+		return Rotate
+	case token.Generation < s.Generation && tagValid:
+		return Reuse
+	}
+	return Reject
 }
 
 // MaxUserAgentLength bounds auth_sessions.user_agent, in characters.

@@ -29,7 +29,12 @@ func tightLimits() httpadapter.Limits {
 
 func limitedServer(t *testing.T, uc httpadapter.UseCases, logs *bytes.Buffer) http.Handler {
 	t.Helper()
-	return serverWith(t, uc, httpadapter.Settings{Limits: tightLimits(), Logger: slog.New(slog.NewJSONHandler(logs, nil))})
+	return serverWithLimits(t, uc, tightLimits(), logs)
+}
+
+func serverWithLimits(t *testing.T, uc httpadapter.UseCases, limits httpadapter.Limits, logs *bytes.Buffer) http.Handler {
+	t.Helper()
+	return serverWith(t, uc, httpadapter.Settings{Limits: limits, RefreshDeadline: refreshDeadline, Logger: slog.New(slog.NewJSONHandler(logs, nil))})
 }
 
 // rateLimitLogs are the "rate limited" entries of logs.
@@ -123,5 +128,27 @@ func TestModuleLimitsCountByTheIPKey(t *testing.T) {
 
 	if want := []int{401, 401, 429, 401, 409, 429}; !slices.Equal(statuses, want) {
 		t.Errorf("statuses = %v, want %v", statuses, want)
+	}
+}
+
+// Refresh and logout take no unit of the module's buckets: only the
+// platform's anonymous bucket limits them (M1/P2 design 3.2), so a client
+// locked out of sign-in still keeps its sessions alive and can end them.
+func TestRefreshAndLogoutTakeNoUnitOfTheModule(t *testing.T) {
+	limits := tightLimits()
+	for range 3 {
+		limits.Limiter.AllowAll(ratelimit.Check{Bucket: limits.LoginIP, Key: "203.0.113.7"})
+	}
+	limits.Limiter.AllowAll(ratelimit.Check{Bucket: limits.RegisterIP, Key: "203.0.113.7"})
+	var logs bytes.Buffer
+	h := serverWithLimits(t, httpadapter.UseCases{Refresh: &fakeRefresh{tokens: sampleTokens()}}, limits, &logs)
+
+	login, _ := do(t, h, postJSON("/api/v0/auth/login", `{"email":"a@b.co","password":"x"}`))
+	register, _ := do(t, h, registerRequest(`{"email":"a@b.co","password":"x"}`))
+	refresh, _ := do(t, h, postJSON("/api/v0/auth/refresh", `{"refresh_token":"nwk_rt_x"}`))
+	logout, _ := do(t, h, postJSON("/api/v0/auth/logout", `{"refresh_token":"nwk_rt_x"}`))
+
+	if login.StatusCode != 429 || register.StatusCode != 429 || refresh.StatusCode != 200 || logout.StatusCode != 204 {
+		t.Errorf("login %d, register %d, refresh %d, logout %d; want 429, 429, 200, 204", login.StatusCode, register.StatusCode, refresh.StatusCode, logout.StatusCode)
 	}
 }

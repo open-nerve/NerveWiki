@@ -83,15 +83,16 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrati
 	limiter := ratelimit.New(time.Now)
 	limits := cfg.RateLimit
 	ident, err := identity.New(identity.Deps{
-		Pool:           pool,
-		Tx:             postgres.NewTxManager(pool, cfg.Database.CommitTimeout),
-		Clock:          clock.System{},
-		Logger:         logger,
-		SignupPolicy:   signupSwitch(cfg.Auth.SignupEnabled),
-		SigningKeyPEM:  signingKey,
-		AccessTokenTTL: cfg.Auth.AccessTokenTTL,
-		SessionTTL:     cfg.Auth.SessionTTL,
-		Password:       passwordHashing(cfg.Auth.Password),
+		Pool:            pool,
+		Tx:              postgres.NewTxManager(pool, cfg.Database.CommitTimeout),
+		Clock:           clock.System{},
+		Logger:          logger,
+		SignupPolicy:    signupSwitch(cfg.Auth.SignupEnabled),
+		SigningKeyPEM:   signingKey,
+		AccessTokenTTL:  cfg.Auth.AccessTokenTTL,
+		SessionTTL:      cfg.Auth.SessionTTL,
+		RefreshDeadline: cfg.Auth.RefreshDeadline,
+		Password:        passwordHashing(cfg.Auth.Password),
 		RateLimits: identity.RateLimits{
 			Limiter:      limiter,
 			LoginIP:      bucket(limiter, "login_ip", limits.LoginIP),

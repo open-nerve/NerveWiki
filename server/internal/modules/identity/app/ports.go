@@ -102,6 +102,41 @@ type SessionCreator interface {
 	CreateSession(ctx context.Context, s NewSession) error
 }
 
+// RefreshSession is what a refresh reads of the session its token names.
+type RefreshSession struct {
+	UserID uuid.UUID
+	State  domain.SessionState
+}
+
+// SessionGeneration is a session as a refresh token presents it: rotation
+// and logout change the session only while it is still at this generation
+// with this hash, unrevoked and unexpired at Now (M1/P2 design 3.5).
+type SessionGeneration struct {
+	ID         uuid.UUID
+	Generation uint32
+	TokenHash  []byte
+	Now        time.Time
+}
+
+// SessionRotator is what a refresh reads and writes (M1/P2 design 3.5).
+type SessionRotator interface {
+	// SessionForRefresh returns ErrNotFound when there is no such session.
+	SessionForRefresh(ctx context.Context, id uuid.UUID) (RefreshSession, error)
+	// RotateSession moves the session from g to the next generation with
+	// newHash; false when the session is no longer at g.
+	RotateSession(ctx context.Context, g SessionGeneration, newHash []byte) (bool, error)
+	// RevokeForReuse revokes session id with reason reuse_detected, unless
+	// it is revoked already.
+	RevokeForReuse(ctx context.Context, id uuid.UUID, now time.Time) error
+}
+
+// SessionEnder ends sessions at logout.
+type SessionEnder interface {
+	// EndSession revokes the session with reason logout while it is at g;
+	// false when it is not.
+	EndSession(ctx context.Context, g SessionGeneration) (bool, error)
+}
+
 // SessionCredential is what authentication checks of a session.
 type SessionCredential struct {
 	UserID     uuid.UUID

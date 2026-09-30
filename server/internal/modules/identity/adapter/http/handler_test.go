@@ -53,6 +53,38 @@ func (f *fakeLogin) Execute(_ context.Context, in app.LoginInput) (app.Tokens, e
 	return f.tokens, f.err
 }
 
+// fakeRefresh records the token, the client, and how long the request had
+// left: the refresh deadline.
+type fakeRefresh struct {
+	token  string
+	ip     netip.Addr
+	left   time.Duration
+	tokens app.Tokens
+	err    error
+}
+
+func (f *fakeRefresh) Execute(ctx context.Context, token string, ip netip.Addr) (app.Tokens, error) {
+	f.token, f.ip = token, ip
+	if deadline, ok := ctx.Deadline(); ok {
+		f.left = time.Until(deadline)
+	}
+	return f.tokens, f.err
+}
+
+type fakeLogout struct {
+	token string
+	left  time.Duration
+	err   error
+}
+
+func (f *fakeLogout) Execute(ctx context.Context, token string) error {
+	f.token = token
+	if deadline, ok := ctx.Deadline(); ok {
+		f.left = time.Until(deadline)
+	}
+	return f.err
+}
+
 // fakeGetMe answers the actor's account with steps.
 type fakeGetMe struct{ steps []string }
 
@@ -88,9 +120,13 @@ func newServer(t *testing.T, uc httpadapter.UseCases) http.Handler {
 		Limits: httpadapter.Limits{
 			Limiter: limiter, LoginIP: roomy("login_ip"), LoginIPEmail: roomy("login_ip_email"), RegisterIP: roomy("register_ip"),
 		},
-		Logger: slog.New(slog.DiscardHandler),
+		RefreshDeadline: refreshDeadline,
+		Logger:          slog.New(slog.DiscardHandler),
 	})
 }
+
+// refreshDeadline is shorter than the request timeout of serverWith.
+const refreshDeadline = 3 * time.Second
 
 // serverWith serves the module with uc and s behind the platform's
 // middlewares, whose own buckets no test here empties.
@@ -118,6 +154,12 @@ func serverWith(t *testing.T, uc httpadapter.UseCases, s httpadapter.Settings) h
 	}
 	if uc.Login == nil {
 		uc.Login = &fakeLogin{}
+	}
+	if uc.Refresh == nil {
+		uc.Refresh = &fakeRefresh{}
+	}
+	if uc.Logout == nil {
+		uc.Logout = &fakeLogout{}
 	}
 	if uc.GetMe == nil {
 		uc.GetMe = fakeGetMe{}

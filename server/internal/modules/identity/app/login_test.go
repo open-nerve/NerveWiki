@@ -45,7 +45,7 @@ func newLogin(hash string, active bool) *loginFixture {
 		Verifier:  f.hasher,
 		Hasher:    f.hasher,
 		Tx:        f.tx,
-		Issuance:  app.Issuance{Tokens: f.tokens, MAC: fakeMAC{}, AccessTTL: 15 * time.Minute, SessionTTL: 720 * time.Hour},
+		Issuance:  testIssuance(f.tokens, fakeMAC{}),
 		Clock:     fixedClock(testNow()),
 		Logger:    slog.New(slog.NewJSONHandler(f.logs, nil)),
 		DummyHash: dummyHash,
@@ -92,7 +92,7 @@ func TestLoginSignsIn(t *testing.T) {
 	if !ok || refresh.SessionID != s.ID || refresh.Generation != 0 || !bytes.Equal(refresh.SecretHash(), s.TokenHash) || !(fakeMAC{}).Verify(refresh.MACMessage(), refresh.Tag) {
 		t.Errorf("refresh token %+v of session %+v; want generation 0, its secret's hash stored, tagged", refresh, s)
 	}
-	want := app.AccessClaims{UserID: testUserID(), SessionID: s.ID, ExpiresAt: now.Add(15 * time.Minute)}
+	want := app.AccessClaims{UserID: testUserID(), SessionID: s.ID, ExpiresAt: accessExpiry()}
 	if !slices.Equal(f.tokens.issued, []app.AccessClaims{want}) || tokens.AccessExpiresIn != 15*time.Minute || !tokens.RefreshExpiresAt.Equal(s.ExpiresAt) {
 		t.Errorf("tokens = %+v, claims %+v; want claims %+v", tokens, f.tokens.issued, want)
 	}

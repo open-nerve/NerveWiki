@@ -16,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/identity"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/clock/clocktest"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres"
@@ -30,26 +31,38 @@ type openSignup struct{}
 
 func (openSignup) AllowSignup(context.Context) (bool, error) { return true, nil }
 
-// fixedClock is in whole microseconds, as timestamptz stores them.
-type fixedClock struct{}
-
-func (fixedClock) Now() time.Time { return time.Date(2026, 9, 25, 10, 0, 0, 123456000, time.UTC) }
+// testStart is the instant the tests' clocks start at, in whole
+// microseconds, as timestamptz stores them.
+func testStart() time.Time { return time.Date(2026, 9, 25, 10, 0, 0, 123456000, time.UTC) }
 
 // newServer serves the module on a new database of its own.
 func newServer(t *testing.T) (http.Handler, *pgxpool.Pool) {
+	t.Helper()
+	pool := newPool(t)
+	return newServerOn(t, pool, clocktest.At(testStart())), pool
+}
+
+func newPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 	pool, err := postgres.NewPool(context.Background(), config.DatabaseConfig{URL: pgtest.NewDatabase(t), MaxConns: 8})
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(pool.Close)
+	return pool
+}
+
+// newServerOn serves the module on pool with clock, and an ephemeral
+// signing key of its own: two servers on one pool are one database before
+// and after a change of the key.
+func newServerOn(t *testing.T, pool *pgxpool.Pool, clock *clocktest.Fixed) http.Handler {
+	t.Helper()
 	logger := slog.New(slog.DiscardHandler)
 	limiter := ratelimit.New(time.Now)
 	limit := limiter.Bucket("test", ratelimit.Rate{PerMinute: 600000, Burst: 100000})
 	m, err := identity.New(identity.Deps{
-		Pool: pool, Tx: postgres.NewTxManager(pool, 2*time.Second), Clock: fixedClock{}, Logger: logger,
-		SignupPolicy: openSignup{}, AccessTokenTTL: 15 * time.Minute, SessionTTL: 720 * time.Hour,
-		// The ephemeral key: the tests' tokens live as long as the module.
+		Pool: pool, Tx: postgres.NewTxManager(pool, 2*time.Second), Clock: clock, Logger: logger,
+		SignupPolicy: openSignup{}, AccessTokenTTL: 15 * time.Minute, SessionTTL: 720 * time.Hour, RefreshDeadline: 4 * time.Second,
 		Password:   testPassword(),
 		RateLimits: identity.RateLimits{Limiter: limiter, LoginIP: limit, LoginIPEmail: limit, RegisterIP: limit},
 	})
@@ -66,7 +79,7 @@ func newServer(t *testing.T) (http.Handler, *pgxpool.Pool) {
 	}
 	router := httpserver.NewRouter(logger)
 	m.Register(router, api)
-	return router, pool
+	return router
 }
 
 // testPassword is the test profile's argon2id: cheap.
