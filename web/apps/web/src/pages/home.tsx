@@ -1,6 +1,7 @@
 import { observer } from "mobx-react-lite";
 import useSWR from "swr";
 
+import { Loading } from "../components/loading";
 import { useT } from "../i18n/i18n";
 import { useStore } from "../stores/context";
 
@@ -17,7 +18,7 @@ export const HomePage = observer(function HomePage() {
         {t("home.loadFailed")}
       </p>
     ) : (
-      <p className="text-muted-foreground">{t("home.loading")}</p>
+      <Loading />
     );
   }
   return (

@@ -57,7 +57,7 @@ test("a password of the wrong length is marked under it, and nothing is sent", a
   expect(sent).toEqual([]);
 });
 
-test("the server's problems with a field show under it, with nothing above the form", async () => {
+test("the server's problems with a field show under it, focused, with nothing above the form", async () => {
   const refused = problem(422, "validation_failed", { errors: [{ field: "password", code: "common_password" }] });
   renderApp("/sign-up", signUpWith(() => refused).app);
 
@@ -65,6 +65,7 @@ test("the server's problems with a field show under it, with nothing above the f
 
   await screen.findByText("Too common, or too close to the e-mail address.");
   expect(noteOf("Password")).toBe("Too common, or too close to the e-mail address.");
+  expect(document.activeElement).toBe(screen.getByLabelText("Password"));
   expect(screen.queryByRole("alert")).toBeNull();
 });
 

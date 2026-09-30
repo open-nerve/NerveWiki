@@ -83,13 +83,14 @@ export function storedSession(loginId: string, refreshToken = "rt-0"): Record<st
 
 /**
  * testSession is a session of one tab against the fake API answer: signed
- * out unless stored holds a session's record; its locks run at once, and
- * each login gets the next login id, login-1, login-2 …
+ * out unless stored holds a session's record; stored is the tab's storage,
+ * which the test can read. Its locks run at once, and each login gets the
+ * next login id, login-1, login-2 …
  */
 function testSession(answer: Answer, stored: Record<string, string> = {}): Session {
   let logins = 0;
   return new Session({
-    storage: memoryStorage({ ...stored }),
+    storage: memoryStorage(stored),
     onStorage: () => () => {},
     locks: { request: (_name: string, task: () => Promise<unknown>) => task() } as unknown as SessionDeps["locks"],
     now: () => Date.now(),

@@ -13,6 +13,7 @@ import {
   tokensJSON,
   userJSON,
 } from "../test/fakes";
+import { AUTH_KEY } from "../session/token-manager";
 import { renderApp } from "../test/render";
 
 // The guards alone decide where the tab goes as its session changes
@@ -119,4 +120,65 @@ test("an account done with onboarding leaves the onboarding page for next", asyn
 
   expect(await screen.findByRole("heading", { name: "Page not found" })).toBeTruthy();
   expect(where(router)).toBe("/acme");
+});
+
+test("a starting session on the sign-in page shows loading, not the form", async () => {
+  const { router } = renderApp(
+    "/sign-in",
+    testApp(() => new Promise<Response>(() => {}), storedSession("login-0"))
+  );
+
+  expect((await screen.findByRole("status")).textContent).toBe("Loading…");
+  expect(screen.queryByRole("heading", { name: "Sign in" })).toBeNull();
+  expect(where(router)).toBe("/sign-in");
+});
+
+// Still signed in, only unable to reach the server: the sign-in page is not
+// the tab's to show; next shows that the session is unavailable.
+test("an unavailable session on the sign-in page goes to next", async () => {
+  const { router } = renderApp(
+    "/sign-in?next=%2Facme",
+    signedInApp({ "POST /api/v0/auth/refresh": () => problem(503, "server_busy") })
+  );
+
+  expect((await screen.findByRole("alert")).textContent).toContain("Cannot reach the server");
+  expect(where(router)).toBe("/acme");
+});
+
+test("an unavailable session can still sign out: the record goes, and the tab goes to sign in", async () => {
+  const user = userEvent.setup();
+  const stored = storedSession("login-0");
+  const app = testApp(
+    byRoute({
+      "POST /api/v0/auth/refresh": () => problem(503, "server_busy"),
+      "POST /api/v0/auth/logout": () => problem(503, "server_busy"),
+      "GET /api/v0/instance": () => json(instanceJSON),
+    }),
+    stored
+  );
+  const { router } = renderApp("/acme", app);
+
+  await user.click(await screen.findByRole("button", { name: "Sign out" }));
+
+  expect(await screen.findByRole("heading", { name: "Sign in" })).toBeTruthy();
+  expect(where(router)).toBe("/sign-in?next=%2Facme");
+  expect(app.session.tokens.state.status).toBe("signed-out");
+  expect(stored).not.toHaveProperty(AUTH_KEY);
+});
+
+// The retry policy is SWR's (app/retry.ts): a 429 comes back after its
+// Retry-After, where SWR's own policy would wait 2.5 s at least.
+test("an account answering 429 is loaded again after its Retry-After, by itself", async () => {
+  let refused = 0;
+  renderApp(
+    "/acme",
+    signedInApp({
+      "GET /api/v0/me": () =>
+        refused++ === 0 ? problem(429, "rate_limited", {}, { "Retry-After": "1" }) : json(userJSON),
+    })
+  );
+  expect((await screen.findByRole("alert")).textContent).toContain("Cannot reach the server");
+
+  expect(await screen.findByRole("heading", { name: "Page not found" }, { timeout: 2_000 })).toBeTruthy();
+  expect(refused).toBe(2);
 });

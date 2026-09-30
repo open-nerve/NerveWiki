@@ -30,10 +30,10 @@ export function retryDelay(error: unknown, attempt: number): number | undefined 
   return Math.min(firstBackoffMs * 2 ** (attempt - 1), maxBackoffMs);
 }
 
-/** SWR's onErrorRetry by retryDelay. */
-export const onErrorRetry: SWRConfiguration["onErrorRetry"] = (error, _key, _config, revalidate, { retryCount }) => {
-  const delay = retryDelay(error, retryCount);
+/** SWR's onErrorRetry by retryDelay; the retry keeps SWR's options, deduplication included. */
+export const onErrorRetry: SWRConfiguration["onErrorRetry"] = (error, _key, _config, revalidate, options) => {
+  const delay = retryDelay(error, options.retryCount);
   if (delay !== undefined) {
-    setTimeout(() => void revalidate({ retryCount }), delay);
+    setTimeout(() => void revalidate(options), delay);
   }
 };

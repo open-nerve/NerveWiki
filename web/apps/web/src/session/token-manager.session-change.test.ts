@@ -105,7 +105,7 @@ describe.each<Kind>(["navigator.locks", "the lease"])("with %s", (kind) => {
     // A heard of B's sign-in as its refresh got the lock: the case this test is about.
     expect(a.grantedAs).toEqual([Y]);
 
-    // Had A refreshed B's record for the request, server would give it Y's tokens.
+    // Had A refreshed B's record for the request, the server would give it Y's tokens.
     await until(() => token.settled || server.calls.length === 2, "A's token or a refresh");
     server.calls[1]?.answer(json(200, server.tokens()));
     await until(() => token.settled, "A's token");
@@ -278,7 +278,7 @@ describe("after an await", () => {
     await until(() => signedIn.settled, "B's sign-in");
     expect(stored()).toEqual({ refresh_token: "rt-y", login_id: Y });
 
-    // A thaws as server answers its logout, before it hears of B's sign-in: Y's record stays, and A follows it.
+    // A thaws as the server answers its logout, before it hears of B's sign-in: Y's record stays, and A follows it.
     server.to(LOGOUT)[0]?.answer(noContent());
     await until(() => out.settled, "A's sign-out");
     storage.deliver();

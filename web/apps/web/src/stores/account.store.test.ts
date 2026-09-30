@@ -40,3 +40,27 @@ test("sends the changes one at a time and keeps the last answer", async () => {
 
   expect(store.me).toEqual(user("Ada", ["profile"]));
 });
+
+// SWR reads the account again on focus, and a change may go out at the
+// same moment: a read answered after the change may hold the account from
+// before it, and must not undo it.
+test("a read answered after a change keeps the change", async () => {
+  let answerRead: ((u: User) => void) | undefined;
+  const store = new AccountStore({
+    getMe: () => new Promise<User>((resolve) => (answerRead = resolve)),
+    updateMe: async () => user("Ada"),
+    recordStep: async (step) => user("ada", [step]),
+  });
+
+  const read = store.load();
+  await store.recordStep("profile");
+  answerRead?.(user("ada"));
+
+  expect(await read).toEqual(user("ada", ["profile"]));
+  expect(store.me).toEqual(user("ada", ["profile"]));
+  // With no change meanwhile, a read keeps what it read.
+  const next = store.load();
+  answerRead?.(user("Ada lovelace", ["profile"]));
+  expect(await next).toEqual(user("Ada lovelace", ["profile"]));
+  expect(store.me).toEqual(user("Ada lovelace", ["profile"]));
+});

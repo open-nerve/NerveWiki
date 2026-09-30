@@ -2,11 +2,14 @@ import { useState, type FormEvent } from "react";
 
 import { Alert } from "../components/ui/alert";
 import { Button } from "../components/ui/button";
-import { FormField } from "../components/form-field";
+import { FormField, useFocusOnInvalid } from "../components/form-field";
 import { formErrors, type FieldMessage } from "../app/problem-messages";
 import { useT } from "../i18n/i18n";
 
 export type Credentials = { email: string; password: string };
+
+/** The fields of the form, as the API names them. */
+const fields: readonly (keyof Credentials)[] = ["email", "password"];
 
 /** The fields' problems found before sending: a message for each field that has one. */
 export type LocalProblems = Partial<Record<keyof Credentials, FieldMessage>>;
@@ -39,7 +42,9 @@ export function CredentialsForm({
   const [local, setLocal] = useState<LocalProblems>({});
   const [failure, setFailure] = useState<unknown>();
   const [sending, setSending] = useState(false);
-  const server = formErrors(failure, t);
+  const [failures, setFailures] = useState(0);
+  const form = useFocusOnInvalid(failures);
+  const server = formErrors(failure, t, fields);
 
   function problemOf(field: keyof Credentials): string | undefined {
     const key = local[field];
@@ -52,6 +57,7 @@ export function CredentialsForm({
     setLocal(found);
     setFailure(undefined);
     if (Object.keys(found).length > 0) {
+      setFailures(failures + 1);
       return;
     }
     setSending(true);
@@ -59,12 +65,13 @@ export function CredentialsForm({
       await submit(credentials);
     } catch (error) {
       setFailure(error);
+      setFailures(failures + 1);
       setSending(false);
     }
   }
 
   return (
-    <form noValidate onSubmit={(event) => void onSubmit(event)} className="space-y-4">
+    <form ref={form} noValidate onSubmit={(event) => void onSubmit(event)} className="space-y-4">
       {server.banner !== undefined && <Alert>{server.banner}</Alert>}
       <FormField
         label={t("form.email")}

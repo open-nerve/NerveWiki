@@ -4,8 +4,7 @@ import type { RouteObject } from "react-router";
 import { expect, test } from "vitest";
 
 import { SignedIn } from "../app/guards";
-import { profileStep } from "../onboarding/profile-step";
-import type { OnboardingStep } from "../onboarding/steps";
+import { onboardingSteps, type OnboardingStep } from "../onboarding/steps";
 import type { User } from "../services/account.service";
 import { json, problem, signedInApp, userJSON, type Answer } from "../test/fakes";
 import { renderApp } from "../test/render";
@@ -51,7 +50,7 @@ function Confirm({ complete }: { complete: () => Promise<void> }) {
   );
 }
 const twoSteps: OnboardingStep[] = [
-  profileStep,
+  ...onboardingSteps,
   { id: "confirm", title: "onboarding.profile.title", Component: Confirm },
 ];
 const routes: RouteObject[] = [
@@ -69,7 +68,7 @@ test("each completed step is recorded and the next shows; after the last, the ta
   const { app, server } = accountServer();
   const { router } = renderApp("/onboarding?next=%2Facme", app, routes);
   expect(await screen.findByText("Step 1 of 2")).toBeTruthy();
-  const name = screen.getByLabelText("Display name");
+  const name = await screen.findByLabelText("Display name");
   expect(name).toHaveProperty("value", "ada");
 
   await user.clear(name);

@@ -74,7 +74,7 @@
       }
     },
     {
-      "files": ["web/apps/web/src/services/**", "web/apps/web/src/stores/root.store.ts"],
+      "files": ["web/apps/web/src/services/**"],
       "rules": {
         "no-restricted-imports": [
           "error",

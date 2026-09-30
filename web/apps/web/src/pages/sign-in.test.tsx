@@ -58,7 +58,7 @@ test.each([
   expect(screen.getByRole("button", { name: "Sign in" })).toHaveProperty("disabled", false);
 });
 
-test("an empty field is marked, and nothing is sent", async () => {
+test("an empty field is marked and focused, and nothing is sent", async () => {
   const { app, sent } = signInWith(() => json(tokensJSON));
   renderApp("/sign-in", app);
   const user = userEvent.setup();
@@ -69,6 +69,7 @@ test("an empty field is marked, and nothing is sent", async () => {
   expect(email.getAttribute("aria-invalid")).toBe("true");
   expect(document.getElementById(email.getAttribute("aria-describedby") ?? "")?.textContent).toBe("Required.");
   expect(screen.getByLabelText("Password").getAttribute("aria-invalid")).toBe("true");
+  expect(document.activeElement).toBe(email);
   expect(sent).toEqual([]);
 });
 
@@ -91,10 +92,14 @@ test("the password can be shown and hidden again", async () => {
   renderApp("/sign-in", signInWith(() => json(tokensJSON)).app);
   const password = await screen.findByLabelText("Password");
 
-  await user.click(screen.getByRole("button", { name: "Show password" }));
+  const toggle = screen.getByRole("button", { name: "Show password" });
+
+  await user.click(toggle);
   expect(password.getAttribute("type")).toBe("text");
-  await user.click(screen.getByRole("button", { name: "Hide password" }));
+  expect(toggle.getAttribute("aria-pressed")).toBe("true");
+  await user.click(toggle);
   expect(password.getAttribute("type")).toBe("password");
+  expect(toggle.getAttribute("aria-pressed")).toBe("false");
 });
 
 test("the sign-up link keeps next, and shows only while sign-up is open", async () => {

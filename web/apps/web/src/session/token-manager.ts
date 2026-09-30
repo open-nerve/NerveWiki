@@ -123,7 +123,7 @@ export class TokenManager {
   }
 
   /**
-   * A new access token after server refused `sent` with 401: the one another request got meanwhile, else a
+   * A new access token after the server refused `sent` with 401: the one another request got meanwhile, else a
    * refreshed one; undefined when the refresh ended the session, or it had ended already.
    */
   async renew(sent: string): Promise<string | undefined> {
@@ -165,7 +165,7 @@ export class TokenManager {
   }
 
   /**
-   * Ends the session loginId after server refused a request made in it again with the refreshed token:
+   * Ends the session loginId after the server refused a request made in it again with the refreshed token:
    * under the lock, removes the record if it is still that session's, else follows the record. Resolves
    * whether it ended that session: false when the record was no longer that session's.
    */

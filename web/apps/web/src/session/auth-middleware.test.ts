@@ -177,7 +177,7 @@ describe("authMiddleware", () => {
 
   it("stops a request with SessionChangedError when the tab has moved to another session by its 401", async () => {
     const { storage, server, api, tm } = await setUp();
-    const saved = track(api.PATCH(ME, { body: { first_name: "Xavier" } }));
+    const saved = track(api.PATCH(ME, { body: { display_name: "Xavier" } }));
     await until(() => server.calls.length === 1, "the request");
     expect(server.calls[0]?.authorization).toBe("Bearer at-1");
     // Another tab signs in as Y while the request is out; this tab follows.

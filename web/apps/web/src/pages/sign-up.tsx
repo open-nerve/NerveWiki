@@ -3,7 +3,7 @@ import { Link, useSearchParams } from "react-router";
 import useSWR from "swr";
 
 import { keepNext } from "../app/next-path";
-import { Loading } from "../app/session-unavailable";
+import { Loading } from "../components/loading";
 import { useT } from "../i18n/i18n";
 import { useStore } from "../stores/context";
 import { CredentialsForm, type Credentials, type LocalProblems } from "./credentials-form";

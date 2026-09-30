@@ -152,7 +152,7 @@ describe.each<Kind>(["navigator.locks", "the lease"])("tabs with %s", (kind) => 
         }),
     ],
     ["refuses", () => problem(401, "identity.refresh_token_invalid")],
-  ])("drop a refresh whose record changed to another account on the way, when server %s it", async (_, answer) => {
+  ])("drop a refresh whose record changed to another account on the way, when the server %s it", async (_, answer) => {
     const b = browser(kind);
     const [a] = await signedIn(b, ["A"]);
     await vi.advanceTimersByTimeAsync(10_000);

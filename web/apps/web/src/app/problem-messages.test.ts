@@ -101,17 +101,24 @@ test("fieldErrors says each field's first problem, better for the fields it know
   expect(fieldErrors(new TypeError("Failed to fetch"), t)).toEqual({});
 });
 
-test("formErrors puts a 422's problems under the fields only, and the rest above the form", () => {
-  const onFields = new ApiError(422, {
+test("formErrors puts a 422's problems under the fields shown only, and the rest above the form", () => {
+  const onEmail = new ApiError(422, {
     ...problem(422, "validation_failed"),
     errors: [{ field: "email", code: "invalid_format" }],
   });
   const conflict = new ApiError(409, problem(409, "identity.email_taken"));
+  const shown = ["email", "password"];
 
-  expect(formErrors(undefined, t)).toEqual({ banner: undefined, fields: {} });
-  expect(formErrors(onFields, t)).toEqual({ banner: undefined, fields: { email: "Not a valid e-mail address." } });
-  expect(formErrors(new ApiError(422, problem(422, "validation_failed")), t).banner).toBe("Some values are not valid.");
-  expect(formErrors(conflict, t)).toEqual({
+  expect(formErrors(undefined, t, shown)).toEqual({ banner: undefined, fields: {} });
+  expect(formErrors(onEmail, t, shown)).toEqual({
+    banner: undefined,
+    fields: { email: "Not a valid e-mail address." },
+  });
+  expect(formErrors(onEmail, t, ["display_name"]).banner).toBe("Some values are not valid.");
+  expect(formErrors(new ApiError(422, problem(422, "validation_failed")), t, shown).banner).toBe(
+    "Some values are not valid."
+  );
+  expect(formErrors(conflict, t, shown)).toEqual({
     banner: "An account with this e-mail address already exists.",
     fields: {},
   });

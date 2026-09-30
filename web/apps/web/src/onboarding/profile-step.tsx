@@ -2,12 +2,11 @@ import { observer } from "mobx-react-lite";
 import { useState, type FormEvent } from "react";
 
 import { formErrors, type FieldMessage } from "../app/problem-messages";
-import { FormField } from "../components/form-field";
+import { FormField, useFocusOnInvalid } from "../components/form-field";
 import { Alert } from "../components/ui/alert";
 import { Button } from "../components/ui/button";
 import { useT } from "../i18n/i18n";
 import { useAccount } from "../stores/context";
-import type { OnboardingStep } from "./steps";
 
 /**
  * ProfileStep asks for the name others see, filled in with the one the
@@ -15,14 +14,16 @@ import type { OnboardingStep } from "./steps";
  * Continue saves the name if it was changed, then completes the step; both
  * go out one after the other, and both may be sent again after a failure.
  */
-const ProfileStep = observer(function ProfileStep({ complete }: { complete: () => Promise<void> }) {
+export const ProfileStep = observer(function ProfileStep({ complete }: { complete: () => Promise<void> }) {
   const { account, me } = useAccount();
   const t = useT();
   const [name, setName] = useState(me.display_name);
   const [local, setLocal] = useState<FieldMessage>();
   const [failure, setFailure] = useState<unknown>();
   const [sending, setSending] = useState(false);
-  const server = formErrors(failure, t);
+  const [failures, setFailures] = useState(0);
+  const form = useFocusOnInvalid(failures);
+  const server = formErrors(failure, t, ["display_name"]);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -30,6 +31,7 @@ const ProfileStep = observer(function ProfileStep({ complete }: { complete: () =
     setLocal(displayName === "" ? "field.required" : undefined);
     setFailure(undefined);
     if (displayName === "") {
+      setFailures(failures + 1);
       return;
     }
     setSending(true);
@@ -40,13 +42,14 @@ const ProfileStep = observer(function ProfileStep({ complete }: { complete: () =
       await complete();
     } catch (error) {
       setFailure(error);
+      setFailures(failures + 1);
     } finally {
       setSending(false);
     }
   }
 
   return (
-    <form noValidate onSubmit={(event) => void onSubmit(event)} className="space-y-4">
+    <form ref={form} noValidate onSubmit={(event) => void onSubmit(event)} className="space-y-4">
       {server.banner !== undefined && <Alert>{server.banner}</Alert>}
       <FormField
         label={t("onboarding.profile.displayName")}
@@ -63,5 +66,3 @@ const ProfileStep = observer(function ProfileStep({ complete }: { complete: () =
     </form>
   );
 });
-
-export const profileStep: OnboardingStep = { id: "profile", title: "onboarding.profile.title", Component: ProfileStep };

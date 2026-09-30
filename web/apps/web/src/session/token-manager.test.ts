@@ -4,7 +4,7 @@ import { FakeServer, json, noContent, problem } from "./testing/fake-server";
 import { settle, track, until } from "./testing/fake-time";
 import { AUTH_KEY, SessionChangedError, SessionUnavailableError, TokenManager } from "./token-manager";
 
-// One tab of the token manager (M1/P5 design 3.2, 3.3), with fake timers: server answers when the test says
+// One tab of the token manager (M1/P5 design 3.2, 3.3), with fake timers: the server answers when the test says
 // so, and time moves only when the test moves it. The tabs' coordination is token-manager.tabs.test.ts.
 
 const REFRESH = "/api/v0/auth/refresh";
@@ -52,7 +52,7 @@ afterEach(() => {
 });
 
 describe("start", () => {
-  it("is signed out without a record, and asks server nothing", async () => {
+  it("is signed out without a record, and asks the server nothing", async () => {
     const { tm, server } = setUp();
     await tm.start();
     expect(tm.state).toEqual({ status: "signed-out" });
@@ -376,7 +376,7 @@ describe("refresh", () => {
     expect(s.writes).toEqual([underLock, underLock]);
   });
 
-  it("gives a request refused after the session ended no token, asking server nothing", async () => {
+  it("gives a request refused after the session ended no token, asking the server nothing", async () => {
     const s = await signedIn();
     // Two requests with at-1 were refused; the first one's refresh answers 401 and ends the session.
     const first = track(s.tm.renew("at-1"));

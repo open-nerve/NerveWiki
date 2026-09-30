@@ -1,7 +1,9 @@
 import { observer } from "mobx-react-lite";
+import { Suspense } from "react";
 import { Navigate, useSearchParams } from "react-router";
 
 import { safeNextPath } from "../app/next-path";
+import { Loading } from "../components/loading";
 import { useT } from "../i18n/i18n";
 import { useAccount } from "../stores/context";
 import { onboardingSteps, pendingSteps, type OnboardingStep } from "../onboarding/steps";
@@ -27,7 +29,9 @@ export const Onboarding = observer(function Onboarding({ steps }: { steps: reado
         {t("onboarding.progress", { current: steps.indexOf(step) + 1, total: steps.length })}
       </p>
       <h1 className="text-2xl font-semibold">{t(title)}</h1>
-      <Component key={id} complete={async () => void (await account.recordStep(id))} />
+      <Suspense fallback={<Loading />}>
+        <Component key={id} complete={async () => void (await account.recordStep(id))} />
+      </Suspense>
     </section>
   );
 });

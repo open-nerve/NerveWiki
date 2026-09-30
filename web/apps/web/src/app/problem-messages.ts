@@ -81,18 +81,26 @@ function isFieldMessage(key: `field.${string}`): key is FieldMessage {
 }
 
 /**
- * formErrors is what a form shows of error: each field's problem under it,
- * and the rest above the form. A 422 whose problems are all on fields shows
- * nothing above; no error shows nothing.
+ * formErrors is what a form that shows the fields shown makes of error:
+ * each field's problem under it, and the rest above the form. A 422 whose
+ * problems are all on fields shown shows nothing above; a problem on a
+ * field the form does not show goes above as the 422's text. No error
+ * shows nothing.
  */
 export function formErrors(
   error: unknown,
-  t: Translate
+  t: Translate,
+  shown: readonly string[]
 ): { banner: string | undefined; fields: Record<string, string> } {
   if (error === undefined) {
     return { banner: undefined, fields: {} };
   }
   const fields = fieldErrors(error, t);
-  const onFields = error instanceof ApiError && error.code === "validation_failed" && Object.keys(fields).length > 0;
-  return { banner: onFields ? undefined : errorText(error, t), fields };
+  const onFields = Object.keys(fields);
+  const allShown =
+    error instanceof ApiError &&
+    error.code === "validation_failed" &&
+    onFields.length > 0 &&
+    onFields.every((field) => shown.includes(field));
+  return { banner: allShown ? undefined : errorText(error, t), fields };
 }

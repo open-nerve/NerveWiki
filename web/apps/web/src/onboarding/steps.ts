@@ -1,8 +1,7 @@
-import type { ComponentType } from "react";
+import { lazy, type ComponentType } from "react";
 
 import type { MessageKey } from "../i18n/messages/en";
 import type { User } from "../services/account.service";
-import { profileStep } from "./profile-step";
 
 /**
  * OnboardingStep is a step of onboarding (M1/P5 design 3.7). The server
@@ -13,7 +12,10 @@ export type OnboardingStep = {
   /** The id the server records: a lower-case letter, then lower-case letters, digits and underscores, 32 at most. */
   id: string;
   title: Extract<MessageKey, `onboarding.${string}.title`>;
-  /** The step's form; it calls complete once its work is done, and shows why if complete fails. */
+  /**
+   * The step's form, loaded with the onboarding page (React.lazy): the guards read the registry on every
+   * page, and need only the ids. It calls complete once its work is done, and shows why if complete fails.
+   */
   Component: ComponentType<{ complete: () => Promise<void> }>;
 };
 
@@ -22,7 +24,16 @@ export type OnboardingStep = {
  * theirs at the end: an account that completed the ones before sees only
  * the new one, on its next visit. The server records 32 steps at most.
  */
-export const onboardingSteps: readonly OnboardingStep[] = [profileStep];
+export const onboardingSteps: readonly OnboardingStep[] = [
+  {
+    id: "profile",
+    title: "onboarding.profile.title",
+    Component: lazy(async () => {
+      const { ProfileStep } = await import("./profile-step");
+      return { default: ProfileStep };
+    }),
+  },
+];
 
 /**
  * pendingSteps are the steps of steps that me has not completed, in their
