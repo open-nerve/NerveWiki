@@ -10,8 +10,8 @@ export class InstanceStore {
     makeAutoObservable<this, "service">(this, { service: false });
   }
 
-  /** fetch loads the information; SWR calls it (useSWR with this as fetcher). */
-  async fetch(): Promise<InstanceInfo> {
+  /** load loads the information; SWR calls it (useSWR with this as fetcher). */
+  async load(): Promise<InstanceInfo> {
     const info = await this.service.get();
     runInAction(() => {
       this.info = info;

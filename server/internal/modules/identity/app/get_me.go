@@ -27,7 +27,7 @@ func (g *GetMe) Execute(ctx context.Context) (domain.User, error) {
 	u, err := g.users.GetUser(ctx, actor.UserID)
 	if errors.Is(err, ErrNotFound) {
 		// Authentication found the account a moment ago; it is gone now.
-		return domain.User{}, shared.Unauthenticated()
+		return domain.User{}, unauthenticated(errUserUnknown)
 	}
 	return u, err
 }

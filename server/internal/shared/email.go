@@ -21,15 +21,18 @@ func NormalizeEmail(s string) string {
 }
 
 // ValidEmail reports whether a normalized address is acceptable: at most
-// 255 characters, no white space or control character anywhere, and valid
-// by Django's EmailValidator, a well-tested reading of what mail servers
-// accept.
+// 255 characters, no white space, control or format character anywhere,
+// and valid by Django's EmailValidator, a well-tested reading of what mail
+// servers accept. Django's domain accepts format characters: the
+// bidirectional controls would show an address to the members of a
+// workspace reversed, the zero-width ones would make two addresses look
+// alike.
 func ValidEmail(email string) bool {
 	if email == "" || utf8.RuneCountInString(email) > MaxEmailLength || !utf8.ValidString(email) {
 		return false
 	}
 	for _, r := range email {
-		if unicode.IsSpace(r) || unicode.IsControl(r) {
+		if unicode.IsSpace(r) || unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {
 			return false
 		}
 	}

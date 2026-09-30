@@ -15,7 +15,8 @@ CREATE TABLE api_tokens (
     expires_at timestamptz CONSTRAINT api_tokens_expires_at_check CHECK (expires_at > created_at),
     -- Written at most once a minute; using a token leaves updated_at alone.
     last_used_at timestamptz,
-    -- Revoking is a soft delete (v0.1 design 6.1).
+    -- Revoking (the DELETE of v0.1 design 6.1) stamps revoked_at and keeps the
+    -- row: not a soft delete that the clean-up purges (7.1; M1/P4 design 3.5).
     revoked_at timestamptz,
     created_at timestamptz NOT NULL,
     updated_at timestamptz NOT NULL

@@ -35,7 +35,7 @@ func (v violation) String() string {
 func rules() []rule {
 	return []rule{
 		{"module layers point inward: adapter -> app -> domain", layersPointInward},
-		{"domain and app import only the standard library (not net/http or database/sql), their own module's inner layers and internal/shared", innerLayersArePure},
+		{"domain and app import only the standard library (not net/http or database/sql), Unicode normalization, their own module's inner layers and internal/shared", innerLayersArePure},
 		{"modules do not import each other", modulesAreIsolated},
 		{"platform does not import modules, bootstrap or internal/shared", platformIsBusinessFree},
 		{"only bootstrap imports modules", onlyBootstrapImportsModules},
@@ -45,6 +45,8 @@ func rules() []rule {
 		{"module packages live in domain, app or adapter, or at the module root", moduleLayoutIsKnown},
 		{"internal/shared imports only the standard library (not net/http or database/sql) and internal/shared", sharedKernelIsPure},
 		{"River is imported only by platform/jobs and a module's adapter/river", riverStaysInJobs},
+		{"bootstrap imports only a module's root", bootstrapImportsModuleRoots},
+		{"a module's adapters do not import each other", adaptersAreIndependent},
 	}
 }
 
@@ -115,11 +117,18 @@ func isStdlib(path string) bool {
 	return !strings.Contains(first, ".")
 }
 
+// isPureLibrary reports the third-party packages the pure layers may use:
+// Unicode normalization (and what it imports), which the password rules
+// need to judge the form the hasher hashes (identity's CanonicalPassword).
+func isPureLibrary(path string) bool {
+	return path == "golang.org/x/text/unicode/norm" || path == "golang.org/x/text/transform"
+}
+
 // isInfrastructure reports whether an import outside this module is
-// technology the pure layers must not see: any third-party module, net/http
-// or database/sql.
+// technology the pure layers must not see: any third-party module but the
+// pure libraries, net/http or database/sql.
 func isInfrastructure(path string) bool {
-	return !isStdlib(path) || within(path, "net/http") || within(path, "database/sql")
+	return !isStdlib(path) && !isPureLibrary(path) || within(path, "net/http") || within(path, "database/sql")
 }
 
 func inModuleDir(path, dir string) bool {
@@ -221,6 +230,42 @@ func platformIsBusinessFree(from, to string) bool {
 func onlyBootstrapImportsModules(from, to string) bool {
 	return inModuleDir(to, "internal/modules") &&
 		!inModuleDir(from, "internal/modules") && !inModuleDir(from, "internal/bootstrap")
+}
+
+// bootstrapImportsModuleRoots keeps the composition root at the modules'
+// entry points: what it needs of a module, the module's root offers
+// (v0.1 design 13.1 rule 11), and the module's layers stay its own.
+func bootstrapImportsModuleRoots(from, to string) bool {
+	_, layer, ok := moduleOf(to)
+	return ok && layer != "" && inModuleDir(from, "internal/bootstrap")
+}
+
+// adaptersAreIndependent keeps the adapters of a module apart: they meet
+// in the app layer's ports, wired at the module root, so that one adapter's
+// technology does not leak into another. An adapter may import its own
+// subpackages, such as its generated code.
+func adaptersAreIndependent(from, to string) bool {
+	fm, fa, ok := adapterOf(from)
+	if !ok {
+		return false
+	}
+	tm, ta, ok := adapterOf(to)
+	return ok && fm == tm && fa != ta
+}
+
+// adapterOf splits internal/modules/<module>/adapter/<adapter>/... of this
+// module.
+func adapterOf(path string) (module, adapter string, ok bool) {
+	module, layer, ok := moduleOf(path)
+	if !ok || layer != "adapter" {
+		return "", "", false
+	}
+	r, _ := local(path)
+	parts := strings.Split(r, "/")
+	if len(parts) < 5 {
+		return "", "", false
+	}
+	return module, parts[4], true
 }
 
 // generatedCodeStaysInAdapter lets only an adapter import its own generated

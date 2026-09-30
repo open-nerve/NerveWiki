@@ -19,7 +19,7 @@ export const SignInPage = observer(function SignInPage() {
   const { auth, instance } = useStore();
   const t = useT();
   const [params] = useSearchParams();
-  useSWR("instance", () => instance.fetch());
+  useSWR("instance", () => instance.load());
 
   return (
     <section className="mx-auto max-w-sm space-y-6">

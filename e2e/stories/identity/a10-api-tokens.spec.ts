@@ -71,11 +71,11 @@ test("A10 (API): a token asks for the password, is shown once, is listed without
   expect(foreign.response.status).toBe(404);
   expect(foreign.error?.code).toBe("identity.api_token_not_found");
 
-  // Revoked, it stops at once; revoking again finds nothing.
+  // Revoked, by the other token, it stops at once; revoking again finds nothing.
   const revoke = () =>
     api.DELETE("/api/v0/api-tokens/{token_id}", {
       params: { path: { token_id: created.id } },
-      headers: bearer(session.access_token),
+      headers: bearer(second.token),
     });
   expect((await revoke()).response.status).toBe(204);
   await expectTokenRevoked(db, created.id);
@@ -83,7 +83,7 @@ test("A10 (API): a token asks for the password, is shown once, is listed without
   const again = await revoke();
   expect(again.response.status).toBe(404);
   expect(again.error?.code).toBe("identity.api_token_not_found");
-  expect((await list(session.access_token)).map((t) => t.id)).toEqual([second.id]);
+  expect((await list(second.token)).map((t) => t.id)).toEqual([second.id]);
 });
 
 test("A10 (API): a token stops when it expires", async ({ api, db }, testInfo) => {

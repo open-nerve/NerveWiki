@@ -1,4 +1,4 @@
-import { createClient } from "@nervewiki/api-client";
+import { createClient, type AuthTokens } from "@nervewiki/api-client";
 
 import { accountIdOf, countIdentity, expectNewSession, expectNothingAdded } from "../../fixtures/assert/identity";
 import { bearer, emailFor, login, password, register, registerOnboarded } from "../../fixtures/auth";
@@ -100,9 +100,11 @@ test("A3 (page): a deep link signs in and comes back; a refused sign-in keeps wh
   page,
   pageWatch,
   api,
+  db,
 }, testInfo) => {
   const email = emailFor(testInfo);
   await registerOnboarded(api, email);
+  const before = await countIdentity(db);
   const deepLink = "/acme/notebooks/1?view=list#part";
   await page.goto(deepLink);
   await expect(page).toHaveURL(`/sign-in?next=${encodeURIComponent(deepLink)}`);
@@ -117,9 +119,19 @@ test("A3 (page): a deep link signs in and comes back; a refused sign-in keeps wh
   await refused(email, "Wr0ng-password");
   await refused(emailFor(testInfo, "nobody"), password);
   pageWatch.expectConsole({ errors: [failedToLoad(401), failedToLoad(401)] });
+  await expectNothingAdded(db, before);
 
-  expect((await signInWith(page, email, password)).status()).toBe(200);
+  const answer = await signInWith(page, email, password);
+  expect(answer.status()).toBe(200);
   await expect(page).toHaveURL(deepLink);
+  const tokens = (await answer.json()) as AuthTokens;
+  await expectNewSession(db, await accountIdOf(db, email), {
+    email,
+    accessToken: tokens.access_token,
+    refreshToken: tokens.refresh_token,
+    userAgent: await page.evaluate(() => navigator.userAgent),
+    ip: "127.0.0.1",
+  });
   await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
 
   // A next that would leave the site, or run script, goes home instead.

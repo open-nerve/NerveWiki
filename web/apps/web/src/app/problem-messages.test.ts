@@ -36,25 +36,27 @@ function codesOf(operationId: string): string[] {
   return [...own, ...everywhere, ...(bearer ? ["unauthorized"] : [])];
 }
 
-// Every code of the operations whose errors a page shows has a message: a
-// code added to the contract fails here until it has one (M1/P5 design 3.4).
-test.each([
-  "getInstance",
-  "register",
-  "login",
-  "getMe",
-  "updateMe",
-  "recordOnboardingStep",
-  "changePassword",
-  "deactivateMe",
-  "listApiTokens",
-  "createApiToken",
-  "revokeApiToken",
-])("%s: every problem code has a message", (operationId) => {
-  const codes = codesOf(operationId);
-  expect(codes.length).toBeGreaterThan(0);
-  expect(codes.filter((code) => !Object.hasOwn(problemMessages, code))).toEqual([]);
+/** The operations whose errors no page shows: the token manager answers them itself. */
+const unshown = ["refreshTokens", "logout"];
+
+const operations = [...spec.matchAll(/^\s+operationId: (\S+)$/gm)].map((match) => match[1] ?? "");
+
+test("the contract has the operations the check skips, and others", () => {
+  expect(operations).toEqual(expect.arrayContaining(unshown));
+  expect(operations.length).toBeGreaterThan(unshown.length);
 });
+
+// Every code of every operation but the unshown ones has a message: a code,
+// or an operation, added to the contract fails here until it has one (M1/P5
+// design 3.4).
+test.each(operations.filter((operationId) => !unshown.includes(operationId)))(
+  "%s: every problem code has a message",
+  (operationId) => {
+    const codes = codesOf(operationId);
+    expect(codes.length).toBeGreaterThan(0);
+    expect(codes.filter((code) => !Object.hasOwn(problemMessages, code))).toEqual([]);
+  }
+);
 
 const problem = (status: number, code: string) => ({ status, code, title: "" });
 
