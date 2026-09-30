@@ -4,7 +4,7 @@
 |---|---|
 | 里程碑 | M0 基础骨架（`M0-foundation`） |
 | 日期 | 2026-09-30 |
-| 状态 | 进行中 |
+| 状态 | 已完成 |
 | 依赖 | 无 |
 | 上级文档 | [v0.1 总体设计](../v0.1-design.md) 第 12.2 节 |
 
@@ -48,7 +48,7 @@ M0 结束时，项目具备以下条件，此后每个 M 只需要在上面加�
   | S3 实例接口 | `GET /api/v0/instance` 返回版本等信息，响应符合接口描述 |
   | S4 路由兜底 | 任意前端路由直接打开或刷新都返回应用页面；未知的 `/api/` 路径返回 problem+json 404 |
 
-- Docker 镜像能启动，并通过 S1、S3。
+- Docker 镜像能启动，并通过 S1 的就绪检查与 S3（S1 的两种 503 由端到端测试覆盖）。
 - 持续集成的全部任务为绿：Go 的 lint 与测试（含架构测试和集成测试）、生成物一致性、前端的类型检查 / oxlint / oxfmt / knip / vitest / 构建、端到端测试、镜像构建。
 - P1 的五项技术验证都有结论，需要修订的总体设计已修订。
 - 满足[文档约定](../../README.md)中"M 完成"的全部条件。
@@ -69,7 +69,7 @@ nerve-wiki/
     migrations/               goose 迁移（M0 只有一条：建 pg_trgm 扩展）
     internal/
       bootstrap/              组合根
-      platform/               buildinfo、clock、config、httpserver（含 apitest、bodyshape）、
+      platform/               buildinfo、clock、config、httpserver（含 apigen、apitest、bodyshape）、
                               logging、postgres（含 pgtest）、webui
       shared/                 共享内核（M0 只有错误模型与 TxManager 端口）
       modules/instance/       试点模块
@@ -143,7 +143,7 @@ nerve-wiki/
 | P3 | 服务端平台层 | 一个能启动、能迁移、能优雅停机的 `nervewiki` | 平台层各包、组合根、`serve` 与 `migrate` 命令、`/healthz` 与 `/readyz`、数据库 locale 自检、长连接路由的豁免、集成测试工具（`pgtest`：模板库复制）、架构测试 | 单元、集成、架构测试为绿；二进制启动后健康检查可用 |
 | P4 | 接口契约与代码生成 | 走通"描述 → 生成 → 实现 → 契约测试" | `server/tools` 模块、`api/` 结构、oapi-codegen 与 bodyshape 生成、接口操作的逐路由中间件与 `APIErrors`、`apitest`、`instance` 模块、TS 客户端生成、`make gen` 与 `make gen-check` | 生成物一致性检查为绿；`instance` 的 handler 测试与契约测试为绿 |
 | P5 | 前端外壳与内嵌 | 前端能构建、内嵌进二进制、在浏览器里运行 | `webui`（内嵌前端、页面 CSP、前端路由兜底）、应用骨架、路由与兜底、UI 基座与主题、zh-CN 与 en、分层样板（instance 的 service / store / 组件）、错误边界与 404、页面 CSP、`make build` | 前端全部门禁为绿；二进制提供页面并显示实例版本 |
-| P6 | 端到端测试与交付 | 冒烟故事在本地和持续集成里通过，产出镜像 | e2e 包（模板库、每个 worker 一个 `nervewiki`、页面与数据库 fixture、控制台与 CSP 监视）、S1–S4、持续集成的 e2e 任务与失败时的产物上传、Dockerfile、镜像构建 | `make e2e` 本地与持续集成为绿；镜像通过 S1、S3 |
+| P6 | 端到端测试与交付 | 冒烟故事在本地和持续集成里通过，产出镜像 | e2e 包（模板库、每个 worker 一个 `nervewiki`、页面与数据库 fixture、控制台与 CSP 监视）、S1–S4、持续集成的 e2e 任务与失败时的产物上传、Dockerfile、镜像构建 | `make e2e` 本地与持续集成为绿；镜像通过 S1 的就绪检查与 S3 |
 
 P1 放在最前面：它的结论会影响 P2（数据库 locale）、P3（SSE 与 MCP 对 HTTP 中间件的要求，例如长连接不受请求期限限制），以及 M4 之后的多个 M，先验证可以避免返工。
 
@@ -184,7 +184,7 @@ P1 的实验结论、P2 到 P5 的审查和实施留下的要求，开工时逐�
 
 ## 8. 本 M 建立的平台约定
 
-总体设计的扩展点表（12.4）中没有 M0 的条目。M0 建立的是每个模块都要遵守的平台约定，在 M0 收尾时补进总体设计第 13 节：
+总体设计的扩展点表（12.4）中没有 M0 的条目。M0 建立的是每个模块都要遵守的平台约定，M0 收尾时已补进总体设计第 13 节（13.1 第 8、11–16 条，13.2 第 6–9 条，13.4，13.5），以第 13 节为准。其中"配置"与"端到端故事的写法"两条在 M0 还没有实例：没有模块有自己的配置，`e2e/fixtures/assert/` 与 PAT 版本的故事由第一个有业务表的 M 建立。
 
 - **模块接入契约**：`module.go` 提供 `New`（有依赖时 `New(Deps)`）与 `Register(router, api)`，M1 加入认证时再加 `PublicOperations()`；只有组合根导入模块。
 - **接口契约**：每个操作声明 `security` 与 `x-problem-codes`；契约测试双向核对错误码。
@@ -222,7 +222,7 @@ P1 的实验结论、P2 到 P5 的审查和实施留下的要求，开工时逐�
 | P4 | 接口契约与代码生成 | 已完成 | [04-P4-api-contract.md](04-P4-api-contract.md) | [P4-api-contract-review.md](reviews/P4-api-contract-review.md) |
 | P5 | 前端外壳与内嵌 | 已完成 | [05-P5-web-shell.md](05-P5-web-shell.md) | [P5-web-shell-review.md](reviews/P5-web-shell-review.md) |
 | P6 | 端到端测试与交付 | 已完成 | [06-P6-e2e-delivery.md](06-P6-e2e-delivery.md) | [P6-e2e-delivery-review.md](reviews/P6-e2e-delivery-review.md) |
-| — | M0 收尾审查 | 未开始 | — | — |
+| — | M0 收尾审查 | 已完成 | — | [M0-closeout-review.md](reviews/M0-closeout-review.md) |
 
 ## 12. 变更记录
 
@@ -235,3 +235,4 @@ P1 的实验结论、P2 到 P5 的审查和实施留下的要求，开工时逐�
 | 2026-09-30 | P4 完成：认证相关、参数与请求体的整个程序测试、oapi-codegen runtime 的例外移到 M1（第 7 节）；模块接入契约的措辞按实现修订（第 8 节）；"前序 Phase 对后续 Phase 的要求"加入 P4 给 P5 的 TypeScript 版本 | P4 的实施与审查，见 [P4 审查记录](reviews/P4-api-contract-review.md) |
 | 2026-09-30 | P5 完成：不引入 turbo，React Router 取 8 并用数据路由，`web/packages/` 只有 `api-client`（第 4、5、6、7 节）；"前序 Phase 对后续 Phase 的要求"加入 P5 给 P6 的要求 | P5 的实施与审查，见 [P5 审查记录](reviews/P5-web-shell-review.md) |
 | 2026-09-30 | P6 完成：e2e 的 fixtures 裁掉 `api.ts`（并进 `test.ts`），镜像全新编写，仓库布局加入 `image-smoke.sh` 与 `.dockerignore`（第 4、6 节）；P6 的"数据库不可用"改在复制出的另一个库上制造（第 7 节）；镜像的附件目录与发布移交 M7、M12 | P6 的实施与审查，见 [P6 审查记录](reviews/P6-e2e-delivery-review.md) |
+| 2026-09-30 | M0 收尾：状态改为已完成；镜像的完成标准写明覆盖 S1 的就绪检查（第 3、7 节）；仓库布局加 `apigen`（第 4 节）；第 8 节的约定已补进总体设计第 13 节 | M0 收尾审查，见 [M0 收尾审查记录](reviews/M0-closeout-review.md) |
