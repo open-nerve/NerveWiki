@@ -58,6 +58,13 @@ dev: dev-db ## 一条命令起开发环境：开发数据库、后端（make run
 build-web: ## 构建前端，产物在 web/apps/web/dist（需要 Node）
 	pnpm --filter @nervewiki/web build
 
+# webui/dist 里只提交 .gitkeep：先清掉上一次复制进去的前端，再复制这一次的
+.PHONY: build
+build: build-web ## 构建 bin/nervewiki，前端内嵌在其中（需要 Go 与 Node）
+	find server/internal/platform/webui/dist -mindepth 1 ! -name .gitkeep -delete
+	cp -R web/apps/web/dist/. server/internal/platform/webui/dist/
+	cd server && go build -o ../bin/nervewiki ./cmd/nervewiki
+
 .PHONY: tools
 tools: ## 安装锁定版本的 golangci-lint 到 ./bin
 	@set -o pipefail; \

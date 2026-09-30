@@ -39,6 +39,8 @@ make dev-db   # 先启动开发数据库
 make run      # 以 dev 配置启动 nervewiki serve，监听 127.0.0.1:8080；Ctrl-C 优雅停止
 ```
 
+`make build` 构建前端并把它内嵌进 `bin/nervewiki`；用 `make run` 启动的服务不带前端（页面路径答 404 并提示），开发前端用 `make web-dev` 或 `make dev`，见下文"前端"。
+
 `serve` 启动时要连上数据库（最多等 10 秒，连不上就退出），按配置执行迁移（dev、test 默认执行，prod 默认不执行），然后自检数据库的编码与 locale，不满足就拒绝启动并给出建库命令。`GET /healthz` 表示进程存活；`GET /readyz` 在数据库可用、迁移已是最新时返回 200，否则 503。`GET /api/v0/instance` 返回产品名、版本与接口版本；`/api/` 下没有的路径返回 404 problem+json。
 
 其他命令在 `server/` 下用 `go run ./cmd/nervewiki <命令>` 执行：

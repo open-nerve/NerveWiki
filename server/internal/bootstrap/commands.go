@@ -15,6 +15,7 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/logging"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/webui"
 	"github.com/open-nerve/NerveWiki/server/migrations"
 )
 
@@ -34,7 +35,7 @@ func Serve(ctx context.Context, cfg config.Config, logOut io.Writer) (err error)
 		}
 	}()
 	logger.InfoContext(ctx, "configuration loaded", slog.Any("config", cfg))
-	a, err := newApp(ctx, cfg, logger, migrations.FS())
+	a, err := newApp(ctx, cfg, logger, migrations.FS(), webui.FS())
 	if err != nil {
 		return err
 	}
