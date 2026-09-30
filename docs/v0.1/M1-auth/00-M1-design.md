@@ -156,8 +156,9 @@ M1 结束时：
 **账户停用：否决者与事件**（总体设计 12.4，M2 注册）：
 
 - 注册方式：组合根把注册者传进 identity 的 `Deps` 与管理用的 `AdminDeps`；注册者只凭连接池构造。
-- 否决者：`VetoDeactivation(ctx, account) error`，在账户行锁之后、任何写入之前按顺序调用；返回 `*shared.Error` 时整个停用回滚，接口答出它的码，命令行打印原因、退出码 1。注册者把自己的码追加到 `deactivateMe` 的 `x-problem-codes`。
-- 事件：`AccountDeactivated{UserID, Email, At}`，在停用的写入之后、同一事务内逐个交给订阅者；订阅者返回错误同样整体回滚。邮箱取自锁下读到的行。
+- 否决者与订阅者收到同一个值 `Deactivation{UserID, Email, At}`，邮箱取自锁下读到的行。
+- 否决者：`VetoDeactivation(ctx, d) error`，在账户行锁之后、任何写入之前按顺序调用；返回 `*shared.Error` 时整个停用回滚，接口答出它的码，命令行打印原因、退出码 1。注册者把自己的码追加到 `deactivateMe` 的 `x-problem-codes`。
+- 订阅者：`AccountDeactivated(ctx, d) error`，在停用的写入之后、同一事务内逐个调用；返回错误同样整体回滚。
 - 增长路径：任何让账户获得新的访问（加入工作区、接受邀请）的写事务，先经 identity 提供的 `ShareActiveAccount(ctx, userID)` 对账户行取 `FOR SHARE` 并确认账户可用；于是它与停用串行，否决者总能看到已提交的成员关系。
 - M1 用测试替身证明：否决时整体回滚并答出码；事件在事务内、订阅者失败即回滚；持有 `FOR SHARE` 的事务让并发的停用等待，提交之后停用的否决者看到它的结果。
 
@@ -197,7 +198,7 @@ M1 结束时：
 |---|---|---|---|---|
 | P1 | 身份基础与默认拒绝 | 已完成 | [01-P1-identity-foundation.md](01-P1-identity-foundation.md) | [P1 审查](reviews/P1-identity-foundation-review.md) |
 | P2 | 会话与限流 | 已完成 | [02-P2-sessions-ratelimit.md](02-P2-sessions-ratelimit.md) | [P2 审查](reviews/P2-sessions-ratelimit-review.md) |
-| P3 | 账户、PAT 与停用 | 进行中 | [03-P3-accounts-tokens.md](03-P3-accounts-tokens.md) | — |
+| P3 | 账户、PAT 与停用 | 已完成 | [03-P3-accounts-tokens.md](03-P3-accounts-tokens.md) | [P3 审查](reviews/P3-accounts-tokens-review.md) |
 | P4 | 管理命令与后台任务 | 未开始 | — | — |
 | P5 | 前端会话、登录与引导 | 未开始 | — | — |
 | P6 | 前端个人设置 | 未开始 | — | — |
@@ -210,3 +211,4 @@ M1 结束时：
 | 2026-09-30 | 初版 | M1 启动 |
 | 2026-09-30 | 第 4 节密码规则：名单另收条目的主干，拒绝同一字符的重复与只有空白的密码，哈希前做 NFKC 规范化 | P1 审查 M1、M4、N3：只收 8 位以上的条目时主干规则放过 `Qwerty123!` 一类；NFC 与 NFD 的同一密码哈希不同 |
 | 2026-09-30 | 第 6 节 `lockwait` 从 P3 提前到 P2；第 7 节 P5 的续期超时写明 8 秒 | P2 的并发续期需要确定性的交错；P2 审查：前端的 8 秒要与服务端的配置校验一致 |
+| 2026-10-01 | 第 8 节停用扩展点的签名按实现：否决者与订阅者收到同一个 `Deactivation` 值 | P3 审查：总设计写的事件名与否决者参数与代码不同 |
