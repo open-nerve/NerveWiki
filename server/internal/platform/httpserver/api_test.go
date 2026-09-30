@@ -116,15 +116,15 @@ func TestOperationsRunUnderTheRequestDeadline(t *testing.T) {
 }
 
 // A long-lived route is registered on the router directly, next to the API
-// operations: it gets no request deadline, as it must hold its response
-// open (M0/P3 design 3.4).
+// operations: behind the server's whole middleware chain it gets no request
+// deadline, as it must hold its response open (M0/P3 design 3.4).
 func TestLongLivedRoutesHaveNoRequestDeadline(t *testing.T) {
 	router, _ := mount(newTestAPI(t))
 	var streamCtx context.Context
 	router.Handle(eventsRoute, LongLived(slog.New(slog.DiscardHandler), http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 		streamCtx = r.Context()
 	})))
-	srv := httptest.NewServer(router)
+	srv := httptest.NewServer(middleware(router, slog.New(slog.DiscardHandler)))
 	t.Cleanup(srv.Close)
 
 	resp, err := client().Get(srv.URL + "/api/v0/events")

@@ -11,6 +11,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/open-nerve/NerveWiki/server/internal/modules/instance"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres"
@@ -18,8 +19,11 @@ import (
 )
 
 // The platform and the shared kernel meet here by structure: neither imports
-// the other. *shared.Error satisfies httpserver.ProblemError from P4 on.
-var _ shared.TxManager = (*postgres.TxManager)(nil)
+// the other.
+var (
+	_ shared.TxManager        = (*postgres.TxManager)(nil)
+	_ httpserver.ProblemError = (*shared.Error)(nil)
+)
 
 // poolCloseTimeout bounds the wait for the pool's connections at shutdown:
 // a handler that ignores its context may still hold one.
@@ -42,9 +46,18 @@ type app struct {
 	databaseWait     time.Duration
 }
 
-// newApp wires the server described by cfg around the given migrations.
+// newApp wires the server described by cfg around the given migrations: the
+// platform routes, and each module's API behind the per-route middlewares.
 // close releases it.
 func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrationFiles fs.FS) (*app, error) {
+	api, err := httpserver.NewAPI(httpserver.APIConfig{
+		Logger:         logger,
+		MaxBodyBytes:   cfg.Server.MaxBodyBytes,
+		RequestTimeout: cfg.Server.RequestTimeout,
+	})
+	if err != nil {
+		return nil, err
+	}
 	pool, err := postgres.NewPool(ctx, cfg.Database)
 	if err != nil {
 		return nil, err
@@ -64,6 +77,7 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrati
 		httpserver.Check{Name: "database", Run: pool.Ping},
 		httpserver.Check{Name: "migrations", Run: migrator.CheckUpToDate},
 	)
+	instance.New().Register(router, api)
 	return &app{
 		cfg:              cfg,
 		logger:           logger,
