@@ -64,6 +64,20 @@ type LoginAccountReader interface {
 	FindLoginAccount(ctx context.Context, email string) (LoginAccount, error)
 }
 
+// PasswordAccount is what an operation that asks for the current password
+// reads of the account before its transaction: the address, for the
+// password rules, and the hash, as the snapshot (M1/P3 design 3.4).
+type PasswordAccount struct {
+	Email        string // normalized
+	PasswordHash string
+}
+
+// PasswordAccountReader reads the account whose password is asked for.
+type PasswordAccountReader interface {
+	// PasswordAccount returns ErrNotFound when there is no account id.
+	PasswordAccount(ctx context.Context, id uuid.UUID) (PasswordAccount, error)
+}
+
 // LockedAccount is an account's row under the account row lock.
 type LockedAccount struct {
 	Email        string // normalized

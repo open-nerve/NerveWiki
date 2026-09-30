@@ -71,7 +71,7 @@ func newServerWithDeadline(t *testing.T, pool *pgxpool.Pool, clock *clocktest.Fi
 		Pool: pool, Tx: postgres.NewTxManager(pool, 2*time.Second), Clock: clock, Logger: logger,
 		SignupPolicy: openSignup{}, AccessTokenTTL: 15 * time.Minute, SessionTTL: 720 * time.Hour, RefreshDeadline: refreshDeadline,
 		Password:   testPassword(),
-		RateLimits: identity.RateLimits{Limiter: limiter, LoginIP: limit, LoginIPEmail: limit, RegisterIP: limit},
+		RateLimits: identity.RateLimits{Limiter: limiter, LoginIP: limit, LoginIPEmail: limit, RegisterIP: limit, PasswordUser: limit},
 	})
 	if err != nil {
 		t.Fatal(err)

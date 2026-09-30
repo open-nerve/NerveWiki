@@ -60,6 +60,7 @@ type RateLimits struct {
 	LoginIP      *ratelimit.Bucket
 	LoginIPEmail *ratelimit.Bucket
 	RegisterIP   *ratelimit.Bucket
+	PasswordUser *ratelimit.Bucket
 }
 
 // Module is the wired identity module.
@@ -92,6 +93,10 @@ func New(d Deps) (*Module, error) {
 		AccessTTL:  d.AccessTokenTTL,
 		SessionTTL: d.SessionTTL,
 	}
+	password := app.CurrentPassword{
+		Accounts: store, Verifier: hasher, Tx: d.Tx,
+		Lock: app.CredentialLock{Locker: store, Sessions: store, APITokens: store},
+	}
 	return &Module{
 		uc: httpadapter.UseCases{
 			Register: app.NewRegister(app.RegisterDeps{
@@ -102,9 +107,14 @@ func New(d Deps) (*Module, error) {
 				Accounts: store, Locker: store, Passwords: store, Sessions: store, Verifier: hasher, Hasher: hasher, Tx: d.Tx,
 				Issuance: issuance, Clock: d.Clock, Logger: d.Logger, DummyHash: dummy,
 			}),
-			Refresh: app.NewRefresh(app.RefreshDeps{Sessions: store, Tx: d.Tx, Issuance: issuance, Clock: d.Clock, Logger: d.Logger}),
-			Logout:  app.NewLogout(store, d.Clock, d.Logger),
-			GetMe:   app.NewGetMe(store),
+			Refresh:       app.NewRefresh(app.RefreshDeps{Sessions: store, Tx: d.Tx, Issuance: issuance, Clock: d.Clock, Logger: d.Logger}),
+			Logout:        app.NewLogout(store, d.Clock, d.Logger),
+			GetMe:         app.NewGetMe(store),
+			ListAPITokens: app.NewListAPITokens(store),
+			CreateAPIToken: app.NewCreateAPIToken(app.CreateAPITokenDeps{
+				Password: password, Tokens: store, Clock: d.Clock, Logger: d.Logger,
+			}),
+			RevokeAPIToken: app.NewRevokeAPIToken(store, d.Clock, d.Logger),
 		},
 		settings: httpadapter.Settings{
 			Limits: httpadapter.Limits{
@@ -112,6 +122,7 @@ func New(d Deps) (*Module, error) {
 				LoginIP:      d.RateLimits.LoginIP,
 				LoginIPEmail: d.RateLimits.LoginIPEmail,
 				RegisterIP:   d.RateLimits.RegisterIP,
+				PasswordUser: d.RateLimits.PasswordUser,
 			},
 			Logger: d.Logger,
 		},

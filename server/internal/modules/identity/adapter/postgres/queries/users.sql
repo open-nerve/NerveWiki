@@ -28,3 +28,10 @@ FOR NO KEY UPDATE;
 UPDATE users
 SET password = sqlc.arg(password), updated_at = sqlc.arg(now)
 WHERE id = sqlc.arg(id);
+
+-- name: GetPasswordAccount :one
+-- What an operation that asks for the current password reads before its transaction: the address for the password
+-- rules, the hash as the snapshot (M1/P3 design 3.4).
+SELECT email, password
+FROM users
+WHERE id = sqlc.arg(id);

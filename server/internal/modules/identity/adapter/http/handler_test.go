@@ -119,6 +119,7 @@ func newServer(t *testing.T, uc httpadapter.UseCases) http.Handler {
 	return serverWith(t, uc, httpadapter.Settings{
 		Limits: httpadapter.Limits{
 			Limiter: limiter, LoginIP: roomy("login_ip"), LoginIPEmail: roomy("login_ip_email"), RegisterIP: roomy("register_ip"),
+			PasswordUser: roomy("password_user"),
 		},
 		Logger: slog.New(slog.DiscardHandler),
 	})
@@ -164,6 +165,15 @@ func serverWith(t *testing.T, uc httpadapter.UseCases, s httpadapter.Settings) h
 	}
 	if uc.GetMe == nil {
 		uc.GetMe = fakeGetMe{}
+	}
+	if uc.ListAPITokens == nil {
+		uc.ListAPITokens = &fakeListTokens{}
+	}
+	if uc.CreateAPIToken == nil {
+		uc.CreateAPIToken = &fakeCreateToken{}
+	}
+	if uc.RevokeAPIToken == nil {
+		uc.RevokeAPIToken = &fakeRevokeToken{}
 	}
 	httpadapter.Register(router, api, uc, s)
 	return router

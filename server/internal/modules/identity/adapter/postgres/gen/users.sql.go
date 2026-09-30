@@ -56,6 +56,26 @@ func (q *Queries) FindLoginAccount(ctx context.Context, email string) (FindLogin
 	return i, err
 }
 
+const getPasswordAccount = `-- name: GetPasswordAccount :one
+SELECT email, password
+FROM users
+WHERE id = $1
+`
+
+type GetPasswordAccountRow struct {
+	Email    string
+	Password string
+}
+
+// What an operation that asks for the current password reads before its transaction: the address for the password
+// rules, the hash as the snapshot (M1/P3 design 3.4).
+func (q *Queries) GetPasswordAccount(ctx context.Context, id uuid.UUID) (GetPasswordAccountRow, error) {
+	row := q.db.QueryRow(ctx, getPasswordAccount, id)
+	var i GetPasswordAccountRow
+	err := row.Scan(&i.Email, &i.Password)
+	return i, err
+}
+
 const getUser = `-- name: GetUser :one
 SELECT id, email, display_name, onboarding_steps
 FROM users

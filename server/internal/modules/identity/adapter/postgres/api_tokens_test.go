@@ -3,6 +3,7 @@ package postgresadapter_test
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 	"uuid"
@@ -182,5 +183,81 @@ func TestEveryRevokeReasonIsStorable(t *testing.T) {
 		if got, err := s.RevokeSessions(ctx, u.ID, uuid.Nil(), reason, later()); err != nil || got != 1 {
 			t.Errorf("RevokeSessions(%s) = %d, %v; want 1", reason, got, err)
 		}
+	}
+}
+
+// The list is the account's unrevoked tokens, expired ones too, newest
+// first and then by id; another account's never.
+func TestListAPITokens(t *testing.T) {
+	ctx := context.Background()
+	s, pool := newStore(t)
+	u, other := newUser("alice@corp.com"), newUser("bob@corp.com")
+	mustCreate(t, s, u)
+	mustCreate(t, s, other)
+	older, _ := newToken(t, s, u.ID, "older")
+	exec(t, pool, "UPDATE api_tokens SET created_at = created_at - interval '1 hour'")
+	newToken(t, s, u.ID, "first")
+	newToken(t, s, u.ID, "second") // the same instant, a later v7 id: first by id, descending
+	revoked, _ := newToken(t, s, u.ID, "revoked")
+	newToken(t, s, other.ID, "bob's")
+	exec(t, pool, "UPDATE api_tokens SET revoked_at = now() WHERE id = $1", revoked.ID)
+	exec(t, pool, "UPDATE api_tokens SET expires_at = created_at + interval '1 second' WHERE id = $1", older.ID)
+
+	got, err := s.ListAPITokens(ctx, u.ID)
+
+	var names []string
+	for _, tok := range got {
+		names = append(names, tok.Name)
+	}
+	if want := []string{"second", "first", "older"}; err != nil || !slices.Equal(names, want) {
+		t.Fatalf("ListAPITokens() = %q, %v; want %q", names, err, want)
+	}
+	if got[2].ExpiresAt == nil || got[0].LastUsedAt != nil || !got[0].CreatedAt.Equal(now()) {
+		t.Errorf("ListAPITokens() = %+v, want the fields as stored", got)
+	}
+	if none, err := s.ListAPITokens(ctx, uuid.NewV7()); err != nil || len(none) != 0 {
+		t.Errorf("ListAPITokens(no account) = %v, %v; want none", none, err)
+	}
+}
+
+// Revoking hits only the account's own unrevoked token, once.
+func TestRevokeAPIToken(t *testing.T) {
+	ctx := context.Background()
+	s, pool := newStore(t)
+	u, other := newUser("alice@corp.com"), newUser("bob@corp.com")
+	mustCreate(t, s, u)
+	mustCreate(t, s, other)
+	mine, _ := newToken(t, s, u.ID, "mine")
+	theirs, _ := newToken(t, s, other.ID, "theirs")
+
+	if ok, err := s.RevokeAPIToken(ctx, theirs.ID, u.ID, later()); ok || err != nil {
+		t.Errorf("RevokeAPIToken(another account's) = %v, %v; want false", ok, err)
+	}
+	if ok, err := s.RevokeAPIToken(ctx, mine.ID, u.ID, later()); !ok || err != nil {
+		t.Errorf("RevokeAPIToken(mine) = %v, %v; want true", ok, err)
+	}
+	if ok, err := s.RevokeAPIToken(ctx, mine.ID, u.ID, later().Add(time.Minute)); ok || err != nil {
+		t.Errorf("RevokeAPIToken(mine) again = %v, %v; want false", ok, err)
+	}
+	if r := readToken(t, pool, mine.ID); r.revoked == nil || !r.revoked.Equal(later()) || !r.updated.Equal(later()) {
+		t.Errorf("my token = %+v, want revoked and updated at %v, the first time", r, later())
+	}
+	if r := readToken(t, pool, theirs.ID); r.revoked != nil {
+		t.Errorf("their token = %+v, want it live", r)
+	}
+}
+
+func TestPasswordAccount(t *testing.T) {
+	s, _ := newStore(t)
+	u := newUser("alice@corp.com")
+	mustCreate(t, s, u)
+
+	got, err := s.PasswordAccount(context.Background(), u.ID)
+
+	if err != nil || got != (app.PasswordAccount{Email: u.Email, PasswordHash: u.PasswordHash}) {
+		t.Errorf("PasswordAccount() = %+v, %v; want the address and the hash", got, err)
+	}
+	if _, err := s.PasswordAccount(context.Background(), uuid.NewV7()); !errors.Is(err, app.ErrNotFound) {
+		t.Errorf("PasswordAccount(unknown) = %v, want app.ErrNotFound", err)
 	}
 }

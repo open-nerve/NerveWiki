@@ -17,7 +17,7 @@ info:
 x-problem-codes: [bad_request, payload_too_large, rate_limited, internal_error]
 tags:
   - name: identity
-    description: Accounts, sign-in and sessions.
+    description: Accounts, sign-in, sessions and personal access tokens.
   - name: instance
     description: What this instance runs.
 paths:
@@ -31,6 +31,10 @@ paths:
     $ref: "modules/identity.yaml#/paths/~1api~1v0~1auth~1logout"
   /api/v0/me:
     $ref: "modules/identity.yaml#/paths/~1api~1v0~1me"
+  /api/v0/me/api-tokens:
+    $ref: "modules/identity.yaml#/paths/~1api~1v0~1me~1api-tokens"
+  /api/v0/api-tokens/{token_id}:
+    $ref: "modules/identity.yaml#/paths/~1api~1v0~1api-tokens~1{token_id}"
   /api/v0/instance:
     $ref: "modules/instance.yaml#/paths/~1api~1v0~1instance"
 components:
@@ -39,4 +43,6 @@ components:
     bearer:
       type: http
       scheme: bearer
-      description: An access token (JWT) from register.
+      description: >-
+        An access token (JWT) from register, login or refresh, or a personal
+        access token (nwk_pat_) from createApiToken.

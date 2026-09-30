@@ -16,7 +16,7 @@ import (
 
 // tightLimits are small buckets on a limiter whose clock stands still, so
 // nothing refills during a test: login_ip 3, login_ip_email 2,
-// register_ip 1, each regaining a unit a minute.
+// register_ip 1, password_user 2, each regaining a unit a minute.
 func tightLimits() httpadapter.Limits {
 	limiter := ratelimit.New(created)
 	return httpadapter.Limits{
@@ -24,6 +24,7 @@ func tightLimits() httpadapter.Limits {
 		LoginIP:      limiter.Bucket("login_ip", ratelimit.Rate{PerMinute: 1, Burst: 3}),
 		LoginIPEmail: limiter.Bucket("login_ip_email", ratelimit.Rate{PerMinute: 1, Burst: 2}),
 		RegisterIP:   limiter.Bucket("register_ip", ratelimit.Rate{PerMinute: 1, Burst: 1}),
+		PasswordUser: limiter.Bucket("password_user", ratelimit.Rate{PerMinute: 1, Burst: 2}),
 	}
 }
 

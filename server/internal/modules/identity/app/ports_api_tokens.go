@@ -4,6 +4,8 @@ import (
 	"context"
 	"time"
 	"uuid"
+
+	"github.com/open-nerve/NerveWiki/server/internal/modules/identity/domain"
 )
 
 // The ports of personal access tokens (M1/P3 design 3.2).
@@ -21,6 +23,20 @@ type NewAPIToken struct {
 // APITokenCreator inserts personal access tokens.
 type APITokenCreator interface {
 	CreateAPIToken(ctx context.Context, t NewAPIToken) error
+}
+
+// APITokenLister reads an account's tokens.
+type APITokenLister interface {
+	// ListAPITokens returns userID's unrevoked tokens, newest first and
+	// then by id.
+	ListAPITokens(ctx context.Context, userID uuid.UUID) ([]domain.APIToken, error)
+}
+
+// APITokenRevoker revokes personal access tokens.
+type APITokenRevoker interface {
+	// RevokeAPIToken revokes token id of userID at now; false when userID
+	// has no such unrevoked token.
+	RevokeAPIToken(ctx context.Context, id, userID uuid.UUID, now time.Time) (bool, error)
 }
 
 // APITokenCredential is what authentication and the credential lock check

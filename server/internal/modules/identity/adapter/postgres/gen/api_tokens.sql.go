@@ -102,6 +102,69 @@ func (q *Queries) GetAPITokenByID(ctx context.Context, id uuid.UUID) (GetAPIToke
 	return i, err
 }
 
+const listAPITokens = `-- name: ListAPITokens :many
+SELECT id, name, expires_at, last_used_at, created_at
+FROM api_tokens
+WHERE user_id = $1 AND revoked_at IS NULL
+ORDER BY created_at DESC, id DESC
+`
+
+type ListAPITokensRow struct {
+	ID         uuid.UUID
+	Name       string
+	ExpiresAt  *time.Time
+	LastUsedAt *time.Time
+	CreatedAt  time.Time
+}
+
+// The account's unrevoked tokens, expired ones too, newest first and then by id (M1/P3 design 3.2).
+func (q *Queries) ListAPITokens(ctx context.Context, userID uuid.UUID) ([]ListAPITokensRow, error) {
+	rows, err := q.db.Query(ctx, listAPITokens, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAPITokensRow
+	for rows.Next() {
+		var i ListAPITokensRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.ExpiresAt,
+			&i.LastUsedAt,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const revokeAPIToken = `-- name: RevokeAPIToken :execrows
+UPDATE api_tokens
+SET updated_at = $1, revoked_at = $1
+WHERE id = $2 AND user_id = $3 AND revoked_at IS NULL
+`
+
+type RevokeAPITokenParams struct {
+	Now    time.Time
+	ID     uuid.UUID
+	UserID uuid.UUID
+}
+
+// Revoking is a soft delete. Another account's token, or one revoked already, is not hit.
+func (q *Queries) RevokeAPIToken(ctx context.Context, arg RevokeAPITokenParams) (int64, error) {
+	result, err := q.db.Exec(ctx, revokeAPIToken, arg.Now, arg.ID, arg.UserID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const touchAPIToken = `-- name: TouchAPIToken :exec
 UPDATE api_tokens
 SET last_used_at = $1::timestamptz

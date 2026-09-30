@@ -42,7 +42,8 @@ components:
             Sent with every 401 (RFC 9110 15.5.2): Bearer error="invalid_token"
             (RFC 6750 3) when the bearer token sent is refused before the
             operation runs, being invalid or expired; plain Bearer for every
-            other 401.
+            other 401, including a credential that the operation finds revoked
+            while it runs.
           schema:
             type: string
       content:

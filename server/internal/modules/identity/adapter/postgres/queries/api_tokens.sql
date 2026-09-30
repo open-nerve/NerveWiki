@@ -24,3 +24,16 @@ WHERE id = sqlc.arg(id) AND (last_used_at IS NULL OR last_used_at < sqlc.arg(sta
 INSERT INTO api_tokens (id, user_id, token_hash, name, expires_at, created_at, updated_at)
 VALUES (sqlc.arg(id), sqlc.arg(user_id), sqlc.arg(token_hash), sqlc.arg(name), sqlc.arg(expires_at), sqlc.arg(now),
         sqlc.arg(now));
+
+-- name: ListAPITokens :many
+-- The account's unrevoked tokens, expired ones too, newest first and then by id (M1/P3 design 3.2).
+SELECT id, name, expires_at, last_used_at, created_at
+FROM api_tokens
+WHERE user_id = sqlc.arg(user_id) AND revoked_at IS NULL
+ORDER BY created_at DESC, id DESC;
+
+-- name: RevokeAPIToken :execrows
+-- Revoking is a soft delete. Another account's token, or one revoked already, is not hit.
+UPDATE api_tokens
+SET updated_at = sqlc.arg(now), revoked_at = sqlc.arg(now)
+WHERE id = sqlc.arg(id) AND user_id = sqlc.arg(user_id) AND revoked_at IS NULL;

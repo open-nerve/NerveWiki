@@ -83,7 +83,7 @@ func roomyLimits() config.RateLimitConfig {
 	roomy := config.BucketConfig{PerMinute: 600000, Burst: 100000}
 	return config.RateLimitConfig{
 		IPv6PrefixLen: 64, Anonymous: roomy, AuthFailure: roomy, Authenticated: roomy,
-		LoginIP: roomy, LoginIPEmail: roomy, RegisterIP: roomy,
+		LoginIP: roomy, LoginIPEmail: roomy, RegisterIP: roomy, PasswordUser: roomy,
 	}
 }
 

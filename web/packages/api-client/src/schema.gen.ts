@@ -101,6 +101,52 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v0/me/api-tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the caller's personal access tokens
+         * @description The caller's personal access tokens that are not revoked, expired ones too, newest first. The tokens themselves are never listed: only createApiToken answers one, once.
+         */
+        get: operations["listApiTokens"];
+        put?: never;
+        /**
+         * Create a personal access token
+         * @description Creates a personal access token of the caller and answers the token itself, this once. Sent as "Authorization: Bearer", it acts as the account in every operation until it expires or is revoked; it can create tokens itself. The caller's current password is asked for, whatever the credential: a refresh token that leaks cannot become a token that never expires. Attempts have a rate limit of their own, per account.
+         */
+        post: operations["createApiToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v0/api-tokens/{token_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token_id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke a personal access token
+         * @description Revokes one of the caller's tokens, which stops working at once; a token may revoke itself. A token that does not exist, is revoked already or belongs to another account is identity.api_token_not_found.
+         */
+        delete: operations["revokeApiToken"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v0/instance": {
         parameters: {
             query?: never;
@@ -194,6 +240,57 @@ export interface components {
             /** @description The ids of the onboarding steps the account has completed; the web app defines the steps. */
             onboarding_steps: string[];
         };
+        /** @description A personal access token as the list shows it. The token itself appears only in ApiTokenCreated. */
+        ApiToken: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /**
+             * Format: date-time
+             * @description When the token stops working; null when it never does.
+             */
+            expires_at: string | null;
+            /**
+             * Format: date-time
+             * @description When the token last authenticated a request, to the minute; null when it never has.
+             */
+            last_used_at: string | null;
+            /** Format: date-time */
+            created_at: string;
+        };
+        ApiTokenList: {
+            data: components["schemas"]["ApiToken"][];
+        };
+        ApiTokenCreate: {
+            /** @description 1–100 characters after the surrounding blanks are trimmed, without control characters. */
+            name: string;
+            /**
+             * Format: date-time
+             * @description A time in the future; absent for a token that never expires.
+             */
+            expires_at?: string;
+            current_password: string;
+        };
+        /** @description A new personal access token: the fields of ApiToken, and the token itself, which is shown this once and cannot be read again. */
+        ApiTokenCreated: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /**
+             * Format: date-time
+             * @description When the token stops working; null when it never does.
+             */
+            expires_at: string | null;
+            /**
+             * Format: date-time
+             * @description Null; the token has not been used yet.
+             */
+            last_used_at: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /** @description The token, nwk_pat_ and 43 more characters. */
+            token: string;
+        };
         InstanceInfo: {
             /**
              * @description Product name.
@@ -222,7 +319,7 @@ export interface components {
             headers: {
                 /** @description Whole seconds to wait before trying again, rounded up; sent with rate_limited and server_busy. */
                 "Retry-After"?: number;
-                /** @description Sent with every 401 (RFC 9110 15.5.2): Bearer error="invalid_token" (RFC 6750 3) when the bearer token sent is refused before the operation runs, being invalid or expired; plain Bearer for every other 401. */
+                /** @description Sent with every 401 (RFC 9110 15.5.2): Bearer error="invalid_token" (RFC 6750 3) when the bearer token sent is refused before the operation runs, being invalid or expired; plain Bearer for every other 401, including a credential that the operation finds revoked while it runs. */
                 "WWW-Authenticate"?: string;
                 [name: string]: unknown;
             };
@@ -244,6 +341,10 @@ export type LoginRequest = components['schemas']['LoginRequest'];
 export type RefreshRequest = components['schemas']['RefreshRequest'];
 export type LogoutRequest = components['schemas']['LogoutRequest'];
 export type User = components['schemas']['User'];
+export type ApiToken = components['schemas']['ApiToken'];
+export type ApiTokenList = components['schemas']['ApiTokenList'];
+export type ApiTokenCreate = components['schemas']['ApiTokenCreate'];
+export type ApiTokenCreated = components['schemas']['ApiTokenCreated'];
 export type InstanceInfo = components['schemas']['InstanceInfo'];
 export type ResponseProblem = components['responses']['Problem'];
 export type $defs = Record<string, never>;
@@ -363,6 +464,73 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["User"];
                 };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    listApiTokens: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The tokens. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiTokenList"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    createApiToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApiTokenCreate"];
+            };
+        };
+        responses: {
+            /** @description The new token, with the token itself. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiTokenCreated"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    revokeApiToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revoked. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             default: components["responses"]["Problem"];
         };

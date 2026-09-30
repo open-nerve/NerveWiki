@@ -49,6 +49,7 @@ ratelimit:
   login_ip: {per_minute: 30, burst: 10}
   login_ip_email: {per_minute: 10, burst: 5}
   register_ip: {per_minute: 10, burst: 5}
+  password_user: {per_minute: 5, burst: 5}
 log:
   level: info
   format: json
@@ -129,6 +130,7 @@ func TestLoadAppliesLayersInOrder(t *testing.T) {
 			LoginIP:       BucketConfig{PerMinute: 30, Burst: 3}, // burst: environment, inside a flow mapping
 			LoginIPEmail:  BucketConfig{PerMinute: 10, Burst: 5},
 			RegisterIP:    BucketConfig{PerMinute: 10, Burst: 5},
+			PasswordUser:  BucketConfig{PerMinute: 5, Burst: 5},
 		},
 		Log: LogConfig{Level: "debug", Format: "text"},
 	}

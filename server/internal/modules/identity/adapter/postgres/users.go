@@ -51,6 +51,16 @@ func (s *Store) FindLoginAccount(ctx context.Context, email string) (app.LoginAc
 	return app.LoginAccount{ID: row.ID, PasswordHash: row.Password}, nil
 }
 
+// PasswordAccount reads account id's address and hash; app.ErrNotFound
+// when there is none.
+func (s *Store) PasswordAccount(ctx context.Context, id uuid.UUID) (app.PasswordAccount, error) {
+	row, err := s.queries(ctx).GetPasswordAccount(ctx, id)
+	if err != nil {
+		return app.PasswordAccount{}, notFound(err)
+	}
+	return app.PasswordAccount{Email: row.Email, PasswordHash: row.Password}, nil
+}
+
 // LockForCredentials locks account id's row until the transaction ends and
 // reads it; app.ErrNotFound when there is none. Outside a transaction the
 // lock would end with the statement: call it inside one.

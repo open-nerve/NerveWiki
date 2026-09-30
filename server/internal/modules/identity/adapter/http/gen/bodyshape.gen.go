@@ -20,12 +20,17 @@ func BodyShapes() *bodyshape.Table {
 			/* 7 */ {Types: bodyshape.Object, Extra: bodyshape.Closed, Items: bodyshape.Open, Props: map[string]int{"email": 8, "password": 9}, Required: []string{"email", "password"}},
 			/* 8 */ {Types: bodyshape.String, Extra: bodyshape.Open, Items: bodyshape.Open},
 			/* 9 */ {Types: bodyshape.String, Extra: bodyshape.Open, Items: bodyshape.Open},
+			/* 10 */ {Types: bodyshape.Object, Extra: bodyshape.Closed, Items: bodyshape.Open, Props: map[string]int{"current_password": 11, "expires_at": 12, "name": 13}, Required: []string{"current_password", "name"}},
+			/* 11 */ {Types: bodyshape.String, Extra: bodyshape.Open, Items: bodyshape.Open},
+			/* 12 */ {Types: bodyshape.String, Format: bodyshape.FormatTime, Extra: bodyshape.Open, Items: bodyshape.Open},
+			/* 13 */ {Types: bodyshape.String, Extra: bodyshape.Open, Items: bodyshape.Open},
 		},
 		Roots: map[string]int{
 			"POST /api/v0/auth/login":    0,
 			"POST /api/v0/auth/logout":   3,
 			"POST /api/v0/auth/refresh":  5,
 			"POST /api/v0/auth/register": 7,
+			"POST /api/v0/me/api-tokens": 10,
 		},
 	}
 }

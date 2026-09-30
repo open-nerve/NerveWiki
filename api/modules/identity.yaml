@@ -132,6 +132,78 @@ paths:
                 $ref: "#/components/schemas/User"
         default:
           $ref: "#/components/responses/Problem"
+  /api/v0/me/api-tokens:
+    get:
+      operationId: listApiTokens
+      tags: [identity]
+      summary: List the caller's personal access tokens
+      description: >-
+        The caller's personal access tokens that are not revoked, expired ones
+        too, newest first. The tokens themselves are never listed: only
+        createApiToken answers one, once.
+      security: [{ bearer: [] }]
+      x-problem-codes: []
+      responses:
+        "200":
+          description: The tokens.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiTokenList"
+        default:
+          $ref: "#/components/responses/Problem"
+    post:
+      operationId: createApiToken
+      tags: [identity]
+      summary: Create a personal access token
+      description: >-
+        Creates a personal access token of the caller and answers the token
+        itself, this once. Sent as "Authorization: Bearer", it acts as the
+        account in every operation until it expires or is revoked; it can
+        create tokens itself. The caller's current password is asked for,
+        whatever the credential: a refresh token that leaks cannot become a
+        token that never expires. Attempts have a rate limit of their own,
+        per account.
+      security: [{ bearer: [] }]
+      x-problem-codes: [validation_failed, identity.current_password_incorrect, server_busy]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApiTokenCreate"
+      responses:
+        "201":
+          description: The new token, with the token itself.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiTokenCreated"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v0/api-tokens/{token_id}:
+    parameters:
+      - name: token_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      operationId: revokeApiToken
+      tags: [identity]
+      summary: Revoke a personal access token
+      description: >-
+        Revokes one of the caller's tokens, which stops working at once; a
+        token may revoke itself. A token that does not exist, is revoked
+        already or belongs to another account is identity.api_token_not_found.
+      security: [{ bearer: [] }]
+      x-problem-codes: [identity.api_token_not_found]
+      responses:
+        "204":
+          description: Revoked.
+        default:
+          $ref: "#/components/responses/Problem"
 components:
   # 与 api/openapi.yaml 的相同：打包时丢掉模块文件的 securitySchemes，oapi-codegen 读这一份
   securitySchemes:
@@ -154,7 +226,8 @@ components:
             Sent with every 401 (RFC 9110 15.5.2): Bearer error="invalid_token"
             (RFC 6750 3) when the bearer token sent is refused before the
             operation runs, being invalid or expired; plain Bearer for every
-            other 401.
+            other 401, including a credential that the operation finds revoked
+            while it runs.
           schema:
             type: string
       content:
@@ -247,3 +320,77 @@ components:
           type: array
           items:
             type: string
+    ApiToken:
+      description: >-
+        A personal access token as the list shows it. The token itself appears
+        only in ApiTokenCreated.
+      type: object
+      additionalProperties: false
+      required: [id, name, expires_at, last_used_at, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        expires_at:
+          description: When the token stops working; null when it never does.
+          type: [string, "null"]
+          format: date-time
+        last_used_at:
+          description: When the token last authenticated a request, to the minute; null when it never has.
+          type: [string, "null"]
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+    ApiTokenList:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/ApiToken"
+    ApiTokenCreate:
+      type: object
+      additionalProperties: false
+      required: [name, current_password]
+      properties:
+        name:
+          description: 1–100 characters after the surrounding blanks are trimmed, without control characters.
+          type: string
+        expires_at:
+          description: A time in the future; absent for a token that never expires.
+          type: string
+          format: date-time
+        current_password:
+          type: string
+    ApiTokenCreated:
+      description: >-
+        A new personal access token: the fields of ApiToken, and the token
+        itself, which is shown this once and cannot be read again.
+      type: object
+      additionalProperties: false
+      required: [id, name, expires_at, last_used_at, created_at, token]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        expires_at:
+          description: When the token stops working; null when it never does.
+          type: [string, "null"]
+          format: date-time
+        last_used_at:
+          description: Null; the token has not been used yet.
+          type: [string, "null"]
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        token:
+          description: The token, nwk_pat_ and 43 more characters.
+          type: string

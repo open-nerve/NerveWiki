@@ -26,6 +26,7 @@ type Limits struct {
 	LoginIP      *ratelimit.Bucket // ratelimit.login_ip, by client IP key
 	LoginIPEmail *ratelimit.Bucket // ratelimit.login_ip_email, by client IP key and address
 	RegisterIP   *ratelimit.Bucket // ratelimit.register_ip, by client IP key
+	PasswordUser *ratelimit.Bucket // ratelimit.password_user, by account
 }
 
 // limitLogin takes a unit of login_ip and one of login_ip_email, or
@@ -41,6 +42,17 @@ func (h handler) limitLogin(ctx context.Context, email string) error {
 // limitRegister takes a unit of register_ip.
 func (h handler) limitRegister(ctx context.Context) error {
 	return h.allow(ctx, ratelimit.Check{Bucket: h.s.Limits.RegisterIP, Key: httpserver.RequestMetaFrom(ctx).IPKey})
+}
+
+// limitPassword takes a unit of password_user. Its key is the caller's
+// account, which authentication verified: no one else can use up its units
+// (M1/P3 design 3.4).
+func (h handler) limitPassword(ctx context.Context) error {
+	actor, err := shared.RequireActor(ctx)
+	if err != nil {
+		return err
+	}
+	return h.allow(ctx, ratelimit.Check{Bucket: h.s.Limits.PasswordUser, Key: actor.UserID.String()})
 }
 
 // allow answers 429 rate_limited with Retry-After when a bucket refuses,

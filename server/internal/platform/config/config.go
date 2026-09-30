@@ -106,6 +106,9 @@ type RateLimitConfig struct {
 	LoginIP      BucketConfig `koanf:"login_ip"`
 	LoginIPEmail BucketConfig `koanf:"login_ip_email"`
 	RegisterIP   BucketConfig `koanf:"register_ip"`
+	// PasswordUser limits the authenticated operations that verify the
+	// current password (changing it, creating a token), by account.
+	PasswordUser BucketConfig `koanf:"password_user"`
 }
 
 // BucketConfig is a token bucket: it holds at most Burst units and gains
@@ -173,6 +176,7 @@ func (c Config) LogValue() slog.Value {
 			slog.Any("login_ip", c.RateLimit.LoginIP),
 			slog.Any("login_ip_email", c.RateLimit.LoginIPEmail),
 			slog.Any("register_ip", c.RateLimit.RegisterIP),
+			slog.Any("password_user", c.RateLimit.PasswordUser),
 		),
 		slog.Group("log",
 			slog.String("level", c.Log.Level),
