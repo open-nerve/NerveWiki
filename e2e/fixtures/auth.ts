@@ -1,4 +1,4 @@
-import type { ApiClient, AuthTokens } from "@nervewiki/api-client";
+import type { ApiClient, ApiTokenCreated, AuthTokens } from "@nervewiki/api-client";
 import { expect, type TestInfo } from "@playwright/test";
 
 /** A password that meets the rules: 8–128 characters, not a common one. */
@@ -55,4 +55,25 @@ export async function refresh(api: ApiClient, refreshToken: string): Promise<Aut
 /** The Authorization header of a bearer token. */
 export function bearer(token: string): Record<string, string> {
   return { Authorization: `Bearer ${token}` };
+}
+
+/**
+ * Creates a personal access token with credential (an access token or a
+ * personal access token), confirming the password of register, and returns
+ * the answer: the token itself, this once.
+ */
+export async function createToken(
+  api: ApiClient,
+  credential: string,
+  body: { name: string; expires_at?: string }
+): Promise<ApiTokenCreated> {
+  const { data, error, response } = await api.POST("/api/v0/me/api-tokens", {
+    body: { ...body, current_password: password },
+    headers: bearer(credential),
+  });
+  expect(response.status, `create a token: ${JSON.stringify(error)}`).toBe(201);
+  if (!data) {
+    throw new Error("create a token answered 201 without the token");
+  }
+  return data;
 }

@@ -74,3 +74,22 @@ test("A3 (API): behind a trusted proxy, the session records the client the proxy
     ip: "198.51.100.23",
   });
 });
+
+test("A3 (API): a deactivated account does not sign in; only the right password learns why", async ({
+  api,
+  db,
+}, testInfo) => {
+  const email = emailFor(testInfo);
+  const tokens = await register(api, email);
+  const deactivated = await api.POST("/api/v0/me/deactivate", { headers: bearer(tokens.access_token) });
+  expect(deactivated.response.status).toBe(204);
+
+  const before = await countIdentity(db);
+  const right = await api.POST("/api/v0/auth/login", { body: { email, password } });
+  expect(right.response.status).toBe(403);
+  expect(right.error?.code).toBe("identity.account_deactivated");
+  const wrong = await api.POST("/api/v0/auth/login", { body: { email, password: "Wr0ng-password" } });
+  expect(wrong.response.status).toBe(401);
+  expect(wrong.error?.code).toBe("identity.invalid_credentials");
+  await expectNothingAdded(db, before);
+});
