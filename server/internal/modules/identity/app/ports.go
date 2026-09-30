@@ -66,3 +66,43 @@ type SessionReader interface {
 	// SessionCredential returns ErrNotFound when there is no such session.
 	SessionCredential(ctx context.Context, id uuid.UUID) (SessionCredential, error)
 }
+
+// PasswordHasher hashes and verifies passwords with argon2id. Both return a
+// *shared.Error of 503 server_busy when no slot frees up within the wait
+// limit (M1/P1 design 3.4).
+type PasswordHasher interface {
+	Hash(ctx context.Context, password string) (string, error)
+	// Verify reports whether password matches hash, and whether hash has
+	// other parameters than the current ones: then login hashes the
+	// password again.
+	Verify(ctx context.Context, password, hash string) (ok, rehash bool, err error)
+}
+
+// AccessClaims are the claims of an access token: nothing about permissions
+// (M1/P1 design 3.4).
+type AccessClaims struct {
+	UserID    uuid.UUID
+	SessionID uuid.UUID
+	ExpiresAt time.Time
+}
+
+// ErrAccessTokenExpired is what AccessTokens.Verify returns for a token
+// whose signature is valid but whose exp has passed: the client's cue to
+// refresh. Any other failure is a different error.
+var ErrAccessTokenExpired = errors.New("access token expired")
+
+// AccessTokens signs and verifies access tokens (JWT, EdDSA).
+type AccessTokens interface {
+	Issue(c AccessClaims) (string, error)
+	// Verify checks the token at now; ErrAccessTokenExpired when only the
+	// expiry fails.
+	Verify(token string, now time.Time) (AccessClaims, error)
+}
+
+// RefreshTokenMAC tags refresh tokens (M1/P1 design 3.4): the first 16 bytes
+// of HMAC-SHA256 under a key derived from the signing key.
+type RefreshTokenMAC interface {
+	Tag(message []byte) [16]byte
+	// Verify reports whether tag is message's tag, in constant time.
+	Verify(message []byte, tag [16]byte) bool
+}

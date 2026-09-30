@@ -36,7 +36,7 @@ export interface components {
              * @description What is wrong with the field.
              * @enum {string}
              */
-            code: "required" | "invalid_format" | "too_short" | "too_long" | "out_of_range" | "not_allowed" | "duplicate";
+            code: "required" | "invalid_format" | "too_short" | "too_long" | "out_of_range" | "not_allowed" | "duplicate" | "common_password";
             message: string;
         };
         /** @description RFC 9457 problem details. `title` is the HTTP status phrase, `detail` explains this occurrence, and clients branch on `code`. Must match httpserver.Problem; the platform's contract test checks it. */
