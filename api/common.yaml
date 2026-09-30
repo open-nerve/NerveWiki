@@ -65,5 +65,6 @@ components:
             - out_of_range
             - not_allowed
             - duplicate
+            - common_password
         message:
           type: string

@@ -41,6 +41,7 @@ export const instanceJSON: InstanceInfo = {
   version: "1.2.3",
   commit: "4f2a9c1",
   api_version: "v0",
+  signup_enabled: true,
 };
 
 /** fakeApi is an API client whose every request answer answers. */

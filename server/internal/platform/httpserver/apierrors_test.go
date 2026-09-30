@@ -203,6 +203,38 @@ func TestWriteMapsProblemErrors(t *testing.T) {
 	}
 }
 
+// A 401 carries a challenge (RFC 9110 15.5.2): Bearer, unless a middleware
+// set a more precise one before. No other status gets one.
+func TestWriteChallengesA401(t *testing.T) {
+	unauthorized := problemErr{status: http.StatusUnauthorized, code: "unauthorized", detail: "Authentication is required."}
+	tests := []struct {
+		name   string
+		err    error
+		preset string
+		want   string
+	}{
+		{"a 401", unauthorized, "", "Bearer"},
+		{"a 401 wrapped", fmt.Errorf("get me: %w", unauthorized), "", "Bearer"},
+		{"a 401 whose challenge is set", unauthorized, `Bearer error="invalid_token"`, `Bearer error="invalid_token"`},
+		{"a 403", problemErr{status: http.StatusForbidden, code: "forbidden", detail: "no"}, "", ""},
+	}
+	for _, tt := range tests {
+		errs := NewAPIErrors(slog.New(slog.DiscardHandler))
+		h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if tt.preset != "" {
+				w.Header().Set("WWW-Authenticate", tt.preset)
+			}
+			errs.Write(w, r, tt.err)
+		})
+
+		rec := serve(h, httptest.NewRequest(http.MethodGet, "/api/v0/me", nil))
+
+		if got := rec.Result().Header.Get("WWW-Authenticate"); got != tt.want {
+			t.Errorf("%s: WWW-Authenticate = %q, want %q", tt.name, got, tt.want)
+		}
+	}
+}
+
 // Nothing was written yet, so the platform chain's recorder reports the
 // response as not started and Write answers the 500 problem.
 func TestWriteLogsAndHidesAnInternalError(t *testing.T) {

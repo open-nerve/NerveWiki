@@ -18,6 +18,9 @@ server:
   max_body_bytes: 1048576
   # 非空时，监听成功后把实际地址写进这个文件（端到端测试用 127.0.0.1:0 监听）
   addr_file: ""
+  # 反向代理的 CIDR 列表：来自它们的 X-Forwarded-For 才被采信，用于认出客户端 IP。
+  # 空列表时客户端就是连接的对端。环境变量里用逗号分隔，例如 10.0.0.0/8,fd00::/8
+  trusted_proxies: []
 
 database:
   # 必须提供。dev 环境写在 config.dev.yaml 中；test 和 prod 通过 NWIKI_DATABASE__URL 提供。
@@ -27,6 +30,25 @@ database:
   auto_migrate: true
   # COMMIT、ROLLBACK 自己的期限：它们不随请求期限取消
   commit_timeout: 2s
+
+auth:
+  # 是否开放注册。基础配置（也就是 prod）关闭：由服务器管理员用 nervewiki users create 建账户
+  signup_enabled: false
+  access_token_ttl: 15m
+  # 会话的期限从登录起算，续期不延长
+  session_ttl: 720h
+  jwt:
+    # 签名私钥：PKCS#8 PEM 的 Ed25519 私钥（openssl genpkey -algorithm ed25519）。
+    # prod 必须提供；dev、test 为空时每次启动生成临时密钥，重启后已签发的令牌全部失效
+    private_key_file: ""
+  password:
+    # argon2id 的参数（OWASP 的最低配置）。调整后，旧的哈希在下次登录时按新参数重算
+    argon2_memory_kib: 19456
+    argon2_iterations: 2
+    argon2_parallelism: 1
+    # 同时进行的哈希计算的上限；拿不到名额的请求最多等 max_wait，然后 503 server_busy
+    max_concurrent_hashes: 4
+    max_wait: 2s
 
 log:
   level: info # debug | info | warn | error

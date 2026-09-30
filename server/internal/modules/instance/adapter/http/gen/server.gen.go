@@ -43,6 +43,9 @@ type InstanceInfo struct {
 	// Examples: Nerve Wiki
 	Product string `json:"product"`
 
+	// SignupEnabled Whether anyone may register (auth.signup_enabled); when off, the server's administrator creates the accounts.
+	SignupEnabled bool `json:"signup_enabled"`
+
 	// Version Product version of the running build.
 	//
 	// Examples: 0.1.0-dev
@@ -211,7 +214,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 }
 
 type ProblemResponseHeaders struct {
-	RetryAfter *int
+	RetryAfter      *int
+	WWWAuthenticate *string
 }
 type ProblemApplicationProblemPlusJSONResponse struct {
 	Body externalRef0.Problem
@@ -255,6 +259,9 @@ func (response GetInstancedefaultApplicationProblemPlusJSONResponse) VisitGetIns
 	w.Header().Set("Content-Type", "application/problem+json")
 	if response.Headers.RetryAfter != nil {
 		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	if response.Headers.WWWAuthenticate != nil {
+		w.Header().Set("WWW-Authenticate", fmt.Sprint(*response.Headers.WWWAuthenticate))
 	}
 	w.WriteHeader(response.StatusCode)
 	_, err := buf.WriteTo(w)

@@ -1,6 +1,7 @@
 package configs_test
 
 import (
+	"net/netip"
 	"reflect"
 	"strings"
 	"testing"
@@ -17,18 +18,24 @@ func TestBuiltInProfiles(t *testing.T) {
 		addr        string // expected server.addr
 		url         string // expected database.url
 		autoMigrate bool
+		signup      bool
+		argon2      config.PasswordConfig
+		keyFile     string
 		level       string
 		format      string
 	}{
-		{env: "dev", addr: "127.0.0.1:8080", url: devURL, autoMigrate: true, level: "debug", format: "text"},
-		{env: "test", addr: ":8080", url: "postgres://from-env", autoMigrate: true, level: "warn", format: "text"},
-		{env: "prod", addr: ":8080", url: "postgres://from-env", autoMigrate: false, level: "info", format: "json"},
+		{env: "dev", addr: "127.0.0.1:8080", url: devURL, autoMigrate: true, signup: true, argon2: owasp(), level: "debug", format: "text"},
+		{env: "test", addr: ":8080", url: "postgres://from-env", autoMigrate: true, signup: true, argon2: cheap(), level: "warn", format: "text"},
+		{env: "prod", addr: ":8080", url: "postgres://from-env", autoMigrate: false, signup: false, argon2: owasp(), keyFile: "/run/secrets/jwt.pem", level: "info", format: "json"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.env, func(t *testing.T) {
 			environ := []string{"NWIKI_ENV=" + tt.env}
 			if tt.env != "dev" {
 				environ = append(environ, "NWIKI_DATABASE__URL=postgres://from-env")
+			}
+			if tt.keyFile != "" {
+				environ = append(environ, "NWIKI_AUTH__JWT__PRIVATE_KEY_FILE="+tt.keyFile)
 			}
 			cfg, err := config.Load(config.Sources{Embedded: configs.FS(), Environ: environ})
 			if err != nil {
@@ -44,14 +51,42 @@ func TestBuiltInProfiles(t *testing.T) {
 					ShutdownTimeout:   20 * time.Second,
 					RequestTimeout:    15 * time.Second,
 					MaxBodyBytes:      1 << 20,
+					TrustedProxies:    []netip.Prefix{},
 				},
 				Database: config.DatabaseConfig{URL: tt.url, MaxConns: 10, AutoMigrate: tt.autoMigrate, CommitTimeout: 2 * time.Second},
-				Log:      config.LogConfig{Level: tt.level, Format: tt.format},
+				Auth: config.AuthConfig{
+					SignupEnabled:  tt.signup,
+					AccessTokenTTL: 15 * time.Minute,
+					SessionTTL:     30 * 24 * time.Hour,
+					JWT:            config.JWTConfig{PrivateKeyFile: tt.keyFile},
+					Password:       tt.argon2,
+				},
+				Log: config.LogConfig{Level: tt.level, Format: tt.format},
 			}
 			if !reflect.DeepEqual(cfg, want) {
 				t.Errorf("Load() =\n%+v\nwant\n%+v", cfg, want)
 			}
 		})
+	}
+}
+
+// owasp is OWASP's minimum for argon2id, the default.
+func owasp() config.PasswordConfig {
+	return config.PasswordConfig{Argon2MemoryKiB: 19456, Argon2Iterations: 2, Argon2Parallelism: 1, MaxConcurrentHashes: 4, MaxWait: 2 * time.Second}
+}
+
+// cheap is the test profile's argon2id: tests register many accounts.
+func cheap() config.PasswordConfig {
+	p := owasp()
+	p.Argon2MemoryKiB, p.Argon2Iterations = 64, 1
+	return p
+}
+
+// prod has no ephemeral signing key: a restart would sign every user out.
+func TestProdRequiresASigningKey(t *testing.T) {
+	_, err := config.Load(config.Sources{Embedded: configs.FS(), Environ: []string{"NWIKI_ENV=prod", "NWIKI_DATABASE__URL=postgres://x"}})
+	if err == nil || !strings.Contains(err.Error(), "auth.jwt.private_key_file: is required in prod") {
+		t.Fatalf("Load() error = %v, want auth.jwt.private_key_file to be required", err)
 	}
 }
 

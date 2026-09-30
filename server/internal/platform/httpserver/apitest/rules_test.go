@@ -133,7 +133,8 @@ func authoringViolations(doc *openapi3.T, modules []string) []string {
 
 // ruleCheck walks one document and collects its violations: path checks the
 // /api/v0/ prefix, operation the operationId, tags, default problem,
-// security and problem codes, and schema the keywords that oapi-codegen
+// security and problem codes, parameter and requestBody the shapes the
+// whole-program tests build, and schema the keywords that oapi-codegen
 // mistranslates and, through closedObject, additionalProperties.
 type ruleCheck struct {
 	doc         *openapi3.T
@@ -246,7 +247,7 @@ func (r *ruleCheck) operation(where string, op *openapi3.Operation) {
 		r.parameter(where+" parameters/"+p.Value.Name, p)
 	}
 	if body := op.RequestBody; body != nil && body.Ref == "" {
-		r.content(where+" requestBody", body.Value.Content)
+		r.requestBody(where+" requestBody", body.Value.Content)
 	}
 	responses := op.Responses.Map()
 	for _, status := range slices.Sorted(maps.Keys(responses)) {
@@ -281,7 +282,7 @@ func (r *ruleCheck) components(c *openapi3.Components) {
 	}
 	for _, name := range slices.Sorted(maps.Keys(c.RequestBodies)) {
 		if body := c.RequestBodies[name]; body.Ref == "" {
-			r.content("components/requestBodies/"+name, body.Value.Content)
+			r.requestBody("components/requestBodies/"+name, body.Value.Content)
 		}
 	}
 	for _, name := range slices.Sorted(maps.Keys(c.Responses)) {
@@ -311,12 +312,27 @@ func (r *ruleCheck) closedObject(where string, ref *openapi3.SchemaRef) {
 	}
 }
 
+// parameter: a parameter declares schema, not content. The whole-program
+// tests fill each parameter from its schema (Operation.Target).
 func (r *ruleCheck) parameter(where string, p *openapi3.ParameterRef) {
 	if p.Ref != "" {
 		return
 	}
+	if len(p.Value.Content) > 0 {
+		r.report(where, "declares content; write schema")
+	}
 	r.schema(where, p.Value.Schema)
 	r.content(where, p.Value.Content)
+}
+
+// requestBody: a JSON request body is an object, which can take new
+// properties without breaking clients. The whole-program tests build every
+// body as one (Operation.BodyCases).
+func (r *ruleCheck) requestBody(where string, content openapi3.Content) {
+	if media := content.Get("application/json"); media != nil && media.Schema != nil && !isObject(media.Schema.Value) {
+		r.report(where, "application/json schema is not an object")
+	}
+	r.content(where, content)
 }
 
 func (r *ruleCheck) response(where string, res *openapi3.ResponseRef) {

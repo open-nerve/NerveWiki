@@ -66,6 +66,15 @@ make run      # 以 dev 配置启动 nervewiki serve，监听 127.0.0.1:8080；C
 
 `NWIKI_ENV` 选择环境（`dev`、`test`、`prod`，默认 `dev`）。未知的键、空值、越界的数字、不带单位的时长都会报错，所有无效的键一次列出。日志里的数据库地址整体脱敏。
 
+### 账户与认证
+
+除了 `POST /api/v0/auth/register` 与 `GET /api/v0/instance`，每个接口都要求 `Authorization: Bearer <访问令牌>`，否则答 401。
+
+- **注册**：`auth.signup_enabled`，dev、test 开放，prod 关闭（`GET /api/v0/instance` 的 `signup_enabled` 告诉客户端）。密码 8–128 个字符，不能是常见密码，也不能由邮箱 @ 之前的部分构成；常见密码名单由 `node tools/password-blocklist/build.mjs` 生成（取 SecLists 固定提交中的 NCSC 名单并核对校验和）。
+- **签名私钥**：`auth.jwt.private_key_file`，PKCS#8 PEM 的 Ed25519 私钥，用 `openssl genpkey -algorithm ed25519 -out jwt.pem` 生成。prod 必须提供，缺了拒绝启动；dev、test 不提供时每次启动生成临时密钥，重启后已签发的令牌全部失效。日志只记是否设置，不记路径。
+- **反向代理**：`server.trusted_proxies` 列出代理的 CIDR（环境变量用逗号分隔，例如 `NWIKI_SERVER__TRUSTED_PROXIES=10.0.0.0/8`）。只有来自它们的 `X-Forwarded-For` 被采信，代理写入的必须是不带端口的 IP；会话记录的就是这样认出的客户端 IP。配置不对时服务各告警一次。
+- 非 prod 的服务监听在回环地址之外时，启动时告警：这多半是忘了设 `NWIKI_ENV=prod` 的部署，注册开放、签名密钥是临时的。
+
 ## 接口与代码生成
 
 接口用 OpenAPI 3.1 描述，服务端与前端都以它为准：
@@ -127,18 +136,21 @@ cd e2e && pnpm exec playwright show-report                      # 查看上一�
 
 ```bash
 make image VERSION=0.1.0         # 构建 nervewiki:0.1.0
-make image-smoke VERSION=0.1.0   # 在镜像上跑 S1、S3：迁移、探针、前端、实例与提交信息、非 root、优雅停机（另需 curl、jq）
+make image-smoke VERSION=0.1.0   # 在镜像上跑 S1、S3：迁移、探针、前端、实例与提交信息、注册关闭、非 root、优雅停机（另需 curl、jq、openssl）
 ```
 
 镜像的提交信息取自构建上下文中的 `.git`，所以要在普通的克隆中构建：`git worktree` 的 `.git` 是指向别处的文件，`make image` 会直接报错。`.dockerignore` 排除的正好是 `.gitignore` 忽略的，改一个时同步另一个：否则镜像里的二进制报告的 `modified` 与工作区不符，`make image-smoke` 失败。
 
-- 镜像默认 `NWIKI_ENV=prod`。配置用环境变量提供（也可以挂载一个目录并设置 `NWIKI_CONFIG_DIR`），至少要有数据库地址 `NWIKI_DATABASE__URL`；其余配置项见 `server/configs/config.yaml`，合并规则见上文"配置"。
-- prod 配置不自动迁移。每次升级先执行迁移，再启动服务：
+- 镜像默认 `NWIKI_ENV=prod`。配置用环境变量提供（也可以挂载一个目录并设置 `NWIKI_CONFIG_DIR`），至少要有数据库地址 `NWIKI_DATABASE__URL` 与签名私钥 `NWIKI_AUTH__JWT__PRIVATE_KEY_FILE`（见上文"账户与认证"；私钥文件要能被 uid 65532 读取）；其余配置项见 `server/configs/config.yaml`，合并规则见上文"配置"。
+- prod 配置不自动迁移。每次升级先执行迁移，再启动服务（每个命令都校验整份配置，所以迁移也带上同样的变量）：
 
   ```bash
-  docker run --rm -e NWIKI_DATABASE__URL=… nervewiki:0.1.0 migrate up
-  docker run -d -p 8080:8080 -e NWIKI_DATABASE__URL=… nervewiki:0.1.0
+  key=(-v "$PWD/jwt.pem:/run/secrets/jwt.pem:ro" -e NWIKI_AUTH__JWT__PRIVATE_KEY_FILE=/run/secrets/jwt.pem)
+  docker run --rm -e NWIKI_DATABASE__URL=… "${key[@]}" nervewiki:0.1.0 migrate up
+  docker run -d -p 8080:8080 -e NWIKI_DATABASE__URL=… "${key[@]}" nervewiki:0.1.0
   ```
+
+- 在反向代理之后运行时设置 `NWIKI_SERVER__TRUSTED_PROXIES`，否则每个客户端都被当成代理。
 
 - 数据库必须以 builtin provider 的 `C.UTF-8` 初始化，否则服务拒绝启动，见[总体设计](docs/v0.1/v0.1-design.md) 7.1。
 - 探针：存活用 `GET /healthz`（不访问任何依赖），就绪用 `GET /readyz`（数据库可用、迁移已执行完）。镜像里没有 shell 与 curl，所以没有写 `HEALTHCHECK`，由编排系统探测。

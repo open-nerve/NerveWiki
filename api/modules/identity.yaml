@@ -1,0 +1,137 @@
+# identity 模块的接口：账户、登录与会话。生成的 Go 代码在
+# server/internal/modules/identity/adapter/http/gen（make gen-go）。
+openapi: 3.1.0
+info:
+  title: Nerve Wiki identity API
+  version: v0
+paths:
+  /api/v0/auth/register:
+    post:
+      operationId: register
+      tags: [identity]
+      summary: Create an account and sign in
+      description: >-
+        Creates an account and signs it in: the response holds a new
+        session's tokens. While sign-up is off, a well-formed request answers
+        identity.signup_disabled before the address or the password is looked
+        at, so the answer never depends on whether the address is registered.
+        The password needs 8–128 characters and must be neither a common
+        password nor made of the address's local part.
+      security: []
+      x-problem-codes: [identity.signup_disabled, validation_failed, identity.email_taken, server_busy]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "201":
+          description: The account exists and is signed in.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthTokens"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v0/me:
+    get:
+      operationId: getMe
+      tags: [identity]
+      summary: Read the caller's account
+      security: [{ bearer: [] }]
+      x-problem-codes: []
+      responses:
+        "200":
+          description: The caller's account.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        default:
+          $ref: "#/components/responses/Problem"
+components:
+  # 与 api/openapi.yaml 的相同：打包时丢掉模块文件的 securitySchemes，oapi-codegen 读这一份
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+  responses:
+    Problem:
+      description: Error (RFC 9457 problem details).
+      headers:
+        Retry-After:
+          description: >-
+            Whole seconds to wait before trying again, rounded up; sent with
+            rate_limited and server_busy.
+          schema:
+            type: integer
+            minimum: 1
+        WWW-Authenticate:
+          description: >-
+            Sent with every 401 (RFC 9110 15.5.2): Bearer error="invalid_token"
+            (RFC 6750 3) when the bearer token sent is refused before the
+            operation runs, being invalid or expired; plain Bearer for every
+            other 401.
+          schema:
+            type: string
+      content:
+        application/problem+json:
+          schema:
+            $ref: "../common.yaml#/components/schemas/Problem"
+  schemas:
+    RegisterRequest:
+      type: object
+      additionalProperties: false
+      required: [email, password]
+      properties:
+        email:
+          description: The sign-in address; stored trimmed and in lower case.
+          type: string
+          format: email
+        password:
+          type: string
+    AuthTokens:
+      description: >-
+        A session's tokens. Send access_token as "Authorization: Bearer";
+        access_token_expires_in counts from the response, so a client's clock
+        does not matter.
+      type: object
+      additionalProperties: false
+      required: [token_type, access_token, access_token_expires_in, refresh_token, refresh_token_expires_at]
+      properties:
+        token_type:
+          type: string
+          enum: [Bearer]
+        access_token:
+          type: string
+        access_token_expires_in:
+          description: Seconds from this response until the access token expires.
+          type: integer
+        refresh_token:
+          description: An opaque nwk_rt_ token.
+          type: string
+        refresh_token_expires_at:
+          description: When the session ends; refreshing never extends it.
+          type: string
+          format: date-time
+    User:
+      type: object
+      additionalProperties: false
+      required: [id, email, display_name, onboarding_steps]
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        display_name:
+          type: string
+        onboarding_steps:
+          description: >-
+            The ids of the onboarding steps the account has completed; the web
+            app defines the steps.
+          type: array
+          items:
+            type: string

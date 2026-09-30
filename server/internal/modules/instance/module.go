@@ -15,13 +15,21 @@ type Module struct {
 	uc httpadapter.UseCases
 }
 
-// New wires the module: GetInfo reads the build of the running binary. The
-// module needs nothing from bootstrap; a module that does takes a Deps
-// struct here.
-func New() *Module {
+// Deps are what bootstrap gives the module.
+type Deps struct {
+	SignupEnabled bool // auth.signup_enabled
+}
+
+// New wires the module: GetInfo reads the build of the running binary.
+func New(d Deps) *Module {
 	return &Module{uc: httpadapter.UseCases{
-		GetInfo: app.NewGetInfo(buildinfo.Source{}),
+		GetInfo: app.NewGetInfo(buildinfo.Source{}, d.SignupEnabled),
 	}}
+}
+
+// PublicOperations are the module's routes that need no token.
+func (m *Module) PublicOperations() []string {
+	return httpadapter.PublicOperations()
 }
 
 // Register mounts the module's API on router, the root router from

@@ -5,18 +5,21 @@ package apigen
 
 // Defines values for FieldErrorCode.
 const (
-	FieldErrorCodeDuplicate     FieldErrorCode = "duplicate"
-	FieldErrorCodeInvalidFormat FieldErrorCode = "invalid_format"
-	FieldErrorCodeNotAllowed    FieldErrorCode = "not_allowed"
-	FieldErrorCodeOutOfRange    FieldErrorCode = "out_of_range"
-	FieldErrorCodeRequired      FieldErrorCode = "required"
-	FieldErrorCodeTooLong       FieldErrorCode = "too_long"
-	FieldErrorCodeTooShort      FieldErrorCode = "too_short"
+	FieldErrorCodeCommonPassword FieldErrorCode = "common_password"
+	FieldErrorCodeDuplicate      FieldErrorCode = "duplicate"
+	FieldErrorCodeInvalidFormat  FieldErrorCode = "invalid_format"
+	FieldErrorCodeNotAllowed     FieldErrorCode = "not_allowed"
+	FieldErrorCodeOutOfRange     FieldErrorCode = "out_of_range"
+	FieldErrorCodeRequired       FieldErrorCode = "required"
+	FieldErrorCodeTooLong        FieldErrorCode = "too_long"
+	FieldErrorCodeTooShort       FieldErrorCode = "too_short"
 )
 
 // Valid indicates whether the value is a known member of the FieldErrorCode enum.
 func (e FieldErrorCode) Valid() bool {
 	switch e {
+	case FieldErrorCodeCommonPassword:
+		return true
 	case FieldErrorCodeDuplicate:
 		return true
 	case FieldErrorCodeInvalidFormat:

@@ -45,6 +45,9 @@ const (
 	FieldOutOfRange    = "out_of_range"
 	FieldNotAllowed    = "not_allowed"
 	FieldDuplicate     = "duplicate"
+	// FieldCommonPassword: a password on the common-password list, or one
+	// made of the account's e-mail address (M1/P1 design 3.4).
+	FieldCommonPassword = "common_password"
 )
 
 // FieldCodes returns the closed set of field codes: every Field* constant.
@@ -52,6 +55,7 @@ const (
 func FieldCodes() []string {
 	return []string{
 		FieldRequired, FieldInvalidFormat, FieldTooShort, FieldTooLong, FieldOutOfRange, FieldNotAllowed, FieldDuplicate,
+		FieldCommonPassword,
 	}
 }
 

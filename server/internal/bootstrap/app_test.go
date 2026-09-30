@@ -64,7 +64,15 @@ func testConfig(t *testing.T, dbURL string, autoMigrate bool) config.Config {
 			MaxBodyBytes:      1 << 20,
 		},
 		Database: config.DatabaseConfig{URL: dbURL, MaxConns: 4, AutoMigrate: autoMigrate, CommitTimeout: 2 * time.Second},
-		Log:      config.LogConfig{Level: "error", Format: "text"},
+		Auth: config.AuthConfig{
+			SignupEnabled:  true,
+			AccessTokenTTL: 15 * time.Minute,
+			SessionTTL:     720 * time.Hour,
+			Password: config.PasswordConfig{
+				Argon2MemoryKiB: 64, Argon2Iterations: 1, Argon2Parallelism: 1, MaxConcurrentHashes: 4, MaxWait: 2 * time.Second,
+			},
+		},
+		Log: config.LogConfig{Level: "error", Format: "text"},
 	}
 }
 
@@ -111,12 +119,18 @@ func startApp(t *testing.T, cfg config.Config, migrations fs.FS) string {
 	t.Helper()
 	a := buildApp(t, cfg, migrations)
 	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan error, 1)
-	go func() { done <- a.run(ctx) }()
+	// run's result goes to both: waitHealthy takes it from done when the
+	// server stops early, and the cleanup still finds it in stopped.
+	done, stopped := make(chan error, 1), make(chan error, 1)
+	go func() {
+		err := a.run(ctx)
+		done <- err
+		stopped <- err
+	}()
 	// Cleanups run last-in first-out: run stops before buildApp's close.
 	t.Cleanup(func() {
 		cancel()
-		if err := <-done; err != nil {
+		if err := <-stopped; err != nil {
 			t.Errorf("run() = %v, want nil after cancel", err)
 		}
 	})

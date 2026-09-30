@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"context"
+	"fmt"
+	"io/fs"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -12,6 +14,7 @@ import (
 	"time"
 
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres/pgtest"
+	"github.com/open-nerve/NerveWiki/server/migrations"
 )
 
 func execute(ctx context.Context, environ []string, args ...string) (code int, stdout, stderr string) {
@@ -73,16 +76,29 @@ func TestInvalidConfigurationIsReported(t *testing.T) {
 	}
 }
 
+// The binary embeds every migration: up applies them all in order, and
+// status lists each as applied.
 func TestMigrateUpThenStatus(t *testing.T) {
+	files, err := fs.ReadDir(migrations.FS(), ".")
+	if err != nil || len(files) == 0 {
+		t.Fatalf("embedded migrations = %d, %v; want some", len(files), err)
+	}
+	var applied, status strings.Builder
+	status.WriteString(`^VERSION +STATE +APPLIED AT +SOURCE\n`)
+	for i, f := range files {
+		fmt.Fprintf(&applied, "applied %s\n", f.Name())
+		fmt.Fprintf(&status, `%d +applied +\S+ +%s\n`, i+1, regexp.QuoteMeta(f.Name()))
+	}
+	status.WriteString("$")
 	environ := []string{"NWIKI_ENV=test", "NWIKI_DATABASE__URL=" + pgtest.NewEmptyDatabase(t)}
 
 	code, stdout, stderr := execute(context.Background(), environ, "migrate", "up")
-	if code != 0 || stdout != "applied 00001_platform_pg_trgm.sql\n" {
-		t.Errorf("nervewiki migrate up = %d %q (stderr %q), want 0 and the first migration", code, stdout, stderr)
+	if code != 0 || stdout != applied.String() {
+		t.Errorf("nervewiki migrate up = %d %q (stderr %q), want 0 and\n%s", code, stdout, stderr, applied.String())
 	}
 	code, stdout, stderr = execute(context.Background(), environ, "migrate", "status")
-	if code != 0 || !regexp.MustCompile(`^VERSION +STATE +APPLIED AT +SOURCE\n1 +applied +\S+ +00001_platform_pg_trgm\.sql\n$`).MatchString(stdout) {
-		t.Errorf("nervewiki migrate status = %d %q (stderr %q), want 0 and the applied migration", code, stdout, stderr)
+	if code != 0 || !regexp.MustCompile(status.String()).MatchString(stdout) {
+		t.Errorf("nervewiki migrate status = %d %q (stderr %q), want 0 and every migration applied", code, stdout, stderr)
 	}
 }
 

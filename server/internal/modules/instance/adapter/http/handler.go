@@ -16,6 +16,12 @@ type UseCases struct {
 	GetInfo *app.GetInfo
 }
 
+// PublicOperations are the module's routes that need no token, as the
+// generated code registers them.
+func PublicOperations() []string {
+	return []string{"GET /api/v0/instance"}
+}
+
 // Register mounts the module's routes on router, the root router from
 // httpserver.NewRouter, behind the platform's per-route middlewares. They
 // are more specific than the platform's /api/ fallback, which keeps
@@ -47,9 +53,10 @@ type handler struct {
 func (h handler) GetInstance(context.Context, gen.GetInstanceRequestObject) (gen.GetInstanceResponseObject, error) {
 	info := h.uc.GetInfo.Execute()
 	return gen.GetInstance200JSONResponse{
-		Product:    info.Product,
-		Version:    info.Version,
-		Commit:     info.Commit,
-		APIVersion: gen.InstanceInfoAPIVersion(info.APIVersion),
+		Product:       info.Product,
+		Version:       info.Version,
+		Commit:        info.Commit,
+		APIVersion:    gen.InstanceInfoAPIVersion(info.APIVersion),
+		SignupEnabled: info.SignupEnabled,
 	}, nil
 }

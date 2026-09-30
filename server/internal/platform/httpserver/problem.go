@@ -18,6 +18,7 @@ const ContentTypeProblem = "application/problem+json"
 // (v0.1 design 6.1).
 const (
 	CodeBadRequest      = "bad_request"
+	CodeUnauthorized    = "unauthorized"
 	CodeNotFound        = "not_found"
 	CodePayloadTooLarge = "payload_too_large"
 	CodeInternal        = "internal_error"

@@ -3,6 +3,7 @@ package config
 import (
 	"bytes"
 	"log/slog"
+	"net/netip"
 	"strings"
 	"testing"
 )
@@ -13,7 +14,7 @@ func TestLogValueMasksDatabaseURL(t *testing.T) {
 
 	out := buf.String()
 	if strings.Contains(out, "secret") {
-		t.Errorf("log output leaks the password: %s", out)
+		t.Errorf("log output leaks a secret: %s", out)
 	}
 	for _, want := range []string{
 		"config.env=test",
@@ -29,12 +30,36 @@ func TestLogValueMasksDatabaseURL(t *testing.T) {
 		"config.database.max_conns=10",
 		"config.database.auto_migrate=true",
 		"config.database.commit_timeout=2s",
+		"config.auth.signup_enabled=false",
+		"config.auth.access_token_ttl=15m0s",
+		"config.auth.session_ttl=720h0m0s",
+		"config.auth.jwt.private_key_file_set=true",
+		"config.auth.password.argon2_memory_kib=19456",
+		"config.auth.password.argon2_iterations=2",
+		"config.auth.password.argon2_parallelism=1",
+		"config.auth.password.max_concurrent_hashes=4",
+		"config.auth.password.max_wait=2s",
 		"config.log.level=info",
 		"config.log.format=json",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("log output lacks %q: %s", want, out)
 		}
+	}
+}
+
+// The configuration names secret files but never shows where they are; the
+// trusted proxies are listed.
+func TestLogValueShowsWhetherTheSigningKeyIsSet(t *testing.T) {
+	cfg := validConfig()
+	cfg.Server.TrustedProxies = []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8"), netip.MustParsePrefix("fd00::/8")}
+	var buf bytes.Buffer
+	slog.New(slog.NewTextHandler(&buf, nil)).Info("configuration loaded", "config", cfg)
+
+	out := buf.String()
+	if strings.Contains(out, "jwt-key") || !strings.Contains(out, "config.auth.jwt.private_key_file_set=true") ||
+		!strings.Contains(out, "config.server.trusted_proxies=10.0.0.0/8,fd00::/8") {
+		t.Errorf("log output = %s, want the key file as set only and the proxies listed", out)
 	}
 }
 

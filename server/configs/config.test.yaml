@@ -1,4 +1,11 @@
 # 测试环境（NWIKI_ENV=test）：集成测试和端到端测试使用。数据库地址通过 NWIKI_DATABASE__URL 提供。
+auth:
+  signup_enabled: true
+  password:
+    # 测试大量注册：把 argon2 降到最低
+    argon2_memory_kib: 64
+    argon2_iterations: 1
+
 log:
   level: warn
   format: text
