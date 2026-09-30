@@ -69,9 +69,12 @@ type AuthConfig struct {
 	// RefreshDeadline bounds a refresh or a logout; with
 	// database.commit_timeout it must end before the web client gives up on
 	// a refresh (M1/P2 design 3.5).
-	RefreshDeadline time.Duration  `koanf:"refresh_deadline"`
-	JWT             JWTConfig      `koanf:"jwt"`
-	Password        PasswordConfig `koanf:"password"`
+	RefreshDeadline time.Duration `koanf:"refresh_deadline"`
+	// SessionCleanupInterval is how often the expired sessions are deleted
+	// (M1/P4 design 3.5).
+	SessionCleanupInterval time.Duration  `koanf:"session_cleanup_interval"`
+	JWT                    JWTConfig      `koanf:"jwt"`
+	Password               PasswordConfig `koanf:"password"`
 }
 
 // JWTConfig locates the Ed25519 signing key.
@@ -165,6 +168,7 @@ func (c Config) LogValue() slog.Value {
 			duration("access_token_ttl", c.Auth.AccessTokenTTL),
 			duration("session_ttl", c.Auth.SessionTTL),
 			duration("refresh_deadline", c.Auth.RefreshDeadline),
+			duration("session_cleanup_interval", c.Auth.SessionCleanupInterval),
 			slog.Group("jwt",
 				slog.Bool("private_key_file_set", c.Auth.JWT.PrivateKeyFile != ""),
 			),

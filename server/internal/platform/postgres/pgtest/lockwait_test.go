@@ -65,6 +65,60 @@ func TestWaitForLockWaitsFailsAtItsDeadlineOnAnExhaustedPool(t *testing.T) {
 	}
 }
 
+// WaitForLockWaitsOn counts the waits for the rows of its table only: an
+// advisory lock's waits, as River's services may make in a running server,
+// do not satisfy it; a wait for a row of the table does.
+func TestWaitForLockWaitsOnCountsTheRowsOfItsTable(t *testing.T) {
+	t.Parallel()
+	url := pgtest.NewDatabase(t)
+	pool := newPool(t, url)
+	holdAndWait(t, url, 2)
+
+	advisory := fatalOf(func(tb testing.TB) { pgtest.WaitForLockWaitsOn(tb, pool, "users", 1, 300*time.Millisecond) })
+	holdRowAndWait(t, url)
+	pgtest.WaitForLockWaitsOn(t, pool, "users", 1, 10*time.Second)
+	other := fatalOf(func(tb testing.TB) { pgtest.WaitForLockWaitsOn(tb, pool, "auth_sessions", 1, 300*time.Millisecond) })
+	missing := fatalOf(func(tb testing.TB) { pgtest.WaitForLockWaitsOn(tb, pool, "nope", 1, 300*time.Millisecond) })
+
+	if advisory != "0 statement(s) waited for a row lock of users within 300ms, want at least 1" ||
+		other != "0 statement(s) waited for a row lock of auth_sessions within 300ms, want at least 1" ||
+		missing != `pgtest: no table "nope"` {
+		t.Errorf("advisory waits failed with %q, auth_sessions with %q, no table with %q; want each to fail", advisory, other, missing)
+	}
+}
+
+// holdRowAndWait makes a connection to url wait for a row of users that
+// another one holds, until the test ends.
+func holdRowAndWait(t *testing.T, url string) {
+	t.Helper()
+	ctx := context.Background()
+	holder := connect(t, url)
+	for _, stmt := range []string{
+		"INSERT INTO users (id, email, password, display_name, created_at, updated_at) VALUES (gen_random_uuid(), 'alice@corp.com', 'x', 'alice', now(), now())",
+		"BEGIN",
+		"SELECT 1 FROM users FOR NO KEY UPDATE",
+	} {
+		if _, err := holder.Exec(ctx, stmt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	waiter := connect(t, url)
+	done := make(chan error, 1)
+	go func() {
+		_, err := waiter.Exec(ctx, "SELECT 1 FROM users FOR NO KEY UPDATE")
+		done <- err
+	}()
+	// Runs before the connections close.
+	t.Cleanup(func() {
+		if _, err := holder.Exec(ctx, "ROLLBACK"); err != nil {
+			t.Error(err)
+		}
+		if err := <-done; err != nil {
+			t.Errorf("the waiting connection: %v", err)
+		}
+	})
+}
+
 // holdAndWait makes n connections to url wait for an advisory lock that
 // another one holds, until the test ends.
 func holdAndWait(t *testing.T, url string, n int) {

@@ -40,6 +40,8 @@ auth:
   # 续期与退出的服务端期限。加上 database.commit_timeout 必须短于前端放弃续期的 8 秒：
   # 前端放弃之后服务端才提交的轮换，会让客户端手里的令牌成为旧的一代
   refresh_deadline: 4s
+  # 后台任务删除过期会话的间隔，至少 1 秒
+  session_cleanup_interval: 1h
   jwt:
     # 签名私钥：PKCS#8 PEM 的 Ed25519 私钥（openssl genpkey -algorithm ed25519）。
     # prod 必须提供；dev、test 为空时每次启动生成临时密钥，重启后已签发的令牌全部失效

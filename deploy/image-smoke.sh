@@ -112,7 +112,7 @@ uid=$(docker top "$app" -o pid,uid | awk 'NR > 1 { print $2 }')
 [[ $uid == 65532 ]] || fail "进程的 uid 是 ${uid:-空}，应为 65532（nonroot）"
 
 # SIGTERM 之后优雅停机，退出码 0
-docker stop -t 30 "$app" >/dev/null
+docker stop -t 40 "$app" >/dev/null
 exit_code=$(docker container inspect -f '{{.State.ExitCode}}' "$app")
 [[ $exit_code == 0 ]] || fail "停止后的退出码是 $exit_code，应为 0"
 

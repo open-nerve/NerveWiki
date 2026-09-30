@@ -69,11 +69,14 @@ func testConfig(t *testing.T, dbURL string, autoMigrate bool) config.Config {
 			AccessTokenTTL:  15 * time.Minute,
 			SessionTTL:      720 * time.Hour,
 			RefreshDeadline: 3 * time.Second,
+			// The runs of the cleanup the tests look for start with the jobs.
+			SessionCleanupInterval: time.Hour,
 			Password: config.PasswordConfig{
 				Argon2MemoryKiB: 64, Argon2Iterations: 1, Argon2Parallelism: 1, MaxConcurrentHashes: 4, MaxWait: 2 * time.Second,
 			},
 		},
 		RateLimit: roomyLimits(),
+		Jobs:      config.JobsConfig{ShutdownTimeout: 5 * time.Second},
 		Log:       config.LogConfig{Level: "error", Format: "text"},
 	}
 }
@@ -90,7 +93,13 @@ func roomyLimits() config.RateLimitConfig {
 // buildApp wires the app and closes it when the test ends.
 func buildApp(t *testing.T, cfg config.Config, migrations fs.FS) *app {
 	t.Helper()
-	a, err := newApp(context.Background(), cfg, slog.New(slog.DiscardHandler), migrations, testWebUI())
+	return buildAppWith(t, cfg, migrations, slog.New(slog.DiscardHandler))
+}
+
+// buildAppWith is buildApp logging to logger.
+func buildAppWith(t *testing.T, cfg config.Config, migrations fs.FS, logger *slog.Logger) *app {
+	t.Helper()
+	a, err := newApp(context.Background(), cfg, logger, migrations, testWebUI())
 	if err != nil {
 		t.Fatalf("newApp() error = %v", err)
 	}
@@ -128,7 +137,12 @@ func waitHealthy(t *testing.T, addrFile string, done <-chan error) string {
 // answers /healthz. The cleanup checks that run shut down cleanly.
 func startApp(t *testing.T, cfg config.Config, migrations fs.FS) string {
 	t.Helper()
-	a := buildApp(t, cfg, migrations)
+	return runApp(t, buildApp(t, cfg, migrations))
+}
+
+// runApp is startApp for an app the test built.
+func runApp(t *testing.T, a *app) string {
+	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	// run's result goes to both: waitHealthy takes it from done when the
 	// server stops early, and the cleanup still finds it in stopped.
@@ -145,7 +159,7 @@ func startApp(t *testing.T, cfg config.Config, migrations fs.FS) string {
 			t.Errorf("run() = %v, want nil after cancel", err)
 		}
 	})
-	return waitHealthy(t, cfg.Server.AddrFile, done)
+	return waitHealthy(t, a.cfg.Server.AddrFile, done)
 }
 
 func getReadyz(t *testing.T, h http.Handler) (int, httpserver.Problem) {
@@ -162,8 +176,8 @@ func getReadyz(t *testing.T, h http.Handler) (int, httpserver.Problem) {
 }
 
 // serve migrates an empty database with the production migrations, checks
-// it, answers /healthz and /readyz, and stops in order when cancelled: HTTP,
-// then the pool.
+// it, answers /healthz and /readyz, runs the background jobs, and stops in
+// order when cancelled: HTTP, the jobs, then the pool.
 func TestServeRunsUntilCancelled(t *testing.T) {
 	cfg := testConfig(t, pgtest.NewEmptyDatabase(t), true)
 	cfg.Log = config.LogConfig{Level: "info", Format: "text"}
@@ -179,6 +193,7 @@ func TestServeRunsUntilCancelled(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = resp.Body.Close()
+	logs.waitFor(t, `msg="jobs started"`, 10*time.Second)
 	cancel()
 	if err := <-done; err != nil || resp.StatusCode != http.StatusOK {
 		t.Fatalf("GET /readyz = %d, Serve() = %v; want 200 and nil after cancel; logs:\n%s", resp.StatusCode, err, logs.String())
@@ -192,6 +207,7 @@ func TestServeRunsUntilCancelled(t *testing.T) {
 		`msg="migration applied" version=1 source=00001_platform_pg_trgm.sql`,
 		`msg="http server listening"`,
 		`msg="http server stopped"`,
+		`msg="jobs stopped"`,
 		`msg="database pool closed"`,
 	} {
 		at := strings.Index(out, step)

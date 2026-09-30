@@ -22,12 +22,13 @@ func TestBuiltInProfiles(t *testing.T) {
 		argon2      config.PasswordConfig
 		limits      config.RateLimitConfig
 		keyFile     string
+		cleanup     time.Duration
 		level       string
 		format      string
 	}{
-		{env: "dev", addr: "127.0.0.1:8080", url: devURL, autoMigrate: true, signup: true, argon2: owasp(), limits: defaultLimits(), level: "debug", format: "text"},
-		{env: "test", addr: ":8080", url: "postgres://from-env", autoMigrate: true, signup: true, argon2: cheap(), limits: unlimited(), level: "warn", format: "text"},
-		{env: "prod", addr: ":8080", url: "postgres://from-env", autoMigrate: false, signup: false, argon2: owasp(), limits: defaultLimits(), keyFile: "/run/secrets/jwt.pem", level: "info", format: "json"},
+		{env: "dev", addr: "127.0.0.1:8080", url: devURL, autoMigrate: true, signup: true, argon2: owasp(), limits: defaultLimits(), cleanup: time.Hour, level: "debug", format: "text"},
+		{env: "test", addr: ":8080", url: "postgres://from-env", autoMigrate: true, signup: true, argon2: cheap(), limits: unlimited(), cleanup: 2 * time.Second, level: "warn", format: "text"},
+		{env: "prod", addr: ":8080", url: "postgres://from-env", autoMigrate: false, signup: false, argon2: owasp(), limits: defaultLimits(), keyFile: "/run/secrets/jwt.pem", cleanup: time.Hour, level: "info", format: "json"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.env, func(t *testing.T) {
@@ -56,12 +57,13 @@ func TestBuiltInProfiles(t *testing.T) {
 				},
 				Database: config.DatabaseConfig{URL: tt.url, MaxConns: 10, AutoMigrate: tt.autoMigrate, CommitTimeout: 2 * time.Second},
 				Auth: config.AuthConfig{
-					SignupEnabled:   tt.signup,
-					AccessTokenTTL:  15 * time.Minute,
-					SessionTTL:      30 * 24 * time.Hour,
-					RefreshDeadline: 4 * time.Second,
-					JWT:             config.JWTConfig{PrivateKeyFile: tt.keyFile},
-					Password:        tt.argon2,
+					SignupEnabled:          tt.signup,
+					AccessTokenTTL:         15 * time.Minute,
+					SessionTTL:             30 * 24 * time.Hour,
+					RefreshDeadline:        4 * time.Second,
+					SessionCleanupInterval: tt.cleanup,
+					JWT:                    config.JWTConfig{PrivateKeyFile: tt.keyFile},
+					Password:               tt.argon2,
 				},
 				RateLimit: tt.limits,
 				Jobs:      config.JobsConfig{ShutdownTimeout: 10 * time.Second},

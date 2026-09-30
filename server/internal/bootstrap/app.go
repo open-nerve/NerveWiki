@@ -21,6 +21,7 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/platform/clock"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/jobs"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/ratelimit"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/webui"
@@ -43,6 +44,10 @@ const poolCloseTimeout = 5 * time.Second
 // until the operating system gives up on the TCP connection, minutes later.
 const databaseWait = 10 * time.Second
 
+// migrationPoll is how often serve looks, while migrations are pending,
+// whether they have been applied, to start the background jobs.
+const migrationPoll = 2 * time.Second
+
 // app is a fully wired nervewiki server.
 type app struct {
 	cfg      config.Config
@@ -50,9 +55,12 @@ type app struct {
 	pool     *pgxpool.Pool
 	migrator *postgres.Migrator
 	router   *httpserver.Router
-	// poolCloseTimeout and databaseWait are the package's, but for tests.
+	jobs     *jobs.Runner
+	// poolCloseTimeout, databaseWait and migrationPoll are the package's, but
+	// for tests.
 	poolCloseTimeout time.Duration
 	databaseWait     time.Duration
+	migrationPoll    time.Duration
 }
 
 // newApp wires the server described by cfg around the given migrations and
@@ -83,16 +91,17 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrati
 	limiter := ratelimit.New(time.Now)
 	limits := cfg.RateLimit
 	ident, err := identity.New(identity.Deps{
-		Pool:            pool,
-		Tx:              postgres.NewTxManager(pool, cfg.Database.CommitTimeout),
-		Clock:           clock.System{},
-		Logger:          logger,
-		SignupPolicy:    signupSwitch(cfg.Auth.SignupEnabled),
-		SigningKeyPEM:   signingKey,
-		AccessTokenTTL:  cfg.Auth.AccessTokenTTL,
-		SessionTTL:      cfg.Auth.SessionTTL,
-		RefreshDeadline: cfg.Auth.RefreshDeadline,
-		Password:        passwordHashing(cfg.Auth.Password),
+		Pool:                   pool,
+		Tx:                     postgres.NewTxManager(pool, cfg.Database.CommitTimeout),
+		Clock:                  clock.System{},
+		Logger:                 logger,
+		SignupPolicy:           signupSwitch(cfg.Auth.SignupEnabled),
+		SigningKeyPEM:          signingKey,
+		AccessTokenTTL:         cfg.Auth.AccessTokenTTL,
+		SessionTTL:             cfg.Auth.SessionTTL,
+		RefreshDeadline:        cfg.Auth.RefreshDeadline,
+		SessionCleanupInterval: cfg.Auth.SessionCleanupInterval,
+		Password:               passwordHashing(cfg.Auth.Password),
 		RateLimits: identity.RateLimits{
 			Limiter:      limiter,
 			LoginIP:      bucket(limiter, "login_ip", limits.LoginIP),
@@ -101,6 +110,12 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrati
 			PasswordUser: bucket(limiter, "password_user", limits.PasswordUser),
 		},
 	})
+	if err != nil {
+		_ = migrator.Close()
+		pool.Close()
+		return nil, err
+	}
+	runner, err := jobs.New(pool, jobs.Config{ShutdownTimeout: cfg.Jobs.ShutdownTimeout, Logger: logger}, ident.Jobs())
 	if err != nil {
 		_ = migrator.Close()
 		pool.Close()
@@ -141,15 +156,19 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrati
 		pool:             pool,
 		migrator:         migrator,
 		router:           router,
+		jobs:             runner,
 		poolCloseTimeout: poolCloseTimeout,
 		databaseWait:     databaseWait,
+		migrationPoll:    migrationPoll,
 	}, nil
 }
 
 // run waits for the database, applies pending migrations when
 // database.auto_migrate is on, checks the database, and serves HTTP on
-// server.addr until ctx is done. HTTP stops first (see
-// httpserver.Server.Serve); close then releases the migrator and the pool.
+// server.addr until ctx is done, with the background jobs once no migration
+// is pending (M1/P4 design 3.4). HTTP stops first (see
+// httpserver.Server.Serve), its requests done, then the jobs; close then
+// releases the migrator and the pool.
 func (a *app) run(ctx context.Context) error {
 	warnIfExposed(ctx, a.logger, a.cfg)
 	if err := awaitDatabase(ctx, a.pool, a.databaseWait); err != nil {
@@ -168,7 +187,46 @@ func (a *app) run(ctx context.Context) error {
 	if err := postgres.CheckDatabase(ctx, a.pool); err != nil {
 		return err
 	}
-	return httpserver.NewServer(a.cfg.Server, a.router, a.logger).ListenAndServe(ctx)
+	// A job that fails to start stops the server, with its error.
+	ctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
+	started := make(chan error, 1)
+	go func() {
+		err := a.startJobs(ctx)
+		if err != nil {
+			cancel(err)
+		}
+		started <- err
+	}()
+	serveErr := httpserver.NewServer(a.cfg.Server, a.router, a.logger).ListenAndServe(ctx)
+	cancel(nil) // HTTP may have stopped on its own: stop waiting to start the jobs
+	startErr := <-started
+	return errors.Join(serveErr, startErr, a.jobs.Stop(context.WithoutCancel(ctx)))
+}
+
+// startJobs starts the background jobs once no migration is pending: with
+// database.auto_migrate off, serve starts on a database behind the
+// migrations and waits, not ready, for the operator to apply them (M0), and
+// River needs its tables. It looks every migrationPoll, and returns nil when
+// ctx ends first, the jobs never started.
+func (a *app) startJobs(ctx context.Context) error {
+	for waiting := false; ; waiting = true {
+		err := a.migrator.CheckUpToDate(ctx)
+		if err == nil {
+			if err := a.jobs.Start(ctx); err != nil && ctx.Err() == nil {
+				return err
+			}
+			return nil
+		}
+		if !waiting {
+			a.logger.WarnContext(ctx, "background jobs wait for the pending migrations", slog.Any("reason", err))
+		}
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-time.After(a.migrationPoll):
+		}
+	}
 }
 
 // readSigningKey returns the content of auth.jwt.private_key_file, or nil

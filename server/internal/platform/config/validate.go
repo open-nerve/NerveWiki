@@ -107,6 +107,11 @@ func (a AuthConfig) validate(env string, fail func(key, format string, args ...a
 	case a.SessionTTL <= a.AccessTokenTTL:
 		fail("auth.session_ttl", "must be longer than auth.access_token_ttl (%s), got %s", a.AccessTokenTTL, a.SessionTTL)
 	}
+	// River advises periodic intervals of a second or more and does not
+	// enforce it.
+	if a.SessionCleanupInterval < time.Second {
+		fail("auth.session_cleanup_interval", "must be at least 1s, got %s", a.SessionCleanupInterval)
+	}
 	if env == EnvProd && a.JWT.PrivateKeyFile == "" {
 		// The file itself is read when nervewiki starts (bootstrap), not here.
 		fail("auth.jwt.private_key_file", "is required in prod: a PKCS#8 PEM Ed25519 private key, e.g. from openssl genpkey -algorithm ed25519")

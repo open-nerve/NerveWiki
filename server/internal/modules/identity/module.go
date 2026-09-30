@@ -1,7 +1,7 @@
 // Package identity is the accounts module (M1 design): accounts, sessions
-// and, from P3, personal access tokens. It brings registration, sign-in,
-// refresh and sign-out, the caller's account, and the authentication every
-// other operation goes through.
+// and personal access tokens. It brings registration, sign-in, refresh and
+// sign-out, the caller's account and tokens, the authentication every other
+// operation goes through, and the periodic cleanup of expired sessions.
 package identity
 
 import (
@@ -17,10 +17,12 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/modules/identity/adapter/authn"
 	httpadapter "github.com/open-nerve/NerveWiki/server/internal/modules/identity/adapter/http"
 	postgresadapter "github.com/open-nerve/NerveWiki/server/internal/modules/identity/adapter/postgres"
+	riveradapter "github.com/open-nerve/NerveWiki/server/internal/modules/identity/adapter/river"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/identity/adapter/signing"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/identity/app"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/identity/domain"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/jobs"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/ratelimit"
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
@@ -39,8 +41,11 @@ type Deps struct {
 	AccessTokenTTL  time.Duration
 	SessionTTL      time.Duration
 	RefreshDeadline time.Duration // auth.refresh_deadline
-	Password        PasswordHashing
-	RateLimits      RateLimits
+	// SessionCleanupInterval is auth.session_cleanup_interval: how often the
+	// expired sessions are deleted.
+	SessionCleanupInterval time.Duration
+	Password               PasswordHashing
+	RateLimits             RateLimits
 	// The registrants of the deactivation's extension point (M1 design 8),
 	// built from the pool alone; M2 brings the first.
 	DeactivationVetoers     []DeactivationVetoer
@@ -73,6 +78,7 @@ type Module struct {
 	settings        httpadapter.Settings
 	refreshDeadline time.Duration
 	authenticator   *authn.Authenticator
+	jobs            []jobs.Job
 }
 
 // New wires the module. A signing key that cannot be parsed is an error
@@ -142,6 +148,9 @@ func New(d Deps) (*Module, error) {
 		authenticator: authn.New(app.NewAuthenticate(app.AuthenticateDeps{
 			AccessTokens: tokens, Sessions: store, APITokens: store, Touch: store, Clock: d.Clock, Logger: d.Logger,
 		})),
+		jobs: []jobs.Job{
+			riveradapter.CleanupJob(app.NewCleanupSessions(store, d.Clock, d.Logger), d.SessionCleanupInterval),
+		},
 	}, nil
 }
 
@@ -171,6 +180,11 @@ func (m *Module) RequestTimeouts() map[string]time.Duration {
 // Authenticator checks the bearer token of every non-public operation.
 func (m *Module) Authenticator() httpserver.Authenticator {
 	return m.authenticator
+}
+
+// Jobs are the module's background jobs, for the server's jobs runner.
+func (m *Module) Jobs() []jobs.Job {
+	return m.jobs
 }
 
 // Register mounts the module's API on router behind api's middlewares.

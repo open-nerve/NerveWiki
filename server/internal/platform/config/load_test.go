@@ -33,6 +33,7 @@ auth:
   access_token_ttl: 15m
   session_ttl: 720h
   refresh_deadline: 4s
+  session_cleanup_interval: 1h
   jwt:
     private_key_file: ""
   password:
@@ -116,9 +117,10 @@ func TestLoadAppliesLayersInOrder(t *testing.T) {
 			CommitTimeout: 3 * time.Second,           // environment
 		},
 		Auth: AuthConfig{
-			AccessTokenTTL:  15 * time.Minute,
-			SessionTTL:      720 * time.Hour,
-			RefreshDeadline: 4 * time.Second,
+			AccessTokenTTL:         15 * time.Minute,
+			SessionTTL:             720 * time.Hour,
+			RefreshDeadline:        4 * time.Second,
+			SessionCleanupInterval: time.Hour,
 			Password: PasswordConfig{
 				Argon2MemoryKiB: 19456, Argon2Iterations: 3, Argon2Parallelism: 1, // iterations: environment
 				MaxConcurrentHashes: 4, MaxWait: 2 * time.Second,

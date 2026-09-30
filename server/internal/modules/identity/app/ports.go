@@ -178,6 +178,15 @@ type SessionEnder interface {
 	EndSession(ctx context.Context, g SessionGeneration) (bool, error)
 }
 
+// ExpiredSessionDeleter deletes the sessions that have expired (M1/P4
+// design 3.5).
+type ExpiredSessionDeleter interface {
+	// DeleteExpiredSessions deletes up to limit sessions that expired before
+	// now, skipping those another transaction holds, and returns how many it
+	// deleted.
+	DeleteExpiredSessions(ctx context.Context, now time.Time, limit int) (int, error)
+}
+
 // SessionRevoker revokes an account's sessions at once (M1/P3 design 3.5).
 type SessionRevoker interface {
 	// RevokeSessions revokes at now, with reason, every session of userID

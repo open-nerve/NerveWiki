@@ -158,7 +158,8 @@ make image-smoke VERSION=0.1.0   # 在镜像上跑 S1、S3：迁移、探针、�
 
 - 数据库必须以 builtin provider 的 `C.UTF-8` 初始化，否则服务拒绝启动，见[总体设计](docs/v0.1/v0.1-design.md) 7.1。
 - 探针：存活用 `GET /healthz`（不访问任何依赖），就绪用 `GET /readyz`（数据库可用、迁移已执行完）。镜像里没有 shell 与 curl，所以没有写 `HEALTHCHECK`，由编排系统探测。
-- 停止时发 SIGTERM：服务停止接收新连接，等正在处理的请求结束（最多 `server.shutdown_timeout`，默认 20 秒）后退出。停机的宽限期要比它长：`docker stop` 默认只等 10 秒，用 `docker stop -t 30`。
+- 后台任务（River，目前只有每小时一次的过期会话清理 `auth.session_cleanup_interval`）随 `serve` 运行，表在同一条迁移链上。关闭自动迁移时，服务在迁移执行完之前不启动后台任务，迁移之后自动启动，不必重启。River 从连接池里借走一个连接专门监听通知，数据库要为每个实例多留一个连接（`database.max_conns` + 1）。
+- 停止时发 SIGTERM：服务停止接收新连接，等正在处理的请求结束（最多 `server.shutdown_timeout`，默认 20 秒），再等正在执行的后台任务（最多 `jobs.shutdown_timeout`，默认 10 秒，之后取消它们，再宽限 1 秒），最后关闭连接池（最多 5 秒）后退出。停机的宽限期要比这些之和长：`docker stop` 默认只等 10 秒，用 `docker stop -t 40`。停止时 River 可能记一条 ERROR `maintenance.PeriodicJobEnqueuer: Error starting transaction`（`context canceled`，它的定时任务入队被停机打断），退出码仍是 0。
 
 ## Markdown 样例集
 

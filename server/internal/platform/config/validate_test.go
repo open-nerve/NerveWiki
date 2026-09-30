@@ -26,10 +26,11 @@ func validConfig() Config {
 			CommitTimeout: 2 * time.Second,
 		},
 		Auth: AuthConfig{
-			AccessTokenTTL:  15 * time.Minute,
-			SessionTTL:      720 * time.Hour,
-			RefreshDeadline: 4 * time.Second,
-			JWT:             JWTConfig{PrivateKeyFile: "/run/secrets/jwt-key.pem"},
+			AccessTokenTTL:         15 * time.Minute,
+			SessionTTL:             720 * time.Hour,
+			RefreshDeadline:        4 * time.Second,
+			SessionCleanupInterval: time.Hour,
+			JWT:                    JWTConfig{PrivateKeyFile: "/run/secrets/jwt-key.pem"},
 			Password: PasswordConfig{
 				Argon2MemoryKiB: 19456, Argon2Iterations: 2, Argon2Parallelism: 1,
 				MaxConcurrentHashes: 4, MaxWait: 2 * time.Second,
@@ -80,6 +81,7 @@ func TestValidateReportsEveryInvalidKey(t *testing.T) {
 		"database.commit_timeout: must be positive, got 0s",
 		"auth.access_token_ttl: must be positive, got 0s",
 		"auth.session_ttl: must be positive, got 0s",
+		"auth.session_cleanup_interval: must be at least 1s, got 0s",
 		"auth.jwt.private_key_file: is required in prod: a PKCS#8 PEM Ed25519 private key, e.g. from openssl genpkey -algorithm ed25519",
 		"auth.password.argon2_iterations: must be at least 1, got 0",
 		"auth.password.argon2_parallelism: must be at least 1, got 0",
