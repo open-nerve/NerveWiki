@@ -1,5 +1,5 @@
 import { expectQuietConsole, watchPage } from "../../fixtures/browser";
-import { expect, test } from "../../fixtures/test";
+import { expect, stampedVersion, test } from "../../fixtures/test";
 
 /** The Content-Security-Policy of every page (server/internal/platform/webui/csp.go). */
 const contentSecurityPolicy =
@@ -7,12 +7,11 @@ const contentSecurityPolicy =
   "font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; " +
   "frame-ancestors 'none'";
 
+function isStatic(url: string): boolean {
+  return !new URL(url).pathname.startsWith("/api/");
+}
+
 test("S2: a user opens the home page and sees what the instance runs", async ({ page, api }) => {
-  const version = process.env.NWIKI_E2E_VERSION;
-  expect(
-    version,
-    "NWIKI_E2E_VERSION, the version make build stamped into bin/nervewiki (make e2e sets it)"
-  ).toBeTruthy();
   const { data: instance } = await api.GET("/api/v0/instance");
 
   const watch = await watchPage(page);
@@ -22,11 +21,16 @@ test("S2: a user opens the home page and sees what the instance runs", async ({ 
   page.on("request", (req) => {
     requested.push(req.url());
   });
+  // Static resources only: the API's requests and failures are watch's.
   page.on("response", (res) => {
-    (res.status() < 400 ? loaded : failed).push(`${res.status()} ${res.url()}`);
+    if (isStatic(res.url())) {
+      (res.status() < 400 ? loaded : failed).push(`${res.status()} ${res.url()}`);
+    }
   });
   page.on("requestfailed", (req) => {
-    failed.push(`${req.failure()?.errorText} ${req.url()}`);
+    if (isStatic(req.url())) {
+      failed.push(`${req.failure()?.errorText} ${req.url()}`);
+    }
   });
 
   const document = await page.goto("/");
@@ -35,9 +39,9 @@ test("S2: a user opens the home page and sees what the instance runs", async ({ 
   expect(document?.headers()["content-type"]).toBe("text/html; charset=utf-8");
   expect(document?.headers()["content-security-policy"]).toBe(contentSecurityPolicy);
   await expect(page.getByRole("heading", { level: 1, name: "Nerve Wiki" })).toBeVisible();
-  await expect(page.getByText(`Version ${version} (${instance?.commit})`, { exact: true })).toBeVisible();
+  await expect(page.getByText(`Version ${stampedVersion()} (${instance?.commit})`, { exact: true })).toBeVisible();
 
-  // Everything comes from nervewiki, and all of it loads: the scripts, the styles, theme-init.js, the icon.
+  // Everything comes from nervewiki, and all of it loads: the scripts, the styles, theme-init.js.
   const origin = new URL(page.url()).origin;
   expect(requested.filter((url) => new URL(url).origin !== origin)).toEqual([]);
   expect(loaded).toContainEqual(expect.stringMatching(/^200 .*\/assets\/[^/]+\.js$/));

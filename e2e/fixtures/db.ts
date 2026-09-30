@@ -22,7 +22,6 @@ const containerVariable = "NWIKI_E2E_POSTGRES_CONTAINER";
 
 /** A database of this run: nervewiki serves from it, stories assert on it. */
 export interface Database {
-  readonly name: string;
   readonly url: string;
   /** Runs one statement on this database, through its own pool, and returns the rows. */
   query<Row extends QueryResultRow>(sql: string, params?: unknown[]): Promise<Row[]>;
@@ -99,7 +98,6 @@ export function openDatabase(name: string): Database {
     query_timeout: queryTimeoutMs,
   });
   return {
-    name,
     url,
     query: async <Row extends QueryResultRow>(sql: string, params?: unknown[]) =>
       (await pool.query<Row>(sql, params)).rows,

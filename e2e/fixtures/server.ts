@@ -1,6 +1,6 @@
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { once } from "node:events";
-import { closeSync, mkdirSync, openSync, readFileSync, rmSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { promisify } from "node:util";
@@ -18,9 +18,9 @@ const pollIntervalMs = 100;
 
 /**
  * The worker-fixture timeout for nervewiki in test.ts: Playwright's default
- * (30 s, shared by setup and teardown) can be shorter than startTimeoutMs
- * alone, so the fixture's own timeouts — and the "(log: …)" errors they
- * produce — could never fire first.
+ * (30 s, shared by setup and teardown) leaves no room for startTimeoutMs and
+ * stopTimeoutMs together, so the fixture's own timeouts — and the "(log: …)"
+ * errors they produce — could never fire first.
  */
 export const nervewikiFixtureTimeoutMs = startTimeoutMs + stopTimeoutMs + 10_000;
 
@@ -39,6 +39,13 @@ export interface StartOptions {
    * "live", /healthz answering 200, for a nervewiki that is meant not to be ready.
    */
   until?: "ready" | "live";
+}
+
+/** Fails with what to do when bin/nervewiki has not been built: global setup calls it first. */
+export function requireBinary(): void {
+  if (!existsSync(binary)) {
+    throw new Error(`${binary} does not exist: run the stories with make e2e, which runs make build first`);
+  }
 }
 
 /**
@@ -97,12 +104,21 @@ export async function startNervewiki(
   }
 }
 
-/** The test configuration on the given database; the caller's own NWIKI_* variables are left out. */
+/**
+ * The test configuration on the given database, logging at info: the log goes
+ * to a file, and a failed test's log shows its requests. The caller's own
+ * NWIKI_* variables are left out.
+ */
 function nervewikiEnv(databaseUrl: string): NodeJS.ProcessEnv {
   const url = new URL(databaseUrl);
   url.searchParams.set("application_name", applicationName);
   const inherited = Object.entries(process.env).filter(([name]) => !name.startsWith("NWIKI_"));
-  return { ...Object.fromEntries(inherited), NWIKI_ENV: "test", NWIKI_DATABASE__URL: url.toString() };
+  return {
+    ...Object.fromEntries(inherited),
+    NWIKI_ENV: "test",
+    NWIKI_LOG__LEVEL: "info",
+    NWIKI_DATABASE__URL: url.toString(),
+  };
 }
 
 /** The address nervewiki wrote to addrFile; undefined until it has. nervewiki renames the file into place, so it is never partial. */

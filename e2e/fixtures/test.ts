@@ -38,8 +38,26 @@ interface TestFixtures {
    * fixture's own timeouts fire first.
    */
   nervewikiWith: (databaseUrl: string, options?: StartOptions) => Promise<Nervewiki>;
-  /** When the test fails, a pg_dump of the worker's database joins its trace, screenshot and nervewiki log. */
+  /**
+   * When the test fails, a pg_dump of the worker's database joins its trace and screenshot. The logs are
+   * in test-results/: the worker's nervewiki's at its root, those of nervewikiWith in the test's directory.
+   * The databases of newDatabase are not dumped.
+   */
   databaseSnapshot: void;
+}
+
+/**
+ * The version make build stamped into bin/nervewiki, which the stories expect
+ * nervewiki to report: make e2e passes it as NWIKI_E2E_VERSION.
+ */
+export function stampedVersion(): string {
+  const version = process.env.NWIKI_E2E_VERSION;
+  if (!version) {
+    throw new Error(
+      "NWIKI_E2E_VERSION is not set: run the stories with make e2e, which passes the VERSION it built with"
+    );
+  }
+  return version;
 }
 
 /** Numbers the databases newDatabase creates in this worker: a worker is one process. */

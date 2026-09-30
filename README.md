@@ -126,10 +126,10 @@ cd e2e && pnpm exec playwright show-report                      # 查看上一�
 
 ```bash
 make image VERSION=0.1.0         # 构建 nervewiki:0.1.0
-make image-smoke VERSION=0.1.0   # 在镜像上跑 S1、S3：迁移、启动、探针、实例信息、非 root、优雅停机
+make image-smoke VERSION=0.1.0   # 在镜像上跑 S1、S3：迁移、探针、前端、实例与提交信息、非 root、优雅停机（另需 curl、jq）
 ```
 
-镜像的提交信息取自构建上下文中的 `.git`，所以要在普通的克隆中构建：`git worktree` 的 `.git` 是指向别处的文件，`make image` 会直接报错。
+镜像的提交信息取自构建上下文中的 `.git`，所以要在普通的克隆中构建：`git worktree` 的 `.git` 是指向别处的文件，`make image` 会直接报错。`.dockerignore` 排除的正好是 `.gitignore` 忽略的，改一个时同步另一个：否则镜像里的二进制报告的 `modified` 与工作区不符，`make image-smoke` 失败。
 
 - 镜像默认 `NWIKI_ENV=prod`。配置用环境变量提供（也可以挂载一个目录并设置 `NWIKI_CONFIG_DIR`），至少要有数据库地址 `NWIKI_DATABASE__URL`；其余配置项见 `server/configs/config.yaml`，合并规则见上文"配置"。
 - prod 配置不自动迁移。每次升级先执行迁移，再启动服务：
