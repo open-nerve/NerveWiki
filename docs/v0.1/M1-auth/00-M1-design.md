@@ -48,7 +48,7 @@ M1 结束时：
   | A2 注册被拒 | 邮箱已占用 409、密码太弱 422、注册关闭 403 | 页面、接口 |
   | A3 登录 | 登录后回到 `next` 指向的页面，开放重定向被拒；错误的密码与不存在的邮箱答同样的错误 | 页面、接口 |
   | A4 续期 | 访问令牌到期后自动续期；两个标签页串行续期；没有 `navigator.locks` 时走 localStorage 租约 | 页面、接口 |
-  | A5 重复使用检测 | 旧一代的刷新令牌被再次使用时撤销整个会话；伪造的旧代不能踢人下线 | 接口 |
+  | A5 重复使用检测 | 旧一代的刷新令牌被再次使用时撤销整个会话；伪造的旧代不能踢人下线；页面回到登录页 | 页面、接口 |
   | A6 退出 | 退出同步到所有标签页；退出后换另一个账户登录 | 页面、接口 |
   | A7 改密码 | 其他会话失效，当前会话保留；PAT 不受影响 | 页面、PAT 接口 |
   | A8 个人资料与偏好 | 改显示名；主题与语言在设置页切换并保持 | 页面、PAT 接口 |
@@ -121,7 +121,8 @@ M1 结束时：
 | `deploy/runtime-grants.sql` 与它的测试 | 拷贝（第一批业务表与 River） | P4 |
 | `tools/password-blocklist` | 拷贝，按第 4 节的规则重新生成名单 | P1 |
 | 前端 `core/lib/auth/{token-manager,refresh-lock,auth-middleware}.ts`、`one-at-a-time.ts` 与它们的测试、测试替身 | 原样拷贝，改名；页面、会话装配全新编写 | P5 |
-| `e2e/fixtures/{auth,users}.ts`、`settings-pages.ts` 的通用部分、`assert/identity.ts` | 拷贝、改写 | P1–P6 |
+| 前端 `next` 的校验规则（`packages/utils` 的 `isValidNextPath`）与它的用例；problem 码的文案映射与它的契约测试（`authentication.helper`） | 按 Nerve Wiki 的路由与文案重写，用例拷贝 | P5 |
+| `e2e/fixtures/{auth,users}.ts`、`settings-pages.ts` 的通用部分、`assert/identity.ts`；`signedInPage` 与记录的辅助函数（`recordOf`、`writeRecord`） | 拷贝、改写 | P1–P6 |
 
 ## 7. Phase 划分
 
@@ -133,8 +134,8 @@ M1 结束时：
 | P2 | 会话与限流 | `login`（等时的不存在邮箱、快照重试）、`refresh`（重复使用检测、条件轮换、服务端期限）、`logout`；`platform/ratelimit`；认证之前的失败闸门；各个桶与 IPv6 前缀；`clocktest` | 续期的判定表（伪造旧代、真实旧代、换钥）、并发续期；登录耗时与邮箱是否存在无关；并发下失败闸门不超额；经可信代理的客户端 IP。e2e：A3–A6、A14 的接口版本 |
 | P3 | 账户、PAT 与停用 | 迁移 `api_tokens`；`updateMe`、`onboarding-steps`、`changePassword`、`deactivateMe` 与停用的扩展点、`ShareActiveAccount`；PAT 的创建（要求密码）、列出、撤销，PAT 认证与 `last_used_at`；账户行锁协议；`lockwait`；oapi-codegen runtime 的例外 | 每个需要登录的操作都有 PAT 的测试；账户行锁的确定性交错测试；用测试替身证明否决会整体回滚并答出它的码、事件在事务内、`FOR SHARE` 挡住并发的停用。e2e：A7–A11 的 PAT 接口版本 |
 | P4 | 管理命令与后台任务 | `nervewiki users` 五个命令、只凭连接池的管理组合、`composition_test`、密码的读取（终端不回显）；River 迁移、`platform/jobs`、停机顺序 HTTP → 后台任务 → 迁移器 → 连接池、会话清理任务；`runtime-grants.sql` 与测试 | 停机顺序的测试；命令行的组合到不了 HTTP 与 River；命令的输出与各级日志里查不到密码（含十六进制、base64）。e2e：A11 的命令行部分、A12、A13 |
-| P5 | 前端会话、登录与引导 | `src/session/`（拷贝令牌管理器、续期锁、认证中间件，编写会话装配）；`RootStore` 分代与 `AppProviders` 的 key；oxlint 的放行移到会话模块；204 与 429（按 `Retry-After` 重试）；路由守卫；登录、注册、会话暂不可用三个页面；新手引导的步骤注册表与资料一步；e2e 的 `signedInPage`、预期控制台输出的声明、冒烟故事的调整。令牌管理器的续期超时是 8 秒，与服务端配置校验的 `webRefreshTimeout` 相同（P2 审查） | vitest：拷来的认证测试（先确认运行环境）、会话装配、分代隔离。浏览器实测：局域网 HTTP（走租约）、两个账户两个标签页。e2e：A1–A6、A9、A14 的页面版本 |
-| P6 | 前端个人设置 | 设置页布局；资料与偏好；安全（改密码、停用）；PAT 管理（一次性显示、撤销）；顶栏的用户菜单 | e2e：A7、A8、A10、A11 的页面版本；本 M 与 M0 的全部故事通过 |
+| P5 | 前端会话、登录与引导 | `src/session/`（拷贝令牌管理器、续期锁、认证中间件，编写会话装配）；`RootStore` 分代与 `AppProviders` 的 key；oxlint 的放行移到会话模块；204 与 429（按 `Retry-After` 重试）；路由守卫；登录、注册、会话暂不可用三个页面；新手引导的步骤注册表与资料一步；顶栏的用户菜单（显示名与退出）；e2e 的 `signedInPage`、预期控制台输出的声明、冒烟故事的调整。令牌管理器的续期超时是 8 秒，与服务端配置校验的 `webRefreshTimeout` 相同（P2 审查） | vitest：拷来的认证测试（先确认运行环境）、会话装配、分代隔离。浏览器实测：局域网 HTTP（走租约）、两个账户两个标签页。e2e：A1–A6、A9、A14 的页面版本 |
+| P6 | 前端个人设置 | 设置页布局；资料与偏好；安全（改密码、停用）；PAT 管理（一次性显示、撤销）；用户菜单中设置的入口 | e2e：A7、A8、A10、A11 的页面版本；本 M 与 M0 的全部故事通过 |
 
 ### M0 移交的落实
 
@@ -212,3 +213,4 @@ M1 结束时：
 | 2026-09-30 | 第 4 节密码规则：名单另收条目的主干，拒绝同一字符的重复与只有空白的密码，哈希前做 NFKC 规范化 | P1 审查 M1、M4、N3：只收 8 位以上的条目时主干规则放过 `Qwerty123!` 一类；NFC 与 NFD 的同一密码哈希不同 |
 | 2026-09-30 | 第 6 节 `lockwait` 从 P3 提前到 P2；第 7 节 P5 的续期超时写明 8 秒 | P2 的并发续期需要确定性的交错；P2 审查：前端的 8 秒要与服务端的配置校验一致 |
 | 2026-10-01 | 第 8 节停用扩展点的签名按实现：否决者与订阅者收到同一个 `Deactivation` 值 | P3 审查：总设计写的事件名与否决者参数与代码不同 |
+| 2026-10-01 | 第 3 节 A5 加页面版本；第 6 节拷贝清单补上 `next` 的校验、文案映射与 e2e 的 `signedInPage`；第 7 节用户菜单（显示名与退出）从 P6 提前到 P5 | [P5 文档](05-P5-web-session.md) 3.10：A5 的页面版本证明前端把会话被吊销变成回到登录页；A6 的页面版本需要退出 |
