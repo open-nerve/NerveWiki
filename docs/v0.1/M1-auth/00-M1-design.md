@@ -165,7 +165,7 @@ M1 结束时：
 
 **新手引导的步骤列表**（总体设计 12.4，M2、M3 注册）：
 
-- 前端的注册表是一个有序列表，每一步 `{id, title, Component}`；注册者往列表里加一项，不改已有的步骤。
+- 前端的注册表（`web/apps/web/src/onboarding/steps.ts`）是一个有序列表，每一步 `{id, title, Component}`；注册者往列表里加一项，不改已有的步骤。组件用 `React.lazy`：守卫在每个页面都读注册表，只需要 id。
 - 一步完成时调用 `POST /me/onboarding-steps` 记录它的 id；所有注册的步骤都记录过，引导即完成。以后新加的步骤会让已有账户再进入一次引导，只显示新步骤。
 - id 的格式（小写字母、数字、下划线，最长 32）与个数上限由领域与数据库共同检查，服务端不认识具体的步骤。
 
@@ -187,7 +187,7 @@ M1 结束时：
 | 风险 | 应对 |
 |---|---|
 | 规模：Nerve 同类 M 的测试代码约为生产代码的 2 倍，平台部分约 3 倍 | 六个 Phase，每个都能独立验证；Phase 文档写明规模估计，超出时再拆 |
-| 前端认证测试在 jsdom 下运行：`AbortSignal` 与 Node 的 `Request` 混用可能抛出，被当作网络失败吞掉 | P5 拷贝之后先在 jsdom 与 node 两种环境下跑通，再决定这批测试的运行环境 |
+| 前端认证测试在 jsdom 下运行：`AbortSignal` 与 Node 的 `Request` 混用可能抛出，被当作网络失败吞掉 | P5 拷贝之后先在 jsdom 与 node 两种环境下跑通，再决定这批测试的运行环境。已解除：原样在 jsdom 下通过（P5 第 7 节） |
 | 部署在反向代理之后却没配 `trusted_proxies`：所有人共用代理的 IP，一个人就能让所有人被限流 | 启动时告警一次；README 的部署一节写明 |
 | localStorage 租约不是原子的（非安全上下文下的续期锁） | 沿用 Nerve 的分析：最坏情况是两个标签页各续期一次，其中一个触发重复使用检测、需要重新登录；安全上下文下用 `navigator.locks` |
 | 常见密码名单的数据源（NCSC 原文件已下线） | 取自 SecLists 的固定提交，脚本与校验和进仓库，可复现 |
@@ -201,7 +201,7 @@ M1 结束时：
 | P2 | 会话与限流 | 已完成 | [02-P2-sessions-ratelimit.md](02-P2-sessions-ratelimit.md) | [P2 审查](reviews/P2-sessions-ratelimit-review.md) |
 | P3 | 账户、PAT 与停用 | 已完成 | [03-P3-accounts-tokens.md](03-P3-accounts-tokens.md) | [P3 审查](reviews/P3-accounts-tokens-review.md) |
 | P4 | 管理命令与后台任务 | 已完成 | [04-P4-admin-jobs.md](04-P4-admin-jobs.md) | [P4 审查](reviews/P4-admin-jobs-review.md) |
-| P5 | 前端会话、登录与引导 | 进行中 | [05-P5-web-session.md](05-P5-web-session.md) | — |
+| P5 | 前端会话、登录与引导 | 已完成 | [05-P5-web-session.md](05-P5-web-session.md) | [P5 审查](reviews/P5-web-session-review.md) |
 | P6 | 前端个人设置 | 未开始 | — | — |
 | — | M1 收尾审查 | 未开始 | — | — |
 
@@ -214,3 +214,4 @@ M1 结束时：
 | 2026-09-30 | 第 6 节 `lockwait` 从 P3 提前到 P2；第 7 节 P5 的续期超时写明 8 秒 | P2 的并发续期需要确定性的交错；P2 审查：前端的 8 秒要与服务端的配置校验一致 |
 | 2026-10-01 | 第 8 节停用扩展点的签名按实现：否决者与订阅者收到同一个 `Deactivation` 值 | P3 审查：总设计写的事件名与否决者参数与代码不同 |
 | 2026-10-01 | 第 3 节 A5 加页面版本；第 6 节拷贝清单补上 `next` 的校验、文案映射与 e2e 的 `signedInPage`；第 7 节用户菜单（显示名与退出）从 P6 提前到 P5 | [P5 文档](05-P5-web-session.md) 3.10：A5 的页面版本证明前端把会话被吊销变成回到登录页；A6 的页面版本需要退出 |
+| 2026-10-01 | 第 8 节写明引导注册表的位置，步骤组件按需加载；第 10 节 jsdom 的风险解除 | P5 审查 N2：守卫导入注册表，静态导入的步骤组件会进入口的包；P5 第 7 节：拷来的测试原样在 jsdom 下通过 |
