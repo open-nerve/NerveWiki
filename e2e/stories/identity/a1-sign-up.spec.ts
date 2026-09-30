@@ -59,10 +59,10 @@ test("A1 (page): a visitor signs up, lands on onboarding, and the browser keeps 
 
   // The session lives in the record alone: its refresh token and a login_id of the tab's making. The
   // access token stays in the page's memory; neither token is anywhere else.
-  const record = JSON.parse((await recordOf(page)) ?? "null") as Record<string, string>;
-  expect(Object.keys(record).toSorted()).toEqual(["login_id", "refresh_token"]);
-  expect(record.refresh_token).toBe(tokens.refresh_token);
-  expect(record.login_id).toMatch(/^[0-9a-f]{32}$/);
+  const record = await recordOf(page);
+  expect(Object.keys(record ?? {}).toSorted()).toEqual(["login_id", "refresh_token"]);
+  expect(record?.refresh_token).toBe(tokens.refresh_token);
+  expect(record?.login_id).toMatch(/^[0-9a-f]{32}$/);
   expect(await page.context().cookies()).toEqual([]);
   const stored = await page.evaluate(() => [...Object.entries(localStorage), ...Object.entries(sessionStorage)]);
   for (const token of [tokens.access_token, tokens.refresh_token]) {

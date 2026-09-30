@@ -41,3 +41,14 @@ export function passwordField(page: Page): Locator {
 export function formError(page: Page): Locator {
   return page.getByRole("alert");
 }
+
+/** The user menu of page, which shows the signed-in account's display name. */
+export function accountMenu(page: Page, displayName: string): Locator {
+  return page.getByRole("button", { name: displayName, exact: true });
+}
+
+/** Signs page out through its user menu, the account of displayName being signed in. */
+export async function signOutThroughMenu(page: Page, displayName: string): Promise<void> {
+  await accountMenu(page, displayName).click();
+  await page.getByRole("menuitem", { name: "Sign out" }).click();
+}

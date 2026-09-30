@@ -100,6 +100,18 @@ export async function watchPage(page: Page): Promise<PageWatch> {
 }
 
 /**
+ * Follows the access token page sends from now on, in the Authorization header of its requests: the function
+ * returned gives the last one sent, or "" before the first.
+ */
+export function followAccessToken(page: Page): () => string {
+  let last = "";
+  page.on("request", (request) => {
+    last = request.headers().authorization?.replace(/^Bearer /, "") ?? last;
+  });
+  return () => last;
+}
+
+/**
  * Checks that nothing went wrong in page since watch began: no uncaught exception, no Content-Security-Policy
  * violation, and no console error or warning but the ones the story declared (expectConsole), such as React
  * Router's warning about a missing HydrateFallback. It logs a probe of each kind first and expects to find it

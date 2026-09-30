@@ -133,6 +133,14 @@ make build     # 构建前端并内嵌进 bin/nervewiki
 - 文案在 `src/i18n/messages/`：`en.ts` 是源头，`zh-CN.ts` 缺键、多键时类型检查失败，占位符不一致时 vitest 失败。组件用 `useT()`。
 - 页面在 `src/app/routes.tsx` 中按需加载，写成 `const { Page } = await import(…)`，knip 才看得出用到了哪些导出。
 
+登录、会话与引导：
+
+- **会话**：`src/session/` 是唯一创建 API 客户端的地方（oxlint 检查）：公开客户端（登录、注册、实例信息）与带访问令牌的客户端。浏览器只在 localStorage 的 `nwiki.auth` 中存刷新令牌与本次登录的 `login_id`；访问令牌只在内存中，到期前 30 秒续期。同一浏览器的标签页经 Web Locks 一次一个续期，没有 `navigator.locks` 的非安全上下文（如局域网地址的 HTTP）退回 localStorage 租约；一个标签页登录、退出或换了账户，其他标签页跟着变。
+- **每次登录一代**：`SessionRoot` 按 `loginId` 新建一代 `RootStore`，SWR 缓存随之清空；上一代没有完成的请求以 `SessionChangedError` 结束，不写入新一代。设备偏好与实例信息跨代保留。
+- **路由与守卫**（`src/app/guards.tsx`）：除登录、注册外所有页面都要登录，不存在的路径也是先登录再显示 404。去向只由守卫决定：页面在登录、注册、退出之后不自己跳转。登录页的 `next` 只接受本站路径，否则去 `/`。
+- **新手引导**：步骤注册在 `src/onboarding/steps.ts`，服务端只记录完成的步骤 id。加一步就是写它的组件、追加到 `onboardingSteps`；已经完成前面步骤的用户下次访问只看到新的一步。
+- **请求的错误**：problem 码与字段码到文案的映射在 `src/app/problem-messages.ts`；vitest 读 `api/dist/openapi.yaml`，契约中各操作列出的码没有文案时失败。
+
 ## 端到端测试
 
 `e2e/` 用 Playwright（Chromium）驱动 `make build` 构建的 `bin/nervewiki`，数据库由 testcontainers 启动（需要 Docker）。一次运行启动一个 PostgreSQL、迁移一个模板库；每个 worker 复制出自己的库，运行自己的 `nervewiki serve`。
@@ -143,8 +151,8 @@ make e2e                                                        # make build，�
 cd e2e && pnpm exec playwright show-report                      # 查看上一次运行的报告
 ```
 
-- 故事在 `e2e/stories/<分组>/`，从 `e2e/fixtures/test.ts` 取 `test` 与 `expect`：`db`（本 worker 的库）、`nervewiki`（本 worker 的服务）、`api`（类型化的客户端）、`newDatabase` 与 `nervewikiWith`（另起一个库、一个服务）、`pageWatch`（页面发出的接口请求与失败）。
-- 每个测试的 `page` 从第一次导航之前就被监视；测试通过时，fixture 还核对页面是安静的：没有未捕获的异常、CSP 违规，控制台没有错误与警告。故事不用自己调用。
+- 故事在 `e2e/stories/<分组>/`，从 `e2e/fixtures/test.ts` 取 `test` 与 `expect`：`db`（本 worker 的库）、`nervewiki`（本 worker 的服务）、`api`（类型化的客户端）、`newDatabase` 与 `nervewikiWith`（另起一个库、一个服务）、`pageWatch`（页面发出的接口请求与失败）、`signedInPage`（用接口得到的令牌让页面处于登录状态：第一次加载前写入一次记录，之后页面自己续期）。
+- 每个测试的 `page` 从第一次导航之前就被监视；测试通过时，fixture 还核对页面是安静的：没有未捕获的异常、CSP 违规，控制台没有错误与警告，除了故事用 `pageWatch.expectConsole` 按顺序声明的（例如刻意引起的 4xx 在 Chromium 控制台的报告，`failedToLoad(status)`）。故事不用自己调用。
 - 失败的测试在 `e2e/playwright-report/` 中带着 trace 与截图；`e2e/test-results/` 中有每个 worker 的服务日志和失败时导出的数据库。持续集成在失败时把两者作为 artifact 上传。
 - `make e2e` 把 `VERSION` 交给故事核对注入的版本号；持续集成用 `0.0.0-ci.<运行号>`，与默认值不同。
 

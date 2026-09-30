@@ -84,9 +84,14 @@ export async function createToken(
 const authKey = "nwiki.auth";
 
 /** The session's record: the refresh token, and the login_id of the sign-in it came from. */
-interface AuthRecord {
+export interface AuthRecord {
   refresh_token: string;
   login_id: string;
+}
+
+/** The record a sign-in with tokens writes: a new login_id of 16 random bytes in hexadecimal. */
+export function newRecord(tokens: AuthTokens): AuthRecord {
+  return { refresh_token: tokens.refresh_token, login_id: randomBytes(16).toString("hex") };
 }
 
 /**
@@ -96,7 +101,7 @@ interface AuthRecord {
  * loads, reloads and other tabs find the record the pages keep, refreshed or removed, as in a browser.
  */
 export async function signInContext(context: BrowserContext, baseURL: string, tokens: AuthTokens): Promise<void> {
-  const record: AuthRecord = { refresh_token: tokens.refresh_token, login_id: randomBytes(16).toString("hex") };
+  const record = newRecord(tokens);
   await context.addInitScript(
     ({ origin, key, text }) => {
       const seeded = `${key}.e2e-seeded`;
@@ -110,9 +115,31 @@ export async function signInContext(context: BrowserContext, baseURL: string, to
   );
 }
 
-/** The session's record in the localStorage of page, as it is stored; null when there is none. */
-export async function recordOf(page: Page): Promise<string | null> {
-  return page.evaluate((key) => localStorage.getItem(key), authKey);
+/** The session's record in the localStorage of page; null when there is none. */
+export async function recordOf(page: Page): Promise<AuthRecord | null> {
+  const text = await page.evaluate((key) => localStorage.getItem(key), authKey);
+  return text === null ? null : (JSON.parse(text) as AuthRecord);
+}
+
+/**
+ * Writes record into the localStorage of page as a tab that signs in does (M1/P5 design 3.2): in one
+ * piece, holding the refresh lock, so that no refresh of another tab writes in between. The other tabs
+ * get the storage event.
+ */
+export async function writeRecord(page: Page, record: AuthRecord): Promise<void> {
+  await page.evaluate(
+    async ({ key, text }) => {
+      await navigator.locks.request("nwiki.auth.refresh", () => {
+        localStorage.setItem(key, text);
+      });
+    },
+    { key: authKey, text: JSON.stringify(record) }
+  );
+}
+
+/** The display name an account gets at sign-up: what comes before the @ of its address, in lower case. */
+export function displayNameOf(email: string): string {
+  return email.trim().toLowerCase().slice(0, email.trim().indexOf("@"));
 }
 
 /** Records the step of onboarding for the account of accessToken, as the web app does once the step is done. */
