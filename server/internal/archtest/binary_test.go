@@ -7,12 +7,13 @@ import (
 )
 
 // bannedFromBinary lists the import path prefixes that must not reach the
-// nervewiki binary: testcontainers and docker (pgtest), and google/uuid,
-// which the standard library's uuid replaces. Rule 8 keeps the test helpers
-// themselves out, but any other import could still pull these in, and
-// depguard sees direct imports only.
+// nervewiki binary: the test-only kin-openapi (apitest), testcontainers and
+// docker (pgtest), and google/uuid, which the standard library's uuid
+// replaces. Rule 8 keeps the test helpers themselves out, but any other
+// import could still pull these in, and depguard sees direct imports only.
 func bannedFromBinary() []string {
 	return []string{
+		"github.com/getkin/kin-openapi",
 		"github.com/testcontainers/",
 		"github.com/google/uuid",
 		"github.com/docker/",
@@ -42,12 +43,13 @@ func TestBinaryLinksNoBannedModule(t *testing.T) {
 func TestBannedImports(t *testing.T) {
 	root := m("cmd/nervewiki")
 	g := graph{
-		root:                                   {"github.com/spf13/cobra", m("internal/bootstrap")},
-		"github.com/spf13/cobra":               {"github.com/spf13/pflag"},
-		m("internal/bootstrap"):                {m("internal/platform/httpserver"), m("internal/platform/postgres")},
-		m("internal/platform/httpserver"):      {"github.com/google/uuid", "net/http"},
-		m("internal/platform/postgres"):        {"github.com/jackc/pgx/v5", m("internal/platform/postgres/pgtest")},
-		m("internal/platform/postgres/pgtest"): {"github.com/testcontainers/testcontainers-go"},
+		root:                                     {"github.com/spf13/cobra", m("internal/bootstrap")},
+		"github.com/spf13/cobra":                 {"github.com/spf13/pflag"},
+		m("internal/bootstrap"):                  {m("internal/platform/httpserver"), m("internal/platform/postgres")},
+		m("internal/platform/httpserver"):        {"github.com/getkin/kin-openapi/openapi3", "net/http"},
+		"github.com/getkin/kin-openapi/openapi3": {"github.com/google/uuid"},
+		m("internal/platform/postgres"):          {"github.com/jackc/pgx/v5", m("internal/platform/postgres/pgtest")},
+		m("internal/platform/postgres/pgtest"):   {"github.com/testcontainers/testcontainers-go"},
 		// Not reachable from the root.
 		m("internal/archtest"): {"github.com/docker/docker/client"},
 	}
@@ -56,7 +58,7 @@ func TestBannedImports(t *testing.T) {
 		got = append(got, b.via())
 	}
 	want := []string{
-		"cmd/nervewiki → internal/bootstrap → internal/platform/httpserver → github.com/google/uuid",
+		"cmd/nervewiki → internal/bootstrap → internal/platform/httpserver → github.com/getkin/kin-openapi/openapi3",
 		"cmd/nervewiki → internal/bootstrap → internal/platform/postgres → internal/platform/postgres/pgtest → github.com/testcontainers/testcontainers-go",
 	}
 	if !slices.Equal(got, want) {
