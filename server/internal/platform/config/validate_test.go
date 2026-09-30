@@ -15,6 +15,8 @@ func validConfig() Config {
 			ReadTimeout:       30 * time.Second,
 			WriteTimeout:      60 * time.Second,
 			ShutdownTimeout:   20 * time.Second,
+			RequestTimeout:    15 * time.Second,
+			MaxBodyBytes:      1 << 20,
 		},
 		Database: DatabaseConfig{
 			URL:           "postgres://nervewiki:secret@localhost:5432/nervewiki",
@@ -49,6 +51,8 @@ func TestValidateReportsEveryInvalidKey(t *testing.T) {
 		"server.read_timeout: must be positive, got 0s",
 		"server.write_timeout: must be positive, got -1s",
 		"server.shutdown_timeout: must be positive, got -1s",
+		"server.request_timeout: must be positive, got 0s",
+		"server.max_body_bytes: must be at least 1, got 0",
 		"database.url: is required",
 		"database.max_conns: must be at least 1, got 0",
 		"database.commit_timeout: must be positive, got 0s",
@@ -74,6 +78,15 @@ func TestValidateCrossKeyRules(t *testing.T) {
 			name:   "headers may not outlast the whole request",
 			mutate: func(c *Config) { c.Server.ReadHeaderTimeout = c.Server.ReadTimeout + time.Second },
 			want:   "server.read_header_timeout: must not exceed server.read_timeout (30s), got 31s",
+		},
+		{
+			name:   "a request may take less than the write budget",
+			mutate: func(c *Config) { c.Server.RequestTimeout = c.Server.WriteTimeout - time.Second },
+		},
+		{
+			name:   "a request must leave time to write its answer",
+			mutate: func(c *Config) { c.Server.RequestTimeout = c.Server.WriteTimeout },
+			want:   "server.request_timeout: must be less than server.write_timeout (1m0s), got 1m0s",
 		},
 		{
 			name:   "a host is optional in the address",

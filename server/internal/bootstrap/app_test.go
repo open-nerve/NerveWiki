@@ -52,6 +52,8 @@ func testConfig(t *testing.T, dbURL string, autoMigrate bool) config.Config {
 			ReadTimeout:       5 * time.Second,
 			WriteTimeout:      5 * time.Second,
 			ShutdownTimeout:   5 * time.Second,
+			RequestTimeout:    4 * time.Second,
+			MaxBodyBytes:      1 << 20,
 		},
 		Database: config.DatabaseConfig{URL: dbURL, MaxConns: 4, AutoMigrate: autoMigrate, CommitTimeout: 2 * time.Second},
 		Log:      config.LogConfig{Level: "error", Format: "text"},

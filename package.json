@@ -3,11 +3,13 @@
   "private": true,
   "license": "AGPL-3.0-only",
   "scripts": {
+    "bundle:api": "redocly bundle --config api/redocly.yaml",
     "check:format": "oxfmt --check .",
-    "check:lint": "oxlint --max-warnings=0 tools",
+    "check:lint": "oxlint --max-warnings=0 tools web",
     "fix:format": "oxfmt ."
   },
   "devDependencies": {
+    "@redocly/cli": "2.55.0",
     "knip": "6.38.0",
     "oxfmt": "0.71.0",
     "oxlint": "1.86.0"

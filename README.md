@@ -21,12 +21,12 @@
 ```bash
 pnpm install  # 安装 Node 依赖（检查工具要用）
 make dev-db   # 启动本地 PostgreSQL 18（端口 55433；用 NWIKI_DEV_DB_PORT 修改时，同时覆盖 database.url，见下文"配置"）
-make check    # 持续集成的全部门禁：静态检查、未使用代码检查、测试
+make check    # 静态检查、未使用代码检查、测试；与提交之后的 make gen-check 合起来是持续集成的全部门禁
 make          # 查看所有命令
 ```
 
 - 命令按工具链分区：`*-go` 只需要 Go，`*-web` 需要 Node。
-  - `make lint` 依次执行 `make lint-go` 和 `make lint-web`。前者校验 golangci-lint 的配置并运行它（含格式检查），并检查 `go.mod` 是否整洁；后者做 Markdown 样例集自检、`tools/` 下脚本的 oxlint（零警告）和格式检查。
+  - `make lint` 依次执行 `make lint-go` 和 `make lint-web`。前者校验 golangci-lint 的配置并运行它（含格式检查），并检查 `server/` 与 `server/tools/` 的 `go.mod` 是否整洁；后者做 Markdown 样例集自检、`tools/` 与 `web/` 的 oxlint（零警告）、格式检查和各前端包的类型检查。
   - `make knip` 检查未使用的文件、导出与依赖；配置里过时的条目也算失败。
   - `make test` 运行 Go 测试，开启竞态检测（需要 cgo：macOS 装有 Xcode 命令行工具即可）。集成测试用 testcontainers 启动与开发库相同的 PostgreSQL 镜像，需要 Docker；只跑单元测试用 `cd server && go test -short ./...`。
 - 格式有问题时执行 `make fmt`，它修正 Go 与其余文件的格式。`docs/` 不参与格式化。
@@ -39,7 +39,7 @@ make dev-db   # 先启动开发数据库
 make run      # 以 dev 配置启动 nervewiki serve，监听 127.0.0.1:8080；Ctrl-C 优雅停止
 ```
 
-`serve` 启动时要连上数据库（最多等 10 秒，连不上就退出），按配置执行迁移（dev、test 默认执行，prod 默认不执行），然后自检数据库的编码与 locale，不满足就拒绝启动并给出建库命令。`GET /healthz` 表示进程存活；`GET /readyz` 在数据库可用、迁移已是最新时返回 200，否则 503。
+`serve` 启动时要连上数据库（最多等 10 秒，连不上就退出），按配置执行迁移（dev、test 默认执行，prod 默认不执行），然后自检数据库的编码与 locale，不满足就拒绝启动并给出建库命令。`GET /healthz` 表示进程存活；`GET /readyz` 在数据库可用、迁移已是最新时返回 200，否则 503。`GET /api/v0/instance` 返回产品名、版本与接口版本；`/api/` 下没有的路径返回 404 problem+json。
 
 其他命令在 `server/` 下用 `go run ./cmd/nervewiki <命令>` 执行：
 
@@ -62,6 +62,29 @@ make run      # 以 dev 配置启动 nervewiki serve，监听 127.0.0.1:8080；C
 5. 环境变量 `NWIKI_<节>__<键>`，例如 `database.url` 对应 `NWIKI_DATABASE__URL`。
 
 `NWIKI_ENV` 选择环境（`dev`、`test`、`prod`，默认 `dev`）。未知的键、空值、越界的数字、不带单位的时长都会报错，所有无效的键一次列出。日志里的数据库地址整体脱敏。
+
+## 接口与代码生成
+
+接口用 OpenAPI 3.1 描述，服务端与前端都以它为准：
+
+- `api/openapi.yaml` 是入口，列出全部路径；`api/common.yaml` 是公共组件（`Problem`、`FieldError`）；`api/modules/<模块>.yaml` 每个模块一个文件。
+- `api/dist/openapi.yaml` 是 Redocly 打包的结果，契约测试和 TS 类型都读它。
+
+改了接口描述后执行 `make gen`，并把生成物一起提交：
+
+| 命令           | 生成                                                                                                                                      | 需要 |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ---- |
+| `make gen-go`  | `server/internal/platform/httpserver/apigen`，每个模块的 `adapter/http/gen`（oapi-codegen 生成的接口层、bodyshapegen 生成的请求体结构表） | Go   |
+| `make gen-web` | `api/dist/openapi.yaml`，`web/packages/api-client/src/schema.gen.ts`                                                                      | Node |
+
+`make gen-check`（或分开的 `gen-check-go`、`gen-check-web`）重新生成后检查生成物已提交且没有差异，持续集成也执行它。oapi-codegen 锁定在独立的 Go 模块 `server/tools` 中，不进入 `nervewiki` 的依赖。
+
+新增一个模块的接口：
+
+1. 写 `api/modules/<模块>.yaml`，在 `api/openapi.yaml` 的 `tags` 与 `paths` 中列出；写法约定由 `apitest` 的规则测试检查，见 [P4 设计](docs/v0.1/M0-foundation/04-P4-api-contract.md) 3.2。
+2. 照抄 `instance` 的 `adapter/http/gen/oapi-codegen.yaml`，改掉输出路径，执行 `make gen`。
+3. 在 `adapter/http` 中实现生成的 `StrictServerInterface`，由模块的 `Register` 挂到路由器上，在 `bootstrap` 中调用。
+4. `adapter/http` 的测试以 `apitest.Main(m, "<模块>")` 为 `TestMain`：操作声明的每个错误码都要有测试答过。
 
 ## Markdown 样例集
 

@@ -26,13 +26,16 @@ type Config struct {
 // ServerConfig configures the HTTP server. The timeouts bound the reads and
 // writes on a connection: reading the request headers, reading the whole
 // request (headers and body), and writing the response; idle keep-alive
-// connections have a fixed timeout in httpserver.
+// connections have a fixed timeout in httpserver. RequestTimeout bounds each
+// API operation's context, which write_timeout does not cancel.
 type ServerConfig struct {
 	Addr              string        `koanf:"addr"`
 	ReadHeaderTimeout time.Duration `koanf:"read_header_timeout"`
 	ReadTimeout       time.Duration `koanf:"read_timeout"`
 	WriteTimeout      time.Duration `koanf:"write_timeout"`
 	ShutdownTimeout   time.Duration `koanf:"shutdown_timeout"`
+	RequestTimeout    time.Duration `koanf:"request_timeout"`
+	MaxBodyBytes      int64         `koanf:"max_body_bytes"`
 	// AddrFile, when set, receives the address the server listens on once it
 	// does, e.g. for addr ":0".
 	AddrFile string `koanf:"addr_file"`
@@ -66,6 +69,8 @@ func (c Config) LogValue() slog.Value {
 			duration("read_timeout", c.Server.ReadTimeout),
 			duration("write_timeout", c.Server.WriteTimeout),
 			duration("shutdown_timeout", c.Server.ShutdownTimeout),
+			duration("request_timeout", c.Server.RequestTimeout),
+			slog.Int64("max_body_bytes", c.Server.MaxBodyBytes),
 			slog.String("addr_file", c.Server.AddrFile),
 		),
 		slog.Any("database", c.Database),

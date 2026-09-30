@@ -1,0 +1,7 @@
+# Redocly CLI 配置：make gen-web 执行 redocly bundle --config api/redocly.yaml。
+# 路径相对于本文件所在的目录。
+telemetry: off
+apis:
+  nervewiki:
+    root: openapi.yaml
+    output: dist/openapi.yaml

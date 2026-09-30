@@ -1,0 +1,69 @@
+# 各模块共用的组件，Go 类型生成在 server/internal/platform/httpserver/apigen（make gen-go）。
+# 模块这样引用：$ref: '../common.yaml#/components/schemas/<名字>'。
+# 只放 schemas 和 parameters，不放 responses：跨文件引用 response 时，oapi-codegen
+# 要求共享包也生成 strict server，生成的代码编译失败。
+openapi: 3.1.0
+info:
+  title: Nerve Wiki common components
+  version: v0
+components:
+  schemas:
+    Problem:
+      description: >-
+        RFC 9457 problem details. `title` is the HTTP status phrase, `detail`
+        explains this occurrence, and clients branch on `code`. Must match
+        httpserver.Problem; the platform's contract test checks it.
+      type: object
+      additionalProperties: false
+      required: [status, code, title]
+      properties:
+        status:
+          description: HTTP status code.
+          type: integer
+        code:
+          description: >-
+            Stable error code. Platform codes have no prefix (bad_request,
+            unauthorized, forbidden, not_found, payload_too_large,
+            validation_failed, rate_limited, server_busy, internal_error,
+            not_ready); module codes are prefixed with the module that
+            refuses, e.g. page.locked. Each operation lists the codes it can
+            answer in x-problem-codes.
+          type: string
+        title:
+          description: HTTP status phrase, e.g. "Not Found".
+          type: string
+        detail:
+          description: What went wrong in this occurrence.
+          type: string
+        errors:
+          description: The invalid fields of the request.
+          type: array
+          items:
+            $ref: "#/components/schemas/FieldError"
+    FieldError:
+      description: >-
+        One invalid field of a request. Clients show text looked up by `code`;
+        `message` is an English explanation for developers. Must match
+        httpserver.FieldError and the field codes of internal/shared.
+      type: object
+      additionalProperties: false
+      required: [field, code, message]
+      properties:
+        field:
+          description: >-
+            The field's path in the request, e.g. title or properties.status.
+            A path longer than 256 bytes is cut short and ends with `…`.
+          type: string
+        code:
+          description: What is wrong with the field.
+          type: string
+          enum:
+            - required
+            - invalid_format
+            - too_short
+            - too_long
+            - out_of_range
+            - not_allowed
+            - duplicate
+        message:
+          type: string

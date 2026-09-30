@@ -1,6 +1,7 @@
 // Package httpserver provides nervewiki's HTTP platform: the server lifecycle,
 // the fixed middleware chain, the router with the health endpoints,
-// problem+json errors, and support for long-lived routes.
+// problem+json errors, what the API operations share (API: the error mapping
+// and the per-route middlewares), and support for long-lived routes.
 package httpserver
 
 import (
@@ -11,12 +12,16 @@ import (
 // ContentTypeProblem is the media type of RFC 9457 problem details.
 const ContentTypeProblem = "application/problem+json"
 
-// Codes of the problems the platform itself reports. Module codes are
-// namespaced by module, e.g. "page.locked" (v0.1 design 6.1).
+// Codes of the problems the platform itself reports. The other platform
+// codes (validation_failed, forbidden …) come from domain errors through
+// ProblemError; module codes are namespaced by module, e.g. "page.locked"
+// (v0.1 design 6.1).
 const (
-	CodeNotFound = "not_found"
-	CodeInternal = "internal_error"
-	CodeNotReady = "not_ready"
+	CodeBadRequest      = "bad_request"
+	CodeNotFound        = "not_found"
+	CodePayloadTooLarge = "payload_too_large"
+	CodeInternal        = "internal_error"
+	CodeNotReady        = "not_ready"
 )
 
 // Problem is an RFC 9457 problem details body (v0.1 design 6.1). Code is the
