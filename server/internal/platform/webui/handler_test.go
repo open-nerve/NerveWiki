@@ -138,3 +138,30 @@ func TestUnbuiltFrontendExplainsItself(t *testing.T) {
 		wantResponse(t, serve(h, http.MethodGet, target), target, http.StatusNotFound, "text/plain; charset=utf-8", "no-cache", notBuiltMessage+"\n")
 	}
 }
+
+// The files a browser revalidates carry an ETag of their content, so that
+// revalidation costs a 304; the hashed assets need none.
+func TestRevalidatedFilesAnswer304ToTheirETag(t *testing.T) {
+	h := Handler(built())
+	for _, target := range []string{"/", "/nope", "/theme-init.js"} {
+		etag := serve(h, http.MethodGet, target).Result().Header.Get("ETag")
+		if etag == "" {
+			t.Fatalf("GET %s has no ETag", target)
+		}
+		req := httptest.NewRequest(http.MethodGet, target, nil)
+		req.Header.Set("If-None-Match", etag)
+		rec := httptest.NewRecorder()
+
+		h.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusNotModified || rec.Body.Len() != 0 {
+			t.Errorf("GET %s with If-None-Match %s = %d with %d bytes, want 304 without a body", target, etag, rec.Code, rec.Body.Len())
+		}
+	}
+	if etag := serve(h, http.MethodGet, "/assets/index-a1.js").Result().Header.Get("ETag"); etag != "" {
+		t.Errorf("an asset has the ETag %s, want none: its name changes with its content", etag)
+	}
+	if a, b := serve(h, http.MethodGet, "/").Result().Header.Get("ETag"), serve(h, http.MethodGet, "/theme-init.js").Result().Header.Get("ETag"); a == b {
+		t.Errorf("index.html and theme-init.js share the ETag %s", a)
+	}
+}

@@ -55,8 +55,9 @@
       }
     },
     {
-      // 组件只经由 store 与 service 使用接口：接口的类型也从 service 取
-      "files": ["web/apps/web/src/app/**", "web/apps/web/src/pages/**", "web/apps/web/src/components/**"],
+      // 只有 services 调用接口，只有 main.tsx 创建客户端（测试另建假的）：没有模块级的客户端，
+      // 从 M1 起每次登录重建 RootStore 时，旧的客户端不会留在别处
+      "files": ["web/apps/web/src/**"],
       "rules": {
         "no-restricted-imports": [
           "error",
@@ -64,10 +65,38 @@
             "paths": [
               {
                 "name": "@nervewiki/api-client",
-                "message": "组件不直接调用接口：经由 stores 与 services，类型从 services 导入"
+                "message": "只有 services 调用接口：组件与 store 经由 service，类型也从 service 导入"
               }
-            ]
+            ],
+            "patterns": [{ "group": ["**/packages/api-client/**"], "message": "从 @nervewiki/api-client 导入" }]
           }
+        ]
+      }
+    },
+    {
+      "files": ["web/apps/web/src/services/**", "web/apps/web/src/stores/root.store.ts"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "@nervewiki/api-client",
+                "importNames": ["createClient"],
+                "message": "只有 main.tsx 创建客户端，经由 RootStore 交给 service"
+              }
+            ],
+            "patterns": [{ "group": ["**/packages/api-client/**"], "message": "从 @nervewiki/api-client 导入" }]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["web/apps/web/src/main.tsx", "web/apps/web/src/test/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          { "patterns": [{ "group": ["**/packages/api-client/**"], "message": "从 @nervewiki/api-client 导入" }] }
         ]
       }
     }

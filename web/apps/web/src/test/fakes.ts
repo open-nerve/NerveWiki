@@ -43,10 +43,7 @@ export const instanceJSON: InstanceInfo = {
   api_version: "v0",
 };
 
-/**
- * fakeApi is an API client whose requests answer takes; it throws for a
- * request it does not expect.
- */
+/** fakeApi is an API client whose every request answer answers. */
 export function fakeApi(answer: (request: Request) => Response | Promise<Response>): ApiClient {
   return createClient({ baseUrl: "http://nervewiki.test", fetch: async (request: Request) => answer(request) });
 }

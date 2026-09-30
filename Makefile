@@ -8,6 +8,9 @@ SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
 DEV_COMPOSE := docker compose -f deploy/compose.dev.yaml
+# 写进 bin/nervewiki 的版本号。默认值与 server/internal/platform/buildinfo 中的相同；发布时指定，例如 make build VERSION=0.1.0
+VERSION ?= 0.1.0-dev
+GO_LDFLAGS := -X github.com/open-nerve/NerveWiki/server/internal/platform/buildinfo.version=$(VERSION)
 GOLANGCI_LINT_VERSION := 2.14.0
 BIN_DIR := $(CURDIR)/bin
 GOLANGCI_LINT := $(BIN_DIR)/golangci-lint
@@ -60,10 +63,10 @@ build-web: ## 构建前端，产物在 web/apps/web/dist（需要 Node）
 
 # webui/dist 里只提交 .gitkeep：先清掉上一次复制进去的前端，再复制这一次的
 .PHONY: build
-build: build-web ## 构建 bin/nervewiki，前端内嵌在其中（需要 Go 与 Node）
+build: build-web ## 构建 bin/nervewiki，前端内嵌在其中，版本号取 VERSION（需要 Go 与 Node）
 	find server/internal/platform/webui/dist -mindepth 1 ! -name .gitkeep -delete
 	cp -R web/apps/web/dist/. server/internal/platform/webui/dist/
-	cd server && go build -o ../bin/nervewiki ./cmd/nervewiki
+	cd server && go build -ldflags "$(GO_LDFLAGS)" -o ../bin/nervewiki ./cmd/nervewiki
 
 .PHONY: tools
 tools: ## 安装锁定版本的 golangci-lint 到 ./bin
