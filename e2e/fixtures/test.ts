@@ -1,8 +1,9 @@
 import path from "node:path";
 
 import { createClient, type ApiClient } from "@nervewiki/api-client";
-import { test as base } from "@playwright/test";
+import { test as base, type Page } from "@playwright/test";
 
+import { expectQuietPage, watchPage, type PageWatch } from "./browser";
 import { createDatabase, dropDatabase, openDatabase, templateDatabase, type Database } from "./db";
 import { nervewikiFixtureTimeoutMs, startNervewiki, type Nervewiki, type StartOptions } from "./server";
 
@@ -25,6 +26,8 @@ interface WorkerFixtures {
 interface TestFixtures {
   /** The typed API client for the worker's nervewiki. */
   api: ApiClient;
+  /** What the test's page did, watched from before its first navigation: see page. */
+  pageWatch: PageWatch;
   /**
    * Creates another database on the run's PostgreSQL: "migrated", a copy of the
    * template; "empty", with no migration applied. It outlives the test, until
@@ -63,6 +66,9 @@ export function stampedVersion(): string {
 /** Numbers the databases newDatabase creates in this worker: a worker is one process. */
 let databases = 0;
 
+/** The watch of each test's page, for pageWatch. */
+const watches = new WeakMap<Page, PageWatch>();
+
 /** Stories import test from here: every worker runs its own nervewiki on its own database. */
 export const test = base.extend<TestFixtures, WorkerFixtures>({
   db: [
@@ -91,6 +97,24 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
   // page and request resolve relative URLs against the worker's nervewiki.
   baseURL: async ({ nervewiki }, use) => {
     await use(nervewiki.baseURL);
+  },
+  // Every test's page is watched from before its first navigation, and a test that passes must have left it
+  // quiet (expectQuietPage): the check runs as the test ends, so no story can forget it. What the page asked
+  // of the API stays each story's to assert, through pageWatch.
+  page: async ({ page }, use, testInfo) => {
+    const watch = await watchPage(page);
+    watches.set(page, watch);
+    await use(page);
+    if (testInfo.status === testInfo.expectedStatus) {
+      await expectQuietPage(page, watch);
+    }
+  },
+  pageWatch: async ({ page }, use) => {
+    const watch = watches.get(page);
+    if (!watch) {
+      throw new Error("the page fixture did not watch this page");
+    }
+    await use(watch);
   },
   api: async ({ nervewiki }, use) => {
     await use(createClient({ baseUrl: nervewiki.baseURL }));

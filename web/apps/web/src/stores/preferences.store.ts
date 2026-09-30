@@ -9,8 +9,8 @@ export type Theme = "light" | "dark";
  * themeKey is where the theme preference is stored. public/theme-init.js
  * reads the same key, before the first paint; a test holds the two together.
  */
-export const themeKey = "nervewiki.theme";
-const localeKey = "nervewiki.locale";
+export const themeKey = "nwiki.theme";
+const localeKey = "nwiki.locale";
 
 /** The part of localStorage the preferences use. */
 export type PreferenceStorage = Pick<Storage, "getItem" | "setItem">;

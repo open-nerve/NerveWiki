@@ -62,12 +62,13 @@ dev: dev-db ## 一条命令起开发环境：开发数据库、后端（make run
 build-web: ## 构建前端，产物在 web/apps/web/dist（需要 Node）
 	pnpm --filter @nervewiki/web build
 
-# webui/dist 里只提交 .gitkeep：先清掉上一次复制进去的前端，再复制这一次的
+# webui/dist 里只提交 .gitkeep：先清掉上一次复制进去的前端，再复制这一次的。
+# 构建参数与 deploy/Dockerfile 的相同（静态链接、-trimpath），改一处要同步另一处：e2e 测的就是要发布的那种构建
 .PHONY: build
 build: build-web ## 构建 bin/nervewiki，前端内嵌在其中，版本号取 VERSION（需要 Go 与 Node）
 	find server/internal/platform/webui/dist -mindepth 1 ! -name .gitkeep -delete
 	cp -R web/apps/web/dist/. server/internal/platform/webui/dist/
-	cd server && go build -ldflags "$(GO_LDFLAGS)" -o ../bin/nervewiki ./cmd/nervewiki
+	cd server && CGO_ENABLED=0 go build -trimpath -ldflags "$(GO_LDFLAGS)" -o ../bin/nervewiki ./cmd/nervewiki
 
 # 故事读 NWIKI_E2E_VERSION，核对 make build 注入的版本号（docs/v0.1/M0-foundation/06-P6-e2e-delivery.md 3.4）
 .PHONY: e2e
@@ -128,7 +129,7 @@ gen-check-web: gen-web ## 重新生成 api/dist 和 TS 类型并检查（持续�
 	@$(call check-committed,$(GEN_WEB_OUT))
 
 .PHONY: check
-check: lint knip test ## 静态检查、未使用代码检查、测试（生成物一致性另跑 gen-check）
+check: lint knip test build-web ## 静态检查、未使用代码检查、测试、前端构建（生成物一致性另跑 gen-check）
 
 .PHONY: lint
 lint: lint-go lint-web ## 全部静态检查

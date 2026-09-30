@@ -7,7 +7,7 @@
 {
   let theme = null;
   try {
-    theme = window.localStorage.getItem("nervewiki.theme");
+    theme = window.localStorage.getItem("nwiki.theme");
   } catch {
     // storage blocked: follow the system
   }

@@ -80,11 +80,14 @@ export async function watchPage(page: Page): Promise<PageWatch> {
 }
 
 /**
- * Checks that page logged no error and no warning since watch began, such as React Router's warning about a
- * missing HydrateFallback. It logs a probe of each kind first and expects to find it, so that a watch that
- * does not hear the console cannot pass.
+ * Checks that nothing went wrong in page since watch began: no uncaught exception, no Content-Security-Policy
+ * violation, and no console error or warning, such as React Router's warning about a missing HydrateFallback.
+ * It logs a probe of each kind first and expects to find it, so that a watch that does not hear the console
+ * cannot pass.
  */
-export async function expectQuietConsole(page: Page, watch: PageWatch): Promise<void> {
+export async function expectQuietPage(page: Page, watch: PageWatch): Promise<void> {
+  expect(watch.pageErrors, "uncaught exceptions in the page").toEqual([]);
+  expect(watch.cspViolations, "Content-Security-Policy violations").toEqual([]);
   const probe = "nervewiki-e2e: console probe";
   await page.evaluate((text) => {
     console.error(text);

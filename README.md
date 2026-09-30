@@ -21,7 +21,7 @@
 ```bash
 pnpm install  # 安装 Node 依赖（检查工具要用）
 make dev-db   # 启动本地 PostgreSQL 18（端口 55433；用 NWIKI_DEV_DB_PORT 修改时，同时覆盖 database.url，见下文"配置"）
-make check    # 静态检查、未使用代码检查、测试；与提交之后的 make gen-check 合起来是持续集成 server、web 任务的门禁
+make check    # 静态检查、未使用代码检查、测试、前端构建；与提交之后的 make gen-check 合起来是持续集成 server、web 任务的门禁
 make          # 查看所有命令
 ```
 
@@ -84,10 +84,10 @@ make run      # 以 dev 配置启动 nervewiki serve，监听 127.0.0.1:8080；C
 
 新增一个模块的接口：
 
-1. 写 `api/modules/<模块>.yaml`，在 `api/openapi.yaml` 的 `tags` 与 `paths` 中列出；写法约定由 `apitest` 的规则测试检查，见 [P4 设计](docs/v0.1/M0-foundation/04-P4-api-contract.md) 3.2。
+1. 写 `api/modules/<模块>.yaml`，在 `api/openapi.yaml` 的 `tags` 与 `paths` 中列出；写法约定由 `apitest` 的规则测试（`server/internal/platform/httpserver/apitest/rules_test.go`）检查，要点见[总体设计](docs/v0.1/v0.1-design.md) 13.1。
 2. 照抄 `instance` 的 `adapter/http/gen/oapi-codegen.yaml`，改掉输出路径，执行 `make gen`。
 3. 在 `adapter/http` 中实现生成的 `StrictServerInterface`，由模块的 `Register` 挂到路由器上，在 `bootstrap` 中调用。
-4. `adapter/http` 的测试以 `apitest.Main(m, "<模块>")` 为 `TestMain`：操作声明的每个错误码都要有测试答过。
+4. `adapter/http` 的测试以 `apitest.Main(m)` 为 `TestMain`（模块名取自测试所在的路径）：操作声明的每个错误码都要有测试经 `apitest.CheckResponse` 答过。
 
 ## 前端
 
@@ -116,7 +116,8 @@ make e2e                                                        # make build，�
 cd e2e && pnpm exec playwright show-report                      # 查看上一次运行的报告
 ```
 
-- 故事在 `e2e/stories/<分组>/`，从 `e2e/fixtures/test.ts` 取 `test` 与 `expect`：`db`（本 worker 的库）、`nervewiki`（本 worker 的服务）、`api`（类型化的客户端）、`newDatabase` 与 `nervewikiWith`（另起一个库、一个服务）。浏览器中的故事用 `fixtures/browser.ts` 的 `watchPage` 与 `expectQuietConsole`：控制台出现任何错误或警告都算失败。
+- 故事在 `e2e/stories/<分组>/`，从 `e2e/fixtures/test.ts` 取 `test` 与 `expect`：`db`（本 worker 的库）、`nervewiki`（本 worker 的服务）、`api`（类型化的客户端）、`newDatabase` 与 `nervewikiWith`（另起一个库、一个服务）、`pageWatch`（页面发出的接口请求与失败）。
+- 每个测试的 `page` 从第一次导航之前就被监视；测试通过时，fixture 还核对页面是安静的：没有未捕获的异常、CSP 违规，控制台没有错误与警告。故事不用自己调用。
 - 失败的测试在 `e2e/playwright-report/` 中带着 trace 与截图；`e2e/test-results/` 中有每个 worker 的服务日志和失败时导出的数据库。持续集成在失败时把两者作为 artifact 上传。
 - `make e2e` 把 `VERSION` 交给故事核对注入的版本号；持续集成用 `0.0.0-ci.<运行号>`，与默认值不同。
 

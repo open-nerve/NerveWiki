@@ -36,7 +36,8 @@ cleanup() {
     echo "--- nervewiki 的日志 ---" >&2
     docker logs "$app" >&2 || true
   fi
-  docker rm -f "$app" "$migrate" "$db" >/dev/null 2>&1 || true
+  # -v：PostgreSQL 镜像声明了数据卷，不带 -v 每次都会留下一个匿名卷
+  docker rm -fv "$app" "$migrate" "$db" >/dev/null 2>&1 || true
   docker network rm "$name" >/dev/null 2>&1 || true
   # 否则脚本的退出码是上一行的，set -u 之类的失败会被当成通过
   exit "$status"
