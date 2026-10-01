@@ -143,19 +143,29 @@ test("a refused deactivation keeps the dialog, its reason and the session", asyn
   expect(stored).toHaveProperty(AUTH_KEY);
 });
 
-test("the only admin of a workspace with other members is told what to do first, and stays signed in", async () => {
-  const user = userEvent.setup();
-  const { app } = securityPage({ "POST /api/v0/me/deactivate": () => problem(409, "workspace.sole_admin") });
+test.each([
+  [
+    "workspace.sole_admin",
+    "You are the only admin of a workspace that has other members. Make another member an admin there first (workspace settings, Members), then deactivate.",
+  ],
+  [
+    "notebook.sole_admin",
+    "You are the only admin of notebooks that others are in. In each one's settings, make another member an admin, or delete it; then deactivate.",
+  ],
+])(
+  "the only admin of a workspace or a notebook with other members is told what to do first, and stays signed in: %s",
+  async (code, why) => {
+    const user = userEvent.setup();
+    const { app } = securityPage({ "POST /api/v0/me/deactivate": () => problem(409, code) });
 
-  await user.click(await screen.findByRole("button", { name: "Deactivate account" }));
-  await user.click(await screen.findByRole("button", { name: "Deactivate" }));
+    await user.click(await screen.findByRole("button", { name: "Deactivate account" }));
+    await user.click(await screen.findByRole("button", { name: "Deactivate" }));
 
-  const dialog = await screen.findByRole("alertdialog");
-  expect((await within(dialog).findByRole("alert")).textContent).toBe(
-    "You are the only admin of a workspace that has other members. Make another member an admin there first (workspace settings, Members), then deactivate."
-  );
-  expect(app.session.tokens.state.status).toBe("signed-in");
-});
+    const dialog = await screen.findByRole("alertdialog");
+    expect((await within(dialog).findByRole("alert")).textContent).toBe(why);
+    expect(app.session.tokens.state.status).toBe("signed-in");
+  }
+);
 
 test("a deactivation goes out once, however often it is pressed; cancel sends nothing", async () => {
   const user = userEvent.setup();

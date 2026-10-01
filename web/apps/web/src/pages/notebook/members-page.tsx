@@ -1,5 +1,6 @@
 import { observer } from "mobx-react-lite";
 import { useId, useRef, useState, type FormEvent, type RefObject } from "react";
+import { Link } from "react-router";
 import useSWR, { useSWRConfig } from "swr";
 
 import { ConfirmDialog } from "../../app/confirm-dialog";
@@ -89,6 +90,9 @@ const MembersSection = observer(function MembersSection({
         {t("notebookSettings.members")}
       </h2>
       {failed !== undefined && <Alert>{failed}</Alert>}
+      {members.list !== undefined && !members.list.some((member) => member.role === "admin") && (
+        <NoAdmin workspace={workspace} />
+      )}
       {members.list === undefined ? (
         <NotLoaded error={error} retry={() => void mutate()} />
       ) : (
@@ -110,6 +114,27 @@ const MembersSection = observer(function MembersSection({
     </section>
   );
 });
+
+/**
+ * NoAdmin says the notebook has no admin (M3/P5 design 3.4): ownerless, it
+ * stays in use by its members. A workspace admin is shown where to take it
+ * over.
+ */
+function NoAdmin({ workspace }: { workspace: Workspace }) {
+  const t = useT();
+  return (
+    <p className="text-sm">
+      {t("notebookMembers.noAdmin")}{" "}
+      {workspace.role === "admin" ? (
+        <Link to={`/${workspace.slug}/settings/ownerless`} className="underline underline-offset-4">
+          {t("notebookMembers.takeOverThere")}
+        </Link>
+      ) : (
+        t("notebookMembers.adminsTakeOver")
+      )}
+    </p>
+  );
+}
 
 /**
  * AddSection adds a member of the workspace who is not in the notebook

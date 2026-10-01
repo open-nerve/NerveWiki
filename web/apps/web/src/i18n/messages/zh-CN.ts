@@ -116,6 +116,9 @@ export const zhCN: Messages = {
   "notebookMembers.leaving": "正在离开…",
   "notebookMembers.soleAdmin": "你是这个笔记本唯一的管理员：先让另一位成员成为管理员，或删除这个笔记本。",
   "notebookMembers.notMember": "你已经不是这个笔记本的成员了。",
+  "notebookMembers.noAdmin": "这本笔记本没有管理员。",
+  "notebookMembers.adminsTakeOver": "工作区的管理员可以接管它。",
+  "notebookMembers.takeOverThere": "在“无主笔记本”里接管它",
   "workspaceSettings.title": "工作区设置",
   "workspaceSettings.general": "常规",
   "workspaceSettings.save": "保存",
@@ -170,7 +173,10 @@ export const zhCN: Messages = {
   "members.remove": "移出",
   "members.removeLabel": "移出 {name}",
   "members.removeTitle": "把 {name} 移出 {workspace}？",
-  "members.removeBody": "对方将看不到这个工作区，发给对方邮箱的待接受邀请一并撤回。",
+  "members.removeBody":
+    "对方将看不到这个工作区，发给对方邮箱的待接受邀请一并撤回。对方独自管理的笔记本会成为无主，可以在“无主笔记本”里接管。",
+  "members.leaveNotebookSoleAdmin":
+    "你是这个工作区里某些还有其他成员的笔记本唯一的管理员。先在这些笔记本的设置里让另一位成员成为管理员，或者删除它们，再离开。",
   "members.removing": "正在移出…",
   "members.cancel": "取消",
   "members.leaveTitle": "离开工作区",
@@ -228,6 +234,8 @@ export const zhCN: Messages = {
   "deactivate.cancel": "取消",
   "deactivate.confirm": "停用",
   "deactivate.sending": "停用中…",
+  "deactivate.notebookSoleAdmin":
+    "你是某些还有其他成员的笔记本唯一的管理员。先在那些笔记本的设置里让另一位成员成为管理员，或者删除它们，再停用。",
   "deactivate.soleAdmin":
     "你是某个还有其他成员的工作区唯一的管理员。先在那里（工作区设置 → 成员）让另一位成员成为管理员，再停用。",
   "settings.tokens": "访问令牌",

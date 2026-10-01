@@ -59,10 +59,15 @@ const MembersSection = observer(function MembersSection({ workspace }: { workspa
     }
   }
 
-  /** remove ends the membership id; the invitations pending to the member's address went with it. */
+  /**
+   * remove ends the membership id; the invitations pending to the member's
+   * address went with it, and the notebooks they alone administered are
+   * ownerless now.
+   */
   async function remove(id: string) {
     await members.remove(id);
     void reload(["invitations", workspace.id]);
+    void reload(["ownerless", workspace.id]);
   }
 
   return (
@@ -109,6 +114,7 @@ function LeaveSection({ workspace }: { workspace: Workspace }) {
         sendingLabel={t("members.leaving")}
         cancelLabel={t("members.cancel")}
         confirm={() => workspaces.leave(workspace.slug)}
+        texts={{ "notebook.sole_admin": "members.leaveNotebookSoleAdmin" }}
       />
     </section>
   );

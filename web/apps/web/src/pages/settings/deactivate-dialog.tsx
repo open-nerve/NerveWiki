@@ -9,7 +9,8 @@ import { useAccount, useStore } from "../../stores/context";
  * forgets its session, and the guards take every tab to the sign-in page.
  * A refusal keeps the dialog open with its reason, and the session: the
  * only admin of a workspace with other members is told to make another
- * an admin first (M2/P6 design 3.5).
+ * an admin first (M2/P6 design 3.5), as is the only admin of notebooks
+ * with other members (M3/P5 design 3.4).
  */
 export function DeactivateDialog() {
   const { account } = useAccount();
@@ -27,7 +28,7 @@ export function DeactivateDialog() {
         await account.deactivate();
         await auth.endSession();
       }}
-      texts={{ "workspace.sole_admin": "deactivate.soleAdmin" }}
+      texts={{ "workspace.sole_admin": "deactivate.soleAdmin", "notebook.sole_admin": "deactivate.notebookSoleAdmin" }}
     />
   );
 }

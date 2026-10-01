@@ -119,6 +119,9 @@ export const en = {
   "notebookMembers.soleAdmin":
     "You are this notebook's only admin: make another member an admin first, or delete the notebook.",
   "notebookMembers.notMember": "You are no longer a member of this notebook.",
+  "notebookMembers.noAdmin": "This notebook has no admin.",
+  "notebookMembers.adminsTakeOver": "A workspace admin can take it over.",
+  "notebookMembers.takeOverThere": "Take it over in Ownerless notebooks",
   "workspaceSettings.title": "Workspace settings",
   "workspaceSettings.general": "General",
   "workspaceSettings.save": "Save",
@@ -174,7 +177,9 @@ export const en = {
   "members.removeLabel": "Remove {name}",
   "members.removeTitle": "Remove {name} from {workspace}?",
   "members.removeBody":
-    "They will no longer see the workspace, and the invitations pending to their address are withdrawn.",
+    "They will no longer see the workspace, and the invitations pending to their address are withdrawn. The notebooks they alone administer become ownerless: you can take them over in Ownerless notebooks.",
+  "members.leaveNotebookSoleAdmin":
+    "You are the only admin of notebooks in this workspace that others are in. In each one's settings, make another member an admin, or delete it; then leave.",
   "members.removing": "Removing…",
   "members.cancel": "Cancel",
   "members.leaveTitle": "Leave workspace",
@@ -238,6 +243,8 @@ export const en = {
   "deactivate.cancel": "Cancel",
   "deactivate.confirm": "Deactivate",
   "deactivate.sending": "Deactivating…",
+  "deactivate.notebookSoleAdmin":
+    "You are the only admin of notebooks that others are in. In each one's settings, make another member an admin, or delete it; then deactivate.",
   "deactivate.soleAdmin":
     "You are the only admin of a workspace that has other members. Make another member an admin there first (workspace settings, Members), then deactivate.",
   "settings.tokens": "Access tokens",

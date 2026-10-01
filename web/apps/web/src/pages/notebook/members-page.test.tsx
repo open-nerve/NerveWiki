@@ -41,7 +41,30 @@ test("the members are listed by when they joined, the account's own row marked a
   expect(within(settings).getByRole("link", { name: "Members" }).getAttribute("aria-current")).toBe("page");
   expect(screen.queryByRole("button", { name: /role of Ada/ })).toBeNull();
   expect(screen.queryByRole("button", { name: /^Remove Ada/ })).toBeNull();
+  expect(screen.queryByText(/has no admin/)).toBeNull();
 });
+
+test.each([
+  ["admin", "where to take it over", true],
+  ["member", "who can take it over", false],
+] as const)(
+  "with no admin among its members, the page says so, and shows a workspace %s %s",
+  async (workspaceRole, _, linked) => {
+    renderApp(
+      members,
+      notebookServer({ workspaceRole, members: [notebookMember(ada, "editor"), notebookMember(bob, "editor")] }).app
+    );
+
+    const note = (await screen.findByText(/This notebook has no admin\./)).closest("p");
+    const link = within(note!).queryByRole("link", { name: "Take it over in Ownerless notebooks" });
+    if (linked) {
+      expect(link?.getAttribute("href")).toBe("/lab/settings/ownerless");
+    } else {
+      expect(link).toBeNull();
+      expect(note?.textContent).toBe("This notebook has no admin. A workspace admin can take it over.");
+    }
+  }
+);
 
 test("a guest of the workspace sees the members without their addresses", async () => {
   renderApp(
