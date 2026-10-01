@@ -30,9 +30,11 @@ import (
 const interleavingWait = 10 * time.Second
 
 // acmeTeam is acme, created through the API by alice, its admin, and bob and
-// carol, whose memberships are written through SQL (they join by invitation
-// from M2/P3 on), on an app of its own.
+// carol, whose memberships are written through SQL (the matrix's reason,
+// M2/P3 design 3.10: what a test aims at is known before it runs), on an
+// app of its own; and dana, an account of no workspace.
 type acmeTeam struct {
+	url      string
 	base     string
 	pool     *pgxpool.Pool
 	contract *apitest.Contract
@@ -40,61 +42,84 @@ type acmeTeam struct {
 	members  map[string]uuid.UUID // the memberships, by name
 }
 
+// newAcmeTeam is acme with bob and carol of the roles given; "" is none.
 func newAcmeTeam(t *testing.T, bobRole, carolRole string) acmeTeam {
 	t.Helper()
 	url := pgtest.NewDatabase(t)
 	tm := acmeTeam{
-		base: startApp(t, testConfig(t, url, false), migrations.FS()), pool: connect(t, url), contract: apitest.Load(t),
+		url: url, base: startApp(t, testConfig(t, url, false), migrations.FS()), pool: connect(t, url), contract: apitest.Load(t),
 		tokens: map[string]string{}, members: map[string]uuid.UUID{},
 	}
-	for _, name := range []string{"alice", "bob", "carol"} {
+	for _, name := range []string{"alice", "bob", "carol", "dana"} {
 		tm.tokens[name] = registerAccount(t, tm.contract, tm.base, name+"@example.com").AccessToken
 	}
 	if status, answer := ask(t, tm.contract, http.MethodPost, tm.base+"/api/v0/workspaces", tm.tokens["alice"],
 		`{"name":"Acme","slug":"acme"}`); status != http.StatusCreated {
 		t.Fatalf("create acme = %d %s", status, answer)
 	}
-	ctx := context.Background()
-	for name, role := range map[string]string{"bob": bobRole, "carol": carolRole} {
-		if _, err := tm.pool.Exec(ctx, `INSERT INTO workspace_members (id, workspace_id, user_id, role, created_by_id, updated_by_id, created_at, updated_at)
-			SELECT $1, w.id, u.id, $3, w.created_by_id, w.created_by_id, now(), now()
-			FROM workspaces w, users u WHERE w.slug = 'acme' AND u.email = $2`, uuid.NewV7(), name+"@example.com", role); err != nil {
-			t.Fatal(err)
-		}
-	}
-	rows, err := tm.pool.Query(ctx, `SELECT split_part(u.email, '@', 1), m.id FROM workspace_members m JOIN users u ON u.id = m.user_id`)
-	if err != nil {
+	var alice uuid.UUID
+	if err := tm.pool.QueryRow(context.Background(), "SELECT id FROM workspace_members").Scan(&alice); err != nil {
 		t.Fatal(err)
 	}
-	defer rows.Close()
-	for rows.Next() {
-		var name string
-		var id uuid.UUID
-		if err := rows.Scan(&name, &id); err != nil {
-			t.Fatal(err)
+	tm.members["alice"] = alice
+	for name, role := range map[string]string{"bob": bobRole, "carol": carolRole} {
+		if role != "" {
+			tm.join(t, name, role)
 		}
-		tm.members[name] = id
 	}
 	return tm
 }
 
-// step is a request of an interleaving: who sends what.
-type step struct {
-	by, method, path, body string
+// join writes name's membership of acme with role through SQL.
+func (tm acmeTeam) join(t *testing.T, name, role string) {
+	t.Helper()
+	id := uuid.NewV7()
+	if _, err := tm.pool.Exec(context.Background(), `INSERT INTO workspace_members (id, workspace_id, user_id, role, created_by_id, updated_by_id, created_at, updated_at)
+		SELECT $1, w.id, u.id, $3, w.created_by_id, w.created_by_id, now(), now()
+		FROM workspaces w, users u WHERE w.slug = 'acme' AND u.email = $2`, id, name+"@example.com", role); err != nil {
+		t.Fatal(err)
+	}
+	tm.members[name] = id
 }
 
-// answer is what a step got.
+// step is a request of an interleaving: who sends what; or, when command
+// is set, a command run in process.
+type step struct {
+	by, method, path, body string
+	command                func() error
+}
+
+// answer is what a step got: a request's answer, or a command's error.
 type answer struct {
 	req    *http.Request
 	res    *http.Response
 	status int
 	code   string
+	body   string
+	err    error
 }
 
-// interleave holds acme's row while it sends first, then second, each once
-// the one before waits for the row; then lets them run, and returns their
-// answers, checked against the contract.
+// held is the row an interleaving's test holds: the statement that locks
+// it, in a transaction of the test's own, and the table whose row lock the
+// steps wait for.
+type held struct{ table, lock string }
+
+// acmeRow is acme's workspace row, which every change of it or of its
+// members and invitations locks.
+func acmeRow() held {
+	return held{"workspaces", "SELECT 1 FROM workspaces WHERE slug = 'acme' FOR NO KEY UPDATE"}
+}
+
+// interleave is interleaveOn acme's row.
 func (tm acmeTeam) interleave(t *testing.T, first, second step) (answer, answer) {
+	t.Helper()
+	return tm.interleaveOn(t, acmeRow(), first, second)
+}
+
+// interleaveOn holds h's row while it sends first, then second, each once
+// the one before waits for the row; then lets them run, and returns their
+// answers, a request's checked against the contract.
+func (tm acmeTeam) interleaveOn(t *testing.T, h held, first, second step) (answer, answer) {
 	t.Helper()
 	ctx := context.Background()
 	holder, err := tm.pool.Begin(ctx)
@@ -102,35 +127,16 @@ func (tm acmeTeam) interleave(t *testing.T, first, second step) (answer, answer)
 		t.Fatal(err)
 	}
 	defer func() { _ = holder.Rollback(ctx) }()
-	if _, err := holder.Exec(ctx, "SELECT 1 FROM workspaces WHERE slug = 'acme' FOR NO KEY UPDATE"); err != nil {
+	if _, err := holder.Exec(ctx, h.lock); err != nil {
 		t.Fatal(err)
 	}
+	steps := []step{first, second}
 	answers := make([]chan answer, 2)
-	for i, c := range []step{first, second} {
-		var body []byte
-		if c.body != "" {
-			body = []byte(c.body)
-		}
-		req := newRequest(t, c.method, tm.base+c.path, tm.tokens[c.by], body)
+	for i, c := range steps {
+		send := tm.sender(t, c)
 		answers[i] = make(chan answer, 1)
-		go func() {
-			res, err := client().Do(req)
-			got := answer{req: req, res: res}
-			if err == nil {
-				payload, _ := io.ReadAll(res.Body)
-				_ = res.Body.Close()
-				res.Body = io.NopCloser(bytes.NewReader(payload))
-				got.status = res.StatusCode
-				var p struct {
-					Code string `json:"code"`
-				}
-				if json.Unmarshal(payload, &p) == nil {
-					got.code = p.Code
-				}
-			}
-			answers[i] <- got
-		}()
-		pgtest.WaitForLockWaitsOn(t, tm.pool, "workspaces", i+1, interleavingWait)
+		go func() { answers[i] <- send() }()
+		pgtest.WaitForLockWaitsOn(t, tm.pool, h.table, i+1, interleavingWait)
 	}
 	if err := holder.Commit(ctx); err != nil {
 		t.Fatal(err)
@@ -140,14 +146,61 @@ func (tm acmeTeam) interleave(t *testing.T, first, second step) (answer, answer)
 		select {
 		case got[i] = <-answers[i]:
 		case <-time.After(interleavingWait):
-			t.Fatalf("%s %s did not answer", []step{first, second}[i].method, []step{first, second}[i].path)
+			t.Fatalf("%s did not answer", steps[i].name())
+		}
+		if steps[i].command != nil {
+			continue
 		}
 		if got[i].res == nil {
-			t.Fatalf("%s %s failed", got[i].req.Method, got[i].req.URL.Path)
+			t.Fatalf("%s failed: %v", steps[i].name(), got[i].err)
 		}
 		tm.contract.CheckResponse(t, got[i].req, got[i].res)
 	}
 	return got[0], got[1]
+}
+
+// request is by's request.
+func request(by, method, path, body string) step {
+	return step{by: by, method: method, path: path, body: body}
+}
+
+func (c step) name() string {
+	if c.command != nil {
+		return "the command of " + c.by
+	}
+	return c.method + " " + c.path
+}
+
+// sender is what sends c, or runs its command, and returns what it got:
+// the request is built here, on the test's goroutine; the sender runs on
+// one of its own, and reports rather than fail the test.
+func (tm acmeTeam) sender(t *testing.T, c step) func() answer {
+	t.Helper()
+	if c.command != nil {
+		return func() answer { return answer{err: c.command()} }
+	}
+	var body []byte
+	if c.body != "" {
+		body = []byte(c.body)
+	}
+	req := newRequest(t, c.method, tm.base+c.path, tm.tokens[c.by], body)
+	return func() answer {
+		res, err := client().Do(req)
+		got := answer{req: req, res: res, err: err}
+		if err == nil {
+			payload, _ := io.ReadAll(res.Body)
+			_ = res.Body.Close()
+			res.Body = io.NopCloser(bytes.NewReader(payload))
+			got.status, got.body = res.StatusCode, string(payload)
+			var p struct {
+				Code string `json:"code"`
+			}
+			if json.Unmarshal(payload, &p) == nil {
+				got.code = p.Code
+			}
+		}
+		return got
+	}
 }
 
 // activeAdmins counts acme's active admins.
@@ -173,7 +226,7 @@ func orders(t *testing.T, a, b string, f func(t *testing.T, first, second string
 func TestTwoAdminsLeavingAtOnceLeaveOne(t *testing.T) {
 	orders(t, "alice", "bob", func(t *testing.T, first, second string) {
 		tm := newAcmeTeam(t, "admin", "member")
-		leave := func(by string) step { return step{by, http.MethodPost, "/api/v0/workspaces/acme/leave", ""} }
+		leave := func(by string) step { return request(by, http.MethodPost, "/api/v0/workspaces/acme/leave", "") }
 
 		a, b := tm.interleave(t, leave(first), leave(second))
 
@@ -192,7 +245,7 @@ func TestTwoAdminsDemotingEachOtherLeaveOne(t *testing.T) {
 	orders(t, "alice", "bob", func(t *testing.T, first, second string) {
 		tm := newAcmeTeam(t, "admin", "member")
 		demote := func(by, whom string) step {
-			return step{by, http.MethodPatch, "/api/v0/workspace-members/" + tm.members[whom].String(), `{"role":"member"}`}
+			return request(by, http.MethodPatch, "/api/v0/workspace-members/"+tm.members[whom].String(), `{"role":"member"}`)
 		}
 
 		a, b := tm.interleave(t, demote(first, second), demote(second, first))
@@ -211,8 +264,8 @@ func TestTwoAdminsDemotingEachOtherLeaveOne(t *testing.T) {
 func TestRemovingAnAdminWhileTheyDeleteTheWorkspace(t *testing.T) {
 	t.Run("the removal first", func(t *testing.T) {
 		tm := newAcmeTeam(t, "admin", "member")
-		remove := step{"alice", http.MethodDelete, "/api/v0/workspace-members/" + tm.members["bob"].String(), ""}
-		del := step{"bob", http.MethodDelete, "/api/v0/workspaces/acme", ""}
+		remove := request("alice", http.MethodDelete, "/api/v0/workspace-members/"+tm.members["bob"].String(), "")
+		del := request("bob", http.MethodDelete, "/api/v0/workspaces/acme", "")
 
 		a, b := tm.interleave(t, remove, del)
 
@@ -228,8 +281,8 @@ func TestRemovingAnAdminWhileTheyDeleteTheWorkspace(t *testing.T) {
 	})
 	t.Run("the deletion first", func(t *testing.T) {
 		tm := newAcmeTeam(t, "admin", "member")
-		remove := step{"alice", http.MethodDelete, "/api/v0/workspace-members/" + tm.members["bob"].String(), ""}
-		del := step{"bob", http.MethodDelete, "/api/v0/workspaces/acme", ""}
+		remove := request("alice", http.MethodDelete, "/api/v0/workspace-members/"+tm.members["bob"].String(), "")
+		del := request("bob", http.MethodDelete, "/api/v0/workspaces/acme", "")
 
 		a, b := tm.interleave(t, del, remove)
 
