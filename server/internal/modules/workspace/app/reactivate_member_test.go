@@ -33,7 +33,7 @@ func TestReactivateMemberRestoresTheEndedMembership(t *testing.T) {
 		t.Errorf("Execute() = %+v, %v; want %+v", got, err, want)
 	}
 	wantCalls := inTxCalls("ShareActiveAccountByEmail bob@corp.com", "LockWorkspaceBySlug acme", "FindMembership",
-		"RestoreMember member"+at(tm.bob), "MembershipRestored")
+		"CountActiveAdmins", "RestoreMember member"+at(tm.bob), "MembershipRestored")
 	if !slices.Equal(tm.store.calls, wantCalls) {
 		t.Errorf("calls = %q, want %q", tm.store.calls, wantCalls)
 	}
@@ -45,6 +45,32 @@ func TestReactivateMemberRestoresTheEndedMembership(t *testing.T) {
 	logs := tm.logs.String()
 	if !strings.Contains(logs, "workspace membership reactivated") || !strings.Contains(logs, "by=cli") || strings.Contains(logs, "bob@") {
 		t.Errorf("logs = %s, want the reactivation by=cli, without the address", logs)
+	}
+}
+
+// Rule three: once the only admin was deactivated alone in the workspace, a
+// member's or a guest's membership does not come back before an admin's;
+// the admin's does.
+func TestReactivateMemberIntoAWorkspaceWithoutAdmin(t *testing.T) {
+	tm := newTeam()
+	for id, m := range tm.store.active {
+		delete(tm.store.active, id)
+		tm.store.ended[id] = m
+	}
+
+	for _, email := range []string{"bob@corp.com", "carol@corp.com"} {
+		if _, err := tm.reactivate().Execute(as(tm.alice.UserID), "acme", email); !errors.Is(err, domain.ErrNoAdmin) {
+			t.Errorf("Execute(%s) = %v, want %v", email, err, domain.ErrNoAdmin)
+		}
+	}
+	if slices.ContainsFunc(tm.store.calls, isWrite) || len(tm.sub.restored) != 0 {
+		t.Errorf("calls %q, restored %+v; want no write, no event", tm.store.calls, tm.sub.restored)
+	}
+	if _, err := tm.reactivate().Execute(as(tm.alice.UserID), "acme", "alice@corp.com"); err != nil {
+		t.Fatalf("Execute(alice) = %v, want her admin membership back", err)
+	}
+	if _, err := tm.reactivate().Execute(as(tm.alice.UserID), "acme", "bob@corp.com"); err != nil {
+		t.Errorf("Execute(bob) after alice = %v, want his membership back", err)
 	}
 }
 

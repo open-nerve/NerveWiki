@@ -11,13 +11,14 @@ import { SessionChangedError, type TokenManager } from "./token-manager";
  *
  * The client serves one session, loginId (undefined: none), the session of the stores it was built for: a
  * request made once the tab is in another session rejects with SessionChangedError before it is sent. A
- * request belongs to that session, and a copy refused again ends only that session. The request rejects with
- * SessionChangedError as well when the tab's state shows it has left the session by the time the request's
- * own 401 comes back, and when the renewal finds the change under the lock. After the copy's 401, no state
- * is checked: endSession(loginId) decides, and its false (the record under the lock is no longer that
- * session's, even when the tab has not heard of the change yet) rejects the request with SessionChangedError.
- * One signal for a request cut by a change of session, never a 401 its caller could take for the tab's
- * session failing.
+ * request belongs to that session, and a copy refused again ends only that session. Whatever the answer, the
+ * request rejects with SessionChangedError as well when the tab's state shows it has left the session by the
+ * time the answer comes back, the request's own or its copy's, and when the renewal finds the change under
+ * the lock: the server may have done what was asked, but its caller, of stores the tab has left, does not go
+ * on to navigate or show it in the tab's new session. After the copy's 401, no state is checked:
+ * endSession(loginId) decides, and its false (the record under the lock is no longer that session's, even
+ * when the tab has not heard of the change yet) rejects the request with SessionChangedError. One signal for
+ * a request cut by a change of session, never an answer its caller could take for the tab's session's.
  */
 export function authMiddleware(
   tokens: Pick<TokenManager, "state" | "accessToken" | "renew" | "endSession">,
@@ -37,16 +38,21 @@ export function authMiddleware(
       return request;
     },
     async onResponse({ request, response, options }) {
+      // The tab is no longer in the request's session: the request stops, its answer unread, not renewed or
+      // sent again.
+      if (tokens.state.loginId !== loginId) throw new SessionChangedError();
       const first = sent.get(request);
       if (response.status !== 401 || first === undefined) return undefined;
-      // The tab is no longer in the request's session: the request stops, not renewed or sent again.
-      if (tokens.state.loginId !== loginId) throw new SessionChangedError();
       const token = await tokens.renew(first.token);
       if (token === undefined) return undefined;
       first.copy.headers.set("Authorization", `Bearer ${token}`);
       const again = await options.fetch(first.copy);
-      // Refused again: the request's session ends, unless the record is no longer that session's by then.
-      if (again.status === 401 && !(await tokens.endSession(loginId))) throw new SessionChangedError();
+      if (again.status === 401) {
+        // Refused again: the request's session ends, unless the record is no longer that session's by then.
+        if (!(await tokens.endSession(loginId))) throw new SessionChangedError();
+        return again;
+      }
+      if (tokens.state.loginId !== loginId) throw new SessionChangedError();
       return again;
     },
   };

@@ -255,3 +255,107 @@ func TestDeactivatingWhileBeingRemoved(t *testing.T) {
 		}
 	})
 }
+
+// Alice, acme's only admin and alone in it, deactivates while dana joins:
+// by an invitation as a guest, to a new membership; as a member, to the
+// guest's membership she left; by the administrator's reactivate-member of
+// it; and as an admin. The joining first, dana is in acme and rule two
+// refuses alice; the deactivation first, acme has no admin, and rule three
+// refuses dana. An admin joins either way, and alice goes (interleaving 14).
+func TestSoleAdminDeactivatingWhileOneJoins(t *testing.T) {
+	for _, tt := range []struct {
+		name, role string
+		left       bool // dana had joined acme and left
+		byCommand  bool
+	}{
+		{"a guest, newly", "guest", false, false},
+		{"a member, again", "member", true, false},
+		{"by reactivate-member", "guest", true, true},
+		{"an admin", "admin", false, false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			orders(t, "the joining", "the deactivation", func(t *testing.T, first, _ string) {
+				tm := newAcmeTeam(t, "", "")
+				before := "none"
+				if tt.left {
+					tm.join(t, "dana", "guest")
+					tm.leave(t, "dana")
+					before = "ended"
+				}
+				var inv invitation
+				var join step
+				if tt.byCommand {
+					join = tm.reactivateByCommand(t, "dana")
+				} else {
+					inv = tm.invite(t, "dana", tt.role)
+					join = accept("dana", inv)
+				}
+				steps := [2]step{join, deactivate("alice")}
+				if first != "the joining" {
+					steps = [2]step{deactivate("alice"), join}
+				}
+
+				a, b := tm.interleave(t, steps[0], steps[1])
+
+				joining, deactivation := a, b
+				if first != "the joining" {
+					joining, deactivation = b, a
+				}
+				joined := first == "the joining" || tt.role == "admin"
+				deactivated := first != "the joining" || tt.role == "admin"
+				joiningOK := joining.joined(tt.byCommand)
+				if !joined {
+					joiningOK = joining.refusedForNoAdmin(tt.byCommand)
+				}
+				deactivationOK := deactivation.is(http.StatusNoContent, "")
+				if !deactivated {
+					deactivationOK = deactivation.is(http.StatusConflict, "workspace.sole_admin")
+				}
+				if !joiningOK || !deactivationOK {
+					t.Errorf("the joining = %d %s %v, the deactivation = %d %s; want dana in acme %v (else rule three), alice deactivated %v (else rule two)",
+						joining.status, joining.code, joining.err, deactivation.status, deactivation.code, joined, deactivated)
+				}
+				member, state := before, "pending"
+				if joined {
+					member, state = tt.role, "accepted"
+				}
+				if m := tm.membership(t, "dana"); m != member || tm.isActive(t, "alice@example.com") == deactivated {
+					t.Errorf("dana's membership %s, alice active %v; want %s, %v", m, tm.isActive(t, "alice@example.com"), member, !deactivated)
+				}
+				if !tt.byCommand && tm.invitationState(t, inv) != state {
+					t.Errorf("the invitation %s, want %s", tm.invitationState(t, inv), state)
+				}
+				if n := tm.activeAdmins(t); joined != (n > 0) {
+					t.Errorf("acme has %d active admins with dana in it %v; want one whenever anyone is", n, joined)
+				}
+			})
+		})
+	}
+}
+
+// reactivateByCommand is the server administrator's reactivate-member of
+// name's membership of acme, run in process.
+func (tm acmeTeam) reactivateByCommand(t *testing.T, name string) step {
+	t.Helper()
+	cfg := testConfig(t, tm.url, false)
+	return step{by: "the administrator", command: func() error {
+		return Workspaces(context.Background(), cfg, io.Discard, io.Discard, ReactivateMember("acme", name+"@example.com"))
+	}}
+}
+
+// joined reports whether a joining went through: a command without error,
+// an acceptance with 200.
+func (a answer) joined(byCommand bool) bool {
+	if byCommand {
+		return a.err == nil
+	}
+	return a.is(http.StatusOK, "")
+}
+
+// refusedForNoAdmin reports whether rule three refused a joining.
+func (a answer) refusedForNoAdmin(byCommand bool) bool {
+	if byCommand {
+		return a.err != nil && strings.Contains(a.err.Error(), "The workspace has no admin")
+	}
+	return a.is(http.StatusConflict, "workspace.no_admin")
+}

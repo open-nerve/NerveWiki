@@ -161,6 +161,7 @@ func TestTheInvitationOperationsAnswerEachProblem(t *testing.T) {
 		{domain.ErrInvitationNotFound, http.MethodPost, danaPath + "/preview", `{"token":"x"}`, 404, "workspace.invitation_not_found"},
 		{domain.ErrInvitationNotFound, http.MethodPost, danaPath + "/accept", `{"token":"x"}`, 404, "workspace.invitation_not_found"},
 		{domain.ErrInvitationEmailMismatch, http.MethodPost, danaPath + "/accept", `{"token":"x"}`, 403, "workspace.invitation_email_mismatch"},
+		{domain.ErrNoAdmin, http.MethodPost, danaPath + "/accept", `{"token":"x"}`, 409, "workspace.no_admin"},
 		{deactivated, http.MethodPost, danaPath + "/accept", `{"token":"x"}`, 403, "identity.account_deactivated"},
 	} {
 		status, body := call(t, serve(t, invitationUseCases(&fakeInvitations{err: tt.err})), tt.method, tt.path, tt.body)

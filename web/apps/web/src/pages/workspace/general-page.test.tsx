@@ -75,6 +75,43 @@ test("an admin renames the workspace; the switcher shows the new name", async ()
   expect(screen.queryByText("Saved.")).toBeNull();
 });
 
+// A rename answered after the field was edited again saved the name sent, not the one shown: the field keeps the
+// edit, not marked saved, and the next save sends it (R3 of the M2 Codex review).
+test("a name edited while its rename is out keeps the edit, not marked saved", async () => {
+  const user = userEvent.setup();
+  let release: (() => void) | undefined;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let first = true;
+  const { app, sent } = settingsServer({
+    rename: async () => {
+      const name = first ? "Acme Labs" : "Acme Works";
+      if (first) {
+        first = false;
+        await held;
+      }
+      return json({ ...acme, name, updated_at: "2026-10-01T09:00:00Z" });
+    },
+  });
+  renderApp("/acme/settings/general", app);
+  await user.clear(await nameField());
+  const save = screen.getByRole("button", { name: "Save" });
+  await user.type(await nameField(), " Acme Labs");
+  await user.click(save);
+  await waitFor(() => expect(sent).toHaveLength(1));
+  await user.clear(await nameField());
+  await user.type(await nameField(), "Acme Works ");
+  release?.();
+  await waitFor(() => expect(save).toHaveProperty("disabled", false));
+
+  expect((await nameField()).value).toBe("Acme Works ");
+  expect(screen.queryByText("Saved.")).toBeNull();
+  await user.click(save);
+  expect(await screen.findByText("Saved.")).toBeTruthy();
+  expect(sent).toEqual(["PATCH Acme Labs", "PATCH Acme Works"]);
+});
+
 test("a name the local check or the server refuses shows under the field", async () => {
   const user = userEvent.setup();
   const { app, sent } = settingsServer({

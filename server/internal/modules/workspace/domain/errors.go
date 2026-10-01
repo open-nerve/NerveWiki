@@ -27,6 +27,10 @@ var (
 	// ErrSoleAdmin: the workspace's only active admin would leave it.
 	ErrSoleAdmin = shared.NewError(shared.KindConflict, "workspace.sole_admin",
 		"The workspace's only admin cannot leave it: make another member an admin, or delete the workspace.")
+	// ErrNoAdmin: a member or a guest would join a workspace that has no
+	// active admin, its only one deactivated alone in it (rule three).
+	ErrNoAdmin = shared.NewError(shared.KindConflict, "workspace.no_admin",
+		"The workspace has no admin: no one else can join it until it has one again.")
 	// ErrAlreadyInvited: the address has a pending invitation to the
 	// workspace (422).
 	ErrAlreadyInvited = shared.Invalid(shared.FieldError{Field: "email", Code: shared.FieldDuplicate,

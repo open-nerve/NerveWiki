@@ -192,6 +192,35 @@ test("an account of another address is told so, and signs out to sign in with th
   expect(router.state.location.pathname + router.state.location.hash).toBe(page);
 });
 
+// The acceptance the server made is answered after the page signed out: the request, of the session the tab
+// has left, stops there, and the page stays signed out at the link (R2 of the M2 Codex review).
+test("an acceptance answered after signing out does not go into the workspace", async () => {
+  const user = userEvent.setup();
+  let release: (() => void) | undefined;
+  let answered = false;
+  const { app } = invitationServer({
+    accept: async () => {
+      await new Promise<void>((resolve) => (release = resolve));
+      answered = true;
+      return json({ ...workspaceJSON, role: "member" });
+    },
+  });
+  const { router } = renderApp(page, app);
+
+  await user.click(await screen.findByRole("button", { name: "Accept invitation" }));
+  await waitFor(() => expect(release).toBeDefined());
+  await user.click(screen.getByRole("button", { name: "Sign out" }));
+  expect(await screen.findByRole("button", { name: "Sign in" })).toBeTruthy();
+  await act(async () => {
+    release?.();
+    await waitFor(() => expect(answered).toBe(true));
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  });
+
+  expect(router.state.location.pathname + router.state.location.hash).toBe(page);
+  expect(screen.getByRole("button", { name: "Sign in" })).toBeTruthy();
+});
+
 test("a member already goes in, keeping the role they have", async () => {
   const user = userEvent.setup();
   const { app } = invitationServer({ accept: () => json({ ...workspaceJSON, role: "admin" }) });

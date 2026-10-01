@@ -615,12 +615,13 @@ paths:
       tags:
         - workspace
       summary: Accept an invitation
-      description: 'Joins the workspace with the invitation''s role: the link''s token and the caller''s address are the credentials, the caller being no member yet. A caller signed in with another address than the one invited gets workspace.invitation_email_mismatch. A caller who is an active member already keeps their role, and the invitation is used up; one whose membership ended has it back, with the invitation''s role and when they first joined. An invitation that does not exist, is no longer pending, whose workspace is deleted, or whose token is not the link''s is workspace.invitation_not_found alike.'
+      description: 'Joins the workspace with the invitation''s role: the link''s token and the caller''s address are the credentials, the caller being no member yet. A caller signed in with another address than the one invited gets workspace.invitation_email_mismatch. A caller who is an active member already keeps their role, and the invitation is used up; one whose membership ended has it back, with the invitation''s role and when they first joined. A workspace without an active admin, its only one deactivated alone in it, admits only an admin until it has one again: a member''s or a guest''s invitation is workspace.no_admin, and stays pending. An invitation that does not exist, is no longer pending, whose workspace is deleted, or whose token is not the link''s is workspace.invitation_not_found alike.'
       security:
         - bearer: []
       x-problem-codes:
         - workspace.invitation_not_found
         - workspace.invitation_email_mismatch
+        - workspace.no_admin
         - identity.account_deactivated
       requestBody:
         required: true

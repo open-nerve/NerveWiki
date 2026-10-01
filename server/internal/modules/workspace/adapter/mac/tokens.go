@@ -17,6 +17,13 @@ import (
 // token: a secret scanner, or a reader, can tell what it is.
 const prefix = "nwk_inv_"
 
+// tagLen is the tag's bytes, and tokenLen a token's characters: the prefix
+// and the tag in unpadded base64url.
+const (
+	tagLen   = 16
+	tokenLen = len(prefix) + (tagLen*8+5)/6
+)
+
 // Tokens implements app.InvitationTokens.
 type Tokens struct {
 	key []byte
@@ -33,13 +40,15 @@ func (t Tokens) Token(id uuid.UUID) string {
 	return prefix + base64.RawURLEncoding.EncodeToString(t.tag(id))
 }
 
-// Valid reports whether token is the token of id. It decodes strictly, so
-// that a token has one spelling: the last character's unused bits must be
-// zero. It compares in constant time: the time of a comparison would tell a
-// forger how much of a tag is right.
+// Valid reports whether token is the token of id. A token has one
+// spelling, as a personal access token does: the prefix, then exactly 22
+// characters, decoded strictly, so that the last one's unused bits are
+// zero; a decoder skips \r and \n, and with them inside, fewer than 16
+// bytes come out, which no tag equals. It compares in constant time: the
+// time of a comparison would tell a forger how much of a tag is right.
 func (t Tokens) Valid(id uuid.UUID, token string) bool {
 	encoded, ok := strings.CutPrefix(token, prefix)
-	if !ok {
+	if !ok || len(token) != tokenLen {
 		return false
 	}
 	tag, err := base64.RawURLEncoding.Strict().DecodeString(encoded)
@@ -49,5 +58,5 @@ func (t Tokens) Valid(id uuid.UUID, token string) bool {
 func (t Tokens) tag(id uuid.UUID) []byte {
 	h := hmac.New(sha256.New, t.key)
 	h.Write(id[:])
-	return h.Sum(nil)[:16]
+	return h.Sum(nil)[:tagLen]
 }
