@@ -75,7 +75,7 @@ server/
     accounts.go、app/accounts.go、app/ports.go     Accounts.ShareActiveAccountByEmail；端口 ShareAccountByEmail
     adapter/postgres/queries/users.sql、users.go   ShareAccountByEmail（FOR SHARE，按邮箱）
   internal/modules/workspace/
-    domain/member.go                            Member.EndedAt、Active()；Standing 与规则二；ErrSoleAdminOf
+    domain/member.go                            Member.EndedAt、Active()；Standing 与规则二（`ErrSoleAdminOf` 在 `domain/errors.go`）
     adapter/postgres/store.go、members.go、purge.go   工作区（LockWorkspacesOf）、成员关系（ListStandings；FindMembership 带回 ended_at）、清理
     adapter/postgres/queries/workspaces.sql、members.sql、purge.sql   对应的查询
     app/end_membership.go                       MembershipEnder：Veto、Write、End
@@ -234,7 +234,7 @@ func PurgeJob(purgers []Purger, cfg PurgeConfig) Job // PurgeConfig{Interval, Re
 - `workspace.Purgers(pool) []jobs.Purger` 依次是 `workspace_invitations`、`workspace_members`、`workspaces`。
 - 每个清理器是一条语句：`DELETE … WHERE id IN (SELECT … WHERE deleted_at < $1 LIMIT $2 FOR UPDATE SKIP LOCKED)`。别的事务持有的行跳过，下一次运行再删。
 - 成员与邀请指向工作区的外键是 `ON DELETE CASCADE`（P1、P3 的迁移），保留不改。工作区的清理器只删已没有成员与邀请行的工作区（`NOT EXISTS`）：子行被跳过时，工作区随它推迟到之后的运行，级联实际不会触发。
-- 所以清理不等锁，不进入加锁顺序（13.1 第 5、23 条）。`jobs.Purger` 的契约写明"跳过仍被之前的清理器跳过的行引用的行"，M3 起的清理器照此办理（审查 T1）。
+- 所以清理不等锁，不进入加锁顺序（13.1 第 5、23 条）。`jobs.Purger` 的契约写明"跳过仍被之前的清理器跳过的行引用的行"，M3 起的清理器照此办理（审查 T1）。这只在同一模块之内做得到：父表的清理器看不到别的模块的表（sqlc 按模块限定），所以跨模块的外键用 `ON DELETE RESTRICT`，父行仍被引用时这一批失败，之后的运行再完成（M2 收尾审查 A-I1，总体设计 13.1 第 6 条）。
 
 **组合根**：
 - `purgers(pool)` 在 `registrants.go`，从叶到根排列。M3 起，新模块的清理器加在 workspace 之前。
@@ -350,11 +350,11 @@ M2 没有由请求投递的任务：清理是定时的。写 `docs/v0.1/M7-asset
 
 审查之后的修复（详见审查记录）：T1 工作区的清理器等它的子行，`jobs.Purger` 的契约写明；T2 否决者与订阅者只听到锁下剩下的工作区；T3 清理的仓储测试覆盖三个清理器；T4 加锁顺序的测试让 slug 与表里的顺序都与 id 相反；T5 两处排序可观测；T6、T7 `nervewiki workspaces` 的帮助与 debug 级日志；T8 注释与一行夹具；T10 失败前删的行也记日志。
 
-留给之后的：
+留给之后的（已写进 [M3 的移交](../M3-notebook/handoffs/M2-workspace.md)、[M4 的移交](../M4-pages/handoffs/M2-P4-purge-page-tree.md)与 M7 的两份移交：[只投递的客户端](../M7-assets-transfer/handoffs/M2-P4-insert-only-client.md)、[附件的清理](../M7-assets-transfer/handoffs/M2-P4-attachment-purge.md)）：
 
 - **M2 收尾，写进 M3 的移交（审查 Q1）**：M3 第一个成员身份结束或恢复的注册者，要在整个程序上经每条路径各有行为测试：移出、离开、停用（接口与命令行）、接受邀请、`reactivate-member`、删除工作区。现在没有注册者，组合检查只证明静态可达。
 - **M2 收尾，写进 M3/M7 的移交（审查 T1、Q2）**：
-  - 清理器跳过仍被别的表引用的行（`jobs.Purger` 的契约），级联不连带删除；M7 的附件清理器先删文件、再删行。
+  - 清理器跳过仍被别的表引用的行（`jobs.Purger` 的契约，同一模块之内；跨模块的外键用 `ON DELETE RESTRICT`，M2 收尾审查 A-I1），级联不连带删除；M7 的附件清理器先删文件、再删行。
   - 外键顺序的测试排除了自引用外键（M4 的页面树）；只靠 CASCADE、没有 `deleted_at` 的子表过不了它，要决定是否豁免。
   - "失败即停"下，一个永久失败的清理器让之后的都不跑，只在日志里看得到。
 - **M2 收尾（审查 Q6）**：3.2 补进 13.1 第 5 条时，第 1 点补上"外键检查等改邮箱"（第 3 点已覆盖），写明 `KEY SHARE` 会越过排队的独占等待者；M3 的订阅者若写引用别的账户的列，审查时复核。

@@ -40,7 +40,7 @@
 | Q4 | 13.2 第 1 条要求答复整个资源的写依次发出，改角色靠禁用控件保证 | 菜单在发送中不接受新的选择，一行一次一个；不同成员的改角色本就是不同资源，可以同时发。T9 的测试守住 |
 | Q5 | 链接用 `window.location.origin` 拼出，经内网地址访问时复制的是内网链接 | 接受：服务端没有配置公开地址。README 的前端一节写明，对外发链接请从公开地址打开 |
 | Q6 | 停用对话框不列出是哪些工作区（第 2 节"不做"） | 同意 |
-| Q7 | `field.email.not_allowed`、`field.email.duplicate` 是全局的字段键 | 现在只有邀请答出这两个码；以后的 M 有别的操作对 `email` 答出它们时，要么文案适用，要么由页面经 `texts` 换说法。记在第 7 节"留给之后的" |
+| Q7 | `field.email.not_allowed`、`field.email.duplicate` 是全局的字段键 | 现在只有邀请会答出这两个码，所以没问题。以后的 M 有别的操作对 `email` 答出它们而意思不同时，要么改写文案让两处都适用，要么给 `formErrors` 加按字段码换说法的选项：`texts` 只换 problem 码（M2 收尾审查 B-M1 改正了这里原先"由页面经 `texts` 换说法"的写法） |
 | Q8 | `type=email` 由浏览器去掉首尾空白，所以去掉了 `trim()`：前提成立吗 | 按 WHATWG 的值清理只去 ASCII 空白，全角空格保留（Chromium 与 jsdom 实测）。恢复 `trim()`（T13） |
 | Q9 | 原生 select 选了就发：Windows、Linux 的 Chrome 在收起的 select 上按方向键会立即触发 change，每按一次发一个中间角色 | 随 T3 换成菜单，方向键只移动，选中（Enter、点击）才发 |
 | Q10 | `Accept` 在调用 hooks 之前 throw | 接受：与守卫的 `Account` 一致，throw 中止这次渲染，完成的渲染里 hooks 顺序不变 |

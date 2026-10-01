@@ -237,7 +237,7 @@ landingPath(workspaces: readonly { slug: string }[], last: string | undefined): 
 **夹具**：
 - `workspace-pages.ts`：
   - `createWorkspaceWith(page, {name, slug?})`：答复的状态码；
-  - `switchWorkspace(page, name)`、`renameWorkspaceWith(page, name)`、`deleteWorkspaceWith(page, slug)`；
+  - `switchWorkspace(page, shown, name)`、`renameWorkspaceWith(page, slug, name)`、`deleteWorkspaceWith(page, slug)`；
   - `expectCreatePage(page)`：没有工作区的账户落在 `/create-workspace`；
   - `workspaceHeading(page, name)`。
 - `auth.ts` 的 `onboardingSteps` 加 `workspace`：`registerOnboarded` 的账户没有工作区，落在创建页。
@@ -318,7 +318,7 @@ landingPath(workspaces: readonly { slug: string }[], last: string | undefined): 
 
 审查之后的修复（详见审查记录）：T1 工作区的页面随工作区重新挂载；T2 删除之后不闪现 404；T3 创建与读取交错时不重复（`ApiTokenStore` 一并改）；T4–T8、T10 补上没有守住的测试，W3 断言外壳的内边距；T9 排序的注释与同名按 id 的测试；T11 输入确认的对话框聚焦输入框、Enter 确认，切换器的说明；T12 文案；T13 改名之后去空白；T14 写不进存储时读内存；README 的前端一节（D6）。
 
-留给之后的：
+留给之后的（已写进 [M3 的移交](../M3-notebook/handoffs/M2-workspace.md)第 5 项）：
 
-- **M3（审查 T11）**：删除工作区之后的焦点（触发按钮已不在），以及左栏用 `aside` 承载主导航的语义，与页面树一起设计。
+- **M3（审查 T11）**：让整页离开的操作之后的焦点（删除、离开工作区，接受邀请进入工作区：触发的按钮都已不在，M2 收尾审查 B-N5），以及左栏用 `aside` 承载主导航的语义，与页面树一起设计。
 - **M3 的 `/:slug` 下的页面**：外壳按工作区 id 重新挂载子页（3.2），页面不必自己处理换工作区；删除、离开之类让当前工作区消失的操作，照 3.6 由 store 记下、外壳转走，页面不自己跳转。

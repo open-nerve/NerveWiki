@@ -103,7 +103,7 @@ e2e/stories/workspace/w4-rename-delete.spec.ts
 ### 3.3 唯一管理员
 
 - 规则一（本 Phase）：唯一的有效管理员不能离开，哪怕只有他一人。人数在工作区行锁之下数：`role = 'admin' AND ended_at IS NULL AND deleted_at IS NULL`。
-- 规则二（停用，P4）复用同一个计数，加上"还有别的有效成员"。
+- 规则二（停用，P4）复用同一个计数，加上"还有别的有效成员"。（P4 实际另写了一条查询 `ListStandings`，一次读出他每个工作区的管理员数与有效成员数，见 P4 文档。）
 - 只剩自己一人、又想离开的管理员，可以删除工作区。
 
 ### 3.4 成员身份结束：扩展点
@@ -155,7 +155,7 @@ type WorkspaceDeletionSubscriber interface {   // 软删除之后、同一事务
 
 ### 3.6 成员列表与公开资料
 
-- identity 新增 `identity.NewProfiles(pool)`：`Profiles(ctx, ids) (map[uuid.UUID]identity.Profile, error)`，`Profile{DisplayName, Email}`。一条按 `id = ANY($1)` 的查询，不加锁，只凭连接池构造。
+- identity 新增 `identity.NewProfiles(pool)`（P3 改名为 `identity.NewDirectory(pool)`、`directory.go`，另读被邀请的账户，见 P3 文档）：`Profiles(ctx, ids) (map[uuid.UUID]identity.Profile, error)`，`Profile{DisplayName, Email}`。一条按 `id = ANY($1)` 的查询，不加锁，只凭连接池构造。
 - workspace 在 `app/ports.go` 声明自己要的端口 `MemberProfiles`，值是本模块的 `Profile`。组合根用一个小适配器把 identity 的转成 workspace 的：两个模块互不导入，类型不同，结构上对不上（与 M1 的停用扩展点一样，由组合根转换）。
 - `listWorkspaceMembers`：
   - 判定 `workspace_member.list`，三种角色都允许；
@@ -198,7 +198,7 @@ type WorkspaceDeletionSubscriber interface {   // 软删除之后、同一事务
 在 `bootstrap` 里，经 HTTP 调用接好线的应用（真实的 access 模块与 PostgreSQL），不给用例加测试用的接缝：
 
 - 测试自己开一个事务，`SELECT … FOR NO KEY UPDATE` 锁住工作区行。
-- 发出 A 的请求，`pgtest.WaitForLockWaitsOn(pool, "workspaces", 1)` 确认 A 在等这一行；再发出 B 的请求，等到 2。
+- 发出 A 的请求，`pgtest.WaitForLockWaitsOn(t, pool, "workspaces", 1, 期限)` 确认 A 在等这一行；再发出 B 的请求，等到 2。
 - 提交测试的事务。PostgreSQL 的行锁按到达的先后交给等待者（第一个等待者持有元组锁，后来者排在它后面），所以 A 先、B 后，结果是确定的。两种先后各跑一次（交换 A、B 的发出顺序）。
 
 | # | 交错 | A 先 | B 先 |
@@ -272,7 +272,7 @@ W4 的接口版本，管理员能走的部分（非管理员的 403 随 P3，见
 
 ## 7. 结果
 
-分支 `m2-p2-workspace-members`：S1 `8751138`、S2 `fea53ac`、S3 `5eb0f68`、S4 `6e79651`，审查修复 `991c953`。第 5 节全部通过，反向对照按预期失败；`make check`（vitest 439 个）、`make gen-check`、`make e2e`（51 个；工作区的故事另跑 `--repeat-each 3`）、`make image-smoke` 本地与持续集成为绿；三个交错在 `-race` 下重复 5 次（审查者 20 次）全部通过。审查见 [P2 审查记录](reviews/P2-workspace-members-review.md)：2 项 Minor、10 项 Nit、10 处文档偏差，T9 之外全部已处理；4 个疑问中 Q1、Q2 交给 P4，Q3 交给 P3，Q4 不改。规模（新增行数，不含生成的代码）：生产代码约 1,400 行（含契约），测试约 2,140 行，端到端约 100 行。权限矩阵 13 行 78 格，单跑约 2.5–4 秒。
+分支 `m2-p2-workspace-members`：S1 `8751138`、S2 `fea53ac`、S3 `5eb0f68`、S4 `6e79651`，审查修复 `991c953`，合并 `0ea8490`。第 5 节全部通过，反向对照按预期失败；`make check`（vitest 439 个）、`make gen-check`、`make e2e`（51 个；工作区的故事另跑 `--repeat-each 3`）、`make image-smoke` 本地与持续集成为绿；三个交错在 `-race` 下重复 5 次（审查者 20 次）全部通过。审查见 [P2 审查记录](reviews/P2-workspace-members-review.md)：2 项 Minor、10 项 Nit、10 处文档偏差，T9 之外全部已处理；4 个疑问中 Q1、Q2 交给 P4，Q3 交给 P3，Q4 不改。规模（新增行数，不含生成的代码）：生产代码约 1,400 行（含契约），测试约 2,140 行，端到端约 100 行。权限矩阵 13 行 78 格，单跑约 2.5–4 秒。
 
 本机 `make check` 两次因 Docker Desktop 映射容器端口超时而失败（同一台机器上另有项目的 testcontainers 在频繁起容器），与代码无关；之后各步的 Go 测试以 `-p 3` 跑。
 
@@ -290,7 +290,7 @@ W4 的接口版本，管理员能走的部分（非管理员的 403 随 P3，见
 - **M2**："同一个时刻"没有确定的测试：固定的时钟读两次还是同一个值，e2e 的 `Date` 只到毫秒。用例与替身测试改用每读一次就前进的时钟，W4 在 SQL 里比较。
 - **T1–T8、T10**：仓储测试加已删除的成员行；离开的非法 slug 断言什么都没查；替身测试核对工作区行、分开两轮；交错 3 核对成员行已结束；矩阵的成员行指向别人的成员关系；共用的函数移到 `members.go`；改名与注释；`member_not_found` 的文案。
 
-留给之后的：
+留给之后的（M3 的事项已写进 [M3 的移交](../M3-notebook/handoffs/M2-workspace.md)）：
 
 - **P3（审查 Q3）**：恢复已结束的成员行时，`created_at`（"加入的时刻"）沿用第一次加入的时刻还是改成恢复的时刻，在 P3 文档里定。
 - **P4（审查 Q1）**：停用复用 `MembershipEnder`。identity 的停用分否决阶段（账户行写入之前）与订阅阶段（之后）：在订阅阶段调用 `End`，成员身份结束的否决者就在账户行写入、会话撤销之后运行，与 M2 总设计第 8 节"任何写入之前"不一致。P4 二选一：把 `End` 拆成 `Veto` 与写两步，分别挂在停用的两个阶段；或者在设计里写明这条路上否决者运行时账户行已写。P4 还需要按 `id` 升序锁多个工作区的端口。

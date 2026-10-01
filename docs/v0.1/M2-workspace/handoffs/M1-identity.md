@@ -1,11 +1,13 @@
 ```yaml
-status: open
+status: done
 from: M1
 to: M2
 created: 2026-10-01
 ```
 
 # 账户认证留给 M2 的部分
+
+> 已全部处理（2026-10-01）：第 1–9 项在 M2 落实，第 10 项转给 M7；逐项的落实见 [M2 总设计](../00-M2-design.md)第 7 节，经 [M2 收尾审查](../reviews/M2-closeout-review.md)对照代码核实。
 
 M1 建好了账户停用的扩展点、新手引导的步骤列表与注册策略（总体设计 12.4），但没有注册者：第一批注册者随工作区到来。下面是 M1 各 Phase 的审查、结果、[收尾审查](../../M1-auth/reviews/M1-closeout-review.md)与[对抗性审查](../../M1-auth/reviews/M1-codex-adversarial-review.md)留给 M2 要做的事，写 M2 的 00 号文档时一并考虑。所有 M 都要遵守的写法（注册者的构造与组合、管理命令、守卫、端到端的夹具等）已在总体设计第 13 节，这里不重复。
 

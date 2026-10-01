@@ -88,7 +88,7 @@ e2e/fixtures/assert/workspace.ts；e2e/stories/workspace/w1-create-workspace.spe
 
 - `app.go` 只留生命周期：`app` 结构、`run`、`startJobs`、`close`、`awaitDatabase`、`warnIfExposed`。
 - `wire.go` 的 `newApp` 依次做：读私钥、建连接池与迁移器、装配模块、建接口与路由器。连接池与迁移器建好之后，失败的清理由一个 `defer` 统一负责（返回值是命名的错误），不再在三个地方各写一遍"关闭迁移器、关闭连接池"。
-- `deps.go` 是各模块 `Deps` 的构建函数，例如 `identityDeps(cfg, pool, logger, limiter, signingKey)`（停用的注册者在函数里取）、`workspaceDeps(cfg, pool, logger, authorizer)`。新加一个模块，就加一个构建函数与 `newApp` 里的两三行；access 只有一个依赖，在 `newApp` 里直接构造。
+- `deps.go` 是各模块 `Deps` 的构建函数，例如 `identityDeps(cfg, pool, logger, limiter, signingKey)`（停用的注册者在函数里取）、`workspaceDeps(cfg, pool, logger, authorizer)`。新加一个模块，就加一个构建函数与 `newApp` 里的两三行；access 只有一个依赖，在 `newApp` 里直接构造。（P3 之后是 `identityDeps(cfg, pool, logger, limiter, keys, signup)` 与 `workspaceDeps(cfg, pool, logger, authorizer, invitationKey)`：邀请的密钥由签名私钥派生，组装在 `wire.go`。）
 - 纯粹的移动与提取，行为不变，现有测试原样通过。
 
 ### 3.3 测试的构造辅助（M1 移交第 7 项）
@@ -319,7 +319,7 @@ access 模块：
 
 ## 7. 结果
 
-分支 `m2-p1-access-workspaces`：S1 `d43486d`、S2 `b6f9322`、S3 `ba977a5`、S4 `5b92bd8`、S5 `343bb82`、S6 `df21cec`，image-smoke 的断言 `6442c09`，审查修复 `a6b2c9d`。第 5 节全部通过，反向对照按预期失败；`make check`（vitest 429 个）、`make gen-check`、`make e2e`（50 个；W1、W2 另跑 `--repeat-each 3`）、`make image-smoke` 本地与持续集成为绿。审查见 [P1 审查记录](reviews/P1-access-workspaces-review.md)：1 项 Major、3 项 Minor、9 项 Nit、14 处文档偏差，全部已处理；审查者的疑问 Q1、Q2、Q3 按建议采纳，Q4 不改（理由见审查记录）。规模（新增行数，不含生成的代码）：生产代码约 1,780 行（含契约与迁移），测试约 2,290 行（含测试辅助包），端到端约 220 行。权限矩阵本 Phase 5 行 30 格，不开 `-race` 单跑约 1.2–2.2 秒；bootstrap 包开 `-race` 约 18 秒。
+分支 `m2-p1-access-workspaces`：S1 `d43486d`、S2 `b6f9322`、S3 `ba977a5`、S4 `5b92bd8`、S5 `343bb82`、S6 `df21cec`，image-smoke 的断言 `6442c09`，审查修复 `a6b2c9d`，合并 `1f837f3`。第 5 节全部通过，反向对照按预期失败；`make check`（vitest 429 个）、`make gen-check`、`make e2e`（50 个；W1、W2 另跑 `--repeat-each 3`）、`make image-smoke` 本地与持续集成为绿。审查见 [P1 审查记录](reviews/P1-access-workspaces-review.md)：1 项 Major、3 项 Minor、9 项 Nit、14 处文档偏差，全部已处理；审查者的疑问 Q1、Q2、Q3 按建议采纳，Q4 不改（理由见审查记录）。规模（新增行数，不含生成的代码）：生产代码约 1,780 行（含契约与迁移），测试约 2,290 行（含测试辅助包），端到端约 220 行。权限矩阵本 Phase 5 行 30 格，不开 `-race` 单跑约 1.2–2.2 秒；bootstrap 包开 `-race` 约 18 秒。
 
 与设计的出入（已同步进上文）：
 

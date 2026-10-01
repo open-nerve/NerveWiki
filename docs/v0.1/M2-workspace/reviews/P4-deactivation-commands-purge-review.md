@@ -49,7 +49,7 @@
 
 全部处理：P4 文档 3、3.1、3.4、第 4、5、7 节，S1、S2、S3、S4、S6 计划，P3 文档 3.3 与第 7 节，M2 总设计第 4、7、8、11、12 节。
 
-核对过、与实现一致的：README 的工作区命令、"停用账户""软删除与清理"与后台任务；`identity.yaml` 的 `deactivateMe`；`config.yaml` 的两项配置与校验；M7 的 handoff；3.3 的三种输出；3.5 的交错表；3.6 的三个故事。
+核对过、与实现一致的：README 的工作区命令、"停用账户""软删除与清理"与后台任务；`identity.yaml` 的 `deactivateMe`；`config.yaml` 的两项配置与校验；M7 的 handoff（[只投递的客户端](../../M7-assets-transfer/handoffs/M2-P4-insert-only-client.md)）；3.3 的三种输出；3.5 的交错表；3.6 的三个故事。
 
 ## 反向对照
 
