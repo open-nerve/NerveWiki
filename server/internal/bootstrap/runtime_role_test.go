@@ -114,10 +114,10 @@ func call(t *testing.T, method, url, token, body string, want int) []byte {
 }
 
 // nervewiki serves on the role and its administrator's commands run on it:
-// ready; the session cleanup runs as the jobs start; every statement of the
-// account's API and of the commands goes through; River's daily reindex
-// goes through, as River runs it, index by index. Nothing logs a permission
-// denied, the shutdown included.
+// ready; the session cleanup and the purge run as the jobs start; every
+// statement of the account's API and of the commands goes through; River's
+// daily reindex goes through, as River runs it, index by index. Nothing
+// logs a permission denied, the shutdown included.
 func TestTheRuntimeRoleServesWithTheGrantsFile(t *testing.T) {
 	roles := newSplitRoles(t)
 	ctx := context.Background()
@@ -127,6 +127,17 @@ func TestTheRuntimeRoleServesWithTheGrantsFile(t *testing.T) {
 	if _, err := roles.owner.Exec(ctx, `INSERT INTO auth_sessions (id, user_id, token_hash, expires_at, created_at, updated_at)
 		SELECT gen_random_uuid(), id, sha256('expired'), now() - interval '1 minute', now() - interval '1 hour', now() - interval '1 hour'
 		FROM users`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := roles.owner.Exec(ctx, `WITH w AS (
+			INSERT INTO workspaces (id, slug, name, created_by_id, updated_by_id, created_at, updated_at, deleted_at)
+			SELECT gen_random_uuid(), 'gone', 'Gone', id, id, now(), now(), now() - interval '61 days' FROM users RETURNING id, created_by_id, deleted_at
+		), m AS (
+			INSERT INTO workspace_members (id, workspace_id, user_id, role, created_by_id, updated_by_id, created_at, updated_at, deleted_at)
+			SELECT gen_random_uuid(), id, created_by_id, 'admin', created_by_id, created_by_id, now(), now(), deleted_at FROM w
+		)
+		INSERT INTO workspace_invitations (id, workspace_id, email, role, created_by_id, updated_by_id, created_at, updated_at, deleted_at)
+		SELECT gen_random_uuid(), id, 'dana@example.com', 'member', created_by_id, created_by_id, now(), now(), deleted_at FROM w`); err != nil {
 		t.Fatal(err)
 	}
 	var logs syncBuffer
@@ -149,6 +160,16 @@ func TestTheRuntimeRoleServesWithTheGrantsFile(t *testing.T) {
 	}
 	if n := count(t, roles.owner, "SELECT count(*) FROM auth_sessions"); n != 0 {
 		t.Errorf("%d sessions after the cleanup, want the expired one deleted", n)
+	}
+	const purges = "SELECT count(*) FROM river_job WHERE kind = 'platform.purge_soft_deleted' AND state = 'completed'"
+	for deadline := time.Now().Add(15 * time.Second); count(t, roles.owner, purges) == 0; time.Sleep(50 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatalf("the purge did not complete as %s; logs:\n%s", roles.serverName, logs.String())
+		}
+	}
+	if n := count(t, roles.owner, "SELECT (SELECT count(*) FROM workspaces) + (SELECT count(*) FROM workspace_members) + "+
+		"(SELECT count(*) FROM workspace_invitations)"); n != 0 {
+		t.Errorf("%d rows of the workspace deleted 61 days ago after the purge, want none", n)
 	}
 
 	contract := apitest.Load(t)
@@ -173,6 +194,11 @@ func TestTheRuntimeRoleServesWithTheGrantsFile(t *testing.T) {
 	} {
 		if out, logs, err := runUsers(t, roles.serverURL, cmd); err != nil {
 			t.Errorf("a command as %s = %q, %v: %s", roles.serverName, out, err, logs)
+		}
+	}
+	for _, cmd := range []WorkspaceCommand{CreateWorkspace("acme", "Acme", "admin@example.com"), ReactivateMember("acme", "admin@example.com")} {
+		if out, logs, err := runWorkspaces(t, roles.serverURL, cmd); err != nil {
+			t.Errorf("a workspaces command as %s = %q, %v: %s", roles.serverName, out, err, logs)
 		}
 	}
 

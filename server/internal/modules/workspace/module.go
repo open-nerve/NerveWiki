@@ -4,7 +4,8 @@
 // facts; NewInvitationCheck for identity's sign-up policy, and
 // InvitationKeyInfo, the info of the key it derives for the invitations;
 // NewDeactivation, its part in identity's deactivation; NewAdmin for the
-// command line; Actions and Reserved for the composition's checks.
+// command line; Purgers for the purge; Actions and Reserved for the
+// composition's checks.
 package workspace
 
 import (

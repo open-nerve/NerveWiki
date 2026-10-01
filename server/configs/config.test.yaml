@@ -18,6 +18,10 @@ ratelimit:
   register_ip: { per_minute: 600000, burst: 100000 }
   password_user: { per_minute: 600000, burst: 100000 }
 
+# 端到端的清理故事（W12）等得起
+jobs:
+  purge_interval: 2s
+
 log:
   level: warn
   format: text

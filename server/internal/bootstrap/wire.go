@@ -75,7 +75,8 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrati
 	if err != nil {
 		return nil, err
 	}
-	runner, err := jobs.New(pool, jobs.Config{ShutdownTimeout: cfg.Jobs.ShutdownTimeout, Logger: logger}, ident.Jobs())
+	runner, err := jobs.New(pool, jobs.Config{ShutdownTimeout: cfg.Jobs.ShutdownTimeout, Logger: logger},
+		slices.Concat(ident.Jobs(), []jobs.Job{purgeJob(cfg, pool, logger)}))
 	if err != nil {
 		return nil, err
 	}

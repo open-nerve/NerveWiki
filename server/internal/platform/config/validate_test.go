@@ -47,7 +47,7 @@ func validConfig() Config {
 			PasswordUser:  BucketConfig{PerMinute: 5, Burst: 5},
 		},
 		Workspace: WorkspaceConfig{CreationEnabled: true},
-		Jobs:      JobsConfig{ShutdownTimeout: 10 * time.Second},
+		Jobs:      JobsConfig{ShutdownTimeout: 10 * time.Second, PurgeInterval: time.Hour, PurgeRetention: 1440 * time.Hour},
 		Log:       LogConfig{Level: "info", Format: "json"},
 	}
 }
@@ -106,6 +106,8 @@ func TestValidateReportsEveryInvalidKey(t *testing.T) {
 		"ratelimit.password_user.per_minute: must be at least 1, got 0",
 		"ratelimit.password_user.burst: must be at least 1, got 0",
 		"jobs.shutdown_timeout: must be positive, got 0s",
+		"jobs.purge_interval: must be at least 1s, got 0s",
+		"jobs.purge_retention: must be at least 1h, got 0s",
 		`log.level: must be one of debug, info, warn, error, got "verbose"`,
 		`log.format: must be text or json, got "xml"`,
 	}

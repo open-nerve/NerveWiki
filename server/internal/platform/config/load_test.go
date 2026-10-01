@@ -53,6 +53,8 @@ ratelimit:
   password_user: {per_minute: 5, burst: 5}
 jobs:
   shutdown_timeout: 10s
+  purge_interval: 1h
+  purge_retention: 1440h
 log:
   level: info
   format: json
@@ -136,7 +138,7 @@ func TestLoadAppliesLayersInOrder(t *testing.T) {
 			RegisterIP:    BucketConfig{PerMinute: 10, Burst: 5},
 			PasswordUser:  BucketConfig{PerMinute: 5, Burst: 5},
 		},
-		Jobs: JobsConfig{ShutdownTimeout: 10 * time.Second},
+		Jobs: JobsConfig{ShutdownTimeout: 10 * time.Second, PurgeInterval: time.Hour, PurgeRetention: 1440 * time.Hour},
 		Log:  LogConfig{Level: "debug", Format: "text"},
 	}
 	if !reflect.DeepEqual(cfg, want) {

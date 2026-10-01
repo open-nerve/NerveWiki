@@ -89,6 +89,12 @@ func (c Config) validate() error {
 	if c.Jobs.ShutdownTimeout <= 0 {
 		fail("jobs.shutdown_timeout", "must be positive, got %s", c.Jobs.ShutdownTimeout)
 	}
+	if c.Jobs.PurgeInterval < time.Second {
+		fail("jobs.purge_interval", "must be at least 1s, got %s", c.Jobs.PurgeInterval)
+	}
+	if c.Jobs.PurgeRetention < time.Hour {
+		fail("jobs.purge_retention", "must be at least 1h, got %s", c.Jobs.PurgeRetention)
+	}
 	var level slog.Level
 	if err := level.UnmarshalText([]byte(c.Log.Level)); err != nil {
 		fail("log.level", "must be one of debug, info, warn, error, got %q", c.Log.Level)

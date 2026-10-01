@@ -7,6 +7,7 @@ import (
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/identity"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/workspace"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/jobs"
 )
 
 // deactivationRegistrants are the modules that take part in an account's
@@ -54,4 +55,13 @@ type workspaceExtensions struct {
 // notebooks' come with M3.
 func workspaceRegistrants() workspaceExtensions {
 	return workspaceExtensions{}
+}
+
+// purgers are the modules' purgers of the soft-deleted rows, leaf to root
+// (M2 design 8, M2/P4 design 3.4): a module whose tables reference
+// another's comes before it, as M3's notebooks will before the
+// workspaces. The database test of the purge checks the order against the
+// foreign keys, and that every table with deleted_at has its purger.
+func purgers(pool *pgxpool.Pool) []jobs.Purger {
+	return workspace.Purgers(pool)
 }
