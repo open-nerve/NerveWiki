@@ -8,6 +8,7 @@ import { errorText } from "../../app/problem-messages";
 import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
 import { useT } from "../../i18n/i18n";
+import type { WorkspaceRole } from "../../services/member.service";
 import type { Workspace } from "../../services/workspace.service";
 import { useAccount, useMembers, useWorkspaces } from "../../stores/context";
 import { InvitationsSection } from "./invitations-section";
@@ -42,14 +43,26 @@ const MembersSection = observer(function MembersSection({ workspace }: { workspa
   const failed = failure === undefined ? undefined : errorText(failure, t);
 
   /**
-   * A change of role refused says why above the list. The list is read
-   * again, and the workspaces too: a refusal may come of the account's own
-   * role, changed elsewhere, which the controls then follow.
+   * changeRole changes the role of the membership id. A refusal says why
+   * above the list, until the next change; the list is read again, and the
+   * workspaces too, whatever the refusal: one member gone, or the account's
+   * own role changed elsewhere, which the controls then follow.
    */
-  function refused(refusal: unknown) {
-    setFailure(refusal);
-    void mutate();
-    void reload("workspaces");
+  async function changeRole(id: string, role: WorkspaceRole) {
+    setFailure(undefined);
+    try {
+      await members.changeRole(id, role);
+    } catch (refusal) {
+      setFailure(refusal);
+      void mutate();
+      void reload("workspaces");
+    }
+  }
+
+  /** remove ends the membership id; the invitations pending to the member's address went with it. */
+  async function remove(id: string) {
+    await members.remove(id);
+    void reload(["invitations", workspace.id]);
   }
 
   return (
@@ -69,7 +82,8 @@ const MembersSection = observer(function MembersSection({ workspace }: { workspa
               member={member}
               you={member.user_id === me.id}
               manage={workspace.role === "admin" && member.user_id !== me.id}
-              refused={refused}
+              changeRole={(role) => changeRole(member.id, role)}
+              remove={() => remove(member.id)}
               removed={() => heading.current?.focus()}
             />
           ))}

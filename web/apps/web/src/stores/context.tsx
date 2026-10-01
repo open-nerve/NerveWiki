@@ -43,11 +43,15 @@ export function useApiTokens(): ApiTokenStore {
   return apiTokens;
 }
 
-/** useWorkspaces is the signed-in account's workspaces: only for the pages the SignedIn guard shows. */
+/**
+ * useWorkspaces is the signed-in account's workspaces: only for a signed-in
+ * generation, such as the pages the SignedIn guard shows, or the invitation
+ * page once signed in.
+ */
 export function useWorkspaces(): WorkspaceStore {
   const { workspaces } = useStore();
   if (workspaces === undefined) {
-    throw new Error("useWorkspaces is used outside SignedIn");
+    throw new Error("useWorkspaces is used signed out");
   }
   return workspaces;
 }

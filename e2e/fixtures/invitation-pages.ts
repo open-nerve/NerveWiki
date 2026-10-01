@@ -6,19 +6,23 @@ import { answerTo } from "./browser";
 // The invitations of the members page, and the invitation page, as a user
 // works them (M2/P6 design 3.3, 3.4).
 
-/** Invites email as role on the members page of page, of the workspace of slug; resolves the answer. */
+/**
+ * Invites email as role on the members page of page, of the workspace of slug; resolves the status of the
+ * answer, and the invitation it holds when it is 201.
+ */
 export async function inviteWith(
   page: Page,
   slug: string,
   email: string,
   role: WorkspaceRole = "member"
-): Promise<{ status: number; invitation: WorkspaceInvitation }> {
+): Promise<{ status: number; invitation: WorkspaceInvitation | undefined }> {
   await page.getByLabel("E-mail address", { exact: true }).fill(email);
   await page.getByLabel("Role", { exact: true }).selectOption(role);
   const answer = answerTo(page, "POST", `/api/v0/workspaces/${slug}/invitations`);
   await page.getByRole("button", { name: "Invite", exact: true }).click();
   const response = await answer;
-  return { status: response.status(), invitation: (await response.json()) as WorkspaceInvitation };
+  const status = response.status();
+  return { status, invitation: status === 201 ? ((await response.json()) as WorkspaceInvitation) : undefined };
 }
 
 /**
@@ -26,7 +30,7 @@ export async function inviteWith(
  * holds then: the page's context must be granted clipboard-read and clipboard-write.
  */
 export async function copyLinkWith(page: Page, email: string): Promise<string> {
-  await page.getByRole("button", { name: `Copy the link of the invitation to ${email}`, exact: true }).click();
+  await page.getByRole("button", { name: `Copy link: ${email}`, exact: true }).click();
   await expect(page.getByText(`Copied the link of the invitation to ${email}.`, { exact: true })).toBeVisible();
   return page.evaluate(() => navigator.clipboard.readText());
 }

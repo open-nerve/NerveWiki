@@ -91,7 +91,10 @@ test("W5 (page): the admin invites an address and copies its link; an address re
 
   const email = emailFor(testInfo, "invitee");
   const { status, invitation } = await inviteWith(page, slug, email.toUpperCase(), "guest");
-  expect([status, invitation.email, invitation.role]).toEqual([201, email, "guest"]);
+  expect([status, invitation?.email, invitation?.role]).toEqual([201, email, "guest"]);
+  if (invitation === undefined) {
+    throw new Error("the invitation was not answered");
+  }
   await expectPendingInvitation(db, invitation, adminId);
   await expect(page.getByText(`Invited ${email}. Copy the link and send it to them.`, { exact: true })).toBeVisible();
   // The link is the list's, with the token in its fragment.

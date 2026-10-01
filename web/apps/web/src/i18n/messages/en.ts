@@ -78,7 +78,8 @@ export const en = {
   "role.guest": "Guest",
   "members.you": "You",
   "members.joined": "Joined {date}",
-  "members.roleOf": "Role of {name}",
+  "members.roleOf": "{role}, role of {name}",
+  "members.who": "{name} ({email})",
   "members.remove": "Remove",
   "members.removeLabel": "Remove {name}",
   "members.removeTitle": "Remove {name} from {workspace}?",
@@ -101,7 +102,7 @@ export const en = {
   "invitations.empty": "No invitations pending.",
   "invitations.invitedOn": "invited {date}",
   "invitations.copy": "Copy link",
-  "invitations.copyLabel": "Copy the link of the invitation to {email}",
+  "invitations.copyLabel": "Copy link: {email}",
   "invitations.copied": "Copied the link of the invitation to {email}.",
   "invitations.linkLabel": "Link of the invitation to {email}",
   "invitations.linkHint": "This browser cannot copy it here: select the link and copy it.",
@@ -211,7 +212,7 @@ export const en = {
   "problem.workspace.invitation_not_found":
     "This invitation no longer works: it may have been accepted or withdrawn, or the link is incomplete.",
   "problem.workspace.invitation_email_mismatch":
-    "This invitation was sent to another email address. Sign in with that one to accept it.",
+    "This invitation was sent to another e-mail address. Sign in with that one to accept it.",
   "problem.network": "Cannot reach the server. Check the connection and try again.",
   "problem.unavailable": "Cannot reach the server for now. You are still signed in; try again in a moment.",
   "problem.storage":

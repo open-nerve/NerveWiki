@@ -3,7 +3,7 @@ import { expectInvitation, expectMembership } from "../../fixtures/assert/worksp
 import { bearer, displayNameOf, emailFor, registerOnboarded } from "../../fixtures/auth";
 import { failedToLoad } from "../../fixtures/browser";
 import { accept, invite, joinAs, tryAccept } from "../../fixtures/invitations";
-import { leaveWith, membersListed, removeMemberWith } from "../../fixtures/member-pages";
+import { leaveWith, membersListed, removeMemberWith, who } from "../../fixtures/member-pages";
 import { leave, memberOf, removeMember } from "../../fixtures/members";
 import { expect, test } from "../../fixtures/test";
 import { nervewikiUsers } from "../../fixtures/admin";
@@ -76,8 +76,12 @@ test("W9 (page): the admin removes the other member, whose invitation pending go
   const page = await signedInPage(tokens);
   await page.goto(`/${workspace.slug}/settings/members`);
 
-  expect(await removeMemberWith(page, membership.display_name, membership.id)).toBe(204);
+  const invitations = page.getByRole("list", { name: "Invitations", exact: true });
+  await expect(invitations.getByText(newEmail, { exact: true })).toBeVisible();
+  expect(await removeMemberWith(page, who(membership.display_name, newEmail), membership.id)).toBe(204);
   await expect.poll(() => membersListed(page)).toEqual([[`${displayNameOf(adminEmail)}You`, expect.any(String)]]);
+  // The invitation pending to the address leaves the page with the member.
+  await expect(page.getByText("No invitations pending.", { exact: true })).toBeVisible();
   await expectMembership(db, workspace.id, memberId, "ended");
   await expectInvitation(db, pending.id, "deleted", adminId);
 

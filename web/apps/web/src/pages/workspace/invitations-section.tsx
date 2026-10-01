@@ -46,8 +46,11 @@ export const InvitationsSection = observer(function InvitationsSection({ workspa
             key={invitation.id}
             workspace={workspace}
             invitation={invitation}
-            copied={() => setCopied(invitation.email)}
-            withdrawn={() => heading.current?.focus()}
+            copied={(done) => setCopied(done ? invitation.email : undefined)}
+            withdrawn={() => {
+              setCopied(undefined);
+              heading.current?.focus();
+            }}
           />
         ))}
       </ul>
@@ -83,10 +86,12 @@ function InviteForm({ workspace }: { workspace: Workspace }) {
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    // An e-mail field's value comes without the spaces around it.
+    // The browser takes the ASCII spaces off an e-mail field's value; trim takes the others too, such as an
+    // ideographic space an input method typed.
+    const address = email.trim();
     setInvited(undefined);
-    void submit(email === "" ? { email: "field.required" } : {}, async () => {
-      const sent = await invitations.invite({ email, role });
+    void submit(address === "" ? { email: "field.required" } : {}, async () => {
+      const sent = await invitations.invite({ email: address, role });
       setEmail("");
       // As the server keeps it: in lower case, as the list shows it.
       setInvited(sent.email);
@@ -138,8 +143,8 @@ function InviteForm({ workspace }: { workspace: Workspace }) {
 type InvitationRowProps = {
   workspace: Workspace;
   invitation: WorkspaceInvitation;
-  /** Called once the link is on the clipboard. */
-  copied: () => void;
+  /** Called with whether the link went to the clipboard. */
+  copied: (done: boolean) => void;
   /** Where the focus goes once the invitation is withdrawn, with the row. */
   withdrawn: () => void;
 };
@@ -166,9 +171,10 @@ const InvitationRow = observer(function InvitationRow({
     try {
       await navigator.clipboard.writeText(link);
       setShown(false);
-      copied();
+      copied(true);
     } catch {
       setShown(true);
+      copied(false);
     }
   }
 

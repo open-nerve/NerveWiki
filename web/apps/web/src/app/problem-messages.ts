@@ -50,7 +50,7 @@ const fieldMessages = {
  * there than they say elsewhere, such as workspace.sole_admin to a
  * deactivation: the text of each code's key instead of its usual one.
  */
-export type ProblemTexts = Readonly<Record<string, PlainKey>>;
+export type ProblemTexts = Readonly<Partial<Record<keyof typeof problemMessages, PlainKey>>>;
 
 /**
  * errorText is what a page says of error above its form or in place of what
@@ -73,7 +73,7 @@ export function errorText(error: unknown, t: Translate, texts: ProblemTexts = {}
   }
   if (error instanceof ApiError) {
     const code = error.code;
-    const own = code === undefined ? undefined : texts[code];
+    const own = code !== undefined && Object.hasOwn(texts, code) ? texts[code as keyof ProblemTexts] : undefined;
     if (own !== undefined) {
       return t(own);
     }

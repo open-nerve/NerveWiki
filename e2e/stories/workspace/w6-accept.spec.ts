@@ -9,7 +9,7 @@ import { leave, memberOf } from "../../fixtures/members";
 import { expect, test } from "../../fixtures/test";
 import { nervewikiUsers } from "../../fixtures/admin";
 import { workspaceHeading } from "../../fixtures/workspace-pages";
-import { newTeam } from "../../fixtures/workspaces";
+import { createWorkspace, newTeam, slugFor } from "../../fixtures/workspaces";
 
 // W6, accepting (M2/P3 design 3.3): the link's token and the invitee's
 // address let them in, as no role can.
@@ -95,7 +95,8 @@ test("W6 (page): the invitee opens the link signed out, sees what it invites to,
 }, testInfo) => {
   const { pat, workspace } = await newTeam(api, testInfo);
   const email = emailFor(testInfo, "invitee");
-  await registerOnboarded(api, email);
+  // The invitee has a workspace before Acme by name: / would land there.
+  await createWorkspace(api, (await registerOnboarded(api, email)).access_token, "Aardvark", slugFor(testInfo, "own"));
   const invitation = await invite(api, pat, workspace.slug, email, "member");
   const asked: string[] = [];
   page.on("request", (request) => {
@@ -139,7 +140,7 @@ test("W6 (page): an account of another address is told so, signs out there, and 
   pageWatch.expectConsole({ errors: [failedToLoad(403)] });
   expect((await acceptWith(page, invitation.id)).status()).toBe(403);
   await expect(formError(page)).toHaveText(
-    "This invitation was sent to another email address. Sign in with that one to accept it."
+    "This invitation was sent to another e-mail address. Sign in with that one to accept it."
   );
   await expectInvitation(db, invitation.id, "pending", adminId);
   await page.getByRole("button", { name: "Sign out", exact: true }).click();

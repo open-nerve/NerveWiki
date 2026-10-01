@@ -23,23 +23,29 @@ import { renderApp } from "../test/render";
 const link = { id: "0199a2b4-0000-7000-8000-0000000000e1", token: "nwk_inv_lab" };
 const page = `/invitations/${link.id}#${link.token}`;
 
+const acme: Workspace = { ...workspaceJSON, id: "0199a2b4-0000-7000-8000-0000000000a1", slug: "acme", name: "Acme" };
+
 /**
  * The server of the invitation page: link previews Lab, as a member;
  * accepting answers as accept says, by default Lab with the role member,
- * which the account's list then has; me is the account signed in. Each
- * request goes into sent, as its method and address, and each body into
- * bodies.
+ * which joins the account's workspaces, Acme before it (/ would land on
+ * Acme); me is the account signed in. Each request goes into sent, as its
+ * method and address, and each body into bodies. While state.down names
+ * a path, it cannot be reached; refresh answers the session's refresh.
  */
 function invitationServer({
   signedIn = true,
   me = userJSON,
   accept,
   register,
-}: { signedIn?: boolean; me?: User; accept?: Answer; register?: Answer } = {}) {
+  refresh = () => json(tokensJSON),
+}: { signedIn?: boolean; me?: User; accept?: Answer; register?: Answer; refresh?: Answer } = {}) {
   const sent: string[] = [];
   const bodies: unknown[] = [];
-  let joined: Workspace[] = [];
+  const state = { down: "" };
+  let joined: Workspace[] = [acme];
   const routes: Record<string, Answer> = {
+    "POST /api/v0/auth/refresh": refresh,
     "GET /api/v0/instance": () => json(instanceJSON),
     "POST /api/v0/auth/login": () => json(tokensJSON),
     "POST /api/v0/auth/register": async (request) => (await register?.(request)) ?? json(tokensJSON, 201),
@@ -55,7 +61,7 @@ function invitationServer({
     [`POST /api/v0/workspace-invitations/${link.id}/accept`]: async (request) => {
       const answer = (await accept?.(request)) ?? json({ ...workspaceJSON, role: "member" });
       if (answer.ok) {
-        joined = [(await answer.clone().json()) as Workspace];
+        joined = [acme, (await answer.clone().json()) as Workspace];
       }
       return answer;
     },
@@ -66,12 +72,15 @@ function invitationServer({
     if (request.method !== "GET") {
       bodies.push(await request.clone().text());
     }
+    if (state.down !== "" && new URL(request.url).pathname.endsWith(state.down)) {
+      throw new TypeError("offline");
+    }
     return answer(request);
   };
   const app = signedIn
     ? signedInApp(Object.fromEntries(Object.keys(routes).map((key) => [key, record])))
     : testApp(record);
-  return { app, sent, bodies };
+  return { app, sent, bodies, state };
 }
 
 async function signInWith(email: string) {
@@ -168,16 +177,17 @@ test("a sign-up the server refuses says why above the form, and the page stays",
 
 test("an account of another address is told so, and signs out to sign in with the invited one", async () => {
   const user = userEvent.setup();
-  const { app } = invitationServer({ accept: () => problem(403, "workspace.invitation_email_mismatch") });
+  const { app, sent } = invitationServer({ accept: () => problem(403, "workspace.invitation_email_mismatch") });
   const { router } = renderApp(page, app);
 
   await user.click(await screen.findByRole("button", { name: "Accept invitation" }));
   expect((await screen.findByRole("alert")).textContent).toBe(
-    "This invitation was sent to another email address. Sign in with that one to accept it."
+    "This invitation was sent to another e-mail address. Sign in with that one to accept it."
   );
   await user.click(screen.getByRole("button", { name: "Sign out" }));
 
   expect(await screen.findByRole("button", { name: "Sign in" })).toBeTruthy();
+  expect(sent.filter((request) => request.includes("/auth/logout"))).toHaveLength(1);
   expect(screen.getByText("You are invited to join Lab.")).toBeTruthy();
   expect(router.state.location.pathname + router.state.location.hash).toBe(page);
 });
@@ -205,4 +215,64 @@ test("an account with onboarding left goes through it before the workspace", asy
   expect(await screen.findByText("Step 1 of 2")).toBeTruthy();
   await waitFor(() => expect(router.state.location.pathname).toBe("/onboarding"));
   expect(router.state.location.search).toBe("?next=%2Flab");
+});
+
+test("a link gone by the time one accepts says it no longer works", async () => {
+  const user = userEvent.setup();
+  const { app } = invitationServer({ accept: () => problem(404, "workspace.invitation_not_found") });
+  const { router } = renderApp(page, app);
+
+  await user.click(await screen.findByRole("button", { name: "Accept invitation" }));
+
+  expect((await screen.findByRole("alert")).textContent).toBe(
+    "This invitation no longer works: it may have been accepted or withdrawn, or the link is incomplete."
+  );
+  expect(router.state.location.pathname + router.state.location.hash).toBe(page);
+});
+
+test("a sign-up here is checked as a sign-up: a password too short is not sent", async () => {
+  const user = userEvent.setup();
+  const { app, bodies } = invitationServer({ signedIn: false });
+  renderApp(page, app);
+
+  await user.click(await screen.findByRole("button", { name: "Sign up" }));
+  await user.type(screen.getByLabelText("E-mail address"), "ada@example.com");
+  await user.type(screen.getByLabelText("Password"), "short");
+  await user.click(screen.getByRole("button", { name: "Sign up" }));
+
+  expect(await screen.findByText("At least 8 characters.")).toBeTruthy();
+  expect(bodies.filter((body) => String(body).includes("password"))).toEqual([]);
+});
+
+test("a session that cannot be used for now says so under the invitation; Try again goes on", async () => {
+  const user = userEvent.setup();
+  let busy = true;
+  const { app } = invitationServer({ refresh: () => (busy ? problem(503, "server_busy") : json(tokensJSON)) });
+  const { router } = renderApp(page, app);
+
+  expect(await screen.findByRole("heading", { name: "Cannot reach the server" })).toBeTruthy();
+  expect(screen.getByText("You are invited to join Lab.")).toBeTruthy();
+  busy = false;
+  await user.click(screen.getByRole("button", { name: "Try again" }));
+
+  expect(await screen.findByRole("button", { name: "Accept invitation" })).toBeTruthy();
+  expect(router.state.location.pathname + router.state.location.hash).toBe(page);
+});
+
+test.each([
+  ["the invitation", "/preview"],
+  ["the account", "/api/v0/me"],
+])("%s cannot be read: the page says so; Try again reads it", async (_, path) => {
+  const user = userEvent.setup();
+  const { app, state } = invitationServer();
+  state.down = path;
+  renderApp(page, app);
+
+  expect((await screen.findByRole("alert")).textContent).toBe(
+    "Cannot reach the server. Check the connection and try again."
+  );
+  state.down = "";
+  await user.click(screen.getByRole("button", { name: "Try again" }));
+
+  expect(await screen.findByRole("button", { name: "Accept invitation" })).toBeTruthy();
 });

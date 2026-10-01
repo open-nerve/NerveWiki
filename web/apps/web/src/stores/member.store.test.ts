@@ -53,6 +53,16 @@ test("a role changed takes its member's place", async () => {
   expect(roles(store)).toEqual(["ada:admin", "bob:guest", "cy:member"]);
 });
 
+test("a role change refused leaves the role as it was", async () => {
+  const forbidden = new ApiError(403, { status: 403, code: "forbidden", title: "" });
+  const store = storeOf([member("ada", "admin"), member("bob")], { update: () => Promise.reject(forbidden) });
+  await store.load();
+
+  await expect(store.changeRole("bob", "guest")).rejects.toBe(forbidden);
+
+  expect(roles(store)).toEqual(["ada:admin", "bob:member"]);
+});
+
 // SWR reads the list again on focus: a read that went out before a change
 // was answered may hold the list from before it.
 test("a read answered after a change keeps the change", async () => {

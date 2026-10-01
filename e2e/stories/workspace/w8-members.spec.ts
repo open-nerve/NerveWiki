@@ -4,7 +4,7 @@ import { accountIdOf } from "../../fixtures/assert/identity";
 import { expectMembership } from "../../fixtures/assert/workspace";
 import { displayNameOf, emailFor, registerOnboarded } from "../../fixtures/auth";
 import { accept, invite, joinAs } from "../../fixtures/invitations";
-import { changeRoleWith, membersListed, roleOf } from "../../fixtures/member-pages";
+import { changeRoleWith, membersListed, roleOf, who } from "../../fixtures/member-pages";
 import { listMembers, memberOf, updateMember } from "../../fixtures/members";
 import { expect, test } from "../../fixtures/test";
 import { createWorkspace, newTeam, slugFor } from "../../fixtures/workspaces";
@@ -83,12 +83,15 @@ test("W8 (page): the admin sees the members, changes a guest's role, and has no 
     [displayNameOf(memberEmail), memberEmail],
     [displayNameOf(guestEmail), guestEmail],
   ]);
-  await expect(roleOf(page, displayNameOf(adminEmail))).toHaveCount(0);
-  await expect(roleOf(page, displayNameOf(guestEmail))).toHaveValue("guest");
+  const guest = who(displayNameOf(guestEmail), guestEmail);
+  await expect(roleOf(page, who(displayNameOf(adminEmail), adminEmail))).toHaveCount(0);
+  await expect(roleOf(page, guest)).toHaveText("Guest");
 
   const guestMembership = await memberOf(api, tokens.access_token, workspace.slug, guestEmail);
-  expect((await changeRoleWith(page, displayNameOf(guestEmail), "member")).status()).toBe(200);
-  await expect(roleOf(page, displayNameOf(guestEmail))).toHaveValue("member");
+  expect((await changeRoleWith(page, guest, "Member")).status()).toBe(200);
+  await expect(roleOf(page, guest)).toHaveText("Member");
+  // The focus comes back to the role's button.
+  await expect(roleOf(page, guest)).toBeFocused();
   await expectMembership(db, workspace.id, await accountIdOf(db, guestEmail), "member", guestMembership.created_at);
 });
 
@@ -107,6 +110,6 @@ test("W8 (page): a guest sees the members and their roles, without their address
     [displayNameOf(adminEmail), false],
     [`${displayNameOf(guestEmail)}You`, false],
   ]);
-  await expect(page.getByRole("combobox")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /, role of / })).toHaveCount(0);
   await expect(page.getByText("Admin", { exact: true })).toBeVisible();
 });
