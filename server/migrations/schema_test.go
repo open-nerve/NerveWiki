@@ -130,7 +130,7 @@ func TestConstraintAndIndexNames(t *testing.T) {
 		t.Fatal(err)
 	}
 	// contype: p primary key, u unique, f foreign key (confdeltype c: ON
-	// DELETE CASCADE), c check. An index is i, then u when it is unique and w
+	// DELETE CASCADE, a: NO ACTION), c check. An index is i, then u when it is unique and w
 	// when it is partial (has a WHERE).
 	want := []string{
 		"api_tokens_expires_at_check c",
@@ -158,6 +158,23 @@ func TestConstraintAndIndexNames(t *testing.T) {
 		"users_onboarding_steps_check c",
 		"users_pkey iu",
 		"users_pkey p",
+		"workspace_members_created_by_id_fkey f a",
+		"workspace_members_pkey iu",
+		"workspace_members_pkey p",
+		"workspace_members_role_check c",
+		"workspace_members_updated_by_id_fkey f a",
+		"workspace_members_user_id_fkey f a",
+		"workspace_members_user_id_idx iw",
+		"workspace_members_workspace_id_fkey f c",
+		"workspace_members_workspace_id_idx i",
+		"workspace_members_workspace_id_user_id_key iuw",
+		"workspaces_created_by_id_fkey f a",
+		"workspaces_name_check c",
+		"workspaces_pkey iu",
+		"workspaces_pkey p",
+		"workspaces_slug_check c",
+		"workspaces_slug_key iuw",
+		"workspaces_updated_by_id_fkey f a",
 	}
 	if !slices.Equal(got, want) {
 		t.Errorf("constraints and indexes =\n%q\nwant\n%q", got, want)
@@ -177,6 +194,11 @@ func TestChecksRejectCounterexamples(t *testing.T) {
 		"UPDATE auth_sessions SET revoked_at = now(), revoke_reason = 'logout'",
 		"INSERT INTO api_tokens (id, user_id, token_hash, name, expires_at, created_at, updated_at) VALUES " +
 			"('0199a2b4-0000-7000-8000-000000000004', " + user + ", sha256('y'), 'CI', now() + interval '1 day', now(), now())",
+		"INSERT INTO workspaces (id, slug, name, created_by_id, updated_by_id, created_at, updated_at) VALUES " +
+			"('0199a2b4-0000-7000-8000-000000000005', 'acme_2-x', 'Acme 研发', " + user + ", " + user + ", now(), now())",
+		"INSERT INTO workspace_members (id, workspace_id, user_id, role, created_by_id, updated_by_id, created_at, updated_at) VALUES " +
+			"('0199a2b4-0000-7000-8000-000000000006', '0199a2b4-0000-7000-8000-000000000005', " + user + ", 'guest', " +
+			user + ", " + user + ", now(), now())",
 	} {
 		if _, err := pool.Exec(ctx, stmt); err != nil {
 			t.Fatalf("%s: %v", stmt, err)
@@ -216,6 +238,14 @@ func TestChecksRejectCounterexamples(t *testing.T) {
 		{"PAT hash not 32 bytes", "UPDATE api_tokens SET token_hash = '\\x00'", "api_tokens_token_hash_check"},
 		{"empty PAT name", "UPDATE api_tokens SET name = ''", "api_tokens_name_check"},
 		{"PAT expiring when created", "UPDATE api_tokens SET expires_at = created_at", "api_tokens_expires_at_check"},
+		{"upper-case slug", "UPDATE workspaces SET slug = 'Acme'", "workspaces_slug_check"},
+		{"slug with a space", "UPDATE workspaces SET slug = 'acme corp'", "workspaces_slug_check"},
+		{"slug with a dot", "UPDATE workspaces SET slug = 'acme.corp'", "workspaces_slug_check"},
+		{"non-ASCII slug", "UPDATE workspaces SET slug = 'café'", "workspaces_slug_check"},
+		{"empty slug", "UPDATE workspaces SET slug = ''", "workspaces_slug_check"},
+		{"empty workspace name", "UPDATE workspaces SET name = ''", "workspaces_name_check"},
+		{"a fourth role", "UPDATE workspace_members SET role = 'owner'", "workspace_members_role_check"},
+		{"an upper-case role", "UPDATE workspace_members SET role = 'Admin'", "workspace_members_role_check"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
