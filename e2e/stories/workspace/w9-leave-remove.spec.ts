@@ -4,7 +4,7 @@ import { bearer, emailFor } from "../../fixtures/auth";
 import { invite, joinAs, tryAccept } from "../../fixtures/invitations";
 import { leave, memberOf, removeMember } from "../../fixtures/members";
 import { expect, test } from "../../fixtures/test";
-import { nervewikiUsers } from "../../fixtures/users";
+import { nervewikiUsers } from "../../fixtures/admin";
 import { newTeam } from "../../fixtures/workspaces";
 
 // W9, memberships ending (M2/P2 design 3.2; M2/P3 design 3.4): removed by an

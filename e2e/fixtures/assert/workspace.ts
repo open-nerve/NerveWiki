@@ -213,3 +213,21 @@ export async function expectMembership(
   }
   expect(rows).toEqual([{ state, joined: joinedAt === undefined ? null : true }]);
 }
+
+/**
+ * workspaces, workspace_members and workspace_invitations: nothing is left
+ * of the workspaces, their members and invitations, nor of the
+ * invitations: the purge deleted them all.
+ */
+export async function expectPurged(
+  db: Database,
+  { workspaces, invitations }: { workspaces: string[]; invitations: string[] }
+): Promise<void> {
+  const rows = await db.query<{ workspaces: number; members: number; invitations: number }>(
+    `SELECT (SELECT count(*)::int FROM workspaces WHERE id = ANY($1)) AS workspaces,
+            (SELECT count(*)::int FROM workspace_members WHERE workspace_id = ANY($1)) AS members,
+            (SELECT count(*)::int FROM workspace_invitations WHERE workspace_id = ANY($1) OR id = ANY($2)) AS invitations`,
+    [workspaces, invitations]
+  );
+  expect(rows).toEqual([{ workspaces: 0, members: 0, invitations: 0 }]);
+}

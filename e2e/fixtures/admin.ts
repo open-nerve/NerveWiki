@@ -1,11 +1,11 @@
 import { expect } from "@playwright/test";
 
 import type { Database } from "./db";
-import { runNervewiki } from "./server";
+import { runNervewiki, type RunOptions } from "./server";
 
-// The server administrator's commands, nervewiki users (M1/P4 design 3.7),
-// on a worker's database: the worker's nervewiki sees what they change on
-// its next request.
+// The server administrator's commands, nervewiki users (M1/P4 design 3.7)
+// and nervewiki workspaces (M2/P4 design 3.3), on a worker's database: the
+// worker's nervewiki sees what they change on its next request.
 
 /** Every log line, so that a password in any of them shows. */
 const allLogs = { NWIKI_LOG__LEVEL: "debug" };
@@ -42,16 +42,48 @@ export async function nervewikiUsersFails(
   message: string,
   password?: string
 ): Promise<void> {
-  const failure = await runNervewiki(["users", ...args], db.url, { input: lineOf(password), env: allLogs }).then(
+  const stderr = await expectFailure(["users", ...args], db, message, { input: lineOf(password), env: allLogs });
+  expectNoPassword(`nervewiki users ${args.join(" ")}`, stderr, password);
+}
+
+/**
+ * Runs nervewiki workspaces with args, and env added to the test
+ * configuration, and returns its output: the one line the command prints.
+ */
+export async function nervewikiWorkspaces(
+  db: Database,
+  args: string[],
+  env: Record<string, string> = {}
+): Promise<string> {
+  const { stdout } = await runNervewiki(["workspaces", ...args], db.url, { env });
+  return stdout;
+}
+
+/** Runs nervewiki workspaces as nervewikiWorkspaces does, and expects it to fail as nervewikiUsersFails does. */
+export async function nervewikiWorkspacesFails(
+  db: Database,
+  args: string[],
+  message: string,
+  env: Record<string, string> = {}
+): Promise<void> {
+  await expectFailure(["workspaces", ...args], db, message, { env });
+}
+
+/**
+ * Runs nervewiki with args and expects it to fail: exit code 1, no output,
+ * and "nervewiki: <message>" as the last line of stderr, which it returns.
+ */
+async function expectFailure(args: string[], db: Database, message: string, options: RunOptions): Promise<string> {
+  const failure = await runNervewiki(args, db.url, options).then(
     () => undefined,
     (err: { code?: unknown; stdout?: string; stderr?: string }) => err
   );
-  const label = `nervewiki users ${args.join(" ")}`;
+  const label = `nervewiki ${args.join(" ")}`;
   expect(failure, `${label} fails`).toBeDefined();
   expect(failure?.code, label).toBe(1);
   expect(failure?.stdout, label).toBe("");
   expect(failure?.stderr?.endsWith(`nervewiki: ${message}\n`), `${label}: ${failure?.stderr}`).toBe(true);
-  expectNoPassword(label, failure?.stderr ?? "", password);
+  return failure?.stderr ?? "";
 }
 
 /** The standard input that gives password: one line; none without a password. */

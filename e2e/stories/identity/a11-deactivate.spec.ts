@@ -12,7 +12,7 @@ import {
 import { formError, signInWith } from "../../fixtures/auth-pages";
 import { answerTo, failedToLoad } from "../../fixtures/browser";
 import { expect, test } from "../../fixtures/test";
-import { nervewikiUsers } from "../../fixtures/users";
+import { nervewikiUsers } from "../../fixtures/admin";
 
 // A11, deactivation (M1 design 3); activating again is the administrator's command (M1/P4 design 3.6).
 
