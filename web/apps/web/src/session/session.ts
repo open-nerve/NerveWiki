@@ -2,7 +2,7 @@ import { createClient, type ApiClient } from "@nervewiki/api-client";
 
 import { authMiddleware } from "./auth-middleware";
 import { leaseLock, webLock } from "./refresh-lock";
-import { AUTH_KEY, TokenManager } from "./token-manager";
+import { AUTH_KEY, SessionStorageError, TokenManager } from "./token-manager";
 
 // The web app's session (M1/P5 design 3.2): the only module that creates clients of the API. main.tsx
 // builds one Session for the page and starts it; nothing here runs on import.
@@ -34,11 +34,12 @@ export class Session {
 
   constructor(private readonly deps: SessionDeps) {
     this.public = createClient(deps.client);
+    const storage = failingWithSessionStorageError(deps.storage);
     const lock = deps.locks
       ? webLock(deps.locks)
-      : leaseLock({ storage: deps.storage, onStorage: deps.onStorage, now: deps.now, tabId: deps.randomHex(16) });
+      : leaseLock({ storage, onStorage: deps.onStorage, now: deps.now, tabId: deps.randomHex(16) });
     this.tokens = new TokenManager({
-      storage: deps.storage,
+      storage,
       lock,
       client: this.public,
       now: deps.now,
@@ -75,6 +76,26 @@ export class Session {
       if (key === AUTH_KEY || key === null) this.tokens.handleStorageChange();
     });
     return this.tokens.start();
+  }
+}
+
+/**
+ * storage, whose failed writes (full, or blocked, though readable) are SessionStorageError: the token manager
+ * tells them from its other failures, and ends a session the browser cannot keep instead of hanging.
+ */
+function failingWithSessionStorageError(storage: SessionDeps["storage"]): SessionDeps["storage"] {
+  return {
+    getItem: (key) => storage.getItem(key),
+    setItem: (key, value) => writing(() => storage.setItem(key, value)),
+    removeItem: (key) => writing(() => storage.removeItem(key)),
+  };
+}
+
+function writing(change: () => void): void {
+  try {
+    change();
+  } catch (error) {
+    throw new SessionStorageError(error);
   }
 }
 

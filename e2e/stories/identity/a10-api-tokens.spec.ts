@@ -100,14 +100,19 @@ test("A10 (API): a token stops when it expires", async ({ api, db }, testInfo) =
     { field: "expires_at", code: "out_of_range" },
   ]);
 
-  const expiresAt = new Date(Date.now() + 5_000);
+  const expiresAt = new Date(Date.now() + 3_600_000);
   const created = await createToken(api, session.access_token, { name: "short", expires_at: expiresAt.toISOString() });
   await expectNewToken(db, await accountIdOf(db, email), created);
   const status = async () => (await api.GET("/api/v0/me", { headers: bearer(created.token) })).response.status;
-
   expect(await status()).toBe(200);
-  await expect.poll(status, { timeout: 15_000 }).toBe(401);
-  expect(Date.now()).toBeGreaterThanOrEqual(expiresAt.getTime());
+
+  // Its hour passes: the row moves two hours back, so that the server's own clock finds it expired, with no
+  // waiting that a slow machine could outrun. The exact boundary is the unit tests' (authenticate_pat_test.go, a fixed clock).
+  await db.query(
+    "UPDATE api_tokens SET created_at = created_at - interval '2 hours', expires_at = expires_at - interval '2 hours' WHERE id = $1",
+    [created.id]
+  );
+  expect(await status()).toBe(401);
 });
 
 /** Everywhere a token could be left behind in page: the document, its storage, its address. */

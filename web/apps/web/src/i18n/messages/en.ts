@@ -118,6 +118,8 @@ export const en = {
   "problem.identity.api_token_not_found": "This token no longer exists.",
   "problem.network": "Cannot reach the server. Check the connection and try again.",
   "problem.unavailable": "Cannot reach the server for now. You are still signed in; try again in a moment.",
+  "problem.storage":
+    "This browser could not save the sign-in: its storage for this site is full or blocked. Free some space or allow this site's data, then try again.",
   "problem.other": "Something went wrong ({code}).",
   "field.required": "Required.",
   "field.invalid_format": "Not in the right form.",

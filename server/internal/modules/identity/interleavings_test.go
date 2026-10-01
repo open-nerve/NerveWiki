@@ -479,6 +479,37 @@ func TestATokenCreationThatVerifiedBeforeAReset(t *testing.T) {
 	}
 }
 
+// A password change whose account the administrator gives another address
+// after the rules judged the new password against the old one: set-email
+// keeps the tokens, so a change made with one still holds its credential
+// under the lock. There the rules judge the password again, against the
+// address the account has, and refuse one close to it; the hash stays. The
+// change stops verifying the current password, outside its transaction,
+// while the address changes (R3 of the M1 adversarial review).
+func TestAPasswordChangeWhoseAddressChangesMeanwhile(t *testing.T) {
+	a := newAccount(t, "hashed:Tr0ub4dor&3:0", 0)
+	_, tokenID := insertToken(t, a.pool, nil)
+	g := newGate()
+	ctx := shared.WithActor(context.Background(), shared.Actor{UserID: a.id, APITokenID: tokenID})
+
+	change := async(func() error {
+		return a.changePassword(&gatedHasher{salt: "change", gate: g}, a.store).
+			Execute(ctx, app.ChangePasswordInput{Current: "Tr0ub4dor&3", New: "Zqxj2026!"})
+	})
+	g.await(t)
+	if _, err := a.admin().SetEmail(context.Background(), "alice@corp.com", "zqxj@corp.com"); err != nil {
+		t.Fatal(err)
+	}
+	g.open()
+	err := await(t, change)
+
+	var se *shared.Error
+	hash, _ := a.state(t)
+	if !errors.As(err, &se) || len(se.Fields) != 1 || se.Fields[0].Code != shared.FieldCommonPassword || hash != "hashed:Tr0ub4dor&3:0" {
+		t.Errorf("change = %v with hash %q; want new_password %s and the hash unchanged", err, hash, shared.FieldCommonPassword)
+	}
+}
+
 // A sign-in that found the account by an address the administrator changes
 // before its transaction answers as for an unknown address, and starts no
 // session: the old address no longer signs in (M1/P4 design 3.6).

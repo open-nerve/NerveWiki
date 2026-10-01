@@ -2,7 +2,10 @@
 // design 3.2): two tabs refreshing the same refresh token at once would look like a stolen token, and a
 // tab writing an old session back could overwrite a newer sign-in.
 
-/** Runs a task while no other tab of this browser, and no other task of this tab, holds the lock. */
+/**
+ * Runs a task while no other tab of this browser, and no other task of this tab, holds the lock: for certain
+ * with navigator.locks, at best effort with the lease (see leaseLock).
+ */
 export interface RefreshLock {
   run<T>(task: () => Promise<T>): Promise<T>;
 }
@@ -42,7 +45,10 @@ export type LeaseDeps = {
  * A lease in localStorage, for a page without navigator.locks: plain HTTP on a LAN address. A tab takes
  * the lease when it is free, expired or its own, and holds it after reading it back LEASE_SETTLE_MS later;
  * the others wait for a storage event or poll. localStorage has no compare-and-set, so two tabs taking the
- * lease at the same moment is made unlikely, not impossible (M1/P5 design 3.2).
+ * lease at the same moment is made unlikely, not impossible (M1/P5 design 3.2): a tab paused between reading
+ * the lease and writing its own (a busy or frozen tab) still takes it over another tab's. The worst case is
+ * two refreshes of one token, which nervewiki takes for reuse: the session ends and the user signs in again.
+ * A deployment that needs the tabs strictly one at a time serves the site over HTTPS (navigator.locks).
  */
 export function leaseLock(deps: LeaseDeps): RefreshLock {
   // The lease is the tab's, so a second task of the same tab would pass it: the tab's tasks queue first.
@@ -91,7 +97,11 @@ async function take(deps: LeaseDeps): Promise<boolean> {
 }
 
 function release(deps: LeaseDeps): void {
-  if (readLease(deps)?.owner === deps.tabId) deps.storage.removeItem(LEASE_KEY);
+  try {
+    if (readLease(deps)?.owner === deps.tabId) deps.storage.removeItem(LEASE_KEY);
+  } catch {
+    // A browser that will not remove it: the lease expires, and the task's outcome stands.
+  }
 }
 
 function sleep(ms: number): Promise<void> {

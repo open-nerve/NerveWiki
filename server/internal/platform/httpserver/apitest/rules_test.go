@@ -185,19 +185,32 @@ func (r *ruleCheck) topCodes() {
 
 // security: every operation declares its own security, [] for a public one
 // (M0/P4 design 3.2): the bundler drops a module file's top-level security,
-// and doc.Validate accepts a reference to a scheme the bundle lacks.
+// and doc.Validate accepts a reference to a scheme the bundle lacks. It is
+// [] or [{bearer: []}] and nothing else: OpenAPI reads the requirements as
+// alternatives, so [{}] or [{bearer: []}, {}] lets a caller in without a
+// token while the server asks for one, and needsToken would read either as
+// token-only (R4 of the M1 adversarial review).
 func (r *ruleCheck) security(where string, op *openapi3.Operation) {
 	if op.Security == nil {
 		r.report(where, "declares no security; write [{bearer: []}], or [] for a public operation")
 		return
 	}
-	for _, req := range *op.Security {
-		for _, name := range slices.Sorted(maps.Keys(req)) {
-			if r.doc.Components == nil || r.doc.Components.SecuritySchemes[name] == nil {
-				r.report(where, "security scheme %q is not declared in components.securitySchemes", name)
-			}
+	switch reqs := *op.Security; {
+	case len(reqs) == 0:
+	case len(reqs) == 1 && isBearer(reqs[0]):
+		if r.doc.Components == nil || r.doc.Components.SecuritySchemes["bearer"] == nil {
+			r.report(where, `security scheme "bearer" is not declared in components.securitySchemes`)
 		}
+	default:
+		r.report(where, "security is neither [] nor [{bearer: []}]; OpenAPI reads its requirements as alternatives")
 	}
+}
+
+// isBearer reports the one requirement of an operation that needs a token:
+// the bearer scheme, without scopes.
+func isBearer(req openapi3.SecurityRequirement) bool {
+	scopes, ok := req["bearer"]
+	return ok && len(req) == 1 && len(scopes) == 0
 }
 
 // problemCodes: every operation lists the codes it can answer beyond the

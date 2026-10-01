@@ -115,6 +115,7 @@ export const zhCN: Messages = {
   "problem.identity.api_token_not_found": "这个令牌已经不存在。",
   "problem.network": "连不上服务器，请检查网络后重试。",
   "problem.unavailable": "暂时连不上服务器。你仍在登录状态，请稍后重试。",
+  "problem.storage": "此浏览器无法保存登录状态：本站的存储空间已满或被阻止。请释放空间或允许本站的网站数据后重试。",
   "problem.other": "出错了（{code}）。",
   "field.required": "必填。",
   "field.invalid_format": "格式不对。",

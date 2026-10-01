@@ -72,7 +72,7 @@ make run      # 以 dev 配置启动 nervewiki serve，监听 127.0.0.1:8080；C
 除了 `POST /api/v0/auth/{register,login,refresh,logout}` 与 `GET /api/v0/instance`，每个接口都要求 `Authorization: Bearer <访问令牌或个人访问令牌>`，否则答 401。
 
 - **注册**：`auth.signup_enabled`，dev、test 开放，prod 关闭（`GET /api/v0/instance` 的 `signup_enabled` 告诉客户端）。密码 8–128 个字符，不能是常见密码，也不能由邮箱 @ 之前的部分构成；常见密码名单由 `node tools/password-blocklist/build.mjs` 生成（取 SecLists 固定提交中的 NCSC 名单并核对校验和）。
-- **会话**：注册与登录各开一个会话，返回访问令牌（15 分钟，`auth.access_token_ttl`）与刷新令牌。访问令牌到期后用刷新令牌换下一对（`/auth/refresh`），旧的刷新令牌随之作废；作废的刷新令牌再被使用，说明它被别人拿到了，整个会话被撤销。会话从登录起 30 天（`auth.session_ttl`）结束，续期不延长。`/auth/logout` 结束当前会话。续期与退出在 `auth.refresh_deadline`（4 秒）内完成，它加上 `database.commit_timeout` 必须小于前端放弃续期的 8 秒，且不超过 `server.request_timeout`；超时答 500，令牌不变，可以重试。
+- **会话**：注册与登录各开一个会话，返回访问令牌（15 分钟，`auth.access_token_ttl`）与刷新令牌。访问令牌到期后用刷新令牌换下一对（`/auth/refresh`），旧的刷新令牌随之作废；作废的刷新令牌再被使用，整个会话被撤销：这可能是它被别人拿到了，也可能是续期的答复在返回途中丢失（服务端已经换了令牌，客户端还拿着旧的），后者让用户重新登录，是严格轮换的代价（RFC 9700 4.14.2）。会话从登录起 30 天（`auth.session_ttl`）结束，续期不延长。`/auth/logout` 结束当前会话。续期与退出在 `auth.refresh_deadline`（4 秒）内完成，它加上 `database.commit_timeout` 必须小于前端放弃续期的 8 秒，且不超过 `server.request_timeout`；超时答 500，事务回滚，令牌不变，可以重试。
 - **个人访问令牌（PAT）**：给脚本与集成用。`POST /api/v0/me/api-tokens` 创建，要求当前密码（`current_password`），可选期限 `expires_at`；响应里的 `token`（`nwk_pat_` 开头）只出现这一次，服务端只存它的 SHA-256。`GET /api/v0/me/api-tokens` 列出未撤销的令牌（不含令牌本身，含 `last_used_at`，每分钟至多更新一次），`DELETE /api/v0/api-tokens/{token_id}` 撤销，立即失效。PAT 与访问令牌一样用在 `Authorization: Bearer`，能做账户能做的一切，包括再创建 PAT。
 - **账户**：`PATCH /api/v0/me` 改显示名；`POST /api/v0/me/onboarding-steps` 记录完成的引导步骤（步骤由前端定义）；`POST /api/v0/me/change-password` 要求当前密码，改后其他会话全部结束，当前会话保留（用 PAT 调用时全部结束），PAT 照常可用；`POST /api/v0/me/deactivate` 停用账户，所有会话结束，PAT 不能再用，登录答 403 `identity.account_deactivated`，只有管理员能重新启用。
 - **限流**：`ratelimit` 节的令牌桶，超出时答 429 `rate_limited` 与 `Retry-After`。公开操作按客户端 IP（`anonymous`），其余按凭证（会话或 PAT，`authenticated`）；校验当前密码的操作（改密码、创建 PAT）另按账户（`password_user`）；带令牌的请求在认证之前先过失败闸门（`auth_failure`，按客户端 IP：只有认证失败的令牌消耗名额，过期的访问令牌不算）；登录另按 IP 与"IP 加邮箱"（`login_ip`、`login_ip_email`），注册按 IP（`register_ip`）。IPv6 客户端按 `/64` 前缀计数（`ratelimit.ipv6_prefix_len`）。桶在进程内存中：多实例部署时每个实例各算各的。被拒绝的请求在访问日志中是 429；哪个桶拒绝的，平台的桶记在 debug 级，登录、注册与 `password_user` 的桶记在 info 级（`password_user` 另记账户 `user_id`）。
@@ -135,7 +135,7 @@ make build     # 构建前端并内嵌进 bin/nervewiki
 
 登录、会话、引导与设置：
 
-- **会话**：`src/session/` 是唯一创建 API 客户端的地方（oxlint 检查）：公开客户端（登录、注册、实例信息）与带访问令牌的客户端。浏览器只在 localStorage 的 `nwiki.auth` 中存刷新令牌与本次登录的 `login_id`；访问令牌只在内存中，到期前 30 秒续期。同一浏览器的标签页经 Web Locks 一次一个续期，没有 `navigator.locks` 的非安全上下文（如局域网地址的 HTTP）退回 localStorage 租约；一个标签页登录、退出或换了账户，其他标签页跟着变。
+- **会话**：`src/session/` 是唯一创建 API 客户端的地方（oxlint 检查）：公开客户端（登录、注册、实例信息）与带访问令牌的客户端。浏览器只在 localStorage 的 `nwiki.auth` 中存刷新令牌与本次登录的 `login_id`；访问令牌只在内存中，到期前 30 秒续期。同一浏览器的标签页经 Web Locks 一次一个续期，没有 `navigator.locks` 的非安全上下文（如局域网地址的 HTTP）退回 localStorage 租约：租约只能尽力串行，极少数情况下两个标签页同时续期，会话被当作重复使用而结束，用户重新登录；需要严格串行的部署请用 HTTPS。一个标签页登录、退出或换了账户，其他标签页跟着变。浏览器写不进存储（本站的存储已满或被阻止）时无法保持会话：标签页注销它、回到登录页，登录时说明原因。
 - **每次登录一代**：`SessionRoot` 按 `loginId` 新建一代 `RootStore`，SWR 缓存随之清空；上一代没有完成的请求以 `SessionChangedError` 结束，不写入新一代。设备偏好与实例信息跨代保留。
 - **路由与守卫**（`src/app/guards.tsx`）：除登录、注册外所有页面都要登录，不存在的路径也是先登录再显示 404。去向只由守卫决定：页面在登录、注册、退出之后不自己跳转。登录页的 `next` 只接受本站路径，否则去 `/`。
 - **新手引导**：步骤注册在 `src/onboarding/steps.ts`，服务端只记录完成的步骤 id。加一步就是写它的组件、追加到 `onboardingSteps`；已经完成前面步骤的用户下次访问只看到新的一步。

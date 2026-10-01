@@ -117,6 +117,9 @@ test("A7 (page): the settings change the password: the other sessions end, this 
   await expect(accountMenu(page, displayNameOf(email))).toBeVisible();
   await expect(page).toHaveURL("/settings/security");
   expect(await status(token.token)).toBe(200);
+  // What was typed is the password now: the old one no longer signs in, the new one does.
   const old = await api.POST("/api/v0/auth/login", { body: { email, password } });
   expect(old.response.status).toBe(401);
+  const signedIn = await api.POST("/api/v0/auth/login", { body: { email, password: "new horse battery" } });
+  expect(signedIn.response.status).toBe(200);
 });

@@ -1,5 +1,5 @@
 import { observer } from "mobx-react-lite";
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useRef, useState, type FormEvent, type ReactNode } from "react";
 
 import { FormField } from "../components/form-field";
 import { Alert } from "../components/ui/alert";
@@ -25,8 +25,10 @@ type DisplayNameFormProps = {
  * DisplayNameForm edits the name others see, filled in with the one the
  * account has: onboarding's profile step and the profile settings. The name
  * goes out only when it changed (without its surrounding blanks, as the
- * server keeps it), through the account's queue of changes; then saved runs.
- * After a failure both may be done again: saving a name is idempotent.
+ * server keeps it), through the account's queue of changes; then saved runs,
+ * unless the field was edited while the name was out: what it shows then is
+ * not what was saved, and the next submit sends it. After a failure both may
+ * be done again: saving a name is idempotent.
  */
 export const DisplayNameForm = observer(function DisplayNameForm({
   hint,
@@ -40,15 +42,20 @@ export const DisplayNameForm = observer(function DisplayNameForm({
   const t = useT();
   const [name, setName] = useState(me.display_name);
   const { ref, sending, banner, problemOf, submit } = useForm(["display_name"]);
+  /** How many times the field was edited: a save tells whether the name it sent is still the one shown. */
+  const edits = useRef(0);
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const displayName = name.trim();
+    const edit = edits.current;
     void submit(displayName === "" ? { display_name: "field.required" } : {}, async () => {
       if (displayName !== me.display_name) {
         await account.update({ display_name: displayName });
       }
-      await saved();
+      if (edits.current === edit) {
+        await saved();
+      }
     });
   }
 
@@ -63,6 +70,7 @@ export const DisplayNameForm = observer(function DisplayNameForm({
         error={problemOf("display_name")}
         hint={hint}
         onChange={(event) => {
+          edits.current++;
           setName(event.target.value);
           onEdit?.();
         }}

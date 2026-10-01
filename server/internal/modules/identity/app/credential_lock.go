@@ -26,7 +26,11 @@ type CredentialLock struct {
 // it, once the account is active and actor's credential valid at now: its
 // session unrevoked and unexpired, or its personal access token unrevoked
 // and unexpired. Otherwise it is 401 unauthorized. Call it first inside the
-// transaction.
+// transaction. now is the request's time, the one authentication judged the
+// credential at: the check under the lock looks for what changed meanwhile
+// (a revocation, a deactivation), as the request was allowed when it came;
+// a credential that expires while the request waits for the lock still
+// finishes it, as any request authenticated before the expiry does.
 func (c CredentialLock) Lock(ctx context.Context, actor shared.Actor, now time.Time) (LockedAccount, error) {
 	account, err := c.Locker.LockForCredentials(ctx, actor.UserID)
 	switch {

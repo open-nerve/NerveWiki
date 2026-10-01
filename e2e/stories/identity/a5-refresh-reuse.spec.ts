@@ -1,5 +1,5 @@
 import { expectRevoked, forgedFrom, sessionOf } from "../../fixtures/assert/identity";
-import { bearer, emailFor, recordOf, refresh, register } from "../../fixtures/auth";
+import { bearer, emailFor, recordOf, refresh, register, registerOnboarded } from "../../fixtures/auth";
 import { failedToLoad } from "../../fixtures/browser";
 import { profileStep } from "../../fixtures/onboarding-pages";
 import { expect, test } from "../../fixtures/test";
@@ -29,6 +29,40 @@ test("A5 (page): once a copy of the page's refresh token was used, the page's ne
   // The one request that failed is that refresh, which Chromium reports on the console as well.
   expect(pageWatch.apiFailures).toEqual(["401 POST /api/v0/auth/refresh"]);
   pageWatch.expectConsole({ errors: [failedToLoad(401)] });
+});
+
+// A refresh nervewiki carried out whose answer never reached the page (the connection broke on the way back)
+// leaves the page with the token it sent, retired by then: it tries again with that token, which is reuse,
+// and the session ends. Strict rotation takes this cost (RFC 9700 4.14.2): the page signs in again, and no
+// one else holding the old token goes on (D1 of the M1 adversarial review).
+test("A5 (page): a refresh whose answer is lost ends the session as reuse; the page asks to sign in", async ({
+  api,
+  db,
+  pageWatch,
+  signedInPage,
+}, testInfo) => {
+  const tokens = await registerOnboarded(api, emailFor(testInfo));
+  const page = await signedInPage(tokens);
+  const statuses: number[] = [];
+  await page.route("**/api/v0/auth/refresh", async (route) => {
+    const response = await route.fetch();
+    statuses.push(response.status());
+    if (statuses.length === 1) {
+      await route.abort("connectionreset");
+    } else {
+      await route.fulfill({ response });
+    }
+  });
+  pageWatch.expectConsole({ errors: ["Failed to load resource: net::ERR_CONNECTION_RESET", failedToLoad(401)] });
+
+  await page.goto("/settings/profile");
+
+  await expect(page.getByRole("heading", { level: 1, name: "Sign in" })).toBeVisible();
+  await expect(page).toHaveURL("/sign-in?next=%2Fsettings%2Fprofile");
+  // nervewiki rotated the session, then saw the retired token again.
+  expect(statuses).toEqual([200, 401]);
+  expect(await recordOf(page)).toBeNull();
+  await expectRevoked(db, tokens.refresh_token, "reuse_detected");
 });
 
 test("A5 (API): a retired refresh token revokes its session; a forged older generation does not", async ({
