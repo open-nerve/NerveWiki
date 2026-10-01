@@ -3,7 +3,7 @@
 | 项 | 内容 |
 |---|---|
 | Phase | M2/P1 权限框架与创建工作区 |
-| 状态 | 进行中 |
+| 状态 | 已完成 |
 | 基线 | `0904ed9`（M2 总设计提交之后的 main） |
 | 上级文档 | [M2 总设计](00-M2-design.md) 第 4、5、7、8 节；[M1 移交](handoffs/M1-identity.md)第 3、7、8 项；[总体设计](../v0.1-design.md) 3.2、6.1、7、13 |
 
@@ -28,7 +28,7 @@ M1 留下的：
 **目标**：工作区的第一批能力（创建、列表、读取、检查 slug）跑在权限框架之上。规则表、判定、权限矩阵与覆盖检查一次建好，后面每个 Phase 只需加行。
 
 **做**：
-- 组合根拆分；`apitest.NewAPI`；`postgres.InTx` 与 `ShareActiveAccount` 的事务检查；`CheckName` 移到 `shared`。
+- 组合根拆分；`httpservertest.NewAPI`；`postgres.InTx` 与 `ShareActiveAccount` 的事务检查；`CheckName` 移到 `shared`。
 - `shared` 的权限端口；access 模块。
 - 迁移 `workspaces`、`workspace_members`；slug、名称的规则与保留名单；保留名单与前后端路由的一致性测试。
 - `listWorkspaces`、`createWorkspace`、`getWorkspace`、`checkWorkspaceSlug`。
@@ -54,7 +54,8 @@ server/
   internal/shared/authorize.go                    WorkspaceRole、Action、Target、Grant、Authorizer、ErrNotVisible
   internal/shared/name.go                         CheckName（从 identity/domain 移来）
   internal/platform/postgres/tx.go                InTx
-  internal/platform/httpserver/apitest/api.go     NewAPI：测试用的接口与宽松的桶
+  internal/platform/httpserver/httpservertest/api.go   NewAPI：测试用的接口与宽松的桶
+  internal/platform/httpserver/apitest/operations.go   TextCases、ExampleBody（审查之后）
   internal/platform/config/                       workspace 一节
   internal/modules/access/
     module.go                                     New(Deps) shared.Authorizer；RuleKeys()
@@ -63,7 +64,8 @@ server/
   internal/modules/workspace/
     module.go                                     New(Deps)、Register、Actions()
     memberships.go                                NewMemberships(pool)：access 的事实端口
-    domain/workspace.go、slug.go、reserved.go、reserved_slugs.txt、actions.go、errors.go
+    reserved.go                                   Reserved()：bootstrap 核对 [server] 段
+    domain/workspace.go、slug.go、reserved.go、reserved_slugs.txt、member.go、actions.go、errors.go
     app/ports.go、create_workspace.go、get_workspace.go、list_workspaces.go、check_slug.go
     adapter/postgres/（store、queries/workspaces.sql、gen）
     adapter/http/（handler、gen、main_test.go）
@@ -86,15 +88,15 @@ e2e/fixtures/assert/workspace.ts；e2e/stories/workspace/w1-create-workspace.spe
 
 - `app.go` 只留生命周期：`app` 结构、`run`、`startJobs`、`close`、`awaitDatabase`、`warnIfExposed`。
 - `wire.go` 的 `newApp` 依次做：读私钥、建连接池与迁移器、装配模块、建接口与路由器。连接池与迁移器建好之后，失败的清理由一个 `defer` 统一负责（返回值是命名的错误），不再在三个地方各写一遍"关闭迁移器、关闭连接池"。
-- `deps.go` 是各模块 `Deps` 的构建函数，例如 `identityDeps(cfg, pool, logger, limiter, registrants)`。新加一个模块，就加一个构建函数与 `newApp` 里的两三行。
+- `deps.go` 是各模块 `Deps` 的构建函数，例如 `identityDeps(cfg, pool, logger, limiter, signingKey)`（停用的注册者在函数里取）、`workspaceDeps(cfg, pool, logger, authorizer)`。新加一个模块，就加一个构建函数与 `newApp` 里的两三行；access 只有一个依赖，在 `newApp` 里直接构造。
 - 纯粹的移动与提取，行为不变，现有测试原样通过。
 
 ### 3.3 测试的构造辅助（M1 移交第 7 项）
 
-- `apitest.NewAPI(t, apitest.APIOptions{Authenticator, PublicOperations, RequestTimeouts, MaxBodyBytes})` 返回 `*httpserver.API`。
+- `httpservertest.NewAPI(t, httpservertest.APIOptions{Authenticator, PublicOperations, RequestTimeouts, MaxBodyBytes})` 返回 `*httpserver.API`。
   - 日志丢弃；限流的三个平台桶用一个用不完的桶；请求期限 5 秒。
   - `MaxBodyBytes` 为零时取 1 MiB。
-- `apitest` 属于 httpserver 这个平台包，导入 httpserver 不违反"平台包互不导入"。
+- 它是新包，不放进 `apitest`：`httpserver` 自己的内部测试（`contract_test.go`）导入 `apitest`，`apitest` 再导入 `httpserver` 会成环。`httpservertest` 属于 httpserver 这个平台包，按 Go 的惯例命名；archtest 的"测试辅助包只被测试导入"把它列进去。
 - 三处现有构造（identity 的 `module_test.go` 与 `adapter/http/handler_test.go`、instance 的 `adapter/http/handler_test.go`）与 workspace 的新测试都改用它。`httpserver` 自己的 `api_test.go` 测的就是 `NewAPI` 的参数，保持原样。
 
 ### 3.4 权限端口与 access 模块
@@ -126,7 +128,8 @@ access 模块：
 - **`module.go`**：`New(Deps{Memberships}) shared.Authorizer`；`RuleKeys()`。
 - **事实端口的实现**：`workspace.NewMemberships(pool)`，只凭连接池构造（总体设计 13.1 第 11 条）。
   - 查询经 `postgres.DB(ctx, pool)` 进入调用方的事务。
-  - 读的是有效、未删除的成员行。工作区删除时成员行随之软删除（P2），所以"已删除的工作区"不必再连表判断；矩阵的"已删除"一列守住这一点。
+  - 读的是有效、未删除的成员行。工作区删除时成员行在同一事务里随之软删除（P2），所以 `RoleOf` 不连表判断工作区是否删除。
+  - 守住这一点的：本 Phase 是仓储测试；P2 有了 `deleteWorkspace` 之后，加"同一事务软删成员行"的集成测试，矩阵"已删除的工作区"一列的数据改经接口准备。这一列在本 Phase 只证明列表与读取看不到已删除的工作区（审查 N2）。
 - **装配**：组合根先建 `access.New(...)`，再把它交给 `workspace.New(Deps{Authorizer})`。运行时互相调用，导入上没有环。
 - **一致性测试**：`bootstrap/actions_test.go` 核对各模块 `Actions()` 的并集等于 `access.RuleKeys()`。少了规则、多了规则，测试都会失败。
 
@@ -167,7 +170,7 @@ access 模块：
 - 指向 `users` 的外键不建索引：v0.1 不物理删除账户，这些外键检查不会走反向查找。
 - `sqlc.yaml` 加 workspace 一条，只列 00006、00007。
 - `runtime-grants.sql` 给两张表 DML。
-- `schema_test` 列出新的约束与索引名，CHECK 的反例：大写的 slug、49 个字符、空名称、第四种角色。
+- `schema_test` 列出新的约束与索引名，CHECK 的反例：大写、带空格、带点、非 ASCII、空的 slug，空名称，第四种角色与大写的角色。49 个字符的 slug 由 `varchar(48)` 先拒绝（22001），不经 CHECK。
 
 ### 3.6 slug、名称与保留名单
 
@@ -176,7 +179,7 @@ access 模块：
   - `CheckName` 从 `identity/domain` 移到 `shared`：第二个使用者出现了，测试随之移动。
   - 不做 Nerve 的"不含网址"：v0.1 没有显示工作区名称的公开页面，能看到名称的只有成员。
 - **保留名单**只有一份：`workspace/domain/reserved_slugs.txt`（`embed`），分三段：
-  - `[app]`：前端的顶层静态路由段。由 web 的 vitest 核对：等于 `routes.tsx` 中顶层静态段的集合，加上 `public/` 的顶层目录（目前没有）。
+  - `[app]`：前端的顶层静态路由段。由 web 的 vitest 核对：等于 `routes.tsx` 中顶层静态段的集合（路径可以以 `/` 开头；没有路径、路径为空或 `/` 的路由，其子路由也在顶层）。`public/` 的文件不在此列：webui 对它们只按完整的文件路径作答，其余路径照常交给前端，而 slug 不含 `.`。
   - `[server]`：服务端在前端页面之外自己回答的顶层路径。由 `bootstrap/reserved_test.go` 核对：等于接好线的根路由器上，除 `/` 之外各模式的第一段，加上 `webui` 的资源目录 `assets`。
   - `[reserved]`：以后可能用到的顶层段，与另两段不重复。
 - **本 Phase 的名单**：
@@ -200,6 +203,9 @@ access 模块：
 
 - **结构**：`Workspace {id, slug, name, role, created_at, updated_at}`，`role` 是调用者的角色。
 - **路径参数 `slug`**：不在契约里加 `pattern`。不合格式的 slug 在 `getWorkspace` 答 404，在 `checkWorkspaceSlug` 答 `invalid`，都不是 400：slug 是地址的一部分，地址错了就是"没有这个工作区"。
+  - 按 slug 寻址的用例先以 `domain.ValidSlug` 判断，不合格式的不查库：路径里的 NUL 与不是 UTF-8 的字节进不了数据库的文本（审查 M1）。
+  - 整个程序的测试 `TestFreeTextParametersDoNotAnswer5xx` 由契约推导：每个绑定任意字符串的路径或查询参数，取 NUL 与不是 UTF-8 的字节各一次，都不能答 5xx。之后的操作自动纳入。
+- **端口**：`app/ports.go` 按用例分成 `WorkspaceCreator`、`WorkspaceFinder`、`MembershipLister`、`SlugChecker`，postgres 的 `Store` 实现全部（审查 N1）。
 - **`createWorkspace`**：
   1. 开关关闭时，403 `workspace.creation_disabled`（在检查取值之前）。
   2. 名称与 slug 的规则一次列出全部问题（422），在事务之前。
@@ -214,7 +220,7 @@ access 模块：
   2. `Authorize(workspace.read)`：`ErrNotVisible` 答 404 `workspace.not_found`；
   3. 回答带 `Grant` 中的角色。
   - 读操作不开事务（总体设计 8.3）。
-- **`listWorkspaces`**：调用者有效成员关系所在的、未删除的工作区，按名称再按 `id` 排序。
+- **`listWorkspaces`**：调用者有效成员关系所在的、未删除的工作区（成员行与工作区的 `deleted_at` 都看），按名称不分大小写、再按名称、再按 `id` 排序：库的 C.UTF-8 按码点比较，大写字母都在小写之前。
   - 只涉及调用者自己的成员关系，不经 `Authorizer`。矩阵仍有它的一行：每一列只看到自己的工作区。
 - **`checkWorkspaceSlug`**：
   - 依次判断：格式不对 → `invalid`；在保留名单里 → `reserved`；有未删除的工作区占着 → `taken`；否则可用。
@@ -241,8 +247,8 @@ access 模块：
 - **列**：管理员、成员、访客、从来不是成员、已结束的成员、已删除的工作区（调用者曾是它的管理员）。
 - **准备数据**：
   - 账户经接口注册，取得令牌。
-  - 工作区与成员行经 workspace 的仓储写入。
-  - 本 Phase 还没有的写入（结束成员关系、删除工作区）暂由 SQL 代替，P2 有了用例之后换掉。
+  - 工作区、成员行、结束成员关系、删除工作区都由 SQL 写入：id 在准备之前定好，行的请求与覆盖检查都用得到。
+  - P2 有了用例之后，结束与删除改经接口（见 3.4）。
 - **执行**：
   - 只读的格共用一份准备好的库。
   - 每个写的格各用一份副本：`pgtest.NewDatabaseFrom`，从准备好的库复制，从 Nerve 拷贝。
@@ -255,17 +261,18 @@ access 模块：
 - **本 Phase 的行**：
   - `listWorkspaces`：每列 200，`check` 核对只含该列的工作区。
   - `createWorkspace`：写，每列 201。
+  - `createWorkspace, creation disabled`：开关关闭，每列 403 `workspace.creation_disabled`。
   - `getWorkspace`：前三列 200 并核对角色，后三列 404 `workspace.not_found`。
   - `checkWorkspaceSlug`：每列 200。
 
 ### 3.11 端到端
 
-- `e2e/fixtures/assert/workspace.ts`：按表组织的断言，`workspaceRows`、`memberRows`，读数据库，只比较业务列。
+- `e2e/fixtures/assert/workspace.ts`：按表组织的断言，`expectNewWorkspace`、`countWorkspaces`、`expectNoWorkspaceAdded`，读数据库，只比较业务列。
 - **W1 的接口版本**：
   - PAT 调用 `checkWorkspaceSlug` 的四种答复；
   - 创建：201，落库的工作区与管理员成员行；
   - 再建同一个 slug 答 409，保留的 slug 答 422；
-  - `getWorkspace` 与 `listWorkspaces` 的回答。
+  - `getWorkspace` 与 `listWorkspaces` 的回答；别的账户看不到这个工作区。
 - **W2 的接口部分**：`nervewikiWith` 关闭创建，创建答 403，`GET /instance` 答 `false`，数据库不变。
 - 页面版本在 P5，命令行部分在 P4，加进同一个故事文件。
 
@@ -275,7 +282,7 @@ access 模块：
 
 | Step | 内容 | 计划 |
 |---|---|---|
-| S1 | 平台与组合根：拆分 `bootstrap`、`apitest.NewAPI`、`postgres.InTx` 与 `ShareAccount` 的检查、`CheckName` 移到 `shared` | [P1-S1](plans/P1-S1-platform.md) |
+| S1 | 平台与组合根：拆分 `bootstrap`、`httpservertest.NewAPI`、`postgres.InTx` 与 `ShareAccount` 的检查、`CheckName` 移到 `shared` | [P1-S1](plans/P1-S1-platform.md) |
 | S2 | 权限框架：`shared/authorize.go`、access 模块 | [P1-S2](plans/P1-S2-access.md) |
 | S3 | 工作区的数据与规则：两条迁移、sqlc、授权、schema 测试；slug、名称、保留名单与两边的一致性测试；事实端口的实现 | [P1-S3](plans/P1-S3-workspace-data.md) |
 | S4 | 接口与用例：`workspace.yaml`、四个用例、HTTP 适配器、模块根、组合根的接线、配置与 `GET /instance`、操作名的一致性测试 | [P1-S4](plans/P1-S4-workspace-api.md) |
@@ -289,8 +296,8 @@ access 模块：
 | 层次 | 覆盖 |
 |---|---|
 | 单元 | slug 的格式（大小写、长度、字符）；名称（`CheckName` 移动后的原测试）；保留名单的解析（未知段、段外的行、不合 slug 的名字、重复）；判定的表格（三种角色 × 规则，非成员，未知角色）；`Authorizer`：没有规则、端口出错、每次都读 |
-| 集成 | 仓储：插入与 `workspaces_slug_key` 的翻译、列表的顺序与过滤（已结束、已删除）、`RoleOf` 在事务内读；CHECK 的反例；`ShareAccount` 在事务之外报错 |
-| 契约 | 四个操作的每个码在 workspace 的 `adapter/http` 测试中答出（`identity.account_deactivated` 经端口的替身）；整个程序的测试自动覆盖新操作，包括 PAT |
+| 集成 | 仓储：插入与 `workspaces_slug_key` 的翻译、列表的顺序（不分大小写）与过滤（已结束、已删除，包括成员行没有随之删除的工作区）、`RoleOf` 在事务内读；CHECK 的反例；`ShareAccount` 在事务之外报错 |
+| 契约 | 四个操作的每个码在 workspace 的 `adapter/http` 测试中答出（`identity.account_deactivated` 经端口的替身）；整个程序的测试自动覆盖新操作，包括 PAT 与自由文本参数的 NUL、非 UTF-8 |
 | 架构 | access 只导入 `shared`；workspace 的适配器互不导入；新模块只经模块根接入 |
 | 一致性 | 操作名的并集 = 规则表的键；`[server]` 段 = 根路由器；`[app]` 段 = 前端路由 |
 | 矩阵 | 3.10 |
@@ -312,4 +319,29 @@ access 模块：
 
 ## 7. 结果
 
-（完成后补写）
+分支 `m2-p1-access-workspaces`：S1 `d43486d`、S2 `b6f9322`、S3 `ba977a5`、S4 `5b92bd8`、S5 `343bb82`、S6 `df21cec`，image-smoke 的断言 `6442c09`，审查修复 `a6b2c9d`。第 5 节全部通过，反向对照按预期失败；`make check`（vitest 429 个）、`make gen-check`、`make e2e`（50 个；W1、W2 另跑 `--repeat-each 3`）、`make image-smoke` 本地与持续集成为绿。审查见 [P1 审查记录](reviews/P1-access-workspaces-review.md)：1 项 Major、3 项 Minor、9 项 Nit、14 处文档偏差，全部已处理；审查者的疑问 Q1、Q2、Q3 按建议采纳，Q4 不改（理由见审查记录）。规模（新增行数，不含生成的代码）：生产代码约 1,780 行（含契约与迁移），测试约 2,290 行（含测试辅助包），端到端约 220 行。权限矩阵本 Phase 5 行 30 格，不开 `-race` 单跑约 1.2–2.2 秒；bootstrap 包开 `-race` 约 18 秒。
+
+与设计的出入（已同步进上文）：
+
+1. 接口测试的构造辅助在新包 `httpservertest`，不在 `apitest`（3.3）：`httpserver` 的内部测试导入 `apitest`，反过来导入会成环。M1 移交第 7 项按此落实。
+2. 保留名单不收 `public/` 的顶层目录（3.6）：webui 对 public 的文件只按完整路径作答，slug 不含 `.`。
+3. 矩阵的数据全部由 SQL 写入（3.10）；多了一行 `createWorkspace, creation disabled`。
+4. CHECK 的反例（3.5）：49 个字符的 slug 由 `varchar(48)` 先拒绝，按约束名断言测不到，不列；多了带空格、带点、非 ASCII、空的 slug 与大写的角色。
+5. 组合根（3.2）：`identityDeps` 的最后一个参数是签名私钥，停用的注册者在函数里取；access 没有构建函数。文件清单补上模块根的 `reserved.go` 与 `domain/member.go`；S4 计划里的 `PublicOperations` 没有实现：本 Phase 没有公开操作。
+6. 端到端（3.11）：断言函数是 `expectNewWorkspace`、`countWorkspaces`、`expectNoWorkspaceAdded`；W1 多了"别的账户看不到"。
+7. M1 移交第 3 项：`identity.account_not_found` 不声明、也不译成本模块的码。调用者已经认证，v0.1 不物理删除账户，`ShareActiveAccount` 走不到这条路。
+8. 规则表只有 `workspace.read`：列表、创建、检查 slug 不判定。总体设计 13.1 第 3 条与 M2 总设计第 1 节第 4 条改为"需要判定的操作"。
+9. S4 给 `GET /instance` 加了字段，image-smoke 的精确断言随之失败（每个 Step 的门禁不含它），`6442c09` 补上。
+
+审查之后的修复（详见审查记录）：
+
+- **M1**：`getWorkspace` 遇到含 NUL 或不是 UTF-8 的 slug 答 500（PostgreSQL 22021）。用例先以 `domain.ValidSlug` 判断，不合格式答 404、不查库；`apitest` 加 `TextCases`、`ExampleBody`，整个程序的测试 `TestFreeTextParametersDoNotAnswer5xx` 守住每个自由文本参数，P2 起按 slug 寻址的操作自动纳入。
+- **N1**：`app.Store` 拆成四个端口（3.7）。
+- **N2、Q2**：列表也看工作区的 `deleted_at`；3.4 写明"已删除"一列守住什么、P2 的义务。
+- **Q1**：列表按名称不分大小写排序，契约的描述随之改。
+- **N3**：覆盖检查的三个分支补上反例。
+
+留给之后的：
+
+- **P2**：`deleteWorkspace` 有了之后，矩阵的结束与删除改经接口准备，并加"删除工作区在同一事务里软删成员行"的集成测试：`RoleOf` 不连表正依赖它（3.4）。
+- **P4**：`nervewiki workspaces create`。配置、契约与错误的描述已按 P4 之后的状态写；P4 之前关闭 `workspace.creation_enabled`，除了直接写库没有创建工作区的途径。v0.1 发布在 M2 完成之后，不会出现这个状态。
