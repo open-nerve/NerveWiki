@@ -267,7 +267,7 @@ Nerve 的项目模块（`modules/project`）还停在建立、列表、读取（
 | P1 | 笔记本与权限 | 已完成 | [01-P1-notebooks-access.md](01-P1-notebooks-access.md) | [P1 审查](reviews/P1-notebooks-access-review.md) |
 | P2 | 笔记本成员 | 已完成 | [02-P2-notebook-members.md](02-P2-notebook-members.md) | [P2 审查](reviews/P2-notebook-members-review.md) |
 | P3 | 级联与无主 | 已完成 | [03-P3-cascade-ownerless.md](03-P3-cascade-ownerless.md) | [P3 审查](reviews/P3-cascade-ownerless-review.md) |
-| P4 | 前端笔记本 | 未开始 | — | — |
+| P4 | 前端笔记本 | 进行中 | [04-P4-web-notebooks.md](04-P4-web-notebooks.md) | — |
 | P5 | 前端无主与级联 | 未开始 | — | — |
 
 ## 12. 变更记录
