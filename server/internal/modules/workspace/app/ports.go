@@ -25,9 +25,9 @@ type Clock interface {
 // transaction.
 type Accounts interface {
 	// ShareActiveAccount locks the account's row FOR SHARE until the
-	// transaction ends: identity.account_deactivated (403) when the account
-	// is deactivated.
-	ShareActiveAccount(ctx context.Context, id uuid.UUID) error
+	// transaction ends and returns its address, read under the lock:
+	// identity.account_deactivated (403) when the account is deactivated.
+	ShareActiveAccount(ctx context.Context, id uuid.UUID) (email string, err error)
 }
 
 // Membership is a workspace and an account's role in it.
@@ -121,4 +121,20 @@ type Profile struct {
 type MemberProfiles interface {
 	// MemberProfiles returns the profiles of the accounts userIDs, by id.
 	MemberProfiles(ctx context.Context, userIDs []uuid.UUID) (map[uuid.UUID]Profile, error)
+}
+
+// InvitationTokens makes and checks the invitations' tokens: the mac
+// adapter's, whose key never reaches the app.
+type InvitationTokens interface {
+	// Token returns the token of the invitation id.
+	Token(id uuid.UUID) string
+	// Valid reports whether token is the invitation id's.
+	Valid(id uuid.UUID, token string) bool
+}
+
+// InvitationFinder reads pending invitations, unlocked.
+type InvitationFinder interface {
+	// FindPendingInvitation returns the pending invitation id of a
+	// workspace not deleted; ErrNotFound when there is none.
+	FindPendingInvitation(ctx context.Context, id uuid.UUID) (domain.Invitation, error)
 }

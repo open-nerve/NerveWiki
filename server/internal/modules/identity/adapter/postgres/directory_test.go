@@ -31,3 +31,31 @@ func TestProfiles(t *testing.T) {
 		t.Errorf("Profiles(none) = %v, %v; want none", got, err)
 	}
 }
+
+// An address finds its account, deactivated or not; another finds none.
+// The address is compared as it is: the caller normalizes it.
+func TestAccountIDByEmail(t *testing.T) {
+	ctx := context.Background()
+	s, _ := newStore(t)
+	alice, bob := newUser("alice@corp.com"), newUser("bob@corp.com")
+	mustCreate(t, s, alice)
+	mustCreate(t, s, bob)
+	if err := s.DeactivateUser(ctx, bob.ID, now()); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tt := range []struct {
+		email string
+		id    uuid.UUID
+		ok    bool
+	}{
+		{"alice@corp.com", alice.ID, true},
+		{"bob@corp.com", bob.ID, true},
+		{"carol@corp.com", uuid.UUID{}, false},
+		{"Alice@corp.com", uuid.UUID{}, false},
+	} {
+		if id, ok, err := s.AccountIDByEmail(ctx, tt.email); err != nil || id != tt.id || ok != tt.ok {
+			t.Errorf("AccountIDByEmail(%s) = %s, %v, %v; want %s, %v", tt.email, id, ok, err, tt.id, tt.ok)
+		}
+	}
+}

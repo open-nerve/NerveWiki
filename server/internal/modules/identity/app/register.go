@@ -35,15 +35,17 @@ func NewRegister(d RegisterDeps) *Register {
 
 // RegisterInput is a registration and where it comes from.
 type RegisterInput struct {
-	Email     string
-	Password  string
-	UserAgent string
-	IP        netip.Addr
+	Email      string
+	Password   string
+	Invitation *SignupInvitation // the link's, when it came by one
+	UserAgent  string
+	IP         netip.Addr
 }
 
 // Execute registers in.Email (M1/P1 design 3.7):
 //
-//  1. closed sign-up answers 403 before any other check;
+//  1. the policy decides first, on the normalized address and the
+//     invitation: a refusal answers 403 before any other check;
 //  2. the address and the password are validated, all fields at once (422);
 //  3. the password is hashed outside the transaction;
 //  4. the session and its tokens are made outside it too, so nothing can
@@ -51,7 +53,7 @@ type RegisterInput struct {
 //  5. one transaction inserts the account and its first session; an
 //     address in use is 409 identity.email_taken.
 func (r *Register) Execute(ctx context.Context, in RegisterInput) (Tokens, error) {
-	allowed, err := r.d.Policy.AllowSignup(ctx)
+	allowed, err := r.d.Policy.AllowSignup(ctx, SignupAttempt{Email: shared.NormalizeEmail(in.Email), Invitation: in.Invitation})
 	if err != nil {
 		return Tokens{}, err
 	}

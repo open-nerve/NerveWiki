@@ -13,9 +13,6 @@ import (
 	"uuid"
 )
 
-// Info is the HKDF info bootstrap derives the key with.
-const Info = "nervewiki workspace-invitation mac v1"
-
 // prefix marks an invitation's token, as nwk_pat_ marks a personal access
 // token: a secret scanner, or a reader, can tell what it is.
 const prefix = "nwk_inv_"

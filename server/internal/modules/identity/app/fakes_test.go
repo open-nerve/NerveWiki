@@ -178,9 +178,16 @@ func (s *fakeStore) SessionCredential(_ context.Context, id uuid.UUID) (app.Sess
 	return s.credential, s.credErr
 }
 
+// fixedPolicy answers allow and err, and records what it was shown.
 type fixedPolicy struct {
 	allow bool
 	err   error
+	seen  *[]app.SignupAttempt
 }
 
-func (p fixedPolicy) AllowSignup(context.Context) (bool, error) { return p.allow, p.err }
+func (p fixedPolicy) AllowSignup(_ context.Context, a app.SignupAttempt) (bool, error) {
+	if p.seen != nil {
+		*p.seen = append(*p.seen, a)
+	}
+	return p.allow, p.err
+}

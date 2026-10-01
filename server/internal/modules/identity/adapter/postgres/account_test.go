@@ -102,8 +102,8 @@ func TestDeactivateUser(t *testing.T) {
 	}
 }
 
-// ShareAccount reads is_active under FOR SHARE: two of them hold the row
-// together; the account row lock waits for them.
+// ShareAccount reads is_active and the address under FOR SHARE: two of
+// them hold the row together; the account row lock waits for them.
 func TestShareAccount(t *testing.T) {
 	ctx := context.Background()
 	s, pool := newStore(t)
@@ -114,12 +114,12 @@ func TestShareAccount(t *testing.T) {
 	first := make(chan error, 1)
 	go func() {
 		first <- tx.WithinTx(ctx, func(ctx context.Context) error {
-			active, err := s.ShareAccount(ctx, u.ID)
+			got, err := s.ShareAccount(ctx, u.ID)
 			if err != nil {
 				return err
 			}
-			if !active {
-				return errors.New("ShareAccount() = inactive, want active")
+			if got != (app.SharedAccount{Active: true, Email: "alice@corp.com"}) {
+				return fmt.Errorf("ShareAccount() = %+v, want active, alice@corp.com", got)
 			}
 			close(holding)
 			select { // a failed test never releases: give up rather than hold the pool's close
@@ -154,6 +154,26 @@ func TestShareAccount(t *testing.T) {
 	})
 	if !errors.Is(err, app.ErrNotFound) {
 		t.Errorf("ShareAccount(unknown) = %v, want app.ErrNotFound", err)
+	}
+}
+
+// A deactivated account's share reads it inactive, with its address.
+func TestShareAccountOfADeactivatedAccount(t *testing.T) {
+	ctx := context.Background()
+	s, pool := newStore(t)
+	u := newUser("alice@corp.com")
+	mustCreate(t, s, u)
+	if err := s.DeactivateUser(ctx, u.ID, later()); err != nil {
+		t.Fatal(err)
+	}
+	var got app.SharedAccount
+	err := postgres.NewTxManager(pool, time.Second).WithinTx(ctx, func(ctx context.Context) error {
+		var err error
+		got, err = s.ShareAccount(ctx, u.ID)
+		return err
+	})
+	if err != nil || got != (app.SharedAccount{Active: false, Email: "alice@corp.com"}) {
+		t.Errorf("ShareAccount() = %+v, %v; want inactive, alice@corp.com", got, err)
 	}
 }
 

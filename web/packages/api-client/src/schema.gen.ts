@@ -15,7 +15,7 @@ export interface paths {
         put?: never;
         /**
          * Create an account and sign in
-         * @description Creates an account and signs it in: the response holds a new session's tokens. While sign-up is off, a well-formed request answers identity.signup_disabled before the address or the password is looked at, so the answer never depends on whether the address is registered. The password needs 8–128 characters and must be neither a common password nor made of the address's local part. Sign-ups have a rate limit of their own, per client IP.
+         * @description Creates an account and signs it in: the response holds a new session's tokens. While sign-up is off, only an invitation to the address opens it: any other well-formed request answers identity.signup_disabled before the address is checked or the password looked at, so the answer never depends on whether the address is registered. Registering does not accept the invitation. The password needs 8–128 characters and must be neither a common password nor made of the address's local part. Sign-ups have a rate limit of their own, per client IP.
          */
         post: operations["register"];
         delete?: never;
@@ -386,6 +386,12 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @description The invitation to a workspace whose link the registration came by, as the link carries it. While sign-up is off, an invitation still pending, of a workspace not deleted and sent to the address lets the address register. */
+        SignupInvitation: {
+            /** Format: uuid */
+            id: string;
+            token: string;
+        };
         RegisterRequest: {
             /**
              * Format: email
@@ -393,6 +399,7 @@ export interface components {
              */
             email: string;
             password: string;
+            invitation?: components["schemas"]["SignupInvitation"];
         };
         /** @description One invalid field of a request. Clients show text looked up by `code`; `message` is an English explanation for developers. Must match httpserver.FieldError and the field codes of internal/shared. */
         FieldError: {
@@ -632,6 +639,7 @@ export interface components {
     headers: never;
     pathItems: never;
 }
+export type SignupInvitation = components['schemas']['SignupInvitation'];
 export type RegisterRequest = components['schemas']['RegisterRequest'];
 export type FieldError = components['schemas']['FieldError'];
 export type Problem = components['schemas']['Problem'];

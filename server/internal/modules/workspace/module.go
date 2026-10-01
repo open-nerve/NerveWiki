@@ -25,7 +25,7 @@ type Accounts = app.Accounts
 type Clock = app.Clock
 
 // MemberProfiles reads accounts' profiles for the member list: bootstrap
-// adapts identity.NewProfiles to it.
+// adapts identity.NewDirectory to it.
 type (
 	MemberProfiles = app.MemberProfiles
 	Profile        = app.Profile

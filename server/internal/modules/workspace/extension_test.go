@@ -81,7 +81,7 @@ func (tokenAuth) Authenticate(ctx context.Context, token string) (context.Contex
 
 type noAccounts struct{}
 
-func (noAccounts) ShareActiveAccount(context.Context, uuid.UUID) error { return nil }
+func (noAccounts) ShareActiveAccount(context.Context, uuid.UUID) (string, error) { return "", nil }
 
 type noProfiles struct{}
 

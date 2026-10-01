@@ -135,6 +135,27 @@ func TestRegisterWhileSignupIsOff(t *testing.T) {
 	}
 }
 
+// The policy sees the address normalized and the invitation as sent, with
+// or without one.
+func TestRegisterShowsThePolicyTheAddressAndTheInvitation(t *testing.T) {
+	invitation := &app.SignupInvitation{ID: uuid.NewV7(), Token: "nwk_inv_x"}
+	for _, inv := range []*app.SignupInvitation{nil, invitation} {
+		var seen []app.SignupAttempt
+		f := newRegister(fixedPolicy{allow: true, seen: &seen})
+		in := registration()
+		in.Invitation = inv
+
+		if _, err := f.uc.Execute(context.Background(), in); err != nil {
+			t.Fatal(err)
+		}
+
+		want := app.SignupAttempt{Email: "alice@corp.com", Invitation: inv}
+		if len(seen) != 1 || seen[0] != want {
+			t.Errorf("the policy saw %+v, want %+v", seen, want)
+		}
+	}
+}
+
 func TestRegisterValidatesBeforeHashing(t *testing.T) {
 	f := newRegister(fixedPolicy{allow: true})
 

@@ -30,11 +30,10 @@ type Deps struct {
 	Tx     shared.TxManager
 	Clock  app.Clock
 	Logger *slog.Logger
-	// SignupPolicy is auth.signup_enabled.
-	SignupPolicy app.SignupPolicy
-	// SigningKeyPEM is the content of auth.jwt.private_key_file; nil for
-	// none, then the key is ephemeral (dev and test only).
-	SigningKeyPEM   []byte
+	// SignupPolicy is auth.signup_enabled, or else an invitation.
+	SignupPolicy SignupPolicy
+	// SigningKeys are LoadSigningKeys's.
+	SigningKeys     *SigningKeys
 	AccessTokenTTL  time.Duration
 	SessionTTL      time.Duration
 	RefreshDeadline time.Duration // auth.refresh_deadline
@@ -69,9 +68,30 @@ type RateLimits struct {
 	PasswordUser *ratelimit.Bucket
 }
 
+// SigningKeys are the instance's signing key and the keys derived from it:
+// bootstrap loads them once, hands them to the module, and the keys other
+// modules derive from them to those modules (M2/P3 design 3.2). Derive
+// returns the key for an info string of the caller's own.
+type SigningKeys = signing.Keys
+
+// LoadSigningKeys reads pem, the content of auth.jwt.private_key_file; with
+// none (nil) it warns, and generates an ephemeral key (dev and test only).
+// An error never quotes the key.
+func LoadSigningKeys(pem []byte, logger *slog.Logger) (*SigningKeys, error) {
+	if pem == nil {
+		logger.Warn("auth.jwt.private_key_file is not set: signing with an ephemeral key; " +
+			"access tokens and invitation links stop working at restart (dev and test only)")
+		return signing.EphemeralKeys(), nil
+	}
+	keys, err := signing.ParseKeys(pem)
+	if err != nil {
+		return nil, fmt.Errorf("auth.jwt.private_key_file: %w", err)
+	}
+	return keys, nil
+}
+
 // Module is the wired identity module.
 type Module struct {
-	keys            *signing.Keys
 	uc              httpadapter.UseCases
 	settings        httpadapter.Settings
 	refreshDeadline time.Duration
@@ -79,13 +99,9 @@ type Module struct {
 	jobs            []jobs.Job
 }
 
-// New wires the module. A signing key that cannot be parsed is an error
-// that never quotes the key.
+// New wires the module.
 func New(d Deps) (*Module, error) {
-	keys, err := signingKeys(d)
-	if err != nil {
-		return nil, err
-	}
+	keys := d.SigningKeys
 	p := newParts(d.Pool, d.Password, d.Logger, d.DeactivationVetoers, d.DeactivationSubscribers)
 	// Login verifies an unknown address against this, so that it takes as
 	// long as a known one (M1/P2 design 3.4).
@@ -101,8 +117,7 @@ func New(d Deps) (*Module, error) {
 		SessionTTL: d.SessionTTL,
 	}
 	return &Module{
-		keys: keys,
-		uc:   useCases(d, p, issuance, dummy),
+		uc: useCases(d, p, issuance, dummy),
 		settings: httpadapter.Settings{
 			Limits: httpadapter.Limits{
 				Limiter:      d.RateLimits.Limiter,
@@ -154,26 +169,6 @@ func useCases(d Deps, p parts, issuance app.Issuance, dummy string) httpadapter.
 		}),
 		RevokeAPIToken: app.NewRevokeAPIToken(store, d.Clock, d.Logger),
 	}
-}
-
-func signingKeys(d Deps) (*signing.Keys, error) {
-	if d.SigningKeyPEM == nil {
-		d.Logger.Warn("auth.jwt.private_key_file is not set: signing with an ephemeral key; " +
-			"access tokens stop verifying at restart (dev and test only)")
-		return signing.EphemeralKeys(), nil
-	}
-	keys, err := signing.ParseKeys(d.SigningKeyPEM)
-	if err != nil {
-		return nil, fmt.Errorf("auth.jwt.private_key_file: %w", err)
-	}
-	return keys, nil
-}
-
-// DerivedKey returns the key derived from the signing key for info: another
-// module's secret of its own, such as the workspace invitations' MAC key
-// (M2/P3 design 3.2). bootstrap hands it over; it is never logged.
-func (m *Module) DerivedKey(info string) []byte {
-	return m.keys.Derive(info)
 }
 
 // PublicOperations are the module's routes that need no token.

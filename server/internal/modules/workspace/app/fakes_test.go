@@ -92,19 +92,21 @@ func (f *fakeStore) SlugTaken(ctx context.Context, slug string) (bool, error) {
 	return ok, nil
 }
 
-// fakeAccounts answers ShareActiveAccount with err, and records the calls.
+// fakeAccounts answers ShareActiveAccount with the address of emails, or
+// err, and records the calls.
 type fakeAccounts struct {
-	err   error
-	calls []string
+	emails map[uuid.UUID]string
+	err    error
+	calls  []string
 }
 
-func (f *fakeAccounts) ShareActiveAccount(ctx context.Context, id uuid.UUID) error {
+func (f *fakeAccounts) ShareActiveAccount(ctx context.Context, id uuid.UUID) (string, error) {
 	call := "ShareActiveAccount " + id.String()
 	if inTx(ctx) {
 		call += " in tx"
 	}
 	f.calls = append(f.calls, call)
-	return f.err
+	return f.emails[id], f.err
 }
 
 // fakeAuthorizer grants the role roles hold for the target's workspace,
