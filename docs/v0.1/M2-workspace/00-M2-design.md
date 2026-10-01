@@ -184,7 +184,7 @@ M2 结束时：
 | 1 停用的第一个注册者；2 否决者的码 | P4：已落实（workspace 的停用注册者，经接口与命令行的行为测试；`deactivateMe` 声明 `workspace.sole_admin`，identity 的 HTTP 测试答出） |
 | 3 `ShareActiveAccount`：事务检查，锁下的邮箱；调用它的操作声明 `identity.account_deactivated` | P1（事务检查；创建工作区）、P3（锁下的邮箱；接受邀请）：已落实 |
 | 4 注册策略 | P3：已落实（`SignupAttempt` 带规范化的邮箱与邀请；组合根的策略是开关或邀请） |
-| 5 引导的新步骤；6 首页 | P5 |
+| 5 引导的新步骤；6 首页 | P5：已落实（引导的工作区一步，e2e 的 `onboardingSteps` 同步，A9 两步；首页换成工作区的外壳与落点，S2 落在创建页并核对用户菜单的版本） |
 | 7 接口测试的构造辅助；8 组合根的拆分 | P1 |
 | 9 加锁顺序与停用的不变量 | P2（顺序、互相降级、同时离开）、P4（停用的交错 9–13）：已落实；加锁顺序在 M2 收尾补进 13.1 第 5 条 |
 | 10 只投递的 River 客户端 | 已转给 M7（[handoff](../M7-assets-transfer/handoffs/M2-P4-insert-only-client.md)）：M2 没有由请求投递的任务 |
@@ -299,7 +299,7 @@ M2 结束时：
 | P2 | 工作区管理与成员 | 已完成 | [02-P2-workspace-members.md](02-P2-workspace-members.md) | [P2 审查记录](reviews/P2-workspace-members-review.md) |
 | P3 | 邀请与带邀请注册 | 已完成 | [03-P3-invitations.md](03-P3-invitations.md) | [P3 审查记录](reviews/P3-invitations-review.md) |
 | P4 | 停用、管理命令与清理 | 已完成 | [04-P4-deactivation-commands-purge.md](04-P4-deactivation-commands-purge.md) | [P4 审查记录](reviews/P4-deactivation-commands-purge-review.md) |
-| P5 | 前端外壳与工作区 | 进行中 | [05-P5-web-shell-workspaces.md](05-P5-web-shell-workspaces.md) | — |
+| P5 | 前端外壳与工作区 | 已完成 | [05-P5-web-shell-workspaces.md](05-P5-web-shell-workspaces.md) | [P5 审查记录](reviews/P5-web-shell-workspaces-review.md) |
 | P6 | 前端成员与邀请 | 未开始 | — | — |
 | — | M2 收尾审查 | 未开始 | — | — |
 
@@ -312,3 +312,4 @@ M2 结束时：
 | 2026-10-01 | 第 7 节：W8、W9 与 W4 的"非管理员答 403"从 P2 移到 P3 | 它们要有第二位成员，成员只能经邀请加入，见 [P2 文档](02-P2-workspace-members.md)第 2 节 |
 | 2026-10-01 | 第 4 节：邀请的 MAC 密钥由组合根派生，签名密钥由组合根先加载；第 5 节：路径参数 `{workspace_invitation_id}`；第 8 节：改邮箱与外键检查 | P3 的实施与审查，见 [P3 审查记录](reviews/P3-invitations-review.md) |
 | 2026-10-01 | 第 4、8 节：模块包级的 `Purgers(pool)`，清理器跳过仍被引用的行；第 7 节：P4 的 e2e 与 M1 移交第 1、2、9、10 项的落实；第 10 节：清理的风险 | P4 的实施与审查，见 [P4 审查记录](reviews/P4-deactivation-commands-purge-review.md) |
+| 2026-10-01 | 第 7 节：M1 移交第 5、6 项的落实 | P5 的实施与审查，见 [P5 审查记录](reviews/P5-web-shell-workspaces-review.md) |
