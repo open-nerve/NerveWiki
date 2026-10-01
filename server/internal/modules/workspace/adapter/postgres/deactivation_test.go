@@ -20,8 +20,11 @@ func TestLockWorkspacesOf(t *testing.T) {
 	s, pool := newStore(t)
 	alice := newAccount(t, pool, "alice@corp.com")
 	bob := newAccount(t, pool, "bob@corp.com")
-	zeta := newWorkspace(t, s, "zeta", "Zeta", alice) // created first: the id order is not the names'
+	// Created in this order, they are in id order zeta, acme, mike: neither
+	// the slugs' order nor its reverse.
+	zeta := newWorkspace(t, s, "zeta", "Zeta", alice)
 	acme := newWorkspace(t, s, "acme", "Acme", alice)
+	mike := newWorkspace(t, s, "mike", "Mike", alice)
 	left := newWorkspace(t, s, "left", "Left", bob)
 	ended := addMember(t, s, left.ID, alice, shared.WorkspaceMember, bob)
 	exec(t, pool, "UPDATE workspace_members SET ended_at = $2 WHERE id = $1", ended, now())
@@ -37,10 +40,10 @@ func TestLockWorkspacesOf(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if want := []domain.Workspace{zeta, acme}; !slices.Equal(got, want) {
+		if want := []domain.Workspace{zeta, acme, mike}; !slices.Equal(got, want) {
 			t.Errorf("LockWorkspacesOf() = %+v, want %+v, by id", got, want)
 		}
-		for _, w := range []domain.Workspace{zeta, acme} {
+		for _, w := range []domain.Workspace{zeta, acme, mike} {
 			if lockNowait(t, pool, "workspaces", "SHARE", w.ID) || !lockNowait(t, pool, "workspaces", "KEY SHARE", w.ID) {
 				t.Errorf("%s: want FOR NO KEY UPDATE: held against FOR SHARE, not against FOR KEY SHARE", w.Slug)
 			}

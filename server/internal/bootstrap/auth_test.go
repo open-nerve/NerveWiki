@@ -3,12 +3,19 @@ package bootstrap
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/open-nerve/NerveWiki/server/internal/modules/identity"
+	"github.com/open-nerve/NerveWiki/server/internal/modules/workspace"
 )
+
+// openSSLKey is an Ed25519 key in the format of openssl genpkey.
+const openSSLKey = "-----BEGIN PRIVATE KEY-----\nMC4CAQAwBQYDK2VwBCIEIPneKoGsY0rpwLc94vhBW73igdoPaBAvGyjWyYTwGsUX\n-----END PRIVATE KEY-----\n"
 
 // A signing key file that cannot be read or parsed stops startup with an
 // error that names the key, never the file's path or content.
@@ -37,14 +44,29 @@ func TestABadSigningKeyStopsStartup(t *testing.T) {
 // A key file in the format of openssl genpkey signs the tokens.
 func TestAnOpenSSLSigningKeyStartsTheApp(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "jwt.pem")
-	pem := "-----BEGIN PRIVATE KEY-----\nMC4CAQAwBQYDK2VwBCIEIPneKoGsY0rpwLc94vhBW73igdoPaBAvGyjWyYTwGsUX\n-----END PRIVATE KEY-----\n"
-	if err := os.WriteFile(path, []byte(pem), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(openSSLKey), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	cfg := testConfig(t, unreachableDB, false)
 	cfg.Auth.JWT.PrivateKeyFile = path
 
 	buildApp(t, cfg, sampleMigrations())
+}
+
+// The invitations' MAC key is the one a signing key derives for them
+// (M2/P3 design 3.2): a key no other use shares, and one that changing
+// InvitationKeyInfo would change, ending every link pending as a new
+// signing key does. So the key a known signing key derives is pinned;
+// TestTokenKnownAnswer pins the token a key makes.
+func TestTheInvitationKeyIsPinned(t *testing.T) {
+	keys, err := identity.LoadSigningKeys([]byte(openSSLKey), slog.New(slog.DiscardHandler))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const want = "c0783e2fa68061920382ee164bf763501d6d86756f892f96bb2881119619c6ee"
+	if got := hex.EncodeToString(keys.Derive(workspace.InvitationKeyInfo)); got != want {
+		t.Errorf("the invitations' key = %s, want %s", got, want)
+	}
 }
 
 // A server that is not prod and listens beyond loopback warns once at

@@ -16,9 +16,12 @@ type Purger struct {
 	// Table is the table it purges.
 	Table string
 	// Purge deletes up to batch rows deleted before before, and returns how
-	// many it deleted. It skips the rows another transaction holds, and
-	// those still referenced by rows a purger before it skipped: a foreign
-	// key's ON DELETE CASCADE would wait for them.
+	// many it deleted. It skips the rows another transaction holds. Within
+	// its module, it skips those still referenced by rows a purger before it
+	// skipped: a foreign key's ON DELETE CASCADE would wait for them. Its
+	// queries cannot see another module's tables, so a key from one is ON
+	// DELETE RESTRICT: while such a row is left, the batch fails, and a
+	// later run deletes it (v0.1 design 13.1, item 6).
 	Purge func(ctx context.Context, before time.Time, batch int) (int, error)
 }
 

@@ -67,7 +67,16 @@ test("a read that holds an invitation being sent keeps it once", async () => {
   expect(ids(store)).toEqual(["new", "old"]);
 });
 
-test("a read answered after a change keeps the change", async () => {
+// A read answered after a write's answer may hold the list from before,
+// and must not undo the write. Each write is held to it.
+test.each([
+  [
+    "an invitation",
+    (store: InvitationStore) => store.invite({ email: "c@example.com", role: "member" }),
+    ["c", "a", "b"],
+  ],
+  ["a withdrawal", (store: InvitationStore) => store.withdraw("a"), ["b"]],
+])("a read answered after %s keeps it", async (_, write: (store: InvitationStore) => Promise<unknown>, want) => {
   let answerRead: ((list: WorkspaceInvitation[]) => void) | undefined;
   let reads = 0;
   const store = storeOf([], {
@@ -79,11 +88,11 @@ test("a read answered after a change keeps the change", async () => {
   await store.load();
 
   const read = store.load();
-  await store.withdraw("a");
+  await write(store);
   answerRead?.([invitation("a"), invitation("b")]);
   await read;
 
-  expect(ids(store)).toEqual(["b"]);
+  expect(ids(store)).toEqual(want);
 });
 
 test("an invitation withdrawn leaves; one gone already leaves as well", async () => {

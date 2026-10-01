@@ -33,7 +33,7 @@ test("W1 (API): a workspace is created with the caller as its admin, its slug ch
   await expectNewWorkspace(db, created, userId);
   expect(await checkSlug(api, pat, slug)).toEqual({ available: false, reason: "taken" });
 
-  // The slug taken, a reserved one: nothing is added.
+  // The slug taken, one not well formed, a reserved one: nothing is added.
   const before = await countWorkspaces(db);
   const taken = await api.POST("/api/v0/workspaces", { body: { name: "Other", slug }, headers: bearer(pat) });
   expect(taken.response.status).toBe(409);
@@ -41,6 +41,12 @@ test("W1 (API): a workspace is created with the caller as its admin, its slug ch
   const reserved = await api.POST("/api/v0/workspaces", { body: { name: "Other", slug: "api" }, headers: bearer(pat) });
   expect(reserved.response.status).toBe(422);
   expect(reserved.error?.errors).toEqual([{ field: "slug", code: "not_allowed", message: "is reserved" }]);
+  const malformed = await api.POST("/api/v0/workspaces", {
+    body: { name: "Other", slug: "Not A Slug" },
+    headers: bearer(pat),
+  });
+  expect(malformed.response.status).toBe(422);
+  expect(malformed.error?.errors?.map((e) => [e.field, e.code])).toEqual([["slug", "invalid_format"]]);
   await expectNoWorkspaceAdded(db, before);
 
   // The workspace reads back as it was created, and is the account's one.

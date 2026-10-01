@@ -2,7 +2,7 @@ import { accountIdOf } from "../../fixtures/assert/identity";
 import { expectInvitation, expectMembership } from "../../fixtures/assert/workspace";
 import { bearer, displayNameOf, emailFor, registerOnboarded } from "../../fixtures/auth";
 import { failedToLoad } from "../../fixtures/browser";
-import { accept, invite, joinAs, tryAccept } from "../../fixtures/invitations";
+import { invite, joinAs, joinOnboarded, tryAccept } from "../../fixtures/invitations";
 import { leaveWith, membersListed, removeMemberWith, who } from "../../fixtures/member-pages";
 import { leave, memberOf, removeMember } from "../../fixtures/members";
 import { expect, test } from "../../fixtures/test";
@@ -101,8 +101,7 @@ test("W9 (page): a guest leaves and lands where / sends them; the workspace is n
 }, testInfo) => {
   const { pat, workspace } = await newTeam(api, testInfo);
   const guestEmail = emailFor(testInfo, "guest");
-  const tokens = await registerOnboarded(api, guestEmail);
-  await accept(api, tokens.access_token, await invite(api, pat, workspace.slug, guestEmail, "guest"));
+  const tokens = await joinOnboarded(api, pat, workspace.slug, guestEmail, "guest");
   const page = await signedInPage(tokens);
   await page.goto(`/${workspace.slug}/settings/members`);
 

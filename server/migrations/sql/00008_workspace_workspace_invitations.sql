@@ -6,7 +6,8 @@
 -- +goose Up
 CREATE TABLE workspace_invitations (
     id uuid PRIMARY KEY,
-    -- The purge of a deleted workspace takes its invitations with it.
+    -- The purge deletes a deleted workspace's invitations before it (M2/P4 review
+    -- T1); the cascade is the fallback within the module.
     workspace_id uuid NOT NULL REFERENCES workspaces ON DELETE CASCADE,
     -- Normalized, by users.email's rule: the two are compared on acceptance.
     email varchar(255) NOT NULL
@@ -30,8 +31,8 @@ CREATE TABLE workspace_invitations (
 -- end deletes the pending one of its account's address through it.
 CREATE UNIQUE INDEX workspace_invitations_workspace_id_email_key ON workspace_invitations (workspace_id, email)
     WHERE deleted_at IS NULL;
--- The purge's cascade looks invitations up by workspace, deleted ones
--- included, which the partial index above does not hold.
+-- The purge looks invitations up by workspace, deleted ones included, which
+-- the partial index above does not hold: to wait for them, and in the cascade.
 CREATE INDEX workspace_invitations_workspace_id_idx ON workspace_invitations (workspace_id);
 
 -- +goose Down

@@ -129,7 +129,7 @@ export const en = {
   "createWorkspace.slugAvailable": "Available.",
   "createWorkspace.submit": "Create workspace",
   "createWorkspace.off":
-    "On this server, workspaces are created by its administrator. You join one when a member invites you: open the invitation's link when it comes.",
+    "On this server, workspaces are created by its administrator. You join one when one of its admins invites you: open the invitation's link when it comes.",
   "settings.security": "Security",
   "security.passwordTitle": "Password",
   "security.currentPassword": "Current password",

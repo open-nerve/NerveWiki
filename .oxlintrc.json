@@ -74,6 +74,7 @@
       }
     },
     {
+      // services 只调用接口：不导入页面、store 与它们的部件（M2/P6 设计 3.2）
       "files": ["web/apps/web/src/services/**"],
       "rules": {
         "no-restricted-imports": [
@@ -86,7 +87,37 @@
                 "message": "只有 src/session 创建客户端，经由 RootStore 交给 service"
               }
             ],
-            "patterns": [{ "group": ["**/packages/api-client/**"], "message": "从 @nervewiki/api-client 导入" }]
+            "patterns": [
+              { "group": ["**/packages/api-client/**"], "message": "从 @nervewiki/api-client 导入" },
+              {
+                "group": ["../app/**", "../stores/**", "../pages/**", "../components/**", "../onboarding/**"],
+                "message": "service 只调用接口，不依赖页面与 store"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      // store 只管理状态：不导入页面与它们的部件；本条重写了上面对整个 src 的限制，所以连同 api-client 一起写
+      "files": ["web/apps/web/src/stores/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "@nervewiki/api-client",
+                "message": "只有 services 调用接口：组件与 store 经由 service，类型也从 service 导入"
+              }
+            ],
+            "patterns": [
+              { "group": ["**/packages/api-client/**"], "message": "从 @nervewiki/api-client 导入" },
+              {
+                "group": ["../app/**", "../pages/**", "../components/**", "../onboarding/**"],
+                "message": "store 只管理状态，不依赖页面"
+              }
+            ]
           }
         ]
       }
