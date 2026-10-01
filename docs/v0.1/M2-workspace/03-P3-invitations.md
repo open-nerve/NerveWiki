@@ -113,7 +113,7 @@ e2e/fixtures/invitations.ts；stories/workspace/w5–w9
 | 接受 `POST /workspace-invitations/{workspace_invitation_id}/accept` `{token}` | Bearer | 令牌 → 读邀请（不加锁，得到工作区）→ 事务：`ShareActiveAccount(调用者)` 交回锁下的邮箱 → 工作区 `FOR NO KEY UPDATE` → 邀请 `FOR UPDATE` 重读 → 邮箱不符 403 `workspace.invitation_email_mismatch` → 成员关系：有效的不变（只消费邀请）；已结束的恢复（角色取邀请的，发布恢复事件）；没有的插入 → 消费邀请（`accepted_at = deleted_at`）→ 回答 `Workspace` |
 
 - 接受不经规则表：调用者还不是成员，令牌与邮箱就是凭据（M2 总设计第 9 节"按令牌与邮箱判定"）。矩阵把接受与预览列为豁免，写明理由。
-- 邀请已是有效成员的邮箱，答 422 `email: not_allowed`：先经 identity 的目录（3.6）按邮箱查到账户 id（不加锁），再看它在这个工作区有没有有效的成员行（仓储的 `FindMembership`，带回是否有效，创建与接受共用）。工作区的 `FOR SHARE` 让成员关系在这期间不变；没有账户不是问题，邀请就是给还没有账户的人的。
+- 邀请已是有效成员的邮箱，答 422 `email: not_allowed`：先经 identity 的目录（3.6）按邮箱查到账户 id（不加锁），再看它在这个工作区有没有有效的成员行（仓储的 `FindMembership`，创建与接受共用；P4 起它带回 `ended_at`，由 `Member.Active()` 判断，见 [P4 文档](04-P4-deactivation-commands-purge.md) 3.3）。工作区的 `FOR SHARE` 让成员关系在这期间不变；没有账户不是问题，邀请就是给还没有账户的人的。
 - 邮箱的规则只有一份：identity 领域的 `checkEmail` 移到 `shared.CheckEmail`（第二个使用者出现了，与 P1 的 `CheckName` 同理）；规范化用已在 `shared` 的 `NormalizeEmail`。
 - 创建与删除持工作区的 `FOR SHARE`：两位管理员可以同时邀请（交错 7 由唯一索引决定先后），而成员关系的变化（`FOR NO KEY UPDATE`）与之串行。
 
@@ -249,7 +249,7 @@ type MembershipRestoreSubscriber interface {   // 恢复的写入之后、同一
 1. `accepted_check` 加上 `deleted_at IS NOT NULL`（3.1）：原写法在 `deleted_at` 为空时放行，迁移的反例测试抓到。
 2. 签名密钥由组合根先加载，邀请密钥由组合根派生（3.2）：原设计的 `Module.DerivedKey` 要等 identity 建好，而 identity 的注册策略要用它，成环。identity 的 `Deps.SigningKeyPEM` 换成 `SigningKeys`，坏私钥的报错提前到连数据库之前。
 3. 令牌严格解码（3.2）：非严格时最后一个字符未用的位有多种拼法，都会通过；identity 的令牌本来就是严格的。由 `TestTokens` 守住。
-4. 用例文件按包里已有的"动词_名词"命名（3 节文件表）；仓储的"按账户是否有效成员"是 `FindMembership`（带回是否有效，创建与接受共用），S1 计划第 6 项写的是另一种拆法；`WorkspaceFinder` 加 `FindWorkspaceByID`（预览），`MemberUpdater` 加 `AddMember`、`RestoreMember`。
+4. 用例文件按包里已有的"动词_名词"命名（3 节文件表）；仓储的"按账户是否有效成员"是 `FindMembership`（带回是否有效，创建与接受共用；P4 改为带回 `ended_at`），S1 计划第 6 项写的是另一种拆法；`WorkspaceFinder` 加 `FindWorkspaceByID`（预览），`MemberUpdater` 加 `AddMember`、`RestoreMember`。
 5. S2 计划的"整个程序：注册关闭时凭邀请注册"挪到 S3：要用邀请的接口创建邀请才能拿到令牌。bootstrap 的 `directory` 实现 `AccountFinder` 也在 S3（端口随用例出现）。
 6. 交错 7 用测试数据库里的触发器让先到的插入停住（3.9），不在用例里留缝；P2 的 `interleave` 泛化为可持任意表的行、可在进程内运行命令（交错 8 的 `users set-email`）。
 7. 矩阵的新豁免类叫 `byCredential`，覆盖检查补了 4 个反例；路径参数叫 `{workspace_invitation_id}`，与 `{workspace_member_id}` 一致（3.3、M2 总设计第 5 节原写 `{invitation_id}`）。

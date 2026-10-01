@@ -3,7 +3,7 @@
 | 项 | 内容 |
 |---|---|
 | Phase | M2/P4 停用、管理命令与清理 |
-| 状态 | 进行中 |
+| 状态 | 已完成 |
 | 基线 | `751af91`（P3 合并、P3 文档更新之后的 main） |
 | 上级文档 | [M2 总设计](00-M2-design.md) 第 4、7、8、9 节；[P2 文档](02-P2-workspace-members.md)第 7 节与 [P2 审查](reviews/P2-workspace-members-review.md) Q1、Q2；[P3 文档](03-P3-invitations.md)第 7 节与 [P3 审查](reviews/P3-invitations-review.md) Q1、Q4；[M1 移交](handoffs/M1-identity.md)第 1、2、9、10 项；[总体设计](../v0.1-design.md) 8.5、12.4、13.1 第 5、6、21、22、23 条 |
 
@@ -76,7 +76,8 @@ server/
     adapter/postgres/queries/users.sql、users.go   ShareAccountByEmail（FOR SHARE，按邮箱）
   internal/modules/workspace/
     domain/member.go                            Member.EndedAt、Active()；Standing 与规则二；ErrSoleAdminOf
-    adapter/postgres/queries/*.sql、store.go     LockWorkspacesOf、ListStandings、三个清理的查询；FindMembership 带回 ended_at
+    adapter/postgres/store.go、members.go、purge.go   工作区（LockWorkspacesOf）、成员关系（ListStandings；FindMembership 带回 ended_at）、清理
+    adapter/postgres/queries/workspaces.sql、members.sql、purge.sql   对应的查询
     app/end_membership.go                       MembershipEnder：Veto、Write、End
     app/deactivation.go                         停用的两个阶段
     app/create_workspace_for.go、reactivate_member.go  管理员的两个用例
@@ -137,7 +138,7 @@ identity 的停用分两个阶段，workspace 在每个阶段各做一件事：
 
 **契约**：
 - `deactivateMe` 的 `x-problem-codes` 加 `workspace.sole_admin`。
-- identity 的 HTTP 测试经替身否决者答出这个码一次（M1 移交第 2 项）。
+- identity 的 HTTP 测试经替身用例返回否决者的这个错误，答出这个码一次（M1 移交第 2 项）。
 - 前端文案表已有这个码。
 
 **行为测试**（M1 移交第 1 项，13.1 第 21 条）：在整个程序上，他是某个还有别的成员的工作区唯一的管理员时：
@@ -219,7 +220,7 @@ func PurgeJob(purgers []Purger, cfg PurgeConfig) Job // PurgeConfig{Interval, Re
 
 - 每次运行时，`before` 取"现在减去保留期"，然后按注册的顺序调用清理器。每个清理器一批一批地删，直到某一批不满。
 - 任何一个清理器失败就停下，由 River 重试。这样父表不会先于子表被清。
-- 删了行才记一条日志：表名与行数。
+- 删了行才记一条日志：表名与行数。清理器中途失败时，也先记下它已删的行数。
 - 任务的 kind 是 `platform.purge_soft_deleted`，启动时运行一次，之后每隔 `jobs.purge_interval` 运行一次。
 
 **配置**：
@@ -231,8 +232,9 @@ func PurgeJob(purgers []Purger, cfg PurgeConfig) Job // PurgeConfig{Interval, Re
 
 **workspace**：
 - `workspace.Purgers(pool) []jobs.Purger` 依次是 `workspace_invitations`、`workspace_members`、`workspaces`。
-- 每个清理器是一条语句：`DELETE … WHERE id IN (SELECT … WHERE deleted_at < $1 LIMIT $2 FOR UPDATE SKIP LOCKED)`。它不等锁，不进入加锁顺序（13.1 第 5、23 条）。
-- 成员与邀请指向工作区的外键是 `ON DELETE CASCADE`（P1、P3 的迁移），保留不改：它们的清理器排在工作区之前，删工作区时已没有子行。
+- 每个清理器是一条语句：`DELETE … WHERE id IN (SELECT … WHERE deleted_at < $1 LIMIT $2 FOR UPDATE SKIP LOCKED)`。别的事务持有的行跳过，下一次运行再删。
+- 成员与邀请指向工作区的外键是 `ON DELETE CASCADE`（P1、P3 的迁移），保留不改。工作区的清理器只删已没有成员与邀请行的工作区（`NOT EXISTS`）：子行被跳过时，工作区随它推迟到之后的运行，级联实际不会触发。
+- 所以清理不等锁，不进入加锁顺序（13.1 第 5、23 条）。`jobs.Purger` 的契约写明"跳过仍被之前的清理器跳过的行引用的行"，M3 起的清理器照此办理（审查 T1）。
 
 **组合根**：
 - `purgers(pool)` 在 `registrants.go`，从叶到根排列。M3 起，新模块的清理器加在 workspace 之前。
@@ -242,7 +244,7 @@ func PurgeJob(purgers []Purger, cfg PurgeConfig) Job // PurgeConfig{Interval, Re
 1. 每张有 `deleted_at` 的表恰好有一个清理器；每个清理器的表都有 `deleted_at`（13.1 第 6 条的登记）。
 2. 每条指向被清理表的外键，引用它的表也被清理，并且排在前面。
 
-**结果**：保留期内的行不动；超过的连同子行一起删除。同一时刻软删除的父行与子行，在同一次运行中按顺序删除。
+**结果**：保留期内的行不动；超过的连同子行一起删除。同一时刻软删除的父行与子行，在同一次运行中按顺序删除；子行被别的事务持有时，父行留到之后的运行。
 
 ### 3.5 确定性的交错
 
@@ -291,7 +293,7 @@ M2 没有由请求投递的任务：清理是定时的。写 `docs/v0.1/M7-asset
 | S1 | 数据：<br>• identity 的 `ShareActiveAccountByEmail`；<br>• workspace 的 `Member.EndedAt`、`LockWorkspacesOf`、`ListStandings`、三个清理的查询；<br>• 规则二的领域；<br>• 仓储测试 | [P4-S1](plans/P4-S1-data.md) |
 | S2 | 停用的注册者：<br>• `MembershipEnder` 拆分、停用的两个阶段、模块根与组合根；<br>• 契约的码与 identity 的 HTTP 测试；<br>• 行为测试；组合检查 | [P4-S2](plans/P4-S2-deactivation.md) |
 | S3 | 管理命令：<br>• 两个用例、`workspace.NewAdmin`、`bootstrap.Workspaces`、`nervewiki workspaces`；<br>• 组合检查的起点 | [P4-S3](plans/P4-S3-commands.md) |
-| S4 | 清理：<br>• `jobs.Purger`、`PurgeJob`、配置、`workspace.Purgers`、组合根的注册表；<br>• 数据库测试；<br>• 运行时角色的测试跑一次清理 | [P4-S4](plans/P4-S4-purge.md) |
+| S4 | 清理：<br>• `jobs.Purger`、`PurgeJob`、配置、`workspace.Purgers`、组合根的注册表；<br>• 数据库测试；<br>• 运行时角色的测试跑一次清理，并以运行时角色运行 `nervewiki workspaces` 的两条命令 | [P4-S4](plans/P4-S4-purge.md) |
 | S5 | 交错 9–13 | [P4-S5](plans/P4-S5-interleavings.md) |
 | S6 | e2e：W2（命令行）、W10、W12；README；M7 的 handoff | [P4-S6](plans/P4-S6-e2e.md) |
 
@@ -302,7 +304,7 @@ M2 没有由请求投递的任务：清理是定时的。写 `docs/v0.1/M7-asset
 | 层次 | 覆盖 |
 |---|---|
 | 单元 | 规则二（`Standing` 的表格）；停用两个阶段的顺序：锁在判定之前，否决在写之前，空集合不调用注册者，邮箱取自停用；`MembershipEnder` 的三个入口；两个管理员用例的顺序与结果；清理的批与顺序，失败即停 |
-| 集成 | 仓储：`LockWorkspacesOf` 的模式、顺序与 `deleted_at`；`ListStandings` 的人数；清理的保留期边界、批的上限、`SKIP LOCKED`；`FindMembership` 带回 `ended_at`；identity：`ShareAccountByEmail` 的锁模式，以及等锁期间邮箱被改走的情形 |
+| 集成 | 仓储：`LockWorkspacesOf` 的模式、顺序与 `deleted_at`；`ListStandings` 的人数；清理的保留期边界、批的上限、`SKIP LOCKED`（三个清理器各测），工作区等它被持有的子行；`FindMembership` 带回 `ended_at`；identity：`ShareAccountByEmail` 的锁模式，以及等锁期间邮箱被改走的情形 |
 | 扩展点 | 替身测试：停用时成员身份结束的否决者在写之前、整体回滚并答出它的码；订阅者在同一事务；`reactivate-member` 发布恢复事件 |
 | 行为 | 3.1 的两条：经接口、经命令行被规则二否决 |
 | 并发 | 3.5 |
@@ -323,6 +325,8 @@ M2 没有由请求投递的任务：清理是定时的。写 `docs/v0.1/M7-asset
 | 清理器的顺序颠倒（工作区在成员之前） | 外键顺序的数据库测试 |
 | 清理不看保留期 | 仓储测试与 W12 的"59 天前的不动" |
 | 去掉一个清理器 | 登记测试 |
+| 工作区的清理器不看子行（审查 T1） | 工作区等子行的仓储测试 |
+| `LockWorkspacesOf` 去掉 `ORDER BY id`（审查 T4） | 加锁顺序的仓储测试 |
 
 ## 6. 完成标准
 
@@ -332,4 +336,26 @@ M2 没有由请求投递的任务：清理是定时的。写 `docs/v0.1/M7-asset
 
 ## 7. 结果
 
-（完成后补写）
+分支 `m2-p4-deactivation-commands-purge`：S1 `997082e`、S2 `3b16d5c`、S3 `b67b8a2`、S4 `05f9d77`、S5 `b157128`、S6 `308dfd0`，审查修复 `d816b29`，合并 `a4b509b`。第 5 节全部通过，反向对照按预期失败（作者在各 Step 13 项、其中 2 项也在 e2e 上做，审查修复另 18 项；审查者 36 项）；`make check`（vitest 446 个）、`make gen-check`、`make e2e`（62 个；新故事另跑 `--repeat-each 3`）、`make image-smoke` 本地与持续集成为绿；交错 9–13 在 `-race` 下重复 5 次（审查者 1–13 重复 10 次）全部通过。审查见 [P4 审查记录](reviews/P4-deactivation-commands-purge-review.md)：没有 Major；4 项 Minor 与 5 项 Nit 已处理，T9 不改；6 个疑问中 Q1、Q2 写进 M2 收尾时的移交，Q6 的措辞在收尾补进 13.1 第 5 条，其余不改。规模（新增行数，不含生成的代码）：生产代码约 1,300 行（含从 `store.go` 挪出的约 140 行、配置与契约），测试约 2,100 行，端到端约 290 行。
+
+与设计的出入（已同步进上文）：
+
+1. 仓储拆出 `members.go`、`purge.go` 与查询 `members.sql`、`purge.sql`（3 节文件表）：P4 的方法加进 `store.go` 会超过 300 行，拆分之后它是 191 行。
+2. 工作区的清理器只删已没有成员与邀请行的工作区（3.4，审查 T1）：原设计说"它的清理器排在后面，删工作区时已没有子行"，但子行被 `SKIP LOCKED` 跳过时，级联会去等它的锁。
+3. 清理器中途失败时，也先记下它已删的行数（3.4，审查 T10）。
+4. 运行时角色的测试另以运行时角色运行 `nervewiki workspaces` 的两条命令（第 4 节 S4，13.1 第 16 条）。
+5. identity 的 HTTP 测试经替身用例返回否决者的错误（3.1），不是替身否决者：HTTP 层只看用例的结果，效果相同。
+6. S2 计划的"账户仍可用、会话仍在"由整个程序上的规则二测试核对：模块测试不运行 identity。S3 计划的"恢复的订阅者失败时整体回滚"做在模块根（真实数据库）：组合根还没有注册者可接。
+7. e2e 夹具 `users.ts` 改名 `admin.ts`，`nervewiki users` 与 `nervewiki workspaces` 共用（S6 计划）。
+
+审查之后的修复（详见审查记录）：T1 工作区的清理器等它的子行，`jobs.Purger` 的契约写明；T2 否决者与订阅者只听到锁下剩下的工作区；T3 清理的仓储测试覆盖三个清理器；T4 加锁顺序的测试让 slug 与表里的顺序都与 id 相反；T5 两处排序可观测；T6、T7 `nervewiki workspaces` 的帮助与 debug 级日志；T8 注释与一行夹具；T10 失败前删的行也记日志。
+
+留给之后的：
+
+- **M2 收尾，写进 M3 的移交（审查 Q1）**：M3 第一个成员身份结束或恢复的注册者，要在整个程序上经每条路径各有行为测试：移出、离开、停用（接口与命令行）、接受邀请、`reactivate-member`、删除工作区。现在没有注册者，组合检查只证明静态可达。
+- **M2 收尾，写进 M3/M7 的移交（审查 T1、Q2）**：
+  - 清理器跳过仍被别的表引用的行（`jobs.Purger` 的契约），级联不连带删除；M7 的附件清理器先删文件、再删行。
+  - 外键顺序的测试排除了自引用外键（M4 的页面树）；只靠 CASCADE、没有 `deleted_at` 的子表过不了它，要决定是否豁免。
+  - "失败即停"下，一个永久失败的清理器让之后的都不跑，只在日志里看得到。
+- **M2 收尾（审查 Q6）**：3.2 补进 13.1 第 5 条时，第 1 点补上"外键检查等改邮箱"（第 3 点已覆盖），写明 `KEY SHARE` 会越过排队的独占等待者；M3 的订阅者若写引用别的账户的列，审查时复核。
+- **之后有大表时（审查 Q3）**：表上没有 `deleted_at` 的索引，每批顺序扫描；River 的任务期限 1 分钟，超时取消重试，已删的批不丢。v0.1 的规模不需要，到时加部分索引或调长清理的期限。

@@ -10,7 +10,7 @@
    - `FindMembership` 带回 `ended_at`，不再另带 `active`；接受与创建邀请改用 `Member.Active()`。
    - `LockWorkspacesOf(ctx, userID)`：他有效成员关系所在、未删除的工作区，按 `id` 升序 `FOR NO KEY UPDATE`，一条语句。
    - `ListStandings(ctx, userID, workspaceIDs)`：锁下读他在这些工作区的有效成员关系，带各工作区有效的管理员与成员人数。
-   - 清理：`PurgeInvitations`、`PurgeMembers`、`PurgeWorkspaces`，各是 `DELETE … WHERE id IN (SELECT … WHERE deleted_at < $1 LIMIT $2 FOR UPDATE SKIP LOCKED)`，返回删了几行。
+   - 清理：`PurgeInvitations`、`PurgeMembers`、`PurgeWorkspaces`，各是 `DELETE … WHERE id IN (SELECT … WHERE deleted_at < $1 LIMIT $2 FOR UPDATE SKIP LOCKED)`，返回删了几行。工作区的另加"已没有成员与邀请行"（P4 审查 T1）。
 
 ## 测试
 
