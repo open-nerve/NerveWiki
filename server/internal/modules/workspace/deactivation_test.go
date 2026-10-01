@@ -48,11 +48,12 @@ func (f fixture) newWorkspace(t *testing.T, slug string, admin uuid.UUID) uuid.U
 // The deactivation ends every active membership of the account through the
 // extension point: the vetoer under the workspaces' locks, before the
 // write; the pending invitations of those workspaces to the address it was
-// given deleted; the subscriber after, in the same transaction. Alone in a
+// given deleted; the subscriber after, in the same transaction, with the
+// workspaces by id, not by name as the account's list has them. Alone in a
 // workspace, the account's admin membership ends too.
 func TestADeactivationEndsTheMemberships(t *testing.T) {
 	f := newFixture(t)
-	beta := f.newWorkspace(t, "beta", f.bob)
+	abacus := f.newWorkspace(t, "abacus", f.bob) // after acme by id, before it by name
 	gamma := f.newWorkspace(t, "gamma", f.alice)
 	toBob, toBobElsewhere, toErin := f.invite(t, f.acme, "bob@corp.com", "admin"), f.invite(t, gamma, "bob@corp.com", "member"),
 		f.invite(t, f.acme, "erin@corp.com", "member")
@@ -71,8 +72,8 @@ func TestADeactivationEndsTheMemberships(t *testing.T) {
 	if len(s.ended) != 1 || s.endedAt == nil || !s.endedAt.Equal(testNow()) {
 		t.Fatalf("the subscriber: %d calls, saw the end %v; want one, at %v", len(s.ended), s.endedAt, testNow())
 	}
-	if e := s.ended[0]; e.Cause != "deactivated" || e.UserID != f.bob || e.By != f.bob || !slices.Equal(e.WorkspaceIDs, []uuid.UUID{f.acme, beta}) {
-		t.Errorf("the end = %+v, want bob's of acme and beta, by id, deactivated, by bob", e)
+	if e := s.ended[0]; e.Cause != "deactivated" || e.UserID != f.bob || e.By != f.bob || !slices.Equal(e.WorkspaceIDs, []uuid.UUID{f.acme, abacus}) {
+		t.Errorf("the end = %+v, want bob's of acme and abacus, by id, deactivated, by bob", e)
 	}
 	var active int
 	if err := f.pool.QueryRow(context.Background(), "SELECT count(*) FROM workspace_members WHERE user_id = $1 AND ended_at IS NULL", f.bob).

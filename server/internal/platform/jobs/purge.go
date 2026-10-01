@@ -15,8 +15,10 @@ import (
 type Purger struct {
 	// Table is the table it purges.
 	Table string
-	// Purge deletes up to batch rows deleted before before, skipping those
-	// another transaction holds, and returns how many it deleted.
+	// Purge deletes up to batch rows deleted before before, and returns how
+	// many it deleted. It skips the rows another transaction holds, and
+	// those still referenced by rows a purger before it skipped: a foreign
+	// key's ON DELETE CASCADE would wait for them.
 	Purge func(ctx context.Context, before time.Time, batch int) (int, error)
 }
 
@@ -67,26 +69,32 @@ func (w *purgeWorker) Work(ctx context.Context, _ *river.Job[purgeArgs]) error {
 	return purge(ctx, w.purgers, time.Now().Add(-w.cfg.Retention), w.cfg.Logger)
 }
 
-// purge runs the purgers in order, each batch after batch until one comes
-// back short, and logs what each deleted. The first failure stops it
-// before the purgers after, whose tables the failed one's rows may still
-// reference.
+// purge runs the purgers in order and logs what each deleted. The first
+// failure stops it before the purgers after, whose tables the failed one's
+// rows may still reference.
 func purge(ctx context.Context, purgers []Purger, before time.Time, logger *slog.Logger) error {
 	for _, p := range purgers {
-		deleted := 0
-		for {
-			n, err := p.Purge(ctx, before, purgeBatch)
-			deleted += n
-			if err != nil {
-				return fmt.Errorf("purge %s: %w", p.Table, err)
-			}
-			if n < purgeBatch {
-				break
-			}
-		}
+		deleted, err := purgeTable(ctx, p, before)
 		if deleted > 0 {
 			logger.InfoContext(ctx, "soft-deleted rows purged", slog.String("table", p.Table), slog.Int("rows", deleted))
 		}
+		if err != nil {
+			return fmt.Errorf("purge %s: %w", p.Table, err)
+		}
 	}
 	return nil
+}
+
+// purgeTable runs p batch after batch until one comes back short, and
+// returns how many rows it deleted: those of the batches before a failure
+// too, which are gone.
+func purgeTable(ctx context.Context, p Purger, before time.Time) (int, error) {
+	deleted := 0
+	for {
+		n, err := p.Purge(ctx, before, purgeBatch)
+		deleted += n
+		if err != nil || n < purgeBatch {
+			return deleted, err
+		}
+	}
 }

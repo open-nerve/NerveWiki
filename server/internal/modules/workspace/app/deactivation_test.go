@@ -69,16 +69,16 @@ func TestDeactivationEndsTheMemberships(t *testing.T) {
 }
 
 // Rule two refuses the only admin of a workspace with other members,
-// naming every such workspace by slug, before the vetoers and any write.
+// naming every such workspace, by slug, before the vetoers and any write.
 // Alone in a workspace, the account passes.
 func TestDeactivationRuleTwo(t *testing.T) {
 	t.Run("the only admin, with others", func(t *testing.T) {
 		tm := newTeam()
-		zeta := domain.Workspace{ID: uuid.NewV7(), Slug: "zeta", Name: "Zeta"}
-		tm.store.workspaces["zeta"] = zeta
+		abc := domain.Workspace{ID: uuid.NewV7(), Slug: "abc", Name: "ABC"} // after acme by id, before it by slug
+		tm.store.workspaces["abc"] = abc
 		for _, m := range []domain.Member{
-			{ID: uuid.NewV7(), WorkspaceID: zeta.ID, UserID: tm.alice.UserID, Role: shared.WorkspaceAdmin},
-			{ID: uuid.NewV7(), WorkspaceID: zeta.ID, UserID: tm.bob.UserID, Role: shared.WorkspaceGuest},
+			{ID: uuid.NewV7(), WorkspaceID: abc.ID, UserID: tm.alice.UserID, Role: shared.WorkspaceAdmin},
+			{ID: uuid.NewV7(), WorkspaceID: abc.ID, UserID: tm.bob.UserID, Role: shared.WorkspaceGuest},
 		} {
 			tm.store.active[m.ID] = m
 		}
@@ -86,9 +86,9 @@ func TestDeactivationRuleTwo(t *testing.T) {
 		err := tm.deactivate(deactivated(tm.alice))
 
 		var se *shared.Error
-		if !errors.Is(err, domain.ErrSoleAdmin) || !errors.As(err, &se) || !strings.Contains(se.Detail, "(acme, zeta)") ||
+		if !errors.Is(err, domain.ErrSoleAdmin) || !errors.As(err, &se) || !strings.Contains(se.Detail, "(abc, acme)") ||
 			!slices.Equal(tm.store.calls, inTxCalls("LockWorkspacesOf", "ListStandings")) || !tm.tx.rolledBack {
-			t.Errorf("deactivate = %v after %q; want workspace.sole_admin naming acme, zeta, before the vetoers, rolled back",
+			t.Errorf("deactivate = %v after %q; want workspace.sole_admin naming abc, acme, before the vetoers, rolled back",
 				err, tm.store.calls)
 		}
 	})
@@ -157,6 +157,26 @@ func TestDeactivationWithoutMemberships(t *testing.T) {
 			t.Errorf("veto = %v after %q; want no vetoer: the membership had ended", err, tm.store.calls)
 		}
 	})
+}
+
+// A membership that ended while its workspace was being locked is not
+// ended again: the vetoers and the subscribers hear of the others alone.
+func TestDeactivationEndsWhatIsLeftAfterTheLock(t *testing.T) {
+	tm := newTeam()
+	zeta := domain.Workspace{ID: uuid.NewV7(), Slug: "zeta", Name: "Zeta"}
+	tm.store.workspaces["zeta"] = zeta
+	removed := domain.Member{ID: uuid.NewV7(), WorkspaceID: zeta.ID, UserID: tm.bob.UserID, Role: shared.WorkspaceMember}
+	tm.store.active[removed.ID] = removed
+	tm.store.onLock = func() { delete(tm.store.active, removed.ID) } // removed, committed before the lock
+	tm.listed(tm.bob)
+
+	err := tm.deactivate(deactivated(tm.bob))
+
+	want := app.MembershipEnd{UserID: tm.bob.UserID, WorkspaceIDs: []uuid.UUID{tm.acme.ID}, Cause: app.EndDeactivated,
+		By: tm.bob.UserID, At: now()}
+	if err != nil || len(tm.vetoer.seen) != 1 || !sameEnd(tm.vetoer.seen[0], want) || len(tm.sub.ended) != 1 || !sameEnd(tm.sub.ended[0], want) {
+		t.Errorf("deactivate = %v; the vetoer saw %+v, the subscriber %+v; want acme alone, %+v", err, tm.vetoer.seen, tm.sub.ended, want)
+	}
 }
 
 // A subscriber's failure rolls the whole deactivation back.

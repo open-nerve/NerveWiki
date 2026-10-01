@@ -20,12 +20,15 @@ WHERE id IN (
 );
 
 -- name: PurgeWorkspaces :execrows
--- PurgeInvitations for the workspaces, which the purge takes after their invitations and members: the
--- foreign keys' ON DELETE CASCADE finds nothing left to delete.
+-- PurgeInvitations for the workspaces with no member or invitation left: the purge takes those first. One
+-- whose children a purger skipped waits for a later run with them, so that the foreign keys' ON DELETE
+-- CASCADE never deletes, nor waits for, a row another transaction holds.
 DELETE FROM workspaces
 WHERE id IN (
     SELECT w.id FROM workspaces w
     WHERE w.deleted_at < sqlc.arg(before)::timestamptz
+        AND NOT EXISTS (SELECT 1 FROM workspace_members m WHERE m.workspace_id = w.id)
+        AND NOT EXISTS (SELECT 1 FROM workspace_invitations i WHERE i.workspace_id = w.id)
     LIMIT sqlc.arg(batch)
     FOR UPDATE SKIP LOCKED
 );

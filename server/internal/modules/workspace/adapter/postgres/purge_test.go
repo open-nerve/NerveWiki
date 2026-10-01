@@ -2,6 +2,7 @@ package postgresadapter_test
 
 import (
 	"context"
+	"slices"
 	"testing"
 	"time"
 	"uuid"
@@ -12,13 +13,13 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
-// purgeFixture is a workspace deleted before the cutoff, one deleted at
-// it and one after, each with a member and a pending invitation deleted
-// with it; and a live workspace with an invitation withdrawn before the
-// cutoff and a pending one.
+// purgeFixture is two workspaces deleted before the cutoff, one deleted at
+// it and one after, each with its admin, a member and a pending invitation
+// deleted with it; and a live workspace with an invitation withdrawn
+// before the cutoff and a pending one.
 type purgeFixture struct {
-	old, edge, recent, live uuid.UUID
-	withdrawn, pending      uuid.UUID
+	old, older, edge, recent, live uuid.UUID
+	withdrawn, pending             uuid.UUID
 }
 
 // cutoff is the time the purge deletes before.
@@ -40,6 +41,7 @@ func newPurgeFixture(t *testing.T, s *postgresadapter.Store, pool *pgxpool.Pool)
 	}
 	f := purgeFixture{
 		old:    deleted("old", cutoff().Add(-time.Microsecond)),
+		older:  deleted("older", cutoff().Add(-time.Hour)),
 		edge:   deleted("edge", cutoff()),
 		recent: deleted("recent", cutoff().Add(time.Hour)),
 	}
@@ -61,6 +63,23 @@ func countWhere(t *testing.T, pool *pgxpool.Pool, table, where string, args ...a
 	return n
 }
 
+// purgeStep is one purger and how many rows of the fixture it deletes:
+// those deleted before the cutoff. The workspaces' comes after its
+// children's, which it needs gone.
+type purgeStep struct {
+	table string
+	purge func(context.Context, time.Time, int) (int, error)
+	rows  int
+}
+
+func purgeSteps(s *postgresadapter.Store) []purgeStep {
+	return []purgeStep{
+		{"workspace_invitations", s.PurgeInvitations, 3}, // old's, older's, and the one withdrawn from live
+		{"workspace_members", s.PurgeMembers, 4},         // old's and older's admin and member
+		{"workspaces", s.PurgeWorkspaces, 2},             // old and older
+	}
+}
+
 // The purge deletes the rows deleted before the cutoff, children first,
 // and nothing else: not those deleted at it or after, nor live ones.
 func TestPurge(t *testing.T) {
@@ -68,17 +87,9 @@ func TestPurge(t *testing.T) {
 	s, pool := newStore(t)
 	f := newPurgeFixture(t, s, pool)
 
-	for _, step := range []struct {
-		name  string
-		purge func(context.Context, time.Time, int) (int, error)
-		want  int
-	}{
-		{"invitations", s.PurgeInvitations, 2}, // old's, and the one withdrawn from live
-		{"members", s.PurgeMembers, 2},         // old's admin and member
-		{"workspaces", s.PurgeWorkspaces, 1},   // old
-	} {
-		if n, err := step.purge(ctx, cutoff(), 100); err != nil || n != step.want {
-			t.Errorf("purge %s = %d, %v; want %d", step.name, n, err, step.want)
+	for _, step := range purgeSteps(s) {
+		if n, err := step.purge(ctx, cutoff(), 100); err != nil || n != step.rows {
+			t.Errorf("purge %s = %d, %v; want %d", step.table, n, err, step.rows)
 		}
 	}
 
@@ -103,16 +114,21 @@ func TestPurgeTakesBatches(t *testing.T) {
 	s, pool := newStore(t)
 	newPurgeFixture(t, s, pool)
 
-	var got []int
-	for range 3 {
-		n, err := s.PurgeInvitations(ctx, cutoff(), 1)
-		if err != nil {
-			t.Fatal(err)
+	for _, step := range purgeSteps(s) {
+		var batches []int
+		for {
+			n, err := step.purge(ctx, cutoff(), 1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			batches = append(batches, n)
+			if n == 0 || len(batches) > step.rows {
+				break
+			}
 		}
-		got = append(got, n)
-	}
-	if got[0] != 1 || got[1] != 1 || got[2] != 0 {
-		t.Errorf("batches of one = %v, want 1, 1, then 0", got)
+		if len(batches) != step.rows+1 || batches[0] != 1 {
+			t.Errorf("purge %s in batches of one = %v, want %d batches of one, then 0", step.table, batches, step.rows)
+		}
 	}
 }
 
@@ -122,19 +138,84 @@ func TestPurgeSkipsALockedRow(t *testing.T) {
 	ctx := context.Background()
 	s, pool := newStore(t)
 	f := newPurgeFixture(t, s, pool)
+	held := map[string]string{
+		"workspace_invitations": "SELECT id FROM workspace_invitations WHERE id = $1",
+		"workspace_members":     "SELECT id FROM workspace_members WHERE workspace_id = $1 LIMIT 1",
+		"workspaces":            "SELECT id FROM workspaces WHERE id = $1",
+	}
+	args := map[string]uuid.UUID{"workspace_invitations": f.withdrawn, "workspace_members": f.old, "workspaces": f.old}
+
+	for _, step := range purgeSteps(s) {
+		holder, err := pool.Begin(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var id uuid.UUID
+		if err := holder.QueryRow(ctx, held[step.table]+" FOR UPDATE", args[step.table]).Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		bounded, cancel := context.WithTimeout(ctx, 5*time.Second)
+		n, err := step.purge(bounded, cutoff(), 100)
+		cancel()
+		if err != nil || n != step.rows-1 || countWhere(t, pool, step.table, "id = $1", id) != 1 {
+			t.Errorf("purge %s beside a held row = %d, %v; want %d, the held one left, no wait", step.table, n, err, step.rows-1)
+		}
+		if err := holder.Rollback(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if n, err := step.purge(ctx, cutoff(), 100); err != nil || n != 1 {
+			t.Errorf("purge %s once the row is free = %d, %v; want it", step.table, n, err)
+		}
+	}
+}
+
+// A workspace whose children a purger skipped stays until a later run
+// takes them: deleting it would cascade to the held row and wait for it.
+func TestPurgeWorkspacesWaitsForTheirChildren(t *testing.T) {
+	ctx := context.Background()
+	s, pool := newStore(t)
+	f := newPurgeFixture(t, s, pool)
 	holder, err := pool.Begin(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = holder.Rollback(ctx) }()
-	if _, err := holder.Exec(ctx, "SELECT 1 FROM workspace_invitations WHERE id = $1 FOR UPDATE", f.withdrawn); err != nil {
-		t.Fatal(err)
+	// Old's invitation, and one of older's members.
+	for held, workspace := range map[string]uuid.UUID{
+		"SELECT 1 FROM workspace_invitations WHERE workspace_id = $1 FOR UPDATE":     f.old,
+		"SELECT 1 FROM workspace_members WHERE workspace_id = $1 LIMIT 1 FOR UPDATE": f.older,
+	} {
+		if _, err := holder.Exec(ctx, held, workspace); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	bounded, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	n, err := s.PurgeInvitations(bounded, cutoff(), 100)
-	if err != nil || n != 1 || countWhere(t, pool, "workspace_invitations", "id = $1", f.withdrawn) != 1 {
-		t.Errorf("purge beside a held row = %d, %v; want old's purged, the held one left, no wait", n, err)
+	var purged []int
+	for _, step := range purgeSteps(s) {
+		n, err := step.purge(bounded, cutoff(), 100)
+		if err != nil {
+			t.Fatalf("purge %s beside the held rows: %v", step.table, err)
+		}
+		purged = append(purged, n)
+	}
+	if !slices.Equal(purged, []int{2, 3, 0}) {
+		t.Errorf("purged %v, want every invitation and member but the held ones, and neither workspace", purged)
+	}
+
+	if err := holder.Rollback(ctx); err != nil {
+		t.Fatal(err)
+	}
+	purged = purged[:0]
+	for _, step := range purgeSteps(s) {
+		n, err := step.purge(ctx, cutoff(), 100)
+		if err != nil {
+			t.Fatal(err)
+		}
+		purged = append(purged, n)
+	}
+	if !slices.Equal(purged, []int{1, 1, 2}) {
+		t.Errorf("the next run purged %v, want the rows held before and both workspaces", purged)
 	}
 }

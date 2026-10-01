@@ -27,6 +27,9 @@ func TestLockWorkspacesOf(t *testing.T) {
 	exec(t, pool, "UPDATE workspace_members SET ended_at = $2 WHERE id = $1", ended, now())
 	gone := newWorkspace(t, s, "gone", "Gone", alice)
 	exec(t, pool, "UPDATE workspaces SET deleted_at = $2 WHERE id = $1", gone.ID, now())
+	removed := newWorkspace(t, s, "removed", "Removed", bob)
+	row := addMember(t, s, removed.ID, alice, shared.WorkspaceMember, bob)
+	exec(t, pool, "UPDATE workspace_members SET deleted_at = $2 WHERE id = $1", row, now())
 	newWorkspace(t, s, "other", "Other", bob)
 
 	err := inTx(t, pool, func(ctx context.Context) error {
@@ -42,8 +45,10 @@ func TestLockWorkspacesOf(t *testing.T) {
 				t.Errorf("%s: want FOR NO KEY UPDATE: held against FOR SHARE, not against FOR KEY SHARE", w.Slug)
 			}
 		}
-		if !lockNowait(t, pool, "workspaces", "UPDATE", left.ID) {
-			t.Error("the workspace alice left is locked, want it alone")
+		for _, w := range []domain.Workspace{left, removed} {
+			if !lockNowait(t, pool, "workspaces", "UPDATE", w.ID) {
+				t.Errorf("%s is locked, want it alone", w.Slug)
+			}
 		}
 		return nil
 	})
@@ -56,12 +61,17 @@ func TestLockWorkspacesOf(t *testing.T) {
 // waits for the second, it holds the first; while it waits for the first,
 // it holds nothing yet. Two deactivations thus never wait for each other in
 // a ring. A workspace deleted while the lock waited for it is left out.
+// The first by id is the last by slug, and its rows are written again so
+// that the tables hold them last: a lock in the slug index's order, or in
+// the tables', would take the second first.
 func TestLockWorkspacesOfLocksInIDOrder(t *testing.T) {
 	ctx := context.Background()
 	s, pool := newStore(t)
 	alice := newAccount(t, pool, "alice@corp.com")
-	first := newWorkspace(t, s, "first", "First", alice)
-	second := newWorkspace(t, s, "second", "Second", alice)
+	first := newWorkspace(t, s, "zulu", "Zulu", alice)
+	second := newWorkspace(t, s, "alpha", "Alpha", alice)
+	exec(t, pool, "UPDATE workspaces SET name = name WHERE id = $1", first.ID)
+	exec(t, pool, "UPDATE workspace_members SET role = role WHERE workspace_id = $1", first.ID)
 
 	for _, tt := range []struct {
 		held, other domain.Workspace

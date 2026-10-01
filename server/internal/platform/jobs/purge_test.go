@@ -10,8 +10,8 @@ import (
 	"time"
 )
 
-// fakePurger answers each call with the next of counts, then 0, and
-// records the calls in calls.
+// fakePurger answers each call with the next of counts, then 0 and err,
+// and records the calls in calls.
 type fakePurger struct {
 	table  string
 	counts []int
@@ -27,11 +27,12 @@ func (f *fakePurger) purger() Purger {
 		if batch != purgeBatch {
 			return 0, errors.New("not the purge's batch")
 		}
-		n := 0
-		if len(f.counts) > 0 {
-			n, f.counts = f.counts[0], f.counts[1:]
+		if len(f.counts) == 0 {
+			return 0, f.err
 		}
-		return n, f.err
+		n := f.counts[0]
+		f.counts = f.counts[1:]
+		return n, nil
 	}}
 }
 
@@ -60,18 +61,22 @@ func TestPurgeRunsThePurgersInOrder(t *testing.T) {
 }
 
 // A failure stops the purge before the purgers after it: their tables may
-// still be referenced by the rows the failed one left.
+// still be referenced by the rows the failed one left. The batches before
+// it are gone, and logged.
 func TestPurgeStopsAtAFailure(t *testing.T) {
 	var calls []string
 	failed := errors.New("connection reset")
-	children := &fakePurger{table: "children", err: failed, calls: &calls}
+	children := &fakePurger{table: "children", counts: []int{purgeBatch}, err: failed, calls: &calls}
 	parents := &fakePurger{table: "parents", calls: &calls}
 	var logs logBuffer
 
 	err := purge(context.Background(), []Purger{children.purger(), parents.purger()}, time.Now(), newLogger(&logs))
 
-	if !errors.Is(err, failed) || !strings.Contains(err.Error(), "purge children") || !slices.Equal(calls, []string{"children"}) {
-		t.Errorf("purge() = %v after %q; want the children's failure, the parents untouched", err, calls)
+	if !errors.Is(err, failed) || !strings.Contains(err.Error(), "purge children") || !slices.Equal(calls, []string{"children", "children"}) {
+		t.Errorf("purge() = %v after %q; want the children's failure on their second batch, the parents untouched", err, calls)
+	}
+	if got := logs.String(); !strings.Contains(got, `msg="soft-deleted rows purged" table=children rows=1000`) {
+		t.Errorf("logs = %s; want the children's first batch, gone before the failure", got)
 	}
 }
 

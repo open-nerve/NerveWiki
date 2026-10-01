@@ -64,8 +64,8 @@ func TestEverySoftDeletedTableHasAPurger(t *testing.T) {
 }
 
 // Every foreign key into a purged table comes from a table purged before
-// it: a parent row goes after its children, which a purger may have had to
-// skip for a run.
+// it: a parent row goes after its children, or, when a purger skipped one
+// of them, in a later run with it.
 func TestPurgersComeBeforeTheTablesTheyReference(t *testing.T) {
 	pool := connect(t, pgtest.NewDatabase(t))
 	tables := purgedTables(pool)

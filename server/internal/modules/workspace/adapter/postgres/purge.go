@@ -30,7 +30,8 @@ func (s *Store) PurgeMembers(ctx context.Context, before time.Time, batch int) (
 	return int(n), nil
 }
 
-// PurgeWorkspaces purges the workspaces.
+// PurgeWorkspaces purges the workspaces whose members and invitations are
+// gone.
 func (s *Store) PurgeWorkspaces(ctx context.Context, before time.Time, batch int) (int, error) {
 	n, err := s.queries(ctx).PurgeWorkspaces(ctx, gen.PurgeWorkspacesParams{Before: before, Batch: int32(batch)})
 	if err != nil {
