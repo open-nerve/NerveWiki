@@ -5,8 +5,8 @@
 ## 任务
 
 1. 存储：按账户与一组工作区，`FOR NO KEY UPDATE`、按 `id` 升序锁住他有有效成员行的未删除笔记本，带各自的有效管理员数与别的有效显式成员数；结束这些成员行；设置无主；按原所有者锁住一个工作区里他名下的无主笔记本；清除无主；恢复他的行为 `admin`；插入审计。
-2. `notebook/app/cascade.go`：`MembershipEndVeto`（只对 `Voluntary`）、`MembershipEnd`（结束、无主、每个工作区一次可见性）、`MembershipRestore`（归还、审计 `returned`、可见性，返回数量）。
-3. 模块根 `cascade.go`：`NewMembershipEnd(pool, visibility)`、`NewMembershipRestore(pool, visibility)` 与它们的值类型（与 workspace 的逐字段相同）。
+2. `notebook/app/cascade.go`：`MembershipEnd` 一个类型两个方法（实际）：`VetoMembershipEnd`（只对 `Voluntary`）、`MembershipEnded`（结束、无主、每个工作区一次可见性）；`MembershipRestore.MembershipRestored`（归还、审计 `returned`、可见性，返回数量）。
+3. 模块根 `cascade.go`：`NewMembershipEnd(pool, workspaces, subscribers)`（实际：规则二的原因经 `WorkspaceSlugs` 读 slug）、`NewMembershipRestore(pool, subscribers)` 与它们的值类型（恢复的与 workspace 的逐字段相同；结束的以 `Voluntary` 代替 `Cause`，组合根转换）。
 4. 组合根：`workspaceRegistrantsWith` 加结束的否决者与订阅者、恢复的订阅者；按 `EndCause` 转换为 `Voluntary`；`workspaces reactivate-member` 的输出带归还的数量（计数的包装）。
 5. 契约：`leaveWorkspace`、`deactivateMe` 的 `x-problem-codes` 加 `notebook.sole_admin`；前端文案改为不指某一个笔记本。
 
