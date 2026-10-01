@@ -147,6 +147,8 @@ export const en = {
   "deactivate.cancel": "Cancel",
   "deactivate.confirm": "Deactivate",
   "deactivate.sending": "Deactivating…",
+  "deactivate.soleAdmin":
+    "You are the only admin of a workspace that has other members. Make another member an admin there first (workspace settings, Members), then deactivate.",
   "settings.tokens": "Access tokens",
   "tokens.body":
     "A personal access token lets a program, such as an agent, act as your account through the API. It works until it expires or you revoke it; changing your password does not revoke it.",

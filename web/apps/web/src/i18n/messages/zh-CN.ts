@@ -140,6 +140,8 @@ export const zhCN: Messages = {
   "deactivate.cancel": "取消",
   "deactivate.confirm": "停用",
   "deactivate.sending": "停用中…",
+  "deactivate.soleAdmin":
+    "你是某个还有其他成员的工作区唯一的管理员。先在那里（工作区设置 → 成员）让另一位成员成为管理员，再停用。",
   "settings.tokens": "访问令牌",
   "tokens.body":
     "个人访问令牌让程序（例如 agent）以你的身份调用接口。它在到期或被撤销之前一直有效；修改密码不会撤销它。",
