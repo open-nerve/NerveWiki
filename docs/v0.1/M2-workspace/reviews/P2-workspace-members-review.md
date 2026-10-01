@@ -21,7 +21,7 @@
 | T6 | Nit | `lockMember`、`withProfiles` 多个用例共用，却放在其中一个用例的文件里 | 移到 `app/members.go`，`ListedMember` 一起 |
 | T7 | Nit | 组合根的字段叫 `deletionFollowers`，类型叫 `WorkspaceDeletionSubscriber` | 改名 `deletionSubscribers` |
 | T8 | Nit | identity 领域的 `Profile` 注释写着"what the other members of a workspace see"，领域层出现别的模块的概念 | 改为 "what other accounts see of an account" |
-| T9 | Nit | 模块根只给了 `EndCause` 的别名，没有导出三个常量；M3 的注册者经组合根转换时只能写字符串 | 留给 M3：现在没有使用者（P2 第 7 节） |
+| T9 | Nit | 模块根只给了 `EndCause` 的别名，没有导出三个常量；M3 的注册者经组合根转换时只能写字符串 | 留给 M3：现在没有使用者（P2 第 7 节）；见[M3 的移交](../../M3-notebook/handoffs/M2-workspace.md)第 2 项 |
 | T10 | Nit | `workspace.member_not_found` 的文案"这个人已经不是成员"：调用者自己看不到那个工作区时答的也是这个码 | 改为"找不到这个成员，或者你已无权访问这个工作区"，两种语言 |
 
 ## 疑问与判断
