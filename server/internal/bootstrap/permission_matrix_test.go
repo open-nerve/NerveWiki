@@ -83,11 +83,45 @@ func workspaceColumns() []caller {
 	return []caller{callerAdmin, callerMember, callerGuest, callerNever, callerEnded, callerDeleted}
 }
 
+// The columns of the notebook level (M3/P1 design 3.11): each an account
+// and how it stands to the notebook its cells target (notebookOf), in lab.
+const (
+	callerNotebookAdmin     caller = "notebook admin"
+	callerNotebookEditor    caller = "notebook editor"
+	callerNotebookReader    caller = "notebook reader guest"
+	callerOutsideAdmin      caller = "workspace admin outside"
+	callerOutsideMember     caller = "workspace member outside"
+	callerDefaultEditor     caller = "default editor"
+	callerDefaultReader     caller = "default reader admin"
+	callerOutsideGuest      caller = "guest outside"
+	callerNotebookEnded     caller = "notebook membership ended"
+	callerNotebookDeleted   caller = "notebook deleted"
+	callerOutsideWorkspace  caller = "outside the workspace"
+	callerGuestReaderOfOpen caller = "guest reader open"
+)
+
+// notebookColumns are the columns of the notebook level.
+func notebookColumns() []caller {
+	return []caller{
+		callerNotebookAdmin, callerNotebookEditor, callerNotebookReader, callerOutsideAdmin, callerOutsideMember,
+		callerDefaultEditor, callerDefaultReader, callerOutsideGuest, callerNotebookEnded, callerNotebookDeleted,
+		callerOutsideWorkspace, callerGuestReaderOfOpen,
+	}
+}
+
+// allColumns are every column: each has an account of its own.
+func allColumns() []caller { return slices.Concat(workspaceColumns(), notebookColumns()) }
+
 // workspaceOf is the slug of the workspace a column's cells target: the
-// prepared workspace, or the deleted one its caller was the admin of.
+// prepared workspace, or the deleted one its caller was the admin of; lab
+// for the notebook columns, whose memberships stay out of acme's member
+// list.
 func workspaceOf(c caller) string {
-	if c == callerDeleted {
+	switch {
+	case c == callerDeleted:
 		return "gone"
+	case slices.Contains(notebookColumns(), c):
+		return "lab"
 	}
 	return "acme"
 }
@@ -116,13 +150,23 @@ func cellForbidden() cell { return cell{http.StatusForbidden, "forbidden"} }
 type matrixRow struct {
 	op      string // operationId
 	variant string // what sets the row apart from the operation's other rows
-	write   bool   // each cell on a copy of its own
+	// columns are the row's columns: the workspace level's when nil.
+	columns []caller
+	write   bool // each cell on a copy of its own
 	config  func(*config.Config)
 	request func(c caller, s seeded) (method, path, body string)
 	cells   map[caller]cell
 	// check, when set, runs on each answer that is not a problem: what the
 	// answer holds for that caller.
 	check func(t *testing.T, c caller, s seeded, answer string)
+}
+
+// callers are the row's columns.
+func (r matrixRow) callers() []caller {
+	if r.columns == nil {
+		return workspaceColumns()
+	}
+	return r.columns
 }
 
 func (r matrixRow) name() string {
@@ -156,7 +200,7 @@ func decodeAnswer(t *testing.T, answer string, v any) {
 
 // matrixRows are the rows, each module's from its file.
 func matrixRows() []matrixRow {
-	return slices.Concat(workspaceMatrixRows(), memberMatrixRows(), invitationMatrixRows())
+	return slices.Concat(workspaceMatrixRows(), memberMatrixRows(), invitationMatrixRows(), notebookMatrixRows())
 }
 
 // matrixApps is how many cells may run an app of their own at once: each
@@ -182,7 +226,7 @@ func TestPermissionMatrix(t *testing.T) {
 		}
 	})
 	for _, r := range matrixRows() {
-		for _, c := range workspaceColumns() {
+		for _, c := range r.callers() {
 			want, ok := r.cells[c]
 			if !ok {
 				continue // TestThePermissionMatrixCoversEveryOperation reports it

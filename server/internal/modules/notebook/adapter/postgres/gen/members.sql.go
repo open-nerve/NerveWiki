@@ -69,3 +69,21 @@ func (q *Queries) DeleteMembersOf(ctx context.Context, arg DeleteMembersOfParams
 	_, err := q.db.Exec(ctx, deleteMembersOf, arg.Now, arg.By, arg.NotebookID)
 	return err
 }
+
+const deleteMembersOfNotebooks = `-- name: DeleteMembersOfNotebooks :exec
+UPDATE notebook_members
+SET deleted_at = $1::timestamptz, updated_by_id = $2, updated_at = $1
+WHERE notebook_id = ANY($3::uuid[]) AND deleted_at IS NULL
+`
+
+type DeleteMembersOfNotebooksParams struct {
+	Now         time.Time
+	By          uuid.UUID
+	NotebookIds []uuid.UUID
+}
+
+// DeleteMembersOf for the notebooks a workspace's deletion deleted.
+func (q *Queries) DeleteMembersOfNotebooks(ctx context.Context, arg DeleteMembersOfNotebooksParams) error {
+	_, err := q.db.Exec(ctx, deleteMembersOfNotebooks, arg.Now, arg.By, arg.NotebookIds)
+	return err
+}

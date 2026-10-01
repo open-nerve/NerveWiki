@@ -1,0 +1,254 @@
+# notebook 模块的接口：笔记本、成员与无主笔记本。生成的 Go 代码在
+# server/internal/modules/notebook/adapter/http/gen（make gen-go）。
+openapi: 3.1.0
+info:
+  title: Nerve Wiki notebook API
+  version: v0
+paths:
+  /api/v0/workspaces/{slug}/notebooks:
+    parameters:
+      - $ref: "#/components/parameters/Slug"
+    get:
+      operationId: listNotebooks
+      tags: [notebook]
+      summary: List the notebooks the caller sees in a workspace
+      description: >-
+        The workspace's notebooks the caller has a role in: those it is a
+        member of, and, for the workspace's admins and members, those open to
+        the workspace; each with the caller's role in it, by name,
+        case-insensitively. A private notebook the caller is no member of is
+        not listed, to the workspace's admins neither. A workspace that does
+        not exist, is deleted, or that the caller is no active member of is
+        workspace.not_found. The list is not paged.
+      security: [{ bearer: [] }]
+      x-problem-codes: [workspace.not_found]
+      responses:
+        "200":
+          description: The notebooks the caller sees.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotebookList"
+        default:
+          $ref: "#/components/responses/Problem"
+    post:
+      operationId: createNotebook
+      tags: [notebook]
+      summary: Create a notebook
+      description: >-
+        Creates a notebook in the workspace whose admin is the caller; the
+        workspace's admins and members can, its guests cannot (forbidden). A
+        workspace that does not exist, is deleted, or that the caller is no
+        active member of is workspace.not_found; the values are checked after
+        both.
+      security: [{ bearer: [] }]
+      x-problem-codes: [workspace.not_found, forbidden, validation_failed]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NotebookCreate"
+      responses:
+        "201":
+          description: The notebook, with the caller as its admin.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Notebook"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v0/notebooks/{notebook_id}:
+    parameters:
+      - $ref: "#/components/parameters/NotebookID"
+    get:
+      operationId: getNotebook
+      tags: [notebook]
+      summary: Get a notebook
+      description: >-
+        The notebook, with the caller's role in it. A notebook that does not
+        exist, is deleted, or that the caller has no role in is
+        notebook.not_found alike.
+      security: [{ bearer: [] }]
+      x-problem-codes: [notebook.not_found]
+      responses:
+        "200":
+          description: The notebook.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Notebook"
+        default:
+          $ref: "#/components/responses/Problem"
+    patch:
+      operationId: updateNotebook
+      tags: [notebook]
+      summary: Change a notebook's name or workspace access
+      description: >-
+        Changes the fields sent and answers the notebook; only its admins
+        can. A body without any field changes nothing. A notebook that does
+        not exist, is deleted, or that the caller has no role in is
+        notebook.not_found; an editor or a reader gets forbidden; the values
+        are checked after both.
+      security: [{ bearer: [] }]
+      x-problem-codes: [notebook.not_found, forbidden, validation_failed]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NotebookUpdate"
+      responses:
+        "200":
+          description: The notebook, changed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Notebook"
+        default:
+          $ref: "#/components/responses/Problem"
+    delete:
+      operationId: deleteNotebook
+      tags: [notebook]
+      summary: Delete a notebook
+      description: >-
+        Deletes the notebook with every membership of it; only its admins
+        can. No one sees it afterwards. A notebook that does not exist, is
+        deleted, or that the caller has no role in is notebook.not_found; an
+        editor or a reader gets forbidden.
+      security: [{ bearer: [] }]
+      x-problem-codes: [notebook.not_found, forbidden]
+      responses:
+        "204":
+          description: The notebook is deleted.
+        default:
+          $ref: "#/components/responses/Problem"
+components:
+  # 与 api/openapi.yaml 的相同：打包时丢掉模块文件的 securitySchemes，oapi-codegen 读这一份
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+  parameters:
+    Slug:
+      name: slug
+      in: path
+      required: true
+      description: >-
+        The workspace's slug. It carries no pattern here: a slug spelled
+        wrong names no workspace, which the operation answers itself.
+      schema:
+        type: string
+    NotebookID:
+      name: notebook_id
+      in: path
+      required: true
+      description: The notebook's id.
+      schema:
+        type: string
+        format: uuid
+  responses:
+    Problem:
+      description: Error (RFC 9457 problem details).
+      headers:
+        Retry-After:
+          description: >-
+            Whole seconds to wait before trying again, rounded up; sent with
+            rate_limited and server_busy.
+          schema:
+            type: integer
+            minimum: 1
+        WWW-Authenticate:
+          description: >-
+            Sent with every 401 (RFC 9110 15.5.2): Bearer error="invalid_token"
+            (RFC 6750 3) when the bearer token sent is refused before the
+            operation runs, being invalid or expired; plain Bearer for every
+            other 401, including a credential that the operation finds revoked
+            while it runs.
+          schema:
+            type: string
+      content:
+        application/problem+json:
+          schema:
+            $ref: "../common.yaml#/components/schemas/Problem"
+  schemas:
+    NotebookRole:
+      description: >-
+        A role in a notebook: admin manages the notebook and its members,
+        editor writes, reader reads. Rules compare roles by set; which of two
+        is higher only the order reader < editor < admin says.
+      type: string
+      enum: [admin, editor, reader]
+    WorkspaceAccess:
+      description: >-
+        How open a notebook is to its workspace: the role it gives the
+        workspace's admins and members who are not its members (viewer gives
+        reader, editor gives editor; none gives nothing). Guests have their
+        own membership's role alone.
+      type: string
+      enum: [none, viewer, editor]
+    Notebook:
+      description: >-
+        A notebook, with the caller's effective role in it: the higher of its
+        membership's role and the one the workspace access gives it.
+      type: object
+      additionalProperties: false
+      required: [id, workspace_id, name, workspace_access, role, member_count, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        workspace_access:
+          $ref: "#/components/schemas/WorkspaceAccess"
+        role:
+          $ref: "#/components/schemas/NotebookRole"
+        member_count:
+          description: >-
+            How many active members the notebook has. A private notebook
+            with one member is the caller's own ("My notebooks").
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    NotebookList:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Notebook"
+    NotebookCreate:
+      description: A new notebook; its workspace access is none when absent.
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name:
+          $ref: "#/components/schemas/NotebookName"
+        workspace_access:
+          $ref: "#/components/schemas/WorkspaceAccess"
+    NotebookUpdate:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          $ref: "#/components/schemas/NotebookName"
+        workspace_access:
+          $ref: "#/components/schemas/WorkspaceAccess"
+    NotebookName:
+      description: >-
+        1–255 bytes after the surrounding blanks are trimmed and the text is
+        in NFC; none of / \ : * ? " < > | # ^ [ ] nor control characters; not
+        starting or ending with a dot; no name Windows reserves (CON, COM1, …).
+        It is the folder's name when the notebook is exported.
+      type: string

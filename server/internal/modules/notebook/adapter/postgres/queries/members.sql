@@ -13,3 +13,9 @@ WHERE notebook_id = sqlc.arg(notebook_id) AND ended_at IS NULL AND deleted_at IS
 UPDATE notebook_members
 SET deleted_at = sqlc.arg(now)::timestamptz, updated_by_id = sqlc.arg(by), updated_at = sqlc.arg(now)
 WHERE notebook_id = sqlc.arg(notebook_id) AND deleted_at IS NULL;
+
+-- name: DeleteMembersOfNotebooks :exec
+-- DeleteMembersOf for the notebooks a workspace's deletion deleted.
+UPDATE notebook_members
+SET deleted_at = sqlc.arg(now)::timestamptz, updated_by_id = sqlc.arg(by), updated_at = sqlc.arg(now)
+WHERE notebook_id = ANY(sqlc.arg(notebook_ids)::uuid[]) AND deleted_at IS NULL;

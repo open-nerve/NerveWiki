@@ -478,6 +478,64 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v0/workspaces/{slug}/notebooks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The workspace's slug. It carries no pattern here: a slug spelled wrong names no workspace, which the operation answers itself. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List the notebooks the caller sees in a workspace
+         * @description The workspace's notebooks the caller has a role in: those it is a member of, and, for the workspace's admins and members, those open to the workspace; each with the caller's role in it, by name, case-insensitively. A private notebook the caller is no member of is not listed, to the workspace's admins neither. A workspace that does not exist, is deleted, or that the caller is no active member of is workspace.not_found. The list is not paged.
+         */
+        get: operations["listNotebooks"];
+        put?: never;
+        /**
+         * Create a notebook
+         * @description Creates a notebook in the workspace whose admin is the caller; the workspace's admins and members can, its guests cannot (forbidden). A workspace that does not exist, is deleted, or that the caller is no active member of is workspace.not_found; the values are checked after both.
+         */
+        post: operations["createNotebook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v0/notebooks/{notebook_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Get a notebook
+         * @description The notebook, with the caller's role in it. A notebook that does not exist, is deleted, or that the caller has no role in is notebook.not_found alike.
+         */
+        get: operations["getNotebook"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete a notebook
+         * @description Deletes the notebook with every membership of it; only its admins can. No one sees it afterwards. A notebook that does not exist, is deleted, or that the caller has no role in is notebook.not_found; an editor or a reader gets forbidden.
+         */
+        delete: operations["deleteNotebook"];
+        options?: never;
+        head?: never;
+        /**
+         * Change a notebook's name or workspace access
+         * @description Changes the fields sent and answers the notebook; only its admins can. A body without any field changes nothing. A notebook that does not exist, is deleted, or that the caller has no role in is notebook.not_found; an editor or a reader gets forbidden; the values are checked after both.
+         */
+        patch: operations["updateNotebook"];
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -745,6 +803,46 @@ export interface components {
              */
             reason?: "invalid" | "reserved" | "taken";
         };
+        /**
+         * @description How open a notebook is to its workspace: the role it gives the workspace's admins and members who are not its members (viewer gives reader, editor gives editor; none gives nothing). Guests have their own membership's role alone.
+         * @enum {string}
+         */
+        WorkspaceAccess: "none" | "viewer" | "editor";
+        /**
+         * @description A role in a notebook: admin manages the notebook and its members, editor writes, reader reads. Rules compare roles by set; which of two is higher only the order reader < editor < admin says.
+         * @enum {string}
+         */
+        NotebookRole: "admin" | "editor" | "reader";
+        /** @description A notebook, with the caller's effective role in it: the higher of its membership's role and the one the workspace access gives it. */
+        Notebook: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            workspace_id: string;
+            name: string;
+            workspace_access: components["schemas"]["WorkspaceAccess"];
+            role: components["schemas"]["NotebookRole"];
+            /** @description How many active members the notebook has. A private notebook with one member is the caller's own ("My notebooks"). */
+            member_count: number;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        NotebookList: {
+            data: components["schemas"]["Notebook"][];
+        };
+        /** @description 1–255 bytes after the surrounding blanks are trimmed and the text is in NFC; none of / \ : * ? " < > | # ^ [ ] nor control characters; not starting or ending with a dot; no name Windows reserves (CON, COM1, …). It is the folder's name when the notebook is exported. */
+        NotebookName: string;
+        /** @description A new notebook; its workspace access is none when absent. */
+        NotebookCreate: {
+            name: components["schemas"]["NotebookName"];
+            workspace_access?: components["schemas"]["WorkspaceAccess"];
+        };
+        NotebookUpdate: {
+            name?: components["schemas"]["NotebookName"];
+            workspace_access?: components["schemas"]["WorkspaceAccess"];
+        };
     };
     responses: {
         /** @description Error (RFC 9457 problem details). */
@@ -768,6 +866,8 @@ export interface components {
         WorkspaceMemberID: string;
         /** @description The id of an invitation, as its link carries it. */
         WorkspaceInvitationID: string;
+        /** @description The notebook's id. */
+        NotebookID: string;
     };
     requestBodies: never;
     headers: never;
@@ -805,10 +905,18 @@ export type InvitationToken = components['schemas']['InvitationToken'];
 export type InvitedWorkspace = components['schemas']['InvitedWorkspace'];
 export type InvitationPreview = components['schemas']['InvitationPreview'];
 export type SlugAvailability = components['schemas']['SlugAvailability'];
+export type WorkspaceAccess = components['schemas']['WorkspaceAccess'];
+export type NotebookRole = components['schemas']['NotebookRole'];
+export type Notebook = components['schemas']['Notebook'];
+export type NotebookList = components['schemas']['NotebookList'];
+export type NotebookName = components['schemas']['NotebookName'];
+export type NotebookCreate = components['schemas']['NotebookCreate'];
+export type NotebookUpdate = components['schemas']['NotebookUpdate'];
 export type ResponseProblem = components['responses']['Problem'];
 export type ParameterSlug = components['parameters']['Slug'];
 export type ParameterWorkspaceMemberId = components['parameters']['WorkspaceMemberID'];
 export type ParameterWorkspaceInvitationId = components['parameters']['WorkspaceInvitationID'];
+export type ParameterNotebookId = components['parameters']['NotebookID'];
 export type $defs = Record<string, never>;
 export interface operations {
     register: {
@@ -1475,6 +1583,132 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SlugAvailability"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    listNotebooks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The workspace's slug. It carries no pattern here: a slug spelled wrong names no workspace, which the operation answers itself. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The notebooks the caller sees. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotebookList"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    createNotebook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The workspace's slug. It carries no pattern here: a slug spelled wrong names no workspace, which the operation answers itself. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotebookCreate"];
+            };
+        };
+        responses: {
+            /** @description The notebook, with the caller as its admin. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Notebook"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    getNotebook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The notebook. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Notebook"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    deleteNotebook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The notebook is deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    updateNotebook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotebookUpdate"];
+            };
+        };
+        responses: {
+            /** @description The notebook, changed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Notebook"];
                 };
             };
             default: components["responses"]["Problem"];

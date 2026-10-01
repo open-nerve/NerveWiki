@@ -166,3 +166,21 @@ func (s *Store) NotebookFacts(ctx context.Context, notebookID, userID uuid.UUID)
 	}
 	return app.Fact{Found: true, WorkspaceID: row.WorkspaceID, Access: shared.WorkspaceAccess(row.WorkspaceAccess), Role: role(row.Role)}, nil
 }
+
+// DeleteNotebooksOf implements app.NotebooksDeleter: the notebooks, then
+// their member rows, at one time. The caller's transaction makes the two
+// one.
+func (s *Store) DeleteNotebooksOf(ctx context.Context, workspaceID, by uuid.UUID, at time.Time) ([]uuid.UUID, error) {
+	q := s.queries(ctx)
+	ids, err := q.DeleteNotebooksOf(ctx, gen.DeleteNotebooksOfParams{WorkspaceID: workspaceID, By: by, Now: at})
+	if err != nil {
+		return nil, fmt.Errorf("delete notebooks of workspace: %w", err)
+	}
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	if err := q.DeleteMembersOfNotebooks(ctx, gen.DeleteMembersOfNotebooksParams{NotebookIds: ids, By: by, Now: at}); err != nil {
+		return nil, fmt.Errorf("delete members of notebooks: %w", err)
+	}
+	return ids, nil
+}

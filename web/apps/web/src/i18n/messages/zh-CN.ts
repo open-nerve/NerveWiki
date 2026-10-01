@@ -205,6 +205,7 @@ export const zhCN: Messages = {
   "problem.workspace.invitation_email_mismatch": "这个邀请是发给另一个邮箱的，请用那个邮箱登录后再接受。",
   "problem.workspace.no_admin":
     "这个工作区现在没有管理员：要等它重新有了管理员，才能接受这份邀请。请联系服务器管理员。",
+  "problem.notebook.not_found": "这个笔记本不存在，或者你无权访问它。",
   "problem.network": "连不上服务器，请检查网络后重试。",
   "problem.unavailable": "暂时连不上服务器。你仍在登录状态，请稍后重试。",
   "problem.storage": "此浏览器无法保存登录状态：本站的存储空间已满或被阻止。请释放空间或允许本站的网站数据后重试。",

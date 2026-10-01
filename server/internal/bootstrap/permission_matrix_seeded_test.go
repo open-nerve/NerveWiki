@@ -27,6 +27,14 @@ import (
 // ended member of acme is still a member: a role read in the wrong
 // workspace lets either into acme. acme and gone each have an invitation
 // pending to an address of no account.
+//
+// A fourth, lab, is the notebook columns' (M3/P1 design 3.11): priv, a
+// private notebook of an admin, an editor, a guest reader and an ended
+// member; team, open to the workspace as editor, and wiki, as viewer, both
+// of the workspace's admin outside priv, team with a guest reader; gone-nb,
+// deleted, of the deleted notebook's column. other has other-nb, whose
+// admin is the column outside lab: a role read in the wrong workspace or
+// notebook lets it into priv.
 
 // matrixWorkspace is a seeded workspace and the column that is its admin.
 type matrixWorkspace struct {
@@ -35,7 +43,7 @@ type matrixWorkspace struct {
 }
 
 func matrixWorkspaces() []matrixWorkspace {
-	return []matrixWorkspace{{"acme", callerAdmin}, {"gone", callerDeleted}, {"other", callerNever}}
+	return []matrixWorkspace{{"acme", callerAdmin}, {"gone", callerDeleted}, {"other", callerNever}, {"lab", callerOutsideAdmin}}
 }
 
 // matrixMembership is a seeded membership. The ended member's of acme is
@@ -56,6 +64,58 @@ func matrixMemberships() []matrixMembership {
 		{"gone", callerMember, shared.WorkspaceMember},
 		{"other", callerNever, shared.WorkspaceAdmin},
 		{"other", callerEnded, shared.WorkspaceMember},
+		{"other", callerOutsideWorkspace, shared.WorkspaceMember},
+		{"lab", callerNotebookAdmin, shared.WorkspaceMember},
+		{"lab", callerNotebookEditor, shared.WorkspaceMember},
+		{"lab", callerNotebookReader, shared.WorkspaceGuest},
+		{"lab", callerOutsideAdmin, shared.WorkspaceAdmin},
+		{"lab", callerOutsideMember, shared.WorkspaceMember},
+		{"lab", callerDefaultEditor, shared.WorkspaceMember},
+		{"lab", callerDefaultReader, shared.WorkspaceAdmin},
+		{"lab", callerOutsideGuest, shared.WorkspaceGuest},
+		{"lab", callerNotebookEnded, shared.WorkspaceMember},
+		{"lab", callerNotebookDeleted, shared.WorkspaceMember},
+		{"lab", callerGuestReaderOfOpen, shared.WorkspaceGuest},
+	}
+}
+
+// matrixNotebook is a seeded notebook, by its name.
+type matrixNotebook struct {
+	name    string
+	slug    string
+	access  shared.WorkspaceAccess
+	deleted bool // with its members, through SQL
+}
+
+func matrixNotebooks() []matrixNotebook {
+	return []matrixNotebook{
+		{"priv", "lab", shared.AccessNone, false},
+		{"team", "lab", shared.AccessEditor, false},
+		{"wiki", "lab", shared.AccessViewer, false},
+		{"gone-nb", "lab", shared.AccessEditor, true},
+		{"other-nb", "other", shared.AccessNone, false},
+	}
+}
+
+// matrixNotebookMember is a seeded membership of a notebook.
+type matrixNotebookMember struct {
+	notebook string
+	c        caller
+	role     shared.NotebookRole
+	ended    bool
+}
+
+func matrixNotebookMembers() []matrixNotebookMember {
+	return []matrixNotebookMember{
+		{"priv", callerNotebookAdmin, shared.NotebookAdmin, false},
+		{"priv", callerNotebookEditor, shared.NotebookEditor, false},
+		{"priv", callerNotebookReader, shared.NotebookReader, false},
+		{"priv", callerNotebookEnded, shared.NotebookReader, true},
+		{"team", callerOutsideAdmin, shared.NotebookAdmin, false},
+		{"team", callerGuestReaderOfOpen, shared.NotebookReader, false},
+		{"wiki", callerOutsideAdmin, shared.NotebookAdmin, false},
+		{"gone-nb", callerNotebookDeleted, shared.NotebookAdmin, false},
+		{"other-nb", callerOutsideWorkspace, shared.NotebookAdmin, false},
 	}
 }
 
@@ -79,10 +139,15 @@ type seeded struct {
 	workspaces  map[string]uuid.UUID // by slug
 	memberships map[string]uuid.UUID // by slug/caller
 	invitations map[string]uuid.UUID // by slug
+	notebooks   map[string]uuid.UUID // by name
 }
 
 func newSeeded() seeded {
-	s := seeded{workspaces: map[string]uuid.UUID{}, memberships: map[string]uuid.UUID{}, invitations: map[string]uuid.UUID{}}
+	s := seeded{workspaces: map[string]uuid.UUID{}, memberships: map[string]uuid.UUID{}, invitations: map[string]uuid.UUID{},
+		notebooks: map[string]uuid.UUID{}}
+	for _, n := range matrixNotebooks() {
+		s.notebooks[n.name] = uuid.NewV7()
+	}
 	for _, w := range matrixWorkspaces() {
 		s.workspaces[w.slug] = uuid.NewV7()
 	}
@@ -133,8 +198,23 @@ func (s seeded) invitation(slug string) uuid.UUID {
 	return id
 }
 
+// notebook is the id of the notebook name.
+func (s seeded) notebook(name string) uuid.UUID {
+	id, ok := s.notebooks[name]
+	if !ok {
+		s.t.Helper()
+		s.t.Fatalf("no notebook %s is seeded", name)
+	}
+	return id
+}
+
 // workspaceOfRow is the slug of the workspace a seeded row's id is in.
 func (s seeded) workspaceOfRow(id uuid.UUID) (string, bool) {
+	for _, n := range matrixNotebooks() {
+		if s.notebooks[n.name] == id {
+			return n.slug, true
+		}
+	}
 	for key, seededID := range s.memberships {
 		if seededID == id {
 			slug, _, _ := strings.Cut(key, "/")
@@ -172,7 +252,7 @@ func (d matrixData) config(t *testing.T, url string, change func(*config.Config)
 
 // prepareMatrix fills a database for the matrix: an account for each
 // column, registered through the API for its token; the workspaces,
-// memberships and invitations through SQL, with the ids newSeeded fixed
+// memberships, invitations and notebooks through SQL, with the ids newSeeded fixed
 // (the coverage check needs them before any database: members joining by
 // invitation would get theirs from the server, M2/P3 design 3.10); then,
 // through the API, acme's admin removes the ended member, and gone's admin
@@ -185,7 +265,7 @@ func prepareMatrix(t *testing.T) matrixData {
 	prepared := t.Run("prepare", func(t *testing.T) {
 		contract := apitest.Load(t)
 		base := startApp(t, d.config(t, d.url, nil), migrations.FS())
-		for _, c := range workspaceColumns() {
+		for _, c := range allColumns() {
 			d.tokens[c] = registerAccount(t, contract, base, emailOf(c)).AccessToken
 		}
 		pool := connect(t, d.url)
@@ -212,6 +292,26 @@ func prepareMatrix(t *testing.T) matrixData {
 				"SELECT $1, w.id, $3, 'member', w.created_by_id, w.created_by_id, $4, $4 FROM workspaces w WHERE w.slug = $2",
 				d.seeded.invitations[slug], slug, matrixInvitee, now)
 		}
+		for _, n := range matrixNotebooks() {
+			exec("INSERT INTO notebooks (id, workspace_id, name, workspace_access, created_by_id, updated_by_id, created_at, updated_at) "+
+				"SELECT $1, w.id, $3, $4, w.created_by_id, w.created_by_id, $5, $5 FROM workspaces w WHERE w.slug = $2",
+				d.seeded.notebooks[n.name], n.slug, n.name, string(n.access), now)
+		}
+		for _, m := range matrixNotebookMembers() {
+			var ended *time.Time
+			if m.ended {
+				ended = &now
+			}
+			exec("INSERT INTO notebook_members (id, notebook_id, user_id, role, created_by_id, updated_by_id, created_at, updated_at, ended_at) "+
+				"VALUES (gen_random_uuid(), $1, "+account+", $3, "+account+", "+account+", $4, $4, $5)",
+				d.seeded.notebooks[m.notebook], emailOf(m.c), string(m.role), now, ended)
+		}
+		for _, n := range matrixNotebooks() {
+			if n.deleted {
+				exec("UPDATE notebooks SET deleted_at = $2 WHERE id = $1", d.seeded.notebooks[n.name], now)
+				exec("UPDATE notebook_members SET deleted_at = $2 WHERE notebook_id = $1", d.seeded.notebooks[n.name], now)
+			}
+		}
 		for _, end := range []struct {
 			by   caller
 			path string
@@ -227,7 +327,7 @@ func prepareMatrix(t *testing.T) matrixData {
 	if !prepared {
 		t.FailNow()
 	}
-	if len(d.tokens) != len(workspaceColumns()) {
+	if len(d.tokens) != len(allColumns()) {
 		t.Fatal("prepare did not run: a -run of some cells must select prepare too, e.g. -run 'TestPermissionMatrix/(prepare|getWorkspace)'")
 	}
 	return d

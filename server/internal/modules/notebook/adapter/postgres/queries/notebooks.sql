@@ -54,3 +54,15 @@ FROM notebooks n
 LEFT JOIN notebook_members m
     ON m.notebook_id = n.id AND m.user_id = sqlc.arg(user_id) AND m.ended_at IS NULL AND m.deleted_at IS NULL
 WHERE n.id = sqlc.arg(notebook_id) AND n.deleted_at IS NULL;
+
+-- name: DeleteNotebooksOf :many
+-- Every notebook not deleted of the workspace, at the workspace's deletion time, by its deleter; their ids in
+-- order. The deletion holds the workspace's row FOR NO KEY UPDATE, and every notebook write of the workspace
+-- takes it FOR SHARE first: no other transaction holds these rows, so their order of locking does not matter.
+WITH deleted AS (
+    UPDATE notebooks
+    SET deleted_at = sqlc.arg(now)::timestamptz, updated_by_id = sqlc.arg(by), updated_at = sqlc.arg(now)
+    WHERE workspace_id = sqlc.arg(workspace_id) AND deleted_at IS NULL
+    RETURNING id
+)
+SELECT id FROM deleted ORDER BY id;

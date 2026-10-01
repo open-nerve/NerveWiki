@@ -93,3 +93,11 @@ type Fact struct {
 	Access      shared.WorkspaceAccess
 	Role        shared.NotebookRole
 }
+
+// NotebooksDeleter deletes a workspace's notebooks.
+type NotebooksDeleter interface {
+	// DeleteNotebooksOf soft-deletes the notebooks not deleted of
+	// workspaceID and every member row of them, by by at at, and returns
+	// their ids in order.
+	DeleteNotebooksOf(ctx context.Context, workspaceID, by uuid.UUID, at time.Time) ([]uuid.UUID, error)
+}

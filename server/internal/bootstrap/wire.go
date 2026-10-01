@@ -89,6 +89,7 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrati
 		Notebooks:   notebookFacts{notebook.NewFacts(pool)},
 	})
 	ws := workspace.New(workspaceDeps(cfg, pool, logger, authorizer, invitationKey))
+	nb := notebook.New(notebookDeps(cfg, pool, logger, authorizer))
 	api, err := httpserver.NewAPI(apiConfig(cfg, logger, limiter, ident.Authenticator(),
 		slices.Concat(ident.PublicOperations(), inst.PublicOperations(), ws.PublicOperations()), ident.RequestTimeouts()))
 	if err != nil {
@@ -101,6 +102,7 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrati
 	ident.Register(router, api)
 	inst.Register(router, api)
 	ws.Register(router, api)
+	nb.Register(router, api)
 	// "/" without a method is the least specific pattern: /api/ and the
 	// probes keep their routes, and a wrong method on a page path gets the
 	// frontend's 405 rather than a 404.

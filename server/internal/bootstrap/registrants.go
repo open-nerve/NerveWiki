@@ -20,7 +20,7 @@ import (
 // the workspace module's: rule two, and the end of the account's
 // memberships through the membership end's registrants (M2/P4 design 3.1).
 func deactivationRegistrants(pool *pgxpool.Pool) ([]identity.DeactivationVetoer, []identity.DeactivationSubscriber) {
-	ext := workspaceRegistrants()
+	ext := workspaceRegistrants(pool)
 	ws := deactivation{workspace.NewDeactivation(pool, ext.endVetoers, ext.endSubscribers)}
 	return []identity.DeactivationVetoer{ws}, []identity.DeactivationSubscriber{ws}
 }
@@ -53,10 +53,41 @@ type workspaceExtensions struct {
 }
 
 // workspaceRegistrants are the modules that take part in the workspace
-// module's membership ends, restores and deletions. M2 has none: the
-// notebooks' come with M3.
-func workspaceRegistrants() workspaceExtensions {
-	return workspaceExtensions{}
+// module's membership ends, restores and deletions: the notebook module
+// follows a deletion (M3/P1); its part in the ends and restores comes with
+// M3/P3.
+func workspaceRegistrants(pool *pgxpool.Pool) workspaceExtensions {
+	nb := notebookRegistrants()
+	return workspaceExtensions{
+		deletionSubscribers: []workspace.WorkspaceDeletionSubscriber{
+			workspaceDeletion{notebook.NewWorkspaceDeletion(pool, nb.deletionSubscribers)},
+		},
+	}
+}
+
+// workspaceDeletion is the notebook module's part in a workspace's
+// deletion as the workspace module calls it: the two modules do not
+// import each other, so their values, alike field by field, meet here.
+type workspaceDeletion struct {
+	notebook notebook.WorkspaceDeletion
+}
+
+func (d workspaceDeletion) WorkspaceDeleted(ctx context.Context, x workspace.WorkspaceDeletion) error {
+	return d.notebook.WorkspaceDeleted(ctx, notebook.WorkspaceDeleted(x))
+}
+
+// notebookExtensions are the registrants of the notebook module's
+// extension point (M3 design 8): those that follow a notebook's deletion.
+type notebookExtensions struct {
+	deletionSubscribers []notebook.NotebookDeletionSubscriber
+}
+
+// notebookRegistrants are the modules that take part in a notebook's
+// deletion: none in M3; M4's pages and M7's attachments come later. The
+// module's deleteNotebook and its part in a workspace's deletion both take
+// them from here.
+func notebookRegistrants() notebookExtensions {
+	return notebookExtensions{}
 }
 
 // purgers are the modules' purgers of the soft-deleted rows, leaf to root

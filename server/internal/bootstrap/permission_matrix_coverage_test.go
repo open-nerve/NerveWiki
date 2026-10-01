@@ -31,7 +31,7 @@ func matrixViolations(ops []apitest.Operation, exempt matrixExemptions, rows []m
 			found = append(found, fmt.Sprintf("row %s names no operation of the contract", r.name()))
 		}
 		unsafe := ""
-		for _, c := range workspaceColumns() {
+		for _, c := range r.callers() {
 			if _, ok := r.cells[c]; !ok {
 				found = append(found, fmt.Sprintf("row %s has no cell for %s", r.name(), c))
 			}
@@ -199,6 +199,13 @@ func TestMatrixViolationsCatchesEachGap(t *testing.T) {
 	}{
 		{"an operation without a row", ops, exempt, rows[1:], "operation getWorkspace, tagged [workspace], has no row"},
 		{"a row without a cell", ops, exempt, without(getRow, func(r *matrixRow) { delete(r.cells, callerGuest) }), "row getWorkspace has no cell for guest"},
+		{"a row of the notebook columns without a cell", ops, exempt, without(getRow, func(r *matrixRow) {
+			r.columns, r.cells = notebookColumns(), everyNotebookColumn(cellOK(), nil)
+			delete(r.cells, callerOutsideGuest)
+		}), "row getWorkspace has no cell for guest outside"},
+		{"a row of the notebook columns with the workspace's cells", ops, exempt, without(getRow, func(r *matrixRow) {
+			r.columns = notebookColumns()
+		}), "row getWorkspace has no cell for notebook admin"},
 		{"a request of another operation", ops, exempt,
 			without(getRow, func(r *matrixRow) { r.request = sameRequest(http.MethodGet, "/api/v0/workspaces", "") }), "is not GET /api/v0/workspaces/{slug}"},
 		{"another workspace", ops, exempt,

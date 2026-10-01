@@ -22,6 +22,8 @@ tags:
     description: What this instance runs.
   - name: workspace
     description: Workspaces, their members and invitations.
+  - name: notebook
+    description: Notebooks and their members.
 paths:
   /api/v0/auth/register:
     $ref: "modules/identity.yaml#/paths/~1api~1v0~1auth~1register"
@@ -65,6 +67,10 @@ paths:
     $ref: "modules/workspace.yaml#/paths/~1api~1v0~1workspace-invitations~1{workspace_invitation_id}~1accept"
   /api/v0/workspace-slugs/{slug}:
     $ref: "modules/workspace.yaml#/paths/~1api~1v0~1workspace-slugs~1{slug}"
+  /api/v0/workspaces/{slug}/notebooks:
+    $ref: "modules/notebook.yaml#/paths/~1api~1v0~1workspaces~1{slug}~1notebooks"
+  /api/v0/notebooks/{notebook_id}:
+    $ref: "modules/notebook.yaml#/paths/~1api~1v0~1notebooks~1{notebook_id}"
 components:
   # 模块文件的 securitySchemes 在打包时被丢掉，操作引用的 scheme 写在这里
   securitySchemes:

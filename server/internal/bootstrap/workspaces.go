@@ -31,7 +31,7 @@ func Workspaces(ctx context.Context, cfg config.Config, logOut, out io.Writer, c
 		return err
 	}
 	defer c.close()
-	ext := workspaceRegistrants()
+	ext := workspaceRegistrants(c.pool)
 	admin := workspace.NewAdmin(workspace.AdminDeps{
 		Pool:                         c.pool,
 		Tx:                           postgres.NewTxManager(c.pool, cfg.Database.CommitTimeout),
