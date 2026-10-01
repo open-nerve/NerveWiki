@@ -87,7 +87,7 @@ M2 结束时：
 | 扩展点的形状 | 照 M1 的停用：否决者在锁住相关的工作区行之后、写入之前同步调用，返回 `*shared.Error` 就整体回滚；订阅者在写入之后、同一事务内调用。"成员身份结束"这个值带：一组工作区 id（停用一次结束多个）、原因（移出、离开、停用）、账户与时刻。M2 在自己的停用注册者里转调成员身份结束的否决者与订阅者，所以 M3 只注册一处，就覆盖了移出、离开、停用三条路 | Nerve 的同步端口 `ProjectCascade`：只能接一个接收方，而 M3 之后还有可见性变化（M5）。M3 直接注册到 identity 的停用：移出与离开还要再注册一次 |
 | 工作区删除只有事件 | 删除是管理员显式的破坏性操作，v0.1 没有应当阻止它的规则。修订总体设计 12.4 | 照 12.4 的原文同时建否决者：既没有注册者，也想不出一个 |
 | 角色变化没有事件 | 有效角色在读取时计算（总体设计 3.3），"访客不享受默认权限"随读取即时生效 | 现在就建：没有使用者。M3 若需要在降为访客时改笔记本的行，按 12.1 第 6 条的例外修订（第 10 节） |
-| 邀请令牌 | `nwk_inv_` 加上对邀请 id 的 MAC（截断）。MAC 密钥由签名私钥经 HKDF 派生（info `nervewiki workspace-invitation mac v1`）：identity 以 `DerivedKey(用途)` 交给组合根，组合根再交给 workspace。令牌不存库，列出邀请时重新计算，管理员随时可以复制。代价：换签名密钥之后，待接受的链接全部失效 | 存随机令牌的哈希：只能在创建时显示一次，与"随时复制链接"冲突。存原文：数据库泄露，链接也就泄露 |
+| 邀请令牌 | `nwk_inv_` 加上对邀请 id 的 MAC（截断）。MAC 密钥由签名私钥经 HKDF 派生（info `nervewiki workspace-invitation mac v1`）：组合根先加载签名密钥（`identity.LoadSigningKeys`），交给 identity，并用它派生邀请密钥交给 workspace 与注册策略。令牌不存库，列出邀请时重新计算，管理员随时可以复制。代价：换签名密钥之后，待接受的链接全部失效 | 存随机令牌的哈希：只能在创建时显示一次，与"随时复制链接"冲突。存原文：数据库泄露，链接也就泄露 |
 | 令牌只在地址的片段里 | 链接是 `/invitations/<id>#<令牌>`。预览与接受都把令牌放在请求体里；预览因此是 `POST …/preview`，属于 6.1 的方法例外：携带秘密的读取。片段不发给服务器，也不进 Referer，所以不会出现在反向代理的访问日志里 | Nerve 的 `?token=` 查询参数：nginx 的默认日志格式记录完整的请求行 |
 | 邀请页公开 | `/invitations/:id` 在登录守卫之外，是 13.2 第 10 条的例外。页面先显示预览：未登录时在页内登录或注册（注册带上邀请），已登录时接受。页面始终停留在带片段的地址上，所以令牌从不进入 `next` | 放在 `SignedIn` 之下：守卫会把带片段的地址编进 `next` 查询参数，令牌又回到地址里；而且注册关闭时，登录页还得认识邀请 |
 | 带邀请注册 | 注册策略扩展为 `SignupPolicy.AllowSignup(ctx, attempt)`，`attempt` 带注册邮箱与可选的邀请；`register` 的请求体加可选的 `invitation {id, token}`。注册打开时照旧；关闭时，只有邀请有效、注册邮箱（规范化后）等于邀请邮箱才允许。邀请无效的各种情况一律答 403 `identity.signup_disabled`。注册不替用户接受，页面接着调用接受。组合根组合"配置开关"与 workspace 提供的邀请检查，identity 不认识邀请 | 另加一个端口：注册的判断分散到两处 |
@@ -115,9 +115,9 @@ M2 结束时：
 | `POST /api/v0/workspaces/{slug}/leave` | Bearer | 204 |
 | `GET /api/v0/workspaces/{slug}/invitations` | Bearer | 200 `{data: WorkspaceInvitation[]}`（新的在前，含令牌） |
 | `POST /api/v0/workspaces/{slug}/invitations` | Bearer | 201 `WorkspaceInvitation` |
-| `DELETE /api/v0/workspace-invitations/{invitation_id}` | Bearer | 204 |
-| `POST /api/v0/workspace-invitations/{invitation_id}/preview` | 公开 | 200 `InvitationPreview`（工作区的名称与 slug、邀请的角色；不含邀请的邮箱） |
-| `POST /api/v0/workspace-invitations/{invitation_id}/accept` | Bearer | 200 `Workspace` |
+| `DELETE /api/v0/workspace-invitations/{workspace_invitation_id}` | Bearer | 204 |
+| `POST /api/v0/workspace-invitations/{workspace_invitation_id}/preview` | 公开 | 200 `InvitationPreview`（工作区的名称与 slug、邀请的角色；不含邀请的邮箱） |
+| `POST /api/v0/workspace-invitations/{workspace_invitation_id}/accept` | Bearer | 200 `Workspace` |
 
 - **别的模块的修改**：
   - `register` 的请求体加可选的 `invitation`。
@@ -182,8 +182,8 @@ M2 结束时：
 | 项 | Phase |
 |---|---|
 | 1 停用的第一个注册者；2 否决者的码 | P4 |
-| 3 `ShareActiveAccount`：事务检查，锁下的邮箱；调用它的操作声明 `identity.account_deactivated` | P1（事务检查；创建工作区）、P3（锁下的邮箱；接受邀请） |
-| 4 注册策略 | P3 |
+| 3 `ShareActiveAccount`：事务检查，锁下的邮箱；调用它的操作声明 `identity.account_deactivated` | P1（事务检查；创建工作区）、P3（锁下的邮箱；接受邀请）：已落实 |
+| 4 注册策略 | P3：已落实（`SignupAttempt` 带规范化的邮箱与邀请；组合根的策略是开关或邀请） |
 | 5 引导的新步骤；6 首页 | P5 |
 | 7 接口测试的构造辅助；8 组合根的拆分 | P1 |
 | 9 加锁顺序与停用的不变量 | P2（顺序、互相降级、同时离开）、P4（停用的交错） |
@@ -242,7 +242,7 @@ M2 结束时：
   - `FOR SHARE`：创建、删除邀请。
 - 锁工作区的语句带 `deleted_at IS NULL`：等锁之后读到 0 行，就答 404。
 - 增长路径的第一条语句是账户行的 `FOR SHARE`。
-- 插入引用别的账户的行时，外键检查只对那一行取 `FOR KEY SHARE`，与停用的 `FOR NO KEY UPDATE` 不冲突。
+- 插入引用别的账户的行时，外键检查只对那一行取 `FOR KEY SHARE`，与停用的 `FOR NO KEY UPDATE` 不冲突。改邮箱（`users set-email`）不同：`users.email` 有唯一约束，改它取 FOR UPDATE 级的行锁，挡住这样的外键检查；它只碰账户与会话，不等工作区一支的锁，所以只是等待，不成环（P3 审查 Q1）。
 
 **横切约定**：本 M 新建的约定（权限与矩阵、加锁顺序、扩展点的注册、公开页面的例外、清理），收尾时经审查对照代码核实，补进总体设计第 13 节。
 
@@ -296,7 +296,7 @@ M2 结束时：
 |---|---|---|---|---|
 | P1 | 权限框架与创建工作区 | 已完成 | [01-P1-access-workspaces.md](01-P1-access-workspaces.md) | [P1 审查记录](reviews/P1-access-workspaces-review.md) |
 | P2 | 工作区管理与成员 | 已完成 | [02-P2-workspace-members.md](02-P2-workspace-members.md) | [P2 审查记录](reviews/P2-workspace-members-review.md) |
-| P3 | 邀请与带邀请注册 | 进行中 | [03-P3-invitations.md](03-P3-invitations.md) | — |
+| P3 | 邀请与带邀请注册 | 已完成 | [03-P3-invitations.md](03-P3-invitations.md) | [P3 审查记录](reviews/P3-invitations-review.md) |
 | P4 | 停用、管理命令与清理 | 未开始 | — | — |
 | P5 | 前端外壳与工作区 | 未开始 | — | — |
 | P6 | 前端成员与邀请 | 未开始 | — | — |
@@ -309,3 +309,4 @@ M2 结束时：
 | 2026-10-01 | 初版 | M2 启动 |
 | 2026-10-01 | 第 1 节第 4 条：需要判定的操作才在规则表里占一行；第 7 节：接口构造辅助在 `httpservertest`，锁下的邮箱在 P3 | P1 的实施与审查，见 [P1 审查记录](reviews/P1-access-workspaces-review.md) |
 | 2026-10-01 | 第 7 节：W8、W9 与 W4 的"非管理员答 403"从 P2 移到 P3 | 它们要有第二位成员，成员只能经邀请加入，见 [P2 文档](02-P2-workspace-members.md)第 2 节 |
+| 2026-10-01 | 第 4 节：邀请的 MAC 密钥由组合根派生，签名密钥由组合根先加载；第 5 节：路径参数 `{workspace_invitation_id}`；第 8 节：改邮箱与外键检查 | P3 的实施与审查，见 [P3 审查记录](reviews/P3-invitations-review.md) |
