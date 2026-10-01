@@ -41,6 +41,14 @@ export const onboardingSteps: readonly OnboardingStep[] = [
       return { default: WorkspaceStep };
     }),
   },
+  {
+    id: "notebook",
+    title: "onboarding.notebook.title",
+    Component: lazy(async () => {
+      const { NotebookStep } = await import("./notebook-step");
+      return { default: NotebookStep };
+    }),
+  },
 ];
 
 /**

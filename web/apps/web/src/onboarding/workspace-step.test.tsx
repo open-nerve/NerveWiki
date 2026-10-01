@@ -15,12 +15,13 @@ afterAll(() => configure({ reactStrictMode: false }));
 /**
  * The server of an account done with the profile step, whose workspaces
  * are list (creations add to it); what changed the account or its
- * workspaces is in sent. While stepsDown, recording a step answers 503;
+ * workspaces is in sent. The notebook step after it counts as done: its
+ * own tests take it (notebook-step.test.tsx). While stepsDown, recording a step answers 503;
  * while workspacesDown, the workspaces cannot be read.
  */
 function stepServer(list: Workspace[], creation = true) {
   const server = { sent: [] as string[], stepsDown: false, workspacesDown: false };
-  let me: User = { ...userJSON, onboarding_steps: ["profile"] };
+  let me: User = { ...userJSON, onboarding_steps: ["profile", "notebook"] };
   const app = signedInApp({
     "GET /api/v0/me": () => json(me),
     "GET /api/v0/instance": () => json({ ...instanceJSON, workspace_creation_enabled: creation }),
@@ -64,7 +65,7 @@ test("an account without a workspace creates one, and goes on into it", async ()
   const { app, server } = stepServer([]);
   const { router } = renderApp("/onboarding", app);
 
-  expect(await screen.findByText("Step 2 of 2")).toBeTruthy();
+  expect(await screen.findByText("Step 2 of 3")).toBeTruthy();
   expect(screen.getByRole("heading", { name: "Your workspace" })).toBeTruthy();
   await user.type(await screen.findByLabelText("Name"), "Acme");
   await user.click(screen.getByRole("button", { name: "Create and continue" }));

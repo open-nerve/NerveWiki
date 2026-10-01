@@ -21,7 +21,7 @@ function isOwn(notebook: Notebook): boolean {
 }
 
 /** createsNotebooks tells whether the account may create notebooks in workspace: as its admin or member, not a guest. */
-export function createsNotebooks(workspace: Workspace): boolean {
+export function createsNotebooks(workspace: Pick<Workspace, "role">): boolean {
   return workspace.role === "admin" || workspace.role === "member";
 }
 

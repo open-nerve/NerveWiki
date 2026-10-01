@@ -39,7 +39,14 @@ export const en = {
   "onboarding.workspace.title": "Your workspace",
   "onboarding.workspace.hint": "A workspace holds a team's notebooks. You become its admin, and invite the others.",
   "onboarding.workspace.create": "Create and continue",
-  "onboarding.workspace.goingOn": "Continuing…",
+  "onboarding.goingOn": "Continuing…",
+  "onboarding.notebook.title": "Your first notebook",
+  "onboarding.notebook.hint":
+    "A private notebook in {workspace}: only you see it until you open it to the workspace, in its settings.",
+  "onboarding.notebook.defaultName": "My notes",
+  "onboarding.notebook.create": "Create and continue",
+  "onboarding.notebook.noTarget":
+    "Notebooks are created in a workspace where you are a member, not a guest. Once you are one, use New notebook in its left column.",
   "settings.title": "Settings",
   "settings.profile": "Profile",
   "account.displayName": "Display name",

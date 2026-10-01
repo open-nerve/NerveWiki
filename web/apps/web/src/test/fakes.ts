@@ -68,7 +68,7 @@ export const userJSON: User = {
   id: "0199a2b4-0000-7000-8000-000000000001",
   email: "ada@example.com",
   display_name: "Ada",
-  onboarding_steps: ["profile", "workspace"],
+  onboarding_steps: ["profile", "workspace", "notebook"],
 };
 
 /** workspaceJSON is a workspace of userJSON's, which it administers. */

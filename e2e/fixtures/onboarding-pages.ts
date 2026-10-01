@@ -1,3 +1,4 @@
+import type { Notebook } from "@nervewiki/api-client";
 import type { Locator, Page, Response } from "@playwright/test";
 
 import { answerTo } from "./browser";
@@ -26,6 +27,30 @@ export function stepRecorded(page: Page, id: string): Promise<Response> {
 /** The heading of the workspace step, the second of onboarding (M2/P5 design 3.7). */
 export function workspaceStep(page: Page): Locator {
   return page.getByRole("heading", { level: 1, name: "Your workspace" });
+}
+
+/** The heading of the notebook step, the third of onboarding (M3/P4 design 3.6). */
+export function notebookStep(page: Page): Locator {
+  return page.getByRole("heading", { level: 1, name: "Your first notebook" });
+}
+
+/**
+ * Presses Create and continue on the notebook step of page, which creates a notebook in the workspace of
+ * slug, named name when given, else as the field has it; resolves the creation's answer. The step then
+ * records itself.
+ */
+export async function createFirstNotebookWith(
+  page: Page,
+  slug: string,
+  name?: string
+): Promise<{ status: number; created: Notebook }> {
+  if (name !== undefined) {
+    await page.getByLabel("Name", { exact: true }).fill(name);
+  }
+  const answer = answerTo(page, "POST", `/api/v0/workspaces/${slug}/notebooks`);
+  await page.getByRole("button", { name: "Create and continue", exact: true }).click();
+  const response = await answer;
+  return { status: response.status(), created: (await response.json()) as Notebook };
 }
 
 export function displayNameField(page: Page): Locator {

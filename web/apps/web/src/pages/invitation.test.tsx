@@ -242,7 +242,7 @@ test("an account with onboarding left goes through it before the workspace", asy
 
   await user.click(await screen.findByRole("button", { name: "Accept invitation" }));
 
-  expect(await screen.findByText("Step 1 of 2")).toBeTruthy();
+  expect(await screen.findByText("Step 1 of 3")).toBeTruthy();
   await waitFor(() => expect(router.state.location.pathname).toBe("/onboarding"));
   expect(router.state.location.search).toBe("?next=%2Flab");
 });
