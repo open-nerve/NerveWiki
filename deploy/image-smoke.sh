@@ -101,7 +101,8 @@ grep -q '<div id="root"></div>' <<<"$page" || fail "/ 不是前端的 index.html
 # S3：注入的版本号，构建它的提交；prod 默认关闭注册
 instance=$(get "$base/api/v0/instance")
 jq -e --arg version "$version" --arg commit "$commit" \
-  '. == {product: "Nerve Wiki", version: $version, commit: $commit, api_version: "v0", signup_enabled: false}' \
+  '. == {product: "Nerve Wiki", version: $version, commit: $commit, api_version: "v0", signup_enabled: false,
+      workspace_creation_enabled: true}' \
   <<<"$instance" >/dev/null || fail "/api/v0/instance 与预期不符：$instance"
 signup=$(curl -sS --max-time 5 -H 'Content-Type: application/json' -d '{"email":"a@example.com","password":"correct horse battery"}' \
   "$base/api/v0/auth/register")

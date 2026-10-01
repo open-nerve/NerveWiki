@@ -39,6 +39,40 @@ func TestDatabasesAreIsolated(t *testing.T) {
 	}
 }
 
+// A copy holds what the prepared database held; what is written to it
+// stays in it.
+func TestNewDatabaseFromCopiesThePreparedDatabase(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	prepared := pgtest.NewDatabase(t)
+	conn, err := pgx.Connect(ctx, prepared)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := conn.Exec(ctx, "CREATE TABLE notes (id int); INSERT INTO notes VALUES (1)"); err != nil {
+		t.Fatal(err)
+	}
+	if err := conn.Close(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	copied := connect(t, pgtest.NewDatabaseFrom(t, prepared))
+	if _, err := copied.Exec(ctx, "INSERT INTO notes VALUES (2)"); err != nil {
+		t.Fatal(err)
+	}
+
+	count := func(c *pgx.Conn) (n int) {
+		t.Helper()
+		if err := c.QueryRow(ctx, "SELECT count(*) FROM notes").Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	if got, original := count(copied), count(connect(t, prepared)); got != 2 || original != 1 {
+		t.Errorf("rows = %d in the copy, %d in the prepared database; want 2 and 1", got, original)
+	}
+}
+
 func TestEmptyDatabaseHasNoTables(t *testing.T) {
 	t.Parallel()
 	conn := connect(t, pgtest.NewEmptyDatabase(t))

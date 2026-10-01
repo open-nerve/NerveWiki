@@ -31,6 +31,14 @@ func DB(ctx context.Context, pool *pgxpool.Pool) Querier {
 	return pool
 }
 
+// InTx reports whether ctx carries a transaction that TxManager.WithinTx
+// opened: a statement whose lock must last until the transaction ends checks
+// it, since on the pool the lock would end with the statement.
+func InTx(ctx context.Context) bool {
+	_, ok := ctx.Value(txKey{}).(pgx.Tx)
+	return ok
+}
+
 // TxManager runs functions in transactions on one pool. It satisfies
 // shared.TxManager by structure; the platform does not import shared.
 //

@@ -46,8 +46,9 @@ func validConfig() Config {
 			RegisterIP:    BucketConfig{PerMinute: 10, Burst: 5},
 			PasswordUser:  BucketConfig{PerMinute: 5, Burst: 5},
 		},
-		Jobs: JobsConfig{ShutdownTimeout: 10 * time.Second},
-		Log:  LogConfig{Level: "info", Format: "json"},
+		Workspace: WorkspaceConfig{CreationEnabled: true},
+		Jobs:      JobsConfig{ShutdownTimeout: 10 * time.Second},
+		Log:       LogConfig{Level: "info", Format: "json"},
 	}
 }
 

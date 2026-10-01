@@ -9,10 +9,12 @@ import (
 	"strings"
 )
 
+// AssetsDir holds Vite's content-hashed files: a changed file gets a new
+// name. It is a top-level path of the site.
+const AssetsDir = "assets"
+
 const (
 	indexFile = "index.html"
-	// assetsDir holds Vite's content-hashed files: a changed file gets a new name.
-	assetsDir = "assets"
 
 	cacheImmutable  = "public, max-age=31536000, immutable"
 	cacheRevalidate = "no-cache"
@@ -61,7 +63,7 @@ func contentETags(files fs.FS) map[string]string {
 		switch {
 		case err != nil:
 			return nil
-		case d.IsDir() && name == assetsDir:
+		case d.IsDir() && name == AssetsDir:
 			return fs.SkipDir
 		case d.Type().IsRegular():
 			if data, err := fs.ReadFile(files, name); err == nil {
@@ -92,7 +94,7 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case h.isFile(name):
 		h.serveFile(w, r, name)
-	case name == assetsDir || strings.HasPrefix(name, assetsDir+"/"):
+	case name == AssetsDir || strings.HasPrefix(name, AssetsDir+"/"):
 		http.NotFound(w, r)
 	default:
 		h.serveFile(w, r, indexFile)
@@ -110,7 +112,7 @@ func (h *handler) isFile(name string) bool {
 
 func (h *handler) serveFile(w http.ResponseWriter, r *http.Request, name string) {
 	cache := cacheRevalidate
-	if strings.HasPrefix(name, assetsDir+"/") {
+	if strings.HasPrefix(name, AssetsDir+"/") {
 		cache = cacheImmutable
 	}
 	w.Header().Set("Cache-Control", cache)

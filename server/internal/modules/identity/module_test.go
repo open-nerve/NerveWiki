@@ -19,6 +19,7 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/platform/clock/clocktest"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver/httpservertest"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres/pgtest"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/ratelimit"
@@ -87,14 +88,9 @@ func newServerWith(t *testing.T, pool *pgxpool.Pool, clock *clocktest.Fixed, cha
 	if err != nil {
 		t.Fatal(err)
 	}
-	api, err := httpserver.NewAPI(httpserver.APIConfig{
-		Logger: logger, Authenticator: m.Authenticator(), PublicOperations: m.PublicOperations(),
-		MaxBodyBytes: 1 << 20, RequestTimeout: 5 * time.Second, RequestTimeouts: m.RequestTimeouts(),
-		IPv6PrefixLen: 64, Anonymous: limit, Authenticated: limit, AuthFailure: limit,
+	api := httpservertest.NewAPI(t, httpservertest.APIOptions{
+		Authenticator: m.Authenticator(), PublicOperations: m.PublicOperations(), RequestTimeouts: m.RequestTimeouts(),
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
 	router := httpserver.NewRouter(logger)
 	m.Register(router, api)
 	return router

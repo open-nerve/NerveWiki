@@ -93,6 +93,11 @@ make run      # 以 dev 配置启动 nervewiki serve，监听 127.0.0.1:8080；C
 - **反向代理**：`server.trusted_proxies` 列出代理的 CIDR（环境变量用逗号分隔，例如 `NWIKI_SERVER__TRUSTED_PROXIES=10.0.0.0/8`）。只有来自它们的 `X-Forwarded-For` 被采信，代理写入的必须是不带端口的 IP；会话记录的就是这样认出的客户端 IP。配置不对时服务各告警一次。
 - 非 prod 的服务监听在回环地址之外时，启动时告警：这多半是忘了设 `NWIKI_ENV=prod` 的部署，注册开放、签名密钥是临时的。
 
+### 工作区
+
+- **创建**：`workspace.creation_enabled`，默认开启：每个账户都能创建工作区，创建者是它的管理员（`GET /api/v0/instance` 的 `workspace_creation_enabled` 告诉客户端）。关闭后创建答 403 `workspace.creation_disabled`。
+- **slug**：工作区的地址段，1–48 个 a–z、0–9、`_`、`-`，创建后不能改；站点的顶层路径与留作以后用的名字不能用，名单在 `server/internal/modules/workspace/domain/reserved_slugs.txt`。
+
 ## 接口与代码生成
 
 接口用 OpenAPI 3.1 描述，服务端与前端都以它为准：

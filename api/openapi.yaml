@@ -20,6 +20,8 @@ tags:
     description: Accounts, sign-in, sessions and personal access tokens.
   - name: instance
     description: What this instance runs.
+  - name: workspace
+    description: Workspaces, their members and invitations.
 paths:
   /api/v0/auth/register:
     $ref: "modules/identity.yaml#/paths/~1api~1v0~1auth~1register"
@@ -43,6 +45,12 @@ paths:
     $ref: "modules/identity.yaml#/paths/~1api~1v0~1api-tokens~1{token_id}"
   /api/v0/instance:
     $ref: "modules/instance.yaml#/paths/~1api~1v0~1instance"
+  /api/v0/workspaces:
+    $ref: "modules/workspace.yaml#/paths/~1api~1v0~1workspaces"
+  /api/v0/workspaces/{slug}:
+    $ref: "modules/workspace.yaml#/paths/~1api~1v0~1workspaces~1{slug}"
+  /api/v0/workspace-slugs/{slug}:
+    $ref: "modules/workspace.yaml#/paths/~1api~1v0~1workspace-slugs~1{slug}"
 components:
   # 模块文件的 securitySchemes 在打包时被丢掉，操作引用的 scheme 写在这里
   securitySchemes:

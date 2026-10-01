@@ -40,7 +40,7 @@ func CheckUserPatch(p UserPatch) (UserPatch, error) {
 	if p.DisplayName == nil {
 		return p, nil
 	}
-	name, f := CheckName("display_name", *p.DisplayName, MaxDisplayNameLength)
+	name, f := shared.CheckName("display_name", *p.DisplayName, MaxDisplayNameLength)
 	if f != nil {
 		return UserPatch{}, shared.Invalid(*f)
 	}

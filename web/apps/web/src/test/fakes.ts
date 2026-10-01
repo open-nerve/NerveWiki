@@ -49,6 +49,7 @@ export const instanceJSON: InstanceInfo = {
   commit: "4f2a9c1",
   api_version: "v0",
   signup_enabled: true,
+  workspace_creation_enabled: true,
 };
 
 /** tokensJSON is a valid answer to a sign-in, a sign-up or a refresh. */

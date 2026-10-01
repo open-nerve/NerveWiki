@@ -15,8 +15,9 @@ import (
 // Operation is one operation of the contract, as the whole-program tests of
 // bootstrap see it (M0/P4 design 3.6, M1/P1 design 3.9).
 type Operation struct {
-	ID     string // operationId
-	Method string // upper case
+	ID     string   // operationId
+	Tags   []string // the module the operation is of (the rules hold each to one tag)
+	Method string   // upper case
 	Path   string
 	Public bool // security: [], needs no token
 	// ProblemHeaders are the headers its default response, the problem,
@@ -99,12 +100,49 @@ func (o Operation) ParamCases() []ParamCase {
 	return cases
 }
 
+// TextCase is a request target with one free-text parameter set to what a
+// database text cannot hold.
+type TextCase struct {
+	Name   string
+	Target string
+}
+
+// TextCases derives the cases of the free-text whole-program test (M2/P1
+// review): for each path or query parameter that binds any string, one
+// without a checked format (enums bind any string too), the example target
+// with it set to a NUL, then to a byte that is not UTF-8. Such a parameter
+// reaches the operation as it came.
+func (o Operation) TextCases() []TextCase {
+	var cases []TextCase
+	for _, ref := range o.params {
+		p := ref.Value
+		s := p.Schema.Value
+		if (p.In != openapi3.ParameterInPath && p.In != openapi3.ParameterInQuery) || !s.Type.Includes("string") || checkedFormat(s) {
+			continue
+		}
+		cases = append(cases,
+			TextCase{Name: "NUL in " + p.Name, Target: o.target(p.Name, "\x00")},
+			TextCase{Name: "not UTF-8 in " + p.Name, Target: o.target(p.Name, "\xff")})
+	}
+	return cases
+}
+
+// ExampleBody is a body the operation's structure accepts, or nil when it
+// takes none.
+func (o Operation) ExampleBody() []byte {
+	if o.body == nil {
+		return nil
+	}
+	out, _ := json.Marshal(validValue(o.body))
+	return out
+}
+
 // Operations lists every operation of the contract, sorted by pattern.
 func (c *Contract) Operations() []Operation {
 	var ops []Operation
 	for path, item := range c.doc.Paths.Map() {
 		for method, op := range item.Operations() {
-			o := Operation{ID: op.OperationID, Method: strings.ToUpper(method), Path: path, Public: !needsToken(op),
+			o := Operation{ID: op.OperationID, Tags: op.Tags, Method: strings.ToUpper(method), Path: path, Public: !needsToken(op),
 				params: slices.Concat(item.Parameters, op.Parameters)}
 			if rb := op.RequestBody; rb != nil && rb.Value != nil {
 				if media := rb.Value.Content.Get("application/json"); media != nil && media.Schema != nil {

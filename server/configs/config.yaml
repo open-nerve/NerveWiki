@@ -73,6 +73,10 @@ ratelimit:
   # 校验当前密码的已认证操作（改密码、创建 PAT）：按账户
   password_user: { per_minute: 5, burst: 5 }
 
+workspace:
+  # 每个账户都能创建工作区。关闭之后，工作区由服务器管理员用 nervewiki workspaces create 创建
+  creation_enabled: true
+
 jobs:
   # 停机时给正在执行的后台任务留的时间，到期后取消它们。停机的宽限期要长于
   # server.shutdown_timeout 加上它再加 6 秒（默认 36 秒）：docker stop -t 40

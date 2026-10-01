@@ -22,6 +22,9 @@ export const problemMessages = {
   "identity.account_deactivated": "problem.identity.account_deactivated",
   "identity.current_password_incorrect": "problem.identity.current_password_incorrect",
   "identity.api_token_not_found": "problem.identity.api_token_not_found",
+  "workspace.not_found": "problem.workspace.not_found",
+  "workspace.creation_disabled": "problem.workspace.creation_disabled",
+  "workspace.slug_taken": "problem.workspace.slug_taken",
 } as const satisfies Record<string, MessageKey>;
 
 /** The message of each field code; `field.<field>.<code>` says it better for one field. */

@@ -17,6 +17,7 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/modules/identity/domain"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver/apitest"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver/httpservertest"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/ratelimit"
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
@@ -147,22 +148,12 @@ func serverWith(t *testing.T, uc httpadapter.UseCases, s httpadapter.Settings) h
 	t.Helper()
 	logger := slog.New(slog.DiscardHandler)
 	router := httpserver.NewRouter(logger)
-	limit := ratelimit.New(time.Now).Bucket("test", ratelimit.Rate{PerMinute: 600, Burst: 100})
-	api, err := httpserver.NewAPI(httpserver.APIConfig{
-		Logger:           logger,
+	api := httpservertest.NewAPI(t, httpservertest.APIOptions{
 		Authenticator:    fakeAuth{},
 		PublicOperations: httpadapter.PublicOperations(),
-		MaxBodyBytes:     1024,
-		RequestTimeout:   5 * time.Second,
 		RequestTimeouts:  httpadapter.RequestTimeouts(refreshDeadline),
-		IPv6PrefixLen:    64,
-		Anonymous:        limit,
-		Authenticated:    limit,
-		AuthFailure:      limit,
+		MaxBodyBytes:     1024,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
 	if uc.Register == nil {
 		uc.Register = &fakeRegister{}
 	}

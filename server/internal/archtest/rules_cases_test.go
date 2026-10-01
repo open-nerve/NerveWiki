@@ -23,7 +23,7 @@ func TestRules(t *testing.T) {
 		adapters = "a module's adapters do not import each other"
 		gen      = "generated code is imported only by its own adapter"
 		platform = "platform packages do not import each other, except config"
-		testOnly = "test helpers (pgtest, apitest, clocktest) are imported only by tests"
+		testOnly = "test helpers (pgtest, apitest, httpservertest, clocktest) are imported only by tests"
 		river    = "River is imported only by platform/jobs and a module's adapter/river"
 	)
 	tests := []struct {
@@ -121,6 +121,7 @@ func TestRules(t *testing.T) {
 		{m("internal/platform/httpserver"), m("internal/platform/postgres/pgtest"), []string{platform, testOnly}},
 		{m("internal/modules/instance/adapter/http"), m("internal/platform/httpserver/apitest"), []string{testOnly}},
 		{m("internal/platform/httpserver"), m("internal/platform/httpserver/apitest"), []string{testOnly}},
+		{m("internal/modules/identity/adapter/http"), m("internal/platform/httpserver/httpservertest"), []string{testOnly}},
 		{m("internal/bootstrap"), m("internal/platform/clock/clocktest"), []string{testOnly}},
 		{m("internal/platform/clock/clocktest"), "time", nil},
 	}

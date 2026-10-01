@@ -12,6 +12,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -66,6 +67,20 @@ func NewEmptyDatabase(t testing.TB) string {
 // must refuse.
 func NewEmptyDatabaseWith(t testing.TB, options string) string {
 	return newDatabase(t, "TEMPLATE template0 "+options)
+}
+
+// NewDatabaseFrom returns the URL of a new database copied from prepared,
+// a database of this package that the test has filled, so that data
+// prepared once serves every case that writes (the permission matrix, M2/P1
+// design 3.10). Nobody may be connected to prepared while it is copied:
+// close its pools first. The copy is dropped when the test ends.
+func NewDatabaseFrom(t testing.TB, prepared string) string {
+	t.Helper()
+	u, err := url.Parse(prepared)
+	if err != nil {
+		t.Fatalf("pgtest: %v", err)
+	}
+	return newDatabase(t, "TEMPLATE "+pgx.Identifier{strings.TrimPrefix(u.Path, "/")}.Sanitize())
 }
 
 func newDatabase(t testing.TB, options string) string {

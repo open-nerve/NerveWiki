@@ -24,6 +24,7 @@ type Config struct {
 	Database  DatabaseConfig  `koanf:"database"`
 	Auth      AuthConfig      `koanf:"auth"`
 	RateLimit RateLimitConfig `koanf:"ratelimit"`
+	Workspace WorkspaceConfig `koanf:"workspace"`
 	Jobs      JobsConfig      `koanf:"jobs"`
 	Log       LogConfig       `koanf:"log"`
 }
@@ -127,6 +128,13 @@ func (b BucketConfig) LogValue() slog.Value {
 	return slog.GroupValue(slog.Int("per_minute", b.PerMinute), slog.Int("burst", b.Burst))
 }
 
+// WorkspaceConfig configures the workspaces (M2/P1 design 3.8).
+type WorkspaceConfig struct {
+	// CreationEnabled lets every account create workspaces; when off, the
+	// server's administrator creates them (nervewiki workspaces create).
+	CreationEnabled bool `koanf:"creation_enabled"`
+}
+
 // JobsConfig configures the background jobs (M1/P4 design 3.3).
 type JobsConfig struct {
 	// ShutdownTimeout is how long a stop lets the running jobs finish
@@ -189,6 +197,9 @@ func (c Config) LogValue() slog.Value {
 			slog.Any("login_ip_email", c.RateLimit.LoginIPEmail),
 			slog.Any("register_ip", c.RateLimit.RegisterIP),
 			slog.Any("password_user", c.RateLimit.PasswordUser),
+		),
+		slog.Group("workspace",
+			slog.Bool("creation_enabled", c.Workspace.CreationEnabled),
 		),
 		slog.Group("jobs",
 			duration("shutdown_timeout", c.Jobs.ShutdownTimeout),

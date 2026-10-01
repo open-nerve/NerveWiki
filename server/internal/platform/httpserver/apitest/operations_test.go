@@ -115,6 +115,48 @@ func TestParamCases(t *testing.T) {
 	}
 }
 
+// Each parameter that binds any string gets its two cases, an enum's too;
+// one whose Go type checks it, or a header, gets none.
+func TestTextCases(t *testing.T) {
+	op := contractFrom(t, `
+openapi: 3.1.0
+info: {title: text, version: v0}
+paths:
+  /api/v0/x/{slug}/{id}:
+    get:
+      parameters:
+        - {name: slug, in: path, required: true, schema: {type: string}}
+        - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+        - {name: view, in: query, schema: {type: string, enum: [full, short]}}
+        - {name: limit, in: query, schema: {type: integer}}
+        - {name: X-Note, in: header, schema: {type: string}}
+      responses: {'204': {description: none}}
+`).Operations()[0]
+
+	const id = "00000000-0000-0000-0000-000000000000"
+	want := []TextCase{
+		{"NUL in slug", "/api/v0/x/%00/" + id},
+		{"not UTF-8 in slug", "/api/v0/x/%FF/" + id},
+		{"NUL in view", "/api/v0/x/x/" + id + "?view=%00"},
+		{"not UTF-8 in view", "/api/v0/x/x/" + id + "?view=%FF"},
+	}
+	if got := op.TextCases(); !slices.Equal(got, want) {
+		t.Errorf("TextCases() =\n%q\nwant\n%q", got, want)
+	}
+}
+
+func TestExampleBody(t *testing.T) {
+	ops := contractFrom(t, bodiesContract).Operations()
+
+	want := `{"name":"x","owner_id":"00000000-0000-0000-0000-000000000000"}`
+	if got := string(ops[2].ExampleBody()); got != want {
+		t.Errorf("ExampleBody() = %s, want %s", got, want)
+	}
+	if got := ops[0].ExampleBody(); got != nil {
+		t.Errorf("ExampleBody() without a body = %s, want nil", got)
+	}
+}
+
 // An optional parameter gets its case too, set only there. A header
 // parameter gets none: a target cannot carry it.
 func TestParamCasesOfAnOptionalParameter(t *testing.T) {

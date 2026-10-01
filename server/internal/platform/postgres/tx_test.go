@@ -63,6 +63,19 @@ func TestWithinTxCommits(t *testing.T) {
 	}
 }
 
+func TestInTxIsTrueOnlyWithinTx(t *testing.T) {
+	pool := newNotes(t, 4)
+	tm := postgres.NewTxManager(pool, commitTimeout)
+	inside := false
+	err := tm.WithinTx(context.Background(), func(ctx context.Context) error {
+		inside = postgres.InTx(ctx)
+		return nil
+	})
+	if err != nil || !inside || postgres.InTx(context.Background()) {
+		t.Errorf("InTx() = %v within WithinTx (error %v), %v outside; want true, false", inside, err, postgres.InTx(context.Background()))
+	}
+}
+
 func TestWithinTxRollsBackOnError(t *testing.T) {
 	pool := newNotes(t, 4)
 	tm := postgres.NewTxManager(pool, commitTimeout)

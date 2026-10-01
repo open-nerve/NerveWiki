@@ -156,3 +156,16 @@ func TestShareAccount(t *testing.T) {
 		t.Errorf("ShareAccount(unknown) = %v, want app.ErrNotFound", err)
 	}
 }
+
+// ShareAccount outside a transaction is a fault (M1 handoff to M2, item
+// 3): its FOR SHARE would end with the statement, and the access it guards
+// would no longer wait for a deactivation.
+func TestShareAccountRefusesToRunOutsideATransaction(t *testing.T) {
+	ctx := context.Background()
+	s, _ := newStore(t)
+	u := newUser("alice@corp.com")
+	mustCreate(t, s, u)
+	if _, err := s.ShareAccount(ctx, u.ID); err == nil || errors.Is(err, app.ErrNotFound) {
+		t.Errorf("ShareAccount() outside a transaction = %v, want a fault", err)
+	}
+}

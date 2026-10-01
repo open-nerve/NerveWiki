@@ -74,7 +74,7 @@ const MaxAPITokenNameLength = 100
 // is reported at once, as one 422 validation_failed.
 func CheckAPIToken(spec APITokenSpec, now time.Time) (APITokenSpec, error) {
 	var fields []shared.FieldError
-	name, f := CheckName("name", spec.Name, MaxAPITokenNameLength)
+	name, f := shared.CheckName("name", spec.Name, MaxAPITokenNameLength)
 	if f != nil {
 		fields = append(fields, *f)
 	}

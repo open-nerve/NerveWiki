@@ -220,9 +220,79 @@ export interface paths {
         };
         /**
          * Describe this instance
-         * @description Reports the product, the build and the API version this instance runs, and whether it is open for sign-up. Public: needs no authentication.
+         * @description Reports the product, the build and the API version this instance runs, whether it is open for sign-up, and whether accounts may create workspaces. Public: needs no authentication.
          */
         get: operations["getInstance"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v0/workspaces": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the caller's workspaces
+         * @description The workspaces the caller is an active member of, with the caller's role in each, by name, case-insensitively. The list is not paged.
+         */
+        get: operations["listWorkspaces"];
+        put?: never;
+        /**
+         * Create a workspace
+         * @description Creates a workspace whose admin is the caller. While creating workspaces is off on the instance (GET /instance answers workspace_creation_enabled), it answers workspace.creation_disabled before the values are looked at; the server's administrator creates workspaces with nervewiki workspaces create. A slug another workspace has is workspace.slug_taken; a reserved one is a problem of the slug field (not_allowed).
+         */
+        post: operations["createWorkspace"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v0/workspaces/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The workspace's slug. It carries no pattern here: a slug spelled wrong names no workspace, which the operation answers itself. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Get a workspace
+         * @description The workspace, with the caller's role. A workspace that does not exist, is deleted, or that the caller is no active member of is workspace.not_found alike.
+         */
+        get: operations["getWorkspace"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v0/workspace-slugs/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The workspace's slug. It carries no pattern here: a slug spelled wrong names no workspace, which the operation answers itself. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Tell whether a slug can name a new workspace
+         * @description Whether a new workspace can take the slug, and if not why: invalid (not 1–48 of a–z, 0–9, _ and -), reserved (a path of the site, or held for one), or taken (a workspace not deleted has it).
+         */
+        get: operations["checkWorkspaceSlug"];
         put?: never;
         post?: never;
         delete?: never;
@@ -388,6 +458,43 @@ export interface components {
             api_version: "v0";
             /** @description Whether anyone may register (auth.signup_enabled); when off, the server's administrator creates the accounts. */
             signup_enabled: boolean;
+            /** @description Whether accounts may create workspaces (workspace.creation_enabled); when off, the server's administrator creates them. */
+            workspace_creation_enabled: boolean;
+        };
+        /**
+         * @description A member's role: admin manages the workspace and its members, member and guest take part. Rules compare roles by set, never by order.
+         * @enum {string}
+         */
+        WorkspaceRole: "admin" | "member" | "guest";
+        /** @description A workspace, with the caller's role in it. */
+        Workspace: {
+            /** Format: uuid */
+            id: string;
+            /** @description The workspace's address segment, fixed once created. */
+            slug: string;
+            name: string;
+            role: components["schemas"]["WorkspaceRole"];
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        WorkspaceList: {
+            data: components["schemas"]["Workspace"][];
+        };
+        WorkspaceCreate: {
+            /** @description 1–80 characters after the surrounding blanks are trimmed, without control characters. */
+            name: string;
+            /** @description 1–48 of a–z, 0–9, _ and -, not a reserved name; it cannot be changed later. */
+            slug: string;
+        };
+        SlugAvailability: {
+            available: boolean;
+            /**
+             * @description Why a new workspace cannot take the slug; absent when it can.
+             * @enum {string}
+             */
+            reason?: "invalid" | "reserved" | "taken";
         };
     };
     responses: {
@@ -405,7 +512,10 @@ export interface components {
             };
         };
     };
-    parameters: never;
+    parameters: {
+        /** @description The workspace's slug. It carries no pattern here: a slug spelled wrong names no workspace, which the operation answers itself. */
+        Slug: string;
+    };
     requestBodies: never;
     headers: never;
     pathItems: never;
@@ -426,7 +536,13 @@ export type ApiTokenList = components['schemas']['ApiTokenList'];
 export type ApiTokenCreate = components['schemas']['ApiTokenCreate'];
 export type ApiTokenCreated = components['schemas']['ApiTokenCreated'];
 export type InstanceInfo = components['schemas']['InstanceInfo'];
+export type WorkspaceRole = components['schemas']['WorkspaceRole'];
+export type Workspace = components['schemas']['Workspace'];
+export type WorkspaceList = components['schemas']['WorkspaceList'];
+export type WorkspaceCreate = components['schemas']['WorkspaceCreate'];
+export type SlugAvailability = components['schemas']['SlugAvailability'];
 export type ResponseProblem = components['responses']['Problem'];
+export type ParameterSlug = components['parameters']['Slug'];
 export type $defs = Record<string, never>;
 export interface operations {
     register: {
@@ -723,6 +839,100 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["InstanceInfo"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    listWorkspaces: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The caller's workspaces. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceList"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    createWorkspace: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkspaceCreate"];
+            };
+        };
+        responses: {
+            /** @description The workspace, with the caller as its admin. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Workspace"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    getWorkspace: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The workspace's slug. It carries no pattern here: a slug spelled wrong names no workspace, which the operation answers itself. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The workspace. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Workspace"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    checkWorkspaceSlug: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The workspace's slug. It carries no pattern here: a slug spelled wrong names no workspace, which the operation answers itself. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Whether the slug is free. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SlugAvailability"];
                 };
             };
             default: components["responses"]["Problem"];

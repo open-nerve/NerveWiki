@@ -1,0 +1,30 @@
+# 工作区 slug 的保留名单（M2/P1 设计 3.6）。前后端只有这一份。
+# 一行一个名字，属于它上面最近的一段；空行与 # 开头的行不算。
+#
+# [app]：前端的顶层静态路由段（web/apps/web/src/app/routes.tsx），由 web 的 vitest（src/app/reserved-slugs.test.ts）核对。
+#   public/ 的文件不在此列：webui 对它们只按完整的文件路径作答，其余路径照常交给前端。
+# [server]：服务端在前端页面之外自己回答的顶层路径，加上前端构建产物的资源目录（webui.AssetsDir：其下缺失的路径答 404）。
+#   由 server/internal/bootstrap/reserved_test.go 核对。
+# [reserved]：以后可能用到的顶层段，与另两段不重复。用到时移进 [app] 或 [server]：
+#   create-workspace、invitations 随 M2 的页面（P5、P6），mcp 随 M9。
+
+[app]
+onboarding
+settings
+sign-in
+sign-up
+
+[server]
+api
+assets
+healthz
+readyz
+
+[reserved]
+admin
+create-workspace
+docs
+help
+invitations
+mcp
+static

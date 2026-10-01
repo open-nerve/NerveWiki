@@ -50,6 +50,7 @@ func TestLogValueMasksDatabaseURL(t *testing.T) {
 		"config.ratelimit.login_ip_email.burst=5",
 		"config.ratelimit.register_ip.per_minute=10",
 		"config.ratelimit.password_user.burst=5",
+		"config.workspace.creation_enabled=true",
 		"config.jobs.shutdown_timeout=10s",
 		"config.log.level=info",
 		"config.log.format=json",
