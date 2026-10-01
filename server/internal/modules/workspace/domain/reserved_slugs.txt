@@ -6,9 +6,10 @@
 # [server]：服务端在前端页面之外自己回答的顶层路径，加上前端构建产物的资源目录（webui.AssetsDir：其下缺失的路径答 404）。
 #   由 server/internal/bootstrap/reserved_test.go 核对。
 # [reserved]：以后可能用到的顶层段，与另两段不重复。用到时移进 [app] 或 [server]：
-#   create-workspace、invitations 随 M2 的页面（P5、P6），mcp 随 M9。
+#   invitations 随 M2 的邀请页（P6），mcp 随 M9。
 
 [app]
+create-workspace
 onboarding
 settings
 sign-in
@@ -22,7 +23,6 @@ readyz
 
 [reserved]
 admin
-create-workspace
 docs
 help
 invitations

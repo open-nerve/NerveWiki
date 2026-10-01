@@ -4,7 +4,7 @@ import type { BrowserContext, Page, Request } from "@playwright/test";
 import { expectRefreshed, generationOf } from "../../fixtures/assert/identity";
 import { bearer, emailFor, login, recordOf, refresh, register } from "../../fixtures/auth";
 import { expectQuietPage, followAccessToken, watchPage } from "../../fixtures/browser";
-import { displayNameField, profileStep, saveProfileStep } from "../../fixtures/onboarding-pages";
+import { displayNameField, profileStep, saveProfileStep, workspaceStep } from "../../fixtures/onboarding-pages";
 import { expect, test } from "../../fixtures/test";
 
 // A4, refresh (M1 design 3). Reusing an old token is A5.
@@ -124,14 +124,14 @@ for (const locks of [true, false]) {
       })
     );
 
-    // Both tabs save the step at once: both finish onboarding, neither goes to the sign-in page. The first
+    // Both tabs save the step at once: both go on to the next step, neither to the sign-in page. The first
     // refresh is held a while, so that the other tab's would overlap it if nothing kept them apart.
     await holdFirstRefresh(context, 1_000);
     expect(await Promise.all([tabA, tabB].map((tab) => saveProfileStep(tab)))).toEqual([200, 200]);
     await Promise.all(
       [tabA, tabB].map(async (tab) => {
-        await expect(tab.getByRole("heading", { level: 1, name: "Nerve Wiki" })).toBeVisible();
-        await expect(tab).toHaveURL(`${shortLived.baseURL}/`);
+        await expect(workspaceStep(tab)).toBeVisible();
+        await expect(tab).toHaveURL(`${shortLived.baseURL}/onboarding`);
       })
     );
 

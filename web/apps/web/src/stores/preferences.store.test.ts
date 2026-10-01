@@ -75,3 +75,50 @@ describe("PreferencesStore locale", () => {
     expect(store({ storage, languages: ["en"] }).locale).toBe("zh-CN");
   });
 });
+
+describe("PreferencesStore last workspace", () => {
+  test("is stored for the device: another tab, or the next visit, reads it", () => {
+    const storage = memoryStorage();
+    const prefs = store({ storage });
+    const otherTab = store({ storage });
+    expect(prefs.lastWorkspace()).toBeUndefined();
+
+    prefs.setLastWorkspace("acme");
+    expect([otherTab.lastWorkspace(), storage.values["nwiki.workspace"]]).toEqual(["acme", "acme"]);
+
+    otherTab.setLastWorkspace("beta");
+    expect(prefs.lastWorkspace()).toBe("beta");
+  });
+
+  test("lasts for this page when storage throws", () => {
+    const blocked = {
+      getItem: () => {
+        throw new DOMException("blocked", "SecurityError");
+      },
+      setItem: () => {
+        throw new DOMException("blocked", "SecurityError");
+      },
+    };
+    const prefs = store({ storage: blocked });
+
+    prefs.setLastWorkspace("acme");
+
+    expect(prefs.lastWorkspace()).toBe("acme");
+  });
+});
+
+test("PreferencesStore last workspace: one the storage failed to keep comes first", () => {
+  const values: Record<string, string> = { "nwiki.workspace": "old" };
+  const full = {
+    getItem: (key: string) => values[key] ?? null,
+    setItem: () => {
+      throw new DOMException("full", "QuotaExceededError");
+    },
+  };
+  const prefs = store({ storage: full });
+  expect(prefs.lastWorkspace()).toBe("old");
+
+  prefs.setLastWorkspace("acme");
+
+  expect(prefs.lastWorkspace()).toBe("acme");
+});

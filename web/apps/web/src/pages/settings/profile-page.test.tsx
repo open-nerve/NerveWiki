@@ -40,7 +40,7 @@ test("an account with a step left does its onboarding before the settings", asyn
     signedInApp({ "GET /api/v0/me": () => json({ ...userJSON, onboarding_steps: [] }) })
   );
 
-  expect(await screen.findByText("Step 1 of 1")).toBeTruthy();
+  expect(await screen.findByText("Step 1 of 2")).toBeTruthy();
   expect(router.state.location.search).toBe("?next=%2Fsettings%2Fprofile");
 });
 

@@ -1,4 +1,4 @@
-import type { Locator, Page } from "@playwright/test";
+import type { Locator, Page, Response } from "@playwright/test";
 
 import { answerTo } from "./browser";
 
@@ -7,6 +7,25 @@ import { answerTo } from "./browser";
 /** The heading of the profile step, the first of onboarding. */
 export function profileStep(page: Page): Locator {
   return page.getByRole("heading", { level: 1, name: "Your name" });
+}
+
+/**
+ * The answer to page's record of the onboarding step of id: the first that answers the account with the
+ * step among its steps. (The request's body is out of reach: the app's fetch streams it.)
+ */
+export function stepRecorded(page: Page, id: string): Promise<Response> {
+  return page.waitForResponse(
+    async (response) =>
+      response.request().method() === "POST" &&
+      new URL(response.url()).pathname === "/api/v0/me/onboarding-steps" &&
+      response.ok() &&
+      ((await response.json()) as { onboarding_steps: string[] }).onboarding_steps.includes(id)
+  );
+}
+
+/** The heading of the workspace step, the second of onboarding (M2/P5 design 3.7). */
+export function workspaceStep(page: Page): Locator {
+  return page.getByRole("heading", { level: 1, name: "Your workspace" });
 }
 
 export function displayNameField(page: Page): Locator {

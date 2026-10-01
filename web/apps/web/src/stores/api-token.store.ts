@@ -38,7 +38,11 @@ export class ApiTokenStore {
   async create(body: ApiTokenCreate): Promise<ApiTokenCreated> {
     const created = await this.service.create(body);
     const { id, name, expires_at, last_used_at, created_at } = created;
-    this.changed((tokens) => [{ id, name, expires_at, last_used_at, created_at }, ...tokens]);
+    // A read answered before the creation may hold it already.
+    this.changed((tokens) => [
+      { id, name, expires_at, last_used_at, created_at },
+      ...tokens.filter((token) => token.id !== id),
+    ]);
     return created;
   }
 

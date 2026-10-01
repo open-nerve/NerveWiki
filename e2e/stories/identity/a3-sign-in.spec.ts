@@ -5,6 +5,7 @@ import { bearer, emailFor, login, password, register, registerOnboarded } from "
 import { emailField, formError, passwordField, signInWith } from "../../fixtures/auth-pages";
 import { failedToLoad } from "../../fixtures/browser";
 import { expect, test } from "../../fixtures/test";
+import { expectCreatePage } from "../../fixtures/workspace-pages";
 
 // A3, sign-in (M1 design 3).
 
@@ -134,11 +135,10 @@ test("A3 (page): a deep link signs in and comes back; a refused sign-in keeps wh
   });
   await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
 
-  // A next that would leave the site, or run script, goes home instead.
+  // A next that would leave the site, or run script, goes home instead: without a workspace, the creation page.
   const goesHome = async (next: string) => {
     await page.goto(`/sign-in?next=${encodeURIComponent(next)}`);
-    await expect(page, next).toHaveURL("/");
-    await expect(page.getByRole("heading", { level: 1, name: "Nerve Wiki" })).toBeVisible();
+    await expectCreatePage(page);
   };
   await goesHome("//evil.example");
   await goesHome("/\\evil.example");

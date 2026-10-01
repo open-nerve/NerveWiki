@@ -41,7 +41,7 @@ function accountServer(routes: Record<string, Answer> = {}) {
   return { app, server };
 }
 
-/** Onboarding with the profile step and a second one, as M2 would add. */
+/** Onboarding with the profile step and a second one of the test's. */
 function Confirm({ complete }: { complete: () => Promise<void> }) {
   return (
     <button type="button" onClick={() => void complete()}>
@@ -50,7 +50,7 @@ function Confirm({ complete }: { complete: () => Promise<void> }) {
   );
 }
 const twoSteps: OnboardingStep[] = [
-  ...onboardingSteps,
+  ...onboardingSteps.filter((step) => step.id === "profile"),
   { id: "confirm", title: "onboarding.profile.title", Component: Confirm },
 ];
 const routes: RouteObject[] = [

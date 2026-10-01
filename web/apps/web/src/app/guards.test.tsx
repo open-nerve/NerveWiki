@@ -12,6 +12,7 @@ import {
   testApp,
   tokensJSON,
   userJSON,
+  workspaceJSON,
 } from "../test/fakes";
 import { AUTH_KEY } from "../session/token-manager";
 import { renderApp } from "../test/render";
@@ -60,8 +61,8 @@ test("an unavailable session says so on the page's address; Try again signs in",
   busy = false;
   await user.click(screen.getByRole("button", { name: "Try again" }));
 
-  expect(await screen.findByRole("heading", { name: "Nerve Wiki" })).toBeTruthy();
-  expect(where(router)).toBe("/");
+  expect(await screen.findByRole("heading", { name: "Lab" })).toBeTruthy();
+  expect(where(router)).toBe("/lab");
 });
 
 test("an account that cannot be loaded says so; Try again loads it", async () => {
@@ -94,7 +95,11 @@ test.each([
 // doing anything: the guard alone takes it on.
 test("a sign-in page leaves for next when the session starts from elsewhere", async () => {
   const app = testApp(
-    byRoute({ "GET /api/v0/instance": () => json(instanceJSON), "GET /api/v0/me": () => json(userJSON) })
+    byRoute({
+      "GET /api/v0/instance": () => json(instanceJSON),
+      "GET /api/v0/me": () => json(userJSON),
+      "GET /api/v0/workspaces": () => json({ data: [workspaceJSON] }),
+    })
   );
   const { router } = renderApp("/sign-in?next=%2Facme", app);
   await screen.findByRole("heading", { name: "Sign in" });
@@ -111,7 +116,7 @@ test("an account with a step left goes to onboarding, which comes back to the pa
     signedInApp({ "GET /api/v0/me": () => json({ ...userJSON, onboarding_steps: [] }) })
   );
 
-  expect(await screen.findByText("Step 1 of 1")).toBeTruthy();
+  expect(await screen.findByText("Step 1 of 2")).toBeTruthy();
   expect(where(router)).toBe(`/onboarding?next=${encodeURIComponent("/acme?view=list")}`);
 });
 

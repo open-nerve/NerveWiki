@@ -4,6 +4,7 @@ import type { User } from "../services/account.service";
 import type { AccountStore } from "./account.store";
 import type { ApiTokenStore } from "./api-token.store";
 import type { RootStore } from "./root.store";
+import type { WorkspaceStore } from "./workspace.store";
 
 const StoreContext = createContext<RootStore | null>(null);
 
@@ -37,4 +38,13 @@ export function useApiTokens(): ApiTokenStore {
     throw new Error("useApiTokens is used outside SignedIn");
   }
   return apiTokens;
+}
+
+/** useWorkspaces is the signed-in account's workspaces: only for the pages the SignedIn guard shows. */
+export function useWorkspaces(): WorkspaceStore {
+  const { workspaces } = useStore();
+  if (workspaces === undefined) {
+    throw new Error("useWorkspaces is used outside SignedIn");
+  }
+  return workspaces;
 }

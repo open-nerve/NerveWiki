@@ -3,13 +3,14 @@ import { createClient } from "@nervewiki/api-client";
 import { nervewikiWorkspaces, nervewikiWorkspacesFails } from "../../fixtures/admin";
 import { accountIdOf } from "../../fixtures/assert/identity";
 import { countWorkspaces, expectNewWorkspace, expectNoWorkspaceAdded } from "../../fixtures/assert/workspace";
-import { bearer, createToken, emailFor, register } from "../../fixtures/auth";
+import { bearer, createToken, emailFor, register, registerOnboarded } from "../../fixtures/auth";
 import { expect, test } from "../../fixtures/test";
+import { expectCreatePage, nameField, switcherChoices, workspaceHeading } from "../../fixtures/workspace-pages";
 import { slugFor } from "../../fixtures/workspaces";
 
-// W2, the switch of workspace creation (M2 design 3), and the server
+// W2, the switch of workspace creation (M2 design 3), the server
 // administrator's command that creates workspaces while it is off (M2/P4
-// design 3.3).
+// design 3.3), and the pages while it is (M2/P5 design 3.5).
 
 test("W2 (API): with creation off, the instance says so and creating answers 403", async ({
   db,
@@ -80,4 +81,27 @@ test("W2 (command line): workspaces create makes an account the admin of a new w
     ).map(([args, message]) => nervewikiWorkspacesFails(db, ["create", ...args], message, closed))
   );
   await expectNoWorkspaceAdded(db, before);
+});
+
+test("W2 (page): with creation off, an account without a workspace reads how to get into one, and the switcher offers no creation", async ({
+  db,
+  nervewikiWith,
+  signedInPage,
+}, testInfo) => {
+  const closed = { NWIKI_WORKSPACE__CREATION_ENABLED: "false" };
+  const { baseURL } = await nervewikiWith(db.url, { env: closed });
+  const email = emailFor(testInfo);
+  const page = await signedInPage(await registerOnboarded(createClient({ baseUrl: baseURL }), email), baseURL);
+
+  await page.goto(`${baseURL}/`);
+  await expectCreatePage(page, baseURL);
+  await expect(page.getByText(/workspaces are created by its administrator/)).toBeVisible();
+  await expect(nameField(page)).toHaveCount(0);
+
+  // The server's administrator creates one for the account: the switcher lists it, and offers no creation.
+  const slug = slugFor(testInfo);
+  await nervewikiWorkspaces(db, ["create", "--slug", slug, "--name", "Acme", "--admin", email], closed);
+  await page.goto(`${baseURL}/`);
+  await expect(workspaceHeading(page, "Acme")).toBeVisible();
+  expect(await switcherChoices(page, "Acme")).toEqual({ workspaces: ["Acme"], others: [] });
 });

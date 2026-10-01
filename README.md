@@ -147,7 +147,7 @@ make build     # 构建前端并内嵌进 bin/nervewiki
 写法：
 
 - 组件经由 store 取数据，store 经由 service 调接口，service 从构造函数拿 API 客户端。`src/stores/root.store.ts` 是唯一装配它们的地方：页面一生的 `AppStores` 与每次登录一代的 `RootStore`。组件不导入 `@nervewiki/api-client`，oxlint 检查这一点，接口类型从 service 导出。
-- 加载由 SWR 驱动：页面 `useSWR(key, () => store.x.load())`，store 保存结果。示例见 `src/pages/home.tsx`。
+- 加载由 SWR 驱动：页面 `useSWR(key, () => store.x.load())`，store 保存结果。示例见 `src/pages/landing.tsx`。
 - 文案在 `src/i18n/messages/`：`en.ts` 是源头，`zh-CN.ts` 缺键、多键时类型检查失败，占位符不一致时 vitest 失败。组件用 `useT()`。
 - 页面在 `src/app/routes.tsx` 中按需加载，写成 `const { Page } = await import(…)`，knip 才看得出用到了哪些导出。
 
@@ -156,10 +156,12 @@ make build     # 构建前端并内嵌进 bin/nervewiki
 - **会话**：`src/session/` 是唯一创建 API 客户端的地方（oxlint 检查）：公开客户端（登录、注册、实例信息）与带访问令牌的客户端。浏览器只在 localStorage 的 `nwiki.auth` 中存刷新令牌与本次登录的 `login_id`；访问令牌只在内存中，到期前 30 秒续期。同一浏览器的标签页经 Web Locks 一次一个续期，没有 `navigator.locks` 的非安全上下文（如局域网地址的 HTTP）退回 localStorage 租约：租约只能尽力串行，极少数情况下两个标签页同时续期，会话被当作重复使用而结束，用户重新登录；需要严格串行的部署请用 HTTPS。一个标签页登录、退出或换了账户，其他标签页跟着变。浏览器写不进存储（本站的存储已满或被阻止）时无法保持会话：标签页注销它、回到登录页，登录时说明原因。
 - **每次登录一代**：`SessionRoot` 按 `loginId` 新建一代 `RootStore`，SWR 缓存随之清空；上一代没有完成的请求以 `SessionChangedError` 结束，不写入新一代。设备偏好与实例信息跨代保留。
 - **路由与守卫**（`src/app/guards.tsx`）：除登录、注册外所有页面都要登录，不存在的路径也是先登录再显示 404。去向只由守卫决定：页面在登录、注册、退出之后不自己跳转。登录页的 `next` 只接受本站路径，否则去 `/`。
-- **新手引导**：步骤注册在 `src/onboarding/steps.ts`，服务端只记录完成的步骤 id。加一步就是写它的组件、追加到 `onboardingSteps`；已经完成前面步骤的用户下次访问只看到新的一步。
+- **新手引导**：步骤注册在 `src/onboarding/steps.ts`，服务端只记录完成的步骤 id。加一步就是写它的组件、追加到 `onboardingSteps`（同时加进 e2e 的 `fixtures/auth.ts`）；已经完成前面步骤的用户下次访问只看到新的一步。现在两步：资料，工作区（已有工作区的账户，比如经邀请加入的，直接继续；没有的在这里创建一个；关闭创建时说明怎么加入，再继续）。
+- **工作区的外壳**：`/` 落到这台设备最后访问的工作区（localStorage 的 `nwiki.workspace`）、按名称的第一个，或者创建页；`/:slug` 是工作区的外壳，左栏切换工作区，不是成员的 slug 显示 404。新的顶层页面要把它的路径段加进保留名单 `server/internal/modules/workspace/domain/reserved_slugs.txt` 的 `[app]`，vitest 核对路由与名单一致。
+- **工作区的页面**：`/create-workspace` 建工作区，slug 随名称生成，停止输入之后问服务端是否可用；关闭创建时只说明怎么加入一个工作区。`/:slug/settings/general` 是工作区的名称与地址：管理员改名，删除要先输入 slug，删除之后回到 `/`；其他成员只能看。
 - **请求的错误**：problem 码与字段码到文案的映射在 `src/app/problem-messages.ts`；vitest 读 `api/dist/openapi.yaml`，契约中任何一个操作列出的码没有文案时失败（只有页面不显示其错误的续期与退出除外）。
 - **表单**：`src/app/form.ts` 的 `useForm` 是所有表单的发送：本地检查不通过就不发；服务端的字段错误在字段下方（个别 problem 码也可以指定字段，例如当前密码不对），其余在表单上方；发送中按钮禁用；失败之后焦点移到第一个有错误的字段。
-- **设置**（`src/pages/settings/`）：`/settings/profile`（显示名；主题与语言是这个浏览器的偏好，与顶栏的菜单是同一份，只存在设备上）、`/settings/security`（改密码、停用账户）、`/settings/tokens`（个人访问令牌）。新令牌只在创建对话框中显示一次，对话框关闭即卸载，列表从不持有令牌本身；停用成功之后本浏览器忘掉会话（服务端已经结束了它），所有标签页回到登录页。
+- **设置**（`src/pages/settings/`）：`/settings/profile`（显示名；主题与语言是这个浏览器的偏好，与顶栏的菜单是同一份，只存在设备上）、`/settings/security`（改密码、停用账户）、`/settings/tokens`（个人访问令牌）。新令牌只在创建对话框中显示一次，对话框关闭即卸载，列表从不持有令牌本身；停用成功之后本浏览器忘掉会话（服务端已经结束了它），所有标签页回到登录页。顶栏的用户菜单里显示服务器的版本。
 
 ## 端到端测试
 

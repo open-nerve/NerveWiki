@@ -2,12 +2,14 @@ import { AccountService } from "../services/account.service";
 import { ApiTokenService } from "../services/api-token.service";
 import { AuthService } from "../services/auth.service";
 import { InstanceService } from "../services/instance.service";
+import { WorkspaceService } from "../services/workspace.service";
 import type { Session } from "../session/session";
 import { AccountStore } from "./account.store";
 import { ApiTokenStore } from "./api-token.store";
 import { AuthStore } from "./auth.store";
 import { InstanceStore } from "./instance.store";
 import type { PreferencesStore } from "./preferences.store";
+import { WorkspaceStore } from "./workspace.store";
 
 /**
  * AppStores are what the page keeps for as long as it lives, whoever is
@@ -40,6 +42,8 @@ export class RootStore {
   readonly account: AccountStore | undefined;
   /** The signed-in account's personal access tokens; undefined while the tab is signed out. */
   readonly apiTokens: ApiTokenStore | undefined;
+  /** The signed-in account's workspaces; undefined while the tab is signed out. */
+  readonly workspaces: WorkspaceStore | undefined;
 
   constructor(
     app: AppStores,
@@ -51,5 +55,6 @@ export class RootStore {
     const client = loginId === undefined ? undefined : app.session.clientFor(loginId);
     this.account = client && new AccountStore(new AccountService(client));
     this.apiTokens = client && new ApiTokenStore(new ApiTokenService(client));
+    this.workspaces = client && new WorkspaceStore(new WorkspaceService(client));
   }
 }

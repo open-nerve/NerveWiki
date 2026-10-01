@@ -4,7 +4,11 @@ import { LanguageMenu } from "./language-menu";
 import { ThemeMenu } from "./theme-menu";
 import { UserMenu } from "./user-menu";
 
-/** Layout is the shell around every page: the top bar (with the account once signed in) and the page below it. */
+/**
+ * Layout is the shell around every page: the top bar (with the account once
+ * signed in) and the page below it. A page is padded, unless it holds a
+ * shell of its own (data-shell, a workspace's), which reaches the edges.
+ */
 export function Layout() {
   return (
     <div className="flex min-h-svh flex-col">
@@ -18,7 +22,7 @@ export function Layout() {
           <UserMenu />
         </div>
       </header>
-      <main className="flex-1 p-6">
+      <main className="flex flex-1 flex-col p-6 has-[[data-shell]]:p-0">
         <Outlet />
       </main>
     </div>

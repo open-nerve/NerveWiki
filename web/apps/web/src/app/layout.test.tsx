@@ -8,7 +8,7 @@ import { renderApp } from "../test/render";
 test("choosing a theme in the top bar applies it to the page", async () => {
   const user = userEvent.setup();
   const { app } = renderApp("/", signedInApp());
-  await screen.findByRole("heading", { name: "Nerve Wiki" });
+  await screen.findByRole("heading", { name: "Lab" });
   expect(document.documentElement.classList.contains("dark")).toBe(false);
 
   await user.click(screen.getByRole("button", { name: "Theme" }));

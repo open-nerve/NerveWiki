@@ -20,7 +20,7 @@ test.each(keys)("%s has the same placeholders in every language, and text", (key
 test("t fills each placeholder", () => {
   const t = translator("en");
 
-  expect(t("home.version", { version: "1.2.3", commit: "4f2a9c1" })).toBe("Version 1.2.3 (4f2a9c1)");
+  expect(t("userMenu.version", { version: "1.2.3", commit: "4f2a9c1" })).toBe("Nerve Wiki 1.2.3 (4f2a9c1)");
   expect(t("status.loading")).toBe("Loading…");
 });
 
@@ -28,10 +28,10 @@ test("t fills each placeholder", () => {
 test("t takes exactly the placeholders of its key", () => {
   const t = translator("en");
 
-  // @ts-expect-error: home.version needs version and commit
-  t("home.version");
+  // @ts-expect-error: userMenu.version needs version and commit
+  t("userMenu.version");
   // @ts-expect-error: commit is missing
-  t("home.version", { version: "1.2.3" });
+  t("userMenu.version", { version: "1.2.3" });
   // @ts-expect-error: status.loading has no placeholder
   t("status.loading", { version: "1.2.3" });
 });

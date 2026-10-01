@@ -22,7 +22,7 @@ import {
 } from "../../fixtures/auth";
 import { accountMenu, signInWith, signOutThroughMenu } from "../../fixtures/auth-pages";
 import { expectQuietPage, followAccessToken, watchPage, type PageWatch } from "../../fixtures/browser";
-import { displayNameField, profileStep, saveProfileStep } from "../../fixtures/onboarding-pages";
+import { displayNameField, profileStep, saveProfileStep, workspaceStep } from "../../fixtures/onboarding-pages";
 import { expect, test } from "../../fixtures/test";
 
 // A6, sign-out (M1 design 3).
@@ -95,7 +95,7 @@ test("A6 (page): another tab signs another account in without signing out: every
   await expect(displayNameField(tabA)).toHaveValue(displayNameOf(y));
   await displayNameField(tabA).fill("Yvonne");
   expect(await saveProfileStep(tabA)).toBe(200);
-  await expect(tabA.getByRole("heading", { level: 1, name: "Nerve Wiki" })).toBeVisible();
+  await expect(workspaceStep(tabA)).toBeVisible();
   // Both of the step's writes went to Y, the name and then the step; X's account is as it was.
   const [xId, yId] = [await accountIdOf(db, x), await accountIdOf(db, y)];
   await expectDisplayName(db, yId, "Yvonne");

@@ -41,10 +41,13 @@ test("a generation of the session before sends nothing once the tab has signed i
   expect(sent).toEqual(["POST /api/v0/auth/refresh", "GET /api/v0/me", "POST /api/v0/auth/login"]);
   expect(after.loginId).toBe("login-1");
   expect(after.account?.me).toBeUndefined();
+  expect(after.workspaces).not.toBe(before.workspaces);
+  expect(after.workspaces?.list).toBeUndefined();
   expect(after.preferences).toBe(before.preferences);
   expect(after.instance).toBe(before.instance);
 });
 
-test("a signed-out generation has no account", () => {
-  expect(new RootStore(testApp(), undefined).account).toBeUndefined();
+test("a signed-out generation has no account, nor its workspaces", () => {
+  const store = new RootStore(testApp(), undefined);
+  expect([store.account, store.workspaces]).toEqual([undefined, undefined]);
 });

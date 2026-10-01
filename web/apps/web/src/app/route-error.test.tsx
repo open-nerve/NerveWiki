@@ -9,8 +9,8 @@ import { renderApp } from "../test/render";
 import { AppProviders } from "./providers";
 import { RouteError } from "./route-error";
 
-// The home page's chunk cannot be loaded, as when an older build is gone.
-vi.mock("../pages/home", () => {
+// The landing page's chunk cannot be loaded, as when an older build is gone.
+vi.mock("../pages/landing", () => {
   throw new Error("Failed to fetch dynamically imported module");
 });
 
