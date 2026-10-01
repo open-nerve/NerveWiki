@@ -30,6 +30,17 @@ type Accounts interface {
 	ShareActiveAccount(ctx context.Context, id uuid.UUID) (email string, err error)
 }
 
+// AccountsByEmail is what identity offers the server administrator's
+// commands, which name an account by its address (M2/P4 design 3.3): the
+// first statement of their transactions, as Accounts is of the API's.
+type AccountsByEmail interface {
+	// ShareActiveAccountByEmail locks the row of the account of email FOR
+	// SHARE until the transaction ends and returns its id:
+	// identity.account_not_found (404) when there is none,
+	// identity.account_deactivated (403) when it is deactivated.
+	ShareActiveAccountByEmail(ctx context.Context, email string) (uuid.UUID, error)
+}
+
 // Membership is a workspace and an account's role in it.
 type Membership struct {
 	Workspace domain.Workspace

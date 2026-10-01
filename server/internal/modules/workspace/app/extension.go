@@ -60,14 +60,14 @@ type WorkspaceDeletionSubscriber interface {
 	WorkspaceDeleted(ctx context.Context, d WorkspaceDeletion) error
 }
 
-// MembershipRestore is an ended membership active again, the same row with
-// a new role: by an accepted invitation, or (M2/P4) an admin's
-// reactivation.
+// MembershipRestore is an ended membership active again, the same row,
+// with the invitation's role or its own: by an accepted invitation, or by
+// the server administrator's reactivate-member (M2/P4 design 3.3).
 type MembershipRestore struct {
 	WorkspaceID uuid.UUID
 	UserID      uuid.UUID
 	Role        shared.WorkspaceRole
-	By          uuid.UUID // who restores it: the account accepting, or the admin
+	By          uuid.UUID // the account itself: it accepts, or the command line acts as it
 	At          time.Time
 }
 

@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"log/slog"
+	"time"
 	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/workspace/domain"
@@ -49,17 +50,12 @@ func (c *CreateWorkspace) Execute(ctx context.Context, name, slug string) (Membe
 	if err != nil {
 		return Membership{}, err
 	}
-	now := c.d.Clock.Now()
-	w := domain.Workspace{ID: uuid.NewV7(), Slug: draft.Slug, Name: draft.Name, CreatedAt: now, UpdatedAt: now}
-	admin := domain.Member{ID: uuid.NewV7(), WorkspaceID: w.ID, UserID: actor.UserID, Role: shared.WorkspaceAdmin, CreatedAt: now}
+	w, admin := newWorkspace(draft, actor.UserID, c.d.Clock.Now())
 	err = c.d.Tx.WithinTx(ctx, func(ctx context.Context) error {
 		if _, err := c.d.Accounts.ShareActiveAccount(ctx, actor.UserID); err != nil {
 			return err
 		}
-		if err := c.d.Workspaces.CreateWorkspace(ctx, w, actor.UserID); err != nil {
-			return err
-		}
-		return c.d.Workspaces.AddMember(ctx, admin, actor.UserID)
+		return create(ctx, c.d.Workspaces, w, admin)
 	})
 	if err != nil {
 		return Membership{}, err
@@ -67,4 +63,21 @@ func (c *CreateWorkspace) Execute(ctx context.Context, name, slug string) (Membe
 	c.d.Logger.InfoContext(ctx, "workspace created",
 		slog.String("workspace_id", w.ID.String()), slog.String("user_id", actor.UserID.String()))
 	return Membership{Workspace: w, Role: admin.Role}, nil
+}
+
+// newWorkspace is the workspace of draft created at now, and its admin's
+// membership, of the account userID: their ids come before the
+// transaction (v0.1 design 13.1, item 19).
+func newWorkspace(draft domain.Draft, userID uuid.UUID, now time.Time) (domain.Workspace, domain.Member) {
+	w := domain.Workspace{ID: uuid.NewV7(), Slug: draft.Slug, Name: draft.Name, CreatedAt: now, UpdatedAt: now}
+	return w, domain.Member{ID: uuid.NewV7(), WorkspaceID: w.ID, UserID: userID, Role: shared.WorkspaceAdmin, CreatedAt: now}
+}
+
+// create writes w and its admin's membership, by the admin: what follows
+// the share of the admin's account in a creation's transaction.
+func create(ctx context.Context, store WorkspaceCreator, w domain.Workspace, admin domain.Member) error {
+	if err := store.CreateWorkspace(ctx, w, admin.UserID); err != nil {
+		return err
+	}
+	return store.AddMember(ctx, admin, admin.UserID)
 }

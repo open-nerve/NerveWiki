@@ -113,14 +113,5 @@ func (a *AcceptInvitation) join(ctx context.Context, inv domain.Invitation, user
 	case m.Active():
 		return m.Role, joinKept, nil
 	}
-	if err := a.d.Updater.RestoreMember(ctx, m.ID, inv.Role, userID, now); err != nil {
-		return "", "", err
-	}
-	restored := MembershipRestore{WorkspaceID: inv.WorkspaceID, UserID: userID, Role: inv.Role, By: userID, At: now}
-	for _, s := range a.d.Subscribers {
-		if err := s.MembershipRestored(ctx, restored); err != nil {
-			return "", "", err
-		}
-	}
-	return inv.Role, joinRestored, nil
+	return inv.Role, joinRestored, restore(ctx, a.d.Updater, a.d.Subscribers, m, inv.Role, userID, now)
 }
