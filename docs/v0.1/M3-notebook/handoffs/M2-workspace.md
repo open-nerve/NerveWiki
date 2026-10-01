@@ -16,7 +16,7 @@ M2 建好了工作区的三个扩展点（成员身份结束、恢复、工作�
    - 清理器跳过别的事务持有的行；同一模块之内，还跳过仍被之前的清理器跳过的行引用的行：父行的 `ON DELETE CASCADE` 不能连带删除子行，否则会等锁（[P4 审查](../../M2-workspace/reviews/P4-deactivation-commands-purge-review.md) T1；工作区的清理器以 `NOT EXISTS` 等子行先清掉）。
    - **跨模块的外键用 `ON DELETE RESTRICT`**：工作区的清理器看不到笔记本的表（sqlc 按模块限定），写不出 `NOT EXISTS`。所以 `notebooks → workspaces` 这类外键用 RESTRICT，不用 CASCADE：每一行只由它自己模块的清理器删除；工作区仍被引用时，这一批删除失败、清理停下，River 重试，笔记本清掉之后完成（[M2 收尾审查](../../M2-workspace/reviews/M2-closeout-review.md) A-I1）。第一条跨模块外键到来时，在 `TestPurgersComeBeforeTheTablesTheyReference` 旁边加一条检查：指向被清理表、来自别的模块迁移的外键不是 CASCADE（`confdeltype <> 'c'`，模块取自迁移文件名）。
    - `TestPurgersComeBeforeTheTablesTheyReference` 要求引用被清理表的每张表都有自己的清理器：只靠 CASCADE、没有 `deleted_at` 的子表过不了它，M3 加这样的表时决定是给它清理器，还是在测试里写明豁免（P4 审查 Q2）。
-   - "失败即停"：一个永久失败的清理器让之后的都不跑，只在日志里看得到（P4 审查 Q2）。表多了之后要不要改成跳过失败的继续，在 M3 定。
+   - "失败即停"：一个永久失败的清理器让之后的都不跑，只在日志里看得到（P4 审查 Q2）。RESTRICT 让它更常见：Codex 评审在测试库里用 RESTRICT 的子表引用一个到期的工作区，连续三次清理都整批回滚，同批无引用的工作区也不前进，之后的清理器不运行；子行清掉之后才完成（[Codex 评审](../../M2-workspace/reviews/M2-codex-review.md) D1）。River 的重试只在子行后来确实清掉时有用，永久残留的引用要有出路。M3 有了真实的表之后在三条路径中定：监控与运维修复的契约；由子表的模块提供被阻塞的父 id，父表的清理器跳过它们（SQL 仍各归各的模块）；按依赖分支隔离失败，无关的清理器继续（不能简单地"任何错误都继续"，否则 M7 的"先删文件、再删行"失去顺序保证）。
    - 表上没有 `deleted_at` 的索引，每批顺序扫描；River 的任务期限 1 分钟，超时取消重试，已删的批不丢（P4 审查 Q3）。v0.1 的规模不需要；笔记本或页面的表大到一批扫不完时，加部分索引或调长清理的期限。
 5. **前端**：
    - 让整页离开的操作之后的焦点（删除、离开工作区，接受邀请进入工作区：触发的按钮都已不在），以及左栏用 `aside` 承载主导航的语义，与页面树一起设计（[P5 审查](../../M2-workspace/reviews/P5-web-shell-workspaces-review.md) T11，M2 收尾审查 B-N5）。
