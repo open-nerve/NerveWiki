@@ -1,6 +1,7 @@
 import { makeAutoObservable, runInAction } from "mobx";
 
 import { ApiError } from "../services/api";
+import type { InvitationLink } from "../services/invitation.service";
 import type { SlugAvailability, Workspace, WorkspaceCreate, WorkspaceService } from "../services/workspace.service";
 
 /**
@@ -29,10 +30,15 @@ export class WorkspaceStore {
   list: Workspace[] | undefined = undefined;
   /** How many changes have been answered: a read that overlaps one may have read the list before it. */
   private changesAnswered = 0;
-  /** The slugs of the workspaces this generation deleted: their pages go to the landing, not to the 404. */
+  /** The slugs of the workspaces this generation deleted or left: their pages go to the landing, not to the 404. */
   private readonly removed = new Set<string>();
 
-  constructor(private readonly service: Pick<WorkspaceService, "list" | "create" | "rename" | "remove" | "checkSlug">) {
+  constructor(
+    private readonly service: Pick<
+      WorkspaceService,
+      "list" | "create" | "rename" | "remove" | "leave" | "accept" | "checkSlug"
+    >
+  ) {
     makeAutoObservable<this, "service" | "changesAnswered" | "removed">(this, {
       service: false,
       changesAnswered: false,
@@ -40,7 +46,7 @@ export class WorkspaceStore {
     });
   }
 
-  /** wasRemoved tells whether this generation deleted the workspace of slug. */
+  /** wasRemoved tells whether this generation deleted or left the workspace of slug. */
   wasRemoved(slug: string): boolean {
     return this.removed.has(slug);
   }
@@ -80,13 +86,37 @@ export class WorkspaceStore {
     return renamed;
   }
 
+  /** accept joins the workspace link invites to, and answers it with the account's role there. */
+  async accept(link: InvitationLink): Promise<Workspace> {
+    const joined = await this.service.accept(link);
+    // A read answered before the acceptance may hold it already.
+    this.changed((list) => [...list.filter((workspace) => workspace.id !== joined.id), joined]);
+    return joined;
+  }
+
+  /** remove deletes the workspace of slug. */
+  remove(slug: string): Promise<void> {
+    return this.gone(slug, () => this.service.remove(slug));
+  }
+
+  /** leave ends the account's membership of the workspace of slug. */
+  leave(slug: string): Promise<void> {
+    return this.gone(slug, () => this.service.leave(slug));
+  }
+
+  /** checkSlug asks whether slug can name a new workspace; it changes nothing the store holds. */
+  checkSlug(slug: string): Promise<SlugAvailability> {
+    return this.service.checkSlug(slug);
+  }
+
   /**
-   * remove deletes the workspace of slug; one the account no longer has
-   * (deleted already, or the account removed from it) is gone as well.
+   * gone sends request, after which the account no longer has the
+   * workspace of slug; one it no longer has already (deleted, or the
+   * account removed from it) is gone as well.
    */
-  async remove(slug: string): Promise<void> {
+  private async gone(slug: string, request: () => Promise<void>): Promise<void> {
     try {
-      await this.service.remove(slug);
+      await request();
     } catch (error) {
       if (!(error instanceof ApiError && error.code === "workspace.not_found")) {
         throw error;
@@ -94,11 +124,6 @@ export class WorkspaceStore {
     }
     this.removed.add(slug);
     this.changed((list) => list.filter((workspace) => workspace.slug !== slug));
-  }
-
-  /** checkSlug asks whether slug can name a new workspace; it changes nothing the store holds. */
-  checkSlug(slug: string): Promise<SlugAvailability> {
-    return this.service.checkSlug(slug);
   }
 
   private changed(change: (list: Workspace[]) => Workspace[]): void {

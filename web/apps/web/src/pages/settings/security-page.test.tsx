@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 
@@ -141,6 +141,20 @@ test("a refused deactivation keeps the dialog, its reason and the session", asyn
   expect(screen.getByRole("button", { name: "Deactivate" })).toHaveProperty("disabled", false);
   expect(app.session.tokens.state.status).toBe("signed-in");
   expect(stored).toHaveProperty(AUTH_KEY);
+});
+
+test("the only admin of a workspace with other members is told what to do first, and stays signed in", async () => {
+  const user = userEvent.setup();
+  const { app } = securityPage({ "POST /api/v0/me/deactivate": () => problem(409, "workspace.sole_admin") });
+
+  await user.click(await screen.findByRole("button", { name: "Deactivate account" }));
+  await user.click(await screen.findByRole("button", { name: "Deactivate" }));
+
+  const dialog = await screen.findByRole("alertdialog");
+  expect((await within(dialog).findByRole("alert")).textContent).toBe(
+    "You are the only admin of a workspace that has other members. Make another member an admin there first (workspace settings, Members), then deactivate."
+  );
+  expect(app.session.tokens.state.status).toBe("signed-in");
 });
 
 test("a deactivation goes out once, however often it is pressed; cancel sends nothing", async () => {

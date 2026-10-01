@@ -12,7 +12,7 @@ import {
 } from "../components/ui/alert-dialog";
 import { Button } from "../components/ui/button";
 import { useT } from "../i18n/i18n";
-import { errorText } from "./problem-messages";
+import { errorText, type ProblemTexts } from "./problem-messages";
 
 type ConfirmDialogProps = {
   /** The button that opens the dialog. */
@@ -36,6 +36,8 @@ type ConfirmDialogProps = {
    * the field holds value.
    */
   typedConfirmation?: { label: string; value: string };
+  /** The dialog's own texts for some problem codes of a refusal. */
+  texts?: ProblemTexts;
 };
 
 /**
@@ -55,6 +57,7 @@ export function ConfirmDialog({
   confirm,
   focusAfter,
   typedConfirmation,
+  texts,
 }: ConfirmDialogProps) {
   const t = useT();
   const [open, setOpen] = useState(false);
@@ -64,7 +67,7 @@ export function ConfirmDialog({
   const [sending, setSending] = useState(false);
   const confirmed = useRef(false);
   const typedField = useRef<HTMLInputElement>(null);
-  const failed = failure === undefined ? undefined : errorText(failure, t);
+  const failed = failure === undefined ? undefined : errorText(failure, t, texts);
 
   async function run() {
     setSending(true);

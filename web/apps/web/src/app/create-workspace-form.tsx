@@ -77,7 +77,9 @@ export const CreateWorkspaceForm = observer(function CreateWorkspaceForm({
   /** The slug of the last submit: what the form found wrong with it is stale once the slug changes. */
   const [submitted, setSubmitted] = useState<string>();
   const availability = useAvailability(slug);
-  const { ref, sending, banner, problemOf, submit } = useForm(["name", "slug"], { "workspace.slug_taken": "slug" });
+  const { ref, sending, banner, problemOf, submit } = useForm(["name", "slug"], {
+    onField: { "workspace.slug_taken": "slug" },
+  });
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

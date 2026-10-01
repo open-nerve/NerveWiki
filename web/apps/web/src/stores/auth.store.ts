@@ -1,4 +1,5 @@
 import type { AuthService } from "../services/auth.service";
+import type { InvitationLink } from "../services/invitation.service";
 import type { SessionState, TokenManager } from "../session/token-manager";
 
 export type { SessionState };
@@ -32,8 +33,9 @@ export class AuthStore {
     await this.tokens.signIn(await this.service.login(email, password));
   }
 
-  async signUp(email: string, password: string): Promise<void> {
-    await this.tokens.signIn(await this.service.register(email, password));
+  /** signUp creates an account and signs in to it; with an invitation, as its address while sign-up is closed. */
+  async signUp(email: string, password: string, invitation?: InvitationLink): Promise<void> {
+    await this.tokens.signIn(await this.service.register(email, password, invitation));
   }
 
   /** signOut ends the session in every tab of the browser. */

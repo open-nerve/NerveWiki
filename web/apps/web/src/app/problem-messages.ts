@@ -1,4 +1,4 @@
-import type { Translate } from "../i18n/i18n";
+import type { PlainKey, Translate } from "../i18n/i18n";
 import { en, type MessageKey } from "../i18n/messages/en";
 import { ApiError, type FieldError } from "../services/api";
 import { SessionChangedError, SessionStorageError, SessionUnavailableError } from "../session/token-manager";
@@ -46,11 +46,19 @@ const fieldMessages = {
 } as const satisfies Record<FieldError["code"], MessageKey>;
 
 /**
+ * ProblemTexts are a page's own texts for problem codes that mean more
+ * there than they say elsewhere, such as workspace.sole_admin to a
+ * deactivation: the text of each code's key instead of its usual one.
+ */
+export type ProblemTexts = Readonly<Partial<Record<keyof typeof problemMessages, PlainKey>>>;
+
+/**
  * errorText is what a page says of error above its form or in place of what
  * it could not load, or undefined for a request cut by a change of session:
  * the page is going away. A 429 says how long to wait when the server said.
+ * texts says some codes the page's way.
  */
-export function errorText(error: unknown, t: Translate): string | undefined {
+export function errorText(error: unknown, t: Translate, texts: ProblemTexts = {}): string | undefined {
   if (error instanceof SessionChangedError) {
     return undefined;
   }
@@ -65,6 +73,10 @@ export function errorText(error: unknown, t: Translate): string | undefined {
   }
   if (error instanceof ApiError) {
     const code = error.code;
+    const own = code !== undefined && Object.hasOwn(texts, code) ? texts[code as keyof ProblemTexts] : undefined;
+    if (own !== undefined) {
+      return t(own);
+    }
     if (code === "rate_limited" && error.retryAfter !== undefined) {
       return t("problem.rate_limitedFor", { seconds: error.retryAfter });
     }
@@ -100,20 +112,21 @@ function isFieldMessage(key: `field.${string}`): key is FieldMessage {
  * problems are all on fields shown shows nothing above; a problem on a
  * field the form does not show goes above as the 422's text. A problem
  * code in onField shows under its field instead, such as a wrong current
- * password under the current password. No error shows nothing.
+ * password under the current password; texts says some codes the form's
+ * way. No error shows nothing.
  */
 export function formErrors(
   error: unknown,
   t: Translate,
   shown: readonly string[],
-  onField: Readonly<Record<string, string>> = {}
+  { onField = {}, texts = {} }: { onField?: Readonly<Record<string, string>>; texts?: ProblemTexts } = {}
 ): { banner: string | undefined; fields: Record<string, string> } {
   if (error === undefined) {
     return { banner: undefined, fields: {} };
   }
   const codeField = error instanceof ApiError && error.code !== undefined ? onField[error.code] : undefined;
   if (codeField !== undefined) {
-    return { banner: undefined, fields: { [codeField]: errorText(error, t) ?? "" } };
+    return { banner: undefined, fields: { [codeField]: errorText(error, t, texts) ?? "" } };
   }
   const fields = fieldErrors(error, t);
   const onFields = Object.keys(fields);
@@ -122,5 +135,5 @@ export function formErrors(
     error.code === "validation_failed" &&
     onFields.length > 0 &&
     onFields.every((field) => shown.includes(field));
-  return { banner: allShown ? undefined : errorText(error, t), fields };
+  return { banner: allShown ? undefined : errorText(error, t, texts), fields };
 }

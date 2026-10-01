@@ -2,7 +2,7 @@ import { useState } from "react";
 
 import { useFocusOnInvalid } from "../components/form-field";
 import { useT } from "../i18n/i18n";
-import { formErrors, type FieldMessage } from "./problem-messages";
+import { formErrors, type FieldMessage, type ProblemTexts } from "./problem-messages";
 
 /** The fields' problems found before sending: a message for each field that has one. */
 export type LocalProblems<Field extends string> = Partial<Record<Field, FieldMessage>>;
@@ -12,16 +12,20 @@ export type LocalProblems<Field extends string> = Partial<Record<Field, FieldMes
  * while the local check finds a problem; the server's problems show under
  * the fields (a problem code in onField under its field), the rest above
  * the form; the button is disabled while the form is out; after each
- * failure the first invalid field gets the focus. The form gets ref.
+ * failure the first invalid field gets the focus; texts says some problem
+ * codes the form's way. The form gets ref.
  */
-export function useForm<Field extends string>(fields: readonly Field[], onField: Readonly<Record<string, Field>> = {}) {
+export function useForm<Field extends string>(
+  fields: readonly Field[],
+  { onField = {}, texts = {} }: { onField?: Readonly<Record<string, Field>>; texts?: ProblemTexts } = {}
+) {
   const t = useT();
   const [local, setLocal] = useState<LocalProblems<Field>>({});
   const [failure, setFailure] = useState<unknown>();
   const [sending, setSending] = useState(false);
   const [failures, setFailures] = useState(0);
   const ref = useFocusOnInvalid(failures);
-  const server = formErrors(failure, t, fields, onField);
+  const server = formErrors(failure, t, fields, { onField, texts });
 
   /** submit shows found, or runs send when it is empty; it resolves whether send went through. */
   async function submit(found: LocalProblems<Field>, send: () => Promise<void>): Promise<boolean> {

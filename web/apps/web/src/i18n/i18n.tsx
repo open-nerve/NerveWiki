@@ -16,6 +16,9 @@ type Params<Key extends MessageKey> = [Placeholders<(typeof en)[Key]>] extends [
   ? []
   : [params: Record<Placeholders<(typeof en)[Key]>, string | number>];
 
+/** PlainKey is a key whose text has no placeholders. */
+export type PlainKey = { [Key in MessageKey]: Params<Key> extends [] ? Key : never }[MessageKey];
+
 /** Translate returns the text of key, with each {name} replaced by params.name. */
 export type Translate = <Key extends MessageKey>(key: Key, ...params: Params<Key>) => string;
 

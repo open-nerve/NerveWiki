@@ -5,14 +5,7 @@ import useSWR from "swr";
 import { keepNext } from "../app/next-path";
 import { useT } from "../i18n/i18n";
 import { useStore } from "../stores/context";
-import { CredentialsForm, type Credentials, type LocalProblems } from "./credentials-form";
-
-function check({ email, password }: Credentials): LocalProblems {
-  return {
-    ...(email.trim() === "" && { email: "field.required" }),
-    ...(password === "" && { password: "field.required" }),
-  };
-}
+import { CredentialsForm, signInProblems } from "./credentials-form";
 
 /** SignInPage signs in with an e-mail address and a password; it links to sign-up while the instance takes new accounts. */
 export const SignInPage = observer(function SignInPage() {
@@ -27,7 +20,7 @@ export const SignInPage = observer(function SignInPage() {
       <CredentialsForm
         passwordAutoComplete="current-password"
         submitLabel={t("signIn.submit")}
-        check={check}
+        check={signInProblems}
         submit={({ email, password }) => auth.signIn(email.trim(), password)}
       />
       {instance.info?.signup_enabled === true && (

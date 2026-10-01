@@ -144,9 +144,24 @@ test("formErrors shows a problem code of onField under its field, and nothing ab
   const wrong = new ApiError(422, problem(422, "identity.current_password_incorrect"));
   const onField = { "identity.current_password_incorrect": "current_password" };
 
-  expect(formErrors(wrong, t, ["current_password"], onField)).toEqual({
+  expect(formErrors(wrong, t, ["current_password"], { onField })).toEqual({
     banner: undefined,
     fields: { current_password: "The current password is incorrect." },
   });
   expect(formErrors(wrong, t, ["current_password"]).banner).toBe("The current password is incorrect.");
+});
+
+test("a page's own text of a code takes the place of the usual one, under a field or above the form", () => {
+  const refused = new ApiError(403, problem(403, "identity.signup_disabled"));
+  const texts = { "identity.signup_disabled": "invitation.signUpRefused" } as const;
+  const own =
+    "This server takes new accounts only for the addresses invited: sign up with the one the invitation was sent to.";
+
+  expect(errorText(refused, t, texts)).toBe(own);
+  expect(errorText(refused, t)).toBe("Sign-up is disabled on this server.");
+  expect(formErrors(refused, t, ["email"], { texts }).banner).toBe(own);
+  expect(formErrors(refused, t, ["email"], { texts, onField: { "identity.signup_disabled": "email" } })).toEqual({
+    banner: undefined,
+    fields: { email: own },
+  });
 });

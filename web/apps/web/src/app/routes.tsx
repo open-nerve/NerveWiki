@@ -14,9 +14,11 @@ import { RouteError } from "./route-error";
 // console on every first load. A path that is no page gets the app's 404:
 // the server answers index.html for every page path.
 //
-// Every page but sign-in and sign-up needs a signed-in session, the 404
-// too: an unknown path behaves as the pages M2 and M3 add (M1/P5 design
-// 3.5). The guards alone decide where the tab goes as its session changes.
+// Every page but sign-in, sign-up and an invitation's needs a signed-in
+// session, the 404 too: an unknown path behaves as the pages M2 and M3 add
+// (M1/P5 design 3.5). The guards alone decide where the tab goes as its
+// session changes; the invitation page shows to any session (M2/P6 design
+// 3.4).
 //
 // A workspace's pages are under its slug, beside the app's own top-level
 // pages: the slugs that name these are reserved (M2/P1 design 3.6; the
@@ -49,6 +51,14 @@ export const routes: RouteObject[] = [
                 },
               },
             ],
+          },
+          {
+            // Outside the guards: the token is in the fragment, which a next would put in the address.
+            path: "invitations/:id",
+            lazy: async () => {
+              const { InvitationPage } = await import("../pages/invitation");
+              return { Component: InvitationPage };
+            },
           },
           {
             Component: SignedIn,
@@ -135,6 +145,13 @@ export const routes: RouteObject[] = [
                             lazy: async () => {
                               const { GeneralPage } = await import("../pages/workspace/general-page");
                               return { Component: GeneralPage };
+                            },
+                          },
+                          {
+                            path: "members",
+                            lazy: async () => {
+                              const { MembersPage } = await import("../pages/workspace/members-page");
+                              return { Component: MembersPage };
                             },
                           },
                         ],

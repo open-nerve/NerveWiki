@@ -2,12 +2,16 @@ import { AccountService } from "../services/account.service";
 import { ApiTokenService } from "../services/api-token.service";
 import { AuthService } from "../services/auth.service";
 import { InstanceService } from "../services/instance.service";
-import { WorkspaceService } from "../services/workspace.service";
+import { InvitationPreviewService, InvitationService } from "../services/invitation.service";
+import { MemberService } from "../services/member.service";
+import { WorkspaceService, type Workspace } from "../services/workspace.service";
 import type { Session } from "../session/session";
 import { AccountStore } from "./account.store";
 import { ApiTokenStore } from "./api-token.store";
 import { AuthStore } from "./auth.store";
 import { InstanceStore } from "./instance.store";
+import { InvitationPreviewStore, InvitationStore } from "./invitation.store";
+import { MemberStore } from "./member.store";
 import type { PreferencesStore } from "./preferences.store";
 import { WorkspaceStore } from "./workspace.store";
 
@@ -38,12 +42,19 @@ export class RootStore {
   readonly preferences: PreferencesStore;
   readonly instance: InstanceStore;
   readonly auth: AuthStore;
+  /** What invitations' links invite to: signed out too. */
+  readonly invitationPreviews: InvitationPreviewStore;
   /** The signed-in account's store; undefined while the tab is signed out. */
   readonly account: AccountStore | undefined;
   /** The signed-in account's personal access tokens; undefined while the tab is signed out. */
   readonly apiTokens: ApiTokenStore | undefined;
   /** The signed-in account's workspaces; undefined while the tab is signed out. */
   readonly workspaces: WorkspaceStore | undefined;
+  private readonly members: MemberService | undefined;
+  private readonly invitations: InvitationService | undefined;
+  /** The member and invitation lists this generation holds, by workspace id. */
+  private readonly memberLists = new Map<string, MemberStore>();
+  private readonly invitationLists = new Map<string, InvitationStore>();
 
   constructor(
     app: AppStores,
@@ -52,9 +63,39 @@ export class RootStore {
     this.preferences = app.preferences;
     this.instance = app.instance;
     this.auth = new AuthStore(new AuthService(app.session.public), app.session.tokens, loginId);
+    this.invitationPreviews = new InvitationPreviewStore(new InvitationPreviewService(app.session.public));
     const client = loginId === undefined ? undefined : app.session.clientFor(loginId);
     this.account = client && new AccountStore(new AccountService(client));
     this.apiTokens = client && new ApiTokenStore(new ApiTokenService(client));
     this.workspaces = client && new WorkspaceStore(new WorkspaceService(client));
+    this.members = client && new MemberService(client);
+    this.invitations = client && new InvitationService(client);
   }
+
+  /**
+   * membersOf is the member list of workspace, the same one for as long as
+   * this generation lives (M2/P6 design 3.2); undefined while the tab is
+   * signed out. It goes by the workspace's id: a workspace deleted and
+   * another made with its slug have lists of their own.
+   */
+  membersOf(workspace: Workspace): MemberStore | undefined {
+    const service = this.members;
+    return service && once(this.memberLists, workspace.id, () => new MemberStore(service, workspace.slug));
+  }
+
+  /** invitationsOf is the pending invitations of workspace, as membersOf is its members. */
+  invitationsOf(workspace: Workspace): InvitationStore | undefined {
+    const service = this.invitations;
+    return service && once(this.invitationLists, workspace.id, () => new InvitationStore(service, workspace.slug));
+  }
+}
+
+/** once is the value of key in cache, which make makes the first time. */
+function once<T>(cache: Map<string, T>, key: string, make: () => T): T {
+  let value = cache.get(key);
+  if (value === undefined) {
+    value = make();
+    cache.set(key, value);
+  }
+  return value;
 }

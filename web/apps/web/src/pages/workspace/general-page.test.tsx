@@ -5,6 +5,7 @@ import { expect, test } from "vitest";
 import type { Workspace } from "../../services/workspace.service";
 import { json, problem, signedInApp, workspaceJSON, type Answer } from "../../test/fakes";
 import { renderApp } from "../../test/render";
+import { watchFor } from "../../test/watch";
 
 // A workspace's general settings (M2/P5 design 3.6).
 
@@ -96,23 +97,6 @@ test("a name the local check or the server refuses shows under the field", async
   expect(await screen.findByText("No control characters.")).toBeTruthy();
   expect(screen.queryByText("Saved.")).toBeNull();
 });
-
-/**
- * watchFor watches the page for text being added to it; the function it
- * returns stops watching, and says whether it was.
- */
-function watchFor(text: string): () => boolean {
-  let seen = false;
-  const look = (records: MutationRecord[]) =>
-    (seen ||= records.some((record) => [...record.addedNodes].some((node) => node.textContent?.includes(text))));
-  const observer = new MutationObserver(look);
-  observer.observe(document.body, { childList: true, subtree: true });
-  return () => {
-    look(observer.takeRecords());
-    observer.disconnect();
-    return seen;
-  };
-}
 
 test.each([
   ["deleted", undefined],

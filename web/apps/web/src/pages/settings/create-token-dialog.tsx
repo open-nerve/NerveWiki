@@ -74,7 +74,7 @@ function CreateTokenForm({ onCreated, cancel }: { onCreated: (created: ApiTokenC
   const [expiry, setExpiry] = useState<Expiry>("90");
   const [password, setPassword] = useState("");
   const { ref, sending, banner, problemOf, submit } = useForm(fields, {
-    "identity.current_password_incorrect": "current_password",
+    onField: { "identity.current_password_incorrect": "current_password" },
   });
   const expiryProblem = problemOf("expires_at");
 
