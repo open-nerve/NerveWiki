@@ -48,3 +48,15 @@ func TestCheckDraftListsEveryProblem(t *testing.T) {
 		})
 	}
 }
+
+func TestCheckNameIsTheDraftsRule(t *testing.T) {
+	if got, err := CheckName("  Acme 研发 \n"); err != nil || got != "Acme 研发" {
+		t.Errorf("CheckName() = %q, %v; want it trimmed", got, err)
+	}
+	_, err := CheckName(strings.Repeat("a", 81))
+	var se *shared.Error
+	want := []shared.FieldError{{Field: "name", Code: shared.FieldTooLong, Message: "must be at most 80 characters"}}
+	if !errors.As(err, &se) || se.Code != shared.CodeValidationFailed || !slices.Equal(se.Fields, want) {
+		t.Errorf("CheckName(81 characters) = %+v, want validation_failed with %+v", err, want)
+	}
+}

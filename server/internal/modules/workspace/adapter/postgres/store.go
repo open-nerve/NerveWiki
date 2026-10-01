@@ -57,9 +57,9 @@ func (s *Store) CreateWorkspace(ctx context.Context, w domain.Workspace, by uuid
 }
 
 // AddMember implements app.WorkspaceCreator.
-func (s *Store) AddMember(ctx context.Context, m domain.Member, by uuid.UUID, now time.Time) error {
+func (s *Store) AddMember(ctx context.Context, m domain.Member, by uuid.UUID) error {
 	err := s.queries(ctx).AddMember(ctx, gen.AddMemberParams{
-		ID: m.ID, WorkspaceID: m.WorkspaceID, UserID: m.UserID, Role: string(m.Role), By: by, Now: now,
+		ID: m.ID, WorkspaceID: m.WorkspaceID, UserID: m.UserID, Role: string(m.Role), By: by, CreatedAt: m.CreatedAt,
 	})
 	if err != nil {
 		return fmt.Errorf("add member: %w", err)
@@ -76,7 +76,18 @@ func (s *Store) FindWorkspaceBySlug(ctx context.Context, slug string) (domain.Wo
 	if err != nil {
 		return domain.Workspace{}, fmt.Errorf("find workspace: %w", err)
 	}
-	return domain.Workspace{ID: row.ID, Slug: row.Slug, Name: row.Name, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt}, nil
+	return workspaceOf(row), nil
+}
+
+// workspaceOf is a row of the queries that read a workspace's columns: they
+// read the same, so their rows convert to this one.
+func workspaceOf(r gen.FindWorkspaceBySlugRow) domain.Workspace {
+	return domain.Workspace{ID: r.ID, Slug: r.Slug, Name: r.Name, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt}
+}
+
+// memberOf is a row of the queries that read a member's columns.
+func memberOf(r gen.FindActiveMemberRow) domain.Member {
+	return domain.Member{ID: r.ID, WorkspaceID: r.WorkspaceID, UserID: r.UserID, Role: shared.WorkspaceRole(r.Role), CreatedAt: r.CreatedAt}
 }
 
 // ListWorkspacesOf implements app.MembershipLister.
@@ -116,4 +127,105 @@ func (s *Store) RoleOf(ctx context.Context, workspaceID, userID uuid.UUID) (shar
 		return "", false, fmt.Errorf("role of: %w", err)
 	}
 	return shared.WorkspaceRole(role), true, nil
+}
+
+// LockWorkspaceBySlug implements app.WorkspaceLocker.
+func (s *Store) LockWorkspaceBySlug(ctx context.Context, slug string) (domain.Workspace, error) {
+	row, err := s.queries(ctx).LockWorkspaceBySlug(ctx, slug)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.Workspace{}, app.ErrNotFound
+	}
+	if err != nil {
+		return domain.Workspace{}, fmt.Errorf("lock workspace: %w", err)
+	}
+	return workspaceOf(gen.FindWorkspaceBySlugRow(row)), nil
+}
+
+// LockWorkspaceByID implements app.WorkspaceLocker.
+func (s *Store) LockWorkspaceByID(ctx context.Context, id uuid.UUID) (domain.Workspace, error) {
+	row, err := s.queries(ctx).LockWorkspaceByID(ctx, id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.Workspace{}, app.ErrNotFound
+	}
+	if err != nil {
+		return domain.Workspace{}, fmt.Errorf("lock workspace: %w", err)
+	}
+	return workspaceOf(gen.FindWorkspaceBySlugRow(row)), nil
+}
+
+// RenameWorkspace implements app.WorkspaceUpdater.
+func (s *Store) RenameWorkspace(ctx context.Context, id uuid.UUID, name string, by uuid.UUID, now time.Time) error {
+	if err := s.queries(ctx).RenameWorkspace(ctx, gen.RenameWorkspaceParams{ID: id, Name: name, By: by, Now: now}); err != nil {
+		return fmt.Errorf("rename workspace: %w", err)
+	}
+	return nil
+}
+
+// DeleteWorkspace implements app.WorkspaceUpdater.
+func (s *Store) DeleteWorkspace(ctx context.Context, id, by uuid.UUID, now time.Time) error {
+	if err := s.queries(ctx).DeleteWorkspace(ctx, gen.DeleteWorkspaceParams{ID: id, By: by, Now: now}); err != nil {
+		return fmt.Errorf("delete workspace: %w", err)
+	}
+	return nil
+}
+
+// FindActiveMember implements app.MemberFinder.
+func (s *Store) FindActiveMember(ctx context.Context, id uuid.UUID) (domain.Member, error) {
+	row, err := s.queries(ctx).FindActiveMember(ctx, id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.Member{}, app.ErrNotFound
+	}
+	if err != nil {
+		return domain.Member{}, fmt.Errorf("find member: %w", err)
+	}
+	return memberOf(row), nil
+}
+
+// ListActiveMembers implements app.MemberFinder.
+func (s *Store) ListActiveMembers(ctx context.Context, workspaceID uuid.UUID) ([]domain.Member, error) {
+	rows, err := s.queries(ctx).ListActiveMembers(ctx, workspaceID)
+	if err != nil {
+		return nil, fmt.Errorf("list members: %w", err)
+	}
+	list := make([]domain.Member, len(rows))
+	for i, r := range rows {
+		list[i] = memberOf(gen.FindActiveMemberRow(r))
+	}
+	return list, nil
+}
+
+// CountActiveAdmins implements app.MemberFinder.
+func (s *Store) CountActiveAdmins(ctx context.Context, workspaceID uuid.UUID) (int, error) {
+	n, err := s.queries(ctx).CountActiveAdmins(ctx, workspaceID)
+	if err != nil {
+		return 0, fmt.Errorf("count admins: %w", err)
+	}
+	return int(n), nil
+}
+
+// UpdateMemberRole implements app.MemberUpdater.
+func (s *Store) UpdateMemberRole(ctx context.Context, id uuid.UUID, role shared.WorkspaceRole, by uuid.UUID, now time.Time) error {
+	err := s.queries(ctx).UpdateMemberRole(ctx, gen.UpdateMemberRoleParams{ID: id, Role: string(role), By: by, Now: now})
+	if err != nil {
+		return fmt.Errorf("update member role: %w", err)
+	}
+	return nil
+}
+
+// EndMemberships implements app.MemberUpdater.
+func (s *Store) EndMemberships(ctx context.Context, userID uuid.UUID, workspaceIDs []uuid.UUID, by uuid.UUID, now time.Time) error {
+	err := s.queries(ctx).EndMemberships(ctx, gen.EndMembershipsParams{UserID: userID, WorkspaceIds: workspaceIDs, By: by, Now: now})
+	if err != nil {
+		return fmt.Errorf("end memberships: %w", err)
+	}
+	return nil
+}
+
+// DeleteMembersOf implements app.MemberUpdater.
+func (s *Store) DeleteMembersOf(ctx context.Context, workspaceID, by uuid.UUID, now time.Time) error {
+	err := s.queries(ctx).DeleteMembersOf(ctx, gen.DeleteMembersOfParams{WorkspaceID: workspaceID, By: by, Now: now})
+	if err != nil {
+		return fmt.Errorf("delete members: %w", err)
+	}
+	return nil
 }

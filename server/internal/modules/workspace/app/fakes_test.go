@@ -59,8 +59,8 @@ func (f *fakeStore) CreateWorkspace(ctx context.Context, w domain.Workspace, by 
 	return nil
 }
 
-func (f *fakeStore) AddMember(ctx context.Context, m domain.Member, by uuid.UUID, at time.Time) error {
-	f.record(ctx, "AddMember by "+by.String()+" at "+at.Format(time.RFC3339))
+func (f *fakeStore) AddMember(ctx context.Context, m domain.Member, by uuid.UUID) error {
+	f.record(ctx, "AddMember by "+by.String()+" at "+m.CreatedAt.Format(time.RFC3339))
 	f.members = append(f.members, m)
 	return nil
 }
