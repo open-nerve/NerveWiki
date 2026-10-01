@@ -42,9 +42,13 @@ export async function createWorkspaceWith(
   return { status: response.status(), created: (await response.json()) as Workspace };
 }
 
-/** The switcher of page, which shows the workspace shown, named shown. */
+/**
+ * The switcher of page, which shows the workspace shown, named shown: the
+ * one button of the workspace's shell with its name (the left column is no
+ * landmark, M3/P4 design 3.3).
+ */
 export function switcher(page: Page, shown: string): Locator {
-  return page.getByRole("complementary", { name: "Workspace" }).getByRole("button", { name: shown, exact: true });
+  return page.locator("[data-shell]").getByRole("button", { name: shown, exact: true });
 }
 
 /** Opens the switcher of page, which shows the workspace shown, and goes to the workspace named name. */

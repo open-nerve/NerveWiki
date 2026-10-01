@@ -252,7 +252,7 @@ test.each([
   expect(sent).toEqual(["GET members", "DELETE Bob"]);
 });
 
-test("leaving lands on another workspace, with no 404 between", async () => {
+test("leaving lands on another workspace, with no 404 between, its heading focused", async () => {
   const user = userEvent.setup();
   const { app, sent } = membersServer({ role: "member" });
   const { router } = renderApp("/lab/settings/members", app);
@@ -262,10 +262,11 @@ test("leaving lands on another workspace, with no 404 between", async () => {
   const notFound = watchFor("Page not found");
   await user.click(within(dialog).getByRole("button", { name: "Leave" }));
 
-  expect(await screen.findByRole("heading", { name: "Acme" })).toBeTruthy();
+  const heading = await screen.findByRole("heading", { name: "Acme" });
   expect(router.state.location.pathname).toBe("/acme");
   expect(notFound()).toBe(false);
   expect(sent).toEqual(["GET members", "leave"]);
+  await waitFor(() => expect(document.activeElement).toBe(heading));
 });
 
 test("the only admin cannot leave: the dialog says why, and the workspace stays", async () => {

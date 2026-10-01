@@ -117,7 +117,8 @@ test("W4 (page): the admin renames the workspace, then deletes it once its slug 
   await expectRenamed(db, renamed, adminId);
 
   expect(await deleteWorkspaceWith(page, slug)).toBe(204);
-  await expect(workspaceHeading(page, "Beta")).toBeVisible();
+  // Arrived at another workspace: its heading has the focus (M3/P4 design 3.5).
+  await expect(workspaceHeading(page, "Beta")).toBeFocused();
   await expect(page).toHaveURL(`/${beta.slug}`);
   await expectDeletedWithItsMembers(db, created.id, adminId);
   await expectInvitationsDeletedWith(db, created.id, 1);

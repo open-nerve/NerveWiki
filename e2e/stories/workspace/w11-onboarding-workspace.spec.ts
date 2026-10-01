@@ -5,7 +5,13 @@ import { expectNewWorkspace } from "../../fixtures/assert/workspace";
 import { bearer, createToken, emailFor, register } from "../../fixtures/auth";
 import type { Database } from "../../fixtures/db";
 import { accept, invite } from "../../fixtures/invitations";
-import { saveProfileStep, stepRecorded, workspaceStep } from "../../fixtures/onboarding-pages";
+import {
+  createFirstNotebookWith,
+  notebookStep,
+  saveProfileStep,
+  stepRecorded,
+  workspaceStep,
+} from "../../fixtures/onboarding-pages";
 import { expect, test } from "../../fixtures/test";
 import { createWorkspaceWith, expectCreatePage, nameField, workspaceHeading } from "../../fixtures/workspace-pages";
 import { createWorkspace, newTeam, slugFor } from "../../fixtures/workspaces";
@@ -13,6 +19,7 @@ import { createWorkspace, newTeam, slugFor } from "../../fixtures/workspaces";
 // W11, onboarding's workspace step (M2 design 3; M2/P5 design 3.7): a new
 // account creates a workspace; one that joined by an invitation goes on;
 // while creation is off, one without a workspace reads how to get into one.
+// The notebook step comes after it (M3/P4 design 3.6; N12 tells it).
 
 /** How many active memberships the account of userId has. */
 async function membershipsOf(db: Database, userId: string): Promise<number> {
@@ -37,7 +44,7 @@ test("W11 (API): a token records the workspace step, and creates the workspace",
   await expectNewWorkspace(db, created, userId);
 });
 
-test("W11 (page): a new account creates a workspace in onboarding, then goes into it", async ({
+test("W11 (page): a new account creates a workspace in onboarding, then its first notebook, then goes into it", async ({
   api,
   db,
   signedInPage,
@@ -49,16 +56,18 @@ test("W11 (page): a new account creates a workspace in onboarding, then goes int
   expect(await saveProfileStep(page)).toBe(200);
 
   await expect(workspaceStep(page)).toBeVisible();
-  await expect(page.getByText("Step 2 of 2", { exact: true })).toBeVisible();
+  await expect(page.getByText("Step 2 of 3", { exact: true })).toBeVisible();
   const slug = slugFor(testInfo);
   const recorded = stepRecorded(page, "workspace");
   const { status, created } = await createWorkspaceWith(page, { name: "Acme", slug, button: "Create and continue" });
   expect(status).toBe(201);
   expect((await recorded).status()).toBe(200);
+  await expect(notebookStep(page)).toBeVisible();
+  expect((await createFirstNotebookWith(page, slug)).status).toBe(201);
 
   await expect(workspaceHeading(page, "Acme")).toBeVisible();
   await expect(page).toHaveURL(`/${slug}`);
-  await expectOnboardingSteps(db, userId, ["profile", "workspace"]);
+  await expectOnboardingSteps(db, userId, ["profile", "workspace", "notebook"]);
   await expectNewWorkspace(db, created, userId);
 });
 
@@ -75,13 +84,15 @@ test("W11 (page): an account that joined by an invitation goes on past the step,
   const page = await signedInPage(tokens);
   await page.goto("/");
 
-  // The workspace step records itself as it shows: the account lands in its workspace.
+  // The workspace step records itself as it shows; past the notebook step, the account lands in its workspace.
   const recorded = stepRecorded(page, "workspace");
   expect(await saveProfileStep(page)).toBe(200);
   expect((await recorded).status()).toBe(200);
+  await expect(notebookStep(page)).toBeVisible();
+  expect((await createFirstNotebookWith(page, workspace.slug)).status).toBe(201);
   await expect(workspaceHeading(page, "Acme")).toBeVisible();
   await expect(page).toHaveURL(`/${workspace.slug}`);
-  await expectOnboardingSteps(db, userId, ["profile", "workspace"]);
+  await expectOnboardingSteps(db, userId, ["profile", "workspace", "notebook"]);
   expect(await membershipsOf(db, userId)).toBe(1);
 });
 
@@ -103,8 +114,11 @@ test("W11 (page): with creation off, an account without a workspace reads how to
   const recorded = stepRecorded(page, "workspace");
   await page.getByRole("button", { name: "Continue", exact: true }).click();
   expect((await recorded).status()).toBe(200);
+  // Without a workspace, the notebook step only says where notebooks are created.
+  await expect(notebookStep(page)).toBeVisible();
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
 
   await expectCreatePage(page, baseURL);
-  await expectOnboardingSteps(db, userId, ["profile", "workspace"]);
+  await expectOnboardingSteps(db, userId, ["profile", "workspace", "notebook"]);
   expect(await membershipsOf(db, userId)).toBe(0);
 });

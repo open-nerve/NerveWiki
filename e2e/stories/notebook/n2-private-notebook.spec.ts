@@ -1,14 +1,16 @@
 import { accountIdOf } from "../../fixtures/assert/identity";
-import { emailFor } from "../../fixtures/auth";
-import { joinAs } from "../../fixtures/invitations";
+import { emailFor, signInContext } from "../../fixtures/auth";
+import { expectQuietPage, watchPage } from "../../fixtures/browser";
+import { joinAs, joinOnboarded } from "../../fixtures/invitations";
+import { notebookGroups, notebookPath, workspaceNav } from "../../fixtures/notebook-pages";
 import { addedNotebookMember } from "../../fixtures/notebook-members";
 import { createNotebook, getNotebook, listNotebooks } from "../../fixtures/notebooks";
 import { expect, test } from "../../fixtures/test";
 import { newTeam } from "../../fixtures/workspaces";
 
 // N2, a private notebook (M3 design 3): private, then with a second member
-// (M3/P2). The page version, where it moves from "my notebooks" to the
-// team's, comes with M3/P4.
+// (M3/P2); on the page, it moves from "My notebooks" to the team's (M3/P4
+// design 3.3).
 
 test("N2 (API): a private notebook is seen by its members alone, not by the workspace's admin nor its other members", async ({
   api,
@@ -53,4 +55,43 @@ test("N2 (API): a private notebook with a second member is listed to both, two m
     ["Diary", "none", "editor", 2],
   ]);
   expect(admins).toEqual([]);
+});
+
+test("N2 (page): a private notebook is in no one else's left column, nor found at its address; with a second member, it is both's team notebook", async ({
+  api,
+  baseURL,
+  browser,
+  db,
+  signedInPage,
+}, testInfo) => {
+  const { pat: adminPat, workspace } = await newTeam(api, testInfo);
+  const ownerTokens = await joinOnboarded(api, adminPat, workspace.slug, emailFor(testInfo, "owner"), "member");
+  const secondEmail = emailFor(testInfo, "second");
+  const page = await signedInPage(await joinOnboarded(api, adminPat, workspace.slug, secondEmail, "member"));
+  const notebook = await createNotebook(api, ownerTokens.access_token, workspace.slug, "Diary");
+
+  await page.goto(notebookPath(workspace.slug, notebook.id));
+  await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
+  await expect(workspaceNav(page, "Acme").getByText("No notebooks yet.", { exact: true })).toBeVisible();
+
+  // The owner sees it as their own, until the second member comes in; the owner's tab stays quiet too.
+  const owner = await browser.newContext({ baseURL });
+  try {
+    await signInContext(owner, baseURL ?? "", ownerTokens);
+    const ownerPage = await owner.newPage();
+    const ownerWatch = await watchPage(ownerPage);
+    await ownerPage.goto(`/${workspace.slug}`);
+    await expect.poll(() => notebookGroups(ownerPage, "Acme")).toEqual({ "My notebooks": ["Diary"] });
+    await addedNotebookMember(api, ownerTokens.access_token, notebook.id, await accountIdOf(db, secondEmail), "editor");
+
+    await Promise.all([page, ownerPage].map((tab) => tab.goto(`/${workspace.slug}`)));
+    await Promise.all(
+      [page, ownerPage].map((tab) =>
+        expect.poll(() => notebookGroups(tab, "Acme")).toEqual({ "Team notebooks": ["Diary"] })
+      )
+    );
+    await expectQuietPage(ownerPage, ownerWatch);
+  } finally {
+    await owner.close();
+  }
 });

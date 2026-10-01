@@ -1,12 +1,20 @@
 import { accountIdOf } from "../../fixtures/assert/identity";
 import { countNotebooks, expectNewNotebook } from "../../fixtures/assert/notebook";
 import { bearer, emailFor } from "../../fixtures/auth";
-import { joinAs } from "../../fixtures/invitations";
+import { failedToLoad } from "../../fixtures/browser";
+import { joinAs, joinOnboarded } from "../../fixtures/invitations";
+import {
+  createNotebookWith,
+  notebookGroups,
+  notebookHeading,
+  notebookPath,
+  workspaceNav,
+} from "../../fixtures/notebook-pages";
 import { createNotebook, listNotebooks } from "../../fixtures/notebooks";
 import { expect, test } from "../../fixtures/test";
 import { newTeam } from "../../fixtures/workspaces";
 
-// N1, creating a notebook (M3 design 3). The page version comes with M3/P4.
+// N1, creating a notebook (M3 design 3; M3/P4 design 3.3 for the page).
 
 test("N1 (API): a member creates a notebook as its admin, the guest cannot, and a name a file could not take is refused", async ({
   api,
@@ -58,4 +66,51 @@ test("N1 (API): a member creates a notebook as its admin, the guest cannot, and 
     invalid.map(([, code]) => [422, [["name", code]]])
   );
   expect(await countNotebooks(db)).toEqual(before);
+});
+
+test("N1 (page): a member creates a notebook from the left column and arrives on it, their own; a name a file could not take is refused under the field", async ({
+  api,
+  db,
+  pageWatch,
+  signedInPage,
+}, testInfo) => {
+  const { pat: adminPat, workspace } = await newTeam(api, testInfo);
+  const memberEmail = emailFor(testInfo, "member");
+  const page = await signedInPage(await joinOnboarded(api, adminPat, workspace.slug, memberEmail, "member"));
+  const memberId = await accountIdOf(db, memberEmail);
+  await page.goto(`/${workspace.slug}`);
+  await expect(workspaceNav(page, "Acme").getByText("No notebooks yet.", { exact: true })).toBeVisible();
+
+  // The server's rule of a title shows under the name, the dialog open; nothing is added.
+  const before = await countNotebooks(db);
+  expect((await createNotebookWith(page, workspace, "Plans/2026")).status).toBe(422);
+  const dialog = page.getByRole("dialog", { name: "New notebook", exact: true });
+  await expect(
+    dialog.getByText('Cannot contain / \\ : * ? " < > | # ^ [ ] or control characters, nor start or end with a dot.', {
+      exact: true,
+    })
+  ).toBeVisible();
+  await expect(dialog.getByLabel("Name", { exact: true })).toBeFocused();
+  pageWatch.expectConsole({ errors: [failedToLoad(422)] });
+  expect(await countNotebooks(db)).toEqual(before);
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+
+  const { status, created } = await createNotebookWith(page, workspace, "  我的 Notes ");
+  expect(status).toBe(201);
+  await expect(notebookHeading(page, "我的 Notes")).toBeFocused();
+  await expect(page).toHaveURL(notebookPath(workspace.slug, created.id));
+  expect(await notebookGroups(page, "Acme")).toEqual({ "My notebooks": ["我的 Notes"] });
+  await expectNewNotebook(db, created, memberId);
+});
+
+test("N1 (page): a guest is not offered New notebook", async ({ api, signedInPage }, testInfo) => {
+  const { pat: adminPat, workspace } = await newTeam(api, testInfo);
+  const page = await signedInPage(
+    await joinOnboarded(api, adminPat, workspace.slug, emailFor(testInfo, "guest"), "guest")
+  );
+
+  await page.goto(`/${workspace.slug}`);
+
+  await expect(workspaceNav(page, "Acme").getByText("No notebooks yet.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "New notebook" })).toHaveCount(0);
 });

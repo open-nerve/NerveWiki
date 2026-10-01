@@ -18,13 +18,13 @@ test("a path that is no page shows the app's 404, with a way home", async () => 
 test("choosing a language changes the text and <html lang>", async () => {
   const user = userEvent.setup();
   const { app } = renderApp("/lab", signedInApp());
-  await screen.findByText("No notebooks yet.");
+  await screen.findByRole("heading", { name: "Lab" });
 
   await user.click(screen.getByRole("button", { name: "Language" }));
   await user.click(await screen.findByRole("menuitemradio", { name: "简体中文" }));
 
   expect(app.preferences.locale).toBe("zh-CN");
-  expect(screen.getByText("还没有笔记本。")).toBeTruthy();
+  expect(screen.getByRole("link", { name: "首页" })).toBeTruthy();
   expect(screen.getByRole("button", { name: "主题" })).toBeTruthy();
   expect(document.documentElement.lang).toBe("zh-CN");
 });

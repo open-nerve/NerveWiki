@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { Navigate, Outlet, useParams } from "react-router";
 import useSWR from "swr";
 
+import { arrived } from "../../app/arrival";
 import { NotLoaded } from "../../app/not-loaded";
 import { NavItem } from "../../components/nav-item";
 import { useT } from "../../i18n/i18n";
@@ -10,6 +11,7 @@ import type { MessageKey } from "../../i18n/messages/en";
 import type { Workspace } from "../../services/workspace.service";
 import { useStore, useWorkspaces } from "../../stores/context";
 import { NotFoundPage } from "../not-found";
+import { NotebookNav } from "./notebook-nav";
 import { WorkspaceSwitcher } from "./workspace-switcher";
 
 /**
@@ -26,7 +28,7 @@ export function useWorkspace(): Workspace {
   return workspace;
 }
 
-/** The workspace's pages, in the order the navigation lists them; M3 puts the notebooks in between. */
+/** The workspace's own pages, in the order the navigation lists them, before its notebooks. */
 const sections: readonly { path: string; label: Extract<MessageKey, `workspace.${string}`>; end?: boolean }[] = [
   { path: "", label: "workspace.home", end: true },
   { path: "/settings", label: "workspace.settings" },
@@ -34,11 +36,13 @@ const sections: readonly { path: string; label: Extract<MessageKey, `workspace.$
 
 /**
  * WorkspaceLayout is the shell of a workspace's pages (M2/P5 design 3.2):
- * the left column, with the switcher and the workspace's navigation, beside
- * the page chosen. It finds the workspace of the address in the account's
- * list: a slug the list does not have is no page of the app's, whether the
- * account was never a member or the workspace is gone; one this tab has
- * just deleted or left goes to the landing instead. A workspace found is
+ * the left column, with the switcher and the workspace's navigation, its
+ * pages and its notebooks (M3/P4 design 3.3), beside the page chosen. The
+ * column is no landmark of its own: the navigation is the one it holds.
+ * It finds the workspace of the address in the account's list: a slug the
+ * list does not have is no page of the app's, whether the account was
+ * never a member or the workspace is gone; one this tab has just deleted
+ * or left goes to the landing instead, arrived at. A workspace found is
  * the one this device showed last. Its pages start anew with each
  * workspace: what a form holds of one is never sent to another.
  */
@@ -61,23 +65,23 @@ export const WorkspaceLayout = observer(function WorkspaceLayout() {
     return <NotLoaded error={error} retry={() => void mutate()} />;
   }
   if (workspace === undefined) {
-    return workspaces.wasRemoved(slug) ? <Navigate replace to="/" /> : <NotFoundPage />;
+    return workspaces.wasRemoved(slug) ? <Navigate replace to="/" state={arrived} /> : <NotFoundPage />;
   }
   return (
     <div data-shell className="flex flex-1 flex-col md:flex-row">
-      <aside
-        aria-label={t("workspace.sidebar")}
-        className="space-y-4 border-b p-3 md:w-60 md:shrink-0 md:border-r md:border-b-0"
-      >
+      <div className="space-y-4 border-b p-3 md:w-60 md:shrink-0 md:border-r md:border-b-0">
         <WorkspaceSwitcher current={workspace} />
-        <nav aria-label={workspace.name} className="flex flex-col gap-1">
-          {sections.map(({ path, label, end }) => (
-            <NavItem key={path} to={`/${slug}${path}`} end={end}>
-              {t(label)}
-            </NavItem>
-          ))}
+        <nav aria-label={workspace.name} className="space-y-4">
+          <div className="flex flex-col gap-1">
+            {sections.map(({ path, label, end }) => (
+              <NavItem key={path} to={`/${slug}${path}`} end={end}>
+                {t(label)}
+              </NavItem>
+            ))}
+          </div>
+          <NotebookNav workspace={workspace} />
         </nav>
-      </aside>
+      </div>
       <div className="min-w-0 flex-1 p-6">
         <Outlet key={workspace.id} />
       </div>

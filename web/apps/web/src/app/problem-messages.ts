@@ -93,13 +93,25 @@ export function errorText(error: unknown, t: Translate, texts: ProblemTexts = {}
   return t("problem.other", { code: error instanceof Error ? error.name : "?" });
 }
 
-/** fieldErrors is the message of each invalid field of a 422, by the field's name. */
-export function fieldErrors(error: unknown, t: Translate): Record<string, string> {
+/**
+ * FieldTexts are a form's own texts for some field codes of its fields,
+ * keyed "<field>.<code>", where a field's code means more there than the
+ * global text says (v0.1 design 13.2, item 11): a notebook's name is held
+ * to the page title's rules, a workspace's to others.
+ */
+export type FieldTexts = Readonly<Partial<Record<`${string}.${FieldError["code"]}`, FieldMessage>>>;
+
+/**
+ * fieldErrors is the message of each invalid field of a 422, by the
+ * field's name: the form's own text of the code, else the field's, else the
+ * code's.
+ */
+export function fieldErrors(error: unknown, t: Translate, fieldTexts: FieldTexts = {}): Record<string, string> {
   const errors = error instanceof ApiError ? (error.problem?.errors ?? []) : [];
   const byField: Record<string, string> = {};
   for (const { field, code } of errors) {
     const specific = `field.${field}.${code}` as const;
-    byField[field] ??= t(isFieldMessage(specific) ? specific : fieldMessages[code]);
+    byField[field] ??= t(fieldTexts[`${field}.${code}`] ?? (isFieldMessage(specific) ? specific : fieldMessages[code]));
   }
   return byField;
 }
@@ -118,13 +130,17 @@ function isFieldMessage(key: `field.${string}`): key is FieldMessage {
  * field the form does not show goes above as the 422's text. A problem
  * code in onField shows under its field instead, such as a wrong current
  * password under the current password; texts says some codes the form's
- * way. No error shows nothing.
+ * way, fieldTexts some field codes. No error shows nothing.
  */
 export function formErrors(
   error: unknown,
   t: Translate,
   shown: readonly string[],
-  { onField = {}, texts = {} }: { onField?: Readonly<Record<string, string>>; texts?: ProblemTexts } = {}
+  {
+    onField = {},
+    texts = {},
+    fieldTexts = {},
+  }: { onField?: Readonly<Record<string, string>>; texts?: ProblemTexts; fieldTexts?: FieldTexts } = {}
 ): { banner: string | undefined; fields: Record<string, string> } {
   if (error === undefined) {
     return { banner: undefined, fields: {} };
@@ -133,7 +149,7 @@ export function formErrors(
   if (codeField !== undefined) {
     return { banner: undefined, fields: { [codeField]: errorText(error, t, texts) ?? "" } };
   }
-  const fields = fieldErrors(error, t);
+  const fields = fieldErrors(error, t, fieldTexts);
   const onFields = Object.keys(fields);
   const allShown =
     error instanceof ApiError &&

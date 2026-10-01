@@ -1,17 +1,15 @@
 import { observer } from "mobx-react-lite";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import type { FormEvent } from "react";
 import useSWR from "swr";
 
 import { CreateWorkspaceForm } from "../app/create-workspace-form";
 import { useForm } from "../app/form";
 import { NotLoaded } from "../app/not-loaded";
-import { errorText } from "../app/problem-messages";
 import { Alert } from "../components/ui/alert";
 import { Button } from "../components/ui/button";
 import { useT } from "../i18n/i18n";
 import { useStore, useWorkspaces } from "../stores/context";
-
-type StepProps = { complete: () => Promise<void> };
+import { GoOn, type StepProps } from "./go-on";
 
 /**
  * WorkspaceStep sees the account into a workspace (M2/P5 design 3.7). One
@@ -46,42 +44,6 @@ export const WorkspaceStep = observer(function WorkspaceStep({ complete }: StepP
     </div>
   );
 });
-
-/**
- * GoOn completes the step as it shows, once: its effect runs again with
- * each new complete, and twice in development, which the ref keeps to the
- * first. A failure says why, with a way to try again.
- */
-function GoOn({ complete }: StepProps) {
-  const t = useT();
-  const [failure, setFailure] = useState<unknown>();
-  const started = useRef(false);
-
-  function retry() {
-    setFailure(undefined);
-    complete().catch(setFailure);
-  }
-
-  useEffect(() => {
-    if (!started.current) {
-      started.current = true;
-      complete().catch(setFailure);
-    }
-  }, [complete]);
-
-  const failed = failure === undefined ? undefined : errorText(failure, t);
-  if (failed === undefined) {
-    return <output className="block text-muted-foreground">{t("onboarding.workspace.goingOn")}</output>;
-  }
-  return (
-    <div className="space-y-3">
-      <Alert>{failed}</Alert>
-      <Button variant="outline" onClick={retry}>
-        {t("status.retry")}
-      </Button>
-    </div>
-  );
-}
 
 /** Waiting says how to get into a workspace while this server's creation is off; Continue completes the step. */
 function Waiting({ complete }: StepProps) {

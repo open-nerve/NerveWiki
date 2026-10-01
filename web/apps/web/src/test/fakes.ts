@@ -2,6 +2,7 @@ import { createClient, type ApiClient, type AuthTokens } from "@nervewiki/api-cl
 
 import type { User } from "../services/account.service";
 import type { InstanceInfo } from "../services/instance.service";
+import type { Notebook } from "../services/notebook.service";
 import type { Workspace } from "../services/workspace.service";
 import { Session, type SessionDeps } from "../session/session";
 import { AUTH_KEY } from "../session/token-manager";
@@ -67,7 +68,7 @@ export const userJSON: User = {
   id: "0199a2b4-0000-7000-8000-000000000001",
   email: "ada@example.com",
   display_name: "Ada",
-  onboarding_steps: ["profile", "workspace"],
+  onboarding_steps: ["profile", "workspace", "notebook"],
 };
 
 /** workspaceJSON is a workspace of userJSON's, which it administers. */
@@ -78,6 +79,18 @@ export const workspaceJSON: Workspace = {
   role: "admin",
   created_at: "2026-10-01T08:00:00Z",
   updated_at: "2026-10-01T08:00:00Z",
+};
+
+/** notebookJSON is a notebook of workspaceJSON's, userJSON's own: private, with userJSON its admin. */
+export const notebookJSON: Notebook = {
+  id: "0199a2b4-0000-7000-8000-0000000000c1",
+  workspace_id: workspaceJSON.id,
+  name: "Plans",
+  workspace_access: "none",
+  role: "admin",
+  member_count: 1,
+  created_at: "2026-10-02T08:00:00Z",
+  updated_at: "2026-10-02T08:00:00Z",
 };
 
 /** Answer answers a request of the fake API. */
@@ -112,25 +125,33 @@ function testSession(answer: Answer, stored: Record<string, string> = {}): Sessi
 }
 
 /**
- * byRoute answers each request by its "METHOD /path" in routes, or by a
- * "METHOD /prefix/*" whose prefix the path starts with; any other request
- * is not found.
+ * byRoute answers each request by its "METHOD /path" in routes, else by
+ * the first key whose * each stand for a segment of the path, such as
+ * "DELETE /api/v0/notebooks/*"; any other request is not found.
  */
 export function byRoute(routes: Record<string, Answer>): Answer {
   return (request) => {
     const route = `${request.method} ${new URL(request.url).pathname}`;
-    const answer =
-      routes[route] ??
-      Object.entries(routes).find(([key]) => key.endsWith("/*") && route.startsWith(key.slice(0, -1)))?.[1];
+    const answer = routes[route] ?? Object.entries(routes).find(([key]) => pattern(key)?.test(route))?.[1];
     return answer === undefined ? problem(404, "not_found") : answer(request);
   };
 }
 
+/** pattern is what a key with * matches, each * a segment of the path; none for a key without. */
+function pattern(key: string): RegExp | undefined {
+  if (!key.includes("*")) {
+    return undefined;
+  }
+  const parts = key.split("*").map((part) => part.replaceAll(/[.+?^${}()|[\]\\]/g, String.raw`\$&`));
+  return new RegExp(`^${parts.join("[^/]+")}$`);
+}
+
 /**
  * signedInApp is the page's stores of a tab signed in (from its stored
- * session, login-0) as userJSON, a member of workspaceJSON alone; routes
- * adds to or replaces the answers to the refresh, GET /me, GET /instance
- * and GET /workspaces.
+ * session, login-0) as userJSON, a member of workspaceJSON alone, which
+ * sees no notebook; routes adds to or replaces the answers to the refresh,
+ * GET /me, GET /instance, GET /workspaces and every workspace's GET
+ * notebooks.
  */
 export function signedInApp(routes: Record<string, Answer> = {}): AppStores {
   return testApp(
@@ -139,6 +160,7 @@ export function signedInApp(routes: Record<string, Answer> = {}): AppStores {
       "GET /api/v0/me": () => json(userJSON),
       "GET /api/v0/instance": () => json(instanceJSON),
       "GET /api/v0/workspaces": () => json({ data: [workspaceJSON] }),
+      "GET /api/v0/workspaces/*/notebooks": () => json({ data: [] }),
       ...routes,
     }),
     storedSession("login-0")

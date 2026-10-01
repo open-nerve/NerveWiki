@@ -1,7 +1,8 @@
 import { accountIdOf } from "../../fixtures/assert/identity";
 import { expectNotebookMember } from "../../fixtures/assert/notebook";
-import { emailFor, register } from "../../fixtures/auth";
-import { joinAs } from "../../fixtures/invitations";
+import { displayNameOf, emailFor, register } from "../../fixtures/auth";
+import { joinAs, joinOnboarded } from "../../fixtures/invitations";
+import { membersListed, roleOf, who } from "../../fixtures/member-pages";
 import {
   addedNotebookMember,
   addNotebookMember,
@@ -9,13 +10,20 @@ import {
   removeNotebookMember,
   updateNotebookMember,
 } from "../../fixtures/notebook-members";
+import {
+  addNotebookMemberWith,
+  changeNotebookRoleWith,
+  notebookGroups,
+  notebookPath,
+  removeNotebookMemberWith,
+} from "../../fixtures/notebook-pages";
 import { createNotebook, getNotebook } from "../../fixtures/notebooks";
 import { expect, test } from "../../fixtures/test";
 import { newTeam } from "../../fixtures/workspaces";
 
 // N4, a notebook's members (M3 design 3): its admin adds the workspace's
-// members, a guest included, changes their roles and removes them. The
-// page version comes with M3/P4.
+// members, a guest included, changes their roles and removes them (M3/P4
+// design 3.4 for the page).
 
 test("N4 (API): the admin adds, changes and removes members; a role is the higher of the two; others are refused", async ({
   api,
@@ -108,4 +116,70 @@ test("N4 (API): the admin adds, changes and removes members; a role is the highe
     writerId: ownerId,
     joinedAt: guestMembership.created_at,
   });
+});
+
+test("N4 (page): the admin adds a member and a guest, changes a role and removes one; their own row has no controls", async ({
+  api,
+  db,
+  signedInPage,
+}, testInfo) => {
+  const { pat: adminPat, workspace } = await newTeam(api, testInfo);
+  const ownerEmail = emailFor(testInfo, "owner");
+  const ownerTokens = await joinOnboarded(api, adminPat, workspace.slug, ownerEmail, "member");
+  const mateEmail = emailFor(testInfo, "mate");
+  const guestEmail = emailFor(testInfo, "guest");
+  await joinAs(api, adminPat, workspace.slug, mateEmail, "member");
+  await joinAs(api, adminPat, workspace.slug, guestEmail, "guest");
+  const [ownerId, mateId, guestId] = await Promise.all([
+    accountIdOf(db, ownerEmail),
+    accountIdOf(db, mateEmail),
+    accountIdOf(db, guestEmail),
+  ]);
+  const notebook = await createNotebook(api, ownerTokens.access_token, workspace.slug, "Team");
+  const page = await signedInPage(ownerTokens);
+  await page.goto(notebookPath(workspace.slug, notebook.id, "members"));
+  await expect.poll(() => membersListed(page)).toHaveLength(1);
+  await expect(roleOf(page, who(displayNameOf(ownerEmail), ownerEmail))).toHaveCount(0);
+
+  const mate = who(displayNameOf(mateEmail), mateEmail);
+  const guest = who(displayNameOf(guestEmail), guestEmail);
+  expect((await addNotebookMemberWith(page, notebook.id, mate, "Editor")).status).toBe(201);
+  await expect(page.getByText(`${displayNameOf(mateEmail)} added.`, { exact: true })).toBeVisible();
+  const { status, added } = await addNotebookMemberWith(page, notebook.id, guest, "Reader");
+  expect(status).toBe(201);
+  await expect.poll(() => membersListed(page)).toHaveLength(3);
+  // With other members, the notebook is the team's.
+  await expect.poll(() => notebookGroups(page, "Acme")).toEqual({ "Team notebooks": ["Team"] });
+
+  expect((await changeNotebookRoleWith(page, mate, "Admin")).status()).toBe(200);
+  await expect(roleOf(page, mate)).toHaveText("Admin");
+  await expect(roleOf(page, mate)).toBeFocused();
+  await expectNotebookMember(db, notebook.id, mateId, { role: "admin", active: true, writerId: ownerId });
+
+  expect(await removeNotebookMemberWith(page, guest, added.id)).toBe(204);
+  await expect(page.getByRole("heading", { level: 2, name: "Members", exact: true })).toBeFocused();
+  await expect.poll(() => membersListed(page)).toHaveLength(2);
+  await expectNotebookMember(db, notebook.id, guestId, { role: "reader", active: false, writerId: ownerId });
+});
+
+test("N4 (page): an editor sees the members and their roles, and can change nothing", async ({
+  api,
+  db,
+  signedInPage,
+}, testInfo) => {
+  const { pat: adminPat, workspace } = await newTeam(api, testInfo);
+  const ownerPat = await joinAs(api, adminPat, workspace.slug, emailFor(testInfo, "owner"), "member");
+  const editorEmail = emailFor(testInfo, "editor");
+  const page = await signedInPage(await joinOnboarded(api, adminPat, workspace.slug, editorEmail, "member"));
+  const notebook = await createNotebook(api, ownerPat, workspace.slug, "Team");
+  await addedNotebookMember(api, ownerPat, notebook.id, await accountIdOf(db, editorEmail), "editor");
+
+  await page.goto(notebookPath(workspace.slug, notebook.id, "members"));
+
+  await expect.poll(() => membersListed(page)).toHaveLength(2);
+  await expect(page.getByText("Admin", { exact: true })).toBeVisible();
+  await expect(page.getByText("Editor", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: /, role of / })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /^Remove / })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Add a member" })).toHaveCount(0);
 });

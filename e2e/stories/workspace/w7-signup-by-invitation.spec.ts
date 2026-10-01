@@ -7,7 +7,7 @@ import { formError, signUpWith } from "../../fixtures/auth-pages";
 import { failedToLoad } from "../../fixtures/browser";
 import { acceptWith, linkTo } from "../../fixtures/invitation-pages";
 import { accept, invite } from "../../fixtures/invitations";
-import { saveProfileStep, stepRecorded } from "../../fixtures/onboarding-pages";
+import { createFirstNotebookWith, notebookStep, saveProfileStep, stepRecorded } from "../../fixtures/onboarding-pages";
 import { expect, test } from "../../fixtures/test";
 import { workspaceHeading } from "../../fixtures/workspace-pages";
 import { createWorkspace, slugFor } from "../../fixtures/workspaces";
@@ -89,12 +89,14 @@ test("W7 (page): with sign-up closed, the invited address signs up on the link's
   await expectInvitation(db, invitation.id, "pending", await accountIdOf(db, emailFor(testInfo, "admin")));
   expect((await acceptWith(page, invitation.id)).status()).toBe(200);
 
-  // The new account onboards first; its workspace step goes on by itself.
+  // The new account onboards first; its workspace step goes on by itself, then it creates its first notebook.
   const recorded = stepRecorded(page, "workspace");
   expect(await saveProfileStep(page)).toBe(200);
   expect((await recorded).status()).toBe(200);
+  await expect(notebookStep(page)).toBeVisible();
+  expect((await createFirstNotebookWith(page, workspace.slug)).status).toBe(201);
   await expect(workspaceHeading(page, "Acme")).toBeVisible();
   await expect(page).toHaveURL(`${baseURL}/${workspace.slug}`);
   await expectMembership(db, workspace.id, userId, "member");
-  await expectOnboardingSteps(db, userId, ["profile", "workspace"]);
+  await expectOnboardingSteps(db, userId, ["profile", "workspace", "notebook"]);
 });

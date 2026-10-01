@@ -54,19 +54,38 @@ test("a workspace shown is the one the device lands on next", async () => {
   expect(app.preferences.lastWorkspace()).toBe("acme");
 });
 
+// Only an arrival moves the focus (M3/P4 design 3.5): a page opened, or
+// gone to from the switcher, leaves it where the browser puts it.
+test("a workspace's home opened, or chosen in the switcher, does not take the focus", async () => {
+  const user = userEvent.setup();
+  renderApp("/lab", withWorkspaces());
+
+  const lab = await screen.findByRole("heading", { name: "Lab" });
+  expect(document.activeElement).not.toBe(lab);
+  await user.click(screen.getByRole("button", { name: "Lab", description: "Switch workspace" }));
+  await user.click(await screen.findByRole("menuitemradio", { name: "Acme" }));
+
+  const chosen = await screen.findByRole("heading", { name: "Acme" });
+  expect(document.activeElement).not.toBe(chosen);
+});
+
 test("a slug the account has no workspace of is not found, nor remembered", async () => {
   const app = withWorkspaces();
   renderApp("/zeta", app);
 
   expect(await screen.findByRole("heading", { name: "Page not found" })).toBeTruthy();
-  expect(screen.queryByRole("complementary", { name: "Workspace" })).toBeNull();
+  expect(screen.queryByRole("navigation", { name: "Zeta" })).toBeNull();
+  expect(screen.queryByRole("button", { description: "Switch workspace" })).toBeNull();
   expect(app.preferences.lastWorkspace()).toBeUndefined();
 });
 
+// The left column is no landmark of its own: the workspace's navigation is
+// the one it holds (M3/P4 design 3.3).
 test("the navigation leads to the workspace's pages, marking the one shown", async () => {
   renderApp("/acme", withWorkspaces());
 
   const nav = await screen.findByRole("navigation", { name: "Acme" });
+  expect(screen.queryByRole("complementary")).toBeNull();
   const links = within(nav).getAllByRole("link");
   expect(links.map((link) => [link.textContent, link.getAttribute("href"), link.getAttribute("aria-current")])).toEqual(
     [

@@ -3,6 +3,7 @@ import { useState, type FormEvent } from "react";
 import { useLocation, useNavigate, useParams } from "react-router";
 import useSWR from "swr";
 
+import { arrived } from "../app/arrival";
 import { useForm } from "../app/form";
 import { useSession } from "../app/guards";
 import { linkOf } from "../app/invitation-link";
@@ -138,8 +139,8 @@ const Accept = observer(function Accept({ link }: { link: InvitationLink }) {
     event.preventDefault();
     void submit({}, async () => {
       const joined = await workspaces.accept(link);
-      // The used link is not a page to come back to.
-      void navigate(`/${joined.slug}`, { replace: true });
+      // The used link is not a page to come back to; the workspace's heading takes the focus.
+      void navigate(`/${joined.slug}`, { replace: true, state: arrived });
     });
   }
 

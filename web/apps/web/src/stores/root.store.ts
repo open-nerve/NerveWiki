@@ -4,6 +4,8 @@ import { AuthService } from "../services/auth.service";
 import { InstanceService } from "../services/instance.service";
 import { InvitationPreviewService, InvitationService } from "../services/invitation.service";
 import { MemberService } from "../services/member.service";
+import { NotebookMemberService } from "../services/notebook-member.service";
+import { NotebookService, type Notebook } from "../services/notebook.service";
 import { WorkspaceService, type Workspace } from "../services/workspace.service";
 import type { Session } from "../session/session";
 import { AccountStore } from "./account.store";
@@ -12,6 +14,8 @@ import { AuthStore } from "./auth.store";
 import { InstanceStore } from "./instance.store";
 import { InvitationPreviewStore, InvitationStore } from "./invitation.store";
 import { MemberStore } from "./member.store";
+import { NotebookMemberStore } from "./notebook-member.store";
+import { NotebookStore } from "./notebook.store";
 import type { PreferencesStore } from "./preferences.store";
 import { WorkspaceStore } from "./workspace.store";
 
@@ -52,9 +56,14 @@ export class RootStore {
   readonly workspaces: WorkspaceStore | undefined;
   private readonly members: MemberService | undefined;
   private readonly invitations: InvitationService | undefined;
-  /** The member and invitation lists this generation holds, by workspace id. */
+  private readonly notebooks: NotebookService | undefined;
+  private readonly notebookMembers: NotebookMemberService | undefined;
+  /** The member, invitation and notebook lists this generation holds, by workspace id. */
   private readonly memberLists = new Map<string, MemberStore>();
   private readonly invitationLists = new Map<string, InvitationStore>();
+  private readonly notebookLists = new Map<string, NotebookStore>();
+  /** The notebook member lists this generation holds, by notebook id. */
+  private readonly notebookMemberLists = new Map<string, NotebookMemberStore>();
 
   constructor(
     app: AppStores,
@@ -70,6 +79,8 @@ export class RootStore {
     this.workspaces = client && new WorkspaceStore(new WorkspaceService(client));
     this.members = client && new MemberService(client);
     this.invitations = client && new InvitationService(client);
+    this.notebooks = client && new NotebookService(client);
+    this.notebookMembers = client && new NotebookMemberService(client);
   }
 
   /**
@@ -87,6 +98,21 @@ export class RootStore {
   invitationsOf(workspace: Workspace): InvitationStore | undefined {
     const service = this.invitations;
     return service && once(this.invitationLists, workspace.id, () => new InvitationStore(service, workspace.slug));
+  }
+
+  /**
+   * notebooksOf is the notebooks of workspace that the account sees, as
+   * membersOf is its members (M3/P4 design 3.2).
+   */
+  notebooksOf(workspace: Workspace): NotebookStore | undefined {
+    const service = this.notebooks;
+    return service && once(this.notebookLists, workspace.id, () => new NotebookStore(service, workspace.slug));
+  }
+
+  /** notebookMembersOf is the members of notebook, the same list for as long as this generation lives. */
+  notebookMembersOf(notebook: Notebook): NotebookMemberStore | undefined {
+    const service = this.notebookMembers;
+    return service && once(this.notebookMemberLists, notebook.id, () => new NotebookMemberStore(service, notebook.id));
   }
 }
 
