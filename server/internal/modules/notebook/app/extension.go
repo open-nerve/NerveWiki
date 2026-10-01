@@ -54,11 +54,11 @@ type WorkspaceDeleted struct {
 // WorkspaceDeletion is the module's registrant of the workspace module's
 // deletion (M3/P1 design 3.8): it deletes the workspace's notebooks, their
 // members and its audit events (M3/P3 design 3.4) at the deletion's time,
-// and tells the notebook deletion's subscribers once, with every id. It runs in the deletion's transaction,
-// which holds the workspace's row FOR NO KEY UPDATE: no notebook
-// management write of the workspace runs beside it, as each takes the row
-// FOR SHARE; the notebooks are locked by id, the order of every write that
-// holds more than one.
+// and tells the notebook deletion's subscribers once, with every id. It
+// runs in the deletion's transaction, which holds the workspace's row FOR
+// NO KEY UPDATE: no notebook management write of the workspace runs beside
+// it, as each takes the row FOR SHARE; the notebooks are locked by id, the
+// order of every write that holds more than one.
 type WorkspaceDeletion struct {
 	Notebooks   NotebooksDeleter
 	Subscribers []NotebookDeletionSubscriber

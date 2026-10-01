@@ -219,7 +219,7 @@ export const en = {
   "problem.notebook.member_not_found": "This member cannot be found, or you no longer have access to the notebook.",
   "problem.notebook.own_membership": "You cannot change or remove your own membership.",
   "problem.notebook.sole_admin":
-    "You are a notebook's only admin. Make another member its admin first (notebook settings), or delete the notebook.",
+    "You are the only admin of one or more notebooks. In each one's settings, make another member an admin first, or delete it.",
   "problem.network": "Cannot reach the server. Check the connection and try again.",
   "problem.unavailable": "Cannot reach the server for now. You are still signed in; try again in a moment.",
   "problem.storage":

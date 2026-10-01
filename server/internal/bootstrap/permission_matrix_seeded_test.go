@@ -363,6 +363,9 @@ func prepareMatrix(t *testing.T) matrixData {
 				exec("UPDATE notebook_members SET deleted_at = $2 WHERE notebook_id = $1", d.seeded.notebooks[n.name], now)
 			}
 		}
+		// orphan is ownerless of an account still active in lab, a state no
+		// end makes (its end would have ended its membership of lab): the
+		// rows read the notebook's columns alone.
 		orphan, formerOwner := matrixOwnerless()
 		exec("UPDATE notebooks SET ownerless_since = $3, former_owner_id = "+account+" WHERE id = $1",
 			d.seeded.notebooks[orphan], emailOf(formerOwner), now)

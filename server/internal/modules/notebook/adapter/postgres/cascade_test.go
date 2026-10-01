@@ -146,19 +146,20 @@ func TestLockHoldingsLocksThemByID(t *testing.T) {
 	}
 }
 
-// memberState is a membership's role, end and last update.
+// memberState is a membership's role, end, last update and creation.
 type memberState struct {
 	Role      string
 	EndedAt   *time.Time
 	UpdatedBy uuid.UUID
 	UpdatedAt time.Time
+	CreatedAt time.Time
 }
 
 func memberOf(t *testing.T, pool *pgxpool.Pool, notebookID, userID uuid.UUID) memberState {
 	t.Helper()
 	var m memberState
-	if err := pool.QueryRow(context.Background(), "SELECT role, ended_at, updated_by_id, updated_at FROM notebook_members "+
-		"WHERE notebook_id = $1 AND user_id = $2", notebookID, userID).Scan(&m.Role, &m.EndedAt, &m.UpdatedBy, &m.UpdatedAt); err != nil {
+	if err := pool.QueryRow(context.Background(), "SELECT role, ended_at, updated_by_id, updated_at, created_at FROM notebook_members "+
+		"WHERE notebook_id = $1 AND user_id = $2", notebookID, userID).Scan(&m.Role, &m.EndedAt, &m.UpdatedBy, &m.UpdatedAt, &m.CreatedAt); err != nil {
 		t.Fatal(err)
 	}
 	return m
@@ -238,6 +239,10 @@ func TestLockOwnerlessOfAndReturnNotebooks(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	joined := map[uuid.UUID]time.Time{}
+	for _, id := range []uuid.UUID{f.solo, f.team} {
+		joined[id] = memberOf(t, f.pool, id, f.alice).CreatedAt
+	}
 	orphan(f.team, f.alice)
 	orphan(f.solo, f.alice)
 	orphan(f.lab, f.alice)
@@ -256,8 +261,9 @@ func TestLockOwnerlessOfAndReturnNotebooks(t *testing.T) {
 		t.Fatalf("LockOwnerlessOf(acme, alice) = %+v, %v; want solo and team", got, err)
 	}
 	for _, id := range []uuid.UUID{f.solo, f.team} {
-		if m := memberOf(t, f.pool, id, f.alice); m.Role != "admin" || m.EndedAt != nil || m.UpdatedBy != f.alice || !m.UpdatedAt.Equal(later()) {
-			t.Errorf("alice's membership %+v, want an active admin again, by her at %v", m, later())
+		if m := memberOf(t, f.pool, id, f.alice); m.Role != "admin" || m.EndedAt != nil || m.UpdatedBy != f.alice || !m.UpdatedAt.Equal(later()) ||
+			!m.CreatedAt.Equal(joined[id]) {
+			t.Errorf("alice's membership %+v, want an active admin again, by her at %v, joined at %v as before", m, later(), joined[id])
 		}
 		if o := ownershipOf(t, f.pool, id); o.Since != nil || o.FormerOwner != nil || !o.UpdatedAt.Equal(now()) {
 			t.Errorf("the notebook %+v, want it owned, its last update at %v", o, now())
@@ -278,6 +284,52 @@ func TestLockOwnerlessOfAndReturnNotebooks(t *testing.T) {
 	}
 	if o := ownershipOf(t, f.pool, f.lab); o.Since == nil {
 		t.Errorf("lab %+v after the failed return, want it rolled back", o)
+	}
+}
+
+// The return locks the former owner's ownerless notebooks by id: while it
+// waits for the highest, the lower ones are locked.
+func TestLockOwnerlessOfLocksThemByID(t *testing.T) {
+	ctx := context.Background()
+	f := newHoldingsFixture(t)
+	f.orphan(t, f.solo, f.alice, now())
+	f.orphan(t, f.team, f.alice, now())
+	high, low := f.team, f.solo
+	if high.Compare(low) < 0 {
+		high, low = low, high
+	}
+	holder, err := f.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = holder.Rollback(ctx) }()
+	if _, err := holder.Exec(ctx, "SELECT 1 FROM notebooks WHERE id = $1 FOR SHARE", high); err != nil {
+		t.Fatal(err)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		done <- inTx(t, f.pool, func(ctx context.Context) error {
+			_, err := f.s.LockOwnerlessOf(ctx, f.acme, f.alice)
+			return err
+		})
+	}()
+	pgtest.WaitForLockWaitsOn(t, f.pool, "notebooks", 1, 10*time.Second)
+	probe, err := f.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, held := probe.Exec(ctx, "SELECT 1 FROM notebooks WHERE id = $1 FOR SHARE NOWAIT", low)
+	_ = probe.Rollback(ctx)
+	if err := holder.Rollback(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if held == nil {
+		t.Error("the lower id was free while the lock waited for the higher, want it locked first")
 	}
 }
 

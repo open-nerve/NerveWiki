@@ -30,23 +30,25 @@ func (f holdingsFixture) orphan(t *testing.T, id, owner uuid.UUID, at time.Time)
 func TestListOwnerless(t *testing.T) {
 	f := newHoldingsFixture(t)
 	ctx := context.Background()
-	f.orphan(t, f.team, f.alice, later())
-	f.orphan(t, f.solo, f.alice, now())
+	if f.solo.Compare(f.team) >= 0 {
+		t.Fatal("the fixture's solo has the higher id, want the lower: the time, not the id, must order team first")
+	}
+	f.orphan(t, f.team, f.alice, now())
+	f.orphan(t, f.solo, f.alice, later())
 	f.orphan(t, f.lab, f.alice, now())
 	f.orphan(t, f.shared, f.bob, later())
 	exec(t, f.pool, "UPDATE notebooks SET deleted_at = $2 WHERE id = $1", f.shared, later())
 
 	got, err := f.s.ListOwnerless(ctx, f.acme)
 
-	if err != nil || len(got) != 2 || got[0].Notebook.ID != f.solo || got[1].Notebook.ID != f.team ||
-		got[0].MemberCount != 0 || got[1].MemberCount != 1 {
-		t.Fatalf("ListOwnerless(acme) = %+v, %v; want solo with no member, then team with bob", got, err)
+	if err != nil || len(got) != 2 || got[0].Notebook.ID != f.team || got[1].Notebook.ID != f.solo ||
+		got[0].MemberCount != 1 || got[1].MemberCount != 0 {
+		t.Fatalf("ListOwnerless(acme) = %+v, %v; want team with bob, then solo with no member", got, err)
 	}
-	if o := got[1].Notebook.Ownerless; o == nil || !o.Since.Equal(later()) || o.FormerOwner != f.alice {
-		t.Errorf("team's ownerless state %+v, want alice's since %v", o, later())
+	if o := got[0].Notebook.Ownerless; o == nil || !o.Since.Equal(now()) || o.FormerOwner != f.alice {
+		t.Errorf("team's ownerless state %+v, want alice's since %v", o, now())
 	}
 	// The same instant: the id orders them.
-	f.orphan(t, f.lab, f.alice, now())
 	exec(t, f.pool, "UPDATE notebooks SET workspace_id = $2, ownerless_since = $3 WHERE id = $1", f.lab, f.acme, now())
 	if got, err := f.s.ListOwnerless(ctx, f.acme); err != nil || len(got) != 3 || got[0].Notebook.ID.Compare(got[1].Notebook.ID) > 0 {
 		t.Errorf("ListOwnerless(acme) = %+v, %v; want the two of one instant by id", got, err)
@@ -97,6 +99,25 @@ func TestListAuditEvents(t *testing.T) {
 	rest, err := f.s.ListAuditEvents(ctx, f.acme, &domain.AuditCursor{CreatedAt: page[1].At, ID: page[1].ID}, 2)
 	if ids := idsOf(rest); err != nil || !slices.Equal(ids, []uuid.UUID{older.ID}) {
 		t.Errorf("the page after %s = %v, %v; want the older one alone", page[1].ID, ids, err)
+	}
+
+	// One a page: the cursor's id parts the two of one instant, as the
+	// returns of one restore are.
+	var paged []uuid.UUID
+	var after *domain.AuditCursor
+	for range 5 {
+		page, err := f.s.ListAuditEvents(ctx, f.acme, after, 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(page) == 0 {
+			break
+		}
+		paged = append(paged, page[0].ID)
+		after = &domain.AuditCursor{CreatedAt: page[0].At, ID: page[0].ID}
+	}
+	if want := []uuid.UUID{second.ID, first.ID, older.ID}; !slices.Equal(paged, want) {
+		t.Errorf("one a page = %v, want %v", paged, want)
 	}
 }
 

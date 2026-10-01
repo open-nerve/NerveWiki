@@ -24,15 +24,19 @@ import (
 // the module wired as bootstrap wires it, each subscriber reading, in the
 // write's transaction, what the write did.
 
-// rolesAuthorizer lets anyone create a notebook, and lets a notebook's
-// explicit members act on it with their role; the rest do not see it. The
+// rolesAuthorizer lets anyone create a notebook and handle the ownerless
+// ones, and lets a notebook's explicit members act on it with their role;
+// the rest do not see it. The
 // rule table's sets are the access module's to prove: here every role may
 // do every action.
 type rolesAuthorizer struct{ facts notebook.Facts }
 
 func (a rolesAuthorizer) Authorize(ctx context.Context, actor shared.Actor, action shared.Action, t shared.Target) (shared.Grant, error) {
-	if action == "notebook.create" {
+	switch {
+	case action == "notebook.create":
 		return shared.Grant{WorkspaceRole: shared.WorkspaceMember}, nil
+	case ownerlessAction(action):
+		return shared.Grant{WorkspaceRole: shared.WorkspaceAdmin}, nil
 	}
 	f, err := a.facts.NotebookFacts(ctx, t.NotebookID, actor.UserID)
 	switch {
@@ -146,47 +150,59 @@ func (f fixture) withCarol(t *testing.T) (carol, membership uuid.UUID) {
 func TestTheVisibilityTriggers(t *testing.T) {
 	for _, tt := range []struct {
 		name string
-		// request is the write, by an account of f, and the value it tells.
-		request func(f fixture, carol, carolsMembership uuid.UUID) (by uuid.UUID, method, path, body string, want notebook.VisibilityChange)
-		status  int
+		// request is the write, by an account of f, and the value it tells;
+		// it prepares f when the write needs more.
+		request func(t *testing.T, f fixture, carol, carolsMembership uuid.UUID) (by uuid.UUID, method, path, body string,
+			want notebook.VisibilityChange)
+		status int
 		// probe reads the write's effect: its value after the write, and
 		// before it (when the write rolled back).
 		probe        func(f fixture, carol uuid.UUID) string
 		after, prior string
 	}{
-		{"a notebook created open", func(f fixture, _, _ uuid.UUID) (uuid.UUID, string, string, string, notebook.VisibilityChange) {
+		{"a notebook created open", func(_ *testing.T, f fixture, _, _ uuid.UUID) (uuid.UUID, string, string, string, notebook.VisibilityChange) {
 			return f.alice, http.MethodPost, "/api/v0/workspaces/acme/notebooks", `{"name":"Plans","workspace_access":"viewer"}`,
 				notebook.VisibilityChange{WorkspaceID: f.acme, UserIDs: []uuid.UUID{f.alice}, Reached: true, At: testNow()}
 		}, http.StatusCreated, func(fixture, uuid.UUID) string {
 			return "SELECT count(*)::text FROM notebooks WHERE name = 'Plans'"
 		}, "1", "0"},
-		{"the access crossing none", func(f fixture, _, _ uuid.UUID) (uuid.UUID, string, string, string, notebook.VisibilityChange) {
+		{"the access crossing none", func(_ *testing.T, f fixture, _, _ uuid.UUID) (uuid.UUID, string, string, string, notebook.VisibilityChange) {
 			return f.alice, http.MethodPatch, "/api/v0/notebooks/" + f.eng.String(), `{"workspace_access":"editor"}`,
 				notebook.VisibilityChange{WorkspaceID: f.acme, Reached: true, At: testNow()}
 		}, http.StatusOK, func(f fixture, _ uuid.UUID) string {
 			return "SELECT workspace_access FROM notebooks WHERE id = '" + f.eng.String() + "'"
 		}, "editor", "none"},
-		{"a member once added back", func(f fixture, _, _ uuid.UUID) (uuid.UUID, string, string, string, notebook.VisibilityChange) {
+		{"a member once added back", func(_ *testing.T, f fixture, _, _ uuid.UUID) (uuid.UUID, string, string, string, notebook.VisibilityChange) {
 			return f.alice, http.MethodPost, "/api/v0/notebooks/" + f.eng.String() + "/members", `{"user_id":"` + f.bob.String() + `","role":"editor"}`,
 				notebook.VisibilityChange{WorkspaceID: f.acme, UserIDs: []uuid.UUID{f.bob}, At: testNow()}
 		}, http.StatusCreated, func(f fixture, _ uuid.UUID) string {
 			return "SELECT role || ' ' || (ended_at IS NULL)::text FROM notebook_members WHERE notebook_id = '" + f.eng.String() +
 				"' AND user_id = '" + f.bob.String() + "'"
 		}, "editor true", "reader false"},
-		{"a member removed", func(f fixture, carol, m uuid.UUID) (uuid.UUID, string, string, string, notebook.VisibilityChange) {
+		{"a member removed", func(_ *testing.T, f fixture, carol, m uuid.UUID) (uuid.UUID, string, string, string, notebook.VisibilityChange) {
 			return f.alice, http.MethodDelete, "/api/v0/notebook-members/" + m.String(), "",
 				notebook.VisibilityChange{WorkspaceID: f.acme, UserIDs: []uuid.UUID{carol}, At: testNow()}
 		}, http.StatusNoContent, endedProbe, "true", "false"},
-		{"a member leaving", func(f fixture, carol, _ uuid.UUID) (uuid.UUID, string, string, string, notebook.VisibilityChange) {
+		{"a member leaving", func(_ *testing.T, f fixture, carol, _ uuid.UUID) (uuid.UUID, string, string, string, notebook.VisibilityChange) {
 			return carol, http.MethodPost, "/api/v0/notebooks/" + f.eng.String() + "/leave", "",
 				notebook.VisibilityChange{WorkspaceID: f.acme, UserIDs: []uuid.UUID{carol}, At: testNow()}
 		}, http.StatusNoContent, endedProbe, "true", "false"},
+		{"an ownerless notebook taken over", func(t *testing.T, f fixture, _, _ uuid.UUID) (uuid.UUID, string, string, string, notebook.VisibilityChange) {
+			f.orphanEng(t)
+			return f.bob, http.MethodPost, "/api/v0/ownerless-notebooks/" + f.eng.String() + "/take-over", "",
+				notebook.VisibilityChange{WorkspaceID: f.acme, UserIDs: []uuid.UUID{f.bob}, At: testNow()}
+		}, http.StatusOK, func(f fixture, _ uuid.UUID) string {
+			return "SELECT (n.ownerless_since IS NULL)::text || ' ' || m.role || ' ' || (m.ended_at IS NULL)::text || ' ' || " +
+				"(SELECT count(*) FROM notebook_audit_events WHERE action = 'taken_over')::text " +
+				"FROM notebooks n JOIN notebook_members m ON m.notebook_id = n.id AND m.user_id = '" + f.bob.String() + "' " +
+				"WHERE n.id = '" + f.eng.String() + "'"
+		}, "true admin true 1", "false reader false 0"},
 	} {
 		for _, fail := range []bool{false, true} {
 			t.Run(tt.name+map[bool]string{false: "", true: ", the subscriber fails"}[fail], func(t *testing.T) {
 				f := newFixture(t)
 				carol, membership := f.withCarol(t)
-				by, method, path, body, want := tt.request(f, carol, membership)
+				by, method, path, body, want := tt.request(t, f, carol, membership)
 				probe := tt.probe(f, carol)
 				w := &watcher{pool: f.pool, probe: probe, fail: fail}
 

@@ -101,7 +101,10 @@ func (m membershipEnd) MembershipEnded(ctx context.Context, e workspace.Membersh
 	return m.notebook.MembershipEnded(ctx, membershipEnded(e))
 }
 
-// membershipEnded is e as the notebook module reads it.
+// membershipEnded is e as the notebook module reads it: rule two refuses
+// the account leaving and its deactivation, the ends it chose itself; any
+// other cause passes as a removal does, so a cause added to EndCause is
+// decided here.
 func membershipEnded(e workspace.MembershipEnd) notebook.WorkspaceMembershipEnd {
 	return notebook.WorkspaceMembershipEnd{
 		UserID: e.UserID, WorkspaceIDs: e.WorkspaceIDs, Voluntary: e.Cause == workspace.EndLeft || e.Cause == workspace.EndDeactivated,

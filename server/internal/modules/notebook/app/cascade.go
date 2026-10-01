@@ -159,5 +159,8 @@ func (m MembershipRestore) MembershipRestored(ctx context.Context, r WorkspaceMe
 		return 0, nil
 	}
 	v := VisibilityChange{WorkspaceID: r.WorkspaceID, UserIDs: []uuid.UUID{r.UserID}, At: r.At}
-	return len(notebooks), publishVisibility(ctx, m.Subscribers, v)
+	if err := publishVisibility(ctx, m.Subscribers, v); err != nil {
+		return 0, err
+	}
+	return len(notebooks), nil
 }

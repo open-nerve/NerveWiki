@@ -40,7 +40,7 @@ func lockOwnerless(ctx context.Context, workspaces Workspaces, notebooks Noteboo
 }
 
 // profilesOf is the profiles of ids, each of which an account: a missing
-// one is a fault, as withProfiles's.
+// one is a fault.
 func profilesOf(ctx context.Context, profiles MemberProfiles, ids []uuid.UUID) (map[uuid.UUID]Profile, error) {
 	byID, err := profiles.MemberProfiles(ctx, ids)
 	if err != nil {

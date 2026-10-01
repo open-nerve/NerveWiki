@@ -19,7 +19,7 @@ import { createWorkspace, newTeam, slugFor } from "../../fixtures/workspaces";
 // way out is a workspace admin's removal. The page version comes with
 // M3/P5.
 
-test("N8 (API): the account's deactivation is refused while it is the only admin of a notebook with another member; a workspace admin removes it, the notebook is ownerless, its reader reads it still, and the deactivation goes through", async ({
+test("N8 (API): the account's deactivation is refused while it is the only admin of a notebook with another member; a workspace admin removes it, the notebook is ownerless, its reader reads it still, and the deactivation goes through, leaving the account's notebook of its own ownerless", async ({
   api,
   db,
 }, testInfo) => {
@@ -31,6 +31,10 @@ test("N8 (API): the account's deactivation is refused while it is the only admin
   const [ownerId, mateId] = await Promise.all([accountIdOf(db, ownerEmail), accountIdOf(db, mateEmail)]);
   const plans = await createNotebook(api, ownerPat, workspace.slug, "Plans");
   await addedNotebookMember(api, ownerPat, plans.id, mateId, "reader");
+  // A notebook of the account alone, in another workspace, does not block.
+  const lab = await createWorkspace(api, adminPat, "Lab", slugFor(testInfo, "lab"));
+  await accept(api, ownerPat, await invite(api, adminPat, lab.slug, ownerEmail, "member"));
+  const solo = await createNotebook(api, ownerPat, lab.slug, "Solo");
 
   const refused = await api.POST("/api/v0/me/deactivate", { headers: bearer(ownerPat) });
   expect([refused.response.status, refused.error?.code, refused.error?.detail]).toEqual([
@@ -52,6 +56,9 @@ test("N8 (API): the account's deactivation is refused while it is the only admin
 
   expect((await api.POST("/api/v0/me/deactivate", { headers: bearer(ownerPat) })).response.status).toBe(204);
   await expectDeactivated(db, ownerId);
+  await expectMembership(db, lab.id, ownerId, "ended");
+  await expectNotebookMembershipsEndedWith(db, lab.id, ownerId, ownerId, 1);
+  await expectOwnerless(db, solo.id, ownerId);
 });
 
 test("N8 (command line): users deactivate refuses the only admin of notebooks with other members, counting them in each workspace; removed from both, the account is deactivated", async ({
