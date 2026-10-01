@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/access"
+	"github.com/open-nerve/NerveWiki/server/internal/modules/notebook"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/workspace"
 )
 
@@ -13,7 +14,7 @@ import (
 // at run time, and a rule without an action is a decision no use case asks
 // for. access cannot import the modules; bootstrap sees both.
 func TestTheRuleTableIsTheModulesActions(t *testing.T) {
-	actions := slices.Concat(workspace.Actions())
+	actions := slices.Concat(workspace.Actions(), notebook.Actions())
 	slices.Sort(actions)
 	if rules := access.RuleKeys(); len(actions) == 0 || !slices.Equal(actions, rules) {
 		t.Errorf("the modules' actions = %q, want the rule table's %q", actions, rules)
