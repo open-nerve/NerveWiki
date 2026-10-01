@@ -1,8 +1,8 @@
-import { NavLink, Outlet } from "react-router";
+import { Outlet } from "react-router";
 
+import { NavItem } from "../../components/nav-item";
 import { useT } from "../../i18n/i18n";
 import type { MessageKey } from "../../i18n/messages/en";
-import { cn } from "../../lib/cn";
 
 /** The settings' pages, in the order the navigation lists them (M1/P6 design 3.2). */
 const sections: readonly { path: string; label: Extract<MessageKey, `settings.${string}`> }[] = [
@@ -24,18 +24,9 @@ export function SettingsLayout() {
       <div className="flex flex-col gap-6 md:flex-row">
         <nav aria-label={t("settings.title")} className="flex gap-1 md:w-48 md:shrink-0 md:flex-col">
           {sections.map(({ path, label }) => (
-            <NavLink
-              key={path}
-              to={path}
-              className={({ isActive }) =>
-                cn(
-                  "rounded-md px-3 py-2 text-sm hover:bg-accent",
-                  isActive ? "bg-accent font-medium" : "text-muted-foreground"
-                )
-              }
-            >
+            <NavItem key={path} to={path}>
               {t(label)}
-            </NavLink>
+            </NavItem>
           ))}
         </nav>
         <div className="min-w-0 flex-1">

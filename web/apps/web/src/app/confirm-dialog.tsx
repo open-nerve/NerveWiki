@@ -1,5 +1,6 @@
 import { useRef, useState, type ReactElement } from "react";
 
+import { FormField } from "../components/form-field";
 import { Alert } from "../components/ui/alert";
 import {
   AlertDialog,
@@ -29,12 +30,20 @@ type ConfirmDialogProps = {
    * with it (a revoked token's row); without it, back to the trigger.
    */
   focusAfter?: () => void;
+  /**
+   * What the user types before confirming, such as the slug of the
+   * workspace to delete: label asks for it, and confirm is disabled until
+   * the field holds value.
+   */
+  typedConfirmation?: { label: string; value: string };
 };
 
 /**
  * ConfirmDialog asks to confirm what cannot be undone (M1/P6 design 3.5,
  * 3.6): confirm goes out once, however often it is pressed, and nothing
- * closes the dialog while it is out; a refusal stays in the dialog.
+ * closes the dialog while it is out; a refusal stays in the dialog. With
+ * typedConfirmation, the user types a word first; closing the dialog
+ * clears it.
  */
 export function ConfirmDialog({
   trigger,
@@ -45,9 +54,12 @@ export function ConfirmDialog({
   cancelLabel,
   confirm,
   focusAfter,
+  typedConfirmation,
 }: ConfirmDialogProps) {
   const t = useT();
   const [open, setOpen] = useState(false);
+  const [typed, setTyped] = useState("");
+  const ready = typedConfirmation === undefined || typed === typedConfirmation.value;
   const [failure, setFailure] = useState<unknown>();
   const [sending, setSending] = useState(false);
   const confirmed = useRef(false);
@@ -74,6 +86,7 @@ export function ConfirmDialog({
         if (!sending) {
           setOpen(next);
           setFailure(undefined);
+          setTyped("");
         }
       }}
     >
@@ -88,6 +101,16 @@ export function ConfirmDialog({
       >
         <AlertDialogTitle>{title}</AlertDialogTitle>
         <AlertDialogDescription>{description}</AlertDialogDescription>
+        {typedConfirmation !== undefined && (
+          <FormField
+            label={typedConfirmation.label}
+            autoComplete="off"
+            autoCapitalize="none"
+            spellCheck={false}
+            value={typed}
+            onChange={(event) => setTyped(event.target.value)}
+          />
+        )}
         {failed !== undefined && <Alert>{failed}</Alert>}
         <div className="flex justify-end gap-2">
           <AlertDialogCancel asChild>
@@ -95,7 +118,7 @@ export function ConfirmDialog({
               {cancelLabel}
             </Button>
           </AlertDialogCancel>
-          <Button variant="destructive" disabled={sending} onClick={() => void run()}>
+          <Button variant="destructive" disabled={sending || !ready} onClick={() => void run()}>
             {sending ? sendingLabel : confirmLabel}
           </Button>
         </div>

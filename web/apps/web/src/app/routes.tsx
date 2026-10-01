@@ -122,6 +122,23 @@ export const routes: RouteObject[] = [
                           return { Component: WorkspaceHomePage };
                         },
                       },
+                      {
+                        path: "settings",
+                        lazy: async () => {
+                          const { WorkspaceSettingsLayout } = await import("../pages/workspace/settings-layout");
+                          return { Component: WorkspaceSettingsLayout };
+                        },
+                        children: [
+                          { index: true, Component: () => <Navigate replace to="general" /> },
+                          {
+                            path: "general",
+                            lazy: async () => {
+                              const { GeneralPage } = await import("../pages/workspace/general-page");
+                              return { Component: GeneralPage };
+                            },
+                          },
+                        ],
+                      },
                     ],
                   },
                   {

@@ -1,12 +1,12 @@
 import { observer } from "mobx-react-lite";
 import { useEffect } from "react";
-import { NavLink, Outlet, useParams } from "react-router";
+import { Outlet, useParams } from "react-router";
 import useSWR from "swr";
 
 import { NotLoaded } from "../../app/not-loaded";
+import { NavItem } from "../../components/nav-item";
 import { useT } from "../../i18n/i18n";
 import type { MessageKey } from "../../i18n/messages/en";
-import { cn } from "../../lib/cn";
 import type { Workspace } from "../../services/workspace.service";
 import { useStore, useWorkspaces } from "../../stores/context";
 import { NotFoundPage } from "../not-found";
@@ -70,19 +70,9 @@ export const WorkspaceLayout = observer(function WorkspaceLayout() {
         <WorkspaceSwitcher current={workspace} />
         <nav aria-label={workspace.name} className="flex flex-col gap-1">
           {sections.map(({ path, label, end }) => (
-            <NavLink
-              key={path}
-              to={`/${slug}${path}`}
-              end={end}
-              className={({ isActive }) =>
-                cn(
-                  "rounded-md px-3 py-2 text-sm hover:bg-accent",
-                  isActive ? "bg-accent font-medium" : "text-muted-foreground"
-                )
-              }
-            >
+            <NavItem key={path} to={`/${slug}${path}`} end={end}>
               {t(label)}
-            </NavLink>
+            </NavItem>
           ))}
         </nav>
       </aside>
