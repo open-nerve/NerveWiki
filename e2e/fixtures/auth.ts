@@ -146,7 +146,7 @@ export function displayNameOf(email: string): string {
  * The ids of the web app's onboarding steps, in order (web/apps/web/src/onboarding/steps.ts): a step added
  * there is added here, or the stories of onboarded accounts land on onboarding (A9 counts the steps).
  */
-const onboardingSteps = ["profile"];
+const onboardingSteps = ["profile", "workspace"];
 
 /** Signs email up through the API, done with onboarding as the web app would have it, and returns its tokens. */
 export async function registerOnboarded(api: ApiClient, email: string): Promise<AuthTokens> {

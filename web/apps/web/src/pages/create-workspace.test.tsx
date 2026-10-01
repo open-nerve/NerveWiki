@@ -147,6 +147,22 @@ test.each([
   expect(router.state.location.pathname).toBe("/create-workspace");
 });
 
+test("a slug changed after a refusal shows whether the new one is free, not the refusal", async () => {
+  const user = userEvent.setup();
+  const { app } = creationServer((body) =>
+    body.slug === "acme" ? problem(409, "workspace.slug_taken") : json(created(body), 201)
+  );
+  renderApp("/create-workspace", app);
+
+  await user.type(await nameField(), "Acme");
+  await user.click(screen.getByRole("button", { name: "Create workspace" }));
+  expect(await screen.findByText("Another workspace already has this address.")).toBeTruthy();
+
+  await user.type(slugField(), "-labs");
+  expect(await screen.findByText("Available.")).toBeTruthy();
+  expect(screen.queryByText("Another workspace already has this address.")).toBeNull();
+});
+
 test("a creation refused as a whole says why above the form", async () => {
   const user = userEvent.setup();
   const { app } = creationServer(() => problem(403, "workspace.creation_disabled"));

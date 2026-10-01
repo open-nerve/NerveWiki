@@ -62,7 +62,7 @@ type CreateWorkspaceFormProps = {
  * 3.5). The slug follows the name until the user types one; once it is
  * spelled as a slug and settles, the server says whether it is free. Its
  * answer only informs: the creation is what decides, a taken slug's 409
- * showing under the slug.
+ * showing under the slug until the slug changes.
  */
 export const CreateWorkspaceForm = observer(function CreateWorkspaceForm({
   submitLabel,
@@ -74,6 +74,8 @@ export const CreateWorkspaceForm = observer(function CreateWorkspaceForm({
   const [name, setName] = useState("");
   const [typedSlug, setTypedSlug] = useState<string>();
   const slug = typedSlug ?? slugFrom(name);
+  /** The slug of the last submit: what the form found wrong with it is stale once the slug changes. */
+  const [submitted, setSubmitted] = useState<string>();
   const availability = useAvailability(slug);
   const { ref, sending, banner, problemOf, submit } = useForm(["name", "slug"], { "workspace.slug_taken": "slug" });
 
@@ -84,12 +86,15 @@ export const CreateWorkspaceForm = observer(function CreateWorkspaceForm({
     const problem = slugProblem(slug);
     if (nameProblem !== undefined) found.name = nameProblem;
     if (problem !== undefined) found.slug = problem;
+    setSubmitted(slug);
     void submit(found, async () => {
       await onCreated(await workspaces.create({ name: name.trim(), slug }));
     });
   }
 
   const reason = availability?.available === false ? availability.reason : undefined;
+  const slugError =
+    (slug === submitted ? problemOf("slug") : undefined) ?? (reason === undefined ? undefined : t(unavailable[reason]));
   return (
     <form ref={ref} noValidate onSubmit={onSubmit} className="space-y-4">
       {banner !== undefined && <Alert>{banner}</Alert>}
@@ -108,7 +113,7 @@ export const CreateWorkspaceForm = observer(function CreateWorkspaceForm({
         autoCapitalize="none"
         spellCheck={false}
         value={slug}
-        error={problemOf("slug") ?? (reason === undefined ? undefined : t(unavailable[reason]))}
+        error={slugError}
         hint={availability?.available === true ? t("createWorkspace.slugAvailable") : t("createWorkspace.slugHint")}
         onChange={(event) => setTypedSlug(event.target.value)}
       />

@@ -1,6 +1,7 @@
-import { emailFor, password, registerOnboarded } from "../../fixtures/auth";
-import { signInWith } from "../../fixtures/auth-pages";
+import { displayNameOf, emailFor, password, registerOnboarded } from "../../fixtures/auth";
+import { accountMenu, signInWith } from "../../fixtures/auth-pages";
 import { expect, stampedVersion, test } from "../../fixtures/test";
+import { expectCreatePage } from "../../fixtures/workspace-pages";
 
 /** The Content-Security-Policy of every page (server/internal/platform/webui/csp.go). */
 const contentSecurityPolicy =
@@ -12,7 +13,7 @@ function isStatic(url: string): boolean {
   return !new URL(url).pathname.startsWith("/api/");
 }
 
-test("S2: a user opens the home page, signs in, and sees what the instance runs", async ({
+test("S2: a user opens the home page, signs in, lands in the app, and sees what the instance runs", async ({
   page,
   pageWatch,
   api,
@@ -52,9 +53,10 @@ test("S2: a user opens the home page, signs in, and sees what the instance runs"
 
   await signInWith(page, email, password);
 
-  await expect(page).toHaveURL("/");
-  await expect(page.getByRole("heading", { level: 1, name: "Nerve Wiki" })).toBeVisible();
-  await expect(page.getByText(`Version ${stampedVersion()} (${instance?.commit})`, { exact: true })).toBeVisible();
+  // Without a workspace, / lands on the creation page; the user menu says what the instance runs.
+  await expectCreatePage(page);
+  await accountMenu(page, displayNameOf(email)).click();
+  await expect(page.getByText(`Nerve Wiki ${stampedVersion()} (${instance?.commit})`, { exact: true })).toBeVisible();
   // Everything comes from nervewiki, and all of it loads: the scripts, the styles, theme-init.js. The page
   // must also stay quiet, which the page fixture checks as the test ends.
   const origin = new URL(page.url()).origin;

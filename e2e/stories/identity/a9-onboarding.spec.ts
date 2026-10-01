@@ -1,8 +1,10 @@
 import { accountIdOf, expectDisplayName, expectOnboardingSteps } from "../../fixtures/assert/identity";
 import { bearer, createToken, displayNameOf, emailFor, register } from "../../fixtures/auth";
 import { failedToLoad } from "../../fixtures/browser";
-import { displayNameField, profileStep, saveProfileStep } from "../../fixtures/onboarding-pages";
+import { displayNameField, profileStep, saveProfileStep, workspaceStep } from "../../fixtures/onboarding-pages";
 import { expect, test } from "../../fixtures/test";
+import { createWorkspaceWith, workspaceHeading } from "../../fixtures/workspace-pages";
+import { slugFor } from "../../fixtures/workspaces";
 
 // A9, onboarding (M1 design 3): the server records the steps the web app's registry defines.
 
@@ -45,7 +47,7 @@ test("A9 (page): a new account is taken through onboarding, then to where it was
   // Every page waits for the steps left: the first comes with its progress and the name the account has.
   await expect(profileStep(page)).toBeVisible();
   await expect(page).toHaveURL(`/onboarding?next=${encodeURIComponent("/acme?view=list")}`);
-  await expect(page.getByText("Step 1 of 1", { exact: true })).toBeVisible();
+  await expect(page.getByText("Step 1 of 2", { exact: true })).toBeVisible();
   await expect(displayNameField(page)).toHaveValue(displayNameOf(email));
 
   // An empty name is caught before sending; one the server refuses shows under the field; the step stays.
@@ -62,13 +64,20 @@ test("A9 (page): a new account is taken through onboarding, then to where it was
 
   await displayNameField(page).fill("Ada Lovelace");
   expect(await saveProfileStep(page)).toBe(200);
+  await expectDisplayName(db, userId, "Ada Lovelace");
 
+  // The second step, the workspace (W11 has the rest of it); then where the account was going, which is not
+  // one of its workspaces.
+  await expect(workspaceStep(page)).toBeVisible();
+  await expect(page.getByText("Step 2 of 2", { exact: true })).toBeVisible();
+  const slug = slugFor(testInfo);
+  const { status } = await createWorkspaceWith(page, { name: "Lab", slug, button: "Create and continue" });
+  expect(status).toBe(201);
   await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
   await expect(page).toHaveURL("/acme?view=list");
-  await expectDisplayName(db, userId, "Ada Lovelace");
-  await expectOnboardingSteps(db, userId, ["profile"]);
-  // Onboarding done, its page sends the account on.
+  await expectOnboardingSteps(db, userId, ["profile", "workspace"]);
+  // Onboarding done, its page sends the account on: / lands on its workspace.
   await page.goto("/onboarding");
-  await expect(page.getByRole("heading", { level: 1, name: "Nerve Wiki" })).toBeVisible();
-  await expect(page).toHaveURL("/");
+  await expect(workspaceHeading(page, "Lab")).toBeVisible();
+  await expect(page).toHaveURL(`/${slug}`);
 });
