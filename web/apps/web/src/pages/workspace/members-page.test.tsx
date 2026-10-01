@@ -94,7 +94,7 @@ function membersServer({
 
 /** The rows of the members list, each as its text. */
 async function rows(): Promise<string[]> {
-  const list = await screen.findByRole("list");
+  const list = await screen.findByRole("list", { name: "Members" });
   return within(list)
     .getAllByRole("listitem")
     .map((item) => item.textContent ?? "");
@@ -102,7 +102,7 @@ async function rows(): Promise<string[]> {
 
 /** The names of the members listed. */
 async function names(): Promise<string[]> {
-  const list = await screen.findByRole("list");
+  const list = await screen.findByRole("list", { name: "Members" });
   return within(list)
     .getAllByRole("listitem")
     .map((item) => item.querySelector("p")?.firstChild?.textContent ?? "");

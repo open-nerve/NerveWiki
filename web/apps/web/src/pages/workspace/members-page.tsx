@@ -61,7 +61,7 @@ const MembersSection = observer(function MembersSection({ workspace }: { workspa
       {members.list === undefined ? (
         <NotLoaded error={error} retry={() => void mutate()} />
       ) : (
-        <ul className="divide-y rounded-md border">
+        <ul aria-label={t("workspaceSettings.members")} className="divide-y rounded-md border">
           {members.list.map((member) => (
             <MemberRow
               key={member.id}

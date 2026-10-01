@@ -86,9 +86,10 @@ function InviteForm({ workspace }: { workspace: Workspace }) {
     // An e-mail field's value comes without the spaces around it.
     setInvited(undefined);
     void submit(email === "" ? { email: "field.required" } : {}, async () => {
-      await invitations.invite({ email, role });
+      const sent = await invitations.invite({ email, role });
       setEmail("");
-      setInvited(email);
+      // As the server keeps it: in lower case, as the list shows it.
+      setInvited(sent.email);
     });
   }
 

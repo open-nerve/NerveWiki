@@ -56,7 +56,13 @@ function invitationsServer({
     "POST /api/v0/workspaces/lab/invitations": async (request) => {
       const body = (await request.clone().json()) as WorkspaceInvitationCreate;
       sent.push(`POST ${body.email} ${body.role}`);
-      const created = { ...bob, id: "0199a2b4-0000-7000-8000-0000000000e3", token: "nwk_inv_dee", ...body };
+      const created = {
+        ...bob,
+        id: "0199a2b4-0000-7000-8000-0000000000e3",
+        token: "nwk_inv_dee",
+        ...body,
+        email: body.email.toLowerCase(),
+      };
       const answer = (await create?.(request)) ?? json(created, 201);
       if (answer.ok) {
         list = [created, ...list];
@@ -101,7 +107,7 @@ test.each(["member", "guest"] as const)("a %s sees no invitations, which are not
   renderApp("/lab/settings/members", app);
 
   expect(await screen.findByRole("heading", { name: "Members" })).toBeTruthy();
-  await screen.findByRole("list");
+  await screen.findByRole("list", { name: "Members" });
   expect(screen.queryByRole("heading", { name: "Invitations" })).toBeNull();
   expect(sent).toEqual([]);
 });
@@ -111,12 +117,12 @@ test("an admin invites an address as a role; the invitation comes first, and the
   const { app, sent } = invitationsServer();
   renderApp("/lab/settings/members", app);
 
-  await user.type(await screen.findByLabelText("E-mail address"), "dee@example.com");
+  await user.type(await screen.findByLabelText("E-mail address"), "Dee@Example.com");
   await user.selectOptions(screen.getByLabelText("Role"), "admin");
   await user.click(screen.getByRole("button", { name: "Invite" }));
 
   expect(await screen.findByText("Invited dee@example.com. Copy the link and send it to them.")).toBeTruthy();
-  expect(sent).toEqual(["GET invitations", "POST dee@example.com admin"]);
+  expect(sent).toEqual(["GET invitations", "POST Dee@Example.com admin"]);
   expect((await pendingList()).map(([email]) => email)).toEqual([
     "dee@example.com",
     "cy@example.com",
