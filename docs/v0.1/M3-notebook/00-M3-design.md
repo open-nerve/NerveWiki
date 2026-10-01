@@ -165,10 +165,10 @@ Nerve 的项目模块（`modules/project`）还停在建立、列表、读取（
 
 | 项 | 落实 |
 |---|---|
-| 1 注册者的行为测试 | P1：删除工作区（工作区删除的订阅者在 P1 注册）。P3：移出、离开、停用（接口与命令行）、接受邀请、`reactivate-member`。每条都是整个程序上的行为测试 |
+| 1 注册者的行为测试 | P1：删除工作区（工作区删除的订阅者在 P1 注册；已落实：`TestDeletingAWorkspaceDeletesItsNotebooks`，交错 15、16 也经删除工作区）。P3：移出、离开、停用（接口与命令行）、接受邀请、`reactivate-member`。每条都是整个程序上的行为测试 |
 | 2 `EndCause` 的常量 | P3：规则二只对离开与停用生效，组合根按原因转换，模块根导出这三个常量 |
 | 3 加锁顺序 | 第 4 节与总体设计 13.1 第 5 条：笔记本接在 `workspace_members` 之后。订阅者写入引用别的账户的列（`updated_by_id`、`former_owner_id`、审计的执行者）取 `FOR KEY SHARE`，改邮箱只碰账户与会话，不成环 |
-| 4 清理器 | P1：`notebooks → workspaces` 的外键用 `ON DELETE RESTRICT`，跨模块外键是 RESTRICT 的检查；`notebook_members`、`notebooks` 各有清理器。"失败即停"保留，作为定论而不是待定：跨模块的子行经删除事件与父行同一时刻软删除、按同一保留期清理，子模块的清理器排在前面，所以永久的引用只会来自缺陷，由清理任务的错误日志发现（Codex 评审 D1 的第一条路径）。M4、M7 的跨模块子表照总体设计 13.1 第 6 条办，不另留移交。没有 `deleted_at` 的索引：笔记本一张表一行一个笔记本，成员行按笔记本，一批扫得完；页面表大的时候由 M4 照 [M2/P4 的移交](../M4-pages/handoffs/M2-P4-purge-page-tree.md)一起定 |
+| 4 清理器 | P1：`notebooks → workspaces` 的外键用 `ON DELETE RESTRICT`，跨模块外键是 RESTRICT 的检查；`notebook_members`、`notebooks` 各有清理器。"失败即停"保留，作为定论而不是待定：跨模块的子行经删除事件与父行同一时刻软删除、按同一保留期清理，子模块的清理器排在前面，所以永久的引用只会来自缺陷，由清理任务的错误日志发现（Codex 评审 D1 的第一条路径）。P1 已落实：`TestCrossModuleForeignKeysToPurgedTablesRestrict`，notebook 的两个清理器排在 workspace 的之前。M4、M7 的跨模块子表照总体设计 13.1 第 6 条办，不另留移交。没有 `deleted_at` 的索引：笔记本一张表一行一个笔记本，成员行按笔记本，一批扫得完；页面表大的时候由 M4 照 [M2/P4 的移交](../M4-pages/handoffs/M2-P4-purge-page-tree.md)一起定 |
 | 5 前端 | P4：离开整页的操作之后焦点移到落点的主标题；左栏现在是 `aside`（补充内容的地标）里套着 `nav`，而它是主导航，不是补充内容：P4 把外层改为不带地标的容器，各节与笔记本的两组都在 `nav` 里；引导的新步骤同时加进 e2e 的 `onboardingSteps`，A9 改为三步 |
 | 6 加入与改角色没有事件 | P2：补两个事件（第 4 节），修订总体设计 12.4 |
 
@@ -263,7 +263,7 @@ Nerve 的项目模块（`modules/project`）还停在建立、列表、读取（
 
 | P | 名称 | 状态 | Phase 文档 | 审查 |
 |---|---|---|---|---|
-| P1 | 笔记本与权限 | 进行中 | [01-P1-notebooks-access.md](01-P1-notebooks-access.md) | — |
+| P1 | 笔记本与权限 | 已完成 | [01-P1-notebooks-access.md](01-P1-notebooks-access.md) | [P1 审查](reviews/P1-notebooks-access-review.md) |
 | P2 | 笔记本成员 | 未开始 | — | — |
 | P3 | 级联与无主 | 未开始 | — | — |
 | P4 | 前端笔记本 | 未开始 | — | — |
@@ -275,3 +275,4 @@ Nerve 的项目模块（`modules/project`）还停在建立、列表、读取（
 |---|---|---|
 | 2026-10-02 | 初版 | M3 启动；唯一管理员的规则二与无主的定义、审计的查看经负责人确认 |
 | 2026-10-02 | 按设计审查修订：无主笔记本只对工作区管理员可见，按 id 的操作对其余人 404；"笔记本占用"改为"笔记本的活动"（大小与最后写入）；可见性事件一个工作区一次，删除改由笔记本删除事件告知；加锁顺序改写为工作区行的总闸，笔记本一侧的增长不取账户行；不变量改为"有管理员或无主"；交错 16 改为删除工作区与改、删笔记本，加 26–29；规则二的原因只给 slug 与数量；Phase 的验收与文案归属；引导一步的落点与重试；归还、只靠默认角色的笔记本、停用的出路写明理由；移交第 4 项定论 | [M3 设计审查](reviews/M3-design-review.md) |
+| 2026-10-02 | P1 完成：第 8 节"多行按 id 升序"在工作区删除的注册者落实；移交第 1 项（删除工作区这条路径）、第 4 项落实 | [P1 审查](reviews/P1-notebooks-access-review.md) Q2 |

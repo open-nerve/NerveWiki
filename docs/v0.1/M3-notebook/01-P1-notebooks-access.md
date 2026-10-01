@@ -3,8 +3,8 @@
 | 项 | 内容 |
 |---|---|
 | Phase | M3/P1 笔记本与权限 |
-| 状态 | 进行中 |
-| 基线 | M3 总设计按设计审查修订之后的 main |
+| 状态 | 已完成 |
+| 基线 | `0b35262`（M3 总设计按设计审查修订、本文与各 Step 计划之后的 main） |
 | 上级文档 | [M3 总设计](00-M3-design.md) 第 4、5、7、8 节；[M2 移交](handoffs/M2-workspace.md)第 4 项；[总体设计](../v0.1-design.md) 3.3、3.5、6.1、7、13 |
 
 ---
@@ -48,27 +48,29 @@ server/
   migrations/schema_test.go                    新的约束与索引名、CHECK 的反例
   sqlc.yaml                                    notebook 一条
   internal/shared/title.go                     CheckTitle
-  internal/shared/notebook_role.go             NotebookRole、WorkspaceAccess、EffectiveNotebookRole
+  internal/shared/notebook_role.go             NotebookRole、WorkspaceAccess、EffectiveNotebookRole、ReachedByAccess
   internal/shared/authorize.go                 Target.NotebookID、Grant.NotebookRole
   internal/modules/access/
     module.go                                  Deps 加 Notebooks
     domain/rules.go、decide.go                 LevelNotebook；本 Phase 的五行
     app/ports.go、authorizer.go                NotebookFacts；按级别读事实
   internal/modules/workspace/
-    workspaces.go                              NewWorkspaces(pool)：给笔记本模块的端口
-    adapter/postgres/queries/workspaces.sql    ShareWorkspaceByID
+    workspaces.go、workspaces_test.go          NewWorkspaces(pool)：给笔记本模块的端口（复用已有的 ShareWorkspaceByID）
   internal/modules/notebook/
     module.go                                  New(Deps)、Register、Actions()
     facts.go                                   NewFacts(pool)：access 的笔记本级事实
     deletion.go                                NewWorkspaceDeletion(pool, subscribers)：工作区删除的注册者
     purgers.go                                 Purgers(pool)
-    domain/notebook.go、actions.go、errors.go
-    app/ports.go、extension.go、authorize.go、create_notebook.go、list_notebooks.go、get_notebook.go、
-        update_notebook.go、delete_notebook.go、workspace_deletion.go
-    adapter/postgres/（store、queries/notebooks.sql、members.sql、gen）
+    extension_test.go                          删除事件与工作区删除的注册者（接好线的模块与真实数据库）
+    domain/notebook.go、member.go、actions.go、errors.go
+    app/ports.go、extension.go（含工作区删除的注册者）、authorize.go、manage.go（锁与判定）、view.go、
+        create_notebook.go、list_notebooks.go、get_notebook.go、update_notebook.go、delete_notebook.go
+    adapter/postgres/（store、facts、purge；queries/notebooks.sql、members.sql、purge.sql；gen）
     adapter/http/（handler、gen、main_test.go）
   internal/bootstrap/
     deps.go、wire.go、registrants.go           notebookDeps；access 的两个端口；注册者与清理器的顺序
+    notebook_facts.go                          notebook.Fact 转 access.NotebookFact
+    notebook_registrants_test.go               删除工作区连带它的笔记本（整个程序上的行为测试）
     actions_test.go                            并集加上 notebook.Actions()
     purge_test.go                              跨模块外键不是 CASCADE
     permission_matrix_test.go                  行按级别取列
@@ -92,11 +94,11 @@ e2e/fixtures/notebooks.ts、assert/notebook.ts；e2e/stories/notebook/n1、n2、
    - 超过 255 字节（UTF-8）：`too_long`；
    - 含 `/ \ : * ? " < > | # ^ [ ]`、控制字符、行与段落分隔符、双向控制字符：`invalid_format`；
    - 以 `.` 开头或结尾：`invalid_format`；
-   - Windows 保留名（`CON`、`PRN`、`AUX`、`NUL`、`COM1`–`COM9`、`LPT1`–`LPT9`，不区分大小写；第一个 `.` 之前的部分是保留名也算，如 `con.txt`）：`not_allowed`。
+   - Windows 保留名（`CON`、`PRN`、`AUX`、`NUL`、`COM1`–`COM9`、`COM¹`–`COM³`、`LPT1`–`LPT9`、`LPT¹`–`LPT³`，不区分大小写；第一个 `.` 之前的部分是保留名也算，如 `con.txt`）：`not_allowed`。Windows 把上标的 ¹ ² ³ 当作数字（微软的 Naming Files, Paths, and Namespaces；审查 Q4）。
 4. 返回规范化之后的名称。
 - 规范化在判断之前：组合字符序列的字节数以 NFC 为准，存进库的也是 NFC。
 - 不做标题键：笔记本名称不要求唯一，键由 M4 随页面一起加。
-- 表格测试：每种禁止的字符各一例、全角字符允许、255 与 256 字节（多字节字符跨界）、NFD 输入得到 NFC、保留名的大小写与扩展名、`COM10` 允许、只有空白、首尾的点。
+- 表格测试：每种禁止的字符各一例、全角字符允许、255 与 256 字节（多字节字符跨界）、NFD 输入得到 NFC、保留名的大小写与扩展名、上标的端口号、`COM10` 与 `COM⁴` 允许、只有空白、首尾的点。
 
 ### 3.3 笔记本的角色与有效角色（`shared`）
 
@@ -105,6 +107,7 @@ e2e/fixtures/notebooks.ts、assert/notebook.ts；e2e/stories/notebook/n1、n2、
 - `EffectiveNotebookRole(explicit NotebookRole, access WorkspaceAccess, workspace WorkspaceRole) NotebookRole`：
   - 默认角色：工作区角色是 `admin` 或 `member` 时，`viewer` 给 `reader`，`editor` 给 `editor`；其余没有。
   - 返回显式角色与默认角色中较高的一个，高低经次序表（`reader` 1、`editor` 2、`admin` 3）；三个值以外的角色排在最低，什么都不给；两者都没有时返回空。
+- `ReachedByAccess(workspace WorkspaceRole) bool`：开放程度给不给这个工作区角色默认角色（管理员、成员给，访客不给）。列表的 SQL 按它传 `reached`，与 `EffectiveNotebookRole` 同一处定义。
 - 放在 `shared`：access 的判定与笔记本列表都用它，两处必须一致（Nerve 11.4：两个模块共用的纯取值规则）。
 
 ### 3.4 权限：access 的笔记本级
@@ -138,7 +141,7 @@ e2e/fixtures/notebooks.ts、assert/notebook.ts；e2e/stories/notebook/n1、n2、
 笔记本模块不读工作区的表（sqlc 按模块限定）。workspace 模块根加只凭连接池的 `NewWorkspaces(pool) Workspaces`：
 
 - `FindBySlug(ctx, slug) (uuid.UUID, bool, error)`：未删除的工作区的 id，不加锁；slug 不合格式时直接答没有，不查库（与 `getWorkspace` 相同，路径里的 NUL 进不了数据库）。笔记本的用例只要 id：回答里是 `workspace_id`。
-- `ShareByID(ctx, id) (bool, error)`：以 `FOR SHARE` 锁住未删除的工作区行，在调用方的事务里；事务之外调用报错（同 `ShareActiveAccount`，事务之外的锁随语句结束）。读到 0 行（等锁期间被删除）答没有。
+- `ShareByID(ctx, id) (bool, error)`：以 `FOR SHARE` 锁住未删除的工作区行（复用邀请已有的 `ShareWorkspaceByID`），在调用方的事务里；事务之外调用报错（同 `ShareActiveAccount`，事务之外的锁随语句结束）。读到 0 行（等锁期间被删除）答没有。
 - 两个方法只用 `uuid` 与基本类型：笔记本模块在 `app/ports.go` 声明同形的端口，组合根直接把 workspace 的实现交给它，不必转换。
 - access 的笔记本级事实不同：`notebook.Fact` 与 `access.NotebookFact` 逐字段相同、属于两个模块，由 `bootstrap/notebook_facts.go` 转换（照 `bootstrap/directory.go`）。
 
@@ -197,8 +200,8 @@ e2e/fixtures/notebooks.ts、assert/notebook.ts；e2e/stories/notebook/n1、n2、
   3. 一条查询：这个工作区里未删除的笔记本中，调用者有有效的显式成员关系的，或者（他的工作区角色是管理员或成员，且开放程度不是 `none`）的；带显式角色、开放程度、有效的显式成员数。按名称不分大小写、名称、`id` 排序；
   4. 每一项的 `role` 由 `EffectiveNotebookRole` 算出。
   - 读操作不开事务。
-- **`createNotebook`**：一个事务：
-  1. `FindBySlug`（不加锁）、`ShareByID`：都答没有就 404；
+- **`createNotebook`**：`FindBySlug`（不加锁，在事务之前，与改、删的"先读、再锁"相同），然后一个事务：
+  1. `ShareByID`：两者都答没有就 404；
   2. `Authorize(notebook.create)`；
   3. `CheckTitle`、开放程度的取值（缺省 `none`）：一次列出全部字段问题（422）；
   4. 插入笔记本与创建者的成员行（`admin`），同一个时刻。
@@ -207,7 +210,7 @@ e2e/fixtures/notebooks.ts、assert/notebook.ts；e2e/stories/notebook/n1、n2、
 - **`getNotebook`**：`Authorize(notebook.read, {工作区, 笔记本})` 之前要知道工作区：先不加锁读笔记本（未删除），没有就 404；判定的 `ErrNotVisible` 答同一个 404 `notebook.not_found`。回答带 `Grant` 的有效角色与成员数。
 - **`updateNotebook`**：
   1. 不加锁读笔记本，得到工作区；没有就 404；
-  2. 事务：`ShareByID(工作区)` → 以 `FOR NO KEY UPDATE` 锁笔记本行（带 `deleted_at IS NULL`，读到 0 行答 404）→ `Authorize(notebook.update)` → 校验（422；空的请求体是 400，由契约的 `minProperties: 1` 拒绝）→ 改；
+  2. 事务：`ShareByID(工作区)` → 以 `FOR NO KEY UPDATE` 锁笔记本行（带 `deleted_at IS NULL`，读到 0 行答 404）→ `Authorize(notebook.update)` → 校验（422）→ 改。空的请求体什么都不改，答 200（契约的描述写明，与 `updateMe` 相同；原计划的 `minProperties: 1` 没有做）；
   3. 回答带有效角色（管理员）与成员数。
   - 名称与开放程度都没有变化时不写，回答照旧（`updated_at` 不动）。
 - **`deleteNotebook`**：同样先读、再锁工作区与笔记本、判定；以同一个时刻软删除笔记本与它的全部成员行（含已结束的），然后调用笔记本删除事件的订阅者。204。
@@ -220,15 +223,15 @@ e2e/fixtures/notebooks.ts、assert/notebook.ts；e2e/stories/notebook/n1、n2、
   1. 以事件的时刻、删除者软删除这个工作区里未删除的全部笔记本，返回它们的 id；
   2. 同一时刻软删除这些笔记本的成员行；
   3. 有笔记本时调用笔记本删除事件的订阅者一次，带全部 id。
-  - 工作区行已由删除持有 `FOR NO KEY UPDATE`，同一工作区下不会有别的笔记本写在进行（它们都要工作区行的 `FOR SHARE`）：批量的 `UPDATE` 按扫描顺序加锁没有风险（Nerve 约定五）。
+  - 工作区行已由删除持有 `FOR NO KEY UPDATE`，同一工作区下不会有别的笔记本管理写在进行（它们都要工作区行的 `FOR SHARE`）。笔记本行仍先按 `id` 升序锁住、再更新（M3 总设计第 8 节，审查 Q2）：M4 的页面写只以 `FOR SHARE` 锁笔记本行、不锁工作区行，同时持两本的写按同一顺序取锁，不成环。
   - 组合根：`workspaceRegistrants(pool)` 返回的 `deletionSubscribers` 加上它（值逐字段转换，`bootstrap/registrants.go`）。workspace 的命令行组合不涉及删除，不变。
 - **测试替身**：模块根的测试（接好线的模块与真实数据库）证明订阅者在事务内、看得到已删除的行、失败整体回滚；两个订阅者的分发由 `app/registrants_test.go` 那样的测试守住（13.1 第 21 条）。
 
 ### 3.9 清理
 
-- `notebook.Purgers(pool)`：先 `notebook_members`，再 `notebooks`（只删已经没有成员行的，`NOT EXISTS`，P4 审查 T1 的写法）。
+- `notebook.Purgers(pool)`：先 `notebook_members`，再 `notebooks`（只删已经没有成员行的，`NOT EXISTS`，P4 审查 T1 的写法）。两者都跳过别的事务持有的行（`SKIP LOCKED`）。
 - 组合根 `purgers(pool)`：`slices.Concat(notebook.Purgers(pool), workspace.Purgers(pool))`。
-- **跨模块外键不是 CASCADE**（M2 移交第 4 项）：`purge_test.go` 加 `TestCrossModuleForeignKeysToPurgedTablesRestrict`：指向被清理表、来自别的模块迁移的外键，`confdeltype` 不是 `c`；模块取自定义约束的迁移文件名（`NNNNN_<归属>_…`）。反向对照：把 `notebooks.workspace_id` 改成 `ON DELETE CASCADE`，测试失败。
+- **跨模块外键不是 CASCADE**（M2 移交第 4 项）：`purge_test.go` 加 `TestCrossModuleForeignKeysToPurgedTablesRestrict`：指向被清理表、来自别的模块迁移的外键，`confdeltype` 不是 `c`；表的归属取自建表的迁移文件名（`NNNNN_<归属>_…`），按 13.1 第 7 条与定义约束的迁移相同。反向对照：把 `notebooks.workspace_id` 改成 `ON DELETE CASCADE`，测试失败。
 
 ### 3.10 加锁
 
@@ -237,12 +240,12 @@ e2e/fixtures/notebooks.ts、assert/notebook.ts；e2e/stories/notebook/n1、n2、
 - 交错（第 5 节）：
   - **15 删除工作区与建笔记本**：删除先，建笔记本等锁之后读到工作区已删除，答 404，没有新笔记本；建先，删除连带软删除这个新笔记本与它的成员行。
   - **16 删除工作区与改、删笔记本**：删除工作区先，改或删笔记本的一方锁工作区行时读到它已删除，答 404，笔记本保持随工作区软删除的样子；改或删笔记本先，删除工作区等它提交，再连带软删除（改过的笔记本以工作区的时刻删除；已删的那本保留它自己的时刻，不重复删除）。
-  - 每个交错两种先后各一个用例，结束时核对笔记本的不变量（M3 总设计第 4 节）：未删除的笔记本都有有效的管理员（本 Phase 没有无主）。断言放在 `bootstrap` 的交错辅助里，P2、P3 的交错共用。
+  - 每个交错两种先后各一个用例，结束时核对笔记本的不变量（M3 总设计第 4 节）：未删除的笔记本都有有效的管理员（本 Phase 没有无主）。断言（`checkNotebooks`）在交错辅助每建一本笔记本之后与每个交错结束时运行，P2、P3 的交错共用。P1 的交错结束时笔记本都已随工作区删除，P2 的交错起才有存活的笔记本。
 
 ### 3.11 权限矩阵
 
 - **框架**：`matrixRow` 加 `columns []caller`，缺省是工作区级的六列；笔记本级的行用 `notebookColumns()`。覆盖检查与执行都按行的列，每行仍要给出它每一列的答案。
-- **笔记本列**（每列一个账户，目标在 acme 里）：
+- **笔记本列**（每列一个账户，目标在工作区 `lab` 里：acme 的成员列表因此不受这十二个账户影响）：
 
   | 列 | 账户与准备 | 目标 |
   |---|---|---|
@@ -256,21 +259,21 @@ e2e/fixtures/notebooks.ts、assert/notebook.ts；e2e/stories/notebook/n1、n2、
   | 访客（局外） | 工作区访客，不是 `team` 的成员 | `team` |
   | 已结束的成员 | 工作区成员，`priv` 的成员关系已结束 | `priv` |
   | 已删除的笔记本 | 工作区成员，已删除的笔记本 `gone-nb` 的管理员 | `gone-nb` |
-  | 工作区之外 | 不是 acme 的成员，在别的工作区里是 `other-nb` 的管理员：读错工作区的角色会让他进来 | `priv` |
+  | 工作区之外 | 不是 `lab` 的成员，在别的工作区里是 `other-nb` 的管理员：读错工作区的角色会让他进来 | `priv` |
   | 访客（显式阅读者） | 工作区访客，`team`（`editor` 开放）的显式 `reader`：有效角色是 `reader` 而不是 `editor`，默认角色不给访客只有这一列抓得到 | `team` |
 
 - **数据**：笔记本、成员行、结束、删除由 SQL 写入（M2 矩阵的做法：id 在准备之前定好）。P2 有了成员的用例之后不改：矩阵关心的是判定，不是准备的途径。
 - **本 Phase 的行**：
-  - `listNotebooks`：笔记本列；工作区之外答 404 `workspace.not_found`，其余 200，`check` 核对每列看到的正好是它看得到的那几个。
+  - `listNotebooks`：笔记本列；工作区之外答 404 `workspace.not_found`，其余 200，`check` 核对每列看到的正好是它看得到的那几个。变体"按工作区的列"（审查 N7）：`notebook.list` 是工作区级的规则，在 acme 上管理员、成员、访客 200 且列表为空，其余 404 `workspace.not_found`。
   - `createNotebook`：工作区列，写；管理员、成员 201，访客 403，其余 404。
   - `getNotebook`：笔记本列；前三列、两个默认角色与访客（显式阅读者）200，`check` 核对有效角色；其余 404。
   - `updateNotebook`：笔记本列，写；管理员 200，编辑者、阅读者、两个默认角色与访客（显式阅读者）403，其余 404。
   - `deleteNotebook`：同上，管理员 204。
-- **列表与逐个判定一致**（`notebook_visibility_test.go`）：在矩阵的数据上，对每个账户，`listNotebooks` 的结果等于"对 acme 的每个笔记本逐个 `getNotebook`，答 200 的那些"，有效角色也相同。SQL 的过滤与 `EffectiveNotebookRole` 走散时它失败。
+- **列表与逐个判定一致**（`notebook_visibility_test.go`）：在矩阵的数据上，对每个账户，`listNotebooks` 的结果等于"对 `lab` 的每个笔记本逐个 `getNotebook`，答 200 的那些"，有效角色也相同。SQL 的过滤与 `EffectiveNotebookRole` 走散时它失败。
 
 ### 3.12 端到端
 
-- `e2e/fixtures/notebooks.ts`（经接口建、改、删）、`assert/notebook.ts`（`expectNewNotebook`、`expectNotebook`、`expectNotebookDeletedWithItsMembers`、`countNotebooks`），读数据库，只比较业务列；时刻在 SQL 里比较。
+- `e2e/fixtures/notebooks.ts`（经接口建、改、删）、`assert/notebook.ts`（`expectNewNotebook`、`expectNotebook`、`expectNotebookDeletedWithItsMembers`、`expectNotebooksDeletedWith`、`countNotebooks`），读数据库，只比较业务列；时刻在 SQL 里比较。
 - **N1 的接口版本**：成员建笔记本：201、落库的笔记本与管理员成员行；列表里它是"我的"（`none`，一个成员）；访客答 403；名称的三种 422（禁止的字符、保留名、超长）。
 - **N2 的私密部分**：私密笔记本对工作区管理员与别的成员：列表里没有，读取答 404。"第二位成员"在 P2。
 - **N3 的接口版本**：改为 `viewer`：成员与管理员读到 `reader`，访客 404；改为 `editor`：成员读到 `editor`。
@@ -286,8 +289,8 @@ e2e/fixtures/notebooks.ts、assert/notebook.ts；e2e/stories/notebook/n1、n2、
 |---|---|---|
 | S1 | `shared`：`CheckTitle`、笔记本角色与有效角色、`Target` 与 `Grant` 的字段；access 的笔记本级（规则、判定、端口、`Authorizer`）；notebook 的操作名（与规则表的五行同一步，操作名的一致性一直是绿的） | [P1-S1](plans/P1-S1-shared-access.md) |
 | S2 | 数据：两条迁移、sqlc、授权、schema 测试；notebook 模块的领域、仓储、事实端口的实现与接线；清理器与它们的顺序、跨模块外键是 RESTRICT 的检查（迁移一加上表，`bootstrap` 的清理测试就要求它们）；workspace 的 `NewWorkspaces` | [P1-S2](plans/P1-S2-notebook-data.md) |
-| S3 | 接口与用例：`notebook.yaml`、五个用例、笔记本删除事件、工作区删除的注册者与它经删除工作区的行为测试、HTTP 适配器、模块根、组合根的接线、新码的文案 | [P1-S3](plans/P1-S3-notebook-api.md) |
-| S4 | 矩阵的笔记本列与本 Phase 的行；列表与逐个判定一致；交错 15、16 与不变量的断言 | [P1-S4](plans/P1-S4-matrix-interleavings.md) |
+| S3 | 接口与用例：`notebook.yaml`、五个用例、笔记本删除事件、工作区删除的注册者与它经删除工作区的行为测试、HTTP 适配器、模块根、组合根的接线、新码的文案；矩阵的笔记本列与本 Phase 的行（契约一有新操作，矩阵的覆盖检查就要求它们，照 M2/P2/S3） | [P1-S3](plans/P1-S3-notebook-api.md) |
+| S4 | 列表与逐个判定一致；交错 15、16 与不变量的断言 | [P1-S4](plans/P1-S4-matrix-interleavings.md) |
 | S5 | 端到端：N1、N3、N6 的接口版本，N2 的私密部分，N13 的笔记本部分 | [P1-S5](plans/P1-S5-e2e.md) |
 
 每个 Step 结束时 `make check` 为绿；S3 之后 `make gen-check` 为绿；S5 之后 `make e2e` 为绿。
@@ -323,4 +326,25 @@ e2e/fixtures/notebooks.ts、assert/notebook.ts；e2e/stories/notebook/n1、n2、
 
 ## 7. 结果
 
-（完成后补写）
+分支 `m3-p1-notebooks-access`：S1 `661c574`、S2 `57b571c`、S3 `1ac76dc`、S4 `33d348b`、S5 `6ac6a3e`，审查修复 `97ca3f4`、`8f97488`、`bb80fb5`、`660a01b`，合并 `7cf8e77`。第 5 节全部通过，反向对照按预期失败（作者在各 Step 二十余项、其中 1 项在 e2e 上做，审查修复另 13 项、其中 2 项在 e2e 上；审查者 39 项）；`make check`、`make gen-check`、`make e2e`（87 个）、`make image-smoke` 本地与持续集成为绿。审查见 [P1 审查记录](reviews/P1-notebooks-access-review.md)：没有 Critical、Major；2 项 Minor 与 8 项 Nit 已处理；5 个疑问中 Q2、Q4 改代码，Q3 写进 M4 的移交，Q1、Q5 改文档。规模（新增行数，不含生成的代码）：生产代码约 2,150 行（含迁移、契约与文案），测试约 2,900 行，端到端约 420 行。
+
+与设计的出入（已同步进上文）：
+
+1. 空的 `PATCH /notebooks/{id}` 答 200、什么都不改（3.7）：契约没有 `minProperties: 1`，与 `updateMe` 相同；描述写明。
+2. 步骤调整（第 4 节）：清理器、跨模块外键的检查与事实端口的接线在 S2（迁移一加上表，`bootstrap` 的清理测试就要求清理器）；矩阵的列与行在 S3（契约一有新操作，覆盖检查就要求它们）；S4 只有一致性与交错。
+3. 笔记本列在工作区 `lab` 里（3.11），不在 acme：acme 的成员列表与 M2 的各行因此不变。
+4. `FindBySlug` 只答 id（3.5）：笔记本的回答只要 `workspace_id`。
+5. 不变量的断言在交错辅助每建一本笔记本之后也运行（3.10）：P1 的交错结束时没有存活的笔记本。
+6. `shared.ReachedByAccess`（3.3）：列表的 `reached` 与有效角色同一处定义。
+7. N13 的 `deletedDaysAgo` 也推后已接受的邀请（3.12）：接受时软删除的邀请挡住工作区的清理；推后按叶到根的顺序（审查 N1）。
+8. 工作区删除的注册者按 `id` 升序锁笔记本行（3.8，审查 Q2），与 M3 总设计第 8 节一致。
+9. 名称规则补上 `COM¹`–`³`、`LPT¹`–`³`（3.2，审查 Q4）；总体设计 3.5 同步。
+
+审查之后的修复（详见审查记录）：T1 用例测试的时钟每读一次前进；T2 笔记本清理的 `SKIP LOCKED` 有测试；N1 N13 叶到根推后时刻；N2 列表的次要排序键；N3 `orNotFound` 挪到 `authorize.go`；N4 改名的日志带工作区；N5 注释；N6 有效角色的完整乘积；N7 `listNotebooks` 按工作区的列；N8 工作区删除的 `updated_at`。
+
+S3 的门禁中有一次 Docker 的 `context deadline exceeded`（测试容器启动超时），重跑通过，与本 Phase 的代码无关。
+
+留给之后的：
+
+- **M4（审查 Q3）**：笔记本删除事件的第一个注册者要在整个程序上经 `deleteNotebook`、删除工作区、删除无主笔记本三条路径各有行为测试；M4 同时持两本笔记本的写按 `id` 升序取锁。已写进 [M4 的移交](../M4-pages/handoffs/M3-P1-notebook-deletion.md)。
+- **M3 收尾**：13.1 第 6 条的测试补 `TestCrossModuleForeignKeysToPurgedTablesRestrict`；第 21 条的例子补 `workspace.NewWorkspaces`、`notebook.NewFacts`、`notebook.NewWorkspaceDeletion`。

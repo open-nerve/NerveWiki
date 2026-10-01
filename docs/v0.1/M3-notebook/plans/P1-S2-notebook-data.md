@@ -8,7 +8,7 @@
 2. `sqlc.yaml` 加 notebook 一条，只列这两条迁移；`deploy/runtime-grants.sql` 给两张表 DML。
 3. `migrations/schema_test.go`：新的约束与索引名；CHECK 的反例（3.6"其他"）。
 4. `modules/notebook`：
-   - `domain/notebook.go`：`Notebook`（id、工作区、名称、开放程度、时刻）、`NewNotebook`；`errors.go`：`notebook.not_found`、同码的 `workspace.not_found`；
+   - `domain/notebook.go`：`Notebook`（id、工作区、名称、开放程度、时刻）、`NewNotebook`（实际：`CheckDraft`、`CheckChange` 与 `Notebook.Apply`，建与改各自校验）；`errors.go`：`notebook.not_found`、同码的 `workspace.not_found`；
    - `adapter/postgres`：查询（插入笔记本与成员行、按 id 读、加锁读、改、软删除笔记本与成员行、列表、成员数、事实）与仓储；
    - `facts.go`：`NewFacts(pool)`，实现 access 的 `NotebookFacts`，经 `postgres.DB(ctx, pool)` 进入调用方的事务。
 5. `modules/workspace`：`workspaces.go` 的 `NewWorkspaces(pool)`（`FindBySlug` 答 id、`ShareByID`，用已有的 `ShareWorkspaceByID`）。
@@ -26,7 +26,7 @@
 - 事实：显式角色、已结束的成员关系没有角色、已删除的笔记本不存在、在调用方的事务里读。
 - `ShareByID`：事务之外报错；已删除的工作区答没有；slug 不合格式时 `FindBySlug` 不查库。
 - schema：每个 CHECK 的反例被拒绝；约束与索引名与清单一致。
-- 清理：保留期之前的删除、之后与边界上的不动；按批；跳过别的事务持有的行；成员行被跳过时笔记本留到下一次。
+- 清理：保留期之前的删除、之后与边界上的不动；按批；跳过别的事务持有的行（笔记本一条的测试在审查 T2 之后补上）；成员行被跳过时笔记本留到下一次。
 - 反向对照：
   - 列表不过滤已结束的成员关系、成员数数上已结束的、开放程度不看 `none`，列表的测试失败；
   - 事实不看 `ended_at`、不在调用方的事务里读，事实的测试失败；

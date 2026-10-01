@@ -4,12 +4,12 @@
 
 ## 任务
 
-1. 契约：`api/modules/notebook.yaml` 的五个操作与 `Notebook`、`NotebookList`、`NotebookCreate`、`NotebookUpdate`（`minProperties: 1`）；在 `api/openapi.yaml` 登记；`make gen`。
+1. 契约：`api/modules/notebook.yaml` 的五个操作与 `Notebook`、`NotebookList`、`NotebookCreate`、`NotebookUpdate`（实际没有 `minProperties: 1`：空的请求体答 200，P1 文档 3.7）；在 `api/openapi.yaml` 登记；`make gen`。
 2. `notebook/app`：
    - `ports.go`：仓储、`Workspaces`（`FindBySlug`、`ShareByID`）、`shared.Authorizer`、`TxManager`、时钟；
    - `extension.go`：`NotebookDeletion`、`NotebookDeletionSubscriber`；
    - `authorize.go`：`ErrNotVisible` 按调用方点名的东西译成 404；
-   - 五个用例；`workspace_deletion.go`。
+   - 五个用例；工作区删除的注册者（实际在 `extension.go`）。
 3. `notebook/adapter/http`：处理器、`main_test.go`（`apitest.Main`）。
 4. 模块根：`Deps`、`New`、`Register`；`NewWorkspaceDeletion`；`Actions()` 已在 S1，`NewFacts`、`Purgers` 已在 S2。
 5. 组合根：`notebookDeps`；`workspaceRegistrants` 的删除订阅者加上笔记本的。
