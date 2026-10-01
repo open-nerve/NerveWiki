@@ -28,5 +28,5 @@ type InvitationCheck interface {
 // the invitations' MAC key: bootstrap builds it before identity, whose
 // sign-up policy holds it.
 func NewInvitationCheck(pool *pgxpool.Pool, key []byte) InvitationCheck {
-	return app.InvitationCheck{Tokens: macadapter.New(key), Invitations: postgresadapter.New(pool)}
+	return app.CheckInvitation{Tokens: macadapter.New(key), Invitations: postgresadapter.New(pool)}
 }

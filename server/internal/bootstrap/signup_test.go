@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"strings"
 	"testing"
 	"uuid"
 
@@ -120,11 +119,13 @@ func TestSignupClosedOpensToAnInvitation(t *testing.T) {
 	}
 }
 
-// tampered is token with its last character changed.
+// tampered is token with a character of its middle changed: the last one
+// holds unused bits, whose change only spells the same tag otherwise.
 func tampered(token string) string {
-	last := "A"
-	if strings.HasSuffix(token, "A") {
-		last = "B"
+	i := len(token) - 10
+	changed := "A"
+	if token[i] == 'A' {
+		changed = "B"
 	}
-	return token[:len(token)-1] + last
+	return token[:i] + changed + token[i+1:]
 }

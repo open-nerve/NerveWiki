@@ -35,8 +35,9 @@ func NewDeleteWorkspace(d DeleteWorkspaceDeps) *DeleteWorkspace {
 
 // Execute deletes the workspace of slug. Under its row lock and the
 // decision, its pending invitations, every membership of it, ended ones
-// too, then the workspace are deleted at one time, in the lock order, which the deletion's subscribers take for their
-// rows, in the same transaction. Its slug is free at once.
+// too, then the workspace are deleted, in the lock order, at one time,
+// which the deletion's subscribers take for their rows, in the same
+// transaction. Its slug is free at once.
 func (d *DeleteWorkspace) Execute(ctx context.Context, slug string) error {
 	actor, err := shared.RequireActor(ctx)
 	if err != nil {

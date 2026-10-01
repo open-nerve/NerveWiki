@@ -1,7 +1,9 @@
 // Package workspace is the module of workspaces, their members and
 // invitations (v0.1 design 3.2; M2 design). Its root is what bootstrap
 // sees: New for the HTTP side; NewMemberships for the access module's
-// facts; Actions and Reserved for the composition's checks.
+// facts; NewInvitationCheck for identity's sign-up policy, and
+// InvitationKeyInfo, the info of the key it derives for the invitations;
+// Actions and Reserved for the composition's checks.
 package workspace
 
 import (

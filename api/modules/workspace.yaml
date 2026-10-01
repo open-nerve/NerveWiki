@@ -108,10 +108,10 @@ paths:
       summary: Delete a workspace
       description: >-
         Deletes the workspace with every membership of it and its pending
-        invitations; only its admins can. No one sees it afterwards, and its slug can name a new workspace
-        at once. A workspace that does not exist, is deleted, or that the
-        caller is no active member of is workspace.not_found; a member or a
-        guest gets forbidden.
+        invitations; only its admins can. No one sees it afterwards, and its
+        slug can name a new workspace at once. A workspace that does not
+        exist, is deleted, or that the caller is no active member of is
+        workspace.not_found; a member or a guest gets forbidden.
       security: [{ bearer: [] }]
       x-problem-codes: [workspace.not_found, forbidden]
       responses:
@@ -151,8 +151,7 @@ paths:
       description: >-
         Ends the caller's membership of the workspace; pending invitations of
         the workspace to the caller's address are deleted with it. The
-        workspace's only
-        active admin cannot leave it, even alone in it
+        workspace's only active admin cannot leave it, even alone in it
         (workspace.sole_admin): another member is made an admin first, or the
         workspace is deleted.
       security: [{ bearer: [] }]
@@ -198,11 +197,11 @@ paths:
       summary: Remove a member
       description: >-
         Ends the member's membership, and deletes the workspace's pending
-        invitations to the member's address; only the workspace's admins can,
-        and not their own (workspace.own_membership: an admin leaves instead). A
-        membership that does not exist, has ended, or whose workspace the
-        caller cannot see is workspace.member_not_found; a member or a guest
-        gets forbidden.
+        invitations to the member's address; only the workspace's admins
+        can, and not their own (workspace.own_membership: an admin leaves
+        instead). A membership that does not exist, has ended, or whose
+        workspace the caller cannot see is workspace.member_not_found; a
+        member or a guest gets forbidden.
       security: [{ bearer: [] }]
       x-problem-codes: [workspace.member_not_found, forbidden, workspace.own_membership]
       responses:

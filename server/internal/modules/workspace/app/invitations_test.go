@@ -399,7 +399,7 @@ func TestAcceptInvitationRefusals(t *testing.T) {
 
 		_, err := tm.acceptInvitation().Execute(as(tm.bob.UserID), inv.ID, tokenOf(inv))
 
-		if !errors.Is(err, failed) || !tm.tx.rolledBack || tm.logs.Len() != 0 || slices.Contains(tm.store.calls, "AcceptInvitation") {
+		if !errors.Is(err, failed) || !tm.tx.rolledBack || tm.logs.Len() != 0 || slices.ContainsFunc(tm.store.calls, func(c string) bool { return strings.HasPrefix(c, "AcceptInvitation") }) {
 			t.Errorf("Execute() = %v, rolled back %v after %q; want the subscriber's error, rolled back", err, tm.tx.rolledBack, tm.store.calls)
 		}
 	})
