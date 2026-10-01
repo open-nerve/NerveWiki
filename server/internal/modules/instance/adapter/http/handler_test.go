@@ -9,14 +9,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
 	httpadapter "github.com/open-nerve/NerveWiki/server/internal/modules/instance/adapter/http"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/instance/app"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/instance/domain"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver/apitest"
-	"github.com/open-nerve/NerveWiki/server/internal/platform/ratelimit"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver/httpservertest"
 )
 
 type fixedSource domain.Build
@@ -36,15 +35,7 @@ func get(t *testing.T, uc httpadapter.UseCases, path string) (*http.Response, st
 	t.Helper()
 	logger := slog.New(slog.DiscardHandler)
 	router := httpserver.NewRouter(logger)
-	limit := ratelimit.New(time.Now).Bucket("test", ratelimit.Rate{PerMinute: 600, Burst: 100})
-	api, err := httpserver.NewAPI(httpserver.APIConfig{
-		Logger: logger, Authenticator: noTokens{}, PublicOperations: httpadapter.PublicOperations(),
-		MaxBodyBytes: 1 << 20, RequestTimeout: time.Second,
-		IPv6PrefixLen: 64, Anonymous: limit, Authenticated: limit, AuthFailure: limit,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	api := httpservertest.NewAPI(t, httpservertest.APIOptions{Authenticator: noTokens{}, PublicOperations: httpadapter.PublicOperations()})
 	httpadapter.Register(router, api, uc)
 	req := httptest.NewRequest(http.MethodGet, path, nil)
 	rec := httptest.NewRecorder()

@@ -2,6 +2,7 @@ package postgresadapter
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 	"uuid"
@@ -9,6 +10,7 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/modules/identity/adapter/postgres/gen"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/identity/app"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/identity/domain"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres"
 )
 
 // CreateUser inserts u. A taken address is domain.ErrEmailTaken. The domain
@@ -77,8 +79,13 @@ func (s *Store) DeactivateUser(ctx context.Context, id uuid.UUID, now time.Time)
 
 // ShareAccount locks account id's row FOR SHARE until the transaction ends
 // and reports whether it is active; app.ErrNotFound when there is none.
-// Outside a transaction the lock would end with the statement.
+// Outside a transaction the lock would end with the statement, and the
+// caller's access would no longer wait for a deactivation: that is a fault
+// (M1 handoff to M2, item 3).
 func (s *Store) ShareAccount(ctx context.Context, id uuid.UUID) (bool, error) {
+	if !postgres.InTx(ctx) {
+		return false, errors.New("share the account row: not in a transaction, the lock would end with the statement")
+	}
 	active, err := s.queries(ctx).ShareAccount(ctx, id)
 	if err != nil {
 		return false, notFound(err)

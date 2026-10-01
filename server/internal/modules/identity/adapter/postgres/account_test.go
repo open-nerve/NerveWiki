@@ -156,3 +156,24 @@ func TestShareAccount(t *testing.T) {
 		t.Errorf("ShareAccount(unknown) = %v, want app.ErrNotFound", err)
 	}
 }
+
+// ShareAccount outside a transaction is a fault (M1 handoff to M2, item
+// 3): its FOR SHARE would end with the statement, and the access it guards
+// would no longer wait for a deactivation.
+func TestShareAccountRefusesToRunOutsideATransaction(t *testing.T) {
+	ctx := context.Background()
+	s, pool := newStore(t)
+	u := newUser("alice@corp.com")
+	mustCreate(t, s, u)
+	if _, err := s.ShareAccount(ctx, u.ID); err == nil || errors.Is(err, app.ErrNotFound) {
+		t.Errorf("ShareAccount() outside a transaction = %v, want a fault", err)
+	}
+	// Nothing was locked: the account row lock does not wait.
+	err := postgres.NewTxManager(pool, time.Second).WithinTx(ctx, func(ctx context.Context) error {
+		_, err := s.LockForCredentials(ctx, u.ID)
+		return err
+	})
+	if err != nil {
+		t.Errorf("LockForCredentials() after = %v", err)
+	}
+}

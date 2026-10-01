@@ -6,33 +6,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/fs"
 	"log/slog"
 	"net"
 	"net/netip"
-	"os"
-	"slices"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/open-nerve/NerveWiki/server/internal/modules/identity"
-	"github.com/open-nerve/NerveWiki/server/internal/modules/instance"
-	"github.com/open-nerve/NerveWiki/server/internal/platform/clock"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/jobs"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres"
-	"github.com/open-nerve/NerveWiki/server/internal/platform/ratelimit"
-	"github.com/open-nerve/NerveWiki/server/internal/platform/webui"
-	"github.com/open-nerve/NerveWiki/server/internal/shared"
-)
-
-// The platform and the shared kernel meet here by structure: neither imports
-// the other.
-var (
-	_ shared.TxManager        = (*postgres.TxManager)(nil)
-	_ httpserver.ProblemError = (*shared.Error)(nil)
 )
 
 // poolCloseTimeout bounds the wait for the pool's connections at shutdown:
@@ -61,109 +45,6 @@ type app struct {
 	poolCloseTimeout time.Duration
 	databaseWait     time.Duration
 	migrationPoll    time.Duration
-}
-
-// newApp wires the server described by cfg around the given migrations and
-// web frontend: the platform routes, each module's API behind the per-route
-// middlewares, and the frontend on every other path. close releases it.
-func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrationFiles, webFiles fs.FS) (*app, error) {
-	signingKey, err := readSigningKey(cfg.Auth.JWT.PrivateKeyFile)
-	if err != nil {
-		return nil, err
-	}
-	pool, err := postgres.NewPool(ctx, cfg.Database)
-	if err != nil {
-		return nil, err
-	}
-	// The configuration log masks database.url as a whole; say where the pool
-	// connects from pgx's own parse of it, which holds no password.
-	target := pool.Config().ConnConfig
-	logger.InfoContext(ctx, "database pool created",
-		slog.String("host", target.Host), slog.Int("port", int(target.Port)),
-		slog.String("database", target.Database), slog.String("user", target.User))
-	migrator, err := postgres.NewMigrator(pool, migrationFiles)
-	if err != nil {
-		pool.Close()
-		return nil, err
-	}
-	// One limiter holds every bucket (M1/P2 design 3.2). It reads the
-	// monotonic clock, which a jump of the wall clock does not move.
-	limiter := ratelimit.New(time.Now)
-	limits := cfg.RateLimit
-	vetoers, subscribers := deactivationRegistrants()
-	ident, err := identity.New(identity.Deps{
-		Pool:                   pool,
-		Tx:                     postgres.NewTxManager(pool, cfg.Database.CommitTimeout),
-		Clock:                  clock.System{},
-		Logger:                 logger,
-		SignupPolicy:           signupSwitch(cfg.Auth.SignupEnabled),
-		SigningKeyPEM:          signingKey,
-		AccessTokenTTL:         cfg.Auth.AccessTokenTTL,
-		SessionTTL:             cfg.Auth.SessionTTL,
-		RefreshDeadline:        cfg.Auth.RefreshDeadline,
-		SessionCleanupInterval: cfg.Auth.SessionCleanupInterval,
-		Password:               passwordHashing(cfg.Auth.Password),
-		RateLimits: identity.RateLimits{
-			Limiter:      limiter,
-			LoginIP:      bucket(limiter, "login_ip", limits.LoginIP),
-			LoginIPEmail: bucket(limiter, "login_ip_email", limits.LoginIPEmail),
-			RegisterIP:   bucket(limiter, "register_ip", limits.RegisterIP),
-			PasswordUser: bucket(limiter, "password_user", limits.PasswordUser),
-		},
-		DeactivationVetoers:     vetoers,
-		DeactivationSubscribers: subscribers,
-	})
-	if err != nil {
-		_ = migrator.Close()
-		pool.Close()
-		return nil, err
-	}
-	runner, err := jobs.New(pool, jobs.Config{ShutdownTimeout: cfg.Jobs.ShutdownTimeout, Logger: logger}, ident.Jobs())
-	if err != nil {
-		_ = migrator.Close()
-		pool.Close()
-		return nil, err
-	}
-	inst := instance.New(instance.Deps{SignupEnabled: cfg.Auth.SignupEnabled})
-	api, err := httpserver.NewAPI(httpserver.APIConfig{
-		Logger:           logger,
-		Authenticator:    ident.Authenticator(),
-		PublicOperations: slices.Concat(ident.PublicOperations(), inst.PublicOperations()),
-		MaxBodyBytes:     cfg.Server.MaxBodyBytes,
-		RequestTimeout:   cfg.Server.RequestTimeout,
-		RequestTimeouts:  ident.RequestTimeouts(),
-		TrustedProxies:   cfg.Server.TrustedProxies,
-		IPv6PrefixLen:    limits.IPv6PrefixLen,
-		Anonymous:        bucket(limiter, "anonymous", limits.Anonymous),
-		Authenticated:    bucket(limiter, "authenticated", limits.Authenticated),
-		AuthFailure:      bucket(limiter, "auth_failure", limits.AuthFailure),
-	})
-	if err != nil {
-		_ = migrator.Close()
-		pool.Close()
-		return nil, err
-	}
-	router := httpserver.NewRouter(logger,
-		httpserver.Check{Name: "database", Run: pool.Ping},
-		httpserver.Check{Name: "migrations", Run: migrator.CheckUpToDate},
-	)
-	ident.Register(router, api)
-	inst.Register(router, api)
-	// "/" without a method is the least specific pattern: /api/ and the
-	// probes keep their routes, and a wrong method on a page path gets the
-	// frontend's 405 rather than a 404.
-	router.Handle("/", webui.Handler(webFiles))
-	return &app{
-		cfg:              cfg,
-		logger:           logger,
-		pool:             pool,
-		migrator:         migrator,
-		router:           router,
-		jobs:             runner,
-		poolCloseTimeout: poolCloseTimeout,
-		databaseWait:     databaseWait,
-		migrationPoll:    migrationPoll,
-	}, nil
 }
 
 // run waits for the database, applies pending migrations when
@@ -236,44 +117,6 @@ func (a *app) startJobs(ctx context.Context) error {
 		}
 	}
 }
-
-// readSigningKey returns the content of auth.jwt.private_key_file, or nil
-// when it is not set. Errors name the key, never the path or the content.
-func readSigningKey(path string) ([]byte, error) {
-	if path == "" {
-		return nil, nil
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		var pathErr *fs.PathError
-		if errors.As(err, &pathErr) {
-			err = pathErr.Err
-		}
-		return nil, fmt.Errorf("auth.jwt.private_key_file: %w", err)
-	}
-	return data, nil
-}
-
-// passwordHashing is auth.password as identity takes it.
-func passwordHashing(p config.PasswordConfig) identity.PasswordHashing {
-	return identity.PasswordHashing{
-		MemoryKiB:     p.Argon2MemoryKiB,
-		Iterations:    p.Argon2Iterations,
-		Parallelism:   p.Argon2Parallelism,
-		MaxConcurrent: p.MaxConcurrentHashes,
-		MaxWait:       p.MaxWait,
-	}
-}
-
-// bucket is limiter's bucket of the configured rate, named after its key.
-func bucket(limiter *ratelimit.Limiter, name string, c config.BucketConfig) *ratelimit.Bucket {
-	return limiter.Bucket(name, ratelimit.Rate{PerMinute: c.PerMinute, Burst: c.Burst})
-}
-
-// signupSwitch is auth.signup_enabled as identity's SignupPolicy.
-type signupSwitch bool
-
-func (s signupSwitch) AllowSignup(context.Context) (bool, error) { return bool(s), nil }
 
 // warnIfExposed warns once when a non-prod nervewiki listens beyond
 // loopback (M1/P1 design 3.6): most likely a deployment without
