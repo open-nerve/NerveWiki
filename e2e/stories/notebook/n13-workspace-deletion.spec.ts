@@ -11,21 +11,24 @@ import { createWorkspace, deleteWorkspace, newTeam, slugFor } from "../../fixtur
 // M3/P3, the page version with M3/P5; the purge is the background job's
 // alone (W12's way: the deletion moved back by SQL).
 
-/** Moves the deletion of the workspace id and of everything deleted with it back by days, its accepted invitations' too. */
+/**
+ * Moves the deletion of the workspace id and of everything deleted with it back by days, its accepted invitations' too:
+ * leaf to root, so the purge, which may run between two statements, never meets a row moved back whose children are not.
+ */
 async function deletedDaysAgo(db: Database, id: string, days: number): Promise<void> {
   const ago = `now() - make_interval(days => ${days})`;
-  await db.query(`UPDATE workspaces SET deleted_at = ${ago} WHERE id = $1`, [id]);
-  await db.query(`UPDATE workspace_members SET deleted_at = ${ago} WHERE workspace_id = $1`, [id]);
-  await db.query(
-    `UPDATE workspace_invitations SET deleted_at = ${ago},
-       accepted_at = CASE WHEN accepted_at IS NULL THEN NULL ELSE ${ago} END WHERE workspace_id = $1`,
-    [id]
-  );
   await db.query(
     `UPDATE notebook_members SET deleted_at = ${ago} WHERE notebook_id IN (SELECT id FROM notebooks WHERE workspace_id = $1)`,
     [id]
   );
   await db.query(`UPDATE notebooks SET deleted_at = ${ago} WHERE workspace_id = $1`, [id]);
+  await db.query(
+    `UPDATE workspace_invitations SET deleted_at = ${ago},
+       accepted_at = CASE WHEN accepted_at IS NULL THEN NULL ELSE ${ago} END WHERE workspace_id = $1`,
+    [id]
+  );
+  await db.query(`UPDATE workspace_members SET deleted_at = ${ago} WHERE workspace_id = $1`, [id]);
+  await db.query(`UPDATE workspaces SET deleted_at = ${ago} WHERE id = $1`, [id]);
 }
 
 test("N13 (API): deleting a workspace deletes its notebooks and their members with it; the purge clears them 60 days on", async ({

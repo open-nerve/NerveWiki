@@ -86,9 +86,10 @@ export async function expectNotebooksDeletedWith(db: Database, workspaceId: stri
   const rows = await db.query<{ live: number; with_it: number; members_apart: number }>(
     `SELECT (SELECT count(*)::int FROM notebooks n WHERE n.workspace_id = w.id AND n.deleted_at IS NULL) AS live,
             (SELECT count(*)::int FROM notebooks n WHERE n.workspace_id = w.id
-               AND n.deleted_at = w.deleted_at AND n.updated_by_id = w.updated_by_id) AS with_it,
+               AND n.deleted_at = w.deleted_at AND n.updated_at = w.deleted_at AND n.updated_by_id = w.updated_by_id) AS with_it,
             (SELECT count(*)::int FROM notebook_members m JOIN notebooks n ON n.id = m.notebook_id WHERE n.workspace_id = w.id
-               AND (m.deleted_at IS DISTINCT FROM w.deleted_at OR m.updated_by_id <> w.updated_by_id)) AS members_apart
+               AND (m.deleted_at IS DISTINCT FROM w.deleted_at OR m.updated_at IS DISTINCT FROM w.deleted_at
+                    OR m.updated_by_id <> w.updated_by_id)) AS members_apart
        FROM workspaces w WHERE w.id = $1`,
     [workspaceId]
   );
