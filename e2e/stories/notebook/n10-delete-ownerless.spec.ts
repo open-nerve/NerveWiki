@@ -1,6 +1,6 @@
 import { accountIdOf } from "../../fixtures/assert/identity";
 import { expectAuditEvents, expectNotebookDeletedWithItsMembers } from "../../fixtures/assert/notebook";
-import { emailFor } from "../../fixtures/auth";
+import { displayNameOf, emailFor } from "../../fixtures/auth";
 import { joinAs } from "../../fixtures/invitations";
 import { memberOf, removeMember } from "../../fixtures/members";
 import { addedNotebookMember } from "../../fixtures/notebook-members";
@@ -13,13 +13,21 @@ import {
   ownerlessNotebooks,
   takeOver,
 } from "../../fixtures/ownerless";
+import {
+  auditLog,
+  deleteOwnerlessWith,
+  listedOwnerless,
+  loadMoreWith,
+  ownerlessListed,
+  ownerlessPath,
+} from "../../fixtures/ownerless-pages";
 import { expect, test } from "../../fixtures/test";
-import { newTeam } from "../../fixtures/workspaces";
+import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 
 // N10, deleting an ownerless notebook (M3 design 3, 4; M3/P3 design 3.3,
 // 3.4): a workspace admin deletes it, its members with it, while it is
-// ownerless; the audit records it, newest first, a page at a time. The
-// page version comes with M3/P5.
+// ownerless; the audit records it, newest first, a page at a time (M3/P5
+// design 3.3 for the page).
 
 test("N10 (API): a workspace admin deletes ownerless notebooks, their members with them, and not one taken over; the audit lists the deletions and the take-over newest first, a page at a time", async ({
   api,
@@ -100,4 +108,45 @@ test("N10 (API): a workspace admin deletes ownerless notebooks, their members wi
     { action: "taken_over", notebookId: drafts.id, notebookName: "Drafts", formerOwnerId: ownerId, actorId: adminId },
     { action: "deleted", notebookId: plans.id, notebookName: "Plans", formerOwnerId: ownerId, actorId: adminId },
   ]);
+});
+
+test("N10 (page): a workspace admin deletes the ownerless notebook once its name is typed; the audit log has it first, and loads the events before it a page at a time", async ({
+  api,
+  db,
+  signedInPage,
+}, testInfo) => {
+  const { adminEmail, adminId, pat: adminPat, tokens: adminTokens, workspace } = await newOnboardedTeam(api, testInfo);
+  const slug = workspace.slug;
+  const ownerEmail = emailFor(testInfo, "owner");
+  const ownerPat = await joinAs(api, adminPat, slug, ownerEmail, "member");
+  const plans = await createNotebook(api, ownerPat, slug, "Plans");
+  // Fifty more, deleted through the API: their events fill the audit's first page, plans' deletion one past it.
+  const drafts = await Promise.all(
+    Array.from({ length: 50 }, (_, i) => createNotebook(api, ownerPat, slug, `Draft ${i + 1}`))
+  );
+  expect(
+    (await removeMember(api, adminPat, (await memberOf(api, adminPat, slug, ownerEmail)).id)).response.status
+  ).toBe(204);
+  const deleted = await Promise.all(drafts.map((draft) => deleteOwnerless(api, adminPat, draft.id)));
+  expect(deleted.map((d) => d.response.status)).toEqual(drafts.map(() => 204));
+  const page = await signedInPage(adminTokens);
+  await page.goto(ownerlessPath(slug));
+  await expect.poll(() => ownerlessListed(page)).toEqual([listedOwnerless("Plans", ownerEmail, "Private", 0)]);
+  await expect.poll(async () => (await auditLog(page)).length).toBe(50);
+
+  expect(await deleteOwnerlessWith(page, plans.id, "Plans")).toBe(204);
+  await expect(page.getByText("No ownerless notebooks.", { exact: true })).toBeVisible();
+  await expectNotebookDeletedWithItsMembers(db, plans.id, adminId);
+
+  // The audit log is read again: the deletion first, a page of 50; Load more brings the one left.
+  const [admin, owner] = [displayNameOf(adminEmail), displayNameOf(ownerEmail)];
+  const sentence = (name: string) => `${admin} deleted ${name} (former owner ${owner}).`;
+  await expect.poll(async () => (await auditLog(page))[0]).toBe(sentence("Plans"));
+  expect(await auditLog(page)).toHaveLength(50);
+  expect((await loadMoreWith(page, slug)).status()).toBe(200);
+  await expect.poll(async () => (await auditLog(page)).length).toBe(51);
+  expect((await auditLog(page)).toSorted()).toEqual(
+    ["Plans", ...drafts.map((draft) => draft.name)].map(sentence).toSorted()
+  );
+  await expect(page.getByRole("button", { name: "Load more", exact: true })).toHaveCount(0);
 });

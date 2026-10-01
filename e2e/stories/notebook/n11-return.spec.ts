@@ -2,19 +2,23 @@ import { nervewikiWorkspaces } from "../../fixtures/admin";
 import { accountIdOf } from "../../fixtures/assert/identity";
 import { expectAuditEvents, expectNotebookMember, expectOwned } from "../../fixtures/assert/notebook";
 import { expectMembership, membershipEndedAt } from "../../fixtures/assert/workspace";
-import { emailFor } from "../../fixtures/auth";
-import { accept, invite, joinAs } from "../../fixtures/invitations";
+import { displayNameOf, emailFor } from "../../fixtures/auth";
+import { acceptWith, linkTo } from "../../fixtures/invitation-pages";
+import { accept, invite, joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { memberOf, removeMember } from "../../fixtures/members";
+import { notebookGroups } from "../../fixtures/notebook-pages";
 import { createNotebook, getNotebook } from "../../fixtures/notebooks";
 import { auditEvents, deleteOwnerless, eventOf, takeOver } from "../../fixtures/ownerless";
+import { auditLog, ownerlessPath } from "../../fixtures/ownerless-pages";
 import { expect, test } from "../../fixtures/test";
-import { newTeam } from "../../fixtures/workspaces";
+import { workspaceHeading } from "../../fixtures/workspace-pages";
+import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 
 // N11, the return (M3 design 3, 4; M3/P3 design 3.2, 3.5): the former
 // owner, back in the workspace by an invitation or by workspaces
 // reactivate-member, gets back the ownerless notebooks that no workspace
 // admin took over or deleted meanwhile, each recorded; the others stay as
-// the admins left them. The page version comes with M3/P5.
+// the admins left them (M3/P5 design 3.3 for the page).
 
 test("N11 (API): the former owner, back by an invitation as a guest, gets back its ownerless notebook, recorded as returned; the one taken over stays its taker's, the one deleted deleted", async ({
   api,
@@ -104,4 +108,39 @@ test("N11 (command line): workspaces reactivate-member returns the ownerless not
     { action: "returned", notebookId: plans.id, notebookName: "Plans", formerOwnerId: ownerId, actorId: ownerId },
     { action: "returned", notebookId: solo.id, notebookName: "Solo", formerOwnerId: ownerId, actorId: ownerId },
   ]);
+});
+
+test("N11 (page): the former owner, back by an invitation's link, finds its ownerless notebook among its own again; the admin's ownerless notebooks no longer have it, and the audit log says it was returned", async ({
+  anotherPage,
+  api,
+  db,
+  signedInPage,
+}, testInfo) => {
+  const { pat: adminPat, tokens: adminTokens, workspace } = await newOnboardedTeam(api, testInfo);
+  const slug = workspace.slug;
+  const ownerEmail = emailFor(testInfo, "owner");
+  const ownerTokens = await joinOnboarded(api, adminPat, slug, ownerEmail, "member");
+  const ownerId = await accountIdOf(db, ownerEmail);
+  const solo = await createNotebook(api, ownerTokens.access_token, slug, "Solo");
+  expect(
+    (await removeMember(api, adminPat, (await memberOf(api, adminPat, slug, ownerEmail)).id)).response.status
+  ).toBe(204);
+  const invitation = await invite(api, adminPat, slug, ownerEmail, "member");
+  const page = await signedInPage(ownerTokens);
+  await page.goto(linkTo(invitation));
+
+  expect((await acceptWith(page, invitation.id)).status()).toBe(200);
+  await expect(workspaceHeading(page, "Acme")).toBeVisible();
+  await expect.poll(() => notebookGroups(page, "Acme")).toEqual({ "My notebooks": ["Solo"] });
+  await expectOwned(db, solo.id);
+  await expectAuditEvents(db, workspace.id, [
+    { action: "returned", notebookId: solo.id, notebookName: "Solo", formerOwnerId: ownerId, actorId: ownerId },
+  ]);
+
+  const adminPage = await anotherPage(adminTokens);
+  await adminPage.goto(ownerlessPath(slug));
+  await expect(adminPage.getByText("No ownerless notebooks.", { exact: true })).toBeVisible();
+  await expect
+    .poll(() => auditLog(adminPage))
+    .toEqual([`Solo was returned to ${displayNameOf(ownerEmail)}, back in the workspace.`]);
 });

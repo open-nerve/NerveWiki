@@ -8,12 +8,13 @@ import { memberOf, removeMember } from "../../fixtures/members";
 import { createNotebook } from "../../fixtures/notebooks";
 import { takeOver } from "../../fixtures/ownerless";
 import { expect, test } from "../../fixtures/test";
-import { createWorkspace, deleteWorkspace, newTeam, slugFor } from "../../fixtures/workspaces";
+import { deleteWorkspaceWith, expectCreatePage } from "../../fixtures/workspace-pages";
+import { createWorkspace, deleteWorkspace, newOnboardedTeam, newTeam, slugFor } from "../../fixtures/workspaces";
 
 // N13, a workspace's deletion takes its notebooks and its audit records,
-// and the purge clears them (M3 design 3). The page version comes with
-// M3/P5; the purge is the background job's alone (W12's way: the deletion
-// moved back by SQL).
+// and the purge clears them (M3 design 3; M3/P5 design 3.7 for the page);
+// the purge is the background job's alone (W12's way: the deletion moved
+// back by SQL).
 
 /**
  * Has email join the workspace of slug, create the notebook name, and be removed by credential, its admin, who takes
@@ -88,4 +89,24 @@ test("N13 (API): deleting a workspace deletes its notebooks, their members and i
     [[old.id, recent.id]]
   );
   expect(events).toEqual([{ workspace_id: recent.id, events: 1 }]);
+});
+
+test("N13 (page): its admin deletes a workspace with notebooks on its general page; its notebooks, their members and its audit records go with it", async ({
+  api,
+  db,
+  signedInPage,
+}, testInfo) => {
+  const { pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
+  const memberPat = await joinAs(api, pat, workspace.slug, emailFor(testInfo, "member"), "member");
+  await createNotebook(api, pat, workspace.slug, "Plans");
+  await createNotebook(api, memberPat, workspace.slug, "Notes", "viewer");
+  await takenOver(api, pat, workspace.slug, emailFor(testInfo, "leaver"), "Drafts");
+  const page = await signedInPage(tokens);
+  await page.goto(`/${workspace.slug}/settings/general`);
+
+  expect(await deleteWorkspaceWith(page, workspace.slug)).toBe(204);
+
+  await expectCreatePage(page);
+  await expectNotebooksDeletedWith(db, workspace.id, 3);
+  await expectAuditEventsDeletedWith(db, workspace.id, 1);
 });
