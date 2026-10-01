@@ -178,7 +178,7 @@ func (f *fakeSubscriber) NotebookDeleted(ctx context.Context, d app.NotebookDele
 }
 
 // fixture is the fakes over one recorder, a workspace acme and a notebook
-// in it.
+// in it, with its members (fakes_members_test.go).
 type fixture struct {
 	rec        *recorder
 	workspaces fakeWorkspaces
@@ -188,6 +188,7 @@ type fixture struct {
 	logs       *bytes.Buffer
 	acme       uuid.UUID
 	notebook   domain.Notebook
+	team
 }
 
 func newFixture() fixture {
@@ -204,6 +205,7 @@ func newFixture() fixture {
 		tx:   &fakeTx{},
 		logs: &bytes.Buffer{},
 		acme: acme, notebook: n,
+		team: newTeam(rec, n),
 	}
 }
 

@@ -56,15 +56,25 @@ type workspaceExtensions struct {
 }
 
 // workspaceRegistrants are the modules that take part in the workspace
-// module's membership ends, restores and deletions: the notebook module
-// follows a deletion (M3/P1); its part in the ends and restores comes with
+// module's membership ends, restores, deletions, additions and role
+// changes: the notebook module follows a deletion (M3/P1), an addition and
+// a role change (M3/P2); its part in the ends and restores comes with
 // M3/P3.
 func workspaceRegistrants(pool *pgxpool.Pool) workspaceExtensions {
-	nb := notebookRegistrants()
+	return workspaceRegistrantsWith(pool, notebookRegistrants())
+}
+
+// workspaceRegistrantsWith is workspaceRegistrants with nb, the notebook
+// module's registrants, whom the notebook module's parts call in turn: a
+// test hands its own.
+func workspaceRegistrantsWith(pool *pgxpool.Pool, nb notebookExtensions) workspaceExtensions {
+	events := workspaceMemberEvents{notebook.NewWorkspaceMemberEvents(nb.visibilitySubscribers)}
 	return workspaceExtensions{
 		deletionSubscribers: []workspace.WorkspaceDeletionSubscriber{
 			workspaceDeletion{notebook.NewWorkspaceDeletion(pool, nb.deletionSubscribers)},
 		},
+		additionSubscribers:   []workspace.MembershipAdditionSubscriber{events},
+		roleChangeSubscribers: []workspace.MemberRoleChangeSubscriber{events},
 	}
 }
 
@@ -79,16 +89,33 @@ func (d workspaceDeletion) WorkspaceDeleted(ctx context.Context, x workspace.Wor
 	return d.notebook.WorkspaceDeleted(ctx, notebook.WorkspaceDeleted(x))
 }
 
+// workspaceMemberEvents is the notebook module's part in a workspace's
+// addition and role change, as the workspace module calls it.
+type workspaceMemberEvents struct {
+	notebook notebook.WorkspaceMemberEvents
+}
+
+func (e workspaceMemberEvents) MembershipAdded(ctx context.Context, a workspace.MembershipAddition) error {
+	return e.notebook.MembershipAdded(ctx, notebook.WorkspaceMemberAdded(a))
+}
+
+func (e workspaceMemberEvents) MemberRoleChanged(ctx context.Context, c workspace.MemberRoleChange) error {
+	return e.notebook.MemberRoleChanged(ctx, notebook.WorkspaceRoleChanged(c))
+}
+
 // notebookExtensions are the registrants of the notebook module's
-// extension point (M3 design 8): those that follow a notebook's deletion.
+// extension points (M3 design 8): those that follow a notebook's deletion,
+// and those that follow a change of what accounts see.
 type notebookExtensions struct {
-	deletionSubscribers []notebook.NotebookDeletionSubscriber
+	deletionSubscribers   []notebook.NotebookDeletionSubscriber
+	visibilitySubscribers []notebook.VisibilitySubscriber
 }
 
 // notebookRegistrants are the modules that take part in a notebook's
-// deletion: none in M3; M4's pages and M7's attachments come later. The
-// module's deleteNotebook and its part in a workspace's deletion both take
-// them from here.
+// deletion and in a visibility change: none in M3; M4's pages and M7's
+// attachments follow a deletion, M5's event streams both. The module's
+// use cases and its parts in the workspace module's events all take them
+// from here.
 func notebookRegistrants() notebookExtensions {
 	return notebookExtensions{}
 }

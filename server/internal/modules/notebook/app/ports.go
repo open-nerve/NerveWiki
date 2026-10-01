@@ -31,6 +31,28 @@ type Workspaces interface {
 	ShareByID(ctx context.Context, id uuid.UUID) (bool, error)
 }
 
+// WorkspaceMembers is what the module reads of a workspace's memberships:
+// the workspace module's, which bootstrap wires to it (M3/P2 design 3.4).
+type WorkspaceMembers interface {
+	// RoleOf returns the role of userID's active membership of
+	// workspaceID, and whether it has one, in the transaction ctx carries.
+	RoleOf(ctx context.Context, workspaceID, userID uuid.UUID) (shared.WorkspaceRole, bool, error)
+}
+
+// Profile is what other accounts see of an account.
+type Profile struct {
+	DisplayName string
+	Email       string
+}
+
+// MemberProfiles reads the accounts' profiles: identity's directory, which
+// bootstrap converts.
+type MemberProfiles interface {
+	// MemberProfiles returns the profiles of the accounts ids, by id; an id
+	// of no account is left out.
+	MemberProfiles(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]Profile, error)
+}
+
 // Listed is a notebook of a list as the repository reads it: with the
 // caller's explicit role, "" for none, and its count of active members.
 type Listed struct {
@@ -81,6 +103,34 @@ type NotebookWriter interface {
 	DeleteNotebook(ctx context.Context, id, by uuid.UUID, now time.Time) error
 	// CountMembers is NotebookFinder's.
 	CountMembers(ctx context.Context, id uuid.UUID) (int, error)
+}
+
+// MemberFinder reads memberships, unlocked or under the notebook's lock.
+type MemberFinder interface {
+	// ListMembers returns the notebook's active members, by when they
+	// first joined, then by id.
+	ListMembers(ctx context.Context, notebookID uuid.UUID) ([]domain.Member, error)
+	// FindActiveMember returns the active membership with id; ErrNotFound
+	// when there is none.
+	FindActiveMember(ctx context.Context, id uuid.UUID) (domain.Member, error)
+}
+
+// MemberWriter changes a notebook's memberships under its lock.
+type MemberWriter interface {
+	// FindMemberOf returns userID's membership of the notebook, active or
+	// ended; ErrNotFound when it never had one.
+	FindMemberOf(ctx context.Context, notebookID, userID uuid.UUID) (domain.Member, error)
+	// CountAdmins returns how many active admins the notebook has.
+	CountAdmins(ctx context.Context, notebookID uuid.UUID) (int, error)
+	// AddMember inserts m, added by by at m.CreatedAt.
+	AddMember(ctx context.Context, m domain.Member, by uuid.UUID) error
+	// UpdateMemberRole gives membership id role, by by at now.
+	UpdateMemberRole(ctx context.Context, id uuid.UUID, role shared.NotebookRole, by uuid.UUID, now time.Time) error
+	// EndMember ends membership id, by by at now.
+	EndMember(ctx context.Context, id, by uuid.UUID, now time.Time) error
+	// RestoreMember makes the ended membership id active again with role,
+	// by by at now; it keeps when the account first joined.
+	RestoreMember(ctx context.Context, id uuid.UUID, role shared.NotebookRole, by uuid.UUID, now time.Time) error
 }
 
 // Fact is what an account has of a notebook, as the access module's

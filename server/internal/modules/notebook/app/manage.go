@@ -21,17 +21,19 @@ type manager struct {
 // after a change of the workspace's memberships, then the notebook's FOR
 // NO KEY UPDATE, then the decision. It returns the notebook read under its
 // lock. A notebook or a workspace deleted meanwhile, and one the caller
-// cannot see, is notebook.not_found.
-func (m manager) lock(ctx context.Context, actor shared.Actor, action shared.Action, n domain.Notebook) (domain.Notebook, shared.Grant, error) {
+// cannot see, is notFound: notebook.not_found, or, for the operations that
+// name a membership, notebook.member_not_found.
+func (m manager) lock(ctx context.Context, actor shared.Actor, action shared.Action, n domain.Notebook, notFound error,
+) (domain.Notebook, shared.Grant, error) {
 	if ok, err := m.workspaces.ShareByID(ctx, n.WorkspaceID); err != nil || !ok {
-		return domain.Notebook{}, shared.Grant{}, orNotFound(err, domain.ErrNotFound)
+		return domain.Notebook{}, shared.Grant{}, orNotFound(err, notFound)
 	}
 	locked, err := m.notebooks.LockNotebook(ctx, n.ID)
 	if err != nil {
-		return domain.Notebook{}, shared.Grant{}, found(err, domain.ErrNotFound)
+		return domain.Notebook{}, shared.Grant{}, found(err, notFound)
 	}
 	grant, err := authorize(ctx, m.auth, actor, action, shared.Target{WorkspaceID: locked.WorkspaceID, NotebookID: locked.ID},
-		domain.ErrNotFound)
+		notFound)
 	if err != nil {
 		return domain.Notebook{}, shared.Grant{}, err
 	}

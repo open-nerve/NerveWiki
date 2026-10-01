@@ -87,16 +87,21 @@ func workspaceDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, a
 }
 
 // notebookDeps are the notebook module's dependencies: the workspace
-// module's port, and the registrants of its extension point.
+// module's ports, identity's directory for the member list, and the
+// registrants of its extension points.
 func notebookDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, authorizer shared.Authorizer) notebook.Deps {
+	ext := notebookRegistrants()
 	return notebook.Deps{
-		Pool:                pool,
-		Tx:                  postgres.NewTxManager(pool, cfg.Database.CommitTimeout),
-		Clock:               clock.System{},
-		Logger:              logger,
-		Authorizer:          authorizer,
-		Workspaces:          workspace.NewWorkspaces(pool),
-		DeletionSubscribers: notebookRegistrants().deletionSubscribers,
+		Pool:                  pool,
+		Tx:                    postgres.NewTxManager(pool, cfg.Database.CommitTimeout),
+		Clock:                 clock.System{},
+		Logger:                logger,
+		Authorizer:            authorizer,
+		Workspaces:            workspace.NewWorkspaces(pool),
+		WorkspaceMembers:      workspace.NewMemberships(pool),
+		Profiles:              notebookProfiles{identity.NewDirectory(pool)},
+		DeletionSubscribers:   ext.deletionSubscribers,
+		VisibilitySubscribers: ext.visibilitySubscribers,
 	}
 }
 

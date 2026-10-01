@@ -123,6 +123,130 @@ paths:
           description: The notebook is deleted.
         default:
           $ref: "#/components/responses/Problem"
+  /api/v0/notebooks/{notebook_id}/members:
+    parameters:
+      - $ref: "#/components/parameters/NotebookID"
+    get:
+      operationId: listNotebookMembers
+      tags: [notebook]
+      summary: List a notebook's members
+      description: >-
+        The notebook's active members, by when they joined; any role in the
+        notebook can list them. Those who use it by its workspace access
+        alone are no members and are not listed. The emails go to the
+        workspace's admins and members; a guest sees null. A notebook that
+        does not exist, is deleted, or that the caller has no role in is
+        notebook.not_found. The list is not paged.
+      security: [{ bearer: [] }]
+      x-problem-codes: [notebook.not_found]
+      responses:
+        "200":
+          description: The notebook's members.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotebookMemberList"
+        default:
+          $ref: "#/components/responses/Problem"
+    post:
+      operationId: addNotebookMember
+      tags: [notebook]
+      summary: Add a member to a notebook
+      description: >-
+        Gives an active member of the notebook's workspace, a guest
+        included, a role in the notebook; only its admins can. One whose
+        membership of the notebook ended gets it back, with this role and
+        the time it first joined. A notebook that does not exist, is
+        deleted, or that the caller has no role in is notebook.not_found; an
+        editor or a reader gets forbidden; the values are checked after
+        both: user_id not_allowed when the account is no active member of
+        the workspace, duplicate when it is a member of the notebook
+        already.
+      security: [{ bearer: [] }]
+      x-problem-codes: [notebook.not_found, forbidden, validation_failed]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NotebookMemberCreate"
+      responses:
+        "201":
+          description: The member.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotebookMember"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v0/notebook-members/{notebook_member_id}:
+    parameters:
+      - $ref: "#/components/parameters/NotebookMemberID"
+    patch:
+      operationId: updateNotebookMember
+      tags: [notebook]
+      summary: Change a notebook member's role
+      description: >-
+        Gives the member a new role; only the notebook's admins can, and not
+        their own (notebook.own_membership). A membership that does not
+        exist, has ended, or whose notebook the caller has no role in is
+        notebook.member_not_found; an editor or a reader gets forbidden; the
+        role is checked after both.
+      security: [{ bearer: [] }]
+      x-problem-codes: [notebook.member_not_found, forbidden, validation_failed, notebook.own_membership]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NotebookMemberUpdate"
+      responses:
+        "200":
+          description: The member with the new role.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotebookMember"
+        default:
+          $ref: "#/components/responses/Problem"
+    delete:
+      operationId: removeNotebookMember
+      tags: [notebook]
+      summary: Remove a member from a notebook
+      description: >-
+        Ends the member's membership of the notebook; only its admins can,
+        and not their own (notebook.own_membership: an admin leaves
+        instead). A membership that does not exist, has ended, or whose
+        notebook the caller has no role in is notebook.member_not_found; an
+        editor or a reader gets forbidden.
+      security: [{ bearer: [] }]
+      x-problem-codes: [notebook.member_not_found, forbidden, notebook.own_membership]
+      responses:
+        "204":
+          description: The membership has ended.
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v0/notebooks/{notebook_id}/leave:
+    parameters:
+      - $ref: "#/components/parameters/NotebookID"
+    post:
+      operationId: leaveNotebook
+      tags: [notebook]
+      summary: Leave a notebook
+      description: >-
+        Ends the caller's membership of the notebook. Its only admin cannot,
+        even alone in it (notebook.sole_admin): another member becomes an
+        admin first, or the admin deletes the notebook. A notebook that does
+        not exist, is deleted, or that the caller has no role in is
+        notebook.not_found; a caller who uses it by its workspace access
+        alone, no member of it, is notebook.member_not_found.
+      security: [{ bearer: [] }]
+      x-problem-codes: [notebook.not_found, notebook.member_not_found, notebook.sole_admin]
+      responses:
+        "204":
+          description: The caller's membership has ended.
+        default:
+          $ref: "#/components/responses/Problem"
 components:
   # 与 api/openapi.yaml 的相同：打包时丢掉模块文件的 securitySchemes，oapi-codegen 读这一份
   securitySchemes:
@@ -144,6 +268,14 @@ components:
       in: path
       required: true
       description: The notebook's id.
+      schema:
+        type: string
+        format: uuid
+    NotebookMemberID:
+      name: notebook_member_id
+      in: path
+      required: true
+      description: The id of a membership, as the member list answers it; not the account's id.
       schema:
         type: string
         format: uuid
@@ -252,3 +384,54 @@ components:
         starting or ending with a dot; no name Windows reserves (CON, COM1, …).
         It is the folder's name when the notebook is exported.
       type: string
+    NotebookMember:
+      description: A membership of a notebook, with what the caller may see of the account.
+      type: object
+      additionalProperties: false
+      required: [id, user_id, role, display_name, email, created_at]
+      properties:
+        id:
+          description: The membership's id, which the member operations take.
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        role:
+          $ref: "#/components/schemas/NotebookRole"
+        display_name:
+          type: string
+        email:
+          description: The account's email; null when the caller is a guest of the workspace.
+          type: [string, "null"]
+        created_at:
+          description: When the account first joined; a membership given back keeps it.
+          type: string
+          format: date-time
+    NotebookMemberList:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/NotebookMember"
+    NotebookMemberCreate:
+      type: object
+      additionalProperties: false
+      required: [user_id, role]
+      properties:
+        user_id:
+          description: The account's id, an active member of the notebook's workspace.
+          type: string
+          format: uuid
+        role:
+          $ref: "#/components/schemas/NotebookRole"
+    NotebookMemberUpdate:
+      type: object
+      additionalProperties: false
+      required: [role]
+      properties:
+        role:
+          $ref: "#/components/schemas/NotebookRole"

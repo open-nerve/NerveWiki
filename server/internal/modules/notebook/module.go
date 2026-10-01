@@ -1,8 +1,9 @@
 // Package notebook is the module of notebooks and their members (v0.1
 // design 3.3; M3 design). Its root is what bootstrap sees: New for the HTTP
-// side; NewFacts for the access module's facts; NewWorkspaceDeletion, its
-// part in the workspace module's deletion; Purgers for the purge; Actions
-// for the composition's checks.
+// side; NewFacts for the access module's facts; NewWorkspaceDeletion and
+// NewWorkspaceMemberEvents, its part in the workspace module's deletion,
+// addition and role change; Purgers for the purge; Actions for the
+// composition's checks.
 package notebook
 
 import (
@@ -25,23 +26,39 @@ type Clock = app.Clock
 // workspace.NewWorkspaces to it.
 type Workspaces = app.Workspaces
 
-// The module's extension point (M3 design 8): bootstrap composes its
+// WorkspaceMembers is what the module reads of a workspace's memberships:
+// bootstrap hands workspace.NewMemberships to it.
+type WorkspaceMembers = app.WorkspaceMembers
+
+// Profile is what the module reads of an account.
+type Profile = app.Profile
+
+// MemberProfiles reads the accounts' profiles: bootstrap converts
+// identity's directory.
+type MemberProfiles = app.MemberProfiles
+
+// The module's extension points (M3 design 8): bootstrap composes their
 // registrants in registrants.go.
 type (
 	NotebookDeletion           = app.NotebookDeletion
 	NotebookDeletionSubscriber = app.NotebookDeletionSubscriber
+	VisibilityChange           = app.VisibilityChange
+	VisibilitySubscriber       = app.VisibilitySubscriber
 )
 
 // Deps are what bootstrap gives the module.
 type Deps struct {
-	Pool       *pgxpool.Pool
-	Tx         shared.TxManager
-	Clock      Clock
-	Logger     *slog.Logger
-	Authorizer shared.Authorizer
-	Workspaces Workspaces
-	// The registrants of the extension point.
-	DeletionSubscribers []NotebookDeletionSubscriber
+	Pool             *pgxpool.Pool
+	Tx               shared.TxManager
+	Clock            Clock
+	Logger           *slog.Logger
+	Authorizer       shared.Authorizer
+	Workspaces       Workspaces
+	WorkspaceMembers WorkspaceMembers
+	Profiles         MemberProfiles
+	// The registrants of the extension points.
+	DeletionSubscribers   []NotebookDeletionSubscriber
+	VisibilitySubscribers []VisibilitySubscriber
 }
 
 // Module is the wired notebook module.
@@ -53,17 +70,36 @@ type Module struct {
 func New(d Deps) *Module {
 	store := postgresadapter.New(d.Pool)
 	auth := d.Authorizer
+	visibility := d.VisibilitySubscribers
 	return &Module{uc: httpadapter.UseCases{
 		ListNotebooks: app.NewListNotebooks(d.Workspaces, store, auth),
 		CreateNotebook: app.NewCreateNotebook(app.CreateNotebookDeps{
-			Workspaces: d.Workspaces, Notebooks: store, Auth: auth, Tx: d.Tx, Clock: d.Clock, Logger: d.Logger,
+			Workspaces: d.Workspaces, Notebooks: store, Subscribers: visibility, Auth: auth, Tx: d.Tx, Clock: d.Clock, Logger: d.Logger,
 		}),
 		GetNotebook: app.NewGetNotebook(store, auth),
 		UpdateNotebook: app.NewUpdateNotebook(app.UpdateNotebookDeps{
-			Workspaces: d.Workspaces, Finder: store, Notebooks: store, Auth: auth, Tx: d.Tx, Clock: d.Clock, Logger: d.Logger,
+			Workspaces: d.Workspaces, Finder: store, Notebooks: store, Subscribers: visibility,
+			Auth: auth, Tx: d.Tx, Clock: d.Clock, Logger: d.Logger,
 		}),
 		DeleteNotebook: app.NewDeleteNotebook(app.DeleteNotebookDeps{
 			Workspaces: d.Workspaces, Finder: store, Notebooks: store, Subscribers: d.DeletionSubscribers,
+			Auth: auth, Tx: d.Tx, Clock: d.Clock, Logger: d.Logger,
+		}),
+		ListMembers: app.NewListMembers(app.ListMembersDeps{Notebooks: store, Members: store, Profiles: d.Profiles, Auth: auth}),
+		AddMember: app.NewAddMember(app.AddMemberDeps{
+			Workspaces: d.Workspaces, WorkspaceMembers: d.WorkspaceMembers, Finder: store, Notebooks: store, Members: store,
+			Profiles: d.Profiles, Subscribers: visibility, Auth: auth, Tx: d.Tx, Clock: d.Clock, Logger: d.Logger,
+		}),
+		UpdateMember: app.NewUpdateMember(app.UpdateMemberDeps{
+			Workspaces: d.Workspaces, Finder: store, Notebooks: store, Members: store, Writer: store, Profiles: d.Profiles,
+			Auth: auth, Tx: d.Tx, Clock: d.Clock, Logger: d.Logger,
+		}),
+		RemoveMember: app.NewRemoveMember(app.RemoveMemberDeps{
+			Workspaces: d.Workspaces, Finder: store, Notebooks: store, Members: store, Writer: store, Subscribers: visibility,
+			Auth: auth, Tx: d.Tx, Clock: d.Clock, Logger: d.Logger,
+		}),
+		LeaveNotebook: app.NewLeaveNotebook(app.LeaveNotebookDeps{
+			Workspaces: d.Workspaces, Finder: store, Notebooks: store, Members: store, Subscribers: visibility,
 			Auth: auth, Tx: d.Tx, Clock: d.Clock, Logger: d.Logger,
 		}),
 	}}

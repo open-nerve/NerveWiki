@@ -33,6 +33,9 @@ export const problemMessages = {
   "workspace.invitation_email_mismatch": "problem.workspace.invitation_email_mismatch",
   "workspace.no_admin": "problem.workspace.no_admin",
   "notebook.not_found": "problem.notebook.not_found",
+  "notebook.member_not_found": "problem.notebook.member_not_found",
+  "notebook.own_membership": "problem.notebook.own_membership",
+  "notebook.sole_admin": "problem.notebook.sole_admin",
 } as const satisfies Record<string, MessageKey>;
 
 /** The message of each field code; `field.<field>.<code>` says it better for one field. */

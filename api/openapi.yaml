@@ -71,6 +71,12 @@ paths:
     $ref: "modules/notebook.yaml#/paths/~1api~1v0~1workspaces~1{slug}~1notebooks"
   /api/v0/notebooks/{notebook_id}:
     $ref: "modules/notebook.yaml#/paths/~1api~1v0~1notebooks~1{notebook_id}"
+  /api/v0/notebooks/{notebook_id}/members:
+    $ref: "modules/notebook.yaml#/paths/~1api~1v0~1notebooks~1{notebook_id}~1members"
+  /api/v0/notebook-members/{notebook_member_id}:
+    $ref: "modules/notebook.yaml#/paths/~1api~1v0~1notebook-members~1{notebook_member_id}"
+  /api/v0/notebooks/{notebook_id}/leave:
+    $ref: "modules/notebook.yaml#/paths/~1api~1v0~1notebooks~1{notebook_id}~1leave"
 components:
   # 模块文件的 securitySchemes 在打包时被丢掉，操作引用的 scheme 写在这里
   securitySchemes:

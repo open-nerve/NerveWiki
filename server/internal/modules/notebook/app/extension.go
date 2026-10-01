@@ -4,12 +4,15 @@ import (
 	"context"
 	"time"
 	"uuid"
+
+	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
-// The module's extension point (M3 design 8), and its registrant of the
-// workspace module's deletion. The registrants are built from the pool
-// alone and composed in bootstrap's registrants.go; their statements reach
-// the transaction through the context.
+// The module's extension points (M3 design 8), and its registrants of the
+// workspace module's deletion, addition and role change. The registrants
+// are built from the pool alone and composed in bootstrap's
+// registrants.go; their statements reach the transaction through the
+// context.
 
 // NotebookDeletion is notebooks being deleted: one by deleteNotebook, every
 // one of a workspace by the workspace's deletion. A subscriber deletes its
@@ -68,4 +71,83 @@ func (w WorkspaceDeletion) WorkspaceDeleted(ctx context.Context, d WorkspaceDele
 		return err
 	}
 	return publishDeletion(ctx, w.Subscribers, NotebookDeletion{WorkspaceID: d.WorkspaceID, NotebookIDs: ids, By: d.By, At: d.At})
+}
+
+// VisibilityChange is accounts whose notebooks seen in a workspace may have
+// changed (M3 design 4, 8): those of UserIDs, and, when Reached, every
+// active admin and member of the workspace as the writing transaction sees
+// them, whom a workspace access crossing none reaches. A deletion is told
+// by NotebookDeletion instead.
+type VisibilityChange struct {
+	WorkspaceID uuid.UUID
+	UserIDs     []uuid.UUID
+	Reached     bool
+	At          time.Time
+}
+
+// VisibilitySubscriber follows a visibility change, after the write that
+// caused it and in its transaction: an error rolls everything back. M5
+// closes the accounts' event streams.
+type VisibilitySubscriber interface {
+	VisibilityChanged(ctx context.Context, v VisibilityChange) error
+}
+
+// publishVisibility calls the subscribers in order; the first error stops
+// it.
+func publishVisibility(ctx context.Context, subscribers []VisibilitySubscriber, v VisibilityChange) error {
+	for _, s := range subscribers {
+		if err := s.VisibilityChanged(ctx, v); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// WorkspaceMemberAdded is a workspace's new membership, field by field as
+// the workspace module's addition tells it: bootstrap converts
+// workspace.MembershipAddition.
+type WorkspaceMemberAdded struct {
+	WorkspaceID uuid.UUID
+	UserID      uuid.UUID
+	Role        shared.WorkspaceRole
+	By          uuid.UUID
+	At          time.Time
+}
+
+// WorkspaceRoleChanged is a workspace member's role changed, field by field
+// as the workspace module's role change tells it: bootstrap converts
+// workspace.MemberRoleChange.
+type WorkspaceRoleChanged struct {
+	WorkspaceID uuid.UUID
+	UserID      uuid.UUID
+	From, To    shared.WorkspaceRole
+	By          uuid.UUID
+	At          time.Time
+}
+
+// WorkspaceMemberEvents is the module's registrant of the workspace
+// module's addition and role change (M3/P2 design 3.6): it tells the
+// visibility's subscribers of an account the change gave or took a default
+// role, which a workspace access gives the workspace's admins and members,
+// not its guests. It reads nothing.
+type WorkspaceMemberEvents struct {
+	Subscribers []VisibilitySubscriber
+}
+
+// MembershipAdded follows an addition: a new admin or member is reached by
+// the open notebooks, a new guest by none.
+func (w WorkspaceMemberEvents) MembershipAdded(ctx context.Context, a WorkspaceMemberAdded) error {
+	if !shared.ReachedByAccess(a.Role) {
+		return nil
+	}
+	return publishVisibility(ctx, w.Subscribers, VisibilityChange{WorkspaceID: a.WorkspaceID, UserIDs: []uuid.UUID{a.UserID}, At: a.At})
+}
+
+// MemberRoleChanged follows a role change that crosses guest: between an
+// admin and a member, the open notebooks reach the account alike.
+func (w WorkspaceMemberEvents) MemberRoleChanged(ctx context.Context, c WorkspaceRoleChanged) error {
+	if shared.ReachedByAccess(c.From) == shared.ReachedByAccess(c.To) {
+		return nil
+	}
+	return publishVisibility(ctx, w.Subscribers, VisibilityChange{WorkspaceID: c.WorkspaceID, UserIDs: []uuid.UUID{c.UserID}, At: c.At})
 }
