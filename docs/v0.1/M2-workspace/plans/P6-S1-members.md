@@ -7,16 +7,16 @@
 1. `services/member.service.ts`：`list(slug)`、`update(id, role)`、`remove(id)`，转出 `WorkspaceMember`、`WorkspaceRole`。
 2. `stores/member.store.ts`：`list`、`load`（丢弃被写答复越过的读）、`changeRole`、`remove`（404 `workspace.member_not_found` 也移出）；`RootStore.membersOf(workspace)` 按 id 缓存；`useMembers`。
 3. `WorkspaceService.leave`、`WorkspaceStore.leave`（同 `remove`，404 `workspace.not_found` 也算离开）。
-4. `components/ui/native-select.tsx`。
+4. 角色的控件：先是原生 select（`components/ui/native-select.tsx`），审查之后改为菜单的单选项，选中就发，焦点回到按钮（审查 T3、Q9）；select 留给邀请表单。
 5. 设置导航加"成员"；路由 `/:slug/settings/members`。
-6. `pages/workspace/members-page.tsx`、`member-row.tsx`：成员一节（列表、"你"、访客不显示邮箱列、管理员改别人的角色与移出、写的失败在列表上方、403 之后重新读取工作区）；离开一节。
+6. `pages/workspace/members-page.tsx`、`member-row.tsx`：成员一节（列表、"你"、访客不显示邮箱列、管理员改别人的角色与移出、写的失败在列表上方、下一次改角色时清掉，失败之后重新读取成员与工作区（审查 T2、Q3）；移出之后重新读取邀请（审查 T1））；离开一节。
 7. 文案（两种语言）。
 
 ## 测试
 
 - `MemberStore`：交错；改角色；移出与 404；`RootStore.membersOf` 同一工作区同一个、别的工作区与新一代是新的。
 - `WorkspaceStore.leave`：成功与 404 都移出并记下；403、409 不移出。
-- 成员页：见 P6 文档 3.6 的成员与离开两行。
+- 成员页：见 P6 文档 3.6 的成员与离开两行（再读一次时更新、每个工作区读自己的、读不到时的说明与重试，审查 T4–T6）。
 - 反向对照：读覆盖写、自己的一行有控件、访客显示邮箱列、离开之后不记下 slug，各自的测试失败。
 
 ## 完成检查

@@ -4,7 +4,7 @@
 
 ## 任务
 
-1. `ConfirmDialog` 的可选 `messages`（problem 码 → 文案键）。
+1. `ConfirmDialog` 的可选 `texts`（`ProblemTexts`：problem 码 → 文案键；同一机制在 `errorText`、`formErrors`、`useForm`、`CredentialsForm`，P6 文档 3.5）。
 2. `DeactivateDialog` 把 `workspace.sole_admin` 换成停用的说法。
 3. 文案。
 

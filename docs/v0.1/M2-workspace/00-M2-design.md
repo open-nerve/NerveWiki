@@ -245,7 +245,7 @@ M2 结束时：
 - 增长路径的第一条语句是账户行的 `FOR SHARE`。
 - 插入引用别的账户的行时，外键检查只对那一行取 `FOR KEY SHARE`，与停用的 `FOR NO KEY UPDATE` 不冲突。改邮箱（`users set-email`）不同：`users.email` 有唯一约束，改它取 FOR UPDATE 级的行锁，挡住这样的外键检查；它只碰账户与会话，不等工作区一支的锁，所以只是等待，不成环（P3 审查 Q1）。
 
-**横切约定**：本 M 新建的约定（权限与矩阵、加锁顺序、扩展点的注册、公开页面的例外、清理），收尾时经审查对照代码核实，补进总体设计第 13 节。
+**横切约定**：本 M 新建的约定（权限与矩阵、加锁顺序、扩展点的注册、公开页面的例外、清理；前端的按工作区每代缓存的 store 与带工作区 id 的 SWR 键、外壳按工作区重新挂载子页并在工作区消失时转走、页面按 problem 码换说法的 `texts`），收尾时经审查对照代码核实，补进总体设计第 13 节。
 
 ## 9. 测试策略
 
@@ -300,7 +300,7 @@ M2 结束时：
 | P3 | 邀请与带邀请注册 | 已完成 | [03-P3-invitations.md](03-P3-invitations.md) | [P3 审查记录](reviews/P3-invitations-review.md) |
 | P4 | 停用、管理命令与清理 | 已完成 | [04-P4-deactivation-commands-purge.md](04-P4-deactivation-commands-purge.md) | [P4 审查记录](reviews/P4-deactivation-commands-purge-review.md) |
 | P5 | 前端外壳与工作区 | 已完成 | [05-P5-web-shell-workspaces.md](05-P5-web-shell-workspaces.md) | [P5 审查记录](reviews/P5-web-shell-workspaces-review.md) |
-| P6 | 前端成员与邀请 | 进行中 | [06-P6-web-members-invitations.md](06-P6-web-members-invitations.md) | — |
+| P6 | 前端成员与邀请 | 已完成 | [06-P6-web-members-invitations.md](06-P6-web-members-invitations.md) | [P6 审查记录](reviews/P6-web-members-invitations-review.md) |
 | — | M2 收尾审查 | 未开始 | — | — |
 
 ## 12. 变更记录
@@ -313,3 +313,4 @@ M2 结束时：
 | 2026-10-01 | 第 4 节：邀请的 MAC 密钥由组合根派生，签名密钥由组合根先加载；第 5 节：路径参数 `{workspace_invitation_id}`；第 8 节：改邮箱与外键检查 | P3 的实施与审查，见 [P3 审查记录](reviews/P3-invitations-review.md) |
 | 2026-10-01 | 第 4、8 节：模块包级的 `Purgers(pool)`，清理器跳过仍被引用的行；第 7 节：P4 的 e2e 与 M1 移交第 1、2、9、10 项的落实；第 10 节：清理的风险 | P4 的实施与审查，见 [P4 审查记录](reviews/P4-deactivation-commands-purge-review.md) |
 | 2026-10-01 | 第 7 节：M1 移交第 5、6 项的落实 | P5 的实施与审查，见 [P5 审查记录](reviews/P5-web-shell-workspaces-review.md) |
+| 2026-10-01 | 第 8 节：横切约定加上 P5、P6 的前端约定 | P6 的实施与审查，见 [P6 审查记录](reviews/P6-web-members-invitations-review.md) |
