@@ -81,6 +81,10 @@ jobs:
   # 停机时给正在执行的后台任务留的时间，到期后取消它们。停机的宽限期要长于
   # server.shutdown_timeout 加上它再加 6 秒（默认 36 秒）：docker stop -t 40
   shutdown_timeout: 10s
+  # 物理删除软删除的行（工作区、成员、邀请等）的间隔，至少 1 秒
+  purge_interval: 1h
+  # 软删除的行保留这么久之后才被物理删除，至少 1 小时。期间运维可以从数据库恢复
+  purge_retention: 1440h
 
 log:
   level: info # debug | info | warn | error

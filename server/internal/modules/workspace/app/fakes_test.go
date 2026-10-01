@@ -116,6 +116,33 @@ func (f *fakeAccounts) ShareActiveAccount(ctx context.Context, id uuid.UUID) (st
 	return f.emails[id], f.err
 }
 
+// ShareActiveAccountByEmail answers with the account of emails that has
+// email, or err; errNoAccount when none has it.
+func (f *fakeAccounts) ShareActiveAccountByEmail(ctx context.Context, email string) (uuid.UUID, error) {
+	if f.store != nil {
+		f.store.record(ctx, "ShareActiveAccountByEmail "+email)
+	}
+	call := "ShareActiveAccountByEmail " + email
+	if inTx(ctx) {
+		call += " in tx"
+	}
+	f.calls = append(f.calls, call)
+	if f.err != nil {
+		return uuid.Nil(), f.err
+	}
+	for id, e := range f.emails {
+		if e == email {
+			return id, nil
+		}
+	}
+	return uuid.Nil(), errNoAccount()
+}
+
+// errNoAccount stands in for identity.account_not_found.
+func errNoAccount() *shared.Error {
+	return shared.NewError(shared.KindNotFound, "identity.account_not_found", "The account does not exist.")
+}
+
 // fakeAuthorizer grants the role roles hold for the target's workspace,
 // and records the decisions asked for, in the store's calls too when it
 // has one.

@@ -150,11 +150,14 @@ func TestChangePasswordIsLimitedPerAccount(t *testing.T) {
 	}
 }
 
-type fakeDeactivate struct{ calls int }
+type fakeDeactivate struct {
+	calls int
+	err   error
+}
 
 func (f *fakeDeactivate) Execute(context.Context) error {
 	f.calls++
-	return nil
+	return f.err
 }
 
 func TestDeactivateMe(t *testing.T) {
@@ -165,5 +168,21 @@ func TestDeactivateMe(t *testing.T) {
 
 	if res.StatusCode != http.StatusNoContent || body != "" || uc.calls != 1 {
 		t.Errorf("deactivate = %d %q after %d calls, want 204 once", res.StatusCode, body, uc.calls)
+	}
+}
+
+// A vetoer's refusal is the answer, with its code: the workspace module's
+// rule two (M2/P4 design 3.1), which deactivateMe declares (v0.1 design
+// 13.1, item 21). The code is the workspace module's, spelt out here:
+// identity does not import it.
+func TestDeactivateMeAnswersAVetoersRefusal(t *testing.T) {
+	refusal := shared.NewError(shared.KindConflict, "workspace.sole_admin",
+		"The account is the only admin of workspaces that have other members (acme): make another member an admin of each first.")
+	h := newServer(t, httpadapter.UseCases{Deactivate: &fakeDeactivate{err: refusal}})
+
+	res, body := do(t, h, withToken(postJSON("/api/v0/me/deactivate", "")))
+
+	if res.StatusCode != http.StatusConflict || !strings.Contains(body, `"code":"workspace.sole_admin"`) || !strings.Contains(body, "(acme)") {
+		t.Errorf("deactivate = %d %s; want 409 workspace.sole_admin, the detail naming acme", res.StatusCode, body)
 	}
 }

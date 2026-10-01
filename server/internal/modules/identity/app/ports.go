@@ -105,10 +105,14 @@ type AccountSharer interface {
 	// ShareAccount locks account id's row FOR SHARE until the transaction
 	// ends and reads it under the lock; ErrNotFound when there is none.
 	ShareAccount(ctx context.Context, id uuid.UUID) (SharedAccount, error)
+	// ShareAccountByEmail is ShareAccount of the account of email, a
+	// normalized address (M2/P4 design 3.3).
+	ShareAccountByEmail(ctx context.Context, email string) (SharedAccount, error)
 }
 
 // SharedAccount is what ShareAccount reads under its lock.
 type SharedAccount struct {
+	ID     uuid.UUID
 	Active bool
 	Email  string
 }

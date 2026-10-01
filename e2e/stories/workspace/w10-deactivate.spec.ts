@@ -1,0 +1,115 @@
+import type { ApiClient } from "@nervewiki/api-client";
+
+import {
+  nervewikiUsers,
+  nervewikiUsersFails,
+  nervewikiWorkspaces,
+  nervewikiWorkspacesFails,
+} from "../../fixtures/admin";
+import { accountIdOf, expectDeactivated } from "../../fixtures/assert/identity";
+import { expectMembership } from "../../fixtures/assert/workspace";
+import type { Database } from "../../fixtures/db";
+import { bearer, emailFor } from "../../fixtures/auth";
+import { joinAs } from "../../fixtures/invitations";
+import { memberOf, updateMember } from "../../fixtures/members";
+import { expect, test } from "../../fixtures/test";
+import { createWorkspace, newTeam, slugFor } from "../../fixtures/workspaces";
+
+// W10, deactivation and the workspaces (M2 design 3; M2/P4 design 3.1,
+// 3.3): rule two refuses the only admin of a workspace with other members,
+// whichever way the account is deactivated, and says which; a deactivation
+// ends the account's memberships; the server's administrator brings one
+// back with users activate and workspaces reactivate-member.
+
+/** The refusal of rule two for the workspace of slug. */
+function soleAdminOf(slug: string): string {
+  return `The account is the only admin of workspaces that have other members (${slug}): make another member an admin of each first.`;
+}
+
+/** When the membership of userId in the workspace id ended, as reactivate-member prints it: to the second, in UTC. */
+async function endedAt(db: Database, id: string, userId: string): Promise<string> {
+  const [row] = await db.query<{ ended_at: Date }>(
+    "SELECT ended_at FROM workspace_members WHERE workspace_id = $1 AND user_id = $2",
+    [id, userId]
+  );
+  return (row?.ended_at ?? new Date(0)).toISOString().replace(/\.\d{3}Z$/, "Z");
+}
+
+/** Whether credential still authenticates. */
+async function signedIn(api: ApiClient, credential: string): Promise<boolean> {
+  return (await api.GET("/api/v0/me", { headers: bearer(credential) })).response.status === 200;
+}
+
+test("W10 (API): the only admin's deactivation is refused, naming the workspace; once another member is an admin, it ends every membership", async ({
+  api,
+  db,
+}, testInfo) => {
+  const { adminId, pat, workspace } = await newTeam(api, testInfo);
+  const memberEmail = emailFor(testInfo, "member");
+  const member = await joinAs(api, pat, workspace.slug, memberEmail, "member");
+  const solo = await createWorkspace(api, pat, "Solo", slugFor(testInfo, "solo"));
+
+  const refused = await api.POST("/api/v0/me/deactivate", { headers: bearer(pat) });
+  expect([refused.response.status, refused.error?.code, refused.error?.detail]).toEqual([
+    409,
+    "workspace.sole_admin",
+    soleAdminOf(workspace.slug),
+  ]);
+  expect(await signedIn(api, pat)).toBe(true);
+  await expectMembership(db, workspace.id, adminId, "admin");
+
+  const promoted = await updateMember(api, pat, (await memberOf(api, pat, workspace.slug, memberEmail)).id, "admin");
+  expect(promoted.response.status).toBe(200);
+  expect((await api.POST("/api/v0/me/deactivate", { headers: bearer(pat) })).response.status).toBe(204);
+
+  await expectDeactivated(db, adminId);
+  await expectMembership(db, workspace.id, adminId, "ended");
+  await expectMembership(db, solo.id, adminId, "ended");
+  expect(await signedIn(api, pat)).toBe(false);
+  // The workspace goes on with its new admin.
+  const seen = await api.GET("/api/v0/workspaces/{slug}", {
+    params: { path: { slug: workspace.slug } },
+    headers: bearer(member),
+  });
+  expect([seen.response.status, seen.data?.role]).toEqual([200, "admin"]);
+});
+
+test("W10 (command line): users deactivate refuses the only admin and says why; a member's deactivation ends the membership, and reactivate-member brings it back with its role", async ({
+  api,
+  db,
+}, testInfo) => {
+  const { adminEmail, adminId, pat, workspace } = await newTeam(api, testInfo);
+  const slug = workspace.slug;
+  const memberEmail = emailFor(testInfo, "member");
+  const member = await joinAs(api, pat, slug, memberEmail, "member");
+  const memberId = await accountIdOf(db, memberEmail);
+  const [joined] = await db.query<{ created_at: string }>(
+    "SELECT created_at::text FROM workspace_members WHERE workspace_id = $1 AND user_id = $2",
+    [workspace.id, memberId]
+  );
+
+  await nervewikiUsersFails(db, ["deactivate", "--email", adminEmail], soleAdminOf(slug));
+  expect(await signedIn(api, pat)).toBe(true);
+  await expectMembership(db, workspace.id, adminId, "admin");
+
+  await nervewikiUsers(db, ["deactivate", "--email", memberEmail]);
+  await expectMembership(db, workspace.id, memberId, "ended");
+  await nervewikiWorkspacesFails(
+    db,
+    ["reactivate-member", "--workspace", slug, "--email", memberEmail],
+    "This account is deactivated."
+  );
+
+  await nervewikiUsers(db, ["activate", "--email", memberEmail]);
+  const ended = await endedAt(db, workspace.id, memberId);
+  expect(await nervewikiWorkspaces(db, ["reactivate-member", "--workspace", slug, "--email", memberEmail])).toBe(
+    `reactivated ${memberEmail} in ${slug} as member; the membership had ended at ${ended}\n`
+  );
+  await expectMembership(db, workspace.id, memberId, "member", joined?.created_at);
+  // The member's personal access token outlived the deactivation: the workspace is theirs again.
+  const seen = await api.GET("/api/v0/workspaces/{slug}", { params: { path: { slug } }, headers: bearer(member) });
+  expect([seen.response.status, seen.data?.role]).toEqual([200, "member"]);
+  expect(await nervewikiWorkspaces(db, ["reactivate-member", "--workspace", slug, "--email", memberEmail])).toBe(
+    `${memberEmail} is already a member of ${slug}\n`
+  );
+});

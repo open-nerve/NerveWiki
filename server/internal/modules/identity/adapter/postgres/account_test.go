@@ -118,7 +118,7 @@ func TestShareAccount(t *testing.T) {
 			if err != nil {
 				return err
 			}
-			if got != (app.SharedAccount{Active: true, Email: "alice@corp.com"}) {
+			if got != (app.SharedAccount{ID: u.ID, Active: true, Email: "alice@corp.com"}) {
 				return fmt.Errorf("ShareAccount() = %+v, want active, alice@corp.com", got)
 			}
 			close(holding)
@@ -172,7 +172,7 @@ func TestShareAccountOfADeactivatedAccount(t *testing.T) {
 		got, err = s.ShareAccount(ctx, u.ID)
 		return err
 	})
-	if err != nil || got != (app.SharedAccount{Active: false, Email: "alice@corp.com"}) {
+	if err != nil || got != (app.SharedAccount{ID: u.ID, Active: false, Email: "alice@corp.com"}) {
 		t.Errorf("ShareAccount() = %+v, %v; want inactive, alice@corp.com", got, err)
 	}
 }
@@ -187,5 +187,69 @@ func TestShareAccountRefusesToRunOutsideATransaction(t *testing.T) {
 	mustCreate(t, s, u)
 	if _, err := s.ShareAccount(ctx, u.ID); err == nil || errors.Is(err, app.ErrNotFound) {
 		t.Errorf("ShareAccount() outside a transaction = %v, want a fault", err)
+	}
+}
+
+// ShareAccountByEmail is ShareAccount by the address (M2/P4 design 3.3): it
+// holds the row FOR SHARE, which the account row lock waits for and another
+// share does not. An address changed while it waited names no account: the
+// condition is checked again on the row the change committed.
+func TestShareAccountByEmail(t *testing.T) {
+	ctx := context.Background()
+	s, pool := newStore(t)
+	u := newUser("alice@corp.com")
+	mustCreate(t, s, u)
+	tx := postgres.NewTxManager(pool, time.Second)
+	nowait := func(lock string) error {
+		other, err := pool.Begin(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = other.Rollback(ctx) }()
+		_, err = other.Exec(ctx, "SELECT 1 FROM users WHERE id = $1 FOR "+lock+" NOWAIT", u.ID)
+		return err
+	}
+
+	err := tx.WithinTx(ctx, func(ctx context.Context) error {
+		got, err := s.ShareAccountByEmail(ctx, "alice@corp.com")
+		if err != nil {
+			return err
+		}
+		if got != (app.SharedAccount{ID: u.ID, Active: true, Email: "alice@corp.com"}) {
+			t.Errorf("ShareAccountByEmail() = %+v, want alice's, active", got)
+		}
+		if nowait("SHARE") != nil || nowait("NO KEY UPDATE") == nil {
+			t.Error("want the row held FOR SHARE: another share through, the account row lock held back")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ShareAccountByEmail(ctx, "alice@corp.com"); err == nil || errors.Is(err, app.ErrNotFound) {
+		t.Errorf("ShareAccountByEmail() outside a transaction = %v, want a fault", err)
+	}
+
+	changer, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = changer.Rollback(ctx) }()
+	if _, err := changer.Exec(ctx, "UPDATE users SET email = 'alice@example.com' WHERE id = $1", u.ID); err != nil {
+		t.Fatal(err)
+	}
+	shared := make(chan error, 1)
+	go func() {
+		shared <- tx.WithinTx(ctx, func(ctx context.Context) error {
+			_, err := s.ShareAccountByEmail(ctx, "alice@corp.com")
+			return err
+		})
+	}()
+	pgtest.WaitForLockWaits(t, pool, 1, 10*time.Second)
+	if err := changer.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-shared; !errors.Is(err, app.ErrNotFound) {
+		t.Errorf("ShareAccountByEmail() of the address changed meanwhile = %v, want app.ErrNotFound", err)
 	}
 }

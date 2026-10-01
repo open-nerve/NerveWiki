@@ -6,6 +6,7 @@ import (
 	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/identity/domain"
+	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
 // ActiveAccounts is what identity offers the modules that give an account
@@ -23,14 +24,32 @@ type ActiveAccounts struct {
 // its vetoers see what it committed; or the transaction waits for it and
 // sees the account inactive, or its new address.
 func (a ActiveAccounts) ShareActiveAccount(ctx context.Context, id uuid.UUID) (string, error) {
-	account, err := a.Accounts.ShareAccount(ctx, id)
+	account, err := active(a.Accounts.ShareAccount(ctx, id))
+	return account.Email, err
+}
+
+// ShareActiveAccountByEmail is ShareActiveAccount for the administrator's
+// commands, which name the account by its address (M2/P4 design 3.3): it
+// returns the account's id. An address that cannot be valid names no
+// account and is not looked up, as at sign-in.
+func (a ActiveAccounts) ShareActiveAccountByEmail(ctx context.Context, email string) (uuid.UUID, error) {
+	email = shared.NormalizeEmail(email)
+	if !shared.ValidEmail(email) {
+		return uuid.Nil(), domain.ErrAccountNotFound
+	}
+	account, err := active(a.Accounts.ShareAccountByEmail(ctx, email))
+	return account.ID, err
+}
+
+// active is the account a share read, when it is active.
+func active(account SharedAccount, err error) (SharedAccount, error) {
 	switch {
 	case errors.Is(err, ErrNotFound):
-		return "", domain.ErrAccountNotFound
+		return SharedAccount{}, domain.ErrAccountNotFound
 	case err != nil:
-		return "", err
+		return SharedAccount{}, err
 	case !account.Active:
-		return "", domain.ErrAccountDeactivated
+		return SharedAccount{}, domain.ErrAccountDeactivated
 	}
-	return account.Email, nil
+	return account, nil
 }

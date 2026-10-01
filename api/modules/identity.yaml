@@ -221,9 +221,12 @@ paths:
         administrator can activate it again; sign-in then answers
         identity.account_deactivated. No password is asked for. The modules
         that keep the account's access elsewhere may refuse the deactivation
-        with a code of their own, listed here.
+        with a code of their own, listed here: workspace.sole_admin when the
+        account is the only admin of a workspace with other members, which
+        the detail names. The deactivation ends the account's memberships of
+        workspaces.
       security: [{ bearer: [] }]
-      x-problem-codes: []
+      x-problem-codes: [workspace.sole_admin]
       responses:
         "204":
           description: The account is deactivated.

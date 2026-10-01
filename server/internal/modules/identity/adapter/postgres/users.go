@@ -83,14 +83,37 @@ func (s *Store) DeactivateUser(ctx context.Context, id uuid.UUID, now time.Time)
 // end with the statement, and the caller's access would no longer wait for
 // a deactivation: that is a fault (M1 handoff to M2, item 3).
 func (s *Store) ShareAccount(ctx context.Context, id uuid.UUID) (app.SharedAccount, error) {
-	if !postgres.InTx(ctx) {
-		return app.SharedAccount{}, errors.New("share the account row: not in a transaction, the lock would end with the statement")
+	if err := sharedInTx(ctx); err != nil {
+		return app.SharedAccount{}, err
 	}
 	row, err := s.queries(ctx).ShareAccount(ctx, id)
 	if err != nil {
 		return app.SharedAccount{}, notFound(err)
 	}
-	return app.SharedAccount{Active: row.IsActive, Email: row.Email}, nil
+	return app.SharedAccount{ID: row.ID, Active: row.IsActive, Email: row.Email}, nil
+}
+
+// ShareAccountByEmail is ShareAccount of the account of email, a
+// normalized address. An address changed while it waited for the lock
+// names no account any more: app.ErrNotFound.
+func (s *Store) ShareAccountByEmail(ctx context.Context, email string) (app.SharedAccount, error) {
+	if err := sharedInTx(ctx); err != nil {
+		return app.SharedAccount{}, err
+	}
+	row, err := s.queries(ctx).ShareAccountByEmail(ctx, email)
+	if err != nil {
+		return app.SharedAccount{}, notFound(err)
+	}
+	return app.SharedAccount{ID: row.ID, Active: row.IsActive, Email: row.Email}, nil
+}
+
+// sharedInTx fails outside a transaction, where the shared lock would end
+// with its statement.
+func sharedInTx(ctx context.Context) error {
+	if !postgres.InTx(ctx) {
+		return errors.New("share the account row: not in a transaction, the lock would end with the statement")
+	}
+	return nil
 }
 
 // FindLoginAccount reads the account of email, a normalized address;

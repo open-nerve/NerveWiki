@@ -86,9 +86,9 @@ func (c *CreateInvitation) activeMember(ctx context.Context, workspaceID uuid.UU
 	if err != nil || !ok {
 		return false, err
 	}
-	_, active, err := c.d.Members.FindMembership(ctx, workspaceID, userID)
+	m, err := c.d.Members.FindMembership(ctx, workspaceID, userID)
 	if errors.Is(err, ErrNotFound) {
 		return false, nil
 	}
-	return active, err
+	return err == nil && m.Active(), err
 }

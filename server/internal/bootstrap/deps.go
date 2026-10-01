@@ -12,6 +12,7 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/platform/clock"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/jobs"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/ratelimit"
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
@@ -26,7 +27,7 @@ func identityDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, li
 	keys *identity.SigningKeys, policy identity.SignupPolicy,
 ) identity.Deps {
 	limits := cfg.RateLimit
-	vetoers, subscribers := deactivationRegistrants()
+	vetoers, subscribers := deactivationRegistrants(pool)
 	return identity.Deps{
 		Pool:                   pool,
 		Tx:                     postgres.NewTxManager(pool, cfg.Database.CommitTimeout),
@@ -80,6 +81,12 @@ func workspaceDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, a
 		DeletionSubscribers:          ext.deletionSubscribers,
 		MembershipRestoreSubscribers: ext.restoreSubscribers,
 	}
+}
+
+// purgeJob is the purge of the modules' soft-deleted rows, on
+// jobs.purge_interval and jobs.purge_retention.
+func purgeJob(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger) jobs.Job {
+	return jobs.PurgeJob(purgers(pool), jobs.PurgeConfig{Interval: cfg.Jobs.PurgeInterval, Retention: cfg.Jobs.PurgeRetention, Logger: logger})
 }
 
 // apiConfig is the per-route middlewares' configuration: the modules'

@@ -3,7 +3,7 @@ import type { ApiClient } from "@nervewiki/api-client";
 import { accountIdOf, accountOf, countIdentity, expectNewAccount } from "../../fixtures/assert/identity";
 import { bearer, createToken, emailFor, login, password, register } from "../../fixtures/auth";
 import { expect, test } from "../../fixtures/test";
-import { nervewikiUsers, nervewikiUsersFails } from "../../fixtures/users";
+import { nervewikiUsers, nervewikiUsersFails } from "../../fixtures/admin";
 
 // A12, the server administrator's commands (M1 design 3, M1/P4 design 3.6–3.7): nervewiki users on the
 // worker's database, which its nervewiki serves. Only the command line does these: there is no page or API

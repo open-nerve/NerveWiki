@@ -140,6 +140,11 @@ type JobsConfig struct {
 	// ShutdownTimeout is how long a stop lets the running jobs finish
 	// before it cancels them.
 	ShutdownTimeout time.Duration `koanf:"shutdown_timeout"`
+	// PurgeInterval is how often the purge runs (M2/P4 design 3.4).
+	PurgeInterval time.Duration `koanf:"purge_interval"`
+	// PurgeRetention is how long a soft-deleted row is kept before the
+	// purge deletes it (v0.1 design 7.1).
+	PurgeRetention time.Duration `koanf:"purge_retention"`
 }
 
 // LogConfig configures the process logger.
@@ -203,6 +208,8 @@ func (c Config) LogValue() slog.Value {
 		),
 		slog.Group("jobs",
 			duration("shutdown_timeout", c.Jobs.ShutdownTimeout),
+			duration("purge_interval", c.Jobs.PurgeInterval),
+			duration("purge_retention", c.Jobs.PurgeRetention),
 		),
 		slog.Group("log",
 			slog.String("level", c.Log.Level),

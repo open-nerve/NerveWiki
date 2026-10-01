@@ -1,11 +1,15 @@
 import { createClient } from "@nervewiki/api-client";
 
-import { countWorkspaces, expectNoWorkspaceAdded } from "../../fixtures/assert/workspace";
+import { nervewikiWorkspaces, nervewikiWorkspacesFails } from "../../fixtures/admin";
+import { accountIdOf } from "../../fixtures/assert/identity";
+import { countWorkspaces, expectNewWorkspace, expectNoWorkspaceAdded } from "../../fixtures/assert/workspace";
 import { bearer, createToken, emailFor, register } from "../../fixtures/auth";
 import { expect, test } from "../../fixtures/test";
 import { slugFor } from "../../fixtures/workspaces";
 
-// W2, the switch of workspace creation (M2 design 3).
+// W2, the switch of workspace creation (M2 design 3), and the server
+// administrator's command that creates workspaces while it is off (M2/P4
+// design 3.3).
 
 test("W2 (API): with creation off, the instance says so and creating answers 403", async ({
   db,
@@ -31,5 +35,49 @@ test("W2 (API): with creation off, the instance says so and creating answers 403
     expect(refused.response.status).toBe(403);
     expect(refused.error?.code).toBe("workspace.creation_disabled");
   }
+  await expectNoWorkspaceAdded(db, before);
+});
+
+test("W2 (command line): workspaces create makes an account the admin of a new workspace while creation is off; a missing or deactivated account, or a taken slug, changes nothing", async ({
+  api,
+  db,
+}, testInfo) => {
+  const closed = { NWIKI_WORKSPACE__CREATION_ENABLED: "false" };
+  const email = emailFor(testInfo);
+  const pat = (await createToken(api, (await register(api, email)).access_token, { name: "W2" })).token;
+  const adminId = await accountIdOf(db, email);
+  const slug = slugFor(testInfo);
+
+  const out = await nervewikiWorkspaces(
+    db,
+    ["create", "--slug", slug, "--name", "Acme", "--admin", email.toUpperCase()],
+    closed
+  );
+
+  const { data } = await api.GET("/api/v0/workspaces", { headers: bearer(pat) });
+  const created = data?.data[0];
+  expect(data?.data).toHaveLength(1);
+  expect(created).toMatchObject({ slug, name: "Acme", role: "admin" });
+  expect(out).toBe(`created workspace ${slug} (${created?.id}) with admin ${email}\n`);
+  if (created) {
+    await expectNewWorkspace(db, created, adminId);
+  }
+
+  const deactivatedEmail = emailFor(testInfo, "deactivated");
+  const deactivated = await register(api, deactivatedEmail);
+  expect((await api.POST("/api/v0/me/deactivate", { headers: bearer(deactivated.access_token) })).response.status).toBe(
+    204
+  );
+  const before = await countWorkspaces(db);
+  const other = slugFor(testInfo, "other");
+  await Promise.all(
+    (
+      [
+        [["--slug", other, "--name", "Other", "--admin", emailFor(testInfo, "nobody")], "The account does not exist."],
+        [["--slug", other, "--name", "Other", "--admin", deactivatedEmail], "This account is deactivated."],
+        [["--slug", slug, "--name", "Other", "--admin", email], "The slug is taken."],
+      ] as const
+    ).map(([args, message]) => nervewikiWorkspacesFails(db, ["create", ...args], message, closed))
+  );
   await expectNoWorkspaceAdded(db, before);
 });

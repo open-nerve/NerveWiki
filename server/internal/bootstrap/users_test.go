@@ -216,8 +216,12 @@ func TestCommandErrorKeepsOtherErrors(t *testing.T) {
 	if err := commandError(domain.ErrAccountNotFound); !errors.Is(err, domain.ErrAccountNotFound) {
 		t.Errorf("commandError(%v) = %v, want it unchanged", domain.ErrAccountNotFound, err)
 	}
-	unknown := shared.Invalid(shared.FieldError{Field: "name", Message: "is required"})
-	if err := commandError(unknown); err == nil || err.Error() != "name is required" {
+	unknown := shared.Invalid(shared.FieldError{Field: "display_name", Message: "is required"})
+	if err := commandError(unknown); err == nil || err.Error() != "display_name is required" {
 		t.Errorf("commandError(%v) = %v, want the field's own name", unknown, err)
+	}
+	workspaceFields := shared.Invalid(shared.FieldError{Field: "name", Message: "is required"}, shared.FieldError{Field: "slug", Message: "is reserved"})
+	if err := commandError(workspaceFields); err == nil || err.Error() != "--name is required; --slug is reserved" {
+		t.Errorf("commandError(%v) = %v, want the flags of nervewiki workspaces create", workspaceFields, err)
 	}
 }

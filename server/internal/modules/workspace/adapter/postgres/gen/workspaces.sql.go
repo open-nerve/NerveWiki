@@ -12,47 +12,6 @@ import (
 	"uuid"
 )
 
-const addMember = `-- name: AddMember :exec
-INSERT INTO workspace_members (id, workspace_id, user_id, role, created_by_id, updated_by_id, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $5,
-    $6, $6)
-`
-
-type AddMemberParams struct {
-	ID          uuid.UUID
-	WorkspaceID uuid.UUID
-	UserID      uuid.UUID
-	Role        string
-	By          uuid.UUID
-	CreatedAt   time.Time
-}
-
-// The audit columns come from the member's creation time and the caller.
-func (q *Queries) AddMember(ctx context.Context, arg AddMemberParams) error {
-	_, err := q.db.Exec(ctx, addMember,
-		arg.ID,
-		arg.WorkspaceID,
-		arg.UserID,
-		arg.Role,
-		arg.By,
-		arg.CreatedAt,
-	)
-	return err
-}
-
-const countActiveAdmins = `-- name: CountActiveAdmins :one
-SELECT count(*)
-FROM workspace_members
-WHERE workspace_id = $1 AND role = 'admin' AND ended_at IS NULL AND deleted_at IS NULL
-`
-
-func (q *Queries) CountActiveAdmins(ctx context.Context, workspaceID uuid.UUID) (int64, error) {
-	row := q.db.QueryRow(ctx, countActiveAdmins, workspaceID)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
-}
-
 const createWorkspace = `-- name: CreateWorkspace :exec
 INSERT INTO workspaces (id, slug, name, created_by_id, updated_by_id, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $4, $5, $5)
@@ -78,24 +37,6 @@ func (q *Queries) CreateWorkspace(ctx context.Context, arg CreateWorkspaceParams
 	return err
 }
 
-const deleteMembersOf = `-- name: DeleteMembersOf :exec
-UPDATE workspace_members
-SET deleted_at = $1::timestamptz, updated_by_id = $2, updated_at = $1
-WHERE workspace_id = $3 AND deleted_at IS NULL
-`
-
-type DeleteMembersOfParams struct {
-	Now         time.Time
-	By          uuid.UUID
-	WorkspaceID uuid.UUID
-}
-
-// Every row of the workspace not deleted, ended ones too, at the workspace's deletion time.
-func (q *Queries) DeleteMembersOf(ctx context.Context, arg DeleteMembersOfParams) error {
-	_, err := q.db.Exec(ctx, deleteMembersOf, arg.Now, arg.By, arg.WorkspaceID)
-	return err
-}
-
 const deleteWorkspace = `-- name: DeleteWorkspace :exec
 UPDATE workspaces
 SET deleted_at = $1::timestamptz, updated_by_id = $2, updated_at = $1
@@ -112,94 +53,6 @@ type DeleteWorkspaceParams struct {
 func (q *Queries) DeleteWorkspace(ctx context.Context, arg DeleteWorkspaceParams) error {
 	_, err := q.db.Exec(ctx, deleteWorkspace, arg.Now, arg.By, arg.ID)
 	return err
-}
-
-const endMemberships = `-- name: EndMemberships :exec
-UPDATE workspace_members
-SET ended_at = $1::timestamptz, updated_by_id = $2, updated_at = $1
-WHERE workspace_id = ANY($3::uuid[]) AND user_id = $4
-    AND ended_at IS NULL AND deleted_at IS NULL
-`
-
-type EndMembershipsParams struct {
-	Now          time.Time
-	By           uuid.UUID
-	WorkspaceIds []uuid.UUID
-	UserID       uuid.UUID
-}
-
-// The account's active memberships of the workspaces.
-func (q *Queries) EndMemberships(ctx context.Context, arg EndMembershipsParams) error {
-	_, err := q.db.Exec(ctx, endMemberships,
-		arg.Now,
-		arg.By,
-		arg.WorkspaceIds,
-		arg.UserID,
-	)
-	return err
-}
-
-const findActiveMember = `-- name: FindActiveMember :one
-SELECT id, workspace_id, user_id, role, created_at
-FROM workspace_members
-WHERE id = $1 AND ended_at IS NULL AND deleted_at IS NULL
-`
-
-type FindActiveMemberRow struct {
-	ID          uuid.UUID
-	WorkspaceID uuid.UUID
-	UserID      uuid.UUID
-	Role        string
-	CreatedAt   time.Time
-}
-
-func (q *Queries) FindActiveMember(ctx context.Context, id uuid.UUID) (FindActiveMemberRow, error) {
-	row := q.db.QueryRow(ctx, findActiveMember, id)
-	var i FindActiveMemberRow
-	err := row.Scan(
-		&i.ID,
-		&i.WorkspaceID,
-		&i.UserID,
-		&i.Role,
-		&i.CreatedAt,
-	)
-	return i, err
-}
-
-const findMembership = `-- name: FindMembership :one
-SELECT id, workspace_id, user_id, role, created_at, (ended_at IS NULL)::boolean AS active
-FROM workspace_members
-WHERE workspace_id = $1 AND user_id = $2 AND deleted_at IS NULL
-`
-
-type FindMembershipParams struct {
-	WorkspaceID uuid.UUID
-	UserID      uuid.UUID
-}
-
-type FindMembershipRow struct {
-	ID          uuid.UUID
-	WorkspaceID uuid.UUID
-	UserID      uuid.UUID
-	Role        string
-	CreatedAt   time.Time
-	Active      bool
-}
-
-// The account's membership of the workspace, ended or not, deleted excepted: at most one
-// (workspace_members_workspace_id_user_id_key).
-func (q *Queries) FindMembership(ctx context.Context, arg FindMembershipParams) (FindMembershipRow, error) {
-	row := q.db.QueryRow(ctx, findMembership, arg.WorkspaceID, arg.UserID)
-	var i FindMembershipRow
-	err := row.Scan(
-		&i.ID,
-		&i.WorkspaceID,
-		&i.UserID,
-		&i.Role,
-		&i.CreatedAt,
-		&i.Active,
-	)
-	return i, err
 }
 
 const findWorkspaceByID = `-- name: FindWorkspaceByID :one
@@ -256,48 +109,6 @@ func (q *Queries) FindWorkspaceBySlug(ctx context.Context, slug string) (FindWor
 		&i.UpdatedAt,
 	)
 	return i, err
-}
-
-const listActiveMembers = `-- name: ListActiveMembers :many
-SELECT id, workspace_id, user_id, role, created_at
-FROM workspace_members
-WHERE workspace_id = $1 AND ended_at IS NULL AND deleted_at IS NULL
-ORDER BY created_at, id
-`
-
-type ListActiveMembersRow struct {
-	ID          uuid.UUID
-	WorkspaceID uuid.UUID
-	UserID      uuid.UUID
-	Role        string
-	CreatedAt   time.Time
-}
-
-// By when they joined.
-func (q *Queries) ListActiveMembers(ctx context.Context, workspaceID uuid.UUID) ([]ListActiveMembersRow, error) {
-	rows, err := q.db.Query(ctx, listActiveMembers, workspaceID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []ListActiveMembersRow
-	for rows.Next() {
-		var i ListActiveMembersRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.WorkspaceID,
-			&i.UserID,
-			&i.Role,
-			&i.CreatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
 }
 
 const listWorkspacesOf = `-- name: ListWorkspacesOf :many
@@ -407,6 +218,54 @@ func (q *Queries) LockWorkspaceBySlug(ctx context.Context, slug string) (LockWor
 	return i, err
 }
 
+const lockWorkspacesOf = `-- name: LockWorkspacesOf :many
+SELECT id, slug, name, created_at, updated_at
+FROM workspaces
+WHERE id IN (
+    SELECT workspace_id FROM workspace_members
+    WHERE user_id = $1 AND ended_at IS NULL AND deleted_at IS NULL
+) AND deleted_at IS NULL
+ORDER BY id
+FOR NO KEY UPDATE
+`
+
+type LockWorkspacesOfRow struct {
+	ID        uuid.UUID
+	Slug      string
+	Name      string
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+// The workspaces not deleted of the account's active memberships, locked FOR NO KEY UPDATE in id order until
+// the transaction ends: a deactivation's (M2/P4 design 3.1). The memberships are those of the statement's
+// snapshot; the caller reads them again under the locks (ListStandings).
+func (q *Queries) LockWorkspacesOf(ctx context.Context, userID uuid.UUID) ([]LockWorkspacesOfRow, error) {
+	rows, err := q.db.Query(ctx, lockWorkspacesOf, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []LockWorkspacesOfRow
+	for rows.Next() {
+		var i LockWorkspacesOfRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Slug,
+			&i.Name,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const renameWorkspace = `-- name: RenameWorkspace :exec
 UPDATE workspaces
 SET name = $1, updated_by_id = $2, updated_at = $3
@@ -428,52 +287,6 @@ func (q *Queries) RenameWorkspace(ctx context.Context, arg RenameWorkspaceParams
 		arg.ID,
 	)
 	return err
-}
-
-const restoreMember = `-- name: RestoreMember :exec
-UPDATE workspace_members
-SET ended_at = NULL, role = $1, updated_by_id = $2, updated_at = $3
-WHERE id = $4
-`
-
-type RestoreMemberParams struct {
-	Role string
-	By   uuid.UUID
-	Now  time.Time
-	ID   uuid.UUID
-}
-
-// An ended membership active again, with the role: the same row, which keeps when the account first
-// joined, created_at (M2/P3 design 3.5).
-func (q *Queries) RestoreMember(ctx context.Context, arg RestoreMemberParams) error {
-	_, err := q.db.Exec(ctx, restoreMember,
-		arg.Role,
-		arg.By,
-		arg.Now,
-		arg.ID,
-	)
-	return err
-}
-
-const roleOf = `-- name: RoleOf :one
-SELECT role
-FROM workspace_members
-WHERE workspace_id = $1 AND user_id = $2
-    AND ended_at IS NULL AND deleted_at IS NULL
-`
-
-type RoleOfParams struct {
-	WorkspaceID uuid.UUID
-	UserID      uuid.UUID
-}
-
-// The access module's fact of the workspace level: the account's active membership of the workspace,
-// read in the caller's transaction.
-func (q *Queries) RoleOf(ctx context.Context, arg RoleOfParams) (string, error) {
-	row := q.db.QueryRow(ctx, roleOf, arg.WorkspaceID, arg.UserID)
-	var role string
-	err := row.Scan(&role)
-	return role, err
 }
 
 const shareWorkspaceByID = `-- name: ShareWorkspaceByID :one
@@ -545,27 +358,4 @@ func (q *Queries) SlugTaken(ctx context.Context, slug string) (bool, error) {
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
-}
-
-const updateMemberRole = `-- name: UpdateMemberRole :exec
-UPDATE workspace_members
-SET role = $1, updated_by_id = $2, updated_at = $3
-WHERE id = $4
-`
-
-type UpdateMemberRoleParams struct {
-	Role string
-	By   uuid.UUID
-	Now  time.Time
-	ID   uuid.UUID
-}
-
-func (q *Queries) UpdateMemberRole(ctx context.Context, arg UpdateMemberRoleParams) error {
-	_, err := q.db.Exec(ctx, updateMemberRole,
-		arg.Role,
-		arg.By,
-		arg.Now,
-		arg.ID,
-	)
-	return err
 }

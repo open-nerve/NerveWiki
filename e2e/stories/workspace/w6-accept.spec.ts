@@ -4,7 +4,7 @@ import { bearer, emailFor, register } from "../../fixtures/auth";
 import { accept, invite, joinAs, preview, previewOf, tryAccept } from "../../fixtures/invitations";
 import { leave, memberOf } from "../../fixtures/members";
 import { expect, test } from "../../fixtures/test";
-import { nervewikiUsers } from "../../fixtures/users";
+import { nervewikiUsers } from "../../fixtures/admin";
 import { newTeam } from "../../fixtures/workspaces";
 
 // W6, accepting (M2/P3 design 3.3): the link's token and the invitee's

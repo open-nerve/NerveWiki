@@ -77,8 +77,9 @@ func testConfig(t *testing.T, dbURL string, autoMigrate bool) config.Config {
 		},
 		RateLimit: roomyLimits(),
 		Workspace: config.WorkspaceConfig{CreationEnabled: true},
-		Jobs:      config.JobsConfig{ShutdownTimeout: 5 * time.Second},
-		Log:       config.LogConfig{Level: "error", Format: "text"},
+		// The purge's first run starts with the jobs too.
+		Jobs: config.JobsConfig{ShutdownTimeout: 5 * time.Second, PurgeInterval: time.Hour, PurgeRetention: 1440 * time.Hour},
+		Log:  config.LogConfig{Level: "error", Format: "text"},
 	}
 }
 

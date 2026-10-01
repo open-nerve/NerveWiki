@@ -2,18 +2,14 @@ package bootstrap
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"strconv"
-	"strings"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/identity"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/clock"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
-	"github.com/open-nerve/NerveWiki/server/internal/platform/logging"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres"
-	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
 // UserCommand is one `nervewiki users` command on the administrator's use
@@ -21,37 +17,28 @@ import (
 type UserCommand func(ctx context.Context, admin *identity.Admin) (string, error)
 
 // Users runs cmd on the command line's composition (M1/P4 design 3.6): a
-// pool and identity's administrator use cases; no HTTP server, rate limiter
-// or jobs client. The command's line goes to out, the logs to logOut. An
-// error is one line for the administrator.
+// pool and identity's administrator use cases, with the deactivation's
+// registrants; no HTTP server, rate limiter or jobs client. The command's
+// line goes to out, the logs to logOut. An error is one line for the
+// administrator.
 func Users(ctx context.Context, cfg config.Config, logOut, out io.Writer, cmd UserCommand) error {
-	logger, err := logging.New(logOut, cfg.Log)
+	c, err := openAdminCommand(ctx, cfg, logOut)
 	if err != nil {
 		return err
 	}
-	pool, err := postgres.NewPool(ctx, cfg.Database)
-	if err != nil {
-		return err
-	}
-	defer pool.Close()
-	if err := awaitDatabase(ctx, pool, databaseWait); err != nil {
-		return err
-	}
-	vetoers, subscribers := deactivationRegistrants()
+	defer c.close()
+	vetoers, subscribers := deactivationRegistrants(c.pool)
 	admin := identity.NewAdmin(identity.AdminDeps{
-		Pool:                    pool,
-		Tx:                      postgres.NewTxManager(pool, cfg.Database.CommitTimeout),
+		Pool:                    c.pool,
+		Tx:                      postgres.NewTxManager(c.pool, cfg.Database.CommitTimeout),
 		Clock:                   clock.System{},
-		Logger:                  logger,
+		Logger:                  c.logger,
 		Password:                passwordHashing(cfg.Auth.Password),
 		DeactivationVetoers:     vetoers,
 		DeactivationSubscribers: subscribers,
 	})
 	line, err := cmd(ctx, admin)
-	if err != nil {
-		return commandError(err)
-	}
-	return writeLine(out, line)
+	return printResult(out, line, err)
 }
 
 // CreateUser is `nervewiki users create`.
@@ -110,33 +97,4 @@ func counted(n int, noun string) string {
 		noun += "s"
 	}
 	return strconv.Itoa(n) + " " + noun
-}
-
-// commandError is err as one line for the administrator (M1/P4 design 3.7):
-// the invalid fields of a domain error, each as "<name> <problem>" with the
-// name the command line knows it by, or else the error's detail.
-func commandError(err error) error {
-	var se *shared.Error
-	if !errors.As(err, &se) || len(se.Fields) == 0 {
-		return err
-	}
-	problems := make([]string, len(se.Fields))
-	for i, f := range se.Fields {
-		problems[i] = cliFieldName(f.Field) + " " + f.Message
-	}
-	return errors.New(strings.Join(problems, "; "))
-}
-
-// cliFieldName is how the command line names a use case's field.
-func cliFieldName(field string) string {
-	switch field {
-	case "email":
-		return "--email"
-	case "new_email":
-		return "--new-email"
-	case "password":
-		return "the password"
-	default:
-		return field
-	}
 }
