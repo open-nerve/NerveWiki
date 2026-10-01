@@ -1,5 +1,6 @@
 // Package notebook is the module of notebooks and their members (v0.1
-// design 3.3; M3 design). Its root is what bootstrap sees: Actions for the
+// design 3.3; M3 design). Its root is what bootstrap sees: NewFacts for the
+// access module's facts; Purgers for the purge; Actions for the
 // composition's checks.
 package notebook
 

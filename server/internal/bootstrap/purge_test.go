@@ -2,6 +2,8 @@ package bootstrap
 
 import (
 	"context"
+	"io/fs"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -89,10 +91,68 @@ func TestPurgersComeBeforeTheTablesTheyReference(t *testing.T) {
 	}
 }
 
+// A foreign key into a purged table from another module's table is ON
+// DELETE RESTRICT (v0.1 design 13.1, item 6): each row goes by its own
+// module's purger, never by a cascade from another module's, which the
+// purger of the child's module would not know of.
+func TestCrossModuleForeignKeysToPurgedTablesRestrict(t *testing.T) {
+	pool := connect(t, pgtest.NewDatabase(t))
+	owners := tableOwners(t)
+	tables := purgedTables(pool)
+	keys := queryStrings(t, pool, `SELECT conname || ' ' || conrelid::regclass::text || ' ' || confrelid::regclass::text || ' ' ||
+		confdeltype::text FROM pg_constraint WHERE contype = 'f' AND connamespace = 'public'::regnamespace ORDER BY 1`)
+
+	checked := 0
+	for _, key := range keys {
+		f := strings.Fields(key) // the constraint, the child, the parent, ON DELETE
+		name, child, parent, onDelete := f[0], f[1], f[2], f[3]
+		if owners[child] == "" || owners[parent] == "" {
+			t.Errorf("%s: no migration creates %s or %s", name, child, parent)
+			continue
+		}
+		if !slices.Contains(tables, parent) || owners[child] == owners[parent] {
+			continue
+		}
+		checked++
+		if onDelete != "r" {
+			t.Errorf("%s: %s (%s) references %s (%s) with ON DELETE %s; want RESTRICT (r)",
+				name, child, owners[child], parent, owners[parent], onDelete)
+		}
+	}
+	if checked == 0 {
+		t.Error("no foreign key from one module's table into another's purged table: the rule checks nothing")
+	}
+}
+
+// tableOwners maps each table a migration creates to the owner in the
+// migration's name, NNNNN_<owner>_<description>.sql: a table's module.
+func tableOwners(t *testing.T) map[string]string {
+	t.Helper()
+	files, err := fs.Glob(migrations.FS(), "*.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	creates := regexp.MustCompile(`(?m)^CREATE TABLE (\w+)`)
+	owners := make(map[string]string)
+	for _, file := range files {
+		parts := strings.SplitN(file, "_", 3)
+		sql, err := fs.ReadFile(migrations.FS(), file)
+		if err != nil || len(parts) != 3 {
+			t.Fatalf("%s: %v", file, err)
+		}
+		for _, m := range creates.FindAllStringSubmatch(string(sql), -1) {
+			owners[m[1]] = parts[1]
+		}
+	}
+	return owners
+}
+
 // The purge runs as the server's jobs start (M2/P4 design 3.4): what was
 // deleted longer than the retention ago goes, the workspace with its
-// members and invitations, and an invitation withdrawn that long ago from
-// a live workspace; what was deleted since stays.
+// members, invitations and notebooks, an invitation withdrawn and a
+// notebook deleted that long ago in a live workspace; what was deleted
+// since stays. The notebooks go before their workspace, which their
+// foreign key restricts.
 func TestThePurgeDeletesWhatOutlivedTheRetention(t *testing.T) {
 	url := pgtest.NewDatabase(t)
 	pool := connect(t, url)
@@ -111,6 +171,13 @@ func TestThePurgeDeletesWhatOutlivedTheRetention(t *testing.T) {
 		`INSERT INTO workspace_invitations (id, workspace_id, email, role, created_by_id, updated_by_id, created_at, updated_at, deleted_at)
 			VALUES (gen_random_uuid(), '0199a2b4-0000-7000-8000-0000000000b3', 'erin@example.com', 'member',
 				'0199a2b4-0000-7000-8000-0000000000a1', '0199a2b4-0000-7000-8000-0000000000a1', now(), now(), now() - interval '61 days')`,
+		`INSERT INTO notebooks (id, workspace_id, name, created_by_id, updated_by_id, created_at, updated_at, deleted_at)
+			SELECT gen_random_uuid(), id, 'Notes', created_by_id, created_by_id, now(), now(), deleted_at FROM workspaces`,
+		`INSERT INTO notebooks (id, workspace_id, name, created_by_id, updated_by_id, created_at, updated_at, deleted_at)
+			VALUES (gen_random_uuid(), '0199a2b4-0000-7000-8000-0000000000b3', 'Gone',
+				'0199a2b4-0000-7000-8000-0000000000a1', '0199a2b4-0000-7000-8000-0000000000a1', now(), now(), now() - interval '61 days')`,
+		`INSERT INTO notebook_members (id, notebook_id, user_id, role, created_by_id, updated_by_id, created_at, updated_at, deleted_at)
+			SELECT gen_random_uuid(), id, created_by_id, 'admin', created_by_id, created_by_id, now(), now(), deleted_at FROM notebooks`,
 	} {
 		if _, err := pool.Exec(ctx, stmt); err != nil {
 			t.Fatalf("%s: %v", stmt, err)
@@ -132,5 +199,10 @@ func TestThePurgeDeletesWhatOutlivedTheRetention(t *testing.T) {
 	if want := []string{"live 1 1", "recent 1 1"}; !slices.Equal(got, want) || count(t, pool, "SELECT count(*) FROM workspace_members") != 2 ||
 		count(t, pool, "SELECT count(*) FROM workspace_invitations") != 2 {
 		t.Errorf("workspaces with their members and invitations: %q; want %q, nothing else: old and erin's withdrawn invitation purged", got, want)
+	}
+	got = queryStrings(t, pool, `SELECT w.slug || ' ' || n.name || ' ' || (SELECT count(*) FROM notebook_members m WHERE m.notebook_id = n.id)
+		FROM notebooks n JOIN workspaces w ON w.id = n.workspace_id ORDER BY 1`)
+	if want := []string{"live Notes 1", "recent Notes 1"}; !slices.Equal(got, want) || count(t, pool, "SELECT count(*) FROM notebook_members") != 2 {
+		t.Errorf("notebooks with their members: %q; want %q, nothing else: old's and live's deleted one purged", got, want)
 	}
 }

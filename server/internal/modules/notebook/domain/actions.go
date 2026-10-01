@@ -1,4 +1,3 @@
-// Package domain holds the notebook module's rules.
 package domain
 
 import "github.com/open-nerve/NerveWiki/server/internal/shared"

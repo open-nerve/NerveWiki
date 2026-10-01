@@ -43,7 +43,7 @@ func WorkspaceAccesses() []WorkspaceAccess {
 // take it from here, so the two agree (M3/P1 design 3.3).
 func EffectiveNotebookRole(explicit NotebookRole, access WorkspaceAccess, workspace WorkspaceRole) NotebookRole {
 	var byDefault NotebookRole
-	if workspace == WorkspaceAdmin || workspace == WorkspaceMember {
+	if ReachedByAccess(workspace) {
 		switch access {
 		case AccessViewer:
 			byDefault = NotebookReader
@@ -58,6 +58,13 @@ func EffectiveNotebookRole(explicit NotebookRole, access WorkspaceAccess, worksp
 		return ""
 	}
 	return explicit
+}
+
+// ReachedByAccess reports whether a notebook's workspace access gives a
+// caller of workspace role its default role: an admin's or a member's, not
+// a guest's. The notebook list filters by it.
+func ReachedByAccess(workspace WorkspaceRole) bool {
+	return workspace == WorkspaceAdmin || workspace == WorkspaceMember
 }
 
 // notebookRank orders the roles: reader below editor below admin. A value
