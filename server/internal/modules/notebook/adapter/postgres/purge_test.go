@@ -121,9 +121,10 @@ func TestPurgeTakesBatches(t *testing.T) {
 	}
 }
 
-// A row another transaction holds is skipped, not waited for; and a
-// notebook whose members a purger skipped stays until a later run takes
-// them: deleting it would cascade to the held row and wait for it.
+// A row another transaction holds is skipped, not waited for: a member
+// row, and a notebook whose members are gone; and a notebook whose members
+// a purger skipped stays until a later run takes them: deleting it would
+// cascade to the held row and wait for it.
 func TestPurgeSkipsALockedRowAndWaitsForTheMembers(t *testing.T) {
 	ctx := context.Background()
 	s, pool := newStore(t)
@@ -134,6 +135,9 @@ func TestPurgeSkipsALockedRowAndWaitsForTheMembers(t *testing.T) {
 	}
 	defer func() { _ = holder.Rollback(ctx) }()
 	if _, err := holder.Exec(ctx, "SELECT 1 FROM notebook_members WHERE notebook_id = $1 LIMIT 1 FOR UPDATE", f.old); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := holder.Exec(ctx, "SELECT 1 FROM notebooks WHERE id = $1 FOR UPDATE", f.older); err != nil {
 		t.Fatal(err)
 	}
 
@@ -147,8 +151,8 @@ func TestPurgeSkipsALockedRowAndWaitsForTheMembers(t *testing.T) {
 		}
 		purged = append(purged, n)
 	}
-	if !slices.Equal(purged, []int{3, 1}) || countWhere(t, pool, "notebooks", "id = $1", f.old) != 1 {
-		t.Errorf("purged %v, want every member but the held one, and older alone", purged)
+	if !slices.Equal(purged, []int{3, 0}) || countWhere(t, pool, "notebooks", "id = ANY($1)", []uuid.UUID{f.old, f.older}) != 2 {
+		t.Errorf("purged %v, want every member but the held one, and no notebook", purged)
 	}
 
 	if err := holder.Rollback(ctx); err != nil {
@@ -162,7 +166,7 @@ func TestPurgeSkipsALockedRowAndWaitsForTheMembers(t *testing.T) {
 		}
 		purged = append(purged, n)
 	}
-	if !slices.Equal(purged, []int{1, 1}) {
-		t.Errorf("the next run purged %v, want the member held before and old", purged)
+	if !slices.Equal(purged, []int{1, 2}) {
+		t.Errorf("the next run purged %v, want the member held before, old and older", purged)
 	}
 }

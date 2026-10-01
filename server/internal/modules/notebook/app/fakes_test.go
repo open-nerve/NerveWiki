@@ -15,9 +15,14 @@ import (
 // now is the fixed clock's instant.
 func now() time.Time { return time.Date(2026, 10, 2, 10, 0, 0, 0, time.UTC) }
 
-type fixedClock struct{}
+// tickingClock reads now first, then a microsecond later each time: a use
+// case that read it twice for what must be one time would write two.
+type tickingClock struct{ reads int }
 
-func (fixedClock) Now() time.Time { return now() }
+func (c *tickingClock) Now() time.Time {
+	c.reads++
+	return now().Add(time.Duration(c.reads-1) * time.Microsecond)
+}
 
 type txKey struct{}
 

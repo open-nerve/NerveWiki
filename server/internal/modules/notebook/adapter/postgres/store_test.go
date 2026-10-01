@@ -173,6 +173,19 @@ func TestListNotebooks(t *testing.T) {
 	gone := newNotebook(t, s, acme, "gone", shared.AccessEditor, alice)
 	exec(t, pool, "UPDATE notebooks SET deleted_at = $2 WHERE id = $1", gone.ID, now())
 	newNotebook(t, s, newWorkspace(t, pool, "other", alice), "other", shared.AccessEditor, alice)
+	// Names equal but for case come by name, then names equal by id: each
+	// pair is written against the order it must come in.
+	lowerNotes := newNotebook(t, s, acme, "notes", shared.AccessViewer, bob)
+	upperNotes := newNotebook(t, s, acme, "Notes", shared.AccessViewer, bob)
+	first, second := uuid.NewV7(), uuid.NewV7()
+	same := func(id uuid.UUID) domain.Notebook {
+		n := domain.Notebook{ID: id, WorkspaceID: acme, Name: "same", Access: shared.AccessViewer, CreatedAt: now(), UpdatedAt: now()}
+		if err := s.CreateNotebook(ctx, n, bob); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	sameSecond, sameFirst := same(second), same(first)
 
 	for _, tt := range []struct {
 		name    string
@@ -183,6 +196,10 @@ func TestListNotebooks(t *testing.T) {
 			{Notebook: editor, MemberCount: 1},
 			{Notebook: viewer, MemberCount: 1},
 			{Notebook: mine, Explicit: shared.NotebookAdmin, MemberCount: 2},
+			{Notebook: upperNotes, MemberCount: 1},
+			{Notebook: lowerNotes, MemberCount: 1},
+			{Notebook: sameFirst},
+			{Notebook: sameSecond},
 		}},
 		{"not reached", false, []app.Listed{{Notebook: mine, Explicit: shared.NotebookAdmin, MemberCount: 2}}},
 	} {
@@ -307,6 +324,58 @@ func TestDeleteNotebookAndItsMembers(t *testing.T) {
 
 // The facts of the access module's notebook level, in the caller's
 // transaction.
+// A workspace's deletion locks its notebooks by id, whatever order they
+// lie in (M3 design 8): from M4 a page write holds a notebook's row FOR
+// SHARE without the workspace's, and one that holds two takes them in the
+// same order. The higher id is written first and held: the deletion has
+// the lower one locked while it waits.
+func TestDeleteNotebooksOfLocksThemByID(t *testing.T) {
+	ctx := context.Background()
+	s, pool := newStore(t)
+	alice := newAccount(t, pool, "alice@corp.com")
+	acme := newWorkspace(t, pool, "acme", alice)
+	low, high := uuid.NewV7(), uuid.NewV7()
+	for _, id := range []uuid.UUID{high, low} {
+		n := domain.Notebook{ID: id, WorkspaceID: acme, Name: "Engineering", Access: shared.AccessNone, CreatedAt: now(), UpdatedAt: now()}
+		if err := s.CreateNotebook(ctx, n, alice); err != nil {
+			t.Fatal(err)
+		}
+	}
+	holder, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = holder.Rollback(ctx) }()
+	if _, err := holder.Exec(ctx, "SELECT 1 FROM notebooks WHERE id = $1 FOR SHARE", high); err != nil {
+		t.Fatal(err)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		done <- inTx(t, pool, func(ctx context.Context) error {
+			_, err := s.DeleteNotebooksOf(ctx, acme, alice, now())
+			return err
+		})
+	}()
+	pgtest.WaitForLockWaitsOn(t, pool, "notebooks", 1, 10*time.Second)
+	probe, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, held := probe.Exec(ctx, "SELECT 1 FROM notebooks WHERE id = $1 FOR SHARE NOWAIT", low)
+	_ = probe.Rollback(ctx)
+	if err := holder.Rollback(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if held == nil {
+		t.Error("the lower id was free while the deletion waited for the higher, want it locked first")
+	}
+}
+
 func TestNotebookFacts(t *testing.T) {
 	ctx := context.Background()
 	s, pool := newStore(t)

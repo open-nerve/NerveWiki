@@ -57,12 +57,19 @@ WHERE n.id = sqlc.arg(notebook_id) AND n.deleted_at IS NULL;
 
 -- name: DeleteNotebooksOf :many
 -- Every notebook not deleted of the workspace, at the workspace's deletion time, by its deleter; their ids in
--- order. The deletion holds the workspace's row FOR NO KEY UPDATE, and every notebook write of the workspace
--- takes it FOR SHARE first: no other transaction holds these rows, so their order of locking does not matter.
-WITH deleted AS (
-    UPDATE notebooks
+-- order. The deletion holds the workspace's row FOR NO KEY UPDATE, which keeps out every notebook management
+-- write; the rows are still locked by id (M3 design 8), as from M4 a page write holds a notebook's row FOR SHARE
+-- without the workspace's, and one that holds two takes them in that order.
+WITH locked AS (
+    SELECT l.id FROM notebooks l
+    WHERE l.workspace_id = sqlc.arg(workspace_id) AND l.deleted_at IS NULL
+    ORDER BY l.id
+    FOR NO KEY UPDATE
+), deleted AS (
+    UPDATE notebooks n
     SET deleted_at = sqlc.arg(now)::timestamptz, updated_by_id = sqlc.arg(by), updated_at = sqlc.arg(now)
-    WHERE workspace_id = sqlc.arg(workspace_id) AND deleted_at IS NULL
-    RETURNING id
+    FROM locked
+    WHERE n.id = locked.id
+    RETURNING n.id
 )
 SELECT id FROM deleted ORDER BY id;

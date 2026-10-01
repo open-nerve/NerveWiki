@@ -14,20 +14,20 @@ import (
 
 func (f fixture) create() *app.CreateNotebook {
 	return app.NewCreateNotebook(app.CreateNotebookDeps{
-		Workspaces: f.workspaces, Notebooks: f.store, Auth: f.auth, Tx: f.tx, Clock: fixedClock{}, Logger: f.logger(),
+		Workspaces: f.workspaces, Notebooks: f.store, Auth: f.auth, Tx: f.tx, Clock: &tickingClock{}, Logger: f.logger(),
 	})
 }
 
 func (f fixture) update() *app.UpdateNotebook {
 	return app.NewUpdateNotebook(app.UpdateNotebookDeps{
-		Workspaces: f.workspaces, Finder: f.store, Notebooks: f.store, Auth: f.auth, Tx: f.tx, Clock: fixedClock{}, Logger: f.logger(),
+		Workspaces: f.workspaces, Finder: f.store, Notebooks: f.store, Auth: f.auth, Tx: f.tx, Clock: &tickingClock{}, Logger: f.logger(),
 	})
 }
 
 func (f fixture) delete(subscribers ...app.NotebookDeletionSubscriber) *app.DeleteNotebook {
 	return app.NewDeleteNotebook(app.DeleteNotebookDeps{
 		Workspaces: f.workspaces, Finder: f.store, Notebooks: f.store, Subscribers: subscribers,
-		Auth: f.auth, Tx: f.tx, Clock: fixedClock{}, Logger: f.logger(),
+		Auth: f.auth, Tx: f.tx, Clock: &tickingClock{}, Logger: f.logger(),
 	})
 }
 

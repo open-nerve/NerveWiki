@@ -59,26 +59,33 @@ func (q *Queries) DeleteNotebook(ctx context.Context, arg DeleteNotebookParams) 
 }
 
 const deleteNotebooksOf = `-- name: DeleteNotebooksOf :many
-WITH deleted AS (
-    UPDATE notebooks
-    SET deleted_at = $1::timestamptz, updated_by_id = $2, updated_at = $1
-    WHERE workspace_id = $3 AND deleted_at IS NULL
-    RETURNING id
+WITH locked AS (
+    SELECT l.id FROM notebooks l
+    WHERE l.workspace_id = $1 AND l.deleted_at IS NULL
+    ORDER BY l.id
+    FOR NO KEY UPDATE
+), deleted AS (
+    UPDATE notebooks n
+    SET deleted_at = $2::timestamptz, updated_by_id = $3, updated_at = $2
+    FROM locked
+    WHERE n.id = locked.id
+    RETURNING n.id
 )
 SELECT id FROM deleted ORDER BY id
 `
 
 type DeleteNotebooksOfParams struct {
+	WorkspaceID uuid.UUID
 	Now         time.Time
 	By          uuid.UUID
-	WorkspaceID uuid.UUID
 }
 
 // Every notebook not deleted of the workspace, at the workspace's deletion time, by its deleter; their ids in
-// order. The deletion holds the workspace's row FOR NO KEY UPDATE, and every notebook write of the workspace
-// takes it FOR SHARE first: no other transaction holds these rows, so their order of locking does not matter.
+// order. The deletion holds the workspace's row FOR NO KEY UPDATE, which keeps out every notebook management
+// write; the rows are still locked by id (M3 design 8), as from M4 a page write holds a notebook's row FOR SHARE
+// without the workspace's, and one that holds two takes them in that order.
 func (q *Queries) DeleteNotebooksOf(ctx context.Context, arg DeleteNotebooksOfParams) ([]uuid.UUID, error) {
-	rows, err := q.db.Query(ctx, deleteNotebooksOf, arg.Now, arg.By, arg.WorkspaceID)
+	rows, err := q.db.Query(ctx, deleteNotebooksOf, arg.WorkspaceID, arg.Now, arg.By)
 	if err != nil {
 		return nil, err
 	}
