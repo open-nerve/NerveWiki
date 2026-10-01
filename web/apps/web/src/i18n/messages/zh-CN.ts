@@ -117,7 +117,7 @@ export const zhCN: Messages = {
   "problem.workspace.not_found": "这个工作区不存在，或者你不是它的成员。",
   "problem.workspace.creation_disabled": "本服务器不允许创建工作区，请联系服务器管理员。",
   "problem.workspace.slug_taken": "这个地址已经被别的工作区使用。",
-  "problem.workspace.member_not_found": "这个人已经不是工作区的成员。",
+  "problem.workspace.member_not_found": "找不到这个成员，或者你已无权访问这个工作区。",
   "problem.workspace.own_membership": "不能修改或移出自己的成员身份。",
   "problem.workspace.sole_admin":
     "你是这个工作区唯一的管理员。请先让另一位成员成为管理员；工作区里没有别人时，可以删除它。",

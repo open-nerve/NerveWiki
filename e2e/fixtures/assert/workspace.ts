@@ -88,38 +88,35 @@ export async function expectNoWorkspaceAdded(db: Database, before: WorkspaceCoun
   expect(await countWorkspaces(db)).toEqual(before);
 }
 
-/** workspaces: renamed is the row as the API answered the rename, last updated by adminId. */
+/**
+ * workspaces: renamed is the row as the API answered the rename, last
+ * updated by adminId. The times are compared in SQL, to the microsecond:
+ * a JS Date keeps milliseconds only.
+ */
 export async function expectRenamed(db: Database, renamed: Workspace, adminId: string): Promise<void> {
-  const rows = await db.query<Pick<WorkspaceRow, "name" | "updated_by_id" | "updated_at" | "deleted_at">>(
-    `SELECT name, updated_by_id, updated_at, deleted_at FROM workspaces WHERE id = $1`,
-    [renamed.id]
+  const rows = await db.query<{ name: string; by_admin: boolean; at_answer: boolean; deleted: boolean }>(
+    `SELECT name, updated_by_id = $2 AS by_admin, updated_at = $3::timestamptz AS at_answer, deleted_at IS NOT NULL AS deleted
+       FROM workspaces WHERE id = $1`,
+    [renamed.id, adminId, renamed.updated_at]
   );
-  expect(rows).toEqual([
-    { name: renamed.name, updated_by_id: adminId, updated_at: new Date(renamed.updated_at), deleted_at: null },
-  ]);
+  expect(rows).toEqual([{ name: renamed.name, by_admin: true, at_answer: true, deleted: false }]);
 }
 
 /**
  * workspaces and workspace_members: the workspace id is deleted by
- * deleterId, and every membership of it with it, at the same time.
+ * deleterId, and every membership of it with it, at the same time, to the
+ * microsecond (compared in SQL).
  */
 export async function expectDeletedWithItsMembers(db: Database, id: string, deleterId: string): Promise<void> {
-  const [workspace] = await db.query<Pick<WorkspaceRow, "updated_by_id" | "updated_at" | "deleted_at">>(
-    `SELECT updated_by_id, updated_at, deleted_at FROM workspaces WHERE id = $1`,
-    [id]
+  const rows = await db.query<{ deleted: boolean; by_deleter: boolean; members: number; members_apart: number }>(
+    `SELECT w.deleted_at IS NOT NULL AND w.updated_at = w.deleted_at AS deleted, w.updated_by_id = $2 AS by_deleter,
+            (SELECT count(*)::int FROM workspace_members m WHERE m.workspace_id = w.id) AS members,
+            (SELECT count(*)::int FROM workspace_members m WHERE m.workspace_id = w.id
+               AND (m.deleted_at IS DISTINCT FROM w.deleted_at OR m.updated_at IS DISTINCT FROM w.deleted_at
+                    OR m.updated_by_id <> $2)) AS members_apart
+       FROM workspaces w WHERE w.id = $1`,
+    [id, deleterId]
   );
-  expect(workspace?.deleted_at).toBeInstanceOf(Date);
-  expect(workspace).toEqual({
-    updated_by_id: deleterId,
-    updated_at: workspace?.deleted_at,
-    deleted_at: workspace?.deleted_at,
-  });
-  const members = await db.query<{ deleted_at: Date | null; updated_by_id: string }>(
-    `SELECT deleted_at, updated_by_id FROM workspace_members WHERE workspace_id = $1`,
-    [id]
-  );
-  expect(members.length).toBeGreaterThan(0);
-  for (const m of members) {
-    expect(m).toEqual({ deleted_at: workspace?.deleted_at, updated_by_id: deleterId });
-  }
+  expect(rows).toEqual([{ deleted: true, by_deleter: true, members: expect.any(Number), members_apart: 0 }]);
+  expect(rows[0]?.members).toBeGreaterThan(0);
 }

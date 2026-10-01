@@ -15,7 +15,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/workspace"
-	"github.com/open-nerve/NerveWiki/server/internal/platform/clock/clocktest"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver/httpservertest"
@@ -33,6 +32,15 @@ import (
 
 // testNow is the clock's instant, in whole microseconds.
 func testNow() time.Time { return time.Date(2026, 10, 1, 10, 0, 0, 123456000, time.UTC) }
+
+// tickingClock reads testNow first, then a microsecond later each time: a
+// use case that read it twice for what must be one time would write two.
+type tickingClock struct{ reads int }
+
+func (c *tickingClock) Now() time.Time {
+	c.reads++
+	return testNow().Add(time.Duration(c.reads-1) * time.Microsecond)
+}
 
 // errVetoed is the code the test's vetoer refuses with.
 func errVetoed() *shared.Error {
@@ -118,7 +126,7 @@ func (f fixture) exec(t *testing.T, sql string, args ...any) {
 func (f fixture) serve(t *testing.T, change func(*workspace.Deps)) http.Handler {
 	t.Helper()
 	d := workspace.Deps{
-		Pool: f.pool, Tx: postgres.NewTxManager(f.pool, 5*time.Second), Clock: clocktest.At(testNow()),
+		Pool: f.pool, Tx: postgres.NewTxManager(f.pool, 5*time.Second), Clock: &tickingClock{},
 		Logger: slog.New(slog.DiscardHandler), Authorizer: rolesAuthorizer{facts: workspace.NewMemberships(f.pool)},
 		Accounts: noAccounts{}, Profiles: noProfiles{}, CreationEnabled: true,
 	}
@@ -259,7 +267,7 @@ func TestAMembershipEndPassesTheVetoerThenTheSubscriber(t *testing.T) {
 					v.called, v.inTx, v.locked, v.endedAt)
 			}
 			if len(s.ended) != 1 || s.endedAt == nil || !s.endedAt.Equal(testNow()) {
-				t.Errorf("the subscriber: %d calls, saw the end %v; want one, at %v", len(s.ended), s.endedAt, testNow())
+				t.Fatalf("the subscriber: %d calls, saw the end %v; want one, at %v", len(s.ended), s.endedAt, testNow())
 			}
 			if e := s.ended[0]; string(e.Cause) != path.name || e.UserID != f.bob || e.By != path.by(f) || len(e.WorkspaceIDs) != 1 || e.WorkspaceIDs[0] != f.acme {
 				t.Errorf("the end = %+v, want bob's of acme, %s, by %s", e, path.name, path.by(f))
@@ -302,21 +310,27 @@ func TestAMembershipEndRollsBack(t *testing.T) {
 // nothing.
 func TestAWorkspaceDeletionPassesTheSubscriber(t *testing.T) {
 	for _, fail := range []bool{false, true} {
-		f := newFixture(t)
-		s := &subscriber{t: t, f: f, fail: fail}
+		t.Run(map[bool]string{false: "the subscriber follows", true: "the subscriber fails"}[fail], func(t *testing.T) {
+			f := newFixture(t)
+			s := &subscriber{t: t, f: f, fail: fail}
 
-		status, code := call(t, f.serve(t, withEnd(&vetoer{t: t, f: f}, s)), f.alice, http.MethodDelete, "/api/v0/workspaces/acme")
+			status, code := call(t, f.serve(t, withEnd(&vetoer{t: t, f: f}, s)), f.alice, http.MethodDelete, "/api/v0/workspaces/acme")
 
-		var deleted int
-		if err := f.pool.QueryRow(context.Background(), "SELECT count(*) FROM workspace_members WHERE workspace_id = $1 AND deleted_at = $2",
-			f.acme, testNow()).Scan(&deleted); err != nil {
-			t.Fatal(err)
-		}
-		switch {
-		case !fail && (status != http.StatusNoContent || s.deletedAt == nil || !s.deletedAt.Equal(testNow()) || deleted != 2):
-			t.Errorf("DELETE = %d %s, the subscriber saw %v, %d members deleted; want 204, %v, both", status, code, s.deletedAt, deleted, testNow())
-		case fail && (status != http.StatusInternalServerError || deleted != 0):
-			t.Errorf("DELETE with a failing subscriber = %d %s, %d members deleted; want 500, none", status, code, deleted)
-		}
+			// The rows deleted at the clock's first read: the members and
+			// the workspace.
+			var members, workspaces int
+			if err := f.pool.QueryRow(context.Background(), `SELECT
+				(SELECT count(*) FROM workspace_members WHERE workspace_id = $1 AND deleted_at = $2),
+				(SELECT count(*) FROM workspaces WHERE id = $1 AND deleted_at = $2)`, f.acme, testNow()).Scan(&members, &workspaces); err != nil {
+				t.Fatal(err)
+			}
+			switch {
+			case !fail && (status != http.StatusNoContent || s.deletedAt == nil || !s.deletedAt.Equal(testNow()) || members != 2 || workspaces != 1):
+				t.Errorf("DELETE = %d %s, the subscriber saw %v, %d members and %d workspaces deleted at %v; want 204, it, both, acme",
+					status, code, s.deletedAt, members, workspaces, testNow())
+			case fail && (status != http.StatusInternalServerError || members != 0 || workspaces != 0):
+				t.Errorf("DELETE with a failing subscriber = %d %s, %d members and %d workspaces deleted; want 500, none", status, code, members, workspaces)
+			}
+		})
 	}
 }

@@ -52,10 +52,15 @@ func memberMatrixRows() []matrixRow {
 			callerNever: hidden, callerEnded: hidden, callerDeleted: hidden,
 		}
 	}
-	// membersPath aims at the member column's membership in the column's
-	// workspace.
+	// membersPath aims at another column's membership in the column's
+	// workspace: the member column's, or for that column the guest's, so
+	// that no column aims at its own (a row of its own does).
 	membersPath := func(c caller, s seeded) string {
-		return "/api/v0/workspace-members/" + s.membership(workspaceOf(c), callerMember).String()
+		target := callerMember
+		if c == callerMember {
+			target = callerGuest
+		}
+		return "/api/v0/workspace-members/" + s.membership(workspaceOf(c), target).String()
 	}
 	return []matrixRow{
 		{

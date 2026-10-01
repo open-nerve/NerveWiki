@@ -41,7 +41,7 @@ func TestListMembersShowsEmailsToAdminsAndMembersOnly(t *testing.T) {
 				t.Errorf("Execute() = %+v, %v; want %+v", got, err, want)
 			}
 			// A read: no transaction, the decision before the list.
-			wantCalls := []string{"FindWorkspaceBySlug acme", "Authorize workspace_member.list", "ListActiveMembers"}
+			wantCalls := []string{"FindWorkspaceBySlug acme", "Authorize workspace_member.list", "ListActiveMembers", "MemberProfiles"}
 			if !slices.Equal(tm.store.calls, wantCalls) || len(tm.profiles.asked) != 1 {
 				t.Errorf("calls = %q, profiles asked %d times; want %q and once", tm.store.calls, len(tm.profiles.asked), wantCalls)
 			}
@@ -89,12 +89,26 @@ func TestUpdateMemberChangesTheRoleUnderTheLock(t *testing.T) {
 		t.Errorf("Execute() = %+v, %v; want bob as a guest", got, err)
 	}
 	wantCalls := append([]string{"FindActiveMember"}, inTxCalls("LockWorkspaceByID", "FindActiveMember",
-		"Authorize workspace_member.update", "UpdateMemberRole guest"+at(tm.alice))...)
+		"Authorize workspace_member.update", "UpdateMemberRole guest"+at(tm.alice), "MemberProfiles")...)
 	if !slices.Equal(tm.store.calls, wantCalls) {
 		t.Errorf("calls = %q, want %q", tm.store.calls, wantCalls)
 	}
 	if !strings.Contains(tm.logs.String(), "workspace member updated") {
 		t.Errorf("logs = %s, want the update", tm.logs)
+	}
+}
+
+// The answer's profile is read in the transaction: when it fails, the
+// change is rolled back, not committed under a 500.
+func TestUpdateMemberRollsBackWhenTheProfileCannotBeRead(t *testing.T) {
+	tm := newTeam()
+	failed := errors.New("connection reset")
+	tm.profiles.err = failed
+
+	_, err := tm.updateMember().Execute(tm.as(tm.alice), tm.bob.ID, "guest")
+
+	if !errors.Is(err, failed) || !tm.tx.rolledBack || tm.logs.Len() != 0 {
+		t.Errorf("Execute() = %v, rolled back %v, logs %s; want the failure, rolled back, nothing logged", err, tm.tx.rolledBack, tm.logs)
 	}
 }
 
@@ -168,7 +182,7 @@ func TestRemoveMemberEndsTheMembership(t *testing.T) {
 		t.Errorf("Execute() = %v after %q; want %q", err, tm.store.calls, wantCalls)
 	}
 	want := app.MembershipEnd{UserID: tm.bob.UserID, WorkspaceIDs: []uuid.UUID{tm.acme.ID}, Cause: app.EndRemoved,
-		By: tm.alice.UserID, At: now()}
+		By: tm.alice.UserID, At: firstTick()}
 	if len(tm.vetoer.seen) != 1 || !sameEnd(tm.vetoer.seen[0], want) || len(tm.sub.ended) != 1 || !sameEnd(tm.sub.ended[0], want) {
 		t.Errorf("the vetoer saw %+v, the subscriber %+v; want %+v", tm.vetoer.seen, tm.sub.ended, want)
 	}
@@ -237,7 +251,7 @@ func TestLeaveWorkspace(t *testing.T) {
 		if err != nil || !slices.Equal(tm.store.calls, wantCalls) {
 			t.Errorf("Execute() = %v after %q; want %q", err, tm.store.calls, wantCalls)
 		}
-		want := app.MembershipEnd{UserID: tm.bob.UserID, WorkspaceIDs: []uuid.UUID{tm.acme.ID}, Cause: app.EndLeft, By: tm.bob.UserID, At: now()}
+		want := app.MembershipEnd{UserID: tm.bob.UserID, WorkspaceIDs: []uuid.UUID{tm.acme.ID}, Cause: app.EndLeft, By: tm.bob.UserID, At: firstTick()}
 		if len(tm.sub.ended) != 1 || !sameEnd(tm.sub.ended[0], want) {
 			t.Errorf("the subscriber saw %+v, want %+v", tm.sub.ended, want)
 		}
@@ -291,6 +305,9 @@ func TestLeaveWorkspaceRefusals(t *testing.T) {
 
 			if !errors.Is(err, tt.want) || slices.ContainsFunc(tm.store.calls, isWrite) || len(tm.vetoer.seen) != 0 {
 				t.Errorf("Execute() = %v after %q; want %v, the extension point not asked", err, tm.store.calls, tt.want)
+			}
+			if tt.slug != "acme" && len(tm.store.calls) != 0 {
+				t.Errorf("Execute(%q) asked %q, want nothing asked", tt.slug, tm.store.calls)
 			}
 		})
 	}

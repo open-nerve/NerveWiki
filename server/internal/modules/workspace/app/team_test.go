@@ -22,6 +22,7 @@ type team struct {
 	profiles *fakeProfiles
 	vetoer   *fakeVetoer
 	sub      *fakeSubscriber
+	clock    *tickingClock
 	logs     *bytes.Buffer
 
 	acme              domain.Workspace
@@ -34,7 +35,7 @@ func newTeam() *team {
 		return domain.Member{ID: uuid.NewV7(), WorkspaceID: acme.ID, UserID: uuid.NewV7(), Role: role, CreatedAt: now().Add(joined)}
 	}
 	tm := &team{
-		tx: &fakeTx{}, logs: &bytes.Buffer{}, acme: acme,
+		tx: &fakeTx{}, clock: &tickingClock{}, logs: &bytes.Buffer{}, acme: acme,
 		alice: member(shared.WorkspaceAdmin, 0), bob: member(shared.WorkspaceMember, time.Minute), carol: member(shared.WorkspaceGuest, time.Hour),
 	}
 	tm.store = &fakeStore{
@@ -42,7 +43,7 @@ func newTeam() *team {
 		active:     map[uuid.UUID]domain.Member{tm.alice.ID: tm.alice, tm.bob.ID: tm.bob, tm.carol.ID: tm.carol},
 	}
 	tm.auth = &fakeAuthorizer{roles: map[uuid.UUID]shared.WorkspaceRole{}, store: tm.store}
-	tm.profiles = &fakeProfiles{profiles: map[uuid.UUID]app.Profile{
+	tm.profiles = &fakeProfiles{store: tm.store, profiles: map[uuid.UUID]app.Profile{
 		tm.alice.UserID: {DisplayName: "Alice", Email: "alice@corp.com"},
 		tm.bob.UserID:   {DisplayName: "Bob", Email: "bob@corp.com"},
 		tm.carol.UserID: {DisplayName: "Carol", Email: "carol@corp.com"},
@@ -74,12 +75,12 @@ func (tm *team) ender() app.MembershipEnder {
 
 func (tm *team) update() *app.UpdateWorkspace {
 	return app.NewUpdateWorkspace(app.UpdateWorkspaceDeps{Locker: tm.store, Workspaces: tm.store, Auth: tm.auth,
-		Tx: tm.tx, Clock: fixedClock{}, Logger: tm.logger()})
+		Tx: tm.tx, Clock: tm.clock, Logger: tm.logger()})
 }
 
 func (tm *team) delete() *app.DeleteWorkspace {
 	return app.NewDeleteWorkspace(app.DeleteWorkspaceDeps{Locker: tm.store, Workspaces: tm.store, Members: tm.store,
-		Subscribers: []app.WorkspaceDeletionSubscriber{tm.sub}, Auth: tm.auth, Tx: tm.tx, Clock: fixedClock{}, Logger: tm.logger()})
+		Subscribers: []app.WorkspaceDeletionSubscriber{tm.sub}, Auth: tm.auth, Tx: tm.tx, Clock: tm.clock, Logger: tm.logger()})
 }
 
 func (tm *team) listMembers() *app.ListMembers {
@@ -88,17 +89,17 @@ func (tm *team) listMembers() *app.ListMembers {
 
 func (tm *team) updateMember() *app.UpdateMember {
 	return app.NewUpdateMember(app.UpdateMemberDeps{Locker: tm.store, Finder: tm.store, Members: tm.store, Profiles: tm.profiles,
-		Auth: tm.auth, Tx: tm.tx, Clock: fixedClock{}, Logger: tm.logger()})
+		Auth: tm.auth, Tx: tm.tx, Clock: tm.clock, Logger: tm.logger()})
 }
 
 func (tm *team) removeMember() *app.RemoveMember {
 	return app.NewRemoveMember(app.RemoveMemberDeps{Locker: tm.store, Finder: tm.store, Ender: tm.ender(),
-		Auth: tm.auth, Tx: tm.tx, Clock: fixedClock{}, Logger: tm.logger()})
+		Auth: tm.auth, Tx: tm.tx, Clock: tm.clock, Logger: tm.logger()})
 }
 
 func (tm *team) leave() *app.LeaveWorkspace {
 	return app.NewLeaveWorkspace(app.LeaveWorkspaceDeps{Locker: tm.store, Finder: tm.store, Ender: tm.ender(),
-		Auth: tm.auth, Tx: tm.tx, Clock: fixedClock{}, Logger: tm.logger()})
+		Auth: tm.auth, Tx: tm.tx, Clock: tm.clock, Logger: tm.logger()})
 }
 
 // inTx is calls, each made in the transaction.
@@ -110,7 +111,8 @@ func inTxCalls(calls ...string) []string {
 	return out
 }
 
-// at is " by <id> at <now>", as the fake store records a write.
+// at is " by <id> at <the clock's first read>", as the fake store records
+// a write: each use case reads the clock once.
 func at(by domain.Member) string {
-	return " by " + by.UserID.String() + " at " + now().Format(time.RFC3339)
+	return " by " + by.UserID.String() + " at " + firstTick().Format(time.RFC3339Nano)
 }

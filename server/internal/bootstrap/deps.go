@@ -72,7 +72,7 @@ func workspaceDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, a
 		CreationEnabled:          cfg.Workspace.CreationEnabled,
 		MembershipEndVetoers:     ext.endVetoers,
 		MembershipEndSubscribers: ext.endSubscribers,
-		DeletionSubscribers:      ext.deletionFollowers,
+		DeletionSubscribers:      ext.deletionSubscribers,
 	}
 }
 

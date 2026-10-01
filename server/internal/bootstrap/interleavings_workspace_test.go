@@ -222,6 +222,9 @@ func TestRemovingAnAdminWhileTheyDeleteTheWorkspace(t *testing.T) {
 		if n := count(t, tm.pool, "SELECT count(*) FROM workspaces WHERE slug = 'acme' AND deleted_at IS NULL"); n != 1 {
 			t.Errorf("acme deleted, want it kept")
 		}
+		if n := count(t, tm.pool, "SELECT count(*) FROM workspace_members WHERE id = $1 AND ended_at IS NOT NULL", tm.members["bob"]); n != 1 {
+			t.Errorf("bob's membership not ended, want it ended")
+		}
 	})
 	t.Run("the deletion first", func(t *testing.T) {
 		tm := newAcmeTeam(t, "admin", "member")

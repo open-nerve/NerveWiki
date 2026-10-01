@@ -255,6 +255,9 @@ func TestListActiveMembers(t *testing.T) {
 	bobM := add(bob, now().Add(time.Minute))
 	endedM := add(dave, now().Add(time.Minute))
 	exec(t, pool, "UPDATE workspace_members SET ended_at = $2 WHERE id = $1", endedM.ID, now())
+	erin := newAccount(t, pool, "erin@corp.com")
+	deletedM := add(erin, now().Add(time.Minute))
+	exec(t, pool, "UPDATE workspace_members SET deleted_at = $2 WHERE id = $1", deletedM.ID, now())
 	_ = addMember(t, s, other.ID, dave, shared.WorkspaceMember, alice)
 
 	got, err := s.ListActiveMembers(ctx, acme.ID)

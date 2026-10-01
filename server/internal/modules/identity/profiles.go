@@ -10,7 +10,7 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/modules/identity/domain"
 )
 
-// Profile is what the other members of a workspace see of an account.
+// Profile is what other accounts see of an account.
 type Profile = domain.Profile
 
 // Profiles reads accounts' profiles for the other modules' member lists (M2

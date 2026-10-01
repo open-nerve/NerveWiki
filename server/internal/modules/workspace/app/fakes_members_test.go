@@ -37,12 +37,12 @@ func (f *fakeStore) LockWorkspaceByID(ctx context.Context, id uuid.UUID) (domain
 }
 
 func (f *fakeStore) RenameWorkspace(ctx context.Context, _ uuid.UUID, name string, by uuid.UUID, now time.Time) error {
-	f.record(ctx, "RenameWorkspace "+name+" by "+by.String()+" at "+now.Format(time.RFC3339))
+	f.record(ctx, "RenameWorkspace "+name+" by "+by.String()+" at "+now.Format(time.RFC3339Nano))
 	return nil
 }
 
 func (f *fakeStore) DeleteWorkspace(ctx context.Context, _, by uuid.UUID, now time.Time) error {
-	f.record(ctx, "DeleteWorkspace by "+by.String()+" at "+now.Format(time.RFC3339))
+	f.record(ctx, "DeleteWorkspace by "+by.String()+" at "+now.Format(time.RFC3339Nano))
 	return nil
 }
 
@@ -81,7 +81,7 @@ func (f *fakeStore) CountActiveAdmins(ctx context.Context, workspaceID uuid.UUID
 }
 
 func (f *fakeStore) UpdateMemberRole(ctx context.Context, id uuid.UUID, role shared.WorkspaceRole, by uuid.UUID, now time.Time) error {
-	f.record(ctx, "UpdateMemberRole "+string(role)+" by "+by.String()+" at "+now.Format(time.RFC3339))
+	f.record(ctx, "UpdateMemberRole "+string(role)+" by "+by.String()+" at "+now.Format(time.RFC3339Nano))
 	m := f.active[id]
 	m.Role = role
 	f.active[id] = m
@@ -89,7 +89,7 @@ func (f *fakeStore) UpdateMemberRole(ctx context.Context, id uuid.UUID, role sha
 }
 
 func (f *fakeStore) EndMemberships(ctx context.Context, userID uuid.UUID, workspaceIDs []uuid.UUID, by uuid.UUID, now time.Time) error {
-	f.record(ctx, "EndMemberships by "+by.String()+" at "+now.Format(time.RFC3339))
+	f.record(ctx, "EndMemberships by "+by.String()+" at "+now.Format(time.RFC3339Nano))
 	maps.DeleteFunc(f.active, func(_ uuid.UUID, m domain.Member) bool {
 		return m.UserID == userID && slices.Contains(workspaceIDs, m.WorkspaceID)
 	})
@@ -97,18 +97,25 @@ func (f *fakeStore) EndMemberships(ctx context.Context, userID uuid.UUID, worksp
 }
 
 func (f *fakeStore) DeleteMembersOf(ctx context.Context, _, by uuid.UUID, now time.Time) error {
-	f.record(ctx, "DeleteMembersOf by "+by.String()+" at "+now.Format(time.RFC3339))
+	f.record(ctx, "DeleteMembersOf by "+by.String()+" at "+now.Format(time.RFC3339Nano))
 	return nil
 }
 
-// fakeProfiles answers from profiles, and records the accounts asked for.
+// fakeProfiles answers from profiles, or fails with err; it records the
+// accounts asked for, and the call in the store's calls.
 type fakeProfiles struct {
+	store    *fakeStore
 	profiles map[uuid.UUID]app.Profile
+	err      error
 	asked    [][]uuid.UUID
 }
 
-func (f *fakeProfiles) MemberProfiles(_ context.Context, ids []uuid.UUID) (map[uuid.UUID]app.Profile, error) {
+func (f *fakeProfiles) MemberProfiles(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]app.Profile, error) {
+	f.store.record(ctx, "MemberProfiles")
 	f.asked = append(f.asked, ids)
+	if f.err != nil {
+		return nil, f.err
+	}
 	found := map[uuid.UUID]app.Profile{}
 	for _, id := range ids {
 		if p, ok := f.profiles[id]; ok {
@@ -152,3 +159,15 @@ func (f *fakeSubscriber) WorkspaceDeleted(ctx context.Context, d app.WorkspaceDe
 	f.deleted = append(f.deleted, d)
 	return f.err
 }
+
+// tickingClock moves on a microsecond each time it is read: a use case that
+// read it twice for what must be one time would write two.
+type tickingClock struct{ reads int }
+
+func (c *tickingClock) Now() time.Time {
+	c.reads++
+	return now().Add(time.Duration(c.reads) * time.Microsecond)
+}
+
+// firstTick is what a tickingClock first reads.
+func firstTick() time.Time { return now().Add(time.Microsecond) }

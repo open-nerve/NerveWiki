@@ -22,8 +22,7 @@ type User struct {
 	OnboardingSteps []string
 }
 
-// Profile is what the other members of a workspace see of an account (M2
-// design 5).
+// Profile is what other accounts see of an account.
 type Profile struct {
 	DisplayName string
 	Email       string

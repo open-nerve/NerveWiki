@@ -46,6 +46,7 @@ func (u *UpdateMember) Execute(ctx context.Context, id uuid.UUID, role string) (
 	if err != nil {
 		return ListedMember{}, found(err, domain.ErrMemberNotFound)
 	}
+	var out ListedMember
 	err = u.d.Tx.WithinTx(ctx, func(ctx context.Context) error {
 		if m, err = lockMember(ctx, u.d.Locker, u.d.Finder, m); err != nil {
 			return err
@@ -64,6 +65,14 @@ func (u *UpdateMember) Execute(ctx context.Context, id uuid.UUID, role string) (
 			return err
 		}
 		m.Role = r
+		// The answer's profile is read here, after the write: nothing that
+		// can fail comes after the commit (v0.1 design 13.1, item 19). The
+		// caller is an admin, who sees emails.
+		list, err := withProfiles(ctx, u.d.Profiles, []domain.Member{m}, true)
+		if err != nil {
+			return err
+		}
+		out = list[0]
 		return nil
 	})
 	if err != nil {
@@ -71,25 +80,5 @@ func (u *UpdateMember) Execute(ctx context.Context, id uuid.UUID, role string) (
 	}
 	u.d.Logger.InfoContext(ctx, "workspace member updated", slog.String("workspace_id", m.WorkspaceID.String()),
 		slog.String("member_id", m.ID.String()), slog.String("user_id", actor.UserID.String()))
-	// The caller is an admin, who sees emails.
-	list, err := withProfiles(ctx, u.d.Profiles, []domain.Member{m}, true)
-	if err != nil {
-		return ListedMember{}, err
-	}
-	return list[0], nil
-}
-
-// lockMember locks the workspace of m, a membership read before the
-// transaction, and reads m again under the lock, where it can no longer
-// change: domain.ErrMemberNotFound when the workspace was deleted or the
-// membership ended meanwhile.
-func lockMember(ctx context.Context, locker WorkspaceLocker, finder MemberFinder, m domain.Member) (domain.Member, error) {
-	if _, err := locker.LockWorkspaceByID(ctx, m.WorkspaceID); err != nil {
-		return domain.Member{}, found(err, domain.ErrMemberNotFound)
-	}
-	m, err := finder.FindActiveMember(ctx, m.ID)
-	if err != nil {
-		return domain.Member{}, found(err, domain.ErrMemberNotFound)
-	}
-	return m, nil
+	return out, nil
 }

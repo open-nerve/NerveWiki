@@ -121,7 +121,7 @@ export const en = {
   "problem.workspace.creation_disabled":
     "Creating workspaces is disabled on this server. Ask the server's administrator.",
   "problem.workspace.slug_taken": "Another workspace already has this address.",
-  "problem.workspace.member_not_found": "This person is no longer a member of the workspace.",
+  "problem.workspace.member_not_found": "This member cannot be found, or you no longer have access to the workspace.",
   "problem.workspace.own_membership": "You cannot change or remove your own membership.",
   "problem.workspace.sole_admin":
     "You are the workspace's only admin. Make another member an admin first, or, if no one else is in it, delete the workspace.",

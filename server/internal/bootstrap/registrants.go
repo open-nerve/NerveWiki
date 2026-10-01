@@ -20,9 +20,9 @@ func deactivationRegistrants() ([]identity.DeactivationVetoer, []identity.Deacti
 // end, the subscribers that follow one, and those that follow a workspace's
 // deletion.
 type workspaceExtensions struct {
-	endVetoers        []workspace.MembershipEndVetoer
-	endSubscribers    []workspace.MembershipEndSubscriber
-	deletionFollowers []workspace.WorkspaceDeletionSubscriber
+	endVetoers          []workspace.MembershipEndVetoer
+	endSubscribers      []workspace.MembershipEndSubscriber
+	deletionSubscribers []workspace.WorkspaceDeletionSubscriber
 }
 
 // workspaceRegistrants are the modules that take part in the workspace

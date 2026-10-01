@@ -18,7 +18,7 @@ func TestUpdateWorkspaceRenamesUnderTheLock(t *testing.T) {
 	got, err := tm.update().Execute(tm.as(tm.alice), "acme", "  Acme Labs ")
 
 	want := tm.acme
-	want.Name = "Acme Labs"
+	want.Name, want.UpdatedAt = "Acme Labs", firstTick()
 	if err != nil || got != (app.Membership{Workspace: want, Role: shared.WorkspaceAdmin}) {
 		t.Errorf("Execute() = %+v, %v; want acme renamed, as its admin", got, err)
 	}
@@ -79,7 +79,7 @@ func TestDeleteWorkspaceDeletesTheMembersThenTheWorkspace(t *testing.T) {
 	if err != nil || !slices.Equal(tm.store.calls, wantCalls) {
 		t.Errorf("Execute() = %v after %q; want %q", err, tm.store.calls, wantCalls)
 	}
-	want := []app.WorkspaceDeletion{{WorkspaceID: tm.acme.ID, By: tm.alice.UserID, At: now()}}
+	want := []app.WorkspaceDeletion{{WorkspaceID: tm.acme.ID, By: tm.alice.UserID, At: firstTick()}}
 	if !slices.Equal(tm.sub.deleted, want) {
 		t.Errorf("the subscriber saw %+v, want %+v", tm.sub.deleted, want)
 	}
