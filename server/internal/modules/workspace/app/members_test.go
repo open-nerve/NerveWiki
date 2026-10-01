@@ -89,12 +89,31 @@ func TestUpdateMemberChangesTheRoleUnderTheLock(t *testing.T) {
 		t.Errorf("Execute() = %+v, %v; want bob as a guest", got, err)
 	}
 	wantCalls := append([]string{"FindActiveMember"}, inTxCalls("LockWorkspaceByID", "FindActiveMember",
-		"Authorize workspace_member.update", "UpdateMemberRole guest"+at(tm.alice), "MemberProfiles")...)
+		"Authorize workspace_member.update", "UpdateMemberRole guest"+at(tm.alice), "MemberRoleChanged", "MemberProfiles")...)
 	if !slices.Equal(tm.store.calls, wantCalls) {
 		t.Errorf("calls = %q, want %q", tm.store.calls, wantCalls)
 	}
+	changed := []app.MemberRoleChange{{WorkspaceID: tm.acme.ID, UserID: tm.bob.UserID, From: shared.WorkspaceMember, To: shared.WorkspaceGuest,
+		By: tm.alice.UserID, At: firstTick()}}
+	if !slices.Equal(tm.sub.changed, changed) {
+		t.Errorf("the subscriber saw %+v, want %+v", tm.sub.changed, changed)
+	}
 	if !strings.Contains(tm.logs.String(), "workspace member updated") {
 		t.Errorf("logs = %s, want the update", tm.logs)
+	}
+}
+
+// A role given again is written, its time and author with it, and told to
+// no one: nothing changed.
+func TestUpdateMemberToTheSameRoleTellsNoOne(t *testing.T) {
+	tm := newTeam()
+
+	if _, err := tm.updateMember().Execute(tm.as(tm.alice), tm.bob.ID, "member"); err != nil {
+		t.Fatal(err)
+	}
+
+	if !slices.Contains(tm.store.calls, "UpdateMemberRole member"+at(tm.alice)+" in tx") || len(tm.sub.changed) != 0 {
+		t.Errorf("calls = %q, changes told %+v; want the write and no change told", tm.store.calls, tm.sub.changed)
 	}
 }
 

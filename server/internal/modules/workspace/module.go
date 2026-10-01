@@ -41,17 +41,22 @@ type Directory interface {
 // Profile is what the module reads of an account.
 type Profile = app.Profile
 
-// The module's extension points (M2 design 8): bootstrap composes their
-// registrants in registrants.go.
+// The module's extension points (M2 design 8; the addition and the role
+// change, M3 design 8): bootstrap composes their registrants in
+// registrants.go.
 type (
-	MembershipEnd               = app.MembershipEnd
-	EndCause                    = app.EndCause
-	MembershipEndVetoer         = app.MembershipEndVetoer
-	MembershipEndSubscriber     = app.MembershipEndSubscriber
-	WorkspaceDeletion           = app.WorkspaceDeletion
-	WorkspaceDeletionSubscriber = app.WorkspaceDeletionSubscriber
-	MembershipRestore           = app.MembershipRestore
-	MembershipRestoreSubscriber = app.MembershipRestoreSubscriber
+	MembershipEnd                = app.MembershipEnd
+	EndCause                     = app.EndCause
+	MembershipEndVetoer          = app.MembershipEndVetoer
+	MembershipEndSubscriber      = app.MembershipEndSubscriber
+	WorkspaceDeletion            = app.WorkspaceDeletion
+	WorkspaceDeletionSubscriber  = app.WorkspaceDeletionSubscriber
+	MembershipRestore            = app.MembershipRestore
+	MembershipRestoreSubscriber  = app.MembershipRestoreSubscriber
+	MembershipAddition           = app.MembershipAddition
+	MembershipAdditionSubscriber = app.MembershipAdditionSubscriber
+	MemberRoleChange             = app.MemberRoleChange
+	MemberRoleChangeSubscriber   = app.MemberRoleChangeSubscriber
 )
 
 // Deps are what bootstrap gives the module.
@@ -69,10 +74,12 @@ type Deps struct {
 	// CreationEnabled is workspace.creation_enabled.
 	CreationEnabled bool
 	// The registrants of the extension points.
-	MembershipEndVetoers         []MembershipEndVetoer
-	MembershipEndSubscribers     []MembershipEndSubscriber
-	DeletionSubscribers          []WorkspaceDeletionSubscriber
-	MembershipRestoreSubscribers []MembershipRestoreSubscriber
+	MembershipEndVetoers          []MembershipEndVetoer
+	MembershipEndSubscribers      []MembershipEndSubscriber
+	DeletionSubscribers           []WorkspaceDeletionSubscriber
+	MembershipRestoreSubscribers  []MembershipRestoreSubscriber
+	MembershipAdditionSubscribers []MembershipAdditionSubscriber
+	MemberRoleChangeSubscribers   []MemberRoleChangeSubscriber
 }
 
 // Module is the wired workspace module.
@@ -103,7 +110,8 @@ func New(d Deps) *Module {
 		}),
 		ListMembers: app.NewListMembers(app.ListMembersDeps{Workspaces: store, Members: store, Profiles: d.Directory, Auth: auth}),
 		UpdateMember: app.NewUpdateMember(app.UpdateMemberDeps{
-			Locker: store, Finder: store, Members: store, Profiles: d.Directory, Auth: auth, Tx: d.Tx, Clock: d.Clock, Logger: d.Logger,
+			Locker: store, Finder: store, Members: store, Profiles: d.Directory, Subscribers: d.MemberRoleChangeSubscribers,
+			Auth: auth, Tx: d.Tx, Clock: d.Clock, Logger: d.Logger,
 		}),
 		RemoveMember: app.NewRemoveMember(app.RemoveMemberDeps{
 			Locker: store, Finder: store, Ender: ender, Auth: auth, Tx: d.Tx, Clock: d.Clock, Logger: d.Logger,
@@ -122,7 +130,7 @@ func New(d Deps) *Module {
 		PreviewInvitation: app.NewPreviewInvitation(app.PreviewInvitationDeps{Tokens: tokens, Invitations: store, Workspaces: store}),
 		AcceptInvitation: app.NewAcceptInvitation(app.AcceptInvitationDeps{
 			Tokens: tokens, Finder: store, Accounts: d.Accounts, Locker: store, Invitations: store, Members: store, Updater: store,
-			Subscribers: d.MembershipRestoreSubscribers, Tx: d.Tx, Clock: d.Clock, Logger: d.Logger,
+			Restored: d.MembershipRestoreSubscribers, Added: d.MembershipAdditionSubscribers, Tx: d.Tx, Clock: d.Clock, Logger: d.Logger,
 		}),
 	}}
 }

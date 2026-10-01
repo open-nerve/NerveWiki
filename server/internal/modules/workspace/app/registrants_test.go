@@ -11,7 +11,7 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
-// Two registrants of each extension point (M2 design 8): the dispatch
+// Two registrants of each extension point (M2 design 8, M3 design 8): the dispatch
 // reaches both, in the order registered, and the first error, a refusal or
 // a failure, the first registrant's or the second's, stops it and is the
 // use case's, for its transaction to roll back what came before. The
@@ -42,6 +42,14 @@ func (r registrant) MembershipRestored(ctx context.Context, _ app.MembershipRest
 
 func (r registrant) WorkspaceDeleted(ctx context.Context, _ app.WorkspaceDeletion) error {
 	return r.follow(ctx, "deleted")
+}
+
+func (r registrant) MembershipAdded(ctx context.Context, _ app.MembershipAddition) error {
+	return r.follow(ctx, "added")
+}
+
+func (r registrant) MemberRoleChanged(ctx context.Context, _ app.MemberRoleChange) error {
+	return r.follow(ctx, "changed")
 }
 
 func (r registrant) follow(ctx context.Context, what string) error {
@@ -76,6 +84,19 @@ func TestTwoRegistrantsOfEachExtensionPoint(t *testing.T) {
 				Invitations: tm.store, Subscribers: []app.WorkspaceDeletionSubscriber{a, b}, Auth: tm.auth, Tx: tm.tx, Clock: tm.clock,
 				Logger: tm.logger()}).Execute(tm.as(tm.alice), "acme")
 		}, false, "deleted", ""},
+		{"a membership's addition", func(tm *team, a, b registrant) error {
+			_, err := app.NewAcceptInvitation(app.AcceptInvitationDeps{Tokens: tm.tokens, Finder: tm.store, Accounts: tm.accounts,
+				Locker: tm.store, Invitations: tm.store, Members: tm.store, Updater: tm.store,
+				Added: []app.MembershipAdditionSubscriber{a, b}, Tx: tm.tx, Clock: tm.clock, Logger: tm.logger(),
+			}).Execute(as(tm.dana), tm.invitation.ID, tokenOf(tm.invitation))
+			return err
+		}, false, "added", ""},
+		{"a member's role change", func(tm *team, a, b registrant) error {
+			_, err := app.NewUpdateMember(app.UpdateMemberDeps{Locker: tm.store, Finder: tm.store, Members: tm.store,
+				Profiles: tm.profiles, Subscribers: []app.MemberRoleChangeSubscriber{a, b}, Auth: tm.auth, Tx: tm.tx,
+				Clock: tm.clock, Logger: tm.logger()}).Execute(tm.as(tm.alice), tm.bob.ID, "guest")
+			return err
+		}, false, "changed", ""},
 	} {
 		refusal := shared.NewError(shared.KindConflict, "test.vetoed", "Vetoed.")
 		failure := errors.New("the subscriber failed")

@@ -291,7 +291,9 @@ func TestAcceptInvitation(t *testing.T) {
 		how     string
 	}{
 		{"a new member", func(tm *team) (domain.Invitation, uuid.UUID) { return tm.invitation, tm.dana }, shared.WorkspaceMember,
-			func(by string) []string { return []string{"CountActiveAdmins", "AddMember member" + by} }, "added"},
+			func(by string) []string {
+				return []string{"CountActiveAdmins", "AddMember member" + by, "MembershipAdded"}
+			}, "added"},
 		{"a member whose membership ended", func(tm *team) (domain.Invitation, uuid.UUID) {
 			tm.store.ended[tm.bob.ID] = tm.bob
 			delete(tm.store.active, tm.bob.ID)
@@ -393,6 +395,22 @@ func TestAcceptInvitationTellsTheRestoreSubscribers(t *testing.T) {
 	}
 	if m := tm.store.active[tm.bob.ID]; m.Role != shared.WorkspaceGuest || !m.CreatedAt.Equal(tm.bob.CreatedAt) {
 		t.Errorf("bob's membership = %+v, want a guest who joined when he first did", m)
+	}
+}
+
+// The addition event names the workspace, the account, its role, the
+// account as who added it, and the membership's time; a restore and a kept
+// membership are no addition (TestAcceptInvitation's calls).
+func TestAcceptInvitationTellsTheAdditionSubscribers(t *testing.T) {
+	tm := newTeam()
+
+	if _, err := tm.acceptInvitation().Execute(as(tm.dana), tm.invitation.ID, tokenOf(tm.invitation)); err != nil {
+		t.Fatal(err)
+	}
+
+	want := []app.MembershipAddition{{WorkspaceID: tm.acme.ID, UserID: tm.dana, Role: shared.WorkspaceMember, By: tm.dana, At: firstTick()}}
+	if !slices.Equal(tm.sub.added, want) || len(tm.sub.restored) != 0 {
+		t.Errorf("the subscriber saw %+v and restores %+v, want %+v alone", tm.sub.added, tm.sub.restored, want)
 	}
 }
 

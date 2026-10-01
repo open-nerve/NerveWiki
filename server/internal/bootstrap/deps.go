@@ -68,19 +68,21 @@ func workspaceDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, a
 ) workspace.Deps {
 	ext := workspaceRegistrants(pool)
 	return workspace.Deps{
-		Pool:                         pool,
-		Tx:                           postgres.NewTxManager(pool, cfg.Database.CommitTimeout),
-		Clock:                        clock.System{},
-		Logger:                       logger,
-		Authorizer:                   authorizer,
-		Accounts:                     identity.NewAccounts(pool),
-		Directory:                    directory{identity.NewDirectory(pool)},
-		InvitationKey:                invitationKey,
-		CreationEnabled:              cfg.Workspace.CreationEnabled,
-		MembershipEndVetoers:         ext.endVetoers,
-		MembershipEndSubscribers:     ext.endSubscribers,
-		DeletionSubscribers:          ext.deletionSubscribers,
-		MembershipRestoreSubscribers: ext.restoreSubscribers,
+		Pool:                          pool,
+		Tx:                            postgres.NewTxManager(pool, cfg.Database.CommitTimeout),
+		Clock:                         clock.System{},
+		Logger:                        logger,
+		Authorizer:                    authorizer,
+		Accounts:                      identity.NewAccounts(pool),
+		Directory:                     directory{identity.NewDirectory(pool)},
+		InvitationKey:                 invitationKey,
+		CreationEnabled:               cfg.Workspace.CreationEnabled,
+		MembershipEndVetoers:          ext.endVetoers,
+		MembershipEndSubscribers:      ext.endSubscribers,
+		DeletionSubscribers:           ext.deletionSubscribers,
+		MembershipRestoreSubscribers:  ext.restoreSubscribers,
+		MembershipAdditionSubscribers: ext.additionSubscribers,
+		MemberRoleChangeSubscribers:   ext.roleChangeSubscribers,
 	}
 }
 

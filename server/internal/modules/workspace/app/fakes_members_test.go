@@ -143,14 +143,29 @@ func (f *fakeVetoer) VetoMembershipEnd(ctx context.Context, e app.MembershipEnd)
 	return f.err
 }
 
-// fakeSubscriber fails with err; it follows a membership end, a deletion
-// and a restore, recording each in the store's calls and in its own lists.
+// fakeSubscriber fails with err; it follows a membership end, a deletion,
+// a restore, an addition and a role change, recording each in the store's
+// calls and in its own lists.
 type fakeSubscriber struct {
 	store    *fakeStore
 	err      error
 	ended    []app.MembershipEnd
 	deleted  []app.WorkspaceDeletion
 	restored []app.MembershipRestore
+	added    []app.MembershipAddition
+	changed  []app.MemberRoleChange
+}
+
+func (f *fakeSubscriber) MembershipAdded(ctx context.Context, a app.MembershipAddition) error {
+	f.store.record(ctx, "MembershipAdded")
+	f.added = append(f.added, a)
+	return f.err
+}
+
+func (f *fakeSubscriber) MemberRoleChanged(ctx context.Context, c app.MemberRoleChange) error {
+	f.store.record(ctx, "MemberRoleChanged")
+	f.changed = append(f.changed, c)
+	return f.err
 }
 
 func (f *fakeSubscriber) MembershipRestored(ctx context.Context, r app.MembershipRestore) error {

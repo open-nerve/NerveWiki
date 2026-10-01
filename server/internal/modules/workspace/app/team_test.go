@@ -109,7 +109,7 @@ func (tm *team) listMembers() *app.ListMembers {
 
 func (tm *team) updateMember() *app.UpdateMember {
 	return app.NewUpdateMember(app.UpdateMemberDeps{Locker: tm.store, Finder: tm.store, Members: tm.store, Profiles: tm.profiles,
-		Auth: tm.auth, Tx: tm.tx, Clock: tm.clock, Logger: tm.logger()})
+		Subscribers: []app.MemberRoleChangeSubscriber{tm.sub}, Auth: tm.auth, Tx: tm.tx, Clock: tm.clock, Logger: tm.logger()})
 }
 
 func (tm *team) removeMember() *app.RemoveMember {
@@ -143,7 +143,8 @@ func (tm *team) previewInvitation() *app.PreviewInvitation {
 func (tm *team) acceptInvitation() *app.AcceptInvitation {
 	return app.NewAcceptInvitation(app.AcceptInvitationDeps{Tokens: tm.tokens, Finder: tm.store, Accounts: tm.accounts,
 		Locker: tm.store, Invitations: tm.store, Members: tm.store, Updater: tm.store,
-		Subscribers: []app.MembershipRestoreSubscriber{tm.sub}, Tx: tm.tx, Clock: tm.clock, Logger: tm.logger()})
+		Restored: []app.MembershipRestoreSubscriber{tm.sub}, Added: []app.MembershipAdditionSubscriber{tm.sub},
+		Tx: tm.tx, Clock: tm.clock, Logger: tm.logger()})
 }
 
 // inTx is calls, each made in the transaction.

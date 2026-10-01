@@ -43,13 +43,16 @@ func (d deactivation) AccountDeactivated(ctx context.Context, x identity.Deactiv
 // workspaceExtensions are the registrants of the workspace module's
 // extension points (M2 design 8): the vetoers that may refuse a membership
 // end, the subscribers that follow one, those that follow a workspace's
-// deletion, and those that follow a membership's restore (M2/P3 design
-// 3.5).
+// deletion, those that follow a membership's restore (M2/P3 design 3.5),
+// and those that follow a membership's addition and a member's role change
+// (M3 design 8).
 type workspaceExtensions struct {
-	endVetoers          []workspace.MembershipEndVetoer
-	endSubscribers      []workspace.MembershipEndSubscriber
-	deletionSubscribers []workspace.WorkspaceDeletionSubscriber
-	restoreSubscribers  []workspace.MembershipRestoreSubscriber
+	endVetoers            []workspace.MembershipEndVetoer
+	endSubscribers        []workspace.MembershipEndSubscriber
+	deletionSubscribers   []workspace.WorkspaceDeletionSubscriber
+	restoreSubscribers    []workspace.MembershipRestoreSubscriber
+	additionSubscribers   []workspace.MembershipAdditionSubscriber
+	roleChangeSubscribers []workspace.MemberRoleChangeSubscriber
 }
 
 // workspaceRegistrants are the modules that take part in the workspace
