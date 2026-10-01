@@ -39,7 +39,7 @@ export const en = {
   "onboarding.workspace.title": "Your workspace",
   "onboarding.workspace.hint": "A workspace holds a team's notebooks. You become its admin, and invite the others.",
   "onboarding.workspace.create": "Create and continue",
-  "onboarding.workspace.goingOn": "Taking you on…",
+  "onboarding.workspace.goingOn": "Continuing…",
   "settings.title": "Settings",
   "settings.profile": "Profile",
   "account.displayName": "Display name",
@@ -55,6 +55,7 @@ export const en = {
   "workspace.home": "Home",
   "workspace.settings": "Settings",
   "workspace.create": "Create workspace",
+  "workspace.switch": "Switch workspace",
   "workspace.homeEmpty": "No notebooks yet.",
   "workspaceSettings.title": "Workspace settings",
   "workspaceSettings.general": "General",
@@ -186,7 +187,7 @@ export const en = {
   "field.workspace_name.too_long": "At most 80 characters.",
   "field.slug.invalid_format": "1 to 48 lower-case letters, digits, _ or -.",
   "field.slug.not_allowed": "Reserved by the app. Choose another.",
-  "field.slug.duplicate": "Another workspace has it.",
+  "field.slug.duplicate": "Another workspace already has this address.",
 } as const;
 
 export type MessageKey = keyof typeof en;

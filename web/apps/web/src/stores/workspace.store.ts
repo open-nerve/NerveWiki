@@ -1,12 +1,15 @@
 import { makeAutoObservable, runInAction } from "mobx";
 
+import { ApiError } from "../services/api";
 import type { SlugAvailability, Workspace, WorkspaceCreate, WorkspaceService } from "../services/workspace.service";
 
 /**
- * byName is the order of the server's list: lower(name), name, id, by code
- * point, as the database collates (C.UTF-8, v0.1 design 7.1). Its lower()
- * maps one character to one, toLowerCase a few to two: where that changes
- * the order, the next load puts the list back in the server's.
+ * byName is the order of the server's list: lower(name), name, id. The
+ * database collates by code point (C.UTF-8, v0.1 design 7.1), this by
+ * UTF-16 code unit, which orders the same but for characters beyond the
+ * BMP (an emoji against a full-width letter); its lower() maps one
+ * character to one, toLowerCase a few to two. Where that changes the
+ * order, the next load puts the list back in the server's.
  */
 function byName(a: Workspace, b: Workspace): number {
   const [x, y] = [a.name.toLowerCase(), b.name.toLowerCase()];
@@ -26,9 +29,20 @@ export class WorkspaceStore {
   list: Workspace[] | undefined = undefined;
   /** How many changes have been answered: a read that overlaps one may have read the list before it. */
   private changesAnswered = 0;
+  /** The slugs of the workspaces this generation deleted: their pages go to the landing, not to the 404. */
+  private readonly removed = new Set<string>();
 
   constructor(private readonly service: Pick<WorkspaceService, "list" | "create" | "rename" | "remove" | "checkSlug">) {
-    makeAutoObservable<this, "service" | "changesAnswered">(this, { service: false, changesAnswered: false });
+    makeAutoObservable<this, "service" | "changesAnswered" | "removed">(this, {
+      service: false,
+      changesAnswered: false,
+      removed: false,
+    });
+  }
+
+  /** wasRemoved tells whether this generation deleted the workspace of slug. */
+  wasRemoved(slug: string): boolean {
+    return this.removed.has(slug);
   }
 
   /** bySlug is the workspace of slug in the list, if the list has it. */
@@ -55,7 +69,8 @@ export class WorkspaceStore {
 
   async create(body: WorkspaceCreate): Promise<Workspace> {
     const created = await this.service.create(body);
-    this.changed((list) => [...list, created]);
+    // A read answered before the creation may hold it already.
+    this.changed((list) => [...list.filter((workspace) => workspace.id !== created.id), created]);
     return created;
   }
 
@@ -65,8 +80,19 @@ export class WorkspaceStore {
     return renamed;
   }
 
+  /**
+   * remove deletes the workspace of slug; one the account no longer has
+   * (deleted already, or the account removed from it) is gone as well.
+   */
   async remove(slug: string): Promise<void> {
-    await this.service.remove(slug);
+    try {
+      await this.service.remove(slug);
+    } catch (error) {
+      if (!(error instanceof ApiError && error.code === "workspace.not_found")) {
+        throw error;
+      }
+    }
+    this.removed.add(slug);
     this.changed((list) => list.filter((workspace) => workspace.slug !== slug));
   }
 

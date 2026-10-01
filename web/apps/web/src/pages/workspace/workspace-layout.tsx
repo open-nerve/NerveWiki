@@ -1,6 +1,6 @@
 import { observer } from "mobx-react-lite";
 import { useEffect } from "react";
-import { Outlet, useParams } from "react-router";
+import { Navigate, Outlet, useParams } from "react-router";
 import useSWR from "swr";
 
 import { NotLoaded } from "../../app/not-loaded";
@@ -37,8 +37,10 @@ const sections: readonly { path: string; label: Extract<MessageKey, `workspace.$
  * the left column, with the switcher and the workspace's navigation, beside
  * the page chosen. It finds the workspace of the address in the account's
  * list: a slug the list does not have is no page of the app's, whether the
- * account was never a member or the workspace is gone. A workspace found is
- * the one this device showed last.
+ * account was never a member or the workspace is gone; one this tab has
+ * just deleted goes to the landing instead. A workspace found is the one
+ * this device showed last. Its pages start anew with each workspace: what a
+ * form holds of one is never sent to another.
  */
 export const WorkspaceLayout = observer(function WorkspaceLayout() {
   const { slug = "" } = useParams();
@@ -59,7 +61,7 @@ export const WorkspaceLayout = observer(function WorkspaceLayout() {
     return <NotLoaded error={error} retry={() => void mutate()} />;
   }
   if (workspace === undefined) {
-    return <NotFoundPage />;
+    return workspaces.wasRemoved(slug) ? <Navigate replace to="/" /> : <NotFoundPage />;
   }
   return (
     <div data-shell className="flex flex-1 flex-col md:flex-row">
@@ -77,7 +79,7 @@ export const WorkspaceLayout = observer(function WorkspaceLayout() {
         </nav>
       </aside>
       <div className="min-w-0 flex-1 p-6">
-        <Outlet />
+        <Outlet key={workspace.id} />
       </div>
     </div>
   );

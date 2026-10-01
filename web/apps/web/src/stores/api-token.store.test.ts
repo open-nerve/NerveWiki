@@ -71,3 +71,23 @@ test("a revoked token leaves the list, one gone already too; any other refusal k
   await store.revoke("b");
   expect(store.tokens).toEqual([]);
 });
+
+// A read that goes out after the creation was committed, and comes back
+// before the creation's answer, holds the new token already.
+test("a read that holds a token being created keeps it once", async () => {
+  let answerCreate: ((created: ApiTokenCreated) => void) | undefined;
+  let reads = 0;
+  const store = new ApiTokenStore({
+    list: async () => (++reads === 1 ? [token("old")] : [token("new"), token("old")]),
+    create: () => new Promise<ApiTokenCreated>((resolve) => (answerCreate = resolve)),
+    revoke: async () => {},
+  });
+  await store.load();
+
+  const creation = store.create({ name: "new", current_password: "pw" });
+  await store.load();
+  answerCreate?.(created("new"));
+  await creation;
+
+  expect(store.tokens?.map((t) => t.id)).toEqual(["new", "old"]);
+});

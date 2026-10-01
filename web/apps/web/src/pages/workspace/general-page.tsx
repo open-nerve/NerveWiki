@@ -1,6 +1,5 @@
 import { observer } from "mobx-react-lite";
 import { useState, type FormEvent } from "react";
-import { useNavigate } from "react-router";
 
 import { ConfirmDialog } from "../../app/confirm-dialog";
 import { useForm } from "../../app/form";
@@ -64,6 +63,7 @@ const RenameForm = observer(function RenameForm({ workspace }: { workspace: Work
       if (name.trim() !== workspace.name) {
         await workspaces.rename(workspace.slug, name.trim());
       }
+      setName(name.trim());
       setSaved(true);
     });
   }
@@ -93,12 +93,12 @@ const RenameForm = observer(function RenameForm({ workspace }: { workspace: Work
 
 /**
  * DeleteSection deletes the workspace for every member, once its slug is
- * typed; / then lands on another workspace, or on the creation page.
+ * typed; the shell then goes to / , which lands on another workspace or on
+ * the creation page.
  */
 function DeleteSection({ workspace }: { workspace: Workspace }) {
   const workspaces = useWorkspaces();
   const t = useT();
-  const navigate = useNavigate();
   return (
     <section className="max-w-md space-y-3">
       <h2 className="text-lg font-semibold">{t("workspaceSettings.deleteTitle")}</h2>
@@ -111,10 +111,7 @@ function DeleteSection({ workspace }: { workspace: Workspace }) {
         confirmLabel={t("workspaceSettings.deleteConfirm")}
         sendingLabel={t("workspaceSettings.deleting")}
         cancelLabel={t("workspaceSettings.cancel")}
-        confirm={async () => {
-          await workspaces.remove(workspace.slug);
-          void navigate("/", { replace: true });
-        }}
+        confirm={() => workspaces.remove(workspace.slug)}
       />
     </section>
   );

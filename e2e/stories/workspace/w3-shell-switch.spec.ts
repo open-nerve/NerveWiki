@@ -1,3 +1,5 @@
+import type { Page } from "@playwright/test";
+
 import { bearer, emailFor, register, registerOnboarded } from "../../fixtures/auth";
 import { joinAs } from "../../fixtures/invitations";
 import { leave } from "../../fixtures/members";
@@ -7,6 +9,9 @@ import { createWorkspace, deleteWorkspace, newTeam, slugFor } from "../../fixtur
 
 // W3, the shell and the switch between workspaces (M2 design 3; M2/P5
 // design 3.2, 3.3).
+
+/** The padding of the page's main: the shell fills it to its edges; the app's other pages keep theirs. */
+const mainPadding = (page: Page) => page.getByRole("main").evaluate((main) => getComputedStyle(main).padding);
 
 test("W3 (API): the list is the account's workspaces by name; another's slug is not found; one left leaves the list", async ({
   api,
@@ -62,6 +67,7 @@ test("W3 (page): / lands on the workspace shown last, else the first by name, el
   await page.goto("/");
   await expect(workspaceHeading(page, "Acme")).toBeVisible();
   await expect(page).toHaveURL(`/${acme.slug}`);
+  expect(await mainPadding(page)).toBe("0px");
   expect(await switcherChoices(page, "Acme")).toEqual({
     workspaces: ["Acme", "Beta", "zeta"],
     others: ["Create workspace"],
@@ -91,4 +97,5 @@ test("W3 (page): / lands on the workspace shown last, else the first by name, el
   await deleteWorkspace(api, credential, beta.slug);
   await page.goto("/");
   await expectCreatePage(page);
+  expect(await mainPadding(page)).not.toBe("0px");
 });

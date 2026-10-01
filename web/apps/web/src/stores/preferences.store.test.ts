@@ -106,3 +106,19 @@ describe("PreferencesStore last workspace", () => {
     expect(prefs.lastWorkspace()).toBe("acme");
   });
 });
+
+test("PreferencesStore last workspace: one the storage failed to keep comes first", () => {
+  const values: Record<string, string> = { "nwiki.workspace": "old" };
+  const full = {
+    getItem: (key: string) => values[key] ?? null,
+    setItem: () => {
+      throw new DOMException("full", "QuotaExceededError");
+    },
+  };
+  const prefs = store({ storage: full });
+  expect(prefs.lastWorkspace()).toBe("old");
+
+  prefs.setLastWorkspace("acme");
+
+  expect(prefs.lastWorkspace()).toBe("acme");
+});

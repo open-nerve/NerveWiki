@@ -42,8 +42,8 @@ type ConfirmDialogProps = {
  * ConfirmDialog asks to confirm what cannot be undone (M1/P6 design 3.5,
  * 3.6): confirm goes out once, however often it is pressed, and nothing
  * closes the dialog while it is out; a refusal stays in the dialog. With
- * typedConfirmation, the user types a word first; closing the dialog
- * clears it.
+ * typedConfirmation, the user types a word first, in the field the
+ * dialog opens on, where Enter confirms; closing the dialog clears it.
  */
 export function ConfirmDialog({
   trigger,
@@ -63,6 +63,7 @@ export function ConfirmDialog({
   const [failure, setFailure] = useState<unknown>();
   const [sending, setSending] = useState(false);
   const confirmed = useRef(false);
+  const typedField = useRef<HTMLInputElement>(null);
   const failed = failure === undefined ? undefined : errorText(failure, t);
 
   async function run() {
@@ -92,6 +93,12 @@ export function ConfirmDialog({
     >
       <AlertDialogTrigger asChild>{trigger}</AlertDialogTrigger>
       <AlertDialogContent
+        onOpenAutoFocus={(event) => {
+          if (typedConfirmation !== undefined) {
+            event.preventDefault();
+            typedField.current?.focus();
+          }
+        }}
         onCloseAutoFocus={(event) => {
           if (confirmed.current && focusAfter !== undefined) {
             event.preventDefault();
@@ -103,12 +110,18 @@ export function ConfirmDialog({
         <AlertDialogDescription>{description}</AlertDialogDescription>
         {typedConfirmation !== undefined && (
           <FormField
+            ref={typedField}
             label={typedConfirmation.label}
             autoComplete="off"
             autoCapitalize="none"
             spellCheck={false}
             value={typed}
             onChange={(event) => setTyped(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && ready && !sending) {
+                void run();
+              }
+            }}
           />
         )}
         {failed !== undefined && <Alert>{failed}</Alert>}

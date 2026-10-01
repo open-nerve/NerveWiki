@@ -1,5 +1,6 @@
 import { ChevronsUpDown, Plus } from "lucide-react";
 import { observer } from "mobx-react-lite";
+import { useId } from "react";
 import { Link, useNavigate } from "react-router";
 import useSWR from "swr";
 
@@ -27,15 +28,19 @@ export const WorkspaceSwitcher = observer(function WorkspaceSwitcher({ current }
   const { instance } = useStore();
   const t = useT();
   const navigate = useNavigate();
+  const description = useId();
   useSWR("instance", () => instance.load());
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" className="w-full justify-between">
+        <Button variant="ghost" className="w-full justify-between" aria-describedby={description}>
           <span className="truncate">{current.name}</span>
           <ChevronsUpDown />
         </Button>
       </DropdownMenuTrigger>
+      <span id={description} hidden>
+        {t("workspace.switch")}
+      </span>
       <DropdownMenuContent align="start" className="w-56">
         <DropdownMenuRadioGroup value={current.slug} onValueChange={(slug) => void navigate(`/${slug}`)}>
           {workspaces.list?.map((workspace) => (

@@ -23,7 +23,7 @@ function availability(slug: string): Response {
 /**
  * The server of the creation page: create answers a creation; what was
  * created and which slugs were checked is in sent and asked. Its list has
- * workspaceJSON and what it created.
+ * workspaceJSON and what it created, by name, as the server lists them.
  */
 function creationServer(
   create: (body: WorkspaceCreate) => Response = (body) => json(created(body), 201),
@@ -40,7 +40,8 @@ function creationServer(
       sent.push(body);
       const answer = create(body);
       if (answer.ok) {
-        list.unshift(created(body));
+        list.push(created(body));
+        list.sort((a, b) => a.name.localeCompare(b.name));
       }
       return answer;
     },
@@ -74,7 +75,7 @@ test("the slug follows the name until one is typed, and the server says whether 
   expect(await screen.findByText("Reserved by the app. Choose another.")).toBeTruthy();
   await user.clear(slugField());
   await user.type(slugField(), "taken");
-  expect(await screen.findByText("Another workspace has it.")).toBeTruthy();
+  expect(await screen.findByText("Another workspace already has this address.")).toBeTruthy();
   expect(slugField().getAttribute("aria-invalid")).toBe("true");
 
   // Typed once, the slug no longer follows the name.
@@ -111,14 +112,15 @@ test("a creation goes into the new workspace, which the switcher lists", async (
   const { app, sent } = creationServer();
   const { router } = renderApp("/create-workspace", app);
 
-  await user.type(await nameField(), "  Acme ");
+  // Zeta comes after Lab by name: / would land on Lab.
+  await user.type(await nameField(), "  Zeta ");
   await user.click(screen.getByRole("button", { name: "Create workspace" }));
 
-  expect(await screen.findByRole("heading", { name: "Acme" })).toBeTruthy();
-  expect(router.state.location.pathname).toBe("/acme");
-  expect(sent).toEqual([{ name: "Acme", slug: "acme" }]);
-  await user.click(screen.getByRole("button", { name: "Acme" }));
-  expect((await screen.findAllByRole("menuitemradio")).map((item) => item.textContent)).toEqual(["Acme", "Lab"]);
+  expect(await screen.findByRole("heading", { name: "Zeta" })).toBeTruthy();
+  expect(router.state.location.pathname).toBe("/zeta");
+  expect(sent).toEqual([{ name: "Zeta", slug: "zeta" }]);
+  await user.click(screen.getByRole("button", { name: "Zeta" }));
+  expect((await screen.findAllByRole("menuitemradio")).map((item) => item.textContent)).toEqual(["Lab", "Zeta"]);
 });
 
 test.each([
@@ -181,4 +183,23 @@ test("while creation is off, the page says how to get into a workspace, with no 
   expect(await screen.findByText(/workspaces are created by its administrator/)).toBeTruthy();
   expect(screen.queryByRole("textbox")).toBeNull();
   expect(screen.queryByRole("button", { name: "Create workspace" })).toBeNull();
+});
+
+test("the page says so when the server's settings cannot be loaded; Try again loads them", async () => {
+  const user = userEvent.setup();
+  let down = true;
+  renderApp(
+    "/create-workspace",
+    signedInApp({
+      "GET /api/v0/instance": () => (down ? Promise.reject(new TypeError("offline")) : json(instanceJSON)),
+    })
+  );
+  expect((await screen.findByRole("alert")).textContent).toBe(
+    "Cannot reach the server. Check the connection and try again."
+  );
+
+  down = false;
+  await user.click(screen.getByRole("button", { name: "Try again" }));
+
+  expect(await nameField()).toBeTruthy();
 });

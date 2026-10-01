@@ -15,15 +15,17 @@ afterAll(() => configure({ reactStrictMode: false }));
 /**
  * The server of an account done with the profile step, whose workspaces
  * are list (creations add to it); what changed the account or its
- * workspaces is in sent. While stepsDown, recording a step answers 503.
+ * workspaces is in sent. While stepsDown, recording a step answers 503;
+ * while workspacesDown, the workspaces cannot be read.
  */
 function stepServer(list: Workspace[], creation = true) {
-  const server = { sent: [] as string[], stepsDown: false };
+  const server = { sent: [] as string[], stepsDown: false, workspacesDown: false };
   let me: User = { ...userJSON, onboarding_steps: ["profile"] };
   const app = signedInApp({
     "GET /api/v0/me": () => json(me),
     "GET /api/v0/instance": () => json({ ...instanceJSON, workspace_creation_enabled: creation }),
-    "GET /api/v0/workspaces": () => json({ data: list }),
+    "GET /api/v0/workspaces": () =>
+      server.workspacesDown ? Promise.reject(new TypeError("offline")) : json({ data: list }),
     "GET /api/v0/workspace-slugs/*": () => json({ available: true }),
     "POST /api/v0/workspaces": async (request) => {
       const body = (await request.json()) as WorkspaceCreate;
@@ -45,14 +47,17 @@ function stepServer(list: Workspace[], creation = true) {
   return { app, server };
 }
 
-test("an account in a workspace already goes on at once, the step recorded once", async () => {
-  const { app, server } = stepServer([workspaceJSON]);
-  const { router } = renderApp("/onboarding", app);
+test.each([true, false])(
+  "an account in a workspace already goes on at once, the step recorded once: creation %s",
+  async (creation) => {
+    const { app, server } = stepServer([workspaceJSON], creation);
+    const { router } = renderApp("/onboarding", app);
 
-  expect(await screen.findByRole("heading", { name: "Lab" })).toBeTruthy();
-  expect(router.state.location.pathname).toBe("/lab");
-  expect(server.sent).toEqual(["step workspace"]);
-});
+    expect(await screen.findByRole("heading", { name: "Lab" })).toBeTruthy();
+    expect(router.state.location.pathname).toBe("/lab");
+    expect(server.sent).toEqual(["step workspace"]);
+  }
+);
 
 test("an account without a workspace creates one, and goes on into it", async () => {
   const user = userEvent.setup();
@@ -91,6 +96,22 @@ test("a step that cannot be recorded says why; Try again records it", async () =
 
   expect((await screen.findByRole("alert")).textContent).toContain("busy");
   server.stepsDown = false;
+  await user.click(screen.getByRole("button", { name: "Try again" }));
+
+  expect(await screen.findByRole("heading", { name: "Lab" })).toBeTruthy();
+  expect(server.sent).toEqual(["step workspace"]);
+});
+
+test("a step whose workspaces cannot be loaded says why; Try again loads them", async () => {
+  const user = userEvent.setup();
+  const { app, server } = stepServer([workspaceJSON]);
+  server.workspacesDown = true;
+  renderApp("/onboarding", app);
+
+  expect((await screen.findByRole("alert")).textContent).toBe(
+    "Cannot reach the server. Check the connection and try again."
+  );
+  server.workspacesDown = false;
   await user.click(screen.getByRole("button", { name: "Try again" }));
 
   expect(await screen.findByRole("heading", { name: "Lab" })).toBeTruthy();

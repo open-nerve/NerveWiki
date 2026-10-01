@@ -1,6 +1,6 @@
-import { screen, within } from "@testing-library/react";
+import { act, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 
 import { instanceJSON, json, signedInApp, workspaceJSON } from "../../test/fakes";
 import { renderApp } from "../../test/render";
@@ -8,6 +8,7 @@ import { renderApp } from "../../test/render";
 // The shell of a workspace's pages (M2/P5 design 3.2).
 
 const acme = { ...workspaceJSON, id: "0199a2b4-0000-7000-8000-0000000000a1", slug: "acme", name: "Acme" };
+const nameField = () => screen.findByLabelText<HTMLInputElement>("Name");
 const withWorkspaces = (routes = {}) =>
   signedInApp({ "GET /api/v0/workspaces": () => json({ data: [acme, workspaceJSON] }), ...routes });
 
@@ -15,7 +16,7 @@ test("the switcher lists the account's workspaces, checks the one shown, and goe
   const user = userEvent.setup();
   const { router } = renderApp("/lab", withWorkspaces());
 
-  await user.click(await screen.findByRole("button", { name: "Lab" }));
+  await user.click(await screen.findByRole("button", { name: "Lab", description: "Switch workspace" }));
   const items = await screen.findAllByRole("menuitemradio");
   expect(items.map((item) => [item.textContent, item.getAttribute("aria-checked")])).toEqual([
     ["Acme", "false"],
@@ -73,4 +74,51 @@ test("the navigation leads to the workspace's pages, marking the one shown", asy
       ["Settings", "/acme/settings", null],
     ]
   );
+});
+
+test("a page of one workspace starts anew in another: a name typed for one is not offered to another", async () => {
+  const user = userEvent.setup();
+  const { router } = renderApp("/acme/settings/general", withWorkspaces());
+  await user.clear(await nameField());
+  await user.type(await nameField(), "Acme Two");
+
+  await act(() => router.navigate("/lab/settings/general"));
+
+  expect((await nameField()).value).toBe("Lab");
+});
+
+afterEach(() => vi.useRealTimers());
+
+test("a workspace a later read no longer has is not found", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  let list = [acme, workspaceJSON];
+  const { router } = renderApp("/acme", signedInApp({ "GET /api/v0/workspaces": () => json({ data: list }) }));
+  expect(await screen.findByRole("heading", { name: "Acme" })).toBeTruthy();
+
+  // Removed elsewhere; coming back to it reads the list again, once the read before is no longer recent.
+  list = [workspaceJSON];
+  await act(() => router.navigate("/create-workspace"));
+  await act(() => vi.advanceTimersByTimeAsync(2_000));
+  await act(() => router.navigate("/acme"));
+
+  expect(await screen.findByRole("heading", { name: "Page not found" })).toBeTruthy();
+});
+
+test("the shell says so when the workspaces cannot be loaded; Try again loads them", async () => {
+  const user = userEvent.setup();
+  let down = true;
+  renderApp(
+    "/acme",
+    signedInApp({
+      "GET /api/v0/workspaces": () => (down ? Promise.reject(new TypeError("offline")) : json({ data: [acme] })),
+    })
+  );
+  expect((await screen.findByRole("alert")).textContent).toBe(
+    "Cannot reach the server. Check the connection and try again."
+  );
+
+  down = false;
+  await user.click(screen.getByRole("button", { name: "Try again" }));
+
+  expect(await screen.findByRole("heading", { name: "Acme" })).toBeTruthy();
 });

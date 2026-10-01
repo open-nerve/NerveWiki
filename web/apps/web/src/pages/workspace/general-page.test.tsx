@@ -50,6 +50,7 @@ test("the settings of a workspace open on its general page", async () => {
   expect(router.state.location.pathname).toBe("/acme/settings/general");
   const nav = screen.getByRole("navigation", { name: "Acme" });
   expect(within(nav).getByRole("link", { name: "Settings" }).getAttribute("aria-current")).toBe("page");
+  expect(within(nav).getByRole("link", { name: "Home" }).getAttribute("aria-current")).toBeNull();
 });
 
 test("an admin renames the workspace; the switcher shows the new name", async () => {
@@ -64,6 +65,7 @@ test("an admin renames the workspace; the switcher shows the new name", async ()
   expect(await screen.findByText("Saved.")).toBeTruthy();
   expect(sent).toEqual(["PATCH Acme Labs"]);
   expect(screen.getByRole("button", { name: "Acme Labs" })).toBeTruthy();
+  expect((await nameField()).value).toBe("Acme Labs");
 
   // Saving the name it has sends nothing; an edit takes the saved state away.
   await user.click(screen.getByRole("button", { name: "Save" }));
@@ -95,9 +97,29 @@ test("a name the local check or the server refuses shows under the field", async
   expect(screen.queryByText("Saved.")).toBeNull();
 });
 
-test("deleting asks for the slug, then lands on another workspace", async () => {
+/**
+ * watchFor watches the page for text being added to it; the function it
+ * returns stops watching, and says whether it was.
+ */
+function watchFor(text: string): () => boolean {
+  let seen = false;
+  const look = (records: MutationRecord[]) =>
+    (seen ||= records.some((record) => [...record.addedNodes].some((node) => node.textContent?.includes(text))));
+  const observer = new MutationObserver(look);
+  observer.observe(document.body, { childList: true, subtree: true });
+  return () => {
+    look(observer.takeRecords());
+    observer.disconnect();
+    return seen;
+  };
+}
+
+test.each([
+  ["deleted", undefined],
+  ["already gone", () => problem(404, "workspace.not_found")],
+])("deleting asks for the slug, then lands on another workspace: %s", async (_, remove) => {
   const user = userEvent.setup();
-  const { app, sent } = settingsServer();
+  const { app, sent } = settingsServer({ remove });
   const { router } = renderApp("/acme/settings/general", app);
 
   await user.click(await screen.findByRole("button", { name: "Delete workspace" }));
@@ -107,13 +129,32 @@ test("deleting asks for the slug, then lands on another workspace", async () => 
   await user.type(within(dialog).getByLabelText("Type acme to confirm"), "acm");
   expect(confirm.hasAttribute("disabled")).toBe(true);
   await user.type(within(dialog).getByLabelText("Type acme to confirm"), "e");
+  const notFound = watchFor("Page not found");
   await user.click(confirm);
 
   expect(await screen.findByRole("heading", { name: "Lab" })).toBeTruthy();
   expect(router.state.location.pathname).toBe("/lab");
+  expect(notFound()).toBe(false);
   expect(sent).toEqual(["DELETE"]);
   await user.click(screen.getByRole("button", { name: "Lab" }));
   expect((await screen.findAllByRole("menuitemradio")).map((item) => item.textContent)).toEqual(["Lab"]);
+});
+
+test("the dialog opens on the slug's field, where Enter deletes once it is typed", async () => {
+  const user = userEvent.setup();
+  const { app, sent } = settingsServer();
+  const { router } = renderApp("/acme/settings/general", app);
+
+  await user.click(await screen.findByRole("button", { name: "Delete workspace" }));
+  const field = within(await screen.findByRole("alertdialog")).getByLabelText("Type acme to confirm");
+  await waitFor(() => expect(document.activeElement).toBe(field));
+  await user.keyboard("acm{Enter}");
+  expect(sent).toEqual([]);
+  await user.keyboard("e{Enter}");
+
+  expect(await screen.findByRole("heading", { name: "Lab" })).toBeTruthy();
+  expect(router.state.location.pathname).toBe("/lab");
+  expect(sent).toEqual(["DELETE"]);
 });
 
 test("a refused deletion stays in the dialog with why; closing it clears the slug typed", async () => {

@@ -1,5 +1,6 @@
 import { expect, test } from "vitest";
 
+import { ApiError } from "../services/api";
 import type { Workspace } from "../services/workspace.service";
 import { WorkspaceStore } from "./workspace.store";
 
@@ -90,4 +91,58 @@ test("a write before the first read leaves the list to that read", async () => {
 
   await store.load();
   expect(slugs(store)).toEqual(["beta"]);
+});
+
+// A read that goes out after the creation was committed, and comes back
+// before the creation's answer, holds the new workspace already.
+test("a read that holds a workspace being created keeps it once", async () => {
+  const acme = workspace("acme", "Acme");
+  let answerCreate: ((w: Workspace) => void) | undefined;
+  let reads = 0;
+  const store = new WorkspaceStore({
+    list: async () => (++reads === 1 ? [workspace("beta", "Beta")] : [acme, workspace("beta", "Beta")]),
+    create: () => new Promise<Workspace>((resolve) => (answerCreate = resolve)),
+    rename: async () => acme,
+    remove: async () => {},
+    checkSlug: async () => ({ available: true }),
+  });
+  await store.load();
+
+  const creation = store.create({ name: "Acme", slug: "acme" });
+  await store.load();
+  answerCreate?.(acme);
+  await creation;
+
+  expect(slugs(store)).toEqual(["acme", "beta"]);
+});
+
+test("the same name is ordered by id, as the server orders it", async () => {
+  const store = storeOf([]);
+  await store.load();
+
+  await store.create({ name: "Acme", slug: "b" });
+  await store.create({ name: "Acme", slug: "a" });
+
+  expect(slugs(store)).toEqual(["a", "b"]);
+});
+
+test("a workspace the account no longer has is removed as one deleted: it is gone", async () => {
+  const notFound = new ApiError(404, { status: 404, code: "workspace.not_found", title: "" });
+  const forbidden = new ApiError(403, { status: 403, code: "forbidden", title: "" });
+  let refusal = notFound;
+  const store = new WorkspaceStore({
+    list: async () => [workspace("acme", "Acme"), workspace("beta", "Beta")],
+    create: async () => workspace("x", "X"),
+    rename: async () => workspace("x", "X"),
+    remove: () => Promise.reject(refusal),
+    checkSlug: async () => ({ available: true }),
+  });
+  await store.load();
+
+  await store.remove("acme");
+  expect([slugs(store), store.wasRemoved("acme")]).toEqual([["beta"], true]);
+
+  refusal = forbidden;
+  await expect(store.remove("beta")).rejects.toBe(forbidden);
+  expect([slugs(store), store.wasRemoved("beta")]).toEqual([["beta"], false]);
 });

@@ -80,7 +80,7 @@ test("W1 (page): an account without a workspace lands on the creation page, whic
   await slugField(page).fill("settings");
   await expect.poll(() => noteOf(slugField(page))).toBe("Reserved by the app. Choose another.");
   await slugField(page).fill(taken);
-  await expect.poll(() => noteOf(slugField(page))).toBe("Another workspace has it.");
+  await expect.poll(() => noteOf(slugField(page))).toBe("Another workspace already has this address.");
 
   // Sent all the same, the taken slug is refused under the field, and nothing is added.
   const before = await countWorkspaces(db);

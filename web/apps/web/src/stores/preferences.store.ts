@@ -47,8 +47,9 @@ export class PreferencesStore {
   locale: Locale;
   private systemDark: boolean;
   private readonly storage: PreferenceStorage;
-  /** The last workspace of this page, for when the storage cannot keep it. */
+  /** The last workspace of this page, which comes first once the storage failed to keep it. */
   private workspace: string | undefined = undefined;
+  private workspaceKept = true;
 
   constructor({ storage, darkScheme, languages }: PreferenceSources) {
     this.storage = storage;
@@ -58,7 +59,11 @@ export class PreferencesStore {
     this.locale = isLocale(locale) ? locale : localeFor(languages);
     this.systemDark = darkScheme.matches;
     darkScheme.addEventListener("change", (event) => this.setSystemDark(event.matches));
-    makeAutoObservable<this, "storage" | "workspace">(this, { storage: false, workspace: false });
+    makeAutoObservable<this, "storage" | "workspace" | "workspaceKept">(this, {
+      storage: false,
+      workspace: false,
+      workspaceKept: false,
+    });
   }
 
   /** resolvedTheme is the theme to show: the preference, or the system's. */
@@ -82,16 +87,17 @@ export class PreferencesStore {
 
   /**
    * lastWorkspace is the slug of the workspace this device showed last, in
-   * any of its tabs: it is read from the storage each time. It is not
+   * any of its tabs: it is read from the storage each time, unless the
+   * storage failed to keep this page's (blocked, or full). It is not
    * observed; the landing reads it once.
    */
   lastWorkspace(): string | undefined {
-    return read(this.storage, workspaceKey) ?? this.workspace;
+    return this.workspaceKept ? (read(this.storage, workspaceKey) ?? this.workspace) : this.workspace;
   }
 
   setLastWorkspace(slug: string): void {
     this.workspace = slug;
-    write(this.storage, workspaceKey, slug);
+    this.workspaceKept = write(this.storage, workspaceKey, slug);
   }
 
   private setSystemDark(dark: boolean): void {
@@ -109,10 +115,13 @@ function read(storage: PreferenceStorage, key: string): string | null {
   }
 }
 
-function write(storage: PreferenceStorage, key: string, value: string): void {
+/** write stores value, and tells whether the storage kept it. */
+function write(storage: PreferenceStorage, key: string, value: string): boolean {
   try {
     storage.setItem(key, value);
+    return true;
   } catch {
     // see read
+    return false;
   }
 }
