@@ -77,6 +77,8 @@ type fakeStore struct {
 	created   []domain.Notebook
 	members   []domain.Member
 	updated   []domain.Notebook
+	// ownerless is what ListOwnerless lists.
+	ownerless []app.OwnerlessListed
 	// ofWorkspace are the ids DeleteNotebooksOf deletes.
 	ofWorkspace []uuid.UUID
 }
@@ -139,6 +141,11 @@ func (f *fakeStore) DeleteNotebook(ctx context.Context, id, by uuid.UUID, at tim
 func (f *fakeStore) DeleteNotebooksOf(ctx context.Context, workspaceID, by uuid.UUID, at time.Time) ([]uuid.UUID, error) {
 	f.record(ctx, "DeleteNotebooksOf by "+by.String()+" at "+at.Format(time.RFC3339))
 	return f.ofWorkspace, nil
+}
+
+func (f *fakeStore) DeleteAuditEventsOf(ctx context.Context, workspaceID, by uuid.UUID, at time.Time) error {
+	f.record(ctx, "DeleteAuditEventsOf by "+by.String()+" at "+at.Format(time.RFC3339))
+	return nil
 }
 
 // fakeAuthorizer grants the grant of grants for the action asked, and

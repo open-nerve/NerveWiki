@@ -44,6 +44,8 @@ type (
 	NotebookDeletionSubscriber = app.NotebookDeletionSubscriber
 	VisibilityChange           = app.VisibilityChange
 	VisibilitySubscriber       = app.VisibilitySubscriber
+	NotebookActivity           = app.NotebookActivity
+	NotebookActivitySource     = app.NotebookActivitySource
 )
 
 // Deps are what bootstrap gives the module.
@@ -59,6 +61,7 @@ type Deps struct {
 	// The registrants of the extension points.
 	DeletionSubscribers   []NotebookDeletionSubscriber
 	VisibilitySubscribers []VisibilitySubscriber
+	ActivitySources       []NotebookActivitySource
 }
 
 // Module is the wired notebook module.
@@ -101,6 +104,20 @@ func New(d Deps) *Module {
 		LeaveNotebook: app.NewLeaveNotebook(app.LeaveNotebookDeps{
 			Workspaces: d.Workspaces, Finder: store, Notebooks: store, Writer: store, Subscribers: visibility,
 			Auth: auth, Tx: d.Tx, Clock: d.Clock, Logger: d.Logger,
+		}),
+		ListOwnerless: app.NewListOwnerlessNotebooks(app.ListOwnerlessNotebooksDeps{
+			Workspaces: d.Workspaces, Notebooks: store, Profiles: d.Profiles, Activities: d.ActivitySources, Auth: auth,
+		}),
+		TakeOver: app.NewTakeOverNotebook(app.TakeOverNotebookDeps{
+			Workspaces: d.Workspaces, Finder: store, Notebooks: store, Writer: store, Ownerless: store, Audit: store,
+			Subscribers: visibility, Auth: auth, Tx: d.Tx, Clock: d.Clock, Logger: d.Logger,
+		}),
+		DeleteOwnerless: app.NewDeleteOwnerlessNotebook(app.DeleteOwnerlessNotebookDeps{
+			Workspaces: d.Workspaces, Finder: store, Notebooks: store, Audit: store, Subscribers: d.DeletionSubscribers,
+			Auth: auth, Tx: d.Tx, Clock: d.Clock, Logger: d.Logger,
+		}),
+		ListAuditEvents: app.NewListNotebookAuditEvents(app.ListNotebookAuditEventsDeps{
+			Workspaces: d.Workspaces, Audit: store, Profiles: d.Profiles, Auth: auth,
 		}),
 	}}
 }

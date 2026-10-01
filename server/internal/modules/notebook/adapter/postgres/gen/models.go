@@ -24,6 +24,20 @@ type Notebook struct {
 	DeletedAt       *time.Time
 }
 
+type NotebookAuditEvent struct {
+	ID            uuid.UUID
+	WorkspaceID   uuid.UUID
+	NotebookID    uuid.UUID
+	NotebookName  string
+	Action        string
+	FormerOwnerID uuid.UUID
+	CreatedByID   uuid.UUID
+	UpdatedByID   uuid.UUID
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+	DeletedAt     *time.Time
+}
+
 type NotebookMember struct {
 	ID          uuid.UUID
 	NotebookID  uuid.UUID

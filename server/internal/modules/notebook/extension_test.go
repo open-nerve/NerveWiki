@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 	"uuid"
@@ -41,11 +42,15 @@ func (c *tickingClock) Now() time.Time {
 	return testNow().Add(time.Duration(c.reads-1) * time.Microsecond)
 }
 
-// adminsAuthorizer lets a notebook's explicit admins act on it; the rest
-// do not see it.
+// adminsAuthorizer lets a notebook's explicit admins act on it, and anyone
+// handle the ownerless notebooks, as a workspace's admin; the rest do not
+// see it.
 type adminsAuthorizer struct{ facts notebook.Facts }
 
-func (a adminsAuthorizer) Authorize(ctx context.Context, actor shared.Actor, _ shared.Action, t shared.Target) (shared.Grant, error) {
+func (a adminsAuthorizer) Authorize(ctx context.Context, actor shared.Actor, action shared.Action, t shared.Target) (shared.Grant, error) {
+	if ownerlessAction(action) {
+		return shared.Grant{WorkspaceRole: shared.WorkspaceAdmin}, nil
+	}
 	f, err := a.facts.NotebookFacts(ctx, t.NotebookID, actor.UserID)
 	switch {
 	case err != nil:
@@ -54,6 +59,12 @@ func (a adminsAuthorizer) Authorize(ctx context.Context, actor shared.Actor, _ s
 		return shared.Grant{}, shared.ErrNotVisible
 	}
 	return shared.Grant{WorkspaceRole: shared.WorkspaceMember, NotebookRole: f.Role}, nil
+}
+
+// ownerlessAction reports whether action is one of the ownerless
+// notebooks', which a workspace's admins may do.
+func ownerlessAction(action shared.Action) bool {
+	return strings.HasPrefix(string(action), "notebook_ownerless.")
 }
 
 // sqlWorkspaces stands in for the workspace module's port.
@@ -123,6 +134,25 @@ func (f fixture) exec(t *testing.T, sql string, args ...any) {
 	}
 }
 
+// orphanEng ends alice's membership of eng, its only admin's, and leaves
+// it ownerless of her, a minute before the clock's instant.
+func (f fixture) orphanEng(t *testing.T) {
+	t.Helper()
+	at := testNow().Add(-time.Minute)
+	f.exec(t, "UPDATE notebook_members SET ended_at = $3, updated_at = $3 WHERE notebook_id = $1 AND user_id = $2", f.eng, f.alice, at)
+	f.exec(t, "UPDATE notebooks SET ownerless_since = $2, former_owner_id = $3 WHERE id = $1", f.eng, at, f.alice)
+}
+
+// count is the one number query reads.
+func (f fixture) count(t *testing.T, query string, args ...any) int {
+	t.Helper()
+	var n int
+	if err := f.pool.QueryRow(context.Background(), query, args...).Scan(&n); err != nil {
+		t.Fatalf("%s: %v", query, err)
+	}
+	return n
+}
+
 // deletedAt is how many rows of notebook id were deleted at at: the
 // notebook's, and its members'.
 func (f fixture) deletedAt(t *testing.T, id uuid.UUID, at time.Time) (notebooks, members int) {
@@ -169,35 +199,60 @@ func (s *subscriber) NotebookDeleted(ctx context.Context, d notebook.NotebookDel
 }
 
 // The subscriber runs after the notebook and its members were deleted, in
-// their transaction, with their time; its failure rolls everything back.
+// their transaction, with their time; its failure rolls everything back,
+// the ownerless deletion's audit event too.
 func TestANotebookDeletionPassesTheSubscriber(t *testing.T) {
-	for _, fail := range []bool{false, true} {
-		t.Run(map[bool]string{false: "the subscriber follows", true: "the subscriber fails"}[fail], func(t *testing.T) {
-			f := newFixture(t)
-			s := &subscriber{f: f, fail: fail}
-			router := httpserver.NewRouter(slog.New(slog.DiscardHandler))
-			notebook.New(notebook.Deps{
-				Pool: f.pool, Tx: postgres.NewTxManager(f.pool, 5*time.Second), Clock: &tickingClock{},
-				Logger: slog.New(slog.DiscardHandler), Authorizer: adminsAuthorizer{facts: notebook.NewFacts(f.pool)},
-				Workspaces: sqlWorkspaces{f.pool}, DeletionSubscribers: []notebook.NotebookDeletionSubscriber{s},
-			}).Register(router, httpservertest.NewAPI(t, httpservertest.APIOptions{Authenticator: tokenAuth{}}))
+	for _, d := range []struct {
+		name      string
+		ownerless bool
+		path      func(f fixture) string
+		by        func(f fixture) uuid.UUID
+	}{
+		{"by its admin", false, func(f fixture) string { return "/api/v0/notebooks/" + f.eng.String() },
+			func(f fixture) uuid.UUID { return f.alice }},
+		{"ownerless, by a workspace admin", true, func(f fixture) string { return "/api/v0/ownerless-notebooks/" + f.eng.String() },
+			func(f fixture) uuid.UUID { return f.bob }},
+	} {
+		for _, fail := range []bool{false, true} {
+			t.Run(d.name+map[bool]string{false: ", the subscriber follows", true: ", the subscriber fails"}[fail], func(t *testing.T) {
+				f := newFixture(t)
+				if d.ownerless {
+					f.orphanEng(t)
+				}
+				s := &subscriber{f: f, fail: fail}
+				router := httpserver.NewRouter(slog.New(slog.DiscardHandler))
+				notebook.New(notebook.Deps{
+					Pool: f.pool, Tx: postgres.NewTxManager(f.pool, 5*time.Second), Clock: &tickingClock{},
+					Logger: slog.New(slog.DiscardHandler), Authorizer: adminsAuthorizer{facts: notebook.NewFacts(f.pool)},
+					Workspaces: sqlWorkspaces{f.pool}, DeletionSubscribers: []notebook.NotebookDeletionSubscriber{s},
+				}).Register(router, httpservertest.NewAPI(t, httpservertest.APIOptions{Authenticator: tokenAuth{}}))
 
-			req := httptest.NewRequest(http.MethodDelete, "/api/v0/notebooks/"+f.eng.String(), nil)
-			req.Header.Set("Authorization", "Bearer "+f.alice.String())
-			rec := httptest.NewRecorder()
-			router.ServeHTTP(rec, req)
+				req := httptest.NewRequest(http.MethodDelete, d.path(f), nil)
+				req.Header.Set("Authorization", "Bearer "+d.by(f).String())
+				rec := httptest.NewRecorder()
+				router.ServeHTTP(rec, req)
 
-			notebooks, members := f.deletedAt(t, f.eng, testNow())
-			want := notebook.NotebookDeletion{WorkspaceID: f.acme, NotebookIDs: []uuid.UUID{f.eng}, By: f.alice, At: testNow()}
-			switch {
-			case len(s.got) != 1 || !sameDeletion(s.got[0], want) || !s.inTx || !slices.Equal(s.deleted, []time.Time{testNow()}):
-				t.Errorf("the subscriber got %+v in a transaction %v, saw %v; want %+v, the notebook deleted", s.got, s.inTx, s.deleted, want)
-			case !fail && (rec.Code != http.StatusNoContent || notebooks != 1 || members != 2):
-				t.Errorf("DELETE = %d %s, %d notebooks and %d members deleted at %v; want 204, eng and both its members", rec.Code, rec.Body, notebooks, members, testNow())
-			case fail && (rec.Code != http.StatusInternalServerError || notebooks != 0 || members != 0):
-				t.Errorf("DELETE with a failing subscriber = %d, %d notebooks and %d members deleted; want 500, none", rec.Code, notebooks, members)
-			}
-		})
+				notebooks, members := f.deletedAt(t, f.eng, testNow())
+				events := f.count(t, "SELECT count(*) FROM notebook_audit_events WHERE action = 'deleted' AND notebook_id = $1 "+
+					"AND created_by_id = $2 AND created_at = $3", f.eng, d.by(f), testNow())
+				wantEvents := 0
+				if d.ownerless && !fail {
+					wantEvents = 1
+				}
+				want := notebook.NotebookDeletion{WorkspaceID: f.acme, NotebookIDs: []uuid.UUID{f.eng}, By: d.by(f), At: testNow()}
+				switch {
+				case len(s.got) != 1 || !sameDeletion(s.got[0], want) || !s.inTx || !slices.Equal(s.deleted, []time.Time{testNow()}):
+					t.Errorf("the subscriber got %+v in a transaction %v, saw %v; want %+v, the notebook deleted", s.got, s.inTx, s.deleted, want)
+				case !fail && (rec.Code != http.StatusNoContent || notebooks != 1 || members != 2):
+					t.Errorf("DELETE = %d %s, %d notebooks and %d members deleted at %v; want 204, eng and both its members", rec.Code, rec.Body,
+						notebooks, members, testNow())
+				case fail && (rec.Code != http.StatusInternalServerError || notebooks != 0 || members != 0):
+					t.Errorf("DELETE with a failing subscriber = %d, %d notebooks and %d members deleted; want 500, none", rec.Code, notebooks, members)
+				case events != wantEvents:
+					t.Errorf("%d audit events of the deletion, want %d", events, wantEvents)
+				}
+			})
+		}
 	}
 }
 
@@ -207,8 +262,9 @@ func sameDeletion(a, b notebook.NotebookDeletion) bool {
 
 // The registrant of the workspace module's deletion, in the deletion's
 // transaction: the workspace's notebooks not deleted, with their members,
-// at the deletion's time; a notebook deleted before keeps its own; another
-// workspace's stays; the subscribers get every id once, in order.
+// and its audit events, at the deletion's time; a notebook deleted before
+// keeps its own; another workspace's stay; the subscribers get every id
+// once, in order.
 func TestAWorkspaceDeletionDeletesItsNotebooks(t *testing.T) {
 	for _, fail := range []bool{false, true} {
 		t.Run(map[bool]string{false: "the subscriber follows", true: "the subscriber fails"}[fail], func(t *testing.T) {
@@ -221,6 +277,7 @@ func TestAWorkspaceDeletionDeletesItsNotebooks(t *testing.T) {
 				"VALUES ($1, $2, 'Third', $3, $3, $4, $4)", third, f.acme, f.alice, testNow())
 			s := &subscriber{f: f, fail: fail}
 			deletion := notebook.NewWorkspaceDeletion(f.pool, []notebook.NotebookDeletionSubscriber{s})
+			acmes, others := f.auditEvent(t, f.acme), f.auditEvent(t, f.other)
 
 			err := postgres.NewTxManager(f.pool, 5*time.Second).WithinTx(context.Background(), func(ctx context.Context) error {
 				return deletion.WorkspaceDeleted(ctx, notebook.WorkspaceDeleted{WorkspaceID: f.acme, By: f.bob, At: testNow()})
@@ -245,6 +302,49 @@ func TestAWorkspaceDeletionDeletesItsNotebooks(t *testing.T) {
 			case fail && (err == nil || engs != 0 || engMembers != 0 || thirds != 0):
 				t.Errorf("WorkspaceDeleted() with a failing subscriber = %v; eng %d with %d members, third %d; want the failure, none", err, engs, engMembers, thirds)
 			}
+			acmeDeleted, otherDeleted := f.auditDeletedBy(t, acmes, f.bob, testNow()), f.auditDeletedBy(t, others, f.bob, testNow())
+			if acmeDeleted == fail || otherDeleted {
+				t.Errorf("acme's audit event deleted %v, the other's %v; want acme's %v, the other's not", acmeDeleted, otherDeleted, !fail)
+			}
 		})
 	}
+}
+
+// The registrant deletes the audit events of a workspace whose notebooks
+// are all gone: an event outlives its notebook.
+func TestAWorkspaceDeletionDeletesTheEventsOfGoneNotebooks(t *testing.T) {
+	f := newFixture(t)
+	f.exec(t, "DELETE FROM notebook_members WHERE notebook_id IN (SELECT id FROM notebooks WHERE workspace_id = $1)", f.acme)
+	f.exec(t, "DELETE FROM notebooks WHERE workspace_id = $1", f.acme)
+	event := f.auditEvent(t, f.acme)
+
+	err := postgres.NewTxManager(f.pool, 5*time.Second).WithinTx(context.Background(), func(ctx context.Context) error {
+		return notebook.NewWorkspaceDeletion(f.pool, nil).WorkspaceDeleted(ctx, notebook.WorkspaceDeleted{WorkspaceID: f.acme, By: f.bob, At: testNow()})
+	})
+
+	if err != nil || !f.auditDeletedBy(t, event, f.bob, testNow()) {
+		t.Errorf("WorkspaceDeleted() = %v; want the event deleted by bob at %v", err, testNow())
+	}
+}
+
+// auditEvent inserts an audit event of workspace, alice's notebook taken
+// over by bob, and returns its id.
+func (f fixture) auditEvent(t *testing.T, workspace uuid.UUID) uuid.UUID {
+	t.Helper()
+	id := uuid.NewV7()
+	f.exec(t, "INSERT INTO notebook_audit_events (id, workspace_id, notebook_id, notebook_name, action, former_owner_id, "+
+		"created_by_id, updated_by_id, created_at, updated_at) VALUES ($1, $2, $3, 'Notes', 'taken_over', $4, $5, $5, $6, $6)",
+		id, workspace, uuid.NewV7(), f.alice, f.bob, testNow().Add(-time.Hour))
+	return id
+}
+
+// auditDeletedBy is whether the audit event id was deleted by by at at.
+func (f fixture) auditDeletedBy(t *testing.T, id, by uuid.UUID, at time.Time) bool {
+	t.Helper()
+	var deleted bool
+	if err := f.pool.QueryRow(context.Background(), "SELECT deleted_at IS NOT DISTINCT FROM $2 AND updated_at = $2 AND updated_by_id = $3 "+
+		"FROM notebook_audit_events WHERE id = $1", id, at, by).Scan(&deleted); err != nil {
+		t.Fatal(err)
+	}
+	return deleted
 }

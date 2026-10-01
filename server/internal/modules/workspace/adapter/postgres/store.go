@@ -174,6 +174,20 @@ func (s *Store) FindWorkspaceByID(ctx context.Context, id uuid.UUID) (domain.Wor
 	return workspaceOf(gen.FindWorkspaceBySlugRow(row)), nil
 }
 
+// WorkspaceSlugs returns the slugs of the workspaces not deleted among
+// ids, by id.
+func (s *Store) WorkspaceSlugs(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]string, error) {
+	rows, err := s.queries(ctx).WorkspaceSlugs(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("workspace slugs: %w", err)
+	}
+	slugs := make(map[uuid.UUID]string, len(rows))
+	for _, r := range rows {
+		slugs[r.ID] = r.Slug
+	}
+	return slugs, nil
+}
+
 // RenameWorkspace implements app.WorkspaceUpdater.
 func (s *Store) RenameWorkspace(ctx context.Context, id uuid.UUID, name string, by uuid.UUID, now time.Time) error {
 	if err := s.queries(ctx).RenameWorkspace(ctx, gen.RenameWorkspaceParams{ID: id, Name: name, By: by, Now: now}); err != nil {

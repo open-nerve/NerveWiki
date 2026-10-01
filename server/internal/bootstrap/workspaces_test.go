@@ -92,7 +92,8 @@ func TestWorkspacesReactivateMember(t *testing.T) {
 
 	out, logs, err := runWorkspaces(t, tm.url, ReactivateMember("acme", "Bob@Example.com"))
 
-	want := "reactivated bob@example.com in acme as admin; the membership had ended at " + ended.UTC().Format(time.RFC3339) + "\n"
+	want := "reactivated bob@example.com in acme as admin; the membership had ended at " + ended.UTC().Format(time.RFC3339) +
+		"; ownerless notebooks returned: 0\n"
 	if err != nil || out != want || !strings.Contains(logs, `msg="workspace membership reactivated"`) || !strings.Contains(logs, "by=cli") {
 		t.Errorf("reactivate-member = %q, %v, logs %s; want %q, logged by=cli", out, err, logs, want)
 	}

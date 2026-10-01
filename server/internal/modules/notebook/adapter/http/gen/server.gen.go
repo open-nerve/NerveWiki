@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -18,6 +19,27 @@ import (
 	"github.com/oapi-codegen/runtime"
 	externalRef0 "github.com/open-nerve/NerveWiki/server/internal/platform/httpserver/apigen"
 )
+
+// Defines values for NotebookAuditAction.
+const (
+	NotebookAuditActionDeleted   NotebookAuditAction = "deleted"
+	NotebookAuditActionReturned  NotebookAuditAction = "returned"
+	NotebookAuditActionTakenOver NotebookAuditAction = "taken_over"
+)
+
+// Valid indicates whether the value is a known member of the NotebookAuditAction enum.
+func (e NotebookAuditAction) Valid() bool {
+	switch e {
+	case NotebookAuditActionDeleted:
+		return true
+	case NotebookAuditActionReturned:
+		return true
+	case NotebookAuditActionTakenOver:
+		return true
+	default:
+		return false
+	}
+}
 
 // Defines values for NotebookRole.
 const (
@@ -61,6 +83,13 @@ func (e WorkspaceAccess) Valid() bool {
 	}
 }
 
+// AccountProfile What a workspace's admins see of an account in the ownerless list and the audit events.
+type AccountProfile struct {
+	DisplayName string    `json:"display_name"`
+	Email       string    `json:"email"`
+	UserID      uuid.UUID `json:"user_id"`
+}
+
 // Notebook A notebook, with the caller's effective role in it: the higher of its membership's role and the one the workspace access gives it.
 type Notebook struct {
 	CreatedAt time.Time `json:"created_at"`
@@ -77,6 +106,33 @@ type Notebook struct {
 	// WorkspaceAccess How open a notebook is to its workspace: the role it gives the workspace's admins and members who are not its members (viewer gives reader, editor gives editor; none gives nothing). Guests have their own membership's role alone.
 	WorkspaceAccess WorkspaceAccess `json:"workspace_access"`
 	WorkspaceID     uuid.UUID       `json:"workspace_id"`
+}
+
+// NotebookAuditAction What was done: taken_over and deleted by a workspace admin, returned to the former owner when it came back to the workspace.
+type NotebookAuditAction string
+
+// NotebookAuditEvent What was done with an ownerless notebook. It names the notebook as it was then, and outlives it.
+type NotebookAuditEvent struct {
+	// Action What was done: taken_over and deleted by a workspace admin, returned to the former owner when it came back to the workspace.
+	Action NotebookAuditAction `json:"action"`
+
+	// Actor What a workspace's admins see of an account in the ownerless list and the audit events.
+	Actor     AccountProfile `json:"actor"`
+	CreatedAt time.Time      `json:"created_at"`
+
+	// FormerOwner What a workspace's admins see of an account in the ownerless list and the audit events.
+	FormerOwner  AccountProfile `json:"former_owner"`
+	ID           uuid.UUID      `json:"id"`
+	NotebookID   uuid.UUID      `json:"notebook_id"`
+	NotebookName string         `json:"notebook_name"`
+}
+
+// NotebookAuditEventPage defines model for NotebookAuditEventPage.
+type NotebookAuditEventPage struct {
+	Data []NotebookAuditEvent `json:"data"`
+
+	// NextCursor The cursor of the next page; null on the last page.
+	NextCursor nullable.Nullable[externalRef0.NextCursor] `json:"next_cursor"`
 }
 
 // NotebookCreate A new notebook; its workspace access is none when absent.
@@ -145,6 +201,34 @@ type NotebookUpdate struct {
 	WorkspaceAccess *WorkspaceAccess `json:"workspace_access,omitempty"`
 }
 
+// OwnerlessNotebook A notebook without an active admin, as its workspace's admins see it.
+type OwnerlessNotebook struct {
+	// FormerOwner What a workspace's admins see of an account in the ownerless list and the audit events.
+	FormerOwner AccountProfile `json:"former_owner"`
+	ID          uuid.UUID      `json:"id"`
+
+	// LastActivityAt The last write to the notebook or to what it holds.
+	LastActivityAt time.Time `json:"last_activity_at"`
+
+	// MemberCount How many active members the notebook has left.
+	MemberCount int    `json:"member_count"`
+	Name        string `json:"name"`
+
+	// OwnerlessSince When its last active admin's membership ended.
+	OwnerlessSince time.Time `json:"ownerless_since"`
+
+	// SizeBytes What the notebook holds, in bytes.
+	SizeBytes int64 `json:"size_bytes"`
+
+	// WorkspaceAccess How open a notebook is to its workspace: the role it gives the workspace's admins and members who are not its members (viewer gives reader, editor gives editor; none gives nothing). Guests have their own membership's role alone.
+	WorkspaceAccess WorkspaceAccess `json:"workspace_access"`
+}
+
+// OwnerlessNotebookList defines model for OwnerlessNotebookList.
+type OwnerlessNotebookList struct {
+	Data []OwnerlessNotebook `json:"data"`
+}
+
 // WorkspaceAccess How open a notebook is to its workspace: the role it gives the workspace's admins and members who are not its members (viewer gives reader, editor gives editor; none gives nothing). Guests have their own membership's role alone.
 type WorkspaceAccess string
 
@@ -159,6 +243,15 @@ type Slug = string
 
 // Problem RFC 9457 problem details. `title` is the HTTP status phrase, `detail` explains this occurrence, and clients branch on `code`. Must match httpserver.Problem; the platform's contract test checks it.
 type Problem = externalRef0.Problem
+
+// ListNotebookAuditEventsParams defines parameters for ListNotebookAuditEvents.
+type ListNotebookAuditEventsParams struct {
+	// Limit The page size, 1–100; 50 when absent. Outside that range the answer is 422 validation_failed on limit.
+	Limit *externalRef0.Limit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Cursor The next_cursor of the page before; absent for the first page. A cursor that does not decode, has an unknown version or a payload of another shape than this list's, or is not spelled as the server writes it is 400 bad_request on cursor.
+	Cursor *externalRef0.Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+}
 
 // UpdateNotebookMemberJSONRequestBody defines body for UpdateNotebookMember for application/json ContentType.
 type UpdateNotebookMemberJSONRequestBody = NotebookMemberUpdate
@@ -198,12 +291,24 @@ type ServerInterface interface {
 	// AddNotebookMember Add a member to a notebook
 	// (POST /api/v0/notebooks/{notebook_id}/members)
 	AddNotebookMember(w http.ResponseWriter, r *http.Request, notebookID NotebookID)
+	// DeleteOwnerlessNotebook Delete an ownerless notebook
+	// (DELETE /api/v0/ownerless-notebooks/{notebook_id})
+	DeleteOwnerlessNotebook(w http.ResponseWriter, r *http.Request, notebookID NotebookID)
+	// TakeOverNotebook Take over an ownerless notebook
+	// (POST /api/v0/ownerless-notebooks/{notebook_id}/take-over)
+	TakeOverNotebook(w http.ResponseWriter, r *http.Request, notebookID NotebookID)
+	// ListNotebookAuditEvents List the audit events of a workspace's ownerless notebooks
+	// (GET /api/v0/workspaces/{slug}/notebook-audit-events)
+	ListNotebookAuditEvents(w http.ResponseWriter, r *http.Request, slug Slug, params ListNotebookAuditEventsParams)
 	// ListNotebooks List the notebooks the caller sees in a workspace
 	// (GET /api/v0/workspaces/{slug}/notebooks)
 	ListNotebooks(w http.ResponseWriter, r *http.Request, slug Slug)
 	// CreateNotebook Create a notebook
 	// (POST /api/v0/workspaces/{slug}/notebooks)
 	CreateNotebook(w http.ResponseWriter, r *http.Request, slug Slug)
+	// ListOwnerlessNotebooks List a workspace's ownerless notebooks
+	// (GET /api/v0/workspaces/{slug}/ownerless-notebooks)
+	ListOwnerlessNotebooks(w http.ResponseWriter, r *http.Request, slug Slug)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -423,6 +528,113 @@ func (siw *ServerInterfaceWrapper) AddNotebookMember(w http.ResponseWriter, r *h
 	handler.ServeHTTP(w, r)
 }
 
+// DeleteOwnerlessNotebook operation middleware
+func (siw *ServerInterfaceWrapper) DeleteOwnerlessNotebook(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "notebook_id" -------------
+	var notebookID NotebookID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "notebook_id", r.PathValue("notebook_id"), &notebookID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "notebook_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteOwnerlessNotebook(w, r, notebookID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// TakeOverNotebook operation middleware
+func (siw *ServerInterfaceWrapper) TakeOverNotebook(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "notebook_id" -------------
+	var notebookID NotebookID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "notebook_id", r.PathValue("notebook_id"), &notebookID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "notebook_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.TakeOverNotebook(w, r, notebookID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListNotebookAuditEvents operation middleware
+func (siw *ServerInterfaceWrapper) ListNotebookAuditEvents(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "slug" -------------
+	var slug Slug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "slug", r.PathValue("slug"), &slug, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "slug", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListNotebookAuditEventsParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListNotebookAuditEvents(w, r, slug, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListNotebooks operation middleware
 func (siw *ServerInterfaceWrapper) ListNotebooks(w http.ResponseWriter, r *http.Request) {
 
@@ -466,6 +678,32 @@ func (siw *ServerInterfaceWrapper) CreateNotebook(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.CreateNotebook(w, r, slug)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListOwnerlessNotebooks operation middleware
+func (siw *ServerInterfaceWrapper) ListOwnerlessNotebooks(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "slug" -------------
+	var slug Slug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "slug", r.PathValue("slug"), &slug, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "slug", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListOwnerlessNotebooks(w, r, slug)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -605,6 +843,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v0/notebook-members/{notebook_member_id}", wrapper.RemoveNotebookMember)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/v0/notebook-members/{notebook_member_id}", wrapper.UpdateNotebookMember)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v0/notebooks/{notebook_id}/leave", wrapper.LeaveNotebook)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v0/workspaces/{slug}/ownerless-notebooks", wrapper.ListOwnerlessNotebooks)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v0/ownerless-notebooks/{notebook_id}/take-over", wrapper.TakeOverNotebook)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v0/ownerless-notebooks/{notebook_id}", wrapper.DeleteOwnerlessNotebook)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v0/workspaces/{slug}/notebook-audit-events", wrapper.ListNotebookAuditEvents)
 
 	return m
 }
@@ -972,6 +1214,139 @@ func (response AddNotebookMemberdefaultApplicationProblemPlusJSONResponse) Visit
 	return err
 }
 
+type DeleteOwnerlessNotebookRequestObject struct {
+	NotebookID NotebookID `json:"notebook_id"`
+}
+
+type DeleteOwnerlessNotebookResponseObject interface {
+	VisitDeleteOwnerlessNotebookResponse(w http.ResponseWriter) error
+}
+
+type DeleteOwnerlessNotebook204Response struct {
+}
+
+func (response DeleteOwnerlessNotebook204Response) VisitDeleteOwnerlessNotebookResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteOwnerlessNotebookdefaultApplicationProblemPlusJSONResponse struct {
+	Body       externalRef0.Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response DeleteOwnerlessNotebookdefaultApplicationProblemPlusJSONResponse) VisitDeleteOwnerlessNotebookResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	if response.Headers.WWWAuthenticate != nil {
+		w.Header().Set("WWW-Authenticate", fmt.Sprint(*response.Headers.WWWAuthenticate))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TakeOverNotebookRequestObject struct {
+	NotebookID NotebookID `json:"notebook_id"`
+}
+
+type TakeOverNotebookResponseObject interface {
+	VisitTakeOverNotebookResponse(w http.ResponseWriter) error
+}
+
+type TakeOverNotebook200JSONResponse Notebook
+
+func (response TakeOverNotebook200JSONResponse) VisitTakeOverNotebookResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TakeOverNotebookdefaultApplicationProblemPlusJSONResponse struct {
+	Body       externalRef0.Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response TakeOverNotebookdefaultApplicationProblemPlusJSONResponse) VisitTakeOverNotebookResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	if response.Headers.WWWAuthenticate != nil {
+		w.Header().Set("WWW-Authenticate", fmt.Sprint(*response.Headers.WWWAuthenticate))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListNotebookAuditEventsRequestObject struct {
+	Slug   Slug `json:"slug"`
+	Params ListNotebookAuditEventsParams
+}
+
+type ListNotebookAuditEventsResponseObject interface {
+	VisitListNotebookAuditEventsResponse(w http.ResponseWriter) error
+}
+
+type ListNotebookAuditEvents200JSONResponse NotebookAuditEventPage
+
+func (response ListNotebookAuditEvents200JSONResponse) VisitListNotebookAuditEventsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListNotebookAuditEventsdefaultApplicationProblemPlusJSONResponse struct {
+	Body       externalRef0.Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response ListNotebookAuditEventsdefaultApplicationProblemPlusJSONResponse) VisitListNotebookAuditEventsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	if response.Headers.WWWAuthenticate != nil {
+		w.Header().Set("WWW-Authenticate", fmt.Sprint(*response.Headers.WWWAuthenticate))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListNotebooksRequestObject struct {
 	Slug Slug `json:"slug"`
 }
@@ -1065,6 +1440,52 @@ func (response CreateNotebookdefaultApplicationProblemPlusJSONResponse) VisitCre
 	return err
 }
 
+type ListOwnerlessNotebooksRequestObject struct {
+	Slug Slug `json:"slug"`
+}
+
+type ListOwnerlessNotebooksResponseObject interface {
+	VisitListOwnerlessNotebooksResponse(w http.ResponseWriter) error
+}
+
+type ListOwnerlessNotebooks200JSONResponse OwnerlessNotebookList
+
+func (response ListOwnerlessNotebooks200JSONResponse) VisitListOwnerlessNotebooksResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListOwnerlessNotebooksdefaultApplicationProblemPlusJSONResponse struct {
+	Body       externalRef0.Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response ListOwnerlessNotebooksdefaultApplicationProblemPlusJSONResponse) VisitListOwnerlessNotebooksResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	if response.Headers.WWWAuthenticate != nil {
+		w.Header().Set("WWW-Authenticate", fmt.Sprint(*response.Headers.WWWAuthenticate))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// RemoveNotebookMember Remove a member from a notebook
@@ -1091,12 +1512,24 @@ type StrictServerInterface interface {
 	// AddNotebookMember Add a member to a notebook
 	// (POST /api/v0/notebooks/{notebook_id}/members)
 	AddNotebookMember(ctx context.Context, request AddNotebookMemberRequestObject) (AddNotebookMemberResponseObject, error)
+	// DeleteOwnerlessNotebook Delete an ownerless notebook
+	// (DELETE /api/v0/ownerless-notebooks/{notebook_id})
+	DeleteOwnerlessNotebook(ctx context.Context, request DeleteOwnerlessNotebookRequestObject) (DeleteOwnerlessNotebookResponseObject, error)
+	// TakeOverNotebook Take over an ownerless notebook
+	// (POST /api/v0/ownerless-notebooks/{notebook_id}/take-over)
+	TakeOverNotebook(ctx context.Context, request TakeOverNotebookRequestObject) (TakeOverNotebookResponseObject, error)
+	// ListNotebookAuditEvents List the audit events of a workspace's ownerless notebooks
+	// (GET /api/v0/workspaces/{slug}/notebook-audit-events)
+	ListNotebookAuditEvents(ctx context.Context, request ListNotebookAuditEventsRequestObject) (ListNotebookAuditEventsResponseObject, error)
 	// ListNotebooks List the notebooks the caller sees in a workspace
 	// (GET /api/v0/workspaces/{slug}/notebooks)
 	ListNotebooks(ctx context.Context, request ListNotebooksRequestObject) (ListNotebooksResponseObject, error)
 	// CreateNotebook Create a notebook
 	// (POST /api/v0/workspaces/{slug}/notebooks)
 	CreateNotebook(ctx context.Context, request CreateNotebookRequestObject) (CreateNotebookResponseObject, error)
+	// ListOwnerlessNotebooks List a workspace's ownerless notebooks
+	// (GET /api/v0/workspaces/{slug}/ownerless-notebooks)
+	ListOwnerlessNotebooks(ctx context.Context, request ListOwnerlessNotebooksRequestObject) (ListOwnerlessNotebooksResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -1367,6 +1800,85 @@ func (sh *strictHandler) AddNotebookMember(w http.ResponseWriter, r *http.Reques
 	}
 }
 
+// DeleteOwnerlessNotebook operation middleware
+func (sh *strictHandler) DeleteOwnerlessNotebook(w http.ResponseWriter, r *http.Request, notebookID NotebookID) {
+	var request DeleteOwnerlessNotebookRequestObject
+
+	request.NotebookID = notebookID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteOwnerlessNotebook(ctx, request.(DeleteOwnerlessNotebookRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteOwnerlessNotebook")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteOwnerlessNotebookResponseObject); ok {
+		if err := validResponse.VisitDeleteOwnerlessNotebookResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// TakeOverNotebook operation middleware
+func (sh *strictHandler) TakeOverNotebook(w http.ResponseWriter, r *http.Request, notebookID NotebookID) {
+	var request TakeOverNotebookRequestObject
+
+	request.NotebookID = notebookID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.TakeOverNotebook(ctx, request.(TakeOverNotebookRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "TakeOverNotebook")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(TakeOverNotebookResponseObject); ok {
+		if err := validResponse.VisitTakeOverNotebookResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListNotebookAuditEvents operation middleware
+func (sh *strictHandler) ListNotebookAuditEvents(w http.ResponseWriter, r *http.Request, slug Slug, params ListNotebookAuditEventsParams) {
+	var request ListNotebookAuditEventsRequestObject
+
+	request.Slug = slug
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListNotebookAuditEvents(ctx, request.(ListNotebookAuditEventsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListNotebookAuditEvents")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListNotebookAuditEventsResponseObject); ok {
+		if err := validResponse.VisitListNotebookAuditEventsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListNotebooks operation middleware
 func (sh *strictHandler) ListNotebooks(w http.ResponseWriter, r *http.Request, slug Slug) {
 	var request ListNotebooksRequestObject
@@ -1419,6 +1931,32 @@ func (sh *strictHandler) CreateNotebook(w http.ResponseWriter, r *http.Request, 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(CreateNotebookResponseObject); ok {
 		if err := validResponse.VisitCreateNotebookResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListOwnerlessNotebooks operation middleware
+func (sh *strictHandler) ListOwnerlessNotebooks(w http.ResponseWriter, r *http.Request, slug Slug) {
+	var request ListOwnerlessNotebooksRequestObject
+
+	request.Slug = slug
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListOwnerlessNotebooks(ctx, request.(ListOwnerlessNotebooksRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListOwnerlessNotebooks")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListOwnerlessNotebooksResponseObject); ok {
+		if err := validResponse.VisitListOwnerlessNotebooksResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

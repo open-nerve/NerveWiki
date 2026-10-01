@@ -10,6 +10,30 @@ import (
 	"time"
 )
 
+const purgeAuditEvents = `-- name: PurgeAuditEvents :execrows
+DELETE FROM notebook_audit_events
+WHERE id IN (
+    SELECT e.id FROM notebook_audit_events e
+    WHERE e.deleted_at < $1::timestamptz
+    LIMIT $2
+    FOR UPDATE SKIP LOCKED
+)
+`
+
+type PurgeAuditEventsParams struct {
+	Before time.Time
+	Batch  int32
+}
+
+// The audit events deleted with their workspace: they reference no notebook, so no other purge waits for them.
+func (q *Queries) PurgeAuditEvents(ctx context.Context, arg PurgeAuditEventsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, purgeAuditEvents, arg.Before, arg.Batch)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const purgeMembers = `-- name: PurgeMembers :execrows
 DELETE FROM notebook_members
 WHERE id IN (

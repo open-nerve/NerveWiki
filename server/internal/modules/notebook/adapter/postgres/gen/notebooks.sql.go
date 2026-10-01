@@ -105,7 +105,7 @@ func (q *Queries) DeleteNotebooksOf(ctx context.Context, arg DeleteNotebooksOfPa
 }
 
 const findNotebook = `-- name: FindNotebook :one
-SELECT id, workspace_id, name, workspace_access, created_at, updated_at
+SELECT id, workspace_id, name, workspace_access, created_at, updated_at, ownerless_since, former_owner_id
 FROM notebooks
 WHERE id = $1 AND deleted_at IS NULL
 `
@@ -117,6 +117,8 @@ type FindNotebookRow struct {
 	WorkspaceAccess string
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
+	OwnerlessSince  *time.Time
+	FormerOwnerID   *uuid.UUID
 }
 
 // A notebook not deleted, unlocked: what a read authorizes against.
@@ -130,6 +132,8 @@ func (q *Queries) FindNotebook(ctx context.Context, id uuid.UUID) (FindNotebookR
 		&i.WorkspaceAccess,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.OwnerlessSince,
+		&i.FormerOwnerID,
 	)
 	return i, err
 }
@@ -197,7 +201,7 @@ func (q *Queries) ListNotebooks(ctx context.Context, arg ListNotebooksParams) ([
 }
 
 const lockNotebook = `-- name: LockNotebook :one
-SELECT id, workspace_id, name, workspace_access, created_at, updated_at
+SELECT id, workspace_id, name, workspace_access, created_at, updated_at, ownerless_since, former_owner_id
 FROM notebooks
 WHERE id = $1 AND deleted_at IS NULL
 FOR NO KEY UPDATE
@@ -210,6 +214,8 @@ type LockNotebookRow struct {
 	WorkspaceAccess string
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
+	OwnerlessSince  *time.Time
+	FormerOwnerID   *uuid.UUID
 }
 
 // FindNotebook locked FOR NO KEY UPDATE until the transaction ends: a notebook's management writes take it
@@ -225,6 +231,8 @@ func (q *Queries) LockNotebook(ctx context.Context, id uuid.UUID) (LockNotebookR
 		&i.WorkspaceAccess,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.OwnerlessSince,
+		&i.FormerOwnerID,
 	)
 	return i, err
 }

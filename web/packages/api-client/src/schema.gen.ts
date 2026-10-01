@@ -156,7 +156,7 @@ export interface paths {
         put?: never;
         /**
          * Deactivate the caller's account
-         * @description Deactivates the account: every session ends, and the personal access tokens stop working while it is inactive. Only the server's administrator can activate it again; sign-in then answers identity.account_deactivated. No password is asked for. The modules that keep the account's access elsewhere may refuse the deactivation with a code of their own, listed here: workspace.sole_admin when the account is the only admin of a workspace with other members, which the detail names. The deactivation ends the account's memberships of workspaces.
+         * @description Deactivates the account: every session ends, and the personal access tokens stop working while it is inactive. Only the server's administrator can activate it again; sign-in then answers identity.account_deactivated. No password is asked for. The modules that keep the account's access elsewhere may refuse the deactivation with a code of their own, listed here: workspace.sole_admin when the account is the only admin of a workspace with other members, which the detail names; notebook.sole_admin when it is the only admin of a notebook with other members, which the detail counts by workspace. The deactivation ends the account's memberships of workspaces and of their notebooks.
          */
         post: operations["deactivateMe"];
         delete?: never;
@@ -323,7 +323,7 @@ export interface paths {
         put?: never;
         /**
          * Leave a workspace
-         * @description Ends the caller's membership of the workspace; pending invitations of the workspace to the caller's address are deleted with it. The workspace's only active admin cannot leave it, even alone in it (workspace.sole_admin): another member is made an admin first, or the workspace is deleted.
+         * @description Ends the caller's membership of the workspace; pending invitations of the workspace to the caller's address are deleted with it. The workspace's only active admin cannot leave it, even alone in it (workspace.sole_admin): another member is made an admin first, or the workspace is deleted. Nor can the only active admin of one of its notebooks with other members (notebook.sole_admin, whose detail counts them); the caller's notebook memberships end with it, and a notebook it was the only admin of becomes ownerless.
          */
         post: operations["leaveWorkspace"];
         delete?: never;
@@ -374,7 +374,7 @@ export interface paths {
         post?: never;
         /**
          * Remove a member
-         * @description Ends the member's membership, and deletes the workspace's pending invitations to the member's address; only the workspace's admins can, and not their own (workspace.own_membership: an admin leaves instead). A membership that does not exist, has ended, or whose workspace the caller cannot see is workspace.member_not_found; a member or a guest gets forbidden.
+         * @description Ends the member's membership, and deletes the workspace's pending invitations to the member's address; only the workspace's admins can, and not their own (workspace.own_membership: an admin leaves instead). A membership that does not exist, has ended, or whose workspace the caller cannot see is workspace.member_not_found; a member or a guest gets forbidden. The member's notebook memberships end with it, and a notebook the member was the only admin of becomes ownerless.
          */
         delete: operations["removeWorkspaceMember"];
         options?: never;
@@ -607,6 +607,98 @@ export interface paths {
          * @description Ends the caller's membership of the notebook. Its only admin cannot, even alone in it (notebook.sole_admin): another member becomes an admin first, or the admin deletes the notebook. A notebook that does not exist, is deleted, or that the caller has no role in is notebook.not_found; a caller who uses it by its workspace access alone, no member of it, is notebook.member_not_found.
          */
         post: operations["leaveNotebook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v0/workspaces/{slug}/ownerless-notebooks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The workspace's slug. It carries no pattern here: a slug spelled wrong names no workspace, which the operation answers itself. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List a workspace's ownerless notebooks
+         * @description The workspace's notebooks that have no active admin, the earliest to become ownerless first: their names, private ones included, go to the workspace's admins alone, who take them over or delete them. A member or a guest of the workspace is forbidden; a workspace that does not exist, is deleted, or that the caller is no active member of is workspace.not_found. The list is not paged.
+         */
+        get: operations["listOwnerlessNotebooks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v0/ownerless-notebooks/{notebook_id}/take-over": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Take over an ownerless notebook
+         * @description Makes the caller, an admin of the notebook's workspace, the notebook's admin: a membership it had ended is restored, a lower role it has is raised; the workspace access stays. The take-over is recorded in the workspace's audit events. A notebook that does not exist, is deleted or is not ownerless, and any caller but the workspace's admins, is notebook.not_found: no one else learns whether it is there.
+         */
+        post: operations["takeOverNotebook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v0/ownerless-notebooks/{notebook_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete an ownerless notebook
+         * @description Deletes the notebook softly, with its members, as deleteNotebook does; the purge removes it after the retention. The deletion is recorded in the workspace's audit events. A notebook that does not exist, is deleted or is not ownerless, and any caller but the workspace's admins, is notebook.not_found.
+         */
+        delete: operations["deleteOwnerlessNotebook"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v0/workspaces/{slug}/notebook-audit-events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The workspace's slug. It carries no pattern here: a slug spelled wrong names no workspace, which the operation answers itself. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List the audit events of a workspace's ownerless notebooks
+         * @description What was done with the workspace's ownerless notebooks, newest first, a page at a time: taken over or deleted by a workspace admin, returned to their former owner. The workspace's admins alone read them; a member or a guest is forbidden, and a workspace that does not exist, is deleted, or that the caller is no active member of is workspace.not_found. A cursor the list cannot read is bad_request, before anything else; a limit outside 1–100 is validation_failed.
+         */
+        get: operations["listNotebookAuditEvents"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -953,6 +1045,65 @@ export interface components {
         NotebookMemberUpdate: {
             role: components["schemas"]["NotebookRole"];
         };
+        /** @description What a workspace's admins see of an account in the ownerless list and the audit events. */
+        AccountProfile: {
+            /** Format: uuid */
+            user_id: string;
+            display_name: string;
+            email: string;
+        };
+        /** @description A notebook without an active admin, as its workspace's admins see it. */
+        OwnerlessNotebook: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            workspace_access: components["schemas"]["WorkspaceAccess"];
+            /** @description How many active members the notebook has left. */
+            member_count: number;
+            former_owner: components["schemas"]["AccountProfile"];
+            /**
+             * Format: date-time
+             * @description When its last active admin's membership ended.
+             */
+            ownerless_since: string;
+            /**
+             * Format: date-time
+             * @description The last write to the notebook or to what it holds.
+             */
+            last_activity_at: string;
+            /**
+             * Format: int64
+             * @description What the notebook holds, in bytes.
+             */
+            size_bytes: number;
+        };
+        OwnerlessNotebookList: {
+            data: components["schemas"]["OwnerlessNotebook"][];
+        };
+        /**
+         * @description What was done: taken_over and deleted by a workspace admin, returned to the former owner when it came back to the workspace.
+         * @enum {string}
+         */
+        NotebookAuditAction: "taken_over" | "deleted" | "returned";
+        /** @description What was done with an ownerless notebook. It names the notebook as it was then, and outlives it. */
+        NotebookAuditEvent: {
+            /** Format: uuid */
+            id: string;
+            action: components["schemas"]["NotebookAuditAction"];
+            /** Format: uuid */
+            notebook_id: string;
+            notebook_name: string;
+            former_owner: components["schemas"]["AccountProfile"];
+            actor: components["schemas"]["AccountProfile"];
+            /** Format: date-time */
+            created_at: string;
+        };
+        /** @description The cursor of the next page; null on the last page. */
+        NextCursor: string | null;
+        NotebookAuditEventPage: {
+            data: components["schemas"]["NotebookAuditEvent"][];
+            next_cursor: components["schemas"]["NextCursor"];
+        };
     };
     responses: {
         /** @description Error (RFC 9457 problem details). */
@@ -980,6 +1131,10 @@ export interface components {
         NotebookID: string;
         /** @description The id of a membership, as the member list answers it; not the account's id. */
         NotebookMemberID: string;
+        /** @description The page size, 1–100; 50 when absent. Outside that range the answer is 422 validation_failed on limit. */
+        Limit: number;
+        /** @description The next_cursor of the page before; absent for the first page. A cursor that does not decode, has an unknown version or a payload of another shape than this list's, or is not spelled as the server writes it is 400 bad_request on cursor. */
+        Cursor: string;
     };
     requestBodies: never;
     headers: never;
@@ -1028,12 +1183,21 @@ export type NotebookMember = components['schemas']['NotebookMember'];
 export type NotebookMemberList = components['schemas']['NotebookMemberList'];
 export type NotebookMemberCreate = components['schemas']['NotebookMemberCreate'];
 export type NotebookMemberUpdate = components['schemas']['NotebookMemberUpdate'];
+export type AccountProfile = components['schemas']['AccountProfile'];
+export type OwnerlessNotebook = components['schemas']['OwnerlessNotebook'];
+export type OwnerlessNotebookList = components['schemas']['OwnerlessNotebookList'];
+export type NotebookAuditAction = components['schemas']['NotebookAuditAction'];
+export type NotebookAuditEvent = components['schemas']['NotebookAuditEvent'];
+export type NextCursor = components['schemas']['NextCursor'];
+export type NotebookAuditEventPage = components['schemas']['NotebookAuditEventPage'];
 export type ResponseProblem = components['responses']['Problem'];
 export type ParameterSlug = components['parameters']['Slug'];
 export type ParameterWorkspaceMemberId = components['parameters']['WorkspaceMemberID'];
 export type ParameterWorkspaceInvitationId = components['parameters']['WorkspaceInvitationID'];
 export type ParameterNotebookId = components['parameters']['NotebookID'];
 export type ParameterNotebookMemberId = components['parameters']['NotebookMemberID'];
+export type ParameterLimit = components['parameters']['Limit'];
+export type ParameterCursor = components['parameters']['Cursor'];
 export type $defs = Record<string, never>;
 export interface operations {
     register: {
@@ -1951,6 +2115,105 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    listOwnerlessNotebooks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The workspace's slug. It carries no pattern here: a slug spelled wrong names no workspace, which the operation answers itself. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The ownerless notebooks. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OwnerlessNotebookList"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    takeOverNotebook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The notebook, the caller its admin. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Notebook"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    deleteOwnerlessNotebook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The notebook is deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    listNotebookAuditEvents: {
+        parameters: {
+            query?: {
+                /** @description The page size, 1–100; 50 when absent. Outside that range the answer is 422 validation_failed on limit. */
+                limit?: components["parameters"]["Limit"];
+                /** @description The next_cursor of the page before; absent for the first page. A cursor that does not decode, has an unknown version or a payload of another shape than this list's, or is not spelled as the server writes it is 400 bad_request on cursor. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path: {
+                /** @description The workspace's slug. It carries no pattern here: a slug spelled wrong names no workspace, which the operation answers itself. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of the audit events. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotebookAuditEventPage"];
+                };
             };
             default: components["responses"]["Problem"];
         };

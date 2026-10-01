@@ -256,19 +256,20 @@ func TestDeleteNotebookRefuses(t *testing.T) {
 	}
 }
 
-// The registrant of the workspace's deletion: the workspace's notebooks at
-// its time, and one call of the subscribers with every id, none without.
+// The registrant of the workspace's deletion: the workspace's notebooks and
+// audit events at its time, the events even with no notebook, and one call
+// of the subscribers with every id, none without.
 func TestWorkspaceDeletion(t *testing.T) {
 	ws, by := uuid.NewV7(), uuid.NewV7()
 	d := app.WorkspaceDeleted{WorkspaceID: ws, By: by, At: now()}
+	deleted := []string{"DeleteNotebooksOf by " + by.String() + " at 2026-10-02T10:00:00Z", "DeleteAuditEventsOf by " + by.String() + " at 2026-10-02T10:00:00Z"}
 	for _, tt := range []struct {
 		name  string
 		ids   []uuid.UUID
 		calls []string
 	}{
-		{"no notebook", nil, []string{"DeleteNotebooksOf by " + by.String() + " at 2026-10-02T10:00:00Z"}},
-		{"two notebooks", []uuid.UUID{uuid.NewV7(), uuid.NewV7()},
-			[]string{"DeleteNotebooksOf by " + by.String() + " at 2026-10-02T10:00:00Z", "NotebookDeleted s"}},
+		{"no notebook", nil, deleted},
+		{"two notebooks", []uuid.UUID{uuid.NewV7(), uuid.NewV7()}, append(slices.Clone(deleted), "NotebookDeleted s")},
 	} {
 		f := newFixture()
 		f.store.ofWorkspace = tt.ids

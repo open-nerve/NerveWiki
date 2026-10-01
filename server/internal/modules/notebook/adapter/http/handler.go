@@ -50,6 +50,11 @@ type UseCases struct {
 	UpdateMember   UpdateMemberUseCase
 	RemoveMember   RemoveMemberUseCase
 	LeaveNotebook  LeaveNotebookUseCase
+	// The ownerless notebooks and their audit events (M3/P3).
+	ListOwnerless   ListOwnerlessUseCase
+	TakeOver        TakeOverUseCase
+	DeleteOwnerless DeleteOwnerlessUseCase
+	ListAuditEvents ListAuditEventsUseCase
 }
 
 // Register mounts the module's routes on router, the root router from

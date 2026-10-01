@@ -76,6 +76,12 @@ func rules() map[shared.Action]Rule {
 		"notebook_member.add":    {Level: LevelNotebook, Notebook: notebookAdmins()},
 		"notebook_member.update": {Level: LevelNotebook, Notebook: notebookAdmins()},
 		"notebook_member.remove": {Level: LevelNotebook, Notebook: notebookAdmins()},
+		// A notebook without an admin is the workspace's admins' to take
+		// over or delete; no notebook role reaches it.
+		"notebook_ownerless.list":      {Level: LevelWorkspace, Workspace: admins()},
+		"notebook_ownerless.take_over": {Level: LevelWorkspace, Workspace: admins()},
+		"notebook_ownerless.delete":    {Level: LevelWorkspace, Workspace: admins()},
+		"notebook_audit.list":          {Level: LevelWorkspace, Workspace: admins()},
 	}
 }
 

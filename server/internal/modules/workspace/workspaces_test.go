@@ -2,6 +2,7 @@ package workspace_test
 
 import (
 	"context"
+	"maps"
 	"testing"
 	"time"
 	"uuid"
@@ -12,7 +13,8 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres/pgtest"
 )
 
-// The notebook module's port on a real database (M3/P1 design 3.5).
+// The notebook module's port on a real database (M3/P1 design 3.5; Slugs,
+// M3/P3 design 3.5).
 func TestWorkspacesFindAndShare(t *testing.T) {
 	ctx := context.Background()
 	pool, err := postgres.NewPool(ctx, config.DatabaseConfig{URL: pgtest.NewDatabase(t), MaxConns: 4})
@@ -65,6 +67,13 @@ func TestWorkspacesFindAndShare(t *testing.T) {
 		}
 		if _, _, err := off.FindBySlug(ctx, "acme"); err == nil {
 			t.Error("FindBySlug(acme) on a closed pool = nil error: the control reaches no database either")
+		}
+	})
+
+	t.Run("Slugs", func(t *testing.T) {
+		got, err := ws.Slugs(ctx, []uuid.UUID{acme, gone, uuid.NewV7()})
+		if err != nil || !maps.Equal(got, map[uuid.UUID]string{acme: "acme"}) {
+			t.Errorf("Slugs(acme, gone, none) = %v, %v; want acme's alone", got, err)
 		}
 	})
 

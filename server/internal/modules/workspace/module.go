@@ -59,6 +59,15 @@ type (
 	MemberRoleChangeSubscriber   = app.MemberRoleChangeSubscriber
 )
 
+// The causes of a membership end: the notebook module's rule two refuses
+// only what the account does itself (M3 design 4), which bootstrap tells
+// by them.
+const (
+	EndRemoved     = app.EndRemoved
+	EndLeft        = app.EndLeft
+	EndDeactivated = app.EndDeactivated
+)
+
 // Deps are what bootstrap gives the module.
 type Deps struct {
 	Pool       *pgxpool.Pool

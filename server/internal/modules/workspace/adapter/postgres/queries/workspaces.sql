@@ -84,3 +84,10 @@ FOR SHARE;
 SELECT id, slug, name, created_at, updated_at
 FROM workspaces
 WHERE id = sqlc.arg(id) AND deleted_at IS NULL;
+
+-- name: WorkspaceSlugs :many
+-- The slugs of the workspaces not deleted among the ids, unlocked: the notebook module's rule two names them
+-- (M3 design 4).
+SELECT id, slug
+FROM workspaces
+WHERE id = ANY(sqlc.arg(ids)::uuid[]) AND deleted_at IS NULL;

@@ -6,7 +6,7 @@ VALUES (sqlc.arg(id), sqlc.arg(workspace_id), sqlc.arg(name), sqlc.arg(workspace
 
 -- name: FindNotebook :one
 -- A notebook not deleted, unlocked: what a read authorizes against.
-SELECT id, workspace_id, name, workspace_access, created_at, updated_at
+SELECT id, workspace_id, name, workspace_access, created_at, updated_at, ownerless_since, former_owner_id
 FROM notebooks
 WHERE id = sqlc.arg(id) AND deleted_at IS NULL;
 
@@ -14,7 +14,7 @@ WHERE id = sqlc.arg(id) AND deleted_at IS NULL;
 -- FindNotebook locked FOR NO KEY UPDATE until the transaction ends: a notebook's management writes take it
 -- after the workspace row's FOR SHARE, then decide (M3/P1 design 3.10). A deletion committed while it waited
 -- leaves no row.
-SELECT id, workspace_id, name, workspace_access, created_at, updated_at
+SELECT id, workspace_id, name, workspace_access, created_at, updated_at, ownerless_since, former_owner_id
 FROM notebooks
 WHERE id = sqlc.arg(id) AND deleted_at IS NULL
 FOR NO KEY UPDATE;

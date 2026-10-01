@@ -17,8 +17,8 @@ import (
 // The notebook module's part in a workspace's deletion reaches it through
 // serve (M2 handoff to M3, item 1; v0.1 design 13.1, item 21): the
 // composition check proves only that serve reaches the registrants; this
-// proves they are handed over. The other paths of the membership's end and
-// restore come with their registrants (M3/P3).
+// proves they are handed over. The other paths, the membership's end and
+// restore, are notebook_cascade_test.go's (M3/P3).
 func TestDeletingAWorkspaceDeletesItsNotebooks(t *testing.T) {
 	tm := newAcmeTeam(t, "member", "")
 	var ids []string
@@ -71,7 +71,7 @@ func (r *visibilityRecorder) VisibilityChanged(_ context.Context, v notebook.Vis
 // hands notebookRegistrants'.
 func TestTheWorkspaceMemberEventsReachTheVisibility(t *testing.T) {
 	r := &visibilityRecorder{}
-	ext := workspaceRegistrantsWith(nil, notebookExtensions{visibilitySubscribers: []notebook.VisibilitySubscriber{r}})
+	ext := workspaceRegistrantsWith(nil, notebookExtensions{visibilitySubscribers: []notebook.VisibilitySubscriber{r}}, nil)
 	ctx := context.Background()
 	acme, bob, alice := uuid.NewV7(), uuid.NewV7(), uuid.NewV7()
 	at := time.Date(2026, 10, 2, 10, 0, 0, 0, time.UTC)

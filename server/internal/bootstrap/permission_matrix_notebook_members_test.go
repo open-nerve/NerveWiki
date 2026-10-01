@@ -35,11 +35,13 @@ func seededMembers(name string) []matrixNotebookMember {
 
 // targetMember is the membership the update and removal rows of c aim at:
 // one of its notebook, which for priv's columns is the editor's, the
-// guest reader's for team's, the admin's for wiki's and gone-nb's.
+// guest reader's for team's, the admin's for wiki's and gone-nb's, the
+// editor's for orphan's.
 func targetMember(c caller, s seeded) string {
 	n := notebookOf(c)
 	target := map[string]caller{
 		"priv": callerNotebookEditor, "team": callerGuestReaderOfOpen, "wiki": callerOutsideAdmin, "gone-nb": callerNotebookDeleted,
+		"orphan": callerOwnerlessMember,
 	}[n]
 	return s.notebookMember(n, target).String()
 }
@@ -189,7 +191,8 @@ func notebookMemberMatrixRows() []matrixRow {
 			cells: everyNotebookColumn(notFound, map[caller]cell{
 				callerNotebookAdmin: {http.StatusConflict, "notebook.sole_admin"}, callerNotebookEditor: {status: http.StatusNoContent},
 				callerNotebookReader: {status: http.StatusNoContent}, callerGuestReaderOfOpen: {status: http.StatusNoContent},
-				callerDefaultEditor: memberNotFound, callerDefaultReader: memberNotFound,
+				callerOwnerlessMember: {status: http.StatusNoContent},
+				callerDefaultEditor:   memberNotFound, callerDefaultReader: memberNotFound,
 			}),
 		},
 	}

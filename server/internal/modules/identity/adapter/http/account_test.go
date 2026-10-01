@@ -172,17 +172,22 @@ func TestDeactivateMe(t *testing.T) {
 }
 
 // A vetoer's refusal is the answer, with its code: the workspace module's
-// rule two (M2/P4 design 3.1), which deactivateMe declares (v0.1 design
-// 13.1, item 21). The code is the workspace module's, spelt out here:
-// identity does not import it.
+// rule two (M2/P4 design 3.1) and the notebook module's (M3/P3 design
+// 3.2), which deactivateMe declares (v0.1 design 13.1, item 21). The codes
+// are the other modules', spelt out here: identity imports neither.
 func TestDeactivateMeAnswersAVetoersRefusal(t *testing.T) {
-	refusal := shared.NewError(shared.KindConflict, "workspace.sole_admin",
-		"The account is the only admin of workspaces that have other members (acme): make another member an admin of each first.")
-	h := newServer(t, httpadapter.UseCases{Deactivate: &fakeDeactivate{err: refusal}})
+	for _, refusal := range []*shared.Error{
+		shared.NewError(shared.KindConflict, "workspace.sole_admin",
+			"The account is the only admin of workspaces that have other members (acme): make another member an admin of each first."),
+		shared.NewError(shared.KindConflict, "notebook.sole_admin",
+			"The account is the only admin of notebooks with other members (1 in acme): another member must become their admin, or they must be deleted, first."),
+	} {
+		h := newServer(t, httpadapter.UseCases{Deactivate: &fakeDeactivate{err: refusal}})
 
-	res, body := do(t, h, withToken(postJSON("/api/v0/me/deactivate", "")))
+		res, body := do(t, h, withToken(postJSON("/api/v0/me/deactivate", "")))
 
-	if res.StatusCode != http.StatusConflict || !strings.Contains(body, `"code":"workspace.sole_admin"`) || !strings.Contains(body, "(acme)") {
-		t.Errorf("deactivate = %d %s; want 409 workspace.sole_admin, the detail naming acme", res.StatusCode, body)
+		if res.StatusCode != http.StatusConflict || !strings.Contains(body, `"code":"`+refusal.Code+`"`) || !strings.Contains(body, "acme)") {
+			t.Errorf("deactivate = %d %s; want 409 %s, the detail naming acme", res.StatusCode, body, refusal.Code)
+		}
 	}
 }

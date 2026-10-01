@@ -159,6 +159,8 @@ func notebookOf(c caller) string {
 		return "wiki"
 	case callerNotebookDeleted:
 		return "gone-nb"
+	case callerOwnerlessMember:
+		return "orphan"
 	}
 	return "priv"
 }
@@ -169,7 +171,7 @@ func notebookOf(c caller) string {
 func roleIn(c caller) (string, bool) {
 	role, ok := map[caller]string{
 		callerNotebookAdmin: "admin", callerNotebookEditor: "editor", callerNotebookReader: "reader",
-		callerDefaultEditor: "editor", callerDefaultReader: "reader", callerGuestReaderOfOpen: "reader",
+		callerDefaultEditor: "editor", callerDefaultReader: "reader", callerGuestReaderOfOpen: "reader", callerOwnerlessMember: "editor",
 	}[c]
 	return role, ok
 }
@@ -194,6 +196,7 @@ func listedNotebooks(c caller) []notebookAnswer {
 		callerNotebookEnded:     open,
 		callerNotebookDeleted:   open,
 		callerGuestReaderOfOpen: {team("reader")},
+		callerOwnerlessMember:   {{"orphan", "editor", 1}, team("editor"), wiki("reader")},
 	}[c]
 }
 

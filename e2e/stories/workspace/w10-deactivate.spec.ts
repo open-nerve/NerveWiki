@@ -7,8 +7,7 @@ import {
   nervewikiWorkspacesFails,
 } from "../../fixtures/admin";
 import { accountIdOf, expectDeactivated } from "../../fixtures/assert/identity";
-import { expectMembership } from "../../fixtures/assert/workspace";
-import type { Database } from "../../fixtures/db";
+import { expectMembership, membershipEndedAt } from "../../fixtures/assert/workspace";
 import { bearer, emailFor, registerOnboarded } from "../../fixtures/auth";
 import { answerTo, failedToLoad } from "../../fixtures/browser";
 import { joinAs } from "../../fixtures/invitations";
@@ -25,15 +24,6 @@ import { createWorkspace, newTeam, slugFor } from "../../fixtures/workspaces";
 /** The refusal of rule two for the workspace of slug. */
 function soleAdminOf(slug: string): string {
   return `The account is the only admin of workspaces that have other members (${slug}): make another member an admin of each first.`;
-}
-
-/** When the membership of userId in the workspace id ended, as reactivate-member prints it: to the second, in UTC. */
-async function endedAt(db: Database, id: string, userId: string): Promise<string> {
-  const [row] = await db.query<{ ended_at: Date }>(
-    "SELECT ended_at FROM workspace_members WHERE workspace_id = $1 AND user_id = $2",
-    [id, userId]
-  );
-  return (row?.ended_at ?? new Date(0)).toISOString().replace(/\.\d{3}Z$/, "Z");
 }
 
 /** Whether credential still authenticates. */
@@ -102,9 +92,9 @@ test("W10 (command line): users deactivate refuses the only admin and says why; 
   );
 
   await nervewikiUsers(db, ["activate", "--email", memberEmail]);
-  const ended = await endedAt(db, workspace.id, memberId);
+  const ended = await membershipEndedAt(db, workspace.id, memberId);
   expect(await nervewikiWorkspaces(db, ["reactivate-member", "--workspace", slug, "--email", memberEmail])).toBe(
-    `reactivated ${memberEmail} in ${slug} as member; the membership had ended at ${ended}\n`
+    `reactivated ${memberEmail} in ${slug} as member; the membership had ended at ${ended}; ownerless notebooks returned: 0\n`
   );
   await expectMembership(db, workspace.id, memberId, "member", joined?.created_at);
   // The member's personal access token outlived the deactivation: the workspace is theirs again.

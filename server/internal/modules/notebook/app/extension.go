@@ -52,13 +52,13 @@ type WorkspaceDeleted struct {
 }
 
 // WorkspaceDeletion is the module's registrant of the workspace module's
-// deletion (M3/P1 design 3.8): it deletes the workspace's notebooks and
-// their members at the deletion's time, and tells the notebook deletion's
-// subscribers once, with every id. It runs in the deletion's transaction,
-// which holds the workspace's row FOR NO KEY UPDATE: no notebook
-// management write of the workspace runs beside it, as each takes the row
-// FOR SHARE; the notebooks are locked by id, the order of every write that
-// holds more than one.
+// deletion (M3/P1 design 3.8): it deletes the workspace's notebooks, their
+// members and its audit events (M3/P3 design 3.4) at the deletion's time,
+// and tells the notebook deletion's subscribers once, with every id. It
+// runs in the deletion's transaction, which holds the workspace's row FOR
+// NO KEY UPDATE: no notebook management write of the workspace runs beside
+// it, as each takes the row FOR SHARE; the notebooks are locked by id, the
+// order of every write that holds more than one.
 type WorkspaceDeletion struct {
 	Notebooks   NotebooksDeleter
 	Subscribers []NotebookDeletionSubscriber
@@ -67,7 +67,11 @@ type WorkspaceDeletion struct {
 // WorkspaceDeleted follows the deletion of d.WorkspaceID.
 func (w WorkspaceDeletion) WorkspaceDeleted(ctx context.Context, d WorkspaceDeleted) error {
 	ids, err := w.Notebooks.DeleteNotebooksOf(ctx, d.WorkspaceID, d.By, d.At)
-	if err != nil || len(ids) == 0 {
+	if err != nil {
+		return err
+	}
+	// A workspace whose notebooks are all gone may still have events.
+	if err := w.Notebooks.DeleteAuditEventsOf(ctx, d.WorkspaceID, d.By, d.At); err != nil || len(ids) == 0 {
 		return err
 	}
 	return publishDeletion(ctx, w.Subscribers, NotebookDeletion{WorkspaceID: d.WorkspaceID, NotebookIDs: ids, By: d.By, At: d.At})
@@ -101,6 +105,52 @@ func publishVisibility(ctx context.Context, subscribers []VisibilitySubscriber, 
 		}
 	}
 	return nil
+}
+
+// NotebookActivity is what a module holds of a notebook (M3 design 4, 8):
+// its bytes, and when it last wrote them, nil if it never did.
+type NotebookActivity struct {
+	Bytes       int64
+	LastWriteAt *time.Time
+}
+
+// NotebookActivitySource tells the activity of notebooks: M4's pages and
+// M7's attachments register one; M3 has none. It runs in its caller's
+// read, unlocked, and answers the notebooks it holds nothing of with
+// nothing.
+type NotebookActivitySource interface {
+	NotebookActivities(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]NotebookActivity, error)
+}
+
+// activityOf is the notebooks' activity across sources: the bytes summed,
+// the latest write, which updated, a notebook's own row's last update,
+// starts from.
+func activityOf(ctx context.Context, sources []NotebookActivitySource, updated map[uuid.UUID]time.Time,
+) (map[uuid.UUID]NotebookActivity, error) {
+	out := make(map[uuid.UUID]NotebookActivity, len(updated))
+	ids := make([]uuid.UUID, 0, len(updated))
+	for id, at := range updated {
+		out[id] = NotebookActivity{LastWriteAt: &at}
+		ids = append(ids, id)
+	}
+	for _, s := range sources {
+		got, err := s.NotebookActivities(ctx, ids)
+		if err != nil {
+			return nil, err
+		}
+		for id, a := range got {
+			sum, ok := out[id]
+			if !ok {
+				continue
+			}
+			sum.Bytes += a.Bytes
+			if a.LastWriteAt != nil && a.LastWriteAt.After(*sum.LastWriteAt) {
+				sum.LastWriteAt = a.LastWriteAt
+			}
+			out[id] = sum
+		}
+	}
+	return out, nil
 }
 
 // WorkspaceMemberAdded is a workspace's new membership, field by field as

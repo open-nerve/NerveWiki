@@ -22,3 +22,13 @@ WHERE id IN (
     LIMIT sqlc.arg(batch)
     FOR UPDATE SKIP LOCKED
 );
+
+-- name: PurgeAuditEvents :execrows
+-- The audit events deleted with their workspace: they reference no notebook, so no other purge waits for them.
+DELETE FROM notebook_audit_events
+WHERE id IN (
+    SELECT e.id FROM notebook_audit_events e
+    WHERE e.deleted_at < sqlc.arg(before)::timestamptz
+    LIMIT sqlc.arg(batch)
+    FOR UPDATE SKIP LOCKED
+);

@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"testing"
 	"uuid"
+
+	"github.com/jackc/pgx/v5"
 )
 
 // The interleavings of the notebook members' writes (M3/P2 design 3.9):
@@ -64,6 +66,20 @@ func selectText(t *testing.T, tm acmeTeam, sql string, args ...any) string {
 		t.Fatalf("%s: %v", sql, err)
 	}
 	return s
+}
+
+// selectTexts are the texts the query reads, in its order.
+func selectTexts(t *testing.T, tm acmeTeam, sql string, args ...any) []string {
+	t.Helper()
+	rows, err := tm.pool.Query(context.Background(), sql, args...)
+	if err != nil {
+		t.Fatalf("%s: %v", sql, err)
+	}
+	texts, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		t.Fatalf("%s: %v", sql, err)
+	}
+	return texts
 }
 
 // adminsOf counts the notebook's active admins.

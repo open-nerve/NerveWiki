@@ -153,9 +153,12 @@ paths:
         the workspace to the caller's address are deleted with it. The
         workspace's only active admin cannot leave it, even alone in it
         (workspace.sole_admin): another member is made an admin first, or the
-        workspace is deleted.
+        workspace is deleted. Nor can the only active admin of one of its
+        notebooks with other members (notebook.sole_admin, whose detail counts
+        them); the caller's notebook memberships end with it, and a notebook
+        it was the only admin of becomes ownerless.
       security: [{ bearer: [] }]
-      x-problem-codes: [workspace.not_found, workspace.sole_admin]
+      x-problem-codes: [workspace.not_found, workspace.sole_admin, notebook.sole_admin]
       responses:
         "204":
           description: The caller is no longer a member.
@@ -201,7 +204,9 @@ paths:
         can, and not their own (workspace.own_membership: an admin leaves
         instead). A membership that does not exist, has ended, or whose
         workspace the caller cannot see is workspace.member_not_found; a
-        member or a guest gets forbidden.
+        member or a guest gets forbidden. The member's notebook memberships
+        end with it, and a notebook the member was the only admin of becomes
+        ownerless.
       security: [{ bearer: [] }]
       x-problem-codes: [workspace.member_not_found, forbidden, workspace.own_membership]
       responses:

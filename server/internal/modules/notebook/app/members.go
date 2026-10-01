@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"fmt"
 	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/notebook/domain"
@@ -35,16 +34,13 @@ func withProfiles(ctx context.Context, profiles MemberProfiles, members []domain
 	for i, m := range members {
 		ids[i] = m.UserID
 	}
-	byID, err := profiles.MemberProfiles(ctx, ids)
+	byID, err := profilesOf(ctx, profiles, ids)
 	if err != nil {
 		return nil, err
 	}
 	list := make([]ListedMember, len(members))
 	for i, m := range members {
-		p, ok := byID[m.UserID]
-		if !ok {
-			return nil, fmt.Errorf("no profile of account %s, notebook member %s", m.UserID, m.ID)
-		}
+		p := byID[m.UserID]
 		list[i] = ListedMember{Member: m, DisplayName: p.DisplayName}
 		if showEmails {
 			list[i].Email = &p.Email
