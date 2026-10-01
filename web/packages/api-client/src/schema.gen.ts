@@ -536,6 +536,83 @@ export interface paths {
         patch: operations["updateNotebook"];
         trace?: never;
     };
+    "/api/v0/notebooks/{notebook_id}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List a notebook's members
+         * @description The notebook's active members, by when they joined; any role in the notebook can list them. Those who use it by its workspace access alone are no members and are not listed. The emails go to the workspace's admins and members; a guest sees null. A notebook that does not exist, is deleted, or that the caller has no role in is notebook.not_found. The list is not paged.
+         */
+        get: operations["listNotebookMembers"];
+        put?: never;
+        /**
+         * Add a member to a notebook
+         * @description Gives an active member of the notebook's workspace, a guest included, a role in the notebook; only its admins can. One whose membership of the notebook ended gets it back, with this role and the time it first joined. A notebook that does not exist, is deleted, or that the caller has no role in is notebook.not_found; an editor or a reader gets forbidden; the values are checked after both: user_id not_allowed when the account is no active member of the workspace, duplicate when it is a member of the notebook already.
+         */
+        post: operations["addNotebookMember"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v0/notebook-members/{notebook_member_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The id of a membership, as the member list answers it; not the account's id. */
+                notebook_member_id: components["parameters"]["NotebookMemberID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove a member from a notebook
+         * @description Ends the member's membership of the notebook; only its admins can, and not their own (notebook.own_membership: an admin leaves instead). A membership that does not exist, has ended, or whose notebook the caller has no role in is notebook.member_not_found; an editor or a reader gets forbidden.
+         */
+        delete: operations["removeNotebookMember"];
+        options?: never;
+        head?: never;
+        /**
+         * Change a notebook member's role
+         * @description Gives the member a new role; only the notebook's admins can, and not their own (notebook.own_membership). A membership that does not exist, has ended, or whose notebook the caller has no role in is notebook.member_not_found; an editor or a reader gets forbidden; the role is checked after both.
+         */
+        patch: operations["updateNotebookMember"];
+        trace?: never;
+    };
+    "/api/v0/notebooks/{notebook_id}/leave": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Leave a notebook
+         * @description Ends the caller's membership of the notebook. Its only admin cannot, even alone in it (notebook.sole_admin): another member becomes an admin first, or the admin deletes the notebook. A notebook that does not exist, is deleted, or that the caller has no role in is notebook.not_found; a caller who uses it by its workspace access alone, no member of it, is notebook.member_not_found.
+         */
+        post: operations["leaveNotebook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -843,6 +920,39 @@ export interface components {
             name?: components["schemas"]["NotebookName"];
             workspace_access?: components["schemas"]["WorkspaceAccess"];
         };
+        /** @description A membership of a notebook, with what the caller may see of the account. */
+        NotebookMember: {
+            /**
+             * Format: uuid
+             * @description The membership's id, which the member operations take.
+             */
+            id: string;
+            /** Format: uuid */
+            user_id: string;
+            role: components["schemas"]["NotebookRole"];
+            display_name: string;
+            /** @description The account's email; null when the caller is a guest of the workspace. */
+            email: string | null;
+            /**
+             * Format: date-time
+             * @description When the account first joined; a membership given back keeps it.
+             */
+            created_at: string;
+        };
+        NotebookMemberList: {
+            data: components["schemas"]["NotebookMember"][];
+        };
+        NotebookMemberCreate: {
+            /**
+             * Format: uuid
+             * @description The account's id, an active member of the notebook's workspace.
+             */
+            user_id: string;
+            role: components["schemas"]["NotebookRole"];
+        };
+        NotebookMemberUpdate: {
+            role: components["schemas"]["NotebookRole"];
+        };
     };
     responses: {
         /** @description Error (RFC 9457 problem details). */
@@ -868,6 +978,8 @@ export interface components {
         WorkspaceInvitationID: string;
         /** @description The notebook's id. */
         NotebookID: string;
+        /** @description The id of a membership, as the member list answers it; not the account's id. */
+        NotebookMemberID: string;
     };
     requestBodies: never;
     headers: never;
@@ -912,11 +1024,16 @@ export type NotebookList = components['schemas']['NotebookList'];
 export type NotebookName = components['schemas']['NotebookName'];
 export type NotebookCreate = components['schemas']['NotebookCreate'];
 export type NotebookUpdate = components['schemas']['NotebookUpdate'];
+export type NotebookMember = components['schemas']['NotebookMember'];
+export type NotebookMemberList = components['schemas']['NotebookMemberList'];
+export type NotebookMemberCreate = components['schemas']['NotebookMemberCreate'];
+export type NotebookMemberUpdate = components['schemas']['NotebookMemberUpdate'];
 export type ResponseProblem = components['responses']['Problem'];
 export type ParameterSlug = components['parameters']['Slug'];
 export type ParameterWorkspaceMemberId = components['parameters']['WorkspaceMemberID'];
 export type ParameterWorkspaceInvitationId = components['parameters']['WorkspaceInvitationID'];
 export type ParameterNotebookId = components['parameters']['NotebookID'];
+export type ParameterNotebookMemberId = components['parameters']['NotebookMemberID'];
 export type $defs = Record<string, never>;
 export interface operations {
     register: {
@@ -1710,6 +1827,130 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Notebook"];
                 };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    listNotebookMembers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The notebook's members. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotebookMemberList"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    addNotebookMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotebookMemberCreate"];
+            };
+        };
+        responses: {
+            /** @description The member. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotebookMember"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    removeNotebookMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The id of a membership, as the member list answers it; not the account's id. */
+                notebook_member_id: components["parameters"]["NotebookMemberID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The membership has ended. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    updateNotebookMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The id of a membership, as the member list answers it; not the account's id. */
+                notebook_member_id: components["parameters"]["NotebookMemberID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotebookMemberUpdate"];
+            };
+        };
+        responses: {
+            /** @description The member with the new role. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotebookMember"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    leaveNotebook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The caller's membership has ended. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             default: components["responses"]["Problem"];
         };

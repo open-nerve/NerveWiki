@@ -45,6 +45,11 @@ type UseCases struct {
 	GetNotebook    GetNotebookUseCase
 	UpdateNotebook UpdateNotebookUseCase
 	DeleteNotebook DeleteNotebookUseCase
+	ListMembers    ListMembersUseCase
+	AddMember      AddMemberUseCase
+	UpdateMember   UpdateMemberUseCase
+	RemoveMember   RemoveMemberUseCase
+	LeaveNotebook  LeaveNotebookUseCase
 }
 
 // Register mounts the module's routes on router, the root router from

@@ -106,11 +106,12 @@ type fakes struct {
 	get    *fakeGet
 	update *fakeUpdate
 	delete *fakeDelete
+	memberFakes
 }
 
 func newFakes(err error) fakes {
 	u := fakeUseCase{err: err}
-	return fakes{&fakeList{u}, &fakeCreate{u}, &fakeGet{u}, &fakeUpdate{u}, &fakeDelete{u}}
+	return fakes{&fakeList{u}, &fakeCreate{u}, &fakeGet{u}, &fakeUpdate{u}, &fakeDelete{u}, newMemberFakes(err)}
 }
 
 // serve mounts the module on f behind the platform's middlewares.
@@ -119,6 +120,8 @@ func (f fakes) serve(t *testing.T) http.Handler {
 	router := httpserver.NewRouter(slog.New(slog.DiscardHandler))
 	httpadapter.Register(router, httpservertest.NewAPI(t, httpservertest.APIOptions{Authenticator: fakeAuth{}}), httpadapter.UseCases{
 		ListNotebooks: f.list, CreateNotebook: f.create, GetNotebook: f.get, UpdateNotebook: f.update, DeleteNotebook: f.delete,
+		ListMembers: f.listMembers, AddMember: f.addMember, UpdateMember: f.updateMember, RemoveMember: f.removeMember,
+		LeaveNotebook: f.leave,
 	})
 	return router
 }

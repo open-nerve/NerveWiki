@@ -11,12 +11,13 @@ import (
 
 // CreateNotebookDeps are what CreateNotebook needs.
 type CreateNotebookDeps struct {
-	Workspaces Workspaces
-	Notebooks  NotebookCreator
-	Auth       shared.Authorizer
-	Tx         shared.TxManager
-	Clock      Clock
-	Logger     *slog.Logger
+	Workspaces  Workspaces
+	Notebooks   NotebookCreator
+	Subscribers []VisibilitySubscriber
+	Auth        shared.Authorizer
+	Tx          shared.TxManager
+	Clock       Clock
+	Logger      *slog.Logger
 }
 
 // CreateNotebook creates a notebook whose admin is the caller:
@@ -35,7 +36,9 @@ func NewCreateNotebook(d CreateNotebookDeps) *CreateNotebook {
 // workspace's memberships, its deletion too, runs before or after it;
 // then decides; then checks the values: a caller who cannot see the
 // workspace gets 404, not 422. The notebook and its admin's membership
-// are written at one time.
+// are written at one time; the visibility's subscribers are told of the
+// caller, and of the workspace's admins and members when the notebook is
+// open to them.
 func (c *CreateNotebook) Execute(ctx context.Context, slug, name string, access *string) (View, error) {
 	actor, err := shared.RequireActor(ctx)
 	if err != nil {
@@ -68,6 +71,10 @@ func (c *CreateNotebook) Execute(ctx context.Context, slug, name string, access 
 			return err
 		}
 		if err := c.d.Notebooks.AddMember(ctx, admin, actor.UserID); err != nil {
+			return err
+		}
+		v := VisibilityChange{WorkspaceID: workspaceID, UserIDs: []uuid.UUID{actor.UserID}, Reached: n.Access != shared.AccessNone, At: now}
+		if err := publishVisibility(ctx, c.d.Subscribers, v); err != nil {
 			return err
 		}
 		out = View{Notebook: n, Role: admin.Role, MemberCount: 1}

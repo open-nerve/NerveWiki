@@ -15,10 +15,12 @@ type UpdateMemberDeps struct {
 	Finder   MemberFinder
 	Members  MemberUpdater
 	Profiles MemberProfiles
-	Auth     shared.Authorizer
-	Tx       shared.TxManager
-	Clock    Clock
-	Logger   *slog.Logger
+	// Subscribers follow a role that changed.
+	Subscribers []MemberRoleChangeSubscriber
+	Auth        shared.Authorizer
+	Tx          shared.TxManager
+	Clock       Clock
+	Logger      *slog.Logger
 }
 
 // UpdateMember changes a member's role:
@@ -36,7 +38,8 @@ func NewUpdateMember(d UpdateMemberDeps) *UpdateMember {
 // account's profile. The membership names its workspace, whose row it
 // locks before it reads the membership again, decides, checks the role
 // and refuses the caller's own. Since the caller is an admin who cannot
-// change their own role, the workspace keeps an admin.
+// change their own role, the workspace keeps an admin. A role that changed
+// is told to the subscribers, after the write and in its transaction.
 func (u *UpdateMember) Execute(ctx context.Context, id uuid.UUID, role string) (ListedMember, error) {
 	actor, err := shared.RequireActor(ctx)
 	if err != nil {
@@ -61,8 +64,17 @@ func (u *UpdateMember) Execute(ctx context.Context, id uuid.UUID, role string) (
 		if m.UserID == actor.UserID {
 			return domain.ErrOwnMembership
 		}
-		if err := u.d.Members.UpdateMemberRole(ctx, m.ID, r, actor.UserID, u.d.Clock.Now()); err != nil {
+		now := u.d.Clock.Now()
+		if err := u.d.Members.UpdateMemberRole(ctx, m.ID, r, actor.UserID, now); err != nil {
 			return err
+		}
+		if r != m.Role {
+			changed := MemberRoleChange{WorkspaceID: m.WorkspaceID, UserID: m.UserID, From: m.Role, To: r, By: actor.UserID, At: now}
+			for _, s := range u.d.Subscribers {
+				if err := s.MemberRoleChanged(ctx, changed); err != nil {
+					return err
+				}
+			}
 		}
 		m.Role = r
 		// The answer's profile is read here, after the write: nothing that

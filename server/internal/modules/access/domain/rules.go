@@ -70,6 +70,12 @@ func rules() map[shared.Action]Rule {
 		"notebook.read":   {Level: LevelNotebook, Notebook: readers()},
 		"notebook.update": {Level: LevelNotebook, Notebook: notebookAdmins()},
 		"notebook.delete": {Level: LevelNotebook, Notebook: notebookAdmins()},
+		// Any role in a notebook sees its members, and may leave it.
+		"notebook.leave":         {Level: LevelNotebook, Notebook: readers()},
+		"notebook_member.list":   {Level: LevelNotebook, Notebook: readers()},
+		"notebook_member.add":    {Level: LevelNotebook, Notebook: notebookAdmins()},
+		"notebook_member.update": {Level: LevelNotebook, Notebook: notebookAdmins()},
+		"notebook_member.remove": {Level: LevelNotebook, Notebook: notebookAdmins()},
 	}
 }
 

@@ -76,3 +76,38 @@ type MembershipRestore struct {
 type MembershipRestoreSubscriber interface {
 	MembershipRestored(ctx context.Context, r MembershipRestore) error
 }
+
+// MembershipAddition is a new membership: an accepted invitation inserted
+// it, with the invitation's role (M3 design 8). A workspace's creation
+// inserts its creator's too, and is no addition: a new workspace has
+// nothing a member could newly see. An ended membership active again is a
+// MembershipRestore.
+type MembershipAddition struct {
+	WorkspaceID uuid.UUID
+	UserID      uuid.UUID
+	Role        shared.WorkspaceRole
+	By          uuid.UUID // the account itself: it accepts
+	At          time.Time
+}
+
+// MembershipAdditionSubscriber follows an addition, after the membership
+// was written and in its transaction: an error rolls everything back.
+type MembershipAdditionSubscriber interface {
+	MembershipAdded(ctx context.Context, a MembershipAddition) error
+}
+
+// MemberRoleChange is a member's role changed by an admin (M3 design 8):
+// told only when To is not From.
+type MemberRoleChange struct {
+	WorkspaceID uuid.UUID
+	UserID      uuid.UUID
+	From, To    shared.WorkspaceRole
+	By          uuid.UUID // the admin who changed it
+	At          time.Time
+}
+
+// MemberRoleChangeSubscriber follows a role change, after the role was
+// written and in its transaction: an error rolls everything back.
+type MemberRoleChangeSubscriber interface {
+	MemberRoleChanged(ctx context.Context, c MemberRoleChange) error
+}

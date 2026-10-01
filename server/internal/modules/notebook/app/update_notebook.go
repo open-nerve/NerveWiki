@@ -11,13 +11,14 @@ import (
 
 // UpdateNotebookDeps are what UpdateNotebook needs.
 type UpdateNotebookDeps struct {
-	Workspaces Workspaces
-	Finder     NotebookFinder
-	Notebooks  NotebookWriter
-	Auth       shared.Authorizer
-	Tx         shared.TxManager
-	Clock      Clock
-	Logger     *slog.Logger
+	Workspaces  Workspaces
+	Finder      NotebookFinder
+	Notebooks   NotebookWriter
+	Subscribers []VisibilitySubscriber
+	Auth        shared.Authorizer
+	Tx          shared.TxManager
+	Clock       Clock
+	Logger      *slog.Logger
 }
 
 // UpdateNotebook changes a notebook's name or workspace access:
@@ -35,7 +36,9 @@ func NewUpdateNotebook(d UpdateNotebookDeps) *UpdateNotebook {
 // Execute gives notebook id the fields that are not nil, and returns it
 // with the caller's role. Under the locks and the decision it checks the
 // values: a caller who cannot see the notebook gets 404, not 422. Values
-// that change nothing write nothing.
+// that change nothing write nothing. An access that crosses none gives or
+// takes the workspace's admins' and members' default role: the
+// visibility's subscribers are told of them all.
 func (u *UpdateNotebook) Execute(ctx context.Context, id uuid.UUID, name, access *string) (View, error) {
 	actor, err := shared.RequireActor(ctx)
 	if err != nil {
@@ -50,7 +53,7 @@ func (u *UpdateNotebook) Execute(ctx context.Context, id uuid.UUID, name, access
 		modified bool
 	)
 	err = u.d.Tx.WithinTx(ctx, func(ctx context.Context) error {
-		n, grant, err := u.m.lock(ctx, actor, domain.ActionUpdate, n)
+		n, grant, err := u.m.lock(ctx, actor, domain.ActionUpdate, n, domain.ErrNotFound)
 		if err != nil {
 			return err
 		}
@@ -58,10 +61,17 @@ func (u *UpdateNotebook) Execute(ctx context.Context, id uuid.UUID, name, access
 		if err != nil {
 			return err
 		}
+		was := n.Access
 		n, modified = n.Apply(change)
 		if modified {
 			n.UpdatedAt = u.d.Clock.Now()
 			if err := u.d.Notebooks.UpdateNotebook(ctx, n, actor.UserID); err != nil {
+				return err
+			}
+		}
+		if (was == shared.AccessNone) != (n.Access == shared.AccessNone) {
+			v := VisibilityChange{WorkspaceID: n.WorkspaceID, Reached: true, At: n.UpdatedAt}
+			if err := publishVisibility(ctx, u.d.Subscribers, v); err != nil {
 				return err
 			}
 		}

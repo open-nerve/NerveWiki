@@ -135,18 +135,26 @@ func emailOf(c caller) string {
 // from them, and the coverage test checks what they aim at without a
 // database.
 type seeded struct {
-	t           testing.TB
-	workspaces  map[string]uuid.UUID // by slug
-	memberships map[string]uuid.UUID // by slug/caller
-	invitations map[string]uuid.UUID // by slug
-	notebooks   map[string]uuid.UUID // by name
+	t               testing.TB
+	workspaces      map[string]uuid.UUID // by slug
+	memberships     map[string]uuid.UUID // by slug/caller
+	invitations     map[string]uuid.UUID // by slug
+	notebooks       map[string]uuid.UUID // by name
+	notebookMembers map[string]uuid.UUID // by notebook/caller
+	// accounts are the columns' account ids, which registering them through
+	// the API gives: prepareMatrix fills the map, so they are known to the
+	// rows' requests, not to the coverage test, which reads the paths alone.
+	accounts map[caller]uuid.UUID
 }
 
 func newSeeded() seeded {
 	s := seeded{workspaces: map[string]uuid.UUID{}, memberships: map[string]uuid.UUID{}, invitations: map[string]uuid.UUID{},
-		notebooks: map[string]uuid.UUID{}}
+		notebooks: map[string]uuid.UUID{}, notebookMembers: map[string]uuid.UUID{}, accounts: map[caller]uuid.UUID{}}
 	for _, n := range matrixNotebooks() {
 		s.notebooks[n.name] = uuid.NewV7()
+	}
+	for _, m := range matrixNotebookMembers() {
+		s.notebookMembers[m.notebook+"/"+string(m.c)] = uuid.NewV7()
 	}
 	for _, w := range matrixWorkspaces() {
 		s.workspaces[w.slug] = uuid.NewV7()
@@ -208,11 +216,32 @@ func (s seeded) notebook(name string) uuid.UUID {
 	return id
 }
 
+// notebookMember is the id of c's membership of the notebook name, ended
+// or not.
+func (s seeded) notebookMember(name string, c caller) uuid.UUID {
+	id, ok := s.notebookMembers[name+"/"+string(c)]
+	if !ok {
+		s.t.Helper()
+		s.t.Fatalf("no membership of %s by %s is seeded", name, c)
+	}
+	return id
+}
+
 // workspaceOfRow is the slug of the workspace a seeded row's id is in.
 func (s seeded) workspaceOfRow(id uuid.UUID) (string, bool) {
 	for _, n := range matrixNotebooks() {
 		if s.notebooks[n.name] == id {
 			return n.slug, true
+		}
+	}
+	for key, seededID := range s.notebookMembers {
+		if seededID == id {
+			name, _, _ := strings.Cut(key, "/")
+			for _, n := range matrixNotebooks() {
+				if n.name == name {
+					return n.slug, true
+				}
+			}
 		}
 	}
 	for key, seededID := range s.memberships {
@@ -269,6 +298,13 @@ func prepareMatrix(t *testing.T) matrixData {
 			d.tokens[c] = registerAccount(t, contract, base, emailOf(c)).AccessToken
 		}
 		pool := connect(t, d.url)
+		for _, c := range allColumns() {
+			var id uuid.UUID
+			if err := pool.QueryRow(context.Background(), "SELECT id FROM users WHERE email = $1", emailOf(c)).Scan(&id); err != nil {
+				t.Fatal(err)
+			}
+			d.seeded.accounts[c] = id
+		}
 		exec := func(sql string, args ...any) {
 			t.Helper()
 			if _, err := pool.Exec(context.Background(), sql, args...); err != nil {
@@ -303,8 +339,8 @@ func prepareMatrix(t *testing.T) matrixData {
 				ended = &now
 			}
 			exec("INSERT INTO notebook_members (id, notebook_id, user_id, role, created_by_id, updated_by_id, created_at, updated_at, ended_at) "+
-				"VALUES (gen_random_uuid(), $1, "+account+", $3, "+account+", "+account+", $4, $4, $5)",
-				d.seeded.notebooks[m.notebook], emailOf(m.c), string(m.role), now, ended)
+				"VALUES ($6, $1, "+account+", $3, "+account+", "+account+", $4, $4, $5)",
+				d.seeded.notebooks[m.notebook], emailOf(m.c), string(m.role), now, ended, d.seeded.notebookMembers[m.notebook+"/"+string(m.c)])
 		}
 		for _, n := range matrixNotebooks() {
 			if n.deleted {

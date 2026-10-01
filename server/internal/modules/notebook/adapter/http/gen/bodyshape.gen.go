@@ -10,14 +10,20 @@ import "github.com/open-nerve/NerveWiki/server/internal/platform/httpserver/body
 func BodyShapes() *bodyshape.Table {
 	return &bodyshape.Table{
 		Nodes: []bodyshape.Node{
-			/* 0 */ {Types: bodyshape.Object, Extra: bodyshape.Closed, Items: bodyshape.Open, Props: map[string]int{"name": 1, "workspace_access": 2}},
+			/* 0 */ {Types: bodyshape.Object, Extra: bodyshape.Closed, Items: bodyshape.Open, Props: map[string]int{"role": 1}, Required: []string{"role"}},
 			/* 1 */ {Types: bodyshape.String, Extra: bodyshape.Open, Items: bodyshape.Open},
-			/* 2 */ {Types: bodyshape.String, Extra: bodyshape.Open, Items: bodyshape.Open},
-			/* 3 */ {Types: bodyshape.Object, Extra: bodyshape.Closed, Items: bodyshape.Open, Props: map[string]int{"name": 1, "workspace_access": 2}, Required: []string{"name"}},
+			/* 2 */ {Types: bodyshape.Object, Extra: bodyshape.Closed, Items: bodyshape.Open, Props: map[string]int{"name": 3, "workspace_access": 4}},
+			/* 3 */ {Types: bodyshape.String, Extra: bodyshape.Open, Items: bodyshape.Open},
+			/* 4 */ {Types: bodyshape.String, Extra: bodyshape.Open, Items: bodyshape.Open},
+			/* 5 */ {Types: bodyshape.Object, Extra: bodyshape.Closed, Items: bodyshape.Open, Props: map[string]int{"role": 1, "user_id": 6}, Required: []string{"role", "user_id"}},
+			/* 6 */ {Types: bodyshape.String, Format: bodyshape.FormatUUID, Extra: bodyshape.Open, Items: bodyshape.Open},
+			/* 7 */ {Types: bodyshape.Object, Extra: bodyshape.Closed, Items: bodyshape.Open, Props: map[string]int{"name": 3, "workspace_access": 4}, Required: []string{"name"}},
 		},
 		Roots: map[string]int{
-			"PATCH /api/v0/notebooks/{notebook_id}":    0,
-			"POST /api/v0/workspaces/{slug}/notebooks": 3,
+			"PATCH /api/v0/notebook-members/{notebook_member_id}": 0,
+			"PATCH /api/v0/notebooks/{notebook_id}":               2,
+			"POST /api/v0/notebooks/{notebook_id}/members":        5,
+			"POST /api/v0/workspaces/{slug}/notebooks":            7,
 		},
 	}
 }

@@ -96,6 +96,38 @@ export async function expectNotebooksDeletedWith(db: Database, workspaceId: stri
   expect(rows).toEqual([{ live: 0, with_it: count, members_apart: 0 }]);
 }
 
+/** What a notebook membership's row holds, as expectNotebookMember checks it. */
+export interface MemberRow {
+  /** Its role. */
+  role: string;
+  /** Whether it has not ended. */
+  active: boolean;
+  /** The account that wrote it last. */
+  writerId: string;
+  /** When the account first joined, as the API answered it: a membership given back keeps it. */
+  joinedAt?: string;
+}
+
+/**
+ * notebook_members: userId's one row of the notebook id, not deleted, is
+ * want; when it ended, it ended at its last write.
+ */
+export async function expectNotebookMember(
+  db: Database,
+  notebookId: string,
+  userId: string,
+  want: MemberRow
+): Promise<void> {
+  const rows = await db.query(
+    `SELECT role, ended_at IS NULL AS active, updated_by_id = $3 AS by_writer,
+            ($4::timestamptz IS NULL OR created_at = $4::timestamptz) AS joined,
+            ended_at IS NULL OR ended_at = updated_at AS ended_at_write
+       FROM notebook_members WHERE notebook_id = $1 AND user_id = $2 AND deleted_at IS NULL`,
+    [notebookId, userId, want.writerId, want.joinedAt ?? null]
+  );
+  expect(rows).toEqual([{ role: want.role, active: want.active, by_writer: true, joined: true, ended_at_write: true }]);
+}
+
 /** The rows of the notebook tables. */
 export interface NotebookCounts {
   notebooks: number;

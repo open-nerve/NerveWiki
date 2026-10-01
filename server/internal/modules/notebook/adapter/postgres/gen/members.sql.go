@@ -39,6 +39,19 @@ func (q *Queries) AddMember(ctx context.Context, arg AddMemberParams) error {
 	return err
 }
 
+const countAdmins = `-- name: CountAdmins :one
+SELECT count(*) FROM notebook_members
+WHERE notebook_id = $1 AND role = 'admin' AND ended_at IS NULL AND deleted_at IS NULL
+`
+
+// The notebook's active admins, which rule one counts under the notebook's lock.
+func (q *Queries) CountAdmins(ctx context.Context, notebookID uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countAdmins, notebookID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countMembers = `-- name: CountMembers :one
 SELECT count(*) FROM notebook_members
 WHERE notebook_id = $1 AND ended_at IS NULL AND deleted_at IS NULL
@@ -85,5 +98,175 @@ type DeleteMembersOfNotebooksParams struct {
 // DeleteMembersOf for the notebooks a workspace's deletion deleted.
 func (q *Queries) DeleteMembersOfNotebooks(ctx context.Context, arg DeleteMembersOfNotebooksParams) error {
 	_, err := q.db.Exec(ctx, deleteMembersOfNotebooks, arg.Now, arg.By, arg.NotebookIds)
+	return err
+}
+
+const endMember = `-- name: EndMember :exec
+UPDATE notebook_members
+SET ended_at = $1::timestamptz, updated_by_id = $2, updated_at = $1
+WHERE id = $3
+`
+
+type EndMemberParams struct {
+	Now time.Time
+	By  uuid.UUID
+	ID  uuid.UUID
+}
+
+func (q *Queries) EndMember(ctx context.Context, arg EndMemberParams) error {
+	_, err := q.db.Exec(ctx, endMember, arg.Now, arg.By, arg.ID)
+	return err
+}
+
+const findActiveMember = `-- name: FindActiveMember :one
+SELECT id, notebook_id, user_id, role, ended_at, created_at FROM notebook_members
+WHERE id = $1 AND ended_at IS NULL AND deleted_at IS NULL
+`
+
+type FindActiveMemberRow struct {
+	ID         uuid.UUID
+	NotebookID uuid.UUID
+	UserID     uuid.UUID
+	Role       string
+	EndedAt    *time.Time
+	CreatedAt  time.Time
+}
+
+// The active membership with the id. A notebook's deletion deletes its member rows: the notebook is not deleted.
+func (q *Queries) FindActiveMember(ctx context.Context, id uuid.UUID) (FindActiveMemberRow, error) {
+	row := q.db.QueryRow(ctx, findActiveMember, id)
+	var i FindActiveMemberRow
+	err := row.Scan(
+		&i.ID,
+		&i.NotebookID,
+		&i.UserID,
+		&i.Role,
+		&i.EndedAt,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const findMemberOf = `-- name: FindMemberOf :one
+SELECT id, notebook_id, user_id, role, ended_at, created_at FROM notebook_members
+WHERE notebook_id = $1 AND user_id = $2 AND deleted_at IS NULL
+`
+
+type FindMemberOfParams struct {
+	NotebookID uuid.UUID
+	UserID     uuid.UUID
+}
+
+type FindMemberOfRow struct {
+	ID         uuid.UUID
+	NotebookID uuid.UUID
+	UserID     uuid.UUID
+	Role       string
+	EndedAt    *time.Time
+	CreatedAt  time.Time
+}
+
+// The account's membership of the notebook, active or ended: one row per pair (notebook_members_notebook_id_user_id_key).
+func (q *Queries) FindMemberOf(ctx context.Context, arg FindMemberOfParams) (FindMemberOfRow, error) {
+	row := q.db.QueryRow(ctx, findMemberOf, arg.NotebookID, arg.UserID)
+	var i FindMemberOfRow
+	err := row.Scan(
+		&i.ID,
+		&i.NotebookID,
+		&i.UserID,
+		&i.Role,
+		&i.EndedAt,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const listMembers = `-- name: ListMembers :many
+SELECT id, notebook_id, user_id, role, ended_at, created_at FROM notebook_members
+WHERE notebook_id = $1 AND ended_at IS NULL AND deleted_at IS NULL
+ORDER BY created_at, id
+`
+
+type ListMembersRow struct {
+	ID         uuid.UUID
+	NotebookID uuid.UUID
+	UserID     uuid.UUID
+	Role       string
+	EndedAt    *time.Time
+	CreatedAt  time.Time
+}
+
+// The notebook's active members, by when they first joined, then by id.
+func (q *Queries) ListMembers(ctx context.Context, notebookID uuid.UUID) ([]ListMembersRow, error) {
+	rows, err := q.db.Query(ctx, listMembers, notebookID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListMembersRow
+	for rows.Next() {
+		var i ListMembersRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.NotebookID,
+			&i.UserID,
+			&i.Role,
+			&i.EndedAt,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const restoreMember = `-- name: RestoreMember :exec
+UPDATE notebook_members
+SET role = $1, ended_at = NULL, updated_by_id = $2, updated_at = $3
+WHERE id = $4
+`
+
+type RestoreMemberParams struct {
+	Role string
+	By   uuid.UUID
+	Now  time.Time
+	ID   uuid.UUID
+}
+
+// An ended membership active again with the role. created_at stays: when the account first joined.
+func (q *Queries) RestoreMember(ctx context.Context, arg RestoreMemberParams) error {
+	_, err := q.db.Exec(ctx, restoreMember,
+		arg.Role,
+		arg.By,
+		arg.Now,
+		arg.ID,
+	)
+	return err
+}
+
+const updateMemberRole = `-- name: UpdateMemberRole :exec
+UPDATE notebook_members
+SET role = $1, updated_by_id = $2, updated_at = $3
+WHERE id = $4
+`
+
+type UpdateMemberRoleParams struct {
+	Role string
+	By   uuid.UUID
+	Now  time.Time
+	ID   uuid.UUID
+}
+
+func (q *Queries) UpdateMemberRole(ctx context.Context, arg UpdateMemberRoleParams) error {
+	_, err := q.db.Exec(ctx, updateMemberRole,
+		arg.Role,
+		arg.By,
+		arg.Now,
+		arg.ID,
+	)
 	return err
 }

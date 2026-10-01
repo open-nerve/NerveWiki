@@ -68,33 +68,40 @@ func workspaceDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, a
 ) workspace.Deps {
 	ext := workspaceRegistrants(pool)
 	return workspace.Deps{
-		Pool:                         pool,
-		Tx:                           postgres.NewTxManager(pool, cfg.Database.CommitTimeout),
-		Clock:                        clock.System{},
-		Logger:                       logger,
-		Authorizer:                   authorizer,
-		Accounts:                     identity.NewAccounts(pool),
-		Directory:                    directory{identity.NewDirectory(pool)},
-		InvitationKey:                invitationKey,
-		CreationEnabled:              cfg.Workspace.CreationEnabled,
-		MembershipEndVetoers:         ext.endVetoers,
-		MembershipEndSubscribers:     ext.endSubscribers,
-		DeletionSubscribers:          ext.deletionSubscribers,
-		MembershipRestoreSubscribers: ext.restoreSubscribers,
+		Pool:                          pool,
+		Tx:                            postgres.NewTxManager(pool, cfg.Database.CommitTimeout),
+		Clock:                         clock.System{},
+		Logger:                        logger,
+		Authorizer:                    authorizer,
+		Accounts:                      identity.NewAccounts(pool),
+		Directory:                     directory{identity.NewDirectory(pool)},
+		InvitationKey:                 invitationKey,
+		CreationEnabled:               cfg.Workspace.CreationEnabled,
+		MembershipEndVetoers:          ext.endVetoers,
+		MembershipEndSubscribers:      ext.endSubscribers,
+		DeletionSubscribers:           ext.deletionSubscribers,
+		MembershipRestoreSubscribers:  ext.restoreSubscribers,
+		MembershipAdditionSubscribers: ext.additionSubscribers,
+		MemberRoleChangeSubscribers:   ext.roleChangeSubscribers,
 	}
 }
 
 // notebookDeps are the notebook module's dependencies: the workspace
-// module's port, and the registrants of its extension point.
+// module's ports, identity's directory for the member list, and the
+// registrants of its extension points.
 func notebookDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, authorizer shared.Authorizer) notebook.Deps {
+	ext := notebookRegistrants()
 	return notebook.Deps{
-		Pool:                pool,
-		Tx:                  postgres.NewTxManager(pool, cfg.Database.CommitTimeout),
-		Clock:               clock.System{},
-		Logger:              logger,
-		Authorizer:          authorizer,
-		Workspaces:          workspace.NewWorkspaces(pool),
-		DeletionSubscribers: notebookRegistrants().deletionSubscribers,
+		Pool:                  pool,
+		Tx:                    postgres.NewTxManager(pool, cfg.Database.CommitTimeout),
+		Clock:                 clock.System{},
+		Logger:                logger,
+		Authorizer:            authorizer,
+		Workspaces:            workspace.NewWorkspaces(pool),
+		WorkspaceMembers:      workspace.NewMemberships(pool),
+		Profiles:              notebookProfiles{identity.NewDirectory(pool)},
+		DeletionSubscribers:   ext.deletionSubscribers,
+		VisibilitySubscribers: ext.visibilitySubscribers,
 	}
 }
 

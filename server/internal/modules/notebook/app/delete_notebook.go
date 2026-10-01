@@ -47,7 +47,7 @@ func (d *DeleteNotebook) Execute(ctx context.Context, id uuid.UUID) error {
 		return err
 	}
 	err = d.d.Tx.WithinTx(ctx, func(ctx context.Context) error {
-		n, _, err := d.m.lock(ctx, actor, domain.ActionDelete, n)
+		n, _, err := d.m.lock(ctx, actor, domain.ActionDelete, n, domain.ErrNotFound)
 		if err != nil {
 			return err
 		}

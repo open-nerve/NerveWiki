@@ -216,6 +216,10 @@ export const en = {
   "problem.workspace.no_admin":
     "The workspace has no admin now: you can accept this invitation once it has one again. Ask the server's administrator.",
   "problem.notebook.not_found": "This notebook does not exist, or you have no access to it.",
+  "problem.notebook.member_not_found": "This member cannot be found, or you no longer have access to the notebook.",
+  "problem.notebook.own_membership": "You cannot change or remove your own membership.",
+  "problem.notebook.sole_admin":
+    "You are the notebook's only admin. Make another member an admin first, or delete the notebook.",
   "problem.network": "Cannot reach the server. Check the connection and try again.",
   "problem.unavailable": "Cannot reach the server for now. You are still signed in; try again in a moment.",
   "problem.storage":

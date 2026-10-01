@@ -14,6 +14,7 @@ import (
 	"time"
 	"uuid"
 
+	"github.com/oapi-codegen/nullable"
 	"github.com/oapi-codegen/runtime"
 	externalRef0 "github.com/open-nerve/NerveWiki/server/internal/platform/httpserver/apigen"
 )
@@ -92,6 +93,43 @@ type NotebookList struct {
 	Data []Notebook `json:"data"`
 }
 
+// NotebookMember A membership of a notebook, with what the caller may see of the account.
+type NotebookMember struct {
+	// CreatedAt When the account first joined; a membership given back keeps it.
+	CreatedAt   time.Time `json:"created_at"`
+	DisplayName string    `json:"display_name"`
+
+	// Email The account's email; null when the caller is a guest of the workspace.
+	Email nullable.Nullable[string] `json:"email"`
+
+	// ID The membership's id, which the member operations take.
+	ID uuid.UUID `json:"id"`
+
+	// Role A role in a notebook: admin manages the notebook and its members, editor writes, reader reads. Rules compare roles by set; which of two is higher only the order reader < editor < admin says.
+	Role   NotebookRole `json:"role"`
+	UserID uuid.UUID    `json:"user_id"`
+}
+
+// NotebookMemberCreate defines model for NotebookMemberCreate.
+type NotebookMemberCreate struct {
+	// Role A role in a notebook: admin manages the notebook and its members, editor writes, reader reads. Rules compare roles by set; which of two is higher only the order reader < editor < admin says.
+	Role NotebookRole `json:"role"`
+
+	// UserID The account's id, an active member of the notebook's workspace.
+	UserID uuid.UUID `json:"user_id"`
+}
+
+// NotebookMemberList defines model for NotebookMemberList.
+type NotebookMemberList struct {
+	Data []NotebookMember `json:"data"`
+}
+
+// NotebookMemberUpdate defines model for NotebookMemberUpdate.
+type NotebookMemberUpdate struct {
+	// Role A role in a notebook: admin manages the notebook and its members, editor writes, reader reads. Rules compare roles by set; which of two is higher only the order reader < editor < admin says.
+	Role NotebookRole `json:"role"`
+}
+
 // NotebookName 1–255 bytes after the surrounding blanks are trimmed and the text is in NFC; none of / \ : * ? " < > | # ^ [ ] nor control characters; not starting or ending with a dot; no name Windows reserves (CON, COM1, …). It is the folder's name when the notebook is exported.
 type NotebookName = string
 
@@ -113,20 +151,35 @@ type WorkspaceAccess string
 // NotebookID defines model for NotebookID.
 type NotebookID = uuid.UUID
 
+// NotebookMemberID defines model for NotebookMemberID.
+type NotebookMemberID = uuid.UUID
+
 // Slug defines model for Slug.
 type Slug = string
 
 // Problem RFC 9457 problem details. `title` is the HTTP status phrase, `detail` explains this occurrence, and clients branch on `code`. Must match httpserver.Problem; the platform's contract test checks it.
 type Problem = externalRef0.Problem
 
+// UpdateNotebookMemberJSONRequestBody defines body for UpdateNotebookMember for application/json ContentType.
+type UpdateNotebookMemberJSONRequestBody = NotebookMemberUpdate
+
 // UpdateNotebookJSONRequestBody defines body for UpdateNotebook for application/json ContentType.
 type UpdateNotebookJSONRequestBody = NotebookUpdate
+
+// AddNotebookMemberJSONRequestBody defines body for AddNotebookMember for application/json ContentType.
+type AddNotebookMemberJSONRequestBody = NotebookMemberCreate
 
 // CreateNotebookJSONRequestBody defines body for CreateNotebook for application/json ContentType.
 type CreateNotebookJSONRequestBody = NotebookCreate
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// RemoveNotebookMember Remove a member from a notebook
+	// (DELETE /api/v0/notebook-members/{notebook_member_id})
+	RemoveNotebookMember(w http.ResponseWriter, r *http.Request, notebookMemberID NotebookMemberID)
+	// UpdateNotebookMember Change a notebook member's role
+	// (PATCH /api/v0/notebook-members/{notebook_member_id})
+	UpdateNotebookMember(w http.ResponseWriter, r *http.Request, notebookMemberID NotebookMemberID)
 	// DeleteNotebook Delete a notebook
 	// (DELETE /api/v0/notebooks/{notebook_id})
 	DeleteNotebook(w http.ResponseWriter, r *http.Request, notebookID NotebookID)
@@ -136,6 +189,15 @@ type ServerInterface interface {
 	// UpdateNotebook Change a notebook's name or workspace access
 	// (PATCH /api/v0/notebooks/{notebook_id})
 	UpdateNotebook(w http.ResponseWriter, r *http.Request, notebookID NotebookID)
+	// LeaveNotebook Leave a notebook
+	// (POST /api/v0/notebooks/{notebook_id}/leave)
+	LeaveNotebook(w http.ResponseWriter, r *http.Request, notebookID NotebookID)
+	// ListNotebookMembers List a notebook's members
+	// (GET /api/v0/notebooks/{notebook_id}/members)
+	ListNotebookMembers(w http.ResponseWriter, r *http.Request, notebookID NotebookID)
+	// AddNotebookMember Add a member to a notebook
+	// (POST /api/v0/notebooks/{notebook_id}/members)
+	AddNotebookMember(w http.ResponseWriter, r *http.Request, notebookID NotebookID)
 	// ListNotebooks List the notebooks the caller sees in a workspace
 	// (GET /api/v0/workspaces/{slug}/notebooks)
 	ListNotebooks(w http.ResponseWriter, r *http.Request, slug Slug)
@@ -152,6 +214,58 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// RemoveNotebookMember operation middleware
+func (siw *ServerInterfaceWrapper) RemoveNotebookMember(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "notebook_member_id" -------------
+	var notebookMemberID NotebookMemberID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "notebook_member_id", r.PathValue("notebook_member_id"), &notebookMemberID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "notebook_member_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RemoveNotebookMember(w, r, notebookMemberID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateNotebookMember operation middleware
+func (siw *ServerInterfaceWrapper) UpdateNotebookMember(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "notebook_member_id" -------------
+	var notebookMemberID NotebookMemberID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "notebook_member_id", r.PathValue("notebook_member_id"), &notebookMemberID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "notebook_member_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateNotebookMember(w, r, notebookMemberID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // DeleteNotebook operation middleware
 func (siw *ServerInterfaceWrapper) DeleteNotebook(w http.ResponseWriter, r *http.Request) {
@@ -222,6 +336,84 @@ func (siw *ServerInterfaceWrapper) UpdateNotebook(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateNotebook(w, r, notebookID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// LeaveNotebook operation middleware
+func (siw *ServerInterfaceWrapper) LeaveNotebook(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "notebook_id" -------------
+	var notebookID NotebookID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "notebook_id", r.PathValue("notebook_id"), &notebookID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "notebook_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.LeaveNotebook(w, r, notebookID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListNotebookMembers operation middleware
+func (siw *ServerInterfaceWrapper) ListNotebookMembers(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "notebook_id" -------------
+	var notebookID NotebookID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "notebook_id", r.PathValue("notebook_id"), &notebookID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "notebook_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListNotebookMembers(w, r, notebookID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AddNotebookMember operation middleware
+func (siw *ServerInterfaceWrapper) AddNotebookMember(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "notebook_id" -------------
+	var notebookID NotebookID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "notebook_id", r.PathValue("notebook_id"), &notebookID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "notebook_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AddNotebookMember(w, r, notebookID)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -408,6 +600,11 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v0/notebooks/{notebook_id}", wrapper.DeleteNotebook)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v0/notebooks/{notebook_id}", wrapper.GetNotebook)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/v0/notebooks/{notebook_id}", wrapper.UpdateNotebook)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v0/notebooks/{notebook_id}/members", wrapper.ListNotebookMembers)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v0/notebooks/{notebook_id}/members", wrapper.AddNotebookMember)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v0/notebook-members/{notebook_member_id}", wrapper.RemoveNotebookMember)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/v0/notebook-members/{notebook_member_id}", wrapper.UpdateNotebookMember)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v0/notebooks/{notebook_id}/leave", wrapper.LeaveNotebook)
 
 	return m
 }
@@ -420,6 +617,93 @@ type ProblemApplicationProblemPlusJSONResponse struct {
 	Body externalRef0.Problem
 
 	Headers ProblemResponseHeaders
+}
+
+type RemoveNotebookMemberRequestObject struct {
+	NotebookMemberID NotebookMemberID `json:"notebook_member_id"`
+}
+
+type RemoveNotebookMemberResponseObject interface {
+	VisitRemoveNotebookMemberResponse(w http.ResponseWriter) error
+}
+
+type RemoveNotebookMember204Response struct {
+}
+
+func (response RemoveNotebookMember204Response) VisitRemoveNotebookMemberResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type RemoveNotebookMemberdefaultApplicationProblemPlusJSONResponse struct {
+	Body       externalRef0.Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response RemoveNotebookMemberdefaultApplicationProblemPlusJSONResponse) VisitRemoveNotebookMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	if response.Headers.WWWAuthenticate != nil {
+		w.Header().Set("WWW-Authenticate", fmt.Sprint(*response.Headers.WWWAuthenticate))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateNotebookMemberRequestObject struct {
+	NotebookMemberID NotebookMemberID `json:"notebook_member_id"`
+	Body             *UpdateNotebookMemberJSONRequestBody
+}
+
+type UpdateNotebookMemberResponseObject interface {
+	VisitUpdateNotebookMemberResponse(w http.ResponseWriter) error
+}
+
+type UpdateNotebookMember200JSONResponse NotebookMember
+
+func (response UpdateNotebookMember200JSONResponse) VisitUpdateNotebookMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateNotebookMemberdefaultApplicationProblemPlusJSONResponse struct {
+	Body       externalRef0.Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response UpdateNotebookMemberdefaultApplicationProblemPlusJSONResponse) VisitUpdateNotebookMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	if response.Headers.WWWAuthenticate != nil {
+		w.Header().Set("WWW-Authenticate", fmt.Sprint(*response.Headers.WWWAuthenticate))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type DeleteNotebookRequestObject struct {
@@ -555,6 +839,139 @@ func (response UpdateNotebookdefaultApplicationProblemPlusJSONResponse) VisitUpd
 	return err
 }
 
+type LeaveNotebookRequestObject struct {
+	NotebookID NotebookID `json:"notebook_id"`
+}
+
+type LeaveNotebookResponseObject interface {
+	VisitLeaveNotebookResponse(w http.ResponseWriter) error
+}
+
+type LeaveNotebook204Response struct {
+}
+
+func (response LeaveNotebook204Response) VisitLeaveNotebookResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type LeaveNotebookdefaultApplicationProblemPlusJSONResponse struct {
+	Body       externalRef0.Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response LeaveNotebookdefaultApplicationProblemPlusJSONResponse) VisitLeaveNotebookResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	if response.Headers.WWWAuthenticate != nil {
+		w.Header().Set("WWW-Authenticate", fmt.Sprint(*response.Headers.WWWAuthenticate))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListNotebookMembersRequestObject struct {
+	NotebookID NotebookID `json:"notebook_id"`
+}
+
+type ListNotebookMembersResponseObject interface {
+	VisitListNotebookMembersResponse(w http.ResponseWriter) error
+}
+
+type ListNotebookMembers200JSONResponse NotebookMemberList
+
+func (response ListNotebookMembers200JSONResponse) VisitListNotebookMembersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListNotebookMembersdefaultApplicationProblemPlusJSONResponse struct {
+	Body       externalRef0.Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response ListNotebookMembersdefaultApplicationProblemPlusJSONResponse) VisitListNotebookMembersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	if response.Headers.WWWAuthenticate != nil {
+		w.Header().Set("WWW-Authenticate", fmt.Sprint(*response.Headers.WWWAuthenticate))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddNotebookMemberRequestObject struct {
+	NotebookID NotebookID `json:"notebook_id"`
+	Body       *AddNotebookMemberJSONRequestBody
+}
+
+type AddNotebookMemberResponseObject interface {
+	VisitAddNotebookMemberResponse(w http.ResponseWriter) error
+}
+
+type AddNotebookMember201JSONResponse NotebookMember
+
+func (response AddNotebookMember201JSONResponse) VisitAddNotebookMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddNotebookMemberdefaultApplicationProblemPlusJSONResponse struct {
+	Body       externalRef0.Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response AddNotebookMemberdefaultApplicationProblemPlusJSONResponse) VisitAddNotebookMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	if response.Headers.WWWAuthenticate != nil {
+		w.Header().Set("WWW-Authenticate", fmt.Sprint(*response.Headers.WWWAuthenticate))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListNotebooksRequestObject struct {
 	Slug Slug `json:"slug"`
 }
@@ -650,6 +1067,12 @@ func (response CreateNotebookdefaultApplicationProblemPlusJSONResponse) VisitCre
 
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
+	// RemoveNotebookMember Remove a member from a notebook
+	// (DELETE /api/v0/notebook-members/{notebook_member_id})
+	RemoveNotebookMember(ctx context.Context, request RemoveNotebookMemberRequestObject) (RemoveNotebookMemberResponseObject, error)
+	// UpdateNotebookMember Change a notebook member's role
+	// (PATCH /api/v0/notebook-members/{notebook_member_id})
+	UpdateNotebookMember(ctx context.Context, request UpdateNotebookMemberRequestObject) (UpdateNotebookMemberResponseObject, error)
 	// DeleteNotebook Delete a notebook
 	// (DELETE /api/v0/notebooks/{notebook_id})
 	DeleteNotebook(ctx context.Context, request DeleteNotebookRequestObject) (DeleteNotebookResponseObject, error)
@@ -659,6 +1082,15 @@ type StrictServerInterface interface {
 	// UpdateNotebook Change a notebook's name or workspace access
 	// (PATCH /api/v0/notebooks/{notebook_id})
 	UpdateNotebook(ctx context.Context, request UpdateNotebookRequestObject) (UpdateNotebookResponseObject, error)
+	// LeaveNotebook Leave a notebook
+	// (POST /api/v0/notebooks/{notebook_id}/leave)
+	LeaveNotebook(ctx context.Context, request LeaveNotebookRequestObject) (LeaveNotebookResponseObject, error)
+	// ListNotebookMembers List a notebook's members
+	// (GET /api/v0/notebooks/{notebook_id}/members)
+	ListNotebookMembers(ctx context.Context, request ListNotebookMembersRequestObject) (ListNotebookMembersResponseObject, error)
+	// AddNotebookMember Add a member to a notebook
+	// (POST /api/v0/notebooks/{notebook_id}/members)
+	AddNotebookMember(ctx context.Context, request AddNotebookMemberRequestObject) (AddNotebookMemberResponseObject, error)
 	// ListNotebooks List the notebooks the caller sees in a workspace
 	// (GET /api/v0/workspaces/{slug}/notebooks)
 	ListNotebooks(ctx context.Context, request ListNotebooksRequestObject) (ListNotebooksResponseObject, error)
@@ -704,6 +1136,65 @@ type strictHandler struct {
 	ssi         StrictServerInterface
 	middlewares []StrictMiddlewareFunc
 	options     StrictHTTPServerOptions
+}
+
+// RemoveNotebookMember operation middleware
+func (sh *strictHandler) RemoveNotebookMember(w http.ResponseWriter, r *http.Request, notebookMemberID NotebookMemberID) {
+	var request RemoveNotebookMemberRequestObject
+
+	request.NotebookMemberID = notebookMemberID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RemoveNotebookMember(ctx, request.(RemoveNotebookMemberRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RemoveNotebookMember")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RemoveNotebookMemberResponseObject); ok {
+		if err := validResponse.VisitRemoveNotebookMemberResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateNotebookMember operation middleware
+func (sh *strictHandler) UpdateNotebookMember(w http.ResponseWriter, r *http.Request, notebookMemberID NotebookMemberID) {
+	var request UpdateNotebookMemberRequestObject
+
+	request.NotebookMemberID = notebookMemberID
+
+	var body UpdateNotebookMemberJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateNotebookMember(ctx, request.(UpdateNotebookMemberRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateNotebookMember")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateNotebookMemberResponseObject); ok {
+		if err := validResponse.VisitUpdateNotebookMemberResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
 }
 
 // DeleteNotebook operation middleware
@@ -784,6 +1275,91 @@ func (sh *strictHandler) UpdateNotebook(w http.ResponseWriter, r *http.Request, 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(UpdateNotebookResponseObject); ok {
 		if err := validResponse.VisitUpdateNotebookResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// LeaveNotebook operation middleware
+func (sh *strictHandler) LeaveNotebook(w http.ResponseWriter, r *http.Request, notebookID NotebookID) {
+	var request LeaveNotebookRequestObject
+
+	request.NotebookID = notebookID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.LeaveNotebook(ctx, request.(LeaveNotebookRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "LeaveNotebook")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(LeaveNotebookResponseObject); ok {
+		if err := validResponse.VisitLeaveNotebookResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListNotebookMembers operation middleware
+func (sh *strictHandler) ListNotebookMembers(w http.ResponseWriter, r *http.Request, notebookID NotebookID) {
+	var request ListNotebookMembersRequestObject
+
+	request.NotebookID = notebookID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListNotebookMembers(ctx, request.(ListNotebookMembersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListNotebookMembers")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListNotebookMembersResponseObject); ok {
+		if err := validResponse.VisitListNotebookMembersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// AddNotebookMember operation middleware
+func (sh *strictHandler) AddNotebookMember(w http.ResponseWriter, r *http.Request, notebookID NotebookID) {
+	var request AddNotebookMemberRequestObject
+
+	request.NotebookID = notebookID
+
+	var body AddNotebookMemberJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.AddNotebookMember(ctx, request.(AddNotebookMemberRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "AddNotebookMember")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(AddNotebookMemberResponseObject); ok {
+		if err := validResponse.VisitAddNotebookMemberResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

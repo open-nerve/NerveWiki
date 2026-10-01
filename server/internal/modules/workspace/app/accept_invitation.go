@@ -20,10 +20,12 @@ type AcceptInvitationDeps struct {
 	Invitations InvitationUpdater
 	Members     MemberFinder
 	Updater     MemberUpdater
-	Subscribers []MembershipRestoreSubscriber
-	Tx          shared.TxManager
-	Clock       Clock
-	Logger      *slog.Logger
+	// The subscribers of the membership's restore and of its addition.
+	Restored []MembershipRestoreSubscriber
+	Added    []MembershipAdditionSubscriber
+	Tx       shared.TxManager
+	Clock    Clock
+	Logger   *slog.Logger
 }
 
 // AcceptInvitation joins the caller to a workspace by an invitation:
@@ -55,8 +57,9 @@ const (
 // invited (403). An active membership is kept as it is; else, unless the
 // workspace has no active admin and the invitation's role is not admin
 // (409, rule three), an ended one is restored with the invitation's role,
-// its subscribers told, or a new one is added. The invitation is then used
-// up, at the same time; a refusal leaves it pending.
+// or a new one is added, the restore's or the addition's subscribers told.
+// The invitation is then used up, at the same time; a refusal leaves it
+// pending.
 func (a *AcceptInvitation) Execute(ctx context.Context, id uuid.UUID, token string) (Membership, error) {
 	actor, err := shared.RequireActor(ctx)
 	if err != nil {
@@ -117,8 +120,17 @@ func (a *AcceptInvitation) join(ctx context.Context, inv domain.Invitation, user
 		return "", "", err
 	}
 	if had {
-		return inv.Role, joinRestored, restore(ctx, a.d.Updater, a.d.Subscribers, m, inv.Role, userID, now)
+		return inv.Role, joinRestored, restore(ctx, a.d.Updater, a.d.Restored, m, inv.Role, userID, now)
 	}
 	m = domain.Member{ID: uuid.NewV7(), WorkspaceID: inv.WorkspaceID, UserID: userID, Role: inv.Role, CreatedAt: now}
-	return inv.Role, joinAdded, a.d.Updater.AddMember(ctx, m, userID)
+	if err := a.d.Updater.AddMember(ctx, m, userID); err != nil {
+		return "", "", err
+	}
+	added := MembershipAddition{WorkspaceID: m.WorkspaceID, UserID: userID, Role: m.Role, By: userID, At: now}
+	for _, s := range a.d.Added {
+		if err := s.MembershipAdded(ctx, added); err != nil {
+			return "", "", err
+		}
+	}
+	return inv.Role, joinAdded, nil
 }
