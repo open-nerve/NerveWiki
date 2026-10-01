@@ -87,7 +87,7 @@ func New(d Deps) *Module {
 		}),
 		ListMembers: app.NewListMembers(app.ListMembersDeps{Notebooks: store, Members: store, Profiles: d.Profiles, Auth: auth}),
 		AddMember: app.NewAddMember(app.AddMemberDeps{
-			Workspaces: d.Workspaces, WorkspaceMembers: d.WorkspaceMembers, Finder: store, Notebooks: store, Members: store,
+			Workspaces: d.Workspaces, WorkspaceMembers: d.WorkspaceMembers, Finder: store, Notebooks: store, Writer: store,
 			Profiles: d.Profiles, Subscribers: visibility, Auth: auth, Tx: d.Tx, Clock: d.Clock, Logger: d.Logger,
 		}),
 		UpdateMember: app.NewUpdateMember(app.UpdateMemberDeps{
@@ -99,7 +99,7 @@ func New(d Deps) *Module {
 			Auth: auth, Tx: d.Tx, Clock: d.Clock, Logger: d.Logger,
 		}),
 		LeaveNotebook: app.NewLeaveNotebook(app.LeaveNotebookDeps{
-			Workspaces: d.Workspaces, Finder: store, Notebooks: store, Members: store, Subscribers: visibility,
+			Workspaces: d.Workspaces, Finder: store, Notebooks: store, Writer: store, Subscribers: visibility,
 			Auth: auth, Tx: d.Tx, Clock: d.Clock, Logger: d.Logger,
 		}),
 	}}

@@ -16,7 +16,7 @@ type AddMemberDeps struct {
 	WorkspaceMembers WorkspaceMembers
 	Finder           NotebookFinder
 	Notebooks        NotebookWriter
-	Members          MemberWriter
+	Writer           MemberWriter
 	Profiles         MemberProfiles
 	Subscribers      []VisibilitySubscriber
 	Auth             shared.Authorizer
@@ -64,7 +64,7 @@ func (a *AddMember) Execute(ctx context.Context, id, userID uuid.UUID, role stri
 			return err
 		}
 		var existing *domain.Member
-		switch m, err := a.d.Members.FindMemberOf(ctx, n.ID, userID); {
+		switch m, err := a.d.Writer.FindMemberOf(ctx, n.ID, userID); {
 		case err == nil:
 			existing = &m
 		case !errors.Is(err, ErrNotFound):
@@ -78,9 +78,9 @@ func (a *AddMember) Execute(ctx context.Context, id, userID uuid.UUID, role stri
 		m := domain.Member{ID: uuid.NewV7(), NotebookID: n.ID, UserID: userID, Role: r, CreatedAt: now}
 		if existing != nil {
 			m.ID, m.CreatedAt = existing.ID, existing.CreatedAt
-			err = a.d.Members.RestoreMember(ctx, m.ID, r, actor.UserID, now)
+			err = a.d.Writer.RestoreMember(ctx, m.ID, r, actor.UserID, now)
 		} else {
-			err = a.d.Members.AddMember(ctx, m, actor.UserID)
+			err = a.d.Writer.AddMember(ctx, m, actor.UserID)
 		}
 		if err != nil {
 			return err

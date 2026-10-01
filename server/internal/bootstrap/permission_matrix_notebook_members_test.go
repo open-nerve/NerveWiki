@@ -14,9 +14,10 @@ import (
 // notebookMemberAnswer is a NotebookMember answer, as much as the rows
 // check.
 type notebookMemberAnswer struct {
-	UserID string  `json:"user_id"`
-	Role   string  `json:"role"`
-	Email  *string `json:"email"`
+	UserID      string  `json:"user_id"`
+	Role        string  `json:"role"`
+	DisplayName string  `json:"display_name"`
+	Email       *string `json:"email"`
 }
 
 // seededMembers are the active members of the notebook name, in the order
@@ -101,12 +102,8 @@ func notebookMemberMatrixRows() []matrixRow {
 				shown := c != callerNotebookReader && c != callerGuestReaderOfOpen
 				var want []notebookMemberAnswer
 				for _, m := range seededMembers(notebookOf(c)) {
-					a := notebookMemberAnswer{UserID: s.accounts[m.c].String(), Role: string(m.role)}
-					if shown {
-						email := emailOf(m.c)
-						a.Email = &email
-					}
-					want = append(want, a)
+					l := listed(m.c, string(m.role), shown)
+					want = append(want, notebookMemberAnswer{UserID: s.accounts[m.c].String(), Role: l.Role, DisplayName: l.DisplayName, Email: l.Email})
 				}
 				if !slices.EqualFunc(list.Data, want, sameMemberAnswer) {
 					t.Errorf("listed %+v, want %+v", list.Data, want)
@@ -126,8 +123,9 @@ func notebookMemberMatrixRows() []matrixRow {
 				t.Helper()
 				var m notebookMemberAnswer
 				decodeAnswer(t, answer, &m)
-				if m.UserID != s.accounts[callerOutsideMember].String() || m.Role != "reader" {
-					t.Errorf("added %+v, want the outside member as a reader", m)
+				if l := listed(callerOutsideMember, "reader", true); m.UserID != s.accounts[callerOutsideMember].String() || m.Role != "reader" ||
+					m.DisplayName != l.DisplayName || m.Email == nil || *m.Email != *l.Email {
+					t.Errorf("added %+v, want the outside member as a reader, with its profile", m)
 				}
 			},
 		},
@@ -143,8 +141,8 @@ func notebookMemberMatrixRows() []matrixRow {
 				t.Helper()
 				var m notebookMemberAnswer
 				decodeAnswer(t, answer, &m)
-				if m.UserID != s.accounts[callerNotebookEditor].String() || m.Role != "reader" {
-					t.Errorf("updated %+v, want priv's editor as a reader", m)
+				if m.UserID != s.accounts[callerNotebookEditor].String() || m.Role != "reader" || m.DisplayName != listed(callerNotebookEditor, "", false).DisplayName {
+					t.Errorf("updated %+v, want priv's editor as a reader, with its name", m)
 				}
 			},
 		},
@@ -200,5 +198,5 @@ func notebookMemberMatrixRows() []matrixRow {
 // sameMemberAnswer compares two member answers, the emails by value.
 func sameMemberAnswer(a, b notebookMemberAnswer) bool {
 	emailsAlike := (a.Email == nil) == (b.Email == nil) && (a.Email == nil || *a.Email == *b.Email)
-	return a.UserID == b.UserID && a.Role == b.Role && emailsAlike
+	return a.UserID == b.UserID && a.Role == b.Role && a.DisplayName == b.DisplayName && emailsAlike
 }

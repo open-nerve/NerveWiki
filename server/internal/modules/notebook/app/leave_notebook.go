@@ -15,7 +15,7 @@ type LeaveNotebookDeps struct {
 	Workspaces  Workspaces
 	Finder      NotebookFinder
 	Notebooks   NotebookWriter
-	Members     MemberWriter
+	Writer      MemberWriter
 	Subscribers []VisibilitySubscriber
 	Auth        shared.Authorizer
 	Tx          shared.TxManager
@@ -54,14 +54,14 @@ func (l *LeaveNotebook) Execute(ctx context.Context, id uuid.UUID) error {
 		if _, _, err := l.m.lock(ctx, actor, domain.ActionLeave, n, domain.ErrNotFound); err != nil {
 			return err
 		}
-		m, err := l.d.Members.FindMemberOf(ctx, n.ID, actor.UserID)
+		m, err := l.d.Writer.FindMemberOf(ctx, n.ID, actor.UserID)
 		switch {
 		case errors.Is(err, ErrNotFound) || err == nil && !m.Active():
 			return domain.ErrMemberNotFound
 		case err != nil:
 			return err
 		}
-		admins, err := l.d.Members.CountAdmins(ctx, n.ID)
+		admins, err := l.d.Writer.CountAdmins(ctx, n.ID)
 		if err != nil {
 			return err
 		}
@@ -69,7 +69,7 @@ func (l *LeaveNotebook) Execute(ctx context.Context, id uuid.UUID) error {
 			return err
 		}
 		now := l.d.Clock.Now()
-		if err := l.d.Members.EndMember(ctx, m.ID, actor.UserID, now); err != nil {
+		if err := l.d.Writer.EndMember(ctx, m.ID, actor.UserID, now); err != nil {
 			return err
 		}
 		return publishVisibility(ctx, l.d.Subscribers, VisibilityChange{WorkspaceID: n.WorkspaceID, UserIDs: []uuid.UUID{actor.UserID}, At: now})

@@ -115,7 +115,7 @@ type MemberFinder interface {
 	FindActiveMember(ctx context.Context, id uuid.UUID) (domain.Member, error)
 }
 
-// MemberWriter changes a notebook's memberships under its lock.
+// MemberWriter reads and changes a notebook's memberships under its lock.
 type MemberWriter interface {
 	// FindMemberOf returns userID's membership of the notebook, active or
 	// ended; ErrNotFound when it never had one.

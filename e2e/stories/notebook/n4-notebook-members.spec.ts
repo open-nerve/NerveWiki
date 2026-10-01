@@ -42,7 +42,8 @@ test("N4 (API): the admin adds, changes and removes members; a role is the highe
   // A guest has its membership's role alone.
   await addedNotebookMember(api, ownerPat, notebook.id, mateId, "reader");
   const guestMembership = await addedNotebookMember(api, ownerPat, notebook.id, guestId, "reader");
-  expect(guestMembership).toMatchObject({ user_id: guestId, role: "reader", display_name: expect.any(String) });
+  // A new account's display name is its address's local part.
+  expect(guestMembership).toMatchObject({ user_id: guestId, role: "reader", display_name: guestEmail.split("@")[0] });
   const roles = await Promise.all([matePat, guestPat].map((pat) => getNotebook(api, pat, notebook.id)));
   expect(roles.map((r) => r.data?.role)).toEqual(["editor", "reader"]);
   await expectNotebookMember(db, notebook.id, mateId, { role: "reader", active: true, writerId: ownerId });
@@ -86,6 +87,16 @@ test("N4 (API): the admin adds, changes and removes members; a role is the highe
   expect(changed.data).toMatchObject({ id: guestMembership.id, role: "editor" });
   await expectNotebookMember(db, notebook.id, guestId, { role: "editor", active: true, writerId: ownerId });
   expect((await removeNotebookMember(api, ownerPat, guestMembership.id)).response.status).toBe(204);
+  await expectNotebookMember(db, notebook.id, guestId, { role: "editor", active: false, writerId: ownerId });
+  // An ended membership is no longer one to change or remove.
+  const ended = await Promise.all([
+    updateNotebookMember(api, ownerPat, guestMembership.id, "reader"),
+    removeNotebookMember(api, ownerPat, guestMembership.id),
+  ]);
+  expect(ended.map((r) => [r.response.status, r.error?.code])).toEqual([
+    [404, "notebook.member_not_found"],
+    [404, "notebook.member_not_found"],
+  ]);
   await expectNotebookMember(db, notebook.id, guestId, { role: "editor", active: false, writerId: ownerId });
   const gone = await getNotebook(api, guestPat, notebook.id);
   expect([gone.response.status, gone.error?.code]).toEqual([404, "notebook.not_found"]);

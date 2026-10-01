@@ -18,7 +18,7 @@ func (f fixture) listMembers() *app.ListMembers {
 
 func (f fixture) addMember(subscribers ...app.VisibilitySubscriber) *app.AddMember {
 	return app.NewAddMember(app.AddMemberDeps{
-		Workspaces: f.workspaces, WorkspaceMembers: f.wsMembers, Finder: f.store, Notebooks: f.store, Members: f.members,
+		Workspaces: f.workspaces, WorkspaceMembers: f.wsMembers, Finder: f.store, Notebooks: f.store, Writer: f.members,
 		Profiles: f.profiles, Subscribers: subscribers, Auth: f.auth, Tx: f.tx, Clock: &tickingClock{}, Logger: f.logger(),
 	})
 }
@@ -39,7 +39,7 @@ func (f fixture) removeMember(subscribers ...app.VisibilitySubscriber) *app.Remo
 
 func (f fixture) leave(subscribers ...app.VisibilitySubscriber) *app.LeaveNotebook {
 	return app.NewLeaveNotebook(app.LeaveNotebookDeps{
-		Workspaces: f.workspaces, Finder: f.store, Notebooks: f.store, Members: f.members, Subscribers: subscribers,
+		Workspaces: f.workspaces, Finder: f.store, Notebooks: f.store, Writer: f.members, Subscribers: subscribers,
 		Auth: f.auth, Tx: f.tx, Clock: &tickingClock{}, Logger: f.logger(),
 	})
 }
@@ -255,6 +255,58 @@ func isMemberWrite(call string) bool {
 		}
 	}
 	return false
+}
+
+// The profile is read in the transaction, after the write: when it cannot
+// be read, or an account has none, the addition and the update fail and
+// roll back, so that nothing fails after the commit (v0.1 design 13.1,
+// item 19); the list fails alike.
+func TestMemberProfilesFailing(t *testing.T) {
+	readFails := errors.New("the directory failed")
+	for _, fail := range []struct {
+		name  string
+		cause func(f fixture, of uuid.UUID)
+		is    func(err error) bool
+	}{
+		{"the read fails", func(f fixture, _ uuid.UUID) { f.profiles.err = readFails }, func(err error) bool { return errors.Is(err, readFails) }},
+		{"no profile", func(f fixture, of uuid.UUID) { delete(f.profiles.names, of) }, func(err error) bool {
+			return err != nil && strings.Contains(err.Error(), "no profile of account")
+		}},
+	} {
+		for _, op := range []struct {
+			name string
+			of   func(f fixture) uuid.UUID
+			run  func(f fixture) error
+			tx   bool
+		}{
+			{"add", func(f fixture) uuid.UUID { return f.dana }, func(f fixture) error {
+				f.grant(domain.ActionAddMember, shared.WorkspaceMember, shared.NotebookAdmin)
+				_, err := f.addMember(f.visibility).Execute(as(f.alice), f.notebook.ID, f.dana, "reader")
+				return err
+			}, true},
+			{"update", func(f fixture) uuid.UUID { return f.bob }, func(f fixture) error {
+				f.grant(domain.ActionUpdateMember, shared.WorkspaceMember, shared.NotebookAdmin)
+				_, err := f.updateMember().Execute(as(f.alice), f.bobM.ID, "reader")
+				return err
+			}, true},
+			{"list", func(f fixture) uuid.UUID { return f.bob }, func(f fixture) error {
+				f.grant(domain.ActionListMembers, shared.WorkspaceMember, shared.NotebookReader)
+				_, err := f.listMembers().Execute(as(f.alice), f.notebook.ID)
+				return err
+			}, false},
+		} {
+			t.Run(op.name+", "+fail.name, func(t *testing.T) {
+				f := newFixture()
+				fail.cause(f, op.of(f))
+
+				err := op.run(f)
+
+				if !fail.is(err) || f.tx.rolledBack != op.tx {
+					t.Errorf("Execute() = %v, rolled back %v; want the failure, rolled back %v", err, f.tx.rolledBack, op.tx)
+				}
+			})
+		}
+	}
 }
 
 // The membership is read unlocked for its notebook, whose workspace and

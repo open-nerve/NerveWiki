@@ -24,7 +24,7 @@ func TestCheckRole(t *testing.T) {
 
 // A new member: every problem at once; one whose membership ended may come
 // back, one still active is a duplicate; outside the workspace, whether it
-// was ever a member does not matter.
+// was or still is a member does not matter: not_allowed says it all.
 func TestCheckAddition(t *testing.T) {
 	ended := time.Date(2026, 10, 2, 10, 0, 0, 0, time.UTC)
 	active, left := &Member{Role: shared.NotebookReader}, &Member{Role: shared.NotebookAdmin, EndedAt: &ended}
@@ -40,6 +40,7 @@ func TestCheckAddition(t *testing.T) {
 		{"a member", "editor", true, active, []string{"user_id duplicate"}},
 		{"outside the workspace", "reader", false, nil, []string{"user_id not_allowed"}},
 		{"outside the workspace, a member once", "reader", false, left, []string{"user_id not_allowed"}},
+		{"outside the workspace, still a member", "reader", false, active, []string{"user_id not_allowed"}},
 		{"a member, a role unknown", "owner", true, active, []string{"user_id duplicate", "role invalid_format"}},
 		{"outside, a role unknown", "", false, nil, []string{"user_id not_allowed", "role invalid_format"}},
 	} {
