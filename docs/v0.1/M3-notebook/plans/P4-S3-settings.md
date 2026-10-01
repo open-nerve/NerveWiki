@@ -19,3 +19,8 @@
 ## 完成检查
 
 `make check` 为绿。
+
+## 实现注记
+
+- 两种成员行共用 `app/member-summary.tsx`；笔记本的角色在 `pages/notebook/notebook-roles.tsx`；两页的测试共用 `test/notebook-server.ts`。
+- 首页的链接叫"笔记本设置"（左栏已有工作区的"设置"）。

@@ -169,7 +169,7 @@ Nerve 的项目模块（`modules/project`）还停在建立、列表、读取（
 | 2 `EndCause` 的常量 | P3：规则二只对离开与停用生效，组合根按原因转换，模块根导出这三个常量。P3 已落实：`workspace.EndRemoved`、`EndLeft`、`EndDeactivated`，`bootstrap/registrants.go` 的 `membershipEnded` 转换为 `Voluntary` |
 | 3 加锁顺序 | 第 4 节与总体设计 13.1 第 5 条：笔记本接在 `workspace_members` 之后。订阅者写入引用别的账户的列（`updated_by_id`、`former_owner_id`、审计的执行者）取 `FOR KEY SHARE`，改邮箱只碰账户与会话，不成环。P3 已落实（P3 文档 3.2；审查核对过与 `users set-email`、停用之间不成环） |
 | 4 清理器 | P1：`notebooks → workspaces` 的外键用 `ON DELETE RESTRICT`，跨模块外键是 RESTRICT 的检查；`notebook_members`、`notebooks` 各有清理器。"失败即停"保留，作为定论而不是待定：跨模块的子行经删除事件与父行同一时刻软删除、按同一保留期清理，子模块的清理器排在前面，所以永久的引用只会来自缺陷，由清理任务的错误日志发现（Codex 评审 D1 的第一条路径）。P1 已落实：`TestCrossModuleForeignKeysToPurgedTablesRestrict`，notebook 的两个清理器排在 workspace 的之前。M4、M7 的跨模块子表照总体设计 13.1 第 6 条办，不另留移交。没有 `deleted_at` 的索引：笔记本一张表一行一个笔记本，成员行按笔记本，一批扫得完；页面表大的时候由 M4 照 [M2/P4 的移交](../M4-pages/handoffs/M2-P4-purge-page-tree.md)一起定 |
-| 5 前端 | P4：离开整页的操作之后焦点移到落点的主标题；左栏现在是 `aside`（补充内容的地标）里套着 `nav`，而它是主导航，不是补充内容：P4 把外层改为不带地标的容器，各节与笔记本的两组都在 `nav` 里；引导的新步骤同时加进 e2e 的 `onboardingSteps`，A9 改为三步 |
+| 5 前端 | P4：离开整页的操作之后焦点移到落点的主标题；左栏现在是 `aside`（补充内容的地标）里套着 `nav`，而它是主导航，不是补充内容：P4 把外层改为不带地标的容器，各节与笔记本的两组都在 `nav` 里；引导的新步骤同时加进 e2e 的 `onboardingSteps`，A9 改为三步。P4 已落实：左栏外层是不带地标的容器，`nav` 以工作区命名，各节与两组都在里面；到达的焦点（`app/arrival.ts`）用于删除、离开工作区与笔记本、接受邀请、新建笔记本之后；`onboardingSteps` 加 `notebook`，A9 为三步（P4 审查）。`nav` 仍在布局的 `main` 里，外壳是否把页面区域单独作为 `main`，与 M4 的页面树一起看（P4 审查 Q2） |
 | 6 加入与改角色没有事件 | P2：补两个事件（第 4 节），修订总体设计 12.4。已落实：`MembershipAddition`、`MemberRoleChange`，笔记本模块转发为可见性变化；最后一跳（`deps.go`）的测试写进 [M5 的移交](../M5-collab-editing/handoffs/M3-P2-visibility.md) |
 
 每项在所在 Phase 合并时核对；M3 收尾时经收尾审查逐项对照代码，移交改为 `done`。
@@ -267,7 +267,7 @@ Nerve 的项目模块（`modules/project`）还停在建立、列表、读取（
 | P1 | 笔记本与权限 | 已完成 | [01-P1-notebooks-access.md](01-P1-notebooks-access.md) | [P1 审查](reviews/P1-notebooks-access-review.md) |
 | P2 | 笔记本成员 | 已完成 | [02-P2-notebook-members.md](02-P2-notebook-members.md) | [P2 审查](reviews/P2-notebook-members-review.md) |
 | P3 | 级联与无主 | 已完成 | [03-P3-cascade-ownerless.md](03-P3-cascade-ownerless.md) | [P3 审查](reviews/P3-cascade-ownerless-review.md) |
-| P4 | 前端笔记本 | 进行中 | [04-P4-web-notebooks.md](04-P4-web-notebooks.md) | — |
+| P4 | 前端笔记本 | 已完成 | [04-P4-web-notebooks.md](04-P4-web-notebooks.md) | [P4 审查](reviews/P4-web-notebooks-review.md) |
 | P5 | 前端无主与级联 | 未开始 | — | — |
 
 ## 12. 变更记录
@@ -279,3 +279,4 @@ Nerve 的项目模块（`modules/project`）还停在建立、列表、读取（
 | 2026-10-02 | P1 完成：第 8 节"多行按 id 升序"在工作区删除的注册者落实；移交第 1 项（删除工作区这条路径）、第 4 项落实 | [P1 审查](reviews/P1-notebooks-access-review.md) Q2 |
 | 2026-10-02 | P2 完成：移交第 6 项落实；第 7 节 P3 一行补上可见性；第 8 节写明可见性事件不带执行者；可见性的第一个注册者交给 M5 | [P2 审查](reviews/P2-notebook-members-review.md) Q1、Q2、D6 |
 | 2026-10-02 | P3 完成：移交第 1、2、3 项落实；第 5 节游标先于一切判断；第 8 节写明笔记本行锁之下计数的前提（M4）；第 9 节矩阵的第三种变体用已删除的笔记本 | [P3 审查](reviews/P3-cascade-ownerless-review.md) Q5、Q6、D2、D6 |
+| 2026-10-02 | P4 完成：移交第 5 项落实；第 7 节记下 `nav` 在 `main` 里、留给 M4 | [P4 审查](reviews/P4-web-notebooks-review.md) Q2 |

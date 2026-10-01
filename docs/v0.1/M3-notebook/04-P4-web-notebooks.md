@@ -3,7 +3,7 @@
 | 项 | 内容 |
 |---|---|
 | Phase | M3/P4 前端笔记本 |
-| 状态 | 进行中 |
+| 状态 | 已完成（`273ebe2` 合并，审查见 [P4 审查](reviews/P4-web-notebooks-review.md)） |
 | 基线 | `f9c36e7`（P3 合并、P3 文档更新之后的 main） |
 | 上级文档 | [M3 总设计](00-M3-design.md) 第 1 节第 6 条、第 3、4、5、7、9 节；[M2 移交](handoffs/M2-workspace.md)第 5 项；[M2/P5](../M2-workspace/05-P5-web-shell-workspaces.md)、[M2/P6](../M2-workspace/06-P6-web-members-invitations.md)（外壳、store 的写法、成员页）；[总体设计](../v0.1-design.md) 3.3、13.2 |
 
@@ -54,6 +54,7 @@ web/apps/web/src/
   app/arrival.ts                         整页离开之后的到达：arrived 状态、useArrivalFocus
   app/notebook-name.ts                   notebookNameProblem（必填、255 字节）
   app/role-menu.tsx                      RoleMenu 改为按角色列表与文案通用（从 member-row.tsx 移出）
+  app/member-summary.tsx                 成员是谁（名称、"你"、邮箱、加入日期），两种成员行共用
   services/notebook.service.ts           NotebookService：list、create、get、update、remove、leave
   services/notebook-member.service.ts    NotebookMemberService：list、add、update、remove
   stores/notebook.store.ts               一个工作区的笔记本；groupNotebooks
@@ -62,6 +63,7 @@ web/apps/web/src/
   stores/root.store.ts、context.tsx      notebooksOf、notebookMembersOf；useNotebooks、useNotebookMembers
   pages/workspace/workspace-layout.tsx   左栏：容器、nav、两组、新建
   pages/workspace/notebook-nav.tsx       左栏的两组与"新建笔记本"
+  pages/workspace/notebook-groups.tsx    两组（标题与有名称的列表），左栏与首页共用一次读
   pages/workspace/create-notebook-dialog.tsx   新建笔记本的对话框
   pages/workspace/workspace-home.tsx     首页列出两组；主标题接受到达的焦点
   pages/notebook/notebook-layout.tsx     在工作区的笔记本列表里找到它；useNotebook
@@ -71,15 +73,19 @@ web/apps/web/src/
   pages/notebook/members-page.tsx        成员、添加、离开
   pages/notebook/notebook-member-row.tsx 一行成员
   pages/notebook/access-options.tsx      开放程度的三项与说明
+  pages/notebook/notebook-roles.tsx      笔记本的三种角色、下拉框的选项
   pages/workspace/member-row.tsx         用 app/role-menu.tsx
   pages/landing.tsx、create-workspace.tsx、invitation.tsx   转交、接受到达的状态
-  onboarding/steps.ts、notebook-step.tsx、workspace-step.tsx（GoOn 导出共用）
+  onboarding/steps.ts、notebook-step.tsx、go-on.tsx（GoOn，工作区与笔记本两步共用）
   i18n/messages/{en,zh-CN}.ts
+  test/fakes.ts                          byRoute 的 * 是一段路径；每个工作区的笔记本缺省为空
+  test/notebook-server.ts                笔记本设置两页的假服务器
 e2e/
   fixtures/auth.ts                       onboardingSteps 加 notebook
   fixtures/notebook-pages.ts             笔记本页面的操作
   fixtures/workspace-pages.ts、onboarding-pages.ts   左栏不再是 complementary；笔记本一步
-  stories/notebook/n1–n6、n12            页面版本；n12 的接口版本
+  stories/notebook/n1–n6                 页面版本
+  stories/notebook/n12-onboarding-notebook.spec.ts   N12 的接口与页面版本
   stories/identity/a9、a4，stories/workspace/w7、w11   引导多一步
 ```
 
@@ -89,7 +95,7 @@ e2e/
 
 | service | 方法 |
 |---|---|
-| `NotebookService` | `list(slug)`、`create(slug, {name, workspace_access?})`、`get(id)`、`update(id, {name?, workspace_access?})`、`remove(id)`、`leave(id)` |
+| `NotebookService` | `list(slug)`、`create(slug, {name, workspace_access?})`、`update(id, {name?, workspace_access?})`、`remove(id)`、`leave(id)` |
 | `NotebookMemberService` | `list(notebookId)`、`add(notebookId, {user_id, role})`、`update(id, role)`、`remove(id)` |
 
 `leave` 放在 `NotebookService`：它改变的是账户看得到的笔记本（同 M2/P6 把离开放进 `WorkspaceService`）。
@@ -97,11 +103,12 @@ e2e/
 **stores**（13.2 第 1、15 条）：
 
 - **`NotebookStore`**：一个工作区的笔记本，服务端的顺序（`lower(name)`、`name`、`id`，`byName` 与 `WorkspaceStore` 共用，移到 `stores/order.ts`）。
-  - `load()`：读出去之后已有写答复的丢弃。
+  - `load()`：读出去之后已有写答复的丢弃。第一次读还没答、已有写答复时（列表加载之前就能新建），再读一次（P4 审查 m2）。
   - `create(body)`：按 id 去掉已有的再放进，排序；返回它。
   - `update(id, patch)`：换掉那一项，排序（改名改变次序）。
   - `remove(id)`：删除；答 404 `notebook.not_found` 也当作已完成。从列表移出，记下 id（`wasRemoved`）。
-  - `leave(id)`：离开之后**再读这一本**（`get`）：答 404 就同 `remove` 移出并记下；答 200 就换掉那一项（对工作区开放的笔记本，离开之后仍以默认角色看得到，留在页面上）。离开答 404 `notebook.not_found` 当作已移出；答 404 `notebook.member_not_found`（已不是显式成员）原样抛出，由对话框说明。
+  - 同一本笔记本的 `update`、`remove`、`leave` 经按笔记本 id 的 `oneAtATime` 一次一个（13.2 第 1 条）：常规页的两个表单可以各自发出（P4 审查 M1）。
+  - `leave(id)`：离开之后**再读工作区的笔记本列表**：没有它就同 `remove` 移出并记下；有就换掉那一项（对工作区开放的笔记本，离开之后仍以默认角色看得到，留在页面上）。不读这一本：看不到时它答 404，浏览器把它记为错误（13.4 第 3 条，S5 的 N5 发现），`NotebookService` 因此没有 `get`。离开答复之后再读失败，列表不动、记下 `wasRemoved`，下一次读没有它时外壳回到工作区首页（P4 审查 m5）。离开答 404 `notebook.not_found` 当作已移出；答 404 `notebook.member_not_found`（已不是显式成员）原样抛出，由对话框说明。
 - **`NotebookMemberStore`**：一个笔记本的有效显式成员，按加入时间。`add` 放到最后（按 id 去掉已有的）；`changeRole` 换掉那一项；`remove` 答 404 `notebook.member_not_found` 也移出。
 - **缓存**：`RootStore.notebooksOf(workspace)` 按工作区 id，`notebookMembersOf(notebook)` 按笔记本 id，都经 `once`。SWR 键 `["notebooks", workspace.id]`、`["notebook-members", notebook.id]`。
 - **分组**：`groupNotebooks(list)` 是纯函数：`workspace_access` 为 `none` 且 `member_count` 为 1 的进"我的笔记本"，其余进"团队笔记本"（M3 总设计第 5 节），各自保持列表的顺序。
@@ -113,6 +120,8 @@ e2e/
 - **两组**：每组一个标题（`h2`，"我的笔记本""团队笔记本"）与一个有名称的列表（`aria-labelledby` 指向标题），每项一个 `NavItem` 指向笔记本首页。空的组不显示；两组都空时显示"还没有笔记本"。列表还没读到时显示 `NotLoaded`（读不到时说明原因与重试，13.2 第 7 条）。
 - **新建笔记本**：按钮只给工作区的管理员与成员（访客建笔记本答 403，不提供）。对话框（`components/ui/dialog.tsx`）里是名称与开放程度（缺省私密），经 `useForm`：本地检查必填与长度，422 的字段错误在字段下方。名称字段下方一句规则的提示。成功之后关闭对话框，进入新笔记本的首页（带到达的状态）。
 - **工作区首页**：主标题是工作区名（接受到达的焦点）；下面同样的两组，以卡片的链接列出；没有笔记本时说"还没有笔记本"，管理员与成员另有"新建笔记本"。
+
+**实现**：两组由 `NotebookGroups` 画出，左栏与首页共用一次读。首页的"新建笔记本"只在没有笔记本时出现（左栏始终有）。新建对话框每次开、关记一轮：发出新建时记下轮次，答复时轮次变了（取消、再开）就不跳转，笔记本照样进左栏；首页空状态里的对话框随列表有了笔记本而卸载，轮次不变，照样进入（P4 审查 m1）。新建之后阻止 Radix 把焦点还给触发按钮。
 
 ### 3.4 笔记本的页面
 
@@ -144,6 +153,8 @@ e2e/
 - **添加**（管理员）：候选是工作区的有效成员（`membersOf(workspace)`，SWR `["members", workspace.id]`）中还不是这个笔记本有效成员的，原生 `select` 按显示名（看得到邮箱时带上邮箱），角色缺省"编辑者"。成功之后清空选择，`<output>` 说"已添加 …"，重读笔记本列表。422 `user_id: not_allowed`（他刚离开工作区）、`duplicate`（刚被别人加入）显示在字段下方，并重读两份列表。没有候选时说明"工作区的成员都已在这个笔记本里"。
 - **离开**：只给显式成员（成员列表里有自己；只靠默认角色看到它的人没有可结束的成员关系，P2 审查 Q5）。`ConfirmDialog`；唯一的管理员答 409 `notebook.sole_admin`，对话框说明；`notebook.member_not_found` 在这个对话框里说"你已经不是这个笔记本的成员了"（`texts`）。成功之后：看不到它了，外壳回到工作区首页；仍以默认角色看得到（开放的笔记本），留在成员页，成员列表重读。
 
+**实现**：首页的设置链接叫"笔记本设置"（左栏已有工作区的"设置"）；设置页的主标题是"{name} 的设置"（P4 审查 m12）。非管理员以文字显示名称与开放程度。改名与开放程度两个表单只在编辑之后才有草稿，没有草稿时显示列表里的值（别处的改动也跟着，"保存"不会把旧值写回），保存成功且期间没有再编辑才清掉草稿、显示"已保存"；工作区的改名表单同样改了（P4 审查 m3、m4）。添加的下拉框在没有候选时也保留，"工作区的成员都已在这个笔记本里"作为它的提示，拒绝的原因与焦点在列表重读之后仍在；被拒时连同笔记本列表一起重读。`user_id` 的问题用全局文案 `field.user_id.*`。离开之后笔记本仍在列表里才重读成员（看不到时成员列表答 404）。
+
 ### 3.5 整页离开之后的焦点（M2 移交第 5 项，13.2 第 17 条）
 
 - **到达**：`app/arrival.ts` 定义路由状态 `arrived = { arrived: true }` 与 `useArrivalFocus()`：页面的主标题（`h1`，`tabIndex={-1}`）在挂载时，若地址的状态带着 `arrived`，取得焦点。
@@ -165,10 +176,14 @@ e2e/
 - **否则**：名称缺省"我的笔记"（随界面语言），可以改；建一本私密笔记本，列表随之有了它，这一步随即像上一条那样继续。
 - e2e 的 `onboardingSteps` 同时加 `notebook`（M2 移交第 5 项第二点）。
 
+**实现**：`GoOn` 单独成 `onboarding/go-on.tsx`；建好之后把目标工作区记为本设备最后访问的，引导结束时落在它（有 `next` 时仍去 `next`，P4 审查 Q1）。
+
 ### 3.7 文案
 
 - 笔记本的角色 `notebookRole.{admin,editor,reader}`，开放程度 `access.{none,viewer,editor}` 与说明，左栏两组与新建，设置两页、成员页、引导一步，到达不需要文案。
 - 中英一起加（13.2 第 4 条）。
+
+**实现**：笔记本名称的 422 按标题的规则说明：`useForm` 与 `formErrors` 加表单自己的 `fieldTexts`（"字段.码"到文案，按表单的字段定类型），即 13.2 第 11 条在同一码对不同操作含义不同时的表单路径；`field.notebook_name.*` 三条，名称字段下方一句规则的提示。
 
 ### 3.8 前端的测试（vitest）
 
@@ -215,6 +230,8 @@ e2e/
 
 照 M2/P5、P6：vitest（3.8）、e2e（3.9）；反向对照：分组只看 `workspace_access`、`leave` 不再读、删除答 404 时不移出、到达状态不转交、引导一步已有笔记本时仍建、访客也有"新建"、离开给非显式成员，各让对应的测试失败。
 
+实际跑过的反向对照与结果见 [P4 审查](reviews/P4-web-notebooks-review.md)"反向对照"一节。
+
 ## 6. 完成标准
 
 - 第 2 节"做"的各项完成；`make check`、`make gen-check`、`make e2e`、`make image-smoke` 为绿，持续集成四个任务为绿。
@@ -223,4 +240,23 @@ e2e/
 
 ## 7. 结果
 
-（完成后补写）
+- 分支 `m3-p4-web-notebooks`：S1 `024edb6`、S2 `728e8de`、S3 `c637163`、S4 `ec50cea`、S5 `037d87b`；审查修复 `b829c23`；`273ebe2` 合并（`--no-ff`）。
+- 门禁：每个 Step 的 `make check` 为绿；`make gen-check`、`make e2e`（110 个）、`make image-smoke` 为绿；持续集成四个任务为绿。
+- 审查：[P4 审查](reviews/P4-web-notebooks-review.md)，1 项 Major（同一本笔记本的两次改动并发）、12 项 Minor、12 项 Nit 已处理。
+- M2 移交第 5 项落实：左栏不再是 `aside`，`nav` 以工作区命名；整页离开之后焦点到落点的主标题；引导第三步加进 e2e 的 `onboardingSteps`，A9 为三步。M3 收尾时改为 done，到达的焦点（13.2 第 17 条）补进总体设计。
+
+**与设计的偏差**（已同步进上文）：
+
+1. `NotebookGroups` 由左栏与首页共用（3.3）。
+2. `useForm` 的 `fieldTexts`（3.7）。
+3. 首页的"新建"只在没有笔记本时出现（3.3）。
+4. 首页的设置链接叫"笔记本设置"，设置页主标题带名称（3.4）。
+5. 非管理员以文字显示开放程度（3.4）。
+6. 添加的下拉框在没有候选时保留（3.4）。
+7. `GoOn` 单独成模块；引导落在建笔记本的工作区（3.6）。
+8. 离开之后再读列表而不是这一本，`NotebookService` 没有 `get`（3.2）。
+9. 新建对话框不把焦点还给触发按钮，按轮次忽略取消之后的答复（3.3）。
+10. 同一本笔记本的改动一次一个；第一次读的再读；离开之后再读失败也算完成（3.2）。
+11. 设置布局与首页的设置链接在 S3 随两页一起做（S2 计划）。
+
+**留给后面的**：无主笔记本页、审计、`notebook.sole_admin` 在离开工作区与停用对话框里的说明（P5）；成员行、改名表单的合并与有效角色的提示（M4，P4 审查 N3、Q3）；外壳的 `main` 与左栏的关系（M4 的页面树，P4 审查 Q2）；到达的焦点、表单的 `fieldTexts` 补进总体设计第 13 节（M3 收尾）。

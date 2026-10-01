@@ -21,3 +21,7 @@
 ## 完成检查
 
 `make check` 为绿。
+
+## 实现注记
+
+- `useNotebooks`、`useNotebookMembers` 与 `WorkspaceAccess` 类型推迟到用到它们的 S2、S3 再加：没有用处的导出让 knip 失败。

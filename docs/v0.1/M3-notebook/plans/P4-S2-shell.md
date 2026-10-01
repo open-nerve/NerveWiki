@@ -21,3 +21,10 @@
 ## 完成检查
 
 `make check` 为绿。
+
+## 实现注记
+
+- 两组由共用的 `pages/workspace/notebook-groups.tsx` 画出（左栏与首页）。
+- `settings-layout.tsx` 与首页的设置链接在 S3 随两页一起做；外壳的 `wasRemoved` 测试经 S3 的删除与离开。
+- 新建之后焦点的测试记录 `focusin`：新首页的路由还在加载时，Radix 的焦点归还先于主标题挂载，只看最后的焦点测不出缺了 `onCloseAutoFocus`。
+- 测试替身的 `byRoute`：`*` 改为一段路径；`signedInApp` 对每个工作区的笔记本缺省答空列表。
