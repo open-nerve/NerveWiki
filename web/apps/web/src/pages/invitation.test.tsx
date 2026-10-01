@@ -119,7 +119,7 @@ test("the same invitation with another token is another link: it is asked anew",
   expect(await screen.findByText("You are invited to join Lab.")).toBeTruthy();
 });
 
-test("signed out, one sees what the link invites to, signs in on the page, which stays, then accepts and goes in", async () => {
+test("signed out, one sees what the link invites to, signs in on the page, which stays, then accepts and goes in, the workspace's heading focused", async () => {
   const user = userEvent.setup();
   const { app, sent, bodies } = invitationServer({ signedIn: false });
   const { router } = renderApp(page, app);
@@ -132,9 +132,10 @@ test("signed out, one sees what the link invites to, signs in on the page, which
   expect(router.state.location.pathname + router.state.location.hash).toBe(page);
   await user.click(screen.getByRole("button", { name: "Accept invitation" }));
 
-  expect(await screen.findByRole("heading", { name: "Lab" })).toBeTruthy();
+  const heading = await screen.findByRole("heading", { name: "Lab" });
   expect(router.state.location.pathname).toBe("/lab");
   expect(router.state.historyAction).toBe("REPLACE");
+  await waitFor(() => expect(document.activeElement).toBe(heading));
   // The token goes in the bodies, never in an address.
   expect(sent.filter((request) => request.includes(link.token))).toEqual([]);
   expect(bodies.filter((body) => String(body).includes(link.token))).toHaveLength(3);

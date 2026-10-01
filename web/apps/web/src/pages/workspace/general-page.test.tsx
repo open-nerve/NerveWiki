@@ -138,7 +138,7 @@ test("a name the local check or the server refuses shows under the field", async
 test.each([
   ["deleted", undefined],
   ["already gone", () => problem(404, "workspace.not_found")],
-])("deleting asks for the slug, then lands on another workspace: %s", async (_, remove) => {
+])("deleting asks for the slug, then lands on another workspace, its heading focused: %s", async (_, remove) => {
   const user = userEvent.setup();
   const { app, sent } = settingsServer({ remove });
   const { router } = renderApp("/acme/settings/general", app);
@@ -153,10 +153,12 @@ test.each([
   const notFound = watchFor("Page not found");
   await user.click(confirm);
 
-  expect(await screen.findByRole("heading", { name: "Lab" })).toBeTruthy();
+  const heading = await screen.findByRole("heading", { name: "Lab" });
   expect(router.state.location.pathname).toBe("/lab");
   expect(notFound()).toBe(false);
   expect(sent).toEqual(["DELETE"]);
+  // The button pressed went with the page: the focus is on the heading of the one landed on (M3/P4 design 3.5).
+  await waitFor(() => expect(document.activeElement).toBe(heading));
   await user.click(screen.getByRole("button", { name: "Lab" }));
   expect((await screen.findAllByRole("menuitemradio")).map((item) => item.textContent)).toEqual(["Lab"]);
 });

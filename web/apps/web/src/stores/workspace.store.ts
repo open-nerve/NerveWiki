@@ -3,23 +3,7 @@ import { makeAutoObservable, runInAction } from "mobx";
 import { ApiError } from "../services/api";
 import type { InvitationLink } from "../services/invitation.service";
 import type { SlugAvailability, Workspace, WorkspaceCreate, WorkspaceService } from "../services/workspace.service";
-
-/**
- * byName is the order of the server's list: lower(name), name, id. The
- * database collates by code point (C.UTF-8, v0.1 design 7.1), this by
- * UTF-16 code unit, which orders the same but for characters beyond the
- * BMP (an emoji against a full-width letter); its lower() maps one
- * character to one, toLowerCase a few to two. Where that changes the
- * order, the next load puts the list back in the server's.
- */
-function byName(a: Workspace, b: Workspace): number {
-  const [x, y] = [a.name.toLowerCase(), b.name.toLowerCase()];
-  return compare(x, y) || compare(a.name, b.name) || compare(a.id, b.id);
-}
-
-function compare(a: string, b: string): number {
-  return a < b ? -1 : a > b ? 1 : 0;
-}
+import { byName } from "./order";
 
 /**
  * WorkspaceStore holds the workspaces of one generation's account, in the

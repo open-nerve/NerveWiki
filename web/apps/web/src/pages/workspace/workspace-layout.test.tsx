@@ -54,6 +54,20 @@ test("a workspace shown is the one the device lands on next", async () => {
   expect(app.preferences.lastWorkspace()).toBe("acme");
 });
 
+// Only an arrival moves the focus (M3/P4 design 3.5): a page opened, or
+// gone to from the switcher, leaves it where the browser puts it.
+test("a workspace's home opened, or chosen in the switcher, does not take the focus", async () => {
+  const user = userEvent.setup();
+  renderApp("/lab", withWorkspaces());
+
+  const lab = await screen.findByRole("heading", { name: "Lab" });
+  expect(document.activeElement).not.toBe(lab);
+  await user.click(screen.getByRole("button", { name: "Lab", description: "Switch workspace" }));
+  await user.click(await screen.findByRole("menuitemradio", { name: "Acme" }));
+
+  expect(document.activeElement).not.toBe(await screen.findByRole("heading", { name: "Acme" }));
+});
+
 test("a slug the account has no workspace of is not found, nor remembered", async () => {
   const app = withWorkspaces();
   renderApp("/zeta", app);

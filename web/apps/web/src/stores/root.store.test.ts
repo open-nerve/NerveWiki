@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 
 import { SessionChangedError } from "../session/token-manager";
-import { json, storedSession, testApp, tokensJSON, workspaceJSON } from "../test/fakes";
+import { json, notebookJSON, storedSession, testApp, tokensJSON, workspaceJSON } from "../test/fakes";
 import { RootStore } from "./root.store";
 
 const tokens = (n: number) => ({
@@ -49,9 +49,14 @@ test("a generation of the session before sends nothing once the tab has signed i
 
 test("a signed-out generation has no account, nor its workspaces", () => {
   const store = new RootStore(testApp(), undefined);
-  expect([store.account, store.workspaces, store.membersOf(workspaceJSON), store.invitationsOf(workspaceJSON)]).toEqual(
-    [undefined, undefined, undefined, undefined]
-  );
+  expect([
+    store.account,
+    store.workspaces,
+    store.membersOf(workspaceJSON),
+    store.invitationsOf(workspaceJSON),
+    store.notebooksOf(workspaceJSON),
+    store.notebookMembersOf(notebookJSON),
+  ]).toEqual([undefined, undefined, undefined, undefined, undefined, undefined]);
 });
 
 test("a workspace's member list is the same for the generation; another workspace's, or another generation's, is another", async () => {
@@ -78,4 +83,25 @@ test("a workspace's invitations are the same for the generation; another workspa
   expect(invitations).toBeDefined();
   expect(store.invitationsOf({ ...workspaceJSON })).toBe(invitations);
   expect(store.invitationsOf({ ...workspaceJSON, id: "0199a2b4-0000-7000-8000-0000000000b2" })).not.toBe(invitations);
+});
+
+// The notebooks go by the workspace's id, their members by the notebook's
+// (v0.1 design 13.2, item 15).
+test("a workspace's notebooks, and a notebook's members, are the same for the generation; another's, or another generation's, are other", async () => {
+  const app = testApp(() => json(tokensJSON), storedSession("login-0"));
+  await app.session.start();
+  const store = new RootStore(app, "login-0");
+  const other = "0199a2b4-0000-7000-8000-0000000000b2";
+
+  const notebooks = store.notebooksOf(workspaceJSON);
+  const members = store.notebookMembersOf(notebookJSON);
+
+  expect([notebooks, members]).not.toContain(undefined);
+  expect(store.notebooksOf({ ...workspaceJSON, name: "Lab renamed" })).toBe(notebooks);
+  expect(store.notebooksOf({ ...workspaceJSON, id: other })).not.toBe(notebooks);
+  expect(store.notebookMembersOf({ ...notebookJSON, name: "Renamed", member_count: 3 })).toBe(members);
+  expect(store.notebookMembersOf({ ...notebookJSON, id: other })).not.toBe(members);
+  const next = new RootStore(app, "login-0");
+  expect([next.notebooksOf(workspaceJSON), next.notebookMembersOf(notebookJSON)]).not.toContain(notebooks);
+  expect(next.notebookMembersOf(notebookJSON)).not.toBe(members);
 });

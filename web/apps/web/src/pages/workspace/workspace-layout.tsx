@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { Navigate, Outlet, useParams } from "react-router";
 import useSWR from "swr";
 
+import { arrived } from "../../app/arrival";
 import { NotLoaded } from "../../app/not-loaded";
 import { NavItem } from "../../components/nav-item";
 import { useT } from "../../i18n/i18n";
@@ -38,7 +39,7 @@ const sections: readonly { path: string; label: Extract<MessageKey, `workspace.$
  * the page chosen. It finds the workspace of the address in the account's
  * list: a slug the list does not have is no page of the app's, whether the
  * account was never a member or the workspace is gone; one this tab has
- * just deleted or left goes to the landing instead. A workspace found is
+ * just deleted or left goes to the landing instead, arrived at. A workspace found is
  * the one this device showed last. Its pages start anew with each
  * workspace: what a form holds of one is never sent to another.
  */
@@ -61,7 +62,7 @@ export const WorkspaceLayout = observer(function WorkspaceLayout() {
     return <NotLoaded error={error} retry={() => void mutate()} />;
   }
   if (workspace === undefined) {
-    return workspaces.wasRemoved(slug) ? <Navigate replace to="/" /> : <NotFoundPage />;
+    return workspaces.wasRemoved(slug) ? <Navigate replace to="/" state={arrived} /> : <NotFoundPage />;
   }
   return (
     <div data-shell className="flex flex-1 flex-col md:flex-row">

@@ -2,6 +2,7 @@ import { createClient, type ApiClient, type AuthTokens } from "@nervewiki/api-cl
 
 import type { User } from "../services/account.service";
 import type { InstanceInfo } from "../services/instance.service";
+import type { Notebook } from "../services/notebook.service";
 import type { Workspace } from "../services/workspace.service";
 import { Session, type SessionDeps } from "../session/session";
 import { AUTH_KEY } from "../session/token-manager";
@@ -78,6 +79,18 @@ export const workspaceJSON: Workspace = {
   role: "admin",
   created_at: "2026-10-01T08:00:00Z",
   updated_at: "2026-10-01T08:00:00Z",
+};
+
+/** notebookJSON is a notebook of workspaceJSON's, userJSON's own: private, with userJSON its admin. */
+export const notebookJSON: Notebook = {
+  id: "0199a2b4-0000-7000-8000-0000000000c1",
+  workspace_id: workspaceJSON.id,
+  name: "Plans",
+  workspace_access: "none",
+  role: "admin",
+  member_count: 1,
+  created_at: "2026-10-02T08:00:00Z",
+  updated_at: "2026-10-02T08:00:00Z",
 };
 
 /** Answer answers a request of the fake API. */
