@@ -164,6 +164,20 @@ func request(by, method, path, body string) step {
 	return step{by: by, method: method, path: path, body: body}
 }
 
+// removal is by's removal of name from acme.
+func (tm acmeTeam) removal(by, name string) step {
+	return request(by, http.MethodDelete, "/api/v0/workspace-members/"+tm.members[name].String(), "")
+}
+
+// send sends c at once, checked against the contract, and fails t unless it
+// answers want.
+func (tm acmeTeam) send(t *testing.T, c step, want int) {
+	t.Helper()
+	if status, answer := ask(t, tm.contract, c.method, tm.base+c.path, tm.tokens[c.by], c.body); status != want {
+		t.Fatalf("%s as %s = %d %s, want %d", c.name(), c.by, status, answer, want)
+	}
+}
+
 func (c step) name() string {
 	if c.command != nil {
 		return "the command of " + c.by

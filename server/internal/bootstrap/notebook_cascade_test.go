@@ -78,10 +78,7 @@ func endedState(by string, at time.Time) string {
 func TestRemovingTheOnlyAdminLeavesHisNotebooksOwnerless(t *testing.T) {
 	tm := newCascadeTeam(t)
 
-	if status, answer := ask(t, tm.contract, http.MethodDelete, tm.base+"/api/v0/workspace-members/"+tm.members["bob"].String(),
-		tm.tokens["alice"], ""); status != http.StatusNoContent {
-		t.Fatalf("remove bob = %d %s", status, answer)
-	}
+	tm.send(t, tm.removal("alice", "bob"), http.StatusNoContent)
 
 	ended := tm.endedAt(t, "bob")
 	for _, id := range []string{tm.plans, tm.solo} {
@@ -170,25 +167,17 @@ func TestDeactivationsLeaveTheirNotebooksOwnerless(t *testing.T) {
 // name, as "<notebook> by <actor>", oldest first.
 func (tm acmeTeam) returnedEvents(t *testing.T, name string) []string {
 	t.Helper()
-	rows, err := tm.pool.Query(context.Background(), `SELECT e.notebook_name || ' by ' || split_part(a.email, '@', 1) FROM notebook_audit_events e
+	return selectTexts(t, tm, `SELECT e.notebook_name || ' by ' || split_part(a.email, '@', 1) FROM notebook_audit_events e
 		JOIN users o ON o.id = e.former_owner_id JOIN users a ON a.id = e.created_by_id
 		WHERE e.action = 'returned' AND o.email = $1 ORDER BY e.created_at, e.notebook_name`, name+"@example.com")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer rows.Close()
-	var events []string
-	for rows.Next() {
-		var e string
-		if err := rows.Scan(&e); err != nil {
-			t.Fatal(err)
-		}
-		events = append(events, e)
-	}
-	if err := rows.Err(); err != nil {
-		t.Fatal(err)
-	}
-	return events
+}
+
+// auditEvents are acme's audit events, as "<action> <notebook> by <actor>",
+// oldest first.
+func (tm acmeTeam) auditEvents(t *testing.T) []string {
+	t.Helper()
+	return selectTexts(t, tm, `SELECT e.action || ' ' || e.notebook_name || ' by ' || split_part(a.email, '@', 1)
+		FROM notebook_audit_events e JOIN users a ON a.id = e.created_by_id ORDER BY e.created_at, e.id`)
 }
 
 // Bob, removed, comes back by an invitation, as a guest: plans and solo
@@ -196,10 +185,7 @@ func (tm acmeTeam) returnedEvents(t *testing.T, name string) []string {
 // does not take him back.
 func TestAcceptingAnInvitationReturnsTheNotebooks(t *testing.T) {
 	tm := newCascadeTeam(t)
-	if status, answer := ask(t, tm.contract, http.MethodDelete, tm.base+"/api/v0/workspace-members/"+tm.members["bob"].String(),
-		tm.tokens["alice"], ""); status != http.StatusNoContent {
-		t.Fatalf("remove bob = %d %s", status, answer)
-	}
+	tm.send(t, tm.removal("alice", "bob"), http.StatusNoContent)
 	inv := tm.invite(t, "bob", "guest")
 
 	if status, answer := ask(t, tm.contract, accept("bob", inv).method, tm.base+accept("bob", inv).path, tm.tokens["bob"],
@@ -225,10 +211,7 @@ func TestAcceptingAnInvitationReturnsTheNotebooks(t *testing.T) {
 // many.
 func TestReactivateMemberReturnsTheNotebooks(t *testing.T) {
 	tm := newCascadeTeam(t)
-	if status, answer := ask(t, tm.contract, http.MethodDelete, tm.base+"/api/v0/workspace-members/"+tm.members["bob"].String(),
-		tm.tokens["alice"], ""); status != http.StatusNoContent {
-		t.Fatalf("remove bob = %d %s", status, answer)
-	}
+	tm.send(t, tm.removal("alice", "bob"), http.StatusNoContent)
 
 	out, _, err := runWorkspaces(t, tm.url, ReactivateMember("acme", "bob@example.com"))
 
@@ -249,18 +232,9 @@ func TestReactivateMemberReturnsTheNotebooks(t *testing.T) {
 // audit events tell the three in order.
 func TestATakenOverOrDeletedNotebookIsNotReturned(t *testing.T) {
 	tm := newCascadeTeam(t)
-	if status, answer := ask(t, tm.contract, http.MethodDelete, tm.base+"/api/v0/workspace-members/"+tm.members["bob"].String(),
-		tm.tokens["alice"], ""); status != http.StatusNoContent {
-		t.Fatalf("remove bob = %d %s", status, answer)
-	}
-	if status, answer := ask(t, tm.contract, http.MethodPost, tm.base+"/api/v0/ownerless-notebooks/"+tm.plans+"/take-over",
-		tm.tokens["alice"], ""); status != http.StatusOK {
-		t.Fatalf("alice takes plans over = %d %s", status, answer)
-	}
-	if status, answer := ask(t, tm.contract, http.MethodDelete, tm.base+"/api/v0/ownerless-notebooks/"+tm.solo,
-		tm.tokens["alice"], ""); status != http.StatusNoContent {
-		t.Fatalf("alice deletes solo = %d %s", status, answer)
-	}
+	tm.send(t, tm.removal("alice", "bob"), http.StatusNoContent)
+	tm.send(t, takeOver("alice", tm.plans), http.StatusOK)
+	tm.send(t, ownerlessDeletion("alice", tm.solo), http.StatusNoContent)
 
 	out, _, err := runWorkspaces(t, tm.url, ReactivateMember("acme", "bob@example.com"))
 
@@ -275,25 +249,8 @@ func TestATakenOverOrDeletedNotebookIsNotReturned(t *testing.T) {
 	if n := count(t, tm.pool, "SELECT count(*) FROM notebooks WHERE id = $1 AND deleted_at IS NOT NULL", tm.solo); n != 1 {
 		t.Errorf("solo deleted %d, want it still deleted", n)
 	}
-	var events []string
-	rows, err := tm.pool.Query(context.Background(), `SELECT e.action || ' ' || e.notebook_name || ' by ' || split_part(a.email, '@', 1)
-		FROM notebook_audit_events e JOIN users a ON a.id = e.created_by_id ORDER BY e.created_at, e.id`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var e string
-		if err := rows.Scan(&e); err != nil {
-			t.Fatal(err)
-		}
-		events = append(events, e)
-	}
-	if err := rows.Err(); err != nil {
-		t.Fatal(err)
-	}
-	if strings.Join(events, ", ") != "taken_over Plans by alice, deleted Solo by alice" {
-		t.Errorf("audit events %q, want the take-over and the deletion by alice", events)
+	if got := tm.auditEvents(t); strings.Join(got, ", ") != "taken_over Plans by alice, deleted Solo by alice" {
+		t.Errorf("audit events %q, want the take-over and the deletion by alice", got)
 	}
 	checkNotebooks(t, tm.pool)
 }
