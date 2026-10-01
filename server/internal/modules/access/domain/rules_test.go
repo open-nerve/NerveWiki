@@ -14,17 +14,31 @@ func TestEveryRuleIsOfALevelAndAllowsKnownRoles(t *testing.T) {
 			t.Errorf("RuleFor(%q) has no rule, but RuleKeys lists it", action)
 			continue
 		}
-		if r.Level != LevelWorkspace {
+		switch r.Level {
+		case LevelWorkspace:
+			checkRoles(t, action, r.Workspace, shared.WorkspaceRoles(), len(r.Notebook))
+		case LevelNotebook:
+			checkRoles(t, action, r.Notebook, shared.NotebookRoles(), len(r.Workspace))
+		default:
 			t.Errorf("%s: level %d", action, r.Level)
 		}
-		if len(r.Workspace) == 0 {
-			t.Errorf("%s allows no role", action)
+	}
+}
+
+// checkRoles checks a rule's roles of its level: some, each a role of the
+// level; and none of the other level's (others).
+func checkRoles[R comparable](t *testing.T, action shared.Action, roles, known []R, others int) {
+	t.Helper()
+	if len(roles) == 0 {
+		t.Errorf("%s allows no role", action)
+	}
+	for _, role := range roles {
+		if !slices.Contains(known, role) {
+			t.Errorf("%s allows %v, which is no role of its level", action, role)
 		}
-		for _, role := range r.Workspace {
-			if !slices.Contains(shared.WorkspaceRoles(), role) {
-				t.Errorf("%s allows %q, which is no workspace role", action, role)
-			}
-		}
+	}
+	if others != 0 {
+		t.Errorf("%s lists roles of the other level", action)
 	}
 }
 

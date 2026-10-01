@@ -13,6 +13,8 @@ tags:
     description: What this instance runs.
   - name: workspace
     description: Workspaces, their members and invitations.
+  - name: notebook
+    description: Notebooks and their members.
 paths:
   /api/v0/auth/register:
     post:
@@ -659,6 +661,120 @@ paths:
                 $ref: '#/components/schemas/SlugAvailability'
         default:
           $ref: '#/components/responses/Problem'
+  /api/v0/workspaces/{slug}/notebooks:
+    parameters:
+      - $ref: '#/components/parameters/Slug'
+    get:
+      operationId: listNotebooks
+      tags:
+        - notebook
+      summary: List the notebooks the caller sees in a workspace
+      description: 'The workspace''s notebooks the caller has a role in: those it is a member of, and, for the workspace''s admins and members, those open to the workspace; each with the caller''s role in it, by name, case-insensitively. A private notebook the caller is no member of is not listed, to the workspace''s admins neither. A workspace that does not exist, is deleted, or that the caller is no active member of is workspace.not_found. The list is not paged.'
+      security:
+        - bearer: []
+      x-problem-codes:
+        - workspace.not_found
+      responses:
+        '200':
+          description: The notebooks the caller sees.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotebookList'
+        default:
+          $ref: '#/components/responses/Problem'
+    post:
+      operationId: createNotebook
+      tags:
+        - notebook
+      summary: Create a notebook
+      description: Creates a notebook in the workspace whose admin is the caller; the workspace's admins and members can, its guests cannot (forbidden). A workspace that does not exist, is deleted, or that the caller is no active member of is workspace.not_found; the values are checked after both.
+      security:
+        - bearer: []
+      x-problem-codes:
+        - workspace.not_found
+        - forbidden
+        - validation_failed
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotebookCreate'
+      responses:
+        '201':
+          description: The notebook, with the caller as its admin.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Notebook'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v0/notebooks/{notebook_id}:
+    parameters:
+      - $ref: '#/components/parameters/NotebookID'
+    get:
+      operationId: getNotebook
+      tags:
+        - notebook
+      summary: Get a notebook
+      description: The notebook, with the caller's role in it. A notebook that does not exist, is deleted, or that the caller has no role in is notebook.not_found alike.
+      security:
+        - bearer: []
+      x-problem-codes:
+        - notebook.not_found
+      responses:
+        '200':
+          description: The notebook.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Notebook'
+        default:
+          $ref: '#/components/responses/Problem'
+    patch:
+      operationId: updateNotebook
+      tags:
+        - notebook
+      summary: Change a notebook's name or workspace access
+      description: Changes the fields sent and answers the notebook; only its admins can. A body without any field changes nothing. A notebook that does not exist, is deleted, or that the caller has no role in is notebook.not_found; an editor or a reader gets forbidden; the values are checked after both.
+      security:
+        - bearer: []
+      x-problem-codes:
+        - notebook.not_found
+        - forbidden
+        - validation_failed
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotebookUpdate'
+      responses:
+        '200':
+          description: The notebook, changed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Notebook'
+        default:
+          $ref: '#/components/responses/Problem'
+    delete:
+      operationId: deleteNotebook
+      tags:
+        - notebook
+      summary: Delete a notebook
+      description: Deletes the notebook with every membership of it; only its admins can. No one sees it afterwards. A notebook that does not exist, is deleted, or that the caller has no role in is notebook.not_found; an editor or a reader gets forbidden.
+      security:
+        - bearer: []
+      x-problem-codes:
+        - notebook.not_found
+        - forbidden
+      responses:
+        '204':
+          description: The notebook is deleted.
+        default:
+          $ref: '#/components/responses/Problem'
 components:
   securitySchemes:
     bearer:
@@ -1192,6 +1308,87 @@ components:
             - invalid
             - reserved
             - taken
+    WorkspaceAccess:
+      description: 'How open a notebook is to its workspace: the role it gives the workspace''s admins and members who are not its members (viewer gives reader, editor gives editor; none gives nothing). Guests have their own membership''s role alone.'
+      type: string
+      enum:
+        - none
+        - viewer
+        - editor
+    NotebookRole:
+      description: 'A role in a notebook: admin manages the notebook and its members, editor writes, reader reads. Rules compare roles by set; which of two is higher only the order reader < editor < admin says.'
+      type: string
+      enum:
+        - admin
+        - editor
+        - reader
+    Notebook:
+      description: 'A notebook, with the caller''s effective role in it: the higher of its membership''s role and the one the workspace access gives it.'
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - workspace_id
+        - name
+        - workspace_access
+        - role
+        - member_count
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        workspace_access:
+          $ref: '#/components/schemas/WorkspaceAccess'
+        role:
+          $ref: '#/components/schemas/NotebookRole'
+        member_count:
+          description: How many active members the notebook has. A private notebook with one member is the caller's own ("My notebooks").
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    NotebookList:
+      type: object
+      additionalProperties: false
+      required:
+        - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Notebook'
+    NotebookName:
+      description: '1–255 bytes after the surrounding blanks are trimmed and the text is in NFC; none of / \ : * ? " < > | # ^ [ ] nor control characters; not starting or ending with a dot; no name Windows reserves (CON, COM1, …). It is the folder''s name when the notebook is exported.'
+      type: string
+    NotebookCreate:
+      description: A new notebook; its workspace access is none when absent.
+      type: object
+      additionalProperties: false
+      required:
+        - name
+      properties:
+        name:
+          $ref: '#/components/schemas/NotebookName'
+        workspace_access:
+          $ref: '#/components/schemas/WorkspaceAccess'
+    NotebookUpdate:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          $ref: '#/components/schemas/NotebookName'
+        workspace_access:
+          $ref: '#/components/schemas/WorkspaceAccess'
   responses:
     Problem:
       description: Error (RFC 9457 problem details).
@@ -1230,6 +1427,14 @@ components:
       in: path
       required: true
       description: The id of an invitation, as its link carries it.
+      schema:
+        type: string
+        format: uuid
+    NotebookID:
+      name: notebook_id
+      in: path
+      required: true
+      description: The notebook's id.
       schema:
         type: string
         format: uuid

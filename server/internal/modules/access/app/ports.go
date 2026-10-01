@@ -17,3 +17,20 @@ type WorkspaceMemberships interface {
 	// deleted.
 	RoleOf(ctx context.Context, workspaceID, userID uuid.UUID) (role shared.WorkspaceRole, ok bool, err error)
 }
+
+// NotebookFacts reads the facts of the notebook level. The notebook module
+// implements it (notebook.NewFacts), in the transaction ctx carries.
+type NotebookFacts interface {
+	// NotebookFacts returns what userID has of notebookID: whether it is
+	// there and not deleted, its workspace, how open it is to it, and the
+	// role of userID's active membership of it, "" for none.
+	NotebookFacts(ctx context.Context, notebookID, userID uuid.UUID) (NotebookFact, error)
+}
+
+// NotebookFact is what NotebookFacts reads.
+type NotebookFact struct {
+	Found       bool
+	WorkspaceID uuid.UUID
+	Access      shared.WorkspaceAccess
+	Role        shared.NotebookRole
+}

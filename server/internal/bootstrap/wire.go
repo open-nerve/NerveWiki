@@ -13,6 +13,7 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/modules/access"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/identity"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/instance"
+	"github.com/open-nerve/NerveWiki/server/internal/modules/notebook"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/workspace"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver"
@@ -81,10 +82,14 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrati
 		return nil, err
 	}
 	inst := instance.New(instanceDeps(cfg))
-	// The access module decides on the facts the workspace module keeps;
-	// the workspace module's use cases call its decisions.
-	authorizer := access.New(access.Deps{Memberships: workspace.NewMemberships(pool)})
+	// The access module decides on the facts the workspace and notebook
+	// modules keep; their use cases call its decisions.
+	authorizer := access.New(access.Deps{
+		Memberships: workspace.NewMemberships(pool),
+		Notebooks:   notebookFacts{notebook.NewFacts(pool)},
+	})
 	ws := workspace.New(workspaceDeps(cfg, pool, logger, authorizer, invitationKey))
+	nb := notebook.New(notebookDeps(cfg, pool, logger, authorizer))
 	api, err := httpserver.NewAPI(apiConfig(cfg, logger, limiter, ident.Authenticator(),
 		slices.Concat(ident.PublicOperations(), inst.PublicOperations(), ws.PublicOperations()), ident.RequestTimeouts()))
 	if err != nil {
@@ -97,6 +102,7 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrati
 	ident.Register(router, api)
 	inst.Register(router, api)
 	ws.Register(router, api)
+	nb.Register(router, api)
 	// "/" without a method is the least specific pattern: /api/ and the
 	// probes keep their routes, and a wrong method on a page path gets the
 	// frontend's 405 rather than a 404.

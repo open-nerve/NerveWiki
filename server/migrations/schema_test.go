@@ -130,7 +130,7 @@ func TestConstraintAndIndexNames(t *testing.T) {
 		t.Fatal(err)
 	}
 	// contype: p primary key, u unique, f foreign key (confdeltype c: ON
-	// DELETE CASCADE, a: NO ACTION), c check. An index is i, then u when it is unique and w
+	// DELETE CASCADE, r: RESTRICT, a: NO ACTION), c check. An index is i, then u when it is unique and w
 	// when it is partial (has a WHERE).
 	want := []string{
 		"api_tokens_expires_at_check c",
@@ -151,6 +151,26 @@ func TestConstraintAndIndexNames(t *testing.T) {
 		"auth_sessions_token_hash_check c",
 		"auth_sessions_user_id_fkey f c",
 		"auth_sessions_user_id_idx i",
+		"notebook_members_created_by_id_fkey f a",
+		"notebook_members_notebook_id_fkey f c",
+		"notebook_members_notebook_id_idx i",
+		"notebook_members_notebook_id_user_id_key iuw",
+		"notebook_members_pkey iu",
+		"notebook_members_pkey p",
+		"notebook_members_role_check c",
+		"notebook_members_updated_by_id_fkey f a",
+		"notebook_members_user_id_fkey f a",
+		"notebook_members_user_id_idx iw",
+		"notebooks_created_by_id_fkey f a",
+		"notebooks_former_owner_id_fkey f a",
+		"notebooks_name_check c",
+		"notebooks_ownerless_check c",
+		"notebooks_pkey iu",
+		"notebooks_pkey p",
+		"notebooks_updated_by_id_fkey f a",
+		"notebooks_workspace_access_check c",
+		"notebooks_workspace_id_fkey f r",
+		"notebooks_workspace_id_idx i",
 		"users_display_name_check c",
 		"users_email_check c",
 		"users_email_key iu",
@@ -213,6 +233,13 @@ func TestChecksRejectCounterexamples(t *testing.T) {
 			"('0199a2b4-0000-7000-8000-000000000007', '0199a2b4-0000-7000-8000-000000000005', 'élodie@exämple.com', 'member', " +
 			user + ", " + user + ", now(), now())",
 		"UPDATE workspace_invitations SET accepted_at = now(), deleted_at = now()",
+		"INSERT INTO notebooks (id, workspace_id, name, workspace_access, created_by_id, updated_by_id, created_at, updated_at) VALUES " +
+			"('0199a2b4-0000-7000-8000-000000000008', '0199a2b4-0000-7000-8000-000000000005', '" + strings.Repeat("名", 85) + "', 'editor', " +
+			user + ", " + user + ", now(), now())",
+		"UPDATE notebooks SET ownerless_since = now(), former_owner_id = " + user,
+		"INSERT INTO notebook_members (id, notebook_id, user_id, role, created_by_id, updated_by_id, created_at, updated_at) VALUES " +
+			"('0199a2b4-0000-7000-8000-000000000009', '0199a2b4-0000-7000-8000-000000000008', " + user + ", 'reader', " +
+			user + ", " + user + ", now(), now())",
 	} {
 		if _, err := pool.Exec(ctx, stmt); err != nil {
 			t.Fatalf("%s: %v", stmt, err)
@@ -265,6 +292,14 @@ func TestChecksRejectCounterexamples(t *testing.T) {
 		{"an invitation's fourth role", "UPDATE workspace_invitations SET role = 'owner'", "workspace_invitations_role_check"},
 		{"accepted and not deleted", "UPDATE workspace_invitations SET deleted_at = NULL", "workspace_invitations_accepted_check"},
 		{"accepted before its deletion", "UPDATE workspace_invitations SET accepted_at = deleted_at - interval '1 second'", "workspace_invitations_accepted_check"},
+		{"empty notebook name", "UPDATE notebooks SET name = ''", "notebooks_name_check"},
+		{"notebook name of 256 bytes", "UPDATE notebooks SET name = name || 'a'", "notebooks_name_check"},
+		{"a fourth access", "UPDATE notebooks SET workspace_access = 'public'", "notebooks_workspace_access_check"},
+		{"an upper-case access", "UPDATE notebooks SET workspace_access = 'Viewer'", "notebooks_workspace_access_check"},
+		{"ownerless without its former owner", "UPDATE notebooks SET former_owner_id = NULL", "notebooks_ownerless_check"},
+		{"a former owner without ownerless", "UPDATE notebooks SET ownerless_since = NULL", "notebooks_ownerless_check"},
+		{"a notebook's fourth role", "UPDATE notebook_members SET role = 'owner'", "notebook_members_role_check"},
+		{"a notebook's upper-case role", "UPDATE notebook_members SET role = 'Reader'", "notebook_members_role_check"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

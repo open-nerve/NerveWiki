@@ -28,16 +28,20 @@ func WorkspaceRoles() []WorkspaceRole {
 // (M2/P1 design 3.4).
 type Action string
 
-// Target is what an action is on: a workspace.
+// Target is what an action is on: a workspace, and for an action of the
+// notebook level a notebook of it.
 type Target struct {
 	WorkspaceID uuid.UUID
+	NotebookID  uuid.UUID
 }
 
 // Grant is what a decision read: the caller's role in the target's
-// workspace. Use cases make the checks that compare two people with it
-// instead of reading the role again.
+// workspace, and for an action of the notebook level its effective role in
+// the notebook (EffectiveNotebookRole). Use cases make the checks that
+// compare two people with it instead of reading the roles again.
 type Grant struct {
 	WorkspaceRole WorkspaceRole
+	NotebookRole  NotebookRole
 }
 
 // Authorizer decides whether actor may do action on t. It reads the facts

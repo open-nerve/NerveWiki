@@ -8,6 +8,7 @@ import (
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/identity"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/instance"
+	"github.com/open-nerve/NerveWiki/server/internal/modules/notebook"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/workspace"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/clock"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
@@ -65,7 +66,7 @@ func instanceDeps(cfg config.Config) instance.Deps {
 func workspaceDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, authorizer shared.Authorizer,
 	invitationKey []byte,
 ) workspace.Deps {
-	ext := workspaceRegistrants()
+	ext := workspaceRegistrants(pool)
 	return workspace.Deps{
 		Pool:                         pool,
 		Tx:                           postgres.NewTxManager(pool, cfg.Database.CommitTimeout),
@@ -80,6 +81,20 @@ func workspaceDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, a
 		MembershipEndSubscribers:     ext.endSubscribers,
 		DeletionSubscribers:          ext.deletionSubscribers,
 		MembershipRestoreSubscribers: ext.restoreSubscribers,
+	}
+}
+
+// notebookDeps are the notebook module's dependencies: the workspace
+// module's port, and the registrants of its extension point.
+func notebookDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, authorizer shared.Authorizer) notebook.Deps {
+	return notebook.Deps{
+		Pool:                pool,
+		Tx:                  postgres.NewTxManager(pool, cfg.Database.CommitTimeout),
+		Clock:               clock.System{},
+		Logger:              logger,
+		Authorizer:          authorizer,
+		Workspaces:          workspace.NewWorkspaces(pool),
+		DeletionSubscribers: notebookRegistrants().deletionSubscribers,
 	}
 }
 

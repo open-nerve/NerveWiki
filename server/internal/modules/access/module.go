@@ -13,14 +13,22 @@ import (
 // WorkspaceMemberships reads the facts of the workspace level.
 type WorkspaceMemberships = app.WorkspaceMemberships
 
+// NotebookFacts reads the facts of the notebook level, and NotebookFact is
+// what it reads.
+type (
+	NotebookFacts = app.NotebookFacts
+	NotebookFact  = app.NotebookFact
+)
+
 // Deps are the facts the decisions read.
 type Deps struct {
 	Memberships WorkspaceMemberships
+	Notebooks   NotebookFacts
 }
 
 // New returns the Authorizer every module's use cases call.
 func New(d Deps) shared.Authorizer {
-	return app.NewAuthorizer(d.Memberships)
+	return app.NewAuthorizer(d.Memberships, d.Notebooks)
 }
 
 // RuleKeys returns the actions the rule table has a rule for: bootstrap
