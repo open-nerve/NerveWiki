@@ -4,7 +4,7 @@
 
 ## 任务
 
-`interleavings_notebook_test.go`：交错 17（两位笔记本管理员互相降级）、18（两位笔记本管理员同时离开）、19（添加成员与删除笔记本），两种先后各一个用例。双方都只取工作区行 `FOR SHARE`：持锁的一方改持笔记本行，用 `WaitForLockWaitsOn(…, "notebooks", n)` 等对方排上。结束时 `checkNotebooks`。辅助函数加笔记本成员的加入与读取。
+`interleavings_notebook_members_test.go`（实际的文件；计划原写 `interleavings_notebook_test.go`）：交错 17（两位笔记本管理员互相降级）、18（两位笔记本管理员同时离开）、19（添加成员与删除笔记本），两种先后各一个用例。双方都只取工作区行 `FOR SHARE`：持锁的一方改持笔记本行，用 `WaitForLockWaitsOn(…, "notebooks", n)` 等对方排上。结束时 `checkNotebooks`。辅助函数加笔记本成员的加入与读取。
 
 ## 测试
 

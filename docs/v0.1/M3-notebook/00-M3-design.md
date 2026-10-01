@@ -155,7 +155,7 @@ Nerve 的项目模块（`modules/project`）还停在建立、列表、读取（
 |---|---|---|---|
 | P1 | 笔记本与权限 | notebook 模块的骨架；迁移 `notebooks`、`notebook_members`。`shared.CheckTitle`。access 的笔记本级（事实端口、判定、`Target` 与 `Grant` 的新字段）。workspace 模块给笔记本模块的端口（按 slug 找工作区、锁工作区行）。`listNotebooks`、`createNotebook`、`getNotebook`、`updateNotebook`、`deleteNotebook`；笔记本删除事件；订阅工作区删除；清理器，跨模块外键是 RESTRICT 的检查（M2 移交第 4 项）；新码的文案 | 名称规则的表格测试。矩阵：笔记本级的列。列表与逐个判定一致。交错：删除工作区与建笔记本、删除工作区与改或删笔记本。工作区删除的订阅者经删除工作区的行为测试（M2 移交第 1 项的这一条路径）。e2e：N1、N3、N6 的接口版本，N2 的私密部分，N13 的笔记本部分与清理 |
 | P2 | 笔记本成员 | `listNotebookMembers`、`addNotebookMember`、`updateNotebookMember`、`removeNotebookMember`、`leaveNotebook`；规则一。可见性变化事件（笔记本自己的触发）；workspace 的成员加入、角色变化两个事件，笔记本模块注册它们，转发为可见性变化；新码的文案 | 交错：两位管理员互相降级、两位管理员同时离开、添加成员与删除笔记本。可见性事件在每个触发点的测试替身。e2e：N4、N5 的接口版本，N2 的第二位成员 |
-| P3 | 级联与无主 | 注册工作区成员身份结束（否决者：规则二；订阅者：结束成员行、无主）、恢复（归还）。`notebook_audit_events`；`shared` 的游标封套；无主清单、接管、删除无主、审计列表；笔记本活动的扩展点。`leaveWorkspace`、`deactivateMe` 的码；`reactivate-member` 的输出带归还的数量；新码的文案 | 注册者经其余每条触发路径的行为测试（M2 移交第 1 项）。交错 20–29（第 9 节）。e2e：N7–N11 的接口与命令行版本，N13 的审计部分 |
+| P3 | 级联与无主 | 注册工作区成员身份结束（否决者：规则二；订阅者：结束成员行、无主、可见性）、恢复（归还、可见性）。`notebook_audit_events`；`shared` 的游标封套；无主清单、接管、删除无主、审计列表；笔记本活动的扩展点。`leaveWorkspace`、`deactivateMe` 的码；`reactivate-member` 的输出带归还的数量；新码的文案 | 注册者经其余每条触发路径的行为测试（M2 移交第 1 项）。交错 20–29（第 9 节）。e2e：N7–N11 的接口与命令行版本，N13 的审计部分 |
 | P4 | 前端笔记本 | 笔记本的 service 与按工作区的 store；左栏的两组与新建笔记本；笔记本首页与设置挂在 `/:slug/` 之下（`/:slug/notebooks/:id`，不新增顶层段，13.1 第 26 条）；笔记本设置的常规页（改名、开放程度、删除）与成员页（列表、添加、改角色、移出、离开）；新手引导的笔记本一步；离开整页之后的焦点（M2 移交第 5 项） | vitest：分组、store 与分代、表单、引导一步的落点与"已有笔记本"。e2e：N1–N6、N12 的页面版本，N12 的接口版本（建笔记本、记下引导的一步） |
 | P5 | 前端无主与级联 | 工作区设置的无主笔记本页（清单、接管、删除、审计记录的分页）；离开工作区、停用对话框显示 `notebook.sole_admin`；首页与落点的调整 | vitest：无主页的状态与分页。e2e：N7–N11、N13 的页面版本；本 M 与之前各 M 的全部故事通过 |
 
@@ -170,7 +170,7 @@ Nerve 的项目模块（`modules/project`）还停在建立、列表、读取（
 | 3 加锁顺序 | 第 4 节与总体设计 13.1 第 5 条：笔记本接在 `workspace_members` 之后。订阅者写入引用别的账户的列（`updated_by_id`、`former_owner_id`、审计的执行者）取 `FOR KEY SHARE`，改邮箱只碰账户与会话，不成环 |
 | 4 清理器 | P1：`notebooks → workspaces` 的外键用 `ON DELETE RESTRICT`，跨模块外键是 RESTRICT 的检查；`notebook_members`、`notebooks` 各有清理器。"失败即停"保留，作为定论而不是待定：跨模块的子行经删除事件与父行同一时刻软删除、按同一保留期清理，子模块的清理器排在前面，所以永久的引用只会来自缺陷，由清理任务的错误日志发现（Codex 评审 D1 的第一条路径）。P1 已落实：`TestCrossModuleForeignKeysToPurgedTablesRestrict`，notebook 的两个清理器排在 workspace 的之前。M4、M7 的跨模块子表照总体设计 13.1 第 6 条办，不另留移交。没有 `deleted_at` 的索引：笔记本一张表一行一个笔记本，成员行按笔记本，一批扫得完；页面表大的时候由 M4 照 [M2/P4 的移交](../M4-pages/handoffs/M2-P4-purge-page-tree.md)一起定 |
 | 5 前端 | P4：离开整页的操作之后焦点移到落点的主标题；左栏现在是 `aside`（补充内容的地标）里套着 `nav`，而它是主导航，不是补充内容：P4 把外层改为不带地标的容器，各节与笔记本的两组都在 `nav` 里；引导的新步骤同时加进 e2e 的 `onboardingSteps`，A9 改为三步 |
-| 6 加入与改角色没有事件 | P2：补两个事件（第 4 节），修订总体设计 12.4 |
+| 6 加入与改角色没有事件 | P2：补两个事件（第 4 节），修订总体设计 12.4。已落实：`MembershipAddition`、`MemberRoleChange`，笔记本模块转发为可见性变化；最后一跳（`deps.go`）的测试写进 [M5 的移交](../M5-collab-editing/handoffs/M3-P2-visibility.md) |
 
 每项在所在 Phase 合并时核对；M3 收尾时经收尾审查逐项对照代码，移交改为 `done`。
 
@@ -185,6 +185,7 @@ Nerve 的项目模块（`modules/project`）还停在建立、列表、读取（
 
 - 值：一个工作区、一组账户 id、"默认角色所及"的标记、时刻（第 4 节）。涉及几个工作区的变化每个工作区各发一次。
 - 在引起变化的写入之后、同一事务内调用。触发见第 4 节；只改角色而不改可见性的（笔记本内的改角色、`viewer` 与 `editor` 之间、工作区的管理员与成员之间）不触发；删除由笔记本删除事件告知，M5 两个都注册。
+- 值不带执行者：关闭事件流用不到它。这是总体设计 13.1 第 21 条"事件的值带时刻与执行者"的例外（P2 审查 Q2），M3 收尾时补进 13.1。
 
 **笔记本的活动：只读**（M4、M7 注册）：
 
@@ -264,7 +265,7 @@ Nerve 的项目模块（`modules/project`）还停在建立、列表、读取（
 | P | 名称 | 状态 | Phase 文档 | 审查 |
 |---|---|---|---|---|
 | P1 | 笔记本与权限 | 已完成 | [01-P1-notebooks-access.md](01-P1-notebooks-access.md) | [P1 审查](reviews/P1-notebooks-access-review.md) |
-| P2 | 笔记本成员 | 进行中 | [02-P2-notebook-members.md](02-P2-notebook-members.md) | — |
+| P2 | 笔记本成员 | 已完成 | [02-P2-notebook-members.md](02-P2-notebook-members.md) | [P2 审查](reviews/P2-notebook-members-review.md) |
 | P3 | 级联与无主 | 未开始 | — | — |
 | P4 | 前端笔记本 | 未开始 | — | — |
 | P5 | 前端无主与级联 | 未开始 | — | — |
@@ -276,3 +277,4 @@ Nerve 的项目模块（`modules/project`）还停在建立、列表、读取（
 | 2026-10-02 | 初版 | M3 启动；唯一管理员的规则二与无主的定义、审计的查看经负责人确认 |
 | 2026-10-02 | 按设计审查修订：无主笔记本只对工作区管理员可见，按 id 的操作对其余人 404；"笔记本占用"改为"笔记本的活动"（大小与最后写入）；可见性事件一个工作区一次，删除改由笔记本删除事件告知；加锁顺序改写为工作区行的总闸，笔记本一侧的增长不取账户行；不变量改为"有管理员或无主"；交错 16 改为删除工作区与改、删笔记本，加 26–29；规则二的原因只给 slug 与数量；Phase 的验收与文案归属；引导一步的落点与重试；归还、只靠默认角色的笔记本、停用的出路写明理由；移交第 4 项定论 | [M3 设计审查](reviews/M3-design-review.md) |
 | 2026-10-02 | P1 完成：第 8 节"多行按 id 升序"在工作区删除的注册者落实；移交第 1 项（删除工作区这条路径）、第 4 项落实 | [P1 审查](reviews/P1-notebooks-access-review.md) Q2 |
+| 2026-10-02 | P2 完成：移交第 6 项落实；第 7 节 P3 一行补上可见性；第 8 节写明可见性事件不带执行者；可见性的第一个注册者交给 M5 | [P2 审查](reviews/P2-notebook-members-review.md) Q1、Q2、D6 |

@@ -3,7 +3,7 @@
 | 项 | 内容 |
 |---|---|
 | Phase | M3/P2 笔记本成员 |
-| 状态 | 进行中 |
+| 状态 | 已完成（`aa350dc` 合并，审查见 [P2 审查](reviews/P2-notebook-members-review.md)） |
 | 基线 | `9c1d670`（P1 合并、P1 文档更新之后的 main） |
 | 上级文档 | [M3 总设计](00-M3-design.md) 第 4、5、7、8、9 节；[P1 文档](01-P1-notebooks-access.md)第 7 节与 [P1 审查](reviews/P1-notebooks-access-review.md) Q1；[M2 移交](handoffs/M2-workspace.md)第 6 项；[总体设计](../v0.1-design.md) 3.3、6.1、12.1、12.4、13 |
 
@@ -33,7 +33,7 @@ P1 留下的：
 - 端口：notebook 读工作区的有效成员关系（添加成员），读账户的公开资料（成员列表）。
 - 测试：规则一的表格；矩阵的五行；交错 17–19；可见性事件在每个触发点的测试替身；e2e：N4、N5 的接口版本，N2 的第二位成员。
 
-**不做**：级联、无主、审计、游标（P3）；页面（P4、P5）。
+**不做**：级联、无主、审计、游标（P3）；工作区成员关系的结束与恢复的可见性，随 P3 的注册者；页面（P4、P5）。
 
 ## 3. 设计
 
@@ -45,26 +45,28 @@ server/
   internal/modules/workspace/
     app/extension.go                               MembershipAddition、MemberRoleChange 与它们的订阅者
     app/accept_invitation.go、update_member.go     写入之后调用订阅者
+    app/{invitations,members,team,registrants}_test.go   调用的次序与值、同角色不调用、两个注册者的分发
     module.go                                      Deps 加两组订阅者，类型别名
-    invitations_test.go、extension_test.go         两个事件在事务内、值、失败回滚（真实数据库，照恢复事件）
-    app/registrants_test.go                        两个注册者的分发
+    member_events_test.go                          两个事件在事务内、值、失败回滚（真实数据库，照恢复事件）
   internal/modules/notebook/
-    domain/member.go、errors.go、actions.go        角色的取值、规则一；三个码；五个操作名
-    app/ports.go                                   WorkspaceMembers、Profiles；成员的仓储端口
+    domain/member.go、errors.go、actions.go        CheckRole、CheckAddition、CheckLeave（规则一）；三个码；五个操作名
+    domain/member_test.go
+    app/ports.go                                   WorkspaceMembers、MemberProfiles；MemberFinder、MemberWriter
     app/extension.go                               VisibilityChange 与订阅者；WorkspaceMemberEvents（转发工作区的两个事件）
     app/manage.go                                  lock 带上调用方的 404
     app/list_members.go、add_member.go、update_member.go、remove_member.go、leave_notebook.go、members.go（成员与资料）
     app/create_notebook.go、update_notebook.go     可见性的触发
-    adapter/postgres/members.go、queries/members.sql 成员的读、写；有效管理员的计数
-    adapter/http/handler.go                        五个处理器
+    app/members_test.go、visibility_test.go、fakes_members_test.go
+    adapter/postgres/members.go、members_test.go、queries/members.sql   成员的读、写；有效管理员的计数
+    adapter/http/members.go、members_test.go、handler.go   五个处理器
     module.go、member_events.go                    Deps 加可见性的订阅者与两个端口；NewWorkspaceMemberEvents
-    extension_test.go                              可见性的每个触发点（接好线的模块与真实数据库）
+    visibility_test.go                             可见性的每个触发点（接好线的模块与真实数据库）
   internal/bootstrap/
     deps.go、registrants.go                        notebook 的两个端口（资料经转换）；工作区两个事件的注册者；可见性的订阅者（M3 没有）
     notebook_profiles.go                           identity.Profile 转 notebook.Profile
     notebook_registrants_test.go                   工作区两个事件交到笔记本的转发、再交到可见性的订阅者
-    permission_matrix_notebook_test.go、permission_matrix_seeded_test.go   本 Phase 的行；成员行的 id
-    interleavings_notebook_test.go                 交错 17–19
+    permission_matrix_notebook_members_test.go、permission_matrix_seeded_test.go   本 Phase 的行；成员行的 id
+    interleavings_notebook_members_test.go         交错 17–19
 api/modules/notebook.yaml、api/openapi.yaml
 web/apps/web/src/app/problem-messages.ts、i18n/messages/en.ts、zh-CN.ts   三个码的文案
 e2e/fixtures/notebook-members.ts、assert/notebook.ts；e2e/stories/notebook/n2、n4、n5
@@ -108,12 +110,12 @@ e2e/fixtures/notebook-members.ts、assert/notebook.ts；e2e/stories/notebook/n2�
 ### 3.4 端口
 
 - **`WorkspaceMembers.RoleOf(ctx, workspaceID, userID) (shared.WorkspaceRole, bool, error)`**：workspace 模块已有的 `NewMemberships(pool)`（access 的工作区级事实）方法集相同，组合根直接传。
-- **`Profiles.Profiles(ctx, ids) (map[uuid.UUID]Profile, error)`**：identity 的 `Directory`。`notebook.Profile` 与 `identity.Profile` 逐字段相同，由 `bootstrap` 转换（照 workspace 的 `directory`）。
+- **`MemberProfiles.MemberProfiles(ctx, ids) (map[uuid.UUID]Profile, error)`**（方法名与 workspace 的相同）：identity 的 `Directory`。`notebook.Profile` 与 `identity.Profile` 逐字段相同，由 `bootstrap/notebook_profiles.go` 转换（照 workspace 的 `directory`）。资料在事务里、写入之后读：读不到或缺资料时整体回滚，不在提交之后答 500（13.1 第 19 条）。
 
 ### 3.5 加锁
 
 - 按笔记本寻址的（列出不加锁；添加、离开）：P1 的 `manager.lock`（工作区行 `FOR SHARE` → 笔记本行 `FOR NO KEY UPDATE` → 判定）。
-- 按成员关系寻址的（改角色、移出）：先不加锁读出成员关系（得到笔记本）与笔记本（得到工作区）；事务里同样先锁工作区行、笔记本行、判定，再以成员关系的 id 重读（锁下已结束或不存在答 404），再校验与规则一。成员行不另加锁：同一笔记本的成员写都持笔记本行的 `FOR NO KEY UPDATE`。
+- 按成员关系寻址的（改角色、移出）：先不加锁读出成员关系（得到笔记本）与笔记本（得到工作区）；事务里同样先锁工作区行、笔记本行、判定，再以成员关系的 id 重读（锁下已结束或不存在答 404），再校验与规则一。成员行不另加锁：同一笔记本的成员写都持笔记本行的 `FOR NO KEY UPDATE`。先判定、后重读（workspace 的 `lockMember` 是先重读、后判定）：成员关系在两次读之间结束时，有角色的非管理员得到 403 而不是 404；两种次序都不泄露，有角色的人本来就能列出成员（P2 审查 Q3）。
 - `manager.lock` 带上调用方的 404：按成员关系寻址的操作里，看不到的笔记本答 `notebook.member_not_found`，不泄露笔记本的存在。
 - 规则一的计数在笔记本行的锁下，所以两位管理员互相降级、同时离开不会让笔记本一个管理员都不剩（交错 17、18）。
 
@@ -125,7 +127,7 @@ e2e/fixtures/notebook-members.ts、assert/notebook.ts；e2e/stories/notebook/n2�
   | 写入 | 值 |
   |---|---|
   | 建笔记本 | 创建者；开放程度不是 `none` 时 `Reached` |
-  | `workspace_access` 跨过 `none`（`none` ↔ `viewer`/`editor`） | `Reached` |
+  | `workspace_access` 跨过 `none`（`none` ↔ `viewer`/`editor`） | `Reached`，`UserIDs` 为空：订阅者在同一事务里按工作区的有效管理员与成员解析 |
   | 添加、恢复成员 | 被添加的人 |
   | 移出、离开 | 那个人 |
 
@@ -135,27 +137,28 @@ e2e/fixtures/notebook-members.ts、assert/notebook.ts；e2e/stories/notebook/n2�
   - `MemberRoleChange{WorkspaceID, UserID, From, To, By, At}`，订阅者 `MemberRoleChanged(ctx, c)`：`updateWorkspaceMember` 写入之后，只在角色确有变化时（同角色的请求照旧写 `updated_at`，但没有变化可告知）。
   - 照 M2 的形状（值是名词、方法是过去分词：`MembershipRestore`/`MembershipRestored`）：在写入之后、同一事务内调用，模块根以类型别名公开，`Deps` 交进去。`AcceptInvitationDeps` 原来的 `Subscribers`（恢复）改名 `Restored`，加 `Added`；`UpdateMemberDeps` 加 `Subscribers`。
 - **笔记本模块注册这两个事件**：成员加入且角色是管理员或成员 → `VisibilityChange{工作区, [他], At}`（访客加入不得到任何默认角色，不发）；角色变化跨过访客（访客 ↔ 管理员、成员）→ 同上。注册者只凭订阅者列表构造（`notebook.NewWorkspaceMemberEvents(subscribers)`），不读库；值由 `bootstrap` 逐字段转换（照 `workspaceDeletion`）。
-- **测试**：模块根以测试替身证明每个触发点在事务内、带对的值、失败整体回滚；两个工作区事件在 workspace 模块根有同样的证明；两个注册者的分发由 app 的测试守住（13.1 第 21 条）；转发的规则（访客加入不发、角色变化不跨访客不发）在 app 的表格测试；组合根的测试把一个替身订阅者交给 `notebookExtensions`，经 `workspaceRegistrants` 调用两个工作区事件，证明转发接上了线、值逐字段转换。
+- **测试**：模块根以测试替身证明每个触发点在事务内、带对的值、失败整体回滚；两个工作区事件在 workspace 模块根有同样的证明；两个注册者的分发由 app 的测试守住（13.1 第 21 条）；转发的规则（访客加入不发、角色变化不跨访客不发）在 app 的表格测试；组合根的测试把一个替身订阅者交给 `notebookExtensions`，经 `workspaceRegistrantsWith`（`workspaceRegistrants` 交 `notebookRegistrants()` 给它，测试交自己的）调用两个工作区事件，证明转发接上了线、值逐字段转换。`deps.go` 到 `workspaceRegistrants` 的最后一跳 M3 测不到（没有订阅者），写进 [M5 的移交](../M5-collab-editing/handoffs/M3-P2-visibility.md)。
+- **值没有执行者**：M5 关事件流用不到；这是 13.1 第 21 条的例外，M3 总设计第 8 节写明。
 
 ### 3.7 数据
 
 不加迁移。`notebook_members` 的部分唯一索引已经保证每对只有一行；`notebook_members_notebook_id_idx` 供成员列表与计数。新增查询：
 
-- `ListActiveMembers(notebook_id)`：按 `created_at, id`；
-- `FindActiveMember(id)`、`FindMemberByUser(notebook_id, user_id)`（含已结束的，供恢复）；
-- `CountActiveAdmins(notebook_id)`；
+- `ListMembers(notebook_id)`：有效的，按 `created_at, id`；
+- `FindActiveMember(id)`、`FindMemberOf(notebook_id, user_id)`（含已结束的，供恢复）；
+- `CountAdmins(notebook_id)`：有效的管理员；
 - `UpdateMemberRole`、`EndMember`（`ended_at`、`updated_*`）、`RestoreMember`（清空 `ended_at`，角色）。
 
 ### 3.8 权限矩阵
 
-- **成员行的 id**：种子给每个笔记本成员关系定好 id（`seeded.notebookMembers`，键为"笔记本/列"），`workspaceOfRow` 认得它们；覆盖测试不连库就能核对每格指向的成员关系在该列的工作区里。
+- **成员行的 id**：种子给每个笔记本成员关系定好 id（`seeded.notebookMembers`，键为"笔记本/列"），`workspaceOfRow` 认得它们；覆盖测试不连库就能核对每格指向的成员关系在该列的工作区里。账户的 id 由注册决定，`prepareMatrix` 注册之后填进 `seeded.accounts`，`check` 用它核对列表与答复里的 `user_id`；成员的显示名是邮箱的本地部分（注册时的默认值）。
 - **本 Phase 的行**（笔记本列，各列面对 `notebookOf` 给的笔记本；"有角色的"是 `roleIn` 给出角色的六列）：
 
   | 行 | 目标 | 答复 |
   |---|---|---|
   | `listNotebookMembers` | 该列的笔记本 | 有角色的 200，`check` 核对列出的正好是那个笔记本的有效成员、邮箱只在调用者是工作区的管理员或成员时给；其余 404 `notebook.not_found` |
   | `addNotebookMember`（写） | 把"工作区成员（局外）"加为 `reader`：他是 lab 的有效成员，不是这四个笔记本的显式成员 | 笔记本管理员 201；有角色的其余 403；其余 404 `notebook.not_found` |
-  | `updateNotebookMember`（写） | 该列的笔记本里另一位成员的行（`priv` 的编辑者那一行，`team` 的访客阅读者，`wiki`、`gone-nb` 的管理员） | 笔记本管理员 200；有角色的其余 403；其余 404 `notebook.member_not_found` |
+  | `updateNotebookMember`（写） | 该列的笔记本里一位成员的行（`priv` 的编辑者那一行，`team` 的访客阅读者，`wiki`、`gone-nb` 的管理员）；`priv` 的编辑者列与 `team` 的访客阅读者列因此指向自己的行，答复同样是判定的 403 | 笔记本管理员 200；有角色的其余 403；其余 404 `notebook.member_not_found` |
   | `updateNotebookMember`"自己的"（写） | 调用者自己的行，没有的列用该列笔记本的管理员那一行 | 笔记本管理员 409 `notebook.own_membership`；其余同上一行：判定在规则一之前 |
   | `removeNotebookMember`、它的"自己的"（写） | 同上两行 | 同上两行，成功是 204 |
   | `leaveNotebook`（写） | 该列的笔记本 | `priv` 的管理员是唯一的，409 `notebook.sole_admin`；其余显式成员三列 204；只靠默认角色的两列 404 `notebook.member_not_found`；没有角色的 404 `notebook.not_found` |
@@ -213,4 +216,21 @@ e2e/fixtures/notebook-members.ts、assert/notebook.ts；e2e/stories/notebook/n2�
 
 ## 7. 结果
 
-（完成后补写）
+- 分支 `m3-p2-notebook-members`：S1 `a347e2a`、S2 `20aa9a2`、S3 `7f0bf0d`、S4 `7e9b94e`；审查修复 `84aba1e`；`aa350dc` 合并（`--no-ff`）。
+- 门禁：每个 Step 的 `make check` 为绿；`make gen-check`、`make e2e`（90 个）、`make image-smoke` 为绿；持续集成四个任务为绿。
+- 审查：[P2 审查](reviews/P2-notebook-members-review.md)，没有 Critical、Major；1 项 Minor 与 4 项 Nit 已修复，Q1 写进 [M5 的移交](../M5-collab-editing/handoffs/M3-P2-visibility.md)。
+- M2 移交第 6 项（加入与改角色没有事件）落实，M3 收尾时改为 done。
+
+**与设计的偏差**（已同步进上文）：
+
+1. 矩阵的改、移出一行，`priv` 的编辑者列与 `team` 的访客阅读者列的目标是自己的行（3.8）。
+2. `seeded.accounts` 在 `prepareMatrix` 注册之后填（3.8）。
+3. 组合根的测试经 `workspaceRegistrantsWith`，测试交自己的注册者（3.6）。
+4. 资料端口的方法名是 `MemberProfiles`；`AcceptInvitationDeps.Subscribers` 改名 `Restored`，加 `Added`（3.4、3.6）。
+5. 成员角色变化只在角色确有变化时发（3.6）。
+6. `CheckAddition` 一次列出全部问题；不在工作区时只报 `not_allowed`，不再报"已是成员"（3.3）。
+7. 开放程度跨过 `none` 时 `UserIDs` 为空（3.6）。
+8. 改、移出的目标写作"一位成员"：有角色的非管理员可能指向自己的行（3.8）。
+9. N4 另核对访客看到的邮箱是 `null`、访客的显示名、已结束的成员关系不能再改或移出（3.10）。
+
+**留给后面的**：M5 的第一个可见性订阅者（[M5 的移交](../M5-collab-editing/handoffs/M3-P2-visibility.md)）；`notebook.member_not_found` 用在离开上的文案（P4，P2 审查 Q5）；13.1 第 11 条的例子补 `bootstrap/notebook_profiles.go`、第 21 条补 `notebook.NewWorkspaceMemberEvents` 与可见性事件不带执行者的例外（M3 收尾）。
