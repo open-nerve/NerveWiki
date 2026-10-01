@@ -58,7 +58,7 @@ func TestCreateWorkspaceMakesTheCallerItsAdmin(t *testing.T) {
 	if !slices.Equal(c.accounts.calls, wantCalls) {
 		t.Errorf("accounts calls = %q, want %q", c.accounts.calls, wantCalls)
 	}
-	wantWrites := []string{"CreateWorkspace by " + alice.String() + " in tx", "AddMember by " + alice.String() + " at 2026-10-01T10:00:00Z in tx"}
+	wantWrites := []string{"CreateWorkspace by " + alice.String() + " in tx", "AddMember admin by " + alice.String() + " at 2026-10-01T10:00:00Z in tx"}
 	if !slices.Equal(c.store.calls, wantWrites) {
 		t.Errorf("store calls = %q, want %q", c.store.calls, wantWrites)
 	}

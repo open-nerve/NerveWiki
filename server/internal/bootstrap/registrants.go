@@ -17,17 +17,19 @@ func deactivationRegistrants() ([]identity.DeactivationVetoer, []identity.Deacti
 
 // workspaceExtensions are the registrants of the workspace module's
 // extension points (M2 design 8): the vetoers that may refuse a membership
-// end, the subscribers that follow one, and those that follow a workspace's
-// deletion.
+// end, the subscribers that follow one, those that follow a workspace's
+// deletion, and those that follow a membership's restore (M2/P3 design
+// 3.5).
 type workspaceExtensions struct {
 	endVetoers          []workspace.MembershipEndVetoer
 	endSubscribers      []workspace.MembershipEndSubscriber
 	deletionSubscribers []workspace.WorkspaceDeletionSubscriber
+	restoreSubscribers  []workspace.MembershipRestoreSubscriber
 }
 
 // workspaceRegistrants are the modules that take part in the workspace
-// module's membership ends and deletions. M2 has none: the notebooks' come
-// with M3.
+// module's membership ends, restores and deletions. M2 has none: the
+// notebooks' come with M3.
 func workspaceRegistrants() workspaceExtensions {
 	return workspaceExtensions{}
 }

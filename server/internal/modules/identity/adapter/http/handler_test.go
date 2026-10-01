@@ -244,6 +244,21 @@ func TestRegisterAnswers201WithTheTokens(t *testing.T) {
 	}
 }
 
+// The invitation of the body reaches the use case as sent.
+func TestRegisterPassesTheInvitation(t *testing.T) {
+	register := &fakeRegister{tokens: sampleTokens()}
+	req := registerRequest(`{"email":"dana@corp.com","password":"Tr0ub4dor&3",` +
+		`"invitation":{"id":"0199a2b4-0000-7000-8000-000000000001","token":"nwk_inv_x"}}`)
+	apitest.Load(t).CheckRequest(t, req)
+
+	res, body := do(t, newServer(t, httpadapter.UseCases{Register: register}), req)
+
+	want := app.SignupInvitation{ID: uuid.MustParse("0199a2b4-0000-7000-8000-000000000001"), Token: "nwk_inv_x"}
+	if res.StatusCode != http.StatusCreated || register.got.Invitation == nil || *register.got.Invitation != want {
+		t.Errorf("POST /auth/register = %d %s, the use case got %+v; want 201 and %+v", res.StatusCode, body, register.got.Invitation, want)
+	}
+}
+
 // The handler exit: every error the use case returns becomes its problem.
 func TestRegisterProblems(t *testing.T) {
 	tests := []struct {
@@ -281,6 +296,8 @@ func TestRegisterBodyProblems(t *testing.T) {
 		{"unknown and missing fields", `{"email":"a@b.co","extra":1}`, 400,
 			`"errors":[{"field":"extra","code":"not_allowed","message":"is not a property of this request"},{"field":"password","code":"required","message":"is required"}]`},
 		{"null for a string", `{"email":null,"password":"x"}`, 400, `"errors":[{"field":"email","code":"invalid_format"`},
+		{"an invitation without its token", `{"email":"a@b.co","password":"x","invitation":{"id":"0199a2b4-0000-7000-8000-000000000001"}}`, 400,
+			`"errors":[{"field":"invitation.token","code":"required"`},
 		{"not JSON", `{"email":`, 400, `"detail":"The request body could not be decoded."`},
 		{"empty", ``, 400, `"detail":"The request body could not be decoded."`},
 		{"too large", `{"email":"` + strings.Repeat("a", 2000) + `"}`, 413, `"code":"payload_too_large"`},

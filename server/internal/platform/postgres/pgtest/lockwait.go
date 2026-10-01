@@ -45,17 +45,50 @@ func WaitForLockWaitsOn(t testing.TB, pool *pgxpool.Pool, table string, n int, l
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), limit)
 	defer cancel()
-	var relation *uint32
-	if err := pool.QueryRow(ctx, "SELECT to_regclass($1)::oid", table).Scan(&relation); err != nil {
-		t.Fatal(err)
-	}
-	if relation == nil {
-		t.Fatalf("pgtest: no table %q", table)
-	}
 	waitForCount(ctx, t, pool, n, limit, "a row lock of "+table, `
 		SELECT count(DISTINCT a.pid) FROM pg_stat_activity a JOIN pg_locks l ON l.pid = a.pid
 		WHERE a.datname = current_database() AND a.wait_event_type = 'Lock'
-			AND l.locktype = 'tuple' AND l.relation = $1`, *relation)
+			AND l.locktype = 'tuple' AND l.relation = $1`, relation(ctx, t, pool, table))
+}
+
+// WaitForKeyWaitOn is WaitForLockWaitsOn for the wait of a unique index's
+// check: an INSERT whose key a live transaction has inserted too waits for
+// that transaction to end, with no row to lock, so WaitForLockWaitsOn does
+// not see it (M2/P3 design 3.9, interleaving 7). It counts the backends
+// that have written table in their transaction and wait for another
+// transaction to end without holding a tuple lock. A wait for a row of the
+// table holds its tuple lock and does not count; nor does a wait of a
+// transaction that has not written the table, nor one for a lock of another
+// kind, such as an advisory lock. By a transaction that has written table,
+// it cannot tell a key's wait on table from one on another table, or from
+// either of the two row waits PostgreSQL makes without a tuple lock
+// (WaitForLockWaitsOn): use it where the waiting transaction writes no
+// other table with a unique key and neither of those two waits can occur.
+func WaitForKeyWaitOn(t testing.TB, pool *pgxpool.Pool, table string, n int, limit time.Duration) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), limit)
+	defer cancel()
+	waitForCount(ctx, t, pool, n, limit, "a key of "+table, `
+		SELECT count(*) FROM pg_stat_activity a
+		WHERE a.datname = current_database() AND a.wait_event_type = 'Lock' AND a.wait_event = 'transactionid'
+			AND EXISTS (SELECT 1 FROM pg_locks l WHERE l.pid = a.pid AND l.locktype = 'relation' AND l.relation = $1
+				AND l.mode = 'RowExclusiveLock' AND l.granted)
+			AND NOT EXISTS (SELECT 1 FROM pg_locks l WHERE l.pid = a.pid AND l.locktype = 'tuple')`,
+		relation(ctx, t, pool, table))
+}
+
+// relation is the OID of table in pool's database. A database without the
+// table fails the test at once: a misspelled name can never be waited on.
+func relation(ctx context.Context, t testing.TB, pool *pgxpool.Pool, table string) uint32 {
+	t.Helper()
+	var oid *uint32
+	if err := pool.QueryRow(ctx, "SELECT to_regclass($1)::oid", table).Scan(&oid); err != nil {
+		t.Fatal(err)
+	}
+	if oid == nil {
+		t.Fatalf("pgtest: no table %q", table)
+	}
+	return *oid
 }
 
 // waitForCount polls query, a count of waiting backends, until it reaches

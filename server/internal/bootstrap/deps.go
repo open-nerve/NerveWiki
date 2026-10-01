@@ -1,7 +1,6 @@
 package bootstrap
 
 import (
-	"context"
 	"log/slog"
 	"time"
 
@@ -21,9 +20,11 @@ import (
 // The Deps of each module as serve builds them from the configuration: one
 // function per module, so that newApp reads as the order of assembly.
 
-// identityDeps are identity's: the signing key's content (nil for an
-// ephemeral key), the module's buckets and the deactivation's registrants.
-func identityDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, limiter *ratelimit.Limiter, signingKey []byte) identity.Deps {
+// identityDeps are identity's: the sign-up policy, the signing keys, the
+// module's buckets and the deactivation's registrants.
+func identityDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, limiter *ratelimit.Limiter,
+	keys *identity.SigningKeys, policy identity.SignupPolicy,
+) identity.Deps {
 	limits := cfg.RateLimit
 	vetoers, subscribers := deactivationRegistrants()
 	return identity.Deps{
@@ -31,8 +32,8 @@ func identityDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, li
 		Tx:                     postgres.NewTxManager(pool, cfg.Database.CommitTimeout),
 		Clock:                  clock.System{},
 		Logger:                 logger,
-		SignupPolicy:           signupSwitch(cfg.Auth.SignupEnabled),
-		SigningKeyPEM:          signingKey,
+		SignupPolicy:           policy,
+		SigningKeys:            keys,
 		AccessTokenTTL:         cfg.Auth.AccessTokenTTL,
 		SessionTTL:             cfg.Auth.SessionTTL,
 		RefreshDeadline:        cfg.Auth.RefreshDeadline,
@@ -58,21 +59,26 @@ func instanceDeps(cfg config.Config) instance.Deps {
 
 // workspaceDeps are workspace's: the decisions of the access module;
 // identity's share of the account row for the memberships it grants, and
-// its profiles for the member list; the extension points' registrants.
-func workspaceDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, authorizer shared.Authorizer) workspace.Deps {
+// its directory for the member list and the invitations; the invitations'
+// MAC key; the extension points' registrants.
+func workspaceDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, authorizer shared.Authorizer,
+	invitationKey []byte,
+) workspace.Deps {
 	ext := workspaceRegistrants()
 	return workspace.Deps{
-		Pool:                     pool,
-		Tx:                       postgres.NewTxManager(pool, cfg.Database.CommitTimeout),
-		Clock:                    clock.System{},
-		Logger:                   logger,
-		Authorizer:               authorizer,
-		Accounts:                 identity.NewAccounts(pool),
-		Profiles:                 memberProfiles{identity.NewProfiles(pool)},
-		CreationEnabled:          cfg.Workspace.CreationEnabled,
-		MembershipEndVetoers:     ext.endVetoers,
-		MembershipEndSubscribers: ext.endSubscribers,
-		DeletionSubscribers:      ext.deletionSubscribers,
+		Pool:                         pool,
+		Tx:                           postgres.NewTxManager(pool, cfg.Database.CommitTimeout),
+		Clock:                        clock.System{},
+		Logger:                       logger,
+		Authorizer:                   authorizer,
+		Accounts:                     identity.NewAccounts(pool),
+		Directory:                    directory{identity.NewDirectory(pool)},
+		InvitationKey:                invitationKey,
+		CreationEnabled:              cfg.Workspace.CreationEnabled,
+		MembershipEndVetoers:         ext.endVetoers,
+		MembershipEndSubscribers:     ext.endSubscribers,
+		DeletionSubscribers:          ext.deletionSubscribers,
+		MembershipRestoreSubscribers: ext.restoreSubscribers,
 	}
 }
 
@@ -113,8 +119,3 @@ func passwordHashing(p config.PasswordConfig) identity.PasswordHashing {
 func bucket(limiter *ratelimit.Limiter, name string, c config.BucketConfig) *ratelimit.Bucket {
 	return limiter.Bucket(name, ratelimit.Rate{PerMinute: c.PerMinute, Burst: c.Burst})
 }
-
-// signupSwitch is auth.signup_enabled as identity's SignupPolicy.
-type signupSwitch bool
-
-func (s signupSwitch) AllowSignup(context.Context) (bool, error) { return bool(s), nil }

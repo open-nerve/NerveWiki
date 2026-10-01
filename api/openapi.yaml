@@ -53,8 +53,16 @@ paths:
     $ref: "modules/workspace.yaml#/paths/~1api~1v0~1workspaces~1{slug}~1members"
   /api/v0/workspaces/{slug}/leave:
     $ref: "modules/workspace.yaml#/paths/~1api~1v0~1workspaces~1{slug}~1leave"
+  /api/v0/workspaces/{slug}/invitations:
+    $ref: "modules/workspace.yaml#/paths/~1api~1v0~1workspaces~1{slug}~1invitations"
   /api/v0/workspace-members/{workspace_member_id}:
     $ref: "modules/workspace.yaml#/paths/~1api~1v0~1workspace-members~1{workspace_member_id}"
+  /api/v0/workspace-invitations/{workspace_invitation_id}:
+    $ref: "modules/workspace.yaml#/paths/~1api~1v0~1workspace-invitations~1{workspace_invitation_id}"
+  /api/v0/workspace-invitations/{workspace_invitation_id}/preview:
+    $ref: "modules/workspace.yaml#/paths/~1api~1v0~1workspace-invitations~1{workspace_invitation_id}~1preview"
+  /api/v0/workspace-invitations/{workspace_invitation_id}/accept:
+    $ref: "modules/workspace.yaml#/paths/~1api~1v0~1workspace-invitations~1{workspace_invitation_id}~1accept"
   /api/v0/workspace-slugs/{slug}:
     $ref: "modules/workspace.yaml#/paths/~1api~1v0~1workspace-slugs~1{slug}"
 components:

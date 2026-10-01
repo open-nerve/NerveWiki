@@ -36,7 +36,12 @@ func matrixExempt() matrixExemptions {
 			// Public: it describes this instance to anyone.
 			"instance",
 		},
-		public: map[string]string{},
+		public: map[string]string{
+			"previewWorkspaceInvitation": "the link's token decides, for anyone holding it: no column's role does",
+		},
+		byCredential: map[string]string{
+			"acceptWorkspaceInvitation": "the caller is no member yet: the link's token and the caller's address decide (M2 design 9)",
+		},
 		notTargets: map[string]string{
 			"/api/v0/workspace-slugs/{slug}": "a slug asked about, not a workspace: every caller gets the same answer",
 		},
@@ -49,12 +54,15 @@ func matrixExempt() matrixExemptions {
 // operation carries is reported, so a misspelled one fails. public exempts
 // one public operation of a module the matrix covers, by its operationId,
 // with its reason: its route runs no authentication, so the columns could
-// not be told apart. notTargets are the paths whose parameters name
-// nothing a column's cell must aim at its workspace, each with its reason.
+// not be told apart. byCredential exempts an operation that needs a token
+// but is decided by what the caller holds, not by a role in the workspace,
+// with its reason. notTargets are the paths whose parameters name nothing
+// a column's cell must aim at its workspace, each with its reason.
 type matrixExemptions struct {
-	modules    []string
-	public     map[string]string // operationId → why it has no row
-	notTargets map[string]string // path → why its parameters are no column's target
+	modules      []string
+	public       map[string]string // operationId → why it has no row
+	byCredential map[string]string // operationId → what decides it instead of a role
+	notTargets   map[string]string // path → why its parameters are no column's target
 }
 
 // caller is a column: an account, and how it stands to the workspace a row
@@ -148,7 +156,7 @@ func decodeAnswer(t *testing.T, answer string, v any) {
 
 // matrixRows are the rows, each module's from its file.
 func matrixRows() []matrixRow {
-	return slices.Concat(workspaceMatrixRows(), memberMatrixRows())
+	return slices.Concat(workspaceMatrixRows(), memberMatrixRows(), invitationMatrixRows())
 }
 
 // matrixApps is how many cells may run an app of their own at once: each

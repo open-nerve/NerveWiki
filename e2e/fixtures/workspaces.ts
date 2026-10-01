@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import type { ApiClient, Workspace } from "@nervewiki/api-client";
 import { expect, type TestInfo } from "@playwright/test";
 
-import { bearer } from "./auth";
+import { bearer, createToken, emailFor, register } from "./auth";
 
 // The workspaces of the stories, through the API (M2 design 3).
 
@@ -70,4 +70,24 @@ export async function deleteWorkspace(api: ApiClient, credential: string, slug: 
     headers: bearer(credential),
   });
   expect(response.status, `delete ${slug}: ${JSON.stringify(error)}`).toBe(204);
+}
+
+/** A story's workspace: its admin's address, account and personal access token, and the workspace. */
+export interface Team {
+  adminEmail: string;
+  adminId: string;
+  pat: string;
+  workspace: Workspace;
+}
+
+/** Registers an admin of this test, who creates a workspace named name with a slug of this test. */
+export async function newTeam(api: ApiClient, testInfo: TestInfo, name = "Acme"): Promise<Team> {
+  const adminEmail = emailFor(testInfo, "admin");
+  const session = await register(api, adminEmail);
+  const pat = (await createToken(api, session.access_token, { name: testInfo.title.slice(0, 40) })).token;
+  const me = await api.GET("/api/v0/me", { headers: bearer(pat) });
+  if (!me.data) {
+    throw new Error(`me answered ${me.response.status}`);
+  }
+  return { adminEmail, adminId: me.data.id, pat, workspace: await createWorkspace(api, pat, name, slugFor(testInfo)) };
 }

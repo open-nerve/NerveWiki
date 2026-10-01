@@ -78,19 +78,19 @@ func (s *Store) DeactivateUser(ctx context.Context, id uuid.UUID, now time.Time)
 }
 
 // ShareAccount locks account id's row FOR SHARE until the transaction ends
-// and reports whether it is active; app.ErrNotFound when there is none.
-// Outside a transaction the lock would end with the statement, and the
-// caller's access would no longer wait for a deactivation: that is a fault
-// (M1 handoff to M2, item 3).
-func (s *Store) ShareAccount(ctx context.Context, id uuid.UUID) (bool, error) {
+// and reads, under the lock, whether it is active and its address;
+// app.ErrNotFound when there is none. Outside a transaction the lock would
+// end with the statement, and the caller's access would no longer wait for
+// a deactivation: that is a fault (M1 handoff to M2, item 3).
+func (s *Store) ShareAccount(ctx context.Context, id uuid.UUID) (app.SharedAccount, error) {
 	if !postgres.InTx(ctx) {
-		return false, errors.New("share the account row: not in a transaction, the lock would end with the statement")
+		return app.SharedAccount{}, errors.New("share the account row: not in a transaction, the lock would end with the statement")
 	}
-	active, err := s.queries(ctx).ShareAccount(ctx, id)
+	row, err := s.queries(ctx).ShareAccount(ctx, id)
 	if err != nil {
-		return false, notFound(err)
+		return app.SharedAccount{}, notFound(err)
 	}
-	return active, nil
+	return app.SharedAccount{Active: row.IsActive, Email: row.Email}, nil
 }
 
 // FindLoginAccount reads the account of email, a normalized address;
@@ -162,6 +162,19 @@ func (s *Store) UpdatePasswordHash(ctx context.Context, id uuid.UUID, hash strin
 		return fmt.Errorf("update password hash: %w", err)
 	}
 	return nil
+}
+
+// AccountIDByEmail returns the id of the account of email, a normalized
+// address, and whether there is one.
+func (s *Store) AccountIDByEmail(ctx context.Context, email string) (uuid.UUID, bool, error) {
+	id, err := s.queries(ctx).AccountIDByEmail(ctx, email)
+	if errors.Is(notFound(err), app.ErrNotFound) {
+		return uuid.UUID{}, false, nil
+	}
+	if err != nil {
+		return uuid.UUID{}, false, fmt.Errorf("account by email: %w", err)
+	}
+	return id, true, nil
 }
 
 // Profiles reads the profiles of the accounts ids, by id; an id of no

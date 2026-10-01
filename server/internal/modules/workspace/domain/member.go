@@ -21,10 +21,16 @@ type Member struct {
 // contract's enum is not checked before: a body's structure check leaves
 // values to the domain.
 func CheckRole(role string) (shared.WorkspaceRole, error) {
-	r := shared.WorkspaceRole(role)
-	if !slices.Contains(shared.WorkspaceRoles(), r) {
-		return "", shared.Invalid(shared.FieldError{Field: "role", Code: shared.FieldInvalidFormat,
-			Message: "must be admin, member or guest"})
+	if f := checkRole(role); f != nil {
+		return "", shared.Invalid(*f)
 	}
-	return r, nil
+	return shared.WorkspaceRole(role), nil
+}
+
+// checkRole is a role's problem, or nil.
+func checkRole(role string) *shared.FieldError {
+	if !slices.Contains(shared.WorkspaceRoles(), shared.WorkspaceRole(role)) {
+		return &shared.FieldError{Field: "role", Code: shared.FieldInvalidFormat, Message: "must be admin, member or guest"}
+	}
+	return nil
 }

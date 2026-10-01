@@ -38,13 +38,16 @@ func admins() []shared.WorkspaceRole { return []shared.WorkspaceRole{shared.Work
 // same set (bootstrap's actions test).
 func rules() map[shared.Action]Rule {
 	return map[shared.Action]Rule{
-		"workspace.read":          {Level: LevelWorkspace, Workspace: every()},
-		"workspace.update":        {Level: LevelWorkspace, Workspace: admins()},
-		"workspace.delete":        {Level: LevelWorkspace, Workspace: admins()},
-		"workspace.leave":         {Level: LevelWorkspace, Workspace: every()},
-		"workspace_member.list":   {Level: LevelWorkspace, Workspace: every()},
-		"workspace_member.update": {Level: LevelWorkspace, Workspace: admins()},
-		"workspace_member.remove": {Level: LevelWorkspace, Workspace: admins()},
+		"workspace.read":              {Level: LevelWorkspace, Workspace: every()},
+		"workspace.update":            {Level: LevelWorkspace, Workspace: admins()},
+		"workspace.delete":            {Level: LevelWorkspace, Workspace: admins()},
+		"workspace.leave":             {Level: LevelWorkspace, Workspace: every()},
+		"workspace_member.list":       {Level: LevelWorkspace, Workspace: every()},
+		"workspace_member.update":     {Level: LevelWorkspace, Workspace: admins()},
+		"workspace_member.remove":     {Level: LevelWorkspace, Workspace: admins()},
+		"workspace_invitation.list":   {Level: LevelWorkspace, Workspace: admins()},
+		"workspace_invitation.create": {Level: LevelWorkspace, Workspace: admins()},
+		"workspace_invitation.delete": {Level: LevelWorkspace, Workspace: admins()},
 	}
 }
 

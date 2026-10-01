@@ -1,11 +1,23 @@
 import { accountIdOf } from "../../fixtures/assert/identity";
-import { expectDeletedWithItsMembers, expectRenamed } from "../../fixtures/assert/workspace";
+import {
+  expectDeletedWithItsMembers,
+  expectInvitationsDeletedWith,
+  expectRenamed,
+} from "../../fixtures/assert/workspace";
 import { bearer, createToken, emailFor, register } from "../../fixtures/auth";
 import { expect, test } from "../../fixtures/test";
-import { checkSlug, createWorkspace, deleteWorkspace, renameWorkspace, slugFor } from "../../fixtures/workspaces";
+import { invite, joinAs, preview } from "../../fixtures/invitations";
+import {
+  checkSlug,
+  createWorkspace,
+  deleteWorkspace,
+  newTeam,
+  renameWorkspace,
+  slugFor,
+} from "../../fixtures/workspaces";
 
-// W4, renaming and deleting a workspace (M2 design 3). What its admin does;
-// the other members' 403 comes with invitations (M2/P3).
+// W4, renaming and deleting a workspace (M2 design 3): what its admin does,
+// and what the other members cannot (M2/P3).
 
 test("W4 (API): the admin renames the workspace, then deletes it with its members, and its slug is free", async ({
   api,
@@ -34,4 +46,35 @@ test("W4 (API): the admin renames the workspace, then deletes it with its member
   expect(await checkSlug(api, pat, slug)).toEqual({ available: true });
   const again = await createWorkspace(api, pat, "Acme again", slug);
   expect(again.id).not.toBe(created.id);
+});
+
+test("W4 (API): a member or a guest cannot rename or delete; the deletion takes the pending invitations", async ({
+  api,
+  db,
+}, testInfo) => {
+  const { adminId, pat, workspace } = await newTeam(api, testInfo);
+  const slug = workspace.slug;
+  const others = [
+    await joinAs(api, pat, slug, emailFor(testInfo, "member"), "member"),
+    await joinAs(api, pat, slug, emailFor(testInfo, "guest"), "guest"),
+  ];
+  const pending = await invite(api, pat, slug, emailFor(testInfo, "invitee"));
+
+  const refusals = await Promise.all(
+    others.flatMap((credential) => [
+      api.PATCH("/api/v0/workspaces/{slug}", {
+        params: { path: { slug } },
+        body: { name: "Mine" },
+        headers: bearer(credential),
+      }),
+      api.DELETE("/api/v0/workspaces/{slug}", { params: { path: { slug } }, headers: bearer(credential) }),
+    ])
+  );
+  expect(refusals.map((r) => [r.response.status, r.error?.code])).toEqual(refusals.map(() => [403, "forbidden"]));
+
+  await deleteWorkspace(api, pat, slug);
+  await expectDeletedWithItsMembers(db, workspace.id, adminId);
+  await expectInvitationsDeletedWith(db, workspace.id, 1);
+  const link = await preview(api, pending);
+  expect([link.response.status, link.error?.code]).toEqual([404, "workspace.invitation_not_found"]);
 });

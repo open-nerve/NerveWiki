@@ -30,7 +30,9 @@ import (
 
 type openSignup struct{}
 
-func (openSignup) AllowSignup(context.Context) (bool, error) { return true, nil }
+func (openSignup) AllowSignup(context.Context, identity.SignupAttempt) (bool, error) {
+	return true, nil
+}
 
 // testStart is the instant the tests' clocks start at, in whole
 // microseconds, as timestamptz stores them.
@@ -75,8 +77,12 @@ func newServerWith(t *testing.T, pool *pgxpool.Pool, clock *clocktest.Fixed, cha
 	logger := slog.New(slog.DiscardHandler)
 	limiter := ratelimit.New(time.Now)
 	limit := limiter.Bucket("test", ratelimit.Rate{PerMinute: 600000, Burst: 100000})
+	keys, err := identity.LoadSigningKeys(nil, logger)
+	if err != nil {
+		t.Fatal(err)
+	}
 	deps := identity.Deps{
-		Pool: pool, Tx: postgres.NewTxManager(pool, 2*time.Second), Clock: clock, Logger: logger,
+		Pool: pool, Tx: postgres.NewTxManager(pool, 2*time.Second), Clock: clock, Logger: logger, SigningKeys: keys,
 		SignupPolicy: openSignup{}, AccessTokenTTL: 15 * time.Minute, SessionTTL: 720 * time.Hour, RefreshDeadline: 4 * time.Second,
 		Password:   testPassword(),
 		RateLimits: identity.RateLimits{Limiter: limiter, LoginIP: limit, LoginIPEmail: limit, RegisterIP: limit, PasswordUser: limit},

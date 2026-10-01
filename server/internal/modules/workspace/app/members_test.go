@@ -161,7 +161,8 @@ func TestUpdateMemberRefusals(t *testing.T) {
 
 // isWrite reports a call of the fake store that writes.
 func isWrite(call string) bool {
-	for _, w := range []string{"UpdateMemberRole", "EndMemberships", "DeleteMembersOf", "DeleteWorkspace", "RenameWorkspace"} {
+	for _, w := range []string{"UpdateMemberRole", "EndMemberships", "DeleteMembersOf", "DeleteWorkspace", "RenameWorkspace",
+		"AddMember", "RestoreMember", "CreateInvitation", "DeleteInvitation", "AcceptInvitation"} {
 		if strings.HasPrefix(call, w) {
 			return true
 		}
@@ -170,14 +171,16 @@ func isWrite(call string) bool {
 }
 
 // The membership ends through the extension point: the vetoers, the
-// write, the subscribers, under the lock and after the decision.
+// pending invitations to the member's address, the write, the subscribers,
+// under the lock and after the decision.
 func TestRemoveMemberEndsTheMembership(t *testing.T) {
 	tm := newTeam()
 
 	err := tm.removeMember().Execute(tm.as(tm.alice), tm.bob.ID)
 
 	wantCalls := append([]string{"FindActiveMember"}, inTxCalls("LockWorkspaceByID", "FindActiveMember",
-		"Authorize workspace_member.remove", "VetoMembershipEnd", "EndMemberships"+at(tm.alice), "MembershipEnded")...)
+		"Authorize workspace_member.remove", "VetoMembershipEnd", "MemberProfiles", "DeleteInvitationsTo bob@corp.com"+at(tm.alice),
+		"EndMemberships"+at(tm.alice), "MembershipEnded")...)
 	if err != nil || !slices.Equal(tm.store.calls, wantCalls) {
 		t.Errorf("Execute() = %v after %q; want %q", err, tm.store.calls, wantCalls)
 	}
@@ -247,7 +250,7 @@ func TestLeaveWorkspace(t *testing.T) {
 		err := tm.leave().Execute(tm.as(tm.bob), "acme")
 
 		wantCalls := inTxCalls("LockWorkspaceBySlug acme", "Authorize workspace.leave",
-			"VetoMembershipEnd", "EndMemberships"+at(tm.bob), "MembershipEnded")
+			"VetoMembershipEnd", "MemberProfiles", "DeleteInvitationsTo bob@corp.com"+at(tm.bob), "EndMemberships"+at(tm.bob), "MembershipEnded")
 		if err != nil || !slices.Equal(tm.store.calls, wantCalls) {
 			t.Errorf("Execute() = %v after %q; want %q", err, tm.store.calls, wantCalls)
 		}
@@ -268,7 +271,8 @@ func TestLeaveWorkspace(t *testing.T) {
 		err := tm.leave().Execute(tm.as(tm.alice), "acme")
 
 		wantCalls := inTxCalls("LockWorkspaceBySlug acme", "Authorize workspace.leave", "CountActiveAdmins",
-			"VetoMembershipEnd", "EndMemberships"+at(tm.alice), "MembershipEnded")
+			"VetoMembershipEnd", "MemberProfiles", "DeleteInvitationsTo alice@corp.com"+at(tm.alice), "EndMemberships"+at(tm.alice),
+			"MembershipEnded")
 		if err != nil || !slices.Equal(tm.store.calls, wantCalls) {
 			t.Errorf("Execute() = %v after %q; want %q", err, tm.store.calls, wantCalls)
 		}

@@ -12,6 +12,21 @@ import (
 	"uuid"
 )
 
+const accountIDByEmail = `-- name: AccountIDByEmail :one
+SELECT id
+FROM users
+WHERE email = $1
+`
+
+// The other modules' lookup of an account by its address (M2/P3 design 3.6): one statement, no lock, outside the
+// lock order. Deactivated accounts too: what one may do is the caller's to decide.
+func (q *Queries) AccountIDByEmail(ctx context.Context, email string) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, accountIDByEmail, email)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
 const activateUser = `-- name: ActivateUser :exec
 UPDATE users
 SET is_active = true, updated_at = $1
@@ -278,20 +293,26 @@ func (q *Queries) RecordOnboardingStep(ctx context.Context, arg RecordOnboarding
 }
 
 const shareAccount = `-- name: ShareAccount :one
-SELECT is_active
+SELECT is_active, email
 FROM users
 WHERE id = $1
 FOR SHARE
 `
 
+type ShareAccountRow struct {
+	IsActive bool
+	Email    string
+}
+
 // ShareActiveAccount (M1 design 8, M1/P3 design 3.6): the first lock of a transaction that gives the account new
 // access. FOR SHARE conflicts with the FOR NO KEY UPDATE of deactivation, so the two run one after the other and
-// is_active is read under the lock; two FOR SHARE do not wait for each other.
-func (q *Queries) ShareAccount(ctx context.Context, id uuid.UUID) (bool, error) {
+// is_active is read under the lock; two FOR SHARE do not wait for each other. The address is read under it too:
+// a change of it (users set-email) waits for the transaction, or the transaction reads the new one (M2/P3).
+func (q *Queries) ShareAccount(ctx context.Context, id uuid.UUID) (ShareAccountRow, error) {
 	row := q.db.QueryRow(ctx, shareAccount, id)
-	var is_active bool
-	err := row.Scan(&is_active)
-	return is_active, err
+	var i ShareAccountRow
+	err := row.Scan(&i.IsActive, &i.Email)
+	return i, err
 }
 
 const updateDisplayName = `-- name: UpdateDisplayName :one

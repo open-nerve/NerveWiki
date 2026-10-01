@@ -203,7 +203,7 @@ func TestAnAdminDeactivationWaitsForATransactionThatSharesTheAccount(t *testing.
 
 	join := async(func() error {
 		return tx.WithinTx(ctx, func(ctx context.Context) error {
-			if err := identity.NewAccounts(pool).ShareActiveAccount(ctx, id); err != nil {
+			if _, err := identity.NewAccounts(pool).ShareActiveAccount(ctx, id); err != nil {
 				return err
 			}
 			if _, err := postgres.DB(ctx, pool).Exec(ctx, `INSERT INTO memberships VALUES ($1)`, id); err != nil {

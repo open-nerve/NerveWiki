@@ -133,8 +133,17 @@ type RefreshRequest struct {
 // RegisterRequest defines model for RegisterRequest.
 type RegisterRequest struct {
 	// Email The sign-in address; stored trimmed and in lower case.
-	Email    string `json:"email"`
-	Password string `json:"password"`
+	Email string `json:"email"`
+
+	// Invitation The invitation to a workspace whose link the registration came by, as the link carries it. While sign-up is off, an invitation still pending, of a workspace not deleted and sent to the address lets the address register.
+	Invitation *SignupInvitation `json:"invitation,omitempty"`
+	Password   string            `json:"password"`
+}
+
+// SignupInvitation The invitation to a workspace whose link the registration came by, as the link carries it. While sign-up is off, an invitation still pending, of a workspace not deleted and sent to the address lets the address register.
+type SignupInvitation struct {
+	ID    uuid.UUID `json:"id"`
+	Token string    `json:"token"`
 }
 
 // UpdateMeRequest defines model for UpdateMeRequest.

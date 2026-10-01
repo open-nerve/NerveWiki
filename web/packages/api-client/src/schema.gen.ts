@@ -15,7 +15,7 @@ export interface paths {
         put?: never;
         /**
          * Create an account and sign in
-         * @description Creates an account and signs it in: the response holds a new session's tokens. While sign-up is off, a well-formed request answers identity.signup_disabled before the address or the password is looked at, so the answer never depends on whether the address is registered. The password needs 8–128 characters and must be neither a common password nor made of the address's local part. Sign-ups have a rate limit of their own, per client IP.
+         * @description Creates an account and signs it in: the response holds a new session's tokens. While sign-up is off, only an invitation to the address opens it: any other well-formed request answers identity.signup_disabled before the address is checked or the password looked at, so the answer never depends on whether the address is registered. Registering does not accept the invitation. The password needs 8–128 characters and must be neither a common password nor made of the address's local part. Sign-ups have a rate limit of their own, per client IP.
          */
         post: operations["register"];
         delete?: never;
@@ -274,7 +274,7 @@ export interface paths {
         post?: never;
         /**
          * Delete a workspace
-         * @description Deletes the workspace with every membership of it; only its admins can. No one sees it afterwards, and its slug can name a new workspace at once. A workspace that does not exist, is deleted, or that the caller is no active member of is workspace.not_found; a member or a guest gets forbidden.
+         * @description Deletes the workspace with every membership of it and its pending invitations; only its admins can. No one sees it afterwards, and its slug can name a new workspace at once. A workspace that does not exist, is deleted, or that the caller is no active member of is workspace.not_found; a member or a guest gets forbidden.
          */
         delete: operations["deleteWorkspace"];
         options?: never;
@@ -323,9 +323,36 @@ export interface paths {
         put?: never;
         /**
          * Leave a workspace
-         * @description Ends the caller's membership of the workspace. The workspace's only active admin cannot leave it, even alone in it (workspace.sole_admin): another member is made an admin first, or the workspace is deleted.
+         * @description Ends the caller's membership of the workspace; pending invitations of the workspace to the caller's address are deleted with it. The workspace's only active admin cannot leave it, even alone in it (workspace.sole_admin): another member is made an admin first, or the workspace is deleted.
          */
         post: operations["leaveWorkspace"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v0/workspaces/{slug}/invitations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The workspace's slug. It carries no pattern here: a slug spelled wrong names no workspace, which the operation answers itself. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List a workspace's pending invitations
+         * @description The workspace's pending invitations, newest first, each with the token of its link; only its admins can. A workspace that does not exist, is deleted, or that the caller is no active member of is workspace.not_found; a member or a guest gets forbidden. The list is not paged.
+         */
+        get: operations["listWorkspaceInvitations"];
+        put?: never;
+        /**
+         * Invite an e-mail address
+         * @description Invites an e-mail address to the workspace with a role; only its admins can. The answer holds the token of the invitation's link, which the admin sends: whoever signs in with the address and holds the link can accept it. An address with a pending invitation to the workspace is a problem of the email field (duplicate), and so is an active member's (not_allowed). A workspace that does not exist, is deleted, or that the caller is no active member of is workspace.not_found; a member or a guest gets forbidden; the values are checked after both.
+         */
+        post: operations["createWorkspaceInvitation"];
         delete?: never;
         options?: never;
         head?: never;
@@ -347,7 +374,7 @@ export interface paths {
         post?: never;
         /**
          * Remove a member
-         * @description Ends the member's membership; only the workspace's admins can, and not their own (workspace.own_membership: an admin leaves instead). A membership that does not exist, has ended, or whose workspace the caller cannot see is workspace.member_not_found; a member or a guest gets forbidden.
+         * @description Ends the member's membership, and deletes the workspace's pending invitations to the member's address; only the workspace's admins can, and not their own (workspace.own_membership: an admin leaves instead). A membership that does not exist, has ended, or whose workspace the caller cannot see is workspace.member_not_found; a member or a guest gets forbidden.
          */
         delete: operations["removeWorkspaceMember"];
         options?: never;
@@ -357,6 +384,75 @@ export interface paths {
          * @description Gives the member a new role; only the workspace's admins can, and not their own (workspace.own_membership). A membership that does not exist, has ended, or whose workspace the caller cannot see is workspace.member_not_found; a member or a guest gets forbidden; the role is checked after both.
          */
         patch: operations["updateWorkspaceMember"];
+        trace?: never;
+    };
+    "/api/v0/workspace-invitations/{workspace_invitation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The id of an invitation, as its link carries it. */
+                workspace_invitation_id: components["parameters"]["WorkspaceInvitationID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Withdraw an invitation
+         * @description Withdraws a pending invitation, whose link stops working; only the workspace's admins can. An invitation that does not exist, is no longer pending, or whose workspace the caller cannot see is workspace.invitation_not_found; a member or a guest gets forbidden.
+         */
+        delete: operations["deleteWorkspaceInvitation"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v0/workspace-invitations/{workspace_invitation_id}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The id of an invitation, as its link carries it. */
+                workspace_invitation_id: components["parameters"]["WorkspaceInvitationID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Show what an invitation's link invites to
+         * @description The workspace's name and slug, and the role; never the address invited. Anyone holding the link may ask, signed in or not. An invitation that does not exist, is no longer pending, whose workspace is deleted, or whose token is not the link's is workspace.invitation_not_found alike. It is a POST so that the token stays out of URLs and their logs.
+         */
+        post: operations["previewWorkspaceInvitation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v0/workspace-invitations/{workspace_invitation_id}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The id of an invitation, as its link carries it. */
+                workspace_invitation_id: components["parameters"]["WorkspaceInvitationID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept an invitation
+         * @description Joins the workspace with the invitation's role: the link's token and the caller's address are the credentials, the caller being no member yet. A caller signed in with another address than the one invited gets workspace.invitation_email_mismatch. A caller who is an active member already keeps their role, and the invitation is used up; one whose membership ended has it back, with the invitation's role and when they first joined. An invitation that does not exist, is no longer pending, whose workspace is deleted, or whose token is not the link's is workspace.invitation_not_found alike.
+         */
+        post: operations["acceptWorkspaceInvitation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v0/workspace-slugs/{slug}": {
@@ -386,6 +482,12 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @description The invitation to a workspace whose link the registration came by, as the link carries it. While sign-up is off, an invitation still pending, of a workspace not deleted and sent to the address lets the address register. */
+        SignupInvitation: {
+            /** Format: uuid */
+            id: string;
+            token: string;
+        };
         RegisterRequest: {
             /**
              * Format: email
@@ -393,6 +495,7 @@ export interface components {
              */
             email: string;
             password: string;
+            invitation?: components["schemas"]["SignupInvitation"];
         };
         /** @description One invalid field of a request. Clients show text looked up by `code`; `message` is an English explanation for developers. Must match httpserver.FieldError and the field codes of internal/shared. */
         FieldError: {
@@ -588,14 +691,50 @@ export interface components {
             email: string | null;
             /**
              * Format: date-time
-             * @description When the account joined.
+             * @description When the account first joined; a membership restored keeps it.
              */
             created_at: string;
         };
         WorkspaceMemberList: {
             data: components["schemas"]["WorkspaceMember"][];
         };
+        /** @description A pending invitation, as the workspace's admins see it. */
+        WorkspaceInvitation: {
+            /** Format: uuid */
+            id: string;
+            /** @description The address invited, trimmed and in lower case. */
+            email: string;
+            role: components["schemas"]["WorkspaceRole"];
+            /** @description The secret of the invitation's link, which the preview and the acceptance take with the id. It is the same each time it is read, until the instance's signing key changes. */
+            token: string;
+            /** Format: date-time */
+            created_at: string;
+        };
+        WorkspaceInvitationList: {
+            data: components["schemas"]["WorkspaceInvitation"][];
+        };
+        WorkspaceInvitationCreate: {
+            /**
+             * Format: email
+             * @description The address to invite; stored trimmed and in lower case.
+             */
+            email: string;
+            role: components["schemas"]["WorkspaceRole"];
+        };
         WorkspaceMemberUpdate: {
+            role: components["schemas"]["WorkspaceRole"];
+        };
+        InvitationToken: {
+            /** @description The token of the invitation's link. */
+            token: string;
+        };
+        InvitedWorkspace: {
+            name: string;
+            slug: string;
+        };
+        /** @description What an invitation invites to, as anyone holding its link sees it. */
+        InvitationPreview: {
+            workspace: components["schemas"]["InvitedWorkspace"];
             role: components["schemas"]["WorkspaceRole"];
         };
         SlugAvailability: {
@@ -627,11 +766,14 @@ export interface components {
         Slug: string;
         /** @description The id of a membership, as the member list answers it; not the account's id. */
         WorkspaceMemberID: string;
+        /** @description The id of an invitation, as its link carries it. */
+        WorkspaceInvitationID: string;
     };
     requestBodies: never;
     headers: never;
     pathItems: never;
 }
+export type SignupInvitation = components['schemas']['SignupInvitation'];
 export type RegisterRequest = components['schemas']['RegisterRequest'];
 export type FieldError = components['schemas']['FieldError'];
 export type Problem = components['schemas']['Problem'];
@@ -655,11 +797,18 @@ export type WorkspaceCreate = components['schemas']['WorkspaceCreate'];
 export type WorkspaceUpdate = components['schemas']['WorkspaceUpdate'];
 export type WorkspaceMember = components['schemas']['WorkspaceMember'];
 export type WorkspaceMemberList = components['schemas']['WorkspaceMemberList'];
+export type WorkspaceInvitation = components['schemas']['WorkspaceInvitation'];
+export type WorkspaceInvitationList = components['schemas']['WorkspaceInvitationList'];
+export type WorkspaceInvitationCreate = components['schemas']['WorkspaceInvitationCreate'];
 export type WorkspaceMemberUpdate = components['schemas']['WorkspaceMemberUpdate'];
+export type InvitationToken = components['schemas']['InvitationToken'];
+export type InvitedWorkspace = components['schemas']['InvitedWorkspace'];
+export type InvitationPreview = components['schemas']['InvitationPreview'];
 export type SlugAvailability = components['schemas']['SlugAvailability'];
 export type ResponseProblem = components['responses']['Problem'];
 export type ParameterSlug = components['parameters']['Slug'];
 export type ParameterWorkspaceMemberId = components['parameters']['WorkspaceMemberID'];
+export type ParameterWorkspaceInvitationId = components['parameters']['WorkspaceInvitationID'];
 export type $defs = Record<string, never>;
 export interface operations {
     register: {
@@ -1127,6 +1276,58 @@ export interface operations {
             default: components["responses"]["Problem"];
         };
     };
+    listWorkspaceInvitations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The workspace's slug. It carries no pattern here: a slug spelled wrong names no workspace, which the operation answers itself. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The pending invitations. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceInvitationList"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    createWorkspaceInvitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The workspace's slug. It carries no pattern here: a slug spelled wrong names no workspace, which the operation answers itself. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkspaceInvitationCreate"];
+            };
+        };
+        responses: {
+            /** @description The pending invitation. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceInvitation"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
     removeWorkspaceMember: {
         parameters: {
             query?: never;
@@ -1172,6 +1373,84 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WorkspaceMember"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    deleteWorkspaceInvitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The id of an invitation, as its link carries it. */
+                workspace_invitation_id: components["parameters"]["WorkspaceInvitationID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The invitation is withdrawn. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    previewWorkspaceInvitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The id of an invitation, as its link carries it. */
+                workspace_invitation_id: components["parameters"]["WorkspaceInvitationID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvitationToken"];
+            };
+        };
+        responses: {
+            /** @description What the invitation invites to. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvitationPreview"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    acceptWorkspaceInvitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The id of an invitation, as its link carries it. */
+                workspace_invitation_id: components["parameters"]["WorkspaceInvitationID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvitationToken"];
+            };
+        };
+        responses: {
+            /** @description The workspace, with the caller's role. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Workspace"];
                 };
             };
             default: components["responses"]["Problem"];

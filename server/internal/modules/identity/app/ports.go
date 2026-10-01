@@ -22,10 +22,24 @@ type Clock interface {
 	Now() time.Time
 }
 
-// SignupPolicy decides whether registration is open (M1/P1 design 3.7).
-// From bootstrap it is auth.signup_enabled; M2 extends it to invitations.
+// SignupPolicy decides whether a registration may go on (M1/P1 design 3.7):
+// bootstrap's is auth.signup_enabled, or else an invitation to the address
+// (M2/P3 design 3.6).
 type SignupPolicy interface {
-	AllowSignup(ctx context.Context) (bool, error)
+	AllowSignup(ctx context.Context, a SignupAttempt) (bool, error)
+}
+
+// SignupAttempt is what a registration shows the policy.
+type SignupAttempt struct {
+	Email      string            // normalized, not yet validated
+	Invitation *SignupInvitation // nil without one
+}
+
+// SignupInvitation is an invitation to a workspace a registration carries,
+// from the link it came by: identity does not read it, the policy does.
+type SignupInvitation struct {
+	ID    uuid.UUID
+	Token string
 }
 
 // NewUser is an account to insert. Its audit columns are Now.
@@ -89,9 +103,14 @@ type AccountLocker interface {
 // AccountSharer takes the shared lock of an account row (M1/P3 design 3.6).
 type AccountSharer interface {
 	// ShareAccount locks account id's row FOR SHARE until the transaction
-	// ends and reports whether the account is active; ErrNotFound when
-	// there is none.
-	ShareAccount(ctx context.Context, id uuid.UUID) (bool, error)
+	// ends and reads it under the lock; ErrNotFound when there is none.
+	ShareAccount(ctx context.Context, id uuid.UUID) (SharedAccount, error)
+}
+
+// SharedAccount is what ShareAccount reads under its lock.
+type SharedAccount struct {
+	Active bool
+	Email  string
 }
 
 // LoginAccount is what login reads of an account before its transaction:

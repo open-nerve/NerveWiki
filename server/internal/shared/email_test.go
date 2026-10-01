@@ -118,3 +118,21 @@ func TestValidEmailLengthLimit(t *testing.T) {
 		t.Errorf("a %d-character address is valid, want invalid", len(at256))
 	}
 }
+
+func TestCheckEmail(t *testing.T) {
+	tests := []struct {
+		email string
+		want  *shared.FieldError
+	}{
+		{"bob@corp.com", nil},
+		{"", &shared.FieldError{Field: "to", Code: shared.FieldRequired, Message: "is required"}},
+		{strings.Repeat("a", 250) + "@c.com", &shared.FieldError{Field: "to", Code: shared.FieldTooLong, Message: "must be at most 255 characters"}},
+		{"bob", &shared.FieldError{Field: "to", Code: shared.FieldInvalidFormat, Message: "is not a valid e-mail address"}},
+	}
+	for _, tt := range tests {
+		got := shared.CheckEmail("to", tt.email)
+		if (got == nil) != (tt.want == nil) || (got != nil && *got != *tt.want) {
+			t.Errorf("CheckEmail(%q) = %+v, want %+v", tt.email, got, tt.want)
+		}
+	}
+}

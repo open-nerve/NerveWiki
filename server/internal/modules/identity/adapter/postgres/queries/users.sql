@@ -84,11 +84,19 @@ WHERE id = sqlc.arg(id);
 -- name: ShareAccount :one
 -- ShareActiveAccount (M1 design 8, M1/P3 design 3.6): the first lock of a transaction that gives the account new
 -- access. FOR SHARE conflicts with the FOR NO KEY UPDATE of deactivation, so the two run one after the other and
--- is_active is read under the lock; two FOR SHARE do not wait for each other.
-SELECT is_active
+-- is_active is read under the lock; two FOR SHARE do not wait for each other. The address is read under it too:
+-- a change of it (users set-email) waits for the transaction, or the transaction reads the new one (M2/P3).
+SELECT is_active, email
 FROM users
 WHERE id = sqlc.arg(id)
 FOR SHARE;
+
+-- name: AccountIDByEmail :one
+-- The other modules' lookup of an account by its address (M2/P3 design 3.6): one statement, no lock, outside the
+-- lock order. Deactivated accounts too: what one may do is the caller's to decide.
+SELECT id
+FROM users
+WHERE email = sqlc.arg(email);
 
 -- name: ProfilesByID :many
 -- The profiles of the accounts, for the other modules' member lists (M2 design 5): one statement, no lock,

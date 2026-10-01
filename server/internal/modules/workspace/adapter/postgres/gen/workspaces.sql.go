@@ -166,6 +166,70 @@ func (q *Queries) FindActiveMember(ctx context.Context, id uuid.UUID) (FindActiv
 	return i, err
 }
 
+const findMembership = `-- name: FindMembership :one
+SELECT id, workspace_id, user_id, role, created_at, (ended_at IS NULL)::boolean AS active
+FROM workspace_members
+WHERE workspace_id = $1 AND user_id = $2 AND deleted_at IS NULL
+`
+
+type FindMembershipParams struct {
+	WorkspaceID uuid.UUID
+	UserID      uuid.UUID
+}
+
+type FindMembershipRow struct {
+	ID          uuid.UUID
+	WorkspaceID uuid.UUID
+	UserID      uuid.UUID
+	Role        string
+	CreatedAt   time.Time
+	Active      bool
+}
+
+// The account's membership of the workspace, ended or not, deleted excepted: at most one
+// (workspace_members_workspace_id_user_id_key).
+func (q *Queries) FindMembership(ctx context.Context, arg FindMembershipParams) (FindMembershipRow, error) {
+	row := q.db.QueryRow(ctx, findMembership, arg.WorkspaceID, arg.UserID)
+	var i FindMembershipRow
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.UserID,
+		&i.Role,
+		&i.CreatedAt,
+		&i.Active,
+	)
+	return i, err
+}
+
+const findWorkspaceByID = `-- name: FindWorkspaceByID :one
+SELECT id, slug, name, created_at, updated_at
+FROM workspaces
+WHERE id = $1 AND deleted_at IS NULL
+`
+
+type FindWorkspaceByIDRow struct {
+	ID        uuid.UUID
+	Slug      string
+	Name      string
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+// FindWorkspaceBySlug by the workspace's id.
+func (q *Queries) FindWorkspaceByID(ctx context.Context, id uuid.UUID) (FindWorkspaceByIDRow, error) {
+	row := q.db.QueryRow(ctx, findWorkspaceByID, id)
+	var i FindWorkspaceByIDRow
+	err := row.Scan(
+		&i.ID,
+		&i.Slug,
+		&i.Name,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const findWorkspaceBySlug = `-- name: FindWorkspaceBySlug :one
 SELECT id, slug, name, created_at, updated_at
 FROM workspaces
@@ -366,6 +430,31 @@ func (q *Queries) RenameWorkspace(ctx context.Context, arg RenameWorkspaceParams
 	return err
 }
 
+const restoreMember = `-- name: RestoreMember :exec
+UPDATE workspace_members
+SET ended_at = NULL, role = $1, updated_by_id = $2, updated_at = $3
+WHERE id = $4
+`
+
+type RestoreMemberParams struct {
+	Role string
+	By   uuid.UUID
+	Now  time.Time
+	ID   uuid.UUID
+}
+
+// An ended membership active again, with the role: the same row, which keeps when the account first
+// joined, created_at (M2/P3 design 3.5).
+func (q *Queries) RestoreMember(ctx context.Context, arg RestoreMemberParams) error {
+	_, err := q.db.Exec(ctx, restoreMember,
+		arg.Role,
+		arg.By,
+		arg.Now,
+		arg.ID,
+	)
+	return err
+}
+
 const roleOf = `-- name: RoleOf :one
 SELECT role
 FROM workspace_members
@@ -385,6 +474,66 @@ func (q *Queries) RoleOf(ctx context.Context, arg RoleOfParams) (string, error) 
 	var role string
 	err := row.Scan(&role)
 	return role, err
+}
+
+const shareWorkspaceByID = `-- name: ShareWorkspaceByID :one
+SELECT id, slug, name, created_at, updated_at
+FROM workspaces
+WHERE id = $1 AND deleted_at IS NULL
+FOR SHARE
+`
+
+type ShareWorkspaceByIDRow struct {
+	ID        uuid.UUID
+	Slug      string
+	Name      string
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+// ShareWorkspaceBySlug by the workspace's id: for the operations that name an invitation.
+func (q *Queries) ShareWorkspaceByID(ctx context.Context, id uuid.UUID) (ShareWorkspaceByIDRow, error) {
+	row := q.db.QueryRow(ctx, shareWorkspaceByID, id)
+	var i ShareWorkspaceByIDRow
+	err := row.Scan(
+		&i.ID,
+		&i.Slug,
+		&i.Name,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const shareWorkspaceBySlug = `-- name: ShareWorkspaceBySlug :one
+SELECT id, slug, name, created_at, updated_at
+FROM workspaces
+WHERE slug = $1 AND deleted_at IS NULL
+FOR SHARE
+`
+
+type ShareWorkspaceBySlugRow struct {
+	ID        uuid.UUID
+	Slug      string
+	Name      string
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+// The workspace not deleted with the slug, locked FOR SHARE until the transaction ends: the invitations'
+// writes take it. They run beside each other, and wait for a change of the workspace or of its members
+// (FOR NO KEY UPDATE), which waits for them (M2/P3 design 3.3).
+func (q *Queries) ShareWorkspaceBySlug(ctx context.Context, slug string) (ShareWorkspaceBySlugRow, error) {
+	row := q.db.QueryRow(ctx, shareWorkspaceBySlug, slug)
+	var i ShareWorkspaceBySlugRow
+	err := row.Scan(
+		&i.ID,
+		&i.Slug,
+		&i.Name,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const slugTaken = `-- name: SlugTaken :one

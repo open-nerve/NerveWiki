@@ -158,6 +158,16 @@ func TestConstraintAndIndexNames(t *testing.T) {
 		"users_onboarding_steps_check c",
 		"users_pkey iu",
 		"users_pkey p",
+		"workspace_invitations_accepted_check c",
+		"workspace_invitations_created_by_id_fkey f a",
+		"workspace_invitations_email_check c",
+		"workspace_invitations_pkey iu",
+		"workspace_invitations_pkey p",
+		"workspace_invitations_role_check c",
+		"workspace_invitations_updated_by_id_fkey f a",
+		"workspace_invitations_workspace_id_email_key iuw",
+		"workspace_invitations_workspace_id_fkey f c",
+		"workspace_invitations_workspace_id_idx i",
 		"workspace_members_created_by_id_fkey f a",
 		"workspace_members_pkey iu",
 		"workspace_members_pkey p",
@@ -199,6 +209,10 @@ func TestChecksRejectCounterexamples(t *testing.T) {
 		"INSERT INTO workspace_members (id, workspace_id, user_id, role, created_by_id, updated_by_id, created_at, updated_at) VALUES " +
 			"('0199a2b4-0000-7000-8000-000000000006', '0199a2b4-0000-7000-8000-000000000005', " + user + ", 'guest', " +
 			user + ", " + user + ", now(), now())",
+		"INSERT INTO workspace_invitations (id, workspace_id, email, role, created_by_id, updated_by_id, created_at, updated_at) VALUES " +
+			"('0199a2b4-0000-7000-8000-000000000007', '0199a2b4-0000-7000-8000-000000000005', 'élodie@exämple.com', 'member', " +
+			user + ", " + user + ", now(), now())",
+		"UPDATE workspace_invitations SET accepted_at = now(), deleted_at = now()",
 	} {
 		if _, err := pool.Exec(ctx, stmt); err != nil {
 			t.Fatalf("%s: %v", stmt, err)
@@ -246,6 +260,11 @@ func TestChecksRejectCounterexamples(t *testing.T) {
 		{"empty workspace name", "UPDATE workspaces SET name = ''", "workspaces_name_check"},
 		{"a fourth role", "UPDATE workspace_members SET role = 'owner'", "workspace_members_role_check"},
 		{"an upper-case role", "UPDATE workspace_members SET role = 'Admin'", "workspace_members_role_check"},
+		{"an upper-case invited address", "UPDATE workspace_invitations SET email = 'Bob@corp.com'", "workspace_invitations_email_check"},
+		{"an invited address with a space", "UPDATE workspace_invitations SET email = 'bob@corp.com '", "workspace_invitations_email_check"},
+		{"an invitation's fourth role", "UPDATE workspace_invitations SET role = 'owner'", "workspace_invitations_role_check"},
+		{"accepted and not deleted", "UPDATE workspace_invitations SET deleted_at = NULL", "workspace_invitations_accepted_check"},
+		{"accepted before its deletion", "UPDATE workspace_invitations SET accepted_at = deleted_at - interval '1 second'", "workspace_invitations_accepted_check"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

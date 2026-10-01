@@ -38,6 +38,10 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrati
 	if err != nil {
 		return nil, err
 	}
+	keys, err := identity.LoadSigningKeys(signingKey, logger)
+	if err != nil {
+		return nil, err
+	}
 	pool, err := postgres.NewPool(ctx, cfg.Database)
 	if err != nil {
 		return nil, err
@@ -63,7 +67,11 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrati
 	// One limiter holds every bucket (M1/P2 design 3.2). It reads the
 	// monotonic clock, which a jump of the wall clock does not move.
 	limiter := ratelimit.New(time.Now)
-	ident, err := identity.New(identityDeps(cfg, pool, logger, limiter, signingKey))
+	// Sign-up opens to an invitation of the workspace module, whose MAC key
+	// derives from identity's signing key: both come before either module.
+	invitationKey := keys.Derive(workspace.InvitationKeyInfo)
+	signup := signupPolicy{open: cfg.Auth.SignupEnabled, invitations: workspace.NewInvitationCheck(pool, invitationKey)}
+	ident, err := identity.New(identityDeps(cfg, pool, logger, limiter, keys, signup))
 	if err != nil {
 		return nil, err
 	}
@@ -75,9 +83,9 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrati
 	// The access module decides on the facts the workspace module keeps;
 	// the workspace module's use cases call its decisions.
 	authorizer := access.New(access.Deps{Memberships: workspace.NewMemberships(pool)})
-	ws := workspace.New(workspaceDeps(cfg, pool, logger, authorizer))
+	ws := workspace.New(workspaceDeps(cfg, pool, logger, authorizer, invitationKey))
 	api, err := httpserver.NewAPI(apiConfig(cfg, logger, limiter, ident.Authenticator(),
-		slices.Concat(ident.PublicOperations(), inst.PublicOperations()), ident.RequestTimeouts()))
+		slices.Concat(ident.PublicOperations(), inst.PublicOperations(), ws.PublicOperations()), ident.RequestTimeouts()))
 	if err != nil {
 		return nil, err
 	}

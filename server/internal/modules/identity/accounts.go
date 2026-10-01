@@ -21,14 +21,23 @@ type (
 	DeactivationVetoer = app.DeactivationVetoer
 	// DeactivationSubscriber follows a deactivation, in its transaction.
 	DeactivationSubscriber = app.DeactivationSubscriber
+
+	// SignupPolicy decides whether a registration may go on: bootstrap's,
+	// which another module's invitations may open (M2/P3 design 3.6).
+	SignupPolicy = app.SignupPolicy
+	// SignupAttempt is what a registration shows the policy.
+	SignupAttempt = app.SignupAttempt
+	// SignupInvitation is an invitation a registration carries.
+	SignupInvitation = app.SignupInvitation
 )
 
 // Accounts is what a module that gives an account new access calls first
 // in its transaction (M1/P3 design 3.6): ShareActiveAccount locks the
-// account row FOR SHARE and confirms the account is active, so a
-// deactivation and the new access run one after the other.
+// account row FOR SHARE, confirms the account is active and returns its
+// address read under the lock, so a deactivation, or a change of the
+// address, and the new access run one after the other (M2/P3 design 3.3).
 type Accounts interface {
-	ShareActiveAccount(ctx context.Context, id uuid.UUID) error
+	ShareActiveAccount(ctx context.Context, id uuid.UUID) (email string, err error)
 }
 
 // NewAccounts returns Accounts over pool alone: bootstrap builds it before

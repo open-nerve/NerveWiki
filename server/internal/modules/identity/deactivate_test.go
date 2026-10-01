@@ -225,7 +225,7 @@ func TestADeactivationWaitsForATransactionThatSharesTheAccount(t *testing.T) {
 
 	join := async(func() error {
 		return tx.WithinTx(ctx, func(ctx context.Context) error {
-			if err := identity.NewAccounts(pool).ShareActiveAccount(ctx, id); err != nil {
+			if _, err := identity.NewAccounts(pool).ShareActiveAccount(ctx, id); err != nil {
 				return err
 			}
 			if _, err := postgres.DB(ctx, pool).Exec(ctx, `INSERT INTO memberships VALUES ($1)`, id); err != nil {
@@ -267,7 +267,10 @@ func TestATransactionThatSharesTheAccountWaitsForADeactivation(t *testing.T) {
 	go func() { done <- deactivate(h, tokens.AccessToken) }()
 	g.await(t)
 	join := async(func() error {
-		return tx.WithinTx(ctx, func(ctx context.Context) error { return identity.NewAccounts(pool).ShareActiveAccount(ctx, id) })
+		return tx.WithinTx(ctx, func(ctx context.Context) error {
+			_, err := identity.NewAccounts(pool).ShareActiveAccount(ctx, id)
+			return err
+		})
 	})
 	pgtest.WaitForLockWaits(t, pool, 1, waitLimit)
 	g.open()
@@ -278,7 +281,8 @@ func TestATransactionThatSharesTheAccountWaitsForADeactivation(t *testing.T) {
 		t.Errorf("deactivate = %d, join = %v; want 204, then identity.account_deactivated", res.StatusCode, joinErr)
 	}
 	if err := tx.WithinTx(ctx, func(ctx context.Context) error {
-		return identity.NewAccounts(pool).ShareActiveAccount(ctx, uuid.NewV7())
+		_, err := identity.NewAccounts(pool).ShareActiveAccount(ctx, uuid.NewV7())
+		return err
 	}); !errors.Is(err, domain.ErrAccountNotFound) {
 		t.Errorf("ShareActiveAccount(unknown) = %v, want identity.account_not_found", err)
 	}
