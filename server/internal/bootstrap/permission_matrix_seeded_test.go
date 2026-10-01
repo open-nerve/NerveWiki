@@ -5,6 +5,7 @@ import (
 	"crypto/ed25519"
 	"crypto/x509"
 	"encoding/pem"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -20,10 +21,11 @@ import (
 )
 
 // What the matrix prepares. Three workspaces: acme, which the columns
-// target; gone, deleted by its admin, the deleted column's caller; and
-// other, whose admin is the column that was never a member of acme and
-// where the ended member of acme is still a member: a role read in the
-// wrong workspace lets either into acme.
+// target; gone, deleted by its admin, the deleted column's caller, with a
+// member the deleted column's member rows aim at; and other, whose admin is
+// the column that was never a member of acme and where the ended member of
+// acme is still a member: a role read in the wrong workspace lets either
+// into acme.
 
 // matrixWorkspace is a seeded workspace and the column that is its admin.
 type matrixWorkspace struct {
@@ -35,23 +37,24 @@ func matrixWorkspaces() []matrixWorkspace {
 	return []matrixWorkspace{{"acme", callerAdmin}, {"gone", callerDeleted}, {"other", callerNever}}
 }
 
-// matrixMembership is a seeded membership, ended or not.
+// matrixMembership is a seeded membership. The ended member's of acme is
+// ended, and gone's are deleted, by prepareMatrix through the API.
 type matrixMembership struct {
-	slug  string
-	c     caller
-	role  shared.WorkspaceRole
-	ended bool
+	slug string
+	c    caller
+	role shared.WorkspaceRole
 }
 
 func matrixMemberships() []matrixMembership {
 	return []matrixMembership{
-		{"acme", callerAdmin, shared.WorkspaceAdmin, false},
-		{"acme", callerMember, shared.WorkspaceMember, false},
-		{"acme", callerGuest, shared.WorkspaceGuest, false},
-		{"acme", callerEnded, shared.WorkspaceMember, true},
-		{"gone", callerDeleted, shared.WorkspaceAdmin, false},
-		{"other", callerNever, shared.WorkspaceAdmin, false},
-		{"other", callerEnded, shared.WorkspaceMember, false},
+		{"acme", callerAdmin, shared.WorkspaceAdmin},
+		{"acme", callerMember, shared.WorkspaceMember},
+		{"acme", callerGuest, shared.WorkspaceGuest},
+		{"acme", callerEnded, shared.WorkspaceMember},
+		{"gone", callerDeleted, shared.WorkspaceAdmin},
+		{"gone", callerMember, shared.WorkspaceMember},
+		{"other", callerNever, shared.WorkspaceAdmin},
+		{"other", callerEnded, shared.WorkspaceMember},
 	}
 }
 
@@ -143,12 +146,11 @@ func (d matrixData) config(t *testing.T, url string, change func(*config.Config)
 
 // prepareMatrix fills a database for the matrix: an account for each
 // column, registered through the API for its token; the workspaces and
-// memberships through SQL, with the ids newSeeded fixed; gone deleted as
-// deleting a workspace leaves it, its memberships deleted with it. The
-// operations that end a membership and delete a workspace replace the SQL
-// when they come (M2/P2). Everything that connected to the database is
-// closed when it returns, so that it can be copied. A -run that leaves out
-// prepare fails here, not with a 401 in every cell.
+// memberships through SQL, with the ids newSeeded fixed (members join by
+// invitation from M2/P3 on); then, through the API, acme's admin removes the
+// ended member, and gone's admin deletes it. Everything that connected to
+// the database is closed when it returns, so that it can be copied. A -run
+// that leaves out prepare fails here, not with a 401 in every cell.
 func prepareMatrix(t *testing.T) matrixData {
 	t.Helper()
 	d := matrixData{url: pgtest.NewDatabase(t), keyFile: signingKeyFile(t), tokens: map[caller]string{}, seeded: newSeeded()}
@@ -173,16 +175,21 @@ func prepareMatrix(t *testing.T) matrixData {
 				d.seeded.workspaces[w.slug], emailOf(w.admin), w.slug, now)
 		}
 		for _, m := range matrixMemberships() {
-			var ended *time.Time
-			if m.ended {
-				ended = &now
-			}
-			exec("INSERT INTO workspace_members (id, workspace_id, user_id, role, ended_at, created_by_id, updated_by_id, created_at, updated_at) "+
-				"VALUES ($1, $3, "+account+", $4, $5, "+account+", "+account+", $6, $6)",
-				d.seeded.memberships[m.slug+"/"+string(m.c)], emailOf(m.c), d.seeded.workspaces[m.slug], string(m.role), ended, now)
+			exec("INSERT INTO workspace_members (id, workspace_id, user_id, role, created_by_id, updated_by_id, created_at, updated_at) "+
+				"VALUES ($1, $3, "+account+", $4, "+account+", "+account+", $5, $5)",
+				d.seeded.memberships[m.slug+"/"+string(m.c)], emailOf(m.c), d.seeded.workspaces[m.slug], string(m.role), now)
 		}
-		exec("UPDATE workspaces SET deleted_at = $2, updated_at = $2 WHERE id = $1", d.seeded.workspaces["gone"], now)
-		exec("UPDATE workspace_members SET deleted_at = $2, updated_at = $2 WHERE workspace_id = $1", d.seeded.workspaces["gone"], now)
+		for _, end := range []struct {
+			by   caller
+			path string
+		}{
+			{callerAdmin, "/api/v0/workspace-members/" + d.seeded.memberships["acme/"+string(callerEnded)].String()},
+			{callerDeleted, "/api/v0/workspaces/gone"},
+		} {
+			if status, answer := ask(t, contract, http.MethodDelete, base+end.path, d.tokens[end.by], ""); status != http.StatusNoContent {
+				t.Fatalf("DELETE %s = %d %s, want 204", end.path, status, answer)
+			}
+		}
 	})
 	if !prepared {
 		t.FailNow()

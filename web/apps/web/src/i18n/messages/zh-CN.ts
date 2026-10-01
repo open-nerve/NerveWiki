@@ -105,6 +105,7 @@ export const zhCN: Messages = {
   "problem.rate_limitedFor": "尝试太频繁，请 {seconds} 秒后再试。",
   "problem.internal_error": "服务器出错了，请重试。",
   "problem.unauthorized": "登录已失效，请重新登录。",
+  "problem.forbidden": "你没有权限执行这个操作。",
   "problem.validation_failed": "有些内容不符合要求。",
   "problem.server_busy": "服务器繁忙，请稍后再试。",
   "problem.identity.signup_disabled": "本服务器未开放注册。",
@@ -116,6 +117,10 @@ export const zhCN: Messages = {
   "problem.workspace.not_found": "这个工作区不存在，或者你不是它的成员。",
   "problem.workspace.creation_disabled": "本服务器不允许创建工作区，请联系服务器管理员。",
   "problem.workspace.slug_taken": "这个地址已经被别的工作区使用。",
+  "problem.workspace.member_not_found": "这个人已经不是工作区的成员。",
+  "problem.workspace.own_membership": "不能修改或移出自己的成员身份。",
+  "problem.workspace.sole_admin":
+    "你是这个工作区唯一的管理员。请先让另一位成员成为管理员；工作区里没有别人时，可以删除它。",
   "problem.network": "连不上服务器，请检查网络后重试。",
   "problem.unavailable": "暂时连不上服务器。你仍在登录状态，请稍后重试。",
   "problem.storage": "此浏览器无法保存登录状态：本站的存储空间已满或被阻止。请释放空间或允许本站的网站数据后重试。",

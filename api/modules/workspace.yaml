@@ -76,6 +76,137 @@ paths:
                 $ref: "#/components/schemas/Workspace"
         default:
           $ref: "#/components/responses/Problem"
+    patch:
+      operationId: updateWorkspace
+      tags: [workspace]
+      summary: Rename a workspace
+      description: >-
+        Gives the workspace a new name; only its admins can. A workspace that
+        does not exist, is deleted, or that the caller is no active member of
+        is workspace.not_found; a member or a guest gets forbidden; the name is
+        checked after both.
+      security: [{ bearer: [] }]
+      x-problem-codes: [workspace.not_found, forbidden, validation_failed]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkspaceUpdate"
+      responses:
+        "200":
+          description: The renamed workspace, with the caller's role.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Workspace"
+        default:
+          $ref: "#/components/responses/Problem"
+    delete:
+      operationId: deleteWorkspace
+      tags: [workspace]
+      summary: Delete a workspace
+      description: >-
+        Deletes the workspace with every membership of it; only its admins
+        can. No one sees it afterwards, and its slug can name a new workspace
+        at once. A workspace that does not exist, is deleted, or that the
+        caller is no active member of is workspace.not_found; a member or a
+        guest gets forbidden.
+      security: [{ bearer: [] }]
+      x-problem-codes: [workspace.not_found, forbidden]
+      responses:
+        "204":
+          description: The workspace is deleted.
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v0/workspaces/{slug}/members:
+    parameters:
+      - $ref: "#/components/parameters/Slug"
+    get:
+      operationId: listWorkspaceMembers
+      tags: [workspace]
+      summary: List a workspace's members
+      description: >-
+        The workspace's active members, by when they joined, each with the
+        account's display name and, unless the caller is a guest, its email.
+        The list is not paged.
+      security: [{ bearer: [] }]
+      x-problem-codes: [workspace.not_found]
+      responses:
+        "200":
+          description: The members.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceMemberList"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v0/workspaces/{slug}/leave:
+    parameters:
+      - $ref: "#/components/parameters/Slug"
+    post:
+      operationId: leaveWorkspace
+      tags: [workspace]
+      summary: Leave a workspace
+      description: >-
+        Ends the caller's membership of the workspace. The workspace's only
+        active admin cannot leave it, even alone in it
+        (workspace.sole_admin): another member is made an admin first, or the
+        workspace is deleted.
+      security: [{ bearer: [] }]
+      x-problem-codes: [workspace.not_found, workspace.sole_admin]
+      responses:
+        "204":
+          description: The caller is no longer a member.
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v0/workspace-members/{workspace_member_id}:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceMemberID"
+    patch:
+      operationId: updateWorkspaceMember
+      tags: [workspace]
+      summary: Change a member's role
+      description: >-
+        Gives the member a new role; only the workspace's admins can, and not
+        their own (workspace.own_membership). A membership that does not
+        exist, has ended, or whose workspace the caller cannot see is
+        workspace.member_not_found; a member or a guest gets forbidden; the
+        role is checked after both.
+      security: [{ bearer: [] }]
+      x-problem-codes: [validation_failed, workspace.member_not_found, forbidden, workspace.own_membership]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkspaceMemberUpdate"
+      responses:
+        "200":
+          description: The member with the new role.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceMember"
+        default:
+          $ref: "#/components/responses/Problem"
+    delete:
+      operationId: removeWorkspaceMember
+      tags: [workspace]
+      summary: Remove a member
+      description: >-
+        Ends the member's membership; only the workspace's admins can, and
+        not their own (workspace.own_membership: an admin leaves instead). A
+        membership that does not exist, has ended, or whose workspace the
+        caller cannot see is workspace.member_not_found; a member or a guest
+        gets forbidden.
+      security: [{ bearer: [] }]
+      x-problem-codes: [workspace.member_not_found, forbidden, workspace.own_membership]
+      responses:
+        "204":
+          description: The membership has ended.
+        default:
+          $ref: "#/components/responses/Problem"
   /api/v0/workspace-slugs/{slug}:
     parameters:
       - $ref: "#/components/parameters/Slug"
@@ -114,6 +245,14 @@ components:
         wrong names no workspace, which the operation answers itself.
       schema:
         type: string
+    WorkspaceMemberID:
+      name: workspace_member_id
+      in: path
+      required: true
+      description: The id of a membership, as the member list answers it; not the account's id.
+      schema:
+        type: string
+        format: uuid
   responses:
     Problem:
       description: Error (RFC 9457 problem details).
@@ -189,6 +328,54 @@ components:
             1–48 of a–z, 0–9, _ and -, not a reserved name; it cannot be
             changed later.
           type: string
+    WorkspaceUpdate:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name:
+          description: 1–80 characters after the surrounding blanks are trimmed, without control characters.
+          type: string
+    WorkspaceMember:
+      description: A membership, with what the caller may see of the account.
+      type: object
+      additionalProperties: false
+      required: [id, user_id, role, display_name, email, created_at]
+      properties:
+        id:
+          description: The membership's id, which the member operations take.
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        role:
+          $ref: "#/components/schemas/WorkspaceRole"
+        display_name:
+          type: string
+        email:
+          description: The account's email; null when the caller is a guest.
+          type: [string, "null"]
+        created_at:
+          description: When the account joined.
+          type: string
+          format: date-time
+    WorkspaceMemberList:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkspaceMember"
+    WorkspaceMemberUpdate:
+      type: object
+      additionalProperties: false
+      required: [role]
+      properties:
+        role:
+          $ref: "#/components/schemas/WorkspaceRole"
     SlugAvailability:
       type: object
       additionalProperties: false

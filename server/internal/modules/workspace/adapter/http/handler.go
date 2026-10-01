@@ -32,12 +32,28 @@ type CheckSlugUseCase interface {
 	Execute(ctx context.Context, slug string) (string, error)
 }
 
+// UpdateWorkspaceUseCase is app.UpdateWorkspace.
+type UpdateWorkspaceUseCase interface {
+	Execute(ctx context.Context, slug, name string) (app.Membership, error)
+}
+
+// DeleteWorkspaceUseCase is app.DeleteWorkspace.
+type DeleteWorkspaceUseCase interface {
+	Execute(ctx context.Context, slug string) error
+}
+
 // UseCases are the use cases behind the module's operations.
 type UseCases struct {
 	ListWorkspaces  ListWorkspacesUseCase
 	CreateWorkspace CreateWorkspaceUseCase
 	GetWorkspace    GetWorkspaceUseCase
 	CheckSlug       CheckSlugUseCase
+	UpdateWorkspace UpdateWorkspaceUseCase
+	DeleteWorkspace DeleteWorkspaceUseCase
+	ListMembers     ListMembersUseCase
+	UpdateMember    UpdateMemberUseCase
+	RemoveMember    RemoveMemberUseCase
+	LeaveWorkspace  LeaveWorkspaceUseCase
 }
 
 // Register mounts the module's routes on router, the root router from
@@ -95,6 +111,23 @@ func (h handler) GetWorkspace(ctx context.Context, req gen.GetWorkspaceRequestOb
 		return nil, err
 	}
 	return gen.GetWorkspace200JSONResponse(workspaceOf(m)), nil
+}
+
+// UpdateWorkspace serves PATCH /api/v0/workspaces/{slug}.
+func (h handler) UpdateWorkspace(ctx context.Context, req gen.UpdateWorkspaceRequestObject) (gen.UpdateWorkspaceResponseObject, error) {
+	m, err := h.uc.UpdateWorkspace.Execute(ctx, req.Slug, req.Body.Name)
+	if err != nil {
+		return nil, err
+	}
+	return gen.UpdateWorkspace200JSONResponse(workspaceOf(m)), nil
+}
+
+// DeleteWorkspace serves DELETE /api/v0/workspaces/{slug}.
+func (h handler) DeleteWorkspace(ctx context.Context, req gen.DeleteWorkspaceRequestObject) (gen.DeleteWorkspaceResponseObject, error) {
+	if err := h.uc.DeleteWorkspace.Execute(ctx, req.Slug); err != nil {
+		return nil, err
+	}
+	return gen.DeleteWorkspace204Response{}, nil
 }
 
 // CheckWorkspaceSlug serves GET /api/v0/workspace-slugs/{slug}.

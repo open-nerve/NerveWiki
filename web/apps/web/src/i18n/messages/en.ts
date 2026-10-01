@@ -108,6 +108,7 @@ export const en = {
   "problem.rate_limitedFor": "Too many attempts. Try again in {seconds} s.",
   "problem.internal_error": "Something went wrong on the server. Try again.",
   "problem.unauthorized": "Your session has ended. Sign in again.",
+  "problem.forbidden": "You do not have permission to do this.",
   "problem.validation_failed": "Some values are not valid.",
   "problem.server_busy": "The server is busy. Try again in a moment.",
   "problem.identity.signup_disabled": "Sign-up is disabled on this server.",
@@ -120,6 +121,10 @@ export const en = {
   "problem.workspace.creation_disabled":
     "Creating workspaces is disabled on this server. Ask the server's administrator.",
   "problem.workspace.slug_taken": "Another workspace already has this address.",
+  "problem.workspace.member_not_found": "This person is no longer a member of the workspace.",
+  "problem.workspace.own_membership": "You cannot change or remove your own membership.",
+  "problem.workspace.sole_admin":
+    "You are the workspace's only admin. Make another member an admin first, or, if no one else is in it, delete the workspace.",
   "problem.network": "Cannot reach the server. Check the connection and try again.",
   "problem.unavailable": "Cannot reach the server for now. You are still signed in; try again in a moment.",
   "problem.storage":

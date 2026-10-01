@@ -56,17 +56,23 @@ func instanceDeps(cfg config.Config) instance.Deps {
 	return instance.Deps{SignupEnabled: cfg.Auth.SignupEnabled, WorkspaceCreationEnabled: cfg.Workspace.CreationEnabled}
 }
 
-// workspaceDeps are workspace's: the decisions of the access module, and
-// identity's share of the account row for the memberships it grants.
+// workspaceDeps are workspace's: the decisions of the access module;
+// identity's share of the account row for the memberships it grants, and
+// its profiles for the member list; the extension points' registrants.
 func workspaceDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, authorizer shared.Authorizer) workspace.Deps {
+	ext := workspaceRegistrants()
 	return workspace.Deps{
-		Pool:            pool,
-		Tx:              postgres.NewTxManager(pool, cfg.Database.CommitTimeout),
-		Clock:           clock.System{},
-		Logger:          logger,
-		Authorizer:      authorizer,
-		Accounts:        identity.NewAccounts(pool),
-		CreationEnabled: cfg.Workspace.CreationEnabled,
+		Pool:                     pool,
+		Tx:                       postgres.NewTxManager(pool, cfg.Database.CommitTimeout),
+		Clock:                    clock.System{},
+		Logger:                   logger,
+		Authorizer:               authorizer,
+		Accounts:                 identity.NewAccounts(pool),
+		Profiles:                 memberProfiles{identity.NewProfiles(pool)},
+		CreationEnabled:          cfg.Workspace.CreationEnabled,
+		MembershipEndVetoers:     ext.endVetoers,
+		MembershipEndSubscribers: ext.endSubscribers,
+		DeletionSubscribers:      ext.deletionFollowers,
 	}
 }
 
