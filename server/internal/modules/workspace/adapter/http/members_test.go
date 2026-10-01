@@ -150,6 +150,10 @@ func TestTheMemberOperationsAnswerEachProblem(t *testing.T) {
 		{httpadapter.UseCases{RemoveMember: fakeRemove{err: domain.ErrOwnMembership}}, http.MethodDelete, bobPath, "", 409, "workspace.own_membership"},
 		{httpadapter.UseCases{LeaveWorkspace: errUseCase{err: domain.ErrNotFound}}, http.MethodPost, "/api/v0/workspaces/acme/leave", "", 404, "workspace.not_found"},
 		{httpadapter.UseCases{LeaveWorkspace: errUseCase{err: domain.ErrSoleAdmin}}, http.MethodPost, "/api/v0/workspaces/acme/leave", "", 409, "workspace.sole_admin"},
+		// The notebook module's rule two, a vetoer's refusal: its code is
+		// spelt out here, the workspace module does not import it.
+		{httpadapter.UseCases{LeaveWorkspace: errUseCase{err: shared.NewError(shared.KindConflict, "notebook.sole_admin", "…")}},
+			http.MethodPost, "/api/v0/workspaces/acme/leave", "", 409, "notebook.sole_admin"},
 	} {
 		status, body := call(t, serve(t, tt.uc), tt.method, tt.path, tt.body)
 		if status != tt.status || !strings.Contains(body, `"code":"`+tt.code+`"`) {

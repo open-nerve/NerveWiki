@@ -156,7 +156,7 @@ export interface paths {
         put?: never;
         /**
          * Deactivate the caller's account
-         * @description Deactivates the account: every session ends, and the personal access tokens stop working while it is inactive. Only the server's administrator can activate it again; sign-in then answers identity.account_deactivated. No password is asked for. The modules that keep the account's access elsewhere may refuse the deactivation with a code of their own, listed here: workspace.sole_admin when the account is the only admin of a workspace with other members, which the detail names. The deactivation ends the account's memberships of workspaces.
+         * @description Deactivates the account: every session ends, and the personal access tokens stop working while it is inactive. Only the server's administrator can activate it again; sign-in then answers identity.account_deactivated. No password is asked for. The modules that keep the account's access elsewhere may refuse the deactivation with a code of their own, listed here: workspace.sole_admin when the account is the only admin of a workspace with other members, which the detail names; notebook.sole_admin when it is the only admin of a notebook with other members, which the detail counts by workspace. The deactivation ends the account's memberships of workspaces and of their notebooks.
          */
         post: operations["deactivateMe"];
         delete?: never;
@@ -323,7 +323,7 @@ export interface paths {
         put?: never;
         /**
          * Leave a workspace
-         * @description Ends the caller's membership of the workspace; pending invitations of the workspace to the caller's address are deleted with it. The workspace's only active admin cannot leave it, even alone in it (workspace.sole_admin): another member is made an admin first, or the workspace is deleted.
+         * @description Ends the caller's membership of the workspace; pending invitations of the workspace to the caller's address are deleted with it. The workspace's only active admin cannot leave it, even alone in it (workspace.sole_admin): another member is made an admin first, or the workspace is deleted. Nor can the only active admin of one of its notebooks with other members (notebook.sole_admin, whose detail counts them); the caller's notebook memberships end with it, and a notebook it was the only admin of becomes ownerless.
          */
         post: operations["leaveWorkspace"];
         delete?: never;
@@ -374,7 +374,7 @@ export interface paths {
         post?: never;
         /**
          * Remove a member
-         * @description Ends the member's membership, and deletes the workspace's pending invitations to the member's address; only the workspace's admins can, and not their own (workspace.own_membership: an admin leaves instead). A membership that does not exist, has ended, or whose workspace the caller cannot see is workspace.member_not_found; a member or a guest gets forbidden.
+         * @description Ends the member's membership, and deletes the workspace's pending invitations to the member's address; only the workspace's admins can, and not their own (workspace.own_membership: an admin leaves instead). A membership that does not exist, has ended, or whose workspace the caller cannot see is workspace.member_not_found; a member or a guest gets forbidden. The member's notebook memberships end with it, and a notebook the member was the only admin of becomes ownerless.
          */
         delete: operations["removeWorkspaceMember"];
         options?: never;

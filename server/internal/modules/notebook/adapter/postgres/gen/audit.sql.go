@@ -12,6 +12,39 @@ import (
 	"uuid"
 )
 
+const addAuditEvent = `-- name: AddAuditEvent :exec
+INSERT INTO notebook_audit_events (id, workspace_id, notebook_id, notebook_name, action, former_owner_id, created_by_id,
+    updated_by_id, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5,
+    $6, $7, $7, $8, $8)
+`
+
+type AddAuditEventParams struct {
+	ID            uuid.UUID
+	WorkspaceID   uuid.UUID
+	NotebookID    uuid.UUID
+	NotebookName  string
+	Action        string
+	FormerOwnerID uuid.UUID
+	ActorID       uuid.UUID
+	At            time.Time
+}
+
+// The actor is the event's creator and last updater: an event changes only with its workspace's deletion.
+func (q *Queries) AddAuditEvent(ctx context.Context, arg AddAuditEventParams) error {
+	_, err := q.db.Exec(ctx, addAuditEvent,
+		arg.ID,
+		arg.WorkspaceID,
+		arg.NotebookID,
+		arg.NotebookName,
+		arg.Action,
+		arg.FormerOwnerID,
+		arg.ActorID,
+		arg.At,
+	)
+	return err
+}
+
 const deleteAuditEventsOf = `-- name: DeleteAuditEventsOf :exec
 UPDATE notebook_audit_events
 SET deleted_at = $1::timestamptz, updated_by_id = $2, updated_at = $1

@@ -16,8 +16,9 @@ import (
 
 // WorkspaceCommand is one `nervewiki workspaces` command on the workspace
 // module's administrator use cases: it runs and returns the line it
-// prints.
-type WorkspaceCommand func(ctx context.Context, admin *workspace.Admin) (string, error)
+// prints. returned counts the ownerless notebooks that the restores it
+// made returned (M3/P3 design 3.5).
+type WorkspaceCommand func(ctx context.Context, admin *workspace.Admin, returned *int) (string, error)
 
 // Workspaces runs cmd on the command line's composition (M2/P4 design 3.3):
 // a pool, identity's accounts and the workspace module's administrator use
@@ -31,7 +32,8 @@ func Workspaces(ctx context.Context, cfg config.Config, logOut, out io.Writer, c
 		return err
 	}
 	defer c.close()
-	ext := workspaceRegistrants(c.pool)
+	var returned int
+	ext := workspaceRegistrants(c.pool, &returned)
 	admin := workspace.NewAdmin(workspace.AdminDeps{
 		Pool:                         c.pool,
 		Tx:                           postgres.NewTxManager(c.pool, cfg.Database.CommitTimeout),
@@ -40,13 +42,13 @@ func Workspaces(ctx context.Context, cfg config.Config, logOut, out io.Writer, c
 		Accounts:                     identity.NewAccounts(c.pool),
 		MembershipRestoreSubscribers: ext.restoreSubscribers,
 	})
-	line, err := cmd(ctx, admin)
+	line, err := cmd(ctx, admin, &returned)
 	return printResult(out, line, err)
 }
 
 // CreateWorkspace is `nervewiki workspaces create`.
 func CreateWorkspace(slug, name, adminEmail string) WorkspaceCommand {
-	return func(ctx context.Context, admin *workspace.Admin) (string, error) {
+	return func(ctx context.Context, admin *workspace.Admin, _ *int) (string, error) {
 		w, err := admin.CreateWorkspace(ctx, name, slug, adminEmail)
 		return fmt.Sprintf("created workspace %s (%s) with admin %s", w.Slug, w.ID, shared.NormalizeEmail(adminEmail)), err
 	}
@@ -54,13 +56,13 @@ func CreateWorkspace(slug, name, adminEmail string) WorkspaceCommand {
 
 // ReactivateMember is `nervewiki workspaces reactivate-member`.
 func ReactivateMember(slug, email string) WorkspaceCommand {
-	return func(ctx context.Context, admin *workspace.Admin) (string, error) {
+	return func(ctx context.Context, admin *workspace.Admin, returned *int) (string, error) {
 		r, err := admin.ReactivateMember(ctx, slug, email)
 		email := shared.NormalizeEmail(email)
 		if r.Already {
 			return email + " is already a member of " + r.Slug, err
 		}
-		return fmt.Sprintf("reactivated %s in %s as %s; the membership had ended at %s",
-			email, r.Slug, r.Role, r.EndedAt.UTC().Format(time.RFC3339)), err
+		return fmt.Sprintf("reactivated %s in %s as %s; the membership had ended at %s; ownerless notebooks returned: %d",
+			email, r.Slug, r.Role, r.EndedAt.UTC().Format(time.RFC3339), *returned), err
 	}
 }

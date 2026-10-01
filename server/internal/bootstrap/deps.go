@@ -66,7 +66,7 @@ func instanceDeps(cfg config.Config) instance.Deps {
 func workspaceDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, authorizer shared.Authorizer,
 	invitationKey []byte,
 ) workspace.Deps {
-	ext := workspaceRegistrants(pool)
+	ext := workspaceRegistrants(pool, nil)
 	return workspace.Deps{
 		Pool:                          pool,
 		Tx:                            postgres.NewTxManager(pool, cfg.Database.CommitTimeout),

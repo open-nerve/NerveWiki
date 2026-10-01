@@ -154,3 +154,44 @@ type NotebooksDeleter interface {
 	// workspaceID, by by at at.
 	DeleteAuditEventsOf(ctx context.Context, workspaceID, by uuid.UUID, at time.Time) error
 }
+
+// WorkspaceSlugs names workspaces: the workspace module's Workspaces,
+// which bootstrap wires to it (M3/P3 design 3.5).
+type WorkspaceSlugs interface {
+	// Slugs returns the slugs of the workspaces not deleted among ids, by
+	// id, unlocked.
+	Slugs(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]string, error)
+}
+
+// Holdings ends an account's notebook memberships with its workspace
+// memberships (M3/P3 design 3.2).
+type Holdings interface {
+	// LockHoldings locks FOR NO KEY UPDATE, by id, the notebooks not
+	// deleted of workspaceIDs that userID is an active member of, and
+	// returns its holding of each, in that order.
+	LockHoldings(ctx context.Context, userID uuid.UUID, workspaceIDs []uuid.UUID) ([]domain.Holding, error)
+	// EndMembershipsOf ends userID's active memberships of notebookIDs, by
+	// by at at.
+	EndMembershipsOf(ctx context.Context, userID uuid.UUID, notebookIDs []uuid.UUID, by uuid.UUID, at time.Time) error
+	// SetOwnerless makes notebookIDs ownerless since at, formerOwner their
+	// former owner; their updated_at stays.
+	SetOwnerless(ctx context.Context, notebookIDs []uuid.UUID, formerOwner uuid.UUID, at time.Time) error
+}
+
+// Returner returns a former owner's ownerless notebooks when its workspace
+// membership is restored (M3/P3 design 3.2).
+type Returner interface {
+	// LockOwnerlessOf locks FOR NO KEY UPDATE, by id, the ownerless
+	// notebooks not deleted of workspaceID whose former owner is userID,
+	// and returns them in that order.
+	LockOwnerlessOf(ctx context.Context, workspaceID, userID uuid.UUID) ([]domain.Notebook, error)
+	// ReturnNotebooks makes userID's ended memberships of notebookIDs
+	// active again as their admin, by by at at, and the notebooks owned
+	// again; their updated_at stays.
+	ReturnNotebooks(ctx context.Context, notebookIDs []uuid.UUID, userID, by uuid.UUID, at time.Time) error
+}
+
+// AuditRecorder records what was done with an ownerless notebook.
+type AuditRecorder interface {
+	AddAuditEvent(ctx context.Context, e domain.AuditEvent) error
+}

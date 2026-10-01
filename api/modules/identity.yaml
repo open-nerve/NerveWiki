@@ -223,10 +223,12 @@ paths:
         that keep the account's access elsewhere may refuse the deactivation
         with a code of their own, listed here: workspace.sole_admin when the
         account is the only admin of a workspace with other members, which
-        the detail names. The deactivation ends the account's memberships of
-        workspaces.
+        the detail names; notebook.sole_admin when it is the only admin of a
+        notebook with other members, which the detail counts by workspace.
+        The deactivation ends the account's memberships of workspaces and of
+        their notebooks.
       security: [{ bearer: [] }]
-      x-problem-codes: [workspace.sole_admin]
+      x-problem-codes: [workspace.sole_admin, notebook.sole_admin]
       responses:
         "204":
           description: The account is deactivated.

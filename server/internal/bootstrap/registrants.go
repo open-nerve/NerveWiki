@@ -20,7 +20,7 @@ import (
 // the workspace module's: rule two, and the end of the account's
 // memberships through the membership end's registrants (M2/P4 design 3.1).
 func deactivationRegistrants(pool *pgxpool.Pool) ([]identity.DeactivationVetoer, []identity.DeactivationSubscriber) {
-	ext := workspaceRegistrants(pool)
+	ext := workspaceRegistrants(pool, nil)
 	ws := deactivation{workspace.NewDeactivation(pool, ext.endVetoers, ext.endSubscribers)}
 	return []identity.DeactivationVetoer{ws}, []identity.DeactivationSubscriber{ws}
 }
@@ -58,24 +58,71 @@ type workspaceExtensions struct {
 // workspaceRegistrants are the modules that take part in the workspace
 // module's membership ends, restores, deletions, additions and role
 // changes: the notebook module follows a deletion (M3/P1), an addition and
-// a role change (M3/P2); its part in the ends and restores comes with
-// M3/P3.
-func workspaceRegistrants(pool *pgxpool.Pool) workspaceExtensions {
-	return workspaceRegistrantsWith(pool, notebookRegistrants())
+// a role change (M3/P2), and vetoes and follows an end and follows a
+// restore (M3/P3). returned, when set, counts the notebooks the restores
+// return: the command line prints it; serve hands nil.
+func workspaceRegistrants(pool *pgxpool.Pool, returned *int) workspaceExtensions {
+	return workspaceRegistrantsWith(pool, notebookRegistrants(), returned)
 }
 
 // workspaceRegistrantsWith is workspaceRegistrants with nb, the notebook
 // module's registrants, whom the notebook module's parts call in turn: a
 // test hands its own.
-func workspaceRegistrantsWith(pool *pgxpool.Pool, nb notebookExtensions) workspaceExtensions {
+func workspaceRegistrantsWith(pool *pgxpool.Pool, nb notebookExtensions, returned *int) workspaceExtensions {
 	events := workspaceMemberEvents{notebook.NewWorkspaceMemberEvents(nb.visibilitySubscribers)}
+	end := membershipEnd{notebook.NewMembershipEnd(pool, workspace.NewWorkspaces(pool), nb.visibilitySubscribers)}
 	return workspaceExtensions{
+		endVetoers:     []workspace.MembershipEndVetoer{end},
+		endSubscribers: []workspace.MembershipEndSubscriber{end},
 		deletionSubscribers: []workspace.WorkspaceDeletionSubscriber{
 			workspaceDeletion{notebook.NewWorkspaceDeletion(pool, nb.deletionSubscribers)},
+		},
+		restoreSubscribers: []workspace.MembershipRestoreSubscriber{
+			membershipRestore{notebook.NewMembershipRestore(pool, nb.visibilitySubscribers), returned},
 		},
 		additionSubscribers:   []workspace.MembershipAdditionSubscriber{events},
 		roleChangeSubscribers: []workspace.MemberRoleChangeSubscriber{events},
 	}
+}
+
+// membershipEnd is the notebook module's part in a membership end as the
+// workspace module calls it: its rule two refuses an account that leaves
+// itself, by leaving or by being deactivated, which the cause tells; a
+// removal is not refused (M3 design 4).
+type membershipEnd struct {
+	notebook notebook.MembershipEnd
+}
+
+func (m membershipEnd) VetoMembershipEnd(ctx context.Context, e workspace.MembershipEnd) error {
+	return m.notebook.VetoMembershipEnd(ctx, membershipEnded(e))
+}
+
+func (m membershipEnd) MembershipEnded(ctx context.Context, e workspace.MembershipEnd) error {
+	return m.notebook.MembershipEnded(ctx, membershipEnded(e))
+}
+
+// membershipEnded is e as the notebook module reads it.
+func membershipEnded(e workspace.MembershipEnd) notebook.WorkspaceMembershipEnd {
+	return notebook.WorkspaceMembershipEnd{
+		UserID: e.UserID, WorkspaceIDs: e.WorkspaceIDs, Voluntary: e.Cause == workspace.EndLeft || e.Cause == workspace.EndDeactivated,
+		By: e.By, At: e.At,
+	}
+}
+
+// membershipRestore is the notebook module's part in a membership restore
+// as the workspace module calls it, adding the notebooks it returns to
+// returned when set.
+type membershipRestore struct {
+	notebook notebook.MembershipRestore
+	returned *int
+}
+
+func (r membershipRestore) MembershipRestored(ctx context.Context, x workspace.MembershipRestore) error {
+	n, err := r.notebook.MembershipRestored(ctx, notebook.WorkspaceMembershipRestore(x))
+	if err == nil && r.returned != nil {
+		*r.returned += n
+	}
+	return err
 }
 
 // workspaceDeletion is the notebook module's part in a workspace's

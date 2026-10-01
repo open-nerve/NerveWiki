@@ -104,7 +104,7 @@ test("W10 (command line): users deactivate refuses the only admin and says why; 
   await nervewikiUsers(db, ["activate", "--email", memberEmail]);
   const ended = await endedAt(db, workspace.id, memberId);
   expect(await nervewikiWorkspaces(db, ["reactivate-member", "--workspace", slug, "--email", memberEmail])).toBe(
-    `reactivated ${memberEmail} in ${slug} as member; the membership had ended at ${ended}\n`
+    `reactivated ${memberEmail} in ${slug} as member; the membership had ended at ${ended}; ownerless notebooks returned: 0\n`
   );
   await expectMembership(db, workspace.id, memberId, "member", joined?.created_at);
   // The member's personal access token outlived the deactivation: the workspace is theirs again.
