@@ -3,19 +3,10 @@ import { Link, useSearchParams } from "react-router";
 import useSWR from "swr";
 
 import { keepNext } from "../app/next-path";
-import { passwordLength } from "../app/password-length";
 import { Loading } from "../components/loading";
 import { useT } from "../i18n/i18n";
 import { useStore } from "../stores/context";
-import { CredentialsForm, type Credentials, type LocalProblems } from "./credentials-form";
-
-function check({ email, password }: Credentials): LocalProblems {
-  const length = passwordLength(password);
-  return {
-    ...(email.trim() === "" && { email: "field.required" }),
-    ...(length !== undefined && { password: `field.password.${length}` as const }),
-  };
-}
+import { CredentialsForm, signUpProblems } from "./credentials-form";
 
 /**
  * SignUpPage creates an account and signs in to it. While the instance
@@ -46,7 +37,7 @@ export const SignUpPage = observer(function SignUpPage() {
             passwordAutoComplete="new-password"
             passwordHint={t("signUp.passwordHint")}
             submitLabel={t("signUp.submit")}
-            check={check}
+            check={signUpProblems}
             submit={({ email, password }) => auth.signUp(email.trim(), password)}
           />
           <p className="text-sm text-muted-foreground">

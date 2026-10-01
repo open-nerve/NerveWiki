@@ -1,8 +1,16 @@
-import type { ApiClient, WorkspaceInvitation, WorkspaceInvitationCreate } from "@nervewiki/api-client";
+import type {
+  ApiClient,
+  InvitationPreview,
+  WorkspaceInvitation,
+  WorkspaceInvitationCreate,
+} from "@nervewiki/api-client";
 
 import { unwrap } from "./api";
 
-export type { WorkspaceInvitation, WorkspaceInvitationCreate };
+export type { InvitationPreview, WorkspaceInvitation, WorkspaceInvitationCreate };
+
+/** InvitationLink is what the link of an invitation carries: its id, and its token. */
+export type InvitationLink = { id: string; token: string };
 
 /**
  * InvitationService lists a workspace's pending invitations, with their
@@ -25,6 +33,24 @@ export class InvitationService {
     await unwrap(
       await this.api.DELETE("/api/v0/workspace-invitations/{workspace_invitation_id}", {
         params: { path: { workspace_invitation_id: id } },
+      })
+    );
+  }
+}
+
+/**
+ * InvitationPreviewService shows anyone holding an invitation's link what
+ * it invites to, on the session's public client (M2/P6 design 3.2).
+ */
+export class InvitationPreviewService {
+  constructor(private readonly api: ApiClient) {}
+
+  /** preview answers the workspace and the role the link invites to; never the address it was sent to. */
+  async preview({ id, token }: InvitationLink): Promise<InvitationPreview> {
+    return unwrap(
+      await this.api.POST("/api/v0/workspace-invitations/{workspace_invitation_id}/preview", {
+        params: { path: { workspace_invitation_id: id } },
+        body: { token },
       })
     );
   }

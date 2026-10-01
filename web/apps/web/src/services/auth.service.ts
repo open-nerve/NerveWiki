@@ -1,6 +1,7 @@
 import type { ApiClient, AuthTokens } from "@nervewiki/api-client";
 
 import { unwrap } from "./api";
+import type { InvitationLink } from "./invitation.service";
 
 export type { AuthTokens };
 
@@ -16,7 +17,12 @@ export class AuthService {
     return unwrap(await this.api.POST("/api/v0/auth/login", { body: { email, password } }));
   }
 
-  async register(email: string, password: string): Promise<AuthTokens> {
-    return unwrap(await this.api.POST("/api/v0/auth/register", { body: { email, password } }));
+  /**
+   * register creates an account; with an invitation, the address it was
+   * sent to registers while sign-up is closed (M2 design 4). It does not
+   * accept the invitation.
+   */
+  async register(email: string, password: string, invitation?: InvitationLink): Promise<AuthTokens> {
+    return unwrap(await this.api.POST("/api/v0/auth/register", { body: { email, password, invitation } }));
   }
 }

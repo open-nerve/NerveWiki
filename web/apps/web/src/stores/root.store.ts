@@ -2,7 +2,7 @@ import { AccountService } from "../services/account.service";
 import { ApiTokenService } from "../services/api-token.service";
 import { AuthService } from "../services/auth.service";
 import { InstanceService } from "../services/instance.service";
-import { InvitationService } from "../services/invitation.service";
+import { InvitationPreviewService, InvitationService } from "../services/invitation.service";
 import { MemberService } from "../services/member.service";
 import { WorkspaceService, type Workspace } from "../services/workspace.service";
 import type { Session } from "../session/session";
@@ -10,7 +10,7 @@ import { AccountStore } from "./account.store";
 import { ApiTokenStore } from "./api-token.store";
 import { AuthStore } from "./auth.store";
 import { InstanceStore } from "./instance.store";
-import { InvitationStore } from "./invitation.store";
+import { InvitationPreviewStore, InvitationStore } from "./invitation.store";
 import { MemberStore } from "./member.store";
 import type { PreferencesStore } from "./preferences.store";
 import { WorkspaceStore } from "./workspace.store";
@@ -42,6 +42,8 @@ export class RootStore {
   readonly preferences: PreferencesStore;
   readonly instance: InstanceStore;
   readonly auth: AuthStore;
+  /** What invitations' links invite to: signed out too. */
+  readonly invitationPreviews: InvitationPreviewStore;
   /** The signed-in account's store; undefined while the tab is signed out. */
   readonly account: AccountStore | undefined;
   /** The signed-in account's personal access tokens; undefined while the tab is signed out. */
@@ -61,6 +63,7 @@ export class RootStore {
     this.preferences = app.preferences;
     this.instance = app.instance;
     this.auth = new AuthStore(new AuthService(app.session.public), app.session.tokens, loginId);
+    this.invitationPreviews = new InvitationPreviewStore(new InvitationPreviewService(app.session.public));
     const client = loginId === undefined ? undefined : app.session.clientFor(loginId);
     this.account = client && new AccountStore(new AccountService(client));
     this.apiTokens = client && new ApiTokenStore(new ApiTokenService(client));

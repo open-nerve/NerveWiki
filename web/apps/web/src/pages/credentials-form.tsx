@@ -4,6 +4,8 @@ import { Alert } from "../components/ui/alert";
 import { Button } from "../components/ui/button";
 import { FormField } from "../components/form-field";
 import { useForm, type LocalProblems as FormProblems } from "../app/form";
+import type { ProblemTexts } from "../app/problem-messages";
+import { passwordLength } from "../app/password-length";
 import { useT } from "../i18n/i18n";
 
 export type Credentials = { email: string; password: string };
@@ -12,7 +14,24 @@ export type Credentials = { email: string; password: string };
 const fields: readonly (keyof Credentials)[] = ["email", "password"];
 
 /** The fields' problems found before sending: a message for each field that has one. */
-export type LocalProblems = FormProblems<keyof Credentials>;
+type LocalProblems = FormProblems<keyof Credentials>;
+
+/** signInProblems is what a sign-in lacks before it goes out. */
+export function signInProblems({ email, password }: Credentials): LocalProblems {
+  return {
+    ...(email.trim() === "" && { email: "field.required" }),
+    ...(password === "" && { password: "field.required" }),
+  };
+}
+
+/** signUpProblems is what a sign-up lacks before it goes out: a password of the length the server takes. */
+export function signUpProblems({ email, password }: Credentials): LocalProblems {
+  const length = passwordLength(password);
+  return {
+    ...(email.trim() === "" && { email: "field.required" }),
+    ...(length !== undefined && { password: `field.password.${length}` as const }),
+  };
+}
 
 type CredentialsFormProps = {
   /** "current-password" signs in, "new-password" signs up: password managers fill or offer by it. */
@@ -21,6 +40,8 @@ type CredentialsFormProps = {
   submitLabel: string;
   check: (credentials: Credentials) => LocalProblems;
   submit: (credentials: Credentials) => Promise<void>;
+  /** The form's own texts for some problem codes. */
+  texts?: ProblemTexts;
 };
 
 /**
@@ -36,10 +57,11 @@ export function CredentialsForm({
   submitLabel,
   check,
   submit,
+  texts,
 }: CredentialsFormProps) {
   const t = useT();
   const [credentials, setCredentials] = useState<Credentials>({ email: "", password: "" });
-  const { ref, sending, banner, problemOf, submit: send } = useForm(fields);
+  const { ref, sending, banner, problemOf, submit: send } = useForm(fields, { texts });
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

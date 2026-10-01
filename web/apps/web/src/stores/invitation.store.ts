@@ -1,7 +1,14 @@
 import { makeAutoObservable, runInAction } from "mobx";
 
 import { ApiError } from "../services/api";
-import type { InvitationService, WorkspaceInvitation, WorkspaceInvitationCreate } from "../services/invitation.service";
+import type {
+  InvitationLink,
+  InvitationPreview,
+  InvitationPreviewService,
+  InvitationService,
+  WorkspaceInvitation,
+  WorkspaceInvitationCreate,
+} from "../services/invitation.service";
 
 /**
  * InvitationStore holds the pending invitations of one workspace, newest
@@ -68,5 +75,18 @@ export class InvitationStore {
         this.list = change(this.list);
       }
     });
+  }
+}
+
+/**
+ * InvitationPreviewStore shows what an invitation's link invites to, to a
+ * tab signed out too (M2/P6 design 3.2): it holds nothing, the page's SWR
+ * keeps the answer.
+ */
+export class InvitationPreviewStore {
+  constructor(private readonly service: Pick<InvitationPreviewService, "preview">) {}
+
+  preview(link: InvitationLink): Promise<InvitationPreview> {
+    return this.service.preview(link);
   }
 }

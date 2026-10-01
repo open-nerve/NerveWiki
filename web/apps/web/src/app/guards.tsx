@@ -17,7 +17,7 @@ import { SessionUnavailable } from "./session-unavailable";
 // the page shown sends the tab on.
 
 /** useSession is the tab's session state; the component renders again on every change. */
-function useSession(): SessionState {
+export function useSession(): SessionState {
   const { auth } = useStore();
   return useSyncExternalStore(auth.subscribe, () => auth.state);
 }

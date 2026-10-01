@@ -1,6 +1,7 @@
 import { makeAutoObservable, runInAction } from "mobx";
 
 import { ApiError } from "../services/api";
+import type { InvitationLink } from "../services/invitation.service";
 import type { SlugAvailability, Workspace, WorkspaceCreate, WorkspaceService } from "../services/workspace.service";
 
 /**
@@ -33,7 +34,10 @@ export class WorkspaceStore {
   private readonly removed = new Set<string>();
 
   constructor(
-    private readonly service: Pick<WorkspaceService, "list" | "create" | "rename" | "remove" | "leave" | "checkSlug">
+    private readonly service: Pick<
+      WorkspaceService,
+      "list" | "create" | "rename" | "remove" | "leave" | "accept" | "checkSlug"
+    >
   ) {
     makeAutoObservable<this, "service" | "changesAnswered" | "removed">(this, {
       service: false,
@@ -80,6 +84,14 @@ export class WorkspaceStore {
     const renamed = await this.service.rename(slug, name);
     this.changed((list) => list.map((workspace) => (workspace.id === renamed.id ? renamed : workspace)));
     return renamed;
+  }
+
+  /** accept joins the workspace link invites to, and answers it with the account's role there. */
+  async accept(link: InvitationLink): Promise<Workspace> {
+    const joined = await this.service.accept(link);
+    // A read answered before the acceptance may hold it already.
+    this.changed((list) => [...list.filter((workspace) => workspace.id !== joined.id), joined]);
+    return joined;
   }
 
   /** remove deletes the workspace of slug. */

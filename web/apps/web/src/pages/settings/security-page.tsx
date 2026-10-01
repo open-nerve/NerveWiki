@@ -43,7 +43,7 @@ function ChangePasswordForm() {
   const [passwords, setPasswords] = useState<Passwords>({ current_password: "", new_password: "" });
   const [changed, setChanged] = useState(false);
   const { ref, sending, banner, problemOf, submit } = useForm(fields, {
-    "identity.current_password_incorrect": "current_password",
+    onField: { "identity.current_password_incorrect": "current_password" },
   });
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {

@@ -1,13 +1,14 @@
 import type { ApiClient, SlugAvailability, Workspace, WorkspaceCreate } from "@nervewiki/api-client";
 
 import { unwrap } from "./api";
+import type { InvitationLink } from "./invitation.service";
 
 export type { SlugAvailability, Workspace, WorkspaceCreate };
 
 /**
  * WorkspaceService lists, creates, renames and deletes the signed-in
- * account's workspaces, and leaves them (M2/P5 design 3.4, M2/P6 design
- * 3.2).
+ * account's workspaces, joins them by invitation and leaves them (M2/P5
+ * design 3.4, M2/P6 design 3.2).
  */
 export class WorkspaceService {
   constructor(private readonly api: ApiClient) {}
@@ -28,6 +29,16 @@ export class WorkspaceService {
 
   async remove(slug: string): Promise<void> {
     await unwrap(await this.api.DELETE("/api/v0/workspaces/{slug}", { params: { path: { slug } } }));
+  }
+
+  /** accept joins the workspace link invites to, and answers it with the account's role there. */
+  async accept({ id, token }: InvitationLink): Promise<Workspace> {
+    return unwrap(
+      await this.api.POST("/api/v0/workspace-invitations/{workspace_invitation_id}/accept", {
+        params: { path: { workspace_invitation_id: id } },
+        body: { token },
+      })
+    );
   }
 
   /** leave ends the account's membership of the workspace of slug. */

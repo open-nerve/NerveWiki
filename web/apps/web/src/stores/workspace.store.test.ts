@@ -23,6 +23,7 @@ function storeOf(list: Workspace[], overrides: Partial<Service> = {}) {
     rename: async (slug, name) => ({ ...workspace(slug, name), updated_at: "2026-10-01T09:00:00Z" }),
     remove: async () => {},
     leave: async () => {},
+    accept: async ({ id }) => workspace(id, id),
     checkSlug: async () => ({ available: true }),
     ...overrides,
   });
@@ -145,3 +146,45 @@ test.each(["remove", "leave"] as const)(
     expect([slugs(store), store.wasRemoved("zeta")]).toEqual([["zeta"], false]);
   }
 );
+
+test("an invitation accepted takes its workspace's place by name, once", async () => {
+  let answerAccept: ((joined: Workspace) => void) | undefined;
+  let reads = 0;
+  const store = storeOf([], {
+    list: async () =>
+      ++reads === 1
+        ? [workspace("acme", "Acme"), workspace("zeta", "Zeta")]
+        : [workspace("acme", "Acme"), workspace("lab", "Lab"), workspace("zeta", "Zeta")],
+    accept: () => new Promise<Workspace>((resolve) => (answerAccept = resolve)),
+  });
+  await store.load();
+
+  // A read that went out after the acceptance, answered before it.
+  const accepting = store.accept({ id: "i1", token: "nwk_inv_x" });
+  await store.load();
+  answerAccept?.(workspace("lab", "Lab"));
+
+  expect(await accepting).toEqual(workspace("lab", "Lab"));
+  expect(slugs(store)).toEqual(["acme", "lab", "zeta"]);
+});
+
+test("an invitation accepted adds its workspace to the list read", async () => {
+  const store = storeOf([workspace("acme", "Acme"), workspace("zeta", "Zeta")], {
+    accept: async () => ({ ...workspace("lab", "Lab"), role: "guest" }),
+  });
+  await store.load();
+
+  await store.accept({ id: "i1", token: "nwk_inv_x" });
+
+  expect(store.list?.map((w) => `${w.slug}:${w.role}`)).toEqual(["acme:admin", "lab:guest", "zeta:admin"]);
+});
+
+test("an invitation accepted before the first read leaves the list to it", async () => {
+  const store = storeOf([workspace("lab", "Lab")]);
+
+  await store.accept({ id: "lab", token: "nwk_inv_x" });
+  expect(store.list).toBeUndefined();
+  await store.load();
+
+  expect(slugs(store)).toEqual(["lab"]);
+});
