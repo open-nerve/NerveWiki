@@ -43,3 +43,31 @@ export async function checkSlug(api: ApiClient, credential: string, slug: string
   expect(response.status).toBe(200);
   return data;
 }
+
+/** Renames the workspace of slug with credential, as its admin, and returns it. */
+export async function renameWorkspace(
+  api: ApiClient,
+  credential: string,
+  slug: string,
+  name: string
+): Promise<Workspace> {
+  const { data, error, response } = await api.PATCH("/api/v0/workspaces/{slug}", {
+    params: { path: { slug } },
+    body: { name },
+    headers: bearer(credential),
+  });
+  expect(response.status, `rename ${slug}: ${JSON.stringify(error)}`).toBe(200);
+  if (!data) {
+    throw new Error(`rename ${slug} answered 200 without the workspace`);
+  }
+  return data;
+}
+
+/** Deletes the workspace of slug with credential, as its admin. */
+export async function deleteWorkspace(api: ApiClient, credential: string, slug: string): Promise<void> {
+  const { error, response } = await api.DELETE("/api/v0/workspaces/{slug}", {
+    params: { path: { slug } },
+    headers: bearer(credential),
+  });
+  expect(response.status, `delete ${slug}: ${JSON.stringify(error)}`).toBe(204);
+}

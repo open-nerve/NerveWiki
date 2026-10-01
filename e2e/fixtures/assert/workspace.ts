@@ -87,3 +87,39 @@ export async function countWorkspaces(db: Database): Promise<WorkspaceCounts> {
 export async function expectNoWorkspaceAdded(db: Database, before: WorkspaceCounts): Promise<void> {
   expect(await countWorkspaces(db)).toEqual(before);
 }
+
+/** workspaces: renamed is the row as the API answered the rename, last updated by adminId. */
+export async function expectRenamed(db: Database, renamed: Workspace, adminId: string): Promise<void> {
+  const rows = await db.query<Pick<WorkspaceRow, "name" | "updated_by_id" | "updated_at" | "deleted_at">>(
+    `SELECT name, updated_by_id, updated_at, deleted_at FROM workspaces WHERE id = $1`,
+    [renamed.id]
+  );
+  expect(rows).toEqual([
+    { name: renamed.name, updated_by_id: adminId, updated_at: new Date(renamed.updated_at), deleted_at: null },
+  ]);
+}
+
+/**
+ * workspaces and workspace_members: the workspace id is deleted by
+ * deleterId, and every membership of it with it, at the same time.
+ */
+export async function expectDeletedWithItsMembers(db: Database, id: string, deleterId: string): Promise<void> {
+  const [workspace] = await db.query<Pick<WorkspaceRow, "updated_by_id" | "updated_at" | "deleted_at">>(
+    `SELECT updated_by_id, updated_at, deleted_at FROM workspaces WHERE id = $1`,
+    [id]
+  );
+  expect(workspace?.deleted_at).toBeInstanceOf(Date);
+  expect(workspace).toEqual({
+    updated_by_id: deleterId,
+    updated_at: workspace?.deleted_at,
+    deleted_at: workspace?.deleted_at,
+  });
+  const members = await db.query<{ deleted_at: Date | null; updated_by_id: string }>(
+    `SELECT deleted_at, updated_by_id FROM workspace_members WHERE workspace_id = $1`,
+    [id]
+  );
+  expect(members.length).toBeGreaterThan(0);
+  for (const m of members) {
+    expect(m).toEqual({ deleted_at: workspace?.deleted_at, updated_by_id: deleterId });
+  }
+}
