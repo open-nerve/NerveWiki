@@ -116,7 +116,7 @@ test("an account with a step left goes to onboarding, which comes back to the pa
     signedInApp({ "GET /api/v0/me": () => json({ ...userJSON, onboarding_steps: [] }) })
   );
 
-  expect(await screen.findByText("Step 1 of 1")).toBeTruthy();
+  expect(await screen.findByText("Step 1 of 2")).toBeTruthy();
   expect(where(router)).toBe(`/onboarding?next=${encodeURIComponent("/acme?view=list")}`);
 });
 

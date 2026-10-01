@@ -33,6 +33,14 @@ export const onboardingSteps: readonly OnboardingStep[] = [
       return { default: ProfileStep };
     }),
   },
+  {
+    id: "workspace",
+    title: "onboarding.workspace.title",
+    Component: lazy(async () => {
+      const { WorkspaceStep } = await import("./workspace-step");
+      return { default: WorkspaceStep };
+    }),
+  },
 ];
 
 /**
