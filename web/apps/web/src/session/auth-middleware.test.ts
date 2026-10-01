@@ -88,13 +88,47 @@ describe("authMiddleware", () => {
     const me = track(api.GET(ME));
     await until(() => server.calls.length === 1, "the request");
     expect(server.calls[0]?.authorization).toBeNull();
-    // A sign-in while the request is out: the request stays the signed-out one it was.
+    // A sign-in while the request is out: the request stays the signed-out one it was, and stops.
     await tm.signIn(server.tokens());
     server.calls[0]?.answer(problem(401, "unauthorized"));
     await until(() => me.settled, "the answer");
-    expect(me.value?.response.status).toBe(401);
+    expect(me.error).toBeInstanceOf(SessionChangedError);
     await vi.advanceTimersByTimeAsync(1_000);
     expect(server.calls).toHaveLength(1);
+  });
+
+  it.each([
+    ["another tab signs in as Y", (tm: TokenManager, storage: SharedStorage) => storage.write(AUTH_KEY, recordY)],
+    ["the tab signs out", (tm: TokenManager) => void tm.signOut()],
+  ])("stops a request with SessionChangedError when %s before its success comes back", async (_, change) => {
+    const { storage, server, api, tm } = await setUp();
+    const saved = track(api.PATCH(ME, { body: { display_name: "Xavier" } }));
+    await until(() => server.calls.length === 1, "the request");
+    change(tm, storage);
+    await until(() => tm.state.loginId !== loginId, "the change of session");
+    server.calls[0]?.answer(json(200, user));
+    await until(() => saved.settled, "the answer");
+
+    // The server did it, but the request's caller, of the session the tab has left, does not go on in the
+    // tab's new one.
+    expect(saved.error).toBeInstanceOf(SessionChangedError);
+  });
+
+  it("stops a request with SessionChangedError when the tab moves to another session before its copy's success", async () => {
+    const { storage, server, api, tm } = await setUp();
+    const me = track(api.GET(ME));
+    await until(() => server.calls.length === 1, "the request");
+    server.calls[0]?.answer(problem(401, "unauthorized"));
+    await until(() => server.calls.length === 2, "the refresh");
+    server.calls[1]?.answer(json(200, server.tokens()));
+    await until(() => server.calls.length === 3, "the request again");
+    storage.write(AUTH_KEY, recordY);
+    await until(() => tm.state.loginId === loginIdY, "the switch to Y");
+    server.calls[2]?.answer(json(200, user));
+    await until(() => me.settled, "the answer");
+
+    expect(me.error).toBeInstanceOf(SessionChangedError);
+    expect(tm.state).toEqual({ status: "signed-in", loginId: loginIdY });
   });
 
   it("renews the token after a 401 and sends the same request again, once", async () => {

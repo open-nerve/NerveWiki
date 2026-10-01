@@ -291,12 +291,14 @@ func TestAcceptInvitation(t *testing.T) {
 		how     string
 	}{
 		{"a new member", func(tm *team) (domain.Invitation, uuid.UUID) { return tm.invitation, tm.dana }, shared.WorkspaceMember,
-			func(by string) []string { return []string{"AddMember member" + by} }, "added"},
+			func(by string) []string { return []string{"CountActiveAdmins", "AddMember member" + by} }, "added"},
 		{"a member whose membership ended", func(tm *team) (domain.Invitation, uuid.UUID) {
 			tm.store.ended[tm.bob.ID] = tm.bob
 			delete(tm.store.active, tm.bob.ID)
 			return tm.invite(tm.acme.ID, "bob@corp.com", shared.WorkspaceAdmin), tm.bob.UserID
-		}, shared.WorkspaceAdmin, func(by string) []string { return []string{"RestoreMember admin" + by, "MembershipRestored"} }, "restored"},
+		}, shared.WorkspaceAdmin, func(by string) []string {
+			return []string{"CountActiveAdmins", "RestoreMember admin" + by, "MembershipRestored"}
+		}, "restored"},
 		{"an active member", func(tm *team) (domain.Invitation, uuid.UUID) {
 			return tm.invite(tm.acme.ID, "carol@corp.com", shared.WorkspaceAdmin), tm.carol.UserID
 		}, shared.WorkspaceGuest, func(string) []string { return nil }, "kept"},
@@ -324,6 +326,51 @@ func TestAcceptInvitation(t *testing.T) {
 				t.Errorf("logs = %s, want the acceptance, membership=%s", tm.logs, tt.how)
 			}
 			assertNoAddressOrToken(t, tm.logs.String())
+		})
+	}
+}
+
+// Rule three: a workspace whose only admin was deactivated alone in it has
+// no active member. A member or a guest cannot join it, by a new membership
+// or an ended one: nothing is written, and the invitation stays pending. An
+// admin can, and the workspace has an admin again.
+func TestAcceptInvitationIntoAWorkspaceWithoutAdmin(t *testing.T) {
+	for _, tt := range []struct {
+		name  string
+		role  shared.WorkspaceRole
+		ended bool // the invitee is bob, whose membership ended; else dana, never a member
+		err   error
+	}{
+		{"a new member", shared.WorkspaceMember, false, domain.ErrNoAdmin},
+		{"a new guest", shared.WorkspaceGuest, false, domain.ErrNoAdmin},
+		{"a member whose membership ended", shared.WorkspaceMember, true, domain.ErrNoAdmin},
+		{"a new admin", shared.WorkspaceAdmin, false, nil},
+		{"an admin whose membership ended", shared.WorkspaceAdmin, true, nil},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			tm := newTeam()
+			for id, m := range tm.store.active {
+				delete(tm.store.active, id)
+				tm.store.ended[id] = m
+			}
+			caller, email := tm.dana, "dana@corp.com"
+			if tt.ended {
+				caller, email = tm.bob.UserID, "bob@corp.com"
+			}
+			inv := tm.invite(tm.acme.ID, email, tt.role)
+
+			got, err := tm.acceptInvitation().Execute(as(caller), inv.ID, tokenOf(inv))
+
+			if !errors.Is(err, tt.err) {
+				t.Fatalf("Execute() = %+v, %v; want %v", got, err, tt.err)
+			}
+			_, pending := tm.store.invitations[inv.ID]
+			if tt.err != nil && (slices.ContainsFunc(tm.store.calls, isWrite) || !pending) {
+				t.Errorf("calls %q, invitation pending %v; want no write, the invitation still pending", tm.store.calls, pending)
+			}
+			if tt.err == nil && got.Role != shared.WorkspaceAdmin {
+				t.Errorf("Execute() = %+v, want the admin's membership", got)
+			}
 		})
 	}
 }
@@ -375,6 +422,14 @@ func TestAcceptInvitationRefusals(t *testing.T) {
 		{"an address changed before the lock", func(tm *team) uuid.UUID { return tm.dana },
 			func(tm *team) string { return tokenOf(tm.invitation) }, func(tm *team) { tm.accounts.emails[tm.dana] = "dana@elsewhere.com" },
 			domain.ErrInvitationEmailMismatch, 5},
+		// ſ (U+017F, long s) folds to s: another normalized address,
+		// though strings.EqualFold takes it for the same.
+		{"an address equal to it but for case folding", func(tm *team) uuid.UUID { return tm.dana },
+			func(tm *team) string { return tokenOf(tm.invitation) }, func(tm *team) {
+				tm.invitation.Email = "dana.s@corp.com"
+				tm.store.invitations[tm.invitation.ID] = tm.invitation
+				tm.accounts.emails[tm.dana] = "dana.ſ@corp.com"
+			}, domain.ErrInvitationEmailMismatch, 5},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			tm := newTeam()

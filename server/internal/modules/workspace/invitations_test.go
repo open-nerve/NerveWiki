@@ -52,6 +52,7 @@ func TestInvitationCheckAdmits(t *testing.T) {
 	exec(`UPDATE workspace_invitations SET deleted_at = $2 WHERE id = $1`, deleted, testNow())
 	ofDeleted := invitation("gone", "dana@corp.com")
 	exec(`UPDATE workspaces SET deleted_at = $2 WHERE id = (SELECT workspace_id FROM workspace_invitations WHERE id = $1)`, ofDeleted, testNow())
+	toSam := invitation("delta", "sam@corp.com")
 	key := bytes.Repeat([]byte{7}, 32)
 	token := macadapter.New(key).Token
 	check := workspace.NewInvitationCheck(pool, key)
@@ -66,6 +67,9 @@ func TestInvitationCheckAdmits(t *testing.T) {
 		{"another invitation's token", pending, token(deleted), "dana@corp.com", false},
 		{"another key's token", pending, macadapter.New(bytes.Repeat([]byte{8}, 32)).Token(pending), "dana@corp.com", false},
 		{"another address", pending, token(pending), "erin@corp.com", false},
+		// ſ (U+017F, long s) folds to s: another normalized address,
+		// though strings.EqualFold takes it for the same.
+		{"an address equal to it but for case folding", toSam, token(toSam), "ſam@corp.com", false},
 		{"deleted", deleted, token(deleted), "dana@corp.com", false},
 		{"of a deleted workspace", ofDeleted, token(ofDeleted), "dana@corp.com", false},
 		{"no such invitation", uuid.NewV7(), "", "dana@corp.com", false},

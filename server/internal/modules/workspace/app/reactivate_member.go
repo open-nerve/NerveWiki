@@ -77,6 +77,9 @@ func (r *ReactivateMember) Execute(ctx context.Context, slug, email string) (Rea
 			return nil
 		}
 		got.EndedAt = *m.EndedAt
+		if err := admit(ctx, r.d.Members, w.ID, m.Role); err != nil {
+			return err
+		}
 		return restore(ctx, r.d.Updater, r.d.Subscribers, m, m.Role, userID, now)
 	})
 	if err != nil {
@@ -91,6 +94,19 @@ func (r *ReactivateMember) Execute(ctx context.Context, slug, email string) (Rea
 
 // restore makes the ended membership m active again with role, by by at
 // now, and tells the subscribers (M2/P3 design 3.5).
+// admit checks rule three before a membership of workspaceID becomes
+// active with role: the workspace is locked, so its admins stay as counted.
+func admit(ctx context.Context, members MemberFinder, workspaceID uuid.UUID, role shared.WorkspaceRole) error {
+	admins, err := members.CountActiveAdmins(ctx, workspaceID)
+	if err != nil {
+		return err
+	}
+	if domain.JoinLeavesNoAdmin(role, admins) {
+		return domain.ErrNoAdmin
+	}
+	return nil
+}
+
 func restore(ctx context.Context, updater MemberUpdater, subscribers []MembershipRestoreSubscriber, m domain.Member,
 	role shared.WorkspaceRole, by uuid.UUID, now time.Time,
 ) error {

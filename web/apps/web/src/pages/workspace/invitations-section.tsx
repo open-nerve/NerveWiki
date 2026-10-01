@@ -74,7 +74,11 @@ export const InvitationsSection = observer(function InvitationsSection({ workspa
   );
 });
 
-/** InviteForm invites an address with a role; a member's address, or one invited already, is refused under the field. */
+/**
+ * InviteForm invites an address with a role; a member's address, or one invited already, is refused under the
+ * field. Once the invitation is made the field is emptied for the next, unless it was edited while the address
+ * was out: the new draft stays.
+ */
 function InviteForm({ workspace }: { workspace: Workspace }) {
   const invitations = useInvitations(workspace);
   const t = useT();
@@ -83,16 +87,21 @@ function InviteForm({ workspace }: { workspace: Workspace }) {
   const [role, setRole] = useState<WorkspaceRole>("member");
   const [invited, setInvited] = useState<string>();
   const { ref, sending, banner, problemOf, submit } = useForm(["email", "role"]);
+  /** How many times the address was edited: an invitation tells whether the field still shows what it sent. */
+  const edits = useRef(0);
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     // The browser takes the ASCII spaces off an e-mail field's value; trim takes the others too, such as an
     // ideographic space an input method typed.
     const address = email.trim();
+    const edit = edits.current;
     setInvited(undefined);
     void submit(address === "" ? { email: "field.required" } : {}, async () => {
       const sent = await invitations.invite({ email: address, role });
-      setEmail("");
+      if (edits.current === edit) {
+        setEmail("");
+      }
       // As the server keeps it: in lower case, as the list shows it.
       setInvited(sent.email);
     });
@@ -111,6 +120,7 @@ function InviteForm({ workspace }: { workspace: Workspace }) {
             value={email}
             error={problemOf("email")}
             onChange={(event) => {
+              edits.current++;
               setEmail(event.target.value);
               setInvited(undefined);
             }}

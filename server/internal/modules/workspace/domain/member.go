@@ -41,6 +41,15 @@ func (s Standing) BlocksDeactivation() bool {
 	return s.Role == shared.WorkspaceAdmin && s.Admins == 1 && s.Members > 1
 }
 
+// JoinLeavesNoAdmin is rule three (M2 design 4): a workspace with active
+// members has an active admin. Rule two lets its only admin be deactivated
+// when nobody else is left, so a workspace may have no active member; then
+// an admin comes back first. A membership becoming active with role, of a
+// workspace with admins active admins, would leave its members without one.
+func JoinLeavesNoAdmin(role shared.WorkspaceRole, admins int) bool {
+	return admins == 0 && role != shared.WorkspaceAdmin
+}
+
 // CheckRole checks a role sent for a member (422): one of the three. The
 // contract's enum is not checked before: a body's structure check leaves
 // values to the domain.

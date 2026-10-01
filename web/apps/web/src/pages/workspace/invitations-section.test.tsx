@@ -132,6 +132,34 @@ test("an admin invites an address as a role; the invitation comes first, and the
   expect(screen.getByLabelText<HTMLInputElement>("E-mail address").value).toBe("");
 });
 
+// An invitation answered after the field was edited again: the new draft stays, and the invitation made is said
+// (R3 of the M2 Codex review).
+test("an address typed while an invitation is out stays once it is made", async () => {
+  const user = userEvent.setup();
+  let release: (() => void) | undefined;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const { app, sent } = invitationsServer({
+    create: async () => {
+      await held;
+      return json({ ...bob, id: "0199a2b4-0000-7000-8000-0000000000e3", email: "dee@example.com" }, 201);
+    },
+  });
+  renderApp("/lab/settings/members", app);
+  const field = await screen.findByLabelText<HTMLInputElement>("E-mail address");
+
+  await user.type(field, "dee@example.com");
+  await user.click(screen.getByRole("button", { name: "Invite" }));
+  await waitFor(() => expect(sent).toContain("POST dee@example.com member"));
+  await user.clear(field);
+  await user.type(field, "eve@example.com");
+  release?.();
+
+  expect(await screen.findByText("Invited dee@example.com. Copy the link and send it to them.")).toBeTruthy();
+  expect(field.value).toBe("eve@example.com");
+});
+
 test.each([
   ["", undefined, "Required."],
   ["\u3000", undefined, "Required."],

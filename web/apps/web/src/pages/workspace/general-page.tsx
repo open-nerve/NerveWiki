@@ -1,5 +1,5 @@
 import { observer } from "mobx-react-lite";
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 
 import { ConfirmDialog } from "../../app/confirm-dialog";
 import { useForm } from "../../app/form";
@@ -46,7 +46,10 @@ export const GeneralPage = observer(function GeneralPage() {
 
 /**
  * RenameForm renames the workspace: the name goes out only when it changed
- * (trimmed, as the server keeps it); the switcher shows the new one.
+ * (trimmed, as the server keeps it); the switcher shows the new one. The
+ * field then shows the name as saved, unless it was edited while the name
+ * was out, as DisplayNameForm has it: what it shows then is not what was
+ * saved, and the next save sends it.
  */
 const RenameForm = observer(function RenameForm({ workspace }: { workspace: Workspace }) {
   const workspaces = useWorkspaces();
@@ -54,17 +57,23 @@ const RenameForm = observer(function RenameForm({ workspace }: { workspace: Work
   const [name, setName] = useState(workspace.name);
   const [saved, setSaved] = useState(false);
   const { ref, sending, banner, problemOf, submit } = useForm(["name"]);
+  /** How many times the field was edited: a save tells whether the name it sent is still the one shown. */
+  const edits = useRef(0);
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const problem = workspaceNameProblem(name);
+    const trimmed = name.trim();
+    const edit = edits.current;
     setSaved(false);
     void submit(problem === undefined ? {} : { name: problem }, async () => {
-      if (name.trim() !== workspace.name) {
-        await workspaces.rename(workspace.slug, name.trim());
+      if (trimmed !== workspace.name) {
+        await workspaces.rename(workspace.slug, trimmed);
       }
-      setName(name.trim());
-      setSaved(true);
+      if (edits.current === edit) {
+        setName(trimmed);
+        setSaved(true);
+      }
     });
   }
 
@@ -77,6 +86,7 @@ const RenameForm = observer(function RenameForm({ workspace }: { workspace: Work
         value={name}
         error={problemOf("name")}
         onChange={(event) => {
+          edits.current++;
           setName(event.target.value);
           setSaved(false);
         }}

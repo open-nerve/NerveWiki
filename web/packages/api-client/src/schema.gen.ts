@@ -446,7 +446,7 @@ export interface paths {
         put?: never;
         /**
          * Accept an invitation
-         * @description Joins the workspace with the invitation's role: the link's token and the caller's address are the credentials, the caller being no member yet. A caller signed in with another address than the one invited gets workspace.invitation_email_mismatch. A caller who is an active member already keeps their role, and the invitation is used up; one whose membership ended has it back, with the invitation's role and when they first joined. An invitation that does not exist, is no longer pending, whose workspace is deleted, or whose token is not the link's is workspace.invitation_not_found alike.
+         * @description Joins the workspace with the invitation's role: the link's token and the caller's address are the credentials, the caller being no member yet. A caller signed in with another address than the one invited gets workspace.invitation_email_mismatch. A caller who is an active member already keeps their role, and the invitation is used up; one whose membership ended has it back, with the invitation's role and when they first joined. A workspace without an active admin, its only one deactivated alone in it, takes an admin back first: a member's or a guest's invitation is workspace.no_admin until then, and stays pending. An invitation that does not exist, is no longer pending, whose workspace is deleted, or whose token is not the link's is workspace.invitation_not_found alike.
          */
         post: operations["acceptWorkspaceInvitation"];
         delete?: never;

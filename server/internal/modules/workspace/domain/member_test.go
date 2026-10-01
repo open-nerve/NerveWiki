@@ -45,6 +45,29 @@ func TestStandingBlocksDeactivation(t *testing.T) {
 	}
 }
 
+// Rule three refuses only a member or a guest joining a workspace without
+// an active admin.
+func TestJoinLeavesNoAdmin(t *testing.T) {
+	for _, tt := range []struct {
+		role   shared.WorkspaceRole
+		admins int
+		want   bool
+	}{
+		{shared.WorkspaceMember, 0, true},
+		{shared.WorkspaceGuest, 0, true},
+		{shared.WorkspaceAdmin, 0, false},
+		{shared.WorkspaceMember, 1, false},
+		{shared.WorkspaceGuest, 2, false},
+	} {
+		if got := JoinLeavesNoAdmin(tt.role, tt.admins); got != tt.want {
+			t.Errorf("JoinLeavesNoAdmin(%s, %d) = %v, want %v", tt.role, tt.admins, got, tt.want)
+		}
+	}
+	if ErrNoAdmin.ProblemStatus() != 409 || ErrNoAdmin.Code != "workspace.no_admin" {
+		t.Errorf("ErrNoAdmin = %d %s, want 409 workspace.no_admin", ErrNoAdmin.ProblemStatus(), ErrNoAdmin.Code)
+	}
+}
+
 // The refusal is workspace.sole_admin, naming the workspaces.
 func TestErrSoleAdminOf(t *testing.T) {
 	err := ErrSoleAdminOf([]string{"acme", "beta"})

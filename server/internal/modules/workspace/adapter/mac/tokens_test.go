@@ -43,6 +43,12 @@ func TestTokens(t *testing.T) {
 		"not base64url":        {tokens, id, "nwk_inv_" + strings.Repeat("!", 22)},
 		"cut short":            {tokens, id, token[:len(token)-4]},
 		"empty":                {tokens, id, ""},
+		// A decoder skips \r and \n: each of these spells the same tag.
+		"a line feed inside":           {tokens, id, token[:16] + "\n" + token[16:]},
+		"a carriage return inside":     {tokens, id, token[:20] + "\r" + token[20:]},
+		"a line feed after the prefix": {tokens, id, "nwk_inv_\n" + strings.TrimPrefix(token, "nwk_inv_")},
+		"a line break after it":        {tokens, id, token + "\r\n"},
+		"a line feed for a character":  {tokens, id, token[:20] + "\n" + token[21:]},
 	} {
 		if tt.tokens.Valid(tt.id, tt.token) {
 			t.Errorf("Valid(%s) = true", name)

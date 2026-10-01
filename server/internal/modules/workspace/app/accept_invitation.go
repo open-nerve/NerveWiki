@@ -104,14 +104,19 @@ func (a *AcceptInvitation) Execute(ctx context.Context, id uuid.UUID, token stri
 // keeps the active one it has, and returns its role.
 func (a *AcceptInvitation) join(ctx context.Context, inv domain.Invitation, userID uuid.UUID, now time.Time) (shared.WorkspaceRole, joining, error) {
 	m, err := a.d.Members.FindMembership(ctx, inv.WorkspaceID, userID)
-	switch {
-	case errors.Is(err, ErrNotFound):
-		m = domain.Member{ID: uuid.NewV7(), WorkspaceID: inv.WorkspaceID, UserID: userID, Role: inv.Role, CreatedAt: now}
-		return inv.Role, joinAdded, a.d.Updater.AddMember(ctx, m, userID)
-	case err != nil:
+	if err != nil && !errors.Is(err, ErrNotFound) {
 		return "", "", err
-	case m.Active():
+	}
+	had := err == nil // a membership, active or ended
+	if had && m.Active() {
 		return m.Role, joinKept, nil
 	}
-	return inv.Role, joinRestored, restore(ctx, a.d.Updater, a.d.Subscribers, m, inv.Role, userID, now)
+	if err := admit(ctx, a.d.Members, inv.WorkspaceID, inv.Role); err != nil {
+		return "", "", err
+	}
+	if had {
+		return inv.Role, joinRestored, restore(ctx, a.d.Updater, a.d.Subscribers, m, inv.Role, userID, now)
+	}
+	m = domain.Member{ID: uuid.NewV7(), WorkspaceID: inv.WorkspaceID, UserID: userID, Role: inv.Role, CreatedAt: now}
+	return inv.Role, joinAdded, a.d.Updater.AddMember(ctx, m, userID)
 }
