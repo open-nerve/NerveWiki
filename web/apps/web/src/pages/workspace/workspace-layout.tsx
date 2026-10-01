@@ -38,9 +38,9 @@ const sections: readonly { path: string; label: Extract<MessageKey, `workspace.$
  * the page chosen. It finds the workspace of the address in the account's
  * list: a slug the list does not have is no page of the app's, whether the
  * account was never a member or the workspace is gone; one this tab has
- * just deleted goes to the landing instead. A workspace found is the one
- * this device showed last. Its pages start anew with each workspace: what a
- * form holds of one is never sent to another.
+ * just deleted or left goes to the landing instead. A workspace found is
+ * the one this device showed last. Its pages start anew with each
+ * workspace: what a form holds of one is never sent to another.
  */
 export const WorkspaceLayout = observer(function WorkspaceLayout() {
   const { slug = "" } = useParams();

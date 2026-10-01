@@ -13,14 +13,18 @@ const workspace = (slug: string, name: string, id = slug): Workspace => ({
   updated_at: "2026-10-01T08:00:00Z",
 });
 
-/** A store over a service whose list answers list, and whose writes answer what they are given. */
-function storeOf(list: Workspace[]) {
+type Service = ConstructorParameters<typeof WorkspaceStore>[0];
+
+/** A store over a service whose list answers list, whose writes answer what they are given, and as overrides says. */
+function storeOf(list: Workspace[], overrides: Partial<Service> = {}) {
   return new WorkspaceStore({
     list: async () => list,
     create: async (body) => workspace(body.slug, body.name),
     rename: async (slug, name) => ({ ...workspace(slug, name), updated_at: "2026-10-01T09:00:00Z" }),
     remove: async () => {},
+    leave: async () => {},
     checkSlug: async () => ({ available: true }),
+    ...overrides,
   });
 }
 
@@ -32,15 +36,11 @@ const slugs = (store: WorkspaceStore) => store.list?.map((w) => w.slug);
 test("a read answered after a creation keeps the new workspace", async () => {
   let answerRead: ((list: Workspace[]) => void) | undefined;
   let reads = 0;
-  const store = new WorkspaceStore({
+  const store = storeOf([], {
     list: () =>
       ++reads === 1
         ? Promise.resolve([workspace("beta", "Beta")])
         : new Promise<Workspace[]>((resolve) => (answerRead = resolve)),
-    create: async (body) => workspace(body.slug, body.name),
-    rename: async () => workspace("x", "X"),
-    remove: async () => {},
-    checkSlug: async () => ({ available: true }),
   });
   await store.load();
 
@@ -99,12 +99,9 @@ test("a read that holds a workspace being created keeps it once", async () => {
   const acme = workspace("acme", "Acme");
   let answerCreate: ((w: Workspace) => void) | undefined;
   let reads = 0;
-  const store = new WorkspaceStore({
+  const store = storeOf([], {
     list: async () => (++reads === 1 ? [workspace("beta", "Beta")] : [acme, workspace("beta", "Beta")]),
     create: () => new Promise<Workspace>((resolve) => (answerCreate = resolve)),
-    rename: async () => acme,
-    remove: async () => {},
-    checkSlug: async () => ({ available: true }),
   });
   await store.load();
 
@@ -126,23 +123,25 @@ test("the same name is ordered by id, as the server orders it", async () => {
   expect(slugs(store)).toEqual(["a", "b"]);
 });
 
-test("a workspace the account no longer has is removed as one deleted: it is gone", async () => {
-  const notFound = new ApiError(404, { status: 404, code: "workspace.not_found", title: "" });
-  const forbidden = new ApiError(403, { status: 403, code: "forbidden", title: "" });
-  let refusal = notFound;
-  const store = new WorkspaceStore({
-    list: async () => [workspace("acme", "Acme"), workspace("beta", "Beta")],
-    create: async () => workspace("x", "X"),
-    rename: async () => workspace("x", "X"),
-    remove: () => Promise.reject(refusal),
-    checkSlug: async () => ({ available: true }),
-  });
-  await store.load();
+test.each(["remove", "leave"] as const)(
+  "%s: the workspace is gone, and one the account no longer has already is gone as well",
+  async (write) => {
+    const notFound = new ApiError(404, { status: 404, code: "workspace.not_found", title: "" });
+    const forbidden = new ApiError(403, { status: 403, code: "forbidden", title: "" });
+    let refusal: ApiError | undefined;
+    const send = () => (refusal === undefined ? Promise.resolve() : Promise.reject(refusal));
+    const store = storeOf([workspace("acme", "Acme"), workspace("beta", "Beta"), workspace("zeta", "Zeta")], {
+      [write]: send,
+    });
+    await store.load();
 
-  await store.remove("acme");
-  expect([slugs(store), store.wasRemoved("acme")]).toEqual([["beta"], true]);
+    await store[write]("acme");
+    refusal = notFound;
+    await store[write]("beta");
+    expect([slugs(store), store.wasRemoved("acme"), store.wasRemoved("beta")]).toEqual([["zeta"], true, true]);
 
-  refusal = forbidden;
-  await expect(store.remove("beta")).rejects.toBe(forbidden);
-  expect([slugs(store), store.wasRemoved("beta")]).toEqual([["beta"], false]);
-});
+    refusal = forbidden;
+    await expect(store[write]("zeta")).rejects.toBe(forbidden);
+    expect([slugs(store), store.wasRemoved("zeta")]).toEqual([["zeta"], false]);
+  }
+);

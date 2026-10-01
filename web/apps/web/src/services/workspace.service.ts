@@ -4,7 +4,11 @@ import { unwrap } from "./api";
 
 export type { SlugAvailability, Workspace, WorkspaceCreate };
 
-/** WorkspaceService lists, creates, renames and deletes the signed-in account's workspaces (M2/P5 design 3.4). */
+/**
+ * WorkspaceService lists, creates, renames and deletes the signed-in
+ * account's workspaces, and leaves them (M2/P5 design 3.4, M2/P6 design
+ * 3.2).
+ */
 export class WorkspaceService {
   constructor(private readonly api: ApiClient) {}
 
@@ -24,6 +28,11 @@ export class WorkspaceService {
 
   async remove(slug: string): Promise<void> {
     await unwrap(await this.api.DELETE("/api/v0/workspaces/{slug}", { params: { path: { slug } } }));
+  }
+
+  /** leave ends the account's membership of the workspace of slug. */
+  async leave(slug: string): Promise<void> {
+    await unwrap(await this.api.POST("/api/v0/workspaces/{slug}/leave", { params: { path: { slug } } }));
   }
 
   /** checkSlug answers whether slug can name a new workspace, and why not. */

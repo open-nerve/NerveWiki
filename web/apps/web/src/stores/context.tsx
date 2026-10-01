@@ -1,8 +1,10 @@
 import { createContext, use, type ReactNode } from "react";
 
 import type { User } from "../services/account.service";
+import type { Workspace } from "../services/workspace.service";
 import type { AccountStore } from "./account.store";
 import type { ApiTokenStore } from "./api-token.store";
+import type { MemberStore } from "./member.store";
 import type { RootStore } from "./root.store";
 import type { WorkspaceStore } from "./workspace.store";
 
@@ -47,4 +49,13 @@ export function useWorkspaces(): WorkspaceStore {
     throw new Error("useWorkspaces is used outside SignedIn");
   }
   return workspaces;
+}
+
+/** useMembers is the member list of workspace: only for the pages the SignedIn guard shows. */
+export function useMembers(workspace: Workspace): MemberStore {
+  const members = useStore().membersOf(workspace);
+  if (members === undefined) {
+    throw new Error("useMembers is used outside SignedIn");
+  }
+  return members;
 }

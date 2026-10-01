@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 
 import { SessionChangedError } from "../session/token-manager";
-import { json, storedSession, testApp } from "../test/fakes";
+import { json, storedSession, testApp, tokensJSON, workspaceJSON } from "../test/fakes";
 import { RootStore } from "./root.store";
 
 const tokens = (n: number) => ({
@@ -49,5 +49,19 @@ test("a generation of the session before sends nothing once the tab has signed i
 
 test("a signed-out generation has no account, nor its workspaces", () => {
   const store = new RootStore(testApp(), undefined);
-  expect([store.account, store.workspaces]).toEqual([undefined, undefined]);
+  expect([store.account, store.workspaces, store.membersOf(workspaceJSON)]).toEqual([undefined, undefined, undefined]);
+});
+
+test("a workspace's member list is the same for the generation; another workspace's, or another generation's, is another", async () => {
+  const app = testApp(() => json(tokensJSON), storedSession("login-0"));
+  await app.session.start();
+  const store = new RootStore(app, "login-0");
+  const sameSlug = { ...workspaceJSON, id: "0199a2b4-0000-7000-8000-0000000000b2" };
+
+  const members = store.membersOf(workspaceJSON);
+
+  expect(members).toBeDefined();
+  expect(store.membersOf({ ...workspaceJSON, name: "Lab renamed" })).toBe(members);
+  expect(store.membersOf(sameSlug)).not.toBe(members);
+  expect(new RootStore(app, "login-0").membersOf(workspaceJSON)).not.toBe(members);
 });

@@ -137,6 +137,13 @@ export const routes: RouteObject[] = [
                               return { Component: GeneralPage };
                             },
                           },
+                          {
+                            path: "members",
+                            lazy: async () => {
+                              const { MembersPage } = await import("../pages/workspace/members-page");
+                              return { Component: MembersPage };
+                            },
+                          },
                         ],
                       },
                     ],

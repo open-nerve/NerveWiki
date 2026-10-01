@@ -5,8 +5,11 @@ import { NavItem } from "../../components/nav-item";
 import { useT } from "../../i18n/i18n";
 import { useWorkspace } from "./workspace-layout";
 
-/** The workspace settings' pages, in the order the navigation lists them; P6 adds the members. */
-const sections = [{ path: "general", label: "workspaceSettings.general" }] as const;
+/** The workspace settings' pages, in the order the navigation lists them. */
+const sections = [
+  { path: "general", label: "workspaceSettings.general" },
+  { path: "members", label: "workspaceSettings.members" },
+] as const;
 
 /**
  * WorkspaceSettingsLayout is the navigation of a workspace's settings and
