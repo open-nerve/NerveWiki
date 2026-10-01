@@ -24,7 +24,6 @@ function storeOf(list: Notebook[], overrides: Partial<Service> = {}) {
     {
       list: async () => list,
       create: async (_slug, body) => notebook(body.name.toLowerCase(), body.name),
-      get: async (id) => notebook(id, id, { role: "reader", workspace_access: "viewer" }),
       update: async (id, body) => notebook(id, body.name ?? id, { workspace_access: body.workspace_access ?? "none" }),
       remove: async () => {},
       leave: async () => {},
@@ -49,11 +48,14 @@ test.each([
 ])("a read answered after %s keeps it", async (_, write: (store: NotebookStore) => Promise<unknown>, expected) => {
   let answerRead: ((list: Notebook[]) => void) | undefined;
   let reads = 0;
+  // The first read, the read overlapping the write, then a leaving's read: the notebook still seen.
   const store = storeOf([], {
     list: () =>
       ++reads === 1
         ? Promise.resolve([notebook("beta", "Beta")])
-        : new Promise<Notebook[]>((resolve) => (answerRead = resolve)),
+        : reads === 2
+          ? new Promise<Notebook[]>((resolve) => (answerRead = resolve))
+          : Promise.resolve([notebook("beta", "beta", { role: "reader", workspace_access: "viewer" })]),
   });
   await store.load();
 
@@ -115,21 +117,20 @@ test("a deletion: the notebook is gone, and one gone already is gone as well; a 
   expect([names(store), store.wasRemoved("c")]).toEqual([["C"], false]);
 });
 
-// Leaving reads the notebook again (M3/P4 design 3.2): one open to the
+// Leaving reads the notebooks again (M3/P4 design 3.2): one open to the
 // workspace stays, with the default role; one no longer seen is gone.
+const stillSeen = notebook("a", "a", { role: "reader", workspace_access: "viewer" });
 test.each([
-  ["still seen", undefined, undefined, [["a", "reader", "viewer"]], false],
-  ["no longer seen", undefined, notFound, [], true],
-  ["gone already", notFound, undefined, [], true],
+  ["still seen", undefined, [stillSeen, notebook("b", "b")], [["a", "reader", "viewer"]], false],
+  ["no longer seen", undefined, [notebook("b", "b")], [], true],
+  ["gone already", notFound, [stillSeen], [], true],
 ])(
   "a leaving, the notebook %s",
-  async (_, leaveRefusal: ApiError | undefined, getRefusal: ApiError | undefined, expected, removed) => {
-    const store = storeOf([notebook("a", "a")], {
+  async (_, leaveRefusal: ApiError | undefined, after: Notebook[], expected, removed) => {
+    let reads = 0;
+    const store = storeOf([], {
+      list: async () => (++reads === 1 ? [notebook("a", "a")] : after),
       leave: () => (leaveRefusal === undefined ? Promise.resolve() : Promise.reject(leaveRefusal)),
-      get: (id) =>
-        getRefusal === undefined
-          ? Promise.resolve(notebook(id, id, { role: "reader", workspace_access: "viewer" }))
-          : Promise.reject(getRefusal),
     });
     await store.load();
 

@@ -102,10 +102,6 @@ export function notebookServer({
       server.sent.push("GET workspace members");
       return json({ data: shown(server.workspaceMembers) });
     },
-    [`GET ${plans}`]: () => {
-      const notebook = seen();
-      return notebook === undefined ? problem(404, "notebook.not_found") : json(notebook);
-    },
     [`PATCH ${plans}`]: async (request) => {
       const body = (await request.clone().json()) as { name?: string; workspace_access?: WorkspaceAccess };
       server.sent.push(`PATCH ${JSON.stringify(body)}`);

@@ -13,7 +13,7 @@ export type { Notebook, NotebookCreate, NotebookRole, NotebookUpdate, WorkspaceA
 
 /**
  * NotebookService lists a workspace's notebooks the account sees, creates,
- * reads, changes and deletes them, and leaves them (M3/P4 design 3.2).
+ * changes and deletes them, and leaves them (M3/P4 design 3.2).
  */
 export class NotebookService {
   constructor(private readonly api: ApiClient) {}
@@ -27,10 +27,6 @@ export class NotebookService {
   /** create answers the new notebook, of which the account is the admin. */
   async create(slug: string, body: NotebookCreate): Promise<Notebook> {
     return unwrap(await this.api.POST("/api/v0/workspaces/{slug}/notebooks", { params: { path: { slug } }, body }));
-  }
-
-  async get(id: string): Promise<Notebook> {
-    return unwrap(await this.api.GET("/api/v0/notebooks/{notebook_id}", { params: { path: { notebook_id: id } } }));
   }
 
   async update(id: string, body: NotebookUpdate): Promise<Notebook> {

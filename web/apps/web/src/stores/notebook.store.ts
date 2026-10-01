@@ -38,7 +38,7 @@ export class NotebookStore {
   private readonly removed = new Set<string>();
 
   constructor(
-    private readonly service: Pick<NotebookService, "list" | "create" | "get" | "update" | "remove" | "leave">,
+    private readonly service: Pick<NotebookService, "list" | "create" | "update" | "remove" | "leave">,
     /** The slug of the workspace whose notebooks these are. */
     private readonly slug: string
   ) {
@@ -102,21 +102,29 @@ export class NotebookStore {
   }
 
   /**
-   * leave ends the account's membership of the notebook id, then reads it
-   * again: one the account no longer sees is gone; one open to the
-   * workspace it still sees, with its default role, and stays (M3/P4
-   * design 3.2). A notebook already gone is gone as well; a membership that
-   * has ended already is the refusal's to tell.
+   * leave ends the account's membership of the notebook id, then reads the
+   * workspace's notebooks again: one the account no longer sees is gone;
+   * one open to the workspace it still sees, with its default role, and
+   * stays (M3/P4 design 3.2). The list is read, not the notebook, which
+   * answers 404 once out of sight: a browser logs that as an error. A
+   * notebook already gone is gone as well; a membership that has ended
+   * already is the refusal's to tell.
    */
   async leave(id: string): Promise<void> {
     try {
       await this.service.leave(id);
-      this.put(await this.service.get(id));
     } catch (error) {
       if (!isNotFound(error)) {
         throw error;
       }
       this.gone(id);
+      return;
+    }
+    const seen = (await this.service.list(this.slug)).find((notebook) => notebook.id === id);
+    if (seen === undefined) {
+      this.gone(id);
+    } else {
+      this.put(seen);
     }
   }
 
