@@ -2,6 +2,7 @@ import { makeAutoObservable, runInAction } from "mobx";
 
 import { ApiError } from "../services/api";
 import type { Notebook, NotebookCreate, NotebookService, NotebookUpdate } from "../services/notebook.service";
+import type { Workspace } from "../services/workspace.service";
 import { byName } from "./order";
 
 /**
@@ -17,6 +18,11 @@ export function groupNotebooks(list: readonly Notebook[]): NotebookGroups {
 
 function isOwn(notebook: Notebook): boolean {
   return notebook.workspace_access === "none" && notebook.member_count === 1;
+}
+
+/** createsNotebooks tells whether the account may create notebooks in workspace: as its admin or member, not a guest. */
+export function createsNotebooks(workspace: Workspace): boolean {
+  return workspace.role === "admin" || workspace.role === "member";
 }
 
 /**

@@ -73,14 +73,18 @@ test("a slug the account has no workspace of is not found, nor remembered", asyn
   renderApp("/zeta", app);
 
   expect(await screen.findByRole("heading", { name: "Page not found" })).toBeTruthy();
-  expect(screen.queryByRole("complementary", { name: "Workspace" })).toBeNull();
+  expect(screen.queryByRole("navigation", { name: "Zeta" })).toBeNull();
+  expect(screen.queryByRole("button", { description: "Switch workspace" })).toBeNull();
   expect(app.preferences.lastWorkspace()).toBeUndefined();
 });
 
+// The left column is no landmark of its own: the workspace's navigation is
+// the one it holds (M3/P4 design 3.3).
 test("the navigation leads to the workspace's pages, marking the one shown", async () => {
   renderApp("/acme", withWorkspaces());
 
   const nav = await screen.findByRole("navigation", { name: "Acme" });
+  expect(screen.queryByRole("complementary")).toBeNull();
   const links = within(nav).getAllByRole("link");
   expect(links.map((link) => [link.textContent, link.getAttribute("href"), link.getAttribute("aria-current")])).toEqual(
     [

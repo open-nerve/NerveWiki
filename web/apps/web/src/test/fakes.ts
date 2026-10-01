@@ -125,25 +125,33 @@ function testSession(answer: Answer, stored: Record<string, string> = {}): Sessi
 }
 
 /**
- * byRoute answers each request by its "METHOD /path" in routes, or by a
- * "METHOD /prefix/*" whose prefix the path starts with; any other request
- * is not found.
+ * byRoute answers each request by its "METHOD /path" in routes, else by
+ * the first key whose * each stand for a segment of the path, such as
+ * "DELETE /api/v0/notebooks/*"; any other request is not found.
  */
 export function byRoute(routes: Record<string, Answer>): Answer {
   return (request) => {
     const route = `${request.method} ${new URL(request.url).pathname}`;
-    const answer =
-      routes[route] ??
-      Object.entries(routes).find(([key]) => key.endsWith("/*") && route.startsWith(key.slice(0, -1)))?.[1];
+    const answer = routes[route] ?? Object.entries(routes).find(([key]) => pattern(key)?.test(route))?.[1];
     return answer === undefined ? problem(404, "not_found") : answer(request);
   };
 }
 
+/** pattern is what a key with * matches, each * a segment of the path; none for a key without. */
+function pattern(key: string): RegExp | undefined {
+  if (!key.includes("*")) {
+    return undefined;
+  }
+  const parts = key.split("*").map((part) => part.replaceAll(/[.+?^${}()|[\]\\]/g, String.raw`\$&`));
+  return new RegExp(`^${parts.join("[^/]+")}$`);
+}
+
 /**
  * signedInApp is the page's stores of a tab signed in (from its stored
- * session, login-0) as userJSON, a member of workspaceJSON alone; routes
- * adds to or replaces the answers to the refresh, GET /me, GET /instance
- * and GET /workspaces.
+ * session, login-0) as userJSON, a member of workspaceJSON alone, which
+ * sees no notebook; routes adds to or replaces the answers to the refresh,
+ * GET /me, GET /instance, GET /workspaces and every workspace's GET
+ * notebooks.
  */
 export function signedInApp(routes: Record<string, Answer> = {}): AppStores {
   return testApp(
@@ -152,6 +160,7 @@ export function signedInApp(routes: Record<string, Answer> = {}): AppStores {
       "GET /api/v0/me": () => json(userJSON),
       "GET /api/v0/instance": () => json(instanceJSON),
       "GET /api/v0/workspaces": () => json({ data: [workspaceJSON] }),
+      "GET /api/v0/workspaces/*/notebooks": () => json({ data: [] }),
       ...routes,
     }),
     storedSession("login-0")

@@ -1,8 +1,15 @@
-import type { ApiClient, Notebook, NotebookCreate, NotebookRole, NotebookUpdate } from "@nervewiki/api-client";
+import type {
+  ApiClient,
+  Notebook,
+  NotebookCreate,
+  NotebookRole,
+  NotebookUpdate,
+  WorkspaceAccess,
+} from "@nervewiki/api-client";
 
 import { unwrap } from "./api";
 
-export type { Notebook, NotebookCreate, NotebookRole, NotebookUpdate };
+export type { Notebook, NotebookCreate, NotebookRole, NotebookUpdate, WorkspaceAccess };
 
 /**
  * NotebookService lists a workspace's notebooks the account sees, creates,

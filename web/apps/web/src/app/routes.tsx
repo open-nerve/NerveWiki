@@ -23,7 +23,8 @@ import { RouteError } from "./route-error";
 // A workspace's pages are under its slug, beside the app's own top-level
 // pages: the slugs that name these are reserved (M2/P1 design 3.6; the
 // test of reserved-slugs.test.ts). / lands on a workspace (M2/P5 design
-// 3.3).
+// 3.3). A notebook's pages are under its workspace's, by the notebook's id
+// (M3/P4 design 3.4).
 export const routes: RouteObject[] = [
   {
     Component: Layout,
@@ -131,6 +132,22 @@ export const routes: RouteObject[] = [
                           const { WorkspaceHomePage } = await import("../pages/workspace/workspace-home");
                           return { Component: WorkspaceHomePage };
                         },
+                      },
+                      {
+                        path: "notebooks/:id",
+                        lazy: async () => {
+                          const { NotebookLayout } = await import("../pages/notebook/notebook-layout");
+                          return { Component: NotebookLayout };
+                        },
+                        children: [
+                          {
+                            index: true,
+                            lazy: async () => {
+                              const { NotebookHomePage } = await import("../pages/notebook/notebook-home");
+                              return { Component: NotebookHomePage };
+                            },
+                          },
+                        ],
                       },
                       {
                         path: "settings",

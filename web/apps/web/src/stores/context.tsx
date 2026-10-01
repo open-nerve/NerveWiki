@@ -6,6 +6,7 @@ import type { AccountStore } from "./account.store";
 import type { ApiTokenStore } from "./api-token.store";
 import type { InvitationStore } from "./invitation.store";
 import type { MemberStore } from "./member.store";
+import type { NotebookStore } from "./notebook.store";
 import type { RootStore } from "./root.store";
 import type { WorkspaceStore } from "./workspace.store";
 
@@ -63,6 +64,15 @@ export function useMembers(workspace: Workspace): MemberStore {
     throw new Error("useMembers is used outside SignedIn");
   }
   return members;
+}
+
+/** useNotebooks is the notebooks of workspace that the account sees: only for the pages the SignedIn guard shows. */
+export function useNotebooks(workspace: Workspace): NotebookStore {
+  const notebooks = useStore().notebooksOf(workspace);
+  if (notebooks === undefined) {
+    throw new Error("useNotebooks is used outside SignedIn");
+  }
+  return notebooks;
 }
 
 /** useInvitations is the pending invitations of workspace: only for the pages the SignedIn guard shows. */

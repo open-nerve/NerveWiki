@@ -117,6 +117,30 @@ test("fieldErrors says each field's first problem, better for the fields it know
   expect(fieldErrors(new TypeError("Failed to fetch"), t)).toEqual({});
 });
 
+// A form's own texts say its fields' codes first; the codes they do not name
+// keep the field's text, and other fields theirs (v0.1 design 13.2, item 11).
+test("fieldErrors says a field's code the form's way where it has a text of its own", () => {
+  const error = new ApiError(422, {
+    status: 422,
+    code: "validation_failed",
+    title: "",
+    errors: [
+      { field: "name", code: "too_long", message: "must be at most 255 bytes" },
+      { field: "email", code: "invalid_format", message: "is not a valid e-mail address" },
+    ],
+  });
+  const fieldTexts = { "name.too_long": "field.notebook_name.too_long", "email.too_long": "field.too_long" } as const;
+
+  expect(fieldErrors(error, t, fieldTexts)).toEqual({
+    name: "At most 255 bytes: 255 Latin letters, or about 85 Chinese characters.",
+    email: "Not a valid e-mail address.",
+  });
+  expect(fieldErrors(error, t)).toEqual({
+    name: "At most 100 characters.",
+    email: "Not a valid e-mail address.",
+  });
+});
+
 test("formErrors puts a 422's problems under the fields shown only, and the rest above the form", () => {
   const onEmail = new ApiError(422, {
     ...problem(422, "validation_failed"),
