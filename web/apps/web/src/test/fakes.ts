@@ -111,10 +111,17 @@ function testSession(answer: Answer, stored: Record<string, string> = {}): Sessi
   });
 }
 
-/** byRoute answers each request by its "METHOD /path" in routes; any other request is not found. */
+/**
+ * byRoute answers each request by its "METHOD /path" in routes, or by a
+ * "METHOD /prefix/*" whose prefix the path starts with; any other request
+ * is not found.
+ */
 export function byRoute(routes: Record<string, Answer>): Answer {
   return (request) => {
-    const answer = routes[`${request.method} ${new URL(request.url).pathname}`];
+    const route = `${request.method} ${new URL(request.url).pathname}`;
+    const answer =
+      routes[route] ??
+      Object.entries(routes).find(([key]) => key.endsWith("/*") && route.startsWith(key.slice(0, -1)))?.[1];
     return answer === undefined ? problem(404, "not_found") : answer(request);
   };
 }

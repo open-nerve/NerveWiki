@@ -53,6 +53,11 @@ export const en = {
   "workspace.create": "Create workspace",
   "workspace.homeEmpty": "No notebooks yet.",
   "createWorkspace.title": "Create a workspace",
+  "createWorkspace.name": "Name",
+  "createWorkspace.slug": "Address",
+  "createWorkspace.slugHint": "Lower-case letters, digits, _ and -. It cannot change later.",
+  "createWorkspace.slugAvailable": "Available.",
+  "createWorkspace.submit": "Create workspace",
   "createWorkspace.off":
     "On this server, workspaces are created by its administrator. You join one when a member invites you: open the invitation's link when it comes.",
   "settings.security": "Security",
@@ -159,6 +164,10 @@ export const en = {
   "field.expires_at.out_of_range": "Must be in the future.",
   "field.display_name.too_long": "At most 100 characters.",
   "field.display_name.invalid_format": "No control characters.",
+  "field.workspace_name.too_long": "At most 80 characters.",
+  "field.slug.invalid_format": "1 to 48 lower-case letters, digits, _ or -.",
+  "field.slug.not_allowed": "Reserved by the app. Choose another.",
+  "field.slug.duplicate": "Another workspace has it.",
 } as const;
 
 export type MessageKey = keyof typeof en;
