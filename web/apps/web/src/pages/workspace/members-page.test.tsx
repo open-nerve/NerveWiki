@@ -298,14 +298,17 @@ test("the lists read again show what changed elsewhere", async () => {
   expect(await screen.findByText("No invitations pending.")).toBeTruthy();
 });
 
-test("each workspace's members page lists its own members", async () => {
+test("each workspace's members page lists its own members and invitations", async () => {
   const server = membersServer();
   const { router } = renderApp("/lab/settings/members", server.app);
   expect(await names()).toEqual(["Ada", "Bob", "Cy"]);
+  expect(await screen.findByRole("button", { name: "Copy link: bob@example.com" })).toBeTruthy();
 
   await act(() => router.navigate("/acme/settings/members"));
 
   await waitFor(async () => expect(await names()).toEqual(["Ada"]));
+  expect(await screen.findByText("No invitations pending.")).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Copy link: bob@example.com" })).toBeNull();
 });
 
 test("the members say so when they cannot be read; Try again reads them", async () => {
