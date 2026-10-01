@@ -51,7 +51,7 @@ func TestWorkspacesFindAndShare(t *testing.T) {
 		}
 	})
 
-	t.Run("a slug spelled as none is reaches no query", func(t *testing.T) {
+	t.Run("a slug no workspace could have reaches no query", func(t *testing.T) {
 		closed, err := postgres.NewPool(ctx, config.DatabaseConfig{URL: pgtest.NewDatabase(t), MaxConns: 1})
 		if err != nil {
 			t.Fatal(err)

@@ -80,12 +80,3 @@ func (c *CreateNotebook) Execute(ctx context.Context, slug, name string, access 
 		slog.String("notebook_id", out.Notebook.ID.String()), slog.String("user_id", actor.UserID.String()))
 	return out, nil
 }
-
-// orNotFound is err, or notFound when there is none: a lock that found no
-// row.
-func orNotFound(err, notFound error) error {
-	if err != nil {
-		return err
-	}
-	return notFound
-}

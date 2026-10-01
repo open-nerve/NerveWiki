@@ -72,7 +72,8 @@ WHERE slug = sqlc.arg(slug) AND deleted_at IS NULL
 FOR SHARE;
 
 -- name: ShareWorkspaceByID :one
--- ShareWorkspaceBySlug by the workspace's id: for the operations that name an invitation.
+-- ShareWorkspaceBySlug by the workspace's id: for the operations that name an invitation, and for the notebook
+-- module's writes (M3 design 4).
 SELECT id, slug, name, created_at, updated_at
 FROM workspaces
 WHERE id = sqlc.arg(id) AND deleted_at IS NULL

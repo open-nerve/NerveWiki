@@ -26,3 +26,12 @@ func found(err, notFound error) error {
 	}
 	return err
 }
+
+// orNotFound is err, or notFound when there is none: a lock that found no
+// row.
+func orNotFound(err, notFound error) error {
+	if err != nil {
+		return err
+	}
+	return notFound
+}

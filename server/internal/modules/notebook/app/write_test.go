@@ -135,8 +135,10 @@ func TestUpdateNotebook(t *testing.T) {
 	if want := (shared.Target{WorkspaceID: f.acme, NotebookID: f.notebook.ID}); f.auth.targets[0] != want {
 		t.Errorf("target = %+v, want %+v", f.auth.targets[0], want)
 	}
-	if !strings.Contains(f.logs.String(), "notebook updated") || strings.Contains(f.logs.String(), "Eng") {
-		t.Errorf("logs = %q, want the update by its ids", f.logs.String())
+	logs := f.logs.String()
+	if !strings.Contains(logs, "notebook updated") || !strings.Contains(logs, f.acme.String()) ||
+		!strings.Contains(logs, f.notebook.ID.String()) || strings.Contains(logs, "Eng") {
+		t.Errorf("logs = %q, want the update by its ids", logs)
 	}
 }
 

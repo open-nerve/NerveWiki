@@ -76,7 +76,8 @@ func (u *UpdateNotebook) Execute(ctx context.Context, id uuid.UUID, name, access
 		return View{}, err
 	}
 	if modified {
-		u.d.Logger.InfoContext(ctx, "notebook updated", slog.String("notebook_id", id.String()), slog.String("user_id", actor.UserID.String()))
+		u.d.Logger.InfoContext(ctx, "notebook updated", slog.String("workspace_id", n.WorkspaceID.String()),
+			slog.String("notebook_id", id.String()), slog.String("user_id", actor.UserID.String()))
 	}
 	return out, nil
 }

@@ -58,6 +58,28 @@ func notebookMatrixRows() []matrixRow {
 			},
 		},
 		{
+			// The list's rule is the workspace level's: the workspace columns
+			// see acme's, which has no notebook, and the rest not acme.
+			op:      "listNotebooks",
+			variant: "by the workspace columns",
+			request: func(c caller, _ seeded) (string, string, string) {
+				return http.MethodGet, "/api/v0/workspaces/" + workspaceOf(c) + "/notebooks", ""
+			},
+			cells: map[caller]cell{
+				callerAdmin: cellOK(), callerMember: cellOK(), callerGuest: cellOK(),
+				callerNever: {http.StatusNotFound, "workspace.not_found"}, callerEnded: {http.StatusNotFound, "workspace.not_found"},
+				callerDeleted: {http.StatusNotFound, "workspace.not_found"},
+			},
+			check: func(t *testing.T, _ caller, _ seeded, answer string) {
+				t.Helper()
+				var list struct{ Data []notebookAnswer }
+				decodeAnswer(t, answer, &list)
+				if len(list.Data) != 0 {
+					t.Errorf("listed %+v, want none: acme has no notebook", list.Data)
+				}
+			},
+		},
+		{
 			op:    "createNotebook",
 			write: true,
 			request: func(c caller, _ seeded) (string, string, string) {

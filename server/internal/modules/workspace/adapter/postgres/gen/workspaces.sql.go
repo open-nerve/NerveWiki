@@ -304,7 +304,8 @@ type ShareWorkspaceByIDRow struct {
 	UpdatedAt time.Time
 }
 
-// ShareWorkspaceBySlug by the workspace's id: for the operations that name an invitation.
+// ShareWorkspaceBySlug by the workspace's id: for the operations that name an invitation, and for the notebook
+// module's writes (M3 design 4).
 func (q *Queries) ShareWorkspaceByID(ctx context.Context, id uuid.UUID) (ShareWorkspaceByIDRow, error) {
 	row := q.db.QueryRow(ctx, shareWorkspaceByID, id)
 	var i ShareWorkspaceByIDRow

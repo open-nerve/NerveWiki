@@ -18,8 +18,8 @@ import (
 // design 3.5): the notebook module's port, which bootstrap wires to it.
 type Workspaces interface {
 	// FindBySlug returns the id of the workspace not deleted with slug,
-	// unlocked, and whether there is one. A slug spelled as none is reaches
-	// no query.
+	// unlocked, and whether there is one. A slug no workspace could have
+	// reaches no query.
 	FindBySlug(ctx context.Context, slug string) (uuid.UUID, bool, error)
 	// ShareByID locks the workspace not deleted with id FOR SHARE until the
 	// transaction ctx carries ends, and reports whether there is one: a
