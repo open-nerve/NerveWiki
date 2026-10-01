@@ -36,14 +36,18 @@ func CheckTitle(field, s string) (string, *FieldError) {
 
 // windowsReserved reports whether Windows reserves s as a file name: a
 // device name, in any case, alone or before an extension (con, CON.txt).
+// The serial and parallel ports take the digits 1–9 and the superscripts
+// ¹ ² ³, which Windows reads as digits too.
 func windowsReserved(s string) bool {
 	base, _, _ := strings.Cut(s, ".")
 	base = strings.ToUpper(base)
-	switch {
-	case base == "CON" || base == "PRN" || base == "AUX" || base == "NUL":
+	switch base {
+	case "CON", "PRN", "AUX", "NUL":
 		return true
-	case len(base) == 4 && (strings.HasPrefix(base, "COM") || strings.HasPrefix(base, "LPT")):
-		return base[3] >= '1' && base[3] <= '9'
 	}
-	return false
+	port, ok := strings.CutPrefix(base, "COM")
+	if !ok {
+		port, ok = strings.CutPrefix(base, "LPT")
+	}
+	return ok && (len(port) == 1 && port[0] >= '1' && port[0] <= '9' || port == "¹" || port == "²" || port == "³")
 }

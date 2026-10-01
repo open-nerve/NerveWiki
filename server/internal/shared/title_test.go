@@ -14,6 +14,7 @@ func TestCheckTitle(t *testing.T) {
 		{"Notes 2026：计划？／草稿", "Notes 2026：计划？／草稿"}, // full-width forms are allowed
 		{"v1.2 notes", "v1.2 notes"},
 		{"COM10", "COM10"},
+		{"COM\u2074", "COM\u2074"}, // superscript four: Windows reads only ¹ ² ³ as digits
 		{"Console", "Console"},
 		{"cons.txt", "cons.txt"},
 		// NFD in, NFC out: e and a combining acute accent is é.
@@ -48,7 +49,7 @@ func TestCheckTitle(t *testing.T) {
 		{".hidden", shared.FieldInvalidFormat}, {"trailing.", shared.FieldInvalidFormat}, {"...", shared.FieldInvalidFormat},
 		{"CON", shared.FieldNotAllowed}, {"con", shared.FieldNotAllowed}, {"Aux.md", shared.FieldNotAllowed},
 		{"nul.tar.gz", shared.FieldNotAllowed}, {"PRN", shared.FieldNotAllowed}, {"com1", shared.FieldNotAllowed},
-		{"LPT9.txt", shared.FieldNotAllowed},
+		{"LPT9.txt", shared.FieldNotAllowed}, {"COM\u00b9", shared.FieldNotAllowed}, {"lpt\u00b3.md", shared.FieldNotAllowed},
 	} {
 		if _, f := shared.CheckTitle("name", tt.in); f == nil || f.Code != tt.code || f.Field != "name" {
 			t.Errorf("CheckTitle(%q) = %+v, want %s on name", tt.in, f, tt.code)
