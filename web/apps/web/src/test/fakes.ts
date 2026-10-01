@@ -3,6 +3,7 @@ import { createClient, type ApiClient, type AuthTokens } from "@nervewiki/api-cl
 import type { User } from "../services/account.service";
 import type { InstanceInfo } from "../services/instance.service";
 import type { Notebook } from "../services/notebook.service";
+import type { NotebookAuditEvent, OwnerlessNotebook } from "../services/ownerless.service";
 import type { Workspace } from "../services/workspace.service";
 import { Session, type SessionDeps } from "../session/session";
 import { AUTH_KEY } from "../session/token-manager";
@@ -93,6 +94,32 @@ export const notebookJSON: Notebook = {
   updated_at: "2026-10-02T08:00:00Z",
 };
 
+/** bobProfile is the public profile of Bob, a member of workspaceJSON's, as its admins see it. */
+const bobProfile = { user_id: "0199a2b4-0000-7000-8000-000000000002", display_name: "Bob", email: "bob@example.com" };
+
+/** ownerlessJSON is a notebook of workspaceJSON's that Bob, its only admin, left: private, with one member left. */
+export const ownerlessJSON: OwnerlessNotebook = {
+  id: "0199a2b4-0000-7000-8000-0000000000e1",
+  name: "Roadmap",
+  workspace_access: "none",
+  member_count: 1,
+  former_owner: bobProfile,
+  ownerless_since: "2026-10-02T09:00:00Z",
+  last_activity_at: "2026-10-02T08:30:00Z",
+  size_bytes: 0,
+};
+
+/** auditEventJSON is userJSON's taking over of ownerlessJSON. */
+export const auditEventJSON: NotebookAuditEvent = {
+  id: "0199a2b4-0000-7000-8000-0000000000f1",
+  action: "taken_over",
+  notebook_id: ownerlessJSON.id,
+  notebook_name: ownerlessJSON.name,
+  former_owner: bobProfile,
+  actor: { user_id: "0199a2b4-0000-7000-8000-000000000001", display_name: "Ada", email: "ada@example.com" },
+  created_at: "2026-10-02T10:00:00Z",
+};
+
 /** Answer answers a request of the fake API. */
 export type Answer = (request: Request) => Response | Promise<Response>;
 
@@ -149,9 +176,9 @@ function pattern(key: string): RegExp | undefined {
 /**
  * signedInApp is the page's stores of a tab signed in (from its stored
  * session, login-0) as userJSON, a member of workspaceJSON alone, which
- * sees no notebook; routes adds to or replaces the answers to the refresh,
- * GET /me, GET /instance, GET /workspaces and every workspace's GET
- * notebooks.
+ * sees no notebook and has none ownerless; routes adds to or replaces the
+ * answers to the refresh, GET /me, GET /instance, GET /workspaces and
+ * every workspace's GET notebooks and ownerless notebooks.
  */
 export function signedInApp(routes: Record<string, Answer> = {}): AppStores {
   return testApp(
@@ -161,6 +188,7 @@ export function signedInApp(routes: Record<string, Answer> = {}): AppStores {
       "GET /api/v0/instance": () => json(instanceJSON),
       "GET /api/v0/workspaces": () => json({ data: [workspaceJSON] }),
       "GET /api/v0/workspaces/*/notebooks": () => json({ data: [] }),
+      "GET /api/v0/workspaces/*/ownerless-notebooks": () => json({ data: [] }),
       ...routes,
     }),
     storedSession("login-0")

@@ -195,6 +195,13 @@ export const routes: RouteObject[] = [
                               return { Component: MembersPage };
                             },
                           },
+                          {
+                            path: "ownerless",
+                            lazy: async () => {
+                              const { OwnerlessPage } = await import("../pages/workspace/ownerless-page");
+                              return { Component: OwnerlessPage };
+                            },
+                          },
                         ],
                       },
                     ],

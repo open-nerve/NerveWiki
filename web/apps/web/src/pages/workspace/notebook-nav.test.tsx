@@ -277,3 +277,21 @@ test("a creation answered after Cancel goes nowhere; the left column lists the n
     )
   );
 });
+
+test("going from one workspace straight to another lists the other's notebooks", async () => {
+  const acme: Workspace = { ...workspaceJSON, id: "0199a2b4-0000-7000-8000-0000000000a1", slug: "acme", name: "Acme" };
+  const { router } = renderApp(
+    "/lab",
+    signedInApp({
+      "GET /api/v0/workspaces": () => json({ data: [acme, workspaceJSON] }),
+      "GET /api/v0/workspaces/lab/notebooks": () => json({ data: [plans] }),
+      "GET /api/v0/workspaces/acme/notebooks": () => json({ data: [beta] }),
+    })
+  );
+  await within(await nav()).findByRole("link", { name: "Plans" });
+
+  await act(() => router.navigate("/acme"));
+
+  const column = await screen.findByRole("navigation", { name: "Acme" });
+  await waitFor(() => expect(groups(column)).toEqual({ "My notebooks": [["Beta", `/acme/notebooks/${beta.id}`]] }));
+});

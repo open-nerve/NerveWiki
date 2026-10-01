@@ -14,3 +14,20 @@ export function oneAtATime(): <T>(task: () => Promise<T>) => Promise<T> {
     return run;
   };
 }
+
+/**
+ * oneAtATimeById keeps a oneAtATime queue for each resource, by id: a
+ * store of many resources sends each one's changes in turn, and different
+ * ones' side by side.
+ */
+export function oneAtATimeById(): <T>(id: string, task: () => Promise<T>) => Promise<T> {
+  const queues = new Map<string, ReturnType<typeof oneAtATime>>();
+  return <T>(id: string, task: () => Promise<T>): Promise<T> => {
+    let queue = queues.get(id);
+    if (queue === undefined) {
+      queue = oneAtATime();
+      queues.set(id, queue);
+    }
+    return queue(task);
+  };
+}

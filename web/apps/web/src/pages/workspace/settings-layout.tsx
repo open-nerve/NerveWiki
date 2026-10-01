@@ -5,30 +5,34 @@ import { NavItem } from "../../components/nav-item";
 import { useT } from "../../i18n/i18n";
 import { useWorkspace } from "./workspace-layout";
 
-/** The workspace settings' pages, in the order the navigation lists them. */
+/** The workspace settings' pages, in the order the navigation lists them; some are its admins' alone. */
 const sections = [
-  { path: "general", label: "workspaceSettings.general" },
-  { path: "members", label: "workspaceSettings.members" },
+  { path: "general", label: "workspaceSettings.general", admins: false },
+  { path: "members", label: "workspaceSettings.members", admins: false },
+  { path: "ownerless", label: "workspaceSettings.ownerless", admins: true },
 ] as const;
 
 /**
  * WorkspaceSettingsLayout is the navigation of a workspace's settings and
  * the page chosen, as the account's settings have theirs (M2/P5 design
- * 3.6).
+ * 3.6). The ownerless notebooks are its admins' alone (M3/P5 design 3.3):
+ * the others are not offered them.
  */
 export const WorkspaceSettingsLayout = observer(function WorkspaceSettingsLayout() {
-  const { slug } = useWorkspace();
+  const { slug, role } = useWorkspace();
   const t = useT();
   return (
     <div className="max-w-4xl space-y-6">
       <h1 className="text-2xl font-semibold">{t("workspaceSettings.title")}</h1>
       <div className="flex flex-col gap-6 md:flex-row">
         <nav aria-label={t("workspaceSettings.title")} className="flex gap-1 md:w-40 md:shrink-0 md:flex-col">
-          {sections.map(({ path, label }) => (
-            <NavItem key={path} to={`/${slug}/settings/${path}`}>
-              {t(label)}
-            </NavItem>
-          ))}
+          {sections
+            .filter((section) => !section.admins || role === "admin")
+            .map(({ path, label }) => (
+              <NavItem key={path} to={`/${slug}/settings/${path}`}>
+                {t(label)}
+              </NavItem>
+            ))}
         </nav>
         <div className="min-w-0 flex-1">
           <Outlet />

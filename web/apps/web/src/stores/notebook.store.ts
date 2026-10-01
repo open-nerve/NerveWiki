@@ -1,6 +1,6 @@
 import { makeAutoObservable, runInAction } from "mobx";
 
-import { oneAtATime } from "../lib/one-at-a-time";
+import { oneAtATimeById } from "../lib/one-at-a-time";
 import { ApiError } from "../services/api";
 import type { Notebook, NotebookCreate, NotebookService, NotebookUpdate } from "../services/notebook.service";
 import type { Workspace } from "../services/workspace.service";
@@ -42,19 +42,19 @@ export class NotebookStore {
    * general page has two forms, either of which may send while the other's
    * change is out.
    */
-  private readonly changes = new Map<string, ReturnType<typeof oneAtATime>>();
+  private readonly inTurn = oneAtATimeById();
 
   constructor(
     private readonly service: Pick<NotebookService, "list" | "create" | "update" | "remove" | "leave">,
     /** The slug of the workspace whose notebooks these are. */
     private readonly slug: string
   ) {
-    makeAutoObservable<this, "service" | "slug" | "changesAnswered" | "removed" | "changes">(this, {
+    makeAutoObservable<this, "service" | "slug" | "changesAnswered" | "removed" | "inTurn">(this, {
       service: false,
       slug: false,
       changesAnswered: false,
       removed: false,
-      changes: false,
+      inTurn: false,
     });
   }
 
@@ -157,14 +157,9 @@ export class NotebookStore {
     });
   }
 
-  /** inTurn runs change after the changes of the notebook id before it. */
-  private inTurn<T>(id: string, change: () => Promise<T>): Promise<T> {
-    let changes = this.changes.get(id);
-    if (changes === undefined) {
-      changes = oneAtATime();
-      this.changes.set(id, changes);
-    }
-    return changes(change);
+  /** receive places notebook, which the account came to see another way (taking it over), in the list. */
+  receive(notebook: Notebook): void {
+    this.put(notebook);
   }
 
   /** put places notebook in the list by name; a read may hold it already. */

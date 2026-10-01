@@ -1,6 +1,5 @@
 import { accountIdOf } from "../../fixtures/assert/identity";
-import { emailFor, signInContext } from "../../fixtures/auth";
-import { expectQuietPage, watchPage } from "../../fixtures/browser";
+import { emailFor } from "../../fixtures/auth";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { notebookGroups, notebookPath, workspaceNav } from "../../fixtures/notebook-pages";
 import { addedNotebookMember } from "../../fixtures/notebook-members";
@@ -58,9 +57,8 @@ test("N2 (API): a private notebook with a second member is listed to both, two m
 });
 
 test("N2 (page): a private notebook is in no one else's left column, nor found at its address; with a second member, it is both's team notebook", async ({
+  anotherPage,
   api,
-  baseURL,
-  browser,
   db,
   signedInPage,
 }, testInfo) => {
@@ -75,23 +73,15 @@ test("N2 (page): a private notebook is in no one else's left column, nor found a
   await expect(workspaceNav(page, "Acme").getByText("No notebooks yet.", { exact: true })).toBeVisible();
 
   // The owner sees it as their own, until the second member comes in; the owner's tab stays quiet too.
-  const owner = await browser.newContext({ baseURL });
-  try {
-    await signInContext(owner, baseURL ?? "", ownerTokens);
-    const ownerPage = await owner.newPage();
-    const ownerWatch = await watchPage(ownerPage);
-    await ownerPage.goto(`/${workspace.slug}`);
-    await expect.poll(() => notebookGroups(ownerPage, "Acme")).toEqual({ "My notebooks": ["Diary"] });
-    await addedNotebookMember(api, ownerTokens.access_token, notebook.id, await accountIdOf(db, secondEmail), "editor");
+  const ownerPage = await anotherPage(ownerTokens);
+  await ownerPage.goto(`/${workspace.slug}`);
+  await expect.poll(() => notebookGroups(ownerPage, "Acme")).toEqual({ "My notebooks": ["Diary"] });
+  await addedNotebookMember(api, ownerTokens.access_token, notebook.id, await accountIdOf(db, secondEmail), "editor");
 
-    await Promise.all([page, ownerPage].map((tab) => tab.goto(`/${workspace.slug}`)));
-    await Promise.all(
-      [page, ownerPage].map((tab) =>
-        expect.poll(() => notebookGroups(tab, "Acme")).toEqual({ "Team notebooks": ["Diary"] })
-      )
-    );
-    await expectQuietPage(ownerPage, ownerWatch);
-  } finally {
-    await owner.close();
-  }
+  await Promise.all([page, ownerPage].map((tab) => tab.goto(`/${workspace.slug}`)));
+  await Promise.all(
+    [page, ownerPage].map((tab) =>
+      expect.poll(() => notebookGroups(tab, "Acme")).toEqual({ "Team notebooks": ["Diary"] })
+    )
+  );
 });

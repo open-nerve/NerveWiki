@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 
-import { formatDate, formatDateTime } from "./format";
+import { formatBytes, formatDate, formatDateTime } from "./format";
 
 const iso = "2026-10-01T15:04:00Z";
 
@@ -14,4 +14,16 @@ test("dates are written in the interface's language", () => {
 
 test("dates are written in the time zone asked for", () => {
   expect(formatDateTime(iso, "en", "Asia/Shanghai")).toMatch(/^Oct 1, 2026, 11:04\sPM$/);
+});
+
+test.each([
+  [0, "en", "0 B"],
+  [1023, "en", "1,023 B"],
+  [1024, "en", "1 KB"],
+  [1536, "en", "1.5 KB"],
+  [5 * 1024 ** 3, "en", "5 GB"],
+  [2 * 1024 ** 5, "en", "2,048 TB"],
+  [1536, "zh-CN", "1.5 KB"],
+] as const)("%d bytes in %s: %s", (bytes, locale, want) => {
+  expect(formatBytes(bytes, locale)).toBe(want);
 });

@@ -56,7 +56,9 @@ test("a signed-out generation has no account, nor its workspaces", () => {
     store.invitationsOf(workspaceJSON),
     store.notebooksOf(workspaceJSON),
     store.notebookMembersOf(notebookJSON),
-  ]).toEqual([undefined, undefined, undefined, undefined, undefined, undefined]);
+    store.ownerlessOf(workspaceJSON),
+    store.auditOf(workspaceJSON),
+  ]).toEqual([undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined]);
 });
 
 test("a workspace's member list is the same for the generation; another workspace's, or another generation's, is another", async () => {
@@ -104,4 +106,24 @@ test("a workspace's notebooks, and a notebook's members, are the same for the ge
   const next = new RootStore(app, "login-0");
   expect([next.notebooksOf(workspaceJSON), next.notebookMembersOf(notebookJSON)]).not.toContain(notebooks);
   expect(next.notebookMembersOf(notebookJSON)).not.toBe(members);
+});
+
+// The ownerless notebooks and the audit events go by the workspace's id (M3/P5 design 3.2).
+test("a workspace's ownerless notebooks and audit events are the same for the generation; another's are other", async () => {
+  const app = testApp(() => json(tokensJSON), storedSession("login-0"));
+  await app.session.start();
+  const store = new RootStore(app, "login-0");
+  const other = { ...workspaceJSON, id: "0199a2b4-0000-7000-8000-0000000000b2" };
+
+  const ownerless = store.ownerlessOf(workspaceJSON);
+  const audit = store.auditOf(workspaceJSON);
+
+  expect([ownerless, audit]).not.toContain(undefined);
+  expect(store.ownerlessOf({ ...workspaceJSON, name: "Lab renamed" })).toBe(ownerless);
+  expect(store.auditOf({ ...workspaceJSON, name: "Lab renamed" })).toBe(audit);
+  expect([store.ownerlessOf(other), store.auditOf(other)]).not.toContain(ownerless);
+  expect(store.auditOf(other)).not.toBe(audit);
+  const next = new RootStore(app, "login-0");
+  expect(next.ownerlessOf(workspaceJSON)).not.toBe(ownerless);
+  expect(next.auditOf(workspaceJSON)).not.toBe(audit);
 });

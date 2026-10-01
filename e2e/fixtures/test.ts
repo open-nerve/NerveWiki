@@ -1,7 +1,7 @@
 import path from "node:path";
 
 import { createClient, type ApiClient, type AuthTokens } from "@nervewiki/api-client";
-import { test as base, type Page } from "@playwright/test";
+import { test as base, type BrowserContext, type Page } from "@playwright/test";
 
 import { signInContext } from "./auth";
 import { expectQuietPage, watchPage, type PageWatch } from "./browser";
@@ -48,6 +48,12 @@ interface TestFixtures {
    * the session.
    */
   signedInPage: (tokens: AuthTokens, baseURL?: string) => Promise<Page>;
+  /**
+   * Opens a page of another browser context signed in with tokens at the worker's nervewiki: another
+   * account's tab, which has loaded nothing yet. It is watched as the test's page is, and a test that
+   * passes must have left it quiet too; its context closes as the test ends.
+   */
+  anotherPage: (tokens: AuthTokens) => Promise<Page>;
   /**
    * When the test fails, a pg_dump of the worker's database joins its trace and screenshot. The logs are
    * in test-results/: the worker's nervewiki's at its root, those of nervewikiWith in the test's directory.
@@ -152,6 +158,25 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
       await signInContext(page.context(), baseURL, tokens);
       return page;
     });
+  },
+  anotherPage: async ({ browser, nervewiki }, use, testInfo) => {
+    const contexts: BrowserContext[] = [];
+    const watched: [Page, PageWatch][] = [];
+    await use(async (tokens) => {
+      const context = await browser.newContext({ baseURL: nervewiki.baseURL });
+      contexts.push(context);
+      await signInContext(context, nervewiki.baseURL, tokens);
+      const page = await context.newPage();
+      watched.push([page, await watchPage(page)]);
+      return page;
+    });
+    try {
+      if (testInfo.status === testInfo.expectedStatus) {
+        await Promise.all(watched.map(([page, watch]) => expectQuietPage(page, watch)));
+      }
+    } finally {
+      await Promise.all(contexts.map((context) => context.close()));
+    }
   },
   databaseSnapshot: [
     async ({ db }, use, testInfo) => {

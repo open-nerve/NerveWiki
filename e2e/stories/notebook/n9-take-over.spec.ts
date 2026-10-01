@@ -5,10 +5,12 @@ import {
   expectOwned,
   expectOwnerlessListed,
 } from "../../fixtures/assert/notebook";
-import { emailFor } from "../../fixtures/auth";
-import { joinAs } from "../../fixtures/invitations";
+import { displayNameOf, emailFor } from "../../fixtures/auth";
+import { joinAs, joinOnboarded } from "../../fixtures/invitations";
+import { who } from "../../fixtures/member-pages";
 import { memberOf, removeMember } from "../../fixtures/members";
 import { addedNotebookMember } from "../../fixtures/notebook-members";
+import { notebookGroups, notebookHeading, notebookPath } from "../../fixtures/notebook-pages";
 import { createNotebook, getNotebook } from "../../fixtures/notebooks";
 import {
   auditEvents,
@@ -20,15 +22,22 @@ import {
   profileOf,
   takeOver,
 } from "../../fixtures/ownerless";
+import {
+  auditLog,
+  listedOwnerless,
+  ownerlessListed,
+  ownerlessPath,
+  takeOverWith,
+} from "../../fixtures/ownerless-pages";
 import { expect, test } from "../../fixtures/test";
-import { newTeam } from "../../fixtures/workspaces";
+import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 
 // N9, taking over an ownerless notebook (M3 design 3, 4; M3/P3 design 3.3):
 // a workspace admin finds it in the list, with its former owner, since
 // when, its size, and takes it over, its admin from then on; a private one
 // stays private. The workspace's members and guests: the lists are
 // refused, and by id the notebook is not there for them. The audit records
-// the take-over. The page version comes with M3/P5.
+// the take-over (M3/P5 design 3.3 for the page).
 
 test("N9 (API): a workspace admin lists the ownerless notebook, takes it over and is its admin, private as before; members and guests are refused, the list 403, by id 404; the audit has the take-over", async ({
   api,
@@ -111,4 +120,56 @@ test("N9 (API): a workspace admin lists the ownerless notebook, takes it over an
   await expectAuditEvents(db, workspace.id, [
     { action: "taken_over", notebookId: plans.id, notebookName: "Plans", formerOwnerId: ownerId, actorId: adminId },
   ]);
+});
+
+test("N9 (page): a workspace admin takes the ownerless notebook over: its left column has it, the status opens it, the audit log has it; a member's settings have no ownerless notebooks, and their address says why", async ({
+  anotherPage,
+  api,
+  db,
+  signedInPage,
+}, testInfo) => {
+  const { adminEmail, adminId, pat: adminPat, tokens: adminTokens, workspace } = await newOnboardedTeam(api, testInfo);
+  const slug = workspace.slug;
+  const ownerEmail = emailFor(testInfo, "owner");
+  const ownerPat = await joinAs(api, adminPat, slug, ownerEmail, "member");
+  const mateEmail = emailFor(testInfo, "mate");
+  const mateTokens = await joinOnboarded(api, adminPat, slug, mateEmail, "member");
+  const [ownerId, mateId] = await Promise.all([accountIdOf(db, ownerEmail), accountIdOf(db, mateEmail)]);
+  const plans = await createNotebook(api, ownerPat, slug, "Plans");
+  await addedNotebookMember(api, ownerPat, plans.id, mateId, "editor");
+  expect(
+    (await removeMember(api, adminPat, (await memberOf(api, adminPat, slug, ownerEmail)).id)).response.status
+  ).toBe(204);
+  const page = await signedInPage(adminTokens);
+  await page.goto(ownerlessPath(slug));
+
+  await expect.poll(() => ownerlessListed(page)).toEqual([listedOwnerless("Plans", ownerEmail, "Private", 1)]);
+  await expect(page.getByText("Nothing yet.", { exact: true })).toBeVisible();
+  expect((await takeOverWith(page, plans.id, "Plans", who(displayNameOf(ownerEmail), ownerEmail))).status()).toBe(200);
+
+  await expect(page.getByRole("status")).toHaveText("Plans taken over. Open it");
+  await expect(page.getByText("No ownerless notebooks.", { exact: true })).toBeVisible();
+  await expect.poll(() => notebookGroups(page, "Acme")).toEqual({ "Team notebooks": ["Plans"] });
+  await expect
+    .poll(() => auditLog(page))
+    .toEqual([`${displayNameOf(adminEmail)} took over Plans (former owner ${displayNameOf(ownerEmail)}).`]);
+  await page.getByRole("status").getByRole("link", { name: "Open it", exact: true }).click();
+  await expect(notebookHeading(page, "Plans")).toBeVisible();
+  await expect(page).toHaveURL(notebookPath(slug, plans.id));
+  await expectOwned(db, plans.id);
+  await expectNotebookMember(db, plans.id, adminId, { role: "admin", active: true, writerId: adminId });
+  await expectAuditEvents(db, workspace.id, [
+    { action: "taken_over", notebookId: plans.id, notebookName: "Plans", formerOwnerId: ownerId, actorId: adminId },
+  ]);
+
+  // A member: the workspace's settings have no ownerless notebooks, and their address says they are the admins'.
+  const matePage = await anotherPage(mateTokens);
+  await matePage.goto(`/${slug}/settings/general`);
+  const settings = matePage.getByRole("navigation", { name: "Workspace settings", exact: true });
+  await expect(settings.getByRole("link", { name: "Members", exact: true })).toBeVisible();
+  await expect(settings.getByRole("link", { name: "Ownerless notebooks", exact: true })).toHaveCount(0);
+  await matePage.goto(ownerlessPath(slug));
+  await expect(
+    matePage.getByText("Only the workspace's admins see its ownerless notebooks.", { exact: true })
+  ).toBeVisible();
 });

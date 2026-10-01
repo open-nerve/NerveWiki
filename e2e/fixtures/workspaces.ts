@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
 
-import type { ApiClient, Workspace } from "@nervewiki/api-client";
+import type { ApiClient, AuthTokens, Workspace } from "@nervewiki/api-client";
 import { expect, type TestInfo } from "@playwright/test";
 
-import { bearer, createToken, emailFor, register } from "./auth";
+import { bearer, createToken, emailFor, register, registerOnboarded } from "./auth";
 
 // The workspaces of the stories, through the API (M2 design 3).
 
@@ -82,8 +82,22 @@ export interface Team {
 
 /** Registers an admin of this test, who creates a workspace named name with a slug of this test. */
 export async function newTeam(api: ApiClient, testInfo: TestInfo, name = "Acme"): Promise<Team> {
+  return teamOf(api, testInfo, name, await register(api, emailFor(testInfo, "admin")));
+}
+
+/** newTeam's, its admin onboarded, with the admin's tokens: for a page signed in as the admin. */
+export async function newOnboardedTeam(
+  api: ApiClient,
+  testInfo: TestInfo,
+  name = "Acme"
+): Promise<Team & { tokens: AuthTokens }> {
+  const tokens = await registerOnboarded(api, emailFor(testInfo, "admin"));
+  return { ...(await teamOf(api, testInfo, name, tokens)), tokens };
+}
+
+/** The team of the admin of this test signed in with session, who creates a workspace named name. */
+async function teamOf(api: ApiClient, testInfo: TestInfo, name: string, session: AuthTokens): Promise<Team> {
   const adminEmail = emailFor(testInfo, "admin");
-  const session = await register(api, adminEmail);
   const pat = (await createToken(api, session.access_token, { name: testInfo.title.slice(0, 40) })).token;
   const me = await api.GET("/api/v0/me", { headers: bearer(pat) });
   if (!me.data) {

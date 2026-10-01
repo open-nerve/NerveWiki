@@ -4,8 +4,9 @@ import { afterEach, expect, test, vi } from "vitest";
 
 import type { WorkspaceInvitation } from "../../services/invitation.service";
 import type { WorkspaceMember } from "../../services/member.service";
+import type { OwnerlessNotebook } from "../../services/ownerless.service";
 import type { Workspace } from "../../services/workspace.service";
-import { json, problem, signedInApp, userJSON, workspaceJSON, type Answer } from "../../test/fakes";
+import { json, ownerlessJSON, problem, signedInApp, userJSON, workspaceJSON, type Answer } from "../../test/fakes";
 import { renderApp } from "../../test/render";
 import { watchFor } from "../../test/watch";
 
@@ -52,8 +53,9 @@ const toBob: WorkspaceInvitation = {
  * address (the server's administrator gave it to him); the account's
  * workspaces are Lab and Acme, whose one member is Ada. Changes answer as
  * update, remove and leave say, or succeed; what went out is in sent.
- * The test changes members, invitations, mine (the account's role) and
- * down (Lab's members cannot be read) as the server would.
+ * The test changes members, invitations, ownerless (Lab's ownerless
+ * notebooks), mine (the account's role) and down (Lab's members cannot be
+ * read) as the server would.
  */
 function membersServer({
   role = "admin",
@@ -67,6 +69,7 @@ function membersServer({
     down: false,
     members: [{ ...ada, role }, bob, cy],
     invitations: [toBob],
+    ownerless: [] as OwnerlessNotebook[],
   };
   let left = false;
   const memberOf = (request: Request) => server.members.find((m) => request.url.endsWith(m.id)) ?? bob;
@@ -81,6 +84,10 @@ function membersServer({
       return json({ data: server.mine === "guest" ? members.map((m) => ({ ...m, email: null })) : members });
     },
     "GET /api/v0/workspaces/lab/invitations": () => json({ data: server.invitations }),
+    "GET /api/v0/workspaces/lab/ownerless-notebooks": () => {
+      server.sent.push("GET ownerless");
+      return json({ data: server.ownerless });
+    },
     "GET /api/v0/workspaces/acme/members": () => json({ data: [ada] }),
     "GET /api/v0/workspaces/acme/invitations": () => json({ data: [] }),
     "PATCH /api/v0/workspace-members/*": async (request) => {
@@ -269,19 +276,48 @@ test("leaving lands on another workspace, with no 404 between, its heading focus
   await waitFor(() => expect(document.activeElement).toBe(heading));
 });
 
-test("the only admin cannot leave: the dialog says why, and the workspace stays", async () => {
+test.each([
+  [
+    "workspace.sole_admin",
+    "You are the workspace's only admin. Make another member an admin first, or, if no one else is in it, delete the workspace.",
+  ],
+  [
+    "notebook.sole_admin",
+    "You are the only admin of notebooks in this workspace that others are in. In each one's settings, make another member an admin, or delete it; then leave.",
+  ],
+])("the only admin cannot leave: the dialog says why, and the workspace stays: %s", async (code, why) => {
   const user = userEvent.setup();
-  const { app } = membersServer({ leave: () => problem(409, "workspace.sole_admin") });
+  const { app } = membersServer({ leave: () => problem(409, code) });
   const { router } = renderApp("/lab/settings/members", app);
 
   await user.click(await screen.findByRole("button", { name: "Leave workspace" }));
   const dialog = await screen.findByRole("alertdialog");
   await user.click(within(dialog).getByRole("button", { name: "Leave" }));
 
-  expect((await within(dialog).findByRole("alert")).textContent).toBe(
-    "You are the workspace's only admin. Make another member an admin first, or, if no one else is in it, delete the workspace."
-  );
+  expect((await within(dialog).findByRole("alert")).textContent).toBe(why);
   expect(router.state.location.pathname).toBe("/lab/settings/members");
+});
+
+test("removing a member says their notebooks become ownerless, and reads the ownerless notebooks again", async () => {
+  const user = userEvent.setup();
+  const server = membersServer();
+  const { router } = renderApp("/lab/settings/ownerless", server.app);
+  expect(await screen.findByText("No ownerless notebooks.")).toBeTruthy();
+  await act(() => router.navigate("/lab/settings/members"));
+
+  await user.click(await screen.findByRole("button", { name: "Remove Bob (bob@example.com)" }));
+  const dialog = await screen.findByRole("alertdialog", { name: "Remove Bob from Lab?" });
+  expect(dialog.textContent).toContain(
+    "The notebooks they alone administer become ownerless: you can take them over in Ownerless notebooks."
+  );
+  // Bob administered Roadmap alone; within the reads' 2s, only the removal reads it again.
+  server.ownerless = [ownerlessJSON];
+  await user.click(within(dialog).getByRole("button", { name: "Remove" }));
+  await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+  await act(() => router.navigate("/lab/settings/ownerless"));
+
+  expect(await screen.findByRole("button", { name: /^Take over Roadmap/ })).toBeTruthy();
+  expect(server.sent).toEqual(["GET ownerless", "GET members", "DELETE Bob", "GET ownerless"]);
 });
 
 afterEach(() => vi.useRealTimers());
