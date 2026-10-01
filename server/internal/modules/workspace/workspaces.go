@@ -26,6 +26,10 @@ type Workspaces interface {
 	// deletion committed while it waited leaves none. Outside a transaction
 	// it fails, since the lock would end with the statement.
 	ShareByID(ctx context.Context, id uuid.UUID) (bool, error)
+	// Slugs returns the slugs of the workspaces not deleted among ids, by
+	// id, unlocked: rule two names a refusal's workspaces (M3/P3 design
+	// 3.2), which the refused change holds locked.
+	Slugs(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]string, error)
 }
 
 // NewWorkspaces returns Workspaces over pool alone: bootstrap builds it
@@ -54,6 +58,10 @@ func (w workspaces) ShareByID(ctx context.Context, id uuid.UUID) (bool, error) {
 		return false, fmt.Errorf("share the workspace row: %w", err)
 	}
 	return ok, nil
+}
+
+func (w workspaces) Slugs(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]string, error) {
+	return w.store.WorkspaceSlugs(ctx, ids)
 }
 
 // idOf is the store's answer as Workspaces gives it: app.ErrNotFound is no

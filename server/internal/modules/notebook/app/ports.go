@@ -144,10 +144,13 @@ type Fact struct {
 	Role        shared.NotebookRole
 }
 
-// NotebooksDeleter deletes a workspace's notebooks.
+// NotebooksDeleter deletes a workspace's notebooks and audit events.
 type NotebooksDeleter interface {
 	// DeleteNotebooksOf soft-deletes the notebooks not deleted of
 	// workspaceID and every member row of them, by by at at, and returns
 	// their ids in order.
 	DeleteNotebooksOf(ctx context.Context, workspaceID, by uuid.UUID, at time.Time) ([]uuid.UUID, error)
+	// DeleteAuditEventsOf soft-deletes the audit events not deleted of
+	// workspaceID, by by at at.
+	DeleteAuditEventsOf(ctx context.Context, workspaceID, by uuid.UUID, at time.Time) error
 }

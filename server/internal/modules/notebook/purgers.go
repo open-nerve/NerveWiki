@@ -8,13 +8,15 @@ import (
 )
 
 // Purgers are the module's purgers (v0.1 design 13.1, item 6), one per
-// table with deleted_at, leaf to root: the members before their notebooks.
-// The notebooks reference the workspace module's workspaces, so bootstrap
-// lists these before that module's.
+// table with deleted_at, leaf to root: the members before their notebooks;
+// the audit events reference none. The notebooks and the audit events
+// reference the workspace module's workspaces, so bootstrap lists these
+// before that module's.
 func Purgers(pool *pgxpool.Pool) []jobs.Purger {
 	store := postgresadapter.New(pool)
 	return []jobs.Purger{
 		{Table: "notebook_members", Purge: store.PurgeMembers},
 		{Table: "notebooks", Purge: store.PurgeNotebooks},
+		{Table: "notebook_audit_events", Purge: store.PurgeAuditEvents},
 	}
 }

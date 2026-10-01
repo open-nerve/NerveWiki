@@ -55,6 +55,7 @@ sql:
     schema:
       - migrations/sql/00009_notebook_notebooks.sql
       - migrations/sql/00010_notebook_notebook_members.sql
+      - migrations/sql/00011_notebook_notebook_audit_events.sql
     queries: internal/modules/notebook/adapter/postgres/queries
     gen:
       go:

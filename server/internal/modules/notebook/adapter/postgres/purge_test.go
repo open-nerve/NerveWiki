@@ -14,8 +14,9 @@ import (
 )
 
 // purgeFixture is two notebooks deleted before the cutoff, one deleted at
-// it and one after, each with its admin and a member deleted with it; and
-// a live notebook with its admin and a member.
+// it and one after, each with its admin and a member deleted with it, and
+// an audit event deleted at its time; and a live notebook with its admin, a
+// member and a live event.
 type purgeFixture struct {
 	old, older, edge, recent, live uuid.UUID
 }
@@ -31,12 +32,16 @@ func newPurgeFixture(t *testing.T, s *postgresadapter.Store, pool *pgxpool.Pool)
 	notebook := func(name string) uuid.UUID {
 		n := newNotebook(t, s, acme, name, shared.AccessNone, alice)
 		addMember(t, s, n.ID, bob, shared.NotebookReader, alice)
+		exec(t, pool, "INSERT INTO notebook_audit_events (id, workspace_id, notebook_id, notebook_name, action, former_owner_id, "+
+			"created_by_id, updated_by_id, created_at, updated_at) VALUES ($1, $2, $3, $4, 'taken_over', $5, $6, $6, $7, $7)",
+			uuid.NewV7(), acme, n.ID, name, alice, bob, now())
 		return n.ID
 	}
 	deleted := func(name string, at time.Time) uuid.UUID {
 		id := notebook(name)
 		exec(t, pool, "UPDATE notebook_members SET deleted_at = $2 WHERE notebook_id = $1", id, at)
 		exec(t, pool, "UPDATE notebooks SET deleted_at = $2 WHERE id = $1", id, at)
+		exec(t, pool, "UPDATE notebook_audit_events SET deleted_at = $2 WHERE notebook_id = $1", id, at)
 		return id
 	}
 	return purgeFixture{
@@ -60,7 +65,7 @@ func countWhere(t *testing.T, pool *pgxpool.Pool, table, where string, args ...a
 
 // purgeStep is one purger and how many rows of the fixture it deletes:
 // those deleted before the cutoff. The notebooks' comes after their
-// members', which it needs gone.
+// members', which it needs gone; the audit events' needs nothing.
 type purgeStep struct {
 	table string
 	purge func(context.Context, time.Time, int) (int, error)
@@ -69,8 +74,9 @@ type purgeStep struct {
 
 func purgeSteps(s *postgresadapter.Store) []purgeStep {
 	return []purgeStep{
-		{"notebook_members", s.PurgeMembers, 4}, // old's and older's admin and member
-		{"notebooks", s.PurgeNotebooks, 2},      // old and older
+		{"notebook_members", s.PurgeMembers, 4},          // old's and older's admin and member
+		{"notebooks", s.PurgeNotebooks, 2},               // old and older
+		{"notebook_audit_events", s.PurgeAuditEvents, 2}, // old's and older's
 	}
 }
 
@@ -93,6 +99,9 @@ func TestPurge(t *testing.T) {
 	}
 	if n := countWhere(t, pool, "notebook_members", "notebook_id = ANY($1)", left); n != 6 || countWhere(t, pool, "notebook_members", "true") != 6 {
 		t.Errorf("%d members of edge, recent and live are left; want their 6 alone", n)
+	}
+	if n := countWhere(t, pool, "notebook_audit_events", "notebook_id = ANY($1)", left); n != 3 || countWhere(t, pool, "notebook_audit_events", "true") != 3 {
+		t.Errorf("%d audit events of edge, recent and live are left; want their 3 alone", n)
 	}
 }
 
@@ -122,9 +131,9 @@ func TestPurgeTakesBatches(t *testing.T) {
 }
 
 // A row another transaction holds is skipped, not waited for: a member
-// row, and a notebook whose members are gone; and a notebook whose members
-// a purger skipped stays until a later run takes them: deleting it would
-// cascade to the held row and wait for it.
+// row, a notebook whose members are gone, and an audit event; and a
+// notebook whose members a purger skipped stays until a later run takes
+// them: deleting it would cascade to the held row and wait for it.
 func TestPurgeSkipsALockedRowAndWaitsForTheMembers(t *testing.T) {
 	ctx := context.Background()
 	s, pool := newStore(t)
@@ -140,6 +149,9 @@ func TestPurgeSkipsALockedRowAndWaitsForTheMembers(t *testing.T) {
 	if _, err := holder.Exec(ctx, "SELECT 1 FROM notebooks WHERE id = $1 FOR UPDATE", f.older); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := holder.Exec(ctx, "SELECT 1 FROM notebook_audit_events WHERE notebook_id = $1 FOR UPDATE", f.old); err != nil {
+		t.Fatal(err)
+	}
 
 	bounded, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
@@ -151,8 +163,8 @@ func TestPurgeSkipsALockedRowAndWaitsForTheMembers(t *testing.T) {
 		}
 		purged = append(purged, n)
 	}
-	if !slices.Equal(purged, []int{3, 0}) || countWhere(t, pool, "notebooks", "id = ANY($1)", []uuid.UUID{f.old, f.older}) != 2 {
-		t.Errorf("purged %v, want every member but the held one, and no notebook", purged)
+	if !slices.Equal(purged, []int{3, 0, 1}) || countWhere(t, pool, "notebooks", "id = ANY($1)", []uuid.UUID{f.old, f.older}) != 2 {
+		t.Errorf("purged %v, want every member but the held one, no notebook, older's event", purged)
 	}
 
 	if err := holder.Rollback(ctx); err != nil {
@@ -166,7 +178,7 @@ func TestPurgeSkipsALockedRowAndWaitsForTheMembers(t *testing.T) {
 		}
 		purged = append(purged, n)
 	}
-	if !slices.Equal(purged, []int{1, 2}) {
-		t.Errorf("the next run purged %v, want the member held before, old and older", purged)
+	if !slices.Equal(purged, []int{1, 2, 1}) {
+		t.Errorf("the next run purged %v, want the member held before, old and older, old's event", purged)
 	}
 }

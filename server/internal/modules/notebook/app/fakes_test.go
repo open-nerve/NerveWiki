@@ -141,6 +141,11 @@ func (f *fakeStore) DeleteNotebooksOf(ctx context.Context, workspaceID, by uuid.
 	return f.ofWorkspace, nil
 }
 
+func (f *fakeStore) DeleteAuditEventsOf(ctx context.Context, workspaceID, by uuid.UUID, at time.Time) error {
+	f.record(ctx, "DeleteAuditEventsOf by "+by.String()+" at "+at.Format(time.RFC3339))
+	return nil
+}
+
 // fakeAuthorizer grants the grant of grants for the action asked, and
 // answers the rest not visible, or err when set.
 type fakeAuthorizer struct {

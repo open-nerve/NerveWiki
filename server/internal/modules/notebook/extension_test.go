@@ -207,8 +207,9 @@ func sameDeletion(a, b notebook.NotebookDeletion) bool {
 
 // The registrant of the workspace module's deletion, in the deletion's
 // transaction: the workspace's notebooks not deleted, with their members,
-// at the deletion's time; a notebook deleted before keeps its own; another
-// workspace's stays; the subscribers get every id once, in order.
+// and its audit events, at the deletion's time; a notebook deleted before
+// keeps its own; another workspace's stay; the subscribers get every id
+// once, in order.
 func TestAWorkspaceDeletionDeletesItsNotebooks(t *testing.T) {
 	for _, fail := range []bool{false, true} {
 		t.Run(map[bool]string{false: "the subscriber follows", true: "the subscriber fails"}[fail], func(t *testing.T) {
@@ -221,6 +222,7 @@ func TestAWorkspaceDeletionDeletesItsNotebooks(t *testing.T) {
 				"VALUES ($1, $2, 'Third', $3, $3, $4, $4)", third, f.acme, f.alice, testNow())
 			s := &subscriber{f: f, fail: fail}
 			deletion := notebook.NewWorkspaceDeletion(f.pool, []notebook.NotebookDeletionSubscriber{s})
+			acmes, others := f.auditEvent(t, f.acme), f.auditEvent(t, f.other)
 
 			err := postgres.NewTxManager(f.pool, 5*time.Second).WithinTx(context.Background(), func(ctx context.Context) error {
 				return deletion.WorkspaceDeleted(ctx, notebook.WorkspaceDeleted{WorkspaceID: f.acme, By: f.bob, At: testNow()})
@@ -245,6 +247,49 @@ func TestAWorkspaceDeletionDeletesItsNotebooks(t *testing.T) {
 			case fail && (err == nil || engs != 0 || engMembers != 0 || thirds != 0):
 				t.Errorf("WorkspaceDeleted() with a failing subscriber = %v; eng %d with %d members, third %d; want the failure, none", err, engs, engMembers, thirds)
 			}
+			acmeDeleted, otherDeleted := f.auditDeletedBy(t, acmes, f.bob, testNow()), f.auditDeletedBy(t, others, f.bob, testNow())
+			if acmeDeleted == fail || otherDeleted {
+				t.Errorf("acme's audit event deleted %v, the other's %v; want acme's %v, the other's not", acmeDeleted, otherDeleted, !fail)
+			}
 		})
 	}
+}
+
+// The registrant deletes the audit events of a workspace whose notebooks
+// are all gone: an event outlives its notebook.
+func TestAWorkspaceDeletionDeletesTheEventsOfGoneNotebooks(t *testing.T) {
+	f := newFixture(t)
+	f.exec(t, "DELETE FROM notebook_members WHERE notebook_id IN (SELECT id FROM notebooks WHERE workspace_id = $1)", f.acme)
+	f.exec(t, "DELETE FROM notebooks WHERE workspace_id = $1", f.acme)
+	event := f.auditEvent(t, f.acme)
+
+	err := postgres.NewTxManager(f.pool, 5*time.Second).WithinTx(context.Background(), func(ctx context.Context) error {
+		return notebook.NewWorkspaceDeletion(f.pool, nil).WorkspaceDeleted(ctx, notebook.WorkspaceDeleted{WorkspaceID: f.acme, By: f.bob, At: testNow()})
+	})
+
+	if err != nil || !f.auditDeletedBy(t, event, f.bob, testNow()) {
+		t.Errorf("WorkspaceDeleted() = %v; want the event deleted by bob at %v", err, testNow())
+	}
+}
+
+// auditEvent inserts an audit event of workspace, alice's notebook taken
+// over by bob, and returns its id.
+func (f fixture) auditEvent(t *testing.T, workspace uuid.UUID) uuid.UUID {
+	t.Helper()
+	id := uuid.NewV7()
+	f.exec(t, "INSERT INTO notebook_audit_events (id, workspace_id, notebook_id, notebook_name, action, former_owner_id, "+
+		"created_by_id, updated_by_id, created_at, updated_at) VALUES ($1, $2, $3, 'Notes', 'taken_over', $4, $5, $5, $6, $6)",
+		id, workspace, uuid.NewV7(), f.alice, f.bob, testNow().Add(-time.Hour))
+	return id
+}
+
+// auditDeletedBy is whether the audit event id was deleted by by at at.
+func (f fixture) auditDeletedBy(t *testing.T, id, by uuid.UUID, at time.Time) bool {
+	t.Helper()
+	var deleted bool
+	if err := f.pool.QueryRow(context.Background(), "SELECT deleted_at IS NOT DISTINCT FROM $2 AND updated_at = $2 AND updated_by_id = $3 "+
+		"FROM notebook_audit_events WHERE id = $1", id, at, by).Scan(&deleted); err != nil {
+		t.Fatal(err)
+	}
+	return deleted
 }

@@ -360,3 +360,36 @@ func (q *Queries) SlugTaken(ctx context.Context, slug string) (bool, error) {
 	err := row.Scan(&exists)
 	return exists, err
 }
+
+const workspaceSlugs = `-- name: WorkspaceSlugs :many
+SELECT id, slug
+FROM workspaces
+WHERE id = ANY($1::uuid[]) AND deleted_at IS NULL
+`
+
+type WorkspaceSlugsRow struct {
+	ID   uuid.UUID
+	Slug string
+}
+
+// The slugs of the workspaces not deleted among the ids, unlocked: the notebook module's rule two names them
+// (M3 design 4).
+func (q *Queries) WorkspaceSlugs(ctx context.Context, ids []uuid.UUID) ([]WorkspaceSlugsRow, error) {
+	rows, err := q.db.Query(ctx, workspaceSlugs, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []WorkspaceSlugsRow
+	for rows.Next() {
+		var i WorkspaceSlugsRow
+		if err := rows.Scan(&i.ID, &i.Slug); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
