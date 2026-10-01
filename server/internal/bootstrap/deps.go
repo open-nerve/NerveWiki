@@ -26,7 +26,7 @@ func identityDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, li
 	keys *identity.SigningKeys, policy identity.SignupPolicy,
 ) identity.Deps {
 	limits := cfg.RateLimit
-	vetoers, subscribers := deactivationRegistrants()
+	vetoers, subscribers := deactivationRegistrants(pool)
 	return identity.Deps{
 		Pool:                   pool,
 		Tx:                     postgres.NewTxManager(pool, cfg.Database.CommitTimeout),

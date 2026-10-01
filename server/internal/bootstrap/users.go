@@ -37,7 +37,7 @@ func Users(ctx context.Context, cfg config.Config, logOut, out io.Writer, cmd Us
 	if err := awaitDatabase(ctx, pool, databaseWait); err != nil {
 		return err
 	}
-	vetoers, subscribers := deactivationRegistrants()
+	vetoers, subscribers := deactivationRegistrants(pool)
 	admin := identity.NewAdmin(identity.AdminDeps{
 		Pool:                    pool,
 		Tx:                      postgres.NewTxManager(pool, cfg.Database.CommitTimeout),

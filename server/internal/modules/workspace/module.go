@@ -3,7 +3,8 @@
 // sees: New for the HTTP side; NewMemberships for the access module's
 // facts; NewInvitationCheck for identity's sign-up policy, and
 // InvitationKeyInfo, the info of the key it derives for the invitations;
-// Actions and Reserved for the composition's checks.
+// NewDeactivation, its part in identity's deactivation; Actions and
+// Reserved for the composition's checks.
 package workspace
 
 import (

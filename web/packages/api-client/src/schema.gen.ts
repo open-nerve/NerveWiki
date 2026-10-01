@@ -156,7 +156,7 @@ export interface paths {
         put?: never;
         /**
          * Deactivate the caller's account
-         * @description Deactivates the account: every session ends, and the personal access tokens stop working while it is inactive. Only the server's administrator can activate it again; sign-in then answers identity.account_deactivated. No password is asked for. The modules that keep the account's access elsewhere may refuse the deactivation with a code of their own, listed here.
+         * @description Deactivates the account: every session ends, and the personal access tokens stop working while it is inactive. Only the server's administrator can activate it again; sign-in then answers identity.account_deactivated. No password is asked for. The modules that keep the account's access elsewhere may refuse the deactivation with a code of their own, listed here: workspace.sole_admin when the account is the only admin of a workspace with other members, which the detail names. The deactivation ends the account's memberships of workspaces.
          */
         post: operations["deactivateMe"];
         delete?: never;
