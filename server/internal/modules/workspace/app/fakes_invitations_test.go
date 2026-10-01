@@ -34,26 +34,30 @@ func (f *fakeStore) ShareWorkspaceByID(ctx context.Context, id uuid.UUID) (domai
 	return f.lock(ctx, "ShareWorkspaceByID", func(w domain.Workspace) bool { return w.ID == id })
 }
 
-func (f *fakeStore) FindMembership(ctx context.Context, workspaceID, userID uuid.UUID) (domain.Member, bool, error) {
+func (f *fakeStore) FindMembership(ctx context.Context, workspaceID, userID uuid.UUID) (domain.Member, error) {
 	f.record(ctx, "FindMembership")
-	for _, set := range []struct {
-		members map[uuid.UUID]domain.Member
-		active  bool
-	}{{f.active, true}, {f.ended, false}} {
-		for _, m := range set.members {
-			if m.WorkspaceID == workspaceID && m.UserID == userID {
-				return m, set.active, nil
-			}
+	for _, m := range f.active {
+		if m.WorkspaceID == workspaceID && m.UserID == userID {
+			return m, nil
 		}
 	}
-	return domain.Member{}, false, app.ErrNotFound
+	for _, m := range f.ended {
+		if m.WorkspaceID == workspaceID && m.UserID == userID {
+			if m.EndedAt == nil { // put there by the test, not by EndMemberships
+				ended := now().Add(-time.Hour)
+				m.EndedAt = &ended
+			}
+			return m, nil
+		}
+	}
+	return domain.Member{}, app.ErrNotFound
 }
 
 func (f *fakeStore) RestoreMember(ctx context.Context, id uuid.UUID, role shared.WorkspaceRole, by uuid.UUID, now time.Time) error {
 	f.record(ctx, "RestoreMember "+string(role)+" by "+by.String()+" at "+now.Format(time.RFC3339Nano))
 	m := f.ended[id]
 	delete(f.ended, id)
-	m.Role = role
+	m.Role, m.EndedAt = role, nil
 	f.active[id] = m
 	return nil
 }

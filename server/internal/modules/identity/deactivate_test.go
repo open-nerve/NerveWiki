@@ -294,3 +294,45 @@ type gatedSubscriber struct{ gate *gate }
 func (s gatedSubscriber) AccountDeactivated(context.Context, identity.Deactivation) error {
 	return s.gate.stop()
 }
+
+// The administrator's commands share the account they name by its address
+// (M2/P4 design 3.3): normalized, it finds the account; a deactivated one
+// is identity.account_deactivated; no account, or an address that cannot
+// be one, is identity.account_not_found.
+func TestShareActiveAccountByEmail(t *testing.T) {
+	ctx := context.Background()
+	pool := newPool(t)
+	h := newServerOn(t, pool, clocktest.At(testStart()))
+	register(h, "alice@corp.com")
+	_, bob := register(h, "bob@corp.com")
+	if res := deactivate(h, bob.AccessToken); res.StatusCode != http.StatusNoContent {
+		t.Fatalf("deactivate bob = %d", res.StatusCode)
+	}
+	var alice uuid.UUID
+	if err := pool.QueryRow(ctx, `SELECT id FROM users WHERE email = 'alice@corp.com'`).Scan(&alice); err != nil {
+		t.Fatal(err)
+	}
+	tx := postgres.NewTxManager(pool, 2*time.Second)
+	share := func(email string) (uuid.UUID, error) {
+		var id uuid.UUID
+		err := tx.WithinTx(ctx, func(ctx context.Context) error {
+			var err error
+			id, err = identity.NewAccounts(pool).ShareActiveAccountByEmail(ctx, email)
+			return err
+		})
+		return id, err
+	}
+
+	if id, err := share("  Alice@Corp.COM "); err != nil || id != alice {
+		t.Errorf("ShareActiveAccountByEmail(alice) = %v, %v; want %v", id, err, alice)
+	}
+	for email, want := range map[string]error{
+		"bob@corp.com":   domain.ErrAccountDeactivated,
+		"carol@corp.com": domain.ErrAccountNotFound,
+		"not an address": domain.ErrAccountNotFound,
+	} {
+		if _, err := share(email); !errors.Is(err, want) {
+			t.Errorf("ShareActiveAccountByEmail(%q) = %v, want %v", email, err, want)
+		}
+	}
+}

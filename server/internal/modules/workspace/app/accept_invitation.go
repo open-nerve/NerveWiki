@@ -103,14 +103,14 @@ func (a *AcceptInvitation) Execute(ctx context.Context, id uuid.UUID, token stri
 // join gives userID a membership of inv's workspace with inv's role, or
 // keeps the active one it has, and returns its role.
 func (a *AcceptInvitation) join(ctx context.Context, inv domain.Invitation, userID uuid.UUID, now time.Time) (shared.WorkspaceRole, joining, error) {
-	m, active, err := a.d.Members.FindMembership(ctx, inv.WorkspaceID, userID)
+	m, err := a.d.Members.FindMembership(ctx, inv.WorkspaceID, userID)
 	switch {
 	case errors.Is(err, ErrNotFound):
 		m = domain.Member{ID: uuid.NewV7(), WorkspaceID: inv.WorkspaceID, UserID: userID, Role: inv.Role, CreatedAt: now}
 		return inv.Role, joinAdded, a.d.Updater.AddMember(ctx, m, userID)
 	case err != nil:
 		return "", "", err
-	case active:
+	case m.Active():
 		return m.Role, joinKept, nil
 	}
 	if err := a.d.Updater.RestoreMember(ctx, m.ID, inv.Role, userID, now); err != nil {

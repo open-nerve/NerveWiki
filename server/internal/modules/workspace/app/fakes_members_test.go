@@ -90,9 +90,13 @@ func (f *fakeStore) UpdateMemberRole(ctx context.Context, id uuid.UUID, role sha
 
 func (f *fakeStore) EndMemberships(ctx context.Context, userID uuid.UUID, workspaceIDs []uuid.UUID, by uuid.UUID, now time.Time) error {
 	f.record(ctx, "EndMemberships by "+by.String()+" at "+now.Format(time.RFC3339Nano))
-	maps.DeleteFunc(f.active, func(_ uuid.UUID, m domain.Member) bool {
-		return m.UserID == userID && slices.Contains(workspaceIDs, m.WorkspaceID)
-	})
+	for id, m := range f.active {
+		if m.UserID == userID && slices.Contains(workspaceIDs, m.WorkspaceID) {
+			delete(f.active, id)
+			m.EndedAt = &now
+			f.ended[id] = m
+		}
+	}
 	return nil
 }
 

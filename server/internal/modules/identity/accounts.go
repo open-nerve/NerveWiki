@@ -36,8 +36,12 @@ type (
 // account row FOR SHARE, confirms the account is active and returns its
 // address read under the lock, so a deactivation, or a change of the
 // address, and the new access run one after the other (M2/P3 design 3.3).
+// ShareActiveAccountByEmail does the same for an administrator's command,
+// which names the account by its address, and returns its id (M2/P4
+// design 3.3).
 type Accounts interface {
 	ShareActiveAccount(ctx context.Context, id uuid.UUID) (email string, err error)
+	ShareActiveAccountByEmail(ctx context.Context, email string) (uuid.UUID, error)
 }
 
 // NewAccounts returns Accounts over pool alone: bootstrap builds it before

@@ -37,6 +37,13 @@ type memberRow struct {
 	DeletedAt *time.Time
 }
 
+// sameMember compares two memberships, their end by the instant.
+func sameMember(a, b domain.Member) bool {
+	endedAlike := (a.EndedAt == nil) == (b.EndedAt == nil) && (a.EndedAt == nil || a.EndedAt.Equal(*b.EndedAt))
+	a.EndedAt, b.EndedAt = nil, nil
+	return a == b && endedAlike
+}
+
 func readMember(t *testing.T, pool *pgxpool.Pool, id uuid.UUID) memberRow {
 	t.Helper()
 	var r memberRow
@@ -367,27 +374,28 @@ func TestFindMembership(t *testing.T) {
 	gone := newWorkspace(t, s, "gone", "Gone", alice)
 	active := addMember(t, s, acme.ID, bob, shared.WorkspaceGuest, alice)
 	ended := addMember(t, s, acme.ID, carol, shared.WorkspaceMember, alice)
-	exec(t, pool, "UPDATE workspace_members SET ended_at = $2 WHERE id = $1", ended, now())
+	exec(t, pool, "UPDATE workspace_members SET ended_at = $2 WHERE id = $1", ended, later())
 	deleted := addMember(t, s, gone.ID, bob, shared.WorkspaceMember, alice)
 	exec(t, pool, "UPDATE workspace_members SET deleted_at = $2 WHERE id = $1", deleted, now())
 
+	endedAt := later()
 	for _, tt := range []struct {
-		name   string
-		user   uuid.UUID
-		want   domain.Member
-		active bool
+		name string
+		user uuid.UUID
+		want domain.Member
 	}{
-		{"active", bob, domain.Member{ID: active, WorkspaceID: acme.ID, UserID: bob, Role: shared.WorkspaceGuest, CreatedAt: now()}, true},
-		{"ended", carol, domain.Member{ID: ended, WorkspaceID: acme.ID, UserID: carol, Role: shared.WorkspaceMember, CreatedAt: now()}, false},
+		{"active", bob, domain.Member{ID: active, WorkspaceID: acme.ID, UserID: bob, Role: shared.WorkspaceGuest, CreatedAt: now()}},
+		{"ended", carol, domain.Member{ID: ended, WorkspaceID: acme.ID, UserID: carol, Role: shared.WorkspaceMember, CreatedAt: now(),
+			EndedAt: &endedAt}},
 	} {
-		if got, ok, err := s.FindMembership(ctx, acme.ID, tt.user); err != nil || got != tt.want || ok != tt.active {
-			t.Errorf("FindMembership(%s) = %+v, %v, %v; want %+v, %v", tt.name, got, ok, err, tt.want, tt.active)
+		if got, err := s.FindMembership(ctx, acme.ID, tt.user); err != nil || !sameMember(got, tt.want) {
+			t.Errorf("FindMembership(%s) = %+v, %v; want %+v", tt.name, got, err, tt.want)
 		}
 	}
 	for name, ids := range map[string][2]uuid.UUID{
 		"deleted": {gone.ID, bob}, "of another workspace": {gone.ID, carol}, "none": {acme.ID, uuid.NewV7()},
 	} {
-		if got, _, err := s.FindMembership(ctx, ids[0], ids[1]); !errors.Is(err, app.ErrNotFound) {
+		if got, err := s.FindMembership(ctx, ids[0], ids[1]); !errors.Is(err, app.ErrNotFound) {
 			t.Errorf("FindMembership(%s) = %+v, %v; want ErrNotFound", name, got, err)
 		}
 	}
@@ -408,10 +416,10 @@ func TestRestoreMember(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, ok, err := s.FindMembership(ctx, acme.ID, bob)
+	got, err := s.FindMembership(ctx, acme.ID, bob)
 	want := domain.Member{ID: id, WorkspaceID: acme.ID, UserID: bob, Role: shared.WorkspaceGuest, CreatedAt: now()}
-	if err != nil || !ok || got != want {
-		t.Errorf("after the restore = %+v, %v, %v; want %+v, active", got, ok, err, want)
+	if err != nil || !sameMember(got, want) {
+		t.Errorf("after the restore = %+v, %v; want %+v, active", got, err, want)
 	}
 	if r := readMember(t, pool, id); r.EndedAt != nil || r.UpdatedBy != bob || !r.UpdatedAt.Equal(later()) {
 		t.Errorf("the row: %+v; want active, updated by bob at %v", r, later())

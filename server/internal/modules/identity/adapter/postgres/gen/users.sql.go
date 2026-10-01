@@ -293,13 +293,14 @@ func (q *Queries) RecordOnboardingStep(ctx context.Context, arg RecordOnboarding
 }
 
 const shareAccount = `-- name: ShareAccount :one
-SELECT is_active, email
+SELECT id, is_active, email
 FROM users
 WHERE id = $1
 FOR SHARE
 `
 
 type ShareAccountRow struct {
+	ID       uuid.UUID
 	IsActive bool
 	Email    string
 }
@@ -311,7 +312,30 @@ type ShareAccountRow struct {
 func (q *Queries) ShareAccount(ctx context.Context, id uuid.UUID) (ShareAccountRow, error) {
 	row := q.db.QueryRow(ctx, shareAccount, id)
 	var i ShareAccountRow
-	err := row.Scan(&i.IsActive, &i.Email)
+	err := row.Scan(&i.ID, &i.IsActive, &i.Email)
+	return i, err
+}
+
+const shareAccountByEmail = `-- name: ShareAccountByEmail :one
+SELECT id, is_active, email
+FROM users
+WHERE email = $1
+FOR SHARE
+`
+
+type ShareAccountByEmailRow struct {
+	ID       uuid.UUID
+	IsActive bool
+	Email    string
+}
+
+// ShareAccount for the administrator's commands, which name the account by its address (M2/P4 design 3.3). An
+// address changed while the statement waited no longer matches: PostgreSQL checks the condition again on the row
+// the change committed, and no account is found.
+func (q *Queries) ShareAccountByEmail(ctx context.Context, email string) (ShareAccountByEmailRow, error) {
+	row := q.db.QueryRow(ctx, shareAccountByEmail, email)
+	var i ShareAccountByEmailRow
+	err := row.Scan(&i.ID, &i.IsActive, &i.Email)
 	return i, err
 }
 

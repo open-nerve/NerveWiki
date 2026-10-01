@@ -1,6 +1,10 @@
 package domain
 
-import "github.com/open-nerve/NerveWiki/server/internal/shared"
+import (
+	"strings"
+
+	"github.com/open-nerve/NerveWiki/server/internal/shared"
+)
 
 // The module's problems (M2 design 5).
 var (
@@ -40,3 +44,12 @@ var (
 	ErrInvitationEmailMismatch = shared.NewError(shared.KindForbidden, "workspace.invitation_email_mismatch",
 		"The invitation was sent to another e-mail address: sign in with that one.")
 )
+
+// ErrSoleAdminOf refuses a deactivation by rule two: workspace.sole_admin
+// (409), the code of ErrSoleAdmin, for another reason. Its detail names the
+// workspaces by slug, for the administrator's command to print: whoever
+// asks is the account itself, their admin, or the server's administrator.
+func ErrSoleAdminOf(slugs []string) *shared.Error {
+	return shared.NewError(shared.KindConflict, ErrSoleAdmin.Code, "The account is the only admin of workspaces that have "+
+		"other members ("+strings.Join(slugs, ", ")+"): make another member an admin of each first.")
+}

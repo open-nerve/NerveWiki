@@ -56,17 +56,6 @@ func (s *Store) CreateWorkspace(ctx context.Context, w domain.Workspace, by uuid
 	return nil
 }
 
-// AddMember implements app.WorkspaceCreator.
-func (s *Store) AddMember(ctx context.Context, m domain.Member, by uuid.UUID) error {
-	err := s.queries(ctx).AddMember(ctx, gen.AddMemberParams{
-		ID: m.ID, WorkspaceID: m.WorkspaceID, UserID: m.UserID, Role: string(m.Role), By: by, CreatedAt: m.CreatedAt,
-	})
-	if err != nil {
-		return fmt.Errorf("add member: %w", err)
-	}
-	return nil
-}
-
 // FindWorkspaceBySlug implements app.WorkspaceFinder.
 func (s *Store) FindWorkspaceBySlug(ctx context.Context, slug string) (domain.Workspace, error) {
 	row, err := s.queries(ctx).FindWorkspaceBySlug(ctx, slug)
@@ -83,11 +72,6 @@ func (s *Store) FindWorkspaceBySlug(ctx context.Context, slug string) (domain.Wo
 // read the same, so their rows convert to this one.
 func workspaceOf(r gen.FindWorkspaceBySlugRow) domain.Workspace {
 	return domain.Workspace{ID: r.ID, Slug: r.Slug, Name: r.Name, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt}
-}
-
-// memberOf is a row of the queries that read a member's columns.
-func memberOf(r gen.FindActiveMemberRow) domain.Member {
-	return domain.Member{ID: r.ID, WorkspaceID: r.WorkspaceID, UserID: r.UserID, Role: shared.WorkspaceRole(r.Role), CreatedAt: r.CreatedAt}
 }
 
 // ListWorkspacesOf implements app.MembershipLister.
@@ -115,20 +99,6 @@ func (s *Store) SlugTaken(ctx context.Context, slug string) (bool, error) {
 	return taken, nil
 }
 
-// RoleOf returns userID's role in workspaceID, and whether userID is an
-// active member of it, in the transaction ctx carries: the access module's
-// fact of the workspace level.
-func (s *Store) RoleOf(ctx context.Context, workspaceID, userID uuid.UUID) (shared.WorkspaceRole, bool, error) {
-	role, err := s.queries(ctx).RoleOf(ctx, gen.RoleOfParams{WorkspaceID: workspaceID, UserID: userID})
-	if errors.Is(err, pgx.ErrNoRows) {
-		return "", false, nil
-	}
-	if err != nil {
-		return "", false, fmt.Errorf("role of: %w", err)
-	}
-	return shared.WorkspaceRole(role), true, nil
-}
-
 // LockWorkspaceBySlug implements app.WorkspaceLocker.
 func (s *Store) LockWorkspaceBySlug(ctx context.Context, slug string) (domain.Workspace, error) {
 	row, err := s.queries(ctx).LockWorkspaceBySlug(ctx, slug)
@@ -151,6 +121,19 @@ func (s *Store) LockWorkspaceByID(ctx context.Context, id uuid.UUID) (domain.Wor
 		return domain.Workspace{}, fmt.Errorf("lock workspace: %w", err)
 	}
 	return workspaceOf(gen.FindWorkspaceBySlugRow(row)), nil
+}
+
+// LockWorkspacesOf implements app.WorkspacesLocker.
+func (s *Store) LockWorkspacesOf(ctx context.Context, userID uuid.UUID) ([]domain.Workspace, error) {
+	rows, err := s.queries(ctx).LockWorkspacesOf(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("lock workspaces: %w", err)
+	}
+	list := make([]domain.Workspace, len(rows))
+	for i, r := range rows {
+		list[i] = workspaceOf(gen.FindWorkspaceBySlugRow(r))
+	}
+	return list, nil
 }
 
 // ShareWorkspaceBySlug returns the workspace not deleted with slug, locked
@@ -203,92 +186,6 @@ func (s *Store) RenameWorkspace(ctx context.Context, id uuid.UUID, name string, 
 func (s *Store) DeleteWorkspace(ctx context.Context, id, by uuid.UUID, now time.Time) error {
 	if err := s.queries(ctx).DeleteWorkspace(ctx, gen.DeleteWorkspaceParams{ID: id, By: by, Now: now}); err != nil {
 		return fmt.Errorf("delete workspace: %w", err)
-	}
-	return nil
-}
-
-// FindActiveMember implements app.MemberFinder.
-func (s *Store) FindActiveMember(ctx context.Context, id uuid.UUID) (domain.Member, error) {
-	row, err := s.queries(ctx).FindActiveMember(ctx, id)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return domain.Member{}, app.ErrNotFound
-	}
-	if err != nil {
-		return domain.Member{}, fmt.Errorf("find member: %w", err)
-	}
-	return memberOf(row), nil
-}
-
-// FindMembership returns userID's membership of workspaceID, and whether
-// it is active: ended ones too, deleted ones not; app.ErrNotFound when there
-// is none.
-func (s *Store) FindMembership(ctx context.Context, workspaceID, userID uuid.UUID) (domain.Member, bool, error) {
-	row, err := s.queries(ctx).FindMembership(ctx, gen.FindMembershipParams{WorkspaceID: workspaceID, UserID: userID})
-	if errors.Is(err, pgx.ErrNoRows) {
-		return domain.Member{}, false, app.ErrNotFound
-	}
-	if err != nil {
-		return domain.Member{}, false, fmt.Errorf("find membership: %w", err)
-	}
-	return domain.Member{ID: row.ID, WorkspaceID: row.WorkspaceID, UserID: row.UserID, Role: shared.WorkspaceRole(row.Role),
-		CreatedAt: row.CreatedAt}, row.Active, nil
-}
-
-// ListActiveMembers implements app.MemberFinder.
-func (s *Store) ListActiveMembers(ctx context.Context, workspaceID uuid.UUID) ([]domain.Member, error) {
-	rows, err := s.queries(ctx).ListActiveMembers(ctx, workspaceID)
-	if err != nil {
-		return nil, fmt.Errorf("list members: %w", err)
-	}
-	list := make([]domain.Member, len(rows))
-	for i, r := range rows {
-		list[i] = memberOf(gen.FindActiveMemberRow(r))
-	}
-	return list, nil
-}
-
-// CountActiveAdmins implements app.MemberFinder.
-func (s *Store) CountActiveAdmins(ctx context.Context, workspaceID uuid.UUID) (int, error) {
-	n, err := s.queries(ctx).CountActiveAdmins(ctx, workspaceID)
-	if err != nil {
-		return 0, fmt.Errorf("count admins: %w", err)
-	}
-	return int(n), nil
-}
-
-// UpdateMemberRole implements app.MemberUpdater.
-func (s *Store) UpdateMemberRole(ctx context.Context, id uuid.UUID, role shared.WorkspaceRole, by uuid.UUID, now time.Time) error {
-	err := s.queries(ctx).UpdateMemberRole(ctx, gen.UpdateMemberRoleParams{ID: id, Role: string(role), By: by, Now: now})
-	if err != nil {
-		return fmt.Errorf("update member role: %w", err)
-	}
-	return nil
-}
-
-// RestoreMember makes the ended membership id active again with role,
-// updated by by at now; when it was first created stays.
-func (s *Store) RestoreMember(ctx context.Context, id uuid.UUID, role shared.WorkspaceRole, by uuid.UUID, now time.Time) error {
-	err := s.queries(ctx).RestoreMember(ctx, gen.RestoreMemberParams{ID: id, Role: string(role), By: by, Now: now})
-	if err != nil {
-		return fmt.Errorf("restore member: %w", err)
-	}
-	return nil
-}
-
-// EndMemberships implements app.MemberUpdater.
-func (s *Store) EndMemberships(ctx context.Context, userID uuid.UUID, workspaceIDs []uuid.UUID, by uuid.UUID, now time.Time) error {
-	err := s.queries(ctx).EndMemberships(ctx, gen.EndMembershipsParams{UserID: userID, WorkspaceIds: workspaceIDs, By: by, Now: now})
-	if err != nil {
-		return fmt.Errorf("end memberships: %w", err)
-	}
-	return nil
-}
-
-// DeleteMembersOf implements app.MemberUpdater.
-func (s *Store) DeleteMembersOf(ctx context.Context, workspaceID, by uuid.UUID, now time.Time) error {
-	err := s.queries(ctx).DeleteMembersOf(ctx, gen.DeleteMembersOfParams{WorkspaceID: workspaceID, By: by, Now: now})
-	if err != nil {
-		return fmt.Errorf("delete members: %w", err)
 	}
 	return nil
 }

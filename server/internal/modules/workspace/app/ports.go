@@ -79,6 +79,23 @@ type WorkspaceLocker interface {
 	LockWorkspaceByID(ctx context.Context, id uuid.UUID) (domain.Workspace, error)
 }
 
+// WorkspacesLocker locks the workspace rows of an account's memberships at
+// once: a deactivation's (M2/P4 design 3.1).
+type WorkspacesLocker interface {
+	// LockWorkspacesOf locks the workspaces not deleted of userID's active
+	// memberships FOR NO KEY UPDATE, in id order, until the transaction
+	// ends, and returns them. The memberships are read before the locks:
+	// the caller reads them again under them.
+	LockWorkspacesOf(ctx context.Context, userID uuid.UUID) ([]domain.Workspace, error)
+}
+
+// StandingLister reads rule two's view of an account's memberships.
+type StandingLister interface {
+	// ListStandings returns userID's active memberships of workspaceIDs,
+	// which the transaction has locked, by workspace id.
+	ListStandings(ctx context.Context, userID uuid.UUID, workspaceIDs []uuid.UUID) ([]domain.Standing, error)
+}
+
 // WorkspaceSharer locks a workspace row FOR SHARE until the transaction
 // ends: the invitations' writes take it, which run beside each other, while
 // a change of the workspace or of its members waits for them, and they for
@@ -107,10 +124,9 @@ type MemberFinder interface {
 	ListActiveMembers(ctx context.Context, workspaceID uuid.UUID) ([]domain.Member, error)
 	// CountActiveAdmins counts workspaceID's active admins.
 	CountActiveAdmins(ctx context.Context, workspaceID uuid.UUID) (int, error)
-	// FindMembership returns userID's membership of workspaceID, and
-	// whether it is active: an ended one too; ErrNotFound when there is
-	// none.
-	FindMembership(ctx context.Context, workspaceID, userID uuid.UUID) (domain.Member, bool, error)
+	// FindMembership returns userID's membership of workspaceID, an ended
+	// one too; ErrNotFound when there is none.
+	FindMembership(ctx context.Context, workspaceID, userID uuid.UUID) (domain.Member, error)
 }
 
 // MemberUpdater changes memberships of workspaces the transaction has
