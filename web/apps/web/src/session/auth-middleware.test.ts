@@ -10,6 +10,7 @@ import { AUTH_KEY, SessionChangedError, SessionUnavailableError, TokenManager } 
 
 const REFRESH = "/api/v0/auth/refresh";
 const ME = "/api/v0/me";
+const LOGOUT = "/api/v0/auth/logout";
 
 const loginId = "0123456789abcdef0123456789abcdef";
 /** The session of another account, Y, which another tab signs in to. */
@@ -98,13 +99,20 @@ describe("authMiddleware", () => {
   });
 
   it.each([
-    ["another tab signs in as Y", (tm: TokenManager, storage: SharedStorage) => storage.write(AUTH_KEY, recordY)],
-    ["the tab signs out", (tm: TokenManager) => void tm.signOut()],
-  ])("stops a request with SessionChangedError when %s before its success comes back", async (_, change) => {
+    ["another tab signs in as Y", false],
+    ["the tab signs out", true],
+  ])("stops a request with SessionChangedError when %s before its success comes back", async (_, signOut) => {
     const { storage, server, api, tm } = await setUp();
     const saved = track(api.PATCH(ME, { body: { display_name: "Xavier" } }));
     await until(() => server.calls.length === 1, "the request");
-    change(tm, storage);
+    if (signOut) {
+      const out = track(tm.signOut());
+      await until(() => server.to(LOGOUT).length === 1, "the logout");
+      server.to(LOGOUT)[0]?.answer(new Response(null, { status: 204 }));
+      await until(() => out.settled, "the sign-out");
+    } else {
+      storage.write(AUTH_KEY, recordY);
+    }
     await until(() => tm.state.loginId !== loginId, "the change of session");
     server.calls[0]?.answer(json(200, user));
     await until(() => saved.settled, "the answer");

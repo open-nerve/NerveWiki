@@ -44,15 +44,15 @@ func (t Tokens) Token(id uuid.UUID) string {
 // spelling, as a personal access token does: the prefix, then exactly 22
 // characters, decoded strictly, so that the last one's unused bits are
 // zero; a decoder skips \r and \n, and with them inside, fewer than 16
-// bytes come out. It compares in constant time: the time of a comparison
-// would tell a forger how much of a tag is right.
+// bytes come out, which no tag equals. It compares in constant time: the
+// time of a comparison would tell a forger how much of a tag is right.
 func (t Tokens) Valid(id uuid.UUID, token string) bool {
 	encoded, ok := strings.CutPrefix(token, prefix)
 	if !ok || len(token) != tokenLen {
 		return false
 	}
 	tag, err := base64.RawURLEncoding.Strict().DecodeString(encoded)
-	return err == nil && len(tag) == tagLen && hmac.Equal(tag, t.tag(id))
+	return err == nil && hmac.Equal(tag, t.tag(id))
 }
 
 func (t Tokens) tag(id uuid.UUID) []byte {

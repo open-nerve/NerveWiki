@@ -52,9 +52,11 @@ const (
 // before any read. In the lock order, the transaction shares the caller's
 // account row, which tells its address under the lock, then locks the
 // workspace's row and the invitation's: the address must be the one
-// invited (403). An active membership is kept as it is; an ended one is
-// restored with the invitation's role, its subscribers told; else a new
-// one is added. The invitation is then used up, at the same time.
+// invited (403). An active membership is kept as it is; else, unless the
+// workspace has no active admin and the invitation's role is not admin
+// (409, rule three), an ended one is restored with the invitation's role,
+// its subscribers told, or a new one is added. The invitation is then used
+// up, at the same time; a refusal leaves it pending.
 func (a *AcceptInvitation) Execute(ctx context.Context, id uuid.UUID, token string) (Membership, error) {
 	actor, err := shared.RequireActor(ctx)
 	if err != nil {
@@ -100,8 +102,8 @@ func (a *AcceptInvitation) Execute(ctx context.Context, id uuid.UUID, token stri
 	return joined, nil
 }
 
-// join gives userID a membership of inv's workspace with inv's role, or
-// keeps the active one it has, and returns its role.
+// join gives userID a membership of inv's workspace with inv's role, as
+// rule three admits, or keeps the active one it has, and returns its role.
 func (a *AcceptInvitation) join(ctx context.Context, inv domain.Invitation, userID uuid.UUID, now time.Time) (shared.WorkspaceRole, joining, error) {
 	m, err := a.d.Members.FindMembership(ctx, inv.WorkspaceID, userID)
 	if err != nil && !errors.Is(err, ErrNotFound) {

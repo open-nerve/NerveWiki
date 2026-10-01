@@ -92,10 +92,10 @@ make run      # 以 dev 配置启动 nervewiki serve，监听 127.0.0.1:8080；C
 
   工作区的命令（M2/P4），日志带 `by=cli`，同样不记邮箱：
 
-  | 命令                                                             | 作用                                                                                                                             |
-  | ---------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-  | `workspaces create --slug <slug> --name <名称> --admin <地址>`   | 建工作区，那个账户是它的管理员；不看 `workspace.creation_enabled`，关闭创建时工作区就这样建                                      |
-  | `workspaces reactivate-member --workspace <slug> --email <地址>` | 恢复已结束的成员关系，角色沿用，加入的时刻不变；输出它结束的时刻（`… the membership had ended at …`）。账户要先 `users activate` |
+  | 命令                                                             | 作用                                                                                                                                                                                             |
+  | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+  | `workspaces create --slug <slug> --name <名称> --admin <地址>`   | 建工作区，那个账户是它的管理员；不看 `workspace.creation_enabled`，关闭创建时工作区就这样建                                                                                                      |
+  | `workspaces reactivate-member --workspace <slug> --email <地址>` | 恢复已结束的成员关系，角色沿用，加入的时刻不变；输出它结束的时刻（`… the membership had ended at …`）。账户要先 `users activate`；工作区没有管理员时，先恢复一位管理员（规则见下面的"停用账户"） |
 
   账户不存在、已停用，slug 已被占用或不合规则，工作区不存在，或者他从来不是这个工作区的成员时，退出码 1，数据库不变。恢复不限于停用结束的成员关系：被移出、离开的也可以恢复，看输出的结束时刻确认恢复的是哪一次。成员关系已是有效的，什么也不做（`… is already a member of …`）。
 
@@ -108,7 +108,7 @@ make run      # 以 dev 配置启动 nervewiki serve，监听 127.0.0.1:8080；C
 - **创建**：`workspace.creation_enabled`，默认开启：每个账户都能创建工作区，创建者是它的管理员（`GET /api/v0/instance` 的 `workspace_creation_enabled` 告诉客户端）。关闭后创建答 403 `workspace.creation_disabled`。
 - **slug**：工作区的地址段，1–48 个 a–z、0–9、`_`、`-`，创建后不能改；站点的顶层路径与留作以后用的名字不能用，名单在 `server/internal/modules/workspace/domain/reserved_slugs.txt`。
 - **成员**：角色是 admin、member、guest。管理员改别人的角色、移出成员，不能改或移出自己；成员可以离开，唯一的管理员不能（`workspace.sole_admin`），先让别人成为管理员，或者删除工作区。成员列表对访客隐藏邮箱。
-- **停用账户**（自助停用与 `users deactivate` 相同）：他是某个还有别的有效成员的工作区唯一的管理员时，停用被拒（409 `workspace.sole_admin`，原因里列出这些工作区的 slug），先让那里的另一位成员成为管理员；只有他一人的工作区不挡停用。停用结束他全部的成员关系，并删除这些工作区里发给他邮箱的待接受邀请。恢复：`users activate`，再对每个工作区 `workspaces reactivate-member`，或者由工作区的管理员重新邀请他。唯一的管理员独自停用之后，工作区没有管理员：接受成员、访客邀请答 409 `workspace.no_admin`，`reactivate-member` 恢复成员、访客也被拒（`The workspace has no admin`）；先恢复那位管理员，或者有人接受一份管理员邀请，别人才能加入。
+- **停用账户**（自助停用与 `users deactivate` 相同）：他是某个还有别的有效成员的工作区唯一的管理员时，停用被拒（409 `workspace.sole_admin`，原因里列出这些工作区的 slug），先让那里的另一位成员成为管理员；只有他一人的工作区不挡停用。停用结束他全部的成员关系，并删除这些工作区里发给他邮箱的待接受邀请。恢复：`users activate`，再对每个工作区 `workspaces reactivate-member`，或者由工作区的管理员重新邀请他。唯一的管理员独自停用之后，工作区没有管理员：接受成员、访客邀请答 409 `workspace.no_admin`，`reactivate-member` 恢复成员、访客也被拒（`The workspace has no admin`）；先恢复那位管理员，或者有人接受一份管理员邀请，别人才能加入。注册关闭时凭这样的邀请照样能注册，邀请留着，等工作区重新有管理员之后再接受。
 - **软删除与清理**：删除工作区是软删除，连同它的成员与邀请；撤回、接受的邀请也是软删除。超过 `jobs.purge_retention`（默认 1440 小时，即 60 天）的，由后台任务物理删除，服务启动时一次，之后每 `jobs.purge_interval`（默认 1 小时）一次；多个实例时只有一个执行。保留期内运维可以从数据库恢复。
 - **邀请**：管理员按邮箱邀请（`POST /api/v0/workspaces/{slug}/invitations`），把邀请的 id 与令牌（`nwk_inv_` 开头）发给对方；一个工作区里一个邮箱至多一份待接受的邀请，有效成员的邮箱不能邀请。令牌是 id 的 MAC，不存库，管理员随时可以在邀请列表里再看到它。任何拿到链接的人都能预览（工作区的名称与 slug、角色，不含邮箱）；接受要求用被邀请的邮箱登录，接受之后成为成员（已结束的成员关系恢复，保留第一次加入的时刻；已是成员的角色不变）。预览与接受都把令牌放在请求体里，不放在 URL 中；链接由页面拼出（M2/P5、P6），令牌放在 URL 片段（`#`）里，浏览器不把片段发给服务器。撤回邀请（`DELETE /api/v0/workspace-invitations/{workspace_invitation_id}`）、成员关系结束（对他邮箱的待接受邀请一并删除）、删除工作区之后，链接答 404 `workspace.invitation_not_found`。
 

@@ -25,7 +25,9 @@ type ReactivateMemberDeps struct {
 // ReactivateMember makes an account's ended membership active again, for
 // the server's administrator: nervewiki workspaces reactivate-member (M2/P4
 // design 3.3), after users activate. Any ended membership: a deactivation's
-// end, or a removal or a leaving; the result tells when it ended.
+// end, or a removal or a leaving; the result tells when it ended. A
+// member's or a guest's waits while the workspace has no active admin
+// (409, rule three): an admin's comes back first.
 type ReactivateMember struct {
 	d ReactivateMemberDeps
 }
@@ -49,8 +51,8 @@ type Reactivated struct {
 // workspace of slug. The transaction shares the account's row first, as
 // every path that gives an account access does (v0.1 design 13.1, item
 // 18), then locks the workspace and reads the membership under the lock.
-// The ended row comes back with its role and when it first joined, and the
-// restore's subscribers follow. The account itself is recorded as the one
+// The ended row comes back with its role and when it first joined, unless
+// rule three refuses it (409), and the restore's subscribers follow. The account itself is recorded as the one
 // who restored it: the command line has no account of its own.
 func (r *ReactivateMember) Execute(ctx context.Context, slug, email string) (Reactivated, error) {
 	if !domain.ValidSlug(slug) {
@@ -92,8 +94,6 @@ func (r *ReactivateMember) Execute(ctx context.Context, slug, email string) (Rea
 	return got, nil
 }
 
-// restore makes the ended membership m active again with role, by by at
-// now, and tells the subscribers (M2/P3 design 3.5).
 // admit checks rule three before a membership of workspaceID becomes
 // active with role: the workspace is locked, so its admins stay as counted.
 func admit(ctx context.Context, members MemberFinder, workspaceID uuid.UUID, role shared.WorkspaceRole) error {
@@ -107,6 +107,8 @@ func admit(ctx context.Context, members MemberFinder, workspaceID uuid.UUID, rol
 	return nil
 }
 
+// restore makes the ended membership m active again with role, by by at
+// now, and tells the subscribers (M2/P3 design 3.5).
 func restore(ctx context.Context, updater MemberUpdater, subscribers []MembershipRestoreSubscriber, m domain.Member,
 	role shared.WorkspaceRole, by uuid.UUID, now time.Time,
 ) error {

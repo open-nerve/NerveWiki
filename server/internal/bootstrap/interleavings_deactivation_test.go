@@ -283,8 +283,10 @@ func TestSoleAdminDeactivatingWhileOneJoins(t *testing.T) {
 					before = "ended"
 				}
 				var inv invitation
-				join := tm.reactivateByCommand(t, "dana")
-				if !tt.byCommand {
+				var join step
+				if tt.byCommand {
+					join = tm.reactivateByCommand(t, "dana")
+				} else {
 					inv = tm.invite(t, "dana", tt.role)
 					join = accept("dana", inv)
 				}

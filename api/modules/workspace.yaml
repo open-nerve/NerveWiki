@@ -329,9 +329,9 @@ paths:
         member already keeps their role, and the invitation is used up; one
         whose membership ended has it back, with the invitation's role and
         when they first joined. A workspace without an active admin, its only
-        one deactivated alone in it, takes an admin back first: a member's or
-        a guest's invitation is workspace.no_admin until then, and stays
-        pending. An invitation that does not exist, is no longer pending,
+        one deactivated alone in it, admits only an admin until it has one
+        again: a member's or a guest's invitation is workspace.no_admin, and
+        stays pending. An invitation that does not exist, is no longer pending,
         whose workspace is deleted, or whose token is not the link's is
         workspace.invitation_not_found alike.
       security: [{ bearer: [] }]

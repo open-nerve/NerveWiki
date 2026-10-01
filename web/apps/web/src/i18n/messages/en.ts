@@ -214,7 +214,7 @@ export const en = {
   "problem.workspace.invitation_email_mismatch":
     "This invitation was sent to another e-mail address. Sign in with that one to accept it.",
   "problem.workspace.no_admin":
-    "The workspace has no admin now: you can accept this invitation once an admin is back in it. Ask the server's administrator.",
+    "The workspace has no admin now: you can accept this invitation once it has one again. Ask the server's administrator.",
   "problem.network": "Cannot reach the server. Check the connection and try again.",
   "problem.unavailable": "Cannot reach the server for now. You are still signed in; try again in a moment.",
   "problem.storage":

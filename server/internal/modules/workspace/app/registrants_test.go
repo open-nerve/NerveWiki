@@ -13,9 +13,10 @@ import (
 
 // Two registrants of each extension point (M2 design 8): the dispatch
 // reaches both, in the order registered, and the first error, a refusal or
-// a failure, stops it and is the use case's, for its transaction to roll
-// back what came before. The module's extension tests show the rollback on
-// a real database, with one registrant; these show the loops.
+// a failure, the first registrant's or the second's, stops it and is the
+// use case's, for its transaction to roll back what came before. The
+// module's extension tests show the rollback on a real database, with one
+// registrant; these show the loops.
 
 // registrant vetoes membership ends and follows every extension point,
 // named in the store's calls; it refuses with refusal, and fails what it
@@ -77,7 +78,7 @@ func TestTwoRegistrantsOfEachExtensionPoint(t *testing.T) {
 		}, false, "deleted", ""},
 	} {
 		refusal := shared.NewError(shared.KindConflict, "test.vetoed", "Vetoed.")
-		failure := errors.New("the second subscriber failed")
+		failure := errors.New("the subscriber failed")
 		follow := inTxCalls(point.followed+" a", point.followed+" b")
 		vetoes := inTxCalls("veto a", "veto b")
 		if !point.vetoes {
@@ -85,19 +86,27 @@ func TestTwoRegistrantsOfEachExtensionPoint(t *testing.T) {
 		}
 		for _, tt := range []struct {
 			name             string
+			failing          string // the registrant that refuses or fails, if any
 			refusal, failure error
-			want             []string
+			vetoed, followed int // how many registrants were called to veto, and to follow
 		}{
-			{"both follow", nil, nil, slices.Concat(vetoes, follow)},
-			{"the second fails", nil, failure, slices.Concat(vetoes, follow)},
-			{"the second refuses", refusal, nil, vetoes},
+			{"both follow", "", nil, nil, 2, 2},
+			{"the first fails", "a", nil, failure, 2, 1},
+			{"the second fails", "b", nil, failure, 2, 2},
+			{"the first refuses", "a", refusal, nil, 1, 0},
+			{"the second refuses", "b", refusal, nil, 2, 0},
 		} {
 			if tt.refusal != nil && !point.vetoes {
 				continue
 			}
 			t.Run(point.name+", "+tt.name, func(t *testing.T) {
 				tm := newTeam()
-				a, b := registrant{name: "a", store: tm.store}, registrant{name: "b", store: tm.store, refusal: tt.refusal, failure: tt.failure}
+				a, b := registrant{name: "a", store: tm.store}, registrant{name: "b", store: tm.store}
+				for _, r := range []*registrant{&a, &b} {
+					if r.name == tt.failing {
+						r.refusal, r.failure = tt.refusal, tt.failure
+					}
+				}
 
 				err := point.run(tm, a, b)
 
@@ -108,8 +117,9 @@ func TestTwoRegistrantsOfEachExtensionPoint(t *testing.T) {
 				if wantErr == nil {
 					wantErr = tt.failure
 				}
-				if !errors.Is(err, wantErr) || !slices.Equal(got, tt.want) {
-					t.Errorf("Execute() = %v, the registrants did %q; want %v, %q", err, got, wantErr, tt.want)
+				want := slices.Concat(vetoes[:min(tt.vetoed, len(vetoes))], follow[:tt.followed])
+				if !errors.Is(err, wantErr) || !slices.Equal(got, want) {
+					t.Errorf("Execute() = %v, the registrants did %q; want %v, %q", err, got, wantErr, want)
 				}
 				if point.vetoes {
 					wrote := slices.ContainsFunc(tm.store.calls, func(c string) bool { return strings.HasPrefix(c, point.write) })
