@@ -25,3 +25,12 @@ test("signing out from the user menu ends the session and goes to sign in", asyn
   expect(sent).toEqual(["/api/v0/auth/logout"]);
   expect(screen.queryByRole("button", { name: "Ada" })).toBeNull();
 });
+
+test("the user menu says which version the server runs", async () => {
+  const user = userEvent.setup();
+  renderApp("/lab", signedInApp());
+
+  await user.click(await screen.findByRole("button", { name: "Ada" }));
+
+  expect(await screen.findByText("Nerve Wiki 1.2.3 (4f2a9c1)")).toBeTruthy();
+});

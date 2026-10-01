@@ -2,6 +2,7 @@ import { createClient, type ApiClient, type AuthTokens } from "@nervewiki/api-cl
 
 import type { User } from "../services/account.service";
 import type { InstanceInfo } from "../services/instance.service";
+import type { Workspace } from "../services/workspace.service";
 import { Session, type SessionDeps } from "../session/session";
 import { AUTH_KEY } from "../session/token-manager";
 import { PreferencesStore, type DarkSchemeQuery } from "../stores/preferences.store";
@@ -69,6 +70,16 @@ export const userJSON: User = {
   onboarding_steps: ["profile"],
 };
 
+/** workspaceJSON is a workspace of userJSON's, which it administers. */
+export const workspaceJSON: Workspace = {
+  id: "0199a2b4-0000-7000-8000-0000000000b1",
+  slug: "lab",
+  name: "Lab",
+  role: "admin",
+  created_at: "2026-10-01T08:00:00Z",
+  updated_at: "2026-10-01T08:00:00Z",
+};
+
 /** Answer answers a request of the fake API. */
 export type Answer = (request: Request) => Response | Promise<Response>;
 
@@ -110,8 +121,9 @@ export function byRoute(routes: Record<string, Answer>): Answer {
 
 /**
  * signedInApp is the page's stores of a tab signed in (from its stored
- * session, login-0) as userJSON; routes adds to or replaces the answers
- * to the refresh, GET /me and GET /instance.
+ * session, login-0) as userJSON, a member of workspaceJSON alone; routes
+ * adds to or replaces the answers to the refresh, GET /me, GET /instance
+ * and GET /workspaces.
  */
 export function signedInApp(routes: Record<string, Answer> = {}): AppStores {
   return testApp(
@@ -119,6 +131,7 @@ export function signedInApp(routes: Record<string, Answer> = {}): AppStores {
       "POST /api/v0/auth/refresh": () => json(tokensJSON),
       "GET /api/v0/me": () => json(userJSON),
       "GET /api/v0/instance": () => json(instanceJSON),
+      "GET /api/v0/workspaces": () => json({ data: [workspaceJSON] }),
       ...routes,
     }),
     storedSession("login-0")

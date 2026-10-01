@@ -2,7 +2,17 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 
-import { byRoute, instanceJSON, json, problem, testApp, tokensJSON, userJSON, type Answer } from "../test/fakes";
+import {
+  byRoute,
+  instanceJSON,
+  json,
+  problem,
+  testApp,
+  tokensJSON,
+  userJSON,
+  workspaceJSON,
+  type Answer,
+} from "../test/fakes";
 import { renderApp } from "../test/render";
 
 /** A signed-out tab whose sign-in answers login; what it sent is in sent. */
@@ -16,6 +26,7 @@ function signInWith(login: Answer, instance = instanceJSON) {
         return login(request);
       },
       "GET /api/v0/me": () => json(userJSON),
+      "GET /api/v0/workspaces": () => json({ data: [workspaceJSON] }),
     })
   );
   return { app, sent };

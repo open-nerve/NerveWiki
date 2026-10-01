@@ -17,6 +17,8 @@ export type Theme = "light" | "dark";
  */
 export const themeKey = "nwiki.theme";
 const localeKey = "nwiki.locale";
+/** workspaceKey is where the slug of the workspace this device showed last is stored (M2/P5 design 3.3). */
+const workspaceKey = "nwiki.workspace";
 
 /** The part of localStorage the preferences use. */
 export type PreferenceStorage = Pick<Storage, "getItem" | "setItem">;
@@ -36,15 +38,17 @@ export interface PreferenceSources {
 }
 
 /**
- * PreferencesStore holds this browser's display preferences: the theme and
- * the language. They belong to the device, not to a login: the store
- * outlives every RootStore.
+ * PreferencesStore holds this browser's display preferences, the theme and
+ * the language, and the workspace it showed last. They belong to the
+ * device, not to a login: the store outlives every RootStore.
  */
 export class PreferencesStore {
   theme: ThemePreference;
   locale: Locale;
   private systemDark: boolean;
   private readonly storage: PreferenceStorage;
+  /** The last workspace of this page, for when the storage cannot keep it. */
+  private workspace: string | undefined = undefined;
 
   constructor({ storage, darkScheme, languages }: PreferenceSources) {
     this.storage = storage;
@@ -54,7 +58,7 @@ export class PreferencesStore {
     this.locale = isLocale(locale) ? locale : localeFor(languages);
     this.systemDark = darkScheme.matches;
     darkScheme.addEventListener("change", (event) => this.setSystemDark(event.matches));
-    makeAutoObservable<this, "storage">(this, { storage: false });
+    makeAutoObservable<this, "storage" | "workspace">(this, { storage: false, workspace: false });
   }
 
   /** resolvedTheme is the theme to show: the preference, or the system's. */
@@ -74,6 +78,20 @@ export class PreferencesStore {
   setLocale(locale: Locale): void {
     this.locale = locale;
     write(this.storage, localeKey, locale);
+  }
+
+  /**
+   * lastWorkspace is the slug of the workspace this device showed last, in
+   * any of its tabs: it is read from the storage each time. It is not
+   * observed; the landing reads it once.
+   */
+  lastWorkspace(): string | undefined {
+    return read(this.storage, workspaceKey) ?? this.workspace;
+  }
+
+  setLastWorkspace(slug: string): void {
+    this.workspace = slug;
+    write(this.storage, workspaceKey, slug);
   }
 
   private setSystemDark(dark: boolean): void {

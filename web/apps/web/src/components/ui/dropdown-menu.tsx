@@ -53,3 +53,11 @@ export function DropdownMenuRadioItem({ className, children, ...props }: Compone
     </Primitive.RadioItem>
   );
 }
+
+export function DropdownMenuSeparator({ className, ...props }: ComponentProps<typeof Primitive.Separator>) {
+  return <Primitive.Separator className={cn("-mx-1 my-1 h-px bg-border", className)} {...props} />;
+}
+
+export function DropdownMenuLabel({ className, ...props }: ComponentProps<typeof Primitive.Label>) {
+  return <Primitive.Label className={cn("px-2 py-1.5 text-xs text-muted-foreground", className)} {...props} />;
+}

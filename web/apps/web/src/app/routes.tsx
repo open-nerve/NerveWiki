@@ -17,6 +17,11 @@ import { RouteError } from "./route-error";
 // Every page but sign-in and sign-up needs a signed-in session, the 404
 // too: an unknown path behaves as the pages M2 and M3 add (M1/P5 design
 // 3.5). The guards alone decide where the tab goes as its session changes.
+//
+// A workspace's pages are under its slug, beside the app's own top-level
+// pages: the slugs that name these are reserved (M2/P1 design 3.6; the
+// test of reserved-slugs.test.ts). / lands on a workspace (M2/P5 design
+// 3.3).
 export const routes: RouteObject[] = [
   {
     Component: Layout,
@@ -61,8 +66,15 @@ export const routes: RouteObject[] = [
                   {
                     index: true,
                     lazy: async () => {
-                      const { HomePage } = await import("../pages/home");
-                      return { Component: HomePage };
+                      const { LandingPage } = await import("../pages/landing");
+                      return { Component: LandingPage };
+                    },
+                  },
+                  {
+                    path: "create-workspace",
+                    lazy: async () => {
+                      const { CreateWorkspacePage } = await import("../pages/create-workspace");
+                      return { Component: CreateWorkspacePage };
                     },
                   },
                   {
@@ -92,6 +104,22 @@ export const routes: RouteObject[] = [
                         lazy: async () => {
                           const { TokensPage } = await import("../pages/settings/tokens-page");
                           return { Component: TokensPage };
+                        },
+                      },
+                    ],
+                  },
+                  {
+                    path: ":slug",
+                    lazy: async () => {
+                      const { WorkspaceLayout } = await import("../pages/workspace/workspace-layout");
+                      return { Component: WorkspaceLayout };
+                    },
+                    children: [
+                      {
+                        index: true,
+                        lazy: async () => {
+                          const { WorkspaceHomePage } = await import("../pages/workspace/workspace-home");
+                          return { Component: WorkspaceHomePage };
                         },
                       },
                     ],
