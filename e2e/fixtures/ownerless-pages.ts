@@ -37,16 +37,22 @@ export function listedOwnerless(name: string, email: string, access: string, mem
   ];
 }
 
-/** Takes over the ownerless notebook id named name, and resolves the answer. */
-export async function takeOverWith(page: Page, id: string, name: string): Promise<Response> {
+/**
+ * Takes over the ownerless notebook id named name, whose former owner is former (see who): the controls name
+ * it by both, as two notebooks may have the same name. Resolves the answer.
+ */
+export async function takeOverWith(page: Page, id: string, name: string, former: string): Promise<Response> {
   const answer = answerTo(page, "POST", `/api/v0/ownerless-notebooks/${id}/take-over`);
-  await page.getByRole("button", { name: `Take over ${name}`, exact: true }).click();
+  await page.getByRole("button", { name: `Take over ${name}, former owner ${former}`, exact: true }).click();
   return answer;
 }
 
-/** Deletes the ownerless notebook id named name once its name is typed, and resolves the answer's status. */
-export async function deleteOwnerlessWith(page: Page, id: string, name: string): Promise<number> {
-  await page.getByRole("button", { name: `Delete ${name}`, exact: true }).click();
+/**
+ * Deletes the ownerless notebook id named name, whose former owner is former (see who), once its name is
+ * typed; resolves the answer's status.
+ */
+export async function deleteOwnerlessWith(page: Page, id: string, name: string, former: string): Promise<number> {
+  await page.getByRole("button", { name: `Delete ${name}, former owner ${former}`, exact: true }).click();
   const dialog = page.getByRole("alertdialog");
   await dialog.getByLabel(`Type ${name} to confirm`, { exact: true }).fill(name);
   const answer = answerTo(page, "DELETE", `/api/v0/ownerless-notebooks/${id}`);

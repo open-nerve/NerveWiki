@@ -3,6 +3,7 @@ import { useRef, useState } from "react";
 import { Link } from "react-router";
 import useSWR, { useSWRConfig } from "swr";
 
+import { useFollowRole } from "../../app/follow-role";
 import { NotLoaded } from "../../app/not-loaded";
 import { errorText } from "../../app/problem-messages";
 import { Alert } from "../../components/ui/alert";
@@ -41,16 +42,20 @@ const texts = { "notebook.not_found": "ownerless.gone" } as const;
  * OwnerlessSection lists the ownerless notebooks, the longest ownerless
  * first. Taking one over puts it among the account's notebooks, and says
  * so with a way to it; a row that leaves gives the focus to the heading.
- * A refusal says why above the list, which is read again: one ownerless no
- * more has left it; a forbidden one reads the workspaces again, the
- * account's role with them, which the page then follows.
+ * A refusal says why above the list, which is read again. The server
+ * answers not found both for a notebook ownerless no more, which has left
+ * the list, and to an account no longer the workspace's admin: the audit,
+ * which has what another did, and the workspaces, whose roles the page
+ * follows, are read again too (M3/P5 review M1).
  */
 const OwnerlessSection = observer(function OwnerlessSection({ workspace }: { workspace: Workspace }) {
   const ownerless = useOwnerless(workspace);
   const notebooks = useNotebooks(workspace);
   const t = useT();
   const { mutate: reload } = useSWRConfig();
-  const { error, mutate } = useSWR(["ownerless", workspace.id], () => ownerless.load());
+  const { error, mutate } = useSWR(["ownerless", workspace.id], () => ownerless.load(), {
+    onError: useFollowRole(),
+  });
   const [failure, setFailure] = useState<unknown>();
   const [taken, setTaken] = useState<Notebook>();
   const heading = useRef<HTMLHeadingElement>(null);
@@ -59,10 +64,9 @@ const OwnerlessSection = observer(function OwnerlessSection({ workspace }: { wor
   function refused(refusal: unknown) {
     setFailure(refusal);
     void mutate();
-    if (refusal instanceof ApiError && refusal.code === "forbidden") {
-      void reload("workspaces");
-    }
     if (refusal instanceof ApiError && refusal.code === "notebook.not_found") {
+      void reload(["notebook-audit", workspace.id]);
+      void reload("workspaces");
       heading.current?.focus();
     }
   }

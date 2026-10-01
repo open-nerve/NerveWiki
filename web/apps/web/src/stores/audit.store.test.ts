@@ -55,22 +55,97 @@ test("more asked twice while its page is out reads it once", async () => {
   ]);
 });
 
-test("a read again goes back to the first page, and drops a page of the older series still out", async () => {
-  let answerMore: ((p: NotebookAuditEventPage) => void) | undefined;
-  let first = 0;
-  const { store } = storeOf({
-    get ""() {
-      first += 1;
-      return first === 1 ? page(["e3", "e2"], "c1") : page(["e4", "e3"], "c9");
+/** A store whose service's every read waits for the test to answer it: asks has them in order, by cursor. */
+function heldStore() {
+  const asks: { cursor: string | undefined; answer: (page: NotebookAuditEventPage) => void }[] = [];
+  const store = new AuditStore(
+    {
+      auditEvents: (_slug, cursor) => new Promise((resolve) => asks.push({ cursor, answer: resolve })),
     },
-    c1: new Promise<NotebookAuditEventPage>((resolve) => (answerMore = resolve)),
-  });
-  await store.load();
+    "lab"
+  );
+  /** answer answers the read i with page, and waits for what came of it. */
+  const answer = async (i: number, answered: NotebookAuditEventPage, done: Promise<unknown>) => {
+    asks[i]?.answer(answered);
+    await done;
+  };
+  return { store, asks, answer };
+}
+
+/** A store holding [e4, e3], whose next page's cursor is c3. */
+async function holding() {
+  const held = heldStore();
+  await held.answer(0, page(["e4", "e3"], "c3"), held.store.load());
+  return held;
+}
+
+test("a read again whose first page reaches the events held keeps the ones past it, and their cursor", async () => {
+  const { store, answer } = await holding();
+  await answer(1, page(["e2"], "c2"), store.more());
+
+  // An event came since: the first page now ends at e4, which is held.
+  await answer(2, page(["e5", "e4"], "c4"), store.load());
+
+  expect([ids(store), store.nextCursor]).toEqual([["e5", "e4", "e3", "e2"], "c2"]);
+});
+
+test.each([
+  ["does not reach the events held", page(["e9", "e8"], "c8"), [["e9", "e8"], "c8"]],
+  ["is the last page", page(["e5", "e4", "e3"]), [["e5", "e4", "e3"], null]],
+])("a read again whose first page %s replaces them", async (_, first, want) => {
+  const { store, answer } = await holding();
+  await answer(1, page(["e2"], "c2"), store.more());
+
+  await answer(2, first, store.load());
+
+  expect([ids(store), store.nextCursor]).toEqual(want);
+});
+
+// A page asked for while the first is read again (M3/P5 review M2): it is
+// added when it still follows the events held, whichever answers first.
+test.each([
+  [
+    "the read again answers first, reaching the events held",
+    "load",
+    page(["e5", "e4"], "c4"),
+    [["e5", "e4", "e3", "e2"], null],
+  ],
+  ["the read again answers first, past the events held", "load", page(["e9", "e8"], "c8"), [["e9", "e8"], "c8"]],
+  [
+    "the page answers first, the read again reaching it",
+    "more",
+    page(["e5", "e4"], "c4"),
+    [["e5", "e4", "e3", "e2"], null],
+  ],
+  ["the page answers first, the read again past it", "more", page(["e9", "e8"], "c8"), [["e9", "e8"], "c8"]],
+] as const)("more while the first page is read again: %s", async (_, firstAnswered, first, want) => {
+  const { store, asks, answer } = await holding();
+  const load = store.load();
+  const more = store.more();
+  expect(asks.map((ask) => ask.cursor)).toEqual([undefined, undefined, "c3"]);
+
+  const answerLoad = () => answer(1, first, load);
+  const answerMore = () => answer(2, page(["e2"]), more);
+  if (firstAnswered === "load") {
+    await answerLoad();
+    await answerMore();
+  } else {
+    await answerMore();
+    await answerLoad();
+  }
+
+  expect([ids(store), store.nextCursor]).toEqual(want);
+});
+
+test("once a read again replaced the events, more reads the page after them, not the one still out for the older", async () => {
+  const { store, asks, answer } = await holding();
+  const older = store.more();
+  await answer(2, page(["e9", "e8"], "c8"), store.load());
 
   const more = store.more();
-  await store.load();
-  answerMore?.(page(["e1"]));
-  await more;
+  expect(asks.map((ask) => ask.cursor)).toEqual([undefined, "c3", undefined, "c8"]);
+  await answer(1, page(["e2"]), older);
+  await answer(3, page(["e7"]), more);
 
-  expect([ids(store), store.nextCursor]).toEqual([["e4", "e3"], "c9"]);
+  expect([ids(store), store.nextCursor]).toEqual([["e9", "e8", "e7"], null]);
 });

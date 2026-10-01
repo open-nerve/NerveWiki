@@ -31,6 +31,8 @@ export const OwnerlessRow = observer(function OwnerlessRow({ notebook, takeOver,
   const t = useT();
   const [sending, setSending] = useState(false);
   const { locale } = preferences;
+  // Two notebooks may have the same name: the controls name each by its former owner too.
+  const which = { name: notebook.name, former: memberWho(notebook.former_owner, t) };
 
   async function take() {
     setSending(true);
@@ -61,14 +63,14 @@ export const OwnerlessRow = observer(function OwnerlessRow({ notebook, takeOver,
         <Button
           variant="outline"
           disabled={sending}
-          aria-label={t("ownerless.takeOverLabel", { name: notebook.name })}
+          aria-label={t("ownerless.takeOverLabel", which)}
           onClick={() => void take()}
         >
           {t("ownerless.takeOver")}
         </Button>
         <ConfirmDialog
           trigger={
-            <Button variant="outline" aria-label={t("ownerless.deleteLabel", { name: notebook.name })}>
+            <Button variant="outline" aria-label={t("ownerless.deleteLabel", which)}>
               {t("ownerless.delete")}
             </Button>
           }

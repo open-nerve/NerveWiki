@@ -316,7 +316,7 @@ test("removing a member says their notebooks become ownerless, and reads the own
   await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
   await act(() => router.navigate("/lab/settings/ownerless"));
 
-  expect(await screen.findByRole("button", { name: "Take over Roadmap" })).toBeTruthy();
+  expect(await screen.findByRole("button", { name: /^Take over Roadmap/ })).toBeTruthy();
   expect(server.sent).toEqual(["GET ownerless", "GET members", "DELETE Bob", "GET ownerless"]);
 });
 

@@ -7,6 +7,7 @@ import {
 } from "../../fixtures/assert/notebook";
 import { displayNameOf, emailFor } from "../../fixtures/auth";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
+import { who } from "../../fixtures/member-pages";
 import { memberOf, removeMember } from "../../fixtures/members";
 import { addedNotebookMember } from "../../fixtures/notebook-members";
 import { notebookGroups, notebookHeading, notebookPath } from "../../fixtures/notebook-pages";
@@ -144,7 +145,7 @@ test("N9 (page): a workspace admin takes the ownerless notebook over: its left c
 
   await expect.poll(() => ownerlessListed(page)).toEqual([listedOwnerless("Plans", ownerEmail, "Private", 1)]);
   await expect(page.getByText("Nothing yet.", { exact: true })).toBeVisible();
-  expect((await takeOverWith(page, plans.id, "Plans")).status()).toBe(200);
+  expect((await takeOverWith(page, plans.id, "Plans", who(displayNameOf(ownerEmail), ownerEmail))).status()).toBe(200);
 
   await expect(page.getByRole("status")).toHaveText("Plans taken over. Open it");
   await expect(page.getByText("No ownerless notebooks.", { exact: true })).toBeVisible();

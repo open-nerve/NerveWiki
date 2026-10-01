@@ -2,6 +2,7 @@ import { observer } from "mobx-react-lite";
 import { useState } from "react";
 import useSWR from "swr";
 
+import { useFollowRole } from "../../app/follow-role";
 import { NotLoaded } from "../../app/not-loaded";
 import { errorText } from "../../app/problem-messages";
 import { Button } from "../../components/ui/button";
@@ -35,7 +36,9 @@ export const AuditSection = observer(function AuditSection({ workspace }: { work
   const audit = useAudit(workspace);
   const { preferences } = useStore();
   const t = useT();
-  const { error, mutate } = useSWR(["notebook-audit", workspace.id], () => audit.load());
+  const { error, mutate } = useSWR(["notebook-audit", workspace.id], () => audit.load(), {
+    onError: useFollowRole(),
+  });
   const [loading, setLoading] = useState(false);
   const [failure, setFailure] = useState<unknown>();
   const failed = failure === undefined ? undefined : errorText(failure, t);

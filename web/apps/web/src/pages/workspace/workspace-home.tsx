@@ -3,6 +3,7 @@ import { Link } from "react-router";
 import useSWR from "swr";
 
 import { useArrivalFocus } from "../../app/arrival";
+import { useFollowRole } from "../../app/follow-role";
 import { Button } from "../../components/ui/button";
 import { useT } from "../../i18n/i18n";
 import type { Workspace } from "../../services/workspace.service";
@@ -63,7 +64,7 @@ export const WorkspaceHomePage = observer(function WorkspaceHomePage() {
 const OwnerlessReminder = observer(function OwnerlessReminder({ workspace }: { workspace: Workspace }) {
   const ownerless = useOwnerless(workspace);
   const t = useT();
-  useSWR(["ownerless", workspace.id], () => ownerless.load());
+  useSWR(["ownerless", workspace.id], () => ownerless.load(), { onError: useFollowRole() });
   const count = ownerless.list?.length ?? 0;
   if (count === 0) {
     return null;

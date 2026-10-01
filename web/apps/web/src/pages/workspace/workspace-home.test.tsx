@@ -1,10 +1,10 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 
 import type { Notebook } from "../../services/notebook.service";
 import type { Workspace } from "../../services/workspace.service";
-import { json, notebookJSON, ownerlessJSON, signedInApp, workspaceJSON, type Answer } from "../../test/fakes";
+import { json, notebookJSON, ownerlessJSON, problem, signedInApp, workspaceJSON, type Answer } from "../../test/fakes";
 import { renderApp } from "../../test/render";
 
 // A workspace's home: its notebooks, as cards (M3/P4 design 3.3).
@@ -132,4 +132,28 @@ test.each([
 
   await waitFor(() => expect(asked).toEqual(role === "admin" ? ["ownerless"] : []));
   expect(within(home).queryByText(/^Notebooks without an admin/)).toBeNull();
+});
+
+test("made a member elsewhere, an admin's reminder is refused as forbidden, and reads the workspaces again", async () => {
+  let role: Workspace["role"] = "admin";
+  const asked: string[] = [];
+  const app = signedInApp({
+    "GET /api/v0/workspaces": () => {
+      asked.push("workspaces");
+      return json({ data: [{ ...workspaceJSON, role }] });
+    },
+    "GET /api/v0/workspaces/lab/notebooks": () => json({ data: [notebookJSON] }),
+    "GET /api/v0/workspaces/lab/ownerless-notebooks": () => {
+      asked.push("ownerless");
+      return role === "admin" ? json({ data: [ownerlessJSON] }) : problem(403, "forbidden");
+    },
+  });
+  const { router } = renderApp("/lab/settings/general", app);
+  await screen.findByRole("navigation", { name: "Workspace settings" });
+
+  role = "member";
+  await act(() => router.navigate("/lab"));
+
+  await waitFor(() => expect(asked).toEqual(["workspaces", "ownerless", "workspaces"]));
+  expect(within(await main()).queryByText(/^Notebooks without an admin/)).toBeNull();
 });
