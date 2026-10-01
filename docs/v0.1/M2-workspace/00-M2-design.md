@@ -296,7 +296,7 @@ M2 结束时：
 |---|---|---|---|---|
 | P1 | 权限框架与创建工作区 | 已完成 | [01-P1-access-workspaces.md](01-P1-access-workspaces.md) | [P1 审查记录](reviews/P1-access-workspaces-review.md) |
 | P2 | 工作区管理与成员 | 已完成 | [02-P2-workspace-members.md](02-P2-workspace-members.md) | [P2 审查记录](reviews/P2-workspace-members-review.md) |
-| P3 | 邀请与带邀请注册 | 未开始 | — | — |
+| P3 | 邀请与带邀请注册 | 进行中 | [03-P3-invitations.md](03-P3-invitations.md) | — |
 | P4 | 停用、管理命令与清理 | 未开始 | — | — |
 | P5 | 前端外壳与工作区 | 未开始 | — | — |
 | P6 | 前端成员与邀请 | 未开始 | — | — |
