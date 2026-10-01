@@ -1,4 +1,4 @@
-import type { Workspace } from "@nervewiki/api-client";
+import type { Workspace, WorkspaceInvitation, WorkspaceRole } from "@nervewiki/api-client";
 import { expect } from "@playwright/test";
 
 import type { Database } from "../db";
@@ -119,4 +119,97 @@ export async function expectDeletedWithItsMembers(db: Database, id: string, dele
   );
   expect(rows).toEqual([{ deleted: true, by_deleter: true, members: expect.any(Number), members_apart: 0 }]);
   expect(rows[0]?.members).toBeGreaterThan(0);
+}
+
+/**
+ * workspace_invitations: invitation is pending, as the API answered it,
+ * created by adminId; no column holds its token, which is a MAC of the id,
+ * neither as the link spells it nor as its bytes in hex.
+ */
+export async function expectPendingInvitation(
+  db: Database,
+  invitation: WorkspaceInvitation,
+  adminId: string
+): Promise<void> {
+  const tag = invitation.token.replace(/^nwk_inv_/, "");
+  const rows = await db.query<{
+    email: string;
+    role: string;
+    by_admin: boolean;
+    at_answer: boolean;
+    pending: boolean;
+    token_stored: boolean;
+  }>(
+    `SELECT email, role, created_by_id = $2 AND updated_by_id = $2 AS by_admin, created_at = $3::timestamptz AS at_answer,
+            accepted_at IS NULL AND deleted_at IS NULL AS pending,
+            strpos(row_to_json(i)::text, $4) > 0 OR strpos(row_to_json(i)::text, $5) > 0 AS token_stored
+       FROM workspace_invitations i WHERE id = $1`,
+    [invitation.id, adminId, invitation.created_at, tag, Buffer.from(tag, "base64url").toString("hex")]
+  );
+  expect(rows).toEqual([
+    {
+      email: invitation.email,
+      role: invitation.role,
+      by_admin: true,
+      at_answer: true,
+      pending: true,
+      token_stored: false,
+    },
+  ]);
+}
+
+/** What became of an invitation, and who last wrote it. */
+export type InvitationState = "pending" | "accepted" | "deleted";
+
+/** workspace_invitations: the invitation id is state, last written by byId; an acceptance is a deletion at its time. */
+export async function expectInvitation(db: Database, id: string, state: InvitationState, byId: string): Promise<void> {
+  const rows = await db.query<{ state: InvitationState; by: boolean; consistent: boolean }>(
+    `SELECT CASE WHEN deleted_at IS NULL THEN 'pending' WHEN accepted_at IS NOT NULL THEN 'accepted' ELSE 'deleted' END AS state,
+            updated_by_id = $2 AS by, (deleted_at IS NULL OR updated_at = deleted_at) AS consistent
+       FROM workspace_invitations WHERE id = $1`,
+    [id, byId]
+  );
+  expect(rows).toEqual([{ state, by: true, consistent: true }]);
+}
+
+/**
+ * workspace_invitations: every invitation of the workspace id that was
+ * pending when it was deleted, count of them, is deleted with it, at its
+ * time, by its deleter (compared in SQL).
+ */
+export async function expectInvitationsDeletedWith(db: Database, id: string, count: number): Promise<void> {
+  const rows = await db.query<{ pending: number; with_it: number }>(
+    `SELECT (SELECT count(*)::int FROM workspace_invitations i WHERE i.workspace_id = w.id AND i.deleted_at IS NULL) AS pending,
+            (SELECT count(*)::int FROM workspace_invitations i WHERE i.workspace_id = w.id AND i.accepted_at IS NULL
+               AND i.deleted_at = w.deleted_at AND i.updated_by_id = w.updated_by_id) AS with_it
+       FROM workspaces w WHERE w.id = $1`,
+    [id]
+  );
+  expect(rows).toEqual([{ pending: 0, with_it: count }]);
+}
+
+/** What an account's membership of a workspace is: active with its role, ended, or none. */
+export type MembershipState = WorkspaceRole | "ended" | "none";
+
+/**
+ * workspace_members: userId's membership of the workspace id is state;
+ * joinedAt, when given, is when it was first created, to the microsecond.
+ */
+export async function expectMembership(
+  db: Database,
+  id: string,
+  userId: string,
+  state: MembershipState,
+  joinedAt?: string
+): Promise<void> {
+  const rows = await db.query<{ state: MembershipState; joined: boolean | null }>(
+    `SELECT CASE WHEN ended_at IS NOT NULL THEN 'ended' ELSE role END AS state, created_at = $3::timestamptz AS joined
+       FROM workspace_members WHERE workspace_id = $1 AND user_id = $2 AND deleted_at IS NULL`,
+    [id, userId, joinedAt ?? null]
+  );
+  if (state === "none") {
+    expect(rows).toEqual([]);
+    return;
+  }
+  expect(rows).toEqual([{ state, joined: joinedAt === undefined ? null : true }]);
 }
