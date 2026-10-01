@@ -157,6 +157,11 @@ export class NotebookStore {
     });
   }
 
+  /** receive places notebook, which the account came to see another way (taking it over), in the list. */
+  receive(notebook: Notebook): void {
+    this.put(notebook);
+  }
+
   /** put places notebook in the list by name; a read may hold it already. */
   private put(notebook: Notebook): void {
     this.changed((list) => [...list.filter((each) => each.id !== notebook.id), notebook]);

@@ -4,7 +4,7 @@ import { expect, test } from "vitest";
 
 import type { Notebook } from "../../services/notebook.service";
 import type { Workspace } from "../../services/workspace.service";
-import { json, notebookJSON, signedInApp, workspaceJSON, type Answer } from "../../test/fakes";
+import { json, notebookJSON, ownerlessJSON, signedInApp, workspaceJSON, type Answer } from "../../test/fakes";
 import { renderApp } from "../../test/render";
 
 // A workspace's home: its notebooks, as cards (M3/P4 design 3.3).
@@ -93,4 +93,43 @@ test("a notebook created from the empty home opens on its home, arrived at", asy
   const heading = await screen.findByRole("heading", { level: 1, name: "Plans" });
   expect(router.state.location.pathname).toBe(`/lab/notebooks/${notebookJSON.id}`);
   await waitFor(() => expect(document.activeElement).toBe(heading));
+});
+
+// The admins read how many notebooks have no admin (M3/P5 design 3.3).
+test("an admin with ownerless notebooks reads how many, with a way to them", async () => {
+  const user = userEvent.setup();
+  const app = labApp([notebookJSON], "admin", {
+    "GET /api/v0/workspaces/lab/ownerless-notebooks": () =>
+      json({ data: [ownerlessJSON, { ...ownerlessJSON, id: "0199a2b4-0000-7000-8000-0000000000e2" }] }),
+  });
+  const { router } = renderApp("/lab", app);
+  const home = await main();
+
+  expect((await within(home).findByText(/^Notebooks without an admin/)).textContent).toBe(
+    "Notebooks without an admin: 2. Review them"
+  );
+  await user.click(within(home).getByRole("link", { name: "Review them" }));
+
+  expect(await screen.findByRole("heading", { level: 2, name: "Ownerless notebooks" })).toBeTruthy();
+  expect(router.state.location.pathname).toBe("/lab/settings/ownerless");
+});
+
+test.each([
+  ["an admin without ownerless notebooks", "admin" as const],
+  ["a member", "member" as const],
+  ["a guest", "guest" as const],
+])("%s reads no reminder; only an admin asks", async (_, role) => {
+  const asked: string[] = [];
+  const app = labApp([notebookJSON], role, {
+    "GET /api/v0/workspaces/lab/ownerless-notebooks": () => {
+      asked.push("ownerless");
+      return json({ data: [] });
+    },
+  });
+  renderApp("/lab", app);
+  const home = await main();
+  await within(home).findByRole("list", { name: "My notebooks" });
+
+  await waitFor(() => expect(asked).toEqual(role === "admin" ? ["ownerless"] : []));
+  expect(within(home).queryByText(/^Notebooks without an admin/)).toBeNull();
 });

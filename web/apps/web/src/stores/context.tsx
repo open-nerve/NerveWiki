@@ -4,11 +4,13 @@ import type { User } from "../services/account.service";
 import type { Notebook } from "../services/notebook.service";
 import type { Workspace } from "../services/workspace.service";
 import type { AccountStore } from "./account.store";
+import type { AuditStore } from "./audit.store";
 import type { ApiTokenStore } from "./api-token.store";
 import type { InvitationStore } from "./invitation.store";
 import type { MemberStore } from "./member.store";
 import type { NotebookMemberStore } from "./notebook-member.store";
 import type { NotebookStore } from "./notebook.store";
+import type { OwnerlessStore } from "./ownerless.store";
 import type { RootStore } from "./root.store";
 import type { WorkspaceStore } from "./workspace.store";
 
@@ -84,6 +86,24 @@ export function useNotebookMembers(notebook: Notebook): NotebookMemberStore {
     throw new Error("useNotebookMembers is used outside SignedIn");
   }
   return members;
+}
+
+/** useOwnerless is the ownerless notebooks of workspace: only for the pages the SignedIn guard shows. */
+export function useOwnerless(workspace: Workspace): OwnerlessStore {
+  const ownerless = useStore().ownerlessOf(workspace);
+  if (ownerless === undefined) {
+    throw new Error("useOwnerless is used outside SignedIn");
+  }
+  return ownerless;
+}
+
+/** useAudit is the audit events of workspace's ownerless notebooks: only for the pages the SignedIn guard shows. */
+export function useAudit(workspace: Workspace): AuditStore {
+  const audit = useStore().auditOf(workspace);
+  if (audit === undefined) {
+    throw new Error("useAudit is used outside SignedIn");
+  }
+  return audit;
 }
 
 /** useInvitations is the pending invitations of workspace: only for the pages the SignedIn guard shows. */
