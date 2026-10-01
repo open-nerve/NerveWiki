@@ -4,6 +4,7 @@ import type { User } from "../services/account.service";
 import type { Workspace } from "../services/workspace.service";
 import type { AccountStore } from "./account.store";
 import type { ApiTokenStore } from "./api-token.store";
+import type { InvitationStore } from "./invitation.store";
 import type { MemberStore } from "./member.store";
 import type { RootStore } from "./root.store";
 import type { WorkspaceStore } from "./workspace.store";
@@ -58,4 +59,13 @@ export function useMembers(workspace: Workspace): MemberStore {
     throw new Error("useMembers is used outside SignedIn");
   }
   return members;
+}
+
+/** useInvitations is the pending invitations of workspace: only for the pages the SignedIn guard shows. */
+export function useInvitations(workspace: Workspace): InvitationStore {
+  const invitations = useStore().invitationsOf(workspace);
+  if (invitations === undefined) {
+    throw new Error("useInvitations is used outside SignedIn");
+  }
+  return invitations;
 }

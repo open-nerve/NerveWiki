@@ -10,19 +10,21 @@ import { Button } from "../../components/ui/button";
 import { useT } from "../../i18n/i18n";
 import type { Workspace } from "../../services/workspace.service";
 import { useAccount, useMembers, useWorkspaces } from "../../stores/context";
+import { InvitationsSection } from "./invitations-section";
 import { MemberRow } from "./member-row";
 import { useWorkspace } from "./workspace-layout";
 
 /**
  * MembersPage is who is in the workspace (M2/P6 design 3.3): every member
- * sees the members and can leave; an admin changes the others' roles and
- * removes them.
+ * sees the members and can leave; an admin changes the others' roles,
+ * removes them, and invites.
  */
 export const MembersPage = observer(function MembersPage() {
   const workspace = useWorkspace();
   return (
     <div className="space-y-10">
       <MembersSection workspace={workspace} />
+      {workspace.role === "admin" && <InvitationsSection workspace={workspace} />}
       <LeaveSection workspace={workspace} />
     </div>
   );

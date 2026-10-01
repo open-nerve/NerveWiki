@@ -2,6 +2,7 @@ import { AccountService } from "../services/account.service";
 import { ApiTokenService } from "../services/api-token.service";
 import { AuthService } from "../services/auth.service";
 import { InstanceService } from "../services/instance.service";
+import { InvitationService } from "../services/invitation.service";
 import { MemberService } from "../services/member.service";
 import { WorkspaceService, type Workspace } from "../services/workspace.service";
 import type { Session } from "../session/session";
@@ -9,6 +10,7 @@ import { AccountStore } from "./account.store";
 import { ApiTokenStore } from "./api-token.store";
 import { AuthStore } from "./auth.store";
 import { InstanceStore } from "./instance.store";
+import { InvitationStore } from "./invitation.store";
 import { MemberStore } from "./member.store";
 import type { PreferencesStore } from "./preferences.store";
 import { WorkspaceStore } from "./workspace.store";
@@ -47,8 +49,10 @@ export class RootStore {
   /** The signed-in account's workspaces; undefined while the tab is signed out. */
   readonly workspaces: WorkspaceStore | undefined;
   private readonly members: MemberService | undefined;
-  /** The member lists this generation holds, by workspace id. */
+  private readonly invitations: InvitationService | undefined;
+  /** The member and invitation lists this generation holds, by workspace id. */
   private readonly memberLists = new Map<string, MemberStore>();
+  private readonly invitationLists = new Map<string, InvitationStore>();
 
   constructor(
     app: AppStores,
@@ -62,6 +66,7 @@ export class RootStore {
     this.apiTokens = client && new ApiTokenStore(new ApiTokenService(client));
     this.workspaces = client && new WorkspaceStore(new WorkspaceService(client));
     this.members = client && new MemberService(client);
+    this.invitations = client && new InvitationService(client);
   }
 
   /**
@@ -71,14 +76,23 @@ export class RootStore {
    * another made with its slug have lists of their own.
    */
   membersOf(workspace: Workspace): MemberStore | undefined {
-    if (this.members === undefined) {
-      return undefined;
-    }
-    let list = this.memberLists.get(workspace.id);
-    if (list === undefined) {
-      list = new MemberStore(this.members, workspace.slug);
-      this.memberLists.set(workspace.id, list);
-    }
-    return list;
+    const service = this.members;
+    return service && once(this.memberLists, workspace.id, () => new MemberStore(service, workspace.slug));
   }
+
+  /** invitationsOf is the pending invitations of workspace, as membersOf is its members. */
+  invitationsOf(workspace: Workspace): InvitationStore | undefined {
+    const service = this.invitations;
+    return service && once(this.invitationLists, workspace.id, () => new InvitationStore(service, workspace.slug));
+  }
+}
+
+/** once is the value of key in cache, which make makes the first time. */
+function once<T>(cache: Map<string, T>, key: string, make: () => T): T {
+  let value = cache.get(key);
+  if (value === undefined) {
+    value = make();
+    cache.set(key, value);
+  }
+  return value;
 }

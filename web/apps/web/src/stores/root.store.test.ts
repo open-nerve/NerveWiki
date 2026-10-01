@@ -49,7 +49,9 @@ test("a generation of the session before sends nothing once the tab has signed i
 
 test("a signed-out generation has no account, nor its workspaces", () => {
   const store = new RootStore(testApp(), undefined);
-  expect([store.account, store.workspaces, store.membersOf(workspaceJSON)]).toEqual([undefined, undefined, undefined]);
+  expect([store.account, store.workspaces, store.membersOf(workspaceJSON), store.invitationsOf(workspaceJSON)]).toEqual(
+    [undefined, undefined, undefined, undefined]
+  );
 });
 
 test("a workspace's member list is the same for the generation; another workspace's, or another generation's, is another", async () => {
@@ -64,4 +66,16 @@ test("a workspace's member list is the same for the generation; another workspac
   expect(store.membersOf({ ...workspaceJSON, name: "Lab renamed" })).toBe(members);
   expect(store.membersOf(sameSlug)).not.toBe(members);
   expect(new RootStore(app, "login-0").membersOf(workspaceJSON)).not.toBe(members);
+});
+
+test("a workspace's invitations are the same for the generation; another workspace's are another", async () => {
+  const app = testApp(() => json(tokensJSON), storedSession("login-0"));
+  await app.session.start();
+  const store = new RootStore(app, "login-0");
+
+  const invitations = store.invitationsOf(workspaceJSON);
+
+  expect(invitations).toBeDefined();
+  expect(store.invitationsOf({ ...workspaceJSON })).toBe(invitations);
+  expect(store.invitationsOf({ ...workspaceJSON, id: "0199a2b4-0000-7000-8000-0000000000b2" })).not.toBe(invitations);
 });

@@ -9,8 +9,7 @@ import { useT } from "../../i18n/i18n";
 import type { WorkspaceMember, WorkspaceRole } from "../../services/member.service";
 import type { Workspace } from "../../services/workspace.service";
 import { useMembers, useStore } from "../../stores/context";
-
-const roles: readonly WorkspaceRole[] = ["admin", "member", "guest"];
+import { RoleOptions } from "./role-options";
 
 type MemberRowProps = {
   workspace: Workspace;
@@ -78,11 +77,7 @@ export const MemberRow = observer(function MemberRow({
               disabled={sending}
               onChange={(event) => void changeRole(event.target.value as WorkspaceRole)}
             >
-              {roles.map((role) => (
-                <option key={role} value={role}>
-                  {t(`role.${role}`)}
-                </option>
-              ))}
+              <RoleOptions />
             </NativeSelect>
             <ConfirmDialog
               trigger={
