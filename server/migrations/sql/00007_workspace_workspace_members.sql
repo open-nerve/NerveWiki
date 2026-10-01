@@ -5,7 +5,8 @@
 -- +goose Up
 CREATE TABLE workspace_members (
     id uuid PRIMARY KEY,
-    -- The purge of a deleted workspace takes its members with it.
+    -- The purge deletes a deleted workspace's members before it (M2/P4 review T1);
+    -- the cascade is the fallback within the module.
     workspace_id uuid NOT NULL REFERENCES workspaces ON DELETE CASCADE,
     -- Accounts are never deleted (v0.1 design 6.2): no cascade to choose.
     user_id uuid NOT NULL REFERENCES users,
@@ -25,8 +26,8 @@ CREATE UNIQUE INDEX workspace_members_workspace_id_user_id_key ON workspace_memb
 -- An account's active memberships: its workspaces, and what a deactivation ends.
 CREATE INDEX workspace_members_user_id_idx ON workspace_members (user_id)
     WHERE deleted_at IS NULL AND ended_at IS NULL;
--- The purge's cascade looks members up by workspace, deleted ones included,
--- which the partial index above does not hold.
+-- The purge looks members up by workspace, deleted ones included, which the
+-- partial index above does not hold: to wait for them, and in the cascade.
 CREATE INDEX workspace_members_workspace_id_idx ON workspace_members (workspace_id);
 
 -- +goose Down

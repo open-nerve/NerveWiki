@@ -31,10 +31,16 @@ function storeOf(list: Workspace[], overrides: Partial<Service> = {}) {
 
 const slugs = (store: WorkspaceStore) => store.list?.map((w) => w.slug);
 
-// SWR reads the list again on focus, and a creation may go out at the same
-// moment: a read answered after it may hold the list from before, and must
-// not take the new workspace away.
-test("a read answered after a creation keeps the new workspace", async () => {
+// SWR reads the list again on focus, and a write may go out at the same
+// moment: a read answered after the write's answer may hold the list from
+// before, and must not undo the write. Each write is held to it.
+test.each([
+  ["a creation", (store: WorkspaceStore) => store.create({ name: "Acme", slug: "acme" }), ["Acme", "Beta"]],
+  ["an acceptance", (store: WorkspaceStore) => store.accept({ id: "acme", token: "nwk_inv_acme" }), ["acme", "Beta"]],
+  ["a renaming", (store: WorkspaceStore) => store.rename("beta", "Zeta"), ["Zeta"]],
+  ["a deletion", (store: WorkspaceStore) => store.remove("beta"), []],
+  ["a leaving", (store: WorkspaceStore) => store.leave("beta"), []],
+])("a read answered after %s keeps it", async (_, write: (store: WorkspaceStore) => Promise<unknown>, names) => {
   let answerRead: ((list: Workspace[]) => void) | undefined;
   let reads = 0;
   const store = storeOf([], {
@@ -46,11 +52,11 @@ test("a read answered after a creation keeps the new workspace", async () => {
   await store.load();
 
   const read = store.load();
-  await store.create({ name: "Acme", slug: "acme" });
+  await write(store);
   answerRead?.([workspace("beta", "Beta")]);
 
-  expect((await read).map((w) => w.slug)).toEqual(["acme", "beta"]);
-  expect(slugs(store)).toEqual(["acme", "beta"]);
+  expect((await read).map((w) => w.name)).toEqual(names);
+  expect(store.list?.map((w) => w.name)).toEqual(names);
 });
 
 test("a created or renamed workspace takes its place by name; a deleted one leaves", async () => {

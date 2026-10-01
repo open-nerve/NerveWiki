@@ -93,7 +93,7 @@ const RenameForm = observer(function RenameForm({ workspace }: { workspace: Work
 
 /**
  * DeleteSection deletes the workspace for every member, once its slug is
- * typed; the shell then goes to / , which lands on another workspace or on
+ * typed; the shell then goes to /, which lands on another workspace or on
  * the creation page.
  */
 function DeleteSection({ workspace }: { workspace: Workspace }) {

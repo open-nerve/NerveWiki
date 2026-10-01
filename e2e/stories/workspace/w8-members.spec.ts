@@ -1,9 +1,7 @@
-import type { ApiClient, AuthTokens, WorkspaceRole } from "@nervewiki/api-client";
-
 import { accountIdOf } from "../../fixtures/assert/identity";
 import { expectMembership } from "../../fixtures/assert/workspace";
 import { displayNameOf, emailFor, registerOnboarded } from "../../fixtures/auth";
-import { accept, invite, joinAs } from "../../fixtures/invitations";
+import { joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { changeRoleWith, membersListed, roleOf, who } from "../../fixtures/member-pages";
 import { listMembers, memberOf, updateMember } from "../../fixtures/members";
 import { expect, test } from "../../fixtures/test";
@@ -46,19 +44,6 @@ test("W8 (API): the members list hides the addresses from a guest; the admin cha
     [403, "forbidden"],
   ]);
 });
-
-/** Registers email, onboarded, which joins the workspace of slug as role by an invitation of adminCredential. */
-async function joinOnboarded(
-  api: ApiClient,
-  adminCredential: string,
-  slug: string,
-  email: string,
-  role: WorkspaceRole
-): Promise<AuthTokens> {
-  const tokens = await registerOnboarded(api, email);
-  await accept(api, tokens.access_token, await invite(api, adminCredential, slug, email, role));
-  return tokens;
-}
 
 test("W8 (page): the admin sees the members, changes a guest's role, and has no control of their own", async ({
   api,

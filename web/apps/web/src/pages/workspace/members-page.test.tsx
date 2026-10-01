@@ -167,6 +167,11 @@ test("an admin changes another member's role as one is chosen, and keeps the foc
   const changed = await roleButton("Guest", "Bob (bob@example.com)");
   expect(sent).toEqual(["GET members", "PATCH Bob guest"]);
   await waitFor(() => expect(document.activeElement).toBe(changed));
+
+  // The menu calls back on the role chosen even when it is the member's own: that sends nothing.
+  await choose(user, changed, "Guest");
+  await waitFor(() => expect(document.activeElement).toBe(changed));
+  expect(sent).toEqual(["GET members", "PATCH Bob guest"]);
   expect(screen.queryByRole("button", { name: /role of Ada/ })).toBeNull();
   expect(screen.queryByRole("button", { name: /^Remove Ada/ })).toBeNull();
   expect(screen.getByRole("button", { name: "Remove Cy (cy@example.com)" })).toBeTruthy();

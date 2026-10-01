@@ -67,7 +67,7 @@ func (c *CreateWorkspace) Execute(ctx context.Context, name, slug string) (Membe
 
 // newWorkspace is the workspace of draft created at now, and its admin's
 // membership, of the account userID: their ids come before the
-// transaction (v0.1 design 13.1, item 19).
+// transaction.
 func newWorkspace(draft domain.Draft, userID uuid.UUID, now time.Time) (domain.Workspace, domain.Member) {
 	w := domain.Workspace{ID: uuid.NewV7(), Slug: draft.Slug, Name: draft.Name, CreatedAt: now, UpdatedAt: now}
 	return w, domain.Member{ID: uuid.NewV7(), WorkspaceID: w.ID, UserID: userID, Role: shared.WorkspaceAdmin, CreatedAt: now}

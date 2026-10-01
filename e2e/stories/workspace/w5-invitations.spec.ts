@@ -3,7 +3,7 @@ import { expectInvitation, expectPendingInvitation } from "../../fixtures/assert
 import { bearer, emailFor, registerOnboarded } from "../../fixtures/auth";
 import { failedToLoad } from "../../fixtures/browser";
 import { copyLinkWith, inviteWith, linkTo, withdrawWith } from "../../fixtures/invitation-pages";
-import { accept, invite, joinAs, listInvitations, preview, withdraw } from "../../fixtures/invitations";
+import { invite, joinAs, joinOnboarded, listInvitations, preview, withdraw } from "../../fixtures/invitations";
 import { membersList } from "../../fixtures/member-pages";
 import { expect, test } from "../../fixtures/test";
 import { createWorkspace, newTeam, slugFor } from "../../fixtures/workspaces";
@@ -123,8 +123,7 @@ test("W5 (page): a member sees no invitations, which the page does not ask for",
   const { pat, workspace } = await newTeam(api, testInfo);
   await invite(api, pat, workspace.slug, emailFor(testInfo, "pending"), "member");
   const email = emailFor(testInfo, "member");
-  const tokens = await registerOnboarded(api, email);
-  await accept(api, tokens.access_token, await invite(api, pat, workspace.slug, email, "member"));
+  const tokens = await joinOnboarded(api, pat, workspace.slug, email, "member");
   const page = await signedInPage(tokens);
 
   await page.goto(`/${workspace.slug}/settings/members`);

@@ -65,7 +65,12 @@ test("a role change refused leaves the role as it was", async () => {
 
 // SWR reads the list again on focus: a read that went out before a change
 // was answered may hold the list from before it.
-test("a read answered after a change keeps the change", async () => {
+// A read answered after a write's answer may hold the list from before,
+// and must not undo the write. Each write is held to it.
+test.each([
+  ["a role change", (store: MemberStore) => store.changeRole("bob", "guest"), ["ada:admin", "bob:guest"]],
+  ["a removal", (store: MemberStore) => store.remove("bob"), ["ada:admin"]],
+])("a read answered after %s keeps it", async (_, write: (store: MemberStore) => Promise<void>, want) => {
   let answerRead: ((list: WorkspaceMember[]) => void) | undefined;
   let reads = 0;
   const store = storeOf([], {
@@ -77,11 +82,11 @@ test("a read answered after a change keeps the change", async () => {
   await store.load();
 
   const read = store.load();
-  await store.changeRole("bob", "guest");
+  await write(store);
   answerRead?.([member("ada", "admin"), member("bob")]);
   await read;
 
-  expect(roles(store)).toEqual(["ada:admin", "bob:guest"]);
+  expect(roles(store)).toEqual(want);
 });
 
 test("a member removed leaves; one whose membership has ended already leaves as well", async () => {

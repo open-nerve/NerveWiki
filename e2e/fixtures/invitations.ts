@@ -1,5 +1,6 @@
 import type {
   ApiClient,
+  AuthTokens,
   InvitationPreview,
   Workspace,
   WorkspaceInvitation,
@@ -7,10 +8,11 @@ import type {
 } from "@nervewiki/api-client";
 import { expect } from "@playwright/test";
 
-import { bearer, createToken, register } from "./auth";
+import { bearer, createToken, register, registerOnboarded } from "./auth";
 
 // The invitations of the stories, through the API (M2/P3 design 3.3). Each
-// helper expects success; a story asks for a refusal itself.
+// helper expects success, but preview and tryAccept, which return the
+// answer; a story asks for a refusal itself.
 
 /** Invites email to the workspace of slug as role with credential, an admin's, and returns the invitation. */
 export async function invite(
@@ -112,4 +114,21 @@ export async function joinAs(
   const session = await register(api, email);
   await accept(api, session.access_token, invitation);
   return (await createToken(api, session.access_token, { name: `${role} of ${slug}` })).token;
+}
+
+/**
+ * Registers email, onboarded, which joins the workspace of slug as role by
+ * an invitation of adminCredential, and returns its tokens: for a page
+ * signed in as it.
+ */
+export async function joinOnboarded(
+  api: ApiClient,
+  adminCredential: string,
+  slug: string,
+  email: string,
+  role: WorkspaceRole
+): Promise<AuthTokens> {
+  const tokens = await registerOnboarded(api, email);
+  await accept(api, tokens.access_token, await invite(api, adminCredential, slug, email, role));
+  return tokens;
 }

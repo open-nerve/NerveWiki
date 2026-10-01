@@ -125,7 +125,7 @@ export const zhCN: Messages = {
   "createWorkspace.slugHint": "小写字母、数字、_ 与 -，创建之后不能修改。",
   "createWorkspace.slugAvailable": "可以使用。",
   "createWorkspace.submit": "创建工作区",
-  "createWorkspace.off": "这台服务器上的工作区由服务器管理员创建。成员邀请你之后，打开邀请链接即可加入。",
+  "createWorkspace.off": "这台服务器上的工作区由服务器管理员创建。工作区的管理员邀请你之后，打开邀请链接即可加入。",
   "settings.security": "安全",
   "security.passwordTitle": "密码",
   "security.currentPassword": "当前密码",

@@ -1,6 +1,7 @@
 import type {
   ApiClient,
   InvitationPreview,
+  SignupInvitation,
   WorkspaceInvitation,
   WorkspaceInvitationCreate,
 } from "@nervewiki/api-client";
@@ -9,8 +10,11 @@ import { unwrap } from "./api";
 
 export type { InvitationPreview, WorkspaceInvitation, WorkspaceInvitationCreate };
 
-/** InvitationLink is what the link of an invitation carries: its id, and its token. */
-export type InvitationLink = { id: string; token: string };
+/**
+ * InvitationLink is what the link of an invitation carries: its id, and its
+ * token; the contract's name for it is that of the invitation sign-up sends.
+ */
+export type InvitationLink = SignupInvitation;
 
 /**
  * InvitationService lists a workspace's pending invitations, with their

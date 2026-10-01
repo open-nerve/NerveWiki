@@ -42,7 +42,7 @@ make run      # 以 dev 配置启动 nervewiki serve，监听 127.0.0.1:8080；C
 
 `make build` 构建前端并把它内嵌进 `bin/nervewiki`（版本号取 `VERSION`，默认 `0.1.0-dev`）。`make run` 启动的服务提供上一次 `make build` 复制进去的前端，从未构建时页面路径答 404 并提示；开发前端用 `make web-dev` 或 `make dev`，见下文"前端"。
 
-`serve` 启动时要连上数据库（最多等 10 秒，连不上就退出），按配置执行迁移（dev、test 默认执行，prod 默认不执行），然后自检数据库的编码与 locale，不满足就拒绝启动并给出建库命令。`GET /healthz` 表示进程存活；`GET /readyz` 在数据库可用、迁移已是最新时返回 200，否则 503。`GET /api/v0/instance` 返回产品名、版本与接口版本；`/api/` 下没有的路径返回 404 problem+json。
+`serve` 启动时要连上数据库（最多等 10 秒，连不上就退出），按配置执行迁移（dev、test 默认执行，prod 默认不执行），然后自检数据库的编码与 locale，不满足就拒绝启动并给出建库命令。`GET /healthz` 表示进程存活；`GET /readyz` 在数据库可用、迁移已是最新时返回 200，否则 503。`GET /api/v0/instance` 返回产品名、版本、提交与接口版本，以及是否开放注册（`signup_enabled`）、是否开放创建工作区（`workspace_creation_enabled`）；`/api/` 下没有的路径返回 404 problem+json。
 
 其他命令在 `server/` 下用 `go run ./cmd/nervewiki <命令>` 执行：
 
@@ -53,6 +53,7 @@ make run      # 以 dev 配置启动 nervewiki serve，监听 127.0.0.1:8080；C
 | `migrate down`   | 回滚最近一条迁移                                               |
 | `migrate status` | 列出迁移及其状态                                               |
 | `users …`        | 服务器管理员的账户命令，见下文"账户与认证"                     |
+| `workspaces …`   | 服务器管理员的工作区命令，见下文"账户与认证"                   |
 | `version`        | 打印版本号与构建信息                                           |
 
 ### 配置
@@ -69,7 +70,7 @@ make run      # 以 dev 配置启动 nervewiki serve，监听 127.0.0.1:8080；C
 
 ### 账户与认证
 
-除了 `POST /api/v0/auth/{register,login,refresh,logout}` 与 `GET /api/v0/instance`，每个接口都要求 `Authorization: Bearer <访问令牌或个人访问令牌>`，否则答 401。
+除了 `POST /api/v0/auth/{register,login,refresh,logout}`、`GET /api/v0/instance` 与预览邀请的 `POST /api/v0/workspace-invitations/{workspace_invitation_id}/preview`，每个接口都要求 `Authorization: Bearer <访问令牌或个人访问令牌>`，否则答 401。
 
 - **注册**：`auth.signup_enabled`，dev、test 开放，prod 关闭（`GET /api/v0/instance` 的 `signup_enabled` 告诉客户端）。关闭时，带着工作区邀请（请求体的 `invitation: {id, token}`）的注册仍然可以，只要邀请还待接受、注册邮箱就是被邀请的那个；注册不替用户接受邀请。密码 8–128 个字符，不能是常见密码，也不能由邮箱 @ 之前的部分构成；常见密码名单由 `node tools/password-blocklist/build.mjs` 生成（取 SecLists 固定提交中的 NCSC 名单并核对校验和）。
 - **会话**：注册与登录各开一个会话，返回访问令牌（15 分钟，`auth.access_token_ttl`）与刷新令牌。访问令牌到期后用刷新令牌换下一对（`/auth/refresh`），旧的刷新令牌随之作废；作废的刷新令牌再被使用，整个会话被撤销：这可能是它被别人拿到了，也可能是续期的答复在返回途中丢失（服务端已经换了令牌，客户端还拿着旧的），后者让用户重新登录，是严格轮换的代价（RFC 9700 4.14.2）。会话从登录起 30 天（`auth.session_ttl`）结束，续期不延长。`/auth/logout` 结束当前会话。续期与退出在 `auth.refresh_deadline`（4 秒）内完成，它加上 `database.commit_timeout` 必须小于前端放弃续期的 8 秒，且不超过 `server.request_timeout`；超时答 500，事务回滚，令牌不变，可以重试。
@@ -96,7 +97,7 @@ make run      # 以 dev 配置启动 nervewiki serve，监听 127.0.0.1:8080；C
   | `workspaces create --slug <slug> --name <名称> --admin <地址>`   | 建工作区，那个账户是它的管理员；不看 `workspace.creation_enabled`，关闭创建时工作区就这样建                                      |
   | `workspaces reactivate-member --workspace <slug> --email <地址>` | 恢复已结束的成员关系，角色沿用，加入的时刻不变；输出它结束的时刻（`… the membership had ended at …`）。账户要先 `users activate` |
 
-  账户不存在、已停用，slug 已被占用或不合规则时，退出码 1，数据库不变。恢复不限于停用结束的成员关系：被移出、离开的也可以恢复，看输出的结束时刻确认恢复的是哪一次。成员关系已是有效的，什么也不做（`… is already a member of …`）。
+  账户不存在、已停用，slug 已被占用或不合规则，工作区不存在，或者他从来不是这个工作区的成员时，退出码 1，数据库不变。恢复不限于停用结束的成员关系：被移出、离开的也可以恢复，看输出的结束时刻确认恢复的是哪一次。成员关系已是有效的，什么也不做（`… is already a member of …`）。
 
 - **签名私钥**：`auth.jwt.private_key_file`，PKCS#8 PEM 的 Ed25519 私钥，用 `openssl genpkey -algorithm ed25519 -out jwt.pem` 生成。prod 必须提供，缺了拒绝启动；dev、test 不提供时每次启动生成临时密钥，重启后已签发的令牌与邀请链接全部失效。刷新令牌与邀请令牌的 MAC 密钥都由它派生（HKDF，各用各的 info）：换私钥之后，待接受的邀请链接全部失效，要重新邀请。日志只记是否设置，不记路径。
 - **反向代理**：`server.trusted_proxies` 列出代理的 CIDR（环境变量用逗号分隔，例如 `NWIKI_SERVER__TRUSTED_PROXIES=10.0.0.0/8`）。只有来自它们的 `X-Forwarded-For` 被采信，代理写入的必须是不带端口的 IP；会话记录的就是这样认出的客户端 IP。配置不对时服务各告警一次。
@@ -109,7 +110,7 @@ make run      # 以 dev 配置启动 nervewiki serve，监听 127.0.0.1:8080；C
 - **成员**：角色是 admin、member、guest。管理员改别人的角色、移出成员，不能改或移出自己；成员可以离开，唯一的管理员不能（`workspace.sole_admin`），先让别人成为管理员，或者删除工作区。成员列表对访客隐藏邮箱。
 - **停用账户**（自助停用与 `users deactivate` 相同）：他是某个还有别的有效成员的工作区唯一的管理员时，停用被拒（409 `workspace.sole_admin`，原因里列出这些工作区的 slug），先让那里的另一位成员成为管理员；只有他一人的工作区不挡停用。停用结束他全部的成员关系，并删除这些工作区里发给他邮箱的待接受邀请。恢复：`users activate`，再对每个工作区 `workspaces reactivate-member`，或者由工作区的管理员重新邀请他。
 - **软删除与清理**：删除工作区是软删除，连同它的成员与邀请；撤回、接受的邀请也是软删除。超过 `jobs.purge_retention`（默认 1440 小时，即 60 天）的，由后台任务物理删除，服务启动时一次，之后每 `jobs.purge_interval`（默认 1 小时）一次；多个实例时只有一个执行。保留期内运维可以从数据库恢复。
-- **邀请**：管理员按邮箱邀请（`POST /api/v0/workspaces/{slug}/invitations`），把邀请的 id 与令牌（`nwk_inv_` 开头）发给对方；一个工作区里一个邮箱至多一份待接受的邀请，有效成员的邮箱不能邀请。令牌是 id 的 MAC，不存库，管理员随时可以在邀请列表里再看到它。任何拿到链接的人都能预览（工作区的名称与 slug、角色，不含邮箱）；接受要求用被邀请的邮箱登录，接受之后成为成员（已结束的成员关系恢复，保留第一次加入的时刻；已是成员的角色不变）。预览与接受都把令牌放在请求体里，不放在 URL 中；链接由页面拼出（M2/P5、P6），令牌放在 URL 片段（`#`）里，浏览器不把片段发给服务器。撤回邀请（`DELETE /api/v0/workspace-invitations/{id}`）、成员关系结束（对他邮箱的待接受邀请一并删除）、删除工作区之后，链接答 404 `workspace.invitation_not_found`。
+- **邀请**：管理员按邮箱邀请（`POST /api/v0/workspaces/{slug}/invitations`），把邀请的 id 与令牌（`nwk_inv_` 开头）发给对方；一个工作区里一个邮箱至多一份待接受的邀请，有效成员的邮箱不能邀请。令牌是 id 的 MAC，不存库，管理员随时可以在邀请列表里再看到它。任何拿到链接的人都能预览（工作区的名称与 slug、角色，不含邮箱）；接受要求用被邀请的邮箱登录，接受之后成为成员（已结束的成员关系恢复，保留第一次加入的时刻；已是成员的角色不变）。预览与接受都把令牌放在请求体里，不放在 URL 中；链接由页面拼出（M2/P5、P6），令牌放在 URL 片段（`#`）里，浏览器不把片段发给服务器。撤回邀请（`DELETE /api/v0/workspace-invitations/{workspace_invitation_id}`）、成员关系结束（对他邮箱的待接受邀请一并删除）、删除工作区之后，链接答 404 `workspace.invitation_not_found`。
 
 ## 接口与代码生成
 
