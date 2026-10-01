@@ -147,6 +147,30 @@ export const routes: RouteObject[] = [
                               return { Component: NotebookHomePage };
                             },
                           },
+                          {
+                            path: "settings",
+                            lazy: async () => {
+                              const { NotebookSettingsLayout } = await import("../pages/notebook/settings-layout");
+                              return { Component: NotebookSettingsLayout };
+                            },
+                            children: [
+                              { index: true, Component: () => <Navigate replace to="general" /> },
+                              {
+                                path: "general",
+                                lazy: async () => {
+                                  const { NotebookGeneralPage } = await import("../pages/notebook/general-page");
+                                  return { Component: NotebookGeneralPage };
+                                },
+                              },
+                              {
+                                path: "members",
+                                lazy: async () => {
+                                  const { NotebookMembersPage } = await import("../pages/notebook/members-page");
+                                  return { Component: NotebookMembersPage };
+                                },
+                              },
+                            ],
+                          },
                         ],
                       },
                       {

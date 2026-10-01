@@ -1,11 +1,13 @@
 import { createContext, use, type ReactNode } from "react";
 
 import type { User } from "../services/account.service";
+import type { Notebook } from "../services/notebook.service";
 import type { Workspace } from "../services/workspace.service";
 import type { AccountStore } from "./account.store";
 import type { ApiTokenStore } from "./api-token.store";
 import type { InvitationStore } from "./invitation.store";
 import type { MemberStore } from "./member.store";
+import type { NotebookMemberStore } from "./notebook-member.store";
 import type { NotebookStore } from "./notebook.store";
 import type { RootStore } from "./root.store";
 import type { WorkspaceStore } from "./workspace.store";
@@ -73,6 +75,15 @@ export function useNotebooks(workspace: Workspace): NotebookStore {
     throw new Error("useNotebooks is used outside SignedIn");
   }
   return notebooks;
+}
+
+/** useNotebookMembers is the members of notebook: only for the pages the SignedIn guard shows. */
+export function useNotebookMembers(notebook: Notebook): NotebookMemberStore {
+  const members = useStore().notebookMembersOf(notebook);
+  if (members === undefined) {
+    throw new Error("useNotebookMembers is used outside SignedIn");
+  }
+  return members;
 }
 
 /** useInvitations is the pending invitations of workspace: only for the pages the SignedIn guard shows. */
