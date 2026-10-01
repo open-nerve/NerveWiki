@@ -300,7 +300,7 @@ M2 结束时：
 | P3 | 邀请与带邀请注册 | 已完成 | [03-P3-invitations.md](03-P3-invitations.md) | [P3 审查记录](reviews/P3-invitations-review.md) |
 | P4 | 停用、管理命令与清理 | 已完成 | [04-P4-deactivation-commands-purge.md](04-P4-deactivation-commands-purge.md) | [P4 审查记录](reviews/P4-deactivation-commands-purge-review.md) |
 | P5 | 前端外壳与工作区 | 已完成 | [05-P5-web-shell-workspaces.md](05-P5-web-shell-workspaces.md) | [P5 审查记录](reviews/P5-web-shell-workspaces-review.md) |
-| P6 | 前端成员与邀请 | 未开始 | — | — |
+| P6 | 前端成员与邀请 | 进行中 | [06-P6-web-members-invitations.md](06-P6-web-members-invitations.md) | — |
 | — | M2 收尾审查 | 未开始 | — | — |
 
 ## 12. 变更记录
