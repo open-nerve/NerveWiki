@@ -268,7 +268,7 @@ Nerve 的项目模块（`modules/project`）还停在建立、列表、读取（
 | P2 | 笔记本成员 | 已完成 | [02-P2-notebook-members.md](02-P2-notebook-members.md) | [P2 审查](reviews/P2-notebook-members-review.md) |
 | P3 | 级联与无主 | 已完成 | [03-P3-cascade-ownerless.md](03-P3-cascade-ownerless.md) | [P3 审查](reviews/P3-cascade-ownerless-review.md) |
 | P4 | 前端笔记本 | 已完成 | [04-P4-web-notebooks.md](04-P4-web-notebooks.md) | [P4 审查](reviews/P4-web-notebooks-review.md) |
-| P5 | 前端无主与级联 | 进行中 | [05-P5-web-ownerless.md](05-P5-web-ownerless.md) | — |
+| P5 | 前端无主与级联 | 已完成 | [05-P5-web-ownerless.md](05-P5-web-ownerless.md) | [P5 审查](reviews/P5-web-ownerless-review.md) |
 
 ## 12. 变更记录
 
@@ -280,3 +280,4 @@ Nerve 的项目模块（`modules/project`）还停在建立、列表、读取（
 | 2026-10-02 | P2 完成：移交第 6 项落实；第 7 节 P3 一行补上可见性；第 8 节写明可见性事件不带执行者；可见性的第一个注册者交给 M5 | [P2 审查](reviews/P2-notebook-members-review.md) Q1、Q2、D6 |
 | 2026-10-02 | P3 完成：移交第 1、2、3 项落实；第 5 节游标先于一切判断；第 8 节写明笔记本行锁之下计数的前提（M4）；第 9 节矩阵的第三种变体用已删除的笔记本 | [P3 审查](reviews/P3-cascade-ownerless-review.md) Q5、Q6、D2、D6 |
 | 2026-10-02 | P4 完成：移交第 5 项落实；第 7 节记下 `nav` 在 `main` 里、留给 M4 | [P4 审查](reviews/P4-web-notebooks-review.md) Q2 |
+| 2026-10-02 | P5 完成：无主页、审计、首页提醒与三处对话框的说明；N7–N11、N13 的页面版本。M3 的五个 Phase 全部完成，接着做收尾审查 | [P5 审查](reviews/P5-web-ownerless-review.md) |

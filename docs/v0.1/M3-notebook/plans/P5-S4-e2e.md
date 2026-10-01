@@ -14,3 +14,9 @@
 ## 完成检查
 
 `make e2e` 全部通过。
+
+## 实现注记
+
+- 另加 `anotherPage`（`fixtures/test.ts`）与 `newOnboardedTeam`（`fixtures/workspaces.ts`）；N2 的第二个标签页改用 `anotherPage`。
+- N8 的停用拒绝单独成测试；N10 按审查 Q2 改为先经"加载更多"读完 51 条再删除。
+- 反向对照另有：无主页渲染时 `console.warn` → N7 经 `anotherPage` 的安静检查失败。
