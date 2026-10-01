@@ -246,3 +246,34 @@ test("a refusal shows above the form, which stays as typed; Cancel forgets it", 
   expect(within(dialog).getByLabelText<HTMLInputElement>("Name").value).toBe("");
   expect(within(dialog).queryByRole("alert")).toBeNull();
 });
+
+// Cancelled, the dialog no longer leads anywhere: the creation, already
+// out, still lands in the left column, and the next dialog gives the focus
+// back to its trigger as usual.
+test("a creation answered after Cancel goes nowhere; the left column lists the notebook", async () => {
+  const user = userEvent.setup();
+  let release: (() => void) | undefined;
+  const { app } = creationServer(async () => {
+    await new Promise<void>((resolve) => (release = resolve));
+    return json({ ...notebookJSON, id: zeta.id, name: "Late" }, 201);
+  });
+  const { router } = renderApp("/lab", app);
+  let dialog = await openCreation(user);
+  await user.type(within(dialog).getByLabelText("Name"), "Late");
+  await user.click(within(dialog).getByRole("button", { name: "Create" }));
+  await waitFor(() => expect(release).toBeDefined());
+
+  await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+  release?.();
+
+  expect(await within(await nav()).findByRole("link", { name: "Late" })).toBeTruthy();
+  await act(() => new Promise((resolve) => setTimeout(resolve, 10)));
+  expect(router.state.location.pathname).toBe("/lab");
+  dialog = await openCreation(user);
+  await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+  await waitFor(() =>
+    expect(document.activeElement).toBe(
+      within(screen.getByRole("navigation", { name: "Lab" })).getByRole("button", { name: "New notebook" })
+    )
+  );
+});

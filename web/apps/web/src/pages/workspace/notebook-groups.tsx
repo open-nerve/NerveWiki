@@ -41,14 +41,14 @@ export const NotebookGroups = observer(function NotebookGroups({
   }
   const { mine, team } = groupNotebooks(notebooks.list);
   const groups = [
-    { title: t("notebooks.mine"), list: mine },
-    { title: t("notebooks.team"), list: team },
+    { key: "mine", title: t("notebooks.mine"), list: mine },
+    { key: "team", title: t("notebooks.team"), list: team },
   ].filter((group) => group.list.length > 0);
   if (groups.length === 0) {
     return empty;
   }
-  return groups.map(({ title, list }) => (
-    <Group key={title} title={title} headingClassName={headingClassName} listClassName={listClassName}>
+  return groups.map(({ key, title, list }) => (
+    <Group key={key} title={title} headingClassName={headingClassName} listClassName={listClassName}>
       {list.map((notebook) => (
         <li key={notebook.id} className="flex flex-col">
           {renderItem(notebook)}

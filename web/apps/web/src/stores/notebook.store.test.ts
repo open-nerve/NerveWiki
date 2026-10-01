@@ -179,3 +179,63 @@ test("each group keeps the list's order", () => {
     ["b", "d"],
   ]);
 });
+
+// A notebook's changes go out one at a time (v0.1 design 13.2, item 1): its
+// general page's two forms may each send while the other's change is out,
+// and the server's answers may come back in any order.
+test("a notebook's changes go out one at a time, the last answered last", async () => {
+  const answers: ((n: Notebook) => void)[] = [];
+  const sent: string[] = [];
+  const store = storeOf([notebook("a", "A")], {
+    update: (id, body) => {
+      sent.push(JSON.stringify(body));
+      return new Promise<Notebook>((resolve) => answers.push(resolve));
+    },
+  });
+  await store.load();
+
+  const renaming = store.update("a", { name: "B" });
+  const opening = store.update("a", { workspace_access: "viewer" });
+  await Promise.resolve();
+  expect(sent).toEqual(['{"name":"B"}']);
+  answers[0]?.(notebook("a", "B"));
+  await renaming;
+  await Promise.resolve();
+  expect(sent).toEqual(['{"name":"B"}', '{"workspace_access":"viewer"}']);
+  answers[1]?.(notebook("a", "B", { workspace_access: "viewer" }));
+  await opening;
+
+  expect(store.list?.map((n) => [n.name, n.workspace_access])).toEqual([["B", "viewer"]]);
+});
+
+// New notebook shows before the first read answers: a creation answered
+// while that read is out is read again, not lost to it.
+test("a creation answered while the first read is out is in the list that read leaves", async () => {
+  let answerFirst: ((list: Notebook[]) => void) | undefined;
+  let reads = 0;
+  const store = storeOf([], {
+    list: () =>
+      ++reads === 1
+        ? new Promise<Notebook[]>((resolve) => (answerFirst = resolve))
+        : Promise.resolve([notebook("acme", "Acme")]),
+  });
+
+  const read = store.load();
+  await store.create({ name: "Acme" });
+  answerFirst?.([]);
+
+  expect((await read).map((n) => n.name)).toEqual(["Acme"]);
+  expect([names(store), reads]).toEqual([["Acme"], 2]);
+});
+
+test("a leaving answered, whose read again fails, is done: the notebook stays until a read without it sends it home", async () => {
+  let reads = 0;
+  const store = storeOf([], {
+    list: () => (++reads === 1 ? Promise.resolve([notebook("a", "A")]) : Promise.reject(new TypeError("offline"))),
+  });
+  await store.load();
+
+  await store.leave("a");
+
+  expect([names(store), store.wasRemoved("a")]).toEqual([["A"], true]);
+});

@@ -131,7 +131,7 @@ test("an admin adds a member of the workspace not in the notebook yet, with a ro
   await user.selectOptions(screen.getByLabelText("Role"), "Reader");
   await user.click(screen.getByRole("button", { name: "Add" }));
 
-  expect((await screen.findByRole("status")).textContent).toBe("Cy added.");
+  expect(await screen.findByText("Cy added.")).toBeTruthy();
   expect(server.sent).toContain("POST Cy reader");
   expect(await rows()).toEqual([
     "AdaYouada@example.com · Joined Oct 1, 2026Admin",
@@ -225,7 +225,8 @@ test("leaving a private notebook lands on the workspace's home, its heading focu
   expect(router.state.location.pathname).toBe("/lab");
   await waitFor(() => expect(document.activeElement).toBe(home));
   expect(screen.queryByRole("heading", { name: "Page not found" })).toBeNull();
-  expect(server.sent).toContain("leave");
+  // Out of sight, its members answer 404, which a browser logs: they are not read again.
+  expect(server.sent.slice(server.sent.indexOf("leave"))).toEqual(["leave"]);
 });
 
 test("leaving a notebook open to the workspace stays on it, with its role by the access; the list is read again", async () => {
@@ -238,7 +239,7 @@ test("leaving a notebook open to the workspace stays on it, with its role by the
 
   await leave(user);
 
-  expect(await rows()).toEqual(["Bobbob@example.com · Joined Oct 2, 2026Admin"]);
+  await waitFor(async () => expect(await rows()).toEqual(["Bobbob@example.com · Joined Oct 2, 2026Admin"]));
   expect(router.state.location.pathname).toBe(members);
   expect(screen.queryByRole("button", { name: "Leave notebook" })).toBeNull();
   await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Members" })));
@@ -329,4 +330,45 @@ test("going from one notebook's members to another's lists the other's", async (
   await user.click(await screen.findByRole("link", { name: "Members" }));
 
   await waitFor(async () => expect(await rows()).toHaveLength(2));
+});
+
+test("the members to add say so when they cannot be read; Try again reads them", async () => {
+  const user = userEvent.setup();
+  const server = notebookServer({ members: [notebookMember(ada, "admin")] });
+  server.workspaceMembersDown = true;
+  renderApp(members, server.app);
+  const section = (await screen.findByRole("heading", { name: "Add a member" })).closest("section") as HTMLElement;
+
+  expect((await within(section).findByRole("alert")).textContent).toBe(
+    "Cannot reach the server. Check the connection and try again."
+  );
+  server.workspaceMembersDown = false;
+  await user.click(within(section).getByRole("button", { name: "Try again" }));
+
+  expect(await candidates()).toEqual(["Choose a member", "Bob (bob@example.com)", "Cy (cy@example.com)"]);
+});
+
+test("the members to add read again show who joined the workspace since", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const server = notebookServer();
+  const { router } = renderApp(members, server.app);
+  expect(await candidates()).toEqual(["Choose a member", "Cy (cy@example.com)"]);
+
+  server.workspaceMembers = [
+    ...server.workspaceMembers,
+    {
+      ...cy,
+      id: "0199a2b4-0000-7000-8000-0000000000d4",
+      user_id: "0199a2b4-0000-7000-8000-000000000004",
+      display_name: "Dee",
+      email: "dee@example.com",
+    },
+  ];
+  await act(() => router.navigate(`/lab/notebooks/${notebookJSON.id}/settings/general`));
+  await act(() => vi.advanceTimersByTimeAsync(2_000));
+  await act(() => router.navigate(members));
+
+  await waitFor(async () =>
+    expect(await candidates()).toEqual(["Choose a member", "Cy (cy@example.com)", "Dee (dee@example.com)"])
+  );
 });

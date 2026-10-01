@@ -1,6 +1,6 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 
 import type { Workspace } from "../../services/workspace.service";
 import { json, problem, signedInApp, workspaceJSON, type Answer } from "../../test/fakes";
@@ -13,16 +13,18 @@ const acme: Workspace = { ...workspaceJSON, id: "0199a2b4-0000-7000-8000-0000000
 
 /**
  * The server of the page: the account's workspaces are Acme (whose role is
- * role) and Lab; rename and remove answer the changes, and what went out is
- * in sent.
+ * role) and Lab, or Acme alone; rename and remove answer the changes, and
+ * what went out is in sent. renamedElsewhere renames Acme as another admin
+ * would.
  */
 function settingsServer({
   role = "admin",
   rename,
   remove,
-}: { role?: Workspace["role"]; rename?: Answer; remove?: Answer } = {}) {
+  alone = false,
+}: { role?: Workspace["role"]; rename?: Answer; remove?: Answer; alone?: boolean } = {}) {
   const sent: string[] = [];
-  let list: Workspace[] = [{ ...acme, role }, workspaceJSON];
+  let list: Workspace[] = alone ? [{ ...acme, role }] : [{ ...acme, role }, workspaceJSON];
   const app = signedInApp({
     "GET /api/v0/workspaces": () => json({ data: list }),
     "PATCH /api/v0/workspaces/acme": async (request) => {
@@ -39,7 +41,10 @@ function settingsServer({
       return answer;
     },
   });
-  return { app, sent };
+  const renamedElsewhere = (name: string) => {
+    list = [{ ...acme, role, name }, ...list.filter((w) => w.slug !== "acme")];
+  };
+  return { app, sent, renamedElsewhere };
 }
 
 const nameField = () => screen.findByLabelText<HTMLInputElement>("Name");
@@ -208,4 +213,38 @@ test.each(["member", "guest"] as const)("a %s sees the name and the address, and
   expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
   expect(screen.queryByRole("button", { name: "Delete workspace" })).toBeNull();
   expect(screen.getByText("The address of a workspace cannot change.")).toBeTruthy();
+});
+
+test("deleting the only workspace lands on the creation page, its heading focused", async () => {
+  const user = userEvent.setup();
+  const { app } = settingsServer({ alone: true });
+  const { router } = renderApp("/acme/settings/general", app);
+
+  await user.click(await screen.findByRole("button", { name: "Delete workspace" }));
+  await user.type(await screen.findByLabelText("Type acme to confirm"), "acme{Enter}");
+
+  const heading = await screen.findByRole("heading", { level: 1, name: "Create a workspace" });
+  expect(router.state.location.pathname).toBe("/create-workspace");
+  await waitFor(() => expect(document.activeElement).toBe(heading));
+});
+
+afterEach(() => vi.useRealTimers());
+
+// SWR reads the workspaces again as the tab regains the focus: an untouched
+// name follows a rename made elsewhere, and Save sends nothing back over it.
+test("an untouched name follows a rename by another admin; Save sends nothing back over it", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
+  const { app, sent, renamedElsewhere } = settingsServer();
+  renderApp("/acme/settings/general", app);
+  expect((await nameField()).value).toBe("Acme");
+
+  renamedElsewhere("Acme Works");
+  await act(() => vi.advanceTimersByTimeAsync(6_000));
+  act(() => void window.dispatchEvent(new Event("focus")));
+
+  await waitFor(async () => expect((await nameField()).value).toBe("Acme Works"));
+  await user.click(screen.getByRole("button", { name: "Save" }));
+  expect(await screen.findByText("Saved.")).toBeTruthy();
+  expect(sent).toEqual([]);
 });

@@ -70,6 +70,8 @@ export function notebookServer({
     sent: [] as string[],
     plans: { ...notebookJSON, workspace_access: access } as Notebook,
     deleted: false,
+    /** While set, Lab's members cannot be read. */
+    workspaceMembersDown: false,
     members,
     workspaceMembers: [{ ...ada, role: workspaceRole }, bob, cy],
   };
@@ -100,7 +102,9 @@ export function notebookServer({
     "GET /api/v0/workspaces/lab/notebooks": () => json({ data: seen() === undefined ? [] : [seen()] }),
     "GET /api/v0/workspaces/lab/members": () => {
       server.sent.push("GET workspace members");
-      return json({ data: shown(server.workspaceMembers) });
+      return server.workspaceMembersDown
+        ? Promise.reject(new TypeError("offline"))
+        : json({ data: shown(server.workspaceMembers) });
     },
     [`PATCH ${plans}`]: async (request) => {
       const body = (await request.clone().json()) as { name?: string; workspace_access?: WorkspaceAccess };
@@ -133,7 +137,7 @@ export function notebookServer({
     },
     [`GET ${plans}/members`]: () => {
       server.sent.push("GET members");
-      return json({ data: shown(server.members) });
+      return seen() === undefined ? problem(404, "notebook.not_found") : json({ data: shown(server.members) });
     },
     [`POST ${plans}/members`]: async (request) => {
       const { user_id: userId, role } = (await request.clone().json()) as { user_id: string; role: NotebookRole };

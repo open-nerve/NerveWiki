@@ -2,7 +2,8 @@ import { useState } from "react";
 
 import { useFocusOnInvalid } from "../components/form-field";
 import { useT } from "../i18n/i18n";
-import { formErrors, type FieldMessage, type FieldTexts, type ProblemTexts } from "./problem-messages";
+import type { FieldError } from "../services/api";
+import { formErrors, type FieldMessage, type ProblemTexts } from "./problem-messages";
 
 /** The fields' problems found before sending: a message for each field that has one. */
 export type LocalProblems<Field extends string> = Partial<Record<Field, FieldMessage>>;
@@ -21,8 +22,12 @@ export function useForm<Field extends string>(
   {
     onField = {},
     texts = {},
-    fieldTexts = {},
-  }: { onField?: Readonly<Record<string, Field>>; texts?: ProblemTexts; fieldTexts?: FieldTexts } = {}
+    fieldTexts,
+  }: {
+    onField?: Readonly<Record<string, Field>>;
+    texts?: ProblemTexts;
+    fieldTexts?: Readonly<Partial<Record<`${Field}.${FieldError["code"]}`, FieldMessage>>>;
+  } = {}
 ) {
   const t = useT();
   const [local, setLocal] = useState<LocalProblems<Field>>({});

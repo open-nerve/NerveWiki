@@ -1,10 +1,10 @@
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 
 import type { Notebook } from "../../services/notebook.service";
 import type { Workspace } from "../../services/workspace.service";
-import { json, notebookJSON, signedInApp, workspaceJSON } from "../../test/fakes";
+import { json, notebookJSON, signedInApp, workspaceJSON, type Answer } from "../../test/fakes";
 import { renderApp } from "../../test/render";
 
 // A workspace's home: its notebooks, as cards (M3/P4 design 3.3).
@@ -17,10 +17,11 @@ const atlas: Notebook = {
   role: "editor",
 };
 
-function labApp(list: Notebook[], role: Workspace["role"] = "admin") {
+function labApp(list: Notebook[], role: Workspace["role"] = "admin", routes: Record<string, Answer> = {}) {
   return signedInApp({
     "GET /api/v0/workspaces": () => json({ data: [{ ...workspaceJSON, role }] }),
     "GET /api/v0/workspaces/lab/notebooks": () => json({ data: list }),
+    ...routes,
   });
 }
 
@@ -72,4 +73,24 @@ test("with notebooks, the home offers no New notebook: the left column does", as
 
   await within(home).findByRole("list", { name: "My notebooks" });
   expect(within(home).queryAllByRole("button")).toEqual([]);
+});
+
+// The home's New notebook goes with the empty state the creation ends: the
+// creation still arrives at the new notebook.
+test("a notebook created from the empty home opens on its home, arrived at", async () => {
+  const user = userEvent.setup();
+  const app = labApp([], "member", {
+    "POST /api/v0/workspaces/lab/notebooks": () => json(notebookJSON, 201),
+  });
+  const { router } = renderApp("/lab", app);
+  const home = await main();
+
+  await user.click(await within(home).findByRole("button", { name: "New notebook" }));
+  const dialog = await screen.findByRole("dialog", { name: "New notebook" });
+  await user.type(within(dialog).getByLabelText("Name"), "Plans");
+  await user.click(within(dialog).getByRole("button", { name: "Create" }));
+
+  const heading = await screen.findByRole("heading", { level: 1, name: "Plans" });
+  expect(router.state.location.pathname).toBe(`/lab/notebooks/${notebookJSON.id}`);
+  await waitFor(() => expect(document.activeElement).toBe(heading));
 });

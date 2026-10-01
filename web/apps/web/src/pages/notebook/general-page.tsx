@@ -58,13 +58,17 @@ type NotebookProps = { workspace: Workspace; notebook: Notebook };
 
 /**
  * RenameForm renames the notebook as the workspace's RenameForm renames
- * the workspace: only a changed name goes out, trimmed; the field then
- * shows the name as saved, unless it was edited while the name was out.
+ * the workspace: only a changed name goes out, trimmed. Until it is
+ * edited, and again once a save went through, the field shows the name as
+ * the list has it, a rename made elsewhere too; one edited while its name
+ * was out keeps the edit, which the next save sends.
  */
 const RenameForm = observer(function RenameForm({ workspace, notebook }: NotebookProps) {
   const notebooks = useNotebooks(workspace);
   const t = useT();
-  const [name, setName] = useState(notebook.name);
+  /** What was typed since the last save; none, the name as the list has it. */
+  const [draft, setDraft] = useState<string>();
+  const name = draft ?? notebook.name;
   const [saved, setSaved] = useState(false);
   const { ref, sending, banner, problemOf, submit } = useForm(["name"], { fieldTexts: notebookNameTexts });
   /** How many times the field was edited: a save tells whether the name it sent is still the one shown. */
@@ -77,9 +81,11 @@ const RenameForm = observer(function RenameForm({ workspace, notebook }: Noteboo
     const edit = edits.current;
     setSaved(false);
     void submit(problem === undefined ? {} : { name: problem }, async () => {
-      const kept = trimmed === notebook.name ? notebook : await notebooks.update(notebook.id, { name: trimmed });
+      if (trimmed !== notebook.name) {
+        await notebooks.update(notebook.id, { name: trimmed });
+      }
       if (edits.current === edit) {
-        setName(kept.name);
+        setDraft(undefined);
         setSaved(true);
       }
     });
@@ -97,7 +103,7 @@ const RenameForm = observer(function RenameForm({ workspace, notebook }: Noteboo
         hint={t("notebooks.nameHint")}
         onChange={(event) => {
           edits.current++;
-          setName(event.target.value);
+          setDraft(event.target.value);
           setSaved(false);
         }}
       />
@@ -115,24 +121,34 @@ const RenameForm = observer(function RenameForm({ workspace, notebook }: Noteboo
  * AccessForm changes who in the workspace sees the notebook: the access
  * chosen goes out on Save, not as it is chosen, since the arrow keys choose
  * as they move. Only a change goes out; the left column may then show the
- * notebook in the other group.
+ * notebook in the other group. Like RenameForm, it shows the access as the
+ * list has it until one is chosen, and again once saved, unless another
+ * was chosen while the save was out.
  */
 const AccessForm = observer(function AccessForm({ workspace, notebook }: NotebookProps) {
   const notebooks = useNotebooks(workspace);
   const t = useT();
-  const [access, setAccess] = useState<WorkspaceAccess>(notebook.workspace_access);
+  /** The access chosen since the last save; none, the access as the list has it. */
+  const [draft, setDraft] = useState<WorkspaceAccess>();
+  const access = draft ?? notebook.workspace_access;
   const [saved, setSaved] = useState(false);
   const { ref, sending, banner, submit } = useForm<never>([]);
+  /** How many times the access was chosen: a save tells whether the access it sent is still the one shown. */
+  const edits = useRef(0);
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const chosen = access;
+    const edit = edits.current;
     setSaved(false);
     void submit({}, async () => {
       if (chosen !== notebook.workspace_access) {
         await notebooks.update(notebook.id, { workspace_access: chosen });
       }
-      setSaved(true);
+      if (edits.current === edit) {
+        setDraft(undefined);
+        setSaved(true);
+      }
     });
   }
 
@@ -142,7 +158,8 @@ const AccessForm = observer(function AccessForm({ workspace, notebook }: Noteboo
       <AccessOptions
         value={access}
         onChange={(chosen) => {
-          setAccess(chosen);
+          edits.current++;
+          setDraft(chosen);
           setSaved(false);
         }}
       />

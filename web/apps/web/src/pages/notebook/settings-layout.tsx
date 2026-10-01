@@ -23,7 +23,7 @@ export const NotebookSettingsLayout = observer(function NotebookSettingsLayout()
   const t = useT();
   return (
     <div className="max-w-4xl space-y-6">
-      <h1 className="text-2xl font-semibold">{t("notebookSettings.title")}</h1>
+      <h1 className="text-2xl font-semibold break-words">{t("notebookSettings.heading", { name: notebook.name })}</h1>
       <div className="flex flex-col gap-6 md:flex-row">
         <nav aria-label={t("notebookSettings.title")} className="flex gap-1 md:w-40 md:shrink-0 md:flex-col">
           {sections.map(({ path, label }) => (

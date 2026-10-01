@@ -65,7 +65,8 @@ test("a workspace's home opened, or chosen in the switcher, does not take the fo
   await user.click(screen.getByRole("button", { name: "Lab", description: "Switch workspace" }));
   await user.click(await screen.findByRole("menuitemradio", { name: "Acme" }));
 
-  expect(document.activeElement).not.toBe(await screen.findByRole("heading", { name: "Acme" }));
+  const chosen = await screen.findByRole("heading", { name: "Acme" });
+  expect(document.activeElement).not.toBe(chosen);
 });
 
 test("a slug the account has no workspace of is not found, nor remembered", async () => {

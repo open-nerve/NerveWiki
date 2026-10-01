@@ -1,5 +1,6 @@
 import { makeAutoObservable, runInAction } from "mobx";
 
+import { oneAtATime } from "../lib/one-at-a-time";
 import { ApiError } from "../services/api";
 import type { Notebook, NotebookCreate, NotebookService, NotebookUpdate } from "../services/notebook.service";
 import type { Workspace } from "../services/workspace.service";
@@ -36,21 +37,32 @@ export class NotebookStore {
   private changesAnswered = 0;
   /** The notebooks this generation deleted or left and no longer sees: their pages go to the workspace's home. */
   private readonly removed = new Set<string>();
+  /**
+   * Each notebook's changes, one at a time (v0.1 design 13.2, item 1): its
+   * general page has two forms, either of which may send while the other's
+   * change is out.
+   */
+  private readonly changes = new Map<string, ReturnType<typeof oneAtATime>>();
 
   constructor(
     private readonly service: Pick<NotebookService, "list" | "create" | "update" | "remove" | "leave">,
     /** The slug of the workspace whose notebooks these are. */
     private readonly slug: string
   ) {
-    makeAutoObservable<this, "service" | "slug" | "changesAnswered" | "removed">(this, {
+    makeAutoObservable<this, "service" | "slug" | "changesAnswered" | "removed" | "changes">(this, {
       service: false,
       slug: false,
       changesAnswered: false,
       removed: false,
+      changes: false,
     });
   }
 
-  /** wasRemoved tells whether this generation deleted or left the notebook id, and no longer sees it. */
+  /**
+   * wasRemoved tells whether this generation deleted or left the notebook
+   * id: the list, once it lacks it, sends its pages home rather than to a
+   * 404.
+   */
   wasRemoved(id: string): boolean {
     return this.removed.has(id);
   }
@@ -63,12 +75,14 @@ export class NotebookStore {
   /**
    * load reads the list; SWR calls it. A change answered while the read was
    * out is newer than what it read: the list kept stays the one with it.
+   * Before the first list there is none to keep it: the list is read again,
+   * after the change.
    */
   async load(): Promise<Notebook[]> {
     const answeredBefore = this.changesAnswered;
     const list = await this.service.list(this.slug);
-    if (this.changesAnswered !== answeredBefore && this.list !== undefined) {
-      return this.list;
+    if (this.changesAnswered !== answeredBefore) {
+      return this.list ?? this.load();
     }
     runInAction(() => {
       this.list = list;
@@ -84,21 +98,25 @@ export class NotebookStore {
   }
 
   async update(id: string, body: NotebookUpdate): Promise<Notebook> {
-    const updated = await this.service.update(id, body);
-    this.put(updated);
-    return updated;
+    return this.inTurn(id, async () => {
+      const updated = await this.service.update(id, body);
+      this.put(updated);
+      return updated;
+    });
   }
 
   /** remove deletes the notebook id; one deleted already, or no longer seen, is gone as well. */
   async remove(id: string): Promise<void> {
-    try {
-      await this.service.remove(id);
-    } catch (error) {
-      if (!isNotFound(error)) {
-        throw error;
+    await this.inTurn(id, async () => {
+      try {
+        await this.service.remove(id);
+      } catch (error) {
+        if (!isNotFound(error)) {
+          throw error;
+        }
       }
-    }
-    this.gone(id);
+      this.gone(id);
+    });
   }
 
   /**
@@ -108,24 +126,45 @@ export class NotebookStore {
    * stays (M3/P4 design 3.2). The list is read, not the notebook, which
    * answers 404 once out of sight: a browser logs that as an error. A
    * notebook already gone is gone as well; a membership that has ended
-   * already is the refusal's to tell.
+   * already is the refusal's to tell. The leaving is done once answered: a
+   * read that fails after it leaves the notebook as it was until the next
+   * read, which sends its pages home if it no longer has it.
    */
   async leave(id: string): Promise<void> {
-    try {
-      await this.service.leave(id);
-    } catch (error) {
-      if (!isNotFound(error)) {
-        throw error;
+    await this.inTurn(id, async () => {
+      try {
+        await this.service.leave(id);
+      } catch (error) {
+        if (!isNotFound(error)) {
+          throw error;
+        }
+        this.gone(id);
+        return;
       }
-      this.gone(id);
-      return;
+      let list: Notebook[];
+      try {
+        list = await this.service.list(this.slug);
+      } catch {
+        this.removed.add(id);
+        return;
+      }
+      const seen = list.find((notebook) => notebook.id === id);
+      if (seen === undefined) {
+        this.gone(id);
+      } else {
+        this.put(seen);
+      }
+    });
+  }
+
+  /** inTurn runs change after the changes of the notebook id before it. */
+  private inTurn<T>(id: string, change: () => Promise<T>): Promise<T> {
+    let changes = this.changes.get(id);
+    if (changes === undefined) {
+      changes = oneAtATime();
+      this.changes.set(id, changes);
     }
-    const seen = (await this.service.list(this.slug)).find((notebook) => notebook.id === id);
-    if (seen === undefined) {
-      this.gone(id);
-    } else {
-      this.put(seen);
-    }
+    return changes(change);
   }
 
   /** put places notebook in the list by name; a read may hold it already. */

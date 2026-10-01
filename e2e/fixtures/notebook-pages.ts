@@ -2,6 +2,7 @@ import type { Notebook, NotebookMember } from "@nervewiki/api-client";
 import type { Locator, Page, Response } from "@playwright/test";
 
 import { answerTo } from "./browser";
+import { roleOf } from "./member-pages";
 
 // The notebooks' pages as a user works them (M3/P4 design 3.3, 3.4). A
 // notebook's members list, its rows and role menus read as a workspace's
@@ -113,8 +114,7 @@ export async function addNotebookMemberWith(
 
 /** Chooses role, as the menu words it, for the notebook member the button names member (see who); resolves the answer. */
 export async function changeNotebookRoleWith(page: Page, member: string, role: string): Promise<Response> {
-  const escaped = member.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  await page.getByRole("button", { name: new RegExp(`^\\w+, role of ${escaped}$`) }).click();
+  await roleOf(page, member).click();
   const answer = page.waitForResponse(
     (response) =>
       response.request().method() === "PATCH" &&

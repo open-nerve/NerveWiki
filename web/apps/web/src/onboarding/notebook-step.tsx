@@ -45,12 +45,17 @@ const InWorkspace = observer(function InWorkspace({ workspace, complete }: StepP
     return <GoOn complete={complete} />;
   }
   // Once created, the workspace has a notebook the account sees: the step goes on as above.
-  return <CreateNotebookForm workspace={workspace} />;
+  return <FirstNotebookForm workspace={workspace} />;
 });
 
-/** CreateNotebookForm creates a private notebook, named My notes in the page's language unless the user names it. */
-function CreateNotebookForm({ workspace }: { workspace: Workspace }) {
+/**
+ * FirstNotebookForm creates a private notebook, named My notes in the
+ * page's language unless the user names it. Its workspace becomes the one
+ * the account lands on, where the notebook shows.
+ */
+function FirstNotebookForm({ workspace }: { workspace: Workspace }) {
   const notebooks = useNotebooks(workspace);
+  const { preferences } = useStore();
   const t = useT();
   const [name, setName] = useState(() => t("onboarding.notebook.defaultName"));
   const { ref, sending, banner, problemOf, submit } = useForm(["name"], { fieldTexts: notebookNameTexts });
@@ -60,6 +65,7 @@ function CreateNotebookForm({ workspace }: { workspace: Workspace }) {
     const problem = notebookNameProblem(name);
     void submit(problem === undefined ? {} : { name: problem }, async () => {
       await notebooks.create({ name: name.trim(), workspace_access: "none" });
+      preferences.setLastWorkspace(workspace.slug);
     });
   }
 

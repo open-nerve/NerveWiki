@@ -25,8 +25,8 @@ export function notebookNameProblem(name: string): FieldMessage | undefined {
  * rules of a title, which the field's global texts, those of the names a
  * person gives, do not (v0.1 design 13.2, item 11).
  */
-export const notebookNameTexts: FieldTexts = {
+export const notebookNameTexts = {
   "name.too_long": "field.notebook_name.too_long",
   "name.invalid_format": "field.notebook_name.invalid_format",
   "name.not_allowed": "field.notebook_name.not_allowed",
-};
+} as const satisfies FieldTexts;

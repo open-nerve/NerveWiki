@@ -46,15 +46,19 @@ export const GeneralPage = observer(function GeneralPage() {
 
 /**
  * RenameForm renames the workspace: the name goes out only when it changed
- * (trimmed, as the server keeps it); the switcher shows the new one. The
- * field then shows the name as saved, unless it was edited while the name
- * was out, as DisplayNameForm has it: what it shows then is not what was
+ * (trimmed, as the server keeps it); the switcher shows the new one. Until
+ * it is edited, and again once a save went through, the field shows the
+ * name as the list has it, a rename by another admin too: Save then sends
+ * nothing back over it. A name edited while its rename was out keeps the
+ * edit, as DisplayNameForm has it: what it shows then is not what was
  * saved, and the next save sends it.
  */
 const RenameForm = observer(function RenameForm({ workspace }: { workspace: Workspace }) {
   const workspaces = useWorkspaces();
   const t = useT();
-  const [name, setName] = useState(workspace.name);
+  /** What was typed since the last save; none, the name as the list has it. */
+  const [draft, setDraft] = useState<string>();
+  const name = draft ?? workspace.name;
   const [saved, setSaved] = useState(false);
   const { ref, sending, banner, problemOf, submit } = useForm(["name"]);
   /** How many times the field was edited: a save tells whether the name it sent is still the one shown. */
@@ -71,7 +75,7 @@ const RenameForm = observer(function RenameForm({ workspace }: { workspace: Work
         await workspaces.rename(workspace.slug, trimmed);
       }
       if (edits.current === edit) {
-        setName(trimmed);
+        setDraft(undefined);
         setSaved(true);
       }
     });
@@ -87,7 +91,7 @@ const RenameForm = observer(function RenameForm({ workspace }: { workspace: Work
         error={problemOf("name")}
         onChange={(event) => {
           edits.current++;
-          setName(event.target.value);
+          setDraft(event.target.value);
           setSaved(false);
         }}
       />

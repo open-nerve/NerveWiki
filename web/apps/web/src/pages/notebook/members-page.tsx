@@ -6,7 +6,7 @@ import { ConfirmDialog } from "../../app/confirm-dialog";
 import { useForm } from "../../app/form";
 import { memberWho } from "../../app/member-summary";
 import { NotLoaded } from "../../app/not-loaded";
-import { errorText, type FieldTexts } from "../../app/problem-messages";
+import { errorText } from "../../app/problem-messages";
 import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
 import { Label } from "../../components/ui/label";
@@ -140,21 +140,16 @@ const AddSection = observer(function AddSection({ workspace, notebook }: Section
   );
 });
 
-/** The texts of a refused addition: the lists changed since they were read. */
-const additionTexts: FieldTexts = {
-  "user_id.not_allowed": "field.notebook_member.not_allowed",
-  "user_id.duplicate": "field.notebook_member.duplicate",
-};
-
 /** The fields shown: a problem with the role, which the select cannot make, goes above the form. */
 const additionFields = ["user_id"] as const;
 
 /**
  * AddForm adds the member chosen with the role chosen, an editor unless
  * another is. Once added, the choice is emptied and the status says who;
- * a refusal reads both lists again: the account chosen may have just left
- * the workspace, or been added by another admin. With no one left to
- * add, the member's field says so.
+ * a refusal reads the lists again: the account chosen may have just left
+ * the workspace, or been added by another admin; the account itself may
+ * no longer be the notebook's admin. With no one left to add, the
+ * member's field says so.
  */
 function AddForm({ workspace, notebook, candidates }: SectionProps & { candidates: WorkspaceMember[] }) {
   const members = useNotebookMembers(notebook);
@@ -165,7 +160,7 @@ function AddForm({ workspace, notebook, candidates }: SectionProps & { candidate
   const [userId, setUserId] = useState("");
   const [role, setRole] = useState<NotebookRole>("editor");
   const [added, setAdded] = useState<string>();
-  const { ref, sending, banner, problemOf, submit } = useForm(additionFields, { fieldTexts: additionTexts });
+  const { ref, sending, banner, problemOf, submit } = useForm(additionFields);
   const memberProblem = problemOf("user_id");
   // The field stays with none to choose, saying why: a problem shown under it stays, and the focus on it.
   const memberNote = memberProblem ?? (candidates.length === 0 ? t("notebookMembers.noCandidates") : undefined);
@@ -181,6 +176,7 @@ function AddForm({ workspace, notebook, candidates }: SectionProps & { candidate
     if (!done && chosen !== "") {
       void reload(["members", workspace.id]);
       void reload(["notebook-members", notebook.id]);
+      void reload(["notebooks", workspace.id]);
     }
   }
 
@@ -270,10 +266,13 @@ function LeaveSection({
         description={t("notebookMembers.leaveBody")}
         confirmLabel={t("notebookMembers.leaveConfirm")}
         sendingLabel={t("notebookMembers.leaving")}
-        cancelLabel={t("members.cancel")}
+        cancelLabel={t("notebookSettings.cancel")}
         confirm={async () => {
           await notebooks.leave(notebook.id);
-          await reload(["notebook-members", notebook.id]);
+          // Out of sight, the notebook's members answer 404: the shell is on its way home.
+          if (notebooks.byId(notebook.id) !== undefined) {
+            await reload(["notebook-members", notebook.id]);
+          }
         }}
         focusAfter={() => heading.current?.focus()}
         texts={{

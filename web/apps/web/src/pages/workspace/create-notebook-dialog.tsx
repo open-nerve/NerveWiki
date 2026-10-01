@@ -19,14 +19,34 @@ import { AccessOptions } from "../notebook/access-options";
  * account becomes the admin, then goes to its home, arrived at (M3/P4
  * design 3.3, 3.5): the dialog closes, and the focus goes to the home's
  * heading, not back to trigger. The form lives only while the dialog is
- * open: what was typed and cancelled is not offered again.
+ * open: what was typed and cancelled is not offered again. A creation
+ * answered after the dialog was cancelled goes nowhere: the left column
+ * lists the notebook, as the token list gets a token whose dialog closed.
  */
 export function CreateNotebookDialog({ workspace, trigger }: { workspace: Workspace; trigger: ReactElement }) {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+  /** How many times the dialog opened or closed: a creation sent before the last of them goes nowhere. */
+  const turns = useRef(0);
   const created = useRef(false);
+  function show(next: boolean) {
+    turns.current += 1;
+    setOpen(next);
+  }
+  /** creating is what a creation sent now does once answered: arrive at the notebook, unless the dialog closed since. */
+  function creating() {
+    const turn = turns.current;
+    return (notebook: Notebook) => {
+      if (turn !== turns.current) {
+        return;
+      }
+      created.current = true;
+      show(false);
+      void navigate(`/${workspace.slug}/notebooks/${notebook.id}`, { state: arrived });
+    };
+  }
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={show}>
       <DialogTrigger asChild>{trigger}</DialogTrigger>
       {open && (
         <DialogContent
@@ -37,15 +57,7 @@ export function CreateNotebookDialog({ workspace, trigger }: { workspace: Worksp
             }
           }}
         >
-          <CreateNotebookForm
-            workspace={workspace}
-            cancel={() => setOpen(false)}
-            onCreated={(notebook) => {
-              created.current = true;
-              setOpen(false);
-              void navigate(`/${workspace.slug}/notebooks/${notebook.id}`, { state: arrived });
-            }}
-          />
+          <CreateNotebookForm workspace={workspace} cancel={() => show(false)} creating={creating} />
         </DialogContent>
       )}
     </Dialog>
@@ -57,11 +69,12 @@ const fields = ["name"] as const;
 
 type CreateNotebookFormProps = {
   workspace: Workspace;
-  onCreated: (notebook: Notebook) => void;
+  /** Called as the creation goes out: what to do with the notebook once created. */
+  creating: () => (notebook: Notebook) => void;
   cancel: () => void;
 };
 
-function CreateNotebookForm({ workspace, onCreated, cancel }: CreateNotebookFormProps) {
+function CreateNotebookForm({ workspace, creating, cancel }: CreateNotebookFormProps) {
   const notebooks = useNotebooks(workspace);
   const t = useT();
   const [name, setName] = useState("");
@@ -72,7 +85,8 @@ function CreateNotebookForm({ workspace, onCreated, cancel }: CreateNotebookForm
     event.preventDefault();
     const problem = notebookNameProblem(name);
     void submit(problem === undefined ? {} : { name: problem }, async () => {
-      onCreated(await notebooks.create({ name: name.trim(), workspace_access: access }));
+      const arrive = creating();
+      arrive(await notebooks.create({ name: name.trim(), workspace_access: access }));
     });
   }
 

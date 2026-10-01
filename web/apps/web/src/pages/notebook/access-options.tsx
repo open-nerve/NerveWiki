@@ -14,8 +14,6 @@ const accesses = [
 type AccessOptionsProps = {
   value: WorkspaceAccess;
   onChange: (access: WorkspaceAccess) => void;
-  /** The access shown to whoever cannot change it. */
-  disabled?: boolean;
 };
 
 /**
@@ -24,11 +22,11 @@ type AccessOptionsProps = {
  * dialog's and the general page's. Choosing one only changes the form: the
  * arrow keys choose as they move.
  */
-export function AccessOptions({ value, onChange, disabled = false }: AccessOptionsProps) {
+export function AccessOptions({ value, onChange }: AccessOptionsProps) {
   const t = useT();
   const id = useId();
   return (
-    <fieldset disabled={disabled} className="space-y-3">
+    <fieldset className="space-y-3">
       <legend className="mb-2 text-sm font-medium">{t("access.legend")}</legend>
       {accesses.map((access) => (
         <div key={access.value} className="flex items-start gap-2">

@@ -3,7 +3,13 @@ import { expectNotebook, expectNotebookDeletedWithItsMembers } from "../../fixtu
 import { emailFor } from "../../fixtures/auth";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { addedNotebookMember } from "../../fixtures/notebook-members";
-import { deleteNotebookWith, notebookGroups, notebookPath, renameNotebookWith } from "../../fixtures/notebook-pages";
+import {
+  deleteNotebookWith,
+  notebookGroups,
+  notebookPath,
+  renameNotebookWith,
+  workspaceNav,
+} from "../../fixtures/notebook-pages";
 import { createNotebook, deleteNotebook, getNotebook, updateNotebook } from "../../fixtures/notebooks";
 import { expect, test } from "../../fixtures/test";
 import { workspaceHeading } from "../../fixtures/workspace-pages";
@@ -77,6 +83,7 @@ test("N6 (page): its admin renames the notebook, then deletes it once its name i
   expect(await deleteNotebookWith(page, notebook.id, "Plans 2027")).toBe(204);
   await expect(workspaceHeading(page, "Acme")).toBeFocused();
   await expect(page).toHaveURL(`/${workspace.slug}`);
+  await expect(workspaceNav(page, "Acme").getByText("No notebooks yet.", { exact: true })).toBeVisible();
   expect(await notebookGroups(page, "Acme")).toEqual({});
   await expectNotebookDeletedWithItsMembers(db, notebook.id, ownerId);
   const read = await getNotebook(api, matePat, notebook.id);

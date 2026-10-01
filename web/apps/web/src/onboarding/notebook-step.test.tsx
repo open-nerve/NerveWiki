@@ -96,7 +96,7 @@ test("a name the step finds wrong shows under the field; one typed goes out trim
   expect(server.sent).toEqual(["create lab Field notes none", "step notebook"]);
 });
 
-test("the notebook goes where the account lands, past a workspace it is a guest of", async () => {
+test("the notebook goes in the workspace the account lands on, past one it is a guest of, and lands there with it", async () => {
   const user = userEvent.setup();
   const { app, server } = stepServer([
     { ...acme, role: "guest" },
@@ -108,7 +108,8 @@ test("the notebook goes where the account lands, past a workspace it is a guest 
   expect(await screen.findByText(/^A private notebook in Lab/)).toBeTruthy();
   await user.click(screen.getByRole("button", { name: "Create and continue" }));
 
-  expect(await screen.findByRole("navigation", { name: "Acme" })).toBeTruthy();
+  expect(await screen.findByRole("navigation", { name: "Lab" })).toBeTruthy();
+  expect(app.preferences.lastWorkspace()).toBe("lab");
   expect(server.sent).toEqual(["create lab My notes none", "step notebook"]);
 });
 

@@ -1,8 +1,7 @@
 import { observer } from "mobx-react-lite";
 
 import { formatDate } from "../i18n/format";
-import type { Translate } from "../i18n/i18n";
-import { useT } from "../i18n/i18n";
+import { useT, type Translate } from "../i18n/i18n";
 import { useStore } from "../stores/context";
 
 /** A member as a list shows them: a workspace's or a notebook's. */
