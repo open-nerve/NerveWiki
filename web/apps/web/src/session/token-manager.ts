@@ -54,6 +54,17 @@ export class SessionChangedError extends Error {
   }
 }
 
+/**
+ * The browser would not write the session's storage (full, or blocked): it cannot keep a session, which lives in
+ * the record the tabs share. The tab then ends the session it had, and a sign-in it cannot save is undone.
+ */
+export class SessionStorageError extends Error {
+  constructor(cause: unknown) {
+    super("This browser could not save the session.", { cause });
+    this.name = "SessionStorageError";
+  }
+}
+
 export type TokenManagerDeps = {
   storage: Pick<Storage, "getItem" | "setItem" | "removeItem">;
   lock: RefreshLock;
@@ -133,15 +144,23 @@ export class TokenManager {
     return this.#refresh();
   }
 
-  /** Keeps the tokens of a sign-in or a sign-up, with a new login_id, under the lock (M1/P5 design 3.6). */
+  /**
+   * Keeps the tokens of a sign-in or a sign-up, with a new login_id, under the lock (M1/P5 design 3.6). A
+   * browser that will not save them (SessionStorageError) has the new session logged out, best effort.
+   */
   async signIn(tokens: AuthTokens): Promise<void> {
     const receivedAt = this.deps.now();
-    await this.deps.lock.run(async () => {
-      const record = { refresh_token: tokens.refresh_token, login_id: this.deps.randomHex(16) };
-      this.deps.storage.setItem(AUTH_KEY, JSON.stringify(record));
-      this.#keep(tokens, receivedAt);
-      this.#set({ status: "signed-in", loginId: record.login_id });
-    });
+    try {
+      await this.deps.lock.run(async () => {
+        const record = { refresh_token: tokens.refresh_token, login_id: this.deps.randomHex(16) };
+        this.deps.storage.setItem(AUTH_KEY, JSON.stringify(record));
+        this.#keep(tokens, receivedAt);
+        this.#set({ status: "signed-in", loginId: record.login_id });
+      });
+    } catch (error) {
+      if (error instanceof SessionStorageError) await this.#call("/api/v0/auth/logout", tokens.refresh_token);
+      throw error;
+    }
   }
 
   /**
@@ -206,7 +225,8 @@ export class TokenManager {
     try {
       await this.#refresh();
     } catch (error) {
-      if (error instanceof SessionChangedError) return;
+      // A change of session, or a browser that cannot keep one: the tab is in the session it follows already.
+      if (error instanceof SessionChangedError || error instanceof SessionStorageError) return;
       if (!(error instanceof SessionUnavailableError)) throw error;
       const record = this.#read();
       if (!isRecordOf(record, loginId)) {
@@ -233,21 +253,40 @@ export class TokenManager {
     return promise;
   }
 
-  /** Refreshes the session loginId: the tab's when the refresh was asked for, which may not be the tab's now. */
+  /**
+   * Refreshes the session loginId: the tab's when the refresh was asked for, which may not be the tab's now. A
+   * browser that will not write the lease or the refreshed record (SessionStorageError) cannot keep the
+   * session: it is logged out with the newest refresh token the tab has, and the tab signs out.
+   */
   async #refreshUnderLock(loginId: string | undefined): Promise<string | undefined> {
     if (this.deps.now() < this.#retryAt) throw new SessionUnavailableError(this.#retryAt);
+    let newest: string | undefined;
+    try {
+      return await this.#refreshLocked(loginId, (token) => {
+        newest = token;
+      });
+    } catch (error) {
+      if (error instanceof SessionStorageError) await this.#abandon(loginId, newest);
+      throw error;
+    }
+  }
+
+  /** The refresh under the lock; seen gets each refresh token of loginId's session the tab has, the newest last. */
+  #refreshLocked(loginId: string | undefined, seen: (token: string) => void): Promise<string | undefined> {
     return this.deps.lock.run(async () => {
       // Read under the lock: another tab may have refreshed, signed out or signed in meanwhile. A record of
       // another session is followed, never refreshed, even when the tab has heard of it while this refresh
       // waited for the lock: the caller's request was made in loginId's session, not in that one.
       const record = this.#read();
       if (!isRecordOf(record, loginId)) this.#follow(record);
+      seen(record.refresh_token);
       const outcome = await this.#call("/api/v0/auth/refresh", record.refresh_token);
       // Read again before writing: without navigator.locks another tab can sign in while the lease is held.
       const now = this.#read();
       if (now?.login_id !== record.login_id) this.#follow(now);
       switch (outcome.kind) {
         case "tokens":
+          seen(outcome.tokens.refresh_token);
           this.deps.storage.setItem(
             AUTH_KEY,
             JSON.stringify({ refresh_token: outcome.tokens.refresh_token, login_id: record.login_id })
@@ -257,7 +296,7 @@ export class TokenManager {
           return outcome.tokens.access_token;
         case "unauthorized":
           // Only a 401 to a refresh ends the session.
-          this.deps.storage.removeItem(AUTH_KEY);
+          this.#forget();
           this.#signedOut();
           return undefined;
         case "unavailable":
@@ -311,9 +350,34 @@ export class TokenManager {
       this.#switchTo(record);
       return false;
     }
-    this.deps.storage.removeItem(AUTH_KEY);
+    this.#forget();
     this.#signedOut();
     return true;
+  }
+
+  /**
+   * Ends the session loginId, which this browser cannot keep: logs it out with token, the newest refresh token
+   * the tab has of it (the record's when the lease could not be taken), best effort; then removes the record if
+   * the browser lets it and signs the tab out. A record of another session by then is followed instead.
+   */
+  async #abandon(loginId: string | undefined, token: string | undefined): Promise<void> {
+    const record = this.#read();
+    if (!isRecordOf(record, loginId)) {
+      this.#switchTo(record);
+      return;
+    }
+    await this.#call("/api/v0/auth/logout", token ?? record.refresh_token);
+    this.#forget();
+    this.#signedOut();
+  }
+
+  /** Removes the record; a browser that will not leaves it, and its refresh token then answers 401. */
+  #forget(): void {
+    try {
+      this.deps.storage.removeItem(AUTH_KEY);
+    } catch {
+      // The session is over, or its refresh is answered 401 next time: a record that stays only ends it again.
+    }
   }
 
   /** Follows another tab's change of the record, and stops the request that was meant for the old session. */

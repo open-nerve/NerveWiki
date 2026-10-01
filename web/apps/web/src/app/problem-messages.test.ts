@@ -3,7 +3,7 @@ import { describe, expect, test } from "vitest";
 import spec from "../../../../../api/dist/openapi.yaml?raw";
 import { translator } from "../i18n/i18n";
 import { ApiError } from "../services/api";
-import { SessionChangedError, SessionUnavailableError } from "../session/token-manager";
+import { SessionChangedError, SessionStorageError, SessionUnavailableError } from "../session/token-manager";
 import { errorText, fieldErrors, formErrors, problemMessages } from "./problem-messages";
 
 const t = translator("en");
@@ -84,6 +84,11 @@ describe("errorText", () => {
       "a refresh that failed for now",
       new SessionUnavailableError(0),
       "Cannot reach the server for now. You are still signed in; try again in a moment.",
+    ],
+    [
+      "a browser that will not save the session",
+      new SessionStorageError(new DOMException("The quota has been exceeded.", "QuotaExceededError")),
+      "This browser could not save the sign-in: its storage for this site is full or blocked. Free some space or allow this site's data, then try again.",
     ],
     ["a change of session", new SessionChangedError(), undefined],
   ])("%s", (_name, error, want) => {

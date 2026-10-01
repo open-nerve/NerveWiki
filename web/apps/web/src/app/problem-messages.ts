@@ -1,7 +1,7 @@
 import type { Translate } from "../i18n/i18n";
 import { en, type MessageKey } from "../i18n/messages/en";
 import { ApiError, type FieldError } from "../services/api";
-import { SessionChangedError, SessionUnavailableError } from "../session/token-manager";
+import { SessionChangedError, SessionStorageError, SessionUnavailableError } from "../session/token-manager";
 
 /**
  * The message of each problem code the pages show (M1/P5 design 3.4). A test
@@ -47,6 +47,9 @@ export function errorText(error: unknown, t: Translate): string | undefined {
   }
   if (error instanceof SessionUnavailableError) {
     return t("problem.unavailable");
+  }
+  if (error instanceof SessionStorageError) {
+    return t("problem.storage");
   }
   if (error instanceof TypeError) {
     return t("problem.network");

@@ -74,6 +74,42 @@ test("a new display name is saved, and the user menu shows it", async () => {
   expect(screen.getByRole("status").textContent).toBe("");
 });
 
+// A save answered after another edit saved the name sent, not the one shown: it is not marked saved, and the
+// next save sends what the field holds (R2 of the M1 adversarial review).
+test("a name edited while its save is out is not marked saved", async () => {
+  const user = userEvent.setup();
+  let release: (() => void) | undefined;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let first = true;
+  const { app, sent } = profileServer(async (request) => {
+    if (first) {
+      first = false;
+      await held;
+    }
+    return json({ ...userJSON, ...((await request.json()) as Partial<User>) });
+  });
+  renderApp("/settings/profile", app);
+  const name = await screen.findByLabelText("Display name");
+  const save = screen.getByRole("button", { name: "Save" });
+
+  await user.clear(name);
+  await user.type(name, "First name");
+  await user.click(save);
+  await waitFor(() => expect(sent).toHaveLength(1));
+  await user.clear(name);
+  await user.type(name, "Second name");
+  release?.();
+  await waitFor(() => expect(save).toHaveProperty("disabled", false));
+
+  expect(screen.getByRole("status").textContent).toBe("");
+  expect(name).toHaveProperty("value", "Second name");
+  await user.click(save);
+  expect((await screen.findByRole("status")).textContent).toBe("Saved.");
+  expect(sent).toEqual([{ display_name: "First name" }, { display_name: "Second name" }]);
+});
+
 test("a name left as it was is saved without a request", async () => {
   const user = userEvent.setup();
   const { app, sent } = profileServer();

@@ -64,7 +64,7 @@ func (c *CreateAPIToken) Execute(ctx context.Context, in CreateAPITokenInput) (C
 	var pat domain.PAT
 	_, _ = rand.Read(pat[:]) // never fails since Go 1.24
 	n := NewAPIToken{ID: uuid.NewV7(), UserID: actor.UserID, TokenHash: pat.Hash(), Name: spec.Name, ExpiresAt: spec.ExpiresAt, Now: now}
-	err = c.d.Password.Confirm(ctx, actor, in.CurrentPassword, account.PasswordHash, now, nil, func(ctx context.Context) error {
+	err = c.d.Password.Confirm(ctx, actor, in.CurrentPassword, account.PasswordHash, now, nil, func(ctx context.Context, _ LockedAccount) error {
 		return c.d.Tokens.CreateAPIToken(ctx, n)
 	})
 	if err != nil {

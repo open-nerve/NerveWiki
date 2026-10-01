@@ -31,7 +31,7 @@ func confirm(account *fakeAccount, hasher *fakeHasher, tx *fakeTx, password stri
 	}
 	run.err = c.Confirm(ctx, sessionActor(), password, snapshot.PasswordHash, testNow(),
 		func() error { run.prepared++; return prepareErr },
-		func(ctx context.Context) error {
+		func(ctx context.Context, _ app.LockedAccount) error {
 			if !inTx(ctx) {
 				return errors.New("written outside the transaction")
 			}

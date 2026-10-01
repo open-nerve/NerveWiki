@@ -31,13 +31,14 @@ func (c CurrentPassword) Account(ctx context.Context, actor shared.Actor) (Passw
 // Confirm verifies password against snapshot, the hash Account read, then
 // runs prepare once, outside any transaction (changing the password hashes
 // the new one there), then, in one transaction, takes the credential lock
-// and runs write while the hash under the lock is still the one verified.
+// and runs write, with the account as locked, while the hash under the lock
+// is still the one verified.
 // When it changed in between (a concurrent login hashed the password again,
 // or the password changed), password is verified against the new hash and
 // the transaction runs once more; a second change, like a wrong password,
 // is domain.ErrCurrentPasswordIncorrect. prepare may be nil.
 func (c CurrentPassword) Confirm(ctx context.Context, actor shared.Actor, password, snapshot string, now time.Time,
-	prepare func() error, write func(ctx context.Context) error,
+	prepare func() error, write func(ctx context.Context, locked LockedAccount) error,
 ) error {
 	for range 2 {
 		ok, _, err := c.Verifier.Verify(ctx, password, snapshot)
@@ -62,7 +63,7 @@ func (c CurrentPassword) Confirm(ctx context.Context, actor shared.Actor, passwo
 			if found = locked.PasswordHash; found != snapshot {
 				return nil
 			}
-			return write(ctx)
+			return write(ctx, locked)
 		})
 		if err != nil || found == snapshot {
 			return err

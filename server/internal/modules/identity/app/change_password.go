@@ -42,7 +42,9 @@ type ChangePasswordInput struct {
 // once, outside the transaction; under the credential lock the new hash is
 // written and the account's other sessions are revoked with reason
 // password_changed: all of them when the caller is a personal access token,
-// which has no session. The tokens stay (M1 design 4).
+// which has no session. The tokens stay (M1 design 4). An address changed
+// meanwhile (the administrator's set-email keeps the tokens) is checked
+// again under the lock: the rules judge the address the account has.
 func (c *ChangePassword) Execute(ctx context.Context, in ChangePasswordInput) error {
 	actor, err := shared.RequireActor(ctx)
 	if err != nil {
@@ -64,7 +66,12 @@ func (c *ChangePassword) Execute(ctx context.Context, in ChangePasswordInput) er
 			hash, err = c.d.Hasher.Hash(ctx, in.New)
 			return err
 		},
-		func(ctx context.Context) error {
+		func(ctx context.Context, locked LockedAccount) error {
+			if locked.Email != account.Email {
+				if f := c.d.Rules.Check("new_password", in.New, locked.Email); f != nil {
+					return shared.Invalid(*f)
+				}
+			}
 			if err := c.d.Passwords.UpdatePasswordHash(ctx, actor.UserID, hash, now); err != nil {
 				return err
 			}

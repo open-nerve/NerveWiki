@@ -2,9 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { browserSessionDeps, Session, type SessionDeps } from "./session";
 import { SharedStorage } from "./testing/fake-browser";
-import { FakeServer, json } from "./testing/fake-server";
+import { FakeServer, json, noContent } from "./testing/fake-server";
 import { settle, track, until } from "./testing/fake-time";
-import { AUTH_KEY, SessionChangedError } from "./token-manager";
+import { AUTH_KEY, SessionChangedError, SessionStorageError } from "./token-manager";
 import { LEASE_KEY, LOCK_NAME } from "./refresh-lock";
 
 // The session's assembly (M1/P5 design 3.2): the clients, the lock, the storage events, the start.
@@ -26,8 +26,12 @@ function fakeLocks() {
   return { locks, names };
 }
 
-function newSession(storage: SharedStorage, server: FakeServer, locks?: SessionDeps["locks"]) {
-  const tab = storage.tab("A");
+function newSession(
+  storage: SharedStorage,
+  server: FakeServer,
+  locks?: SessionDeps["locks"],
+  tab: ReturnType<SharedStorage["tab"]> = storage.tab("A")
+) {
   return new Session({
     storage: tab,
     onStorage: tab.onStorage,
@@ -48,6 +52,16 @@ async function signedIn(storage: SharedStorage, server: FakeServer, locks = fake
   await until(() => started.settled, "the start");
   server.calls.length = 0;
   return session;
+}
+
+/** Tab A's view of storage in a browser whose storage for the site is full: it reads and removes, and writes nothing. */
+function full(storage: SharedStorage) {
+  return {
+    ...storage.tab("A"),
+    setItem: () => {
+      throw new DOMException("The quota has been exceeded.", "QuotaExceededError");
+    },
+  };
 }
 
 beforeEach(() => {
@@ -114,6 +128,62 @@ describe("Session", () => {
 
     expect(names).toContain(LOCK_NAME);
     expect(storage.data.has(LEASE_KEY)).toBe(false);
+  });
+
+  // A browser that will not write the record cannot keep a session the tabs share: the tab ends the one it
+  // had, logging it out with the newest refresh token it has, and signs out rather than hanging (R1 of the
+  // M1 adversarial review).
+  it("ends the session when the browser will not write the refreshed record", async () => {
+    const storage = new SharedStorage();
+    storage.data.set(AUTH_KEY, JSON.stringify({ refresh_token: "rt-0", login_id: loginId }));
+    const server = new FakeServer();
+    const session = newSession(storage, server, fakeLocks().locks, full(storage));
+
+    const started = track(session.start());
+    await until(() => server.calls.length === 1, "the first refresh");
+    server.calls[0]?.answer(json(200, server.tokens()));
+    await until(() => server.calls.length === 2, "the logout");
+    server.calls[1]?.answer(noContent());
+    await until(() => started.settled, "the start");
+
+    expect(server.calls.map((c) => [c.path, c.body])).toEqual([
+      ["/api/v0/auth/refresh", { refresh_token: "rt-0" }],
+      ["/api/v0/auth/logout", { refresh_token: "rt-1" }],
+    ]);
+    expect(session.tokens.state).toEqual({ status: "signed-out" });
+    expect(storage.data.has(AUTH_KEY)).toBe(false);
+  });
+
+  it("ends the session when the browser will not write the lease, without refreshing it", async () => {
+    const storage = new SharedStorage();
+    storage.data.set(AUTH_KEY, JSON.stringify({ refresh_token: "rt-0", login_id: loginId }));
+    const server = new FakeServer();
+    const session = newSession(storage, server, undefined, full(storage));
+
+    const started = track(session.start());
+    await until(() => server.calls.length === 1, "the logout");
+    server.calls[0]?.answer(noContent());
+    await until(() => started.settled, "the start");
+
+    expect(server.calls.map((c) => [c.path, c.body])).toEqual([["/api/v0/auth/logout", { refresh_token: "rt-0" }]]);
+    expect(session.tokens.state).toEqual({ status: "signed-out" });
+    expect(storage.data.has(AUTH_KEY)).toBe(false);
+  });
+
+  it("undoes a sign-in the browser will not save, and says why", async () => {
+    const storage = new SharedStorage();
+    const server = new FakeServer();
+    const session = newSession(storage, server, fakeLocks().locks, full(storage));
+    await settle(session.start(), "the start");
+
+    const signIn = track(session.tokens.signIn(server.tokens()));
+    await until(() => server.calls.length === 1, "the logout");
+    server.calls[0]?.answer(noContent());
+    await until(() => signIn.settled, "the sign-in");
+
+    expect(signIn.error).toBeInstanceOf(SessionStorageError);
+    expect(server.calls.map((c) => [c.path, c.body])).toEqual([["/api/v0/auth/logout", { refresh_token: "rt-1" }]]);
+    expect(session.tokens.state).toEqual({ status: "signed-out" });
   });
 
   it("refreshes under a lease in storage without navigator.locks", async () => {
