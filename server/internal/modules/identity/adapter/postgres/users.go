@@ -163,3 +163,17 @@ func (s *Store) UpdatePasswordHash(ctx context.Context, id uuid.UUID, hash strin
 	}
 	return nil
 }
+
+// Profiles reads the profiles of the accounts ids, by id; an id of no
+// account is left out.
+func (s *Store) Profiles(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]domain.Profile, error) {
+	rows, err := s.queries(ctx).ProfilesByID(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("profiles: %w", err)
+	}
+	profiles := make(map[uuid.UUID]domain.Profile, len(rows))
+	for _, r := range rows {
+		profiles[r.ID] = domain.Profile{DisplayName: r.DisplayName, Email: r.Email}
+	}
+	return profiles, nil
+}

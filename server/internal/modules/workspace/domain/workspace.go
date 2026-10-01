@@ -21,6 +21,16 @@ type Workspace struct {
 	UpdatedAt time.Time
 }
 
+// CheckName checks a workspace's new name (422), by CheckDraft's rule for
+// it, and returns it trimmed.
+func CheckName(name string) (string, error) {
+	name, f := shared.CheckName("name", name, MaxNameLength)
+	if f != nil {
+		return "", shared.Invalid(*f)
+	}
+	return name, nil
+}
+
 // Draft is a new workspace's checked values.
 type Draft struct {
 	Name string

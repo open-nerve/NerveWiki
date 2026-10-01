@@ -24,9 +24,10 @@ type AddMemberParams struct {
 	UserID      uuid.UUID
 	Role        string
 	By          uuid.UUID
-	Now         time.Time
+	CreatedAt   time.Time
 }
 
+// The audit columns come from the member's creation time and the caller.
 func (q *Queries) AddMember(ctx context.Context, arg AddMemberParams) error {
 	_, err := q.db.Exec(ctx, addMember,
 		arg.ID,
@@ -34,9 +35,22 @@ func (q *Queries) AddMember(ctx context.Context, arg AddMemberParams) error {
 		arg.UserID,
 		arg.Role,
 		arg.By,
-		arg.Now,
+		arg.CreatedAt,
 	)
 	return err
+}
+
+const countActiveAdmins = `-- name: CountActiveAdmins :one
+SELECT count(*)
+FROM workspace_members
+WHERE workspace_id = $1 AND role = 'admin' AND ended_at IS NULL AND deleted_at IS NULL
+`
+
+func (q *Queries) CountActiveAdmins(ctx context.Context, workspaceID uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countActiveAdmins, workspaceID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
 }
 
 const createWorkspace = `-- name: CreateWorkspace :exec
@@ -62,6 +76,94 @@ func (q *Queries) CreateWorkspace(ctx context.Context, arg CreateWorkspaceParams
 		arg.Now,
 	)
 	return err
+}
+
+const deleteMembersOf = `-- name: DeleteMembersOf :exec
+UPDATE workspace_members
+SET deleted_at = $1::timestamptz, updated_by_id = $2, updated_at = $1
+WHERE workspace_id = $3 AND deleted_at IS NULL
+`
+
+type DeleteMembersOfParams struct {
+	Now         time.Time
+	By          uuid.UUID
+	WorkspaceID uuid.UUID
+}
+
+// Every row of the workspace not deleted, ended ones too, at the workspace's deletion time.
+func (q *Queries) DeleteMembersOf(ctx context.Context, arg DeleteMembersOfParams) error {
+	_, err := q.db.Exec(ctx, deleteMembersOf, arg.Now, arg.By, arg.WorkspaceID)
+	return err
+}
+
+const deleteWorkspace = `-- name: DeleteWorkspace :exec
+UPDATE workspaces
+SET deleted_at = $1::timestamptz, updated_by_id = $2, updated_at = $1
+WHERE id = $3
+`
+
+type DeleteWorkspaceParams struct {
+	Now time.Time
+	By  uuid.UUID
+	ID  uuid.UUID
+}
+
+// The deleter is recorded as the last to update the row.
+func (q *Queries) DeleteWorkspace(ctx context.Context, arg DeleteWorkspaceParams) error {
+	_, err := q.db.Exec(ctx, deleteWorkspace, arg.Now, arg.By, arg.ID)
+	return err
+}
+
+const endMemberships = `-- name: EndMemberships :exec
+UPDATE workspace_members
+SET ended_at = $1::timestamptz, updated_by_id = $2, updated_at = $1
+WHERE workspace_id = ANY($3::uuid[]) AND user_id = $4
+    AND ended_at IS NULL AND deleted_at IS NULL
+`
+
+type EndMembershipsParams struct {
+	Now          time.Time
+	By           uuid.UUID
+	WorkspaceIds []uuid.UUID
+	UserID       uuid.UUID
+}
+
+// The account's active memberships of the workspaces.
+func (q *Queries) EndMemberships(ctx context.Context, arg EndMembershipsParams) error {
+	_, err := q.db.Exec(ctx, endMemberships,
+		arg.Now,
+		arg.By,
+		arg.WorkspaceIds,
+		arg.UserID,
+	)
+	return err
+}
+
+const findActiveMember = `-- name: FindActiveMember :one
+SELECT id, workspace_id, user_id, role, created_at
+FROM workspace_members
+WHERE id = $1 AND ended_at IS NULL AND deleted_at IS NULL
+`
+
+type FindActiveMemberRow struct {
+	ID          uuid.UUID
+	WorkspaceID uuid.UUID
+	UserID      uuid.UUID
+	Role        string
+	CreatedAt   time.Time
+}
+
+func (q *Queries) FindActiveMember(ctx context.Context, id uuid.UUID) (FindActiveMemberRow, error) {
+	row := q.db.QueryRow(ctx, findActiveMember, id)
+	var i FindActiveMemberRow
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.UserID,
+		&i.Role,
+		&i.CreatedAt,
+	)
+	return i, err
 }
 
 const findWorkspaceBySlug = `-- name: FindWorkspaceBySlug :one
@@ -90,6 +192,48 @@ func (q *Queries) FindWorkspaceBySlug(ctx context.Context, slug string) (FindWor
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const listActiveMembers = `-- name: ListActiveMembers :many
+SELECT id, workspace_id, user_id, role, created_at
+FROM workspace_members
+WHERE workspace_id = $1 AND ended_at IS NULL AND deleted_at IS NULL
+ORDER BY created_at, id
+`
+
+type ListActiveMembersRow struct {
+	ID          uuid.UUID
+	WorkspaceID uuid.UUID
+	UserID      uuid.UUID
+	Role        string
+	CreatedAt   time.Time
+}
+
+// By when they joined.
+func (q *Queries) ListActiveMembers(ctx context.Context, workspaceID uuid.UUID) ([]ListActiveMembersRow, error) {
+	rows, err := q.db.Query(ctx, listActiveMembers, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListActiveMembersRow
+	for rows.Next() {
+		var i ListActiveMembersRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.UserID,
+			&i.Role,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listWorkspacesOf = `-- name: ListWorkspacesOf :many
@@ -139,6 +283,89 @@ func (q *Queries) ListWorkspacesOf(ctx context.Context, userID uuid.UUID) ([]Lis
 	return items, nil
 }
 
+const lockWorkspaceByID = `-- name: LockWorkspaceByID :one
+SELECT id, slug, name, created_at, updated_at
+FROM workspaces
+WHERE id = $1 AND deleted_at IS NULL
+FOR NO KEY UPDATE
+`
+
+type LockWorkspaceByIDRow struct {
+	ID        uuid.UUID
+	Slug      string
+	Name      string
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+// LockWorkspaceBySlug by the workspace's id: for the operations that name a member.
+func (q *Queries) LockWorkspaceByID(ctx context.Context, id uuid.UUID) (LockWorkspaceByIDRow, error) {
+	row := q.db.QueryRow(ctx, lockWorkspaceByID, id)
+	var i LockWorkspaceByIDRow
+	err := row.Scan(
+		&i.ID,
+		&i.Slug,
+		&i.Name,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const lockWorkspaceBySlug = `-- name: LockWorkspaceBySlug :one
+SELECT id, slug, name, created_at, updated_at
+FROM workspaces
+WHERE slug = $1 AND deleted_at IS NULL
+FOR NO KEY UPDATE
+`
+
+type LockWorkspaceBySlugRow struct {
+	ID        uuid.UUID
+	Slug      string
+	Name      string
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+// The workspace not deleted with the slug, locked FOR NO KEY UPDATE until the transaction ends: every
+// change of a workspace and of its members takes this lock first, then decides (M2 design 8). A
+// deletion committed while it waited leaves no row.
+func (q *Queries) LockWorkspaceBySlug(ctx context.Context, slug string) (LockWorkspaceBySlugRow, error) {
+	row := q.db.QueryRow(ctx, lockWorkspaceBySlug, slug)
+	var i LockWorkspaceBySlugRow
+	err := row.Scan(
+		&i.ID,
+		&i.Slug,
+		&i.Name,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const renameWorkspace = `-- name: RenameWorkspace :exec
+UPDATE workspaces
+SET name = $1, updated_by_id = $2, updated_at = $3
+WHERE id = $4
+`
+
+type RenameWorkspaceParams struct {
+	Name string
+	By   uuid.UUID
+	Now  time.Time
+	ID   uuid.UUID
+}
+
+func (q *Queries) RenameWorkspace(ctx context.Context, arg RenameWorkspaceParams) error {
+	_, err := q.db.Exec(ctx, renameWorkspace,
+		arg.Name,
+		arg.By,
+		arg.Now,
+		arg.ID,
+	)
+	return err
+}
+
 const roleOf = `-- name: RoleOf :one
 SELECT role
 FROM workspace_members
@@ -169,4 +396,27 @@ func (q *Queries) SlugTaken(ctx context.Context, slug string) (bool, error) {
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
+}
+
+const updateMemberRole = `-- name: UpdateMemberRole :exec
+UPDATE workspace_members
+SET role = $1, updated_by_id = $2, updated_at = $3
+WHERE id = $4
+`
+
+type UpdateMemberRoleParams struct {
+	Role string
+	By   uuid.UUID
+	Now  time.Time
+	ID   uuid.UUID
+}
+
+func (q *Queries) UpdateMemberRole(ctx context.Context, arg UpdateMemberRoleParams) error {
+	_, err := q.db.Exec(ctx, updateMemberRole,
+		arg.Role,
+		arg.By,
+		arg.Now,
+		arg.ID,
+	)
+	return err
 }

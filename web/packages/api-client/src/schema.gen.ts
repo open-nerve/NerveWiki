@@ -272,10 +272,91 @@ export interface paths {
         get: operations["getWorkspace"];
         put?: never;
         post?: never;
+        /**
+         * Delete a workspace
+         * @description Deletes the workspace with every membership of it; only its admins can. No one sees it afterwards, and its slug can name a new workspace at once. A workspace that does not exist, is deleted, or that the caller is no active member of is workspace.not_found; a member or a guest gets forbidden.
+         */
+        delete: operations["deleteWorkspace"];
+        options?: never;
+        head?: never;
+        /**
+         * Rename a workspace
+         * @description Gives the workspace a new name; only its admins can. A workspace that does not exist, is deleted, or that the caller is no active member of is workspace.not_found; a member or a guest gets forbidden; the name is checked after both.
+         */
+        patch: operations["updateWorkspace"];
+        trace?: never;
+    };
+    "/api/v0/workspaces/{slug}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The workspace's slug. It carries no pattern here: a slug spelled wrong names no workspace, which the operation answers itself. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List a workspace's members
+         * @description The workspace's active members, by when they joined, each with the account's display name and, unless the caller is a guest, its email. The list is not paged.
+         */
+        get: operations["listWorkspaceMembers"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v0/workspaces/{slug}/leave": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The workspace's slug. It carries no pattern here: a slug spelled wrong names no workspace, which the operation answers itself. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Leave a workspace
+         * @description Ends the caller's membership of the workspace. The workspace's only active admin cannot leave it, even alone in it (workspace.sole_admin): another member is made an admin first, or the workspace is deleted.
+         */
+        post: operations["leaveWorkspace"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v0/workspace-members/{workspace_member_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The id of a membership, as the member list answers it; not the account's id. */
+                workspace_member_id: components["parameters"]["WorkspaceMemberID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove a member
+         * @description Ends the member's membership; only the workspace's admins can, and not their own (workspace.own_membership: an admin leaves instead). A membership that does not exist, has ended, or whose workspace the caller cannot see is workspace.member_not_found; a member or a guest gets forbidden.
+         */
+        delete: operations["removeWorkspaceMember"];
+        options?: never;
+        head?: never;
+        /**
+         * Change a member's role
+         * @description Gives the member a new role; only the workspace's admins can, and not their own (workspace.own_membership). A membership that does not exist, has ended, or whose workspace the caller cannot see is workspace.member_not_found; a member or a guest gets forbidden; the role is checked after both.
+         */
+        patch: operations["updateWorkspaceMember"];
         trace?: never;
     };
     "/api/v0/workspace-slugs/{slug}": {
@@ -488,6 +569,35 @@ export interface components {
             /** @description 1–48 of a–z, 0–9, _ and -, not a reserved name; it cannot be changed later. */
             slug: string;
         };
+        WorkspaceUpdate: {
+            /** @description 1–80 characters after the surrounding blanks are trimmed, without control characters. */
+            name: string;
+        };
+        /** @description A membership, with what the caller may see of the account. */
+        WorkspaceMember: {
+            /**
+             * Format: uuid
+             * @description The membership's id, which the member operations take.
+             */
+            id: string;
+            /** Format: uuid */
+            user_id: string;
+            role: components["schemas"]["WorkspaceRole"];
+            display_name: string;
+            /** @description The account's email; null when the caller is a guest. */
+            email: string | null;
+            /**
+             * Format: date-time
+             * @description When the account joined.
+             */
+            created_at: string;
+        };
+        WorkspaceMemberList: {
+            data: components["schemas"]["WorkspaceMember"][];
+        };
+        WorkspaceMemberUpdate: {
+            role: components["schemas"]["WorkspaceRole"];
+        };
         SlugAvailability: {
             available: boolean;
             /**
@@ -515,6 +625,8 @@ export interface components {
     parameters: {
         /** @description The workspace's slug. It carries no pattern here: a slug spelled wrong names no workspace, which the operation answers itself. */
         Slug: string;
+        /** @description The id of a membership, as the member list answers it; not the account's id. */
+        WorkspaceMemberID: string;
     };
     requestBodies: never;
     headers: never;
@@ -540,9 +652,14 @@ export type WorkspaceRole = components['schemas']['WorkspaceRole'];
 export type Workspace = components['schemas']['Workspace'];
 export type WorkspaceList = components['schemas']['WorkspaceList'];
 export type WorkspaceCreate = components['schemas']['WorkspaceCreate'];
+export type WorkspaceUpdate = components['schemas']['WorkspaceUpdate'];
+export type WorkspaceMember = components['schemas']['WorkspaceMember'];
+export type WorkspaceMemberList = components['schemas']['WorkspaceMemberList'];
+export type WorkspaceMemberUpdate = components['schemas']['WorkspaceMemberUpdate'];
 export type SlugAvailability = components['schemas']['SlugAvailability'];
 export type ResponseProblem = components['responses']['Problem'];
 export type ParameterSlug = components['parameters']['Slug'];
+export type ParameterWorkspaceMemberId = components['parameters']['WorkspaceMemberID'];
 export type $defs = Record<string, never>;
 export interface operations {
     register: {
@@ -909,6 +1026,152 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Workspace"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    deleteWorkspace: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The workspace's slug. It carries no pattern here: a slug spelled wrong names no workspace, which the operation answers itself. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The workspace is deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    updateWorkspace: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The workspace's slug. It carries no pattern here: a slug spelled wrong names no workspace, which the operation answers itself. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkspaceUpdate"];
+            };
+        };
+        responses: {
+            /** @description The renamed workspace, with the caller's role. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Workspace"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    listWorkspaceMembers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The workspace's slug. It carries no pattern here: a slug spelled wrong names no workspace, which the operation answers itself. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The members. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceMemberList"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    leaveWorkspace: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The workspace's slug. It carries no pattern here: a slug spelled wrong names no workspace, which the operation answers itself. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The caller is no longer a member. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    removeWorkspaceMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The id of a membership, as the member list answers it; not the account's id. */
+                workspace_member_id: components["parameters"]["WorkspaceMemberID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The membership has ended. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    updateWorkspaceMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The id of a membership, as the member list answers it; not the account's id. */
+                workspace_member_id: components["parameters"]["WorkspaceMemberID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkspaceMemberUpdate"];
+            };
+        };
+        responses: {
+            /** @description The member with the new role. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceMember"];
                 };
             };
             default: components["responses"]["Problem"];

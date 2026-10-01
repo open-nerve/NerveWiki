@@ -14,6 +14,7 @@ export const problemMessages = {
   rate_limited: "problem.rate_limited",
   internal_error: "problem.internal_error",
   unauthorized: "problem.unauthorized",
+  forbidden: "problem.forbidden",
   validation_failed: "problem.validation_failed",
   server_busy: "problem.server_busy",
   "identity.signup_disabled": "problem.identity.signup_disabled",
@@ -25,6 +26,9 @@ export const problemMessages = {
   "workspace.not_found": "problem.workspace.not_found",
   "workspace.creation_disabled": "problem.workspace.creation_disabled",
   "workspace.slug_taken": "problem.workspace.slug_taken",
+  "workspace.member_not_found": "problem.workspace.member_not_found",
+  "workspace.own_membership": "problem.workspace.own_membership",
+  "workspace.sole_admin": "problem.workspace.sole_admin",
 } as const satisfies Record<string, MessageKey>;
 
 /** The message of each field code; `field.<field>.<code>` says it better for one field. */

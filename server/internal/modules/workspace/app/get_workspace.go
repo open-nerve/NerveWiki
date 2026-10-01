@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"errors"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/workspace/domain"
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
@@ -33,16 +32,10 @@ func (g *GetWorkspace) Execute(ctx context.Context, slug string) (Membership, er
 		return Membership{}, domain.ErrNotFound
 	}
 	w, err := g.workspaces.FindWorkspaceBySlug(ctx, slug)
-	if errors.Is(err, ErrNotFound) {
-		return Membership{}, domain.ErrNotFound
-	}
 	if err != nil {
-		return Membership{}, err
+		return Membership{}, found(err, domain.ErrNotFound)
 	}
-	grant, err := g.auth.Authorize(ctx, actor, domain.ActionRead, shared.Target{WorkspaceID: w.ID})
-	if errors.Is(err, shared.ErrNotVisible) {
-		return Membership{}, domain.ErrNotFound
-	}
+	grant, err := authorize(ctx, g.auth, actor, domain.ActionRead, w.ID, domain.ErrNotFound)
 	if err != nil {
 		return Membership{}, err
 	}

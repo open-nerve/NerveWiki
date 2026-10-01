@@ -44,8 +44,8 @@ type WorkspaceCreator interface {
 	// CreateWorkspace inserts w, created by by at w.CreatedAt:
 	// domain.ErrSlugTaken when a workspace not deleted has its slug.
 	CreateWorkspace(ctx context.Context, w domain.Workspace, by uuid.UUID) error
-	// AddMember inserts m, added by by at now.
-	AddMember(ctx context.Context, m domain.Member, by uuid.UUID, now time.Time) error
+	// AddMember inserts m, added by by at m.CreatedAt.
+	AddMember(ctx context.Context, m domain.Member, by uuid.UUID) error
 }
 
 // WorkspaceFinder finds a workspace by its slug.
@@ -66,4 +66,59 @@ type MembershipLister interface {
 type SlugChecker interface {
 	// SlugTaken reports whether a workspace not deleted has slug.
 	SlugTaken(ctx context.Context, slug string) (bool, error)
+}
+
+// WorkspaceLocker locks a workspace row FOR NO KEY UPDATE until the
+// transaction ends: every change of a workspace and of its members takes
+// it first, then decides (M2 design 8). Each returns ErrNotFound when no
+// workspace not deleted matches, a deletion committed while it waited too.
+type WorkspaceLocker interface {
+	LockWorkspaceBySlug(ctx context.Context, slug string) (domain.Workspace, error)
+	LockWorkspaceByID(ctx context.Context, id uuid.UUID) (domain.Workspace, error)
+}
+
+// WorkspaceUpdater changes a workspace the transaction has locked.
+type WorkspaceUpdater interface {
+	// RenameWorkspace sets id's name, updated by by at now.
+	RenameWorkspace(ctx context.Context, id uuid.UUID, name string, by uuid.UUID, now time.Time) error
+	// DeleteWorkspace deletes id softly at now, by by.
+	DeleteWorkspace(ctx context.Context, id, by uuid.UUID, now time.Time) error
+}
+
+// MemberFinder reads memberships.
+type MemberFinder interface {
+	// FindActiveMember returns the active membership id; ErrNotFound when
+	// it does not exist, has ended or is deleted.
+	FindActiveMember(ctx context.Context, id uuid.UUID) (domain.Member, error)
+	// ListActiveMembers returns workspaceID's active memberships, by when
+	// they joined.
+	ListActiveMembers(ctx context.Context, workspaceID uuid.UUID) ([]domain.Member, error)
+	// CountActiveAdmins counts workspaceID's active admins.
+	CountActiveAdmins(ctx context.Context, workspaceID uuid.UUID) (int, error)
+}
+
+// MemberUpdater changes memberships of workspaces the transaction has
+// locked.
+type MemberUpdater interface {
+	// UpdateMemberRole sets the membership id's role, updated by by at now.
+	UpdateMemberRole(ctx context.Context, id uuid.UUID, role shared.WorkspaceRole, by uuid.UUID, now time.Time) error
+	// EndMemberships ends userID's active memberships of workspaceIDs at
+	// now, by by.
+	EndMemberships(ctx context.Context, userID uuid.UUID, workspaceIDs []uuid.UUID, by uuid.UUID, now time.Time) error
+	// DeleteMembersOf deletes every membership of workspaceID softly, ended
+	// ones too, at now, by by.
+	DeleteMembersOf(ctx context.Context, workspaceID, by uuid.UUID, now time.Time) error
+}
+
+// Profile is what a member list shows of an account.
+type Profile struct {
+	DisplayName string
+	Email       string
+}
+
+// MemberProfiles reads accounts' profiles, unlocked: identity's, adapted by
+// bootstrap.
+type MemberProfiles interface {
+	// MemberProfiles returns the profiles of the accounts userIDs, by id.
+	MemberProfiles(ctx context.Context, userIDs []uuid.UUID) (map[uuid.UUID]Profile, error)
 }

@@ -63,8 +63,8 @@ func newWorkspace(t *testing.T, s *postgresadapter.Store, slug, name string, by 
 
 func addMember(t *testing.T, s *postgresadapter.Store, workspaceID, userID uuid.UUID, role shared.WorkspaceRole, by uuid.UUID) uuid.UUID {
 	t.Helper()
-	m := domain.Member{ID: uuid.NewV7(), WorkspaceID: workspaceID, UserID: userID, Role: role}
-	if err := s.AddMember(context.Background(), m, by, now()); err != nil {
+	m := domain.Member{ID: uuid.NewV7(), WorkspaceID: workspaceID, UserID: userID, Role: role, CreatedAt: now()}
+	if err := s.AddMember(context.Background(), m, by); err != nil {
 		t.Fatal(err)
 	}
 	return m.ID

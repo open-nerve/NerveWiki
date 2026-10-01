@@ -22,6 +22,12 @@ type User struct {
 	OnboardingSteps []string
 }
 
+// Profile is what other accounts see of an account.
+type Profile struct {
+	DisplayName string
+	Email       string
+}
+
 // MaxDisplayNameLength is the length of users.display_name, varchar(100),
 // in characters.
 const MaxDisplayNameLength = 100

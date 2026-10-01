@@ -89,3 +89,10 @@ SELECT is_active
 FROM users
 WHERE id = sqlc.arg(id)
 FOR SHARE;
+
+-- name: ProfilesByID :many
+-- The profiles of the accounts, for the other modules' member lists (M2 design 5): one statement, no lock,
+-- outside the lock order.
+SELECT id, display_name, email
+FROM users
+WHERE id = ANY(sqlc.arg(ids)::uuid[]);

@@ -205,6 +205,40 @@ func (q *Queries) LockUserForCredentials(ctx context.Context, id uuid.UUID) (Loc
 	return i, err
 }
 
+const profilesByID = `-- name: ProfilesByID :many
+SELECT id, display_name, email
+FROM users
+WHERE id = ANY($1::uuid[])
+`
+
+type ProfilesByIDRow struct {
+	ID          uuid.UUID
+	DisplayName string
+	Email       string
+}
+
+// The profiles of the accounts, for the other modules' member lists (M2 design 5): one statement, no lock,
+// outside the lock order.
+func (q *Queries) ProfilesByID(ctx context.Context, ids []uuid.UUID) ([]ProfilesByIDRow, error) {
+	rows, err := q.db.Query(ctx, profilesByID, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ProfilesByIDRow
+	for rows.Next() {
+		var i ProfilesByIDRow
+		if err := rows.Scan(&i.ID, &i.DisplayName, &i.Email); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const recordOnboardingStep = `-- name: RecordOnboardingStep :one
 UPDATE users
 SET onboarding_steps = CASE WHEN $1::text = ANY (onboarding_steps) THEN onboarding_steps

@@ -45,7 +45,7 @@ func TestCreateWorkspaceMakesTheCallerItsAdmin(t *testing.T) {
 	if w.Slug != "acme" || w.Name != "Acme 研发" || !w.CreatedAt.Equal(now()) || !w.UpdatedAt.Equal(now()) || w.ID == uuid.Nil() {
 		t.Errorf("created %+v, want acme named Acme 研发 at %v", w, now())
 	}
-	if m.WorkspaceID != w.ID || m.UserID != alice || m.Role != shared.WorkspaceAdmin || m.ID == uuid.Nil() {
+	if m.WorkspaceID != w.ID || m.UserID != alice || m.Role != shared.WorkspaceAdmin || m.ID == uuid.Nil() || !m.CreatedAt.Equal(now()) {
 		t.Errorf("member %+v, want alice as the admin of %s", m, w.ID)
 	}
 	if got != (app.Membership{Workspace: w, Role: shared.WorkspaceAdmin}) {

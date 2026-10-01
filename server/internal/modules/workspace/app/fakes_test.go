@@ -32,8 +32,9 @@ func (f *fakeTx) WithinTx(ctx context.Context, fn func(context.Context) error) e
 	return err
 }
 
-// fakeStore records the writes, each with whether it ran in the
-// transaction, and answers the reads from workspaces and memberships.
+// fakeStore records the calls, each with whether it ran in the
+// transaction, and answers the reads from workspaces, memberships and
+// active (fakes_members_test.go).
 type fakeStore struct {
 	workspaces  map[string]domain.Workspace
 	memberships []app.Membership
@@ -41,6 +42,12 @@ type fakeStore struct {
 	calls       []string
 	created     []domain.Workspace
 	members     []domain.Member
+	// active are the active memberships, by id, that P2's use cases read
+	// and change.
+	active map[uuid.UUID]domain.Member
+	// onLock, when set, runs as a workspace's row is locked: what another
+	// transaction committed before the lock was granted.
+	onLock func()
 }
 
 func (f *fakeStore) record(ctx context.Context, call string) {
@@ -59,8 +66,8 @@ func (f *fakeStore) CreateWorkspace(ctx context.Context, w domain.Workspace, by 
 	return nil
 }
 
-func (f *fakeStore) AddMember(ctx context.Context, m domain.Member, by uuid.UUID, at time.Time) error {
-	f.record(ctx, "AddMember by "+by.String()+" at "+at.Format(time.RFC3339))
+func (f *fakeStore) AddMember(ctx context.Context, m domain.Member, by uuid.UUID) error {
+	f.record(ctx, "AddMember by "+by.String()+" at "+m.CreatedAt.Format(time.RFC3339))
 	f.members = append(f.members, m)
 	return nil
 }
@@ -101,15 +108,20 @@ func (f *fakeAccounts) ShareActiveAccount(ctx context.Context, id uuid.UUID) err
 }
 
 // fakeAuthorizer grants the role roles hold for the target's workspace,
-// and records the decisions asked for.
+// and records the decisions asked for, in the store's calls too when it
+// has one.
 type fakeAuthorizer struct {
 	roles map[uuid.UUID]shared.WorkspaceRole
 	err   error
 	calls []shared.Action
+	store *fakeStore
 }
 
-func (f *fakeAuthorizer) Authorize(_ context.Context, _ shared.Actor, action shared.Action, t shared.Target) (shared.Grant, error) {
+func (f *fakeAuthorizer) Authorize(ctx context.Context, _ shared.Actor, action shared.Action, t shared.Target) (shared.Grant, error) {
 	f.calls = append(f.calls, action)
+	if f.store != nil {
+		f.store.record(ctx, "Authorize "+string(action))
+	}
 	if f.err != nil {
 		return shared.Grant{}, f.err
 	}

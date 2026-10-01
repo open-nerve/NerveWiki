@@ -4,9 +4,10 @@ INSERT INTO workspaces (id, slug, name, created_by_id, updated_by_id, created_at
 VALUES (sqlc.arg(id), sqlc.arg(slug), sqlc.arg(name), sqlc.arg(by), sqlc.arg(by), sqlc.arg(now), sqlc.arg(now));
 
 -- name: AddMember :exec
+-- The audit columns come from the member's creation time and the caller.
 INSERT INTO workspace_members (id, workspace_id, user_id, role, created_by_id, updated_by_id, created_at, updated_at)
 VALUES (sqlc.arg(id), sqlc.arg(workspace_id), sqlc.arg(user_id), sqlc.arg(role), sqlc.arg(by), sqlc.arg(by),
-    sqlc.arg(now), sqlc.arg(now));
+    sqlc.arg(created_at), sqlc.arg(created_at));
 
 -- name: FindWorkspaceBySlug :one
 -- A workspace not deleted, unlocked: what a read authorizes against.
@@ -33,4 +34,66 @@ SELECT EXISTS (SELECT 1 FROM workspaces WHERE slug = sqlc.arg(slug) AND deleted_
 SELECT role
 FROM workspace_members
 WHERE workspace_id = sqlc.arg(workspace_id) AND user_id = sqlc.arg(user_id)
+    AND ended_at IS NULL AND deleted_at IS NULL;
+
+-- name: LockWorkspaceBySlug :one
+-- The workspace not deleted with the slug, locked FOR NO KEY UPDATE until the transaction ends: every
+-- change of a workspace and of its members takes this lock first, then decides (M2 design 8). A
+-- deletion committed while it waited leaves no row.
+SELECT id, slug, name, created_at, updated_at
+FROM workspaces
+WHERE slug = sqlc.arg(slug) AND deleted_at IS NULL
+FOR NO KEY UPDATE;
+
+-- name: LockWorkspaceByID :one
+-- LockWorkspaceBySlug by the workspace's id: for the operations that name a member.
+SELECT id, slug, name, created_at, updated_at
+FROM workspaces
+WHERE id = sqlc.arg(id) AND deleted_at IS NULL
+FOR NO KEY UPDATE;
+
+-- name: RenameWorkspace :exec
+UPDATE workspaces
+SET name = sqlc.arg(name), updated_by_id = sqlc.arg(by), updated_at = sqlc.arg(now)
+WHERE id = sqlc.arg(id);
+
+-- name: DeleteWorkspace :exec
+-- The deleter is recorded as the last to update the row.
+UPDATE workspaces
+SET deleted_at = sqlc.arg(now)::timestamptz, updated_by_id = sqlc.arg(by), updated_at = sqlc.arg(now)
+WHERE id = sqlc.arg(id);
+
+-- name: DeleteMembersOf :exec
+-- Every row of the workspace not deleted, ended ones too, at the workspace's deletion time.
+UPDATE workspace_members
+SET deleted_at = sqlc.arg(now)::timestamptz, updated_by_id = sqlc.arg(by), updated_at = sqlc.arg(now)
+WHERE workspace_id = sqlc.arg(workspace_id) AND deleted_at IS NULL;
+
+-- name: FindActiveMember :one
+SELECT id, workspace_id, user_id, role, created_at
+FROM workspace_members
+WHERE id = sqlc.arg(id) AND ended_at IS NULL AND deleted_at IS NULL;
+
+-- name: ListActiveMembers :many
+-- By when they joined.
+SELECT id, workspace_id, user_id, role, created_at
+FROM workspace_members
+WHERE workspace_id = sqlc.arg(workspace_id) AND ended_at IS NULL AND deleted_at IS NULL
+ORDER BY created_at, id;
+
+-- name: CountActiveAdmins :one
+SELECT count(*)
+FROM workspace_members
+WHERE workspace_id = sqlc.arg(workspace_id) AND role = 'admin' AND ended_at IS NULL AND deleted_at IS NULL;
+
+-- name: UpdateMemberRole :exec
+UPDATE workspace_members
+SET role = sqlc.arg(role), updated_by_id = sqlc.arg(by), updated_at = sqlc.arg(now)
+WHERE id = sqlc.arg(id);
+
+-- name: EndMemberships :exec
+-- The account's active memberships of the workspaces.
+UPDATE workspace_members
+SET ended_at = sqlc.arg(now)::timestamptz, updated_by_id = sqlc.arg(by), updated_at = sqlc.arg(now)
+WHERE workspace_id = ANY(sqlc.arg(workspace_ids)::uuid[]) AND user_id = sqlc.arg(user_id)
     AND ended_at IS NULL AND deleted_at IS NULL;

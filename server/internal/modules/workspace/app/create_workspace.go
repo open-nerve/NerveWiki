@@ -51,7 +51,7 @@ func (c *CreateWorkspace) Execute(ctx context.Context, name, slug string) (Membe
 	}
 	now := c.d.Clock.Now()
 	w := domain.Workspace{ID: uuid.NewV7(), Slug: draft.Slug, Name: draft.Name, CreatedAt: now, UpdatedAt: now}
-	admin := domain.Member{ID: uuid.NewV7(), WorkspaceID: w.ID, UserID: actor.UserID, Role: shared.WorkspaceAdmin}
+	admin := domain.Member{ID: uuid.NewV7(), WorkspaceID: w.ID, UserID: actor.UserID, Role: shared.WorkspaceAdmin, CreatedAt: now}
 	err = c.d.Tx.WithinTx(ctx, func(ctx context.Context) error {
 		if err := c.d.Accounts.ShareActiveAccount(ctx, actor.UserID); err != nil {
 			return err
@@ -59,7 +59,7 @@ func (c *CreateWorkspace) Execute(ctx context.Context, name, slug string) (Membe
 		if err := c.d.Workspaces.CreateWorkspace(ctx, w, actor.UserID); err != nil {
 			return err
 		}
-		return c.d.Workspaces.AddMember(ctx, admin, actor.UserID, now)
+		return c.d.Workspaces.AddMember(ctx, admin, actor.UserID)
 	})
 	if err != nil {
 		return Membership{}, err
