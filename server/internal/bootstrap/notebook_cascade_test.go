@@ -243,3 +243,57 @@ func TestReactivateMemberReturnsTheNotebooks(t *testing.T) {
 	}
 	checkNotebooks(t, tm.pool)
 }
+
+// A notebook a workspace admin took over or deleted while bob was away is
+// not his to come back to: plans stays alice's, solo stays deleted; the
+// audit events tell the three in order.
+func TestATakenOverOrDeletedNotebookIsNotReturned(t *testing.T) {
+	tm := newCascadeTeam(t)
+	if status, answer := ask(t, tm.contract, http.MethodDelete, tm.base+"/api/v0/workspace-members/"+tm.members["bob"].String(),
+		tm.tokens["alice"], ""); status != http.StatusNoContent {
+		t.Fatalf("remove bob = %d %s", status, answer)
+	}
+	if status, answer := ask(t, tm.contract, http.MethodPost, tm.base+"/api/v0/ownerless-notebooks/"+tm.plans+"/take-over",
+		tm.tokens["alice"], ""); status != http.StatusOK {
+		t.Fatalf("alice takes plans over = %d %s", status, answer)
+	}
+	if status, answer := ask(t, tm.contract, http.MethodDelete, tm.base+"/api/v0/ownerless-notebooks/"+tm.solo,
+		tm.tokens["alice"], ""); status != http.StatusNoContent {
+		t.Fatalf("alice deletes solo = %d %s", status, answer)
+	}
+
+	out, _, err := runWorkspaces(t, tm.url, ReactivateMember("acme", "bob@example.com"))
+
+	if err != nil || !strings.HasSuffix(out, "; ownerless notebooks returned: 0\n") {
+		t.Errorf("reactivate-member = %q, %v; want none returned", out, err)
+	}
+	if owner, _ := tm.owner(t, tm.plans); owner != "" || tm.notebookMembership(t, tm.plans, "alice") != "admin" ||
+		!strings.HasPrefix(tm.notebookMembership(t, tm.plans, "bob"), "ended") {
+		t.Errorf("plans ownerless of %q, alice %q, bob %q; want alice's", owner, tm.notebookMembership(t, tm.plans, "alice"),
+			tm.notebookMembership(t, tm.plans, "bob"))
+	}
+	if n := count(t, tm.pool, "SELECT count(*) FROM notebooks WHERE id = $1 AND deleted_at IS NOT NULL", tm.solo); n != 1 {
+		t.Errorf("solo deleted %d, want it still deleted", n)
+	}
+	var events []string
+	rows, err := tm.pool.Query(context.Background(), `SELECT e.action || ' ' || e.notebook_name || ' by ' || split_part(a.email, '@', 1)
+		FROM notebook_audit_events e JOIN users a ON a.id = e.created_by_id ORDER BY e.created_at, e.id`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var e string
+		if err := rows.Scan(&e); err != nil {
+			t.Fatal(err)
+		}
+		events = append(events, e)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(events, ", ") != "taken_over Plans by alice, deleted Solo by alice" {
+		t.Errorf("audit events %q, want the take-over and the deletion by alice", events)
+	}
+	checkNotebooks(t, tm.pool)
+}

@@ -5,10 +5,18 @@ import (
 	"maps"
 	"slices"
 	"strings"
+	"time"
 	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
+
+// Ownerless is since when a notebook has had no active admin, and who its
+// last one was: its former owner, to whom it returns.
+type Ownerless struct {
+	Since       time.Time
+	FormerOwner uuid.UUID
+}
 
 // Holding is an account's active membership of a notebook as the end of
 // its workspace memberships reads it, under the notebook's lock: its role

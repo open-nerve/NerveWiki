@@ -18,6 +18,8 @@ type Notebook struct {
 	Access      shared.WorkspaceAccess
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
+	// Ownerless is set while the notebook has no active admin (M3 design 4).
+	Ownerless *Ownerless
 }
 
 // Draft is a new notebook's checked values.

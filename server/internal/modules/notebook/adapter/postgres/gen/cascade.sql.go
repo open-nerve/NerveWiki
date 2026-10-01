@@ -112,7 +112,7 @@ func (q *Queries) LockHoldings(ctx context.Context, arg LockHoldingsParams) ([]L
 }
 
 const lockOwnerlessOf = `-- name: LockOwnerlessOf :many
-SELECT id, workspace_id, name, workspace_access, created_at, updated_at
+SELECT id, workspace_id, name, workspace_access, created_at, updated_at, ownerless_since, former_owner_id
 FROM notebooks
 WHERE workspace_id = $1 AND former_owner_id = $2 AND deleted_at IS NULL
 ORDER BY id
@@ -131,6 +131,8 @@ type LockOwnerlessOfRow struct {
 	WorkspaceAccess string
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
+	OwnerlessSince  *time.Time
+	FormerOwnerID   *uuid.UUID
 }
 
 // The ownerless notebooks not deleted of the workspace whose former owner the account is, locked FOR NO KEY
@@ -151,6 +153,8 @@ func (q *Queries) LockOwnerlessOf(ctx context.Context, arg LockOwnerlessOfParams
 			&i.WorkspaceAccess,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.OwnerlessSince,
+			&i.FormerOwnerID,
 		); err != nil {
 			return nil, err
 		}

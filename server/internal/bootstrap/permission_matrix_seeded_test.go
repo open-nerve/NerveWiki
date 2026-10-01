@@ -34,7 +34,9 @@ import (
 // of the workspace's admin outside priv, team with a guest reader; gone-nb,
 // deleted, of the deleted notebook's column. other has other-nb, whose
 // admin is the column outside lab: a role read in the wrong workspace or
-// notebook lets it into priv.
+// notebook lets it into priv. orphan, private, is ownerless (M3/P3 design
+// 3.7): its admin, the ended member's column, left it, its editor stays;
+// lab has one audit event, gone-nb deleted ownerless.
 
 // matrixWorkspace is a seeded workspace and the column that is its admin.
 type matrixWorkspace struct {
@@ -76,6 +78,7 @@ func matrixMemberships() []matrixMembership {
 		{"lab", callerNotebookEnded, shared.WorkspaceMember},
 		{"lab", callerNotebookDeleted, shared.WorkspaceMember},
 		{"lab", callerGuestReaderOfOpen, shared.WorkspaceGuest},
+		{"lab", callerOwnerlessMember, shared.WorkspaceMember},
 	}
 }
 
@@ -94,6 +97,7 @@ func matrixNotebooks() []matrixNotebook {
 		{"wiki", "lab", shared.AccessViewer, false},
 		{"gone-nb", "lab", shared.AccessEditor, true},
 		{"other-nb", "other", shared.AccessNone, false},
+		{"orphan", "lab", shared.AccessNone, false},
 	}
 }
 
@@ -116,7 +120,18 @@ func matrixNotebookMembers() []matrixNotebookMember {
 		{"wiki", callerOutsideAdmin, shared.NotebookAdmin, false},
 		{"gone-nb", callerNotebookDeleted, shared.NotebookAdmin, false},
 		{"other-nb", callerOutsideWorkspace, shared.NotebookAdmin, false},
+		{"orphan", callerOwnerlessMember, shared.NotebookEditor, false},
+		{"orphan", callerNotebookEnded, shared.NotebookAdmin, true},
 	}
+}
+
+// matrixOwnerless is the ownerless notebook and its former owner.
+func matrixOwnerless() (notebook string, formerOwner caller) { return "orphan", callerNotebookEnded }
+
+// matrixAuditEvent is lab's audit event: gone-nb, deleted by lab's admin
+// while ownerless of its admin.
+func matrixAuditEvent() (notebook string, formerOwner, actor caller) {
+	return "gone-nb", callerNotebookDeleted, callerOutsideAdmin
 }
 
 // matrixInvitee is the address acme's and gone's invitations are sent to.
@@ -348,6 +363,14 @@ func prepareMatrix(t *testing.T) matrixData {
 				exec("UPDATE notebook_members SET deleted_at = $2 WHERE notebook_id = $1", d.seeded.notebooks[n.name], now)
 			}
 		}
+		orphan, formerOwner := matrixOwnerless()
+		exec("UPDATE notebooks SET ownerless_since = $3, former_owner_id = "+account+" WHERE id = $1",
+			d.seeded.notebooks[orphan], emailOf(formerOwner), now)
+		gone, goneOwner, actor := matrixAuditEvent()
+		exec("INSERT INTO notebook_audit_events (id, workspace_id, notebook_id, notebook_name, action, former_owner_id, created_by_id, "+
+			"updated_by_id, created_at, updated_at) SELECT $1, n.workspace_id, n.id, n.name, 'deleted', "+account+", a.id, a.id, $4, $4 "+
+			"FROM notebooks n, users a WHERE n.id = $3 AND a.email = $5",
+			uuid.NewV7(), emailOf(goneOwner), d.seeded.notebooks[gone], now, emailOf(actor))
 		for _, end := range []struct {
 			by   caller
 			path string

@@ -63,3 +63,67 @@ func (q *Queries) DeleteAuditEventsOf(ctx context.Context, arg DeleteAuditEvents
 	_, err := q.db.Exec(ctx, deleteAuditEventsOf, arg.Now, arg.By, arg.WorkspaceID)
 	return err
 }
+
+const listAuditEvents = `-- name: ListAuditEvents :many
+SELECT id, workspace_id, notebook_id, notebook_name, action, former_owner_id, created_by_id, created_at
+FROM notebook_audit_events
+WHERE workspace_id = $1 AND deleted_at IS NULL
+    AND ($2::timestamptz IS NULL
+        OR (created_at, id) < ($2::timestamptz, $3::uuid))
+ORDER BY created_at DESC, id DESC
+LIMIT $4
+`
+
+type ListAuditEventsParams struct {
+	WorkspaceID uuid.UUID
+	AfterAt     *time.Time
+	AfterID     *uuid.UUID
+	Size        int32
+}
+
+type ListAuditEventsRow struct {
+	ID            uuid.UUID
+	WorkspaceID   uuid.UUID
+	NotebookID    uuid.UUID
+	NotebookName  string
+	Action        string
+	FormerOwnerID uuid.UUID
+	CreatedByID   uuid.UUID
+	CreatedAt     time.Time
+}
+
+// A page of the workspace's audit events not deleted, newest first, then by id; when after_at is set, those after
+// the position (after_at, after_id) in that order. size is one more than the page, to tell whether another follows.
+func (q *Queries) ListAuditEvents(ctx context.Context, arg ListAuditEventsParams) ([]ListAuditEventsRow, error) {
+	rows, err := q.db.Query(ctx, listAuditEvents,
+		arg.WorkspaceID,
+		arg.AfterAt,
+		arg.AfterID,
+		arg.Size,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAuditEventsRow
+	for rows.Next() {
+		var i ListAuditEventsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.NotebookID,
+			&i.NotebookName,
+			&i.Action,
+			&i.FormerOwnerID,
+			&i.CreatedByID,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

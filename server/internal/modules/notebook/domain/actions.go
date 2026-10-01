@@ -15,6 +15,12 @@ const (
 	ActionUpdateMember shared.Action = "notebook_member.update"
 	ActionRemoveMember shared.Action = "notebook_member.remove"
 	ActionLeave        shared.Action = "notebook.leave"
+	// The ownerless notebooks and their audit events: the workspace's
+	// admins', at the workspace level (M3 design 4).
+	ActionListOwnerless   shared.Action = "notebook_ownerless.list"
+	ActionTakeOver        shared.Action = "notebook_ownerless.take_over"
+	ActionDeleteOwnerless shared.Action = "notebook_ownerless.delete"
+	ActionListAudit       shared.Action = "notebook_audit.list"
 )
 
 // Actions lists the module's actions.
@@ -22,5 +28,6 @@ func Actions() []shared.Action {
 	return []shared.Action{
 		ActionList, ActionCreate, ActionRead, ActionUpdate, ActionDelete,
 		ActionListMembers, ActionAddMember, ActionUpdateMember, ActionRemoveMember, ActionLeave,
+		ActionListOwnerless, ActionTakeOver, ActionDeleteOwnerless, ActionListAudit,
 	}
 }

@@ -247,6 +247,105 @@ paths:
           description: The caller's membership has ended.
         default:
           $ref: "#/components/responses/Problem"
+  /api/v0/workspaces/{slug}/ownerless-notebooks:
+    parameters:
+      - $ref: "#/components/parameters/Slug"
+    get:
+      operationId: listOwnerlessNotebooks
+      tags: [notebook]
+      summary: List a workspace's ownerless notebooks
+      description: >-
+        The workspace's notebooks that have no active admin, the earliest to
+        become ownerless first: their names, private ones included, go to
+        the workspace's admins alone, who take them over or delete them. A
+        member or a guest of the workspace is forbidden; a workspace that does
+        not exist, is deleted, or that the caller is no active member of is
+        workspace.not_found. The list is not paged.
+      security: [{ bearer: [] }]
+      x-problem-codes: [workspace.not_found, forbidden]
+      responses:
+        "200":
+          description: The ownerless notebooks.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OwnerlessNotebookList"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v0/ownerless-notebooks/{notebook_id}/take-over:
+    parameters:
+      - $ref: "#/components/parameters/NotebookID"
+    post:
+      operationId: takeOverNotebook
+      tags: [notebook]
+      summary: Take over an ownerless notebook
+      description: >-
+        Makes the caller, an admin of the notebook's workspace, the notebook's
+        admin: a membership it had ended is restored, a lower role it has is
+        raised; the workspace access stays. The take-over is recorded in the
+        workspace's audit events. A notebook that does not exist, is deleted
+        or is not ownerless, and any caller but the workspace's admins, is
+        notebook.not_found: no one else learns whether it is there.
+      security: [{ bearer: [] }]
+      x-problem-codes: [notebook.not_found]
+      responses:
+        "200":
+          description: The notebook, the caller its admin.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Notebook"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v0/ownerless-notebooks/{notebook_id}:
+    parameters:
+      - $ref: "#/components/parameters/NotebookID"
+    delete:
+      operationId: deleteOwnerlessNotebook
+      tags: [notebook]
+      summary: Delete an ownerless notebook
+      description: >-
+        Deletes the notebook softly, with its members, as deleteNotebook does;
+        the purge removes it after the retention. The deletion is recorded in
+        the workspace's audit events. A notebook that does not exist, is
+        deleted or is not ownerless, and any caller but the workspace's
+        admins, is notebook.not_found.
+      security: [{ bearer: [] }]
+      x-problem-codes: [notebook.not_found]
+      responses:
+        "204":
+          description: The notebook is deleted.
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v0/workspaces/{slug}/notebook-audit-events:
+    parameters:
+      - $ref: "#/components/parameters/Slug"
+    get:
+      operationId: listNotebookAuditEvents
+      tags: [notebook]
+      summary: List the audit events of a workspace's ownerless notebooks
+      description: >-
+        What was done with the workspace's ownerless notebooks, newest first,
+        a page at a time: taken over or deleted by a workspace admin, returned
+        to their former owner. The workspace's admins alone read them; a
+        member or a guest is forbidden, and a workspace that does not exist,
+        is deleted, or that the caller is no active member of is
+        workspace.not_found. A cursor the list cannot read is bad_request,
+        before anything else; a limit outside 1–100 is validation_failed.
+      security: [{ bearer: [] }]
+      x-problem-codes: [bad_request, workspace.not_found, forbidden, validation_failed]
+      parameters:
+        - $ref: "../common.yaml#/components/parameters/Limit"
+        - $ref: "../common.yaml#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: A page of the audit events.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotebookAuditEventPage"
+        default:
+          $ref: "#/components/responses/Problem"
 components:
   # 与 api/openapi.yaml 的相同：打包时丢掉模块文件的 securitySchemes，oapi-codegen 读这一份
   securitySchemes:
@@ -435,3 +534,99 @@ components:
       properties:
         role:
           $ref: "#/components/schemas/NotebookRole"
+    AccountProfile:
+      description: >-
+        What a workspace's admins see of an account in the ownerless list and
+        the audit events.
+      type: object
+      additionalProperties: false
+      required: [user_id, display_name, email]
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        display_name:
+          type: string
+        email:
+          type: string
+    OwnerlessNotebook:
+      description: A notebook without an active admin, as its workspace's admins see it.
+      type: object
+      additionalProperties: false
+      required: [id, name, workspace_access, member_count, former_owner, ownerless_since, last_activity_at, size_bytes]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        workspace_access:
+          $ref: "#/components/schemas/WorkspaceAccess"
+        member_count:
+          description: How many active members the notebook has left.
+          type: integer
+        former_owner:
+          $ref: "#/components/schemas/AccountProfile"
+        ownerless_since:
+          description: When its last active admin's membership ended.
+          type: string
+          format: date-time
+        last_activity_at:
+          description: The last write to the notebook or to what it holds.
+          type: string
+          format: date-time
+        size_bytes:
+          description: What the notebook holds, in bytes.
+          type: integer
+          format: int64
+    OwnerlessNotebookList:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/OwnerlessNotebook"
+    NotebookAuditAction:
+      description: >-
+        What was done: taken_over and deleted by a workspace admin, returned
+        to the former owner when it came back to the workspace.
+      type: string
+      enum: [taken_over, deleted, returned]
+    NotebookAuditEvent:
+      description: >-
+        What was done with an ownerless notebook. It names the notebook as it
+        was then, and outlives it.
+      type: object
+      additionalProperties: false
+      required: [id, action, notebook_id, notebook_name, former_owner, actor, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        action:
+          $ref: "#/components/schemas/NotebookAuditAction"
+        notebook_id:
+          type: string
+          format: uuid
+        notebook_name:
+          type: string
+        former_owner:
+          $ref: "#/components/schemas/AccountProfile"
+        actor:
+          $ref: "#/components/schemas/AccountProfile"
+        created_at:
+          type: string
+          format: date-time
+    NotebookAuditEventPage:
+      type: object
+      additionalProperties: false
+      required: [data, next_cursor]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/NotebookAuditEvent"
+        next_cursor:
+          $ref: "../common.yaml#/components/schemas/NextCursor"

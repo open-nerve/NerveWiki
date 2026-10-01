@@ -37,7 +37,7 @@ WHERE id = ANY(sqlc.arg(ids)::uuid[]);
 -- name: LockOwnerlessOf :many
 -- The ownerless notebooks not deleted of the workspace whose former owner the account is, locked FOR NO KEY
 -- UPDATE by id: its restore returns them (M3 design 4).
-SELECT id, workspace_id, name, workspace_access, created_at, updated_at
+SELECT id, workspace_id, name, workspace_access, created_at, updated_at, ownerless_since, former_owner_id
 FROM notebooks
 WHERE workspace_id = sqlc.arg(workspace_id) AND former_owner_id = sqlc.arg(former_owner_id) AND deleted_at IS NULL
 ORDER BY id

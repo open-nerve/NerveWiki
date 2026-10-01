@@ -152,17 +152,19 @@ func (e workspaceMemberEvents) MemberRoleChanged(ctx context.Context, c workspac
 
 // notebookExtensions are the registrants of the notebook module's
 // extension points (M3 design 8): those that follow a notebook's deletion,
-// and those that follow a change of what accounts see.
+// those that follow a change of what accounts see, and those that tell a
+// notebook's activity.
 type notebookExtensions struct {
 	deletionSubscribers   []notebook.NotebookDeletionSubscriber
 	visibilitySubscribers []notebook.VisibilitySubscriber
+	activitySources       []notebook.NotebookActivitySource
 }
 
 // notebookRegistrants are the modules that take part in a notebook's
-// deletion and in a visibility change: none in M3; M4's pages and M7's
-// attachments follow a deletion, M5's event streams both. The module's
-// use cases and its parts in the workspace module's events all take them
-// from here.
+// deletion, in a visibility change and in its activity: none in M3; M4's
+// pages and M7's attachments follow a deletion and tell the activity, M5's
+// event streams follow both events. The module's use cases and its parts
+// in the workspace module's events all take them from here.
 func notebookRegistrants() notebookExtensions {
 	return notebookExtensions{}
 }

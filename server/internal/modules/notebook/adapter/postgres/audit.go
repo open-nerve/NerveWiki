@@ -29,3 +29,24 @@ func (s *Store) AddAuditEvent(ctx context.Context, e domain.AuditEvent) error {
 	}
 	return nil
 }
+
+// ListAuditEvents implements app.AuditFinder.
+func (s *Store) ListAuditEvents(ctx context.Context, workspaceID uuid.UUID, after *domain.AuditCursor, size int,
+) ([]domain.AuditEvent, error) {
+	p := gen.ListAuditEventsParams{WorkspaceID: workspaceID, Size: int32(size)}
+	if after != nil {
+		p.AfterAt, p.AfterID = &after.CreatedAt, &after.ID
+	}
+	rows, err := s.queries(ctx).ListAuditEvents(ctx, p)
+	if err != nil {
+		return nil, fmt.Errorf("list notebook audit events: %w", err)
+	}
+	events := make([]domain.AuditEvent, len(rows))
+	for i, r := range rows {
+		events[i] = domain.AuditEvent{
+			ID: r.ID, WorkspaceID: r.WorkspaceID, NotebookID: r.NotebookID, NotebookName: r.NotebookName, Action: domain.AuditAction(r.Action),
+			FormerOwnerID: r.FormerOwnerID, ActorID: r.CreatedByID, At: r.CreatedAt,
+		}
+	}
+	return events, nil
+}

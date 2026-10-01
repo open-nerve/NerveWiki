@@ -29,14 +29,7 @@ func (l *ListNotebooks) Execute(ctx context.Context, slug string) ([]View, error
 	if err != nil {
 		return nil, err
 	}
-	workspaceID, ok, err := l.workspaces.FindBySlug(ctx, slug)
-	switch {
-	case err != nil:
-		return nil, err
-	case !ok:
-		return nil, domain.ErrWorkspaceNotFound
-	}
-	grant, err := authorize(ctx, l.auth, actor, domain.ActionList, shared.Target{WorkspaceID: workspaceID}, domain.ErrWorkspaceNotFound)
+	workspaceID, grant, err := authorizeIn(ctx, l.workspaces, l.auth, actor, domain.ActionList, slug)
 	if err != nil {
 		return nil, err
 	}

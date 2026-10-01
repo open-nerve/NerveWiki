@@ -3,7 +3,9 @@ package app
 import (
 	"context"
 	"errors"
+	"uuid"
 
+	"github.com/open-nerve/NerveWiki/server/internal/modules/notebook/domain"
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
@@ -17,6 +19,23 @@ func authorize(ctx context.Context, auth shared.Authorizer, actor shared.Actor, 
 		return shared.Grant{}, notFound
 	}
 	return grant, err
+}
+
+// authorizeIn finds the workspace of slug, unlocked, and asks auth whether
+// actor may do action, a workspace-level one, in it: workspace.not_found
+// when there is none or the caller cannot see it.
+func authorizeIn(ctx context.Context, workspaces Workspaces, auth shared.Authorizer, actor shared.Actor, action shared.Action,
+	slug string,
+) (uuid.UUID, shared.Grant, error) {
+	workspaceID, ok, err := workspaces.FindBySlug(ctx, slug)
+	switch {
+	case err != nil:
+		return uuid.UUID{}, shared.Grant{}, err
+	case !ok:
+		return uuid.UUID{}, shared.Grant{}, domain.ErrWorkspaceNotFound
+	}
+	grant, err := authorize(ctx, auth, actor, action, shared.Target{WorkspaceID: workspaceID}, domain.ErrWorkspaceNotFound)
+	return workspaceID, grant, err
 }
 
 // found is err, or notFound for a repository's ErrNotFound.

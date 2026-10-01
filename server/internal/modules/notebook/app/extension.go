@@ -107,6 +107,52 @@ func publishVisibility(ctx context.Context, subscribers []VisibilitySubscriber, 
 	return nil
 }
 
+// NotebookActivity is what a module holds of a notebook (M3 design 4, 8):
+// its bytes, and when it last wrote them, nil if it never did.
+type NotebookActivity struct {
+	Bytes       int64
+	LastWriteAt *time.Time
+}
+
+// NotebookActivitySource tells the activity of notebooks: M4's pages and
+// M7's attachments register one; M3 has none. It runs in its caller's
+// read, unlocked, and answers the notebooks it holds nothing of with
+// nothing.
+type NotebookActivitySource interface {
+	NotebookActivities(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]NotebookActivity, error)
+}
+
+// activityOf is the notebooks' activity across sources: the bytes summed,
+// the latest write, which updated, a notebook's own row's last update,
+// starts from.
+func activityOf(ctx context.Context, sources []NotebookActivitySource, updated map[uuid.UUID]time.Time,
+) (map[uuid.UUID]NotebookActivity, error) {
+	out := make(map[uuid.UUID]NotebookActivity, len(updated))
+	ids := make([]uuid.UUID, 0, len(updated))
+	for id, at := range updated {
+		out[id] = NotebookActivity{LastWriteAt: &at}
+		ids = append(ids, id)
+	}
+	for _, s := range sources {
+		got, err := s.NotebookActivities(ctx, ids)
+		if err != nil {
+			return nil, err
+		}
+		for id, a := range got {
+			sum, ok := out[id]
+			if !ok {
+				continue
+			}
+			sum.Bytes += a.Bytes
+			if a.LastWriteAt != nil && a.LastWriteAt.After(*sum.LastWriteAt) {
+				sum.LastWriteAt = a.LastWriteAt
+			}
+			out[id] = sum
+		}
+	}
+	return out, nil
+}
+
 // WorkspaceMemberAdded is a workspace's new membership, field by field as
 // the workspace module's addition tells it: bootstrap converts
 // workspace.MembershipAddition.

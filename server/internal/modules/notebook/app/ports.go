@@ -195,3 +195,30 @@ type Returner interface {
 type AuditRecorder interface {
 	AddAuditEvent(ctx context.Context, e domain.AuditEvent) error
 }
+
+// OwnerlessListed is an ownerless notebook as its workspace's list reads
+// it, with its count of active members.
+type OwnerlessListed struct {
+	Notebook    domain.Notebook
+	MemberCount int
+}
+
+// OwnerlessFinder reads a workspace's ownerless notebooks.
+type OwnerlessFinder interface {
+	// ListOwnerless returns the ownerless notebooks not deleted of
+	// workspaceID, the earliest to become so first, then by id.
+	ListOwnerless(ctx context.Context, workspaceID uuid.UUID) ([]OwnerlessListed, error)
+}
+
+// OwnerlessWriter takes notebooks out of their ownerless state.
+type OwnerlessWriter interface {
+	// ClearOwnerless makes notebookIDs owned again; their updated_at stays.
+	ClearOwnerless(ctx context.Context, notebookIDs []uuid.UUID) error
+}
+
+// AuditFinder reads a workspace's audit events.
+type AuditFinder interface {
+	// ListAuditEvents returns up to size of workspaceID's audit events not
+	// deleted, newest first, then by id; those after after when it is set.
+	ListAuditEvents(ctx context.Context, workspaceID uuid.UUID, after *domain.AuditCursor, size int) ([]domain.AuditEvent, error)
+}

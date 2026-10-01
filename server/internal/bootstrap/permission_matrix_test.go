@@ -98,6 +98,8 @@ const (
 	callerNotebookDeleted   caller = "notebook deleted"
 	callerOutsideWorkspace  caller = "outside the workspace"
 	callerGuestReaderOfOpen caller = "guest reader open"
+	// An editor of orphan, a notebook without an admin (M3/P3 design 3.7).
+	callerOwnerlessMember caller = "ownerless notebook member"
 )
 
 // notebookColumns are the columns of the notebook level.
@@ -105,7 +107,7 @@ func notebookColumns() []caller {
 	return []caller{
 		callerNotebookAdmin, callerNotebookEditor, callerNotebookReader, callerOutsideAdmin, callerOutsideMember,
 		callerDefaultEditor, callerDefaultReader, callerOutsideGuest, callerNotebookEnded, callerNotebookDeleted,
-		callerOutsideWorkspace, callerGuestReaderOfOpen,
+		callerOutsideWorkspace, callerGuestReaderOfOpen, callerOwnerlessMember,
 	}
 }
 
@@ -201,7 +203,7 @@ func decodeAnswer(t *testing.T, answer string, v any) {
 // matrixRows are the rows, each module's from its file.
 func matrixRows() []matrixRow {
 	return slices.Concat(workspaceMatrixRows(), memberMatrixRows(), invitationMatrixRows(), notebookMatrixRows(),
-		notebookMemberMatrixRows())
+		notebookMemberMatrixRows(), ownerlessMatrixRows())
 }
 
 // matrixApps is how many cells may run an app of their own at once: each

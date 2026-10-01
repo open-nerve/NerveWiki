@@ -71,8 +71,5 @@ func (s *Store) ReturnNotebooks(ctx context.Context, notebookIDs []uuid.UUID, us
 	case int(n) != len(notebookIDs):
 		return fmt.Errorf("restore the former owner's memberships: %d of %d notebooks have one", n, len(notebookIDs))
 	}
-	if err := q.ClearOwnerless(ctx, notebookIDs); err != nil {
-		return fmt.Errorf("clear notebooks ownerless: %w", err)
-	}
-	return nil
+	return s.ClearOwnerless(ctx, notebookIDs)
 }

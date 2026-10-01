@@ -77,6 +77,8 @@ type fakeStore struct {
 	created   []domain.Notebook
 	members   []domain.Member
 	updated   []domain.Notebook
+	// ownerless is what ListOwnerless lists.
+	ownerless []app.OwnerlessListed
 	// ofWorkspace are the ids DeleteNotebooksOf deletes.
 	ofWorkspace []uuid.UUID
 }

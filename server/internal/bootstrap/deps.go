@@ -102,6 +102,7 @@ func notebookDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, au
 		Profiles:              notebookProfiles{identity.NewDirectory(pool)},
 		DeletionSubscribers:   ext.deletionSubscribers,
 		VisibilitySubscribers: ext.visibilitySubscribers,
+		ActivitySources:       ext.activitySources,
 	}
 }
 

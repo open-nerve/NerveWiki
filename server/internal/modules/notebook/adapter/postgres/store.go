@@ -79,10 +79,15 @@ func (s *Store) LockNotebook(ctx context.Context, id uuid.UUID) (domain.Notebook
 // notebookOf is a row of the queries that read a notebook's columns: they
 // read the same, so their rows convert to this one.
 func notebookOf(r gen.FindNotebookRow) domain.Notebook {
-	return domain.Notebook{
+	n := domain.Notebook{
 		ID: r.ID, WorkspaceID: r.WorkspaceID, Name: r.Name, Access: shared.WorkspaceAccess(r.WorkspaceAccess),
 		CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
 	}
+	// notebooks_ownerless_check sets both or neither.
+	if r.OwnerlessSince != nil {
+		n.Ownerless = &domain.Ownerless{Since: *r.OwnerlessSince, FormerOwner: *r.FormerOwnerID}
+	}
+	return n
 }
 
 // notFound is err of what, app.ErrNotFound for no row.

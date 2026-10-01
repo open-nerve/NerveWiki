@@ -7,7 +7,30 @@ info:
   title: Nerve Wiki common components
   version: v0
 components:
+  # Paging (v0.1 design 6.1): each paged list takes Limit and Cursor, and answers next_cursor as NextCursor.
+  parameters:
+    Limit:
+      name: limit
+      in: query
+      description: >-
+        The page size, 1–100; 50 when absent. Outside that range the answer is
+        422 validation_failed on limit.
+      schema:
+        type: integer
+    Cursor:
+      name: cursor
+      in: query
+      description: >-
+        The next_cursor of the page before; absent for the first page. A
+        cursor that does not decode, has an unknown version or a payload of
+        another shape than this list's, or is not spelled as the server
+        writes it is 400 bad_request on cursor.
+      schema:
+        type: string
   schemas:
+    NextCursor:
+      description: The cursor of the next page; null on the last page.
+      type: [string, "null"]
     Problem:
       description: >-
         RFC 9457 problem details. `title` is the HTTP status phrase, `detail`
