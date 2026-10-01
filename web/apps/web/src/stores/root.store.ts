@@ -6,16 +6,19 @@ import { InvitationPreviewService, InvitationService } from "../services/invitat
 import { MemberService } from "../services/member.service";
 import { NotebookMemberService } from "../services/notebook-member.service";
 import { NotebookService, type Notebook } from "../services/notebook.service";
+import { OwnerlessService } from "../services/ownerless.service";
 import { WorkspaceService, type Workspace } from "../services/workspace.service";
 import type { Session } from "../session/session";
 import { AccountStore } from "./account.store";
 import { ApiTokenStore } from "./api-token.store";
+import { AuditStore } from "./audit.store";
 import { AuthStore } from "./auth.store";
 import { InstanceStore } from "./instance.store";
 import { InvitationPreviewStore, InvitationStore } from "./invitation.store";
 import { MemberStore } from "./member.store";
 import { NotebookMemberStore } from "./notebook-member.store";
 import { NotebookStore } from "./notebook.store";
+import { OwnerlessStore } from "./ownerless.store";
 import type { PreferencesStore } from "./preferences.store";
 import { WorkspaceStore } from "./workspace.store";
 
@@ -58,10 +61,14 @@ export class RootStore {
   private readonly invitations: InvitationService | undefined;
   private readonly notebooks: NotebookService | undefined;
   private readonly notebookMembers: NotebookMemberService | undefined;
+  private readonly ownerless: OwnerlessService | undefined;
   /** The member, invitation and notebook lists this generation holds, by workspace id. */
   private readonly memberLists = new Map<string, MemberStore>();
   private readonly invitationLists = new Map<string, InvitationStore>();
   private readonly notebookLists = new Map<string, NotebookStore>();
+  /** The ownerless notebooks and the audit events this generation holds, by workspace id. */
+  private readonly ownerlessLists = new Map<string, OwnerlessStore>();
+  private readonly auditLists = new Map<string, AuditStore>();
   /** The notebook member lists this generation holds, by notebook id. */
   private readonly notebookMemberLists = new Map<string, NotebookMemberStore>();
 
@@ -81,6 +88,7 @@ export class RootStore {
     this.invitations = client && new InvitationService(client);
     this.notebooks = client && new NotebookService(client);
     this.notebookMembers = client && new NotebookMemberService(client);
+    this.ownerless = client && new OwnerlessService(client);
   }
 
   /**
@@ -107,6 +115,18 @@ export class RootStore {
   notebooksOf(workspace: Workspace): NotebookStore | undefined {
     const service = this.notebooks;
     return service && once(this.notebookLists, workspace.id, () => new NotebookStore(service, workspace.slug));
+  }
+
+  /** ownerlessOf is the ownerless notebooks of workspace, as its admins see them (M3/P5 design 3.2). */
+  ownerlessOf(workspace: Workspace): OwnerlessStore | undefined {
+    const service = this.ownerless;
+    return service && once(this.ownerlessLists, workspace.id, () => new OwnerlessStore(service, workspace.slug));
+  }
+
+  /** auditOf is the audit events of workspace's ownerless notebooks, as ownerlessOf is the notebooks. */
+  auditOf(workspace: Workspace): AuditStore | undefined {
+    const service = this.ownerless;
+    return service && once(this.auditLists, workspace.id, () => new AuditStore(service, workspace.slug));
   }
 
   /** notebookMembersOf is the members of notebook, the same list for as long as this generation lives. */
