@@ -20,6 +20,20 @@ func NormalizeEmail(s string) string {
 	return strings.ToLower(strings.TrimSpace(s))
 }
 
+// CheckEmail checks a normalized address as field: the problem of the
+// field, or nil. Accounts and invitations check addresses alike.
+func CheckEmail(field, email string) *FieldError {
+	switch {
+	case email == "":
+		return &FieldError{Field: field, Code: FieldRequired, Message: "is required"}
+	case utf8.RuneCountInString(email) > MaxEmailLength:
+		return &FieldError{Field: field, Code: FieldTooLong, Message: "must be at most 255 characters"}
+	case !ValidEmail(email):
+		return &FieldError{Field: field, Code: FieldInvalidFormat, Message: "is not a valid e-mail address"}
+	}
+	return nil
+}
+
 // ValidEmail reports whether a normalized address is acceptable: at most
 // 255 characters, no white space, control or format character anywhere,
 // and valid by Django's EmailValidator, a well-tested reading of what mail

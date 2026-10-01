@@ -23,4 +23,20 @@ var (
 	// ErrSoleAdmin: the workspace's only active admin would leave it.
 	ErrSoleAdmin = shared.NewError(shared.KindConflict, "workspace.sole_admin",
 		"The workspace's only admin cannot leave it: make another member an admin, or delete the workspace.")
+	// ErrAlreadyInvited: the address has a pending invitation to the
+	// workspace (422).
+	ErrAlreadyInvited = shared.Invalid(shared.FieldError{Field: "email", Code: shared.FieldDuplicate,
+		Message: "has a pending invitation to this workspace"})
+	// ErrAlreadyMember: the address is an active member's (422).
+	ErrAlreadyMember = shared.Invalid(shared.FieldError{Field: "email", Code: shared.FieldNotAllowed,
+		Message: "belongs to a member of this workspace"})
+	// ErrInvitationNotFound: no pending invitation has the id, its token is
+	// not the one sent, its workspace is deleted, or the caller cannot see
+	// the workspace.
+	ErrInvitationNotFound = shared.NewError(shared.KindNotFound, "workspace.invitation_not_found",
+		"No such invitation: it may have been accepted or withdrawn.")
+	// ErrInvitationEmailMismatch: the caller's address is not the one
+	// invited.
+	ErrInvitationEmailMismatch = shared.NewError(shared.KindForbidden, "workspace.invitation_email_mismatch",
+		"The invitation was sent to another e-mail address: sign in with that one.")
 )

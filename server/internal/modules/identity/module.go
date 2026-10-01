@@ -71,6 +71,7 @@ type RateLimits struct {
 
 // Module is the wired identity module.
 type Module struct {
+	keys            *signing.Keys
 	uc              httpadapter.UseCases
 	settings        httpadapter.Settings
 	refreshDeadline time.Duration
@@ -100,7 +101,8 @@ func New(d Deps) (*Module, error) {
 		SessionTTL: d.SessionTTL,
 	}
 	return &Module{
-		uc: useCases(d, p, issuance, dummy),
+		keys: keys,
+		uc:   useCases(d, p, issuance, dummy),
 		settings: httpadapter.Settings{
 			Limits: httpadapter.Limits{
 				Limiter:      d.RateLimits.Limiter,
@@ -165,6 +167,13 @@ func signingKeys(d Deps) (*signing.Keys, error) {
 		return nil, fmt.Errorf("auth.jwt.private_key_file: %w", err)
 	}
 	return keys, nil
+}
+
+// DerivedKey returns the key derived from the signing key for info: another
+// module's secret of its own, such as the workspace invitations' MAC key
+// (M2/P3 design 3.2). bootstrap hands it over; it is never logged.
+func (m *Module) DerivedKey(info string) []byte {
+	return m.keys.Derive(info)
 }
 
 // PublicOperations are the module's routes that need no token.

@@ -87,6 +87,99 @@ func TestWaitForLockWaitsOnCountsTheRowsOfItsTable(t *testing.T) {
 	}
 }
 
+// WaitForKeyWaitOn counts the INSERTs that wait for the transaction that
+// inserted the same key into its table: a wait WaitForLockWaitsOn does not
+// see, having no tuple lock. It does not count a wait for a row of its
+// table, though the waiter has written the table; a key's wait on another
+// table by a transaction that has read its table; or a wait for an advisory
+// lock by a transaction that has written its table. Each case waits in a
+// database of its own, and WaitForLockWaits proves it waits, so it fails
+// for the kind of its wait.
+func TestWaitForKeyWaitOnCountsTheKeysWaitsOnItsTable(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	prepared := pgtest.NewDatabase(t)
+	setup := connect(t, prepared)
+	if _, err := setup.Exec(ctx, "CREATE TABLE a (id int PRIMARY KEY, n int); CREATE TABLE b (id int PRIMARY KEY); INSERT INTO a VALUES (1, 0)"); err != nil {
+		t.Fatal(err)
+	}
+	if err := setup.Close(ctx); err != nil {
+		t.Fatal(err)
+	}
+	key, row, other, advisory := pgtest.NewDatabaseFrom(t, prepared), pgtest.NewDatabaseFrom(t, prepared),
+		pgtest.NewDatabaseFrom(t, prepared), pgtest.NewDatabaseFrom(t, prepared)
+	holdAndWaitIn(t, key, "INSERT INTO a VALUES (2, 0)", "INSERT INTO a VALUES (2, 0)", 2)
+	holdAndWaitIn(t, row, "UPDATE a SET n = 1 WHERE id = 1", "INSERT INTO a VALUES (3, 0); UPDATE a SET n = 2 WHERE id = 1", 1)
+	holdAndWaitIn(t, other, "INSERT INTO b VALUES (2)", "SELECT count(*) FROM a; INSERT INTO b VALUES (2)", 1)
+	holdAndWaitIn(t, advisory, "SELECT pg_advisory_xact_lock(1)", "INSERT INTO a VALUES (3, 0); SELECT pg_advisory_xact_lock(1)", 1)
+
+	keyPool := newPool(t, key)
+	pgtest.WaitForKeyWaitOn(t, keyPool, "a", 2, 10*time.Second)
+	three := fatalOf(func(tb testing.TB) { pgtest.WaitForKeyWaitOn(tb, keyPool, "a", 3, 300*time.Millisecond) })
+	rows := fatalOf(func(tb testing.TB) { pgtest.WaitForLockWaitsOn(tb, keyPool, "a", 1, 300*time.Millisecond) })
+	if three != "2 statement(s) waited for a key of a within 300ms, want at least 3" ||
+		rows != "0 statement(s) waited for a row lock of a within 300ms, want at least 1" {
+		t.Errorf("3 key waits failed with %q, a row lock with %q; want both to fail at their deadline", three, rows)
+	}
+	for _, tt := range []struct{ name, url string }{
+		{"a row of the table, by a writer of it", row},
+		{"a key of another table, by a reader of it", other},
+		{"an advisory lock, by a writer of it", advisory},
+	} {
+		pool := newPool(t, tt.url)
+		pgtest.WaitForLockWaits(t, pool, 1, 10*time.Second)
+		if failed := fatalOf(func(tb testing.TB) { pgtest.WaitForKeyWaitOn(tb, pool, "a", 1, 300*time.Millisecond) }); failed !=
+			"0 statement(s) waited for a key of a within 300ms, want at least 1" {
+			t.Errorf("%s: WaitForKeyWaitOn failed with %q, want it to fail at its deadline", tt.name, failed)
+		}
+	}
+	if failed := fatalOf(func(tb testing.TB) { pgtest.WaitForKeyWaitOn(tb, keyPool, "nope", 1, 300*time.Millisecond) }); failed !=
+		`pgtest: no table "nope"` {
+		t.Errorf("WaitForKeyWaitOn(nope) failed with %q, want no table", failed)
+	}
+}
+
+// holdAndWaitIn makes a connection to url run held in a transaction, and n
+// others run waits each in its own after it, until the test ends.
+func holdAndWaitIn(t *testing.T, url, held, waits string, n int) {
+	t.Helper()
+	tx, err := connect(t, url).Begin(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(context.Background(), held); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	done := make(chan error, n)
+	for range n {
+		waiter := connect(t, url)
+		go func() {
+			wtx, err := waiter.Begin(ctx)
+			if err == nil {
+				_, err = wtx.Exec(ctx, waits)
+			}
+			if err == nil {
+				err = wtx.Rollback(ctx)
+			}
+			done <- err
+		}()
+	}
+	// Runs before the connections close: the holder rolls back, and the
+	// waiters go on.
+	t.Cleanup(func() {
+		defer cancel()
+		if err := tx.Rollback(context.Background()); err != nil {
+			t.Error(err)
+		}
+		for range n {
+			if err := <-done; err != nil {
+				t.Errorf("a waiting connection: %v", err)
+			}
+		}
+	})
+}
+
 // holdRowAndWait makes a connection to url wait for a row of users that
 // another one holds, until the test ends.
 func holdRowAndWait(t *testing.T, url string) {

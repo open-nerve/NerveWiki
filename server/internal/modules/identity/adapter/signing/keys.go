@@ -50,9 +50,16 @@ func EphemeralKeys() *Keys {
 }
 
 func newKeys(private ed25519.PrivateKey) (*Keys, error) {
-	mac, err := hkdf.Key(sha256.New, private.Seed(), nil, macInfo, 32)
-	if err != nil {
-		return nil, fmt.Errorf("derive the MAC key: %w", err)
-	}
-	return &Keys{private: private, public: private.Public().(ed25519.PublicKey), mac: mac}, nil
+	k := &Keys{private: private, public: private.Public().(ed25519.PublicKey)}
+	k.mac = k.Derive(macInfo)
+	return k, nil
+}
+
+// Derive returns the 32-byte key HKDF-SHA256 derives from the signing key's
+// seed for info: a key of its own for each use, which reveals nothing of
+// the signing key or of another use's key. A new signing key changes them
+// all.
+func (k *Keys) Derive(info string) []byte {
+	key, _ := hkdf.Key(sha256.New, k.private.Seed(), nil, info, 32) // 32 bytes of SHA-256: never fails
+	return key
 }

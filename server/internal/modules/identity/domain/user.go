@@ -80,7 +80,7 @@ func CheckOnboardingStep(step string) error {
 func NewAccount(rules *PasswordRules, email, password string) (string, error) {
 	email = shared.NormalizeEmail(email)
 	var fields []shared.FieldError
-	if f := checkEmail("email", email); f != nil {
+	if f := shared.CheckEmail("email", email); f != nil {
 		fields = append(fields, *f)
 	}
 	if f := rules.Check("password", password, email); f != nil {
@@ -97,23 +97,10 @@ func NewAccount(rules *PasswordRules, email, password string) (string, error) {
 // validation_failed on field.
 func NewEmail(field, email string) (string, error) {
 	email = shared.NormalizeEmail(email)
-	if f := checkEmail(field, email); f != nil {
+	if f := shared.CheckEmail(field, email); f != nil {
 		return "", shared.Invalid(*f)
 	}
 	return email, nil
-}
-
-// checkEmail checks a normalized address.
-func checkEmail(field, email string) *shared.FieldError {
-	switch {
-	case email == "":
-		return &shared.FieldError{Field: field, Code: shared.FieldRequired, Message: "is required"}
-	case utf8.RuneCountInString(email) > shared.MaxEmailLength:
-		return &shared.FieldError{Field: field, Code: shared.FieldTooLong, Message: "must be at most 255 characters"}
-	case !shared.ValidEmail(email):
-		return &shared.FieldError{Field: field, Code: shared.FieldInvalidFormat, Message: "is not a valid e-mail address"}
-	}
-	return nil
 }
 
 // DisplayNameFromEmail is the display name a new account gets (M1/P1 design

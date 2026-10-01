@@ -354,3 +354,66 @@ func TestEndMemberships(t *testing.T) {
 		t.Errorf("ending an ended membership changed it: %+v", r)
 	}
 }
+
+// The account's membership of the workspace, ended or not; a deleted one is
+// none.
+func TestFindMembership(t *testing.T) {
+	ctx := context.Background()
+	s, pool := newStore(t)
+	alice := newAccount(t, pool, "alice@corp.com")
+	bob := newAccount(t, pool, "bob@corp.com")
+	carol := newAccount(t, pool, "carol@corp.com")
+	acme := newWorkspace(t, s, "acme", "Acme", alice)
+	gone := newWorkspace(t, s, "gone", "Gone", alice)
+	active := addMember(t, s, acme.ID, bob, shared.WorkspaceGuest, alice)
+	ended := addMember(t, s, acme.ID, carol, shared.WorkspaceMember, alice)
+	exec(t, pool, "UPDATE workspace_members SET ended_at = $2 WHERE id = $1", ended, now())
+	deleted := addMember(t, s, gone.ID, bob, shared.WorkspaceMember, alice)
+	exec(t, pool, "UPDATE workspace_members SET deleted_at = $2 WHERE id = $1", deleted, now())
+
+	for _, tt := range []struct {
+		name   string
+		user   uuid.UUID
+		want   domain.Member
+		active bool
+	}{
+		{"active", bob, domain.Member{ID: active, WorkspaceID: acme.ID, UserID: bob, Role: shared.WorkspaceGuest, CreatedAt: now()}, true},
+		{"ended", carol, domain.Member{ID: ended, WorkspaceID: acme.ID, UserID: carol, Role: shared.WorkspaceMember, CreatedAt: now()}, false},
+	} {
+		if got, ok, err := s.FindMembership(ctx, acme.ID, tt.user); err != nil || got != tt.want || ok != tt.active {
+			t.Errorf("FindMembership(%s) = %+v, %v, %v; want %+v, %v", tt.name, got, ok, err, tt.want, tt.active)
+		}
+	}
+	for name, ids := range map[string][2]uuid.UUID{
+		"deleted": {gone.ID, bob}, "of another workspace": {gone.ID, carol}, "none": {acme.ID, uuid.NewV7()},
+	} {
+		if got, _, err := s.FindMembership(ctx, ids[0], ids[1]); !errors.Is(err, app.ErrNotFound) {
+			t.Errorf("FindMembership(%s) = %+v, %v; want ErrNotFound", name, got, err)
+		}
+	}
+}
+
+// A restored membership is the same row, active again with the new role;
+// it keeps when the account first joined.
+func TestRestoreMember(t *testing.T) {
+	ctx := context.Background()
+	s, pool := newStore(t)
+	alice := newAccount(t, pool, "alice@corp.com")
+	bob := newAccount(t, pool, "bob@corp.com")
+	acme := newWorkspace(t, s, "acme", "Acme", alice)
+	id := addMember(t, s, acme.ID, bob, shared.WorkspaceMember, alice)
+	exec(t, pool, "UPDATE workspace_members SET ended_at = $2 WHERE id = $1", id, now())
+
+	if err := s.RestoreMember(ctx, id, shared.WorkspaceGuest, bob, later()); err != nil {
+		t.Fatal(err)
+	}
+
+	got, ok, err := s.FindMembership(ctx, acme.ID, bob)
+	want := domain.Member{ID: id, WorkspaceID: acme.ID, UserID: bob, Role: shared.WorkspaceGuest, CreatedAt: now()}
+	if err != nil || !ok || got != want {
+		t.Errorf("after the restore = %+v, %v, %v; want %+v, active", got, ok, err, want)
+	}
+	if r := readMember(t, pool, id); r.EndedAt != nil || r.UpdatedBy != bob || !r.UpdatedAt.Equal(later()) {
+		t.Errorf("the row: %+v; want active, updated by bob at %v", r, later())
+	}
+}

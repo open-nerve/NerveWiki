@@ -321,3 +321,18 @@ func TestRefreshTokenMACKnownAnswer(t *testing.T) {
 		t.Errorf("Tag() = %s, want %s", got, want)
 	}
 }
+
+// Each use gets a key of its own; the refresh tokens' MAC is one of them.
+func TestDerive(t *testing.T) {
+	k := testKeys(t)
+	a, b := k.Derive("nervewiki test-a v1"), k.Derive("nervewiki test-b v1")
+	if len(a) != 32 || bytes.Equal(a, b) || !bytes.Equal(a, k.Derive("nervewiki test-a v1")) {
+		t.Errorf("Derive() = %x and %x, want two stable 32-byte keys that differ", a, b)
+	}
+	if !bytes.Equal(k.mac, k.Derive(macInfo)) {
+		t.Error("the refresh tokens' MAC key is not Derive(macInfo)")
+	}
+	if bytes.Equal(a, EphemeralKeys().Derive("nervewiki test-a v1")) {
+		t.Error("another signing key derived the same key")
+	}
+}
