@@ -53,10 +53,11 @@ type handler struct {
 func (h handler) GetInstance(context.Context, gen.GetInstanceRequestObject) (gen.GetInstanceResponseObject, error) {
 	info := h.uc.GetInfo.Execute()
 	return gen.GetInstance200JSONResponse{
-		Product:       info.Product,
-		Version:       info.Version,
-		Commit:        info.Commit,
-		APIVersion:    gen.InstanceInfoAPIVersion(info.APIVersion),
-		SignupEnabled: info.SignupEnabled,
+		Product:                  info.Product,
+		Version:                  info.Version,
+		Commit:                   info.Commit,
+		APIVersion:               gen.InstanceInfoAPIVersion(info.APIVersion),
+		SignupEnabled:            info.SignupEnabled,
+		WorkspaceCreationEnabled: info.WorkspaceCreationEnabled,
 	}, nil
 }

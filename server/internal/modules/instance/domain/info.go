@@ -22,4 +22,7 @@ type Info struct {
 	APIVersion string
 	// SignupEnabled is auth.signup_enabled: whether anyone may register.
 	SignupEnabled bool
+	// WorkspaceCreationEnabled is workspace.creation_enabled: whether
+	// accounts may create workspaces.
+	WorkspaceCreationEnabled bool
 }

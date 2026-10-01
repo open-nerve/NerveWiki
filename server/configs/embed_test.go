@@ -66,6 +66,7 @@ func TestBuiltInProfiles(t *testing.T) {
 					Password:               tt.argon2,
 				},
 				RateLimit: tt.limits,
+				Workspace: config.WorkspaceConfig{CreationEnabled: true},
 				Jobs:      config.JobsConfig{ShutdownTimeout: 10 * time.Second},
 				Log:       config.LogConfig{Level: tt.level, Format: tt.format},
 			}

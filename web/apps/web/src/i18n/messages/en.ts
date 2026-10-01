@@ -116,6 +116,10 @@ export const en = {
   "problem.identity.account_deactivated": "This account is deactivated. Ask the server's administrator to activate it.",
   "problem.identity.current_password_incorrect": "The current password is incorrect.",
   "problem.identity.api_token_not_found": "This token no longer exists.",
+  "problem.workspace.not_found": "This workspace does not exist, or you are not a member of it.",
+  "problem.workspace.creation_disabled":
+    "Creating workspaces is disabled on this server. Ask the server's administrator.",
+  "problem.workspace.slug_taken": "Another workspace already has this address.",
   "problem.network": "Cannot reach the server. Check the connection and try again.",
   "problem.unavailable": "Cannot reach the server for now. You are still signed in; try again in a moment.",
   "problem.storage":

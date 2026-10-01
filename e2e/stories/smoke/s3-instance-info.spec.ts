@@ -12,5 +12,7 @@ test("S3: a caller reads the instance information with the typed client", async 
     api_version: "v0",
     // The test configuration opens sign-up; prod's closes it.
     signup_enabled: true,
+    // Every profile lets accounts create workspaces.
+    workspace_creation_enabled: true,
   });
 });

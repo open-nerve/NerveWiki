@@ -15,15 +15,19 @@ type Module struct {
 	uc httpadapter.UseCases
 }
 
-// Deps are what bootstrap gives the module.
+// Deps are what bootstrap gives the module: the parts of the
+// configuration GET /api/v0/instance reports.
 type Deps struct {
-	SignupEnabled bool // auth.signup_enabled
+	SignupEnabled            bool // auth.signup_enabled
+	WorkspaceCreationEnabled bool // workspace.creation_enabled
 }
 
 // New wires the module: GetInfo reads the build of the running binary.
 func New(d Deps) *Module {
 	return &Module{uc: httpadapter.UseCases{
-		GetInfo: app.NewGetInfo(buildinfo.Source{}, d.SignupEnabled),
+		GetInfo: app.NewGetInfo(buildinfo.Source{}, app.Settings{
+			SignupEnabled: d.SignupEnabled, WorkspaceCreationEnabled: d.WorkspaceCreationEnabled,
+		}),
 	}}
 }
 

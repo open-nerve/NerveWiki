@@ -50,6 +50,9 @@ type InstanceInfo struct {
 	//
 	// Examples: 0.1.0-dev
 	Version string `json:"version"`
+
+	// WorkspaceCreationEnabled Whether accounts may create workspaces (workspace.creation_enabled); when off, the server's administrator creates them.
+	WorkspaceCreationEnabled bool `json:"workspace_creation_enabled"`
 }
 
 // InstanceInfoAPIVersion Version of this HTTP API; every path starts with /api/{api_version}.

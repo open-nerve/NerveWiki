@@ -12,8 +12,8 @@ paths:
       summary: Describe this instance
       description: >-
         Reports the product, the build and the API version this instance
-        runs, and whether it is open for sign-up. Public: needs no
-        authentication.
+        runs, whether it is open for sign-up, and whether accounts may
+        create workspaces. Public: needs no authentication.
       security: []
       x-problem-codes: []
       responses:
@@ -54,7 +54,7 @@ components:
     InstanceInfo:
       type: object
       additionalProperties: false
-      required: [product, version, commit, api_version, signup_enabled]
+      required: [product, version, commit, api_version, signup_enabled, workspace_creation_enabled]
       properties:
         product:
           description: Product name.
@@ -75,4 +75,10 @@ components:
           description: >-
             Whether anyone may register (auth.signup_enabled); when off, the
             server's administrator creates the accounts.
+          type: boolean
+        workspace_creation_enabled:
+          description: >-
+            Whether accounts may create workspaces
+            (workspace.creation_enabled); when off, the server's administrator
+            creates them.
           type: boolean

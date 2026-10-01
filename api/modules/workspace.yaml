@@ -1,0 +1,202 @@
+# workspace 模块的接口：工作区、成员与邀请。生成的 Go 代码在
+# server/internal/modules/workspace/adapter/http/gen（make gen-go）。
+openapi: 3.1.0
+info:
+  title: Nerve Wiki workspace API
+  version: v0
+paths:
+  /api/v0/workspaces:
+    get:
+      operationId: listWorkspaces
+      tags: [workspace]
+      summary: List the caller's workspaces
+      description: >-
+        The workspaces the caller is an active member of, with the caller's
+        role in each, by name. The list is not paged.
+      security: [{ bearer: [] }]
+      x-problem-codes: []
+      responses:
+        "200":
+          description: The caller's workspaces.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceList"
+        default:
+          $ref: "#/components/responses/Problem"
+    post:
+      operationId: createWorkspace
+      tags: [workspace]
+      summary: Create a workspace
+      description: >-
+        Creates a workspace whose admin is the caller. While creating
+        workspaces is off on the instance (GET /instance answers
+        workspace_creation_enabled), it answers workspace.creation_disabled
+        before the values are looked at; the server's administrator creates
+        workspaces with nervewiki workspaces create. A slug another workspace
+        has is workspace.slug_taken; a reserved one is a problem of the slug
+        field (not_allowed).
+      security: [{ bearer: [] }]
+      x-problem-codes:
+        [workspace.creation_disabled, validation_failed, workspace.slug_taken, identity.account_deactivated]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkspaceCreate"
+      responses:
+        "201":
+          description: The workspace, with the caller as its admin.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Workspace"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v0/workspaces/{slug}:
+    parameters:
+      - $ref: "#/components/parameters/Slug"
+    get:
+      operationId: getWorkspace
+      tags: [workspace]
+      summary: Get a workspace
+      description: >-
+        The workspace, with the caller's role. A workspace that does not
+        exist, is deleted, or that the caller is no active member of is
+        workspace.not_found alike.
+      security: [{ bearer: [] }]
+      x-problem-codes: [workspace.not_found]
+      responses:
+        "200":
+          description: The workspace.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Workspace"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v0/workspace-slugs/{slug}:
+    parameters:
+      - $ref: "#/components/parameters/Slug"
+    get:
+      operationId: checkWorkspaceSlug
+      tags: [workspace]
+      summary: Tell whether a slug can name a new workspace
+      description: >-
+        Whether a new workspace can take the slug, and if not why: invalid
+        (not 1–48 of a–z, 0–9, _ and -), reserved (a path of the site), or
+        taken (a workspace not deleted has it).
+      security: [{ bearer: [] }]
+      x-problem-codes: []
+      responses:
+        "200":
+          description: Whether the slug is free.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SlugAvailability"
+        default:
+          $ref: "#/components/responses/Problem"
+components:
+  # 与 api/openapi.yaml 的相同：打包时丢掉模块文件的 securitySchemes，oapi-codegen 读这一份
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+  parameters:
+    Slug:
+      name: slug
+      in: path
+      required: true
+      description: >-
+        The workspace's slug. It carries no pattern here: a slug spelled
+        wrong names no workspace, which the operation answers itself.
+      schema:
+        type: string
+  responses:
+    Problem:
+      description: Error (RFC 9457 problem details).
+      headers:
+        Retry-After:
+          description: >-
+            Whole seconds to wait before trying again, rounded up; sent with
+            rate_limited and server_busy.
+          schema:
+            type: integer
+            minimum: 1
+        WWW-Authenticate:
+          description: >-
+            Sent with every 401 (RFC 9110 15.5.2): Bearer error="invalid_token"
+            (RFC 6750 3) when the bearer token sent is refused before the
+            operation runs, being invalid or expired; plain Bearer for every
+            other 401, including a credential that the operation finds revoked
+            while it runs.
+          schema:
+            type: string
+      content:
+        application/problem+json:
+          schema:
+            $ref: "../common.yaml#/components/schemas/Problem"
+  schemas:
+    WorkspaceRole:
+      description: >-
+        A member's role: admin manages the workspace and its members, member
+        and guest take part. Rules compare roles by set, never by order.
+      type: string
+      enum: [admin, member, guest]
+    Workspace:
+      description: A workspace, with the caller's role in it.
+      type: object
+      additionalProperties: false
+      required: [id, slug, name, role, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        slug:
+          description: The workspace's address segment, fixed once created.
+          type: string
+        name:
+          type: string
+        role:
+          $ref: "#/components/schemas/WorkspaceRole"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    WorkspaceList:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Workspace"
+    WorkspaceCreate:
+      type: object
+      additionalProperties: false
+      required: [name, slug]
+      properties:
+        name:
+          description: 1–80 characters after the surrounding blanks are trimmed, without control characters.
+          type: string
+        slug:
+          description: >-
+            1–48 of a–z, 0–9, _ and -, not a reserved name; it cannot be
+            changed later.
+          type: string
+    SlugAvailability:
+      type: object
+      additionalProperties: false
+      required: [available]
+      properties:
+        available:
+          type: boolean
+        reason:
+          description: Why a new workspace cannot take the slug; absent when it can.
+          type: string
+          enum: [invalid, reserved, taken]

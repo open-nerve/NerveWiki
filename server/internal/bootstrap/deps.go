@@ -9,11 +9,13 @@ import (
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/identity"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/instance"
+	"github.com/open-nerve/NerveWiki/server/internal/modules/workspace"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/clock"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/ratelimit"
+	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
 // The Deps of each module as serve builds them from the configuration: one
@@ -51,7 +53,21 @@ func identityDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, li
 // instanceDeps are instance's: what GET /instance reports of the
 // configuration.
 func instanceDeps(cfg config.Config) instance.Deps {
-	return instance.Deps{SignupEnabled: cfg.Auth.SignupEnabled}
+	return instance.Deps{SignupEnabled: cfg.Auth.SignupEnabled, WorkspaceCreationEnabled: cfg.Workspace.CreationEnabled}
+}
+
+// workspaceDeps are workspace's: the decisions of the access module, and
+// identity's share of the account row for the memberships it grants.
+func workspaceDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, authorizer shared.Authorizer) workspace.Deps {
+	return workspace.Deps{
+		Pool:            pool,
+		Tx:              postgres.NewTxManager(pool, cfg.Database.CommitTimeout),
+		Clock:           clock.System{},
+		Logger:          logger,
+		Authorizer:      authorizer,
+		Accounts:        identity.NewAccounts(pool),
+		CreationEnabled: cfg.Workspace.CreationEnabled,
+	}
 }
 
 // apiConfig is the per-route middlewares' configuration: the modules'

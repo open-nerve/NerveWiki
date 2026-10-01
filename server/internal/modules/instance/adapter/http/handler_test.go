@@ -49,12 +49,13 @@ func get(t *testing.T, uc httpadapter.UseCases, path string) (*http.Response, st
 }
 
 func TestGetInstanceMatchesTheContract(t *testing.T) {
-	for _, signup := range []bool{true, false} {
-		getInfo := app.NewGetInfo(fixedSource{Version: "1.2.3", Commit: "4f2a9c1"}, signup)
+	for _, settings := range []app.Settings{{SignupEnabled: true}, {WorkspaceCreationEnabled: true}} {
+		getInfo := app.NewGetInfo(fixedSource{Version: "1.2.3", Commit: "4f2a9c1"}, settings)
 
 		res, body := get(t, httpadapter.UseCases{GetInfo: getInfo}, "/api/v0/instance")
 
-		want := fmt.Sprintf(`{"api_version":"v0","commit":"4f2a9c1","product":"Nerve Wiki","signup_enabled":%t,"version":"1.2.3"}`, signup) + "\n"
+		want := fmt.Sprintf(`{"api_version":"v0","commit":"4f2a9c1","product":"Nerve Wiki","signup_enabled":%t,"version":"1.2.3",`+
+			`"workspace_creation_enabled":%t}`, settings.SignupEnabled, settings.WorkspaceCreationEnabled) + "\n"
 		if res.StatusCode != http.StatusOK || body != want {
 			t.Errorf("GET /api/v0/instance = %d %s, want 200 %s", res.StatusCode, body, want)
 		}

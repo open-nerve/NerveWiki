@@ -11,6 +11,8 @@ tags:
     description: Accounts, sign-in, sessions and personal access tokens.
   - name: instance
     description: What this instance runs.
+  - name: workspace
+    description: Workspaces, their members and invitations.
 paths:
   /api/v0/auth/register:
     post:
@@ -295,7 +297,7 @@ paths:
       tags:
         - instance
       summary: Describe this instance
-      description: 'Reports the product, the build and the API version this instance runs, and whether it is open for sign-up. Public: needs no authentication.'
+      description: 'Reports the product, the build and the API version this instance runs, whether it is open for sign-up, and whether accounts may create workspaces. Public: needs no authentication.'
       security: []
       x-problem-codes: []
       responses:
@@ -305,6 +307,96 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InstanceInfo'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v0/workspaces:
+    get:
+      operationId: listWorkspaces
+      tags:
+        - workspace
+      summary: List the caller's workspaces
+      description: The workspaces the caller is an active member of, with the caller's role in each, by name. The list is not paged.
+      security:
+        - bearer: []
+      x-problem-codes: []
+      responses:
+        '200':
+          description: The caller's workspaces.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkspaceList'
+        default:
+          $ref: '#/components/responses/Problem'
+    post:
+      operationId: createWorkspace
+      tags:
+        - workspace
+      summary: Create a workspace
+      description: Creates a workspace whose admin is the caller. While creating workspaces is off on the instance (GET /instance answers workspace_creation_enabled), it answers workspace.creation_disabled before the values are looked at; the server's administrator creates workspaces with nervewiki workspaces create. A slug another workspace has is workspace.slug_taken; a reserved one is a problem of the slug field (not_allowed).
+      security:
+        - bearer: []
+      x-problem-codes:
+        - workspace.creation_disabled
+        - validation_failed
+        - workspace.slug_taken
+        - identity.account_deactivated
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkspaceCreate'
+      responses:
+        '201':
+          description: The workspace, with the caller as its admin.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Workspace'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v0/workspaces/{slug}:
+    parameters:
+      - $ref: '#/components/parameters/Slug'
+    get:
+      operationId: getWorkspace
+      tags:
+        - workspace
+      summary: Get a workspace
+      description: The workspace, with the caller's role. A workspace that does not exist, is deleted, or that the caller is no active member of is workspace.not_found alike.
+      security:
+        - bearer: []
+      x-problem-codes:
+        - workspace.not_found
+      responses:
+        '200':
+          description: The workspace.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Workspace'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v0/workspace-slugs/{slug}:
+    parameters:
+      - $ref: '#/components/parameters/Slug'
+    get:
+      operationId: checkWorkspaceSlug
+      tags:
+        - workspace
+      summary: Tell whether a slug can name a new workspace
+      description: 'Whether a new workspace can take the slug, and if not why: invalid (not 1–48 of a–z, 0–9, _ and -), reserved (a path of the site), or taken (a workspace not deleted has it).'
+      security:
+        - bearer: []
+      x-problem-codes: []
+      responses:
+        '200':
+          description: Whether the slug is free.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SlugAvailability'
         default:
           $ref: '#/components/responses/Problem'
 components:
@@ -587,6 +679,7 @@ components:
         - commit
         - api_version
         - signup_enabled
+        - workspace_creation_enabled
       properties:
         product:
           description: Product name.
@@ -609,6 +702,82 @@ components:
         signup_enabled:
           description: Whether anyone may register (auth.signup_enabled); when off, the server's administrator creates the accounts.
           type: boolean
+        workspace_creation_enabled:
+          description: Whether accounts may create workspaces (workspace.creation_enabled); when off, the server's administrator creates them.
+          type: boolean
+    WorkspaceRole:
+      description: 'A member''s role: admin manages the workspace and its members, member and guest take part. Rules compare roles by set, never by order.'
+      type: string
+      enum:
+        - admin
+        - member
+        - guest
+    Workspace:
+      description: A workspace, with the caller's role in it.
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - slug
+        - name
+        - role
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        slug:
+          description: The workspace's address segment, fixed once created.
+          type: string
+        name:
+          type: string
+        role:
+          $ref: '#/components/schemas/WorkspaceRole'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    WorkspaceList:
+      type: object
+      additionalProperties: false
+      required:
+        - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Workspace'
+    WorkspaceCreate:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+        - slug
+      properties:
+        name:
+          description: 1–80 characters after the surrounding blanks are trimmed, without control characters.
+          type: string
+        slug:
+          description: 1–48 of a–z, 0–9, _ and -, not a reserved name; it cannot be changed later.
+          type: string
+    SlugAvailability:
+      type: object
+      additionalProperties: false
+      required:
+        - available
+      properties:
+        available:
+          type: boolean
+        reason:
+          description: Why a new workspace cannot take the slug; absent when it can.
+          type: string
+          enum:
+            - invalid
+            - reserved
+            - taken
   responses:
     Problem:
       description: Error (RFC 9457 problem details).
@@ -626,6 +795,14 @@ components:
         application/problem+json:
           schema:
             $ref: '#/components/schemas/Problem'
+  parameters:
+    Slug:
+      name: slug
+      in: path
+      required: true
+      description: 'The workspace''s slug. It carries no pattern here: a slug spelled wrong names no workspace, which the operation answers itself.'
+      schema:
+        type: string
 x-problem-codes:
   - bad_request
   - payload_too_large
