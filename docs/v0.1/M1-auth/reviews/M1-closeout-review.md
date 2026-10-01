@@ -81,3 +81,5 @@ M1 总设计第 8 节"暂定"的约定经审查者对照代码逐条核实（加
 
 - 修复在分支 `m1-closeout`（`f8a9086`）：本地 `make check`（vitest 415 个）、`make gen-check`、`make e2e`（47 个；另跑 `--repeat-each 3`，141 个）、`make image-smoke`（在克隆上，`modified=false`）为绿；上文的反向对照都按预期失败，改动全部还原。
 - 修复后的持续集成（run 36786129512）四个任务为绿。
+
+收尾之后另有一轮[对抗性审查](M1-codex-adversarial-review.md)（Codex）：6 项 Minor 与 5 项设计质疑，处置见该文第 9 节。
