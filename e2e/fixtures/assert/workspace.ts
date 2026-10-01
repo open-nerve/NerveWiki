@@ -214,6 +214,15 @@ export async function expectMembership(
   expect(rows).toEqual([{ state, joined: joinedAt === undefined ? null : true }]);
 }
 
+/** When userId's membership of the workspace id ended, as reactivate-member prints it: to the second, in UTC. */
+export async function membershipEndedAt(db: Database, id: string, userId: string): Promise<string> {
+  const [row] = await db.query<{ ended_at: Date }>(
+    "SELECT ended_at FROM workspace_members WHERE workspace_id = $1 AND user_id = $2",
+    [id, userId]
+  );
+  return (row?.ended_at ?? new Date(0)).toISOString().replace(/\.\d{3}Z$/, "Z");
+}
+
 /**
  * workspaces, workspace_members and workspace_invitations: nothing is left
  * of the workspaces, their members and invitations, nor of the

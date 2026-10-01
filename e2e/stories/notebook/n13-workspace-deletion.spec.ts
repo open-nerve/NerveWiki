@@ -1,15 +1,31 @@
-import { expectNotebooksDeletedWith } from "../../fixtures/assert/notebook";
+import type { ApiClient } from "@nervewiki/api-client";
+
+import { expectAuditEventsDeletedWith, expectNotebooksDeletedWith } from "../../fixtures/assert/notebook";
 import type { Database } from "../../fixtures/db";
 import { emailFor } from "../../fixtures/auth";
 import { joinAs } from "../../fixtures/invitations";
+import { memberOf, removeMember } from "../../fixtures/members";
 import { createNotebook } from "../../fixtures/notebooks";
+import { takeOver } from "../../fixtures/ownerless";
 import { expect, test } from "../../fixtures/test";
 import { createWorkspace, deleteWorkspace, newTeam, slugFor } from "../../fixtures/workspaces";
 
-// N13, a workspace's deletion takes its notebooks, and the purge clears
-// them (M3 design 3): the notebook part. The audit records come with
-// M3/P3, the page version with M3/P5; the purge is the background job's
-// alone (W12's way: the deletion moved back by SQL).
+// N13, a workspace's deletion takes its notebooks and its audit records,
+// and the purge clears them (M3 design 3). The page version comes with
+// M3/P5; the purge is the background job's alone (W12's way: the deletion
+// moved back by SQL).
+
+/**
+ * Has email join the workspace of slug, create the notebook name, and be removed by credential, its admin, who takes
+ * the notebook over: a notebook with an audit event, and a member's ended membership.
+ */
+async function takenOver(api: ApiClient, credential: string, slug: string, email: string, name: string): Promise<void> {
+  const notebook = await createNotebook(api, await joinAs(api, credential, slug, email, "member"), slug, name);
+  expect((await removeMember(api, credential, (await memberOf(api, credential, slug, email)).id)).response.status).toBe(
+    204
+  );
+  expect((await takeOver(api, credential, notebook.id)).response.status).toBe(200);
+}
 
 /**
  * Moves the deletion of the workspace id and of everything deleted with it back by days, its accepted invitations' too:
@@ -17,6 +33,7 @@ import { createWorkspace, deleteWorkspace, newTeam, slugFor } from "../../fixtur
  */
 async function deletedDaysAgo(db: Database, id: string, days: number): Promise<void> {
   const ago = `now() - make_interval(days => ${days})`;
+  await db.query(`UPDATE notebook_audit_events SET deleted_at = ${ago} WHERE workspace_id = $1`, [id]);
   await db.query(
     `UPDATE notebook_members SET deleted_at = ${ago} WHERE notebook_id IN (SELECT id FROM notebooks WHERE workspace_id = $1)`,
     [id]
@@ -31,7 +48,7 @@ async function deletedDaysAgo(db: Database, id: string, days: number): Promise<v
   await db.query(`UPDATE workspaces SET deleted_at = ${ago} WHERE id = $1`, [id]);
 }
 
-test("N13 (API): deleting a workspace deletes its notebooks and their members with it; the purge clears them 60 days on", async ({
+test("N13 (API): deleting a workspace deletes its notebooks, their members and its audit records with it; the purge clears them 60 days on", async ({
   api,
   db,
 }, testInfo) => {
@@ -39,13 +56,17 @@ test("N13 (API): deleting a workspace deletes its notebooks and their members wi
   const memberPat = await joinAs(api, pat, old.slug, emailFor(testInfo, "member"), "member");
   await createNotebook(api, pat, old.slug, "Plans");
   await createNotebook(api, memberPat, old.slug, "Notes", "viewer");
+  await takenOver(api, pat, old.slug, emailFor(testInfo, "leaver"), "Drafts");
   const recent = await createWorkspace(api, pat, "Recent", slugFor(testInfo, "recent"));
   await createNotebook(api, pat, recent.slug, "Kept");
+  await takenOver(api, pat, recent.slug, emailFor(testInfo, "drafter"), "Sketch");
 
   await deleteWorkspace(api, pat, old.slug);
   await deleteWorkspace(api, pat, recent.slug);
-  await expectNotebooksDeletedWith(db, old.id, 2);
-  await expectNotebooksDeletedWith(db, recent.id, 1);
+  await expectNotebooksDeletedWith(db, old.id, 3);
+  await expectNotebooksDeletedWith(db, recent.id, 2);
+  await expectAuditEventsDeletedWith(db, old.id, 1);
+  await expectAuditEventsDeletedWith(db, recent.id, 1);
 
   await deletedDaysAgo(db, old.id, 61);
   await deletedDaysAgo(db, recent.id, 59);
@@ -61,5 +82,10 @@ test("N13 (API): deleting a workspace deletes its notebooks and their members wi
       WHERE n.workspace_id = ANY($1) GROUP BY n.workspace_id`,
     [[old.id, recent.id]]
   );
-  expect(left).toEqual([{ workspace_id: recent.id, notebooks: 1, members: 1 }]);
+  expect(left).toEqual([{ workspace_id: recent.id, notebooks: 2, members: 3 }]);
+  const events = await db.query<{ workspace_id: string; events: number }>(
+    `SELECT workspace_id, count(*)::int AS events FROM notebook_audit_events WHERE workspace_id = ANY($1) GROUP BY workspace_id`,
+    [[old.id, recent.id]]
+  );
+  expect(events).toEqual([{ workspace_id: recent.id, events: 1 }]);
 });
