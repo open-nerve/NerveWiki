@@ -59,21 +59,26 @@ func instanceDeps(cfg config.Config) instance.Deps {
 
 // workspaceDeps are workspace's: the decisions of the access module;
 // identity's share of the account row for the memberships it grants, and
-// its profiles for the member list; the extension points' registrants.
-func workspaceDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, authorizer shared.Authorizer) workspace.Deps {
+// its directory for the member list and the invitations; the invitations'
+// MAC key; the extension points' registrants.
+func workspaceDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, authorizer shared.Authorizer,
+	invitationKey []byte,
+) workspace.Deps {
 	ext := workspaceRegistrants()
 	return workspace.Deps{
-		Pool:                     pool,
-		Tx:                       postgres.NewTxManager(pool, cfg.Database.CommitTimeout),
-		Clock:                    clock.System{},
-		Logger:                   logger,
-		Authorizer:               authorizer,
-		Accounts:                 identity.NewAccounts(pool),
-		Profiles:                 directory{identity.NewDirectory(pool)},
-		CreationEnabled:          cfg.Workspace.CreationEnabled,
-		MembershipEndVetoers:     ext.endVetoers,
-		MembershipEndSubscribers: ext.endSubscribers,
-		DeletionSubscribers:      ext.deletionSubscribers,
+		Pool:                         pool,
+		Tx:                           postgres.NewTxManager(pool, cfg.Database.CommitTimeout),
+		Clock:                        clock.System{},
+		Logger:                       logger,
+		Authorizer:                   authorizer,
+		Accounts:                     identity.NewAccounts(pool),
+		Directory:                    directory{identity.NewDirectory(pool)},
+		InvitationKey:                invitationKey,
+		CreationEnabled:              cfg.Workspace.CreationEnabled,
+		MembershipEndVetoers:         ext.endVetoers,
+		MembershipEndSubscribers:     ext.endSubscribers,
+		DeletionSubscribers:          ext.deletionSubscribers,
+		MembershipRestoreSubscribers: ext.restoreSubscribers,
 	}
 }
 

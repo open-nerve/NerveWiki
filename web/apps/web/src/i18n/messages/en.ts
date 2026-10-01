@@ -125,6 +125,10 @@ export const en = {
   "problem.workspace.own_membership": "You cannot change or remove your own membership.",
   "problem.workspace.sole_admin":
     "You are the workspace's only admin. Make another member an admin first, or, if no one else is in it, delete the workspace.",
+  "problem.workspace.invitation_not_found":
+    "This invitation no longer works: it may have been accepted or withdrawn, or the link is incomplete.",
+  "problem.workspace.invitation_email_mismatch":
+    "This invitation was sent to another email address. Sign in with that one to accept it.",
   "problem.network": "Cannot reach the server. Check the connection and try again.",
   "problem.unavailable": "Cannot reach the server for now. You are still signed in; try again in a moment.",
   "problem.storage":

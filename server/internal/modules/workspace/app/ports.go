@@ -48,11 +48,13 @@ type WorkspaceCreator interface {
 	AddMember(ctx context.Context, m domain.Member, by uuid.UUID) error
 }
 
-// WorkspaceFinder finds a workspace by its slug.
+// WorkspaceFinder finds a workspace, unlocked.
 type WorkspaceFinder interface {
 	// FindWorkspaceBySlug returns the workspace not deleted with slug;
 	// ErrNotFound when there is none.
 	FindWorkspaceBySlug(ctx context.Context, slug string) (domain.Workspace, error)
+	// FindWorkspaceByID is FindWorkspaceBySlug by the workspace's id.
+	FindWorkspaceByID(ctx context.Context, id uuid.UUID) (domain.Workspace, error)
 }
 
 // MembershipLister lists an account's workspaces.
@@ -77,6 +79,16 @@ type WorkspaceLocker interface {
 	LockWorkspaceByID(ctx context.Context, id uuid.UUID) (domain.Workspace, error)
 }
 
+// WorkspaceSharer locks a workspace row FOR SHARE until the transaction
+// ends: the invitations' writes take it, which run beside each other, while
+// a change of the workspace or of its members waits for them, and they for
+// it (M2/P3 design 3.3). Each returns ErrNotFound when no workspace not
+// deleted matches, a deletion committed while it waited too.
+type WorkspaceSharer interface {
+	ShareWorkspaceBySlug(ctx context.Context, slug string) (domain.Workspace, error)
+	ShareWorkspaceByID(ctx context.Context, id uuid.UUID) (domain.Workspace, error)
+}
+
 // WorkspaceUpdater changes a workspace the transaction has locked.
 type WorkspaceUpdater interface {
 	// RenameWorkspace sets id's name, updated by by at now.
@@ -95,11 +107,20 @@ type MemberFinder interface {
 	ListActiveMembers(ctx context.Context, workspaceID uuid.UUID) ([]domain.Member, error)
 	// CountActiveAdmins counts workspaceID's active admins.
 	CountActiveAdmins(ctx context.Context, workspaceID uuid.UUID) (int, error)
+	// FindMembership returns userID's membership of workspaceID, and
+	// whether it is active: an ended one too; ErrNotFound when there is
+	// none.
+	FindMembership(ctx context.Context, workspaceID, userID uuid.UUID) (domain.Member, bool, error)
 }
 
 // MemberUpdater changes memberships of workspaces the transaction has
 // locked.
 type MemberUpdater interface {
+	// AddMember inserts m, added by by at m.CreatedAt.
+	AddMember(ctx context.Context, m domain.Member, by uuid.UUID) error
+	// RestoreMember makes the ended membership id active again with role,
+	// updated by by at now; when it was first created stays.
+	RestoreMember(ctx context.Context, id uuid.UUID, role shared.WorkspaceRole, by uuid.UUID, now time.Time) error
 	// UpdateMemberRole sets the membership id's role, updated by by at now.
 	UpdateMemberRole(ctx context.Context, id uuid.UUID, role shared.WorkspaceRole, by uuid.UUID, now time.Time) error
 	// EndMemberships ends userID's active memberships of workspaceIDs at
@@ -116,11 +137,19 @@ type Profile struct {
 	Email       string
 }
 
-// MemberProfiles reads accounts' profiles, unlocked: identity's, adapted by
-// bootstrap.
+// MemberProfiles reads accounts' profiles, unlocked: identity's directory,
+// adapted by bootstrap.
 type MemberProfiles interface {
 	// MemberProfiles returns the profiles of the accounts userIDs, by id.
 	MemberProfiles(ctx context.Context, userIDs []uuid.UUID) (map[uuid.UUID]Profile, error)
+}
+
+// AccountFinder finds an account by its address, unlocked: identity's
+// directory.
+type AccountFinder interface {
+	// AccountIDByEmail returns the id of the account of email, a
+	// normalized address, and whether there is one.
+	AccountIDByEmail(ctx context.Context, email string) (uuid.UUID, bool, error)
 }
 
 // InvitationTokens makes and checks the invitations' tokens: the mac
@@ -137,4 +166,33 @@ type InvitationFinder interface {
 	// FindPendingInvitation returns the pending invitation id of a
 	// workspace not deleted; ErrNotFound when there is none.
 	FindPendingInvitation(ctx context.Context, id uuid.UUID) (domain.Invitation, error)
+	// ListPendingInvitations returns workspaceID's pending invitations,
+	// newest first.
+	ListPendingInvitations(ctx context.Context, workspaceID uuid.UUID) ([]domain.Invitation, error)
+}
+
+// InvitationUpdater changes the invitations of workspaces the transaction
+// has locked. Lock order: an invitation's row after its workspace's, before
+// any membership's (M2 design 8).
+type InvitationUpdater interface {
+	// LockPendingInvitation reads the pending invitation id again, locked
+	// FOR UPDATE until the transaction ends; ErrNotFound when it is no
+	// longer pending, an acceptance or a deletion committed while it
+	// waited too.
+	LockPendingInvitation(ctx context.Context, id uuid.UUID) (domain.Invitation, error)
+	// CreateInvitation inserts inv, created by by at inv.CreatedAt:
+	// domain.ErrAlreadyInvited when its workspace has a pending invitation
+	// to its address.
+	CreateInvitation(ctx context.Context, inv domain.Invitation, by uuid.UUID) error
+	// DeleteInvitation deletes the invitation id softly at now, by by.
+	DeleteInvitation(ctx context.Context, id, by uuid.UUID, now time.Time) error
+	// AcceptInvitation marks the invitation id accepted, and deleted, at
+	// now, by by.
+	AcceptInvitation(ctx context.Context, id, by uuid.UUID, now time.Time) error
+	// DeleteInvitationsTo deletes the pending invitations of workspaceIDs
+	// to email softly at now, by by.
+	DeleteInvitationsTo(ctx context.Context, workspaceIDs []uuid.UUID, email string, by uuid.UUID, now time.Time) error
+	// DeleteInvitationsOf deletes every pending invitation of workspaceID
+	// softly at now, by by.
+	DeleteInvitationsOf(ctx context.Context, workspaceID, by uuid.UUID, now time.Time) error
 }

@@ -107,8 +107,8 @@ paths:
       tags: [workspace]
       summary: Delete a workspace
       description: >-
-        Deletes the workspace with every membership of it; only its admins
-        can. No one sees it afterwards, and its slug can name a new workspace
+        Deletes the workspace with every membership of it and its pending
+        invitations; only its admins can. No one sees it afterwards, and its slug can name a new workspace
         at once. A workspace that does not exist, is deleted, or that the
         caller is no active member of is workspace.not_found; a member or a
         guest gets forbidden.
@@ -149,7 +149,9 @@ paths:
       tags: [workspace]
       summary: Leave a workspace
       description: >-
-        Ends the caller's membership of the workspace. The workspace's only
+        Ends the caller's membership of the workspace; pending invitations of
+        the workspace to the caller's address are deleted with it. The
+        workspace's only
         active admin cannot leave it, even alone in it
         (workspace.sole_admin): another member is made an admin first, or the
         workspace is deleted.
@@ -195,8 +197,9 @@ paths:
       tags: [workspace]
       summary: Remove a member
       description: >-
-        Ends the member's membership; only the workspace's admins can, and
-        not their own (workspace.own_membership: an admin leaves instead). A
+        Ends the member's membership, and deletes the workspace's pending
+        invitations to the member's address; only the workspace's admins can,
+        and not their own (workspace.own_membership: an admin leaves instead). A
         membership that does not exist, has ended, or whose workspace the
         caller cannot see is workspace.member_not_found; a member or a guest
         gets forbidden.
@@ -205,6 +208,146 @@ paths:
       responses:
         "204":
           description: The membership has ended.
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v0/workspaces/{slug}/invitations:
+    parameters:
+      - $ref: "#/components/parameters/Slug"
+    get:
+      operationId: listWorkspaceInvitations
+      tags: [workspace]
+      summary: List a workspace's pending invitations
+      description: >-
+        The workspace's pending invitations, newest first, each with the
+        token of its link; only its admins can. A workspace that does not
+        exist, is deleted, or that the caller is no active member of is
+        workspace.not_found; a member or a guest gets forbidden. The list is
+        not paged.
+      security: [{ bearer: [] }]
+      x-problem-codes: [workspace.not_found, forbidden]
+      responses:
+        "200":
+          description: The pending invitations.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceInvitationList"
+        default:
+          $ref: "#/components/responses/Problem"
+    post:
+      operationId: createWorkspaceInvitation
+      tags: [workspace]
+      summary: Invite an e-mail address
+      description: >-
+        Invites an e-mail address to the workspace with a role; only its
+        admins can. The answer holds the token of the invitation's link,
+        which the admin sends: whoever signs in with the address and holds
+        the link can accept it. An address with a pending invitation to the
+        workspace is a problem of the email field (duplicate), and so is an
+        active member's (not_allowed). A workspace that does not exist, is
+        deleted, or that the caller is no active member of is
+        workspace.not_found; a member or a guest gets forbidden; the values
+        are checked after both.
+      security: [{ bearer: [] }]
+      x-problem-codes: [workspace.not_found, forbidden, validation_failed]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkspaceInvitationCreate"
+      responses:
+        "201":
+          description: The pending invitation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceInvitation"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v0/workspace-invitations/{workspace_invitation_id}:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceInvitationID"
+    delete:
+      operationId: deleteWorkspaceInvitation
+      tags: [workspace]
+      summary: Withdraw an invitation
+      description: >-
+        Withdraws a pending invitation, whose link stops working; only the
+        workspace's admins can. An invitation that does not exist, is no
+        longer pending, or whose workspace the caller cannot see is
+        workspace.invitation_not_found; a member or a guest gets forbidden.
+      security: [{ bearer: [] }]
+      x-problem-codes: [workspace.invitation_not_found, forbidden]
+      responses:
+        "204":
+          description: The invitation is withdrawn.
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v0/workspace-invitations/{workspace_invitation_id}/preview:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceInvitationID"
+    post:
+      operationId: previewWorkspaceInvitation
+      tags: [workspace]
+      summary: Show what an invitation's link invites to
+      description: >-
+        The workspace's name and slug, and the role; never the address
+        invited. Anyone holding the link may ask, signed in or not. An
+        invitation that does not exist, is no longer pending, whose workspace
+        is deleted, or whose token is not the link's is
+        workspace.invitation_not_found alike. It is a POST so that the token
+        stays out of URLs and their logs.
+      security: []
+      x-problem-codes: [workspace.invitation_not_found]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InvitationToken"
+      responses:
+        "200":
+          description: What the invitation invites to.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvitationPreview"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v0/workspace-invitations/{workspace_invitation_id}/accept:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceInvitationID"
+    post:
+      operationId: acceptWorkspaceInvitation
+      tags: [workspace]
+      summary: Accept an invitation
+      description: >-
+        Joins the workspace with the invitation's role: the link's token and
+        the caller's address are the credentials, the caller being no member
+        yet. A caller signed in with another address than the one invited
+        gets workspace.invitation_email_mismatch. A caller who is an active
+        member already keeps their role, and the invitation is used up; one
+        whose membership ended has it back, with the invitation's role and
+        when they first joined. An invitation that does not exist, is no
+        longer pending, whose workspace is deleted, or whose token is not the
+        link's is workspace.invitation_not_found alike.
+      security: [{ bearer: [] }]
+      x-problem-codes:
+        [workspace.invitation_not_found, workspace.invitation_email_mismatch, identity.account_deactivated]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InvitationToken"
+      responses:
+        "200":
+          description: The workspace, with the caller's role.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Workspace"
         default:
           $ref: "#/components/responses/Problem"
   /api/v0/workspace-slugs/{slug}:
@@ -250,6 +393,14 @@ components:
       in: path
       required: true
       description: The id of a membership, as the member list answers it; not the account's id.
+      schema:
+        type: string
+        format: uuid
+    WorkspaceInvitationID:
+      name: workspace_invitation_id
+      in: path
+      required: true
+      description: The id of an invitation, as its link carries it.
       schema:
         type: string
         format: uuid
@@ -357,7 +508,7 @@ components:
           description: The account's email; null when the caller is a guest.
           type: [string, "null"]
         created_at:
-          description: When the account joined.
+          description: When the account first joined; a membership restored keeps it.
           type: string
           format: date-time
     WorkspaceMemberList:
@@ -376,6 +527,76 @@ components:
       properties:
         role:
           $ref: "#/components/schemas/WorkspaceRole"
+    WorkspaceInvitation:
+      description: A pending invitation, as the workspace's admins see it.
+      type: object
+      additionalProperties: false
+      required: [id, email, role, token, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          description: The address invited, trimmed and in lower case.
+          type: string
+        role:
+          $ref: "#/components/schemas/WorkspaceRole"
+        token:
+          description: >-
+            The secret of the invitation's link, which the preview and the
+            acceptance take with the id. It is the same each time it is read,
+            until the instance's signing key changes.
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    WorkspaceInvitationList:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkspaceInvitation"
+    WorkspaceInvitationCreate:
+      type: object
+      additionalProperties: false
+      required: [email, role]
+      properties:
+        email:
+          description: The address to invite; stored trimmed and in lower case.
+          type: string
+          format: email
+        role:
+          $ref: "#/components/schemas/WorkspaceRole"
+    InvitationToken:
+      type: object
+      additionalProperties: false
+      required: [token]
+      properties:
+        token:
+          description: The token of the invitation's link.
+          type: string
+    InvitationPreview:
+      description: What an invitation invites to, as anyone holding its link sees it.
+      type: object
+      additionalProperties: false
+      required: [workspace, role]
+      properties:
+        workspace:
+          $ref: "#/components/schemas/InvitedWorkspace"
+        role:
+          $ref: "#/components/schemas/WorkspaceRole"
+    InvitedWorkspace:
+      type: object
+      additionalProperties: false
+      required: [name, slug]
+      properties:
+        name:
+          type: string
+        slug:
+          type: string
     SlugAvailability:
       type: object
       additionalProperties: false

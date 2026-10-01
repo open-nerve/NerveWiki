@@ -1,6 +1,7 @@
 package workspace_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -11,6 +12,7 @@ import (
 	"time"
 	"uuid"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -61,7 +63,8 @@ func (a rolesAuthorizer) Authorize(ctx context.Context, actor shared.Actor, acti
 		return shared.Grant{}, shared.ErrNotVisible
 	}
 	adminsOnly := map[shared.Action]bool{"workspace.update": true, "workspace.delete": true,
-		"workspace_member.update": true, "workspace_member.remove": true}
+		"workspace_member.update": true, "workspace_member.remove": true,
+		"workspace_invitation.list": true, "workspace_invitation.create": true, "workspace_invitation.delete": true}
 	if adminsOnly[action] && role != shared.WorkspaceAdmin {
 		return shared.Grant{}, shared.Forbidden()
 	}
@@ -79,15 +82,49 @@ func (tokenAuth) Authenticate(ctx context.Context, token string) (context.Contex
 	return shared.WithActor(ctx, shared.Actor{UserID: id, SessionID: uuid.NewV7()}), "session:" + token, nil
 }
 
-type noAccounts struct{}
+// sqlAccounts stands in for identity's Accounts: it shares the account's
+// row and reads its address, in the transaction.
+type sqlAccounts struct{ pool *pgxpool.Pool }
 
-func (noAccounts) ShareActiveAccount(context.Context, uuid.UUID) (string, error) { return "", nil }
-
-type noProfiles struct{}
-
-func (noProfiles) MemberProfiles(context.Context, []uuid.UUID) (map[uuid.UUID]workspace.Profile, error) {
-	return nil, nil
+func (a sqlAccounts) ShareActiveAccount(ctx context.Context, id uuid.UUID) (string, error) {
+	var email string
+	err := postgres.DB(ctx, a.pool).QueryRow(ctx, "SELECT email FROM users WHERE id = $1 FOR SHARE", id).Scan(&email)
+	return email, err
 }
+
+// sqlDirectory stands in for identity's directory: unlocked reads of the
+// accounts' rows.
+type sqlDirectory struct{ pool *pgxpool.Pool }
+
+func (d sqlDirectory) MemberProfiles(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]workspace.Profile, error) {
+	rows, err := postgres.DB(ctx, d.pool).Query(ctx, "SELECT id, display_name, email FROM users WHERE id = ANY($1)", ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	profiles := map[uuid.UUID]workspace.Profile{}
+	for rows.Next() {
+		var id uuid.UUID
+		var p workspace.Profile
+		if err := rows.Scan(&id, &p.DisplayName, &p.Email); err != nil {
+			return nil, err
+		}
+		profiles[id] = p
+	}
+	return profiles, rows.Err()
+}
+
+func (d sqlDirectory) AccountIDByEmail(ctx context.Context, email string) (uuid.UUID, bool, error) {
+	var id uuid.UUID
+	err := postgres.DB(ctx, d.pool).QueryRow(ctx, "SELECT id FROM users WHERE email = $1", email).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return uuid.UUID{}, false, nil
+	}
+	return id, err == nil, err
+}
+
+// invitationKey is the MAC key the tests' module signs its invitations with.
+func invitationKey() []byte { return bytes.Repeat([]byte{7}, 32) }
 
 // fixture is acme on a database of its own: alice its admin, bob a member.
 type fixture struct {
@@ -128,7 +165,7 @@ func (f fixture) serve(t *testing.T, change func(*workspace.Deps)) http.Handler 
 	d := workspace.Deps{
 		Pool: f.pool, Tx: postgres.NewTxManager(f.pool, 5*time.Second), Clock: &tickingClock{},
 		Logger: slog.New(slog.DiscardHandler), Authorizer: rolesAuthorizer{facts: workspace.NewMemberships(f.pool)},
-		Accounts: noAccounts{}, Profiles: noProfiles{}, CreationEnabled: true,
+		Accounts: sqlAccounts{f.pool}, Directory: sqlDirectory{f.pool}, InvitationKey: invitationKey(), CreationEnabled: true,
 	}
 	change(&d)
 	router := httpserver.NewRouter(slog.New(slog.DiscardHandler))

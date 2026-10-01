@@ -54,6 +54,12 @@ type UseCases struct {
 	UpdateMember    UpdateMemberUseCase
 	RemoveMember    RemoveMemberUseCase
 	LeaveWorkspace  LeaveWorkspaceUseCase
+
+	ListInvitations   ListInvitationsUseCase
+	CreateInvitation  CreateInvitationUseCase
+	DeleteInvitation  DeleteInvitationUseCase
+	PreviewInvitation PreviewInvitationUseCase
+	AcceptInvitation  AcceptInvitationUseCase
 }
 
 // Register mounts the module's routes on router, the root router from

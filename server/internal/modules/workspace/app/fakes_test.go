@@ -43,8 +43,11 @@ type fakeStore struct {
 	created     []domain.Workspace
 	members     []domain.Member
 	// active are the active memberships, by id, that P2's use cases read
-	// and change.
-	active map[uuid.UUID]domain.Member
+	// and change; ended, the ended ones, that P3's acceptance restores.
+	active, ended map[uuid.UUID]domain.Member
+	// invitations are the pending invitations, by id (P3).
+	invitations         map[uuid.UUID]domain.Invitation
+	createInvitationErr error
 	// onLock, when set, runs as a workspace's row is locked: what another
 	// transaction committed before the lock was granted.
 	onLock func()
@@ -67,7 +70,7 @@ func (f *fakeStore) CreateWorkspace(ctx context.Context, w domain.Workspace, by 
 }
 
 func (f *fakeStore) AddMember(ctx context.Context, m domain.Member, by uuid.UUID) error {
-	f.record(ctx, "AddMember by "+by.String()+" at "+m.CreatedAt.Format(time.RFC3339))
+	f.record(ctx, "AddMember "+string(m.Role)+" by "+by.String()+" at "+m.CreatedAt.Format(time.RFC3339Nano))
 	f.members = append(f.members, m)
 	return nil
 }
@@ -93,15 +96,19 @@ func (f *fakeStore) SlugTaken(ctx context.Context, slug string) (bool, error) {
 }
 
 // fakeAccounts answers ShareActiveAccount with the address of emails, or
-// err, and records the calls.
+// err, and records the calls, in the store's calls too when it has one.
 type fakeAccounts struct {
 	emails map[uuid.UUID]string
 	err    error
 	calls  []string
+	store  *fakeStore
 }
 
 func (f *fakeAccounts) ShareActiveAccount(ctx context.Context, id uuid.UUID) (string, error) {
 	call := "ShareActiveAccount " + id.String()
+	if f.store != nil {
+		f.store.record(ctx, "ShareActiveAccount")
+	}
 	if inTx(ctx) {
 		call += " in tx"
 	}

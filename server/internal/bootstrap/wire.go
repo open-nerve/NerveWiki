@@ -83,9 +83,9 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrati
 	// The access module decides on the facts the workspace module keeps;
 	// the workspace module's use cases call its decisions.
 	authorizer := access.New(access.Deps{Memberships: workspace.NewMemberships(pool)})
-	ws := workspace.New(workspaceDeps(cfg, pool, logger, authorizer))
+	ws := workspace.New(workspaceDeps(cfg, pool, logger, authorizer, invitationKey))
 	api, err := httpserver.NewAPI(apiConfig(cfg, logger, limiter, ident.Authenticator(),
-		slices.Concat(ident.PublicOperations(), inst.PublicOperations()), ident.RequestTimeouts()))
+		slices.Concat(ident.PublicOperations(), inst.PublicOperations(), ws.PublicOperations()), ident.RequestTimeouts()))
 	if err != nil {
 		return nil, err
 	}

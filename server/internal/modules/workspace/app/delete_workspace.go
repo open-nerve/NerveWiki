@@ -13,6 +13,7 @@ type DeleteWorkspaceDeps struct {
 	Locker      WorkspaceLocker
 	Workspaces  WorkspaceUpdater
 	Members     MemberUpdater
+	Invitations InvitationUpdater
 	Subscribers []WorkspaceDeletionSubscriber
 	Auth        shared.Authorizer
 	Tx          shared.TxManager
@@ -20,8 +21,9 @@ type DeleteWorkspaceDeps struct {
 	Logger      *slog.Logger
 }
 
-// DeleteWorkspace deletes a workspace softly, with its members:
-// DELETE /api/v0/workspaces/{slug} (M2/P2 design 3.2, 3.5).
+// DeleteWorkspace deletes a workspace softly, with its members and its
+// pending invitations: DELETE /api/v0/workspaces/{slug} (M2/P2 design 3.2,
+// 3.5; M2/P3 design 3.4).
 type DeleteWorkspace struct {
 	d DeleteWorkspaceDeps
 }
@@ -32,8 +34,8 @@ func NewDeleteWorkspace(d DeleteWorkspaceDeps) *DeleteWorkspace {
 }
 
 // Execute deletes the workspace of slug. Under its row lock and the
-// decision, every membership of it, ended ones too, then the workspace are
-// deleted at one time, which the deletion's subscribers take for their
+// decision, its pending invitations, every membership of it, ended ones
+// too, then the workspace are deleted at one time, in the lock order, which the deletion's subscribers take for their
 // rows, in the same transaction. Its slug is free at once.
 func (d *DeleteWorkspace) Execute(ctx context.Context, slug string) error {
 	actor, err := shared.RequireActor(ctx)
@@ -53,6 +55,9 @@ func (d *DeleteWorkspace) Execute(ctx context.Context, slug string) error {
 			return err
 		}
 		deleted = WorkspaceDeletion{WorkspaceID: w.ID, By: actor.UserID, At: d.d.Clock.Now()}
+		if err := d.d.Invitations.DeleteInvitationsOf(ctx, w.ID, actor.UserID, deleted.At); err != nil {
+			return err
+		}
 		if err := d.d.Members.DeleteMembersOf(ctx, w.ID, actor.UserID, deleted.At); err != nil {
 			return err
 		}

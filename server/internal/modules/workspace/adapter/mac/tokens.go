@@ -33,15 +33,16 @@ func (t Tokens) Token(id uuid.UUID) string {
 	return prefix + base64.RawURLEncoding.EncodeToString(t.tag(id))
 }
 
-// Valid reports whether token is the token of id. It compares in constant
-// time: the time of a comparison would tell a forger how much of a tag is
-// right.
+// Valid reports whether token is the token of id. It decodes strictly, so
+// that a token has one spelling: the last character's unused bits must be
+// zero. It compares in constant time: the time of a comparison would tell a
+// forger how much of a tag is right.
 func (t Tokens) Valid(id uuid.UUID, token string) bool {
 	encoded, ok := strings.CutPrefix(token, prefix)
 	if !ok {
 		return false
 	}
-	tag, err := base64.RawURLEncoding.DecodeString(encoded)
+	tag, err := base64.RawURLEncoding.Strict().DecodeString(encoded)
 	return err == nil && hmac.Equal(tag, t.tag(id))
 }
 

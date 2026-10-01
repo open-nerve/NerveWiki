@@ -10,18 +10,25 @@ import "github.com/open-nerve/NerveWiki/server/internal/platform/httpserver/body
 func BodyShapes() *bodyshape.Table {
 	return &bodyshape.Table{
 		Nodes: []bodyshape.Node{
-			/* 0 */ {Types: bodyshape.Object, Extra: bodyshape.Closed, Items: bodyshape.Open, Props: map[string]int{"role": 1}, Required: []string{"role"}},
+			/* 0 */ {Types: bodyshape.Object, Extra: bodyshape.Closed, Items: bodyshape.Open, Props: map[string]int{"token": 1}, Required: []string{"token"}},
 			/* 1 */ {Types: bodyshape.String, Extra: bodyshape.Open, Items: bodyshape.Open},
-			/* 2 */ {Types: bodyshape.Object, Extra: bodyshape.Closed, Items: bodyshape.Open, Props: map[string]int{"name": 3, "slug": 4}, Required: []string{"name", "slug"}},
+			/* 2 */ {Types: bodyshape.Object, Extra: bodyshape.Closed, Items: bodyshape.Open, Props: map[string]int{"role": 3}, Required: []string{"role"}},
 			/* 3 */ {Types: bodyshape.String, Extra: bodyshape.Open, Items: bodyshape.Open},
-			/* 4 */ {Types: bodyshape.String, Extra: bodyshape.Open, Items: bodyshape.Open},
-			/* 5 */ {Types: bodyshape.Object, Extra: bodyshape.Closed, Items: bodyshape.Open, Props: map[string]int{"name": 6}, Required: []string{"name"}},
+			/* 4 */ {Types: bodyshape.Object, Extra: bodyshape.Closed, Items: bodyshape.Open, Props: map[string]int{"name": 5, "slug": 6}, Required: []string{"name", "slug"}},
+			/* 5 */ {Types: bodyshape.String, Extra: bodyshape.Open, Items: bodyshape.Open},
 			/* 6 */ {Types: bodyshape.String, Extra: bodyshape.Open, Items: bodyshape.Open},
+			/* 7 */ {Types: bodyshape.Object, Extra: bodyshape.Closed, Items: bodyshape.Open, Props: map[string]int{"name": 8}, Required: []string{"name"}},
+			/* 8 */ {Types: bodyshape.String, Extra: bodyshape.Open, Items: bodyshape.Open},
+			/* 9 */ {Types: bodyshape.Object, Extra: bodyshape.Closed, Items: bodyshape.Open, Props: map[string]int{"email": 10, "role": 3}, Required: []string{"email", "role"}},
+			/* 10 */ {Types: bodyshape.String, Extra: bodyshape.Open, Items: bodyshape.Open},
 		},
 		Roots: map[string]int{
-			"PATCH /api/v0/workspace-members/{workspace_member_id}": 0,
-			"PATCH /api/v0/workspaces/{slug}":                       5,
-			"POST /api/v0/workspaces":                               2,
+			"PATCH /api/v0/workspace-members/{workspace_member_id}":                2,
+			"PATCH /api/v0/workspaces/{slug}":                                      7,
+			"POST /api/v0/workspace-invitations/{workspace_invitation_id}/accept":  0,
+			"POST /api/v0/workspace-invitations/{workspace_invitation_id}/preview": 0,
+			"POST /api/v0/workspaces":                                              4,
+			"POST /api/v0/workspaces/{slug}/invitations":                           9,
 		},
 	}
 }

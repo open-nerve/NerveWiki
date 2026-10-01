@@ -22,10 +22,11 @@ import (
 
 // What the matrix prepares. Three workspaces: acme, which the columns
 // target; gone, deleted by its admin, the deleted column's caller, with a
-// member the deleted column's member rows aim at; and other, whose admin is
-// the column that was never a member of acme and where the ended member of
-// acme is still a member: a role read in the wrong workspace lets either
-// into acme.
+// member and an invitation the deleted column's rows aim at; and other,
+// whose admin is the column that was never a member of acme and where the
+// ended member of acme is still a member: a role read in the wrong
+// workspace lets either into acme. acme and gone each have an invitation
+// pending to an address of no account.
 
 // matrixWorkspace is a seeded workspace and the column that is its admin.
 type matrixWorkspace struct {
@@ -58,6 +59,12 @@ func matrixMemberships() []matrixMembership {
 	}
 }
 
+// matrixInvitee is the address acme's and gone's invitations are sent to.
+const matrixInvitee = "invitee@example.com"
+
+// invitedWorkspaces are the workspaces with an invitation seeded.
+func invitedWorkspaces() []string { return []string{"acme", "gone"} }
+
 // emailOf is a column's account.
 func emailOf(c caller) string {
 	return strings.ReplaceAll(string(c), " ", "-") + "@example.com"
@@ -71,15 +78,19 @@ type seeded struct {
 	t           testing.TB
 	workspaces  map[string]uuid.UUID // by slug
 	memberships map[string]uuid.UUID // by slug/caller
+	invitations map[string]uuid.UUID // by slug
 }
 
 func newSeeded() seeded {
-	s := seeded{workspaces: map[string]uuid.UUID{}, memberships: map[string]uuid.UUID{}}
+	s := seeded{workspaces: map[string]uuid.UUID{}, memberships: map[string]uuid.UUID{}, invitations: map[string]uuid.UUID{}}
 	for _, w := range matrixWorkspaces() {
 		s.workspaces[w.slug] = uuid.NewV7()
 	}
 	for _, m := range matrixMemberships() {
 		s.memberships[m.slug+"/"+string(m.c)] = uuid.NewV7()
+	}
+	for _, slug := range invitedWorkspaces() {
+		s.invitations[slug] = uuid.NewV7()
 	}
 	return s
 }
@@ -112,11 +123,26 @@ func (s seeded) adminMembership(slug string) uuid.UUID {
 	return uuid.UUID{}
 }
 
+// invitation is the id of slug's invitation.
+func (s seeded) invitation(slug string) uuid.UUID {
+	id, ok := s.invitations[slug]
+	if !ok {
+		s.t.Helper()
+		s.t.Fatalf("no invitation of %s is seeded", slug)
+	}
+	return id
+}
+
 // workspaceOfRow is the slug of the workspace a seeded row's id is in.
 func (s seeded) workspaceOfRow(id uuid.UUID) (string, bool) {
 	for key, seededID := range s.memberships {
 		if seededID == id {
 			slug, _, _ := strings.Cut(key, "/")
+			return slug, true
+		}
+	}
+	for slug, seededID := range s.invitations {
+		if seededID == id {
 			return slug, true
 		}
 	}
@@ -145,10 +171,12 @@ func (d matrixData) config(t *testing.T, url string, change func(*config.Config)
 }
 
 // prepareMatrix fills a database for the matrix: an account for each
-// column, registered through the API for its token; the workspaces and
-// memberships through SQL, with the ids newSeeded fixed (members join by
-// invitation from M2/P3 on); then, through the API, acme's admin removes the
-// ended member, and gone's admin deletes it. Everything that connected to
+// column, registered through the API for its token; the workspaces,
+// memberships and invitations through SQL, with the ids newSeeded fixed
+// (the coverage check needs them before any database: members joining by
+// invitation would get theirs from the server, M2/P3 design 3.10); then,
+// through the API, acme's admin removes the ended member, and gone's admin
+// deletes it. Everything that connected to
 // the database is closed when it returns, so that it can be copied. A -run
 // that leaves out prepare fails here, not with a 401 in every cell.
 func prepareMatrix(t *testing.T) matrixData {
@@ -178,6 +206,11 @@ func prepareMatrix(t *testing.T) matrixData {
 			exec("INSERT INTO workspace_members (id, workspace_id, user_id, role, created_by_id, updated_by_id, created_at, updated_at) "+
 				"VALUES ($1, $3, "+account+", $4, "+account+", "+account+", $5, $5)",
 				d.seeded.memberships[m.slug+"/"+string(m.c)], emailOf(m.c), d.seeded.workspaces[m.slug], string(m.role), now)
+		}
+		for _, slug := range invitedWorkspaces() {
+			exec("INSERT INTO workspace_invitations (id, workspace_id, email, role, created_by_id, updated_by_id, created_at, updated_at) "+
+				"SELECT $1, w.id, $3, 'member', w.created_by_id, w.created_by_id, $4, $4 FROM workspaces w WHERE w.slug = $2",
+				d.seeded.invitations[slug], slug, matrixInvitee, now)
 		}
 		for _, end := range []struct {
 			by   caller

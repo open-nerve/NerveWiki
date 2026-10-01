@@ -67,14 +67,14 @@ func TestUpdateWorkspaceRefusals(t *testing.T) {
 	}
 }
 
-// The members, then the workspace, at one time, then the subscribers with
-// that time, all in the transaction.
+// The pending invitations, the members, then the workspace, at one time,
+// then the subscribers with that time, all in the transaction.
 func TestDeleteWorkspaceDeletesTheMembersThenTheWorkspace(t *testing.T) {
 	tm := newTeam()
 
 	err := tm.delete().Execute(tm.as(tm.alice), "acme")
 
-	wantCalls := inTxCalls("LockWorkspaceBySlug acme", "Authorize workspace.delete",
+	wantCalls := inTxCalls("LockWorkspaceBySlug acme", "Authorize workspace.delete", "DeleteInvitationsOf"+at(tm.alice),
 		"DeleteMembersOf"+at(tm.alice), "DeleteWorkspace"+at(tm.alice), "WorkspaceDeleted")
 	if err != nil || !slices.Equal(tm.store.calls, wantCalls) {
 		t.Errorf("Execute() = %v after %q; want %q", err, tm.store.calls, wantCalls)

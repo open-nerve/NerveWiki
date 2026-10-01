@@ -4,6 +4,8 @@ import (
 	"context"
 	"time"
 	"uuid"
+
+	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
 // The module's extension points (M2 design 8). The registrants are built
@@ -56,4 +58,21 @@ type WorkspaceDeletion struct {
 // everything back. A deletion has no vetoer (M2 design 4).
 type WorkspaceDeletionSubscriber interface {
 	WorkspaceDeleted(ctx context.Context, d WorkspaceDeletion) error
+}
+
+// MembershipRestore is an ended membership active again, the same row with
+// a new role: by an accepted invitation, or (M2/P4) an admin's
+// reactivation.
+type MembershipRestore struct {
+	WorkspaceID uuid.UUID
+	UserID      uuid.UUID
+	Role        shared.WorkspaceRole
+	By          uuid.UUID // who restores it: the account accepting, or the admin
+	At          time.Time
+}
+
+// MembershipRestoreSubscriber follows a restore, after the membership was
+// written and in its transaction: an error rolls everything back.
+type MembershipRestoreSubscriber interface {
+	MembershipRestored(ctx context.Context, r MembershipRestore) error
 }

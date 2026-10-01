@@ -22,7 +22,13 @@ func TestTokens(t *testing.T) {
 		t.Errorf("Valid(id, its token) = false")
 	}
 	other := uuid.MustParse("0199a2b4-0000-7000-8000-000000000002")
-	tampered := token[:len(token)-1] + map[bool]string{true: "B", false: "A"}[strings.HasSuffix(token, "A")]
+	// The last character holds 2 bits of the tag and 4 unused ones: a
+	// change of a middle one changes the tag, one of the unused bits only
+	// the spelling.
+	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+	middle := len("nwk_inv_") + 10
+	tampered := token[:middle] + string(alphabet[(strings.IndexByte(alphabet, token[middle])+1)%64]) + token[middle+1:]
+	respelled := token[:len(token)-1] + string(alphabet[strings.IndexByte(alphabet, token[len(token)-1])|1])
 	for name, tt := range map[string]struct {
 		tokens macadapter.Tokens
 		id     uuid.UUID
@@ -31,6 +37,7 @@ func TestTokens(t *testing.T) {
 		"another invitation's": {tokens, other, token},
 		"another key's":        {macadapter.New(bytes.Repeat([]byte{8}, 32)), id, token},
 		"a character changed":  {tokens, id, tampered},
+		"its unused bits set":  {tokens, id, respelled},
 		"without its prefix":   {tokens, id, strings.TrimPrefix(token, "nwk_inv_")},
 		"a PAT's prefix":       {tokens, id, "nwk_pat_" + strings.TrimPrefix(token, "nwk_inv_")},
 		"not base64url":        {tokens, id, "nwk_inv_" + strings.Repeat("!", 22)},

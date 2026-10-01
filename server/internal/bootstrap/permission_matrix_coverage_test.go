@@ -17,7 +17,7 @@ import (
 // cell for a column, or whose request is not its operation's, or aims at
 // another workspace than its column's; a row that sends a write without
 // write, whose cells would share the reads' copy; an exemption that names
-// nothing.
+// nothing, or an operation of another kind, or one with a row.
 func matrixViolations(ops []apitest.Operation, exempt matrixExemptions, rows []matrixRow, s seeded) []string {
 	var found []string
 	byID, inMatrix := map[string]apitest.Operation{}, map[string]bool{}
@@ -58,7 +58,8 @@ func matrixViolations(ops []apitest.Operation, exempt matrixExemptions, rows []m
 	}
 	for _, op := range ops {
 		exempted := len(op.Tags) > 0 && !slices.ContainsFunc(op.Tags, func(tag string) bool { return !slices.Contains(exempt.modules, tag) })
-		if _, public := exempt.public[op.ID]; !exempted && !public && !inMatrix[op.ID] {
+		_, public := exempt.public[op.ID]
+		if _, held := exempt.byCredential[op.ID]; !exempted && !public && !held && !inMatrix[op.ID] {
 			found = append(found, fmt.Sprintf("operation %s, tagged %v, has no row", op.ID, op.Tags))
 		}
 	}
@@ -71,6 +72,17 @@ func matrixViolations(ops []apitest.Operation, exempt matrixExemptions, rows []m
 			found = append(found, fmt.Sprintf("operation %s is exempt as public, but needs a token", id))
 		case inMatrix[id]:
 			found = append(found, fmt.Sprintf("operation %s is exempt as public, and has a row", id))
+		}
+	}
+	for _, id := range slices.Sorted(maps.Keys(exempt.byCredential)) {
+		op, named := byID[id]
+		switch {
+		case !named:
+			found = append(found, fmt.Sprintf("the by-credential exemption %s names no operation of the contract", id))
+		case op.Public:
+			found = append(found, fmt.Sprintf("operation %s is exempt by credential, but is public: exempt it as public", id))
+		case inMatrix[id]:
+			found = append(found, fmt.Sprintf("operation %s is exempt by credential, and has a row", id))
 		}
 	}
 	for _, path := range slices.Sorted(maps.Keys(exempt.notTargets)) {
@@ -149,8 +161,11 @@ func TestMatrixViolationsCatchesEachGap(t *testing.T) {
 	slugs := apitest.Operation{ID: "checkWorkspaceSlug", Tags: []string{"workspace"}, Method: http.MethodGet, Path: "/api/v0/workspace-slugs/{slug}"}
 	member := apitest.Operation{ID: "removeMember", Tags: []string{"workspace"}, Method: http.MethodDelete,
 		Path: "/api/v0/workspace-members/{workspace_member_id}"}
+	accept := apitest.Operation{ID: "acceptInvitation", Tags: []string{"workspace"}, Method: http.MethodPost,
+		Path: "/api/v0/invitations/{invitation_id}/accept"}
 	exempt := matrixExemptions{modules: []string{"identity"}, public: map[string]string{"previewInvitation": "the token decides"},
-		notTargets: map[string]string{"/api/v0/workspace-slugs/{slug}": "a slug"}}
+		byCredential: map[string]string{"acceptInvitation": "the token and the address decide"},
+		notTargets:   map[string]string{"/api/v0/workspace-slugs/{slug}": "a slug"}}
 	s := newSeeded().in(t)
 	getRow := matrixRow{op: "getWorkspace", cells: every(cellOK()), request: func(c caller, _ seeded) (string, string, string) {
 		return http.MethodGet, "/api/v0/workspaces/" + workspaceOf(c), ""
@@ -159,7 +174,7 @@ func TestMatrixViolationsCatchesEachGap(t *testing.T) {
 	removeRow := matrixRow{op: "removeMember", write: true, cells: every(cellForbidden()), request: func(c caller, s seeded) (string, string, string) {
 		return http.MethodDelete, "/api/v0/workspace-members/" + s.adminMembership(workspaceOf(c)).String(), ""
 	}}
-	ops := []apitest.Operation{get, me, preview, slugs, member}
+	ops := []apitest.Operation{get, me, preview, slugs, member, accept}
 	rows := []matrixRow{getRow, slugRow, removeRow}
 	if found := matrixViolations(ops, exempt, rows, s); len(found) != 0 {
 		t.Fatalf("a complete matrix: %q", found)
@@ -170,7 +185,8 @@ func TestMatrixViolationsCatchesEachGap(t *testing.T) {
 		return slices.Concat([]matrixRow{changed}, slices.DeleteFunc(slices.Clone(rows), func(x matrixRow) bool { return x.op == r.op }))
 	}
 	exemptWith := func(change func(*matrixExemptions)) matrixExemptions {
-		e := matrixExemptions{modules: slices.Clone(exempt.modules), public: maps.Clone(exempt.public), notTargets: maps.Clone(exempt.notTargets)}
+		e := matrixExemptions{modules: slices.Clone(exempt.modules), public: maps.Clone(exempt.public),
+			byCredential: maps.Clone(exempt.byCredential), notTargets: maps.Clone(exempt.notTargets)}
 		change(&e)
 		return e
 	}
@@ -211,6 +227,15 @@ func TestMatrixViolationsCatchesEachGap(t *testing.T) {
 		{"a public exemption that has a row", ops, exempt, append(slices.Clone(rows), matrixRow{op: "previewInvitation", write: true,
 			cells: every(cellOK()), request: sameRequest(http.MethodPost, "/api/v0/invitations/x", "")}),
 			"operation previewInvitation is exempt as public, and has a row"},
+		{"an operation held by credential, not exempt", ops, exemptWith(func(e *matrixExemptions) { delete(e.byCredential, "acceptInvitation") }),
+			rows, "operation acceptInvitation, tagged [workspace], has no row"},
+		{"a by-credential exemption of no operation", ops, exemptWith(func(e *matrixExemptions) { e.byCredential["nothing"] = "?" }), rows,
+			"the by-credential exemption nothing names no operation of the contract"},
+		{"a by-credential exemption that is public", ops, exemptWith(func(e *matrixExemptions) { e.byCredential["previewInvitation"] = "?" }),
+			rows, "operation previewInvitation is exempt by credential, but is public"},
+		{"a by-credential exemption that has a row", ops, exempt, append(slices.Clone(rows), matrixRow{op: "acceptInvitation", write: true,
+			cells: every(cellOK()), request: sameRequest(http.MethodPost, "/api/v0/invitations/x/accept", "")}),
+			"operation acceptInvitation is exempt by credential, and has a row"},
 		{"a not-target path of no operation", ops, exemptWith(func(e *matrixExemptions) { e.notTargets["/api/v0/nothing"] = "?" }),
 			rows, "the not-target path /api/v0/nothing is no operation's"},
 		{"an exempt module of no operation", ops, exemptWith(func(e *matrixExemptions) { e.modules = append(e.modules, "nothing") }),
