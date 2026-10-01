@@ -15,7 +15,7 @@ var reservedFile string
 
 // ReservedSlugs are the names no workspace may take, by why.
 type ReservedSlugs struct {
-	App      []string // the web app's top-level route segments, and public/'s top-level directories
+	App      []string // the web app's top-level route segments
 	Server   []string // the top-level paths the server answers itself, beside the web app's pages
 	Reserved []string // names held for top-level paths to come
 }
@@ -56,7 +56,7 @@ func parseReserved(text string) (ReservedSlugs, error) {
 			return ReservedSlugs{}, fmt.Errorf("line %d: %q is not [app], [server] or [reserved]", i+1, line)
 		case section == nil:
 			return ReservedSlugs{}, fmt.Errorf("line %d: %q is in no section", i+1, line)
-		case !slugPattern(line):
+		case !ValidSlug(line):
 			return ReservedSlugs{}, fmt.Errorf("line %d: %q is not spelled as a slug", i+1, line)
 		case seen[line]:
 			return ReservedSlugs{}, fmt.Errorf("line %d: %q is listed twice", i+1, line)

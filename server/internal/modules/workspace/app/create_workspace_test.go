@@ -26,7 +26,7 @@ type creation struct {
 func newCreation(enabled bool) creation {
 	c := creation{store: &fakeStore{}, accounts: &fakeAccounts{}, tx: &fakeTx{}, logs: &bytes.Buffer{}}
 	c.uc = app.NewCreateWorkspace(app.CreateWorkspaceDeps{
-		Store: c.store, Accounts: c.accounts, Tx: c.tx, Clock: fixedClock{},
+		Workspaces: c.store, Accounts: c.accounts, Tx: c.tx, Clock: fixedClock{},
 		Logger: slog.New(slog.NewTextHandler(c.logs, nil)), CreationEnabled: enabled,
 	})
 	return c
@@ -51,7 +51,9 @@ func TestCreateWorkspaceMakesTheCallerItsAdmin(t *testing.T) {
 	if got != (app.Membership{Workspace: w, Role: shared.WorkspaceAdmin}) {
 		t.Errorf("Execute() = %+v, want the workspace with the admin's role", got)
 	}
-	// The account's share comes first, in the transaction, then the writes.
+	// The account's share and the writes, each in the transaction. That the
+	// share comes first, "the account is deactivated" shows: refused, it
+	// leaves the store uncalled.
 	wantCalls := []string{"ShareActiveAccount " + alice.String() + " in tx"}
 	if !slices.Equal(c.accounts.calls, wantCalls) {
 		t.Errorf("accounts calls = %q, want %q", c.accounts.calls, wantCalls)

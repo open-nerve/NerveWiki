@@ -17,16 +17,20 @@ function section(name: string): string[] {
   return names;
 }
 
-/** The first segments of the paths routes serve at the top: a pathless route's children are at the top too. */
+/**
+ * The first segments of the paths routes serve at the top. A path may start with "/"; the children of a route
+ * without a path, or at "" or "/", are at the top too.
+ */
 function topLevelSegments(list: RouteObject[]): string[] {
-  return list.flatMap((route) =>
-    route.path === undefined ? topLevelSegments(route.children ?? []) : [route.path.split("/")[0] ?? ""]
-  );
+  return list.flatMap((route) => {
+    const path = (route.path ?? "").replace(/^\//, "");
+    return path === "" ? topLevelSegments(route.children ?? []) : [path.split("/")[0] ?? ""];
+  });
 }
 
 test("the reserved slugs of the app are the top-level segments of its routes", () => {
   // A parameter (a workspace's slug) or the 404's * is not a name to reserve.
-  const statics = topLevelSegments(routes).filter((s) => s !== "" && s !== "*" && !s.startsWith(":"));
+  const statics = topLevelSegments(routes).filter((s) => s !== "*" && !s.startsWith(":"));
 
   expect([...new Set(statics)].toSorted()).toEqual(section("app").toSorted());
 });

@@ -28,13 +28,17 @@ func TestGetWorkspaceAnswersWithTheCallersRole(t *testing.T) {
 
 func TestGetWorkspaceAnswersNotFoundAlike(t *testing.T) {
 	acme := domain.Workspace{ID: uuid.NewV7(), Slug: "acme", Name: "Acme"}
+	// A slug spelled as none is never looked up: a NUL, or bytes that are
+	// not UTF-8, would fail the database's text.
 	for _, tt := range []struct {
-		name, slug string
-		decided    bool
+		name, slug      string
+		looked, decided bool
 	}{
-		{"no such workspace", "nowhere", false},
-		{"a spelling no slug has", "Acme", false},
-		{"not a member", "acme", true},
+		{"no such workspace", "nowhere", true, false},
+		{"not a member", "acme", true, true},
+		{"a spelling no slug has", "Acme", false, false},
+		{"a NUL", "\x00", false, false},
+		{"not UTF-8", "\xff", false, false},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			store := &fakeStore{workspaces: map[string]domain.Workspace{"acme": acme}}
@@ -42,8 +46,8 @@ func TestGetWorkspaceAnswersNotFoundAlike(t *testing.T) {
 
 			_, err := app.NewGetWorkspace(store, auth).Execute(as(uuid.NewV7()), tt.slug)
 
-			if !errors.Is(err, domain.ErrNotFound) || (len(auth.calls) == 1) != tt.decided {
-				t.Errorf("Execute(%q) = %v after %d decisions; want workspace.not_found", tt.slug, err, len(auth.calls))
+			if !errors.Is(err, domain.ErrNotFound) || (len(store.calls) == 1) != tt.looked || (len(auth.calls) == 1) != tt.decided {
+				t.Errorf("Execute(%q) = %v after %q and %d decisions; want workspace.not_found", tt.slug, err, store.calls, len(auth.calls))
 			}
 		})
 	}

@@ -96,8 +96,8 @@ const listWorkspacesOf = `-- name: ListWorkspacesOf :many
 SELECT w.id, w.slug, w.name, w.created_at, w.updated_at, m.role
 FROM workspace_members m
 JOIN workspaces w ON w.id = m.workspace_id
-WHERE m.user_id = $1 AND m.ended_at IS NULL AND m.deleted_at IS NULL
-ORDER BY w.name, w.id
+WHERE m.user_id = $1 AND m.ended_at IS NULL AND m.deleted_at IS NULL AND w.deleted_at IS NULL
+ORDER BY lower(w.name), w.name, w.id
 `
 
 type ListWorkspacesOfRow struct {
@@ -109,8 +109,9 @@ type ListWorkspacesOfRow struct {
 	Role      string
 }
 
-// The workspaces of the account's active memberships, by name. The members of a deleted workspace
-// are deleted with it, in the same transaction.
+// The workspaces not deleted of the account's active memberships, by name, case-insensitively, then
+// by id. The members of a deleted workspace are deleted with it, in the same transaction (M2/P2);
+// the workspace's own deleted_at is asked too, so the list does not rest on that alone.
 func (q *Queries) ListWorkspacesOf(ctx context.Context, userID uuid.UUID) ([]ListWorkspacesOfRow, error) {
 	rows, err := q.db.Query(ctx, listWorkspacesOf, userID)
 	if err != nil {

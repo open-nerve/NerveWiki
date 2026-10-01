@@ -36,19 +36,34 @@ type Membership struct {
 	Role      shared.WorkspaceRole
 }
 
-// Store is the module's repository.
-type Store interface {
+// The repository's ports, each what its use cases need: the postgres
+// adapter's Store implements them all.
+
+// WorkspaceCreator writes a new workspace and its members.
+type WorkspaceCreator interface {
 	// CreateWorkspace inserts w, created by by at w.CreatedAt:
 	// domain.ErrSlugTaken when a workspace not deleted has its slug.
 	CreateWorkspace(ctx context.Context, w domain.Workspace, by uuid.UUID) error
 	// AddMember inserts m, added by by at now.
 	AddMember(ctx context.Context, m domain.Member, by uuid.UUID, now time.Time) error
+}
+
+// WorkspaceFinder finds a workspace by its slug.
+type WorkspaceFinder interface {
 	// FindWorkspaceBySlug returns the workspace not deleted with slug;
 	// ErrNotFound when there is none.
 	FindWorkspaceBySlug(ctx context.Context, slug string) (domain.Workspace, error)
-	// ListWorkspacesOf returns the workspaces of userID's active
-	// memberships, with its role, by name.
+}
+
+// MembershipLister lists an account's workspaces.
+type MembershipLister interface {
+	// ListWorkspacesOf returns the workspaces not deleted of userID's
+	// active memberships, with its role, by name, case-insensitively.
 	ListWorkspacesOf(ctx context.Context, userID uuid.UUID) ([]Membership, error)
+}
+
+// SlugChecker tells whether a slug is taken.
+type SlugChecker interface {
 	// SlugTaken reports whether a workspace not deleted has slug.
 	SlugTaken(ctx context.Context, slug string) (bool, error)
 }

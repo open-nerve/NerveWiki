@@ -240,6 +240,37 @@ func TestParametersThatDoNotBindAnswer400(t *testing.T) {
 	}
 }
 
+// No parameter that binds any string answers 5xx with a NUL or a byte that
+// is not UTF-8 in it (M2/P1 review): such a parameter reaches the operation
+// as it came, and a database text holds neither. Each case is sent with a
+// token and a body the structure check accepts, so it reaches the operation.
+func TestFreeTextParametersDoNotAnswer5xx(t *testing.T) {
+	contract := apitest.Load(t)
+	base := startApp(t, testConfig(t, pgtest.NewDatabase(t), false), migrations.FS())
+	token := registerAccount(t, contract, base, "text@example.com").AccessToken
+
+	cases := 0
+	for _, op := range contract.Operations() {
+		for _, c := range op.TextCases() {
+			cases++
+			t.Run(op.Pattern()+"/"+c.Name, func(t *testing.T) {
+				req := newRequest(t, op.Method, base+c.Target, token, op.ExampleBody())
+				res, answer := sendRequest(t, req)
+
+				contract.CheckResponse(t, req, res)
+				if res.StatusCode >= http.StatusInternalServerError {
+					t.Errorf("%s %s = %d %s, want no fault", op.Method, c.Target, res.StatusCode, answer)
+				}
+			})
+		}
+	}
+	// getWorkspace has a slug in its path (M2/P1): none found means the
+	// derivation broke.
+	if cases == 0 {
+		t.Fatal("no free-text parameter case derived from the contract")
+	}
+}
+
 // Every operation that needs a token takes a personal access token as it
 // takes an access token (M1/P3 design 3.9): called with a valid one of an
 // account of its own, it answers anything but 401. The body, when there is

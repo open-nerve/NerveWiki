@@ -21,8 +21,8 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
-// Store implements app.Store, and the access module's fact of the
-// workspace level (RoleOf).
+// Store implements the app's repository ports, and the access module's
+// fact of the workspace level (RoleOf).
 type Store struct {
 	pool *pgxpool.Pool
 }
@@ -44,7 +44,7 @@ func uniqueViolation(err error, constraint string) bool {
 	return errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == constraint
 }
 
-// CreateWorkspace implements app.Store.
+// CreateWorkspace implements app.WorkspaceCreator.
 func (s *Store) CreateWorkspace(ctx context.Context, w domain.Workspace, by uuid.UUID) error {
 	err := s.queries(ctx).CreateWorkspace(ctx, gen.CreateWorkspaceParams{ID: w.ID, Slug: w.Slug, Name: w.Name, By: by, Now: w.CreatedAt})
 	switch {
@@ -56,7 +56,7 @@ func (s *Store) CreateWorkspace(ctx context.Context, w domain.Workspace, by uuid
 	return nil
 }
 
-// AddMember implements app.Store.
+// AddMember implements app.WorkspaceCreator.
 func (s *Store) AddMember(ctx context.Context, m domain.Member, by uuid.UUID, now time.Time) error {
 	err := s.queries(ctx).AddMember(ctx, gen.AddMemberParams{
 		ID: m.ID, WorkspaceID: m.WorkspaceID, UserID: m.UserID, Role: string(m.Role), By: by, Now: now,
@@ -67,7 +67,7 @@ func (s *Store) AddMember(ctx context.Context, m domain.Member, by uuid.UUID, no
 	return nil
 }
 
-// FindWorkspaceBySlug implements app.Store.
+// FindWorkspaceBySlug implements app.WorkspaceFinder.
 func (s *Store) FindWorkspaceBySlug(ctx context.Context, slug string) (domain.Workspace, error) {
 	row, err := s.queries(ctx).FindWorkspaceBySlug(ctx, slug)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -79,7 +79,7 @@ func (s *Store) FindWorkspaceBySlug(ctx context.Context, slug string) (domain.Wo
 	return domain.Workspace{ID: row.ID, Slug: row.Slug, Name: row.Name, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt}, nil
 }
 
-// ListWorkspacesOf implements app.Store.
+// ListWorkspacesOf implements app.MembershipLister.
 func (s *Store) ListWorkspacesOf(ctx context.Context, userID uuid.UUID) ([]app.Membership, error) {
 	rows, err := s.queries(ctx).ListWorkspacesOf(ctx, userID)
 	if err != nil {
@@ -95,7 +95,7 @@ func (s *Store) ListWorkspacesOf(ctx context.Context, userID uuid.UUID) ([]app.M
 	return list, nil
 }
 
-// SlugTaken implements app.Store.
+// SlugTaken implements app.SlugChecker.
 func (s *Store) SlugTaken(ctx context.Context, slug string) (bool, error) {
 	taken, err := s.queries(ctx).SlugTaken(ctx, slug)
 	if err != nil {

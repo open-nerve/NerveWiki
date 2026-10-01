@@ -10,8 +10,7 @@ import (
 )
 
 // AssetsDir holds Vite's content-hashed files: a changed file gets a new
-// name. It is a top-level path of the site, which no workspace may take
-// (M2/P1 design 3.6).
+// name. It is a top-level path of the site.
 const AssetsDir = "assets"
 
 const (

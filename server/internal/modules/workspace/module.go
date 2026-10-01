@@ -47,7 +47,7 @@ func New(d Deps) *Module {
 	return &Module{uc: httpadapter.UseCases{
 		ListWorkspaces: app.NewListWorkspaces(store),
 		CreateWorkspace: app.NewCreateWorkspace(app.CreateWorkspaceDeps{
-			Store: store, Accounts: d.Accounts, Tx: d.Tx, Clock: d.Clock, Logger: d.Logger, CreationEnabled: d.CreationEnabled,
+			Workspaces: store, Accounts: d.Accounts, Tx: d.Tx, Clock: d.Clock, Logger: d.Logger, CreationEnabled: d.CreationEnabled,
 		}),
 		GetWorkspace: app.NewGetWorkspace(store, d.Authorizer),
 		CheckSlug:    app.NewCheckSlug(store),

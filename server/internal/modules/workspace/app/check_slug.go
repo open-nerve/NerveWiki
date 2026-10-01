@@ -12,12 +12,12 @@ import (
 // the creation's 409, the answer tells whether a slug is taken, which
 // choosing one needs.
 type CheckSlug struct {
-	store Store
+	slugs SlugChecker
 }
 
 // NewCheckSlug returns the use case.
-func NewCheckSlug(store Store) *CheckSlug {
-	return &CheckSlug{store: store}
+func NewCheckSlug(slugs SlugChecker) *CheckSlug {
+	return &CheckSlug{slugs: slugs}
 }
 
 // Execute returns why slug cannot name a new workspace:
@@ -30,7 +30,7 @@ func (c *CheckSlug) Execute(ctx context.Context, slug string) (string, error) {
 	if problem := domain.SlugProblem(slug); problem != "" {
 		return problem, nil
 	}
-	taken, err := c.store.SlugTaken(ctx, slug)
+	taken, err := c.slugs.SlugTaken(ctx, slug)
 	if err != nil || !taken {
 		return "", err
 	}

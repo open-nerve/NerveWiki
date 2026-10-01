@@ -60,9 +60,10 @@ func emailOf(c caller) string {
 	return strings.ReplaceAll(string(c), " ", "-") + "@example.com"
 }
 
-// seeded are the ids of what prepareMatrix seeds, fixed before it runs: the
-// rows build their requests from them, and the coverage test checks what
-// they aim at without a database.
+// seeded are the ids of what prepareMatrix seeds, fixed before it runs:
+// from P2 on, the rows that aim at a row by its id build their requests
+// from them, and the coverage test checks what they aim at without a
+// database.
 type seeded struct {
 	t           testing.TB
 	workspaces  map[string]uuid.UUID // by slug

@@ -120,28 +120,37 @@ func TestListWorkspacesOfIsTheActiveMemberships(t *testing.T) {
 	s, pool := newStore(t)
 	alice := newAccount(t, pool, "alice@corp.com")
 	bob := newAccount(t, pool, "bob@corp.com")
-	// By name, then by id: two named alike keep their order of creation.
+	// By name, case-insensitively (the database's C.UTF-8 sorts by code
+	// point, every upper-case letter first), then by id: two named alike
+	// keep their order of creation.
 	zeta := newWorkspace(t, s, "zeta", "Zeta", bob)
 	beta1 := newWorkspace(t, s, "beta-1", "Beta", bob)
 	beta2 := newWorkspace(t, s, "beta-2", "Beta", bob)
+	apple := newWorkspace(t, s, "apple", "apple", bob)
 	alpha := newWorkspace(t, s, "alpha", "Alpha", bob)
 	ended := newWorkspace(t, s, "ended", "Ended", bob)
 	gone := newWorkspace(t, s, "gone", "Gone", bob)
+	// A deleted workspace whose members were not deleted with it is not
+	// listed either.
+	half := newWorkspace(t, s, "half", "Half", bob)
 	_ = newWorkspace(t, s, "others", "Others", bob)
 	addMember(t, s, zeta.ID, alice, shared.WorkspaceGuest, bob)
 	addMember(t, s, beta2.ID, alice, shared.WorkspaceMember, bob)
 	addMember(t, s, beta1.ID, alice, shared.WorkspaceAdmin, bob)
+	addMember(t, s, apple.ID, alice, shared.WorkspaceGuest, bob)
 	addMember(t, s, alpha.ID, alice, shared.WorkspaceMember, bob)
 	endedID := addMember(t, s, ended.ID, alice, shared.WorkspaceMember, bob)
 	addMember(t, s, gone.ID, alice, shared.WorkspaceMember, bob)
+	addMember(t, s, half.ID, alice, shared.WorkspaceMember, bob)
 	exec(t, pool, "UPDATE workspace_members SET ended_at = $2 WHERE id = $1", endedID, now())
-	exec(t, pool, "UPDATE workspaces SET deleted_at = $2 WHERE id = $1", gone.ID, now())
+	exec(t, pool, "UPDATE workspaces SET deleted_at = $2 WHERE id = ANY($1)", []uuid.UUID{gone.ID, half.ID}, now())
 	exec(t, pool, "UPDATE workspace_members SET deleted_at = $2 WHERE workspace_id = $1", gone.ID, now())
 
 	got, err := s.ListWorkspacesOf(context.Background(), alice)
 
 	want := []app.Membership{
 		{Workspace: alpha, Role: shared.WorkspaceMember},
+		{Workspace: apple, Role: shared.WorkspaceGuest},
 		{Workspace: beta1, Role: shared.WorkspaceAdmin},
 		{Workspace: beta2, Role: shared.WorkspaceMember},
 		{Workspace: zeta, Role: shared.WorkspaceGuest},

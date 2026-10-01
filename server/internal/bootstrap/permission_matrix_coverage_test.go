@@ -193,6 +193,12 @@ func TestMatrixViolationsCatchesEachGap(t *testing.T) {
 				return http.MethodDelete, "/api/v0/workspace-members/" + s.adminMembership("other").String(), ""
 			}
 		}), "is no row seeded under its column's workspace"},
+		{"an id that is no uuid", ops, exempt, without(removeRow, func(r *matrixRow) {
+			r.request = sameRequest(http.MethodDelete, "/api/v0/workspace-members/not-a-uuid", "")
+		}), "not-a-uuid is no row seeded under its column's workspace"},
+		{"an id of no seeded row", ops, exempt, without(removeRow, func(r *matrixRow) {
+			r.request = sameRequest(http.MethodDelete, "/api/v0/workspace-members/"+uuid.NewV7().String(), "")
+		}), "is no row seeded under its column's workspace"},
 		{"a write without write", ops, exempt, without(removeRow, func(r *matrixRow) { r.write = false }), "sends DELETE without write"},
 		{"an unknown parameter", ops, exemptWith(func(e *matrixExemptions) { delete(e.notTargets, slugs.Path) }), rows,
 			"{slug} is no target the matrix knows"},
@@ -202,6 +208,9 @@ func TestMatrixViolationsCatchesEachGap(t *testing.T) {
 			"the public exemption nothing names no operation of the contract"},
 		{"a public exemption that needs a token", ops, exemptWith(func(e *matrixExemptions) { e.public["getWorkspace"] = "?" }),
 			rows, "operation getWorkspace is exempt as public, but needs a token"},
+		{"a public exemption that has a row", ops, exempt, append(slices.Clone(rows), matrixRow{op: "previewInvitation", write: true,
+			cells: every(cellOK()), request: sameRequest(http.MethodPost, "/api/v0/invitations/x", "")}),
+			"operation previewInvitation is exempt as public, and has a row"},
 		{"a not-target path of no operation", ops, exemptWith(func(e *matrixExemptions) { e.notTargets["/api/v0/nothing"] = "?" }),
 			rows, "the not-target path /api/v0/nothing is no operation's"},
 		{"an exempt module of no operation", ops, exemptWith(func(e *matrixExemptions) { e.modules = append(e.modules, "nothing") }),

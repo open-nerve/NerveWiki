@@ -16,10 +16,13 @@ const (
 	SlugTaken    = "taken"
 )
 
-// slugPattern reports whether s is spelled as a slug: 1–48 of a–z, 0–9, _
+// ValidSlug reports whether s is spelled as a slug: 1–48 of a–z, 0–9, _
 // and - (v0.1 design 3.2). There is no folding: an upper-case or padded slug
-// is refused, not quietly changed into another address.
-func slugPattern(s string) bool {
+// is refused, not quietly changed into another address. A slug spelled
+// otherwise names no workspace, so a use case that looks one up by slug
+// asks this first: what the path brought, a NUL or bytes that are not
+// UTF-8 too, reaches the database only spelled as a slug.
+func ValidSlug(s string) bool {
 	if s == "" || len(s) > MaxSlugLength {
 		return false
 	}
@@ -36,7 +39,7 @@ func slugPattern(s string) bool {
 // when it can.
 func SlugProblem(slug string) string {
 	switch {
-	case !slugPattern(slug):
+	case !ValidSlug(slug):
 		return SlugInvalid
 	case slices.Contains(Reserved().All(), slug):
 		return SlugReserved

@@ -11,11 +11,11 @@ import (
 
 // CreateWorkspaceDeps are what CreateWorkspace needs.
 type CreateWorkspaceDeps struct {
-	Store    Store
-	Accounts Accounts
-	Tx       shared.TxManager
-	Clock    Clock
-	Logger   *slog.Logger
+	Workspaces WorkspaceCreator
+	Accounts   Accounts
+	Tx         shared.TxManager
+	Clock      Clock
+	Logger     *slog.Logger
 	// CreationEnabled is workspace.creation_enabled.
 	CreationEnabled bool
 }
@@ -56,10 +56,10 @@ func (c *CreateWorkspace) Execute(ctx context.Context, name, slug string) (Membe
 		if err := c.d.Accounts.ShareActiveAccount(ctx, actor.UserID); err != nil {
 			return err
 		}
-		if err := c.d.Store.CreateWorkspace(ctx, w, actor.UserID); err != nil {
+		if err := c.d.Workspaces.CreateWorkspace(ctx, w, actor.UserID); err != nil {
 			return err
 		}
-		return c.d.Store.AddMember(ctx, admin, actor.UserID, now)
+		return c.d.Workspaces.AddMember(ctx, admin, actor.UserID, now)
 	})
 	if err != nil {
 		return Membership{}, err

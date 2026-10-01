@@ -240,7 +240,7 @@ export interface paths {
         };
         /**
          * List the caller's workspaces
-         * @description The workspaces the caller is an active member of, with the caller's role in each, by name. The list is not paged.
+         * @description The workspaces the caller is an active member of, with the caller's role in each, by name, case-insensitively. The list is not paged.
          */
         get: operations["listWorkspaces"];
         put?: never;
@@ -290,7 +290,7 @@ export interface paths {
         };
         /**
          * Tell whether a slug can name a new workspace
-         * @description Whether a new workspace can take the slug, and if not why: invalid (not 1–48 of a–z, 0–9, _ and -), reserved (a path of the site), or taken (a workspace not deleted has it).
+         * @description Whether a new workspace can take the slug, and if not why: invalid (not 1–48 of a–z, 0–9, _ and -), reserved (a path of the site, or held for one), or taken (a workspace not deleted has it).
          */
         get: operations["checkWorkspaceSlug"];
         put?: never;
