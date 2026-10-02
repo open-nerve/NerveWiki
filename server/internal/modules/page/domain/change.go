@@ -11,10 +11,12 @@ type TreeState struct {
 
 // Same reports whether s and o are one place in the tree.
 func (s TreeState) Same(o TreeState) bool {
-	return s.Name == o.Name && s.SortOrder == o.SortOrder && sameParent(s.ParentID, o.ParentID)
+	return s.Name == o.Name && s.SortOrder == o.SortOrder && SameParent(s.ParentID, o.ParentID)
 }
 
-func sameParent(a, b *uuid.UUID) bool {
+// SameParent reports whether a and b are one parent: the same page, or
+// both the notebook's root.
+func SameParent(a, b *uuid.UUID) bool {
 	return a == nil && b == nil || a != nil && b != nil && *a == *b
 }
 
@@ -53,4 +55,6 @@ type Operation string
 const (
 	OpCreate Operation = "create"
 	OpRename Operation = "rename"
+	OpMove   Operation = "move"
+	OpDelete Operation = "delete"
 )

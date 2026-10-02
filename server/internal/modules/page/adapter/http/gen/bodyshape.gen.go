@@ -12,13 +12,17 @@ func BodyShapes() *bodyshape.Table {
 		Nodes: []bodyshape.Node{
 			/* 0 */ {Types: bodyshape.Object, Extra: bodyshape.Closed, Items: bodyshape.Open, Props: map[string]int{"name": 1}, Required: []string{"name"}},
 			/* 1 */ {Types: bodyshape.String, Extra: bodyshape.Open, Items: bodyshape.Open},
-			/* 2 */ {Types: bodyshape.Object, Extra: bodyshape.Closed, Items: bodyshape.Open, Props: map[string]int{"after_id": 3, "parent_id": 4, "title": 1}, Required: []string{"parent_id", "title"}},
+			/* 2 */ {Types: bodyshape.Object, Extra: bodyshape.Closed, Items: bodyshape.Open, Props: map[string]int{"after_id": 3, "parent_id": 4}, Required: []string{"parent_id"}},
 			/* 3 */ {Types: bodyshape.Null | bodyshape.String, Format: bodyshape.FormatUUID, Extra: bodyshape.Open, Items: bodyshape.Open},
 			/* 4 */ {Types: bodyshape.Null | bodyshape.String, Format: bodyshape.FormatUUID, Extra: bodyshape.Open, Items: bodyshape.Open},
+			/* 5 */ {Types: bodyshape.Object, Extra: bodyshape.Closed, Items: bodyshape.Open, Props: map[string]int{"after_id": 6, "parent_id": 7, "title": 1}, Required: []string{"parent_id", "title"}},
+			/* 6 */ {Types: bodyshape.Null | bodyshape.String, Format: bodyshape.FormatUUID, Extra: bodyshape.Open, Items: bodyshape.Open},
+			/* 7 */ {Types: bodyshape.Null | bodyshape.String, Format: bodyshape.FormatUUID, Extra: bodyshape.Open, Items: bodyshape.Open},
 		},
 		Roots: map[string]int{
 			"PATCH /api/v0/nodes/{node_id}":              0,
-			"POST /api/v0/notebooks/{notebook_id}/pages": 2,
+			"POST /api/v0/nodes/{node_id}/move":          2,
+			"POST /api/v0/notebooks/{notebook_id}/pages": 5,
 		},
 	}
 }

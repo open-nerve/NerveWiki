@@ -15,6 +15,8 @@ var (
 	// key.
 	ErrTitleTaken = shared.NewError(shared.KindConflict, "page.title_taken",
 		"A page or attachment under the same parent has this title.")
+	// ErrCycle: the page would move under itself or one of its descendants.
+	ErrCycle = shared.NewError(shared.KindConflict, "page.cycle", "A page cannot move under itself or one of its subpages.")
 	// ErrTooDeep: the page would be deeper than MaxDepth.
 	ErrTooDeep = shared.NewError(shared.KindConflict, "page.too_deep", "Pages nest at most 10 levels deep.")
 )

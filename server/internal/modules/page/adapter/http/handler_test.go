@@ -82,6 +82,8 @@ type (
 	fakeCreate struct{ *fakes }
 	fakeGet    struct{ *fakes }
 	fakeRename struct{ *fakes }
+	fakeMove   struct{ *fakes }
+	fakeDelete struct{ *fakes }
 )
 
 func (f fakeList) Execute(_ context.Context, notebookID uuid.UUID) ([]domain.Node, error) {
@@ -106,12 +108,23 @@ func (f fakeRename) Execute(_ context.Context, nodeID uuid.UUID, name string, cl
 	return notes(), f.err
 }
 
+func (f fakeMove) Execute(_ context.Context, nodeID uuid.UUID, to app.Destination, client domain.Client) (domain.Node, error) {
+	f.got = []any{nodeID, to, client}
+	return notes(), f.err
+}
+
+func (f fakeDelete) Execute(_ context.Context, nodeID uuid.UUID, client domain.Client) error {
+	f.got = []any{nodeID, client}
+	return f.err
+}
+
 // serve mounts the module on f behind the platform's middlewares.
 func (f *fakes) serve(t *testing.T) http.Handler {
 	t.Helper()
 	router := httpserver.NewRouter(slog.New(slog.DiscardHandler))
 	httpadapter.Register(router, httpservertest.NewAPI(t, httpservertest.APIOptions{Authenticator: fakeAuth{}}), httpadapter.UseCases{
 		ListNodes: fakeList{f}, CreatePage: fakeCreate{f}, GetPage: fakeGet{f}, RenameNode: fakeRename{f},
+		MoveNode: fakeMove{f}, DeleteNode: fakeDelete{f},
 	})
 	return router
 }
@@ -138,6 +151,7 @@ const (
 	pagesPath = "/api/v0/notebooks/0199a2b4-0000-7000-8000-000000000010/pages"
 	pagePath  = "/api/v0/pages/0199a2b4-0000-7000-8000-000000000012"
 	nodePath  = "/api/v0/nodes/0199a2b4-0000-7000-8000-000000000012"
+	movePath  = nodePath + "/move"
 )
 
 func TestTheOperationsAnswerTheUseCases(t *testing.T) {
@@ -163,6 +177,16 @@ func TestTheOperationsAnswerTheUseCases(t *testing.T) {
 			[]any{id(12), "Notes", domain.ClientWeb}},
 		{"a rename by the API", "pat", http.MethodPatch, nodePath, `{"name":"Notes"}`, http.StatusOK, treeNodeJSON,
 			[]any{id(12), "Notes", domain.ClientAPI}},
+		{"a move last under a parent", "session", http.MethodPost, movePath, `{"parent_id":"0199a2b4-0000-7000-8000-000000000011"}`,
+			http.StatusOK, treeNodeJSON, []any{id(12), app.Destination{ParentID: &parent}, domain.ClientWeb}},
+		{"a move first at the root", "pat", http.MethodPost, movePath, `{"parent_id":null,"after_id":null}`, http.StatusOK,
+			treeNodeJSON, []any{id(12), app.Destination{Position: app.First()}, domain.ClientAPI}},
+		{"a move after a sibling", "session", http.MethodPost, movePath,
+			`{"parent_id":null,"after_id":"0199a2b4-0000-7000-8000-000000000013"}`, http.StatusOK, treeNodeJSON,
+			[]any{id(12), app.Destination{Position: app.After(id(13))}, domain.ClientWeb}},
+		{"a deletion by the web", "session", http.MethodDelete, nodePath, "", http.StatusNoContent, "",
+			[]any{id(12), domain.ClientWeb}},
+		{"a deletion by the API", "pat", http.MethodDelete, nodePath, "", http.StatusNoContent, "", []any{id(12), domain.ClientAPI}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			f := &fakes{}
@@ -177,13 +201,16 @@ func TestTheOperationsAnswerTheUseCases(t *testing.T) {
 	}
 }
 
-// A page's parent_id is required, null at the root: the boundary refuses
-// a body without it before any use case.
-func TestCreatePageRequiresTheParent(t *testing.T) {
-	f := &fakes{}
-	status, body := call(t, f.serve(t), "session", http.MethodPost, pagesPath, `{"title":"Notes"}`)
-	if status != http.StatusBadRequest || !strings.Contains(body, `"code":"bad_request"`) || f.got != nil {
-		t.Errorf("POST without parent_id = %d %s, use case got %v; want 400, the use case not called", status, body, f.got)
+// A page's parent_id is required, null at the root, where it is created
+// and where it moves: the boundary refuses a body without it before any
+// use case.
+func TestTheParentIsRequired(t *testing.T) {
+	for path, body := range map[string]string{pagesPath: `{"title":"Notes"}`, movePath: `{"after_id":null}`} {
+		f := &fakes{}
+		status, answer := call(t, f.serve(t), "session", http.MethodPost, path, body)
+		if status != http.StatusBadRequest || !strings.Contains(answer, `"code":"bad_request"`) || f.got != nil {
+			t.Errorf("POST %s without parent_id = %d %s, use case got %v; want 400, the use case not called", path, status, answer, f.got)
+		}
 	}
 }
 
@@ -191,6 +218,8 @@ func TestCreatePageRequiresTheParent(t *testing.T) {
 func TestTheOperationsAnswerEachProblem(t *testing.T) {
 	invalid := shared.Invalid(shared.FieldError{Field: "title", Code: shared.FieldInvalidFormat, Message: "must not contain /"})
 	create := `{"parent_id":null,"title":"a/b"}`
+	move := `{"parent_id":"0199a2b4-0000-7000-8000-000000000012"}`
+	parentInvalid := domain.NotAllowed("parent_id", "The parent is no page of this notebook.")
 	for _, tt := range []struct {
 		method, path, body string
 		err                error
@@ -208,6 +237,14 @@ func TestTheOperationsAnswerEachProblem(t *testing.T) {
 		{http.MethodPatch, nodePath, `{"name":"a/b"}`, shared.Forbidden(), http.StatusForbidden, "forbidden"},
 		{http.MethodPatch, nodePath, `{"name":"a/b"}`, invalid, http.StatusUnprocessableEntity, "validation_failed"},
 		{http.MethodPatch, nodePath, `{"name":"a/b"}`, domain.ErrTitleTaken, http.StatusConflict, "page.title_taken"},
+		{http.MethodPost, movePath, move, domain.ErrNotFound, http.StatusNotFound, "page.not_found"},
+		{http.MethodPost, movePath, move, shared.Forbidden(), http.StatusForbidden, "forbidden"},
+		{http.MethodPost, movePath, move, parentInvalid, http.StatusUnprocessableEntity, "validation_failed"},
+		{http.MethodPost, movePath, move, domain.ErrCycle, http.StatusConflict, "page.cycle"},
+		{http.MethodPost, movePath, move, domain.ErrTitleTaken, http.StatusConflict, "page.title_taken"},
+		{http.MethodPost, movePath, move, domain.ErrTooDeep, http.StatusConflict, "page.too_deep"},
+		{http.MethodDelete, nodePath, "", domain.ErrNotFound, http.StatusNotFound, "page.not_found"},
+		{http.MethodDelete, nodePath, "", shared.Forbidden(), http.StatusForbidden, "forbidden"},
 	} {
 		status, body := call(t, (&fakes{err: tt.err}).serve(t), "session", tt.method, tt.path, tt.body)
 		if status != tt.status || !strings.Contains(body, `"code":"`+tt.code+`"`) {
@@ -219,15 +256,17 @@ func TestTheOperationsAnswerEachProblem(t *testing.T) {
 // A path's id is a uuid: anything else is the boundary's 400, before any
 // use case.
 func TestAnIDThatIsNoUUID(t *testing.T) {
-	for _, path := range []string{"/api/v0/notebooks/eng/nodes", "/api/v0/pages/notes", "/api/v0/nodes/notes"} {
+	for _, tt := range []struct{ method, path, body string }{
+		{http.MethodGet, "/api/v0/notebooks/eng/nodes", ""},
+		{http.MethodGet, "/api/v0/pages/notes", ""},
+		{http.MethodPatch, "/api/v0/nodes/notes", `{"name":"Notes"}`},
+		{http.MethodPost, "/api/v0/nodes/notes/move", `{"parent_id":null}`},
+		{http.MethodDelete, "/api/v0/nodes/notes", ""},
+	} {
 		f := &fakes{}
-		method, body := http.MethodGet, ""
-		if strings.HasPrefix(path, "/api/v0/nodes/") {
-			method, body = http.MethodPatch, `{"name":"Notes"}`
-		}
-		status, answer := call(t, f.serve(t), "session", method, path, body)
+		status, answer := call(t, f.serve(t), "session", tt.method, tt.path, tt.body)
 		if status != http.StatusBadRequest || !strings.Contains(answer, `"code":"bad_request"`) || f.got != nil {
-			t.Errorf("%s %s = %d %s, use case got %v; want 400 bad_request, the use case not called", method, path, status, answer, f.got)
+			t.Errorf("%s %s = %d %s, use case got %v; want 400 bad_request, the use case not called", tt.method, tt.path, status, answer, f.got)
 		}
 	}
 }

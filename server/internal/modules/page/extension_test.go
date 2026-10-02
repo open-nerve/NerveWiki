@@ -356,3 +356,42 @@ func TestANotebookDeletionDeletesItsPages(t *testing.T) {
 		}
 	}
 }
+
+// A move and a deletion reach the unit through their routes: the guard and
+// the observers see each in its transaction. The move's item has the page's
+// places; the deletion's goes to the trash with its node; each changeset is
+// of its credential's client, at the unit's time.
+func TestTheTreesWritesReachTheUnit(t *testing.T) {
+	f := newFixture(t)
+	child := uuid.NewV7()
+	f.exec(t, "INSERT INTO nodes (id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id, created_at, updated_at) "+
+		"VALUES ($1, $2, $3, 'page', 'Child', 'child', 0, $4, $4, $5, $5)", child, f.eng, f.notes, f.alice, testNow().Add(-time.Hour))
+	f.exec(t, "INSERT INTO page_contents (node_id, content, revision, content_hash, byte_size, updated_by_id, updated_at) "+
+		"VALUES ($1, '', 1, sha256(''), 0, $2, $3)", child, f.alice, testNow().Add(-time.Hour))
+	g, o := &guard{}, &observer{f: f}
+	moved := f.serve(t, "pat", http.MethodPost, "/api/v0/nodes/"+child.String()+"/move", `{"parent_id":null,"after_id":null}`,
+		[]page.WriteGuard{g}, nil, []page.PageObserver{o})
+	if moved.Code != http.StatusOK || !strings.Contains(moved.Body.String(), `"parent_id":null`) {
+		t.Fatalf("POST move = %d %s, want 200 at the root", moved.Code, moved.Body)
+	}
+	if n := f.count(t, `SELECT count(*) FROM changeset_items i JOIN changesets s ON s.id = i.changeset_id
+		WHERE i.node_id = $1 AND i.before_parent_id = $2 AND i.before_sort_order = 0 AND i.after_parent_id IS NULL
+		AND i.after_sort_order = -1 AND s.client = 'api' AND s.created_at = $3`, child, f.notes, testNow()); n != 1 {
+		t.Error("the move's item is not Child's places in an api changeset of the unit's time")
+	}
+	deleted := f.serve(t, "session", http.MethodDelete, f.renamePath(), "", []page.WriteGuard{g}, nil, []page.PageObserver{o})
+	if deleted.Code != http.StatusNoContent {
+		t.Fatalf("DELETE = %d %s, want 204", deleted.Code, deleted.Body)
+	}
+	if n := f.count(t, `SELECT count(*) FROM changeset_items i JOIN changesets s ON s.id = i.changeset_id JOIN nodes n ON n.id = i.node_id
+		WHERE i.node_id = $1 AND i.after_name IS NULL AND i.deleted_at = $2 AND n.deleted_at = $2 AND s.client = 'web'`, f.notes, testNow()); n != 1 {
+		t.Error("the deletion's item is not in the trash with Notes, in a web changeset")
+	}
+	if n := f.count(t, "SELECT count(*) FROM nodes WHERE id = $1 AND deleted_at IS NULL", child); n != 1 {
+		t.Error("Child, moved out of Notes, is deleted with it")
+	}
+	if len(g.steps) != 2 || g.steps[0].Operation != domain.OpMove || g.steps[1].Operation != domain.OpDelete || !g.inTx ||
+		len(o.events) != 2 {
+		t.Errorf("the guard saw %+v in a transaction %v, the observers %d events; want the move, then the deletion", g.steps, g.inTx, len(o.events))
+	}
+}

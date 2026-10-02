@@ -126,6 +126,26 @@ func (s *Store) Ancestors(ctx context.Context, id uuid.UUID) ([]domain.Ancestor,
 	return out, nil
 }
 
+// Subtree implements app.Nodes.
+func (s *Store) Subtree(ctx context.Context, notebookID, id uuid.UUID) (domain.Subtree, error) {
+	rows, err := s.queries(ctx).Subtree(ctx, gen.SubtreeParams{ID: id, NotebookID: notebookID})
+	switch {
+	case err != nil:
+		return nil, fmt.Errorf("subtree: %w", err)
+	case len(rows) == 0:
+		return nil, app.ErrNotFound
+	}
+	out := make(domain.Subtree, len(rows))
+	for i, r := range rows {
+		out[i] = domain.SubtreeNode{Level: int(r.Level), Node: nodeOf(gen.FindNodeRow{
+			ID: r.ID, NotebookID: r.NotebookID, ParentID: r.ParentID, Kind: r.Kind, Name: r.Name, NameKey: r.NameKey,
+			SortOrder: r.SortOrder, CreatedByID: r.CreatedByID, UpdatedByID: r.UpdatedByID, CreatedAt: r.CreatedAt,
+			UpdatedAt: r.UpdatedAt,
+		})}
+	}
+	return out, nil
+}
+
 // ContentMeta implements app.Nodes.
 func (s *Store) ContentMeta(ctx context.Context, id uuid.UUID) (app.ContentMeta, error) {
 	row, err := s.queries(ctx).ContentMeta(ctx, id)
@@ -172,6 +192,28 @@ func (s *Store) RenameNode(ctx context.Context, n domain.Node) error {
 		return domain.ErrTitleTaken
 	case err != nil:
 		return fmt.Errorf("rename node: %w", err)
+	}
+	return nil
+}
+
+// MoveNode implements app.NodeWriter.
+func (s *Store) MoveNode(ctx context.Context, n domain.Node) error {
+	err := s.queries(ctx).MoveNode(ctx, gen.MoveNodeParams{
+		ID: n.ID, ParentID: n.ParentID, SortOrder: n.SortOrder, By: n.UpdatedBy, Now: n.UpdatedAt,
+	})
+	switch {
+	case uniqueViolation(err, siblingNameKey):
+		return domain.ErrTitleTaken
+	case err != nil:
+		return fmt.Errorf("move node: %w", err)
+	}
+	return nil
+}
+
+// DeleteNodes implements app.NodeWriter.
+func (s *Store) DeleteNodes(ctx context.Context, ids []uuid.UUID, by uuid.UUID, at time.Time) error {
+	if err := s.queries(ctx).DeleteNodes(ctx, gen.DeleteNodesParams{Ids: ids, By: by, Now: at}); err != nil {
+		return fmt.Errorf("delete nodes: %w", err)
 	}
 	return nil
 }

@@ -409,7 +409,7 @@ func TestRenameNodeAnswersItsCodesInOrder(t *testing.T) {
 // the page it follows changes what the writer reads back.
 func TestTheAnswerIsThePageAsTheUnitLeftIt(t *testing.T) {
 	f := newFixture()
-	f.grant(domain.ActionCreate, domain.ActionRename)
+	f.grant(domain.ActionCreate, domain.ActionRename, domain.ActionMove)
 	f.partakers = []app.Participant{&participant{recorder: f.rec, retitle: true}}
 	created, err := f.create(app.PageDraft{Title: "New"})
 	if err != nil || created.Node.Name != "New (retitled)" {
@@ -419,5 +419,9 @@ func TestTheAnswerIsThePageAsTheUnitLeftIt(t *testing.T) {
 	renamed, err := f.rename(notes.ID, "Journal")
 	if err != nil || renamed.Name != "Journal (retitled)" {
 		t.Errorf("renameNode = %q, %v; want the participant's Journal (retitled)", renamed.Name, err)
+	}
+	moved, err := f.move(notes.ID, app.Destination{Position: app.First()})
+	if err != nil || moved.Name != "Journal (retitled) (retitled)" {
+		t.Errorf("moveNode = %q, %v; want the participant's Journal (retitled) (retitled)", moved.Name, err)
 	}
 }

@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// The page module's rows (M4/P1 design 3.12), by the notebook columns:
+// The page module's rows (M4/P1 design 3.12; M4/P2 design 3.6), by the notebook columns:
 // each aims at its notebook (notebookOf) and its page in it (pageOf). Any
 // role reads; the editors and admins write, the readers are refused; the
 // rest do not see the notebook.
@@ -118,6 +118,34 @@ func pageMatrixRows() []matrixRow {
 					t.Errorf("renamed %+v, want Renamed", n)
 				}
 			},
+		},
+		{
+			op:      "moveNode",
+			columns: notebookColumns(),
+			write:   true,
+			// First at the root: priv's child changes its parent; a root
+			// page already first stays where it is, decided on all the same.
+			request: func(c caller, s seeded) (string, string, string) {
+				return http.MethodPost, "/api/v0/nodes/" + s.page(pageOf(c)).String() + "/move", `{"parent_id":null,"after_id":null}`
+			},
+			cells: editorsOnly(cellOK(), pageNotFound),
+			check: func(t *testing.T, c caller, _ seeded, answer string) {
+				t.Helper()
+				var n treeNodeAnswer
+				decodeAnswer(t, answer, &n)
+				if n.Name != pageOf(c) || n.ParentID != nil {
+					t.Errorf("moved %+v, want %s at the root", n, pageOf(c))
+				}
+			},
+		},
+		{
+			op:      "deleteNode",
+			columns: notebookColumns(),
+			write:   true,
+			request: func(c caller, s seeded) (string, string, string) {
+				return http.MethodDelete, "/api/v0/nodes/" + s.page(pageOf(c)).String(), ""
+			},
+			cells: editorsOnly(cell{status: http.StatusNoContent}, pageNotFound),
 		},
 	}
 }

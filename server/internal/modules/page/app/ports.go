@@ -114,6 +114,10 @@ type Nodes interface {
 	Children(ctx context.Context, notebookID uuid.UUID, parentID *uuid.UUID) ([]domain.Node, error)
 	// Ancestors are a node's ancestors from the root down to its parent.
 	Ancestors(ctx context.Context, id uuid.UUID) ([]domain.Ancestor, error)
+	// Subtree is the node id of the notebook and its descendants, level
+	// by level; ErrNotFound when the node is missing, deleted or in
+	// another notebook.
+	Subtree(ctx context.Context, notebookID, id uuid.UUID) (domain.Subtree, error)
 	ContentMeta(ctx context.Context, id uuid.UUID) (ContentMeta, error)
 }
 
@@ -123,14 +127,20 @@ type NodeWriter interface {
 	CreateNode(ctx context.Context, n domain.Node) error
 	CreateContent(ctx context.Context, c Content) error
 	RenameNode(ctx context.Context, n domain.Node) error
+	// MoveNode puts n under its ParentID at its SortOrder.
+	MoveNode(ctx context.Context, n domain.Node) error
 	SetSortOrder(ctx context.Context, id uuid.UUID, order float64) error
+	// DeleteNodes deletes the nodes ids not deleted and what follows them,
+	// at at, by by.
+	DeleteNodes(ctx context.Context, ids []uuid.UUID, by uuid.UUID, at time.Time) error
 }
 
 // ChangesetWriter records a write's changeset, its items and its versions.
 type ChangesetWriter interface {
 	CreateChangeset(ctx context.Context, c Changeset) error
 	// RecordItem inserts the item, or moves the after of the node's item in
-	// the changeset on, keeping its before.
+	// the changeset on, keeping its before. An item that deletes its node
+	// is deleted with it, at its time.
 	RecordItem(ctx context.Context, it Item) error
 	// RecordRevision inserts the version, or updates the page's in the
 	// changeset, keeping its base.

@@ -79,6 +79,8 @@ func New(d Deps) *Module {
 		CreatePage: app.NewCreatePage(writer, store, d.Logger),
 		GetPage:    app.NewGetPage(d.Notebooks, store, d.Authorizer),
 		RenameNode: app.NewRenameNode(writer, store, d.Logger),
+		MoveNode:   app.NewMoveNode(writer, store, d.Logger),
+		DeleteNode: app.NewDeleteNode(writer, store, d.Logger),
 	}}
 }
 

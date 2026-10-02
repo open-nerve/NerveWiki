@@ -116,6 +116,58 @@ paths:
                 $ref: "#/components/schemas/TreeNode"
         default:
           $ref: "#/components/responses/Problem"
+    delete:
+      operationId: deleteNode
+      tags: [page]
+      summary: Delete a page
+      description: >-
+        Deletes the page with every page under it, at one time: they go to
+        the trash together. Its notebook's editors and admins can, a reader
+        cannot (forbidden). A page that does not exist, is deleted, or whose
+        notebook the caller has no role in is page.not_found.
+      security: [{ bearer: [] }]
+      x-problem-codes: [page.not_found, forbidden]
+      responses:
+        "204":
+          description: The page and the pages under it are deleted.
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v0/nodes/{node_id}/move:
+    parameters:
+      - $ref: "#/components/parameters/NodeID"
+    post:
+      operationId: moveNode
+      tags: [page]
+      summary: Move a page
+      description: >-
+        Moves the page with every page under it: under another parent, to
+        the notebook's root, or among its siblings. Its notebook's editors
+        and admins can, a reader cannot (forbidden). A page that does not
+        exist, is deleted, or whose notebook the caller has no role in is
+        page.not_found; the destination is checked after both: a parent
+        that is no page of the notebook and a page to follow that is no
+        other child of the parent are validation_failed; then a parent that
+        is the page itself or under it is page.cycle, a title a new sibling
+        has, compared by its key, page.title_taken, and a page under it
+        that would be deeper than ten levels page.too_deep. A move to where
+        the page is writes nothing.
+      security: [{ bearer: [] }]
+      x-problem-codes: [page.not_found, forbidden, validation_failed, page.cycle, page.title_taken, page.too_deep]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NodeMove"
+      responses:
+        "200":
+          description: The page, moved.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TreeNode"
+        default:
+          $ref: "#/components/responses/Problem"
 components:
   # 与 api/openapi.yaml 的相同：打包时丢掉模块文件的 securitySchemes，oapi-codegen 读这一份
   securitySchemes:
@@ -298,6 +350,22 @@ components:
           format: uuid
         title:
           $ref: "#/components/schemas/Title"
+        after_id:
+          description: >-
+            The sibling the page goes right after; null puts it first,
+            absent last.
+          type: [string, "null"]
+          format: uuid
+    NodeMove:
+      description: Where a page goes.
+      type: object
+      additionalProperties: false
+      required: [parent_id]
+      properties:
+        parent_id:
+          description: The new parent page; null for the notebook's root.
+          type: [string, "null"]
+          format: uuid
         after_id:
           description: >-
             The sibling the page goes right after; null puts it first,

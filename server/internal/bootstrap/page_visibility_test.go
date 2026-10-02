@@ -20,13 +20,16 @@ import (
 // the page by its node, each decided on by the access module: a read that
 // drifts from the tree fails here. On this copy alone, team's page has a
 // child and priv a deleted page, which neither shows; the copy keeps the
-// pages' invariant.
+// pages' invariant. Then, through the API, team's default editor deletes
+// its page with the child (M4/P2 design 3.7): neither is in a tree or read
+// by any column.
 func TestTheTreeIsWhatEachReadAllows(t *testing.T) {
 	d := prepareMatrix(t)
 	contract := apitest.Load(t)
 	url := pgtest.NewDatabaseFrom(t, d.url)
 	s := d.seeded.in(t)
 	pages := slices.Collect(maps.Values(s.pages))
+	extras := map[string]uuid.UUID{}
 	pool := connect(t, url)
 	for _, extra := range []struct {
 		parent  string
@@ -34,7 +37,7 @@ func TestTheTreeIsWhatEachReadAllows(t *testing.T) {
 		deleted bool
 	}{{"team-page", "team-child", false}, {"priv-root", "priv-trashed", true}} {
 		id := uuid.NewV7()
-		pages = append(pages, id)
+		pages, extras[extra.name] = append(pages, id), id
 		if _, err := pool.Exec(context.Background(), `INSERT INTO nodes (id, notebook_id, parent_id, kind, name, name_key, sort_order,
 				created_by_id, updated_by_id, created_at, updated_at, deleted_at)
 			SELECT $1, p.notebook_id, p.id, 'page', $3, $3, 1, p.created_by_id, p.created_by_id, now(), now(), CASE WHEN $4 THEN now() END
@@ -52,6 +55,12 @@ func TestTheTreeIsWhatEachReadAllows(t *testing.T) {
 	}
 	checkPages(t, pool)
 	base := startApp(t, d.config(t, url, nil), migrations.FS())
+	teamPage := s.page("team-page")
+	if status, answer := ask(t, contract, http.MethodDelete, base+"/api/v0/nodes/"+teamPage.String(), d.tokens[callerDefaultEditor], ""); status != http.StatusNoContent {
+		t.Fatalf("DELETE team's page = %d %s, want 204", status, answer)
+	}
+	checkPages(t, pool)
+	gone := []string{teamPage.String(), extras["team-child"].String()}
 	type place struct{ name, parent string }
 	for _, c := range allColumns() {
 		tree := map[string]place{} // by id, of the trees c reads
@@ -107,6 +116,11 @@ func TestTheTreeIsWhatEachReadAllows(t *testing.T) {
 			case http.StatusNotFound:
 			default:
 				t.Fatalf("%s: GET a page = %d %s", c, status, answer)
+			}
+		}
+		for _, id := range gone {
+			if _, inTree := tree[id]; inTree || read[id] != (place{}) {
+				t.Errorf("%s still has a deleted page %s: in the tree %v, read %v", c, id, inTree, read[id])
 			}
 		}
 		if !maps.Equal(tree, read) {
