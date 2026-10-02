@@ -21,11 +21,14 @@ const (
 
 // fastest is the least of three runs of parsing and rendering src, the
 // others carrying the machine's noise; a run past limit is not repeated.
+// Each starts from a collected heap: what the collector of the one before
+// left to do is no part of it.
 func fastest(t *testing.T, m *markdown.Markdown, src string, limit time.Duration) time.Duration {
 	t.Helper()
 	content := []byte(src)
 	best := time.Duration(math.MaxInt64)
 	for range 3 {
+		runtime.GC()
 		start := time.Now()
 		if _, err := m.Render(context.Background(), m.Parse(content), markdown.Page{}); err != nil {
 			t.Fatal(err)
@@ -52,11 +55,17 @@ func allocated(t *testing.T, m *markdown.Markdown, content []byte) (uint64, stri
 }
 
 // CheckCosts checks what m costs (M4/P3 design 3.10): every pathological
-// input at most k times what an ordinary document of its size costs, and
-// twice the input about twice as much (goldmark's own parse takes seconds
-// on most of these at 256 KB); an ordinary megabyte in a second, a floor
-// against a slowdown by an order of magnitude. The half is tried first, so
-// a slow input fails without trying the full size. What an input allocates
+// input of 512 KB at most k times what an ordinary document of its size
+// costs (goldmark's own parse takes seconds on most of these at 256 KB),
+// and at most eight times what a quarter of it costs: a linear cost is
+// four times, a quadratic one sixteen. A linear cost grows faster than
+// its size on small inputs, which the machine's load sways the most:
+// twice 128 KB took three times as long, against a bound of three, where
+// four times 128 KB takes at most about five and a half. An ordinary
+// megabyte in a second is a floor against a slowdown by an order of
+// magnitude. The
+// quarter is tried first, so a slow input fails without trying the full
+// size. What an input allocates
 // is checked too, at most kAlloc times an ordinary document's: the count
 // does not vary as the time does, and a cost that the garbage collector
 // takes later shows in it (a tokenizer for each of thousands of tags
@@ -77,21 +86,21 @@ func CheckCosts(t *testing.T, m *markdown.Markdown) {
 			t.Errorf("%s: %v", in.Name, err)
 		}
 	}
-	const size = 256 << 10
+	const size = 512 << 10
 	normal := fastest(t, m, Normal(size), time.Second)
 	normalAlloc, _ := allocated(t, m, []byte(Normal(size)))
 	t.Logf("ordinary, %d KB: %v, %d KB allocated", size>>10, normal, normalAlloc>>10)
 	for _, in := range Pathological() {
-		half := fastest(t, m, in.Make(size/2), k*normal)
-		if half > k*normal {
-			t.Errorf("%s: %v for %d KB, more than %d times an ordinary document's %v for twice as much",
-				in.Name, half, size>>11, k, normal)
+		quarter := fastest(t, m, in.Make(size/4), k*normal)
+		if quarter > k*normal {
+			t.Errorf("%s: %v for %d KB, more than %d times an ordinary document's %v for four times as much",
+				in.Name, quarter, size>>12, k, normal)
 			continue
 		}
 		full := fastest(t, m, in.Make(size), k*normal)
 		content := []byte(in.Make(size))
 		alloc, out := allocated(t, m, content)
-		t.Logf("%s: %v, %v (%.1f); allocated %.1f", in.Name, half, full, float64(full)/float64(normal),
+		t.Logf("%s: %v, %v (%.1f); allocated %.1f", in.Name, quarter, full, float64(full)/float64(normal),
 			float64(alloc)/float64(normalAlloc))
 		if err := CheckSize(content, out); err != nil {
 			t.Errorf("%s: %v", in.Name, err)
@@ -103,8 +112,8 @@ func CheckCosts(t *testing.T, m *markdown.Markdown) {
 		switch {
 		case full > k*normal:
 			t.Errorf("%s: %v for %d KB, more than %d times an ordinary document's %v", in.Name, full, size>>10, k, normal)
-		case full > 3*half+time.Millisecond:
-			t.Errorf("%s: %v for %d KB, more than three times the %v for half of it", in.Name, full, size>>10, half)
+		case full > 8*quarter+time.Millisecond:
+			t.Errorf("%s: %v for %d KB, more than eight times the %v for a quarter of it", in.Name, full, size>>10, quarter)
 		}
 	}
 	if d := fastest(t, m, Normal(1<<20), time.Second); d > time.Second {
