@@ -7,6 +7,7 @@ import { MemberService } from "../services/member.service";
 import { NotebookMemberService } from "../services/notebook-member.service";
 import { NotebookService, type Notebook } from "../services/notebook.service";
 import { OwnerlessService } from "../services/ownerless.service";
+import { PageService } from "../services/page.service";
 import { WorkspaceService, type Workspace } from "../services/workspace.service";
 import type { Session } from "../session/session";
 import { AccountStore } from "./account.store";
@@ -19,6 +20,7 @@ import { MemberStore } from "./member.store";
 import { NotebookMemberStore } from "./notebook-member.store";
 import { NotebookStore } from "./notebook.store";
 import { OwnerlessStore } from "./ownerless.store";
+import { PageTreeStore } from "./page-tree.store";
 import type { PreferencesStore } from "./preferences.store";
 import { WorkspaceStore } from "./workspace.store";
 
@@ -62,6 +64,7 @@ export class RootStore {
   private readonly notebooks: NotebookService | undefined;
   private readonly notebookMembers: NotebookMemberService | undefined;
   private readonly ownerless: OwnerlessService | undefined;
+  private readonly pages: PageService | undefined;
   /** The member, invitation and notebook lists this generation holds, by workspace id. */
   private readonly memberLists = new Map<string, MemberStore>();
   private readonly invitationLists = new Map<string, InvitationStore>();
@@ -69,8 +72,9 @@ export class RootStore {
   /** The ownerless notebooks and the audit events this generation holds, by workspace id. */
   private readonly ownerlessLists = new Map<string, OwnerlessStore>();
   private readonly auditLists = new Map<string, AuditStore>();
-  /** The notebook member lists this generation holds, by notebook id. */
+  /** The notebook member lists and page trees this generation holds, by notebook id. */
   private readonly notebookMemberLists = new Map<string, NotebookMemberStore>();
+  private readonly pageTrees = new Map<string, PageTreeStore>();
 
   constructor(
     app: AppStores,
@@ -89,6 +93,7 @@ export class RootStore {
     this.notebooks = client && new NotebookService(client);
     this.notebookMembers = client && new NotebookMemberService(client);
     this.ownerless = client && new OwnerlessService(client);
+    this.pages = client && new PageService(client);
   }
 
   /**
@@ -133,6 +138,12 @@ export class RootStore {
   notebookMembersOf(notebook: Notebook): NotebookMemberStore | undefined {
     const service = this.notebookMembers;
     return service && once(this.notebookMemberLists, notebook.id, () => new NotebookMemberStore(service, notebook.id));
+  }
+
+  /** pagesOf is the page tree of notebook, the same one for as long as this generation lives (M4/P5 design 3.4). */
+  pagesOf(notebook: Notebook): PageTreeStore | undefined {
+    const service = this.pages;
+    return service && once(this.pageTrees, notebook.id, () => new PageTreeStore(service, notebook.id));
   }
 }
 

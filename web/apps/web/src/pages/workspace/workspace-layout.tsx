@@ -1,5 +1,5 @@
 import { observer } from "mobx-react-lite";
-import { useEffect } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Navigate, Outlet, useParams } from "react-router";
 import useSWR from "swr";
@@ -30,6 +30,18 @@ export function useWorkspace(): Workspace {
   return workspace;
 }
 
+/** NotebookColumn is where a notebook's pages put their part of the left column: below the workspace's navigation. */
+const NotebookColumn = createContext<HTMLElement | null>(null);
+
+/**
+ * useNotebookColumn is the element a notebook's pages portal their part of
+ * the left column into, the notebook's page tree (M4/P5 design 3.6), or
+ * null before the column has it.
+ */
+export function useNotebookColumn(): HTMLElement | null {
+  return useContext(NotebookColumn);
+}
+
 /** The workspace's own pages, in the order the navigation lists them, before its notebooks. */
 const sections: readonly { path: string; label: Extract<MessageKey, `workspace.${string}`>; end?: boolean }[] = [
   { path: "", label: "workspace.home", end: true },
@@ -56,6 +68,7 @@ export const WorkspaceLayout = observer(function WorkspaceLayout() {
   const { preferences } = useStore();
   const t = useT();
   const column = useShellColumn();
+  const [notebookColumn, setNotebookColumn] = useState<HTMLElement | null>(null);
   const { error, mutate } = useSWR("workspaces", () => workspaces.load());
   const workspace = workspaces.bySlug(slug);
   const found = workspace !== undefined;
@@ -85,12 +98,15 @@ export const WorkspaceLayout = observer(function WorkspaceLayout() {
         </div>
         <NotebookNav key={workspace.id} workspace={workspace} />
       </nav>
+      <div ref={setNotebookColumn} />
     </div>
   );
   return (
     <>
       {column !== null && createPortal(left, column)}
-      <Outlet key={workspace.id} />
+      <NotebookColumn value={notebookColumn}>
+        <Outlet key={workspace.id} />
+      </NotebookColumn>
     </>
   );
 });

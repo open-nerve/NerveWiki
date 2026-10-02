@@ -24,7 +24,8 @@ import { RouteError } from "./route-error";
 // pages: the slugs that name these are reserved (M2/P1 design 3.6; the
 // test of reserved-slugs.test.ts). / lands on a workspace (M2/P5 design
 // 3.3). A notebook's pages are under its workspace's, by the notebook's id
-// (M3/P4 design 3.4).
+// (M3/P4 design 3.4), and a wiki page's under its notebook's, by the
+// page's id (M4/P5 design 3.5).
 export const routes: RouteObject[] = [
   {
     Component: Layout,
@@ -145,6 +146,13 @@ export const routes: RouteObject[] = [
                             lazy: async () => {
                               const { NotebookHomePage } = await import("../pages/notebook/notebook-home");
                               return { Component: NotebookHomePage };
+                            },
+                          },
+                          {
+                            path: "pages/:pageId",
+                            lazy: async () => {
+                              const { PageLayout } = await import("../pages/page/page-layout");
+                              return { Component: PageLayout };
                             },
                           },
                           {

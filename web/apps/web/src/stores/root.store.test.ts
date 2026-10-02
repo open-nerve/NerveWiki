@@ -108,6 +108,21 @@ test("a workspace's notebooks, and a notebook's members, are the same for the ge
   expect(next.notebookMembersOf(notebookJSON)).not.toBe(members);
 });
 
+// A notebook's page tree goes by the notebook's id (M4/P5 design 3.4).
+test("a notebook's page tree is the same for the generation; another's, or another generation's, is other", async () => {
+  const app = testApp(() => json(tokensJSON), storedSession("login-0"));
+  await app.session.start();
+  const store = new RootStore(app, "login-0");
+
+  const pages = store.pagesOf(notebookJSON);
+
+  expect(pages).toBeDefined();
+  expect(store.pagesOf({ ...notebookJSON, name: "Renamed" })).toBe(pages);
+  expect(store.pagesOf({ ...notebookJSON, id: "0199a2b4-0000-7000-8000-0000000000b2" })).not.toBe(pages);
+  expect(new RootStore(app, "login-0").pagesOf(notebookJSON)).not.toBe(pages);
+  expect(new RootStore(app, undefined).pagesOf(notebookJSON)).toBeUndefined();
+});
+
 // The ownerless notebooks and the audit events go by the workspace's id (M3/P5 design 3.2).
 test("a workspace's ownerless notebooks and audit events are the same for the generation; another's are other", async () => {
   const app = testApp(() => json(tokensJSON), storedSession("login-0"));
