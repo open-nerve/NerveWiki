@@ -95,6 +95,33 @@ test("a notebook created from the empty home opens on its home, arrived at", asy
   await waitFor(() => expect(document.activeElement).toBe(heading));
 });
 
+// The home's creation ends its empty state, and the dialog with it, yet
+// still arrives; once the home was left, it goes nowhere (v0.1 design
+// 13.2, item 16; M3 Codex review R3).
+test("a notebook created from the empty home answered after leaving it goes nowhere", async () => {
+  const user = userEvent.setup();
+  let release: (() => void) | undefined;
+  const app = labApp([], "member", {
+    "POST /api/v0/workspaces/lab/notebooks": async () => {
+      await new Promise<void>((resolve) => (release = resolve));
+      return json(notebookJSON, 201);
+    },
+  });
+  const { router } = renderApp("/lab", app);
+
+  await user.click(await within(await main()).findByRole("button", { name: "New notebook" }));
+  const dialog = await screen.findByRole("dialog", { name: "New notebook" });
+  await user.type(within(dialog).getByLabelText("Name"), "Plans");
+  await user.click(within(dialog).getByRole("button", { name: "Create" }));
+  await waitFor(() => expect(release).toBeDefined());
+  await act(() => router.navigate("/settings/profile"));
+  await screen.findByRole("heading", { level: 1, name: "Settings" });
+  release?.();
+  await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+
+  expect(router.state.location.pathname).toBe("/settings/profile");
+});
+
 // The admins read how many notebooks have no admin (M3/P5 design 3.3).
 test("an admin with ownerless notebooks reads how many, with a way to them", async () => {
   const user = userEvent.setup();

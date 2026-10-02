@@ -147,6 +147,27 @@ test("an admin reads the ownerless notebooks, the longest ownerless first, each 
   ]);
 });
 
+// Two notebooks of one former owner may have the same name: nothing else
+// shown tells them apart, so each shows the end of its id, which its
+// controls and its deletion's title name it by too (v0.1 design 13.2,
+// item 17; M3 Codex review R6). Atlas, alone with its name, shows none.
+test("two notebooks of one former owner with one name each show the end of their ids, as their controls do", async () => {
+  const user = userEvent.setup();
+  const twin: OwnerlessNotebook = { ...ownerlessJSON, id: "0199a2b4-0000-7000-8000-0000000000e3" };
+  renderApp(page, ownerlessServer({ list: [ownerlessJSON, twin, atlas] }).app);
+
+  const first = "Roadmap (ID 0000e1), former owner Bob (bob@example.com)";
+  const second = "Roadmap (ID 0000e3), former owner Bob (bob@example.com)";
+  expect(await screen.findByRole("button", { name: `Take over ${first}` })).toBeTruthy();
+  expect(screen.getByRole("button", { name: `Take over ${second}` })).toBeTruthy();
+  expect(screen.getByRole("button", { name: takeOver("Atlas") })).toBeTruthy();
+  expect([screen.getByText("ID 0000e1"), screen.getByText("ID 0000e3")]).toHaveLength(2);
+  expect(screen.queryAllByText(/^ID /)).toHaveLength(2);
+  await user.click(screen.getByRole("button", { name: `Delete ${second}` }));
+
+  expect(await screen.findByRole("alertdialog", { name: "Delete Roadmap (ID 0000e3)?" })).toBeTruthy();
+});
+
 test("with none, the page says so", async () => {
   renderApp(page, ownerlessServer({ list: [] }).app);
 
@@ -410,6 +431,28 @@ test("a page that cannot be loaded says why beside Load more, which tries again"
 
   await waitFor(async () => expect(await events()).toHaveLength(2));
   expect(screen.queryByRole("alert")).toBeNull();
+});
+
+// Load more is a read only admins may make too: refused as forbidden, the
+// account is an admin no more, and the page follows the role as the first
+// page's read does (v0.1 design 13.2, item 18; M3 Codex review R2).
+test("Load more refused as forbidden reads the workspaces again: the page says whose it is", async () => {
+  const user = userEvent.setup();
+  const server = ownerlessServer({
+    pages: {
+      "": { data: [event("e2", "deleted")], next_cursor: "c1" },
+      c1: { data: [event("e1", "returned")], next_cursor: null },
+    },
+  });
+  renderApp(page, server.app);
+  await events();
+
+  // Another admin made Ada a member; this tab has not read it yet.
+  server.role = "member";
+  await user.click(screen.getByRole("button", { name: "Load more" }));
+
+  expect(await screen.findByText("Only the workspace's admins see its ownerless notebooks.")).toBeTruthy();
+  expect(server.sent.filter((each) => each === "GET workspaces")).toHaveLength(2);
 });
 
 test("an empty audit says so; one that cannot be read says why, and Try again reads it", async () => {

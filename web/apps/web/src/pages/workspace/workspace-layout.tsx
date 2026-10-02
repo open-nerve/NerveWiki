@@ -79,7 +79,7 @@ export const WorkspaceLayout = observer(function WorkspaceLayout() {
               </NavItem>
             ))}
           </div>
-          <NotebookNav workspace={workspace} />
+          <NotebookNav key={workspace.id} workspace={workspace} />
         </nav>
       </div>
       <div className="min-w-0 flex-1 p-6">

@@ -222,6 +222,30 @@ test("an acceptance answered after signing out does not go into the workspace", 
   expect(screen.getByRole("button", { name: "Sign in" })).toBeTruthy();
 });
 
+// An acceptance answered once the page was left takes the user nowhere:
+// they went elsewhere, and the switcher lists the workspace (v0.1 design
+// 13.2, item 16; M3 Codex review R3).
+test("an acceptance answered after the page was left does not go into the workspace", async () => {
+  const user = userEvent.setup();
+  let release: (() => void) | undefined;
+  const { app } = invitationServer({
+    accept: async () => {
+      await new Promise<void>((resolve) => (release = resolve));
+      return json({ ...workspaceJSON, role: "member" });
+    },
+  });
+  const { router } = renderApp(page, app);
+
+  await user.click(await screen.findByRole("button", { name: "Accept invitation" }));
+  await waitFor(() => expect(release).toBeDefined());
+  await act(() => router.navigate("/settings/profile"));
+  await screen.findByRole("heading", { level: 1, name: "Settings" });
+  release?.();
+  await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+
+  expect(router.state.location.pathname).toBe("/settings/profile");
+});
+
 test("a member already goes in, keeping the role they have", async () => {
   const user = userEvent.setup();
   const { app } = invitationServer({ accept: () => json({ ...workspaceJSON, role: "admin" }) });

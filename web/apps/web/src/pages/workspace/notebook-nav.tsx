@@ -1,6 +1,7 @@
 import { Plus } from "lucide-react";
 import { observer } from "mobx-react-lite";
 
+import { useMounted } from "../../app/mounted";
 import { NavItem } from "../../components/nav-item";
 import { Button } from "../../components/ui/button";
 import { useT } from "../../i18n/i18n";
@@ -17,6 +18,7 @@ import { NotebookGroups } from "./notebook-groups";
  */
 export const NotebookNav = observer(function NotebookNav({ workspace }: { workspace: Workspace }) {
   const t = useT();
+  const here = useMounted();
   return (
     <div className="space-y-4">
       <NotebookGroups
@@ -33,6 +35,7 @@ export const NotebookNav = observer(function NotebookNav({ workspace }: { worksp
       {createsNotebooks(workspace) && (
         <CreateNotebookDialog
           workspace={workspace}
+          here={here}
           trigger={
             <Button variant="ghost" className="w-full justify-start px-3">
               <Plus />

@@ -11,6 +11,10 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
+// Each notebook listed has the caller's effective role: the higher of the
+// explicit role and the one the access gives a member of the workspace; an
+// explicit reader of a notebook open to edit is its editor (M3 Codex
+// review R5).
 func TestListNotebooksGivesEachTheCallersRole(t *testing.T) {
 	f := newFixture()
 	alice := uuid.NewV7()
@@ -20,6 +24,7 @@ func TestListNotebooksGivesEachTheCallersRole(t *testing.T) {
 		{Notebook: f.notebook, Explicit: shared.NotebookReader, MemberCount: 2},
 		{Notebook: open, MemberCount: 1},
 		{Notebook: open, Explicit: shared.NotebookAdmin, MemberCount: 1},
+		{Notebook: open, Explicit: shared.NotebookReader, MemberCount: 2},
 	}
 	f.grant(domain.ActionList, shared.WorkspaceMember, "")
 	got, err := app.NewListNotebooks(f.workspaces, f.store, f.auth).Execute(as(alice), "acme")
@@ -28,6 +33,7 @@ func TestListNotebooksGivesEachTheCallersRole(t *testing.T) {
 		{Notebook: f.notebook, Role: shared.NotebookReader, MemberCount: 2},
 		{Notebook: open, Role: shared.NotebookEditor, MemberCount: 1},
 		{Notebook: open, Role: shared.NotebookAdmin, MemberCount: 1},
+		{Notebook: open, Role: shared.NotebookEditor, MemberCount: 2},
 	}
 	if err != nil || !slices.Equal(got, want) {
 		t.Errorf("Execute() = %+v, %v; want %+v", got, err, want)
@@ -37,6 +43,21 @@ func TestListNotebooksGivesEachTheCallersRole(t *testing.T) {
 	}
 	if f.auth.targets[0] != (shared.Target{WorkspaceID: f.acme}) {
 		t.Errorf("target = %+v, want acme", f.auth.targets[0])
+	}
+}
+
+// A guest has no role by the access: an explicit reader of a notebook open
+// to edit stays its reader.
+func TestListNotebooksGivesAGuestItsExplicitRole(t *testing.T) {
+	f := newFixture()
+	open := f.notebook
+	open.Access = shared.AccessEditor
+	f.store.listed = []app.Listed{{Notebook: open, Explicit: shared.NotebookReader, MemberCount: 2}}
+	f.grant(domain.ActionList, shared.WorkspaceGuest, "")
+	got, err := app.NewListNotebooks(f.workspaces, f.store, f.auth).Execute(as(uuid.NewV7()), "acme")
+
+	if want := []app.View{{Notebook: open, Role: shared.NotebookReader, MemberCount: 2}}; err != nil || !slices.Equal(got, want) {
+		t.Errorf("Execute() = %+v, %v; want %+v", got, err, want)
 	}
 }
 

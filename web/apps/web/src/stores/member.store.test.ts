@@ -107,3 +107,34 @@ test("a member removed leaves; one whose membership has ended already leaves as 
   await expect(store.remove("dee")).rejects.toBe(forbidden);
   expect(roles(store)).toEqual(["ada:admin", "dee:member"]);
 });
+
+// A member's changes go out one at a time (v0.1 design 13.2, item 1): the
+// store outlives the members page, whose role menu, mounted anew, may send
+// while the change before is out; the server's answers may come back in
+// any order (M3 Codex review R1). Another member's go out side by side.
+test("a member's changes go out one at a time, the last made last; another member's alongside", async () => {
+  const answers: ((m: WorkspaceMember) => void)[] = [];
+  const sent: string[] = [];
+  const store = storeOf([member("ada", "admin"), member("bob")], {
+    update: (id, role) => {
+      sent.push(`${id}:${role}`);
+      return new Promise<WorkspaceMember>((resolve) => answers.push(resolve));
+    },
+  });
+  await store.load();
+
+  const toGuest = store.changeRole("bob", "guest");
+  const toAdmin = store.changeRole("bob", "admin");
+  const ada = store.changeRole("ada", "member");
+  await Promise.resolve();
+  expect(sent).toEqual(["bob:guest", "ada:member"]);
+  answers[0]?.(member("bob", "guest"));
+  await toGuest;
+  await Promise.resolve();
+  expect(sent).toEqual(["bob:guest", "ada:member", "bob:admin"]);
+  answers[2]?.(member("bob", "admin"));
+  answers[1]?.(member("ada", "member"));
+  await Promise.all([toAdmin, ada]);
+
+  expect(roles(store)).toEqual(["ada:member", "bob:admin"]);
+});

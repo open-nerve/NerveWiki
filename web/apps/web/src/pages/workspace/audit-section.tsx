@@ -34,15 +34,15 @@ function sentence(event: NotebookAuditEvent, t: Translate): string {
  * AuditSection is what was done with a workspace's ownerless notebooks,
  * the newest first (M3/P5 design 3.3): the first page, then Load more for
  * each page after it. A page that cannot be loaded says why beside the
- * button, which tries again.
+ * button, which tries again; one refused as forbidden follows the role,
+ * as the first page does (v0.1 design 13.2, item 18).
  */
 export const AuditSection = observer(function AuditSection({ workspace }: { workspace: Workspace }) {
   const audit = useAudit(workspace);
   const { preferences } = useStore();
   const t = useT();
-  const { error, mutate } = useSWR(["notebook-audit", workspace.id], () => audit.load(), {
-    onError: useFollowRole(),
-  });
+  const followRole = useFollowRole();
+  const { error, mutate } = useSWR(["notebook-audit", workspace.id], () => audit.load(), { onError: followRole });
   const [loading, setLoading] = useState(false);
   const [failure, setFailure] = useState<unknown>();
   const failed = failure === undefined ? undefined : errorText(failure, t);
@@ -54,6 +54,7 @@ export const AuditSection = observer(function AuditSection({ workspace }: { work
       await audit.more();
     } catch (refusal) {
       setFailure(refusal);
+      followRole(refusal);
     } finally {
       setLoading(false);
     }

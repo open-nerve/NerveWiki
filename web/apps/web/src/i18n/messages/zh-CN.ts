@@ -152,6 +152,8 @@ export const zhCN: Messages = {
   "ownerless.delete": "删除",
   "ownerless.deleteLabel": "删除 {name}，原所有者 {former}",
   "ownerless.deleteTitle": "删除 {name}？",
+  "ownerless.id": "编号 {id}",
+  "ownerless.nameWithId": "{name}（编号 {id}）",
   "ownerless.deleteBody": "笔记本及其中的一切都将删除，剩余的成员也不再能看到它。无法撤销。",
   "ownerless.gone": "这本笔记本已经不是无主的了：已被接管、删除，或已归还原所有者。",
   "ownerless.reminder": "没有管理员的笔记本：{count} 本。",

@@ -2,7 +2,7 @@ import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 
-import type { Notebook } from "../../services/notebook.service";
+import type { Notebook, NotebookRole } from "../../services/notebook.service";
 import { json, notebookJSON, problem, signedInApp } from "../../test/fakes";
 import { ada, bob, cy, notebookMember, notebookServer } from "../../test/notebook-server";
 import { renderApp } from "../../test/render";
@@ -88,6 +88,39 @@ test("an admin changes another member's role as one is chosen, and keeps the foc
   await waitFor(() => expect(document.activeElement).toBe(changed));
 });
 
+// The role menu's "sending" is the page's, which mounts anew: a role
+// chosen on the page come back to goes out once the change still out is
+// answered, so the last chosen is the role shown and held (v0.1 design
+// 13.2, item 1; M3 Codex review R1).
+test("a role chosen on the page come back to goes out after the change still out; the last chosen holds", async () => {
+  const user = userEvent.setup();
+  let release: (() => void) | undefined;
+  const server = notebookServer({
+    answers: {
+      "PATCH /api/v0/notebook-members/*": async (request) => {
+        const { role } = (await request.clone().json()) as { role: NotebookRole };
+        const answered = json(notebookMember(bob, role));
+        return role === "reader" ? new Promise<Response>((resolve) => (release = () => resolve(answered))) : answered;
+      },
+    },
+  });
+  const { router } = renderApp(members, server.app);
+  const bobWho = "Bob (bob@example.com)";
+
+  await choose(user, await roleButton("Editor", bobWho), "Reader");
+  await waitFor(() => expect(release).toBeDefined());
+  await act(() => router.navigate(`/lab/notebooks/${notebookJSON.id}/settings/general`));
+  await act(() => router.navigate(members));
+  await choose(user, await roleButton("Editor", bobWho), "Admin");
+  await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+  expect(server.sent.filter((each) => each.startsWith("PATCH"))).toEqual(["PATCH Bob reader"]);
+
+  release?.();
+  expect(await roleButton("Admin", bobWho)).toBeTruthy();
+  expect(server.sent.filter((each) => each.startsWith("PATCH"))).toEqual(["PATCH Bob reader", "PATCH Bob admin"]);
+  expect(server.members.find((m) => m.user_id === bob.user_id)?.role).toBe("admin");
+});
+
 test.each(["editor", "reader"] as const)("its %s sees the roles, and can change none nor add", async (role) => {
   renderApp(members, notebookServer({ members: [notebookMember(ada, role), notebookMember(bob, "admin")] }).app);
 
@@ -164,6 +197,35 @@ test("an admin adds a member of the workspace not in the notebook yet, with a ro
   expect(screen.getByLabelText<HTMLSelectElement>("Member").value).toBe("");
   // Two members: the notebook is the team's now.
   expect(await within(await nav()).findByRole("list", { name: "Team notebooks" })).toBeTruthy();
+});
+
+// A member chosen while an addition is out is the next one to add: the
+// answer empties the field only if it still shows the member sent (v0.1
+// design 13.2, item 12; M3 Codex review R4).
+test("a member chosen while an addition is out stays chosen once it is answered", async () => {
+  const user = userEvent.setup();
+  let release: (() => void) | undefined;
+  const server = notebookServer({
+    members: [notebookMember(ada, "admin")],
+    answers: {
+      [`POST ${plans}/members`]: async (request) => {
+        const { role } = (await request.clone().json()) as { role: NotebookRole };
+        const added = json({ ...notebookMember(cy, role), created_at: "2026-10-03T08:00:00Z" }, 201);
+        return new Promise<Response>((resolve) => (release = () => resolve(added)));
+      },
+    },
+  });
+  renderApp(members, server.app);
+
+  await user.selectOptions(await screen.findByLabelText("Member"), "Cy (cy@example.com)");
+  await user.click(screen.getByRole("button", { name: "Add" }));
+  await waitFor(() => expect(release).toBeDefined());
+  await user.selectOptions(screen.getByLabelText("Member"), "Bob (bob@example.com)");
+  release?.();
+
+  expect(await screen.findByText("Cy added.")).toBeTruthy();
+  expect(await candidates()).toEqual(["Choose a member", "Bob (bob@example.com)"]);
+  expect(screen.getByLabelText<HTMLSelectElement>("Member").value).toBe(bob.user_id);
 });
 
 test("adding with no member chosen is found before sending", async () => {

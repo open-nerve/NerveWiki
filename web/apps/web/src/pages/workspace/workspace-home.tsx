@@ -4,6 +4,7 @@ import useSWR from "swr";
 
 import { useArrivalFocus } from "../../app/arrival";
 import { useFollowRole } from "../../app/follow-role";
+import { useMounted } from "../../app/mounted";
 import { Button } from "../../components/ui/button";
 import { useT } from "../../i18n/i18n";
 import type { Workspace } from "../../services/workspace.service";
@@ -23,6 +24,7 @@ export const WorkspaceHomePage = observer(function WorkspaceHomePage() {
   const workspace = useWorkspace();
   const t = useT();
   const heading = useArrivalFocus<HTMLHeadingElement>();
+  const here = useMounted();
   return (
     <section className="max-w-4xl space-y-6">
       <h1 ref={heading} tabIndex={-1} className="text-2xl font-semibold outline-none">
@@ -46,7 +48,11 @@ export const WorkspaceHomePage = observer(function WorkspaceHomePage() {
           <div className="space-y-3">
             <p className="text-muted-foreground">{t("notebooks.empty")}</p>
             {createsNotebooks(workspace) && (
-              <CreateNotebookDialog workspace={workspace} trigger={<Button>{t("notebooks.create")}</Button>} />
+              <CreateNotebookDialog
+                workspace={workspace}
+                here={here}
+                trigger={<Button>{t("notebooks.create")}</Button>}
+              />
             )}
           </div>
         }

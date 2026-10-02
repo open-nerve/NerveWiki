@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 
@@ -121,6 +121,35 @@ test("a creation goes into the new workspace, which the switcher lists", async (
   expect(sent).toEqual([{ name: "Zeta", slug: "zeta" }]);
   await user.click(screen.getByRole("button", { name: "Zeta" }));
   expect((await screen.findAllByRole("menuitemradio")).map((item) => item.textContent)).toEqual(["Lab", "Zeta"]);
+});
+
+// A creation answered once the page was left takes the user nowhere: they
+// went elsewhere, and the switcher lists the workspace (v0.1 design 13.2,
+// item 16; M3 Codex review R3).
+test("a creation answered after the page was left does not go into the workspace", async () => {
+  const user = userEvent.setup();
+  let release: (() => void) | undefined;
+  const app = signedInApp({
+    "GET /api/v0/instance": () => json(instanceJSON),
+    "GET /api/v0/workspaces": () => json({ data: [workspaceJSON] }),
+    "POST /api/v0/workspaces": async (request) => {
+      const body = (await request.json()) as WorkspaceCreate;
+      await new Promise<void>((resolve) => (release = resolve));
+      return json(created(body), 201);
+    },
+    "GET /api/v0/workspace-slugs/*": () => json({ available: true }),
+  });
+  const { router } = renderApp("/create-workspace", app);
+
+  await user.type(await nameField(), "Zeta");
+  await user.click(screen.getByRole("button", { name: "Create workspace" }));
+  await waitFor(() => expect(release).toBeDefined());
+  await act(() => router.navigate("/settings/profile"));
+  await screen.findByRole("heading", { level: 1, name: "Settings" });
+  release?.();
+  await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+
+  expect(router.state.location.pathname).toBe("/settings/profile");
 });
 
 test.each([

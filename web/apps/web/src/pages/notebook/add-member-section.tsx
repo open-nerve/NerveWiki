@@ -1,5 +1,5 @@
 import { observer } from "mobx-react-lite";
-import { useId, useState, type FormEvent } from "react";
+import { useId, useRef, useState, type FormEvent } from "react";
 import useSWR, { useSWRConfig } from "swr";
 
 import { useForm } from "../../app/form";
@@ -53,7 +53,9 @@ const additionFields = ["user_id"] as const;
 
 /**
  * AddForm adds the member chosen with the role chosen, an editor unless
- * another is. Once added, the choice is emptied and the status says who;
+ * another is. Once added, the status says who, and the choice is emptied
+ * unless another member was chosen while the addition was out (v0.1
+ * design 13.2, item 12);
  * a refusal reads the lists again: the account chosen may have just left
  * the workspace, or been added by another admin; the account itself may
  * no longer be the notebook's admin. With no one left to add, the
@@ -68,16 +70,21 @@ function AddForm({ workspace, notebook, candidates }: SectionProps & { candidate
   const [userId, setUserId] = useState("");
   const [role, setRole] = useState<NotebookRole>("editor");
   const [added, setAdded] = useState<string>();
+  /** How many times the member was chosen: an addition tells whether the field still shows the one it sent. */
+  const edits = useRef(0);
   const { ref, sending, banner, problemOf, submit } = useForm(additionFields);
   const memberProblem = problemOf("user_id");
   // The field stays with none to choose, saying why: a problem shown under it stays, and the focus on it.
   const memberNote = memberProblem ?? (candidates.length === 0 ? t("notebookMembers.noCandidates") : undefined);
 
   async function add(chosen: string) {
+    const edit = edits.current;
     setAdded(undefined);
     const done = await submit(chosen === "" ? { user_id: "field.required" } : {}, async () => {
       const member = await members.add(chosen, role);
-      setUserId("");
+      if (edits.current === edit) {
+        setUserId("");
+      }
       setAdded(member.display_name);
       void reload(["notebooks", workspace.id]);
     });
@@ -106,6 +113,7 @@ function AddForm({ workspace, notebook, candidates }: SectionProps & { candidate
             aria-invalid={memberProblem !== undefined || undefined}
             aria-describedby={memberNote === undefined ? undefined : `${memberId}-note`}
             onChange={(event) => {
+              edits.current++;
               setUserId(event.target.value);
               setAdded(undefined);
             }}
