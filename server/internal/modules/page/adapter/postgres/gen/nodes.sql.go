@@ -155,6 +155,36 @@ func (q *Queries) CreateNode(ctx context.Context, arg CreateNodeParams) error {
 	return err
 }
 
+const deleteNodes = `-- name: DeleteNodes :exec
+WITH gone AS (
+    UPDATE nodes n
+    SET deleted_at = $1::timestamptz, updated_by_id = $2, updated_at = $1
+    WHERE n.id = ANY($3::uuid[]) AND n.deleted_at IS NULL
+    RETURNING n.id
+), contents AS (
+    UPDATE page_contents c SET deleted_at = $1::timestamptz
+    WHERE c.node_id IN (SELECT id FROM gone) AND c.deleted_at IS NULL
+), revisions AS (
+    UPDATE page_revisions r SET deleted_at = $1::timestamptz
+    WHERE r.node_id IN (SELECT id FROM gone) AND r.deleted_at IS NULL
+)
+UPDATE changeset_items i SET deleted_at = $1::timestamptz
+WHERE i.node_id IN (SELECT id FROM gone) AND i.deleted_at IS NULL
+`
+
+type DeleteNodesParams struct {
+	Now time.Time
+	By  uuid.UUID
+	Ids []uuid.UUID
+}
+
+// A subtree's deletion (M4 design 4): the nodes not deleted, and what follows them not deleted, at the
+// unit's time, by its caller. What an earlier deletion put in the trash keeps its own time.
+func (q *Queries) DeleteNodes(ctx context.Context, arg DeleteNodesParams) error {
+	_, err := q.db.Exec(ctx, deleteNodes, arg.Now, arg.By, arg.Ids)
+	return err
+}
+
 const deleteNotebooksPages = `-- name: DeleteNotebooksPages :exec
 WITH gone AS (
     UPDATE nodes n
@@ -331,6 +361,32 @@ func (q *Queries) ListNodes(ctx context.Context, notebookID uuid.UUID) ([]ListNo
 	return items, nil
 }
 
+const moveNode = `-- name: MoveNode :exec
+UPDATE nodes
+SET parent_id = $1, sort_order = $2, updated_by_id = $3,
+    updated_at = $4
+WHERE id = $5
+`
+
+type MoveNodeParams struct {
+	ParentID  *uuid.UUID
+	SortOrder float64
+	By        uuid.UUID
+	Now       time.Time
+	ID        uuid.UUID
+}
+
+func (q *Queries) MoveNode(ctx context.Context, arg MoveNodeParams) error {
+	_, err := q.db.Exec(ctx, moveNode,
+		arg.ParentID,
+		arg.SortOrder,
+		arg.By,
+		arg.Now,
+		arg.ID,
+	)
+	return err
+}
+
 const renameNode = `-- name: RenameNode :exec
 UPDATE nodes
 SET name = $1, name_key = $2, updated_by_id = $3, updated_at = $4
@@ -369,4 +425,77 @@ type SetSortOrderParams struct {
 func (q *Queries) SetSortOrder(ctx context.Context, arg SetSortOrderParams) error {
 	_, err := q.db.Exec(ctx, setSortOrder, arg.SortOrder, arg.ID)
 	return err
+}
+
+const subtree = `-- name: Subtree :many
+WITH RECURSIVE sub AS (
+    SELECT n.id, n.notebook_id, n.parent_id, n.kind, n.name, n.name_key, n.sort_order, n.created_by_id,
+        n.updated_by_id, n.created_at, n.updated_at, 1 AS level
+    FROM nodes n
+    WHERE n.id = $1 AND n.notebook_id = $2 AND n.deleted_at IS NULL
+    UNION ALL
+    SELECT c.id, c.notebook_id, c.parent_id, c.kind, c.name, c.name_key, c.sort_order, c.created_by_id,
+        c.updated_by_id, c.created_at, c.updated_at, s.level + 1
+    FROM sub s JOIN nodes c ON c.notebook_id = s.notebook_id AND c.parent_id = s.id
+    WHERE c.deleted_at IS NULL AND s.level < 64
+)
+SELECT id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id, created_at,
+    updated_at, level::integer AS level
+FROM sub
+ORDER BY level, sort_order, id
+`
+
+type SubtreeParams struct {
+	ID         uuid.UUID
+	NotebookID uuid.UUID
+}
+
+type SubtreeRow struct {
+	ID          uuid.UUID
+	NotebookID  uuid.UUID
+	ParentID    *uuid.UUID
+	Kind        string
+	Name        string
+	NameKey     string
+	SortOrder   float64
+	CreatedByID uuid.UUID
+	UpdatedByID uuid.UUID
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+	Level       int32
+}
+
+// A node not deleted of the notebook and its descendants not deleted, each with its level (the node's is 1),
+// level by level. The level bound stops a chain that loops, which only a defect could make.
+func (q *Queries) Subtree(ctx context.Context, arg SubtreeParams) ([]SubtreeRow, error) {
+	rows, err := q.db.Query(ctx, subtree, arg.ID, arg.NotebookID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SubtreeRow
+	for rows.Next() {
+		var i SubtreeRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.NotebookID,
+			&i.ParentID,
+			&i.Kind,
+			&i.Name,
+			&i.NameKey,
+			&i.SortOrder,
+			&i.CreatedByID,
+			&i.UpdatedByID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Level,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

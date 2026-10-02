@@ -227,3 +227,45 @@ func TestPurgeKeepsWhatAHeldRowNeeds(t *testing.T) {
 		})
 	}
 }
+
+// A subtree deleted in a live notebook goes in one run with the items of
+// the changeset that deleted it; the changesets stay with their notebook.
+func TestPurgeTakesADeletedSubtree(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	a := f.page(t, f.eng, nil, "A", 0)
+	b := f.page(t, f.eng, &a.ID, "B", 0)
+	c := f.page(t, f.eng, &b.ID, "C", 0)
+	created := app.Changeset{ID: uuid.NewV7(), NotebookID: f.eng, Kind: "edit", Client: domain.ClientWeb, By: f.alice, At: now()}
+	deleted := app.Changeset{ID: uuid.NewV7(), NotebookID: f.eng, Kind: "edit", Client: domain.ClientWeb, By: f.alice, At: cutoff().Add(-time.Microsecond)}
+	for _, cs := range []app.Changeset{created, deleted} {
+		if err := f.s.CreateChangeset(ctx, cs); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, n := range []domain.Node{a, b, c} {
+		state := n.State()
+		if err := f.s.RecordItem(ctx, app.Item{ID: uuid.NewV7(), ChangesetID: created.ID, Change: domain.Change{NodeID: n.ID, After: &state}, At: now()}); err != nil {
+			t.Fatal(err)
+		}
+		sum := sha256.Sum256(nil)
+		if err := f.s.RecordRevision(ctx, app.Revision{ID: uuid.NewV7(), ChangesetID: created.ID, NodeID: n.ID, Revision: 1, Hash: sum[:], At: now()}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := f.s.DeleteNodes(ctx, []uuid.UUID{a.ID, b.ID, c.ID}, f.alice, deleted.At); err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range []domain.Node{a, b, c} {
+		state := n.State()
+		if err := f.s.RecordItem(ctx, app.Item{ID: uuid.NewV7(), ChangesetID: deleted.ID, Change: domain.Change{NodeID: n.ID, Before: &state}, At: deleted.At}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if purged, want := run(t, f.s), []int{6, 3, 3, 3, 0}; !slices.Equal(purged, want) {
+		t.Errorf("purged %v, want %v: both changesets' items, the tree and what follows it", purged, want)
+	}
+	if got := f.count(t, "SELECT count(*) FROM changesets"); got != 2 {
+		t.Errorf("changesets left = %d, want both", got)
+	}
+}

@@ -26,6 +26,8 @@ func (s *Store) RecordItem(ctx context.Context, it app.Item) error {
 	}
 	if a := it.Change.After; a != nil {
 		p.AfterParentID, p.AfterName, p.AfterSortOrder = a.ParentID, &a.Name, &a.SortOrder
+	} else {
+		p.DeletedAt = &it.At
 	}
 	if err := s.queries(ctx).RecordItem(ctx, p); err != nil {
 		return fmt.Errorf("record changeset item: %w", err)

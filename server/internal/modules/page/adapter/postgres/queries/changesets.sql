@@ -5,15 +5,15 @@ VALUES (sqlc.arg(id), sqlc.arg(notebook_id), sqlc.arg(kind), sqlc.arg(client), s
 
 -- name: RecordItem :exec
 -- A node's change in a changeset: the first one inserts its before and after, a later one moves the after
--- on and keeps the before (M4 design 4).
+-- on and keeps the before (M4 design 4). An item that deletes its node goes to the trash with it.
 INSERT INTO changeset_items (id, changeset_id, node_id, before_parent_id, before_name, before_sort_order,
-    after_parent_id, after_name, after_sort_order, created_at, updated_at)
+    after_parent_id, after_name, after_sort_order, created_at, updated_at, deleted_at)
 VALUES (sqlc.arg(id), sqlc.arg(changeset_id), sqlc.arg(node_id), sqlc.narg(before_parent_id), sqlc.narg(before_name),
     sqlc.narg(before_sort_order), sqlc.narg(after_parent_id), sqlc.narg(after_name), sqlc.narg(after_sort_order),
-    sqlc.arg(now), sqlc.arg(now))
+    sqlc.arg(now), sqlc.arg(now), sqlc.narg(deleted_at))
 ON CONFLICT (changeset_id, node_id) DO UPDATE
 SET after_parent_id = excluded.after_parent_id, after_name = excluded.after_name,
-    after_sort_order = excluded.after_sort_order, updated_at = excluded.updated_at;
+    after_sort_order = excluded.after_sort_order, updated_at = excluded.updated_at, deleted_at = excluded.deleted_at;
 
 -- name: RecordRevision :exec
 -- A page's content as a changeset leaves it: a later write of the same changeset updates the row, keeping

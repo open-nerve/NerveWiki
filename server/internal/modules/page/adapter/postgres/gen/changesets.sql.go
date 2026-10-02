@@ -43,13 +43,13 @@ func (q *Queries) CreateChangeset(ctx context.Context, arg CreateChangesetParams
 
 const recordItem = `-- name: RecordItem :exec
 INSERT INTO changeset_items (id, changeset_id, node_id, before_parent_id, before_name, before_sort_order,
-    after_parent_id, after_name, after_sort_order, created_at, updated_at)
+    after_parent_id, after_name, after_sort_order, created_at, updated_at, deleted_at)
 VALUES ($1, $2, $3, $4, $5,
     $6, $7, $8, $9,
-    $10, $10)
+    $10, $10, $11)
 ON CONFLICT (changeset_id, node_id) DO UPDATE
 SET after_parent_id = excluded.after_parent_id, after_name = excluded.after_name,
-    after_sort_order = excluded.after_sort_order, updated_at = excluded.updated_at
+    after_sort_order = excluded.after_sort_order, updated_at = excluded.updated_at, deleted_at = excluded.deleted_at
 `
 
 type RecordItemParams struct {
@@ -63,10 +63,11 @@ type RecordItemParams struct {
 	AfterName       *string
 	AfterSortOrder  *float64
 	Now             time.Time
+	DeletedAt       *time.Time
 }
 
 // A node's change in a changeset: the first one inserts its before and after, a later one moves the after
-// on and keeps the before (M4 design 4).
+// on and keeps the before (M4 design 4). An item that deletes its node goes to the trash with it.
 func (q *Queries) RecordItem(ctx context.Context, arg RecordItemParams) error {
 	_, err := q.db.Exec(ctx, recordItem,
 		arg.ID,
@@ -79,6 +80,7 @@ func (q *Queries) RecordItem(ctx context.Context, arg RecordItemParams) error {
 		arg.AfterName,
 		arg.AfterSortOrder,
 		arg.Now,
+		arg.DeletedAt,
 	)
 	return err
 }

@@ -161,6 +161,30 @@ func (f *fakeStore) Ancestors(ctx context.Context, id uuid.UUID) ([]domain.Ances
 	return out, nil
 }
 
+func (f *fakeStore) Subtree(ctx context.Context, notebookID, id uuid.UUID) (domain.Subtree, error) {
+	f.record(ctx, "Subtree")
+	root, ok := f.nodes[id]
+	if !ok || root.NotebookID != notebookID {
+		return nil, app.ErrNotFound
+	}
+	out := domain.Subtree{{Node: root, Level: 1}}
+	for i := 0; i < len(out); i++ {
+		var children []domain.Node
+		for _, n := range f.nodes {
+			if n.ParentID != nil && *n.ParentID == out[i].Node.ID {
+				children = append(children, n)
+			}
+		}
+		for _, c := range children {
+			out = append(out, domain.SubtreeNode{Node: c, Level: out[i].Level + 1})
+		}
+	}
+	slices.SortStableFunc(out, func(a, b domain.SubtreeNode) int {
+		return cmp.Or(cmp.Compare(a.Level, b.Level), cmp.Compare(a.Node.SortOrder, b.Node.SortOrder), a.Node.ID.Compare(b.Node.ID))
+	})
+	return out, nil
+}
+
 func (f *fakeStore) ContentMeta(ctx context.Context, id uuid.UUID) (app.ContentMeta, error) {
 	f.record(ctx, "ContentMeta")
 	c, ok := f.contents[id]
@@ -185,6 +209,21 @@ func (f *fakeStore) CreateContent(ctx context.Context, c app.Content) error {
 func (f *fakeStore) RenameNode(ctx context.Context, n domain.Node) error {
 	f.record(ctx, "RenameNode")
 	f.nodes[n.ID] = n
+	return nil
+}
+
+func (f *fakeStore) MoveNode(ctx context.Context, n domain.Node) error {
+	f.record(ctx, "MoveNode")
+	f.nodes[n.ID] = n
+	return nil
+}
+
+func (f *fakeStore) DeleteNodes(ctx context.Context, ids []uuid.UUID, _ uuid.UUID, _ time.Time) error {
+	f.record(ctx, "DeleteNodes")
+	for _, id := range ids {
+		delete(f.nodes, id)
+		delete(f.contents, id)
+	}
 	return nil
 }
 

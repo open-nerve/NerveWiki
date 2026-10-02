@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"errors"
+	"fmt"
 	"reflect"
 	"slices"
 	"testing"
@@ -322,5 +323,156 @@ func TestDeleteNotebooksPages(t *testing.T) {
 	}
 	if got := f.count(t, "SELECT count(*) FROM nodes WHERE id = $1 AND deleted_at IS NULL", kept.ID); got != 1 {
 		t.Error("ops' page is deleted with eng")
+	}
+}
+
+// A subtree is the node and its descendants not deleted, level by level and
+// in order within a level, in its notebook alone.
+func TestSubtree(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	r := f.page(t, f.eng, nil, "R", 0)
+	a, b := f.page(t, f.eng, &r.ID, "A", 1), f.page(t, f.eng, &r.ID, "B", 0)
+	f.page(t, f.eng, &a.ID, "A1", 0)
+	gone := f.page(t, f.eng, &b.ID, "B1", 0)
+	f.page(t, f.eng, nil, "S", 1)
+	f.exec(t, "UPDATE nodes SET deleted_at = $2 WHERE id = $1", gone.ID, now())
+	sub, err := f.s.Subtree(ctx, f.eng, r.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, n := range sub {
+		got = append(got, fmt.Sprintf("%s@%d", n.Node.Name, n.Level))
+	}
+	if want := []string{"R@1", "B@2", "A@2", "A1@3"}; !slices.Equal(got, want) {
+		t.Errorf("Subtree(R) = %v, want %v", got, want)
+	}
+	if sub[0].Node != r {
+		t.Errorf("Subtree(R)[0] = %+v, want R as it reads", sub[0].Node)
+	}
+	for what, id := range map[string]struct{ notebook, node uuid.UUID }{
+		"in another notebook": {f.ops, r.ID}, "deleted": {f.eng, gone.ID}, "missing": {f.eng, uuid.NewV7()},
+	} {
+		if _, err := f.s.Subtree(ctx, id.notebook, id.node); !errors.Is(err, app.ErrNotFound) {
+			t.Errorf("Subtree of a node %s = %v, want app.ErrNotFound", what, err)
+		}
+	}
+}
+
+// A move writes the parent, the order and who and when; a title a sibling
+// holds under the new parent is page.title_taken.
+func TestMoveNode(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	bob := uuid.NewV7()
+	f.exec(t, "INSERT INTO users (id, email, password, display_name, created_at, updated_at) VALUES ($1, 'bob@corp.com', 'x', 'x', $2, $2)",
+		bob, now())
+	p, q := f.page(t, f.eng, nil, "P", 0), f.page(t, f.eng, nil, "Q", 1)
+	n := f.page(t, f.eng, &p.ID, "N", 0)
+	f.page(t, f.eng, &q.ID, "n", 0)
+	moved := n
+	moved.ParentID, moved.SortOrder, moved.UpdatedBy, moved.UpdatedAt = nil, 2.5, bob, now().Add(time.Minute)
+	if err := f.s.MoveNode(ctx, moved); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := f.s.FindNode(ctx, n.ID); err != nil || !reflect.DeepEqual(got, moved) {
+		t.Errorf("FindNode after the move to the root = %+v, %v; want %+v", got, err, moved)
+	}
+	moved.ParentID = &q.ID
+	if err := f.s.MoveNode(ctx, moved); !errors.Is(err, domain.ErrTitleTaken) {
+		t.Errorf("MoveNode under a sibling's title = %v, want page.title_taken", err)
+	}
+}
+
+// A subtree's deletion takes its nodes not deleted and what follows them,
+// at its time, by its caller; what the trash holds keeps its own time, and
+// the rest of the notebook stays.
+func TestDeleteNodes(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	bob := uuid.NewV7()
+	f.exec(t, "INSERT INTO users (id, email, password, display_name, created_at, updated_at) VALUES ($1, 'bob@corp.com', 'x', 'x', $2, $2)",
+		bob, now())
+	root := f.page(t, f.eng, nil, "Root", 0)
+	child := f.page(t, f.eng, &root.ID, "Child", 0)
+	trashed := f.page(t, f.eng, &root.ID, "Trashed", 1)
+	sibling := f.page(t, f.eng, nil, "Sibling", 1)
+	cs := app.Changeset{ID: uuid.NewV7(), NotebookID: f.eng, Kind: "edit", Client: domain.ClientWeb, By: f.alice, At: now()}
+	if err := f.s.CreateChangeset(ctx, cs); err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range []domain.Node{root, child, trashed, sibling} {
+		state := n.State()
+		if err := f.s.RecordItem(ctx, app.Item{ID: uuid.NewV7(), ChangesetID: cs.ID, Change: domain.Change{NodeID: n.ID, After: &state}, At: now()}); err != nil {
+			t.Fatal(err)
+		}
+		sum := sha256.Sum256(nil)
+		if err := f.s.RecordRevision(ctx, app.Revision{ID: uuid.NewV7(), ChangesetID: cs.ID, NodeID: n.ID, Revision: 1, Hash: sum[:], At: now()}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	earlier := now().Add(-time.Hour)
+	f.exec(t, "UPDATE nodes SET deleted_at = $2 WHERE id = $1", trashed.ID, earlier)
+	for _, table := range followers() {
+		f.exec(t, "UPDATE "+table+" SET deleted_at = $2 WHERE node_id = $1", trashed.ID, earlier)
+	}
+	at := now().Add(time.Minute)
+	if err := f.s.DeleteNodes(ctx, []uuid.UUID{root.ID, child.ID, trashed.ID}, bob, at); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.count(t, "SELECT count(*) FROM nodes WHERE deleted_at = $1 AND updated_at = $1 AND updated_by_id = $2", at, bob); got != 2 {
+		t.Errorf("nodes deleted at the deletion's time by bob = %d, want root and child", got)
+	}
+	for _, table := range followers() {
+		if got := f.count(t, "SELECT count(*) FROM "+table+" WHERE deleted_at = $1", at); got != 2 {
+			t.Errorf("%s deleted at the deletion's time = %d, want root's and child's", table, got)
+		}
+		if got := f.count(t, "SELECT count(*) FROM "+table+" WHERE node_id = $1 AND deleted_at = $2", trashed.ID, earlier); got != 1 {
+			t.Errorf("the trashed page's row of %s lost its own time", table)
+		}
+	}
+	if got := f.count(t, "SELECT count(*) FROM nodes WHERE id = $1 AND deleted_at = $2 AND updated_by_id = $3", trashed.ID, earlier, f.alice); got != 1 {
+		t.Error("the trashed page lost its own time or author")
+	}
+	if got := f.count(t, "SELECT count(*) FROM changesets WHERE deleted_at IS NULL"); got != 1 {
+		t.Error("the changeset is deleted with the subtree, want it kept with its notebook")
+	}
+	for _, table := range append([]string{"nodes"}, followers()...) {
+		column := "node_id"
+		if table == "nodes" {
+			column = "id"
+		}
+		if got := f.count(t, "SELECT count(*) FROM "+table+" WHERE "+column+" = $1 AND deleted_at IS NULL", sibling.ID); got != 1 {
+			t.Errorf("the sibling's row of %s is deleted with the subtree", table)
+		}
+	}
+}
+
+// An item that deletes its node goes to the trash with it, at its time:
+// inserted so, or merged so after a rename in the same changeset, keeping
+// the first before.
+func TestADeletionsItemIsDeletedWithItsNode(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	n, m := f.page(t, f.eng, nil, "N", 0), f.page(t, f.eng, nil, "M", 1)
+	cs := app.Changeset{ID: uuid.NewV7(), NotebookID: f.eng, Kind: "edit", Client: domain.ClientWeb, By: f.alice, At: now()}
+	if err := f.s.CreateChangeset(ctx, cs); err != nil {
+		t.Fatal(err)
+	}
+	at := now().Add(time.Minute)
+	nState, mState, renamed := n.State(), m.State(), domain.TreeState{Name: "M2", SortOrder: 1}
+	for _, c := range []domain.Change{
+		{NodeID: n.ID, Before: &nState},
+		{NodeID: m.ID, Before: &mState, After: &renamed},
+		{NodeID: m.ID, Before: &renamed},
+	} {
+		if err := f.s.RecordItem(ctx, app.Item{ID: uuid.NewV7(), ChangesetID: cs.ID, Change: c, At: at}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := f.count(t, `SELECT count(*) FROM changeset_items WHERE deleted_at = $1 AND after_name IS NULL
+		AND before_name = CASE node_id WHEN $2 THEN 'N' WHEN $3 THEN 'M' END`, at, n.ID, m.ID); got != 2 {
+		t.Errorf("deletions' items in the trash at their time, keeping the first before = %d, want 2", got)
 	}
 }

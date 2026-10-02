@@ -52,3 +52,37 @@ func TestDepth(t *testing.T) {
 		t.Errorf("Depth(%d ancestors) = %d, want %d", domain.MaxDepth-1, got, domain.MaxDepth)
 	}
 }
+
+// A subtree's height is its deepest level; it holds its node and every
+// descendant, and nothing else: not a parent, a sibling or an uncle.
+func TestSubtree(t *testing.T) {
+	ids := make([]uuid.UUID, 4)
+	for i := range ids {
+		ids[i] = uuid.NewV7()
+	}
+	at := func(i, level int) domain.SubtreeNode {
+		return domain.SubtreeNode{Node: domain.Node{ID: ids[i]}, Level: level}
+	}
+	for _, tt := range []struct {
+		name    string
+		subtree domain.Subtree
+		height  int
+	}{
+		{"a lone node", domain.Subtree{at(0, 1)}, 1},
+		{"a child", domain.Subtree{at(0, 1), at(1, 2)}, 2},
+		{"three levels, the deep branch last", domain.Subtree{at(0, 1), at(1, 2), at(2, 2), at(3, 3)}, 3},
+	} {
+		if got := tt.subtree.Height(); got != tt.height {
+			t.Errorf("%s: Height() = %d, want %d", tt.name, got, tt.height)
+		}
+	}
+	tree := domain.Subtree{at(0, 1), at(1, 2), at(3, 3)}
+	for i, want := range []bool{true, true, false, true} {
+		if got := tree.Holds(ids[i]); got != want {
+			t.Errorf("Holds(node %d) = %v, want %v", i, got, want)
+		}
+	}
+	if tree.Holds(uuid.NewV7()) {
+		t.Errorf("Holds(a node outside) = true, want false")
+	}
+}

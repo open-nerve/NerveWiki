@@ -53,4 +53,6 @@ type Operation string
 const (
 	OpCreate Operation = "create"
 	OpRename Operation = "rename"
+	OpMove   Operation = "move"
+	OpDelete Operation = "delete"
 )

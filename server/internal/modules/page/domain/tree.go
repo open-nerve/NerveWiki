@@ -39,3 +39,28 @@ func PreOrder(nodes []Node) []Node {
 func Depth(ancestors []Ancestor) int {
 	return len(ancestors) + 1
 }
+
+// Subtree is a node not deleted and its descendants not deleted, the node
+// first, each at its level in the subtree: the node's is 1.
+type Subtree []SubtreeNode
+
+// SubtreeNode is a node of a subtree and its level in it.
+type SubtreeNode struct {
+	Node  Node
+	Level int
+}
+
+// Height is how many levels the subtree spans: a lone node's is 1.
+func (s Subtree) Height() int {
+	h := 0
+	for _, n := range s {
+		h = max(h, n.Level)
+	}
+	return h
+}
+
+// Holds reports whether id is the subtree's node or one of its
+// descendants: a parent the node cannot move under.
+func (s Subtree) Holds(id uuid.UUID) bool {
+	return slices.ContainsFunc(s, func(n SubtreeNode) bool { return n.Node.ID == id })
+}
