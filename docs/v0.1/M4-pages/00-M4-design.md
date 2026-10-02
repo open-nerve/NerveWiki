@@ -187,18 +187,18 @@ Nerve 没有页面、正文与编辑器，M4 不拷贝代码。只沿用它的�
 
 | 项 | 落实 |
 |---|---|
-| 1 同一张表里先子后父 | 照工作区的清理器只删已没有子节点的行（`NOT EXISTS`），从不等锁；一条语句只删当前的叶子，所以 `nodes` 的清理器在一次调用里反复执行它（每条各自提交），直到某条删不出或凑满一批（第 4 节"页面的表"）。不按深度分批：要递归查询，结果相同。不能一批删一层、靠之后的运行：已删的笔记本过了保留期之后，notebook 的清理器会因 `nodes → notebooks` 的 RESTRICT 外键连续失败，"失败即停"挡住后面所有的清理（设计审查 I1） |
-| 2 自引用的测试 | P1：父子都过了保留期、子页被别的事务持有时，父页留下、不等锁，放开之后之后的运行清完；已删笔记本带三层页面，一次运行清完、任务没有错误 |
+| 1 同一张表里先子后父 | 照工作区的清理器只删已没有子节点的行（`NOT EXISTS`），从不等锁；一条语句只删当前的叶子，所以 `nodes` 的清理器在一次调用里反复执行它（每条各自提交），直到某条删不出或凑满一批（第 4 节"页面的表"）。不按深度分批：要递归查询，结果相同。不能一批删一层、靠之后的运行：已删的笔记本过了保留期之后，notebook 的清理器会因 `nodes → notebooks` 的 RESTRICT 外键连续失败，"失败即停"挡住后面所有的清理（设计审查 I1）。P1 已落实：`PurgeNodes` 反复执行 `PurgeNodeLeaves`（`page/adapter/postgres/purge.go`），`TestPurge` 的三层树一次调用清完 |
+| 2 自引用的测试 | P1：父子都过了保留期、子页被别的事务持有时，父页留下、不等锁，放开之后之后的运行清完；已删笔记本带三层页面，一次运行清完、任务没有错误。P1 已落实：`TestPurgeSkipsAHeldNodeAndKeepsItsAncestors`、`TestPurgeKeepsWhatAHeldRowNeeds`（持有正文、版本、条目或变更集）；整个清理任务 `TestThePurgeDeletesWhatOutlivedTheRetention` 带三层页面与 `live` 里 61 天前删除的子树，断言没有清理任务带错误 |
 | 3 其余约束 | 跨模块外键 `RESTRICT`（`nodes`、`changesets → notebooks`），页面的清理器排在 notebook 的之前（`TestCrossModuleForeignKeysToPurgedTablesRestrict`、`TestPurgersComeBeforeTheTablesTheyReference`）；`edit_sessions` 不建外键、不登记清理器（第 4 节） |
-| 4 `deleted_at` 的索引 | P1：五张软删除的表各有部分索引 `(deleted_at) WHERE deleted_at IS NOT NULL`：版本与条目是行数最多的表，清理不扫它们 |
+| 4 `deleted_at` 的索引 | P1：五张软删除的表各有部分索引 `(deleted_at) WHERE deleted_at IS NOT NULL`：版本与条目是行数最多的表，清理不扫它们。P1 已落实：五个 `*_deleted_at_idx`，`schema_test` 的名单守住 |
 
 [M3/P1 的笔记本删除移交](handoffs/M3-P1-notebook-deletion.md)：
 
 | 项 | 落实 |
 |---|---|
-| 1 每条发布路径的行为测试 | P1：`deleteNotebook`、删除工作区、删除无主笔记本各一个整个程序上的测试，断言节点以笔记本的删除时刻软删除；组合根把任一路径的注册者换成空，对应的测试失败（反向对照）。P4 在同样的测试里加上会话被删除 |
+| 1 每条发布路径的行为测试 | P1：`deleteNotebook`、删除工作区、删除无主笔记本各一个整个程序上的测试，断言节点以笔记本的删除时刻软删除；组合根把任一路径的注册者换成空，对应的测试失败（反向对照）。P4 在同样的测试里加上会话被删除。P1 已落实：`bootstrap/page_registrants_test.go` 的三条路径，组合根任一处交空，对应的测试失败（P1 审查 REG-NB、REG-WS） |
 | 2 加锁 | 订阅者在笔记本行（删除工作区时还有工作区行）已锁之后运行，节点接在笔记本之后（第 4 节"加锁"）。M4 没有同时持有两本笔记本的页面写（跨笔记本移动不做，第 2 节）；按 `id` 升序的规则留在 13.1 第 5 条，给以后的写 |
-| 3 清理 | `nodes → notebooks`、`changesets → notebooks` 的外键 `RESTRICT`，页面的清理器排在 notebook 的之前；自引用见上一份移交 |
+| 3 清理 | `nodes → notebooks`、`changesets → notebooks` 的外键 `RESTRICT`，页面的清理器排在 notebook 的之前；自引用见上一份移交。P1 已落实：组合根的 `purgers(pool)` 按 page、notebook、workspace 排，`TestCrossModuleForeignKeysToPurgedTablesRestrict`、`TestPurgersComeBeforeTheTablesTheyReference` 守住 |
 
 [M3 的笔记本移交](handoffs/M3-notebooks.md)：
 
@@ -218,7 +218,7 @@ Nerve 没有页面、正文与编辑器，M4 不拷贝代码。只沿用它的�
 
 - 事件的值：笔记本、变更集、执行者、客户端、写入选项、时刻，以及单元里改动的节点（每个节点：新建、改名、移动、删除、正文；树的前后状态；正文的新 `revision` 与解析结果）。一个写入单元一次（3.11：每个事务最多一条 `NOTIFY`）。
 - 参与者在单元的每个操作之后被调用，可以经单元追加正文写（第 4 节"写入单元"）；观察者在单元结束时被调用（13.1 第 21 条的订阅者），错误整体回滚。
-- M4 没有注册者，组合根交空集合；模块根的测试证明两者经 `Deps` 到达每个写用例。
+- M4 没有注册者，组合根交空集合；模块根的测试证明两者经 `Deps` 到达写入单元（每个写用例共用同一个单元）。
 
 **写入守卫**（M5：编辑锁；M10：模式不变量；M11：冻结与护栏）：
 
@@ -255,7 +255,7 @@ Nerve 没有页面、正文与编辑器，M4 不拷贝代码。只沿用它的�
 - 笔记本删除与工作区删除的页面注册者已持笔记本行的独占锁，直接写节点。
 - 页面的写不取账户行（不让账户获得新的访问），也不改成员行，M3 的 `LockHoldings` 推理不变。
 
-**横切约定**：本 M 新建的约定（页面一支的加锁、写入单元、标题键、变更集与客户端、解析时机、渲染器标记与用户 HTML 的分界、编辑器的换行记录、按笔记本的页面 store 与树写的队列）在收尾审查对照代码之后补进总体设计第 13 节。
+**横切约定**：本 M 新建的约定（页面一支的加锁、写入单元、标题键、变更集与客户端、解析时机、渲染器标记与用户 HTML 的分界、编辑器的换行记录、按笔记本的页面 store 与树写的队列）在收尾审查对照代码之后补进总体设计第 13 节。P1 留下的：第 6 条"有自引用外键的表另写测试"点名 `TestPurgeSkipsAHeldNodeAndKeepsItsAncestors`；第 11 条的窄端口例子加 `notebook.NewNotebooks`；第 21 条的组合改为 `notebookRegistrants(pool)`、`pageRegistrants()`，注册者的例子加 `page.NewNotebookDeletion`，"两个注册者的测试"引用 `TestTheRegistrantsRunInTheirOrder`（P1 审查 D11）。
 
 ## 9. 测试策略
 
@@ -277,7 +277,7 @@ Nerve 没有页面、正文与编辑器，M4 不拷贝代码。只沿用它的�
 |---|---|---|
 | 30 | 删除笔记本与新建页面、改名 | P1 |
 | 31 | 删除工作区与新建页面（工作区行的 `FOR NO KEY UPDATE`，注册者的路径与 30 不同） | P1 |
-| 32 | 同一父页下同时新建同名的页面（两次新建都持笔记本行的独占锁，第二个在锁下看得到第一个；唯一索引的兜底由仓储测试证明） | P1 |
+| 32 | 同一父页下同时新建同名的页面（两次新建都持笔记本行的独占锁，第二个在锁下看得到第一个；测试持笔记本行的 `FOR SHARE`，新建只因为锁树才等它；唯一索引的兜底由仓储测试证明） | P1 |
 | 33 | 新建页面与把他移出工作区（工作区行的 `FOR SHARE`） | P1 |
 | 34 | A 移到 B 下与 B 移到 A 下 | P2 |
 | 35 | 移动把子树推深与在子树底部新建 | P2 |
@@ -318,7 +318,7 @@ Nerve 没有页面、正文与编辑器，M4 不拷贝代码。只沿用它的�
 
 | P | 名称 | 状态 | Phase 文档 | 审查 |
 |---|---|---|---|---|
-| P1 | 页面模块与写入管线 | 进行中 | [01-P1-page-module-pipeline.md](01-P1-page-module-pipeline.md) | — |
+| P1 | 页面模块与写入管线 | 已完成 | [01-P1-page-module-pipeline.md](01-P1-page-module-pipeline.md) | [P1 审查](reviews/P1-page-module-pipeline-review.md) |
 | P2 | 树操作 | 未开始 | — | — |
 | P3 | Markdown 解析与渲染 | 未开始 | — | — |
 | P4 | 正文与编辑会话 | 未开始 | — | — |
@@ -332,3 +332,4 @@ Nerve 没有页面、正文与编辑器，M4 不拷贝代码。只沿用它的�
 | 2026-10-02 | 初版 | M4 启动；外部图片、跨笔记本移动、输入法的人工验证经负责人确认 |
 | 2026-10-02 | 按设计审查修订：写入单元（参与者、观察者、一开始定下的锁模式、写入选项）；页面各表的生命周期（`deleted_at`、清理的先后与索引，`edit_sessions` 不建外键、由定时任务清过期的），`nodes` 的清理器在一次调用里删到底；一页之内的行锁与心跳的单条语句；会话的码、结束的原因与订阅者、M11 的否决；码的次序的两处例外；409 不带当前版本，problem 的扩展成员交给 M5；渲染扩展按页取数据、前端两条管线的上下文、守卫的值为前后状态、解析结果在组合根转换；清洗补闭合、不放行原始 `img`、按主机判断外站、最终 HTML 的不变量；YAML 别名的上限；编辑器改为记录换行写法与 BOM；树写在笔记本内同一队列、答复后重读；交错 31、43 与页面树的不变量；会话夹进别人的写另起变更集；"保留我的"用差异所依据的版本；请求体上限的机制；故事在 Phase 间的归属 | [M4 设计审查](reviews/M4-design-review.md) |
 | 2026-10-02 | P1 开工：守卫在领域的检查之后、写入之前（它要看算好的"之后"状态），码排在领域的之后；按笔记本寻址的操作答 `notebook.not_found`；`after_id` 省略为最后、`null` 为最前；节点的结构名 `TreeNode`；交错 32 的写法 | [P1 文档](01-P1-page-module-pipeline.md) 3.6、3.7 |
+| 2026-10-02 | P1 完成：M2/P4 移交第 1、2、4 项，M3/P1 移交第 1、3 项落实；第 8 节写明扩展点到达的是写入单元；第 9 节交错 32 持笔记本行的 `FOR SHARE`；第 8 节记下 P1 留给收尾的 13.1 的例子；事件不带重排的兄弟、客户端收到事件就重读整棵树，交给 M5 | [P1 审查](reviews/P1-page-module-pipeline-review.md) T1、Q2、Q3、D7、D11 |

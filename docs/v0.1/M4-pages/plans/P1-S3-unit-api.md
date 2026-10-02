@@ -7,7 +7,7 @@
 1. `modules/page/domain/actions.go`：`node.list`、`page.read`、`page.create`、`node.rename` 与 `Actions()`；`access/domain/rules.go` 加 `writers()` 与四行；`bootstrap/actions_test.go` 的并集加 `page.Actions()`。
 2. `modules/page/app`：
    - `ports.go`（`Workspaces.ShareByID`、`Notebooks`、仓储的端口、`Clock`）；`extension.go`（`WriteGuard`、`PageObserver`、`Participant` 与它们的值；`NotebookDeletion` 的注册者）；
-   - `unit.go`（`Writer.Run`、`Unit`、`UnitSpec`、`Client`、`Options`；P1 文档 3.6 的顺序；已有事务时报错）；`authorize.go`；`view.go`；
+   - `unit.go`（`Writer.Run`、`Unit`、`UnitSpec`；P1 文档 3.6 的顺序；已有事务时报错；`Client` 在 `domain/client.go`，`Options` 在 `extension.go`）；`authorize.go`；`view.go`；
    - 用例 `list_nodes.go`、`create_page.go`、`get_page.go`、`rename_node.go`，日志。
 3. 模块根：`module.go`（`New(Deps)`、`Register`、`Actions()`、扩展点的类型别名）、`deletion.go`（`NewNotebookDeletion(pool)`）。
 4. 契约：`api/modules/page.yaml`（四个操作；`TreeNode`、`Page`、请求体；码）、`api/openapi.yaml` 登记；手写 `adapter/http/gen/oapi-codegen.yaml`；`make gen`。
