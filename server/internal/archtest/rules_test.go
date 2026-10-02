@@ -35,7 +35,7 @@ func (v violation) String() string {
 func rules() []rule {
 	return []rule{
 		{"module layers point inward: adapter -> app -> domain", layersPointInward},
-		{"domain and app import only the standard library (not net/http or database/sql), Unicode normalization, their own module's inner layers and internal/shared", innerLayersArePure},
+		{"domain and app import only the standard library (not net/http or database/sql), Unicode normalization and case folding, their own module's inner layers and internal/shared", innerLayersArePure},
 		{"modules do not import each other", modulesAreIsolated},
 		{"platform does not import modules, bootstrap or internal/shared", platformIsBusinessFree},
 		{"only bootstrap imports modules", onlyBootstrapImportsModules},
@@ -43,7 +43,7 @@ func rules() []rule {
 		{"platform packages do not import each other, except config", platformPackagesAreIndependent},
 		{"test helpers (pgtest, apitest, httpservertest, clocktest) are imported only by tests", testHelpersOnlyInTests},
 		{"module packages live in domain, app or adapter, or at the module root", moduleLayoutIsKnown},
-		{"internal/shared imports only the standard library (not net/http or database/sql) and internal/shared", sharedKernelIsPure},
+		{"internal/shared imports only the standard library (not net/http or database/sql), Unicode normalization and case folding, and internal/shared", sharedKernelIsPure},
 		{"River is imported only by platform/jobs and a module's adapter/river", riverStaysInJobs},
 		{"bootstrap imports only a module's root", bootstrapImportsModuleRoots},
 		{"a module's adapters do not import each other", adaptersAreIndependent},
@@ -117,11 +117,24 @@ func isStdlib(path string) bool {
 	return !strings.Contains(first, ".")
 }
 
-// isPureLibrary reports the third-party packages the pure layers may use:
-// Unicode normalization (and what it imports), which the password rules
-// need to judge the form the hasher hashes (identity's CanonicalPassword).
+// isPureLibrary reports the third-party packages the pure layers may
+// import: Unicode normalization (and what it imports), which the password
+// rules need to judge the form the hasher hashes (identity's
+// CanonicalPassword), and case folding, which a page title's key needs
+// (shared.TitleKey, M4/P1 design 3.2).
 func isPureLibrary(path string) bool {
-	return path == "golang.org/x/text/unicode/norm" || path == "golang.org/x/text/transform"
+	switch path {
+	case "golang.org/x/text/unicode/norm", "golang.org/x/text/transform", "golang.org/x/text/cases":
+		return true
+	}
+	return false
+}
+
+// isPureLibraryDependency reports what the pure libraries may bring along:
+// case folding imports golang.org/x/text/language and its internal
+// packages, which the pure layers may reach but not import (isPureLibrary).
+func isPureLibraryDependency(path string) bool {
+	return isPureLibrary(path) || strings.HasPrefix(path, "golang.org/x/text/")
 }
 
 // isInfrastructure reports whether an import outside this module is

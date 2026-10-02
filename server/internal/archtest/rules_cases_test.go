@@ -14,8 +14,8 @@ func TestRules(t *testing.T) {
 	const (
 		inward   = "module layers point inward: adapter -> app -> domain"
 		layout   = "module packages live in domain, app or adapter, or at the module root"
-		pure     = "domain and app import only the standard library (not net/http or database/sql), Unicode normalization, their own module's inner layers and internal/shared"
-		kernel   = "internal/shared imports only the standard library (not net/http or database/sql) and internal/shared"
+		pure     = "domain and app import only the standard library (not net/http or database/sql), Unicode normalization and case folding, their own module's inner layers and internal/shared"
+		kernel   = "internal/shared imports only the standard library (not net/http or database/sql), Unicode normalization and case folding, and internal/shared"
 		isolated = "modules do not import each other"
 		business = "platform does not import modules, bootstrap or internal/shared"
 		entry    = "only bootstrap imports modules"
@@ -54,6 +54,7 @@ func TestRules(t *testing.T) {
 		{m("internal/modules/page/domain"), m("internal/platform/config"), []string{pure}},
 		{m("internal/modules/page/domain"), "golang.org/x/text/unicode/norm", nil},
 		{m("internal/modules/page/domain"), "golang.org/x/text/language", []string{pure}},
+		{m("internal/modules/page/domain"), "golang.org/x/text/cases", nil},
 		{m("internal/modules/page/app"), "context", nil},
 		{m("internal/modules/page/app"), m("internal/shared/id"), nil},
 		{m("internal/modules/page/app"), "net/http", []string{pure}},
@@ -67,6 +68,8 @@ func TestRules(t *testing.T) {
 		{m("internal/shared/id"), "net/http", []string{kernel}},
 		{m("internal/shared/id"), "github.com/jackc/pgx/v5", []string{kernel}},
 		{m("internal/shared/id"), m("internal/platform/config"), []string{kernel}},
+		{m("internal/shared/id"), "golang.org/x/text/cases", nil},
+		{m("internal/shared/id"), "golang.org/x/text/language", []string{kernel}},
 		{m("internal/shared/id"), m("internal/modules/page/domain"), []string{entry, kernel}},
 
 		// The platform declares the interfaces shared satisfies; it never imports it.
