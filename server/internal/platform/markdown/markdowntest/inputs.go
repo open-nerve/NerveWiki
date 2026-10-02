@@ -83,6 +83,12 @@ func Pathological() []Input {
 			return b.String()
 		}},
 		{"e-mail runs _www", repeat("_www")},
+		{"\"www.\" that is no link _www.1", repeat("_www.1")},
+		{"\"www.\" after strikethrough ~www.1", repeat("~www.1")},
+		{"an e-mail run to an '@' with no domain a*", func(n int) string { return repeat("a*")(n) + "@" }},
+		{"an e-mail run of code spans to an '@' a`", func(n int) string { return repeat("a`")(n) + "@" }},
+		{"an e-mail run to a domain with no '.' a*", func(n int) string { return repeat("a*")(n) + "@b" }},
+		{"an e-mail run to a domain then '-' a_", func(n int) string { return repeat("a_")(n) + "@a.b-" }},
 		{"link destinations [a](", repeat("[a](")},
 		{"image destinations ![a](", repeat("![a](")},
 		{"bare destinations [a](b", repeat("[a](b")},
@@ -99,6 +105,7 @@ func Pathological() []Input {
 		{"nested block quotes", func(n int) string { return repeat("> ")(n) + "a\n" }},
 		{"nested list markers", func(n int) string { return repeat("- ")(n) + "a\n" }},
 		{"nested quotes and lists", func(n int) string { return repeat("> - ")(n) + "a\n" }},
+		{"nested footnote definitions", func(n int) string { return repeat("[^a]: ")(n) + "x\n" }},
 		{"nested lists by indentation", func(n int) string {
 			var b strings.Builder
 			for i := 0; b.Len() < n; i++ {
@@ -116,6 +123,23 @@ func Pathological() []Input {
 			}
 			return defs.String() + "\n" + uses.String()
 		}},
+		{"reference definitions with a title on the next line, then text", func(n int) string {
+			var b strings.Builder
+			b.WriteString("[a0]: /u\n\"t\n")
+			for i := 1; b.Len() < n; i++ {
+				fmt.Fprintf(&b, "t\" [a%d]: /u\n\"t\n", i)
+			}
+			return b.String()
+		}},
+		{"a long title, then reference definitions in its text", func(n int) string {
+			var b strings.Builder
+			b.WriteString("[a]: /u\n\"" + strings.Repeat("t\n", n/4))
+			for i := 0; b.Len() < n; i++ {
+				fmt.Fprintf(&b, "t\" [b%d]: /u\n\"t\n", i)
+			}
+			return b.String()
+		}},
+		{"table cells of escaped pipes in code", func(n int) string { return "| a |\n|---|\n" + repeat("|`\\|`|\n")(n) }},
 		{"footnote references and definitions", func(n int) string {
 			var refs, defs strings.Builder
 			for i := 0; refs.Len()+defs.Len() < n; i++ {
@@ -163,3 +187,29 @@ func Pathological() []Input {
 		{"addresses in tags", repeat(`<a href="http://a/\b?c#d">x</a>`)},
 	}
 }
+
+// Amplifying are the inputs whose HTML goldmark or YAML's aliases make
+// grow faster than the input: a table's short rows filled to the header's
+// width, a reference link repeating a long destination or title, an alias
+// repeating a long value. They are checked at AmplifyingSize, which a
+// regression cannot make exhaust the machine's memory: their HTML must be
+// at most MaxHTML of it.
+func Amplifying() []Input {
+	return []Input{
+		{"a wide header over short rows", func(n int) string {
+			return strings.Repeat("|a", n/8) + "\n" + strings.Repeat("|-", n/8) + "\n" + strings.Repeat("a\n", n/4)
+		}},
+		{"a long destination referred to often", func(n int) string {
+			return "[x]: /" + strings.Repeat("a", n/2) + "\n\n" + strings.Repeat("[x]", n/6)
+		}},
+		{"a long title referred to often", func(n int) string {
+			return "[x]: / \"" + strings.Repeat("t", n/2) + "\"\n\n" + strings.Repeat("[x]", n/6)
+		}},
+		{"a long value aliased often", func(n int) string {
+			return "---\na: &a " + strings.Repeat("x", n/2) + "\nb: [" + strings.Repeat("*a, ", n/8) + "]\n---\nbody\n"
+		}},
+	}
+}
+
+// AmplifyingSize is the size the Amplifying inputs are checked at.
+const AmplifyingSize = 16 << 10

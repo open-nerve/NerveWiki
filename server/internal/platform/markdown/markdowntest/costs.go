@@ -37,16 +37,18 @@ func fastest(t *testing.T, m *markdown.Markdown, src string, limit time.Duration
 	return best
 }
 
-// allocated is what one parse and rendering of content allocates.
-func allocated(t *testing.T, m *markdown.Markdown, content []byte) uint64 {
+// allocated is what one parse and rendering of content allocates, and the
+// HTML.
+func allocated(t *testing.T, m *markdown.Markdown, content []byte) (uint64, string) {
 	t.Helper()
 	var before, after runtime.MemStats
 	runtime.ReadMemStats(&before)
-	if _, err := m.Render(context.Background(), m.Parse(content), markdown.Page{}); err != nil {
+	out, err := m.Render(context.Background(), m.Parse(content), markdown.Page{})
+	if err != nil {
 		t.Fatal(err)
 	}
 	runtime.ReadMemStats(&after)
-	return after.TotalAlloc - before.TotalAlloc
+	return after.TotalAlloc - before.TotalAlloc, out
 }
 
 // CheckCosts checks what m costs (M4/P3 design 3.10): every pathological
@@ -59,6 +61,8 @@ func allocated(t *testing.T, m *markdown.Markdown, content []byte) uint64 {
 // does not vary as the time does, and a cost that the garbage collector
 // takes later shows in it (a tokenizer for each of thousands of tags
 // allocates hundreds of megabytes, and takes only a few times longer).
+// Each input's HTML is checked against CheckSize, which no machine's load
+// sways, the Amplifying inputs' at AmplifyingSize.
 // The race detector makes the code several times slower: under it the
 // check is skipped, and make test-go runs it in a build without.
 func CheckCosts(t *testing.T, m *markdown.Markdown) {
@@ -66,9 +70,15 @@ func CheckCosts(t *testing.T, m *markdown.Markdown) {
 	if raceEnabled {
 		t.Skip("costs are checked without the race detector (make test-go runs it)")
 	}
+	for _, in := range Amplifying() {
+		content := []byte(in.Make(AmplifyingSize))
+		if _, out := allocated(t, m, content); CheckSize(content, out) != nil {
+			t.Errorf("%s: %v", in.Name, CheckSize(content, out))
+		}
+	}
 	const size = 256 << 10
 	normal := fastest(t, m, Normal(size), time.Second)
-	normalAlloc := allocated(t, m, []byte(Normal(size)))
+	normalAlloc, _ := allocated(t, m, []byte(Normal(size)))
 	t.Logf("ordinary, %d KB: %v, %d KB allocated", size>>10, normal, normalAlloc>>10)
 	for _, in := range Pathological() {
 		half := fastest(t, m, in.Make(size/2), k*normal)
@@ -78,9 +88,13 @@ func CheckCosts(t *testing.T, m *markdown.Markdown) {
 			continue
 		}
 		full := fastest(t, m, in.Make(size), k*normal)
-		alloc := allocated(t, m, []byte(in.Make(size)))
+		content := []byte(in.Make(size))
+		alloc, out := allocated(t, m, content)
 		t.Logf("%s: %v, %v (%.1f); allocated %.1f", in.Name, half, full, float64(full)/float64(normal),
 			float64(alloc)/float64(normalAlloc))
+		if err := CheckSize(content, out); err != nil {
+			t.Errorf("%s: %v", in.Name, err)
+		}
 		if alloc > kAlloc*normalAlloc {
 			t.Errorf("%s: %d KB allocated for %d KB, more than %d times an ordinary document's %d KB",
 				in.Name, alloc>>10, size>>10, kAlloc, normalAlloc>>10)

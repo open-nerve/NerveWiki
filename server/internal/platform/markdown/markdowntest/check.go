@@ -42,14 +42,20 @@ var (
 	language = regexp.MustCompile(`^language-[a-z0-9_+#.-]+$`)
 )
 
+// void are the elements allowed above that have no end tag.
+//
+//nolint:gochecknoglobals // read only
+var void = []string{"br", "hr", "input", "wbr"}
+
 // CheckHTML checks the HTML of a reading view rendered with exts (M4/P3
 // design 3.10): read back by x/net/html's tokenizer, it holds only the
 // elements and attributes above and the extensions' Markup, no comment or
 // doctype; every address is on this site, http or https with a host, or
 // mailto; every id starts with "nw-"; every class is the renderers' or the
-// extensions'. It reads tokens, not a tree: the tree builder refuses more
-// than 512 elements open, which a user's nested tags reach, and a check of
-// the tags needs no tree.
+// extensions'; each end tag closes the innermost element open, and none is
+// left open, so a user's HTML stays inside where it was written. It reads
+// tokens, not a tree: the tree builder refuses more than 512 elements open,
+// which a user's nested tags reach, and a check of the tags needs no tree.
 func CheckHTML(s string, exts ...markdown.Extension) error {
 	elements, urls := map[string][]string{}, []string{"href"}
 	known := slices.Clone(classes)
@@ -64,12 +70,16 @@ func CheckHTML(s string, exts ...markdown.Extension) error {
 		known = append(known, e.Markup.Classes...)
 	}
 	var errs []error
+	var open []string
 	z := html.NewTokenizer(strings.NewReader(s))
 	for {
 		switch tt := z.Next(); tt {
 		case html.ErrorToken:
 			if !errors.Is(z.Err(), io.EOF) {
 				errs = append(errs, z.Err())
+			}
+			if len(open) > 0 {
+				errs = append(errs, fmt.Errorf("elements left open: %v", open))
 			}
 			return errors.Join(errs...)
 		case html.StartTagToken, html.SelfClosingTagToken, html.EndTagToken:
@@ -83,10 +93,30 @@ func CheckHTML(s string, exts ...markdown.Extension) error {
 					errs = append(errs, err)
 				}
 			}
+			var err error
+			if open, err = nest(open, tt, t.Data); err != nil {
+				errs = append(errs, err)
+			}
 		case html.CommentToken, html.DoctypeToken:
 			errs = append(errs, fmt.Errorf("a comment or doctype %q", z.Token().Data))
 		}
 	}
+}
+
+// nest is the elements open after a tag of name: a start tag opens one
+// unless it is void, an end tag must close the innermost.
+func nest(open []string, tt html.TokenType, name string) ([]string, error) {
+	switch {
+	case tt == html.StartTagToken && !slices.Contains(void, name):
+		return append(open, name), nil
+	case tt != html.EndTagToken:
+		return open, nil
+	case len(open) == 0:
+		return open, fmt.Errorf("</%s> with no element open", name)
+	case open[len(open)-1] != name:
+		return open, fmt.Errorf("</%s> closes <%s>", name, open[len(open)-1])
+	}
+	return open[:len(open)-1], nil
 }
 
 func checkAttr(element string, a html.Attribute, attrs, urls, known []string) error {
@@ -129,4 +159,23 @@ func onThisSiteOrAllowed(addr string) bool {
 		return !strings.HasPrefix(addr, "//")
 	}
 	return false
+}
+
+// The HTML of a reading view is at most Amplification times its content's
+// size plus Headroom (M4/P3 design 3.4): a footnote's reference and its
+// back link, the most per byte, are about 48 times theirs, and what
+// reference links and a frontmatter's aliases repeat below their budgets
+// is about a megabyte at most.
+const (
+	Amplification = 64
+	Headroom      = 2 << 20
+)
+
+// CheckSize checks that out, the HTML of a reading view of content, is at
+// most Amplification times its size plus Headroom.
+func CheckSize(content []byte, out string) error {
+	if limit := Amplification*len(content) + Headroom; len(out) > limit {
+		return fmt.Errorf("%d bytes of HTML for %d of content, more than %d", len(out), len(content), limit)
+	}
+	return nil
 }

@@ -17,7 +17,7 @@ func seeds(f *testing.F) {
 	for _, fx := range markdowntest.Fixtures(f) {
 		f.Add(fx.Content)
 	}
-	for _, in := range markdowntest.Pathological() {
+	for _, in := range append(markdowntest.Pathological(), markdowntest.Amplifying()...) {
 		f.Add([]byte(in.Make(1 << 10)))
 	}
 	f.Add([]byte(markdowntest.Normal(4 << 10)))
@@ -39,7 +39,7 @@ func FuzzParse(f *testing.F) {
 	})
 }
 
-// Any bytes render to HTML that passes the check.
+// Any bytes render to HTML that passes the checks.
 func FuzzRender(f *testing.F) {
 	seeds(f)
 	m := newMarkdown(f)
@@ -50,6 +50,9 @@ func FuzzRender(f *testing.F) {
 		}
 		if err := markdowntest.CheckHTML(out); err != nil {
 			t.Errorf("%q\nrenders to\n%q:\n%v", content, out, err)
+		}
+		if err := markdowntest.CheckSize(content, out); err != nil {
+			t.Errorf("%q: %v", content, err)
 		}
 	})
 }

@@ -20,6 +20,7 @@ func TestCheckHTMLPassesWhatTheRenderersWrite(t *testing.T) {
 		`<p><span class="nw-image">a <a href="i.png">i.png</a></span></p>`,
 		`<details open><summary>s</summary><ol start="3" reversed><li>a</li></ol></details>`,
 		strings.Repeat("<b>", 600) + "deep" + strings.Repeat("</b>", 600),
+		`<p>a<br>b<br/>c<wbr>d</p><hr><ul><li><input disabled="" type="checkbox"> e</li></ul>`,
 	} {
 		if err := markdowntest.CheckHTML(s); err != nil {
 			t.Errorf("%s: %v", s, err)
@@ -47,6 +48,10 @@ func TestCheckHTMLReportsWhatNoRendererWrites(t *testing.T) {
 		"a comment":                   `<!-- x -->`,
 		"a form":                      `<form><input type="text"></form>`,
 		"an end tag of no renderer":   `a</script>`,
+		"an end tag closing another":  `<p><b>a</p></b>`,
+		"an element left open":        `<p><b>a</b>`,
+		"an end tag with none open":   `<p>a</p></b>`,
+		"a void element's end tag":    `<p>a<br></br></p>`,
 	} {
 		if err := markdowntest.CheckHTML(s); err == nil {
 			t.Errorf("%s: %s passed", name, s)
@@ -75,5 +80,16 @@ func TestCheckHTMLTakesAnExtensionsMarkup(t *testing.T) {
 		if err := markdowntest.CheckHTML(s, ext); err == nil {
 			t.Errorf("%s passed", s)
 		}
+	}
+}
+
+func TestCheckSizeTakesAmplificationTimesTheContentPlusHeadroom(t *testing.T) {
+	content := []byte("abc")
+	limit := markdowntest.Amplification*len(content) + markdowntest.Headroom
+	if err := markdowntest.CheckSize(content, strings.Repeat("x", limit)); err != nil {
+		t.Errorf("at the limit: %v", err)
+	}
+	if err := markdowntest.CheckSize(content, strings.Repeat("x", limit+1)); err == nil {
+		t.Error("a byte past the limit passed")
 	}
 }
