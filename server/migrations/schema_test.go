@@ -101,8 +101,8 @@ func TestMigrationsGoUpDownAndUpAgain(t *testing.T) {
 
 // Constraint and index names are stable: errors are mapped by them, and later
 // migrations drop them by name. Each index is pinned with what it is too,
-// unique and partial or not, so a partial unique key cannot turn into a plain
-// or a total one unseen. The tables are every table of the schema but goose's
+// unique, partial and NULLS NOT DISTINCT or not, so a partial unique key
+// cannot turn into a plain or a total one, nor let two NULLs by, unseen. The tables are every table of the schema but goose's
 // and River's own, read from the catalog: a new table's constraints and
 // indexes fail here until they are in want. River names its own, and its
 // migration is checked against River's SQL (river_test.go).
@@ -119,6 +119,7 @@ func TestConstraintAndIndexNames(t *testing.T) {
 			AND contype <> 'n' -- PG 18 lists NOT NULL as constraints too
 		UNION ALL
 		SELECT c.relname || ' i' || CASE WHEN i.indisunique THEN 'u' ELSE '' END || CASE WHEN i.indpred IS NOT NULL THEN 'w' ELSE '' END
+			|| CASE WHEN i.indnullsnotdistinct THEN 'n' ELSE '' END
 		FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid
 		WHERE i.indrelid IN (SELECT oid FROM tables)
 		ORDER BY 1`)
@@ -130,8 +131,8 @@ func TestConstraintAndIndexNames(t *testing.T) {
 		t.Fatal(err)
 	}
 	// contype: p primary key, u unique, f foreign key (confdeltype c: ON
-	// DELETE CASCADE, r: RESTRICT, a: NO ACTION), c check. An index is i, then u when it is unique and w
-	// when it is partial (has a WHERE).
+	// DELETE CASCADE, r: RESTRICT, a: NO ACTION), c check. An index is i, then u when it is unique, w
+	// when it is partial (has a WHERE) and n when its NULLs are not distinct.
 	want := []string{
 		"api_tokens_expires_at_check c",
 		"api_tokens_name_check c",
