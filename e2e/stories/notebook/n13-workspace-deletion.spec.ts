@@ -1,12 +1,12 @@
 import type { ApiClient } from "@nervewiki/api-client";
 
 import { expectAuditEventsDeletedWith, expectNotebooksDeletedWith } from "../../fixtures/assert/notebook";
-import type { Database } from "../../fixtures/db";
 import { emailFor } from "../../fixtures/auth";
 import { joinAs } from "../../fixtures/invitations";
 import { memberOf, removeMember } from "../../fixtures/members";
 import { createNotebook } from "../../fixtures/notebooks";
 import { takeOver } from "../../fixtures/ownerless";
+import { deletedDaysAgo } from "../../fixtures/purge";
 import { expect, test } from "../../fixtures/test";
 import { deleteWorkspaceWith, expectCreatePage } from "../../fixtures/workspace-pages";
 import { createWorkspace, deleteWorkspace, newOnboardedTeam, newTeam, slugFor } from "../../fixtures/workspaces";
@@ -26,27 +26,6 @@ async function takenOver(api: ApiClient, credential: string, slug: string, email
     204
   );
   expect((await takeOver(api, credential, notebook.id)).response.status).toBe(200);
-}
-
-/**
- * Moves the deletion of the workspace id and of everything deleted with it back by days, its accepted invitations' too:
- * leaf to root, so the purge, which may run between two statements, never meets a row moved back whose children are not.
- */
-async function deletedDaysAgo(db: Database, id: string, days: number): Promise<void> {
-  const ago = `now() - make_interval(days => ${days})`;
-  await db.query(`UPDATE notebook_audit_events SET deleted_at = ${ago} WHERE workspace_id = $1`, [id]);
-  await db.query(
-    `UPDATE notebook_members SET deleted_at = ${ago} WHERE notebook_id IN (SELECT id FROM notebooks WHERE workspace_id = $1)`,
-    [id]
-  );
-  await db.query(`UPDATE notebooks SET deleted_at = ${ago} WHERE workspace_id = $1`, [id]);
-  await db.query(
-    `UPDATE workspace_invitations SET deleted_at = ${ago},
-       accepted_at = CASE WHEN accepted_at IS NULL THEN NULL ELSE ${ago} END WHERE workspace_id = $1`,
-    [id]
-  );
-  await db.query(`UPDATE workspace_members SET deleted_at = ${ago} WHERE workspace_id = $1`, [id]);
-  await db.query(`UPDATE workspaces SET deleted_at = ${ago} WHERE id = $1`, [id]);
 }
 
 test("N13 (API): deleting a workspace deletes its notebooks, their members and its audit records with it; the purge clears them 60 days on", async ({

@@ -1,0 +1,173 @@
+package bootstrap
+
+import (
+	"net/http"
+	"slices"
+	"testing"
+)
+
+// The page module's rows (M4/P1 design 3.12), by the notebook columns:
+// each aims at its notebook (notebookOf) and its page in it (pageOf). Any
+// role reads; the editors and admins write, the readers are refused; the
+// rest do not see the notebook.
+
+// treeNodeAnswer is a TreeNode answer, as much as the rows check.
+type treeNodeAnswer struct {
+	Name     string  `json:"name"`
+	ParentID *string `json:"parent_id"`
+}
+
+// pageAnswer is a Page answer, as much as the rows check.
+type pageAnswer struct {
+	Name      string `json:"name"`
+	Revision  int    `json:"revision"`
+	Ancestors []struct {
+		Name string `json:"name"`
+	} `json:"ancestors"`
+}
+
+// ancestorNames are a page answer's ancestors' names.
+func (p pageAnswer) ancestorNames() []string {
+	var out []string
+	for _, a := range p.Ancestors {
+		out = append(out, a.Name)
+	}
+	return out
+}
+
+func pageMatrixRows() []matrixRow {
+	notebookNotFound := cell{http.StatusNotFound, "notebook.not_found"}
+	pageNotFound := cell{http.StatusNotFound, "page.not_found"}
+	nodes := func(c caller, s seeded) string { return "/api/v0/notebooks/" + s.notebook(notebookOf(c)).String() }
+	readers := func(notFound cell) map[caller]cell {
+		cells := map[caller]cell{}
+		for _, c := range notebookColumns() {
+			cells[c] = notFound
+			if _, seen := roleIn(c); seen {
+				cells[c] = cellOK()
+			}
+		}
+		return cells
+	}
+	return []matrixRow{
+		{
+			op:      "listNodes",
+			columns: notebookColumns(),
+			request: func(c caller, s seeded) (string, string, string) { return http.MethodGet, nodes(c, s) + "/nodes", "" },
+			cells:   readers(notebookNotFound),
+			check: func(t *testing.T, c caller, _ seeded, answer string) {
+				t.Helper()
+				var list struct{ Data []treeNodeAnswer }
+				decodeAnswer(t, answer, &list)
+				var names []string
+				for _, n := range list.Data {
+					names = append(names, n.Name)
+				}
+				if want := treeOf(notebookOf(c)); !slices.Equal(names, want) {
+					t.Errorf("listed %v, want %v", names, want)
+				}
+			},
+		},
+		{
+			op:      "getPage",
+			columns: notebookColumns(),
+			request: func(c caller, s seeded) (string, string, string) {
+				return http.MethodGet, "/api/v0/pages/" + s.page(pageOf(c)).String(), ""
+			},
+			cells: readers(pageNotFound),
+			check: func(t *testing.T, c caller, _ seeded, answer string) {
+				t.Helper()
+				var p pageAnswer
+				decodeAnswer(t, answer, &p)
+				if want := ancestorsOf(pageOf(c)); p.Name != pageOf(c) || !slices.Equal(p.ancestorNames(), want) {
+					t.Errorf("read %+v, want %s under %v", p, pageOf(c), want)
+				}
+			},
+		},
+		{
+			op:      "createPage",
+			columns: notebookColumns(),
+			write:   true,
+			request: func(c caller, s seeded) (string, string, string) {
+				return http.MethodPost, nodes(c, s) + "/pages", `{"parent_id":"` + s.page(pageOf(c)).String() + `","title":"New"}`
+			},
+			cells: editorsOnly(cellCreated(), notebookNotFound),
+			check: func(t *testing.T, c caller, _ seeded, answer string) {
+				t.Helper()
+				var p pageAnswer
+				decodeAnswer(t, answer, &p)
+				want := append(ancestorsOf(pageOf(c)), pageOf(c))
+				if p.Name != "New" || p.Revision != 1 || !slices.Equal(p.ancestorNames(), want) {
+					t.Errorf("created %+v, want New at revision 1 under %v", p, want)
+				}
+			},
+		},
+		{
+			op:      "renameNode",
+			columns: notebookColumns(),
+			write:   true,
+			request: func(c caller, s seeded) (string, string, string) {
+				return http.MethodPatch, "/api/v0/nodes/" + s.page(pageOf(c)).String(), `{"name":"Renamed"}`
+			},
+			cells: editorsOnly(cellOK(), pageNotFound),
+			check: func(t *testing.T, _ caller, _ seeded, answer string) {
+				t.Helper()
+				var n treeNodeAnswer
+				decodeAnswer(t, answer, &n)
+				if n.Name != "Renamed" {
+					t.Errorf("renamed %+v, want Renamed", n)
+				}
+			},
+		},
+	}
+}
+
+// editorsOnly answers a notebook's editors and admins, refuses its readers,
+// and does not show it to the rest.
+func editorsOnly(answer, notFound cell) map[caller]cell {
+	cells := map[caller]cell{}
+	for _, c := range notebookColumns() {
+		switch role, seen := roleIn(c); {
+		case role == "admin" || role == "editor":
+			cells[c] = answer
+		case seen:
+			cells[c] = cellForbidden()
+		default:
+			cells[c] = notFound
+		}
+	}
+	return cells
+}
+
+// pageOf is the page a notebook column's cells target, in its notebook:
+// priv's is a child, to show its ancestor.
+func pageOf(c caller) string {
+	if nb := notebookOf(c); nb != "priv" {
+		return nb + "-page"
+	}
+	return "priv-child"
+}
+
+// treeOf is a notebook's seeded pages, each parent before its children.
+func treeOf(notebook string) []string {
+	var out []string
+	for _, p := range matrixPages() {
+		if p.notebook == notebook {
+			out = append(out, p.name)
+		}
+	}
+	return out
+}
+
+// ancestorsOf is a seeded page's ancestors, from the root.
+func ancestorsOf(name string) []string {
+	var out []string
+	for parent := name; ; {
+		i := slices.IndexFunc(matrixPages(), func(p matrixPage) bool { return p.name == parent })
+		if parent = matrixPages()[i].parent; parent == "" {
+			break
+		}
+		out = append([]string{parent}, out...)
+	}
+	return out
+}

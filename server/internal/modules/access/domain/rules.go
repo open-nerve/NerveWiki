@@ -49,6 +49,11 @@ func readers() []shared.NotebookRole { return shared.NotebookRoles() }
 // notebookAdmins is the notebook's admins alone.
 func notebookAdmins() []shared.NotebookRole { return []shared.NotebookRole{shared.NotebookAdmin} }
 
+// writers is the notebook's admins and editors: those who write its pages.
+func writers() []shared.NotebookRole {
+	return []shared.NotebookRole{shared.NotebookAdmin, shared.NotebookEditor}
+}
+
 // rules is the table: one row per action. An action without a row is
 // allowed nothing. Each module's Actions() and the table's keys are the
 // same set (bootstrap's actions test).
@@ -82,6 +87,12 @@ func rules() map[shared.Action]Rule {
 		"notebook_ownerless.take_over": {Level: LevelWorkspace, Workspace: admins()},
 		"notebook_ownerless.delete":    {Level: LevelWorkspace, Workspace: admins()},
 		"notebook_audit.list":          {Level: LevelWorkspace, Workspace: admins()},
+		// A notebook's pages: any role reads them, its writers write them
+		// (M4 design 5).
+		"node.list":   {Level: LevelNotebook, Notebook: readers()},
+		"page.read":   {Level: LevelNotebook, Notebook: readers()},
+		"page.create": {Level: LevelNotebook, Notebook: writers()},
+		"node.rename": {Level: LevelNotebook, Notebook: writers()},
 	}
 }
 

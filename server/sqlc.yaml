@@ -74,3 +74,28 @@ sql:
           - db_type: timestamptz
             nullable: true
             go_type: { import: time, type: Time, pointer: true }
+  - engine: postgresql
+    schema:
+      - migrations/sql/00012_page_nodes.sql
+      - migrations/sql/00013_page_page_contents.sql
+      - migrations/sql/00014_page_changesets.sql
+      - migrations/sql/00015_page_changeset_items.sql
+      - migrations/sql/00016_page_page_revisions.sql
+    queries: internal/modules/page/adapter/postgres/queries
+    gen:
+      go:
+        package: gen
+        out: internal/modules/page/adapter/postgres/gen
+        sql_package: pgx/v5
+        emit_pointers_for_null_types: true
+        overrides:
+          - db_type: uuid
+            go_type: { import: uuid, type: UUID }
+          - db_type: uuid
+            nullable: true
+            go_type: { import: uuid, type: UUID, pointer: true }
+          - db_type: timestamptz
+            go_type: { import: time, type: Time }
+          - db_type: timestamptz
+            nullable: true
+            go_type: { import: time, type: Time, pointer: true }

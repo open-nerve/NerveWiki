@@ -68,6 +68,12 @@ func NewTxManager(pool *pgxpool.Pool, commitTimeout time.Duration) *TxManager {
 	return &TxManager{pool: pool, commitTimeout: commitTimeout}
 }
 
+// InTx is the package's InTx: a use case that must open the outermost
+// transaction asks it through its port.
+func (m *TxManager) InTx(ctx context.Context) bool {
+	return InTx(ctx)
+}
+
 // WithinTx runs fn in a transaction and commits it when fn returns nil. The
 // context fn receives carries the transaction; a nested WithinTx on it runs
 // fn in the same transaction. fn's error, or a panic, rolls it back.

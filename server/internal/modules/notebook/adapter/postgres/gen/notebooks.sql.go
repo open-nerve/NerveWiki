@@ -82,8 +82,8 @@ type DeleteNotebooksOfParams struct {
 
 // Every notebook not deleted of the workspace, at the workspace's deletion time, by its deleter; their ids in
 // order. The deletion holds the workspace's row FOR NO KEY UPDATE, which keeps out every notebook management
-// write; the rows are still locked by id (M3 design 8), as from M4 a page write holds a notebook's row FOR SHARE
-// without the workspace's, and one that holds two takes them in that order.
+// write; the rows are still locked by id (M3 design 8), the order of every write that holds more than one
+// notebook. A page write takes the workspace's row FOR SHARE before its notebook's (M4/P1 design 3.11).
 func (q *Queries) DeleteNotebooksOf(ctx context.Context, arg DeleteNotebooksOfParams) ([]uuid.UUID, error) {
 	rows, err := q.db.Query(ctx, deleteNotebooksOf, arg.WorkspaceID, arg.Now, arg.By)
 	if err != nil {
@@ -263,6 +263,22 @@ func (q *Queries) NotebookFacts(ctx context.Context, arg NotebookFactsParams) (N
 	var i NotebookFactsRow
 	err := row.Scan(&i.WorkspaceID, &i.WorkspaceAccess, &i.Role)
 	return i, err
+}
+
+const shareNotebook = `-- name: ShareNotebook :one
+SELECT id FROM notebooks
+WHERE id = $1 AND deleted_at IS NULL
+FOR SHARE
+`
+
+// The notebook not deleted locked FOR SHARE until the transaction ends: a page write that changes no tree takes
+// it after the workspace row's FOR SHARE (M4/P1 design 3.3), and so runs beside the others but not beside a
+// management write, a tree write or a deletion. A deletion committed while it waited leaves no row.
+func (q *Queries) ShareNotebook(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, shareNotebook, id)
+	var id_2 uuid.UUID
+	err := row.Scan(&id_2)
+	return id_2, err
 }
 
 const updateNotebook = `-- name: UpdateNotebook :exec

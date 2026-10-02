@@ -8,6 +8,7 @@ import (
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/identity"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/notebook"
+	"github.com/open-nerve/NerveWiki/server/internal/modules/page"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/workspace"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/jobs"
 )
@@ -62,7 +63,7 @@ type workspaceExtensions struct {
 // restore (M3/P3). returned, when set, counts the notebooks the restores
 // return: the command line prints it; serve hands nil.
 func workspaceRegistrants(pool *pgxpool.Pool, returned *int) workspaceExtensions {
-	return workspaceRegistrantsWith(pool, notebookRegistrants(), returned)
+	return workspaceRegistrantsWith(pool, notebookRegistrants(pool), returned)
 }
 
 // workspaceRegistrantsWith is workspaceRegistrants with nb, the notebook
@@ -164,19 +165,49 @@ type notebookExtensions struct {
 }
 
 // notebookRegistrants are the modules that take part in a notebook's
-// deletion, in a visibility change and in its activity: none in M3; M4's
-// pages and M7's attachments follow a deletion and tell the activity, M5's
-// event streams follow both events. The module's use cases and its parts
-// in the workspace module's events all take them from here.
-func notebookRegistrants() notebookExtensions {
-	return notebookExtensions{}
+// deletion, in a visibility change and in its activity: the page module
+// follows a deletion (M4/P1); from M4/P4 it tells the activity; M7's
+// attachments do both, M5's event streams follow both events. The
+// module's use cases and its parts in the workspace module's events all
+// take them from here.
+func notebookRegistrants(pool *pgxpool.Pool) notebookExtensions {
+	return notebookExtensions{
+		deletionSubscribers: []notebook.NotebookDeletionSubscriber{pageNotebookDeletion{page.NewNotebookDeletion(pool)}},
+	}
+}
+
+// pageNotebookDeletion is the page module's part in a notebook's deletion
+// as the notebook module calls it: the two modules do not import each
+// other, so their values, alike field by field, meet here.
+type pageNotebookDeletion struct {
+	page page.NotebookDeletion
+}
+
+func (d pageNotebookDeletion) NotebookDeleted(ctx context.Context, x notebook.NotebookDeletion) error {
+	return d.page.NotebookDeleted(ctx, page.NotebookDeleted(x))
+}
+
+// pageExtensions are the registrants of the page module's extension points
+// (M4 design 8): the guards of its writes, the participants of its write
+// units and the observers of their changes.
+type pageExtensions struct {
+	guards       []page.WriteGuard
+	participants []page.Participant
+	observers    []page.PageObserver
+}
+
+// pageRegistrants are the modules that take part in the page module's
+// writes: none in M4; M5's edit lock guards them and its event stream
+// observes them, M6's links take part in them and observe them.
+func pageRegistrants() pageExtensions {
+	return pageExtensions{}
 }
 
 // purgers are the modules' purgers of the soft-deleted rows, leaf to root
 // (M2 design 8, M2/P4 design 3.4): a module whose tables reference
-// another's comes before it, the notebooks before the workspaces. The
-// database test of the purge checks the order against the foreign keys,
-// and that every table with deleted_at has its purger.
+// another's comes before it, the pages before the notebooks before the
+// workspaces. The database test of the purge checks the order against the
+// foreign keys, and that every table with deleted_at has its purger.
 func purgers(pool *pgxpool.Pool) []jobs.Purger {
-	return slices.Concat(notebook.Purgers(pool), workspace.Purgers(pool))
+	return slices.Concat(page.Purgers(pool), notebook.Purgers(pool), workspace.Purgers(pool))
 }

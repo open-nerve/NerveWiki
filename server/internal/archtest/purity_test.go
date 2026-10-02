@@ -9,10 +9,11 @@ import (
 
 // reachesInfrastructure marks what the pure layers (domain, app,
 // internal/shared) must not depend on, even indirectly: net/http,
-// database/sql and any module other than this one.
+// database/sql and any module other than this one, but what the pure
+// libraries bring along.
 func reachesInfrastructure(_, path string) bool {
 	_, inModule := local(path)
-	return !inModule && isInfrastructure(path)
+	return !inModule && isInfrastructure(path) && !isPureLibraryDependency(path)
 }
 
 func isPure(path string) bool {
@@ -66,7 +67,9 @@ func TestReachesInfrastructure(t *testing.T) {
 		domain:                  {"expvar", "fmt", m("internal/shared/id")},
 		"expvar":                {"net/http"},
 		"fmt":                   {"strconv"},
-		m("internal/shared/id"): {"github.com/jackc/pgx/v5/pgtype"},
+		m("internal/shared/id"): {"github.com/jackc/pgx/v5/pgtype", "golang.org/x/text/cases"},
+		// Case folding brings language along: reached, not imported.
+		"golang.org/x/text/cases": {"golang.org/x/text/language", "golang.org/x/text/internal"},
 	}
 	var got []string
 	for _, b := range bannedImports(g, domain, reachesInfrastructure) {

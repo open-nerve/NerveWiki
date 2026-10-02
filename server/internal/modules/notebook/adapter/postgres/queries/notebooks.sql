@@ -19,6 +19,14 @@ FROM notebooks
 WHERE id = sqlc.arg(id) AND deleted_at IS NULL
 FOR NO KEY UPDATE;
 
+-- name: ShareNotebook :one
+-- The notebook not deleted locked FOR SHARE until the transaction ends: a page write that changes no tree takes
+-- it after the workspace row's FOR SHARE (M4/P1 design 3.3), and so runs beside the others but not beside a
+-- management write, a tree write or a deletion. A deletion committed while it waited leaves no row.
+SELECT id FROM notebooks
+WHERE id = sqlc.arg(id) AND deleted_at IS NULL
+FOR SHARE;
+
 -- name: UpdateNotebook :exec
 UPDATE notebooks
 SET name = sqlc.arg(name), workspace_access = sqlc.arg(workspace_access), updated_by_id = sqlc.arg(by),
@@ -58,8 +66,8 @@ WHERE n.id = sqlc.arg(notebook_id) AND n.deleted_at IS NULL;
 -- name: DeleteNotebooksOf :many
 -- Every notebook not deleted of the workspace, at the workspace's deletion time, by its deleter; their ids in
 -- order. The deletion holds the workspace's row FOR NO KEY UPDATE, which keeps out every notebook management
--- write; the rows are still locked by id (M3 design 8), as from M4 a page write holds a notebook's row FOR SHARE
--- without the workspace's, and one that holds two takes them in that order.
+-- write; the rows are still locked by id (M3 design 8), the order of every write that holds more than one
+-- notebook. A page write takes the workspace's row FOR SHARE before its notebook's (M4/P1 design 3.11).
 WITH locked AS (
     SELECT l.id FROM notebooks l
     WHERE l.workspace_id = sqlc.arg(workspace_id) AND l.deleted_at IS NULL

@@ -36,6 +36,9 @@ export const problemMessages = {
   "notebook.member_not_found": "problem.notebook.member_not_found",
   "notebook.own_membership": "problem.notebook.own_membership",
   "notebook.sole_admin": "problem.notebook.sole_admin",
+  "page.not_found": "problem.page.not_found",
+  "page.title_taken": "problem.page.title_taken",
+  "page.too_deep": "problem.page.too_deep",
 } as const satisfies Record<string, MessageKey>;
 
 /** The message of each field code; `field.<field>.<code>` says it better for one field. */

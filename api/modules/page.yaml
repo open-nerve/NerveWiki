@@ -1,0 +1,321 @@
+# page 模块的接口：笔记本的页面树与页面。生成的 Go 代码在
+# server/internal/modules/page/adapter/http/gen（make gen-go）。
+openapi: 3.1.0
+info:
+  title: Nerve Wiki page API
+  version: v0
+paths:
+  /api/v0/notebooks/{notebook_id}/nodes:
+    parameters:
+      - $ref: "#/components/parameters/NotebookID"
+    get:
+      operationId: listNodes
+      tags: [page]
+      summary: List a notebook's tree
+      description: >-
+        The notebook's pages, each parent before its children, siblings in
+        their order; any role in the notebook can list them. A notebook that
+        does not exist, is deleted, or that the caller has no role in is
+        notebook.not_found. The list is not paged.
+      security: [{ bearer: [] }]
+      x-problem-codes: [notebook.not_found]
+      responses:
+        "200":
+          description: The tree.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TreeNodeList"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v0/notebooks/{notebook_id}/pages:
+    parameters:
+      - $ref: "#/components/parameters/NotebookID"
+    post:
+      operationId: createPage
+      tags: [page]
+      summary: Create a page
+      description: >-
+        Creates a page with an empty content under a parent, or at the
+        notebook's root; its editors and admins can, a reader cannot
+        (forbidden). A notebook that does not exist, is deleted, or that the
+        caller has no role in is notebook.not_found; the values are checked
+        after both: the title's rules, a parent that is no page of the
+        notebook and a page to follow that is no child of the parent are
+        validation_failed; then a title a sibling has, compared by its key,
+        is page.title_taken, and a page deeper than ten levels
+        page.too_deep.
+      security: [{ bearer: [] }]
+      x-problem-codes: [notebook.not_found, forbidden, validation_failed, page.title_taken, page.too_deep]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PageCreate"
+      responses:
+        "201":
+          description: The page.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Page"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v0/pages/{page_id}:
+    parameters:
+      - $ref: "#/components/parameters/PageID"
+    get:
+      operationId: getPage
+      tags: [page]
+      summary: Get a page
+      description: >-
+        The page, with its ancestors and what it tells of its content. A page
+        that does not exist, is deleted, or whose notebook the caller has no
+        role in is page.not_found alike.
+      security: [{ bearer: [] }]
+      x-problem-codes: [page.not_found]
+      responses:
+        "200":
+          description: The page.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Page"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v0/nodes/{node_id}:
+    parameters:
+      - $ref: "#/components/parameters/NodeID"
+    patch:
+      operationId: renameNode
+      tags: [page]
+      summary: Rename a page
+      description: >-
+        Renames the page; its notebook's editors and admins can, a reader
+        cannot (forbidden). A page that does not exist, is deleted, or whose
+        notebook the caller has no role in is page.not_found; the name is
+        checked after both: its rules are validation_failed, a name a
+        sibling has, compared by its key, is page.title_taken. The page's
+        own name writes nothing; one that differs from it in case alone is
+        written.
+      security: [{ bearer: [] }]
+      x-problem-codes: [page.not_found, forbidden, validation_failed, page.title_taken]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NodeRename"
+      responses:
+        "200":
+          description: The page, renamed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TreeNode"
+        default:
+          $ref: "#/components/responses/Problem"
+components:
+  # 与 api/openapi.yaml 的相同：打包时丢掉模块文件的 securitySchemes，oapi-codegen 读这一份
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+  parameters:
+    NotebookID:
+      name: notebook_id
+      in: path
+      required: true
+      description: The notebook's id.
+      schema:
+        type: string
+        format: uuid
+    PageID:
+      name: page_id
+      in: path
+      required: true
+      description: The page's id.
+      schema:
+        type: string
+        format: uuid
+    NodeID:
+      name: node_id
+      in: path
+      required: true
+      description: The id of a node of a notebook's tree.
+      schema:
+        type: string
+        format: uuid
+  responses:
+    Problem:
+      description: Error (RFC 9457 problem details).
+      headers:
+        Retry-After:
+          description: >-
+            Whole seconds to wait before trying again, rounded up; sent with
+            rate_limited and server_busy.
+          schema:
+            type: integer
+            minimum: 1
+        WWW-Authenticate:
+          description: >-
+            Sent with every 401 (RFC 9110 15.5.2): Bearer error="invalid_token"
+            (RFC 6750 3) when the bearer token sent is refused before the
+            operation runs, being invalid or expired; plain Bearer for every
+            other 401, including a credential that the operation finds revoked
+            while it runs.
+          schema:
+            type: string
+      content:
+        application/problem+json:
+          schema:
+            $ref: "../common.yaml#/components/schemas/Problem"
+  schemas:
+    NodeKind:
+      description: What a node of the tree is. Attachments come later.
+      type: string
+      enum: [page]
+    TreeNode:
+      description: A node of a notebook's tree.
+      type: object
+      additionalProperties: false
+      required: [id, notebook_id, parent_id, kind, name, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        notebook_id:
+          type: string
+          format: uuid
+        parent_id:
+          description: The parent page; null at the notebook's root.
+          type: [string, "null"]
+          format: uuid
+        kind:
+          $ref: "#/components/schemas/NodeKind"
+        name:
+          description: The page's title.
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          description: When the node was last created, renamed or moved; its content's writes do not change it.
+          type: string
+          format: date-time
+    TreeNodeList:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/TreeNode"
+    Ancestor:
+      description: A page above another, on the way from the root.
+      type: object
+      additionalProperties: false
+      required: [id, name]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+    Page:
+      description: >-
+        A page: its node, its ancestors and what it tells of its content.
+      type: object
+      additionalProperties: false
+      required:
+        [
+          id,
+          notebook_id,
+          parent_id,
+          kind,
+          name,
+          created_at,
+          updated_at,
+          ancestors,
+          revision,
+          byte_size,
+          content_updated_at,
+          content_updated_by,
+        ]
+      properties:
+        id:
+          type: string
+          format: uuid
+        notebook_id:
+          type: string
+          format: uuid
+        parent_id:
+          description: The parent page; null at the notebook's root.
+          type: [string, "null"]
+          format: uuid
+        kind:
+          $ref: "#/components/schemas/NodeKind"
+        name:
+          description: The page's title.
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          description: When the page was last created, renamed or moved; its content's writes do not change it.
+          type: string
+          format: date-time
+        ancestors:
+          description: The pages above it, from the root down to its parent; none at the root.
+          type: array
+          items:
+            $ref: "#/components/schemas/Ancestor"
+        revision:
+          description: The content's version, 1 for a new page; each write of the content adds one.
+          type: integer
+        byte_size:
+          description: The content's size in bytes.
+          type: integer
+        content_updated_at:
+          description: When the content was last written.
+          type: string
+          format: date-time
+        content_updated_by:
+          description: The account that last wrote the content.
+          type: string
+          format: uuid
+    PageCreate:
+      description: A new page.
+      type: object
+      additionalProperties: false
+      required: [parent_id, title]
+      properties:
+        parent_id:
+          description: The parent page; null for the notebook's root.
+          type: [string, "null"]
+          format: uuid
+        title:
+          $ref: "#/components/schemas/Title"
+        after_id:
+          description: >-
+            The sibling the page goes right after; null puts it first,
+            absent last.
+          type: [string, "null"]
+          format: uuid
+    NodeRename:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name:
+          $ref: "#/components/schemas/Title"
+    Title:
+      description: >-
+        1–255 bytes after the surrounding blanks are trimmed and the text is
+        in NFC; none of / \ : * ? " < > | # ^ [ ] nor control characters; not
+        starting or ending with a dot; no name Windows reserves (CON, COM1, …).
+        It is the file's name when the notebook is exported. Siblings' titles
+        differ in more than case: they compare by Unicode case folding.
+      type: string

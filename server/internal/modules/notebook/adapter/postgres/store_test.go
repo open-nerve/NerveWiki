@@ -325,10 +325,9 @@ func TestDeleteNotebookAndItsMembers(t *testing.T) {
 // The facts of the access module's notebook level, in the caller's
 // transaction.
 // A workspace's deletion locks its notebooks by id, whatever order they
-// lie in (M3 design 8): from M4 a page write holds a notebook's row FOR
-// SHARE without the workspace's, and one that holds two takes them in the
-// same order. The higher id is written first and held: the deletion has
-// the lower one locked while it waits.
+// lie in (M3 design 8), the order of every write that holds more than one
+// notebook. The higher id is written first and held: the deletion has the
+// lower one locked while it waits.
 func TestDeleteNotebooksOfLocksThemByID(t *testing.T) {
 	ctx := context.Background()
 	s, pool := newStore(t)

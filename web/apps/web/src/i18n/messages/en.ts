@@ -319,6 +319,9 @@ export const en = {
   "problem.notebook.own_membership": "You cannot change or remove your own membership.",
   "problem.notebook.sole_admin":
     "You are the only admin of one or more notebooks. In each one's settings, make another member an admin first, or delete it.",
+  "problem.page.not_found": "This page does not exist, or you have no access to it.",
+  "problem.page.title_taken": "A page under the same parent already has this title (titles differ in more than case).",
+  "problem.page.too_deep": "Pages nest at most 10 levels deep.",
   "problem.network": "Cannot reach the server. Check the connection and try again.",
   "problem.unavailable": "Cannot reach the server for now. You are still signed in; try again in a moment.",
   "problem.storage":

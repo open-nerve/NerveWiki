@@ -101,6 +101,25 @@ func matrixNotebooks() []matrixNotebook {
 	}
 }
 
+// matrixPage is a seeded page, by its title: under parent, a page before
+// it, or at its notebook's root. A deleted notebook's are deleted with it.
+type matrixPage struct {
+	name     string
+	notebook string
+	parent   string
+}
+
+func matrixPages() []matrixPage {
+	return []matrixPage{
+		{"priv-root", "priv", ""},
+		{"priv-child", "priv", "priv-root"},
+		{"team-page", "team", ""},
+		{"wiki-page", "wiki", ""},
+		{"gone-nb-page", "gone-nb", ""},
+		{"orphan-page", "orphan", ""},
+	}
+}
+
 // matrixNotebookMember is a seeded membership of a notebook.
 type matrixNotebookMember struct {
 	notebook string
@@ -156,6 +175,7 @@ type seeded struct {
 	invitations     map[string]uuid.UUID // by slug
 	notebooks       map[string]uuid.UUID // by name
 	notebookMembers map[string]uuid.UUID // by notebook/caller
+	pages           map[string]uuid.UUID // by title
 	// accounts are the columns' account ids, which registering them through
 	// the API gives: prepareMatrix fills the map, so they are known to the
 	// rows' requests, not to the coverage test, which reads the paths alone.
@@ -164,7 +184,11 @@ type seeded struct {
 
 func newSeeded() seeded {
 	s := seeded{workspaces: map[string]uuid.UUID{}, memberships: map[string]uuid.UUID{}, invitations: map[string]uuid.UUID{},
-		notebooks: map[string]uuid.UUID{}, notebookMembers: map[string]uuid.UUID{}, accounts: map[caller]uuid.UUID{}}
+		notebooks: map[string]uuid.UUID{}, notebookMembers: map[string]uuid.UUID{}, pages: map[string]uuid.UUID{},
+		accounts: map[caller]uuid.UUID{}}
+	for _, p := range matrixPages() {
+		s.pages[p.name] = uuid.NewV7()
+	}
 	for _, n := range matrixNotebooks() {
 		s.notebooks[n.name] = uuid.NewV7()
 	}
@@ -242,11 +266,26 @@ func (s seeded) notebookMember(name string, c caller) uuid.UUID {
 	return id
 }
 
+// page is the id of the page name.
+func (s seeded) page(name string) uuid.UUID {
+	id, ok := s.pages[name]
+	if !ok {
+		s.t.Helper()
+		s.t.Fatalf("no page %s is seeded", name)
+	}
+	return id
+}
+
 // workspaceOfRow is the slug of the workspace a seeded row's id is in.
 func (s seeded) workspaceOfRow(id uuid.UUID) (string, bool) {
 	for _, n := range matrixNotebooks() {
 		if s.notebooks[n.name] == id {
 			return n.slug, true
+		}
+	}
+	for _, p := range matrixPages() {
+		if s.pages[p.name] == id {
+			return s.workspaceOfRow(s.notebooks[p.notebook])
 		}
 	}
 	for key, seededID := range s.notebookMembers {
@@ -294,9 +333,22 @@ func (d matrixData) config(t *testing.T, url string, change func(*config.Config)
 	return cfg
 }
 
+// seededPageHistory writes, beside the page node $1 seeded by SQL, what
+// its creation through the API would: a changeset of its own, its item and
+// its first version, at the node's time and in its state, so that the
+// pages' invariant (checkPages) holds on the seeded data.
+const seededPageHistory = `WITH n AS (SELECT * FROM nodes WHERE id = $1),
+	s AS (INSERT INTO changesets (id, notebook_id, kind, client, created_by_id, created_at, updated_at, deleted_at)
+		SELECT gen_random_uuid(), notebook_id, 'edit', 'web', created_by_id, created_at, created_at, deleted_at FROM n RETURNING id),
+	i AS (INSERT INTO changeset_items (id, changeset_id, node_id, after_parent_id, after_name, after_sort_order,
+			created_at, updated_at, deleted_at)
+		SELECT gen_random_uuid(), s.id, n.id, n.parent_id, n.name, n.sort_order, n.created_at, n.created_at, n.deleted_at FROM n, s)
+	INSERT INTO page_revisions (id, changeset_id, node_id, revision, content, content_hash, byte_size, created_at, updated_at, deleted_at)
+	SELECT gen_random_uuid(), s.id, n.id, 1, '', sha256(''), 0, n.created_at, n.created_at, n.deleted_at FROM n, s`
+
 // prepareMatrix fills a database for the matrix: an account for each
 // column, registered through the API for its token; the workspaces,
-// memberships, invitations and notebooks through SQL, with the ids newSeeded fixed
+// memberships, invitations, notebooks and pages through SQL, with the ids newSeeded fixed
 // (the coverage check needs them before any database: members joining by
 // invitation would get theirs from the server, M2/P3 design 3.10); then,
 // through the API, acme's admin removes the ended member, and gone's admin
@@ -357,10 +409,29 @@ func prepareMatrix(t *testing.T) matrixData {
 				"VALUES ($6, $1, "+account+", $3, "+account+", "+account+", $4, $4, $5)",
 				d.seeded.notebooks[m.notebook], emailOf(m.c), string(m.role), now, ended, d.seeded.notebookMembers[m.notebook+"/"+string(m.c)])
 		}
+		for _, p := range matrixPages() {
+			var parent *uuid.UUID
+			if p.parent != "" {
+				id := d.seeded.pages[p.parent]
+				parent = &id
+			}
+			exec("INSERT INTO nodes (id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id, "+
+				"created_at, updated_at) SELECT $1, n.id, $3, 'page', $4, $4, 0, n.created_by_id, n.created_by_id, $5, $5 "+
+				"FROM notebooks n WHERE n.id = $2", d.seeded.pages[p.name], d.seeded.notebooks[p.notebook], parent, p.name, now)
+			exec("INSERT INTO page_contents (node_id, content, revision, content_hash, byte_size, updated_by_id, updated_at) "+
+				"SELECT id, '', 1, sha256(''), 0, created_by_id, $2 FROM nodes WHERE id = $1", d.seeded.pages[p.name], now)
+			exec(seededPageHistory, d.seeded.pages[p.name])
+		}
 		for _, n := range matrixNotebooks() {
 			if n.deleted {
 				exec("UPDATE notebooks SET deleted_at = $2 WHERE id = $1", d.seeded.notebooks[n.name], now)
 				exec("UPDATE notebook_members SET deleted_at = $2 WHERE notebook_id = $1", d.seeded.notebooks[n.name], now)
+				exec("UPDATE nodes SET deleted_at = $2 WHERE notebook_id = $1", d.seeded.notebooks[n.name], now)
+				for _, table := range []string{"page_contents", "page_revisions", "changeset_items"} {
+					exec("UPDATE "+table+" SET deleted_at = $2 WHERE node_id IN (SELECT id FROM nodes WHERE notebook_id = $1)",
+						d.seeded.notebooks[n.name], now)
+				}
+				exec("UPDATE changesets SET deleted_at = $2 WHERE notebook_id = $1", d.seeded.notebooks[n.name], now)
 			}
 		}
 		// orphan is ownerless of an account still active in lab, a state no
