@@ -3,6 +3,7 @@ package bootstrap
 import (
 	"context"
 	"slices"
+	"uuid"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -167,15 +168,35 @@ type notebookExtensions struct {
 
 // notebookRegistrants are the modules that take part in a notebook's
 // deletion, in a visibility change and in its activity: the page module
-// follows a deletion (M4/P1), with its edit sessions' subscribers (M4/P4);
-// M7's attachments do both, M5's event streams follow both events. The
-// module's use cases and its parts in the workspace module's events all
-// take them from here.
+// follows a deletion (M4/P1), with its edit sessions' subscribers, and
+// tells its pages' activity (M4/P4); M7's attachments do both, M5's event
+// streams follow both events. The module's use cases and its parts in the
+// workspace module's events all take them from here.
 func notebookRegistrants(pool *pgxpool.Pool) notebookExtensions {
 	pages := page.NewNotebookDeletion(pool, pageRegistrants().sessionSubscribers)
 	return notebookExtensions{
 		deletionSubscribers: []notebook.NotebookDeletionSubscriber{pageNotebookDeletion{pages}},
+		activitySources:     []notebook.NotebookActivitySource{pageActivity{page.NewNotebookActivity(pool)}},
 	}
+}
+
+// pageActivity is the pages' part in notebooks' activity as the notebook
+// module reads it: a notebook in the page module's answer has a last
+// write.
+type pageActivity struct {
+	page page.Activities
+}
+
+func (a pageActivity) NotebookActivities(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]notebook.NotebookActivity, error) {
+	got, err := a.page.NotebookActivities(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[uuid.UUID]notebook.NotebookActivity, len(got))
+	for id, x := range got {
+		out[id] = notebook.NotebookActivity{Bytes: x.Bytes, LastWriteAt: &x.LastWriteAt}
+	}
+	return out, nil
 }
 
 // pageNotebookDeletion is the page module's part in a notebook's deletion

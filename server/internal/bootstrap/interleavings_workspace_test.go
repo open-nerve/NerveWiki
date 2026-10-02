@@ -12,6 +12,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver/apitest"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres/pgtest"
 	"github.com/open-nerve/NerveWiki/server/migrations"
@@ -45,9 +46,20 @@ type acmeTeam struct {
 // newAcmeTeam is acme with bob and carol of the roles given; "" is none.
 func newAcmeTeam(t *testing.T, bobRole, carolRole string) acmeTeam {
 	t.Helper()
+	return newAcmeTeamWith(t, bobRole, carolRole, nil)
+}
+
+// newAcmeTeamWith is newAcmeTeam on an app whose configuration change
+// alters, when it is not nil.
+func newAcmeTeamWith(t *testing.T, bobRole, carolRole string, change func(*config.Config)) acmeTeam {
+	t.Helper()
 	url := pgtest.NewDatabase(t)
+	cfg := testConfig(t, url, false)
+	if change != nil {
+		change(&cfg)
+	}
 	tm := acmeTeam{
-		url: url, base: startApp(t, testConfig(t, url, false), migrations.FS()), pool: connect(t, url), contract: apitest.Load(t),
+		url: url, base: startApp(t, cfg, migrations.FS()), pool: connect(t, url), contract: apitest.Load(t),
 		tokens: map[string]string{}, members: map[string]uuid.UUID{},
 	}
 	for _, name := range []string{"alice", "bob", "carol", "dana"} {

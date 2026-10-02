@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -608,5 +609,25 @@ func TestTheContentsWritesReachTheUnit(t *testing.T) {
 	}
 	if len(o.events) != 2 || marked(o.events[1].Changes[0]) != 3 {
 		t.Errorf("the observers followed %+v, want the creation with its parse", o.events)
+	}
+}
+
+// The module's larger bodies are its routes' (M4/P4 design 3.8): a key
+// that names no route it registers would relax nothing.
+func TestTheBodyLimitsAreTheModulesRoutes(t *testing.T) {
+	md, err := markdown.New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := page.New(page.Deps{Clock: fixedClock{}, Logger: slog.New(slog.DiscardHandler), Markdown: md, EditSessionCleanupInterval: time.Hour})
+	router := httpserver.NewRouter(slog.New(slog.DiscardHandler))
+	m.Register(router, httpservertest.NewAPI(t, httpservertest.APIOptions{Authenticator: tokenAuth{}, BodyLimits: m.BodyLimits()}))
+	if len(m.BodyLimits()) == 0 {
+		t.Fatal("no route's body limit")
+	}
+	for route := range m.BodyLimits() {
+		if !slices.Contains(router.Patterns(), route) {
+			t.Errorf("the body limit of %q, which is no route of the module's %q", route, router.Patterns())
+		}
 	}
 }
