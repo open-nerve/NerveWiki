@@ -50,8 +50,9 @@ func readTag(raw []byte) (name string, end bool, attrs iter.Seq2[string, string]
 	}
 }
 
-// attrValue reads an attribute's value after its '=': quoted or not, its
-// references resolved, a NUL made U+FFFD as a tokenizer makes it.
+// attrValue reads an attribute's value after its '=', quoted or not, as a
+// tokenizer reads it: its line breaks made '\n', its references resolved,
+// a NUL made U+FFFD.
 func attrValue(r []byte) (string, []byte) {
 	r = r[skipSpace(r):]
 	if len(r) == 0 {
@@ -72,7 +73,8 @@ func attrValue(r []byte) (string, []byte) {
 		}
 		v, r = r[:e], r[e:]
 	}
-	return strings.ReplaceAll(unescapeAttr(string(v)), "\x00", "�"), r
+	value := strings.ReplaceAll(strings.ReplaceAll(string(v), "\r\n", "\n"), "\r", "\n")
+	return strings.ReplaceAll(unescapeAttr(value), "\x00", "�"), r
 }
 
 // unescapeAttr resolves the character references of an attribute's value

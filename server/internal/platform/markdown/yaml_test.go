@@ -3,6 +3,7 @@ package markdown
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"strings"
 	"testing"
 )
@@ -53,7 +54,8 @@ func TestScalarsFollowTheCoreSchema(t *testing.T) {
 		{"2024-01-01", "2024-01-01"}, {"2024-01-01T10:00:00Z", "2024-01-01T10:00:00Z"},
 		{`"010"`, "010"}, {"'true'", "true"}, {"|\n  010\n", "010\n"}, {">\n  a\n  b\n", "a b\n"},
 		{"!!str 10", "10"}, {"!!int 10", int64(10)}, {`!!int "10"`, int64(10)}, {"!!float .inf", ".inf"}, {"!!bool true", true},
-		{"!!null ~", nil}, {"!!float 1", 1.0}, {"!!float -12", -12.0},
+		{"!!null ~", nil}, {"!!float 1", 1.0}, {"!!float -12", -12.0}, {"0.0", 0.0}, {"-0.0", math.Copysign(0, -1)},
+		{"1" + strings.Repeat("0", 400), "1" + strings.Repeat("0", 400)}, {"0x" + strings.Repeat("F", 300), "0x" + strings.Repeat("F", 300)},
 	}
 	for _, tt := range tests {
 		t.Run(tt.yaml, func(t *testing.T) {
@@ -79,6 +81,8 @@ func TestAFrontmatterIsAMappingOfScalarKeys(t *testing.T) {
 		{"an empty mapping", "{}", true, "{}"},
 		{"keys in order", "b: 1\na: 2\n", true, `{"a":2,"b":1}`},
 		{"a key resolved", "010: a\ntrue: b\n~: c\n1.5: d\n", true, `{"1.5":"d","10":"a","null":"c","true":"b"}`},
+		{"integer keys past a float's range keep their text", "1" + strings.Repeat("0", 400) + ": a\n2" + strings.Repeat("0", 400) + ": b\n", true,
+			`{"1` + strings.Repeat("0", 400) + `":"a","2` + strings.Repeat("0", 400) + `":"b"}`},
 		{"number keys as JSON writes them", "1e6: a\n1e-7: b\n1000000.5: c\n0.000001: d\n1e21: e\n", true,
 			`{"0.000001":"d","1000000":"a","1000000.5":"c","1e+21":"e","1e-7":"b"}`},
 		{"a merge key is a key", "<<: {a: 1}\n", true, `{"\u003c\u003c":{"a":1}}`},

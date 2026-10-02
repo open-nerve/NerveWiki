@@ -72,6 +72,10 @@ func TestCheckHTMLTakesAnExtensionsMarkup(t *testing.T) {
 	if err := markdowntest.CheckHTML(ok); err == nil {
 		t.Errorf("without its Markup, %s passed", ok)
 	}
+	img := markdown.Extension{Name: "i", Markup: markdown.Markup{Elements: map[string][]string{"img": {"src"}}, URLs: []string{"src"}}}
+	if err := markdowntest.CheckHTML(`<p>a <img src="/i.png"> b</p>`, img); err != nil {
+		t.Errorf("an extension's void element: %v", err)
+	}
 	for _, s := range []string{
 		`<mark class="nw-word" data-to="//evil.example">a</mark>`,
 		`<mark class="nw-word" data-to="/p" data-x="1">a</mark>`,

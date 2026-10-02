@@ -128,6 +128,7 @@ func TestThePropertiesComeFirstAsATable(t *testing.T) {
 		},
 		{"a key escaped", "---\n\"<k>\": 1\n---\n", "<table class=\"nw-props\"><tr><th>&lt;k&gt;</th><td>1</td></tr></table>\n"},
 		{"a large number in decimal", "---\nn: 1e20\n---\n", "<table class=\"nw-props\"><tr><th>n</th><td>100000000000000000000</td></tr></table>\n"},
+		{"zero, negative or not", "---\nn: 0.0\nm: -0.0\n---\n", "<table class=\"nw-props\"><tr><th>n</th><td>0</td></tr><tr><th>m</th><td>0</td></tr></table>\n"},
 		{"a small number with an exponent", "---\nn: 1.5e-7\n---\n", "<table class=\"nw-props\"><tr><th>n</th><td>1.5e-7</td></tr></table>\n"},
 		{"an empty frontmatter", "---\n---\nbody\n", "<p>body</p>\n"},
 		{"a frontmatter not valid", "---\n- a\n---\nbody\n", "<p>body</p>\n"},

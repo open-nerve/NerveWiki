@@ -153,11 +153,15 @@ func (r *reader) key(n *yaml.Node) (string, error) {
 	return v.(string), nil
 }
 
-// jsonNumber is f as JSON and JavaScript write it: in decimal from 1e-6 up
-// to 1e21, past them with an exponent without leading zeros.
+// jsonNumber is f as JavaScript writes it, and JSON but for -0: in decimal
+// from 1e-6 up to 1e21, past them with an exponent without leading zeros;
+// zero, negative or not, is 0.
 func jsonNumber(f float64) string {
+	if f == 0 {
+		return "0"
+	}
 	format := byte('f')
-	if abs := math.Abs(f); abs != 0 && (abs < 1e-6 || abs >= 1e21) {
+	if abs := math.Abs(f); abs < 1e-6 || abs >= 1e21 {
 		format = 'e'
 	}
 	s := strconv.FormatFloat(f, format, -1, 64)
@@ -246,11 +250,11 @@ func resolve(s string) any {
 	case coreBool.MatchString(s):
 		return s[0] == 't' || s[0] == 'T'
 	case coreInt.MatchString(s):
-		return integer(s, 10)
+		return integer(s, s, 10)
 	case coreOct.MatchString(s):
-		return integer(s[2:], 8)
+		return integer(s, s[2:], 8)
 	case coreHex.MatchString(s):
-		return integer(s[2:], 16)
+		return integer(s, s[2:], 16)
 	case coreFloat.MatchString(s):
 		f, err := strconv.ParseFloat(s, 64)
 		if err != nil { // out of range
@@ -261,13 +265,17 @@ func resolve(s string) any {
 	return s
 }
 
-// integer is an int64, or past its range the nearest float64, as a
-// JavaScript number would hold it.
-func integer(digits string, base int) any {
+// integer is the integer written s, its digits in base: an int64, or past
+// its range the nearest float64, as a JavaScript number would hold it, or
+// past a float64's s itself, which JSON cannot hold.
+func integer(s, digits string, base int) any {
 	if v, err := strconv.ParseInt(digits, base, 64); err == nil {
 		return v
 	}
 	b, _ := new(big.Int).SetString(digits, base)
 	f, _ := new(big.Float).SetInt(b).Float64()
+	if math.IsInf(f, 0) {
+		return s
+	}
 	return f
 }

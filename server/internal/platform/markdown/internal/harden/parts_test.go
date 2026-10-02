@@ -47,6 +47,8 @@ func TestThePartsEdgesParseAsGoldmarkParsesThem(t *testing.T) {
 			"|a|b|\n|-:|:-:|\n|c|", "a|b\n-|-\nc", "|a|\n| - |\n", "|a|\n|-- -|\n", "|a|\n|:|\n",
 			"|a|\n|::-|\n", "|a|\n|-\v|\n", "|a|\n|\t-\t|\n", "|a|\n    |-|\n", "|a|\n|-|-|\n",
 			"p\n|a|\n|-|\n|b|", "> |a|\n> |-|\n> |b|", "- |a|\n  |-|\n  |b|",
+			// A wider delimiter row in the body is a row: the first one counts.
+			"|a|\n|-|\n" + strings.Repeat("|-", 50) + "\n" + strings.Repeat("x\n", 20),
 		},
 		"emphasis": {
 			"*[a*](b)", "*a [b* c](d)", "**a [b](c) d**", "***a***", "**a*", "*a**", "a**b**c",

@@ -42,10 +42,11 @@ var (
 	language = regexp.MustCompile(`^language-[a-z0-9_+#.-]+$`)
 )
 
-// void are the elements allowed above that have no end tag.
+// void are HTML's elements that have no end tag, an extension's among
+// them.
 //
 //nolint:gochecknoglobals // read only
-var void = []string{"br", "hr", "input", "wbr"}
+var void = []string{"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"}
 
 // CheckHTML checks the HTML of a reading view rendered with exts (M4/P3
 // design 3.10): read back by x/net/html's tokenizer, it holds only the
@@ -162,13 +163,16 @@ func onThisSiteOrAllowed(addr string) bool {
 }
 
 // The HTML of a reading view is at most Amplification times its content's
-// size plus Headroom (M4/P3 design 3.4): a footnote's reference and its
-// back link, the most per byte, are about 48 times theirs, and what
-// reference links and a frontmatter's aliases repeat below their budgets
-// is about a megabyte at most.
+// size plus Headroom (M4/P3 design 3.10). A footnote's reference and its
+// back link, the most per byte, are about 48 times theirs. Below their
+// budgets reference links and a frontmatter's aliases repeat up to about
+// 2 MB however short the content: an image writes its address twice and
+// each '&' as five bytes, so references up to 10 times internal/harden's
+// MinExpansion; the aliases' scalars up to 5 times their budget, and
+// 10 000 nodes of about 40 bytes of table each. Headroom keeps twice that.
 const (
 	Amplification = 64
-	Headroom      = 2 << 20
+	Headroom      = 4 << 20
 )
 
 // CheckSize checks that out, the HTML of a reading view of content, is at

@@ -89,6 +89,7 @@ func Pathological() []Input {
 		{"an e-mail run of code spans to an '@' a`", func(n int) string { return repeat("a`")(n) + "@" }},
 		{"an e-mail run to a domain with no '.' a*", func(n int) string { return repeat("a*")(n) + "@b" }},
 		{"an e-mail run to a domain then '-' a_", func(n int) string { return repeat("a_")(n) + "@a.b-" }},
+		{"an e-mail run to a domain then '_' a*", func(n int) string { return repeat("a*")(n) + "@a.b_" }},
 		{"link destinations [a](", repeat("[a](")},
 		{"image destinations ![a](", repeat("![a](")},
 		{"bare destinations [a](b", repeat("[a](b")},
@@ -192,8 +193,8 @@ func Pathological() []Input {
 // grow faster than the input: a table's short rows filled to the header's
 // width, a reference link repeating a long destination or title, an alias
 // repeating a long value. They are checked at AmplifyingSize, which a
-// regression cannot make exhaust the machine's memory: their HTML must be
-// at most MaxHTML of it.
+// regression cannot make exhaust the machine's memory: their HTML must
+// pass CheckSize.
 func Amplifying() []Input {
 	return []Input{
 		{"a wide header over short rows", func(n int) string {

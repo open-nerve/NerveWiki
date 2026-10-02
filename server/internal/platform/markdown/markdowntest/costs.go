@@ -72,8 +72,9 @@ func CheckCosts(t *testing.T, m *markdown.Markdown) {
 	}
 	for _, in := range Amplifying() {
 		content := []byte(in.Make(AmplifyingSize))
-		if _, out := allocated(t, m, content); CheckSize(content, out) != nil {
-			t.Errorf("%s: %v", in.Name, CheckSize(content, out))
+		_, out := allocated(t, m, content)
+		if err := CheckSize(content, out); err != nil {
+			t.Errorf("%s: %v", in.Name, err)
 		}
 	}
 	const size = 256 << 10
