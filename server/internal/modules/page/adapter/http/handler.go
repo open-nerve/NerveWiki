@@ -6,6 +6,7 @@ package httpadapter
 
 import (
 	"context"
+	"encoding/hex"
 	"uuid"
 
 	"github.com/oapi-codegen/nullable"
@@ -32,6 +33,16 @@ type GetPageUseCase interface {
 	Execute(ctx context.Context, id uuid.UUID) (app.PageView, error)
 }
 
+// GetPageContentUseCase is app.GetPageContent.
+type GetPageContentUseCase interface {
+	Execute(ctx context.Context, id uuid.UUID) (app.PageContent, error)
+}
+
+// PutPageContentUseCase is app.PutPageContent.
+type PutPageContentUseCase interface {
+	Execute(ctx context.Context, id uuid.UUID, p app.ContentPut, client domain.Client) (app.PageView, error)
+}
+
 // GetPageViewUseCase is app.GetPageView.
 type GetPageViewUseCase interface {
 	Execute(ctx context.Context, id uuid.UUID) (app.ReadingView, error)
@@ -54,13 +65,15 @@ type DeleteNodeUseCase interface {
 
 // UseCases are the use cases behind the module's operations.
 type UseCases struct {
-	ListNodes   ListNodesUseCase
-	CreatePage  CreatePageUseCase
-	GetPage     GetPageUseCase
-	GetPageView GetPageViewUseCase
-	RenameNode  RenameNodeUseCase
-	MoveNode    MoveNodeUseCase
-	DeleteNode  DeleteNodeUseCase
+	ListNodes      ListNodesUseCase
+	CreatePage     CreatePageUseCase
+	GetPage        GetPageUseCase
+	GetPageContent GetPageContentUseCase
+	PutPageContent PutPageContentUseCase
+	GetPageView    GetPageViewUseCase
+	RenameNode     RenameNodeUseCase
+	MoveNode       MoveNodeUseCase
+	DeleteNode     DeleteNodeUseCase
 }
 
 // Register mounts the module's routes on router, the root router from
@@ -109,6 +122,9 @@ func (h handler) CreatePage(ctx context.Context, req gen.CreatePageRequestObject
 		return nil, err
 	}
 	d := app.PageDraft{ParentID: idOf(req.Body.ParentID), Title: req.Body.Title, Position: positionOf(req.Body.AfterID)}
+	if req.Body.Content != nil {
+		d.Content = *req.Body.Content
+	}
 	v, err := h.uc.CreatePage.Execute(ctx, req.NotebookID, d, client)
 	if err != nil {
 		return nil, err
@@ -123,6 +139,32 @@ func (h handler) GetPage(ctx context.Context, req gen.GetPageRequestObject) (gen
 		return nil, err
 	}
 	return gen.GetPage200JSONResponse(pageOf(v)), nil
+}
+
+// GetPageContent serves GET /api/v0/pages/{page_id}/content.
+func (h handler) GetPageContent(ctx context.Context, req gen.GetPageContentRequestObject) (gen.GetPageContentResponseObject, error) {
+	c, err := h.uc.GetPageContent.Execute(ctx, req.PageID)
+	if err != nil {
+		return nil, err
+	}
+	return gen.GetPageContent200JSONResponse{Content: c.Content, Revision: c.Revision, ContentHash: hex.EncodeToString(c.Hash)}, nil
+}
+
+// PutPageContent serves PUT /api/v0/pages/{page_id}/content.
+func (h handler) PutPageContent(ctx context.Context, req gen.PutPageContentRequestObject) (gen.PutPageContentResponseObject, error) {
+	client, err := clientOf(ctx)
+	if err != nil {
+		return nil, err
+	}
+	p := app.ContentPut{Content: req.Body.Content, Base: req.Body.BaseRevision}
+	if req.Body.EditSessionID != nil {
+		p.EditSession = *req.Body.EditSessionID
+	}
+	v, err := h.uc.PutPageContent.Execute(ctx, req.PageID, p, client)
+	if err != nil {
+		return nil, err
+	}
+	return gen.PutPageContent200JSONResponse(pageOf(v)), nil
 }
 
 // GetPageView serves GET /api/v0/pages/{page_id}/view.

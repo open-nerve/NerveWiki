@@ -31,12 +31,15 @@ type Write struct {
 }
 
 // Step is one operation of a unit: its kind, and each node it changes,
-// where the node was and where it is after. A guard gets it before the
-// write, a participant after.
+// where the node was and where it is after, with the content it wrote and
+// its parse. A guard gets it before the write, a participant after.
 type Step struct {
 	Write
 	Operation domain.Operation
 	Changes   []domain.Change
+	// EditSessionID is the edit session a content write is made in (M5:
+	// the edit lock is the session's); zero for any other write.
+	EditSessionID uuid.UUID
 }
 
 // WriteGuard may refuse an operation (M5: the edit lock; M10: a schema's
@@ -57,10 +60,14 @@ type Participant interface {
 	Participate(ctx context.Context, s Step, u Appender) error
 }
 
-// Appender is how a participant adds an operation to the unit it follows.
-// M4/P4 adds the content's write, which M6 appends.
+// Appender is how a participant adds an operation to the unit it follows:
+// M6 rewrites the content of the pages that link to a renamed one.
 type Appender interface {
 	Rename(ctx context.Context, nodeID uuid.UUID, name string) (domain.Node, error)
+	// WriteContent writes a page's content as Unit.WriteContent does, in no
+	// edit session: the participant parsed it, and read it at w.Base in
+	// the unit's transaction.
+	WriteContent(ctx context.Context, w ContentWrite) (int, error)
 }
 
 // Event is a unit's changes, merged by node, the earliest before and the

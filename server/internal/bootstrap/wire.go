@@ -100,7 +100,8 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrati
 	}
 	pg := page.New(pageDeps(cfg, pool, logger, authorizer, md))
 	api, err := httpserver.NewAPI(apiConfig(cfg, logger, limiter, ident.Authenticator(),
-		slices.Concat(ident.PublicOperations(), inst.PublicOperations(), ws.PublicOperations()), ident.RequestTimeouts()))
+		slices.Concat(ident.PublicOperations(), inst.PublicOperations(), ws.PublicOperations()), ident.RequestTimeouts(),
+		pg.BodyLimits()))
 	if err != nil {
 		return nil, err
 	}

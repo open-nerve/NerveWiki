@@ -420,14 +420,17 @@ func (o *observer) PagesChanged(ctx context.Context, e app.Event) error {
 
 // participant records the steps it follows. When rename is set, it
 // renames that node to name through the unit; when retitle is, it renames
-// the node the step changed, adding " (retitled)" to its name.
+// the node the step changed, adding " (retitled)" to its name; when write
+// is, it writes that content through the unit, and keeps the revision.
 type participant struct {
 	*recorder
-	label   string
-	steps   []app.Step
-	rename  *uuid.UUID
-	name    string
-	retitle bool
+	label    string
+	steps    []app.Step
+	rename   *uuid.UUID
+	name     string
+	retitle  bool
+	write    *app.ContentWrite
+	revision int
 }
 
 func (p *participant) Participate(ctx context.Context, s app.Step, u app.Appender) error {
@@ -440,6 +443,10 @@ func (p *participant) Participate(ctx context.Context, s app.Step, u app.Appende
 	case p.retitle:
 		c := s.Changes[0]
 		_, err := u.Rename(ctx, c.NodeID, c.After.Name+" (retitled)")
+		return err
+	case p.write != nil:
+		var err error
+		p.revision, err = u.WriteContent(ctx, *p.write)
 		return err
 	}
 	return nil
@@ -484,7 +491,8 @@ func (f *fixture) logger() *slog.Logger { return slog.New(slog.NewTextHandler(f.
 func (f *fixture) writer() *app.Writer {
 	return app.NewWriter(app.WriterDeps{
 		Tx: f.tx, Clock: f.clock, Auth: f.auth, Workspaces: f.workspaces, Notebooks: f.notebooks, Nodes: f.store,
-		NodeWriter: f.store, Changesets: f.store, Guards: f.guards, Participants: f.partakers, Observers: f.observers,
+		NodeWriter: f.store, Changesets: f.store, Sessions: f.store, Guards: f.guards, Participants: f.partakers,
+		Observers: f.observers,
 	})
 }
 

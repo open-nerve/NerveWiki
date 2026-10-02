@@ -74,19 +74,22 @@ type Module struct {
 // New wires the module: every write runs in the one writer's units.
 func New(d Deps) *Module {
 	store := postgresadapter.New(d.Pool)
+	md := markdownadapter.New(d.Markdown)
 	writer := app.NewWriter(app.WriterDeps{
 		Tx: d.Tx, Clock: d.Clock, Auth: d.Authorizer, Workspaces: d.Workspaces, Notebooks: d.Notebooks,
-		Nodes: store, NodeWriter: store, Changesets: store,
+		Nodes: store, NodeWriter: store, Changesets: store, Sessions: store,
 		Guards: d.Guards, Participants: d.Participants, Observers: d.Observers,
 	})
 	return &Module{uc: httpadapter.UseCases{
-		ListNodes:   app.NewListNodes(d.Notebooks, store, d.Authorizer),
-		CreatePage:  app.NewCreatePage(writer, store, d.Logger),
-		GetPage:     app.NewGetPage(d.Notebooks, store, d.Authorizer),
-		GetPageView: app.NewGetPageView(d.Notebooks, store, d.Authorizer, markdownadapter.New(d.Markdown)),
-		RenameNode:  app.NewRenameNode(writer, store, d.Logger),
-		MoveNode:    app.NewMoveNode(writer, store, d.Logger),
-		DeleteNode:  app.NewDeleteNode(writer, store, d.Logger),
+		ListNodes:      app.NewListNodes(d.Notebooks, store, d.Authorizer),
+		CreatePage:     app.NewCreatePage(writer, store, md, d.Logger),
+		GetPage:        app.NewGetPage(d.Notebooks, store, d.Authorizer),
+		GetPageContent: app.NewGetPageContent(d.Notebooks, store, d.Authorizer),
+		PutPageContent: app.NewPutPageContent(writer, store, md, d.Logger),
+		GetPageView:    app.NewGetPageView(d.Notebooks, store, d.Authorizer, md),
+		RenameNode:     app.NewRenameNode(writer, store, d.Logger),
+		MoveNode:       app.NewMoveNode(writer, store, d.Logger),
+		DeleteNode:     app.NewDeleteNode(writer, store, d.Logger),
 	}}
 }
 
@@ -94,6 +97,13 @@ func New(d Deps) *Module {
 // httpserver.NewRouter, behind api's per-route middlewares.
 func (m *Module) Register(router *httpserver.Router, api *httpserver.API) {
 	httpadapter.Register(router, api, m.uc)
+}
+
+// BodyLimits are the module's routes whose body may be larger than
+// server.max_body_bytes, with their limit: a page's content (M4/P4 design
+// 3.8).
+func (m *Module) BodyLimits() map[string]int64 {
+	return httpadapter.BodyLimits()
 }
 
 // Actions are the module's actions: bootstrap checks they are the access

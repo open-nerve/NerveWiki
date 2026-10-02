@@ -11,12 +11,13 @@ import (
 )
 
 // APIOptions are what a module's tests choose of the per-route middlewares:
-// the module's authenticator, public operations and shorter deadlines.
-// MaxBodyBytes is 1 MiB when zero.
+// the module's authenticator, public operations, shorter deadlines and
+// larger bodies. MaxBodyBytes is 1 MiB when zero.
 type APIOptions struct {
 	Authenticator    httpserver.Authenticator
 	PublicOperations []string
 	RequestTimeouts  map[string]time.Duration
+	BodyLimits       map[string]int64
 	MaxBodyBytes     int64
 }
 
@@ -36,6 +37,7 @@ func NewAPI(t testing.TB, o APIOptions) *httpserver.API {
 		MaxBodyBytes:     o.MaxBodyBytes,
 		RequestTimeout:   5 * time.Second,
 		RequestTimeouts:  o.RequestTimeouts,
+		BodyLimits:       o.BodyLimits,
 		IPv6PrefixLen:    64,
 		Anonymous:        unlimited{},
 		Authenticated:    unlimited{},

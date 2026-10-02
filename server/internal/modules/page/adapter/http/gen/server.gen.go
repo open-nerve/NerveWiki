@@ -40,6 +40,9 @@ type Ancestor struct {
 	Name string    `json:"name"`
 }
 
+// Content A page's Markdown, byte for byte: at most 5 MB of UTF-8, without NUL characters. Its line breaks, byte order mark and blanks are kept as they are.
+type Content = string
+
 // NodeKind What a node of the tree is. Attachments come later.
 type NodeKind string
 
@@ -91,10 +94,37 @@ type Page struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+// PageContent A page's content.
+type PageContent struct {
+	// Content A page's Markdown, byte for byte: at most 5 MB of UTF-8, without NUL characters. Its line breaks, byte order mark and blanks are kept as they are.
+	Content Content `json:"content"`
+
+	// ContentHash The SHA-256 of the content's bytes, in lower-case hexadecimal.
+	ContentHash string `json:"content_hash"`
+
+	// Revision The content's version.
+	Revision int `json:"revision"`
+}
+
+// PageContentWrite A page's new content.
+type PageContentWrite struct {
+	// BaseRevision The revision the content was read at.
+	BaseRevision int `json:"base_revision"`
+
+	// Content A page's Markdown, byte for byte: at most 5 MB of UTF-8, without NUL characters. Its line breaks, byte order mark and blanks are kept as they are.
+	Content Content `json:"content"`
+
+	// EditSessionID The caller's edit session of the page the write is made in.
+	EditSessionID *uuid.UUID `json:"edit_session_id,omitempty"`
+}
+
 // PageCreate A new page.
 type PageCreate struct {
 	// AfterID The sibling the page goes right after; null puts it first, absent last.
 	AfterID nullable.Nullable[uuid.UUID] `json:"after_id,omitempty"`
+
+	// Content A page's Markdown, byte for byte: at most 5 MB of UTF-8, without NUL characters. Its line breaks, byte order mark and blanks are kept as they are.
+	Content *Content `json:"content,omitempty"`
 
 	// ParentID The parent page; null for the notebook's root.
 	ParentID nullable.Nullable[uuid.UUID] `json:"parent_id"`
@@ -160,6 +190,9 @@ type MoveNodeJSONRequestBody = NodeMove
 // CreatePageJSONRequestBody defines body for CreatePage for application/json ContentType.
 type CreatePageJSONRequestBody = PageCreate
 
+// PutPageContentJSONRequestBody defines body for PutPageContent for application/json ContentType.
+type PutPageContentJSONRequestBody = PageContentWrite
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// DeleteNode Delete a page
@@ -180,6 +213,12 @@ type ServerInterface interface {
 	// GetPage Get a page
 	// (GET /api/v0/pages/{page_id})
 	GetPage(w http.ResponseWriter, r *http.Request, pageID PageID)
+	// GetPageContent Read a page's content
+	// (GET /api/v0/pages/{page_id}/content)
+	GetPageContent(w http.ResponseWriter, r *http.Request, pageID PageID)
+	// PutPageContent Write a page's content
+	// (PUT /api/v0/pages/{page_id}/content)
+	PutPageContent(w http.ResponseWriter, r *http.Request, pageID PageID)
 	// GetPageView Read a page
 	// (GET /api/v0/pages/{page_id}/view)
 	GetPageView(w http.ResponseWriter, r *http.Request, pageID PageID)
@@ -350,6 +389,58 @@ func (siw *ServerInterfaceWrapper) GetPage(w http.ResponseWriter, r *http.Reques
 	handler.ServeHTTP(w, r)
 }
 
+// GetPageContent operation middleware
+func (siw *ServerInterfaceWrapper) GetPageContent(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "page_id" -------------
+	var pageID PageID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "page_id", r.PathValue("page_id"), &pageID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPageContent(w, r, pageID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutPageContent operation middleware
+func (siw *ServerInterfaceWrapper) PutPageContent(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "page_id" -------------
+	var pageID PageID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "page_id", r.PathValue("page_id"), &pageID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutPageContent(w, r, pageID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetPageView operation middleware
 func (siw *ServerInterfaceWrapper) GetPageView(w http.ResponseWriter, r *http.Request) {
 
@@ -499,6 +590,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v0/notebooks/{notebook_id}/nodes", wrapper.ListNodes)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v0/notebooks/{notebook_id}/pages", wrapper.CreatePage)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v0/pages/{page_id}", wrapper.GetPage)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v0/pages/{page_id}/content", wrapper.GetPageContent)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v0/pages/{page_id}/content", wrapper.PutPageContent)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v0/pages/{page_id}/view", wrapper.GetPageView)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v0/nodes/{node_id}", wrapper.DeleteNode)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/v0/nodes/{node_id}", wrapper.RenameNode)
@@ -790,6 +883,99 @@ func (response GetPagedefaultApplicationProblemPlusJSONResponse) VisitGetPageRes
 	return err
 }
 
+type GetPageContentRequestObject struct {
+	PageID PageID `json:"page_id"`
+}
+
+type GetPageContentResponseObject interface {
+	VisitGetPageContentResponse(w http.ResponseWriter) error
+}
+
+type GetPageContent200JSONResponse PageContent
+
+func (response GetPageContent200JSONResponse) VisitGetPageContentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPageContentdefaultApplicationProblemPlusJSONResponse struct {
+	Body       externalRef0.Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response GetPageContentdefaultApplicationProblemPlusJSONResponse) VisitGetPageContentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	if response.Headers.WWWAuthenticate != nil {
+		w.Header().Set("WWW-Authenticate", fmt.Sprint(*response.Headers.WWWAuthenticate))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutPageContentRequestObject struct {
+	PageID PageID `json:"page_id"`
+	Body   *PutPageContentJSONRequestBody
+}
+
+type PutPageContentResponseObject interface {
+	VisitPutPageContentResponse(w http.ResponseWriter) error
+}
+
+type PutPageContent200JSONResponse Page
+
+func (response PutPageContent200JSONResponse) VisitPutPageContentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutPageContentdefaultApplicationProblemPlusJSONResponse struct {
+	Body       externalRef0.Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response PutPageContentdefaultApplicationProblemPlusJSONResponse) VisitPutPageContentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	if response.Headers.WWWAuthenticate != nil {
+		w.Header().Set("WWW-Authenticate", fmt.Sprint(*response.Headers.WWWAuthenticate))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetPageViewRequestObject struct {
 	PageID PageID `json:"page_id"`
 }
@@ -856,6 +1042,12 @@ type StrictServerInterface interface {
 	// GetPage Get a page
 	// (GET /api/v0/pages/{page_id})
 	GetPage(ctx context.Context, request GetPageRequestObject) (GetPageResponseObject, error)
+	// GetPageContent Read a page's content
+	// (GET /api/v0/pages/{page_id}/content)
+	GetPageContent(ctx context.Context, request GetPageContentRequestObject) (GetPageContentResponseObject, error)
+	// PutPageContent Write a page's content
+	// (PUT /api/v0/pages/{page_id}/content)
+	PutPageContent(ctx context.Context, request PutPageContentRequestObject) (PutPageContentResponseObject, error)
 	// GetPageView Read a page
 	// (GET /api/v0/pages/{page_id}/view)
 	GetPageView(ctx context.Context, request GetPageViewRequestObject) (GetPageViewResponseObject, error)
@@ -1070,6 +1262,65 @@ func (sh *strictHandler) GetPage(w http.ResponseWriter, r *http.Request, pageID 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetPageResponseObject); ok {
 		if err := validResponse.VisitGetPageResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetPageContent operation middleware
+func (sh *strictHandler) GetPageContent(w http.ResponseWriter, r *http.Request, pageID PageID) {
+	var request GetPageContentRequestObject
+
+	request.PageID = pageID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetPageContent(ctx, request.(GetPageContentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetPageContent")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetPageContentResponseObject); ok {
+		if err := validResponse.VisitGetPageContentResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutPageContent operation middleware
+func (sh *strictHandler) PutPageContent(w http.ResponseWriter, r *http.Request, pageID PageID) {
+	var request PutPageContentRequestObject
+
+	request.PageID = pageID
+
+	var body PutPageContentJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutPageContent(ctx, request.(PutPageContentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutPageContent")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutPageContentResponseObject); ok {
+		if err := validResponse.VisitPutPageContentResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

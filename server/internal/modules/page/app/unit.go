@@ -28,6 +28,7 @@ type WriterDeps struct {
 	Nodes        Nodes
 	NodeWriter   NodeWriter
 	Changesets   ChangesetWriter
+	Sessions     SessionWriter
 	Guards       []WriteGuard
 	Participants []Participant
 	Observers    []PageObserver
@@ -215,6 +216,17 @@ func (u *Unit) content(nodeID uuid.UUID, text string, revision int) Content {
 	return Content{NodeID: nodeID, Content: text, Revision: revision, Hash: sum[:], ByteSize: len(text), By: u.write.By, At: u.write.At}
 }
 
+// changesetOf has the unit write in the changeset id, an edit session's,
+// rather than one of its own: an edit session's writes come first in
+// their unit.
+func (u *Unit) changesetOf(id uuid.UUID) error {
+	if u.changeset != (uuid.UUID{}) && u.changeset != id {
+		return errors.New("a page write unit writes in an edit session's changeset after it wrote in its own")
+	}
+	u.changeset = id
+	return nil
+}
+
 // recordRevision records c, a content the unit wrote on base (nil: the
 // unit created the page), as its changeset's version of the page.
 func (u *Unit) recordRevision(ctx context.Context, c Content, base *int) error {
@@ -247,4 +259,9 @@ type appender struct {
 
 func (a appender) Rename(ctx context.Context, nodeID uuid.UUID, name string) (domain.Node, error) {
 	return a.u.rename(ctx, nodeID, name, false)
+}
+
+func (a appender) WriteContent(ctx context.Context, w ContentWrite) (int, error) {
+	w.EditSession = uuid.UUID{}
+	return a.u.writeContent(ctx, w, false)
 }

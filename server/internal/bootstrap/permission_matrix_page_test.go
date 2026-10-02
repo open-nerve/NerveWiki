@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// The page module's rows (M4/P1 design 3.12; M4/P2 design 3.6), by the notebook columns:
+// The page module's rows (M4/P1 design 3.12; M4/P2 design 3.6; M4/P4 design 3.9), by the notebook columns:
 // each aims at its notebook (notebookOf) and its page in it (pageOf). Any
 // role reads; the editors and admins write, the readers are refused; the
 // rest do not see the notebook.
@@ -100,6 +100,43 @@ func pageMatrixRows() []matrixRow {
 				decodeAnswer(t, answer, &v)
 				if v.HTML != "" || v.Revision != 1 {
 					t.Errorf("read %+v, want the seeded empty content at revision 1", v)
+				}
+			},
+		},
+		{
+			op:      "getPageContent",
+			columns: notebookColumns(),
+			request: func(c caller, s seeded) (string, string, string) {
+				return http.MethodGet, "/api/v0/pages/" + s.page(pageOf(c)).String() + "/content", ""
+			},
+			cells: readers(pageNotFound),
+			check: func(t *testing.T, _ caller, _ seeded, answer string) {
+				t.Helper()
+				var c struct {
+					Content  string `json:"content"`
+					Revision int    `json:"revision"`
+					Hash     string `json:"content_hash"`
+				}
+				decodeAnswer(t, answer, &c)
+				if c.Content != "" || c.Revision != 1 || c.Hash != "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" {
+					t.Errorf("read %+v, want the seeded empty content at revision 1, with its hash", c)
+				}
+			},
+		},
+		{
+			op:      "putPageContent",
+			columns: notebookColumns(),
+			write:   true,
+			request: func(c caller, s seeded) (string, string, string) {
+				return http.MethodPut, "/api/v0/pages/" + s.page(pageOf(c)).String() + "/content", `{"content":"# Written","base_revision":1}`
+			},
+			cells: editorsOnly(cellOK(), pageNotFound),
+			check: func(t *testing.T, c caller, _ seeded, answer string) {
+				t.Helper()
+				var p pageAnswer
+				decodeAnswer(t, answer, &p)
+				if p.Name != pageOf(c) || p.Revision != 2 {
+					t.Errorf("wrote %+v, want %s at revision 2", p, pageOf(c))
 				}
 			},
 		},

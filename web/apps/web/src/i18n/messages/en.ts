@@ -323,6 +323,8 @@ export const en = {
   "problem.page.cycle": "A page cannot move under itself or one of its subpages.",
   "problem.page.title_taken": "A page under the same parent already has this title (titles differ in more than case).",
   "problem.page.too_deep": "Pages nest at most 10 levels deep.",
+  "problem.page.revision_mismatch": "Someone changed this page since you read it.",
+  "problem.page.edit_session_ended": "The edit session has ended; start editing again.",
   "problem.network": "Cannot reach the server. Check the connection and try again.",
   "problem.unavailable": "Cannot reach the server for now. You are still signed in; try again in a moment.",
   "problem.storage":

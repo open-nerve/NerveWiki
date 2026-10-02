@@ -463,3 +463,47 @@ func TestAnExtensionReachesTheReadingView(t *testing.T) {
 		t.Errorf("view = %+v, want %q at revision 2", view, want)
 	}
 }
+
+// A content's write and a page created with a content reach the unit
+// through page.New: the write is the page's next revision, its version on
+// its base in a changeset of the credentials' client; the guard and the
+// observers get its parse by the composition's Markdown, which the
+// registered extension took from the content.
+func TestTheContentsWritesReachTheUnit(t *testing.T) {
+	f := newFixture(t)
+	md, err := markdown.New([]markdown.Extension{pageMark()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.md = md
+	g, o := &guard{}, &observer{f: f}
+	marked := func(c domain.Change) any {
+		d, _ := c.Parsed.(*markdown.Document)
+		if d == nil {
+			return nil
+		}
+		return d.Extracted("page-mark")
+	}
+	written := f.serve(t, "pat", http.MethodPut, "/api/v0/pages/"+f.notes.String()+"/content", `{"content":"# Hello","base_revision":1}`,
+		[]page.WriteGuard{g}, nil, []page.PageObserver{o})
+	if written.Code != http.StatusOK || !strings.Contains(written.Body.String(), `"revision":2`) {
+		t.Fatalf("PUT = %d %s, want 200 at revision 2", written.Code, written.Body)
+	}
+	if n := f.count(t, `SELECT count(*) FROM page_contents c JOIN page_revisions r ON r.node_id = c.node_id JOIN changesets s ON s.id = r.changeset_id
+		WHERE c.node_id = $1 AND c.content = '# Hello' AND c.revision = 2 AND c.byte_size = 7 AND c.content_hash = sha256('# Hello')
+		AND c.updated_at = $2 AND r.base_revision = 1 AND r.revision = 2 AND s.client = 'api' AND s.created_at = $2`, f.notes, testNow()); n != 1 {
+		t.Error("the content is not Notes' revision 2, with its version on 1 in an api changeset of the unit's time")
+	}
+	if len(g.steps) != 1 || g.steps[0].Operation != domain.OpContent || !g.inTx || marked(g.steps[0].Changes[0]) != 7 ||
+		len(o.events) != 1 || marked(o.events[0].Changes[0]) != 7 {
+		t.Errorf("the guard saw %+v in a transaction %v, the observers %+v; want the write with its parse", g.steps, g.inTx, o.events)
+	}
+	created := f.serve(t, "session", http.MethodPost, f.createPath(), `{"parent_id":null,"title":"New","content":"abc"}`,
+		nil, nil, []page.PageObserver{o})
+	if created.Code != http.StatusCreated || !strings.Contains(created.Body.String(), `"byte_size":3`) {
+		t.Fatalf("POST = %d %s, want 201 with its 3 bytes", created.Code, created.Body)
+	}
+	if len(o.events) != 2 || marked(o.events[1].Changes[0]) != 3 {
+		t.Errorf("the observers followed %+v, want the creation with its parse", o.events)
+	}
+}

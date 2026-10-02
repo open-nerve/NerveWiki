@@ -15,14 +15,19 @@ func BodyShapes() *bodyshape.Table {
 			/* 2 */ {Types: bodyshape.Object, Extra: bodyshape.Closed, Items: bodyshape.Open, Props: map[string]int{"after_id": 3, "parent_id": 4}, Required: []string{"parent_id"}},
 			/* 3 */ {Types: bodyshape.Null | bodyshape.String, Format: bodyshape.FormatUUID, Extra: bodyshape.Open, Items: bodyshape.Open},
 			/* 4 */ {Types: bodyshape.Null | bodyshape.String, Format: bodyshape.FormatUUID, Extra: bodyshape.Open, Items: bodyshape.Open},
-			/* 5 */ {Types: bodyshape.Object, Extra: bodyshape.Closed, Items: bodyshape.Open, Props: map[string]int{"after_id": 6, "parent_id": 7, "title": 1}, Required: []string{"parent_id", "title"}},
+			/* 5 */ {Types: bodyshape.Object, Extra: bodyshape.Closed, Items: bodyshape.Open, Props: map[string]int{"after_id": 6, "content": 7, "parent_id": 8, "title": 1}, Required: []string{"parent_id", "title"}},
 			/* 6 */ {Types: bodyshape.Null | bodyshape.String, Format: bodyshape.FormatUUID, Extra: bodyshape.Open, Items: bodyshape.Open},
-			/* 7 */ {Types: bodyshape.Null | bodyshape.String, Format: bodyshape.FormatUUID, Extra: bodyshape.Open, Items: bodyshape.Open},
+			/* 7 */ {Types: bodyshape.String, Extra: bodyshape.Open, Items: bodyshape.Open},
+			/* 8 */ {Types: bodyshape.Null | bodyshape.String, Format: bodyshape.FormatUUID, Extra: bodyshape.Open, Items: bodyshape.Open},
+			/* 9 */ {Types: bodyshape.Object, Extra: bodyshape.Closed, Items: bodyshape.Open, Props: map[string]int{"base_revision": 10, "content": 7, "edit_session_id": 11}, Required: []string{"base_revision", "content"}},
+			/* 10 */ {Types: bodyshape.Integer, Extra: bodyshape.Open, Items: bodyshape.Open},
+			/* 11 */ {Types: bodyshape.String, Format: bodyshape.FormatUUID, Extra: bodyshape.Open, Items: bodyshape.Open},
 		},
 		Roots: map[string]int{
 			"PATCH /api/v0/nodes/{node_id}":              0,
 			"POST /api/v0/nodes/{node_id}/move":          2,
 			"POST /api/v0/notebooks/{notebook_id}/pages": 5,
+			"PUT /api/v0/pages/{page_id}/content":        9,
 		},
 	}
 }

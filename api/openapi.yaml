@@ -93,6 +93,8 @@ paths:
     $ref: "modules/page.yaml#/paths/~1api~1v0~1notebooks~1{notebook_id}~1pages"
   /api/v0/pages/{page_id}:
     $ref: "modules/page.yaml#/paths/~1api~1v0~1pages~1{page_id}"
+  /api/v0/pages/{page_id}/content:
+    $ref: "modules/page.yaml#/paths/~1api~1v0~1pages~1{page_id}~1content"
   /api/v0/pages/{page_id}/view:
     $ref: "modules/page.yaml#/paths/~1api~1v0~1pages~1{page_id}~1view"
   /api/v0/nodes/{node_id}:

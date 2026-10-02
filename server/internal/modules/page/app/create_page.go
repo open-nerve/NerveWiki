@@ -11,22 +11,28 @@ import (
 // CreatePage creates a page: POST /api/v0/notebooks/{notebook_id}/pages
 // (M4/P1 design 3.7).
 type CreatePage struct {
-	writer *Writer
-	nodes  Nodes
-	logger *slog.Logger
+	writer   *Writer
+	nodes    Nodes
+	markdown Markdown
+	logger   *slog.Logger
 }
 
 // NewCreatePage returns the use case.
-func NewCreatePage(writer *Writer, nodes Nodes, logger *slog.Logger) *CreatePage {
-	return &CreatePage{writer: writer, nodes: nodes, logger: logger}
+func NewCreatePage(writer *Writer, nodes Nodes, markdown Markdown, logger *slog.Logger) *CreatePage {
+	return &CreatePage{writer: writer, nodes: nodes, markdown: markdown, logger: logger}
 }
 
 // Execute creates the page d in the notebook id, from client, in a unit
-// that changes the tree; it answers the page as the unit leaves it. A
-// notebook that does not exist, is deleted, or that the caller has no role
-// in is notebook.not_found; a reader gets forbidden; the values are
+// that changes the tree; it answers the page as the unit leaves it. Its
+// content is checked and parsed first: 422 on content. Then a notebook
+// that does not exist, is deleted, or that the caller has no role in is
+// notebook.not_found; a reader gets forbidden; the other values are
 // checked after both.
 func (c *CreatePage) Execute(ctx context.Context, id uuid.UUID, d PageDraft, client domain.Client) (PageView, error) {
+	var err error
+	if d.Parsed, err = parsed(c.markdown, "content", d.Content); err != nil {
+		return PageView{}, err
+	}
 	var out PageView
 	spec := UnitSpec{NotebookID: id, Action: domain.ActionCreate, Tree: true, Client: client,
 		Options: Options{UpdateLinks: true}, NotFound: domain.ErrNotebookNotFound}

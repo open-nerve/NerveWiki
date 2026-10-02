@@ -742,7 +742,7 @@ export interface paths {
         put?: never;
         /**
          * Create a page
-         * @description Creates a page with an empty content under a parent, or at the notebook's root; its editors and admins can, a reader cannot (forbidden). A notebook that does not exist, is deleted, or that the caller has no role in is notebook.not_found; the values are checked after both: the title's rules, a parent that is no page of the notebook and a page to follow that is no child of the parent are validation_failed; then a title a sibling has, compared by its key, is page.title_taken, and a page deeper than ten levels page.too_deep.
+         * @description Creates a page under a parent, or at the notebook's root, with the content given, empty when none is, at revision 1; its editors and admins can, a reader cannot (forbidden). A content of more than 5 MB or with a NUL character is validation_failed first, whatever the notebook. Then a notebook that does not exist, is deleted, or that the caller has no role in is notebook.not_found; the other values are checked after both: the title's rules, a parent that is no page of the notebook and a page to follow that is no child of the parent are validation_failed; then a title a sibling has, compared by its key, is page.title_taken, and a page deeper than ten levels page.too_deep.
          */
         post: operations["createPage"];
         delete?: never;
@@ -767,6 +767,33 @@ export interface paths {
          */
         get: operations["getPage"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v0/pages/{page_id}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The page's id. */
+                page_id: components["parameters"]["PageID"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Read a page's content
+         * @description The page's Markdown, byte for byte as written, with its revision and hash. Any role in its notebook can read it. A page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found alike.
+         */
+        get: operations["getPageContent"];
+        /**
+         * Write a page's content
+         * @description Replaces the page's content, byte for byte, on the revision the writer read it at; its notebook's editors and admins can, a reader cannot (forbidden). A content of more than 5 MB or with a NUL character is validation_failed first, whatever the page. Then a page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found; an edit session that is not the caller's session of this page, alive, is page.edit_session_ended; a base_revision that is not the page's revision is page.revision_mismatch: someone wrote it since, and the writer reads it again. A content the page holds already writes nothing, whatever the base. The writes of one edit session are one changeset, with one version of the page, until someone else writes the page in between.
+         */
+        put: operations["putPageContent"];
         post?: never;
         delete?: never;
         options?: never;
@@ -1278,6 +1305,8 @@ export interface components {
         };
         /** @description 1–255 bytes after the surrounding blanks are trimmed and the text is in NFC; none of / \ : * ? " < > | # ^ [ ] nor control characters; not starting or ending with a dot; no name Windows reserves (CON, COM1, …). It is the file's name when the notebook is exported. Siblings' titles differ in more than case: they compare by Unicode case folding. */
         Title: string;
+        /** @description A page's Markdown, byte for byte: at most 5 MB of UTF-8, without NUL characters. Its line breaks, byte order mark and blanks are kept as they are. */
+        Content: string;
         /** @description A new page. */
         PageCreate: {
             /**
@@ -1291,6 +1320,7 @@ export interface components {
              * @description The sibling the page goes right after; null puts it first, absent last.
              */
             after_id?: string | null;
+            content?: components["schemas"]["Content"];
         };
         /** @description A page above another, on the way from the root. */
         Ancestor: {
@@ -1335,6 +1365,25 @@ export interface components {
              * @description The account that last wrote the content.
              */
             content_updated_by: string;
+        };
+        /** @description A page's content. */
+        PageContent: {
+            content: components["schemas"]["Content"];
+            /** @description The content's version. */
+            revision: number;
+            /** @description The SHA-256 of the content's bytes, in lower-case hexadecimal. */
+            content_hash: string;
+        };
+        /** @description A page's new content. */
+        PageContentWrite: {
+            content: components["schemas"]["Content"];
+            /** @description The revision the content was read at. */
+            base_revision: number;
+            /**
+             * Format: uuid
+             * @description The caller's edit session of the page the write is made in.
+             */
+            edit_session_id?: string;
         };
         /** @description A page's reading view. */
         PageView: {
@@ -1453,9 +1502,12 @@ export type NodeKind = components['schemas']['NodeKind'];
 export type TreeNode = components['schemas']['TreeNode'];
 export type TreeNodeList = components['schemas']['TreeNodeList'];
 export type Title = components['schemas']['Title'];
+export type Content = components['schemas']['Content'];
 export type PageCreate = components['schemas']['PageCreate'];
 export type Ancestor = components['schemas']['Ancestor'];
 export type Page = components['schemas']['Page'];
+export type PageContent = components['schemas']['PageContent'];
+export type PageContentWrite = components['schemas']['PageContentWrite'];
 export type PageView = components['schemas']['PageView'];
 export type NodeRename = components['schemas']['NodeRename'];
 export type NodeMove = components['schemas']['NodeMove'];
@@ -2554,6 +2606,58 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description The page. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    getPageContent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The page's id. */
+                page_id: components["parameters"]["PageID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The page's content. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageContent"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    putPageContent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The page's id. */
+                page_id: components["parameters"]["PageID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PageContentWrite"];
+            };
+        };
+        responses: {
+            /** @description The page, as the write leaves it. */
             200: {
                 headers: {
                     [name: string]: unknown;

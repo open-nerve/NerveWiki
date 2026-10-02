@@ -15,7 +15,7 @@ import (
 
 // create runs createPage in eng as alice from the web.
 func (f *fixture) create(d app.PageDraft) (app.PageView, error) {
-	return app.NewCreatePage(f.writer(), f.store, f.logger()).Execute(f.asAlice(), f.eng, d, domain.ClientWeb)
+	return app.NewCreatePage(f.writer(), f.store, f.md, f.logger()).Execute(f.asAlice(), f.eng, d, domain.ClientWeb)
 }
 
 // rename runs renameNode as alice from the web.
@@ -47,7 +47,7 @@ func TestCreatePageLocksThenDecides(t *testing.T) {
 	if _, err := f.create(app.PageDraft{Title: "Notes"}); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"WorkspaceOf", "ShareWorkspace in tx", "LockNotebook in tx", "Authorize page.create in tx", "Children in tx"}
+	want := []string{"Parse", "WorkspaceOf", "ShareWorkspace in tx", "LockNotebook in tx", "Authorize page.create in tx", "Children in tx"}
 	if !slices.Equal(f.rec.calls[:len(want)], want) {
 		t.Errorf("calls = %v, want them to begin %v", f.rec.calls, want)
 	}
@@ -158,7 +158,15 @@ func TestCreatePageAnswersItsCodesInOrder(t *testing.T) {
 		setup func(f *fixture) app.PageDraft
 		want  string
 	}{
-		{"an unknown notebook before all", func(f *fixture) app.PageDraft {
+		{"a content over 5 MB before all", func(f *fixture) app.PageDraft {
+			f.eng = uuid.NewV7()
+			return app.PageDraft{Title: "", Content: strings.Repeat("a", domain.MaxContentBytes+1)}
+		}, "validation_failed content"},
+		{"a content with a NUL before all", func(f *fixture) app.PageDraft {
+			f.eng = uuid.NewV7()
+			return app.PageDraft{Title: "", Content: "a\x00"}
+		}, "validation_failed content"},
+		{"an unknown notebook before the other values", func(f *fixture) app.PageDraft {
 			f.eng = uuid.NewV7()
 			return app.PageDraft{Title: ""}
 		}, "notebook.not_found"},

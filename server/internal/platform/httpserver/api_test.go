@@ -294,6 +294,50 @@ func TestNewAPIChecksRouteTimeouts(t *testing.T) {
 	}
 }
 
+// A route of BodyLimits takes a body up to its own limit, larger than
+// MaxBodyBytes, and no more; the other routes keep MaxBodyBytes; a route
+// limit below MaxBodyBytes does not tighten it.
+func TestARouteBodyLimitRelaxesItsRoute(t *testing.T) {
+	body := func(n int) string { return `{"name":"` + strings.Repeat("a", n-len(`{"name":""}`)) + `"}` }
+	for _, tt := range []struct {
+		name  string
+		limit int64
+		route string
+		size  int
+		want  int
+	}{
+		{"at the route's limit", 100, openRoute, 100, http.StatusNoContent},
+		{"past the route's limit", 100, openRoute, 101, http.StatusRequestEntityTooLarge},
+		{"another route", 100, thingRoute, 65, http.StatusRequestEntityTooLarge},
+		{"a route limit below MaxBodyBytes", 10, openRoute, 64, http.StatusNoContent},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := testAPIConfig(&fakeAuth{}, slog.New(slog.DiscardHandler))
+			cfg.BodyLimits = map[string]int64{openRoute: tt.limit}
+			router, _ := mount(buildAPI(t, cfg))
+			path := "/api/v0/things"
+			if tt.route == openRoute {
+				path = "/api/v0/open"
+			}
+			if rec := serve(router, post(path, body(tt.size))); rec.Code != tt.want {
+				t.Errorf("a body of %d bytes = %d %s, want %d", tt.size, rec.Code, rec.Body, tt.want)
+			}
+		})
+	}
+}
+
+// A route body limit must be positive.
+func TestNewAPIChecksRouteBodyLimits(t *testing.T) {
+	for n, ok := range map[int64]bool{-1: false, 0: false, 1: true, 1 << 30: true} {
+		cfg := testAPIConfig(&fakeAuth{}, slog.New(slog.DiscardHandler))
+		cfg.BodyLimits = map[string]int64{openRoute: n}
+		want := fmt.Sprintf(`httpserver: APIConfig: BodyLimits["POST /api/v0/open"] %d must be positive`, n)
+		if _, err := NewAPI(cfg); ok != (err == nil) || (err != nil && err.Error() != want) {
+			t.Errorf("NewAPI(BodyLimits %d) error = %v, want ok %v", n, err, ok)
+		}
+	}
+}
+
 // slowBody delivers its content only after a pause, as a slow client does.
 type slowBody struct {
 	pause time.Duration

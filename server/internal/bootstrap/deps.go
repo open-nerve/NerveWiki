@@ -136,10 +136,10 @@ func purgeJob(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger) jobs.J
 }
 
 // apiConfig is the per-route middlewares' configuration: the modules'
-// authenticator, public operations and shorter deadlines, and the
-// platform's buckets.
+// authenticator, public operations, shorter deadlines and larger bodies,
+// and the platform's buckets.
 func apiConfig(cfg config.Config, logger *slog.Logger, limiter *ratelimit.Limiter, authenticator httpserver.Authenticator,
-	public []string, timeouts map[string]time.Duration,
+	public []string, timeouts map[string]time.Duration, bodies map[string]int64,
 ) httpserver.APIConfig {
 	limits := cfg.RateLimit
 	return httpserver.APIConfig{
@@ -149,6 +149,7 @@ func apiConfig(cfg config.Config, logger *slog.Logger, limiter *ratelimit.Limite
 		MaxBodyBytes:     cfg.Server.MaxBodyBytes,
 		RequestTimeout:   cfg.Server.RequestTimeout,
 		RequestTimeouts:  timeouts,
+		BodyLimits:       bodies,
 		TrustedProxies:   cfg.Server.TrustedProxies,
 		IPv6PrefixLen:    limits.IPv6PrefixLen,
 		Anonymous:        bucket(limiter, "anonymous", limits.Anonymous),
