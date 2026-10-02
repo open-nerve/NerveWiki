@@ -3,7 +3,6 @@ package markdown
 import (
 	"bytes"
 	"context"
-	"math"
 	"strconv"
 
 	"github.com/yuin/goldmark/extension"
@@ -67,7 +66,7 @@ func writeProperties(out *bytes.Buffer, props []Property) {
 }
 
 // writeValue writes a property's value: null as nothing, a list as a ul, a
-// mapping as a table of its own, a number in decimal.
+// mapping as a table of its own, a number as JSON writes it.
 func writeValue(out *bytes.Buffer, v any) {
 	switch v := v.(type) {
 	case bool:
@@ -75,11 +74,7 @@ func writeValue(out *bytes.Buffer, v any) {
 	case int64:
 		out.WriteString(strconv.FormatInt(v, 10))
 	case float64:
-		format := byte('f')
-		if math.Abs(v) >= 1e21 {
-			format = 'g' // not 21 digits and more
-		}
-		out.WriteString(strconv.FormatFloat(v, format, -1, 64))
+		out.WriteString(jsonNumber(v))
 	case string:
 		out.WriteString(html.EscapeString(v))
 	case []any:

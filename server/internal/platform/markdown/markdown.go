@@ -28,9 +28,13 @@ import (
 type Extension struct {
 	// Name keys what Extract takes from a Document; no two are the same.
 	Name string
-	// Parser adds goldmark's parsers, paragraph and tree transformers. A
-	// delimiter syntax must not use goldmark's delimiter list: nothing
-	// processes it (internal/harden).
+	// Parser adds goldmark's parsers, paragraph and tree transformers,
+	// which must cost about the size of what they read, as the rest of the
+	// parse does (markdowntest.CheckCosts). The parse they join is
+	// hardened (internal/harden): a delimiter syntax must not use goldmark's
+	// delimiter list, which nothing processes; goldmark's
+	// Context.IsInLinkLabel is always false; and a link an extension makes
+	// does not count for "a link may not contain a link".
 	Parser []parser.Option
 	// Extract takes the extension's result from the tree; content is the
 	// page's, byte for byte. It may be nil.
@@ -40,7 +44,9 @@ type Extension struct {
 	// result goes to Renderer alone. It may be nil.
 	Fetch func(ctx context.Context, page Page, extracted any) (any, error)
 	// Renderer is goldmark's node renderers of the extension, given what
-	// Fetch got. Its addresses must go through SafeURL. It may be nil.
+	// Fetch got. Its addresses must go through SafeURL. It must render
+	// every kind of node Parser makes: goldmark's renderer panics on a
+	// kind made after every kind it renders. It may be nil.
 	Renderer func(data any) []util.PrioritizedValue
 	// Markup is what Renderer writes, for the test of the final HTML
 	// (markdowntest.CheckHTML).

@@ -95,7 +95,7 @@ func TestHeadingsGetPrefixedUniqueIDs(t *testing.T) {
 	m := newMarkdown(t)
 	src := "# Hello *World*\n# hello world\n# Hello World-1\n# 中文 标题！\n# ***\n# \n" +
 		"# a_b--c  d\n# [link](http://x.y) `code`\n# " + strings.Repeat("abcdefghij ", 10) + "\n" +
-		"Setext\n===\n"
+		"Setext\n===\n> # Quoted\n- # Listed\n\nx[^1]\n\n[^1]: # Noted\n"
 	var ids []string
 	_ = ast.Walk(m.Parse([]byte(src)).root, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if h, ok := n.(*ast.Heading); ok && entering {
@@ -107,7 +107,7 @@ func TestHeadingsGetPrefixedUniqueIDs(t *testing.T) {
 	want := []string{
 		"nw-hello-world", "nw-hello-world-1", "nw-hello-world-1-1", "nw-中文-标题", "nw-section", "nw-section-1",
 		"nw-a-b-c-d", "nw-link-code", "nw-abcdefghij-abcdefghij-abcdefghij-abcdefghij-abcdefghij-abcdefghi",
-		"nw-setext",
+		"nw-setext", "nw-quoted", "nw-listed", "nw-noted",
 	}
 	if strings.Join(ids, " ") != strings.Join(want, " ") {
 		t.Errorf("ids\n%q\nwant\n%q", ids, want)
@@ -169,6 +169,27 @@ func TestAnExtensionParsesAndExtracts(t *testing.T) {
 	}
 	if got := newMarkdown(t).Parse([]byte("say @@hello@@")).Extracted("words"); got != nil {
 		t.Errorf("without the extension, extracted %v", got)
+	}
+}
+
+// Extract gets the content as it was written, the frontmatter with it, and
+// the tree's offsets are the content's.
+func TestAnExtensionExtractsFromTheContent(t *testing.T) {
+	ext := words()
+	ext.Extract = func(root ast.Node, content []byte) any {
+		var at []string
+		_ = ast.Walk(root, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+			if txt, ok := n.(*ast.Text); ok && entering {
+				at = append(at, string(content[txt.Segment.Start:txt.Segment.Stop]))
+			}
+			return ast.WalkContinue, nil
+		})
+		return string(content[:3]) + strings.Join(at, "|")
+	}
+	m := newMarkdown(t, ext)
+	content := "---\na: 1\n---\nsay *hi*\n"
+	if got := m.Parse([]byte(content)).Extracted("words"); got != "---say |hi" {
+		t.Errorf("extracted %q", got)
 	}
 }
 

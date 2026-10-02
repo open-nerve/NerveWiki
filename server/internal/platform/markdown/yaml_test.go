@@ -53,7 +53,7 @@ func TestScalarsFollowTheCoreSchema(t *testing.T) {
 		{"2024-01-01", "2024-01-01"}, {"2024-01-01T10:00:00Z", "2024-01-01T10:00:00Z"},
 		{`"010"`, "010"}, {"'true'", "true"}, {"|\n  010\n", "010\n"}, {">\n  a\n  b\n", "a b\n"},
 		{"!!str 10", "10"}, {"!!int 10", int64(10)}, {`!!int "10"`, int64(10)}, {"!!float .inf", ".inf"}, {"!!bool true", true},
-		{"!!null ~", nil},
+		{"!!null ~", nil}, {"!!float 1", 1.0}, {"!!float -12", -12.0},
 	}
 	for _, tt := range tests {
 		t.Run(tt.yaml, func(t *testing.T) {
@@ -79,6 +79,8 @@ func TestAFrontmatterIsAMappingOfScalarKeys(t *testing.T) {
 		{"an empty mapping", "{}", true, "{}"},
 		{"keys in order", "b: 1\na: 2\n", true, `{"a":2,"b":1}`},
 		{"a key resolved", "010: a\ntrue: b\n~: c\n1.5: d\n", true, `{"1.5":"d","10":"a","null":"c","true":"b"}`},
+		{"number keys as JSON writes them", "1e6: a\n1e-7: b\n1000000.5: c\n0.000001: d\n1e21: e\n", true,
+			`{"0.000001":"d","1000000":"a","1000000.5":"c","1e+21":"e","1e-7":"b"}`},
 		{"a merge key is a key", "<<: {a: 1}\n", true, `{"\u003c\u003c":{"a":1}}`},
 		{"nested", "a:\n  b: [1, {c: d}]\n", true, `{"a":{"b":[1,{"c":"d"}]}}`},
 		{"aliases expanded", "a: &x [1, 2]\nb: *x\n", true, `{"a":[1,2],"b":[1,2]}`},
@@ -91,6 +93,7 @@ func TestAFrontmatterIsAMappingOfScalarKeys(t *testing.T) {
 		{"a sequence as a key", "? [a]\n: b\n", false, ""},
 		{"a custom tag", "a: !x 1\n", false, ""},
 		{"a tag that does not fit", "a: !!int x\n", false, ""},
+		{"a float tag on hexadecimal", "a: !!float 0x1\n", false, ""},
 		{"a mapping tagged as a sequence", "a: !!seq {b: 1}\n", false, ""},
 		{"a syntax error", "a: [unclosed\n", false, ""},
 		{"two documents", "a: 1\n...\n---\nb: 2\n", false, ""},
@@ -119,12 +122,19 @@ func TestAliasesExpandWithinTheLimits(t *testing.T) {
 		name, yaml string
 		valid      bool
 	}{
-		// The mapping, its two keys, and the sequence with its n items twice:
-		// 5 + 2n values.
-		{"at the node limit", "a: &s " + seq((maxYAMLNodes-1)/2-2) + "\nb: *s\n", true},
-		{"past the node limit", "a: &s " + seq((maxYAMLNodes-1)/2) + "\nb: *s\n", false},
+		// The mapping, its key and the sequence with its n items: 3 + n values.
+		{"at the node limit", "a: " + seq(maxYAMLNodes-3), true},
+		{"one past the node limit", "a: " + seq(maxYAMLNodes-2), false},
+		// The mapping, its two keys, the alias, and the sequence with its n
+		// items twice: 6 + 2n values.
+		{"at the node limit through an alias", "a: &s " + seq(maxYAMLNodes/2-3) + "\nb: *s\n", true},
+		{"past the node limit through an alias", "a: &s " + seq(maxYAMLNodes/2-2) + "\nb: *s\n", false},
 		{"at the depth limit", "a: " + strings.Repeat("[", maxYAMLDepth) + strings.Repeat("]", maxYAMLDepth), true},
 		{"past the depth limit", "a: " + strings.Repeat("[", maxYAMLDepth+1) + strings.Repeat("]", maxYAMLDepth+1), false},
+		{"at the depth limit through an alias", "a: &d " + strings.Repeat("[", maxYAMLDepth-2) + strings.Repeat("]", maxYAMLDepth-2) +
+			"\nb: [[*d]]\n", true},
+		{"past the depth limit through an alias", "a: &d " + strings.Repeat("[", maxYAMLDepth-2) + strings.Repeat("]", maxYAMLDepth-2) +
+			"\nb: [[[*d]]]\n", false},
 		{"an alias bomb", "a: &a [x,x,x,x,x,x,x,x,x,x]\nb: &b [*a,*a,*a,*a,*a,*a,*a,*a,*a,*a]\n" +
 			"c: &c [*b,*b,*b,*b,*b,*b,*b,*b,*b,*b]\nd: &d [*c,*c,*c,*c,*c,*c,*c,*c,*c,*c]\n" +
 			"e: &e [*d,*d,*d,*d,*d,*d,*d,*d,*d,*d]\nf: &f [*e,*e,*e,*e,*e,*e,*e,*e,*e,*e]\n", false},
@@ -135,5 +145,38 @@ func TestAliasesExpandWithinTheLimits(t *testing.T) {
 				t.Errorf("valid = %v, want %v", ok, tt.valid)
 			}
 		})
+	}
+}
+
+// Aliases repeat at most the larger of the YAML's size and minYAMLRepeated
+// bytes of keys and scalars; past that the frontmatter is not valid. What
+// is written once is not counted.
+func TestAliasesRepeatAtMostTheirBudget(t *testing.T) {
+	value := strings.Repeat("x", 1000)
+	tests := []struct {
+		name, head, alias, tail string
+	}{
+		{"values", "a: &a " + value + "\nb: [", "*a, ", "]\nc: once\n"},
+		{"keys", "a: &k " + value + "\nb: [", "{*k : once}, ", "]\nc: once\n"},
+		{"values in a long YAML", "f: " + strings.Repeat("y", 2*minYAMLRepeated) + "\na: &a " + value + "\nb: [", "*a, ", "]\n"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			yaml := func(n int) string { return tt.head + strings.Repeat(tt.alias, n) + tt.tail }
+			n := 0
+			for (n+1)*len(value) <= max(len(yaml(n+1)), minYAMLRepeated) {
+				n++
+			}
+			if _, ok := properties([]byte(yaml(n))); !ok {
+				t.Errorf("%d aliases, at the limit, not valid", n)
+			}
+			if _, ok := properties([]byte(yaml(n + 1))); ok {
+				t.Errorf("%d aliases, past the limit, valid", n+1)
+			}
+		})
+	}
+	long := "a: &a " + strings.Repeat("x", minYAMLRepeated+1) + "\nb: [*a]\n"
+	if _, ok := properties([]byte(long)); !ok {
+		t.Error("a value longer than minYAMLRepeated, aliased once, not valid")
 	}
 }

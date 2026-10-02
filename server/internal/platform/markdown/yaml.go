@@ -19,6 +19,11 @@ const (
 	maxYAMLNodes = 10000
 	// maxYAMLDepth is how deep its values may nest.
 	maxYAMLDepth = 64
+	// minYAMLRepeated is how many bytes of keys and scalars aliases may
+	// repeat however short the YAML: a few aliases of a long value must not
+	// make every reading blow up either. Past the larger of it and the
+	// YAML's size the frontmatter is not valid.
+	minYAMLRepeated = 100_000
 )
 
 var errInvalid = errors.New("not a frontmatter's YAML")
@@ -48,7 +53,7 @@ func properties(src []byte) ([]Property, bool) {
 	if top.Kind != yaml.MappingNode {
 		return nil, false
 	}
-	r := reader{}
+	r := reader{budget: max(len(src), minYAMLRepeated)}
 	v, err := r.value(top, 0)
 	if err != nil {
 		return nil, false
@@ -56,8 +61,11 @@ func properties(src []byte) ([]Property, bool) {
 	return v.([]Property), true
 }
 
-// reader walks the YAML's nodes, counting what it expands.
-type reader struct{ nodes int }
+// reader walks the YAML's nodes, counting what it expands: the nodes, and
+// the bytes of keys and scalars an alias repeats, up to budget.
+type reader struct {
+	nodes, aliased, repeated, budget int
+}
 
 func (r *reader) value(n *yaml.Node, depth int) (any, error) {
 	r.nodes++
@@ -66,8 +74,13 @@ func (r *reader) value(n *yaml.Node, depth int) (any, error) {
 	}
 	switch n.Kind {
 	case yaml.AliasNode:
+		r.aliased++
+		defer func() { r.aliased-- }()
 		return r.value(n.Alias, depth)
 	case yaml.ScalarNode:
+		if err := r.repeat(n); err != nil {
+			return nil, err
+		}
 		return scalar(n)
 	case yaml.SequenceNode:
 		if !tagIs(n, "!!seq") {
@@ -113,10 +126,15 @@ func (r *reader) value(n *yaml.Node, depth int) (any, error) {
 func (r *reader) key(n *yaml.Node) (string, error) {
 	r.nodes++
 	if n.Kind == yaml.AliasNode {
+		r.aliased++
+		defer func() { r.aliased-- }()
 		n = n.Alias
 	}
 	if n.Kind != yaml.ScalarNode {
 		return "", errInvalid
+	}
+	if err := r.repeat(n); err != nil {
+		return "", err
 	}
 	v, err := scalar(n)
 	if err != nil {
@@ -130,9 +148,35 @@ func (r *reader) key(n *yaml.Node) (string, error) {
 	case int64:
 		return strconv.FormatInt(v, 10), nil
 	case float64:
-		return strconv.FormatFloat(v, 'g', -1, 64), nil
+		return jsonNumber(v), nil
 	}
 	return v.(string), nil
+}
+
+// jsonNumber is f as JSON and JavaScript write it: in decimal from 1e-6 up
+// to 1e21, past them with an exponent without leading zeros.
+func jsonNumber(f float64) string {
+	format := byte('f')
+	if abs := math.Abs(f); abs != 0 && (abs < 1e-6 || abs >= 1e21) {
+		format = 'e'
+	}
+	s := strconv.FormatFloat(f, format, -1, 64)
+	if n := len(s); format == 'e' && s[n-4] == 'e' && s[n-3] == '-' && s[n-2] == '0' {
+		s = s[:n-2] + s[n-1:] // 1e-07 is 1e-7
+	}
+	return s
+}
+
+// repeat counts the scalar n's bytes if an alias repeats it.
+func (r *reader) repeat(n *yaml.Node) error {
+	if r.aliased == 0 {
+		return nil
+	}
+	r.repeated += len(n.Value)
+	if r.repeated > r.budget {
+		return errInvalid
+	}
+	return nil
 }
 
 // tagIs tells whether n carries no tag of its own, or tag.
@@ -161,6 +205,9 @@ func scalar(n *yaml.Node) (any, error) {
 			return n.Value, nil
 		case "!!null", "!!bool", "!!int", "!!float":
 			v := resolve(n.Value)
+			if i, ok := v.(int64); ok && n.Tag == "!!float" && coreInt.MatchString(n.Value) {
+				v = float64(i) // a float may be written as an integer in decimal
+			}
 			if kindOf(v) != n.Tag {
 				return nil, errInvalid
 			}
@@ -206,7 +253,7 @@ func resolve(s string) any {
 		return integer(s[2:], 16)
 	case coreFloat.MatchString(s):
 		f, err := strconv.ParseFloat(s, 64)
-		if err != nil || math.IsInf(f, 0) {
+		if err != nil { // out of range
 			return s
 		}
 		return f

@@ -42,13 +42,14 @@ func TestTheFrontmatterIsWhereRuleOneSaysItIs(t *testing.T) {
 	}
 }
 
-// The parse's text is the content with its byte order mark and frontmatter
-// made spaces but for the line breaks: every offset stays.
+// The parse's text is the content with its byte order mark made line
+// breaks and its frontmatter spaces but for the line breaks: every offset
+// stays.
 func TestBlankKeepsEveryOffset(t *testing.T) {
 	tests := []struct{ name, src, want string }{
 		{"a frontmatter", "---\r\na: 1\n---\nbody", "   \r\n    \n   \nbody"},
-		{"a byte order mark and a frontmatter", "\xef\xbb\xbf---\na\n---\n# t", "      \n \n   \n# t"},
-		{"a byte order mark alone", "\xef\xbb\xbf# t", "   # t"},
+		{"a byte order mark and a frontmatter", "\xef\xbb\xbf---\na\n---\n# t", "\n\n\n   \n \n   \n# t"},
+		{"a byte order mark alone", "\xef\xbb\xbf# t", "\n\n\n# t"},
 		{"neither", "# t\n---\n", "# t\n---\n"},
 	}
 	for _, tt := range tests {

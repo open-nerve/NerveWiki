@@ -70,17 +70,24 @@ func frontmatterOf(src []byte) (Frontmatter, int) {
 	return Frontmatter{Present: true, Valid: valid, Properties: props}, s.end
 }
 
-// blank is src as the parser reads it: the byte order mark and the
-// frontmatter (up to end) made spaces, keeping each '\r' and '\n', so
-// every offset stays where it is (overall design 4.3). It is src itself
-// when there is nothing to blank.
+// blank is src as the parser reads it: the byte order mark made line
+// breaks, which a document may start with to no effect (spaces would
+// indent its first line), and the frontmatter (up to end) made spaces,
+// keeping each '\r' and '\n'; so every offset stays where it is (overall
+// design 4.3). It is src itself when there is nothing to blank.
 func blank(src []byte, end int) []byte {
-	if end == 0 && !bytes.HasPrefix(src, []byte(bom)) {
+	start := 0
+	if bytes.HasPrefix(src, []byte(bom)) {
+		start = len(bom)
+	}
+	if start == 0 && end == 0 {
 		return src
 	}
-	end = max(end, len(bom))
 	out := bytes.Clone(src)
-	for i := range end {
+	for i := range start {
+		out[i] = '\n'
+	}
+	for i := start; i < end; i++ {
 		if out[i] != '\r' && out[i] != '\n' {
 			out[i] = ' '
 		}

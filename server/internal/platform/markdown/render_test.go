@@ -72,6 +72,7 @@ func TestTheMarksAreTheReadingViews(t *testing.T) {
 		{"code with a long name", "```" + strings.Repeat("a", 33) + "\nx\n```\n", "<pre><code>x\n</code></pre>\n"},
 		{"code without info", "```\nx\n```\n", "<pre><code>x\n</code></pre>\n"},
 		{"indented code", "    x\n", "<pre><code>x\n</code></pre>\n"},
+		{"indented code after a byte order mark", "\ufeff    x\n", "<pre><code>x\n</code></pre>\n"},
 	})
 }
 
@@ -100,6 +101,14 @@ func TestLinksAndImagesGoThroughSafeURL(t *testing.T) {
 		{"a data image", "![a](data:image/png;base64,AA)", "<p><span class=\"nw-image\">a</span></p>\n"},
 		{"an image in a link", "[![a](i.png)](/p)", "<p><a href=\"/p\"><span class=\"nw-image\">a</span></a></p>\n"},
 		{
+			"an image after a link", "[x](/p) ![a](i.png)",
+			"<p><a href=\"/p\">x</a> <span class=\"nw-image\">a <a href=\"i.png\">i.png</a></span></p>\n",
+		},
+		{
+			"a link's title with quotes", `[a](/p "x\" onclick=\"y" ) [b](/q 'a < b & c')`,
+			"<p><a href=\"/p\" title=\"x&quot; onclick=&quot;y\">a</a> <a href=\"/q\" title=\"a &lt; b &amp; c\">b</a></p>\n",
+		},
+		{
 			"an image's text escaped", `![a < b & "c" <b>](i.png)`,
 			"<p><span class=\"nw-image\">a &lt; b &amp; &quot;c&quot;  <a href=\"i.png\">i.png</a></span></p>\n",
 		},
@@ -119,6 +128,7 @@ func TestThePropertiesComeFirstAsATable(t *testing.T) {
 		},
 		{"a key escaped", "---\n\"<k>\": 1\n---\n", "<table class=\"nw-props\"><tr><th>&lt;k&gt;</th><td>1</td></tr></table>\n"},
 		{"a large number in decimal", "---\nn: 1e20\n---\n", "<table class=\"nw-props\"><tr><th>n</th><td>100000000000000000000</td></tr></table>\n"},
+		{"a small number with an exponent", "---\nn: 1.5e-7\n---\n", "<table class=\"nw-props\"><tr><th>n</th><td>1.5e-7</td></tr></table>\n"},
 		{"an empty frontmatter", "---\n---\nbody\n", "<p>body</p>\n"},
 		{"a frontmatter not valid", "---\n- a\n---\nbody\n", "<p>body</p>\n"},
 		{"no frontmatter", "body\n", "<p>body</p>\n"},
