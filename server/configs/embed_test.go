@@ -68,6 +68,7 @@ func TestBuiltInProfiles(t *testing.T) {
 				},
 				RateLimit: tt.limits,
 				Workspace: config.WorkspaceConfig{CreationEnabled: true},
+				Page:      config.PageConfig{EditSessionCleanupInterval: 10 * time.Minute},
 				Jobs:      config.JobsConfig{ShutdownTimeout: 10 * time.Second, PurgeInterval: tt.purge, PurgeRetention: 60 * 24 * time.Hour},
 				Log:       config.LogConfig{Level: tt.level, Format: tt.format},
 			}

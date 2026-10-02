@@ -1,21 +1,25 @@
 // Package page is the module of a notebook's pages: the tree of nodes,
-// their content, the changesets and versions of their writes (v0.1 design
-// 3.5, 3.6, 3.8; M4 design). Its root is what bootstrap sees: New for the
-// HTTP side; NewNotebookDeletion, its part in the notebook module's
-// deletion; Purgers for the purge; Actions for the composition's checks.
+// their content, the changesets and versions of their writes, the edit
+// sessions (v0.1 design 3.5, 3.6, 3.8, 3.9; M4 design). Its root is what
+// bootstrap sees: New for the HTTP side and the jobs; NewNotebookDeletion
+// and NewNotebookActivity, its parts in the notebook module's deletion and
+// activity; Purgers for the purge; Actions for the composition's checks.
 package page
 
 import (
 	"log/slog"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	httpadapter "github.com/open-nerve/NerveWiki/server/internal/modules/page/adapter/http"
 	markdownadapter "github.com/open-nerve/NerveWiki/server/internal/modules/page/adapter/markdown"
 	postgresadapter "github.com/open-nerve/NerveWiki/server/internal/modules/page/adapter/postgres"
+	riveradapter "github.com/open-nerve/NerveWiki/server/internal/modules/page/adapter/river"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/app"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/jobs"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown"
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
@@ -46,6 +50,11 @@ type (
 	Appender     = app.Appender
 	Event        = app.Event
 	PageObserver = app.PageObserver
+	// The edit sessions' (M4/P4 design 3.7).
+	SessionOpening        = app.SessionOpening
+	EditSessionVetoer     = app.EditSessionVetoer
+	SessionEnded          = app.SessionEnded
+	EditSessionSubscriber = app.EditSessionSubscriber
 )
 
 // Deps are what bootstrap gives the module.
@@ -61,14 +70,20 @@ type Deps struct {
 	// registered extensions (M4 design 8).
 	Markdown *markdown.Markdown
 	// The registrants of the extension points.
-	Guards       []WriteGuard
-	Participants []Participant
-	Observers    []PageObserver
+	Guards                 []WriteGuard
+	Participants           []Participant
+	Observers              []PageObserver
+	EditSessionVetoers     []EditSessionVetoer
+	EditSessionSubscribers []EditSessionSubscriber
+	// EditSessionCleanupInterval is how often the expired edit sessions
+	// are deleted (page.edit_session_cleanup_interval).
+	EditSessionCleanupInterval time.Duration
 }
 
 // Module is the wired page module.
 type Module struct {
-	uc httpadapter.UseCases
+	uc   httpadapter.UseCases
+	jobs []jobs.Job
 }
 
 // New wires the module: every write runs in the one writer's units.
@@ -79,6 +94,7 @@ func New(d Deps) *Module {
 		Tx: d.Tx, Clock: d.Clock, Auth: d.Authorizer, Workspaces: d.Workspaces, Notebooks: d.Notebooks,
 		Nodes: store, NodeWriter: store, Changesets: store, Sessions: store,
 		Guards: d.Guards, Participants: d.Participants, Observers: d.Observers,
+		SessionVetoers: d.EditSessionVetoers, SessionSubscribers: d.EditSessionSubscribers,
 	})
 	return &Module{uc: httpadapter.UseCases{
 		ListNodes:      app.NewListNodes(d.Notebooks, store, d.Authorizer),
@@ -90,7 +106,18 @@ func New(d Deps) *Module {
 		RenameNode:     app.NewRenameNode(writer, store, d.Logger),
 		MoveNode:       app.NewMoveNode(writer, store, d.Logger),
 		DeleteNode:     app.NewDeleteNode(writer, store, d.Logger),
+		OpenSession:    app.NewOpenEditSession(writer, store, d.Logger),
+		Heartbeat:      app.NewHeartbeatEditSession(store, d.Notebooks, d.Authorizer, d.Clock),
+		EndSession:     app.NewEndEditSession(d.Tx, store, d.Clock, d.EditSessionSubscribers, d.Logger),
+	}, jobs: []jobs.Job{
+		riveradapter.CleanupJob(app.NewCleanupEditSessions(store, d.Clock, d.Logger), d.EditSessionCleanupInterval),
 	}}
+}
+
+// Jobs are the module's background jobs, for the server's jobs runner: the
+// cleanup of the expired edit sessions.
+func (m *Module) Jobs() []jobs.Job {
+	return m.jobs
 }
 
 // Register mounts the module's API on router, the root router from

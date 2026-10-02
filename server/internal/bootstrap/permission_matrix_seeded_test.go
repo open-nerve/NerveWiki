@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -37,6 +38,12 @@ import (
 // notebook lets it into priv. orphan, private, is ownerless (M3/P3 design
 // 3.7): its admin, the ended member's column, left it, its editor stays;
 // lab has one audit event, gone-nb deleted ownerless.
+//
+// Each notebook column has an edit session of its own on the page its cells
+// target, alive, whatever its role (M4/P4 design 3.9): what the session's
+// operations answer is decided when they are called. Each of those pages has
+// one more, of acme's admin, an account outside lab: someone else's for every
+// column. gone-nb-page's are deleted with its notebook.
 
 // matrixWorkspace is a seeded workspace and the column that is its admin.
 type matrixWorkspace struct {
@@ -120,6 +127,28 @@ func matrixPages() []matrixPage {
 	}
 }
 
+// matrixSession is a seeded edit session: owner's, of page.
+type matrixSession struct {
+	page  string
+	owner caller
+}
+
+// someoneElse is the owner of the session someone else's for every column.
+const someoneElse = callerAdmin
+
+func matrixSessions() []matrixSession {
+	var out []matrixSession
+	for _, c := range notebookColumns() {
+		out = append(out, matrixSession{pageOf(c), c})
+	}
+	for _, p := range matrixPages() {
+		if slices.ContainsFunc(notebookColumns(), func(c caller) bool { return pageOf(c) == p.name }) {
+			out = append(out, matrixSession{p.name, someoneElse})
+		}
+	}
+	return out
+}
+
 // matrixNotebookMember is a seeded membership of a notebook.
 type matrixNotebookMember struct {
 	notebook string
@@ -176,6 +205,7 @@ type seeded struct {
 	notebooks       map[string]uuid.UUID // by name
 	notebookMembers map[string]uuid.UUID // by notebook/caller
 	pages           map[string]uuid.UUID // by title
+	sessions        map[string]uuid.UUID // by page/owner
 	// accounts are the columns' account ids, which registering them through
 	// the API gives: prepareMatrix fills the map, so they are known to the
 	// rows' requests, not to the coverage test, which reads the paths alone.
@@ -185,12 +215,15 @@ type seeded struct {
 func newSeeded() seeded {
 	s := seeded{workspaces: map[string]uuid.UUID{}, memberships: map[string]uuid.UUID{}, invitations: map[string]uuid.UUID{},
 		notebooks: map[string]uuid.UUID{}, notebookMembers: map[string]uuid.UUID{}, pages: map[string]uuid.UUID{},
-		accounts: map[caller]uuid.UUID{}}
+		sessions: map[string]uuid.UUID{}, accounts: map[caller]uuid.UUID{}}
 	for _, p := range matrixPages() {
 		s.pages[p.name] = uuid.NewV7()
 	}
 	for _, n := range matrixNotebooks() {
 		s.notebooks[n.name] = uuid.NewV7()
+	}
+	for _, e := range matrixSessions() {
+		s.sessions[e.page+"/"+string(e.owner)] = uuid.NewV7()
 	}
 	for _, m := range matrixNotebookMembers() {
 		s.notebookMembers[m.notebook+"/"+string(m.c)] = uuid.NewV7()
@@ -276,6 +309,16 @@ func (s seeded) page(name string) uuid.UUID {
 	return id
 }
 
+// session is the id of owner's edit session of the page name.
+func (s seeded) session(name string, owner caller) uuid.UUID {
+	id, ok := s.sessions[name+"/"+string(owner)]
+	if !ok {
+		s.t.Helper()
+		s.t.Fatalf("no session of %s by %s is seeded", name, owner)
+	}
+	return id
+}
+
 // workspaceOfRow is the slug of the workspace a seeded row's id is in.
 func (s seeded) workspaceOfRow(id uuid.UUID) (string, bool) {
 	for _, n := range matrixNotebooks() {
@@ -286,6 +329,12 @@ func (s seeded) workspaceOfRow(id uuid.UUID) (string, bool) {
 	for _, p := range matrixPages() {
 		if s.pages[p.name] == id {
 			return s.workspaceOfRow(s.notebooks[p.notebook])
+		}
+	}
+	for key, seededID := range s.sessions {
+		if seededID == id {
+			name, _, _ := strings.Cut(key, "/")
+			return s.workspaceOfRow(s.pages[name])
 		}
 	}
 	for key, seededID := range s.notebookMembers {
@@ -348,7 +397,7 @@ const seededPageHistory = `WITH n AS (SELECT * FROM nodes WHERE id = $1),
 
 // prepareMatrix fills a database for the matrix: an account for each
 // column, registered through the API for its token; the workspaces,
-// memberships, invitations, notebooks and pages through SQL, with the ids newSeeded fixed
+// memberships, invitations, notebooks, pages and edit sessions through SQL, with the ids newSeeded fixed
 // (the coverage check needs them before any database: members joining by
 // invitation would get theirs from the server, M2/P3 design 3.10); then,
 // through the API, acme's admin removes the ended member, and gone's admin
@@ -422,6 +471,11 @@ func prepareMatrix(t *testing.T) matrixData {
 				"SELECT id, '', 1, sha256(''), 0, created_by_id, $2 FROM nodes WHERE id = $1", d.seeded.pages[p.name], now)
 			exec(seededPageHistory, d.seeded.pages[p.name])
 		}
+		for _, e := range matrixSessions() {
+			exec("INSERT INTO edit_sessions (id, node_id, notebook_id, user_id, client, created_at, expires_at) "+
+				"SELECT $1, n.id, n.notebook_id, "+account+", 'web', $4, $5 FROM nodes n WHERE n.id = $3",
+				d.seeded.sessions[e.page+"/"+string(e.owner)], emailOf(e.owner), d.seeded.pages[e.page], now, now.Add(time.Hour))
+		}
 		for _, n := range matrixNotebooks() {
 			if n.deleted {
 				exec("UPDATE notebooks SET deleted_at = $2 WHERE id = $1", d.seeded.notebooks[n.name], now)
@@ -432,6 +486,7 @@ func prepareMatrix(t *testing.T) matrixData {
 						d.seeded.notebooks[n.name], now)
 				}
 				exec("UPDATE changesets SET deleted_at = $2 WHERE notebook_id = $1", d.seeded.notebooks[n.name], now)
+				exec("DELETE FROM edit_sessions WHERE notebook_id = $1", d.seeded.notebooks[n.name])
 			}
 		}
 		// orphan is ownerless of an account still active in lab, a state no

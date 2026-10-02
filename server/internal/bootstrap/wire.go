@@ -78,11 +78,6 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrati
 	if err != nil {
 		return nil, err
 	}
-	runner, err := jobs.New(pool, jobs.Config{ShutdownTimeout: cfg.Jobs.ShutdownTimeout, Logger: logger},
-		slices.Concat(ident.Jobs(), []jobs.Job{purgeJob(cfg, pool, logger)}))
-	if err != nil {
-		return nil, err
-	}
 	inst := instance.New(instanceDeps(cfg))
 	// The access module decides on the facts the workspace and notebook
 	// modules keep; their use cases call its decisions.
@@ -99,6 +94,11 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrati
 		return nil, err
 	}
 	pg := page.New(pageDeps(cfg, pool, logger, authorizer, md))
+	runner, err := jobs.New(pool, jobs.Config{ShutdownTimeout: cfg.Jobs.ShutdownTimeout, Logger: logger},
+		slices.Concat(ident.Jobs(), pg.Jobs(), []jobs.Job{purgeJob(cfg, pool, logger)}))
+	if err != nil {
+		return nil, err
+	}
 	api, err := httpserver.NewAPI(apiConfig(cfg, logger, limiter, ident.Authenticator(),
 		slices.Concat(ident.PublicOperations(), inst.PublicOperations(), ws.PublicOperations()), ident.RequestTimeouts(),
 		pg.BodyLimits()))

@@ -63,6 +63,21 @@ type DeleteNodeUseCase interface {
 	Execute(ctx context.Context, id uuid.UUID, client domain.Client) error
 }
 
+// OpenEditSessionUseCase is app.OpenEditSession.
+type OpenEditSessionUseCase interface {
+	Execute(ctx context.Context, id uuid.UUID, client domain.Client) (app.EditSession, error)
+}
+
+// HeartbeatEditSessionUseCase is app.HeartbeatEditSession.
+type HeartbeatEditSessionUseCase interface {
+	Execute(ctx context.Context, id uuid.UUID) (app.EditSession, error)
+}
+
+// EndEditSessionUseCase is app.EndEditSession.
+type EndEditSessionUseCase interface {
+	Execute(ctx context.Context, id uuid.UUID) error
+}
+
 // UseCases are the use cases behind the module's operations.
 type UseCases struct {
 	ListNodes      ListNodesUseCase
@@ -74,6 +89,9 @@ type UseCases struct {
 	RenameNode     RenameNodeUseCase
 	MoveNode       MoveNodeUseCase
 	DeleteNode     DeleteNodeUseCase
+	OpenSession    OpenEditSessionUseCase
+	Heartbeat      HeartbeatEditSessionUseCase
+	EndSession     EndEditSessionUseCase
 }
 
 // Register mounts the module's routes on router, the root router from
@@ -213,6 +231,40 @@ func (h handler) DeleteNode(ctx context.Context, req gen.DeleteNodeRequestObject
 		return nil, err
 	}
 	return gen.DeleteNode204Response{}, nil
+}
+
+// OpenEditSession serves POST /api/v0/pages/{page_id}/edit-sessions.
+func (h handler) OpenEditSession(ctx context.Context, req gen.OpenEditSessionRequestObject) (gen.OpenEditSessionResponseObject, error) {
+	client, err := clientOf(ctx)
+	if err != nil {
+		return nil, err
+	}
+	s, err := h.uc.OpenSession.Execute(ctx, req.PageID, client)
+	if err != nil {
+		return nil, err
+	}
+	return gen.OpenEditSession201JSONResponse(editSessionOf(s)), nil
+}
+
+// HeartbeatEditSession serves POST /api/v0/edit-sessions/{edit_session_id}/heartbeat.
+func (h handler) HeartbeatEditSession(ctx context.Context, req gen.HeartbeatEditSessionRequestObject) (gen.HeartbeatEditSessionResponseObject, error) {
+	s, err := h.uc.Heartbeat.Execute(ctx, req.EditSessionID)
+	if err != nil {
+		return nil, err
+	}
+	return gen.HeartbeatEditSession200JSONResponse(editSessionOf(s)), nil
+}
+
+// EndEditSession serves DELETE /api/v0/edit-sessions/{edit_session_id}.
+func (h handler) EndEditSession(ctx context.Context, req gen.EndEditSessionRequestObject) (gen.EndEditSessionResponseObject, error) {
+	if err := h.uc.EndSession.Execute(ctx, req.EditSessionID); err != nil {
+		return nil, err
+	}
+	return gen.EndEditSession204Response{}, nil
+}
+
+func editSessionOf(s app.EditSession) gen.EditSession {
+	return gen.EditSession{ID: s.ID, PageID: s.NodeID, ExpiresAt: s.ExpiresAt}
 }
 
 // clientOf is where the request came from: a personal access token's is

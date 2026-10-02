@@ -77,6 +77,10 @@ func testConfig(t *testing.T, dbURL string, autoMigrate bool) config.Config {
 		},
 		RateLimit: roomyLimits(),
 		Workspace: config.WorkspaceConfig{CreationEnabled: true},
+		// So does the edit sessions' cleanup's. Unset, its interval of 0
+		// would have River enqueue it without pause: nothing validates
+		// this configuration.
+		Page: config.PageConfig{EditSessionCleanupInterval: time.Hour},
 		// The purge's first run starts with the jobs too.
 		Jobs: config.JobsConfig{ShutdownTimeout: 5 * time.Second, PurgeInterval: time.Hour, PurgeRetention: 1440 * time.Hour},
 		Log:  config.LogConfig{Level: "error", Format: "text"},

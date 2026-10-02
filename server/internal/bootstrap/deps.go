@@ -126,6 +126,10 @@ func pageDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, author
 		Guards:       ext.guards,
 		Participants: ext.participants,
 		Observers:    ext.observers,
+		// The edit sessions' (M4/P4 design 3.7).
+		EditSessionVetoers:         ext.sessionVetoers,
+		EditSessionSubscribers:     ext.sessionSubscribers,
+		EditSessionCleanupInterval: cfg.Page.EditSessionCleanupInterval,
 	}
 }
 

@@ -77,6 +77,10 @@ workspace:
   # 每个账户都能创建工作区。关闭之后，工作区由服务器管理员用 nervewiki workspaces create 创建
   creation_enabled: true
 
+page:
+  # 后台任务删除过期而未结束的编辑会话的间隔，至少 1 秒。会话是否活着按租约判断，不等这个任务
+  edit_session_cleanup_interval: 10m
+
 jobs:
   # 停机时给正在执行的后台任务留的时间，到期后取消它们。停机的宽限期要长于
   # server.shutdown_timeout 加上它再加 6 秒（默认 36 秒）：docker stop -t 40

@@ -312,6 +312,7 @@ export const zhCN: Messages = {
   "problem.page.too_deep": "页面最多嵌套 10 层。",
   "problem.page.revision_mismatch": "这个页面在你读取之后被别人改过了。",
   "problem.page.edit_session_ended": "编辑会话已经结束，需要重新进入编辑。",
+  "problem.page.edit_session_not_found": "编辑会话不存在或已经结束。",
   "problem.network": "连不上服务器，请检查网络后重试。",
   "problem.unavailable": "暂时连不上服务器。你仍在登录状态，请稍后重试。",
   "problem.storage": "此浏览器无法保存登录状态：本站的存储空间已满或被阻止。请释放空间或允许本站的网站数据后重试。",

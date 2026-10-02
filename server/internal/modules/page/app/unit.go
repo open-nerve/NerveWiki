@@ -32,6 +32,9 @@ type WriterDeps struct {
 	Guards       []WriteGuard
 	Participants []Participant
 	Observers    []PageObserver
+	// The edit sessions' vetoers of an opening, and subscribers of an end.
+	SessionVetoers     []EditSessionVetoer
+	SessionSubscribers []EditSessionSubscriber
 }
 
 // Writer runs write units.
@@ -145,10 +148,8 @@ func (u *Unit) step(op domain.Operation, changes ...domain.Change) Step {
 // items in the changeset, and, unless a participant added it, the
 // participants.
 func (u *Unit) apply(ctx context.Context, s Step, participate bool, write func(ctx context.Context) error) error {
-	// A ctx without the unit's transaction would write on the pool, outside
-	// the unit and its locks.
-	if !u.w.d.Tx.InTx(ctx) {
-		return errors.New("a page write unit's operation runs on a context without the unit's transaction")
+	if err := u.inUnit(ctx); err != nil {
+		return err
 	}
 	for _, g := range u.w.d.Guards {
 		if err := g.GuardWrite(ctx, s); err != nil {
@@ -173,6 +174,15 @@ func (u *Unit) apply(ctx context.Context, s Step, participate bool, write func(c
 		if err := p.Participate(ctx, s, appender{u}); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// inUnit refuses a ctx without the unit's transaction: an operation would
+// write on the pool, outside the unit and its locks.
+func (u *Unit) inUnit(ctx context.Context) error {
+	if !u.w.d.Tx.InTx(ctx) {
+		return errors.New("a page write unit's operation runs on a context without the unit's transaction")
 	}
 	return nil
 }

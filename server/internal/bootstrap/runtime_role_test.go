@@ -114,7 +114,8 @@ func call(t *testing.T, method, url, token, body string, want int) []byte {
 }
 
 // nervewiki serves on the role and its administrator's commands run on it:
-// ready; the session cleanup and the purge run as the jobs start; every
+// ready; the sessions' and the edit sessions' cleanups and the purge run
+// as the jobs start; every
 // statement of the account's API and of the commands goes through; River's
 // daily reindex goes through, as River runs it, index by index. Nothing
 // logs a permission denied, the shutdown included.
@@ -126,6 +127,11 @@ func TestTheRuntimeRoleServesWithTheGrantsFile(t *testing.T) {
 	}
 	if _, err := roles.owner.Exec(ctx, `INSERT INTO auth_sessions (id, user_id, token_hash, expires_at, created_at, updated_at)
 		SELECT gen_random_uuid(), id, sha256('expired'), now() - interval '1 minute', now() - interval '1 hour', now() - interval '1 hour'
+		FROM users`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := roles.owner.Exec(ctx, `INSERT INTO edit_sessions (id, node_id, notebook_id, user_id, client, created_at, expires_at)
+		SELECT gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), id, 'web', now() - interval '1 hour', now() - interval '1 minute'
 		FROM users`); err != nil {
 		t.Fatal(err)
 	}
@@ -160,6 +166,15 @@ func TestTheRuntimeRoleServesWithTheGrantsFile(t *testing.T) {
 	}
 	if n := count(t, roles.owner, "SELECT count(*) FROM auth_sessions"); n != 0 {
 		t.Errorf("%d sessions after the cleanup, want the expired one deleted", n)
+	}
+	const editCleanups = "SELECT count(*) FROM river_job WHERE kind = 'page.cleanup_expired_edit_sessions' AND state = 'completed'"
+	for deadline := time.Now().Add(15 * time.Second); count(t, roles.owner, editCleanups) == 0; time.Sleep(50 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatalf("the edit sessions' cleanup did not complete as %s; logs:\n%s", roles.serverName, logs.String())
+		}
+	}
+	if n := count(t, roles.owner, "SELECT count(*) FROM edit_sessions"); n != 0 {
+		t.Errorf("%d edit sessions after the cleanup, want the expired one deleted", n)
 	}
 	const purges = "SELECT count(*) FROM river_job WHERE kind = 'platform.purge_soft_deleted' AND state = 'completed'"
 	for deadline := time.Now().Add(15 * time.Second); count(t, roles.owner, purges) == 0; time.Sleep(50 * time.Millisecond) {

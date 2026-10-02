@@ -25,6 +25,7 @@ type Config struct {
 	Auth      AuthConfig      `koanf:"auth"`
 	RateLimit RateLimitConfig `koanf:"ratelimit"`
 	Workspace WorkspaceConfig `koanf:"workspace"`
+	Page      PageConfig      `koanf:"page"`
 	Jobs      JobsConfig      `koanf:"jobs"`
 	Log       LogConfig       `koanf:"log"`
 }
@@ -135,6 +136,13 @@ type WorkspaceConfig struct {
 	CreationEnabled bool `koanf:"creation_enabled"`
 }
 
+// PageConfig configures the pages (M4/P4 design 3.5).
+type PageConfig struct {
+	// EditSessionCleanupInterval is how often the edit sessions expired
+	// and not ended are deleted.
+	EditSessionCleanupInterval time.Duration `koanf:"edit_session_cleanup_interval"`
+}
+
 // JobsConfig configures the background jobs (M1/P4 design 3.3).
 type JobsConfig struct {
 	// ShutdownTimeout is how long a stop lets the running jobs finish
@@ -205,6 +213,9 @@ func (c Config) LogValue() slog.Value {
 		),
 		slog.Group("workspace",
 			slog.Bool("creation_enabled", c.Workspace.CreationEnabled),
+		),
+		slog.Group("page",
+			duration("edit_session_cleanup_interval", c.Page.EditSessionCleanupInterval),
 		),
 		slog.Group("jobs",
 			duration("shutdown_timeout", c.Jobs.ShutdownTimeout),

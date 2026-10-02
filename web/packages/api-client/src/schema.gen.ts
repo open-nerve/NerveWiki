@@ -801,6 +801,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v0/pages/{page_id}/edit-sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The page's id. */
+                page_id: components["parameters"]["PageID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Open an edit session
+         * @description Opens the caller's edit session of the page: a lease of 60 seconds, which a heartbeat every 20 seconds keeps alive. The content's writes that name it are one changeset. Its notebook's editors and admins can, a reader cannot (forbidden). A page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found alike.
+         */
+        post: operations["openEditSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v0/pages/{page_id}/view": {
         parameters: {
             query?: never;
@@ -819,6 +842,52 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v0/edit-sessions/{edit_session_id}/heartbeat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The edit session's id. */
+                edit_session_id: components["parameters"]["EditSessionID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Keep an edit session alive
+         * @description Keeps the caller's session alive for 60 seconds from now. A session that does not exist, has expired, is someone else's, or whose notebook the caller has no role in any more is page.edit_session_not_found alike: the editor opens a new one. One whose page the caller may only read now is forbidden.
+         */
+        post: operations["heartbeatEditSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v0/edit-sessions/{edit_session_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The edit session's id. */
+                edit_session_id: components["parameters"]["EditSessionID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * End an edit session
+         * @description Ends the caller's session: it asks only that the session is the caller's and alive. A session that does not exist, has expired, or is someone else's is page.edit_session_not_found alike, which the editor takes for ended.
+         */
+        delete: operations["endEditSession"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1385,6 +1454,18 @@ export interface components {
              */
             edit_session_id?: string;
         };
+        /** @description An edit session of a page, while its lease lasts. */
+        EditSession: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            page_id: string;
+            /**
+             * Format: date-time
+             * @description When the session ends unless a heartbeat keeps it alive.
+             */
+            expires_at: string;
+        };
         /** @description A page's reading view. */
         PageView: {
             /** @description The content rendered to HTML. */
@@ -1441,6 +1522,8 @@ export interface components {
         Cursor: string;
         /** @description The page's id. */
         PageID: string;
+        /** @description The edit session's id. */
+        EditSessionID: string;
         /** @description The id of a node of a notebook's tree. */
         NodeID: string;
     };
@@ -1508,6 +1591,7 @@ export type Ancestor = components['schemas']['Ancestor'];
 export type Page = components['schemas']['Page'];
 export type PageContent = components['schemas']['PageContent'];
 export type PageContentWrite = components['schemas']['PageContentWrite'];
+export type EditSession = components['schemas']['EditSession'];
 export type PageView = components['schemas']['PageView'];
 export type NodeRename = components['schemas']['NodeRename'];
 export type NodeMove = components['schemas']['NodeMove'];
@@ -1520,6 +1604,7 @@ export type ParameterNotebookMemberId = components['parameters']['NotebookMember
 export type ParameterLimit = components['parameters']['Limit'];
 export type ParameterCursor = components['parameters']['Cursor'];
 export type ParameterPageId = components['parameters']['PageID'];
+export type ParameterEditSessionId = components['parameters']['EditSessionID'];
 export type ParameterNodeId = components['parameters']['NodeID'];
 export type $defs = Record<string, never>;
 export interface operations {
@@ -2669,6 +2754,30 @@ export interface operations {
             default: components["responses"]["Problem"];
         };
     };
+    openEditSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The page's id. */
+                page_id: components["parameters"]["PageID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The session. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditSession"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
     getPageView: {
         parameters: {
             query?: never;
@@ -2689,6 +2798,52 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["PageView"];
                 };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    heartbeatEditSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The edit session's id. */
+                edit_session_id: components["parameters"]["EditSessionID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The session, kept alive. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditSession"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    endEditSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The edit session's id. */
+                edit_session_id: components["parameters"]["EditSessionID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The session is ended. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             default: components["responses"]["Problem"];
         };

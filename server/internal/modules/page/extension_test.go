@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -107,6 +108,9 @@ type fixture struct {
 	alice            uuid.UUID
 	acme, eng, notes uuid.UUID
 	md               *markdown.Markdown
+	// The edit sessions' registrants serve wires.
+	vetoers     []page.EditSessionVetoer
+	subscribers []page.EditSessionSubscriber
 }
 
 func newFixture(t *testing.T) fixture {
@@ -162,6 +166,7 @@ func (f fixture) serve(t *testing.T, kind, method, path, body string, guards []p
 		Pool: f.pool, Tx: postgres.NewTxManager(f.pool, 5*time.Second), Clock: fixedClock{}, Logger: slog.New(slog.DiscardHandler),
 		Authorizer: aliceWrites{f.alice}, Workspaces: sqlWorkspaces{f.pool}, Notebooks: sqlNotebooks{f.pool},
 		Markdown: f.md, Guards: guards, Participants: participants, Observers: observers,
+		EditSessionVetoers: f.vetoers, EditSessionSubscribers: f.subscribers, EditSessionCleanupInterval: time.Hour,
 	}).Register(router, httpservertest.NewAPI(t, httpservertest.APIOptions{Authenticator: tokenAuth{}}))
 	req := httptest.NewRequest(method, path, strings.NewReader(body))
 	req.Header.Set("Authorization", "Bearer "+kind+":"+f.alice.String())
@@ -346,17 +351,23 @@ func TestAUnitRefusesAnOuterTransaction(t *testing.T) {
 }
 
 // The registrant of the notebook module's deletion deletes the notebooks'
-// pages, what follows them and their changesets at the deletion's time.
+// pages, what follows them and their changesets at the deletion's time,
+// and their edit sessions: the subscribers follow the end of the one alive
+// then, not of the one expired.
 func TestANotebookDeletionDeletesItsPages(t *testing.T) {
 	f := newFixture(t)
 	if rec := f.serve(t, "session", http.MethodPost, f.createPath(), `{"parent_id":"`+f.notes.String()+`","title":"Child"}`,
 		nil, nil, nil); rec.Code != http.StatusCreated {
 		t.Fatalf("POST = %d %s, want 201", rec.Code, rec.Body)
 	}
-	at := testNow().Add(time.Minute)
+	alive := f.openSession(t)
+	expired := f.openSession(t)
+	f.exec(t, "UPDATE edit_sessions SET expires_at = created_at + interval '1 second' WHERE id = $1", expired)
+	sub := &subscriber{}
+	at := testNow().Add(30 * time.Second)
 	err := postgres.NewTxManager(f.pool, 5*time.Second).WithinTx(context.Background(), func(ctx context.Context) error {
-		return page.NewNotebookDeletion(f.pool).NotebookDeleted(ctx, page.NotebookDeleted{WorkspaceID: f.acme, NotebookIDs: []uuid.UUID{f.eng},
-			By: f.alice, At: at})
+		return page.NewNotebookDeletion(f.pool, []page.EditSessionSubscriber{sub}).NotebookDeleted(ctx,
+			page.NotebookDeleted{WorkspaceID: f.acme, NotebookIDs: []uuid.UUID{f.eng}, By: f.alice, At: at})
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -365,6 +376,98 @@ func TestANotebookDeletionDeletesItsPages(t *testing.T) {
 		if n := f.count(t, "SELECT count(*) FROM "+table+" WHERE deleted_at = $1", at); n != want {
 			t.Errorf("%d rows of %s deleted at the deletion's time, want %d", n, table, want)
 		}
+	}
+	if n := f.count(t, "SELECT count(*) FROM edit_sessions"); n != 0 {
+		t.Errorf("%d edit sessions left, want none", n)
+	}
+	want := []page.SessionEnded{{SessionID: alive, NotebookID: f.eng, PageID: f.notes, UserID: f.alice, Reason: domain.EndedWithPage,
+		By: f.alice, At: at}}
+	if !reflect.DeepEqual(sub.ended, want) || !sub.inTx {
+		t.Errorf("the subscriber followed %+v in a transaction %v, want %+v", sub.ended, sub.inTx, want)
+	}
+}
+
+// openSession opens alice's edit session of Notes through the route.
+func (f fixture) openSession(t *testing.T) uuid.UUID {
+	t.Helper()
+	rec := f.serve(t, "session", http.MethodPost, "/api/v0/pages/"+f.notes.String()+"/edit-sessions", "", nil, nil, nil)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("POST an edit session = %d %s, want 201", rec.Code, rec.Body)
+	}
+	var s struct {
+		ID uuid.UUID `json:"id"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &s); err != nil {
+		t.Fatal(err)
+	}
+	return s.ID
+}
+
+// subscriber records the ends it follows, and whether in a transaction.
+type subscriber struct {
+	ended []page.SessionEnded
+	inTx  bool
+}
+
+func (s *subscriber) EditSessionEnded(ctx context.Context, e page.SessionEnded) error {
+	s.ended = append(s.ended, e)
+	s.inTx = postgres.InTx(ctx)
+	return nil
+}
+
+// vetoer records the openings it sees, and whether the page's gate is
+// held then, and refuses them with err.
+type vetoer struct {
+	f        fixture
+	err      error
+	openings []page.SessionOpening
+	gated    bool
+}
+
+func (v *vetoer) VetoEditSession(ctx context.Context, o page.SessionOpening) error {
+	v.openings = append(v.openings, o)
+	// The test's own transaction would wait for the opening's lock: NOWAIT
+	// fails at once instead.
+	_, err := v.f.pool.Exec(context.Background(), "SELECT 1 FROM page_contents WHERE node_id = $1 FOR NO KEY UPDATE NOWAIT", o.PageID)
+	v.gated = err != nil
+	return v.err
+}
+
+// The edit sessions' registrants reach their paths through page.New: a
+// vetoer sees an opening under the page's gate, and its refusal is the
+// answer, with no session; an end by its owner and a page's deletion tell
+// the subscribers, in their transaction, with the reason and who.
+func TestTheEditSessionsReachTheirRegistrants(t *testing.T) {
+	f := newFixture(t)
+	locked := shared.NewError(shared.KindConflict, "page.locked", "Someone else is editing this page.")
+	v := &vetoer{f: f, err: locked}
+	f.vetoers = []page.EditSessionVetoer{v}
+	rec := f.serve(t, "pat", http.MethodPost, "/api/v0/pages/"+f.notes.String()+"/edit-sessions", "", nil, nil, nil)
+	if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), `"code":"page.locked"`) || f.count(t, "SELECT count(*) FROM edit_sessions") != 0 {
+		t.Errorf("a vetoed opening = %d %s, want 409 page.locked and no session", rec.Code, rec.Body)
+	}
+	if len(v.openings) != 1 || v.openings[0].PageID != f.notes || v.openings[0].By != f.alice || v.openings[0].Client != domain.ClientAPI ||
+		!v.gated {
+		t.Errorf("the vetoer saw %+v, gated %v; want alice's opening of Notes by the API, under the page's gate", v.openings, v.gated)
+	}
+
+	v.err = nil
+	sub := &subscriber{}
+	f.subscribers = []page.EditSessionSubscriber{sub}
+	ended := f.openSession(t)
+	if rec := f.serve(t, "session", http.MethodDelete, "/api/v0/edit-sessions/"+ended.String(), "", nil, nil, nil); rec.Code != http.StatusNoContent {
+		t.Fatalf("DELETE the session = %d %s, want 204", rec.Code, rec.Body)
+	}
+	deleted := f.openSession(t)
+	if rec := f.serve(t, "session", http.MethodDelete, f.renamePath(), "", nil, nil, nil); rec.Code != http.StatusNoContent {
+		t.Fatalf("DELETE Notes = %d %s, want 204", rec.Code, rec.Body)
+	}
+	want := []page.SessionEnded{
+		{SessionID: ended, NotebookID: f.eng, PageID: f.notes, UserID: f.alice, Reason: domain.EndedByOwner, By: f.alice, At: testNow()},
+		{SessionID: deleted, NotebookID: f.eng, PageID: f.notes, UserID: f.alice, Reason: domain.EndedWithPage, By: f.alice, At: testNow()},
+	}
+	if !reflect.DeepEqual(sub.ended, want) || !sub.inTx || f.count(t, "SELECT count(*) FROM edit_sessions") != 0 {
+		t.Errorf("the subscriber followed %+v in a transaction %v, want %+v and no session left", sub.ended, sub.inTx, want)
 	}
 }
 

@@ -110,8 +110,10 @@ type fakeStore struct {
 	revisions []app.Revision
 	// touched are the changesets written again, with when.
 	touched map[uuid.UUID]time.Time
-	// sessions are the edit sessions.
+	// sessions are the edit sessions; held are those another transaction
+	// holds.
 	sessions map[uuid.UUID]app.EditSession
+	held     map[uuid.UUID]bool
 }
 
 func (f *fakeStore) FindNode(ctx context.Context, id uuid.UUID) (domain.Node, error) {
@@ -348,6 +350,74 @@ func (f *fakeStore) SetSessionWrite(ctx context.Context, id, changesetID uuid.UU
 	return nil
 }
 
+func (f *fakeStore) FindLiveSession(ctx context.Context, id, userID uuid.UUID, now time.Time) (app.EditSession, error) {
+	f.record(ctx, "FindLiveSession")
+	s, ok := f.sessions[id]
+	if !ok || s.UserID != userID || !s.Alive(now) {
+		return app.EditSession{}, app.ErrNotFound
+	}
+	return s, nil
+}
+
+func (f *fakeStore) HeartbeatSession(ctx context.Context, id, userID uuid.UUID, now, until time.Time) (app.EditSession, error) {
+	f.record(ctx, "HeartbeatSession")
+	s, ok := f.sessions[id]
+	if !ok || s.UserID != userID || !s.Alive(now) {
+		return app.EditSession{}, app.ErrNotFound
+	}
+	s.ExpiresAt = until
+	f.sessions[id] = s
+	return s, nil
+}
+
+func (f *fakeStore) EndSession(ctx context.Context, id, userID uuid.UUID, now time.Time) (app.EditSession, error) {
+	f.record(ctx, "EndSession")
+	s, ok := f.sessions[id]
+	if !ok || s.UserID != userID || !s.Alive(now) {
+		return app.EditSession{}, app.ErrNotFound
+	}
+	delete(f.sessions, id)
+	return s, nil
+}
+
+// DeleteExpiredSessions deletes at most batch of the sessions expired at
+// now; held are skipped, as rows another transaction holds.
+func (f *fakeStore) DeleteExpiredSessions(ctx context.Context, now time.Time, batch int) (int, error) {
+	f.record(ctx, "DeleteExpiredSessions")
+	n := 0
+	for id, s := range f.sessions {
+		if n < batch && !s.Alive(now) && !f.held[id] {
+			delete(f.sessions, id)
+			n++
+		}
+	}
+	return n, nil
+}
+
+func (f *fakeStore) DeleteNotebooksPages(ctx context.Context, ids []uuid.UUID, _ uuid.UUID, _ time.Time) error {
+	f.record(ctx, "DeleteNotebooksPages")
+	for id, n := range f.nodes {
+		if slices.Contains(ids, n.NotebookID) {
+			delete(f.nodes, id)
+			delete(f.contents, id)
+		}
+	}
+	return nil
+}
+
+func (f *fakeStore) DeleteNotebookSessions(ctx context.Context, ids []uuid.UUID) ([]app.EditSession, error) {
+	f.record(ctx, "DeleteNotebookSessions")
+	var out []app.EditSession
+	for _, s := range f.sessions {
+		if slices.Contains(ids, s.NotebookID) {
+			out = append(out, s)
+			delete(f.sessions, s.ID)
+		}
+	}
+	slices.SortFunc(out, func(a, b app.EditSession) int { return a.ID.Compare(b.ID) })
+	return out, nil
+}
+
 func (f *fakeStore) DeleteNodeSessions(ctx context.Context, ids []uuid.UUID) ([]app.EditSession, error) {
 	f.record(ctx, "DeleteNodeSessions")
 	var out []app.EditSession
@@ -452,6 +522,32 @@ func (p *participant) Participate(ctx context.Context, s app.Step, u app.Appende
 	return nil
 }
 
+// vetoer records the openings it sees and refuses them with err when set.
+type vetoer struct {
+	*recorder
+	err      error
+	openings []app.SessionOpening
+}
+
+func (v *vetoer) VetoEditSession(ctx context.Context, o app.SessionOpening) error {
+	v.record(ctx, "VetoEditSession")
+	v.openings = append(v.openings, o)
+	return v.err
+}
+
+// subscriber records the ends it follows and answers err.
+type subscriber struct {
+	*recorder
+	err   error
+	ended []app.SessionEnded
+}
+
+func (s *subscriber) EditSessionEnded(ctx context.Context, e app.SessionEnded) error {
+	s.record(ctx, "EditSessionEnded")
+	s.ended = append(s.ended, e)
+	return s.err
+}
+
 // fixture is the fakes over one recorder: alice in the workspace acme with
 // its notebook eng.
 type fixture struct {
@@ -467,6 +563,8 @@ type fixture struct {
 	guards     []app.WriteGuard
 	partakers  []app.Participant
 	observers  []app.PageObserver
+	vetoers    []app.EditSessionVetoer
+	enders     []app.EditSessionSubscriber
 	alice      uuid.UUID
 	acme, eng  uuid.UUID
 }
@@ -477,7 +575,8 @@ func newFixture() *fixture {
 		rec: rec, tx: &fakeTx{}, clock: &tickingClock{},
 		workspaces: fakeWorkspaces{recorder: rec, gone: map[uuid.UUID]bool{}},
 		store: &fakeStore{recorder: rec, nodes: map[uuid.UUID]domain.Node{}, contents: map[uuid.UUID]app.Content{},
-			items: map[uuid.UUID]app.Item{}, touched: map[uuid.UUID]time.Time{}, sessions: map[uuid.UUID]app.EditSession{}},
+			items: map[uuid.UUID]app.Item{}, touched: map[uuid.UUID]time.Time{}, sessions: map[uuid.UUID]app.EditSession{},
+			held: map[uuid.UUID]bool{}},
 		auth: &fakeAuthorizer{recorder: rec, grants: map[shared.Action]bool{}, forbidden: map[shared.Action]bool{}},
 		logs: &bytes.Buffer{}, alice: uuid.NewV7(), acme: uuid.NewV7(), eng: uuid.NewV7(),
 	}
@@ -492,7 +591,7 @@ func (f *fixture) writer() *app.Writer {
 	return app.NewWriter(app.WriterDeps{
 		Tx: f.tx, Clock: f.clock, Auth: f.auth, Workspaces: f.workspaces, Notebooks: f.notebooks, Nodes: f.store,
 		NodeWriter: f.store, Changesets: f.store, Sessions: f.store, Guards: f.guards, Participants: f.partakers,
-		Observers: f.observers,
+		Observers: f.observers, SessionVetoers: f.vetoers, SessionSubscribers: f.enders,
 	})
 }
 

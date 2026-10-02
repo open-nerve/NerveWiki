@@ -47,6 +47,7 @@ func validConfig() Config {
 			PasswordUser:  BucketConfig{PerMinute: 5, Burst: 5},
 		},
 		Workspace: WorkspaceConfig{CreationEnabled: true},
+		Page:      PageConfig{EditSessionCleanupInterval: 10 * time.Minute},
 		Jobs:      JobsConfig{ShutdownTimeout: 10 * time.Second, PurgeInterval: time.Hour, PurgeRetention: 1440 * time.Hour},
 		Log:       LogConfig{Level: "info", Format: "json"},
 	}
@@ -105,6 +106,7 @@ func TestValidateReportsEveryInvalidKey(t *testing.T) {
 		"ratelimit.register_ip.burst: must be at least 1, got 0",
 		"ratelimit.password_user.per_minute: must be at least 1, got 0",
 		"ratelimit.password_user.burst: must be at least 1, got 0",
+		"page.edit_session_cleanup_interval: must be at least 1s, got 0s",
 		"jobs.shutdown_timeout: must be positive, got 0s",
 		"jobs.purge_interval: must be at least 1s, got 0s",
 		"jobs.purge_retention: must be at least 1h, got 0s",
@@ -206,6 +208,15 @@ func TestValidateCrossKeyRules(t *testing.T) {
 			name:   "an IPv4-mapped proxy prefix",
 			mutate: func(c *Config) { c.Server.TrustedProxies = prefixes("::ffff:10.0.0.0/104") },
 			want:   "server.trusted_proxies: ::ffff:10.0.0.0/104 is an IPv4-mapped IPv6 prefix, which no address matches: write the IPv4 prefix",
+		},
+		{
+			name:   "an edit sessions' cleanup every second",
+			mutate: func(c *Config) { c.Page.EditSessionCleanupInterval = time.Second },
+		},
+		{
+			name:   "an edit sessions' cleanup more often",
+			mutate: func(c *Config) { c.Page.EditSessionCleanupInterval = time.Second - time.Millisecond },
+			want:   "page.edit_session_cleanup_interval: must be at least 1s, got 999ms",
 		},
 	}
 	for _, tt := range tests {

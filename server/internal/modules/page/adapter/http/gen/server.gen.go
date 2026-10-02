@@ -43,6 +43,14 @@ type Ancestor struct {
 // Content A page's Markdown, byte for byte: at most 5 MB of UTF-8, without NUL characters. Its line breaks, byte order mark and blanks are kept as they are.
 type Content = string
 
+// EditSession An edit session of a page, while its lease lasts.
+type EditSession struct {
+	// ExpiresAt When the session ends unless a heartbeat keeps it alive.
+	ExpiresAt time.Time `json:"expires_at"`
+	ID        uuid.UUID `json:"id"`
+	PageID    uuid.UUID `json:"page_id"`
+}
+
 // NodeKind What a node of the tree is. Attachments come later.
 type NodeKind string
 
@@ -169,6 +177,9 @@ type TreeNodeList struct {
 	Data []TreeNode `json:"data"`
 }
 
+// EditSessionID defines model for EditSessionID.
+type EditSessionID = uuid.UUID
+
 // NodeID defines model for NodeID.
 type NodeID = uuid.UUID
 
@@ -195,6 +206,12 @@ type PutPageContentJSONRequestBody = PageContentWrite
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// EndEditSession End an edit session
+	// (DELETE /api/v0/edit-sessions/{edit_session_id})
+	EndEditSession(w http.ResponseWriter, r *http.Request, editSessionID EditSessionID)
+	// HeartbeatEditSession Keep an edit session alive
+	// (POST /api/v0/edit-sessions/{edit_session_id}/heartbeat)
+	HeartbeatEditSession(w http.ResponseWriter, r *http.Request, editSessionID EditSessionID)
 	// DeleteNode Delete a page
 	// (DELETE /api/v0/nodes/{node_id})
 	DeleteNode(w http.ResponseWriter, r *http.Request, nodeID NodeID)
@@ -219,6 +236,9 @@ type ServerInterface interface {
 	// PutPageContent Write a page's content
 	// (PUT /api/v0/pages/{page_id}/content)
 	PutPageContent(w http.ResponseWriter, r *http.Request, pageID PageID)
+	// OpenEditSession Open an edit session
+	// (POST /api/v0/pages/{page_id}/edit-sessions)
+	OpenEditSession(w http.ResponseWriter, r *http.Request, pageID PageID)
 	// GetPageView Read a page
 	// (GET /api/v0/pages/{page_id}/view)
 	GetPageView(w http.ResponseWriter, r *http.Request, pageID PageID)
@@ -232,6 +252,58 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// EndEditSession operation middleware
+func (siw *ServerInterfaceWrapper) EndEditSession(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "edit_session_id" -------------
+	var editSessionID EditSessionID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "edit_session_id", r.PathValue("edit_session_id"), &editSessionID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "edit_session_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.EndEditSession(w, r, editSessionID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// HeartbeatEditSession operation middleware
+func (siw *ServerInterfaceWrapper) HeartbeatEditSession(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "edit_session_id" -------------
+	var editSessionID EditSessionID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "edit_session_id", r.PathValue("edit_session_id"), &editSessionID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "edit_session_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.HeartbeatEditSession(w, r, editSessionID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // DeleteNode operation middleware
 func (siw *ServerInterfaceWrapper) DeleteNode(w http.ResponseWriter, r *http.Request) {
@@ -441,6 +513,32 @@ func (siw *ServerInterfaceWrapper) PutPageContent(w http.ResponseWriter, r *http
 	handler.ServeHTTP(w, r)
 }
 
+// OpenEditSession operation middleware
+func (siw *ServerInterfaceWrapper) OpenEditSession(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "page_id" -------------
+	var pageID PageID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "page_id", r.PathValue("page_id"), &pageID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.OpenEditSession(w, r, pageID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetPageView operation middleware
 func (siw *ServerInterfaceWrapper) GetPageView(w http.ResponseWriter, r *http.Request) {
 
@@ -592,7 +690,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v0/pages/{page_id}", wrapper.GetPage)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v0/pages/{page_id}/content", wrapper.GetPageContent)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v0/pages/{page_id}/content", wrapper.PutPageContent)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v0/pages/{page_id}/edit-sessions", wrapper.OpenEditSession)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v0/pages/{page_id}/view", wrapper.GetPageView)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v0/edit-sessions/{edit_session_id}/heartbeat", wrapper.HeartbeatEditSession)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v0/edit-sessions/{edit_session_id}", wrapper.EndEditSession)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v0/nodes/{node_id}", wrapper.DeleteNode)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/v0/nodes/{node_id}", wrapper.RenameNode)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v0/nodes/{node_id}/move", wrapper.MoveNode)
@@ -608,6 +709,92 @@ type ProblemApplicationProblemPlusJSONResponse struct {
 	Body externalRef0.Problem
 
 	Headers ProblemResponseHeaders
+}
+
+type EndEditSessionRequestObject struct {
+	EditSessionID EditSessionID `json:"edit_session_id"`
+}
+
+type EndEditSessionResponseObject interface {
+	VisitEndEditSessionResponse(w http.ResponseWriter) error
+}
+
+type EndEditSession204Response struct {
+}
+
+func (response EndEditSession204Response) VisitEndEditSessionResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type EndEditSessiondefaultApplicationProblemPlusJSONResponse struct {
+	Body       externalRef0.Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response EndEditSessiondefaultApplicationProblemPlusJSONResponse) VisitEndEditSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	if response.Headers.WWWAuthenticate != nil {
+		w.Header().Set("WWW-Authenticate", fmt.Sprint(*response.Headers.WWWAuthenticate))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type HeartbeatEditSessionRequestObject struct {
+	EditSessionID EditSessionID `json:"edit_session_id"`
+}
+
+type HeartbeatEditSessionResponseObject interface {
+	VisitHeartbeatEditSessionResponse(w http.ResponseWriter) error
+}
+
+type HeartbeatEditSession200JSONResponse EditSession
+
+func (response HeartbeatEditSession200JSONResponse) VisitHeartbeatEditSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type HeartbeatEditSessiondefaultApplicationProblemPlusJSONResponse struct {
+	Body       externalRef0.Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response HeartbeatEditSessiondefaultApplicationProblemPlusJSONResponse) VisitHeartbeatEditSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	if response.Headers.WWWAuthenticate != nil {
+		w.Header().Set("WWW-Authenticate", fmt.Sprint(*response.Headers.WWWAuthenticate))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type DeleteNodeRequestObject struct {
@@ -976,6 +1163,52 @@ func (response PutPageContentdefaultApplicationProblemPlusJSONResponse) VisitPut
 	return err
 }
 
+type OpenEditSessionRequestObject struct {
+	PageID PageID `json:"page_id"`
+}
+
+type OpenEditSessionResponseObject interface {
+	VisitOpenEditSessionResponse(w http.ResponseWriter) error
+}
+
+type OpenEditSession201JSONResponse EditSession
+
+func (response OpenEditSession201JSONResponse) VisitOpenEditSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type OpenEditSessiondefaultApplicationProblemPlusJSONResponse struct {
+	Body       externalRef0.Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response OpenEditSessiondefaultApplicationProblemPlusJSONResponse) VisitOpenEditSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	if response.Headers.WWWAuthenticate != nil {
+		w.Header().Set("WWW-Authenticate", fmt.Sprint(*response.Headers.WWWAuthenticate))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetPageViewRequestObject struct {
 	PageID PageID `json:"page_id"`
 }
@@ -1024,6 +1257,12 @@ func (response GetPageViewdefaultApplicationProblemPlusJSONResponse) VisitGetPag
 
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
+	// EndEditSession End an edit session
+	// (DELETE /api/v0/edit-sessions/{edit_session_id})
+	EndEditSession(ctx context.Context, request EndEditSessionRequestObject) (EndEditSessionResponseObject, error)
+	// HeartbeatEditSession Keep an edit session alive
+	// (POST /api/v0/edit-sessions/{edit_session_id}/heartbeat)
+	HeartbeatEditSession(ctx context.Context, request HeartbeatEditSessionRequestObject) (HeartbeatEditSessionResponseObject, error)
 	// DeleteNode Delete a page
 	// (DELETE /api/v0/nodes/{node_id})
 	DeleteNode(ctx context.Context, request DeleteNodeRequestObject) (DeleteNodeResponseObject, error)
@@ -1048,6 +1287,9 @@ type StrictServerInterface interface {
 	// PutPageContent Write a page's content
 	// (PUT /api/v0/pages/{page_id}/content)
 	PutPageContent(ctx context.Context, request PutPageContentRequestObject) (PutPageContentResponseObject, error)
+	// OpenEditSession Open an edit session
+	// (POST /api/v0/pages/{page_id}/edit-sessions)
+	OpenEditSession(ctx context.Context, request OpenEditSessionRequestObject) (OpenEditSessionResponseObject, error)
 	// GetPageView Read a page
 	// (GET /api/v0/pages/{page_id}/view)
 	GetPageView(ctx context.Context, request GetPageViewRequestObject) (GetPageViewResponseObject, error)
@@ -1090,6 +1332,58 @@ type strictHandler struct {
 	ssi         StrictServerInterface
 	middlewares []StrictMiddlewareFunc
 	options     StrictHTTPServerOptions
+}
+
+// EndEditSession operation middleware
+func (sh *strictHandler) EndEditSession(w http.ResponseWriter, r *http.Request, editSessionID EditSessionID) {
+	var request EndEditSessionRequestObject
+
+	request.EditSessionID = editSessionID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.EndEditSession(ctx, request.(EndEditSessionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "EndEditSession")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(EndEditSessionResponseObject); ok {
+		if err := validResponse.VisitEndEditSessionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// HeartbeatEditSession operation middleware
+func (sh *strictHandler) HeartbeatEditSession(w http.ResponseWriter, r *http.Request, editSessionID EditSessionID) {
+	var request HeartbeatEditSessionRequestObject
+
+	request.EditSessionID = editSessionID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.HeartbeatEditSession(ctx, request.(HeartbeatEditSessionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "HeartbeatEditSession")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(HeartbeatEditSessionResponseObject); ok {
+		if err := validResponse.VisitHeartbeatEditSessionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
 }
 
 // DeleteNode operation middleware
@@ -1321,6 +1615,32 @@ func (sh *strictHandler) PutPageContent(w http.ResponseWriter, r *http.Request, 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PutPageContentResponseObject); ok {
 		if err := validResponse.VisitPutPageContentResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// OpenEditSession operation middleware
+func (sh *strictHandler) OpenEditSession(w http.ResponseWriter, r *http.Request, pageID PageID) {
+	var request OpenEditSessionRequestObject
+
+	request.PageID = pageID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.OpenEditSession(ctx, request.(OpenEditSessionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "OpenEditSession")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(OpenEditSessionResponseObject); ok {
+		if err := validResponse.VisitOpenEditSessionResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
