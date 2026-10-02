@@ -223,3 +223,29 @@ test("a workspace's renames go out one at a time, the last made last", async () 
 
   expect(store.bySlug("acme")?.name).toBe("Acme Labs");
 });
+
+// A workspace's deletion and leaving wait for its rename still out, in the
+// same queue (M3 Codex review R1).
+test("a workspace's deletion waits for its rename still out", async () => {
+  let answer: ((w: Workspace) => void) | undefined;
+  const sent: string[] = [];
+  const store = storeOf([workspace("acme", "Acme")], {
+    rename: (_slug, name) => {
+      sent.push(`rename ${name}`);
+      return new Promise<Workspace>((resolve) => (answer = resolve));
+    },
+    remove: async (slug) => {
+      sent.push(`remove ${slug}`);
+    },
+  });
+  await store.load();
+
+  const renaming = store.rename("acme", "Acme Works");
+  const removing = store.remove("acme");
+  await Promise.resolve();
+  expect(sent).toEqual(["rename Acme Works"]);
+  answer?.(workspace("acme", "Acme Works"));
+  await Promise.all([renaming, removing]);
+
+  expect([sent, slugs(store), store.wasRemoved("acme")]).toEqual([["rename Acme Works", "remove acme"], [], true]);
+});

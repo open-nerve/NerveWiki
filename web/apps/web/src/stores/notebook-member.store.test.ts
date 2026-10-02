@@ -131,3 +131,34 @@ test("a member's changes go out one at a time, the last made last; another membe
 
   expect(store.list?.map((m) => `${m.id}:${m.role}`)).toEqual(["ada:editor", "bob:admin"]);
 });
+
+// A removal waits for its member's role change still out, and goes out
+// once that is answered, refused too: a membership ended meanwhile is gone
+// as well (M3 Codex review R1).
+test("a removal waits for its member's role change, and goes out after its refusal too", async () => {
+  const gone = new ApiError(404, { status: 404, code: "notebook.member_not_found", title: "" });
+  let refuse: ((error: unknown) => void) | undefined;
+  const sent: string[] = [];
+  const joined = "2026-10-02T08:00:00Z";
+  const store = storeOf([member("ada", joined, "admin"), member("bob", joined)], {
+    update: (id, role) => {
+      sent.push(`${id}:${role}`);
+      return new Promise<NotebookMember>((_, reject) => (refuse = reject));
+    },
+    remove: (id) => {
+      sent.push(`remove ${id}`);
+      return Promise.reject(gone);
+    },
+  });
+  await store.load();
+
+  const changing = store.changeRole("bob", "reader");
+  const removing = store.remove("bob");
+  await Promise.resolve();
+  expect(sent).toEqual(["bob:reader"]);
+  refuse?.(gone);
+  await expect(changing).rejects.toBe(gone);
+  await removing;
+
+  expect([sent, ids(store)]).toEqual([["bob:reader", "remove bob"], ["ada"]]);
+});

@@ -18,9 +18,10 @@ export class WorkspaceStore {
   /** The slugs of the workspaces this generation deleted or left: their pages go to the landing, not to the 404. */
   private readonly removed = new Set<string>();
   /**
-   * Each workspace's renames, one at a time (v0.1 design 13.2, item 1):
-   * the store outlives the general page, whose form, mounted anew, may
-   * send while the rename before is out (M3 Codex review R1).
+   * Each workspace's renames, deletion and leaving, one at a time (v0.1
+   * design 13.2, item 1): the store outlives the general page, whose form,
+   * mounted anew, may send while the rename before is out (M3 Codex review
+   * R1).
    */
   private readonly inTurn = oneAtATimeById();
 
@@ -109,15 +110,17 @@ export class WorkspaceStore {
    * account removed from it) is gone as well.
    */
   private async gone(slug: string, request: () => Promise<void>): Promise<void> {
-    try {
-      await request();
-    } catch (error) {
-      if (!(error instanceof ApiError && error.code === "workspace.not_found")) {
-        throw error;
+    await this.inTurn(slug, async () => {
+      try {
+        await request();
+      } catch (error) {
+        if (!(error instanceof ApiError && error.code === "workspace.not_found")) {
+          throw error;
+        }
       }
-    }
-    this.removed.add(slug);
-    this.changed((list) => list.filter((workspace) => workspace.slug !== slug));
+      this.removed.add(slug);
+      this.changed((list) => list.filter((workspace) => workspace.slug !== slug));
+    });
   }
 
   private changed(change: (list: Workspace[]) => Workspace[]): void {

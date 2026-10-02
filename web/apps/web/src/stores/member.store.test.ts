@@ -138,3 +138,33 @@ test("a member's changes go out one at a time, the last made last; another membe
 
   expect(roles(store)).toEqual(["ada:member", "bob:admin"]);
 });
+
+// A removal waits for its member's role change still out, and goes out
+// once that is answered, refused too: a membership ended meanwhile is gone
+// as well (M3 Codex review R1).
+test("a removal waits for its member's role change, and goes out after its refusal too", async () => {
+  const gone = new ApiError(404, { status: 404, code: "workspace.member_not_found", title: "" });
+  let refuse: ((error: unknown) => void) | undefined;
+  const sent: string[] = [];
+  const store = storeOf([member("ada", "admin"), member("bob")], {
+    update: (id, role) => {
+      sent.push(`${id}:${role}`);
+      return new Promise<WorkspaceMember>((_, reject) => (refuse = reject));
+    },
+    remove: (id) => {
+      sent.push(`remove ${id}`);
+      return Promise.reject(gone);
+    },
+  });
+  await store.load();
+
+  const changing = store.changeRole("bob", "guest");
+  const removing = store.remove("bob");
+  await Promise.resolve();
+  expect(sent).toEqual(["bob:guest"]);
+  refuse?.(gone);
+  await expect(changing).rejects.toBe(gone);
+  await removing;
+
+  expect([sent, roles(store)]).toEqual([["bob:guest", "remove bob"], ["ada:admin"]]);
+});
