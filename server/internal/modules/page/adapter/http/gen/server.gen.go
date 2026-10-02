@@ -103,6 +103,15 @@ type PageCreate struct {
 	Title Title `json:"title"`
 }
 
+// PageView A page's reading view.
+type PageView struct {
+	// HTML The content rendered to HTML.
+	HTML string `json:"html"`
+
+	// Revision The content's version the HTML was rendered from.
+	Revision int `json:"revision"`
+}
+
 // Title 1–255 bytes after the surrounding blanks are trimmed and the text is in NFC; none of / \ : * ? " < > | # ^ [ ] nor control characters; not starting or ending with a dot; no name Windows reserves (CON, COM1, …). It is the file's name when the notebook is exported. Siblings' titles differ in more than case: they compare by Unicode case folding.
 type Title = string
 
@@ -171,6 +180,9 @@ type ServerInterface interface {
 	// GetPage Get a page
 	// (GET /api/v0/pages/{page_id})
 	GetPage(w http.ResponseWriter, r *http.Request, pageID PageID)
+	// GetPageView Read a page
+	// (GET /api/v0/pages/{page_id}/view)
+	GetPageView(w http.ResponseWriter, r *http.Request, pageID PageID)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -338,6 +350,32 @@ func (siw *ServerInterfaceWrapper) GetPage(w http.ResponseWriter, r *http.Reques
 	handler.ServeHTTP(w, r)
 }
 
+// GetPageView operation middleware
+func (siw *ServerInterfaceWrapper) GetPageView(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "page_id" -------------
+	var pageID PageID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "page_id", r.PathValue("page_id"), &pageID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPageView(w, r, pageID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -461,6 +499,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v0/notebooks/{notebook_id}/nodes", wrapper.ListNodes)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v0/notebooks/{notebook_id}/pages", wrapper.CreatePage)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v0/pages/{page_id}", wrapper.GetPage)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v0/pages/{page_id}/view", wrapper.GetPageView)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v0/nodes/{node_id}", wrapper.DeleteNode)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/v0/nodes/{node_id}", wrapper.RenameNode)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v0/nodes/{node_id}/move", wrapper.MoveNode)
@@ -751,6 +790,52 @@ func (response GetPagedefaultApplicationProblemPlusJSONResponse) VisitGetPageRes
 	return err
 }
 
+type GetPageViewRequestObject struct {
+	PageID PageID `json:"page_id"`
+}
+
+type GetPageViewResponseObject interface {
+	VisitGetPageViewResponse(w http.ResponseWriter) error
+}
+
+type GetPageView200JSONResponse PageView
+
+func (response GetPageView200JSONResponse) VisitGetPageViewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPageViewdefaultApplicationProblemPlusJSONResponse struct {
+	Body       externalRef0.Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response GetPageViewdefaultApplicationProblemPlusJSONResponse) VisitGetPageViewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	if response.Headers.WWWAuthenticate != nil {
+		w.Header().Set("WWW-Authenticate", fmt.Sprint(*response.Headers.WWWAuthenticate))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// DeleteNode Delete a page
@@ -771,6 +856,9 @@ type StrictServerInterface interface {
 	// GetPage Get a page
 	// (GET /api/v0/pages/{page_id})
 	GetPage(ctx context.Context, request GetPageRequestObject) (GetPageResponseObject, error)
+	// GetPageView Read a page
+	// (GET /api/v0/pages/{page_id}/view)
+	GetPageView(ctx context.Context, request GetPageViewRequestObject) (GetPageViewResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -982,6 +1070,32 @@ func (sh *strictHandler) GetPage(w http.ResponseWriter, r *http.Request, pageID 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetPageResponseObject); ok {
 		if err := validResponse.VisitGetPageResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetPageView operation middleware
+func (sh *strictHandler) GetPageView(w http.ResponseWriter, r *http.Request, pageID PageID) {
+	var request GetPageViewRequestObject
+
+	request.PageID = pageID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetPageView(ctx, request.(GetPageViewRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetPageView")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetPageViewResponseObject); ok {
+		if err := validResponse.VisitGetPageViewResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

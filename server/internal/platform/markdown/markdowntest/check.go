@@ -3,13 +3,13 @@ package markdowntest
 import (
 	"errors"
 	"fmt"
+	"io"
 	"net/url"
 	"regexp"
 	"slices"
 	"strings"
 
 	"golang.org/x/net/html"
-	"golang.org/x/net/html/atom"
 
 	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown"
 )
@@ -43,10 +43,13 @@ var (
 )
 
 // CheckHTML checks the HTML of a reading view rendered with exts (M4/P3
-// design 3.10): parsed back as a fragment, it holds only the elements and
-// attributes above and the extensions' Markup, no comment; every address
-// is on this site, http or https with a host, or mailto; every id starts
-// with "nw-"; every class is the renderers' or the extensions'.
+// design 3.10): read back by x/net/html's tokenizer, it holds only the
+// elements and attributes above and the extensions' Markup, no comment or
+// doctype; every address is on this site, http or https with a host, or
+// mailto; every id starts with "nw-"; every class is the renderers' or the
+// extensions'. It reads tokens, not a tree: the tree builder refuses more
+// than 512 elements open, which a user's nested tags reach, and a check of
+// the tags needs no tree.
 func CheckHTML(s string, exts ...markdown.Extension) error {
 	elements, urls := map[string][]string{}, []string{"href"}
 	known := slices.Clone(classes)
@@ -60,41 +63,35 @@ func CheckHTML(s string, exts ...markdown.Extension) error {
 		urls = append(urls, e.Markup.URLs...)
 		known = append(known, e.Markup.Classes...)
 	}
-	body := &html.Node{Type: html.ElementNode, Data: "body", DataAtom: atom.Body}
-	nodes, err := html.ParseFragment(strings.NewReader(s), body)
-	if err != nil {
-		return err
-	}
 	var errs []error
-	var walk func(n *html.Node)
-	walk = func(n *html.Node) {
-		switch n.Type {
-		case html.ElementNode:
-			attrs, ok := elements[n.Data]
-			if !ok {
-				errs = append(errs, fmt.Errorf("element <%s>", n.Data))
+	z := html.NewTokenizer(strings.NewReader(s))
+	for {
+		switch tt := z.Next(); tt {
+		case html.ErrorToken:
+			if !errors.Is(z.Err(), io.EOF) {
+				errs = append(errs, z.Err())
 			}
-			for _, a := range n.Attr {
-				if err := checkAttr(n.Data, a, attrs, urls, known); err != nil {
+			return errors.Join(errs...)
+		case html.StartTagToken, html.SelfClosingTagToken, html.EndTagToken:
+			t := z.Token()
+			attrs, ok := elements[t.Data]
+			if !ok {
+				errs = append(errs, fmt.Errorf("element <%s>", t.Data))
+			}
+			for _, a := range t.Attr {
+				if err := checkAttr(t.Data, a, attrs, urls, known); err != nil {
 					errs = append(errs, err)
 				}
 			}
-		case html.CommentNode, html.DoctypeNode:
-			errs = append(errs, fmt.Errorf("a comment or doctype %q", n.Data))
-		}
-		for c := n.FirstChild; c != nil; c = c.NextSibling {
-			walk(c)
+		case html.CommentToken, html.DoctypeToken:
+			errs = append(errs, fmt.Errorf("a comment or doctype %q", z.Token().Data))
 		}
 	}
-	for _, n := range nodes {
-		walk(n)
-	}
-	return errors.Join(errs...)
 }
 
 func checkAttr(element string, a html.Attribute, attrs, urls, known []string) error {
 	switch {
-	case a.Namespace != "" || !slices.Contains(attrs, a.Key):
+	case !slices.Contains(attrs, a.Key):
 		return fmt.Errorf("attribute %s of <%s>", a.Key, element)
 	case slices.Contains(urls, a.Key) && !onThisSiteOrAllowed(a.Val):
 		return fmt.Errorf("address %q of <%s>", a.Val, element)

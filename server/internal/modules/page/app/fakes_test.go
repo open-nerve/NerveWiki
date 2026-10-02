@@ -199,6 +199,34 @@ func (f *fakeStore) ContentMeta(ctx context.Context, id uuid.UUID) (app.ContentM
 	return app.ContentMeta{Revision: c.Revision, ByteSize: c.ByteSize, UpdatedBy: c.By, UpdatedAt: c.At}, nil
 }
 
+func (f *fakeStore) PageContent(ctx context.Context, id uuid.UUID) (app.PageContent, error) {
+	f.record(ctx, "PageContent")
+	c, ok := f.contents[id]
+	if !ok {
+		return app.PageContent{}, app.ErrNotFound
+	}
+	return app.PageContent{Content: c.Content, Revision: c.Revision}, nil
+}
+
+// fakeMarkdown parses a content to itself and renders it in a <p>, with the
+// page it rendered for; err, when set, is Render's.
+type fakeMarkdown struct {
+	*recorder
+	pages []app.PageRef
+	err   error
+}
+
+func (f *fakeMarkdown) Parse(content string) app.Parsed {
+	f.record(context.Background(), "Parse")
+	return content
+}
+
+func (f *fakeMarkdown) Render(ctx context.Context, parsed app.Parsed, page app.PageRef) (string, error) {
+	f.record(ctx, "Render")
+	f.pages = append(f.pages, page)
+	return "<p>" + parsed.(string) + "</p>", f.err
+}
+
 func (f *fakeStore) CreateNode(ctx context.Context, n domain.Node) error {
 	f.record(ctx, "CreateNode")
 	f.nodes[n.ID] = n

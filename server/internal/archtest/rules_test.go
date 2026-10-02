@@ -45,6 +45,7 @@ func rules() []rule {
 		{"module packages live in domain, app or adapter, or at the module root", moduleLayoutIsKnown},
 		{"internal/shared imports only the standard library (not net/http or database/sql), Unicode normalization and case folding, and internal/shared", sharedKernelIsPure},
 		{"River is imported only by platform/jobs and a module's adapter/river", riverStaysInJobs},
+		{"goldmark, golang.org/x/net/html and go.yaml.in/yaml are imported only by platform/markdown", markdownLibrariesStayInMarkdown},
 		{"bootstrap imports only a module's root", bootstrapImportsModuleRoots},
 		{"a module's adapters do not import each other", adaptersAreIndependent},
 	}
@@ -330,6 +331,17 @@ func riverStaysInJobs(from, to string) bool {
 	parts := strings.Split(r, "/")
 	// internal/modules/<m>/adapter/river[/...]
 	return len(parts) < 5 || parts[0] != "internal" || parts[1] != "modules" || parts[3] != "adapter" || parts[4] != "river"
+}
+
+// markdownLibrariesStayInMarkdown keeps the Markdown libraries behind
+// platform/markdown (M4/P3 design 3.11): the one parse and its rendering,
+// hardened, and the one reading of a frontmatter. platform/config reads YAML
+// through koanf, which is no direct import. M6's registrants, which build on
+// goldmark, change the rule.
+func markdownLibrariesStayInMarkdown(from, to string) bool {
+	library := within(to, "github.com/yuin/goldmark") || within(to, "golang.org/x/net/html") ||
+		strings.HasPrefix(to, "go.yaml.in/yaml/")
+	return library && !inModuleDir(from, "internal/platform/markdown")
 }
 
 func testHelpersOnlyInTests(_, to string) bool {

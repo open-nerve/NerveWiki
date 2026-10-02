@@ -1,6 +1,7 @@
 package markdowntest_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown"
@@ -18,6 +19,7 @@ func TestCheckHTMLPassesWhatTheRenderersWrite(t *testing.T) {
 		`<table><thead><tr><th align="left">a</th></tr></thead><tbody><tr><td align="right">1</td></tr></tbody></table>`,
 		`<p><span class="nw-image">a <a href="i.png">i.png</a></span></p>`,
 		`<details open><summary>s</summary><ol start="3" reversed><li>a</li></ol></details>`,
+		strings.Repeat("<b>", 600) + "deep" + strings.Repeat("</b>", 600),
 	} {
 		if err := markdowntest.CheckHTML(s); err != nil {
 			t.Errorf("%s: %v", s, err)
@@ -44,6 +46,7 @@ func TestCheckHTMLReportsWhatNoRendererWrites(t *testing.T) {
 		"a script":                    `<script>x</script>`,
 		"a comment":                   `<!-- x -->`,
 		"a form":                      `<form><input type="text"></form>`,
+		"an end tag of no renderer":   `a</script>`,
 	} {
 		if err := markdowntest.CheckHTML(s); err == nil {
 			t.Errorf("%s: %s passed", name, s)

@@ -11,6 +11,7 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/workspace"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/jobs"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown"
 )
 
 // deactivationRegistrants are the modules that take part in an account's
@@ -201,6 +202,13 @@ type pageExtensions struct {
 // observes them, M6's links take part in them and observe them.
 func pageRegistrants() pageExtensions {
 	return pageExtensions{}
+}
+
+// markdownExtensions are the extensions of the one Markdown: none in M4;
+// M5's task items take their byte positions, M6's dialect its links, tags
+// and embeds, M7's attachments their inline rendering.
+func markdownExtensions() []markdown.Extension {
+	return nil
 }
 
 // purgers are the modules' purgers of the soft-deleted rows, leaf to root

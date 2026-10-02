@@ -156,6 +156,15 @@ func (s *Store) ContentMeta(ctx context.Context, id uuid.UUID) (app.ContentMeta,
 		UpdatedAt: row.UpdatedAt}, nil
 }
 
+// PageContent implements app.Nodes.
+func (s *Store) PageContent(ctx context.Context, id uuid.UUID) (app.PageContent, error) {
+	row, err := s.queries(ctx).PageContent(ctx, id)
+	if err != nil {
+		return app.PageContent{}, notFound("page content", err)
+	}
+	return app.PageContent{Content: row.Content, Revision: int(row.Revision)}, nil
+}
+
 // CreateNode implements app.NodeWriter.
 func (s *Store) CreateNode(ctx context.Context, n domain.Node) error {
 	err := s.queries(ctx).CreateNode(ctx, gen.CreateNodeParams{

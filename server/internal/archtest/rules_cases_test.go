@@ -25,6 +25,7 @@ func TestRules(t *testing.T) {
 		platform = "platform packages do not import each other, except config"
 		testOnly = "test helpers (pgtest, apitest, httpservertest, clocktest, markdowntest) are imported only by tests"
 		river    = "River is imported only by platform/jobs and a module's adapter/river"
+		md       = "goldmark, golang.org/x/net/html and go.yaml.in/yaml are imported only by platform/markdown"
 	)
 	tests := []struct {
 		from, to string
@@ -130,6 +131,17 @@ func TestRules(t *testing.T) {
 		{m("internal/platform/markdown"), m("internal/platform/markdown/markdowntest"), []string{testOnly}},
 		{m("internal/modules/page/adapter/markdown"), m("internal/platform/markdown/markdowntest"), []string{testOnly}},
 		{m("internal/platform/markdown/markdowntest"), m("internal/platform/markdown"), nil},
+
+		// The Markdown libraries.
+		{m("internal/platform/markdown"), "github.com/yuin/goldmark/parser", nil},
+		{m("internal/platform/markdown/internal/harden"), "github.com/yuin/goldmark", nil},
+		{m("internal/platform/markdown"), "golang.org/x/net/html", nil},
+		{m("internal/platform/markdown"), "go.yaml.in/yaml/v3", nil},
+		{m("internal/modules/page/app"), "github.com/yuin/goldmark/ast", []string{pure, md}},
+		{m("internal/modules/page/adapter/markdown"), "github.com/yuin/goldmark", []string{md}},
+		{m("internal/platform/httpserver"), "golang.org/x/net/html", []string{md}},
+		{m("internal/platform/config"), "go.yaml.in/yaml/v3", []string{md}},
+		{m("internal/bootstrap"), "golang.org/x/net/http2", nil},
 	}
 	fired := map[string]bool{}
 	for _, tt := range tests {

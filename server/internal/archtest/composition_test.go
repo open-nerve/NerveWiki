@@ -23,6 +23,7 @@ import (
 // the command line alike (design 3.6; v0.1 design 13.1, item 21): serve
 // and Users reach the deactivation's, and through them the workspace
 // module's (M2/P2 review, Q2); Workspaces reaches the workspace module's.
+// serve reaches the Markdown's extensions too (M4/P3 design 3.11).
 func TestCommandsComposeNoServerAndNoJobs(t *testing.T) {
 	registerSources(t)
 	cfg := &packages.Config{
@@ -69,7 +70,7 @@ func TestCommandsComposeNoServerAndNoJobs(t *testing.T) {
 		t.Fatal("bootstrap.newApp not found")
 	}
 	reached, _ := walkCalls(graph, serve, func(*ssa.Function) bool { return false })
-	assertReaches(t, "bootstrap.newApp", reached, registrants...)
+	assertReaches(t, "bootstrap.newApp", reached, append(registrants, m("internal/bootstrap")+".markdownExtensions")...)
 }
 
 // assertReaches fails unless reached holds a chain to each of want. Not

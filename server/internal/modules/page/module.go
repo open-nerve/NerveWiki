@@ -11,10 +11,12 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	httpadapter "github.com/open-nerve/NerveWiki/server/internal/modules/page/adapter/http"
+	markdownadapter "github.com/open-nerve/NerveWiki/server/internal/modules/page/adapter/markdown"
 	postgresadapter "github.com/open-nerve/NerveWiki/server/internal/modules/page/adapter/postgres"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/app"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown"
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
@@ -55,6 +57,9 @@ type Deps struct {
 	Authorizer shared.Authorizer
 	Workspaces Workspaces
 	Notebooks  Notebooks
+	// Markdown is the one parse and rendering of Markdown, with the
+	// registered extensions (M4 design 8).
+	Markdown *markdown.Markdown
 	// The registrants of the extension points.
 	Guards       []WriteGuard
 	Participants []Participant
@@ -75,12 +80,13 @@ func New(d Deps) *Module {
 		Guards: d.Guards, Participants: d.Participants, Observers: d.Observers,
 	})
 	return &Module{uc: httpadapter.UseCases{
-		ListNodes:  app.NewListNodes(d.Notebooks, store, d.Authorizer),
-		CreatePage: app.NewCreatePage(writer, store, d.Logger),
-		GetPage:    app.NewGetPage(d.Notebooks, store, d.Authorizer),
-		RenameNode: app.NewRenameNode(writer, store, d.Logger),
-		MoveNode:   app.NewMoveNode(writer, store, d.Logger),
-		DeleteNode: app.NewDeleteNode(writer, store, d.Logger),
+		ListNodes:   app.NewListNodes(d.Notebooks, store, d.Authorizer),
+		CreatePage:  app.NewCreatePage(writer, store, d.Logger),
+		GetPage:     app.NewGetPage(d.Notebooks, store, d.Authorizer),
+		GetPageView: app.NewGetPageView(d.Notebooks, store, d.Authorizer, markdownadapter.New(d.Markdown)),
+		RenameNode:  app.NewRenameNode(writer, store, d.Logger),
+		MoveNode:    app.NewMoveNode(writer, store, d.Logger),
+		DeleteNode:  app.NewDeleteNode(writer, store, d.Logger),
 	}}
 }
 

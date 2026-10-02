@@ -16,7 +16,8 @@ import (
 // The tree and the reads agree (M4/P1 design 3.12): on the matrix's data,
 // each column's trees of lab's notebooks hold exactly the pages it reads
 // one by one, by the same name under the same parent, and each read's
-// ancestors are its chain up the tree. The tree is read by the notebook,
+// ancestors are its chain up the tree. A page's reading view answers as
+// its read does (M4/P3 design 3.9). The tree is read by the notebook,
 // the page by its node, each decided on by the access module: a read that
 // drifts from the tree fails here. On this copy alone, team's page has a
 // child and priv a deleted page, which neither shows; the copy keeps the
@@ -90,6 +91,9 @@ func TestTheTreeIsWhatEachReadAllows(t *testing.T) {
 		read := map[string]place{}
 		for _, id := range pages {
 			status, answer := ask(t, contract, http.MethodGet, base+"/api/v0/pages/"+id.String(), d.tokens[c], "")
+			if view, viewAnswer := ask(t, contract, http.MethodGet, base+"/api/v0/pages/"+id.String()+"/view", d.tokens[c], ""); view != status {
+				t.Errorf("%s: a page's read = %d, its reading view = %d %s", c, status, view, viewAnswer)
+			}
 			switch status {
 			case http.StatusOK:
 				var p struct {

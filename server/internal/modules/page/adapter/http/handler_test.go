@@ -81,6 +81,7 @@ type (
 	fakeList   struct{ *fakes }
 	fakeCreate struct{ *fakes }
 	fakeGet    struct{ *fakes }
+	fakeView   struct{ *fakes }
 	fakeRename struct{ *fakes }
 	fakeMove   struct{ *fakes }
 	fakeDelete struct{ *fakes }
@@ -103,6 +104,11 @@ func (f fakeGet) Execute(_ context.Context, pageID uuid.UUID) (app.PageView, err
 	return notesView(), f.err
 }
 
+func (f fakeView) Execute(_ context.Context, pageID uuid.UUID) (app.ReadingView, error) {
+	f.got = []any{pageID}
+	return app.ReadingView{HTML: "<h1 id=\"nw-notes\">Notes</h1>\n", Revision: 3}, f.err
+}
+
 func (f fakeRename) Execute(_ context.Context, nodeID uuid.UUID, name string, client domain.Client) (domain.Node, error) {
 	f.got = []any{nodeID, name, client}
 	return notes(), f.err
@@ -123,8 +129,8 @@ func (f *fakes) serve(t *testing.T) http.Handler {
 	t.Helper()
 	router := httpserver.NewRouter(slog.New(slog.DiscardHandler))
 	httpadapter.Register(router, httpservertest.NewAPI(t, httpservertest.APIOptions{Authenticator: fakeAuth{}}), httpadapter.UseCases{
-		ListNodes: fakeList{f}, CreatePage: fakeCreate{f}, GetPage: fakeGet{f}, RenameNode: fakeRename{f},
-		MoveNode: fakeMove{f}, DeleteNode: fakeDelete{f},
+		ListNodes: fakeList{f}, CreatePage: fakeCreate{f}, GetPage: fakeGet{f}, GetPageView: fakeView{f},
+		RenameNode: fakeRename{f}, MoveNode: fakeMove{f}, DeleteNode: fakeDelete{f},
 	})
 	return router
 }
@@ -150,6 +156,7 @@ const (
 	nodesPath = "/api/v0/notebooks/0199a2b4-0000-7000-8000-000000000010/nodes"
 	pagesPath = "/api/v0/notebooks/0199a2b4-0000-7000-8000-000000000010/pages"
 	pagePath  = "/api/v0/pages/0199a2b4-0000-7000-8000-000000000012"
+	viewPath  = pagePath + "/view"
 	nodePath  = "/api/v0/nodes/0199a2b4-0000-7000-8000-000000000012"
 	movePath  = nodePath + "/move"
 )
@@ -173,6 +180,8 @@ func TestTheOperationsAnswerTheUseCases(t *testing.T) {
 			`{"parent_id":null,"title":"Notes","after_id":"0199a2b4-0000-7000-8000-000000000013"}`, http.StatusCreated, pageJSON,
 			[]any{id(10), app.PageDraft{Title: "Notes", Position: app.After(id(13))}, domain.ClientWeb}},
 		{"a page", "session", http.MethodGet, pagePath, "", http.StatusOK, pageJSON, []any{id(12)}},
+		{"a page's reading view", "session", http.MethodGet, viewPath, "", http.StatusOK,
+			`{"html":"\u003ch1 id=\"nw-notes\"\u003eNotes\u003c/h1\u003e\n","revision":3}`, []any{id(12)}},
 		{"a rename by the web", "session", http.MethodPatch, nodePath, `{"name":"Notes"}`, http.StatusOK, treeNodeJSON,
 			[]any{id(12), "Notes", domain.ClientWeb}},
 		{"a rename by the API", "pat", http.MethodPatch, nodePath, `{"name":"Notes"}`, http.StatusOK, treeNodeJSON,
@@ -233,6 +242,7 @@ func TestTheOperationsAnswerEachProblem(t *testing.T) {
 		{http.MethodPost, pagesPath, create, domain.ErrTitleTaken, http.StatusConflict, "page.title_taken"},
 		{http.MethodPost, pagesPath, create, domain.ErrTooDeep, http.StatusConflict, "page.too_deep"},
 		{http.MethodGet, pagePath, "", domain.ErrNotFound, http.StatusNotFound, "page.not_found"},
+		{http.MethodGet, viewPath, "", domain.ErrNotFound, http.StatusNotFound, "page.not_found"},
 		{http.MethodPatch, nodePath, `{"name":"a/b"}`, domain.ErrNotFound, http.StatusNotFound, "page.not_found"},
 		{http.MethodPatch, nodePath, `{"name":"a/b"}`, shared.Forbidden(), http.StatusForbidden, "forbidden"},
 		{http.MethodPatch, nodePath, `{"name":"a/b"}`, invalid, http.StatusUnprocessableEntity, "validation_failed"},
@@ -259,6 +269,7 @@ func TestAnIDThatIsNoUUID(t *testing.T) {
 	for _, tt := range []struct{ method, path, body string }{
 		{http.MethodGet, "/api/v0/notebooks/eng/nodes", ""},
 		{http.MethodGet, "/api/v0/pages/notes", ""},
+		{http.MethodGet, "/api/v0/pages/notes/view", ""},
 		{http.MethodPatch, "/api/v0/nodes/notes", `{"name":"Notes"}`},
 		{http.MethodPost, "/api/v0/nodes/notes/move", `{"parent_id":null}`},
 		{http.MethodDelete, "/api/v0/nodes/notes", ""},

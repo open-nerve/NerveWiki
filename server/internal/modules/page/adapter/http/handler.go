@@ -32,6 +32,11 @@ type GetPageUseCase interface {
 	Execute(ctx context.Context, id uuid.UUID) (app.PageView, error)
 }
 
+// GetPageViewUseCase is app.GetPageView.
+type GetPageViewUseCase interface {
+	Execute(ctx context.Context, id uuid.UUID) (app.ReadingView, error)
+}
+
 // RenameNodeUseCase is app.RenameNode.
 type RenameNodeUseCase interface {
 	Execute(ctx context.Context, id uuid.UUID, name string, client domain.Client) (domain.Node, error)
@@ -49,12 +54,13 @@ type DeleteNodeUseCase interface {
 
 // UseCases are the use cases behind the module's operations.
 type UseCases struct {
-	ListNodes  ListNodesUseCase
-	CreatePage CreatePageUseCase
-	GetPage    GetPageUseCase
-	RenameNode RenameNodeUseCase
-	MoveNode   MoveNodeUseCase
-	DeleteNode DeleteNodeUseCase
+	ListNodes   ListNodesUseCase
+	CreatePage  CreatePageUseCase
+	GetPage     GetPageUseCase
+	GetPageView GetPageViewUseCase
+	RenameNode  RenameNodeUseCase
+	MoveNode    MoveNodeUseCase
+	DeleteNode  DeleteNodeUseCase
 }
 
 // Register mounts the module's routes on router, the root router from
@@ -117,6 +123,15 @@ func (h handler) GetPage(ctx context.Context, req gen.GetPageRequestObject) (gen
 		return nil, err
 	}
 	return gen.GetPage200JSONResponse(pageOf(v)), nil
+}
+
+// GetPageView serves GET /api/v0/pages/{page_id}/view.
+func (h handler) GetPageView(ctx context.Context, req gen.GetPageViewRequestObject) (gen.GetPageViewResponseObject, error) {
+	v, err := h.uc.GetPageView.Execute(ctx, req.PageID)
+	if err != nil {
+		return nil, err
+	}
+	return gen.GetPageView200JSONResponse{HTML: v.HTML, Revision: v.Revision}, nil
 }
 
 // RenameNode serves PATCH /api/v0/nodes/{node_id}.
