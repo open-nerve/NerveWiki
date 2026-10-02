@@ -162,7 +162,16 @@ func (s *Store) PageContent(ctx context.Context, id uuid.UUID) (app.PageContent,
 	if err != nil {
 		return app.PageContent{}, notFound("page content", err)
 	}
-	return app.PageContent{Content: row.Content, Revision: int(row.Revision)}, nil
+	return app.PageContent{Content: row.Content, Revision: int(row.Revision), Hash: row.ContentHash}, nil
+}
+
+// LockContent implements app.Nodes.
+func (s *Store) LockContent(ctx context.Context, notebookID, id uuid.UUID) (app.ContentLock, error) {
+	row, err := s.queries(ctx).LockContent(ctx, gen.LockContentParams{NodeID: id, NotebookID: notebookID})
+	if err != nil {
+		return app.ContentLock{}, notFound("lock content", err)
+	}
+	return app.ContentLock{Revision: int(row.Revision), Hash: row.ContentHash, ByteSize: int(row.ByteSize)}, nil
 }
 
 // CreateNode implements app.NodeWriter.
@@ -187,6 +196,17 @@ func (s *Store) CreateContent(ctx context.Context, c app.Content) error {
 		ByteSize: int32(c.ByteSize), By: c.By, Now: c.At,
 	}); err != nil {
 		return fmt.Errorf("create content: %w", err)
+	}
+	return nil
+}
+
+// WriteContent implements app.NodeWriter.
+func (s *Store) WriteContent(ctx context.Context, c app.Content) error {
+	if err := s.queries(ctx).WriteContent(ctx, gen.WriteContentParams{
+		NodeID: c.NodeID, Content: c.Content, Revision: int32(c.Revision), ContentHash: c.Hash,
+		ByteSize: int32(c.ByteSize), By: c.By, Now: c.At,
+	}); err != nil {
+		return fmt.Errorf("write content: %w", err)
 	}
 	return nil
 }

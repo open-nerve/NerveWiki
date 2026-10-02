@@ -95,6 +95,8 @@ func rules() map[shared.Action]Rule {
 		"node.rename": {Level: LevelNotebook, Notebook: writers()},
 		"node.move":   {Level: LevelNotebook, Notebook: writers()},
 		"node.delete": {Level: LevelNotebook, Notebook: writers()},
+		"page.write":  {Level: LevelNotebook, Notebook: writers()},
+		"page.edit":   {Level: LevelNotebook, Notebook: writers()},
 	}
 }
 

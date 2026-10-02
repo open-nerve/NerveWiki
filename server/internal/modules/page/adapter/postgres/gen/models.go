@@ -37,6 +37,18 @@ type ChangesetItem struct {
 	DeletedAt       *time.Time
 }
 
+type EditSession struct {
+	ID          uuid.UUID
+	NodeID      uuid.UUID
+	NotebookID  uuid.UUID
+	UserID      uuid.UUID
+	Client      string
+	ChangesetID *uuid.UUID
+	Revision    *int32
+	CreatedAt   time.Time
+	ExpiresAt   time.Time
+}
+
 type Node struct {
 	ID          uuid.UUID
 	NotebookID  uuid.UUID

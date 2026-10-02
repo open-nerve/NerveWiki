@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"cmp"
 	"context"
+	"crypto/sha256"
 	"log/slog"
 	"slices"
 	"time"
@@ -107,6 +108,10 @@ type fakeStore struct {
 	// upsert merges them.
 	items     map[uuid.UUID]app.Item
 	revisions []app.Revision
+	// touched are the changesets written again, with when.
+	touched map[uuid.UUID]time.Time
+	// sessions are the edit sessions.
+	sessions map[uuid.UUID]app.EditSession
 }
 
 func (f *fakeStore) FindNode(ctx context.Context, id uuid.UUID) (domain.Node, error) {
@@ -205,7 +210,17 @@ func (f *fakeStore) PageContent(ctx context.Context, id uuid.UUID) (app.PageCont
 	if !ok {
 		return app.PageContent{}, app.ErrNotFound
 	}
-	return app.PageContent{Content: c.Content, Revision: c.Revision}, nil
+	return app.PageContent{Content: c.Content, Revision: c.Revision, Hash: c.Hash}, nil
+}
+
+func (f *fakeStore) LockContent(ctx context.Context, notebookID, id uuid.UUID) (app.ContentLock, error) {
+	f.record(ctx, "LockContent")
+	n, ok := f.nodes[id]
+	c, has := f.contents[id]
+	if !ok || !has || n.NotebookID != notebookID || n.Kind != domain.KindPage {
+		return app.ContentLock{}, app.ErrNotFound
+	}
+	return app.ContentLock{Revision: c.Revision, Hash: c.Hash, ByteSize: c.ByteSize}, nil
 }
 
 // fakeMarkdown parses a content to itself and renders it in a <p>, with the
@@ -235,6 +250,12 @@ func (f *fakeStore) CreateNode(ctx context.Context, n domain.Node) error {
 
 func (f *fakeStore) CreateContent(ctx context.Context, c app.Content) error {
 	f.record(ctx, "CreateContent")
+	f.contents[c.NodeID] = c
+	return nil
+}
+
+func (f *fakeStore) WriteContent(ctx context.Context, c app.Content) error {
+	f.record(ctx, "WriteContent")
 	f.contents[c.NodeID] = c
 	return nil
 }
@@ -274,6 +295,12 @@ func (f *fakeStore) CreateChangeset(ctx context.Context, c app.Changeset) error 
 	return nil
 }
 
+func (f *fakeStore) TouchChangeset(ctx context.Context, id uuid.UUID, at time.Time) error {
+	f.record(ctx, "TouchChangeset")
+	f.touched[id] = at
+	return nil
+}
+
 func (f *fakeStore) RecordItem(ctx context.Context, it app.Item) error {
 	f.record(ctx, "RecordItem")
 	if old, ok := f.items[it.Change.NodeID]; ok && old.ChangesetID == it.ChangesetID {
@@ -283,10 +310,54 @@ func (f *fakeStore) RecordItem(ctx context.Context, it app.Item) error {
 	return nil
 }
 
+// RecordRevision inserts the version, or updates the page's in the
+// changeset, keeping its base and id, as the table's upsert does.
 func (f *fakeStore) RecordRevision(ctx context.Context, r app.Revision) error {
 	f.record(ctx, "RecordRevision")
+	for i, old := range f.revisions {
+		if old.ChangesetID == r.ChangesetID && old.NodeID == r.NodeID {
+			r.ID, r.Base = old.ID, old.Base
+			f.revisions[i] = r
+			return nil
+		}
+	}
 	f.revisions = append(f.revisions, r)
 	return nil
+}
+
+func (f *fakeStore) CreateSession(ctx context.Context, s app.EditSession) error {
+	f.record(ctx, "CreateSession")
+	f.sessions[s.ID] = s
+	return nil
+}
+
+func (f *fakeStore) LockSession(ctx context.Context, id uuid.UUID) (app.EditSession, error) {
+	f.record(ctx, "LockSession")
+	s, ok := f.sessions[id]
+	if !ok {
+		return app.EditSession{}, app.ErrNotFound
+	}
+	return s, nil
+}
+
+func (f *fakeStore) SetSessionWrite(ctx context.Context, id, changesetID uuid.UUID, revision int) error {
+	f.record(ctx, "SetSessionWrite")
+	s := f.sessions[id]
+	s.ChangesetID, s.Revision = changesetID, revision
+	f.sessions[id] = s
+	return nil
+}
+
+func (f *fakeStore) DeleteNodeSessions(ctx context.Context, ids []uuid.UUID) ([]app.EditSession, error) {
+	f.record(ctx, "DeleteNodeSessions")
+	var out []app.EditSession
+	for _, s := range f.sessions {
+		if slices.Contains(ids, s.NodeID) {
+			out = append(out, s)
+			delete(f.sessions, s.ID)
+		}
+	}
+	return out, nil
 }
 
 // fakeAuthorizer grants the actions of grants, answers forbidden for those
@@ -383,6 +454,7 @@ type fixture struct {
 	workspaces fakeWorkspaces
 	notebooks  fakeNotebooks
 	store      *fakeStore
+	md         *fakeMarkdown
 	auth       *fakeAuthorizer
 	logs       *bytes.Buffer
 	guards     []app.WriteGuard
@@ -398,11 +470,12 @@ func newFixture() *fixture {
 		rec: rec, tx: &fakeTx{}, clock: &tickingClock{},
 		workspaces: fakeWorkspaces{recorder: rec, gone: map[uuid.UUID]bool{}},
 		store: &fakeStore{recorder: rec, nodes: map[uuid.UUID]domain.Node{}, contents: map[uuid.UUID]app.Content{},
-			items: map[uuid.UUID]app.Item{}},
+			items: map[uuid.UUID]app.Item{}, touched: map[uuid.UUID]time.Time{}, sessions: map[uuid.UUID]app.EditSession{}},
 		auth: &fakeAuthorizer{recorder: rec, grants: map[shared.Action]bool{}, forbidden: map[shared.Action]bool{}},
 		logs: &bytes.Buffer{}, alice: uuid.NewV7(), acme: uuid.NewV7(), eng: uuid.NewV7(),
 	}
 	f.notebooks = fakeNotebooks{recorder: rec, workspaces: map[uuid.UUID]uuid.UUID{f.eng: f.acme}, gone: map[uuid.UUID]bool{}}
+	f.md = &fakeMarkdown{recorder: rec}
 	return f
 }
 
@@ -433,7 +506,8 @@ func (f *fixture) page(name string, parent *uuid.UUID, order float64) domain.Nod
 	n := domain.Node{ID: uuid.NewV7(), NotebookID: f.eng, ParentID: parent, Kind: domain.KindPage, Name: title.Name,
 		NameKey: title.Key, SortOrder: order, CreatedBy: f.alice, UpdatedBy: f.alice, CreatedAt: at, UpdatedAt: at}
 	f.store.nodes[n.ID] = n
-	f.store.contents[n.ID] = app.Content{NodeID: n.ID, Revision: 1, By: f.alice, At: at}
+	sum := sha256.Sum256(nil)
+	f.store.contents[n.ID] = app.Content{NodeID: n.ID, Revision: 1, Hash: sum[:], By: f.alice, At: at}
 	return n
 }
 

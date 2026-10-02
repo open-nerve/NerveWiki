@@ -66,21 +66,82 @@ func (q *Queries) CreateContent(ctx context.Context, arg CreateContentParams) er
 	return err
 }
 
+const lockContent = `-- name: LockContent :one
+SELECT c.revision, c.content_hash, c.byte_size FROM page_contents c
+JOIN nodes n ON n.id = c.node_id
+WHERE c.node_id = $1 AND n.notebook_id = $2 AND n.kind = 'page'
+    AND n.deleted_at IS NULL AND c.deleted_at IS NULL
+FOR NO KEY UPDATE OF c
+`
+
+type LockContentParams struct {
+	NodeID     uuid.UUID
+	NotebookID uuid.UUID
+}
+
+type LockContentRow struct {
+	Revision    int32
+	ContentHash []byte
+	ByteSize    int32
+}
+
+// The content row of a page not deleted of the notebook, FOR NO KEY UPDATE: the page's gate (M4 design 4,
+// "row locks within a page"). A content write compares its base_revision under it, and an edit session opens
+// under it; the node's row is not locked: the notebook's row keeps the tree still.
+func (q *Queries) LockContent(ctx context.Context, arg LockContentParams) (LockContentRow, error) {
+	row := q.db.QueryRow(ctx, lockContent, arg.NodeID, arg.NotebookID)
+	var i LockContentRow
+	err := row.Scan(&i.Revision, &i.ContentHash, &i.ByteSize)
+	return i, err
+}
+
 const pageContent = `-- name: PageContent :one
-SELECT content, revision FROM page_contents
+SELECT content, revision, content_hash FROM page_contents
 WHERE node_id = $1 AND deleted_at IS NULL
 `
 
 type PageContentRow struct {
-	Content  string
-	Revision int32
+	Content     string
+	Revision    int32
+	ContentHash []byte
 }
 
-// A page's content and its version, read in one statement for the reading
-// view: a deleted node's content went to the bin with it.
+// A page's content, its version and its hash, read in one statement: a deleted node's content went to the bin
+// with it.
 func (q *Queries) PageContent(ctx context.Context, nodeID uuid.UUID) (PageContentRow, error) {
 	row := q.db.QueryRow(ctx, pageContent, nodeID)
 	var i PageContentRow
-	err := row.Scan(&i.Content, &i.Revision)
+	err := row.Scan(&i.Content, &i.Revision, &i.ContentHash)
 	return i, err
+}
+
+const writeContent = `-- name: WriteContent :exec
+UPDATE page_contents
+SET content = $1, revision = $2, content_hash = $3,
+    byte_size = $4, updated_by_id = $5, updated_at = $6
+WHERE node_id = $7 AND deleted_at IS NULL
+`
+
+type WriteContentParams struct {
+	Content     string
+	Revision    int32
+	ContentHash []byte
+	ByteSize    int32
+	By          uuid.UUID
+	Now         time.Time
+	NodeID      uuid.UUID
+}
+
+// A page's content as a write leaves it, under LockContent's lock.
+func (q *Queries) WriteContent(ctx context.Context, arg WriteContentParams) error {
+	_, err := q.db.Exec(ctx, writeContent,
+		arg.Content,
+		arg.Revision,
+		arg.ContentHash,
+		arg.ByteSize,
+		arg.By,
+		arg.Now,
+		arg.NodeID,
+	)
+	return err
 }

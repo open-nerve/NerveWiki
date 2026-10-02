@@ -136,8 +136,8 @@ func TestNodesReadBack(t *testing.T) {
 	}
 }
 
-// A page's content and version read in one statement; a deleted node's
-// content is deleted with it.
+// A page's content, version and hash read in one statement; a deleted
+// node's content is deleted with it.
 func TestPageContent(t *testing.T) {
 	ctx := context.Background()
 	f := newFixture(t)
@@ -145,8 +145,9 @@ func TestPageContent(t *testing.T) {
 	f.exec(t, "UPDATE page_contents SET content = $2, byte_size = octet_length($2), content_hash = sha256(convert_to($2, 'UTF8')),"+
 		" revision = 4 WHERE node_id = $1", a.ID, "# A\n")
 	got, err := f.s.PageContent(ctx, a.ID)
-	if err != nil || got != (app.PageContent{Content: "# A\n", Revision: 4}) {
-		t.Errorf("PageContent(A) = %+v, %v; want its content at revision 4", got, err)
+	sum := sha256.Sum256([]byte("# A\n"))
+	if want := (app.PageContent{Content: "# A\n", Revision: 4, Hash: sum[:]}); err != nil || !reflect.DeepEqual(got, want) {
+		t.Errorf("PageContent(A) = %+v, %v; want its content at revision 4, with its hash", got, err)
 	}
 	if err := f.s.DeleteNodes(ctx, []uuid.UUID{a.ID}, f.alice, now()); err != nil {
 		t.Fatal(err)
