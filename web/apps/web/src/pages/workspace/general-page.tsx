@@ -1,11 +1,8 @@
 import { observer } from "mobx-react-lite";
-import { useRef, useState, type FormEvent } from "react";
 
 import { ConfirmDialog } from "../../app/confirm-dialog";
-import { useForm } from "../../app/form";
+import { RenameForm } from "../../app/rename-form";
 import { workspaceNameProblem } from "../../app/slug";
-import { FormField } from "../../components/form-field";
-import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
 import { useT } from "../../i18n/i18n";
 import type { Workspace } from "../../services/workspace.service";
@@ -18,6 +15,7 @@ import { useWorkspace } from "./workspace-layout";
  */
 export const GeneralPage = observer(function GeneralPage() {
   const workspace = useWorkspace();
+  const workspaces = useWorkspaces();
   const t = useT();
   const admin = workspace.role === "admin";
   return (
@@ -25,7 +23,14 @@ export const GeneralPage = observer(function GeneralPage() {
       <section className="max-w-md space-y-6">
         <h2 className="text-lg font-semibold">{t("workspaceSettings.general")}</h2>
         {admin ? (
-          <RenameForm workspace={workspace} />
+          <RenameForm
+            current={workspace.name}
+            label={t("createWorkspace.name")}
+            check={workspaceNameProblem}
+            rename={(name) => workspaces.rename(workspace.slug, name)}
+            saveLabel={t("workspaceSettings.save")}
+            savedLabel={t("workspaceSettings.saved")}
+          />
         ) : (
           <div className="space-y-1">
             <h3 className="text-sm font-medium">{t("createWorkspace.name")}</h3>
@@ -41,67 +46,6 @@ export const GeneralPage = observer(function GeneralPage() {
       </section>
       {admin && <DeleteSection workspace={workspace} />}
     </div>
-  );
-});
-
-/**
- * RenameForm renames the workspace: the name goes out only when it changed
- * (trimmed, as the server keeps it); the switcher shows the new one. Until
- * it is edited, and again once a save went through, the field shows the
- * name as the list has it, a rename by another admin too: Save then sends
- * nothing back over it. A name edited while its rename was out keeps the
- * edit, as DisplayNameForm has it: what it shows then is not what was
- * saved, and the next save sends it.
- */
-const RenameForm = observer(function RenameForm({ workspace }: { workspace: Workspace }) {
-  const workspaces = useWorkspaces();
-  const t = useT();
-  /** What was typed since the last save; none, the name as the list has it. */
-  const [draft, setDraft] = useState<string>();
-  const name = draft ?? workspace.name;
-  const [saved, setSaved] = useState(false);
-  const { ref, sending, banner, problemOf, submit } = useForm(["name"]);
-  /** How many times the field was edited: a save tells whether the name it sent is still the one shown. */
-  const edits = useRef(0);
-
-  function onSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const problem = workspaceNameProblem(name);
-    const trimmed = name.trim();
-    const edit = edits.current;
-    setSaved(false);
-    void submit(problem === undefined ? {} : { name: problem }, async () => {
-      if (trimmed !== workspace.name) {
-        await workspaces.rename(workspace.slug, trimmed);
-      }
-      if (edits.current === edit) {
-        setDraft(undefined);
-        setSaved(true);
-      }
-    });
-  }
-
-  return (
-    <form ref={ref} noValidate onSubmit={onSubmit} className="space-y-4">
-      {banner !== undefined && <Alert>{banner}</Alert>}
-      <FormField
-        label={t("createWorkspace.name")}
-        name="name"
-        value={name}
-        error={problemOf("name")}
-        onChange={(event) => {
-          edits.current++;
-          setDraft(event.target.value);
-          setSaved(false);
-        }}
-      />
-      <div className="flex items-center gap-3">
-        <Button type="submit" disabled={sending}>
-          {t("workspaceSettings.save")}
-        </Button>
-        <output className="text-sm text-muted-foreground">{saved ? t("workspaceSettings.saved") : ""}</output>
-      </div>
-    </form>
   );
 });
 

@@ -5,7 +5,7 @@ import { useT, type Translate } from "../i18n/i18n";
 import { useStore } from "../stores/context";
 
 /** A member as a list shows them: a workspace's or a notebook's. */
-type Member = { display_name: string; email: string | null; created_at: string };
+export type Member = { display_name: string; email: string | null; created_at: string };
 
 /**
  * memberWho names member in the controls of their row and in the audit's

@@ -4,7 +4,7 @@ import { useRef, useState, type FormEvent } from "react";
 import { ConfirmDialog } from "../../app/confirm-dialog";
 import { useForm } from "../../app/form";
 import { notebookNameProblem, notebookNameTexts } from "../../app/notebook-name";
-import { FormField } from "../../components/form-field";
+import { RenameForm } from "../../app/rename-form";
 import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
 import { useT } from "../../i18n/i18n";
@@ -22,6 +22,7 @@ import { useNotebook } from "./notebook-layout";
 export const NotebookGeneralPage = observer(function NotebookGeneralPage() {
   const workspace = useWorkspace();
   const notebook = useNotebook();
+  const notebooks = useNotebooks(workspace);
   const t = useT();
   const admin = notebook.role === "admin";
   return (
@@ -30,7 +31,17 @@ export const NotebookGeneralPage = observer(function NotebookGeneralPage() {
         <h2 className="text-lg font-semibold">{t("notebookSettings.general")}</h2>
         {admin ? (
           <>
-            <RenameForm workspace={workspace} notebook={notebook} />
+            <RenameForm
+              current={notebook.name}
+              label={t("notebooks.name")}
+              hint={t("notebooks.nameHint")}
+              autoComplete="off"
+              check={notebookNameProblem}
+              fieldTexts={notebookNameTexts}
+              rename={(name) => notebooks.update(notebook.id, { name })}
+              saveLabel={t("notebookSettings.save")}
+              savedLabel={t("notebookSettings.saved")}
+            />
             <AccessForm workspace={workspace} notebook={notebook} />
           </>
         ) : (
@@ -55,67 +66,6 @@ export const NotebookGeneralPage = observer(function NotebookGeneralPage() {
 });
 
 type NotebookProps = { workspace: Workspace; notebook: Notebook };
-
-/**
- * RenameForm renames the notebook as the workspace's RenameForm renames
- * the workspace: only a changed name goes out, trimmed. Until it is
- * edited, and again once a save went through, the field shows the name as
- * the list has it, a rename made elsewhere too; one edited while its name
- * was out keeps the edit, which the next save sends.
- */
-const RenameForm = observer(function RenameForm({ workspace, notebook }: NotebookProps) {
-  const notebooks = useNotebooks(workspace);
-  const t = useT();
-  /** What was typed since the last save; none, the name as the list has it. */
-  const [draft, setDraft] = useState<string>();
-  const name = draft ?? notebook.name;
-  const [saved, setSaved] = useState(false);
-  const { ref, sending, banner, problemOf, submit } = useForm(["name"], { fieldTexts: notebookNameTexts });
-  /** How many times the field was edited: a save tells whether the name it sent is still the one shown. */
-  const edits = useRef(0);
-
-  function onSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const problem = notebookNameProblem(name);
-    const trimmed = name.trim();
-    const edit = edits.current;
-    setSaved(false);
-    void submit(problem === undefined ? {} : { name: problem }, async () => {
-      if (trimmed !== notebook.name) {
-        await notebooks.update(notebook.id, { name: trimmed });
-      }
-      if (edits.current === edit) {
-        setDraft(undefined);
-        setSaved(true);
-      }
-    });
-  }
-
-  return (
-    <form ref={ref} noValidate onSubmit={onSubmit} className="space-y-4">
-      {banner !== undefined && <Alert>{banner}</Alert>}
-      <FormField
-        label={t("notebooks.name")}
-        name="name"
-        autoComplete="off"
-        value={name}
-        error={problemOf("name")}
-        hint={t("notebooks.nameHint")}
-        onChange={(event) => {
-          edits.current++;
-          setDraft(event.target.value);
-          setSaved(false);
-        }}
-      />
-      <div className="flex items-center gap-3">
-        <Button type="submit" disabled={sending}>
-          {t("notebookSettings.save")}
-        </Button>
-        <output className="text-sm text-muted-foreground">{saved ? t("notebookSettings.saved") : ""}</output>
-      </div>
-    </form>
-  );
-});
 
 /**
  * AccessForm changes who in the workspace sees the notebook: the access

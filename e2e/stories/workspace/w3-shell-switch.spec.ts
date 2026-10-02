@@ -10,8 +10,15 @@ import { createWorkspace, deleteWorkspace, newTeam, slugFor } from "../../fixtur
 // W3, the shell and the switch between workspaces (M2 design 3; M2/P5
 // design 3.2, 3.3).
 
-/** The padding of the page's main: the shell fills it to its edges; the app's other pages keep theirs. */
-const mainPadding = (page: Page) => page.getByRole("main").evaluate((main) => getComputedStyle(main).padding);
+/**
+ * The page's mains, and the workspace's left column in them and beside them: the column is navigation beside the one
+ * main (M3 handoff 1, M4/P5 design 3.2); the app's other pages have none.
+ */
+const shellColumn = async (page: Page) => ({
+  mains: await page.getByRole("main").count(),
+  inMain: await page.getByRole("main").locator("[data-shell]").count(),
+  beside: await page.locator("[data-shell]").count(),
+});
 
 test("W3 (API): the list is the account's workspaces by name; another's slug is not found; one left leaves the list", async ({
   api,
@@ -67,7 +74,7 @@ test("W3 (page): / lands on the workspace shown last, else the first by name, el
   await page.goto("/");
   await expect(workspaceHeading(page, "Acme")).toBeVisible();
   await expect(page).toHaveURL(`/${acme.slug}`);
-  expect(await mainPadding(page)).toBe("0px");
+  expect(await shellColumn(page)).toEqual({ mains: 1, inMain: 0, beside: 1 });
   expect(await switcherChoices(page, "Acme")).toEqual({
     workspaces: ["Acme", "Beta", "zeta"],
     others: ["Create workspace"],
@@ -97,5 +104,5 @@ test("W3 (page): / lands on the workspace shown last, else the first by name, el
   await deleteWorkspace(api, credential, beta.slug);
   await page.goto("/");
   await expectCreatePage(page);
-  expect(await mainPadding(page)).not.toBe("0px");
+  expect(await shellColumn(page)).toEqual({ mains: 1, inMain: 0, beside: 0 });
 });

@@ -98,6 +98,7 @@ export const zhCN: Messages = {
   "notebookRole.editor": "编辑者",
   "notebookRole.reader": "读者",
   "notebookMembers.removeTitle": "把 {name} 移出 {notebook}？",
+  "notebookMembers.byAccess": "经工作区开放为{role}",
   "notebookMembers.removeBody": "对方之后只能按笔记本在工作区里的开放程度看到它；工作区的访客则看不到它了。",
   "notebookMembers.addTitle": "添加成员",
   "notebookMembers.addBody": "工作区的任何成员，访客也可以。",

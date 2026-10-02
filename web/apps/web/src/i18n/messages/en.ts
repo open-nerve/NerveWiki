@@ -99,6 +99,7 @@ export const en = {
   "notebookRole.editor": "Editor",
   "notebookRole.reader": "Reader",
   "notebookMembers.removeTitle": "Remove {name} from {notebook}?",
+  "notebookMembers.byAccess": "{role} by the workspace's access",
   "notebookMembers.removeBody":
     "They keep only what the notebook's workspace access gives the workspace's members; a guest of the workspace no longer sees it.",
   "notebookMembers.addTitle": "Add a member",

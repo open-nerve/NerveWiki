@@ -4,17 +4,20 @@ import { Link } from "react-router";
 import useSWR, { useSWRConfig } from "swr";
 
 import { ConfirmDialog } from "../../app/confirm-dialog";
+import { effectiveNotebookRole } from "../../app/effective-role";
+import { MemberRow } from "../../app/member-row";
 import { NotLoaded } from "../../app/not-loaded";
 import { errorText } from "../../app/problem-messages";
 import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
 import { useT } from "../../i18n/i18n";
+import type { NotebookMember } from "../../services/notebook-member.service";
 import type { NotebookRole } from "../../services/notebook.service";
 import type { Workspace } from "../../services/workspace.service";
-import { useAccount, useNotebookMembers, useNotebooks } from "../../stores/context";
+import { useAccount, useMembers, useNotebookMembers, useNotebooks } from "../../stores/context";
 import { useWorkspace } from "../workspace/workspace-layout";
 import { AddSection, type SectionProps } from "./add-member-section";
-import { NotebookMemberRow } from "./notebook-member-row";
+import { notebookRoles } from "./notebook-roles";
 import { useNotebook } from "./notebook-layout";
 
 /**
@@ -48,10 +51,29 @@ const MembersSection = observer(function MembersSection({
   heading,
 }: SectionProps & { heading: RefObject<HTMLHeadingElement | null> }) {
   const members = useNotebookMembers(notebook);
+  const workspaceMembers = useMembers(workspace);
   const { me } = useAccount();
   const t = useT();
   const { mutate: reload } = useSWRConfig();
   const { error, mutate } = useSWR(["notebook-members", notebook.id], () => members.load());
+  // The workspace's members, for the notes: until they are read, or when they cannot be, the rows have none.
+  useSWR(["members", workspace.id], () => workspaceMembers.load());
+
+  /**
+   * byAccess is the note of member's row when the notebook's access gives
+   * them a higher role than their membership: they act as that role (M3
+   * handoff 2), which the menu alone would not tell.
+   */
+  function byAccess(member: NotebookMember): string | undefined {
+    const inWorkspace = workspaceMembers.list?.find((each) => each.user_id === member.user_id)?.role;
+    if (inWorkspace === undefined) {
+      return undefined;
+    }
+    const effective = effectiveNotebookRole(member.role, notebook.workspace_access, inWorkspace);
+    return effective === undefined || effective === member.role
+      ? undefined
+      : t("notebookMembers.byAccess", { role: t(`notebookRole.${effective}`) });
+  }
   const [failure, setFailure] = useState<unknown>();
   const failed = failure === undefined ? undefined : errorText(failure, t);
 
@@ -91,12 +113,16 @@ const MembersSection = observer(function MembersSection({
       ) : (
         <ul aria-label={t("notebookSettings.members")} className="divide-y rounded-md border">
           {members.list.map((member) => (
-            <NotebookMemberRow
+            <MemberRow
               key={member.id}
-              notebook={notebook}
               member={member}
               you={member.user_id === me.id}
               manage={notebook.role === "admin" && member.user_id !== me.id}
+              roles={notebookRoles}
+              roleLabel={(role) => t(`notebookRole.${role}`)}
+              note={byAccess(member)}
+              removeTitle={t("notebookMembers.removeTitle", { name: member.display_name, notebook: notebook.name })}
+              removeBody={t("notebookMembers.removeBody")}
               changeRole={(role) => changeRole(member.id, role)}
               remove={() => remove(member.id)}
               removed={() => heading.current?.focus()}
