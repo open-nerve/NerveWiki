@@ -1,6 +1,6 @@
 import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 
 import type { Notebook } from "../../services/notebook.service";
 import type { Workspace } from "../../services/workspace.service";
@@ -156,4 +156,34 @@ test("made a member elsewhere, an admin's reminder is refused as forbidden, and 
 
   await waitFor(() => expect(asked).toEqual(["workspaces", "ownerless", "workspaces"]));
   expect(within(await main()).queryByText(/^Notebooks without an admin/)).toBeNull();
+});
+
+afterEach(() => vi.useRealTimers());
+
+/** The reminder's text, with its link; "none" without it. */
+const reminder = () => screen.queryByText(/^Notebooks without an admin/)?.textContent ?? "none";
+
+test("the reminder read again shows what changed elsewhere; once none is left, it goes", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  let ownerless = [ownerlessJSON, { ...ownerlessJSON, id: "0199a2b4-0000-7000-8000-0000000000e2" }];
+  const app = labApp([notebookJSON], "admin", {
+    "GET /api/v0/workspaces/lab/ownerless-notebooks": () => json({ data: ownerless }),
+  });
+  const { router } = renderApp("/lab", app);
+  /** comeBack goes to another page and back to the home after the reads' 2s: it reads the reminder again. */
+  const comeBack = async () => {
+    await act(() => router.navigate("/lab/settings/general"));
+    await act(() => vi.advanceTimersByTimeAsync(2_000));
+    await act(() => router.navigate("/lab"));
+  };
+  await waitFor(() => expect(reminder()).toBe("Notebooks without an admin: 2. Review them"));
+
+  // Elsewhere, another admin takes one over, then the other.
+  ownerless = ownerless.slice(1);
+  await comeBack();
+  await waitFor(() => expect(reminder()).toBe("Notebooks without an admin: 1. Review them"));
+  ownerless = [];
+  await comeBack();
+  await waitFor(() => expect(reminder()).toBe("none"));
+  expect(await within(await main()).findByRole("list", { name: "My notebooks" })).toBeTruthy();
 });

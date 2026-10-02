@@ -88,6 +88,7 @@ test("N7 (page): the only admin of a notebook with another member is refused lea
     "You are the only admin of notebooks in this workspace that others are in. In each one's settings, make another member an admin, or delete it; then leave."
   );
   await expectMembership(db, workspace.id, ownerId, "member");
+  await expectNotebookMember(db, plans.id, ownerId, { role: "admin", active: true, writerId: ownerId });
 
   // As the dialog says: in the notebook's settings, the other member becomes its admin; then the account leaves.
   await page.goto(notebookPath(workspace.slug, plans.id, "members"));
@@ -96,6 +97,7 @@ test("N7 (page): the only admin of a notebook with another member is refused lea
   expect(await leaveWith(page, workspace.slug)).toBe(204);
   await expectCreatePage(page);
   await expectMembership(db, workspace.id, ownerId, "ended");
+  await expectNotebookMembershipsEndedWith(db, workspace.id, ownerId, ownerId, 2);
   await expectOwned(db, plans.id);
   await expectOwnerless(db, solo.id, ownerId);
 

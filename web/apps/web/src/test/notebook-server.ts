@@ -32,6 +32,9 @@ export function notebookMember(member: WorkspaceMember, role: NotebookRole): Not
   };
 }
 
+/** The order of the roles, lowest first. */
+const rank: Record<NotebookRole, number> = { reader: 0, editor: 1, admin: 2 };
+
 /** The role a workspace's admin or member has by a notebook's access, or none. */
 const byAccess: Record<WorkspaceAccess, NotebookRole | undefined> = {
   none: undefined,
@@ -78,7 +81,9 @@ export function notebookServer({
   /** Plans as Ada sees it, or undefined. */
   const seen = (): Notebook | undefined => {
     const own = server.members.find((m) => m.user_id === ada.user_id)?.role;
-    const role = own ?? (workspaceRole === "guest" ? undefined : byAccess[server.plans.workspace_access]);
+    const reached = workspaceRole === "guest" ? undefined : byAccess[server.plans.workspace_access];
+    // The higher of the two, as the server's effective role (M3 design 4).
+    const role = own === undefined || (reached !== undefined && rank[reached] > rank[own]) ? reached : own;
     return server.deleted || role === undefined
       ? undefined
       : { ...server.plans, role, member_count: server.members.length };

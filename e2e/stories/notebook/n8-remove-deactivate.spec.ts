@@ -118,7 +118,7 @@ test("N8 (page): a workspace admin removes the only admin of a notebook, told it
   db,
   signedInPage,
 }, testInfo) => {
-  const { pat: adminPat, tokens: adminTokens, workspace } = await newOnboardedTeam(api, testInfo);
+  const { adminId, pat: adminPat, tokens: adminTokens, workspace } = await newOnboardedTeam(api, testInfo);
   const ownerEmail = emailFor(testInfo, "owner");
   const ownerPat = await joinAs(api, adminPat, workspace.slug, ownerEmail, "member");
   const mateEmail = emailFor(testInfo, "mate");
@@ -139,6 +139,7 @@ test("N8 (page): a workspace admin removes the only admin of a notebook, told it
   await page.keyboard.press("Escape");
   expect(await removeMemberWith(page, owner, membership.id)).toBe(204);
   await expectMembership(db, workspace.id, ownerId, "ended");
+  await expectNotebookMembershipsEndedWith(db, workspace.id, ownerId, adminId, 1);
   await expectOwnerless(db, plans.id, ownerId);
 
   // The workspace's home reminds the admin of it, and leads to the list, which has it.
@@ -159,13 +160,13 @@ test("N8 (page): a workspace admin removes the only admin of a notebook, told it
   await expect(matePage.getByRole("link", { name: "Take it over in Ownerless notebooks" })).toHaveCount(0);
 });
 
-test("N8 (page): the account's deactivation is refused while it is the only admin of a notebook with another member: the dialog says why, and the account stays", async ({
+test("N8 (page): the account's deactivation is refused while it is the only admin of a notebook with another member, the dialog says why; once a workspace admin removed it, the deactivation goes through, leaving its notebook of its own ownerless", async ({
   api,
   db,
   pageWatch,
   signedInPage,
 }, testInfo) => {
-  const { pat: adminPat, workspace } = await newTeam(api, testInfo);
+  const { adminId, pat: adminPat, workspace } = await newTeam(api, testInfo);
   const ownerEmail = emailFor(testInfo, "owner");
   const ownerTokens = await joinOnboarded(api, adminPat, workspace.slug, ownerEmail, "member");
   const mateEmail = emailFor(testInfo, "mate");
@@ -173,21 +174,38 @@ test("N8 (page): the account's deactivation is refused while it is the only admi
   const [ownerId, mateId] = await Promise.all([accountIdOf(db, ownerEmail), accountIdOf(db, mateEmail)]);
   const plans = await createNotebook(api, ownerTokens.access_token, workspace.slug, "Plans");
   await addedNotebookMember(api, ownerTokens.access_token, plans.id, mateId, "reader");
+  // A notebook of the account alone, in another workspace, does not block.
+  const lab = await createWorkspace(api, adminPat, "Lab", slugFor(testInfo, "lab"));
+  await accept(api, ownerTokens.access_token, await invite(api, adminPat, lab.slug, ownerEmail, "member"));
+  const solo = await createNotebook(api, ownerTokens.access_token, lab.slug, "Solo");
   const page = await signedInPage(ownerTokens);
   await page.goto("/settings/security");
 
   await page.getByRole("button", { name: "Deactivate account" }).click();
   const dialog = page.getByRole("alertdialog", { name: "Deactivate your account?" });
+  const confirm = dialog.getByRole("button", { name: "Deactivate", exact: true });
   pageWatch.expectConsole({ errors: [failedToLoad(409)] });
   const refused = answerTo(page, "POST", "/api/v0/me/deactivate");
-  await dialog.getByRole("button", { name: "Deactivate", exact: true }).click();
+  await confirm.click();
   expect((await refused).status()).toBe(409);
-
   await expect(dialog.getByRole("alert")).toHaveText(
     "You are the only admin of notebooks that others are in. In each one's settings, make another member an admin, or delete it; then deactivate."
   );
   await expectMembership(db, workspace.id, ownerId, "member");
   await expectNotebookMember(db, plans.id, ownerId, { role: "admin", active: true, writerId: ownerId });
-  const read = await getNotebook(api, ownerTokens.access_token, plans.id);
-  expect([read.response.status, read.data?.role]).toEqual([200, "admin"]);
+
+  // The way out: a workspace admin removes the account; the dialog, still open, goes through.
+  const removed = await removeMember(api, adminPat, (await memberOf(api, adminPat, workspace.slug, ownerEmail)).id);
+  expect(removed.response.status).toBe(204);
+  await expectNotebookMembershipsEndedWith(db, workspace.id, ownerId, adminId, 1);
+  await expectOwnerless(db, plans.id, ownerId);
+  const deactivated = answerTo(page, "POST", "/api/v0/me/deactivate");
+  await confirm.click();
+  expect((await deactivated).status()).toBe(204);
+
+  await expect(page.getByRole("heading", { level: 1, name: "Sign in" })).toBeVisible();
+  await expectDeactivated(db, ownerId);
+  await expectMembership(db, lab.id, ownerId, "ended");
+  await expectNotebookMembershipsEndedWith(db, lab.id, ownerId, ownerId, 1);
+  await expectOwnerless(db, solo.id, ownerId);
 });

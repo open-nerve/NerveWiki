@@ -5,6 +5,7 @@ import { expectMembership, membershipEndedAt } from "../../fixtures/assert/works
 import { displayNameOf, emailFor } from "../../fixtures/auth";
 import { acceptWith, linkTo } from "../../fixtures/invitation-pages";
 import { accept, invite, joinAs, joinOnboarded } from "../../fixtures/invitations";
+import { who } from "../../fixtures/member-pages";
 import { memberOf, removeMember } from "../../fixtures/members";
 import { notebookGroups } from "../../fixtures/notebook-pages";
 import { createNotebook, getNotebook } from "../../fixtures/notebooks";
@@ -110,21 +111,23 @@ test("N11 (command line): workspaces reactivate-member returns the ownerless not
   ]);
 });
 
-test("N11 (page): the former owner, back by an invitation's link, finds its ownerless notebook among its own again; the admin's ownerless notebooks no longer have it, and the audit log says it was returned", async ({
+test("N11 (page): the former owner, back by an invitation's link, finds its ownerless notebook among its own again, not the one taken over; the admin's ownerless notebooks no longer have it, and the audit log says it was returned", async ({
   anotherPage,
   api,
   db,
   signedInPage,
 }, testInfo) => {
-  const { pat: adminPat, tokens: adminTokens, workspace } = await newOnboardedTeam(api, testInfo);
+  const { adminEmail, adminId, pat: adminPat, tokens: adminTokens, workspace } = await newOnboardedTeam(api, testInfo);
   const slug = workspace.slug;
   const ownerEmail = emailFor(testInfo, "owner");
   const ownerTokens = await joinOnboarded(api, adminPat, slug, ownerEmail, "member");
   const ownerId = await accountIdOf(db, ownerEmail);
   const solo = await createNotebook(api, ownerTokens.access_token, slug, "Solo");
+  const plans = await createNotebook(api, ownerTokens.access_token, slug, "Plans");
   expect(
     (await removeMember(api, adminPat, (await memberOf(api, adminPat, slug, ownerEmail)).id)).response.status
   ).toBe(204);
+  expect((await takeOver(api, adminPat, plans.id)).response.status).toBe(200);
   const invitation = await invite(api, adminPat, slug, ownerEmail, "member");
   const page = await signedInPage(ownerTokens);
   await page.goto(linkTo(invitation));
@@ -132,15 +135,30 @@ test("N11 (page): the former owner, back by an invitation's link, finds its owne
   expect((await acceptWith(page, invitation.id)).status()).toBe(200);
   await expect(workspaceHeading(page, "Acme")).toBeVisible();
   await expect.poll(() => notebookGroups(page, "Acme")).toEqual({ "My notebooks": ["Solo"] });
+  await expectMembership(db, workspace.id, ownerId, "member");
   await expectOwned(db, solo.id);
+  await expectNotebookMember(db, solo.id, ownerId, {
+    role: "admin",
+    active: true,
+    writerId: ownerId,
+    joinedAt: solo.created_at,
+  });
+  // The one taken over is not the owner's to come back to.
+  await expectOwned(db, plans.id);
+  await expectNotebookMember(db, plans.id, ownerId, { role: "admin", active: false, writerId: adminId });
   await expectAuditEvents(db, workspace.id, [
+    { action: "taken_over", notebookId: plans.id, notebookName: "Plans", formerOwnerId: ownerId, actorId: adminId },
     { action: "returned", notebookId: solo.id, notebookName: "Solo", formerOwnerId: ownerId, actorId: ownerId },
   ]);
 
   const adminPage = await anotherPage(adminTokens);
   await adminPage.goto(ownerlessPath(slug));
   await expect(adminPage.getByText("No ownerless notebooks.", { exact: true })).toBeVisible();
+  const owner = who(displayNameOf(ownerEmail), ownerEmail);
   await expect
     .poll(() => auditLog(adminPage))
-    .toEqual([`Solo was returned to ${displayNameOf(ownerEmail)}, back in the workspace.`]);
+    .toEqual([
+      `Solo was returned to ${owner}, back in the workspace.`,
+      `${who(displayNameOf(adminEmail), adminEmail)} took over Plans; former owner: ${owner}.`,
+    ]);
 });

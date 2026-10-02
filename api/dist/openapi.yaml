@@ -215,7 +215,7 @@ paths:
       tags:
         - identity
       summary: Deactivate the caller's account
-      description: 'Deactivates the account: every session ends, and the personal access tokens stop working while it is inactive. Only the server''s administrator can activate it again; sign-in then answers identity.account_deactivated. No password is asked for. The modules that keep the account''s access elsewhere may refuse the deactivation with a code of their own, listed here: workspace.sole_admin when the account is the only admin of a workspace with other members, which the detail names; notebook.sole_admin when it is the only admin of a notebook with other members, which the detail counts by workspace. The deactivation ends the account''s memberships of workspaces and of their notebooks.'
+      description: 'Deactivates the account: every session ends, and the personal access tokens stop working while it is inactive. Only the server''s administrator can activate it again; sign-in then answers identity.account_deactivated. No password is asked for. The modules that keep the account''s access elsewhere may refuse the deactivation with a code of their own, listed here: workspace.sole_admin when the account is the only admin of a workspace with other members, which the detail names; notebook.sole_admin when it is the only admin of a notebook with other members, which the detail counts by workspace. The deactivation ends the account''s memberships of workspaces and of their notebooks, and a notebook it was the only admin of becomes ownerless.'
       security:
         - bearer: []
       x-problem-codes:

@@ -226,7 +226,8 @@ paths:
         the detail names; notebook.sole_admin when it is the only admin of a
         notebook with other members, which the detail counts by workspace.
         The deactivation ends the account's memberships of workspaces and of
-        their notebooks.
+        their notebooks, and a notebook it was the only admin of becomes
+        ownerless.
       security: [{ bearer: [] }]
       x-problem-codes: [workspace.sole_admin, notebook.sole_admin]
       responses:
