@@ -1,0 +1,445 @@
+package harden
+
+// The link parser is adapted from goldmark's parser/link.go, v1.8.6
+// (https://github.com/yuin/goldmark, MIT License, Copyright (c) 2019 Yusuke
+// Inuzuka). Its results are goldmark's; its costs are linear: a destination
+// in angle brackets finds its end in the block's index, a bare one gives up
+// past MaxDestinationParens open parentheses, a label's value finds its
+// first line by a binary search, and "a link may not contain a link" counts
+// the links made instead of walking the text. It processes no delimiters
+// when a link closes: emphasis is paired after the parse (emphasis.go).
+
+import (
+	"sort"
+
+	"github.com/yuin/goldmark/ast"
+	"github.com/yuin/goldmark/parser"
+	"github.com/yuin/goldmark/text"
+	"github.com/yuin/goldmark/util"
+)
+
+// label is an open bracket, '[' or '![', waiting for its ']'. The open
+// labels of a block are a list whose head holds First and Last.
+type label struct {
+	ast.BaseInline
+	seg                     text.Segment
+	isImage                 bool
+	prev, next, first, last *label
+	links                   int // links made before it opened
+}
+
+var kindLabel = ast.NewNodeKind("LinkLabel") //nolint:gochecknoglobals // a kind is made once, as goldmark's are
+
+// Kind implements ast.Node.
+func (l *label) Kind() ast.NodeKind { return kindLabel }
+
+// Dump implements ast.Node.
+func (l *label) Dump(source []byte, level int) { ast.DumpHelper(l, source, level, nil, nil) }
+
+//nolint:gochecknoglobals // keys are made once, as goldmark's are
+var (
+	labelsKey = parser.NewContextKey() // *label: the head of the open labels
+	linksKey  = parser.NewContextKey() // int: the links made so far
+)
+
+func labelsOf(pc parser.Context) *label {
+	v, _ := pc.Get(labelsKey).(*label)
+	return v
+}
+
+// inLinkLabel tells whether the parse is inside a link's or an image's
+// brackets, as goldmark's Context.IsInLinkLabel does for its own parser.
+func inLinkLabel(pc parser.Context) bool { return labelsOf(pc) != nil }
+
+func linksMade(pc parser.Context) int {
+	v, _ := pc.Get(linksKey).(int)
+	return v
+}
+
+func pushLabel(pc parser.Context, v *label) {
+	list := labelsOf(pc)
+	if list == nil {
+		v.first, v.last = v, v
+		pc.Set(labelsKey, v)
+		return
+	}
+	l := list.last
+	list.last = v
+	l.next = v
+	v.prev = l
+}
+
+func removeLabel(pc parser.Context, d *label) {
+	list := labelsOf(pc)
+	if list == nil {
+		return
+	}
+	if d.prev == nil {
+		list = d.next
+		if list != nil {
+			list.first = d
+			list.last = d.last
+			list.prev = nil
+			pc.Set(labelsKey, list)
+		} else {
+			pc.Set(labelsKey, nil)
+		}
+	} else {
+		d.prev.next = d.next
+		if d.next != nil {
+			d.next.prev = d.prev
+		}
+	}
+	if list != nil && d.next == nil {
+		list.last = d.prev
+	}
+	d.next, d.prev, d.first, d.last = nil, nil, nil, nil
+}
+
+// span is goldmark's linkLabelStateLength: from the first open label to the
+// last one.
+func span(head *label) int {
+	if head == nil || head.last == nil || head.first == nil {
+		return 0
+	}
+	return head.last.seg.Stop - head.first.seg.Start
+}
+
+// value is the block reader's Value: seg's bytes across the lines of the
+// block, with their padding. goldmark walks back from the last line to the
+// first one seg is in, a walk per label; this finds it by a binary search.
+func value(block ast.Node, source []byte, seg text.Segment) []byte {
+	v, _ := valueUpTo(block, source, seg, -1)
+	return v
+}
+
+// valueUpTo is value, but stops past limit bytes (none for a negative
+// limit) and tells whether it took them all: a label longer than a link's
+// may be is not copied whole, once for each bracket that closes over it.
+func valueUpTo(block ast.Node, source []byte, seg text.Segment, limit int) ([]byte, bool) {
+	lines := block.Lines()
+	n := lines.Len()
+	line := max(sort.Search(n, func(i int) bool { return lines.At(i).Start > seg.Start })-1, 0)
+	size := seg.Stop - seg.Start + 1
+	if limit >= 0 {
+		size = min(size, limit+1)
+	}
+	ret := make([]byte, 0, max(size, 0))
+	i := seg.Start
+	for ; line < n; line++ {
+		s := lines.At(line)
+		if i < 0 {
+			i = s.Start
+		}
+		ret = s.ConcatPadding(ret)
+		for ; i < seg.Stop && i < s.Stop; i++ {
+			if limit >= 0 && len(ret) > limit {
+				return ret, false
+			}
+			ret = append(ret, source[i])
+		}
+		i = -1
+		if s.Stop > seg.Stop {
+			break
+		}
+	}
+	return ret, limit < 0 || len(ret) <= limit
+}
+
+// values is the value of a closure's segments as goldmark takes it: one
+// segment's alone, several appended to nothing.
+func values(block ast.Node, source []byte, segments *text.Segments) []byte {
+	if segments.Len() == 1 {
+		return value(block, source, segments.At(0))
+	}
+	var v []byte
+	for i := range segments.Len() {
+		v = append(v, value(block, source, segments.At(i))...)
+	}
+	return v
+}
+
+// links parses links and images.
+type links struct{}
+
+func (links) Trigger() []byte { return []byte{'!', '[', ']'} }
+
+func toText(l *label) {
+	ast.MergeOrReplaceTextSegment(l.Parent(), l, l.seg)
+}
+
+func (links) Parse(parent ast.Node, block text.Reader, pc parser.Context) ast.Node {
+	line, segment := block.PeekLine()
+	if line[0] == '!' {
+		if len(line) > 1 && line[1] == '[' {
+			block.Advance(1)
+			return openLabel(block, segment.Start+1, true, pc)
+		}
+		return nil
+	}
+	if line[0] == '[' {
+		return openLabel(block, segment.Start, false, pc)
+	}
+
+	// line[0] == ']'
+	head := labelsOf(pc)
+	if head == nil {
+		return nil
+	}
+	last := head.last
+	if last == nil {
+		return nil
+	}
+	block.Advance(1)
+	removeLabel(pc, last)
+	// CommonMark: a link label has at most 999 characters inside its
+	// brackets (goldmark measures the open labels from the first).
+	if span(head) > 998 {
+		toText(last)
+		return nil
+	}
+	if !last.isImage && linksMade(pc) > last.links { // a link in a link's text
+		toText(last)
+		return nil
+	}
+
+	c := block.Peek()
+	l, pos := block.Position()
+	var link *ast.Link
+	var hasValue bool
+	switch c {
+	case '(':
+		link = inlineLink(parent, last, block, pc)
+	case '[':
+		link, hasValue = referenceLink(parent, last, block, pc)
+		if link == nil && hasValue {
+			toText(last)
+			return nil
+		}
+	}
+	if link == nil {
+		// maybe a shortcut reference link
+		block.SetPosition(l, pos)
+		ref, whole := valueUpTo(parent, block.Source(), text.NewSegment(last.seg.Stop, segment.Start), 999)
+		if !whole {
+			toText(last)
+			return nil
+		}
+		r, ok := pc.Reference(util.ToLinkReference(ref))
+		if !ok {
+			toText(last)
+			return nil
+		}
+		link = ast.NewLink()
+		takeText(parent, link, last)
+		link.Title = r.Title()
+		link.Destination = r.Destination()
+		link.Reference = ast.NewReferenceLink(ast.ReferenceLinkShortcut, ref)
+	}
+	last.Parent().RemoveChild(last.Parent(), last)
+	var n ast.Node = link
+	if last.isImage {
+		n = ast.NewImage(link)
+	} else {
+		pc.Set(linksKey, linksMade(pc)+1)
+	}
+	n.SetPos(last.seg.Start)
+	return n
+}
+
+func openLabel(block text.Reader, pos int, isImage bool, pc parser.Context) *label {
+	start := pos
+	if isImage {
+		start--
+	}
+	l := &label{seg: text.NewSegment(start, pos+1), isImage: isImage, links: linksMade(pc)}
+	pushLabel(pc, l)
+	block.Advance(1)
+	return l
+}
+
+// takeText moves the nodes after last, its text, into link.
+func takeText(parent ast.Node, link *ast.Link, last *label) {
+	for c := last.NextSibling(); c != nil; {
+		next := c.NextSibling()
+		parent.RemoveChild(parent, c)
+		link.AppendChild(link, c)
+		c = next
+	}
+}
+
+// closure is how a label, a destination or a title is looked for, as
+// goldmark's link parser looks for them.
+var closure = text.FindClosureOptions{Newline: true, Advance: true} //nolint:gochecknoglobals // read only, as goldmark's is
+
+func referenceLink(parent ast.Node, last *label, block text.Reader, pc parser.Context) (*ast.Link, bool) {
+	_, orgpos := block.Position()
+	block.Advance(1) // skip '['
+	segments, found := block.FindClosure('[', ']', closure)
+	if !found {
+		return nil, false
+	}
+	ref := []byte{}
+	for i := range segments.Len() {
+		ref = append(ref, value(parent, block.Source(), segments.At(i))...)
+	}
+	refType := ast.ReferenceLinkFull
+	if util.IsBlank(ref) { // a collapsed reference link
+		var whole bool
+		ref, whole = valueUpTo(parent, block.Source(), text.NewSegment(last.seg.Stop, orgpos.Start-1), 999)
+		if !whole {
+			return nil, true
+		}
+		refType = ast.ReferenceLinkCollapsed
+	}
+	if len(ref) > 999 {
+		return nil, true
+	}
+	r, ok := pc.Reference(util.ToLinkReference(ref))
+	if !ok {
+		return nil, true
+	}
+	link := ast.NewLink()
+	takeText(parent, link, last)
+	link.Title = r.Title()
+	link.Destination = r.Destination()
+	link.Reference = ast.NewReferenceLink(refType, ref)
+	return link, true
+}
+
+func inlineLink(parent ast.Node, last *label, block text.Reader, pc parser.Context) *ast.Link {
+	block.Advance(1) // skip '('
+	block.SkipSpaces()
+	var title, destination []byte
+	if block.Peek() == ')' { // an empty link like '[link]()'
+		block.Advance(1)
+	} else {
+		var ok bool
+		destination, ok = inlineDestination(parent, block, pc)
+		if !ok {
+			return nil
+		}
+		block.SkipSpaces()
+		if block.Peek() == ')' {
+			block.Advance(1)
+		} else {
+			title, ok = linkTitle(parent, block)
+			if !ok {
+				return nil
+			}
+			block.SkipSpaces()
+			if block.Peek() != ')' {
+				return nil
+			}
+			block.Advance(1)
+		}
+	}
+	link := ast.NewLink()
+	takeText(parent, link, last)
+	link.Destination = destination
+	link.Title = title
+	return link
+}
+
+// inlineDestination is goldmark's parseLinkDestination on the line from the
+// reader's position, the end of a destination in angle brackets taken from
+// the block's index rather than a scan to the end of the line.
+func inlineDestination(parent ast.Node, block text.Reader, pc parser.Context) ([]byte, bool) {
+	block.SkipSpaces()
+	line, seg := block.PeekLine()
+	if block.Peek() != '<' {
+		n, ok := bareDestination(line)
+		block.Advance(n)
+		return line[:n], ok
+	}
+	ends := indexOf(parent, block.Source(), pc).angles
+	k := sort.SearchInts(ends, seg.Start+1)
+	if k == len(ends) || ends[k] >= seg.Start+len(line) {
+		return nil, false
+	}
+	i := ends[k] - seg.Start
+	block.Advance(i + 1)
+	return line[1:i], true
+}
+
+// destination is goldmark's parseLinkDestination on line, for a link
+// reference definition: its line is read once, so the scan stays linear.
+func destination(block text.Reader) ([]byte, bool) {
+	block.SkipSpaces()
+	line, _ := block.PeekLine()
+	if block.Peek() != '<' {
+		n, ok := bareDestination(line)
+		block.Advance(n)
+		return line[:n], ok
+	}
+	for i := 1; i < len(line); i++ {
+		switch c := line[i]; {
+		case c == '\\' && i < len(line)-1 && util.IsPunct(line[i+1]):
+			i++
+		case c == '>':
+			block.Advance(i + 1)
+			return line[1:i], true
+		}
+	}
+	return nil, false
+}
+
+// bareDestination is how many bytes of line a destination outside angle
+// brackets takes, and whether it is one: up to a space or the ')' that
+// closes the link, its parentheses balanced, opening at most
+// MaxDestinationParens.
+func bareDestination(line []byte) (int, bool) {
+	opened := 0
+	i := 0
+	for i < len(line) {
+		c := line[i]
+		if c == '\\' && i < len(line)-1 && util.IsPunct(line[i+1]) {
+			i += 2
+			continue
+		}
+		if c == '(' {
+			opened++
+			if opened > MaxDestinationParens {
+				return 0, false
+			}
+		} else if c == ')' {
+			opened--
+			if opened < 0 {
+				break
+			}
+		} else if util.IsSpace(c) {
+			break
+		}
+		i++
+	}
+	return i, i != 0
+}
+
+func linkTitle(parent ast.Node, block text.Reader) ([]byte, bool) {
+	block.SkipSpaces()
+	opener := block.Peek()
+	if opener != '"' && opener != '\'' && opener != '(' {
+		return nil, false
+	}
+	closer := opener
+	if opener == '(' {
+		closer = ')'
+	}
+	block.Advance(1)
+	segments, found := block.FindClosure(opener, closer, closure)
+	if !found {
+		return nil, false
+	}
+	return values(parent, block.Source(), segments), true
+}
+
+// CloseBlock turns the labels still open at the end of a block into text.
+func (links) CloseBlock(_ ast.Node, _ text.Reader, pc parser.Context) {
+	for l := labelsOf(pc); l != nil; {
+		next := l.next
+		removeLabel(pc, l)
+		l.Parent().ReplaceChild(l.Parent(), l, ast.NewTextSegment(l.seg))
+		l = next
+	}
+	pc.Set(labelsKey, nil)
+}
