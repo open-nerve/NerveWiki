@@ -52,11 +52,17 @@ func (s *Store) LockSession(ctx context.Context, id uuid.UUID) (app.EditSession,
 	return sessionOf(row), nil
 }
 
-// SetSessionWrite implements app.SessionWriter.
+// SetSessionWrite implements app.SessionWriter. The unit holds the row
+// FOR UPDATE, so it is there: one not updated fails the write rather than
+// leave the session resuming an older changeset (M4/P4 review T1).
 func (s *Store) SetSessionWrite(ctx context.Context, id, changesetID uuid.UUID, revision int) error {
 	r := int32(revision)
-	if err := s.queries(ctx).SetSessionWrite(ctx, gen.SetSessionWriteParams{ID: id, ChangesetID: &changesetID, Revision: &r}); err != nil {
+	n, err := s.queries(ctx).SetSessionWrite(ctx, gen.SetSessionWriteParams{ID: id, ChangesetID: &changesetID, Revision: &r})
+	if err != nil {
 		return fmt.Errorf("set edit session's write: %w", err)
+	}
+	if n != 1 {
+		return fmt.Errorf("set edit session's write: session %s updated %d rows, not 1", id, n)
 	}
 	return nil
 }

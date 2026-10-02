@@ -32,20 +32,21 @@ func (u *Unit) OpenSession(ctx context.Context, id uuid.UUID) (EditSession, erro
 		ID: uuid.NewV7(), NodeID: id, NotebookID: u.write.NotebookID, UserID: u.write.By, Client: u.write.Client,
 		CreatedAt: u.write.At, ExpiresAt: u.write.At.Add(domain.EditSessionLease),
 	}
-	return s, u.w.d.Sessions.CreateSession(ctx, s)
+	return s, u.w.d.SessionWriter.CreateSession(ctx, s)
 }
 
-// tellEnded has the subscribers follow the end of each session alive at
-// at, for reason, by by: an expired one ended with its lease, which tells
-// no one.
-func tellEnded(ctx context.Context, subscribers []EditSessionSubscriber, sessions []EditSession, reason domain.EndReason,
-	by uuid.UUID, at time.Time,
+// tellEnded has the subscribers follow the end of each session, of the
+// workspace workspaceID, alive at at, for reason, by by: an expired one
+// ended with its lease, which tells no one.
+func tellEnded(ctx context.Context, subscribers []EditSessionSubscriber, workspaceID uuid.UUID, sessions []EditSession,
+	reason domain.EndReason, by uuid.UUID, at time.Time,
 ) error {
 	for _, s := range sessions {
 		if !s.Alive(at) {
 			continue
 		}
-		e := SessionEnded{SessionID: s.ID, NotebookID: s.NotebookID, PageID: s.NodeID, UserID: s.UserID, Reason: reason, By: by, At: at}
+		e := SessionEnded{SessionID: s.ID, WorkspaceID: workspaceID, NotebookID: s.NotebookID, PageID: s.NodeID, UserID: s.UserID,
+			Reason: reason, By: by, At: at}
 		for _, sub := range subscribers {
 			if err := sub.EditSessionEnded(ctx, e); err != nil {
 				return err

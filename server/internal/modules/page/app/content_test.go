@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -17,7 +18,7 @@ import (
 
 // put runs putPageContent on the page id as alice from the web.
 func (f *fixture) put(id uuid.UUID, p app.ContentPut) (app.PageView, error) {
-	return app.NewPutPageContent(f.writer(), f.store, f.md, f.logger()).Execute(f.asAlice(), id, p, domain.ClientWeb)
+	return app.NewPutPageContent(f.writer(), f.store, f.parser(), f.logger()).Execute(f.asAlice(), id, p, domain.ClientWeb)
 }
 
 // session opens an edit session of the page id for user, alive until
@@ -38,21 +39,78 @@ func (f *fixture) writeAs(id uuid.UUID, text string) {
 	f.store.contents[id] = c
 }
 
-// A content write checks and parses the content before anything else,
-// outside the unit; then finds the page unlocked, shares the workspace's
-// row and the notebook's, decides, and locks the page's gate before it
-// reads the node again: its content row, not the node's.
-func TestPutPageContentParsesThenLocksThenDecides(t *testing.T) {
+// A content write finds the page unlocked and decides, then parses the
+// content within the budget, outside the unit (M4/P4 review P1, P2); the
+// unit shares the workspace's row and the notebook's, decides again, and
+// locks the page's gate before it reads the node again: its content row,
+// not the node's. The budget is released once the unit is over.
+func TestPutPageContentDecidesThenParsesThenLocks(t *testing.T) {
 	f := newFixture()
 	f.grant(domain.ActionWrite)
 	n := f.page("Notes", nil, 0)
 	if _, err := f.put(n.ID, app.ContentPut{Content: "# Notes\n", Base: 1}); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"Parse", "FindNode", "WorkspaceOf", "ShareWorkspace in tx", "ShareNotebook in tx", "Authorize page.write in tx",
-		"LockContent in tx", "FindNodeIn in tx", "CreateChangeset in tx", "WriteContent in tx", "RecordRevision in tx"}
-	if !slices.Equal(f.rec.calls[:len(want)], want) {
-		t.Errorf("calls = %v, want them to begin %v", f.rec.calls, want)
+	want := []string{"FindNode", "WorkspaceOf", "Authorize page.write", "Take 8", "Parse", "WorkspaceOf", "ShareWorkspace in tx",
+		"ShareNotebook in tx", "Authorize page.write in tx", "LockContent in tx", "FindNodeIn in tx", "CreateChangeset in tx",
+		"WriteContent in tx", "RecordRevision in tx"}
+	if !slices.Equal(f.rec.calls[:len(want)], want) || f.rec.calls[len(f.rec.calls)-1] != "Release 8" {
+		t.Errorf("calls = %v, want them to begin %v and end with the release", f.rec.calls, want)
+	}
+}
+
+// Only a writer makes the server parse a content (M4/P4 review P1): a page
+// or a notebook the caller cannot see, and a reader, are answered before
+// the parse, the budget untouched; their codes are the unit's.
+func TestOnlyAWriterMakesTheContentParsed(t *testing.T) {
+	for _, tt := range []struct {
+		name  string
+		setup func(f *fixture)
+		want  string
+	}{
+		{"a notebook the caller cannot see", func(*fixture) {}, "page.not_found"},
+		{"a notebook deleted", func(f *fixture) {
+			f.grant(domain.ActionWrite, domain.ActionCreate)
+			delete(f.notebooks.workspaces, f.eng)
+		}, "page.not_found"},
+		{"a reader", func(f *fixture) {
+			f.auth.forbidden[domain.ActionWrite], f.auth.forbidden[domain.ActionCreate] = true, true
+		}, "forbidden"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newFixture()
+			n := f.page("Notes", nil, 0)
+			tt.setup(f)
+			_, putErr := f.put(n.ID, app.ContentPut{Content: "x", Base: 1})
+			_, createErr := f.create(app.PageDraft{Title: "New", Content: "x"})
+			createWant := tt.want
+			if createWant == "page.not_found" {
+				createWant = "notebook.not_found"
+			}
+			if codeOf(putErr) != tt.want || codeOf(createErr) != createWant || f.called("Parse") || f.budget.held != 0 ||
+				slices.ContainsFunc(f.rec.calls, func(c string) bool { return strings.HasPrefix(c, "Take") }) {
+				t.Errorf("put %q, create %q, calls %v; want %q and %q, no take and no parse", codeOf(putErr), codeOf(createErr),
+					f.rec.calls, tt.want, createWant)
+			}
+		})
+	}
+}
+
+// A budget that does not free up answers the write's 503 before the parse
+// and the unit; a write that fails in its unit releases what it took.
+func TestAContentWriteTakesTheBudget(t *testing.T) {
+	f := newFixture()
+	f.grant(domain.ActionWrite)
+	n := f.page("Notes", nil, 0)
+	f.budget.err = shared.ServerBusy(time.Second)
+	if _, err := f.put(n.ID, app.ContentPut{Content: "x", Base: 1}); codeOf(err) != "server_busy" || f.called("Parse") ||
+		f.called("ShareWorkspace in tx") {
+		t.Errorf("put = %q, calls %v; want server_busy before the parse and the unit", codeOf(err), f.rec.calls)
+	}
+	f.budget.err = nil
+	if _, err := f.put(n.ID, app.ContentPut{Content: "x", Base: 7}); codeOf(err) != "page.revision_mismatch" || f.budget.held != 0 ||
+		f.budget.released != 1 {
+		t.Errorf("put = %q, %d bytes held, %d released; want the 409 with the budget released", codeOf(err), f.budget.held, f.budget.released)
 	}
 }
 
@@ -174,6 +232,18 @@ func TestPutPageContentAnswersItsCodesInOrder(t *testing.T) {
 			s := f.session(n.ID, uuid.NewV7(), now().Add(time.Minute))
 			return n.ID, app.ContentPut{Content: "x", Base: 1, EditSession: s.ID}
 		}, "page.edit_session_ended"},
+		{"a session opened from another client", func(f *fixture, n domain.Node) (uuid.UUID, app.ContentPut) {
+			f.grant(domain.ActionWrite)
+			s := f.session(n.ID, f.alice, now().Add(time.Minute))
+			s.Client = domain.ClientAPI
+			f.store.sessions[s.ID] = s
+			return n.ID, app.ContentPut{Content: "x", Base: 1, EditSession: s.ID}
+		}, "page.edit_session_ended"},
+		{"a session that is not there, with the content the page holds", func(f *fixture, n domain.Node) (uuid.UUID, app.ContentPut) {
+			f.grant(domain.ActionWrite)
+			f.writeAs(n.ID, "same")
+			return n.ID, app.ContentPut{Content: "same", Base: 2, EditSession: uuid.NewV7()}
+		}, "page.edit_session_ended"},
 		{"another page's session", func(f *fixture, n domain.Node) (uuid.UUID, app.ContentPut) {
 			f.grant(domain.ActionWrite)
 			s := f.session(f.page("Other", nil, 1).ID, f.alice, now().Add(time.Minute))
@@ -209,8 +279,10 @@ func TestPutPageContentAnswersItsCodesInOrder(t *testing.T) {
 			if after, ok := f.store.contents[n.ID]; ok && after.Revision != before.Revision || f.logs.Len() != 0 {
 				t.Errorf("a refused write left revision %d, logged %q; want %d and nothing", after.Revision, f.logs, before.Revision)
 			}
-			if f.called("Parse") && f.rec.calls[0] != "Parse" {
-				t.Errorf("calls = %v, want the parse first", f.rec.calls)
+			if f.called("Parse") && !slices.Equal(f.rec.calls[:5], []string{"FindNode", "WorkspaceOf", "Authorize page.write", "Take " +
+				strconv.Itoa(len(p.Content)), "Parse"}) || f.budget.held != 0 {
+				t.Errorf("calls = %v, %d bytes held; want the decision, the take and the parse first, then the take released", f.rec.calls,
+					f.budget.held)
 			}
 		})
 	}

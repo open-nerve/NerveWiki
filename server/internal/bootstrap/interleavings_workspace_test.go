@@ -133,6 +133,14 @@ func (tm acmeTeam) interleave(t *testing.T, first, second step) (answer, answer)
 // answers, a request's checked against the contract.
 func (tm acmeTeam) interleaveOn(t *testing.T, h held, first, second step) (answer, answer) {
 	t.Helper()
+	return tm.interleaveBehind(t, h, first, second, h.table)
+}
+
+// interleaveBehind is interleaveOn where second waits for a row of the
+// table secondOn rather than for h's: a row first holds while it waits for
+// h's.
+func (tm acmeTeam) interleaveBehind(t *testing.T, h held, first, second step, secondOn string) (answer, answer) {
+	t.Helper()
 	ctx := context.Background()
 	holder, err := tm.pool.Begin(ctx)
 	if err != nil {
@@ -148,7 +156,11 @@ func (tm acmeTeam) interleaveOn(t *testing.T, h held, first, second step) (answe
 		send := tm.sender(t, c)
 		answers[i] = make(chan answer, 1)
 		go func() { answers[i] <- send() }()
-		pgtest.WaitForLockWaitsOn(t, tm.pool, h.table, i+1, interleavingWait)
+		table, waiting := h.table, i+1
+		if i == 1 && secondOn != h.table {
+			table, waiting = secondOn, 1
+		}
+		pgtest.WaitForLockWaitsOn(t, tm.pool, table, waiting, interleavingWait)
 	}
 	if err := holder.Commit(ctx); err != nil {
 		t.Fatal(err)

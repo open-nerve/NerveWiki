@@ -263,7 +263,7 @@ func (q *Queries) LockSession(ctx context.Context, id uuid.UUID) (EditSession, e
 	return i, err
 }
 
-const setSessionWrite = `-- name: SetSessionWrite :exec
+const setSessionWrite = `-- name: SetSessionWrite :execrows
 UPDATE edit_sessions SET changeset_id = $1, revision = $2 WHERE id = $3
 `
 
@@ -273,8 +273,12 @@ type SetSessionWriteParams struct {
 	ID          uuid.UUID
 }
 
-// The changeset an edit session's write went to and the revision it wrote, under LockSession's lock.
-func (q *Queries) SetSessionWrite(ctx context.Context, arg SetSessionWriteParams) error {
-	_, err := q.db.Exec(ctx, setSessionWrite, arg.ChangesetID, arg.Revision, arg.ID)
-	return err
+// The changeset an edit session's write went to and the revision it wrote, under LockSession's lock: the row is
+// there, and a row not updated is a fault.
+func (q *Queries) SetSessionWrite(ctx context.Context, arg SetSessionWriteParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setSessionWrite, arg.ChangesetID, arg.Revision, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

@@ -141,7 +141,19 @@ type PageConfig struct {
 	// EditSessionCleanupInterval is how often the edit sessions expired
 	// and not ended are deleted.
 	EditSessionCleanupInterval time.Duration `koanf:"edit_session_cleanup_interval"`
+	// ParseBudgetBytes is the bytes of content parsed and rendered at once
+	// (M4/P4 review P2): the largest content's parse can hold some 300
+	// times its size in memory. At least MinParseBudgetBytes.
+	ParseBudgetBytes int `koanf:"parse_budget_bytes"`
+	// ParseMaxWait is how long a request waits for its share of the budget
+	// before it is answered 503 server_busy.
+	ParseMaxWait time.Duration `koanf:"parse_max_wait"`
 }
+
+// MinParseBudgetBytes is the smallest parse budget: one page's largest
+// content, the page module's domain.MaxContentBytes, which bootstrap's
+// test checks it against.
+const MinParseBudgetBytes = 5 << 20
 
 // JobsConfig configures the background jobs (M1/P4 design 3.3).
 type JobsConfig struct {
@@ -216,6 +228,8 @@ func (c Config) LogValue() slog.Value {
 		),
 		slog.Group("page",
 			duration("edit_session_cleanup_interval", c.Page.EditSessionCleanupInterval),
+			slog.Int("parse_budget_bytes", c.Page.ParseBudgetBytes),
+			duration("parse_max_wait", c.Page.ParseMaxWait),
 		),
 		slog.Group("jobs",
 			duration("shutdown_timeout", c.Jobs.ShutdownTimeout),

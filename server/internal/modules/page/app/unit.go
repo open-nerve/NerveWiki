@@ -20,18 +20,18 @@ import (
 
 // WriterDeps are what the write unit needs.
 type WriterDeps struct {
-	Tx           Tx
-	Clock        Clock
-	Auth         shared.Authorizer
-	Workspaces   Workspaces
-	Notebooks    Notebooks
-	Nodes        Nodes
-	NodeWriter   NodeWriter
-	Changesets   ChangesetWriter
-	Sessions     SessionWriter
-	Guards       []WriteGuard
-	Participants []Participant
-	Observers    []PageObserver
+	Tx            Tx
+	Clock         Clock
+	Auth          shared.Authorizer
+	Workspaces    Workspaces
+	Notebooks     Notebooks
+	Nodes         Nodes
+	NodeWriter    NodeWriter
+	Changesets    ChangesetWriter
+	SessionWriter SessionWriter
+	Guards        []WriteGuard
+	Participants  []Participant
+	Observers     []PageObserver
 	// The edit sessions' vetoers of an opening, and subscribers of an end.
 	SessionVetoers     []EditSessionVetoer
 	SessionSubscribers []EditSessionSubscriber
@@ -73,6 +73,36 @@ type Outcome struct {
 	At          time.Time
 }
 
+// Allowed decides spec as Run does, unlocked: the same 404 and 403, for a
+// write to answer before it does work that only a writer should cause, as
+// parsing its content (M4/P4 review P1). Run decides again under its
+// locks.
+func (w *Writer) Allowed(ctx context.Context, spec UnitSpec) error {
+	actor, err := shared.RequireActor(ctx)
+	if err != nil {
+		return err
+	}
+	workspaceID, err := w.workspaceOf(ctx, spec)
+	if err != nil {
+		return err
+	}
+	_, err = authorize(ctx, w.d.Auth, actor, spec.Action, shared.Target{WorkspaceID: workspaceID, NotebookID: spec.NotebookID}, spec.NotFound)
+	return err
+}
+
+// workspaceOf is the workspace of spec's notebook, read unlocked; spec's
+// 404 when the notebook is not there.
+func (w *Writer) workspaceOf(ctx context.Context, spec UnitSpec) (uuid.UUID, error) {
+	workspaceID, ok, err := w.d.Notebooks.WorkspaceOf(ctx, spec.NotebookID)
+	switch {
+	case err != nil:
+		return uuid.UUID{}, err
+	case !ok:
+		return uuid.UUID{}, spec.NotFound
+	}
+	return workspaceID, nil
+}
+
 // Run runs do in a unit of spec: outside a transaction, the notebook's
 // workspace, unlocked; then, in the unit's transaction, the workspace's row
 // FOR SHARE, the notebook's, the decision, do, the observers. The clock is
@@ -89,12 +119,9 @@ func (w *Writer) Run(ctx context.Context, spec UnitSpec, do func(ctx context.Con
 	if err != nil {
 		return Outcome{}, err
 	}
-	workspaceID, ok, err := w.d.Notebooks.WorkspaceOf(ctx, spec.NotebookID)
-	switch {
-	case err != nil:
+	workspaceID, err := w.workspaceOf(ctx, spec)
+	if err != nil {
 		return Outcome{}, err
-	case !ok:
-		return Outcome{}, spec.NotFound
 	}
 	var u *Unit
 	err = w.d.Tx.WithinTx(ctx, func(ctx context.Context) error {

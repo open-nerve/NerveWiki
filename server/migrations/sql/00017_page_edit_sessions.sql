@@ -26,7 +26,8 @@ CREATE TABLE edit_sessions (
 );
 CREATE INDEX edit_sessions_node_id_idx ON edit_sessions (node_id);
 CREATE INDEX edit_sessions_notebook_id_idx ON edit_sessions (notebook_id);
-CREATE INDEX edit_sessions_expires_at_idx ON edit_sessions (expires_at);
+-- No index on expires_at: the heartbeats move it every 20 seconds, which an index would keep from being HOT
+-- updates, and the cleanup scans a table of the sessions alive (M4/P4 review P5).
 
 -- +goose Down
 DROP TABLE edit_sessions;

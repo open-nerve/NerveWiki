@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -10,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
@@ -144,9 +147,9 @@ func TestAContentOfBrokenUnicodeIsRefused(t *testing.T) {
 // client's are a few minutes, which no answer comes near when it works.
 func TestTheContentsRoutesTakeTheLargestContent(t *testing.T) {
 	tm := newAcmeTeamWith(t, "member", "", func(c *config.Config) {
-		c.Server.ReadTimeout, c.Server.WriteTimeout, c.Server.RequestTimeout = 2*time.Minute, 3*time.Minute, 2*time.Minute
+		c.Server.ReadTimeout, c.Server.WriteTimeout, c.Server.RequestTimeout = 2*time.Minute, 5*time.Minute, 2*time.Minute
 	})
-	patient := &http.Client{Timeout: 3 * time.Minute}
+	patient := &http.Client{Timeout: 5 * time.Minute}
 	send := func(method, path, body string) (int, string) {
 		t.Helper()
 		var payload []byte
@@ -207,4 +210,82 @@ func TestTheContentsRoutesTakeTheLargestContent(t *testing.T) {
 		t.Errorf("the content is at revision %d, %d bytes; want the largest at revision 2", got.Revision, len(got.Content))
 	}
 	checkPages(t, tm.pool)
+}
+
+// versionsOf is the page id's versions, oldest first, each as
+// "base->revision", a page's first with base "-".
+func (tm acmeTeam) versionsOf(t *testing.T, id string) []string {
+	t.Helper()
+	rows, err := tm.pool.Query(context.Background(), `SELECT coalesce(base_revision::text, '-') || '->' || revision
+		FROM page_revisions WHERE node_id = $1 ORDER BY revision`, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	versions, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		t.Fatal(err)
+	}
+	return versions
+}
+
+// A session's saves go to one changeset, one version, while no other
+// write comes between them; once one has, its next save starts a
+// changeset of its own (M4/P4 design 3.4, review T3). Each version keeps
+// the revision it was based on, through the store's upsert of a
+// changeset's version.
+func TestASessionsSavesAroundAnotherWrite(t *testing.T) {
+	tm := newAcmeTeam(t, "member", "")
+	nb := tm.openNotebook(t, "alice", "Eng")
+	id := tm.createPage(t, "alice", nb, "", "Notes")
+	session := tm.openSession(t, "bob", id)
+	for _, w := range []step{
+		contentWrite("bob", id, "# One", 1, session),
+		contentWrite("bob", id, "# Two", 2, session),
+		contentWrite("alice", id, "# Three", 3, ""),
+		contentWrite("bob", id, "# Four", 4, session),
+	} {
+		tm.send(t, w, http.StatusOK)
+	}
+	if got, want := tm.versionsOf(t, id), []string{"-->1", "1->3", "3->4", "4->5"}; strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Errorf("the versions are %q, want %q: the session's first two saves one, alice's, the session's last", got, want)
+	}
+	if n := count(t, tm.pool, `SELECT count(*) FROM page_revisions r JOIN edit_sessions s ON s.changeset_id = r.changeset_id
+		WHERE s.id = $1 AND s.revision = 5 AND r.revision = 5`, session); n != 1 {
+		t.Error("the session does not name the changeset of its last save at revision 5")
+	}
+	checkPages(t, tm.pool)
+}
+
+// Deleting a subtree deletes the edit sessions of every page in it, not
+// only its top's, and leaves those of the pages beside it (M4/P4 design
+// 3.5, review T3).
+func TestDeletingASubtreeDeletesItsSessions(t *testing.T) {
+	tm := newAcmeTeam(t, "member", "")
+	nb := tm.openNotebook(t, "alice", "Eng")
+	top := tm.createPage(t, "alice", nb, "", "Top")
+	child := tm.createPage(t, "alice", nb, top, "Child")
+	grandchild := tm.createPage(t, "alice", nb, child, "Grandchild")
+	beside := tm.createPage(t, "alice", nb, "", "Beside")
+	for _, page := range []string{child, grandchild, beside} {
+		tm.openSession(t, "bob", page)
+	}
+	tm.openSession(t, "alice", beside)
+
+	tm.send(t, nodeDeletion("alice", top), http.StatusNoContent)
+
+	for page, want := range map[string]int{child: 0, grandchild: 0, beside: 2} {
+		if got := tm.sessionsOf(t, page); got != want {
+			t.Errorf("%d sessions of %s after Top's deletion, want %d", got, page, want)
+		}
+	}
+	checkPages(t, tm.pool)
+}
+
+// The least parse budget the configuration takes is a page's largest
+// content (M4/P4 review P2): a smaller budget could never parse it. The
+// two constants are in two packages that do not import each other.
+func TestTheLeastParseBudgetIsTheLargestContent(t *testing.T) {
+	if config.MinParseBudgetBytes != domain.MaxContentBytes {
+		t.Errorf("the least parse budget %d, the largest content %d; want them equal", config.MinParseBudgetBytes, domain.MaxContentBytes)
+	}
 }

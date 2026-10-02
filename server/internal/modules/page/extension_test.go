@@ -381,7 +381,7 @@ func TestANotebookDeletionDeletesItsPages(t *testing.T) {
 	if n := f.count(t, "SELECT count(*) FROM edit_sessions"); n != 0 {
 		t.Errorf("%d edit sessions left, want none", n)
 	}
-	want := []page.SessionEnded{{SessionID: alive, NotebookID: f.eng, PageID: f.notes, UserID: f.alice, Reason: domain.EndedWithPage,
+	want := []page.SessionEnded{{SessionID: alive, WorkspaceID: f.acme, NotebookID: f.eng, PageID: f.notes, UserID: f.alice, Reason: domain.EndedWithPage,
 		By: f.alice, At: at}}
 	if !reflect.DeepEqual(sub.ended, want) || !sub.inTx {
 		t.Errorf("the subscriber followed %+v in a transaction %v, want %+v", sub.ended, sub.inTx, want)
@@ -464,8 +464,8 @@ func TestTheEditSessionsReachTheirRegistrants(t *testing.T) {
 		t.Fatalf("DELETE Notes = %d %s, want 204", rec.Code, rec.Body)
 	}
 	want := []page.SessionEnded{
-		{SessionID: ended, NotebookID: f.eng, PageID: f.notes, UserID: f.alice, Reason: domain.EndedByOwner, By: f.alice, At: testNow()},
-		{SessionID: deleted, NotebookID: f.eng, PageID: f.notes, UserID: f.alice, Reason: domain.EndedWithPage, By: f.alice, At: testNow()},
+		{SessionID: ended, WorkspaceID: f.acme, NotebookID: f.eng, PageID: f.notes, UserID: f.alice, Reason: domain.EndedByOwner, By: f.alice, At: testNow()},
+		{SessionID: deleted, WorkspaceID: f.acme, NotebookID: f.eng, PageID: f.notes, UserID: f.alice, Reason: domain.EndedWithPage, By: f.alice, At: testNow()},
 	}
 	if !reflect.DeepEqual(sub.ended, want) || !sub.inTx || f.count(t, "SELECT count(*) FROM edit_sessions") != 0 {
 		t.Errorf("the subscriber followed %+v in a transaction %v, want %+v and no session left", sub.ended, sub.inTx, want)

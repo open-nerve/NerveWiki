@@ -7,8 +7,8 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
-// MaxContentBytes is how large a page's content is at most: 5 MB (v0.1
-// design 3.6). page_contents and page_revisions hold the same bound.
+// MaxContentBytes is how large a page's content is at most: 5 MiB, the
+// 5 MB of v0.1 design 3.6. page_contents and page_revisions hold the same bound.
 const MaxContentBytes = 5 << 20
 
 // CheckContent checks a page's content as field, as it is stored: byte for
@@ -20,7 +20,7 @@ func CheckContent(field, content string) error {
 	switch {
 	case len(content) > MaxContentBytes:
 		return shared.Invalid(shared.FieldError{Field: field, Code: shared.FieldTooLong,
-			Message: "must be at most 5 MB"})
+			Message: "must be at most 5 MiB (5,242,880 bytes)"})
 	case strings.IndexByte(content, 0) >= 0 || !utf8.ValidString(content):
 		return shared.Invalid(shared.FieldError{Field: field, Code: shared.FieldInvalidFormat,
 			Message: "must be UTF-8 text without NUL characters"})

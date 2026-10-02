@@ -52,6 +52,8 @@ func TestLogValueMasksDatabaseURL(t *testing.T) {
 		"config.ratelimit.password_user.burst=5",
 		"config.workspace.creation_enabled=true",
 		"config.page.edit_session_cleanup_interval=10m0s",
+		"config.page.parse_budget_bytes=8388608",
+		"config.page.parse_max_wait=2s",
 		"config.jobs.shutdown_timeout=10s",
 		"config.jobs.purge_interval=1h0m0s",
 		"config.jobs.purge_retention=1440h0m0s",

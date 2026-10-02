@@ -130,6 +130,8 @@ func pageDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, author
 		EditSessionVetoers:         ext.sessionVetoers,
 		EditSessionSubscribers:     ext.sessionSubscribers,
 		EditSessionCleanupInterval: cfg.Page.EditSessionCleanupInterval,
+		ParseBudgetBytes:           cfg.Page.ParseBudgetBytes,
+		ParseMaxWait:               cfg.Page.ParseMaxWait,
 	}
 }
 
@@ -154,6 +156,7 @@ func apiConfig(cfg config.Config, logger *slog.Logger, limiter *ratelimit.Limite
 		RequestTimeout:   cfg.Server.RequestTimeout,
 		RequestTimeouts:  timeouts,
 		BodyLimits:       bodies,
+		BodyReadTimeout:  cfg.Server.ReadTimeout,
 		TrustedProxies:   cfg.Server.TrustedProxies,
 		IPv6PrefixLen:    limits.IPv6PrefixLen,
 		Anonymous:        bucket(limiter, "anonymous", limits.Anonymous),

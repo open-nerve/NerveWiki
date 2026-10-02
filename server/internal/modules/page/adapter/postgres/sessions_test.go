@@ -43,7 +43,7 @@ func sessionIDs(sessions []app.EditSession) []uuid.UUID {
 }
 
 // A session reads back as opened, without a write; a write sets its
-// changeset and revision together.
+// changeset and revision together, and fails for a session not there.
 func TestSessionsReadBack(t *testing.T) {
 	ctx := context.Background()
 	f := newFixture(t)
@@ -63,6 +63,9 @@ func TestSessionsReadBack(t *testing.T) {
 	}
 	if _, err := f.s.LockSession(ctx, uuid.NewV7()); !errors.Is(err, app.ErrNotFound) {
 		t.Errorf("LockSession(none) = %v, want ErrNotFound", err)
+	}
+	if err := f.s.SetSessionWrite(ctx, uuid.NewV7(), cs, 8); err == nil {
+		t.Error("SetSessionWrite(none) = nil, want an error: a unit sets the write of the session it holds")
 	}
 }
 

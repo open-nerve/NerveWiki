@@ -32,7 +32,7 @@ func (f *fixture) beat(id uuid.UUID, at time.Time) (app.EditSession, error) {
 
 // end runs endEditSession on the session id as alice, at at.
 func (f *fixture) end(id uuid.UUID, at time.Time) error {
-	return app.NewEndEditSession(f.tx, f.store, fixedClock{at}, f.enders, f.logger()).Execute(f.asAlice(), id)
+	return app.NewEndEditSession(f.tx, f.store, f.notebooks, fixedClock{at}, f.enders, f.logger()).Execute(f.asAlice(), id)
 }
 
 // An opening finds the page unlocked, shares the workspace's row and the
@@ -180,8 +180,9 @@ func TestAHeartbeatAnswersItsCodesInOrder(t *testing.T) {
 	}
 }
 
-// An end deletes the caller's alive session and tells the subscribers why,
-// who and when, in one transaction; it decides on nothing. A session
+// An end deletes the caller's alive session, reads its notebook's
+// workspace unlocked, and tells the subscribers where, why, who and when,
+// in one transaction; it decides on nothing. A session
 // missing, expired or someone else's is not found and stays.
 func TestAnEndTellsTheSubscribers(t *testing.T) {
 	f := newFixture()
@@ -192,15 +193,17 @@ func TestAnEndTellsTheSubscribers(t *testing.T) {
 	if err := f.end(s.ID, now()); err != nil {
 		t.Fatal(err)
 	}
-	if want := []string{"EndSession in tx", "EditSessionEnded in tx"}; !slices.Equal(f.rec.calls, want) {
+	if want := []string{"EndSession in tx", "WorkspaceOf in tx", "EditSessionEnded in tx"}; !slices.Equal(f.rec.calls, want) {
 		t.Errorf("calls = %v, want %v", f.rec.calls, want)
 	}
-	want := []app.SessionEnded{{SessionID: s.ID, NotebookID: f.eng, PageID: n.ID, UserID: f.alice, Reason: domain.EndedByOwner, By: f.alice, At: now()}}
+	want := []app.SessionEnded{{SessionID: s.ID, WorkspaceID: f.acme, NotebookID: f.eng, PageID: n.ID, UserID: f.alice,
+		Reason: domain.EndedByOwner, By: f.alice, At: now()}}
 	if !reflect.DeepEqual(sub.ended, want) || len(f.store.sessions) != 0 {
 		t.Errorf("the subscriber followed %+v, %d sessions left; want %+v and none", sub.ended, len(f.store.sessions), want)
 	}
-	if logs := f.logs.String(); !strings.Contains(logs, "edit session ended") || !strings.Contains(logs, s.ID.String()) {
-		t.Errorf("log %q, want the end with the session's id", logs)
+	if logs := f.logs.String(); !strings.Contains(logs, "edit session ended") || !strings.Contains(logs, s.ID.String()) ||
+		!strings.Contains(logs, "workspace_id="+f.acme.String()) {
+		t.Errorf("log %q, want the end with the session's id and its workspace's", logs)
 	}
 	for name, s := range map[string]app.EditSession{
 		"someone else's": f.session(n.ID, uuid.NewV7(), now().Add(time.Minute)), "expired": f.session(n.ID, f.alice, now()),
@@ -247,7 +250,7 @@ func TestDeletingASubtreeEndsItsSessions(t *testing.T) {
 	if i, j := slices.Index(f.rec.calls, "DeleteNodes in tx"), slices.Index(f.rec.calls, "DeleteNodeSessions in tx"); i < 0 || j < i {
 		t.Errorf("calls = %v, want the sessions deleted after the nodes", f.rec.calls)
 	}
-	want := []app.SessionEnded{{SessionID: alive.ID, NotebookID: f.eng, PageID: child.ID, UserID: bob, Reason: domain.EndedWithPage,
+	want := []app.SessionEnded{{SessionID: alive.ID, WorkspaceID: f.acme, NotebookID: f.eng, PageID: child.ID, UserID: bob, Reason: domain.EndedWithPage,
 		By: f.alice, At: now()}}
 	if !reflect.DeepEqual(sub.ended, want) {
 		t.Errorf("the subscriber followed %+v, want %+v", sub.ended, want)
@@ -274,7 +277,8 @@ func TestANotebookDeletionEndsItsSessions(t *testing.T) {
 	if want := []string{"DeleteNotebooksPages", "DeleteNotebookSessions", "EditSessionEnded"}; !slices.Equal(f.rec.calls, want) {
 		t.Errorf("calls = %v, want %v", f.rec.calls, want)
 	}
-	want := []app.SessionEnded{{SessionID: alive.ID, NotebookID: f.eng, PageID: n.ID, UserID: f.alice, Reason: domain.EndedWithPage, By: by, At: at}}
+	want := []app.SessionEnded{{SessionID: alive.ID, WorkspaceID: f.acme, NotebookID: f.eng, PageID: n.ID, UserID: f.alice,
+		Reason: domain.EndedWithPage, By: by, At: at}}
 	if !reflect.DeepEqual(sub.ended, want) || len(f.store.sessions) != 0 {
 		t.Errorf("the subscriber followed %+v, %d sessions left; want %+v, none", sub.ended, len(f.store.sessions), want)
 	}

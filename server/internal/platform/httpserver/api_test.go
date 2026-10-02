@@ -158,6 +158,7 @@ func testAPIConfig(auth Authenticator, logger *slog.Logger) APIConfig {
 		PublicOperations: []string{openRoute},
 		MaxBodyBytes:     64,
 		RequestTimeout:   2 * time.Second,
+		BodyReadTimeout:  3 * time.Second,
 		TrustedProxies:   []netip.Prefix{netip.MustParsePrefix("fd00::/8")},
 		IPv6PrefixLen:    64,
 		Anonymous:        newFakeLimiter(100),
@@ -326,8 +327,31 @@ func TestARouteBodyLimitRelaxesItsRoute(t *testing.T) {
 	}
 }
 
-// A route body limit must be positive.
+// A route of BodyLimits gives its body BodyReadTimeout to arrive on top of
+// RequestTimeout: a slow upload of a large body leaves its handler the
+// whole of RequestTimeout (M4/P4 review P3). The other routes keep
+// RequestTimeout.
+func TestARouteBodyLimitLengthensItsDeadline(t *testing.T) {
+	cfg := testAPIConfig(&fakeAuth{}, slog.New(slog.DiscardHandler))
+	cfg.BodyLimits = map[string]int64{openRoute: 100}
+	for path, want := range map[string]time.Duration{"/api/v0/open": 5 * time.Second, "/api/v0/things": 2 * time.Second} {
+		router, got := mount(buildAPI(t, cfg))
+		begin := time.Now()
+		serve(router, post(path, `{"name":"a"}`))
+		end := time.Now()
+		if deadline, ok := got.ctx.Deadline(); !ok || deadline.Before(begin.Add(want)) || deadline.After(end.Add(want)) {
+			t.Errorf("%s: handler deadline = %v (set %v), want %v after the request arrived", path, deadline, ok, want)
+		}
+	}
+}
+
+// A route body limit must be positive, and needs a body read timeout.
 func TestNewAPIChecksRouteBodyLimits(t *testing.T) {
+	cfg := testAPIConfig(&fakeAuth{}, slog.New(slog.DiscardHandler))
+	cfg.BodyLimits, cfg.BodyReadTimeout = map[string]int64{openRoute: 100}, 0
+	if _, err := NewAPI(cfg); err == nil || err.Error() != "httpserver: APIConfig: BodyReadTimeout must be positive when BodyLimits relaxes a route" {
+		t.Errorf("NewAPI(BodyLimits without BodyReadTimeout) error = %v", err)
+	}
 	for n, ok := range map[int64]bool{-1: false, 0: false, 1: true, 1 << 30: true} {
 		cfg := testAPIConfig(&fakeAuth{}, slog.New(slog.DiscardHandler))
 		cfg.BodyLimits = map[string]int64{openRoute: n}

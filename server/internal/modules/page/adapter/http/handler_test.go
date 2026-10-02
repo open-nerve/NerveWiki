@@ -292,6 +292,7 @@ func TestTheOperationsAnswerEachProblem(t *testing.T) {
 	parentInvalid := domain.NotAllowed("parent_id", "The parent is no page of this notebook.")
 	write := `{"content":"x","base_revision":1}`
 	contentInvalid := domain.CheckContent("content", "\x00")
+	busy := shared.ServerBusy(time.Second)
 	for _, tt := range []struct {
 		method, path, body string
 		err                error
@@ -304,14 +305,17 @@ func TestTheOperationsAnswerEachProblem(t *testing.T) {
 		{http.MethodPost, pagesPath, create, invalid, http.StatusUnprocessableEntity, "validation_failed"},
 		{http.MethodPost, pagesPath, create, domain.ErrTitleTaken, http.StatusConflict, "page.title_taken"},
 		{http.MethodPost, pagesPath, create, domain.ErrTooDeep, http.StatusConflict, "page.too_deep"},
+		{http.MethodPost, pagesPath, create, busy, http.StatusServiceUnavailable, "server_busy"},
 		{http.MethodGet, pagePath, "", domain.ErrNotFound, http.StatusNotFound, "page.not_found"},
 		{http.MethodGet, viewPath, "", domain.ErrNotFound, http.StatusNotFound, "page.not_found"},
+		{http.MethodGet, viewPath, "", busy, http.StatusServiceUnavailable, "server_busy"},
 		{http.MethodGet, contentPath, "", domain.ErrNotFound, http.StatusNotFound, "page.not_found"},
 		{http.MethodPut, contentPath, write, contentInvalid, http.StatusUnprocessableEntity, "validation_failed"},
 		{http.MethodPut, contentPath, write, domain.ErrNotFound, http.StatusNotFound, "page.not_found"},
 		{http.MethodPut, contentPath, write, shared.Forbidden(), http.StatusForbidden, "forbidden"},
 		{http.MethodPut, contentPath, write, domain.ErrEditSessionEnded, http.StatusConflict, "page.edit_session_ended"},
 		{http.MethodPut, contentPath, write, domain.ErrRevisionMismatch, http.StatusConflict, "page.revision_mismatch"},
+		{http.MethodPut, contentPath, write, busy, http.StatusServiceUnavailable, "server_busy"},
 		{http.MethodPatch, nodePath, `{"name":"a/b"}`, domain.ErrNotFound, http.StatusNotFound, "page.not_found"},
 		{http.MethodPatch, nodePath, `{"name":"a/b"}`, shared.Forbidden(), http.StatusForbidden, "forbidden"},
 		{http.MethodPatch, nodePath, `{"name":"a/b"}`, invalid, http.StatusUnprocessableEntity, "validation_failed"},

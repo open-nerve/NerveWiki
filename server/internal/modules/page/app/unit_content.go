@@ -24,8 +24,8 @@ type ContentWrite struct {
 
 // WriteContent writes w under the page's gate, its content row FOR NO KEY
 // UPDATE: 404 for a page that is not in the notebook; 409
-// page.edit_session_ended for a session that is not the writer's, of the
-// page, alive at the unit's time; nothing written when the page holds the
+// page.edit_session_ended for a session that is not the writer's, from
+// the unit's client, of the page, alive at the unit's time; nothing written when the page holds the
 // content already, whatever the base: the write is done; 409
 // page.revision_mismatch for a base that is not the page's revision. It
 // returns the page's revision as the write leaves it.
@@ -88,22 +88,24 @@ func (u *Unit) writeContent(ctx context.Context, w ContentWrite, participate boo
 		if session.ID == (uuid.UUID{}) {
 			return nil
 		}
-		return u.w.d.Sessions.SetSessionWrite(ctx, session.ID, u.changeset, c.Revision)
+		return u.w.d.SessionWriter.SetSessionWrite(ctx, session.ID, u.changeset, c.Revision)
 	})
 	return c.Revision, err
 }
 
 // writersSession is w's edit session, locked FOR UPDATE after the page's
-// content row: page.edit_session_ended unless it is the writer's, of the
-// page, alive at the unit's time.
+// content row: page.edit_session_ended unless it is the writer's, from the
+// unit's client, of the page, alive at the unit's time. A write from
+// another client than the one that opened the session would join a
+// changeset recorded as that client's (M4/P4 review D1).
 func (u *Unit) writersSession(ctx context.Context, w ContentWrite) (EditSession, error) {
-	s, err := u.w.d.Sessions.LockSession(ctx, w.EditSession)
+	s, err := u.w.d.SessionWriter.LockSession(ctx, w.EditSession)
 	switch {
 	case errors.Is(err, ErrNotFound):
 		return EditSession{}, domain.ErrEditSessionEnded
 	case err != nil:
 		return EditSession{}, err
-	case s.UserID != u.write.By || s.NodeID != w.NodeID || !s.Alive(u.write.At):
+	case s.UserID != u.write.By || s.Client != u.write.Client || s.NodeID != w.NodeID || !s.Alive(u.write.At):
 		return EditSession{}, domain.ErrEditSessionEnded
 	}
 	return s, nil

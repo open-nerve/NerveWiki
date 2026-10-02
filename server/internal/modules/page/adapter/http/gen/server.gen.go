@@ -40,7 +40,7 @@ type Ancestor struct {
 	Name string    `json:"name"`
 }
 
-// Content A page's Markdown, byte for byte: at most 5 MB of UTF-8, without NUL characters. Its line breaks, byte order mark and blanks are kept as they are.
+// Content A page's Markdown, byte for byte: at most 5 MiB (5,242,880 bytes) of UTF-8, without NUL characters. Its line breaks, byte order mark and blanks are kept as they are.
 type Content = string
 
 // EditSession An edit session of a page, while its lease lasts.
@@ -104,7 +104,7 @@ type Page struct {
 
 // PageContent A page's content.
 type PageContent struct {
-	// Content A page's Markdown, byte for byte: at most 5 MB of UTF-8, without NUL characters. Its line breaks, byte order mark and blanks are kept as they are.
+	// Content A page's Markdown, byte for byte: at most 5 MiB (5,242,880 bytes) of UTF-8, without NUL characters. Its line breaks, byte order mark and blanks are kept as they are.
 	Content Content `json:"content"`
 
 	// ContentHash The SHA-256 of the content's bytes, in lower-case hexadecimal.
@@ -119,7 +119,7 @@ type PageContentWrite struct {
 	// BaseRevision The revision the content was read at.
 	BaseRevision int `json:"base_revision"`
 
-	// Content A page's Markdown, byte for byte: at most 5 MB of UTF-8, without NUL characters. Its line breaks, byte order mark and blanks are kept as they are.
+	// Content A page's Markdown, byte for byte: at most 5 MiB (5,242,880 bytes) of UTF-8, without NUL characters. Its line breaks, byte order mark and blanks are kept as they are.
 	Content Content `json:"content"`
 
 	// EditSessionID The caller's edit session of the page the write is made in.
@@ -131,7 +131,7 @@ type PageCreate struct {
 	// AfterID The sibling the page goes right after; null puts it first, absent last.
 	AfterID nullable.Nullable[uuid.UUID] `json:"after_id,omitempty"`
 
-	// Content A page's Markdown, byte for byte: at most 5 MB of UTF-8, without NUL characters. Its line breaks, byte order mark and blanks are kept as they are.
+	// Content A page's Markdown, byte for byte: at most 5 MiB (5,242,880 bytes) of UTF-8, without NUL characters. Its line breaks, byte order mark and blanks are kept as they are.
 	Content *Content `json:"content,omitempty"`
 
 	// ParentID The parent page; null for the notebook's root.

@@ -30,11 +30,11 @@ func (u *Unit) Delete(ctx context.Context, id uuid.UUID) (domain.Subtree, error)
 		if err := u.w.d.NodeWriter.DeleteNodes(ctx, ids, u.write.By, u.write.At); err != nil {
 			return err
 		}
-		sessions, err := u.w.d.Sessions.DeleteNodeSessions(ctx, ids)
+		sessions, err := u.w.d.SessionWriter.DeleteNodeSessions(ctx, ids)
 		if err != nil {
 			return err
 		}
-		return tellEnded(ctx, u.w.d.SessionSubscribers, sessions, domain.EndedWithPage, u.write.By, u.write.At)
+		return tellEnded(ctx, u.w.d.SessionSubscribers, u.write.WorkspaceID, sessions, domain.EndedWithPage, u.write.By, u.write.At)
 	})
 	return sub, err
 }

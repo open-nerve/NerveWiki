@@ -310,7 +310,7 @@ export const zhCN: Messages = {
   "problem.page.cycle": "页面不能移到它自己或它的子页面下。",
   "problem.page.title_taken": "同一父页面下已有同名的页面（只差大小写也算同名）。",
   "problem.page.too_deep": "页面最多嵌套 10 层。",
-  "problem.page.revision_mismatch": "这个页面在你读取之后被别人改过了。",
+  "problem.page.revision_mismatch": "这个页面在你读取之后有了新的改动。",
   "problem.page.edit_session_ended": "编辑会话已经结束，需要重新进入编辑。",
   "problem.page.edit_session_not_found": "编辑会话不存在或已经结束。",
   "problem.network": "连不上服务器，请检查网络后重试。",

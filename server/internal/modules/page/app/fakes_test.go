@@ -5,6 +5,7 @@ import (
 	"cmp"
 	"context"
 	"crypto/sha256"
+	"fmt"
 	"log/slog"
 	"slices"
 	"time"
@@ -236,6 +237,28 @@ type fakeMarkdown struct {
 func (f *fakeMarkdown) Parse(content string) app.Parsed {
 	f.record(context.Background(), "Parse")
 	return content
+}
+
+// fakeBudget records each take of the parse budget with its bytes, and
+// each release; err, when set, is Take's.
+type fakeBudget struct {
+	*recorder
+	err      error
+	held     int
+	released int
+}
+
+func (b *fakeBudget) Take(ctx context.Context, n int) (func(), error) {
+	b.record(ctx, fmt.Sprintf("Take %d", n))
+	if b.err != nil {
+		return nil, b.err
+	}
+	b.held += n
+	return func() {
+		b.record(ctx, fmt.Sprintf("Release %d", n))
+		b.held -= n
+		b.released++
+	}, nil
 }
 
 func (f *fakeMarkdown) Render(ctx context.Context, parsed app.Parsed, page app.PageRef) (string, error) {
@@ -558,6 +581,7 @@ type fixture struct {
 	notebooks  fakeNotebooks
 	store      *fakeStore
 	md         *fakeMarkdown
+	budget     *fakeBudget
 	auth       *fakeAuthorizer
 	logs       *bytes.Buffer
 	guards     []app.WriteGuard
@@ -582,6 +606,7 @@ func newFixture() *fixture {
 	}
 	f.notebooks = fakeNotebooks{recorder: rec, workspaces: map[uuid.UUID]uuid.UUID{f.eng: f.acme}, gone: map[uuid.UUID]bool{}}
 	f.md = &fakeMarkdown{recorder: rec}
+	f.budget = &fakeBudget{recorder: rec}
 	return f
 }
 
@@ -590,9 +615,13 @@ func (f *fixture) logger() *slog.Logger { return slog.New(slog.NewTextHandler(f.
 func (f *fixture) writer() *app.Writer {
 	return app.NewWriter(app.WriterDeps{
 		Tx: f.tx, Clock: f.clock, Auth: f.auth, Workspaces: f.workspaces, Notebooks: f.notebooks, Nodes: f.store,
-		NodeWriter: f.store, Changesets: f.store, Sessions: f.store, Guards: f.guards, Participants: f.partakers,
+		NodeWriter: f.store, Changesets: f.store, SessionWriter: f.store, Guards: f.guards, Participants: f.partakers,
 		Observers: f.observers, SessionVetoers: f.vetoers, SessionSubscribers: f.enders,
 	})
+}
+
+func (f *fixture) parser() *app.ContentParser {
+	return app.NewContentParser(f.writer(), f.md, f.budget)
 }
 
 // grant has the authorizer allow actions.

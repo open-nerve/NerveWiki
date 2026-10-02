@@ -236,17 +236,12 @@ type ExpiredSessions interface {
 	DeleteExpiredSessions(ctx context.Context, now time.Time, batch int) (int, error)
 }
 
-// NotebookActivity is the pages' part in a notebook's activity: the bytes
-// of its pages, and its changesets' last write.
-type NotebookActivity struct {
-	Bytes       int64
-	LastWriteAt time.Time
-}
-
-// Activities reads the pages' part in notebooks' activity, unlocked: a
-// notebook that never had a page is not in the answer.
-type Activities interface {
-	NotebookActivities(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]NotebookActivity, error)
+// ParseBudget bounds the content parsed and rendered at once (M4/P4
+// review P2): the largest content's parse can hold some 300 times its size
+// in memory. Take holds n bytes of it until release; it waits a while for
+// them, then answers shared.ServerBusy.
+type ParseBudget interface {
+	Take(ctx context.Context, n int) (release func(), err error)
 }
 
 // Markdown parses and renders a page's content (M4/P3 design 3.9):

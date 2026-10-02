@@ -172,7 +172,6 @@ func TestConstraintAndIndexNames(t *testing.T) {
 		"changesets_pkey p",
 		"edit_sessions_client_check c",
 		"edit_sessions_expires_at_check c",
-		"edit_sessions_expires_at_idx i",
 		"edit_sessions_node_id_idx i",
 		"edit_sessions_notebook_id_idx i",
 		"edit_sessions_pkey iu",

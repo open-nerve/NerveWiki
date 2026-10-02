@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"uuid"
 
@@ -14,21 +15,24 @@ import (
 type EndEditSession struct {
 	tx          Tx
 	sessions    Sessions
+	notebooks   Notebooks
 	clock       Clock
 	subscribers []EditSessionSubscriber
 	logger      *slog.Logger
 }
 
 // NewEndEditSession returns the use case.
-func NewEndEditSession(tx Tx, sessions Sessions, clock Clock, subscribers []EditSessionSubscriber, logger *slog.Logger) *EndEditSession {
-	return &EndEditSession{tx: tx, sessions: sessions, clock: clock, subscribers: subscribers, logger: logger}
+func NewEndEditSession(tx Tx, sessions Sessions, notebooks Notebooks, clock Clock, subscribers []EditSessionSubscriber,
+	logger *slog.Logger,
+) *EndEditSession {
+	return &EndEditSession{tx: tx, sessions: sessions, notebooks: notebooks, clock: clock, subscribers: subscribers, logger: logger}
 }
 
 // Execute ends the caller's session id: its row goes, and the subscribers
-// follow, in one transaction that holds no workspace's or notebook's row.
-// It asks only that the session is the caller's, alive: a session that is
-// missing, expired, or someone else's is page.edit_session_not_found,
-// which the editor takes for ended.
+// follow, in one transaction that holds no workspace's or notebook's row:
+// its notebook's workspace is read unlocked. It asks only that the session
+// is the caller's, alive: a session that is missing, expired, or someone
+// else's is page.edit_session_not_found, which the editor takes for ended.
 func (e *EndEditSession) Execute(ctx context.Context, id uuid.UUID) error {
 	actor, err := shared.RequireActor(ctx)
 	if err != nil {
@@ -36,15 +40,25 @@ func (e *EndEditSession) Execute(ctx context.Context, id uuid.UUID) error {
 	}
 	now := e.clock.Now()
 	var s EditSession
+	var workspaceID uuid.UUID
 	err = e.tx.WithinTx(ctx, func(ctx context.Context) error {
 		if s, err = e.sessions.EndSession(ctx, id, actor.UserID, now); err != nil {
 			return found(err, domain.ErrEditSessionNotFound)
 		}
-		return tellEnded(ctx, e.subscribers, []EditSession{s}, domain.EndedByOwner, actor.UserID, now)
+		// The notebook's deletion deletes its sessions: the row was there,
+		// so is the notebook.
+		var ok bool
+		switch workspaceID, ok, err = e.notebooks.WorkspaceOf(ctx, s.NotebookID); {
+		case err != nil:
+			return err
+		case !ok:
+			return fmt.Errorf("the notebook of the edit session %s is not there", s.ID)
+		}
+		return tellEnded(ctx, e.subscribers, workspaceID, []EditSession{s}, domain.EndedByOwner, actor.UserID, now)
 	})
 	if err != nil {
 		return err
 	}
-	e.logger.InfoContext(ctx, "edit session ended", sessionLogged(uuid.UUID{}, s)...)
+	e.logger.InfoContext(ctx, "edit session ended", sessionLogged(workspaceID, s)...)
 	return nil
 }

@@ -78,6 +78,11 @@ type Deps struct {
 	// EditSessionCleanupInterval is how often the expired edit sessions
 	// are deleted (page.edit_session_cleanup_interval).
 	EditSessionCleanupInterval time.Duration
+	// ParseBudgetBytes is the bytes of content parsed and rendered at once
+	// (page.parse_budget_bytes), which a request waits for at most
+	// ParseMaxWait (page.parse_max_wait).
+	ParseBudgetBytes int
+	ParseMaxWait     time.Duration
 }
 
 // Module is the wired page module.
@@ -90,25 +95,27 @@ type Module struct {
 func New(d Deps) *Module {
 	store := postgresadapter.New(d.Pool)
 	md := markdownadapter.New(d.Markdown)
+	budget := markdownadapter.NewBudget(d.ParseBudgetBytes, d.ParseMaxWait, d.Logger)
 	writer := app.NewWriter(app.WriterDeps{
 		Tx: d.Tx, Clock: d.Clock, Auth: d.Authorizer, Workspaces: d.Workspaces, Notebooks: d.Notebooks,
-		Nodes: store, NodeWriter: store, Changesets: store, Sessions: store,
+		Nodes: store, NodeWriter: store, Changesets: store, SessionWriter: store,
 		Guards: d.Guards, Participants: d.Participants, Observers: d.Observers,
 		SessionVetoers: d.EditSessionVetoers, SessionSubscribers: d.EditSessionSubscribers,
 	})
+	parser := app.NewContentParser(writer, md, budget)
 	return &Module{uc: httpadapter.UseCases{
 		ListNodes:      app.NewListNodes(d.Notebooks, store, d.Authorizer),
-		CreatePage:     app.NewCreatePage(writer, store, md, d.Logger),
+		CreatePage:     app.NewCreatePage(writer, store, parser, d.Logger),
 		GetPage:        app.NewGetPage(d.Notebooks, store, d.Authorizer),
 		GetPageContent: app.NewGetPageContent(d.Notebooks, store, d.Authorizer),
-		PutPageContent: app.NewPutPageContent(writer, store, md, d.Logger),
-		GetPageView:    app.NewGetPageView(d.Notebooks, store, d.Authorizer, md),
+		PutPageContent: app.NewPutPageContent(writer, store, parser, d.Logger),
+		GetPageView:    app.NewGetPageView(d.Notebooks, store, d.Authorizer, md, budget),
 		RenameNode:     app.NewRenameNode(writer, store, d.Logger),
 		MoveNode:       app.NewMoveNode(writer, store, d.Logger),
 		DeleteNode:     app.NewDeleteNode(writer, store, d.Logger),
 		OpenSession:    app.NewOpenEditSession(writer, store, d.Logger),
 		Heartbeat:      app.NewHeartbeatEditSession(store, d.Notebooks, d.Authorizer, d.Clock),
-		EndSession:     app.NewEndEditSession(d.Tx, store, d.Clock, d.EditSessionSubscribers, d.Logger),
+		EndSession:     app.NewEndEditSession(d.Tx, store, d.Notebooks, d.Clock, d.EditSessionSubscribers, d.Logger),
 	}, jobs: []jobs.Job{
 		riveradapter.CleanupJob(app.NewCleanupEditSessions(store, d.Clock, d.Logger), d.EditSessionCleanupInterval),
 	}}

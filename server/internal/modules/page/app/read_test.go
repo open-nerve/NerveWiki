@@ -103,16 +103,17 @@ func TestGetPageViewRendersThePagesContent(t *testing.T) {
 	c.Content, c.Revision = "# Hello", 3
 	f.store.contents[n.ID] = c
 	md := &fakeMarkdown{recorder: f.rec}
-	v, err := app.NewGetPageView(f.notebooks, f.store, f.auth, md).Execute(f.asAlice(), n.ID)
+	v, err := app.NewGetPageView(f.notebooks, f.store, f.auth, md, f.budget).Execute(f.asAlice(), n.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if v != (app.ReadingView{HTML: "<p># Hello</p>", Revision: 3}) {
 		t.Errorf("view = %+v, want the content rendered at revision 3", v)
 	}
-	if !slices.Equal(f.rec.calls, []string{"FindNode", "WorkspaceOf", "Authorize page.read", "PageContent", "Parse", "Render"}) {
-		t.Errorf("calls = %v, want the node, the workspace, the decision, the content, then its parse and rendering,"+
-			" outside a transaction", f.rec.calls)
+	if !slices.Equal(f.rec.calls, []string{"FindNode", "WorkspaceOf", "Authorize page.read", "PageContent", "Take 7", "Parse", "Render",
+		"Release 7"}) {
+		t.Errorf("calls = %v, want the node, the workspace, the decision, the content, then its parse and rendering within the"+
+			" budget, outside a transaction", f.rec.calls)
 	}
 	if !slices.Equal(md.pages, []app.PageRef{{NotebookID: f.eng, PageID: n.ID}}) {
 		t.Errorf("rendered for %v, want eng's page", md.pages)
@@ -131,7 +132,7 @@ func TestGetPageViewOfAPageNotSeen(t *testing.T) {
 	other.NotebookID = uuid.NewV7()
 	f.store.nodes[other.ID] = other
 	f.grant(domain.ActionRead)
-	view := app.NewGetPageView(f.notebooks, f.store, f.auth, &fakeMarkdown{recorder: f.rec})
+	view := app.NewGetPageView(f.notebooks, f.store, f.auth, &fakeMarkdown{recorder: f.rec}, f.budget)
 	for _, id := range []uuid.UUID{uuid.NewV7(), asset.ID, contentless.ID, other.ID} {
 		if _, err := view.Execute(f.asAlice(), id); codeOf(err) != "page.not_found" {
 			t.Errorf("getPageView = %v, want page.not_found", err)
@@ -151,7 +152,7 @@ func TestGetPageViewReturnsRendersError(t *testing.T) {
 	f.grant(domain.ActionRead)
 	n := f.page("A", nil, 0)
 	down := errors.New("down")
-	_, err := app.NewGetPageView(f.notebooks, f.store, f.auth, &fakeMarkdown{recorder: f.rec, err: down}).Execute(f.asAlice(), n.ID)
+	_, err := app.NewGetPageView(f.notebooks, f.store, f.auth, &fakeMarkdown{recorder: f.rec, err: down}, f.budget).Execute(f.asAlice(), n.ID)
 	if !errors.Is(err, down) {
 		t.Errorf("getPageView = %v, want %v", err, down)
 	}

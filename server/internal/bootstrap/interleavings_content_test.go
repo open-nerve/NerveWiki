@@ -39,6 +39,12 @@ func (tm acmeTeam) revisions(t *testing.T, id string) (all, deletedWithIt int) {
 	return all, deletedWithIt
 }
 
+// changesetRow is the changeset id's row, which a save that resumes it
+// updates.
+func changesetRow(id string) held {
+	return held{"changesets", "SELECT 1 FROM changesets WHERE id = '" + id + "' FOR UPDATE"}
+}
+
 // sessionsOf counts the page id's edit sessions.
 func (tm acmeTeam) sessionsOf(t *testing.T, id string) int {
 	t.Helper()
@@ -239,10 +245,10 @@ func TestOpeningSessionsOfAPage(t *testing.T) {
 
 // Interleaving 43: the expired sessions' cleanup while a session's row is
 // held, as a save in it holds it. The cleanup skips the row and runs on,
-// leaving it; a run after its release deletes it. A heartbeat of it is then
-// 404 page.edit_session_not_found, a save in it 409
-// page.edit_session_ended. The cleanup is the job serve runs, here every
-// second; the session expires by SQL rather than by a minute's wait.
+// leaving it; a run after its release deletes it. The cleanup is the job
+// serve runs, here every second; the session expires by SQL rather than
+// by a minute's wait. The last two checks are of a session the cleanup
+// deleted, not of the cleanup: an expired session answers the same.
 func TestCleaningUpAHeldSession(t *testing.T) {
 	tm := newAcmeTeamWith(t, "member", "", func(c *config.Config) { c.Page.EditSessionCleanupInterval = time.Second })
 	nb := tm.openNotebook(t, "alice", "Eng")
@@ -290,6 +296,36 @@ func TestCleaningUpAHeldSession(t *testing.T) {
 		if status != c.want.status || problemCode(t, answer) != c.want.code {
 			t.Errorf("%s after the cleanup = %d %s, want %s", c.step.name(), status, answer, c.want)
 		}
+	}
+	checkPages(t, tm.pool)
+	checkNotebooks(t, tm.pool)
+}
+
+// Interleaving 44: bob ends his session while a save in it waits, holding
+// the session's row FOR UPDATE: its second save, which resumes the
+// session's changeset, waits for the test's hold on the changeset's row,
+// and the end for the save's on the session's. The end deletes the session
+// once the save has committed: no write in a session comes after its end
+// (M4/P4 review T1).
+func TestEndingASessionASaveInItHolds(t *testing.T) {
+	tm := newAcmeTeam(t, "member", "")
+	nb := tm.openNotebook(t, "alice", "Eng")
+	id := tm.createPage(t, "alice", nb, "", "Notes")
+	session := tm.openSession(t, "bob", id)
+	tm.send(t, contentWrite("bob", id, "# One", 1, session), http.StatusOK)
+	var changeset string
+	if err := tm.pool.QueryRow(context.Background(), "SELECT changeset_id::text FROM edit_sessions WHERE id = $1", session).Scan(&changeset); err != nil {
+		t.Fatal(err)
+	}
+	saved, ended := tm.interleaveBehind(t, changesetRow(changeset), contentWrite("bob", id, "# Two", 2, session),
+		request("bob", http.MethodDelete, "/api/v0/edit-sessions/"+session, ""), "edit_sessions")
+	if !saved.is(http.StatusOK, "") || !ended.is(http.StatusNoContent, "") {
+		t.Errorf("the save = %d %s, then the end = %d %s; want 200, then 204", saved.status, saved.code, ended.status, ended.code)
+	}
+	changesets := count(t, tm.pool, "SELECT count(DISTINCT changeset_id) FROM page_revisions WHERE node_id = $1 AND revision > 1", id)
+	if got := tm.content(t, "bob", id); got.Revision != 3 || changesets != 1 || tm.sessionsOf(t, id) != 0 {
+		t.Errorf("revision %d, the session's versions in %d changesets, %d sessions; want 3, 1 and none", got.Revision, changesets,
+			tm.sessionsOf(t, id))
 	}
 	checkPages(t, tm.pool)
 	checkNotebooks(t, tm.pool)

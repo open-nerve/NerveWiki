@@ -103,17 +103,19 @@ type EditSessionVetoer interface {
 	VetoEditSession(ctx context.Context, o SessionOpening) error
 }
 
-// SessionEnded is an edit session's end: the session, its page and owner,
-// why, by whom and when. Its owner ends it, or whoever deletes its page,
-// alone, with a subtree or with its notebook; M5 adds the forced unlock.
+// SessionEnded is an edit session's end: the session, where its page is,
+// its page and owner, why, by whom and when. Its owner ends it, or whoever
+// deletes its page, alone, with a subtree or with its notebook; M5 adds
+// the forced unlock.
 type SessionEnded struct {
-	SessionID  uuid.UUID
-	NotebookID uuid.UUID
-	PageID     uuid.UUID
-	UserID     uuid.UUID
-	Reason     domain.EndReason
-	By         uuid.UUID
-	At         time.Time
+	SessionID   uuid.UUID
+	WorkspaceID uuid.UUID
+	NotebookID  uuid.UUID
+	PageID      uuid.UUID
+	UserID      uuid.UUID
+	Reason      domain.EndReason
+	By          uuid.UUID
+	At          time.Time
 }
 
 // EditSessionSubscriber follows the ends of the edit sessions alive when
@@ -154,5 +156,5 @@ func (n NotebookDeletion) NotebookDeleted(ctx context.Context, d NotebookDeleted
 	if err != nil {
 		return err
 	}
-	return tellEnded(ctx, n.Subscribers, sessions, domain.EndedWithPage, d.By, d.At)
+	return tellEnded(ctx, n.Subscribers, d.WorkspaceID, sessions, domain.EndedWithPage, d.By, d.At)
 }

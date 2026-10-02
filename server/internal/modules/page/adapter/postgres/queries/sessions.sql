@@ -11,8 +11,9 @@ SELECT id, node_id, notebook_id, user_id, client, changeset_id, revision, create
 FROM edit_sessions WHERE id = sqlc.arg(id)
 FOR UPDATE;
 
--- name: SetSessionWrite :exec
--- The changeset an edit session's write went to and the revision it wrote, under LockSession's lock.
+-- name: SetSessionWrite :execrows
+-- The changeset an edit session's write went to and the revision it wrote, under LockSession's lock: the row is
+-- there, and a row not updated is a fault.
 UPDATE edit_sessions SET changeset_id = sqlc.arg(changeset_id), revision = sqlc.arg(revision) WHERE id = sqlc.arg(id);
 
 -- name: FindLiveSession :one
