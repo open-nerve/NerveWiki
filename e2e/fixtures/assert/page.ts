@@ -1,4 +1,4 @@
-import type { Page } from "@nervewiki/api-client";
+import type { Page, TreeNode } from "@nervewiki/api-client";
 import { expect } from "@playwright/test";
 
 import type { Database } from "../db";
@@ -99,5 +99,61 @@ export async function expectPagesDeletedWith(db: Database, notebookId: string, c
   );
   expect(rows).toEqual([
     { pages: count, pages_apart: 0, contents_apart: 0, items_apart: 0, versions_apart: 0, changesets_apart: 0 },
+  ]);
+}
+
+/**
+ * nodes, changesets and changeset_items: the node id is where moved puts it, moved there from under fromParentId by
+ * moverId in its last changeset, whose time it holds and whose item has it from that parent to its place, its name
+ * unchanged.
+ */
+export async function expectMoved(
+  db: Database,
+  moved: TreeNode,
+  fromParentId: string | null,
+  moverId: string
+): Promise<void> {
+  const rows = await db.query(
+    `SELECT n.parent_id, n.updated_by_id = $3 AS by_mover, s.created_by_id = $3 AND s.created_at = n.updated_at AS at_move,
+            i.before_parent_id IS NOT DISTINCT FROM $2::uuid AS from_parent,
+            i.after_parent_id IS NOT DISTINCT FROM n.parent_id AND i.after_sort_order = n.sort_order AS to_place,
+            i.before_name = n.name AND i.after_name = n.name AS same_name
+       FROM nodes n JOIN changeset_items i ON i.node_id = n.id JOIN changesets s ON s.id = i.changeset_id
+      WHERE n.id = $1
+      ORDER BY s.created_at DESC, s.id DESC LIMIT 1`,
+    [moved.id, fromParentId, moverId]
+  );
+  expect(rows).toEqual([
+    { parent_id: moved.parent_id, by_mover: true, at_move: true, from_parent: true, to_place: true, same_name: true },
+  ]);
+}
+
+/**
+ * nodes, page_contents, page_revisions, changeset_items, changesets: the subtree of rootId, the pages ids, is deleted
+ * by deleterId at one time, with what follows them, and the changeset that deleted it holds an item of each page with
+ * no after, deleted with it.
+ */
+export async function expectSubtreeDeleted(
+  db: Database,
+  rootId: string,
+  ids: string[],
+  deleterId: string
+): Promise<void> {
+  const rows = await db.query(
+    `SELECT (SELECT count(*)::int FROM nodes x WHERE x.id = ANY($2::uuid[]) AND x.deleted_at = r.deleted_at
+              AND x.updated_at = r.deleted_at AND x.updated_by_id = $3) AS pages,
+            (SELECT count(*)::int FROM page_contents c WHERE c.node_id = ANY($2::uuid[]) AND c.deleted_at = r.deleted_at) AS contents,
+            (SELECT count(*)::int FROM page_revisions v WHERE v.node_id = ANY($2::uuid[])
+              AND v.deleted_at IS DISTINCT FROM r.deleted_at) AS versions_apart,
+            (SELECT count(*)::int FROM changeset_items i WHERE i.node_id = ANY($2::uuid[])
+              AND i.deleted_at IS DISTINCT FROM r.deleted_at) AS items_apart,
+            (SELECT count(*)::int FROM changeset_items i JOIN changesets s ON s.id = i.changeset_id
+              WHERE i.node_id = ANY($2::uuid[]) AND i.after_name IS NULL AND i.deleted_at = r.deleted_at
+              AND s.created_at = r.deleted_at AND s.created_by_id = $3) AS deletions
+       FROM nodes r WHERE r.id = $1 AND r.deleted_at IS NOT NULL`,
+    [rootId, ids, deleterId]
+  );
+  expect(rows).toEqual([
+    { pages: ids.length, contents: ids.length, versions_apart: 0, items_apart: 0, deletions: ids.length },
   ]);
 }

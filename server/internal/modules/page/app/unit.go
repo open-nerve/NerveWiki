@@ -192,7 +192,9 @@ func (u *Unit) ensureChangeset(ctx context.Context) error {
 }
 
 // recordItem merges c into the unit's changes, and into the changeset's
-// item of its node when it moves the node.
+// item of its node when it moves the node. No unit of M4 creates a node
+// and deletes it: their item would have neither state, which the table
+// refuses (M4/P2 design 3.2).
 func (u *Unit) recordItem(ctx context.Context, c domain.Change) error {
 	if i, ok := u.merged[c.NodeID]; ok {
 		u.changes[i] = u.changes[i].Then(c)

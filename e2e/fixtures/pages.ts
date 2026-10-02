@@ -1,4 +1,4 @@
-import type { ApiClient, Page, PageCreate, TreeNode } from "@nervewiki/api-client";
+import type { ApiClient, NodeMove, Page, PageCreate, TreeNode } from "@nervewiki/api-client";
 import { expect } from "@playwright/test";
 
 import { bearer } from "./auth";
@@ -60,4 +60,31 @@ export async function listNodes(api: ApiClient, credential: string, notebookId: 
   const { data, error, response } = await getTree(api, credential, notebookId);
   expect(response.status, `list the tree: ${JSON.stringify(error)}`).toBe(200);
   return data?.data ?? [];
+}
+
+/** credential's move of the node id to body, as the API answers it. */
+export async function postMove(api: ApiClient, credential: string, id: string, body: NodeMove) {
+  return api.POST("/api/v0/nodes/{node_id}/move", {
+    params: { path: { node_id: id } },
+    body,
+    headers: bearer(credential),
+  });
+}
+
+/** Moves the node id to body with credential, and returns it as the API answers it. */
+export async function moveNode(api: ApiClient, credential: string, id: string, body: NodeMove): Promise<TreeNode> {
+  const { data, error, response } = await postMove(api, credential, id, body);
+  expect(response.status, `move ${id}: ${JSON.stringify(error)}`).toBe(200);
+  if (!data) {
+    throw new Error(`move ${id} answered 200 without the node`);
+  }
+  return data;
+}
+
+/** credential's deletion of the node id with its subtree, as the API answers it. */
+export async function deleteNode(api: ApiClient, credential: string, id: string) {
+  return api.DELETE("/api/v0/nodes/{node_id}", {
+    params: { path: { node_id: id } },
+    headers: bearer(credential),
+  });
 }
