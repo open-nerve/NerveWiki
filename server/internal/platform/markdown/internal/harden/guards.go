@@ -6,8 +6,10 @@ import (
 	"strings"
 
 	"github.com/yuin/goldmark/ast"
+	east "github.com/yuin/goldmark/extension/ast"
 	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/text"
+	"github.com/yuin/goldmark/util"
 )
 
 // index is what the guards look up in the block being parsed: where the
@@ -25,8 +27,15 @@ type index struct {
 	// brackets may end, in order.
 	angles []int
 	// emails: the runs of characters an e-mail address's local part may
-	// have, as [start, end) in order.
-	emails [][2]int
+	// have, in order.
+	emails []email
+}
+
+// email is a run of local-part characters, [start, end), and whether
+// goldmark's linkify makes an address that starts in it a link.
+type email struct {
+	start, end int
+	link       bool
 }
 
 var indexKey = parser.NewContextKey() //nolint:gochecknoglobals // a key is made once, as goldmark's are
@@ -61,7 +70,7 @@ func (ix *index) add(at int, line []byte) {
 		ix.ticks[r[1]-r[0]] = at + r[0]
 	}
 	for _, r := range runsOf(line, isEmailChar) {
-		ix.emails = append(ix.emails, [2]int{at + r[0], at + r[1]})
+		ix.emails = append(ix.emails, email{at + r[0], at + r[1], emailLink(line[r[0]:])})
 	}
 	backslashes := 0
 	for j, c := range line {
@@ -102,6 +111,25 @@ func isEmailChar(c byte) bool {
 		return true
 	}
 	return strings.IndexByte(".!#$%&'*+/=?^_`{|}~-", c) >= 0
+}
+
+// emailLink tells whether goldmark's linkify makes the e-mail address at
+// the head of line a link, wherever in its local part it starts: the
+// address is found, has a '.' before its last character and no '-' or '_'
+// after it.
+func emailLink(line []byte) bool {
+	stop := util.FindEmailIndex(line)
+	if stop < 0 {
+		return false
+	}
+	at := bytes.IndexByte(line, '@')
+	if bytes.IndexByte(line[at:stop-1], '.') < 0 {
+		return false
+	}
+	if line[stop-1] == '.' {
+		stop--
+	}
+	return stop >= len(line) || line[stop] != '-' && line[stop] != '_'
 }
 
 // textOf consumes n bytes of the reader as text.
@@ -162,8 +190,10 @@ func (rawHTMLGuard) Parse(parent ast.Node, block text.Reader, pc parser.Context)
 
 // linkify calls goldmark's GFM autolink parser only where it may make a
 // link. After every inline node the parser reads the e-mail address it
-// might start there, to the end of the run of local-part characters; a long
-// run without '@' makes that quadratic.
+// might start there, to the end of its run of local-part characters and
+// past its '@'; reading a run that is no address once per node in it is
+// quadratic. Whether a run is one is known once, in the index. A "www."
+// that goldmark's pattern does not take is read as an address too.
 type linkify struct{ inner parser.InlineParser }
 
 func (l linkify) Trigger() []byte { return l.inner.Trigger() }
@@ -179,30 +209,59 @@ func (l linkify) Parse(parent ast.Node, block text.Reader, pc parser.Context) as
 		line = line[1:]
 		at++
 	}
-	for _, p := range []string{"http:", "https:", "ftp:", "www."} {
+	for _, p := range []string{"http:", "https:", "ftp:"} {
 		if bytes.HasPrefix(line, []byte(p)) {
 			return l.inner.Parse(parent, block, pc)
 		}
 	}
+	if isWWW(line) {
+		return l.inner.Parse(parent, block, pc)
+	}
 	emails := indexOf(parent, block.Source(), pc).emails
-	k := sort.Search(len(emails), func(i int) bool { return emails[i][1] > at })
-	if k < len(emails) && emails[k][0] <= at {
-		end := emails[k][1]
-		if end >= len(block.Source()) || block.Source()[end] != '@' {
-			return nil
-		}
+	k := sort.Search(len(emails), func(i int) bool { return emails[i].end > at })
+	if k < len(emails) && emails[k].start <= at && !emails[k].link {
+		return nil
 	}
 	return l.inner.Parse(parent, block, pc)
 }
 
-// nested refuses to open a block quote, list or list item inside
-// MaxNesting of them: the line is text instead.
+// isWWW tells whether goldmark's pattern of a "www." link takes the head
+// of line: `^www\.[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-z]+`, a path maybe
+// after it. The pattern's 256 repetitions make it slow to fail, and it
+// fails at every node of a long run.
+func isWWW(line []byte) bool {
+	if !bytes.HasPrefix(line, []byte("www.")) {
+		return false
+	}
+	for j := 5; j <= 260 && j+1 < len(line); j++ {
+		if !isDomainChar(line[j-1]) {
+			return false
+		}
+		if line[j] == '.' && line[j+1] >= 'a' && line[j+1] <= 'z' {
+			return true
+		}
+	}
+	return false
+}
+
+// isDomainChar is the pattern's [-a-zA-Z0-9@:%._\+~#=].
+func isDomainChar(c byte) bool {
+	switch {
+	case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
+		return true
+	}
+	return strings.IndexByte("-@:%._+~#=", c) >= 0
+}
+
+// nested refuses to open a block quote, list, list item or footnote
+// definition inside MaxNesting block quotes, list items and footnote
+// definitions: the line is text instead.
 type nested struct{ parser.BlockParser }
 
 func (b nested) Open(parent ast.Node, reader text.Reader, pc parser.Context) (ast.Node, parser.State) {
 	depth := 0
 	for p := parent; p != nil; p = p.Parent() {
-		if k := p.Kind(); k == ast.KindBlockquote || k == ast.KindListItem {
+		if k := p.Kind(); k == ast.KindBlockquote || k == ast.KindListItem || k == east.KindFootnote {
 			depth++
 			if depth >= MaxNesting {
 				return nil, parser.NoChildren

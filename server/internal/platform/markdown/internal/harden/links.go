@@ -8,6 +8,8 @@ package harden
 // first line by a binary search, and "a link may not contain a link" counts
 // the links made instead of walking the text. It processes no delimiters
 // when a link closes: emphasis is paired after the parse (emphasis.go).
+// Reference links repeat their definitions' destinations and titles up to a
+// budget (MinExpansion).
 
 import (
 	"sort"
@@ -38,8 +40,9 @@ func (l *label) Dump(source []byte, level int) { ast.DumpHelper(l, source, level
 
 //nolint:gochecknoglobals // keys are made once, as goldmark's are
 var (
-	labelsKey = parser.NewContextKey() // *label: the head of the open labels
-	linksKey  = parser.NewContextKey() // int: the links made so far
+	labelsKey   = parser.NewContextKey() // *label: the head of the open labels
+	linksKey    = parser.NewContextKey() // int: the links made so far
+	repeatedKey = parser.NewContextKey() // int: the bytes reference links have repeated
 )
 
 func labelsOf(pc parser.Context) *label {
@@ -54,6 +57,23 @@ func inLinkLabel(pc parser.Context) bool { return labelsOf(pc) != nil }
 func linksMade(pc parser.Context) int {
 	v, _ := pc.Get(linksKey).(int)
 	return v
+}
+
+// reference is the definition of the reference link labeled ref, if
+// reference links have not yet repeated more than the larger of the
+// source's size and MinExpansion bytes of destinations and titles with it.
+func reference(pc parser.Context, source, ref []byte) (parser.Reference, bool) {
+	r, ok := pc.Reference(util.ToLinkReference(ref))
+	if !ok {
+		return nil, false
+	}
+	repeated, _ := pc.Get(repeatedKey).(int)
+	repeated += len(r.Destination()) + len(r.Title())
+	if repeated > max(len(source), MinExpansion) {
+		return nil, false
+	}
+	pc.Set(repeatedKey, repeated)
+	return r, true
 }
 
 func pushLabel(pc parser.Context, v *label) {
@@ -225,7 +245,7 @@ func (links) Parse(parent ast.Node, block text.Reader, pc parser.Context) ast.No
 			toText(last)
 			return nil
 		}
-		r, ok := pc.Reference(util.ToLinkReference(ref))
+		r, ok := reference(pc, block.Source(), ref)
 		if !ok {
 			toText(last)
 			return nil
@@ -295,7 +315,7 @@ func referenceLink(parent ast.Node, last *label, block text.Reader, pc parser.Co
 	if len(ref) > 999 {
 		return nil, true
 	}
-	r, ok := pc.Reference(util.ToLinkReference(ref))
+	r, ok := reference(pc, block.Source(), ref)
 	if !ok {
 		return nil, true
 	}
@@ -348,7 +368,7 @@ func inlineDestination(parent ast.Node, block text.Reader, pc parser.Context) ([
 	block.SkipSpaces()
 	line, seg := block.PeekLine()
 	if block.Peek() != '<' {
-		n, ok := bareDestination(line)
+		n, ok := bareDestination(line, MaxDestinationParens)
 		block.Advance(n)
 		return line[:n], ok
 	}
@@ -363,12 +383,13 @@ func inlineDestination(parent ast.Node, block text.Reader, pc parser.Context) ([
 }
 
 // destination is goldmark's parseLinkDestination on line, for a link
-// reference definition: its line is read once, so the scan stays linear.
+// reference definition: its line is read once, so the scan stays linear
+// and its parentheses need no limit.
 func destination(block text.Reader) ([]byte, bool) {
 	block.SkipSpaces()
 	line, _ := block.PeekLine()
 	if block.Peek() != '<' {
-		n, ok := bareDestination(line)
+		n, ok := bareDestination(line, len(line))
 		block.Advance(n)
 		return line[:n], ok
 	}
@@ -386,9 +407,8 @@ func destination(block text.Reader) ([]byte, bool) {
 
 // bareDestination is how many bytes of line a destination outside angle
 // brackets takes, and whether it is one: up to a space or the ')' that
-// closes the link, its parentheses balanced, opening at most
-// MaxDestinationParens.
-func bareDestination(line []byte) (int, bool) {
+// closes the link, its parentheses balanced, opening at most maxParens.
+func bareDestination(line []byte, maxParens int) (int, bool) {
 	opened := 0
 	i := 0
 	for i < len(line) {
@@ -399,7 +419,7 @@ func bareDestination(line []byte) (int, bool) {
 		}
 		if c == '(' {
 			opened++
-			if opened > MaxDestinationParens {
+			if opened > maxParens {
 				return 0, false
 			}
 		} else if c == ')' {

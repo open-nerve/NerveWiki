@@ -1,6 +1,8 @@
 package harden
 
 import (
+	"math/rand/v2"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -32,6 +34,19 @@ func TestThePartsEdgesParseAsGoldmarkParsesThem(t *testing.T) {
 		"autolinks": {
 			"foo a@b.c", "foo a.b", "x www.a.b y", "[www.a.b](c)", "_a@b.c_", "*www.a.b*", "(www.a.b)",
 			"a.b.c@d.e.", "a@b.c_d", "http://a.b/c?d", "a-b@c.d", "`x`a@b.c",
+			"_www.1_www.a", "~www.1.a", "www.a", "www.a.B", "www.-.a/x", "www..a", "www.a.b@c.d", "www.1@a.b",
+			"www." + strings.Repeat("1", 255) + ".a", "www." + strings.Repeat("1", 256) + ".a",
+			"www." + strings.Repeat("1", 257) + ".a", "www.a.b/" + strings.Repeat(")", 9),
+			"a*b@c.d", "a*b*c@d.e", "a*b@c", "a*b@c.d-", "a*b@c.d_", "a_b@-c.d", "a*b@.c", "a`b`@c.d",
+			"a*b@c.d.", "a*b@c-.d", "x a*b@c.d.e-f", "a@b.c@d.e", "a@b@c.d",
+		},
+		"tables": {
+			"| `a\\|b` | `c\\|d\\|e` |\n|---|---|\n| `\\|` x `\\|` | y |",
+			"| a \\| `b\\|c` |\n|-|\n| `\\|\\|` |", "| `a` \\| b |\n|-|", "|`\\|`|`\\|`|\n|-|-|\n|`\\|`|",
+			"| *`a\\|b`* | [`c\\|d`](e) |\n|-|-|", "| `a\nb\\|c` |\n|-|", "|a|\n|:-|\n|b|c|",
+			"|a|b|\n|-:|:-:|\n|c|", "a|b\n-|-\nc", "|a|\n| - |\n", "|a|\n|-- -|\n", "|a|\n|:|\n",
+			"|a|\n|::-|\n", "|a|\n|-\v|\n", "|a|\n|\t-\t|\n", "|a|\n    |-|\n", "|a|\n|-|-|\n",
+			"p\n|a|\n|-|\n|b|", "> |a|\n> |-|\n> |b|", "- |a|\n  |-|\n  |b|",
 		},
 		"emphasis": {
 			"*[a*](b)", "*a [b* c](d)", "**a [b](c) d**", "***a***", "**a*", "*a**", "a**b**c",
@@ -46,7 +61,19 @@ func TestThePartsEdgesParseAsGoldmarkParsesThem(t *testing.T) {
 			"[a]: /u\n[b]: /v\n\n[a] [b]", "[a]: /u \"t\"\npara [a]", "[a]: /u\n\"t\" junk\n\n[a]",
 			"[a]: /u\n[b]: /v\npara", "  [a]: /u\n\n[a]", "[a]:\n/u\n'''t'''\n\n[a]", "[a]: <u v> \"t\"\n\n[a]",
 			"[a]: /u 't\n\nx'\n\n[a]", "[a]: /u\n[b]:\n\n[a]",
+			"[a]: /u\n\"t\nt\" [b]: /v\n\"t\nt\" [c]: /w\n\n[a] [b] [c]",
+			"[a]: /u\n\"t\nt\nt\" [b]: /v\n\"t\nt\" [c]: /w\n\"t\nt\" [d]: /x\n\n[a] [b] [c] [d]",
+			"[a]:\n/u\n\"t\nt\" [b]: /v\n\"t\nt\" [c]: /w\n\n[a] [b] [c]",
+			"[a]: /" + strings.Repeat("(", MaxDestinationParens+1) + strings.Repeat(")", MaxDestinationParens+1) + "\n\n[a]",
 		},
+	}
+	// CommonMark's label is at most 999 characters; goldmark measures the
+	// open labels from the first to the last still open when one closes.
+	for _, n := range []int{997, 998, 999, 1000} {
+		label := strings.Repeat("a", n)
+		def := "[" + label + "]: /u\n\n"
+		inputs["labels"] = append(inputs["labels"], def+"["+label+"]", def+"["+label+"][]", def+"[x]["+label+"]",
+			"[x]: /u\n\n["+label[1:]+"[x]]", "[x]: /u\n\n[[x]"+label[2:]+"](/v)", "[x]: /u\n\n["+label[3:]+"[[x]")
 	}
 	h, o := hardened(), original()
 	for part, ins := range inputs {
@@ -54,6 +81,33 @@ func TestThePartsEdgesParseAsGoldmarkParsesThem(t *testing.T) {
 			if got, want := render(t, h, in), render(t, o, in); got != want {
 				t.Errorf("%s %q\nhardened %q\noriginal %q", part, in, got, want)
 			}
+		}
+	}
+}
+
+// isWWW is goldmark's pattern of a "www." link, wherever the pattern
+// takes the head of a line.
+func TestWWWIsGoldmarksPattern(t *testing.T) {
+	pattern := regexp.MustCompile(`^www\.[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-z]+(?:[/#?][-a-zA-Z0-9@:%_\+.~#!?&/=\(\);,'">\^{}\[\]` + "`" + `]*)?`)
+	r := rand.New(rand.NewPCG(20261002, 4))
+	const alphabet = "w.aZ1-_@~/ *"
+	for range 20000 {
+		b := []byte("www.")
+		for range r.IntN(300) {
+			c := alphabet[r.IntN(len(alphabet))]
+			if r.IntN(8) != 0 {
+				c = "1a"[r.IntN(2)]
+			}
+			b = append(b, c)
+		}
+		if got, want := isWWW(b), pattern.Match(b); got != want {
+			t.Fatalf("%q: isWWW %v, goldmark's pattern %v", b, got, want)
+		}
+	}
+	for c := range 256 {
+		b := []byte{'w', 'w', 'w', '.', byte(c), '.', 'a'}
+		if got, want := isWWW(b), pattern.Match(b); got != want {
+			t.Errorf("%q: isWWW %v, goldmark's pattern %v", b, got, want)
 		}
 	}
 }

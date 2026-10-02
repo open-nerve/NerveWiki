@@ -5,8 +5,8 @@ package harden
 // Copyright (c) 2019 Yusuke Inuzuka). goldmark copies the paragraph's
 // remaining lines after each definition and finds a label's or a title's
 // first line by walking back from the last, both quadratic in the lines;
-// this removes the lines with the same arithmetic in linear time and finds
-// the line by a binary search.
+// this removes the lines with the same arithmetic from a linked list, and
+// finds the line by a binary search.
 
 import (
 	"github.com/yuin/goldmark/ast"
@@ -45,32 +45,48 @@ func (refdefs) Transform(node *ast.Paragraph, reader text.Reader, pc parser.Cont
 	if len(removes) == 0 {
 		return
 	}
-	// goldmark's removal: keep what lies before the definition and append
-	// what follows it, offset by the end of the one before. A definition
-	// that starts where the one before ended cuts a head off, which is a
-	// reslice.
-	segs := lines.Sliced(0, lines.Len())
-	offset := 0
-	for _, r := range removes {
-		if len(segs) == 0 {
-			break
-		}
-		tail := segs[r[1]-offset:]
-		head := segs[:r[0]-offset]
-		if len(head) == 0 {
-			segs = tail
-		} else {
-			segs = append(head[:len(head):len(head)], tail...)
-		}
-		offset = r[1]
-	}
-	if len(segs) == 0 {
+	rest := remove(lines, removes)
+	if rest.Len() == 0 {
 		node.Parent().RemoveChild(node.Parent(), node)
 		return
 	}
-	rest := text.NewSegments()
-	rest.AppendAll(segs)
 	node.SetLines(rest)
+}
+
+// remove is goldmark's removal of the definitions' lines: for each, keep
+// what lies before its start and what lies from its end, both counted from
+// the end of the one before it. That is how goldmark counts even when it
+// kept lines between the two, so the lines it keeps are not always the ones
+// between definitions. Each removal cuts a run out of what is left, here
+// out of a linked list: the walks to the runs add up to the last end.
+func remove(lines *text.Segments, removes [][2]int) *text.Segments {
+	// Node k+1 is lines.At(k), node 0 comes before the first line and
+	// lines.Len()+1 after the last; next[k] is the node kept after node k.
+	next := make([]int, lines.Len()+1)
+	for i := range next {
+		next[i] = i + 1
+	}
+	offset := 0
+	for _, r := range removes {
+		if next[0] > lines.Len() {
+			break
+		}
+		before := 0
+		for range r[0] - offset {
+			before = next[before]
+		}
+		cut := next[before]
+		for range r[1] - r[0] {
+			cut = next[cut]
+		}
+		next[before] = cut
+		offset = r[1]
+	}
+	rest := text.NewSegments()
+	for i := next[0]; i <= lines.Len(); i = next[i] {
+		rest.Append(lines.At(i - 1))
+	}
+	return rest
 }
 
 // definition is goldmark's parseLinkReferenceDefinition: a definition at
