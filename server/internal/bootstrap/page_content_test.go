@@ -1,9 +1,11 @@
 package bootstrap
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"io"
 	"net/http"
 	"strings"
 	"testing"
@@ -137,12 +139,34 @@ func TestAContentOfBrokenUnicodeIsRefused(t *testing.T) {
 // The two routes of a content take its largest, each byte written as
 // JSON's longest escape (M4/P4 design 3.8): one byte more is the content's
 // 422; a body beyond their limit, and any other route's beyond
-// server.max_body_bytes, 413. The app has the base configuration's
-// deadlines: the race detector makes decoding 30 MB of escapes take seconds.
+// server.max_body_bytes, 413. The race detector makes decoding 30 MB of
+// escapes take seconds, more on a slow runner: the app's deadlines and the
+// client's are a few minutes, which no answer comes near when it works.
 func TestTheContentsRoutesTakeTheLargestContent(t *testing.T) {
 	tm := newAcmeTeamWith(t, "member", "", func(c *config.Config) {
-		c.Server.ReadTimeout, c.Server.WriteTimeout, c.Server.RequestTimeout = 30*time.Second, time.Minute, 15*time.Second
+		c.Server.ReadTimeout, c.Server.WriteTimeout, c.Server.RequestTimeout = 2*time.Minute, 3*time.Minute, 2*time.Minute
 	})
+	patient := &http.Client{Timeout: 3 * time.Minute}
+	send := func(method, path, body string) (int, string) {
+		t.Helper()
+		var payload []byte
+		if body != "" {
+			payload = []byte(body)
+		}
+		req := newRequest(t, method, tm.base+path, tm.tokens["alice"], payload)
+		res, err := patient.Do(req)
+		if err != nil {
+			t.Fatalf("%s %s: %v", method, path, err)
+		}
+		answer, err := io.ReadAll(res.Body)
+		_ = res.Body.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body = io.NopCloser(bytes.NewReader(answer))
+		tm.contract.CheckResponse(t, req, res)
+		return res.StatusCode, string(answer)
+	}
 	nb := tm.openNotebook(t, "alice", "Eng")
 	id := tm.createPage(t, "alice", nb, "", "Notes")
 	largest := strings.Repeat("\x01", domain.MaxContentBytes)
@@ -167,7 +191,7 @@ func TestTheContentsRoutesTakeTheLargestContent(t *testing.T) {
 		{"another route's body beyond the server's", http.MethodPatch, "/api/v0/nodes/" + id,
 			`{"name":"` + strings.Repeat("a", 1<<20) + `"}`, http.StatusRequestEntityTooLarge, "payload_too_large"},
 	} {
-		status, answer := ask(t, tm.contract, c.method, tm.base+c.path, tm.tokens["alice"], c.body)
+		status, answer := send(c.method, c.path, c.body)
 		code := ""
 		if status >= http.StatusBadRequest {
 			code = problemCode(t, answer)
@@ -176,7 +200,10 @@ func TestTheContentsRoutesTakeTheLargestContent(t *testing.T) {
 			t.Errorf("%s = %d %.300s, want %d %s", c.name, status, answer, c.status, c.code)
 		}
 	}
-	if got := tm.content(t, "alice", id); got.Revision != 2 || got.Content != largest {
+	status, answer := send(http.MethodGet, "/api/v0/pages/"+id+"/content", "")
+	var got pageContent
+	decodeAnswer(t, answer, &got)
+	if status != http.StatusOK || got.Revision != 2 || got.Content != largest {
 		t.Errorf("the content is at revision %d, %d bytes; want the largest at revision 2", got.Revision, len(got.Content))
 	}
 	checkPages(t, tm.pool)
