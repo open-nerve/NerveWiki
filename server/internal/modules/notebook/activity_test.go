@@ -70,7 +70,7 @@ func TestTheActivitySourcesReachTheOwnerlessList(t *testing.T) {
 		{"two", func(f fixture) []notebook.NotebookActivitySource {
 			return []notebook.NotebookActivitySource{
 				activitySource{of: map[uuid.UUID]notebook.NotebookActivity{f.eng: {Bytes: 100, LastWriteAt: &written}}},
-				activitySource{of: map[uuid.UUID]notebook.NotebookActivity{f.eng: {Bytes: 24}, f.ops: {Bytes: 7}}},
+				activitySource{of: map[uuid.UUID]notebook.NotebookActivity{f.eng: {Bytes: 24}}},
 			}
 		}, http.StatusOK, 124, written},
 		{"a failing one", func(fixture) []notebook.NotebookActivitySource {

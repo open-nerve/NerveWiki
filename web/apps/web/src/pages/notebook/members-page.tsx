@@ -9,11 +9,11 @@ import { errorText } from "../../app/problem-messages";
 import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
 import { useT } from "../../i18n/i18n";
-import type { Notebook, NotebookRole } from "../../services/notebook.service";
+import type { NotebookRole } from "../../services/notebook.service";
 import type { Workspace } from "../../services/workspace.service";
 import { useAccount, useNotebookMembers, useNotebooks } from "../../stores/context";
 import { useWorkspace } from "../workspace/workspace-layout";
-import { AddSection } from "./add-member-section";
+import { AddSection, type SectionProps } from "./add-member-section";
 import { NotebookMemberRow } from "./notebook-member-row";
 import { useNotebook } from "./notebook-layout";
 
@@ -41,8 +41,6 @@ export const NotebookMembersPage = observer(function NotebookMembersPage() {
     </div>
   );
 });
-
-type SectionProps = { workspace: Workspace; notebook: Notebook };
 
 const MembersSection = observer(function MembersSection({
   workspace,

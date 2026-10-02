@@ -8,8 +8,9 @@ import { useStore } from "../stores/context";
 type Member = { display_name: string; email: string | null; created_at: string };
 
 /**
- * memberWho names member in the controls of their row: by the address too,
- * where it shows, since two members may have the same name.
+ * memberWho names member in the controls of their row and in the audit's
+ * sentences: by the address too, where it shows, since two members may have
+ * the same name.
  */
 export function memberWho(member: Pick<Member, "display_name" | "email">, t: Translate): string {
   return member.email === null

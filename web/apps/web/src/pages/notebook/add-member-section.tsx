@@ -16,7 +16,8 @@ import type { Workspace } from "../../services/workspace.service";
 import { useMembers, useNotebookMembers } from "../../stores/context";
 import { NotebookRoleOptions } from "./notebook-roles";
 
-type SectionProps = { workspace: Workspace; notebook: Notebook };
+/** SectionProps are what each section of the members page is given. */
+export type SectionProps = { workspace: Workspace; notebook: Notebook };
 
 /**
  * AddSection adds a member of the workspace who is not in the notebook
