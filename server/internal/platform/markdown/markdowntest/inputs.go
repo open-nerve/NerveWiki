@@ -1,6 +1,6 @@
 // Package markdowntest holds what tests of Markdown use: ordinary and
-// pathological documents of a given size (M4/P3 design 3.10). Only test code
-// may import it (enforced by internal/archtest).
+// pathological documents of a given size (M4/P3 design 3.10) and the
+// fixture set. Only test code may import it (enforced by internal/archtest).
 package markdowntest
 
 import (
