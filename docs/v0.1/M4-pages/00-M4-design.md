@@ -326,7 +326,7 @@ Nerve 没有页面、正文与编辑器，M4 不拷贝代码。只沿用它的�
 | P2 | 树操作 | 已完成 | [02-P2-tree-operations.md](02-P2-tree-operations.md) | [P2 审查](reviews/P2-tree-operations-review.md) |
 | P3 | Markdown 解析与渲染 | 已完成 | [03-P3-markdown.md](03-P3-markdown.md) | [P3 审查](reviews/P3-markdown-review.md) |
 | P4 | 正文与编辑会话 | 已完成 | [04-P4-content-sessions.md](04-P4-content-sessions.md) | [P4 审查](reviews/P4-content-sessions-review.md) |
-| P5 | 前端：页面树与阅读视图 | 未开始 | — | — |
+| P5 | 前端：页面树与阅读视图 | 进行中 | [05-P5-tree-reading.md](05-P5-tree-reading.md) | — |
 | P6 | 前端：源码编辑器 | 未开始 | — | — |
 
 ## 13. 变更记录
