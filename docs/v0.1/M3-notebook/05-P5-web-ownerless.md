@@ -16,7 +16,7 @@ P1–P4 之后：
 - 接口：无主清单、接管、删除无主、审计列表（游标分页，缺省 50 条，1–100）都已就绪；`leaveWorkspace`、`deactivateMe` 答 409 `notebook.sole_admin`（规则二），`removeWorkspaceMember` 不拒绝，移出之后他独自管理的笔记本成为无主（M3 总设计第 4 节）。
 - 前端：
   - 左栏、笔记本的首页与设置（P4）；工作区设置只有常规、成员两页。
-  - 离开工作区的对话框按通用文案说明 `notebook.sole_admin`（"在每一本的设置里……"）；停用对话框只为 `workspace.sole_admin` 有自己的文案。
+  - 离开工作区的对话框按通用文案说明 `notebook.sole_admin`（"请先在笔记本设置里……"）；停用对话框只为 `workspace.sole_admin` 有自己的文案。
   - 移出成员的说明没有提到无主。
 - e2e：N7–N11 只有接口与命令行版本；N13 只有接口版本。
 
@@ -62,7 +62,8 @@ web/apps/web/src/
   pages/workspace/ownerless-row.tsx        一行无主笔记本：接管、删除
   pages/workspace/audit-section.tsx        审计记录
   pages/workspace/workspace-home.tsx       管理员的无主提醒
-  pages/workspace/members-page.tsx         离开的 notebook.sole_admin 文案；移出的说明
+  pages/workspace/members-page.tsx         离开的 notebook.sole_admin 文案；移出之后重读无主清单
+  pages/workspace/member-row.tsx           移出的说明（members.removeBody）
   pages/settings/deactivate-dialog.tsx     停用的 notebook.sole_admin 文案
   pages/notebook/members-page.tsx          没有管理员时的说明
   i18n/messages/{en,zh-CN}.ts
@@ -99,8 +100,9 @@ e2e/
   - **删除**：`ConfirmDialog`，输入笔记本名称确认（同删除笔记本，M3 总设计第 4 节），`focusAfter` 到本节标题。
   - 拒绝：404 `notebook.not_found` 在清单上方说"这本笔记本已经不是无主的了：已被接管、删除，或已归还原所有者"（`texts`），行随之离开。服务端对已不是工作区管理员的账户同样答 404（`lockOwnerless`），接管、删除不会答 403：404 时也重读审计（别人做的有记录）与工作区列表（角色变了，导航与页面随之变化，P5 审查 M1）。
 - **审计记录**（`h2`"审计记录"）：新的在前；每条一句话加时刻：
-  - 接管："{actor} 接管了 {notebook}（原所有者 {former}）"；
-  - 删除："{actor} 删除了 {notebook}（原所有者 {former}）"；
+  - 接管："{actor} 接管了 {notebook}；原所有者：{former}。"；
+  - 删除："{actor} 删除了 {notebook}；原所有者：{former}。"；
+  - 执行者与原所有者都按 `memberWho` 写成"名字（邮箱）"，同名的人也分得出（M3 收尾审查 B-N3）；
   - 归还："{notebook} 归还给了回到工作区的 {former}"。
   有 `next_cursor` 时一个"加载更多"按钮；加载更多失败在按钮旁说明原因，按钮仍可重试；没有记录时说"还没有记录"。
 - **首页提醒**：工作区管理员的首页在有无主笔记本时显示一行"没有管理员的笔记本：{count} 本"与到无主页的链接（同一个 SWR 键，与无主页共用一次读）；没有时不显示；成员与访客不读。
@@ -118,14 +120,14 @@ e2e/
 
 ### 3.6 前端的测试（vitest）
 
-- **store**：`OwnerlessStore` 的读与写（表格）：重叠的读丢弃、接管与删除移出、404 移出并抛出、同一本一次一个；`AuditStore`：第一页、`more` 接在后面并去重、重读回到第一页并丢弃在途的 `more`、最后一页没有游标。
+- **store**：`OwnerlessStore` 的读与写（表格）：重叠的读丢弃、接管与删除移出、404 移出并抛出、同一本一次一个；`AuditStore`：第一页、`more` 接在后面并去重、最后一页没有游标；重读的第一页接得上已有的事件时保留其后的事件与游标，接不上时整体替换；重读在途时的 `more` 四种交错（游标仍是 `nextCursor` 才接上）；重叠的两次重读后发出的胜出。
 - **缓存**：`ownerlessOf`、`auditOf` 按工作区（`root.store.test.ts`）。
 - **页面**：
-  - 无主页：清单的列、空、接管（焦点、状态与链接、左栏出现它）、删除（输入名称、焦点）、404 与 403 的拒绝、读不到与重读（13.2 第 7 条）；成员与访客看到说明、不发请求；设置导航只对管理员有第三项。
+  - 无主页：清单的列、空、接管（焦点、状态与链接、左栏出现它）、删除（输入名称、焦点）、404 的拒绝（含已不是管理员）、读答 403、读不到与重读（13.2 第 7 条）；成员与访客看到说明、不发请求；设置导航只对管理员有第三项。
   - 审计：三种句子、加载更多、失败与重试、空。
   - 首页提醒：有、无、成员不读。
   - 对话框：离开工作区与停用的两种文案；移出的说明；笔记本成员页没有管理员时的说明。
-- 反向对照：接管答 404 当作成功、`more` 不去重、重读不回到第一页、导航给成员第三项、首页提醒给成员读，各让对应的测试失败。
+- 反向对照：接管答 404 当作成功、`more` 不去重、较旧一串的页照样接上、重读总是替换、导航给成员第三项、首页提醒给成员读，各让对应的测试失败。
 
 ### 3.7 端到端
 

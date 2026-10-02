@@ -5,7 +5,7 @@
 | 审查对象 | 分支 `m3-p5-web-ownerless`（`aaee600..901af12`，S1–S4，41 个文件，+1981/−110），对照 [05-P5-web-ownerless.md](../05-P5-web-ownerless.md)、各 Step 计划、[M3 总设计](../00-M3-design.md)第 3、4 节、[P3 文档](../03-P3-cascade-ownerless.md)与 `api/modules/notebook.yaml`、总体设计 13.2、13.4、[P4 审查](P4-web-notebooks-review.md)立下的约定 |
 | 审查方式 | 独立审查者（Opus）只读代码与文档，对照服务端（`modules/notebook/app` 的无主用例、`lockOwnerless`、`take_over.go`）核对前端的假设；作者事先列出的七处偏差逐一判断。门禁与反向对照由作者跑：S1–S4 每步 `make check`，S4 之后 `make e2e`（117 个），每步的反向对照见下 |
 | 日期 | 2026-10-02 |
-| 结论 | 修复后可以合并。<br>• store 沿用 P4 的约定：重叠的读经 `changesAnswered` 丢弃，同一本的写经 `oneAtATimeById` 一次一个（P4 的队列抽成共用），404 移出这一行并照样抛出（3.2）。<br>• SWR 键一致：首页提醒与无主页共用 `["ownerless", ws.id]` 与同一个 store。<br>• 非管理员的路径不发请求；接管、删除之后焦点到本节标题。<br>• 中英文案齐全；e2e 的页面版本经真实服务端覆盖 N7–N11、N13。<br>2 项 Major、2 项 Minor、7 项 Nit；合并前处理（`9b1469e`），见下；4 个疑问的判断见下 |
+| 结论 | 修复后可以合并。<br>• store 沿用 P4 的约定：重叠的读经 `changesAnswered` 丢弃，同一本的写经 `oneAtATimeById` 一次一个（P4 的队列抽成共用），404 移出这一行并照样抛出（3.2）。<br>• SWR 键一致：首页提醒与无主页共用 `["ownerless", ws.id]` 与同一个 store。<br>• 非管理员的路径不发请求；接管、删除之后焦点到本节标题。<br>• 中英文案齐全；e2e 的页面版本经真实服务端覆盖 N7–N11、N13。<br>2 项 Major、2 项 Minor、7 项 Nit；合并前处理（`9b1469e`），见下；5 个疑问的判断见下 |
 
 ## 发现与处置
 

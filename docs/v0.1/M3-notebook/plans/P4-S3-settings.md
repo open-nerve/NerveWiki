@@ -4,7 +4,7 @@
 
 ## 任务
 
-1. `app/role-menu.tsx`：`RoleMenu` 按角色列表与文案键通用，工作区的成员行改用它。
+1. `app/role-menu.tsx`：`RoleMenu` 按角色列表与取文案的函数（`label`）通用，工作区的成员行改用它。
 2. `pages/notebook/general-page.tsx`、`access-options.tsx`：改名（`RenameForm` 的写法）、开放程度（单选与保存）、删除（输入名称）；非管理员只读。
 3. `pages/notebook/members-page.tsx`、`notebook-member-row.tsx`：成员（角色菜单、移出）、添加（候选、角色、成功的提示、422）、离开（只给显式成员，`texts`）。添加、移出之后重读笔记本列表；改角色失败时重读成员与笔记本列表。
 4. 文案。

@@ -15,7 +15,7 @@ M2 留下的：
 
 - workspace 模块：工作区、成员、邀请；四个扩展点（成员身份结束、恢复、删除，都还没有注册者）；`workspace.NewMemberships(pool)` 是 access 的事实端口。
 - access 模块：规则表只有工作区级（`LevelWorkspace`），判定是纯函数，事实经端口读。
-- 清理注册表：`bootstrap/registrants.go` 的 `purgers(pool)` 只有 workspace 的两个清理器。
+- 清理注册表：`bootstrap/registrants.go` 的 `purgers(pool)` 只有 workspace 的三个清理器（邀请、成员、工作区）。
 - 权限矩阵：六列都是工作区级的身份，每行都按这六列。
 - 前端没有笔记本的入口。
 
@@ -39,6 +39,8 @@ M2 留下的：
 **不做**：成员的操作与可见性事件（P2）；级联、无主、审计、游标（P3）；页面（P4、P5）。
 
 ## 3. 设计
+
+> 本节是 P1 合并时的样子；P2、P3 的增量（端口的 `Slugs`、00011 与审计表、删除注册者连带审计记录、`workspaceRegistrants(pool, returned)` 与命令行的组合、第三个清理器、矩阵的第 13 列）见各自的文档。
 
 ### 3.1 文件
 
@@ -65,14 +67,14 @@ server/
     domain/notebook.go、member.go、actions.go、errors.go
     app/ports.go、extension.go（含工作区删除的注册者）、authorize.go、manage.go（锁与判定）、view.go、
         create_notebook.go、list_notebooks.go、get_notebook.go、update_notebook.go、delete_notebook.go
-    adapter/postgres/（store、facts、purge；queries/notebooks.sql、members.sql、purge.sql；gen）
+    adapter/postgres/（store，含 `NotebookFacts`；purge；queries/notebooks.sql、members.sql、purge.sql；gen）
     adapter/http/（handler、gen、main_test.go）
   internal/bootstrap/
     deps.go、wire.go、registrants.go           notebookDeps；access 的两个端口；注册者与清理器的顺序
     notebook_facts.go                          notebook.Fact 转 access.NotebookFact
     notebook_registrants_test.go               删除工作区连带它的笔记本（整个程序上的行为测试）
     actions_test.go                            并集加上 notebook.Actions()
-    purge_test.go                              跨模块外键不是 CASCADE
+    purge_test.go                              跨模块外键必须是 RESTRICT
     permission_matrix_test.go                  行按级别取列
     permission_matrix_seeded_test.go           笔记本列的账户与笔记本
     permission_matrix_notebook_test.go         本 Phase 的行
@@ -134,7 +136,7 @@ e2e/fixtures/notebooks.ts、assert/notebook.ts；e2e/stories/notebook/n1、n2、
 - **`access/app/ports.go`**：`NotebookFacts.NotebookFacts(ctx, notebookID, userID) (NotebookFact, error)`，`NotebookFact{Found, WorkspaceID, Access, Role}`：未删除的笔记本，以及调用者在其中有效的显式成员关系。
 - **`access/app/authorizer.go`**：按规则的级别读事实。笔记本级先读笔记本的事实（得到它所属的工作区），工作区与目标不同时当作不存在；再读工作区的角色。每次调用都读，不缓存。
 - **实现**：`notebook.NewFacts(pool)`，一条查询，经 `postgres.DB(ctx, pool)` 进入调用方的事务。
-- **装配**：`access.New(access.Deps{Memberships: workspace.NewMemberships(pool), Notebooks: notebook.NewFacts(pool)})`。
+- **装配**：`access.New(access.Deps{Memberships: workspace.NewMemberships(pool), Notebooks: notebookFacts{notebook.NewFacts(pool)}})`（`bootstrap/wire.go`，`notebookFacts` 逐字段转换）。
 
 ### 3.5 workspace 给笔记本模块的端口
 
@@ -225,13 +227,13 @@ e2e/fixtures/notebooks.ts、assert/notebook.ts；e2e/stories/notebook/n1、n2、
   3. 有笔记本时调用笔记本删除事件的订阅者一次，带全部 id。
   - 工作区行已由删除持有 `FOR NO KEY UPDATE`，同一工作区下不会有别的笔记本管理写在进行（它们都要工作区行的 `FOR SHARE`）。笔记本行仍先按 `id` 升序锁住、再更新（M3 总设计第 8 节，审查 Q2）：M4 的页面写只以 `FOR SHARE` 锁笔记本行、不锁工作区行，同时持两本的写按同一顺序取锁，不成环。
   - 组合根：`workspaceRegistrants(pool)` 返回的 `deletionSubscribers` 加上它（值逐字段转换，`bootstrap/registrants.go`）。workspace 的命令行组合不涉及删除，不变。
-- **测试替身**：模块根的测试（接好线的模块与真实数据库）证明订阅者在事务内、看得到已删除的行、失败整体回滚；两个订阅者的分发由 `app/registrants_test.go` 那样的测试守住（13.1 第 21 条）。
+- **测试替身**：模块根的测试（接好线的模块与真实数据库）证明订阅者在事务内、看得到已删除的行、失败整体回滚；两个订阅者的分发由 `app/write_test.go` 守住（按登记的顺序、第一个错误即停；13.1 第 21 条）。
 
 ### 3.9 清理
 
-- `notebook.Purgers(pool)`：先 `notebook_members`，再 `notebooks`（只删已经没有成员行的，`NOT EXISTS`，P4 审查 T1 的写法）。两者都跳过别的事务持有的行（`SKIP LOCKED`）。
+- `notebook.Purgers(pool)`：先 `notebook_members`，再 `notebooks`（只删已经没有成员行的，`NOT EXISTS`，M2/P4 审查 T1 的写法）。两者都跳过别的事务持有的行（`SKIP LOCKED`）。
 - 组合根 `purgers(pool)`：`slices.Concat(notebook.Purgers(pool), workspace.Purgers(pool))`。
-- **跨模块外键不是 CASCADE**（M2 移交第 4 项）：`purge_test.go` 加 `TestCrossModuleForeignKeysToPurgedTablesRestrict`：指向被清理表、来自别的模块迁移的外键，`confdeltype` 不是 `c`；表的归属取自建表的迁移文件名（`NNNNN_<归属>_…`），按 13.1 第 7 条与定义约束的迁移相同。反向对照：把 `notebooks.workspace_id` 改成 `ON DELETE CASCADE`，测试失败。
+- **跨模块外键不是 CASCADE**（M2 移交第 4 项）：`purge_test.go` 加 `TestCrossModuleForeignKeysToPurgedTablesRestrict`：指向被清理表、来自别的模块迁移的外键，`confdeltype` 必须是 `r`（RESTRICT；NO ACTION、SET NULL 也不行）；表的归属取自建表的迁移文件名（`NNNNN_<归属>_…`），按 13.1 第 7 条与定义约束的迁移相同。反向对照：把 `notebooks.workspace_id` 改成 `ON DELETE CASCADE`，测试失败。
 
 ### 3.10 加锁
 
@@ -278,7 +280,7 @@ e2e/fixtures/notebooks.ts、assert/notebook.ts；e2e/stories/notebook/n1、n2、
 - **N2 的私密部分**：私密笔记本对工作区管理员与别的成员：列表里没有，读取答 404。"第二位成员"在 P2。
 - **N3 的接口版本**：改为 `viewer`：成员与管理员读到 `reader`，访客 404；改为 `editor`：成员读到 `editor`。
 - **N6 的接口版本**：改名；编辑者改名答 403；删除之后读取答 404，落库：笔记本与成员行同一时刻软删除。
-- **N13 的笔记本部分**：删除工作区，它的笔记本与成员行以工作区的时刻软删除；清理之后行都消失，保留期内的不动（照 W12 的写法，经数据库把时刻推到边界）。审计记录的部分在 P3。
+- **N13 的笔记本部分**：删除工作区，它的笔记本与成员行以工作区的时刻软删除；清理之后行都消失，保留期内的不动（照 W12 的写法，经数据库把时刻推到边界，从叶到根，接受过的邀请一起）。审计记录的部分在 P3。
 - 页面版本在 P4、P5，加进同一个故事文件。
 
 ## 4. 实施步骤

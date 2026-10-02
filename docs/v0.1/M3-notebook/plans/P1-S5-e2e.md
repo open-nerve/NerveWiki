@@ -5,7 +5,7 @@
 ## 任务
 
 1. `e2e/fixtures/notebooks.ts`：经接口建、改、删。
-2. `e2e/assert/notebook.ts`：`expectNewNotebook`、`expectNotebook`、`expectNotebookDeletedWithItsMembers`、`countNotebooks`；读数据库，只比较业务列，时刻在 SQL 里比较。
+2. `e2e/fixtures/assert/notebook.ts`：`expectNewNotebook`、`expectNotebook`、`expectNotebookDeletedWithItsMembers`、`countNotebooks`；读数据库，只比较业务列，时刻在 SQL 里比较。
 3. 故事：`e2e/stories/notebook/` 的 N1、N3、N6 的接口版本，N2 的私密部分，N13 的笔记本部分。
 
 ## 测试

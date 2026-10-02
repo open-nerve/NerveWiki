@@ -32,7 +32,7 @@ P1–P3 之后：
 - 笔记本：`/:slug/notebooks/:id` 首页；`/:slug/notebooks/:id/settings/general`（改名、开放程度、删除）与 `…/members`（列表、添加、改角色、移出、离开）。
 - 整页离开之后的焦点：删除、离开工作区，接受邀请进入工作区，删除、离开笔记本，新建笔记本之后，焦点到落点的主标题。
 - 引导的第三步 `notebook`。
-- e2e：N1–N6、N12 的页面版本，N12 的接口版本；引导多了一步的故事（A9、W11、A4、W7）随之调整。
+- e2e：N1–N6、N12 的页面版本，N12 的接口版本；引导多了一步的故事（A9、W11、W7）随之调整；A4 停在工作区一步，不受影响。
 
 **不做**：
 
@@ -55,7 +55,7 @@ web/apps/web/src/
   app/notebook-name.ts                   notebookNameProblem（必填、255 字节）
   app/role-menu.tsx                      RoleMenu 改为按角色列表与文案通用（从 member-row.tsx 移出）
   app/member-summary.tsx                 成员是谁（名称、"你"、邮箱、加入日期），两种成员行共用
-  services/notebook.service.ts           NotebookService：list、create、get、update、remove、leave
+  services/notebook.service.ts           NotebookService：list、create、update、remove、leave
   services/notebook-member.service.ts    NotebookMemberService：list、add、update、remove
   stores/notebook.store.ts               一个工作区的笔记本；groupNotebooks
   stores/notebook-member.store.ts        一个笔记本的成员
@@ -86,7 +86,7 @@ e2e/
   fixtures/workspace-pages.ts、onboarding-pages.ts   左栏不再是 complementary；笔记本一步
   stories/notebook/n1–n6                 页面版本
   stories/notebook/n12-onboarding-notebook.spec.ts   N12 的接口与页面版本
-  stories/identity/a9、a4，stories/workspace/w7、w11   引导多一步
+  stories/identity/a9，stories/workspace/w7、w11       引导多一步
 ```
 
 ### 3.2 数据：service 与 store
@@ -96,7 +96,7 @@ e2e/
 | service | 方法 |
 |---|---|
 | `NotebookService` | `list(slug)`、`create(slug, {name, workspace_access?})`、`update(id, {name?, workspace_access?})`、`remove(id)`、`leave(id)` |
-| `NotebookMemberService` | `list(notebookId)`、`add(notebookId, {user_id, role})`、`update(id, role)`、`remove(id)` |
+| `NotebookMemberService` | `list(notebookId)`、`add(notebookId, userId, role)`、`update(id, role)`、`remove(id)` |
 
 `leave` 放在 `NotebookService`：它改变的是账户看得到的笔记本（同 M2/P6 把离开放进 `WorkspaceService`）。
 
@@ -109,7 +109,7 @@ e2e/
   - `remove(id)`：删除；答 404 `notebook.not_found` 也当作已完成。从列表移出，记下 id（`wasRemoved`）。
   - 同一本笔记本的 `update`、`remove`、`leave` 经按笔记本 id 的 `oneAtATime` 一次一个（13.2 第 1 条）：常规页的两个表单可以各自发出（P4 审查 M1）。
   - `leave(id)`：离开之后**再读工作区的笔记本列表**：没有它就同 `remove` 移出并记下；有就换掉那一项（对工作区开放的笔记本，离开之后仍以默认角色看得到，留在页面上）。不读这一本：看不到时它答 404，浏览器把它记为错误（13.4 第 3 条，S5 的 N5 发现），`NotebookService` 因此没有 `get`。离开答复之后再读失败，列表不动、记下 `wasRemoved`，下一次读没有它时外壳回到工作区首页（P4 审查 m5）。离开答 404 `notebook.not_found` 当作已移出；答 404 `notebook.member_not_found`（已不是显式成员）原样抛出，由对话框说明。
-- **`NotebookMemberStore`**：一个笔记本的有效显式成员，按加入时间。`add` 放到最后（按 id 去掉已有的）；`changeRole` 换掉那一项；`remove` 答 404 `notebook.member_not_found` 也移出。
+- **`NotebookMemberStore`**：一个笔记本的有效显式成员，按加入时间。`add` 按 id 去掉已有的、再按加入时间（相同时按 id）排序：恢复的成员关系保留第一次加入的时刻；`changeRole` 换掉那一项；`remove` 答 404 `notebook.member_not_found` 也移出。
 - **缓存**：`RootStore.notebooksOf(workspace)` 按工作区 id，`notebookMembersOf(notebook)` 按笔记本 id，都经 `once`。SWR 键 `["notebooks", workspace.id]`、`["notebook-members", notebook.id]`。
 - **分组**：`groupNotebooks(list)` 是纯函数：`workspace_access` 为 `none` 且 `member_count` 为 1 的进"我的笔记本"，其余进"团队笔记本"（M3 总设计第 5 节），各自保持列表的顺序。
 - **何时重读笔记本列表**：添加、移出成员之后（`member_count` 变化，可能换组：N2），页面重读 `["notebooks", workspace.id]`；改角色不变。改名、改开放程度由答复换掉那一项。
@@ -138,8 +138,8 @@ e2e/
 ```
 
 - **`NotebookLayout`**：在 `notebooksOf(workspace)` 的列表里找 `id`（与工作区外壳同理，13.2 第 16 条）。列表还没读到：`NotLoaded`；找不到：这一代删除或离开过它（`wasRemoved`）就 `<Navigate replace to="/:slug" state={arrived}>`，否则 404 页。找到时 `<Outlet key={notebook.id}>`，子页经 `useNotebook()` 取它。不另发 `GET /notebooks/{id}`：列表就是"看得到的笔记本"，开放程度与有效角色都在里面。
-- **首页**：主标题是笔记本名（接受到达的焦点），"还没有页面"；一行"设置"的链接。
-- **设置**：标题"笔记本设置"，导航"常规""成员"，与工作区设置相同的布局。所有看得到它的人都能进：读者能列出成员（规则表），非管理员只读。
+- **首页**：主标题是笔记本名（接受到达的焦点），"还没有页面"；一行"笔记本设置"的链接。
+- **设置**：主标题"{name} 的设置"，导航名称"笔记本设置"，导航"常规""成员"，与工作区设置相同的布局。所有看得到它的人都能进：读者能列出成员（规则表），非管理员只读。
 
 **常规页**：
 
@@ -172,7 +172,7 @@ e2e/
 
 - **目标工作区**：落点的顺序（本设备最后访问的，再按名称）中第一个他是管理员或成员的工作区（`notebookTarget(list, last)`，纯函数，与 `landingPath` 并列在 `app/landing.ts`）。
 - **没有目标**（没有工作区，或处处只是访客）：说明"在一个你是成员的工作区里才能建笔记本；加入之后在左栏新建"，"继续"完成这一步。
-- **目标里已有看得到的笔记本**：直接继续（`GoOn`，从工作区一步导出共用）。完成这一步失败之后重试，不会多建一个：建好的笔记本已在列表里。
+- **目标里已有看得到的笔记本**：直接继续（`GoOn`，`onboarding/go-on.tsx`，与工作区一步共用）。完成这一步失败之后重试，不会多建一个：建好的笔记本已在列表里。
 - **否则**：名称缺省"我的笔记"（随界面语言），可以改；建一本私密笔记本，列表随之有了它，这一步随即像上一条那样继续。
 - e2e 的 `onboardingSteps` 同时加 `notebook`（M2 移交第 5 项第二点）。
 
@@ -203,13 +203,13 @@ e2e/
 - **页面版本**（`fixtures/notebook-pages.ts` 的 `<动作>With(page, …)`，返回请求的答复；断言与接口版本共用 `assert/notebook.ts`）：
   - N1：成员在左栏新建，进入首页（主标题取得焦点），它在"我的笔记本"；访客没有"新建"；名称不合规则时字段下方说明。
   - N2：私密笔记本对别人不在左栏、直接打开是 404 页；加了第二位成员，两人的左栏都把它移到"团队笔记本"。
-  - N3：改开放程度，工作区的成员在"团队笔记本"里看到它，有效角色随之；访客看不到。
+  - N3：改开放程度，所有者的左栏随之；工作区的成员与访客看到的、有效角色经接口核对。
   - N4：管理员添加（含访客）、改角色、移出；非管理员只读；自己一行没有控件。
   - N5：成员离开，回到工作区首页；唯一的管理员离开被拒，对话框说明。
   - N6：改名；删除要输入名称，之后回到工作区首页，焦点在主标题。
   - N12：新账户的引导第三步建"我的笔记"，进入工作区之后它在"我的笔记本"；已有看得到的笔记本直接继续；只是访客的看到说明后继续。
 - **N12 的接口版本**：建笔记本、记下引导的一步 `notebook`（`POST /me/onboarding-steps`）。
-- **引导多了一步**：A9 改为三步（"第 3 步，共 3 步"，记下的步骤三个）；W11 的页面版本在工作区一步之后经过笔记本一步；A4、W7 经过它；`fixtures/onboarding-pages.ts` 加笔记本一步的定位。
+- **引导多了一步**：A9 改为三步（"第 3 步，共 3 步"，记下的步骤三个）；W11 的页面版本在工作区一步之后经过笔记本一步；W7 经过它（A4 停在工作区一步，不受影响）；`fixtures/onboarding-pages.ts` 加笔记本一步的定位。
 - **工作区的焦点**：W4（删除工作区）的页面版本断言落点的主标题取得焦点。
 
 ## 4. 实施步骤

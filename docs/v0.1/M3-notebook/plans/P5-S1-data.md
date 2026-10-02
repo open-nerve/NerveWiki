@@ -8,7 +8,7 @@
 2. `stores/ownerless.store.ts`：`OwnerlessStore`（load、takeOver、remove；404 移出并抛出；同一本一次一个）。
 3. `stores/audit.store.ts`：`AuditStore`（load 第一页、more 接在后面并去重、重读丢弃在途的 more）。
 4. `stores/root.store.ts`：`ownerlessOf(workspace)`、`auditOf(workspace)`；`context.tsx` 的钩子随用到它们的 S2 加（knip）。
-5. `i18n/format.ts`：`formatBytes(bytes, locale)`（B、KB、MB、GB，1024 进位，按语言的数字格式）。
+5. `i18n/format.ts`：`formatBytes(bytes, locale)`（B、KB、MB、GB、TB，1024 进位，按语言的数字格式）。
 
 ## 测试
 

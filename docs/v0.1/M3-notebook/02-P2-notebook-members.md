@@ -31,7 +31,7 @@ P1 留下的：
 - 可见性变化事件（`notebook` 模块建立）：笔记本自己的触发。
 - workspace 模块的两个事件：成员加入（接受邀请插入新行）、成员角色变化（改角色），总体设计 12.1 第 6 条的例外；笔记本模块注册它们，转发为可见性变化。
 - 端口：notebook 读工作区的有效成员关系（添加成员），读账户的公开资料（成员列表）。
-- 测试：规则一的表格；矩阵的五行；交错 17–19；可见性事件在每个触发点的测试替身；e2e：N4、N5 的接口版本，N2 的第二位成员。
+- 测试：规则一的表格；矩阵的七行（五个操作，改与移出各加一行"自己的"）；交错 17–19；可见性事件在每个触发点的测试替身；e2e：N4、N5 的接口版本，N2 的第二位成员。
 
 **不做**：级联、无主、审计、游标（P3）；工作区成员关系的结束与恢复的可见性，随 P3 的注册者；页面（P4、P5）。
 
@@ -97,7 +97,7 @@ e2e/fixtures/notebook-members.ts、assert/notebook.ts；e2e/stories/notebook/n2�
 | `notebook_member.remove` | 笔记本 | 管理员 |
 | `notebook.leave` | 笔记本 | 三种角色 |
 
-- **规则一**（`domain/member.go`）：在笔记本行的锁下数有效的管理员。
+- **规则一**：`domain/member.go` 的 `CheckLeave`；在笔记本行的锁下数有效的管理员（`app/leave_notebook.go`）；不能改、移出自己的在 `update_member.go`、`remove_member.go`。
   - 改角色、移出：对象是调用者自己答 409 `notebook.own_membership`（管理员离开用 `leaveNotebook`）。调用者是管理员且不能改自己，所以改完之后至少还有他一个管理员。
   - 离开：调用者是唯一的有效管理员答 409 `notebook.sole_admin`，哪怕只有他一人（他可以删除笔记本）。两位管理员同时离开时，后一位在锁下数到的只剩他自己（交错 18）。
 - **添加**：
@@ -150,6 +150,8 @@ e2e/fixtures/notebook-members.ts、assert/notebook.ts；e2e/stories/notebook/n2�
 - `UpdateMemberRole`、`EndMember`（`ended_at`、`updated_*`）、`RestoreMember`（清空 `ended_at`，角色）。
 
 ### 3.8 权限矩阵
+
+> P2 合并时的样子；P3 加了无主的笔记本 `orphan`（角色列七个，lab 里五本笔记本，自己的行多一个目标，四列答 204），见 P3 文档。
 
 - **成员行的 id**：种子给每个笔记本成员关系定好 id（`seeded.notebookMembers`，键为"笔记本/列"），`workspaceOfRow` 认得它们；覆盖测试不连库就能核对每格指向的成员关系在该列的工作区里。账户的 id 由注册决定，`prepareMatrix` 注册之后填进 `seeded.accounts`，`check` 用它核对列表与答复里的 `user_id`；成员的显示名是邮箱的本地部分（注册时的默认值）。
 - **本 Phase 的行**（笔记本列，各列面对 `notebookOf` 给的笔记本；"有角色的"是 `roleIn` 给出角色的六列）：

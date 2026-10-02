@@ -52,7 +52,7 @@ server/
     adapter/http/members_test.go                    leaveWorkspace 答出 notebook.sole_admin
   internal/modules/identity/adapter/http/account_test.go   deactivateMe 答出 notebook.sole_admin
   internal/modules/notebook/
-    domain/ownerless.go、audit.go、notebook.go、actions.go   规则二与 Holding；无主；审计的动作与游标；四个操作名
+    domain/ownerless.go、notebook.go、audit.go、actions.go   规则二、Holding 与无主；笔记本的无主字段；审计的动作与游标；四个操作名
     domain/ownerless_test.go、audit_test.go
     app/ports.go                                    WorkspaceSlugs、Holdings、Returner、AuditRecorder；OwnerlessListed、OwnerlessFinder、OwnerlessWriter、AuditFinder
     app/cascade.go                                  MembershipEnd（VetoMembershipEnd、MembershipEnded）、MembershipRestore
