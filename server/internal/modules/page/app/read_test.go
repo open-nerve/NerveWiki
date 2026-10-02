@@ -151,9 +151,10 @@ func TestGetPageViewReturnsRendersError(t *testing.T) {
 	f := newFixture()
 	f.grant(domain.ActionRead)
 	n := f.page("A", nil, 0)
+	f.writeAs(n.ID, "# A")
 	down := errors.New("down")
 	_, err := app.NewGetPageView(f.notebooks, f.store, f.auth, &fakeMarkdown{recorder: f.rec, err: down}, f.budget).Execute(f.asAlice(), n.ID)
-	if !errors.Is(err, down) {
-		t.Errorf("getPageView = %v, want %v", err, down)
+	if !errors.Is(err, down) || f.budget.held != 0 {
+		t.Errorf("getPageView = %v, %d bytes of the budget held; want %v, the budget released", err, f.budget.held, down)
 	}
 }

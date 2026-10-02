@@ -232,10 +232,15 @@ type fakeMarkdown struct {
 	*recorder
 	pages []app.PageRef
 	err   error
+	// panics has Parse panic.
+	panics bool
 }
 
 func (f *fakeMarkdown) Parse(content string) app.Parsed {
 	f.record(context.Background(), "Parse")
+	if f.panics {
+		panic("the parse failed")
+	}
 	return content
 }
 

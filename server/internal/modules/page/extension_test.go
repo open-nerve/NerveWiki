@@ -168,6 +168,7 @@ func (f fixture) serve(t *testing.T, kind, method, path, body string, guards []p
 		Authorizer: aliceWrites{f.alice}, Workspaces: sqlWorkspaces{f.pool}, Notebooks: sqlNotebooks{f.pool},
 		Markdown: f.md, Guards: guards, Participants: participants, Observers: observers,
 		EditSessionVetoers: f.vetoers, EditSessionSubscribers: f.subscribers, EditSessionCleanupInterval: time.Hour,
+		ParseBudgetBytes: 8 << 20, ParseMaxWait: time.Second,
 	}).Register(router, httpservertest.NewAPI(t, httpservertest.APIOptions{Authenticator: tokenAuth{}}))
 	req := httptest.NewRequest(method, path, strings.NewReader(body))
 	req.Header.Set("Authorization", "Bearer "+kind+":"+f.alice.String())
@@ -619,7 +620,8 @@ func TestTheBodyLimitsAreTheModulesRoutes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := page.New(page.Deps{Clock: fixedClock{}, Logger: slog.New(slog.DiscardHandler), Markdown: md, EditSessionCleanupInterval: time.Hour})
+	m := page.New(page.Deps{Clock: fixedClock{}, Logger: slog.New(slog.DiscardHandler), Markdown: md, EditSessionCleanupInterval: time.Hour,
+		ParseBudgetBytes: 8 << 20, ParseMaxWait: time.Second})
 	router := httpserver.NewRouter(slog.New(slog.DiscardHandler))
 	m.Register(router, httpservertest.NewAPI(t, httpservertest.APIOptions{Authenticator: tokenAuth{}, BodyLimits: m.BodyLimits()}))
 	if len(m.BodyLimits()) == 0 {

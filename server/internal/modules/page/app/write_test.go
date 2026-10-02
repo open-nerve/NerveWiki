@@ -248,6 +248,11 @@ func TestCreatePageAnswersItsCodesInOrder(t *testing.T) {
 			f.guards = []app.WriteGuard{&guard{recorder: f.rec, err: refusal}}
 			return app.PageDraft{Title: "Notes"}
 		}, "page.locked"},
+		{"a title taken, with a content", func(f *fixture) app.PageDraft {
+			f.grant(domain.ActionCreate)
+			f.page("Notes", nil, 0)
+			return app.PageDraft{Title: "NOTES", Content: "# Notes"}
+		}, "page.title_taken"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			f := newFixture()
@@ -257,8 +262,9 @@ func TestCreatePageAnswersItsCodesInOrder(t *testing.T) {
 			if got := codeOf(err); got != tt.want {
 				t.Errorf("createPage = %q, want %q", got, tt.want)
 			}
-			if len(f.store.nodes) != before || f.logs.Len() != 0 {
-				t.Errorf("a refused createPage wrote %d nodes, logged %q; want neither", len(f.store.nodes)-before, f.logs)
+			if len(f.store.nodes) != before || f.logs.Len() != 0 || f.budget.held != 0 {
+				t.Errorf("a refused createPage wrote %d nodes, logged %q, held %d bytes of the budget; want none", len(f.store.nodes)-before,
+					f.logs, f.budget.held)
 			}
 		})
 	}

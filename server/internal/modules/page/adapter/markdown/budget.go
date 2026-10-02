@@ -3,6 +3,7 @@ package markdownadapter
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"sync/atomic"
 	"time"
@@ -30,7 +31,12 @@ type Budget struct {
 }
 
 // NewBudget returns a budget of size bytes; a request waits at most wait.
+// Both must be positive, as the configuration's validation has them: a
+// budget of nothing would bound nothing, silently.
 func NewBudget(size int, wait time.Duration, logger *slog.Logger) *Budget {
+	if size < 1 || wait <= 0 {
+		panic(fmt.Sprintf("markdownadapter: a parse budget of %d bytes and a wait of %s", size, wait))
+	}
 	return &Budget{bytes: semaphore.NewWeighted(int64(size)), size: size, wait: wait, logger: logger}
 }
 

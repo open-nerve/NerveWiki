@@ -114,6 +114,25 @@ func TestAContentWriteTakesTheBudget(t *testing.T) {
 	}
 }
 
+// A parse that panics gives its bytes back as the panic goes on: the
+// platform answers it 500 and the server runs on, its budget whole (P4
+// fix check, finding 1).
+func TestAParseThatPanicsGivesTheBudgetBack(t *testing.T) {
+	f := newFixture()
+	f.grant(domain.ActionWrite)
+	n := f.page("Notes", nil, 0)
+	f.md.panics = true
+	recovered := func() (r any) {
+		defer func() { r = recover() }()
+		_, _ = f.put(n.ID, app.ContentPut{Content: "xyz", Base: 1})
+		return nil
+	}()
+	if recovered == nil || f.budget.held != 0 || f.budget.released != 1 {
+		t.Errorf("a panicking parse: recovered %v, %d bytes held, %d released; want the panic and the budget whole", recovered,
+			f.budget.held, f.budget.released)
+	}
+}
+
 // A write leaves the content at the next revision, with its hash and size,
 // by the writer at the unit's time, in a changeset of its own with the
 // page's version on its base; the content alone moves no node, so the

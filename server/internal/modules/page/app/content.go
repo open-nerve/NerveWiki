@@ -21,7 +21,8 @@ func NewContentParser(writer *Writer, markdown Markdown, budget ParseBudget) *Co
 // spec. Unless the content is empty, the write is decided first, unlocked,
 // with the unit's 404 and 403 (Writer.Allowed); then the budget holds the
 // content's bytes until release, which the write calls once its unit is
-// over. The unit decides again under its locks.
+// over, or until a panic of the parse leaves here. The unit decides again
+// under its locks.
 func (c *ContentParser) Parse(ctx context.Context, spec UnitSpec, content string) (Parsed, func(), error) {
 	if content == "" {
 		return c.markdown.Parse(content), func() {}, nil
@@ -33,5 +34,13 @@ func (c *ContentParser) Parse(ctx context.Context, spec UnitSpec, content string
 	if err != nil {
 		return nil, nil, err
 	}
-	return c.markdown.Parse(content), release, nil
+	parsed := false
+	defer func() {
+		if !parsed {
+			release()
+		}
+	}()
+	p := c.markdown.Parse(content)
+	parsed = true
+	return p, release, nil
 }

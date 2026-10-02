@@ -87,3 +87,22 @@ func TestABudgetThatDoesNotFreeUpIsBusy(t *testing.T) {
 		t.Errorf("Take with a deadline before the wait's = %v, want the context's error", err)
 	}
 }
+
+// A budget of nothing, or no wait, is a fault of the caller's: it would
+// bound nothing, or refuse every wait (P4 fix check, finding 2).
+func TestABudgetOfNothingIsRefused(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		size int
+		wait time.Duration
+	}{{"no bytes", 0, time.Second}, {"no wait", 1, 0}} {
+		t.Run(tt.name, func(t *testing.T) {
+			defer func() {
+				if recover() == nil {
+					t.Errorf("NewBudget(%d, %s) did not panic", tt.size, tt.wait)
+				}
+			}()
+			markdownadapter.NewBudget(tt.size, tt.wait, slog.New(slog.DiscardHandler))
+		})
+	}
+}

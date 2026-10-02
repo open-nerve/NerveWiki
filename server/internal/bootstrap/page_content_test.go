@@ -16,6 +16,7 @@ import (
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres/pgtest"
 )
 
 // A page's content through serve (M4/P4 design 3.8, 3.9): its bytes kept
@@ -278,6 +279,59 @@ func TestDeletingASubtreeDeletesItsSessions(t *testing.T) {
 			t.Errorf("%d sessions of %s after Top's deletion, want %d", got, page, want)
 		}
 	}
+	checkPages(t, tm.pool)
+}
+
+// The configuration's parse budget bounds the content writes' parses and
+// the reading views' together (M4/P4 review P2; fix check, finding 2): a
+// write that waits for its page's lock holds its content's bytes, and
+// another page's reading view, which the budget cannot fit beside them,
+// is 503 server_busy once page.parse_max_wait has passed. The budget here
+// is 64 KiB, less than the configuration takes, so that the test writes
+// no large body.
+func TestTheParseBudgetBoundsWritesAndViews(t *testing.T) {
+	tm := newAcmeTeamWith(t, "member", "", func(c *config.Config) {
+		c.Page.ParseBudgetBytes, c.Page.ParseMaxWait = 64<<10, 300*time.Millisecond
+	})
+	nb := tm.openNotebook(t, "alice", "Eng")
+	a := tm.createPage(t, "alice", nb, "", "A")
+	b := tm.createPage(t, "alice", nb, "", "B")
+	tm.send(t, contentWrite("alice", b, "# B", 1, ""), http.StatusOK)
+	ctx := context.Background()
+	holder, err := tm.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = holder.Rollback(ctx) }()
+	if _, err := holder.Exec(ctx, contentRow(a).lock); err != nil {
+		t.Fatal(err)
+	}
+	send := tm.sender(t, contentWrite("alice", a, strings.Repeat("a", 64<<10), 1, ""))
+	written := make(chan answer, 1)
+	go func() { written <- send() }()
+	pgtest.WaitForLockWaitsOn(t, tm.pool, "page_contents", 1, interleavingWait)
+
+	view := tm.sender(t, request("bob", http.MethodGet, "/api/v0/pages/"+b+"/view", ""))()
+	if view.res == nil {
+		t.Fatalf("B's reading view: %v", view.err)
+	}
+	tm.contract.CheckResponse(t, view.req, view.res)
+	if !view.is(http.StatusServiceUnavailable, "server_busy") || view.res.Header.Get("Retry-After") != "1" {
+		t.Errorf("B's reading view while A's write holds the budget = %d %s, Retry-After %q; want 503 server_busy, 1", view.status,
+			view.code, view.res.Header.Get("Retry-After"))
+	}
+	if err := holder.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case w := <-written:
+		if !w.is(http.StatusOK, "") {
+			t.Errorf("A's write = %d %s, want 200", w.status, w.code)
+		}
+	case <-time.After(interleavingWait):
+		t.Fatal("A's write did not answer")
+	}
+	tm.send(t, request("bob", http.MethodGet, "/api/v0/pages/"+b+"/view", ""), http.StatusOK)
 	checkPages(t, tm.pool)
 }
 
