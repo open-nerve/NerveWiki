@@ -187,6 +187,13 @@ func TestCreatePageAnswersItsCodesInOrder(t *testing.T) {
 			missing := uuid.NewV7()
 			return app.PageDraft{Title: "Notes", ParentID: &missing}
 		}, "validation_failed parent_id"},
+		{"a parent that is no page", func(f *fixture) app.PageDraft {
+			f.grant(domain.ActionCreate)
+			asset := f.page("photo.png", nil, 0)
+			asset.Kind = domain.KindAsset
+			f.store.nodes[asset.ID] = asset
+			return app.PageDraft{Title: "Notes", ParentID: &asset.ID}
+		}, "validation_failed parent_id"},
 		{"a sibling to follow of another parent", func(f *fixture) app.PageDraft {
 			f.grant(domain.ActionCreate)
 			parent := f.page("Parent", nil, 0)
@@ -196,6 +203,15 @@ func TestCreatePageAnswersItsCodesInOrder(t *testing.T) {
 			f.grant(domain.ActionCreate)
 			f.page("Notes", nil, 0)
 			return app.PageDraft{Title: "NOTES", Position: app.After(uuid.NewV7())}
+		}, "validation_failed after_id"},
+		{"the values before a page too deep", func(f *fixture) app.PageDraft {
+			f.grant(domain.ActionCreate)
+			var parent *uuid.UUID
+			for i := range domain.MaxDepth {
+				n := f.page("Level "+string(rune('A'+i)), parent, 0)
+				parent = &n.ID
+			}
+			return app.PageDraft{Title: "Eleventh", ParentID: parent, Position: app.After(uuid.NewV7())}
 		}, "validation_failed after_id"},
 		{"a title taken before the guard", func(f *fixture) app.PageDraft {
 			f.grant(domain.ActionCreate)
@@ -386,5 +402,22 @@ func TestRenameNodeAnswersItsCodesInOrder(t *testing.T) {
 				t.Errorf("a refused rename left %q, logged %q; want Notes, nothing", f.store.nodes[n.ID].Name, f.logs)
 			}
 		})
+	}
+}
+
+// The answer is the page as the unit left it: a participant that renames
+// the page it follows changes what the writer reads back.
+func TestTheAnswerIsThePageAsTheUnitLeftIt(t *testing.T) {
+	f := newFixture()
+	f.grant(domain.ActionCreate, domain.ActionRename)
+	f.partakers = []app.Participant{&participant{recorder: f.rec, retitle: true}}
+	created, err := f.create(app.PageDraft{Title: "New"})
+	if err != nil || created.Node.Name != "New (retitled)" {
+		t.Errorf("createPage = %q, %v; want the participant's New (retitled)", created.Node.Name, err)
+	}
+	notes := f.page("Notes", nil, 5)
+	renamed, err := f.rename(notes.ID, "Journal")
+	if err != nil || renamed.Name != "Journal (retitled)" {
+		t.Errorf("renameNode = %q, %v; want the participant's Journal (retitled)", renamed.Name, err)
 	}
 }

@@ -231,6 +231,45 @@ func TestRecordItemAndRevisionMerge(t *testing.T) {
 	}
 }
 
+// An item keeps where its node was and is: the parent and the order, not
+// the name alone; M8 reads them back.
+func TestRecordItemKeepsTheTreeStates(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	p, q := f.page(t, f.eng, nil, "P", 0), f.page(t, f.eng, nil, "Q", 1)
+	n := f.page(t, f.eng, &p.ID, "N", 1)
+	cs := app.Changeset{ID: uuid.NewV7(), NotebookID: f.eng, Kind: "edit", Client: domain.ClientWeb, By: f.alice, At: now()}
+	if err := f.s.CreateChangeset(ctx, cs); err != nil {
+		t.Fatal(err)
+	}
+	before, after := n.State(), domain.TreeState{ParentID: &q.ID, Name: "N", SortOrder: 2.5}
+	if err := f.s.RecordItem(ctx, app.Item{ID: uuid.NewV7(), ChangesetID: cs.ID, Change: domain.Change{NodeID: n.ID, Before: &before, After: &after}, At: now()}); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.count(t, `SELECT count(*) FROM changeset_items WHERE node_id = $1 AND before_parent_id = $2 AND before_name = 'N'
+		AND before_sort_order = 1 AND after_parent_id = $3 AND after_name = 'N' AND after_sort_order = 2.5`, n.ID, p.ID, q.ID); got != 1 {
+		t.Error("the item does not keep the node's parent and order, before and after")
+	}
+}
+
+// A rename writes who and when, and keeps the creation's.
+func TestRenameNodeWritesItsAuthor(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	bob := uuid.NewV7()
+	f.exec(t, "INSERT INTO users (id, email, password, display_name, created_at, updated_at) VALUES ($1, 'bob@corp.com', 'x', 'x', $2, $2)",
+		bob, now())
+	n := f.page(t, f.eng, nil, "Notes", 0)
+	renamed := n
+	renamed.Name, renamed.NameKey, renamed.UpdatedBy, renamed.UpdatedAt = "Journal", "journal", bob, now().Add(time.Minute)
+	if err := f.s.RenameNode(ctx, renamed); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := f.s.FindNode(ctx, n.ID); err != nil || !reflect.DeepEqual(got, renamed) {
+		t.Errorf("FindNode after the rename = %+v, %v; want %+v", got, err, renamed)
+	}
+}
+
 // A notebook's deletion takes its pages not deleted, what follows them and
 // its changesets, at its time; what the trash holds keeps its own.
 func TestDeleteNotebooksPages(t *testing.T) {

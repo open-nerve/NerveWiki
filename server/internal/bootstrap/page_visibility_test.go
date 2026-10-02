@@ -19,7 +19,8 @@ import (
 // ancestors are its chain up the tree. The tree is read by the notebook,
 // the page by its node, each decided on by the access module: a read that
 // drifts from the tree fails here. On this copy alone, team's page has a
-// child and priv a deleted page, which neither shows.
+// child and priv a deleted page, which neither shows; the copy keeps the
+// pages' invariant.
 func TestTheTreeIsWhatEachReadAllows(t *testing.T) {
 	d := prepareMatrix(t)
 	contract := apitest.Load(t)
@@ -45,7 +46,11 @@ func TestTheTreeIsWhatEachReadAllows(t *testing.T) {
 			SELECT id, '', 1, sha256(''), 0, created_by_id, now(), deleted_at FROM nodes WHERE id = $1`, id); err != nil {
 			t.Fatal(err)
 		}
+		if _, err := pool.Exec(context.Background(), seededPageHistory, id); err != nil {
+			t.Fatal(err)
+		}
 	}
+	checkPages(t, pool)
 	base := startApp(t, d.config(t, url, nil), migrations.FS())
 	type place struct{ name, parent string }
 	for _, c := range allColumns() {

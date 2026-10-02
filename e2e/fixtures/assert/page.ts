@@ -9,7 +9,8 @@ import type { Database } from "../db";
 
 /**
  * nodes, page_contents, changesets, changeset_items, page_revisions: created is new, as the API answered it, created by
- * creatorId from client: an empty content at revision 1, and a changeset of its own with its item and its version.
+ * creatorId from client: an empty content at revision 1, and a changeset of its own with its version and its item,
+ * which has it from nothing to its name, parent and order.
  */
 export async function expectNewPage(db: Database, created: Page, creatorId: string, client: string): Promise<void> {
   const rows = await db.query(
@@ -38,9 +39,11 @@ export async function expectNewPage(db: Database, created: Page, creatorId: stri
   ]);
   const changesets = await db.query(
     `SELECT s.kind, s.client, s.created_by_id = $2 AS by_creator, s.created_at = $3::timestamptz AS at_creation,
-            i.before_name IS NULL AND i.after_name = $4 AS item,
+            i.before_name IS NULL AND i.after_name = $4 AND i.after_parent_id IS NOT DISTINCT FROM n.parent_id
+              AND i.after_sort_order = n.sort_order AS item,
             r.base_revision IS NULL AND r.revision = 1 AND r.content = '' AS version
-       FROM changesets s JOIN changeset_items i ON i.changeset_id = s.id JOIN page_revisions r ON r.changeset_id = s.id
+       FROM changesets s JOIN changeset_items i ON i.changeset_id = s.id JOIN nodes n ON n.id = i.node_id
+       JOIN page_revisions r ON r.changeset_id = s.id
       WHERE i.node_id = $1 AND r.node_id = $1`,
     [created.id, creatorId, created.created_at, created.name]
   );
@@ -50,8 +53,8 @@ export async function expectNewPage(db: Database, created: Page, creatorId: stri
 }
 
 /**
- * nodes and changeset_items: the node id is named name, renamed by renamerId, whose last changeset's item has it from
- * before to name; the content is not touched.
+ * nodes, changesets and changeset_items: the node id is named name, renamed by renamerId in its last changeset, whose
+ * time it holds and whose item has it from before to name in its place; the content is not touched.
  */
 export async function expectRenamed(
   db: Database,
@@ -62,12 +65,18 @@ export async function expectRenamed(
 ): Promise<void> {
   const rows = await db.query(
     `SELECT n.name, n.updated_by_id = $3 AS by_renamer, c.revision,
-            (SELECT i.before_name || ' > ' || i.after_name FROM changeset_items i JOIN changesets s ON s.id = i.changeset_id
-              WHERE i.node_id = n.id AND s.created_by_id = $3 ORDER BY s.created_at DESC LIMIT 1) AS item
-       FROM nodes n JOIN page_contents c ON c.node_id = n.id WHERE n.id = $1 AND n.name = $2`,
+            s.created_by_id = $3 AND s.created_at = n.updated_at AS at_rename, i.before_name || ' > ' || i.after_name AS item,
+            i.before_parent_id IS NOT DISTINCT FROM n.parent_id AND i.after_parent_id IS NOT DISTINCT FROM n.parent_id
+              AND i.before_sort_order = n.sort_order AND i.after_sort_order = n.sort_order AS in_place
+       FROM nodes n JOIN page_contents c ON c.node_id = n.id
+       JOIN changeset_items i ON i.node_id = n.id JOIN changesets s ON s.id = i.changeset_id
+      WHERE n.id = $1 AND n.name = $2
+      ORDER BY s.created_at DESC, s.id DESC LIMIT 1`,
     [id, name, renamerId]
   );
-  expect(rows).toEqual([{ name, by_renamer: true, revision: 1, item: `${before} > ${name}` }]);
+  expect(rows).toEqual([
+    { name, by_renamer: true, revision: 1, at_rename: true, item: `${before} > ${name}`, in_place: true },
+  ]);
 }
 
 /**

@@ -238,15 +238,25 @@ func (f *fakeAuthorizer) Authorize(ctx context.Context, _ shared.Actor, action s
 	return shared.Grant{}, shared.ErrNotVisible
 }
 
+// named is a registrant's call as the recorder keeps it: with its name,
+// when it has one, so a test of several sees their order.
+func named(call, name string) string {
+	if name == "" {
+		return call
+	}
+	return call + " " + name
+}
+
 // guard records the steps it sees and refuses them with err when set.
 type guard struct {
 	*recorder
+	name  string
 	err   error
 	steps []app.Step
 }
 
 func (g *guard) GuardWrite(ctx context.Context, s app.Step) error {
-	g.record(ctx, "GuardWrite "+string(s.Operation))
+	g.record(ctx, named("GuardWrite "+string(s.Operation), g.name))
 	g.steps = append(g.steps, s)
 	return g.err
 }
@@ -254,33 +264,42 @@ func (g *guard) GuardWrite(ctx context.Context, s app.Step) error {
 // observer records the events it follows and answers err.
 type observer struct {
 	*recorder
+	name   string
 	err    error
 	events []app.Event
 }
 
 func (o *observer) PagesChanged(ctx context.Context, e app.Event) error {
-	o.record(ctx, "PagesChanged")
+	o.record(ctx, named("PagesChanged", o.name))
 	o.events = append(o.events, e)
 	return o.err
 }
 
-// participant records the steps it follows and, when rename is set,
-// renames that node to name through the unit.
+// participant records the steps it follows. When rename is set, it
+// renames that node to name through the unit; when retitle is, it renames
+// the node the step changed, adding " (retitled)" to its name.
 type participant struct {
 	*recorder
-	steps  []app.Step
-	rename *uuid.UUID
-	name   string
+	label   string
+	steps   []app.Step
+	rename  *uuid.UUID
+	name    string
+	retitle bool
 }
 
 func (p *participant) Participate(ctx context.Context, s app.Step, u app.Appender) error {
-	p.record(ctx, "Participate "+string(s.Operation))
+	p.record(ctx, named("Participate "+string(s.Operation), p.label))
 	p.steps = append(p.steps, s)
-	if p.rename == nil {
-		return nil
+	switch {
+	case p.rename != nil:
+		_, err := u.Rename(ctx, *p.rename, p.name)
+		return err
+	case p.retitle:
+		c := s.Changes[0]
+		_, err := u.Rename(ctx, c.NodeID, c.After.Name+" (retitled)")
+		return err
 	}
-	_, err := u.Rename(ctx, *p.rename, p.name)
-	return err
+	return nil
 }
 
 // fixture is the fakes over one recorder: alice in the workspace acme with

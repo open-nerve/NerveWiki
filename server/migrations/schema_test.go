@@ -396,6 +396,7 @@ func TestChecksRejectCounterexamples(t *testing.T) {
 		{"an MCP client's name with a newline", `UPDATE changesets SET client = E'mcp:a\nb'`, "changesets_client_check"},
 		{"an MCP client's name of 129 characters", "UPDATE changesets SET client = 'mcp:' || repeat('名', 129)", "changesets_client_check"},
 		{"an empty message", "UPDATE changesets SET message = ''", "changesets_message_check"},
+		{"a message of 4097 bytes", "UPDATE changesets SET message = repeat('a', 4097)", "changesets_message_check"},
 		{"half a state after", "UPDATE changeset_items SET after_sort_order = NULL", "changeset_items_state_check"},
 		{"no state before or after", "UPDATE changeset_items SET after_name = NULL, after_sort_order = NULL", "changeset_items_state_check"},
 		{"a parent before without a state", "UPDATE changeset_items SET before_parent_id = node_id", "changeset_items_state_check"},
@@ -403,6 +404,7 @@ func TestChecksRejectCounterexamples(t *testing.T) {
 		{"a version based on itself", "UPDATE page_revisions SET base_revision = revision", "page_revisions_revision_check"},
 		{"a version's hash of 31 bytes", "UPDATE page_revisions SET content_hash = substring(content_hash from 2)", "page_revisions_content_hash_check"},
 		{"a version's size other than its content's", "UPDATE page_revisions SET byte_size = 2", "page_revisions_byte_size_check"},
+		{"a version over 5 MB", "UPDATE page_revisions SET content = repeat('a', 5242881), byte_size = 5242881", "page_revisions_byte_size_check"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

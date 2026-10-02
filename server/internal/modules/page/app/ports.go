@@ -80,8 +80,8 @@ type Changeset struct {
 	At         time.Time
 }
 
-// Item is a node's change in a changeset; Revision is the content's version
-// in it.
+// Item is a node's change in a changeset: where the node was before the
+// changeset and where it is after.
 type Item struct {
 	ID          uuid.UUID
 	ChangesetID uuid.UUID

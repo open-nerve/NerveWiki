@@ -15,6 +15,10 @@ func TestTitleKeysMatchAcrossCaseAndNormalization(t *testing.T) {
 		{"Café", "Café"},      // NFC and NFD
 		{"ǰ̣", "J̣̌"},          // folding ǰ gives j and a caron before the dot below: NFC again orders them
 		{"会议纪要", "会议纪要"},
+		// Folding the ypogegrammeni of an unordered sequence gives an iota that NFC
+		// composes with the grave before it: NFC first orders them, as in à and
+		// the ypogegrammeni.
+		{"a\u0345\u0300", "\u00e0\u0345"},
 	} {
 		if ka, kb := shared.TitleKey(tt.a), shared.TitleKey(tt.b); ka != kb {
 			t.Errorf("TitleKey(%q) = %q, TitleKey(%q) = %q; want them equal", tt.a, ka, tt.b, kb)

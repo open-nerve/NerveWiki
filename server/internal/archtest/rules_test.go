@@ -131,10 +131,11 @@ func isPureLibrary(path string) bool {
 }
 
 // isPureLibraryDependency reports what the pure libraries may bring along:
-// case folding imports golang.org/x/text/language and its internal
-// packages, which the pure layers may reach but not import (isPureLibrary).
+// they and what they import, case folding golang.org/x/text/language and
+// its internal packages, all under golang.org/x/text/, which the pure
+// layers may reach but not import (isPureLibrary).
 func isPureLibraryDependency(path string) bool {
-	return isPureLibrary(path) || strings.HasPrefix(path, "golang.org/x/text/")
+	return strings.HasPrefix(path, "golang.org/x/text/")
 }
 
 // isInfrastructure reports whether an import outside this module is

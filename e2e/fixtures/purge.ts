@@ -5,9 +5,10 @@ import type { Database } from "./db";
 
 /**
  * Moves the deletion of the workspace id and of everything deleted with it back by days, its accepted invitations' too:
- * leaf to root, so the purge, which may run between two statements, never meets a row moved back whose children are
- * not. Its notebooks' pages and what follows them come first: a notebook moved back without them would fail every
- * purge on their foreign key.
+ * leaf to root, so a purge that runs between two statements never meets a row moved back whose children are not. Its
+ * notebooks' pages and what follows them come first: a notebook moved back without them would fail every purge on
+ * their foreign key. A purge whose own statements straddle the move may still meet such a row and fail, to be retried;
+ * a story that checks the purge's runs looks at those queued after the move.
  */
 export async function deletedDaysAgo(db: Database, id: string, days: number): Promise<void> {
   const ago = `now() - make_interval(days => ${days})`;

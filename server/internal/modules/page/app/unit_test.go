@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strings"
 	"testing"
 	"uuid"
 
@@ -148,5 +149,62 @@ func TestAnExtensionsErrorRollsTheUnitBack(t *testing.T) {
 				t.Errorf("the unit = %v, rolled back %v; want %v, rolled back", err, f.tx.rolledBack, tt.want)
 			}
 		})
+	}
+}
+
+// Several registrants run in the order bootstrap hands them (v0.1 design
+// 13.1, item 21): the guards, then, after the write, the participants;
+// the observers once the operations are done. The first guard's refusal
+// stops the rest.
+func TestTheRegistrantsRunInTheirOrder(t *testing.T) {
+	f := newFixture()
+	f.grant(domain.ActionRename)
+	f.guards = []app.WriteGuard{&guard{recorder: f.rec, name: "first"}, &guard{recorder: f.rec, name: "second"}}
+	f.partakers = []app.Participant{&participant{recorder: f.rec, label: "first"}, &participant{recorder: f.rec, label: "second"}}
+	f.observers = []app.PageObserver{&observer{recorder: f.rec, name: "first"}, &observer{recorder: f.rec, name: "second"}}
+	if _, err := f.run(f.asAlice(), domain.ClientWeb, func(ctx context.Context, u *app.Unit) error {
+		_, err := u.CreatePage(ctx, app.PageDraft{Title: "New"})
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, call := range f.rec.calls {
+		if strings.HasSuffix(call, " first in tx") || strings.HasSuffix(call, " second in tx") {
+			got = append(got, call)
+		}
+	}
+	want := []string{"GuardWrite create first in tx", "GuardWrite create second in tx", "Participate create first in tx",
+		"Participate create second in tx", "PagesChanged first in tx", "PagesChanged second in tx"}
+	if !slices.Equal(got, want) {
+		t.Errorf("registrants ran %v, want %v", got, want)
+	}
+
+	refusal := shared.NewError(shared.KindConflict, "page.locked", "Locked.")
+	f = newFixture()
+	f.grant(domain.ActionRename)
+	second := &guard{recorder: f.rec, name: "second"}
+	f.guards = []app.WriteGuard{&guard{recorder: f.rec, name: "first", err: refusal}, second}
+	_, err := f.run(f.asAlice(), domain.ClientWeb, func(ctx context.Context, u *app.Unit) error {
+		_, err := u.CreatePage(ctx, app.PageDraft{Title: "New"})
+		return err
+	})
+	if !errors.Is(err, refusal) || len(second.steps) != 0 {
+		t.Errorf("the unit = %v after the second guard saw %d steps; want the first's refusal, the second not asked", err, len(second.steps))
+	}
+}
+
+// An operation given a context without the unit's transaction refuses:
+// it would write on the pool, outside the unit and its locks.
+func TestAnOperationRefusesAContextOutsideTheUnit(t *testing.T) {
+	f := newFixture()
+	f.grant(domain.ActionRename)
+	outside := f.asAlice()
+	_, err := f.run(outside, domain.ClientWeb, func(_ context.Context, u *app.Unit) error {
+		_, err := u.CreatePage(outside, app.PageDraft{Title: "New"})
+		return err
+	})
+	if err == nil || f.called("CreateNode") || f.called("CreateNode in tx") {
+		t.Errorf("an operation outside the unit's transaction = %v, wrote %v; want an error and no write", err, f.rec.calls)
 	}
 }

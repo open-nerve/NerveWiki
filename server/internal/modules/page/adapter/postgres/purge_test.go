@@ -23,6 +23,8 @@ func cutoff() time.Time { return now().Add(24 * time.Hour) }
 type purgeFixture struct {
 	fixture
 	a, b, c, g uuid.UUID
+	// older is g's changeset.
+	older uuid.UUID
 }
 
 // followers are the tables of the rows that follow a node.
@@ -32,7 +34,7 @@ func newPurgeFixture(t *testing.T) purgeFixture {
 	t.Helper()
 	ctx := context.Background()
 	f := purgeFixture{fixture: newFixture(t)}
-	group := func(deleted bool, at time.Duration, nodes ...domain.Node) {
+	group := func(deleted bool, at time.Duration, nodes ...domain.Node) uuid.UUID {
 		cs := app.Changeset{ID: uuid.NewV7(), NotebookID: f.eng, Kind: "edit", Client: domain.ClientWeb, By: f.alice, At: now()}
 		if err := f.s.CreateChangeset(ctx, cs); err != nil {
 			t.Fatal(err)
@@ -48,7 +50,7 @@ func newPurgeFixture(t *testing.T) purgeFixture {
 			}
 		}
 		if !deleted {
-			return
+			return cs.ID
 		}
 		for _, n := range nodes {
 			f.exec(t, "UPDATE nodes SET deleted_at = $2 WHERE id = $1", n.ID, cutoff().Add(at))
@@ -57,6 +59,7 @@ func newPurgeFixture(t *testing.T) purgeFixture {
 			}
 		}
 		f.exec(t, "UPDATE changesets SET deleted_at = $2 WHERE id = $1", cs.ID, cutoff().Add(at))
+		return cs.ID
 	}
 	a := f.page(t, f.eng, nil, "A", 0)
 	b := f.page(t, f.eng, &a.ID, "B", 0)
@@ -64,7 +67,7 @@ func newPurgeFixture(t *testing.T) purgeFixture {
 	g := f.page(t, f.eng, nil, "G", 1)
 	f.a, f.b, f.c, f.g = a.ID, b.ID, c.ID, g.ID
 	group(true, -time.Microsecond, a, b, c)
-	group(true, -time.Hour, g)
+	f.older = group(true, -time.Hour, g)
 	group(true, 0, f.page(t, f.eng, nil, "D", 2))
 	group(true, time.Hour, f.page(t, f.eng, nil, "E", 3))
 	group(false, 0, f.page(t, f.eng, nil, "F", 4))
@@ -186,21 +189,41 @@ func TestPurgeSkipsAHeldNodeAndKeepsItsAncestors(t *testing.T) {
 	}
 }
 
-// A node stays while a row that follows it is held, and a changeset while
-// one of its items is: deleting either would cascade to the held row and
-// wait for it.
-func TestPurgeKeepsWhatAHeldFollowerNeeds(t *testing.T) {
-	f := newPurgeFixture(t)
-	release := f.hold(t,
-		"SELECT 1 FROM page_contents WHERE node_id = '"+f.g.String()+"'",
-		"SELECT 1 FROM changeset_items WHERE node_id = '"+f.c.String()+"'")
-	// Items: all but c's. Nodes: not g, whose content is held, nor c, whose
-	// item is, nor their ancestors. Changesets: g's, not the tree's.
-	if purged, want := run(t, f.s), []int{3, 4, 3, 0, 1}; !slices.Equal(purged, want) {
-		t.Errorf("purged %v beside g's held content and c's held item, want %v", purged, want)
-	}
-	release()
-	if purged, want := run(t, f.s), []int{1, 0, 1, 4, 1}; !slices.Equal(purged, want) {
-		t.Errorf("the next run purged %v, want %v", purged, want)
+// A held row is skipped, not waited for, and so is what needs it gone: a
+// node while a row that follows it is held, a changeset while one of its
+// items or versions is; deleting either would cascade to the held row and
+// wait for it. A later run takes the rest.
+func TestPurgeKeepsWhatAHeldRowNeeds(t *testing.T) {
+	for _, tt := range []struct {
+		name  string
+		held  string                         // the table and the key column of the row held,
+		of    func(f purgeFixture) uuid.UUID // whose key this is
+		first []int                          // items, versions, contents, nodes, changesets
+		next  []int
+	}{
+		// Not g, whose content is held; the tree, and both changesets.
+		{"g's content", "page_contents WHERE node_id", func(f purgeFixture) uuid.UUID { return f.g },
+			[]int{4, 4, 3, 3, 2}, []int{0, 0, 1, 1, 0}},
+		// Not g, nor its changeset, which its version is in.
+		{"g's version", "page_revisions WHERE node_id", func(f purgeFixture) uuid.UUID { return f.g },
+			[]int{4, 3, 4, 3, 1}, []int{0, 1, 0, 1, 1}},
+		// Not c, nor its ancestors, nor the tree's changeset; g and its own.
+		{"c's item", "changeset_items WHERE node_id", func(f purgeFixture) uuid.UUID { return f.c },
+			[]int{3, 4, 4, 1, 1}, []int{1, 0, 0, 3, 1}},
+		// Everything but g's changeset itself.
+		{"g's changeset", "changesets WHERE id", func(f purgeFixture) uuid.UUID { return f.older },
+			[]int{4, 4, 4, 4, 1}, []int{0, 0, 0, 0, 1}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newPurgeFixture(t)
+			release := f.hold(t, "SELECT 1 FROM "+tt.held+" = '"+tt.of(f).String()+"'")
+			if purged := run(t, f.s); !slices.Equal(purged, tt.first) {
+				t.Errorf("purged %v beside %s held, want %v", purged, tt.name, tt.first)
+			}
+			release()
+			if purged := run(t, f.s); !slices.Equal(purged, tt.next) {
+				t.Errorf("the next run purged %v, want %v", purged, tt.next)
+			}
+		})
 	}
 }

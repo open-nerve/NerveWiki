@@ -53,9 +53,11 @@ test("PG13 (API): deleting a notebook, its workspace or an ownerless notebook de
   expect(reads.map((r) => [r.response.status, r.error?.code])).toEqual(planPages.map(() => [404, "page.not_found"]));
 
   // The purge: one run clears the tree, then the notebook and the
-  // workspace, with no error on the way.
-  const [mark] = await db.query<{ id: string }>("SELECT coalesce(max(id), 0)::text AS id FROM river_job");
+  // workspace, with no error on the way. A run already going may see the
+  // tree half moved back and fail on a foreign key, to be retried; the
+  // runs that count are those queued after the move.
   await deletedDaysAgo(db, old.id, 61);
+  const [mark] = await db.query<{ id: string }>("SELECT coalesce(max(id), 0)::text AS id FROM river_job");
   await expect
     .poll(async () => (await db.query("SELECT id FROM workspaces WHERE id = $1", [old.id])).length, {
       message: "the workspace deleted 61 days ago is purged, after its notebook and its pages",

@@ -1,4 +1,7 @@
+import { accountIdOf } from "../../fixtures/assert/identity";
 import { expectRenamed } from "../../fixtures/assert/page";
+import { emailFor } from "../../fixtures/auth";
+import { joinAs } from "../../fixtures/invitations";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, postPage, renameNode } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
@@ -13,15 +16,19 @@ test("PG2 (API): an editor renames a page; a title a sibling holds by its key is
   db,
 }, testInfo) => {
   const { pat, adminId, workspace } = await newTeam(api, testInfo);
-  const notebook = await createNotebook(api, pat, workspace.slug, "Plans");
+  const editorEmail = emailFor(testInfo, "editor");
+  const editorPat = await joinAs(api, pat, workspace.slug, editorEmail, "member");
+  const editorId = await accountIdOf(db, editorEmail);
+  // The admin creates the pages; a member edits by the workspace access.
+  const notebook = await createNotebook(api, pat, workspace.slug, "Plans", "editor");
   const notes = await createPage(api, pat, notebook.id, "Notes");
   const street = await createPage(api, pat, notebook.id, "Straße");
   await createPage(api, pat, notebook.id, "Café");
 
-  const renamed = await renameNode(api, pat, notes.id, " Journal ");
+  const renamed = await renameNode(api, editorPat, notes.id, " Journal ");
   expect(renamed.response.status).toBe(200);
   expect(renamed.data).toMatchObject({ id: notes.id, name: "Journal", parent_id: null });
-  await expectRenamed(db, notes.id, "Notes", "Journal", adminId);
+  await expectRenamed(db, notes.id, "Notes", "Journal", editorId);
 
   const invalid = await renameNode(api, pat, notes.id, "a:b");
   expect([invalid.response.status, invalid.error?.errors?.map((e) => [e.field, e.code])]).toEqual([
@@ -42,5 +49,5 @@ test("PG2 (API): an editor renames a page; a title a sibling holds by its key is
   expect(recased.response.status).toBe(200);
   expect(recased.data?.name).toBe("STRASSE");
   await expectRenamed(db, street.id, "Straße", "STRASSE", adminId);
-  await expectRenamed(db, notes.id, "Notes", "Journal", adminId);
+  await expectRenamed(db, notes.id, "Notes", "Journal", editorId);
 });

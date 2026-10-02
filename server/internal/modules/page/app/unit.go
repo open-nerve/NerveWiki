@@ -202,8 +202,7 @@ func (u *Unit) CreatePage(ctx context.Context, d PageDraft) (domain.Node, error)
 		NameKey: title.Key, SortOrder: order, CreatedBy: u.write.By, UpdatedBy: u.write.By, CreatedAt: u.write.At, UpdatedAt: u.write.At,
 	}
 	state := n.State()
-	sum := sha256.Sum256(nil)
-	content := Content{NodeID: n.ID, Revision: 1, Hash: sum[:], By: u.write.By, At: u.write.At}
+	content := u.content(n.ID, "", 1)
 	step := u.step(domain.OpCreate, domain.Change{NodeID: n.ID, After: &state, Revision: content.Revision})
 	err = u.apply(ctx, step, true, func(ctx context.Context) error {
 		// Renumbering keeps the siblings' order: it moves no one.
@@ -218,7 +217,7 @@ func (u *Unit) CreatePage(ctx context.Context, d PageDraft) (domain.Node, error)
 		if err := u.w.d.NodeWriter.CreateContent(ctx, content); err != nil {
 			return err
 		}
-		return u.recordRevision(ctx, Revision{NodeID: n.ID, Revision: content.Revision, Hash: content.Hash})
+		return u.recordRevision(ctx, content, nil)
 	})
 	return n, err
 }
@@ -321,6 +320,11 @@ func (u *Unit) step(op domain.Operation, changes ...domain.Change) Step {
 // items in the changeset, and, unless a participant added it, the
 // participants.
 func (u *Unit) apply(ctx context.Context, s Step, participate bool, write func(ctx context.Context) error) error {
+	// A ctx without the unit's transaction would write on the pool, outside
+	// the unit and its locks.
+	if !u.w.d.Tx.InTx(ctx) {
+		return errors.New("a page write unit's operation runs on a context without the unit's transaction")
+	}
 	for _, g := range u.w.d.Guards {
 		if err := g.GuardWrite(ctx, s); err != nil {
 			return err
@@ -378,11 +382,20 @@ func (u *Unit) recordItem(ctx context.Context, c domain.Change) error {
 	return u.w.d.Changesets.RecordItem(ctx, Item{ID: uuid.NewV7(), ChangesetID: u.changeset, Change: c, At: u.write.At})
 }
 
-// recordRevision records a content the unit wrote as its changeset's
-// version of the page.
-func (u *Unit) recordRevision(ctx context.Context, r Revision) error {
-	r.ID, r.ChangesetID, r.ByteSize, r.At = uuid.NewV7(), u.changeset, len(r.Content), u.write.At
-	return u.w.d.Changesets.RecordRevision(ctx, r)
+// content is the page nodeID's content text at revision, as the unit
+// writes it: its hash and size computed, by the unit's actor at its time.
+func (u *Unit) content(nodeID uuid.UUID, text string, revision int) Content {
+	sum := sha256.Sum256([]byte(text))
+	return Content{NodeID: nodeID, Content: text, Revision: revision, Hash: sum[:], ByteSize: len(text), By: u.write.By, At: u.write.At}
+}
+
+// recordRevision records c, a content the unit wrote on base (nil: the
+// unit created the page), as its changeset's version of the page.
+func (u *Unit) recordRevision(ctx context.Context, c Content, base *int) error {
+	return u.w.d.Changesets.RecordRevision(ctx, Revision{
+		ID: uuid.NewV7(), ChangesetID: u.changeset, NodeID: c.NodeID, Base: base, Revision: c.Revision, Content: c.Content,
+		Hash: c.Hash, ByteSize: c.ByteSize, At: u.write.At,
+	})
 }
 
 // tell has the observers follow the unit's changes, once: none when it

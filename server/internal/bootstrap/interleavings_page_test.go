@@ -175,14 +175,23 @@ func TestDeletingAWorkspaceAndCreatingAPage(t *testing.T) {
 	})
 }
 
+// sharedNotebookRow is the row of notebook id as a page write that keeps
+// the tree holds it, FOR SHARE: a step waits for it only if it locks the
+// tree.
+func sharedNotebookRow(id string) held {
+	return held{"notebooks", "SELECT 1 FROM notebooks WHERE id = '" + id + "' FOR SHARE"}
+}
+
 // Interleaving 32: two pages of one title created at once under the same
-// parent. The second finds the first's title under the notebook's lock:
-// 409, and the unique index is never reached.
+// parent. The test holds the notebook's row FOR SHARE, so each creation
+// waits for it only because it locks the tree; the second finds the
+// first's title under that lock: 409, and the unique index is never
+// reached.
 func TestCreatingTwoPagesOfOneTitle(t *testing.T) {
 	orders(t, "alice", "bob", func(t *testing.T, first, second string) {
 		tm := newAcmeTeam(t, "member", "")
 		nb := tm.openNotebook(t, "alice", "Eng")
-		a, b := tm.interleaveOn(t, notebookRow(nb), pageCreation(first, nb, "Same"), pageCreation(second, nb, "SAME"))
+		a, b := tm.interleaveOn(t, sharedNotebookRow(nb), pageCreation(first, nb, "Same"), pageCreation(second, nb, "SAME"))
 		if !a.is(http.StatusCreated, "") || !b.is(http.StatusConflict, "page.title_taken") {
 			t.Errorf("%s created: %d %s; %s created: %d %s; want 201, then 409 page.title_taken", first, a.status, a.code, second, b.status, b.code)
 		}

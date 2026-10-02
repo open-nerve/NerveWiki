@@ -333,6 +333,19 @@ func (d matrixData) config(t *testing.T, url string, change func(*config.Config)
 	return cfg
 }
 
+// seededPageHistory writes, beside the page node $1 seeded by SQL, what
+// its creation through the API would: a changeset of its own, its item and
+// its first version, at the node's time and in its state, so that the
+// pages' invariant (checkPages) holds on the seeded data.
+const seededPageHistory = `WITH n AS (SELECT * FROM nodes WHERE id = $1),
+	s AS (INSERT INTO changesets (id, notebook_id, kind, client, created_by_id, created_at, updated_at, deleted_at)
+		SELECT gen_random_uuid(), notebook_id, 'edit', 'web', created_by_id, created_at, created_at, deleted_at FROM n RETURNING id),
+	i AS (INSERT INTO changeset_items (id, changeset_id, node_id, after_parent_id, after_name, after_sort_order,
+			created_at, updated_at, deleted_at)
+		SELECT gen_random_uuid(), s.id, n.id, n.parent_id, n.name, n.sort_order, n.created_at, n.created_at, n.deleted_at FROM n, s)
+	INSERT INTO page_revisions (id, changeset_id, node_id, revision, content, content_hash, byte_size, created_at, updated_at, deleted_at)
+	SELECT gen_random_uuid(), s.id, n.id, 1, '', sha256(''), 0, n.created_at, n.created_at, n.deleted_at FROM n, s`
+
 // prepareMatrix fills a database for the matrix: an account for each
 // column, registered through the API for its token; the workspaces,
 // memberships, invitations, notebooks and pages through SQL, with the ids newSeeded fixed
@@ -407,14 +420,18 @@ func prepareMatrix(t *testing.T) matrixData {
 				"FROM notebooks n WHERE n.id = $2", d.seeded.pages[p.name], d.seeded.notebooks[p.notebook], parent, p.name, now)
 			exec("INSERT INTO page_contents (node_id, content, revision, content_hash, byte_size, updated_by_id, updated_at) "+
 				"SELECT id, '', 1, sha256(''), 0, created_by_id, $2 FROM nodes WHERE id = $1", d.seeded.pages[p.name], now)
+			exec(seededPageHistory, d.seeded.pages[p.name])
 		}
 		for _, n := range matrixNotebooks() {
 			if n.deleted {
 				exec("UPDATE notebooks SET deleted_at = $2 WHERE id = $1", d.seeded.notebooks[n.name], now)
 				exec("UPDATE notebook_members SET deleted_at = $2 WHERE notebook_id = $1", d.seeded.notebooks[n.name], now)
 				exec("UPDATE nodes SET deleted_at = $2 WHERE notebook_id = $1", d.seeded.notebooks[n.name], now)
-				exec("UPDATE page_contents SET deleted_at = $2 WHERE node_id IN (SELECT id FROM nodes WHERE notebook_id = $1)",
-					d.seeded.notebooks[n.name], now)
+				for _, table := range []string{"page_contents", "page_revisions", "changeset_items"} {
+					exec("UPDATE "+table+" SET deleted_at = $2 WHERE node_id IN (SELECT id FROM nodes WHERE notebook_id = $1)",
+						d.seeded.notebooks[n.name], now)
+				}
+				exec("UPDATE changesets SET deleted_at = $2 WHERE notebook_id = $1", d.seeded.notebooks[n.name], now)
 			}
 		}
 		// orphan is ownerless of an account still active in lab, a state no
