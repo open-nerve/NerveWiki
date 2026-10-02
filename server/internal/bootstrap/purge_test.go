@@ -30,9 +30,9 @@ func purgedTables(pool *pgxpool.Pool) []string {
 }
 
 // queryStrings runs a query of one text column on pool.
-func queryStrings(t *testing.T, pool *pgxpool.Pool, query string) []string {
+func queryStrings(t *testing.T, pool *pgxpool.Pool, query string, args ...any) []string {
 	t.Helper()
-	rows, err := pool.Query(context.Background(), query)
+	rows, err := pool.Query(context.Background(), query, args...)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,7 +152,11 @@ func tableOwners(t *testing.T) map[string]string {
 // members, invitations and notebooks, an invitation withdrawn and a
 // notebook deleted that long ago in a live workspace; what was deleted
 // since stays. The notebooks go before their workspace, which their
-// foreign key restricts.
+// foreign key restricts; their pages, a tree of three levels each with
+// what follows them, before the notebooks (M4/P1 design 3.10), and so does
+// a subtree deleted that long ago in a live notebook. The run has no
+// error: one that failed, and passed on a retry, would hide a purger that
+// leaves what the next needs gone.
 func TestThePurgeDeletesWhatOutlivedTheRetention(t *testing.T) {
 	url := pgtest.NewDatabase(t)
 	pool := connect(t, url)
@@ -178,6 +182,27 @@ func TestThePurgeDeletesWhatOutlivedTheRetention(t *testing.T) {
 				'0199a2b4-0000-7000-8000-0000000000a1', '0199a2b4-0000-7000-8000-0000000000a1', now(), now(), now() - interval '61 days')`,
 		`INSERT INTO notebook_members (id, notebook_id, user_id, role, created_by_id, updated_by_id, created_at, updated_at, deleted_at)
 			SELECT gen_random_uuid(), id, created_by_id, 'admin', created_by_id, created_by_id, now(), now(), deleted_at FROM notebooks`,
+		// Each notebook's tree, Root, Child and Grandchild, deleted with it;
+		// live's Notes has Trashed and its child, deleted 61 days ago.
+		`INSERT INTO nodes (id, notebook_id, kind, name, name_key, sort_order, created_by_id, updated_by_id, created_at, updated_at, deleted_at)
+			SELECT gen_random_uuid(), id, 'page', 'Root', 'root', 0, created_by_id, created_by_id, now(), now(), deleted_at FROM notebooks`,
+		`INSERT INTO nodes (id, notebook_id, kind, name, name_key, sort_order, created_by_id, updated_by_id, created_at, updated_at, deleted_at)
+			SELECT gen_random_uuid(), n.id, 'page', 'Trashed', 'trashed', 1, n.created_by_id, n.created_by_id, now(), now(), now() - interval '61 days'
+			FROM notebooks n WHERE n.workspace_id = '0199a2b4-0000-7000-8000-0000000000b3' AND n.name = 'Notes'`,
+		`INSERT INTO nodes (id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id, created_at, updated_at, deleted_at)
+			SELECT gen_random_uuid(), notebook_id, id, 'page', 'Child', 'child', 0, created_by_id, created_by_id, now(), now(), deleted_at
+			FROM nodes WHERE name IN ('Root', 'Trashed')`,
+		`INSERT INTO nodes (id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id, created_at, updated_at, deleted_at)
+			SELECT gen_random_uuid(), c.notebook_id, c.id, 'page', 'Grandchild', 'grandchild', 0, c.created_by_id, c.created_by_id, now(), now(), c.deleted_at
+			FROM nodes c JOIN nodes p ON p.id = c.parent_id WHERE p.name = 'Root'`,
+		`INSERT INTO page_contents (node_id, content, revision, content_hash, byte_size, updated_by_id, updated_at, deleted_at)
+			SELECT id, '', 1, sha256(''), 0, created_by_id, now(), deleted_at FROM nodes`,
+		`INSERT INTO changesets (id, notebook_id, kind, client, created_by_id, created_at, updated_at, deleted_at)
+			SELECT gen_random_uuid(), id, 'edit', 'web', created_by_id, now(), now(), deleted_at FROM notebooks`,
+		`INSERT INTO changeset_items (id, changeset_id, node_id, after_name, after_sort_order, created_at, updated_at, deleted_at)
+			SELECT gen_random_uuid(), s.id, x.id, x.name, x.sort_order, now(), now(), x.deleted_at FROM nodes x JOIN changesets s ON s.notebook_id = x.notebook_id`,
+		`INSERT INTO page_revisions (id, changeset_id, node_id, revision, content, content_hash, byte_size, created_at, updated_at, deleted_at)
+			SELECT gen_random_uuid(), s.id, x.id, 1, '', sha256(''), 0, now(), now(), x.deleted_at FROM nodes x JOIN changesets s ON s.notebook_id = x.notebook_id`,
 	} {
 		if _, err := pool.Exec(ctx, stmt); err != nil {
 			t.Fatalf("%s: %v", stmt, err)
@@ -194,6 +219,9 @@ func TestThePurgeDeletesWhatOutlivedTheRetention(t *testing.T) {
 			t.Fatalf("the purge did not complete; jobs: %v", queryStrings(t, pool, "SELECT kind || ' ' || state FROM river_job"))
 		}
 	}
+	if errs := queryStrings(t, pool, "SELECT array_to_string(errors, ' ') FROM river_job WHERE kind = $1 AND errors IS NOT NULL", jobs.PurgeKind); len(errs) != 0 {
+		t.Errorf("the purge failed before it completed: %v", errs)
+	}
 	got := queryStrings(t, pool, `SELECT w.slug || ' ' || (SELECT count(*) FROM workspace_members m WHERE m.workspace_id = w.id) || ' ' ||
 		(SELECT count(*) FROM workspace_invitations i WHERE i.workspace_id = w.id) FROM workspaces w ORDER BY w.slug`)
 	if want := []string{"live 1 1", "recent 1 1"}; !slices.Equal(got, want) || count(t, pool, "SELECT count(*) FROM workspace_members") != 2 ||
@@ -204,5 +232,17 @@ func TestThePurgeDeletesWhatOutlivedTheRetention(t *testing.T) {
 		FROM notebooks n JOIN workspaces w ON w.id = n.workspace_id ORDER BY 1`)
 	if want := []string{"live Notes 1", "recent Notes 1"}; !slices.Equal(got, want) || count(t, pool, "SELECT count(*) FROM notebook_members") != 2 {
 		t.Errorf("notebooks with their members: %q; want %q, nothing else: old's and live's deleted one purged", got, want)
+	}
+	// Each page with its content, item and version: Trashed's subtree and
+	// the purged notebooks' trees are gone.
+	got = queryStrings(t, pool, `SELECT w.slug || ' ' || x.name || ' ' ||
+			(SELECT count(*) FROM page_contents c WHERE c.node_id = x.id) ||
+			(SELECT count(*) FROM changeset_items i WHERE i.node_id = x.id) ||
+			(SELECT count(*) FROM page_revisions r WHERE r.node_id = x.id)
+		FROM nodes x JOIN notebooks n ON n.id = x.notebook_id JOIN workspaces w ON w.id = n.workspace_id ORDER BY 1`)
+	want := []string{"live Child 111", "live Grandchild 111", "live Root 111", "recent Child 111", "recent Grandchild 111", "recent Root 111"}
+	if !slices.Equal(got, want) || count(t, pool, "SELECT count(*) FROM changesets") != 2 {
+		t.Errorf("pages with their content, item and version: %q, %d changesets; want %q and live's and recent's changesets", got,
+			count(t, pool, "SELECT count(*) FROM changesets"), want)
 	}
 }
