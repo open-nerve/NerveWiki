@@ -360,6 +360,27 @@ func TestSubtree(t *testing.T) {
 	}
 }
 
+// A subtree goes as deep as pages nest: a chain of MaxDepth levels is read
+// to its last page.
+func TestSubtreeReachesTheDeepestLevel(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	var parent *uuid.UUID
+	var ids []uuid.UUID
+	for i := range domain.MaxDepth {
+		n := f.page(t, f.eng, parent, fmt.Sprintf("Level %d", i+1), 0)
+		parent, ids = &n.ID, append(ids, n.ID)
+	}
+	sub, err := f.s.Subtree(ctx, f.eng, ids[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sub) != domain.MaxDepth || sub.Height() != domain.MaxDepth || sub[len(sub)-1].Node.ID != ids[len(ids)-1] {
+		t.Fatalf("Subtree of a chain of %d = %d nodes, height %d; want all of them, the last at level %d", domain.MaxDepth, len(sub),
+			sub.Height(), domain.MaxDepth)
+	}
+}
+
 // A move writes the parent, the order and who and when; a title a sibling
 // holds under the new parent is page.title_taken.
 func TestMoveNode(t *testing.T) {

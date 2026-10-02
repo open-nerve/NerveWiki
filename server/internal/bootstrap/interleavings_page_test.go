@@ -22,7 +22,8 @@ import (
 // one title key, which the unique index refuses too, checked in case it
 // changes; a page not deleted without exactly one content not deleted, or
 // whose content's revision is not its latest version's; a page deeper than
-// ten levels, or on a chain that loops.
+// ten levels, or on a chain that loops; a deleted page with a content, a
+// version or an item not deleted, which would keep the purge from it.
 func checkPages(t *testing.T, pool *pgxpool.Pool) {
 	t.Helper()
 	for what, query := range map[string]string{
@@ -34,6 +35,10 @@ func checkPages(t *testing.T, pool *pgxpool.Pool) {
 			AND (SELECT count(*) FROM page_contents c WHERE c.node_id = n.id AND c.deleted_at IS NULL) <> 1`,
 		"whose content is not its latest version": `SELECT count(*) FROM page_contents c WHERE c.deleted_at IS NULL
 			AND c.revision IS DISTINCT FROM (SELECT max(r.revision) FROM page_revisions r WHERE r.node_id = c.node_id)`,
+		"deleted, with what follows it not deleted": `SELECT count(*) FROM nodes n WHERE n.deleted_at IS NOT NULL AND (
+			EXISTS (SELECT 1 FROM page_contents c WHERE c.node_id = n.id AND c.deleted_at IS NULL)
+			OR EXISTS (SELECT 1 FROM page_revisions r WHERE r.node_id = n.id AND r.deleted_at IS NULL)
+			OR EXISTS (SELECT 1 FROM changeset_items i WHERE i.node_id = n.id AND i.deleted_at IS NULL))`,
 		"deeper than ten levels, or in a loop": `WITH RECURSIVE up AS (
 				SELECT id AS start, parent_id, 1 AS depth FROM nodes WHERE deleted_at IS NULL
 				UNION ALL

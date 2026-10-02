@@ -115,7 +115,8 @@ type Nodes interface {
 	// Ancestors are a node's ancestors from the root down to its parent.
 	Ancestors(ctx context.Context, id uuid.UUID) ([]domain.Ancestor, error)
 	// Subtree is the node id of the notebook and its descendants, level
-	// by level.
+	// by level; ErrNotFound when the node is missing, deleted or in
+	// another notebook.
 	Subtree(ctx context.Context, notebookID, id uuid.UUID) (domain.Subtree, error)
 	ContentMeta(ctx context.Context, id uuid.UUID) (ContentMeta, error)
 }

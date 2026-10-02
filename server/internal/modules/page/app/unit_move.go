@@ -58,11 +58,7 @@ func (u *Unit) Move(ctx context.Context, id uuid.UUID, parentID *uuid.UUID, p Po
 	if domain.Depth(line)+sub.Height()-1 > domain.MaxDepth {
 		return domain.Node{}, domain.ErrTooDeep
 	}
-	orders := make([]float64, len(others))
-	for i, s := range others {
-		orders[i] = s.SortOrder
-	}
-	order, renumbered := domain.Place(orders, after)
+	order, renumber := u.placeAmong(others, after)
 	moved := n
 	moved.ParentID, moved.SortOrder, moved.UpdatedBy, moved.UpdatedAt = parentID, order, u.write.By, u.write.At
 	before, now := n.State(), moved.State()
@@ -72,11 +68,8 @@ func (u *Unit) Move(ctx context.Context, id uuid.UUID, parentID *uuid.UUID, p Po
 		changes = append(changes, domain.Change{NodeID: d.Node.ID, Before: &state, After: &state})
 	}
 	err = u.apply(ctx, u.step(domain.OpMove, changes...), true, func(ctx context.Context) error {
-		// Renumbering keeps the siblings' order: it moves no one.
-		for i, o := range renumbered {
-			if err := u.w.d.NodeWriter.SetSortOrder(ctx, others[i].ID, o); err != nil {
-				return err
-			}
+		if err := renumber(ctx); err != nil {
+			return err
 		}
 		return u.w.d.NodeWriter.MoveNode(ctx, moved)
 	})

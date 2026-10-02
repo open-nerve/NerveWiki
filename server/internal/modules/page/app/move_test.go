@@ -1,6 +1,8 @@
 package app_test
 
 import (
+	"cmp"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -64,41 +66,52 @@ func TestMoveNodeMovesTheSubtreeUnderTheLock(t *testing.T) {
 
 // A move places the node among its new siblings as a new page goes, the
 // node itself left out of its old place; renumbering keeps their order.
+// The pages are under a page, which each request names by an id of its
+// own: the same parent is the same id, not the same pointer.
 func TestMoveNodePlacesItAmongItsSiblings(t *testing.T) {
+	type pages struct{ p, a, b, c, x domain.Node }
+	under := func(n domain.Node) *uuid.UUID {
+		id := n.ID
+		return &id
+	}
 	for _, tt := range []struct {
 		name  string
-		to    func(f *fixture, a, b, c domain.Node) app.Destination
-		order []string // the root's pages after the move
+		to    func(f *fixture, s pages) (domain.Node, app.Destination)
+		order []string // P's children after the move
 	}{
-		{"first", func(f *fixture, a, b, c domain.Node) app.Destination { return app.Destination{Position: app.First()} },
-			[]string{"C", "A", "B"}},
-		{"after a sibling", func(f *fixture, a, b, c domain.Node) app.Destination {
-			return app.Destination{Position: app.After(a.ID)}
+		{"first", func(f *fixture, s pages) (domain.Node, app.Destination) {
+			return s.c, app.Destination{ParentID: under(s.p), Position: app.First()}
+		}, []string{"C", "A", "B"}},
+		{"after a sibling", func(f *fixture, s pages) (domain.Node, app.Destination) {
+			return s.c, app.Destination{ParentID: under(s.p), Position: app.After(s.a.ID)}
 		}, []string{"A", "C", "B"}},
-		{"last from the first place", func(f *fixture, a, b, c domain.Node) app.Destination {
-			f.store.nodes[c.ID] = withOrder(c, -1)
-			return app.Destination{}
-		}, []string{"A", "B", "C"}},
-		{"between two with no gap", func(f *fixture, a, b, c domain.Node) app.Destination {
-			f.store.nodes[b.ID] = withOrder(b, a.SortOrder+5e-10)
-			return app.Destination{Position: app.After(a.ID)}
+		{"last from the first place", func(f *fixture, s pages) (domain.Node, app.Destination) {
+			return s.a, app.Destination{ParentID: under(s.p)}
+		}, []string{"B", "C", "A"}},
+		{"from the last place between two with no gap", func(f *fixture, s pages) (domain.Node, app.Destination) {
+			f.store.nodes[s.b.ID] = withOrder(s.b, s.a.SortOrder+5e-10)
+			return s.c, app.Destination{ParentID: under(s.p), Position: app.After(s.a.ID)}
 		}, []string{"A", "C", "B"}},
-		{"to the root from under a page", func(f *fixture, a, b, c domain.Node) app.Destination {
-			moved := c
-			moved.ParentID = &b.ID
-			f.store.nodes[c.ID] = moved
-			return app.Destination{Position: app.After(a.ID)}
-		}, []string{"A", "C", "B"}},
+		{"from the first place between two with no gap", func(f *fixture, s pages) (domain.Node, app.Destination) {
+			f.store.nodes[s.c.ID] = withOrder(s.c, s.b.SortOrder+5e-10)
+			return s.a, app.Destination{ParentID: under(s.p), Position: app.After(s.b.ID)}
+		}, []string{"B", "A", "C"}},
+		{"in from another parent", func(f *fixture, s pages) (domain.Node, app.Destination) {
+			return s.x, app.Destination{ParentID: under(s.p), Position: app.After(s.a.ID)}
+		}, []string{"A", "X", "B", "C"}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			f := newFixture()
 			f.grant(domain.ActionMove)
-			a, b, c := f.page("A", nil, 0), f.page("B", nil, 1), f.page("C", nil, 2)
-			if _, err := f.move(c.ID, tt.to(f, a, b, c)); err != nil {
+			var s pages
+			s.p, s.x = f.page("P", nil, 0), f.page("X", nil, 1)
+			s.a, s.b, s.c = f.page("A", &s.p.ID, 0), f.page("B", &s.p.ID, 1), f.page("C", &s.p.ID, 2)
+			n, to := tt.to(f, s)
+			if _, err := f.move(n.ID, to); err != nil {
 				t.Fatal(err)
 			}
-			if got := rootNames(f); !slices.Equal(got, tt.order) {
-				t.Errorf("the root holds %v, want %v", got, tt.order)
+			if got := childNames(f, &s.p.ID); !slices.Equal(got, tt.order) {
+				t.Errorf("P holds %v, want %v", got, tt.order)
 			}
 		})
 	}
@@ -109,52 +122,42 @@ func withOrder(n domain.Node, order float64) domain.Node {
 	return n
 }
 
-// rootNames are the names of eng's root pages, in order.
-func rootNames(f *fixture) []string {
-	var root []domain.Node
+// childNames are the names of the children of parent in eng, in order.
+func childNames(f *fixture, parent *uuid.UUID) []string {
+	var children []domain.Node
 	for _, n := range f.store.nodes {
-		if n.ParentID == nil {
-			root = append(root, n)
+		if domain.SameParent(n.ParentID, parent) {
+			children = append(children, n)
 		}
 	}
-	slices.SortFunc(root, func(a, b domain.Node) int {
-		switch {
-		case a.SortOrder < b.SortOrder:
-			return -1
-		case a.SortOrder > b.SortOrder:
-			return 1
-		}
-		return 0
-	})
-	out := make([]string, len(root))
-	for i, n := range root {
+	slices.SortFunc(children, func(a, b domain.Node) int { return cmp.Compare(a.SortOrder, b.SortOrder) })
+	out := make([]string, len(children))
+	for i, n := range children {
 		out[i] = n.Name
 	}
 	return out
 }
 
 // A move to where the node is writes nothing: no changeset, no event, no
-// log; it answers the node.
+// log; it answers the node. The parent is named by an id of its own.
 func TestMoveNodeToWhereItIs(t *testing.T) {
 	for _, tt := range []struct {
 		name string
-		to   func(a, b, c domain.Node) (domain.Node, app.Destination)
+		to   func(a, b, c domain.Node) (domain.Node, app.Position)
 	}{
-		{"last, the last", func(a, b, c domain.Node) (domain.Node, app.Destination) { return c, app.Destination{} }},
-		{"first, the first", func(a, b, c domain.Node) (domain.Node, app.Destination) {
-			return a, app.Destination{Position: app.First()}
-		}},
-		{"after the one it follows", func(a, b, c domain.Node) (domain.Node, app.Destination) {
-			return b, app.Destination{Position: app.After(a.ID)}
-		}},
+		{"last, the last", func(a, b, c domain.Node) (domain.Node, app.Position) { return c, app.Position{} }},
+		{"first, the first", func(a, b, c domain.Node) (domain.Node, app.Position) { return a, app.First() }},
+		{"after the one it follows", func(a, b, c domain.Node) (domain.Node, app.Position) { return b, app.After(a.ID) }},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			f := newFixture()
 			f.grant(domain.ActionMove)
 			o := &observer{recorder: f.rec}
 			f.observers = []app.PageObserver{o}
-			n, to := tt.to(f.page("A", nil, 0), f.page("B", nil, 1), f.page("C", nil, 2))
-			got, err := f.move(n.ID, to)
+			p := f.page("P", nil, 0)
+			n, at := tt.to(f.page("A", &p.ID, 0), f.page("B", &p.ID, 1), f.page("C", &p.ID, 2))
+			parent := p.ID
+			got, err := f.move(n.ID, app.Destination{ParentID: &parent, Position: at})
 			if err != nil || got != n || f.called("MoveNode in tx") || len(f.store.changesets) != 0 || len(o.events) != 0 ||
 				f.logs.Len() != 0 {
 				t.Errorf("moving %s to its place = %+v, %v; moved %v, %d changesets, %d events, log %q; want nothing", n.Name, got, err,
@@ -164,7 +167,8 @@ func TestMoveNodeToWhereItIs(t *testing.T) {
 	}
 }
 
-// A subtree may reach the tenth level, not the eleventh: its height counts.
+// A subtree may reach the tenth level, not the eleventh: its height counts,
+// not how many pages it holds.
 func TestMoveNodeRefusesASubtreeTooDeep(t *testing.T) {
 	f := newFixture()
 	f.grant(domain.ActionMove)
@@ -177,18 +181,28 @@ func TestMoveNodeRefusesASubtreeTooDeep(t *testing.T) {
 	}
 	top := f.page("Top", nil, 1)
 	middle := f.page("Middle", &top.ID, 0)
+	f.page("Side", &top.ID, 1)
 	f.page("Bottom", &middle.ID, 0)
 	if _, err := f.move(top.ID, app.Destination{ParentID: &levels[len(levels)-1].ID}); codeOf(err) != "page.too_deep" {
 		t.Errorf("three levels under the eighth = %v, want page.too_deep", err)
 	}
 	if _, err := f.move(top.ID, app.Destination{ParentID: &levels[len(levels)-2].ID}); err != nil {
-		t.Errorf("three levels under the seventh = %v, want them moved, the deepest at the tenth", err)
+		t.Errorf("three levels of four pages under the seventh = %v, want them moved, the deepest at the tenth", err)
 	}
 }
 
 func TestMoveNodeAnswersItsCodesInOrder(t *testing.T) {
 	refusal := shared.NewError(shared.KindConflict, "page.locked", "Locked.")
 	type nodes struct{ n, child, grandchild, other, twin domain.Node }
+	// chain adds count pages under parent in f, each under the one before,
+	// and returns the last.
+	chain := func(f *fixture, parent domain.Node, count int) domain.Node {
+		for i := range count {
+			id := parent.ID
+			parent = f.page(fmt.Sprintf("%s %d", parent.Name, i), &id, 0)
+		}
+		return parent
+	}
 	for _, tt := range []struct {
 		name  string
 		setup func(f *fixture, s nodes) (uuid.UUID, app.Destination)
@@ -204,6 +218,11 @@ func TestMoveNodeAnswersItsCodesInOrder(t *testing.T) {
 		}, "page.not_found"},
 		{"a notebook the caller cannot see", func(f *fixture, s nodes) (uuid.UUID, app.Destination) {
 			return s.n.ID, app.Destination{}
+		}, "page.not_found"},
+		{"a node deleted while it waited", func(f *fixture, s nodes) (uuid.UUID, app.Destination) {
+			f.grant(domain.ActionMove)
+			f.notebooks.waited = func() { delete(f.store.nodes, s.n.ID) }
+			return s.n.ID, app.Destination{ParentID: &s.other.ID}
 		}, "page.not_found"},
 		{"a reader", func(f *fixture, s nodes) (uuid.UUID, app.Destination) {
 			f.auth.forbidden[domain.ActionMove] = true
@@ -235,6 +254,17 @@ func TestMoveNodeAnswersItsCodesInOrder(t *testing.T) {
 			f.page("n", &s.grandchild.ID, 0)
 			return s.n.ID, app.Destination{ParentID: &s.grandchild.ID}
 		}, "page.cycle"},
+		{"under its deepest descendant, before the depth", func(f *fixture, s nodes) (uuid.UUID, app.Destination) {
+			f.grant(domain.ActionMove)
+			deepest := chain(f, s.grandchild, 3)
+			return s.n.ID, app.Destination{ParentID: &deepest.ID}
+		}, "page.cycle"},
+		{"a new sibling's title, before the depth", func(f *fixture, s nodes) (uuid.UUID, app.Destination) {
+			f.grant(domain.ActionMove)
+			eighth := chain(f, s.other, 7)
+			f.page("n", &eighth.ID, 0)
+			return s.n.ID, app.Destination{ParentID: &eighth.ID}
+		}, "page.title_taken"},
 		{"a new sibling's title", func(f *fixture, s nodes) (uuid.UUID, app.Destination) {
 			f.grant(domain.ActionMove)
 			f.guards = []app.WriteGuard{&guard{recorder: f.rec, err: refusal}}
@@ -260,8 +290,8 @@ func TestMoveNodeAnswersItsCodesInOrder(t *testing.T) {
 			if got := codeOf(err); got != tt.want {
 				t.Errorf("moveNode = %q, want %q", got, tt.want)
 			}
-			if f.store.nodes[s.n.ID] != before || f.logs.Len() != 0 {
-				t.Errorf("a refused move left %+v, logged %q; want N where it was, nothing", f.store.nodes[s.n.ID], f.logs)
+			if after, ok := f.store.nodes[s.n.ID]; ok && after != before || f.logs.Len() != 0 || f.called("MoveNode in tx") {
+				t.Errorf("a refused move left %+v, logged %q; want N where it was, nothing", after, f.logs)
 			}
 		})
 	}

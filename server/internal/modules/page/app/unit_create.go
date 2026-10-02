@@ -44,11 +44,7 @@ func (u *Unit) CreatePage(ctx context.Context, d PageDraft) (domain.Node, error)
 	if domain.Depth(ancestors) > domain.MaxDepth {
 		return domain.Node{}, domain.ErrTooDeep
 	}
-	orders := make([]float64, len(siblings))
-	for i, s := range siblings {
-		orders[i] = s.SortOrder
-	}
-	order, renumbered := domain.Place(orders, after)
+	order, renumber := u.placeAmong(siblings, after)
 	n := domain.Node{
 		ID: uuid.NewV7(), NotebookID: u.write.NotebookID, ParentID: d.ParentID, Kind: domain.KindPage, Name: title.Name,
 		NameKey: title.Key, SortOrder: order, CreatedBy: u.write.By, UpdatedBy: u.write.By, CreatedAt: u.write.At, UpdatedAt: u.write.At,
@@ -57,11 +53,8 @@ func (u *Unit) CreatePage(ctx context.Context, d PageDraft) (domain.Node, error)
 	content := u.content(n.ID, "", 1)
 	step := u.step(domain.OpCreate, domain.Change{NodeID: n.ID, After: &state, Revision: content.Revision})
 	err = u.apply(ctx, step, true, func(ctx context.Context) error {
-		// Renumbering keeps the siblings' order: it moves no one.
-		for i, o := range renumbered {
-			if err := u.w.d.NodeWriter.SetSortOrder(ctx, siblings[i].ID, o); err != nil {
-				return err
-			}
+		if err := renumber(ctx); err != nil {
+			return err
 		}
 		if err := u.w.d.NodeWriter.CreateNode(ctx, n); err != nil {
 			return err

@@ -18,13 +18,13 @@ func (f *fixture) remove(id uuid.UUID) error {
 
 // A deletion finds the node, then runs a unit of its notebook that reads
 // the subtree under the lock and deletes it whole. Every node is in the
-// guard's step and the event with no after, and is an item; the siblings
-// stay where they are.
+// guard's step, the participants' and the event with no after, and is an
+// item; the siblings stay where they are.
 func TestDeleteNodeDeletesTheSubtreeUnderTheLock(t *testing.T) {
 	f := newFixture()
 	f.grant(domain.ActionDelete)
-	g, o := &guard{recorder: f.rec}, &observer{recorder: f.rec}
-	f.guards, f.observers = []app.WriteGuard{g}, []app.PageObserver{o}
+	g, o, p := &guard{recorder: f.rec}, &observer{recorder: f.rec}, &participant{recorder: f.rec}
+	f.guards, f.observers, f.partakers = []app.WriteGuard{g}, []app.PageObserver{o}, []app.Participant{p}
 	n := f.page("N", nil, 0)
 	child := f.page("Child", &n.ID, 0)
 	grandchild := f.page("Grandchild", &child.ID, 0)
@@ -40,7 +40,12 @@ func TestDeleteNodeDeletesTheSubtreeUnderTheLock(t *testing.T) {
 		t.Errorf("nodes left = %v, want the sibling as it was", f.store.nodes)
 	}
 	ids := []uuid.UUID{n.ID, child.ID, grandchild.ID}
-	for what, changes := range map[string][]domain.Change{"the guard's step": g.steps[0].Changes, "the event": o.events[0].Changes} {
+	if len(p.steps) != 1 || p.steps[0].Operation != domain.OpDelete {
+		t.Fatalf("the participant followed %+v, want the deletion", p.steps)
+	}
+	for what, changes := range map[string][]domain.Change{
+		"the guard's step": g.steps[0].Changes, "the participant's": p.steps[0].Changes, "the event": o.events[0].Changes,
+	} {
 		var got []uuid.UUID
 		for _, c := range changes {
 			if c.After == nil && c.Before != nil {
@@ -80,6 +85,11 @@ func TestDeleteNodeAnswersItsCodesInOrder(t *testing.T) {
 			return n.ID
 		}, "page.not_found"},
 		{"a notebook the caller cannot see", func(f *fixture, n domain.Node) uuid.UUID { return n.ID }, "page.not_found"},
+		{"a node deleted while it waited", func(f *fixture, n domain.Node) uuid.UUID {
+			f.grant(domain.ActionDelete)
+			f.notebooks.waited = func() { delete(f.store.nodes, n.ID) }
+			return n.ID
+		}, "page.not_found"},
 		{"a reader", func(f *fixture, n domain.Node) uuid.UUID {
 			f.auth.forbidden[domain.ActionDelete] = true
 			return n.ID
@@ -98,7 +108,7 @@ func TestDeleteNodeAnswersItsCodesInOrder(t *testing.T) {
 			if got := codeOf(err); got != tt.want {
 				t.Errorf("deleteNode = %q, want %q", got, tt.want)
 			}
-			if len(f.store.nodes) != 2 || f.called("DeleteNodes in tx") || f.logs.Len() != 0 {
+			if f.called("DeleteNodes in tx") || f.logs.Len() != 0 {
 				t.Errorf("a refused deletion left %d nodes, deleted %v, logged %q; want both, nothing", len(f.store.nodes),
 					f.called("DeleteNodes in tx"), f.logs)
 			}

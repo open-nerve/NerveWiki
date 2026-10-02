@@ -66,11 +66,13 @@ func (f fakeWorkspaces) ShareByID(ctx context.Context, id uuid.UUID) (bool, erro
 }
 
 // fakeNotebooks knows each notebook's workspace; one in gone is deleted by
-// the time it is locked.
+// the time it is locked. waited, when set, runs while a write waits for the
+// notebook's lock: what another write commits meanwhile.
 type fakeNotebooks struct {
 	*recorder
 	workspaces map[uuid.UUID]uuid.UUID
 	gone       map[uuid.UUID]bool
+	waited     func()
 }
 
 func (f fakeNotebooks) WorkspaceOf(ctx context.Context, id uuid.UUID) (uuid.UUID, bool, error) {
@@ -87,6 +89,9 @@ func (f fakeNotebooks) ShareByID(ctx context.Context, id uuid.UUID) (bool, error
 
 func (f fakeNotebooks) LockByID(ctx context.Context, id uuid.UUID) (bool, error) {
 	f.record(ctx, "LockNotebook")
+	if f.waited != nil {
+		f.waited()
+	}
 	_, ok := f.workspaces[id]
 	return ok && !f.gone[id], nil
 }

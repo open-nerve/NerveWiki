@@ -83,3 +83,23 @@ func titleFree(siblings []domain.Node, title domain.Title, self uuid.UUID) error
 	}
 	return nil
 }
+
+// placeAmong is where a node goes among siblings, right after the one at
+// index after (-1: first): its order, and the write that renumbers the
+// siblings when no gap is left there. Renumbering keeps their order: it
+// moves no one.
+func (u *Unit) placeAmong(siblings []domain.Node, after int) (float64, func(ctx context.Context) error) {
+	orders := make([]float64, len(siblings))
+	for i, s := range siblings {
+		orders[i] = s.SortOrder
+	}
+	order, renumbered := domain.Place(orders, after)
+	return order, func(ctx context.Context) error {
+		for i, o := range renumbered {
+			if err := u.w.d.NodeWriter.SetSortOrder(ctx, siblings[i].ID, o); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+}
