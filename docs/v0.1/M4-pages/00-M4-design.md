@@ -319,7 +319,7 @@ Nerve 没有页面、正文与编辑器，M4 不拷贝代码。只沿用它的�
 | P | 名称 | 状态 | Phase 文档 | 审查 |
 |---|---|---|---|---|
 | P1 | 页面模块与写入管线 | 已完成 | [01-P1-page-module-pipeline.md](01-P1-page-module-pipeline.md) | [P1 审查](reviews/P1-page-module-pipeline-review.md) |
-| P2 | 树操作 | 未开始 | — | — |
+| P2 | 树操作 | 进行中 | [02-P2-tree-operations.md](02-P2-tree-operations.md) | — |
 | P3 | Markdown 解析与渲染 | 未开始 | — | — |
 | P4 | 正文与编辑会话 | 未开始 | — | — |
 | P5 | 前端：页面树与阅读视图 | 未开始 | — | — |
