@@ -319,7 +319,7 @@ Nerve 没有页面、正文与编辑器，M4 不拷贝代码。只沿用它的�
 | P | 名称 | 状态 | Phase 文档 | 审查 |
 |---|---|---|---|---|
 | P1 | 页面模块与写入管线 | 已完成 | [01-P1-page-module-pipeline.md](01-P1-page-module-pipeline.md) | [P1 审查](reviews/P1-page-module-pipeline-review.md) |
-| P2 | 树操作 | 进行中 | [02-P2-tree-operations.md](02-P2-tree-operations.md) | — |
+| P2 | 树操作 | 已完成 | [02-P2-tree-operations.md](02-P2-tree-operations.md) | [P2 审查](reviews/P2-tree-operations-review.md) |
 | P3 | Markdown 解析与渲染 | 未开始 | — | — |
 | P4 | 正文与编辑会话 | 未开始 | — | — |
 | P5 | 前端：页面树与阅读视图 | 未开始 | — | — |
@@ -333,3 +333,4 @@ Nerve 没有页面、正文与编辑器，M4 不拷贝代码。只沿用它的�
 | 2026-10-02 | 按设计审查修订：写入单元（参与者、观察者、一开始定下的锁模式、写入选项）；页面各表的生命周期（`deleted_at`、清理的先后与索引，`edit_sessions` 不建外键、由定时任务清过期的），`nodes` 的清理器在一次调用里删到底；一页之内的行锁与心跳的单条语句；会话的码、结束的原因与订阅者、M11 的否决；码的次序的两处例外；409 不带当前版本，problem 的扩展成员交给 M5；渲染扩展按页取数据、前端两条管线的上下文、守卫的值为前后状态、解析结果在组合根转换；清洗补闭合、不放行原始 `img`、按主机判断外站、最终 HTML 的不变量；YAML 别名的上限；编辑器改为记录换行写法与 BOM；树写在笔记本内同一队列、答复后重读；交错 31、43 与页面树的不变量；会话夹进别人的写另起变更集；"保留我的"用差异所依据的版本；请求体上限的机制；故事在 Phase 间的归属 | [M4 设计审查](reviews/M4-design-review.md) |
 | 2026-10-02 | P1 开工：守卫在领域的检查之后、写入之前（它要看算好的"之后"状态），码排在领域的之后；按笔记本寻址的操作答 `notebook.not_found`；`after_id` 省略为最后、`null` 为最前；节点的结构名 `TreeNode`；交错 32 的写法 | [P1 文档](01-P1-page-module-pipeline.md) 3.6、3.7 |
 | 2026-10-02 | P1 完成：M2/P4 移交第 1、2、4 项，M3/P1 移交第 1、3 项落实；第 8 节写明扩展点到达的是写入单元；第 9 节交错 32 持笔记本行的 `FOR SHARE`；第 8 节记下 P1 留给收尾的 13.1 的例子；事件不带重排的兄弟、客户端收到事件就重读整棵树，交给 M5 | [P1 审查](reviews/P1-page-module-pipeline-review.md) T1、Q2、Q3、D7、D11 |
+| 2026-10-02 | P2 完成：移动与删除子树进写入单元；同一单元先建后删的合并交给 M9（M7 同样适用）；事件随子树变大、`NOTIFY` 的上限交给 M5 | [P2 审查](reviews/P2-tree-operations-review.md) D-h、Q1 |

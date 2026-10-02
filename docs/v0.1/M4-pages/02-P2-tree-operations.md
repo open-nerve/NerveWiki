@@ -3,7 +3,7 @@
 | 项 | 内容 |
 |---|---|
 | Phase | M4/P2 树操作 |
-| 状态 | 进行中 |
+| 状态 | 已完成（`7d0e3b1` 合并，审查见 [P2 审查](reviews/P2-tree-operations-review.md)） |
 | 基线 | `e4840f8`（P1 合并、文档提交之后的 main）；本文与各 Step 计划提交之后开分支 |
 | 上级文档 | [M4 总设计](00-M4-design.md) 第 4、5、8、9 节；[P1](01-P1-page-module-pipeline.md) 3.5、3.6、3.10–3.13；[总体设计](../v0.1-design.md) 3.5、8.3、13.1 |
 
@@ -39,15 +39,17 @@ P1 留下的：
 ```
 server/
   internal/modules/page/
-    domain/change.go、errors.go、tree.go          OpMove、OpDelete；ErrCycle；Height、移动的位置
+    domain/change.go、errors.go、tree.go、actions.go
+                                                  OpMove、OpDelete、导出的 SameParent；ErrCycle；Subtree（Height、Holds）；node.move、node.delete
     adapter/postgres/queries/nodes.sql            Subtree、MoveNode、DeleteNodes；RecordItem 删除的条目随节点进回收站
     adapter/postgres/store.go、changesets.go
     app/ports.go                                  Nodes.Subtree；NodeWriter.MoveNode、DeleteNodes
     app/unit.go                                   拆分之后：Writer、Run、Unit、apply、变更集、条目、版本与事件、appender
     app/unit_place.go                             Position、First、After；放进父页的检查 lineOf、slotOf、titleFree（新建、改名、移动共用）
     app/unit_create.go、unit_rename.go            PageDraft 与 CreatePage；Rename（从 unit.go 移出）
-    app/unit_move.go、unit_delete.go              Unit.Move、Unit.Delete
-    app/move_node.go、delete_node.go
+    app/unit_move.go、unit_delete.go              Unit.Move（移动的位置与原地不动的判断）、Unit.Delete
+    app/move_node.go、delete_node.go              用例；Destination
+    module.go                                     两个用例接进 UseCases
     adapter/http/handler.go                       moveNode、deleteNode
   internal/modules/access/domain/rules.go         node.move、node.delete
   internal/bootstrap/
@@ -59,18 +61,21 @@ web/apps/web/src/app/problem-messages.ts、en.ts、zh-CN.ts   page.cycle
 e2e/fixtures/pages.ts、assert/page.ts；e2e/stories/page/pg3、pg4；pg12 加移动与删除
 ```
 
+测试另在 `app/move_test.go`、`delete_test.go`（与 `fakes_test.go`、`write_test.go` 的改动）、`domain/tree_test.go`、`adapter/postgres/store_test.go`、`purge_test.go`、`adapter/http/handler_test.go`、模块根的 `extension_test.go`。
+
 ### 3.2 领域
 
 - **操作**：`OpMove`、`OpDelete` 加进 `domain.Operation`。
 - **码**：`ErrCycle`（`page.cycle`，409）：新的父页是被移动的页自己或它的后代。
+- **子树**：`Subtree` 是一个节点与它未删的后代，各带在子树里的层（自己为 1）；`Height()` 是最深的层，`Holds(id)` 判断一个节点是不是它自己或后代。`SameParent` 导出，比较两个父页的值（都在根下也算同一个）。
 - **层级**：`Height(subtree)`：子树里最深的相对深度（只有自己为 1）。移动之后最深的一页的层级 = 新父页的层级 + 高度；超过 `MaxDepth` 答 `page.too_deep`。新父页为空（移到根下）时新父页的层级为 0。
-- **移动的位置**：兄弟按次序排好之后先去掉被移动的页自己，再按 P1 的 `slotOf`、`Place` 取值；`after_id` 是被移动的页自己时答 422 `after_id`（不是"兄弟"）。父页不变、取到的位置与原来的相同（排在同一个兄弟之后，或都在最前）时不写，与改成同名相同：不插变更集、不调用观察者。
-- **合并**：同一单元先建后删的节点，合并之后前后都为空，条目的 `changeset_items_state_check` 不收。M4 没有这样的单元（用例只做一种操作，参与者只追加改名与正文写），P2 不处理，写进单元的注释。
-- **改动**：移动是被移动的页一条（前、后状态都在，`Moves()` 为真）加上它的每个后代一条（前后相同：位置没变，路径变了；不记条目，进事件与守卫的值，M6 的链接按路径解析，要知道哪些页的路径变了）；删除是子树的每个节点一条（后状态为空）。与总体设计 8.3、M4 总设计第 8 节"移动与删除是整棵子树"一致。
+- **移动的位置**（在用例层的 `unit_move.go`：`Position`、`slotOf` 在 P1 已在 app，领域没有"位置"的类型）：兄弟按次序排好之后先去掉被移动的页自己，再按 P1 的 `slotOf`、`Place` 取值（新建与移动共用 `unit_place.go` 的 `placeAmong`）；`after_id` 是被移动的页自己时答 422 `after_id`（不是"兄弟"）。父页不变、取到的位置与原来的相同（排在同一个兄弟之后，或都在最前）时不写，与改成同名相同：不插变更集、不调用观察者。
+- **合并**：同一单元先建后删的节点，合并之后前后都为空，条目的 `changeset_items_state_check` 不收。M4 没有这样的单元（用例只做一种操作，参与者只追加改名与正文写），P2 不处理，写进单元的注释与[给 M9 的移交](../M9-mcp/handoffs/M4-P2-unit-merge.md)（M7 的导入同样适用）。
+- **改动**：移动是被移动的页一条（前、后状态都在，`Moves()` 为真）加上它的每个后代一条（前后相同，不记条目，进事件与守卫的值：换父页时后代的路径变了，M6 的链接按路径解析，要知道哪些页的路径变了；同父页内排序时路径不变，后代照样在内，移动只有一种形状）；删除是子树的每个节点一条（后状态为空）。与总体设计 8.3、M4 总设计第 8 节"移动与删除是整棵子树"一致。
 
 ### 3.3 数据
 
-- `Subtree :many`：从一个未删的节点往下的递归查询，带相对深度（自己为 1）与先序需要的列；深度上界 64，只防缺陷造成的环（同 `Ancestors`）。
+- `Subtree :many`：从本笔记本一个未删的节点往下的递归查询（别的笔记本的节点答 `ErrNotFound`），带相对深度（自己为 1），按层排（`level, sort_order, id`）：节点自己在第一个，没有用处需要先序；深度上界 64，只防缺陷造成的环（同 `Ancestors`）。
 - `MoveNode :exec`：改 `parent_id`、`sort_order`、`updated_by_id`、`updated_at`；23505 译为 `page.title_taken`（兜底，单元里先查）。
 - `DeleteNodes :exec`：一组节点 id，在同一时刻软删除节点（`updated_by_id`、`updated_at` 同时写）以及这些节点未删的正文、版本、条目；与笔记本删除的写法相同（CTE），只改未删的行。
 - **删除操作的条目**：单元在写之后记条目，删除操作的条目写下时它的节点已进回收站。`RecordItem` 对"后状态为空"的条目在插入（或合并更新）时同时写 `deleted_at = 单元的时刻`：生命周期表里条目随节点，包括删除它的那个变更集里的条目（M4 总设计第 4 节）；否则这些条目永远不进回收站，节点的清理器因 `NOT EXISTS` 跟随的行而永远跳过它们。
@@ -88,9 +93,10 @@ e2e/fixtures/pages.ts、assert/page.ts；e2e/stories/page/pg3、pg4；pg12 加�
 
 **`Unit.Delete(ctx, nodeID)`**：
 
-1. 锁下读出节点（没有答 `page.not_found`）；`Subtree` 读出整棵子树。
+1. 锁下以 `Subtree` 读出整棵子树（读不到即 `page.not_found`）。
 2. 守卫（`Step{OpDelete, 子树每个节点的改动}`）→ `DeleteNodes` → 条目（每个节点一条，随节点进回收站）→ 参与者。
 3. 兄弟不重排：删除不改变别的兄弟的相对位置。
+4. 返回删掉的子树（用例的日志记它的节点数）。
 
 参与者追加的操作（`Appender`）本 Phase 不加移动与删除：M6 只追加正文写（P4）。
 
@@ -101,6 +107,7 @@ e2e/fixtures/pages.ts、assert/page.ts；e2e/stories/page/pg3、pg4；pg12 加�
 | `moveNode` `POST /nodes/{node_id}/move` | 节点 | `node.move` | 树 | 200 `TreeNode` |
 | `deleteNode` `DELETE /nodes/{node_id}` | 节点 | `node.delete` | 树 | 204 |
 
+- 用例的值是 `app.Destination{ParentID, Position}`，与 `PageDraft` 同形。
 - `NodeMove`：`parent_id`（必填、可为 `null`：移到根下）、`after_id`（可省略、可为 `null`，与 `createPage` 相同：省略在最后，`null` 在最前）。
 - 码的次序：404 → 403 → 422（`parent_id`、`after_id`）→ 409（`page.cycle`、`page.title_taken`、`page.too_deep`）→ 守卫。
 - 两个用例照 `renameNode`：事务之外先不加锁读出节点得到笔记本（`page.not_found`），单元在锁下重读。`moveNode` 在单元里重读节点作答（参与者可能改了它）。
@@ -127,9 +134,10 @@ e2e/fixtures/pages.ts、assert/page.ts；e2e/stories/page/pg3、pg4；pg12 加�
 
 ### 3.9 端到端
 
-- PG3（接口）：管理员建页，工作区成员（笔记本对工作区开放为 `editor`）移动：同一父页内排序（最前、某页之后、最后）、换父页、移到根下；移动之后 `getPage` 的祖先链是新的；移进自己的子树 409 `page.cycle`；把高 3 的子树移到第 9 层的页下 409 `page.too_deep`；落库：被移动的页的条目的前后父页与次序，节点的 `updated_by_id` 是移动的人、`updated_at` 等于这次变更集的时刻。
+- PG3（接口）：管理员建页，工作区成员（笔记本对工作区开放为 `editor`）移动：同一父页内排序（最前、某页之后、最后）、换父页、移到根下；移动之后 `getPage` 的祖先链是新的；移进自己或自己的子树 409 `page.cycle`；把高 3 的子树移到第 8 层的页下 409 `page.too_deep`（最深一页会到第 11 层），移到第 7 层之下成功（正好第 10 层）；落库：被移动的页的条目的前后父页与次序，节点的 `updated_by_id` 是移动的人、`updated_at` 等于这次变更集的时刻。
 - PG4（接口）：管理员建页，工作区成员删除一页连同两层子页，之后谁都读不到、树里没有；落库：子树的节点、正文、版本、条目以同一时刻软删除，删除自己的条目也在内；节点的 `updated_by_id` 是删除的人。
 - PG12：阅读者移动、删除答 403；看不到笔记本的人 404；`workspace_access = editor` 的成员可以移动与删除。
+- fixture（`pages.ts`）：`postMove`（答复）、`moveNode`（核对 200 之后返回节点）、`deleteNode`（答复），与 P1 的 `postPage`、`createPage` 同一约定。
 - 断言（`assert/page.ts`）：`expectMoved`（条目的前后父页与次序、执行者与时刻）、`expectSubtreeDeleted`（同一时刻、删除的人、删除自己的条目）。
 
 ## 4. 实施步骤
@@ -145,13 +153,13 @@ e2e/fixtures/pages.ts、assert/page.ts；e2e/stories/page/pg3、pg4；pg12 加�
 
 | 层次 | 覆盖 |
 |---|---|
-| 单元 | 环（移到自己、子页、孙页之下）；高度与层级上限（恰好 10 层、11 层）；位置（去掉自己之后的最前、某页之后、最后；`after_id` 是自己）；原地不动；表格驱动 |
-| 仓储 | `Subtree` 的先序与深度、不含已删的；`MoveNode` 的 23505；`DeleteNodes` 只改未删的行、同一时刻；删除的条目带 `deleted_at`，合并更新也带 |
-| 用例 | 码的次序；移动的条目只记被移动的页、后代进事件不进条目；原地不动不写；删除的事件含整棵子树；日志 |
-| 整个程序 | 矩阵两行；删除之后树与逐项读取一致；交错 34–37 |
+| 领域 | `Subtree` 的高度与 `Holds`；表格驱动 |
+| 仓储 | `Subtree` 按层与深度、不含已删的、限本笔记本、一条十层的链读到底；`MoveNode` 的 23505；`DeleteNodes` 只改未删的行、同一时刻；删除的条目带 `deleted_at`，合并更新也带 |
+| 用例 | 码的次序（含环先于层级、重名先于层级、锁下找不到节点）；环（移到自己、子页、孙页、最深的后代之下）；高度与层级上限（恰好 10 层、11 层，子树带兄弟）；位置（在一个父页之下：去掉自己之后的最前、某页之后、最后、没有间隔时的重排、从别的父页移入；`after_id` 是自己）；原地不动（父页由请求另行构造）；移动的条目只记被移动的页、后代进事件不进条目；删除的守卫、参与者、事件含整棵子树；日志 |
+| 整个程序 | 矩阵两行；删除之后树与逐项读取一致；交错 34–37；`checkPages` 另查已删的页没有未删的正文、版本、条目 |
 | 端到端 | PG3、PG4 的接口版本，PG12 的移动与删除 |
 
-反向对照（每个新检查各一个，13.4 第 1 条）：树锁改成 `FOR SHARE`（交错 34–37 失败）；防环只看新父页本身（孙页之下的移动不被拒）；高度按 1 算（推深的移动不被拒）；原地不动也写；删除的条目不进回收站（整个清理任务的测试里，删掉的子树清不掉）；`DeleteNodes` 也改已删的行；移动的后代不进事件。
+反向对照（每个新检查各一个，13.4 第 1 条）：树锁改成 `FOR SHARE`（交错 34–37 失败）；防环只看新父页本身（孙页之下的移动不被拒）；高度按 1 算（推深的移动不被拒）；原地不动也写；删除的条目不进回收站（仓储的清理测试 `TestPurgeTakesADeletedSubtree` 里删掉的子树清不掉，交错 36 的 `checkPages` 也失败）；`DeleteNodes` 也改已删的行；移动的后代不进事件。
 
 ## 6. 完成标准
 
@@ -161,4 +169,18 @@ e2e/fixtures/pages.ts、assert/page.ts；e2e/stories/page/pg3、pg4；pg12 加�
 
 ## 7. 结果
 
-（完成后补写）
+- 分支 `m4-p2-tree-operations`：S1 `d7cce0a`（拆分 `unit.go`）、`ec0b284`；S2 `1b62802`；S3 `2f8e5e8`；S4 `2d4bdb3`；审查修复 `2586b2c`；`7d0e3b1` 合并（`--no-ff`）。
+- 门禁：每个 Step 的 `make check` 为绿；`make gen-check`、`make e2e`（124 个）、`make image-smoke` 为绿；持续集成四个任务为绿。
+- 审查：[P2 审查](reviews/P2-tree-operations-review.md)，没有 Critical、Major，没有生产代码的缺陷；5 项 Minor 与 5 项 Nit 是测试守不住的行为与小的整理，全部在合并前处理，每个新检查都做了反向对照。
+
+**与设计的偏差**（已同步进上文）：
+
+1. 移动的位置与原地不动的判断在用例层 `unit_move.go`，领域只加 `Subtree` 与导出的 `SameParent`（3.2）。
+2. `Subtree` 按层排、限本笔记本（3.3）。
+3. 删除的条目进回收站由仓储按"后状态为空"决定（3.3）。
+4. 用例的值是 `Destination`；`Delete` 返回子树，日志记节点数；`Delete` 不另读节点（3.4、3.5）。
+5. 取次序与重排收进 `unit_place.go` 的 `placeAmong`，新建与移动共用（3.2，P2 审查 N1）。
+6. PG3 的层级压在边界上（第 8 层之下拒、第 7 层之下收）；fixture 的名字（3.9）。
+7. 位置、原地不动、层级的表格在用例层（第 5 节）。
+
+**留给后面的**：同一单元先建后删的合并（[M9 的移交](../M9-mcp/handoffs/M4-P2-unit-merge.md)，M7 同样适用）；守卫与事件的值随子树变大，M5 的 `NOTIFY` 有 8000 字节上限（[M5 的移交](../M5-collab-editing/handoffs/M4-P1-tree-refresh.md)第 3 项）；删除每个节点写一条条目、全程持笔记本行的独占锁，本机实测 3000 个节点约 0.43 秒，数据库在远端或笔记本更大时可改成一条 `INSERT … SELECT unnest(…)`（P2 审查 Q3）；P4 删页、删子树时删编辑会话，加锁次序 `nodes → page_contents → edit_sessions` 到时再核对。

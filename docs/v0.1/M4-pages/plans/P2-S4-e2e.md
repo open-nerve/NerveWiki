@@ -4,7 +4,7 @@
 
 ## 任务
 
-1. `e2e/fixtures/pages.ts`：`moveNode`、`deleteNode`（只返回答复）；`assert/page.ts`：`expectMoved`、`expectSubtreeDeleted`。
+1. `e2e/fixtures/pages.ts`：`postMove`（答复）、`moveNode`（核对 200 之后返回节点）、`deleteNode`（答复）；`assert/page.ts`：`expectMoved`、`expectSubtreeDeleted`。
 2. 故事：`pg3-move-page`、`pg4-delete-subtree`（管理员建页，工作区成员移动与删除，执行者才比较得出来）；`pg12-page-permissions` 加移动与删除。
 
 ## 测试
