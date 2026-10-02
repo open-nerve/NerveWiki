@@ -5,7 +5,8 @@
 // is goldmark's, hardened (internal/harden), so it costs about the size of
 // the content whatever the content is.
 //
-// It imports goldmark and go.yaml.in/yaml, and no other platform package.
+// It imports goldmark, go.yaml.in/yaml and golang.org/x/net/html, and no
+// other platform package.
 package markdown
 
 import (
