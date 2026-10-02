@@ -9,6 +9,15 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown/markdowntest"
 )
 
+func newMarkdown(t testing.TB, exts ...markdown.Extension) *markdown.Markdown {
+	t.Helper()
+	m, err := markdown.New(exts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
 func render(t *testing.T, m *markdown.Markdown, src []byte) string {
 	t.Helper()
 	out, err := m.Render(context.Background(), m.Parse(src), markdown.Page{})
@@ -21,10 +30,7 @@ func render(t *testing.T, m *markdown.Markdown, src []byte) string {
 // Every fixture renders to HTML that passes the check, and a frontmatter
 // leaves the body's HTML as the body alone renders it.
 func TestTheFixturesRenderToCheckedHTML(t *testing.T) {
-	m, err := markdown.New(nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	m := newMarkdown(t)
 	for _, f := range markdowntest.Fixtures(t) {
 		t.Run(f.Name, func(t *testing.T) {
 			got := render(t, m, f.Content)
@@ -66,10 +72,7 @@ func afterFrontmatter(src []byte) ([]byte, bool) {
 // An extension's markup passes the check given its Markup, and only so.
 func TestAnExtensionsMarkupPassesTheCheckWithItsMarkup(t *testing.T) {
 	words := markdown.Words()
-	m, err := markdown.New([]markdown.Extension{words})
-	if err != nil {
-		t.Fatal(err)
-	}
+	m := newMarkdown(t, words)
 	got := render(t, m, []byte("say @@hello@@\n"))
 	if !strings.Contains(got, `<mark class="nw-word"`) {
 		t.Fatalf("no word rendered: %q", got)

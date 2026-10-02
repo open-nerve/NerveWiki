@@ -18,7 +18,12 @@ var scheme = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9+.-]*:`)
 // drops from one dropped too; it still needs escaping for an attribute.
 func SafeURL(raw string) (string, bool) {
 	s := strings.TrimFunc(raw, func(r rune) bool { return r <= ' ' })
-	s = strings.NewReplacer("\t", "", "\n", "", "\r", "").Replace(s)
+	s = strings.Map(func(r rune) rune {
+		if r == '\t' || r == '\n' || r == '\r' {
+			return -1
+		}
+		return r
+	}, s)
 	if strings.ContainsFunc(s, func(r rune) bool { return r < ' ' || r == 0x7f }) {
 		return "", false
 	}

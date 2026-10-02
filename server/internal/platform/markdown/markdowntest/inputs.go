@@ -58,8 +58,9 @@ func repeat(unit string) func(int) string {
 	return func(size int) string { return strings.Repeat(unit, max(1, size/len(unit))) }
 }
 
-// Pathological are the inputs whose parse goldmark makes quadratic, or that
-// stress a limit: each must cost about what an ordinary document of its size
+// Pathological are the inputs whose parse goldmark makes quadratic, that
+// stress a limit, or that load the frontmatter's YAML, the sanitizer or the
+// addresses: each must cost about what an ordinary document of its size
 // costs.
 func Pathological() []Input {
 	return []Input{
@@ -124,6 +125,41 @@ func Pathological() []Input {
 			return refs.String() + "\n\n" + defs.String()
 		}},
 		{"link titles on every line", repeat("[a](b \"c\")\n")},
+		{"headings alike", repeat("# a\n")},
+		{"headings alike and their ids", repeat("# a\n# a-1\n# a 2\n")},
 		{"one long line", repeat("ab ")},
+
+		{"a frontmatter of aliases", func(n int) string {
+			var b strings.Builder
+			b.WriteString("---\na0: &a0 [x, x]\n")
+			for i := 1; b.Len() < n; i++ {
+				fmt.Fprintf(&b, "a%d: &a%d [*a%d, *a%d]\n", i, i, i-1, i-1)
+			}
+			return b.String() + "---\nbody\n"
+		}},
+		{"a frontmatter nested deep", func(n int) string {
+			return "---\na: " + strings.Repeat("[", n/2) + strings.Repeat("]", n/2) + "\n---\nbody\n"
+		}},
+		{"a frontmatter of many keys", func(n int) string {
+			var b strings.Builder
+			b.WriteString("---\n")
+			for i := 0; b.Len() < n; i++ {
+				fmt.Fprintf(&b, "k%d: [v, %d, {a: \"b\"}]\n", i, i)
+			}
+			return b.String() + "---\nbody\n"
+		}},
+		{"a frontmatter of one long value", func(n int) string { return "---\na: " + strings.Repeat("x", n) + "\n---\nbody\n" }},
+		{"inline tags <b>", repeat("<b>")},
+		{"end tags after start tags", func(n int) string { return repeat("<b>")(n/2) + repeat("</i>")(n/2) }},
+		{"inline tags with attributes", repeat(`<a href="/p" title="t" x=y>`)},
+		{"a tag of many attributes", func(n int) string { return "<b" + repeat(" a=1")(n) + ">" }},
+		{"tags nested in emphasis", func(n int) string { return repeat("*<a>")(n/2) + "x" + repeat("*")(n/2) }},
+		{"HTML blocks", repeat("<div>\n\n")},
+		{"an HTML block nested deep", func(n int) string { return "<div>\n" + repeat("<div>")(n) + "\n" }},
+		{"an HTML block of script", func(n int) string { return "<script>\n" + repeat("a<b>")(n) + "\n</script>\n" }},
+		{"links with long addresses", repeat("[a](/" + strings.Repeat("p", 200) + ") ")},
+		{"autolinks", repeat("<https://example.com/a> www.example.com a@b.co ")},
+		{"images in links", repeat("[![a](i.png)](/p) ")},
+		{"addresses in tags", repeat(`<a href="http://a/\b?c#d">x</a>`)},
 	}
 }

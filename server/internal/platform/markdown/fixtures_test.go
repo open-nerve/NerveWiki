@@ -12,10 +12,7 @@ import (
 // Every fixture's frontmatter is what its JSON says: none, not valid, or
 // valid with these properties (rule 1).
 func TestTheFixturesFrontmatterIsTheirs(t *testing.T) {
-	m, err := markdown.New(nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	m := newMarkdown(t)
 	for _, f := range markdowntest.Fixtures(t) {
 		t.Run(f.Name, func(t *testing.T) {
 			var want struct {

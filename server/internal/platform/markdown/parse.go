@@ -37,20 +37,30 @@ const (
 
 // headingIDs gives each heading an id: its text in lower case, letters,
 // digits and marks kept, spaces, '-' and '_' made one '-', the rest
-// dropped; "section" for none; "-1", "-2"… after one already given.
+// dropped; "section" for none; "-1", "-2"… after one already given. The
+// suffixes of a text go on from the last one it took, so a thousand
+// headings alike cost a thousand ids.
 type headingIDs struct{}
 
 func (headingIDs) Transform(doc *ast.Document, reader text.Reader, _ parser.Context) {
 	used := map[string]bool{}
+	next := map[string]int{} // the suffix a text tries next
 	_ = ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering {
+			return ast.WalkContinue, nil
+		}
 		h, ok := n.(*ast.Heading)
-		if !entering || !ok {
+		if !ok {
+			if c := n.FirstChild(); c != nil && c.Type() == ast.TypeInline {
+				return ast.WalkSkipChildren, nil // a paragraph or the like: no heading in it
+			}
 			return ast.WalkContinue, nil
 		}
 		base := idPrefix + slug(plainText(h, reader.Source()))
 		id := base
-		for i := 1; used[id]; i++ {
-			id = base + "-" + strconv.Itoa(i)
+		for used[id] {
+			next[base]++
+			id = base + "-" + strconv.Itoa(next[base])
 		}
 		used[id] = true
 		h.SetAttributeString("id", []byte(id))

@@ -176,8 +176,9 @@ test: test-go test-web ## 全部测试
 .PHONY: test-go
 test-go: ## 运行 Go 测试，含集成测试与 server/tools（开启竞态检测，不用测试缓存；需要 Docker）
 	cd server && go test -race -count=1 ./...
-	@# 竞态检测让同一段代码的分配多出数倍：分配的预算在不带它的构建中另测一次
+	@# 竞态检测让同一段代码的分配多出数倍、耗时慢数倍：分配与耗时的预算在不带它的构建中另测一次
 	cd server && go test -count=1 -run '^TestCheckCostsAboutTheBody$$' ./internal/platform/httpserver/bodyshape
+	cd server && go test -count=1 -run '^(TestThePathologicalInputsCostAboutTheirSize|TestAnOrdinaryMegabyteRendersInASecond)$$' ./internal/platform/markdown
 	go -C server/tools test -race -count=1 ./...
 
 .PHONY: test-web
