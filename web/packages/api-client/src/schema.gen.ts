@@ -705,6 +705,98 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v0/notebooks/{notebook_id}/nodes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List a notebook's tree
+         * @description The notebook's pages, each parent before its children, siblings in their order; any role in the notebook can list them. A notebook that does not exist, is deleted, or that the caller has no role in is notebook.not_found. The list is not paged.
+         */
+        get: operations["listNodes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v0/notebooks/{notebook_id}/pages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create a page
+         * @description Creates a page with an empty content under a parent, or at the notebook's root; its editors and admins can, a reader cannot (forbidden). A notebook that does not exist, is deleted, or that the caller has no role in is notebook.not_found; the values are checked after both: the title's rules, a parent that is no page of the notebook and a page to follow that is no child of the parent are validation_failed; then a title a sibling has, compared by its key, is page.title_taken, and a page deeper than ten levels page.too_deep.
+         */
+        post: operations["createPage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v0/pages/{page_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The page's id. */
+                page_id: components["parameters"]["PageID"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Get a page
+         * @description The page, with its ancestors and what it tells of its content. A page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found alike.
+         */
+        get: operations["getPage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v0/nodes/{node_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The id of a node of a notebook's tree. */
+                node_id: components["parameters"]["NodeID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Rename a page
+         * @description Renames the page; its notebook's editors and admins can, a reader cannot (forbidden). A page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found; the name is checked after both: its rules are validation_failed, a name a sibling has, compared by its key, is page.title_taken. The page's own name writes nothing; one that differs from it in case alone is written.
+         */
+        patch: operations["renameNode"];
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1104,6 +1196,99 @@ export interface components {
             data: components["schemas"]["NotebookAuditEvent"][];
             next_cursor: components["schemas"]["NextCursor"];
         };
+        /**
+         * @description What a node of the tree is. Attachments come later.
+         * @enum {string}
+         */
+        NodeKind: "page";
+        /** @description A node of a notebook's tree. */
+        TreeNode: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            notebook_id: string;
+            /**
+             * Format: uuid
+             * @description The parent page; null at the notebook's root.
+             */
+            parent_id: string | null;
+            kind: components["schemas"]["NodeKind"];
+            /** @description The page's title. */
+            name: string;
+            /** Format: date-time */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description When the node was last created, renamed or moved; its content's writes do not change it.
+             */
+            updated_at: string;
+        };
+        TreeNodeList: {
+            data: components["schemas"]["TreeNode"][];
+        };
+        /** @description 1–255 bytes after the surrounding blanks are trimmed and the text is in NFC; none of / \ : * ? " < > | # ^ [ ] nor control characters; not starting or ending with a dot; no name Windows reserves (CON, COM1, …). It is the file's name when the notebook is exported. Siblings' titles differ in more than case: they compare by Unicode case folding. */
+        Title: string;
+        /** @description A new page. */
+        PageCreate: {
+            /**
+             * Format: uuid
+             * @description The parent page; null for the notebook's root.
+             */
+            parent_id: string | null;
+            title: components["schemas"]["Title"];
+            /**
+             * Format: uuid
+             * @description The sibling the page goes right after; null puts it first, absent last.
+             */
+            after_id?: string | null;
+        };
+        /** @description A page above another, on the way from the root. */
+        Ancestor: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+        };
+        /** @description A page: its node, its ancestors and what it tells of its content. */
+        Page: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            notebook_id: string;
+            /**
+             * Format: uuid
+             * @description The parent page; null at the notebook's root.
+             */
+            parent_id: string | null;
+            kind: components["schemas"]["NodeKind"];
+            /** @description The page's title. */
+            name: string;
+            /** Format: date-time */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description When the page was last created, renamed or moved; its content's writes do not change it.
+             */
+            updated_at: string;
+            /** @description The pages above it, from the root down to its parent; none at the root. */
+            ancestors: components["schemas"]["Ancestor"][];
+            /** @description The content's version, 1 for a new page; each write of the content adds one. */
+            revision: number;
+            /** @description The content's size in bytes. */
+            byte_size: number;
+            /**
+             * Format: date-time
+             * @description When the content was last written.
+             */
+            content_updated_at: string;
+            /**
+             * Format: uuid
+             * @description The account that last wrote the content.
+             */
+            content_updated_by: string;
+        };
+        NodeRename: {
+            name: components["schemas"]["Title"];
+        };
     };
     responses: {
         /** @description Error (RFC 9457 problem details). */
@@ -1135,6 +1320,10 @@ export interface components {
         Limit: number;
         /** @description The next_cursor of the page before; absent for the first page. A cursor that does not decode, has an unknown version or a payload of another shape than this list's, or is not spelled as the server writes it is 400 bad_request on cursor. */
         Cursor: string;
+        /** @description The page's id. */
+        PageID: string;
+        /** @description The id of a node of a notebook's tree. */
+        NodeID: string;
     };
     requestBodies: never;
     headers: never;
@@ -1190,6 +1379,14 @@ export type NotebookAuditAction = components['schemas']['NotebookAuditAction'];
 export type NotebookAuditEvent = components['schemas']['NotebookAuditEvent'];
 export type NextCursor = components['schemas']['NextCursor'];
 export type NotebookAuditEventPage = components['schemas']['NotebookAuditEventPage'];
+export type NodeKind = components['schemas']['NodeKind'];
+export type TreeNode = components['schemas']['TreeNode'];
+export type TreeNodeList = components['schemas']['TreeNodeList'];
+export type Title = components['schemas']['Title'];
+export type PageCreate = components['schemas']['PageCreate'];
+export type Ancestor = components['schemas']['Ancestor'];
+export type Page = components['schemas']['Page'];
+export type NodeRename = components['schemas']['NodeRename'];
 export type ResponseProblem = components['responses']['Problem'];
 export type ParameterSlug = components['parameters']['Slug'];
 export type ParameterWorkspaceMemberId = components['parameters']['WorkspaceMemberID'];
@@ -1198,6 +1395,8 @@ export type ParameterNotebookId = components['parameters']['NotebookID'];
 export type ParameterNotebookMemberId = components['parameters']['NotebookMemberID'];
 export type ParameterLimit = components['parameters']['Limit'];
 export type ParameterCursor = components['parameters']['Cursor'];
+export type ParameterPageId = components['parameters']['PageID'];
+export type ParameterNodeId = components['parameters']['NodeID'];
 export type $defs = Record<string, never>;
 export interface operations {
     register: {
@@ -2213,6 +2412,110 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NotebookAuditEventPage"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    listNodes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The tree. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TreeNodeList"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    createPage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PageCreate"];
+            };
+        };
+        responses: {
+            /** @description The page. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    getPage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The page's id. */
+                page_id: components["parameters"]["PageID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The page. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    renameNode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The id of a node of a notebook's tree. */
+                node_id: components["parameters"]["NodeID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NodeRename"];
+            };
+        };
+        responses: {
+            /** @description The page, renamed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TreeNode"];
                 };
             };
             default: components["responses"]["Problem"];

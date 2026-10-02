@@ -14,6 +14,7 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/modules/identity"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/instance"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/notebook"
+	"github.com/open-nerve/NerveWiki/server/internal/modules/page"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/workspace"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver"
@@ -90,6 +91,7 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrati
 	})
 	ws := workspace.New(workspaceDeps(cfg, pool, logger, authorizer, invitationKey))
 	nb := notebook.New(notebookDeps(cfg, pool, logger, authorizer))
+	pg := page.New(pageDeps(cfg, pool, logger, authorizer))
 	api, err := httpserver.NewAPI(apiConfig(cfg, logger, limiter, ident.Authenticator(),
 		slices.Concat(ident.PublicOperations(), inst.PublicOperations(), ws.PublicOperations()), ident.RequestTimeouts()))
 	if err != nil {
@@ -103,6 +105,7 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrati
 	inst.Register(router, api)
 	ws.Register(router, api)
 	nb.Register(router, api)
+	pg.Register(router, api)
 	// "/" without a method is the least specific pattern: /api/ and the
 	// probes keep their routes, and a wrong method on a page path gets the
 	// frontend's 405 rather than a 404.

@@ -139,15 +139,23 @@ type Unit struct {
 // Position is where a new node goes among its siblings: after the last
 // (the zero value), first, or after one of them.
 type Position struct {
-	first bool
-	after *uuid.UUID
+	place   placement
+	sibling uuid.UUID
 }
 
+type placement int
+
+const (
+	last placement = iota
+	first
+	afterSibling
+)
+
 // First is the position before every sibling.
-func First() Position { return Position{first: true} }
+func First() Position { return Position{place: first} }
 
 // After is the position right after the sibling id.
-func After(id uuid.UUID) Position { return Position{after: &id} }
+func After(id uuid.UUID) Position { return Position{place: afterSibling, sibling: id} }
 
 // PageDraft is a new page: under ParentID (nil: at the notebook's root),
 // with Title, at Position among its siblings.
@@ -279,13 +287,13 @@ func (u *Unit) lineOf(ctx context.Context, parentID *uuid.UUID) ([]domain.Ancest
 // for the first place. A sibling to follow that is not among them is 422
 // on after_id.
 func slotOf(siblings []domain.Node, p Position) (int, error) {
-	switch {
-	case p.first:
+	switch p.place {
+	case first:
 		return -1, nil
-	case p.after == nil:
+	case last:
 		return len(siblings) - 1, nil
 	}
-	i := slices.IndexFunc(siblings, func(s domain.Node) bool { return s.ID == *p.after })
+	i := slices.IndexFunc(siblings, func(s domain.Node) bool { return s.ID == p.sibling })
 	if i < 0 {
 		return 0, domain.NotAllowed("after_id", "The page to follow is no child of the parent.")
 	}

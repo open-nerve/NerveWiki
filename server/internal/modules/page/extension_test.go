@@ -1,0 +1,358 @@
+package page_test
+
+import (
+	"context"
+	"errors"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+	"uuid"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/open-nerve/NerveWiki/server/internal/modules/page"
+	postgresadapter "github.com/open-nerve/NerveWiki/server/internal/modules/page/adapter/postgres"
+	"github.com/open-nerve/NerveWiki/server/internal/modules/page/app"
+	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver/httpservertest"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres/pgtest"
+	"github.com/open-nerve/NerveWiki/server/internal/shared"
+)
+
+// The extension points on a real database (M4/P1 design 3.6), the module
+// wired as bootstrap wires it, with registrants that stand in for M5's and
+// M6's. The ports stand in for the workspace and notebook modules', which
+// the page module does not import: they lock the same rows. The decision
+// lets alice write eng and no one else see it.
+
+// testNow is the clock's instant, in whole microseconds.
+func testNow() time.Time { return time.Date(2026, 10, 2, 10, 0, 0, 123456000, time.UTC) }
+
+type fixedClock struct{}
+
+func (fixedClock) Now() time.Time { return testNow() }
+
+// sqlWorkspaces and sqlNotebooks stand in for the other modules' ports.
+type sqlWorkspaces struct{ pool *pgxpool.Pool }
+
+func (w sqlWorkspaces) ShareByID(ctx context.Context, id uuid.UUID) (bool, error) {
+	return exists(ctx, w.pool, "SELECT 1 FROM workspaces WHERE id = $1 AND deleted_at IS NULL FOR SHARE", id)
+}
+
+type sqlNotebooks struct{ pool *pgxpool.Pool }
+
+func (n sqlNotebooks) WorkspaceOf(ctx context.Context, id uuid.UUID) (uuid.UUID, bool, error) {
+	var ws uuid.UUID
+	err := postgres.DB(ctx, n.pool).QueryRow(ctx, "SELECT workspace_id FROM notebooks WHERE id = $1 AND deleted_at IS NULL", id).Scan(&ws)
+	return ws, err == nil, nil
+}
+
+func (n sqlNotebooks) ShareByID(ctx context.Context, id uuid.UUID) (bool, error) {
+	return exists(ctx, n.pool, "SELECT 1 FROM notebooks WHERE id = $1 AND deleted_at IS NULL FOR SHARE", id)
+}
+
+func (n sqlNotebooks) LockByID(ctx context.Context, id uuid.UUID) (bool, error) {
+	return exists(ctx, n.pool, "SELECT 1 FROM notebooks WHERE id = $1 AND deleted_at IS NULL FOR NO KEY UPDATE", id)
+}
+
+func exists(ctx context.Context, pool *pgxpool.Pool, query string, id uuid.UUID) (bool, error) {
+	var one int
+	err := postgres.DB(ctx, pool).QueryRow(ctx, query, id).Scan(&one)
+	return err == nil, nil
+}
+
+// aliceWrites lets alice do anything in the notebooks; the rest see none.
+type aliceWrites struct{ alice uuid.UUID }
+
+func (a aliceWrites) Authorize(_ context.Context, actor shared.Actor, _ shared.Action, _ shared.Target) (shared.Grant, error) {
+	if actor.UserID != a.alice {
+		return shared.Grant{}, shared.ErrNotVisible
+	}
+	return shared.Grant{WorkspaceRole: shared.WorkspaceMember, NotebookRole: shared.NotebookEditor}, nil
+}
+
+// tokenAuth takes "session:<account id>" for a sign-in session's access
+// token and "pat:<account id>" for a personal access token.
+type tokenAuth struct{}
+
+func (tokenAuth) Authenticate(ctx context.Context, token string) (context.Context, string, error) {
+	kind, id, _ := strings.Cut(token, ":")
+	user, err := uuid.Parse(id)
+	if err != nil {
+		return nil, "", shared.Unauthenticated()
+	}
+	actor := shared.Actor{UserID: user, SessionID: uuid.NewV7()}
+	if kind == "pat" {
+		actor = shared.Actor{UserID: user, APITokenID: uuid.NewV7()}
+	}
+	return shared.WithActor(ctx, actor), token, nil
+}
+
+// fixture is acme on a database of its own, with its notebook eng and
+// eng's page Notes; alice writes it.
+type fixture struct {
+	pool             *pgxpool.Pool
+	alice            uuid.UUID
+	acme, eng, notes uuid.UUID
+}
+
+func newFixture(t *testing.T) fixture {
+	t.Helper()
+	pool, err := postgres.NewPool(context.Background(), config.DatabaseConfig{URL: pgtest.NewDatabase(t), MaxConns: 8})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pool.Close)
+	f := fixture{pool: pool, alice: uuid.NewV7(), acme: uuid.NewV7(), eng: uuid.NewV7(), notes: uuid.NewV7()}
+	before := testNow().Add(-time.Hour)
+	f.exec(t, "INSERT INTO users (id, email, password, display_name, created_at, updated_at) VALUES ($1, 'alice@corp.com', 'x', 'Alice', $2, $2)",
+		f.alice, before)
+	f.exec(t, "INSERT INTO workspaces (id, slug, name, created_by_id, updated_by_id, created_at, updated_at) VALUES ($1, 'acme', 'Acme', $2, $2, $3, $3)",
+		f.acme, f.alice, before)
+	f.exec(t, "INSERT INTO notebooks (id, workspace_id, name, created_by_id, updated_by_id, created_at, updated_at) VALUES ($1, $2, 'Eng', $3, $3, $4, $4)",
+		f.eng, f.acme, f.alice, before)
+	f.exec(t, "INSERT INTO nodes (id, notebook_id, kind, name, name_key, sort_order, created_by_id, updated_by_id, created_at, updated_at) "+
+		"VALUES ($1, $2, 'page', 'Notes', 'notes', 0, $3, $3, $4, $4)", f.notes, f.eng, f.alice, before)
+	f.exec(t, "INSERT INTO page_contents (node_id, content, revision, content_hash, byte_size, updated_by_id, updated_at) "+
+		"VALUES ($1, '', 1, sha256(''), 0, $2, $3)", f.notes, f.alice, before)
+	return f
+}
+
+func (f fixture) exec(t *testing.T, sql string, args ...any) {
+	t.Helper()
+	if _, err := f.pool.Exec(context.Background(), sql, args...); err != nil {
+		t.Fatalf("%s: %v", sql, err)
+	}
+}
+
+func (f fixture) count(t *testing.T, sql string, args ...any) int {
+	t.Helper()
+	var n int
+	if err := f.pool.QueryRow(context.Background(), sql, args...).Scan(&n); err != nil {
+		t.Fatalf("%s: %v", sql, err)
+	}
+	return n
+}
+
+// serve wires the module with the registrants and serves one request of
+// alice's by token kind ("session" or "pat").
+func (f fixture) serve(t *testing.T, kind, method, path, body string, guards []page.WriteGuard, participants []page.Participant,
+	observers []page.PageObserver,
+) *httptest.ResponseRecorder {
+	t.Helper()
+	router := httpserver.NewRouter(slog.New(slog.DiscardHandler))
+	page.New(page.Deps{
+		Pool: f.pool, Tx: postgres.NewTxManager(f.pool, 5*time.Second), Clock: fixedClock{}, Logger: slog.New(slog.DiscardHandler),
+		Authorizer: aliceWrites{f.alice}, Workspaces: sqlWorkspaces{f.pool}, Notebooks: sqlNotebooks{f.pool},
+		Guards: guards, Participants: participants, Observers: observers,
+	}).Register(router, httpservertest.NewAPI(t, httpservertest.APIOptions{Authenticator: tokenAuth{}}))
+	req := httptest.NewRequest(method, path, strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+kind+":"+f.alice.String())
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	return rec
+}
+
+func (f fixture) createPath() string { return "/api/v0/notebooks/" + f.eng.String() + "/pages" }
+func (f fixture) renamePath() string { return "/api/v0/nodes/" + f.notes.String() }
+
+// guard records what it sees, in the transaction, and answers err.
+type guard struct {
+	err   error
+	steps []page.Step
+	inTx  bool
+}
+
+func (g *guard) GuardWrite(ctx context.Context, s page.Step) error {
+	g.steps = append(g.steps, s)
+	g.inTx = postgres.InTx(ctx)
+	return g.err
+}
+
+// observer records the events it follows and the changesets it sees in
+// the transaction, and answers err.
+type observer struct {
+	f          fixture
+	err        error
+	events     []page.Event
+	changesets int
+}
+
+func (o *observer) PagesChanged(ctx context.Context, e page.Event) error {
+	o.events = append(o.events, e)
+	if err := postgres.DB(ctx, o.f.pool).QueryRow(ctx, "SELECT count(*) FROM changesets WHERE id = $1", e.ChangesetID).Scan(&o.changesets); err != nil {
+		return err
+	}
+	return o.err
+}
+
+// renamer renames Notes to Journal after each operation it follows.
+type renamer struct {
+	f     fixture
+	calls int
+}
+
+func (r *renamer) Participate(ctx context.Context, _ page.Step, u page.Appender) error {
+	r.calls++
+	_, err := u.Rename(ctx, r.f.notes, "Journal")
+	return err
+}
+
+// A guard's refusal rolls the unit back and is its answer. It runs in the
+// unit's transaction and sees where the node was and would be.
+func TestAGuardRefusesTheUnit(t *testing.T) {
+	locked := shared.NewError(shared.KindConflict, "page.locked", "Locked.")
+	for _, tt := range []struct {
+		name, method, body string
+		path               func(f fixture) string
+		before, after      string
+	}{
+		{"a creation", http.MethodPost, `{"parent_id":null,"title":"New"}`, fixture.createPath, "", "New"},
+		{"a rename", http.MethodPatch, `{"name":"Renamed"}`, fixture.renamePath, "Notes", "Renamed"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newFixture(t)
+			g := &guard{err: locked}
+			rec := f.serve(t, "session", tt.method, tt.path(f), tt.body, []page.WriteGuard{g}, nil, nil)
+			if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), `"code":"page.locked"`) {
+				t.Errorf("%s = %d %s, want 409 page.locked", tt.name, rec.Code, rec.Body)
+			}
+			if len(g.steps) != 1 || !g.inTx || len(g.steps[0].Changes) != 1 {
+				t.Fatalf("the guard saw %+v in a transaction %v, want one step", g.steps, g.inTx)
+			}
+			c := g.steps[0].Changes[0]
+			before := ""
+			if c.Before != nil {
+				before = c.Before.Name
+			}
+			if before != tt.before || c.After.Name != tt.after {
+				t.Errorf("the guard saw %q to %q, want %q to %q", before, c.After.Name, tt.before, tt.after)
+			}
+			if n := f.count(t, "SELECT count(*) FROM nodes WHERE name <> 'Notes'") + f.count(t, "SELECT count(*) FROM changesets"); n != 0 {
+				t.Errorf("%d rows written beside the refusal, want none", n)
+			}
+		})
+	}
+}
+
+// The observers follow a unit once, in its transaction, with its
+// changeset; an observer's error rolls it back and is a 500.
+func TestTheObserversFollowAUnit(t *testing.T) {
+	for _, fail := range []bool{false, true} {
+		t.Run(map[bool]string{false: "the observer follows", true: "the observer fails"}[fail], func(t *testing.T) {
+			f := newFixture(t)
+			o := &observer{f: f}
+			if fail {
+				o.err = errors.New("the observer failed")
+			}
+			rec := f.serve(t, "session", http.MethodPost, f.createPath(), `{"parent_id":null,"title":"New"}`, nil, nil, []page.PageObserver{o})
+			if len(o.events) != 1 || o.changesets != 1 || o.events[0].NotebookID != f.eng || o.events[0].By != f.alice ||
+				len(o.events[0].Changes) != 1 || !o.events[0].At.Equal(testNow()) {
+				t.Errorf("the observer followed %+v, seeing %d changesets; want one event of the creation, its changeset", o.events, o.changesets)
+			}
+			news := f.count(t, "SELECT count(*) FROM nodes WHERE name = 'New' AND created_at = $1", testNow())
+			switch {
+			case !fail && (rec.Code != http.StatusCreated || news != 1):
+				t.Errorf("POST = %d %s with %d pages New, want 201 and the page", rec.Code, rec.Body, news)
+			case fail && (rec.Code != http.StatusInternalServerError || news != 0 || f.count(t, "SELECT count(*) FROM changesets") != 0):
+				t.Errorf("POST with a failing observer = %d with %d pages New, want 500 and nothing written", rec.Code, news)
+			}
+		})
+	}
+}
+
+// A participant's rename runs through the guards into the unit's
+// changeset and its one event; it calls no participant. The answer is
+// the page as the unit left it.
+func TestAParticipantAddsToTheUnit(t *testing.T) {
+	f := newFixture(t)
+	g, o, p := &guard{}, &observer{f: f}, &renamer{f: f}
+	rec := f.serve(t, "session", http.MethodPost, f.createPath(), `{"parent_id":null,"title":"New"}`,
+		[]page.WriteGuard{g}, []page.Participant{p}, []page.PageObserver{o})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("POST = %d %s, want 201", rec.Code, rec.Body)
+	}
+	if p.calls != 1 || len(g.steps) != 2 || g.steps[1].Operation != domain.OpRename {
+		t.Errorf("the participant ran %d times, the guard saw %+v; want once, and the creation then the rename", p.calls, g.steps)
+	}
+	if n := f.count(t, "SELECT count(*) FROM changesets"); n != 1 {
+		t.Errorf("%d changesets, want 1", n)
+	}
+	if n := f.count(t, "SELECT count(*) FROM changeset_items i JOIN changesets s ON s.id = i.changeset_id "+
+		"WHERE (i.node_id = $1 AND i.before_name = 'Notes' AND i.after_name = 'Journal') OR i.after_name = 'New'", f.notes); n != 2 {
+		t.Errorf("%d items of the creation and the rename in the changeset, want 2", n)
+	}
+	if len(o.events) != 1 || len(o.events[0].Changes) != 2 {
+		t.Errorf("events = %+v, want one with both changes", o.events)
+	}
+}
+
+// The changeset's client is the credential's: a sign-in session's access
+// token is the web, a personal access token the API.
+func TestTheClientIsTheCredentials(t *testing.T) {
+	for kind, want := range map[string]string{"session": "web", "pat": "api"} {
+		t.Run(kind, func(t *testing.T) {
+			f := newFixture(t)
+			if rec := f.serve(t, kind, http.MethodPatch, f.renamePath(), `{"name":"Renamed"}`, nil, nil, nil); rec.Code != http.StatusOK {
+				t.Fatalf("PATCH = %d %s, want 200", rec.Code, rec.Body)
+			}
+			if n := f.count(t, "SELECT count(*) FROM changesets WHERE client = $1 AND created_by_id = $2", want, f.alice); n != 1 {
+				t.Errorf("%d changesets of the client %s by alice, want 1", n, want)
+			}
+		})
+	}
+}
+
+// A unit opens the outermost transaction: in one already, it refuses, and
+// writes nothing.
+func TestAUnitRefusesAnOuterTransaction(t *testing.T) {
+	f := newFixture(t)
+	tx := postgres.NewTxManager(f.pool, 5*time.Second)
+	store := postgresadapter.New(f.pool)
+	writer := app.NewWriter(app.WriterDeps{
+		Tx: tx, Clock: fixedClock{}, Auth: aliceWrites{f.alice}, Workspaces: sqlWorkspaces{f.pool}, Notebooks: sqlNotebooks{f.pool},
+		Nodes: store, NodeWriter: store, Changesets: store,
+	})
+	ctx := shared.WithActor(context.Background(), shared.Actor{UserID: f.alice, SessionID: uuid.NewV7()})
+	err := tx.WithinTx(ctx, func(ctx context.Context) error {
+		_, err := writer.Run(ctx, app.UnitSpec{NotebookID: f.eng, Action: domain.ActionCreate, Tree: true, Client: domain.ClientWeb,
+			NotFound: domain.ErrNotebookNotFound}, func(ctx context.Context, u *app.Unit) error {
+			_, err := u.CreatePage(ctx, app.PageDraft{Title: "New"})
+			return err
+		})
+		return err
+	})
+	if err == nil || f.count(t, "SELECT count(*) FROM nodes WHERE name = 'New'") != 0 {
+		t.Errorf("a unit in a transaction = %v, want an error and no page", err)
+	}
+}
+
+// The registrant of the notebook module's deletion deletes the notebooks'
+// pages, what follows them and their changesets at the deletion's time.
+func TestANotebookDeletionDeletesItsPages(t *testing.T) {
+	f := newFixture(t)
+	if rec := f.serve(t, "session", http.MethodPost, f.createPath(), `{"parent_id":"`+f.notes.String()+`","title":"Child"}`,
+		nil, nil, nil); rec.Code != http.StatusCreated {
+		t.Fatalf("POST = %d %s, want 201", rec.Code, rec.Body)
+	}
+	at := testNow().Add(time.Minute)
+	err := postgres.NewTxManager(f.pool, 5*time.Second).WithinTx(context.Background(), func(ctx context.Context) error {
+		return page.NewNotebookDeletion(f.pool).NotebookDeleted(ctx, page.NotebookDeleted{WorkspaceID: f.acme, NotebookIDs: []uuid.UUID{f.eng},
+			By: f.alice, At: at})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for table, want := range map[string]int{"nodes": 2, "page_contents": 2, "page_revisions": 1, "changeset_items": 1, "changesets": 1} {
+		if n := f.count(t, "SELECT count(*) FROM "+table+" WHERE deleted_at = $1", at); n != want {
+			t.Errorf("%d rows of %s deleted at the deletion's time, want %d", n, table, want)
+		}
+	}
+}

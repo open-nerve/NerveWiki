@@ -24,6 +24,8 @@ tags:
     description: Workspaces, their members and invitations.
   - name: notebook
     description: Notebooks and their members.
+  - name: page
+    description: The pages of a notebook's tree.
 paths:
   /api/v0/auth/register:
     $ref: "modules/identity.yaml#/paths/~1api~1v0~1auth~1register"
@@ -85,6 +87,14 @@ paths:
     $ref: "modules/notebook.yaml#/paths/~1api~1v0~1ownerless-notebooks~1{notebook_id}"
   /api/v0/workspaces/{slug}/notebook-audit-events:
     $ref: "modules/notebook.yaml#/paths/~1api~1v0~1workspaces~1{slug}~1notebook-audit-events"
+  /api/v0/notebooks/{notebook_id}/nodes:
+    $ref: "modules/page.yaml#/paths/~1api~1v0~1notebooks~1{notebook_id}~1nodes"
+  /api/v0/notebooks/{notebook_id}/pages:
+    $ref: "modules/page.yaml#/paths/~1api~1v0~1notebooks~1{notebook_id}~1pages"
+  /api/v0/pages/{page_id}:
+    $ref: "modules/page.yaml#/paths/~1api~1v0~1pages~1{page_id}"
+  /api/v0/nodes/{node_id}:
+    $ref: "modules/page.yaml#/paths/~1api~1v0~1nodes~1{node_id}"
 components:
   # 模块文件的 securitySchemes 在打包时被丢掉，操作引用的 scheme 写在这里
   securitySchemes:

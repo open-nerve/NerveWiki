@@ -9,6 +9,7 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/modules/identity"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/instance"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/notebook"
+	"github.com/open-nerve/NerveWiki/server/internal/modules/page"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/workspace"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/clock"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
@@ -90,7 +91,7 @@ func workspaceDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, a
 // module's ports, identity's directory for the member list, and the
 // registrants of its extension points.
 func notebookDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, authorizer shared.Authorizer) notebook.Deps {
-	ext := notebookRegistrants()
+	ext := notebookRegistrants(pool)
 	return notebook.Deps{
 		Pool:                  pool,
 		Tx:                    postgres.NewTxManager(pool, cfg.Database.CommitTimeout),
@@ -103,6 +104,24 @@ func notebookDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, au
 		DeletionSubscribers:   ext.deletionSubscribers,
 		VisibilitySubscribers: ext.visibilitySubscribers,
 		ActivitySources:       ext.activitySources,
+	}
+}
+
+// pageDeps are the page module's dependencies: the workspace and notebook
+// modules' ports, and the registrants of its extension points.
+func pageDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, authorizer shared.Authorizer) page.Deps {
+	ext := pageRegistrants()
+	return page.Deps{
+		Pool:         pool,
+		Tx:           postgres.NewTxManager(pool, cfg.Database.CommitTimeout),
+		Clock:        clock.System{},
+		Logger:       logger,
+		Authorizer:   authorizer,
+		Workspaces:   workspace.NewWorkspaces(pool),
+		Notebooks:    notebook.NewNotebooks(pool),
+		Guards:       ext.guards,
+		Participants: ext.participants,
+		Observers:    ext.observers,
 	}
 }
 

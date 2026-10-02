@@ -1,6 +1,3 @@
-// Package page is the module of a notebook's pages: the tree of nodes,
-// their content, the changesets and versions of their writes (v0.1 design
-// 3.5, 3.6, 3.8; M4 design). Its root is what bootstrap sees.
 package page
 
 import (
