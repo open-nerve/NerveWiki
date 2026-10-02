@@ -43,6 +43,15 @@ type Ancestor struct {
 // NodeKind What a node of the tree is. Attachments come later.
 type NodeKind string
 
+// NodeMove Where a page goes.
+type NodeMove struct {
+	// AfterID The sibling the page goes right after; null puts it first, absent last.
+	AfterID nullable.Nullable[uuid.UUID] `json:"after_id,omitempty"`
+
+	// ParentID The new parent page; null for the notebook's root.
+	ParentID nullable.Nullable[uuid.UUID] `json:"parent_id"`
+}
+
 // NodeRename defines model for NodeRename.
 type NodeRename struct {
 	// Name 1–255 bytes after the surrounding blanks are trimmed and the text is in NFC; none of / \ : * ? " < > | # ^ [ ] nor control characters; not starting or ending with a dot; no name Windows reserves (CON, COM1, …). It is the file's name when the notebook is exported. Siblings' titles differ in more than case: they compare by Unicode case folding.
@@ -136,14 +145,23 @@ type Problem = externalRef0.Problem
 // RenameNodeJSONRequestBody defines body for RenameNode for application/json ContentType.
 type RenameNodeJSONRequestBody = NodeRename
 
+// MoveNodeJSONRequestBody defines body for MoveNode for application/json ContentType.
+type MoveNodeJSONRequestBody = NodeMove
+
 // CreatePageJSONRequestBody defines body for CreatePage for application/json ContentType.
 type CreatePageJSONRequestBody = PageCreate
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// DeleteNode Delete a page
+	// (DELETE /api/v0/nodes/{node_id})
+	DeleteNode(w http.ResponseWriter, r *http.Request, nodeID NodeID)
 	// RenameNode Rename a page
 	// (PATCH /api/v0/nodes/{node_id})
 	RenameNode(w http.ResponseWriter, r *http.Request, nodeID NodeID)
+	// MoveNode Move a page
+	// (POST /api/v0/nodes/{node_id}/move)
+	MoveNode(w http.ResponseWriter, r *http.Request, nodeID NodeID)
 	// ListNodes List a notebook's tree
 	// (GET /api/v0/notebooks/{notebook_id}/nodes)
 	ListNodes(w http.ResponseWriter, r *http.Request, notebookID NotebookID)
@@ -164,6 +182,32 @@ type ServerInterfaceWrapper struct {
 
 type MiddlewareFunc func(http.Handler) http.Handler
 
+// DeleteNode operation middleware
+func (siw *ServerInterfaceWrapper) DeleteNode(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "node_id" -------------
+	var nodeID NodeID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "node_id", r.PathValue("node_id"), &nodeID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "node_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteNode(w, r, nodeID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // RenameNode operation middleware
 func (siw *ServerInterfaceWrapper) RenameNode(w http.ResponseWriter, r *http.Request) {
 
@@ -181,6 +225,32 @@ func (siw *ServerInterfaceWrapper) RenameNode(w http.ResponseWriter, r *http.Req
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.RenameNode(w, r, nodeID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// MoveNode operation middleware
+func (siw *ServerInterfaceWrapper) MoveNode(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "node_id" -------------
+	var nodeID NodeID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "node_id", r.PathValue("node_id"), &nodeID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "node_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.MoveNode(w, r, nodeID)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -391,7 +461,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v0/notebooks/{notebook_id}/nodes", wrapper.ListNodes)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v0/notebooks/{notebook_id}/pages", wrapper.CreatePage)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v0/pages/{page_id}", wrapper.GetPage)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v0/nodes/{node_id}", wrapper.DeleteNode)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/v0/nodes/{node_id}", wrapper.RenameNode)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v0/nodes/{node_id}/move", wrapper.MoveNode)
 
 	return m
 }
@@ -404,6 +476,46 @@ type ProblemApplicationProblemPlusJSONResponse struct {
 	Body externalRef0.Problem
 
 	Headers ProblemResponseHeaders
+}
+
+type DeleteNodeRequestObject struct {
+	NodeID NodeID `json:"node_id"`
+}
+
+type DeleteNodeResponseObject interface {
+	VisitDeleteNodeResponse(w http.ResponseWriter) error
+}
+
+type DeleteNode204Response struct {
+}
+
+func (response DeleteNode204Response) VisitDeleteNodeResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteNodedefaultApplicationProblemPlusJSONResponse struct {
+	Body       externalRef0.Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response DeleteNodedefaultApplicationProblemPlusJSONResponse) VisitDeleteNodeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	if response.Headers.WWWAuthenticate != nil {
+		w.Header().Set("WWW-Authenticate", fmt.Sprint(*response.Headers.WWWAuthenticate))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type RenameNodeRequestObject struct {
@@ -436,6 +548,53 @@ type RenameNodedefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response RenameNodedefaultApplicationProblemPlusJSONResponse) VisitRenameNodeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	if response.Headers.WWWAuthenticate != nil {
+		w.Header().Set("WWW-Authenticate", fmt.Sprint(*response.Headers.WWWAuthenticate))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MoveNodeRequestObject struct {
+	NodeID NodeID `json:"node_id"`
+	Body   *MoveNodeJSONRequestBody
+}
+
+type MoveNodeResponseObject interface {
+	VisitMoveNodeResponse(w http.ResponseWriter) error
+}
+
+type MoveNode200JSONResponse TreeNode
+
+func (response MoveNode200JSONResponse) VisitMoveNodeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MoveNodedefaultApplicationProblemPlusJSONResponse struct {
+	Body       externalRef0.Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response MoveNodedefaultApplicationProblemPlusJSONResponse) VisitMoveNodeResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -594,9 +753,15 @@ func (response GetPagedefaultApplicationProblemPlusJSONResponse) VisitGetPageRes
 
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
+	// DeleteNode Delete a page
+	// (DELETE /api/v0/nodes/{node_id})
+	DeleteNode(ctx context.Context, request DeleteNodeRequestObject) (DeleteNodeResponseObject, error)
 	// RenameNode Rename a page
 	// (PATCH /api/v0/nodes/{node_id})
 	RenameNode(ctx context.Context, request RenameNodeRequestObject) (RenameNodeResponseObject, error)
+	// MoveNode Move a page
+	// (POST /api/v0/nodes/{node_id}/move)
+	MoveNode(ctx context.Context, request MoveNodeRequestObject) (MoveNodeResponseObject, error)
 	// ListNodes List a notebook's tree
 	// (GET /api/v0/notebooks/{notebook_id}/nodes)
 	ListNodes(ctx context.Context, request ListNodesRequestObject) (ListNodesResponseObject, error)
@@ -647,6 +812,32 @@ type strictHandler struct {
 	options     StrictHTTPServerOptions
 }
 
+// DeleteNode operation middleware
+func (sh *strictHandler) DeleteNode(w http.ResponseWriter, r *http.Request, nodeID NodeID) {
+	var request DeleteNodeRequestObject
+
+	request.NodeID = nodeID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteNode(ctx, request.(DeleteNodeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteNode")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteNodeResponseObject); ok {
+		if err := validResponse.VisitDeleteNodeResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // RenameNode operation middleware
 func (sh *strictHandler) RenameNode(w http.ResponseWriter, r *http.Request, nodeID NodeID) {
 	var request RenameNodeRequestObject
@@ -673,6 +864,39 @@ func (sh *strictHandler) RenameNode(w http.ResponseWriter, r *http.Request, node
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(RenameNodeResponseObject); ok {
 		if err := validResponse.VisitRenameNodeResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// MoveNode operation middleware
+func (sh *strictHandler) MoveNode(w http.ResponseWriter, r *http.Request, nodeID NodeID) {
+	var request MoveNodeRequestObject
+
+	request.NodeID = nodeID
+
+	var body MoveNodeJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.MoveNode(ctx, request.(MoveNodeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "MoveNode")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(MoveNodeResponseObject); ok {
+		if err := validResponse.VisitMoveNodeResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

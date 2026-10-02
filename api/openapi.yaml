@@ -95,6 +95,8 @@ paths:
     $ref: "modules/page.yaml#/paths/~1api~1v0~1pages~1{page_id}"
   /api/v0/nodes/{node_id}:
     $ref: "modules/page.yaml#/paths/~1api~1v0~1nodes~1{node_id}"
+  /api/v0/nodes/{node_id}/move:
+    $ref: "modules/page.yaml#/paths/~1api~1v0~1nodes~1{node_id}~1move"
 components:
   # 模块文件的 securitySchemes 在打包时被丢掉，操作引用的 scheme 写在这里
   securitySchemes:

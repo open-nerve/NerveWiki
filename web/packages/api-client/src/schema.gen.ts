@@ -787,7 +787,11 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete a page
+         * @description Deletes the page with every page under it, at one time: they go to the trash together. Its notebook's editors and admins can, a reader cannot (forbidden). A page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found.
+         */
+        delete: operations["deleteNode"];
         options?: never;
         head?: never;
         /**
@@ -795,6 +799,29 @@ export interface paths {
          * @description Renames the page; its notebook's editors and admins can, a reader cannot (forbidden). A page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found; the name is checked after both: its rules are validation_failed, a name a sibling has, compared by its key, is page.title_taken. The page's own name writes nothing; one that differs from it in case alone is written.
          */
         patch: operations["renameNode"];
+        trace?: never;
+    };
+    "/api/v0/nodes/{node_id}/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The id of a node of a notebook's tree. */
+                node_id: components["parameters"]["NodeID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move a page
+         * @description Moves the page with every page under it: under another parent, to the notebook's root, or among its siblings. Its notebook's editors and admins can, a reader cannot (forbidden). A page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found; the destination is checked after both: a parent that is no page of the notebook and a page to follow that is no other child of the parent are validation_failed; then a parent that is the page itself or under it is page.cycle, a title a new sibling has, compared by its key, page.title_taken, and a page under it that would be deeper than ten levels page.too_deep. A move to where the page is writes nothing.
+         */
+        post: operations["moveNode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
 }
@@ -1289,6 +1316,19 @@ export interface components {
         NodeRename: {
             name: components["schemas"]["Title"];
         };
+        /** @description Where a page goes. */
+        NodeMove: {
+            /**
+             * Format: uuid
+             * @description The new parent page; null for the notebook's root.
+             */
+            parent_id: string | null;
+            /**
+             * Format: uuid
+             * @description The sibling the page goes right after; null puts it first, absent last.
+             */
+            after_id?: string | null;
+        };
     };
     responses: {
         /** @description Error (RFC 9457 problem details). */
@@ -1387,6 +1427,7 @@ export type PageCreate = components['schemas']['PageCreate'];
 export type Ancestor = components['schemas']['Ancestor'];
 export type Page = components['schemas']['Page'];
 export type NodeRename = components['schemas']['NodeRename'];
+export type NodeMove = components['schemas']['NodeMove'];
 export type ResponseProblem = components['responses']['Problem'];
 export type ParameterSlug = components['parameters']['Slug'];
 export type ParameterWorkspaceMemberId = components['parameters']['WorkspaceMemberID'];
@@ -2493,6 +2534,28 @@ export interface operations {
             default: components["responses"]["Problem"];
         };
     };
+    deleteNode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The id of a node of a notebook's tree. */
+                node_id: components["parameters"]["NodeID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The page and the pages under it are deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
     renameNode: {
         parameters: {
             query?: never;
@@ -2510,6 +2573,34 @@ export interface operations {
         };
         responses: {
             /** @description The page, renamed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TreeNode"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    moveNode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The id of a node of a notebook's tree. */
+                node_id: components["parameters"]["NodeID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NodeMove"];
+            };
+        };
+        responses: {
+            /** @description The page, moved. */
             200: {
                 headers: {
                     [name: string]: unknown;

@@ -37,12 +37,24 @@ type RenameNodeUseCase interface {
 	Execute(ctx context.Context, id uuid.UUID, name string, client domain.Client) (domain.Node, error)
 }
 
+// MoveNodeUseCase is app.MoveNode.
+type MoveNodeUseCase interface {
+	Execute(ctx context.Context, id uuid.UUID, to app.Destination, client domain.Client) (domain.Node, error)
+}
+
+// DeleteNodeUseCase is app.DeleteNode.
+type DeleteNodeUseCase interface {
+	Execute(ctx context.Context, id uuid.UUID, client domain.Client) error
+}
+
 // UseCases are the use cases behind the module's operations.
 type UseCases struct {
 	ListNodes  ListNodesUseCase
 	CreatePage CreatePageUseCase
 	GetPage    GetPageUseCase
 	RenameNode RenameNodeUseCase
+	MoveNode   MoveNodeUseCase
+	DeleteNode DeleteNodeUseCase
 }
 
 // Register mounts the module's routes on router, the root router from
@@ -118,6 +130,32 @@ func (h handler) RenameNode(ctx context.Context, req gen.RenameNodeRequestObject
 		return nil, err
 	}
 	return gen.RenameNode200JSONResponse(treeNodeOf(n)), nil
+}
+
+// MoveNode serves POST /api/v0/nodes/{node_id}/move.
+func (h handler) MoveNode(ctx context.Context, req gen.MoveNodeRequestObject) (gen.MoveNodeResponseObject, error) {
+	client, err := clientOf(ctx)
+	if err != nil {
+		return nil, err
+	}
+	to := app.Destination{ParentID: idOf(req.Body.ParentID), Position: positionOf(req.Body.AfterID)}
+	n, err := h.uc.MoveNode.Execute(ctx, req.NodeID, to, client)
+	if err != nil {
+		return nil, err
+	}
+	return gen.MoveNode200JSONResponse(treeNodeOf(n)), nil
+}
+
+// DeleteNode serves DELETE /api/v0/nodes/{node_id}.
+func (h handler) DeleteNode(ctx context.Context, req gen.DeleteNodeRequestObject) (gen.DeleteNodeResponseObject, error) {
+	client, err := clientOf(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := h.uc.DeleteNode.Execute(ctx, req.NodeID, client); err != nil {
+		return nil, err
+	}
+	return gen.DeleteNode204Response{}, nil
 }
 
 // clientOf is where the request came from: a personal access token's is

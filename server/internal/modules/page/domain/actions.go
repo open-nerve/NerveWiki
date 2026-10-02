@@ -10,9 +10,11 @@ const (
 	ActionRead   shared.Action = "page.read"
 	ActionCreate shared.Action = "page.create"
 	ActionRename shared.Action = "node.rename"
+	ActionMove   shared.Action = "node.move"
+	ActionDelete shared.Action = "node.delete"
 )
 
 // Actions lists the module's actions.
 func Actions() []shared.Action {
-	return []shared.Action{ActionList, ActionRead, ActionCreate, ActionRename}
+	return []shared.Action{ActionList, ActionRead, ActionCreate, ActionRename, ActionMove, ActionDelete}
 }
