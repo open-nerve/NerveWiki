@@ -49,6 +49,11 @@ func (c Config) validate() error {
 		// A request that runs into its deadline still has to write its error
 		// response before write_timeout cuts the connection.
 		fail("server.request_timeout", "must be less than server.write_timeout (%s), got %s", c.Server.WriteTimeout, c.Server.RequestTimeout)
+	case c.Server.ReadTimeout > 0 && c.Server.WriteTimeout > 0 && c.Server.ReadTimeout+c.Server.RequestTimeout >= c.Server.WriteTimeout:
+		// The routes of a page's content give their body read_timeout to
+		// arrive on top of the request's deadline (M4/P4 review P3).
+		fail("server.request_timeout", "plus server.read_timeout (%s) must be less than server.write_timeout (%s), got %s",
+			c.Server.ReadTimeout, c.Server.WriteTimeout, c.Server.RequestTimeout)
 	}
 	if c.Server.MaxBodyBytes < 1 {
 		fail("server.max_body_bytes", "must be at least 1, got %d", c.Server.MaxBodyBytes)
@@ -86,6 +91,15 @@ func (c Config) validate() error {
 		fail("auth.refresh_deadline", "must be at most server.request_timeout (%s), got %s", c.Server.RequestTimeout, c.Auth.RefreshDeadline)
 	}
 	c.RateLimit.validate(fail)
+	if c.Page.EditSessionCleanupInterval < time.Second {
+		fail("page.edit_session_cleanup_interval", "must be at least 1s, got %s", c.Page.EditSessionCleanupInterval)
+	}
+	if c.Page.ParseBudgetBytes < MinParseBudgetBytes {
+		fail("page.parse_budget_bytes", "must be at least %d, a page's largest content, got %d", MinParseBudgetBytes, c.Page.ParseBudgetBytes)
+	}
+	if c.Page.ParseMaxWait <= 0 {
+		fail("page.parse_max_wait", "must be positive, got %s", c.Page.ParseMaxWait)
+	}
 	if c.Jobs.ShutdownTimeout <= 0 {
 		fail("jobs.shutdown_timeout", "must be positive, got %s", c.Jobs.ShutdownTimeout)
 	}

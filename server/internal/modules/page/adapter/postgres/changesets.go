@@ -3,6 +3,8 @@ package postgresadapter
 import (
 	"context"
 	"fmt"
+	"time"
+	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/adapter/postgres/gen"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/app"
@@ -14,6 +16,14 @@ func (s *Store) CreateChangeset(ctx context.Context, c app.Changeset) error {
 		ID: c.ID, NotebookID: c.NotebookID, Kind: c.Kind, Client: string(c.Client), Message: c.Message, By: c.By, Now: c.At,
 	}); err != nil {
 		return fmt.Errorf("create changeset: %w", err)
+	}
+	return nil
+}
+
+// TouchChangeset implements app.ChangesetWriter.
+func (s *Store) TouchChangeset(ctx context.Context, id uuid.UUID, at time.Time) error {
+	if err := s.queries(ctx).TouchChangeset(ctx, gen.TouchChangesetParams{ID: id, Now: at}); err != nil {
+		return fmt.Errorf("touch changeset: %w", err)
 	}
 	return nil
 }

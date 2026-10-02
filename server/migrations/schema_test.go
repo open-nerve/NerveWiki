@@ -170,6 +170,14 @@ func TestConstraintAndIndexNames(t *testing.T) {
 		"changesets_notebook_id_idx i",
 		"changesets_pkey iu",
 		"changesets_pkey p",
+		"edit_sessions_client_check c",
+		"edit_sessions_expires_at_check c",
+		"edit_sessions_node_id_idx i",
+		"edit_sessions_notebook_id_idx i",
+		"edit_sessions_pkey iu",
+		"edit_sessions_pkey p",
+		"edit_sessions_user_id_fkey f a",
+		"edit_sessions_written_check c",
 		"nodes_created_by_id_fkey f a",
 		"nodes_deleted_at_idx iw",
 		"nodes_kind_check c",
@@ -318,6 +326,9 @@ func TestChecksRejectCounterexamples(t *testing.T) {
 			"('0199a2b4-0000-7000-8000-000000000013', '0199a2b4-0000-7000-8000-000000000012', '0199a2b4-0000-7000-8000-000000000010', 'a', 0, now(), now())",
 		"INSERT INTO page_revisions (id, changeset_id, node_id, revision, content, content_hash, byte_size, created_at, updated_at) VALUES " +
 			"('0199a2b4-0000-7000-8000-000000000014', '0199a2b4-0000-7000-8000-000000000012', '0199a2b4-0000-7000-8000-000000000010', 1, 'x', sha256('x'), 1, now(), now())",
+		"INSERT INTO edit_sessions (id, node_id, notebook_id, user_id, client, changeset_id, revision, created_at, expires_at) VALUES " +
+			"('0199a2b4-0000-7000-8000-000000000015', '0199a2b4-0000-7000-8000-000000000010', '0199a2b4-0000-7000-8000-000000000008', " +
+			user + ", 'mcp:claude-code', '0199a2b4-0000-7000-8000-000000000012', 1, now(), now() + interval '1 minute')",
 	} {
 		if _, err := pool.Exec(ctx, stmt); err != nil {
 			t.Fatalf("%s: %v", stmt, err)
@@ -405,6 +416,11 @@ func TestChecksRejectCounterexamples(t *testing.T) {
 		{"a version's hash of 31 bytes", "UPDATE page_revisions SET content_hash = substring(content_hash from 2)", "page_revisions_content_hash_check"},
 		{"a version's size other than its content's", "UPDATE page_revisions SET byte_size = 2", "page_revisions_byte_size_check"},
 		{"a version over 5 MB", "UPDATE page_revisions SET content = repeat('a', 5242881), byte_size = 5242881", "page_revisions_byte_size_check"},
+		{"a session's unknown client", "UPDATE edit_sessions SET client = 'mobile'", "edit_sessions_client_check"},
+		{"a session's changeset without its revision", "UPDATE edit_sessions SET revision = NULL", "edit_sessions_written_check"},
+		{"a session's revision without its changeset", "UPDATE edit_sessions SET changeset_id = NULL", "edit_sessions_written_check"},
+		{"a session's revision 0", "UPDATE edit_sessions SET revision = 0", "edit_sessions_written_check"},
+		{"a session expiring when opened", "UPDATE edit_sessions SET expires_at = created_at", "edit_sessions_expires_at_check"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

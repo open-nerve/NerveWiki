@@ -14,13 +14,15 @@ type NotebookDeleted = app.NotebookDeleted
 
 // NotebookDeletion is the module's registrant of the notebook module's
 // deletion (M4/P1 design 3.9): it deletes the notebooks' pages, what
-// follows them and the notebooks' changesets at the deletion's time.
+// follows them and the notebooks' changesets at the deletion's time, and
+// their edit sessions.
 type NotebookDeletion = app.NotebookDeletion
 
-// NewNotebookDeletion builds the registrant from the pool alone (v0.1
-// design 13.1, item 21): the command line's composition reaches it through
-// the workspace module's deletion. It runs in the deletion's transaction:
-// the store finds it in the context.
-func NewNotebookDeletion(pool *pgxpool.Pool) NotebookDeletion {
-	return app.NotebookDeletion{Pages: postgresadapter.New(pool)}
+// NewNotebookDeletion builds the registrant from the pool and the edit
+// sessions' subscribers alone (v0.1 design 13.1, item 21): the command
+// line's composition reaches it through the workspace module's deletion.
+// It runs in the deletion's transaction: the store finds it in the
+// context.
+func NewNotebookDeletion(pool *pgxpool.Pool, subscribers []EditSessionSubscriber) NotebookDeletion {
+	return app.NotebookDeletion{Pages: postgresadapter.New(pool), Subscribers: subscribers}
 }

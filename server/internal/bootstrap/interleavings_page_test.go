@@ -23,7 +23,9 @@ import (
 // changes; a page not deleted without exactly one content not deleted, or
 // whose content's revision is not its latest version's; a page deeper than
 // ten levels, or on a chain that loops; a deleted page with a content, a
-// version or an item not deleted, which would keep the purge from it.
+// version or an item not deleted, which would keep the purge from it; an
+// edit session of a page that is not one not deleted of its notebook
+// (M4/P4 design 3.2).
 func checkPages(t *testing.T, pool *pgxpool.Pool) {
 	t.Helper()
 	for what, query := range map[string]string{
@@ -44,6 +46,9 @@ func checkPages(t *testing.T, pool *pgxpool.Pool) {
 				UNION ALL
 				SELECT u.start, p.parent_id, u.depth + 1 FROM up u JOIN nodes p ON p.id = u.parent_id WHERE u.depth < 11
 			) SELECT count(DISTINCT start) FROM up WHERE parent_id IS NOT NULL AND depth >= 10`,
+		"with an edit session, deleted or in another notebook": `SELECT count(*) FROM edit_sessions s
+			WHERE NOT EXISTS (SELECT 1 FROM nodes n WHERE n.id = s.node_id AND n.notebook_id = s.notebook_id
+				AND n.kind = 'page' AND n.deleted_at IS NULL)`,
 	} {
 		if n := count(t, pool, query); n != 0 {
 			t.Errorf("%d pages %s, want none", n, what)

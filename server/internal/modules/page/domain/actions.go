@@ -12,9 +12,14 @@ const (
 	ActionRename shared.Action = "node.rename"
 	ActionMove   shared.Action = "node.move"
 	ActionDelete shared.Action = "node.delete"
+	// ActionWrite writes a page's content.
+	ActionWrite shared.Action = "page.write"
+	// ActionEdit opens an edit session of a page and keeps it alive; ending
+	// one needs only that it is the caller's.
+	ActionEdit shared.Action = "page.edit"
 )
 
 // Actions lists the module's actions.
 func Actions() []shared.Action {
-	return []shared.Action{ActionList, ActionRead, ActionCreate, ActionRename, ActionMove, ActionDelete}
+	return []shared.Action{ActionList, ActionRead, ActionCreate, ActionRename, ActionMove, ActionDelete, ActionWrite, ActionEdit}
 }

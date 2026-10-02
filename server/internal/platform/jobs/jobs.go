@@ -34,8 +34,9 @@ type Config struct {
 }
 
 const (
-	// maxWorkers is how many jobs run at once: the periodic ones, the
-	// session cleanup and the purge, each have one.
+	// maxWorkers is how many jobs run at once. The jobs are periodic and
+	// short: the sessions' cleanup, the edit sessions' and the purge; one
+	// that finds both taken waits for the next free.
 	maxWorkers = 2
 	// cancelGrace is how long Stop waits, once ShutdownTimeout has passed and
 	// the jobs' contexts are cancelled, for the jobs to return.

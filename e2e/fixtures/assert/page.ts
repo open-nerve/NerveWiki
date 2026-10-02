@@ -157,3 +157,57 @@ export async function expectSubtreeDeleted(
     { pages: ids.length, contents: ids.length, versions_apart: 0, items_apart: 0, deletions: ids.length },
   ]);
 }
+
+/**
+ * page_contents: the page written, as the API answered its write, holds content, its bytes' size and SHA-256 at the
+ * answer's revision, written by writerId at the answer's time.
+ */
+export async function expectContentWritten(
+  db: Database,
+  written: Page,
+  content: string,
+  writerId: string
+): Promise<void> {
+  const rows = await db.query(
+    `SELECT c.content = $2 AS content, c.revision, c.byte_size = octet_length(convert_to($2, 'UTF8')) AS sized,
+            c.content_hash = sha256(convert_to($2, 'UTF8')) AS hashed, c.updated_by_id = $3 AS by_writer,
+            c.updated_at = $4::timestamptz AS at_answer
+       FROM page_contents c WHERE c.node_id = $1 AND c.deleted_at IS NULL`,
+    [written.id, content, writerId, written.content_updated_at]
+  );
+  expect(rows).toEqual([
+    { content: true, revision: written.revision, sized: true, hashed: true, by_writer: true, at_answer: true },
+  ]);
+}
+
+/**
+ * edit_sessions, changesets, page_revisions: the edit session sessionId's writes to the page pageId are one changeset,
+ * the session's, which holds one version of the page, from base to revision with its content, and whose last write is
+ * the page content's.
+ */
+export async function expectOneSessionRevision(
+  db: Database,
+  sessionId: string,
+  pageId: string,
+  base: number,
+  revision: number
+): Promise<void> {
+  const rows = await db.query(
+    `SELECT s.revision AS session_revision,
+            (SELECT count(*)::int FROM page_revisions r WHERE r.changeset_id = s.changeset_id) AS versions,
+            (SELECT count(*)::int FROM page_revisions r WHERE r.changeset_id = s.changeset_id AND r.node_id = $2
+               AND r.base_revision = $3 AND r.revision = $4 AND r.content = c.content
+               AND r.content_hash = c.content_hash) AS the_version,
+            x.updated_at = c.updated_at AS last_write
+       FROM edit_sessions s JOIN changesets x ON x.id = s.changeset_id JOIN page_contents c ON c.node_id = s.node_id
+      WHERE s.id = $1 AND s.node_id = $2`,
+    [sessionId, pageId, base, revision]
+  );
+  expect(rows).toEqual([{ session_revision: revision, versions: 1, the_version: 1, last_write: true }]);
+}
+
+/** edit_sessions: the edit session id is gone. */
+export async function expectSessionGone(db: Database, id: string): Promise<void> {
+  const [row] = await db.query<{ n: number }>("SELECT count(*)::int AS n FROM edit_sessions WHERE id = $1", [id]);
+  expect(row?.n).toBe(0);
+}

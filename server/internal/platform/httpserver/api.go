@@ -48,6 +48,17 @@ type APIConfig struct {
 	// an answer sooner (M1/P2 design 3.5). Their expiry is a request
 	// deadline like any other.
 	RequestTimeouts map[string]time.Duration
+	// BodyLimits are the route patterns whose body may be larger than
+	// MaxBodyBytes, with their own limit: a page's content (M4/P4 design
+	// 3.8). The larger of the two holds, so that raising MaxBodyBytes never
+	// tightens them.
+	BodyLimits map[string]int64
+	// BodyReadTimeout is how long a route of BodyLimits gives its body to
+	// arrive, server.read_timeout, which the connection's read deadline
+	// enforces: its request deadline is that much longer than
+	// RequestTimeout, so that a slow upload does not eat its handler's time
+	// (M4/P4 review P3).
+	BodyReadTimeout time.Duration
 	TrustedProxies  []netip.Prefix // server.trusted_proxies
 	IPv6PrefixLen   int            // ratelimit.ipv6_prefix_len
 	// The platform's rate-limit buckets (M1/P2 design 3.2).
@@ -59,23 +70,26 @@ type APIConfig struct {
 // API is what the platform hands to every module's HTTP adapter: the error
 // mapping for the generated code, and the per-route middlewares.
 type API struct {
-	Errors         APIErrors
-	logger         *slog.Logger
-	authenticator  Authenticator
-	public         map[string]bool
-	maxBodyBytes   int64
-	requestTimeout time.Duration
-	timeouts       map[string]time.Duration
-	clients        *clientIPs
-	anonymous      Limiter
-	authenticated  Limiter
-	authFailure    Limiter
+	Errors          APIErrors
+	logger          *slog.Logger
+	authenticator   Authenticator
+	public          map[string]bool
+	maxBodyBytes    int64
+	bodyLimits      map[string]int64
+	bodyReadTimeout time.Duration
+	requestTimeout  time.Duration
+	timeouts        map[string]time.Duration
+	clients         *clientIPs
+	anonymous       Limiter
+	authenticated   Limiter
+	authFailure     Limiter
 }
 
 // NewAPI returns the API value for cfg. It needs a logger, an
 // authenticator, the three buckets, a body limit and a request timeout
 // above zero, route timeouts above zero and at most the request timeout,
-// and an IPv6 prefix length from 1 to 128.
+// route body limits above zero with a body read timeout above zero, and an
+// IPv6 prefix length from 1 to 128.
 func NewAPI(cfg APIConfig) (*API, error) {
 	var errs []error
 	for _, dep := range []struct {
@@ -106,6 +120,14 @@ func NewAPI(cfg APIConfig) (*API, error) {
 			errs = append(errs, fmt.Errorf("RequestTimeouts[%q] %v is outside (0, RequestTimeout %v]", route, d, cfg.RequestTimeout))
 		}
 	}
+	for _, route := range slices.Sorted(maps.Keys(cfg.BodyLimits)) {
+		if n := cfg.BodyLimits[route]; n <= 0 {
+			errs = append(errs, fmt.Errorf("BodyLimits[%q] %d must be positive", route, n))
+		}
+	}
+	if len(cfg.BodyLimits) > 0 && cfg.BodyReadTimeout <= 0 {
+		errs = append(errs, errors.New("BodyReadTimeout must be positive when BodyLimits relaxes a route"))
+	}
 	if len(errs) > 0 {
 		return nil, fmt.Errorf("httpserver: APIConfig: %w", errors.Join(errs...))
 	}
@@ -114,17 +136,19 @@ func NewAPI(cfg APIConfig) (*API, error) {
 		public[p] = true
 	}
 	return &API{
-		Errors:         NewAPIErrors(cfg.Logger),
-		logger:         cfg.Logger,
-		authenticator:  cfg.Authenticator,
-		public:         public,
-		maxBodyBytes:   cfg.MaxBodyBytes,
-		requestTimeout: cfg.RequestTimeout,
-		timeouts:       maps.Clone(cfg.RequestTimeouts),
-		clients:        &clientIPs{logger: cfg.Logger, trusted: cfg.TrustedProxies, v6Prefix: cfg.IPv6PrefixLen},
-		anonymous:      cfg.Anonymous,
-		authenticated:  cfg.Authenticated,
-		authFailure:    cfg.AuthFailure,
+		Errors:          NewAPIErrors(cfg.Logger),
+		logger:          cfg.Logger,
+		authenticator:   cfg.Authenticator,
+		public:          public,
+		maxBodyBytes:    cfg.MaxBodyBytes,
+		bodyLimits:      maps.Clone(cfg.BodyLimits),
+		bodyReadTimeout: cfg.BodyReadTimeout,
+		requestTimeout:  cfg.RequestTimeout,
+		timeouts:        maps.Clone(cfg.RequestTimeouts),
+		clients:         &clientIPs{logger: cfg.Logger, trusted: cfg.TrustedProxies, v6Prefix: cfg.IPv6PrefixLen},
+		anonymous:       cfg.Anonymous,
+		authenticated:   cfg.Authenticated,
+		authFailure:     cfg.AuthFailure,
 	}, nil
 }
 
@@ -184,12 +208,17 @@ func (a *API) requestMeta(next http.Handler) http.Handler {
 // deadline bounds the handler: server.write_timeout only fails the writes
 // and never cancels the request's context, so without it a handler's
 // database calls could outlive the response. A route of RequestTimeouts
-// gets its own, shorter deadline.
+// gets its own, shorter deadline; a route of BodyLimits gets
+// BodyReadTimeout more, the time its body may take to arrive, which the
+// deadline covers since the body is read behind it.
 func (a *API) deadline(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		timeout, ok := a.timeouts[r.Pattern]
 		if !ok {
 			timeout = a.requestTimeout
+			if _, large := a.bodyLimits[r.Pattern]; large {
+				timeout += a.bodyReadTimeout
+			}
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), timeout)
 		defer cancel()
@@ -197,11 +226,12 @@ func (a *API) deadline(next http.Handler) http.Handler {
 	})
 }
 
-// bodyLimit makes reading more than server.max_body_bytes fail with
-// *http.MaxBytesError, which APIErrors answers with 413.
+// bodyLimit makes reading more than server.max_body_bytes, or a route's
+// larger limit of BodyLimits, fail with *http.MaxBytesError, which
+// APIErrors answers with 413.
 func (a *API) bodyLimit(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		r.Body = http.MaxBytesReader(w, r.Body, a.maxBodyBytes)
+		r.Body = http.MaxBytesReader(w, r.Body, max(a.maxBodyBytes, a.bodyLimits[r.Pattern]))
 		next.ServeHTTP(w, r)
 	})
 }

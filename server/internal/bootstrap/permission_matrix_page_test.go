@@ -4,12 +4,15 @@ import (
 	"net/http"
 	"slices"
 	"testing"
+	"time"
 )
 
-// The page module's rows (M4/P1 design 3.12; M4/P2 design 3.6), by the notebook columns:
+// The page module's rows (M4/P1 design 3.12; M4/P2 design 3.6; M4/P4 design 3.9), by the notebook columns:
 // each aims at its notebook (notebookOf) and its page in it (pageOf). Any
 // role reads; the editors and admins write, the readers are refused; the
-// rest do not see the notebook.
+// rest do not see the notebook. The edit sessions' rows aim at the column's
+// own session of its page, or at someone else's: a heartbeat is decided on
+// the role the caller has now, an end only on whose the session is.
 
 // treeNodeAnswer is a TreeNode answer, as much as the rows check.
 type treeNodeAnswer struct {
@@ -24,6 +27,20 @@ type pageAnswer struct {
 	Ancestors []struct {
 		Name string `json:"name"`
 	} `json:"ancestors"`
+}
+
+// editSessionAnswer is an EditSession answer.
+type editSessionAnswer struct {
+	ID        string    `json:"id"`
+	PageID    string    `json:"page_id"`
+	ExpiresAt time.Time `json:"expires_at"`
+}
+
+// leased reports whether the session's lease runs a minute at most from
+// now: from the call, not from the seeded session's hour.
+func (e editSessionAnswer) leased() bool {
+	left := time.Until(e.ExpiresAt)
+	return left > 0 && left <= time.Minute
 }
 
 // ancestorNames are a page answer's ancestors' names.
@@ -46,6 +63,17 @@ func pageMatrixRows() []matrixRow {
 			if _, seen := roleIn(c); seen {
 				cells[c] = cellOK()
 			}
+		}
+		return cells
+	}
+	sessionNotFound := cell{http.StatusNotFound, "page.edit_session_not_found"}
+	sessions := func(c caller, s seeded, owner caller) string {
+		return "/api/v0/edit-sessions/" + s.session(pageOf(c), owner).String()
+	}
+	everyColumn := func(answer cell) map[caller]cell {
+		cells := map[caller]cell{}
+		for _, c := range notebookColumns() {
+			cells[c] = answer
 		}
 		return cells
 	}
@@ -102,6 +130,111 @@ func pageMatrixRows() []matrixRow {
 					t.Errorf("read %+v, want the seeded empty content at revision 1", v)
 				}
 			},
+		},
+		{
+			op:      "getPageContent",
+			columns: notebookColumns(),
+			request: func(c caller, s seeded) (string, string, string) {
+				return http.MethodGet, "/api/v0/pages/" + s.page(pageOf(c)).String() + "/content", ""
+			},
+			cells: readers(pageNotFound),
+			check: func(t *testing.T, _ caller, _ seeded, answer string) {
+				t.Helper()
+				var c struct {
+					Content  string `json:"content"`
+					Revision int    `json:"revision"`
+					Hash     string `json:"content_hash"`
+				}
+				decodeAnswer(t, answer, &c)
+				if c.Content != "" || c.Revision != 1 || c.Hash != "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" {
+					t.Errorf("read %+v, want the seeded empty content at revision 1, with its hash", c)
+				}
+			},
+		},
+		{
+			op:      "putPageContent",
+			columns: notebookColumns(),
+			write:   true,
+			request: func(c caller, s seeded) (string, string, string) {
+				return http.MethodPut, "/api/v0/pages/" + s.page(pageOf(c)).String() + "/content", `{"content":"# Written","base_revision":1}`
+			},
+			cells: editorsOnly(cellOK(), pageNotFound),
+			check: func(t *testing.T, c caller, _ seeded, answer string) {
+				t.Helper()
+				var p pageAnswer
+				decodeAnswer(t, answer, &p)
+				if p.Name != pageOf(c) || p.Revision != 2 {
+					t.Errorf("wrote %+v, want %s at revision 2", p, pageOf(c))
+				}
+			},
+		},
+		{
+			op:      "openEditSession",
+			columns: notebookColumns(),
+			write:   true,
+			request: func(c caller, s seeded) (string, string, string) {
+				return http.MethodPost, "/api/v0/pages/" + s.page(pageOf(c)).String() + "/edit-sessions", ""
+			},
+			cells: editorsOnly(cellCreated(), pageNotFound),
+			check: func(t *testing.T, c caller, s seeded, answer string) {
+				t.Helper()
+				var e editSessionAnswer
+				decodeAnswer(t, answer, &e)
+				if e.PageID != s.page(pageOf(c)).String() || e.ID == s.session(pageOf(c), c).String() || !e.leased() {
+					t.Errorf("opened %+v, want a new session of %s, its lease from now", e, pageOf(c))
+				}
+			},
+		},
+		{
+			op:      "heartbeatEditSession",
+			columns: notebookColumns(),
+			write:   true,
+			request: func(c caller, s seeded) (string, string, string) {
+				return http.MethodPost, sessions(c, s, c) + "/heartbeat", ""
+			},
+			// gone-nb-page's session was deleted with its notebook.
+			cells: editorsOnly(cellOK(), sessionNotFound),
+			check: func(t *testing.T, c caller, s seeded, answer string) {
+				t.Helper()
+				var e editSessionAnswer
+				decodeAnswer(t, answer, &e)
+				if e.ID != s.session(pageOf(c), c).String() || e.PageID != s.page(pageOf(c)).String() || !e.leased() {
+					t.Errorf("kept %+v, want its session of %s, its lease from now", e, pageOf(c))
+				}
+			},
+		},
+		{
+			op:      "heartbeatEditSession",
+			variant: "someone else's",
+			columns: notebookColumns(),
+			write:   true,
+			request: func(c caller, s seeded) (string, string, string) {
+				return http.MethodPost, sessions(c, s, someoneElse) + "/heartbeat", ""
+			},
+			cells: everyColumn(sessionNotFound),
+		},
+		{
+			op:      "endEditSession",
+			columns: notebookColumns(),
+			write:   true,
+			request: func(c caller, s seeded) (string, string, string) {
+				return http.MethodDelete, sessions(c, s, c), ""
+			},
+			cells: func() map[caller]cell {
+				cells := everyColumn(cell{status: http.StatusNoContent})
+				cells[callerNotebookDeleted] = sessionNotFound
+				return cells
+			}(),
+		},
+		{
+			op:      "endEditSession",
+			variant: "someone else's",
+			columns: notebookColumns(),
+			write:   true,
+			request: func(c caller, s seeded) (string, string, string) {
+				return http.MethodDelete, sessions(c, s, someoneElse), ""
+			},
+			cells: everyColumn(sessionNotFound),
 		},
 		{
 			op:      "createPage",

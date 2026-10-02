@@ -20,17 +20,21 @@ import (
 
 // WriterDeps are what the write unit needs.
 type WriterDeps struct {
-	Tx           Tx
-	Clock        Clock
-	Auth         shared.Authorizer
-	Workspaces   Workspaces
-	Notebooks    Notebooks
-	Nodes        Nodes
-	NodeWriter   NodeWriter
-	Changesets   ChangesetWriter
-	Guards       []WriteGuard
-	Participants []Participant
-	Observers    []PageObserver
+	Tx            Tx
+	Clock         Clock
+	Auth          shared.Authorizer
+	Workspaces    Workspaces
+	Notebooks     Notebooks
+	Nodes         Nodes
+	NodeWriter    NodeWriter
+	Changesets    ChangesetWriter
+	SessionWriter SessionWriter
+	Guards        []WriteGuard
+	Participants  []Participant
+	Observers     []PageObserver
+	// The edit sessions' vetoers of an opening, and subscribers of an end.
+	SessionVetoers     []EditSessionVetoer
+	SessionSubscribers []EditSessionSubscriber
 }
 
 // Writer runs write units.
@@ -69,6 +73,36 @@ type Outcome struct {
 	At          time.Time
 }
 
+// Allowed decides spec as Run does, unlocked: the same 404 and 403, for a
+// write to answer before it does work that only a writer should cause, as
+// parsing its content (M4/P4 review P1). Run decides again under its
+// locks.
+func (w *Writer) Allowed(ctx context.Context, spec UnitSpec) error {
+	actor, err := shared.RequireActor(ctx)
+	if err != nil {
+		return err
+	}
+	workspaceID, err := w.workspaceOf(ctx, spec)
+	if err != nil {
+		return err
+	}
+	_, err = authorize(ctx, w.d.Auth, actor, spec.Action, shared.Target{WorkspaceID: workspaceID, NotebookID: spec.NotebookID}, spec.NotFound)
+	return err
+}
+
+// workspaceOf is the workspace of spec's notebook, read unlocked; spec's
+// 404 when the notebook is not there.
+func (w *Writer) workspaceOf(ctx context.Context, spec UnitSpec) (uuid.UUID, error) {
+	workspaceID, ok, err := w.d.Notebooks.WorkspaceOf(ctx, spec.NotebookID)
+	switch {
+	case err != nil:
+		return uuid.UUID{}, err
+	case !ok:
+		return uuid.UUID{}, spec.NotFound
+	}
+	return workspaceID, nil
+}
+
 // Run runs do in a unit of spec: outside a transaction, the notebook's
 // workspace, unlocked; then, in the unit's transaction, the workspace's row
 // FOR SHARE, the notebook's, the decision, do, the observers. The clock is
@@ -85,12 +119,9 @@ func (w *Writer) Run(ctx context.Context, spec UnitSpec, do func(ctx context.Con
 	if err != nil {
 		return Outcome{}, err
 	}
-	workspaceID, ok, err := w.d.Notebooks.WorkspaceOf(ctx, spec.NotebookID)
-	switch {
-	case err != nil:
+	workspaceID, err := w.workspaceOf(ctx, spec)
+	if err != nil {
 		return Outcome{}, err
-	case !ok:
-		return Outcome{}, spec.NotFound
 	}
 	var u *Unit
 	err = w.d.Tx.WithinTx(ctx, func(ctx context.Context) error {
@@ -144,10 +175,8 @@ func (u *Unit) step(op domain.Operation, changes ...domain.Change) Step {
 // items in the changeset, and, unless a participant added it, the
 // participants.
 func (u *Unit) apply(ctx context.Context, s Step, participate bool, write func(ctx context.Context) error) error {
-	// A ctx without the unit's transaction would write on the pool, outside
-	// the unit and its locks.
-	if !u.w.d.Tx.InTx(ctx) {
-		return errors.New("a page write unit's operation runs on a context without the unit's transaction")
+	if err := u.inUnit(ctx); err != nil {
+		return err
 	}
 	for _, g := range u.w.d.Guards {
 		if err := g.GuardWrite(ctx, s); err != nil {
@@ -172,6 +201,15 @@ func (u *Unit) apply(ctx context.Context, s Step, participate bool, write func(c
 		if err := p.Participate(ctx, s, appender{u}); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// inUnit refuses a ctx without the unit's transaction: an operation would
+// write on the pool, outside the unit and its locks.
+func (u *Unit) inUnit(ctx context.Context) error {
+	if !u.w.d.Tx.InTx(ctx) {
+		return errors.New("a page write unit's operation runs on a context without the unit's transaction")
 	}
 	return nil
 }
@@ -215,6 +253,17 @@ func (u *Unit) content(nodeID uuid.UUID, text string, revision int) Content {
 	return Content{NodeID: nodeID, Content: text, Revision: revision, Hash: sum[:], ByteSize: len(text), By: u.write.By, At: u.write.At}
 }
 
+// changesetOf has the unit write in the changeset id, an edit session's,
+// rather than one of its own: an edit session's writes come first in
+// their unit.
+func (u *Unit) changesetOf(id uuid.UUID) error {
+	if u.changeset != (uuid.UUID{}) && u.changeset != id {
+		return errors.New("a page write unit writes in an edit session's changeset after it wrote in its own")
+	}
+	u.changeset = id
+	return nil
+}
+
 // recordRevision records c, a content the unit wrote on base (nil: the
 // unit created the page), as its changeset's version of the page.
 func (u *Unit) recordRevision(ctx context.Context, c Content, base *int) error {
@@ -247,4 +296,9 @@ type appender struct {
 
 func (a appender) Rename(ctx context.Context, nodeID uuid.UUID, name string) (domain.Node, error) {
 	return a.u.rename(ctx, nodeID, name, false)
+}
+
+func (a appender) WriteContent(ctx context.Context, w ContentWrite) (int, error) {
+	w.EditSession = uuid.UUID{}
+	return a.u.writeContent(ctx, w, false)
 }

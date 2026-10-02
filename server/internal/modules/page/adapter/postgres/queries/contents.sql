@@ -9,7 +9,24 @@ SELECT revision, byte_size, updated_by_id, updated_at FROM page_contents
 WHERE node_id = sqlc.arg(node_id) AND deleted_at IS NULL;
 
 -- name: PageContent :one
--- A page's content and its version, read in one statement for the reading
--- view: a deleted node's content went to the bin with it.
-SELECT content, revision FROM page_contents
+-- A page's content, its version and its hash, read in one statement: a deleted node's content went to the bin
+-- with it.
+SELECT content, revision, content_hash FROM page_contents
+WHERE node_id = sqlc.arg(node_id) AND deleted_at IS NULL;
+
+-- name: LockContent :one
+-- The content row of a page not deleted of the notebook, FOR NO KEY UPDATE: the page's gate (M4 design 4,
+-- "row locks within a page"). A content write compares its base_revision under it, and an edit session opens
+-- under it; the node's row is not locked: the notebook's row keeps the tree still.
+SELECT c.revision, c.content_hash, c.byte_size FROM page_contents c
+JOIN nodes n ON n.id = c.node_id
+WHERE c.node_id = sqlc.arg(node_id) AND n.notebook_id = sqlc.arg(notebook_id) AND n.kind = 'page'
+    AND n.deleted_at IS NULL AND c.deleted_at IS NULL
+FOR NO KEY UPDATE OF c;
+
+-- name: WriteContent :exec
+-- A page's content as a write leaves it, under LockContent's lock.
+UPDATE page_contents
+SET content = sqlc.arg(content), revision = sqlc.arg(revision), content_hash = sqlc.arg(content_hash),
+    byte_size = sqlc.arg(byte_size), updated_by_id = sqlc.arg(by), updated_at = sqlc.arg(now)
 WHERE node_id = sqlc.arg(node_id) AND deleted_at IS NULL;

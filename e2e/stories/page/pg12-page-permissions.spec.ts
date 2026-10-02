@@ -6,20 +6,27 @@ import { createNotebook } from "../../fixtures/notebooks";
 import {
   createPage,
   deleteNode,
+  endSession,
+  getContent,
   getPage,
   getTree,
+  heartbeat,
   moveNode,
+  openSession,
   postMove,
   postPage,
+  postSession,
+  putContent,
   renameNode,
+  writeContent,
 } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
 import { newTeam } from "../../fixtures/workspaces";
 
 // PG12, the pages' permissions (M4 design 5): creating, renaming, moving
-// and deleting; the content comes with M4/P4.
+// and deleting; the content and the edit sessions (M4/P4).
 
-test("PG12 (API): a member creates, renames, moves and deletes by the workspace access editor; a reader reads and cannot write; one who does not see the notebook gets 404", async ({
+test("PG12 (API): a member creates, renames, moves, deletes, writes the content and opens a session by the workspace access editor; a reader reads and cannot write; one who does not see the notebook gets 404; someone else's session is not found", async ({
   api,
   db,
 }, testInfo) => {
@@ -38,16 +45,21 @@ test("PG12 (API): a member creates, renames, moves and deletes by the workspace 
   const created = await postPage(api, memberPat, notebook.id, { parent_id: page.id, title: "Mine" });
   expect(created.response.status).toBe(201);
   expect((await renameNode(api, memberPat, page.id, "Shared")).response.status).toBe(200);
+  expect((await writeContent(api, memberPat, page.id, { content: "# Shared\n", base_revision: 1 })).revision).toBe(2);
+  const memberSession = await openSession(api, memberPat, page.id);
 
   // The guest reader reads, and cannot write.
   expect((await getPage(api, readerPat, page.id)).response.status).toBe(200);
   expect((await getTree(api, readerPat, notebook.id)).response.status).toBe(200);
+  expect((await getContent(api, readerPat, page.id)).data).toMatchObject({ content: "# Shared\n", revision: 2 });
   const readerCreate = await postPage(api, readerPat, notebook.id, { parent_id: null, title: "Reader's" });
   const readerWrites = [
     readerCreate,
     await renameNode(api, readerPat, page.id, "Reader's"),
     await postMove(api, readerPat, page.id, { parent_id: null, after_id: null }),
     await deleteNode(api, readerPat, page.id),
+    await putContent(api, readerPat, page.id, { content: "Reader's", base_revision: 2 }),
+    await postSession(api, readerPat, page.id),
   ];
   expect(readerWrites.map((a) => [a.response.status, a.error?.code])).toEqual(
     readerWrites.map(() => [403, "forbidden"])
@@ -60,19 +72,32 @@ test("PG12 (API): a member creates, renames, moves and deletes by the workspace 
   const strangerRename = await renameNode(api, strangerPat, page.id, "Stranger's");
   const strangerMove = await postMove(api, strangerPat, page.id, { parent_id: null });
   const strangerDelete = await deleteNode(api, strangerPat, page.id);
+  const strangerContent = [
+    await getContent(api, strangerPat, page.id),
+    await putContent(api, strangerPat, page.id, { content: "Stranger's", base_revision: 2 }),
+    await postSession(api, strangerPat, page.id),
+  ];
   expect(
-    [strangerCreate, strangerTree, strangerRead, strangerRename, strangerMove, strangerDelete].map((a) => [
-      a.response.status,
-      a.error?.code,
-    ])
+    [strangerCreate, strangerTree, strangerRead, strangerRename, strangerMove, strangerDelete, ...strangerContent].map(
+      (a) => [a.response.status, a.error?.code]
+    )
   ).toEqual([
     [404, "notebook.not_found"],
     [404, "notebook.not_found"],
-    [404, "page.not_found"],
-    [404, "page.not_found"],
-    [404, "page.not_found"],
-    [404, "page.not_found"],
+    ...Array.from({ length: 7 }, () => [404, "page.not_found"]),
   ]);
+
+  // Someone else's session is not found, for its notebook's admin too.
+  const othersSession = [
+    await heartbeat(api, adminPat, memberSession.id),
+    await endSession(api, adminPat, memberSession.id),
+    await heartbeat(api, readerPat, memberSession.id),
+    await endSession(api, strangerPat, memberSession.id),
+  ];
+  expect(othersSession.map((a) => [a.response.status, a.error?.code])).toEqual(
+    othersSession.map(() => [404, "page.edit_session_not_found"])
+  );
+  expect((await heartbeat(api, memberPat, memberSession.id)).response.status).toBe(200);
 
   // The member moves and deletes by the workspace access alone.
   const mine = created.data?.id ?? "";

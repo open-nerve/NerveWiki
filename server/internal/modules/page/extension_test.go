@@ -8,6 +8,8 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -107,6 +109,9 @@ type fixture struct {
 	alice            uuid.UUID
 	acme, eng, notes uuid.UUID
 	md               *markdown.Markdown
+	// The edit sessions' registrants serve wires.
+	vetoers     []page.EditSessionVetoer
+	subscribers []page.EditSessionSubscriber
 }
 
 func newFixture(t *testing.T) fixture {
@@ -162,6 +167,8 @@ func (f fixture) serve(t *testing.T, kind, method, path, body string, guards []p
 		Pool: f.pool, Tx: postgres.NewTxManager(f.pool, 5*time.Second), Clock: fixedClock{}, Logger: slog.New(slog.DiscardHandler),
 		Authorizer: aliceWrites{f.alice}, Workspaces: sqlWorkspaces{f.pool}, Notebooks: sqlNotebooks{f.pool},
 		Markdown: f.md, Guards: guards, Participants: participants, Observers: observers,
+		EditSessionVetoers: f.vetoers, EditSessionSubscribers: f.subscribers, EditSessionCleanupInterval: time.Hour,
+		ParseBudgetBytes: 8 << 20, ParseMaxWait: time.Second,
 	}).Register(router, httpservertest.NewAPI(t, httpservertest.APIOptions{Authenticator: tokenAuth{}}))
 	req := httptest.NewRequest(method, path, strings.NewReader(body))
 	req.Header.Set("Authorization", "Bearer "+kind+":"+f.alice.String())
@@ -346,17 +353,23 @@ func TestAUnitRefusesAnOuterTransaction(t *testing.T) {
 }
 
 // The registrant of the notebook module's deletion deletes the notebooks'
-// pages, what follows them and their changesets at the deletion's time.
+// pages, what follows them and their changesets at the deletion's time,
+// and their edit sessions: the subscribers follow the end of the one alive
+// then, not of the one expired.
 func TestANotebookDeletionDeletesItsPages(t *testing.T) {
 	f := newFixture(t)
 	if rec := f.serve(t, "session", http.MethodPost, f.createPath(), `{"parent_id":"`+f.notes.String()+`","title":"Child"}`,
 		nil, nil, nil); rec.Code != http.StatusCreated {
 		t.Fatalf("POST = %d %s, want 201", rec.Code, rec.Body)
 	}
-	at := testNow().Add(time.Minute)
+	alive := f.openSession(t)
+	expired := f.openSession(t)
+	f.exec(t, "UPDATE edit_sessions SET expires_at = created_at + interval '1 second' WHERE id = $1", expired)
+	sub := &subscriber{}
+	at := testNow().Add(30 * time.Second)
 	err := postgres.NewTxManager(f.pool, 5*time.Second).WithinTx(context.Background(), func(ctx context.Context) error {
-		return page.NewNotebookDeletion(f.pool).NotebookDeleted(ctx, page.NotebookDeleted{WorkspaceID: f.acme, NotebookIDs: []uuid.UUID{f.eng},
-			By: f.alice, At: at})
+		return page.NewNotebookDeletion(f.pool, []page.EditSessionSubscriber{sub}).NotebookDeleted(ctx,
+			page.NotebookDeleted{WorkspaceID: f.acme, NotebookIDs: []uuid.UUID{f.eng}, By: f.alice, At: at})
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -365,6 +378,98 @@ func TestANotebookDeletionDeletesItsPages(t *testing.T) {
 		if n := f.count(t, "SELECT count(*) FROM "+table+" WHERE deleted_at = $1", at); n != want {
 			t.Errorf("%d rows of %s deleted at the deletion's time, want %d", n, table, want)
 		}
+	}
+	if n := f.count(t, "SELECT count(*) FROM edit_sessions"); n != 0 {
+		t.Errorf("%d edit sessions left, want none", n)
+	}
+	want := []page.SessionEnded{{SessionID: alive, WorkspaceID: f.acme, NotebookID: f.eng, PageID: f.notes, UserID: f.alice, Reason: domain.EndedWithPage,
+		By: f.alice, At: at}}
+	if !reflect.DeepEqual(sub.ended, want) || !sub.inTx {
+		t.Errorf("the subscriber followed %+v in a transaction %v, want %+v", sub.ended, sub.inTx, want)
+	}
+}
+
+// openSession opens alice's edit session of Notes through the route.
+func (f fixture) openSession(t *testing.T) uuid.UUID {
+	t.Helper()
+	rec := f.serve(t, "session", http.MethodPost, "/api/v0/pages/"+f.notes.String()+"/edit-sessions", "", nil, nil, nil)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("POST an edit session = %d %s, want 201", rec.Code, rec.Body)
+	}
+	var s struct {
+		ID uuid.UUID `json:"id"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &s); err != nil {
+		t.Fatal(err)
+	}
+	return s.ID
+}
+
+// subscriber records the ends it follows, and whether in a transaction.
+type subscriber struct {
+	ended []page.SessionEnded
+	inTx  bool
+}
+
+func (s *subscriber) EditSessionEnded(ctx context.Context, e page.SessionEnded) error {
+	s.ended = append(s.ended, e)
+	s.inTx = postgres.InTx(ctx)
+	return nil
+}
+
+// vetoer records the openings it sees, and whether the page's gate is
+// held then, and refuses them with err.
+type vetoer struct {
+	f        fixture
+	err      error
+	openings []page.SessionOpening
+	gated    bool
+}
+
+func (v *vetoer) VetoEditSession(ctx context.Context, o page.SessionOpening) error {
+	v.openings = append(v.openings, o)
+	// The test's own transaction would wait for the opening's lock: NOWAIT
+	// fails at once instead.
+	_, err := v.f.pool.Exec(context.Background(), "SELECT 1 FROM page_contents WHERE node_id = $1 FOR NO KEY UPDATE NOWAIT", o.PageID)
+	v.gated = err != nil
+	return v.err
+}
+
+// The edit sessions' registrants reach their paths through page.New: a
+// vetoer sees an opening under the page's gate, and its refusal is the
+// answer, with no session; an end by its owner and a page's deletion tell
+// the subscribers, in their transaction, with the reason and who.
+func TestTheEditSessionsReachTheirRegistrants(t *testing.T) {
+	f := newFixture(t)
+	locked := shared.NewError(shared.KindConflict, "page.locked", "Someone else is editing this page.")
+	v := &vetoer{f: f, err: locked}
+	f.vetoers = []page.EditSessionVetoer{v}
+	rec := f.serve(t, "pat", http.MethodPost, "/api/v0/pages/"+f.notes.String()+"/edit-sessions", "", nil, nil, nil)
+	if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), `"code":"page.locked"`) || f.count(t, "SELECT count(*) FROM edit_sessions") != 0 {
+		t.Errorf("a vetoed opening = %d %s, want 409 page.locked and no session", rec.Code, rec.Body)
+	}
+	if len(v.openings) != 1 || v.openings[0].PageID != f.notes || v.openings[0].By != f.alice || v.openings[0].Client != domain.ClientAPI ||
+		!v.gated {
+		t.Errorf("the vetoer saw %+v, gated %v; want alice's opening of Notes by the API, under the page's gate", v.openings, v.gated)
+	}
+
+	v.err = nil
+	sub := &subscriber{}
+	f.subscribers = []page.EditSessionSubscriber{sub}
+	ended := f.openSession(t)
+	if rec := f.serve(t, "session", http.MethodDelete, "/api/v0/edit-sessions/"+ended.String(), "", nil, nil, nil); rec.Code != http.StatusNoContent {
+		t.Fatalf("DELETE the session = %d %s, want 204", rec.Code, rec.Body)
+	}
+	deleted := f.openSession(t)
+	if rec := f.serve(t, "session", http.MethodDelete, f.renamePath(), "", nil, nil, nil); rec.Code != http.StatusNoContent {
+		t.Fatalf("DELETE Notes = %d %s, want 204", rec.Code, rec.Body)
+	}
+	want := []page.SessionEnded{
+		{SessionID: ended, WorkspaceID: f.acme, NotebookID: f.eng, PageID: f.notes, UserID: f.alice, Reason: domain.EndedByOwner, By: f.alice, At: testNow()},
+		{SessionID: deleted, WorkspaceID: f.acme, NotebookID: f.eng, PageID: f.notes, UserID: f.alice, Reason: domain.EndedWithPage, By: f.alice, At: testNow()},
+	}
+	if !reflect.DeepEqual(sub.ended, want) || !sub.inTx || f.count(t, "SELECT count(*) FROM edit_sessions") != 0 {
+		t.Errorf("the subscriber followed %+v in a transaction %v, want %+v and no session left", sub.ended, sub.inTx, want)
 	}
 }
 
@@ -461,5 +566,70 @@ func TestAnExtensionReachesTheReadingView(t *testing.T) {
 	want := `<mark data-page="` + f.eng.String() + "/" + f.notes.String() + `:7"></mark><h1 id="nw-hello">Hello</h1>` + "\n"
 	if view.HTML != want || view.Revision != 2 {
 		t.Errorf("view = %+v, want %q at revision 2", view, want)
+	}
+}
+
+// A content's write and a page created with a content reach the unit
+// through page.New: the write is the page's next revision, its version on
+// its base in a changeset of the credentials' client; the guard and the
+// observers get its parse by the composition's Markdown, which the
+// registered extension took from the content.
+func TestTheContentsWritesReachTheUnit(t *testing.T) {
+	f := newFixture(t)
+	md, err := markdown.New([]markdown.Extension{pageMark()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.md = md
+	g, o := &guard{}, &observer{f: f}
+	marked := func(c domain.Change) any {
+		d, _ := c.Parsed.(*markdown.Document)
+		if d == nil {
+			return nil
+		}
+		return d.Extracted("page-mark")
+	}
+	written := f.serve(t, "pat", http.MethodPut, "/api/v0/pages/"+f.notes.String()+"/content", `{"content":"# Hello","base_revision":1}`,
+		[]page.WriteGuard{g}, nil, []page.PageObserver{o})
+	if written.Code != http.StatusOK || !strings.Contains(written.Body.String(), `"revision":2`) {
+		t.Fatalf("PUT = %d %s, want 200 at revision 2", written.Code, written.Body)
+	}
+	if n := f.count(t, `SELECT count(*) FROM page_contents c JOIN page_revisions r ON r.node_id = c.node_id JOIN changesets s ON s.id = r.changeset_id
+		WHERE c.node_id = $1 AND c.content = '# Hello' AND c.revision = 2 AND c.byte_size = 7 AND c.content_hash = sha256('# Hello')
+		AND c.updated_at = $2 AND r.base_revision = 1 AND r.revision = 2 AND s.client = 'api' AND s.created_at = $2`, f.notes, testNow()); n != 1 {
+		t.Error("the content is not Notes' revision 2, with its version on 1 in an api changeset of the unit's time")
+	}
+	if len(g.steps) != 1 || g.steps[0].Operation != domain.OpContent || !g.inTx || marked(g.steps[0].Changes[0]) != 7 ||
+		len(o.events) != 1 || marked(o.events[0].Changes[0]) != 7 {
+		t.Errorf("the guard saw %+v in a transaction %v, the observers %+v; want the write with its parse", g.steps, g.inTx, o.events)
+	}
+	created := f.serve(t, "session", http.MethodPost, f.createPath(), `{"parent_id":null,"title":"New","content":"abc"}`,
+		nil, nil, []page.PageObserver{o})
+	if created.Code != http.StatusCreated || !strings.Contains(created.Body.String(), `"byte_size":3`) {
+		t.Fatalf("POST = %d %s, want 201 with its 3 bytes", created.Code, created.Body)
+	}
+	if len(o.events) != 2 || marked(o.events[1].Changes[0]) != 3 {
+		t.Errorf("the observers followed %+v, want the creation with its parse", o.events)
+	}
+}
+
+// The module's larger bodies are its routes' (M4/P4 design 3.8): a key
+// that names no route it registers would relax nothing.
+func TestTheBodyLimitsAreTheModulesRoutes(t *testing.T) {
+	md, err := markdown.New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := page.New(page.Deps{Clock: fixedClock{}, Logger: slog.New(slog.DiscardHandler), Markdown: md, EditSessionCleanupInterval: time.Hour,
+		ParseBudgetBytes: 8 << 20, ParseMaxWait: time.Second})
+	router := httpserver.NewRouter(slog.New(slog.DiscardHandler))
+	m.Register(router, httpservertest.NewAPI(t, httpservertest.APIOptions{Authenticator: tokenAuth{}, BodyLimits: m.BodyLimits()}))
+	if len(m.BodyLimits()) == 0 {
+		t.Fatal("no route's body limit")
+	}
+	for route := range m.BodyLimits() {
+		if !slices.Contains(router.Patterns(), route) {
+			t.Errorf("the body limit of %q, which is no route of the module's %q", route, router.Patterns())
+		}
 	}
 }

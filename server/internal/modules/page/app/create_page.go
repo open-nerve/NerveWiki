@@ -13,23 +13,35 @@ import (
 type CreatePage struct {
 	writer *Writer
 	nodes  Nodes
+	parser *ContentParser
 	logger *slog.Logger
 }
 
 // NewCreatePage returns the use case.
-func NewCreatePage(writer *Writer, nodes Nodes, logger *slog.Logger) *CreatePage {
-	return &CreatePage{writer: writer, nodes: nodes, logger: logger}
+func NewCreatePage(writer *Writer, nodes Nodes, parser *ContentParser, logger *slog.Logger) *CreatePage {
+	return &CreatePage{writer: writer, nodes: nodes, parser: parser, logger: logger}
 }
 
 // Execute creates the page d in the notebook id, from client, in a unit
-// that changes the tree; it answers the page as the unit leaves it. A
-// notebook that does not exist, is deleted, or that the caller has no role
-// in is notebook.not_found; a reader gets forbidden; the values are
-// checked after both.
+// that changes the tree; it answers the page as the unit leaves it. Its
+// content is checked first: 422 on content. Then a notebook that does not
+// exist, is deleted, or that the caller has no role in is
+// notebook.not_found; a reader gets forbidden: decided before the content
+// is parsed, and again in the unit; the other values are checked after
+// both.
 func (c *CreatePage) Execute(ctx context.Context, id uuid.UUID, d PageDraft, client domain.Client) (PageView, error) {
-	var out PageView
+	if err := domain.CheckContent("content", d.Content); err != nil {
+		return PageView{}, err
+	}
 	spec := UnitSpec{NotebookID: id, Action: domain.ActionCreate, Tree: true, Client: client,
 		Options: Options{UpdateLinks: true}, NotFound: domain.ErrNotebookNotFound}
+	parse, release, err := c.parser.Parse(ctx, spec, d.Content)
+	if err != nil {
+		return PageView{}, err
+	}
+	defer release()
+	d.Parsed = parse
+	var out PageView
 	outcome, err := c.writer.Run(ctx, spec, func(ctx context.Context, u *Unit) error {
 		n, err := u.CreatePage(ctx, d)
 		if err != nil {

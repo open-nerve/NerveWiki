@@ -40,6 +40,9 @@ export const problemMessages = {
   "page.cycle": "problem.page.cycle",
   "page.title_taken": "problem.page.title_taken",
   "page.too_deep": "problem.page.too_deep",
+  "page.revision_mismatch": "problem.page.revision_mismatch",
+  "page.edit_session_ended": "problem.page.edit_session_ended",
+  "page.edit_session_not_found": "problem.page.edit_session_not_found",
 } as const satisfies Record<string, MessageKey>;
 
 /** The message of each field code; `field.<field>.<code>` says it better for one field. */

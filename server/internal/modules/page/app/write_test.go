@@ -15,7 +15,7 @@ import (
 
 // create runs createPage in eng as alice from the web.
 func (f *fixture) create(d app.PageDraft) (app.PageView, error) {
-	return app.NewCreatePage(f.writer(), f.store, f.logger()).Execute(f.asAlice(), f.eng, d, domain.ClientWeb)
+	return app.NewCreatePage(f.writer(), f.store, f.parser(), f.logger()).Execute(f.asAlice(), f.eng, d, domain.ClientWeb)
 }
 
 // rename runs renameNode as alice from the web.
@@ -47,12 +47,28 @@ func TestCreatePageLocksThenDecides(t *testing.T) {
 	if _, err := f.create(app.PageDraft{Title: "Notes"}); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"WorkspaceOf", "ShareWorkspace in tx", "LockNotebook in tx", "Authorize page.create in tx", "Children in tx"}
+	want := []string{"Parse", "WorkspaceOf", "ShareWorkspace in tx", "LockNotebook in tx", "Authorize page.create in tx", "Children in tx"}
 	if !slices.Equal(f.rec.calls[:len(want)], want) {
 		t.Errorf("calls = %v, want them to begin %v", f.rec.calls, want)
 	}
 	if f.auth.targets[0] != (shared.Target{WorkspaceID: f.acme, NotebookID: f.eng}) {
 		t.Errorf("decided on %+v, want acme's eng", f.auth.targets[0])
+	}
+}
+
+// A creation with a content decides unlocked, then parses it within the
+// budget, before its unit, which decides again; an empty content is
+// parsed at once, nothing taken.
+func TestCreatePageDecidesBeforeItParses(t *testing.T) {
+	f := newFixture()
+	f.grant(domain.ActionCreate)
+	if _, err := f.create(app.PageDraft{Title: "Notes", Content: "abc"}); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"WorkspaceOf", "Authorize page.create", "Take 3", "Parse", "WorkspaceOf", "ShareWorkspace in tx", "LockNotebook in tx",
+		"Authorize page.create in tx"}
+	if !slices.Equal(f.rec.calls[:len(want)], want) || f.rec.calls[len(f.rec.calls)-1] != "Release 3" {
+		t.Errorf("calls = %v, want them to begin %v and end with the release", f.rec.calls, want)
 	}
 }
 
@@ -158,7 +174,15 @@ func TestCreatePageAnswersItsCodesInOrder(t *testing.T) {
 		setup func(f *fixture) app.PageDraft
 		want  string
 	}{
-		{"an unknown notebook before all", func(f *fixture) app.PageDraft {
+		{"a content over 5 MB before all", func(f *fixture) app.PageDraft {
+			f.eng = uuid.NewV7()
+			return app.PageDraft{Title: "", Content: strings.Repeat("a", domain.MaxContentBytes+1)}
+		}, "validation_failed content"},
+		{"a content with a NUL before all", func(f *fixture) app.PageDraft {
+			f.eng = uuid.NewV7()
+			return app.PageDraft{Title: "", Content: "a\x00"}
+		}, "validation_failed content"},
+		{"an unknown notebook before the other values", func(f *fixture) app.PageDraft {
 			f.eng = uuid.NewV7()
 			return app.PageDraft{Title: ""}
 		}, "notebook.not_found"},
@@ -224,6 +248,11 @@ func TestCreatePageAnswersItsCodesInOrder(t *testing.T) {
 			f.guards = []app.WriteGuard{&guard{recorder: f.rec, err: refusal}}
 			return app.PageDraft{Title: "Notes"}
 		}, "page.locked"},
+		{"a title taken, with a content", func(f *fixture) app.PageDraft {
+			f.grant(domain.ActionCreate)
+			f.page("Notes", nil, 0)
+			return app.PageDraft{Title: "NOTES", Content: "# Notes"}
+		}, "page.title_taken"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			f := newFixture()
@@ -233,8 +262,9 @@ func TestCreatePageAnswersItsCodesInOrder(t *testing.T) {
 			if got := codeOf(err); got != tt.want {
 				t.Errorf("createPage = %q, want %q", got, tt.want)
 			}
-			if len(f.store.nodes) != before || f.logs.Len() != 0 {
-				t.Errorf("a refused createPage wrote %d nodes, logged %q; want neither", len(f.store.nodes)-before, f.logs)
+			if len(f.store.nodes) != before || f.logs.Len() != 0 || f.budget.held != 0 {
+				t.Errorf("a refused createPage wrote %d nodes, logged %q, held %d bytes of the budget; want none", len(f.store.nodes)-before,
+					f.logs, f.budget.held)
 			}
 		})
 	}

@@ -146,6 +146,42 @@ func TestTheSessionCleanupRunsAsConfigured(t *testing.T) {
 	}
 }
 
+// The edit sessions' cleanup runs when serve starts and then every
+// page.edit_session_cleanup_interval: with a second, a session that expires
+// after the first run is gone within a few seconds, while a live one stays.
+// A session's row has no foreign key to its page's: the test needs only an
+// account.
+func TestTheEditSessionCleanupRunsAsConfigured(t *testing.T) {
+	url := pgtest.NewDatabase(t)
+	cfg := testConfig(t, url, false)
+	cfg.Page.EditSessionCleanupInterval = time.Second
+	base := startApp(t, cfg, migrations.FS())
+	pool := connect(t, url)
+	registerAccount(t, apitest.Load(t), base, "alice@example.com")
+	const completed = "SELECT count(*) FROM river_job WHERE kind = 'page.cleanup_expired_edit_sessions' AND state = 'completed'"
+	for deadline := time.Now().Add(15 * time.Second); count(t, pool, completed) == 0; time.Sleep(50 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("no cleanup completed within 15s of the start")
+		}
+	}
+
+	if _, err := pool.Exec(context.Background(), `
+		INSERT INTO edit_sessions (id, node_id, notebook_id, user_id, client, created_at, expires_at)
+		SELECT gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), id, 'web', now() - interval '1 hour', now() + lease
+		FROM users, (VALUES (interval '-1 second'), (interval '1 hour')) AS l (lease)`); err != nil {
+		t.Fatal(err)
+	}
+	const expired = "SELECT count(*) FROM edit_sessions WHERE expires_at < now()"
+	for deadline := time.Now().Add(10 * time.Second); count(t, pool, expired) > 0; time.Sleep(50 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("the expired session is still there 10s later, want it deleted by a run every second")
+		}
+	}
+	if n := count(t, pool, "SELECT count(*) FROM edit_sessions"); n != 1 {
+		t.Errorf("%d sessions after the cleanup, want the live one", n)
+	}
+}
+
 // Stopping serve stops HTTP first: a request in flight finishes, and only
 // then do the jobs stop, which it might still need (M1/P4 design 3.4). A
 // sign-in waits on the account row that the test holds while serve is

@@ -12,6 +12,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver/apitest"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres/pgtest"
 	"github.com/open-nerve/NerveWiki/server/migrations"
@@ -45,9 +46,20 @@ type acmeTeam struct {
 // newAcmeTeam is acme with bob and carol of the roles given; "" is none.
 func newAcmeTeam(t *testing.T, bobRole, carolRole string) acmeTeam {
 	t.Helper()
+	return newAcmeTeamWith(t, bobRole, carolRole, nil)
+}
+
+// newAcmeTeamWith is newAcmeTeam on an app whose configuration change
+// alters, when it is not nil.
+func newAcmeTeamWith(t *testing.T, bobRole, carolRole string, change func(*config.Config)) acmeTeam {
+	t.Helper()
 	url := pgtest.NewDatabase(t)
+	cfg := testConfig(t, url, false)
+	if change != nil {
+		change(&cfg)
+	}
 	tm := acmeTeam{
-		url: url, base: startApp(t, testConfig(t, url, false), migrations.FS()), pool: connect(t, url), contract: apitest.Load(t),
+		url: url, base: startApp(t, cfg, migrations.FS()), pool: connect(t, url), contract: apitest.Load(t),
 		tokens: map[string]string{}, members: map[string]uuid.UUID{},
 	}
 	for _, name := range []string{"alice", "bob", "carol", "dana"} {
@@ -121,6 +133,14 @@ func (tm acmeTeam) interleave(t *testing.T, first, second step) (answer, answer)
 // answers, a request's checked against the contract.
 func (tm acmeTeam) interleaveOn(t *testing.T, h held, first, second step) (answer, answer) {
 	t.Helper()
+	return tm.interleaveBehind(t, h, first, second, h.table)
+}
+
+// interleaveBehind is interleaveOn where second waits for a row of the
+// table secondOn rather than for h's: a row first holds while it waits for
+// h's.
+func (tm acmeTeam) interleaveBehind(t *testing.T, h held, first, second step, secondOn string) (answer, answer) {
+	t.Helper()
 	ctx := context.Background()
 	holder, err := tm.pool.Begin(ctx)
 	if err != nil {
@@ -136,7 +156,11 @@ func (tm acmeTeam) interleaveOn(t *testing.T, h held, first, second step) (answe
 		send := tm.sender(t, c)
 		answers[i] = make(chan answer, 1)
 		go func() { answers[i] <- send() }()
-		pgtest.WaitForLockWaitsOn(t, tm.pool, h.table, i+1, interleavingWait)
+		table, waiting := h.table, i+1
+		if i == 1 && secondOn != h.table {
+			table, waiting = secondOn, 1
+		}
+		pgtest.WaitForLockWaitsOn(t, tm.pool, table, waiting, interleavingWait)
 	}
 	if err := holder.Commit(ctx); err != nil {
 		t.Fatal(err)

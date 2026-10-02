@@ -123,3 +123,19 @@ func (q *Queries) RecordRevision(ctx context.Context, arg RecordRevisionParams) 
 	)
 	return err
 }
+
+const touchChangeset = `-- name: TouchChangeset :exec
+UPDATE changesets SET updated_at = $1 WHERE id = $2
+`
+
+type TouchChangesetParams struct {
+	Now time.Time
+	ID  uuid.UUID
+}
+
+// An edit session's changeset, written again: its updated_at is its last write's time, which the notebook's
+// activity reads.
+func (q *Queries) TouchChangeset(ctx context.Context, arg TouchChangesetParams) error {
+	_, err := q.db.Exec(ctx, touchChangeset, arg.Now, arg.ID)
+	return err
+}

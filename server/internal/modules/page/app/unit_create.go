@@ -10,14 +10,18 @@ import (
 // Creating a page in a unit (M4/P1 design 3.6).
 
 // PageDraft is a new page: under ParentID (nil: at the notebook's root),
-// with Title, at Position among its siblings.
+// with Title, at Position among its siblings, holding Content. A unit
+// takes Content checked, and Parsed its parse, both before its
+// transaction.
 type PageDraft struct {
 	ParentID *uuid.UUID
 	Title    string
 	Position Position
+	Content  string
+	Parsed   Parsed
 }
 
-// CreatePage creates the page d with an empty content. 422 for a title
+// CreatePage creates the page d at revision 1 of its content. 422 for a title
 // that breaks the rules, a parent that is no page of the notebook, or a
 // sibling to follow that is no child of the parent; then 409 for a title a
 // sibling holds, or a page deeper than domain.MaxDepth.
@@ -50,8 +54,8 @@ func (u *Unit) CreatePage(ctx context.Context, d PageDraft) (domain.Node, error)
 		NameKey: title.Key, SortOrder: order, CreatedBy: u.write.By, UpdatedBy: u.write.By, CreatedAt: u.write.At, UpdatedAt: u.write.At,
 	}
 	state := n.State()
-	content := u.content(n.ID, "", 1)
-	step := u.step(domain.OpCreate, domain.Change{NodeID: n.ID, After: &state, Revision: content.Revision})
+	content := u.content(n.ID, d.Content, 1)
+	step := u.step(domain.OpCreate, domain.Change{NodeID: n.ID, After: &state, Revision: content.Revision, Parsed: d.Parsed})
 	err = u.apply(ctx, step, true, func(ctx context.Context) error {
 		if err := renumber(ctx); err != nil {
 			return err

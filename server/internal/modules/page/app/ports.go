@@ -61,10 +61,19 @@ type Content struct {
 	At       time.Time
 }
 
-// PageContent is a page's content and its version.
+// PageContent is a page's content, its version and its SHA-256.
 type PageContent struct {
 	Content  string
 	Revision int
+	Hash     []byte
+}
+
+// ContentLock is a page's content as its gate holds it: its version, and
+// its hash and size, which tell whether a write would change it.
+type ContentLock struct {
+	Revision int
+	Hash     []byte
+	ByteSize int
 }
 
 // ContentMeta is what a page tells of its content besides the content.
@@ -129,6 +138,10 @@ type Nodes interface {
 	// statement; ErrNotFound when the content is deleted, as it is with its
 	// node.
 	PageContent(ctx context.Context, id uuid.UUID) (PageContent, error)
+	// LockContent locks the content row of the page id not deleted of the
+	// notebook FOR NO KEY UPDATE: the page's gate (M4 design 4). The node's
+	// row is not locked. ErrNotFound for no such page.
+	LockContent(ctx context.Context, notebookID, id uuid.UUID) (ContentLock, error)
 }
 
 // NodeWriter writes nodes in the write unit's transaction. A name its
@@ -136,6 +149,8 @@ type Nodes interface {
 type NodeWriter interface {
 	CreateNode(ctx context.Context, n domain.Node) error
 	CreateContent(ctx context.Context, c Content) error
+	// WriteContent writes a page's content, under LockContent's lock.
+	WriteContent(ctx context.Context, c Content) error
 	RenameNode(ctx context.Context, n domain.Node) error
 	// MoveNode puts n under its ParentID at its SortOrder.
 	MoveNode(ctx context.Context, n domain.Node) error
@@ -148,6 +163,9 @@ type NodeWriter interface {
 // ChangesetWriter records a write's changeset, its items and its versions.
 type ChangesetWriter interface {
 	CreateChangeset(ctx context.Context, c Changeset) error
+	// TouchChangeset moves the changeset id's updated_at to at: an edit
+	// session wrote in it again.
+	TouchChangeset(ctx context.Context, id uuid.UUID, at time.Time) error
 	// RecordItem inserts the item, or moves the after of the node's item in
 	// the changeset on, keeping its before. An item that deletes its node
 	// is deleted with it, at its time.
@@ -157,9 +175,73 @@ type ChangesetWriter interface {
 	RecordRevision(ctx context.Context, r Revision) error
 }
 
-// NotebookPages deletes the pages of deleted notebooks.
+// NotebookPages deletes the pages of deleted notebooks, and their edit
+// sessions.
 type NotebookPages interface {
 	DeleteNotebooksPages(ctx context.Context, ids []uuid.UUID, by uuid.UUID, at time.Time) error
+	// DeleteNotebookSessions deletes the notebooks' edit sessions and
+	// returns them.
+	DeleteNotebookSessions(ctx context.Context, ids []uuid.UUID) ([]EditSession, error)
+}
+
+// EditSession is an edit session (M4 design 4): who edits which page from
+// where, the changeset its writes go to and the revision it last wrote
+// (zero both before its first write), and its lease.
+type EditSession struct {
+	ID          uuid.UUID
+	NodeID      uuid.UUID
+	NotebookID  uuid.UUID
+	UserID      uuid.UUID
+	Client      domain.Client
+	ChangesetID uuid.UUID
+	Revision    int
+	CreatedAt   time.Time
+	ExpiresAt   time.Time
+}
+
+// Alive reports whether the session's lease lasts past now.
+func (s EditSession) Alive(now time.Time) bool {
+	return s.ExpiresAt.After(now)
+}
+
+// SessionWriter is what a write unit does to edit sessions, under its
+// page's content row's lock. ErrNotFound for no such session.
+type SessionWriter interface {
+	CreateSession(ctx context.Context, s EditSession) error
+	// LockSession locks the session id FOR UPDATE.
+	LockSession(ctx context.Context, id uuid.UUID) (EditSession, error)
+	// SetSessionWrite records that the session's write went to the
+	// changeset and wrote revision.
+	SetSessionWrite(ctx context.Context, id, changesetID uuid.UUID, revision int) error
+	// DeleteNodeSessions deletes the sessions of the pages ids and returns
+	// them.
+	DeleteNodeSessions(ctx context.Context, ids []uuid.UUID) ([]EditSession, error)
+}
+
+// Sessions is what a heartbeat and an end do: each one statement on the
+// caller's own session alive at now, outside the write units' lock order.
+// ErrNotFound for none: missing, expired, or someone else's.
+type Sessions interface {
+	// FindLiveSession reads the session, unlocked.
+	FindLiveSession(ctx context.Context, id, userID uuid.UUID, now time.Time) (EditSession, error)
+	// HeartbeatSession keeps the session until until.
+	HeartbeatSession(ctx context.Context, id, userID uuid.UUID, now, until time.Time) (EditSession, error)
+	// EndSession deletes the session and returns it.
+	EndSession(ctx context.Context, id, userID uuid.UUID, now time.Time) (EditSession, error)
+}
+
+// ExpiredSessions deletes the sessions expired at now, at most batch, and
+// skips the rows another transaction holds; it returns how many it deleted.
+type ExpiredSessions interface {
+	DeleteExpiredSessions(ctx context.Context, now time.Time, batch int) (int, error)
+}
+
+// ParseBudget bounds the content parsed and rendered at once (M4/P4
+// review P2): the largest content's parse can hold some 300 times its size
+// in memory. Take holds n bytes of it until release; it waits a while for
+// them, then answers shared.ServerBusy.
+type ParseBudget interface {
+	Take(ctx context.Context, n int) (release func(), err error)
 }
 
 // Markdown parses and renders a page's content (M4/P3 design 3.9):

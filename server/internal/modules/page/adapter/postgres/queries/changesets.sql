@@ -3,6 +3,11 @@ INSERT INTO changesets (id, notebook_id, kind, client, message, created_by_id, c
 VALUES (sqlc.arg(id), sqlc.arg(notebook_id), sqlc.arg(kind), sqlc.arg(client), sqlc.narg(message), sqlc.arg(by),
     sqlc.arg(now), sqlc.arg(now));
 
+-- name: TouchChangeset :exec
+-- An edit session's changeset, written again: its updated_at is its last write's time, which the notebook's
+-- activity reads.
+UPDATE changesets SET updated_at = sqlc.arg(now) WHERE id = sqlc.arg(id);
+
 -- name: RecordItem :exec
 -- A node's change in a changeset: the first one inserts its before and after, a later one moves the after
 -- on and keeps the before (M4 design 4). An item that deletes its node goes to the trash with it.

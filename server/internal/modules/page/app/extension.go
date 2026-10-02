@@ -8,10 +8,10 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
 )
 
-// The module's extension points (M4 design 8; M4/P1 design 3.6), and its
-// registrant of the notebook module's deletion. M4 has no registrant of its
-// own points: bootstrap hands empty sets, and the module root's test proves
-// they reach every write.
+// The module's extension points (M4 design 8; M4/P1 design 3.6; M4/P4
+// design 3.7), and its registrant of the notebook module's deletion. M4 has
+// no registrant of its own points: bootstrap hands empty sets, and the
+// module root's test proves they reach every write.
 
 // Options are a write's options. UpdateLinks has M6 rewrite the links to a
 // renamed or moved page; every write of M4 sets it.
@@ -31,12 +31,15 @@ type Write struct {
 }
 
 // Step is one operation of a unit: its kind, and each node it changes,
-// where the node was and where it is after. A guard gets it before the
-// write, a participant after.
+// where the node was and where it is after, with the content it wrote and
+// its parse. A guard gets it before the write, a participant after.
 type Step struct {
 	Write
 	Operation domain.Operation
 	Changes   []domain.Change
+	// EditSessionID is the edit session a content write is made in (M5:
+	// the edit lock is the session's); zero for any other write.
+	EditSessionID uuid.UUID
 }
 
 // WriteGuard may refuse an operation (M5: the edit lock; M10: a schema's
@@ -57,10 +60,14 @@ type Participant interface {
 	Participate(ctx context.Context, s Step, u Appender) error
 }
 
-// Appender is how a participant adds an operation to the unit it follows.
-// M4/P4 adds the content's write, which M6 appends.
+// Appender is how a participant adds an operation to the unit it follows:
+// M6 rewrites the content of the pages that link to a renamed one.
 type Appender interface {
 	Rename(ctx context.Context, nodeID uuid.UUID, name string) (domain.Node, error)
+	// WriteContent writes a page's content as Unit.WriteContent does, in no
+	// edit session: the participant parsed it, and read it at w.Base in
+	// the unit's transaction.
+	WriteContent(ctx context.Context, w ContentWrite) (int, error)
 }
 
 // Event is a unit's changes, merged by node, the earliest before and the
@@ -79,6 +86,46 @@ type PageObserver interface {
 	PagesChanged(ctx context.Context, e Event) error
 }
 
+// SessionOpening is an edit session about to open, as its vetoers see it:
+// the unit's write and the page.
+type SessionOpening struct {
+	Write
+	PageID uuid.UUID
+}
+
+// EditSessionVetoer may refuse an edit session's opening (M5: someone
+// else's alive session of the page, page.locked; M11: a freeze). It runs in
+// the opening's unit after the decision, under the page's gate, the content
+// row's lock, so that two openings of a page decide one after the other;
+// its error, a *shared.Error the opening declares, rolls the unit back and
+// is answered as it is.
+type EditSessionVetoer interface {
+	VetoEditSession(ctx context.Context, o SessionOpening) error
+}
+
+// SessionEnded is an edit session's end: the session, where its page is,
+// its page and owner, why, by whom and when. Its owner ends it, or whoever
+// deletes its page, alone, with a subtree or with its notebook; M5 adds
+// the forced unlock.
+type SessionEnded struct {
+	SessionID   uuid.UUID
+	WorkspaceID uuid.UUID
+	NotebookID  uuid.UUID
+	PageID      uuid.UUID
+	UserID      uuid.UUID
+	Reason      domain.EndReason
+	By          uuid.UUID
+	At          time.Time
+}
+
+// EditSessionSubscriber follows the ends of the edit sessions alive when
+// they end (M5: the lock's change pushed), in the end's transaction; an
+// error rolls it back. A session that expired ended with its lease: no end
+// tells it, and the cleanup of the expired ones tells no one.
+type EditSessionSubscriber interface {
+	EditSessionEnded(ctx context.Context, e SessionEnded) error
+}
+
 // NotebookDeleted is notebooks being deleted, field by field as the
 // notebook module's deletion tells it: bootstrap converts
 // notebook.NotebookDeletion.
@@ -91,14 +138,23 @@ type NotebookDeleted struct {
 
 // NotebookDeletion is the module's registrant of the notebook module's
 // deletion (M4/P1 design 3.9): the notebooks' pages not deleted, what
-// follows them and the notebooks' changesets, at the deletion's time. It
-// runs in the deletion's transaction, which holds the notebooks' rows FOR
-// NO KEY UPDATE: no page write of them runs beside it.
+// follows them and the notebooks' changesets, at the deletion's time, and
+// their edit sessions, whose subscribers follow the alive ones' end (M4/P4
+// design 3.7). It runs in the deletion's transaction, which holds the
+// notebooks' rows FOR NO KEY UPDATE: no page write of them runs beside it.
 type NotebookDeletion struct {
-	Pages NotebookPages
+	Pages       NotebookPages
+	Subscribers []EditSessionSubscriber
 }
 
 // NotebookDeleted follows the deletion d.
 func (n NotebookDeletion) NotebookDeleted(ctx context.Context, d NotebookDeleted) error {
-	return n.Pages.DeleteNotebooksPages(ctx, d.NotebookIDs, d.By, d.At)
+	if err := n.Pages.DeleteNotebooksPages(ctx, d.NotebookIDs, d.By, d.At); err != nil {
+		return err
+	}
+	sessions, err := n.Pages.DeleteNotebookSessions(ctx, d.NotebookIDs)
+	if err != nil {
+		return err
+	}
+	return tellEnded(ctx, n.Subscribers, d.WorkspaceID, sessions, domain.EndedWithPage, d.By, d.At)
 }

@@ -51,6 +51,10 @@ ratelimit:
   login_ip_email: {per_minute: 10, burst: 5}
   register_ip: {per_minute: 10, burst: 5}
   password_user: {per_minute: 5, burst: 5}
+page:
+  edit_session_cleanup_interval: 10m
+  parse_budget_bytes: 8388608
+  parse_max_wait: 2s
 jobs:
   shutdown_timeout: 10s
   purge_interval: 1h
@@ -138,6 +142,7 @@ func TestLoadAppliesLayersInOrder(t *testing.T) {
 			RegisterIP:    BucketConfig{PerMinute: 10, Burst: 5},
 			PasswordUser:  BucketConfig{PerMinute: 5, Burst: 5},
 		},
+		Page: PageConfig{EditSessionCleanupInterval: 10 * time.Minute, ParseBudgetBytes: 8 << 20, ParseMaxWait: 2 * time.Second},
 		Jobs: JobsConfig{ShutdownTimeout: 10 * time.Second, PurgeInterval: time.Hour, PurgeRetention: 1440 * time.Hour},
 		Log:  LogConfig{Level: "debug", Format: "text"},
 	}
