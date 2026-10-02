@@ -17,7 +17,7 @@ import {
   notebookPath,
   removeNotebookMemberWith,
 } from "../../fixtures/notebook-pages";
-import { createNotebook, getNotebook } from "../../fixtures/notebooks";
+import { createNotebook, getNotebook, listNotebooks } from "../../fixtures/notebooks";
 import { expect, test } from "../../fixtures/test";
 import { newTeam } from "../../fixtures/workspaces";
 
@@ -54,6 +54,9 @@ test("N4 (API): the admin adds, changes and removes members; a role is the highe
   expect(guestMembership).toMatchObject({ user_id: guestId, role: "reader", display_name: guestEmail.split("@")[0] });
   const roles = await Promise.all([matePat, guestPat].map((pat) => getNotebook(api, pat, notebook.id)));
   expect(roles.map((r) => r.data?.role)).toEqual(["editor", "reader"]);
+  // The workspace's list gives each the role the read does (M3 Codex review R5).
+  const listed = await Promise.all([matePat, guestPat].map((pat) => listNotebooks(api, pat, workspace.slug)));
+  expect(listed.map((list) => list.find((n) => n.id === notebook.id)?.role)).toEqual(["editor", "reader"]);
   await expectNotebookMember(db, notebook.id, mateId, { role: "reader", active: true, writerId: ownerId });
   const members = await listNotebookMembers(api, ownerPat, notebook.id);
   expect(members.map((m) => [m.user_id, m.role])).toEqual([

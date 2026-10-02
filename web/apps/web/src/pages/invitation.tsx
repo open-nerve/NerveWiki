@@ -7,6 +7,7 @@ import { arrived } from "../app/arrival";
 import { useForm } from "../app/form";
 import { useSession } from "../app/guards";
 import { linkOf } from "../app/invitation-link";
+import { useMounted } from "../app/mounted";
 import { NotLoaded } from "../app/not-loaded";
 import { SessionUnavailable } from "../app/session-unavailable";
 import { Loading } from "../components/loading";
@@ -129,6 +130,7 @@ const Accept = observer(function Accept({ link }: { link: InvitationLink }) {
   const workspaces = useWorkspaces();
   const t = useT();
   const navigate = useNavigate();
+  const mounted = useMounted();
   if (account === undefined) {
     throw new Error("Accept is shown signed out");
   }
@@ -139,8 +141,11 @@ const Accept = observer(function Accept({ link }: { link: InvitationLink }) {
     event.preventDefault();
     void submit({}, async () => {
       const joined = await workspaces.accept(link);
-      // The used link is not a page to come back to; the workspace's heading takes the focus.
-      void navigate(`/${joined.slug}`, { replace: true, state: arrived });
+      // The used link is not a page to come back to; the workspace's heading takes the focus. One who left the
+      // page meanwhile is not taken back: the switcher lists the workspace.
+      if (mounted()) {
+        void navigate(`/${joined.slug}`, { replace: true, state: arrived });
+      }
     });
   }
 

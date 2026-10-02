@@ -1,5 +1,6 @@
 import { makeAutoObservable, runInAction } from "mobx";
 
+import { oneAtATimeById } from "../lib/one-at-a-time";
 import { ApiError } from "../services/api";
 import type { InvitationLink } from "../services/invitation.service";
 import type { SlugAvailability, Workspace, WorkspaceCreate, WorkspaceService } from "../services/workspace.service";
@@ -16,6 +17,13 @@ export class WorkspaceStore {
   private changesAnswered = 0;
   /** The slugs of the workspaces this generation deleted or left: their pages go to the landing, not to the 404. */
   private readonly removed = new Set<string>();
+  /**
+   * Each workspace's renames, deletion and leaving, one at a time (v0.1
+   * design 13.2, item 1): the store outlives the general page, whose form,
+   * mounted anew, may send while the rename before is out (M3 Codex review
+   * R1).
+   */
+  private readonly inTurn = oneAtATimeById();
 
   constructor(
     private readonly service: Pick<
@@ -23,10 +31,11 @@ export class WorkspaceStore {
       "list" | "create" | "rename" | "remove" | "leave" | "accept" | "checkSlug"
     >
   ) {
-    makeAutoObservable<this, "service" | "changesAnswered" | "removed">(this, {
+    makeAutoObservable<this, "service" | "changesAnswered" | "removed" | "inTurn">(this, {
       service: false,
       changesAnswered: false,
       removed: false,
+      inTurn: false,
     });
   }
 
@@ -65,9 +74,11 @@ export class WorkspaceStore {
   }
 
   async rename(slug: string, name: string): Promise<Workspace> {
-    const renamed = await this.service.rename(slug, name);
-    this.changed((list) => list.map((workspace) => (workspace.id === renamed.id ? renamed : workspace)));
-    return renamed;
+    return this.inTurn(slug, async () => {
+      const renamed = await this.service.rename(slug, name);
+      this.changed((list) => list.map((workspace) => (workspace.id === renamed.id ? renamed : workspace)));
+      return renamed;
+    });
   }
 
   /** accept joins the workspace link invites to, and answers it with the account's role there. */
@@ -99,15 +110,17 @@ export class WorkspaceStore {
    * account removed from it) is gone as well.
    */
   private async gone(slug: string, request: () => Promise<void>): Promise<void> {
-    try {
-      await request();
-    } catch (error) {
-      if (!(error instanceof ApiError && error.code === "workspace.not_found")) {
-        throw error;
+    await this.inTurn(slug, async () => {
+      try {
+        await request();
+      } catch (error) {
+        if (!(error instanceof ApiError && error.code === "workspace.not_found")) {
+          throw error;
+        }
       }
-    }
-    this.removed.add(slug);
-    this.changed((list) => list.filter((workspace) => workspace.slug !== slug));
+      this.removed.add(slug);
+      this.changed((list) => list.filter((workspace) => workspace.slug !== slug));
+    });
   }
 
   private changed(change: (list: Workspace[]) => Workspace[]): void {

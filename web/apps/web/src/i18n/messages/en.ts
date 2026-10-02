@@ -155,6 +155,8 @@ export const en = {
   "ownerless.delete": "Delete",
   "ownerless.deleteLabel": "Delete {name}, former owner {former}",
   "ownerless.deleteTitle": "Delete {name}?",
+  "ownerless.id": "ID {id}",
+  "ownerless.nameWithId": "{name} (ID {id})",
   "ownerless.deleteBody": "The notebook and all it holds are deleted for its remaining members. This cannot be undone.",
   "ownerless.gone": "This notebook is ownerless no more: it was taken over, deleted, or returned to its former owner.",
   "ownerless.reminder": "Notebooks without an admin: {count}.",

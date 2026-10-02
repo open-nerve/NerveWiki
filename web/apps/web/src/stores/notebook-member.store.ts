@@ -1,5 +1,6 @@
 import { makeAutoObservable, runInAction } from "mobx";
 
+import { oneAtATimeById } from "../lib/one-at-a-time";
 import { ApiError } from "../services/api";
 import type { NotebookMember, NotebookMemberService } from "../services/notebook-member.service";
 import type { NotebookRole } from "../services/notebook.service";
@@ -22,16 +23,23 @@ export class NotebookMemberStore {
   list: NotebookMember[] | undefined = undefined;
   /** How many changes have been answered: a read that overlaps one may have read the list before it. */
   private changesAnswered = 0;
+  /**
+   * Each member's changes, one at a time (v0.1 design 13.2, item 1): the
+   * store outlives the page, whose role menu, mounted anew, may send while
+   * the change before is out (M3 Codex review R1).
+   */
+  private readonly inTurn = oneAtATimeById();
 
   constructor(
     private readonly service: Pick<NotebookMemberService, "list" | "add" | "update" | "remove">,
     /** The id of the notebook whose members these are. */
     private readonly notebookId: string
   ) {
-    makeAutoObservable<this, "service" | "notebookId" | "changesAnswered">(this, {
+    makeAutoObservable<this, "service" | "notebookId" | "changesAnswered" | "inTurn">(this, {
       service: false,
       notebookId: false,
       changesAnswered: false,
+      inTurn: false,
     });
   }
 
@@ -60,20 +68,24 @@ export class NotebookMemberStore {
   }
 
   async changeRole(id: string, role: NotebookRole): Promise<void> {
-    const changed = await this.service.update(id, role);
-    this.changed((list) => list.map((member) => (member.id === id ? changed : member)));
+    await this.inTurn(id, async () => {
+      const changed = await this.service.update(id, role);
+      this.changed((list) => list.map((member) => (member.id === id ? changed : member)));
+    });
   }
 
   /** remove ends the membership id; one that has ended already (removed elsewhere, or left) is gone as well. */
   async remove(id: string): Promise<void> {
-    try {
-      await this.service.remove(id);
-    } catch (error) {
-      if (!(error instanceof ApiError && error.code === "notebook.member_not_found")) {
-        throw error;
+    await this.inTurn(id, async () => {
+      try {
+        await this.service.remove(id);
+      } catch (error) {
+        if (!(error instanceof ApiError && error.code === "notebook.member_not_found")) {
+          throw error;
+        }
       }
-    }
-    this.changed((list) => list.filter((member) => member.id !== id));
+      this.changed((list) => list.filter((member) => member.id !== id));
+    });
   }
 
   private changed(change: (list: NotebookMember[]) => NotebookMember[]): void {

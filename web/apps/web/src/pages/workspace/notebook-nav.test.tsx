@@ -295,3 +295,71 @@ test("going from one workspace straight to another lists the other's notebooks",
   const column = await screen.findByRole("navigation", { name: "Acme" });
   await waitFor(() => expect(groups(column)).toEqual({ "My notebooks": [["Beta", `/acme/notebooks/${beta.id}`]] }));
 });
+
+/** The app of an admin of Lab and Acme, Lab's creations answered by answer. */
+function twoWorkspacesApp(answer: Answer) {
+  const acme: Workspace = { ...workspaceJSON, id: "0199a2b4-0000-7000-8000-0000000000a1", slug: "acme", name: "Acme" };
+  const lab: Notebook[] = [];
+  return signedInApp({
+    "GET /api/v0/workspaces": () => json({ data: [acme, workspaceJSON] }),
+    "GET /api/v0/workspaces/lab/notebooks": () => json({ data: lab }),
+    "GET /api/v0/workspaces/acme/notebooks": () => json({ data: [] }),
+    "POST /api/v0/workspaces/lab/notebooks": async (request) => {
+      const answered = await answer(request);
+      if (answered.ok) {
+        lab.push((await answered.clone().json()) as Notebook);
+      }
+      return answered;
+    },
+  });
+}
+
+// The left column starts anew with each workspace, its dialog with it:
+// what was typed in one is not sent to the next (v0.1 design 13.2, item
+// 16; M3 Codex review R3).
+test("a dialog left open in one workspace is gone in the next, which opens its own empty", async () => {
+  const user = userEvent.setup();
+  const { router } = renderApp(
+    "/lab",
+    twoWorkspacesApp(() => json({}, 500))
+  );
+  const dialog = await openCreation(user);
+  await user.type(within(dialog).getByLabelText("Name"), "Draft for Lab");
+
+  await act(() => router.navigate("/acme"));
+
+  await screen.findByRole("navigation", { name: "Acme" });
+  expect(screen.queryByRole("dialog")).toBeNull();
+  await user.click(
+    within(await screen.findByRole("navigation", { name: "Acme" })).getByRole("button", { name: "New notebook" })
+  );
+  const next = await screen.findByRole("dialog", { name: "New notebook" });
+  expect(within(next).getByLabelText<HTMLInputElement>("Name").value).toBe("");
+});
+
+// A creation answered once the user went to another workspace takes them
+// nowhere: the notebook is in the left column of its own workspace.
+test("a creation answered after going to another workspace stays there; its own workspace lists the notebook", async () => {
+  const user = userEvent.setup();
+  let release: (() => void) | undefined;
+  const { router } = renderApp(
+    "/lab",
+    twoWorkspacesApp(async () => {
+      await new Promise<void>((resolve) => (release = resolve));
+      return json({ ...notebookJSON, id: zeta.id, name: "Late" }, 201);
+    })
+  );
+  const dialog = await openCreation(user);
+  await user.type(within(dialog).getByLabelText("Name"), "Late");
+  await user.click(within(dialog).getByRole("button", { name: "Create" }));
+  await waitFor(() => expect(release).toBeDefined());
+
+  await act(() => router.navigate("/acme"));
+  await screen.findByRole("navigation", { name: "Acme" });
+  release?.();
+  await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+
+  expect(router.state.location.pathname).toBe("/acme");
+  await act(() => router.navigate("/lab"));
+  expect(await within(await nav()).findByRole("link", { name: "Late" })).toBeTruthy();
+});

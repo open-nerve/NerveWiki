@@ -62,6 +62,12 @@ type NotebookServerOptions = {
  * member or its access opens it to her; as a guest of Lab, she sees no
  * member's address. What went out is in sent; the test changes the state
  * as another tab would.
+ *
+ * It answers as the real server where the pages read it: the role is the
+ * higher of the two, the member count follows the members. It decides no
+ * permission and no rule of the sole admin: a write to what exists
+ * succeeds, and a test of a refusal answers it through answers, as the
+ * page would get it (v0.1 design 13.4, item 7; M3 Codex review D1).
  */
 export function notebookServer({
   workspaceRole = "admin",

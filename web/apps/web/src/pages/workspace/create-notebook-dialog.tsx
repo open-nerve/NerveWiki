@@ -14,16 +14,29 @@ import type { Workspace } from "../../services/workspace.service";
 import { useNotebooks } from "../../stores/context";
 import { AccessOptions } from "../notebook/access-options";
 
+type CreateNotebookDialogProps = {
+  workspace: Workspace;
+  trigger: ReactElement;
+  /**
+   * Whether the place the dialog was opened from is still shown (useMounted
+   * of its host): not the dialog's own mounting, which the creation may end,
+   * as the empty home's does once the home lists the notebook.
+   */
+  here: () => boolean;
+};
+
 /**
  * CreateNotebookDialog creates a notebook in workspace, of which the
  * account becomes the admin, then goes to its home, arrived at (M3/P4
  * design 3.3, 3.5): the dialog closes, and the focus goes to the home's
  * heading, not back to trigger. The form lives only while the dialog is
  * open: what was typed and cancelled is not offered again. A creation
- * answered after the dialog was cancelled goes nowhere: the left column
- * lists the notebook, as the token list gets a token whose dialog closed.
+ * answered after the dialog was cancelled, or once the place it was opened
+ * from is gone (here; the left column starts anew with each workspace),
+ * goes nowhere: the left column lists the notebook, as the token list
+ * gets a token whose dialog closed.
  */
-export function CreateNotebookDialog({ workspace, trigger }: { workspace: Workspace; trigger: ReactElement }) {
+export function CreateNotebookDialog({ workspace, trigger, here }: CreateNotebookDialogProps) {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   /** How many times the dialog opened or closed: a creation sent before the last of them goes nowhere. */
@@ -37,7 +50,7 @@ export function CreateNotebookDialog({ workspace, trigger }: { workspace: Worksp
   function creating() {
     const turn = turns.current;
     return (notebook: Notebook) => {
-      if (turn !== turns.current) {
+      if (turn !== turns.current || !here()) {
         return;
       }
       created.current = true;

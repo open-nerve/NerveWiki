@@ -99,3 +99,66 @@ test("a role changed takes the answer's place", async () => {
 
   expect(store.list?.map((m) => m.role)).toEqual(["admin"]);
 });
+
+// A member's changes go out one at a time (v0.1 design 13.2, item 1): the
+// store outlives the members page, whose role menu, mounted anew, may send
+// while the change before is out; the server's answers may come back in
+// any order (M3 Codex review R1). Another member's go out side by side.
+test("a member's changes go out one at a time, the last made last; another member's alongside", async () => {
+  const answers: ((m: NotebookMember) => void)[] = [];
+  const sent: string[] = [];
+  const joined = "2026-10-02T08:00:00Z";
+  const store = storeOf([member("ada", joined, "admin"), member("bob", joined)], {
+    update: (id, role) => {
+      sent.push(`${id}:${role}`);
+      return new Promise<NotebookMember>((resolve) => answers.push(resolve));
+    },
+  });
+  await store.load();
+
+  const toReader = store.changeRole("bob", "reader");
+  const toAdmin = store.changeRole("bob", "admin");
+  const ada = store.changeRole("ada", "editor");
+  await Promise.resolve();
+  expect(sent).toEqual(["bob:reader", "ada:editor"]);
+  answers[0]?.(member("bob", joined, "reader"));
+  await toReader;
+  await Promise.resolve();
+  expect(sent).toEqual(["bob:reader", "ada:editor", "bob:admin"]);
+  answers[2]?.(member("bob", joined, "admin"));
+  answers[1]?.(member("ada", joined, "editor"));
+  await Promise.all([toAdmin, ada]);
+
+  expect(store.list?.map((m) => `${m.id}:${m.role}`)).toEqual(["ada:editor", "bob:admin"]);
+});
+
+// A removal waits for its member's role change still out, and goes out
+// once that is answered, refused too: a membership ended meanwhile is gone
+// as well (M3 Codex review R1).
+test("a removal waits for its member's role change, and goes out after its refusal too", async () => {
+  const gone = new ApiError(404, { status: 404, code: "notebook.member_not_found", title: "" });
+  let refuse: ((error: unknown) => void) | undefined;
+  const sent: string[] = [];
+  const joined = "2026-10-02T08:00:00Z";
+  const store = storeOf([member("ada", joined, "admin"), member("bob", joined)], {
+    update: (id, role) => {
+      sent.push(`${id}:${role}`);
+      return new Promise<NotebookMember>((_, reject) => (refuse = reject));
+    },
+    remove: (id) => {
+      sent.push(`remove ${id}`);
+      return Promise.reject(gone);
+    },
+  });
+  await store.load();
+
+  const changing = store.changeRole("bob", "reader");
+  const removing = store.remove("bob");
+  await Promise.resolve();
+  expect(sent).toEqual(["bob:reader"]);
+  refuse?.(gone);
+  await expect(changing).rejects.toBe(gone);
+  await removing;
+
+  expect([sent, ids(store)]).toEqual([["bob:reader", "remove bob"], ["ada"]]);
+});

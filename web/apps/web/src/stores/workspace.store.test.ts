@@ -194,3 +194,58 @@ test("an invitation accepted before the first read leaves the list to it", async
 
   expect(slugs(store)).toEqual(["lab"]);
 });
+
+// A workspace's renames go out one at a time (v0.1 design 13.2, item 1):
+// the store outlives the general page, whose form, mounted anew, may send
+// while the rename before is out; the server's answers may come back in
+// any order (M3 Codex review R1).
+test("a workspace's renames go out one at a time, the last made last", async () => {
+  const answers: ((w: Workspace) => void)[] = [];
+  const sent: string[] = [];
+  const store = storeOf([workspace("acme", "Acme")], {
+    rename: (slug, name) => {
+      sent.push(name);
+      return new Promise<Workspace>((resolve) => answers.push(resolve));
+    },
+  });
+  await store.load();
+
+  const first = store.rename("acme", "Acme Works");
+  const second = store.rename("acme", "Acme Labs");
+  await Promise.resolve();
+  expect(sent).toEqual(["Acme Works"]);
+  answers[0]?.(workspace("acme", "Acme Works"));
+  await first;
+  await Promise.resolve();
+  expect(sent).toEqual(["Acme Works", "Acme Labs"]);
+  answers[1]?.(workspace("acme", "Acme Labs"));
+  await second;
+
+  expect(store.bySlug("acme")?.name).toBe("Acme Labs");
+});
+
+// A workspace's deletion and leaving wait for its rename still out, in the
+// same queue (M3 Codex review R1).
+test("a workspace's deletion waits for its rename still out", async () => {
+  let answer: ((w: Workspace) => void) | undefined;
+  const sent: string[] = [];
+  const store = storeOf([workspace("acme", "Acme")], {
+    rename: (_slug, name) => {
+      sent.push(`rename ${name}`);
+      return new Promise<Workspace>((resolve) => (answer = resolve));
+    },
+    remove: async (slug) => {
+      sent.push(`remove ${slug}`);
+    },
+  });
+  await store.load();
+
+  const renaming = store.rename("acme", "Acme Works");
+  const removing = store.remove("acme");
+  await Promise.resolve();
+  expect(sent).toEqual(["rename Acme Works"]);
+  answer?.(workspace("acme", "Acme Works"));
+  await Promise.all([renaming, removing]);
+
+  expect([sent, slugs(store), store.wasRemoved("acme")]).toEqual([["rename Acme Works", "remove acme"], [], true]);
+});

@@ -13,7 +13,7 @@ import type { Notebook } from "../../services/notebook.service";
 import type { Workspace } from "../../services/workspace.service";
 import { useNotebooks, useOwnerless } from "../../stores/context";
 import { AuditSection } from "./audit-section";
-import { OwnerlessRow } from "./ownerless-row";
+import { OwnerlessRow, twinsOf } from "./ownerless-row";
 import { useWorkspace } from "./workspace-layout";
 
 /**
@@ -100,6 +100,7 @@ const OwnerlessSection = observer(function OwnerlessSection({ workspace }: { wor
     }
   }
 
+  const twins = twinsOf(ownerless.list ?? []);
   return (
     <section className="space-y-4">
       <div className="max-w-2xl space-y-1">
@@ -129,6 +130,7 @@ const OwnerlessSection = observer(function OwnerlessSection({ workspace }: { wor
             <OwnerlessRow
               key={notebook.id}
               notebook={notebook}
+              twin={twins.has(notebook.id)}
               takeOver={() => takeOver(notebook.id)}
               remove={() => remove(notebook.id)}
               removed={() => heading.current?.focus()}

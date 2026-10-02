@@ -53,11 +53,12 @@ const additionFields = ["user_id"] as const;
 
 /**
  * AddForm adds the member chosen with the role chosen, an editor unless
- * another is. Once added, the choice is emptied and the status says who;
- * a refusal reads the lists again: the account chosen may have just left
- * the workspace, or been added by another admin; the account itself may
- * no longer be the notebook's admin. With no one left to add, the
- * member's field says so.
+ * another is. Once added, the status says who, and the choice is emptied
+ * while it still shows that member: another may have been chosen while
+ * the addition was out (v0.1 design 13.2, item 12). A refusal reads the
+ * lists again: the account chosen may have just left the workspace, or
+ * been added by another admin; the account itself may no longer be the
+ * notebook's admin. With no one left to add, the member's field says so.
  */
 function AddForm({ workspace, notebook, candidates }: SectionProps & { candidates: WorkspaceMember[] }) {
   const members = useNotebookMembers(notebook);
@@ -77,7 +78,8 @@ function AddForm({ workspace, notebook, candidates }: SectionProps & { candidate
     setAdded(undefined);
     const done = await submit(chosen === "" ? { user_id: "field.required" } : {}, async () => {
       const member = await members.add(chosen, role);
-      setUserId("");
+      // Only while the field still shows the member just added: another may have been chosen meanwhile.
+      setUserId((shown) => (shown === chosen ? "" : shown));
       setAdded(member.display_name);
       void reload(["notebooks", workspace.id]);
     });
