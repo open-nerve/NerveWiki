@@ -1,6 +1,7 @@
 package bootstrap
 
 import (
+	"encoding/json"
 	"net/http"
 	"testing"
 )
@@ -9,7 +10,8 @@ import (
 // columns, in lab, whose admins are the workspace admin outside priv and
 // the default reader: they alone list the ownerless notebooks and the
 // audit events, which lab's members and guests see the workspace to be
-// refused; and they alone take over or delete, by id, an ownerless
+// refused (and by the workspace columns, in acme, as every workspace-level
+// list); and they alone take over or delete, by id, an ownerless
 // notebook: every other answer is notebook.not_found, the same for a
 // notebook that is not ownerless or is gone.
 
@@ -99,6 +101,38 @@ func ownerlessMatrixRows() []matrixRow {
 				}
 			},
 		},
+	}
+	// The two lists' rule is the workspace level's: by the workspace
+	// columns, acme's admin lists acme's, which has neither, its members and
+	// guests are refused, and the rest do not see acme.
+	byWorkspace := map[caller]cell{
+		callerAdmin: cellOK(), callerMember: cellForbidden(), callerGuest: cellForbidden(),
+		callerNever: {http.StatusNotFound, "workspace.not_found"}, callerEnded: {http.StatusNotFound, "workspace.not_found"},
+		callerDeleted: {http.StatusNotFound, "workspace.not_found"},
+	}
+	for _, list := range []struct{ op, path string }{
+		{"listOwnerlessNotebooks", "/ownerless-notebooks"},
+		{"listNotebookAuditEvents", "/notebook-audit-events"},
+	} {
+		rows = append(rows, matrixRow{
+			op:      list.op,
+			variant: "by the workspace columns",
+			request: func(c caller, _ seeded) (string, string, string) {
+				return http.MethodGet, "/api/v0/workspaces/" + workspaceOf(c) + list.path, ""
+			},
+			cells: byWorkspace,
+			check: func(t *testing.T, _ caller, _ seeded, answer string) {
+				t.Helper()
+				var page struct {
+					Data       []json.RawMessage `json:"data"`
+					NextCursor *string           `json:"next_cursor"`
+				}
+				decodeAnswer(t, answer, &page)
+				if len(page.Data) != 0 || page.NextCursor != nil {
+					t.Errorf("listed %s, want none: acme has no notebook", answer)
+				}
+			},
+		})
 	}
 	// By id, three targets: orphan; priv, private and owned; gone-nb,
 	// deleted, as a notebook that never was answers.

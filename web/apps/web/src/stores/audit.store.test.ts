@@ -149,3 +149,14 @@ test("once a read again replaced the events, more reads the page after them, not
 
   expect([ids(store), store.nextCursor]).toEqual([["e9", "e8", "e7"], null]);
 });
+
+test("of two first reads that overlap, the later one asked wins, even answered first", async () => {
+  const { store, answer } = await holding();
+  const older = store.load();
+  const newer = store.load();
+
+  await answer(2, page(["e9", "e8"], "c8"), newer);
+  await answer(1, page(["e4", "e3"], "c3"), older);
+
+  expect([ids(store), store.nextCursor]).toEqual([["e9", "e8"], "c8"]);
+});

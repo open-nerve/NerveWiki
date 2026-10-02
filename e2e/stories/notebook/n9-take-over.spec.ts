@@ -1,3 +1,5 @@
+import type { OwnerlessNotebook } from "@nervewiki/api-client";
+
 import { accountIdOf } from "../../fixtures/assert/identity";
 import {
   expectAuditEvents,
@@ -6,6 +8,7 @@ import {
   expectOwnerlessListed,
 } from "../../fixtures/assert/notebook";
 import { displayNameOf, emailFor } from "../../fixtures/auth";
+import { answerTo } from "../../fixtures/browser";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { who } from "../../fixtures/member-pages";
 import { memberOf, removeMember } from "../../fixtures/members";
@@ -141,23 +144,38 @@ test("N9 (page): a workspace admin takes the ownerless notebook over: its left c
     (await removeMember(api, adminPat, (await memberOf(api, adminPat, slug, ownerEmail)).id)).response.status
   ).toBe(204);
   const page = await signedInPage(adminTokens);
+  const listedAnswer = answerTo(page, "GET", `/api/v0/workspaces/${slug}/ownerless-notebooks`);
   await page.goto(ownerlessPath(slug));
 
   await expect.poll(() => ownerlessListed(page)).toEqual([listedOwnerless("Plans", ownerEmail, "Private", 1)]);
+  const { data: listed } = (await (await listedAnswer).json()) as { data: OwnerlessNotebook[] };
+  await Promise.all(listed.map((l) => expectOwnerlessListed(db, l)));
   await expect(page.getByText("Nothing yet.", { exact: true })).toBeVisible();
-  expect((await takeOverWith(page, plans.id, "Plans", who(displayNameOf(ownerEmail), ownerEmail))).status()).toBe(200);
+  const took = await takeOverWith(page, plans.id, "Plans", who(displayNameOf(ownerEmail), ownerEmail));
+  expect(took.status()).toBe(200);
+  // Private as before: the editor keeps the role, and no one else came in.
+  expect(await took.json()).toMatchObject({
+    id: plans.id,
+    name: "Plans",
+    workspace_access: "none",
+    role: "admin",
+    member_count: 2,
+  });
 
   await expect(page.getByRole("status")).toHaveText("Plans taken over. Open it");
   await expect(page.getByText("No ownerless notebooks.", { exact: true })).toBeVisible();
   await expect.poll(() => notebookGroups(page, "Acme")).toEqual({ "Team notebooks": ["Plans"] });
   await expect
     .poll(() => auditLog(page))
-    .toEqual([`${displayNameOf(adminEmail)} took over Plans (former owner ${displayNameOf(ownerEmail)}).`]);
+    .toEqual([
+      `${who(displayNameOf(adminEmail), adminEmail)} took over Plans; former owner: ${who(displayNameOf(ownerEmail), ownerEmail)}.`,
+    ]);
   await page.getByRole("status").getByRole("link", { name: "Open it", exact: true }).click();
   await expect(notebookHeading(page, "Plans")).toBeVisible();
   await expect(page).toHaveURL(notebookPath(slug, plans.id));
   await expectOwned(db, plans.id);
   await expectNotebookMember(db, plans.id, adminId, { role: "admin", active: true, writerId: adminId });
+  await expectNotebookMember(db, plans.id, mateId, { role: "editor", active: true, writerId: ownerId });
   await expectAuditEvents(db, workspace.id, [
     { action: "taken_over", notebookId: plans.id, notebookName: "Plans", formerOwnerId: ownerId, actorId: adminId },
   ]);

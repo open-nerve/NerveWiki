@@ -120,26 +120,31 @@ test("N10 (page): a workspace admin reads the audit log a page at a time, then d
   const slug = workspace.slug;
   const ownerEmail = emailFor(testInfo, "owner");
   const ownerPat = await joinAs(api, adminPat, slug, ownerEmail, "member");
+  const ownerId = await accountIdOf(db, ownerEmail);
   const plans = await createNotebook(api, ownerPat, slug, "Plans");
-  // Fifty-one more, deleted through the API: their events are a page of 50 and one past it.
+  // Fifty-one more, deleted through the API one after another: their events, in that order, are a page of 50 and
+  // one past it.
   const drafts = await Promise.all(
     Array.from({ length: 51 }, (_, i) => createNotebook(api, ownerPat, slug, `Draft ${i + 1}`))
   );
   expect(
     (await removeMember(api, adminPat, (await memberOf(api, adminPat, slug, ownerEmail)).id)).response.status
   ).toBe(204);
-  const deleted = await Promise.all(drafts.map((draft) => deleteOwnerless(api, adminPat, draft.id)));
-  expect(deleted.map((d) => d.response.status)).toEqual(drafts.map(() => 204));
-  const [admin, owner] = [displayNameOf(adminEmail), displayNameOf(ownerEmail)];
-  const sentence = (name: string) => `${admin} deleted ${name} (former owner ${owner}).`;
+  await drafts.reduce(async (before, draft) => {
+    await before;
+    expect((await deleteOwnerless(api, adminPat, draft.id)).response.status).toBe(204);
+  }, Promise.resolve());
+  const owner = displayNameOf(ownerEmail);
+  const sentence = (name: string) =>
+    `${who(displayNameOf(adminEmail), adminEmail)} deleted ${name}; former owner: ${who(owner, ownerEmail)}.`;
+  const newestFirst = drafts.map((draft) => sentence(draft.name)).toReversed();
   const page = await signedInPage(adminTokens);
   await page.goto(ownerlessPath(slug));
 
   await expect.poll(() => ownerlessListed(page)).toEqual([listedOwnerless("Plans", ownerEmail, "Private", 0)]);
-  await expect.poll(async () => (await auditLog(page)).length).toBe(50);
+  await expect.poll(() => auditLog(page)).toEqual(newestFirst.slice(0, 50));
   expect((await loadMoreWith(page, slug)).status()).toBe(200);
-  await expect.poll(async () => (await auditLog(page)).length).toBe(51);
-  expect((await auditLog(page)).toSorted()).toEqual(drafts.map((draft) => sentence(draft.name)).toSorted());
+  await expect.poll(() => auditLog(page)).toEqual(newestFirst);
   await expect(page.getByRole("button", { name: "Load more", exact: true })).toHaveCount(0);
 
   expect(await deleteOwnerlessWith(page, plans.id, "Plans", who(owner, ownerEmail))).toBe(204);
@@ -147,9 +152,17 @@ test("N10 (page): a workspace admin reads the audit log a page at a time, then d
   await expectNotebookDeletedWithItsMembers(db, plans.id, adminId);
 
   // The log is read again: the deletion first; what was loaded past the first page stays (M3/P5 review Q2).
-  await expect.poll(async () => (await auditLog(page))[0]).toBe(sentence("Plans"));
-  expect((await auditLog(page)).toSorted()).toEqual(
-    ["Plans", ...drafts.map((draft) => draft.name)].map(sentence).toSorted()
-  );
+  await expect.poll(() => auditLog(page)).toEqual([sentence("Plans"), ...newestFirst]);
   await expect(page.getByRole("button", { name: "Load more", exact: true })).toHaveCount(0);
+  await expectAuditEvents(
+    db,
+    workspace.id,
+    [...drafts, plans].map((n) => ({
+      action: "deleted",
+      notebookId: n.id,
+      notebookName: n.name,
+      formerOwnerId: ownerId,
+      actorId: adminId,
+    }))
+  );
 });

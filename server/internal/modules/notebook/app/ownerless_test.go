@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 	"uuid"
@@ -116,6 +117,10 @@ func TestTakeOverNotebook(t *testing.T) {
 			if len(f.visibility.got) != 1 || !sameChange(f.visibility.got[0], v) {
 				t.Errorf("visibility told %+v, want %+v", f.visibility.got, v)
 			}
+			if logs := f.logs.String(); !strings.Contains(logs, "ownerless notebook taken over") || !strings.Contains(logs, n.ID.String()) ||
+				!strings.Contains(logs, taker.String()) || strings.Contains(logs, n.Name) {
+				t.Errorf("logs = %q, want the take-over by its ids, not the name", logs)
+			}
 		})
 	}
 }
@@ -152,6 +157,10 @@ func TestDeleteOwnerlessNotebook(t *testing.T) {
 	}
 	if len(s.got) != 1 || !slices.Equal(s.got[0].NotebookIDs, []uuid.UUID{n.ID}) || s.got[0].By != f.dana || !s.got[0].At.Equal(now()) {
 		t.Errorf("the deletion's subscriber got %+v, want the notebook by dana at the deletion's time", s.got)
+	}
+	if logs := f.logs.String(); !strings.Contains(logs, "ownerless notebook deleted") || !strings.Contains(logs, n.ID.String()) ||
+		!strings.Contains(logs, f.dana.String()) || strings.Contains(logs, n.Name) {
+		t.Errorf("logs = %q, want the deletion by its ids, not the name", logs)
 	}
 }
 
@@ -306,7 +315,8 @@ func (f fixture) listAudit(events []domain.AuditEvent) *app.ListNotebookAuditEve
 
 // The events come a page at a time, newest first, with their former
 // owners' and actors' profiles: one row more than the page tells that
-// another follows, whose cursor is the page's last event.
+// another follows, whose cursor is the page's last event; a last page
+// exactly full has none.
 func TestListNotebookAuditEvents(t *testing.T) {
 	f := newFixture()
 	f.grant(domain.ActionListAudit, shared.WorkspaceAdmin, "")
@@ -334,6 +344,9 @@ func TestListNotebookAuditEvents(t *testing.T) {
 
 	if err != nil || len(second.Events) != 1 || second.Events[0].Event.ID != events[2].ID || second.NextCursor != "" {
 		t.Errorf("the second page = %+v, %v; want the last event, no cursor", second, err)
+	}
+	if full, err := f.listAudit(events[:2]).Execute(as(f.dana), "acme", &two, nil); err != nil || len(full.Events) != 2 || full.NextCursor != "" {
+		t.Errorf("a last page exactly full = %+v, %v; want both events, no cursor", full, err)
 	}
 	f.rec.calls = nil
 	if empty, err := f.listAudit(nil).Execute(as(f.dana), "acme", nil, nil); err != nil || empty.Events != nil || empty.NextCursor != "" ||

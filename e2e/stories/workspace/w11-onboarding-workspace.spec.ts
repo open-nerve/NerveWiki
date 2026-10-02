@@ -116,6 +116,12 @@ test("W11 (page): with creation off, an account without a workspace reads how to
   expect((await recorded).status()).toBe(200);
   // Without a workspace, the notebook step only says where notebooks are created.
   await expect(notebookStep(page)).toBeVisible();
+  await expect(
+    page.getByText(
+      "Notebooks are created in a workspace where you are a member, not a guest. Once you are one, use New notebook in its left column.",
+      { exact: true }
+    )
+  ).toBeVisible();
   await page.getByRole("button", { name: "Continue", exact: true }).click();
 
   await expectCreatePage(page, baseURL);

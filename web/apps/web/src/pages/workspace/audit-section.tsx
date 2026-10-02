@@ -3,6 +3,7 @@ import { useState } from "react";
 import useSWR from "swr";
 
 import { useFollowRole } from "../../app/follow-role";
+import { memberWho } from "../../app/member-summary";
 import { NotLoaded } from "../../app/not-loaded";
 import { errorText } from "../../app/problem-messages";
 import { Button } from "../../components/ui/button";
@@ -12,15 +13,18 @@ import type { NotebookAuditEvent } from "../../services/ownerless.service";
 import type { Workspace } from "../../services/workspace.service";
 import { useAudit, useStore } from "../../stores/context";
 
-/** sentence says what an audit event records. */
+/**
+ * sentence says what an audit event records, each account by its name and
+ * address: two accounts may have the same name.
+ */
 function sentence(event: NotebookAuditEvent, t: Translate): string {
   const notebook = event.notebook_name;
-  const former = event.former_owner.display_name;
+  const former = memberWho(event.former_owner, t);
   switch (event.action) {
     case "taken_over":
-      return t("audit.taken_over", { actor: event.actor.display_name, notebook, former });
+      return t("audit.taken_over", { actor: memberWho(event.actor, t), notebook, former });
     case "deleted":
-      return t("audit.deleted", { actor: event.actor.display_name, notebook, former });
+      return t("audit.deleted", { actor: memberWho(event.actor, t), notebook, former });
     case "returned":
       return t("audit.returned", { notebook, former });
   }

@@ -376,16 +376,16 @@ test("the audit says what was done, the newest first, a page at a time", async (
   renderApp(page, server.app);
 
   expect(await events()).toEqual([
-    "Ada took over Roadmap (former owner Bob).",
-    "Ada deleted Roadmap (former owner Bob).",
+    "Ada (ada@example.com) took over Roadmap; former owner: Bob (bob@example.com).",
+    "Ada (ada@example.com) deleted Roadmap; former owner: Bob (bob@example.com).",
   ]);
   await user.click(screen.getByRole("button", { name: "Load more" }));
 
   await waitFor(async () =>
     expect(await events()).toEqual([
-      "Ada took over Roadmap (former owner Bob).",
-      "Ada deleted Roadmap (former owner Bob).",
-      "Roadmap was returned to Bob, back in the workspace.",
+      "Ada (ada@example.com) took over Roadmap; former owner: Bob (bob@example.com).",
+      "Ada (ada@example.com) deleted Roadmap; former owner: Bob (bob@example.com).",
+      "Roadmap was returned to Bob (bob@example.com), back in the workspace.",
     ])
   );
   expect(screen.queryByRole("button", { name: "Load more" })).toBeNull();
@@ -442,10 +442,12 @@ test("going from one workspace's ownerless notebooks straight to another's lists
   });
   const { router } = renderApp(page, app);
   expect((await rows()).map(([name]) => name)).toEqual(["Roadmap"]);
-  expect(await events()).toEqual(["Ada took over Roadmap (former owner Bob)."]);
+  expect(await events()).toEqual(["Ada (ada@example.com) took over Roadmap; former owner: Bob (bob@example.com)."]);
 
   await act(() => router.navigate("/acme/settings/ownerless"));
 
   await waitFor(async () => expect((await rows()).map(([name]) => name)).toEqual(["Atlas"]));
-  await waitFor(async () => expect(await events()).toEqual(["Ada deleted Roadmap (former owner Bob)."]));
+  await waitFor(async () =>
+    expect(await events()).toEqual(["Ada (ada@example.com) deleted Roadmap; former owner: Bob (bob@example.com)."])
+  );
 });
