@@ -136,6 +136,29 @@ func TestNodesReadBack(t *testing.T) {
 	}
 }
 
+// A page's content and version read in one statement; a deleted node's
+// content is deleted with it.
+func TestPageContent(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	a := f.page(t, f.eng, nil, "A", 0)
+	f.exec(t, "UPDATE page_contents SET content = $2, byte_size = octet_length($2), content_hash = sha256(convert_to($2, 'UTF8')),"+
+		" revision = 4 WHERE node_id = $1", a.ID, "# A\n")
+	got, err := f.s.PageContent(ctx, a.ID)
+	if err != nil || got != (app.PageContent{Content: "# A\n", Revision: 4}) {
+		t.Errorf("PageContent(A) = %+v, %v; want its content at revision 4", got, err)
+	}
+	if err := f.s.DeleteNodes(ctx, []uuid.UUID{a.ID}, f.alice, now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.s.PageContent(ctx, a.ID); !errors.Is(err, app.ErrNotFound) {
+		t.Errorf("PageContent(deleted) = %v, want ErrNotFound", err)
+	}
+	if _, err := f.s.PageContent(ctx, uuid.NewV7()); !errors.Is(err, app.ErrNotFound) {
+		t.Errorf("PageContent(none) = %v, want ErrNotFound", err)
+	}
+}
+
 // Siblings' names differ by their keys: under one parent, at the root
 // too, while a deleted sibling holds no name.
 func TestSiblingNamesAreUnique(t *testing.T) {

@@ -2,7 +2,9 @@ package page_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +14,9 @@ import (
 	"uuid"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	gast "github.com/yuin/goldmark/ast"
+	"github.com/yuin/goldmark/renderer"
+	"github.com/yuin/goldmark/util"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page"
 	postgresadapter "github.com/open-nerve/NerveWiki/server/internal/modules/page/adapter/postgres"
@@ -20,6 +25,7 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver/httpservertest"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres/pgtest"
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
@@ -100,6 +106,7 @@ type fixture struct {
 	pool             *pgxpool.Pool
 	alice            uuid.UUID
 	acme, eng, notes uuid.UUID
+	md               *markdown.Markdown
 }
 
 func newFixture(t *testing.T) fixture {
@@ -109,7 +116,11 @@ func newFixture(t *testing.T) fixture {
 		t.Fatal(err)
 	}
 	t.Cleanup(pool.Close)
-	f := fixture{pool: pool, alice: uuid.NewV7(), acme: uuid.NewV7(), eng: uuid.NewV7(), notes: uuid.NewV7()}
+	md, err := markdown.New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := fixture{pool: pool, alice: uuid.NewV7(), acme: uuid.NewV7(), eng: uuid.NewV7(), notes: uuid.NewV7(), md: md}
 	before := testNow().Add(-time.Hour)
 	f.exec(t, "INSERT INTO users (id, email, password, display_name, created_at, updated_at) VALUES ($1, 'alice@corp.com', 'x', 'Alice', $2, $2)",
 		f.alice, before)
@@ -150,7 +161,7 @@ func (f fixture) serve(t *testing.T, kind, method, path, body string, guards []p
 	page.New(page.Deps{
 		Pool: f.pool, Tx: postgres.NewTxManager(f.pool, 5*time.Second), Clock: fixedClock{}, Logger: slog.New(slog.DiscardHandler),
 		Authorizer: aliceWrites{f.alice}, Workspaces: sqlWorkspaces{f.pool}, Notebooks: sqlNotebooks{f.pool},
-		Guards: guards, Participants: participants, Observers: observers,
+		Markdown: f.md, Guards: guards, Participants: participants, Observers: observers,
 	}).Register(router, httpservertest.NewAPI(t, httpservertest.APIOptions{Authenticator: tokenAuth{}}))
 	req := httptest.NewRequest(method, path, strings.NewReader(body))
 	req.Header.Set("Authorization", "Bearer "+kind+":"+f.alice.String())
@@ -393,5 +404,62 @@ func TestTheTreesWritesReachTheUnit(t *testing.T) {
 	if len(g.steps) != 2 || g.steps[0].Operation != domain.OpMove || g.steps[1].Operation != domain.OpDelete || !g.inTx ||
 		len(o.events) != 2 {
 		t.Errorf("the guard saw %+v in a transaction %v, the observers %d events; want the move, then the deletion", g.steps, g.inTx, len(o.events))
+	}
+}
+
+// pageMark is a Markdown extension's test double: it takes the content's
+// size, fetches the page it renders for, and writes both in a mark before
+// the body.
+func pageMark() markdown.Extension {
+	return markdown.Extension{
+		Name:    "page-mark",
+		Extract: func(_ gast.Node, content []byte) any { return len(content) },
+		Fetch: func(_ context.Context, p markdown.Page, extracted any) (any, error) {
+			return fmt.Sprintf("%s/%s:%d", p.NotebookID, p.PageID, extracted), nil
+		},
+		Renderer: func(data any) []util.PrioritizedValue {
+			return []util.PrioritizedValue{util.Prioritized(markRenderer(data.(string)), 50)}
+		},
+		Markup: markdown.Markup{Elements: map[string][]string{"mark": {"data-page"}}},
+	}
+}
+
+type markRenderer string
+
+func (r markRenderer) RegisterFuncs(reg renderer.NodeRendererFuncRegisterer) {
+	reg.Register(gast.KindDocument, func(w util.BufWriter, _ []byte, _ gast.Node, entering bool) (gast.WalkStatus, error) {
+		if entering {
+			_, _ = w.WriteString(`<mark data-page="` + string(r) + `"></mark>`)
+		}
+		return gast.WalkContinue, nil
+	})
+}
+
+// A registered extension reaches the reading view through page.New: what
+// it fetched for this page, from what it took from the content, is in the
+// HTML, with the content rendered at its revision.
+func TestAnExtensionReachesTheReadingView(t *testing.T) {
+	f := newFixture(t)
+	md, err := markdown.New([]markdown.Extension{pageMark()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.md = md
+	f.exec(t, "UPDATE page_contents SET content = $2, byte_size = octet_length($2), content_hash = sha256(convert_to($2, 'UTF8')),"+
+		" revision = 2 WHERE node_id = $1", f.notes, "# Hello")
+	rec := f.serve(t, "session", http.MethodGet, "/api/v0/pages/"+f.notes.String()+"/view", "", nil, nil, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET = %d %s, want 200", rec.Code, rec.Body)
+	}
+	var view struct {
+		HTML     string `json:"html"`
+		Revision int    `json:"revision"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &view); err != nil {
+		t.Fatal(err)
+	}
+	want := `<mark data-page="` + f.eng.String() + "/" + f.notes.String() + `:7"></mark><h1 id="nw-hello">Hello</h1>` + "\n"
+	if view.HTML != want || view.Revision != 2 {
+		t.Errorf("view = %+v, want %q at revision 2", view, want)
 	}
 }

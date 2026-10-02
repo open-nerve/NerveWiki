@@ -774,6 +774,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v0/pages/{page_id}/view": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The page's id. */
+                page_id: components["parameters"]["PageID"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Read a page
+         * @description The page's reading view: its content rendered to HTML, its frontmatter's properties as a table first, and the revision it was rendered from. The HTML holds only what the renderer writes and a typographic allowlist of the content's own HTML, every address on this site, http(s) or mailto, and no image loaded. A page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found alike.
+         */
+        get: operations["getPageView"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v0/nodes/{node_id}": {
         parameters: {
             query?: never;
@@ -1313,6 +1336,13 @@ export interface components {
              */
             content_updated_by: string;
         };
+        /** @description A page's reading view. */
+        PageView: {
+            /** @description The content rendered to HTML. */
+            html: string;
+            /** @description The content's version the HTML was rendered from. */
+            revision: number;
+        };
         NodeRename: {
             name: components["schemas"]["Title"];
         };
@@ -1426,6 +1456,7 @@ export type Title = components['schemas']['Title'];
 export type PageCreate = components['schemas']['PageCreate'];
 export type Ancestor = components['schemas']['Ancestor'];
 export type Page = components['schemas']['Page'];
+export type PageView = components['schemas']['PageView'];
 export type NodeRename = components['schemas']['NodeRename'];
 export type NodeMove = components['schemas']['NodeMove'];
 export type ResponseProblem = components['responses']['Problem'];
@@ -2529,6 +2560,30 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Page"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    getPageView: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The page's id. */
+                page_id: components["parameters"]["PageID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The page's reading view. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageView"];
                 };
             };
             default: components["responses"]["Problem"];

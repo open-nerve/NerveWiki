@@ -61,6 +61,12 @@ type Content struct {
 	At       time.Time
 }
 
+// PageContent is a page's content and its version.
+type PageContent struct {
+	Content  string
+	Revision int
+}
+
 // ContentMeta is what a page tells of its content besides the content.
 type ContentMeta struct {
 	Revision  int
@@ -119,6 +125,10 @@ type Nodes interface {
 	// another notebook.
 	Subtree(ctx context.Context, notebookID, id uuid.UUID) (domain.Subtree, error)
 	ContentMeta(ctx context.Context, id uuid.UUID) (ContentMeta, error)
+	// PageContent is a page's content and its version, read in one
+	// statement; ErrNotFound when the content is deleted, as it is with its
+	// node.
+	PageContent(ctx context.Context, id uuid.UUID) (PageContent, error)
 }
 
 // NodeWriter writes nodes in the write unit's transaction. A name its
@@ -150,4 +160,23 @@ type ChangesetWriter interface {
 // NotebookPages deletes the pages of deleted notebooks.
 type NotebookPages interface {
 	DeleteNotebooksPages(ctx context.Context, ids []uuid.UUID, by uuid.UUID, at time.Time) error
+}
+
+// Markdown parses and renders a page's content (M4/P3 design 3.9):
+// bootstrap hands platform/markdown to it through adapter/markdown.
+type Markdown interface {
+	Parse(content string) Parsed
+	// Render is the HTML of the parse's reading view for page; parsed is
+	// what Parse returned.
+	Render(ctx context.Context, parsed Parsed, page PageRef) (string, error)
+}
+
+// Parsed is a parse of a page's content. The use cases do not look into it:
+// they hand it back to Render.
+type Parsed any
+
+// PageRef is the page a Render is for: an extension fetches its data for it.
+type PageRef struct {
+	NotebookID uuid.UUID
+	PageID     uuid.UUID
 }

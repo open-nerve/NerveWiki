@@ -15,6 +15,7 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/jobs"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/ratelimit"
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
@@ -108,8 +109,10 @@ func notebookDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, au
 }
 
 // pageDeps are the page module's dependencies: the workspace and notebook
-// modules' ports, and the registrants of its extension points.
-func pageDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, authorizer shared.Authorizer) page.Deps {
+// modules' ports, the Markdown, and the registrants of its extension points.
+func pageDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, authorizer shared.Authorizer,
+	md *markdown.Markdown,
+) page.Deps {
 	ext := pageRegistrants()
 	return page.Deps{
 		Pool:         pool,
@@ -119,6 +122,7 @@ func pageDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, author
 		Authorizer:   authorizer,
 		Workspaces:   workspace.NewWorkspaces(pool),
 		Notebooks:    notebook.NewNotebooks(pool),
+		Markdown:     md,
 		Guards:       ext.guards,
 		Participants: ext.participants,
 		Observers:    ext.observers,

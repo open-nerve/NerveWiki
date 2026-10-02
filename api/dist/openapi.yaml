@@ -1063,6 +1063,28 @@ paths:
                 $ref: '#/components/schemas/Page'
         default:
           $ref: '#/components/responses/Problem'
+  /api/v0/pages/{page_id}/view:
+    parameters:
+      - $ref: '#/components/parameters/PageID'
+    get:
+      operationId: getPageView
+      tags:
+        - page
+      summary: Read a page
+      description: 'The page''s reading view: its content rendered to HTML, its frontmatter''s properties as a table first, and the revision it was rendered from. The HTML holds only what the renderer writes and a typographic allowlist of the content''s own HTML, every address on this site, http(s) or mailto, and no image loaded. A page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found alike.'
+      security:
+        - bearer: []
+      x-problem-codes:
+        - page.not_found
+      responses:
+        '200':
+          description: The page's reading view.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PageView'
+        default:
+          $ref: '#/components/responses/Problem'
   /api/v0/nodes/{node_id}:
     parameters:
       - $ref: '#/components/parameters/NodeID'
@@ -2090,6 +2112,20 @@ components:
           description: The account that last wrote the content.
           type: string
           format: uuid
+    PageView:
+      description: A page's reading view.
+      type: object
+      additionalProperties: false
+      required:
+        - html
+        - revision
+      properties:
+        html:
+          description: The content rendered to HTML.
+          type: string
+        revision:
+          description: The content's version the HTML was rendered from.
+          type: integer
     NodeRename:
       type: object
       additionalProperties: false

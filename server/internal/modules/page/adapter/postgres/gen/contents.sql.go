@@ -65,3 +65,22 @@ func (q *Queries) CreateContent(ctx context.Context, arg CreateContentParams) er
 	)
 	return err
 }
+
+const pageContent = `-- name: PageContent :one
+SELECT content, revision FROM page_contents
+WHERE node_id = $1 AND deleted_at IS NULL
+`
+
+type PageContentRow struct {
+	Content  string
+	Revision int32
+}
+
+// A page's content and its version, read in one statement for the reading
+// view: a deleted node's content went to the bin with it.
+func (q *Queries) PageContent(ctx context.Context, nodeID uuid.UUID) (PageContentRow, error) {
+	row := q.db.QueryRow(ctx, pageContent, nodeID)
+	var i PageContentRow
+	err := row.Scan(&i.Content, &i.Revision)
+	return i, err
+}

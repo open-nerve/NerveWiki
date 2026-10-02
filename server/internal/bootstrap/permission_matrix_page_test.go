@@ -85,6 +85,25 @@ func pageMatrixRows() []matrixRow {
 			},
 		},
 		{
+			op:      "getPageView",
+			columns: notebookColumns(),
+			request: func(c caller, s seeded) (string, string, string) {
+				return http.MethodGet, "/api/v0/pages/" + s.page(pageOf(c)).String() + "/view", ""
+			},
+			cells: readers(pageNotFound),
+			check: func(t *testing.T, _ caller, _ seeded, answer string) {
+				t.Helper()
+				var v struct {
+					HTML     string `json:"html"`
+					Revision int    `json:"revision"`
+				}
+				decodeAnswer(t, answer, &v)
+				if v.HTML != "" || v.Revision != 1 {
+					t.Errorf("read %+v, want the seeded empty content at revision 1", v)
+				}
+			},
+		},
+		{
 			op:      "createPage",
 			columns: notebookColumns(),
 			write:   true,
