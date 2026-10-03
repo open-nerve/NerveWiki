@@ -6,6 +6,7 @@ import { I18nProvider } from "../i18n/i18n";
 import { StoreProvider } from "../stores/context";
 import type { RootStore } from "../stores/root.store";
 import { DocumentSync } from "./document-sync";
+import { EventStream } from "./event-stream";
 import { onErrorRetry } from "./retry";
 
 // SWR drives the loading of the stores. SWR makes its cache when SWRConfig
@@ -29,6 +30,7 @@ export const AppProviders = observer(function AppProviders({
       <SWRConfig value={swr}>
         <I18nProvider locale={store.preferences.locale}>
           <DocumentSync />
+          <EventStream />
           {children}
         </I18nProvider>
       </SWRConfig>

@@ -88,7 +88,7 @@ export const PageEdit = observer(function PageEdit({ notebook, page, done }: Pag
     const saved = await editing.save(current.text(), current.version());
     if (saved && editing.saved) {
       // The reading view cached is older than the page: it goes, and is read when shown, deduplication or not.
-      await mutate(["page-view", page.id], undefined);
+      await mutate(["page-view", notebook.id, page.id], undefined);
     }
     return saved;
   }
@@ -135,7 +135,9 @@ export const PageEdit = observer(function PageEdit({ notebook, page, done }: Pag
     }
     editing.end();
     // The reading view, whose hook is not mounted while the editor is, is read into SWR's cache, deduplication or not.
-    await mutate(["page-view", page.id], pages.view(page.id), { revalidate: false }).catch(() => undefined);
+    await mutate(["page-view", notebook.id, page.id], pages.view(page.id), { revalidate: false }).catch(
+      () => undefined
+    );
     done();
   }
 

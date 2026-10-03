@@ -4,10 +4,11 @@ import { SharedStorage } from "../session/testing/fake-browser";
 import { SessionChangedError } from "../session/token-manager";
 import { TabChannel } from "./channel";
 import type { Open } from "./connection";
-import { EventHub, type HubEvent, type PageLifecycle } from "./hub";
+import { EventHub, type HubEvent } from "./hub";
 import { leaseLeadership, webLockLeadership } from "./leadership";
 import { FakeChannels } from "./testing/fake-channels";
 import { FakeLocks } from "./testing/fake-locks";
+import { FakePage } from "./testing/fake-page";
 
 const LOGIN = "login-0";
 const NAME = `nwiki.events.${LOGIN}`;
@@ -74,39 +75,6 @@ class FakeServer {
       throw new Error("no stream was opened");
     }
     return stream;
-  }
-}
-
-/** A tab's page: visible or hidden, and its lifecycle's events, which the test fires. */
-class FakePage implements PageLifecycle {
-  shown = true;
-  readonly #listeners = new Map<string, Set<() => void>>();
-
-  visible(): boolean {
-    return this.shown;
-  }
-
-  on(event: string, listener: () => void): () => void {
-    const set = this.#listeners.get(event) ?? new Set<() => void>();
-    this.#listeners.set(event, set);
-    set.add(listener);
-    return () => set.delete(listener);
-  }
-
-  fire(event: string): void {
-    for (const listener of this.#listeners.get(event) ?? []) {
-      listener();
-    }
-  }
-
-  show(shown: boolean): void {
-    this.shown = shown;
-    this.fire("visibilitychange");
-  }
-
-  /** How many listeners the hub keeps on the page. */
-  listening(): number {
-    return [...this.#listeners.values()].reduce((n, set) => n + set.size, 0);
   }
 }
 

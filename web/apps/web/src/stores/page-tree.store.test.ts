@@ -51,6 +51,8 @@ function store(nodes: TreeNode[] = [guide, install, linux, notes]) {
       answer(`rename ${name}`, () => ({ ...(state.nodes.find((n) => n.id === id) ?? guide), name })),
     moveNode: (id: string, move: NodeMove) => answer(`move ${id} ${String(move.parent_id)}`, () => guide),
     deleteNode: (id: string) => answer(`delete ${id}`, () => undefined),
+    lock: async () => ({ holder: null, expires_in: null }),
+    releaseLock: async () => undefined,
   };
   return { pages: new PageTreeStore(service, "plans"), sent, state };
 }
@@ -143,6 +145,23 @@ test("a read that a rename's answer overlaps keeps the tree read after the renam
   await reading;
 
   expect(pages.byId(guide.id)?.name).toBe("Handbook");
+});
+
+// Events make reads overlap (M5/P3 design 3.9): another tab's writes come one after another.
+test("of reads that overlap, one answered after a later one does not replace the later one's tree", async () => {
+  const { pages, state } = store();
+  await pages.load();
+  const early = held<TreeNode[]>();
+  state.writes.set("list", () => early.promise);
+  const first = pages.load();
+  state.writes.delete("list");
+  state.nodes = [guide, install, linux];
+
+  await pages.load();
+  early.resolve([guide, install, linux, notes]);
+  await first;
+
+  expect(pages.byId(notes.id)).toBeUndefined();
 });
 
 test("a first read that a write's answer overlaps, with no tree read since, reads it again", async () => {

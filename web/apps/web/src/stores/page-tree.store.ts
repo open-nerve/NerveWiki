@@ -2,7 +2,7 @@ import { makeAutoObservable, observableRef, runInAction } from "mobx";
 
 import { oneAtATime } from "../lib/one-at-a-time";
 import { ApiError } from "../services/api";
-import type { NodeMove, PageService, PageView, TreeNode } from "../services/page.service";
+import type { EditLock, NodeMove, PageService, PageView, TreeNode } from "../services/page.service";
 import { ancestorsOf, childrenOf, indexTree, subtreeOf, type TreeIndex } from "./page-tree";
 
 /**
@@ -25,6 +25,9 @@ export class PageTreeStore {
   private readonly open = new Set<string>();
   /** How many writes have been answered: a read that overlaps one may have read the tree before it. */
   private changesAnswered = 0;
+  /** How many reads have started, and which of them the tree is: an earlier one answered late does not replace it. */
+  private readsStarted = 0;
+  private readKept = 0;
   /** The pages this generation deleted, each with where its shell goes: the deleted subtree's parent (null: home). */
   private readonly removed = new Map<string, string | null>();
   private readonly inTurn = oneAtATime();
@@ -32,16 +35,18 @@ export class PageTreeStore {
   constructor(
     private readonly service: Pick<
       PageService,
-      "listNodes" | "getPageView" | "createPage" | "renameNode" | "moveNode" | "deleteNode"
+      "listNodes" | "getPageView" | "createPage" | "renameNode" | "moveNode" | "deleteNode" | "lock" | "releaseLock"
     >,
     /** The notebook whose pages these are. */
     readonly notebookId: string
   ) {
-    makeAutoObservable<this, "service" | "changesAnswered" | "inTurn">(this, {
+    makeAutoObservable<this, "service" | "changesAnswered" | "readsStarted" | "readKept" | "inTurn">(this, {
       service: false,
       notebookId: false,
       nodes: observableRef,
       changesAnswered: false,
+      readsStarted: false,
+      readKept: false,
       inTurn: false,
     });
   }
@@ -77,17 +82,24 @@ export class PageTreeStore {
   }
 
   /**
-   * load reads the tree; SWR calls it, and each write's answer. A write
-   * answered while the read was out is newer than what it read: the tree
-   * kept is the one read after it. A tree read the same as before is kept
-   * as it was, so that what shows it does not render again.
+   * load reads the tree; SWR calls it, each write's answer, and the events
+   * of other tabs' writes. A write answered while the read was out is newer
+   * than what it read: the tree kept is the one read after it. Reads that
+   * overlap take effect in the order they started (M5/P3 design 3.9): one
+   * answered after a later one is dropped. A tree read the same as before
+   * is kept as it was, so that what shows it does not render again.
    */
   async load(): Promise<TreeNode[]> {
     const answeredBefore = this.changesAnswered;
+    const read = ++this.readsStarted;
     const nodes = await this.service.listNodes(this.notebookId);
     if (this.changesAnswered !== answeredBefore) {
       return this.nodes ?? this.load();
     }
+    if (read < this.readKept) {
+      return this.nodes ?? nodes;
+    }
+    this.readKept = read;
     if (!sameTree(this.nodes, nodes)) {
       runInAction(() => {
         this.nodes = nodes;
@@ -155,6 +167,16 @@ export class PageTreeStore {
   /** view reads the page id's reading view, which the store does not keep: SWR does, by page. */
   view(id: string): Promise<PageView> {
     return this.service.getPageView(id);
+  }
+
+  /** editLock reads who edits the page id, which SWR keeps by page, as it does the view (M5/P3 design 3.10). */
+  editLock(id: string): Promise<EditLock> {
+    return this.service.lock(id);
+  }
+
+  /** releaseEditLock ends the edit session that holds the page id's lock: its notebook's admins can. */
+  releaseEditLock(id: string): Promise<void> {
+    return this.service.releaseLock(id);
   }
 
   isOpen(id: string): boolean {

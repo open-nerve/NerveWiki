@@ -2,6 +2,7 @@ import { TabChannel } from "../events/channel";
 import type { EventDeps } from "../events/deps";
 import { EventHub } from "../events/hub";
 import { leaseLeadership, webLockLeadership } from "../events/leadership";
+import { Refresher } from "../events/refresher";
 import { AccountService } from "../services/account.service";
 import { ApiTokenService } from "../services/api-token.service";
 import { AuthService } from "../services/auth.service";
@@ -74,6 +75,7 @@ export class RootStore {
   private readonly ownerless: OwnerlessService | undefined;
   private readonly pages: PageService | undefined;
   private readonly hub: EventHub | undefined;
+  private readonly eventDeps: EventDeps | undefined;
   /** The member, invitation and notebook lists this generation holds, by workspace id. */
   private readonly memberLists = new Map<string, MemberStore>();
   private readonly invitationLists = new Map<string, InvitationStore>();
@@ -107,6 +109,7 @@ export class RootStore {
       client && app.events && loginId !== undefined
         ? eventHub(new EventService(client), app.events, loginId)
         : undefined;
+    this.eventDeps = this.hub && app.events;
   }
 
   /**
@@ -117,6 +120,22 @@ export class RootStore {
    */
   events(): EventHub | undefined {
     return this.hub;
+  }
+
+  /**
+   * newRefresher is a new merger of the re-reads that events ask for (M5/P3
+   * design 3.8), over the page's visibility; its holder stops it. Undefined
+   * where events is.
+   */
+  newRefresher(): Refresher | undefined {
+    const deps = this.eventDeps;
+    return (
+      deps &&
+      new Refresher(
+        { visible: () => deps.page.visible(), onChange: (l) => deps.page.on("visibilitychange", l) },
+        deps.now
+      )
+    );
   }
 
   /**
