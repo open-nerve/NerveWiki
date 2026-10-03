@@ -9,6 +9,9 @@ export type Composed = {
   /**
    * reconfigure is the effect that replaces the extension named name with
    * next, or unloads it with null; undefined for a name not registered.
+   * Only what the extension put in the editor's state goes: what it set
+   * up through its controls (subscriptions, timers: M5's autosave and idle
+   * exit) stays until the state goes.
    */
   reconfigure(name: string, next: Extension | null): StateEffect<unknown> | undefined;
 };

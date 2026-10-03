@@ -145,6 +145,7 @@ export const zhCN: Messages = {
   "editor.leaveDescription": "这一页的修改还没有保存。",
   "editor.stay": "留下",
   "editor.leave": "离开",
+  "editor.conflicted": "这一页在你编辑时被改过：见上方。",
   "editor.conflictTitle": "这一页在你编辑时被改过",
   "editor.conflictDescription":
     "下面是你的文字与这一页现在的样子的差异：你加的有标记，你会去掉的划了线。保留你的，就用编辑器里的文字（连同之后的修改）覆盖这一页；放弃你的，就在这一页现在的样子上接着编辑。",

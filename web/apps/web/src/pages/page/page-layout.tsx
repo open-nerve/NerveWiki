@@ -1,5 +1,5 @@
 import { observer } from "mobx-react-lite";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Navigate, useParams } from "react-router";
 import useSWR, { useSWRConfig } from "swr";
 
@@ -97,6 +97,8 @@ const PageShell = observer(function PageShell({ notebook, page }: { notebook: No
   const [entering, setEntering] = useState(false);
   const [refusal, setRefusal] = useState<unknown>(undefined);
   const [idleLeft, setIdleLeft] = useState(false);
+  // The note of an idle exit describes Edit, where the focus lands: it is heard as it comes.
+  const idleNote = useId();
   const edit = useRef<HTMLButtonElement>(null);
   const lockNote = useRef<HTMLDivElement>(null);
   const back = useRef(false);
@@ -185,6 +187,7 @@ const PageShell = observer(function PageShell({ notebook, page }: { notebook: No
               ref={edit}
               variant="outline"
               aria-busy={entering || undefined}
+              aria-describedby={idleLeft ? idleNote : undefined}
               aria-disabled={entering || undefined}
               onClick={() => void enter(false)}
             >
@@ -196,7 +199,11 @@ const PageShell = observer(function PageShell({ notebook, page }: { notebook: No
       {editing === undefined ? (
         <>
           {refusal !== undefined && <Alert>{errorText(refusal, t)}</Alert>}
-          {idleLeft && <output className="block text-sm text-muted-foreground">{t("page.idleLeft")}</output>}
+          {idleLeft && (
+            <output id={idleNote} className="block text-sm text-muted-foreground">
+              {t("page.idleLeft")}
+            </output>
+          )}
           <div ref={lockNote} tabIndex={-1} className="outline-none">
             <EditLockNote notebook={notebook} page={page} editHere={writer ? () => void enter(true) : undefined} />
           </div>

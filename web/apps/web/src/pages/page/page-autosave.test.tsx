@@ -5,7 +5,7 @@ import { afterAll, afterEach, beforeAll, expect, test, vi } from "vitest";
 
 import { autosavePause } from "../../editor/autosave";
 import { idleLimit } from "../../editor/idle-exit";
-import { editorExtensions } from "../../editor/registry";
+import { editorExtensions, type EditorControls, type EditorExtension } from "../../editor/registry";
 import { pageEditor } from "../../test/page-editor";
 import { bob, guide, pagePath, pageServer } from "../../test/page-server";
 import { renderApp } from "../../test/render";
@@ -19,6 +19,9 @@ afterAll(() => configure({ reactStrictMode: false }));
 afterEach(() => void vi.useRealTimers());
 
 const idleLeft = "Editing ended after 30 minutes without input.";
+const conflictTitle = "This page changed while you edited it";
+/** The tab shown again: the edit's session beats. */
+const shown = () => act(() => void document.dispatchEvent(new Event("visibilitychange")));
 
 /** Presses Ctrl+key where the focus is. */
 const ctrl = (key: string) => fireEvent.keyDown(document.activeElement ?? document.body, { key, ctrlKey: true });
@@ -86,6 +89,33 @@ test("with a conflict open, autosave sends nothing and leaves the focus where it
   expect(document.activeElement).toBe(content);
 });
 
+test("a conflict autosave runs into leaves the focus in the editor, the status saying so", async () => {
+  const { server, type, content } = await editing();
+  server.contents.set(guide.id, { content: "Guide\ntheirs\n", revision: 2 });
+
+  type(" mine");
+  await rest(autosavePause);
+  expect(await screen.findByRole("region", { name: conflictTitle })).toBeTruthy();
+  await rest(100);
+  expect(document.activeElement).toBe(content);
+  expect(screen.getByRole("status").textContent).toBe("This page changed while you edited it: see above.");
+});
+
+test("with a conflict open, the idle exit leaves nothing and moves no focus", async () => {
+  const { server, type, content } = await editing();
+  server.contents.set(guide.id, { content: "Guide\ntheirs\n", revision: 2 });
+  type(" mine");
+  ctrl("s");
+  const region = await screen.findByRole("region", { name: conflictTitle });
+  await waitFor(() => expect(document.activeElement).toBe(within(region).getByRole("heading")));
+
+  content.focus();
+  await rest(idleLimit * 2);
+  expect(document.activeElement).toBe(content);
+  expect(puts(server.sent)).toHaveLength(1);
+  expect(screen.queryByText(idleLeft)).toBeNull();
+});
+
 test("an edit without input for 30 minutes is saved and left: the reading view says so, the focus on Edit, the session ended; Edit pressed again, it says so no more", async () => {
   const { user, server, type } = await editing();
 
@@ -96,6 +126,8 @@ test("an edit without input for 30 minutes is saved and left: the reading view s
   expect(await screen.findByText(idleLeft)).toBe(screen.getByRole("status"));
   const edit = screen.getByRole("button", { name: "Edit" });
   await waitFor(() => expect(document.activeElement).toBe(edit));
+  // Edit, where the focus is, is described by why the edit ended.
+  expect(document.getElementById(edit.getAttribute("aria-describedby") ?? "")?.textContent).toBe(idleLeft);
   expect(puts(server.sent)).toEqual(['PUT Guide "Guide\\n one" on 1 in session-1']);
   expect(server.sent).toContain("END session-1");
 
@@ -104,6 +136,34 @@ test("an edit without input for 30 minutes is saved and left: the reading view s
   await user.click(edit);
   expect(await screen.findByText("Bob is editing this page.")).toBeTruthy();
   expect(screen.queryByText(idleLeft)).toBeNull();
+  expect(edit.hasAttribute("aria-describedby")).toBe(false);
+});
+
+test("input meanwhile starts the 30 minutes again", async () => {
+  const { type } = await editing();
+
+  await rest(idleLimit - 10 * 60_000);
+  type(" one");
+  await rest(idleLimit - 1_000);
+  expect(screen.queryByText(idleLeft)).toBeNull();
+  expect(screen.getByRole("textbox", { name: "Page content" })).toBeTruthy();
+  await rest(1_000);
+  expect(await screen.findByText(idleLeft)).toBeTruthy();
+});
+
+test("an edit whose content cannot be read is left all the same after 30 minutes, its session ended", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const server = pageServer({
+    answers: { "GET /api/v0/pages/*/content": () => Promise.reject(new TypeError("offline")) },
+  });
+  const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+  renderApp(pagePath(guide.id), server.app, { editorExtensions });
+  await user.click(await screen.findByRole("button", { name: "Edit" }));
+  expect(await screen.findByRole("button", { name: "Try again" })).toBeTruthy();
+
+  await rest(idleLimit);
+  expect(await screen.findByText(idleLeft)).toBeTruthy();
+  expect(server.sent).toContain("END session-1");
 });
 
 test.each([
@@ -140,16 +200,84 @@ test("an edit idle while a composition goes on is left once it ends, with the wo
   expect(puts(server.sent)).toEqual(['PUT Guide "Guide\\nni" on 1 in session-1']);
 });
 
+test("an idle exit waiting for a composition stays once the user comes back in it; 30 minutes on, it leaves", async () => {
+  const { server, type, view } = await editing();
+  const composing = vi.spyOn(EditorView.prototype, "composing", "get").mockReturnValue(true);
+  type("ni");
+  await rest(idleLimit + 1_000);
+
+  type("hao");
+  composing.mockReturnValue(false);
+  view?.contentDOM.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true }));
+  await rest(autosavePause);
+  expect(screen.getByRole("textbox", { name: "Page content" })).toBeTruthy();
+  expect(screen.queryByText(idleLeft)).toBeNull();
+  expect(puts(server.sent)).toEqual(['PUT Guide "Guide\\nnihao" on 1 in session-1']);
+  await rest(idleLimit);
+  expect(await screen.findByText(idleLeft)).toBeTruthy();
+});
+
+test("an idle exit waiting for a composition stays when the session is lost meanwhile: the banner keeps the focus", async () => {
+  const { server, type, view } = await editing();
+  const composing = vi.spyOn(EditorView.prototype, "composing", "get").mockReturnValue(true);
+  type("ni");
+  await rest(idleLimit + 1_000);
+
+  server.takeOver(guide.id);
+  shown();
+  const banner = await screen.findByRole("alert");
+  await waitFor(() => expect(document.activeElement).toBe(banner));
+  composing.mockReturnValue(false);
+  view?.contentDOM.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true }));
+  await rest(100);
+  expect(document.activeElement).toBe(banner);
+  expect(screen.queryByText(idleLeft)).toBeNull();
+});
+
+test("an idle leave waiting for a composition settles once the editor goes first", async () => {
+  let kept: EditorControls | undefined;
+  const keeping: EditorExtension = {
+    name: "keeping",
+    extension: (_, controls) => {
+      kept = controls;
+      return [];
+    },
+  };
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+  renderApp(pagePath(guide.id), pageServer().app, { editorExtensions: [...editorExtensions, keeping] });
+  await user.click(await screen.findByRole("button", { name: "Edit" }));
+  const { type } = await pageEditor();
+  vi.spyOn(EditorView.prototype, "composing", "get").mockReturnValue(true);
+  type("ni");
+
+  const left = kept?.leave("idle");
+  await user.click(screen.getByRole("link", { name: "Notes" }));
+  await user.click(
+    within(await screen.findByRole("alertdialog", { name: "Leave without saving?" })).getByRole("button", {
+      name: "Leave",
+    })
+  );
+  await screen.findByRole("heading", { level: 1, name: "Notes" });
+  await expect(left).resolves.toBeUndefined();
+});
+
 test("an edit whose save fails is not left for being idle; 30 minutes later it is tried again, and left", async () => {
   const { server, type } = await editing();
   server.writesDown = true;
 
   type(" one");
+  await rest(autosavePause);
+  // The user pressed Save, to no avail: the idle exit that stays leaves the focus there.
+  const saveButton = screen.getByRole("button", { name: "Save" });
+  saveButton.focus();
+  const tried = puts(server.sent).length;
   await rest(idleLimit);
   expect(screen.getByRole("textbox", { name: "Page content" })).toBeTruthy();
-  expect(puts(server.sent).length).toBeGreaterThanOrEqual(2);
+  expect(puts(server.sent).length).toBe(tried + 1);
+  expect(document.activeElement).toBe(saveButton);
   server.writesDown = false;
   await rest(idleLimit);
   expect(await screen.findByText(idleLeft)).toBeTruthy();
-  expect(puts(server.sent).at(-1)).toBe('PUT Guide "Guide\\n one" on 1 in session-1');
+  expect(server.contents.get(guide.id)?.content).toBe("Guide\n one");
 });

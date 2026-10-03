@@ -26,8 +26,11 @@ export type SourceEditorHandle = {
   /** version is how many changes the content has had: each adds one. */
   version(): number;
   focus(): void;
-  /** whenComposed runs act now, or once the input method's composition ends: never on half a word. */
-  whenComposed(act: () => void): void;
+  /**
+   * whenComposed runs act now, or once the input method's composition
+   * ends: never on half a word; drop instead if the editor goes first.
+   */
+  whenComposed(act: () => void, drop?: () => void): void;
   /** load replaces the content with raw: a new state, whose history does not reach the old content. */
   load(raw: string): void;
   /** hold keeps the content from being changed while on, whatever the extensions set: while the edit is left. */
@@ -262,7 +265,7 @@ export function SourceEditor({ content, focusOnOpen = false, context, controls, 
       text: () => (editor.current === null ? first.current.content : joinBreaks(editor.current.view.state)),
       version: () => editor.current?.version ?? 0,
       focus: () => editor.current?.view.focus(),
-      whenComposed: (act) => (editor.current === null ? act() : editor.current.whenComposed(act)),
+      whenComposed: (act, drop) => (editor.current === null ? act() : editor.current.whenComposed(act, drop)),
       load: (raw) => editor.current?.load(raw),
       hold: (on) => editor.current?.lock("held", on),
     }),

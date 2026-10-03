@@ -93,7 +93,8 @@ test("PG7 (page): an editor opens the editor with Ctrl+E and saves twice with Ct
   await saveEdit(page);
   const second = (await (await answer).json()) as WikiPage;
   await expectContentWritten(db, second, "# Notes\n\nSecond save.", editorId);
-  await expectOneSessionRevision(db, session?.id ?? "", notes.id, 1, 3);
+  // Autosave may have written between the keys: the revision is the last answer's, one version all the same.
+  await expectOneSessionRevision(db, session?.id ?? "", notes.id, 1, second.revision);
 
   // The writes are held from here: what is typed stays unsaved while the dialog asks, autosave or not (M5/P5).
   const held = await holdContentWrites(page, notes.id);
@@ -111,12 +112,14 @@ test("PG7 (page): an editor opens the editor with Ctrl+E and saves twice with Ct
   await page.keyboard.press("ControlOrMeta+e");
   await held.sent();
   // One write of the rest: autosave's, if it went first, and Ctrl+E's are one.
-  expect((await held.release()).map((write) => write.status())).toEqual([200]);
+  const [rest, ...more] = await held.release();
+  expect([rest?.status(), more]).toEqual([200, []]);
+  const last = (await rest?.json()) as WikiPage;
   await expect(page.getByRole("article")).toContainText("Second save. More.");
   await expect(page.getByRole("main").getByRole("button", { name: "Edit", exact: true })).toBeFocused();
   expect(await readContent(api, adminPat, notes.id)).toMatchObject({
     content: "# Notes\n\nSecond save. More.",
-    revision: 4,
+    revision: last.revision,
   });
   await expect
     .poll(async () => (await db.query("SELECT 1 FROM edit_sessions WHERE node_id = $1", [notes.id])).length)

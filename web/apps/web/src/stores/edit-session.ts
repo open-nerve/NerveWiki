@@ -192,7 +192,7 @@ export class EditSession {
     }
     this.ended = true;
     this.unfollow();
-    // A beat out could only find the session gone: it is given up, not to answer a 404 after the end.
+    // A beat out tells the ended edit nothing it listens to: it is given up, not to answer a 404 after the end.
     this.beatAnswer?.abort();
     const id = this.id;
     this.id = undefined;

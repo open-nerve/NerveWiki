@@ -238,14 +238,16 @@ test("an extension hears of each change of the content, not of a content loaded;
       return [];
     },
   };
-  const { handle, type, unmount } = editor("text", [listening]);
+  const { handle, view, type, unmount } = editor("text", [listening]);
 
   type("!");
   type("?");
+  view().contentDOM.dispatchEvent(new KeyboardEvent("keydown", { key: "z", ctrlKey: true, bubbles: true }));
+  expect(handle().text()).toBe("text");
   handle().load("new");
   type("!");
   unmount();
-  expect(heard).toEqual(["change 1", "change 1", "close 1", "change 2", "close 2"]);
+  expect(heard).toEqual(["change 1", "change 1", "change 1", "close 1", "change 2", "close 2"]);
 });
 
 test("under StrictMode the editor made first, and gone at once, tells its extensions it closed", () => {
@@ -309,6 +311,32 @@ test("an extension's save that waits for a composition rejects with EditorClosed
   unmount();
   await expect(saved).rejects.toBeInstanceOf(EditorClosed);
   expect(save).not.toHaveBeenCalled();
+});
+
+test("a content loaded keeps what waits on a composition: once it ends, an extension's save goes", async () => {
+  const { kept, extension } = keeping();
+  const { handle, view, save } = editor("text", [extension]);
+  const composing = vi.spyOn(EditorView.prototype, "composing", "get").mockReturnValue(true);
+
+  const saved = kept.controls?.save();
+  handle().load("new");
+  expect(save).not.toHaveBeenCalled();
+  composing.mockReturnValue(false);
+  view().contentDOM.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true }));
+  await saved;
+  expect(save).toHaveBeenCalledOnce();
+});
+
+test("what the handle has wait on a composition is dropped as the editor goes, its drop told", () => {
+  const { handle, unmount } = editor("text");
+  vi.spyOn(EditorView.prototype, "composing", "get").mockReturnValue(true);
+  const act = vi.fn();
+  const drop = vi.fn();
+
+  handle().whenComposed(act, drop);
+  unmount();
+  expect(drop).toHaveBeenCalledOnce();
+  expect(act).not.toHaveBeenCalled();
 });
 
 test("what waits on a composition goes with the editor", async () => {

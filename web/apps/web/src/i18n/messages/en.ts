@@ -146,6 +146,7 @@ export const en = {
   "editor.leaveDescription": "Your changes to this page are not saved.",
   "editor.stay": "Stay",
   "editor.leave": "Leave",
+  "editor.conflicted": "This page changed while you edited it: see above.",
   "editor.conflictTitle": "This page changed while you edited it",
   "editor.conflictDescription":
     "Your text, against the page as it is now: what you add is marked, what you would take away is struck out. Keep yours to save the editor's text over the page, with what you changed since, or discard it to edit the page as it is now.",
