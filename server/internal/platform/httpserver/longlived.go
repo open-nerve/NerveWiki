@@ -63,15 +63,44 @@ func LongLived(logger *slog.Logger, h http.Handler) http.Handler {
 // LongLived wraps the handler of a long-lived route, such as the event
 // stream (M5 design 4.10), in the per-route middlewares that suit it:
 //
-//	request meta → failure gate and authentication → rate limit →
-//	the package's LongLived
+//	request meta → within RequestTimeout: failure gate and authentication
+//	→ rate limit → the package's LongLived
 //
-// It has no request deadline and reads no body. Lifting the write deadline
-// comes last, so that a 401 or a 429 is answered first, also through a
-// ResponseRecorder, on which lifting it fails. h's context carries what
-// Reauthenticate needs.
+// Its opening, up to the handler, is bounded as any request is; the handler
+// has no deadline, and the request reads no body. Lifting the write
+// deadline comes last, so that a 401 or a 429 is answered first, also
+// through a ResponseRecorder, on which lifting it fails. h's context carries
+// what Reauthenticate needs.
 func (a *API) LongLived(h http.Handler) http.Handler {
-	return a.requestMeta(a.authenticate(a.rateLimit(a.reauthenticator(LongLived(a.logger, h)))))
+	return a.requestMeta(a.opening(a.authenticate(a.rateLimit(a.opened(a.reauthenticator(LongLived(a.logger, h)))))))
+}
+
+type openingKey struct{}
+
+// opening bounds a long-lived request's authentication by RequestTimeout:
+// a database that does not answer holds it no longer than any request.
+// opened lifts the bound.
+func (a *API) opening(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), a.requestTimeout)
+		defer cancel()
+		next.ServeHTTP(w, r.WithContext(context.WithValue(ctx, openingKey{}, r.Context())))
+	})
+}
+
+// opened gives the handler what the authentication put in the context,
+// without the opening's deadline: its context ends with the request's own.
+func (a *API) opened(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		request, ok := r.Context().Value(openingKey{}).(context.Context)
+		if !ok {
+			request = r.Context()
+		}
+		ctx, cancel := context.WithCancel(context.WithoutCancel(r.Context()))
+		defer cancel()
+		defer context.AfterFunc(request, cancel)()
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
 }
 
 type reauthKey struct{}

@@ -246,6 +246,47 @@ func TestTheAPIsLongLivedRoutesAuthenticate(t *testing.T) {
 	}
 }
 
+// A long-lived route's opening is bounded as any request's: an
+// authentication that does not answer ends at RequestTimeout, a 500, and
+// the handler is not reached. One that answers is given a context with that
+// deadline, and the handler one without.
+func TestALongLivedRoutesOpeningIsBounded(t *testing.T) {
+	auth := &fakeAuth{}
+	cfg := testAPIConfig(auth, slog.New(slog.DiscardHandler))
+	cfg.RequestTimeout = 200 * time.Millisecond
+	api := buildAPI(t, cfg)
+	var got *http.Request
+	router := NewRouter(slog.New(slog.DiscardHandler))
+	router.Handle(eventsRoute, api.LongLived(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) { got = r })))
+	srv := httptest.NewServer(middleware(router, slog.New(slog.DiscardHandler)))
+	t.Cleanup(srv.Close)
+	get := func(token string) int {
+		req, _ := http.NewRequest(http.MethodGet, srv.URL+"/api/v0/events", nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		resp, err := client().Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = resp.Body.Close()
+		return resp.StatusCode
+	}
+
+	start := time.Now()
+	if status := get("slow"); status != http.StatusInternalServerError || got != nil || time.Since(start) > 2*time.Second {
+		t.Errorf("GET with an authentication that does not answer = %d after %v, handler reached %v; want 500 at the request timeout",
+			status, time.Since(start), got != nil)
+	}
+	if status := get("tok"); status != http.StatusOK || got == nil {
+		t.Fatalf("GET = %d, handler reached %v; want 200", status, got != nil)
+	}
+	if deadline, ok := auth.ctx.Deadline(); !ok || time.Until(deadline) > cfg.RequestTimeout {
+		t.Errorf("the authentication's deadline: %v, %v; want within the request timeout", deadline, ok)
+	}
+	if _, ok := got.Context().Deadline(); ok || got.Context().Value(callerKey{}) != "caller-tok" {
+		t.Errorf("the handler's context: deadline %v, caller %v; want none, the caller", ok, got.Context().Value(callerKey{}))
+	}
+}
+
 // Reauthenticate authenticates the request's token again, as long as it is
 // valid, without the failure gate or the rate limit: once the credential is
 // revoked it answers the authenticator's 401. Outside API.LongLived it is

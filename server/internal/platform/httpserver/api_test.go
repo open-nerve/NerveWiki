@@ -48,6 +48,9 @@ func (f *fakeAuth) Authenticate(ctx context.Context, token string) (context.Cont
 		return nil, "", fmt.Errorf("check token: %w", expiredErr{problemErr{status: http.StatusUnauthorized, code: "unauthorized", detail: "expired"}})
 	case "boom":
 		return nil, "", errors.New("database is down")
+	case "slow":
+		<-ctx.Done()
+		return nil, "", ctx.Err()
 	}
 	return context.WithValue(ctx, callerKey{}, "caller-"+token), "session:" + token, nil
 }

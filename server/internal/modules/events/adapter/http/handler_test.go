@@ -423,6 +423,23 @@ func TestAClientThatStopsReadingEndsItsStream(t *testing.T) {
 	}
 }
 
+// A stream that ends at a heartbeat without a frame, a fault, ends its
+// body cleanly well after its last frame: no write deadline is left over
+// to cut its end short.
+func TestAStreamEndsCleanlyLongAfterItsLastFrame(t *testing.T) {
+	s := newStreamWith(t, options{heartbeat: 100 * time.Millisecond})
+	_, r := s.open(t, "tok")
+	expect(t, r, "hello", "")
+	time.Sleep(300 * time.Millisecond)
+	s.tokens.down.Store(true)
+
+	s.timer(t).c <- now()
+
+	if rest, err := io.ReadAll(r); err != nil || len(rest) != 0 {
+		t.Errorf("the rest of the body: %q, %v; want its clean end", rest, err)
+	}
+}
+
 // A heartbeat whose authentication the client's going cuts short is no
 // fault: the stream ends without an error logged.
 func TestAHeartbeatCutShortIsNoFault(t *testing.T) {

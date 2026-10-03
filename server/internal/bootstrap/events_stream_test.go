@@ -81,7 +81,7 @@ func streamResponse(t *testing.T, base, name, token string) (*http.Response, con
 	t.Cleanup(cancel)
 	late := time.AfterFunc(interleavingWait, cancel)
 	defer late.Stop()
-	for {
+	for last := 0; ; last = http.StatusServiceUnavailable {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/api/v0/events", nil)
 		if err != nil {
 			t.Fatal(err)
@@ -89,7 +89,7 @@ func streamResponse(t *testing.T, base, name, token string) (*http.Response, con
 		req.Header.Set("Authorization", "Bearer "+token)
 		res, err := http.DefaultClient.Do(req)
 		if err != nil {
-			t.Fatalf("%s's stream: %v", name, err)
+			t.Fatalf("%s's stream: %v (the last answer: %d)", name, err, last)
 		}
 		if res.StatusCode == http.StatusOK {
 			return res, cancel

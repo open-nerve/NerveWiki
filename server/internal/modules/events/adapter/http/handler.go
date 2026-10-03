@@ -164,7 +164,8 @@ func unauthenticated(err error) bool {
 
 // writer writes frames and flushes each, each within wait: LongLived lifts
 // the server's write deadline, and a client that stops reading would hold
-// a write, and the stream, forever.
+// a write, and the stream, forever. The deadline is lifted again after
+// each frame: a stream that ends without one ends cleanly.
 type writer struct {
 	w    http.ResponseWriter
 	rc   *http.ResponseController
@@ -179,5 +180,5 @@ func (o writer) write(f []byte) bool {
 	if _, err := o.w.Write(f); err != nil {
 		return false
 	}
-	return o.rc.Flush() == nil
+	return o.rc.Flush() == nil && o.rc.SetWriteDeadline(time.Time{}) == nil
 }

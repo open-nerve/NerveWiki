@@ -151,10 +151,10 @@ func TestAListenerClosesItsConnectionWhenStopped(t *testing.T) {
 // kept: the notifications that come after several pings arrive on it.
 func TestAListenerKeepsAQuietConnection(t *testing.T) {
 	pool := newNotes(t, 4)
-	h, _ := listenPinging(t, pool, "things", 50*time.Millisecond)
+	h, _ := listenPinging(t, pool, "things", 250*time.Millisecond)
 	h.expect(t, "listening")
 
-	time.Sleep(300 * time.Millisecond)
+	time.Sleep(time.Second)
 	notify(t, pool, "things", "late")
 
 	h.expect(t, "notify late")
@@ -174,7 +174,7 @@ func TestAListenerFindsASilentConnectionLost(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(pool.Close)
-	h, _ := listenPinging(t, pool, "things", 100*time.Millisecond)
+	h, _ := listenPinging(t, pool, "things", 250*time.Millisecond)
 	h.expect(t, "listening")
 
 	silent.silence()
