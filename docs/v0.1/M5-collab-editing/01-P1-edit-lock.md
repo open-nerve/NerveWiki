@@ -3,7 +3,7 @@
 | 项 | 内容 |
 |---|---|
 | Phase | M5/P1 编辑锁（后端） |
-| 状态 | 进行中 |
+| 状态 | 完成 |
 | 基线 | `edb319e`（M5 总设计与它的审查提交之后的 main）；本文与各 Step 计划提交之后开分支 `m5-p1` |
 | 上级文档 | [M5 总设计](00-M5-design.md) 第 3、4.1–4.6、5、7–9 节；[M4/P4 移交](handoffs/M4-P4-edit-sessions.md)；[M4/P4 文档](../M4-pages/04-P4-content-sessions.md) 3.2–3.7；[总体设计](../v0.1-design.md) 3.9、6.1、13.1 |
 
@@ -124,8 +124,9 @@ e2e/stories/page/、e2e/stories/collab/             见 3.9
 **强制解锁**（`ReleaseEditLock`）：`Writer.Run`，动作 `page.release_edit_lock`，不改树；单元里 `Unit.Unlock(ctx, id)`：
 
 1. 锁正文行（不是页面：404）；
-2. `EndAliveSessions(id, 任何人, unlocked, 执行者, …)`；
-3. 告诉订阅者。
+2. `DeleteExpiredSessionsOf`：删掉这一页过期的行，与开启相同，迟到的心跳就续不活解锁跳过的会话（审查 m1）；
+3. `EndAliveSessions(id, 任何人, unlocked, 执行者, …)`；
+4. 告诉订阅者。
 
 不写变更集，不告诉观察者。没有活着的会话也答 204。
 
@@ -137,7 +138,7 @@ e2e/stories/page/、e2e/stories/collab/             见 3.9
 2. 墓碑：`taken_over` 答 `page.edit_session_taken_over`，`unlocked` 答 `Unlocked(解除者)`；
 3. 不活着：`page.edit_session_ended`。
 
-**心跳**：`FindLiveSession` 找不到时查 `FindEndedSession`。本人的墓碑答 409（`taken_over` 或 `unlocked`），否则照旧 404。`HeartbeatSession` 更新不到行时同样处理：它在行锁上等到接管提交之后，按新版本重判 `ended_reason IS NULL`，不会把墓碑续成活的。
+**心跳**：`FindLiveSession` 找不到时查 `FindEndedSession`。本人的墓碑先照活着的会话判定笔记本（没有角色了答 404，只能读答 403，审查 m2），再答 409（`taken_over` 或 `unlocked`），否则照旧 404。`HeartbeatSession` 更新不到行时同样处理：它在行锁上等到接管提交之后，按新版本重判 `ended_reason IS NULL`，不会把墓碑续成活的。
 
 **结束**：`EndSession` 删掉本人活着的会话或墓碑。活着的告诉订阅者，墓碑不告诉，都答 204；其余照旧 404。
 
@@ -201,7 +202,7 @@ e2e/stories/page/、e2e/stories/collab/             见 3.9
 | 50 | 别人的删除与开启 | 删除先：开启答 `page.not_found`；开启先：删除答 `page.locked` |
 | 51 | 不带会话的写与开启 | 写先：正文改了，开启照常；开启先：写答 `page.locked` |
 
-`checkPages` 加"每页至多一个活着的会话"（按测试的时钟）与"墓碑的三列同在"。
+`checkPages` 加"每页至多一个活着的会话"（按数据库的时钟）。"墓碑的三列同在"由表的检查保证，`checkPages` 不再查（审查 Nit）。
 
 ### 3.9 端到端（接口版本）
 
@@ -264,4 +265,25 @@ e2e/stories/page/、e2e/stories/collab/             见 3.9
 
 ## 7. 结果
 
-（合并之后填写。）
+- 分支 `m5-p1`：S1 `a126b03`；S2 `e7d8838`；S3 `f19d1a5`；S4 `e175856`；S5 `85e3437`；审查修复 `5323f6e`；`1412d5a` 合并（`--no-ff`）。
+- 门禁：每个 Step 与审查修复的 `make check` 为绿；`make gen-check`、`make e2e`（157 个）、`make image-smoke` 为绿；持续集成为绿。
+- 审查：[P1 审查](reviews/P1-edit-lock-review.md)。两位审查者，没有阻断合并的问题。Important 2：I1（结束的时刻早于会话的开启时违反表的检查，接管或强制解锁答 500）、B1 即 m2（墓碑的心跳不经授权就答原因）；另有 Minor 与 Nit 若干，合并之前全部处置。修复的核对没有 Important，Minor 3、Nit 7 一并处置。
+- 反向对照：S1 与 S2 28、S3 4、S4 8、S5（e2e）4，审查修复 10，全部失败。
+
+**与计划的出入**（已同步进上文）：
+
+1. 锁的注册从 S2 挪到 S4，与它改写的 M4 测试（交错 42、会话之间的保存、子树删除）同一提交，每个提交都是绿的。
+2. 矩阵的种子：每个笔记本列的会话开在它自己的草稿页上（`draft-<列>`），别人的开在 `<笔记本>-others-draft`；种子的页按列出的次序取 `sort_order`，不再依赖 id 与插入的次序（3.7）。
+3. 租约从 60 秒改为 120 秒的各处提及（契约、README、前端的注释）随常量放进 S1。
+4. 交错 49 在模块根（`modules/page/lock_test.go`）：整个程序只有一个时钟，造不出"心跳读的时刻早于会话到期"；这里两个请求各有自己模块的时钟，同一个数据库，否决者在删除之后拦住开启（3.8）。
+5. PG10（页面版本）也改写：开启会删掉过期的行，原来取 `[, second]` 的写法不成立（3.9）。
+6. 读锁的读模型叫 `app.LockView`：`EditLock` 是否决者与守卫的类型。
+7. 契约里 `holder` 写成 `anyOf [EditLockHolder, null]`，生成的是 `nullable.Nullable[EditLockHolder]`。
+8. C2 另核对别人的接管被拒，C6 另核对过期的行被删，供 e2e 的反向对照用。
+9. 审查修复：墓碑的 `ended_at` 取结束时刻与 `created_at` 中较晚的，告诉订阅者的时刻相同（I1）；强制解锁先删这一页过期的行（m1，3.5）；墓碑的心跳先判定笔记本（m2，3.5）；`checkPages` 不再查墓碑的三列（3.8）。
+
+**留给后面的**：
+
+- **给 P3**：M4 的网页编辑器只在卸载时结束会话，刷新或另开标签页时旧会话最多再活 120 秒，这期间新的开启答 `page.locked`（持锁人是自己），自动保存失败（审查 m3）。总设计第 3 节接受 P1 到 P3 之间的这个差异；P3 的 `pagehide` 释放与 P4 的"在这里编辑"解决它。v0.1 不在 P3 之前发布。
+- **接受**：不带会话的写正文（令牌）不删过期的行：会话过期之后令牌写进去，迟到的心跳随后续活会话，会话的下一次保存答 `revision_mismatch` 而不是 `edit_session_ended`。编辑器按冲突处理，不丢字。
+- **给 P4 与收官之后的打磨**：子页的锁拒绝父页的删除时，`page.locked` 的文案（"这个页面正在被编辑"）读起来别扭。
