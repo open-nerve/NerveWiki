@@ -11,6 +11,7 @@ import type { MemberStore } from "./member.store";
 import type { NotebookMemberStore } from "./notebook-member.store";
 import type { NotebookStore } from "./notebook.store";
 import type { OwnerlessStore } from "./ownerless.store";
+import type { PageTreeStore } from "./page-tree.store";
 import type { RootStore } from "./root.store";
 import type { WorkspaceStore } from "./workspace.store";
 
@@ -86,6 +87,15 @@ export function useNotebookMembers(notebook: Notebook): NotebookMemberStore {
     throw new Error("useNotebookMembers is used outside SignedIn");
   }
   return members;
+}
+
+/** usePageTree is the page tree of notebook: only for the pages the SignedIn guard shows. */
+export function usePageTree(notebook: Notebook): PageTreeStore {
+  const pages = useStore().pagesOf(notebook);
+  if (pages === undefined) {
+    throw new Error("usePageTree is used outside SignedIn");
+  }
+  return pages;
 }
 
 /** useOwnerless is the ownerless notebooks of workspace: only for the pages the SignedIn guard shows. */

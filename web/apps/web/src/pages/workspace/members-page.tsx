@@ -3,6 +3,7 @@ import { useRef, useState } from "react";
 import useSWR, { useSWRConfig } from "swr";
 
 import { ConfirmDialog } from "../../app/confirm-dialog";
+import { MemberRow } from "../../app/member-row";
 import { NotLoaded } from "../../app/not-loaded";
 import { errorText } from "../../app/problem-messages";
 import { Alert } from "../../components/ui/alert";
@@ -12,7 +13,7 @@ import type { WorkspaceRole } from "../../services/member.service";
 import type { Workspace } from "../../services/workspace.service";
 import { useAccount, useMembers, useWorkspaces } from "../../stores/context";
 import { InvitationsSection } from "./invitations-section";
-import { MemberRow } from "./member-row";
+import { roles } from "./role-options";
 import { useWorkspace } from "./workspace-layout";
 
 /**
@@ -83,10 +84,13 @@ const MembersSection = observer(function MembersSection({ workspace }: { workspa
           {members.list.map((member) => (
             <MemberRow
               key={member.id}
-              workspace={workspace}
               member={member}
               you={member.user_id === me.id}
               manage={workspace.role === "admin" && member.user_id !== me.id}
+              roles={roles}
+              roleLabel={(role) => t(`role.${role}`)}
+              removeTitle={t("members.removeTitle", { name: member.display_name, workspace: workspace.name })}
+              removeBody={t("members.removeBody")}
               changeRole={(role) => changeRole(member.id, role)}
               remove={() => remove(member.id)}
               removed={() => heading.current?.focus()}

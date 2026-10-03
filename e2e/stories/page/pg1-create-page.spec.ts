@@ -3,15 +3,24 @@ import { randomUUID } from "node:crypto";
 import { accountIdOf } from "../../fixtures/assert/identity";
 import { expectNewPage } from "../../fixtures/assert/page";
 import { emailFor } from "../../fixtures/auth";
-import { joinAs } from "../../fixtures/invitations";
-import { addNotebookMember } from "../../fixtures/notebook-members";
+import { joinAs, joinOnboarded } from "../../fixtures/invitations";
+import { addedNotebookMember, addNotebookMember } from "../../fixtures/notebook-members";
+import { notebookHeading, notebookPath } from "../../fixtures/notebook-pages";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, postPage } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
+import {
+  breadcrumbs,
+  newPageWith,
+  newSubpageWith,
+  pageHeading,
+  pageTree,
+  treeTitles,
+  wikiPagePath,
+} from "../../fixtures/wiki-pages";
 import { newTeam } from "../../fixtures/workspaces";
 
-// PG1, creating a page (M4 design 3); the page version comes with the tree
-// (M4/P5).
+// PG1, creating a page (M4 design 3; M4/P5 design 3.7 for the page).
 
 test("PG1 (API): an editor creates pages at the root and under a page; a reader cannot; a title a file could not take and a parent of no page are refused", async ({
   api,
@@ -67,4 +76,43 @@ test("PG1 (API): an editor creates pages at the root and under a page; a reader 
     notebook.id,
   ]);
   expect(pages?.n).toBe(2);
+});
+
+test("PG1 (page): an editor creates Untitled, then Untitled 2, from the tree's New page, and a subpage from a page's menu, arriving on each; the subpage's parent opens", async ({
+  api,
+  db,
+  signedInPage,
+}, testInfo) => {
+  const { pat: adminPat, workspace } = await newTeam(api, testInfo);
+  const editorEmail = emailFor(testInfo, "editor");
+  const page = await signedInPage(await joinOnboarded(api, adminPat, workspace.slug, editorEmail, "member"));
+  const editorId = await accountIdOf(db, editorEmail);
+  const notebook = await createNotebook(api, adminPat, workspace.slug, "Plans", "viewer");
+  await addedNotebookMember(api, adminPat, notebook.id, editorId, "editor");
+  await page.goto(notebookPath(workspace.slug, notebook.id));
+  await expect(notebookHeading(page, "Plans")).toBeVisible();
+  // The tree read, it has no page.
+  await expect(page.getByRole("main").getByText("No pages yet.", { exact: true })).toBeVisible();
+  await expect(pageTree(page, "Plans").getByRole("link")).toHaveCount(0);
+
+  const first = await newPageWith(page, notebook);
+  expect(first.status).toBe(201);
+  expect(first.created).toMatchObject({ notebook_id: notebook.id, parent_id: null, name: "Untitled" });
+  await expect(pageHeading(page, "Untitled")).toBeFocused();
+  await expect(page).toHaveURL(wikiPagePath(workspace.slug, notebook.id, first.created.id));
+  await expectNewPage(db, first.created, editorId, "web");
+
+  const second = await newPageWith(page, notebook);
+  expect(second.created).toMatchObject({ parent_id: null, name: "Untitled 2" });
+  await expect(pageHeading(page, "Untitled 2")).toBeFocused();
+  await expectNewPage(db, second.created, editorId, "web");
+
+  // A title is free among its own siblings: the subpage is Untitled too.
+  const sub = await newSubpageWith(page, notebook, "Untitled 2");
+  expect(sub.created).toMatchObject({ parent_id: second.created.id, name: "Untitled" });
+  await expect(page).toHaveURL(wikiPagePath(workspace.slug, notebook.id, sub.created.id));
+  await expect(pageHeading(page, "Untitled")).toBeFocused();
+  expect(await breadcrumbs(page)).toEqual(["Plans", "Untitled 2", "Untitled"]);
+  await expect.poll(() => treeTitles(page, "Plans")).toEqual(["Untitled", "Untitled 2", "Untitled"]);
+  await expectNewPage(db, sub.created, editorId, "web");
 });

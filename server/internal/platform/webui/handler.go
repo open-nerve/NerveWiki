@@ -33,9 +33,10 @@ const (
 //   - any other path: index.html, and the client-side router renders the
 //     page, its own 404 included.
 //
-// An HTML file goes out with the pages' Content-Security-Policy; other files
-// and errors have none. The security headers every response carries are the
-// platform middleware's.
+// An HTML file goes out with the pages' Content-Security-Policy, a script
+// under assets/ with the workers' (csp.go); other files and errors have
+// none. The security headers every response carries are the platform
+// middleware's.
 //
 // Hidden files (any name part starting with "."), such as dist/.gitkeep, are
 // never served. Without index.html every request answers 404 with a hint.
@@ -119,8 +120,11 @@ func (h *handler) serveFile(w http.ResponseWriter, r *http.Request, name string)
 	if etag, ok := h.etags[name]; ok {
 		w.Header().Set("ETag", etag) // ServeFileFS answers If-None-Match with 304
 	}
-	if path.Ext(name) == ".html" {
+	switch {
+	case path.Ext(name) == ".html":
 		w.Header().Set("Content-Security-Policy", contentSecurityPolicy)
+	case strings.HasPrefix(name, AssetsDir+"/") && path.Ext(name) == ".js":
+		w.Header().Set("Content-Security-Policy", workerPolicy)
 	}
 	// ServeFileFS sets Content-Type from the extension (sniffing the content
 	// otherwise), answers HEAD and Range, and redirects /index.html to ./.

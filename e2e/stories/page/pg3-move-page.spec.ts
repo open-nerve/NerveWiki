@@ -3,14 +3,16 @@ import type { ApiClient, Page } from "@nervewiki/api-client";
 import { accountIdOf } from "../../fixtures/assert/identity";
 import { expectMoved } from "../../fixtures/assert/page";
 import { emailFor } from "../../fixtures/auth";
-import { joinAs } from "../../fixtures/invitations";
+import { answerTo, failedToLoad } from "../../fixtures/browser";
+import { joinAs, joinOnboarded } from "../../fixtures/invitations";
+import { notebookPath } from "../../fixtures/notebook-pages";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, getPage, listNodes, moveNode, postMove } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
+import { choosePageAction, dragPage, moveDialog, movePageWith, optionsOf, treeTitles } from "../../fixtures/wiki-pages";
 import { newTeam } from "../../fixtures/workspaces";
 
-// PG3, moving and ordering (M4 design 3): the API's part; the page version
-// comes with the tree (M4/P5).
+// PG3, moving and ordering (M4 design 3; M4/P5 design 3.7 for the page).
 
 /** Creates count pages in the notebook with credential, each under the one before, under parentId, and returns them from the top. */
 async function chain(
@@ -76,4 +78,83 @@ test("PG3 (API): a member orders pages among their siblings and moves them under
   const deepest = await moveNode(api, editorPat, a.id, { parent_id: levels[6]?.id ?? null });
   expect((await getPage(api, pat, a2.id)).data?.ancestors.length).toBe(9);
   await expectMoved(db, deepest, null, editorId);
+});
+
+test("PG3 (page): an editor drags a page before another and into another, after an open one going into it, and moves one with Move to; a drop into its own subtree sends nothing, the dialog offers no parent the tree forbids, and a move past ten levels that the tree did not foresee stays in the dialog", async ({
+  api,
+  db,
+  pageWatch,
+  signedInPage,
+}, testInfo) => {
+  const { pat: adminPat, workspace } = await newTeam(api, testInfo);
+  const editorEmail = emailFor(testInfo, "editor");
+  const page = await signedInPage(await joinOnboarded(api, adminPat, workspace.slug, editorEmail, "member"));
+  const editorId = await accountIdOf(db, editorEmail);
+  const notebook = await createNotebook(api, adminPat, workspace.slug, "Plans", "editor");
+  const a = await createPage(api, adminPat, notebook.id, "A");
+  const b = await createPage(api, adminPat, notebook.id, "B");
+  const c = await createPage(api, adminPat, notebook.id, "C");
+  const x = await createPage(api, adminPat, notebook.id, "X");
+  const y = await createPage(api, adminPat, notebook.id, "Y", x.id);
+  // Level 8 at the root, Level 1 eight levels down.
+  const levels = await chain(api, adminPat, notebook.id, 8);
+  const pathTo = (level: number) =>
+    levels
+      .slice(0, 9 - level)
+      .map((each) => each.name)
+      .join(" / ");
+  const nodeOf = async (id: string) => {
+    const node = (await listNodes(api, adminPat, notebook.id)).find((each) => each.id === id);
+    if (node === undefined) {
+      throw new Error(`no node ${id} in the tree`);
+    }
+    return node;
+  };
+  await page.goto(notebookPath(workspace.slug, notebook.id));
+  await expect.poll(() => treeTitles(page, "Plans")).toEqual(["A", "B", "C", "X", "Level 8"]);
+
+  const before = answerTo(page, "POST", `/api/v0/nodes/${c.id}/move`);
+  await dragPage(page, "Plans", "C", "A", "before");
+  expect((await before).status()).toBe(200);
+  await expect.poll(() => treeTitles(page, "Plans")).toEqual(["C", "A", "B", "X", "Level 8"]);
+  await expectMoved(db, await nodeOf(c.id), null, editorId);
+
+  // Into B: A is its last child, and B opens.
+  const into = answerTo(page, "POST", `/api/v0/nodes/${a.id}/move`);
+  await dragPage(page, "Plans", "A", "B", "into");
+  expect((await into).status()).toBe(200);
+  await expect.poll(() => treeTitles(page, "Plans")).toEqual(["C", "B", "A", "X", "Level 8"]);
+  await expectMoved(db, await nodeOf(a.id), null, editorId);
+  // B into its own child is blocked: nothing goes out (checked with the requests below).
+  await dragPage(page, "Plans", "B", "A", "into");
+  // After B, which shows its children, is not offered: its lower part is into it.
+  const afterOpen = answerTo(page, "POST", `/api/v0/nodes/${c.id}/move`);
+  await dragPage(page, "Plans", "C", "B", "after");
+  expect((await afterOpen).status()).toBe(200);
+  // B's last child, not its next sibling: the tree shows the two alike.
+  expect((await nodeOf(c.id)).parent_id).toBe(b.id);
+  await expect.poll(() => treeTitles(page, "Plans")).toEqual(["B", "A", "C", "X", "Level 8"]);
+
+  // X, with Y under it, can go eight levels down, not nine, and not under itself.
+  await choosePageAction(page, "Plans", "X", "Move to…");
+  const dialog = moveDialog(page, "X");
+  const parents = await optionsOf(dialog, "Parent page");
+  expect(parents).toContain(pathTo(1));
+  expect(parents).not.toContain("X");
+  expect(parents).not.toContain("X / Y");
+  // Another tab gives Y a child: under Level 1, X would be eleven levels down.
+  await createPage(api, adminPat, notebook.id, "Z", y.id);
+  expect((await movePageWith(page, "Plans", x.id, "X", pathTo(1), "Last")).status()).toBe(409);
+  await expect(dialog.getByRole("alert")).toHaveText("Pages nest at most 10 levels deep.");
+  pageWatch.expectConsole({ errors: [failedToLoad(409)] });
+  // The tree read again, the dialog no longer offers it.
+  await expect.poll(() => optionsOf(dialog, "Parent page")).not.toContain(pathTo(1));
+
+  expect((await movePageWith(page, "Plans", x.id, "X", pathTo(2), "Last")).status()).toBe(200);
+  await expect(dialog).toBeHidden();
+  await expect.poll(() => treeTitles(page, "Plans")).toEqual(["B", "A", "C", ...levels.map((each) => each.name), "X"]);
+  await expectMoved(db, await nodeOf(x.id), null, editorId);
+  expect(pageWatch.apiRequests.filter((request) => request.endsWith("/move"))).toEqual(
+    [c.id, a.id, c.id, x.id, x.id].map((id) => `POST /api/v0/nodes/${id}/move`)
+  );
 });

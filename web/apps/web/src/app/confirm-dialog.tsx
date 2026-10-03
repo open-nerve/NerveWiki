@@ -12,11 +12,19 @@ import {
 } from "../components/ui/alert-dialog";
 import { Button } from "../components/ui/button";
 import { useT } from "../i18n/i18n";
+import type { HeldDialog } from "./held-dialog";
 import { errorText, type ProblemTexts } from "./problem-messages";
 
-type ConfirmDialogProps = {
-  /** The button that opens the dialog. */
-  trigger: ReactElement;
+/**
+ * How the dialog opens: by its trigger, the focus going back to it, or to
+ * focusAfter once confirm went through and took the trigger with it (a
+ * revoked token's row); or held by its caller.
+ */
+type Opening =
+  | { trigger: ReactElement; focusAfter?: () => void; held?: never }
+  | { held: HeldDialog; trigger?: never; focusAfter?: never };
+
+type ConfirmDialogProps = Opening & {
   title: string;
   description: string;
   confirmLabel: string;
@@ -25,11 +33,6 @@ type ConfirmDialogProps = {
   cancelLabel: string;
   /** What confirming does; when it throws, the dialog stays open with the reason. */
   confirm: () => Promise<void>;
-  /**
-   * Where the focus goes once confirm went through and took the trigger
-   * with it (a revoked token's row); without it, back to the trigger.
-   */
-  focusAfter?: () => void;
   /**
    * What the user types before confirming, such as the slug of the
    * workspace to delete: label asks for it, and confirm is disabled until
@@ -49,6 +52,7 @@ type ConfirmDialogProps = {
  */
 export function ConfirmDialog({
   trigger,
+  held,
   title,
   description,
   confirmLabel,
@@ -60,7 +64,8 @@ export function ConfirmDialog({
   texts,
 }: ConfirmDialogProps) {
   const t = useT();
-  const [open, setOpen] = useState(false);
+  const [own, setOwn] = useState(false);
+  const open = held?.open ?? own;
   const [typed, setTyped] = useState("");
   const ready = typedConfirmation === undefined || typed === typedConfirmation.value;
   const [failure, setFailure] = useState<unknown>();
@@ -83,6 +88,15 @@ export function ConfirmDialog({
     setOpen(false);
   }
 
+  function setOpen(next: boolean) {
+    if (held === undefined) {
+      setOwn(next);
+    } else {
+      held.onOpenChange(next);
+      setSending(false);
+    }
+  }
+
   return (
     <AlertDialog
       open={open}
@@ -94,7 +108,7 @@ export function ConfirmDialog({
         }
       }}
     >
-      <AlertDialogTrigger asChild>{trigger}</AlertDialogTrigger>
+      {trigger !== undefined && <AlertDialogTrigger asChild>{trigger}</AlertDialogTrigger>}
       <AlertDialogContent
         onOpenAutoFocus={(event) => {
           if (typedConfirmation !== undefined) {
@@ -103,10 +117,14 @@ export function ConfirmDialog({
           }
         }}
         onCloseAutoFocus={(event) => {
-          if (confirmed.current && focusAfter !== undefined) {
+          if (held !== undefined) {
+            event.preventDefault();
+            held.onClosed(confirmed.current);
+          } else if (confirmed.current && focusAfter !== undefined) {
             event.preventDefault();
             focusAfter();
           }
+          confirmed.current = false;
         }}
       >
         <AlertDialogTitle>{title}</AlertDialogTitle>

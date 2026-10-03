@@ -44,6 +44,52 @@ test("the members are listed by when they joined, the account's own row marked a
   expect(screen.queryByText(/has no admin/)).toBeNull();
 });
 
+test("a member whom the notebook's access gives a higher role than their membership's is noted so (M3 handoff 2)", async () => {
+  const server = notebookServer({
+    access: "editor",
+    members: [notebookMember(ada, "admin"), notebookMember(bob, "reader"), notebookMember(cy, "reader")],
+  });
+  renderApp(members, server.app);
+
+  await screen.findByText("Editor by the workspace's access");
+  // Cy is a guest of Lab: the access gives a guest nothing.
+  expect(await rows()).toEqual([
+    "AdaYouada@example.com · Joined Oct 1, 2026Admin",
+    "Bobbob@example.com · Joined Oct 2, 2026ReaderEditor by the workspace's accessRemove",
+    "Cycy@example.com · Joined Oct 3, 2026ReaderRemove",
+  ]);
+});
+
+test("a row without controls notes the role by the access after the role's name", async () => {
+  const server = notebookServer({
+    access: "editor",
+    members: [notebookMember(ada, "editor"), notebookMember(bob, "reader")],
+  });
+  renderApp(members, server.app);
+
+  await screen.findByText(/Editor by the workspace's access/);
+  expect(await rows()).toEqual([
+    "AdaYouada@example.com · Joined Oct 1, 2026Editor",
+    "Bobbob@example.com · Joined Oct 2, 2026Reader · Editor by the workspace's access",
+  ]);
+});
+
+test("without the workspace's members, the rows have no notes, and the list shows", async () => {
+  const server = notebookServer({
+    access: "editor",
+    members: [notebookMember(ada, "admin"), notebookMember(bob, "reader")],
+  });
+  server.workspaceMembersDown = true;
+  renderApp(members, server.app);
+
+  expect(await rows()).toEqual([
+    "AdaYouada@example.com · Joined Oct 1, 2026Admin",
+    "Bobbob@example.com · Joined Oct 2, 2026ReaderRemove",
+  ]);
+  await waitFor(() => expect(server.sent).toContain("GET workspace members"));
+  expect(screen.queryByText(/by the workspace's access/)).toBeNull();
+});
+
 test.each([
   ["admin", "where to take it over", true],
   ["member", "who can take it over", false],

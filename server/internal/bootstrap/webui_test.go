@@ -12,20 +12,23 @@ import (
 
 // The frontend is mounted on "/" below the platform's routes: every page path
 // answers index.html with the pages' CSP and the platform's security
-// headers, while /api/ and the probes keep their own answers.
+// headers, a script under assets/ with the workers' CSP, while /api/ and
+// the probes keep their own answers.
 func TestTheFrontendServesEveryOtherPath(t *testing.T) {
 	base := startApp(t, testConfig(t, pgtest.NewDatabase(t), false), migrations.FS())
+	const pageCSP, workerCSP = "default-src 'self'; script-src 'self';", "default-src 'none'"
 	tests := []struct {
 		path, status, contentType string
 		page                      bool
+		csp                       string // the start of its Content-Security-Policy; "": none
 	}{
-		{"/", "200", "text/html; charset=utf-8", true},
-		{"/acme/notebooks/1/pages", "200", "text/html; charset=utf-8", true},
-		{"/assets/index-a1.js", "200", "text/javascript; charset=utf-8", false},
-		{"/assets/index-old.js", "404", "text/plain; charset=utf-8", false},
-		{"/api/nope", "404", httpserver.ContentTypeProblem, false},
-		{"/api", "404", httpserver.ContentTypeProblem, false}, // ServeMux redirects it to /api/
-		{"/healthz", "200", "application/json", false},
+		{"/", "200", "text/html; charset=utf-8", true, pageCSP},
+		{"/acme/notebooks/1/pages", "200", "text/html; charset=utf-8", true, pageCSP},
+		{"/assets/index-a1.js", "200", "text/javascript; charset=utf-8", false, workerCSP},
+		{"/assets/index-old.js", "404", "text/plain; charset=utf-8", false, ""},
+		{"/api/nope", "404", httpserver.ContentTypeProblem, false, ""},
+		{"/api", "404", httpserver.ContentTypeProblem, false, ""}, // ServeMux redirects it to /api/
+		{"/healthz", "200", "application/json", false, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.path, func(t *testing.T) {
@@ -35,8 +38,11 @@ func TestTheFrontendServesEveryOtherPath(t *testing.T) {
 				t.Errorf("GET %s = %s %s, want %s %s", tt.path, res.Status, res.Header.Get("Content-Type"), tt.status, tt.contentType)
 			}
 			csp := res.Header.Get("Content-Security-Policy")
-			if tt.page != (csp != "") || tt.page != strings.Contains(string(body), "<title>Nerve Wiki</title>") {
-				t.Errorf("GET %s: CSP %q, body %q; want the page with its CSP: %v", tt.path, csp, body, tt.page)
+			if tt.csp == "" && csp != "" || !strings.HasPrefix(csp, tt.csp) {
+				t.Errorf("GET %s: CSP %q, want one starting %q", tt.path, csp, tt.csp)
+			}
+			if tt.page != strings.Contains(string(body), "<title>Nerve Wiki</title>") {
+				t.Errorf("GET %s: body %q; want the page: %v", tt.path, body, tt.page)
 			}
 			if res.Header.Get("X-Content-Type-Options") != "nosniff" {
 				t.Errorf("GET %s: no X-Content-Type-Options: the platform middleware did not run", tt.path)

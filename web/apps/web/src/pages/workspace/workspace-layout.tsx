@@ -1,9 +1,11 @@
 import { observer } from "mobx-react-lite";
-import { useEffect } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { Navigate, Outlet, useParams } from "react-router";
 import useSWR from "swr";
 
 import { arrived } from "../../app/arrival";
+import { useShellColumn } from "../../app/layout";
 import { NotLoaded } from "../../app/not-loaded";
 import { NavItem } from "../../components/nav-item";
 import { useT } from "../../i18n/i18n";
@@ -28,6 +30,18 @@ export function useWorkspace(): Workspace {
   return workspace;
 }
 
+/** NotebookColumn is where a notebook's pages put their part of the left column: below the workspace's navigation. */
+const NotebookColumn = createContext<HTMLElement | null>(null);
+
+/**
+ * useNotebookColumn is the element a notebook's pages portal their part of
+ * the left column into, the notebook's page tree (M4/P5 design 3.6), or
+ * null before the column has it.
+ */
+export function useNotebookColumn(): HTMLElement | null {
+  return useContext(NotebookColumn);
+}
+
 /** The workspace's own pages, in the order the navigation lists them, before its notebooks. */
 const sections: readonly { path: string; label: Extract<MessageKey, `workspace.${string}`>; end?: boolean }[] = [
   { path: "", label: "workspace.home", end: true },
@@ -36,9 +50,11 @@ const sections: readonly { path: string; label: Extract<MessageKey, `workspace.$
 
 /**
  * WorkspaceLayout is the shell of a workspace's pages (M2/P5 design 3.2):
- * the left column, with the switcher and the workspace's navigation, its
- * pages and its notebooks (M3/P4 design 3.3), beside the page chosen. The
- * column is no landmark of its own: the navigation is the one it holds.
+ * the left column, with the workspace's navigation: the switcher, its
+ * pages and its notebooks (M3/P4 design 3.3), beside the page chosen,
+ * which is the layout's main. The column is no landmark of its own: the
+ * navigation is the one it holds, then a notebook's page tree; it goes
+ * into the layout's place for it, outside the main (M4/P5 design 3.2).
  * It finds the workspace of the address in the account's list: a slug the
  * list does not have is no page of the app's, whether the account was
  * never a member or the workspace is gone; one this tab has just deleted
@@ -51,6 +67,8 @@ export const WorkspaceLayout = observer(function WorkspaceLayout() {
   const workspaces = useWorkspaces();
   const { preferences } = useStore();
   const t = useT();
+  const column = useShellColumn();
+  const [notebookColumn, setNotebookColumn] = useState<HTMLElement | null>(null);
   const { error, mutate } = useSWR("workspaces", () => workspaces.load());
   const workspace = workspaces.bySlug(slug);
   const found = workspace !== undefined;
@@ -67,24 +85,28 @@ export const WorkspaceLayout = observer(function WorkspaceLayout() {
   if (workspace === undefined) {
     return workspaces.wasRemoved(slug) ? <Navigate replace to="/" state={arrived} /> : <NotFoundPage />;
   }
-  return (
-    <div data-shell className="flex flex-1 flex-col md:flex-row">
-      <div className="space-y-4 border-b p-3 md:w-60 md:shrink-0 md:border-r md:border-b-0">
+  const left = (
+    <div data-shell className="space-y-4 border-b p-3 md:w-60 md:shrink-0 md:border-r md:border-b-0">
+      <nav aria-label={workspace.name} className="space-y-4">
         <WorkspaceSwitcher current={workspace} />
-        <nav aria-label={workspace.name} className="space-y-4">
-          <div className="flex flex-col gap-1">
-            {sections.map(({ path, label, end }) => (
-              <NavItem key={path} to={`/${slug}${path}`} end={end}>
-                {t(label)}
-              </NavItem>
-            ))}
-          </div>
-          <NotebookNav key={workspace.id} workspace={workspace} />
-        </nav>
-      </div>
-      <div className="min-w-0 flex-1 p-6">
-        <Outlet key={workspace.id} />
-      </div>
+        <div className="flex flex-col gap-1">
+          {sections.map(({ path, label, end }) => (
+            <NavItem key={path} to={`/${slug}${path}`} end={end}>
+              {t(label)}
+            </NavItem>
+          ))}
+        </div>
+        <NotebookNav key={workspace.id} workspace={workspace} />
+      </nav>
+      <div ref={setNotebookColumn} />
     </div>
+  );
+  return (
+    <>
+      {column !== null && createPortal(left, column)}
+      <NotebookColumn value={notebookColumn}>
+        <Outlet key={workspace.id} />
+      </NotebookColumn>
+    </>
   );
 });

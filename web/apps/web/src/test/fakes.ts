@@ -176,9 +176,10 @@ function pattern(key: string): RegExp | undefined {
 /**
  * signedInApp is the page's stores of a tab signed in (from its stored
  * session, login-0) as userJSON, a member of workspaceJSON alone, which
- * sees no notebook and has none ownerless; routes adds to or replaces the
- * answers to the refresh, GET /me, GET /instance, GET /workspaces and
- * every workspace's GET notebooks and ownerless notebooks.
+ * sees no notebook and has none ownerless, every notebook without a page;
+ * routes adds to or replaces the answers to the refresh, GET /me, GET
+ * /instance, GET /workspaces, every workspace's GET notebooks and
+ * ownerless notebooks, and every notebook's GET nodes.
  */
 export function signedInApp(routes: Record<string, Answer> = {}): AppStores {
   return testApp(
@@ -189,6 +190,7 @@ export function signedInApp(routes: Record<string, Answer> = {}): AppStores {
       "GET /api/v0/workspaces": () => json({ data: [workspaceJSON] }),
       "GET /api/v0/workspaces/*/notebooks": () => json({ data: [] }),
       "GET /api/v0/workspaces/*/ownerless-notebooks": () => json({ data: [] }),
+      "GET /api/v0/notebooks/*/nodes": () => json({ data: [] }),
       ...routes,
     }),
     storedSession("login-0")

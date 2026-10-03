@@ -1,0 +1,240 @@
+/* The reading view (M4/P5 design 3.8): the server's HTML, whose elements
+   Tailwind's preflight leaves unstyled, set as a page to read, with the
+   renderer's marks (.nw-props, .nw-image, footnotes, task items) and the
+   code highlighting's colours, light and, under .dark, dark. */
+
+@layer components {
+  .nw-reading {
+    --nw-code-background: oklch(0.97 0 0);
+    --nw-hl-keyword: #cf222e;
+    --nw-hl-title: #8250df;
+    --nw-hl-constant: #0550ae;
+    --nw-hl-string: #0a3069;
+    --nw-hl-built-in: #953800;
+    --nw-hl-comment: #6e7781;
+    --nw-hl-name: #116329;
+    --nw-hl-addition: #116329;
+    --nw-hl-addition-background: #dafbe1;
+    --nw-hl-deletion: #82071e;
+    --nw-hl-deletion-background: #ffebe9;
+
+    line-height: 1.7;
+    overflow-wrap: break-word;
+    /* A table wider than the page scrolls here, not the page. */
+    overflow-x: auto;
+  }
+
+  .dark .nw-reading {
+    --nw-code-background: oklch(0.205 0 0);
+    --nw-hl-keyword: #ff7b72;
+    --nw-hl-title: #d2a8ff;
+    --nw-hl-constant: #79c0ff;
+    --nw-hl-string: #a5d6ff;
+    --nw-hl-built-in: #ffa657;
+    --nw-hl-comment: #8b949e;
+    --nw-hl-name: #7ee787;
+    --nw-hl-addition: #aff5b4;
+    --nw-hl-addition-background: #033a16;
+    --nw-hl-deletion: #ffdcd7;
+    --nw-hl-deletion-background: #67060c;
+  }
+
+  .nw-reading > * + * {
+    margin-top: 1rem;
+  }
+
+  .nw-reading :is(h1, h2, h3, h4, h5, h6) {
+    margin-top: 1.75rem;
+    font-weight: 600;
+    line-height: 1.3;
+    scroll-margin-top: 1rem;
+  }
+
+  .nw-reading h1 {
+    font-size: 1.75rem;
+  }
+
+  .nw-reading h2 {
+    font-size: 1.4rem;
+    padding-bottom: 0.25rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .nw-reading h3 {
+    font-size: 1.2rem;
+  }
+
+  .nw-reading :is(h4, h5, h6) {
+    font-size: 1rem;
+  }
+
+  .nw-reading a {
+    text-decoration: underline;
+    text-underline-offset: 4px;
+  }
+
+  .nw-reading :is(ul, ol) {
+    padding-left: 1.5rem;
+  }
+
+  .nw-reading ul {
+    list-style: disc;
+  }
+
+  .nw-reading ol {
+    list-style: decimal;
+  }
+
+  .nw-reading li + li,
+  .nw-reading li > :is(ul, ol) {
+    margin-top: 0.25rem;
+  }
+
+  /* A task item: its checkbox stands where the bullet would. */
+  .nw-reading li:has(> input[type="checkbox"]) {
+    list-style: none;
+  }
+
+  .nw-reading li > input[type="checkbox"] {
+    margin: 0 0.4rem 0 -1.3rem;
+    vertical-align: middle;
+  }
+
+  .nw-reading blockquote {
+    padding-left: 1rem;
+    border-left: 3px solid var(--border);
+    color: var(--muted-foreground);
+  }
+
+  .nw-reading hr {
+    border-top: 1px solid var(--border);
+  }
+
+  .nw-reading :not(pre) > code {
+    padding: 0.1rem 0.3rem;
+    border-radius: 0.25rem;
+    background: var(--nw-code-background);
+    font-size: 0.875em;
+  }
+
+  .nw-reading pre {
+    overflow-x: auto;
+    padding: 0.75rem 1rem;
+    border-radius: var(--radius);
+    background: var(--nw-code-background);
+    font-size: 0.875rem;
+    line-height: 1.5;
+  }
+
+  /* A table stays a table, whose semantics some screen readers drop from
+     one displayed as a block: a wide one scrolls with the reading view. */
+  .nw-reading :is(th, td) {
+    padding: 0.35rem 0.75rem;
+    border: 1px solid var(--border);
+  }
+
+  /* A column's align attribute sets its cells' alignment; the others start. */
+  .nw-reading th:not([align]) {
+    text-align: start;
+  }
+
+  .nw-reading th {
+    font-weight: 600;
+  }
+
+  /* The page's properties, above its content: a key's value may be another table of them. */
+  .nw-reading table.nw-props {
+    font-size: 0.875rem;
+  }
+
+  .nw-reading table.nw-props th {
+    color: var(--muted-foreground);
+    font-weight: 500;
+    vertical-align: top;
+  }
+
+  .nw-reading table.nw-props table.nw-props {
+    margin: 0;
+  }
+
+  /* An image, shown as its text and its address, which is a link. */
+  .nw-reading .nw-image {
+    padding: 0 0.3rem;
+    border: 1px dashed var(--border);
+    border-radius: 0.25rem;
+    color: var(--muted-foreground);
+  }
+
+  .nw-reading .footnote-ref {
+    text-decoration: none;
+  }
+
+  .nw-reading .footnotes {
+    color: var(--muted-foreground);
+    font-size: 0.875rem;
+  }
+
+  .nw-reading .footnotes > hr {
+    margin-bottom: 0.75rem;
+  }
+
+  .nw-reading :is(.hljs-keyword, .hljs-doctype, .hljs-template-tag, .hljs-template-variable, .hljs-type) {
+    color: var(--nw-hl-keyword);
+  }
+
+  .nw-reading :is(.hljs-title, .hljs-title.class_, .hljs-title.function_) {
+    color: var(--nw-hl-title);
+  }
+
+  .nw-reading
+    :is(
+      .hljs-attr,
+      .hljs-attribute,
+      .hljs-literal,
+      .hljs-meta,
+      .hljs-number,
+      .hljs-operator,
+      .hljs-variable,
+      .hljs-selector-attr,
+      .hljs-selector-class,
+      .hljs-selector-id,
+      .hljs-section
+    ) {
+    color: var(--nw-hl-constant);
+  }
+
+  .nw-reading :is(.hljs-regexp, .hljs-string) {
+    color: var(--nw-hl-string);
+  }
+
+  .nw-reading :is(.hljs-built_in, .hljs-symbol, .hljs-bullet) {
+    color: var(--nw-hl-built-in);
+  }
+
+  .nw-reading :is(.hljs-comment, .hljs-code, .hljs-formula) {
+    color: var(--nw-hl-comment);
+  }
+
+  .nw-reading :is(.hljs-name, .hljs-quote, .hljs-selector-tag, .hljs-selector-pseudo) {
+    color: var(--nw-hl-name);
+  }
+
+  .nw-reading .hljs-section,
+  .nw-reading .hljs-strong {
+    font-weight: 600;
+  }
+
+  .nw-reading .hljs-emphasis {
+    font-style: italic;
+  }
+
+  .nw-reading .hljs-addition {
+    color: var(--nw-hl-addition);
+    background: var(--nw-hl-addition-background);
+  }
+
+  .nw-reading .hljs-deletion {
+    color: var(--nw-hl-deletion);
+    background: var(--nw-hl-deletion-background);
+  }
+}
