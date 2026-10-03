@@ -1,6 +1,6 @@
 import type { NotebookRole } from "../services/notebook.service";
 import type { EditLock, NodeMove, PageContent, PageView, TreeNode } from "../services/page.service";
-import { json, notebookJSON, problem, signedInApp, type Answer } from "./fakes";
+import { json, notebookJSON, problem, signedInApp, userJSON, type Answer } from "./fakes";
 
 /** pageNode is the page n of Plans, titled name, under parent (none: at the root). */
 export function pageNode(n: number, name: string, parent?: TreeNode): TreeNode {
@@ -19,6 +19,25 @@ export const guide = pageNode(1, "Guide");
 export const install = pageNode(2, "Install", guide);
 export const linux = pageNode(3, "Linux", install);
 export const notes = pageNode(4, "Notes");
+
+/** Someone who holds a lock, or ended a session: their id and name. */
+export type Person = { user_id: string; display_name: string };
+
+/** ada is the account the tests sign in as (userJSON); bob is another member. */
+export const ada: Person = { user_id: userJSON.id, display_name: userJSON.display_name };
+export const bob: Person = { user_id: "0199a2b4-0000-7000-8000-000000000002", display_name: "Bob" };
+
+/**
+ * A FakeSession is an edit session of the page page, whose holder holds
+ * its lock while it is alive; a tombstone says why it ended (M5 design
+ * 4.3): taken over, or unlocked by an admin.
+ */
+type FakeSession = {
+  page: string;
+  holder: Person;
+  expiresIn: number;
+  ended?: { code: "page.edit_session_taken_over" } | { code: "page.edit_session_unlocked"; by: Person };
+};
 
 /** pagePath is the address of the page id of Plans. */
 export const pagePath = (id: string) => `/lab/notebooks/${notebookJSON.id}/pages/${id}`;
@@ -51,8 +70,11 @@ type PageServerOptions = {
  * page.edit_session_ended, one on another revision 409
  * page.revision_mismatch (M4/P6 design 3.6).
  *
- * Every page's edit lock is lock, by default held by no one; releasing it
- * frees it (M5/P3 design 3.10).
+ * A page's edit lock is its alive session's (M5 design 4.1–4.3): Ada's
+ * opening is 409 page.locked while someone holds it, Ada herself elsewhere
+ * too unless she takes it over; a session taken over or unlocked answers
+ * its beats and writes with why. The test holds, takes over, unlocks and
+ * lapses sessions as other tabs and members would.
  */
 export function pageServer({
   role = "admin",
@@ -64,10 +86,31 @@ export function pageServer({
     nodes,
     views: new Map<string, PageView>(),
     contents: new Map<string, { content: string; revision: number }>(),
-    sessions: new Set<string>(),
-    lock: { holder: null, expires_in: null } as EditLock,
+    sessions: new Map<string, FakeSession>(),
     nodesDown: false,
     viewsDown: false,
+    /** hold opens holder's session of the page pageId, its lease expiresIn seconds; it answers its id. */
+    hold(pageId: string, holder: Person = bob, expiresIn = 120): string {
+      const id = `held-${(++held).toString()}`;
+      server.sessions.set(id, { page: pageId, holder, expiresIn });
+      return id;
+    },
+    /** takeOver has Ada take the page over in another tab: her sessions of it end so; it answers the new one's id. */
+    takeOver(pageId: string): string {
+      endAlive(server.sessions, pageId, { code: "page.edit_session_taken_over" });
+      return server.hold(pageId, ada);
+    },
+    /** unlock has an admin, by, unlock the page: its alive session ends so. */
+    unlock(pageId: string, by: Person = bob): void {
+      endAlive(server.sessions, pageId, { code: "page.edit_session_unlocked", by });
+    },
+    /** lockOf is the page's edit lock, as GET edit-lock answers it. */
+    lockOf(pageId: string): EditLock {
+      const alive = aliveOf(server.sessions, pageId);
+      return alive === undefined
+        ? { holder: null, expires_in: null }
+        : { holder: alive.holder, expires_in: alive.expiresIn };
+    },
   };
   const app = signedInApp({
     "GET /api/v0/workspaces/lab/notebooks": () => json({ data: [{ ...notebookJSON, role }] }),
@@ -86,10 +129,10 @@ export function pageServer({
         ? problem(404, "page.not_found")
         : json(server.views.get(id) ?? { html: `<p>${page.name}</p>`, revision: 1 });
     },
-    "GET /api/v0/pages/*/edit-lock": () => json(server.lock),
+    "GET /api/v0/pages/*/edit-lock": (request) => json(server.lockOf(idOf(request))),
     "DELETE /api/v0/pages/*/edit-lock": (request) => {
       server.sent.push(`RELEASE ${server.nodes.find((node) => node.id === idOf(request))?.name}`);
-      server.lock = { holder: null, expires_in: null };
+      server.unlock(idOf(request), ada);
       return new Response(null, { status: 204 });
     },
     ...writeRoutes(server),
@@ -100,9 +143,39 @@ export function pageServer({
 }
 
 let created = 50;
+let held = 0;
+
+/** aliveOf is the page's alive session: the one holding its lock. */
+function aliveOf(sessions: Map<string, FakeSession>, pageId: string): FakeSession | undefined {
+  return [...sessions.values()].find((session) => session.page === pageId && session.ended === undefined);
+}
+
+/** endAlive ends the page's alive sessions as ended says, keeping their tombstones. */
+function endAlive(sessions: Map<string, FakeSession>, pageId: string, ended: FakeSession["ended"]): void {
+  for (const session of sessions.values()) {
+    if (session.page === pageId && session.ended === undefined) {
+      session.ended = ended;
+    }
+  }
+}
+
+/** endedAnswer is what a tombstone answers a beat or a write: why it ended, and who unlocked it. */
+function endedAnswer(session: FakeSession): Response {
+  const ended = session.ended;
+  if (ended === undefined) {
+    throw new Error("the session is alive");
+  }
+  return ended.code === "page.edit_session_unlocked"
+    ? problem(409, ended.code, { ended_by: ended.by })
+    : problem(409, ended.code);
+}
 
 /** The writes' answers of server, which change it. */
-function writeRoutes(server: { sent: string[]; nodes: TreeNode[] }): Record<string, Answer> {
+function writeRoutes(server: {
+  sent: string[];
+  nodes: TreeNode[];
+  sessions: Map<string, FakeSession>;
+}): Record<string, Answer> {
   const taken = (parent: string | null, title: string, except?: string) =>
     server.nodes.some(
       (node) => node.parent_id === parent && node.id !== except && node.name.toLowerCase() === title.toLowerCase()
@@ -178,7 +251,20 @@ function writeRoutes(server: { sent: string[]; nodes: TreeNode[] }): Record<stri
       if (node === undefined) {
         return problem(404, "page.not_found");
       }
-      server.nodes = server.nodes.filter((each) => each !== node && !isUnder(server.nodes, each, node.id));
+      const gone = server.nodes.filter((each) => each === node || isUnder(server.nodes, each, node.id));
+      // Someone else's edit of a page that would go refuses it; Ada's own do not (M5 design 4.4).
+      const editing = gone
+        .map((each) => aliveOf(server.sessions, each.id))
+        .find((alive) => alive !== undefined && alive.holder.user_id !== ada.user_id);
+      if (editing !== undefined) {
+        return problem(409, "page.locked", { lock: { page_id: editing.page, ...editing.holder } });
+      }
+      server.nodes = server.nodes.filter((each) => !gone.includes(each));
+      for (const [id, session] of server.sessions) {
+        if (gone.some((each) => each.id === session.page)) {
+          server.sessions.delete(id);
+        }
+      }
       return new Response(null, { status: 204 });
     },
   };
@@ -188,7 +274,7 @@ type ContentState = {
   sent: string[];
   nodes: TreeNode[];
   contents: Map<string, { content: string; revision: number }>;
-  sessions: Set<string>;
+  sessions: Map<string, FakeSession>;
 };
 
 /** The answers to the contents and the edit sessions of server, which change it. */
@@ -220,8 +306,12 @@ function contentRoutes(server: ContentState): Record<string, Answer> {
       if (node === undefined) {
         return problem(404, "page.not_found");
       }
-      if (write.edit_session_id !== undefined && !server.sessions.has(write.edit_session_id)) {
+      const session = write.edit_session_id === undefined ? undefined : server.sessions.get(write.edit_session_id);
+      if (write.edit_session_id !== undefined && session === undefined) {
         return problem(409, "page.edit_session_ended");
+      }
+      if (session?.ended !== undefined) {
+        return endedAnswer(session);
       }
       const current = contentOf(node.id, node.name);
       if (write.base_revision !== current.revision) {
@@ -238,21 +328,36 @@ function contentRoutes(server: ContentState): Record<string, Answer> {
         content_updated_by: "",
       });
     },
-    "POST /api/v0/pages/*/edit-sessions": (request) => {
+    "POST /api/v0/pages/*/edit-sessions": async (request) => {
       const name = nameOf(request);
-      server.sent.push(`OPEN ${name}`);
+      const { take_over: takeOver = false } = (await request
+        .clone()
+        .json()
+        .catch(() => ({}))) as { take_over?: boolean };
+      server.sent.push(`OPEN ${name}${takeOver ? " TAKE" : ""}`);
+      const page = idOf(request);
       if (name === undefined) {
         return problem(404, "page.not_found");
       }
+      const alive = aliveOf(server.sessions, page);
+      if (alive !== undefined && takeOver && alive.holder.user_id === ada.user_id) {
+        endAlive(server.sessions, page, { code: "page.edit_session_taken_over" });
+      } else if (alive !== undefined) {
+        return problem(409, "page.locked", { lock: { page_id: page, ...alive.holder } });
+      }
       const id = `session-${(++opened).toString()}`;
-      server.sessions.add(id);
-      return json({ id, page_id: idOf(request), expires_at: "2026-10-03T08:01:00Z" }, 201);
+      server.sessions.set(id, { page, holder: ada, expiresIn: 120 });
+      return json({ id, page_id: page, expires_at: "2026-10-03T08:02:00Z" }, 201);
     },
     "POST /api/v0/edit-sessions/*/heartbeat": (request) => {
       server.sent.push(`BEAT ${idOf(request)}`);
-      return server.sessions.has(idOf(request))
-        ? json({ id: idOf(request), page_id: "", expires_at: "2026-10-03T08:01:00Z" })
-        : problem(404, "page.edit_session_not_found");
+      const session = server.sessions.get(idOf(request));
+      if (session === undefined) {
+        return problem(404, "page.edit_session_not_found");
+      }
+      return session.ended === undefined
+        ? json({ id: idOf(request), page_id: session.page, expires_at: "2026-10-03T08:02:00Z" })
+        : endedAnswer(session);
     },
     "DELETE /api/v0/edit-sessions/*": (request) => {
       server.sent.push(`END ${idOf(request)}`);

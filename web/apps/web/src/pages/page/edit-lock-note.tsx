@@ -9,15 +9,23 @@ import type { Notebook } from "../../services/notebook.service";
 import type { EditLock, TreeNode } from "../../services/page.service";
 import { usePageTree, useStore } from "../../stores/context";
 
+type EditLockNoteProps = {
+  notebook: Notebook;
+  page: TreeNode;
+  /** editHere edits the page here, taking the lock over from the account elsewhere: for those who may edit it. */
+  editHere?: () => void;
+};
+
 /**
  * EditLockNote tells who is editing the page (M5/P3 design 3.10): another
  * member, or the account itself elsewhere (another tab, a token); nothing
  * while no one does. The lock is read by page, again on each of its events
  * and once its lease should have ended, which no event tells. The
  * notebook's admins can release it, once confirmed; the one whose edit
- * ends learns so as they save.
+ * ends learns so as they save. The account editing elsewhere may edit here
+ * instead (M5/P4 design 3.6): the edit elsewhere is then taken over.
  */
-export const EditLockNote = observer(function EditLockNote({ notebook, page }: { notebook: Notebook; page: TreeNode }) {
+export const EditLockNote = observer(function EditLockNote({ notebook, page, editHere }: EditLockNoteProps) {
   const t = useT();
   const pages = usePageTree(notebook);
   const me = useStore().account?.me;
@@ -35,20 +43,29 @@ export const EditLockNote = observer(function EditLockNote({ notebook, page }: {
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border px-4 py-2 text-sm text-muted-foreground">
       <output>{self ? t("page.lockedBySelf") : t("page.lockedBy", { name: holder.display_name })}</output>
-      {notebook.role === "admin" && (
-        <ConfirmDialog
-          trigger={<Button variant="outline">{t("page.releaseLock")}</Button>}
-          title={t("page.releaseLockTitle")}
-          description={self ? t("page.releaseLockBodySelf") : t("page.releaseLockBody", { name: holder.display_name })}
-          confirmLabel={t("page.releaseLock")}
-          sendingLabel={t("page.releasing")}
-          cancelLabel={t("page.cancel")}
-          confirm={async () => {
-            await pages.releaseEditLock(page.id);
-            await mutate();
-          }}
-        />
-      )}
+      <div className="flex gap-2">
+        {self && editHere !== undefined && (
+          <Button variant="outline" onClick={editHere}>
+            {t("page.editHere")}
+          </Button>
+        )}
+        {notebook.role === "admin" && (
+          <ConfirmDialog
+            trigger={<Button variant="outline">{t("page.releaseLock")}</Button>}
+            title={t("page.releaseLockTitle")}
+            description={
+              self ? t("page.releaseLockBodySelf") : t("page.releaseLockBody", { name: holder.display_name })
+            }
+            confirmLabel={t("page.releaseLock")}
+            sendingLabel={t("page.releasing")}
+            cancelLabel={t("page.cancel")}
+            confirm={async () => {
+              await pages.releaseEditLock(page.id);
+              await mutate();
+            }}
+          />
+        )}
+      </div>
     </div>
   );
 });

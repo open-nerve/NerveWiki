@@ -4,7 +4,7 @@ import spec from "../../../../../api/dist/openapi.yaml?raw";
 import { translator } from "../i18n/i18n";
 import { ApiError } from "../services/api";
 import { SessionChangedError, SessionStorageError, SessionUnavailableError } from "../session/token-manager";
-import { errorText, fieldErrors, formErrors, problemMessages } from "./problem-messages";
+import { errorText, fieldErrors, formErrors, lockedText, problemMessages } from "./problem-messages";
 
 const t = translator("en");
 
@@ -94,6 +94,30 @@ describe("errorText", () => {
   ])("%s", (_name, error, want) => {
     expect(errorText(error, t)).toBe(want);
   });
+});
+
+/** page.locked of the page p2, which userId holds as Bob. */
+const lockedBy = (userId: string) =>
+  new ApiError(409, {
+    status: 409,
+    code: "page.locked",
+    title: "Conflict",
+    lock: { page_id: "p2", user_id: userId, display_name: "Bob" },
+  });
+/** The tree's titles: p2 is Linux. */
+const titleOf = (id: string) => (id === "p2" ? "Linux" : undefined);
+
+test("lockedText names who edits which page, the account itself elsewhere; nothing it cannot name", () => {
+  expect(lockedText(lockedBy("u-bob"), t, "u-ada", titleOf)).toBe("Bob is editing “Linux”.");
+  expect(lockedText(lockedBy("u-ada"), t, "u-ada", titleOf)).toBe("You are editing “Linux” elsewhere.");
+  expect(lockedText(lockedBy("u-bob"), t, "u-ada", () => undefined)).toBeUndefined();
+  expect(
+    lockedText(new ApiError(409, { status: 409, code: "page.locked", title: "Conflict" }), t, "u-ada", titleOf)
+  ).toBe(undefined);
+  expect(lockedText(new ApiError(404, { status: 404, code: "page.not_found", title: "" }), t, "u-ada", titleOf)).toBe(
+    undefined
+  );
+  expect(translator("zh-CN")("page.lockedTitled", { name: "Bob", page: "Linux" })).toBe("Bob 正在编辑「Linux」。");
 });
 
 test("fieldErrors says each field's first problem, better for the fields it knows", () => {

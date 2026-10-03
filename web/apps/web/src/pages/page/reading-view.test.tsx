@@ -1,7 +1,6 @@
 import { act, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 
-import { routes } from "../../app/routes";
 import type { Enhancement } from "../../reading/enhancement";
 import { notebookJSON } from "../../test/fakes";
 import { install, pagePath, pageServer } from "../../test/page-server";
@@ -25,7 +24,9 @@ test("the enhancements run on the HTML in their order, undone in the reverse bef
   vi.useFakeTimers({ shouldAdvanceTime: true });
   const server = pageServer({ role: "editor" });
   const log: string[] = [];
-  const { router } = renderApp(pagePath(install.id), server.app, routes, [recording(log, "a"), recording(log, "b")]);
+  const { router } = renderApp(pagePath(install.id), server.app, {
+    enhancements: [recording(log, "a"), recording(log, "b")],
+  });
 
   await waitFor(() => expect(log).toHaveLength(2));
   expect(log).toEqual(["a on <p>Install</p>: lab Install 1 editor", "b on <p>Install</p>: lab Install 1 editor"]);
@@ -52,7 +53,7 @@ const throws: Enhancement = () => {
 test("an enhancement that throws leaves the page and the others be", async () => {
   const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
   const log: string[] = [];
-  renderApp(pagePath(install.id), pageServer().app, routes, [throws, recording(log, "b")]);
+  renderApp(pagePath(install.id), pageServer().app, { enhancements: [throws, recording(log, "b")] });
 
   expect((await screen.findByRole("article")).innerHTML).toBe("<p>Install</p>");
   await waitFor(() => expect(log).toEqual(["b on <p>Install</p>: lab Install 1 admin"]));
@@ -62,12 +63,14 @@ test("an enhancement that throws leaves the page and the others be", async () =>
 test("an enhancement reads the view again through its context", async () => {
   const server = pageServer();
   const reloads: (() => void)[] = [];
-  renderApp(pagePath(install.id), server.app, routes, [
-    (_container, context) => {
-      reloads.push(context.reload);
-      return undefined;
-    },
-  ]);
+  renderApp(pagePath(install.id), server.app, {
+    enhancements: [
+      (_container, context) => {
+        reloads.push(context.reload);
+        return undefined;
+      },
+    ],
+  });
   await waitFor(() => expect(reloads).toHaveLength(1));
   server.views.set(install.id, { html: "<p>Install, again</p>", revision: 2 });
 

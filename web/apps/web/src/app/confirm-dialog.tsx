@@ -41,6 +41,8 @@ type ConfirmDialogProps = Opening & {
   typedConfirmation?: { label: string; value: string };
   /** The dialog's own texts for some problem codes of a refusal. */
   texts?: ProblemTexts;
+  /** The dialog's own text of a refusal, where it has one: one that names more than its code does. */
+  explain?: (error: unknown) => string | undefined;
 };
 
 /**
@@ -62,6 +64,7 @@ export function ConfirmDialog({
   focusAfter,
   typedConfirmation,
   texts,
+  explain,
 }: ConfirmDialogProps) {
   const t = useT();
   const [own, setOwn] = useState(false);
@@ -72,7 +75,7 @@ export function ConfirmDialog({
   const [sending, setSending] = useState(false);
   const confirmed = useRef(false);
   const typedField = useRef<HTMLInputElement>(null);
-  const failed = failure === undefined ? undefined : errorText(failure, t, texts);
+  const failed = failure === undefined ? undefined : (explain?.(failure) ?? errorText(failure, t, texts));
 
   async function run() {
     setSending(true);

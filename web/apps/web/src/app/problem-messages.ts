@@ -105,6 +105,28 @@ export function errorText(error: unknown, t: Translate, texts: ProblemTexts = {}
 }
 
 /**
+ * lockedText is what page.locked says of the lock it names (M5 design
+ * 4.5): who holds it, the account itself elsewhere when me is theirs,
+ * and the page by its title; undefined for any other error, and for a
+ * page title does not know, which errorText says in general.
+ */
+export function lockedText(
+  error: unknown,
+  t: Translate,
+  me: string | undefined,
+  title: (pageId: string) => string | undefined
+): string | undefined {
+  const lock = error instanceof ApiError && error.code === "page.locked" ? error.problem?.lock : undefined;
+  const page = lock && title(lock.page_id);
+  if (lock === undefined || page === undefined) {
+    return undefined;
+  }
+  return lock.user_id === me
+    ? t("page.lockedTitledSelf", { page })
+    : t("page.lockedTitled", { name: lock.display_name, page });
+}
+
+/**
  * FieldTexts are a form's own texts for some field codes of its fields,
  * keyed "<field>.<code>", where a field's code means more there than the
  * global text says (v0.1 design 13.2, item 11): a notebook's name is held

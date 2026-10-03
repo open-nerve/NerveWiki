@@ -5,6 +5,7 @@ import { afterAll, afterEach, beforeAll, expect, test, vi } from "vitest";
 
 import { json, problem } from "../../test/fakes";
 import { guide, pagePath, pageServer } from "../../test/page-server";
+import { pageEditor } from "../../test/page-editor";
 import { renderApp } from "../../test/render";
 
 // A page's edit mode (M4/P6 design 3.6, 3.7), in StrictMode as the app
@@ -23,31 +24,12 @@ const status = () => screen.getByRole("status");
 const unload = () => window.dispatchEvent(new Event("beforeunload", { cancelable: true }));
 const tree = () => screen.getByRole("navigation", { name: "Pages of Plans" });
 
-/**
- * The editor once it shows, and a way to type at its end. StrictMode makes
- * the editor again as the effects of the first one run: they are run
- * before it is looked for.
- */
-async function editor() {
-  await screen.findByRole("textbox", { name: "Page content" });
-  await act(async () => {});
-  const content = screen.getByRole("textbox", { name: "Page content" });
-  const element = content.closest<HTMLElement>(".cm-editor");
-  const view = element === null ? null : EditorView.findFromDOM(element);
-  if (view === null) {
-    throw new Error("no editor");
-  }
-  const type = (text: string) =>
-    view.dispatch({ changes: { from: view.state.doc.length, insert: text }, userEvent: "input.type" });
-  return { content, view, type };
-}
-
 /** Guide's page shown to Ada, its server, and the editor once Edit is pressed. */
 async function editing(server = pageServer()) {
   const user = userEvent.setup();
   renderApp(pagePath(guide.id), server.app);
   await user.click(await screen.findByRole("button", { name: "Edit" }));
-  return { user, server, ...(await editor()) };
+  return { user, server, ...(await pageEditor()) };
 }
 
 test("Edit opens the editor on the content, the focus in it, a session open; the reading view is gone", async () => {
@@ -65,7 +47,7 @@ test("Ctrl+E opens it too; Ctrl+S saves in the session and says so; Ctrl+E saves
   renderApp(pagePath(guide.id), server.app);
   await screen.findByRole("button", { name: "Edit" });
   expect(ctrl("e")).toBe(false);
-  const { type } = await editor();
+  const { type } = await pageEditor();
 
   type("one");
   await waitFor(() => expect(status().textContent).toBe("Unsaved changes"));
@@ -174,7 +156,7 @@ test("unsaved, going to another page asks first: Stay keeps the edit, Leave goes
   const ask = await screen.findByRole("alertdialog", { name: "Leave without saving?" });
   await user.click(within(ask).getByRole("button", { name: "Stay" }));
   expect(screen.getByRole("heading", { level: 1, name: "Guide" })).toBeTruthy();
-  const { content, view } = await editor();
+  const { content, view } = await pageEditor();
   expect(view.state.doc.toString()).toBe("Guide\ndraft");
   await waitFor(() => expect(document.activeElement).toBe(content));
 
@@ -218,7 +200,7 @@ test("unsaved, a change of the query or the hash alone asks nothing: the edit st
   const user = userEvent.setup();
   const { router } = renderApp(pagePath(guide.id), pageServer().app);
   await user.click(await screen.findByRole("button", { name: "Edit" }));
-  const { type } = await editor();
+  const { type } = await pageEditor();
   type(" more");
   await waitFor(() => expect(status().textContent).toBe("Unsaved changes"));
 
@@ -388,15 +370,6 @@ test.each([
 
   ctrl("s");
   await waitFor(() => expect(status().textContent).toBe(says));
-});
-
-test("the status says when the account may no longer edit the page", async () => {
-  await editing(pageServer({ answers: { "POST /api/v0/edit-sessions/*/heartbeat": () => problem(403, "forbidden") } }));
-
-  document.dispatchEvent(new Event("visibilitychange"));
-  await waitFor(() =>
-    expect(status().textContent).toBe("You can no longer edit this page. Copy your text before you leave.")
-  );
 });
 
 test("a page saved and left for another shows its reading view read again when it is back", async () => {

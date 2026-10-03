@@ -191,7 +191,7 @@ test("an edit's session ends as the page is left, with the login's token while i
         // The first refresh signs the tab in; the beats' later ones fail, the token in memory left to expire.
         return ++refreshes === 1 ? json(tokensJSON) : json({ status: 503, code: "server_busy", title: "" }, 503);
       }
-      return json({ id: `s${sent.length}`, page_id: "p1", expires_in: 120 }, 201);
+      return json({ id: `s${sent.length}`, page_id: "p1", expires_at: "2026-10-03T08:02:00Z" }, 201);
     }, storedSession("login-0"));
     await base.session.start();
     const page = new FakePage();
@@ -210,6 +210,52 @@ test("an edit's session ends as the page is left, with the login's token while i
     page.fire("pagehide");
     expect(sent).toEqual([]);
     expect(new RootStore(base, undefined).editPage("n1", "p1")).toBeUndefined();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+/** A generation of login-0 whose edit of p1 is open; ends answers its end, unless it never comes. */
+async function editingP1(ends: boolean) {
+  const sent: string[] = [];
+  const base = testApp((request) => {
+    const { pathname } = new URL(request.url);
+    sent.push(`${request.method} ${pathname}`);
+    if (pathname === "/api/v0/auth/refresh") {
+      return json(tokensJSON);
+    }
+    if (request.method === "DELETE") {
+      return ends ? new Response(null, { status: 204 }) : new Promise<Response>(() => undefined);
+    }
+    if (pathname === "/api/v0/auth/logout") {
+      return new Response(null, { status: 204 });
+    }
+    return json({ id: "s1", page_id: "p1", expires_at: "2026-10-03T08:02:00Z" }, 201);
+  }, storedSession("login-0"));
+  await base.session.start();
+  const store = new RootStore(withEvents(base, new FakePage()), "login-0");
+  await store.editPage("n1", "p1")?.begin(false);
+  // The content, read once the lock is the edit's.
+  await vi.advanceTimersByTimeAsync(0);
+  sent.length = 0;
+  return { store, sent };
+}
+
+test("signing out ends the generation's edits first, waiting for their ends 2 seconds at most", async () => {
+  vi.useFakeTimers();
+  try {
+    const answered = await editingP1(true);
+    await answered.store.auth.signOut();
+    expect(answered.sent).toEqual(["DELETE /api/v0/edit-sessions/s1", "POST /api/v0/auth/logout"]);
+    expect(answered.store.edits.size).toBe(0);
+
+    const unanswered = await editingP1(false);
+    const signingOut = unanswered.store.auth.signOut();
+    await vi.advanceTimersByTimeAsync(1_999);
+    expect(unanswered.sent).toEqual(["DELETE /api/v0/edit-sessions/s1"]);
+    await vi.advanceTimersByTimeAsync(1);
+    await signingOut;
+    expect(unanswered.sent).toEqual(["DELETE /api/v0/edit-sessions/s1", "POST /api/v0/auth/logout"]);
   } finally {
     vi.useRealTimers();
   }

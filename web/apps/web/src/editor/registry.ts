@@ -2,6 +2,7 @@ import type { Extension } from "@codemirror/state";
 import { createContext } from "react";
 
 import type { NotebookRole } from "../services/notebook.service";
+import { lockReadOnly } from "./lock-read-only";
 
 /** EditorContext is the page an editor's extension is built for. */
 export type EditorContext = {
@@ -19,6 +20,14 @@ export type EditorControls = {
   /** saving tells whether a save is out. */
   saving(): boolean;
   setReadOnly(readOnly: boolean): void;
+  /**
+   * session is the state of the edit's session (M5 design 4.9): lost once
+   * it may no longer write, its session taken over or unlocked, the page
+   * gone or out of reach. It never comes back.
+   */
+  session(): { lost: boolean };
+  /** onSessionChange calls listener after each change of session; it returns the unsubscribe. */
+  onSessionChange(listener: () => void): () => void;
 };
 
 /**
@@ -34,10 +43,11 @@ export type EditorExtension = {
 };
 
 /**
- * editorExtensions is the registry: none in M4. The composition root
- * gives it to the editor through EditorExtensions. This module holds only
- * types of CodeMirror, so that the main chunk does not load it.
+ * editorExtensions is the registry: M5's read-only while the edit's
+ * session is lost first. The composition root gives it to the editor
+ * through EditorExtensions. This module, and the extensions it registers,
+ * hold only types of CodeMirror, so that the main chunk does not load it.
  */
-export const editorExtensions: readonly EditorExtension[] = [];
+export const editorExtensions: readonly EditorExtension[] = [lockReadOnly];
 
 export const EditorExtensions = createContext<readonly EditorExtension[]>([]);

@@ -9,7 +9,7 @@ describe("PageService.openEditSession", () => {
     const service = new PageService(
       fakeApi(async (request) => {
         bodies.push(await request.json());
-        return json({ id: "s1", page_id: "p1", expires_in: 120 }, 201);
+        return json({ id: "s1", page_id: "p1", expires_at: "2026-10-03T08:02:00Z" }, 201);
       })
     );
 

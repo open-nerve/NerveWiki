@@ -101,7 +101,7 @@ export class RootStore {
   ) {
     this.preferences = app.preferences;
     this.instance = app.instance;
-    this.auth = new AuthStore(new AuthService(app.session.public), app.session.tokens, loginId);
+    this.auth = new AuthStore(new AuthService(app.session.public), app.session.tokens, loginId, () => this.endEdits());
     this.invitationPreviews = new InvitationPreviewStore(new InvitationPreviewService(app.session.public));
     const client = loginId === undefined ? undefined : app.session.clientFor(loginId);
     this.account = client && new AccountStore(new AccountService(client));
@@ -128,6 +128,32 @@ export class RootStore {
         }
       };
     }
+  }
+
+  /**
+   * unsavedEdit tells whether an edit of the page pageId, of the notebook
+   * notebookId when given, is open with changes not saved: its page, or its
+   * notebook, stays shown while it is gone (M5/P4 design 3.9).
+   */
+  unsavedEdit({ pageId, notebookId }: { pageId?: string; notebookId?: string }): boolean {
+    return [...this.edits].some(
+      (editing) =>
+        editing.unsaved &&
+        (pageId === undefined || editing.pageId === pageId) &&
+        (notebookId === undefined || editing.notebookId === notebookId)
+    );
+  }
+
+  /**
+   * endEdits ends this generation's edits, as the tab signs out: it
+   * resolves once their ends are answered, or after at most 2 seconds, so
+   * that a network down does not hold the sign-out.
+   */
+  endEdits(): Promise<void> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const waited = new Promise<void>((resolve) => (timer = setTimeout(resolve, signOutWait)));
+    const ended = Promise.all([...this.edits].map((editing) => editing.end()));
+    return Promise.race([ended, waited]).then(() => clearTimeout(timer));
   }
 
   /**
@@ -222,6 +248,9 @@ export class RootStore {
     return new PageEditing(pages, session, notebookId, this.edits);
   }
 }
+
+/** How long signing out waits for the tab's edits to end. */
+const signOutWait = 2_000;
 
 /**
  * eventHub is the hub of login: the tabs of one login elect one holder of

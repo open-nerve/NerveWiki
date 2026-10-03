@@ -1,7 +1,9 @@
+import { reaction } from "mobx";
 import { observer } from "mobx-react-lite";
-import { lazy, Suspense, useEffect, useRef } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useSWRConfig } from "swr";
 
+import { ConfirmDialog } from "../../app/confirm-dialog";
 import { useMounted } from "../../app/mounted";
 import { NotLoaded } from "../../app/not-loaded";
 import { dialogOpen, isMod, onMac } from "../../app/shortcuts";
@@ -11,9 +13,11 @@ import type { SourceEditorHandle } from "../../editor/source-editor";
 import { useT } from "../../i18n/i18n";
 import type { Notebook } from "../../services/notebook.service";
 import type { TreeNode } from "../../services/page.service";
-import { useNewPageEditing, usePageTree } from "../../stores/context";
+import { usePageTree } from "../../stores/context";
+import type { PageEditing } from "../../stores/page-editing";
 import { useWorkspace } from "../workspace/workspace-layout";
 import { ConflictPanel } from "./conflict-panel";
+import { EditLostBanner } from "./edit-lost-banner";
 import { PageEditingBar } from "./page-editing-bar";
 import { UnsavedGuard } from "./unsaved-guard";
 
@@ -34,6 +38,8 @@ function composed(editor: SourceEditorHandle | null, act: () => void) {
 type PageEditProps = {
   notebook: Notebook;
   page: TreeNode;
+  /** The edit, its session open: the view keeps it while mounted. */
+  editing: PageEditing;
   /** done is called once the edit is over: saved, its session ended, the reading view read again. */
   done(): void;
 };
@@ -52,22 +58,27 @@ type PageEditProps = {
  * discards it, a save only brings the focus back there. A save that went
  * through leaves the reading view in SWR's cache to be read again. A
  * content that cannot be read offers to try again, or Done to go back.
+ *
+ * An edit whose session is lost (M5/P4 design 3.8) saves no more: the
+ * editor is read-only, through the registered extension the controls tell,
+ * and a banner says why in place of the bar; Mod+S does nothing, and
+ * Mod+E is Back to reading, which asks first while changes are not saved.
  */
-export const PageEdit = observer(function PageEdit({ notebook, page, done }: PageEditProps) {
+export const PageEdit = observer(function PageEdit({ notebook, page, editing, done }: PageEditProps) {
   const { slug } = useWorkspace();
   const t = useT();
   const { mutate } = useSWRConfig();
   const pages = usePageTree(notebook);
-  const editing = useNewPageEditing(notebook.id, page.id);
   const editor = useRef<SourceEditorHandle>(null);
   const conflictHeading = useRef<HTMLHeadingElement>(null);
   const leaving = useRef(false);
+  const [asking, setAsking] = useState(false);
   const mounted = useMounted();
   const { conflict } = editing;
+  const { lost } = editing.session;
 
   useEffect(() => {
     editing.keep();
-    void editing.begin(false).catch(() => undefined);
     return () => editing.letGo();
   }, [editing]);
 
@@ -134,18 +145,36 @@ export const PageEdit = observer(function PageEdit({ notebook, page, done }: Pag
       }
       return;
     }
-    void editing.end();
-    // The reading view, whose hook is not mounted while the editor is, is read into SWR's cache, deduplication or not.
+    await finish();
+  }
+
+  /**
+   * finish ends the edit, its session's end answered, so that the lock read
+   * next is no longer its; the reading view, whose hook is not mounted
+   * while the editor is, is read into SWR's cache, deduplication or not.
+   */
+  async function finish(): Promise<void> {
+    await editing.end();
     await mutate(["page-view", notebook.id, page.id], pages.view(page.id), { revalidate: false }).catch(
       () => undefined
     );
     done();
   }
 
-  // The keys of the latest render: save and leave read its editing.
+  /** backToReading leaves an edit whose session is lost, unsaved once confirmed. */
+  function backToReading() {
+    if (editing.unsaved) {
+      setAsking(true);
+    } else if (!leaving.current) {
+      leaving.current = true;
+      void finish();
+    }
+  }
+
+  // The keys of the latest render: save and leave read its editing; an edit lost goes back to reading.
   const keys = useRef({ save, leave });
   useEffect(() => {
-    keys.current = { save, leave };
+    keys.current = { save, leave: lost === undefined ? leave : () => Promise.resolve(backToReading()) };
   });
   useEffect(() => {
     const mac = onMac();
@@ -175,12 +204,25 @@ export const PageEdit = observer(function PageEdit({ notebook, page, done }: Pag
   }
   return (
     <div className="space-y-3">
-      <PageEditingBar
-        editing={editing}
-        save={() => composed(editor.current, () => void save())}
-        leave={() => composed(editor.current, () => void leave())}
+      {lost === undefined ? (
+        <PageEditingBar
+          editing={editing}
+          save={() => composed(editor.current, () => void save())}
+          leave={() => composed(editor.current, () => void leave())}
+        />
+      ) : (
+        <EditLostBanner lost={lost} unsaved={editing.unsaved} back={backToReading} />
+      )}
+      <ConfirmDialog
+        held={{ open: asking, onOpenChange: setAsking, onClosed: () => undefined }}
+        title={t("editor.leaveTitle")}
+        description={t("editor.leaveDescription")}
+        confirmLabel={t("editor.leave")}
+        sendingLabel={t("editor.leave")}
+        cancelLabel={t("editor.stay")}
+        confirm={finish}
       />
-      {conflict !== undefined && (
+      {conflict !== undefined && lost === undefined && (
         <ConflictPanel
           conflict={conflict}
           heading={conflictHeading}
@@ -194,7 +236,16 @@ export const PageEdit = observer(function PageEdit({ notebook, page, done }: Pag
           focusOnOpen
           content={editing.content.content}
           context={{ workspace: slug, notebook: notebook.id, page: page.id, role: notebook.role }}
-          controls={{ save: async () => void (await save()), saving: () => editing.saving }}
+          controls={{
+            save: async () => void (await save()),
+            saving: () => editing.saving,
+            session: () => ({ lost: editing.session.lost !== undefined }),
+            onSessionChange: (listener) =>
+              reaction(
+                () => editing.session.lost,
+                () => listener()
+              ),
+          }}
           onChange={editing.changed}
         />
       </Suspense>
