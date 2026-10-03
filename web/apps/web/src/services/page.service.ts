@@ -86,8 +86,17 @@ export class PageService {
     await unwrap(await this.api.DELETE("/api/v0/pages/{page_id}/edit-lock", { params: { path: { page_id: id } } }));
   }
 
-  async openEditSession(id: string): Promise<EditSession> {
-    return unwrap(await this.api.POST("/api/v0/pages/{page_id}/edit-sessions", { params: { path: { page_id: id } } }));
+  /**
+   * openEditSession opens the caller's edit session of the page, which holds its edit lock; with takeOver,
+   * the caller's own sessions of it elsewhere end first (M5 design 4.1).
+   */
+  async openEditSession(id: string, takeOver = false): Promise<EditSession> {
+    return unwrap(
+      await this.api.POST("/api/v0/pages/{page_id}/edit-sessions", {
+        params: { path: { page_id: id } },
+        body: { take_over: takeOver },
+      })
+    );
   }
 
   async heartbeatEditSession(id: string): Promise<EditSession> {
@@ -102,5 +111,26 @@ export class PageService {
     await unwrap(
       await this.api.DELETE("/api/v0/edit-sessions/{edit_session_id}", { params: { path: { edit_session_id: id } } })
     );
+  }
+}
+
+/**
+ * EditLeaveService ends an edit session as the page is left (M5 design
+ * 4.7): in pagehide, where only what is sent synchronously goes out, with
+ * keepalive so that the request outlives the page. Its client has no auth
+ * middleware, which is asynchronous: the caller gives the token.
+ */
+export class EditLeaveService {
+  constructor(private readonly api: ApiClient) {}
+
+  /** endOnLeave sends the end of the session id now, with token; it waits for no answer and fails silently. */
+  endOnLeave(id: string, token: string): void {
+    this.api
+      .DELETE("/api/v0/edit-sessions/{edit_session_id}", {
+        params: { path: { edit_session_id: id } },
+        headers: { Authorization: `Bearer ${token}` },
+        keepalive: true,
+      })
+      .catch(() => undefined);
   }
 }

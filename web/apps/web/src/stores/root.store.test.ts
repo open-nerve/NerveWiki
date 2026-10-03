@@ -2,8 +2,10 @@ import { expect, test, vi } from "vitest";
 
 import type { EventDeps } from "../events/deps";
 import { EventHub } from "../events/hub";
+import { FakePage } from "../events/testing/fake-page";
 import { SharedStorage } from "../session/testing/fake-browser";
 import { SessionChangedError } from "../session/token-manager";
+import { withEvents } from "../test/event-server";
 import { json, notebookJSON, storedSession, testApp, tokensJSON, workspaceJSON } from "../test/fakes";
 import { AppStores, RootStore } from "./root.store";
 
@@ -173,4 +175,42 @@ test("a signed-in generation has one event hub, not started, where the page has 
   expect(new RootStore(app, "login-0").events()).not.toBe(hub);
   expect(new RootStore(app, undefined).events()).toBeUndefined();
   expect(new RootStore(base, "login-0").events()).toBeUndefined();
+});
+
+// An edit holds its page's lock (M5/P4 design 3.4, 3.5): its session ends as
+// the page is left, synchronously, with the login's token as it is.
+test("an edit's session ends as the page is left, with the login's token while it is valid; once it expired, nothing goes", async () => {
+  vi.useFakeTimers();
+  try {
+    const sent: string[] = [];
+    let refreshes = 0;
+    const base = testApp((request) => {
+      const { pathname } = new URL(request.url);
+      sent.push(`${request.method} ${pathname} ${request.headers.get("Authorization") ?? ""}`);
+      if (pathname === "/api/v0/auth/refresh") {
+        // The first refresh signs the tab in; the beats' later ones fail, the token in memory left to expire.
+        return ++refreshes === 1 ? json(tokensJSON) : json({ status: 503, code: "server_busy", title: "" }, 503);
+      }
+      return json({ id: `s${sent.length}`, page_id: "p1", expires_in: 120 }, 201);
+    }, storedSession("login-0"));
+    await base.session.start();
+    const page = new FakePage();
+    const store = new RootStore(withEvents(base, page), "login-0");
+    const editing = store.editPage("n1", "p1");
+    expect(await editing?.begin(false)).toEqual({ opened: true });
+    expect([...store.edits]).toEqual([editing]);
+
+    sent.length = 0;
+    page.fire("pagehide");
+    expect(sent).toEqual(["DELETE /api/v0/edit-sessions/s2 Bearer at-1"]);
+
+    sent.length = 0;
+    await vi.advanceTimersByTimeAsync(tokensJSON.access_token_expires_in * 1000);
+    sent.length = 0;
+    page.fire("pagehide");
+    expect(sent).toEqual([]);
+    expect(new RootStore(base, undefined).editPage("n1", "p1")).toBeUndefined();
+  } finally {
+    vi.useRealTimers();
+  }
 });

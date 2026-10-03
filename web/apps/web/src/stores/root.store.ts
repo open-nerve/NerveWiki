@@ -1,6 +1,8 @@
+import { observable } from "mobx";
+
 import { TabChannel } from "../events/channel";
-import type { EventDeps } from "../events/deps";
-import { EventHub } from "../events/hub";
+import { browserPageLifecycle, type EventDeps } from "../events/deps";
+import { EventHub, type PageLifecycle } from "../events/hub";
 import { leaseLeadership, webLockLeadership } from "../events/leadership";
 import { Refresher } from "../events/refresher";
 import { AccountService } from "../services/account.service";
@@ -13,13 +15,14 @@ import { MemberService } from "../services/member.service";
 import { NotebookMemberService } from "../services/notebook-member.service";
 import { NotebookService, type Notebook } from "../services/notebook.service";
 import { OwnerlessService } from "../services/ownerless.service";
-import { PageService } from "../services/page.service";
+import { EditLeaveService, PageService } from "../services/page.service";
 import { WorkspaceService, type Workspace } from "../services/workspace.service";
 import type { Session } from "../session/session";
 import { AccountStore } from "./account.store";
 import { ApiTokenStore } from "./api-token.store";
 import { AuditStore } from "./audit.store";
 import { AuthStore } from "./auth.store";
+import { EditSession } from "./edit-session";
 import { InstanceStore } from "./instance.store";
 import { InvitationPreviewStore, InvitationStore } from "./invitation.store";
 import { MemberStore } from "./member.store";
@@ -68,6 +71,8 @@ export class RootStore {
   readonly apiTokens: ApiTokenStore | undefined;
   /** The signed-in account's workspaces; undefined while the tab is signed out. */
   readonly workspaces: WorkspaceStore | undefined;
+  /** The edits of this generation whose session opened, until they end (M5/P4 design 3.4). */
+  readonly edits = observable.set<PageEditing>([], { deep: false });
   private readonly members: MemberService | undefined;
   private readonly invitations: InvitationService | undefined;
   private readonly notebooks: NotebookService | undefined;
@@ -76,6 +81,9 @@ export class RootStore {
   private readonly pages: PageService | undefined;
   private readonly hub: EventHub | undefined;
   private readonly eventDeps: EventDeps | undefined;
+  private readonly page: PageLifecycle;
+  /** Ends an edit session as the page is left, with this login's token while it is valid. */
+  private readonly leave: ((id: string) => void) | undefined;
   /** The member, invitation and notebook lists this generation holds, by workspace id. */
   private readonly memberLists = new Map<string, MemberStore>();
   private readonly invitationLists = new Map<string, InvitationStore>();
@@ -110,6 +118,16 @@ export class RootStore {
         ? eventHub(new EventService(client), app.events, loginId)
         : undefined;
     this.eventDeps = this.hub && app.events;
+    this.page = app.events?.page ?? browserPageLifecycle();
+    if (loginId !== undefined) {
+      const leaving = new EditLeaveService(app.session.public);
+      this.leave = (id) => {
+        const token = app.session.tokens.currentAccessToken(loginId);
+        if (token !== undefined) {
+          leaving.endOnLeave(id, token);
+        }
+      };
+    }
   }
 
   /**
@@ -188,9 +206,20 @@ export class RootStore {
     return service && once(this.pageTrees, notebook.id, () => new PageTreeStore(service, notebook.id));
   }
 
-  /** editPage is a new edit of the page id, which its edit mode holds, not this generation (M4/P6 design 3.6). */
-  editPage(id: string): PageEditing | undefined {
-    return this.pages && new PageEditing(this.pages, id);
+  /**
+   * editPage is a new edit of the page pageId of the notebook notebookId,
+   * which the page holds, not this generation (M4/P6 design 3.6); edits
+   * has it while its session is open. Its session follows the page, and
+   * this login's events where the tab has a stream (M5/P4 design 3.4).
+   */
+  editPage(notebookId: string, pageId: string): PageEditing | undefined {
+    const { pages, leave, hub } = this;
+    if (pages === undefined || leave === undefined) {
+      return undefined;
+    }
+    const events = hub && ((listener: Parameters<EventHub["subscribe"]>[0]) => hub.subscribe(listener));
+    const session = new EditSession({ service: pages, page: this.page, events, leave }, pageId);
+    return new PageEditing(pages, session, notebookId, this.edits);
   }
 }
 

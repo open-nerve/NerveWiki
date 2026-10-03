@@ -58,7 +58,7 @@ export const PageEdit = observer(function PageEdit({ notebook, page, done }: Pag
   const t = useT();
   const { mutate } = useSWRConfig();
   const pages = usePageTree(notebook);
-  const editing = useNewPageEditing(page.id);
+  const editing = useNewPageEditing(notebook.id, page.id);
   const editor = useRef<SourceEditorHandle>(null);
   const conflictHeading = useRef<HTMLHeadingElement>(null);
   const leaving = useRef(false);
@@ -66,8 +66,9 @@ export const PageEdit = observer(function PageEdit({ notebook, page, done }: Pag
   const { conflict } = editing;
 
   useEffect(() => {
-    editing.start();
-    return () => editing.end();
+    editing.keep();
+    void editing.begin(false).catch(() => undefined);
+    return () => editing.letGo();
   }, [editing]);
 
   useEffect(() => {
@@ -133,7 +134,7 @@ export const PageEdit = observer(function PageEdit({ notebook, page, done }: Pag
       }
       return;
     }
-    editing.end();
+    void editing.end();
     // The reading view, whose hook is not mounted while the editor is, is read into SWR's cache, deduplication or not.
     await mutate(["page-view", notebook.id, page.id], pages.view(page.id), { revalidate: false }).catch(
       () => undefined

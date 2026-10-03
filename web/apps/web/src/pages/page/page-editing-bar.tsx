@@ -24,7 +24,8 @@ export const PageEditingBar = observer(function PageEditingBar({ editing, save, 
       ? undefined
       : (fieldErrors(editing.failure, t).content ??
         errorText(editing.failure, t, { bad_request: "editor.tooSlow", forbidden: "editor.lostAccess" }));
-  const status = editing.lostAccess
+  const lostAccess = editing.session.lost?.reason === "no_access";
+  const status = lostAccess
     ? t("editor.lostAccess")
     : failed !== undefined
       ? failed
@@ -40,9 +41,7 @@ export const PageEditingBar = observer(function PageEditingBar({ editing, save, 
   return (
     <div className="flex flex-wrap items-center justify-between gap-2">
       <output
-        className={
-          failed === undefined && !editing.lostAccess ? "text-sm text-muted-foreground" : "text-sm text-destructive"
-        }
+        className={failed === undefined && !lostAccess ? "text-sm text-muted-foreground" : "text-sm text-destructive"}
       >
         {status}
       </output>

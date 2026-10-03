@@ -2,22 +2,13 @@ import { makeAutoObservable, observableRef, runInAction } from "mobx";
 
 import { ApiError } from "../services/api";
 import type { PageContent, PageService } from "../services/page.service";
+import type { EditSession, Opening } from "./edit-session";
 
-/** EditingService is the part of PageService an edit uses. */
-export type EditingService = Pick<
-  PageService,
-  "getPageContent" | "putPageContent" | "openEditSession" | "heartbeatEditSession" | "endEditSession"
->;
+/** EditingService is the part of PageService an edit's content uses. */
+export type EditingService = Pick<PageService, "getPageContent" | "putPageContent">;
 
-/**
- * How often the editor beats to keep its edit session (M4 design 4): the
- * server's lease is 120 seconds (M5 design 4.6), so that a hidden tab's
- * beats, throttled to one a minute, still keep it. The server holds the
- * same numbers (EditSessionHeartbeat and
- * EditSessionLease in server/internal/modules/page/domain/session.go);
- * each side's tests pin its own.
- */
-export const editSessionHeartbeat = 20_000;
+/** EditRecord is where a generation of the stores keeps the edits that hold their page's lock. */
+export type EditRecord = { add(editing: PageEditing): unknown; delete(editing: PageEditing): unknown };
 
 /** How many times a save waits out a 503 server_busy before it is shown as failed. */
 const busyRetries = 3;
@@ -37,24 +28,25 @@ function refused(error: unknown, status: number, code?: string): boolean {
 }
 
 /**
- * PageEditing is one edit of a page (M4/P6 design 3.6), from entering
- * the editor to leaving it: the content read as it began, the revision a
- * save goes on, the edit session, the saves. It holds no editor: text
- * comes in as written, with the editor's version, which counts its
- * changes.
+ * PageEditing is one edit of a page (M4/P6 design 3.6; M5/P4 design 3.4),
+ * from entering the editor to leaving it: its session, which holds the
+ * page's lock; the content read once the lock is the edit's; the revision
+ * a save goes on; the saves. It holds no editor: text comes in as
+ * written, with the editor's version, which counts its changes.
  *
- * The session opens as the edit begins and beats every
- * editSessionHeartbeat, and again whenever the tab is shown, since a
- * hidden tab's timers are slowed. One not found is opened anew; a save
- * whose session ended opens one and is sent once more. One save is out
- * at a time; a save asked for meanwhile goes once it is answered, with
- * the latest text asked for. A save refused because the page changed
- * reads the page as it is now: the edit is then in conflict, and saves
- * nothing until the user keeps their text or discards it.
+ * A save whose session ended opens one and is sent once more; a save
+ * that loses the session (EditSession) shows no failure: the edit is
+ * lost, and saves nothing more. One save is out at a time; a save asked
+ * for meanwhile goes once it is answered, with the latest text asked for.
+ * A save refused because the page changed reads the page as it is now:
+ * the edit is then in conflict, and saves nothing until the user keeps
+ * their text or discards it.
  *
  * Once the edit ends, nothing more is sent: a save waiting for its turn,
- * a session or a busy server is not. An edit ended may begin again, as
- * StrictMode ends an effect and runs it once more.
+ * a session or a busy server is not. The view that shows the edit keeps
+ * it while mounted: one unmounted and mounted again in the same task, as
+ * StrictMode does, keeps its session, which another open would find
+ * locked by itself.
  */
 export class PageEditing {
   /** The content as the edit began; undefined until it is read. */
@@ -71,35 +63,36 @@ export class PageEditing {
   saved = false;
   /** Why the last save failed; cleared by the next. */
   failure: unknown = undefined;
-  /** Whether the account may no longer edit the page: a heartbeat was forbidden. */
-  lostAccess = false;
   conflict: Conflict | undefined = undefined;
+  readonly pageId: string;
 
   private base = 0;
-  private session: string | undefined = undefined;
-  private opening: Promise<string> | undefined = undefined;
   private ended = false;
+  private beginning: Promise<Opening> | undefined = undefined;
+  private letting: ReturnType<typeof setTimeout> | undefined = undefined;
   private reading: Promise<void> | undefined = undefined;
   private woken: (() => void) | undefined = undefined;
-  private beating: ReturnType<typeof setInterval> | undefined = undefined;
   private out: Promise<boolean> | undefined = undefined;
   private next: Draft | undefined = undefined;
   private nextSent: Promise<boolean> | undefined = undefined;
 
   constructor(
     private readonly service: EditingService,
-    readonly pageId: string
+    readonly session: EditSession,
+    readonly notebookId: string,
+    private readonly record?: EditRecord
   ) {
+    this.pageId = session.pageId;
     makeAutoObservable<
       this,
       | "service"
+      | "record"
       | "base"
-      | "session"
-      | "opening"
       | "ended"
+      | "beginning"
+      | "letting"
       | "reading"
       | "woken"
-      | "beating"
       | "out"
       | "next"
       | "nextSent"
@@ -107,18 +100,20 @@ export class PageEditing {
       this,
       {
         service: false,
+        session: false,
+        notebookId: false,
+        record: false,
         pageId: false,
         content: observableRef,
         readFailure: observableRef,
         failure: observableRef,
         conflict: observableRef,
         base: false,
-        session: false,
-        opening: false,
         ended: false,
+        beginning: false,
+        letting: false,
         reading: false,
         woken: false,
-        beating: false,
         out: false,
         next: false,
         nextSent: false,
@@ -132,18 +127,31 @@ export class PageEditing {
   }
 
   /**
-   * start begins the edit: it opens the session, starts its heartbeat and
-   * reads the content, unless it has it.
+   * begin begins the edit, once: it opens the session, with takeOver or
+   * not, and reads the content once the lock is the edit's. It answers
+   * whether it is, or who holds it.
    */
-  start(): void {
-    this.ended = false;
-    clearInterval(this.beating);
-    this.beating = setInterval(() => void this.beat(), editSessionHeartbeat);
-    document.addEventListener("visibilitychange", this.shown);
-    void this.sessionId().catch(() => undefined);
-    if (this.content === undefined) {
-      void this.read();
-    }
+  begin(takeOver: boolean): Promise<Opening> {
+    this.beginning ??= this.session.open(takeOver).then((opening) => {
+      if (opening.opened && !this.ended) {
+        runInAction(() => this.record?.add(this));
+        void this.read();
+      }
+      return opening;
+    });
+    return this.beginning;
+  }
+
+  /** keep keeps the edit for the view that shows it: a letGo just before is undone. */
+  keep(): void {
+    clearTimeout(this.letting);
+    this.letting = undefined;
+  }
+
+  /** letGo ends the edit unless it is kept again within the task: its view is gone for good. */
+  letGo(): void {
+    clearTimeout(this.letting);
+    this.letting = setTimeout(() => void this.end(), 0);
   }
 
   /**
@@ -230,21 +238,16 @@ export class PageEditing {
   }
 
   /**
-   * end ends the edit: the heartbeat stops, the session ends, unanswered,
-   * and a save not sent yet is not sent: leaving without saving leaves
-   * the page as it was last saved.
+   * end ends the edit, once: its session ends, and a save not sent yet is
+   * not sent: leaving without saving leaves the page as it was last saved.
+   * It resolves once the session's end is answered.
    */
-  end(): void {
+  end(): Promise<void> {
     this.ended = true;
-    clearInterval(this.beating);
-    document.removeEventListener("visibilitychange", this.shown);
+    clearTimeout(this.letting);
     this.woken?.();
-    // A session still opening ends as it opens (sessionId).
-    const id = this.session;
-    this.session = undefined;
-    if (id !== undefined) {
-      void this.service.endEditSession(id).catch(() => undefined);
-    }
+    this.record?.delete(this);
+    return this.session.end();
   }
 
   private async send(draft: Draft, reopened: boolean, waited: number): Promise<boolean> {
@@ -254,7 +257,7 @@ export class PageEditing {
     });
     let session: string | undefined;
     try {
-      session = await this.sessionId();
+      session = await this.session.current();
       const page = await this.service.putPageContent(this.pageId, {
         content: draft.text,
         base_revision: this.base,
@@ -266,11 +269,6 @@ export class PageEditing {
         this.saved = true;
         this.saving = false;
         this.busy = false;
-        if (this.lostAccess && !this.ended) {
-          // The account may edit again: its session beats again.
-          this.lostAccess = false;
-          this.beating = setInterval(() => void this.beat(), editSessionHeartbeat);
-        }
       });
       return true;
     } catch (error) {
@@ -280,12 +278,14 @@ export class PageEditing {
       if (refused(error, 409, "page.revision_mismatch")) {
         return this.inConflict(draft, error);
       }
-      if (!reopened && refused(error, 409, "page.edit_session_ended")) {
+      if (!reopened && session !== undefined && refused(error, 409, "page.edit_session_ended")) {
         // A session the heartbeat opened meanwhile is the edit's: it is kept.
-        if (this.session === session) {
-          this.session = undefined;
-        }
+        this.session.forget(session);
         return this.send(draft, true, waited);
+      }
+      if (this.session.settle(error)) {
+        // The edit is lost: it says why, not the save.
+        return this.stopped();
       }
       if (waited < busyRetries && error instanceof ApiError && error.status === 503 && error.retryAfter !== undefined) {
         runInAction(() => (this.busy = true));
@@ -307,11 +307,15 @@ export class PageEditing {
     return false;
   }
 
-  /**
-   * waitOut waits seconds, or until the edit ends; it answers whether the
-   * edit ended, which it may have begun again since (StrictMode, a reload
-   * of the module while developing).
-   */
+  private stopped(): false {
+    runInAction(() => {
+      this.saving = false;
+      this.busy = false;
+    });
+    return false;
+  }
+
+  /** waitOut waits seconds, or until the edit ends; it answers whether the edit ended. */
   private waitOut(seconds: number): Promise<boolean> {
     return new Promise((resolve) => {
       const timer = setTimeout(() => {
@@ -339,54 +343,5 @@ export class PageEditing {
       this.busy = false;
     });
     return false;
-  }
-
-  /** sessionId is the edit's session, opened if it has none; an edit ended has none. */
-  private sessionId(): Promise<string> {
-    if (this.ended) {
-      return Promise.reject(new Error("The edit has ended."));
-    }
-    if (this.session !== undefined) {
-      return Promise.resolve(this.session);
-    }
-    this.opening ??= this.service
-      .openEditSession(this.pageId)
-      .then((session) => {
-        if (this.ended) {
-          void this.service.endEditSession(session.id).catch(() => undefined);
-          throw new Error("The edit has ended.");
-        }
-        this.session = session.id;
-        return session.id;
-      })
-      .finally(() => (this.opening = undefined));
-    return this.opening;
-  }
-
-  private async beat(): Promise<void> {
-    const id = this.session;
-    if (id === undefined || this.ended) {
-      return;
-    }
-    try {
-      await this.service.heartbeatEditSession(id);
-    } catch (error) {
-      if (refused(error, 404, "page.edit_session_not_found")) {
-        if (this.session === id) {
-          this.session = undefined;
-          void this.sessionId().catch(() => undefined);
-        }
-      } else if (refused(error, 403)) {
-        clearInterval(this.beating);
-        runInAction(() => (this.lostAccess = true));
-      }
-      // Any other failure, a network's, is tried again at the next beat.
-    }
-  }
-
-  private shown(): void {
-    if (document.visibilityState === "visible") {
-      void this.beat();
-    }
   }
 }

@@ -90,10 +90,10 @@ export function useNotebookMembers(notebook: Notebook): NotebookMemberStore {
   return members;
 }
 
-/** useNewPageEditing is a new edit of the page id, made once for the component: only for the pages the SignedIn guard shows. */
-export function useNewPageEditing(id: string): PageEditing {
+/** useNewPageEditing is a new edit of the page id of notebookId, made once for the component: only for the pages the SignedIn guard shows. */
+export function useNewPageEditing(notebookId: string, id: string): PageEditing {
   const store = useStore();
-  const [editing] = useState(() => store.editPage(id));
+  const [editing] = useState(() => store.editPage(notebookId, id));
   if (editing === undefined) {
     throw new Error("useNewPageEditing is used outside SignedIn");
   }
