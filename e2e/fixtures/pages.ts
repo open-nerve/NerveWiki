@@ -6,6 +6,7 @@ import type {
   PageContent,
   PageContentWrite,
   PageCreate,
+  TaskToggle,
   TreeNode,
 } from "@nervewiki/api-client";
 import { expect } from "@playwright/test";
@@ -184,6 +185,15 @@ export async function heartbeat(api: ApiClient, credential: string, id: string) 
 export async function endSession(api: ApiClient, credential: string, id: string) {
   return api.DELETE("/api/v0/edit-sessions/{edit_session_id}", {
     params: { path: { edit_session_id: id } },
+    headers: bearer(credential),
+  });
+}
+
+/** credential's toggle of a task item of the page id (M5/P6 design 3.4), as the API answers it. */
+export async function toggleTask(api: ApiClient, credential: string, id: string, body: TaskToggle) {
+  return api.POST("/api/v0/pages/{page_id}/toggle-task", {
+    params: { path: { page_id: id } },
+    body,
     headers: bearer(credential),
   });
 }
