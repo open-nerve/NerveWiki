@@ -13,8 +13,9 @@ type PageEditingBarProps = {
 
 /**
  * PageEditingBar is the edit's status and buttons (M4/P6 design 3.7): what
- * the last save came to, or that the edit is unsaved, in an output that
- * screen readers announce; Save and Done. A content refused says which of
+ * the last save came to, a conflict, or that the edit is unsaved, in an
+ * output that screen readers announce (a conflict autosave runs into
+ * moves no focus: M5/P5 design 3.6); Save and Done. A content refused says which of
  * its rules it breaks.
  */
 export const PageEditingBar = observer(function PageEditingBar({ editing, save, leave }: PageEditingBarProps) {
@@ -27,15 +28,17 @@ export const PageEditingBar = observer(function PageEditingBar({ editing, save, 
   const status =
     failed !== undefined
       ? failed
-      : editing.busy
-        ? t("editor.busy")
-        : editing.saving
-          ? t("editor.saving")
-          : editing.unsaved
-            ? t("editor.unsaved")
-            : editing.saved
-              ? t("page.saved")
-              : "";
+      : editing.conflict !== undefined
+        ? t("editor.conflicted")
+        : editing.busy
+          ? t("editor.busy")
+          : editing.saving
+            ? t("editor.saving")
+            : editing.unsaved
+              ? t("editor.unsaved")
+              : editing.saved
+                ? t("page.saved")
+                : "";
   return (
     <div className="flex flex-wrap items-center justify-between gap-2">
       <output className={failed === undefined ? "text-sm text-muted-foreground" : "text-sm text-destructive"}>

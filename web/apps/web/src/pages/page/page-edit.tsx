@@ -9,6 +9,7 @@ import { NotLoaded } from "../../app/not-loaded";
 import { dialogOpen, isMod, onMac } from "../../app/shortcuts";
 import { Loading } from "../../components/loading";
 import { Button } from "../../components/ui/button";
+import { idleLimit } from "../../editor/idle-exit";
 import type { SourceEditorHandle } from "../../editor/source-editor";
 import { useT } from "../../i18n/i18n";
 import type { Notebook } from "../../services/notebook.service";
@@ -26,14 +27,20 @@ const SourceEditor = lazy(() =>
   import("../../editor/source-editor").then((module) => ({ default: module.SourceEditor }))
 );
 
-/** composed runs act once the editor's input method composition ends, or now while there is no editor. */
-function composed(editor: SourceEditorHandle | null, act: () => void) {
+/**
+ * composed runs act once the editor's input method composition ends, or
+ * now while there is no editor; drop instead if the editor goes first.
+ */
+function composed(editor: SourceEditorHandle | null, act: () => void, drop?: () => void) {
   if (editor === null) {
     act();
   } else {
-    editor.whenComposed(act);
+    editor.whenComposed(act, drop);
   }
 }
+
+/** Left is how an edit ended: idle, left for a long time without input. */
+export type Left = { idle: boolean };
 
 type PageEditProps = {
   notebook: Notebook;
@@ -41,7 +48,7 @@ type PageEditProps = {
   /** The edit, its session open: the view keeps it while mounted. */
   editing: PageEditing;
   /** done is called once the edit is over: saved, its session ended, the reading view read again. */
-  done(): void;
+  done(left: Left): void;
 };
 
 /**
@@ -73,6 +80,11 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
   const conflictHeading = useRef<HTMLHeadingElement>(null);
   const banner = useRef<HTMLDivElement>(null);
   const leaving = useRef(false);
+  // Whether the user asked for the save last sent: a conflict it runs into takes the focus to its heading; one that
+  // autosave or the idle exit runs into leaves the focus where it is, the status saying so (M5/P5 design 3.6).
+  const asked = useRef(true);
+  // How many saves the user asked for are out: a quiet save sent meanwhile does not speak for them.
+  const askedOut = useRef(0);
   const [asking, setAsking] = useState(false);
   const mounted = useMounted();
   const { conflict } = editing;
@@ -85,7 +97,7 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
   }, [editing]);
 
   useEffect(() => {
-    if (conflict !== undefined) {
+    if (conflict !== undefined && asked.current) {
       conflictHeading.current?.focus();
     }
   }, [conflict]);
@@ -97,16 +109,32 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
     }
   }, [lost, shown]);
 
-  async function save(): Promise<boolean> {
+  /** save saves the content; quietly, not asked by the user, it moves no focus. */
+  async function save(quietly = false): Promise<boolean> {
     const current = editor.current;
     if (editing.conflict !== undefined) {
-      conflictHeading.current?.focus();
+      if (!quietly) {
+        conflictHeading.current?.focus();
+      }
       return false;
     }
     if (current === null) {
       return false;
     }
-    const saved = await editing.save(current.text(), current.version());
+    if (!quietly) {
+      asked.current = true;
+      askedOut.current += 1;
+    } else if (askedOut.current === 0) {
+      asked.current = false;
+    }
+    let saved: boolean;
+    try {
+      saved = await editing.save(current.text(), current.version());
+    } finally {
+      if (!quietly) {
+        askedOut.current -= 1;
+      }
+    }
     if (saved && editing.saved) {
       // The reading view cached is older than the page: it goes, and is read when shown, deduplication or not.
       await mutate(["page-view", notebook.id, page.id], undefined);
@@ -119,7 +147,13 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
     if (current === null) {
       return;
     }
-    await editing.keepMine(current.text(), current.version());
+    asked.current = true;
+    askedOut.current += 1;
+    try {
+      await editing.keepMine(current.text(), current.version());
+    } finally {
+      askedOut.current -= 1;
+    }
     // A conflict again takes the focus to its heading; a save that failed otherwise leaves the panel gone.
     if (editing.conflict === undefined) {
       current.focus();
@@ -134,7 +168,7 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
     }
   }
 
-  async function leave(): Promise<void> {
+  async function leave(left: Left = { idle: false }): Promise<void> {
     const current = editor.current;
     if (leaving.current) {
       return;
@@ -142,19 +176,20 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
     leaving.current = true;
     // What is typed while the edit is left would not be saved: the content is held as it is.
     current?.hold(true);
-    const saved = !editing.unsaved || (await save());
+    const saved = !editing.unsaved || (await save(left.idle));
     if (!mounted()) {
       return;
     }
     if (!saved || editing.unsaved) {
       leaving.current = false;
       current?.hold(false);
-      if (editing.conflict === undefined) {
+      // Left by the user, the focus goes back to the editor; the idle exit moves none.
+      if (!left.idle && editing.conflict === undefined) {
         current?.focus();
       }
       return;
     }
-    await finish();
+    await finish(left);
   }
 
   /**
@@ -167,7 +202,7 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
    * was lost as the page went or out of the account's reach (a notebook
    * gone keeps its tree as it was).
    */
-  async function finish(): Promise<void> {
+  async function finish(left: Left = { idle: false }): Promise<void> {
     await editing.end();
     await mutate(["edit-lock", page.id], undefined, { revalidate: false });
     const reason = editing.session.lost?.reason;
@@ -176,7 +211,34 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
         () => undefined
       );
     }
-    done();
+    done(left);
+  }
+
+  /**
+   * leaveIdle leaves an edit gone long without input (M5/P5 design 3.6),
+   * as Done does once a composition ends, saying so on the reading view,
+   * moving no focus while it stays: with a conflict open (its panel
+   * decides) or a save that fails. It stays, and settles all the same,
+   * while the session is lost (its banner stays), once a composition it
+   * waited for ends (only the user ends one: that is input), or when the
+   * editor goes first.
+   */
+  function leaveIdle(): Promise<void> {
+    return new Promise((resolve) => {
+      let waited = false;
+      composed(
+        editor.current,
+        () => {
+          if (waited || editing.session.lost !== undefined) {
+            resolve();
+          } else {
+            void leave({ idle: true }).then(resolve, resolve);
+          }
+        },
+        resolve
+      );
+      waited = true;
+    });
   }
 
   /** backToReading leaves an edit whose session is lost, unsaved once confirmed. */
@@ -190,10 +252,20 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
   }
 
   // The keys of the latest render: save and leave read its editing; an edit lost goes back to reading.
-  const keys = useRef({ save, leave });
+  const keys = useRef({ save, leave, leaveIdle });
   useEffect(() => {
-    keys.current = { save, leave: lost === undefined ? leave : () => Promise.resolve(backToReading()) };
+    keys.current = { save, leave: lost === undefined ? leave : () => Promise.resolve(backToReading()), leaveIdle };
   });
+  // An edit whose content is not read has no editor to time it: it is left as idle after as long all the same,
+  // from the last try to read it.
+  const unread = editing.readFailure;
+  useEffect(() => {
+    if (shown) {
+      return undefined;
+    }
+    const idle = setTimeout(() => void keys.current.leaveIdle(), idleLimit);
+    return () => clearTimeout(idle);
+  }, [shown, unread]);
   useEffect(() => {
     const mac = onMac();
     const onKeyDown = (event: KeyboardEvent) => {
@@ -257,7 +329,8 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
           content={editing.content.content}
           context={{ workspace: slug, notebook: notebook.id, page: page.id, role: notebook.role }}
           controls={{
-            save: async () => void (await save()),
+            // Autosave's: quiet, a conflict open is its panel's, one run into moves no focus.
+            save: async () => void (await save(true)),
             saving: () => editing.saving,
             session: () => ({ lost: editing.session.lost !== undefined }),
             onSessionChange: (listener) =>
@@ -265,6 +338,7 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
                 () => editing.session.lost,
                 () => listener()
               ),
+            leave: leaveIdle,
           }}
           onChange={editing.changed}
         />

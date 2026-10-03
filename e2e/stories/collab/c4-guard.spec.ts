@@ -17,6 +17,7 @@ import { expect, test, watchOf } from "../../fixtures/test";
 import {
   choosePageAction,
   editorContent,
+  holdContentWrites,
   lostBanner,
   pageHeading,
   startEditing,
@@ -85,8 +86,11 @@ test("C4 (page): while A edits Linux, B's deletion of its parent is refused, the
 
   await page.goto(linuxPath);
   await startEditing(page);
+  // A's writes are held: autosave's goes out and is not answered, so that what A types stays unsaved (M5/P5).
+  const held = await holdContentWrites(page, linux.id);
   await page.keyboard.press("ControlOrMeta+End");
   await page.keyboard.type("Unsaved");
+  await held.sent();
 
   await b.goto(wikiPagePath(workspace.slug, notebook.id, guide.id));
   await expect(pageHeading(b, "Guide")).toBeVisible();
@@ -112,12 +116,14 @@ test("C4 (page): while A edits Linux, B's deletion of its parent is refused, the
   await expect(lostBanner(page)).toContainText("Your changes here are not saved: copy them before you leave.");
   await expect(pageHeading(page, "Linux")).toBeVisible();
   await expect(editorContent(page)).toContainText("Drafted.Unsaved");
-  // The session's beat on the event, and the opening it tried again: both not found.
-  pageWatch.expectConsole({ errors: [failedToLoad(404), failedToLoad(404)] });
   await lostBanner(page).getByRole("button", { name: "Back to reading", exact: true }).click();
   await page
     .getByRole("alertdialog", { name: "Leave without saving?" })
     .getByRole("button", { name: "Leave", exact: true })
     .click();
   await expect(pageHeading(page, "Page not found")).toBeVisible();
+  // The write held all along reaches a page gone.
+  expect((await held.release()).map((answer) => answer.status())).toEqual([404]);
+  // The session's beat on the event, the opening it tried again, and the write held: all not found.
+  pageWatch.expectConsole({ errors: [failedToLoad(404), failedToLoad(404), failedToLoad(404)] });
 });

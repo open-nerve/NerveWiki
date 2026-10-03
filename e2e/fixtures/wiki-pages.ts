@@ -1,5 +1,5 @@
 import type { Page as WikiPage } from "@nervewiki/api-client";
-import { expect, type Locator, type Page, type Response } from "@playwright/test";
+import { expect, type Locator, type Page, type Response, type Route } from "@playwright/test";
 
 import { answerTo } from "./browser";
 
@@ -260,6 +260,48 @@ export function contentWrites(page: Page, id: string) {
         throw new Error(`the last write of ${id} was not saved: ${last?.status()}`);
       }
       return (await last.json()) as WikiPage;
+    },
+  };
+}
+
+/** The editor's writes of a page's content, held (M5/P5 design 3.9). */
+export interface HeldWrites {
+  /** Resolves once a write is held. */
+  sent(): Promise<void>;
+  /** Lets the writes held go, and those after; resolves the answers to those held. */
+  release(): Promise<Response[]>;
+}
+
+/**
+ * Holds the editor's writes of the page id's content from now on: each is sent and waits, unanswered, until released.
+ * A save held is out, so that what the editor shows stays unsaved however long it rests, not racing autosave's 2
+ * seconds.
+ */
+export async function holdContentWrites(page: Page, id: string): Promise<HeldWrites> {
+  const path = `/api/v0/pages/${id}/content`;
+  let letGo!: () => void;
+  const going = new Promise<void>((resolve) => (letGo = resolve));
+  let tellSent!: () => void;
+  const first = new Promise<void>((resolve) => (tellSent = resolve));
+  const answers: Promise<Response | null>[] = [];
+  const hold = async (route: Route) => {
+    if (route.request().method() !== "PUT") {
+      await route.fallback();
+      return;
+    }
+    answers.push(route.request().response());
+    tellSent();
+    await going;
+    await route.continue();
+  };
+  await page.route(`**${path}`, hold);
+  return {
+    sent: () => first,
+    release: async () => {
+      letGo();
+      const answered = await Promise.all(answers);
+      await page.unroute(`**${path}`, hold);
+      return answered.filter((answer) => answer !== null);
     },
   };
 }
