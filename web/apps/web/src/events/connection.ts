@@ -36,6 +36,10 @@ export async function connect(open: Open, signal: AbortSignal, onFrame: (frame: 
         return { ended: "closed" };
       }
       for (const frame of parser.push(decoder.decode(value, { stream: true }))) {
+        // A connection aborted hands on nothing more, though the rest of the chunk was read.
+        if (signal.aborted) {
+          return { ended: "aborted" };
+        }
         if (frame.type === "reset") {
           return { ended: "reset", reason: frame.data.reason };
         }

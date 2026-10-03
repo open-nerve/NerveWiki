@@ -78,7 +78,14 @@ class FakeServer {
   }
 }
 
-type Tab = { id: string; hub: EventHub; page: FakePage; events: HubEvent["type"][] };
+type Tab = {
+  id: string;
+  hub: EventHub;
+  page: FakePage;
+  events: HubEvent["type"][];
+  /** Makes the tab hear nothing on the channel, as a frozen page, or hear again. */
+  deafen(deaf: boolean): void;
+};
 
 /** One browser's tabs of one login, which elect with Web Locks or with a lease in storage, and the server. */
 function browserOf(kind: "Web Locks" | "the lease") {
@@ -90,20 +97,30 @@ function browserOf(kind: "Web Locks" | "the lease") {
     const view = storage.tab(id);
     const page = new FakePage();
     page.shown = visible;
+    const ports: ReturnType<FakeChannels["port"]>[] = [];
     const hub = new EventHub({
       open: server.opener(id),
       leadership: () =>
         kind === "Web Locks"
           ? webLockLeadership(locks, NAME)
           : leaseLeadership({ storage: view, onStorage: view.onStorage, now: () => Date.now(), tabId: id }, NAME),
-      channel: () => new TabChannel(channels.port("nwiki.events"), LOGIN),
+      channel: () => {
+        const port = channels.port("nwiki.events");
+        ports.push(port);
+        return new TabChannel(port, LOGIN);
+      },
       page,
       now: () => Date.now(),
     });
     const events: HubEvent["type"][] = [];
     hub.subscribe((event) => events.push(event.type));
     hub.start();
-    return { id, hub, page, events };
+    const deafen = (deaf: boolean) => {
+      for (const port of ports) {
+        port.deaf = deaf;
+      }
+    };
+    return { id, hub, page, events, deafen };
   };
   return { tab, server, locks, storage, channels };
 }
@@ -252,6 +269,30 @@ describe.each(["Web Locks", "the lease"] as const)("the hub with %s", (kind) => 
     expect(browser.server.live().map((s) => s.tab)).toEqual(["a"]);
   });
 
+  test("a tab frozen while the holder spoke does not take over from it once it is back", async () => {
+    const browser = browserOf(kind);
+    browser.tab("a");
+    await settle();
+    browser.server.last().write(hello());
+    const b = browser.tab("b");
+    await settle();
+
+    b.page.show(false);
+    b.page.fire("freeze");
+    b.deafen(true);
+    for (let i = 0; i < 15; i++) {
+      browser.server.last().write(beat);
+      // oxlint-disable-next-line no-await-in-loop -- one heartbeat after another
+      await settle(20_000);
+    }
+    b.deafen(false);
+    b.page.fire("resume");
+    b.page.show(true);
+    await settle();
+
+    expect(browser.server.live().map((s) => s.tab)).toEqual(["a"]);
+  });
+
   test.each([
     ["pagehide", "pageshow"],
     ["freeze", "resume"],
@@ -320,5 +361,44 @@ describe.each(["Web Locks", "the lease"] as const)("the hub with %s", (kind) => 
     expect(browser.server.opens).toHaveLength(1);
     expect(vi.getTimerCount()).toBe(0);
     expect(a.page.listening()).toBe(0);
+  });
+});
+
+describe("the hub with the lease", () => {
+  test("a holder that lost its lease unseen forwards nothing more, and connects no more", async () => {
+    const browser = browserOf("the lease");
+    browser.tab("a");
+    await settle();
+    browser.server.last().write(hello());
+    const b = browser.tab("b");
+    await settle();
+
+    // Another tab took the lease while a was frozen: a has not heard of it.
+    browser.storage.hold();
+    browser.storage.write(NAME, JSON.stringify({ tab: "z", until: Date.now() + 3_600_000 }));
+    browser.server.last().write(pages);
+    await settle();
+    expect(b.events).toEqual(["connected"]);
+    expect(browser.server.live()).toHaveLength(0);
+
+    await settle(5_000);
+    expect(browser.server.streams).toHaveLength(1);
+    browser.storage.deliver();
+  });
+
+  test("a holder whose stream ends after it lost its lease unseen does not connect again", async () => {
+    const browser = browserOf("the lease");
+    browser.tab("a");
+    await settle();
+    browser.server.last().write(hello());
+    await settle();
+
+    browser.storage.hold();
+    browser.storage.write(NAME, JSON.stringify({ tab: "z", until: Date.now() + 3_600_000 }));
+    browser.server.last().close();
+    await settle(5_000);
+
+    expect(browser.server.streams).toHaveLength(1);
+    browser.storage.deliver();
   });
 });

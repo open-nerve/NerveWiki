@@ -196,6 +196,21 @@ class FrameQueue {
   }
 }
 
+/**
+ * Holds page's event stream until the function returned is called: it then connects with what the page
+ * shows mounted, and the connection's refresh reads it all again (M5/P3 design 3.8). Once that read has
+ * answered, what another account writes reaches the page only as an event.
+ */
+export async function holdStream(page: Page): Promise<() => void> {
+  let letIn!: () => void;
+  const held = new Promise<void>((resolve) => (letIn = resolve));
+  await page.route(`**${eventStreamPath}`, async (route) => {
+    await held;
+    await route.continue();
+  });
+  return letIn;
+}
+
 /** Whether request asks for an event stream. */
 function isStream(request: Request): boolean {
   return request.method() === "GET" && new URL(request.url()).pathname === eventStreamPath;

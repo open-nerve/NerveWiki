@@ -2,6 +2,7 @@ import type { Page } from "@playwright/test";
 
 import { accountIdOf } from "../../fixtures/assert/identity";
 import { emailFor } from "../../fixtures/auth";
+import { answerTo } from "../../fixtures/browser";
 import { followStreams } from "../../fixtures/events";
 import { joinOnboarded } from "../../fixtures/invitations";
 import { addedNotebookMember } from "../../fixtures/notebook-members";
@@ -64,9 +65,15 @@ for (const locks of [true, false]) {
     await expect.poll(() => streams.count()).toBe(1);
 
     const [holder] = streams.holders();
+    const others = opened.filter((tab) => tab !== holder);
+    // The next holder's connection has every other tab read the page again: once they have, A's save
+    // reaches them only through the new holder's stream.
+    const reread = others.map((tab) => answerTo(tab, "GET", `/api/v0/pages/${notes.id}/view`));
+    const before = streams.opened();
     await holder?.close();
-    await expect.poll(() => streams.holders().length, { timeout: 5_000 }).toBe(1);
-    expect(streams.holders()).not.toContain(holder);
+    await expect.poll(() => streams.count(), { timeout: 5_000 }).toBe(1);
+    expect(streams.opened()).toBe(before + 1);
+    await Promise.all(reread);
 
     await writeContent(api, a, notes.id, { content: "Drafted.\n\nPushed.\n", base_revision: 1 });
     await Promise.all(

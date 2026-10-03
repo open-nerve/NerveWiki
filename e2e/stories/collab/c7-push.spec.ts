@@ -1,6 +1,7 @@
 import { accountIdOf } from "../../fixtures/assert/identity";
 import { displayNameOf, emailFor } from "../../fixtures/auth";
-import { settleEvents } from "../../fixtures/events";
+import { countAnswers } from "../../fixtures/browser";
+import { holdStream, settleEvents } from "../../fixtures/events";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { addedNotebookMember } from "../../fixtures/notebook-members";
 import { createNotebook } from "../../fixtures/notebooks";
@@ -83,11 +84,16 @@ test("C7 (page): B, reading a page of Eng, sees A's writes as A makes them: the 
   await addedNotebookMember(api, a, eng.id, await accountIdOf(db, bEmail), "reader");
   const notes = await createPage(api, a, eng.id, "Notes", null, "Drafted.\n");
   const other = await createPage(api, a, eng.id, "Other");
+  const letStreamIn = await holdStream(page);
+  const viewReads = countAnswers(page, "GET", `/api/v0/pages/${notes.id}/view`);
   await page.goto(wikiPagePath(workspace.slug, eng.id, notes.id));
   await expect(pageHeading(page, "Notes")).toBeVisible();
   const content = page.getByRole("article", { name: "Notes" });
   await expect(content).toHaveText("Drafted.");
   await expect.poll(() => treeTitles(page, "Eng")).toEqual(["Notes", "Other"]);
+  // B's stream connects, and its refresh reads the page again: from then on, A's writes come as events.
+  letStreamIn();
+  await expect.poll(viewReads).toBeGreaterThanOrEqual(2);
 
   await writeContent(api, a, notes.id, { content: "Drafted.\n\nPushed.\n", base_revision: 1 });
   await expect(content).toContainText("Pushed.");

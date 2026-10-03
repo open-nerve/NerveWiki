@@ -77,6 +77,25 @@ describe("connect", () => {
     expect(ending).toEqual({ ended: "failed", error: busy });
   });
 
+  test("hands on nothing more once its signal aborts, though the rest of the piece was read", async () => {
+    const b = body();
+    const aborting = new AbortController();
+    const frames: Frame[] = [];
+    b.write(`${hello}event: pages\ndata: {"workspace_id":"w","notebook_id":"n","tree":true,"pages":[]}\n\n`);
+
+    const ending = await connect(
+      async () => b.stream,
+      aborting.signal,
+      (f) => {
+        frames.push(f);
+        aborting.abort();
+      }
+    );
+
+    expect(ending).toEqual({ ended: "aborted" });
+    expect(frames.map((f) => f.type)).toEqual(["hello"]);
+  });
+
   test("ends aborted when its signal aborts, and when the login changed", async () => {
     const b = body();
     const stop = new AbortController();

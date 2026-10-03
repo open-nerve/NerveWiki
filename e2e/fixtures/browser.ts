@@ -44,6 +44,17 @@ export function answerTo(page: Page, method: string, path: string): Promise<Resp
   );
 }
 
+/** Counts the answers page gets to method path from now on: the function returned gives how many so far. */
+export function countAnswers(page: Page, method: string, path: string): () => number {
+  let count = 0;
+  page.on("response", (response) => {
+    if (response.request().method() === method && new URL(response.url()).pathname === path) {
+      count += 1;
+    }
+  });
+  return () => count;
+}
+
 /** The note under field: its problem when it has one, else its hint; null without either. */
 export function noteOf(field: Locator): Promise<string | null> {
   return field.evaluate((input) => {

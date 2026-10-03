@@ -65,8 +65,8 @@ export class EventHub {
       channel.listen((message) => this.#hear(message)),
       this.deps.page.on("pagehide", () => this.#yield(leadership, channel)),
       this.deps.page.on("freeze", () => this.#yield(leadership, channel)),
-      this.deps.page.on("pageshow", () => leadership.rejoin()),
-      this.deps.page.on("resume", () => leadership.rejoin()),
+      this.deps.page.on("pageshow", () => this.#rejoin(leadership)),
+      this.deps.page.on("resume", () => this.#rejoin(leadership)),
       this.deps.page.on("visibilitychange", () => this.#check(leadership)),
     ];
     let watch: ReturnType<typeof setTimeout> | undefined;
@@ -103,6 +103,16 @@ export class EventHub {
       channel.post({ kind: "yield" });
     }
     leadership.yield();
+  }
+
+  /**
+   * rejoin takes part again once the page is back. What the holder said
+   * while the page was frozen may come after the page shows: the silence
+   * counts from now, so that a live holder is not taken over.
+   */
+  #rejoin(leadership: Leadership): void {
+    this.#heard = this.deps.now();
+    leadership.rejoin();
   }
 
   /** check takes the lead from a holder silent for SILENT_BEATS heartbeats, if this tab is visible. */
@@ -170,12 +180,20 @@ export class EventHub {
         backoff = FIRST_BACKOFF_MS;
         this.#heartbeatSeconds = frame.data.heartbeat_seconds;
       }
+      // A lease another tab took is lost at its renewal: the frame is that tab's to forward.
       leadership.renew(this.#ttl());
-      this.#forward(frame, channel);
+      if (!lost.aborted) {
+        this.#forward(frame, channel);
+      }
     };
     const cut = () => connection.abort();
     lost.addEventListener("abort", cut, { once: true });
-    while (!lost.aborted) {
+    for (;;) {
+      // Each connection is the holder's: a lease another tab took meanwhile is lost here.
+      leadership.renew(this.#ttl());
+      if (lost.aborted) {
+        break;
+      }
       connected = false;
       connection = new AbortController();
       silent = false;

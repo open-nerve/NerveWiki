@@ -12,11 +12,11 @@
  */
 export interface Leadership {
   run(lead: (lost: AbortSignal) => Promise<void>, signal: AbortSignal): Promise<void>;
-  /** steal takes the lead from a holder that seems frozen: it does not let go of a Web Lock. */
+  /** steal takes the lead from a holder that seems frozen, which does not let go of a Web Lock; not while yielded. */
   steal(): void;
   /** yield lets the lead go, as the page is hidden for good or frozen, and stays out until rejoin. */
   yield(): void;
-  /** rejoin takes part again after yield. */
+  /** rejoin takes part again after yield, as a tab that waits its turn. */
   rejoin(): void;
   /** renew is the holder's sign of life, valid for ttl milliseconds: a lease's expiry. */
   renew(ttl: number): void;
@@ -80,8 +80,10 @@ export function webLockLeadership(locks: Locks, name: string): Leadership {
       signal.removeEventListener("abort", stop);
     },
     steal() {
-      stealNext = true;
-      nudge();
+      if (!yielded) {
+        stealNext = true;
+        nudge();
+      }
     },
     yield() {
       yielded = true;
@@ -90,6 +92,7 @@ export function webLockLeadership(locks: Locks, name: string): Leadership {
     },
     rejoin() {
       yielded = false;
+      stealNext = false;
       wake?.();
     },
     renew() {},
@@ -138,10 +141,22 @@ export function leaseLeadership(deps: LeaseDeps, key: string): Leadership {
     }
   };
   const mine = () => read()?.tab === deps.tabId;
-  const write = () => deps.storage.setItem(key, JSON.stringify({ tab: deps.tabId, until: deps.now() + ttl }));
+  // A write the storage refuses (full, or blocked) is a lease not taken, or not renewed: it runs out.
+  const write = (): boolean => {
+    try {
+      deps.storage.setItem(key, JSON.stringify({ tab: deps.tabId, until: deps.now() + ttl }));
+      return true;
+    } catch {
+      return false;
+    }
+  };
   const release = () => {
-    if (mine()) {
-      deps.storage.removeItem(key);
+    try {
+      if (mine()) {
+        deps.storage.removeItem(key);
+      }
+    } catch {
+      // The lease runs out.
     }
   };
   // letGo lets the lease go at once, before the lead returns: a page hidden for good may not live to see it return.
@@ -160,13 +175,19 @@ export function leaseLeadership(deps: LeaseDeps, key: string): Leadership {
     const lease = read();
     if (stealNext || lease === undefined || lease.until <= deps.now()) {
       stealNext = false;
-      write();
+      if (!write()) {
+        // Looked at again once woken, or a lease later.
+        await pause(ttl, signal, (w) => (wake = w));
+        return;
+      }
       await pause(SETTLE_MS, signal, () => undefined);
       if (signal.aborted || yielded) {
         release();
         return;
       }
       if (mine()) {
+        // A steal asked for while this tab settled is answered: it holds.
+        stealNext = false;
         holding = new AbortController();
         await lead(holding.signal);
         holding = undefined;
@@ -197,8 +218,10 @@ export function leaseLeadership(deps: LeaseDeps, key: string): Leadership {
       unsubscribe();
     },
     steal() {
-      stealNext = true;
-      wake?.();
+      if (!yielded) {
+        stealNext = true;
+        wake?.();
+      }
     },
     yield() {
       yielded = true;
@@ -206,6 +229,7 @@ export function leaseLeadership(deps: LeaseDeps, key: string): Leadership {
     },
     rejoin() {
       yielded = false;
+      stealNext = false;
       wake?.();
     },
     renew(next) {

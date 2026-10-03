@@ -5,7 +5,7 @@ import { expect, test } from "vitest";
 import { FakePage } from "../events/testing/fake-page";
 import type { EditLock } from "../services/page.service";
 import { eventServer, withEvents } from "../test/event-server";
-import { json, notebookJSON, workspaceJSON, type Answer } from "../test/fakes";
+import { json, notebookJSON, problem, workspaceJSON, type Answer } from "../test/fakes";
 import { guide, install, linux, notes, pagePath, pageServer } from "../test/page-server";
 import { renderApp } from "../test/render";
 
@@ -32,14 +32,20 @@ const lockEvent = (pageId: string) => ({
   session_id: "0199a2b4-0000-7000-8000-0000000000e1",
 });
 
+/** The id in a request's path, /api/v0/pages/{id}… */
+const idOf = (request: Request) => new URL(request.url).pathname.split("/")[4] ?? "";
+
 /**
  * open renders Guide over pageServer and its event stream, connected, and
  * waits for what the connection read again: from then on, what is read is
- * the events' doing.
+ * the events' doing. A page's next view read can be held (holdView, which
+ * returns its release); the locks read are in lockReads, by page id.
  */
 async function open(page = new FakePage(), answers: Record<string, Answer> = {}) {
   const events = eventServer();
   const workspaces: string[] = [];
+  const lockReads: string[] = [];
+  const holds = new Map<string, Promise<void>>();
   const server = pageServer({
     answers: {
       ...answers,
@@ -48,8 +54,29 @@ async function open(page = new FakePage(), answers: Record<string, Answer> = {})
         workspaces.push("GET workspaces");
         return json({ data: [workspaceJSON] });
       },
+      // pageServer's views, whose next read of a page can be held: it answers the view as it was asked.
+      "GET /api/v0/pages/*/view": async (request) => {
+        const node = server.nodes.find((each) => each.id === idOf(request));
+        server.sent.push(`GET view ${node?.name}`);
+        const view = node && (server.views.get(node.id) ?? { html: `<p>${node.name}</p>`, revision: 1 });
+        const hold = holds.get(idOf(request));
+        holds.delete(idOf(request));
+        await hold;
+        return view === undefined ? problem(404, "page.not_found") : json(view);
+      },
+      "GET /api/v0/pages/*/edit-lock": (request) => {
+        lockReads.push(idOf(request));
+        return server.nodes.some((node) => node.id === idOf(request))
+          ? json(server.lock)
+          : problem(404, "page.not_found");
+      },
     },
   });
+  const holdView = (id: string) => {
+    let release!: () => void;
+    holds.set(id, new Promise<void>((resolve) => (release = resolve)));
+    return () => release();
+  };
   const view = renderApp(pagePath(guide.id), withEvents(server.app, page));
   expect((await screen.findByRole("article", { name: "Guide" })).innerHTML).toBe("<p>Guide</p>");
   await waitFor(() => expect(events.streams).toHaveLength(1));
@@ -60,7 +87,8 @@ async function open(page = new FakePage(), answers: Record<string, Answer> = {})
   );
   server.sent.length = 0;
   workspaces.length = 0;
-  return { ...view, server, events, workspaces };
+  lockReads.length = 0;
+  return { ...view, server, events, workspaces, lockReads, holdView };
 }
 
 /** Lets what the events asked for go out. */
@@ -91,13 +119,50 @@ test("a page's reading view is read again when its revision is newer than the on
   expect(server.sent).toEqual(["GET view Guide"]);
 });
 
-test("an event of too many pages to name reads every reading view of the notebook again", async () => {
+test("a page's reading view is not read again for an older revision than the one a connection read", async () => {
+  const { server, events } = await open();
+  server.views.set(guide.id, { html: "<p>Guide, again</p>", revision: 2 });
+  events.last().send("reset", { reason: "expired" });
+  await waitFor(() => expect(events.streams).toHaveLength(2));
+  events.last().hello();
+  await waitFor(() => expect(screen.getByRole("article", { name: "Guide" }).innerHTML).toBe("<p>Guide, again</p>"));
+  server.sent.length = 0;
+
+  events.last().send("pages", pagesEvent(false, [{ id: guide.id, revision: 1 }]));
+  await settle();
+
+  expect(server.sent).toEqual([]);
+});
+
+test("an event that comes while a reading view's first read is out reads it again: that read may be the older", async () => {
+  const { server, events, router, holdView } = await open();
+  const release = holdView(install.id);
+  await act(() => router.navigate(pagePath(install.id)));
+  await waitFor(() => expect(server.sent).toContain("GET view Install"));
+  server.views.set(install.id, { html: "<p>Install, again</p>", revision: 2 });
+
+  events.last().send("pages", pagesEvent(false, [{ id: install.id, revision: 2 }]));
+  await settle();
+  release();
+  await settle();
+
+  expect(screen.getByRole("article", { name: "Install" }).innerHTML).toBe("<p>Install, again</p>");
+});
+
+test("an event of too many pages to name reads the notebook's reading views again, once in the refresher's interval", async () => {
   const { server, events } = await open();
   server.views.set(guide.id, { html: "<p>Guide, again</p>", revision: 2 });
 
+  events.last().send("pages", { ...pagesEvent(false, null), notebook_id: "0199a2b4-0000-7000-8000-0000000000b2" });
+  await settle();
+  expect(server.sent).toEqual([]);
+
+  events.last().send("pages", pagesEvent(false, null));
   events.last().send("pages", pagesEvent(false, null));
 
   await waitFor(() => expect(screen.getByRole("article", { name: "Guide" }).innerHTML).toBe("<p>Guide, again</p>"));
+  await settle();
+  expect(server.sent).toEqual(["GET view Guide"]);
 });
 
 test("a hidden tab reads the reading view once it is shown again", async () => {
@@ -121,6 +186,17 @@ test("an event of a page's lock reads its lock again", async () => {
   events.last().send("lock", lockEvent(guide.id));
 
   expect((await screen.findByRole("status")).textContent).toContain("Bob is editing this page.");
+});
+
+test("a lock event reads the tree first: a page deleted while edited leaves before its lock would be read", async () => {
+  const { server, events, lockReads } = await open();
+  server.nodes = [notes];
+
+  events.last().send("lock", lockEvent(guide.id));
+
+  expect(await screen.findByRole("heading", { level: 1, name: "Page not found" })).toBeTruthy();
+  await settle();
+  expect(lockReads).toEqual([]);
 });
 
 test("each connection reads again the workspaces, the tree, the reading view and the lock", async () => {

@@ -23,8 +23,9 @@ const refreshedOnConnect = [["workspaces"], ["notebooks"], ["pages"], ["page-vie
  * while the tab is signed in, this generation's hub runs, and each event
  * has SWR read again what it changed, which only what is mounted does: a
  * tree that changed, a page's reading view whose cached revision is older
- * than the one written, a page's edit lock, and on each connection all of
- * them with the workspaces and notebooks. The reading views are read
+ * than the one written (or not read yet), a page's edit lock after its
+ * notebook's tree, and on each connection all of them with the workspaces
+ * and notebooks. The reading views are read
  * through the refresher, at most once in its interval, and once visible
  * again when the tab is hidden. It sits with the providers, mounted anew
  * with each generation, whose hub stops with it.
@@ -57,7 +58,7 @@ function route(event: HubEvent, cache: Cache, mutate: ScopedMutator, refresher: 
       void refreshAll(mutate);
       break;
     case "lock":
-      void mutate(["edit-lock", event.data.page_id]);
+      void refreshLock(mutate, event.data.notebook_id, event.data.page_id);
       break;
     case "pages": {
       const { notebook_id: notebook, tree, pages } = event.data;
@@ -73,8 +74,10 @@ function route(event: HubEvent, cache: Cache, mutate: ScopedMutator, refresher: 
       }
       for (const { id, revision } of pages) {
         const key = ["page-view", notebook, id];
-        const cached = cache.get(unstable_serialize(key))?.data as PageView | undefined;
-        if (cached !== undefined && cached.revision < revision) {
+        // A view never read here is not; one whose first read is out is read again, as that read may be older.
+        const state = cache.get(unstable_serialize(key));
+        const cached = state?.data as PageView | undefined;
+        if (state !== undefined && (cached === undefined || cached.revision < revision)) {
           refresher.request(unstable_serialize(key), () => void mutate(key));
         }
       }
@@ -87,8 +90,23 @@ async function refreshAll(mutate: ScopedMutator): Promise<void> {
   for (const level of refreshedOnConnect) {
     // oxlint-disable-next-line no-await-in-loop -- one level after another
     await mutate((key) => level.has((Array.isArray(key) ? key[0] : key) as string));
-    // React shows what the level read, unmounting what is gone, before the next is read.
     // oxlint-disable-next-line no-await-in-loop -- one level after another
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await shown();
   }
+}
+
+/**
+ * refreshLock reads the page's lock again, after the notebook's tree: the
+ * session of a page deleted while edited ends before the deletion's event
+ * comes, and its page leaves before its lock would be read, not found.
+ */
+async function refreshLock(mutate: ScopedMutator, notebook: string, page: string): Promise<void> {
+  await mutate(["pages", notebook]);
+  await shown();
+  await mutate(["edit-lock", page]);
+}
+
+/** shown lets React show what was read, unmounting what is gone, before the next read. */
+function shown(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
 }

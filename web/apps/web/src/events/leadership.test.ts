@@ -99,6 +99,21 @@ describe.each(["Web Locks", "the lease"] as const)("the election with %s", (kind
     expect(a.holding).toBe(true);
   });
 
+  test("a steal asked while yielded is forgotten: rejoined, the tab waits its turn", async () => {
+    const tab = browserOf(kind);
+    const a = tab("a");
+    await settle();
+    const b = tab("b");
+    await settle();
+
+    b.leadership.yield();
+    b.leadership.steal();
+    b.leadership.rejoin();
+    await settle();
+
+    expect([a.holding, b.holding]).toEqual([true, false]);
+  });
+
   test("a stopped tab leads no more", async () => {
     const tab = browserOf(kind);
     const a = tab("a");
@@ -130,6 +145,52 @@ describe("the election with the lease", () => {
     await settle();
 
     expect([a.holding, a.leads]).toEqual([false, 0]);
+  });
+
+  test("a steal asked while the tab settled is answered by its holding: once another takes over, it waits its turn", async () => {
+    const tab = browserOf("the lease");
+    const b = tab("b");
+    b.leadership.steal();
+    await settle();
+    expect(b.holding).toBe(true);
+    const c = tab("c");
+    await settle();
+
+    c.leadership.steal();
+    await settle();
+
+    expect([b.holding, c.holding]).toEqual([false, true]);
+  });
+
+  test("a tab whose storage refuses the lease does not hold, and takes it once the storage takes writes again", async () => {
+    const storage = new SharedStorage();
+    const view = storage.tab("a");
+    let full = true;
+    const refusing = {
+      ...view,
+      setItem: (key: string, value: string) => {
+        if (full) {
+          throw new DOMException("The quota has been exceeded.", "QuotaExceededError");
+        }
+        view.setItem(key, value);
+      },
+    };
+    let holding = false;
+    const a = leaseLeadership(
+      { storage: refusing, onStorage: view.onStorage, now: () => Date.now(), tabId: "a" },
+      NAME
+    );
+    void a.run(async (lost) => {
+      holding = true;
+      await new Promise((resolve) => lost.addEventListener("abort", resolve, { once: true }));
+    }, new AbortController().signal);
+    await settle();
+    expect(holding).toBe(false);
+
+    full = false;
+    await settle(TTL);
+
+    expect(holding).toBe(true);
   });
 
   test.each(["yields", "stops"])("a holder that %s lets the lease go at once, before its lead returns", async (how) => {

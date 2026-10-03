@@ -2,12 +2,13 @@ import type { Port } from "../channel";
 
 // The BroadcastChannels of one browser for the tests: what a port posts
 // reaches every other open port of the same name, in a microtask, never
-// itself; a closed port neither sends nor hears.
+// itself; a closed port neither sends nor hears, and a deaf one, as a
+// frozen page's, does not hear.
 
 export class FakeChannels {
   readonly #ports = new Map<string, Set<FakePort>>();
 
-  port(name: string): Port {
+  port(name: string): Port & { deaf: boolean } {
     const ports = this.#ports.get(name) ?? new Set<FakePort>();
     this.#ports.set(name, ports);
     const port = new FakePort(ports);
@@ -19,6 +20,8 @@ export class FakeChannels {
 class FakePort implements Port {
   readonly #listeners = new Set<(event: MessageEvent) => void>();
   #open = true;
+  /** Whether what the others post is lost on this port. */
+  deaf = false;
 
   constructor(private readonly ports: Set<FakePort>) {}
 
@@ -48,7 +51,7 @@ class FakePort implements Port {
   }
 
   #deliver(data: unknown): void {
-    if (!this.#open) {
+    if (!this.#open || this.deaf) {
       return;
     }
     for (const listener of this.#listeners) {
