@@ -30,6 +30,15 @@ func (c *ContentParser) Parse(ctx context.Context, spec UnitSpec, content string
 	if err := c.writer.Allowed(ctx, spec); err != nil {
 		return nil, nil, err
 	}
+	return c.Decided(ctx, content)
+}
+
+// Decided parses content, as Parse does, for a write its caller decided
+// already.
+func (c *ContentParser) Decided(ctx context.Context, content string) (Parsed, func(), error) {
+	if content == "" {
+		return c.markdown.Parse(content), func() {}, nil
+	}
 	release, err := c.budget.Take(ctx, len(content))
 	if err != nil {
 		return nil, nil, err

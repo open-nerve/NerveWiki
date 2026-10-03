@@ -274,6 +274,47 @@ paths:
                 $ref: "#/components/schemas/PageView"
         default:
           $ref: "#/components/responses/Problem"
+  /api/v0/pages/{page_id}/toggle-task:
+    parameters:
+      - $ref: "#/components/parameters/PageID"
+    post:
+      operationId: toggleTask
+      tags: [page]
+      summary: Tick or clear a task item
+      description: >-
+        Ticks the page's task item at offset (checked true) or clears it
+        (false): the character between its brackets, at the byte offset in
+        the content that the reading view's checkbox carries in data-task,
+        becomes x or a space, and no other byte changes. Its notebook's
+        editors and admins can, a reader cannot (forbidden). A page that
+        does not exist, is deleted, or whose notebook the caller has no
+        role in is page.not_found; a base_revision that is not the page's
+        revision is page.revision_mismatch: an offset means something in
+        that revision only. Then an offset that is no task item's, of that
+        content, is validation_failed, as is a tick or a clear that would
+        leave none there (ticking "- [ ]: /u" makes a link reference
+        definition). A task item in that state already writes nothing.
+        Then a page whose lock an edit session holds, the caller's
+        elsewhere among them, is page.locked, naming the holder in lock.
+        When the server parses as much content as it can at once, a toggle
+        waits a moment, then is server_busy.
+      security: [{ bearer: [] }]
+      x-problem-codes: [page.not_found, forbidden, page.revision_mismatch, validation_failed, page.locked, server_busy]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskToggle"
+      responses:
+        "200":
+          description: The page, as the toggle leaves it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Page"
+        default:
+          $ref: "#/components/responses/Problem"
   /api/v0/edit-sessions/{edit_session_id}/heartbeat:
     parameters:
       - $ref: "#/components/parameters/EditSessionID"
@@ -680,6 +721,23 @@ components:
             they were opened.
           type: boolean
           default: false
+    TaskToggle:
+      description: A tick or a clear of a task item.
+      type: object
+      additionalProperties: false
+      required: [base_revision, offset, checked]
+      properties:
+        base_revision:
+          description: The revision the offset was read at, the reading view's.
+          type: integer
+        offset:
+          description: >-
+            The byte offset in the content of the character between the
+            item's brackets: its checkbox's data-task.
+          type: integer
+        checked:
+          description: Tick the item (true) or clear it (false).
+          type: boolean
     EditLock:
       description: A page's edit lock.
       type: object

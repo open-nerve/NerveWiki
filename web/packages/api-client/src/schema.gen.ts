@@ -874,6 +874,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v0/pages/{page_id}/toggle-task": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The page's id. */
+                page_id: components["parameters"]["PageID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Tick or clear a task item
+         * @description Ticks the page's task item at offset (checked true) or clears it (false): the character between its brackets, at the byte offset in the content that the reading view's checkbox carries in data-task, becomes x or a space, and no other byte changes. Its notebook's editors and admins can, a reader cannot (forbidden). A page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found; a base_revision that is not the page's revision is page.revision_mismatch: an offset means something in that revision only. Then an offset that is no task item's, of that content, is validation_failed, as is a tick or a clear that would leave none there (ticking "- [ ]: /u" makes a link reference definition). A task item in that state already writes nothing. Then a page whose lock an edit session holds, the caller's elsewhere among them, is page.locked, naming the holder in lock. When the server parses as much content as it can at once, a toggle waits a moment, then is server_busy.
+         */
+        post: operations["toggleTask"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v0/edit-sessions/{edit_session_id}/heartbeat": {
         parameters: {
             query?: never;
@@ -1564,6 +1587,15 @@ export interface components {
             /** @description The content's version the HTML was rendered from. */
             revision: number;
         };
+        /** @description A tick or a clear of a task item. */
+        TaskToggle: {
+            /** @description The revision the offset was read at, the reading view's. */
+            base_revision: number;
+            /** @description The byte offset in the content of the character between the item's brackets: its checkbox's data-task. */
+            offset: number;
+            /** @description Tick the item (true) or clear it (false). */
+            checked: boolean;
+        };
         NodeRename: {
             name: components["schemas"]["Title"];
         };
@@ -1725,6 +1757,7 @@ export type EditSession = components['schemas']['EditSession'];
 export type EditLockHolder = components['schemas']['EditLockHolder'];
 export type EditLock = components['schemas']['EditLock'];
 export type PageView = components['schemas']['PageView'];
+export type TaskToggle = components['schemas']['TaskToggle'];
 export type NodeRename = components['schemas']['NodeRename'];
 export type NodeMove = components['schemas']['NodeMove'];
 export type EventHello = components['schemas']['EventHello'];
@@ -2984,6 +3017,34 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PageView"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    toggleTask: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The page's id. */
+                page_id: components["parameters"]["PageID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskToggle"];
+            };
+        };
+        responses: {
+            /** @description The page, as the toggle leaves it. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page"];
                 };
             };
             default: components["responses"]["Problem"];

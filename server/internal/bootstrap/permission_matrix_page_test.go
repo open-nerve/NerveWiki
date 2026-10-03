@@ -272,6 +272,24 @@ func pageMatrixRows() []matrixRow {
 			cells: adminsOnly(cell{status: http.StatusNoContent}, pageNotFound),
 		},
 		{
+			op:      "toggleTask",
+			columns: notebookColumns(),
+			write:   true,
+			request: func(c caller, s seeded) (string, string, string) {
+				return http.MethodPost, "/api/v0/pages/" + s.page(tasksIn(notebookOf(c))).String() + "/toggle-task",
+					`{"base_revision":1,"offset":3,"checked":true}`
+			},
+			cells: editorsOnly(cellOK(), pageNotFound),
+			check: func(t *testing.T, c caller, _ seeded, answer string) {
+				t.Helper()
+				var p pageAnswer
+				decodeAnswer(t, answer, &p)
+				if p.Name != tasksIn(notebookOf(c)) || p.Revision != 2 {
+					t.Errorf("toggled %+v, want %s at revision 2", p, tasksIn(notebookOf(c)))
+				}
+			},
+		},
+		{
 			op:      "createPage",
 			columns: notebookColumns(),
 			write:   true,

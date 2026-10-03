@@ -90,6 +90,7 @@ type (
 	fakeEnd     struct{ *fakes }
 	fakeLock    struct{ *fakes }
 	fakeRelease struct{ *fakes }
+	fakeToggle  struct{ *fakes }
 	fakeRename  struct{ *fakes }
 	fakeMove    struct{ *fakes }
 	fakeDelete  struct{ *fakes }
@@ -180,6 +181,11 @@ func (f fakeRelease) Execute(_ context.Context, pageID uuid.UUID, client domain.
 	return f.err
 }
 
+func (f fakeToggle) Execute(_ context.Context, pageID uuid.UUID, p app.TaskToggle, client domain.Client) (app.PageView, error) {
+	f.got = []any{pageID, p, client}
+	return notesView(), f.err
+}
+
 // serve mounts the module on f behind the platform's middlewares.
 func (f *fakes) serve(t *testing.T) http.Handler {
 	t.Helper()
@@ -189,7 +195,7 @@ func (f *fakes) serve(t *testing.T) http.Handler {
 		ListNodes: fakeList{f}, CreatePage: fakeCreate{f}, GetPage: fakeGet{f}, GetPageContent: fakeRead{f},
 		PutPageContent: fakeWrite{f}, GetPageView: fakeView{f}, RenameNode: fakeRename{f}, MoveNode: fakeMove{f},
 		DeleteNode: fakeDelete{f}, OpenSession: fakeOpen{f}, Heartbeat: fakeBeat{f}, EndSession: fakeEnd{f},
-		GetEditLock: fakeLock{f}, ReleaseEditLock: fakeRelease{f},
+		GetEditLock: fakeLock{f}, ReleaseEditLock: fakeRelease{f}, ToggleTask: fakeToggle{f},
 	})
 	return router
 }
@@ -224,6 +230,7 @@ const (
 	beatPath    = sessionPath + "/heartbeat"
 	nodePath    = "/api/v0/nodes/0199a2b4-0000-7000-8000-000000000012"
 	movePath    = nodePath + "/move"
+	togglePath  = pagePath + "/toggle-task"
 )
 
 func TestTheOperationsAnswerTheUseCases(t *testing.T) {
@@ -280,6 +287,10 @@ func TestTheOperationsAnswerTheUseCases(t *testing.T) {
 		{"a free lock", "session", http.MethodGet, freeLock, "", http.StatusOK, `{"expires_in":null,"holder":null}`, []any{id(13)}},
 		{"a release by the web", "session", http.MethodDelete, lockPath, "", http.StatusNoContent, "", []any{id(12), domain.ClientWeb}},
 		{"a release by the API", "pat", http.MethodDelete, lockPath, "", http.StatusNoContent, "", []any{id(12), domain.ClientAPI}},
+		{"a tick by the web", "session", http.MethodPost, togglePath, `{"base_revision":3,"offset":18,"checked":true}`, http.StatusOK,
+			pageJSON, []any{id(12), app.TaskToggle{Base: 3, Offset: 18, Checked: true}, domain.ClientWeb}},
+		{"a clear by the API", "pat", http.MethodPost, togglePath, `{"base_revision":3,"offset":0,"checked":false}`, http.StatusOK,
+			pageJSON, []any{id(12), app.TaskToggle{Base: 3}, domain.ClientAPI}},
 		{"a heartbeat", "session", http.MethodPost, beatPath, "", http.StatusOK, sessionJSON, []any{id(20)}},
 		{"an end", "session", http.MethodDelete, sessionPath, "", http.StatusNoContent, "", []any{id(20)}},
 		{"a deletion by the web", "session", http.MethodDelete, nodePath, "", http.StatusNoContent, "",
@@ -323,6 +334,7 @@ func TestTheOperationsAnswerEachProblem(t *testing.T) {
 	busy := shared.ServerBusy(time.Second)
 	locked := domain.Locked(id(12), id(2), "Bob")
 	unlocked := domain.Unlocked(id(3), "Carol")
+	toggle := `{"base_revision":1,"offset":3,"checked":true}`
 	for _, tt := range []struct {
 		method, path, body string
 		err                error
@@ -373,6 +385,12 @@ func TestTheOperationsAnswerEachProblem(t *testing.T) {
 		{http.MethodPost, beatPath, "", domain.ErrEditSessionNotFound, http.StatusNotFound, "page.edit_session_not_found"},
 		{http.MethodPost, beatPath, "", shared.Forbidden(), http.StatusForbidden, "forbidden"},
 		{http.MethodDelete, sessionPath, "", domain.ErrEditSessionNotFound, http.StatusNotFound, "page.edit_session_not_found"},
+		{http.MethodPost, togglePath, toggle, domain.ErrNotFound, http.StatusNotFound, "page.not_found"},
+		{http.MethodPost, togglePath, toggle, shared.Forbidden(), http.StatusForbidden, "forbidden"},
+		{http.MethodPost, togglePath, toggle, domain.ErrRevisionMismatch, http.StatusConflict, "page.revision_mismatch"},
+		{http.MethodPost, togglePath, toggle, domain.NotATask(), http.StatusUnprocessableEntity, "validation_failed"},
+		{http.MethodPost, togglePath, toggle, locked, http.StatusConflict, "page.locked"},
+		{http.MethodPost, togglePath, toggle, busy, http.StatusServiceUnavailable, "server_busy"},
 	} {
 		status, body := call(t, (&fakes{err: tt.err}).serve(t), "session", tt.method, tt.path, tt.body)
 		if status != tt.status || !strings.Contains(body, `"code":"`+tt.code+`"`) {

@@ -24,12 +24,17 @@ func BodyShapes() *bodyshape.Table {
 			/* 11 */ {Types: bodyshape.String, Format: bodyshape.FormatUUID, Extra: bodyshape.Open, Items: bodyshape.Open},
 			/* 12 */ {Types: bodyshape.Object, Extra: bodyshape.Closed, Items: bodyshape.Open, Props: map[string]int{"take_over": 13}},
 			/* 13 */ {Types: bodyshape.Boolean, Extra: bodyshape.Open, Items: bodyshape.Open},
+			/* 14 */ {Types: bodyshape.Object, Extra: bodyshape.Closed, Items: bodyshape.Open, Props: map[string]int{"base_revision": 15, "checked": 16, "offset": 17}, Required: []string{"base_revision", "checked", "offset"}},
+			/* 15 */ {Types: bodyshape.Integer, Extra: bodyshape.Open, Items: bodyshape.Open},
+			/* 16 */ {Types: bodyshape.Boolean, Extra: bodyshape.Open, Items: bodyshape.Open},
+			/* 17 */ {Types: bodyshape.Integer, Extra: bodyshape.Open, Items: bodyshape.Open},
 		},
 		Roots: map[string]int{
 			"PATCH /api/v0/nodes/{node_id}":              0,
 			"POST /api/v0/nodes/{node_id}/move":          2,
 			"POST /api/v0/notebooks/{notebook_id}/pages": 5,
 			"POST /api/v0/pages/{page_id}/edit-sessions": 12,
+			"POST /api/v0/pages/{page_id}/toggle-task":   14,
 			"PUT /api/v0/pages/{page_id}/content":        9,
 		},
 	}

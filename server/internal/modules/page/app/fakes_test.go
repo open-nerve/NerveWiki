@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"slices"
+	"strings"
 	"time"
 	"uuid"
 
@@ -242,6 +243,23 @@ func (f *fakeMarkdown) Parse(content string) app.Parsed {
 		panic("the parse failed")
 	}
 	return content
+}
+
+// Tasks finds a task item at the start of a line, "- [ ]", "- [\t]",
+// "- [x]" or "- [X]", but for a "- [x]: " line, which a link reference definition
+// is: ticking "- [ ]: /u" makes one, as in the tasks extension.
+func (f *fakeMarkdown) Tasks(parsed app.Parsed) []app.Task {
+	f.record(context.Background(), "Tasks")
+	var out []app.Task
+	at := 0
+	for line := range strings.SplitAfterSeq(parsed.(string), "\n") {
+		if strings.HasPrefix(line, "- [") && len(line) > 4 && strings.ContainsRune(" \txX", rune(line[3])) && line[4] == ']' &&
+			!strings.HasPrefix(line, "- [x]: ") {
+			out = append(out, app.Task{Offset: at + 3, Checked: line[3] == 'x' || line[3] == 'X'})
+		}
+		at += len(line)
+	}
+	return out
 }
 
 // fakeBudget records each take of the parse budget with its bytes, and

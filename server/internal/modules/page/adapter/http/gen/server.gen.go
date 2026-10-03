@@ -173,6 +173,18 @@ type PageView struct {
 	Revision int `json:"revision"`
 }
 
+// TaskToggle A tick or a clear of a task item.
+type TaskToggle struct {
+	// BaseRevision The revision the offset was read at, the reading view's.
+	BaseRevision int `json:"base_revision"`
+
+	// Checked Tick the item (true) or clear it (false).
+	Checked bool `json:"checked"`
+
+	// Offset The byte offset in the content of the character between the item's brackets: its checkbox's data-task.
+	Offset int `json:"offset"`
+}
+
 // Title 1–255 bytes after the surrounding blanks are trimmed and the text is in NFC; none of / \ : * ? " < > | # ^ [ ] nor control characters; not starting or ending with a dot; no name Windows reserves (CON, COM1, …). It is the file's name when the notebook is exported. Siblings' titles differ in more than case: they compare by Unicode case folding.
 type Title = string
 
@@ -230,6 +242,9 @@ type PutPageContentJSONRequestBody = PageContentWrite
 // OpenEditSessionJSONRequestBody defines body for OpenEditSession for application/json ContentType.
 type OpenEditSessionJSONRequestBody = EditSessionOpening
 
+// ToggleTaskJSONRequestBody defines body for ToggleTask for application/json ContentType.
+type ToggleTaskJSONRequestBody = TaskToggle
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// EndEditSession End an edit session
@@ -271,6 +286,9 @@ type ServerInterface interface {
 	// OpenEditSession Open an edit session
 	// (POST /api/v0/pages/{page_id}/edit-sessions)
 	OpenEditSession(w http.ResponseWriter, r *http.Request, pageID PageID)
+	// ToggleTask Tick or clear a task item
+	// (POST /api/v0/pages/{page_id}/toggle-task)
+	ToggleTask(w http.ResponseWriter, r *http.Request, pageID PageID)
 	// GetPageView Read a page
 	// (GET /api/v0/pages/{page_id}/view)
 	GetPageView(w http.ResponseWriter, r *http.Request, pageID PageID)
@@ -623,6 +641,32 @@ func (siw *ServerInterfaceWrapper) OpenEditSession(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
+// ToggleTask operation middleware
+func (siw *ServerInterfaceWrapper) ToggleTask(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "page_id" -------------
+	var pageID PageID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "page_id", r.PathValue("page_id"), &pageID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ToggleTask(w, r, pageID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetPageView operation middleware
 func (siw *ServerInterfaceWrapper) GetPageView(w http.ResponseWriter, r *http.Request) {
 
@@ -778,6 +822,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v0/pages/{page_id}/edit-lock", wrapper.ReleaseEditLock)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v0/pages/{page_id}/edit-lock", wrapper.GetEditLock)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v0/pages/{page_id}/view", wrapper.GetPageView)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v0/pages/{page_id}/toggle-task", wrapper.ToggleTask)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v0/edit-sessions/{edit_session_id}/heartbeat", wrapper.HeartbeatEditSession)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v0/edit-sessions/{edit_session_id}", wrapper.EndEditSession)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v0/nodes/{node_id}", wrapper.DeleteNode)
@@ -1382,6 +1427,53 @@ func (response OpenEditSessiondefaultApplicationProblemPlusJSONResponse) VisitOp
 	return err
 }
 
+type ToggleTaskRequestObject struct {
+	PageID PageID `json:"page_id"`
+	Body   *ToggleTaskJSONRequestBody
+}
+
+type ToggleTaskResponseObject interface {
+	VisitToggleTaskResponse(w http.ResponseWriter) error
+}
+
+type ToggleTask200JSONResponse Page
+
+func (response ToggleTask200JSONResponse) VisitToggleTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ToggleTaskdefaultApplicationProblemPlusJSONResponse struct {
+	Body       externalRef0.Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response ToggleTaskdefaultApplicationProblemPlusJSONResponse) VisitToggleTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	if response.Headers.WWWAuthenticate != nil {
+		w.Header().Set("WWW-Authenticate", fmt.Sprint(*response.Headers.WWWAuthenticate))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetPageViewRequestObject struct {
 	PageID PageID `json:"page_id"`
 }
@@ -1469,6 +1561,9 @@ type StrictServerInterface interface {
 	// OpenEditSession Open an edit session
 	// (POST /api/v0/pages/{page_id}/edit-sessions)
 	OpenEditSession(ctx context.Context, request OpenEditSessionRequestObject) (OpenEditSessionResponseObject, error)
+	// ToggleTask Tick or clear a task item
+	// (POST /api/v0/pages/{page_id}/toggle-task)
+	ToggleTask(ctx context.Context, request ToggleTaskRequestObject) (ToggleTaskResponseObject, error)
 	// GetPageView Read a page
 	// (GET /api/v0/pages/{page_id}/view)
 	GetPageView(ctx context.Context, request GetPageViewRequestObject) (GetPageViewResponseObject, error)
@@ -1882,6 +1977,39 @@ func (sh *strictHandler) OpenEditSession(w http.ResponseWriter, r *http.Request,
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(OpenEditSessionResponseObject); ok {
 		if err := validResponse.VisitOpenEditSessionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ToggleTask operation middleware
+func (sh *strictHandler) ToggleTask(w http.ResponseWriter, r *http.Request, pageID PageID) {
+	var request ToggleTaskRequestObject
+
+	request.PageID = pageID
+
+	var body ToggleTaskJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ToggleTask(ctx, request.(ToggleTaskRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ToggleTask")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ToggleTaskResponseObject); ok {
+		if err := validResponse.VisitToggleTaskResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
