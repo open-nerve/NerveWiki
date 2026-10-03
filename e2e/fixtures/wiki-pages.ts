@@ -1,11 +1,12 @@
 import type { Page as WikiPage } from "@nervewiki/api-client";
-import type { Locator, Page, Response } from "@playwright/test";
+import { expect, type Locator, type Page, type Response } from "@playwright/test";
 
 import { answerTo } from "./browser";
 
-// A notebook's pages as a user works them (M4/P5 design 3.5–3.7, 3.10):
-// the page tree in the left column, its menus, dialogs and dragging, a
-// page's shell, and the quick switch. fixtures/pages.ts is the API's.
+// A notebook's pages as a user works them (M4/P5 design 3.5–3.7, 3.10;
+// M4/P6 design 3.12): the page tree in the left column, its menus, dialogs
+// and dragging, a page's shell, the quick switch, and the source editor.
+// fixtures/pages.ts is the API's.
 
 /** The address of the page id of the notebook notebookId in the workspace of slug. */
 export function wikiPagePath(slug: string, notebookId: string, id: string): string {
@@ -184,4 +185,33 @@ export async function quickSwitchFor(page: Page, query: string): Promise<string[
     .evaluateAll((options) =>
       options.map((option) => [...option.querySelectorAll("span")].map((span) => span.textContent ?? ""))
     );
+}
+
+/** The source editor's content, where the text is typed (M4/P6 design 3.5). */
+export function editorContent(page: Page): Locator {
+  return page.getByRole("textbox", { name: "Page content", exact: true });
+}
+
+/** Opens the editor of the page shown with Edit; resolves once its content can be typed into, the focus in it. */
+export async function startEditing(page: Page): Promise<Locator> {
+  await page.getByRole("main").getByRole("button", { name: "Edit", exact: true }).click();
+  const content = editorContent(page);
+  await expect(content).toBeFocused();
+  return content;
+}
+
+/** The edit's status: unsaved, saving, saved, or why not. */
+export function editStatus(page: Page): Locator {
+  return page.getByRole("main").getByRole("status");
+}
+
+/** Saves with Ctrl+S (Cmd+S on macOS); resolves once the edit says it is saved. */
+export async function saveEdit(page: Page): Promise<void> {
+  await page.keyboard.press("ControlOrMeta+s");
+  await expect(editStatus(page)).toHaveText("Saved.");
+}
+
+/** The conflict of a save refused because the page changed (M4/P6 design 3.8). */
+export function conflictRegion(page: Page): Locator {
+  return page.getByRole("region", { name: "This page changed while you edited it", exact: true });
 }
