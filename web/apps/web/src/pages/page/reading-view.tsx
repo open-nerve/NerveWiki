@@ -47,5 +47,6 @@ export const ReadingView = observer(function ReadingView({ notebook, page }: { n
   if (data === undefined) {
     return <NotLoaded error={error} retry={() => void mutate()} />;
   }
-  return <article ref={article} className="nw-reading min-w-0" />;
+  // Named by the page: it can get the focus to scroll a wide content (reading/scroll-focus.ts).
+  return <article ref={article} aria-label={page.name} className="nw-reading min-w-0" />;
 });

@@ -90,6 +90,11 @@ func (c Config) validate() error {
 		// It is the request deadline of refresh and logout: a shorter one.
 		fail("auth.refresh_deadline", "must be at most server.request_timeout (%s), got %s", c.Server.RequestTimeout, c.Auth.RefreshDeadline)
 	}
+	if wait := c.Auth.Password.MaxWait; wait > 0 && c.Server.RequestTimeout > 0 && wait >= c.Server.RequestTimeout {
+		// As page.parse_max_wait: a wait for a hash as long as the request's
+		// deadline would end in a 500, not the 503 server_busy.
+		fail("auth.password.max_wait", "must be less than server.request_timeout (%s), got %s", c.Server.RequestTimeout, wait)
+	}
 	c.RateLimit.validate(fail)
 	if c.Page.EditSessionCleanupInterval < time.Second {
 		fail("page.edit_session_cleanup_interval", "must be at least 1s, got %s", c.Page.EditSessionCleanupInterval)

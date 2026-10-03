@@ -135,6 +135,9 @@ test("PG5 (page): the reading view shows the page's properties first, then its h
   await expect(article.locator("h2")).toHaveCount(0);
   // A table wider than the view makes it scroll sideways: the keyboard can, as it takes the focus.
   await expect(article).toHaveAttribute("tabindex", "0");
+  await article.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect.poll(() => article.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
 
   const keyword = article.locator("pre > code.language-go span.hljs-keyword").first();
   await expect(keyword).toHaveText("func");

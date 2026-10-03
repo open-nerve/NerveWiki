@@ -201,6 +201,15 @@ func TestValidateCrossKeyRules(t *testing.T) {
 			want:   "auth.refresh_deadline: must be at most server.request_timeout (3s), got 4s",
 		},
 		{
+			name:   "a hash waits less than its request may take",
+			mutate: func(c *Config) { c.Auth.Password.MaxWait = c.Server.RequestTimeout - time.Millisecond },
+		},
+		{
+			name:   "a hash that waits as long as its request may take",
+			mutate: func(c *Config) { c.Auth.Password.MaxWait = c.Server.RequestTimeout },
+			want:   "auth.password.max_wait: must be less than server.request_timeout (15s), got 15s",
+		},
+		{
 			name:   "a parse waits less than its request may take",
 			mutate: func(c *Config) { c.Page.ParseMaxWait = c.Server.RequestTimeout - time.Millisecond },
 		},

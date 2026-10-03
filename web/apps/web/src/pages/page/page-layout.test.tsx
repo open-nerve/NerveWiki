@@ -32,7 +32,8 @@ test("a page shows where it is, its title, its reading view and its subpages, al
   );
   expect(within(crumbs).getByText("Install").getAttribute("aria-current")).toBe("page");
   expect(within(crumbs).queryByRole("link", { name: "Install" })).toBeNull();
-  expect((await within(main()).findByRole("article")).innerHTML).toBe("<p>Install</p>");
+  // Named by the page: it gets the focus when its content is wider than it shows.
+  expect((await within(main()).findByRole("article", { name: "Install" })).innerHTML).toBe("<p>Install</p>");
   const subpages = within(main()).getByRole("list", { name: "Subpages" });
   expect(within(subpages).getByRole("link", { name: "Linux" }).getAttribute("href")).toBe(pagePath(linux.id));
 });

@@ -1,4 +1,9 @@
-import { expectContentWritten, expectSessionGone, sessionsOf } from "../../fixtures/assert/page";
+import {
+  expectContentWritten,
+  expectOneSessionRevision,
+  expectSessionGone,
+  sessionsOf,
+} from "../../fixtures/assert/page";
 import { createNotebook } from "../../fixtures/notebooks";
 import {
   createPage,
@@ -115,6 +120,8 @@ test("PG10 (page): the editor's heartbeat moves the lease on; a session expired 
   expect(second).not.toBe(first?.id);
   expect(await readContent(api, pat, notes.id)).toMatchObject({ content: "One two", revision: 3 });
   await expectContentWritten(db, await writes.saved(), "One two", adminId);
+  // The save sent again went in the new session: its version, from 2 to 3, is in that session's changeset.
+  await expectOneSessionRevision(db, second ?? "", notes.id, 2, 3);
 
   await page.getByRole("main").getByRole("button", { name: "Done", exact: true }).click();
   await expect(page.getByRole("article")).toContainText("One two");

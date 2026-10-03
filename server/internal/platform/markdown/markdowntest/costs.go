@@ -13,7 +13,8 @@ import (
 // k is how many times an ordinary document's time a pathological input of
 // its size may take, kAlloc how many times its allocation it may allocate
 // (M4/P3 design 3.10; measured in the P3 document's results: at most about
-// 6 and 11, the most allocated by HTML blocks, each a tokenizer of 4 KB).
+// 4.4 and 10.3, the most allocated by HTML blocks, each a tokenizer of
+// 4 KB).
 const (
 	k      = 10
 	kAlloc = 14

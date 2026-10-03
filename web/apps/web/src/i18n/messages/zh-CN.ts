@@ -427,5 +427,7 @@ export const zhCN: Messages = {
   "field.notebook_name.not_allowed": "这是 Windows 保留的名称（如 CON、NUL、COM1），请换一个。",
   "field.slug.invalid_format": "1 到 48 个小写字母、数字、_ 或 -。",
   "field.slug.not_allowed": "这是应用保留的地址，请换一个。",
+  "field.parent_id.not_allowed": "已不是这个笔记本的页面，请另选。",
+  "field.after_id.not_allowed": "已不在这个父页下，请另选。",
   "field.slug.duplicate": "这个地址已经被别的工作区使用。",
 };

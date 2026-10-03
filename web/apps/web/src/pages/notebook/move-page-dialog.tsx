@@ -26,7 +26,9 @@ const root = "";
  * the page's place; a choice the tree, read again, no longer offers goes
  * back to the page's parent and last. It is sent as every form is
  * (useForm): a refusal (409 page.cycle, page.too_deep, page.title_taken)
- * stays in the dialog, above the form; once moved, the dialog closes. Its
+ * stays in the dialog, above the form, one of a field's (422, a parent or
+ * a page to follow gone meanwhile) under its select, which gets the focus;
+ * once moved, the dialog closes. Its
  * title names the page by name, which tells it from others of its title.
  */
 export function MovePageDialog({
@@ -77,7 +79,8 @@ const MoveForm = observer(function MoveForm({ notebook, page, cancel, moved }: M
   const ids = { parent: useId(), position: useId() };
   const [parent, setParent] = useState(page.parent_id ?? root);
   const [position, setPosition] = useState(() => placeOf(pages.childrenOf(page.parent_id), page.id));
-  const { ref, sending, banner, submit } = useForm([]);
+  const { ref, sending, banner, problemOf, submit } = useForm(["parent_id", "after_id"]);
+  const problems = { parent: problemOf("parent_id"), position: problemOf("after_id") };
   const tree = pages.tree;
   if (tree === undefined) {
     return null;
@@ -116,7 +119,13 @@ const MoveForm = observer(function MoveForm({ notebook, page, cancel, moved }: M
       {banner !== undefined && <Alert>{banner}</Alert>}
       <div className="space-y-2">
         <Label htmlFor={ids.parent}>{t("page.moveParent")}</Label>
-        <NativeSelect id={ids.parent} value={chosen} onChange={(event) => choose(event.target.value)}>
+        <NativeSelect
+          id={ids.parent}
+          value={chosen}
+          aria-invalid={problems.parent !== undefined || undefined}
+          aria-describedby={problems.parent === undefined ? undefined : `${ids.parent}-note`}
+          onChange={(event) => choose(event.target.value)}
+        >
           <option value={root}>{t("page.moveRoot")}</option>
           {parents.map((each) => (
             <option key={each.id} value={each.id}>
@@ -124,10 +133,17 @@ const MoveForm = observer(function MoveForm({ notebook, page, cancel, moved }: M
             </option>
           ))}
         </NativeSelect>
+        <Problem id={`${ids.parent}-note`} text={problems.parent} />
       </div>
       <div className="space-y-2">
         <Label htmlFor={ids.position}>{t("page.movePosition")}</Label>
-        <NativeSelect id={ids.position} value={place} onChange={(event) => setPosition(event.target.value)}>
+        <NativeSelect
+          id={ids.position}
+          value={place}
+          aria-invalid={problems.position !== undefined || undefined}
+          aria-describedby={problems.position === undefined ? undefined : `${ids.position}-note`}
+          onChange={(event) => setPosition(event.target.value)}
+        >
           <option value="first">{t("page.moveFirst")}</option>
           {siblings.map((sibling) => (
             <option key={sibling.id} value={sibling.id}>
@@ -136,6 +152,7 @@ const MoveForm = observer(function MoveForm({ notebook, page, cancel, moved }: M
           ))}
           <option value="last">{t("page.moveLast")}</option>
         </NativeSelect>
+        <Problem id={`${ids.position}-note`} text={problems.position} />
       </div>
       <div className="flex justify-end gap-2">
         <Button type="button" variant="outline" onClick={cancel} disabled={sending}>
@@ -148,6 +165,15 @@ const MoveForm = observer(function MoveForm({ notebook, page, cancel, moved }: M
     </form>
   );
 });
+
+/** Problem is a select's problem under it, which the select names as its description. */
+function Problem({ id, text }: { id: string; text: string | undefined }) {
+  return text === undefined ? null : (
+    <p id={id} className="text-sm text-destructive">
+      {text}
+    </p>
+  );
+}
 
 /** placeOf is where the page id is among its siblings, as the position's select says it: after the one before, or first. */
 function placeOf(siblings: readonly TreeNode[], id: string): string {

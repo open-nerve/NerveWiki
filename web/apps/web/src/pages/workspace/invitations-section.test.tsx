@@ -186,6 +186,20 @@ test.each([
   expect(sent).toEqual(code === undefined ? ["GET invitations"] : ["GET invitations", `POST ${email} member`]);
 });
 
+test("a role refused shows why above the form: its select has no place for it", async () => {
+  const user = userEvent.setup();
+  const { app } = invitationsServer({
+    create: () =>
+      problem(422, "validation_failed", { errors: [{ field: "role", code: "not_allowed", message: "refused" }] }),
+  });
+  renderApp("/lab/settings/members", app);
+
+  await user.type(await screen.findByLabelText("E-mail address"), "eve@example.com");
+  await user.click(screen.getByRole("button", { name: "Invite" }));
+
+  expect(await screen.findByRole("alert")).toBeTruthy();
+});
+
 test("the spaces an input method types around an address go before it is sent", async () => {
   const user = userEvent.setup();
   const { app, sent } = invitationsServer();
