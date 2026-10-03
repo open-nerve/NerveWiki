@@ -22,7 +22,7 @@ import {
   writeContent,
 } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
-import { pageHeading, pageTree, quickSwitchFor, wikiPagePath } from "../../fixtures/wiki-pages";
+import { editorContent, pageHeading, pageTree, quickSwitchFor, wikiPagePath } from "../../fixtures/wiki-pages";
 import { newTeam } from "../../fixtures/workspaces";
 
 // PG12, the pages' permissions (M4 design 5): creating, renaming, moving
@@ -116,7 +116,7 @@ test("PG12 (API): a member creates, renames, moves, deletes, writes the content 
   ]);
 });
 
-test("PG12 (page): a reader goes through the notebook's pages without New page, the pages' menus or dragging", async ({
+test("PG12 (page): a reader goes through the notebook's pages without New page, the pages' menus, dragging or Edit; Ctrl+E opens no editor", async ({
   api,
   signedInPage,
 }, testInfo) => {
@@ -135,6 +135,10 @@ test("PG12 (page): a reader goes through the notebook's pages without New page, 
   await expect(tree.getByRole("button", { name: "New page" })).toHaveCount(0);
   await expect(tree.getByRole("button", { name: /^Actions for / })).toHaveCount(0);
   await expect(tree.locator('[draggable="true"]')).toHaveCount(0);
+  await expect(page.getByRole("main").getByRole("button", { name: "Edit", exact: true })).toHaveCount(0);
+  await page.keyboard.press("ControlOrMeta+e");
+  await expect(page.getByRole("article")).toBeAttached();
+  await expect(editorContent(page)).toHaveCount(0);
 
   await page.goto(notebookPath(workspace.slug, notebook.id));
   await expect(notebookHeading(page, "Plans")).toBeVisible();

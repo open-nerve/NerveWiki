@@ -1,16 +1,18 @@
 import { accountIdOf } from "../../fixtures/assert/identity";
 import { expectContentWritten, expectOneSessionRevision } from "../../fixtures/assert/page";
 import { emailFor } from "../../fixtures/auth";
+import { failedToLoad } from "../../fixtures/browser";
 import { joinAs } from "../../fixtures/invitations";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, openSession, putContent, readContent, writeContent } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
-import { newTeam } from "../../fixtures/workspaces";
+import { conflictRegion, editorContent, editStatus, startEditing, wikiPagePath } from "../../fixtures/wiki-pages";
+import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 
 // PG8, a save that conflicts (M4 design 3, 4): a write that came in first
 // refuses a save on the version before it; the editor reads the current
-// content and keeps theirs on it. The page version comes with the editor
-// (M4/P6).
+// content, shows the differences, and keeps the user's text on it or
+// takes theirs (M4/P6 design 3.8).
 
 test("PG8 (API): another credential writes first, so a save on the version before is 409 page.revision_mismatch; the editor reads the current content and keeps theirs on its revision, in a changeset of its own", async ({
   api,
@@ -42,4 +44,52 @@ test("PG8 (API): another credential writes first, so a save on the version befor
   expect(kept.revision).toBe(3);
   await expectContentWritten(db, kept, "Mine\n", editorId);
   await expectOneSessionRevision(db, session.id, page.id, 2, 3);
+});
+
+test("PG8 (page): a token writes while the page is edited; the save shows the differences, and Keep mine saves over them; on another page Discard mine edits theirs, and the next save goes through", async ({
+  api,
+  pageWatch,
+  signedInPage,
+}, testInfo) => {
+  const { pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
+  const notebook = await createNotebook(api, pat, workspace.slug, "Plans");
+  const kept = await createPage(api, pat, notebook.id, "Kept", null, "Base\n");
+  const discarded = await createPage(api, pat, notebook.id, "Discarded", null, "Base\n");
+  const page = await signedInPage(tokens);
+
+  await page.goto(wikiPagePath(workspace.slug, notebook.id, kept.id));
+  await startEditing(page);
+  await writeContent(api, pat, kept.id, { content: "Base\nTheirs\n", base_revision: 1 });
+  await page.keyboard.press("ControlOrMeta+End");
+  await page.keyboard.type("Mine");
+  await page.keyboard.press("ControlOrMeta+s");
+  const conflict = conflictRegion(page);
+  await expect(conflict.getByRole("heading")).toBeFocused();
+  await expect(
+    conflict.getByRole("textbox", { name: "Your text against the page as it is now", exact: true })
+  ).toContainText("Mine");
+  await expect(conflict).toContainText("Theirs");
+  pageWatch.expectConsole({ errors: [failedToLoad(409)] });
+  await conflict.getByRole("button", { name: "Keep mine", exact: true }).click();
+  await expect(editStatus(page)).toHaveText("Saved.");
+  await expect(conflict).toHaveCount(0);
+  expect(await readContent(api, pat, kept.id)).toMatchObject({ content: "Base\nMine", revision: 3 });
+
+  await page.goto(wikiPagePath(workspace.slug, notebook.id, discarded.id));
+  await startEditing(page);
+  await writeContent(api, pat, discarded.id, { content: "Base\r\nTheirs\r\n", base_revision: 1 });
+  await page.keyboard.press("ControlOrMeta+End");
+  await page.keyboard.type("Mine");
+  await page.keyboard.press("ControlOrMeta+s");
+  pageWatch.expectConsole({ errors: [failedToLoad(409)] });
+  await conflict.getByRole("button", { name: "Discard mine", exact: true }).click();
+  const content = editorContent(page);
+  await expect(content).toBeFocused();
+  await expect(content).toContainText("Theirs");
+  await expect(content).not.toContainText("Mine");
+  await page.keyboard.press("ControlOrMeta+End");
+  await page.keyboard.type("More");
+  await page.keyboard.press("ControlOrMeta+s");
+  await expect(editStatus(page)).toHaveText("Saved.");
+  expect(await readContent(api, pat, discarded.id)).toMatchObject({ content: "Base\r\nTheirs\r\nMore", revision: 3 });
 });

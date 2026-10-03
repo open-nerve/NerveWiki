@@ -1,0 +1,233 @@
+import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
+import { search, searchKeymap } from "@codemirror/search";
+import { Compartment, EditorState } from "@codemirror/state";
+import { EditorView, keymap } from "@codemirror/view";
+import { useContext, useId, useImperativeHandle, useLayoutEffect, useRef, type Ref, type RefObject } from "react";
+
+import { useT, type Translate } from "../i18n/i18n";
+import { insertLink, toggleStrong } from "./commands";
+import { composeExtensions, readOnly, readOnlyAs } from "./extensions";
+import { joinBreaks, lineBreaks, splitBreaks } from "./line-breaks";
+import { markdownEditing } from "./markdown";
+import { editorPhrases } from "./phrases";
+import { EditorExtensions, type EditorContext, type EditorControls, type EditorExtension } from "./registry";
+import { editorTheme } from "./theme";
+
+/** SourceEditorHandle is what the page's edit does with its editor. */
+export type SourceEditorHandle = {
+  /** text is the content to save: with its byte order mark and each line break as written. */
+  text(): string;
+  /** version is how many changes the content has had: each adds one. */
+  version(): number;
+  focus(): void;
+  /** whenComposed runs act now, or once the input method's composition ends: never on half a word. */
+  whenComposed(act: () => void): void;
+  /** load replaces the content with raw: a new state, whose history does not reach the old content. */
+  load(raw: string): void;
+  /** hold keeps the content from being changed while on, whatever the extensions set: while the edit is left. */
+  hold(on: boolean): void;
+};
+
+type SourceEditorProps = {
+  /** The content the editor opens on, as written. */
+  content: string;
+  /** Whether the editor takes the focus as it is made: the user asked to edit. */
+  focusOnOpen?: boolean;
+  context: EditorContext;
+  controls: Omit<EditorControls, "setReadOnly">;
+  /** onChange is told the content's version after each change. */
+  onChange(version: number): void;
+  ref?: Ref<SourceEditorHandle>;
+};
+
+/** Live is the latest of the editor's props, which its extensions, made once, read when called. */
+type Live = Pick<SourceEditorProps, "context" | "controls" | "onChange"> & {
+  t: Translate;
+  registered: readonly EditorExtension[];
+};
+
+/** How long a composition's end waits for its text, which some browsers give after it. */
+const compositionSettles = 50;
+
+/** The editor's words in the language of the app: its phrases and its content's label. */
+const wording = new Compartment();
+
+/** Why the content may not be changed: an extension set it read-only, or the edit holds it. */
+type Lock = "readOnly" | "held";
+
+/**
+ * EditorHost holds an EditorView, made once, and what goes with it: the
+ * changes counted, what waits on a composition, the locks, which a new
+ * content keeps.
+ */
+class EditorHost {
+  readonly view: EditorView;
+  private changes = 0;
+  private readonly waiting: (() => void)[] = [];
+  private settling: ReturnType<typeof setTimeout> | undefined = undefined;
+  private readonly locks: Record<Lock, boolean> = { readOnly: false, held: false };
+
+  constructor(
+    parent: HTMLElement,
+    raw: string,
+    private readonly hint: string,
+    private readonly live: RefObject<Live>
+  ) {
+    // The view comes first: an extension may set it read-only as it is built.
+    this.view = new EditorView({ parent });
+    this.view.setState(this.stateOf(raw));
+  }
+
+  get version(): number {
+    return this.changes;
+  }
+
+  load(raw: string): void {
+    this.view.setState(this.stateOf(raw));
+  }
+
+  whenComposed(act: () => void): void {
+    this.waiting.push(act);
+    this.runWaiting();
+  }
+
+  setWording(t: Translate): void {
+    this.view.dispatch({ effects: wording.reconfigure(this.wordingOf(t)) });
+  }
+
+  lock(lock: Lock, on: boolean): void {
+    this.locks[lock] = on;
+    // Before its state is made, the state is made locked.
+    if (readOnly.get(this.view.state) !== undefined) {
+      this.view.dispatch({ effects: readOnly.reconfigure(readOnlyAs(this.locked)) });
+    }
+  }
+
+  destroy(): void {
+    clearTimeout(this.settling);
+    this.view.destroy();
+  }
+
+  private get locked(): boolean {
+    return this.locks.readOnly || this.locks.held;
+  }
+
+  private wordingOf(t: Translate) {
+    return [
+      editorPhrases(t),
+      EditorView.contentAttributes.of({ "aria-label": t("editor.label"), "aria-describedby": this.hint }),
+    ];
+  }
+
+  private runWaiting(): void {
+    if (!this.view.composing) {
+      for (const act of this.waiting.splice(0)) {
+        act();
+      }
+    }
+  }
+
+  private stateOf(raw: string): EditorState {
+    const { t, context, registered } = this.live.current;
+    const split = splitBreaks(raw);
+    const controls: EditorControls = {
+      save: () =>
+        new Promise((resolve, reject) =>
+          this.whenComposed(() => this.live.current.controls.save().then(resolve, reject))
+        ),
+      saving: () => this.live.current.controls.saving(),
+      setReadOnly: (on) => this.lock("readOnly", on),
+    };
+    const composed = composeExtensions(registered, context, controls);
+    return EditorState.create({
+      doc: split.text,
+      extensions: [
+        lineBreaks(split),
+        history(),
+        markdownEditing(),
+        search({ top: true }),
+        keymap.of([
+          { key: "Mod-b", run: toggleStrong },
+          { key: "Mod-k", run: insertLink },
+          indentWithTab,
+          ...defaultKeymap,
+          ...historyKeymap,
+          ...searchKeymap,
+        ]),
+        editorTheme,
+        wording.of(this.wordingOf(t)),
+        readOnly.of(readOnlyAs(this.locked)),
+        EditorView.updateListener.of((update) => {
+          if (update.docChanged) {
+            this.changes += 1;
+            this.live.current.onChange(this.changes);
+          }
+          this.runWaiting();
+        }),
+        EditorView.domEventObservers({
+          compositionend: () => {
+            clearTimeout(this.settling);
+            this.settling = setTimeout(() => this.runWaiting(), compositionSettles);
+          },
+        }),
+        composed.extension,
+      ],
+    });
+  }
+}
+
+/**
+ * SourceEditor is the Markdown source editor (M4/P6 design 3.5). Its
+ * EditorView is made once; a content loaded is a new state. The content
+ * goes in and out as written: the line breaks and the byte order mark
+ * are kept apart (editor/line-breaks.ts). The registered extensions come
+ * after the editor's own, each in its compartment. Tab indents: a line
+ * under the editor, which its content refers to, says how to move out.
+ */
+export function SourceEditor({ content, focusOnOpen = false, context, controls, onChange, ref }: SourceEditorProps) {
+  const t = useT();
+  const registered = useContext(EditorExtensions);
+  const hint = useId();
+  const element = useRef<HTMLDivElement>(null);
+  const editor = useRef<EditorHost>(null);
+  const first = useRef({ content, focusOnOpen });
+  const live = useRef<Live>({ t, context, controls, onChange, registered });
+  useLayoutEffect(() => {
+    live.current = { t, context, controls, onChange, registered };
+  });
+  useLayoutEffect(() => {
+    if (element.current === null) {
+      return undefined;
+    }
+    const made = new EditorHost(element.current, first.current.content, hint, live);
+    editor.current = made;
+    if (first.current.focusOnOpen) {
+      made.view.focus();
+    }
+    return () => {
+      made.destroy();
+      editor.current = null;
+    };
+  }, [hint]);
+  useLayoutEffect(() => editor.current?.setWording(t), [t]);
+  useImperativeHandle(
+    ref,
+    () => ({
+      text: () => (editor.current === null ? first.current.content : joinBreaks(editor.current.view.state)),
+      version: () => editor.current?.version ?? 0,
+      focus: () => editor.current?.view.focus(),
+      whenComposed: (act) => (editor.current === null ? act() : editor.current.whenComposed(act)),
+      load: (raw) => editor.current?.load(raw),
+      hold: (on) => editor.current?.lock("held", on),
+    }),
+    []
+  );
+  return (
+    <div className="space-y-1">
+      <div ref={element} />
+      <p id={hint} className="text-xs text-muted-foreground">
+        {t("editor.tabHint")}
+      </p>
+    </div>
+  );
+}

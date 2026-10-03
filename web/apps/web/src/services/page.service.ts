@@ -1,13 +1,23 @@
-import type { ApiClient, NodeMove, Page, PageView, TreeNode } from "@nervewiki/api-client";
+import type {
+  ApiClient,
+  EditSession,
+  NodeMove,
+  Page,
+  PageContent,
+  PageContentWrite,
+  PageView,
+  TreeNode,
+} from "@nervewiki/api-client";
 
 import { unwrap } from "./api";
 
-export type { NodeMove, PageView, TreeNode };
+export type { NodeMove, PageContent, PageView, TreeNode };
 
 /**
  * PageService reads a notebook's page tree and a page's reading view, and
  * writes the tree: creates, renames, moves and deletes pages (M4/P5 design
- * 3.4).
+ * 3.4). It reads and writes a page's content, in an edit session (M4/P6
+ * design 3.6).
  */
 export class PageService {
   constructor(private readonly api: ApiClient) {}
@@ -51,5 +61,35 @@ export class PageService {
   /** getPageView answers the page's content rendered, with the revision it was rendered from. */
   async getPageView(id: string): Promise<PageView> {
     return unwrap(await this.api.GET("/api/v0/pages/{page_id}/view", { params: { path: { page_id: id } } }));
+  }
+
+  /** getPageContent answers the page's content as written, with its revision. */
+  async getPageContent(id: string): Promise<PageContent> {
+    return unwrap(await this.api.GET("/api/v0/pages/{page_id}/content", { params: { path: { page_id: id } } }));
+  }
+
+  /** putPageContent writes the page's content on the revision it was read at; it answers the page, with its new revision. */
+  async putPageContent(id: string, write: PageContentWrite): Promise<Page> {
+    return unwrap(
+      await this.api.PUT("/api/v0/pages/{page_id}/content", { params: { path: { page_id: id } }, body: write })
+    );
+  }
+
+  async openEditSession(id: string): Promise<EditSession> {
+    return unwrap(await this.api.POST("/api/v0/pages/{page_id}/edit-sessions", { params: { path: { page_id: id } } }));
+  }
+
+  async heartbeatEditSession(id: string): Promise<EditSession> {
+    return unwrap(
+      await this.api.POST("/api/v0/edit-sessions/{edit_session_id}/heartbeat", {
+        params: { path: { edit_session_id: id } },
+      })
+    );
+  }
+
+  async endEditSession(id: string): Promise<void> {
+    await unwrap(
+      await this.api.DELETE("/api/v0/edit-sessions/{edit_session_id}", { params: { path: { edit_session_id: id } } })
+    );
   }
 }

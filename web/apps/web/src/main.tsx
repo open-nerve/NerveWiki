@@ -6,6 +6,7 @@ import { createBrowserRouter } from "react-router";
 
 import { routes } from "./app/routes";
 import { SessionRoot } from "./app/session-root";
+import { EditorExtensions, editorExtensions } from "./editor/registry";
 import { Enhancements, readingEnhancements } from "./reading/enhancement";
 import { browserSessionDeps, Session, type SessionDeps } from "./session/session";
 import { PreferencesStore } from "./stores/preferences.store";
@@ -27,7 +28,9 @@ void session.start();
 createRoot(root).render(
   <StrictMode>
     <Enhancements value={readingEnhancements}>
-      <SessionRoot app={new AppStores(preferences, session)} router={createBrowserRouter(routes)} />
+      <EditorExtensions value={editorExtensions}>
+        <SessionRoot app={new AppStores(preferences, session)} router={createBrowserRouter(routes)} />
+      </EditorExtensions>
     </Enhancements>
   </StrictMode>
 );

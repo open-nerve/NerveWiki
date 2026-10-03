@@ -1,5 +1,5 @@
 import type { NotebookRole } from "../services/notebook.service";
-import type { NodeMove, PageView, TreeNode } from "../services/page.service";
+import type { NodeMove, PageContent, PageView, TreeNode } from "../services/page.service";
 import { json, notebookJSON, problem, signedInApp, type Answer } from "./fakes";
 
 /** pageNode is the page n of Plans, titled name, under parent (none: at the root). */
@@ -45,6 +45,11 @@ type PageServerOptions = {
  * the page's subtree; it checks no permission, which a test answers
  * through answers. The test changes the state as another tab would; what
  * went out is in sent.
+ *
+ * Each page's content is its title on a line at revision 1 unless
+ * contents says otherwise; a write in a session that is not open is 409
+ * page.edit_session_ended, one on another revision 409
+ * page.revision_mismatch (M4/P6 design 3.6).
  */
 export function pageServer({
   role = "admin",
@@ -55,6 +60,8 @@ export function pageServer({
     sent: [] as string[],
     nodes,
     views: new Map<string, PageView>(),
+    contents: new Map<string, { content: string; revision: number }>(),
+    sessions: new Set<string>(),
     nodesDown: false,
     viewsDown: false,
   };
@@ -76,6 +83,7 @@ export function pageServer({
         : json(server.views.get(id) ?? { html: `<p>${page.name}</p>`, revision: 1 });
     },
     ...writeRoutes(server),
+    ...contentRoutes(server),
     ...answers,
   });
   return Object.assign(server, { app });
@@ -166,7 +174,86 @@ function writeRoutes(server: { sent: string[]; nodes: TreeNode[] }): Record<stri
   };
 }
 
-/** idOf is the node id in a request's path, /api/v0/nodes/{id}… */
+type ContentState = {
+  sent: string[];
+  nodes: TreeNode[];
+  contents: Map<string, { content: string; revision: number }>;
+  sessions: Set<string>;
+};
+
+/** The answers to the contents and the edit sessions of server, which change it. */
+function contentRoutes(server: ContentState): Record<string, Answer> {
+  const nameOf = (request: Request) => server.nodes.find((node) => node.id === idOf(request))?.name;
+  const contentOf = (id: string, name: string) => server.contents.get(id) ?? { content: `${name}\n`, revision: 1 };
+  let opened = 0;
+  return {
+    "GET /api/v0/pages/*/content": (request) => {
+      const name = nameOf(request);
+      server.sent.push(`GET content ${name}`);
+      if (name === undefined) {
+        return problem(404, "page.not_found");
+      }
+      const content: PageContent = { ...contentOf(idOf(request), name), content_hash: "0".repeat(64) };
+      return json(content);
+    },
+    "PUT /api/v0/pages/*/content": async (request) => {
+      const write = (await request.clone().json()) as {
+        content: string;
+        base_revision: number;
+        edit_session_id?: string;
+      };
+      const name = nameOf(request);
+      server.sent.push(
+        `PUT ${name} ${JSON.stringify(write.content)} on ${write.base_revision} in ${write.edit_session_id}`
+      );
+      const node = server.nodes.find((each) => each.id === idOf(request));
+      if (node === undefined) {
+        return problem(404, "page.not_found");
+      }
+      if (write.edit_session_id !== undefined && !server.sessions.has(write.edit_session_id)) {
+        return problem(409, "page.edit_session_ended");
+      }
+      const current = contentOf(node.id, node.name);
+      if (write.base_revision !== current.revision) {
+        return problem(409, "page.revision_mismatch");
+      }
+      const revision = current.content === write.content ? current.revision : current.revision + 1;
+      server.contents.set(node.id, { content: write.content, revision });
+      return json({
+        ...node,
+        ancestors: [],
+        revision,
+        byte_size: write.content.length,
+        content_updated_at: node.updated_at,
+        content_updated_by: "",
+      });
+    },
+    "POST /api/v0/pages/*/edit-sessions": (request) => {
+      const name = nameOf(request);
+      server.sent.push(`OPEN ${name}`);
+      if (name === undefined) {
+        return problem(404, "page.not_found");
+      }
+      const id = `session-${(++opened).toString()}`;
+      server.sessions.add(id);
+      return json({ id, page_id: idOf(request), expires_at: "2026-10-03T08:01:00Z" }, 201);
+    },
+    "POST /api/v0/edit-sessions/*/heartbeat": (request) => {
+      server.sent.push(`BEAT ${idOf(request)}`);
+      return server.sessions.has(idOf(request))
+        ? json({ id: idOf(request), page_id: "", expires_at: "2026-10-03T08:01:00Z" })
+        : problem(404, "page.edit_session_not_found");
+    },
+    "DELETE /api/v0/edit-sessions/*": (request) => {
+      server.sent.push(`END ${idOf(request)}`);
+      return server.sessions.delete(idOf(request))
+        ? new Response(null, { status: 204 })
+        : problem(404, "page.edit_session_not_found");
+    },
+  };
+}
+
+/** idOf is the id in a request's path, /api/v0/nodes/{id}…, /api/v0/pages/{id}… */
 function idOf(request: Request): string {
   return new URL(request.url).pathname.split("/")[4] ?? "";
 }
