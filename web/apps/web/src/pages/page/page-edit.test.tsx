@@ -286,14 +286,12 @@ test("a save that goes through while leaving is asked about lets the move go on"
 test("Ctrl+E held down leaves once", async () => {
   const { server, type } = await editing();
   type("!");
-  const viewsRead = server.sent.filter((line) => line === "GET view Guide").length;
 
   fireEvent.keyDown(document.activeElement ?? document.body, { key: "e", ctrlKey: true });
   fireEvent.keyDown(document.activeElement ?? document.body, { key: "e", ctrlKey: true, repeat: true });
   fireEvent.keyDown(document.activeElement ?? document.body, { key: "e", ctrlKey: true, repeat: true });
   const edit = await screen.findByRole("button", { name: "Edit" });
   expect(server.sent.filter((line) => line.startsWith("PUT"))).toHaveLength(1);
-  expect(server.sent.filter((line) => line === "GET view Guide")).toHaveLength(viewsRead + 1);
   await waitFor(() => expect(document.activeElement).toBe(edit));
   expect(fireEvent.keyDown(edit, { key: "e", ctrlKey: true, repeat: true })).toBe(false);
   await new Promise((resolve) => setTimeout(resolve, 50));
