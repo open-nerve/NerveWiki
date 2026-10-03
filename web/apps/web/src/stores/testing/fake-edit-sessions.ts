@@ -28,7 +28,8 @@ function fakeSessions(sent: string[] = []) {
   let opened = 0;
   const answers = {
     open: undefined as Answer<{ id: string }> | undefined,
-    beat: undefined as Answer<unknown> | undefined,
+    /** A beat's answer, told the signal that gives it up. */
+    beat: undefined as ((signal?: AbortSignal) => unknown) | undefined,
     end: undefined as Answer<void> | undefined,
   };
   const service = {
@@ -41,7 +42,7 @@ function fakeSessions(sent: string[] = []) {
       if (answers.beat === undefined) {
         return {};
       }
-      const answer = answers.beat();
+      const answer = answers.beat(signal);
       // A beat given up rejects as fetch does.
       return await Promise.race([
         answer,

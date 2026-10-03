@@ -182,6 +182,22 @@ test("a beat not answered within a heartbeat is given up, so that the next goes"
   await session.end();
 });
 
+test("ended while a beat is out, the beat is given up: its answer could only find the session gone", async () => {
+  const { session, sent, answers } = await opened();
+  let beat: AbortSignal | undefined;
+  answers.beat = (signal) => {
+    beat = signal;
+    return new Promise(() => undefined);
+  };
+  await vi.advanceTimersByTimeAsync(editSessionHeartbeat);
+  expect(sent).toEqual(["OPEN", "BEAT s1"]);
+
+  await session.end();
+  expect(beat?.aborted).toBe(true);
+  expect(sent).toEqual(["OPEN", "BEAT s1", "END s1"]);
+  expect(session.lost).toBeUndefined();
+});
+
 test("a beat that fails otherwise, a network's, is tried again at the next", async () => {
   const { session, sent, answers } = await opened();
   answers.beat = () => {

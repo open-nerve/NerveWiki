@@ -10,7 +10,14 @@ import { joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, endSession, getView, openSession, readContent, writeContent } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
-import { editorContent, pageHeading, pageTree, saveEdit, wikiPagePath } from "../../fixtures/wiki-pages";
+import {
+  editorContent,
+  holdContentWrites,
+  pageHeading,
+  pageTree,
+  saveEdit,
+  wikiPagePath,
+} from "../../fixtures/wiki-pages";
 import { newTeam } from "../../fixtures/workspaces";
 
 // PG7, editing and saving (M4 design 3, 4; M4/P4 design 3.4): the saves of
@@ -88,6 +95,8 @@ test("PG7 (page): an editor opens the editor with Ctrl+E and saves twice with Ct
   await expectContentWritten(db, second, "# Notes\n\nSecond save.", editorId);
   await expectOneSessionRevision(db, session?.id ?? "", notes.id, 1, 3);
 
+  // The writes are held from here: what is typed stays unsaved while the dialog asks, autosave or not (M5/P5).
+  const held = await holdContentWrites(page, notes.id);
   await page.keyboard.type(" More.");
   await pageTree(page, "Plans").getByRole("link", { name: "Other", exact: true }).click();
   await page
@@ -96,8 +105,13 @@ test("PG7 (page): an editor opens the editor with Ctrl+E and saves twice with Ct
     .click();
   await expect(pageHeading(page, "Notes")).toBeVisible();
   await expect(content).toContainText("Second save. More.");
+  // The keys do nothing while a dialog is open (M4/P6): Ctrl+E goes once it is gone.
+  await expect(page.getByRole("alertdialog")).toHaveCount(0);
 
   await page.keyboard.press("ControlOrMeta+e");
+  await held.sent();
+  // One write of the rest: autosave's, if it went first, and Ctrl+E's are one.
+  expect((await held.release()).map((write) => write.status())).toEqual([200]);
   await expect(page.getByRole("article")).toContainText("Second save. More.");
   await expect(page.getByRole("main").getByRole("button", { name: "Edit", exact: true })).toBeFocused();
   expect(await readContent(api, adminPat, notes.id)).toMatchObject({

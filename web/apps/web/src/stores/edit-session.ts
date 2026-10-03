@@ -111,8 +111,9 @@ export class EditSession {
   /** The end of a session that opened once the edit had ended. */
   private lateEnd: Promise<void> = Promise.resolve();
   private beating: ReturnType<typeof setInterval> | undefined = undefined;
-  /** The beat out, and whether one more was asked for meanwhile. */
+  /** The beat out, how it is given up, and whether one more was asked for meanwhile. */
   private beatOut: Promise<void> | undefined = undefined;
+  private beatAnswer: AbortController | undefined = undefined;
   private beatAgain = false;
   private offs: (() => void)[] = [];
 
@@ -191,6 +192,8 @@ export class EditSession {
     }
     this.ended = true;
     this.unfollow();
+    // A beat out could only find the session gone: it is given up, not to answer a 404 after the end.
+    this.beatAnswer?.abort();
     const id = this.id;
     this.id = undefined;
     if (id !== undefined) {
@@ -313,6 +316,7 @@ export class EditSession {
       return;
     }
     const answer = new AbortController();
+    this.beatAnswer = answer;
     const timer = setTimeout(() => answer.abort(), editSessionHeartbeat);
     try {
       await this.deps.service.heartbeatEditSession(id, answer.signal);
@@ -328,6 +332,9 @@ export class EditSession {
       }
     } finally {
       clearTimeout(timer);
+      if (this.beatAnswer === answer) {
+        this.beatAnswer = undefined;
+      }
     }
   }
 }
