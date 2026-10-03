@@ -117,3 +117,23 @@ export function freeTitle(
     }
   }
 }
+
+/**
+ * findPages are the pages of tree whose title holds query, compared as
+ * titles are (NFC, lower case), from the top down as the left column
+ * lists them; every page for a query of blanks (M4/P5 design 3.10).
+ */
+export function findPages(tree: TreeIndex, query: string): TreeNode[] {
+  const key = titleKey(query.trim());
+  const found: TreeNode[] = [];
+  const visit = (parent: string | null) => {
+    for (const page of childrenOf(tree, parent)) {
+      if (titleKey(page.name).includes(key)) {
+        found.push(page);
+      }
+      visit(page.id);
+    }
+  };
+  visit(null);
+  return found;
+}

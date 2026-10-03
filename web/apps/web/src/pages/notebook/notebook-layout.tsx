@@ -10,6 +10,7 @@ import { useNotebooks } from "../../stores/context";
 import { NotFoundPage } from "../not-found";
 import { useNotebookColumn, useWorkspace } from "../workspace/workspace-layout";
 import { PageTree } from "./page-tree";
+import { QuickSwitch } from "./quick-switch";
 
 /**
  * useNotebook is the notebook of the page's address, as the workspace's
@@ -32,8 +33,8 @@ export function useNotebook(): Notebook {
  * not have is no page of the app's, whether the notebook is gone or
  * hidden; one this tab has just deleted or left goes to the workspace's
  * home instead, arrived at. Its pages start anew with each notebook, and
- * so does its page tree, which it puts in the workspace's left column
- * (M4/P5 design 3.6).
+ * so do its page tree, which it puts in the workspace's left column
+ * (M4/P5 design 3.6), and its quick switch (3.10).
  */
 export const NotebookLayout = observer(function NotebookLayout() {
   const { id = "" } = useParams();
@@ -51,6 +52,7 @@ export const NotebookLayout = observer(function NotebookLayout() {
   return (
     <>
       {column !== null && createPortal(<PageTree key={notebook.id} notebook={notebook} />, column)}
+      <QuickSwitch notebook={notebook} />
       <Outlet key={notebook.id} />
     </>
   );

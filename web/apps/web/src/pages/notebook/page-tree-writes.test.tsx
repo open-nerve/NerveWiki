@@ -285,6 +285,19 @@ test("a move refused stays in its dialog", async () => {
   expect(await within(dialog).findByRole("alert")).toBeTruthy();
 });
 
+test("a writer's row drags from anywhere in it, its title too; a reader's does not drag", async () => {
+  const { unmount } = renderApp(home, pageServer().app);
+  const link = await within(await tree()).findByRole("link", { name: "Guide" });
+  expect(link.parentElement?.getAttribute("draggable")).toBe("true");
+  expect(link.getAttribute("draggable")).toBe("false");
+  unmount();
+
+  renderApp(home, pageServer({ role: "reader" }).app);
+  const read = await within(await tree()).findByRole("link", { name: "Guide" });
+  expect(read.parentElement?.hasAttribute("draggable")).toBe(false);
+  expect(read.hasAttribute("draggable")).toBe(false);
+});
+
 test("a reader has neither New page nor the pages' menus", async () => {
   renderApp(home, pageServer({ role: "reader" }).app);
 

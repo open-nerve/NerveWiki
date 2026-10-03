@@ -2,19 +2,23 @@ import type { ApiClient, Notebook } from "@nervewiki/api-client";
 
 import { expectPagesDeletedWith } from "../../fixtures/assert/page";
 import { emailFor } from "../../fixtures/auth";
-import { joinAs } from "../../fixtures/invitations";
+import { joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { memberOf, removeMember } from "../../fixtures/members";
+import { deleteNotebookWith, notebookPath } from "../../fixtures/notebook-pages";
 import { createNotebook, deleteNotebook } from "../../fixtures/notebooks";
 import { deleteOwnerless } from "../../fixtures/ownerless";
 import { createPage, getPage } from "../../fixtures/pages";
 import { deletedDaysAgo } from "../../fixtures/purge";
 import { expect, test } from "../../fixtures/test";
+import { pageHeading, pageTree, wikiPagePath } from "../../fixtures/wiki-pages";
+import { workspaceHeading } from "../../fixtures/workspace-pages";
 import { createWorkspace, deleteWorkspace, newTeam, slugFor } from "../../fixtures/workspaces";
 
 // PG13, a notebook's deletion takes its pages (M4 design 3): by its admin,
 // with its workspace, or ownerless by the workspace's admin, each at the
 // notebook's time; the purge, the background job's alone, clears them.
-// The page version comes with the tree (M4/P5).
+// In the browser (M4/P5 design 3.6), its pages leave the left column and
+// their addresses.
 
 /** Writes a tree of three levels in the notebook with credential, and returns its pages' ids. */
 async function tree(api: ApiClient, credential: string, notebook: Notebook): Promise<string[]> {
@@ -76,4 +80,30 @@ test("PG13 (API): deleting a notebook, its workspace or an ownerless notebook de
     [mark?.id]
   );
   expect(failed, "purge runs that failed").toEqual([]);
+});
+
+test("PG13 (page): once its admin deletes the notebook, its pages leave the left column, and a page's address is no page", async ({
+  api,
+  db,
+  signedInPage,
+}, testInfo) => {
+  const { pat: adminPat, workspace } = await newTeam(api, testInfo);
+  const tokens = await joinOnboarded(api, adminPat, workspace.slug, emailFor(testInfo, "owner"), "member");
+  const notebook = await createNotebook(api, tokens.access_token, workspace.slug, "Plans");
+  const guide = await createPage(api, tokens.access_token, notebook.id, "Guide");
+  await createPage(api, tokens.access_token, notebook.id, "Install", guide.id);
+  const page = await signedInPage(tokens);
+  await page.goto(wikiPagePath(workspace.slug, notebook.id, guide.id));
+  await expect(pageHeading(page, "Guide")).toBeVisible();
+  await expect(pageTree(page, "Plans").getByRole("link", { name: "Guide", exact: true })).toBeVisible();
+
+  await page.goto(notebookPath(workspace.slug, notebook.id, "general"));
+  expect(await deleteNotebookWith(page, notebook.id, "Plans")).toBe(204);
+
+  await expect(workspaceHeading(page, "Acme")).toBeFocused();
+  await expect(pageTree(page, "Plans")).toHaveCount(0);
+  await expectPagesDeletedWith(db, notebook.id, 2);
+  await page.goto(wikiPagePath(workspace.slug, notebook.id, guide.id));
+  await expect(page.getByRole("heading", { level: 1, name: "Page not found", exact: true })).toBeVisible();
+  await expect(pageTree(page, "Plans")).toHaveCount(0);
 });

@@ -177,6 +177,7 @@ const PageItem = observer(function PageItem({ context, node, depth }: ItemProps)
   const { notebook, pages } = context;
   const { slug } = useWorkspace();
   const t = useT();
+  const writer = writes(notebook);
   const children = pages.childrenOf(node.id).length > 0;
   const open = children && pages.isOpen(node.id);
   const listId = useId();
@@ -209,6 +210,8 @@ const PageItem = observer(function PageItem({ context, node, depth }: ItemProps)
         )}
         <NavLink
           to={`/${slug}/notebooks/${notebook.id}/pages/${node.id}`}
+          // A link drags itself: a drag from the title would not be the row's.
+          draggable={writer ? false : undefined}
           className={({ isActive }) =>
             cn(
               "min-w-0 flex-1 truncate rounded-md px-2 py-1.5 text-sm hover:bg-accent",
@@ -218,7 +221,7 @@ const PageItem = observer(function PageItem({ context, node, depth }: ItemProps)
         >
           {node.name}
         </NavLink>
-        {writes(notebook) && <PageMenu context={context} node={node} />}
+        {writer && <PageMenu context={context} node={node} />}
         {instruction !== null && instruction.operation !== "combine" && (
           <span
             aria-hidden

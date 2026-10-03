@@ -1,14 +1,16 @@
 import { accountIdOf } from "../../fixtures/assert/identity";
 import { expectSubtreeDeleted } from "../../fixtures/assert/page";
 import { emailFor } from "../../fixtures/auth";
-import { joinAs } from "../../fixtures/invitations";
+import { answerTo } from "../../fixtures/browser";
+import { joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, deleteNode, getPage, listNodes, postPage } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
+import { choosePageAction, pageHeading, treeTitles, wikiPagePath } from "../../fixtures/wiki-pages";
 import { newTeam } from "../../fixtures/workspaces";
 
-// PG4, deleting a subtree (M4 design 3): the API's part; the page version
-// comes with the tree (M4/P5), the edit sessions with the content (M4/P4).
+// PG4, deleting a subtree (M4 design 3; M4/P5 design 3.7 for the page); the
+// edit sessions come with the content (M4/P4).
 
 test("PG4 (API): a member deletes a page with its subpages at one time; no one reads them after, and its sibling stays", async ({
   api,
@@ -40,4 +42,37 @@ test("PG4 (API): a member deletes a page with its subpages at one time; no one r
     422,
     [["parent_id", "not_allowed"]],
   ]);
+});
+
+test("PG4 (page): an editor deletes a page with its subpages, the confirmation counting them; the page shown, one of them, goes to the deleted page's parent; its address is no page after", async ({
+  api,
+  db,
+  signedInPage,
+}, testInfo) => {
+  const { pat: adminPat, workspace } = await newTeam(api, testInfo);
+  const editorEmail = emailFor(testInfo, "editor");
+  const page = await signedInPage(await joinOnboarded(api, adminPat, workspace.slug, editorEmail, "member"));
+  const editorId = await accountIdOf(db, editorEmail);
+  const notebook = await createNotebook(api, adminPat, workspace.slug, "Plans", "editor");
+  const guide = await createPage(api, adminPat, notebook.id, "Guide");
+  const install = await createPage(api, adminPat, notebook.id, "Install", guide.id);
+  const linux = await createPage(api, adminPat, notebook.id, "Linux", install.id);
+  const mac = await createPage(api, adminPat, notebook.id, "Mac", linux.id);
+  await createPage(api, adminPat, notebook.id, "FAQ", guide.id);
+  await page.goto(wikiPagePath(workspace.slug, notebook.id, mac.id));
+  await expect(pageHeading(page, "Mac")).toBeVisible();
+
+  await choosePageAction(page, "Plans", "Install", "Delete");
+  const dialog = page.getByRole("alertdialog", { name: "Delete Install?", exact: true });
+  await expect(dialog).toContainText("Its subpages go with it: 2.");
+  const answer = answerTo(page, "DELETE", `/api/v0/nodes/${install.id}`);
+  await dialog.getByRole("button", { name: "Delete", exact: true }).click();
+  expect((await answer).status()).toBe(204);
+
+  await expect(pageHeading(page, "Guide")).toBeFocused();
+  await expect(page).toHaveURL(wikiPagePath(workspace.slug, notebook.id, guide.id));
+  await expect.poll(() => treeTitles(page, "Plans")).toEqual(["Guide", "FAQ"]);
+  await expectSubtreeDeleted(db, install.id, [install.id, linux.id, mac.id], editorId);
+  await page.goto(wikiPagePath(workspace.slug, notebook.id, mac.id));
+  await expect(page.getByRole("heading", { level: 1, name: "Page not found", exact: true })).toBeVisible();
 });

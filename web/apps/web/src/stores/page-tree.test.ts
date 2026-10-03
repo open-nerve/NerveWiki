@@ -6,6 +6,7 @@ import {
   canHold,
   childrenOf,
   depthOf,
+  findPages,
   freeTitle,
   heightOf,
   indexTree,
@@ -67,4 +68,16 @@ test("a free title is the first that no sibling has, by case and NFC", () => {
   expect(freeTitle([pageNode(20, "UNTITLED")], [], untitled)).toBe("Untitled 2");
   expect(freeTitle([pageNode(20, "Untitled")], ["untitled 2"], untitled)).toBe("Untitled 3");
   expect(freeTitle([pageNode(21, "Cafe\u0301")], [], cafe)).toBe("Café 2");
+});
+
+test("the pages found hold the query by case and NFC, from the top down; a blank query finds them all", () => {
+  // Listed parents first, but not from the top down.
+  const listed = indexTree([guide, notes, install, linux, { ...pageNode(22, "Cafe\u0301"), parent_id: notes.id }]);
+  const names = (query: string) => findPages(listed, query).map((page) => page.name);
+
+  expect(names("  ")).toEqual(["Guide", "Install", "Linux", "Notes", "Cafe\u0301"]);
+  expect(names("IN")).toEqual(["Install", "Linux"]);
+  expect(names(" no ")).toEqual(["Notes"]);
+  expect(names("café")).toEqual(["Cafe\u0301"]);
+  expect(names("zzz")).toEqual([]);
 });

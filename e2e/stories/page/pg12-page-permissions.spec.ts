@@ -1,7 +1,8 @@
 import { accountIdOf } from "../../fixtures/assert/identity";
 import { emailFor } from "../../fixtures/auth";
-import { joinAs } from "../../fixtures/invitations";
+import { joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { addNotebookMember } from "../../fixtures/notebook-members";
+import { notebookHeading, notebookPath } from "../../fixtures/notebook-pages";
 import { createNotebook } from "../../fixtures/notebooks";
 import {
   createPage,
@@ -21,10 +22,12 @@ import {
   writeContent,
 } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
+import { pageHeading, pageTree, quickSwitchFor, wikiPagePath } from "../../fixtures/wiki-pages";
 import { newTeam } from "../../fixtures/workspaces";
 
 // PG12, the pages' permissions (M4 design 5): creating, renaming, moving
-// and deleting; the content and the edit sessions (M4/P4).
+// and deleting; the content and the edit sessions (M4/P4); in the browser,
+// a reader's tree and home without the writes (M4/P5 design 3.7).
 
 test("PG12 (API): a member creates, renames, moves, deletes, writes the content and opens a session by the workspace access editor; a reader reads and cannot write; one who does not see the notebook gets 404; someone else's session is not found", async ({
   api,
@@ -111,4 +114,30 @@ test("PG12 (API): a member creates, renames, moves, deletes, writes the content 
     { name: "Mine", deleted: true },
     { name: "Shared", deleted: false },
   ]);
+});
+
+test("PG12 (page): a reader goes through the notebook's pages without New page, the pages' menus or dragging", async ({
+  api,
+  signedInPage,
+}, testInfo) => {
+  const { pat: adminPat, workspace } = await newTeam(api, testInfo);
+  const page = await signedInPage(
+    await joinOnboarded(api, adminPat, workspace.slug, emailFor(testInfo, "reader"), "member")
+  );
+  const notebook = await createNotebook(api, adminPat, workspace.slug, "Plans", "viewer");
+  const roadmap = await createPage(api, adminPat, notebook.id, "Roadmap");
+  const q4 = await createPage(api, adminPat, notebook.id, "Q4", roadmap.id);
+
+  await page.goto(wikiPagePath(workspace.slug, notebook.id, q4.id));
+  await expect(pageHeading(page, "Q4")).toBeVisible();
+  const tree = pageTree(page, "Plans");
+  await expect(tree.getByRole("link")).toHaveText(["Roadmap", "Q4"]);
+  await expect(tree.getByRole("button", { name: "New page" })).toHaveCount(0);
+  await expect(tree.getByRole("button", { name: /^Actions for / })).toHaveCount(0);
+  await expect(tree.locator('[draggable="true"]')).toHaveCount(0);
+
+  await page.goto(notebookPath(workspace.slug, notebook.id));
+  await expect(notebookHeading(page, "Plans")).toBeVisible();
+  await expect(page.getByRole("main").getByRole("button", { name: "New page" })).toHaveCount(0);
+  expect(await quickSwitchFor(page, "q4")).toEqual([["Q4", "Roadmap"]]);
 });
