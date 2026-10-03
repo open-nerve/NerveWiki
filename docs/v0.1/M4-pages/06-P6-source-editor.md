@@ -3,7 +3,7 @@
 | 项 | 内容 |
 |---|---|
 | Phase | M4/P6 前端：源码编辑器 |
-| 状态 | 已合并，待人工验收（[输入法清单](manual/P6-ime-checklist.md)由负责人执行） |
+| 状态 | 进行中（已合并，待负责人执行[输入法清单](manual/P6-ime-checklist.md)） |
 | 基线 | `31723c8`（P5 合并、文档提交之后的 main）；本文与各 Step 计划提交之后开分支 |
 | 上级文档 | [M4 总设计](00-M4-design.md) 第 3、4、7、8 节；[P4](04-P4-content-sessions.md) 3.4、3.5、第 7 节；[P5](05-P5-tree-reading.md) 3.4、3.5、3.10；[M0/P1 编辑器移交](handoffs/M0-P1-editor.md)；[M0/P1 实验 ④](../M0-foundation/01-P1-spikes.md)；[总体设计](../v0.1-design.md) 9.3、9.4 |
 
@@ -72,7 +72,7 @@ docs/v0.1/M4-pages/manual/P6-ime-checklist.md   人工输入法验收清单
 
 ### 3.2 编辑器分包与语言
 
-- 依赖（锁定版本）：`@codemirror/state`、`view`、`commands`、`language`、`search`、`lang-markdown`、`merge`，`@lezer/markdown`、`@lezer/highlight`。`editor/source-editor.tsx` 是分包入口，由页面外壳 `lazy(() => import(...))` 加载；冲突视图在分包里再 `import()` 一次 `@codemirror/merge`。主包不引用 CodeMirror 的运行时（`editor/registry.ts` 只有类型），由构建产物的检查守住（3.11）。
+- 依赖（锁定版本）：`@codemirror/state`、`view`、`commands`、`language`、`search`、`lang-markdown`、`merge`，`@lezer/highlight`（`@lezer/markdown` 只经 `lang-markdown` 间接引入）。`editor/source-editor.tsx` 是分包入口，由页面外壳 `lazy(() => import(...))` 加载；冲突视图 `editor/conflict-view.tsx` 是另一个入口，冲突区（`pages/page/conflict-panel.tsx`）出现时才 `import()` 它，`@codemirror/merge` 随它进自己的分包。主包不引用 CodeMirror 的运行时（`editor/registry.ts` 只有类型），由构建产物的检查守住（3.11）。
 - 语言：不调用 `markdown()`（它带进 `lang-html`、CSS、JavaScript 的语言包），用 `lang-markdown` 导出的 `markdownLanguage`（CommonMark + GFM 的 lezer 解析器，另带下标、上标与 Emoji：`~x~` 在编辑器里高亮成下标，阅读视图里是删除线，只差在高亮；换成 `commonmarkLanguage` 加 GFM 要另带 `@lezer/markdown`、照抄 `lang-markdown` 的语言包装，不值得）与它的命令 `insertNewlineContinueMarkup`、`deleteMarkupBackward`；代码块里的嵌套高亮放弃。三个包都标了 `sideEffects: false`，tree-shaking 去掉了 `lang-html`：编辑器分包 341 kB（gzip 111 kB），`markdown()` 是 527 kB（gzip 183 kB），选前者（第 7 节；M4 总设计第 4 节"编辑器分包"）。CodeMirror（除 `@codemirror/merge`）放进命名的 `codemirror` 分包，像 React 一样跨版本缓存；merge 随差异视图另成一个分包。
 - 高亮：`HighlightStyle`，标题一到六级加粗、逐级加大，强调、粗体、删除线、行内代码与代码块等宽，链接与地址着色，符号（`#`、`*`、`` ` ``、`[`）照原样显示、颜色淡一些。颜色取应用的 CSS 变量（`--foreground`、`--muted-foreground`、`--border` 等），明暗两套不必切换扩展。应用里没有链接色与高亮色（`--primary` 是中性灰）：链接与查找匹配用编辑器自己的变量，`.dark` 下另一套，与阅读视图的代码高亮相同做法；差异的折叠行取 `--accent` 与 `--muted-foreground`（merge 自带的是浅色编辑器的颜色）。
 - lezer 的语法树只用于编辑辅助（高亮、列表续行），不做语义判断（总体设计 9.3）。
@@ -103,7 +103,7 @@ type EditorExtension = { name: string; extension(context: EditorContext, control
 ```
 
 - 注册表 `editorExtensions`（M4 为空，组合根交空集合），经 `EditorExtensions` context 交给编辑器，与阅读视图的增强同一做法（P5 3.8）。
-- `editor/extensions.ts` 的 `composeExtensions`：每个扩展放进自己的 `Compartment`，排在编辑器自己的扩展（语言、键位、历史、换行记录）之后、按注册顺序；返回的 `reconfigure` 可以按名字换掉或卸下（换成空）；M4 没有调用者，编辑器不对外给它，M5 需要从外面换掉扩展时再接到句柄上（写进给 M5 的移交）。一个扩展的构造抛错时记 `console.error`、不装它，其余照常。
+- `editor/extensions.ts` 的 `composeExtensions`：每个扩展放进自己的 `Compartment`，排在编辑器自己的扩展（语言、键位、历史、换行记录）之后、按注册顺序；返回的 `reconfigure` 可以按名字换掉或卸下（换成空）；M4 没有调用者，编辑器不对外给它，M5 需要从外面换掉扩展时再接到句柄上（[给 M5 的移交](../M5-collab-editing/handoffs/M4-P6-editor.md)第 5 项）。一个扩展的构造抛错时记 `console.error`、不装它，其余照常。
 - 只读：编辑器自己的一个 `Compartment` 放 `EditorState.readOnly` 与 `EditorView.editable`（总体设计 9.3）。扩展的 `setReadOnly` 与句柄的 `hold`（离开编辑时，3.7）各记一份，任一为真即只读；记在编辑器里，载入新的正文照样只读；扩展构造时就能调用（视图先建、再设 state）。
 - 测试（M0/P1 移交第 2 项）：M5 形态（只读的切换、更新之后去抖调用 `save`）、M6 形态（`autocompletion` 的补全源）、M7 形态（`paste` 的 DOM 事件处理）三个示例按顺序组合，各自生效、互不干扰，卸下其中一个其余照常，换掉一个之后新的生效。
 
@@ -140,7 +140,7 @@ type EditorExtension = { name: string; extension(context: EditorContext, control
   - 编辑时 `Mod+S` 保存，`Mod+E` 与"完成"按钮：有未保存的修改先保存，成功之后结束会话、把重新读到的阅读视图直接放进 SWR 的缓存（hook 刚卸载又挂上时 SWR 的 2 秒去重会给旧的；读失败也照常回去），回到阅读视图，焦点给"编辑"按钮；保存失败时留在编辑。离开一次只有一个（连按"完成"、按住 `Mod+E` 也只离开一次），从头到尾编辑器只读（`hold`；只读的内容区 `tabindex="-1"`，焦点留得住），离开的保存与重读之间打的字不会无声地丢掉；保存失败时放开，焦点回编辑器（有冲突时在冲突区的标题）；保存成功之后仍有未保存的修改（扩展用代码改的）就留在编辑；离开途中组件卸载了就到此为止。
   - 输入法组合中（`view.composing`）按 `Mod+S`、`Mod+E`，或按"保存""完成""保留我的"：阻止浏览器的默认行为，记下要做的事，组合结束（`compositionend` 之后的第一次更新）再做，存进去的是确认后的文字，不是半截拼音（M0/P1 移交第 1 项）。
 - 编辑时的状态栏（`page-editing-bar.tsx`）：`<output>` 里是"有未保存的修改"、"保存中…"、"已保存"或失败的原因；"保存"与"完成"按钮。编辑器替换阅读视图，面包屑、标题与子页面列表照旧。
-- **未保存提醒**（`unsaved-guard.tsx`，随编辑模式常驻，有未保存的修改时才拦）：路由内的离开（树、面包屑、快速切换、后退）由 `useBlocker` 拦下，确认框"离开而不保存？"：留下（焦点回编辑器，冲突区开着时回它的标题）、离开（离开时会话随组件卸载结束，等着的保存不再发）；确认框开着时保存落地，就放行这次导航；只换了查询或锚点不拦。关标签页、刷新由 `beforeunload` 提醒。这一页被删掉（本标签页或树重读发现）时外壳去父页，编辑器随之卸载，不拦（3.12）。
+- **未保存提醒**（`unsaved-guard.tsx`，随编辑模式常驻，有未保存的修改时才拦）：路由内的离开（树、面包屑、快速切换、后退）由 `useBlocker` 拦下，确认框"离开而不保存？"：留下（焦点回编辑器，冲突区开着时回它的标题）、离开（离开时会话随组件卸载结束，等着的保存不再发）；确认框开着时保存落地，就放行这次导航；只换了查询或锚点不拦。关标签页、刷新由 `beforeunload` 提醒。本标签页删掉这一页时外壳去父页（`removedTo`），别处删掉的在树重读之后显示 404；两种都是编辑器随之卸载，不拦（3.10）。
 
 ### 3.8 冲突
 
@@ -157,9 +157,9 @@ type EditorExtension = { name: string; extension(context: EditorContext, control
 ### 3.10 已知差异
 
 - M4 没有锁：两个人（网页或 PAT）同时编辑同一页，后存的人看到冲突（PG8）；M5 的锁之后冲突只来自接口的写。
-- 别的标签页或别人删掉了正在编辑的页：树重读之后外壳去父页，未保存的文字丢失（保存本来也会答 404）。M5 的推送与锁之后再看。
+- 别的标签页或别人删掉了正在编辑的页：树重读之后显示 404（只有本标签页删掉的才去父页，`removedTo` 只记本代删除的页），编辑器随之卸载，未保存的文字不提醒就丢了（保存本来也会答 404）。M5 的推送与锁之后再看（[给 M5 的编辑器移交](../M5-collab-editing/handoffs/M4-P6-editor.md)第 6 项）。
 - 差异按 CodeMirror 的文字比较，只差在换行写法的地方不显示。
-- 后台标签页的心跳被节流时会话会过期，下一次保存重开会话（变更集分成两个，PG10）；M5 有锁之后锁会被别人拿走，写进给 M5 的移交。
+- 后台标签页的心跳被节流时会话会过期，下一次保存重开会话（变更集分成两个，PG10）；M5 有锁之后锁会被别人拿走，见[给 M5 的移交](../M5-collab-editing/handoffs/M4-P4-edit-sessions.md)第 6 项。
 
 ### 3.11 构建与安全
 
@@ -181,7 +181,7 @@ type EditorExtension = { name: string; extension(context: EditorContext, control
 ### 3.13 人工验收与移交
 
 - `docs/v0.1/M4-pages/manual/P6-ime-checklist.md`：在 Chromium、Safari、Firefox 上用真实的中文输入法：确认后的文字与光标；组合中按 `Mod+S`、`Mod+E` 不存进半截拼音、组合结束后再存；组合中点"完成"；在 CRLF 页面的行尾组合输入，保存后经接口核对字节。负责人在 P6 完成时执行，结果写进 P6 的审查记录（M4 总设计第 3 节）。
-- 给 M5 的移交（M4 收尾时写进移交文件）：组合中不触发自动保存、组合结束后补存；组合进行中收到外部更新（推送）时不打断组合；后台标签页的心跳节流与锁；编辑器扩展管线的最后一跳测试（M5 的只读与自动保存是第一个注册者）。
+- 给 M5 的移交（已写进[移交文件](../M5-collab-editing/handoffs/M4-P6-editor.md)）：组合中不触发自动保存、组合结束后补存；组合进行中收到外部更新（推送）时不打断组合；后台标签页的心跳节流与锁；编辑器扩展管线的最后一跳测试（M5 的只读与自动保存是第一个注册者）。
 
 ## 4. 实施步骤
 
@@ -210,7 +210,7 @@ type EditorExtension = { name: string; extension(context: EditorContext, control
 - S1–S4 的检查全部为绿：`make check`、`make gen-check`、`make e2e`、`make image-smoke`；持续集成为绿。
 - M0/P1 编辑器移交三项：分包体积量出、写进第 7 节并选定；扩展管线的组合有测试；人工输入法清单写好，负责人执行通过、结果进审查记录。
 - Opus 审查与修复，审查记录在 `reviews/P6-source-editor-review.md`。
-- 给 M5 的输入法与会话的移交内容写进第 7 节，M4 收尾时写进移交文件。
+- 给 M5 的输入法与会话的移交内容写进第 7 节，M4 收尾时已写进[移交文件](../M5-collab-editing/handoffs/M4-P6-editor.md)。
 
 ## 7. 结果
 
@@ -244,7 +244,7 @@ type EditorExtension = { name: string; extension(context: EditorContext, control
 
 **留给后面的**：
 
-- **给 M5**（M4 收尾时写进移交，M0/P1 编辑器移交第 1 项的后半）：
+- **给 M5**（已写进[移交](../M5-collab-editing/handoffs/M4-P6-editor.md)，M0/P1 编辑器移交第 1 项的后半）：
   - 自动保存在组合中不触发、组合结束后补存：`SourceEditor` 的 `whenComposed` 就是为它准备的；
   - 组合进行中收到推送的外部更新时不打断组合（总体设计 9.3 的"只替换差异、不进撤销历史"）；外部更新不进历史时，撤销恢复的换行写法按历史映射的位置放回，推送接进来时要复核这一点；
   - 后台标签页的心跳会被节流，会话过期之后下一次保存重开（变更集分成两个）；有锁之后锁会被别人拿走，要按页面的可见性调整心跳或租约；

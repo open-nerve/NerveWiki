@@ -17,6 +17,7 @@ docs/
       specs/                         Step 级设计：大 Phase 拆成 Step 时使用
       plans/                         Step 级实施计划
       reviews/                       每个 Phase 的代码审查与修复记录（必需）；M 收尾审查
+      manual/                        人工验收清单：自动测试做不到、由负责人执行的检查（例如真实输入法）
       handoffs/                      阻塞点、决定延后处理的事项（TODO）
 ```
 

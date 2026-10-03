@@ -1,11 +1,13 @@
 ```yaml
-status: open
+status: done
 from: M3
 to: M4
 created: 2026-10-02
 ```
 
 # 笔记本留给 M4 的部分
+
+> 已全部处理（2026-10-03）：第 1–3 项在 M4/P5 落实（外壳只有一个 `main`，左栏在它外面；`app/effective-role.ts` 与成员行的有效角色；合并成 `app/member-row.tsx` 与 `app/rename-form.tsx`）；第 4 项的推理不变：页面的写以 `FOR SHARE` 锁工作区行、不改成员行，心跳与结束只碰会话行；第 5 项是 `bootstrap/page_registrants_test.go` 的 `TestTheOwnerlessListShowsThePagesActivity`。经 [M4 收尾审查](../reviews/M4-closeout-review.md)核实。
 
 M3 的审查把几件与页面树一起才定得下的事留给 M4，收尾审查（[M3 收尾审查](../../M3-notebook/reviews/M3-closeout-review.md)）把它们集中在这里。笔记本删除事件的第一个注册者另见[它的移交](M3-P1-notebook-deletion.md)。
 

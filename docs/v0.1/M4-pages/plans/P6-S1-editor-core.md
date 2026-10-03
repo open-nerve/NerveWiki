@@ -4,7 +4,7 @@
 
 ## 任务
 
-1. 依赖：`@codemirror/state`、`view`、`commands`、`language`、`search`、`lang-markdown`、`merge`，`@lezer/markdown`、`@lezer/highlight`，锁定版本。
+1. 依赖：`@codemirror/state`、`view`、`commands`、`language`、`search`、`lang-markdown`、`merge`，`@lezer/highlight`，锁定版本（`@lezer/markdown` 只经 `lang-markdown` 间接引入，见 P6 文档 3.2）。
 2. `editor/line-breaks.ts`：`splitBreaks`、`joinBreaks`、记录的 `StateField`（`MapMode.TrackAfter` 的点标记）、`invertedEffects` 的撤销恢复。
 3. `editor/markdown.ts`、`editor/theme.ts`：`markdownLanguage` 与高亮样式（取应用的 CSS 变量），列表续行与删除标记的键位。
 4. `editor/commands.ts`：`Mod+B`、`Mod+K`。`editor/phrases.ts`：查找替换面板的短语，中英两份。

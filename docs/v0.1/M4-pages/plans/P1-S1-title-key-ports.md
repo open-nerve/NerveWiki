@@ -8,7 +8,7 @@
 2. `go.mod` 加 `golang.org/x/text/cases`（同一个模块 `golang.org/x/text`，版本不变）。
 3. archtest：`isPureLibrary` 放行 `golang.org/x/text/cases`；`purity_test` 的传递依赖放行 `golang.org/x/text/` 前缀；规则的说明文字与 `rules_cases_test.go` 的常量同步；`page/domain → x/text/language` 的直接导入仍被拒。
 4. `internal/modules/notebook`：
-   - `queries/notebooks.sql` 加 `ShareNotebook`（`FOR SHARE`，带 `deleted_at IS NULL`）；改正"M4 的页面写只锁笔记本行"的注释（`notebooks.sql`、`app/extension.go`）。
+   - `queries/notebooks.sql` 加 `ShareNotebook`（`FOR SHARE`，带 `deleted_at IS NULL`）；改正"M4 的页面写只锁笔记本行"的注释（`notebooks.sql` 与它的生成代码、`store_test.go`；`app/extension.go` 里没有这句，P1 审查 D2）。
    - store 加 `ShareNotebook`；模块根 `notebooks.go`：`Notebooks` 接口与 `NewNotebooks(pool)`（`WorkspaceOf`、`ShareByID`、`LockByID`；锁方法以 `postgres.InTx` 守卫；没有、已删除答 `false`）。
 5. `migrations/schema_test.go`：索引描述加一个字母标出 `NULLS NOT DISTINCT`（`pg_index.indnullsnotdistinct`）；现有的名单不受影响（还没有这样的索引）。
 

@@ -1,11 +1,13 @@
 ```yaml
-status: open
+status: done
 from: M2/P4
 to: M4
 created: 2026-10-01
 ```
 
 # 页面树的清理顺序
+
+> 已全部处理（2026-10-03）：第 1 项选了循环删叶：`PurgeNodes` 一次调用里只删已没有子页的页面，直到一批删不满（[M4 总设计](../00-M4-design.md)第 7 节）；第 2 项是 `TestPurgeSkipsAHeldNodeAndKeepsItsAncestors` 与 `TestPurgeKeepsWhatAHeldRowNeeds`（`page/adapter/postgres/purge_test.go`），一棵三层的软删子树一次运行清完由 `TestThePurgeDeletesWhatOutlivedTheRetention` 守着；第 3 项照办；第 4 项给页面的五张表各加了 `*_deleted_at_idx` 部分索引。经 [M4 收尾审查](../reviews/M4-closeout-review.md)对照代码核实；自引用外键的测试写法补进总体设计 13.1 第 6 条。
 
 M2/P4 建了软删除的清理注册表（总体设计 12.4、13.1 第 6 条；[M2/P4 文档](../../M2-workspace/04-P4-deactivation-commands-purge.md) 3.4）。它的数据库测试 `TestPurgersComeBeforeTheTablesTheyReference`（`server/internal/bootstrap/purge_test.go`）核对"引用被清理表的表先清理"，但排除了自引用的外键（`conrelid <> confrelid`）：M2 没有这样的表，而页面树的父指针就是一个（[P4 审查](../../M2-workspace/reviews/P4-deactivation-commands-purge-review.md) Q2）。
 

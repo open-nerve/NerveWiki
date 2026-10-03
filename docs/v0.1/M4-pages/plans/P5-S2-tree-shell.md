@@ -5,7 +5,7 @@
 ## 任务
 
 1. `services/page.service.ts`；`stores/page-tree.ts` 的纯函数；`stores/page-tree.store.ts`（读、队列、重读、`changesAnswered`、`removed`）；`RootStore.pagesOf(notebook)`。
-2. 路由 `notebooks/:id/pages/:pageId`（懒加载）；`PageLayout`（找到才显示、`wasRemoved` 去父页或首页、不在树里 404）；面包屑、`h1`、子页面列表。
+2. 路由 `notebooks/:id/pages/:pageId`（懒加载）；`PageLayout`（找到才显示、本标签页删掉的经 `removedTo` 去父页或首页、不在树里 404）；面包屑、`h1`、子页面列表。
 3. 左栏的页面树（只读）：`nav`、嵌套列表、展开按钮、当前页、祖先自动展开、按笔记本重新挂载、`NotLoaded`。
 4. 笔记本首页：根下的页面列表。
 5. `ReadingView`：挂上服务端 HTML（`["page-view", id]`），`NotLoaded` 与重读；增强的管线在 S4。

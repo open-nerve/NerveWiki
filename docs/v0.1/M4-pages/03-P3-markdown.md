@@ -66,7 +66,7 @@ server/internal/platform/markdown/
   frontmatter.go       frontmatter 的边界（样例集规则 1）与 Frontmatter、Property
   yaml.go              YAML 1.2 core schema 的标量、别名展开、节点数与深度与别名重复字节数的上限
   render.go            Render：按页取数据、组装渲染器、属性表
-  marks.go             渲染器的标记：标题 id、链接与自动链接、图片为链接、代码块
+  marks.go             渲染器的标记：链接与自动链接、图片为链接、代码块（标题 id 在 parse.go）
   sanitize.go          用户 HTML 的逐节点清洗与补闭合
   inlinetag.go         行内原始 HTML 的标签读取（属性值按分词器在属性里的规则解引用）
   url.go               SafeURL：地址的白名单
@@ -294,7 +294,7 @@ goldmark 的 HTML 渲染器保持安全模式（不开 `WithUnsafe`）：万一�
 
 1. 链接的计数不在块结束时清零，比较标签打开时的计数（S1 计划的"清零"与它的反向对照随之改写）。
 2. 代码段的前置检查用"到达 goldmark 的开头数"测，不用耗时：256 KB 分不出 O(n^1.5)。
-3. 耗时先量一半，慢的输入不再量全尺寸；另加分配的检查（每个标签一个分词器只慢 4.8 倍）。基准发现标题 id 的后缀平方，改为每个文字记下次的后缀。
+3. 耗时先量一部分（起初是一半，现在是四分之一，见上面"相对耗时"），慢的输入不再量全尺寸；另加分配的检查（每个标签一个分词器只慢 4.8 倍）。基准发现标题 id 的后缀平方，改为每个文字记下次的后缀。
 4. 样例集的读取在 `markdowntest.Fixtures`；`Document` 另存解析用的副本，`Render` 从它渲染；BOM 空白化成换行（3.2）。
 5. 行内原始 HTML 用自己的读取，不用分词器；结束标签按名字计数；链接的层数在遍历中计数；被丢弃的元素连同之间的 Markdown（3.7）。
 6. `SafeURL` 拒绝余下的控制字符（3.8）。

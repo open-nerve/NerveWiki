@@ -7,6 +7,8 @@ created: 2026-09-30
 
 # 编辑器的遗留验证项
 
+> 处理情况（2026-10-03）：第 2、3 项已在 M4/P6 落实（[P6 文档](../06-P6-source-editor.md) 3.4、3.11 与第 7 节）。第 1 项的步骤写在[输入法清单](../manual/P6-ime-checklist.md)：前半（确认后的文字与光标、组合中按保存）待负责人执行，后半（组合中不触发自动保存、结束后补存、组合中收到外部更新）转给 M5（[移交](../../M5-collab-editing/handoffs/M4-P6-editor.md)第 3 项）。清单通过之后改为 `done`。
+
 M0/P1 的实验 ④（[结果](../../M0-foundation/01-P1-spikes.md) 第 7 节）验证了 CodeMirror 6 与 React 19 的集成，以下三项没有覆盖，由 M4 处理。
 
 1. **真实输入法的人工验证。** P1 只在 Chromium 上用 CDP 模拟过拼音组合输入。M4 在 Chromium、Safari、Firefox 上用真实的中文输入法各验证一遍：

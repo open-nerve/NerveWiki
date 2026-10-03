@@ -122,7 +122,7 @@ e2e/fixtures/pages.ts、assert/page.ts；e2e/stories/page/pg5–pg10、pg14；pg
 
 **变更集**：`TouchChangeset :exec` 把会话的变更集的 `updated_at` 推到单元的时刻（活动的"最后写入"按它算）。
 
-**活动**（`activity.sql`）：一组笔记本里未删页面的 `byte_size` 之和；这些笔记本未删的变更集最晚的 `updated_at`。一条语句（最后写入是相关子查询）、按 `notebook_id` 分组，走 `changesets_notebook_id_idx` 与 `nodes` 的 `(notebook_id, parent_id)` 索引。最后写入要读完笔记本的全部变更集：只有工作区管理员的无主清单调用，数据量大时再加 `(notebook_id, updated_at) WHERE deleted_at IS NULL` 的部分索引（P4 审查 P4）。
+**活动**（`activity.sql`）：一组笔记本里未删页面的 `byte_size` 之和；这些笔记本未删的变更集最晚的 `updated_at`。一条语句：从变更集按 `notebook_id` 分组取最晚的 `updated_at`，字节数是相关子查询（没有变更集的笔记本不在答复里），走 `changesets_notebook_id_idx` 与 `nodes` 的 `(notebook_id, parent_id)` 索引。最后写入要读完笔记本的全部变更集：只有工作区管理员的无主清单调用，数据量大时再加 `(notebook_id, updated_at) WHERE deleted_at IS NULL` 的部分索引（P4 审查 P4）。
 
 ### 3.3 领域
 
@@ -187,8 +187,8 @@ e2e/fixtures/pages.ts、assert/page.ts；e2e/stories/page/pg5–pg10、pg14；pg
 - **`EditSessionVetoer.VetoEditSession(ctx, SessionOpening)`**：`SessionOpening` 是单元的 `Write` 加页面 id；错误是 `*shared.Error`，单元回滚并答出它（M5 的 `page.locked`、M11 的冻结）。
 - **`EditSessionSubscriber.EditSessionEnded(ctx, SessionEnded)`**：`SessionEnded{SessionID, WorkspaceID, NotebookID, PageID, UserID, Reason, By, At}`；在结束的事务里调用，错误整体回滚。三条路径：本人结束、删页与删子树（单元里）、笔记本删除（注册者里，`By` 与 `At` 是删除事件的）。
 - **`NotebookDeletion`**：`DeleteNotebooksPages` 之后按 `notebook_id` 删这些笔记本的会话，活着的以 `EndedWithPage` 告诉订阅者。`page.NewNotebookDeletion(pool, subscribers)`：组合根的 `notebookRegistrants(pool)` 从 `pageRegistrants()` 取订阅者（M4 为空）。
-- 组合根交空集合；模块根的 `extension_test.go` 用测试替身证明：否决者在正文行的锁下被调用、它的错误答出且没有会话；三条路径各调用一次订阅者、原因与执行者对；参与者追加的正文写经守卫、加版本、记进同一变更集、并进改动集；观察者收到正文写的解析结果。
-- 最后一跳的测试（编辑会话的否决者与订阅者，M5）写进 M4 收尾时给 M5 的移交（M4 总设计第 8 节）。
+- 组合根交空集合；模块根的 `extension_test.go` 用测试替身证明：否决者在正文行的锁下被调用、它的错误答出且没有会话；三条路径各调用一次订阅者、原因与执行者对；观察者收到正文写的解析结果。参与者追加的正文写经守卫、加版本、记进同一变更集、并进改动集，只在 `app/content_test.go` 以假端口证明（`TestAParticipantWritesAContent`）；模块根的参与者替身追加的是改名（`TestAParticipantAddsToTheUnit`）。
+- 最后一跳的测试（编辑会话的否决者与订阅者，M5）写进给 M5 的[编辑会话移交](../M5-collab-editing/handoffs/M4-P4-edit-sessions.md)第 8 项（M4 总设计第 8 节）。
 
 ### 3.8 请求体上限
 
@@ -227,7 +227,7 @@ e2e/fixtures/pages.ts、assert/page.ts；e2e/stories/page/pg5–pg10、pg14；pg
 | 43 | 过期会话的清理与带会话的保存 | 会话行，`FOR UPDATE`（如带会话的保存持有它） | 清理不等被持有的行、也不删它，持有期间完成两次运行；放开之后的运行删掉。之后心跳 404 `page.edit_session_not_found`、带它的保存 409 `page.edit_session_ended`：这两条是被删的会话的码，不是清理的性质 |
 | 44 | 本人结束会话与会话里的保存（P4 审查 T1） | 会话的变更集行（第二次保存在 `TouchChangeset` 上等，结束在会话行上等：`interleaveBehind`） | 结束等保存提交：保存 200、结束 204，会话没了，两次保存一个版本行 |
 
-每种先后一个用例，结束时 `checkPages`（加上会话的不变量）与 `checkNotebooks`。39–41 持笔记本行而不是工作区行：放开工作区行时，排队的两个 `FOR SHARE` 彼此兼容，一起往下走，到笔记本行才分先后，先后不定。43 用 serve 的定时任务（间隔 1 秒），会话由 SQL 推到过期。
+38–42 每种先后一个用例，43、44 各只有一种，结束时 `checkPages`（加上会话的不变量）与 `checkNotebooks`。39–41 持笔记本行而不是工作区行：放开工作区行时，排队的两个 `FOR SHARE` 彼此兼容，一起往下走，到笔记本行才分先后，先后不定。43 用 serve 的定时任务（间隔 1 秒），会话由 SQL 推到过期。
 
 ### 3.12 端到端（接口版本）
 
@@ -311,12 +311,12 @@ e2e/fixtures/pages.ts、assert/page.ts；e2e/stories/page/pg5–pg10、pg14；pg
 
 **留给后面的**：
 
-- **给 M5**（M4 收尾时写进移交，审查 Q1–Q4）：
+- **给 M5**（已写进[编辑会话移交](../M5-collab-editing/handoffs/M4-P4-edit-sessions.md)，审查 Q1–Q4）：
   - 结束的订阅者在删掉会话行之后、持着它的行锁时被调用，不得再去锁 `page_contents`、`nodes`：会话里的保存是 `page_contents → edit_sessions`，反过来会死锁。强制解锁要先取正文行，再删会话。
   - 与当前正文相同的保存不调用守卫（答 200、不写），锁守卫拒绝不了它。
   - 被移出工作区或降为阅读者的人，会话不结束、不告诉订阅者，一个租约之内过期；锁随之最多再留 60 秒。
   - 会话的时刻都取应用的时钟：多实例的时钟偏差超过一个租约时，心跳可能违反 `expires_at > created_at`。
-- **给 M6**：参与者追加的正文写由参与者给出解析结果，不经解析预算；观察者不得在调用结束之后留着 `Parsed`，否则那部分内存不在预算之内。
+- **给 M6**（已写进 [M6 的移交](../M6-links/handoffs/M4-P3-markdown-extensions.md)第 9 项）：参与者追加的正文写由参与者给出解析结果，不经解析预算；观察者不得在调用结束之后留着 `Parsed`，否则那部分内存不在预算之内。
 - **给 P5、P6**：
   - `getPageView`、`putPageContent`、`createPage` 可能答 503 `server_busy`（带 `Retry-After`）：阅读视图显示未加载与重试，编辑器保留文字、按 `Retry-After` 重试。
   - 带宽前提：5 MiB 在 `read_timeout` 的 30 秒内传完约需 1.4 Mbit/s 上行。请求体在 `read_timeout` 之后才到齐时答 400 `bad_request`，编辑器要说清是网络太慢。

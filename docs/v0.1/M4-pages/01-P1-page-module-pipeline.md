@@ -153,7 +153,7 @@ func NewNotebooks(pool *pgxpool.Pool) Notebooks
 
 - `Node`：id、笔记本、父页（`*uuid.UUID`）、种类、名称、名称键、次序、审计字段。`TreeState{ParentID *uuid.UUID, Name string, SortOrder float64}`（`change.go`）：节点在树里的位置。
 - **标题**：`CheckTitle(field, s)` 之后算 `TitleKey`，两者一起放进 `Title{Name, Key}`，建页与改名共用。
-- **次序**（`order.go`）：`Place(siblings []float64（已按次序）, after int) (value float64, renumber []float64)`：放在第 `after` 个之后（`-1` 为最前，`len` 为最后）；取前后两个的中间值，最前是第一个减 1，最后是最后一个加 1，空的父页是 0；间隔小于 `1e-9`（或中间值等于某一端）时给出整组的重新编号（步长 1，从 0 起）与新值。表格测试：连续在同一位置插入 200 次，次序始终严格递增。
+- **次序**（`order.go`）：`Place(siblings []float64（已按次序）, after int) (value float64, renumber []float64)`：放在第 `after` 个之后（`-1` 为最前，`len-1` 为最后）；取前后两个的中间值，最前是第一个减 1，最后是最后一个加 1，空的父页是 0；间隔小于 `1e-9`（或中间值等于某一端）时给出整组的重新编号（步长 1，从 0 起）与新值。表格测试：连续在同一位置插入 200 次，次序始终严格递增。
 - **树**（`tree.go`）：`PreOrder(nodes)`：父在子前、兄弟按（次序、id），给 `listNodes`；`Depth`（根为 1）。层级上限 `MaxDepth = 10` 在 `node.go`。`Ancestors` 由仓储的递归查询给出，链是否完整到根也由仓储核对（`Store.Ancestors`）。
 - **改动**（`change.go`）：`Change{NodeID, Before, After *TreeState, Revision int}`：前为空是新建，后为空是删除，`Revision` 为 0 是正文没动；前后位置不同（`Moves()`）的改动才记条目。操作的种类是 `Operation`（P1 有 `create`、`rename`，后面的 Phase 加移动、删除与正文写），放在守卫与参与者的值 `app.Step` 上，不在改动上。同一单元里同一节点的多次改动按"最早的前、最新的后"合并（与条目相同）。
 - **操作名**（`actions.go`，13.1 第 3 条的 `<资源>.<动词>`）：`node.list`、`page.read`、`page.create`、`node.rename`（P2 加 `node.move`、`node.delete`，P4 加 `page.write`、`page.edit`）。节点的操作用 `node`：M7 的附件也是节点。
@@ -224,7 +224,7 @@ func (w *Writer) Run(ctx context.Context, spec UnitSpec, do func(ctx context.Con
 
 ### 3.9 笔记本删除的注册者
 
-- `page.NewNotebookDeletion(pool)`：订阅 notebook 的笔记本删除事件，在同一事务里、以事件的时刻：软删除这些笔记本里未删的节点，以及这些节点未删的正文、版本、条目，再软删除这些笔记本未删的变更集。已经在回收站里的节点与它们跟随的行保留原来的时刻（按自己的保留期清理）。
+- `page.NewNotebookDeletion(pool)`（P4 起是 `NewNotebookDeletion(pool, subscribers)`：组合根从 `pageRegistrants().sessionSubscribers` 交来编辑会话的订阅者，M4/P4 3.7）：订阅 notebook 的笔记本删除事件，在同一事务里、以事件的时刻：软删除这些笔记本里未删的节点，以及这些节点未删的正文、版本、条目，再软删除这些笔记本未删的变更集。已经在回收站里的节点与它们跟随的行保留原来的时刻（按自己的保留期清理）。
 - 值逐字段与 `notebook.NotebookDeletion` 相同，组合根转换（`registrants.go` 的 `pageNotebookDeletion`）。
 - 组合根：`notebookRegistrants()` 改为 `notebookRegistrants(pool)`，`deletionSubscribers` 交出页面的注册者；两个调用处（`deps.go` 与 `workspaceRegistrantsWith` 的调用）同步。命令行的组合也会经 `workspaceRegistrants` 走到它，所以它只凭连接池构造，不叫 `New`（`archtest/composition_test.go`）。
 - 加锁：三条发布路径都已持笔记本行的独占锁（删除工作区时还有工作区行），注册者直接写节点（13.1 第 5 条）。
