@@ -36,6 +36,7 @@ const (
 	CodeForbidden        = "forbidden"
 	CodeRateLimited      = "rate_limited"
 	CodeServerBusy       = "server_busy"
+	CodeNotReady         = "not_ready"
 )
 
 // Field codes: the closed set of FieldError.Code values that clients
@@ -164,6 +165,13 @@ func RateLimited(retry time.Duration) *Error {
 // caller is: 503 server_busy with Retry-After.
 func ServerBusy(retry time.Duration) *Error {
 	return &Error{Kind: KindUnavailable, Code: CodeServerBusy, Detail: "The server is busy; retry shortly.", RetryDelay: retry}
+}
+
+// NotReady reports that the server cannot serve the request yet, starting
+// or reconnecting to a dependency: 503 not_ready with Retry-After, the
+// code the readiness probe answers too.
+func NotReady(retry time.Duration) *Error {
+	return &Error{Kind: KindUnavailable, Code: CodeNotReady, Detail: "The server is not ready; retry shortly.", RetryDelay: retry}
 }
 
 func (e *Error) Error() string { return e.Detail }
