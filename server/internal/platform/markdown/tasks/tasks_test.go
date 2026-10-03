@@ -222,7 +222,7 @@ func caseFile(t *testing.T, name string) []string {
 func TestRandomInputsParseAsGoldmarkParsesThem(t *testing.T) {
 	pieces := []string{
 		"- ", "* ", "1. ", "2) ", "> ", "  ", "    ", "\t", " ", "\n", "\n\n", "\r\n", "a", "中",
-		"[", "]", "[ ]", "[x]", "[X]", "[\t]", "[-]", "[]", "[xx]", "- [ ] ", "- [x] ", "- [X]",
+		"[", "]", "[ ]", "[x]", "[X]", "[\t]", "[-]", "[]", "[xx]", "[é]", "[  ]", "- [ ] ", "- [x] ", "- [X]",
 		"`", "*", "\\", "(u)", ": /u", "[x]: /u\n", "[^1]", "[^1]: ", "|", "|-|", "<b>", "```\n", "#",
 	}
 	r := rand.New(rand.NewPCG(20261004, 6))
