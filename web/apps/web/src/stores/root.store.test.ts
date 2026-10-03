@@ -1,8 +1,11 @@
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 
+import type { EventDeps } from "../events/deps";
+import { EventHub } from "../events/hub";
+import { SharedStorage } from "../session/testing/fake-browser";
 import { SessionChangedError } from "../session/token-manager";
 import { json, notebookJSON, storedSession, testApp, tokensJSON, workspaceJSON } from "../test/fakes";
-import { RootStore } from "./root.store";
+import { AppStores, RootStore } from "./root.store";
 
 const tokens = (n: number) => ({
   token_type: "Bearer",
@@ -141,4 +144,33 @@ test("a workspace's ownerless notebooks and audit events are the same for the ge
   const next = new RootStore(app, "login-0");
   expect(next.ownerlessOf(workspaceJSON)).not.toBe(ownerless);
   expect(next.auditOf(workspaceJSON)).not.toBe(audit);
+});
+
+// The event stream (M5/P3 design 3.7): one hub for the generation, which
+// the app starts; none signed out, nor where the page has no EventDeps.
+test("a signed-in generation has one event hub, not started, where the page has the event stream's deps", async () => {
+  const base = testApp(() => json(tokensJSON), storedSession("login-0"));
+  await base.session.start();
+  const storage = new SharedStorage().tab("tab-0");
+  const channel = vi.fn<EventDeps["channel"]>();
+  const deps: EventDeps = {
+    locks: undefined,
+    storage,
+    onStorage: storage.onStorage,
+    channel,
+    page: { visible: () => true, on: () => () => undefined },
+    now: () => Date.now(),
+    tabId: "tab-0",
+  };
+  const app = new AppStores(base.preferences, base.session, deps);
+  const store = new RootStore(app, "login-0");
+
+  const hub = store.events();
+
+  expect(hub).toBeInstanceOf(EventHub);
+  expect(store.events()).toBe(hub);
+  expect(channel).not.toHaveBeenCalled();
+  expect(new RootStore(app, "login-0").events()).not.toBe(hub);
+  expect(new RootStore(app, undefined).events()).toBeUndefined();
+  expect(new RootStore(base, "login-0").events()).toBeUndefined();
 });

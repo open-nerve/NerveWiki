@@ -5,7 +5,7 @@ import type { EventLock, EventPages } from "../services/event.service";
 // heartbeat, which the others need to tell a silent holder.
 
 /** An event of the stream, as each tab handles it. */
-type StreamEvent = { type: "pages"; data: EventPages } | { type: "lock"; data: EventLock };
+export type StreamEvent = { type: "pages"; data: EventPages } | { type: "lock"; data: EventLock };
 
 /**
  * What the holder tells: an event; that it connected (each tab refreshes
@@ -34,12 +34,18 @@ const kinds = new Set(["event", "connected", "beat", "reconnecting", "yield"]);
  * next login may still hear the last one's.
  */
 export class TabChannel {
+  #closed = false;
+
   constructor(
     private readonly port: Port,
     private readonly loginId: string
   ) {}
 
+  /** post sends message to the other tabs; once closed, nothing. */
   post(message: Message): void {
+    if (this.#closed) {
+      return;
+    }
     // oxlint-disable-next-line unicorn/require-post-message-target-origin -- a BroadcastChannel has no target origin
     this.port.postMessage({ ...message, loginId: this.loginId });
   }
@@ -57,6 +63,7 @@ export class TabChannel {
   }
 
   close(): void {
+    this.#closed = true;
     this.port.close();
   }
 }

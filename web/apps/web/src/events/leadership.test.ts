@@ -132,6 +132,28 @@ describe("the election with the lease", () => {
     expect([a.holding, a.leads]).toEqual([false, 0]);
   });
 
+  test.each(["yields", "stops"])("a holder that %s lets the lease go at once, before its lead returns", async (how) => {
+    const tab = browserOf("the lease");
+    const view = tab.storage.tab("a");
+    const a = leaseLeadership({ storage: view, onStorage: view.onStorage, now: () => Date.now(), tabId: "a" }, NAME);
+    const stopped = new AbortController();
+    // A page that goes away may not live to see its lead return.
+    void a.run(() => new Promise(() => undefined), stopped.signal);
+    await settle();
+    const b = tab("b");
+    await settle();
+    expect(b.holding).toBe(false);
+
+    if (how === "yields") {
+      a.yield();
+    } else {
+      stopped.abort();
+    }
+    await settle();
+
+    expect(b.holding).toBe(true);
+  });
+
   test("a holder that renews keeps the lease; a frozen one loses it once it runs out, and learns so at its next renewal", async () => {
     const tab = browserOf("the lease");
     const a = tab("a");

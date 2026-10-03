@@ -119,8 +119,9 @@ const FIRST_TTL_MS = 60_000;
  * holder renews it on every frame, which background timers do not delay; a
  * frozen holder stops renewing, its lease runs out and another tab takes
  * it, and once it thaws its next renewal finds the lease not its own and
- * its lead lost. The others look again when the lease changes and when it
- * should have run out.
+ * its lead lost. A holder that yields or stops removes the lease at once.
+ * The others look again when the lease changes and when it should have run
+ * out.
  */
 export function leaseLeadership(deps: LeaseDeps, key: string): Leadership {
   let ttl = FIRST_TTL_MS;
@@ -138,6 +139,19 @@ export function leaseLeadership(deps: LeaseDeps, key: string): Leadership {
   };
   const mine = () => read()?.tab === deps.tabId;
   const write = () => deps.storage.setItem(key, JSON.stringify({ tab: deps.tabId, until: deps.now() + ttl }));
+  const release = () => {
+    if (mine()) {
+      deps.storage.removeItem(key);
+    }
+  };
+  // letGo lets the lease go at once, before the lead returns: a page hidden for good may not live to see it return.
+  const letGo = () => {
+    if (holding) {
+      release();
+      holding.abort();
+    }
+    wake?.();
+  };
   const round = async (lead: (lost: AbortSignal) => Promise<void>, signal: AbortSignal) => {
     if (yielded) {
       await pause(Infinity, signal, (w) => (wake = w));
@@ -148,22 +162,20 @@ export function leaseLeadership(deps: LeaseDeps, key: string): Leadership {
       stealNext = false;
       write();
       await pause(SETTLE_MS, signal, () => undefined);
-      if (!signal.aborted && !yielded && mine()) {
+      if (signal.aborted || yielded) {
+        release();
+        return;
+      }
+      if (mine()) {
         holding = new AbortController();
         await lead(holding.signal);
         holding = undefined;
-        if (mine()) {
-          deps.storage.removeItem(key);
-        }
+        release();
         return;
       }
     }
     const until = read()?.until ?? deps.now();
     await pause(Math.max(until - deps.now(), 0) + 1, signal, (w) => (wake = w));
-  };
-  const stop = () => {
-    holding?.abort();
-    wake?.();
   };
   return {
     async run(lead, signal) {
@@ -176,12 +188,12 @@ export function leaseLeadership(deps: LeaseDeps, key: string): Leadership {
         }
         wake?.();
       });
-      signal.addEventListener("abort", stop, { once: true });
+      signal.addEventListener("abort", letGo, { once: true });
       while (!signal.aborted) {
         // oxlint-disable-next-line no-await-in-loop -- an election's rounds come one after another
         await round(lead, signal);
       }
-      signal.removeEventListener("abort", stop);
+      signal.removeEventListener("abort", letGo);
       unsubscribe();
     },
     steal() {
@@ -190,8 +202,7 @@ export function leaseLeadership(deps: LeaseDeps, key: string): Leadership {
     },
     yield() {
       yielded = true;
-      holding?.abort();
-      wake?.();
+      letGo();
     },
     rejoin() {
       yielded = false;
