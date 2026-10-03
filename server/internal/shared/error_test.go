@@ -53,6 +53,7 @@ func TestConstructors(t *testing.T) {
 		{"Forbidden", shared.Forbidden(), 403, "forbidden", 0},
 		{"RateLimited", shared.RateLimited(1500 * time.Millisecond), 429, "rate_limited", 1500 * time.Millisecond},
 		{"ServerBusy", shared.ServerBusy(time.Second), 503, "server_busy", time.Second},
+		{"NotReady", shared.NotReady(time.Second), 503, "not_ready", time.Second},
 		{"NewError", shared.NewError(shared.KindConflict, "page.locked", "taken"), 409, "page.locked", 0},
 	}
 	for _, tt := range tests {

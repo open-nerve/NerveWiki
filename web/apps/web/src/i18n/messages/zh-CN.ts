@@ -365,6 +365,7 @@ export const zhCN: Messages = {
   "problem.forbidden": "你没有权限执行这个操作。",
   "problem.validation_failed": "有些内容不符合要求。",
   "problem.server_busy": "服务器繁忙，请稍后再试。",
+  "problem.not_ready": "服务器还没准备好，请稍后再试。",
   "problem.identity.signup_disabled": "本服务器未开放注册。",
   "problem.identity.email_taken": "这个邮箱已经注册过了。",
   "problem.identity.invalid_credentials": "邮箱或密码不正确。",

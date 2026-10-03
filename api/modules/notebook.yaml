@@ -385,7 +385,7 @@ components:
         Retry-After:
           description: >-
             Whole seconds to wait before trying again, rounded up; sent with
-            rate_limited and server_busy.
+            rate_limited, server_busy and not_ready.
           schema:
             type: integer
             minimum: 1

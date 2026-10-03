@@ -8,15 +8,17 @@ import (
 	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/identity/app"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver"
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
 // AuthenticateUseCase is app.Authenticate.
 type AuthenticateUseCase interface {
-	Execute(ctx context.Context, token string) (shared.Actor, error)
+	Execute(ctx context.Context, token string) (app.Authenticated, error)
 }
 
-// Authenticator puts the request's actor in the context.
+// Authenticator puts the request's actor, and when its credential expires,
+// in the context.
 type Authenticator struct {
 	uc AuthenticateUseCase
 }
@@ -26,7 +28,8 @@ func New(uc AuthenticateUseCase) *Authenticator {
 	return &Authenticator{uc: uc}
 }
 
-// Authenticate returns a context carrying the actor of token and the
+// Authenticate returns a context carrying the actor of token, and when
+// token expires (httpserver.CredentialExpiry, M5 design 4.10), and the
 // caller's rate-limit key: session:<id>, or pat:<id> for a personal access
 // token (M1/P2 design 3.2). An invalid token is the use case's 401
 // *shared.Error; for an access token that is valid but for its expiry, that
@@ -35,18 +38,18 @@ func New(uc AuthenticateUseCase) *Authenticator {
 // cannot be refreshed (M1/P3 design 3.2). Any other error passes through as
 // an internal fault.
 func (a *Authenticator) Authenticate(ctx context.Context, token string) (context.Context, string, error) {
-	actor, err := a.uc.Execute(ctx, token)
+	auth, err := a.uc.Execute(ctx, token)
 	if errors.Is(err, app.ErrAccessTokenExpired) {
 		return nil, "", expired{err}
 	}
 	if err != nil {
 		return nil, "", err
 	}
-	key := "session:" + actor.SessionID.String()
-	if actor.APITokenID != uuid.Nil() {
-		key = "pat:" + actor.APITokenID.String()
+	key := "session:" + auth.Actor.SessionID.String()
+	if auth.Actor.APITokenID != uuid.Nil() {
+		key = "pat:" + auth.Actor.APITokenID.String()
 	}
-	return shared.WithActor(ctx, actor), key, nil
+	return httpserver.WithCredentialExpiry(shared.WithActor(ctx, auth.Actor), auth.ExpiresAt), key, nil
 }
 
 // expired is the 401 of an expired access token: the client's cue to

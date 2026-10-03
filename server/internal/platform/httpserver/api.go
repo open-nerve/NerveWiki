@@ -161,7 +161,8 @@ func NewAPI(cfg APIConfig) (*API, error) {
 //
 // The generated code wraps the last middleware of its list outermost, so
 // the list is in reverse. Only API operations get them: a long-lived route
-// is registered on the router directly, without a request deadline.
+// is registered on the router directly through LongLived, without a
+// request deadline.
 func (a *API) Middlewares(bodies *bodyshape.Table) []func(http.Handler) http.Handler {
 	inOrder := []func(http.Handler) http.Handler{
 		a.requestMeta,

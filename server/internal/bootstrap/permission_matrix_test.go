@@ -35,6 +35,10 @@ func matrixExempt() matrixExemptions {
 			"identity",
 			// Public: it describes this instance to anyone.
 			"instance",
+			// No resource is decided: the event stream needs a credential,
+			// and passes each account the events of what it sees (M5/P2
+			// design 3.12).
+			"events",
 		},
 		public: map[string]string{
 			"previewWorkspaceInvitation": "the link's token decides, for anyone holding it: no column's role does",

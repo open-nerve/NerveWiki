@@ -6,6 +6,7 @@ import { test as base, type BrowserContext, type Page } from "@playwright/test";
 import { signInContext } from "./auth";
 import { expectQuietPage, watchPage, type PageWatch } from "./browser";
 import { createDatabase, dropDatabase, openDatabase, templateDatabase, type Database } from "./db";
+import { connectEvents, type EventStream } from "./events";
 import { nervewikiFixtureTimeoutMs, startNervewiki, type Nervewiki, type StartOptions } from "./server";
 
 export { expect } from "@playwright/test";
@@ -42,6 +43,11 @@ interface TestFixtures {
    * fixture's own timeouts fire first.
    */
   nervewikiWith: (databaseUrl: string, options?: StartOptions) => Promise<Nervewiki>;
+  /**
+   * Opens credential's event stream, past its hello, at the worker's nervewiki or at baseURL; it closes as the
+   * test ends.
+   */
+  openEvents: (credential: string, baseURL?: string) => Promise<EventStream>;
   /**
    * Signs the test's browser context in with tokens, at the worker's nervewiki or at baseURL (see
    * signInContext), and returns the test's page, which has loaded nothing yet: its first page refreshes
@@ -152,6 +158,17 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
       return nervewiki;
     });
     await Promise.all(started.map((nervewiki) => nervewiki.stop()));
+  },
+  openEvents: async ({ nervewiki }, use) => {
+    const opened: EventStream[] = [];
+    await use(async (credential, baseURL = nervewiki.baseURL) => {
+      const stream = await connectEvents(baseURL, credential);
+      opened.push(stream);
+      return stream;
+    });
+    for (const stream of opened) {
+      stream.close();
+    }
   },
   signedInPage: async ({ page, nervewiki }, use) => {
     await use(async (tokens, baseURL = nervewiki.baseURL) => {

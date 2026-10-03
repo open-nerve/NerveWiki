@@ -26,6 +26,8 @@ tags:
     description: Notebooks and their members.
   - name: page
     description: The pages of a notebook's tree.
+  - name: events
+    description: The stream of the events of what the caller sees.
 paths:
   /api/v0/auth/register:
     $ref: "modules/identity.yaml#/paths/~1api~1v0~1auth~1register"
@@ -109,6 +111,8 @@ paths:
     $ref: "modules/page.yaml#/paths/~1api~1v0~1nodes~1{node_id}"
   /api/v0/nodes/{node_id}/move:
     $ref: "modules/page.yaml#/paths/~1api~1v0~1nodes~1{node_id}~1move"
+  /api/v0/events:
+    $ref: "modules/events.yaml#/paths/~1api~1v0~1events"
 components:
   # 模块文件的 securitySchemes 在打包时被丢掉，操作引用的 scheme 写在这里
   securitySchemes:

@@ -88,9 +88,14 @@ page:
   parse_budget_bytes: 8388608
   parse_max_wait: 2s
 
+events:
+  # 事件流的心跳与重新认证凭证的间隔，5 到 50 秒。要短于反向代理的读超时（nginx 的 proxy_read_timeout 默认
+  # 60 秒）；流的第一帧把它告诉客户端
+  heartbeat_interval: 20s
+
 jobs:
   # 停机时给正在执行的后台任务留的时间，到期后取消它们。停机的宽限期要长于
-  # server.shutdown_timeout 加上它再加 6 秒（默认 36 秒）：docker stop -t 40
+  # server.shutdown_timeout 加上它再加 8 秒（默认 38 秒）：docker stop -t 40
   shutdown_timeout: 10s
   # 物理删除软删除的行（工作区、成员、邀请等）的间隔，至少 1 秒
   purge_interval: 1h

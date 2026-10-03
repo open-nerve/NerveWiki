@@ -17,6 +17,7 @@ export const problemMessages = {
   forbidden: "problem.forbidden",
   validation_failed: "problem.validation_failed",
   server_busy: "problem.server_busy",
+  not_ready: "problem.not_ready",
   "identity.signup_disabled": "problem.identity.signup_disabled",
   "identity.email_taken": "problem.identity.email_taken",
   "identity.invalid_credentials": "problem.identity.invalid_credentials",

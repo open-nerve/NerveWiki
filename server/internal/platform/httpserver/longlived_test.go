@@ -188,3 +188,157 @@ func TestLongLivedRejectsAWriterWithoutDeadlines(t *testing.T) {
 		t.Errorf("log = %v, want an error naming the path", entry)
 	}
 }
+
+// API.LongLived runs a long-lived route behind the request meta, the
+// failure gate and authentication, and the rate limit, but no request
+// deadline (M5 design 4.10): a missing or failing token is 401 and a
+// failing one keeps its unit of the gate, an empty bucket is 429, and a
+// valid token reaches the handler with its caller and client.
+func TestTheAPIsLongLivedRoutesAuthenticate(t *testing.T) {
+	for _, tt := range []struct {
+		name, token string
+		empty       bool
+		status      int
+		gateLeft    int
+	}{
+		{"no token", "", false, http.StatusUnauthorized, 3},
+		{"a failing token", "bad", false, http.StatusUnauthorized, 2},
+		{"rate limited", "tok", true, http.StatusTooManyRequests, 3},
+		{"a valid token", "tok", false, http.StatusOK, 3},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := testAPIConfig(&fakeAuth{}, slog.New(slog.DiscardHandler))
+			gate := newFakeLimiter(3)
+			cfg.AuthFailure = gate
+			if tt.empty {
+				cfg.Authenticated = newFakeLimiter(0)
+			}
+			api := buildAPI(t, cfg)
+			var got *http.Request
+			router := NewRouter(slog.New(slog.DiscardHandler))
+			router.Handle(eventsRoute, api.LongLived(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) { got = r })))
+			srv := httptest.NewServer(middleware(router, slog.New(slog.DiscardHandler)))
+			t.Cleanup(srv.Close)
+			req, _ := http.NewRequest(http.MethodGet, srv.URL+"/api/v0/events", nil)
+			if tt.token != "" {
+				req.Header.Set("Authorization", "Bearer "+tt.token)
+			}
+
+			resp, err := client().Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_ = resp.Body.Close()
+
+			if resp.StatusCode != tt.status || gate.left("127.0.0.1") != tt.gateLeft || (got != nil) != (tt.status == http.StatusOK) {
+				t.Fatalf("GET = %d, gate left %d, handler reached %v; want %d, %d", resp.StatusCode, gate.left("127.0.0.1"), got != nil,
+					tt.status, tt.gateLeft)
+			}
+			if got == nil {
+				return
+			}
+			if _, ok := got.Context().Deadline(); ok || got.Context().Value(callerKey{}) != "caller-tok" ||
+				!RequestMetaFrom(got.Context()).ClientIP.IsValid() {
+				t.Errorf("the handler's context: deadline %v, caller %v, meta %+v; want no deadline, the caller, the client", ok,
+					got.Context().Value(callerKey{}), RequestMetaFrom(got.Context()))
+			}
+		})
+	}
+}
+
+// A long-lived route's opening is bounded as any request's: an
+// authentication that does not answer ends at RequestTimeout, a 500, and
+// the handler is not reached. One that answers is given a context with that
+// deadline, and the handler one without.
+func TestALongLivedRoutesOpeningIsBounded(t *testing.T) {
+	auth := &fakeAuth{}
+	cfg := testAPIConfig(auth, slog.New(slog.DiscardHandler))
+	cfg.RequestTimeout = 200 * time.Millisecond
+	api := buildAPI(t, cfg)
+	var got *http.Request
+	router := NewRouter(slog.New(slog.DiscardHandler))
+	router.Handle(eventsRoute, api.LongLived(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) { got = r })))
+	srv := httptest.NewServer(middleware(router, slog.New(slog.DiscardHandler)))
+	t.Cleanup(srv.Close)
+	get := func(token string) int {
+		req, _ := http.NewRequest(http.MethodGet, srv.URL+"/api/v0/events", nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		resp, err := client().Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = resp.Body.Close()
+		return resp.StatusCode
+	}
+
+	start := time.Now()
+	if status := get("slow"); status != http.StatusInternalServerError || got != nil || time.Since(start) > 2*time.Second {
+		t.Errorf("GET with an authentication that does not answer = %d after %v, handler reached %v; want 500 at the request timeout",
+			status, time.Since(start), got != nil)
+	}
+	if status := get("tok"); status != http.StatusOK || got == nil {
+		t.Fatalf("GET = %d, handler reached %v; want 200", status, got != nil)
+	}
+	if deadline, ok := auth.ctx.Deadline(); !ok || time.Until(deadline) > cfg.RequestTimeout {
+		t.Errorf("the authentication's deadline: %v, %v; want within the request timeout", deadline, ok)
+	}
+	if _, ok := got.Context().Deadline(); ok || got.Context().Value(callerKey{}) != "caller-tok" {
+		t.Errorf("the handler's context: deadline %v, caller %v; want none, the caller", ok, got.Context().Value(callerKey{}))
+	}
+}
+
+// Reauthenticate authenticates the request's token again, as long as it is
+// valid, without the failure gate or the rate limit: once the credential is
+// revoked it answers the authenticator's 401. Outside API.LongLived it is
+// an error.
+func TestReauthenticateAuthenticatesTheTokenAgain(t *testing.T) {
+	auth := &fakeAuth{}
+	cfg := testAPIConfig(auth, slog.New(slog.DiscardHandler))
+	gate, bucket := newFakeLimiter(3), newFakeLimiter(3)
+	cfg.AuthFailure, cfg.Authenticated = gate, bucket
+	api := buildAPI(t, cfg)
+	var valid, revoked error
+	var calls int
+	h := api.LongLived(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		valid = Reauthenticate(r.Context())
+		auth.revoked = true
+		revoked = Reauthenticate(r.Context())
+		calls = auth.calls
+	}))
+	router := NewRouter(slog.New(slog.DiscardHandler))
+	router.Handle(eventsRoute, h)
+	srv := httptest.NewServer(middleware(router, slog.New(slog.DiscardHandler)))
+	t.Cleanup(srv.Close)
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/api/v0/events", nil)
+	req.Header.Set("Authorization", "Bearer tok")
+
+	resp, err := client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+
+	var pe ProblemError
+	if valid != nil || !errors.As(revoked, &pe) || pe.ProblemStatus() != http.StatusUnauthorized || calls != 3 {
+		t.Errorf("Reauthenticate() = %v, then %v, %d authentications; want nil, then 401, three in all", valid, revoked, calls)
+	}
+	if len(gate.taken) != 1 || len(bucket.taken) != 1 {
+		t.Errorf("the gate took %v, the bucket %v; want the request's one unit each", gate.taken, bucket.taken)
+	}
+	if err := Reauthenticate(context.Background()); err == nil {
+		t.Error("Reauthenticate() outside API.LongLived = nil, want an error")
+	}
+}
+
+// The credential's expiry rides in the context; none is never.
+func TestTheCredentialsExpiryRidesInTheContext(t *testing.T) {
+	at := time.Date(2026, 10, 3, 12, 0, 0, 0, time.UTC)
+	if got, ok := CredentialExpiry(WithCredentialExpiry(context.Background(), at)); !ok || !got.Equal(at) {
+		t.Errorf("CredentialExpiry() = %v, %v; want %v", got, ok, at)
+	}
+	for _, ctx := range []context.Context{context.Background(), WithCredentialExpiry(context.Background(), time.Time{})} {
+		if got, ok := CredentialExpiry(ctx); ok {
+			t.Errorf("CredentialExpiry() of none = %v, want never", got)
+		}
+	}
+}

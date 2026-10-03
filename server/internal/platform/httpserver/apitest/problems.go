@@ -44,6 +44,16 @@ func problemCodes(ext map[string]any) (codes []string, present bool, err error) 
 	return codes, true, nil
 }
 
+// longLivedKey marks an operation that holds its response open, such as
+// the event stream (M5 design 4.10).
+const longLivedKey = "x-long-lived"
+
+// longLived reports whether op is marked x-long-lived: true.
+func longLived(op *openapi3.Operation) bool {
+	v, _ := op.Extensions[longLivedKey].(bool)
+	return v
+}
+
 // needsToken reports whether op declares a bearer requirement; such an
 // operation can also answer unauthorized.
 func needsToken(op *openapi3.Operation) bool {

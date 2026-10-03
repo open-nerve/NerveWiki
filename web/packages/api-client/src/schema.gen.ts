@@ -970,6 +970,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v0/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stream the events of what the caller sees
+         * @description A server-sent event stream of the writes in the notebooks the caller may read, for a client to refresh what it shows. Any account can open one; it gets the events of what it sees. Each frame has an event field and one line of JSON data:
+         *
+         *     - hello: the first frame; heartbeat_seconds is how often a heartbeat comes, a comment line. The server authenticates the credential again at each.
+         *     - pages: a write of a notebook's pages; tree tells whether the tree changed (a page created, renamed, moved or deleted), pages lists the pages whose content was written with their new revisions, empty for none, null for more than 20, when the client takes every page as written.
+         *     - lock: an edit session of a page opened or ended; the client reads the page's lock again.
+         *     - reset: the last frame; the client reconnects at once and refreshes all it shows. reason is access (the caller may see other notebooks now), notebooks_deleted, expired (the credential, at its expiry), unauthenticated (it failed at a heartbeat: revoked, signed out, the account deactivated), reconnected (the server missed events), or overflow (the client fell behind). A reset for access, notebooks_deleted, reconnected or overflow comes after the events the stream held.
+         *
+         *     The stream may also end without a reset: when the server stops, when the credential cannot be checked at a heartbeat, or when the client does not take a frame within a heartbeat. The client reconnects then too, and refreshes.
+         *
+         *     Other event types may come; a client ignores those it does not know. While the server cannot listen for events yet, starting or reconnecting, it answers not_ready with Retry-After.
+         */
+        get: operations["streamEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1551,12 +1580,50 @@ export interface components {
              */
             after_id?: string | null;
         };
+        /** @description The data of hello, the first frame. */
+        EventHello: {
+            /** @description Seconds between two heartbeats. */
+            heartbeat_seconds: number;
+        };
+        /** @description A page whose content was written, and its new revision. */
+        EventPageRevision: {
+            /** Format: uuid */
+            id: string;
+            revision: number;
+        };
+        /** @description The data of pages, one write of a notebook's pages. */
+        EventPages: {
+            /** Format: uuid */
+            workspace_id: string;
+            /** Format: uuid */
+            notebook_id: string;
+            /** @description Whether the notebook's tree changed. */
+            tree: boolean;
+            /** @description The pages whose content was written, with their new revisions: empty for none, null for more than 20. */
+            pages: components["schemas"]["EventPageRevision"][] | null;
+        };
+        /** @description The data of lock, an edit session of a page opened or ended. */
+        EventLock: {
+            /** Format: uuid */
+            workspace_id: string;
+            /** Format: uuid */
+            notebook_id: string;
+            /** Format: uuid */
+            page_id: string;
+            /** Format: uuid */
+            session_id: string;
+        };
+        /** @description The data of reset, the last frame. */
+        EventReset: {
+            /** @enum {string} */
+            reason: "access" | "notebooks_deleted" | "expired" | "unauthenticated" | "reconnected" | "overflow";
+        };
     };
     responses: {
         /** @description Error (RFC 9457 problem details). */
         Problem: {
             headers: {
-                /** @description Whole seconds to wait before trying again, rounded up; sent with rate_limited and server_busy. */
+                /** @description Whole seconds to wait before trying again, rounded up; sent with rate_limited, server_busy and not_ready. */
                 "Retry-After"?: number;
                 /** @description Sent with every 401 (RFC 9110 15.5.2): Bearer error="invalid_token" (RFC 6750 3) when the bearer token sent is refused before the operation runs, being invalid or expired; plain Bearer for every other 401, including a credential that the operation finds revoked while it runs. */
                 "WWW-Authenticate"?: string;
@@ -1660,6 +1727,11 @@ export type EditLock = components['schemas']['EditLock'];
 export type PageView = components['schemas']['PageView'];
 export type NodeRename = components['schemas']['NodeRename'];
 export type NodeMove = components['schemas']['NodeMove'];
+export type EventHello = components['schemas']['EventHello'];
+export type EventPageRevision = components['schemas']['EventPageRevision'];
+export type EventPages = components['schemas']['EventPages'];
+export type EventLock = components['schemas']['EventLock'];
+export type EventReset = components['schemas']['EventReset'];
 export type ResponseProblem = components['responses']['Problem'];
 export type ParameterSlug = components['parameters']['Slug'];
 export type ParameterWorkspaceMemberId = components['parameters']['WorkspaceMemberID'];
@@ -3036,6 +3108,27 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TreeNode"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    streamEvents: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The stream; it stays open until it ends as above or the client goes. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": components["schemas"]["EventHello"] | components["schemas"]["EventPages"] | components["schemas"]["EventLock"] | components["schemas"]["EventReset"];
                 };
             };
             default: components["responses"]["Problem"];

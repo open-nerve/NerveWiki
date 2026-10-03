@@ -27,10 +27,11 @@ func TestAuthenticateAValidToken(t *testing.T) {
 	uc, tokens, store := newAuthenticate(validCredential(), nil)
 	token, _ := tokens.Issue(app.AccessClaims{UserID: testUserID(), SessionID: testSessionID(), ExpiresAt: testNow().Add(time.Minute)})
 
-	actor, err := uc.Execute(context.Background(), token)
+	auth, err := uc.Execute(context.Background(), token)
 
-	if err != nil || actor != (shared.Actor{UserID: testUserID(), SessionID: testSessionID()}) {
-		t.Errorf("Execute() = %+v, %v", actor, err)
+	if err != nil || auth.Actor != (shared.Actor{UserID: testUserID(), SessionID: testSessionID()}) ||
+		!auth.ExpiresAt.Equal(testNow().Add(time.Minute)) {
+		t.Errorf("Execute() = %+v, %v; want the session's actor, expiring with the token", auth, err)
 	}
 	if len(store.credentials) != 1 || store.credentials[0] != testSessionID() {
 		t.Errorf("sessions looked up = %v, want one lookup of %v", store.credentials, testSessionID())

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/identity/adapter/authn"
@@ -17,21 +18,29 @@ import (
 var _ httpserver.Authenticator = (*authn.Authenticator)(nil)
 
 type fakeUseCase struct {
-	actor shared.Actor
-	err   error
+	actor   shared.Actor
+	expires time.Time
+	err     error
 }
 
-func (f fakeUseCase) Execute(context.Context, string) (shared.Actor, error) { return f.actor, f.err }
+func (f fakeUseCase) Execute(context.Context, string) (app.Authenticated, error) {
+	return app.Authenticated{Actor: f.actor, ExpiresAt: f.expires}, f.err
+}
 
-// The actor goes into the context; the session is the rate-limit key.
+// The actor and the credential's expiry go into the context; the session
+// is the rate-limit key.
 func TestAuthenticatePutsTheActorInTheContext(t *testing.T) {
 	actor := shared.Actor{UserID: uuid.NewV7(), SessionID: uuid.NewV7()}
+	expires := time.Date(2026, 10, 3, 12, 0, 0, 0, time.UTC)
 
-	ctx, key, err := authn.New(fakeUseCase{actor: actor}).Authenticate(context.Background(), "token")
+	ctx, key, err := authn.New(fakeUseCase{actor: actor, expires: expires}).Authenticate(context.Background(), "token")
 
 	got, gotErr := shared.RequireActor(ctx)
 	if err != nil || gotErr != nil || got != actor || key != "session:"+actor.SessionID.String() {
 		t.Errorf("Authenticate() = key %q, %v; actor %+v, %v; want session:%s and %+v", key, err, got, gotErr, actor.SessionID, actor)
+	}
+	if at, ok := httpserver.CredentialExpiry(ctx); !ok || !at.Equal(expires) {
+		t.Errorf("CredentialExpiry() = %v, %v; want %v", at, ok, expires)
 	}
 }
 
@@ -44,6 +53,9 @@ func TestAPersonalAccessTokenIsItsOwnKey(t *testing.T) {
 	got, _ := shared.RequireActor(ctx)
 	if err != nil || got != actor || key != "pat:"+actor.APITokenID.String() {
 		t.Errorf("Authenticate() = key %q, %v; actor %+v; want pat:%s and %+v", key, err, got, actor.APITokenID, actor)
+	}
+	if at, ok := httpserver.CredentialExpiry(ctx); ok {
+		t.Errorf("CredentialExpiry() of a token that never expires = %v", at)
 	}
 }
 

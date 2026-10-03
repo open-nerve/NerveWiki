@@ -1,0 +1,168 @@
+# events 模块的接口：事件流（M5 总设计 4.10）。它唯一的操作一直开着答复，不经代码生成
+# （x-long-lived；Makefile 的 API_MODULES 去掉了 events），处理器在
+# server/internal/modules/events/adapter/http。
+openapi: 3.1.0
+info:
+  title: Nerve Wiki events API
+  version: v0
+paths:
+  /api/v0/events:
+    get:
+      operationId: streamEvents
+      tags: [events]
+      summary: Stream the events of what the caller sees
+      description: >-
+        A server-sent event stream of the writes in the notebooks the caller
+        may read, for a client to refresh what it shows. Any account can
+        open one; it gets the events of what it sees. Each frame has an
+        event field and one line of JSON data:
+
+
+        - hello: the first frame; heartbeat_seconds is how often a
+        heartbeat comes, a comment line. The server authenticates the
+        credential again at each.
+
+        - pages: a write of a notebook's pages; tree tells whether the tree
+        changed (a page created, renamed, moved or deleted), pages lists the
+        pages whose content was written with their new revisions, empty for
+        none, null for more than 20, when the client takes every page as
+        written.
+
+        - lock: an edit session of a page opened or ended; the client reads
+        the page's lock again.
+
+        - reset: the last frame; the client reconnects at once and refreshes
+        all it shows. reason is access (the caller may see other notebooks
+        now), notebooks_deleted, expired (the credential, at its expiry),
+        unauthenticated (it failed at a heartbeat: revoked, signed out, the
+        account deactivated), reconnected (the server missed events), or
+        overflow (the client fell behind). A reset for access,
+        notebooks_deleted, reconnected or overflow comes after the events
+        the stream held.
+
+
+        The stream may also end without a reset: when the server stops,
+        when the credential cannot be checked at a heartbeat, or when the
+        client does not take a frame within a heartbeat. The client
+        reconnects then too, and refreshes.
+
+
+        Other event types may come; a client ignores those it does not know.
+        While the server cannot listen for events yet, starting or
+        reconnecting, it answers not_ready with Retry-After.
+      security: [{ bearer: [] }]
+      x-long-lived: true
+      x-problem-codes: [not_ready]
+      responses:
+        "200":
+          description: The stream; it stays open until it ends as above or the client goes.
+          content:
+            text/event-stream:
+              schema:
+                description: The data of a frame, by its event field.
+                oneOf:
+                  - $ref: "#/components/schemas/EventHello"
+                  - $ref: "#/components/schemas/EventPages"
+                  - $ref: "#/components/schemas/EventLock"
+                  - $ref: "#/components/schemas/EventReset"
+        default:
+          $ref: "#/components/responses/Problem"
+components:
+  responses:
+    Problem:
+      description: Error (RFC 9457 problem details).
+      headers:
+        Retry-After:
+          description: >-
+            Whole seconds to wait before trying again, rounded up; sent with
+            rate_limited, server_busy and not_ready.
+          schema:
+            type: integer
+            minimum: 1
+        WWW-Authenticate:
+          description: >-
+            Sent with every 401 (RFC 9110 15.5.2): Bearer error="invalid_token"
+            (RFC 6750 3) when the bearer token sent is refused before the
+            operation runs, being invalid or expired; plain Bearer for every
+            other 401, including a credential that the operation finds revoked
+            while it runs.
+          schema:
+            type: string
+      content:
+        application/problem+json:
+          schema:
+            $ref: "../common.yaml#/components/schemas/Problem"
+  schemas:
+    EventHello:
+      description: The data of hello, the first frame.
+      type: object
+      additionalProperties: false
+      required: [heartbeat_seconds]
+      properties:
+        heartbeat_seconds:
+          description: Seconds between two heartbeats.
+          type: integer
+          minimum: 5
+          maximum: 50
+    EventPages:
+      description: The data of pages, one write of a notebook's pages.
+      type: object
+      additionalProperties: false
+      required: [workspace_id, notebook_id, tree, pages]
+      properties:
+        workspace_id:
+          type: string
+          format: uuid
+        notebook_id:
+          type: string
+          format: uuid
+        tree:
+          description: Whether the notebook's tree changed.
+          type: boolean
+        pages:
+          description: >-
+            The pages whose content was written, with their new revisions:
+            empty for none, null for more than 20.
+          type: [array, "null"]
+          maxItems: 20
+          items:
+            $ref: "#/components/schemas/EventPageRevision"
+    EventPageRevision:
+      description: A page whose content was written, and its new revision.
+      type: object
+      additionalProperties: false
+      required: [id, revision]
+      properties:
+        id:
+          type: string
+          format: uuid
+        revision:
+          type: integer
+          minimum: 1
+    EventLock:
+      description: The data of lock, an edit session of a page opened or ended.
+      type: object
+      additionalProperties: false
+      required: [workspace_id, notebook_id, page_id, session_id]
+      properties:
+        workspace_id:
+          type: string
+          format: uuid
+        notebook_id:
+          type: string
+          format: uuid
+        page_id:
+          type: string
+          format: uuid
+        session_id:
+          type: string
+          format: uuid
+    EventReset:
+      description: The data of reset, the last frame.
+      type: object
+      additionalProperties: false
+      required: [reason]
+      properties:
+        reason:
+          type: string
+          enum: [access, notebooks_deleted, expired, unauthenticated, reconnected, overflow]

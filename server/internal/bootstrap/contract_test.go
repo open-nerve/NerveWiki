@@ -366,12 +366,20 @@ func newRequest(t *testing.T, method, url, token string, body []byte) *http.Requ
 }
 
 // sendRequest sends req and returns the response with its body read, which
-// also stays readable in res.Body.
+// also stays readable in res.Body; the body of an event stream is not
+// read, and is empty.
 func sendRequest(t *testing.T, req *http.Request) (*http.Response, []byte) {
 	t.Helper()
 	res, err := client().Do(req)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if res.StatusCode == http.StatusOK && strings.HasPrefix(res.Header.Get("Content-Type"), "text/event-stream") {
+		// A long-lived operation's stream never ends: its head is the
+		// answer (M5/P2 design 3.9).
+		_ = res.Body.Close()
+		res.Body = http.NoBody
+		return res, nil
 	}
 	body, err := io.ReadAll(res.Body)
 	_ = res.Body.Close()
