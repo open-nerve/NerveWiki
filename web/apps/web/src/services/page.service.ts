@@ -1,5 +1,6 @@
 import type {
   ApiClient,
+  EditLock,
   EditSession,
   NodeMove,
   Page,
@@ -11,7 +12,7 @@ import type {
 
 import { unwrap } from "./api";
 
-export type { NodeMove, PageContent, PageView, TreeNode };
+export type { EditLock, NodeMove, PageContent, PageView, TreeNode };
 
 /**
  * PageService reads a notebook's page tree and a page's reading view, and
@@ -73,6 +74,16 @@ export class PageService {
     return unwrap(
       await this.api.PUT("/api/v0/pages/{page_id}/content", { params: { path: { page_id: id } }, body: write })
     );
+  }
+
+  /** lock answers who holds the page's edit lock and for how many more seconds; both null when nobody does (M5 design 4.2). */
+  async lock(id: string): Promise<EditLock> {
+    return unwrap(await this.api.GET("/api/v0/pages/{page_id}/edit-lock", { params: { path: { page_id: id } } }));
+  }
+
+  /** releaseLock ends the session that holds the page's edit lock, if any: the notebook's admins may (M5 design 4.2). */
+  async releaseLock(id: string): Promise<void> {
+    await unwrap(await this.api.DELETE("/api/v0/pages/{page_id}/edit-lock", { params: { path: { page_id: id } } }));
   }
 
   async openEditSession(id: string): Promise<EditSession> {
