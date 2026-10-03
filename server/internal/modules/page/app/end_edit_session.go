@@ -31,8 +31,10 @@ func NewEndEditSession(tx Tx, sessions Sessions, notebooks Notebooks, clock Cloc
 // Execute ends the caller's session id: its row goes, and the subscribers
 // follow, in one transaction that holds no workspace's or notebook's row:
 // its notebook's workspace is read unlocked. It asks only that the session
-// is the caller's, alive: a session that is missing, expired, or someone
-// else's is page.edit_session_not_found, which the editor takes for ended.
+// is the caller's, alive or a tombstone (M5 design 4.3); a tombstone's row
+// goes too, and tells no one, its end told already. A session that is
+// missing, expired, or someone else's is page.edit_session_not_found,
+// which the editor takes for ended.
 func (e *EndEditSession) Execute(ctx context.Context, id uuid.UUID) error {
 	actor, err := shared.RequireActor(ctx)
 	if err != nil {

@@ -29,9 +29,12 @@ type WriterDeps struct {
 	NodeWriter    NodeWriter
 	Changesets    ChangesetWriter
 	SessionWriter SessionWriter
-	Guards        []WriteGuard
-	Participants  []Participant
-	Observers     []PageObserver
+	// Names gives the name of who released a session's lock (M5 design
+	// 4.3).
+	Names        Names
+	Guards       []WriteGuard
+	Participants []Participant
+	Observers    []PageObserver
 	// The edit sessions' vetoers of an opening, and subscribers of an end.
 	SessionVetoers     []EditSessionVetoer
 	SessionSubscribers []EditSessionSubscriber

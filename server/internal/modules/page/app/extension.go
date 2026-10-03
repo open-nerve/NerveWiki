@@ -9,9 +9,10 @@ import (
 )
 
 // The module's extension points (M4 design 8; M4/P1 design 3.6; M4/P4
-// design 3.7), and its registrant of the notebook module's deletion. M4 has
-// no registrant of its own points: bootstrap hands empty sets, and the
-// module root's test proves they reach every write.
+// design 3.7), and its registrant of the notebook module's deletion. M5's
+// edit lock is the first registrant: a vetoer of the openings and a guard
+// of the writes (M5 design 4.4); the module root's test proves each point
+// reaches its path.
 
 // Options are a write's options. UpdateLinks has M6 rewrite the links to a
 // renamed or moved page; every write of M4 sets it.
@@ -87,14 +88,17 @@ type PageObserver interface {
 }
 
 // SessionOpening is an edit session about to open, as its vetoers see it:
-// the unit's write and the page.
+// the unit's write and the page, and whether the opener takes their own
+// session of the page over (M5 design 4.2), which the unit has ended
+// before the vetoers run.
 type SessionOpening struct {
 	Write
-	PageID uuid.UUID
+	PageID   uuid.UUID
+	TakeOver bool
 }
 
-// EditSessionVetoer may refuse an edit session's opening (M5: someone
-// else's alive session of the page, page.locked; M11: a freeze). It runs in
+// EditSessionVetoer may refuse an edit session's opening (M5: an alive
+// session of the page, page.locked; M11: a freeze). It runs in
 // the opening's unit after the decision, under the page's gate, the content
 // row's lock, so that two openings of a page decide one after the other;
 // its error, a *shared.Error the opening declares, rolls the unit back and
@@ -103,10 +107,21 @@ type EditSessionVetoer interface {
 	VetoEditSession(ctx context.Context, o SessionOpening) error
 }
 
+// SessionOpened is an edit session's opening: the session, where its page
+// is, its page and owner, and when.
+type SessionOpened struct {
+	SessionID   uuid.UUID
+	WorkspaceID uuid.UUID
+	NotebookID  uuid.UUID
+	PageID      uuid.UUID
+	UserID      uuid.UUID
+	At          time.Time
+}
+
 // SessionEnded is an edit session's end: the session, where its page is,
-// its page and owner, why, by whom and when. Its owner ends it, or whoever
-// deletes its page, alone, with a subtree or with its notebook; M5 adds
-// the forced unlock.
+// its page and owner, why, by whom and when. Its owner ends it, takes it
+// over or deletes its page, alone, with a subtree or with its notebook,
+// or an admin of its notebook releases its lock (M5 design 4.2).
 type SessionEnded struct {
 	SessionID   uuid.UUID
 	WorkspaceID uuid.UUID
@@ -118,11 +133,13 @@ type SessionEnded struct {
 	At          time.Time
 }
 
-// EditSessionSubscriber follows the ends of the edit sessions alive when
-// they end (M5: the lock's change pushed), in the end's transaction; an
-// error rolls it back. A session that expired ended with its lease: no end
-// tells it, and the cleanup of the expired ones tells no one.
+// EditSessionSubscriber follows the openings of the edit sessions, and the
+// ends of those alive when they end (M5: the lock's changes pushed), in
+// the opening's or the end's transaction; an error rolls it back. A
+// session that expired ended with its lease: no end tells it, and the
+// cleanup of the expired ones tells no one.
 type EditSessionSubscriber interface {
+	EditSessionOpened(ctx context.Context, o SessionOpened) error
 	EditSessionEnded(ctx context.Context, e SessionEnded) error
 }
 

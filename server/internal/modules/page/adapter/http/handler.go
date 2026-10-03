@@ -65,7 +65,7 @@ type DeleteNodeUseCase interface {
 
 // OpenEditSessionUseCase is app.OpenEditSession.
 type OpenEditSessionUseCase interface {
-	Execute(ctx context.Context, id uuid.UUID, client domain.Client) (app.EditSession, error)
+	Execute(ctx context.Context, id uuid.UUID, client domain.Client, takeOver bool) (app.EditSession, error)
 }
 
 // HeartbeatEditSessionUseCase is app.HeartbeatEditSession.
@@ -239,7 +239,7 @@ func (h handler) OpenEditSession(ctx context.Context, req gen.OpenEditSessionReq
 	if err != nil {
 		return nil, err
 	}
-	s, err := h.uc.OpenSession.Execute(ctx, req.PageID, client)
+	s, err := h.uc.OpenSession.Execute(ctx, req.PageID, client, false)
 	if err != nil {
 		return nil, err
 	}

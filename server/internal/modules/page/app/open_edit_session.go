@@ -22,11 +22,12 @@ func NewOpenEditSession(writer *Writer, nodes Nodes, logger *slog.Logger) *OpenE
 }
 
 // Execute opens the caller's edit session of the page id, from client, in
-// a unit that keeps the tree. The page is found unlocked first, for its
-// notebook; the unit locks its gate. A page that does not exist, is
-// deleted, or whose notebook the caller has no role in is page.not_found;
-// a reader gets forbidden; then the vetoers.
-func (o *OpenEditSession) Execute(ctx context.Context, id uuid.UUID, client domain.Client) (EditSession, error) {
+// a unit that keeps the tree; with takeOver, it ends the caller's own
+// alive sessions of the page first (M5 design 4.2). The page is found
+// unlocked first, for its notebook; the unit locks its gate. A page that
+// does not exist, is deleted, or whose notebook the caller has no role in
+// is page.not_found; a reader gets forbidden; then the vetoers.
+func (o *OpenEditSession) Execute(ctx context.Context, id uuid.UUID, client domain.Client, takeOver bool) (EditSession, error) {
 	n, err := o.nodes.FindNode(ctx, id)
 	switch {
 	case err != nil:
@@ -38,13 +39,13 @@ func (o *OpenEditSession) Execute(ctx context.Context, id uuid.UUID, client doma
 	spec := UnitSpec{NotebookID: n.NotebookID, Action: domain.ActionEdit, Client: client,
 		Options: Options{UpdateLinks: true}, NotFound: domain.ErrNotFound}
 	outcome, err := o.writer.Run(ctx, spec, func(ctx context.Context, u *Unit) error {
-		s, err = u.OpenSession(ctx, id)
+		s, err = u.OpenSession(ctx, id, takeOver)
 		return err
 	})
 	if err != nil {
 		return EditSession{}, err
 	}
-	o.logger.InfoContext(ctx, "edit session opened", sessionLogged(outcome.WorkspaceID, s)...)
+	o.logger.InfoContext(ctx, "edit session opened", append(sessionLogged(outcome.WorkspaceID, s), slog.Bool("take_over", takeOver))...)
 	return s, nil
 }
 

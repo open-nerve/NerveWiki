@@ -95,9 +95,12 @@ func (u *Unit) writeContent(ctx context.Context, w ContentWrite, participate boo
 
 // writersSession is w's edit session, locked FOR UPDATE after the page's
 // content row: page.edit_session_ended unless it is the writer's, from the
-// unit's client, of the page, alive at the unit's time. A write from
-// another client than the one that opened the session would join a
-// changeset recorded as that client's (M4/P4 review D1).
+// unit's client, of the page; then a tombstone says why it ended (M5
+// design 4.3); then page.edit_session_ended unless it is alive at the
+// unit's time. A write from another client than the one that opened the
+// session would join a changeset recorded as that client's (M4/P4 review
+// D1); one code for any session not the writer's tells nothing of whose
+// it is.
 func (u *Unit) writersSession(ctx context.Context, w ContentWrite) (EditSession, error) {
 	s, err := u.w.d.SessionWriter.LockSession(ctx, w.EditSession)
 	switch {
@@ -105,7 +108,11 @@ func (u *Unit) writersSession(ctx context.Context, w ContentWrite) (EditSession,
 		return EditSession{}, domain.ErrEditSessionEnded
 	case err != nil:
 		return EditSession{}, err
-	case s.UserID != u.write.By || s.Client != u.write.Client || s.NodeID != w.NodeID || !s.Alive(u.write.At):
+	case s.UserID != u.write.By || s.Client != u.write.Client || s.NodeID != w.NodeID:
+		return EditSession{}, domain.ErrEditSessionEnded
+	case s.EndedReason != "":
+		return EditSession{}, endedError(ctx, u.w.d.Names, s)
+	case !s.Alive(u.write.At):
 		return EditSession{}, domain.ErrEditSessionEnded
 	}
 	return s, nil

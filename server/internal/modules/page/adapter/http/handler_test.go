@@ -149,8 +149,8 @@ func session() app.EditSession {
 const sessionJSON = `{"expires_at":"2026-10-02T10:01:00Z","id":"0199a2b4-0000-7000-8000-000000000020",` +
 	`"page_id":"0199a2b4-0000-7000-8000-000000000012"}`
 
-func (f fakeOpen) Execute(_ context.Context, pageID uuid.UUID, client domain.Client) (app.EditSession, error) {
-	f.got = []any{pageID, client}
+func (f fakeOpen) Execute(_ context.Context, pageID uuid.UUID, client domain.Client, takeOver bool) (app.EditSession, error) {
+	f.got = []any{pageID, client, takeOver}
 	return session(), f.err
 }
 
@@ -249,9 +249,9 @@ func TestTheOperationsAnswerTheUseCases(t *testing.T) {
 			`{"parent_id":null,"after_id":"0199a2b4-0000-7000-8000-000000000013"}`, http.StatusOK, treeNodeJSON,
 			[]any{id(12), app.Destination{Position: app.After(id(13))}, domain.ClientWeb}},
 		{"an edit session by the web", "session", http.MethodPost, openPath, "", http.StatusCreated, sessionJSON,
-			[]any{id(12), domain.ClientWeb}},
+			[]any{id(12), domain.ClientWeb, false}},
 		{"an edit session by the API", "pat", http.MethodPost, openPath, "", http.StatusCreated, sessionJSON,
-			[]any{id(12), domain.ClientAPI}},
+			[]any{id(12), domain.ClientAPI, false}},
 		{"a heartbeat", "session", http.MethodPost, beatPath, "", http.StatusOK, sessionJSON, []any{id(20)}},
 		{"an end", "session", http.MethodDelete, sessionPath, "", http.StatusNoContent, "", []any{id(20)}},
 		{"a deletion by the web", "session", http.MethodDelete, nodePath, "", http.StatusNoContent, "",

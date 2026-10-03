@@ -69,6 +69,28 @@ func (n sqlNotebooks) LockByID(ctx context.Context, id uuid.UUID) (bool, error) 
 	return exists(ctx, n.pool, "SELECT 1 FROM notebooks WHERE id = $1 AND deleted_at IS NULL FOR NO KEY UPDATE", id)
 }
 
+// sqlNames stands in for identity's directory: the accounts' display
+// names.
+type sqlNames struct{ pool *pgxpool.Pool }
+
+func (n sqlNames) DisplayNames(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]string, error) {
+	rows, err := postgres.DB(ctx, n.pool).Query(ctx, "SELECT id, display_name FROM users WHERE id = ANY($1)", ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make(map[uuid.UUID]string)
+	for rows.Next() {
+		var id uuid.UUID
+		var name string
+		if err := rows.Scan(&id, &name); err != nil {
+			return nil, err
+		}
+		out[id] = name
+	}
+	return out, rows.Err()
+}
+
 func exists(ctx context.Context, pool *pgxpool.Pool, query string, id uuid.UUID) (bool, error) {
 	var one int
 	err := postgres.DB(ctx, pool).QueryRow(ctx, query, id).Scan(&one)
@@ -165,7 +187,7 @@ func (f fixture) serve(t *testing.T, kind, method, path, body string, guards []p
 	router := httpserver.NewRouter(slog.New(slog.DiscardHandler))
 	page.New(page.Deps{
 		Pool: f.pool, Tx: postgres.NewTxManager(f.pool, 5*time.Second), Clock: fixedClock{}, Logger: slog.New(slog.DiscardHandler),
-		Authorizer: aliceWrites{f.alice}, Workspaces: sqlWorkspaces{f.pool}, Notebooks: sqlNotebooks{f.pool},
+		Authorizer: aliceWrites{f.alice}, Workspaces: sqlWorkspaces{f.pool}, Notebooks: sqlNotebooks{f.pool}, Names: sqlNames{f.pool},
 		Markdown: f.md, Guards: guards, Participants: participants, Observers: observers,
 		EditSessionVetoers: f.vetoers, EditSessionSubscribers: f.subscribers, EditSessionCleanupInterval: time.Hour,
 		ParseBudgetBytes: 8 << 20, ParseMaxWait: time.Second,
@@ -405,10 +427,18 @@ func (f fixture) openSession(t *testing.T) uuid.UUID {
 	return s.ID
 }
 
-// subscriber records the ends it follows, and whether in a transaction.
+// subscriber records the openings and the ends it follows, and whether in
+// a transaction.
 type subscriber struct {
-	ended []page.SessionEnded
-	inTx  bool
+	opened []page.SessionOpened
+	ended  []page.SessionEnded
+	inTx   bool
+}
+
+func (s *subscriber) EditSessionOpened(ctx context.Context, o page.SessionOpened) error {
+	s.opened = append(s.opened, o)
+	s.inTx = postgres.InTx(ctx)
+	return nil
 }
 
 func (s *subscriber) EditSessionEnded(ctx context.Context, e page.SessionEnded) error {
@@ -437,8 +467,9 @@ func (v *vetoer) VetoEditSession(ctx context.Context, o page.SessionOpening) err
 
 // The edit sessions' registrants reach their paths through page.New: a
 // vetoer sees an opening under the page's gate, and its refusal is the
-// answer, with no session; an end by its owner and a page's deletion tell
-// the subscribers, in their transaction, with the reason and who.
+// answer, with no session; an opening tells the subscribers, and an end by
+// its owner and a page's deletion tell them with the reason and who, each
+// in its transaction.
 func TestTheEditSessionsReachTheirRegistrants(t *testing.T) {
 	f := newFixture(t)
 	locked := shared.NewError(shared.KindConflict, "page.locked", "Someone else is editing this page.")
@@ -470,6 +501,38 @@ func TestTheEditSessionsReachTheirRegistrants(t *testing.T) {
 	}
 	if !reflect.DeepEqual(sub.ended, want) || !sub.inTx || f.count(t, "SELECT count(*) FROM edit_sessions") != 0 {
 		t.Errorf("the subscriber followed %+v in a transaction %v, want %+v and no session left", sub.ended, sub.inTx, want)
+	}
+	opened := []page.SessionOpened{
+		{SessionID: ended, WorkspaceID: f.acme, NotebookID: f.eng, PageID: f.notes, UserID: f.alice, At: testNow()},
+		{SessionID: deleted, WorkspaceID: f.acme, NotebookID: f.eng, PageID: f.notes, UserID: f.alice, At: testNow()},
+	}
+	if !reflect.DeepEqual(sub.opened, opened) {
+		t.Errorf("the subscriber followed the openings %+v, want %+v", sub.opened, opened)
+	}
+}
+
+// page.NewEditLock over the pool, as the opening's vetoer, refuses a
+// second opening of a page: 409 page.locked with the lock member, its
+// holder named by Deps.Names, and no second session.
+func TestTheEditLockRefusesASecondOpening(t *testing.T) {
+	f := newFixture(t)
+	f.vetoers = []page.EditSessionVetoer{page.NewEditLock(f.pool, sqlNames{f.pool})}
+	f.openSession(t)
+	rec := f.serve(t, "pat", http.MethodPost, "/api/v0/pages/"+f.notes.String()+"/edit-sessions", "", nil, nil, nil)
+	var p struct {
+		Code string `json:"code"`
+		Lock struct {
+			PageID      uuid.UUID `json:"page_id"`
+			UserID      uuid.UUID `json:"user_id"`
+			DisplayName string    `json:"display_name"`
+		} `json:"lock"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &p); err != nil || rec.Code != http.StatusConflict || p.Code != "page.locked" ||
+		p.Lock.PageID != f.notes || p.Lock.UserID != f.alice || p.Lock.DisplayName != "Alice" {
+		t.Errorf("a second opening = %d %s, want 409 page.locked by Alice", rec.Code, rec.Body)
+	}
+	if n := f.count(t, "SELECT count(*) FROM edit_sessions"); n != 1 {
+		t.Errorf("%d edit sessions, want the first alone", n)
 	}
 }
 
