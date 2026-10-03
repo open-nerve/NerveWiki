@@ -16,6 +16,7 @@
     "@nervewiki/api-client": "workspace:*",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
+    "highlight.js": "11.12.0",
     "lucide-react": "1.48.0",
     "mobx": "7.0.5",
     "mobx-react-lite": "5.1.0",

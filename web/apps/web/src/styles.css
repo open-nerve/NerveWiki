@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "./reading/reading.css";
 
 /* dark: follows the dark class on <html>, which theme-init.js sets before the
    first paint and the app keeps in step with the theme preference. */
