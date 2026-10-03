@@ -159,11 +159,14 @@ test("an extension may set the content read-only as it is built; a content loade
 
   handle().hold(true);
   expect(editable(view())).toBe(false);
+  // Read-only, the content stays focusable: the focus in it stays.
+  expect(view().contentDOM.getAttribute("tabindex")).toBe("-1");
   kept.controls?.setReadOnly(true);
   kept.controls?.setReadOnly(false);
   expect(editable(view())).toBe(false);
   handle().hold(false);
   expect(editable(view())).toBe(true);
+  expect(view().contentDOM.hasAttribute("tabindex")).toBe(false);
 });
 
 test("an extension's save waits for the composition's end, as Mod+S does", async () => {

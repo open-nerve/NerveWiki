@@ -48,7 +48,15 @@ export function composeExtensions(
  */
 export const readOnly = new Compartment();
 
-/** readOnlyAs is readOnly's content for on. */
+/**
+ * readOnlyAs is readOnly's content for on. A content that cannot be
+ * changed stays focusable, out of the tab order: the focus in it stays
+ * there as it is set read-only.
+ */
 export function readOnlyAs(on: boolean): Extension {
-  return [EditorState.readOnly.of(on), EditorView.editable.of(!on)];
+  return [
+    EditorState.readOnly.of(on),
+    EditorView.editable.of(!on),
+    on ? EditorView.contentAttributes.of({ tabindex: "-1" }) : [],
+  ];
 }

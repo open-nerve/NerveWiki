@@ -2,6 +2,7 @@ import { observer } from "mobx-react-lite";
 import { lazy, Suspense, useEffect, useRef } from "react";
 import { useSWRConfig } from "swr";
 
+import { useMounted } from "../../app/mounted";
 import { NotLoaded } from "../../app/not-loaded";
 import { Loading } from "../../components/loading";
 import { dialogOpen, isMod, onMac } from "../../app/shortcuts";
@@ -41,9 +42,9 @@ type PageEditProps = {
  * and Done. Mod+S saves; Mod+E and Done save what is unsaved, then leave
  * for the reading view, which is read again first. A key pressed while
  * the input method composes waits for the composition's end, so that
- * half a word is never saved; so does a button pressed. While the edit is
- * left, its content is held as it is: what was saved is what the reading
- * view shows. While the edit is unsaved, leaving the page asks first. A
+ * half a word is never saved; so does a button pressed. The edit is left
+ * once at a time, its content held as it is meanwhile: it leaves only
+ * with nothing unsaved, so that what was typed is never lost. While the edit is unsaved, leaving the page asks first. A
  * save refused because the page changed shows the conflict above the
  * editor, with its heading focused; until the user keeps their text or
  * discards it, a save only brings the focus back there. A save that went
@@ -56,6 +57,8 @@ export const PageEdit = observer(function PageEdit({ notebook, page, done }: Pag
   const editing = useNewPageEditing(page.id);
   const editor = useRef<SourceEditorHandle>(null);
   const conflictHeading = useRef<HTMLHeadingElement>(null);
+  const leaving = useRef(false);
+  const mounted = useMounted();
   const { conflict } = editing;
 
   useEffect(() => {
@@ -108,9 +111,18 @@ export const PageEdit = observer(function PageEdit({ notebook, page, done }: Pag
 
   async function leave(): Promise<void> {
     const current = editor.current;
+    if (leaving.current) {
+      return;
+    }
+    leaving.current = true;
     // What is typed while the edit is left would not be saved: the content is held as it is.
     current?.hold(true);
-    if (editing.unsaved && !(await save())) {
+    const saved = !editing.unsaved || (await save());
+    if (!mounted()) {
+      return;
+    }
+    if (!saved || editing.unsaved) {
+      leaving.current = false;
       current?.hold(false);
       if (editing.conflict === undefined) {
         current?.focus();
@@ -170,7 +182,10 @@ export const PageEdit = observer(function PageEdit({ notebook, page, done }: Pag
           onChange={editing.changed}
         />
       </Suspense>
-      <UnsavedGuard unsaved={editing.unsaved} stay={() => editor.current?.focus()} />
+      <UnsavedGuard
+        unsaved={editing.unsaved}
+        stay={() => (editing.conflict === undefined ? editor.current : conflictHeading.current)?.focus()}
+      />
     </div>
   );
 });

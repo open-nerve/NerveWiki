@@ -1,14 +1,18 @@
 import { EditorView } from "@codemirror/view";
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, configure, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, expect, onTestFinished, test, vi } from "vitest";
 
 import { problem } from "../../test/fakes";
 import { guide, pagePath, pageServer } from "../../test/page-server";
 import { renderApp } from "../../test/render";
 
-// A save refused because the page changed meanwhile (M4/P6 design 3.8).
-// jsdom's platform is not macOS: Mod is Ctrl.
+// A save refused because the page changed meanwhile (M4/P6 design 3.8),
+// in StrictMode as the app runs. jsdom's platform is not macOS: Mod is
+// Ctrl.
+
+beforeAll(() => configure({ reactStrictMode: true }));
+afterAll(() => configure({ reactStrictMode: false }));
 
 afterEach(() => {
   vi.doUnmock("../../editor/conflict-view");
@@ -17,9 +21,11 @@ afterEach(() => {
 const ctrl = (key: string) => fireEvent.keyDown(document.activeElement ?? document.body, { key, ctrlKey: true });
 const conflictTitle = "This page changed while you edited it";
 
-/** The editor once it shows. */
+/** The editor once it shows: StrictMode makes it again as the first one's effects run, which are run first. */
 async function editorView() {
-  const content = await screen.findByRole("textbox", { name: "Page content" });
+  await screen.findByRole("textbox", { name: "Page content" });
+  await act(async () => {});
+  const content = screen.getByRole("textbox", { name: "Page content" });
   const element = content.closest<HTMLElement>(".cm-editor");
   const view = element === null ? null : EditorView.findFromDOM(element);
   if (view === null) {
@@ -102,6 +108,9 @@ test("Discard mine edits the page as it is now, its line breaks as written; the 
 });
 
 test("differences that cannot load say so; the buttons still work, and Try again shows them", async () => {
+  // A module whose mock throws fails once: loaded again, as StrictMode does, it is there. Not here.
+  configure({ reactStrictMode: false });
+  onTestFinished(() => configure({ reactStrictMode: true }));
   vi.doMock("../../editor/conflict-view", () => {
     throw new Error("offline");
   });
@@ -125,8 +134,9 @@ test("Keep mine that fails says why, the focus in the editor", async () => {
   const { user, content, region } = await inConflict(server);
 
   await user.click(within(region).getByRole("button", { name: "Keep mine" }));
-  await waitFor(() => expect(screen.getByRole("status").textContent).not.toBe("Saving…"));
-  expect(screen.getByRole("status").textContent).not.toBe("");
+  await waitFor(() =>
+    expect(screen.getByRole("status").textContent).toBe("Something went wrong on the server. Try again.")
+  );
   expect(screen.queryByRole("region", { name: conflictTitle })).toBeNull();
   expect(document.activeElement).toBe(content);
 });
@@ -144,4 +154,17 @@ test("the unchanged stretches are folded; Show unchanged lines, which the keyboa
   await user.click(show);
   expect(show.getAttribute("aria-pressed")).toBe("true");
   await waitFor(() => expect(region.querySelector(".cm-collapsedLines")).toBeNull());
+});
+
+test("Stay, while the conflict is shown, takes the focus back to the conflict", async () => {
+  const { user, region } = await inConflict();
+
+  await user.click(
+    within(screen.getByRole("navigation", { name: "Pages of Plans" })).getByRole("link", { name: "Notes" })
+  );
+  const ask = await screen.findByRole("alertdialog", { name: "Leave without saving?" });
+  await user.click(within(ask).getByRole("button", { name: "Stay" }));
+  await waitFor(() =>
+    expect(document.activeElement).toBe(within(region).getByRole("heading", { name: conflictTitle }))
+  );
 });

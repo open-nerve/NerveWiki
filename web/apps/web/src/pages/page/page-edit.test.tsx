@@ -286,10 +286,14 @@ test("a save that goes through while leaving is asked about lets the move go on"
 test("Ctrl+E held down leaves once", async () => {
   const { server, type } = await editing();
   type("!");
+  const viewsRead = server.sent.filter((line) => line === "GET view Guide").length;
 
   fireEvent.keyDown(document.activeElement ?? document.body, { key: "e", ctrlKey: true });
   fireEvent.keyDown(document.activeElement ?? document.body, { key: "e", ctrlKey: true, repeat: true });
+  fireEvent.keyDown(document.activeElement ?? document.body, { key: "e", ctrlKey: true, repeat: true });
   const edit = await screen.findByRole("button", { name: "Edit" });
+  expect(server.sent.filter((line) => line.startsWith("PUT"))).toHaveLength(1);
+  expect(server.sent.filter((line) => line === "GET view Guide")).toHaveLength(viewsRead + 1);
   await waitFor(() => expect(document.activeElement).toBe(edit));
   expect(fireEvent.keyDown(edit, { key: "e", ctrlKey: true, repeat: true })).toBe(false);
   await new Promise((resolve) => setTimeout(resolve, 50));
@@ -364,4 +368,60 @@ test("a page saved and left for another shows its reading view read again when i
   await screen.findByRole("heading", { level: 1, name: "Notes" });
   await user.click(within(tree()).getByRole("link", { name: "Guide" }));
   expect((await screen.findByRole("article")).textContent).toBe("Guide edited");
+});
+
+test("Done pressed again while the edit is left does nothing more: a save that fails keeps what is typed after it", async () => {
+  const { write, route } = held();
+  let writes = 0;
+  const server = pageServer({
+    answers: { "PUT /api/v0/pages/*/content": () => (++writes === 1 ? route() : savedGuide()) },
+  });
+  const { user, content, type } = await editing(server);
+  type("one");
+
+  await user.click(screen.getByRole("button", { name: "Done" }));
+  await user.click(screen.getByRole("button", { name: "Done" }));
+  await waitFor(() => expect(write.answer).toBeDefined());
+  write.answer?.(problem(500, "internal_error"));
+  await waitFor(() => expect(document.activeElement).toBe(content));
+  type(" two");
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  expect(writes).toBe(1);
+  expect(status().textContent).toBe("Something went wrong on the server. Try again.");
+  expect(screen.getByRole("textbox", { name: "Page content" })).toBe(content);
+});
+
+test("a change made while the edit is left keeps it: the edit leaves only with nothing unsaved", async () => {
+  const { write, route } = held();
+  const { user, view, type } = await editing(pageServer({ answers: { "PUT /api/v0/pages/*/content": route } }));
+  type("one");
+
+  await user.click(screen.getByRole("button", { name: "Done" }));
+  await waitFor(() => expect(write.answer).toBeDefined());
+  // An extension changes the content as code does, read-only or not.
+  type(" two");
+  write.answer?.(savedGuide());
+  await waitFor(() => expect(status().textContent).toBe("Unsaved changes"));
+  expect(view.state.readOnly).toBe(false);
+  expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
+});
+
+test("a page left while its edit is being left is not read again for it", async () => {
+  const { write, route } = held();
+  const { user, server, type } = await editing(pageServer({ answers: { "PUT /api/v0/pages/*/content": route } }));
+  type("one");
+  await user.click(screen.getByRole("button", { name: "Done" }));
+  await waitFor(() => expect(write.answer).toBeDefined());
+  const viewsRead = server.sent.filter((line) => line === "GET view Guide").length;
+
+  await user.click(within(tree()).getByRole("link", { name: "Notes" }));
+  await user.click(
+    within(await screen.findByRole("alertdialog", { name: "Leave without saving?" })).getByRole("button", {
+      name: "Leave",
+    })
+  );
+  await screen.findByRole("heading", { level: 1, name: "Notes" });
+  write.answer?.(savedGuide());
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  expect(server.sent.filter((line) => line === "GET view Guide")).toHaveLength(viewsRead);
 });

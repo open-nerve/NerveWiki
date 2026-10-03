@@ -424,3 +424,44 @@ test("a conflict whose page cannot be read is the save's failure", async () => {
   expect((editing.failure as ApiError).code).toBe("page.revision_mismatch");
   editing.end();
 });
+
+test("ended while a save is out, the save that goes through after it starts no heartbeat; begun twice, one beats", async () => {
+  vi.useFakeTimers();
+  const { editing, answers } = await begun();
+  answers.beat = () => {
+    throw refusal(403, "forbidden");
+  };
+  await vi.advanceTimersByTimeAsync(editSessionHeartbeat);
+  let answer: (() => void) | undefined;
+  answers.put = () => new Promise((resolve) => (answer = () => resolve({ revision: 4 })));
+  const saving = editing.save("text", 1);
+  await vi.advanceTimersByTimeAsync(0);
+
+  editing.end();
+  answer?.();
+  expect(await saving).toBe(true);
+  expect(vi.getTimerCount()).toBe(0);
+
+  const twice = fakeService();
+  const begunTwice = new PageEditing(twice.service, "p1");
+  begunTwice.start();
+  begunTwice.start();
+  begunTwice.end();
+  expect(vi.getTimerCount()).toBe(0);
+});
+
+test("a save waiting out a 503 when the edit ends and begins again is not sent: it waited for the edit that ended", async () => {
+  vi.useFakeTimers();
+  const { editing, sent, answers } = await begun();
+  answers.put = () => {
+    throw refusal(503, "server_busy", 30);
+  };
+  const waiting = editing.save("text", 1);
+  await vi.waitFor(() => expect(editing.busy).toBe(true));
+
+  editing.end();
+  editing.start();
+  expect(await waiting).toBe(false);
+  expect(sent.filter((line) => line.startsWith("PUT"))).toHaveLength(1);
+  editing.end();
+});

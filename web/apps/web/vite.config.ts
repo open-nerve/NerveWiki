@@ -16,11 +16,12 @@ const editorModule =
 const editorEntries = /[\\/]src[\\/]editor[\\/](?:source-editor|conflict-view)\.tsx$/;
 
 /**
- * editorOutOfMain fails the build when a chunk loaded before the editor
- * holds a module of the editor (M4/P6 design 3.11): the app's entry, a
- * route's chunk, or one either imports statically. The editor is loaded
- * when a page is first edited, in a chunk of its own: only the editor's
- * entries reach CodeMirror.
+ * editorOutOfMain fails the build when a chunk the app may load before the
+ * editor holds a module of the editor (M4/P6 design 3.11): one the app's
+ * entry reaches, by static or dynamic imports (a route's chunk too), short
+ * of the editor's own entries. The editor is loaded when a page is first
+ * edited, in a chunk of its own; what it loads in turn is the editor's.
+ * The error says the way to the chunk, from the entry.
  */
 function editorOutOfMain(): Plugin {
   return {
@@ -30,17 +31,23 @@ function editorOutOfMain(): Plugin {
       const chunks = new Map(
         Object.values(bundle).flatMap((output) => (output.type === "chunk" ? [[output.fileName, output] as const] : []))
       );
-      const loaded = [...chunks.values()]
-        .filter((chunk) => chunk.isEntry || (chunk.isDynamicEntry && !editorEntries.test(chunk.facadeModuleId ?? "")))
-        .map((chunk) => chunk.fileName);
-      // loaded grows as the chunks it holds import others.
-      for (let i = 0; i < loaded.length; i++) {
-        const name = loaded[i] ?? "";
+      // Each chunk reached, by the way to it.
+      const ways = new Map(
+        [...chunks.values()].filter((chunk) => chunk.isEntry).map((chunk) => [chunk.fileName, [chunk.fileName]])
+      );
+      for (const [name, way] of ways) {
         const chunk = chunks.get(name);
-        loaded.push(...(chunk?.imports ?? []).filter((imported) => !loaded.includes(imported)));
-        const editor = chunk?.moduleIds.find((id) => editorModule.test(id));
+        if (chunk === undefined || editorEntries.test(chunk.facadeModuleId ?? "")) {
+          continue;
+        }
+        const editor = chunk.moduleIds.find((id) => editorModule.test(id));
         if (editor !== undefined) {
-          this.error(`${name}, which is loaded before the editor, holds the editor's ${editor}`);
+          this.error(`${way.join(" → ")}, which is loaded before the editor, holds the editor's ${editor}`);
+        }
+        for (const next of [...chunk.imports, ...chunk.dynamicImports]) {
+          if (!ways.has(next)) {
+            ways.set(next, [...way, next]);
+          }
         }
       }
     },

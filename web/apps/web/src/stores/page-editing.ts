@@ -136,6 +136,7 @@ export class PageEditing {
    */
   start(): void {
     this.ended = false;
+    clearInterval(this.beating);
     this.beating = setInterval(() => void this.beat(), editSessionHeartbeat);
     document.addEventListener("visibilitychange", this.shown);
     void this.sessionId().catch(() => undefined);
@@ -264,7 +265,7 @@ export class PageEditing {
         this.saved = true;
         this.saving = false;
         this.busy = false;
-        if (this.lostAccess) {
+        if (this.lostAccess && !this.ended) {
           // The account may edit again: its session beats again.
           this.lostAccess = false;
           this.beating = setInterval(() => void this.beat(), editSessionHeartbeat);
@@ -287,7 +288,9 @@ export class PageEditing {
       }
       if (waited < busyRetries && error instanceof ApiError && error.status === 503 && error.retryAfter !== undefined) {
         runInAction(() => (this.busy = true));
-        await this.waitOut(error.retryAfter);
+        if (await this.waitOut(error.retryAfter)) {
+          return this.failed(error);
+        }
         return this.send(draft, reopened, waited + 1);
       }
       return this.failed(error);
@@ -303,14 +306,21 @@ export class PageEditing {
     return false;
   }
 
-  /** waitOut waits seconds, or until the edit ends. */
-  private waitOut(seconds: number): Promise<void> {
+  /**
+   * waitOut waits seconds, or until the edit ends; it answers whether the
+   * edit ended, which it may have begun again since (StrictMode, a reload
+   * of the module while developing).
+   */
+  private waitOut(seconds: number): Promise<boolean> {
     return new Promise((resolve) => {
-      const timer = setTimeout(() => this.woken?.(), seconds * 1000);
+      const timer = setTimeout(() => {
+        this.woken = undefined;
+        resolve(false);
+      }, seconds * 1000);
       this.woken = () => {
         clearTimeout(timer);
         this.woken = undefined;
-        resolve();
+        resolve(true);
       };
     });
   }
