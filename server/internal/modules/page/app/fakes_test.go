@@ -398,23 +398,67 @@ func (f *fakeStore) HeartbeatSession(ctx context.Context, id, userID uuid.UUID, 
 	return s, nil
 }
 
+// EndSession deletes the caller's session alive at now, or their
+// tombstone.
 func (f *fakeStore) EndSession(ctx context.Context, id, userID uuid.UUID, now time.Time) (app.EditSession, error) {
 	f.record(ctx, "EndSession")
 	s, ok := f.sessions[id]
-	if !ok || s.UserID != userID || !s.Alive(now) {
+	if !ok || s.UserID != userID || s.EndedReason == "" && !s.Alive(now) {
 		return app.EditSession{}, app.ErrNotFound
 	}
 	delete(f.sessions, id)
 	return s, nil
 }
 
+func (f *fakeStore) FindEndedSession(ctx context.Context, id, userID uuid.UUID) (app.EditSession, error) {
+	f.record(ctx, "FindEndedSession")
+	s, ok := f.sessions[id]
+	if !ok || s.UserID != userID || s.EndedReason == "" {
+		return app.EditSession{}, app.ErrNotFound
+	}
+	return s, nil
+}
+
+// DeleteExpiredSessionsOf deletes the page's sessions expired at now,
+// tombstones among them.
+func (f *fakeStore) DeleteExpiredSessionsOf(ctx context.Context, id uuid.UUID, now time.Time) error {
+	f.record(ctx, "DeleteExpiredSessionsOf")
+	for sid, s := range f.sessions {
+		if s.NodeID == id && !s.ExpiresAt.After(now) {
+			delete(f.sessions, sid)
+		}
+	}
+	return nil
+}
+
+// EndAliveSessions makes tombstones of the sessions e ends, by when they
+// opened.
+func (f *fakeStore) EndAliveSessions(ctx context.Context, e app.SessionsEnd) ([]app.EditSession, error) {
+	f.record(ctx, "EndAliveSessions")
+	var out []app.EditSession
+	for id, s := range f.sessions {
+		if s.NodeID != e.NodeID || !s.Alive(e.At) || e.UserID != nil && s.UserID != *e.UserID {
+			continue
+		}
+		s.EndedReason, s.EndedByID, s.EndedAt = e.Reason, e.By, e.At
+		if e.Until.After(s.ExpiresAt) {
+			s.ExpiresAt = e.Until
+		}
+		f.sessions[id] = s
+		out = append(out, s)
+	}
+	slices.SortFunc(out, func(a, b app.EditSession) int { return a.CreatedAt.Compare(b.CreatedAt) })
+	return out, nil
+}
+
 // DeleteExpiredSessions deletes at most batch of the sessions expired at
-// now; held are skipped, as rows another transaction holds.
+// now, tombstones among them; held are skipped, as rows another
+// transaction holds.
 func (f *fakeStore) DeleteExpiredSessions(ctx context.Context, now time.Time, batch int) (int, error) {
 	f.record(ctx, "DeleteExpiredSessions")
 	n := 0
 	for id, s := range f.sessions {
-		if n < batch && !s.Alive(now) && !f.held[id] {
+		if n < batch && !s.ExpiresAt.After(now) && !f.held[id] {
 			delete(f.sessions, id)
 			n++
 		}

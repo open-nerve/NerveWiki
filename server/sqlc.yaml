@@ -82,6 +82,7 @@ sql:
       - migrations/sql/00015_page_changeset_items.sql
       - migrations/sql/00016_page_page_revisions.sql
       - migrations/sql/00017_page_edit_sessions.sql
+      - migrations/sql/00018_page_edit_session_ends.sql
     queries: internal/modules/page/adapter/postgres/queries
     gen:
       go:

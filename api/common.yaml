@@ -63,6 +63,37 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/FieldError"
+        lock:
+          description: >-
+            The edit lock page.locked names: the page locked and who holds it
+            (the caller themself when they hold it elsewhere). No other code
+            carries it.
+          type: object
+          additionalProperties: false
+          required: [page_id, user_id, display_name]
+          properties:
+            page_id:
+              type: string
+              format: uuid
+            user_id:
+              type: string
+              format: uuid
+            display_name:
+              type: string
+        ended_by:
+          description: >-
+            Who ended the caller's edit session: page.edit_session_unlocked
+            names the notebook's admin who unlocked it. No other code carries
+            it.
+          type: object
+          additionalProperties: false
+          required: [user_id, display_name]
+          properties:
+            user_id:
+              type: string
+              format: uuid
+            display_name:
+              type: string
     FieldError:
       description: >-
         One invalid field of a request. Clients show text looked up by `code`;

@@ -97,6 +97,8 @@ func rules() map[shared.Action]Rule {
 		"node.delete": {Level: LevelNotebook, Notebook: writers()},
 		"page.write":  {Level: LevelNotebook, Notebook: writers()},
 		"page.edit":   {Level: LevelNotebook, Notebook: writers()},
+		// Its admins release a page's edit lock (M5 design 4.2).
+		"page.release_edit_lock": {Level: LevelNotebook, Notebook: notebookAdmins()},
 	}
 }
 

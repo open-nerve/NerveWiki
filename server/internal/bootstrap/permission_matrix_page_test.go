@@ -5,6 +5,8 @@ import (
 	"slices"
 	"testing"
 	"time"
+
+	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
 )
 
 // The page module's rows (M4/P1 design 3.12; M4/P2 design 3.6; M4/P4 design 3.9), by the notebook columns:
@@ -36,11 +38,11 @@ type editSessionAnswer struct {
 	ExpiresAt time.Time `json:"expires_at"`
 }
 
-// leased reports whether the session's lease runs a minute at most from
+// leased reports whether the session's lease runs a lease at most from
 // now: from the call, not from the seeded session's hour.
 func (e editSessionAnswer) leased() bool {
 	left := time.Until(e.ExpiresAt)
-	return left > 0 && left <= time.Minute
+	return left > 0 && left <= domain.EditSessionLease
 }
 
 // ancestorNames are a page answer's ancestors' names.

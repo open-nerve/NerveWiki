@@ -12,7 +12,8 @@ import (
 )
 
 // sessionOf is an edit_sessions row: a session that has not written has
-// neither changeset nor revision.
+// neither changeset nor revision, one not ended no end (the table's checks
+// keep each pair or trio together).
 func sessionOf(r gen.EditSession) app.EditSession {
 	s := app.EditSession{
 		ID: r.ID, NodeID: r.NodeID, NotebookID: r.NotebookID, UserID: r.UserID, Client: domain.Client(r.Client),
@@ -20,6 +21,9 @@ func sessionOf(r gen.EditSession) app.EditSession {
 	}
 	if r.ChangesetID != nil && r.Revision != nil {
 		s.ChangesetID, s.Revision = *r.ChangesetID, int(*r.Revision)
+	}
+	if r.EndedReason != nil && r.EndedByID != nil && r.EndedAt != nil {
+		s.EndedReason, s.EndedByID, s.EndedAt = domain.EndReason(*r.EndedReason), *r.EndedByID, *r.EndedAt
 	}
 	return s
 }
@@ -76,6 +80,34 @@ func (s *Store) DeleteNodeSessions(ctx context.Context, ids []uuid.UUID) ([]app.
 	return sessionsOf(rows), nil
 }
 
+// DeleteExpiredSessionsOf implements app.SessionWriter.
+func (s *Store) DeleteExpiredSessionsOf(ctx context.Context, id uuid.UUID, now time.Time) error {
+	if _, err := s.queries(ctx).DeleteExpiredSessionsOf(ctx, gen.DeleteExpiredSessionsOfParams{NodeID: id, Now: now}); err != nil {
+		return fmt.Errorf("delete the page's expired edit sessions: %w", err)
+	}
+	return nil
+}
+
+// EndAliveSessions implements app.SessionWriter.
+func (s *Store) EndAliveSessions(ctx context.Context, e app.SessionsEnd) ([]app.EditSession, error) {
+	rows, err := s.queries(ctx).EndAliveSessions(ctx, gen.EndAliveSessionsParams{
+		Reason: string(e.Reason), ByID: e.By, At: e.At, Until: e.Until, NodeID: e.NodeID, UserID: e.UserID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("end the page's edit sessions: %w", err)
+	}
+	return sessionsOf(rows), nil
+}
+
+// AliveSessionsOf implements app.AliveSessions.
+func (s *Store) AliveSessionsOf(ctx context.Context, ids []uuid.UUID, now time.Time) ([]app.EditSession, error) {
+	rows, err := s.queries(ctx).AliveSessionsOf(ctx, gen.AliveSessionsOfParams{NodeIds: ids, Now: now})
+	if err != nil {
+		return nil, fmt.Errorf("read the pages' edit sessions: %w", err)
+	}
+	return sessionsOf(rows), nil
+}
+
 // DeleteNotebookSessions implements app.NotebookPages.
 func (s *Store) DeleteNotebookSessions(ctx context.Context, ids []uuid.UUID) ([]app.EditSession, error) {
 	rows, err := s.queries(ctx).DeleteNotebookSessions(ctx, ids)
@@ -108,6 +140,15 @@ func (s *Store) EndSession(ctx context.Context, id, userID uuid.UUID, now time.T
 	row, err := s.queries(ctx).EndSession(ctx, gen.EndSessionParams{ID: id, UserID: userID, Now: now})
 	if err != nil {
 		return app.EditSession{}, notFound("end edit session", err)
+	}
+	return sessionOf(row), nil
+}
+
+// FindEndedSession implements app.Sessions.
+func (s *Store) FindEndedSession(ctx context.Context, id, userID uuid.UUID) (app.EditSession, error) {
+	row, err := s.queries(ctx).FindEndedSession(ctx, gen.FindEndedSessionParams{ID: id, UserID: userID})
+	if err != nil {
+		return app.EditSession{}, notFound("find ended edit session", err)
 	}
 	return sessionOf(row), nil
 }

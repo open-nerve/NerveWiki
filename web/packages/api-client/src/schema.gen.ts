@@ -815,7 +815,7 @@ export interface paths {
         put?: never;
         /**
          * Open an edit session
-         * @description Opens the caller's edit session of the page: a lease of 60 seconds, which a heartbeat every 20 seconds keeps alive. The content's writes that name it are one changeset. Its notebook's editors and admins can, a reader cannot (forbidden). A page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found alike.
+         * @description Opens the caller's edit session of the page: a lease of 120 seconds, which a heartbeat every 20 seconds keeps alive. The content's writes that name it are one changeset. Its notebook's editors and admins can, a reader cannot (forbidden). A page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found alike.
          */
         post: operations["openEditSession"];
         delete?: never;
@@ -861,7 +861,7 @@ export interface paths {
         put?: never;
         /**
          * Keep an edit session alive
-         * @description Keeps the caller's session alive for 60 seconds from now. A session that does not exist, has expired, is someone else's, or whose notebook the caller has no role in any more is page.edit_session_not_found alike: the editor opens a new one. One whose page the caller may only read now is forbidden.
+         * @description Keeps the caller's session alive for 120 seconds from now. A session that does not exist, has expired, is someone else's, or whose notebook the caller has no role in any more is page.edit_session_not_found alike: the editor opens a new one. One whose page the caller may only read now is forbidden.
          */
         post: operations["heartbeatEditSession"];
         delete?: never;
@@ -985,6 +985,20 @@ export interface components {
             detail?: string;
             /** @description The invalid fields of the request. */
             errors?: components["schemas"]["FieldError"][];
+            /** @description The edit lock page.locked names: the page locked and who holds it (the caller themself when they hold it elsewhere). No other code carries it. */
+            lock?: {
+                /** Format: uuid */
+                page_id: string;
+                /** Format: uuid */
+                user_id: string;
+                display_name: string;
+            };
+            /** @description Who ended the caller's edit session: page.edit_session_unlocked names the notebook's admin who unlocked it. No other code carries it. */
+            ended_by?: {
+                /** Format: uuid */
+                user_id: string;
+                display_name: string;
+            };
         };
         /** @description A session's tokens. Send access_token as "Authorization: Bearer"; access_token_expires_in counts from the response, so a client's clock does not matter. When it expires, exchange refresh_token for the next pair at POST /api/v0/auth/refresh. */
         AuthTokens: {

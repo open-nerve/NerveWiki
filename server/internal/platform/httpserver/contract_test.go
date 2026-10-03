@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver/apitest"
 )
@@ -54,6 +55,10 @@ func TestPlatformProblemsMatchTheContract(t *testing.T) {
 		{"retry later", writing(problemErr{
 			status: http.StatusServiceUnavailable, code: "server_busy", detail: "The server is busy; retry shortly.", retry: 2 * time.Second,
 		}), http.MethodGet, "/api/v0/things", "", http.StatusServiceUnavailable},
+		{"a lock", writing(memberErr{problemErr: problemErr{status: http.StatusConflict, code: "page.locked", detail: "Ada is editing the page."},
+			lock: &ProblemLock{PageID: uuid.MustParse(lockedPage), UserID: uuid.MustParse(lockHolder), DisplayName: "Ada"}}), http.MethodGet, "/api/v0/things", "", http.StatusConflict},
+		{"who ended", writing(memberErr{problemErr: problemErr{status: http.StatusConflict, code: "page.edit_session_unlocked", detail: "Unlocked."},
+			endedBy: &ProblemPerson{UserID: uuid.MustParse(lockHolder), DisplayName: "Ada"}}), http.MethodGet, "/api/v0/things", "", http.StatusConflict},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

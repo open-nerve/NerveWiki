@@ -47,6 +47,9 @@ type EditSession struct {
 	Revision    *int32
 	CreatedAt   time.Time
 	ExpiresAt   time.Time
+	EndedReason *string
+	EndedByID   *uuid.UUID
+	EndedAt     *time.Time
 }
 
 type Node struct {

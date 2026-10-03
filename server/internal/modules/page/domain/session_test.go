@@ -8,13 +8,14 @@ import (
 )
 
 // The lease and the heartbeat are the protocol's numbers (v0.1 design
-// 3.9): the web editor holds the same two (M4/P6), and a session survives
-// two lost heartbeats.
-func TestTheEditSessionLeaseOutlastsTwoLostHeartbeats(t *testing.T) {
-	if domain.EditSessionLease != 60*time.Second || domain.EditSessionHeartbeat != 20*time.Second {
-		t.Errorf("lease %v, heartbeat %v; want 60s and 20s", domain.EditSessionLease, domain.EditSessionHeartbeat)
+// 3.9; M5 design 4.6): the web editor beats as often (M4/P6), and a
+// session survives a hidden tab's heartbeats throttled to one a minute,
+// with a minute to spare.
+func TestTheEditSessionLeaseOutlastsThrottledHeartbeats(t *testing.T) {
+	if domain.EditSessionLease != 120*time.Second || domain.EditSessionHeartbeat != 20*time.Second {
+		t.Errorf("lease %v, heartbeat %v; want 120s and 20s", domain.EditSessionLease, domain.EditSessionHeartbeat)
 	}
-	if domain.EditSessionLease < 3*domain.EditSessionHeartbeat {
-		t.Errorf("a lease of %v outlasts fewer than three heartbeats of %v", domain.EditSessionLease, domain.EditSessionHeartbeat)
+	if throttled := time.Minute; domain.EditSessionLease < 2*throttled {
+		t.Errorf("a lease of %v outlasts fewer than two throttled heartbeats of %v", domain.EditSessionLease, throttled)
 	}
 }

@@ -162,7 +162,7 @@ paths:
       tags: [page]
       summary: Open an edit session
       description: >-
-        Opens the caller's edit session of the page: a lease of 60 seconds,
+        Opens the caller's edit session of the page: a lease of 120 seconds,
         which a heartbeat every 20 seconds keeps alive. The content's writes
         that name it are one changeset. Its notebook's editors and admins
         can, a reader cannot (forbidden). A page that does not exist, is
@@ -214,7 +214,7 @@ paths:
       tags: [page]
       summary: Keep an edit session alive
       description: >-
-        Keeps the caller's session alive for 60 seconds from now. A session
+        Keeps the caller's session alive for 120 seconds from now. A session
         that does not exist, has expired, is someone else's, or whose
         notebook the caller has no role in any more is
         page.edit_session_not_found alike: the editor opens a new one. One

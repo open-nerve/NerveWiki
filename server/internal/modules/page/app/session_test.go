@@ -344,6 +344,29 @@ func TestANotebookDeletionEndsItsSessions(t *testing.T) {
 // The cleanup deletes the sessions expired at its time, batch after batch
 // until one comes back short, skips a held one, tells no subscriber, and
 // logs how many when it deleted any.
+// A session is alive while it has not ended and its lease lasts past now
+// (M5 design 4.1): a tombstone is not, whatever its lease.
+func TestASessionIsAliveUntilItEndsOrExpires(t *testing.T) {
+	at := now()
+	tests := []struct {
+		name    string
+		expires time.Time
+		reason  domain.EndReason
+		want    bool
+	}{
+		{"leased", at.Add(time.Second), "", true},
+		{"expiring now", at, "", false},
+		{"expired", at.Add(-time.Second), "", false},
+		{"taken over", at.Add(time.Minute), domain.EndedTakenOver, false},
+		{"unlocked", at.Add(time.Minute), domain.EndedUnlocked, false},
+	}
+	for _, tt := range tests {
+		if got := (app.EditSession{ExpiresAt: tt.expires, EndedReason: tt.reason}).Alive(at); got != tt.want {
+			t.Errorf("%s: Alive = %v, want %v", tt.name, got, tt.want)
+		}
+	}
+}
+
 func TestTheCleanupDeletesTheExpiredSessions(t *testing.T) {
 	f := newFixture()
 	n := f.page("Notes", nil, 0)

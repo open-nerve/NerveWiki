@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"uuid"
 )
 
 // ProblemError is an error the platform maps to a problem+json response.
@@ -19,11 +20,15 @@ import (
 // not import internal/shared: shared.Error satisfies this by structure, and so
 // can any other error type, e.g. bodyshape's.
 //
-// Two methods are optional:
+// Four methods are optional:
 //
 //	ProblemFields() []error    each element has ProblemField() and
 //	                           ProblemCode() string, and Error() is the message
 //	RetryAfter() time.Duration a positive value becomes Retry-After
+//	ProblemLock() (pageID, userID uuid.UUID, displayName string, ok bool)
+//	                           the lock member, when ok
+//	ProblemEndedBy() (userID uuid.UUID, displayName string, ok bool)
+//	                           the ended_by member, when ok
 type ProblemError interface {
 	error
 	ProblemStatus() int
@@ -42,6 +47,14 @@ type problemField interface {
 
 type retryAfter interface {
 	RetryAfter() time.Duration
+}
+
+type problemLock interface {
+	ProblemLock() (pageID, userID uuid.UUID, displayName string, ok bool)
+}
+
+type problemEndedBy interface {
+	ProblemEndedBy() (userID uuid.UUID, displayName string, ok bool)
 }
 
 // statusClientClosedRequest is logged when the client went away before the
@@ -224,6 +237,16 @@ func problemOf(pe ProblemError) (Problem, time.Duration) {
 			if errors.As(fe, &f) {
 				p.Errors = append(p.Errors, FieldError{Field: f.ProblemField(), Code: f.ProblemCode(), Message: f.Error()})
 			}
+		}
+	}
+	if l, ok := pe.(problemLock); ok {
+		if pageID, userID, name, ok := l.ProblemLock(); ok {
+			p.Lock = &ProblemLock{PageID: pageID, UserID: userID, DisplayName: name}
+		}
+	}
+	if b, ok := pe.(problemEndedBy); ok {
+		if userID, name, ok := b.ProblemEndedBy(); ok {
+			p.EndedBy = &ProblemPerson{UserID: userID, DisplayName: name}
 		}
 	}
 	var retry time.Duration
