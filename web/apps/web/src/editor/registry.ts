@@ -13,9 +13,24 @@ export type EditorContext = {
   role: NotebookRole;
 };
 
+/**
+ * EditorClosed is why a save that waited for a composition to end did not
+ * go: the editor went first (M5/P5 design 3.3).
+ */
+export class EditorClosed extends Error {
+  constructor() {
+    super("the editor closed before its composition ended");
+    this.name = "EditorClosed";
+  }
+}
+
 /** EditorControls is what an editor's extension may do to the edit. */
 export type EditorControls = {
-  /** save saves the content, as Mod+S does. */
+  /**
+   * save saves the content as Mod+S does, once a composition ends; with a
+   * conflict open it does nothing, the conflict's panel deciding. It
+   * rejects with EditorClosed when the editor goes while it waits.
+   */
   save(): Promise<void>;
   /** saving tells whether a save is out. */
   saving(): boolean;
@@ -28,6 +43,24 @@ export type EditorControls = {
   session(): { lost: boolean };
   /** onSessionChange calls listener after each change of session; it returns the unsubscribe. */
   onSessionChange(listener: () => void): () => void;
+  /**
+   * onChange calls listener after each change of the content: typing,
+   * undoing, each step of a composition; a content loaded is no change.
+   * It returns the unsubscribe.
+   */
+  onChange(listener: () => void): () => void;
+  /**
+   * onClose calls listener once the extension's state goes: a content
+   * loaded, or the editor gone. The extension's subscriptions end then.
+   */
+  onClose(listener: () => void): void;
+  /**
+   * leave leaves the edit as Done does, saying why on the reading view
+   * (M5/P5 design 3.6): idle, after a long time without input. An edit
+   * that cannot be left, its session lost, a conflict open or its save
+   * failed, stays; the promise settles all the same.
+   */
+  leave(reason: "idle"): Promise<void>;
 };
 
 /**

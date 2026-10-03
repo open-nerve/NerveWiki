@@ -6,7 +6,13 @@ import { afterEach, expect, test, vi } from "vitest";
 import { I18nProvider } from "../i18n/i18n";
 import type { Locale } from "../i18n/locale";
 import { lockReadOnly } from "./lock-read-only";
-import { EditorExtensions, type EditorContext, type EditorControls, type EditorExtension } from "./registry";
+import {
+  EditorClosed,
+  EditorExtensions,
+  type EditorContext,
+  type EditorControls,
+  type EditorExtension,
+} from "./registry";
 import { SourceEditor, type SourceEditorHandle } from "./source-editor";
 
 afterEach(() => vi.useRealTimers());
@@ -33,11 +39,12 @@ function sessionState() {
   };
 }
 
-/** The editor on content, its handle, its session, and what it told onChange and save. */
+/** The editor on content, its handle, its session, and what it told onChange, save and leave. */
 function editor(content: string, extensions: readonly EditorExtension[] = [], wrap = (node: ReactNode) => node) {
   const handle = createRef<SourceEditorHandle>();
   const onChange = vi.fn();
   const save = vi.fn(() => Promise.resolve());
+  const leave = vi.fn((_reason: "idle") => Promise.resolve());
   const session = sessionState();
   const tree = (locale: Locale) =>
     wrap(
@@ -52,6 +59,7 @@ function editor(content: string, extensions: readonly EditorExtension[] = [], wr
               saving: () => false,
               session: session.session,
               onSessionChange: session.onSessionChange,
+              leave,
             }}
             onChange={onChange}
           />
@@ -75,6 +83,7 @@ function editor(content: string, extensions: readonly EditorExtension[] = [], wr
     type,
     onChange,
     save,
+    leave,
     session,
     unmount,
     speak: (locale: Locale) => rerender(tree(locale)),
@@ -217,6 +226,55 @@ test("the edit's session reaches the extensions; what one follows of it is let g
   expect(session.following()).toBe(0);
 });
 
+test("an extension hears of each change of the content, not of a content loaded; as a content loads and as the editor goes, it hears no more and is told", () => {
+  const heard: string[] = [];
+  let built = 0;
+  const listening: EditorExtension = {
+    name: "listening",
+    extension: (_, controls) => {
+      const state = ++built;
+      controls.onChange(() => heard.push(`change ${state.toString()}`));
+      controls.onClose(() => heard.push(`close ${state.toString()}`));
+      return [];
+    },
+  };
+  const { handle, type, unmount } = editor("text", [listening]);
+
+  type("!");
+  type("?");
+  handle().load("new");
+  type("!");
+  unmount();
+  expect(heard).toEqual(["change 1", "change 1", "close 1", "change 2", "close 2"]);
+});
+
+test("under StrictMode the editor made first, and gone at once, tells its extensions it closed", () => {
+  const built: number[] = [];
+  const closed: number[] = [];
+  const listening: EditorExtension = {
+    name: "listening",
+    extension: (_, controls) => {
+      const state = built.push(built.length + 1);
+      controls.onClose(() => closed.push(state));
+      return [];
+    },
+  };
+  const { unmount } = editor("text", [listening], (node) => <StrictMode>{node}</StrictMode>);
+
+  expect(built).toEqual([1, 2]);
+  expect(closed).toEqual([1]);
+  unmount();
+  expect(closed).toEqual([1, 2]);
+});
+
+test("an extension's leave reaches the edit's, with its reason", async () => {
+  const { kept, extension } = keeping();
+  const { leave } = editor("text", [extension]);
+
+  await kept.controls?.leave("idle");
+  expect(leave.mock.calls).toEqual([["idle"]]);
+});
+
 test("lockReadOnly sets the content read-only once the session is lost, a content loaded too; the text stays", () => {
   const { view, handle, session } = editor("text", [lockReadOnly]);
 
@@ -240,6 +298,17 @@ test("an extension's save waits for the composition's end, as Mod+S does", async
   view().contentDOM.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true }));
   await saved;
   expect(save).toHaveBeenCalledOnce();
+});
+
+test("an extension's save that waits for a composition rejects with EditorClosed as the editor goes; nothing is saved (nt-3)", async () => {
+  const { kept, extension } = keeping();
+  const { save, unmount } = editor("text", [extension]);
+  vi.spyOn(EditorView.prototype, "composing", "get").mockReturnValue(true);
+
+  const saved = kept.controls?.save();
+  unmount();
+  await expect(saved).rejects.toBeInstanceOf(EditorClosed);
+  expect(save).not.toHaveBeenCalled();
 });
 
 test("what waits on a composition goes with the editor", async () => {

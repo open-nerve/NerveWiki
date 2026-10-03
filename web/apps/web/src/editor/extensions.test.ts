@@ -68,6 +68,9 @@ function editing(registered: readonly EditorExtension[]) {
     setReadOnly: (on) => view?.dispatch({ effects: readOnly.reconfigure(readOnlyAs(on)) }),
     session: () => ({ lost: false }),
     onSessionChange: () => () => undefined,
+    onChange: () => () => undefined,
+    onClose: () => undefined,
+    leave: () => Promise.resolve(),
   };
   const composed: Composed = composeExtensions(registered, context, controls);
   const extensions: Extension = [readOnly.of(readOnlyAs(false)), composed.extension];

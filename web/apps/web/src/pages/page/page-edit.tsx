@@ -265,6 +265,7 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
                 () => editing.session.lost,
                 () => listener()
               ),
+            leave: () => leave(),
           }}
           onChange={editing.changed}
         />

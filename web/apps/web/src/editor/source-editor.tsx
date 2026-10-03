@@ -10,7 +10,13 @@ import { composeExtensions, readOnly, readOnlyAs } from "./extensions";
 import { joinBreaks, lineBreaks, splitBreaks } from "./line-breaks";
 import { markdownEditing } from "./markdown";
 import { editorPhrases } from "./phrases";
-import { EditorExtensions, type EditorContext, type EditorControls, type EditorExtension } from "./registry";
+import {
+  EditorClosed,
+  EditorExtensions,
+  type EditorContext,
+  type EditorControls,
+  type EditorExtension,
+} from "./registry";
 import { editorTheme } from "./theme";
 
 /** SourceEditorHandle is what the page's edit does with its editor. */
@@ -34,7 +40,8 @@ type SourceEditorProps = {
   /** Whether the editor takes the focus as it is made: the user asked to edit. */
   focusOnOpen?: boolean;
   context: EditorContext;
-  controls: Omit<EditorControls, "setReadOnly">;
+  /** The edit's controls; the editor adds its own: setReadOnly, onChange and onClose. */
+  controls: Omit<EditorControls, "setReadOnly" | "onChange" | "onClose">;
   /** onChange is told the content's version after each change. */
   onChange(version: number): void;
   ref?: Ref<SourceEditorHandle>;
@@ -55,19 +62,25 @@ const wording = new Compartment();
 /** Why the content may not be changed: an extension set it read-only, or the edit holds it. */
 type Lock = "readOnly" | "held";
 
+/** What waits on a composition: act once it ends, or drop if the editor goes first. */
+type Waiting = { act: () => void; drop: () => void };
+
 /**
  * EditorHost holds an EditorView, made once, and what goes with it: the
  * changes counted, what waits on a composition, the locks, which a new
- * content keeps.
+ * content keeps. What waits on a composition as the editor goes is
+ * dropped: a save of the controls rejects (nt-3).
  */
 class EditorHost {
   readonly view: EditorView;
   private changes = 0;
-  private readonly waiting: (() => void)[] = [];
+  private readonly waiting: Waiting[] = [];
   private settling: ReturnType<typeof setTimeout> | undefined = undefined;
   private readonly locks: Record<Lock, boolean> = { readOnly: false, held: false };
-  /** What the extensions of the state shown follow of the session, unsubscribed as the state goes. */
-  private following: (() => void)[] = [];
+  /** Who the extensions of the state shown have asked to hear of the content's changes. */
+  private readonly changed = new Set<() => void>();
+  /** What goes with the state shown: its extensions' subscriptions ended, their onClose called. */
+  private closing: (() => void)[] = [];
 
   constructor(
     parent: HTMLElement,
@@ -85,12 +98,12 @@ class EditorHost {
   }
 
   load(raw: string): void {
-    this.unfollow();
+    this.close();
     this.view.setState(this.stateOf(raw));
   }
 
-  whenComposed(act: () => void): void {
-    this.waiting.push(act);
+  whenComposed(act: () => void, drop: () => void = () => undefined): void {
+    this.waiting.push({ act, drop });
     this.runWaiting();
   }
 
@@ -108,7 +121,10 @@ class EditorHost {
 
   destroy(): void {
     clearTimeout(this.settling);
-    this.unfollow();
+    for (const { drop } of this.waiting.splice(0)) {
+      drop();
+    }
+    this.close();
     this.view.destroy();
   }
 
@@ -123,15 +139,15 @@ class EditorHost {
     ];
   }
 
-  private unfollow(): void {
-    for (const off of this.following.splice(0)) {
-      off();
+  private close(): void {
+    for (const done of this.closing.splice(0)) {
+      done();
     }
   }
 
   private runWaiting(): void {
     if (!this.view.composing) {
-      for (const act of this.waiting.splice(0)) {
+      for (const { act } of this.waiting.splice(0)) {
         act();
       }
     }
@@ -143,16 +159,27 @@ class EditorHost {
     const controls: EditorControls = {
       save: () =>
         new Promise((resolve, reject) =>
-          this.whenComposed(() => this.live.current.controls.save().then(resolve, reject))
+          this.whenComposed(
+            () => this.live.current.controls.save().then(resolve, reject),
+            () => reject(new EditorClosed())
+          )
         ),
       saving: () => this.live.current.controls.saving(),
       setReadOnly: (on) => this.lock("readOnly", on),
       session: () => this.live.current.controls.session(),
       onSessionChange: (listener) => {
         const off = this.live.current.controls.onSessionChange(listener);
-        this.following.push(off);
+        this.closing.push(off);
         return off;
       },
+      onChange: (listener) => {
+        this.changed.add(listener);
+        const off = () => void this.changed.delete(listener);
+        this.closing.push(off);
+        return off;
+      },
+      onClose: (listener) => void this.closing.push(listener),
+      leave: (reason) => this.live.current.controls.leave(reason),
     };
     const composed = composeExtensions(registered, context, controls);
     return EditorState.create({
@@ -177,6 +204,9 @@ class EditorHost {
           if (update.docChanged) {
             this.changes += 1;
             this.live.current.onChange(this.changes);
+            for (const listener of this.changed) {
+              listener();
+            }
           }
           this.runWaiting();
         }),
