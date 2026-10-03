@@ -57,12 +57,12 @@ server/
   internal/modules/events/
     domain/event.go、payload.go、frame.go                         事件、载荷与它的退化、帧（3.4）
     app/ports.go                                                 Visibility、Notifier
-    app/hub.go、connection.go                                    hub 与连接（3.5）
+    app/hub.go、stream.go                                        hub 与连接（3.5）
     app/open_stream.go                                           连接的建立（3.5）
     app/publisher.go                                             发布：pages、lock、access、notebooks_deleted 与别的 M 的类型（3.6）
     adapter/postgres/notifier.go                                 Notifier 经 postgres.Notify
     adapter/http/handler.go                                      流的处理器（3.8）
-    module.go、publisher.go                                      New(Deps)；NewPublisher(pool)
+    module.go、publisher.go                                      New(Deps)；NewPublisher()
   internal/bootstrap/registrants.go、deps.go、wire.go、app.go、events_registrants.go
                                                                  注册与适配、Listener 的启动与停机（3.11）
 api/modules/events.yaml、api/openapi.yaml                         3.9
@@ -79,15 +79,16 @@ e2e/fixtures/events.ts、e2e/stories/collab/c7-*.spec.ts、c8-*.spec.ts
 
 **`postgres.Listener`**（`NewListener(pool, channel, logger, opts)`）：
 
-- `Run(ctx)`：从池里取一条连接再 `Hijack`（照 River，不占 `database.max_conns`），`LISTEN`，然后 `WaitForNotification` 循环，每条通知交给 `OnNotify(payload)`；
+- `Run(ctx)`（不返回错误，一直重连到 ctx 结束）：从池里取一条连接再 `Hijack`（照 River，不占 `database.max_conns`），`LISTEN`，然后 `WaitForNotification` 循环，每条通知交给 `OnNotify(payload)`；
+- 安静 `PingInterval`（默认 30 秒）没有通知就 `Ping`（至多 5 秒），失败按断开处理：悄悄断掉的连接（数据库切换、NAT 忘了它）由此发现，不必等 TCP keepalive 的约 150 秒。超时的等待不关连接，`Ping` 期间到的通知由 pgx 缓存（审查 A-m2）；
 - 连接出错时关掉它，按退避（初始 100 毫秒，翻倍，上限 5 秒）重连；重连成功、`LISTEN` 生效之后先调 `OnListening(true)`，再调 `OnReconnect()`；断开时调 `OnListening(false)`；
-- `ctx` 取消时关掉连接返回。`Run` 返回之后连接一定已经关闭（`pgtest.NewDatabaseFrom` 要求模板库上没有别的连接）；
+- `ctx` 取消时关掉连接（至多等 2 秒）返回。`Run` 返回之后连接一定已经关闭（`pgtest.NewDatabaseFrom` 要求模板库上没有别的连接）；
 - 只用 `time`，不用 `platform/clock`；退避的间隔经选项注入，测试用短的。
 
 ### 3.3 平台与 identity：长连接、到期与重新认证
 
 - **到期**：`httpserver.WithCredentialExpiry(ctx, at)` 与 `CredentialExpiry(ctx) (time.Time, bool)`。identity 的认证用例改为返回到期时刻（访问令牌取它的 `exp`；PAT 取 `expires_at`，没有就不到期），`authn` 把它放进 context。`Authenticator` 接口不变，测试的假认证不必改：没有到期时刻就是不到期。
-- **`API.LongLived(h)`**：请求信息 → 失败闸门与认证 → 按凭证限流 → 包级 `LongLived`（解除写期限放在最后：整体测试用 `ResponseRecorder` 调用它，在那里解除会失败，而 401、429 要先答出来）。没有请求期限，没有请求体。
+- **`API.LongLived(h)`**：请求信息 → 在 `server.request_timeout` 之内：失败闸门与认证 → 按凭证限流 → 包级 `LongLived`（解除写期限放在最后：整体测试用 `ResponseRecorder` 调用它，在那里解除会失败，而 401、429 要先答出来）。处理器得到认证放进 context 的值，不带这个期限，取消跟着请求自己的（审查 F-M2）；没有请求体。
 - **重新认证**：`API.LongLived` 记下这次请求的 bearer 令牌，在 context 里放一个 `Reauthenticate(ctx) error`：用同一个令牌再调一次 `Authenticator.Authenticate`，不经失败闸门（这个凭证已经认证过一次），不计限流。PAT 的 `last_used_at` 照旧至多一分钟写一次。
 - **`X-Accel-Buffering: no`** 由流的处理器设置。
 
@@ -98,10 +99,10 @@ e2e/fixtures/events.ts、e2e/stories/collab/c7-*.spec.ts、c8-*.spec.ts
 
   | 类型 | 数据 | 按什么过滤 |
   |---|---|---|
-  | `pages` | `{tree, pages?: [{id, revision}]}`：`tree` 是否改了树；写了正文的页与新的 revision，多于 20 页时省去 `pages` | 笔记本 |
+  | `pages` | `{tree, pages: [{id, revision}]}`：`tree` 是否改了树；写了正文的页与新的 revision，没有是 `[]`，多于 20 页是 `null` | 笔记本 |
   | `lock` | `{page_id, session_id}`：会话 id 让同一事务里的"结束"与"开启"不被 PostgreSQL 合并 | 笔记本 |
-  | `access` | `{user_ids?, reached}`：`user_ids` 超出载荷时省去，按 `reached` 处理 | 见 3.5 |
-  | `notebooks_deleted` | `{notebook_ids?}`：超出载荷时省去，整个工作区一起 | 见 3.5 |
+  | `access` | `{user_ids, reached}`：`user_ids` 超出载荷时是 `null`，按 `reached` 处理 | 见 3.5 |
+  | `notebooks_deleted` | `{notebook_ids}`：超出载荷时是 `null`，整个工作区一起 | 见 3.5 |
 
 - **载荷**：`{"type","workspace_id","notebook_id"?,"data"}` 的 JSON，不超过 7999 字节。`Encode` 先照原样编码，超出时按类型退化（`pages` 去掉 `pages`，`access` 去掉 `user_ids` 并置 `reached`，`notebooks_deleted` 去掉 `notebook_ids`）；别的 M 的类型超出就报错（数据只含 id，超出是它的 bug）。`Decode` 读不懂的载荷记一条警告、丢掉。
 - **帧**（SSE）：`event: <类型>\ndata: <JSON>\n\n`，`data` 是 `{"workspace_id","notebook_id"?, …数据}`；`hello` 的数据是 `{"heartbeat_seconds"}`；`reset` 的数据是 `{"reason"}`；心跳是一行注释 `: heartbeat\n\n`。
@@ -117,9 +118,9 @@ e2e/fixtures/events.ts、e2e/stories/collab/c7-*.spec.ts、c8-*.spec.ts
   - 其余：带笔记本 id 的，连接看得到这本笔记本才送；只带工作区 id 的，看得到这个工作区才送。
 - `ResetAll(reason)`：LISTEN 重连之后，对每个连接 `reset(reconnected)`。
 - `Listening(bool)`：没在监听时，新的连接答 503 `not_ready`（`Retry-After: 1`）：不让一条连接漏掉它订阅之前的事件。
-- 读写连接集合用一把互斥锁；送事件不阻塞：每个连接一个容量 64 的缓冲，满了就记下 `overflow`、不再收，由连接自己送出 `reset` 后关闭。慢的客户端不拖住别人，也不悄悄丢事件。
+- 读写连接集合用一把互斥锁；送事件不阻塞：每个连接一个容量 64 的缓冲（`BufferSize`），满了就记下 `overflow`、不再收，由连接自己送出 `reset` 后关闭。慢的客户端不拖住别人，也不悄悄丢事件。建立中的连接还不知道看得到什么，整个服务器的事件都排着，另有 1024 条（`PendingSize`，审查 A-m3）。
 
-**连接的建立**（`OpenStream.Execute(ctx, actor)`）：
+**连接的建立**（`OpenStream.Execute(ctx)`，在 `server.request_timeout` 之内，审查 B-m4）：
 
 1. 没在监听：`not_ready`。
 2. 在 hub 登记（这时还没有可见集合，事件先排着）。
@@ -132,13 +133,14 @@ e2e/fixtures/events.ts、e2e/stories/collab/c7-*.spec.ts、c8-*.spec.ts
 ### 3.6 发布与注册
 
 - **端口**：`app.Notifier.Notify(ctx, payload)`，`adapter/postgres` 经 `postgres.Notify(ctx, "nwiki_events", …)` 实现，必须在事务里。通道名不与 River 的（`river_*`）冲突。
-- **`Publisher`**（模块根 `events.NewPublisher(pool)`，只建 Notifier，不碰 hub、HTTP、任务，CLI 的组合也能建它）：
+- **`Publisher`**（模块根 `events.NewPublisher()`，只建 Notifier，用 ctx 里的事务，不碰 hub、HTTP、任务，CLI 的组合也能建它）：
   - `Publish(ctx, Event)`：别的 M 的入口（总设计第 8 节）；
   - `PagesWritten(ctx, PagesWritten{WorkspaceID, NotebookID, Changes []PageChange{PageID, Tree, Revision}})`：`tree` 是任一变化改了树，`pages` 是 `Revision` 不为零的；
   - `LockChanged(ctx, LockChanged{WorkspaceID, NotebookID, PageID, SessionID})`；
   - `AccessChanged(ctx, AccessChanged{WorkspaceID, UserIDs, Reached})`；
   - `NotebooksDeleted(ctx, NotebooksDeleted{WorkspaceID, NotebookIDs})`。
-- **一个事务几条**：照总体设计 3.11 的修订（总设计 4.10），不合并。`page/app/extension.go` 的注释改为"在调用方的事务里，事务可以有几条通知"。
+- **一个事务几条**：照总体设计 3.11 的修订（总设计 4.10），不合并。`page/app/extension.go` 的注释改为"事件流发一条 pages 事件，此外单元开启或结束的每个会话各一条 lock 事件"。
+- **次序**：删除的订阅者先是页面的部分（结束会话，发 `lock`），再是事件流（`notebooks_deleted`）。
 - **注册**（组合根的适配，模块之间不互相导入）：
   - `pageEvents`：实现 `page.PageObserver`（`Change.Moves()` 给 `Tree`）与 `page.EditSessionSubscriber`（开启与结束都发 `lock`）；
   - `notebookEvents`：实现 notebook 的可见性变化订阅者与删除订阅者；
@@ -147,7 +149,7 @@ e2e/fixtures/events.ts、e2e/stories/collab/c7-*.spec.ts、c8-*.spec.ts
 ### 3.7 可见的笔记本：两个端口
 
 - workspace 的根：`Memberships.WorkspacesOf(ctx, userID) ([]Membership{WorkspaceID, Role}, error)`，用已有的列表查询（停用的成员不在里面）。
-- notebook 的根：`Notebooks.VisibleIn(ctx, workspaceID, userID, role) ([]uuid.UUID, error)`，用已有的 `ListNotebooks` 与 `shared.ReachedByAccess(role)`。
+- notebook 的根：`VisibleNotebooks.VisibleIn(ctx, workspaceID, userID, role) ([]uuid.UUID, error)`（`NewVisibleNotebooks(pool)`），用已有的 `ListNotebooks` 与 `shared.ReachedByAccess(role)`。
 - 组合根把两者接成 events 的 `Visibility`。
 - 测试（总体设计 13.1 第 3 条）：权限矩阵种子上的每一列，`VisibleIn` 的结果等于对这个工作区的每本笔记本逐项判定 `page.read` 的结果；`WorkspacesOf` 等于逐个 `RoleOf`。
 
@@ -155,19 +157,19 @@ e2e/fixtures/events.ts、e2e/stories/collab/c7-*.spec.ts、c8-*.spec.ts
 
 `GET /api/v0/events` 经 `API.LongLived` 挂在 `router.Handle` 上（不经生成的代码）：
 
-1. `OpenStream.Execute`：`not_ready` 或出错时照常答 problem。
+1. `OpenStream.Execute`（在 `server.request_timeout` 之内）：`not_ready` 或出错时照常答 problem。
 2. 答复头：`Content-Type: text/event-stream`、`X-Accel-Buffering: no`（`Cache-Control: no-store` 平台已加）；写 `hello`，`Flush`。
 3. 循环，直到 context 结束（客户端走了、停机）：
-   - 缓冲里的帧：写出、`Flush`；连接被标为 `reset`：写 `reset` 帧，结束；
-   - 心跳的计时器（`events.heartbeat_interval`）：`Reauthenticate`，失败就 `reset(unauthenticated)`；成功就写一行注释；
-   - 凭证到期的计时器：`reset(expired)`。
-4. 结束时在 hub 注销。写失败就结束（客户端走了）。
+   - 缓冲里的帧：写出、`Flush`；连接被标为 `reset`：先写出缓冲里还有的事件，再写 `reset` 帧，结束：帧按事件的次序，`reset` 在最后；
+   - 心跳的计时器（`events.heartbeat_interval`）：`Reauthenticate`，401 就 `reset(unauthenticated)`，别的错误不带帧结束（客户端重连），请求的 context 已结束就安静返回；成功就写一行注释；
+   - 凭证到期的计时器：`reset(expired)`。凭证到期或失效时不写出缓冲里的事件。
+4. 结束时在 hub 注销。每一帧在一个心跳之内写出，写完解除期限：写超时或失败就结束（客户端走了，或停止了读取，审查 A-I1、F-M1）。
 
 时刻取模块的 `Clock`（`Now`）；计时器经 `Deps.After`（`func(time.Duration) <-chan time.Time`，默认 `time.After`）：到期的计时器是 `After(到期时刻 − Now())`。测试注入假的，自己推进。
 
 ### 3.9 契约与生成
 
-- `api/modules/events.yaml`：`streamEvents`（`x-long-lived: true`，`x-problem-codes: [not_ready]`），200 的 `text/event-stream`；描述写明帧、事件类型、`reset` 的原因、心跳与到期。帧的数据各有 schema（`EventHello`、`EventPages`、`EventLock`、`EventReset`），处理器的测试用 `CheckSchema` 核对每种帧，P3 用生成的 TS 类型。
+- `api/modules/events.yaml`：`streamEvents`（`x-long-lived: true`，`x-problem-codes: [not_ready]`），200 的 `text/event-stream`；描述写明帧、事件类型、`reset` 的原因、心跳与到期、不带 `reset` 的结束。帧的数据各有 schema（`EventHello`、`EventPages`、`EventLock`、`EventReset`），放在 200 的 schema 的 `oneOf` 里（Redocly 丢掉没被引用的组件），处理器的测试用 `CheckSchema` 核对每种帧，P3 用生成的 TS 类型。每个模块的 Problem 答复的 `Retry-After` 都写上 `not_ready`（各模块的组件必须相同）。
 - `api/openapi.yaml` 加路径与 `events` 标签。
 - Makefile：`API_MODULES` 去掉 `events`：它唯一的操作不生成代码，生成的包会是空的（已验证：`exclude-operation-ids` 排除唯一的操作也能编译，但只留下用不到的类型）。
 - `apitest`：`Operation.LongLived` 读 `x-long-lived`；`CheckResponse` 对它只核对状态与答复头（200 时 `Content-Type`），不读到结束。`bootstrap` 的 `sendRequest` 同样只读答复头就关闭。"每个操作都接受 PAT"与"公开的操作"两项测试随之。
@@ -181,7 +183,7 @@ e2e/fixtures/events.ts、e2e/stories/collab/c7-*.spec.ts、c8-*.spec.ts
 
 - `newApp`：建 `postgres.Listener`（不连接）与 events 模块；Listener 的三个回调接到 hub（`OnNotify` 解码后 `Dispatch`，`OnReconnect` 是 `ResetAll(reconnected)`，`OnListening` 是 `Listening`）。
 - `serve`：检查数据库 → 后台任务 → **Listener 启动**（不等它生效：生效之前流答 503）→ HTTP 开始服务 → 停机：HTTP（`LongLived` 的 context 在停机开始时取消）→ **Listener 停止**（等 `Run` 返回）→ 后台任务 → 连接池。`TestServeRunsUntilCancelled` 的日志次序加 Listener 的两行。
-- 连接数：README 改为 `max_conns + 2`（River 与 Listener 各一条）。
+- 连接数：README 改为 `max_conns + 2`（River 与 Listener 各一条）。停机的总时长加上 Listener 关连接的至多 2 秒：默认 38 秒，`docker stop -t 40`。
 
 ### 3.12 权限
 
@@ -252,4 +254,28 @@ e2e/fixtures/events.ts、e2e/stories/collab/c7-*.spec.ts、c8-*.spec.ts
 
 ## 7. 结果
 
-（合并之后填写。）
+- 分支 `m5-p2`：S1 `7c86df2`；S2 `3ec34ee`；S3 `33abbdd`；S4 `6016bee`；S5 `371503d`；审查修复 `514c792`、核对之后的修复 `5e8574c`；`f0b3f6c` 合并（`--no-ff`）。
+- 门禁：每个 Step 与两轮修复的 `make check` 为绿；`make gen-check`、`make e2e`（163 个）、`make image-smoke` 为绿；整个程序的事件测试 `-race -count=5` 为绿；持续集成为绿。
+- 审查：[P2 审查](reviews/P2-event-stream-review.md)。两位审查者，没有阻断合并的问题。Important 1：A-I1（停止读取的客户端让处理器的写永远阻塞：心跳、重新认证、到期都停了，停机等满 `server.shutdown_timeout`）；Minor 9，合并之前全部处置或记下。修复的核对没有 Important，Minor 2、Nit 5 一并处置。
+- 反向对照：S1 13、S2 11、S3 10、S4 8、S5（e2e）4，审查修复 7、核对之后的修复 5（其中一项让测试挂住而不是失败），都没有通过。
+- 反向代理（S4，自己起的容器，服务在本机，心跳 20 秒，读 78 秒）：`caddy:2.10-alpine` 只写 `reverse_proxy`，与 `nginx:1.29-alpine`（`proxy_http_version 1.1`、`Connection ""`、`proxy_read_timeout 30s`、`proxy_buffering` 默认开，由答复的 `X-Accel-Buffering: no` 关掉）结果相同：`hello` 在 3 毫秒内到达，`pages` 帧与写入的答复在同一毫秒，心跳在 20、40、60 秒，连接活过 78 秒，75 秒的写照常到达。对照：`proxy_read_timeout 10s` 的 nginx 在最后一帧之后 10 秒断开。
+
+**与计划的出入**（已同步进上文）：
+
+1. `Listener.Run` 不返回错误：它一直重连到 ctx 结束（3.2）。
+2. events 模块与 Listener 的接线从 S4 挪到 S3：契约的操作要在 bootstrap 的契约测试里有路由（3.11）。
+3. 端口：workspace 的 `Memberships` 加 `WorkspacesOf`（根类型 `Membership`）；notebook 另有 `VisibleNotebooks.VisibleIn`（`NewVisibleNotebooks(pool)`），不放在 `Notebooks` 上（3.7）。
+4. 帧的 schema 放在 200 的 `text/event-stream` 的 `oneOf` 里：Redocly 丢掉没被引用的组件，`x-` 扩展里的引用会被内联（3.9）。
+5. 每个模块的 Problem 答复的 `Retry-After` 都写上 `not_ready`：各模块的组件必须相同（3.9）。
+6. `events.NewPublisher()` 不带连接池：Notifier 用 ctx 里的事务（3.6）。
+7. 模块根给出 `Notified`、`Listening`、`Reconnected`、`Streams`，不交出 hub（3.11）。
+8. `pages` 的数据：没有写正文是 `[]`，多于 20 页是 `null`（不是省去）；退化时 `access` 的 `user_ids`、`notebooks_deleted` 的 `notebook_ids` 是 `null`（3.4）。
+9. 心跳时认证服务出错（不是 401）：流不带帧就结束，客户端重连（3.8）。
+10. 因 `access`、`notebooks_deleted`、`reconnected`、`overflow` 而 `reset` 时，先写出缓冲里已有的事件：帧按事件的次序，`reset` 在最后。原来 `select` 在两者之间随机挑，`reset` 可能越过缓冲里的事件（S4 的 lab 测试发现：3 个事件只到 1 个）。凭证到期或失效时不写出（3.8）。
+11. 审查修复：每一帧在一个心跳之内写出，写完解除期限（A-I1、F-M1）；Listener 安静 `PingInterval`（30 秒）就 `Ping`（A-m2，总设计第 6 节"照 River 的 notifier"原本就这样写）；建立中的连接另有 1024 条的队列（A-m3）；连接的建立（认证与读可见集合）受 `server.request_timeout` 约束（B-m4、F-M2）；心跳被客户端的离开打断不记 ERROR（A-m4）；整个程序的测试与 e2e 在开流之前等到之前的通知都已分发（B-m1）（3.2、3.3、3.5、3.8）。
+
+**留给后面的**：
+
+- **给加工作区级事件类型的 M**：流的工作区集合在建立时算好；访客接受邀请、恢复成访客而没有归还的笔记本、新建工作区都不发 `access`，所以这些工作区级的事件到不了，直到别的原因让流重连（审查 B-m3）。P2 的类型都按笔记本过滤，不受影响；加工作区级类型的 M 要同时让这些路径发 `access`。
+- **给 P3**：流也会不带 `reset` 就结束（停机、心跳时认证服务出错、一个心跳之内收不下一帧），客户端在任何结束之后都重连并刷新；打开时的 503 `not_ready` 按 `Retry-After` 重试。`/readyz` 不看接收通知的连接。
+- **接受**：整个程序的"每个操作都接受 PAT"对流只要求不是 401（503 也算通过）；e2e C7 用 PAT 开流得到 200，补上了。
