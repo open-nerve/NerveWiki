@@ -470,7 +470,7 @@ Nerve 没有实时推送、编辑锁与自动保存：它的 v0 去掉了 Plane 
 |---|---|---|---|---|
 | P1 | 编辑锁（后端） | 完成 | [01-P1-edit-lock.md](01-P1-edit-lock.md) | [P1 审查](reviews/P1-edit-lock-review.md) |
 | P2 | 事件流（后端） | 完成 | [02-P2-event-stream.md](02-P2-event-stream.md) | [P2 审查](reviews/P2-event-stream-review.md) |
-| P3 | 事件流与实时刷新（前端） | 未开始 | — | — |
+| P3 | 事件流与实时刷新（前端） | 进行中 | [03-P3-event-stream-web.md](03-P3-event-stream-web.md) | — |
 | P4 | 编辑锁（前端） | 未开始 | — | — |
 | P5 | 自动保存与闲置（前端） | 未开始 | — | — |
 | P6 | 任务项 | 未开始 | — | — |
