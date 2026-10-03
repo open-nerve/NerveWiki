@@ -5,7 +5,7 @@ import { afterAll, beforeAll, expect, test } from "vitest";
 import { editorExtensions } from "../../editor/registry";
 import { FakePage } from "../../events/testing/fake-page";
 import { eventServer, withEvents } from "../../test/event-server";
-import { json, notebookJSON, problem, workspaceJSON } from "../../test/fakes";
+import { type Answer, json, notebookJSON, problem, workspaceJSON } from "../../test/fakes";
 import { pageEditor } from "../../test/page-editor";
 import { ada, bob, guide, notes, pagePath, pageServer } from "../../test/page-server";
 import { renderApp } from "../../test/render";
@@ -88,6 +88,35 @@ test("a session that opens once the page is left is ended", async () => {
   act(() => open?.());
 
   await waitFor(() => expect(server.sent).toContain("END s1"));
+});
+
+test("signing out while Edit's session opens shows no failure: the session, opened late, is ended first", async () => {
+  let open: (() => void) | undefined;
+  let ended: (() => void) | undefined;
+  const server = pageServer({
+    answers: {
+      "POST /api/v0/pages/*/edit-sessions": () =>
+        new Promise((resolve) => {
+          open = () => resolve(json({ id: "s1", page_id: guide.id, expires_at: "2026-10-03T08:02:00Z" }, 201));
+        }),
+      "DELETE /api/v0/edit-sessions/*": () =>
+        new Promise((resolve) => {
+          ended = () => resolve(new Response(null, { status: 204 }));
+        }),
+    },
+  });
+  const { user } = await pressEdit(server);
+  await waitFor(() => expect(open).toBeDefined());
+
+  await user.click(screen.getByRole("button", { name: "Ada" }));
+  await user.click(await screen.findByRole("menuitem", { name: "Sign out" }));
+  act(() => open?.());
+  await waitFor(() => expect(ended).toBeDefined());
+  await act(async () => {});
+  expect(screen.queryByRole("alert")).toBeNull();
+  act(() => ended?.());
+
+  expect(await screen.findByRole("heading", { name: "Sign in" })).toBeTruthy();
 });
 
 test("Done goes back to reading once the session's end is answered: the lock read next is not the edit's own", async () => {
@@ -228,6 +257,32 @@ test("an edit whose account may no longer edit the page says so", async () => {
   expect((await screen.findByRole("alert")).textContent).toContain("You can no longer edit this page.");
 });
 
+test("an edit lost while its content is read says so once the content comes, the focus on the banner", async () => {
+  let read: (() => void) | undefined;
+  const server = pageServer({
+    answers: {
+      "GET /api/v0/pages/*/content": () =>
+        new Promise((resolve) => {
+          read = () => resolve(json({ content: "Guide\n", revision: 1, content_hash: "0".repeat(64) }));
+        }),
+    },
+  });
+  await pressEdit(server);
+  await waitFor(() => expect(read).toBeDefined());
+
+  server.takeOver(guide.id);
+  shown();
+  await waitFor(() => expect(server.sent).toContain("BEAT session-1"));
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  act(() => read?.());
+
+  const banner = await screen.findByRole("alert");
+  expect(banner.textContent).toContain("You went on editing this page elsewhere: this editor saves no more.");
+  const { content } = await pageEditor();
+  await waitFor(() => expect(document.activeElement).toBe(banner));
+  expect(content.getAttribute("contenteditable")).toBe("false");
+});
+
 test("an edit lost saves nothing: Ctrl+S sends nothing; Back to reading asks first while unsaved, Stay keeps the editor", async () => {
   const { user, server } = await pressEdit();
   const { type } = await pageEditor();
@@ -277,11 +332,12 @@ test("an edit lost with nothing unsaved goes back to reading at once; its sessio
 });
 
 /** Guide shown to Ada over server and its event stream, connected; notebooks is Lab's list, which the test changes. */
-async function connected() {
+async function connected(answers: Record<string, Answer> = {}) {
   const events = eventServer();
   const lab = { notebooks: [{ ...notebookJSON, role: "admin" as const }] };
   const server = pageServer({
     answers: {
+      ...answers,
       "GET /api/v0/events": events.answer,
       "GET /api/v0/workspaces": () => json({ data: [workspaceJSON] }),
       "GET /api/v0/workspaces/lab/notebooks": () => json({ data: lab.notebooks }),
@@ -341,18 +397,26 @@ test("a page deleted while this tab edits it with nothing unsaved is no page at 
   expect(await screen.findByRole("heading", { level: 1, name: "Page not found" })).toBeTruthy();
 });
 
-test("a notebook deleted while this tab edits a page of it unsaved stays until the edit is left", async () => {
-  const { user, server, events, lab, type } = await connected();
+test.each<[string, string, Record<string, Answer>]>([
+  ["deleted", "This page no longer exists", {}],
+  [
+    "out of the account's reach",
+    "You can no longer edit this page.",
+    { "POST /api/v0/edit-sessions/*/heartbeat": () => problem(403, "forbidden") },
+  ],
+])("a notebook %s while this tab edits a page of it unsaved stays until the edit is left", async (_, why, answers) => {
+  const { user, server, events, lab, type } = await connected(answers);
   type(" more");
 
   lab.notebooks = [];
   server.nodes = [];
+  server.notebookGone = true;
   server.sessions.clear();
   act(() => events.last().send("reset", { reason: "notebooks_deleted" }));
   await waitFor(() => expect(events.streams).toHaveLength(2));
   act(() => events.last().hello());
 
-  expect((await screen.findByRole("alert")).textContent).toContain("This page no longer exists");
+  expect((await screen.findByRole("alert")).textContent).toContain(why);
   expect(screen.getByRole("heading", { level: 1, name: "Guide" })).toBeTruthy();
   await user.click(screen.getByRole("button", { name: "Back to reading" }));
   await user.click(
@@ -361,4 +425,6 @@ test("a notebook deleted while this tab edits a page of it unsaved stays until t
     })
   );
   expect(await screen.findByRole("heading", { level: 1, name: "Page not found" })).toBeTruthy();
+  // The tree, which the notebook's 404 leaves as it was, still has the page: its view is not read all the same.
+  expect(server.sent).not.toContain("GET view undefined");
 });

@@ -307,7 +307,7 @@ test("a session that cannot be used for now says so under the invitation; Try ag
   expect(await screen.findByRole("heading", { name: "Cannot reach the server" })).toBeTruthy();
   expect(screen.getByText("You are invited to join Lab.")).toBeTruthy();
   // The invitation keeps naming the tab, before and after.
-  expect(document.title).toBe("Invitation · Nerve Wiki");
+  await waitFor(() => expect(document.title).toBe("Invitation · Nerve Wiki"));
   busy = false;
   await user.click(screen.getByRole("button", { name: "Try again" }));
 

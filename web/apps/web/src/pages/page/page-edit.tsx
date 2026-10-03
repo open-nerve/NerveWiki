@@ -77,6 +77,7 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
   const mounted = useMounted();
   const { conflict } = editing;
   const { lost } = editing.session;
+  const shown = editing.content !== undefined;
 
   useEffect(() => {
     editing.keep();
@@ -89,11 +90,12 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
     }
   }, [conflict]);
 
+  // The banner takes the focus as the edit is lost, or as the content comes when it was lost before.
   useEffect(() => {
     if (lost !== undefined) {
       banner.current?.focus();
     }
-  }, [lost]);
+  }, [lost, shown]);
 
   async function save(): Promise<boolean> {
     const current = editor.current;
@@ -161,12 +163,15 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
    * elsewhere when it took the edit over, goes from SWR's cache, to be read
    * as the note shows. The reading view, whose hook is not mounted while
    * the editor is, is read into SWR's cache, deduplication or not, unless
-   * the page is gone from the tree: there is no view to read.
+   * there is no view to read: the page is gone from the tree, or the edit
+   * was lost as the page went or out of the account's reach (a notebook
+   * gone keeps its tree as it was).
    */
   async function finish(): Promise<void> {
     await editing.end();
     await mutate(["edit-lock", page.id], undefined, { revalidate: false });
-    if (pages.byId(page.id) !== undefined) {
+    const reason = editing.session.lost?.reason;
+    if (reason !== "gone" && reason !== "no_access" && pages.byId(page.id) !== undefined) {
       await mutate(["page-view", notebook.id, page.id], pages.view(page.id), { revalidate: false }).catch(
         () => undefined
       );
@@ -247,7 +252,8 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
       <Suspense fallback={<Loading />}>
         <SourceEditor
           ref={editor}
-          focusOnOpen
+          // An edit lost before its editor is made leaves the focus on the banner.
+          focusOnOpen={lost === undefined}
           content={editing.content.content}
           context={{ workspace: slug, notebook: notebook.id, page: page.id, role: notebook.role }}
           controls={{

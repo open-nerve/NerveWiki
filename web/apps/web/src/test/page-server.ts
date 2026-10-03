@@ -56,7 +56,8 @@ type PageServerOptions = {
  * (M4/P5 design 3.4): Lab's one notebook Plans, its tree nodes (by default
  * Guide > Install > Linux, and Notes), each page's reading view its title
  * in a paragraph at revision 1 unless views says otherwise. While
- * nodesDown or viewsDown is set, the tree or the views cannot be read.
+ * nodesDown or viewsDown is set, the tree or the views cannot be read;
+ * while notebookGone is, Plans' tree is 404 notebook.not_found.
  *
  * It writes the tree as the server does where the pages look: a new page
  * goes last under its parent, a title a sibling has (by lower case) is 409
@@ -89,6 +90,7 @@ export function pageServer({
     sessions: new Map<string, FakeSession>(),
     nodesDown: false,
     viewsDown: false,
+    notebookGone: false,
     /** hold opens holder's session of the page pageId, its lease expiresIn seconds; it answers its id. */
     hold(pageId: string, holder: Person = bob, expiresIn = 120): string {
       const id = `held-${(++held).toString()}`;
@@ -116,6 +118,9 @@ export function pageServer({
     "GET /api/v0/workspaces/lab/notebooks": () => json({ data: [{ ...notebookJSON, role }] }),
     [`GET /api/v0/notebooks/${notebookJSON.id}/nodes`]: () => {
       server.sent.push("GET nodes");
+      if (server.notebookGone) {
+        return problem(404, "notebook.not_found");
+      }
       return server.nodesDown ? Promise.reject(new TypeError("offline")) : json({ data: server.nodes });
     },
     "GET /api/v0/pages/*/view": (request) => {

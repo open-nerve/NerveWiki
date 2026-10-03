@@ -16,6 +16,7 @@ import { useT } from "../../i18n/i18n";
 import type { Notebook } from "../../services/notebook.service";
 import type { EditLock, TreeNode } from "../../services/page.service";
 import { usePageTree, useStore } from "../../stores/context";
+import { EditEnded } from "../../stores/edit-session";
 import type { PageEditing } from "../../stores/page-editing";
 import { useNotebook } from "../notebook/notebook-layout";
 import { NotFoundPage } from "../not-found";
@@ -128,7 +129,8 @@ const PageShell = observer(function PageShell({ notebook, page }: { notebook: No
         (lock?.holder ? lockNote : edit).current?.focus();
       }
     } catch (error) {
-      if (mounted()) {
+      // An edit ended as it opens, the tab signing out, is no failure.
+      if (mounted() && !(error instanceof EditEnded)) {
         setRefusal(error);
       }
     } finally {

@@ -71,7 +71,7 @@ export class RootStore {
   readonly apiTokens: ApiTokenStore | undefined;
   /** The signed-in account's workspaces; undefined while the tab is signed out. */
   readonly workspaces: WorkspaceStore | undefined;
-  /** The edits of this generation whose session opened, until they end (M5/P4 design 3.4). */
+  /** The edits of this generation, from as they begin until they end or are not opened (M5/P4 design 3.4). */
   readonly edits = observable.set<PageEditing>([], { deep: false });
   private readonly members: MemberService | undefined;
   private readonly invitations: InvitationService | undefined;
@@ -235,8 +235,9 @@ export class RootStore {
   /**
    * editPage is a new edit of the page pageId of the notebook notebookId,
    * which the page holds, not this generation (M4/P6 design 3.6); edits
-   * has it while its session is open. Its session follows the page, and
-   * this login's events where the tab has a stream (M5/P4 design 3.4).
+   * has it from as it begins until it ends, or its session is not opened.
+   * Its session follows the page, and this login's events where the tab
+   * has a stream (M5/P4 design 3.4).
    */
   editPage(notebookId: string, pageId: string): PageEditing | undefined {
     const { pages, leave, hub } = this;

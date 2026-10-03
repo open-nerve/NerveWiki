@@ -298,8 +298,10 @@ export class EditSession {
    * the lock over; a session taken over or unlocked, or out of reach,
    * loses the edit; any other failure, a network's, is tried again at the
    * next beat, as is an opening anew that failed so: the beat opens it. A
-   * beat that is not answered within a heartbeat is given up, so that the
-   * next one goes.
+   * heartbeat not answered within a heartbeat's time is given up, so that
+   * the next one goes; an opening anew is waited for, as it is the one the
+   * edit's saves share, and given up it could leave a session holding the
+   * lock.
    */
   private async beatOnce(): Promise<void> {
     if (this.ended || this.lost !== undefined) {
