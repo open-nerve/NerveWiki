@@ -1,7 +1,7 @@
 import type { ApiClient, Page } from "@nervewiki/api-client";
 
 import { accountIdOf } from "../../fixtures/assert/identity";
-import { expectMoved } from "../../fixtures/assert/page";
+import { expectMoved, placeOf } from "../../fixtures/assert/page";
 import { emailFor } from "../../fixtures/auth";
 import { answerTo, failedToLoad } from "../../fixtures/browser";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
@@ -48,7 +48,8 @@ test("PG3 (API): a member orders pages among their siblings and moves them under
     (await listNodes(api, pat, notebook.id)).filter((n) => n.parent_id === null).map((n) => n.name);
 
   // Among its siblings: first, after one, last.
-  await expectMoved(db, await moveNode(api, editorPat, c.id, { parent_id: null, after_id: null }), null, editorId);
+  const cLast = await placeOf(db, c.id);
+  await expectMoved(db, await moveNode(api, editorPat, c.id, { parent_id: null, after_id: null }), cLast, editorId);
   expect(await roots()).toEqual(["C", "A", "B"]);
   await moveNode(api, editorPat, c.id, { parent_id: null, after_id: a.id });
   expect(await roots()).toEqual(["A", "C", "B"]);
@@ -56,11 +57,13 @@ test("PG3 (API): a member orders pages among their siblings and moves them under
   expect(await roots()).toEqual(["A", "B", "C"]);
 
   // Under another parent, and back to the root.
+  const bAtRoot = await placeOf(db, b.id);
   const under = await moveNode(api, editorPat, b.id, { parent_id: a.id });
   expect(under).toMatchObject({ id: b.id, parent_id: a.id, name: "B" });
-  await expectMoved(db, under, null, editorId);
+  await expectMoved(db, under, bAtRoot, editorId);
   expect((await getPage(api, pat, b.id)).data?.ancestors).toEqual([{ id: a.id, name: "A" }]);
-  await expectMoved(db, await moveNode(api, editorPat, b.id, { parent_id: null, after_id: null }), a.id, editorId);
+  const bUnderA = await placeOf(db, b.id);
+  await expectMoved(db, await moveNode(api, editorPat, b.id, { parent_id: null, after_id: null }), bUnderA, editorId);
   expect(await roots()).toEqual(["B", "A", "C"]);
 
   // Under itself or its subtree; past ten levels with its subtree.
@@ -75,9 +78,10 @@ test("PG3 (API): a member orders pages among their siblings and moves them under
   const tooDeep = await postMove(api, editorPat, a.id, { parent_id: levels[7]?.id ?? null });
   expect([tooDeep.response.status, tooDeep.error?.code]).toEqual([409, "page.too_deep"]);
   expect((await getPage(api, pat, a.id)).data?.parent_id).toBeNull();
+  const aAtRoot = await placeOf(db, a.id);
   const deepest = await moveNode(api, editorPat, a.id, { parent_id: levels[6]?.id ?? null });
   expect((await getPage(api, pat, a2.id)).data?.ancestors.length).toBe(9);
-  await expectMoved(db, deepest, null, editorId);
+  await expectMoved(db, deepest, aAtRoot, editorId);
 });
 
 test("PG3 (page): an editor drags a page before another and into another, after an open one going into it, and moves one with Move to; a drop into its own subtree sends nothing, the dialog offers no parent the tree forbids, and a move past ten levels that the tree did not foresee stays in the dialog", async ({
@@ -113,18 +117,20 @@ test("PG3 (page): an editor drags a page before another and into another, after 
   await page.goto(notebookPath(workspace.slug, notebook.id));
   await expect.poll(() => treeTitles(page, "Plans")).toEqual(["A", "B", "C", "X", "Level 8"]);
 
+  const cLast = await placeOf(db, c.id);
   const before = answerTo(page, "POST", `/api/v0/nodes/${c.id}/move`);
   await dragPage(page, "Plans", "C", "A", "before");
   expect((await before).status()).toBe(200);
   await expect.poll(() => treeTitles(page, "Plans")).toEqual(["C", "A", "B", "X", "Level 8"]);
-  await expectMoved(db, await nodeOf(c.id), null, editorId);
+  await expectMoved(db, await nodeOf(c.id), cLast, editorId);
 
   // Into B: A is its last child, and B opens.
+  const aAtRoot = await placeOf(db, a.id);
   const into = answerTo(page, "POST", `/api/v0/nodes/${a.id}/move`);
   await dragPage(page, "Plans", "A", "B", "into");
   expect((await into).status()).toBe(200);
   await expect.poll(() => treeTitles(page, "Plans")).toEqual(["C", "B", "A", "X", "Level 8"]);
-  await expectMoved(db, await nodeOf(a.id), null, editorId);
+  await expectMoved(db, await nodeOf(a.id), aAtRoot, editorId);
   // B into its own child is blocked: nothing goes out (checked with the requests below).
   await dragPage(page, "Plans", "B", "A", "into");
   // After B, which shows its children, is not offered: its lower part is into it.
@@ -150,10 +156,11 @@ test("PG3 (page): an editor drags a page before another and into another, after 
   // The tree read again, the dialog no longer offers it.
   await expect.poll(() => optionsOf(dialog, "Parent page")).not.toContain(pathTo(1));
 
+  const xAtRoot = await placeOf(db, x.id);
   expect((await movePageWith(page, "Plans", x.id, "X", pathTo(2), "Last")).status()).toBe(200);
   await expect(dialog).toBeHidden();
   await expect.poll(() => treeTitles(page, "Plans")).toEqual(["B", "A", "C", ...levels.map((each) => each.name), "X"]);
-  await expectMoved(db, await nodeOf(x.id), null, editorId);
+  await expectMoved(db, await nodeOf(x.id), xAtRoot, editorId);
   expect(pageWatch.apiRequests.filter((request) => request.endsWith("/move"))).toEqual(
     [c.id, a.id, c.id, x.id, x.id].map((id) => `POST /api/v0/nodes/${id}/move`)
   );

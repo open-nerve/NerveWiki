@@ -4,6 +4,7 @@ import { useRouteError } from "react-router";
 import { Button } from "../components/ui/button";
 import { useT } from "../i18n/i18n";
 import { ApiError } from "../services/api";
+import { useDocumentTitle } from "./document-title";
 
 /**
  * RouteError is the error boundary of the routes: an exception while a page
@@ -14,6 +15,7 @@ import { ApiError } from "../services/api";
 export function RouteError() {
   const error = useRouteError();
   const t = useT();
+  useDocumentTitle(t("error.title"));
   useEffect(() => {
     console.error(error);
   }, [error]);

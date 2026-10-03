@@ -126,6 +126,13 @@
     line-height: 1.5;
   }
 
+  /* What scrolls sideways takes the focus while it does (scroll-focus.ts). */
+  .nw-reading:focus-visible,
+  .nw-reading pre:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+
   /* A table stays a table, whose semantics some screen readers drop from
      one displayed as a block: a wide one scrolls with the reading view. */
   .nw-reading :is(th, td) {

@@ -4,6 +4,7 @@ import { useLocation, useNavigate, useParams } from "react-router";
 import useSWR from "swr";
 
 import { arrived } from "../app/arrival";
+import { useDocumentTitle } from "../app/document-title";
 import { useForm } from "../app/form";
 import { useSession } from "../app/guards";
 import { linkOf } from "../app/invitation-link";
@@ -30,6 +31,7 @@ export const InvitationPage = observer(function InvitationPage() {
   const { id = "" } = useParams();
   const { hash } = useLocation();
   const t = useT();
+  useDocumentTitle(t("invitation.title"));
   const link = linkOf(id, hash);
   return (
     <section className="mx-auto max-w-sm space-y-6">

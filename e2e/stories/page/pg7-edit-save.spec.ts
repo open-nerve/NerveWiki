@@ -8,7 +8,7 @@ import { emailFor } from "../../fixtures/auth";
 import { answerTo } from "../../fixtures/browser";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { createNotebook } from "../../fixtures/notebooks";
-import { createPage, endSession, openSession, readContent, writeContent } from "../../fixtures/pages";
+import { createPage, endSession, getView, openSession, readContent, writeContent } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
 import { editorContent, pageHeading, pageTree, saveEdit, wikiPagePath } from "../../fixtures/wiki-pages";
 import { newTeam } from "../../fixtures/workspaces";
@@ -17,7 +17,7 @@ import { newTeam } from "../../fixtures/workspaces";
 // an edit session are one changeset with one version of the page; in the
 // browser, the editor's (M4/P6 design 3.6, 3.7).
 
-test("PG7 (API): an editor opens a session and saves twice: one changeset, one version from the first base; the revision, hash and size are the content's; the end deletes the session", async ({
+test("PG7 (API): an editor opens a session and saves twice: one changeset, one version from the first base; the revision, hash and size are the content's, and the reading view shows it; the end deletes the session", async ({
   api,
   db,
 }, testInfo) => {
@@ -50,6 +50,9 @@ test("PG7 (API): an editor opens a session and saves twice: one changeset, one v
     revision: 3,
     content_hash: createHash("sha256").update(content, "utf8").digest("hex"),
   });
+  const view = await getView(api, editorPat, page.id);
+  expect(view.data?.revision).toBe(3);
+  expect(view.data?.html).toContain("<p>Second save.</p>");
 
   expect((await endSession(api, editorPat, session.id)).response.status).toBe(204);
   await expectSessionGone(db, session.id);

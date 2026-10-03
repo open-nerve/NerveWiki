@@ -1,6 +1,7 @@
 import { Button } from "../components/ui/button";
 import { useT } from "../i18n/i18n";
 import { useStore } from "../stores/context";
+import { useDocumentTitle } from "./document-title";
 
 /**
  * SessionUnavailable stands in for a page while the session cannot be used
@@ -12,6 +13,7 @@ import { useStore } from "../stores/context";
 export function SessionUnavailable({ onRetry }: { onRetry: () => void }) {
   const { auth } = useStore();
   const t = useT();
+  useDocumentTitle(t("session.unavailableTitle"));
   return (
     <section role="alert" className="space-y-3">
       <h1 className="text-xl font-semibold">{t("session.unavailableTitle")}</h1>

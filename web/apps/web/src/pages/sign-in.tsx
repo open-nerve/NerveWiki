@@ -2,6 +2,7 @@ import { observer } from "mobx-react-lite";
 import { Link, useSearchParams } from "react-router";
 import useSWR from "swr";
 
+import { useDocumentTitle } from "../app/document-title";
 import { keepNext } from "../app/next-path";
 import { useT } from "../i18n/i18n";
 import { useStore } from "../stores/context";
@@ -11,6 +12,7 @@ import { CredentialsForm, signInProblems } from "./credentials-form";
 export const SignInPage = observer(function SignInPage() {
   const { auth, instance } = useStore();
   const t = useT();
+  useDocumentTitle(t("signIn.title"));
   const [params] = useSearchParams();
   useSWR("instance", () => instance.load());
 

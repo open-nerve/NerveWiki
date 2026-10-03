@@ -2,6 +2,7 @@ import { createContext } from "react";
 
 import type { NotebookRole } from "../services/notebook.service";
 import { codeHighlight, highlightWorker } from "./highlight";
+import { scrollFocus } from "./scroll-focus";
 
 /**
  * ReadingContext is what an enhancement knows of the reading view it runs
@@ -29,11 +30,12 @@ export type Enhancement = (container: HTMLElement, context: ReadingContext) => (
 
 /**
  * readingEnhancements are the app's enhancements, in the order they run
- * (M4 design 8): M4 has code highlighting; M5, M6 and M7 add theirs here.
+ * (M4 design 8): M4 has code highlighting, and the keyboard's way to what
+ * scrolls sideways; M5, M6 and M7 add theirs here.
  * The app's composition root (main.tsx) gives them to the reading views
  * through Enhancements; without it they have none.
  */
-export const readingEnhancements: readonly Enhancement[] = [codeHighlight(highlightWorker)];
+export const readingEnhancements: readonly Enhancement[] = [codeHighlight(highlightWorker), scrollFocus];
 
 export const Enhancements = createContext<readonly Enhancement[]>([]);
 

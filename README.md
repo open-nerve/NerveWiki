@@ -66,7 +66,7 @@ make run      # 以 dev 配置启动 nervewiki serve，监听 127.0.0.1:8080；C
 4. 个人覆盖文件 `configs/config.local.yaml`，相对于工作目录，也就是 `server/` 下启动时（`make run` 就是）的 `server/configs/config.local.yaml`；只在 dev 生效，不进仓库；
 5. 环境变量 `NWIKI_<节>__<键>`，例如 `database.url` 对应 `NWIKI_DATABASE__URL`。
 
-`NWIKI_ENV` 选择环境（`dev`、`test`、`prod`，默认 `dev`）。未知的键、空值、越界的数字、不带单位的时长都会报错，所有无效的键一次列出。日志里的数据库地址整体脱敏。
+`NWIKI_ENV` 选择环境（`dev`、`test`、`prod`，默认 `dev`）。未知的键、空值、越界的数字、不带单位的时长都会报错，所有无效的键一次列出；`server.read_timeout` 加 `server.request_timeout` 必须短于 `server.write_timeout`（期限到了之后还要写出错误响应），`page.parse_max_wait` 必须短于 `server.request_timeout`（等不到解析额度时答 503，而不是先到期限）。日志里的数据库地址整体脱敏。
 
 ### 账户与认证
 
@@ -109,7 +109,7 @@ make run      # 以 dev 配置启动 nervewiki serve，监听 127.0.0.1:8080；C
 - **slug**：工作区的地址段，1–48 个 a–z、0–9、`_`、`-`，创建后不能改；站点的顶层路径与留作以后用的名字不能用，名单在 `server/internal/modules/workspace/domain/reserved_slugs.txt`。
 - **成员**：角色是 admin、member、guest。管理员改别人的角色、移出成员，不能改或移出自己；成员可以离开，唯一的管理员不能（`workspace.sole_admin`），先让别人成为管理员，或者删除工作区；还有别的成员的笔记本的唯一管理员也不能离开（`notebook.sole_admin`，见"笔记本"）。移出不因笔记本被拒：他独自管理的笔记本成为无主。成员列表对访客隐藏邮箱。
 - **停用账户**（自助停用与 `users deactivate` 相同）：他是某个还有别的有效成员的工作区唯一的管理员时，停用被拒（409 `workspace.sole_admin`，原因里列出这些工作区的 slug），先让那里的另一位成员成为管理员；只有他一人的工作区不挡停用。他是还有别的成员的笔记本唯一的管理员时同样被拒（409 `notebook.sole_admin`，见"笔记本"）：先在那些笔记本里让另一位成员成为管理员，或者删除它们；他自己做不了时（如服务器管理员用 `users deactivate`），由工作区的管理员把他移出那个工作区，移出不被拒，那些笔记本成为无主。停用结束他全部的成员关系（工作区与笔记本，他独自管理的笔记本成为无主），并删除这些工作区里发给他邮箱的待接受邀请。恢复：`users activate`，再对每个工作区 `workspaces reactivate-member`，或者由工作区的管理员重新邀请他。唯一的管理员独自停用之后，工作区没有管理员：接受成员、访客邀请答 409 `workspace.no_admin`，`reactivate-member` 恢复成员、访客也被拒（`The workspace has no admin`）；先恢复那位管理员，或者有人接受一份管理员邀请，别人才能加入。注册关闭时凭这样的邀请照样能注册，邀请留着，等工作区重新有管理员之后再接受。
-- **软删除与清理**：删除工作区是软删除，连同它的成员、邀请、笔记本、笔记本的成员与审计记录；撤回、接受的邀请也是软删除。超过 `jobs.purge_retention`（默认 1440 小时，即 60 天）的，由后台任务物理删除，服务启动时一次，之后每 `jobs.purge_interval`（默认 1 小时）一次；多个实例时只有一个执行。保留期内运维可以从数据库恢复。
+- **软删除与清理**：删除工作区是软删除，连同它的成员、邀请、笔记本、笔记本的成员、页面与审计记录；撤回、接受的邀请也是软删除。超过 `jobs.purge_retention`（默认 1440 小时，即 60 天）的，由后台任务物理删除，服务启动时一次，之后每 `jobs.purge_interval`（默认 1 小时）一次；多个实例时只有一个执行。保留期内运维可以从数据库恢复。
 - **邀请**：管理员按邮箱邀请（`POST /api/v0/workspaces/{slug}/invitations`），把邀请的 id 与令牌（`nwk_inv_` 开头）发给对方；一个工作区里一个邮箱至多一份待接受的邀请，有效成员的邮箱不能邀请。令牌是 id 的 MAC，不存库，管理员随时可以在邀请列表里再看到它。任何拿到链接的人都能预览（工作区的名称与 slug、角色，不含邮箱）；接受要求用被邀请的邮箱登录，接受之后成为成员（已结束的成员关系恢复，保留第一次加入的时刻，他名下的无主笔记本归还给他；已是成员的角色不变）。预览与接受都把令牌放在请求体里，不放在 URL 中；链接由页面拼出（M2/P5、P6），令牌放在 URL 片段（`#`）里，浏览器不把片段发给服务器。撤回邀请（`DELETE /api/v0/workspace-invitations/{workspace_invitation_id}`）、成员关系结束（对他邮箱的待接受邀请一并删除）、删除工作区之后，链接答 404 `workspace.invitation_not_found`。
 
 ### 笔记本
@@ -117,10 +117,18 @@ make run      # 以 dev 配置启动 nervewiki serve，监听 127.0.0.1:8080；C
 - **建立与开放程度**：工作区的管理员与成员建笔记本（`POST /api/v0/workspaces/{slug}/notebooks`），建的人是它的管理员；访客建答 403 `forbidden`。`workspace_access` 是它对工作区的开放程度：`none`（私密，只有它的成员看得到，工作区的管理员也看不到）、`viewer`、`editor`（工作区的管理员与成员默认是阅读者、编辑者；访客没有默认角色，只能被加为成员）。
 - **有效角色**：笔记本的角色是 admin、editor、reader；一个人的有效角色是显式角色与默认角色中较高的一个，`Notebook` 的 `role` 是调用者的有效角色。看不到的笔记本按 id 答 404 `notebook.not_found`，与不存在相同。
 - **名称**：与页面标题同一规则（`shared.CheckTitle`）：去掉首尾空白、NFC 规范化之后 1–255 字节，不含 `/ \ : * ? " < > | # ^ [ ]` 与控制字符，不以 `.` 开头或结尾，不是 Windows 保留名；不要求唯一。不合规则是 `name` 的字段错误（422）。
-- **成员**：笔记本的管理员从工作区的有效成员中添加成员（访客也可以）、改角色、移出，不能改或移出自己（409 `notebook.own_membership`）；添加不是工作区有效成员的人是 `user_id: not_allowed`，已是成员的是 `user_id: duplicate`，成员关系已结束的（离开、被移出，或随工作区的成员关系结束）恢复原来那一行，取这次给的角色，保留第一次加入的时刻。成员可以离开，唯一的管理员不能，哪怕只有他一人（409 `notebook.sole_admin`）：先让别人成为管理员，或者删除笔记本。改名、改开放程度（`PATCH /api/v0/notebooks/{notebook_id}`）与删除（`DELETE` 同一地址）也只有笔记本的管理员能做，编辑者、阅读者答 403 `forbidden`；删除是软删除，连同它的成员行。
+- **成员**：笔记本的管理员从工作区的有效成员中添加成员（访客也可以）、改角色、移出，不能改或移出自己（409 `notebook.own_membership`）；添加不是工作区有效成员的人是 `user_id: not_allowed`，已是成员的是 `user_id: duplicate`，成员关系已结束的（离开、被移出，或随工作区的成员关系结束）恢复原来那一行，取这次给的角色，保留第一次加入的时刻。成员可以离开，唯一的管理员不能，哪怕只有他一人（409 `notebook.sole_admin`）：先让别人成为管理员，或者删除笔记本。改名、改开放程度（`PATCH /api/v0/notebooks/{notebook_id}`）与删除（`DELETE` 同一地址）也只有笔记本的管理员能做，编辑者、阅读者答 403 `forbidden`；删除是软删除，连同它的成员行与页面，页面的编辑会话随之删除。
 - **离开工作区、停用与移出**：离开工作区或停用账户（自助与 `users deactivate`）时，他是某个还有别的有效显式成员的笔记本唯一的管理员，就被拒（409 `notebook.sole_admin`）；原因只给这些笔记本所在工作区的 slug 与数量（`… (1 in acme)`），不给名称。只靠 `workspace_access` 使用它的人不算别的成员。工作区自己的规则（`workspace.sole_admin`）先判断。成员关系结束时，他的笔记本成员关系一并结束；他是唯一管理员的笔记本成为**无主**：剩下的成员与按开放程度看得到它的人照常使用，只是没有人能管理它的设置与成员。工作区管理员移出成员不被拒，他独自管理的笔记本同样成为无主。
-- **无主笔记本**：只有工作区的管理员看得到、处理得了：`GET /api/v0/workspaces/{slug}/ownerless-notebooks` 列出（原所有者、成为无主的时刻、最后活动、大小），`POST /api/v0/ownerless-notebooks/{notebook_id}/take-over` 接管（成为它的管理员，开放程度不变），`DELETE /api/v0/ownerless-notebooks/{notebook_id}` 删除。工作区的成员与访客读清单答 403；按 id 的两个操作对管理员之外的任何人答 404 `notebook.not_found`，与不存在、不是无主的相同。原所有者经接受邀请或 `workspaces reactivate-member` 回到工作区时，他名下还没被接管或删除的无主笔记本归还给他，以访客身份回来也一样。页面上是工作区设置的"无主笔记本"一页，管理员的首页另有提醒。
+- **无主笔记本**：只有工作区的管理员看得到、处理得了：`GET /api/v0/workspaces/{slug}/ownerless-notebooks` 列出（原所有者、成为无主的时刻、最后活动与大小：页面正文最后一次写入的时刻与正文的总字节数），`POST /api/v0/ownerless-notebooks/{notebook_id}/take-over` 接管（成为它的管理员，开放程度不变），`DELETE /api/v0/ownerless-notebooks/{notebook_id}` 删除。工作区的成员与访客读清单答 403；按 id 的两个操作对管理员之外的任何人答 404 `notebook.not_found`，与不存在、不是无主的相同。原所有者经接受邀请或 `workspaces reactivate-member` 回到工作区时，他名下还没被接管或删除的无主笔记本归还给他，以访客身份回来也一样。页面上是工作区设置的"无主笔记本"一页，管理员的首页另有提醒。
 - **审计记录**：接管、删除、归还三种，记执行者、时刻、笔记本名称的快照与原所有者：`GET /api/v0/workspaces/{slug}/notebook-audit-events?limit=&cursor=`，只给工作区的管理员，新的在前。`limit` 1–100、默认 50；下一页用答复的 `next_cursor`，最后一页它是 `null`；读不出的游标（不是服务器写出的拼法；游标不签名，不防改写）答 400 `bad_request`，先于其余判断。审计记录比笔记本活得久，随工作区删除与清理。
+
+### 页面
+
+- **树**：一个笔记本的页面是一棵树，`GET /api/v0/notebooks/{notebook_id}/nodes` 一次列出整棵（父页在子页之前）。新建（`POST /api/v0/notebooks/{notebook_id}/pages`，可以带正文）、改名（`PATCH /api/v0/nodes/{node_id}`）、移动（`POST /api/v0/nodes/{node_id}/move`：换父页或在兄弟之间排序，连同它下面的页）、删除（`DELETE /api/v0/nodes/{node_id}`：连同它下面的页一起软删除，保留期过后由清理任务物理删除，见"工作区"的"软删除与清理"）；`GET /api/v0/pages/{page_id}` 读一页与它的祖先。位置用 `after_id`：排在哪个兄弟之后，`null` 排最前，不给排最后。标题与笔记本的名称同一规则；同一父页下（根下也一样）按标题键唯一（NFC、Unicode 大小写折叠、再 NFC），重名答 409 `page.title_taken`；树至多十层（`page.too_deep`），不能移到自己下面（`page.cycle`），也不能移到别的笔记本。笔记本的编辑者与管理员能写，阅读者只读（403 `forbidden`）；看不到的页答 404 `page.not_found`，与不存在相同。
+- **正文**：`GET /api/v0/pages/{page_id}/content` 读出正文、它的版本 `revision` 与 `content_hash`；`PUT` 同一地址写入 `{content, base_revision, edit_session_id?}`，逐字节保存（换行写法、BOM、空白都原样），至多 5 MiB（5,242,880 字节）、不含 NUL（`content` 的字段错误，422）。`base_revision` 不是当前版本答 409 `page.revision_mismatch`：期间有人写过，重新读出再决定；与当前正文相同的写什么也不改。两个正文路由的请求体上限另算（正文加上 JSON 的转义），期限另加 `server.read_timeout`：5 MiB 的正文在 30 秒内传完约需 1.4 Mbit/s 的上行，更慢的链路调大 `read_timeout` 与 `write_timeout`；请求体没有及时传完答 400 `bad_request`。
+- **编辑会话**：编辑器开启会话（`POST /api/v0/pages/{page_id}/edit-sessions`），租约 60 秒，每 20 秒心跳一次续上（`POST /api/v0/edit-sessions/{edit_session_id}/heartbeat`），退出时结束（`DELETE /api/v0/edit-sessions/{edit_session_id}`）。带着同一个会话的写是一个变更集，期间有别人的写就另起一个；会话过期、结束或不是这个客户端（网页或某个令牌）开的，写答 409 `page.edit_session_ended`，心跳与结束答 404 `page.edit_session_not_found`，编辑器重开一个。过期而没有结束的会话由后台任务每 `page.edit_session_cleanup_interval`（默认 10 分钟）删除；删页、删子树、删笔记本时它们的会话一并删除。
+- **阅读视图**：`GET /api/v0/pages/{page_id}/view` 给出渲染好的 HTML 与它所依据的 `revision`：CommonMark 加 GFM（表格、任务项、删除线、自动链接）与脚注，frontmatter 的属性在最前面显示成表格；正文里的 HTML 只留排版用的标签与属性，地址只留本站、http(s) 与 mailto，图片不加载、显示为链接。
+- **解析预算**：服务端同时解析的正文字节数有上限（`page.parse_budget_bytes`，默认 8 MiB），取不到额度的请求最多等 `page.parse_max_wait`（默认 2 秒），然后答 503 `server_busy`（带 `Retry-After`）；写正文、新建带正文的页与阅读视图都经它。最坏的正文解析时约占它字节数 300 倍的内存（默认预算约 2.4 GB），普通的约 40 倍：内存小的机器调小预算（不能小于 5 MiB），并设置 `GOMEMLIMIT`。
 
 ## 接口与代码生成
 
@@ -171,6 +179,8 @@ make build     # 构建前端并内嵌进 bin/nervewiki
 - **工作区的外壳**：`/` 落到这台设备最后访问的工作区（localStorage 的 `nwiki.workspace`）、按名称的第一个，或者创建页；`/:slug` 是工作区的外壳，左栏切换工作区，不是成员的 slug 显示 404。新的顶层页面要把它的路径段加进保留名单 `server/internal/modules/workspace/domain/reserved_slugs.txt` 的 `[app]`，vitest 核对路由与名单一致。
 - **工作区的页面**：`/create-workspace` 建工作区，slug 随名称生成，停止输入之后问服务端是否可用；关闭创建时只说明怎么加入一个工作区。`/:slug/settings/general` 是工作区的名称与地址：管理员改名，删除要先输入 slug，删除之后回到 `/`；其他成员只能看。`/:slug/settings/members` 列出成员（访客看不到邮箱），管理员改别人的角色、移出、邀请（复制链接自己发出，浏览器不能复制时显示链接框；链接用管理员访问本站的地址拼出，经内网地址访问时复制的就是内网链接，对外发链接请从公开地址打开）、撤回邀请；每个成员都能离开，离开之后回到 `/`。
 - **笔记本的页面**：工作区的左栏分"我的笔记本"（只有自己是成员的私密笔记本）与"团队笔记本"，"新建笔记本"在对话框里起名、选开放程度，建好之后进入它；换到别的工作区时左栏随之重建，对话框里没发出的草稿不带过去，在途的创建答复之后不再跳转。`/:slug/notebooks/:id` 是笔记本的外壳：在工作区的笔记本列表里找到它才显示，自己删除或离开之后回到工作区首页，看不到的显示 404。`settings/general` 是名称与开放程度（开放程度点"保存"才发出），管理员可以删除（先输入名称）；`settings/members` 列出成员，管理员从工作区成员中添加、改角色、移出，成员可以离开，没有管理员时页面说明一句。工作区设置的"无主笔记本"一页只给管理员：接管、删除（先输入名称），名称与原所有者都相同的两本另显示 id 的末六位；下面是审计记录，"加载更多"一页一页往下读。管理员的工作区首页提醒还有几本无主笔记本。
+- **页面**：笔记本的左栏是它的页面树：展开与折叠，拖拽改变位置（或用"移动到…"对话框，键盘可用），新建子页、改名、删除在每一项的菜单里；`Ctrl+O`（macOS 上 `Cmd+O`）快速切换页面。`/:slug/notebooks/:id/pages/:pageId` 是页面：面包屑、标题、阅读视图与子页面列表；阅读视图里代码块的高亮在 Worker 里做，超时就不着色。别的标签页或别人删掉的页显示 404，本标签页删掉的去它的父页。
+- **编辑**：写者点"编辑"或按 `Ctrl+E`（`Cmd+E`）在原处换成源码编辑器（CodeMirror，第一次编辑时才下载），`Ctrl+S` 保存，`Ctrl+E` 或"完成"保存之后回到阅读视图；保存的是编辑器里的文字加上原来的换行写法与 BOM，输入法组合中按的保存等组合结束再做。有未保存的修改时去别的页先确认，关标签页由浏览器提醒。保存时这一页已被别人改过，编辑器上方显示差异，"保留我的"覆盖、"放弃我的"载入现在的正文。编辑模式不进地址：刷新回到阅读视图。
 - **邀请页** `/invitations/:id`：在守卫之外，令牌只在地址的片段里，不进 `next`，请求都把它放在请求体里。未登录时先看预览，在页内登录，或带着邀请注册（注册关闭时只有受邀的邮箱能注册）；会话变了页面仍停在原地址，登录之后接受，进入工作区（没完成引导的先走引导）。登录的邮箱不是受邀的，页面说明原因，可以在页内退出换账户。
 - **请求的错误**：problem 码与字段码到文案的映射在 `src/app/problem-messages.ts`；vitest 读 `api/dist/openapi.yaml`，契约中任何一个操作列出的码没有文案时失败（只有页面不显示其错误的续期与退出除外）。
 - **表单**：`src/app/form.ts` 的 `useForm` 是所有表单的发送：本地检查不通过就不发；服务端的字段错误在字段下方（个别 problem 码也可以指定字段，例如当前密码不对），其余在表单上方；发送中按钮禁用；失败之后焦点移到第一个有错误的字段。同一个 problem 码在个别页面要换一种说法时，页面把 `texts`（码到文案键）交给 `useForm`、`ConfirmDialog` 或 `CredentialsForm`，例如邀请页的注册被拒。
@@ -218,10 +228,11 @@ make image-smoke VERSION=0.1.0   # 在镜像上跑 S1、S3：迁移、探针、�
   - 索引属于表的所有者：停机打断 River 的索引重建时留下的 `*_ccnew` 索引，服务的角色删不掉，River 此后每天记 WARN `Found reindex artifact`，由表的所有者执行 `DROP INDEX CONCURRENTLY` 删除。
 
 - 在反向代理之后运行时设置 `NWIKI_SERVER__TRUSTED_PROXIES`，否则每个客户端都被当成代理。
+- 内存：页面正文的解析预算（`page.parse_budget_bytes`，默认 8 MiB）最坏时约占 2.4 GB，见上文"页面"的"解析预算"。内存小的机器调小预算（至少 5 MiB，最坏约 1.5 GB），并用 `GOMEMLIMIT` 给运行时一个略低于容器上限的目标。
 
 - 数据库必须以 builtin provider 的 `C.UTF-8` 初始化，否则服务拒绝启动，见[总体设计](docs/v0.1/v0.1-design.md) 7.1。
 - 探针：存活用 `GET /healthz`（不访问任何依赖），就绪用 `GET /readyz`（数据库可用、迁移已执行完）。镜像里没有 shell 与 curl，所以没有写 `HEALTHCHECK`，由编排系统探测。
-- 后台任务（River：每小时一次的过期会话清理 `auth.session_cleanup_interval`，每小时一次的软删除清理 `jobs.purge_interval`）随 `serve` 运行，表在同一条迁移链上。关闭自动迁移时，服务在迁移执行完之前不启动后台任务，迁移之后自动启动，不必重启。River 从连接池里借走一个连接专门监听通知，数据库要为每个实例多留一个连接（`database.max_conns` + 1）。
+- 后台任务（River：每小时一次的过期会话清理 `auth.session_cleanup_interval`，每小时一次的软删除清理 `jobs.purge_interval`，每 10 分钟一次的过期编辑会话清理 `page.edit_session_cleanup_interval`）随 `serve` 运行，表在同一条迁移链上。关闭自动迁移时，服务在迁移执行完之前不启动后台任务，迁移之后自动启动，不必重启。River 从连接池里借走一个连接专门监听通知，数据库要为每个实例多留一个连接（`database.max_conns` + 1）。
 - 停止时发 SIGTERM：服务停止接收新连接，等正在处理的请求结束（最多 `server.shutdown_timeout`，默认 20 秒），再等正在执行的后台任务（最多 `jobs.shutdown_timeout`，默认 10 秒，之后取消它们，再宽限 1 秒），最后关闭连接池（最多 5 秒）后退出。停机的宽限期要比这些之和长：`docker stop` 默认只等 10 秒，用 `docker stop -t 40`。启动之后不久就停止时（重启循环、端到端测试），River 通常记一条 ERROR `maintenance.PeriodicJobEnqueuer: Error starting transaction`（`context canceled`，它启动时的定时任务入队被停机打断），退出码仍是 0；运行了一段时间的服务停止时一般没有。
 
 ## Markdown 样例集

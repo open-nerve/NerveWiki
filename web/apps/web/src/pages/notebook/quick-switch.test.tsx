@@ -1,6 +1,6 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, expect, onTestFinished, test, vi } from "vitest";
 
 import { notebookJSON } from "../../test/fakes";
 import { guide, notes, pageNode, pagePath, pageServer } from "../../test/page-server";
@@ -155,14 +155,21 @@ test("Ctrl+O does not open it over another dialog", async () => {
   expect(screen.queryByRole("dialog", { name: "Go to a page" })).toBeNull();
 });
 
-test("the tree read again while it is open, Enter goes to the option it can still name", async () => {
+test("the tree read again while it is open, the option it can still name is in view, and Enter goes to it", async () => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
   const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime.bind(vi) });
+  // jsdom scrolls nothing: what is brought into view is recorded.
+  const inView: string[] = [];
+  Element.prototype.scrollIntoView = function (this: Element) {
+    inView.push(this.querySelector("span")?.textContent ?? "");
+  };
+  onTestFinished(() => void Reflect.deleteProperty(Element.prototype, "scrollIntoView"));
   const server = pageServer();
   renderApp(home, server.app);
   await opened();
-  await user.keyboard("{ArrowDown}{ArrowDown}{ArrowDown}");
+  await user.keyboard("{ArrowDown}{ArrowDown}");
   expect(listed()).toHaveLength(4);
+  expect(inView.at(-1)).toBe("Linux");
 
   server.nodes = [guide, notes];
   await act(() => vi.advanceTimersByTimeAsync(6_000));
@@ -173,6 +180,7 @@ test("the tree read again while it is open, Enter goes to the option it can stil
       ["Notes", ""],
     ])
   );
+  expect(inView.at(-1)).toBe("Notes");
   await user.keyboard("{Enter}");
 
   expect(await screen.findByRole("heading", { level: 1, name: "Notes" })).toBeTruthy();

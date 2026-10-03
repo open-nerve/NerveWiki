@@ -4,6 +4,7 @@ import useSWR from "swr";
 
 import { CreateWorkspaceForm } from "../app/create-workspace-form";
 import { useArrivalFocus } from "../app/arrival";
+import { useDocumentTitle } from "../app/document-title";
 import { useMounted } from "../app/mounted";
 import { NotLoaded } from "../app/not-loaded";
 import { useT } from "../i18n/i18n";
@@ -24,6 +25,7 @@ export const CreateWorkspacePage = observer(function CreateWorkspacePage() {
   const mounted = useMounted();
   const { error, mutate } = useSWR("instance", () => instance.load());
   const heading = useArrivalFocus<HTMLHeadingElement>();
+  useDocumentTitle(t("createWorkspace.title"));
   const info = instance.info;
   return (
     <section className="mx-auto max-w-sm space-y-6">

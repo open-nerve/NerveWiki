@@ -1,9 +1,14 @@
 import type { TreeNode } from "../services/page.service";
 
-/** TreeIndex is a notebook's tree looked up: each page by its id, and the pages under each parent (null: the root). */
+/**
+ * TreeIndex is a notebook's tree looked up: each page by its id, the pages
+ * under each parent (null: the root), and how many pages have each title,
+ * by its key.
+ */
 export type TreeIndex = {
   byId: ReadonlyMap<string, TreeNode>;
   children: ReadonlyMap<string | null, readonly TreeNode[]>;
+  titles: ReadonlyMap<string, number>;
 };
 
 /**
@@ -13,8 +18,11 @@ export type TreeIndex = {
 export function indexTree(nodes: readonly TreeNode[]): TreeIndex {
   const byId = new Map<string, TreeNode>();
   const children = new Map<string | null, TreeNode[]>();
+  const titles = new Map<string, number>();
   for (const node of nodes) {
     byId.set(node.id, node);
+    const key = titleKey(node.name);
+    titles.set(key, (titles.get(key) ?? 0) + 1);
     const siblings = children.get(node.parent_id);
     if (siblings === undefined) {
       children.set(node.parent_id, [node]);
@@ -22,7 +30,7 @@ export function indexTree(nodes: readonly TreeNode[]): TreeIndex {
       siblings.push(node);
     }
   }
-  return { byId, children };
+  return { byId, children, titles };
 }
 
 /** childrenOf are the pages right under parent (null: the root), in their order. */
@@ -47,6 +55,22 @@ export function ancestorsOf(tree: TreeIndex, id: string): TreeNode[] {
     parent = node.parent_id;
   }
   return ancestors;
+}
+
+/**
+ * placeOfTitle tells the page id from the other pages of the notebook with
+ * its title, compared as titles are (v0.1 design 13.2, item 17): the
+ * titles of the pages it is under, from the root down, joined by " / ", or
+ * "" at the root; undefined when no other page has its title.
+ */
+export function placeOfTitle(tree: TreeIndex, id: string): string | undefined {
+  const node = tree.byId.get(id);
+  if (node === undefined || (tree.titles.get(titleKey(node.name)) ?? 0) < 2) {
+    return undefined;
+  }
+  return ancestorsOf(tree, id)
+    .map((page) => page.name)
+    .join(" / ");
 }
 
 /**

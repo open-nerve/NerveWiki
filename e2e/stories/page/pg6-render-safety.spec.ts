@@ -10,7 +10,7 @@ import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 // (M4/P5 design 3.12) nothing of it runs, breaks the CSP or loads from
 // elsewhere: an image is a link to it.
 
-test("PG6 (API): a script, event attributes, styles, script and other hosts' links and a raw image do not reach the reading view; an inline tag left open does not leave its block", async ({
+test("PG6 (API): a script, event attributes, styles, script and other hosts' links and a raw image do not reach the reading view; an inline tag left open does not leave its block; an image is a link to it", async ({
   api,
 }, testInfo) => {
   const { pat, workspace } = await newTeam(api, testInfo);
@@ -23,6 +23,8 @@ test("PG6 (API): a script, event attributes, styles, script and other hosts' lin
     '[x](javascript:alert(1)) [y](//evil.example/a) <a href="javascript:alert(1)">z</a>',
     "",
     '<img src="https://evil.example/i.png" onerror="alert(1)">',
+    "",
+    "![logo](https://images.example/logo.png)",
     "",
     "<em>open",
     "",
@@ -39,9 +41,12 @@ test("PG6 (API): a script, event attributes, styles, script and other hosts' lin
   }
   expect(html).toContain("<p>next</p>");
   expect(html.split("<em>").length).toBe(html.split("</em>").length);
+  expect(html).toContain(
+    '<span class="nw-image">logo <a href="https://images.example/logo.png">https://images.example/logo.png</a></span>'
+  );
 });
 
-test("PG6 (page): in the browser the page runs no script, breaks no CSP rule and asks nothing of another host, its image a link", async ({
+test("PG6 (page): in the browser the page runs no script, breaks no CSP rule and asks nothing of another host, its image a link; no link leads to another host by a relative scheme, and a tag left open stays in its block", async ({
   api,
   baseURL,
   signedInPage,
@@ -53,11 +58,13 @@ test("PG6 (page): in the browser the page runs no script, breaks no CSP rule and
     "",
     'a <span onclick="alert(1)" style="color: red">b</span> c',
     "",
-    '[x](javascript:alert(1)) <a href="javascript:alert(1)">z</a>',
+    '[x](javascript:alert(1)) [y](//evil.example/a) <a href="javascript:alert(1)">z</a>',
     "",
     '<img src="https://evil.example/i.png" onerror="alert(1)">',
     "",
     "![logo](https://images.example/logo.png)",
+    "",
+    "<em>open",
     "",
     "next",
     "",
@@ -83,7 +90,11 @@ test("PG6 (page): in the browser the page runs no script, breaks no CSP rule and
   await expect(
     article.locator(".nw-image").getByRole("link", { name: "https://images.example/logo.png" })
   ).toBeVisible();
-  await expect(article.locator('script, img, [onclick], [onerror], [style], [href*="javascript:"]')).toHaveCount(0);
+  await expect(
+    article.locator('script, img, [onclick], [onerror], [style], [href*="javascript:"], [href*="evil.example"]')
+  ).toHaveCount(0);
+  await expect(article.locator("em", { hasText: "open" })).toHaveCount(1);
+  await expect(article.locator("em", { hasText: "next" })).toHaveCount(0);
 
   // A click on what was the span runs nothing either.
   await article.locator("p", { hasText: "a b c" }).click();

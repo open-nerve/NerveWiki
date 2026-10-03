@@ -184,6 +184,39 @@ func TestReadTimeoutReleasesARequestWhoseBodyNeverArrives(t *testing.T) {
 	}
 }
 
+// A body still arriving when read_timeout passes fails its read with the
+// connection's deadline: BodyError answers 400 bad_request saying so, not
+// that the JSON could not be decoded (M4 closeout A-M3).
+func TestABodyPastTheReadTimeoutIsSaidToBeLate(t *testing.T) {
+	cfg := config.ServerConfig{
+		ReadHeaderTimeout: 100 * time.Millisecond,
+		ReadTimeout:       300 * time.Millisecond,
+		WriteTimeout:      5 * time.Second,
+		ShutdownTimeout:   time.Second,
+	}
+	errs := NewAPIErrors(slog.New(slog.DiscardHandler))
+	url, _, _ := startServerWith(t, cfg, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, err := io.ReadAll(r.Body); err != nil {
+			errs.BodyError(w, r, err)
+		}
+	}))
+	conn, err := net.Dial("tcp", strings.TrimPrefix(url, "http://"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+	if _, err := io.WriteString(conn, "PUT / HTTP/1.1\r\nHost: localhost\r\nContent-Length: 12\r\n\r\n{\"na"); err != nil {
+		t.Fatal(err)
+	}
+
+	_ = conn.SetReadDeadline(time.Now().Add(3 * time.Second))
+	reply, _ := io.ReadAll(conn)
+	if !strings.HasPrefix(string(reply), "HTTP/1.1 400 ") ||
+		!strings.Contains(string(reply), `"detail":"The request body did not arrive within the server's read timeout."`) {
+		t.Errorf("reply = %q, want 400 saying the body came too late", reply)
+	}
+}
+
 // write_timeout bounds how long the response may take to produce and send: a
 // handler that answers late, or a client that stops reading, cannot hold the
 // response past it. It fails the writes; it neither stops the handler nor

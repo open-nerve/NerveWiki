@@ -89,6 +89,7 @@ export const en = {
   "page.untitled": "Untitled",
   "page.untitledN": "Untitled {n}",
   "page.actions": "Actions for {name}",
+  "page.nameIn": "{name} (in {place})",
   "page.rename": "Rename",
   "page.renameTitle": "Rename {name}",
   "page.title": "Title",

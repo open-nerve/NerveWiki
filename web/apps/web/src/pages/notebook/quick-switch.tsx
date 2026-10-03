@@ -98,16 +98,16 @@ const Finder = observer(function Finder({ notebook, leave }: FinderProps) {
   const { error, mutate } = useSWR(["pages", notebook.id], () => pages.load());
   const tree = pages.tree;
   const optionId = (index: number) => `${ids.option}-${index}`;
+  const found = tree === undefined ? [] : findPages(tree, query);
+  const listed = found.slice(0, shown);
+  // The tree read again may list fewer.
+  const current = Math.min(active, Math.max(listed.length - 1, 0));
   useEffect(() => {
-    document.getElementById(optionId(active))?.scrollIntoView?.({ block: "nearest" });
+    document.getElementById(optionId(current))?.scrollIntoView?.({ block: "nearest" });
   });
   if (tree === undefined) {
     return <NotLoaded error={error} retry={() => void mutate()} />;
   }
-  const found = findPages(tree, query);
-  const listed = found.slice(0, shown);
-  // The tree read again may list fewer.
-  const current = Math.min(active, Math.max(listed.length - 1, 0));
 
   function go(id: string) {
     // The page shown is no page to go to: the quick switch just closes.

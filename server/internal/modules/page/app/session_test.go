@@ -217,6 +217,63 @@ func TestAnEndTellsTheSubscribers(t *testing.T) {
 	}
 }
 
+// Several vetoers and subscribers run in the order bootstrap hands them
+// (v0.1 design 13.1, item 21), each subscriber following every session a
+// deletion ends; the first refusal or error stops the rest.
+func TestTheSessionRegistrantsRunInTheirOrder(t *testing.T) {
+	f := newFixture()
+	f.grant(domain.ActionEdit)
+	f.vetoers = []app.EditSessionVetoer{&vetoer{recorder: f.rec, name: "first"}, &vetoer{recorder: f.rec, name: "second"}}
+	n := f.page("Notes", nil, 0)
+	if _, err := f.open(n.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := f.rec.calls[len(f.rec.calls)-3:], []string{"VetoEditSession first in tx", "VetoEditSession second in tx",
+		"CreateSession in tx"}; !slices.Equal(got, want) {
+		t.Errorf("an opening ended with %v, want %v", got, want)
+	}
+
+	f = newFixture()
+	f.grant(domain.ActionDelete)
+	f.enders = []app.EditSessionSubscriber{&subscriber{recorder: f.rec, name: "first"}, &subscriber{recorder: f.rec, name: "second"}}
+	root := f.page("Root", nil, 0)
+	child := f.page("Child", &root.ID, 0)
+	f.session(root.ID, f.alice, now().Add(time.Minute))
+	f.session(child.ID, f.alice, now().Add(time.Minute))
+	if err := app.NewDeleteNode(f.writer(), f.store, f.logger()).Execute(f.asAlice(), root.ID, domain.ClientWeb); err != nil {
+		t.Fatal(err)
+	}
+	var told []string
+	for _, call := range f.rec.calls {
+		if strings.HasPrefix(call, "EditSessionEnded") {
+			told = append(told, call)
+		}
+	}
+	if want := []string{"EditSessionEnded first in tx", "EditSessionEnded second in tx", "EditSessionEnded first in tx",
+		"EditSessionEnded second in tx"}; !slices.Equal(told, want) {
+		t.Errorf("the subscribers followed %v, want each session's end by both, in order", told)
+	}
+
+	locked := shared.NewError(shared.KindConflict, "page.locked", "Locked.")
+	f = newFixture()
+	f.grant(domain.ActionEdit)
+	second := &vetoer{recorder: f.rec, name: "second"}
+	f.vetoers = []app.EditSessionVetoer{&vetoer{recorder: f.rec, name: "first", err: locked}, second}
+	n = f.page("Notes", nil, 0)
+	if _, err := f.open(n.ID); !errors.Is(err, locked) || len(second.openings) != 0 {
+		t.Errorf("an opening = %v after the second vetoer saw %d; want the first's refusal, the second not asked", err, len(second.openings))
+	}
+
+	down := errors.New("the event stream is down")
+	f = newFixture()
+	after := &subscriber{recorder: f.rec, name: "second"}
+	f.enders = []app.EditSessionSubscriber{&subscriber{recorder: f.rec, name: "first", err: down}, after}
+	s := f.session(f.page("Notes", nil, 0).ID, f.alice, now().Add(time.Minute))
+	if err := f.end(s.ID, now()); !errors.Is(err, down) || len(after.ended) != 0 {
+		t.Errorf("an end = %v after the second subscriber followed %d; want the first's error, the second not told", err, len(after.ended))
+	}
+}
+
 // A subscriber's error rolls the end back and is its answer.
 func TestASubscribersErrorRollsTheEndBack(t *testing.T) {
 	f := newFixture()

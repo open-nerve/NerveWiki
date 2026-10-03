@@ -4,6 +4,7 @@ import { Navigate, useParams } from "react-router";
 import useSWR from "swr";
 
 import { arrived, useArrivalFocus } from "../../app/arrival";
+import { useDocumentTitle } from "../../app/document-title";
 import { writesPages } from "../../app/effective-role";
 import { NotLoaded } from "../../app/not-loaded";
 import { dialogOpen, isMod, onMac } from "../../app/shortcuts";
@@ -69,6 +70,7 @@ const PageShell = observer(function PageShell({ notebook, page }: { notebook: No
   const pages = usePageTree(notebook);
   const t = useT();
   const heading = useArrivalFocus<HTMLHeadingElement>();
+  useDocumentTitle(page.name, notebook.name);
   const [editing, setEditing] = useState(false);
   const edit = useRef<HTMLButtonElement>(null);
   const back = useRef(false);

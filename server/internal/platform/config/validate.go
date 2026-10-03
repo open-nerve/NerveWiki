@@ -97,8 +97,13 @@ func (c Config) validate() error {
 	if c.Page.ParseBudgetBytes < MinParseBudgetBytes {
 		fail("page.parse_budget_bytes", "must be at least %d, a page's largest content, got %d", MinParseBudgetBytes, c.Page.ParseBudgetBytes)
 	}
-	if c.Page.ParseMaxWait <= 0 {
+	switch {
+	case c.Page.ParseMaxWait <= 0:
 		fail("page.parse_max_wait", "must be positive, got %s", c.Page.ParseMaxWait)
+	case c.Server.RequestTimeout > 0 && c.Page.ParseMaxWait >= c.Server.RequestTimeout:
+		// A wait as long as the request's deadline would end in a 500, not
+		// the 503 server_busy that tells the client to come back.
+		fail("page.parse_max_wait", "must be less than server.request_timeout (%s), got %s", c.Server.RequestTimeout, c.Page.ParseMaxWait)
 	}
 	if c.Jobs.ShutdownTimeout <= 0 {
 		fail("jobs.shutdown_timeout", "must be positive, got %s", c.Jobs.ShutdownTimeout)

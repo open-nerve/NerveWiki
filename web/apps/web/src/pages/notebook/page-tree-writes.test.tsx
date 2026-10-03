@@ -364,6 +364,27 @@ test("a parent the tree, read again, no longer offers goes back to the page's ow
   await waitFor(() => expect(server.sent).toContain("MOVE Notes under root, after last"));
 });
 
+test("a parent the tree, read again, no longer offers goes back to the page's own, not to the top level", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime.bind(vi) });
+  const server = pageServer();
+  renderApp(pagePath(linux.id), server.app);
+  await choose(user, "Linux", "Move to…");
+  const dialog = await screen.findByRole("dialog", { name: "Move Linux" });
+  const parent = within(dialog).getByLabelText("Parent page") as HTMLSelectElement;
+  await user.selectOptions(parent, "Notes");
+
+  // Another tab deletes Notes.
+  server.nodes = [guide, install, linux];
+  await act(() => vi.advanceTimersByTimeAsync(6_000));
+  act(() => void window.dispatchEvent(new Event("focus")));
+  await waitFor(() => expect(options(parent)).toEqual(["The notebook's top level", "Guide", "Guide / Install"]));
+  expect(parent.value).toBe(install.id);
+  await user.click(within(dialog).getByRole("button", { name: "Move" }));
+
+  await waitFor(() => expect(server.sent).toContain("MOVE Linux under Install, after last"));
+});
+
 test("a place the tree, read again, no longer offers goes back to last", async () => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
   const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime.bind(vi) });
@@ -473,7 +494,7 @@ test("a creation answered once the tab went elsewhere stays there", async () => 
         new Promise<Response>((resolve) => waiting.push(resolve)),
     },
   });
-  renderApp(home, server.app);
+  const { router } = renderApp(home, server.app);
   const nav = await tree();
 
   await user.click(await within(nav).findByRole("button", { name: "New page" }));
@@ -483,6 +504,9 @@ test("a creation answered once the tab went elsewhere stays there", async () => 
   waiting[0]?.(json({ ...pageNode(60, "Untitled"), ancestors: [], revision: 1, byte_size: 0 }, 201));
 
   await waitFor(() => expect(within(nav).getByRole("button", { name: "New page" })).toHaveProperty("disabled", false));
+  // A navigation to the new page would have landed by now.
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  expect(router.state.location.pathname).toBe(pagePath(notes.id));
   expect(screen.getByRole("heading", { level: 1, name: "Notes" })).toBeTruthy();
 });
 

@@ -88,6 +88,7 @@ export const zhCN: Messages = {
   "page.untitled": "未命名",
   "page.untitledN": "未命名 {n}",
   "page.actions": "{name}的操作",
+  "page.nameIn": "{name}（{place} 下）",
   "page.rename": "改名",
   "page.renameTitle": "给 {name} 改名",
   "page.title": "标题",

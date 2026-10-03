@@ -1,12 +1,19 @@
 import { accountIdOf } from "../../fixtures/assert/identity";
-import { expectContentWritten, expectOneSessionRevision } from "../../fixtures/assert/page";
+import { expectContentWritten, expectOneSessionRevision, sessionsOf } from "../../fixtures/assert/page";
 import { emailFor } from "../../fixtures/auth";
 import { failedToLoad } from "../../fixtures/browser";
 import { joinAs } from "../../fixtures/invitations";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, openSession, putContent, readContent, writeContent } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
-import { conflictRegion, editorContent, editStatus, startEditing, wikiPagePath } from "../../fixtures/wiki-pages";
+import {
+  conflictRegion,
+  contentWrites,
+  editorContent,
+  editStatus,
+  startEditing,
+  wikiPagePath,
+} from "../../fixtures/wiki-pages";
 import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 
 // PG8, a save that conflicts (M4 design 3, 4): a write that came in first
@@ -46,12 +53,13 @@ test("PG8 (API): another credential writes first, so a save on the version befor
   await expectOneSessionRevision(db, session.id, page.id, 2, 3);
 });
 
-test("PG8 (page): a token writes while the page is edited; the save shows the differences, and Keep mine saves over them; on another page Discard mine edits theirs, and the next save goes through", async ({
+test("PG8 (page): a token writes while the page is edited; the save shows the differences, and Keep mine saves over them on their revision, in the edit's changeset; on another page Discard mine edits theirs, and the next save goes through", async ({
   api,
+  db,
   pageWatch,
   signedInPage,
 }, testInfo) => {
-  const { pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
+  const { adminId, pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
   const notebook = await createNotebook(api, pat, workspace.slug, "Plans");
   const kept = await createPage(api, pat, notebook.id, "Kept", null, "Base\n");
   const discarded = await createPage(api, pat, notebook.id, "Discarded", null, "Base\n");
@@ -62,6 +70,7 @@ test("PG8 (page): a token writes while the page is edited; the save shows the di
   await writeContent(api, pat, kept.id, { content: "Base\nTheirs\n", base_revision: 1 });
   await page.keyboard.press("ControlOrMeta+End");
   await page.keyboard.type("Mine");
+  const keptWrites = contentWrites(page, kept.id);
   await page.keyboard.press("ControlOrMeta+s");
   const conflict = conflictRegion(page);
   await expect(conflict.getByRole("heading")).toBeFocused();
@@ -74,6 +83,10 @@ test("PG8 (page): a token writes while the page is edited; the save shows the di
   await expect(editStatus(page)).toHaveText("Saved.");
   await expect(conflict).toHaveCount(0);
   expect(await readContent(api, pat, kept.id)).toMatchObject({ content: "Base\nMine", revision: 3 });
+  expect(await keptWrites.all()).toEqual([{ status: 409, code: "page.revision_mismatch" }, { status: 200 }]);
+  await expectContentWritten(db, await keptWrites.saved(), "Base\nMine", adminId);
+  const [keptSession] = await sessionsOf(db, kept.id);
+  await expectOneSessionRevision(db, keptSession ?? "", kept.id, 2, 3);
 
   await page.goto(wikiPagePath(workspace.slug, notebook.id, discarded.id));
   await startEditing(page);
@@ -89,7 +102,11 @@ test("PG8 (page): a token writes while the page is edited; the save shows the di
   await expect(content).not.toContainText("Mine");
   await page.keyboard.press("ControlOrMeta+End");
   await page.keyboard.type("More");
+  const discardedWrites = contentWrites(page, discarded.id);
   await page.keyboard.press("ControlOrMeta+s");
   await expect(editStatus(page)).toHaveText("Saved.");
   expect(await readContent(api, pat, discarded.id)).toMatchObject({ content: "Base\r\nTheirs\r\nMore", revision: 3 });
+  await expectContentWritten(db, await discardedWrites.saved(), "Base\r\nTheirs\r\nMore", adminId);
+  const [discardedSession] = await sessionsOf(db, discarded.id);
+  await expectOneSessionRevision(db, discardedSession ?? "", discarded.id, 2, 3);
 });

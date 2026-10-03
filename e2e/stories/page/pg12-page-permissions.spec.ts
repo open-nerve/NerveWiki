@@ -116,7 +116,7 @@ test("PG12 (API): a member creates, renames, moves, deletes, writes the content 
   ]);
 });
 
-test("PG12 (page): a reader goes through the notebook's pages without New page, the pages' menus, dragging or Edit; Ctrl+E opens no editor", async ({
+test("PG12 (page): a reader goes through the notebook's pages without New page, the pages' menus, dragging or Edit; Ctrl+E opens no editor; the address of a page in a notebook it does not see is no page", async ({
   api,
   signedInPage,
 }, testInfo) => {
@@ -144,4 +144,11 @@ test("PG12 (page): a reader goes through the notebook's pages without New page, 
   await expect(notebookHeading(page, "Plans")).toBeVisible();
   await expect(page.getByRole("main").getByRole("button", { name: "New page" })).toHaveCount(0);
   expect(await quickSwitchFor(page, "q4")).toEqual([["Q4", "Roadmap"]]);
+
+  const secret = await createNotebook(api, adminPat, workspace.slug, "Secret", "none");
+  const hidden = await createPage(api, adminPat, secret.id, "Hidden");
+  await page.goto(wikiPagePath(workspace.slug, secret.id, hidden.id));
+  await expect(page.getByRole("heading", { level: 1, name: "Page not found", exact: true })).toBeVisible();
+  await expect(pageTree(page, "Secret")).toHaveCount(0);
+  await expect(pageHeading(page, "Hidden")).toHaveCount(0);
 });

@@ -129,6 +129,40 @@ test("a read that a write's answer overlaps keeps the tree read after the write"
   expect(pages.byId(notes.id)).toBeUndefined();
 });
 
+test("a read that a rename's answer overlaps keeps the tree read after the rename, the new title", async () => {
+  const { pages, state } = store();
+  await pages.load();
+  const stale = held<TreeNode[]>();
+  state.writes.set("list", () => stale.promise);
+  const reading = pages.load();
+
+  state.writes.delete("list");
+  state.nodes = [{ ...guide, name: "Handbook" }, install, linux, notes];
+  await pages.rename(guide.id, "Handbook");
+  stale.resolve([guide, install, linux, notes]);
+  await reading;
+
+  expect(pages.byId(guide.id)?.name).toBe("Handbook");
+});
+
+test("a first read that a write's answer overlaps, with no tree read since, reads it again", async () => {
+  const { pages, sent, state } = store();
+  const stale = held<TreeNode[]>();
+  state.writes.set("list", () => stale.promise);
+  const reading = pages.load();
+
+  // The write's own read fails: the tree is still to be read when the first one comes back.
+  state.writes.set("list", () => Promise.reject(new TypeError("offline")));
+  await pages.rename(guide.id, "Handbook");
+  state.writes.delete("list");
+  state.nodes = [{ ...guide, name: "Handbook" }, install, linux, notes];
+  stale.resolve([guide, install, linux, notes]);
+  await reading;
+
+  expect(pages.byId(guide.id)?.name).toBe("Handbook");
+  expect(sent).toEqual(["list plans", "rename Handbook", "list plans", "list plans"]);
+});
+
 test("a page created is in the tree once create answers its id", async () => {
   const { pages, state } = store();
   await pages.load();

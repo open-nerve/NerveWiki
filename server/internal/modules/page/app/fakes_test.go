@@ -553,12 +553,13 @@ func (p *participant) Participate(ctx context.Context, s app.Step, u app.Appende
 // vetoer records the openings it sees and refuses them with err when set.
 type vetoer struct {
 	*recorder
+	name     string
 	err      error
 	openings []app.SessionOpening
 }
 
 func (v *vetoer) VetoEditSession(ctx context.Context, o app.SessionOpening) error {
-	v.record(ctx, "VetoEditSession")
+	v.record(ctx, named("VetoEditSession", v.name))
 	v.openings = append(v.openings, o)
 	return v.err
 }
@@ -566,12 +567,13 @@ func (v *vetoer) VetoEditSession(ctx context.Context, o app.SessionOpening) erro
 // subscriber records the ends it follows and answers err.
 type subscriber struct {
 	*recorder
+	name  string
 	err   error
 	ended []app.SessionEnded
 }
 
 func (s *subscriber) EditSessionEnded(ctx context.Context, e app.SessionEnded) error {
-	s.record(ctx, "EditSessionEnded")
+	s.record(ctx, named("EditSessionEnded", s.name))
 	s.ended = append(s.ended, e)
 	return s.err
 }

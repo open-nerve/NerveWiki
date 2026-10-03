@@ -2,6 +2,7 @@ import { observer } from "mobx-react-lite";
 import { Suspense } from "react";
 import { Navigate, useSearchParams } from "react-router";
 
+import { useDocumentTitle } from "../app/document-title";
 import { safeNextPath } from "../app/next-path";
 import { Loading } from "../components/loading";
 import { useT } from "../i18n/i18n";
@@ -19,6 +20,7 @@ export const Onboarding = observer(function Onboarding({ steps }: { steps: reado
   const t = useT();
   const [params] = useSearchParams();
   const step = pendingSteps(me, steps)[0];
+  useDocumentTitle(step === undefined ? undefined : t(step.title));
   if (step === undefined) {
     return <Navigate replace to={safeNextPath(params.get("next")) ?? "/"} />;
   }
