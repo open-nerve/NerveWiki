@@ -107,6 +107,8 @@ func Pathological() []Input {
 		{"nested list markers", func(n int) string { return repeat("- ")(n) + "a\n" }},
 		{"nested quotes and lists", func(n int) string { return repeat("> - ")(n) + "a\n" }},
 		{"nested footnote definitions", func(n int) string { return repeat("[^a]: ")(n) + "x\n" }},
+		{"task items - [ ] a", repeat("- [ ] a\n")},
+		{"task items in quotes > - [x]", repeat("> - [x] \t \n")},
 		{"nested lists by indentation", func(n int) string {
 			var b strings.Builder
 			for i := 0; b.Len() < n; i++ {

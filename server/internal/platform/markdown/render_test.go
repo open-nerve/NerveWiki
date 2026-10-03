@@ -53,11 +53,8 @@ func TestTheMarksAreTheReadingViews(t *testing.T) {
 				`<p>two&#160;<a href="#nw-fnref:2" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p>` +
 				"\n</li>\n</ol>\n</div>\n",
 		},
-		{
-			"task items", "- [ ] a\n- [x] b\n",
-			"<ul>\n<li><input disabled=\"\" type=\"checkbox\"> a</li>\n" +
-				"<li><input checked=\"\" disabled=\"\" type=\"checkbox\"> b</li>\n</ul>\n",
-		},
+		// Task items are the tasks extension's (its own tests render them).
+		{"task items without their extension", "- [ ] a\n- [x] b\n", "<ul>\n<li>[ ] a</li>\n<li>[x] b</li>\n</ul>\n"},
 		{
 			"a table's alignment", "| a | b | c | d |\n|:--|:-:|--:|---|\n| 1 | 2 | 3 | 4 |\n",
 			"<table>\n<thead>\n<tr>\n<th align=\"left\">a</th>\n<th align=\"center\">b</th>\n" +
