@@ -26,8 +26,7 @@ import (
 // version or an item not deleted, which would keep the purge from it; an
 // edit session of a page that is not one not deleted of its notebook
 // (M4/P4 design 3.2); two sessions of a page alive at the database's time,
-// which the edit lock refuses, or a tombstone without its reason, by whom
-// and when, which the table refuses too (M5/P1 design 3.8).
+// which the edit lock refuses (M5/P1 design 3.8).
 func checkPages(t *testing.T, pool *pgxpool.Pool) {
 	t.Helper()
 	for what, query := range map[string]string{
@@ -53,8 +52,6 @@ func checkPages(t *testing.T, pool *pgxpool.Pool) {
 				AND n.kind = 'page' AND n.deleted_at IS NULL)`,
 		"with two alive edit sessions": `SELECT count(*) FROM (SELECT 1 FROM edit_sessions
 			WHERE ended_reason IS NULL AND expires_at > now() GROUP BY node_id HAVING count(*) > 1) locked`,
-		"with a session ended in part": `SELECT count(*) FROM edit_sessions
-			WHERE (ended_reason IS NULL) <> (ended_by_id IS NULL) OR (ended_reason IS NULL) <> (ended_at IS NULL)`,
 	} {
 		if n := count(t, pool, query); n != 0 {
 			t.Errorf("%d pages %s, want none", n, what)

@@ -235,8 +235,9 @@ type SessionWriter interface {
 	// them.
 	DeleteNodeSessions(ctx context.Context, ids []uuid.UUID) ([]EditSession, error)
 	// DeleteExpiredSessionsOf deletes the page id's sessions expired at
-	// now, tombstones among them: an opening's first step, so that a
-	// heartbeat that read an earlier time finds no row to keep alive.
+	// now, tombstones among them: an opening's first step, and an
+	// unlock's, so that a heartbeat that read an earlier time finds no row
+	// to keep alive.
 	DeleteExpiredSessionsOf(ctx context.Context, id uuid.UUID, now time.Time) error
 	// EndAliveSessions makes tombstones of the sessions e ends and returns
 	// them, ended.
@@ -268,7 +269,8 @@ type AliveSessions interface {
 
 // Names reads the accounts' display names, which a lock's problem and read
 // give (M5 design 4.5): bootstrap hands identity's directory to it. An id
-// of no account is left out.
+// of no account is left out, and its name is empty where it is given; the
+// sessions' ids reference users, which are never deleted, so none is.
 type Names interface {
 	DisplayNames(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]string, error)
 }

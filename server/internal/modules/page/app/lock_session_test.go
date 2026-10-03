@@ -122,7 +122,7 @@ func TestATakeOverEndsTheOpenersOwnSessionsAlone(t *testing.T) {
 	held := f.session(bobs.ID, bob, now().Add(time.Minute))
 	sub.ended = nil
 	_, err = f.takeOver(bobs.ID)
-	if page, holder, ok := lockOf(err); !ok || page != bobs.ID || holder != "Bob" {
+	if page, holder, ok := lockOf(err, f.names); !ok || page != bobs.ID || holder != "Bob" {
 		t.Errorf("a take-over of bob's lock = %v, want page.locked by Bob", err)
 	}
 	if f.store.sessions[held.ID] != held || len(sub.ended) != 0 {
@@ -130,15 +130,18 @@ func TestATakeOverEndsTheOpenersOwnSessionsAlone(t *testing.T) {
 	}
 }
 
-// The forced unlock: an admin's ends every alive session of the page as a
-// tombstone by them, telling the subscribers, under the page's gate, and
-// logs how many; a page no one holds answers no error. A page missing is
-// not found, and anyone but an admin is forbidden.
+// The forced unlock: an admin's deletes the page's expired rows, then ends
+// every alive session of the page as a tombstone by them, telling the
+// subscribers, under the page's gate, and logs how many; it writes no
+// changeset and tells no observer. A page no one holds answers no error. A
+// session that opened after the unlock's time, while the unlock waited at
+// the gate, ends at its opening, and is told so (M5/P1 review I1). A page
+// missing is not found, and anyone but an admin is forbidden.
 func TestAnUnlockEndsThePagesSessions(t *testing.T) {
 	f := newFixture()
 	f.grant(domain.ActionReleaseEditLock)
-	sub := &subscriber{recorder: f.rec}
-	f.enders = []app.EditSessionSubscriber{sub}
+	sub, o := &subscriber{recorder: f.rec}, &observer{recorder: f.rec}
+	f.enders, f.observers = []app.EditSessionSubscriber{sub}, []app.PageObserver{o}
 	bob := uuid.NewV7()
 	n := f.page("Notes", nil, 0)
 	held := f.session(n.ID, bob, now().Add(time.Minute))
@@ -147,19 +150,19 @@ func TestAnUnlockEndsThePagesSessions(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []string{"FindNode", "WorkspaceOf", "ShareWorkspace in tx", "ShareNotebook in tx", "Authorize page.release_edit_lock in tx",
-		"LockContent in tx", "EndAliveSessions in tx", "EditSessionEnded in tx"}
+		"LockContent in tx", "DeleteExpiredSessionsOf in tx", "EndAliveSessions in tx", "EditSessionEnded in tx"}
 	if !slices.Equal(f.rec.calls, want) {
 		t.Errorf("calls = %v, want %v", f.rec.calls, want)
 	}
 	ended := f.store.sessions[held.ID]
-	if ended.EndedReason != domain.EndedUnlocked || ended.EndedByID != f.alice || f.store.sessions[expired.ID] != expired {
-		t.Errorf("bob's session = %+v, the expired one %+v; want it unlocked by alice, the expired one as it was", ended,
-			f.store.sessions[expired.ID])
+	_, kept := f.store.sessions[expired.ID]
+	if ended.EndedReason != domain.EndedUnlocked || ended.EndedByID != f.alice || kept {
+		t.Errorf("bob's session = %+v, the expired one kept %v; want it unlocked by alice, the expired one deleted", ended, kept)
 	}
 	told := []app.SessionEnded{{SessionID: held.ID, WorkspaceID: f.acme, NotebookID: f.eng, PageID: n.ID, UserID: bob,
 		Reason: domain.EndedUnlocked, By: f.alice, At: now()}}
-	if !reflect.DeepEqual(sub.ended, told) || len(f.store.changesets) != 0 {
-		t.Errorf("told %+v, %d changesets; want %+v and none", sub.ended, len(f.store.changesets), told)
+	if !reflect.DeepEqual(sub.ended, told) || len(f.store.changesets) != 0 || len(o.events) != 0 {
+		t.Errorf("told %+v, %d changesets, %d events; want %+v, none and none", sub.ended, len(f.store.changesets), len(o.events), told)
 	}
 	if logs := f.logs.String(); !strings.Contains(logs, "edit lock released") || !strings.Contains(logs, "sessions=1") ||
 		!strings.Contains(logs, "node_id="+n.ID.String()) {
@@ -167,6 +170,14 @@ func TestAnUnlockEndsThePagesSessions(t *testing.T) {
 	}
 	if err := f.unlock(n.ID); err != nil || len(sub.ended) != 1 {
 		t.Errorf("an unlock of a page no one holds = %v, told %d; want no error, nothing more told", err, len(sub.ended))
+	}
+	later := f.session(n.ID, bob, now().Add(time.Minute))
+	later.CreatedAt = now().Add(time.Second)
+	f.store.sessions[later.ID] = later
+	sub.ended = nil
+	if err := f.unlock(n.ID); err != nil || len(sub.ended) != 1 || !sub.ended[0].At.Equal(later.CreatedAt) ||
+		!f.store.sessions[later.ID].EndedAt.Equal(later.CreatedAt) {
+		t.Errorf("an unlock timed before the opening = %v, told %+v; want it ended and told at the opening", err, sub.ended)
 	}
 
 	for _, tt := range []struct {
@@ -215,6 +226,9 @@ func TestTheLocksRead(t *testing.T) {
 	if calls := f.rec.calls; slices.ContainsFunc(calls, func(c string) bool { return strings.HasSuffix(c, " in tx") }) {
 		t.Errorf("calls = %v, want none in a transaction", calls)
 	}
+	if got, err := f.readLock(n.ID, held.ExpiresAt.Add(-90*time.Second)); err != nil || got.ExpiresIn != 90 {
+		t.Errorf("getEditLock with 90 seconds left = %+v, %v; want 90, not rounded up past a whole second", got, err)
+	}
 	for name, at := range map[string]time.Time{"expired": held.ExpiresAt, "never held": now()} {
 		id := n.ID
 		if name == "never held" {
@@ -235,9 +249,11 @@ func TestTheLocksRead(t *testing.T) {
 }
 
 // A heartbeat of the caller's tombstone says why it ended: taken over, or
-// unlocked by whom; someone else's tombstone is not found. A session taken
-// over between the heartbeat's read and its update answers the same, and
-// the heartbeat keeps nothing alive.
+// unlocked by whom; someone else's tombstone is not found. It decides on
+// the notebook first, as for an alive session: a notebook the caller sees
+// no more is not found, a reader's is forbidden, and neither says who
+// released it. A session taken over between the heartbeat's read and its
+// update answers the same, and the heartbeat keeps nothing alive.
 func TestAHeartbeatOfATombstoneSaysWhy(t *testing.T) {
 	bob := uuid.NewV7()
 	for _, tt := range []struct {
@@ -250,6 +266,15 @@ func TestAHeartbeatOfATombstoneSaysWhy(t *testing.T) {
 		{"taken over", domain.EndedTakenOver, func(f *fixture) uuid.UUID { return f.alice }, "page.edit_session_taken_over", ""},
 		{"unlocked", domain.EndedUnlocked, func(f *fixture) uuid.UUID { return f.alice }, "page.edit_session_unlocked", "Bob"},
 		{"someone else's", domain.EndedUnlocked, func(f *fixture) uuid.UUID { return bob }, "page.edit_session_not_found", ""},
+		{"of a notebook not seen", domain.EndedUnlocked, func(f *fixture) uuid.UUID {
+			f.auth.grants[domain.ActionEdit] = false
+			return f.alice
+		}, "page.edit_session_not_found", ""},
+		{"a reader's", domain.EndedUnlocked, func(f *fixture) uuid.UUID {
+			f.auth.grants[domain.ActionEdit] = false
+			f.auth.forbidden[domain.ActionEdit] = true
+			return f.alice
+		}, "forbidden", ""},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			f := newFixture()
@@ -271,7 +296,8 @@ func TestAHeartbeatOfATombstoneSaysWhy(t *testing.T) {
 	s := f.session(n.ID, f.alice, now().Add(time.Minute))
 	between := takenOverBetween{fakeStore: f.store, f: f, id: s.ID}
 	_, err := app.NewHeartbeatEditSession(between, f.notebooks, f.auth, f.names, fixedClock{now()}).Execute(f.asAlice(), s.ID)
-	if codeOf(err) != "page.edit_session_taken_over" || f.store.sessions[s.ID].Alive(now()) {
+	if after := f.store.sessions[s.ID]; codeOf(err) != "page.edit_session_taken_over" || after.EndedReason != domain.EndedTakenOver ||
+		!after.ExpiresAt.Equal(s.ExpiresAt) {
 		t.Errorf("a heartbeat whose session was taken over meanwhile = %v, session %+v; want page.edit_session_taken_over",
 			err, f.store.sessions[s.ID])
 	}

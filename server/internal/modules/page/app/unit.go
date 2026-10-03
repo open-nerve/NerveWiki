@@ -35,7 +35,8 @@ type WriterDeps struct {
 	Guards       []WriteGuard
 	Participants []Participant
 	Observers    []PageObserver
-	// The edit sessions' vetoers of an opening, and subscribers of an end.
+	// The edit sessions' vetoers of an opening, and subscribers of their
+	// openings and ends.
 	SessionVetoers     []EditSessionVetoer
 	SessionSubscribers []EditSessionSubscriber
 }

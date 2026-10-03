@@ -450,8 +450,9 @@ func (f *fakeStore) DeleteExpiredSessionsOf(ctx context.Context, id uuid.UUID, n
 	return nil
 }
 
-// EndAliveSessions makes tombstones of the sessions e ends, by when they
-// opened.
+// EndAliveSessions makes tombstones of the sessions e ends, at e.At or
+// their opening, the later; it sorts them by when they opened, for the
+// tests' sake, as the SQL does not.
 func (f *fakeStore) EndAliveSessions(ctx context.Context, e app.SessionsEnd) ([]app.EditSession, error) {
 	f.record(ctx, "EndAliveSessions")
 	var out []app.EditSession
@@ -460,6 +461,9 @@ func (f *fakeStore) EndAliveSessions(ctx context.Context, e app.SessionsEnd) ([]
 			continue
 		}
 		s.EndedReason, s.EndedByID, s.EndedAt = e.Reason, e.By, e.At
+		if s.CreatedAt.After(e.At) {
+			s.EndedAt = s.CreatedAt
+		}
 		if e.Until.After(s.ExpiresAt) {
 			s.ExpiresAt = e.Until
 		}

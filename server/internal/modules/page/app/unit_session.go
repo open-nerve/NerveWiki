@@ -61,15 +61,21 @@ func (u *Unit) OpenSession(ctx context.Context, id uuid.UUID, takeOver bool) (Ed
 
 // Unlock ends whichever sessions hold the lock of the page id, the unit's
 // writer releasing it, under its gate: 404 for a page that is not in the
-// notebook. Each becomes a tombstone (M5 design 4.3), so that its tab
-// learns who released it, and the subscribers follow its end. It returns
-// how many ended: none for a page no session held.
+// notebook. The page's expired rows go first, as an opening's do, so that
+// a heartbeat that read an earlier time cannot keep alive a session the
+// unlock found expired (M5/P1 review m1). Each alive one becomes a
+// tombstone (M5 design 4.3), so that its tab learns who released it, and
+// the subscribers follow its end. It returns how many ended: none for a
+// page no session held.
 func (u *Unit) Unlock(ctx context.Context, id uuid.UUID) (int, error) {
 	if err := u.inUnit(ctx); err != nil {
 		return 0, err
 	}
 	if _, err := u.w.d.Nodes.LockContent(ctx, u.write.NotebookID, id); err != nil {
 		return 0, found(err, domain.ErrNotFound)
+	}
+	if err := u.w.d.SessionWriter.DeleteExpiredSessionsOf(ctx, id, u.write.At); err != nil {
+		return 0, err
 	}
 	return u.endAlive(ctx, id, nil, domain.EndedUnlocked)
 }
@@ -105,13 +111,18 @@ func tellEnded(ctx context.Context, subscribers []EditSessionSubscriber, workspa
 }
 
 // tell has the subscribers follow the end of each session, which was alive
-// until it ended at at.
+// until it ended at at, or at its opening when that is later, as its
+// tombstone's end is (M5/P1 review I1).
 func tell(ctx context.Context, subscribers []EditSessionSubscriber, workspaceID uuid.UUID, sessions []EditSession,
 	reason domain.EndReason, by uuid.UUID, at time.Time,
 ) error {
 	for _, s := range sessions {
+		end := at
+		if s.CreatedAt.After(at) {
+			end = s.CreatedAt
+		}
 		e := SessionEnded{SessionID: s.ID, WorkspaceID: workspaceID, NotebookID: s.NotebookID, PageID: s.NodeID, UserID: s.UserID,
-			Reason: reason, By: by, At: at}
+			Reason: reason, By: by, At: end}
 		for _, sub := range subscribers {
 			if err := sub.EditSessionEnded(ctx, e); err != nil {
 				return err

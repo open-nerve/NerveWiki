@@ -213,7 +213,7 @@ func (d pageNotebookDeletion) NotebookDeleted(ctx context.Context, x notebook.No
 // pageExtensions are the registrants of the page module's extension points
 // (M4 design 8): the guards of its writes, the participants of its write
 // units and the observers of their changes; the vetoers of an edit
-// session's opening and the subscribers of its end.
+// session's opening and the subscribers of its opening and end.
 type pageExtensions struct {
 	guards             []page.WriteGuard
 	participants       []page.Participant
@@ -227,7 +227,8 @@ type pageExtensions struct {
 // opening (M5/P1), and its event stream observes the writes and follows
 // the sessions' openings and ends; M6's links take part in the writes and
 // observe them; M11's freeze vetoes an opening. serve, the notebook
-// module's deletion and the tests all take them from here.
+// module's deletion and this package's tests take them from here; the
+// page module's own tests build the lock themselves.
 func pageRegistrants(pool *pgxpool.Pool) pageExtensions {
 	lock := page.NewEditLock(pool, pageNames{identity.NewDirectory(pool)})
 	return pageExtensions{

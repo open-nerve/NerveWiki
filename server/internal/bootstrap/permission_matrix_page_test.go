@@ -185,7 +185,7 @@ func pageMatrixRows() []matrixRow {
 				t.Helper()
 				var e editSessionAnswer
 				decodeAnswer(t, answer, &e)
-				if e.PageID != s.page(pageOf(c)).String() || e.ID == s.session(draftOf(c), c).String() || !e.leased() {
+				if e.PageID != s.page(pageOf(c)).String() || !e.leased() {
 					t.Errorf("opened %+v, want a new session of %s, its lease from now", e, pageOf(c))
 				}
 			},

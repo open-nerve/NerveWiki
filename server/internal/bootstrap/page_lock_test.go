@@ -13,9 +13,10 @@ import (
 // bob, a take-over passes his own lock alone; a content write without his
 // session and alice's deletion are page.locked; his save in it, a write of
 // the content Notes holds, a page created under it, with a content or
-// without, its rename and its move pass; his own deletion passes, and ends
-// his session. Each answer is checked against the contract, the lock and
-// ended_by members among them.
+// without, its rename and its move pass. Once Notes is under Beside,
+// alice's deletion of Beside is page.locked at Notes, and his own passes,
+// and ends his session. Each answer is checked against the contract, the
+// lock and ended_by members among them.
 func TestTheEditLockReachesEveryPath(t *testing.T) {
 	tm := newAcmeTeam(t, "member", "")
 	nb := tm.openNotebook(t, "alice", "Eng")
@@ -25,8 +26,9 @@ func TestTheEditLockReachesEveryPath(t *testing.T) {
 	locked := func(by string, c step) {
 		t.Helper()
 		status, body := ask(t, tm.contract, c.method, tm.base+c.path, tm.tokens[by], c.body)
-		if status != http.StatusConflict || !strings.Contains(body, `"code":"page.locked"`) || lockHolder(answer{body: body}) != "bob" {
-			t.Errorf("%s as %s = %d %s, want 409 page.locked by bob", c.name(), by, status, body)
+		if status != http.StatusConflict || !strings.Contains(body, `"code":"page.locked"`) || lockHolder(answer{body: body}) != "bob" ||
+			!strings.Contains(body, `"page_id":"`+id+`"`) {
+			t.Errorf("%s as %s = %d %s, want 409 page.locked at Notes by bob", c.name(), by, status, body)
 		}
 	}
 	locked("alice", sessionOpening("alice", id))
@@ -53,6 +55,7 @@ func TestTheEditLockReachesEveryPath(t *testing.T) {
 		t.Errorf("bob's save after the unlock = %d %s, want 409 page.edit_session_unlocked by alice", status, body)
 	}
 	again := tm.openSession(t, "bob", id)
+	locked("alice", nodeDeletion("alice", beside))
 	tm.send(t, nodeDeletion("bob", beside), http.StatusNoContent)
 	if n := count(t, tm.pool, "SELECT count(*) FROM edit_sessions WHERE id = $1", again); n != 0 {
 		t.Error("bob's deletion kept his session")

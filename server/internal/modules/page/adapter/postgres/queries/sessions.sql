@@ -30,17 +30,20 @@ WHERE node_id = ANY(sqlc.arg(node_ids)::uuid[]) AND ended_reason IS NULL AND exp
 ORDER BY created_at, id;
 
 -- name: DeleteExpiredSessionsOf :execrows
--- An opening's first step, under its page's content row's lock: the page's rows expired at now go, tombstones
--- among them, so that a heartbeat that read an earlier time finds no row to keep alive (M5 design 4.1).
+-- An opening's first step, and an unlock's, under its page's content row's lock: the page's rows expired at now
+-- go, tombstones among them, so that a heartbeat that read an earlier time finds no row to keep alive (M5 design
+-- 4.1).
 DELETE FROM edit_sessions WHERE node_id = sqlc.arg(node_id) AND expires_at <= sqlc.arg(now);
 
 -- name: EndAliveSessions :many
 -- The page's sessions alive at at, of user_id alone when it is given, become tombstones of reason by by: a
 -- take-over ends its owner's, an unlock anyone's (M5 design 4.2, 4.3). Their lease is kept, and lengthened to
--- until, a lease after the end, so that the tab learns why; the check expires_at > created_at holds.
+-- until, a lease after the end, so that the tab learns why; the check expires_at > created_at holds. A unit reads
+-- its time before it waits at the page's gate, so a session opened while it waited can be younger than at: its
+-- end is then its opening (M5/P1 review I1).
 UPDATE edit_sessions
-SET ended_reason = sqlc.arg(reason)::text, ended_by_id = sqlc.arg(by_id)::uuid, ended_at = sqlc.arg(at)::timestamptz,
-    expires_at = greatest(expires_at, sqlc.arg(until))
+SET ended_reason = sqlc.arg(reason)::text, ended_by_id = sqlc.arg(by_id)::uuid,
+    ended_at = greatest(sqlc.arg(at)::timestamptz, created_at), expires_at = greatest(expires_at, sqlc.arg(until))
 WHERE node_id = sqlc.arg(node_id) AND ended_reason IS NULL AND expires_at > sqlc.arg(at)
     AND (sqlc.narg(user_id)::uuid IS NULL OR user_id = sqlc.narg(user_id))
 RETURNING id, node_id, notebook_id, user_id, client, changeset_id, revision, created_at, expires_at, ended_reason,
@@ -70,8 +73,8 @@ RETURNING id, node_id, notebook_id, user_id, client, changeset_id, revision, cre
     ended_by_id, ended_at;
 
 -- name: EndSession :one
--- The caller's end of their own session alive at now, or of their tombstone: its row goes. An expired one is
--- left to the cleanup.
+-- The caller's end of their own session alive at now, or of their tombstone, expired or not: its row goes. An
+-- expired session that is no tombstone is left to the cleanup.
 DELETE FROM edit_sessions
 WHERE id = sqlc.arg(id) AND user_id = sqlc.arg(user_id)
     AND (ended_reason IS NOT NULL OR expires_at > sqlc.arg(now))

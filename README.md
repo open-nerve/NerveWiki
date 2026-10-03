@@ -130,8 +130,8 @@ make run      # 以 dev 配置启动 nervewiki serve，监听 127.0.0.1:8080；C
   - **锁**：一页活着的会话就是它的编辑锁，同一时刻至多一个。有人持锁时，再开启答 409 `page.locked`，problem 的 `lock` 成员给出页与持锁人（`user_id`、`display_name`），持锁的是自己在别处的会话也一样；不带这个会话的写正文（令牌、别的标签页）也答 `page.locked`；删除一页或它的上级页时，子树里有**别的账户**持锁就答 `page.locked`（按层取第一个），自己的会话随删除结束。新建、改名、移动不受锁限制。
   - **接管**：开启时带 `{"take_over": true}`，先结束自己在这一页的会话（别处的标签页、令牌都算），再开新会话；别人的锁接管不了。被接管的会话再心跳或保存答 409 `page.edit_session_taken_over`。
   - **强制解锁**：笔记本的管理员 `DELETE /api/v0/pages/{page_id}/edit-lock` 结束持锁的会话（没人持锁也答 204）；那个会话再心跳或保存答 409 `page.edit_session_unlocked`，`ended_by` 成员给出解除者。
-  - **读锁**：能读这一页的人 `GET /api/v0/pages/{page_id}/edit-lock`，答复 `{holder, expires_in}`：持锁人（没人持锁为 `null`）与租约剩余的秒数。
-  - 会话过期，或不是写的人在这一页、用同一种客户端（网页，或任一令牌）开的，写答 409 `page.edit_session_ended`，心跳与结束答 404 `page.edit_session_not_found`，编辑器重开一个。被接管、被解锁的会话保留一个租约，让原来的标签页得知原因，之后与过期的会话一起由后台任务每 `page.edit_session_cleanup_interval`（默认 10 分钟）删除；删页、删子树、删笔记本时它们的会话一并删除。
+  - **读锁**：能读这一页的人 `GET /api/v0/pages/{page_id}/edit-lock`，答复 `{holder, expires_in}`：持锁人与租约剩余的秒数（向上取整），没人持锁时两者都是 `null`。
+  - 会话过期，或不是写的人在这一页、用同一种客户端（网页，或任一令牌）开的，写答 409 `page.edit_session_ended`，心跳与结束答 404 `page.edit_session_not_found`，编辑器重开一个。被接管、被解锁的会话至少保留一个租约，让原来的标签页得知原因（这期间心跳与保存答原因，结束答 204；会话的主人不再能编辑这个笔记本时，心跳照常答 404 或 403），之后与过期的会话一起删除：这一页下一次开启或强制解锁时，或后台任务每 `page.edit_session_cleanup_interval`（默认 10 分钟）一次；删页、删子树、删笔记本时它们的会话一并删除。
 - **阅读视图**：`GET /api/v0/pages/{page_id}/view` 给出渲染好的 HTML 与它所依据的 `revision`：CommonMark 加 GFM（表格、任务项、删除线、自动链接）与脚注，frontmatter 的属性在最前面显示成表格；正文里的 HTML 只留排版用的标签与属性，地址只留本站、http(s) 与 mailto，图片不加载、显示为链接。
 - **解析预算**：服务端同时解析的正文字节数有上限（`page.parse_budget_bytes`，默认 8 MiB），取不到额度的请求最多等 `page.parse_max_wait`（默认 2 秒），然后答 503 `server_busy`（带 `Retry-After`）；写正文、新建带正文的页与阅读视图都经它。最坏的正文解析时约占它字节数 300 倍的内存（默认预算约 2.4 GB），普通的约 40 倍：内存小的机器调小预算（不能小于 5 MiB），并设置 `GOMEMLIMIT`。
 

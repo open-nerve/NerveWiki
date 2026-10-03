@@ -342,9 +342,6 @@ func TestANotebookDeletionEndsItsSessions(t *testing.T) {
 	}
 }
 
-// The cleanup deletes the sessions expired at its time, batch after batch
-// until one comes back short, skips a held one, tells no subscriber, and
-// logs how many when it deleted any.
 // A session is alive while it has not ended and its lease lasts past now
 // (M5 design 4.1): a tombstone is not, whatever its lease.
 func TestASessionIsAliveUntilItEndsOrExpires(t *testing.T) {
@@ -368,6 +365,9 @@ func TestASessionIsAliveUntilItEndsOrExpires(t *testing.T) {
 	}
 }
 
+// The cleanup deletes the sessions expired at its time, batch after batch
+// until one comes back short, skips a held one, tells no subscriber, and
+// logs how many when it deleted any.
 func TestTheCleanupDeletesTheExpiredSessions(t *testing.T) {
 	f := newFixture()
 	n := f.page("Notes", nil, 0)

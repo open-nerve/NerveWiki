@@ -7,8 +7,7 @@ import "time"
 // editor beats every EditSessionHeartbeat. The lease is six beats (M5
 // design 4.6): a browser wakes a tab hidden for over five minutes once a
 // minute, so its beats may come a minute apart, and the lease is twice
-// that. The web
-// editor beats as often, by its own editSessionHeartbeat
+// that. The web editor beats as often, by its own editSessionHeartbeat
 // (web/apps/web/src/stores/page-editing.ts; the lease it does not need);
 // each side's tests pin its own.
 const (

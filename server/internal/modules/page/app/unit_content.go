@@ -25,7 +25,9 @@ type ContentWrite struct {
 // WriteContent writes w under the page's gate, its content row FOR NO KEY
 // UPDATE: 404 for a page that is not in the notebook; 409
 // page.edit_session_ended for a session that is not the writer's, from
-// the unit's client, of the page, alive at the unit's time; nothing
+// the unit's client, of the page, alive at the unit's time, but 409
+// page.edit_session_taken_over or page.edit_session_unlocked for the
+// writer's own session taken over or unlocked (M5/P1); nothing
 // written when the page holds the content already, whatever the base: the
 // write is done; 409 page.revision_mismatch for a base that is not the
 // page's revision. It returns the page's revision as the write leaves it.

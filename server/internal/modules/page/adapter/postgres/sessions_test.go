@@ -172,7 +172,8 @@ func TestDeleteSessionsWithTheirPagesAndNotebooks(t *testing.T) {
 
 // The cleanup deletes the sessions expired at now, a batch at most, and
 // skips a row another transaction holds without waiting for it; an alive
-// session stays.
+// session stays. A tombstone goes a lease after its end, not before
+// (M5 design 4.3).
 func TestDeleteExpiredSessions(t *testing.T) {
 	ctx := context.Background()
 	f := newFixture(t)
@@ -209,6 +210,20 @@ func TestDeleteExpiredSessions(t *testing.T) {
 	}
 	if got := f.count(t, "SELECT count(*) FROM edit_sessions WHERE id = $1", alive.ID); got != 1 {
 		t.Error("the session alive at now is deleted")
+	}
+
+	b := f.page(t, f.eng, nil, "B", 1)
+	tomb := f.open(t, b.ID, f.eng, f.alice, now().Add(time.Minute))
+	ended := now().Add(2 * time.Second)
+	if got := f.end(t, b.ID, nil, domain.EndedUnlocked, f.alice, ended); len(got) != 1 {
+		t.Fatalf("ended %+v, want the one session", got)
+	}
+	if n, err := f.s.DeleteExpiredSessions(ctx, ended.Add(domain.EditSessionLease-time.Microsecond), 10); err != nil || n != 0 {
+		t.Errorf("DeleteExpiredSessions() a moment before the tombstone's lease ends = %d, %v; want none", n, err)
+	}
+	if n, err := f.s.DeleteExpiredSessions(ctx, ended.Add(domain.EditSessionLease), 10); err != nil || n != 1 ||
+		f.count(t, "SELECT count(*) FROM edit_sessions WHERE id = $1", tomb.ID) != 0 {
+		t.Errorf("DeleteExpiredSessions() as the tombstone's lease ends = %d, %v; want it deleted", n, err)
 	}
 }
 
@@ -257,6 +272,24 @@ func TestEndAliveSessionsLeavesTombstones(t *testing.T) {
 	}
 	if got := f.count(t, "SELECT count(*) FROM edit_sessions WHERE ended_reason = 'taken_over'"); got != 2 {
 		t.Errorf("%d taken_over rows after the unlock, want the take-over's two untouched", got)
+	}
+}
+
+// A take-over or an unlock whose unit read its time before a session
+// opened, while it waited at the page's gate, ends the session at its
+// opening, which the table's check requires (M5/P1 review I1).
+func TestATombstoneEndsNoEarlierThanItsOpening(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	a := f.page(t, f.eng, nil, "A", 0)
+	opened := now().Add(time.Second)
+	s := f.openAt(t, a.ID, f.eng, f.alice, opened, opened.Add(domain.EditSessionLease))
+	ended := f.end(t, a.ID, nil, domain.EndedUnlocked, f.alice, now())
+	if len(ended) != 1 || !ended[0].EndedAt.Equal(opened) || !ended[0].ExpiresAt.Equal(s.ExpiresAt) {
+		t.Fatalf("an unlock read before the opening ended %+v, want the session ended at its opening %v", ended, opened)
+	}
+	if got, err := f.s.LockSession(ctx, s.ID); err != nil || !reflect.DeepEqual(got, ended[0]) {
+		t.Errorf("LockSession() = %+v, %v; want the tombstone as ended", got, err)
 	}
 }
 

@@ -444,23 +444,31 @@ func (f fixture) openSession(t *testing.T) uuid.UUID {
 	return s.ID
 }
 
-// subscriber records the openings and the ends it follows, and whether in
-// a transaction.
+// subscriber records the openings and the ends it follows; inTx is false
+// once one of them was not in a transaction.
 type subscriber struct {
 	opened []page.SessionOpened
 	ended  []page.SessionEnded
 	inTx   bool
+	outTx  bool
 }
 
 func (s *subscriber) EditSessionOpened(ctx context.Context, o page.SessionOpened) error {
 	s.opened = append(s.opened, o)
-	s.inTx = postgres.InTx(ctx)
+	s.record(ctx)
 	return nil
+}
+
+// record notes whether ctx carries a transaction: inTx is whether every
+// call so far did.
+func (s *subscriber) record(ctx context.Context) {
+	s.outTx = s.outTx || !postgres.InTx(ctx)
+	s.inTx = !s.outTx
 }
 
 func (s *subscriber) EditSessionEnded(ctx context.Context, e page.SessionEnded) error {
 	s.ended = append(s.ended, e)
-	s.inTx = postgres.InTx(ctx)
+	s.record(ctx)
 	return nil
 }
 
@@ -525,31 +533,6 @@ func TestTheEditSessionsReachTheirRegistrants(t *testing.T) {
 	}
 	if !reflect.DeepEqual(sub.opened, opened) {
 		t.Errorf("the subscriber followed the openings %+v, want %+v", sub.opened, opened)
-	}
-}
-
-// page.NewEditLock over the pool, as the opening's vetoer, refuses a
-// second opening of a page: 409 page.locked with the lock member, its
-// holder named by Deps.Names, and no second session.
-func TestTheEditLockRefusesASecondOpening(t *testing.T) {
-	f := newFixture(t)
-	f.vetoers = []page.EditSessionVetoer{page.NewEditLock(f.pool, sqlNames{f.pool})}
-	f.openSession(t)
-	rec := f.serve(t, "pat", http.MethodPost, "/api/v0/pages/"+f.notes.String()+"/edit-sessions", "", nil, nil, nil)
-	var p struct {
-		Code string `json:"code"`
-		Lock struct {
-			PageID      uuid.UUID `json:"page_id"`
-			UserID      uuid.UUID `json:"user_id"`
-			DisplayName string    `json:"display_name"`
-		} `json:"lock"`
-	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &p); err != nil || rec.Code != http.StatusConflict || p.Code != "page.locked" ||
-		p.Lock.PageID != f.notes || p.Lock.UserID != f.alice || p.Lock.DisplayName != "Alice" {
-		t.Errorf("a second opening = %d %s, want 409 page.locked by Alice", rec.Code, rec.Body)
-	}
-	if n := f.count(t, "SELECT count(*) FROM edit_sessions"); n != 1 {
-		t.Errorf("%d edit sessions, want the first alone", n)
 	}
 }
 

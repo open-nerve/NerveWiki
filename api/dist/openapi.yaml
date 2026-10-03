@@ -1218,7 +1218,7 @@ paths:
       tags:
         - page
       summary: Keep an edit session alive
-      description: 'Keeps the caller''s session alive for 120 seconds from now. The caller''s session taken over elsewhere is page.edit_session_taken_over; one whose lock an admin of the notebook released is page.edit_session_unlocked, naming them in ended_by: the editor does not open another. A session that does not exist, has expired, is someone else''s, or whose notebook the caller has no role in any more is page.edit_session_not_found alike: the editor opens a new one. One whose page the caller may only read now is forbidden.'
+      description: 'Keeps the caller''s session alive for 120 seconds from now. The caller''s session, alive or ended by a take-over or an unlock, is page.edit_session_not_found when the caller has no role in its notebook any more, and forbidden when they may only read its page now. Otherwise the caller''s session taken over elsewhere is page.edit_session_taken_over; one whose lock an admin of the notebook released is page.edit_session_unlocked, naming them in ended_by: the editor does not open another. Either answers so until its record is cleaned up, at least 120 seconds after the end. A session that does not exist, has expired, or is someone else''s is page.edit_session_not_found alike: the editor opens a new one.'
       security:
         - bearer: []
       x-problem-codes:
@@ -1243,7 +1243,7 @@ paths:
       tags:
         - page
       summary: End an edit session
-      description: 'Ends the caller''s session: it asks only that the session is the caller''s, and alive, or taken over or unlocked (its record goes). A session that does not exist, has expired, or is someone else''s is page.edit_session_not_found alike, which the editor takes for ended.'
+      description: 'Ends the caller''s session: it asks only that the session is the caller''s, and alive, or taken over or unlocked, expired or not until its record is cleaned up (its record goes). A session that does not exist, has expired otherwise, or is someone else''s is page.edit_session_not_found alike, which the editor takes for ended.'
       security:
         - bearer: []
       x-problem-codes:

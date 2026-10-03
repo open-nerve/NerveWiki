@@ -12,10 +12,12 @@ import (
 )
 
 // lockOf is the lock member of err, a page.locked: the page and the
-// holder's name; ok is false for any other error, or none.
-func lockOf(err error) (page uuid.UUID, holder string, ok bool) {
+// holder's name; ok is false for any other error, or none, and for a
+// holder whose id names says is not theirs.
+func lockOf(err error, names fakeNames) (page uuid.UUID, holder string, ok bool) {
 	var e *shared.Error
-	if !errors.Is(err, domain.ErrLocked) || !errors.As(err, &e) || e.Lock == nil {
+	if !errors.Is(err, domain.ErrLocked) || !errors.As(err, &e) || e.Lock == nil ||
+		names[e.Lock.UserID] != e.Lock.DisplayName {
 		return uuid.UUID{}, "", false
 	}
 	return e.Lock.PageID, e.Lock.DisplayName, true
@@ -98,7 +100,7 @@ func TestTheEditLockGuardsByOperation(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			err := f.lock.GuardWrite(f.asAlice(), tt.step)
-			page, holder, locked := lockOf(err)
+			page, holder, locked := lockOf(err, f.names)
 			switch {
 			case tt.page == none && err != nil:
 				t.Errorf("GuardWrite = %v, want it to pass", err)
@@ -129,7 +131,7 @@ func TestTheEditLockVetoesAnOpeningOfAHeldPage(t *testing.T) {
 		{"of a tombstone's page", opening(f.alice, f.free.ID, now()), ""},
 	} {
 		err := f.lock.VetoEditSession(f.asAlice(), tt.opening)
-		page, holder, locked := lockOf(err)
+		page, holder, locked := lockOf(err, f.names)
 		switch {
 		case tt.holder == "" && err != nil:
 			t.Errorf("%s: VetoEditSession = %v, want it to pass", tt.name, err)

@@ -129,8 +129,9 @@ type DeleteExpiredSessionsOfParams struct {
 	Now    time.Time
 }
 
-// An opening's first step, under its page's content row's lock: the page's rows expired at now go, tombstones
-// among them, so that a heartbeat that read an earlier time finds no row to keep alive (M5 design 4.1).
+// An opening's first step, and an unlock's, under its page's content row's lock: the page's rows expired at now
+// go, tombstones among them, so that a heartbeat that read an earlier time finds no row to keep alive (M5 design
+// 4.1).
 func (q *Queries) DeleteExpiredSessionsOf(ctx context.Context, arg DeleteExpiredSessionsOfParams) (int64, error) {
 	result, err := q.db.Exec(ctx, deleteExpiredSessionsOf, arg.NodeID, arg.Now)
 	if err != nil {
@@ -222,8 +223,8 @@ func (q *Queries) DeleteNotebookSessions(ctx context.Context, notebookIds []uuid
 
 const endAliveSessions = `-- name: EndAliveSessions :many
 UPDATE edit_sessions
-SET ended_reason = $1::text, ended_by_id = $2::uuid, ended_at = $3::timestamptz,
-    expires_at = greatest(expires_at, $4)
+SET ended_reason = $1::text, ended_by_id = $2::uuid,
+    ended_at = greatest($3::timestamptz, created_at), expires_at = greatest(expires_at, $4)
 WHERE node_id = $5 AND ended_reason IS NULL AND expires_at > $3
     AND ($6::uuid IS NULL OR user_id = $6)
 RETURNING id, node_id, notebook_id, user_id, client, changeset_id, revision, created_at, expires_at, ended_reason,
@@ -241,7 +242,9 @@ type EndAliveSessionsParams struct {
 
 // The page's sessions alive at at, of user_id alone when it is given, become tombstones of reason by by: a
 // take-over ends its owner's, an unlock anyone's (M5 design 4.2, 4.3). Their lease is kept, and lengthened to
-// until, a lease after the end, so that the tab learns why; the check expires_at > created_at holds.
+// until, a lease after the end, so that the tab learns why; the check expires_at > created_at holds. A unit reads
+// its time before it waits at the page's gate, so a session opened while it waited can be younger than at: its
+// end is then its opening (M5/P1 review I1).
 func (q *Queries) EndAliveSessions(ctx context.Context, arg EndAliveSessionsParams) ([]EditSession, error) {
 	rows, err := q.db.Query(ctx, endAliveSessions,
 		arg.Reason,
@@ -296,8 +299,8 @@ type EndSessionParams struct {
 	Now    time.Time
 }
 
-// The caller's end of their own session alive at now, or of their tombstone: its row goes. An expired one is
-// left to the cleanup.
+// The caller's end of their own session alive at now, or of their tombstone, expired or not: its row goes. An
+// expired session that is no tombstone is left to the cleanup.
 func (q *Queries) EndSession(ctx context.Context, arg EndSessionParams) (EditSession, error) {
 	row := q.db.QueryRow(ctx, endSession, arg.ID, arg.UserID, arg.Now)
 	var i EditSession

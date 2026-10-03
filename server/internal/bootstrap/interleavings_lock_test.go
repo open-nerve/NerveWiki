@@ -87,13 +87,15 @@ func TestTakingOverASessionASaveWaitsIn(t *testing.T) {
 				if !saved.is(http.StatusOK, "") || !taken.is(http.StatusCreated, "") {
 					t.Errorf("the save = %d %s, then the take-over = %d %s; want 200, then 201", saved.status, saved.code, taken.status, taken.code)
 				}
-				if got := tm.content(t, "bob", id); got.Revision != 2 {
-					t.Errorf("revision %d, want the save's 2", got.Revision)
+				if got := tm.content(t, "bob", id); got.Revision != 2 || count(t, tm.pool,
+					"SELECT count(*) FROM edit_sessions WHERE id = $1 AND changeset_id IS NOT NULL AND revision = 2", session) != 1 {
+					t.Errorf("revision %d; want the save's 2, in the old session's changeset", got.Revision)
 				}
 			} else {
 				taken, saved := tm.interleaveOn(t, contentRow(id), take, save)
-				if !taken.is(http.StatusCreated, "") || !saved.is(http.StatusConflict, "page.edit_session_taken_over") {
-					t.Errorf("the take-over = %d %s, then the save = %d %s; want 201, then 409 page.edit_session_taken_over",
+				if !taken.is(http.StatusCreated, "") || !saved.is(http.StatusConflict, "page.edit_session_taken_over") ||
+					tm.content(t, "bob", id).Revision != 1 {
+					t.Errorf("the take-over = %d %s, then the save = %d %s; want 201, then 409 page.edit_session_taken_over, revision 1",
 						taken.status, taken.code, saved.status, saved.code)
 				}
 			}
@@ -118,15 +120,15 @@ func TestUnlockingASessionASaveWaitsIn(t *testing.T) {
 			save, release := contentWrite("bob", id, "# One", 1, session), unlock("alice", id)
 			if saveFirst {
 				saved, released := tm.interleaveOn(t, contentRow(id), save, release)
-				if !saved.is(http.StatusOK, "") || !released.is(http.StatusNoContent, "") {
-					t.Errorf("the save = %d %s, then the unlock = %d %s; want 200, then 204", saved.status, saved.code, released.status,
-						released.code)
+				if !saved.is(http.StatusOK, "") || !released.is(http.StatusNoContent, "") || tm.content(t, "bob", id).Revision != 2 {
+					t.Errorf("the save = %d %s, then the unlock = %d %s; want 200, then 204, revision 2", saved.status, saved.code,
+						released.status, released.code)
 				}
 			} else {
 				released, saved := tm.interleaveOn(t, contentRow(id), release, save)
 				if !released.is(http.StatusNoContent, "") || !saved.is(http.StatusConflict, "page.edit_session_unlocked") ||
-					endedBy(saved) != "alice" {
-					t.Errorf("the unlock = %d %s, then the save = %d %s; want 204, then 409 page.edit_session_unlocked by alice",
+					endedBy(saved) != "alice" || tm.content(t, "bob", id).Revision != 1 {
+					t.Errorf("the unlock = %d %s, then the save = %d %s; want 204, then 409 page.edit_session_unlocked by alice, revision 1",
 						released.status, released.code, saved.status, saved.body)
 				}
 			}
@@ -174,9 +176,11 @@ func TestABeatAndAnEndOfItsSession(t *testing.T) {
 				if reason, _ := tm.endOf(t, session); reason != tt.reason {
 					t.Errorf("the session ended %q, want %s", reason, tt.reason)
 				}
-				if n := count(t, tm.pool, `SELECT count(*) FROM edit_sessions WHERE id = $1 AND expires_at > ended_at + interval '121 seconds'`,
-					session); !beatFirst && n != 0 {
-					t.Error("the heartbeat behind the end lengthened the tombstone's lease")
+				// The end came after the opening's lease began, so the tombstone keeps
+				// a lease from its end exactly, unless the heartbeat behind it moved it.
+				if n := count(t, tm.pool, `SELECT count(*) FROM edit_sessions WHERE id = $1 AND expires_at = ended_at + interval '120 seconds'`,
+					session); !beatFirst && n != 1 {
+					t.Error("the tombstone's lease is not a lease from its end: the heartbeat behind the end moved it")
 				}
 				checkPages(t, tm.pool)
 				checkNotebooks(t, tm.pool)
