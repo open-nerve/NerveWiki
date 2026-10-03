@@ -60,6 +60,7 @@ func (l *Listener) Run(ctx context.Context) {
 		conn, err := l.connect(ctx)
 		if err == nil {
 			backoff = l.opts.MinBackoff
+			l.logger.InfoContext(ctx, "notification listener listening", slog.String("channel", l.channel), slog.Bool("again", listened))
 			l.opts.OnListening(true)
 			if listened {
 				l.opts.OnReconnect()

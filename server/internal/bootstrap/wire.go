@@ -94,6 +94,7 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrati
 		return nil, err
 	}
 	pg := page.New(pageDeps(cfg, pool, logger, authorizer, md))
+	ev, listener := eventsModule(cfg, pool, logger)
 	runner, err := jobs.New(pool, jobs.Config{ShutdownTimeout: cfg.Jobs.ShutdownTimeout, Logger: logger},
 		slices.Concat(ident.Jobs(), pg.Jobs(), []jobs.Job{purgeJob(cfg, pool, logger)}))
 	if err != nil {
@@ -114,6 +115,7 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrati
 	ws.Register(router, api)
 	nb.Register(router, api)
 	pg.Register(router, api)
+	ev.Register(router, api)
 	// "/" without a method is the least specific pattern: /api/ and the
 	// probes keep their routes, and a wrong method on a page path gets the
 	// frontend's 405 rather than a 404.
@@ -125,6 +127,7 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrati
 		migrator:         migrator,
 		router:           router,
 		jobs:             runner,
+		listener:         listener,
 		poolCloseTimeout: poolCloseTimeout,
 		databaseWait:     databaseWait,
 		migrationPoll:    migrationPoll,

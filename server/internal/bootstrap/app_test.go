@@ -214,6 +214,7 @@ func TestServeRunsUntilCancelled(t *testing.T) {
 		`msg="migration applied" version=1 source=00001_platform_pg_trgm.sql`,
 		`msg="http server listening"`,
 		`msg="http server stopped"`,
+		`msg="event listener stopped"`,
 		`msg="jobs stopped"`,
 		`msg="database pool closed"`,
 	} {

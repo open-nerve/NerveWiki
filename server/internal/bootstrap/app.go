@@ -40,6 +40,9 @@ type app struct {
 	migrator *postgres.Migrator
 	router   *httpserver.Router
 	jobs     *jobs.Runner
+	// listener feeds the event stream (M5 design 4.10): it runs while HTTP
+	// serves and stops after it.
+	listener *postgres.Listener
 	// poolCloseTimeout, databaseWait and migrationPoll are the package's, but
 	// for tests.
 	poolCloseTimeout time.Duration
@@ -50,9 +53,11 @@ type app struct {
 // run waits for the database, applies pending migrations when
 // database.auto_migrate is on, checks the database, and serves HTTP on
 // server.addr until ctx is done, with the background jobs once no migration
-// is pending (M1/P4 design 3.4). HTTP stops first (see
-// httpserver.Server.Serve), its requests done, then the jobs; close then
-// releases the migrator and the pool.
+// is pending (M1/P4 design 3.4) and the event listener from before HTTP
+// starts (M5 design 4.10): a stream opened before the listener listens is
+// 503 not_ready. HTTP stops first (see httpserver.Server.Serve), its
+// requests done and its streams ended, then the listener, then the jobs;
+// close then releases the migrator and the pool.
 func (a *app) run(ctx context.Context) error {
 	warnIfExposed(ctx, a.logger, a.cfg)
 	if err := awaitDatabase(ctx, a.pool, a.databaseWait); err != nil {
@@ -82,8 +87,17 @@ func (a *app) run(ctx context.Context) error {
 		}
 		started <- err
 	}()
+	listenCtx, stopListening := context.WithCancel(context.WithoutCancel(ctx))
+	listened := make(chan struct{})
+	go func() {
+		defer close(listened)
+		a.listener.Run(listenCtx)
+	}()
 	serveErr := httpserver.NewServer(a.cfg.Server, a.router, a.logger).ListenAndServe(ctx)
 	cancel(nil) // HTTP may have stopped on its own: stop waiting to start the jobs
+	stopListening()
+	<-listened
+	a.logger.InfoContext(ctx, "event listener stopped")
 	startErr := <-started
 	return errors.Join(serveErr, startErr, a.jobs.Stop(context.WithoutCancel(ctx)))
 }
