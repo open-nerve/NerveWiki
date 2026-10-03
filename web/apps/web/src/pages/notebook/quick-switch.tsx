@@ -1,5 +1,5 @@
 import { observer } from "mobx-react-lite";
-import { useEffect, useId, useState, type KeyboardEvent } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { useNavigate } from "react-router";
 import useSWR from "swr";
 
@@ -21,16 +21,23 @@ const shown = 50;
 /**
  * QuickSwitch goes to a page of notebook by its title (M4/P5 design 3.10).
  * Mod+O (Cmd+O on macOS, Ctrl+O elsewhere) opens it while the notebook is
- * open, instead of the browser's Open File.
+ * open, instead of the browser's Open File; not over another dialog.
+ * Closed, it gives the focus back to where it was; gone to another page,
+ * that page's heading then takes it, arrived at.
  */
 export function QuickSwitch({ notebook }: { notebook: Notebook }) {
   const t = useT();
   const [open, setOpen] = useState(false);
+  const opener = useRef<HTMLElement | null>(null);
   useEffect(() => {
     const mac = onMac();
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (isMod(event, "o", mac)) {
-        event.preventDefault();
+      if (!isMod(event, "o", mac)) {
+        return;
+      }
+      event.preventDefault();
+      if (document.querySelector('[role="dialog"], [role="alertdialog"]') === null) {
+        opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
         setOpen(true);
       }
     };
@@ -40,9 +47,17 @@ export function QuickSwitch({ notebook }: { notebook: Notebook }) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       {open && (
-        <DialogContent aria-describedby={undefined}>
+        <DialogContent
+          aria-describedby={undefined}
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            if (opener.current?.isConnected) {
+              opener.current.focus();
+            }
+          }}
+        >
           <DialogTitle>{t("page.quickSwitch")}</DialogTitle>
-          <Finder notebook={notebook} close={() => setOpen(false)} />
+          <Finder notebook={notebook} leave={() => setOpen(false)} />
         </DialogContent>
       )}
     </Dialog>
@@ -52,10 +67,11 @@ export function QuickSwitch({ notebook }: { notebook: Notebook }) {
 /**
  * Finder is the quick switch's field and the pages whose title holds what
  * is typed, each with its ancestors, the first 50: a combobox and its
- * listbox, Up and Down to move, Enter to go. Until the tree is read it
- * says so, with Try again.
+ * listbox, Up and Down to move, Enter to go, and a status that says when
+ * none is found or more are. Until the tree is read it says so, with Try
+ * again.
  */
-const Finder = observer(function Finder({ notebook, close }: { notebook: Notebook; close: () => void }) {
+const Finder = observer(function Finder({ notebook, leave }: { notebook: Notebook; leave: () => void }) {
   const pages = usePageTree(notebook);
   const { slug } = useWorkspace();
   const navigate = useNavigate();
@@ -74,9 +90,11 @@ const Finder = observer(function Finder({ notebook, close }: { notebook: Noteboo
   }
   const found = findPages(tree, query);
   const listed = found.slice(0, shown);
+  // The tree read again may list fewer.
+  const current = Math.min(active, Math.max(listed.length - 1, 0));
 
   function go(id: string) {
-    close();
+    leave();
     void navigate(`/${slug}/notebooks/${notebook.id}/pages/${id}`, { state: arrived });
   }
 
@@ -84,10 +102,10 @@ const Finder = observer(function Finder({ notebook, close }: { notebook: Noteboo
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
       const step = event.key === "ArrowDown" ? 1 : -1;
-      setActive(Math.min(Math.max(active + step, 0), Math.max(listed.length - 1, 0)));
+      setActive(Math.min(Math.max(current + step, 0), Math.max(listed.length - 1, 0)));
     } else if (event.key === "Enter") {
       event.preventDefault();
-      const page = listed[active];
+      const page = listed[current];
       if (page !== undefined) {
         go(page.id);
       }
@@ -101,9 +119,9 @@ const Finder = observer(function Finder({ notebook, close }: { notebook: Noteboo
         role="combobox"
         aria-label={t("page.quickSwitchField")}
         aria-expanded={listed.length > 0}
-        aria-controls={ids.list}
+        aria-controls={listed.length > 0 ? ids.list : undefined}
         aria-autocomplete="list"
-        aria-activedescendant={listed[active] === undefined ? undefined : optionId(active)}
+        aria-activedescendant={listed[current] === undefined ? undefined : optionId(current)}
         autoComplete="off"
         value={query}
         onChange={(event) => {
@@ -112,9 +130,7 @@ const Finder = observer(function Finder({ notebook, close }: { notebook: Noteboo
         }}
         onKeyDown={onKeyDown}
       />
-      {listed.length === 0 ? (
-        <p className="text-sm text-muted-foreground">{t("page.quickSwitchNone")}</p>
-      ) : (
+      {listed.length > 0 && (
         <ul
           id={ids.list}
           // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role, jsx-a11y/no-noninteractive-element-to-interactive-role -- the combobox's listbox: a select's options cannot show their ancestors
@@ -129,10 +145,10 @@ const Finder = observer(function Finder({ notebook, close }: { notebook: Noteboo
               id={optionId(index)}
               // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role, jsx-a11y/no-noninteractive-element-to-interactive-role -- an option of the listbox above
               role="option"
-              aria-selected={index === active}
+              aria-selected={index === current}
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => go(page.id)}
-              className={cn("cursor-pointer px-3 py-1.5 text-sm", index === active && "bg-accent")}
+              className={cn("cursor-pointer px-3 py-1.5 text-sm", index === current && "bg-accent")}
             >
               <span className="block truncate">{page.name}</span>{" "}
               <span className="block truncate text-xs text-muted-foreground">
@@ -144,9 +160,13 @@ const Finder = observer(function Finder({ notebook, close }: { notebook: Noteboo
           ))}
         </ul>
       )}
-      {found.length > shown && (
-        <p className="text-xs text-muted-foreground">{t("page.quickSwitchFirst", { count: shown })}</p>
-      )}
+      <output className="block text-xs text-muted-foreground empty:hidden">
+        {listed.length === 0
+          ? t("page.quickSwitchNone")
+          : found.length > shown
+            ? t("page.quickSwitchFirst", { count: shown })
+            : ""}
+      </output>
     </div>
   );
 });

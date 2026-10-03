@@ -16,3 +16,10 @@ const contentSecurityPolicy = "default-src 'self'; " +
 	"base-uri 'none'; " +
 	"form-action 'self'; " +
 	"frame-ancestors 'none'"
+
+// workerPolicy is the CSP of the scripts under assets/. A script a page
+// loads runs under the page's policy, its own ignored; one that runs as a
+// worker runs under the policy of its own answer (CSP 3, 4.2.1): the
+// reading view's highlighting, given the pages' contents, then loads and
+// sends nothing (M4/P5 review m8).
+const workerPolicy = "default-src 'none'"

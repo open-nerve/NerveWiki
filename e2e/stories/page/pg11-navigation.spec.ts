@@ -62,13 +62,14 @@ test("PG11 (page): a page shows where it is in its breadcrumbs, which go up, and
   expect(await breadcrumbs(page)).toEqual(["Plans", "Guide", "Install"]);
   expect(await subpages(page)).toEqual(["Linux"]);
   // The tree shows the page: its ancestors open.
-  expect(await treeTitles(page, "Plans")).toEqual(["Guide", "Install", "Notes"]);
+  await expect.poll(() => treeTitles(page, "Plans")).toEqual(["Guide", "Install", "Notes"]);
 
   await page.getByRole("navigation", { name: "Breadcrumb", exact: true }).getByRole("link", { name: "Plans" }).click();
   await expect(page).toHaveURL(notebookPath(workspace.slug, notebook.id));
-  expect(
-    await page.getByRole("main").getByRole("list", { name: "Pages", exact: true }).getByRole("link").allTextContents()
-  ).toEqual(["Guide", "Notes"]);
+  await expect(page.getByRole("main").getByRole("list", { name: "Pages", exact: true }).getByRole("link")).toHaveText([
+    "Guide",
+    "Notes",
+  ]);
 
   expect(await quickSwitchFor(page, "LIN")).toEqual([["Linux", "Guide / Install"]]);
   await page.keyboard.press("Enter");

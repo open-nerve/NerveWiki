@@ -25,15 +25,25 @@ func TestPolicyAllowsOnlyNervewikisScripts(t *testing.T) {
 	}
 }
 
-// The policy goes on the pages and on nothing else: files, missing assets
-// and the answers of an unbuilt frontend have none.
-func TestOnlyPagesCarryThePolicy(t *testing.T) {
+// A worker loads and sends nothing.
+func TestWorkersLoadNothing(t *testing.T) {
+	if workerPolicy != "default-src 'none'" {
+		t.Errorf("workerPolicy = %q, want default-src 'none' alone", workerPolicy)
+	}
+}
+
+// The pages' policy goes on the pages, the workers' on the scripts under
+// assets/, and none on anything else: other files, missing assets and the
+// answers of an unbuilt frontend.
+func TestPagesAndWorkersCarryTheirPolicies(t *testing.T) {
 	h := Handler(built())
 	for _, tt := range []struct{ method, target, want string }{
 		{http.MethodGet, "/", contentSecurityPolicy},
 		{http.MethodGet, "/nope?tab=a", contentSecurityPolicy},
 		{http.MethodHead, "/acme", contentSecurityPolicy},
-		{http.MethodGet, "/assets/index-a1.js", ""},
+		{http.MethodGet, "/assets/index-a1.js", workerPolicy},
+		{http.MethodHead, "/assets/index-a1.js", workerPolicy},
+		{http.MethodGet, "/assets/index-b2.css", ""},
 		{http.MethodGet, "/theme-init.js", ""},
 		{http.MethodGet, "/assets/index-old.js", ""},
 	} {

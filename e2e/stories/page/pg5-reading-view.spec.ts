@@ -7,8 +7,8 @@ import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 
 // PG5, reading a page (M4 design 3; M4/P4 design 3.12): the reading view of
 // a page created with its Markdown, and in the browser its code coloured by
-// a worker of the app's own (M4/P5 design 3.8, 3.9); writing it comes with
-// the editor (M4/P6).
+// a worker of the app's own, which loads nothing (M4/P5 design 3.8, 3.9);
+// writing it comes with the editor (M4/P6).
 
 test("PG5 (API): a page created with Markdown reads as HTML, its properties first, then its table, task items, strikethrough, autolink, footnote and code in its language; the frontmatter is neither a rule nor a heading", async ({
   api,
@@ -125,4 +125,6 @@ test("PG5 (page): the reading view shows the page's properties first, then its h
   const script = new URL((await worker).url());
   expect(script.origin).toBe(new URL(page.url()).origin);
   expect(script.pathname).toMatch(/^\/assets\/highlight\.worker-[\w-]+\.js$/);
+  // The worker runs under its own answer's policy: it loads and sends nothing.
+  expect((await page.request.get(script.href)).headers()["content-security-policy"]).toBe("default-src 'none'");
 });

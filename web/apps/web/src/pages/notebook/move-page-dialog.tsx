@@ -1,6 +1,7 @@
 import { observer } from "mobx-react-lite";
 import { useId, useRef, useState, type FormEvent } from "react";
 
+import type { HeldDialog } from "../../app/held-dialog";
 import { errorText } from "../../app/problem-messages";
 import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
@@ -12,7 +13,6 @@ import type { Notebook } from "../../services/notebook.service";
 import type { NodeMove, TreeNode } from "../../services/page.service";
 import { usePageTree } from "../../stores/context";
 import { canHold, childrenOf } from "../../stores/page-tree";
-import type { HeldDialog } from "./rename-page-dialog";
 
 /** The root's value in the parent's select. */
 const root = "";
@@ -23,7 +23,8 @@ const root = "";
  * The parents offered are those that can hold it: not the page itself nor
  * a page under it, none it would go deeper than ten levels under; the
  * positions are first, after each sibling, last. It opens on the page's
- * place. A refusal (409 page.cycle, page.too_deep, page.title_taken) stays
+ * place; a choice the tree, read again, no longer offers goes back to the
+ * page's parent and last. A refusal (409 page.cycle, page.too_deep, page.title_taken) stays
  * in the dialog; once moved, the dialog closes.
  */
 export function MovePageDialog({ notebook, page, held }: { notebook: Notebook; page: TreeNode; held: HeldDialog }) {
@@ -71,7 +72,12 @@ const MoveForm = observer(function MoveForm({ notebook, page, cancel, moved }: M
     return null;
   }
   const parents = [...tree.byId.values()].filter((each) => canHold(tree, each.id, page.id));
-  const siblings = childrenOf(tree, parent === root ? null : parent).filter((each) => each.id !== page.id);
+  // A choice that the tree, read again, no longer offers is the default again: what the selects show goes out.
+  const offered = (id: string) => id === root || parents.some((each) => each.id === id);
+  const chosen = offered(parent) ? parent : offered(page.parent_id ?? root) ? (page.parent_id ?? root) : root;
+  const siblings = childrenOf(tree, chosen === root ? null : chosen).filter((each) => each.id !== page.id);
+  const place =
+    position === "first" || position === "last" || siblings.some((each) => each.id === position) ? position : "last";
 
   function choose(next: string) {
     setParent(next);
@@ -84,11 +90,9 @@ const MoveForm = observer(function MoveForm({ notebook, page, cancel, moved }: M
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const parentId = parent === root ? null : parent;
+    const parentId = chosen === root ? null : chosen;
     const move: NodeMove =
-      position === "last"
-        ? { parent_id: parentId }
-        : { parent_id: parentId, after_id: position === "first" ? null : position };
+      place === "last" ? { parent_id: parentId } : { parent_id: parentId, after_id: place === "first" ? null : place };
     setSending(true);
     setFailure(undefined);
     try {
@@ -107,7 +111,7 @@ const MoveForm = observer(function MoveForm({ notebook, page, cancel, moved }: M
       {failure !== undefined && <Alert>{errorText(failure, t)}</Alert>}
       <div className="space-y-2">
         <Label htmlFor={ids.parent}>{t("page.moveParent")}</Label>
-        <NativeSelect id={ids.parent} value={parent} onChange={(event) => choose(event.target.value)}>
+        <NativeSelect id={ids.parent} value={chosen} onChange={(event) => choose(event.target.value)}>
           <option value={root}>{t("page.moveRoot")}</option>
           {parents.map((each) => (
             <option key={each.id} value={each.id}>
@@ -118,7 +122,7 @@ const MoveForm = observer(function MoveForm({ notebook, page, cancel, moved }: M
       </div>
       <div className="space-y-2">
         <Label htmlFor={ids.position}>{t("page.movePosition")}</Label>
-        <NativeSelect id={ids.position} value={position} onChange={(event) => setPosition(event.target.value)}>
+        <NativeSelect id={ids.position} value={place} onChange={(event) => setPosition(event.target.value)}>
           <option value="first">{t("page.moveFirst")}</option>
           {siblings.map((sibling) => (
             <option key={sibling.id} value={sibling.id}>

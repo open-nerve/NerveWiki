@@ -30,19 +30,27 @@ export function Breadcrumbs({
           </Link>
         </li>
         {ancestors.map((ancestor) => (
-          <li key={ancestor.id} className="before:pr-1 before:content-['/']">
+          <li key={ancestor.id}>
+            <Separator />
             <Link to={href(ancestor.id)} className="hover:underline">
               {ancestor.name}
             </Link>
           </li>
         ))}
-        <li
-          aria-current="page"
-          className="text-foreground before:pr-1 before:text-muted-foreground before:content-['/']"
-        >
-          {page.name}
+        <li className="text-foreground">
+          <Separator />
+          <span aria-current="page">{page.name}</span>
         </li>
       </ol>
     </nav>
+  );
+}
+
+/** Separator stands between two steps, for the eye: screen readers have the list. */
+function Separator() {
+  return (
+    <span aria-hidden className="pr-1 text-muted-foreground">
+      /
+    </span>
   );
 }

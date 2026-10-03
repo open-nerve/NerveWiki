@@ -48,7 +48,7 @@ test("a drop deeper than ten levels is forbidden, as deep as ten is not", () => 
 
   expect(dropMove(deep, below.id, ninth, "combine")).toEqual({ parent_id: ninth });
   expect(dropMove(deep, two.id, ninth, "combine")).toBeUndefined();
-  expect(dropOperations(deep, two.id, ninth)).toEqual({
+  expect(dropOperations(deep, two.id, ninth, false)).toEqual({
     "reorder-before": "available",
     "reorder-after": "available",
     combine: "blocked",
@@ -56,14 +56,23 @@ test("a drop deeper than ten levels is forbidden, as deep as ten is not", () => 
 });
 
 test("over the page itself nothing is offered; into its subtree is blocked", () => {
-  expect(dropOperations(tree, guide.id, guide.id)).toEqual({
+  expect(dropOperations(tree, guide.id, guide.id, false)).toEqual({
     "reorder-before": "not-available",
     "reorder-after": "not-available",
     combine: "not-available",
   });
-  expect(dropOperations(tree, guide.id, linux.id)).toEqual({
+  expect(dropOperations(tree, guide.id, linux.id, false)).toEqual({
     "reorder-before": "blocked",
     "reorder-after": "blocked",
     combine: "blocked",
   });
+});
+
+test("after a page that shows its children is not offered: into it is, and before it", () => {
+  expect(dropOperations(tree, notes.id, guide.id, true)).toEqual({
+    "reorder-before": "available",
+    "reorder-after": "not-available",
+    combine: "available",
+  });
+  expect(dropOperations(tree, notes.id, guide.id, false)["reorder-after"]).toBe("available");
 });

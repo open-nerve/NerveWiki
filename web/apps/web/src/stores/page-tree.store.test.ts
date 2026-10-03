@@ -165,3 +165,49 @@ test("a deletion refused otherwise is the caller's, and marks nothing", async ()
   await expect(pages.remove(notes.id)).rejects.toBe(forbidden);
   expect(pages.removedTo(notes.id)).toBeUndefined();
 });
+
+test("a deletion queued behind a creation takes the page created too", async () => {
+  const { pages, state } = store();
+  await pages.load();
+  const creation = held<unknown>();
+  state.writes.set("create Untitled", () => creation.promise);
+  const created = { ...pageNode(9, "Untitled"), parent_id: guide.id };
+  state.writes.set(`delete ${guide.id}`, async () => {
+    state.nodes = [notes];
+  });
+
+  const creating = pages.create(guide.id, "Untitled");
+  const removing = pages.remove(guide.id);
+  state.nodes = [guide, install, linux, created, notes];
+  creation.resolve(created);
+  await Promise.all([creating, removing]);
+
+  expect([guide, install, linux, created].map((n) => pages.removedTo(n.id))).toEqual([null, null, null, null]);
+});
+
+test("a page deleted leaves the tree at once, though the tree cannot be read again", async () => {
+  const { pages, state } = store();
+  await pages.load();
+  state.writes.set("list", () => Promise.reject(new TypeError("offline")));
+
+  await pages.remove(install.id);
+
+  expect(pages.childrenOf(guide.id)).toEqual([]);
+  expect(pages.byId(linux.id)).toBeUndefined();
+  expect(pages.removedTo(linux.id)).toBe(guide.id);
+});
+
+test("a tree read the same as before is kept as it was; one changed replaces it", async () => {
+  const { pages, state } = store();
+  await pages.load();
+  const before = pages.nodes;
+
+  state.nodes = structuredClone(state.nodes);
+  await pages.load();
+  expect(pages.nodes).toBe(before);
+
+  state.nodes = [guide, install, linux, { ...notes, name: "Notes 2" }];
+  await pages.load();
+  expect(pages.nodes).not.toBe(before);
+  expect(pages.byId(notes.id)?.name).toBe("Notes 2");
+});

@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 
 import type { WorkspaceRole } from "../services/member.service";
 import type { NotebookRole, WorkspaceAccess } from "../services/notebook.service";
-import { effectiveNotebookRole } from "./effective-role";
+import { effectiveNotebookRole, writesPages } from "./effective-role";
 
 // The server's table (shared.TestEffectiveNotebookRole): for each role in
 // the workspace and the notebook's access, the effective role of no
@@ -22,4 +22,10 @@ const table: [WorkspaceRole, WorkspaceAccess, readonly (NotebookRole | undefined
 
 test.each(table)("a workspace %s in a notebook open as %s", (workspace, access, want) => {
   expect(explicit.map((role) => effectiveNotebookRole(role, access, workspace))).toEqual(want);
+});
+
+test("editors and admins write a notebook's pages, readers and roles unknown do not", () => {
+  expect((["reader", "editor", "admin"] as const).map(writesPages)).toEqual([false, true, true]);
+  // A role this client does not know yet writes nothing.
+  expect(writesPages("owner" as NotebookRole)).toBe(false);
 });

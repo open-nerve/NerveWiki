@@ -44,17 +44,21 @@ export function dropMove(
 /**
  * dropOperations is what the hitbox offers over target while dragged is
  * dragged: each operation available, or blocked where the tree forbids it,
- * which shows without a request; none over the page itself.
+ * which shows without a request; none over the page itself. After target
+ * is not offered while it is open with its children shown: the line would
+ * stand above its first child, but the page would go after its whole
+ * subtree. Into it, or before the next page, says where.
  */
 export function dropOperations(
   tree: TreeIndex,
   dragged: string,
-  target: string
+  target: string,
+  open: boolean
 ): Record<DropOperation, "available" | "blocked" | "not-available"> {
   return Object.fromEntries(
     operations.map((operation) => [
       operation,
-      target === dragged
+      target === dragged || (operation === "reorder-after" && open)
         ? "not-available"
         : dropMove(tree, dragged, target, operation) === undefined
           ? "blocked"

@@ -31,3 +31,12 @@ export function effectiveNotebookRole(
   }
   return explicit;
 }
+
+/**
+ * writesPages tells whether role writes a notebook's pages (M4 design 5):
+ * an editor and an admin do, a reader does not; a role this does not know
+ * does not either.
+ */
+export function writesPages(role: NotebookRole): boolean {
+  return role === "editor" || role === "admin";
+}

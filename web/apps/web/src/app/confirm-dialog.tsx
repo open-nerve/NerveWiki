@@ -12,17 +12,19 @@ import {
 } from "../components/ui/alert-dialog";
 import { Button } from "../components/ui/button";
 import { useT } from "../i18n/i18n";
+import type { HeldDialog } from "./held-dialog";
 import { errorText, type ProblemTexts } from "./problem-messages";
 
-type ConfirmDialogProps = {
-  /** The button that opens the dialog; without it, the caller holds the dialog (held), as a menu's item does. */
-  trigger?: ReactElement;
-  /**
-   * The dialog held by the caller: whether it is open, the change the
-   * dialog asks for, and, once closed, whether confirm went through; the
-   * caller then moves the focus, which no trigger takes back.
-   */
-  held?: { open: boolean; onOpenChange: (open: boolean) => void; onClosed: (confirmed: boolean) => void };
+/**
+ * How the dialog opens: by its trigger, the focus going back to it, or to
+ * focusAfter once confirm went through and took the trigger with it (a
+ * revoked token's row); or held by its caller.
+ */
+type Opening =
+  | { trigger: ReactElement; focusAfter?: () => void; held?: never }
+  | { held: HeldDialog; trigger?: never; focusAfter?: never };
+
+type ConfirmDialogProps = Opening & {
   title: string;
   description: string;
   confirmLabel: string;
@@ -31,11 +33,6 @@ type ConfirmDialogProps = {
   cancelLabel: string;
   /** What confirming does; when it throws, the dialog stays open with the reason. */
   confirm: () => Promise<void>;
-  /**
-   * Where the focus goes once confirm went through and took the trigger
-   * with it (a revoked token's row); without it, back to the trigger.
-   */
-  focusAfter?: () => void;
   /**
    * What the user types before confirming, such as the slug of the
    * workspace to delete: label asks for it, and confirm is disabled until

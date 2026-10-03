@@ -22,8 +22,11 @@ test("a page shows where it is, its title, its reading view and its subpages, al
   expect(
     within(crumbs)
       .getAllByRole("listitem")
-      .map((item) => item.textContent)
+      .map((item) =>
+        [...item.querySelectorAll(":scope > :not([aria-hidden])")].map((step) => step.textContent).join("")
+      )
   ).toEqual(["Plans", "Guide", "Install"]);
+  expect([...crumbs.querySelectorAll("[aria-hidden]")].map((separator) => separator.textContent)).toEqual(["/", "/"]);
   expect(within(crumbs).getByRole("link", { name: "Plans" }).getAttribute("href")).toBe(
     `/lab/notebooks/${notebookJSON.id}`
   );

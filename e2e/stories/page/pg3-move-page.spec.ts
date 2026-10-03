@@ -80,7 +80,7 @@ test("PG3 (API): a member orders pages among their siblings and moves them under
   await expectMoved(db, deepest, null, editorId);
 });
 
-test("PG3 (page): an editor drags a page before another and into another, and moves one with Move to; a drop into its own subtree sends nothing, the dialog offers no parent the tree forbids, and a move past ten levels that the tree did not foresee stays in the dialog", async ({
+test("PG3 (page): an editor drags a page before another and into another, after an open one going into it, and moves one with Move to; a drop into its own subtree sends nothing, the dialog offers no parent the tree forbids, and a move past ten levels that the tree did not foresee stays in the dialog", async ({
   api,
   db,
   pageWatch,
@@ -92,7 +92,7 @@ test("PG3 (page): an editor drags a page before another and into another, and mo
   const editorId = await accountIdOf(db, editorEmail);
   const notebook = await createNotebook(api, adminPat, workspace.slug, "Plans", "editor");
   const a = await createPage(api, adminPat, notebook.id, "A");
-  await createPage(api, adminPat, notebook.id, "B");
+  const b = await createPage(api, adminPat, notebook.id, "B");
   const c = await createPage(api, adminPat, notebook.id, "C");
   const x = await createPage(api, adminPat, notebook.id, "X");
   const y = await createPage(api, adminPat, notebook.id, "Y", x.id);
@@ -127,6 +127,13 @@ test("PG3 (page): an editor drags a page before another and into another, and mo
   await expectMoved(db, await nodeOf(a.id), null, editorId);
   // B into its own child is blocked: nothing goes out (checked with the requests below).
   await dragPage(page, "Plans", "B", "A", "into");
+  // After B, which shows its children, is not offered: its lower part is into it.
+  const afterOpen = answerTo(page, "POST", `/api/v0/nodes/${c.id}/move`);
+  await dragPage(page, "Plans", "C", "B", "after");
+  expect((await afterOpen).status()).toBe(200);
+  // B's last child, not its next sibling: the tree shows the two alike.
+  expect((await nodeOf(c.id)).parent_id).toBe(b.id);
+  await expect.poll(() => treeTitles(page, "Plans")).toEqual(["B", "A", "C", "X", "Level 8"]);
 
   // X, with Y under it, can go eight levels down, not nine, and not under itself.
   await choosePageAction(page, "Plans", "X", "Move to…");
@@ -145,9 +152,9 @@ test("PG3 (page): an editor drags a page before another and into another, and mo
 
   expect((await movePageWith(page, "Plans", x.id, "X", pathTo(2), "Last")).status()).toBe(200);
   await expect(dialog).toBeHidden();
-  await expect.poll(() => treeTitles(page, "Plans")).toEqual(["C", "B", "A", ...levels.map((each) => each.name), "X"]);
+  await expect.poll(() => treeTitles(page, "Plans")).toEqual(["B", "A", "C", ...levels.map((each) => each.name), "X"]);
   await expectMoved(db, await nodeOf(x.id), null, editorId);
   expect(pageWatch.apiRequests.filter((request) => request.endsWith("/move"))).toEqual(
-    [c.id, a.id, x.id, x.id].map((id) => `POST /api/v0/nodes/${id}/move`)
+    [c.id, a.id, c.id, x.id, x.id].map((id) => `POST /api/v0/nodes/${id}/move`)
   );
 });

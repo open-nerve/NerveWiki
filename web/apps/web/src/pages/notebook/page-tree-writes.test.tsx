@@ -1,6 +1,6 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 
 import { json, notebookJSON, problem } from "../../test/fakes";
 import { guide, install, linux, notes, pageNode, pagePath, pageServer } from "../../test/page-server";
@@ -8,6 +8,8 @@ import { renderApp } from "../../test/render";
 
 // The tree's writes: new pages, renaming, moving, deleting (M4/P5 design
 // 3.7).
+
+afterEach(() => vi.useRealTimers());
 
 const home = `/lab/notebooks/${notebookJSON.id}`;
 const tree = () => screen.findByRole("navigation", { name: "Pages of Plans" });
@@ -227,27 +229,30 @@ test("a page deleted that is not shown gives the focus to the tree's heading", a
   expect(screen.getByRole("heading", { level: 1, name: "Guide" })).toBeTruthy();
 });
 
-test("a page deleted while the tree cannot be read again stays listed, and its menu works again", async () => {
+test("a page deleted leaves the tree though it cannot be read again; the page shown goes to the parent's place", async () => {
   const user = userEvent.setup();
   const server = pageServer();
-  renderApp(pagePath(guide.id), server.app);
-  await screen.findByRole("heading", { level: 1, name: "Guide" });
-
+  renderApp(pagePath(linux.id), server.app);
+  await screen.findByRole("heading", { level: 1, name: "Linux" });
   server.nodesDown = true;
+
   await choose(user, "Notes", "Delete");
-  const dialog = await screen.findByRole("alertdialog", { name: "Delete Notes?" });
-  await user.click(within(dialog).getByRole("button", { name: "Delete" }));
-  await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+  await user.click(
+    within(await screen.findByRole("alertdialog", { name: "Delete Notes?" })).getByRole("button", { name: "Delete" })
+  );
+  await waitFor(() =>
+    expect(titles(screen.getByRole("navigation", { name: "Pages of Plans" }))).not.toContain("Notes")
+  );
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("heading", { level: 2, name: "Plans" })));
   expect(server.sent).toContain("DELETE Notes");
-  expect(titles(await tree())).toContain("Notes");
 
-  await choose(user, "Notes", "Delete");
-  const again = await screen.findByRole("alertdialog", { name: "Delete Notes?" });
-  expect((within(again).getByRole("button", { name: "Delete" }) as HTMLButtonElement).disabled).toBe(false);
-  await user.click(within(again).getByRole("button", { name: "Cancel" }));
-
-  const menu = within(await tree()).getByRole("button", { name: "Actions for Notes" });
-  await waitFor(() => expect(document.activeElement).toBe(menu));
+  await choose(user, "Install", "Delete");
+  await user.click(
+    within(await screen.findByRole("alertdialog", { name: "Delete Install?" })).getByRole("button", { name: "Delete" })
+  );
+  const heading = await screen.findByRole("heading", { level: 1, name: "Guide" });
+  await waitFor(() => expect(document.activeElement).toBe(heading));
+  expect(titles(await tree())).toEqual(["Guide"]);
 });
 
 test("Move to offers the parents that can hold the page and its places; the page moves", async () => {
@@ -270,6 +275,52 @@ test("Move to offers the parents that can hold the page and its places; the page
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   expect(server.sent).toContain("MOVE Guide under Notes, after last");
   expect(titles(await tree())).toEqual(["Notes", "Guide"]);
+  // Under another parent, the page's item is another: its menu's button has the focus.
+  const actions = within(await tree()).getByRole("button", { name: "Actions for Guide" });
+  await waitFor(() => expect(document.activeElement).toBe(actions));
+});
+
+test("a parent the tree, read again, no longer offers goes back to the page's own: what shows goes out", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime.bind(vi) });
+  const server = pageServer();
+  renderApp(home, server.app);
+  await choose(user, "Notes", "Move to…");
+  const dialog = await screen.findByRole("dialog", { name: "Move Notes" });
+  const parent = within(dialog).getByLabelText("Parent page") as HTMLSelectElement;
+  await user.selectOptions(parent, "Guide / Install");
+
+  // Another tab deletes Install.
+  server.nodes = [guide, notes];
+  await act(() => vi.advanceTimersByTimeAsync(6_000));
+  act(() => void window.dispatchEvent(new Event("focus")));
+  await waitFor(() => expect(options(parent)).toEqual(["The notebook's top level", "Guide"]));
+  expect(parent.value).toBe("");
+  expect((within(dialog).getByLabelText("Position") as HTMLSelectElement).value).toBe("last");
+  await user.click(within(dialog).getByRole("button", { name: "Move" }));
+
+  await waitFor(() => expect(server.sent).toContain("MOVE Notes under root, after last"));
+});
+
+test("a place the tree, read again, no longer offers goes back to last", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime.bind(vi) });
+  const server = pageServer();
+  renderApp(home, server.app);
+  await choose(user, "Notes", "Move to…");
+  const dialog = await screen.findByRole("dialog", { name: "Move Notes" });
+  const position = within(dialog).getByLabelText("Position") as HTMLSelectElement;
+  await user.selectOptions(position, "After Guide");
+
+  // Another tab deletes Guide.
+  server.nodes = [notes];
+  await act(() => vi.advanceTimersByTimeAsync(6_000));
+  act(() => void window.dispatchEvent(new Event("focus")));
+  await waitFor(() => expect(options(position)).toEqual(["First", "Last"]));
+  expect(position.value).toBe("last");
+  await user.click(within(dialog).getByRole("button", { name: "Move" }));
+
+  await waitFor(() => expect(server.sent).toContain("MOVE Notes under root, after last"));
 });
 
 test("a move refused stays in its dialog", async () => {
@@ -349,4 +400,66 @@ test("the home says at once why a creation is refused otherwise, until the next 
   await waitFor(() => expect(waiting).toHaveLength(1));
   waiting[0]?.(problem(500, "internal_error"));
   expect(await within(main).findByRole("alert")).toBeTruthy();
+});
+
+test("a creation answered once the tab went elsewhere stays there", async () => {
+  const user = userEvent.setup();
+  const waiting: ((answer: Response) => void)[] = [];
+  const server = pageServer({
+    answers: {
+      [`POST /api/v0/notebooks/${notebookJSON.id}/pages`]: () =>
+        new Promise<Response>((resolve) => waiting.push(resolve)),
+    },
+  });
+  renderApp(home, server.app);
+  const nav = await tree();
+
+  await user.click(await within(nav).findByRole("button", { name: "New page" }));
+  await user.click(within(nav).getByRole("link", { name: "Notes" }));
+  await screen.findByRole("heading", { level: 1, name: "Notes" });
+  await waitFor(() => expect(waiting).toHaveLength(1));
+  waiting[0]?.(json({ ...pageNode(60, "Untitled"), ancestors: [], revision: 1, byte_size: 0 }, 201));
+
+  await waitFor(() => expect(within(nav).getByRole("button", { name: "New page" })).toHaveProperty("disabled", false));
+  expect(screen.getByRole("heading", { level: 1, name: "Notes" })).toBeTruthy();
+});
+
+test("the tree's failure goes once the next creation goes through", async () => {
+  const user = userEvent.setup();
+  let refuse = true;
+  renderApp(
+    home,
+    pageServer({
+      answers: {
+        [`POST /api/v0/notebooks/${notebookJSON.id}/pages`]: () =>
+          refuse
+            ? problem(500, "internal_error")
+            : json({ ...pageNode(61, "Untitled"), ancestors: [], revision: 1, byte_size: 0 }, 201),
+      },
+    }).app
+  );
+  const nav = await tree();
+
+  await user.click(await within(nav).findByRole("button", { name: "New page" }));
+  expect(await within(nav).findByRole("alert")).toBeTruthy();
+  refuse = false;
+  await user.click(within(nav).getByRole("button", { name: "New page" }));
+
+  await waitFor(() => expect(within(nav).queryByRole("alert")).toBeNull());
+});
+
+test("a page ten levels down offers no New subpage", async () => {
+  const user = userEvent.setup();
+  const levels = [pageNode(70, "L1")];
+  for (let i = 2; i <= 10; i++) {
+    levels.push(pageNode(69 + i, `L${i}`, levels[levels.length - 1]));
+  }
+  renderApp(pagePath(levels[9]?.id ?? ""), pageServer({ nodes: levels }).app);
+  await screen.findByRole("heading", { level: 1, name: "L10" });
+
+  await user.click(await within(await tree()).findByRole("button", { name: "Actions for L10" }));
+  expect((await screen.findByRole("menuitem", { name: "New subpage" })).getAttribute("aria-disabled")).toBe("true");
+  await user.keyboard("{Escape}");
+  await user.click(within(await tree()).getByRole("button", { name: "Actions for L9" }));
+  expect((await screen.findByRole("menuitem", { name: "New subpage" })).hasAttribute("aria-disabled")).toBe(false);
 });

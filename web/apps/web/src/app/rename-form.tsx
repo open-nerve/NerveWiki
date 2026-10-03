@@ -26,14 +26,14 @@ type RenameFormProps = {
 };
 
 /**
- * RenameForm renames a workspace or a notebook (M2/P5 design 3.6, M3/P4
- * design 3.4; one form, M3 handoff 3): the name goes out only when it
- * changed, trimmed, as the server keeps it. Until it is edited, and again
- * once a save went through, the field shows the current name, a rename by
- * another tab or admin too: Save then sends nothing back over it. A name
- * edited while its rename was out keeps the edit, as DisplayNameForm has
- * it: what it shows then is not what was saved, and the next save sends
- * it.
+ * RenameForm renames a workspace, a notebook or a page (M2/P5 design 3.6,
+ * M3/P4 design 3.4, M4/P5 design 3.7; one form, M3 handoff 3): the name
+ * goes out only when it changed, trimmed, as the server keeps it. Until it
+ * is edited, and again once a save went through, the field shows the
+ * current name, a rename by another tab or admin too: Save then sends
+ * nothing back over it. A name edited while its rename was out keeps the
+ * edit, as DisplayNameForm has it: what it shows then is not what was
+ * saved, and the next save sends it.
  */
 export function RenameForm({
   current,

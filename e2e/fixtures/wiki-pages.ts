@@ -145,9 +145,16 @@ export async function dragPage(
   await treeRow(page, notebook, title).dragTo(row, { targetPosition: { x: box.width / 2, y } });
 }
 
-/** The breadcrumbs of a page's shell, from the notebook down to the page: each step's text. */
+/** The breadcrumbs of a page's shell, from the notebook down to the page: each step's text, without the separators. */
 export function breadcrumbs(page: Page): Promise<string[]> {
-  return page.getByRole("navigation", { name: "Breadcrumb", exact: true }).getByRole("listitem").allTextContents();
+  return page
+    .getByRole("navigation", { name: "Breadcrumb", exact: true })
+    .getByRole("listitem")
+    .evaluateAll((items) =>
+      items.map((item) =>
+        [...item.querySelectorAll(":scope > :not([aria-hidden])")].map((step) => step.textContent ?? "").join("")
+      )
+    );
 }
 
 /** The subpages a page's shell lists, by title. */

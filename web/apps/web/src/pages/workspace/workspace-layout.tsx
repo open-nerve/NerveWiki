@@ -50,11 +50,11 @@ const sections: readonly { path: string; label: Extract<MessageKey, `workspace.$
 
 /**
  * WorkspaceLayout is the shell of a workspace's pages (M2/P5 design 3.2):
- * the left column, with the switcher and the workspace's navigation, its
+ * the left column, with the workspace's navigation: the switcher, its
  * pages and its notebooks (M3/P4 design 3.3), beside the page chosen,
  * which is the layout's main. The column is no landmark of its own: the
- * navigation is the one it holds; it goes into the layout's place for it,
- * outside the main (M4/P5 design 3.2).
+ * navigation is the one it holds, then a notebook's page tree; it goes
+ * into the layout's place for it, outside the main (M4/P5 design 3.2).
  * It finds the workspace of the address in the account's list: a slug the
  * list does not have is no page of the app's, whether the account was
  * never a member or the workspace is gone; one this tab has just deleted
@@ -87,8 +87,8 @@ export const WorkspaceLayout = observer(function WorkspaceLayout() {
   }
   const left = (
     <div data-shell className="space-y-4 border-b p-3 md:w-60 md:shrink-0 md:border-r md:border-b-0">
-      <WorkspaceSwitcher current={workspace} />
       <nav aria-label={workspace.name} className="space-y-4">
+        <WorkspaceSwitcher current={workspace} />
         <div className="flex flex-col gap-1">
           {sections.map(({ path, label, end }) => (
             <NavItem key={path} to={`/${slug}${path}`} end={end}>

@@ -1,12 +1,14 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 
 import { notebookJSON } from "../../test/fakes";
-import { guide, pageNode, pagePath, pageServer } from "../../test/page-server";
+import { guide, notes, pageNode, pagePath, pageServer } from "../../test/page-server";
 import { renderApp } from "../../test/render";
 
 // The quick switch (M4/P5 design 3.10). jsdom's platform is not macOS: Mod is Ctrl.
+
+afterEach(() => vi.useRealTimers());
 
 const home = `/lab/notebooks/${notebookJSON.id}`;
 
@@ -28,6 +30,9 @@ async function opened() {
 test("Ctrl+O opens it instead of the browser's Open File; it finds by title, Down and Enter go to the page, arrived at", async () => {
   const user = userEvent.setup();
   renderApp(home, pageServer().app);
+  // Opened from the tree: going to a page leaves the focus on its heading, not there.
+  const nav = await screen.findByRole("navigation", { name: "Pages of Plans" });
+  (await within(nav).findByRole("link", { name: "Notes" })).focus();
   const dialog = await opened();
   const field = within(dialog).getByRole("combobox", { name: "Page title" });
   expect(document.activeElement).toBe(field);
@@ -59,15 +64,21 @@ test("Ctrl+O opens it instead of the browser's Open File; it finds by title, Dow
   expect(screen.queryByRole("dialog")).toBeNull();
 });
 
-test("a page is chosen by a click too; Esc closes without going", async () => {
+test("a page is chosen by a click too; Esc closes without going, the focus back where it was", async () => {
   const user = userEvent.setup();
   renderApp(pagePath(guide.id), pageServer().app);
   await screen.findByRole("heading", { level: 1, name: "Guide" });
+  const link = await within(screen.getByRole("navigation", { name: "Pages of Plans" })).findByRole("link", {
+    name: "Notes",
+  });
+  link.focus();
 
   expect(ctrlO()).toBe(false);
+  await screen.findByRole("dialog", { name: "Go to a page" });
   await user.keyboard("{Escape}");
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   expect(screen.getByRole("heading", { level: 1, name: "Guide" })).toBeTruthy();
+  await waitFor(() => expect(document.activeElement).toBe(link));
 
   ctrlO();
   const dialog = await screen.findByRole("dialog", { name: "Go to a page" });
@@ -96,8 +107,9 @@ test("no page found says so; past 50 the first are listed, and it says so", asyn
   expect(within(dialog).queryByText(/^The first/)).toBeNull();
 
   await user.type(within(dialog).getByRole("combobox"), "x");
-  expect(within(dialog).getByText("No page's title has that in it.")).toBeTruthy();
+  expect(within(dialog).getByRole("status").textContent).toBe("No page's title has that in it.");
   expect(within(dialog).queryByRole("listbox")).toBeNull();
+  expect(within(dialog).getByRole("combobox").hasAttribute("aria-controls")).toBe(false);
 });
 
 test("until the tree is read it says why, and Try again reads it", async () => {
@@ -128,5 +140,41 @@ test("Ctrl+O outside a notebook is the browser's", async () => {
   await screen.findByRole("heading", { level: 1 });
 
   expect(ctrlO()).toBe(true);
+  expect(screen.queryByRole("dialog")).toBeNull();
+});
+
+test("Ctrl+O does not open it over another dialog", async () => {
+  const user = userEvent.setup();
+  renderApp(home, pageServer().app);
+  const nav = await screen.findByRole("navigation", { name: "Pages of Plans" });
+  await user.click(await within(nav).findByRole("button", { name: "Actions for Notes" }));
+  await user.click(await screen.findByRole("menuitem", { name: "Rename" }));
+  await screen.findByRole("dialog", { name: "Rename Notes" });
+
+  expect(ctrlO()).toBe(false);
+  expect(screen.queryByRole("dialog", { name: "Go to a page" })).toBeNull();
+});
+
+test("the tree read again while it is open, Enter goes to the option it can still name", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime.bind(vi) });
+  const server = pageServer();
+  renderApp(home, server.app);
+  await opened();
+  await user.keyboard("{ArrowDown}{ArrowDown}{ArrowDown}");
+  expect(listed()).toHaveLength(4);
+
+  server.nodes = [guide, notes];
+  await act(() => vi.advanceTimersByTimeAsync(6_000));
+  act(() => void window.dispatchEvent(new Event("focus")));
+  await waitFor(() =>
+    expect(listed()).toEqual([
+      ["Guide", ""],
+      ["Notes", ""],
+    ])
+  );
+  await user.keyboard("{Enter}");
+
+  expect(await screen.findByRole("heading", { level: 1, name: "Notes" })).toBeTruthy();
   expect(screen.queryByRole("dialog")).toBeNull();
 });

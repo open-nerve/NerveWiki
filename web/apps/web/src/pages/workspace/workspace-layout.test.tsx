@@ -86,6 +86,8 @@ test("the navigation leads to the workspace's pages, marking the one shown", asy
 
   const nav = await screen.findByRole("navigation", { name: "Acme" });
   expect(screen.queryByRole("complementary")).toBeNull();
+  // The switcher too is in the navigation, a landmark's.
+  expect(within(nav).getByRole("button", { name: "Acme", description: "Switch workspace" })).toBeTruthy();
   const links = within(nav).getAllByRole("link");
   expect(links.map((link) => [link.textContent, link.getAttribute("href"), link.getAttribute("aria-current")])).toEqual(
     [

@@ -16,7 +16,7 @@ import { NavLink, useParams } from "react-router";
 import useSWR from "swr";
 
 import { ConfirmDialog } from "../../app/confirm-dialog";
-import { useMounted } from "../../app/mounted";
+import { writesPages } from "../../app/effective-role";
 import { NotLoaded } from "../../app/not-loaded";
 import { errorText } from "../../app/problem-messages";
 import { Alert } from "../../components/ui/alert";
@@ -33,17 +33,12 @@ import type { Notebook } from "../../services/notebook.service";
 import type { TreeNode } from "../../services/page.service";
 import { usePageTree } from "../../stores/context";
 import type { PageTreeStore } from "../../stores/page-tree.store";
-import { subtreeOf } from "../../stores/page-tree";
+import { depthOf, maxDepth, subtreeOf } from "../../stores/page-tree";
 import { useWorkspace } from "../workspace/workspace-layout";
 import { MovePageDialog } from "./move-page-dialog";
 import { useNewPage } from "./new-page";
 import { dropMove, dropOperations } from "./page-drag";
 import { RenamePageDialog } from "./rename-page-dialog";
-
-/** writes tells whether the account writes the notebook's pages: its editors and admins, not its readers (PG12). */
-export function writes(notebook: Notebook): boolean {
-  return notebook.role !== "reader";
-}
 
 /** What a drag carries: the page dragged, of which notebook. */
 type DragData = { page: string; notebook: string };
@@ -52,13 +47,18 @@ function isDragData(data: Record<string | symbol, unknown>): data is DragData {
   return typeof data.page === "string" && typeof data.notebook === "string";
 }
 
-/** The tree's means, which each item takes: its notebook, its pages, and where a write's failure shows. */
+/**
+ * The tree's means, which each item takes: its notebook, its pages, its
+ * heading, the creation of a page under a parent, where a write's failure
+ * shows, and the focus given to a page's menu button once the tree has it.
+ */
 type TreeContext = {
   notebook: Notebook;
   pages: PageTreeStore;
   heading: RefObject<HTMLHeadingElement | null>;
-  newPage: ReturnType<typeof useNewPage>;
+  newPage: { create: (parent: string | null) => void; sending: boolean };
   fail: (error: unknown) => void;
+  focusActions: (id: string) => void;
 };
 
 /**
@@ -71,25 +71,35 @@ type TreeContext = {
  *
  * An editor or admin also gets New page, each page's menu (New subpage,
  * Rename, Move to…, Delete) and dragging: before a page, after it, or into
- * it. A drop the tree forbids shows blocked and sends nothing. A write
- * refused, or a creation that gave up, says why below the heading.
+ * it. A drop the tree forbids shows blocked and sends nothing. The last
+ * write refused, or a creation that gave up, says why below the heading.
+ * A page moved keeps the focus on its menu's button, wherever it went.
  */
 export const PageTree = observer(function PageTree({ notebook }: { notebook: Notebook }) {
   const pages = usePageTree(notebook);
   const { pageId } = useParams();
   const t = useT();
-  const here = useMounted();
+  const nav = useRef<HTMLElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
-  const newPage = useNewPage(notebook, here);
+  const newPage = useNewPage(notebook);
   const [failure, setFailure] = useState<unknown>();
+  const [focusing, setFocusing] = useState<string>();
   const { error, mutate } = useSWR(["pages", notebook.id], () => pages.load());
   const read = pages.nodes !== undefined;
-  const writer = writes(notebook);
+  const writer = writesPages(notebook.role);
   useEffect(() => {
     if (pageId !== undefined && read) {
       pages.openTo(pageId);
     }
   }, [pages, pageId, read]);
+  // The page's item may be another by now: a move to another parent mounts it anew.
+  useEffect(() => {
+    if (focusing !== undefined) {
+      setFocusing(undefined);
+      const actions = nav.current?.querySelector<HTMLElement>(`[data-actions-of="${focusing}"]`);
+      (actions ?? heading.current)?.focus();
+    }
+  }, [focusing]);
   useEffect(() => {
     if (!writer) {
       return undefined;
@@ -122,10 +132,20 @@ export const PageTree = observer(function PageTree({ notebook }: { notebook: Not
       },
     });
   }, [writer, notebook.id, pages]);
-  const failed = failure === undefined ? newPage.failed : errorText(failure, t);
-  const context: TreeContext = { notebook, pages, heading, newPage, fail: setFailure };
+  const create = (parent: string | null) => {
+    setFailure(undefined);
+    void newPage.create(parent).then(setFailure);
+  };
+  const context: TreeContext = {
+    notebook,
+    pages,
+    heading,
+    newPage: { create, sending: newPage.sending },
+    fail: setFailure,
+    focusActions: setFocusing,
+  };
   return (
-    <nav aria-label={t("page.tree", { notebook: notebook.name })} className="space-y-1">
+    <nav ref={nav} aria-label={t("page.tree", { notebook: notebook.name })} className="space-y-1">
       <div className="flex items-center justify-between gap-1">
         <h2
           ref={heading}
@@ -141,13 +161,13 @@ export const PageTree = observer(function PageTree({ notebook }: { notebook: Not
             className="size-7"
             aria-label={t("page.new")}
             disabled={newPage.sending}
-            onClick={() => void newPage.create(null)}
+            onClick={() => create(null)}
           >
             <Plus />
           </Button>
         )}
       </div>
-      {failed !== undefined && <Alert>{failed}</Alert>}
+      {failure !== undefined && <Alert>{errorText(failure, t)}</Alert>}
       {read ? (
         <PageList context={context} parent={null} depth={0} />
       ) : (
@@ -177,12 +197,12 @@ const PageItem = observer(function PageItem({ context, node, depth }: ItemProps)
   const { notebook, pages } = context;
   const { slug } = useWorkspace();
   const t = useT();
-  const writer = writes(notebook);
+  const writer = writesPages(notebook.role);
   const children = pages.childrenOf(node.id).length > 0;
   const open = children && pages.isOpen(node.id);
   const listId = useId();
   const row = useRef<HTMLDivElement>(null);
-  const instruction = useDrag(context, node, row);
+  const instruction = useDrag(context, node, row, open);
   return (
     <li>
       <div
@@ -226,10 +246,12 @@ const PageItem = observer(function PageItem({ context, node, depth }: ItemProps)
           <span
             aria-hidden
             className={cn(
-              "pointer-events-none absolute right-0 left-0 h-0.5",
+              "pointer-events-none absolute right-0 h-0.5",
               instruction.operation === "reorder-before" ? "-top-px" : "-bottom-px",
               instruction.blocked ? "bg-destructive" : "bg-primary"
             )}
+            // At the page's level: where its title starts.
+            style={{ left: `${depth * 0.75 + 1.5}rem` }}
           />
         )}
       </div>
@@ -241,13 +263,19 @@ const PageItem = observer(function PageItem({ context, node, depth }: ItemProps)
 /**
  * useDrag makes the row of node draggable and a drop target, for an editor
  * or admin: the hitbox offers before, after and into it, each blocked where
- * the tree forbids it (page-drag.ts). It answers the drop shown over the
- * row, if any; the tree's monitor moves the page.
+ * the tree forbids it, and not after it while it shows its children
+ * (page-drag.ts). It answers the drop shown over the row, if any; the
+ * tree's monitor moves the page.
  */
-function useDrag(context: TreeContext, node: TreeNode, row: RefObject<HTMLDivElement | null>): Instruction | null {
+function useDrag(
+  context: TreeContext,
+  node: TreeNode,
+  row: RefObject<HTMLDivElement | null>,
+  open: boolean
+): Instruction | null {
   const { notebook, pages } = context;
   const [instruction, setInstruction] = useState<Instruction | null>(null);
-  const writer = writes(notebook);
+  const writer = writesPages(notebook.role);
   useEffect(() => {
     const element = row.current;
     if (element === null || !writer) {
@@ -264,7 +292,7 @@ function useDrag(context: TreeContext, node: TreeNode, row: RefObject<HTMLDivEle
           const dragged = isDragData(source.data) ? source.data.page : "";
           return attachInstruction(
             { ...data },
-            { input, element, operations: tree === undefined ? {} : dropOperations(tree, dragged, node.id) }
+            { input, element, operations: tree === undefined ? {} : dropOperations(tree, dragged, node.id, open) }
           );
         },
         onDrag: ({ self }) => setInstruction(extractInstruction(self.data)),
@@ -272,7 +300,7 @@ function useDrag(context: TreeContext, node: TreeNode, row: RefObject<HTMLDivEle
         onDrop: () => setInstruction(null),
       })
     );
-  }, [row, writer, node.id, notebook.id, pages]);
+  }, [row, writer, node.id, notebook.id, pages, open]);
   return instruction;
 }
 
@@ -281,12 +309,13 @@ type Dialogs = "rename" | "move" | "delete" | undefined;
 /**
  * PageMenu is the actions on a page of an editor's or admin's tree: New
  * subpage, Rename, Move to… and Delete, the last three in dialogs the menu
- * holds. A dialog closed gives the focus back to the menu's button; a
- * deletion gives it to the tree's heading, unless the page shown went with
- * it: its shell then goes to the parent, arrived at.
+ * holds. A dialog closed gives the focus back to the menu's button, the
+ * page's wherever it moved; a deletion gives it to the tree's heading,
+ * unless the page shown went with it: its shell then goes to the parent,
+ * arrived at. A page ten levels down has no New subpage.
  */
 const PageMenu = observer(function PageMenu({ context, node }: { context: TreeContext; node: TreeNode }) {
-  const { notebook, pages, heading, newPage, fail } = context;
+  const { notebook, pages, heading, newPage, fail, focusActions } = context;
   const { pageId } = useParams();
   const t = useT();
   const button = useRef<HTMLButtonElement>(null);
@@ -294,9 +323,11 @@ const PageMenu = observer(function PageMenu({ context, node }: { context: TreeCo
   const held = (name: Exclude<Dialogs, undefined>) => ({
     open: dialog === name,
     onOpenChange: (next: boolean) => setDialog(next ? name : undefined),
-    onClosed: () => button.current?.focus(),
+    onClosed: () => focusActions(node.id),
   });
-  const subtree = pages.tree === undefined ? [] : subtreeOf(pages.tree, node.id);
+  const tree = pages.tree;
+  const subtree = tree === undefined ? [] : subtreeOf(tree, node.id);
+  const deepest = tree !== undefined && depthOf(tree, node.id) >= maxDepth;
   const shown = subtree.some((page) => page.id === pageId);
   const count = subtree.length - 1;
   return (
@@ -306,14 +337,16 @@ const PageMenu = observer(function PageMenu({ context, node }: { context: TreeCo
           <button
             ref={button}
             type="button"
+            data-actions-of={node.id}
             aria-label={t("page.actions", { name: node.name })}
-            className="rounded p-1 text-muted-foreground opacity-0 group-hover:opacity-100 hover:bg-accent focus-visible:opacity-100 data-[state=open]:opacity-100"
+            // Shown on hover, or always where the pointer is a finger, which does not hover.
+            className="rounded p-1 text-muted-foreground opacity-0 group-hover:opacity-100 hover:bg-accent focus-visible:opacity-100 data-[state=open]:opacity-100 pointer-coarse:opacity-100"
           >
             <Ellipsis className="size-4" />
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuItem disabled={newPage.sending} onSelect={() => void newPage.create(node.id)}>
+          <DropdownMenuItem disabled={newPage.sending || deepest} onSelect={() => newPage.create(node.id)}>
             {t("page.newSubpage")}
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={() => setDialog("rename")}>{t("page.rename")}</DropdownMenuItem>

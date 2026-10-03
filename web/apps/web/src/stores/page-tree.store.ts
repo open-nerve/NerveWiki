@@ -15,7 +15,8 @@ import { ancestorsOf, childrenOf, indexTree, subtreeOf, type TreeIndex } from ".
  * is of: one write moves its siblings, which the next may name (M4 design
  * 4). Each answer, a refusal too, has the tree read again; what a write
  * answers is not put in the tree here, since the client does not work out
- * the siblings' order.
+ * the siblings' order. The pages this generation deleted leave the tree at
+ * once, whether it could be read again or not.
  */
 export class PageTreeStore {
   /** The tree as read, replaced whole by each read: its nodes are not observed one by one. */
@@ -36,19 +37,19 @@ export class PageTreeStore {
     /** The notebook whose pages these are. */
     readonly notebookId: string
   ) {
-    makeAutoObservable<this, "service" | "changesAnswered" | "removed" | "inTurn">(this, {
+    makeAutoObservable<this, "service" | "changesAnswered" | "inTurn">(this, {
       service: false,
       notebookId: false,
       nodes: observableRef,
       changesAnswered: false,
-      removed: false,
       inTurn: false,
     });
   }
 
-  /** tree is the tree looked up, once read. */
+  /** tree is the tree looked up, once read, without the pages this generation deleted. */
   get tree(): TreeIndex | undefined {
-    return this.nodes && indexTree(this.nodes);
+    const nodes = this.nodes;
+    return nodes && indexTree(this.removed.size === 0 ? nodes : nodes.filter((node) => !this.removed.has(node.id)));
   }
 
   /** byId is the page id in the tree, if the tree has it. */
@@ -78,7 +79,8 @@ export class PageTreeStore {
   /**
    * load reads the tree; SWR calls it, and each write's answer. A write
    * answered while the read was out is newer than what it read: the tree
-   * kept is the one read after it.
+   * kept is the one read after it. A tree read the same as before is kept
+   * as it was, so that what shows it does not render again.
    */
   async load(): Promise<TreeNode[]> {
     const answeredBefore = this.changesAnswered;
@@ -86,9 +88,11 @@ export class PageTreeStore {
     if (this.changesAnswered !== answeredBefore) {
       return this.nodes ?? this.load();
     }
-    runInAction(() => {
-      this.nodes = nodes;
-    });
+    if (!sameTree(this.nodes, nodes)) {
+      runInAction(() => {
+        this.nodes = nodes;
+      });
+    }
     return nodes;
   }
 
@@ -108,12 +112,14 @@ export class PageTreeStore {
   /**
    * remove deletes the page id with the pages under it; one deleted
    * already, or no longer seen, is gone as well. The shells of those pages
-   * then go to the subtree's parent.
+   * then go to the subtree's parent. The subtree is the one in the tree as
+   * the deletion's turn comes: a page that a write before it created is in
+   * it.
    */
   async remove(id: string): Promise<void> {
-    const tree = this.tree;
-    const parent = this.byId(id)?.parent_id ?? null;
     await this.write(async () => {
+      const tree = this.tree;
+      const parent = this.byId(id)?.parent_id ?? null;
       try {
         await this.service.deleteNode(id);
       } catch (error) {
@@ -121,9 +127,11 @@ export class PageTreeStore {
           throw error;
         }
       }
-      for (const page of tree === undefined ? [] : subtreeOf(tree, id)) {
-        this.removed.set(page.id, parent);
-      }
+      runInAction(() => {
+        for (const page of tree === undefined ? [] : subtreeOf(tree, id)) {
+          this.removed.set(page.id, parent);
+        }
+      });
     });
   }
 
@@ -167,4 +175,13 @@ export class PageTreeStore {
       this.open.add(ancestor.id);
     }
   }
+}
+
+/** sameTree tells whether a read lists the nodes the tree has, in the same order, each as it was. */
+function sameTree(tree: readonly TreeNode[] | undefined, read: readonly TreeNode[]): boolean {
+  return (
+    tree !== undefined &&
+    tree.length === read.length &&
+    tree.every((node, i) => JSON.stringify(node) === JSON.stringify(read[i]))
+  );
 }

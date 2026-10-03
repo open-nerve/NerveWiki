@@ -1,5 +1,6 @@
 import { useRef } from "react";
 
+import type { HeldDialog } from "../../app/held-dialog";
 import { notebookNameProblem, notebookNameTexts } from "../../app/notebook-name";
 import { RenameForm } from "../../app/rename-form";
 import { Dialog, DialogContent, DialogTitle } from "../../components/ui/dialog";
@@ -7,9 +8,6 @@ import { useT } from "../../i18n/i18n";
 import type { Notebook } from "../../services/notebook.service";
 import type { TreeNode } from "../../services/page.service";
 import { usePageTree } from "../../stores/context";
-
-/** The dialog held by its page's menu: whether it is open, the change it asks for, and what follows its closing. */
-export type HeldDialog = { open: boolean; onOpenChange: (open: boolean) => void; onClosed: (done: boolean) => void };
 
 /**
  * RenamePageDialog renames page with the rename form a notebook's has: a

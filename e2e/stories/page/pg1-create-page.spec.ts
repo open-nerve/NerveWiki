@@ -91,6 +91,8 @@ test("PG1 (page): an editor creates Untitled, then Untitled 2, from the tree's N
   await addedNotebookMember(api, adminPat, notebook.id, editorId, "editor");
   await page.goto(notebookPath(workspace.slug, notebook.id));
   await expect(notebookHeading(page, "Plans")).toBeVisible();
+  // The tree read, it has no page.
+  await expect(page.getByRole("main").getByText("No pages yet.", { exact: true })).toBeVisible();
   await expect(pageTree(page, "Plans").getByRole("link")).toHaveCount(0);
 
   const first = await newPageWith(page, notebook);
