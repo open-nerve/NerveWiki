@@ -1,6 +1,6 @@
 import { observer } from "mobx-react-lite";
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
-import { useNavigate } from "react-router";
+import { useNavigate, useParams } from "react-router";
 import useSWR from "swr";
 
 import { arrived } from "../../app/arrival";
@@ -22,13 +22,15 @@ const shown = 50;
  * QuickSwitch goes to a page of notebook by its title (M4/P5 design 3.10).
  * Mod+O (Cmd+O on macOS, Ctrl+O elsewhere) opens it while the notebook is
  * open, instead of the browser's Open File; not over another dialog.
- * Closed, it gives the focus back to where it was; gone to another page,
- * that page's heading then takes it, arrived at.
+ * Closed, it gives the focus back to where it was, unless it went to
+ * another page: that page's heading takes it, arrived at, whichever comes
+ * first of the two.
  */
 export function QuickSwitch({ notebook }: { notebook: Notebook }) {
   const t = useT();
   const [open, setOpen] = useState(false);
   const opener = useRef<HTMLElement | null>(null);
+  const went = useRef(false);
   useEffect(() => {
     const mac = onMac();
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
@@ -38,6 +40,7 @@ export function QuickSwitch({ notebook }: { notebook: Notebook }) {
       event.preventDefault();
       if (document.querySelector('[role="dialog"], [role="alertdialog"]') === null) {
         opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+        went.current = false;
         setOpen(true);
       }
     };
@@ -51,13 +54,19 @@ export function QuickSwitch({ notebook }: { notebook: Notebook }) {
           aria-describedby={undefined}
           onCloseAutoFocus={(event) => {
             event.preventDefault();
-            if (opener.current?.isConnected) {
+            if (!went.current && opener.current?.isConnected) {
               opener.current.focus();
             }
           }}
         >
           <DialogTitle>{t("page.quickSwitch")}</DialogTitle>
-          <Finder notebook={notebook} leave={() => setOpen(false)} />
+          <Finder
+            notebook={notebook}
+            leave={(going) => {
+              went.current = going;
+              setOpen(false);
+            }}
+          />
         </DialogContent>
       )}
     </Dialog>
@@ -71,10 +80,17 @@ export function QuickSwitch({ notebook }: { notebook: Notebook }) {
  * none is found or more are. Until the tree is read it says so, with Try
  * again.
  */
-const Finder = observer(function Finder({ notebook, leave }: { notebook: Notebook; leave: () => void }) {
+type FinderProps = {
+  notebook: Notebook;
+  /** leave closes the quick switch, going to another page or not. */
+  leave: (going: boolean) => void;
+};
+
+const Finder = observer(function Finder({ notebook, leave }: FinderProps) {
   const pages = usePageTree(notebook);
   const { slug } = useWorkspace();
   const navigate = useNavigate();
+  const { pageId } = useParams();
   const t = useT();
   const ids = { list: useId(), option: useId() };
   const [query, setQuery] = useState("");
@@ -94,8 +110,12 @@ const Finder = observer(function Finder({ notebook, leave }: { notebook: Noteboo
   const current = Math.min(active, Math.max(listed.length - 1, 0));
 
   function go(id: string) {
-    leave();
-    void navigate(`/${slug}/notebooks/${notebook.id}/pages/${id}`, { state: arrived });
+    // The page shown is no page to go to: the quick switch just closes.
+    const going = id !== pageId;
+    leave(going);
+    if (going) {
+      void navigate(`/${slug}/notebooks/${notebook.id}/pages/${id}`, { state: arrived });
+    }
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLInputElement>) {
@@ -160,7 +180,7 @@ const Finder = observer(function Finder({ notebook, leave }: { notebook: Noteboo
           ))}
         </ul>
       )}
-      <output className="block text-xs text-muted-foreground empty:hidden">
+      <output className="block text-xs text-muted-foreground empty:sr-only">
         {listed.length === 0
           ? t("page.quickSwitchNone")
           : found.length > shown

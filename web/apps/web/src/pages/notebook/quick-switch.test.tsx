@@ -178,3 +178,47 @@ test("the tree read again while it is open, Enter goes to the option it can stil
   expect(await screen.findByRole("heading", { level: 1, name: "Notes" })).toBeTruthy();
   expect(screen.queryByRole("dialog")).toBeNull();
 });
+
+test("from a page, going to another leaves the focus on that page's heading", async () => {
+  const user = userEvent.setup();
+  renderApp(pagePath(guide.id), pageServer().app);
+  await screen.findByRole("heading", { level: 1, name: "Guide" });
+  const nav = screen.getByRole("navigation", { name: "Pages of Plans" });
+  (await within(nav).findByRole("link", { name: "Notes" })).focus();
+
+  expect(ctrlO()).toBe(false);
+  await user.type(within(await screen.findByRole("dialog", { name: "Go to a page" })).getByRole("combobox"), "lin");
+  await user.keyboard("{Enter}");
+
+  const heading = await screen.findByRole("heading", { level: 1, name: "Linux" });
+  await waitFor(() => expect(document.activeElement).toBe(heading));
+  // The dialog's closing comes after: it does not take the focus back.
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  expect(document.activeElement).toBe(heading);
+
+  // Opened again and closed without going, it gives the focus back.
+  const link = within(nav).getByRole("link", { name: "Notes" });
+  link.focus();
+  ctrlO();
+  await screen.findByRole("dialog", { name: "Go to a page" });
+  await user.keyboard("{Escape}");
+  await waitFor(() => expect(document.activeElement).toBe(link));
+});
+
+test("choosing the page shown closes it, the focus back where it was", async () => {
+  const user = userEvent.setup();
+  renderApp(pagePath(guide.id), pageServer().app);
+  await screen.findByRole("heading", { level: 1, name: "Guide" });
+  const link = await within(screen.getByRole("navigation", { name: "Pages of Plans" })).findByRole("link", {
+    name: "Notes",
+  });
+  link.focus();
+
+  ctrlO();
+  await user.type(within(await screen.findByRole("dialog", { name: "Go to a page" })).getByRole("combobox"), "guide");
+  await user.keyboard("{Enter}");
+
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  await waitFor(() => expect(document.activeElement).toBe(link));
+  expect(screen.getByRole("heading", { level: 1, name: "Guide" })).toBeTruthy();
+});

@@ -20,6 +20,8 @@
 
     line-height: 1.7;
     overflow-wrap: break-word;
+    /* A table wider than the page scrolls here, not the page. */
+    overflow-x: auto;
   }
 
   .dark .nw-reading {
@@ -125,15 +127,10 @@
   }
 
   /* A table stays a table, whose semantics some screen readers drop from
-     one displayed as a block: a wide one wraps its cells instead. */
-  .nw-reading table {
-    max-width: 100%;
-  }
-
+     one displayed as a block: a wide one scrolls with the reading view. */
   .nw-reading :is(th, td) {
     padding: 0.35rem 0.75rem;
     border: 1px solid var(--border);
-    overflow-wrap: anywhere;
   }
 
   /* A column's align attribute sets its cells' alignment; the others start. */

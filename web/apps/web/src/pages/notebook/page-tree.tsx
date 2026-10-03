@@ -318,7 +318,6 @@ const PageMenu = observer(function PageMenu({ context, node }: { context: TreeCo
   const { notebook, pages, heading, newPage, fail, focusActions } = context;
   const { pageId } = useParams();
   const t = useT();
-  const button = useRef<HTMLButtonElement>(null);
   const [dialog, setDialog] = useState<Dialogs>();
   const held = (name: Exclude<Dialogs, undefined>) => ({
     open: dialog === name,
@@ -335,12 +334,11 @@ const PageMenu = observer(function PageMenu({ context, node }: { context: TreeCo
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
-            ref={button}
             type="button"
             data-actions-of={node.id}
             aria-label={t("page.actions", { name: node.name })}
-            // Shown on hover, or always where the pointer is a finger, which does not hover.
-            className="rounded p-1 text-muted-foreground opacity-0 group-hover:opacity-100 hover:bg-accent focus-visible:opacity-100 data-[state=open]:opacity-100 pointer-coarse:opacity-100"
+            // Shown on hover, or always where a pointer is a finger, which does not hover.
+            className="rounded p-1 text-muted-foreground opacity-0 group-hover:opacity-100 hover:bg-accent focus-visible:opacity-100 data-[state=open]:opacity-100 any-pointer-coarse:opacity-100"
           >
             <Ellipsis className="size-4" />
           </button>
@@ -359,9 +357,11 @@ const PageMenu = observer(function PageMenu({ context, node }: { context: TreeCo
       <ConfirmDialog
         held={{
           ...held("delete"),
-          onClosed: (deleted) => {
-            if (!deleted) {
-              button.current?.focus();
+          // The store tells whether the page went: once deleted it leaves the tree, and this
+          // item with it, before the dialog knows that confirm went through.
+          onClosed: () => {
+            if (pages.removedTo(node.id) === undefined) {
+              focusActions(node.id);
             } else if (!shown) {
               heading.current?.focus();
             }

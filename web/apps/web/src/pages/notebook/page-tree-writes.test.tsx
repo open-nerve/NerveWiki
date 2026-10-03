@@ -24,6 +24,23 @@ const options = (select: HTMLElement) =>
     .getAllByRole("option")
     .map((option) => option.textContent);
 
+/**
+ * lateTreeServer is a page server that answers the tree's reads only a
+ * while later, as over a network: a page deleted leaves the tree before
+ * the deletion settles.
+ */
+function lateTreeServer() {
+  const server = pageServer({
+    answers: {
+      [`GET /api/v0/notebooks/${notebookJSON.id}/nodes`]: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        return json({ data: server.nodes });
+      },
+    },
+  });
+  return server;
+}
+
 /** Opens the menu of the page named name and chooses item. */
 async function choose(user: ReturnType<typeof userEvent.setup>, name: string, item: string) {
   await user.click(await within(await tree()).findByRole("button", { name: `Actions for ${name}` }));
@@ -192,6 +209,51 @@ test("a root page deleted while shown sends its shell to the notebook's home", a
   await user.click(within(dialog).getByRole("button", { name: "Delete" }));
 
   expect(await screen.findByRole("heading", { level: 1, name: "Plans" })).toBeTruthy();
+});
+
+test("a deletion cancelled gives the focus back to the menu's button; one done, to the heading, though the tree is read late", async () => {
+  const user = userEvent.setup();
+  renderApp(pagePath(guide.id), lateTreeServer().app);
+  await screen.findByRole("heading", { level: 1, name: "Guide" });
+
+  await choose(user, "Notes", "Delete");
+  await user.click(
+    within(await screen.findByRole("alertdialog", { name: "Delete Notes?" })).getByRole("button", { name: "Cancel" })
+  );
+  const actions = within(await tree()).getByRole("button", { name: "Actions for Notes" });
+  await waitFor(() => expect(document.activeElement).toBe(actions));
+
+  await choose(user, "Notes", "Delete");
+  await user.click(
+    within(await screen.findByRole("alertdialog", { name: "Delete Notes?" })).getByRole("button", { name: "Delete" })
+  );
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("heading", { level: 2, name: "Plans" })));
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  expect(document.activeElement).toBe(screen.getByRole("heading", { level: 2, name: "Plans" }));
+});
+
+test("the page shown deleted, its parent's page at hand, the focus goes straight to that page's heading", async () => {
+  const user = userEvent.setup();
+  renderApp(pagePath(linux.id), lateTreeServer().app);
+  await screen.findByRole("heading", { level: 1, name: "Linux" });
+  await user.click(await within(await tree()).findByRole("link", { name: "Install" }));
+  await screen.findByRole("heading", { level: 1, name: "Install" });
+  await user.click(within(await tree()).getByRole("link", { name: "Linux" }));
+  await screen.findByRole("heading", { level: 1, name: "Linux" });
+
+  // The tree's heading is not on the way: a screen reader would read it first.
+  const passed = vi.fn();
+  screen.getByRole("heading", { level: 2, name: "Plans" }).addEventListener("focus", passed);
+
+  await choose(user, "Linux", "Delete");
+  await user.click(
+    within(await screen.findByRole("alertdialog", { name: "Delete Linux?" })).getByRole("button", { name: "Delete" })
+  );
+  const heading = await screen.findByRole("heading", { level: 1, name: "Install" });
+  await waitFor(() => expect(document.activeElement).toBe(heading));
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  expect(document.activeElement).toBe(heading);
+  expect(passed).not.toHaveBeenCalled();
 });
 
 test("a page shown whose subtree's parent went too sends its shell to the notebook's home", async () => {

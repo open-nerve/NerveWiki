@@ -18,14 +18,15 @@ import { canHold, childrenOf } from "../../stores/page-tree";
 const root = "";
 
 /**
- * MovePageDialog moves page, with the pages under it, by two selects (M4/P5
- * design 3.7): the keyboard's way to what dragging does (WCAG 2.2, 2.5.7).
- * The parents offered are those that can hold it: not the page itself nor
- * a page under it, none it would go deeper than ten levels under; the
- * positions are first, after each sibling, last. It opens on the page's
- * place; a choice the tree, read again, no longer offers goes back to the
- * page's parent and last. A refusal (409 page.cycle, page.too_deep, page.title_taken) stays
- * in the dialog; once moved, the dialog closes.
+ * MovePageDialog moves page, with the pages under it, by two selects
+ * (M4/P5 design 3.7): the keyboard's way to what dragging does (WCAG 2.2,
+ * 2.5.7). The parents offered are those that can hold it: not the page
+ * itself nor a page under it, none it would go deeper than ten levels
+ * under; the positions are first, after each sibling, last. It opens on
+ * the page's place; a choice the tree, read again, no longer offers goes
+ * back to the page's parent and last. A refusal (409 page.cycle,
+ * page.too_deep, page.title_taken) stays in the dialog; once moved, the
+ * dialog closes.
  */
 export function MovePageDialog({ notebook, page, held }: { notebook: Notebook; page: TreeNode; held: HeldDialog }) {
   const t = useT();
