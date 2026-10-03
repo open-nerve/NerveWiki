@@ -51,7 +51,8 @@ func New(open Opener, cfg Config) *Handler {
 // reset:
 //
 //   - each event the stream holds, as a frame;
-//   - the stream reset: a reset frame with its reason;
+//   - the stream reset: the events it still holds, then a reset frame
+//     with its reason, so the frames keep the order of the events;
 //   - the credential's expiry: reset expired;
 //   - each heartbeat: the credential authenticated again, reset
 //     unauthenticated when it fails with a 401, else a comment line. A
@@ -83,16 +84,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		case <-ctx.Done():
 			return
 		case e := <-s.Events():
-			f, err := domain.EventFrame(e)
-			if err != nil {
-				h.cfg.Logger.WarnContext(ctx, "event not written", slog.Any("error", err))
-				continue
-			}
-			if !out.write(f) {
+			if !h.event(ctx, out, e) {
 				return
 			}
 		case <-s.Done():
-			out.write(domain.ResetFrame(s.Reason()))
+			if h.drain(ctx, s, out) {
+				out.write(domain.ResetFrame(s.Reason()))
+			}
 			return
 		case <-expired:
 			out.write(domain.ResetFrame(domain.ResetExpired))
@@ -111,6 +109,32 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			beat = h.cfg.After(h.cfg.Heartbeat)
+		}
+	}
+}
+
+// event writes e as a frame, and reports whether the stream goes on: an
+// event that has no frame is logged and left out.
+func (h *Handler) event(ctx context.Context, out writer, e domain.Event) bool {
+	f, err := domain.EventFrame(e)
+	if err != nil {
+		h.cfg.Logger.WarnContext(ctx, "event not written", slog.Any("error", err))
+		return true
+	}
+	return out.write(f)
+}
+
+// drain writes the events a reset stream holds, routed before its reset,
+// and reports whether it could.
+func (h *Handler) drain(ctx context.Context, s *app.Stream, out writer) bool {
+	for {
+		select {
+		case e := <-s.Events():
+			if !h.event(ctx, out, e) {
+				return false
+			}
+		default:
+			return true
 		}
 	}
 }

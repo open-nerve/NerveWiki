@@ -71,11 +71,14 @@ type timer struct {
 }
 
 // stream is the server of the tests, its hub, its tokens and its timers.
+// A test that sets held before it opens a stream holds the handler in its
+// first timer's making, past hello, until it closes held.
 type stream struct {
 	url    string
 	hub    *app.Hub
 	tokens *tokens
 	timers chan timer
+	held   chan struct{}
 }
 
 func newStream(t *testing.T) *stream {
@@ -86,6 +89,9 @@ func newStream(t *testing.T) *stream {
 	h := httpadapter.New(app.NewOpenStream(s.hub, everyone{}), httpadapter.Config{
 		Errors: httpserver.NewAPIErrors(logger), Logger: logger, Heartbeat: heartbeat, Now: now,
 		After: func(d time.Duration) <-chan time.Time {
+			if s.held != nil {
+				<-s.held
+			}
 			c := make(chan time.Time, 1)
 			s.timers <- timer{d: d, c: c}
 			return c
@@ -291,6 +297,30 @@ func TestAResetStreamSaysWhy(t *testing.T) {
 	}
 	expect(t, r, "EOF", "")
 	waitForNoStream(t, s.hub)
+}
+
+// A reset stream first writes the events it holds, routed before the
+// reset: its frames keep the order of the events, the reset last. The
+// handler is held past hello while they are routed, so that it finds them
+// all, and the reset, at once.
+func TestAResetStreamWritesItsEventsFirst(t *testing.T) {
+	s := newStream(t)
+	s.held = make(chan struct{})
+	_, r := s.open(t, "tok")
+	expect(t, r, "hello", "")
+	for range 10 {
+		dispatch(t, s.hub, domain.TypePages, notebookText, domain.Pages{Pages: []domain.PageRevision{}})
+	}
+	s.hub.ResetAll(domain.ResetReconnected)
+	close(s.held)
+
+	for range 10 {
+		expect(t, r, "pages", "")
+	}
+	if data := expect(t, r, "reset", "EventReset"); data != `{"reason":"reconnected"}` {
+		t.Errorf("reset = %s", data)
+	}
+	expect(t, r, "EOF", "")
 }
 
 // A client that goes ends its stream, which leaves the hub.

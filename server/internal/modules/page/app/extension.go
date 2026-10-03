@@ -72,8 +72,9 @@ type Appender interface {
 }
 
 // Event is a unit's changes, merged by node, the earliest before and the
-// latest after, as the observers get them once per unit: the transaction
-// sends at most one notification (v0.1 design 3.11).
+// latest after, as the observers get them once per unit: the event stream
+// publishes one pages event of it (M5 design 8), beside a lock event of
+// each edit session the unit opens or ends.
 type Event struct {
 	Write
 	ChangesetID uuid.UUID
