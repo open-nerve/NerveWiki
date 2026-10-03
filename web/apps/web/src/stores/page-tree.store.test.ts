@@ -53,6 +53,14 @@ function store(nodes: TreeNode[] = [guide, install, linux, notes]) {
     deleteNode: (id: string) => answer(`delete ${id}`, () => undefined),
     lock: async () => ({ holder: null, expires_in: null }),
     releaseLock: async () => undefined,
+    toggleTask: async () => ({
+      ...guide,
+      ancestors: [],
+      revision: 2,
+      byte_size: 0,
+      content_updated_at: "",
+      content_updated_by: "",
+    }),
   };
   return { pages: new PageTreeStore(service, "plans"), sent, state };
 }

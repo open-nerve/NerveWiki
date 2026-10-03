@@ -32,7 +32,15 @@ function observed() {
   return observers;
 }
 
-const context = { workspace: "lab", notebook: "n", page: "p", revision: 1, role: "reader" as const, reload: () => {} };
+const context = {
+  workspace: "lab",
+  notebook: "n",
+  page: "p",
+  revision: 1,
+  role: "reader" as const,
+  reload: () => {},
+  report: () => {},
+};
 
 test("the view and each code block take the focus while wider than they show, and only then", () => {
   const observers = observed();

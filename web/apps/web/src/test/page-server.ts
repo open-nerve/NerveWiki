@@ -1,5 +1,5 @@
 import type { NotebookRole } from "../services/notebook.service";
-import type { EditLock, NodeMove, PageContent, PageView, TreeNode } from "../services/page.service";
+import type { EditLock, NodeMove, PageContent, PageView, TaskToggle, TreeNode } from "../services/page.service";
 import { json, notebookJSON, problem, signedInApp, userJSON, type Answer } from "./fakes";
 
 /** pageNode is the page n of Plans, titled name, under parent (none: at the root). */
@@ -77,6 +77,12 @@ type PageServerOptions = {
  * too unless she takes it over; a session taken over or unlocked answers
  * its beats and writes with why. The test holds, takes over, unlocks and
  * lapses sessions as other tabs and members would.
+ *
+ * withTasks gives a page a content of task items and its view (tasksView);
+ * a toggle of one (M5/P6 design 3.3) answers as the server does: 409
+ * page.revision_mismatch on another revision, 422 at an offset of no item,
+ * the page as it is for an item in that state, 409 page.locked while a
+ * session holds the page; otherwise it writes the content and its view.
  */
 export function pageServer({
   role = "admin",
@@ -107,6 +113,11 @@ export function pageServer({
     /** unlock has an admin, by, unlock the page: its alive session ends so. */
     unlock(pageId: string, by: Person = bob): void {
       endAlive(server.sessions, pageId, { code: "page.edit_session_unlocked", by });
+    },
+    /** withTasks gives the page pageId the content of task items and its view, at revision. */
+    withTasks(pageId: string, content: string, revision = 1): void {
+      server.contents.set(pageId, { content, revision });
+      server.views.set(pageId, { html: tasksView(content), revision });
     },
     /** lockOf is the page's edit lock, as GET edit-lock answers it. */
     lockOf(pageId: string): EditLock {
@@ -144,6 +155,7 @@ export function pageServer({
     },
     ...writeRoutes(server),
     ...contentRoutes(server),
+    ...taskRoutes(server),
     ...answers,
   });
   return Object.assign(server, { app });
@@ -375,6 +387,76 @@ function contentRoutes(server: ContentState): Record<string, Answer> {
       return server.sessions.delete(idOf(request))
         ? new Response(null, { status: 204 })
         : problem(404, "page.edit_session_not_found");
+    },
+  };
+}
+
+/** The tasks of a content of task item lines, "- [ ] text" or "- [x] text", by their characters' offsets. */
+function tasksOf(content: string): { offset: number; checked: boolean; text: string }[] {
+  const tasks = [];
+  let at = 0;
+  for (const line of content.split(/(?<=\n)/)) {
+    const match = /^- \[([ xX])\] (.*)$/.exec(line.replace(/\r?\n$/, ""));
+    if (match !== null) {
+      tasks.push({ offset: at + 3, checked: match[1] !== " ", text: match[2] ?? "" });
+    }
+    at += new TextEncoder().encode(line).length;
+  }
+  return tasks;
+}
+
+/** tasksView is the reading view of a content of task items, as the server renders it. */
+function tasksView(content: string): string {
+  const items = tasksOf(content).map(
+    ({ offset, checked, text }) =>
+      `<li><input ${checked ? 'checked="" ' : ""}disabled="" type="checkbox" data-task="${offset.toString()}"> ${text}</li>\n`
+  );
+  return `<ul>\n${items.join("")}</ul>\n`;
+}
+
+/** The answer to a toggle of a task item of server's pages, which changes it. */
+function taskRoutes(server: ContentState & { views: Map<string, PageView> }): Record<string, Answer> {
+  return {
+    "POST /api/v0/pages/*/toggle-task": async (request) => {
+      const toggle = (await request.clone().json()) as TaskToggle;
+      const node = server.nodes.find((each) => each.id === idOf(request));
+      server.sent.push(
+        `TOGGLE ${node?.name} ${toggle.offset.toString()} ${String(toggle.checked)} on ${toggle.base_revision.toString()}`
+      );
+      if (node === undefined) {
+        return problem(404, "page.not_found");
+      }
+      const current = server.contents.get(node.id) ?? { content: `${node.name}\n`, revision: 1 };
+      if (toggle.base_revision !== current.revision) {
+        return problem(409, "page.revision_mismatch");
+      }
+      const task = tasksOf(current.content).find((each) => each.offset === toggle.offset);
+      if (task === undefined) {
+        return problem(422, "validation_failed", {
+          errors: [{ field: "offset", code: "out_of_range", message: "no task" }],
+        });
+      }
+      let revision = current.revision;
+      if (task.checked !== toggle.checked) {
+        const alive = aliveOf(server.sessions, node.id);
+        if (alive !== undefined) {
+          return problem(409, "page.locked", { lock: { page_id: node.id, ...alive.holder } });
+        }
+        const bytes = new TextEncoder().encode(current.content);
+        bytes[toggle.offset] = (toggle.checked ? "x" : " ").charCodeAt(0);
+        const content = new TextDecoder().decode(bytes);
+        revision += 1;
+        server.contents.set(node.id, { content, revision });
+        server.views.set(node.id, { html: tasksView(content), revision });
+      }
+      return json({
+        ...node,
+        ancestors: [],
+        revision,
+        byte_size: 0,
+        content_updated_at: node.updated_at,
+        content_updated_by: "",
+      });
     },
   };
 }

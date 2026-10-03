@@ -2,7 +2,7 @@ import { makeAutoObservable, observableRef, runInAction } from "mobx";
 
 import { oneAtATime } from "../lib/one-at-a-time";
 import { ApiError } from "../services/api";
-import type { EditLock, NodeMove, PageService, PageView, TreeNode } from "../services/page.service";
+import type { EditLock, NodeMove, PageService, PageView, TaskToggle, TreeNode } from "../services/page.service";
 import { ancestorsOf, childrenOf, indexTree, subtreeOf, type TreeIndex } from "./page-tree";
 
 /**
@@ -35,7 +35,15 @@ export class PageTreeStore {
   constructor(
     private readonly service: Pick<
       PageService,
-      "listNodes" | "getPageView" | "createPage" | "renameNode" | "moveNode" | "deleteNode" | "lock" | "releaseLock"
+      | "listNodes"
+      | "getPageView"
+      | "createPage"
+      | "renameNode"
+      | "moveNode"
+      | "deleteNode"
+      | "lock"
+      | "releaseLock"
+      | "toggleTask"
     >,
     /** The notebook whose pages these are. */
     readonly notebookId: string
@@ -167,6 +175,11 @@ export class PageTreeStore {
   /** view reads the page id's reading view, which the store does not keep: SWR does, by page. */
   view(id: string): Promise<PageView> {
     return this.service.getPageView(id);
+  }
+
+  /** toggleTask ticks or clears a task item of the page id, which changes its view: SWR reads it again. */
+  async toggleTask(id: string, toggle: TaskToggle): Promise<void> {
+    await this.service.toggleTask(id, toggle);
   }
 
   /** editLock reads who edits the page id, which SWR keeps by page, as it does the view (M5/P3 design 3.10). */

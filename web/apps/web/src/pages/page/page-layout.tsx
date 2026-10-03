@@ -207,7 +207,7 @@ const PageShell = observer(function PageShell({ notebook, page }: { notebook: No
           <div ref={lockNote} tabIndex={-1} className="outline-none">
             <EditLockNote notebook={notebook} page={page} editHere={writer ? () => void enter(true) : undefined} />
           </div>
-          <ReadingView notebook={notebook} page={page} />
+          <ReadingView notebook={notebook} page={page} refused={setRefusal} />
         </>
       ) : (
         <PageEdit
