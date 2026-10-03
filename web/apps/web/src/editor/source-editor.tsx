@@ -66,6 +66,8 @@ class EditorHost {
   private readonly waiting: (() => void)[] = [];
   private settling: ReturnType<typeof setTimeout> | undefined = undefined;
   private readonly locks: Record<Lock, boolean> = { readOnly: false, held: false };
+  /** What the extensions of the state shown follow of the session, unsubscribed as the state goes. */
+  private following: (() => void)[] = [];
 
   constructor(
     parent: HTMLElement,
@@ -83,6 +85,7 @@ class EditorHost {
   }
 
   load(raw: string): void {
+    this.unfollow();
     this.view.setState(this.stateOf(raw));
   }
 
@@ -105,6 +108,7 @@ class EditorHost {
 
   destroy(): void {
     clearTimeout(this.settling);
+    this.unfollow();
     this.view.destroy();
   }
 
@@ -117,6 +121,12 @@ class EditorHost {
       editorPhrases(t),
       EditorView.contentAttributes.of({ "aria-label": t("editor.label"), "aria-describedby": this.hint }),
     ];
+  }
+
+  private unfollow(): void {
+    for (const off of this.following.splice(0)) {
+      off();
+    }
   }
 
   private runWaiting(): void {
@@ -137,6 +147,12 @@ class EditorHost {
         ),
       saving: () => this.live.current.controls.saving(),
       setReadOnly: (on) => this.lock("readOnly", on),
+      session: () => this.live.current.controls.session(),
+      onSessionChange: (listener) => {
+        const off = this.live.current.controls.onSessionChange(listener);
+        this.following.push(off);
+        return off;
+      },
     };
     const composed = composeExtensions(registered, context, controls);
     return EditorState.create({

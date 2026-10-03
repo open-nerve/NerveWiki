@@ -12,10 +12,17 @@ import type { Leadership } from "./leadership";
 /** What a tab's subscribers get. */
 export type HubEvent = StreamEvent | { type: "connected" };
 
-/** The page as the hub follows it: visible or not, hidden for good or frozen, back. */
+/**
+ * The page as the hub and an edit follow it: visible or not, hidden for
+ * good or frozen, back; persisted tells a pageshow from the back-forward
+ * cache.
+ */
 export type PageLifecycle = {
   visible(): boolean;
-  on(event: "visibilitychange" | "pagehide" | "pageshow" | "freeze" | "resume", listener: () => void): () => void;
+  on(
+    event: "visibilitychange" | "pagehide" | "pageshow" | "freeze" | "resume",
+    listener: (event: { persisted?: boolean }) => void
+  ): () => void;
 };
 
 export type EventHubDeps = {

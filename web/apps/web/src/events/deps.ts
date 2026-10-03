@@ -34,15 +34,21 @@ export function browserEventDeps(
     storage,
     onStorage,
     channel: (name) => new BroadcastChannel(name),
-    page: {
-      visible: () => document.visibilityState === "visible",
-      on: (event, listener) => {
-        const target = event === "pagehide" || event === "pageshow" ? window : document;
-        target.addEventListener(event, listener);
-        return () => target.removeEventListener(event, listener);
-      },
-    },
+    page: browserPageLifecycle(),
     now: Date.now,
     tabId,
+  };
+}
+
+/** browserPageLifecycle is this tab's page: pagehide and pageshow on the window, the others on the document. */
+export function browserPageLifecycle(): PageLifecycle {
+  return {
+    visible: () => document.visibilityState === "visible",
+    on: (event, listener) => {
+      const target = event === "pagehide" || event === "pageshow" ? window : document;
+      const handle = (fired: Event) => listener({ persisted: "persisted" in fired && fired.persisted === true });
+      target.addEventListener(event, handle);
+      return () => target.removeEventListener(event, handle);
+    },
   };
 }

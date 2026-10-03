@@ -34,7 +34,7 @@ function probe() {
 test("a sign-in starts a generation with its own SWR cache", async () => {
   const app = testApp(() => json(tokens));
   const { routes } = probe();
-  renderApp("/", app, routes);
+  renderApp("/", app, { routes });
   expect(await screen.findByText("load 1 for nobody")).toBeTruthy();
 
   await act(() => app.session.tokens.signIn(tokens));
@@ -53,7 +53,7 @@ test("the same login keeps its generation from starting through unavailable to s
     storedSession("login-0")
   );
   const { routes, generations } = probe();
-  renderApp("/", app, routes);
+  renderApp("/", app, { routes });
   expect(await screen.findByText("load 1 for login-0")).toBeTruthy();
   await act(async () => {
     await vi.waitFor(() => expect(app.session.tokens.state.status).toBe("unavailable"));

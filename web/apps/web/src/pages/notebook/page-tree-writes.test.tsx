@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 
 import { json, notebookJSON, problem } from "../../test/fakes";
-import { guide, install, linux, notes, pageNode, pagePath, pageServer } from "../../test/page-server";
+import { bob, guide, install, linux, notes, pageNode, pagePath, pageServer } from "../../test/page-server";
 import { renderApp } from "../../test/render";
 
 // The tree's writes: new pages, renaming, moving, deleting (M4/P5 design
@@ -209,6 +209,21 @@ test("a root page deleted while shown sends its shell to the notebook's home", a
   await user.click(within(dialog).getByRole("button", { name: "Delete" }));
 
   expect(await screen.findByRole("heading", { level: 1, name: "Plans" })).toBeTruthy();
+});
+
+test("a deletion someone's edit refuses names them and the page they edit, in the dialog; nothing goes", async () => {
+  const user = userEvent.setup();
+  const server = pageServer();
+  server.hold(linux.id, bob);
+  renderApp(pagePath(notes.id), server.app);
+  await screen.findByRole("heading", { level: 1, name: "Notes" });
+
+  await choose(user, "Guide", "Delete");
+  const dialog = await screen.findByRole("alertdialog", { name: "Delete Guide?" });
+  await user.click(within(dialog).getByRole("button", { name: "Delete" }));
+
+  expect((await within(dialog).findByRole("alert")).textContent).toBe("Bob is editing “Linux”.");
+  expect(server.nodes).toHaveLength(4);
 });
 
 test("a deletion cancelled gives the focus back to the menu's button; one done, to the heading, though the tree is read late", async () => {

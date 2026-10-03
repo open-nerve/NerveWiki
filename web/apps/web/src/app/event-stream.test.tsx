@@ -4,20 +4,14 @@ import { EditorView } from "@codemirror/view";
 import { afterEach, expect, test, vi } from "vitest";
 
 import { FakePage } from "../events/testing/fake-page";
-import type { EditLock } from "../services/page.service";
 import { eventServer, withEvents } from "../test/event-server";
 import { json, notebookJSON, problem, workspaceJSON, type Answer } from "../test/fakes";
-import { guide, install, linux, notes, pagePath, pageServer } from "../test/page-server";
+import { bob, guide, install, linux, notes, pagePath, pageServer } from "../test/page-server";
 import { renderApp } from "../test/render";
 
 // Each event has what it changed read again (M5/P3 design 3.8): the tree,
 // a page's reading view whose revision is newer, a page's edit lock; each
 // connection, all of them.
-
-const bobEditing: EditLock = {
-  holder: { user_id: "0199a2b4-0000-7000-8000-000000000002", display_name: "Bob" },
-  expires_in: 60,
-};
 
 const pagesEvent = (tree: boolean, pages: { id: string; revision: number }[] | null) => ({
   workspace_id: workspaceJSON.id,
@@ -68,7 +62,7 @@ async function open(page = new FakePage(), answers: Record<string, Answer> = {})
       "GET /api/v0/pages/*/edit-lock": (request) => {
         lockReads.push(idOf(request));
         return server.nodes.some((node) => node.id === idOf(request))
-          ? json(server.lock)
+          ? json(server.lockOf(idOf(request)))
           : problem(404, "page.not_found");
       },
     },
@@ -189,7 +183,7 @@ test("a hidden tab reads the reading view once it is shown again", async () => {
 
 test("an event of a page's lock reads its lock again", async () => {
   const { server, events } = await open();
-  server.lock = bobEditing;
+  server.hold(guide.id, bob, 60);
 
   events.last().send("lock", lockEvent(guide.id));
 
@@ -211,7 +205,7 @@ test("each connection reads again the workspaces, the tree, the reading view and
   const { server, events, workspaces } = await open();
   server.nodes = [{ ...guide, name: "Handbook" }, install, linux, notes];
   server.views.set(guide.id, { html: "<p>Guide, again</p>", revision: 2 });
-  server.lock = bobEditing;
+  server.hold(guide.id, bob, 60);
 
   events.last().send("reset", { reason: "expired" });
   await waitFor(() => expect(events.streams).toHaveLength(2));
@@ -277,6 +271,45 @@ test("the tab that edited the page reads it once back, not again for the events 
   await act(() => vi.advanceTimersByTimeAsync(6_000));
 
   expect(server.sent.filter((sent) => sent === "GET view Guide")).toHaveLength(reads);
+});
+
+/**
+ * unmountedOnTree has the app unmounted as its tree is read: the refresh
+ * that read it is between its steps. What the refresh asks of the cache
+ * after that is in rejections, unhandled.
+ */
+async function unmountedOnTree(ask: (opened: Awaited<ReturnType<typeof open>>) => void) {
+  const rejections: unknown[] = [];
+  const record = (reason: unknown) => void rejections.push(reason);
+  process.on("unhandledRejection", record);
+  try {
+    const opened = await open();
+    const push = opened.server.sent.push.bind(opened.server.sent);
+    opened.server.sent.push = (...lines: string[]) => {
+      if (lines.includes("GET nodes")) {
+        opened.unmount();
+      }
+      return push(...lines);
+    };
+    ask(opened);
+    await waitFor(() => expect(opened.server.sent).toContain("GET nodes"));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(opened.lockReads).toEqual([]);
+    expect(rejections).toEqual([]);
+  } finally {
+    process.off("unhandledRejection", record);
+  }
+}
+
+test("a lock's refresh still going on when the stream stops reads no more: its cache went with the generation", async () => {
+  await unmountedOnTree(({ events }) => events.last().send("lock", lockEvent(guide.id)));
+});
+
+test("a connection's refresh still going on when the stream stops reads no more", async () => {
+  await unmountedOnTree(({ events }) => {
+    events.last().send("reset", { reason: "expired" });
+    void waitFor(() => expect(events.streams).toHaveLength(2)).then(() => events.last().hello());
+  });
 });
 
 test("the stream ends with the generation", async () => {

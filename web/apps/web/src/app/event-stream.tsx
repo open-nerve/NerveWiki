@@ -28,7 +28,8 @@ const refreshedOnConnect = [["workspaces"], ["notebooks"], ["pages"], ["page-vie
  * and notebooks. The reading views are read
  * through the refresher, at most once in its interval, and once visible
  * again when the tab is hidden. It sits with the providers, mounted anew
- * with each generation, whose hub stops with it.
+ * with each generation, whose hub stops with it: a refresh still going on
+ * then reads no more, its cache gone with the generation.
  */
 export function EventStream() {
   const store = useStore();
@@ -41,9 +42,11 @@ export function EventStream() {
     if (hub === undefined || refresher === undefined) {
       return undefined;
     }
-    const unsubscribe = hub.subscribe((event) => route(event, cache, mutate, refresher));
+    const stop = new AbortController();
+    const unsubscribe = hub.subscribe((event) => route(event, cache, mutate, refresher, stop.signal));
     hub.start();
     return () => {
+      stop.abort();
       unsubscribe();
       hub.stop();
       refresher.stop();
@@ -52,13 +55,13 @@ export function EventStream() {
   return null;
 }
 
-function route(event: HubEvent, cache: Cache, mutate: ScopedMutator, refresher: Refresher): void {
+function route(event: HubEvent, cache: Cache, mutate: ScopedMutator, refresher: Refresher, stopped: AbortSignal): void {
   switch (event.type) {
     case "connected":
-      void refreshAll(mutate);
+      void refreshAll(mutate, stopped);
       break;
     case "lock":
-      void refreshLock(mutate, event.data.notebook_id, event.data.page_id);
+      void refreshLock(mutate, event.data.notebook_id, event.data.page_id, stopped);
       break;
     case "pages": {
       const { notebook_id: notebook, tree, pages } = event.data;
@@ -87,8 +90,11 @@ function route(event: HubEvent, cache: Cache, mutate: ScopedMutator, refresher: 
   }
 }
 
-async function refreshAll(mutate: ScopedMutator): Promise<void> {
+async function refreshAll(mutate: ScopedMutator, stopped: AbortSignal): Promise<void> {
   for (const level of refreshedOnConnect) {
+    if (stopped.aborted) {
+      return;
+    }
     // oxlint-disable-next-line no-await-in-loop -- one level after another
     await mutate((key) => level.has((Array.isArray(key) ? key[0] : key) as string));
     // oxlint-disable-next-line no-await-in-loop -- one level after another
@@ -101,10 +107,12 @@ async function refreshAll(mutate: ScopedMutator): Promise<void> {
  * session of a page deleted while edited ends before the deletion's event
  * comes, and its page leaves before its lock would be read, not found.
  */
-async function refreshLock(mutate: ScopedMutator, notebook: string, page: string): Promise<void> {
+async function refreshLock(mutate: ScopedMutator, notebook: string, page: string, stopped: AbortSignal) {
   await mutate(["pages", notebook]);
   await shown();
-  await mutate(["edit-lock", page]);
+  if (!stopped.aborted) {
+    await mutate(["edit-lock", page]);
+  }
 }
 
 /** shown lets React show what was read, unmounting what is gone, before the next read. */

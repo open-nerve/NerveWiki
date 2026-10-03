@@ -15,7 +15,9 @@ export class AuthStore {
     private readonly service: Pick<AuthService, "login" | "register">,
     private readonly tokens: Pick<TokenManager, "state" | "subscribe" | "retry" | "signIn" | "signOut" | "endSession">,
     /** The login of this generation of the stores; undefined while signed out. */
-    private readonly loginId: string | undefined
+    private readonly loginId: string | undefined,
+    /** Ends what the tab holds in the session before it signs out: its edits' locks (M5/P4 design 3.9). */
+    private readonly beforeSignOut: () => Promise<void> = () => Promise.resolve()
   ) {}
 
   /** The session's state: a new object on every change (for useSyncExternalStore). */
@@ -38,9 +40,10 @@ export class AuthStore {
     await this.tokens.signIn(await this.service.register(email, password, invitation));
   }
 
-  /** signOut ends the session in every tab of the browser. */
-  signOut(): Promise<void> {
-    return this.tokens.signOut();
+  /** signOut ends the session in every tab of the browser, once the tab's edits have ended. */
+  async signOut(): Promise<void> {
+    await this.beforeSignOut();
+    await this.tokens.signOut();
   }
 
   /**

@@ -1,6 +1,8 @@
+import { observable } from "mobx";
+
 import { TabChannel } from "../events/channel";
-import type { EventDeps } from "../events/deps";
-import { EventHub } from "../events/hub";
+import { browserPageLifecycle, type EventDeps } from "../events/deps";
+import { EventHub, type PageLifecycle } from "../events/hub";
 import { leaseLeadership, webLockLeadership } from "../events/leadership";
 import { Refresher } from "../events/refresher";
 import { AccountService } from "../services/account.service";
@@ -13,13 +15,14 @@ import { MemberService } from "../services/member.service";
 import { NotebookMemberService } from "../services/notebook-member.service";
 import { NotebookService, type Notebook } from "../services/notebook.service";
 import { OwnerlessService } from "../services/ownerless.service";
-import { PageService } from "../services/page.service";
+import { EditLeaveService, PageService } from "../services/page.service";
 import { WorkspaceService, type Workspace } from "../services/workspace.service";
 import type { Session } from "../session/session";
 import { AccountStore } from "./account.store";
 import { ApiTokenStore } from "./api-token.store";
 import { AuditStore } from "./audit.store";
 import { AuthStore } from "./auth.store";
+import { EditSession } from "./edit-session";
 import { InstanceStore } from "./instance.store";
 import { InvitationPreviewStore, InvitationStore } from "./invitation.store";
 import { MemberStore } from "./member.store";
@@ -68,6 +71,8 @@ export class RootStore {
   readonly apiTokens: ApiTokenStore | undefined;
   /** The signed-in account's workspaces; undefined while the tab is signed out. */
   readonly workspaces: WorkspaceStore | undefined;
+  /** The edits of this generation, from as they begin until they end or are not opened (M5/P4 design 3.4). */
+  readonly edits = observable.set<PageEditing>([], { deep: false });
   private readonly members: MemberService | undefined;
   private readonly invitations: InvitationService | undefined;
   private readonly notebooks: NotebookService | undefined;
@@ -76,6 +81,9 @@ export class RootStore {
   private readonly pages: PageService | undefined;
   private readonly hub: EventHub | undefined;
   private readonly eventDeps: EventDeps | undefined;
+  private readonly page: PageLifecycle;
+  /** Ends an edit session as the page is left, with this login's token while it is valid. */
+  private readonly leave: ((id: string) => void) | undefined;
   /** The member, invitation and notebook lists this generation holds, by workspace id. */
   private readonly memberLists = new Map<string, MemberStore>();
   private readonly invitationLists = new Map<string, InvitationStore>();
@@ -93,7 +101,7 @@ export class RootStore {
   ) {
     this.preferences = app.preferences;
     this.instance = app.instance;
-    this.auth = new AuthStore(new AuthService(app.session.public), app.session.tokens, loginId);
+    this.auth = new AuthStore(new AuthService(app.session.public), app.session.tokens, loginId, () => this.endEdits());
     this.invitationPreviews = new InvitationPreviewStore(new InvitationPreviewService(app.session.public));
     const client = loginId === undefined ? undefined : app.session.clientFor(loginId);
     this.account = client && new AccountStore(new AccountService(client));
@@ -110,6 +118,42 @@ export class RootStore {
         ? eventHub(new EventService(client), app.events, loginId)
         : undefined;
     this.eventDeps = this.hub && app.events;
+    this.page = app.events?.page ?? browserPageLifecycle();
+    if (loginId !== undefined) {
+      const leaving = new EditLeaveService(app.session.public);
+      this.leave = (id) => {
+        const token = app.session.tokens.currentAccessToken(loginId);
+        if (token !== undefined) {
+          leaving.endOnLeave(id, token);
+        }
+      };
+    }
+  }
+
+  /**
+   * unsavedEdit tells whether an edit of the page pageId, of the notebook
+   * notebookId when given, is open with changes not saved: its page, or its
+   * notebook, stays shown while it is gone (M5/P4 design 3.9).
+   */
+  unsavedEdit({ pageId, notebookId }: { pageId?: string; notebookId?: string }): boolean {
+    return [...this.edits].some(
+      (editing) =>
+        editing.unsaved &&
+        (pageId === undefined || editing.pageId === pageId) &&
+        (notebookId === undefined || editing.notebookId === notebookId)
+    );
+  }
+
+  /**
+   * endEdits ends this generation's edits, as the tab signs out: it
+   * resolves once their ends are answered, or after at most 2 seconds, so
+   * that a network down does not hold the sign-out.
+   */
+  endEdits(): Promise<void> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const waited = new Promise<void>((resolve) => (timer = setTimeout(resolve, signOutWait)));
+    const ended = Promise.all([...this.edits].map((editing) => editing.end()));
+    return Promise.race([ended, waited]).then(() => clearTimeout(timer));
   }
 
   /**
@@ -188,11 +232,26 @@ export class RootStore {
     return service && once(this.pageTrees, notebook.id, () => new PageTreeStore(service, notebook.id));
   }
 
-  /** editPage is a new edit of the page id, which its edit mode holds, not this generation (M4/P6 design 3.6). */
-  editPage(id: string): PageEditing | undefined {
-    return this.pages && new PageEditing(this.pages, id);
+  /**
+   * editPage is a new edit of the page pageId of the notebook notebookId,
+   * which the page holds, not this generation (M4/P6 design 3.6); edits
+   * has it from as it begins until it ends, or its session is not opened.
+   * Its session follows the page, and this login's events where the tab
+   * has a stream (M5/P4 design 3.4).
+   */
+  editPage(notebookId: string, pageId: string): PageEditing | undefined {
+    const { pages, leave, hub } = this;
+    if (pages === undefined || leave === undefined) {
+      return undefined;
+    }
+    const events = hub && ((listener: Parameters<EventHub["subscribe"]>[0]) => hub.subscribe(listener));
+    const session = new EditSession({ service: pages, page: this.page, events, leave }, pageId);
+    return new PageEditing(pages, session, notebookId, this.edits);
   }
 }
+
+/** How long signing out waits for the tab's edits to end. */
+const signOutWait = 2_000;
 
 /**
  * eventHub is the hub of login: the tabs of one login elect one holder of

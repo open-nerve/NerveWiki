@@ -11,7 +11,7 @@ import { renderApp } from "../test/render";
 test("the tab is named after the page shown, then the places it is in", async () => {
   const { router } = renderApp(pagePath(install.id), pageServer().app);
   await screen.findByRole("heading", { level: 1, name: "Install" });
-  expect(document.title).toBe("Install · Plans · Nerve Wiki");
+  await waitFor(() => expect(document.title).toBe("Install · Plans · Nerve Wiki"));
 
   const titles: [string, string][] = [
     [`/lab/notebooks/${notebookJSON.id}`, "Plans · Lab · Nerve Wiki"],
@@ -32,7 +32,7 @@ test("a signed-out tab is named after its form", async () => {
   const { unmount } = renderApp("/sign-in", testApp(byRoute({ "GET /api/v0/instance": () => json(instanceJSON) })));
 
   await screen.findByRole("heading", { level: 1, name: "Sign in" });
-  expect(document.title).toBe("Sign in · Nerve Wiki");
+  await waitFor(() => expect(document.title).toBe("Sign in · Nerve Wiki"));
   // Gone, it names the tab no more: a page that names none shows the app's name.
   unmount();
   expect(document.title).toBe("Nerve Wiki");

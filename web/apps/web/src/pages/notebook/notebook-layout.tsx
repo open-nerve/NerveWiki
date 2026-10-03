@@ -1,4 +1,5 @@
 import { observer } from "mobx-react-lite";
+import { createContext, use, useState } from "react";
 import { createPortal } from "react-dom";
 import { Navigate, Outlet, useParams } from "react-router";
 import useSWR from "swr";
@@ -6,20 +7,22 @@ import useSWR from "swr";
 import { arrived } from "../../app/arrival";
 import { NotLoaded } from "../../app/not-loaded";
 import type { Notebook } from "../../services/notebook.service";
-import { useNotebooks } from "../../stores/context";
+import { useNotebooks, useStore } from "../../stores/context";
 import { NotFoundPage } from "../not-found";
 import { useNotebookColumn, useWorkspace } from "../workspace/workspace-layout";
 import { PageTree } from "./page-tree";
 import { QuickSwitch } from "./quick-switch";
 
+const NotebookContext = createContext<Notebook | undefined>(undefined);
+
 /**
  * useNotebook is the notebook of the page's address, as the workspace's
- * list holds it, renamed too: only below NotebookLayout, which shows its
- * pages once it has found it.
+ * list holds it, renamed too, or as it was last found while it stays
+ * shown gone: only below NotebookLayout, which shows its pages once it has
+ * found it.
  */
 export function useNotebook(): Notebook {
-  const { id = "" } = useParams();
-  const notebook = useNotebooks(useWorkspace()).byId(id);
+  const notebook = use(NotebookContext);
   if (notebook === undefined) {
     throw new Error("useNotebook is used outside NotebookLayout");
   }
@@ -34,26 +37,34 @@ export function useNotebook(): Notebook {
  * hidden; one this tab has just deleted or left goes to the workspace's
  * home instead, arrived at. Its pages start anew with each notebook, and
  * so do its page tree, which it puts in the workspace's left column
- * (M4/P5 design 3.6), and its quick switch (3.10).
+ * (M4/P5 design 3.6), and its quick switch (3.10). A notebook gone while
+ * this tab edits one of its pages with changes not saved stays, as it was
+ * last found, until the edit ends (M5/P4 design 3.9).
  */
 export const NotebookLayout = observer(function NotebookLayout() {
   const { id = "" } = useParams();
   const workspace = useWorkspace();
   const notebooks = useNotebooks(workspace);
+  const store = useStore();
   const column = useNotebookColumn();
   const { error, mutate } = useSWR(["notebooks", workspace.id], () => notebooks.load());
+  const [last, setLast] = useState<Notebook | undefined>(undefined);
+  const found = notebooks.list === undefined ? undefined : notebooks.byId(id);
+  if (found !== undefined && found !== last) {
+    setLast(found);
+  }
   if (notebooks.list === undefined) {
     return <NotLoaded error={error} retry={() => void mutate()} />;
   }
-  const notebook = notebooks.byId(id);
+  const notebook = found ?? (last?.id === id && store.unsavedEdit({ notebookId: id }) ? last : undefined);
   if (notebook === undefined) {
     return notebooks.wasRemoved(id) ? <Navigate replace to={`/${workspace.slug}`} state={arrived} /> : <NotFoundPage />;
   }
   return (
-    <>
+    <NotebookContext value={notebook}>
       {column !== null && createPortal(<PageTree key={notebook.id} notebook={notebook} />, column)}
       <QuickSwitch notebook={notebook} />
       <Outlet key={notebook.id} />
-    </>
+    </NotebookContext>
   );
 });

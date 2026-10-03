@@ -188,6 +188,29 @@ async function signedIn(expiresIn = 900) {
   return s;
 }
 
+describe("currentAccessToken", () => {
+  it("is the session's token in memory until it expires, never refreshed: none for another session", async () => {
+    const s = await signedIn(60);
+    expect(s.tm.currentAccessToken(loginId)).toBe("at-1");
+    expect(s.tm.currentAccessToken(other)).toBeUndefined();
+    // Within the last 30 s, where a request would refresh first, the token still goes.
+    await vi.advanceTimersByTimeAsync(60_000 - 1);
+    expect(s.tm.currentAccessToken(loginId)).toBe("at-1");
+    await vi.advanceTimersByTimeAsync(1);
+    expect(s.tm.currentAccessToken(loginId)).toBeUndefined();
+    expect(s.server.calls).toHaveLength(1);
+  });
+
+  it("is none once the tab has signed out", async () => {
+    const s = await signedIn();
+    const out = track(s.tm.signOut());
+    await until(() => s.server.calls.length === 2, "the logout");
+    s.server.calls[1]?.answer(noContent());
+    await until(() => out.settled, "the sign-out");
+    expect(s.tm.currentAccessToken(loginId)).toBeUndefined();
+  });
+});
+
 describe("refresh", () => {
   it("uses the access token until 30 s before its end, counted from when it arrived", async () => {
     const s = setUp({ refresh_token: "rt-0", login_id: loginId });

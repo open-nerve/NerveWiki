@@ -66,7 +66,7 @@ const routes: RouteObject[] = [
 test("each completed step is recorded and the next shows; after the last, the tab goes to next", async () => {
   const user = userEvent.setup();
   const { app, server } = accountServer();
-  const { router } = renderApp("/onboarding?next=%2Facme", app, routes);
+  const { router } = renderApp("/onboarding?next=%2Facme", app, { routes });
   expect(await screen.findByText("Step 1 of 2")).toBeTruthy();
   const name = await screen.findByLabelText("Display name");
   expect(name).toHaveProperty("value", "ada");
@@ -85,7 +85,7 @@ test("each completed step is recorded and the next shows; after the last, the ta
 test("a name left as it was is not sent again", async () => {
   const user = userEvent.setup();
   const { app, server } = accountServer();
-  renderApp("/onboarding", app, routes);
+  renderApp("/onboarding", app, { routes });
 
   await user.click(await screen.findByRole("button", { name: "Continue" }));
 
@@ -99,7 +99,7 @@ test("a refused name shows under the field, and the step stays", async () => {
     "PATCH /api/v0/me": () =>
       problem(422, "validation_failed", { errors: [{ field: "display_name", code: "too_long" }] }),
   });
-  renderApp("/onboarding", app, routes);
+  renderApp("/onboarding", app, { routes });
 
   await user.type(await screen.findByLabelText("Display name"), "!");
   await user.click(screen.getByRole("button", { name: "Continue" }));
@@ -114,7 +114,7 @@ test("a step that cannot be recorded says why and stays; Continue records it the
   const user = userEvent.setup();
   const { app, server } = accountServer();
   server.stepsDown = true;
-  renderApp("/onboarding", app, routes);
+  renderApp("/onboarding", app, { routes });
   await user.type(await screen.findByLabelText("Display name"), "!");
 
   await user.click(screen.getByRole("button", { name: "Continue" }));

@@ -90,8 +90,20 @@ export function stampedVersion(): string {
 /** Numbers the databases newDatabase creates in this worker: a worker is one process. */
 let databases = 0;
 
-/** The watch of each test's page, for pageWatch. */
+/** The watch of each page the fixtures open: the test's, for pageWatch, and the other tabs and pages. */
 const watches = new WeakMap<Page, PageWatch>();
+
+/**
+ * watchOf is the watch of a page the fixtures opened: another tab's or another account's, whose console a
+ * story declares as the test's page's (pageWatch).
+ */
+export function watchOf(page: Page): PageWatch {
+  const watch = watches.get(page);
+  if (!watch) {
+    throw new Error("the fixtures did not open this page");
+  }
+  return watch;
+}
 
 /** Stories import test from here: every worker runs its own nervewiki on its own database. */
 export const test = base.extend<TestFixtures, WorkerFixtures>({
@@ -189,12 +201,16 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
       contexts.push(context);
       await signInContext(context, nervewiki.baseURL, tokens);
       const page = await context.newPage();
-      watched.push([page, await watchPage(page)]);
+      const watch = await watchPage(page);
+      watches.set(page, watch);
+      watched.push([page, watch]);
       return page;
     });
     try {
       if (testInfo.status === testInfo.expectedStatus) {
-        await Promise.all(watched.map(([page, watch]) => expectQuietPage(page, watch)));
+        await Promise.all(
+          watched.filter(([page]) => !page.isClosed()).map(([page, watch]) => expectQuietPage(page, watch))
+        );
       }
     } finally {
       await Promise.all(contexts.map((context) => context.close()));
@@ -205,7 +221,9 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
     const watched: [Page, PageWatch][] = [];
     await use(async (page) => {
       const tab = await page.context().newPage();
-      watched.push([tab, await watchPage(tab)]);
+      const watch = await watchPage(tab);
+      watches.set(tab, watch);
+      watched.push([tab, watch]);
       return tab;
     });
     if (testInfo.status === testInfo.expectedStatus) {

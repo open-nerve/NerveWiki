@@ -5,6 +5,7 @@ import { afterEach, expect, test, vi } from "vitest";
 
 import { I18nProvider } from "../i18n/i18n";
 import type { Locale } from "../i18n/locale";
+import { lockReadOnly } from "./lock-read-only";
 import { EditorExtensions, type EditorContext, type EditorControls, type EditorExtension } from "./registry";
 import { SourceEditor, type SourceEditorHandle } from "./source-editor";
 
@@ -12,11 +13,32 @@ afterEach(() => vi.useRealTimers());
 
 const context: EditorContext = { workspace: "lab", notebook: "n1", page: "p1", role: "editor" };
 
-/** The editor on content, its handle, and what it told onChange and save. */
+/** The edit's session as the controls tell it, which the test loses; following counts its listeners. */
+function sessionState() {
+  let lost = false;
+  const listeners = new Set<() => void>();
+  return {
+    session: () => ({ lost }),
+    onSessionChange: (listener: () => void) => {
+      listeners.add(listener);
+      return () => void listeners.delete(listener);
+    },
+    lose: () => {
+      lost = true;
+      for (const listener of listeners) {
+        listener();
+      }
+    },
+    following: () => listeners.size,
+  };
+}
+
+/** The editor on content, its handle, its session, and what it told onChange and save. */
 function editor(content: string, extensions: readonly EditorExtension[] = [], wrap = (node: ReactNode) => node) {
   const handle = createRef<SourceEditorHandle>();
   const onChange = vi.fn();
   const save = vi.fn(() => Promise.resolve());
+  const session = sessionState();
   const tree = (locale: Locale) =>
     wrap(
       <I18nProvider locale={locale}>
@@ -25,7 +47,12 @@ function editor(content: string, extensions: readonly EditorExtension[] = [], wr
             ref={handle}
             content={content}
             context={context}
-            controls={{ save, saving: () => false }}
+            controls={{
+              save,
+              saving: () => false,
+              session: session.session,
+              onSessionChange: session.onSessionChange,
+            }}
             onChange={onChange}
           />
         </EditorExtensions>
@@ -48,6 +75,7 @@ function editor(content: string, extensions: readonly EditorExtension[] = [], wr
     type,
     onChange,
     save,
+    session,
     unmount,
     speak: (locale: Locale) => rerender(tree(locale)),
   };
@@ -167,6 +195,37 @@ test("an extension may set the content read-only as it is built; a content loade
   handle().hold(false);
   expect(editable(view())).toBe(true);
   expect(view().contentDOM.hasAttribute("tabindex")).toBe(false);
+});
+
+test("the edit's session reaches the extensions; what one follows of it is let go as a content loads, and as the editor goes", () => {
+  const seen: boolean[] = [];
+  const following: EditorExtension = {
+    name: "following",
+    extension: (_, controls) => {
+      controls.onSessionChange(() => seen.push(controls.session().lost));
+      return [];
+    },
+  };
+  const { handle, session, unmount } = editor("text", [following]);
+
+  expect(session.following()).toBe(1);
+  handle().load("new");
+  expect(session.following()).toBe(1);
+  session.lose();
+  expect(seen).toEqual([true]);
+  unmount();
+  expect(session.following()).toBe(0);
+});
+
+test("lockReadOnly sets the content read-only once the session is lost, a content loaded too; the text stays", () => {
+  const { view, handle, session } = editor("text", [lockReadOnly]);
+
+  expect(editable(view())).toBe(true);
+  session.lose();
+  expect(editable(view())).toBe(false);
+  expect(handle().text()).toBe("text");
+  handle().load("new");
+  expect(editable(view())).toBe(false);
 });
 
 test("an extension's save waits for the composition's end, as Mod+S does", async () => {

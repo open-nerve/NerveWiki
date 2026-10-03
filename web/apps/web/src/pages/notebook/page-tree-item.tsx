@@ -12,6 +12,7 @@ import { NavLink, useParams } from "react-router";
 
 import { ConfirmDialog } from "../../app/confirm-dialog";
 import { writesPages } from "../../app/effective-role";
+import { lockedText } from "../../app/problem-messages";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -22,6 +23,7 @@ import { useT } from "../../i18n/i18n";
 import { cn } from "../../lib/cn";
 import type { Notebook } from "../../services/notebook.service";
 import type { TreeNode } from "../../services/page.service";
+import { useStore } from "../../stores/context";
 import type { PageTreeStore } from "../../stores/page-tree.store";
 import { depthOf, maxDepth, placeOfTitle, subtreeOf } from "../../stores/page-tree";
 import { useWorkspace } from "../workspace/workspace-layout";
@@ -216,6 +218,7 @@ const PageMenu = observer(function PageMenu({
   const { notebook, pages, heading, newPage, fail, focusActions } = context;
   const { pageId } = useParams();
   const t = useT();
+  const me = useStore().account?.me?.id;
   const [dialog, setDialog] = useState<Dialogs>();
   const held = (which: Exclude<Dialogs, undefined>) => ({
     open: dialog === which,
@@ -276,6 +279,8 @@ const PageMenu = observer(function PageMenu({
           fail(undefined);
           await pages.remove(node.id);
         }}
+        // Someone editing the page or one under it refuses the deletion: the dialog names them, and the page.
+        explain={(error) => lockedText(error, t, me, (id) => pages.byId(id)?.name)}
       />
     </>
   );

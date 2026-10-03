@@ -134,6 +134,19 @@ export class TokenManager {
   }
 
   /**
+   * The access token of the session loginId as it is in memory now, while it has not expired; undefined
+   * otherwise. Synchronous, never refreshed: for the one request that cannot wait for a refresh, the end of
+   * an edit session as the page is left (M5 design 4.7).
+   */
+  currentAccessToken(loginId: string): string | undefined {
+    const access = this.#access;
+    if (this.#state.loginId !== loginId || access === undefined || access.expiresAt <= this.deps.now()) {
+      return undefined;
+    }
+    return access.token;
+  }
+
+  /**
    * A new access token after the server refused `sent` with 401: the one another request got meanwhile, else a
    * refreshed one; undefined when the refresh ended the session, or it had ended already.
    */
