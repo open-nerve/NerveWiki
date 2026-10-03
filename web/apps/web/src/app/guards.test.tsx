@@ -57,6 +57,7 @@ test("an unavailable session says so on the page's address; Try again signs in",
   });
   const { router } = renderApp("/", app);
   expect((await screen.findByRole("alert")).textContent).toContain("Cannot reach the server");
+  expect(document.title).toBe("Cannot reach the server · Nerve Wiki");
 
   busy = false;
   await user.click(screen.getByRole("button", { name: "Try again" }));

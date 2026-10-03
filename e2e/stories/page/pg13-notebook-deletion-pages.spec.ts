@@ -1,18 +1,20 @@
 import type { ApiClient, Notebook } from "@nervewiki/api-client";
 
 import { expectPagesDeletedWith } from "../../fixtures/assert/page";
-import { emailFor } from "../../fixtures/auth";
+import { displayNameOf, emailFor } from "../../fixtures/auth";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
+import { who } from "../../fixtures/member-pages";
 import { memberOf, removeMember } from "../../fixtures/members";
 import { deleteNotebookWith, notebookPath } from "../../fixtures/notebook-pages";
 import { createNotebook, deleteNotebook } from "../../fixtures/notebooks";
 import { deleteOwnerless } from "../../fixtures/ownerless";
+import { deleteOwnerlessWith, ownerlessPath } from "../../fixtures/ownerless-pages";
 import { createPage, getPage } from "../../fixtures/pages";
 import { deletedDaysAgo } from "../../fixtures/purge";
 import { expect, test } from "../../fixtures/test";
 import { pageHeading, pageTree, wikiPagePath } from "../../fixtures/wiki-pages";
-import { workspaceHeading } from "../../fixtures/workspace-pages";
-import { createWorkspace, deleteWorkspace, newTeam, slugFor } from "../../fixtures/workspaces";
+import { deleteWorkspaceWith, workspaceHeading } from "../../fixtures/workspace-pages";
+import { createWorkspace, deleteWorkspace, newOnboardedTeam, newTeam, slugFor } from "../../fixtures/workspaces";
 
 // PG13, a notebook's deletion takes its pages (M4 design 3): by its admin,
 // with its workspace, or ownerless by the workspace's admin, each at the
@@ -106,4 +108,31 @@ test("PG13 (page): once its admin deletes the notebook, its pages leave the left
   await page.goto(wikiPagePath(workspace.slug, notebook.id, guide.id));
   await expect(page.getByRole("heading", { level: 1, name: "Page not found", exact: true })).toBeVisible();
   await expect(pageTree(page, "Plans")).toHaveCount(0);
+});
+
+test("PG13 (page): the workspace's admin deletes an ownerless notebook on the ownerless page, and a workspace on its general page; their notebooks' pages go with them", async ({
+  api,
+  db,
+  signedInPage,
+}, testInfo) => {
+  const { pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
+  const leaverEmail = emailFor(testInfo, "leaver");
+  const leaverPat = await joinAs(api, pat, workspace.slug, leaverEmail, "member");
+  const drafts = await createNotebook(api, leaverPat, workspace.slug, "Drafts");
+  await tree(api, leaverPat, drafts);
+  expect(
+    (await removeMember(api, pat, (await memberOf(api, pat, workspace.slug, leaverEmail)).id)).response.status
+  ).toBe(204);
+  const old = await createWorkspace(api, pat, "Old", slugFor(testInfo, "old"));
+  const notes = await createNotebook(api, pat, old.slug, "Notes");
+  await tree(api, pat, notes);
+  const page = await signedInPage(tokens);
+
+  await page.goto(ownerlessPath(workspace.slug));
+  expect(await deleteOwnerlessWith(page, drafts.id, "Drafts", who(displayNameOf(leaverEmail), leaverEmail))).toBe(204);
+  await expectPagesDeletedWith(db, drafts.id, 3);
+
+  await page.goto(`/${old.slug}/settings/general`);
+  expect(await deleteWorkspaceWith(page, old.slug)).toBe(204);
+  await expectPagesDeletedWith(db, notes.id, 3);
 });

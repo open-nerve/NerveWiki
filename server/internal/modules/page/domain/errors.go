@@ -25,7 +25,8 @@ var (
 		"The page was changed since it was read.")
 	// ErrEditSessionEnded: the edit session a content write names is not
 	// the writer's alive session of the page: there is none, it expired, or
-	// it is someone else's or another page's.
+	// it is someone else's, another page's, or another client's (the web or
+	// a token) of the writer.
 	ErrEditSessionEnded = shared.NewError(shared.KindConflict, "page.edit_session_ended", "The edit session has ended.")
 	// ErrEditSessionNotFound: no alive edit session of the caller has the
 	// id, or the caller may see its notebook no more.

@@ -2,7 +2,10 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "jsx": "react-jsx",
-    "types": ["vite/client"]
+    "types": ["vite/client"],
+    // vite.config.ts imports a module of its own with its extension: without it Vite warns that its native
+    // config loader, to be the default, could not load the config
+    "allowImportingTsExtensions": true
   },
-  "include": ["src", "vite.config.ts"]
+  "include": ["src", "build", "vite.config.ts"]
 }

@@ -3,6 +3,7 @@ import { Link } from "react-router";
 import useSWR from "swr";
 
 import { useArrivalFocus } from "../../app/arrival";
+import { useDocumentTitle } from "../../app/document-title";
 import { useFollowRole } from "../../app/follow-role";
 import { useMounted } from "../../app/mounted";
 import { Button } from "../../components/ui/button";
@@ -24,6 +25,7 @@ export const WorkspaceHomePage = observer(function WorkspaceHomePage() {
   const workspace = useWorkspace();
   const t = useT();
   const heading = useArrivalFocus<HTMLHeadingElement>();
+  useDocumentTitle(workspace.name);
   const here = useMounted();
   return (
     <section className="max-w-4xl space-y-6">

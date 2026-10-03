@@ -5,6 +5,7 @@ import { Link } from "react-router";
 import useSWR from "swr";
 
 import { useArrivalFocus } from "../../app/arrival";
+import { useDocumentTitle } from "../../app/document-title";
 import { writesPages } from "../../app/effective-role";
 import { NotLoaded } from "../../app/not-loaded";
 import { errorText } from "../../app/problem-messages";
@@ -23,11 +24,13 @@ import { useNotebook } from "./notebook-layout";
  * editors and admins, and a way to its settings.
  */
 export const NotebookHomePage = observer(function NotebookHomePage() {
-  const { slug } = useWorkspace();
+  const workspace = useWorkspace();
+  const { slug } = workspace;
   const notebook = useNotebook();
   const pages = usePageTree(notebook);
   const t = useT();
   const heading = useArrivalFocus<HTMLHeadingElement>();
+  useDocumentTitle(notebook.name, workspace.name);
   const newPage = useNewPage(notebook);
   const [failure, setFailure] = useState<unknown>();
   const { error, mutate } = useSWR(["pages", notebook.id], () => pages.load());

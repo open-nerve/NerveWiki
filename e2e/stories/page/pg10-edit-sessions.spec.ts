@@ -1,4 +1,9 @@
-import { expectSessionGone } from "../../fixtures/assert/page";
+import {
+  expectContentWritten,
+  expectOneSessionRevision,
+  expectSessionGone,
+  sessionsOf,
+} from "../../fixtures/assert/page";
 import { createNotebook } from "../../fixtures/notebooks";
 import {
   createPage,
@@ -11,7 +16,7 @@ import {
 } from "../../fixtures/pages";
 import { answerTo, failedToLoad } from "../../fixtures/browser";
 import { expect, test } from "../../fixtures/test";
-import { editStatus, saveEdit, startEditing, wikiPagePath } from "../../fixtures/wiki-pages";
+import { contentWrites, editStatus, saveEdit, startEditing, wikiPagePath } from "../../fixtures/wiki-pages";
 import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 
 // PG10, an edit session's lease (M4 design 4; M4/P4 design 3.5): a
@@ -67,13 +72,13 @@ test("PG10 (API): a heartbeat moves the lease on; after the end a heartbeat is 4
   ]);
 });
 
-test("PG10 (page): the editor's heartbeat moves the lease on; a session expired meanwhile is opened anew by the save, nothing lost; Done ends the session", async ({
+test("PG10 (page): the editor's heartbeat moves the lease on; a session expired meanwhile refuses the save with page.edit_session_ended, and the editor saves in a new one, nothing lost; Done ends the session", async ({
   api,
   db,
   pageWatch,
   signedInPage,
 }, testInfo) => {
-  const { pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
+  const { adminId, pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
   const notebook = await createNotebook(api, pat, workspace.slug, "Plans");
   const notes = await createPage(api, pat, notebook.id, "Notes");
   const page = await signedInPage(tokens);
@@ -104,15 +109,22 @@ test("PG10 (page): the editor's heartbeat moves the lease on; a session expired 
     [first?.id]
   );
   await page.keyboard.type(" two");
+  const writes = contentWrites(page, notes.id);
   await page.keyboard.press("ControlOrMeta+s");
   await expect(editStatus(page)).toHaveText("Saved.");
   // The save in the expired session is refused, then sent again in a new one.
   pageWatch.expectConsole({ errors: [failedToLoad(409)] });
+  expect(await writes.all()).toEqual([{ status: 409, code: "page.edit_session_ended" }, { status: 200 }]);
+  const [, second] = await sessionsOf(db, notes.id);
+  expect((await live()).map((each) => each.id)).toEqual([second]);
+  expect(second).not.toBe(first?.id);
   expect(await readContent(api, pat, notes.id)).toMatchObject({ content: "One two", revision: 3 });
-  const [second] = await live();
-  expect(second?.id).not.toBe(first?.id);
+  await expectContentWritten(db, await writes.saved(), "One two", adminId);
+  // The save sent again went in the new session: its version, from 2 to 3, is in that session's changeset.
+  await expectOneSessionRevision(db, second ?? "", notes.id, 2, 3);
 
-  await page.keyboard.press("ControlOrMeta+e");
+  await page.getByRole("main").getByRole("button", { name: "Done", exact: true }).click();
   await expect(page.getByRole("article")).toContainText("One two");
   await expect.poll(async () => (await live()).length).toBe(0);
+  await expectSessionGone(db, second ?? "");
 });

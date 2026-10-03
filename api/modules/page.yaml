@@ -48,7 +48,9 @@ paths:
         has, compared by its key, is page.title_taken, and a page deeper
         than ten levels page.too_deep. When the server parses as much
         content as it can at once, a content waits a moment, then is
-        server_busy.
+        server_busy. A body that has not all arrived within the server's
+        read timeout (server.read_timeout, 30 seconds by default, in which
+        5 MiB needs about 1.4 Mbit/s) is bad_request.
       security: [{ bearer: [] }]
       x-problem-codes: [notebook.not_found, forbidden, validation_failed, page.title_taken, page.too_deep, server_busy]
       requestBody:
@@ -130,7 +132,10 @@ paths:
         whatever the base. The writes of one edit session are one changeset,
         with one version of the page, until another write of the page comes
         in between. When the server parses as much content as it can at
-        once, a content waits a moment, then is server_busy.
+        once, a content waits a moment, then is server_busy. A body that has
+        not all arrived within the server's read timeout
+        (server.read_timeout, 30 seconds by default, in which 5 MiB needs
+        about 1.4 Mbit/s) is bad_request.
       security: [{ bearer: [] }]
       x-problem-codes:
         [validation_failed, page.not_found, forbidden, page.edit_session_ended, page.revision_mismatch, server_busy]

@@ -4,7 +4,7 @@ import { expectContentWritten } from "../../fixtures/assert/page";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, readContent, writeContent } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
-import { editStatus, saveEdit, startEditing, wikiPagePath } from "../../fixtures/wiki-pages";
+import { contentWrites, editStatus, saveEdit, startEditing, wikiPagePath } from "../../fixtures/wiki-pages";
 import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 
 // PG9, a content's bytes kept (M4 design 3; M4/P4 design 3.12): no line
@@ -82,12 +82,14 @@ for (const [name, content] of [
 ] as const) {
   test(`PG9 (page): ${name}: typed in the editor at a line's start and end, after the byte order mark, with Enter and Backspace, the content keeps every other byte; a new line's break is the main one`, async ({
     api,
+    db,
     signedInPage,
   }, testInfo) => {
-    const { pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
+    const { adminId, pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
     const notebook = await createNotebook(api, pat, workspace.slug, "Plans");
     const created = await createPage(api, pat, notebook.id, "Notes", null, content);
     const page = await signedInPage(tokens);
+    const writes = contentWrites(page, created.id);
 
     await page.goto(wikiPagePath(workspace.slug, notebook.id, created.id));
     await startEditing(page);
@@ -106,23 +108,20 @@ for (const [name, content] of [
     await saveEdit(page);
     const read = await readContent(api, pat, created.id);
     expect(JSON.stringify(read.content)).toBe(JSON.stringify(edited(content)));
+    await expectContentWritten(db, await writes.saved(), edited(content), adminId);
   });
 }
 
 test("PG9 (page): a composition at a CRLF line's end, by Chromium's input method protocol: Ctrl+S while it composes saves nothing, its end saves the text it ends on, every other byte kept", async ({
   api,
+  db,
   signedInPage,
 }, testInfo) => {
-  const { pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
+  const { adminId, pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
   const notebook = await createNotebook(api, pat, workspace.slug, "Plans");
   const created = await createPage(api, pat, notebook.id, "Notes", null, "第一行\r\n第二行\r\n");
   const page = await signedInPage(tokens);
-  const saves: string[] = [];
-  page.on("request", (request) => {
-    if (request.method() === "PUT" && new URL(request.url()).pathname === `/api/v0/pages/${created.id}/content`) {
-      saves.push(request.url());
-    }
-  });
+  const writes = contentWrites(page, created.id);
 
   await page.goto(wikiPagePath(workspace.slug, notebook.id, created.id));
   await startEditing(page);
@@ -131,11 +130,10 @@ test("PG9 (page): a composition at a CRLF line's end, by Chromium's input method
   const cdp = await page.context().newCDPSession(page);
   await cdp.send("Input.imeSetComposition", { text: "ni", selectionStart: 2, selectionEnd: 2 });
   await page.keyboard.press("ControlOrMeta+s");
-  // Nothing goes while the composition lasts: a while, then still nothing.
-  await page.waitForTimeout(300);
-  expect(saves).toEqual([]);
   await cdp.send("Input.insertText", { text: "你" });
   await expect(editStatus(page)).toHaveText("Saved.");
-  expect(saves).toHaveLength(1);
+  // One save, of the text the composition ended on: none of what it composed went before.
+  expect(await writes.all()).toHaveLength(1);
   expect((await readContent(api, pat, created.id)).content).toBe("第一行你\r\n第二行\r\n");
+  await expectContentWritten(db, await writes.saved(), "第一行你\r\n第二行\r\n", adminId);
 });

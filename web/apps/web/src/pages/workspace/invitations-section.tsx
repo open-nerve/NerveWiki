@@ -86,7 +86,8 @@ function InviteForm({ workspace }: { workspace: Workspace }) {
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<WorkspaceRole>("member");
   const [invited, setInvited] = useState<string>();
-  const { ref, sending, banner, problemOf, submit } = useForm(["email", "role"]);
+  // The role's select shows no problem under it: one on the role goes above the form.
+  const { ref, sending, banner, problemOf, submit } = useForm(["email"]);
   /** How many times the address was edited: an invitation tells whether the field still shows what it sent. */
   const edits = useRef(0);
 

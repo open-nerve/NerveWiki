@@ -17,6 +17,7 @@ test("highlight.js's answer is taken, its text the block's", () => {
 test.each([
   ["text alone", "a &lt; b", "a < b"],
   ["a sub-scope's part", '<span class="hljs-title function_">f</span>', "f"],
+  ["a third level's part", '<span class="hljs-title function_ invoke__">f</span>', "f"],
   ["a language embedded in another", '<span class="language-css">p</span>', "p"],
 ])("%s is taken", (_name, html, text) => {
   expect(highlightMarkup(html, text)?.textContent).toBe(text);
@@ -28,6 +29,8 @@ test.each([
   ["a span with another attribute", '<span class="hljs-keyword" onclick="x()">a</span>', "a"],
   ["a span with a style", '<span style="color: red">a</span>', "a"],
   ["a span with another class", '<span class="hljs-keyword nw-x">a</span>', "a"],
+  ["a span with a class of the app's", '<span class="hidden">a</span>', "a"],
+  ["a span with a part no scope has", '<span class="hljs-title deep___">a</span>', "a"],
   ["a link with a class of highlight.js's", '<a class="hljs-keyword">a</a>', "a"],
   ["a span inside another element", '<b><span class="hljs-keyword">a</span></b>', "a"],
   ["another element inside a span", '<span class="hljs-string"><b>a</b></span>', "a"],

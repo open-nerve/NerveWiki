@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"math"
 	"net/http"
+	"os"
 	"reflect"
 	"strconv"
 	"strings"
@@ -121,6 +122,8 @@ func parameterOf(err error) (FieldError, bool) {
 // *http.MaxBytesError (413) go through Write. Anything else, e.g. a body
 // that is not JSON or is empty, is 400 bad_request with a generic detail:
 // the decoder's message names Go types, so it is logged at debug level only.
+// A body still arriving at server.read_timeout is 400 bad_request too, its
+// detail saying so: the link was too slow, not the JSON wrong.
 func (e APIErrors) BodyError(w http.ResponseWriter, r *http.Request, err error) {
 	var pe ProblemError
 	var tooLarge *http.MaxBytesError
@@ -130,11 +133,15 @@ func (e APIErrors) BodyError(w http.ResponseWriter, r *http.Request, err error) 
 	}
 	e.logger.LogAttrs(r.Context(), slog.LevelDebug, "request body not decoded",
 		slog.String("request_id", RequestID(r.Context())), slog.Any("error", err))
+	detail := "The request body could not be decoded."
+	if errors.Is(err, os.ErrDeadlineExceeded) {
+		detail = "The request body did not arrive within the server's read timeout."
+	}
 	WriteProblem(w, Problem{
 		Status: http.StatusBadRequest,
 		Code:   CodeBadRequest,
 		Title:  http.StatusText(http.StatusBadRequest),
-		Detail: "The request body could not be decoded.",
+		Detail: detail,
 	})
 }
 

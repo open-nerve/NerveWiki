@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 
 import { json, notebookJSON, problem } from "../../test/fakes";
-import { install, linux, pagePath, pageServer } from "../../test/page-server";
+import { guide, install, linux, notes, pageNode, pagePath, pageServer } from "../../test/page-server";
 import { renderApp } from "../../test/render";
 
 // A page's shell: where it is, its title, its reading view, its subpages
@@ -32,7 +32,8 @@ test("a page shows where it is, its title, its reading view and its subpages, al
   );
   expect(within(crumbs).getByText("Install").getAttribute("aria-current")).toBe("page");
   expect(within(crumbs).queryByRole("link", { name: "Install" })).toBeNull();
-  expect((await within(main()).findByRole("article")).innerHTML).toBe("<p>Install</p>");
+  // Named by the page: it gets the focus when its content is wider than it shows.
+  expect((await within(main()).findByRole("article", { name: "Install" })).innerHTML).toBe("<p>Install</p>");
   const subpages = within(main()).getByRole("list", { name: "Subpages" });
   expect(within(subpages).getByRole("link", { name: "Linux" }).getAttribute("href")).toBe(pagePath(linux.id));
 });
@@ -110,4 +111,26 @@ test("the reading view read again shows another's write", async () => {
   act(() => void window.dispatchEvent(new Event("focus")));
 
   await waitFor(() => expect(screen.getByRole("article").innerHTML).toBe("<p>Install, changed</p>"));
+});
+
+test("the tree read again shows another tab's changes in the page's title, breadcrumbs and subpages", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const server = pageServer();
+  renderApp(pagePath(install.id), server.app);
+  await screen.findByRole("heading", { level: 1, name: "Install" });
+
+  const renamed = { ...install, name: "Setup" };
+  server.nodes = [{ ...guide, name: "Handbook" }, renamed, linux, pageNode(5, "macOS", renamed), notes];
+  await act(() => vi.advanceTimersByTimeAsync(6_000));
+  act(() => void window.dispatchEvent(new Event("focus")));
+
+  expect(await screen.findByRole("heading", { level: 1, name: "Setup" })).toBeTruthy();
+  const crumbs = within(main()).getByRole("navigation", { name: "Breadcrumb" });
+  expect(within(crumbs).getByRole("link", { name: "Handbook" })).toBeTruthy();
+  const subpages = within(main()).getByRole("list", { name: "Subpages" });
+  expect(
+    within(subpages)
+      .getAllByRole("link")
+      .map((link) => link.textContent)
+  ).toEqual(["Linux", "macOS"]);
 });

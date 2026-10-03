@@ -211,6 +211,42 @@ export async function saveEdit(page: Page): Promise<void> {
   await expect(editStatus(page)).toHaveText("Saved.");
 }
 
+/** A write of a page's content the editor sent, as answered: its status, and the problem's code if refused. */
+export interface ContentWrite {
+  status: number;
+  code?: string;
+}
+
+/**
+ * The editor's writes of the page id's content from now on: all() resolves those answered so far, in order; saved()
+ * the page the last answered, which the server must have saved.
+ */
+export function contentWrites(page: Page, id: string) {
+  const answers: Response[] = [];
+  page.on("response", (response) => {
+    if (response.request().method() === "PUT" && new URL(response.url()).pathname === `/api/v0/pages/${id}/content`) {
+      answers.push(response);
+    }
+  });
+  return {
+    all: (): Promise<ContentWrite[]> =>
+      Promise.all(
+        answers.map(async (answer) =>
+          answer.ok()
+            ? { status: answer.status() }
+            : { status: answer.status(), code: ((await answer.json()) as { code: string }).code }
+        )
+      ),
+    saved: async (): Promise<WikiPage> => {
+      const last = answers.at(-1);
+      if (last?.status() !== 200) {
+        throw new Error(`the last write of ${id} was not saved: ${last?.status()}`);
+      }
+      return (await last.json()) as WikiPage;
+    },
+  };
+}
+
 /** The conflict of a save refused because the page changed (M4/P6 design 3.8). */
 export function conflictRegion(page: Page): Locator {
   return page.getByRole("region", { name: "This page changed while you edited it", exact: true });

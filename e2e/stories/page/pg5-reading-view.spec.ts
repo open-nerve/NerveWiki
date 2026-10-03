@@ -1,6 +1,6 @@
 import { expectContentWritten } from "../../fixtures/assert/page";
 import { createNotebook } from "../../fixtures/notebooks";
-import { createPage, getView } from "../../fixtures/pages";
+import { createPage, getView, writeContent } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
 import { pageHeading, wikiPagePath } from "../../fixtures/wiki-pages";
 import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
@@ -10,7 +10,7 @@ import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 // a worker of the app's own, which loads nothing (M4/P5 design 3.8, 3.9);
 // writing it comes with the editor (M4/P6).
 
-test("PG5 (API): a page created with Markdown reads as HTML, its properties first, then its table, task items, strikethrough, autolink, footnote and code in its language; the frontmatter is neither a rule nor a heading", async ({
+test("PG5 (API): a page created with Markdown reads as HTML, its properties first, then its table, task items, strikethrough, autolink, footnote and code in its language; the frontmatter is neither a rule nor a heading; the HTML names the revision it is of", async ({
   api,
   db,
 }, testInfo) => {
@@ -69,13 +69,19 @@ test("PG5 (API): a page created with Markdown reads as HTML, its properties firs
   // the one rule is the footnotes'.
   expect(html.match(/<hr>/g)).toHaveLength(1);
   expect(html).not.toContain("<h2");
+
+  const rewritten = await writeContent(api, pat, page.id, { content: "# Q5\n", base_revision: 1 });
+  const again = await getView(api, pat, page.id);
+  expect(again.data?.revision).toBe(rewritten.revision);
+  expect(again.data?.html).toContain('<h1 id="nw-q5">Q5</h1>');
 });
 
-test("PG5 (page): the reading view shows the page's properties first, then its heading, table, task items and footnote; its code is coloured by a worker of the app's own origin, and nothing breaks the CSP", async ({
+test("PG5 (page): the reading view shows the page's properties first, then its heading, table, task items, strikethrough, autolink and footnote, the frontmatter neither a rule nor a heading; its code is coloured by a worker of the app's own origin, and nothing breaks the CSP; a wide table lets the keyboard scroll the view", async ({
   api,
+  db,
   signedInPage,
 }, testInfo) => {
-  const { pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
+  const { adminId, pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
   const notebook = await createNotebook(api, pat, workspace.slug, "Plans");
   const content = [
     "---",
@@ -90,7 +96,7 @@ test("PG5 (page): the reading view shows the page's properties first, then its h
     "- [ ] open",
     "- [x] done",
     "",
-    "A note[^1].",
+    "~~gone~~, <https://example.com/a> and a note[^1].",
     "",
     "```go",
     "func main() {}",
@@ -98,8 +104,13 @@ test("PG5 (page): the reading view shows the page's properties first, then its h
     "",
     "[^1]: The note.",
     "",
+    "| wide |",
+    "|---|",
+    `| ${"x".repeat(400)} |`,
+    "",
   ].join("\n");
   const created = await createPage(api, pat, notebook.id, "Plan", null, content);
+  await expectContentWritten(db, created, content, adminId);
   const page = await signedInPage(tokens);
   const worker = page.waitForEvent("worker");
 
@@ -113,7 +124,20 @@ test("PG5 (page): the reading view shows the page's properties first, then its h
   await expect(article.locator('th[align="left"]')).toHaveText("a");
   await expect(article.getByRole("checkbox")).toHaveCount(2);
   await expect(article.getByRole("checkbox").nth(1)).toBeChecked();
+  await expect(article.locator("del")).toHaveText("gone");
+  await expect(article.getByRole("link", { name: "https://example.com/a", exact: true })).toHaveAttribute(
+    "href",
+    "https://example.com/a"
+  );
   await expect(article.locator(".footnotes")).toContainText("The note.");
+  // The frontmatter's fences are no thematic break and no setext heading.
+  await expect(article.locator("hr")).toHaveCount(1);
+  await expect(article.locator("h2")).toHaveCount(0);
+  // A table wider than the view makes it scroll sideways: the keyboard can, as it takes the focus.
+  await expect(article).toHaveAttribute("tabindex", "0");
+  await article.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect.poll(() => article.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
 
   const keyword = article.locator("pre > code.language-go span.hljs-keyword").first();
   await expect(keyword).toHaveText("func");

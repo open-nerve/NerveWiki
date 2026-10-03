@@ -1,6 +1,7 @@
 import { observer } from "mobx-react-lite";
-import { Outlet } from "react-router";
+import { Outlet, useLocation } from "react-router";
 
+import { useDocumentTitle } from "../../app/document-title";
 import { NavItem } from "../../components/nav-item";
 import { useT } from "../../i18n/i18n";
 import { useWorkspace } from "../workspace/workspace-layout";
@@ -21,6 +22,9 @@ export const NotebookSettingsLayout = observer(function NotebookSettingsLayout()
   const { slug } = useWorkspace();
   const notebook = useNotebook();
   const t = useT();
+  const { pathname } = useLocation();
+  const shown = sections.find(({ path }) => pathname === `/${slug}/notebooks/${notebook.id}/settings/${path}`);
+  useDocumentTitle(shown && t(shown.label), t("notebookSettings.heading", { name: notebook.name }));
   return (
     <div className="max-w-4xl space-y-6">
       <h1 className="text-2xl font-semibold break-words">{t("notebookSettings.heading", { name: notebook.name })}</h1>

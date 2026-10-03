@@ -76,12 +76,13 @@ test("Ctrl+E opens it too; Ctrl+S saves in the session and says so; Ctrl+E saves
   ctrl("e");
 
   const edit = await screen.findByRole("button", { name: "Edit" });
+  // The reading view was read before the editor went: it shows with Edit, no loading in between.
+  expect(screen.getByRole("article")).toBeTruthy();
+  expect(server.sent.filter((line) => line === "GET view Guide").length).toBeGreaterThan(viewsRead);
   await waitFor(() => expect(document.activeElement).toBe(edit));
   const puts = server.sent.filter((line) => line.startsWith("PUT"));
   expect(puts).toEqual(['PUT Guide "Guide\\none" on 1 in session-1', 'PUT Guide "Guide\\none two" on 2 in session-1']);
   expect(server.sent).toContain("END session-1");
-  expect(server.sent.filter((line) => line === "GET view Guide").length).toBeGreaterThan(viewsRead);
-  expect(screen.getByRole("article")).toBeTruthy();
 });
 
 test("Done with nothing unsaved sends no content; a save that fails keeps the editor and says why", async () => {
@@ -92,6 +93,28 @@ test("Done with nothing unsaved sends no content; a save that fails keeps the ed
   await user.click(screen.getByRole("button", { name: "Done" }));
   await waitFor(() => expect(status().textContent).toBe("Some values are not valid."));
   expect(screen.getByRole("textbox", { name: "Page content" })).toBeTruthy();
+});
+
+test("Done reads the reading view again before it goes back: the view shows with Edit, no loading between", async () => {
+  let hold = false;
+  let answer: ((view: Response) => void) | undefined;
+  const server = pageServer({
+    answers: {
+      "GET /api/v0/pages/*/view": () =>
+        hold ? new Promise<Response>((resolve) => (answer = resolve)) : json({ html: "<p>Guide</p>", revision: 1 }),
+    },
+  });
+  const { user, type } = await editing(server);
+  type(" more");
+  hold = true;
+
+  await user.click(screen.getByRole("button", { name: "Done" }));
+  await waitFor(() => expect(answer).toBeDefined());
+  expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
+  answer?.(json({ html: "<p>Guide, more</p>", revision: 2 }));
+
+  await screen.findByRole("button", { name: "Edit" });
+  expect(screen.getByRole("article").innerHTML).toBe("<p>Guide, more</p>");
 });
 
 test("Done with nothing unsaved goes back at once", async () => {
@@ -189,6 +212,21 @@ test("saved, going to another page asks nothing", async () => {
   await screen.findByRole("heading", { level: 1, name: "Notes" });
   watch.disconnect();
   expect(asked).not.toHaveBeenCalled();
+});
+
+test("unsaved, a change of the query or the hash alone asks nothing: the edit stays", async () => {
+  const user = userEvent.setup();
+  const { router } = renderApp(pagePath(guide.id), pageServer().app);
+  await user.click(await screen.findByRole("button", { name: "Edit" }));
+  const { type } = await editor();
+  type(" more");
+  await waitFor(() => expect(status().textContent).toBe("Unsaved changes"));
+
+  await act(() => router.navigate(`${pagePath(guide.id)}?tab=2#part`));
+
+  expect([router.state.location.search, router.state.location.hash]).toEqual(["?tab=2", "#part"]);
+  expect(screen.queryByRole("alertdialog")).toBeNull();
+  expect(screen.getByRole("textbox", { name: "Page content" })).toBeTruthy();
 });
 
 test("closing the tab is stopped only while the edit is unsaved", async () => {
@@ -299,7 +337,7 @@ test("Ctrl+E held down leaves once", async () => {
   expect(server.sent.filter((line) => line === "GET content Guide")).toHaveLength(1);
 });
 
-test("Edit takes the focus to the page's title until the editor takes it: there it is when the content cannot be read", async () => {
+test("Edit takes the focus to the page's title until the editor takes it: there it is when the content cannot be read, and Done goes back to reading", async () => {
   const user = userEvent.setup();
   const server = pageServer({
     answers: { "GET /api/v0/pages/*/content": () => Promise.reject(new TypeError("offline")) },
@@ -309,6 +347,12 @@ test("Edit takes the focus to the page's title until the editor takes it: there 
   await user.click(await screen.findByRole("button", { name: "Edit" }));
   await screen.findByRole("button", { name: "Try again" });
   expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1, name: "Guide" }));
+
+  // Done goes back to the reading view, the session ended.
+  await user.click(screen.getByRole("button", { name: "Done" }));
+  expect(await screen.findByRole("button", { name: "Edit" })).toBeTruthy();
+  expect(screen.getByRole("article").textContent).toBe("Guide");
+  await waitFor(() => expect(server.sent).toContain("END session-1"));
 });
 
 test.each([

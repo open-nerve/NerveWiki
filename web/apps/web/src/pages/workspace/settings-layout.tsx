@@ -1,6 +1,7 @@
 import { observer } from "mobx-react-lite";
-import { Outlet } from "react-router";
+import { Outlet, useLocation } from "react-router";
 
+import { useDocumentTitle } from "../../app/document-title";
 import { NavItem } from "../../components/nav-item";
 import { useT } from "../../i18n/i18n";
 import { useWorkspace } from "./workspace-layout";
@@ -19,8 +20,11 @@ const sections = [
  * the others are not offered them.
  */
 export const WorkspaceSettingsLayout = observer(function WorkspaceSettingsLayout() {
-  const { slug, role } = useWorkspace();
+  const { slug, name, role } = useWorkspace();
   const t = useT();
+  const { pathname } = useLocation();
+  const shown = sections.find(({ path }) => pathname === `/${slug}/settings/${path}`);
+  useDocumentTitle(shown && t(shown.label), t("workspaceSettings.title"), name);
   return (
     <div className="max-w-4xl space-y-6">
       <h1 className="text-2xl font-semibold">{t("workspaceSettings.title")}</h1>

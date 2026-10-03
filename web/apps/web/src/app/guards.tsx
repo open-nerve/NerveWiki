@@ -9,7 +9,7 @@ import { SessionChangedError } from "../session/token-manager";
 import { useAccount, useStore } from "../stores/context";
 import type { SessionState } from "../stores/auth.store";
 import { safeNextPath, withNext } from "./next-path";
-import { SessionUnavailable } from "./session-unavailable";
+import { SessionUnavailablePage } from "./session-unavailable";
 
 // The route guards (M1/P5 design 3.5): the only place that decides where
 // the tab goes as its session changes. The pages never navigate after a
@@ -48,7 +48,7 @@ export function SignedIn() {
     case "starting":
       return <Loading />;
     case "unavailable":
-      return <SessionUnavailable onRetry={() => void auth.retry()} />;
+      return <SessionUnavailablePage onRetry={() => void auth.retry()} />;
     case "signed-out":
       return <Navigate replace to={withNext("/sign-in", pathname + search + hash)} />;
     case "signed-in":
@@ -70,7 +70,7 @@ const Account = observer(function Account() {
   if (error === undefined || error instanceof SessionChangedError) {
     return <Loading />;
   }
-  return <SessionUnavailable onRetry={() => void mutate()} />;
+  return <SessionUnavailablePage onRetry={() => void mutate()} />;
 });
 
 /**

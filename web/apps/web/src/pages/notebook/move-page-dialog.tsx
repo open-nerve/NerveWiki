@@ -1,8 +1,8 @@
 import { observer } from "mobx-react-lite";
 import { useId, useRef, useState, type FormEvent } from "react";
 
+import { useForm } from "../../app/form";
 import type { HeldDialog } from "../../app/held-dialog";
-import { errorText } from "../../app/problem-messages";
 import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "../../components/ui/dialog";
@@ -24,11 +24,24 @@ const root = "";
  * itself nor a page under it, none it would go deeper than ten levels
  * under; the positions are first, after each sibling, last. It opens on
  * the page's place; a choice the tree, read again, no longer offers goes
- * back to the page's parent and last. A refusal (409 page.cycle,
- * page.too_deep, page.title_taken) stays in the dialog; once moved, the
- * dialog closes.
+ * back to the page's parent and last. It is sent as every form is
+ * (useForm): a refusal (409 page.cycle, page.too_deep, page.title_taken)
+ * stays in the dialog, above the form, one of a field's (422, a parent or
+ * a page to follow gone meanwhile) under its select, which gets the focus;
+ * once moved, the dialog closes. Its
+ * title names the page by name, which tells it from others of its title.
  */
-export function MovePageDialog({ notebook, page, held }: { notebook: Notebook; page: TreeNode; held: HeldDialog }) {
+export function MovePageDialog({
+  notebook,
+  page,
+  name,
+  held,
+}: {
+  notebook: Notebook;
+  page: TreeNode;
+  name: string;
+  held: HeldDialog;
+}) {
   const t = useT();
   const done = useRef(false);
   return (
@@ -41,7 +54,7 @@ export function MovePageDialog({ notebook, page, held }: { notebook: Notebook; p
             done.current = false;
           }}
         >
-          <DialogTitle>{t("page.moveTitle", { name: page.name })}</DialogTitle>
+          <DialogTitle>{t("page.moveTitle", { name })}</DialogTitle>
           <DialogDescription>{t("page.moveBody")}</DialogDescription>
           <MoveForm
             notebook={notebook}
@@ -66,8 +79,8 @@ const MoveForm = observer(function MoveForm({ notebook, page, cancel, moved }: M
   const ids = { parent: useId(), position: useId() };
   const [parent, setParent] = useState(page.parent_id ?? root);
   const [position, setPosition] = useState(() => placeOf(pages.childrenOf(page.parent_id), page.id));
-  const [sending, setSending] = useState(false);
-  const [failure, setFailure] = useState<unknown>();
+  const { ref, sending, banner, problemOf, submit } = useForm(["parent_id", "after_id"]);
+  const problems = { parent: problemOf("parent_id"), position: problemOf("after_id") };
   const tree = pages.tree;
   if (tree === undefined) {
     return null;
@@ -89,30 +102,30 @@ const MoveForm = observer(function MoveForm({ notebook, page, cancel, moved }: M
     );
   }
 
-  async function onSubmit(event: FormEvent<HTMLFormElement>) {
+  function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const parentId = chosen === root ? null : chosen;
     const move: NodeMove =
       place === "last" ? { parent_id: parentId } : { parent_id: parentId, after_id: place === "first" ? null : place };
-    setSending(true);
-    setFailure(undefined);
-    try {
+    void submit({}, async () => {
       await pages.move(page.id, move);
-    } catch (error) {
-      setFailure(error);
-      setSending(false);
-      return;
-    }
-    pages.openTo(page.id);
-    moved();
+      pages.openTo(page.id);
+      moved();
+    });
   }
 
   return (
-    <form noValidate onSubmit={(event) => void onSubmit(event)} className="space-y-4">
-      {failure !== undefined && <Alert>{errorText(failure, t)}</Alert>}
+    <form ref={ref} noValidate onSubmit={onSubmit} className="space-y-4">
+      {banner !== undefined && <Alert>{banner}</Alert>}
       <div className="space-y-2">
         <Label htmlFor={ids.parent}>{t("page.moveParent")}</Label>
-        <NativeSelect id={ids.parent} value={chosen} onChange={(event) => choose(event.target.value)}>
+        <NativeSelect
+          id={ids.parent}
+          value={chosen}
+          aria-invalid={problems.parent !== undefined || undefined}
+          aria-describedby={problems.parent === undefined ? undefined : `${ids.parent}-note`}
+          onChange={(event) => choose(event.target.value)}
+        >
           <option value={root}>{t("page.moveRoot")}</option>
           {parents.map((each) => (
             <option key={each.id} value={each.id}>
@@ -120,10 +133,17 @@ const MoveForm = observer(function MoveForm({ notebook, page, cancel, moved }: M
             </option>
           ))}
         </NativeSelect>
+        <Problem id={`${ids.parent}-note`} text={problems.parent} />
       </div>
       <div className="space-y-2">
         <Label htmlFor={ids.position}>{t("page.movePosition")}</Label>
-        <NativeSelect id={ids.position} value={place} onChange={(event) => setPosition(event.target.value)}>
+        <NativeSelect
+          id={ids.position}
+          value={place}
+          aria-invalid={problems.position !== undefined || undefined}
+          aria-describedby={problems.position === undefined ? undefined : `${ids.position}-note`}
+          onChange={(event) => setPosition(event.target.value)}
+        >
           <option value="first">{t("page.moveFirst")}</option>
           {siblings.map((sibling) => (
             <option key={sibling.id} value={sibling.id}>
@@ -132,6 +152,7 @@ const MoveForm = observer(function MoveForm({ notebook, page, cancel, moved }: M
           ))}
           <option value="last">{t("page.moveLast")}</option>
         </NativeSelect>
+        <Problem id={`${ids.position}-note`} text={problems.position} />
       </div>
       <div className="flex justify-end gap-2">
         <Button type="button" variant="outline" onClick={cancel} disabled={sending}>
@@ -144,6 +165,15 @@ const MoveForm = observer(function MoveForm({ notebook, page, cancel, moved }: M
     </form>
   );
 });
+
+/** Problem is a select's problem under it, which the select names as its description. */
+function Problem({ id, text }: { id: string; text: string | undefined }) {
+  return text === undefined ? null : (
+    <p id={id} className="text-sm text-destructive">
+      {text}
+    </p>
+  );
+}
 
 /** placeOf is where the page id is among its siblings, as the position's select says it: after the one before, or first. */
 function placeOf(siblings: readonly TreeNode[], id: string): string {

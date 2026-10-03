@@ -10,6 +10,9 @@ package harden
 // when a link closes: emphasis is paired after the parse (emphasis.go).
 // Reference links repeat their definitions' destinations and titles up to a
 // budget (MinExpansion).
+//
+// It stays one file, longer than the others, as upstream's is: a goldmark
+// upgrade is compared with it part by part.
 
 import (
 	"sort"

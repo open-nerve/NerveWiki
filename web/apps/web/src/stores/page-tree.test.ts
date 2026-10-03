@@ -11,10 +11,21 @@ import {
   heightOf,
   indexTree,
   maxDepth,
+  placeOfTitle,
   subtreeOf,
 } from "./page-tree";
 
 const tree = indexTree([guide, install, linux, notes]);
+
+test("a page whose title another has, by case and NFC, is told apart by the pages it is under; a title of its own needs nothing", () => {
+  const again = pageNode(5, "notes", linux);
+  const twice = indexTree([guide, install, linux, notes, again]);
+  expect(placeOfTitle(twice, again.id)).toBe("Guide / Install / Linux");
+  expect(placeOfTitle(twice, notes.id)).toBe("");
+  expect(placeOfTitle(twice, install.id)).toBeUndefined();
+  expect(placeOfTitle(tree, notes.id)).toBeUndefined();
+  expect(placeOfTitle(twice, "nowhere")).toBeUndefined();
+});
 
 test("the children are each parent's, in the list's order", () => {
   expect(childrenOf(tree, null).map((n) => n.name)).toEqual(["Guide", "Notes"]);

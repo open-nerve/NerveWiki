@@ -5,8 +5,9 @@ import "time"
 // An edit session is a lease (v0.1 design 3.9; M4 design 4): it lives
 // EditSessionLease after it opens or after its last heartbeat, and the
 // editor beats every EditSessionHeartbeat, so that two beats may be lost
-// before it ends. The web editor holds the same two numbers (M4/P6); each
-// side's tests pin its own.
+// before it ends. The web editor beats as often, by its own
+// editSessionHeartbeat (web/apps/web/src/stores/page-editing.ts; the
+// lease it does not need); each side's tests pin its own.
 const (
 	EditSessionLease     = 60 * time.Second
 	EditSessionHeartbeat = 20 * time.Second

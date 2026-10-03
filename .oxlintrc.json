@@ -123,6 +123,37 @@
       }
     },
     {
+      // 编辑器与阅读视图的管线只取 services 的类型与 i18n：页面经上下文把它们需要的交进来
+      "files": ["web/apps/web/src/editor/**", "web/apps/web/src/reading/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "@nervewiki/api-client",
+                "message": "只有 services 调用接口：组件与 store 经由 service，类型也从 service 导入"
+              }
+            ],
+            "patterns": [
+              { "group": ["**/packages/api-client/**"], "message": "从 @nervewiki/api-client 导入" },
+              {
+                "group": [
+                  "../app/**",
+                  "../stores/**",
+                  "../pages/**",
+                  "../components/**",
+                  "../onboarding/**",
+                  "../session/**"
+                ],
+                "message": "编辑器与阅读视图不依赖页面、store 与会话：需要的经上下文交进来"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
       "files": ["web/apps/web/src/session/**", "web/apps/web/src/test/**"],
       "rules": {
         "no-restricted-imports": [

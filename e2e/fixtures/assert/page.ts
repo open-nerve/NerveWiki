@@ -102,36 +102,49 @@ export async function expectPagesDeletedWith(db: Database, notebookId: string, c
   ]);
 }
 
+/** Where a node is: its parent (null at the root) and its order among its siblings. */
+export interface Place {
+  parentId: string | null;
+  sortOrder: number;
+}
+
+/** nodes: where the node id is now. */
+export async function placeOf(db: Database, id: string): Promise<Place> {
+  const [row] = await db.query<{ parent_id: string | null; sort_order: number }>(
+    "SELECT parent_id, sort_order FROM nodes WHERE id = $1",
+    [id]
+  );
+  if (!row) {
+    throw new Error(`no node ${id}`);
+  }
+  return { parentId: row.parent_id, sortOrder: row.sort_order };
+}
+
 /**
- * nodes, changesets and changeset_items: the node id is where moved puts it, moved there from under fromParentId by
- * moverId in its last changeset, whose time it holds and whose item has it from that parent to its place, its name
- * unchanged.
+ * nodes, changesets and changeset_items: the node id is where moved puts it, moved there from the place from (see
+ * placeOf) by moverId in its last changeset, whose time it holds and whose item has it from that place to its new
+ * one, its name unchanged.
  */
-export async function expectMoved(
-  db: Database,
-  moved: TreeNode,
-  fromParentId: string | null,
-  moverId: string
-): Promise<void> {
+export async function expectMoved(db: Database, moved: TreeNode, from: Place, moverId: string): Promise<void> {
   const rows = await db.query(
     `SELECT n.parent_id, n.updated_by_id = $3 AS by_mover, s.created_by_id = $3 AND s.created_at = n.updated_at AS at_move,
-            i.before_parent_id IS NOT DISTINCT FROM $2::uuid AS from_parent,
+            i.before_parent_id IS NOT DISTINCT FROM $2::uuid AND i.before_sort_order = $4::float8 AS from_place,
             i.after_parent_id IS NOT DISTINCT FROM n.parent_id AND i.after_sort_order = n.sort_order AS to_place,
             i.before_name = n.name AND i.after_name = n.name AS same_name
        FROM nodes n JOIN changeset_items i ON i.node_id = n.id JOIN changesets s ON s.id = i.changeset_id
       WHERE n.id = $1
       ORDER BY s.created_at DESC, s.id DESC LIMIT 1`,
-    [moved.id, fromParentId, moverId]
+    [moved.id, from.parentId, moverId, from.sortOrder]
   );
   expect(rows).toEqual([
-    { parent_id: moved.parent_id, by_mover: true, at_move: true, from_parent: true, to_place: true, same_name: true },
+    { parent_id: moved.parent_id, by_mover: true, at_move: true, from_place: true, to_place: true, same_name: true },
   ]);
 }
 
 /**
- * nodes, page_contents, page_revisions, changeset_items, changesets: the subtree of rootId, the pages ids, is deleted
- * by deleterId at one time, with what follows them, and the changeset that deleted it holds an item of each page with
- * no after, deleted with it.
+ * nodes, page_contents, page_revisions, changeset_items, changesets, edit_sessions: the subtree of rootId, the pages
+ * ids, is deleted by deleterId at one time, with what follows them, and the changeset that deleted it holds an item of
+ * each page with no after, deleted with it; no edit session of them is left.
  */
 export async function expectSubtreeDeleted(
   db: Database,
@@ -149,12 +162,13 @@ export async function expectSubtreeDeleted(
               AND i.deleted_at IS DISTINCT FROM r.deleted_at) AS items_apart,
             (SELECT count(*)::int FROM changeset_items i JOIN changesets s ON s.id = i.changeset_id
               WHERE i.node_id = ANY($2::uuid[]) AND i.after_name IS NULL AND i.deleted_at = r.deleted_at
-              AND s.created_at = r.deleted_at AND s.created_by_id = $3) AS deletions
+              AND s.created_at = r.deleted_at AND s.created_by_id = $3) AS deletions,
+            (SELECT count(*)::int FROM edit_sessions e WHERE e.node_id = ANY($2::uuid[])) AS sessions
        FROM nodes r WHERE r.id = $1 AND r.deleted_at IS NOT NULL`,
     [rootId, ids, deleterId]
   );
   expect(rows).toEqual([
-    { pages: ids.length, contents: ids.length, versions_apart: 0, items_apart: 0, deletions: ids.length },
+    { pages: ids.length, contents: ids.length, versions_apart: 0, items_apart: 0, deletions: ids.length, sessions: 0 },
   ]);
 }
 
@@ -204,6 +218,15 @@ export async function expectOneSessionRevision(
     [sessionId, pageId, base, revision]
   );
   expect(rows).toEqual([{ session_revision: revision, versions: 1, the_version: 1, last_write: true }]);
+}
+
+/** edit_sessions: the ids of the edit sessions of the page pageId, alive or expired, oldest first. */
+export async function sessionsOf(db: Database, pageId: string): Promise<string[]> {
+  const rows = await db.query<{ id: string }>(
+    "SELECT id FROM edit_sessions WHERE node_id = $1 ORDER BY created_at, id",
+    [pageId]
+  );
+  return rows.map((row) => row.id);
 }
 
 /** edit_sessions: the edit session id is gone. */

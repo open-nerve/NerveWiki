@@ -22,6 +22,11 @@ test("Mod+B takes away the ** around a selection", () => {
   expect(apply(toggleStrong, "a **word** here", [4, 8])).toEqual({ doc: "a word here", ranges: [[2, 6]] });
 });
 
+test("Mod+B with ** on one side only puts ** around the selection: nothing typed goes", () => {
+  expect(apply(toggleStrong, "**word here", [2, 6])).toEqual({ doc: "****word** here", ranges: [[4, 8]] });
+  expect(apply(toggleStrong, "a word** here", [2, 6])).toEqual({ doc: "a **word**** here", ranges: [[4, 8]] });
+});
+
 test("Mod+B on an empty selection puts the cursor between ****", () => {
   expect(apply(toggleStrong, "ab", [1, 1])).toEqual({ doc: "a****b", ranges: [[3, 3]] });
 });

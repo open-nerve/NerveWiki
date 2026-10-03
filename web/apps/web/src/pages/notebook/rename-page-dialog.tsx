@@ -13,9 +13,20 @@ import { usePageTree } from "../../stores/context";
  * RenamePageDialog renames page with the rename form a notebook's has: a
  * page's title follows a notebook name's rules (shared.CheckTitle). A
  * refusal (422, 409 page.title_taken) stays in the form; once saved, the
- * dialog closes.
+ * dialog closes. Its title names the page by name, which tells it from
+ * others of its title.
  */
-export function RenamePageDialog({ notebook, page, held }: { notebook: Notebook; page: TreeNode; held: HeldDialog }) {
+export function RenamePageDialog({
+  notebook,
+  page,
+  name,
+  held,
+}: {
+  notebook: Notebook;
+  page: TreeNode;
+  name: string;
+  held: HeldDialog;
+}) {
   const pages = usePageTree(notebook);
   const t = useT();
   const done = useRef(false);
@@ -30,14 +41,14 @@ export function RenamePageDialog({ notebook, page, held }: { notebook: Notebook;
             done.current = false;
           }}
         >
-          <DialogTitle>{t("page.renameTitle", { name: page.name })}</DialogTitle>
+          <DialogTitle>{t("page.renameTitle", { name })}</DialogTitle>
           <RenameForm
             current={page.name}
             label={t("page.title")}
             autoComplete="off"
             check={notebookNameProblem}
             fieldTexts={notebookNameTexts}
-            rename={(name) => pages.rename(page.id, name)}
+            rename={(title) => pages.rename(page.id, title)}
             saveLabel={t("page.save")}
             savedLabel={t("page.saved")}
             onSaved={() => {

@@ -1,13 +1,15 @@
 import { Button } from "../components/ui/button";
 import { useT } from "../i18n/i18n";
 import { useStore } from "../stores/context";
+import { useDocumentTitle } from "./document-title";
 
 /**
  * SessionUnavailable stands in for a page while the session cannot be used
  * for now: a refresh or the account's load failed for a passing reason
  * (429, 5xx, no network). The tab is still signed in, and the address
  * stays (M1/P5 design 3.5). Signing out works all the same: it forgets the
- * session in this browser even when the server cannot be told.
+ * session in this browser even when the server cannot be told. Under a
+ * page (the invitation's) the page keeps naming the tab.
  */
 export function SessionUnavailable({ onRetry }: { onRetry: () => void }) {
   const { auth } = useStore();
@@ -26,4 +28,11 @@ export function SessionUnavailable({ onRetry }: { onRetry: () => void }) {
       </div>
     </section>
   );
+}
+
+/** SessionUnavailablePage is SessionUnavailable in place of a whole page: it names the tab as well. */
+export function SessionUnavailablePage({ onRetry }: { onRetry: () => void }) {
+  const t = useT();
+  useDocumentTitle(t("session.unavailableTitle"));
+  return <SessionUnavailable onRetry={onRetry} />;
 }

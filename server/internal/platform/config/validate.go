@@ -90,6 +90,11 @@ func (c Config) validate() error {
 		// It is the request deadline of refresh and logout: a shorter one.
 		fail("auth.refresh_deadline", "must be at most server.request_timeout (%s), got %s", c.Server.RequestTimeout, c.Auth.RefreshDeadline)
 	}
+	if wait := c.Auth.Password.MaxWait; wait > 0 && c.Server.RequestTimeout > 0 && wait >= c.Server.RequestTimeout {
+		// As page.parse_max_wait: a wait for a hash as long as the request's
+		// deadline would end in a 500, not the 503 server_busy.
+		fail("auth.password.max_wait", "must be less than server.request_timeout (%s), got %s", c.Server.RequestTimeout, wait)
+	}
 	c.RateLimit.validate(fail)
 	if c.Page.EditSessionCleanupInterval < time.Second {
 		fail("page.edit_session_cleanup_interval", "must be at least 1s, got %s", c.Page.EditSessionCleanupInterval)
@@ -97,8 +102,13 @@ func (c Config) validate() error {
 	if c.Page.ParseBudgetBytes < MinParseBudgetBytes {
 		fail("page.parse_budget_bytes", "must be at least %d, a page's largest content, got %d", MinParseBudgetBytes, c.Page.ParseBudgetBytes)
 	}
-	if c.Page.ParseMaxWait <= 0 {
+	switch {
+	case c.Page.ParseMaxWait <= 0:
 		fail("page.parse_max_wait", "must be positive, got %s", c.Page.ParseMaxWait)
+	case c.Server.RequestTimeout > 0 && c.Page.ParseMaxWait >= c.Server.RequestTimeout:
+		// A wait as long as the request's deadline would end in a 500, not
+		// the 503 server_busy that tells the client to come back.
+		fail("page.parse_max_wait", "must be less than server.request_timeout (%s), got %s", c.Server.RequestTimeout, c.Page.ParseMaxWait)
 	}
 	if c.Jobs.ShutdownTimeout <= 0 {
 		fail("jobs.shutdown_timeout", "must be positive, got %s", c.Jobs.ShutdownTimeout)

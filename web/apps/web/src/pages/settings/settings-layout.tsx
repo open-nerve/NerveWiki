@@ -1,5 +1,6 @@
-import { Outlet } from "react-router";
+import { Outlet, useLocation } from "react-router";
 
+import { useDocumentTitle } from "../../app/document-title";
 import { NavItem } from "../../components/nav-item";
 import { useT } from "../../i18n/i18n";
 import type { MessageKey } from "../../i18n/messages/en";
@@ -18,6 +19,9 @@ const sections: readonly { path: string; label: Extract<MessageKey, `settings.${
  */
 export function SettingsLayout() {
   const t = useT();
+  const { pathname } = useLocation();
+  const shown = sections.find(({ path }) => path === pathname);
+  useDocumentTitle(shown && t(shown.label), t("settings.title"));
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       <h1 className="text-2xl font-semibold">{t("settings.title")}</h1>

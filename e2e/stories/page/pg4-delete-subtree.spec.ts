@@ -4,7 +4,7 @@ import { emailFor } from "../../fixtures/auth";
 import { answerTo } from "../../fixtures/browser";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { createNotebook } from "../../fixtures/notebooks";
-import { createPage, deleteNode, getPage, listNodes, postPage } from "../../fixtures/pages";
+import { createPage, deleteNode, getPage, heartbeat, listNodes, openSession, postPage } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
 import { choosePageAction, pageHeading, treeTitles, wikiPagePath } from "../../fixtures/wiki-pages";
 import { newTeam } from "../../fixtures/workspaces";
@@ -12,7 +12,7 @@ import { newTeam } from "../../fixtures/workspaces";
 // PG4, deleting a subtree (M4 design 3; M4/P5 design 3.7 for the page); the
 // edit sessions come with the content (M4/P4).
 
-test("PG4 (API): a member deletes a page with its subpages at one time; no one reads them after, and its sibling stays", async ({
+test("PG4 (API): a member deletes a page with its subpages at one time, their edit sessions with them; no one reads them after, and its sibling stays, its session too", async ({
   api,
   db,
 }, testInfo) => {
@@ -25,11 +25,15 @@ test("PG4 (API): a member deletes a page with its subpages at one time; no one r
   const doomed = await createPage(api, pat, notebook.id, "Doomed");
   const child = await createPage(api, pat, notebook.id, "Child", doomed.id);
   const grandchild = await createPage(api, pat, notebook.id, "Grandchild", child.id);
-  await createPage(api, pat, notebook.id, "Sibling");
+  const sibling = await createPage(api, pat, notebook.id, "Sibling");
+  await openSession(api, pat, child.id);
+  await openSession(api, editorPat, grandchild.id);
+  const siblings = await openSession(api, pat, sibling.id);
 
   expect((await deleteNode(api, editorPat, doomed.id)).response.status).toBe(204);
   const subtree = [doomed.id, child.id, grandchild.id];
   await expectSubtreeDeleted(db, doomed.id, subtree, editorId);
+  expect((await heartbeat(api, pat, siblings.id)).response.status).toBe(200);
   const reads = await Promise.all(subtree.map((id) => getPage(api, pat, id)));
   expect(reads.map((r) => [r.response.status, r.error?.code])).toEqual(subtree.map(() => [404, "page.not_found"]));
   expect((await listNodes(api, pat, notebook.id)).map((n) => n.name)).toEqual(["Sibling"]);
@@ -44,7 +48,7 @@ test("PG4 (API): a member deletes a page with its subpages at one time; no one r
   ]);
 });
 
-test("PG4 (page): an editor deletes a page with its subpages, the confirmation counting them; the page shown, one of them, goes to the deleted page's parent; its address is no page after", async ({
+test("PG4 (page): an editor deletes a page with its subpages, the confirmation counting them, their edit sessions with them; the page shown, one of them, goes to the deleted page's parent; its address is no page after", async ({
   api,
   db,
   signedInPage,
@@ -59,6 +63,7 @@ test("PG4 (page): an editor deletes a page with its subpages, the confirmation c
   const linux = await createPage(api, adminPat, notebook.id, "Linux", install.id);
   const mac = await createPage(api, adminPat, notebook.id, "Mac", linux.id);
   await createPage(api, adminPat, notebook.id, "FAQ", guide.id);
+  await openSession(api, adminPat, linux.id);
   await page.goto(wikiPagePath(workspace.slug, notebook.id, mac.id));
   await expect(pageHeading(page, "Mac")).toBeVisible();
 

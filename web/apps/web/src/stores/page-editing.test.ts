@@ -150,10 +150,18 @@ test("a 503 server_busy is waited out by its Retry-After, three times at most", 
   };
 
   const saving = editing.save("text", 1);
-  await vi.waitFor(() => expect(editing.busy).toBe(true));
-  await vi.advanceTimersByTimeAsync(3 * 2000);
+  const puts = () => sent.filter((line) => line.startsWith("PUT")).length;
+  // vi.waitFor would move the fake clock on: the answer is in once the promises settle.
+  await vi.advanceTimersByTimeAsync(0);
+  expect(editing.busy).toBe(true);
+  // Not sent again before its Retry-After, 2 seconds, is up.
+  await vi.advanceTimersByTimeAsync(1999);
+  expect(puts()).toBe(1);
+  await vi.advanceTimersByTimeAsync(1);
+  expect(puts()).toBe(2);
+  await vi.advanceTimersByTimeAsync(2 * 2000);
   expect(await saving).toBe(false);
-  expect(sent.filter((line) => line.startsWith("PUT"))).toHaveLength(4);
+  expect(puts()).toBe(4);
   expect(editing.busy).toBe(false);
   expect(editing.failure).toBeInstanceOf(ApiError);
   editing.end();
@@ -395,6 +403,21 @@ test("keep mine saves on the revision the conflict read; a write since is a conf
   expect(await editing.save("mine again", 2)).toBe(false);
   expect(await editing.keepMine("mine again", 2)).toBe(true);
   expect(sent.at(-1)).toBe('PUT "mine again" on 8 in s1');
+  editing.end();
+});
+
+test("keep mine does not read the page again: a write after the conflict read it is a conflict again, not overwritten", async () => {
+  const { editing, sent, answers } = await inConflict();
+  // Another write lands between the conflict's read (revision 5) and Keep mine.
+  answers.content = () => ({ content: "theirs, later", revision: 6, content_hash: "" });
+  answers.put = () => {
+    answers.put = undefined;
+    throw refusal(409, "page.revision_mismatch");
+  };
+
+  expect(await editing.keepMine("mine", 1)).toBe(false);
+  expect(sent.findLast((line) => line.startsWith("PUT"))).toBe('PUT "mine" on 5 in s1');
+  expect(editing.conflict).toEqual({ theirs: "theirs, later", revision: 6, mine: "mine" });
   editing.end();
 });
 

@@ -89,6 +89,7 @@ export const en = {
   "page.untitled": "Untitled",
   "page.untitledN": "Untitled {n}",
   "page.actions": "Actions for {name}",
+  "page.nameIn": "{name} (in {place})",
   "page.rename": "Rename",
   "page.renameTitle": "Rename {name}",
   "page.title": "Title",
@@ -441,6 +442,8 @@ export const en = {
   "field.notebook_name.not_allowed": "Windows reserves this name (such as CON, NUL or COM1); choose another.",
   "field.slug.invalid_format": "1 to 48 lower-case letters, digits, _ or -.",
   "field.slug.not_allowed": "Reserved by the app. Choose another.",
+  "field.parent_id.not_allowed": "No longer a page of this notebook. Choose another.",
+  "field.after_id.not_allowed": "No longer under this parent. Choose another.",
   "field.slug.duplicate": "Another workspace already has this address.",
 } as const;
 

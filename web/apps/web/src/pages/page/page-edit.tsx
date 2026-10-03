@@ -4,9 +4,11 @@ import { useSWRConfig } from "swr";
 
 import { useMounted } from "../../app/mounted";
 import { NotLoaded } from "../../app/not-loaded";
-import { Loading } from "../../components/loading";
 import { dialogOpen, isMod, onMac } from "../../app/shortcuts";
+import { Loading } from "../../components/loading";
+import { Button } from "../../components/ui/button";
 import type { SourceEditorHandle } from "../../editor/source-editor";
+import { useT } from "../../i18n/i18n";
 import type { Notebook } from "../../services/notebook.service";
 import type { TreeNode } from "../../services/page.service";
 import { useNewPageEditing, usePageTree } from "../../stores/context";
@@ -48,10 +50,12 @@ type PageEditProps = {
  * save refused because the page changed shows the conflict above the
  * editor, with its heading focused; until the user keeps their text or
  * discards it, a save only brings the focus back there. A save that went
- * through leaves the reading view in SWR's cache to be read again.
+ * through leaves the reading view in SWR's cache to be read again. A
+ * content that cannot be read offers to try again, or Done to go back.
  */
 export const PageEdit = observer(function PageEdit({ notebook, page, done }: PageEditProps) {
   const { slug } = useWorkspace();
+  const t = useT();
   const { mutate } = useSWRConfig();
   const pages = usePageTree(notebook);
   const editing = useNewPageEditing(page.id);
@@ -155,7 +159,16 @@ export const PageEdit = observer(function PageEdit({ notebook, page, done }: Pag
   }, []);
 
   if (editing.content === undefined) {
-    return <NotLoaded error={editing.readFailure} retry={() => void editing.read()} />;
+    return (
+      <div className="space-y-3">
+        <NotLoaded error={editing.readFailure} retry={() => void editing.read()} />
+        {editing.readFailure !== undefined && (
+          <Button variant="outline" onClick={() => void leave()}>
+            {t("editor.done")}
+          </Button>
+        )}
+      </div>
+    );
   }
   return (
     <div className="space-y-3">
