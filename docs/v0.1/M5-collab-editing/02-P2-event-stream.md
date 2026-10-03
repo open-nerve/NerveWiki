@@ -3,7 +3,7 @@
 | 项 | 内容 |
 |---|---|
 | Phase | M5/P2 事件流（后端） |
-| 状态 | 进行中 |
+| 状态 | 完成 |
 | 基线 | `59e6c33`（P1 合并与它的文档提交之后的 main）；本文与各 Step 计划提交之后开分支 `m5-p2` |
 | 上级文档 | [M5 总设计](00-M5-design.md) 第 4.10、7–10 节；[M0/P1 移交](handoffs/M0-P1-sse-proxies.md)；[M3/P2 移交](handoffs/M3-P2-visibility.md)；[M4/P1 移交](handoffs/M4-P1-tree-refresh.md)；[M4/P4 移交](handoffs/M4-P4-edit-sessions.md) 第 8 项；[总体设计](../v0.1-design.md) 3.11、12.4、13.1 |
 

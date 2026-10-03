@@ -3,7 +3,7 @@
 | 项 | 内容 |
 |---|---|
 | Phase | M5/P4 编辑锁（前端） |
-| 状态 | 进行中 |
+| 状态 | 完成 |
 | 基线 | `29dd7e5`（P3 合并与它的文档提交之后的 main）；本文与各 Step 计划提交之后开分支 `m5-p4` |
 | 上级文档 | [M5 总设计](00-M5-design.md) 第 3 节（C1–C4、C6）、4.1–4.9、4.13、第 9、11 节；[P1 文档](01-P1-edit-lock.md)（服务端的码与成员）；[P3 文档](03-P3-event-stream-web.md)（事件流、`EditLockNote`）；[M4/P6 移交](handoffs/M4-P6-editor.md) 第 5、6、8 项；[M4/P4 移交](handoffs/M4-P4-edit-sessions.md) 第 6 项 |
 
@@ -52,10 +52,11 @@ web/apps/web/src/
   pages/page/page-edit.tsx、edit-lost-banner.tsx 失锁的横幅（3.8）
   pages/page/edit-lock-note.tsx                 在这里编辑（3.6）
   pages/notebook/notebook-layout.tsx            留住笔记本（3.9）
-  app/problem-messages.ts、pages/notebook/page-tree.tsx  page.locked 带名称（3.10）
+  app/problem-messages.ts、app/confirm-dialog.tsx、pages/notebook/page-tree-item.tsx  page.locked 带名称（3.10）
+  app/event-stream.tsx                          P3 的修复：清理之后整体刷新与锁的重读停下（3.3）
   i18n/messages/en.ts、zh-CN.ts                 文案
   test/render.tsx、test/page-server.ts          编辑器扩展的参数；锁随会话（3.11）
-e2e/fixtures/wiki-pages.ts、pages.ts            进入编辑被拒；开启带接管（3.12）
+e2e/fixtures/wiki-pages.ts、pages.ts、test.ts   进入编辑被拒、失锁的横幅；开启带接管；watchOf（3.12）
 e2e/stories/collab/c1–c4、c6                    页面版本
 ```
 
@@ -63,42 +64,46 @@ e2e/stories/collab/c1–c4、c6                    页面版本
 
 `EditSession` 是一页的一个编辑会话（M5 总设计 4.1–4.3、4.6、4.7），MobX 可观察的只有 `lost`（为什么不能再写）与 `id`：
 
-- **`open(takeOver)`**：`POST …/edit-sessions`，`takeOver` 时带 `{take_over: true}`。答 `{opened: true}`，或 409 `page.locked` 时 `{opened: false, lock}`（problem 的 `lock`）；别的错误照样抛出。开到之后开始心跳。
-- **`current()`**：给保存用的会话 id；没有（重开中）就等重开。
-- **心跳**每 20 秒（`editSessionHeartbeat`，不变），重新可见时、收到这一页的锁事件（`session_id` 是自己的）时、事件流每次连上时各一次。
+- **`open(takeOver)`**：`POST …/edit-sessions`，`takeOver` 时带 `{take_over: true}`。答 `{opened: true}`，或 409 `page.locked` 时 `{opened: false, holder}`（problem 的 `lock`）；别的错误照样抛出。开到之后开始心跳。
+- **`current()`**：给保存用的会话 id；没有（重开中）就等重开，重开同时只有一个，保存与心跳共用；已结束或失锁时以 `EditEnded` 拒绝。
+- **心跳**每 20 秒（`editSessionHeartbeat`，不变），重新可见时、收到这一页的锁事件时、事件流每次连上时、从 bfcache 回来时各一次。
+  - 同时只有一个在外，其间要的合并成它之后的一个（接管时有两个锁事件：旧会话结束、新会话开启）；
+  - 一个心跳间隔没答复就放弃（`AbortSignal`），合并的下一个照常发，放弃的不算失锁（审查 A-m3）；
+  - 没有会话（重开因暂时的原因失败）时心跳去重开（审查 A-I1）。
 - **码**（总体设计 4.3 的"编辑器的规则"）：
 
 | 来自 | 答复 | 做什么 |
 |---|---|---|
-| 心跳 | 404 `page.edit_session_not_found`（过期、不见了） | 重开，不带接管 |
+| 心跳 | 404（`page.edit_session_not_found`：过期、不见了；心跳只答这一种 404）或 409 `page.edit_session_ended` | 重开，不带接管 |
 | 保存 | 409 `page.edit_session_ended` | 重开，不带接管，再发一次（照 M4） |
 | 重开 | 409 `page.locked` | 失锁：过期之后被拿走（`taken`，带持锁人，是自己时说"你在别处") |
 | 重开、保存 | 404 `page.not_found` | 失锁：页面不在（`gone`） |
 | 心跳、保存 | 409 `page.edit_session_taken_over` | 失锁：被接管（`taken_over`） |
 | 心跳、保存 | 409 `page.edit_session_unlocked` | 失锁：被解锁（`unlocked`，带 `ended_by` 的名称） |
 | 心跳、重开、保存 | 403 | 失锁：失去访问（`no_access`），取代 M4 的 `lostAccess` |
-| 心跳 | 别的（网络） | 下一拍再试 |
+| 心跳、重开 | 别的（网络、5xx） | 下一拍再试（重开失败时下一拍重开） |
 
 - 失锁之后不再心跳、不再重开、不再保存；M4 的"保存成功就清掉失去访问"随之去掉。
-- **`end()`**：停止心跳，`DELETE` 会话，返回它的 promise（离开编辑等它，见 3.6）；失锁或已结束时什么也不发。
+- **`end()`**：停止心跳，`DELETE` 会话，返回它的 promise（离开编辑等它，见 3.6）；有开启在外时等它答复、再等它的结束答复（审查 A-m2）；失锁或已结束时什么也不发。
 - 重开同时只有一个（照 M4 的 `opening`）；结束之后到的开启答复随即结束它（照 M4）。
 
 ### 3.3 EditSession：页面的生命周期
 
 - **`pagehide`**：同步地以 `keepalive` 结束会话（3.5），记下"离开时释放了"。令牌已过期就不发，由租约兜底（总体设计 4.7）。
-- **`pageshow` 且 `persisted`**（从 bfcache 回来）：先对旧会话心跳。还活着（释放没发出去）就接着用；答 404 就照上表重开，锁空着就拿回，被别人拿了就失锁。不先心跳就重开会被自己的旧会话锁住。
+- **`pageshow` 且 `persisted`**（从 bfcache 回来）：先对旧会话心跳（经心跳的合并）。还活着（释放没发出去）就接着用；答 404 就照上表重开，锁空着就拿回，被别人拿了就失锁。不先心跳就重开会被自己的旧会话锁住。
 - **`visibilitychange`** 到可见：心跳一次（照 M4）。
+- **P3 的修复**：`<EventStream/>` 的 `route` 带一个停止的信号，清理（换代）之后整体刷新与锁的重读在步骤之间停下，不再调用已不在的 SWR 缓存（未处理的拒绝）。
 - 生命周期经注入的 `PageLifecycle`：P3 的类型，监听加一个可选的参数 `{persisted?: boolean}`（hub 不用它）。`events/deps.ts` 拆出 `browserPageLifecycle()`，`browserEventDeps` 与 `RootStore` 共用；没有 `EventDeps` 的测试用它（jsdom 的 `window`、`document`），单元测试用 `FakePage`（`fire` 加 `persisted`）。
 
 ### 3.4 PageEditing 与接线
 
 - `PageEditing` 持有一个 `EditSession`，管正文、保存的队列、冲突：
-  - **`begin(takeOver)`**：开会话，拿到了才读正文；答 `{opened}` 或 `{opened: false, lock}`；
-  - 保存经 `session.current()` 取会话，把保存的错误交给会话判定（3.2 的表），失锁就不再保存；
+  - **`begin(takeOver)`**：开会话，拿到了才读正文；答 `{opened}` 或 `{opened: false, holder}`；再调用答同一个；
+  - 保存经 `session.current()` 取会话，把保存的错误交给会话判定（3.2 的表），失锁就不再保存：保存停下，不显示失败；
   - **`keep()` / `letGo()`**：编辑的视图挂上时 `keep()`，卸下时 `letGo()`：`letGo()` 之后一个任务（`setTimeout` 0）之内没再 `keep()` 就 `end()`。StrictMode 的卸下与再挂在同一个任务里，会话留着；M4 的"结束之后再 `start()` 重开"去掉：有锁之后，重开会撞上自己还没结束的会话。
   - **`end()`**：结束会话（等它答复），排队的保存不再发（照 M4）。
 - `RootStore.editPage(id)` 交给 `PageEditing` 依赖：页面的服务、生命周期（`app.events?.page ?? browserPageLifecycle()`）、锁事件的订阅（这一代的 hub，没有就不订阅）、`keepalive` 的结束（3.5）。
-- **正在编辑的记录**：`RootStore` 记下开着的编辑（可观察；`editPage(notebookId, pageId)`，编辑知道自己的笔记本），`begin` 拿到锁时记上，`end` 时去掉（失锁之后还记着：页面不在时外壳靠它留住）。外壳的留住（3.9）与退出登录（3.9）读它。
+- **正在编辑的记录**：`RootStore` 记下开着的编辑（可观察；`editPage(notebookId, pageId)`，编辑知道自己的笔记本），`begin` 开始时记上（退出登录也结束还在开的编辑，审查 A-m2），没打开、已结束或 `end` 时去掉（失锁之后还记着：页面不在时外壳靠它留住）。外壳的留住（3.9）与退出登录（3.9）读它。
 
 ### 3.5 keepalive 的结束与同步的令牌
 
@@ -108,16 +113,16 @@ e2e/stories/collab/c1–c4、c6                    页面版本
 
 ### 3.6 先拿锁再编辑
 
-`PageShell` 建编辑并持有它（`useNewPageEditing` 去掉），拿到锁之后交给 `PageEdit`；`PageShell` 卸下时结束还在开启的编辑。进入编辑（Edit 按钮、Mod+E）：
+`PageShell` 建编辑并持有它（`useNewPageEditing` 去掉），拿到锁之后交给 `PageEdit`；`begin` 答复时 `PageShell` 已卸下就结束它（不在卸下的 effect 里结束：两种次序都结束会话）。进入编辑（Edit 按钮、Mod+E）：
 
-1. 进行中：按钮 `aria-busy`、禁用，再按不重复；
+1. 进行中：按钮 `aria-busy`、`aria-disabled`，焦点留在它上面，再按不重复；
 2. `editPage(id).begin(takeOver)`：
-   - 拿到：挂 `PageEdit`（照 M4 读正文、挂编辑器、焦点）；
-   - 409 `page.locked`：停在阅读视图，`mutate(["edit-lock", id])` 让 `EditLockNote` 读到持锁人，焦点到它；
-   - 别的错误：阅读视图上方显示原因（`errorText`），焦点留在 Edit。
+   - 拿到：焦点到标题，挂 `PageEdit`（照 M4 读正文、挂编辑器，编辑器拿走焦点）；
+   - 409 `page.locked`：停在阅读视图，`mutate(["edit-lock", id])` 让 `EditLockNote` 读到持锁人，焦点到它外面可聚焦的一层；重读时锁已空着就留在 Edit（审查 B-m4）；
+   - 别的错误：阅读视图上方显示原因（`errorText`），焦点留在 Edit；开启中被结束（退出登录）的不算（核对 C-m2）。
 3. `EditLockNote` 加一个可选的 `editHere`：持锁人是自己、而这个账户能写这一页时显示"在这里编辑"，按下即以接管进入编辑（负责人的决定 1）。
 
-离开编辑（Done、Mod+E）：照 M4 先保存，再 `await end()`（会话的结束答复之后），再回到阅读视图；之后 `EditLockNote` 读锁时这个会话已经不在，不会闪一下"你正在别处编辑"。
+离开编辑（Done、Mod+E）：照 M4 先保存，再 `await end()`（会话的结束答复之后），把这一页的锁从 SWR 的缓存里去掉（被拒时读到的自己在别处，审查 B-m2），再回到阅读视图；之后 `EditLockNote` 读锁时这个会话已经不在，不会闪一下"你正在别处编辑"。阅读视图读进缓存，除非没有可读的：页面已不在树里，或失锁的原因是页面不在、失去访问（笔记本不在时树的读 404，旧的节点留着；审查 B-I1、核对 C-m3）。
 
 ### 3.7 编辑器：会话的状态与只读的扩展
 
@@ -127,36 +132,36 @@ e2e/stories/collab/c1–c4、c6                    页面版本
 
 ### 3.8 失锁的横幅
 
-`PageEdit` 在 `editing.session.lost` 时，编辑器之上显示横幅（`role="alert"`，焦点移过去）：
+`PageEdit` 在 `editing.session.lost` 时，编辑器之上显示横幅（`role="alert"`）。焦点在失锁时移过去，内容读到之前失锁的在内容到了时移过去，失锁之后才建出的编辑器不拿焦点（核对 C-m1）；"回到阅读"对话框与离开守卫的"留下"把焦点还给横幅（审查 B-m3）：
 
 - 原因：被接管"你在另一处继续编辑了这一页"；被解锁"{name} 解除了你的编辑"；页面不在"这一页已不在"；失去访问（M4 的 `editor.lostAccess`）；过期之后被拿走"你的编辑已过期，{name} 正在编辑这一页"（是自己时"……你正在别处编辑这一页"）。
 - 有未保存的修改时加一句"这里有没保存的修改：离开之前先复制出来"。
 - "回到阅读"：结束编辑、回到阅读视图，不保存；有未保存的修改时先问（M4 的离开对话框）。
-- 状态栏不再显示这些码的通用文案；Mod+S 什么也不做。
+- 状态栏不再显示这些码的通用文案；Mod+S 不拦，交给 store：`current()` 拒绝，什么也不发、不显示失败；Mod+E 是"回到阅读"。
 
 ### 3.9 页面或笔记本不在；退出登录
 
-- **留住外壳**（M4/P6 移交第 6 项）：`PageLayout` 记下最后找到的树节点；这一页从树里没了、而这个标签页正在编辑它且有未保存的修改时，照旧渲染 `PageShell`（用最后的节点），编辑器经心跳或锁事件得知 `gone`。没有未保存的修改时照 M4（404，本标签页删的去父页）。`NotebookLayout` 同样：笔记本从列表里没了、而里面有一页正被编辑且有未保存的修改时，留住最后的笔记本。
+- **留住外壳**（M4/P6 移交第 6 项）：`PageLayout` 记下最后找到的树节点；这一页从树里没了、而这个标签页正在编辑它且有未保存的修改时，照旧渲染 `PageShell`（用最后的节点），编辑器经心跳或锁事件得知 `gone`。没有未保存的修改时照 M4（404，本标签页删的去父页）。`NotebookLayout` 同样：笔记本从列表里没了、而里面有一页正被编辑且有未保存的修改时，留住最后的笔记本；`useNotebook` 改为读 `NotebookLayout` 给出的 context，留住的笔记本由此到达它的页面。
 - 工作区被删时不留住：`WorkspaceLayout` 卸下整个工作区，P5 的自动保存之后未保存的至多约 2 秒。记在第 7 节。
-- **退出登录**：`AuthStore.signOut` 先经这一代的客户端结束这一代所有开着的编辑，等它们答复（至多 2 秒，断网时不让退出卡住），再照 M1 退出。不用 `keepalive` 的同步结束：它与随后的登出同时在途，服务端先处理登出时，结束会被拒（凭证已撤销），锁留到租约过期。同一账户的别的标签页随存储事件换代，它们的结束经旧一代的客户端以 `SessionChangedError` 失败，锁由租约兜底（至多 2 分钟），记在第 7 节。
+- **退出登录**：`AuthStore.signOut` 先经这一代的客户端结束这一代所有开着的编辑（含还在开启的），等它们答复（至多 2 秒，断网时不让退出卡住），再照 M1 退出。不用 `keepalive` 的同步结束：它与随后的登出同时在途，服务端先处理登出时，结束会被拒（凭证已撤销），锁留到租约过期。同一账户的别的标签页随存储事件换代，它们的结束经旧一代的客户端以 `SessionChangedError` 失败，锁由租约兜底（至多 2 分钟），记在第 7 节。
 
 ### 3.10 page.locked 带名称
 
-总体设计 4.5：`errorText` 的选项加 `lock: {me, title(pageId)}`；有它而错误是 `page.locked`、带 `lock` 成员时，说"{name} 正在编辑「{page}」"，是自己时"你正在别处编辑「{page}」"，页的标题找不到时不带页名。页面树的删除对话框用它（删除这一页或它的上级页被拒）。
+总体设计 4.5：`app/problem-messages.ts` 的 `lockedText(error, t, me, title)`：错误是 `page.locked`、带 `lock` 成员时，说"{name} 正在编辑「{page}」"，是自己时"你正在别处编辑「{page}」"；别的错误、页的标题找不到时答 `undefined`，由 `errorText` 说通用的。`ConfirmDialog` 加 `explain`（先问它，没有再 `errorText`），页面树的删除对话框以它传 `lockedText`（删除这一页或它的上级页被拒）。没有加进 `errorText` 的选项：只有这一处用。
 
 ### 3.11 测试的服务
 
-`test/page-server.ts`：锁随会话：`OPEN` 在这一页有活着的会话时答 409 `page.locked`（带 `lock`），带接管且是本人时把旧会话记为被接管；心跳、保存对墓碑答 `taken_over`、`unlocked`（带 `ended_by`）；`GET edit-lock` 由会话算出；`DELETE edit-lock` 把会话记为被解锁。测试改服务端的状态模拟别的标签页与管理员。
+`test/page-server.ts`：锁随会话：`OPEN` 在这一页有活着的会话时答 409 `page.locked`（带 `lock`），带接管且是本人时把旧会话记为被接管；心跳、保存对墓碑答 `taken_over`、`unlocked`（带 `ended_by`）；`GET edit-lock` 由会话算出；`DELETE edit-lock` 把会话记为被解锁；删节点时子树里有别人活着的会话就拒绝，删掉的删掉它们的会话；`notebookGone` 时树答 404 `notebook.not_found`。测试改服务端的状态模拟别的标签页与管理员。`renderApp` 的第三个参数是选项对象（`routes`、`enhancements`、`editorExtensions`）。
 
 ### 3.12 端到端
 
-- **夹具**：`wiki-pages.ts` 的 `startEditing` 不变（拿到锁之后编辑器才拿到焦点）；加 `editRefused(page)`（按 Edit 之后停在阅读视图、显示持锁人）与 `lostBanner(page)`；`pages.ts` 的开启带 `takeOver`。
+- **夹具**：`wiki-pages.ts` 的 `startEditing` 不变（拿到锁之后编辑器才拿到焦点）；加 `editRefused(page)`（按 Edit 之后停在阅读视图、显示持锁人）与 `lostBanner(page)`；`pages.ts` 的开启带 `takeOver`；`test.ts` 导出 `watchOf(page)`（别的标签页与页面的请求与控制台），`anotherPage` 的安静检查跳过已关掉的页；`assert/collab.ts` 加 `aliveSessionsOf`。
 - **C1（页面）**：A 在页面上编辑；B（另一账户）打开同一页看到"A 正在编辑"，按 Edit 被拒、停在阅读视图；A 退出编辑之后 B 能编辑。落库：至多一个活着的会话。
-- **C2（页面）**：同一账户的第二个标签页（`anotherTab`）按 Edit：说"你正在别处编辑"，给"在这里编辑"；按下之后第二个编辑，第一个标签页的编辑器只读并说明被接管（经锁事件，不等心跳）；落库：第一个会话是 `taken_over` 的墓碑。
-- **C3（页面）**：笔记本的管理员（另一账户的页面）解除 A 的锁：A 的编辑器只读并说明是谁解除的，之前保存的都在。
+- **C2（页面）**：同一账户的第二个标签页（`anotherTab`）按 Edit：说"你正在别处编辑"，给"在这里编辑"；按下之后第二个编辑，第一个标签页的编辑器只读并说明被接管（经锁事件，不等心跳：`clock.install` 之后快进 20 秒让它先心跳一次，断言横幅在下一次周期心跳之前出现，审查 B-m5）；落库：第一个会话是 `taken_over` 的墓碑。
+- **C3（页面）**：笔记本的管理员（另一账户的页面）解除 A 的锁：A 的编辑器只读并说明是谁解除的（同 C2，经锁事件），之前保存的都在。
 - **C4（页面）**：A 持锁时 B 在树里删这一页、删它的上级页，对话框说"A 正在编辑「…」"；A 在别的标签页删掉这一页：A 的编辑器只读并说明页面已不在，有未保存的修改时外壳留着。
 - **C6（页面）**：A 退出编辑之后 B 随即能编辑；A 关掉标签页之后 B 随即能编辑（核实 `keepalive` 的请求到达：会话已删）。
-- **改写**：PG8、PG10 的页面版本照新的进入方式；离开页面时的 `keepalive` 结束是新的请求，故事的请求清单与 `apiFailures` 照此核对；被拒的开启与失锁的心跳、保存在 `expectConsole` 里声明 409。
+- **改写**：被拒的开启与失锁的心跳、保存在 `expectConsole` 里声明 409、404。PG8、PG10 照新的进入方式不用改（`startEditing` 等的是编辑器的焦点），原样通过。
 
 ## 4. 实施步骤
 
@@ -192,4 +197,31 @@ e2e/stories/collab/c1–c4、c6                    页面版本
 
 ## 7. 结果
 
-（合并之后填写。）
+- 分支 `m5-p4`：S1 `f0535e2`；S2 `950d34a`；S3 `b8a5052`；审查修复 `896fec8`、核对之后的修复 `0f032b7`；`d7ccb95` 合并（`--no-ff`）。
+- 门禁：每个 Step 与两轮修复的 `make check` 为绿（前端 1539 个测试）；`make gen-check`、`make e2e`（175 个）、`make image-smoke` 为绿；C1–C4、C6 的页面版本压测 120 次为绿；改过的组件测试连跑 10 次为绿；持续集成为绿。
+- 审查：[P4 审查](reviews/P4-edit-lock-web-review.md)。两位审查者，没有阻断合并的问题。Important 2：A-I1（重开因暂时的原因失败之后再不重试，编辑没有锁也不说）、B-I1（离开已不在的页面时读它的视图，C4 的 e2e 因此失败）；Minor 7，合并之前修掉 6 项、记下 1 项（窄窗口）。修复的核对没有 Important，Minor 3 修掉，Nit 3 改 2 项、记下 1 项。
+- 反向对照：S1 19（一项通过：保存自己的失锁判断与 `current()` 的拒绝重复，删掉）、S2 单元与组件 22、事件流的停止 2、S3 心跳的合并 2 与 e2e 6，审查修复 10（窄窗口的守卫 1 项通过，见下）、核对之后的修复 6、标题的测试 4，其余都没有通过。
+- CI：S3 推上之后 e2e 失败，即 B-I1；审查修复推上之后 web 的单元测试失败一次，是 M4 的标题测试读得太早（`guards.test.tsx`，P4 没碰），同样读法的四处改成等待标题。
+
+**与计划的出入**（已同步进上文）：
+
+1. 退出登录经这一代的客户端等编辑结束（至多 2 秒）再登出，不用 `keepalive`（3.9）。
+2. `page.locked` 带名称是 `lockedText` 加 `ConfirmDialog` 的 `explain`，不是 `errorText` 的选项（3.10）。
+3. `useNotebook` 读 `NotebookLayout` 的 context（3.9）。
+4. `PageShell` 不在卸下的 effect 里结束还在开的编辑，`begin` 答复时已卸下就结束（3.6）。
+5. 心跳合并：同时一个在外，加之后一个；一个间隔没答复就放弃（3.2）。
+6. 失锁时 Mod+S 不拦，由 store 拒绝（3.8）。
+7. 心跳的任何 404 与 409 `page.edit_session_ended` 都重开（3.2）。
+8. 开启中 Edit 留着焦点（`aria-busy`、`aria-disabled`）；拿到时焦点到标题；被拒时到提示外面一层（3.6）。
+9. P3 的修复：`<EventStream/>` 清理之后整体刷新与锁的重读停下（3.3）。
+10. 测试：`renderApp` 的选项对象；假的页面服务的锁随会话；e2e 的 `watchOf`（3.11、3.12）。
+11. PG8、PG10 不用改（3.12）。
+12. 审查与核对的修复：没有会话的心跳去重开；`end()` 等开启；编辑在 `begin` 开始时记上；离开时去掉锁的缓存、不读没有的视图；横幅的焦点（3.2、3.4、3.6、3.8）。
+
+**留给后面的**：
+
+- **给 P5**：自动保存之后，失锁、页面或笔记本不在、工作区被删时未保存的至多约 2 秒；闲置 30 分钟退出经 `controls.leave()`。
+- **接受**：
+  - 工作区被删时不留住外壳（3.9）；
+  - 同一账户别的标签页的锁在退出登录时由租约兜底（至多 2 分钟，3.9）；
+  - 窄窗口（审查 B-m6）：`begin` 答复打开时同一批渲染卸下 `PageShell`，`PageEdit` 没挂上，会话一直心跳。导航是低优先级的 transition，`PageEdit` 先挂上；同一批卸下只来自页面或笔记本不在，这时下一次心跳就失锁，`pagehide` 照样结束。组件测试够不到这个窗口。
