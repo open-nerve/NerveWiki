@@ -81,7 +81,7 @@ M4 结束时：
 | 标题键 | `shared.TitleKey(s) = NFC(fold(NFC(s)))`，完整的大小写折叠用 `golang.org/x/text/cases.Fold`；M6 的链接解析用同一个函数。键存在 `nodes.name_key`（`COLLATE "C"`），唯一索引 `(notebook_id, parent_id, name_key) NULLS NOT DISTINCT WHERE deleted_at IS NULL`（根下的页面 `parent_id` 为空，也要唯一）。`shared` 的依赖加上 `x/text/cases`，修订 13.1 第 12 条 | 数据库的 `lower()` 或 ICU 排序规则：随 locale 变化，3.5 已定由应用计算 |
 | 父页的约束 | 父页必须在同一个笔记本：复合外键 `(notebook_id, parent_id) → nodes (notebook_id, id)`，由数据库守住；自引用外键 `RESTRICT`。层级与防环在应用里、锁下判断 | 只在应用里检查：缺陷会造出跨笔记本的子树，权限按笔记本判定，后果是泄露 |
 | 次序 | `sort_order` 是浮点数。接口不收次序值，收位置：`after_id`（放在这个兄弟之后；`null` 为最前，省略为最后）；服务端在锁下取前后两个兄弟的中间值，间隔小于阈值时在同一事务里把这一组兄弟重新均匀编号。重排不记条目：M8 判断"当前状态仍是这个变更集写的"时比较父页、标题与相对位置（排在哪个兄弟之后），不比较原始的次序值 | 接口直接收浮点数：客户端的取值与并发的插入相撞；字符串的分数索引（lexorank）：v0.1 的树写都在笔记本锁下，浮点数加重排足够 |
-| 新页面的标题 | 接口的 `title` 必填，重名答 409 `page.title_taken`。网页的"新建页面"在已加载的页面树上取界面语言的"未命名"、"未命名 2"……中第一个空着的，409 时取下一个再试（至多三次）。修订总体设计 3.5 | 服务端在缺省时起名：服务端不知道界面语言，给英文界面的人起中文名；对接口与 agent 静默加序号又出乎意料 |
+| 新页面的标题 | 接口的 `title` 必填，重名答 409 `page.title_taken`。网页的"新建页面"在已加载的页面树上取界面语言的"未命名"、"未命名 2"……中第一个空着的，409 时取下一个再试（至多试三个标题）。修订总体设计 3.5 | 服务端在缺省时起名：服务端不知道界面语言，给英文界面的人起中文名；对接口与 agent 静默加序号又出乎意料 |
 | 变更集 | 每个写入单元属于一个变更集：REST 的单次写入自成一个；带 `edit_session_id` 的写入属于会话的变更集（会话的第一次写入时创建）。变更集记笔记本、类型（M4 只有 `edit`）、客户端、可选的说明、执行者、时刻；每个（变更集、节点）一行条目，记树的前后状态（父页、标题、次序；新建与删除的标记），同一变更集里同一节点的多次操作合并为最早的"前"与最新的"后"；正文的版本另记在 `page_revisions`，每个（变更集、页面）一行，记所依据的 `base_revision` 与写出的 `revision`，会话里的再次保存更新这一行。会话两次保存之间夹进了别人的写（M5 有锁之前，或"保留我的"覆盖），这一页当前的 `revision` 已不是本会话上次写出的：会话的下一次保存另起一个变更集，每个版本行的"前"与"后"之间因此没有别人的改动 | 每次保存一个版本：自动保存（M5）之后一次编辑会产生几十个版本；夹进别人的写时仍原地更新：版本不再单调，M8 的 diff 与撤销失去依据 |
 | 客户端字段 | 适配器决定客户端，用例只记录：HTTP 一侧按凭证，会话的访问令牌是 `web`，PAT 是 `api`；M9 的 MCP 适配器给 `mcp:<客户端名>`，命令行给 `cli`。值是写入单元的字段，不进 `Actor` | 前端在请求头里自报：任何调用方都能冒充 |
 | 正文 | `page_contents` 一页一行：原样的 `content`、`revision`（新建为 1，每次写入加 1）、`content_hash`（SHA-256）、`byte_size`。必须是合法的 UTF-8、不含 NUL（PostgreSQL 的 `text` 存不了），不超过 5 MiB（5,242,880 字节，422 `content`）；大小与 NUL 在事务之前、`Parse` 之前检查。正文写入与带正文的新建两个路由放宽请求体上限（按 5 MiB 正文在 JSON 里最坏的转义长度；模块根的 `BodyLimits()`，与 `RequestTimeouts()` 并列，平台在配置校验里核对），期限另加 `server.read_timeout`，给请求体传完的时间（P4 审查 P3）；JSON 里孤立的代理项（`\ud800`）答 400，不被换成 U+FFFD。`base_revision` 不一致答 409 `page.revision_mismatch`，客户端重新读取正文得到当前版本（第 2 节） | 以 `text/markdown` 原样传正文、`If-Match` 带版本：与其余接口不一致，412 也不是总体设计定的 409 |
@@ -204,9 +204,9 @@ Nerve 没有页面、正文与编辑器，M4 不拷贝代码。只沿用它的�
 
 | 项 | 落实 |
 |---|---|
-| 1 外壳的 `main` | P5：左栏移出 `main`，页面区域是 `main`；没有外壳的页面仍由布局给 `main`。页面树进来之后左栏是导航、右侧是内容，地标与之对应 |
-| 2 成员行的有效角色 | P5：显式角色低于有效角色时，行上注明（"阅读者 · 经工作区开放为编辑者"）：M4 起编辑者能改页面，不注明会让管理员以为他只读。由工作区成员列表里他的角色与笔记本的 `workspace_access` 推算（`shared.EffectiveNotebookRole` 的同一规则），不改 M3 的契约 |
-| 3 合并重复的组件 | P5：先把 `NotebookMemberRow` 与 `MemberRow`、工作区与笔记本的两个改名表单合并，页面的改名再用同一个 |
+| 1 外壳的 `main` | P5：左栏移出 `main`，页面区域是 `main`；没有外壳的页面仍由布局给 `main`。页面树进来之后左栏是导航、右侧是内容，地标与之对应。P5 已落实：布局给左栏一个不生成盒子的位置，工作区外壳经 `createPortal` 放进去，`main` 只有一个、总包着 `Outlet`（W3） |
+| 2 成员行的有效角色 | P5：显式角色低于有效角色时，行上注明（"阅读者 · 经工作区开放为编辑者"）：M4 起编辑者能改页面，不注明会让管理员以为他只读。由工作区成员列表里他的角色与笔记本的 `workspace_access` 推算（`shared.EffectiveNotebookRole` 的同一规则），不改 M3 的契约。P5 已落实：`app/effective-role.ts` 推算，成员行注明，测试含未知角色 |
+| 3 合并重复的组件 | P5：先把 `NotebookMemberRow` 与 `MemberRow`、工作区与笔记本的两个改名表单合并，页面的改名再用同一个。P5 已落实：`app/member-row.tsx`、`app/rename-form.tsx`，原有的测试照旧通过 |
 | 4 `LockHoldings` 的前提 | 不受影响：M4 的写都先取工作区行的 `FOR SHARE`（心跳与结束不改成员行，也不读它们），而且不改成员行。13.1 第 5 条写明 |
 | 5 活动的第一个来源 | P4：页面的来源（未删除页面的 `byte_size` 之和；最后写入是这个笔记本最晚的变更集的 `updated_at`）；经 `listOwnerlessNotebooks` 的整个程序测试，组合根没交来源时失败。P4 已落实：`page.NewNotebookActivity(pool)`，`TestTheOwnerlessListShowsThePagesActivity`（会话的第二次保存推后最后活动；S4-NO-ACTIVITY 失败） |
 
@@ -255,6 +255,8 @@ Nerve 没有页面、正文与编辑器，M4 不拷贝代码。只沿用它的�
 - 页面一支接在笔记本之后：`workspaces（FOR SHARE）→ notebooks → nodes → page_contents → edit_sessions`，变更集、条目与版本只插入或只改本单元自己的行。含树操作的单元持笔记本行 `FOR NO KEY UPDATE`，只改正文与开启会话的持 `FOR SHARE`。
 - 笔记本删除与工作区删除的页面注册者已持笔记本行的独占锁，直接写节点。
 - 页面的写不取账户行（不让账户获得新的访问），也不改成员行，M3 的 `LockHoldings` 推理不变。
+
+**收尾的待定项**（P5 留下，收尾审查时决定做不做）：`document.title` 随页面变化；正文里同站链接的应用内跳转（现在是整页导航）；删除之后的导航改在答复处统一做，新建的答复也看还在 transition 里的导航（P5 审查 Q3、修复核对的 Nit）；宽表格外包一层可滚动、可聚焦的区域，由渲染器输出（P5 审查 Q4）。
 
 **横切约定**：本 M 新建的约定（页面一支的加锁、写入单元、标题键、变更集与客户端、解析时机、渲染器标记与用户 HTML 的分界、编辑器的换行记录、按笔记本的页面 store 与树写的队列）在收尾审查对照代码之后补进总体设计第 13 节。P1 留下的：第 6 条"有自引用外键的表另写测试"点名 `TestPurgeSkipsAHeldNodeAndKeepsItsAncestors`；第 11 条的窄端口例子加 `notebook.NewNotebooks`；第 21 条的组合改为 `notebookRegistrants(pool)`、`pageRegistrants()`，注册者的例子加 `page.NewNotebookDeletion`，"两个注册者的测试"引用 `TestTheRegistrantsRunInTheirOrder`（P1 审查 D11）。P4 留下的：第 19 条的并发名额加上正文的解析预算（判定之后、按字节、取不到答 503），"事务之前"的例子加上"判定之后才做昂贵的事"。
 
@@ -326,7 +328,7 @@ Nerve 没有页面、正文与编辑器，M4 不拷贝代码。只沿用它的�
 | P2 | 树操作 | 已完成 | [02-P2-tree-operations.md](02-P2-tree-operations.md) | [P2 审查](reviews/P2-tree-operations-review.md) |
 | P3 | Markdown 解析与渲染 | 已完成 | [03-P3-markdown.md](03-P3-markdown.md) | [P3 审查](reviews/P3-markdown-review.md) |
 | P4 | 正文与编辑会话 | 已完成 | [04-P4-content-sessions.md](04-P4-content-sessions.md) | [P4 审查](reviews/P4-content-sessions-review.md) |
-| P5 | 前端：页面树与阅读视图 | 进行中 | [05-P5-tree-reading.md](05-P5-tree-reading.md) | — |
+| P5 | 前端：页面树与阅读视图 | 已完成 | [05-P5-tree-reading.md](05-P5-tree-reading.md) | [P5 审查](reviews/P5-tree-reading-review.md) |
 | P6 | 前端：源码编辑器 | 未开始 | — | — |
 
 ## 13. 变更记录
@@ -342,3 +344,4 @@ Nerve 没有页面、正文与编辑器，M4 不拷贝代码。只沿用它的�
 | 2026-10-02 | P3 完成（`3467491` 合并）：加固之后与原版的差别是四条上限（第 10 节风险一行）；frontmatter 的别名另限重复的字节数；耗时的检查加上输出的字节数；扩展的约束（链接的两条、每种节点都要有渲染函数）写进给 M6 的移交 | [P3 审查](reviews/P3-markdown-review.md) P1–P7、T1、N3、N4 |
 | 2026-10-03 | P3 的相对耗时检查改为 512 KB、四分之一到全尺寸不超过 8 倍：两倍的输入不超过三倍的界限在小尺寸上贴着线性的实测，main 的持续集成两次失败；持续集成把失败的 Go 测试写成注解 | [P3 文档](03-P3-markdown.md)第 7 节 |
 | 2026-10-03 | P4 完成（`59d7702` 合并）：正文在判定之后、按字节的解析预算之内解析（503 `server_busy`）；两个正文路由的期限另加 `read_timeout`，配置要求 `read_timeout + request_timeout < write_timeout`；会话里的写要来自开启它的客户端；交错 44；M3 移交第 5 项、M3/P1 移交第 1 项落实；给 M5 的四条写进第 8 节 | [P4 审查](reviews/P4-content-sessions-review.md) P1–P3、T1、D1、Q1–Q4 |
+| 2026-10-03 | P5 完成（`b0eb02e` 合并）：M3 移交第 1–3 项落实；第 4 节新标题"至多试三个标题"；第 8 节记下 P5 留给收尾的待定项（`document.title`、同站链接的应用内跳转、删除与新建之后的导航、宽表格的滚动区域） | [P5 审查](reviews/P5-tree-reading-review.md) M1–M3、Q1、Q3、Q4 |

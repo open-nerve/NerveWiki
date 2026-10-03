@@ -3,7 +3,7 @@
 | 项 | 内容 |
 |---|---|
 | Phase | M4/P5 前端：页面树与阅读视图 |
-| 状态 | 进行中 |
+| 状态 | 已完成（`b0eb02e` 合并） |
 | 基线 | `f0a90e9`（P4 合并、文档提交之后的 main）；本文与各 Step 计划提交之后开分支 |
 | 上级文档 | [M4 总设计](00-M4-design.md) 第 3、4、5、7、8 节；[P3](03-P3-markdown.md) 3.6、3.12、已知差异；[P4](04-P4-content-sessions.md) 3.6、第 7 节；[M3 移交](handoffs/M3-notebooks.md)第 1–3 项；[总体设计](../v0.1-design.md) 9.2、9.4、13.2 |
 
@@ -44,116 +44,132 @@
 
 ```
 web/apps/web/src/
-  app/layout.tsx                         外壳由路由的 handle 声明；有外壳时 Layout 不包 main
+  main.tsx                               组合根：把阅读视图的增强（readingEnhancements）经 Enhancements 交给阅读视图
+  app/layout.tsx                         唯一的 main 总包着 Outlet；左栏的位置（ShellColumn，display: contents）在 main 之外
   app/rename-form.tsx                    合并的改名表单（工作区、笔记本、页面）
   app/member-row.tsx                     合并的成员行（工作区、笔记本），有效角色的注明
-  app/effective-role.ts                  shared.EffectiveNotebookRole 的同一规则
+  app/effective-role.ts                  shared.EffectiveNotebookRole 的同一规则；writesPages(role)
+  app/confirm-dialog.tsx                 由触发按钮打开，或由调用者持有（held）
+  app/held-dialog.ts                     调用者持有的对话框的类型（菜单里的改名、移动、删除）
   app/shortcuts.ts                       Mod+O 等快捷键的识别（Mod：macOS 上 Cmd，其余 Ctrl）
   services/page.service.ts               listNodes、createPage、renameNode、moveNode、deleteNode、getPageView
-  stores/page-tree.store.ts              按笔记本：树、一个写队列、答复后重读、removed
-  stores/page-tree.ts                    树的纯函数：子页、祖先、深度、子树、子树高度、可用的"未命名 N"
+  stores/page-tree.store.ts              按笔记本：树、一个写队列、答复后重读、removedTo
+  stores/page-tree.ts                    树的纯函数：子页、祖先、深度、子树、子树高度、canHold、可用的"未命名 N"、按标题查找
   stores/root.store.ts                   pagesOf(notebook)
-  pages/notebook/page-tree.tsx           左栏的页面树（nav、嵌套列表、展开、当前页）
-  pages/notebook/page-tree-item.tsx      一项：展开按钮、链接、菜单、拖拽
-  pages/notebook/page-drag.ts            拖拽：命中区的指令 → NodeMove 或被挡下
+  pages/workspace/workspace-layout.tsx   左栏：工作区的 nav（切换器、各节、笔记本两组），其下给页面树的位置（NotebookColumn）
+  pages/notebook/notebook-layout.tsx     把页面树放进左栏的位置；挂快速切换
+  pages/notebook/page-tree.tsx           左栏的页面树：列表、一项（展开、链接、菜单、拖拽）、菜单持有的对话框
+  pages/notebook/page-drag.ts            拖拽：落点的操作 → NodeMove，或被挡下；命中区提供的操作
   pages/notebook/move-page-dialog.tsx    "移动到…"
   pages/notebook/rename-page-dialog.tsx  改名（合并的改名表单）
-  pages/notebook/delete-page-dialog.tsx  删除（子页面数）
-  pages/notebook/new-page.ts             新建：取空闲的"未命名 N"，409 换下一个，至多三次
+  pages/notebook/new-page.ts             新建：取空闲的"未命名 N"，409 换下一个，至多三个标题
   pages/notebook/notebook-home.tsx       根下的页面列表与"新建页面"
+  pages/notebook/quick-switch.tsx        Mod+O 的对话框（combobox 加 listbox）
   pages/page/page-layout.tsx             页面外壳：在树里找到它才显示；删除之后去父页或首页
   pages/page/breadcrumbs.tsx
   pages/page/subpage-list.tsx
-  pages/page/reading-view.tsx            挂上服务端 HTML，按注册顺序运行交互增强
-  reading/enhancement.ts                 交互增强的类型与注册表（M5、M6、M7 在这里注册）
+  pages/page/reading-view.tsx            挂上服务端 HTML，按注册顺序运行交互增强，换 HTML 之前按相反顺序撤销
+  reading/enhancement.ts                 交互增强的类型、注册表（readingEnhancements）、Enhancements、enhance
   reading/highlight.ts                   代码高亮的增强：找代码块、交给 Worker、核对答复、超时终止
-  reading/highlight.worker.ts            Worker：highlight.js/lib/common
-  reading/highlight-markup.ts            答复的白名单：只有 span.hljs-* 与文字
+  reading/highlight.worker.ts            Worker：把每块交给 highlight-block
+  reading/highlight-block.ts             highlight.js/lib/common 的一块（Worker 与测试的同步假 Worker 共用）
+  reading/highlight-markup.ts            答复的白名单：只有文字与 highlight.js 的 span
   reading/reading.css                    排版、.nw-props、.nw-image、脚注、任务项；高亮的明暗两套
-  pages/notebook/quick-switch.tsx        Ctrl+O 的对话框（输入框加列表框）
+server/internal/platform/webui/csp.go    workerPolicy：assets/ 下的脚本带 default-src 'none'（Worker 用它）
 e2e/
-  fixtures/wiki-pages.ts                 页面树与页面的页面对象（fixtures/pages.ts 已是接口 fixture）
+  fixtures/wiki-pages.ts                 页面树、菜单、拖拽、对话框、外壳、快速切换的页面对象（fixtures/pages.ts 是接口的）
   stories/page/pg1…pg6, pg11…pg14        加 "(page)" 版本
 ```
 
+一项（`PageItem`、`useDrag`、`PageMenu`）没有单独成 `page-tree-item.tsx`，在 `page-tree.tsx` 里；删除没有 `delete-page-dialog.tsx`，用 `ConfirmDialog` 的 held 方式。
+
 ### 3.2 外壳与 `main`（M3 移交第 1 项）
 
-`WorkspaceLayout` 的路由带 `handle: { shell: true }`。`Layout` 用 `useMatches()` 看匹配里有没有外壳：没有时照旧用 `<main>` 包着 `Outlet`；有时只给一个容器，外壳自己布局：左栏是 `<div>`（里面的 `nav` 照旧），右边的内容区是 `<main>`。地标与布局对应：左栏是导航，页面区域是主体。W3 断言的 `main` 的内边距随之改为内容区的；`[data-shell]` 留着给页面对象找切换器。
+`Layout` 只有一个 `<main>`，总包着 `Outlet`；它之前给左栏一个不生成盒子的位置（`div.contents`，经 `ShellColumn` 的 context 交出去）。`WorkspaceLayout` 用 `createPortal` 把左栏放进这个位置，左栏于是在 `main` 之外、页面区域是 `main`；外壳自己的 `NotLoaded`、404 与子路由的错误边界照样在 `main` 里。不用路由的 `handle` 与 `useMatches`：错误边界在 `:slug` 之上时，`useMatches` 仍带着外壳的 `handle`，那时就没有 `main` 了。
+
+左栏外层不是地标（M3 定过它是主导航，不是补充内容）：工作区的 `nav`（名称是工作区名）里依次是切换器、各节、笔记本两组；其下是给页面树的位置（`NotebookColumn`），`NotebookLayout` 同样用 `createPortal` 把树放进去。W3 断言唯一的 `main` 之外有左栏；`[data-shell]` 留着给页面对象找切换器。
 
 ### 3.3 合并的组件与有效角色（M3 移交第 2、3 项）
 
-- `app/member-row.tsx`：一个成员行，参数是角色的列表与文案前缀、移除的标题与正文；工作区与笔记本的成员页都用它。
-- `app/rename-form.tsx`：一个改名表单，参数是检查函数、`fieldTexts`、提示、`autoComplete`、提交（返回 Promise）与按钮文案；工作区、笔记本的设置页与页面的改名对话框都用它。页面标题与笔记本名称是同一个规则（`shared.CheckTitle`），检查与 `fieldTexts` 用 `notebookNameProblem`、`notebookNameTexts`，改名接口的字段是 `name`。
-- 有效角色：笔记本的成员页另读工作区的成员列表（`useMembers(workspace)`，访客也能读，没有地址），按 `shared.EffectiveNotebookRole` 的同一规则（`app/effective-role.ts`，与 `test/notebook-server.ts` 的规则共用测试用例）算出；显式角色低于有效角色时行上注明（"阅读者 · 经工作区开放为编辑者"）。工作区成员列表没读到之前或读取失败时不注明：注明是补充，不挡住成员列表本身。
+- `app/member-row.tsx`：一个成员行，参数是成员、角色的列表与文案、注明、移除的标题与正文、改角色与移除；工作区与笔记本的成员页都用它。
+- `app/rename-form.tsx`：一个改名表单，参数是当前名、标签、提示、`autoComplete`、检查函数、`fieldTexts`、提交（返回 Promise）、按钮文案与保存之后的回调；工作区、笔记本的设置页与页面的改名对话框都用它。页面标题与笔记本名称是同一个规则（`shared.CheckTitle`），检查与 `fieldTexts` 用 `notebookNameProblem`、`notebookNameTexts`，改名接口的字段是 `name`。
+- 有效角色：笔记本的成员页另读工作区的成员列表（`useMembers(workspace)`），按 `shared.EffectiveNotebookRole` 的同一规则（`app/effective-role.ts`，与 `test/notebook-server.ts` 共用测试用例）算出；显式角色低于有效角色时行上注明（"阅读者 · 经工作区开放为编辑者"）。工作区成员列表没读到之前或读取失败时不注明。
+- 页面的写权限 `writesPages(role)` 也在 `app/effective-role.ts`：编辑者与管理员，别的角色（含以后新增、这个客户端还不认识的）都不写。
 
 ### 3.4 页面的数据
 
 - `PageService`：`listNodes`、`createPage`、`renameNode`、`moveNode`、`deleteNode`、`getPageView`；类型从生成的客户端转出。
 - `PageTreeStore`（`RootStore.pagesOf(notebook)`，按代、按笔记本 id 缓存）：
-  - `nodes`（先序）与派生的 `byId`、`childrenOf`；读取经 SWR，键 `["pages", notebook.id]`，fetcher 是 store 的 `load()`。
-  - 写（新建、改名、移动、删除）走同一个 `oneAtATime` 队列；每次答复之后（成功或失败）重读整棵树，答复带回的节点不在本地套用（M4 总设计第 4 节"前端的页面数据"：不同节点的写互相改变位置，客户端不推算次序）。
-  - 与写重叠的读照 `notebook.store` 的 `changesAnswered` 丢弃；删除成功的 id 进 `removed`，页面外壳用 `wasRemoved` 区分"本标签页删的"与"不存在"。
+  - `nodes`（服务端的列表，`observableRef` 整体替换）与派生的 `tree`（`byId`、`childrenOf`）；读取经 SWR，键 `["pages", notebook.id]`，fetcher 是 store 的 `load()`。读到的与原来相同时保留原数组，聚焦引起的重读不再重渲染。
+  - 写（新建、改名、移动、删除）走同一个 `oneAtATime` 队列；每次答复之后（成功或失败）重读整棵树再结束，答复带回的节点不在本地套用（M4 总设计第 4 节）。重读失败时树保持原样，等 SWR 再读。
+  - 与写重叠的读照 `notebook.store` 的 `changesAnswered` 丢弃，再读一次。
+  - 删除：子树与它的父页在删除轮到时才从树里取（排在前面的新建创建的页已在里面）；答复之后（404 `page.not_found` 当作已删除）子树的每页记进 `removed`，值是子树的父页（null：首页）。`removedTo(id)` 告诉外壳去哪里；`tree` 滤掉这些页，重读成功与否，删掉的页都立刻离开树。
 - 阅读视图：SWR 键 `["page-view", id]`，不进 store（只读、按页面）。
-- 纯函数（`stores/page-tree.ts`）：子页、祖先链、深度、子树与子树的高度（拖拽与"移动到…"在发出之前挡下成环与超过 10 层）、兄弟里第一个空闲的"未命名 N"（按标题键比较：NFC 后转小写，近似服务端的键；不准时服务端答 409，换下一个）。
+- 纯函数（`stores/page-tree.ts`）：子页、祖先链、深度、子树与子树的高度、`canHold`（拖拽与"移动到…"在发出之前挡下成环与超过 10 层）、兄弟里第一个空闲的"未命名 N"（按标题键比较：NFC 后转小写，近似服务端的键；不准时服务端答 409，换下一个）、`findPages`（快速切换）。
 
 ### 3.5 路由与页面外壳
 
-- `notebooks/:id/pages/:pageId` 在 `NotebookLayout` 之下，懒加载。`PageLayout` 在树里找这一页：树没读到时 `NotLoaded`；找到时显示；`wasRemoved` 时 `Navigate` 去它的父页（父页也删了就去笔记本首页），带 `arrived`；不在树里时显示工作区内的 404。
-- 页面外壳：面包屑（`nav aria-label` + `ol`，笔记本、祖先，当前页带 `aria-current="page"`）；`h1` 是节点名（`useArrivalFocus`）；阅读视图；子页面列表（`ul aria-label`，来自树）。标题、祖先与子页都取自树，不另调 `getPage`：树的重读即刷新它们。
+- `notebooks/:id/pages/:pageId` 在 `NotebookLayout` 之下。`PageLayout` 在树里找这一页：树没读到时 `NotLoaded`；找到时显示；不在树里而 `removedTo` 有值时 `Navigate` 去那个父页（父页也不在树里就去笔记本首页），带 `arrived`；否则显示工作区内的 404。
+- 页面外壳：面包屑（`nav aria-label` + `ol`，笔记本、祖先，当前页带 `aria-current="page"`；分隔符是 `aria-hidden` 的元素）；`h1` 是节点名（`useArrivalFocus`）；阅读视图；子页面列表（`ul aria-label`，来自树）。标题、祖先与子页都取自树，不另调 `getPage`：树的重读即刷新它们。
 - 笔记本首页：根下的页面列表（与子页面列表同一个组件）；编辑者与管理员有"新建页面"；空的时候照旧"还没有页面"。
 - 删除当前页（或它的祖先）之后外壳去父页或首页，焦点照 13.2 第 12 条落在目的页的 `h1`。
 
 ### 3.6 左栏的页面树
 
-- 位置：打开一本笔记本时，左栏在笔记本两组之下多一个 `nav`（`aria-label` 是"<笔记本名>的页面"），按笔记本 id 重新挂载（13.2 第 16 条）。不用 ARIA 的 `tree` 角色：项是链接，用嵌套的列表与展开按钮（`aria-expanded`、`aria-controls`），键盘走 Tab 即可，屏幕阅读器读出层级。
-- 每项：展开按钮（有子页时）、链接（当前页 `aria-current="page"`）、编辑者与管理员的菜单（新建子页、改名、移动到…、删除）。阅读者没有菜单、没有拖拽、没有"新建页面"（PG12）。
+- 位置：打开一本笔记本时，`NotebookLayout` 把树放进左栏工作区 `nav` 之下的位置（3.2），树是自己的 `nav`（`aria-label` 是"<笔记本名>的页面"），按笔记本 id 重新挂载（13.2 第 16 条）。不用 ARIA 的 `tree` 角色：项是链接，用嵌套的列表与展开按钮（`aria-expanded`、`aria-controls`），键盘走 Tab 即可，屏幕阅读器读出层级。
+- 每项：展开按钮（有子页时）、链接（当前页 `aria-current="page"`）、编辑者与管理员的菜单按钮（"<页名>的操作"：新建子页、改名、移动到…、删除）。菜单按钮平时在悬停、获得焦点或菜单打开时显示，有手指指针的设备上（`any-pointer: coarse`，触屏笔记本也算）一直显示。阅读者没有菜单、没有拖拽、没有"新建页面"（PG12）。
+- 编辑者的树里链接不可拖（`draggable={false}`）：链接默认可拖，浏览器把离起点最近的可拖元素当作拖拽源，从标题上拖起来的会是链接而不是这一行。代价是编辑者不能把树里的链接拖到书签栏（右键仍可复制、在新标签页打开）；阅读者的链接照常可拖。
 - 展开的状态按笔记本存在内存里（随代），当前页的祖先自动展开；不进 `localStorage`。
-- 树没读到时这一块是 `NotLoaded`（带"重试"）；读到之后，别处的改动在重读之后出现（13.2 第 1 条的"重新读取显示别处的改动"）。
+- 树没读到时这一块是 `NotLoaded`（带"重试"）；读到之后，别处的改动在重读之后出现（13.2 第 1 条）。
 
 ### 3.7 树的写
 
-- **新建**：根下（树头与首页的"新建页面"）或某页下（菜单的"新建子页"）；标题是兄弟里第一个空闲的"未命名"、"未命名 2"……，答 409 `page.title_taken` 换下一个，至多三次（M4 总设计第 4 节）；成功之后去新页面（`useMounted` 之后才导航），父页展开。
-- **改名**：菜单的"改名"打开对话框，里面是合并的改名表单；422 与 409 留在表单里。
-- **删除**：确认对话框写明子页面数（从树里数）；成功之后若当前页在被删的子树里，外壳去父页或首页（3.5）。404 当作已删除（照 `notebook.store`）。
-- **移动到…**：对话框里两个下拉框：父页（"笔记本的根"与其余页面，排除自己与子树、排除放进去会超过 10 层的）与位置（"最前"、"在 X 之后"……、"最后"）；键盘完全可用（WCAG 2.2 的 2.5.7）。答 409（`page.cycle`、`page.too_deep`、`page.title_taken`）留在对话框里。
-- **拖拽**：`@atlaskit/pragmatic-drag-and-drop` 与它的树形命中区（`attachInstruction`、`extractInstruction`）：放在前、放在后、成为子页（成为最后一个子页，省略 `after_id`）。指令到请求是纯函数（`page-drag.ts`）：放在某项之前是 `after_id` = 它的前一个兄弟（没有则 null），之后是 `after_id` = 它；拖到自己或自己的子树里、或会超过 10 层的，指令被挡下（`instruction-blocked`），不发请求。拖拽中显示落点的指示线。
+- **新建**：根下（树头与首页的"新建页面"）或某页下（菜单的"新建子页"）；标题是兄弟里第一个空闲的"未命名"、"未命名 2"……，答 409 `page.title_taken` 换下一个，至多试三个标题（M4 总设计第 4 节）。成功之后，发出的组件还在、地址也没变（location key），才去新页面（`arrived`）；用户在答复之前去了别处就留在那里（13.2 第 16 条）。深度已到 10 的页面没有"新建子页"。`useNewPage().create` 答失败的原因，由调用处显示：树里与拖拽共用"最近一次写的失败"一个状态，首页有自己的。
+- **改名**：菜单的"改名"打开对话框，里面是合并的改名表单；422 与 409 留在表单里，保存之后对话框关闭。
+- **删除**：`ConfirmDialog` 的 held 方式（菜单持有，没有触发按钮）；确认写明子页面数（从树里数）。删掉的页立刻离开树（3.4）：当前页在被删的子树里时外壳去父页或首页（3.5），焦点由那一页的标题接过；否则焦点给树头。对话框关闭时焦点的去处按 store 判断（`removedTo`），不按确认框的结果：删除一答复，这一项与它持有的确认框就随树卸载，可能早于确认框知道删除已成。
+- **移动到…**：对话框里两个下拉框：父页（"笔记本的顶层"与其余页面，以祖先链加页名显示，排除自己与子树、排除放进去会超过 10 层的）与位置（"最前"、"在 X 之后"……、"最后"）；打开时在这一页现在的位置。树在对话框开着时重读、所选的父页或位置不再出现时，回到这一页的父页与"最后"：选择框显示的就是发出的。键盘完全可用（WCAG 2.2 的 2.5.7）。答 409（`page.cycle`、`page.too_deep`、`page.title_taken`）留在对话框里。
+- **焦点**：改名、移动的对话框关闭之后与取消删除之后，焦点给这一页的菜单按钮；移到别的父页之后这一项是新挂的，树按 `data-actions-of` 找到它（找不到给树头）。
+- **拖拽**：`@atlaskit/pragmatic-drag-and-drop` 4.0.0 与命中区 3.0.0 的 list-item：之前、之后、放进去（成为最后一个子页，省略 `after_id`），每种可以单独标为不可用或被挡下。不用 tree-item：它多一种按指针横向位置推算的 reparent，我们的规则只有这三种。命中区是行的上 1/4（之前）、下 1/4（之后）与中间（放进去）。落点到请求是纯函数（`page-drag.ts`）：放在某项之前是 `after_id` = 它的前一个兄弟（除去被拖的那页；没有则 null），之后是 `after_id` = 它；拖到自己、自己的子树里、或会超过 10 层的被挡下（显示为红色），不发请求。展开着、显示子页的那一项不提供"之后"：线会画在它与第一个子页之间，页却会落在整棵子树之后；下半部因此归"放进去"，要放在它的子树之后就放在下一页之前；它是最后一个兄弟、后面没有下一页时，先收起，或用"移动到…"。拖拽中显示落点：之前、之后是从页名的层级起画的线，放进去是这一行的边框。
 - 任何一个写失败时的提示用 `errorText`；树都会重读。
 
 ### 3.8 阅读视图与交互增强
 
-- `ReadingView` 把服务端的 HTML 挂进 `article`（服务端已清洗，前端不再改它的结构），挂上之后按注册顺序运行交互增强：每个增强拿到容器元素与上下文（工作区、笔记本、页面 id、`revision`、调用者的角色、重新读取阅读视图的方法），返回自己的清理函数；HTML 换掉之前先按相反的顺序清理，再重跑（M4 总设计第 8 节）。
-- 注册表在 `reading/enhancement.ts`：一个数组，组合根（`app/providers.tsx` 一侧）交给 `ReadingView`；M4 只有代码高亮。一个增强抛错只记日志（`console.error` 之外的上报 M12 再说）、不影响其余的增强与正文。
+- `ReadingView` 把服务端的 HTML 挂进 `article`（服务端已清洗，前端不再改它的结构），挂上之后按注册顺序运行交互增强：每个增强拿到容器元素与上下文（工作区、笔记本、页面 id、`revision`、调用者的角色、重新读取阅读视图的方法），返回撤销它的函数或什么都不返回；HTML 换掉之前、阅读视图离开时，按相反的顺序撤销（M4 总设计第 8 节）。
+- 注册表 `readingEnhancements` 在 `reading/enhancement.ts`；组合根 `main.tsx` 用 `Enhancements` 的 context 包住 `SessionRoot`，把它交给阅读视图。context 的默认值是空列表：测试默认没有增强，`renderApp` 的第四个参数给假的（jsdom 没有 Worker）。M4 只有代码高亮。一个增强运行或撤销时抛错只记日志（`console.error` 之外的上报 M12 再说）、不影响其余的增强与正文。
 - 阅读视图的 SWR 读取有 `NotLoaded` 与重读；`revision` 换了（别处写了）重读之后 HTML 与增强都换。
-- 阅读视图答 503 `server_busy`（P4 的解析预算，带 `Retry-After`）时，`NotLoaded` 显示"服务器繁忙"，SWR 照 `Retry-After` 自动重读（`app/retry.ts`，M1/P5 的规则）；vitest 一格。
-- 样式（`reading/reading.css`，Tailwind 的 `@layer components`）：标题、段落、列表、引用、表格（`align` 属性）、代码块、任务项、脚注（`footnote-ref`、`footnotes`）、`.nw-props`（可嵌套）、`.nw-image`（替代文字与地址）；高亮的明暗两套（暗色在 `.dark` 之下）。
+- 阅读视图答 503 `server_busy`（P4 的解析预算，带 `Retry-After`）时，`NotLoaded` 显示"服务器繁忙"，SWR 照 `Retry-After` 自动重读（`app/retry.ts`）。
+- 样式（`reading/reading.css`，`@layer components`，由 `styles.css` 引入）：标题、段落、列表、引用、表格（列的 `align` 属性定对齐，其余从头对齐；表格保持表格：显示为块的表格在一些读屏器里丢掉表格语义；宽的由阅读视图整体横向滚动（`.nw-reading` 的 `overflow-x: auto`），页面本身不横向滚动）、代码块、任务项、脚注、`.nw-props`（可嵌套）、`.nw-image`（替代文字与地址）；高亮的明暗两套（暗色在 `.dark` 之下）。
 
 ### 3.9 代码高亮
 
-- 增强找出 `pre > code[class^="language-"]`；没有就不建 Worker。有时建一个 Worker（每个阅读视图一个，清理时终止），把各块的文字与语言发过去；语言不在 highlight.js 的 `common` 集里的照常显示。
-- 超时：一页的高亮总共 2 秒（常量，有测试钉住）；到时终止 Worker，没着色的块照常显示，不重试。单块超过 100 KB 的不送去高亮。
-- 答复是 highlight.js 的 HTML；主线程用 `<template>` 解析，只接受文字与 `span class="hljs-…"`（`highlight-markup.ts` 的白名单），解析出的文字必须与原文一致，否则这块不着色。前端因此不信任 highlight.js 的输出。
-- Worker 是同源的独立文件（Vite 的 `new Worker(new URL(...), { type: "module" })`），满足 `script-src 'self'`；不用内联与 blob。构建产物的 Worker 文件在 `assets/` 下，e2e 的 PG5 在页面上看到着色、没有 CSP 违规。
-- vitest：jsdom 没有 Worker，高亮的增强接受一个 Worker 工厂；测试用同步的假 Worker（直接调 highlight.js）与不答复的假 Worker（超时）。
+- 增强找出 `pre > code[class^="language-"]`；没有就不建 Worker。有时建一个 Worker（每个阅读视图一个），把各块的序号、语言与文字一次发过去，Worker 每块答一次；语言不在 highlight.js 的 `common` 集里的答 null，照常显示。全部答完、到时或撤销时终止 Worker。
+- 超时：一页的高亮总共 2 秒（常量，有测试钉住），从建 Worker 起算，含 Worker 脚本的下载与解析：慢网络第一次加载超过 2 秒时这一页不着色，之后脚本在缓存里（`immutable`）。到时没着色的块照常显示，不重试。单块超过 100 KB（UTF-8 字节）的不送去高亮。
+- 答复是 highlight.js 的 HTML；主线程用 `<template>` 解析，只接受文字与 `span`，`span` 只能有 `class`，每个 class 是 highlight.js 的：作用域 `hljs-*`、子作用域的后缀（`function_`、`class_`、`inherited__`）、嵌入语言的 `language-*`（`highlight-markup.ts`）；解析出的文字必须与原文一致，否则这块不着色。前端因此不信任 highlight.js 的输出。
+- Worker 是同源的独立文件（`new Worker(new URL("./highlight.worker.ts", import.meta.url), { type: "module" })`），满足页面的 `script-src 'self'`；不用内联与 blob。Vite 按默认的 iife 打成 `assets/highlight.worker-*.js`（约 156 KB）。专用 Worker 用的是自己脚本响应的策略，不继承页面的：服务端给 `assets/` 下的脚本加 `Content-Security-Policy: default-src 'none'`（页面加载的脚本忽略它），Worker 因此不能取网络。PG5 在真实浏览器里看到着色、Worker 同源且带这个策略、没有 CSP 违规。
+- Worker 的文件只给自己用到的那部分全局作用域（`addEventListener`、`postMessage`）写类型，经 `globalThis` 取得：没有给 tsconfig 加 WebWorker 的 lib（它与 DOM 的 lib 冲突）。
+- vitest：jsdom 没有 Worker，高亮的增强接受一个 Worker 工厂；测试用同步的假 Worker（调用与 Worker 相同的 `highlight-block.ts`）与不答复的假 Worker（超时）。
 
 ### 3.10 快速切换
 
-- `Mod+O`（macOS 上 Cmd，其余 Ctrl）在打开笔记本时生效，阻止浏览器的"打开文件"；对话框里一个输入框与一个列表框（`role="listbox"`、`aria-activedescendant`），上下键移动、回车前往、Esc 关闭。
-- 在已加载的树上按标题查找（NFC 后转小写的子串），每项的次要文字是祖先链；最多显示 50 项。树没读到时对话框里说明并给"重试"。
+- `Mod+O`（macOS 上 Cmd，其余 Ctrl；只有这一个修饰键）在打开笔记本时生效（挂在 `NotebookLayout`：首页、设置、页面都算），阻止浏览器的"打开文件"；已有对话框开着时只阻止、不打开。按键取 `key` 的拉丁字母；不是拉丁字母的布局（俄语、希腊语）取 `code` 所在位置的拉丁字母。
+- 对话框里一个输入框（`role="combobox"`、`aria-activedescendant`；有列表时 `aria-controls`）与一个列表框（`role="listbox"`），上下键移动、回车前往（`arrived`）、Esc 关闭；活动项在列表变短（树重读）时夹在长度之内。关闭时焦点回到打开之前的元素（它还在文档里时）；前往了别的页面就不还原，由那一页的标题接过焦点：到达的焦点与关闭的还原谁先谁后不定，页面路由已加载时到达在前。选的正是显示中的页时不导航、只关闭。oxlint 的 jsx-a11y 有四条规则偏好原生元素，逐处带理由禁用：原生 `select` 的选项不能显示祖先链。
+- 在已加载的树上按标题查找（NFC 后转小写的子串，从上到下），每项的次要文字是祖先链；最多显示 50 项。"没有找到"与"只显示前 50 个"在 `<output>`（status）里，空时 `sr-only`、一直在无障碍树里（不在树里的 live region 与内容同时出现，多数读屏器不播报）；结果数的每次变化不播报。树没读到时对话框里说明并给"重试"。
 
 ### 3.11 文案
 
-页面的新键放在 `page.*`（`page.untitled`、`page.untitledN`、`page.new`、`page.newSubpage`、`page.rename`、`page.moveTo`、`page.delete`、`page.deleteBody`（带子页面数）、`page.tree`（nav 的标签）、`page.subpages`、`page.breadcrumb`、`page.quickSwitch*`……）；中英两份同键（类型与占位符的测试）。字段 `title` 的错误文案 `field.title.*` 补上（`createPage`）。
+页面的新键放在 `page.*`（`page.untitled`、`page.untitledN`、`page.new`、`page.newSubpage`、`page.actions`、`page.rename`、`page.moveTo`、`page.move*`、`page.delete*`（带子页面数）、`page.tree`（nav 的标签）、`page.subpages`、`page.breadcrumb`、`page.quickSwitch*`……）；中英两份同键（类型与占位符的测试）。`field.title.*` 没有补：页面的标题只有两处输入，新建取生成的"未命名 N"，改名复用笔记本名的规则与文案（同一个 `shared.CheckTitle`）。
 
 ### 3.12 已知差异与安全
 
 - GitHub 式的 `<details><summary>` 里写 Markdown，渲染为空的折叠块（HTML 块各自是作用域，P3 审查 Q1）：写进帮助的已知差异。
 - 外部图片是链接、不发请求（PG6 的页面版本另挂一个请求监听）；同站的链接点开是整页导航（应用内跳转是 M6 的链接跳转）。
-- 页面版本的 PG6 在真实浏览器里核对：服务端 HTML 挂上之后没有脚本执行、没有 CSP 违规（P3 审查第 115 行留给 P5 的真实浏览器检查）。
+- 页面版本的 PG6 在真实浏览器里核对：服务端 HTML 挂上之后没有脚本执行、没有对话框、没有 CSP 违规、没有发往别的主机的请求（P3 审查第 115 行留给 P5 的真实浏览器检查）。
+- 高亮的 Worker 在自己的 CSP（`default-src 'none'`）之下运行（3.9）。
 
 ### 3.13 e2e 的页面版本
 
 - 页面对象在 `fixtures/wiki-pages.ts`：树（展开、菜单、拖拽）、页面外壳、"移动到…"、快速切换。
-- PG1：树头与菜单新建，"未命名"与"未命名 2"，落库 `web`；PG2：改名对话框，422 与 409 留在表单；PG3：拖拽排序与换父页、"移动到…"、成环与过深在对话框里被挡下或答 409；PG4：删除子树，确认写明子页面数，之后外壳去父页；PG5：阅读视图的元素与着色、属性表在正文之上；PG6：没有脚本、没有 CSP 违规、外部图片没有请求；PG11：面包屑、子页面列表、`Ctrl+O`；PG12：阅读者没有新建、菜单、拖拽；PG13：删除笔记本之后它的页面在左栏与地址里都没了；PG14：无主清单显示页面正文的大小。
+- PG1：树头与菜单新建，"未命名"与"未命名 2"，落库 `web`；PG2：改名对话框，422 与 409 留在表单；PG3：拖拽排序与换父页、拖到展开着的页的下沿进入它的子页、"移动到…"、成环与过深在对话框里被挡下或答 409；PG4：删除子树，确认写明子页面数，之后外壳去父页；PG5：阅读视图的元素与着色、属性表在正文之上，Worker 同源、带 `default-src 'none'`；PG6：没有脚本、没有 CSP 违规、外部图片没有请求；PG11：面包屑、子页面列表、`Ctrl+O`；PG12：阅读者没有新建、菜单、拖拽；PG13：删除笔记本之后它的页面在左栏与地址里都没了；PG14：无主清单显示页面正文的大小。
 
 ## 4. 实施步骤
 
@@ -184,4 +200,46 @@ e2e/
 
 ## 7. 结果
 
-（完成后填写）
+- 分支 `m4-p5-tree-reading`：S1 `2cafdb6`；S2 `a0fd8df`；S3 `6a156f2`；S4 `54d95ed`；S5 `bc1f507`；审查修复 `8037df5`、`2d1a855`（修复核对的发现）；`b0eb02e` 合并（`--no-ff`）。
+- 门禁：每个 Step 与审查修复的 `make check` 为绿（web 的 vitest 最后 1176 个）；`make gen-check`、`make e2e`（141 个）、`make image-smoke` 为绿；持续集成四个任务为绿。
+- 审查：[P5 审查](reviews/P5-tree-reading-review.md)。
+  - Major 3：跨父页"移动到…"之后焦点丢到 body；快速切换关闭之后焦点丢到 body；展开着的页上"放在之后"，指示线与落点不一致。
+  - Minor 12：删除排在新建之后漏掉新页；显示中的页被删、重读又失败时停在已删的页上；新建答复之前离开了仍被拉去新页；失败提示互相覆盖；"移动到…"的选项在重读之后失效；触屏上看不到菜单按钮；切换器不在地标里；Worker 没有 CSP；e2e 不轮询的读取；快速切换的三处；重读引起的重渲染；代码质量。疑问 7，采纳 4。
+  - 修复另经 Opus 核对：2 个 Major 是修复带进来的焦点回归（删掉的不是当前页、重读慢时焦点到 body；快速切换前往别的页之后焦点被还原回去），另有 3 Minor、6 Nit 与 4 条处置不属实，第二轮修复处理。
+  - 反向对照：S1 7、S2 9、S3 44、S4 26、S5 23（另有 e2e 6），审查修复 26，核对之后 8，全部失败。
+
+**负责人可改的决定**：
+
+- 编辑者树里的链接不可拖（3.6）：行整体是拖拽源，代价是不能把链接拖到书签栏；阅读者的照常可拖。
+- 展开着的页的下半部是"放进去"（3.7）：要放在它的子树之后就放在下一页之前；它是最后一个兄弟时先收起，或用"移动到…"。
+- 一页的高亮总共 2 秒，含 Worker 脚本的第一次下载（3.9）。
+
+**与计划的出入**（已同步进上文）：
+
+1. 外壳的 `main`：不用路由的 handle，改为布局给一个不生成盒子的位置（`display: contents`）与 context，工作区外壳经 `createPortal` 把左栏放进去；`main` 只有一个、总包着 `Outlet`（3.2）。页面树同样经 `NotebookColumn` 放进左栏，随笔记本换代（3.6）。
+2. 一项（`PageItem`、`useDrag`、`PageMenu`）在 `page-tree.tsx` 里，没有 `page-tree-item.tsx`；删除用 `ConfirmDialog` 新的 held 方式，没有 `delete-page-dialog.tsx`（3.1、3.7）。
+3. 拖拽用命中区的 list-item，不用 tree-item（3.7）。jsdom 里不能拖：落点是纯函数、有单测，接线由 PG3 在真实浏览器里覆盖。
+4. `field.title.*` 没有补：改名复用笔记本名的规则与文案（3.11）。
+5. 增强的注册表在 `reading/enhancement.ts`，由组合根 `main.tsx` 经 context 交给阅读视图；context 默认是空列表，测试默认没有增强（3.8）。
+6. Worker 不加 WebWorker 的 lib（与 DOM 的冲突），只给用到的全局作用域写类型；高亮函数 Worker 与测试共用。白名单另放过子作用域的后缀与嵌入语言的 `language-*`（3.9）。
+7. 编辑者树里的链接 `draggable={false}`：S5 的真实浏览器拖拽发现，从标题上拖起的是链接，不是登记过的那一行（3.6）。
+8. 快速切换挂在 `NotebookLayout`，笔记本的首页、设置、页面都生效（3.10）。
+9. 审查之后：
+   - 删掉的页立刻离开树，`removed` 可观察；读到的树与原来相同时保留原数组（3.4）；
+   - 对话框关闭之后的焦点按 `data-actions-of` 找到这一页的菜单按钮，删除的去处按 store 判断（3.7）；
+   - 展开项不提供"之后"，指示线从页名的层级起画；深度 10 的页没有"新建子页"；新建只在地址没变时前往新页；树里一个"最近一次写的失败"；"移动到…"的选项失效时回到原位（3.7）；
+   - 快速切换不叠在别的对话框上、活动项夹在长度之内、状态在 `<output>`、前往了别的页不还原焦点、取 `code` 位置的拉丁字母（3.10）；
+   - `assets/` 下的脚本带 `default-src 'none'`（3.9、3.12）；
+   - 切换器在工作区的 `nav` 里（3.2）；面包屑的分隔符对读屏器隐藏（3.5）；
+   - 表格保持表格，宽的随阅读视图横向滚动（3.8）；
+   - `ConfirmDialog` 由触发按钮打开或由调用者持有、二者择一，`HeldDialog` 一处（3.1）；`writesPages` 在 `app/effective-role.ts`，只认编辑者与管理员（3.3）。
+
+**留给后面的**：
+
+- **M4 收尾的待定项**（写进 M4 总设计第 8 节）：
+  - `document.title` 随页面变化（第 6 节）；
+  - 正文里同站链接的应用内跳转（现在是整页导航，3.12）；
+  - 删除之后的导航改在答复处统一做：旧位置渲染出的 `<Navigate>` 可能盖过同时发起的导航（审查 Q3）；新建的答复只看已提交的地址，导航还在 transition 里时看不到（修复核对的 Nit）；
+  - 宽表格外包一层可滚动、可聚焦的区域，由渲染器输出（审查 Q4、修复核对 mn-1）。
+- **给 P6**：页面外壳与阅读视图的 SWR 键是 `["page-view", id]`，编辑器保存之后经它重读。
+- **已落实的移交**：M3 移交第 1–3 项（3.2、3.3）；P4 留给 P5 的 503 `server_busy`：阅读视图按 `Retry-After` 重读，新建的失败显示"服务器繁忙"。
