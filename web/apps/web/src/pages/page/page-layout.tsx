@@ -14,7 +14,7 @@ import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
 import { useT } from "../../i18n/i18n";
 import type { Notebook } from "../../services/notebook.service";
-import type { TreeNode } from "../../services/page.service";
+import type { EditLock, TreeNode } from "../../services/page.service";
 import { usePageTree, useStore } from "../../stores/context";
 import type { PageEditing } from "../../stores/page-editing";
 import { useNotebook } from "../notebook/notebook-layout";
@@ -123,9 +123,9 @@ const PageShell = observer(function PageShell({ notebook, page }: { notebook: No
         heading.current?.focus();
         setEditing(next);
       } else {
-        // The note reads who holds the lock now, and takes the focus.
-        await mutate(["edit-lock", page.id]);
-        lockNote.current?.focus();
+        // The note reads who holds the lock now, and takes the focus; a lock let go meanwhile leaves it on Edit.
+        const lock = await mutate<EditLock>(["edit-lock", page.id]);
+        (lock?.holder ? lockNote : edit).current?.focus();
       }
     } catch (error) {
       if (mounted()) {

@@ -230,8 +230,10 @@ test("the end ends the session, resolving once it is answered; a session opening
   late.answers.open = () => new Promise((resolve) => (open = resolve));
   const beginning = late.editing.begin(false);
   await vi.advanceTimersByTimeAsync(0);
-  await late.editing.end();
+  expect(late.record.size).toBe(1);
+  const ending = late.editing.end();
   open?.({ id: "s9" });
+  await ending;
   await expect(beginning).rejects.toThrow("The edit has ended.");
   expect(late.sent).toEqual(["OPEN", "END s9"]);
   expect(late.record.size).toBe(0);
@@ -306,8 +308,9 @@ test("a save waiting for its lapsed session to open again is not sent once the e
 
   const saving = editing.save("text", 1);
   await vi.advanceTimersByTimeAsync(0);
-  await editing.end();
+  const ending = editing.end();
   open?.({ id: "s9" });
+  await ending;
   expect(await saving).toBe(false);
   expect(sent).toEqual(["OPEN", "OPEN", "END s9"]);
 });

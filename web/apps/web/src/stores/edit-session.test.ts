@@ -147,6 +147,41 @@ test.each<[string, () => Error, (() => Error) | undefined, EditLost]>([
   expect(sent).toHaveLength(before);
 });
 
+test("an opening anew that fails for a passing reason is tried again by the next beat", async () => {
+  const { session, sent, answers } = await opened();
+  answers.beat = () => {
+    answers.beat = undefined;
+    throw refusal(404, "page.edit_session_not_found");
+  };
+  answers.open = () => {
+    answers.open = undefined;
+    throw refusal(503, "server_busy", {}, 1);
+  };
+  await vi.advanceTimersByTimeAsync(editSessionHeartbeat);
+  expect(sent).toEqual(["OPEN", "BEAT s1", "OPEN"]);
+  expect(session.lost).toBeUndefined();
+
+  await vi.advanceTimersByTimeAsync(editSessionHeartbeat);
+  expect(sent).toEqual(["OPEN", "BEAT s1", "OPEN", "OPEN"]);
+  expect(await session.current()).toBe("s2");
+  await session.end();
+});
+
+test("a beat not answered within a heartbeat is given up, so that the next goes", async () => {
+  const { session, sent, answers } = await opened();
+  answers.beat = () => {
+    answers.beat = undefined;
+    return new Promise(() => undefined);
+  };
+  await vi.advanceTimersByTimeAsync(editSessionHeartbeat);
+  expect(sent).toEqual(["OPEN", "BEAT s1"]);
+
+  await vi.advanceTimersByTimeAsync(editSessionHeartbeat);
+  expect(sent).toEqual(["OPEN", "BEAT s1", "BEAT s1"]);
+  expect(session.lost).toBeUndefined();
+  await session.end();
+});
+
 test("a beat that fails otherwise, a network's, is tried again at the next", async () => {
   const { session, sent, answers } = await opened();
   answers.beat = () => {
@@ -283,17 +318,25 @@ test("back from the back-forward cache after the end went out, the lock is taken
   expect(taken.session.lost).toMatchObject({ reason: "taken" });
 });
 
-test("ended while it opens, the session is ended as it opens: the open answers EditEnded, nothing follows the page", async () => {
+test("ended while it opens, the session is ended as it opens, the end resolving once that is answered; nothing follows the page", async () => {
   vi.useFakeTimers();
   const { session, sent, answers, page } = fakeSession();
   const open = deferred<{ id: string }>();
   answers.open = () => open.promise;
   const opening = session.open(false);
   await vi.advanceTimersByTimeAsync(0);
-  await session.end();
+  const ended = deferred<void>();
+  answers.end = () => ended.promise;
+  let done = false;
+  void session.end().then(() => (done = true));
   open.resolve({ id: "s9" });
   await expect(opening).rejects.toBeInstanceOf(EditEnded);
   expect(sent).toEqual(["OPEN", "END s9"]);
+  await vi.advanceTimersByTimeAsync(0);
+  expect(done).toBe(false);
+  ended.resolve();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(done).toBe(true);
   expect(page.listening()).toBe(0);
   expect(vi.getTimerCount()).toBe(0);
 });

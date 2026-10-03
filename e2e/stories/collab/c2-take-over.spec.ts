@@ -84,6 +84,7 @@ test("C2 (page): A edits Notes in one tab; in a second, Edit says A edits it els
   const beat = answerTo(first, "POST", `/api/v0/edit-sessions/${held}/heartbeat`);
   await first.clock.fastForward(20_000);
   expect((await beat).status()).toBe(200);
+  const beaten = Date.now();
 
   const second = await anotherTab(first);
   await second.goto(path);
@@ -93,6 +94,8 @@ test("C2 (page): A edits Notes in one tab; in a second, Edit says A edits it els
   await expect(editorContent(second)).toBeFocused();
 
   await expect(lostBanner(first)).toContainText("You went on editing this page elsewhere: this editor saves no more.");
+  // The banner came before the next periodic beat, 20 seconds after the last: it was the event's.
+  expect(Date.now() - beaten).toBeLessThan(20_000);
   await expect(lostBanner(first)).toBeFocused();
   await expect(editorContent(first)).toHaveAttribute("contenteditable", "false");
   await expect(editorContent(first)).toContainText("One");

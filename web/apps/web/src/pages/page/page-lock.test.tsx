@@ -117,6 +117,45 @@ test("Done goes back to reading once the session's end is answered: the lock rea
   expect(screen.queryByText("You are editing this page elsewhere.")).toBeNull();
 });
 
+test("Edit refused by a lock let go before it is read again leaves the focus on Edit", async () => {
+  const server = pageServer({
+    answers: {
+      "POST /api/v0/pages/*/edit-sessions": () =>
+        problem(409, "page.locked", { lock: { page_id: guide.id, user_id: bob.user_id, display_name: "Bob" } }),
+    },
+  });
+  await pressEdit(server);
+
+  const edit = screen.getByRole("button", { name: "Edit" });
+  await waitFor(() => expect(edit.getAttribute("aria-busy")).toBeNull());
+  expect(document.activeElement).toBe(edit);
+});
+
+test("Edit here, then Done: the note does not show the account's own edit that was taken over", async () => {
+  let gate: Promise<void> | undefined;
+  let release: (() => void) | undefined;
+  const server = pageServer({
+    answers: {
+      // The lock's reads after Done wait for the test.
+      "GET /api/v0/pages/*/edit-lock": async () => {
+        await gate;
+        return json(server.lockOf(guide.id));
+      },
+    },
+  });
+  server.hold(guide.id, ada);
+  const { user } = await pressEdit(server);
+  await user.click(await screen.findByRole("button", { name: "Edit here" }));
+  await pageEditor();
+  gate = new Promise((resolve) => (release = resolve));
+
+  await user.click(screen.getByRole("button", { name: "Done" }));
+  expect(await screen.findByRole("article", { name: "Guide" })).toBeTruthy();
+  expect(screen.queryByText("You are editing this page elsewhere.")).toBeNull();
+  await act(async () => release?.());
+  expect(screen.queryByText("You are editing this page elsewhere.")).toBeNull();
+});
+
 test("the account editing the page elsewhere may edit here: the edit elsewhere is taken over", async () => {
   const server = pageServer();
   const elsewhere = server.hold(guide.id, ada);
@@ -203,6 +242,15 @@ test("an edit lost saves nothing: Ctrl+S sends nothing; Back to reading asks fir
   await user.click(within(dialog).getByRole("button", { name: "Stay" }));
   await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
   expect(screen.getByRole("textbox", { name: "Page content" })).toBeTruthy();
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("alert")));
+  // Leaving for another page asks too; Stay brings the focus back to the banner.
+  await user.click(screen.getByRole("link", { name: "Notes" }));
+  await user.click(
+    within(await screen.findByRole("alertdialog", { name: "Leave without saving?" })).getByRole("button", {
+      name: "Stay",
+    })
+  );
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("alert")));
 
   ctrl("e");
   await user.click(
@@ -279,6 +327,8 @@ test("a page deleted while this tab edits it unsaved stays, saying so, until the
     })
   );
   expect(await screen.findByRole("heading", { level: 1, name: "Page not found" })).toBeTruthy();
+  // The page gone, its view is not read as the edit is left.
+  expect(server.sent).not.toContain("GET view undefined");
 });
 
 test("a page deleted while this tab edits it with nothing unsaved is no page at once", async () => {

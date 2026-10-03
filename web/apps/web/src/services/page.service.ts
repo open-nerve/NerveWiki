@@ -99,10 +99,12 @@ export class PageService {
     );
   }
 
-  async heartbeatEditSession(id: string): Promise<EditSession> {
+  /** heartbeatEditSession keeps the session id alive; signal gives the beat up. */
+  async heartbeatEditSession(id: string, signal?: AbortSignal): Promise<EditSession> {
     return unwrap(
       await this.api.POST("/api/v0/edit-sessions/{edit_session_id}/heartbeat", {
         params: { path: { edit_session_id: id } },
+        signal,
       })
     );
   }

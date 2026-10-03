@@ -129,17 +129,30 @@ export class PageEditing {
   /**
    * begin begins the edit, once: it opens the session, with takeOver or
    * not, and reads the content once the lock is the edit's. It answers
-   * whether it is, or who holds it.
+   * whether it is, or who holds it. The edit is recorded as it begins, so
+   * that a sign-out meanwhile ends it too, and until it ends unless its
+   * session did not open.
    */
   begin(takeOver: boolean): Promise<Opening> {
-    this.beginning ??= this.session.open(takeOver).then((opening) => {
-      if (opening.opened && !this.ended) {
-        runInAction(() => this.record?.add(this));
-        void this.read();
-      }
-      return opening;
-    });
+    this.beginning ??= this.opens(takeOver);
     return this.beginning;
+  }
+
+  private async opens(takeOver: boolean): Promise<Opening> {
+    this.record?.add(this);
+    let opening: Opening | undefined;
+    try {
+      opening = await this.session.open(takeOver);
+      return opening;
+    } finally {
+      runInAction(() => {
+        if (opening?.opened !== true || this.ended) {
+          this.record?.delete(this);
+        } else {
+          void this.read();
+        }
+      });
+    }
   }
 
   /** keep keeps the edit for the view that shows it: a letGo just before is undone. */

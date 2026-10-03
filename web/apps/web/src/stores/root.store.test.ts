@@ -260,3 +260,42 @@ test("signing out ends the generation's edits first, waiting for their ends 2 se
     vi.useRealTimers();
   }
 });
+
+test("signing out while an edit's session opens ends it as it opens, before the logout", async () => {
+  vi.useFakeTimers();
+  try {
+    const sent: string[] = [];
+    let open: (() => void) | undefined;
+    const base = testApp((request) => {
+      const { pathname } = new URL(request.url);
+      if (pathname === "/api/v0/auth/refresh") {
+        return json(tokensJSON);
+      }
+      sent.push(`${request.method} ${pathname}`);
+      if (pathname === "/api/v0/auth/logout" || request.method === "DELETE") {
+        return new Response(null, { status: 204 });
+      }
+      return new Promise<Response>((resolve) => {
+        open = () => resolve(json({ id: "s1", page_id: "p1", expires_at: "2026-10-03T08:02:00Z" }, 201));
+      });
+    }, storedSession("login-0"));
+    await base.session.start();
+    const store = new RootStore(withEvents(base, new FakePage()), "login-0");
+    const beginning = store.editPage("n1", "p1")?.begin(false);
+    await vi.advanceTimersByTimeAsync(0);
+
+    const signingOut = store.auth.signOut();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sent).toEqual(["POST /api/v0/pages/p1/edit-sessions"]);
+    open?.();
+    await signingOut;
+    await expect(beginning).rejects.toThrow("The edit has ended.");
+    expect(sent).toEqual([
+      "POST /api/v0/pages/p1/edit-sessions",
+      "DELETE /api/v0/edit-sessions/s1",
+      "POST /api/v0/auth/logout",
+    ]);
+  } finally {
+    vi.useRealTimers();
+  }
+});

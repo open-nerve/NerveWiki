@@ -71,6 +71,7 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
   const pages = usePageTree(notebook);
   const editor = useRef<SourceEditorHandle>(null);
   const conflictHeading = useRef<HTMLHeadingElement>(null);
+  const banner = useRef<HTMLDivElement>(null);
   const leaving = useRef(false);
   const [asking, setAsking] = useState(false);
   const mounted = useMounted();
@@ -87,6 +88,12 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
       conflictHeading.current?.focus();
     }
   }, [conflict]);
+
+  useEffect(() => {
+    if (lost !== undefined) {
+      banner.current?.focus();
+    }
+  }, [lost]);
 
   async function save(): Promise<boolean> {
     const current = editor.current;
@@ -150,14 +157,20 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
 
   /**
    * finish ends the edit, its session's end answered, so that the lock read
-   * next is no longer its; the reading view, whose hook is not mounted
-   * while the editor is, is read into SWR's cache, deduplication or not.
+   * next is no longer its; the lock read before the edit, the account's own
+   * elsewhere when it took the edit over, goes from SWR's cache, to be read
+   * as the note shows. The reading view, whose hook is not mounted while
+   * the editor is, is read into SWR's cache, deduplication or not, unless
+   * the page is gone from the tree: there is no view to read.
    */
   async function finish(): Promise<void> {
     await editing.end();
-    await mutate(["page-view", notebook.id, page.id], pages.view(page.id), { revalidate: false }).catch(
-      () => undefined
-    );
+    await mutate(["edit-lock", page.id], undefined, { revalidate: false });
+    if (pages.byId(page.id) !== undefined) {
+      await mutate(["page-view", notebook.id, page.id], pages.view(page.id), { revalidate: false }).catch(
+        () => undefined
+      );
+    }
     done();
   }
 
@@ -211,10 +224,11 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
           leave={() => composed(editor.current, () => void leave())}
         />
       ) : (
-        <EditLostBanner lost={lost} unsaved={editing.unsaved} back={backToReading} />
+        <EditLostBanner ref={banner} lost={lost} unsaved={editing.unsaved} back={backToReading} />
       )}
       <ConfirmDialog
-        held={{ open: asking, onOpenChange: setAsking, onClosed: () => undefined }}
+        // Stayed, the focus goes back to the banner, which Back to reading is in.
+        held={{ open: asking, onOpenChange: setAsking, onClosed: (left) => void (left || banner.current?.focus()) }}
         title={t("editor.leaveTitle")}
         description={t("editor.leaveDescription")}
         confirmLabel={t("editor.leave")}
@@ -251,7 +265,14 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
       </Suspense>
       <UnsavedGuard
         unsaved={editing.unsaved}
-        stay={() => (editing.conflict === undefined ? editor.current : conflictHeading.current)?.focus()}
+        stay={() =>
+          (editing.session.lost !== undefined
+            ? banner.current
+            : editing.conflict === undefined
+              ? editor.current
+              : conflictHeading.current
+          )?.focus()
+        }
       />
     </div>
   );

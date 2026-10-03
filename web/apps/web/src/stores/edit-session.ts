@@ -108,6 +108,8 @@ export class EditSession {
   private opening: Promise<string> | undefined = undefined;
   private ended = false;
   private ending: Promise<void> = Promise.resolve();
+  /** The end of a session that opened once the edit had ended. */
+  private lateEnd: Promise<void> = Promise.resolve();
   private beating: ReturnType<typeof setInterval> | undefined = undefined;
   /** The beat out, and whether one more was asked for meanwhile. */
   private beatOut: Promise<void> | undefined = undefined;
@@ -179,7 +181,9 @@ export class EditSession {
   /**
    * end ends the edit's session: the beats stop, and the session ends,
    * once; it resolves once the end is answered. A session still opening
-   * ends as it opens; a lost one has nothing to end.
+   * ends as it opens, and the end resolves once that end is answered too:
+   * what comes next (the reading view's note, a sign-out) finds the lock
+   * free. A lost one has nothing to end.
    */
   end(): Promise<void> {
     if (this.ended) {
@@ -190,9 +194,18 @@ export class EditSession {
     const id = this.id;
     this.id = undefined;
     if (id !== undefined) {
-      this.ending = this.deps.service.endEditSession(id).catch(() => undefined);
+      this.ending = this.endSession(id);
+    } else if (this.opening !== undefined) {
+      this.ending = this.opening.then(
+        () => this.lateEnd,
+        () => this.lateEnd
+      );
     }
     return this.ending;
+  }
+
+  private endSession(id: string): Promise<void> {
+    return this.deps.service.endEditSession(id).catch(() => undefined);
   }
 
   /** opened is the session opened, the one open that is out at a time; an edit ended meanwhile ends it. */
@@ -201,7 +214,7 @@ export class EditSession {
       .openEditSession(this.pageId, takeOver)
       .then((session) => {
         if (this.ended) {
-          void this.deps.service.endEditSession(session.id).catch(() => undefined);
+          this.lateEnd = this.endSession(session.id);
           throw new EditEnded();
         }
         this.id = session.id;
@@ -284,25 +297,35 @@ export class EditSession {
    * beatOnce keeps the session. One lapsed is opened anew, never taking
    * the lock over; a session taken over or unlocked, or out of reach,
    * loses the edit; any other failure, a network's, is tried again at the
-   * next beat.
+   * next beat, as is an opening anew that failed so: the beat opens it. A
+   * beat that is not answered within a heartbeat is given up, so that the
+   * next one goes.
    */
   private async beatOnce(): Promise<void> {
-    const id = this.id;
-    if (id === undefined || this.ended) {
+    if (this.ended || this.lost !== undefined) {
       return;
     }
+    const id = this.id;
+    if (id === undefined) {
+      await this.current().catch(() => undefined);
+      return;
+    }
+    const answer = new AbortController();
+    const timer = setTimeout(() => answer.abort(), editSessionHeartbeat);
     try {
-      await this.deps.service.heartbeatEditSession(id);
+      await this.deps.service.heartbeatEditSession(id, answer.signal);
     } catch (error) {
       if (this.id !== id || this.ended) {
         return;
       }
       if (lapsed(error)) {
         this.id = undefined;
-        void this.current().catch(() => undefined);
+        await this.current().catch(() => undefined);
       } else {
         this.settle(error);
       }
+    } finally {
+      clearTimeout(timer);
     }
   }
 }

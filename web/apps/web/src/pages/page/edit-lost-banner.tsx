@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import type { Ref } from "react";
 
 import { Button } from "../../components/ui/button";
 import { useT, type Translate } from "../../i18n/i18n";
@@ -11,24 +11,24 @@ type EditLostBannerProps = {
   unsaved: boolean;
   /** back is Back to reading. */
   back(): void;
+  /** The banner, which its page focuses as it shows. */
+  ref?: Ref<HTMLDivElement>;
 };
 
 /**
  * EditLostBanner says why the edit saves no more (M5 design 4.9; M5/P4
  * design 3.8), above the editor, now read-only: taken over elsewhere,
  * unlocked by an admin, the lock taken while it lapsed, the page gone,
- * the account's access to it. It takes the focus as it shows; with
+ * the account's access to it. Its page focuses it as it shows; with
  * changes not saved, it says to copy them. Back to reading leaves the
  * edit.
  */
-export function EditLostBanner({ lost, unsaved, back }: EditLostBannerProps) {
+export function EditLostBanner({ lost, unsaved, back, ref }: EditLostBannerProps) {
   const t = useT();
   const me = useStore().account?.me?.id;
-  const banner = useRef<HTMLDivElement>(null);
-  useEffect(() => banner.current?.focus(), []);
   return (
     <div
-      ref={banner}
+      ref={ref}
       role="alert"
       tabIndex={-1}
       className="space-y-3 rounded-md border border-destructive/50 px-4 py-3 text-sm outline-none"

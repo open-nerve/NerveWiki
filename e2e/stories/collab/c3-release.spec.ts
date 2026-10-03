@@ -76,6 +76,7 @@ test("C3 (page): the notebook's admin, reading Notes that A edits, releases A's 
   const beat = answerTo(page, "POST", `/api/v0/edit-sessions/${held}/heartbeat`);
   await page.clock.fastForward(20_000);
   expect((await beat).status()).toBe(200);
+  const beaten = Date.now();
 
   const adminPage = await anotherPage(tokens);
   await adminPage.goto(path);
@@ -93,6 +94,8 @@ test("C3 (page): the notebook's admin, reading Notes that A edits, releases A's 
   await expect(lostBanner(page)).toContainText(
     `${displayNameOf(adminEmail)} released your edit of this page: this editor saves no more.`
   );
+  // The banner came before the next periodic beat, 20 seconds after the last: it was the event's.
+  expect(Date.now() - beaten).toBeLessThan(20_000);
   await expect(lostBanner(page)).not.toContainText("not saved");
   await expect(editorContent(page)).toHaveAttribute("contenteditable", "false");
   // A's beat on the event: page.edit_session_unlocked.

@@ -36,9 +36,19 @@ function fakeSessions(sent: string[] = []) {
       sent.push(takeOver === true ? "OPEN TAKE" : "OPEN");
       return answers.open === undefined ? { id: `s${++opened}` } : await answers.open();
     }) as never,
-    heartbeatEditSession: vi.fn(async (id: string) => {
+    heartbeatEditSession: vi.fn(async (id: string, signal?: AbortSignal) => {
       sent.push(`BEAT ${id}`);
-      return answers.beat === undefined ? {} : await answers.beat();
+      if (answers.beat === undefined) {
+        return {};
+      }
+      const answer = answers.beat();
+      // A beat given up rejects as fetch does.
+      return await Promise.race([
+        answer,
+        new Promise<never>((_, reject) =>
+          signal?.addEventListener("abort", () => reject(new DOMException("The beat was given up.", "AbortError")))
+        ),
+      ]);
     }) as never,
     endEditSession: vi.fn(async (id: string) => {
       sent.push(`END ${id}`);
