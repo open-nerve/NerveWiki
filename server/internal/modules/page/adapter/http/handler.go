@@ -78,20 +78,32 @@ type EndEditSessionUseCase interface {
 	Execute(ctx context.Context, id uuid.UUID) error
 }
 
+// GetEditLockUseCase is app.GetEditLock.
+type GetEditLockUseCase interface {
+	Execute(ctx context.Context, id uuid.UUID) (app.LockView, error)
+}
+
+// ReleaseEditLockUseCase is app.ReleaseEditLock.
+type ReleaseEditLockUseCase interface {
+	Execute(ctx context.Context, id uuid.UUID, client domain.Client) error
+}
+
 // UseCases are the use cases behind the module's operations.
 type UseCases struct {
-	ListNodes      ListNodesUseCase
-	CreatePage     CreatePageUseCase
-	GetPage        GetPageUseCase
-	GetPageContent GetPageContentUseCase
-	PutPageContent PutPageContentUseCase
-	GetPageView    GetPageViewUseCase
-	RenameNode     RenameNodeUseCase
-	MoveNode       MoveNodeUseCase
-	DeleteNode     DeleteNodeUseCase
-	OpenSession    OpenEditSessionUseCase
-	Heartbeat      HeartbeatEditSessionUseCase
-	EndSession     EndEditSessionUseCase
+	ListNodes       ListNodesUseCase
+	CreatePage      CreatePageUseCase
+	GetPage         GetPageUseCase
+	GetPageContent  GetPageContentUseCase
+	PutPageContent  PutPageContentUseCase
+	GetPageView     GetPageViewUseCase
+	RenameNode      RenameNodeUseCase
+	MoveNode        MoveNodeUseCase
+	DeleteNode      DeleteNodeUseCase
+	OpenSession     OpenEditSessionUseCase
+	Heartbeat       HeartbeatEditSessionUseCase
+	EndSession      EndEditSessionUseCase
+	GetEditLock     GetEditLockUseCase
+	ReleaseEditLock ReleaseEditLockUseCase
 }
 
 // Register mounts the module's routes on router, the root router from
@@ -233,13 +245,15 @@ func (h handler) DeleteNode(ctx context.Context, req gen.DeleteNodeRequestObject
 	return gen.DeleteNode204Response{}, nil
 }
 
-// OpenEditSession serves POST /api/v0/pages/{page_id}/edit-sessions.
+// OpenEditSession serves POST /api/v0/pages/{page_id}/edit-sessions. Its
+// body is optional: none takes nothing over.
 func (h handler) OpenEditSession(ctx context.Context, req gen.OpenEditSessionRequestObject) (gen.OpenEditSessionResponseObject, error) {
 	client, err := clientOf(ctx)
 	if err != nil {
 		return nil, err
 	}
-	s, err := h.uc.OpenSession.Execute(ctx, req.PageID, client, false)
+	takeOver := req.Body != nil && req.Body.TakeOver != nil && *req.Body.TakeOver
+	s, err := h.uc.OpenSession.Execute(ctx, req.PageID, client, takeOver)
 	if err != nil {
 		return nil, err
 	}
@@ -261,6 +275,39 @@ func (h handler) EndEditSession(ctx context.Context, req gen.EndEditSessionReque
 		return nil, err
 	}
 	return gen.EndEditSession204Response{}, nil
+}
+
+// GetEditLock serves GET /api/v0/pages/{page_id}/edit-lock.
+func (h handler) GetEditLock(ctx context.Context, req gen.GetEditLockRequestObject) (gen.GetEditLockResponseObject, error) {
+	l, err := h.uc.GetEditLock.Execute(ctx, req.PageID)
+	if err != nil {
+		return nil, err
+	}
+	return gen.GetEditLock200JSONResponse(editLockOf(l)), nil
+}
+
+// ReleaseEditLock serves DELETE /api/v0/pages/{page_id}/edit-lock.
+func (h handler) ReleaseEditLock(ctx context.Context, req gen.ReleaseEditLockRequestObject) (gen.ReleaseEditLockResponseObject, error) {
+	client, err := clientOf(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := h.uc.ReleaseEditLock.Execute(ctx, req.PageID, client); err != nil {
+		return nil, err
+	}
+	return gen.ReleaseEditLock204Response{}, nil
+}
+
+// editLockOf is the lock's answer: both members null while no one holds
+// it.
+func editLockOf(l app.LockView) gen.EditLock {
+	if l.Holder == nil {
+		return gen.EditLock{Holder: nullable.NewNullNullable[gen.EditLockHolder](), ExpiresIn: nullable.NewNullNullable[int]()}
+	}
+	return gen.EditLock{
+		Holder:    nullable.NewNullableWithValue(gen.EditLockHolder{UserID: l.Holder.UserID, DisplayName: l.Holder.DisplayName}),
+		ExpiresIn: nullable.NewNullableWithValue(l.ExpiresIn),
+	}
 }
 
 func editSessionOf(s app.EditSession) gen.EditSession {

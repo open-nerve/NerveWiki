@@ -113,18 +113,20 @@ func New(d Deps) *Module {
 	})
 	parser := app.NewContentParser(writer, md, budget)
 	return &Module{uc: httpadapter.UseCases{
-		ListNodes:      app.NewListNodes(d.Notebooks, store, d.Authorizer),
-		CreatePage:     app.NewCreatePage(writer, store, parser, d.Logger),
-		GetPage:        app.NewGetPage(d.Notebooks, store, d.Authorizer),
-		GetPageContent: app.NewGetPageContent(d.Notebooks, store, d.Authorizer),
-		PutPageContent: app.NewPutPageContent(writer, store, parser, d.Logger),
-		GetPageView:    app.NewGetPageView(d.Notebooks, store, d.Authorizer, md, budget),
-		RenameNode:     app.NewRenameNode(writer, store, d.Logger),
-		MoveNode:       app.NewMoveNode(writer, store, d.Logger),
-		DeleteNode:     app.NewDeleteNode(writer, store, d.Logger),
-		OpenSession:    app.NewOpenEditSession(writer, store, d.Logger),
-		Heartbeat:      app.NewHeartbeatEditSession(store, d.Notebooks, d.Authorizer, d.Names, d.Clock),
-		EndSession:     app.NewEndEditSession(d.Tx, store, d.Notebooks, d.Clock, d.EditSessionSubscribers, d.Logger),
+		ListNodes:       app.NewListNodes(d.Notebooks, store, d.Authorizer),
+		CreatePage:      app.NewCreatePage(writer, store, parser, d.Logger),
+		GetPage:         app.NewGetPage(d.Notebooks, store, d.Authorizer),
+		GetPageContent:  app.NewGetPageContent(d.Notebooks, store, d.Authorizer),
+		PutPageContent:  app.NewPutPageContent(writer, store, parser, d.Logger),
+		GetPageView:     app.NewGetPageView(d.Notebooks, store, d.Authorizer, md, budget),
+		RenameNode:      app.NewRenameNode(writer, store, d.Logger),
+		MoveNode:        app.NewMoveNode(writer, store, d.Logger),
+		DeleteNode:      app.NewDeleteNode(writer, store, d.Logger),
+		OpenSession:     app.NewOpenEditSession(writer, store, d.Logger),
+		Heartbeat:       app.NewHeartbeatEditSession(store, d.Notebooks, d.Authorizer, d.Names, d.Clock),
+		EndSession:      app.NewEndEditSession(d.Tx, store, d.Notebooks, d.Clock, d.EditSessionSubscribers, d.Logger),
+		GetEditLock:     app.NewGetEditLock(d.Notebooks, store, store, d.Names, d.Authorizer, d.Clock),
+		ReleaseEditLock: app.NewReleaseEditLock(writer, store, d.Logger),
 	}, jobs: []jobs.Job{
 		riveradapter.CleanupJob(app.NewCleanupEditSessions(store, d.Clock, d.Logger), d.EditSessionCleanupInterval),
 	}}

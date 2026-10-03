@@ -1091,7 +1091,7 @@ paths:
       tags:
         - page
       summary: Write a page's content
-      description: 'Replaces the page''s content, byte for byte, on the revision the writer read it at; its notebook''s editors and admins can, a reader cannot (forbidden). A content of more than 5 MiB (5,242,880 bytes) or with a NUL character is validation_failed first, whatever the page. Then a page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found; an edit session that is not the caller''s session of this page, opened from the same client (the web or a token), alive, is page.edit_session_ended; a base_revision that is not the page''s revision is page.revision_mismatch: the page was written since, and the writer reads it again. A content the page holds already writes nothing, whatever the base. The writes of one edit session are one changeset, with one version of the page, until another write of the page comes in between. When the server parses as much content as it can at once, a content waits a moment, then is server_busy. A body that has not all arrived within the server''s read timeout (server.read_timeout, 30 seconds by default, in which 5 MiB needs about 1.4 Mbit/s) is bad_request.'
+      description: 'Replaces the page''s content, byte for byte, on the revision the writer read it at; its notebook''s editors and admins can, a reader cannot (forbidden). A content of more than 5 MiB (5,242,880 bytes) or with a NUL character is validation_failed first, whatever the page. Then a page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found; an edit session that is not the caller''s session of this page, opened from the same client (the web or a token), is page.edit_session_ended; then one taken over by the caller elsewhere is page.edit_session_taken_over, one whose lock an admin of the notebook released is page.edit_session_unlocked, naming them in ended_by, and one no longer alive is page.edit_session_ended; a base_revision that is not the page''s revision is page.revision_mismatch: the page was written since, and the writer reads it again. A content the page holds already writes nothing, whatever the base. Then a page whose lock another edit session holds, the caller''s elsewhere among them, is page.locked, naming the holder in lock: a write in no session too. The writes of one edit session are one changeset, with one version of the page, until another write of the page comes in between. When the server parses as much content as it can at once, a content waits a moment, then is server_busy. A body that has not all arrived within the server''s read timeout (server.read_timeout, 30 seconds by default, in which 5 MiB needs about 1.4 Mbit/s) is bad_request.'
       security:
         - bearer: []
       x-problem-codes:
@@ -1099,7 +1099,10 @@ paths:
         - page.not_found
         - forbidden
         - page.edit_session_ended
+        - page.edit_session_taken_over
+        - page.edit_session_unlocked
         - page.revision_mismatch
+        - page.locked
         - server_busy
       requestBody:
         required: true
@@ -1124,12 +1127,19 @@ paths:
       tags:
         - page
       summary: Open an edit session
-      description: 'Opens the caller''s edit session of the page: a lease of 120 seconds, which a heartbeat every 20 seconds keeps alive. The content''s writes that name it are one changeset. Its notebook''s editors and admins can, a reader cannot (forbidden). A page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found alike.'
+      description: 'Opens the caller''s edit session of the page: a lease of 120 seconds, which a heartbeat every 20 seconds keeps alive. The content''s writes that name it are one changeset. The page''s alive session holds its edit lock: while one does, another opening is page.locked, naming the holder in lock, the caller among them when they hold it elsewhere. With take_over, the caller''s own alive sessions of the page end first (their next heartbeat or write is page.edit_session_taken_over); someone else''s lock it does not pass. Its notebook''s editors and admins can, a reader cannot (forbidden). A page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found alike.'
       security:
         - bearer: []
       x-problem-codes:
         - page.not_found
         - forbidden
+        - page.locked
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EditSessionOpening'
       responses:
         '201':
           description: The session.
@@ -1137,6 +1147,44 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/EditSession'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v0/pages/{page_id}/edit-lock:
+    parameters:
+      - $ref: '#/components/parameters/PageID'
+    get:
+      operationId: getEditLock
+      tags:
+        - page
+      summary: Read a page's edit lock
+      description: Who holds the page's edit lock, and for how many seconds its lease lasts unless a heartbeat keeps it; no holder while no alive session holds it. Whoever may read the page may read it. A page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found alike.
+      security:
+        - bearer: []
+      x-problem-codes:
+        - page.not_found
+      responses:
+        '200':
+          description: The page's edit lock.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EditLock'
+        default:
+          $ref: '#/components/responses/Problem'
+    delete:
+      operationId: releaseEditLock
+      tags:
+        - page
+      summary: Release a page's edit lock
+      description: 'Ends whichever edit session holds the page''s lock: its next heartbeat or write is page.edit_session_unlocked, naming the caller. A page no session holds is released already. Its notebook''s admins can, anyone else in it cannot (forbidden). A page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found.'
+      security:
+        - bearer: []
+      x-problem-codes:
+        - page.not_found
+        - forbidden
+      responses:
+        '204':
+          description: No session holds the page's lock.
         default:
           $ref: '#/components/responses/Problem'
   /api/v0/pages/{page_id}/view:
@@ -1170,12 +1218,14 @@ paths:
       tags:
         - page
       summary: Keep an edit session alive
-      description: 'Keeps the caller''s session alive for 120 seconds from now. A session that does not exist, has expired, is someone else''s, or whose notebook the caller has no role in any more is page.edit_session_not_found alike: the editor opens a new one. One whose page the caller may only read now is forbidden.'
+      description: 'Keeps the caller''s session alive for 120 seconds from now. The caller''s session taken over elsewhere is page.edit_session_taken_over; one whose lock an admin of the notebook released is page.edit_session_unlocked, naming them in ended_by: the editor does not open another. A session that does not exist, has expired, is someone else''s, or whose notebook the caller has no role in any more is page.edit_session_not_found alike: the editor opens a new one. One whose page the caller may only read now is forbidden.'
       security:
         - bearer: []
       x-problem-codes:
         - page.edit_session_not_found
         - forbidden
+        - page.edit_session_taken_over
+        - page.edit_session_unlocked
       responses:
         '200':
           description: The session, kept alive.
@@ -1193,7 +1243,7 @@ paths:
       tags:
         - page
       summary: End an edit session
-      description: 'Ends the caller''s session: it asks only that the session is the caller''s and alive. A session that does not exist, has expired, or is someone else''s is page.edit_session_not_found alike, which the editor takes for ended.'
+      description: 'Ends the caller''s session: it asks only that the session is the caller''s, and alive, or taken over or unlocked (its record goes). A session that does not exist, has expired, or is someone else''s is page.edit_session_not_found alike, which the editor takes for ended.'
       security:
         - bearer: []
       x-problem-codes:
@@ -1239,12 +1289,13 @@ paths:
       tags:
         - page
       summary: Delete a page
-      description: 'Deletes the page with every page under it, at one time: they go to the trash together. Its notebook''s editors and admins can, a reader cannot (forbidden). A page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found.'
+      description: 'Deletes the page with every page under it, at one time: they go to the trash together. Its notebook''s editors and admins can, a reader cannot (forbidden). A page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found. While another account''s edit session holds the lock of the page or of one under it, the deletion is page.locked, naming the first such page, level by level, and its holder in lock; the caller''s own sessions end with their pages.'
       security:
         - bearer: []
       x-problem-codes:
         - page.not_found
         - forbidden
+        - page.locked
       responses:
         '204':
           description: The page and the pages under it are deleted.
@@ -2300,6 +2351,15 @@ components:
           description: The caller's edit session of the page the write is made in.
           type: string
           format: uuid
+    EditSessionOpening:
+      description: How an edit session opens.
+      type: object
+      additionalProperties: false
+      properties:
+        take_over:
+          description: End the caller's own alive sessions of the page first, wherever they were opened.
+          type: boolean
+          default: false
     EditSession:
       description: An edit session of a page, while its lease lasts.
       type: object
@@ -2319,6 +2379,38 @@ components:
           description: When the session ends unless a heartbeat keeps it alive.
           type: string
           format: date-time
+    EditLockHolder:
+      description: The account whose alive edit session holds a page's lock.
+      type: object
+      additionalProperties: false
+      required:
+        - user_id
+        - display_name
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        display_name:
+          type: string
+    EditLock:
+      description: A page's edit lock.
+      type: object
+      additionalProperties: false
+      required:
+        - holder
+        - expires_in
+      properties:
+        holder:
+          description: Who holds the lock; null while no one does.
+          anyOf:
+            - $ref: '#/components/schemas/EditLockHolder'
+            - type: 'null'
+        expires_in:
+          description: 'Whole seconds, rounded up, until the holder''s lease ends unless a heartbeat keeps it; null while no one holds the lock. A span, not a time: the client''s clock may be wrong.'
+          type:
+            - integer
+            - 'null'
+          minimum: 1
     PageView:
       description: A page's reading view.
       type: object

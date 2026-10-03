@@ -9,7 +9,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 	"uuid"
@@ -43,12 +45,33 @@ type Ancestor struct {
 // Content A page's Markdown, byte for byte: at most 5 MiB (5,242,880 bytes) of UTF-8, without NUL characters. Its line breaks, byte order mark and blanks are kept as they are.
 type Content = string
 
+// EditLock A page's edit lock.
+type EditLock struct {
+	// ExpiresIn Whole seconds, rounded up, until the holder's lease ends unless a heartbeat keeps it; null while no one holds the lock. A span, not a time: the client's clock may be wrong.
+	ExpiresIn nullable.Nullable[int] `json:"expires_in"`
+
+	// Holder Who holds the lock; null while no one does.
+	Holder nullable.Nullable[EditLockHolder] `json:"holder"`
+}
+
+// EditLockHolder The account whose alive edit session holds a page's lock.
+type EditLockHolder struct {
+	DisplayName string    `json:"display_name"`
+	UserID      uuid.UUID `json:"user_id"`
+}
+
 // EditSession An edit session of a page, while its lease lasts.
 type EditSession struct {
 	// ExpiresAt When the session ends unless a heartbeat keeps it alive.
 	ExpiresAt time.Time `json:"expires_at"`
 	ID        uuid.UUID `json:"id"`
 	PageID    uuid.UUID `json:"page_id"`
+}
+
+// EditSessionOpening How an edit session opens.
+type EditSessionOpening struct {
+	// TakeOver End the caller's own alive sessions of the page first, wherever they were opened.
+	TakeOver *bool `json:"take_over,omitempty"`
 }
 
 // NodeKind What a node of the tree is. Attachments come later.
@@ -204,6 +227,9 @@ type CreatePageJSONRequestBody = PageCreate
 // PutPageContentJSONRequestBody defines body for PutPageContent for application/json ContentType.
 type PutPageContentJSONRequestBody = PageContentWrite
 
+// OpenEditSessionJSONRequestBody defines body for OpenEditSession for application/json ContentType.
+type OpenEditSessionJSONRequestBody = EditSessionOpening
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// EndEditSession End an edit session
@@ -236,6 +262,12 @@ type ServerInterface interface {
 	// PutPageContent Write a page's content
 	// (PUT /api/v0/pages/{page_id}/content)
 	PutPageContent(w http.ResponseWriter, r *http.Request, pageID PageID)
+	// ReleaseEditLock Release a page's edit lock
+	// (DELETE /api/v0/pages/{page_id}/edit-lock)
+	ReleaseEditLock(w http.ResponseWriter, r *http.Request, pageID PageID)
+	// GetEditLock Read a page's edit lock
+	// (GET /api/v0/pages/{page_id}/edit-lock)
+	GetEditLock(w http.ResponseWriter, r *http.Request, pageID PageID)
 	// OpenEditSession Open an edit session
 	// (POST /api/v0/pages/{page_id}/edit-sessions)
 	OpenEditSession(w http.ResponseWriter, r *http.Request, pageID PageID)
@@ -513,6 +545,58 @@ func (siw *ServerInterfaceWrapper) PutPageContent(w http.ResponseWriter, r *http
 	handler.ServeHTTP(w, r)
 }
 
+// ReleaseEditLock operation middleware
+func (siw *ServerInterfaceWrapper) ReleaseEditLock(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "page_id" -------------
+	var pageID PageID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "page_id", r.PathValue("page_id"), &pageID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ReleaseEditLock(w, r, pageID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetEditLock operation middleware
+func (siw *ServerInterfaceWrapper) GetEditLock(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "page_id" -------------
+	var pageID PageID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "page_id", r.PathValue("page_id"), &pageID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetEditLock(w, r, pageID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // OpenEditSession operation middleware
 func (siw *ServerInterfaceWrapper) OpenEditSession(w http.ResponseWriter, r *http.Request) {
 
@@ -691,6 +775,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v0/pages/{page_id}/content", wrapper.GetPageContent)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v0/pages/{page_id}/content", wrapper.PutPageContent)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v0/pages/{page_id}/edit-sessions", wrapper.OpenEditSession)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v0/pages/{page_id}/edit-lock", wrapper.ReleaseEditLock)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v0/pages/{page_id}/edit-lock", wrapper.GetEditLock)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v0/pages/{page_id}/view", wrapper.GetPageView)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v0/edit-sessions/{edit_session_id}/heartbeat", wrapper.HeartbeatEditSession)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v0/edit-sessions/{edit_session_id}", wrapper.EndEditSession)
@@ -1163,8 +1249,95 @@ func (response PutPageContentdefaultApplicationProblemPlusJSONResponse) VisitPut
 	return err
 }
 
+type ReleaseEditLockRequestObject struct {
+	PageID PageID `json:"page_id"`
+}
+
+type ReleaseEditLockResponseObject interface {
+	VisitReleaseEditLockResponse(w http.ResponseWriter) error
+}
+
+type ReleaseEditLock204Response struct {
+}
+
+func (response ReleaseEditLock204Response) VisitReleaseEditLockResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type ReleaseEditLockdefaultApplicationProblemPlusJSONResponse struct {
+	Body       externalRef0.Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response ReleaseEditLockdefaultApplicationProblemPlusJSONResponse) VisitReleaseEditLockResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	if response.Headers.WWWAuthenticate != nil {
+		w.Header().Set("WWW-Authenticate", fmt.Sprint(*response.Headers.WWWAuthenticate))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEditLockRequestObject struct {
+	PageID PageID `json:"page_id"`
+}
+
+type GetEditLockResponseObject interface {
+	VisitGetEditLockResponse(w http.ResponseWriter) error
+}
+
+type GetEditLock200JSONResponse EditLock
+
+func (response GetEditLock200JSONResponse) VisitGetEditLockResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEditLockdefaultApplicationProblemPlusJSONResponse struct {
+	Body       externalRef0.Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response GetEditLockdefaultApplicationProblemPlusJSONResponse) VisitGetEditLockResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	if response.Headers.WWWAuthenticate != nil {
+		w.Header().Set("WWW-Authenticate", fmt.Sprint(*response.Headers.WWWAuthenticate))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type OpenEditSessionRequestObject struct {
 	PageID PageID `json:"page_id"`
+	Body   *OpenEditSessionJSONRequestBody
 }
 
 type OpenEditSessionResponseObject interface {
@@ -1287,6 +1460,12 @@ type StrictServerInterface interface {
 	// PutPageContent Write a page's content
 	// (PUT /api/v0/pages/{page_id}/content)
 	PutPageContent(ctx context.Context, request PutPageContentRequestObject) (PutPageContentResponseObject, error)
+	// ReleaseEditLock Release a page's edit lock
+	// (DELETE /api/v0/pages/{page_id}/edit-lock)
+	ReleaseEditLock(ctx context.Context, request ReleaseEditLockRequestObject) (ReleaseEditLockResponseObject, error)
+	// GetEditLock Read a page's edit lock
+	// (GET /api/v0/pages/{page_id}/edit-lock)
+	GetEditLock(ctx context.Context, request GetEditLockRequestObject) (GetEditLockResponseObject, error)
 	// OpenEditSession Open an edit session
 	// (POST /api/v0/pages/{page_id}/edit-sessions)
 	OpenEditSession(ctx context.Context, request OpenEditSessionRequestObject) (OpenEditSessionResponseObject, error)
@@ -1622,11 +1801,73 @@ func (sh *strictHandler) PutPageContent(w http.ResponseWriter, r *http.Request, 
 	}
 }
 
+// ReleaseEditLock operation middleware
+func (sh *strictHandler) ReleaseEditLock(w http.ResponseWriter, r *http.Request, pageID PageID) {
+	var request ReleaseEditLockRequestObject
+
+	request.PageID = pageID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ReleaseEditLock(ctx, request.(ReleaseEditLockRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ReleaseEditLock")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ReleaseEditLockResponseObject); ok {
+		if err := validResponse.VisitReleaseEditLockResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetEditLock operation middleware
+func (sh *strictHandler) GetEditLock(w http.ResponseWriter, r *http.Request, pageID PageID) {
+	var request GetEditLockRequestObject
+
+	request.PageID = pageID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetEditLock(ctx, request.(GetEditLockRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetEditLock")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetEditLockResponseObject); ok {
+		if err := validResponse.VisitGetEditLockResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // OpenEditSession operation middleware
 func (sh *strictHandler) OpenEditSession(w http.ResponseWriter, r *http.Request, pageID PageID) {
 	var request OpenEditSessionRequestObject
 
 	request.PageID = pageID
+
+	var body OpenEditSessionJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if !errors.Is(err, io.EOF) {
+			sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+			return
+		}
+	} else {
+		request.Body = &body
+	}
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.OpenEditSession(ctx, request.(OpenEditSessionRequestObject))

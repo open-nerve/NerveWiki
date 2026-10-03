@@ -70,7 +70,10 @@ func pageMatrixRows() []matrixRow {
 	}
 	sessionNotFound := cell{http.StatusNotFound, "page.edit_session_not_found"}
 	sessions := func(c caller, s seeded, owner caller) string {
-		return "/api/v0/edit-sessions/" + s.session(pageOf(c), owner).String()
+		if owner == c {
+			return "/api/v0/edit-sessions/" + s.session(draftOf(c), c).String()
+		}
+		return "/api/v0/edit-sessions/" + s.session(othersDraftIn(notebookOf(c)), owner).String()
 	}
 	everyColumn := func(answer cell) map[caller]cell {
 		cells := map[caller]cell{}
@@ -182,7 +185,7 @@ func pageMatrixRows() []matrixRow {
 				t.Helper()
 				var e editSessionAnswer
 				decodeAnswer(t, answer, &e)
-				if e.PageID != s.page(pageOf(c)).String() || e.ID == s.session(pageOf(c), c).String() || !e.leased() {
+				if e.PageID != s.page(pageOf(c)).String() || e.ID == s.session(draftOf(c), c).String() || !e.leased() {
 					t.Errorf("opened %+v, want a new session of %s, its lease from now", e, pageOf(c))
 				}
 			},
@@ -200,8 +203,8 @@ func pageMatrixRows() []matrixRow {
 				t.Helper()
 				var e editSessionAnswer
 				decodeAnswer(t, answer, &e)
-				if e.ID != s.session(pageOf(c), c).String() || e.PageID != s.page(pageOf(c)).String() || !e.leased() {
-					t.Errorf("kept %+v, want its session of %s, its lease from now", e, pageOf(c))
+				if e.ID != s.session(draftOf(c), c).String() || e.PageID != s.page(draftOf(c)).String() || !e.leased() {
+					t.Errorf("kept %+v, want its session of %s, its lease from now", e, draftOf(c))
 				}
 			},
 		},
@@ -237,6 +240,36 @@ func pageMatrixRows() []matrixRow {
 				return http.MethodDelete, sessions(c, s, someoneElse), ""
 			},
 			cells: everyColumn(sessionNotFound),
+		},
+		{
+			op:      "getEditLock",
+			columns: notebookColumns(),
+			request: func(c caller, s seeded) (string, string, string) {
+				return http.MethodGet, "/api/v0/pages/" + s.page(draftOf(c)).String() + "/edit-lock", ""
+			},
+			cells: readers(pageNotFound),
+			check: func(t *testing.T, c caller, s seeded, answer string) {
+				t.Helper()
+				var l struct {
+					Holder *struct {
+						UserID string `json:"user_id"`
+					} `json:"holder"`
+					ExpiresIn *int `json:"expires_in"`
+				}
+				decodeAnswer(t, answer, &l)
+				if l.Holder == nil || l.Holder.UserID != s.accounts[c].String() || l.ExpiresIn == nil || *l.ExpiresIn <= 0 {
+					t.Errorf("read %s, want the lock of its own session", answer)
+				}
+			},
+		},
+		{
+			op:      "releaseEditLock",
+			columns: notebookColumns(),
+			write:   true,
+			request: func(c caller, s seeded) (string, string, string) {
+				return http.MethodDelete, "/api/v0/pages/" + s.page(draftOf(c)).String() + "/edit-lock", ""
+			},
+			cells: adminsOnly(cell{status: http.StatusNoContent}, pageNotFound),
 		},
 		{
 			op:      "createPage",
@@ -311,6 +344,23 @@ func editorsOnly(answer, notFound cell) map[caller]cell {
 	for _, c := range notebookColumns() {
 		switch role, seen := roleIn(c); {
 		case role == "admin" || role == "editor":
+			cells[c] = answer
+		case seen:
+			cells[c] = cellForbidden()
+		default:
+			cells[c] = notFound
+		}
+	}
+	return cells
+}
+
+// adminsOnly answers a notebook's admins, refuses its other roles, and
+// does not show it to the rest.
+func adminsOnly(answer, notFound cell) map[caller]cell {
+	cells := map[caller]cell{}
+	for _, c := range notebookColumns() {
+		switch role, seen := roleIn(c); {
+		case role == "admin":
 			cells[c] = answer
 		case seen:
 			cells[c] = cellForbidden()
