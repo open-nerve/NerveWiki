@@ -48,6 +48,7 @@ func validConfig() Config {
 		},
 		Workspace: WorkspaceConfig{CreationEnabled: true},
 		Page:      PageConfig{EditSessionCleanupInterval: 10 * time.Minute, ParseBudgetBytes: 8 << 20, ParseMaxWait: 2 * time.Second},
+		Events:    EventsConfig{HeartbeatInterval: 20 * time.Second},
 		Jobs:      JobsConfig{ShutdownTimeout: 10 * time.Second, PurgeInterval: time.Hour, PurgeRetention: 1440 * time.Hour},
 		Log:       LogConfig{Level: "info", Format: "json"},
 	}
@@ -109,6 +110,7 @@ func TestValidateReportsEveryInvalidKey(t *testing.T) {
 		"page.edit_session_cleanup_interval: must be at least 1s, got 0s",
 		"page.parse_budget_bytes: must be at least 5242880, a page's largest content, got 0",
 		"page.parse_max_wait: must be positive, got 0s",
+		"events.heartbeat_interval: must be from 5s to 50s, got 0s",
 		"jobs.shutdown_timeout: must be positive, got 0s",
 		"jobs.purge_interval: must be at least 1s, got 0s",
 		"jobs.purge_retention: must be at least 1h, got 0s",
@@ -217,6 +219,24 @@ func TestValidateCrossKeyRules(t *testing.T) {
 			name:   "a parse that waits as long as its request may take",
 			mutate: func(c *Config) { c.Page.ParseMaxWait = c.Server.RequestTimeout },
 			want:   "page.parse_max_wait: must be less than server.request_timeout (15s), got 15s",
+		},
+		{
+			name:   "a heartbeat every 5s",
+			mutate: func(c *Config) { c.Events.HeartbeatInterval = 5 * time.Second },
+		},
+		{
+			name:   "a heartbeat every 50s",
+			mutate: func(c *Config) { c.Events.HeartbeatInterval = 50 * time.Second },
+		},
+		{
+			name:   "a heartbeat more often than every 5s",
+			mutate: func(c *Config) { c.Events.HeartbeatInterval = 5*time.Second - time.Millisecond },
+			want:   "events.heartbeat_interval: must be from 5s to 50s, got 4.999s",
+		},
+		{
+			name:   "a heartbeat rarer than every 50s",
+			mutate: func(c *Config) { c.Events.HeartbeatInterval = 50*time.Second + time.Millisecond },
+			want:   "events.heartbeat_interval: must be from 5s to 50s, got 50.001s",
 		},
 		{
 			name:   "an IPv6 prefix of a single address",

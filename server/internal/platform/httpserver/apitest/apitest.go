@@ -10,8 +10,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"path/filepath"
 	"runtime"
@@ -44,9 +46,16 @@ func Load(t testing.TB) *Contract {
 // req's operation: the status, the Content-Type, the body schema and, for a
 // problem, a code the operation may answer (x-problem-codes, v0.1 design
 // 6.1). The code is recorded for Main. res.Body stays readable for the
-// caller.
+// caller. The 200 of a long-lived operation (x-long-lived) never ends: its
+// status and Content-Type alone are checked, and its body is not read.
 func (c *Contract) CheckResponse(t testing.TB, req *http.Request, res *http.Response) {
 	t.Helper()
+	if route, _, err := c.router.FindRoute(req); err == nil && longLived(route.Operation) && res.StatusCode == http.StatusOK {
+		if err := streamHead(route.Operation, res.Header); err != nil {
+			t.Errorf("%s %s answered %d: %v", req.Method, req.URL.Path, res.StatusCode, err)
+		}
+		return
+	}
 	body, err := io.ReadAll(res.Body)
 	if err != nil {
 		t.Fatalf("read response body: %v", err)
@@ -210,4 +219,18 @@ func (c *Contract) enum(name, property string) ([]string, error) {
 		values[i] = s
 	}
 	return values, nil
+}
+
+// streamHead checks the head of a long-lived operation's 200: a
+// Content-Type the operation documents for it.
+func streamHead(op *openapi3.Operation, header http.Header) error {
+	ok := op.Responses.Status(http.StatusOK)
+	if ok == nil || ok.Value == nil {
+		return errors.New("no documented 200")
+	}
+	media, _, err := mime.ParseMediaType(header.Get("Content-Type"))
+	if err != nil || ok.Value.Content.Get(media) == nil {
+		return fmt.Errorf("Content-Type %q is not the 200's", header.Get("Content-Type"))
+	}
+	return nil
 }

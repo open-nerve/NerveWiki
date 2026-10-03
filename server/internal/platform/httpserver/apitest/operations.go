@@ -20,6 +20,9 @@ type Operation struct {
 	Method string   // upper case
 	Path   string
 	Public bool // security: [], needs no token
+	// LongLived holds its response open (x-long-lived), such as the event
+	// stream (M5 design 4.10): a test reads its head, not to the end.
+	LongLived bool
 	// ProblemHeaders are the headers its default response, the problem,
 	// declares, sorted.
 	ProblemHeaders []string
@@ -143,7 +146,7 @@ func (c *Contract) Operations() []Operation {
 	for path, item := range c.doc.Paths.Map() {
 		for method, op := range item.Operations() {
 			o := Operation{ID: op.OperationID, Tags: op.Tags, Method: strings.ToUpper(method), Path: path, Public: !needsToken(op),
-				params: slices.Concat(item.Parameters, op.Parameters)}
+				LongLived: longLived(op), params: slices.Concat(item.Parameters, op.Parameters)}
 			if rb := op.RequestBody; rb != nil && rb.Value != nil {
 				if media := rb.Value.Content.Get("application/json"); media != nil && media.Schema != nil {
 					o.body = media.Schema.Value

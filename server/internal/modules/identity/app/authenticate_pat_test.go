@@ -32,14 +32,21 @@ func newPATAuth(token app.APITokenCredential) patAuth {
 }
 
 // A personal access token is found by its hash, without a session, and its
-// use is recorded.
+// use is recorded. One without an expiry never expires; one with expires
+// then.
 func TestAuthenticateAPersonalAccessToken(t *testing.T) {
 	f := newPATAuth(validToken())
 
-	actor, err := f.uc.Execute(context.Background(), testPAT().String())
+	auth, err := f.uc.Execute(context.Background(), testPAT().String())
 
-	if err != nil || actor != (shared.Actor{UserID: testUserID(), APITokenID: testTokenID()}) {
-		t.Errorf("Execute() = %+v, %v; want the account with the token", actor, err)
+	if err != nil || auth != (app.Authenticated{Actor: shared.Actor{UserID: testUserID(), APITokenID: testTokenID()}}) {
+		t.Errorf("Execute() = %+v, %v; want the account with the token, never expiring", auth, err)
+	}
+	expiring := validToken()
+	at := testNow().Add(time.Hour)
+	expiring.ExpiresAt = &at
+	if auth, err := newPATAuth(expiring).uc.Execute(context.Background(), testPAT().String()); err != nil || !auth.ExpiresAt.Equal(at) {
+		t.Errorf("Execute() of a token expiring at %v = %+v, %v", at, auth, err)
 	}
 	if len(f.store.credentials) != 0 {
 		t.Errorf("sessions looked up = %v, want none", f.store.credentials)
@@ -83,10 +90,10 @@ func TestAuthenticateWhenLastUsedIsNotWritten(t *testing.T) {
 	f := newPATAuth(validToken())
 	f.tokens.touchErr = errors.New("connection reset")
 
-	actor, err := f.uc.Execute(context.Background(), testPAT().String())
+	auth, err := f.uc.Execute(context.Background(), testPAT().String())
 
-	if err != nil || actor.APITokenID != testTokenID() {
-		t.Errorf("Execute() = %+v, %v; want the token's actor", actor, err)
+	if err != nil || auth.Actor.APITokenID != testTokenID() {
+		t.Errorf("Execute() = %+v, %v; want the token's actor", auth, err)
 	}
 	logs := f.logs.String()
 	for _, want := range []string{`"level":"WARN"`, `"token_id":"` + tokenIDText + `"`, "connection reset"} {

@@ -235,3 +235,73 @@ func runsMain(t *testing.T, dir string) bool {
 	}
 	return false
 }
+
+// streamsContract has a long-lived operation.
+const streamsContract = `
+openapi: 3.1.0
+info: {title: streams, version: v0}
+x-problem-codes: [internal_error]
+paths:
+  /api/v0/events:
+    get:
+      operationId: streamEvents
+      security: [{bearer: []}]
+      x-long-lived: true
+      x-problem-codes: [not_ready]
+      responses:
+        '200':
+          description: the stream
+          content:
+            text/event-stream:
+              schema: {type: string}
+        default: {$ref: '#/components/responses/Problem'}
+components:
+  securitySchemes:
+    bearer: {type: http, scheme: bearer}
+  responses:
+    Problem:
+      description: Error.
+      content:
+        application/problem+json:
+          schema:
+            type: object
+            required: [code]
+            properties:
+              code: {type: string}
+`
+
+// readTrap fails the test when a response body is read.
+type readTrap struct{ t *testing.T }
+
+func (r readTrap) Read([]byte) (int, error) {
+	r.t.Error("the long-lived response's body was read")
+	return 0, io.EOF
+}
+
+func (readTrap) Close() error { return nil }
+
+// A long-lived operation is marked so; the head of its 200 is checked
+// without reading the body, which never ends: a Content-Type it documents
+// passes, another does not. Its problem is checked as any other.
+func TestCheckResponseReadsTheHeadOfAStream(t *testing.T) {
+	c := contractFrom(t, streamsContract)
+	if ops := c.Operations(); len(ops) != 1 || !ops[0].LongLived {
+		t.Errorf("Operations() = %+v, want the stream, long-lived", ops)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/api/v0/events", nil)
+	res := &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/event-stream; charset=utf-8"}},
+		Body: readTrap{t}}
+	c.CheckResponse(t, req, res)
+
+	route, _, err := c.router.FindRoute(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := streamHead(route.Operation, http.Header{"Content-Type": {"application/json"}}); err == nil {
+		t.Error("streamHead() of application/json = nil, want an error")
+	}
+	if err := c.validateResponse(req, http.StatusServiceUnavailable, http.Header{"Content-Type": {"application/problem+json"}},
+		[]byte(`{"code":"not_ready"}`)); err != nil {
+		t.Errorf("validateResponse() of its problem = %v", err)
+	}
+}

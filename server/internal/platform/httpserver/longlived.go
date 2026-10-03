@@ -2,6 +2,7 @@ package httpserver
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"time"
@@ -57,4 +58,50 @@ func LongLived(logger *slog.Logger, h http.Handler) http.Handler {
 		}
 		h.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+// LongLived wraps the handler of a long-lived route, such as the event
+// stream (M5 design 4.10), in the per-route middlewares that suit it:
+//
+//	request meta → failure gate and authentication → rate limit →
+//	the package's LongLived
+//
+// It has no request deadline and reads no body. Lifting the write deadline
+// comes last, so that a 401 or a 429 is answered first, also through a
+// ResponseRecorder, on which lifting it fails. h's context carries what
+// Reauthenticate needs.
+func (a *API) LongLived(h http.Handler) http.Handler {
+	return a.requestMeta(a.authenticate(a.rateLimit(a.reauthenticator(LongLived(a.logger, h)))))
+}
+
+type reauthKey struct{}
+
+// reauthenticator puts in the request's context the authentication of its
+// bearer token again, for Reauthenticate.
+func (a *API) reauthenticator(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		token, _ := bearerToken(r.Header.Get("Authorization"))
+		again := func(ctx context.Context) error {
+			_, _, err := a.authenticator.Authenticate(ctx, token)
+			return err
+		}
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), reauthKey{}, again)))
+	})
+}
+
+var errNotLongLived = errors.New("httpserver: Reauthenticate outside API.LongLived")
+
+// Reauthenticate authenticates the request's bearer token again, as
+// API.LongLived did when the request came: nil while the credential is
+// valid, and the Authenticator's error once it is not, a 401 for a
+// credential revoked, signed out or expired since, or its account
+// deactivated. It skips the failure gate, which the credential passed
+// once, and takes no unit of the rate limit. A long-lived handler calls it
+// at each heartbeat (M5 design 4.10). Outside API.LongLived it is an error.
+func Reauthenticate(ctx context.Context) error {
+	again, ok := ctx.Value(reauthKey{}).(func(context.Context) error)
+	if !ok {
+		return errNotLongLived
+	}
+	return again(ctx)
 }

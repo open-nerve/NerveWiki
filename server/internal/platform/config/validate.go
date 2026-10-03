@@ -110,6 +110,9 @@ func (c Config) validate() error {
 		// the 503 server_busy that tells the client to come back.
 		fail("page.parse_max_wait", "must be less than server.request_timeout (%s), got %s", c.Server.RequestTimeout, c.Page.ParseMaxWait)
 	}
+	if d := c.Events.HeartbeatInterval; d < MinHeartbeatInterval || d > MaxHeartbeatInterval {
+		fail("events.heartbeat_interval", "must be from %s to %s, got %s", MinHeartbeatInterval, MaxHeartbeatInterval, d)
+	}
 	if c.Jobs.ShutdownTimeout <= 0 {
 		fail("jobs.shutdown_timeout", "must be positive, got %s", c.Jobs.ShutdownTimeout)
 	}

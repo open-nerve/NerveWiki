@@ -41,6 +41,15 @@ func NewAuthenticate(d AuthenticateDeps) *Authenticate {
 	return &Authenticate{d: d}
 }
 
+// Authenticated is the actor of a credential and when the credential
+// expires: an access token's exp, a personal access token's expires_at.
+// The zero ExpiresAt is never: a personal access token without an expiry.
+// A long-lived response ends there (M5 design 4.10).
+type Authenticated struct {
+	Actor     shared.Actor
+	ExpiresAt time.Time
+}
+
 // The reasons a credential fails. They go to the debug log only; the
 // caller always sees 401 unauthorized.
 var (
@@ -57,37 +66,37 @@ var (
 	errUserDeactivated = errors.New("account is deactivated")
 )
 
-// Execute returns the actor of token. An invalid credential is a
-// *shared.Error of 401 that wraps the reason; an expired access token also
-// matches ErrAccessTokenExpired. Any other error is an internal fault: a
-// credential that could not be read.
-func (a *Authenticate) Execute(ctx context.Context, token string) (shared.Actor, error) {
+// Execute returns the actor of token and when token expires. An invalid
+// credential is a *shared.Error of 401 that wraps the reason; an expired
+// access token also matches ErrAccessTokenExpired. Any other error is an
+// internal fault: a credential that could not be read.
+func (a *Authenticate) Execute(ctx context.Context, token string) (Authenticated, error) {
 	now := a.d.Clock.Now()
 	if strings.HasPrefix(token, domain.PATPrefix) {
 		return a.personal(ctx, token, now)
 	}
 	claims, err := a.d.AccessTokens.Verify(token, now)
 	if err != nil {
-		return shared.Actor{}, unauthenticated(err)
+		return Authenticated{}, unauthenticated(err)
 	}
 	cred, err := a.d.Sessions.SessionCredential(ctx, claims.SessionID)
 	if err := sessionInvalid(cred, err, claims.UserID, now); err != nil {
-		return shared.Actor{}, err
+		return Authenticated{}, err
 	}
-	return shared.Actor{UserID: claims.UserID, SessionID: claims.SessionID}, nil
+	return Authenticated{Actor: shared.Actor{UserID: claims.UserID, SessionID: claims.SessionID}, ExpiresAt: claims.ExpiresAt}, nil
 }
 
 // personal authenticates a personal access token and records its use at
 // most once a minute. Recording is best effort: a failed write is a warning
 // with the token's id, and the token still authenticates.
-func (a *Authenticate) personal(ctx context.Context, token string, now time.Time) (shared.Actor, error) {
+func (a *Authenticate) personal(ctx context.Context, token string, now time.Time) (Authenticated, error) {
 	pat, ok := domain.ParsePAT(token)
 	if !ok {
-		return shared.Actor{}, unauthenticated(errPATMalformed)
+		return Authenticated{}, unauthenticated(errPATMalformed)
 	}
 	cred, err := a.d.APITokens.APITokenByHash(ctx, pat.Hash())
 	if err := tokenInvalid(cred, err, cred.UserID, now); err != nil {
-		return shared.Actor{}, err
+		return Authenticated{}, err
 	}
 	staleBefore := now.Add(-lastUsedInterval)
 	if cred.LastUsedAt == nil || cred.LastUsedAt.Before(staleBefore) {
@@ -96,7 +105,11 @@ func (a *Authenticate) personal(ctx context.Context, token string, now time.Time
 				slog.String("token_id", cred.ID.String()), slog.Any("error", err))
 		}
 	}
-	return shared.Actor{UserID: cred.UserID, APITokenID: cred.ID}, nil
+	var expires time.Time
+	if cred.ExpiresAt != nil {
+		expires = *cred.ExpiresAt
+	}
+	return Authenticated{Actor: shared.Actor{UserID: cred.UserID, APITokenID: cred.ID}, ExpiresAt: expires}, nil
 }
 
 // sessionInvalid judges the session that the access token of userID names,

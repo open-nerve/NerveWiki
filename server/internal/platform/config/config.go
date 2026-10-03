@@ -26,6 +26,7 @@ type Config struct {
 	RateLimit RateLimitConfig `koanf:"ratelimit"`
 	Workspace WorkspaceConfig `koanf:"workspace"`
 	Page      PageConfig      `koanf:"page"`
+	Events    EventsConfig    `koanf:"events"`
 	Jobs      JobsConfig      `koanf:"jobs"`
 	Log       LogConfig       `koanf:"log"`
 }
@@ -150,6 +151,21 @@ type PageConfig struct {
 	ParseMaxWait time.Duration `koanf:"parse_max_wait"`
 }
 
+// EventsConfig configures the event stream (M5 design 4.10).
+type EventsConfig struct {
+	// HeartbeatInterval is how often a stream sends a heartbeat and
+	// authenticates its credential again: 5 s to 50 s, shorter than a
+	// reverse proxy's read timeout (nginx's proxy_read_timeout is 60 s by
+	// default). The stream's first frame tells the client.
+	HeartbeatInterval time.Duration `koanf:"heartbeat_interval"`
+}
+
+// The bounds of events.heartbeat_interval.
+const (
+	MinHeartbeatInterval = 5 * time.Second
+	MaxHeartbeatInterval = 50 * time.Second
+)
+
 // MinParseBudgetBytes is the smallest parse budget: one page's largest
 // content, the page module's domain.MaxContentBytes, which bootstrap's
 // test checks it against.
@@ -230,6 +246,9 @@ func (c Config) LogValue() slog.Value {
 			duration("edit_session_cleanup_interval", c.Page.EditSessionCleanupInterval),
 			slog.Int("parse_budget_bytes", c.Page.ParseBudgetBytes),
 			duration("parse_max_wait", c.Page.ParseMaxWait),
+		),
+		slog.Group("events",
+			duration("heartbeat_interval", c.Events.HeartbeatInterval),
 		),
 		slog.Group("jobs",
 			duration("shutdown_timeout", c.Jobs.ShutdownTimeout),

@@ -27,16 +27,20 @@ const (
 type callerKey struct{}
 
 // fakeAuth accepts every token except "bad" (401), "expired" (401 with
-// ExpiredCredential) and "boom" (a fault). The credential of token is
-// session:<token>.
+// ExpiredCredential) and "boom" (a fault), and every token once revoked.
+// The credential of token is session:<token>.
 type fakeAuth struct {
-	calls int
-	ctx   context.Context // what Authenticate was given
+	calls   int
+	ctx     context.Context // what Authenticate was given
+	revoked bool
 }
 
 func (f *fakeAuth) Authenticate(ctx context.Context, token string) (context.Context, string, error) {
 	f.calls++
 	f.ctx = ctx
+	if f.revoked {
+		return nil, "", problemErr{status: http.StatusUnauthorized, code: "unauthorized", detail: "Revoked."}
+	}
 	switch token {
 	case "bad":
 		return nil, "", problemErr{status: http.StatusUnauthorized, code: "unauthorized", detail: "Authentication is required."}
