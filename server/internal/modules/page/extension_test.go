@@ -134,6 +134,8 @@ type fixture struct {
 	// The edit sessions' registrants serve wires.
 	vetoers     []page.EditSessionVetoer
 	subscribers []page.EditSessionSubscriber
+	// clock is the module's, fixedClock when nil.
+	clock page.Clock
 }
 
 func newFixture(t *testing.T) fixture {
@@ -184,20 +186,35 @@ func (f fixture) serve(t *testing.T, kind, method, path, body string, guards []p
 	observers []page.PageObserver,
 ) *httptest.ResponseRecorder {
 	t.Helper()
-	router := httpserver.NewRouter(slog.New(slog.DiscardHandler))
-	page.New(page.Deps{
-		Pool: f.pool, Tx: postgres.NewTxManager(f.pool, 5*time.Second), Clock: fixedClock{}, Logger: slog.New(slog.DiscardHandler),
-		Authorizer: aliceWrites{f.alice}, Workspaces: sqlWorkspaces{f.pool}, Notebooks: sqlNotebooks{f.pool}, Names: sqlNames{f.pool},
-		Markdown: f.md, Guards: guards, Participants: participants, Observers: observers,
-		EditSessionVetoers: f.vetoers, EditSessionSubscribers: f.subscribers, EditSessionCleanupInterval: time.Hour,
-		ParseBudgetBytes: 8 << 20, ParseMaxWait: time.Second,
-	}).Register(router, httpservertest.NewAPI(t, httpservertest.APIOptions{Authenticator: tokenAuth{}}))
+	return f.request(f.router(t, guards, participants, observers), kind, method, path, body)
+}
+
+// request serves one request of alice's by token kind through router.
+func (f fixture) request(router http.Handler, kind, method, path, body string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(method, path, strings.NewReader(body))
 	req.Header.Set("Authorization", "Bearer "+kind+":"+f.alice.String())
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 	return rec
+}
+
+// router is the module wired with the registrants, on its root router.
+func (f fixture) router(t *testing.T, guards []page.WriteGuard, participants []page.Participant, observers []page.PageObserver) http.Handler {
+	t.Helper()
+	router := httpserver.NewRouter(slog.New(slog.DiscardHandler))
+	var clock page.Clock = fixedClock{}
+	if f.clock != nil {
+		clock = f.clock
+	}
+	page.New(page.Deps{
+		Pool: f.pool, Tx: postgres.NewTxManager(f.pool, 5*time.Second), Clock: clock, Logger: slog.New(slog.DiscardHandler),
+		Authorizer: aliceWrites{f.alice}, Workspaces: sqlWorkspaces{f.pool}, Notebooks: sqlNotebooks{f.pool}, Names: sqlNames{f.pool},
+		Markdown: f.md, Guards: guards, Participants: participants, Observers: observers,
+		EditSessionVetoers: f.vetoers, EditSessionSubscribers: f.subscribers, EditSessionCleanupInterval: time.Hour,
+		ParseBudgetBytes: 8 << 20, ParseMaxWait: time.Second,
+	}).Register(router, httpservertest.NewAPI(t, httpservertest.APIOptions{Authenticator: tokenAuth{}}))
+	return router
 }
 
 func (f fixture) createPath() string { return "/api/v0/notebooks/" + f.eng.String() + "/pages" }

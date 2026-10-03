@@ -199,44 +199,19 @@ func TestSavingAndClosingTheNotebook(t *testing.T) {
 }
 
 // Interleaving 42: two openings of a session of one page wait at its
-// gate, and both open: M4 does not make them exclusive, and both went
-// through the gate, where M5's vetoer decides. An opening while the page
-// is deleted, both waiting for the notebook's row: the deletion first, 404
-// page.not_found; the opening first, its session goes with the page.
+// gate. The first opens; the second finds its session, which holds the
+// page's lock (M5/P1): 409 page.locked, naming the first's opener. A
+// page's deletion beside an opening is interleaving 50
+// (interleavings_lock_test.go).
 func TestOpeningSessionsOfAPage(t *testing.T) {
 	orders(t, "alice", "bob", func(t *testing.T, first, second string) {
 		tm := newAcmeTeam(t, "member", "")
 		nb := tm.openNotebook(t, "alice", "Eng")
 		id := tm.createPage(t, "alice", nb, "", "Notes")
 		a, b := tm.interleaveOn(t, contentRow(id), sessionOpening(first, id), sessionOpening(second, id))
-		if !a.is(http.StatusCreated, "") || !b.is(http.StatusCreated, "") || tm.sessionsOf(t, id) != 2 {
-			t.Errorf("%s opened: %d %s; %s opened: %d %s; %d sessions; want 201 twice, two sessions", first, a.status, a.code,
-				second, b.status, b.code, tm.sessionsOf(t, id))
-		}
-		checkPages(t, tm.pool)
-		checkNotebooks(t, tm.pool)
-	})
-	setup := func(t *testing.T) (tm acmeTeam, nb, id string) {
-		tm = newAcmeTeam(t, "member", "")
-		nb = tm.openNotebook(t, "alice", "Eng")
-		return tm, nb, tm.createPage(t, "alice", nb, "", "Notes")
-	}
-	t.Run("the deletion first", func(t *testing.T) {
-		tm, nb, id := setup(t)
-		deleted, opened := tm.interleaveOn(t, notebookRow(nb), nodeDeletion("alice", id), sessionOpening("bob", id))
-		if !deleted.is(http.StatusNoContent, "") || !opened.is(http.StatusNotFound, "page.not_found") || tm.sessionsOf(t, id) != 0 {
-			t.Errorf("the deletion = %d, then the opening = %d %s, %d sessions; want 204, then 404 page.not_found, none", deleted.status,
-				opened.status, opened.code, tm.sessionsOf(t, id))
-		}
-		checkPages(t, tm.pool)
-		checkNotebooks(t, tm.pool)
-	})
-	t.Run("the opening first", func(t *testing.T) {
-		tm, nb, id := setup(t)
-		opened, deleted := tm.interleaveOn(t, notebookRow(nb), sessionOpening("bob", id), nodeDeletion("alice", id))
-		if !opened.is(http.StatusCreated, "") || !deleted.is(http.StatusNoContent, "") || tm.sessionsOf(t, id) != 0 {
-			t.Errorf("the opening = %d %s, then the deletion = %d, %d sessions; want 201, then 204, none", opened.status, opened.code,
-				deleted.status, tm.sessionsOf(t, id))
+		if !a.is(http.StatusCreated, "") || !b.is(http.StatusConflict, "page.locked") || lockHolder(b) != first || tm.sessionsOf(t, id) != 1 {
+			t.Errorf("%s opened: %d %s; %s opened: %d %s; %d sessions; want 201, then 409 page.locked by %s, one session", first,
+				a.status, a.code, second, b.status, b.body, tm.sessionsOf(t, id), first)
 		}
 		checkPages(t, tm.pool)
 		checkNotebooks(t, tm.pool)

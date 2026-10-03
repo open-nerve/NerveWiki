@@ -113,7 +113,7 @@ func notebookDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, au
 func pageDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, authorizer shared.Authorizer,
 	md *markdown.Markdown,
 ) page.Deps {
-	ext := pageRegistrants()
+	ext := pageRegistrants(pool)
 	return page.Deps{
 		Pool:         pool,
 		Tx:           postgres.NewTxManager(pool, cfg.Database.CommitTimeout),
