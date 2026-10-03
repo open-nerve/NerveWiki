@@ -109,6 +109,9 @@ export class EditSession {
   private ended = false;
   private ending: Promise<void> = Promise.resolve();
   private beating: ReturnType<typeof setInterval> | undefined = undefined;
+  /** The beat out, and whether one more was asked for meanwhile. */
+  private beatOut: Promise<void> | undefined = undefined;
+  private beatAgain = false;
   private offs: (() => void)[] = [];
 
   constructor(
@@ -213,12 +216,12 @@ export class EditSession {
     if (this.ended || this.beating !== undefined) {
       return;
     }
-    this.beating = setInterval(() => void this.beat(), editSessionHeartbeat);
+    this.beating = setInterval(() => this.beat(), editSessionHeartbeat);
     const { page, events } = this.deps;
     this.offs = [
       page.on("visibilitychange", () => {
         if (page.visible()) {
-          void this.beat();
+          this.beat();
         }
       }),
       page.on("pagehide", () => {
@@ -228,7 +231,7 @@ export class EditSession {
       }),
       page.on("pageshow", ({ persisted }) => {
         if (persisted === true) {
-          void this.beat();
+          this.beat();
         }
       }),
     ];
@@ -236,7 +239,7 @@ export class EditSession {
       this.offs.push(
         events((event) => {
           if (event.type === "connected" || (event.type === "lock" && event.data.page_id === this.pageId)) {
-            void this.beat();
+            this.beat();
           }
         })
       );
@@ -258,12 +261,32 @@ export class EditSession {
   }
 
   /**
-   * beat keeps the session. One lapsed is opened anew, never taking the
-   * lock over; a session taken over or unlocked, or out of reach, loses
-   * the edit; any other failure, a network's, is tried again at the next
-   * beat.
+   * beat beats now, one beat out at a time: one asked for while another
+   * is out goes once it is answered, since what asked for it may have
+   * come after the server answered that one (two lock events of a
+   * take-over send one beat, and one more).
    */
-  private async beat(): Promise<void> {
+  private beat(): void {
+    if (this.beatOut !== undefined) {
+      this.beatAgain = true;
+      return;
+    }
+    this.beatOut = this.beatOnce().finally(() => {
+      this.beatOut = undefined;
+      if (this.beatAgain) {
+        this.beatAgain = false;
+        this.beat();
+      }
+    });
+  }
+
+  /**
+   * beatOnce keeps the session. One lapsed is opened anew, never taking
+   * the lock over; a session taken over or unlocked, or out of reach,
+   * loses the edit; any other failure, a network's, is tried again at the
+   * next beat.
+   */
+  private async beatOnce(): Promise<void> {
     const id = this.id;
     if (id === undefined || this.ended) {
       return;

@@ -1,7 +1,8 @@
 import { expectAliveSessions } from "../../fixtures/assert/collab";
 import { expectSessionGone, sessionsOf } from "../../fixtures/assert/page";
-import { emailFor } from "../../fixtures/auth";
-import { joinAs } from "../../fixtures/invitations";
+import { displayNameOf, emailFor } from "../../fixtures/auth";
+import { failedToLoad } from "../../fixtures/browser";
+import { joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { createNotebook, deleteNotebook } from "../../fixtures/notebooks";
 import {
   createPage,
@@ -12,8 +13,16 @@ import {
   readContent,
   renameNode,
 } from "../../fixtures/pages";
-import { expect, test } from "../../fixtures/test";
-import { newTeam } from "../../fixtures/workspaces";
+import { expect, test, watchOf } from "../../fixtures/test";
+import {
+  choosePageAction,
+  editorContent,
+  lostBanner,
+  pageHeading,
+  startEditing,
+  wikiPagePath,
+} from "../../fixtures/wiki-pages";
+import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 
 // C4, what the lock guards (M5 design 4.4): a content write in another
 // session than the lock's, and a deletion of what another account holds;
@@ -57,4 +66,58 @@ test("C4 (API): while A edits Notes, a write without A's session, B's or A's own
   await openSession(api, b, other.id);
   expect((await deleteNotebook(api, a, notebook.id)).response.status).toBe(204);
   expect(await sessionsOf(db, other.id)).toEqual([]);
+});
+
+test("C4 (page): while A edits Linux, B's deletion of its parent is refused, the dialog naming A and Linux; A deleting Linux in another tab keeps the editor and its unsaved text, saying the page is gone, until A leaves it", async ({
+  anotherPage,
+  anotherTab,
+  api,
+  pageWatch,
+  signedInPage,
+}, testInfo) => {
+  const { adminEmail, pat: a, tokens, workspace } = await newOnboardedTeam(api, testInfo);
+  const b = await anotherPage(await joinOnboarded(api, a, workspace.slug, emailFor(testInfo, "b"), "member"));
+  const notebook = await createNotebook(api, a, workspace.slug, "Plans", "editor");
+  const guide = await createPage(api, a, notebook.id, "Guide");
+  const linux = await createPage(api, a, notebook.id, "Linux", guide.id, "Drafted.\n");
+  const linuxPath = wikiPagePath(workspace.slug, notebook.id, linux.id);
+  const page = await signedInPage(tokens);
+
+  await page.goto(linuxPath);
+  await startEditing(page);
+  await page.keyboard.press("ControlOrMeta+End");
+  await page.keyboard.type("Unsaved");
+
+  await b.goto(wikiPagePath(workspace.slug, notebook.id, guide.id));
+  await expect(pageHeading(b, "Guide")).toBeVisible();
+  await choosePageAction(b, "Plans", "Guide", "Delete");
+  const dialog = b.getByRole("alertdialog", { name: "Delete Guide?" });
+  await dialog.getByRole("button", { name: "Delete", exact: true }).click();
+  await expect(dialog.getByRole("alert")).toHaveText(`${displayNameOf(adminEmail)} is editing “Linux”.`);
+  watchOf(b).expectConsole({ errors: [failedToLoad(409)] });
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+
+  // A's own edit does not refuse A's deletion (M5 design 4.4).
+  const tab = await anotherTab(page);
+  await tab.goto(linuxPath);
+  await expect(pageHeading(tab, "Linux")).toBeVisible();
+  await choosePageAction(tab, "Plans", "Linux", "Delete");
+  await tab
+    .getByRole("alertdialog", { name: "Delete Linux?" })
+    .getByRole("button", { name: "Delete", exact: true })
+    .click();
+  await expect(pageHeading(tab, "Guide")).toBeVisible();
+
+  await expect(lostBanner(page)).toContainText("This page no longer exists: this editor saves no more.");
+  await expect(lostBanner(page)).toContainText("Your changes here are not saved: copy them before you leave.");
+  await expect(pageHeading(page, "Linux")).toBeVisible();
+  await expect(editorContent(page)).toContainText("Drafted.Unsaved");
+  // The session's beat on the event, and the opening it tried again: both not found.
+  pageWatch.expectConsole({ errors: [failedToLoad(404), failedToLoad(404)] });
+  await lostBanner(page).getByRole("button", { name: "Back to reading", exact: true }).click();
+  await page
+    .getByRole("alertdialog", { name: "Leave without saving?" })
+    .getByRole("button", { name: "Leave", exact: true })
+    .click();
+  await expect(pageHeading(page, "Page not found")).toBeVisible();
 });

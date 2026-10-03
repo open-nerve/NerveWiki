@@ -215,6 +215,31 @@ test("the session beats at once when the tab is shown, on its page's lock events
   await session.end();
 });
 
+test("one beat is out at a time: those asked for meanwhile go once after it, none once it lost the edit", async () => {
+  const { session, sent, answers, events } = await opened();
+  const first = deferred<unknown>();
+  answers.beat = () => first.promise;
+  events.emit(lockEvent("p1"));
+  events.emit(lockEvent("p1", "s2"));
+  events.emit({ type: "connected" });
+  await vi.advanceTimersByTimeAsync(0);
+  expect(sent).toEqual(["OPEN", "BEAT s1"]);
+  answers.beat = undefined;
+  first.resolve({});
+  await vi.advanceTimersByTimeAsync(0);
+  expect(sent).toEqual(["OPEN", "BEAT s1", "BEAT s1"]);
+
+  const taken = deferred<unknown>();
+  answers.beat = () => taken.promise;
+  events.emit(lockEvent("p1"));
+  events.emit(lockEvent("p1", "s2"));
+  await vi.advanceTimersByTimeAsync(0);
+  taken.reject(refusal(409, "page.edit_session_taken_over"));
+  await vi.advanceTimersByTimeAsync(0);
+  expect(session.lost).toEqual({ reason: "taken_over" });
+  expect(sent).toEqual(["OPEN", "BEAT s1", "BEAT s1", "BEAT s1"]);
+});
+
 test("the page left sends the session's end at once; back from the back-forward cache, the session beats first and goes on", async () => {
   const { session, sent, page, left } = await opened();
   page.fire("pagehide");

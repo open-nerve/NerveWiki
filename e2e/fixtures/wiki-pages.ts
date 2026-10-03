@@ -200,6 +200,23 @@ export async function startEditing(page: Page): Promise<Locator> {
   return content;
 }
 
+/**
+ * Presses Edit on a page someone else holds, or the account elsewhere (M5/P4 design 3.6): the reading view stays,
+ * with the note that says who, which takes the focus; no editor opens.
+ */
+export async function editRefused(page: Page, holderText: string): Promise<void> {
+  await page.getByRole("main").getByRole("button", { name: "Edit", exact: true }).click();
+  await expect(page.getByText(holderText, { exact: true })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => document.activeElement?.textContent ?? "")).toContain(holderText);
+  await expect(editorContent(page)).toHaveCount(0);
+  await expect(page.getByRole("main").getByRole("article")).toBeVisible();
+}
+
+/** The banner of an edit whose session is lost: why it saves no more (M5/P4 design 3.8). */
+export function lostBanner(page: Page): Locator {
+  return page.getByRole("main").getByRole("alert");
+}
+
 /** The edit's status: unsaved, saving, saved, or why not. */
 export function editStatus(page: Page): Locator {
   return page.getByRole("main").getByRole("status");

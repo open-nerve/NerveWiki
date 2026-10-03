@@ -1,12 +1,14 @@
-import { expectAliveSessions } from "../../fixtures/assert/collab";
+import { aliveSessionsOf, expectAliveSessions } from "../../fixtures/assert/collab";
 import { accountIdOf } from "../../fixtures/assert/identity";
 import { displayNameOf, emailFor } from "../../fixtures/auth";
+import { failedToLoad } from "../../fixtures/browser";
 import { readLock } from "../../fixtures/collab";
-import { joinAs } from "../../fixtures/invitations";
+import { joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, endSession, openSession, postSession } from "../../fixtures/pages";
-import { expect, test } from "../../fixtures/test";
-import { newTeam } from "../../fixtures/workspaces";
+import { expect, test, watchOf } from "../../fixtures/test";
+import { editRefused, startEditing, wikiPagePath } from "../../fixtures/wiki-pages";
+import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 
 // C1, one editor at a time (M5 design 4.1): a page's alive edit session is
 // its lock; another opening is refused, naming its holder, until it ends.
@@ -40,4 +42,37 @@ test("C1 (API): while A edits a page, B's opening is 409 page.locked naming A an
   const opened = await openSession(api, b, page.id);
   expect((await readLock(api, a, page.id)).holder).toEqual({ user_id: bId, display_name: displayNameOf(bEmail) });
   await expectAliveSessions(db, page.id, [opened.id]);
+});
+
+test("C1 (page): while A edits Notes, B's Edit keeps the reading view, saying A is editing, and opens no session; once A is done, B edits", async ({
+  anotherPage,
+  api,
+  db,
+  signedInPage,
+}, testInfo) => {
+  const { adminEmail, pat: a, tokens, workspace } = await newOnboardedTeam(api, testInfo);
+  const b = await anotherPage(await joinOnboarded(api, a, workspace.slug, emailFor(testInfo, "b"), "member"));
+  const notebook = await createNotebook(api, a, workspace.slug, "Plans", "editor");
+  const notes = await createPage(api, a, notebook.id, "Notes", null, "Drafted.\n");
+  const path = wikiPagePath(workspace.slug, notebook.id, notes.id);
+  const page = await signedInPage(tokens);
+
+  await page.goto(path);
+  await startEditing(page);
+  await expect.poll(() => aliveSessionsOf(db, notes.id)).toHaveLength(1);
+  const [held] = await aliveSessionsOf(db, notes.id);
+  await b.goto(path);
+  const aEditing = `${displayNameOf(adminEmail)} is editing this page.`;
+  await editRefused(b, aEditing);
+  // B's opening was refused: page.locked.
+  watchOf(b).expectConsole({ errors: [failedToLoad(409)] });
+  await expectAliveSessions(db, notes.id, [held ?? ""]);
+
+  await page.getByRole("main").getByRole("button", { name: "Done", exact: true }).click();
+  await expect(page.getByRole("main").getByRole("button", { name: "Edit", exact: true })).toBeFocused();
+  // The end of A's session reaches B as an event: who is editing goes.
+  await expect(b.getByText(aEditing, { exact: true })).toBeHidden();
+  await startEditing(b);
+  await expect.poll(() => aliveSessionsOf(db, notes.id)).toHaveLength(1);
+  expect(await aliveSessionsOf(db, notes.id)).not.toEqual([held]);
 });
