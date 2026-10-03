@@ -2,6 +2,7 @@ import { accountIdOf } from "../../fixtures/assert/identity";
 import { expectSubtreeDeleted } from "../../fixtures/assert/page";
 import { emailFor } from "../../fixtures/auth";
 import { answerTo } from "../../fixtures/browser";
+import type { Database } from "../../fixtures/db";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, deleteNode, getPage, heartbeat, listNodes, openSession, postPage } from "../../fixtures/pages";
@@ -10,9 +11,18 @@ import { choosePageAction, pageHeading, treeTitles, wikiPagePath } from "../../f
 import { newTeam } from "../../fixtures/workspaces";
 
 // PG4, deleting a subtree (M4 design 3; M4/P5 design 3.7 for the page); the
-// edit sessions come with the content (M4/P4).
+// edit sessions come with the content (M4/P4): the deleter's own, and the
+// expired ones; another account's alive session refuses it (M5/P1).
 
-test("PG4 (API): a member deletes a page with its subpages at one time, their edit sessions with them; no one reads them after, and its sibling stays, its session too", async ({
+/** Expires the edit session id, through the database rather than the wall clock. */
+async function expire(db: Database, id: string): Promise<void> {
+  await db.query(
+    "UPDATE edit_sessions SET created_at = now() - interval '3 minutes', expires_at = now() - interval '1 minute' WHERE id = $1",
+    [id]
+  );
+}
+
+test("PG4 (API): a member deletes a page with its subpages at one time, their edit sessions with them, the member's own and an expired one, once another account's alive session in it no longer refuses it; no one reads them after, and its sibling stays, its session too", async ({
   api,
   db,
 }, testInfo) => {
@@ -26,10 +36,17 @@ test("PG4 (API): a member deletes a page with its subpages at one time, their ed
   const child = await createPage(api, pat, notebook.id, "Child", doomed.id);
   const grandchild = await createPage(api, pat, notebook.id, "Grandchild", child.id);
   const sibling = await createPage(api, pat, notebook.id, "Sibling");
-  await openSession(api, pat, child.id);
+  const childs = await openSession(api, pat, child.id);
   await openSession(api, editorPat, grandchild.id);
   const siblings = await openSession(api, pat, sibling.id);
 
+  const refused = await deleteNode(api, editorPat, doomed.id);
+  expect([refused.response.status, refused.error?.code, refused.error?.lock?.page_id]).toEqual([
+    409,
+    "page.locked",
+    child.id,
+  ]);
+  await expire(db, childs.id);
   expect((await deleteNode(api, editorPat, doomed.id)).response.status).toBe(204);
   const subtree = [doomed.id, child.id, grandchild.id];
   await expectSubtreeDeleted(db, doomed.id, subtree, editorId);
@@ -48,7 +65,7 @@ test("PG4 (API): a member deletes a page with its subpages at one time, their ed
   ]);
 });
 
-test("PG4 (page): an editor deletes a page with its subpages, the confirmation counting them, their edit sessions with them; the page shown, one of them, goes to the deleted page's parent; its address is no page after", async ({
+test("PG4 (page): an editor deletes a page with its subpages, the confirmation counting them, their expired edit sessions with them; the page shown, one of them, goes to the deleted page's parent; its address is no page after", async ({
   api,
   db,
   signedInPage,
@@ -63,7 +80,7 @@ test("PG4 (page): an editor deletes a page with its subpages, the confirmation c
   const linux = await createPage(api, adminPat, notebook.id, "Linux", install.id);
   const mac = await createPage(api, adminPat, notebook.id, "Mac", linux.id);
   await createPage(api, adminPat, notebook.id, "FAQ", guide.id);
-  await openSession(api, adminPat, linux.id);
+  await expire(db, (await openSession(api, adminPat, linux.id)).id);
   await page.goto(wikiPagePath(workspace.slug, notebook.id, mac.id));
   await expect(pageHeading(page, "Mac")).toBeVisible();
 
