@@ -2,6 +2,8 @@ import type { Extension } from "@codemirror/state";
 import { createContext } from "react";
 
 import type { NotebookRole } from "../services/notebook.service";
+import { autosave } from "./autosave";
+import { idleExit } from "./idle-exit";
 import { lockReadOnly } from "./lock-read-only";
 
 /** EditorContext is the page an editor's extension is built for. */
@@ -77,10 +79,11 @@ export type EditorExtension = {
 
 /**
  * editorExtensions is the registry: M5's read-only while the edit's
- * session is lost first. The composition root gives it to the editor
+ * session is lost first, then its autosave and idle exit (M5/P5 design
+ * 3.4, 3.5). The composition root gives it to the editor
  * through EditorExtensions. This module, and the extensions it registers,
  * hold only types of CodeMirror, so that the main chunk does not load it.
  */
-export const editorExtensions: readonly EditorExtension[] = [lockReadOnly];
+export const editorExtensions: readonly EditorExtension[] = [lockReadOnly, autosave, idleExit];
 
 export const EditorExtensions = createContext<readonly EditorExtension[]>([]);

@@ -35,13 +35,16 @@ function composed(editor: SourceEditorHandle | null, act: () => void) {
   }
 }
 
+/** Left is how an edit ended: idle, left for a long time without input. */
+export type Left = { idle: boolean };
+
 type PageEditProps = {
   notebook: Notebook;
   page: TreeNode;
   /** The edit, its session open: the view keeps it while mounted. */
   editing: PageEditing;
   /** done is called once the edit is over: saved, its session ended, the reading view read again. */
-  done(): void;
+  done(left: Left): void;
 };
 
 /**
@@ -134,7 +137,7 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
     }
   }
 
-  async function leave(): Promise<void> {
+  async function leave(left: Left = { idle: false }): Promise<void> {
     const current = editor.current;
     if (leaving.current) {
       return;
@@ -154,7 +157,7 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
       }
       return;
     }
-    await finish();
+    await finish(left);
   }
 
   /**
@@ -167,7 +170,7 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
    * was lost as the page went or out of the account's reach (a notebook
    * gone keeps its tree as it was).
    */
-  async function finish(): Promise<void> {
+  async function finish(left: Left = { idle: false }): Promise<void> {
     await editing.end();
     await mutate(["edit-lock", page.id], undefined, { revalidate: false });
     const reason = editing.session.lost?.reason;
@@ -176,7 +179,19 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
         () => undefined
       );
     }
-    done();
+    done(left);
+  }
+
+  /**
+   * leaveIdle leaves an edit gone long without input (M5/P5 design 3.6),
+   * as Done does once the composition ends, saying so on the reading view;
+   * an edit whose session is lost stays, with its banner.
+   */
+  function leaveIdle(): Promise<void> {
+    if (editing.session.lost !== undefined) {
+      return Promise.resolve();
+    }
+    return new Promise((resolve) => composed(editor.current, () => void leave({ idle: true }).then(resolve)));
   }
 
   /** backToReading leaves an edit whose session is lost, unsaved once confirmed. */
@@ -257,7 +272,8 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
           content={editing.content.content}
           context={{ workspace: slug, notebook: notebook.id, page: page.id, role: notebook.role }}
           controls={{
-            save: async () => void (await save()),
+            // A conflict open is its panel's: autosave neither saves nor takes the focus there.
+            save: async () => void (editing.conflict === undefined && (await save())),
             saving: () => editing.saving,
             session: () => ({ lost: editing.session.lost !== undefined }),
             onSessionChange: (listener) =>
@@ -265,7 +281,7 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
                 () => editing.session.lost,
                 () => listener()
               ),
-            leave: () => leave(),
+            leave: leaveIdle,
           }}
           onChange={editing.changed}
         />

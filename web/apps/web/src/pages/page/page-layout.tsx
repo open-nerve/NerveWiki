@@ -81,7 +81,9 @@ export const PageLayout = observer(function PageLayout() {
  * page's title until the editor takes it. A lock someone holds keeps the
  * reading view, the focus on who holds it; the account itself elsewhere
  * may edit here, taking it over. Back from the edit, the focus is on
- * Edit. The edit is not in the address: a reload shows the reading view.
+ * Edit; an edit left for a long time without input says so above the
+ * reading view until the next (M5/P5 design 3.7). The edit is not in the
+ * address: a reload shows the reading view.
  */
 const PageShell = observer(function PageShell({ notebook, page }: { notebook: Notebook; page: TreeNode }) {
   const { slug } = useWorkspace();
@@ -94,6 +96,7 @@ const PageShell = observer(function PageShell({ notebook, page }: { notebook: No
   const [editing, setEditing] = useState<PageEditing | undefined>(undefined);
   const [entering, setEntering] = useState(false);
   const [refusal, setRefusal] = useState<unknown>(undefined);
+  const [idleLeft, setIdleLeft] = useState(false);
   const edit = useRef<HTMLButtonElement>(null);
   const lockNote = useRef<HTMLDivElement>(null);
   const back = useRef(false);
@@ -116,6 +119,7 @@ const PageShell = observer(function PageShell({ notebook, page }: { notebook: No
     opening.current = next;
     setEntering(true);
     setRefusal(undefined);
+    setIdleLeft(false);
     try {
       const opened = await next.begin(takeOver);
       if (!mounted()) {
@@ -192,6 +196,7 @@ const PageShell = observer(function PageShell({ notebook, page }: { notebook: No
       {editing === undefined ? (
         <>
           {refusal !== undefined && <Alert>{errorText(refusal, t)}</Alert>}
+          {idleLeft && <output className="block text-sm text-muted-foreground">{t("page.idleLeft")}</output>}
           <div ref={lockNote} tabIndex={-1} className="outline-none">
             <EditLockNote notebook={notebook} page={page} editHere={writer ? () => void enter(true) : undefined} />
           </div>
@@ -202,8 +207,9 @@ const PageShell = observer(function PageShell({ notebook, page }: { notebook: No
           notebook={notebook}
           page={page}
           editing={editing}
-          done={() => {
+          done={(left) => {
             back.current = true;
+            setIdleLeft(left.idle);
             setEditing(undefined);
           }}
         />

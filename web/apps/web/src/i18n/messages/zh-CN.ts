@@ -120,6 +120,7 @@ export const zhCN: Messages = {
   "page.lockedBy": "{name} 正在编辑这一页。",
   "page.lockedBySelf": "你正在别处编辑这一页。",
   "page.editHere": "在这里编辑",
+  "page.idleLeft": "长时间没有输入，已退出编辑。",
   "page.lockedTitled": "{name} 正在编辑「{page}」。",
   "page.lockedTitledSelf": "你正在别处编辑「{page}」。",
   "page.releaseLock": "解除锁定",

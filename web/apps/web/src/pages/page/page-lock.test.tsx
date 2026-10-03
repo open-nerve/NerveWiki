@@ -2,7 +2,8 @@ import { act, configure, fireEvent, screen, waitFor, within } from "@testing-lib
 import userEvent from "@testing-library/user-event";
 import { afterAll, beforeAll, expect, test } from "vitest";
 
-import { editorExtensions } from "../../editor/registry";
+import { lockReadOnly } from "../../editor/lock-read-only";
+import { editorExtensions, type EditorExtension } from "../../editor/registry";
 import { FakePage } from "../../events/testing/fake-page";
 import { eventServer, withEvents } from "../../test/event-server";
 import { type Answer, json, notebookJSON, problem, workspaceJSON } from "../../test/fakes";
@@ -11,9 +12,10 @@ import { ada, bob, guide, notes, pagePath, pageServer } from "../../test/page-se
 import { renderApp } from "../../test/render";
 
 // The edit lock on the page (M5/P4 design 3.6–3.9), in StrictMode as the
-// app runs, with the app's editor extensions: an edit opens its session
-// first; one lost says why and is read-only; a page or notebook gone while
-// edited unsaved stays until the edit ends.
+// app runs, with the app's read-only extension (autosave would race what
+// the tests keep unsaved; one test has all the app's): an edit opens its
+// session first; one lost says why and is read-only; a page or notebook
+// gone while edited unsaved stays until the edit ends.
 
 beforeAll(() => configure({ reactStrictMode: true }));
 afterAll(() => configure({ reactStrictMode: false }));
@@ -23,10 +25,10 @@ const ctrl = (key: string) => fireEvent.keyDown(document.activeElement ?? docume
 /** The tab shown again: the edit's session beats. */
 const shown = () => act(() => void document.dispatchEvent(new Event("visibilitychange")));
 
-/** Guide shown to Ada over server, with the app's editor extensions, and Edit pressed. */
-async function pressEdit(server = pageServer()) {
+/** Guide shown to Ada over server, with the app's read-only extension, or extensions, and Edit pressed. */
+async function pressEdit(server = pageServer(), extensions: readonly EditorExtension[] = [lockReadOnly]) {
   const user = userEvent.setup();
-  renderApp(pagePath(guide.id), server.app, { editorExtensions });
+  renderApp(pagePath(guide.id), server.app, { editorExtensions: extensions });
   await user.click(await screen.findByRole("button", { name: "Edit" }));
   return { user, server };
 }
@@ -246,6 +248,17 @@ test.each<[string, (server: ReturnType<typeof pageServer>) => void, string]>([
   }
 );
 
+test("with the app's editor extensions, an edit lost is read-only: the registry's last hop", async () => {
+  const { server } = await pressEdit(pageServer(), editorExtensions);
+  const { content } = await pageEditor();
+
+  server.takeOver(guide.id);
+  shown();
+
+  expect((await screen.findByRole("alert")).textContent).toContain("You went on editing this page elsewhere");
+  expect(content.getAttribute("contenteditable")).toBe("false");
+});
+
 test("an edit whose account may no longer edit the page says so", async () => {
   await pressEdit(
     pageServer({ answers: { "POST /api/v0/edit-sessions/*/heartbeat": () => problem(403, "forbidden") } })
@@ -344,7 +357,7 @@ async function connected(answers: Record<string, Answer> = {}) {
     },
   });
   const user = userEvent.setup();
-  renderApp(pagePath(guide.id), withEvents(server.app, new FakePage()), { editorExtensions });
+  renderApp(pagePath(guide.id), withEvents(server.app, new FakePage()), { editorExtensions: [lockReadOnly] });
   await waitFor(() => expect(events.streams).toHaveLength(1));
   act(() => events.last().hello());
   await user.click(await screen.findByRole("button", { name: "Edit" }));

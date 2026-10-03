@@ -121,6 +121,7 @@ export const en = {
   "page.lockedBy": "{name} is editing this page.",
   "page.lockedBySelf": "You are editing this page elsewhere.",
   "page.editHere": "Edit here",
+  "page.idleLeft": "Editing ended after 30 minutes without input.",
   "page.lockedTitled": "{name} is editing “{page}”.",
   "page.lockedTitledSelf": "You are editing “{page}” elsewhere.",
   "page.releaseLock": "Release lock",

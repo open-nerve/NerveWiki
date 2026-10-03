@@ -57,7 +57,8 @@ type PageServerOptions = {
  * Guide > Install > Linux, and Notes), each page's reading view its title
  * in a paragraph at revision 1 unless views says otherwise. While
  * nodesDown or viewsDown is set, the tree or the views cannot be read;
- * while notebookGone is, Plans' tree is 404 notebook.not_found.
+ * while notebookGone is, Plans' tree is 404 notebook.not_found; while
+ * writesDown is, no content can be written.
  *
  * It writes the tree as the server does where the pages look: a new page
  * goes last under its parent, a title a sibling has (by lower case) is 409
@@ -91,6 +92,7 @@ export function pageServer({
     nodesDown: false,
     viewsDown: false,
     notebookGone: false,
+    writesDown: false,
     /** hold opens holder's session of the page pageId, its lease expiresIn seconds; it answers its id. */
     hold(pageId: string, holder: Person = bob, expiresIn = 120): string {
       const id = `held-${(++held).toString()}`;
@@ -280,6 +282,7 @@ type ContentState = {
   nodes: TreeNode[];
   contents: Map<string, { content: string; revision: number }>;
   sessions: Map<string, FakeSession>;
+  writesDown: boolean;
 };
 
 /** The answers to the contents and the edit sessions of server, which change it. */
@@ -307,6 +310,9 @@ function contentRoutes(server: ContentState): Record<string, Answer> {
       server.sent.push(
         `PUT ${name} ${JSON.stringify(write.content)} on ${write.base_revision} in ${write.edit_session_id}`
       );
+      if (server.writesDown) {
+        return Promise.reject(new TypeError("offline"));
+      }
       const node = server.nodes.find((each) => each.id === idOf(request));
       if (node === undefined) {
         return problem(404, "page.not_found");
