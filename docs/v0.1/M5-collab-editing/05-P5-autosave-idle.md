@@ -3,7 +3,7 @@
 | 项 | 内容 |
 |---|---|
 | Phase | M5/P5 自动保存与闲置（前端） |
-| 状态 | 进行中 |
+| 状态 | 完成 |
 | 基线 | `753dfbf`（P4 合并与它的文档提交之后的 main）；本文与各 Step 计划提交之后开分支 `m5-p5` |
 | 上级文档 | [M5 总设计](00-M5-design.md) 第 3 节（C5、C6 的闲置）、4.7、4.8、4.9、4.13、第 7、9 节；[P4 文档](04-P4-edit-lock-web.md)；[M4/P6 移交](handoffs/M4-P6-editor.md) 第 1、3、5 项；[P6 的输入法清单](../M4-pages/manual/P6-ime-checklist.md) |
 
@@ -42,11 +42,15 @@
 ```
 web/apps/web/src/
   editor/registry.ts                     控制加 onChange、onClose、leave；注册 autosave、idleExit（3.2）
-  editor/source-editor.tsx               变化的订阅、状态结束时的关闭、nt-3（3.3）
+  editor/source-editor.tsx               变化的订阅、状态结束时的关闭、nt-3；句柄的 whenComposed 带 drop（3.3）
+  editor/extensions.ts                   reconfigure 的说明：经控制做的不随 compartment 卸下（3.2）
+  editor/testing/fake-controls.ts        扩展的单元测试用的假控制
   editor/autosave.ts                     自动保存（3.4）
   editor/idle-exit.ts                    闲置退出（3.5）
-  pages/page/page-edit.tsx               控制的 save 与 leave（3.6）
+  pages/page/page-edit.tsx               控制的 save 与 leave；安静的保存；未读正文的计时（3.6）
   pages/page/page-layout.tsx             闲置退出之后的说明（3.7）
+  pages/page/page-editing-bar.tsx        冲突时的状态（3.8）
+  stores/edit-session.ts                 结束时放弃在途的心跳（3.11）
   i18n/messages/en.ts、zh-CN.ts           文案
 e2e/fixtures/wiki-pages.ts               holdContentWrites（3.9）
 e2e/stories/collab/c5-autosave.spec.ts   C5（新）
@@ -61,9 +65,11 @@ docs/v0.1/M4-pages/manual/P6-ime-checklist.md  M5 的部分（3.10）
 
 - **`onChange(listener): () => void`**：正文每次变了（用户的输入、撤销，组合的每一步）调用 `listener`；载入新正文（"放弃我的"）不算，它建新的状态。返回取消订阅。
 - **`onClose(listener): void`**：这个状态结束时（载入新正文、编辑器销毁，含 StrictMode 的第一个宿主）调用 `listener` 一次。扩展在这里清掉自己的计时器。
-- **`leave(reason: "idle"): Promise<void>`**：像 Done 一样离开编辑：先保存，结束会话，回到阅读视图，阅读视图说明原因（3.7）。离不开时（会话已失、有冲突、保存失败）留在编辑里，promise 照样完成。`reason` 只有 `"idle"`，留给以后别的原因。
+- **`leave(reason: "idle"): Promise<void>`**：像 Done 一样离开编辑：先保存，结束会话，回到阅读视图，阅读视图说明原因（3.7）。离不开时（会话已失、有冲突、保存失败、等过组合）留在编辑里，不挪焦点，promise 照样完成，编辑器先没了也完成。`reason` 只有 `"idle"`，留给以后别的原因。
 
-`save()` 的说明改为：像 Mod+S 一样保存，有冲突时什么也不做（冲突的面板决定）。
+`save()` 的说明改为：像 Mod+S 一样保存，有冲突时什么也不做（冲突的面板决定）；等组合时编辑器没了，以 `EditorClosed` 拒绝。
+
+`Composed.reconfigure(name, null)` 只卸下扩展放进编辑器状态的部分；经控制做的（订阅、计时器：自动保存、闲置）留到状态结束（审查 A-m6）。
 
 宿主把 `onSessionChange`、`onChange` 的取消与 `onClose` 的监听记在每个状态上（P4 的 `following` 扩为关闭时要做的事），载入新正文与销毁时依次调用。扩展因此不会在状态结束之后再收到变化，计时器由 `onClose` 清掉。
 
@@ -71,7 +77,7 @@ docs/v0.1/M4-pages/manual/P6-ime-checklist.md  M5 的部分（3.10）
 
 等组合的动作记成 `{act, drop}`：
 
-- 句柄的 `whenComposed(act)`：`drop` 什么也不做（照"等组合的动作随编辑器走"的测试，销毁之后不执行）；
+- 句柄的 `whenComposed(act, drop?)`：没给 `drop` 时什么也不做（照"等组合的动作随编辑器走"的测试，销毁之后不执行），给了就执行它（闲置的离开以完成作为 `drop`，审查 A-m4）；
 - 控制的 `save()`：`drop` 以 `EditorClosed`（新的错误类）拒绝它的 promise。
 
 销毁时依次 `drop` 等着的动作再清空；载入新正文不动它们（视图还在，组合结束之后照样执行）。等 `save()` 的扩展都接住拒绝。
@@ -92,37 +98,37 @@ docs/v0.1/M4-pages/manual/P6-ime-checklist.md  M5 的部分（3.10）
 
 - 建成时开始计时，`onChange` 时重新计时；到时调用 `controls.leave("idle")`，完成之后状态还在（离不开）就重新计时，下一个 30 分钟再试；`onClose` 时清掉。
 - 隐藏的标签页同样计时，计时器被节流时至多晚约一分钟（总体设计 4.7）；被冻结的标签页在恢复之后才到时，其间锁由租约兜底。
-- 组合：离开像 Done 一样等组合结束（3.6），组合中不离开。
+- 组合：组合中不离开；等过组合的离开在组合结束时留下：只有用户结束组合，那就是输入，30 分钟后再试（审查 A-m2、核对 C-m2）。
 
 ### 3.6 PageEdit 的控制
 
-- **`save`**：有冲突时什么也不做（不把焦点移到冲突的标题，那是 Mod+S 的）；否则照 Mod+S 的 `save()`。
+- **安静的保存**：自动保存与闲置的保存不是用户要的。`save(true)` 有冲突时什么也不做、不挪焦点；每次保存记下是不是用户要的（`asked`），用户要的还在外时安静的保存不改它（数着在外的个数，核对 C-m1）。冲突的面板只为用户要的保存把焦点移到标题；安静的保存撞上冲突，面板照样出现，焦点留在原处，状态栏说明（3.8，审查 A-m1）。
+- **`save`**：安静地保存。
 - **`leave("idle")`**：
   - 会话已失：什么也不做，横幅留着（有未保存的修改时只能由用户复制、离开）；
-  - 否则经 `composed` 走 `leave()`：先保存，结束会话，回到阅读视图，并告诉 `PageShell` 原因（`done({idle: true})`）；
-  - 保存失败或有冲突时 `leave()` 本来就留在编辑里（照 M4），锁照旧持有，下一个 30 分钟再试。
+  - 否则经 `composed` 走 `leave({idle: true})`：安静地保存，结束会话，回到阅读视图，并告诉 `PageShell` 原因（`done({idle: true})`）；等过组合的留下（3.5）；编辑器先没了就完成；
+  - 保存失败或有冲突时留在编辑里，锁照旧持有，不挪焦点（Done 的失败把焦点移回编辑器，闲置的不移，审查 B-I1），下一个 30 分钟再试。
+- **正文没读到**：没有编辑器，也就没有闲置的计时；`PageEdit` 自己计 30 分钟，从最后一次读起算（重试重新计），到时照闲置离开（审查 A-m5、核对 C-m3）。
 
 ### 3.7 闲置退出之后的阅读视图
 
-`PageShell` 的 `done` 带可选的 `{idle}`；闲置退出时阅读视图上方显示一行说明（`role="status"`，不是 `refusal` 的错误样式）："长时间没有输入，已退出编辑。"。焦点照 Done 回到 Edit。再进入编辑时清掉；`PageShell` 按页 id 换，离开这一页也就没了。
+`PageEdit` 的 `done` 带 `{idle}`；闲置退出时阅读视图上方显示一行说明（`<output>`，不是 `refusal` 的错误样式）："长时间没有输入，已退出编辑。"。焦点照 Done 回到 Edit，Edit 以 `aria-describedby` 指向说明：挂上时就带着文字的输出多半不播报，焦点所在的 Edit 带着它读出（审查 B-m5）。再按 Edit 时清掉（被拒也清掉）；`PageShell` 按页 id 换，离开这一页也就没了。
 
 ### 3.8 状态栏与离开守卫
 
-- 状态栏不变：自动保存时照样显示"正在保存""已保存"，经 `<output>` 礼貌地播报；每 2 秒一次的播报算不算吵，留给 v0.1 收官之后的打磨。
+- 状态栏：自动保存时照样显示"正在保存""已保存"，经 `<output>` 礼貌地播报；每 2 秒一次的播报算不算吵，留给 v0.1 收官之后的打磨。有冲突时说"这一页在你编辑时被改过：见下方"（排在失败之后）：安静的保存撞上冲突时，焦点不动，由它告诉读屏。
 - 离开守卫照 M4：有未保存的修改时先问，对话框开着时保存完成就放行；有了自动保存，这个窗口约 2 秒（总体设计 4.8）。
 
 ### 3.9 测试的接线
 
 - **组件**：`renderApp` 默认不注册扩展（M4/P6）。`page-lock.test.tsx` 测锁，经 `[lockReadOnly]`；保留一个经组合根 `editorExtensions` 的最后一跳（只读）。自动保存与闲置各一个经组合根的页面测试，注册表交空时失败；它们用假的计时器（`vi.useFakeTimers({shouldAdvanceTime: true})`，`advanceTimersByTimeAsync`）。
-- **e2e 的夹具** `holdContentWrites(page, pageId)`：扣住这一页正文的 `PUT`（`page.route`，照 P3 的 `holdStream`），返回放行。扣住时保存在途，正文停在未保存（`version` 不等于已保存的），故事因此确定地有"未保存的修改"，不靠赶在 2 秒之内。
+- **e2e 的夹具** `holdContentWrites(page, pageId)`：扣住这一页正文的 `PUT`（`page.route`，照 P3 的 `holdStream`），答 `sent()`（有一个被扣住时完成）与 `release()`（放行，答被扣住的那些的答复）。扣住时保存在途，正文停在未保存（`version` 不等于已保存的），故事因此确定地有"未保存的修改"，不靠赶在 2 秒之内。
 - **改写**：
-  - PG7：两次 Ctrl+S 仍是一个变更集；"留下"之前扣住写，放行之后由 Ctrl+E 离开；revision 不再钉死中间值，断言最后的正文与会话的那一行；
-  - PG9：字节的故事等"已保存"与落库，不数 PUT；输入法的故事改为组合中不发、确认之后发出、落库是确认的字；
-  - PG10：会话过期之后的重开：等"已保存"与落库，PUT 的清单只断言最后一个是 200、其中有一个 409 `edit_session_ended`；
-  - C4：A 输入之前扣住写，删页之后横幅说有未保存的修改；离开之后放行，答 404，在 `expectConsole` 里声明；
-  - 别的故事（C1–C3、C6、PG8、PG12）核对之后不改，PG8 的冲突中自动保存什么也不发。
-- **C5（页面）**：停顿约 2 秒保存（不按键，状态"已保存"，落库）；再输入、再停顿，仍是一个变更集（`expectOneSessionRevision`，不钉 revision）；输入法组合中停顿超过 2 秒不发，确认之后发出确认的字（CDP 的 `Input.imeSetComposition`、`Input.insertText`）；Ctrl+S 立即保存（扣住之前计数，按下之后不到 2 秒就有 PUT：页面的时钟 `install` 之后 `pauseAt`，计时器不走，PUT 只能来自 Ctrl+S）。
-- **C6（页面，闲置）**：页面的时钟 `install`，A 编辑、保存，快进 30 分钟：阅读视图说明长时间没有输入，焦点在 Edit；会话已删；B 随即能编辑。快进带来的令牌续期、事件流重连、心跳照样发生，故事不对它们做断言，有 4xx 时在 `expectConsole` 里声明。
+  - PG7：两次 Ctrl+S 仍是一个变更集；"留下"之前扣住写，等对话框没了（对话框开着时按键不起作用）再按 Ctrl+E，放行之后离开，被扣住的只有一个、答 200；revision 取答复里的；
+  - C4：A 输入之前扣住写，等自动保存的写被扣住再删页，横幅说有未保存的修改；离开之后放行，答 404，在 `expectConsole` 里声明；
+  - PG9、PG10 不改：自动保存要么并进它们的保存，要么无事可发；别的故事（C1–C3、C6、PG8、PG12）核对之后不改，PG8 的冲突中自动保存什么也不发。
+- **C5（页面）**：编辑器打开之后页面的时钟 `pauseAt`，自动保存的 2 秒由故事 `runFor`：1.9 秒时没有写、2 秒时一次，状态"已保存"；再输入、再停顿，仍是一个变更集（`expectOneSessionRevision`，不钉 revision）；输入法组合中走 10 秒不发，确认之后发出确认的字（CDP 的 `Input.imeSetComposition`、`Input.insertText`）；时钟停着按 Ctrl+S 照样保存：PUT 只能来自按键。
+- **C6（页面，闲置）**：页面的时钟 `install`，A 编辑、保存，快进 30 分钟：阅读视图说明长时间没有输入，焦点在 Edit；会话已删；B 随即能编辑。快进带来的令牌续期、事件流重连、心跳照样发生，故事不对它们做断言；同时触发的心跳由结束放弃（3.11）。
 
 ### 3.10 人工清单
 
@@ -130,7 +136,11 @@ docs/v0.1/M4-pages/manual/P6-ime-checklist.md  M5 的部分（3.10）
 
 - 组合中停顿超过 2 秒，网络面板没有保存的请求；确认之后约 2 秒一次保存，内容是确认的字；
 - 组合中这一页的树或锁有推送（另一个标签页改名、另一账户读锁），组合不被打断；
-- 已有各行的"有未保存的修改""一次保存"按自动保存改写（停顿之后变为"已保存"）。
+- 已有各行的"有未保存的修改""一次保存"按自动保存改写（停顿之后变为"已保存"）；停顿时自动保存已在等组合结束，所以确认之后随即保存；推送用终端里延迟的改名，标签页不离开（离开会让浏览器确认或取消组合）。
+
+### 3.11 结束时放弃在途的心跳
+
+`EditSession.end()` 放弃在途的心跳（它的 `AbortController`）：结束之后它的答复本来就被丢弃（200、`taken_over` 也一样），放弃它什么也不失去，只是不再在结束之后答一个 404。C6 的闲置故事快进 30 分钟时心跳与闲置退出同时触发，心跳晚于 `DELETE` 到达，控制台有一个 404，由此发现。
 
 ## 4. 实施步骤
 
@@ -166,4 +176,24 @@ docs/v0.1/M4-pages/manual/P6-ime-checklist.md  M5 的部分（3.10）
 
 ## 7. 结果
 
-（合并之后填写。）
+- 分支 `m5-p5`：S1 `1857c41`；S2 `27d7110`；S3 `dd31e91`；审查修复 `dde58ae`、核对之后的修复 `637cb39`；`46db699` 合并（`--no-ff`）。
+- 门禁：每个 Step 与两轮修复的 `make check` 为绿（前端 1576 个测试）；`make gen-check`、`make e2e`（177 个）、`make image-smoke` 为绿；改过的页面故事（PG7–PG10、C4–C6）压测 20 次为绿；改过的组件测试连跑 10 次为绿；持续集成为绿。
+- 审查：[P5 审查](reviews/P5-autosave-idle-review.md)。两位审查者，没有阻断合并的问题，没有丢文字的路径。Important 1：B-I1（离不开的闲置退出每 30 分钟挪一次焦点）；Minor 10（重合 1），都修掉。修复的核对没有 Important，Minor 3 修掉、Nit 2 改 1 项记 1 项。
+- 反向对照：S1 14（一项最初通过：`vi.fn` 给它答的 promise 挂了处理，测试改用普通函数）、S2 10（一项最初通过，测试改为被拒）、S3 单元 1 与 e2e 6（撤掉扣住的 C4 只在最后失败，另以输入之后等 2.5 秒核实扣住的必要），审查修复 12、核对之后的修复 4，都没有通过。
+
+**与计划的出入**（已同步进上文）：
+
+1. PG9、PG10 不改（3.9）。
+2. `EditSession.end()` 放弃在途的心跳（3.11）。
+3. PG7 等对话框没了再按 Ctrl+E（3.9）。
+4. 管线测试里 M5 形态的示例留着自己的 update listener：那个测试证明经 compartment 卸下，控制的订阅证明不了。
+5. C5 整个故事停着页面的时钟（3.9）。
+6. `holdContentWrites` 答 `sent()` 与 `release()`（3.9）。
+7. 闲置的说明是 `<output>`，Edit 以 `aria-describedby` 指向它（3.7）。
+8. 锁的组件测试只用只读的扩展，一个经整个注册表（3.9）。
+9. 审查与核对的修复：安静的保存与冲突的焦点；状态栏的冲突；等过组合的闲置留下；正文没读到的计时（3.2、3.3、3.5、3.6、3.8）。
+
+**留给后面的**：
+
+- **给 M5 收尾**：负责人执行整份输入法清单（M4/P6 的第 1–9 步与 M5 的第 10–12 步）。
+- **接受**：自动保存失败不自己重试（下一次停顿、Mod+S、闲置再试）；状态栏每次自动保存都礼貌地播报，算不算吵留给 v0.1 收官之后的打磨；浏览器始终不发 `compositionend` 时保存与闲置都一直等着（M4/P6 审查 Q4）。
