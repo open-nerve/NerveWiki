@@ -84,7 +84,8 @@ export const ReadingView = observer(function ReadingView({
       container.querySelector<HTMLElement>(`[data-task="${CSS.escape(task)}"]`)?.focus();
     }
     return () => {
-      // Undone, a checkbox is disabled, which takes its focus: which had it is read first.
+      // Undone, a checkbox is disabled again, which HTML's focus fixup takes the focus from: Chromium at the next
+      // rendering, an engine that applies the rule at once before the new HTML is in. Which had it is read first.
       const focused = document.activeElement;
       focusedTask.current =
         focused instanceof HTMLElement && container.contains(focused) ? focused.dataset.task : undefined;

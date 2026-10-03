@@ -24,10 +24,11 @@ afterEach(() => vi.unstubAllGlobals());
 const tasks = "- [ ] a\n- [x] b\n";
 
 /**
- * focusFixup does what a browser does and jsdom does not: a focused
- * element disabled loses the focus (HTML's focus fixup rule). First, it is
- * undone last, after the checkboxes are disabled again. jsdom blurs only
- * what can have the focus.
+ * focusFixup applies HTML's focus fixup rule at once, as an engine may and
+ * jsdom does not: a focused element disabled loses the focus (Chromium
+ * applies it at the next rendering, after the new HTML is in). First, it
+ * is undone last, after the checkboxes are disabled again. jsdom blurs
+ * only what can have the focus.
  */
 const focusFixup: Enhancement = () => () => {
   const focused = document.activeElement;
