@@ -83,6 +83,8 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
   // Whether the user asked for the save last sent: a conflict it runs into takes the focus to its heading; one that
   // autosave or the idle exit runs into leaves the focus where it is, the status saying so (M5/P5 design 3.6).
   const asked = useRef(true);
+  // How many saves the user asked for are out: a quiet save sent meanwhile does not speak for them.
+  const askedOut = useRef(0);
   const [asking, setAsking] = useState(false);
   const mounted = useMounted();
   const { conflict } = editing;
@@ -119,8 +121,20 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
     if (current === null) {
       return false;
     }
-    asked.current = !quietly;
-    const saved = await editing.save(current.text(), current.version());
+    if (!quietly) {
+      asked.current = true;
+      askedOut.current += 1;
+    } else if (askedOut.current === 0) {
+      asked.current = false;
+    }
+    let saved: boolean;
+    try {
+      saved = await editing.save(current.text(), current.version());
+    } finally {
+      if (!quietly) {
+        askedOut.current -= 1;
+      }
+    }
     if (saved && editing.saved) {
       // The reading view cached is older than the page: it goes, and is read when shown, deduplication or not.
       await mutate(["page-view", notebook.id, page.id], undefined);
@@ -134,7 +148,12 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
       return;
     }
     asked.current = true;
-    await editing.keepMine(current.text(), current.version());
+    askedOut.current += 1;
+    try {
+      await editing.keepMine(current.text(), current.version());
+    } finally {
+      askedOut.current -= 1;
+    }
     // A conflict again takes the focus to its heading; a save that failed otherwise leaves the panel gone.
     if (editing.conflict === undefined) {
       current.focus();
@@ -200,26 +219,26 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
    * as Done does once a composition ends, saying so on the reading view,
    * moving no focus while it stays: with a conflict open (its panel
    * decides) or a save that fails. It stays, and settles all the same,
-   * when by then the content changed (the user came back in the
-   * composition), the session is lost (its banner stays), or the editor
-   * went first.
+   * while the session is lost (its banner stays), once a composition it
+   * waited for ends (only the user ends one: that is input), or when the
+   * editor goes first.
    */
   function leaveIdle(): Promise<void> {
-    const current = editor.current;
-    const at = current?.version();
-    return new Promise((resolve) =>
+    return new Promise((resolve) => {
+      let waited = false;
       composed(
-        current,
+        editor.current,
         () => {
-          if (current?.version() !== at || editing.session.lost !== undefined) {
+          if (waited || editing.session.lost !== undefined) {
             resolve();
           } else {
             void leave({ idle: true }).then(resolve, resolve);
           }
         },
         resolve
-      )
-    );
+      );
+      waited = true;
+    });
   }
 
   /** backToReading leaves an edit whose session is lost, unsaved once confirmed. */
@@ -237,14 +256,16 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
   useEffect(() => {
     keys.current = { save, leave: lost === undefined ? leave : () => Promise.resolve(backToReading()), leaveIdle };
   });
-  // An edit whose content is not read has no editor to time it: it is left as idle after as long all the same.
+  // An edit whose content is not read has no editor to time it: it is left as idle after as long all the same,
+  // from the last try to read it.
+  const unread = editing.readFailure;
   useEffect(() => {
     if (shown) {
       return undefined;
     }
     const idle = setTimeout(() => void keys.current.leaveIdle(), idleLimit);
     return () => clearTimeout(idle);
-  }, [shown]);
+  }, [shown, unread]);
   useEffect(() => {
     const mac = onMac();
     const onKeyDown = (event: KeyboardEvent) => {
