@@ -74,10 +74,11 @@ function route(event: HubEvent, cache: Cache, mutate: ScopedMutator, refresher: 
       }
       for (const { id, revision } of pages) {
         const key = ["page-view", notebook, id];
-        // A view never read here is not; one whose first read is out is read again, as that read may be older.
+        // A view whose first read is out is read again, as that read may be the older; one not shown, or
+        // left without data by the editing tab's save, is not.
         const state = cache.get(unstable_serialize(key));
         const cached = state?.data as PageView | undefined;
-        if (state !== undefined && (cached === undefined || cached.revision < revision)) {
+        if (cached === undefined ? state?.isLoading === true : cached.revision < revision) {
           refresher.request(unstable_serialize(key), () => void mutate(key));
         }
       }

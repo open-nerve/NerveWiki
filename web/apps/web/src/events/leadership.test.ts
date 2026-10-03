@@ -162,6 +162,22 @@ describe("the election with the lease", () => {
     expect([b.holding, c.holding]).toEqual([false, true]);
   });
 
+  test("a steal asked while the tab settled, which another tab won, is answered too: the winner's renewal does not wake it to steal", async () => {
+    const tab = browserOf("the lease");
+    const b = tab("b");
+    // Another tab, which read the lease free as b did, writes it a moment later; b is asked to steal meanwhile.
+    tab.storage.write(NAME, JSON.stringify({ tab: "z", until: Date.now() + TTL }));
+    b.leadership.steal();
+    await settle();
+    expect(b.holding).toBe(false);
+
+    // The winner renews.
+    tab.storage.write(NAME, JSON.stringify({ tab: "z", until: Date.now() + TTL }));
+    await settle();
+
+    expect(b.holding).toBe(false);
+  });
+
   test("a tab whose storage refuses the lease does not hold, and takes it once the storage takes writes again", async () => {
     const storage = new SharedStorage();
     const view = storage.tab("a");

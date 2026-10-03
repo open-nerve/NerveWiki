@@ -181,13 +181,13 @@ export function leaseLeadership(deps: LeaseDeps, key: string): Leadership {
         return;
       }
       await pause(SETTLE_MS, signal, () => undefined);
+      // A steal asked for while this tab settled is answered by the settling: it holds, or another tab does.
+      stealNext = false;
       if (signal.aborted || yielded) {
         release();
         return;
       }
       if (mine()) {
-        // A steal asked for while this tab settled is answered: it holds.
-        stealNext = false;
         holding = new AbortController();
         await lead(holding.signal);
         holding = undefined;

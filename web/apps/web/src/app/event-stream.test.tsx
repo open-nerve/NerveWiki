@@ -1,6 +1,7 @@
 import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { expect, test } from "vitest";
+import { EditorView } from "@codemirror/view";
+import { afterEach, expect, test, vi } from "vitest";
 
 import { FakePage } from "../events/testing/fake-page";
 import type { EditLock } from "../services/page.service";
@@ -89,6 +90,13 @@ async function open(page = new FakePage(), answers: Record<string, Answer> = {})
   workspaces.length = 0;
   lockReads.length = 0;
   return { ...view, server, events, workspaces, lockReads, holdView };
+}
+
+afterEach(() => vi.useRealTimers());
+
+/** Presses Ctrl and key on the page. */
+function ctrl(key: string) {
+  document.dispatchEvent(new KeyboardEvent("keydown", { key, ctrlKey: true, bubbles: true, cancelable: true }));
 }
 
 /** Lets what the events asked for go out. */
@@ -243,6 +251,32 @@ test("the tab editing the page does not read its reading view again", async () =
   await settle();
 
   expect(server.sent.filter((sent) => sent.startsWith("GET view"))).toEqual([]);
+});
+
+test("the tab that edited the page reads it once back, not again for the events of its own saves", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const { server, events } = await open();
+  ctrl("e");
+  const content = await screen.findByRole("textbox", { name: "Page content" });
+  await act(async () => {});
+  const view = EditorView.findFromDOM(content.closest<HTMLElement>(".cm-editor") ?? content);
+  const save = async (text: string, revision: number) => {
+    view?.dispatch({ changes: { from: view.state.doc.length, insert: text }, userEvent: "input.type" });
+    ctrl("s");
+    await screen.findByText("Saved.");
+    events.last().send("pages", pagesEvent(false, [{ id: guide.id, revision }]));
+    await settle();
+  };
+  await save("one", 2);
+  await save(" two", 3);
+
+  ctrl("e");
+  await screen.findByRole("button", { name: "Edit" });
+  await settle();
+  const reads = server.sent.filter((sent) => sent === "GET view Guide").length;
+  await act(() => vi.advanceTimersByTimeAsync(6_000));
+
+  expect(server.sent.filter((sent) => sent === "GET view Guide")).toHaveLength(reads);
 });
 
 test("the stream ends with the generation", async () => {
