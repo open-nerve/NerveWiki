@@ -154,6 +154,53 @@
       }
     },
     {
+      // 事件流（M5/P3）只经注入的 service 调接口：只取 services 的类型；不依赖页面、store、编辑器与阅读视图；
+      // session 只取换代的错误
+      "files": ["web/apps/web/src/events/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "@nervewiki/api-client",
+                "message": "只有 services 调用接口：组件与 store 经由 service，类型也从 service 导入"
+              },
+              {
+                "name": "../session/token-manager",
+                "allowImportNames": ["SessionChangedError"],
+                "message": "事件流只取 session 的 SessionChangedError：连接因换代结束"
+              }
+            ],
+            "patterns": [
+              { "group": ["**/packages/api-client/**"], "message": "从 @nervewiki/api-client 导入" },
+              {
+                "group": [
+                  "../app/**",
+                  "../stores/**",
+                  "../pages/**",
+                  "../components/**",
+                  "../onboarding/**",
+                  "../editor/**",
+                  "../reading/**"
+                ],
+                "message": "事件流不依赖页面与 store：hub 由 RootStore 建，事件经 subscribe 交出去"
+              },
+              {
+                "group": ["../services/**"],
+                "allowTypeImports": true,
+                "message": "事件流只取 services 的类型：EventService 由 RootStore 交进来"
+              },
+              {
+                "group": ["../session/**", "!../session/token-manager", "!../session/testing/**"],
+                "message": "事件流只取 session 的 SessionChangedError：连接因换代结束"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
       "files": ["web/apps/web/src/session/**", "web/apps/web/src/test/**"],
       "rules": {
         "no-restricted-imports": [

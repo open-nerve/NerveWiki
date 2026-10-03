@@ -1,5 +1,5 @@
 import type { NotebookRole } from "../services/notebook.service";
-import type { NodeMove, PageContent, PageView, TreeNode } from "../services/page.service";
+import type { EditLock, NodeMove, PageContent, PageView, TreeNode } from "../services/page.service";
 import { json, notebookJSON, problem, signedInApp, type Answer } from "./fakes";
 
 /** pageNode is the page n of Plans, titled name, under parent (none: at the root). */
@@ -50,6 +50,9 @@ type PageServerOptions = {
  * contents says otherwise; a write in a session that is not open is 409
  * page.edit_session_ended, one on another revision 409
  * page.revision_mismatch (M4/P6 design 3.6).
+ *
+ * Every page's edit lock is lock, by default held by no one; releasing it
+ * frees it (M5/P3 design 3.10).
  */
 export function pageServer({
   role = "admin",
@@ -62,6 +65,7 @@ export function pageServer({
     views: new Map<string, PageView>(),
     contents: new Map<string, { content: string; revision: number }>(),
     sessions: new Set<string>(),
+    lock: { holder: null, expires_in: null } as EditLock,
     nodesDown: false,
     viewsDown: false,
   };
@@ -81,6 +85,12 @@ export function pageServer({
       return page === undefined
         ? problem(404, "page.not_found")
         : json(server.views.get(id) ?? { html: `<p>${page.name}</p>`, revision: 1 });
+    },
+    "GET /api/v0/pages/*/edit-lock": () => json(server.lock),
+    "DELETE /api/v0/pages/*/edit-lock": (request) => {
+      server.sent.push(`RELEASE ${server.nodes.find((node) => node.id === idOf(request))?.name}`);
+      server.lock = { holder: null, expires_in: null };
+      return new Response(null, { status: 204 });
     },
     ...writeRoutes(server),
     ...contentRoutes(server),

@@ -2,12 +2,23 @@ import { STATUS_CODES } from "node:http";
 
 import { expect, type Locator, type Page, type Request, type Response } from "@playwright/test";
 
-/** What a page did that a story checks: its API calls, and what went wrong in it. */
+/**
+ * What a page did that a story checks: its API calls, and what went wrong in it. The event stream (M5/P3
+ * design 3.12) is a connection the app keeps in the background, opened again as it ends, whose failures race
+ * the story's own steps (a stream reconnecting as the session ends answers 401): its requests and their
+ * failures are not among the API's, and the browser's reports of its answers of 400 or more are not among
+ * the console's errors but in eventStreamErrors, for the stories of the stream to check.
+ */
 export interface PageWatch {
-  /** Every API request, as "<method> <path>". */
+  /** Every API request but the event stream's, as "<method> <path>". */
   readonly apiRequests: string[];
-  /** API requests that failed: "<status> <method> <path>", or the browser's error for one without an answer. */
+  /**
+   * API requests but the event stream's that failed: "<status> <method> <path>", or the browser's error for
+   * one without an answer.
+   */
   readonly apiFailures: string[];
+  /** The console's reports of the event stream's answers of 400 or more. */
+  readonly eventStreamErrors: string[];
   /** Uncaught exceptions and unhandled rejections. */
   readonly pageErrors: string[];
   /** Console messages of type error. */
@@ -33,6 +44,17 @@ export function answerTo(page: Page, method: string, path: string): Promise<Resp
   );
 }
 
+/** Counts the answers page gets to method path from now on: the function returned gives how many so far. */
+export function countAnswers(page: Page, method: string, path: string): () => number {
+  let count = 0;
+  page.on("response", (response) => {
+    if (response.request().method() === method && new URL(response.url()).pathname === path) {
+      count += 1;
+    }
+  });
+  return () => count;
+}
+
 /** The note under field: its problem when it has one, else its hint; null without either. */
 export function noteOf(field: Locator): Promise<string | null> {
   return field.evaluate((input) => {
@@ -46,9 +68,18 @@ export function failedToLoad(status: number): string {
   return `Failed to load resource: the server responded with a status of ${status} (${STATUS_CODES[status]})`;
 }
 
+/** The path of the event stream, GET /api/v0/events. */
+export const eventStreamPath = "/api/v0/events";
+
+/** The path of request to the API, but the event stream's: undefined for any other request. */
 function apiPath(request: Request): string | undefined {
   const { pathname } = new URL(request.url());
-  return pathname.startsWith("/api/") ? pathname : undefined;
+  return pathname.startsWith("/api/") && pathname !== eventStreamPath ? pathname : undefined;
+}
+
+/** Whether a console message reports a load of the event stream: the browser gives its address as where. */
+function aboutEventStream(location: { url: string }): boolean {
+  return URL.canParse(location.url) && new URL(location.url).pathname === eventStreamPath;
 }
 
 /**
@@ -59,6 +90,7 @@ export async function watchPage(page: Page): Promise<PageWatch> {
   const watch: PageWatch = {
     apiRequests: [],
     apiFailures: [],
+    eventStreamErrors: [],
     pageErrors: [],
     consoleErrors: [],
     consoleWarnings: [],
@@ -95,7 +127,9 @@ export async function watchPage(page: Page): Promise<PageWatch> {
     watch.pageErrors.push(error.message);
   });
   page.on("console", (message) => {
-    if (message.type() === "error") {
+    if (message.type() === "error" && aboutEventStream(message.location())) {
+      watch.eventStreamErrors.push(message.text());
+    } else if (message.type() === "error") {
       watch.consoleErrors.push(message.text());
     } else if (message.type() === "warning") {
       watch.consoleWarnings.push(message.text());

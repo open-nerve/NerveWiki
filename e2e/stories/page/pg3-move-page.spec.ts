@@ -3,7 +3,7 @@ import type { ApiClient, Page } from "@nervewiki/api-client";
 import { accountIdOf } from "../../fixtures/assert/identity";
 import { expectMoved, placeOf } from "../../fixtures/assert/page";
 import { emailFor } from "../../fixtures/auth";
-import { answerTo, failedToLoad } from "../../fixtures/browser";
+import { answerTo, eventStreamPath, failedToLoad } from "../../fixtures/browser";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { notebookPath } from "../../fixtures/notebook-pages";
 import { createNotebook } from "../../fixtures/notebooks";
@@ -114,6 +114,9 @@ test("PG3 (page): an editor drags a page before another and into another, after 
     }
     return node;
   };
+  // The event stream held, as when another tab's write has not reached this one yet: the tree does not
+  // foresee it (below).
+  await page.route(`**${eventStreamPath}`, () => undefined);
   await page.goto(notebookPath(workspace.slug, notebook.id));
   await expect.poll(() => treeTitles(page, "Plans")).toEqual(["A", "B", "C", "X", "Level 8"]);
 

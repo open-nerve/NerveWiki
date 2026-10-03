@@ -1,9 +1,10 @@
 import { setTimeout as sleep } from "node:timers/promises";
 
 import type { ApiClient, EventHello, EventLock, EventPages, EventReset } from "@nervewiki/api-client";
-import { expect } from "@playwright/test";
+import { expect, type BrowserContext, type Page, type Request } from "@playwright/test";
 
 import { bearer } from "./auth";
+import { eventStreamPath } from "./browser";
 import { readContent, writeContent } from "./pages";
 
 // The event stream of the stories, read with Node's fetch (M5 design 4.10;
@@ -193,4 +194,54 @@ class FrameQueue {
       take({ event: "end" });
     }
   }
+}
+
+/**
+ * Holds page's event stream until the function returned is called: it then connects with what the page
+ * shows mounted, and the connection's refresh reads it all again (M5/P3 design 3.8). Once that read has
+ * answered, what another account writes reaches the page only as an event.
+ */
+export async function holdStream(page: Page): Promise<() => void> {
+  let letIn!: () => void;
+  const held = new Promise<void>((resolve) => (letIn = resolve));
+  await page.route(`**${eventStreamPath}`, async (route) => {
+    await held;
+    await route.continue();
+  });
+  return letIn;
+}
+
+/** Whether request asks for an event stream. */
+function isStream(request: Request): boolean {
+  return request.method() === "GET" && new URL(request.url()).pathname === eventStreamPath;
+}
+
+/** The event streams a browser context's pages hold open, followed from when followStreams began. */
+export interface BrowserStreams {
+  /** How many streams are open: asked and not yet ended. */
+  count(): number;
+  /** The tabs that hold them. */
+  holders(): Page[];
+  /** How many streams were asked for. */
+  opened(): number;
+}
+
+/**
+ * Follows the event streams of context's pages (M5/P3 design 3.12): call it before they load, so that none
+ * goes unseen. A stream ends as its answer does, or fails, or its tab closes.
+ */
+export function followStreams(context: BrowserContext): BrowserStreams {
+  const open = new Map<Request, Page>();
+  let opened = 0;
+  context.on("request", (request) => {
+    if (isStream(request)) {
+      opened += 1;
+      open.set(request, request.frame().page());
+    }
+  });
+  const ended = (request: Request) => open.delete(request);
+  context.on("requestfinished", ended);
+  context.on("requestfailed", ended);
+  const live = () => [...open.values()].filter((page) => !page.isClosed());
+  return { count: () => live().length, holders: live, opened: () => opened };
 }

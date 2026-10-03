@@ -1,6 +1,12 @@
+import { TabChannel } from "../events/channel";
+import type { EventDeps } from "../events/deps";
+import { EventHub } from "../events/hub";
+import { leaseLeadership, webLockLeadership } from "../events/leadership";
+import { Refresher } from "../events/refresher";
 import { AccountService } from "../services/account.service";
 import { ApiTokenService } from "../services/api-token.service";
 import { AuthService } from "../services/auth.service";
+import { EventService } from "../services/event.service";
 import { InstanceService } from "../services/instance.service";
 import { InvitationPreviewService, InvitationService } from "../services/invitation.service";
 import { MemberService } from "../services/member.service";
@@ -27,15 +33,17 @@ import { WorkspaceStore } from "./workspace.store";
 
 /**
  * AppStores are what the page keeps for as long as it lives, whoever is
- * signed in: the device's preferences, what the instance runs, and the
- * session.
+ * signed in: the device's preferences, what the instance runs, the
+ * session, and what the event stream needs of the browser (none in tests
+ * that do not open it).
  */
 export class AppStores {
   readonly instance: InstanceStore;
 
   constructor(
     readonly preferences: PreferencesStore,
-    readonly session: Session
+    readonly session: Session,
+    readonly events?: EventDeps
   ) {
     this.instance = new InstanceStore(new InstanceService(session.public));
   }
@@ -66,6 +74,8 @@ export class RootStore {
   private readonly notebookMembers: NotebookMemberService | undefined;
   private readonly ownerless: OwnerlessService | undefined;
   private readonly pages: PageService | undefined;
+  private readonly hub: EventHub | undefined;
+  private readonly eventDeps: EventDeps | undefined;
   /** The member, invitation and notebook lists this generation holds, by workspace id. */
   private readonly memberLists = new Map<string, MemberStore>();
   private readonly invitationLists = new Map<string, InvitationStore>();
@@ -95,6 +105,37 @@ export class RootStore {
     this.notebookMembers = client && new NotebookMemberService(client);
     this.ownerless = client && new OwnerlessService(client);
     this.pages = client && new PageService(client);
+    this.hub =
+      client && app.events && loginId !== undefined
+        ? eventHub(new EventService(client), app.events, loginId)
+        : undefined;
+    this.eventDeps = this.hub && app.events;
+  }
+
+  /**
+   * events is the event stream of this generation's login, not started:
+   * the one hub for as long as this generation lives (M5/P3 design 3.7);
+   * undefined while the tab is signed out, or where the page has no
+   * EventDeps.
+   */
+  events(): EventHub | undefined {
+    return this.hub;
+  }
+
+  /**
+   * newRefresher is a new merger of the re-reads that events ask for (M5/P3
+   * design 3.8), over the page's visibility; its holder stops it. Undefined
+   * where events is.
+   */
+  newRefresher(): Refresher | undefined {
+    const deps = this.eventDeps;
+    return (
+      deps &&
+      new Refresher(
+        { visible: () => deps.page.visible(), onChange: (l) => deps.page.on("visibilitychange", l) },
+        deps.now
+      )
+    );
   }
 
   /**
@@ -151,6 +192,24 @@ export class RootStore {
   editPage(id: string): PageEditing | undefined {
     return this.pages && new PageEditing(this.pages, id);
   }
+}
+
+/**
+ * eventHub is the hub of login: the tabs of one login elect one holder of
+ * its stream, by its Web Lock or its lease, and talk on one channel.
+ */
+function eventHub(service: EventService, deps: EventDeps, loginId: string): EventHub {
+  const name = `nwiki.events.${loginId}`;
+  return new EventHub({
+    open: (signal) => service.open(signal),
+    leadership: () =>
+      deps.locks
+        ? webLockLeadership(deps.locks, name)
+        : leaseLeadership({ storage: deps.storage, onStorage: deps.onStorage, now: deps.now, tabId: deps.tabId }, name),
+    channel: () => new TabChannel(deps.channel("nwiki.events"), loginId),
+    page: deps.page,
+    now: deps.now,
+  });
 }
 
 /** once is the value of key in cache, which make makes the first time. */

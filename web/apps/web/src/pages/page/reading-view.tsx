@@ -24,7 +24,7 @@ export const ReadingView = observer(function ReadingView({ notebook, page }: { n
   const { slug } = useWorkspace();
   const pages = usePageTree(notebook);
   const enhancements = useContext(Enhancements);
-  const { data, error, mutate } = useSWR(["page-view", page.id], () => pages.view(page.id));
+  const { data, error, mutate } = useSWR(["page-view", notebook.id, page.id], () => pages.view(page.id));
   const article = useRef<HTMLElement>(null);
   const html = data?.html;
   const revision = data?.revision;

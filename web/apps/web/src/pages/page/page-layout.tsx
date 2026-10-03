@@ -17,6 +17,7 @@ import { useNotebook } from "../notebook/notebook-layout";
 import { NotFoundPage } from "../not-found";
 import { useWorkspace } from "../workspace/workspace-layout";
 import { Breadcrumbs } from "./breadcrumbs";
+import { EditLockNote } from "./edit-lock-note";
 import { PageEdit } from "./page-edit";
 import { ReadingView } from "./reading-view";
 import { SubpageList } from "./subpage-list";
@@ -58,8 +59,8 @@ export const PageLayout = observer(function PageLayout() {
 });
 
 /**
- * PageShell is the page found: where it is, its title, its reading view
- * and its children. A writer edits it in its place (M4/P6 design 3.7): by
+ * PageShell is the page found: where it is, its title, who is editing it
+ * (M5/P3 design 3.10), its reading view and its children. A writer edits it in its place (M4/P6 design 3.7): by
  * Edit or Mod+E, which leave the reading view for the editor, the focus on
  * the page's title until the editor takes it; back from the edit, the
  * focus is on Edit. The edit is not in the address: a reload shows the
@@ -132,7 +133,10 @@ const PageShell = observer(function PageShell({ notebook, page }: { notebook: No
           }}
         />
       ) : (
-        <ReadingView notebook={notebook} page={page} />
+        <>
+          <EditLockNote notebook={notebook} page={page} />
+          <ReadingView notebook={notebook} page={page} />
+        </>
       )}
       {children.length > 0 && (
         <section className="space-y-2">
