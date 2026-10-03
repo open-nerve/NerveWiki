@@ -12,7 +12,56 @@ import (
 	"uuid"
 )
 
+const aliveSessionsOf = `-- name: AliveSessionsOf :many
+SELECT id, node_id, notebook_id, user_id, client, changeset_id, revision, created_at, expires_at, ended_reason,
+    ended_by_id, ended_at
+FROM edit_sessions
+WHERE node_id = ANY($1::uuid[]) AND ended_reason IS NULL AND expires_at > $2
+ORDER BY created_at, id
+`
+
+type AliveSessionsOfParams struct {
+	NodeIds []uuid.UUID
+	Now     time.Time
+}
+
+// The sessions of the pages node_ids alive at now, unlocked (M5/P1 design 3.3): the lock's vetoer and guard and
+// the lock's read. The units that call it hold what serializes them with an opening (M5 design 4.4).
+func (q *Queries) AliveSessionsOf(ctx context.Context, arg AliveSessionsOfParams) ([]EditSession, error) {
+	rows, err := q.db.Query(ctx, aliveSessionsOf, arg.NodeIds, arg.Now)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []EditSession
+	for rows.Next() {
+		var i EditSession
+		if err := rows.Scan(
+			&i.ID,
+			&i.NodeID,
+			&i.NotebookID,
+			&i.UserID,
+			&i.Client,
+			&i.ChangesetID,
+			&i.Revision,
+			&i.CreatedAt,
+			&i.ExpiresAt,
+			&i.EndedReason,
+			&i.EndedByID,
+			&i.EndedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const createSession = `-- name: CreateSession :exec
+
 INSERT INTO edit_sessions (id, node_id, notebook_id, user_id, client, created_at, expires_at)
 VALUES ($1, $2, $3, $4, $5, $6,
     $7)
@@ -28,6 +77,8 @@ type CreateSessionParams struct {
 	ExpiresAt  time.Time
 }
 
+// An edit session is alive while it has no end reason and its lease runs past now (M5 design 4.1): a tombstone,
+// a session taken over or unlocked, is not, whatever its expires_at.
 // An edit session opened, under its page's content row's lock.
 func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) error {
 	_, err := q.db.Exec(ctx, createSession,
@@ -57,9 +108,10 @@ type DeleteExpiredSessionsParams struct {
 	Batch int32
 }
 
-// The periodic cleanup (M4/P4 design 3.5): up to batch sessions expired at now. A row another transaction holds
-// (a content write with it, a heartbeat) is skipped, not waited for: the next run deletes it, and the cleanup
-// never joins the lock order. The subquery needs its alias: without it sqlc finds expires_at ambiguous.
+// The periodic cleanup (M4/P4 design 3.5): up to batch sessions expired at now, tombstones among them. A row
+// another transaction holds (a content write with it, a heartbeat) is skipped, not waited for: the next run
+// deletes it, and the cleanup never joins the lock order. The subquery needs its alias: without it sqlc finds
+// expires_at ambiguous.
 func (q *Queries) DeleteExpiredSessions(ctx context.Context, arg DeleteExpiredSessionsParams) (int64, error) {
 	result, err := q.db.Exec(ctx, deleteExpiredSessions, arg.Now, arg.Batch)
 	if err != nil {
@@ -68,9 +120,30 @@ func (q *Queries) DeleteExpiredSessions(ctx context.Context, arg DeleteExpiredSe
 	return result.RowsAffected(), nil
 }
 
+const deleteExpiredSessionsOf = `-- name: DeleteExpiredSessionsOf :execrows
+DELETE FROM edit_sessions WHERE node_id = $1 AND expires_at <= $2
+`
+
+type DeleteExpiredSessionsOfParams struct {
+	NodeID uuid.UUID
+	Now    time.Time
+}
+
+// An opening's first step, and an unlock's, under its page's content row's lock: the page's rows expired at now
+// go, tombstones among them, so that a heartbeat that read an earlier time finds no row to keep alive (M5 design
+// 4.1).
+func (q *Queries) DeleteExpiredSessionsOf(ctx context.Context, arg DeleteExpiredSessionsOfParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteExpiredSessionsOf, arg.NodeID, arg.Now)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const deleteNodeSessions = `-- name: DeleteNodeSessions :many
 DELETE FROM edit_sessions WHERE node_id = ANY($1::uuid[])
-RETURNING id, node_id, notebook_id, user_id, client, changeset_id, revision, created_at, expires_at
+RETURNING id, node_id, notebook_id, user_id, client, changeset_id, revision, created_at, expires_at, ended_reason,
+    ended_by_id, ended_at
 `
 
 // The edit sessions of pages deleted, in their deletion's unit, after the nodes (nodes -> page_contents ->
@@ -94,6 +167,9 @@ func (q *Queries) DeleteNodeSessions(ctx context.Context, nodeIds []uuid.UUID) (
 			&i.Revision,
 			&i.CreatedAt,
 			&i.ExpiresAt,
+			&i.EndedReason,
+			&i.EndedByID,
+			&i.EndedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -107,7 +183,8 @@ func (q *Queries) DeleteNodeSessions(ctx context.Context, nodeIds []uuid.UUID) (
 
 const deleteNotebookSessions = `-- name: DeleteNotebookSessions :many
 DELETE FROM edit_sessions WHERE notebook_id = ANY($1::uuid[])
-RETURNING id, node_id, notebook_id, user_id, client, changeset_id, revision, created_at, expires_at
+RETURNING id, node_id, notebook_id, user_id, client, changeset_id, revision, created_at, expires_at, ended_reason,
+    ended_by_id, ended_at
 `
 
 // The edit sessions of notebooks deleted, in their deletion's transaction.
@@ -130,6 +207,73 @@ func (q *Queries) DeleteNotebookSessions(ctx context.Context, notebookIds []uuid
 			&i.Revision,
 			&i.CreatedAt,
 			&i.ExpiresAt,
+			&i.EndedReason,
+			&i.EndedByID,
+			&i.EndedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const endAliveSessions = `-- name: EndAliveSessions :many
+UPDATE edit_sessions
+SET ended_reason = $1::text, ended_by_id = $2::uuid,
+    ended_at = greatest($3::timestamptz, created_at), expires_at = greatest(expires_at, $4)
+WHERE node_id = $5 AND ended_reason IS NULL AND expires_at > $3
+    AND ($6::uuid IS NULL OR user_id = $6)
+RETURNING id, node_id, notebook_id, user_id, client, changeset_id, revision, created_at, expires_at, ended_reason,
+    ended_by_id, ended_at
+`
+
+type EndAliveSessionsParams struct {
+	Reason string
+	ByID   uuid.UUID
+	At     time.Time
+	Until  time.Time
+	NodeID uuid.UUID
+	UserID *uuid.UUID
+}
+
+// The page's sessions alive at at, of user_id alone when it is given, become tombstones of reason by by: a
+// take-over ends its owner's, an unlock anyone's (M5 design 4.2, 4.3). Their lease is kept, and lengthened to
+// until, a lease after the end, so that the tab learns why; the check expires_at > created_at holds. A unit reads
+// its time before it waits at the page's gate, so a session opened while it waited can be younger than at: its
+// end is then its opening (M5/P1 review I1).
+func (q *Queries) EndAliveSessions(ctx context.Context, arg EndAliveSessionsParams) ([]EditSession, error) {
+	rows, err := q.db.Query(ctx, endAliveSessions,
+		arg.Reason,
+		arg.ByID,
+		arg.At,
+		arg.Until,
+		arg.NodeID,
+		arg.UserID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []EditSession
+	for rows.Next() {
+		var i EditSession
+		if err := rows.Scan(
+			&i.ID,
+			&i.NodeID,
+			&i.NotebookID,
+			&i.UserID,
+			&i.Client,
+			&i.ChangesetID,
+			&i.Revision,
+			&i.CreatedAt,
+			&i.ExpiresAt,
+			&i.EndedReason,
+			&i.EndedByID,
+			&i.EndedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -143,8 +287,10 @@ func (q *Queries) DeleteNotebookSessions(ctx context.Context, notebookIds []uuid
 
 const endSession = `-- name: EndSession :one
 DELETE FROM edit_sessions
-WHERE id = $1 AND user_id = $2 AND expires_at > $3
-RETURNING id, node_id, notebook_id, user_id, client, changeset_id, revision, created_at, expires_at
+WHERE id = $1 AND user_id = $2
+    AND (ended_reason IS NOT NULL OR expires_at > $3)
+RETURNING id, node_id, notebook_id, user_id, client, changeset_id, revision, created_at, expires_at, ended_reason,
+    ended_by_id, ended_at
 `
 
 type EndSessionParams struct {
@@ -153,7 +299,8 @@ type EndSessionParams struct {
 	Now    time.Time
 }
 
-// The caller's end of their own session alive at now: its row goes. An expired one is left to the cleanup.
+// The caller's end of their own session alive at now, or of their tombstone, expired or not: its row goes. An
+// expired session that is no tombstone is left to the cleanup.
 func (q *Queries) EndSession(ctx context.Context, arg EndSessionParams) (EditSession, error) {
 	row := q.db.QueryRow(ctx, endSession, arg.ID, arg.UserID, arg.Now)
 	var i EditSession
@@ -167,14 +314,51 @@ func (q *Queries) EndSession(ctx context.Context, arg EndSessionParams) (EditSes
 		&i.Revision,
 		&i.CreatedAt,
 		&i.ExpiresAt,
+		&i.EndedReason,
+		&i.EndedByID,
+		&i.EndedAt,
+	)
+	return i, err
+}
+
+const findEndedSession = `-- name: FindEndedSession :one
+SELECT id, node_id, notebook_id, user_id, client, changeset_id, revision, created_at, expires_at, ended_reason,
+    ended_by_id, ended_at
+FROM edit_sessions
+WHERE id = $1 AND user_id = $2 AND ended_reason IS NOT NULL
+`
+
+type FindEndedSessionParams struct {
+	ID     uuid.UUID
+	UserID uuid.UUID
+}
+
+// The caller's tombstone id: a heartbeat that finds no alive session asks why.
+func (q *Queries) FindEndedSession(ctx context.Context, arg FindEndedSessionParams) (EditSession, error) {
+	row := q.db.QueryRow(ctx, findEndedSession, arg.ID, arg.UserID)
+	var i EditSession
+	err := row.Scan(
+		&i.ID,
+		&i.NodeID,
+		&i.NotebookID,
+		&i.UserID,
+		&i.Client,
+		&i.ChangesetID,
+		&i.Revision,
+		&i.CreatedAt,
+		&i.ExpiresAt,
+		&i.EndedReason,
+		&i.EndedByID,
+		&i.EndedAt,
 	)
 	return i, err
 }
 
 const findLiveSession = `-- name: FindLiveSession :one
-SELECT id, node_id, notebook_id, user_id, client, changeset_id, revision, created_at, expires_at
+SELECT id, node_id, notebook_id, user_id, client, changeset_id, revision, created_at, expires_at, ended_reason,
+    ended_by_id, ended_at
 FROM edit_sessions
-WHERE id = $1 AND user_id = $2 AND expires_at > $3
+WHERE id = $1 AND user_id = $2 AND ended_reason IS NULL AND expires_at > $3
 `
 
 type FindLiveSessionParams struct {
@@ -197,14 +381,18 @@ func (q *Queries) FindLiveSession(ctx context.Context, arg FindLiveSessionParams
 		&i.Revision,
 		&i.CreatedAt,
 		&i.ExpiresAt,
+		&i.EndedReason,
+		&i.EndedByID,
+		&i.EndedAt,
 	)
 	return i, err
 }
 
 const heartbeatSession = `-- name: HeartbeatSession :one
 UPDATE edit_sessions SET expires_at = $1
-WHERE id = $2 AND user_id = $3 AND expires_at > $4
-RETURNING id, node_id, notebook_id, user_id, client, changeset_id, revision, created_at, expires_at
+WHERE id = $2 AND user_id = $3 AND ended_reason IS NULL AND expires_at > $4
+RETURNING id, node_id, notebook_id, user_id, client, changeset_id, revision, created_at, expires_at, ended_reason,
+    ended_by_id, ended_at
 `
 
 type HeartbeatSessionParams struct {
@@ -215,7 +403,8 @@ type HeartbeatSessionParams struct {
 }
 
 // A heartbeat: one statement on the caller's own session, alive at now, which it keeps until until (M4 design
-// 4, "locks": no workspace or notebook row).
+// 4, "locks": no workspace or notebook row). A take-over or unlock it waits behind is seen when it resumes: the
+// row it then finds has an end reason, and it updates nothing.
 func (q *Queries) HeartbeatSession(ctx context.Context, arg HeartbeatSessionParams) (EditSession, error) {
 	row := q.db.QueryRow(ctx, heartbeatSession,
 		arg.Until,
@@ -234,12 +423,16 @@ func (q *Queries) HeartbeatSession(ctx context.Context, arg HeartbeatSessionPara
 		&i.Revision,
 		&i.CreatedAt,
 		&i.ExpiresAt,
+		&i.EndedReason,
+		&i.EndedByID,
+		&i.EndedAt,
 	)
 	return i, err
 }
 
 const lockSession = `-- name: LockSession :one
-SELECT id, node_id, notebook_id, user_id, client, changeset_id, revision, created_at, expires_at
+SELECT id, node_id, notebook_id, user_id, client, changeset_id, revision, created_at, expires_at, ended_reason,
+    ended_by_id, ended_at
 FROM edit_sessions WHERE id = $1
 FOR UPDATE
 `
@@ -259,6 +452,9 @@ func (q *Queries) LockSession(ctx context.Context, id uuid.UUID) (EditSession, e
 		&i.Revision,
 		&i.CreatedAt,
 		&i.ExpiresAt,
+		&i.EndedReason,
+		&i.EndedByID,
+		&i.EndedAt,
 	)
 	return i, err
 }

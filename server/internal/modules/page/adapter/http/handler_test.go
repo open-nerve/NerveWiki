@@ -79,18 +79,20 @@ type fakes struct {
 }
 
 type (
-	fakeList   struct{ *fakes }
-	fakeCreate struct{ *fakes }
-	fakeGet    struct{ *fakes }
-	fakeRead   struct{ *fakes }
-	fakeWrite  struct{ *fakes }
-	fakeView   struct{ *fakes }
-	fakeOpen   struct{ *fakes }
-	fakeBeat   struct{ *fakes }
-	fakeEnd    struct{ *fakes }
-	fakeRename struct{ *fakes }
-	fakeMove   struct{ *fakes }
-	fakeDelete struct{ *fakes }
+	fakeList    struct{ *fakes }
+	fakeCreate  struct{ *fakes }
+	fakeGet     struct{ *fakes }
+	fakeRead    struct{ *fakes }
+	fakeWrite   struct{ *fakes }
+	fakeView    struct{ *fakes }
+	fakeOpen    struct{ *fakes }
+	fakeBeat    struct{ *fakes }
+	fakeEnd     struct{ *fakes }
+	fakeLock    struct{ *fakes }
+	fakeRelease struct{ *fakes }
+	fakeRename  struct{ *fakes }
+	fakeMove    struct{ *fakes }
+	fakeDelete  struct{ *fakes }
 )
 
 func (f fakeList) Execute(_ context.Context, notebookID uuid.UUID) ([]domain.Node, error) {
@@ -149,8 +151,8 @@ func session() app.EditSession {
 const sessionJSON = `{"expires_at":"2026-10-02T10:01:00Z","id":"0199a2b4-0000-7000-8000-000000000020",` +
 	`"page_id":"0199a2b4-0000-7000-8000-000000000012"}`
 
-func (f fakeOpen) Execute(_ context.Context, pageID uuid.UUID, client domain.Client) (app.EditSession, error) {
-	f.got = []any{pageID, client}
+func (f fakeOpen) Execute(_ context.Context, pageID uuid.UUID, client domain.Client, takeOver bool) (app.EditSession, error) {
+	f.got = []any{pageID, client, takeOver}
 	return session(), f.err
 }
 
@@ -164,6 +166,20 @@ func (f fakeEnd) Execute(_ context.Context, sessionID uuid.UUID) error {
 	return f.err
 }
 
+// Execute answers no holder for the page id(13), bob for any other.
+func (f fakeLock) Execute(_ context.Context, pageID uuid.UUID) (app.LockView, error) {
+	f.got = []any{pageID}
+	if pageID == id(13) {
+		return app.LockView{}, f.err
+	}
+	return app.LockView{Holder: &app.LockHolder{UserID: id(2), DisplayName: "Bob"}, ExpiresIn: 91}, f.err
+}
+
+func (f fakeRelease) Execute(_ context.Context, pageID uuid.UUID, client domain.Client) error {
+	f.got = []any{pageID, client}
+	return f.err
+}
+
 // serve mounts the module on f behind the platform's middlewares.
 func (f *fakes) serve(t *testing.T) http.Handler {
 	t.Helper()
@@ -173,6 +189,7 @@ func (f *fakes) serve(t *testing.T) http.Handler {
 		ListNodes: fakeList{f}, CreatePage: fakeCreate{f}, GetPage: fakeGet{f}, GetPageContent: fakeRead{f},
 		PutPageContent: fakeWrite{f}, GetPageView: fakeView{f}, RenameNode: fakeRename{f}, MoveNode: fakeMove{f},
 		DeleteNode: fakeDelete{f}, OpenSession: fakeOpen{f}, Heartbeat: fakeBeat{f}, EndSession: fakeEnd{f},
+		GetEditLock: fakeLock{f}, ReleaseEditLock: fakeRelease{f},
 	})
 	return router
 }
@@ -201,6 +218,8 @@ const (
 	viewPath    = pagePath + "/view"
 	contentPath = pagePath + "/content"
 	openPath    = pagePath + "/edit-sessions"
+	lockPath    = pagePath + "/edit-lock"
+	freeLock    = "/api/v0/pages/0199a2b4-0000-7000-8000-000000000013/edit-lock"
 	sessionPath = "/api/v0/edit-sessions/0199a2b4-0000-7000-8000-000000000020"
 	beatPath    = sessionPath + "/heartbeat"
 	nodePath    = "/api/v0/nodes/0199a2b4-0000-7000-8000-000000000012"
@@ -249,9 +268,18 @@ func TestTheOperationsAnswerTheUseCases(t *testing.T) {
 			`{"parent_id":null,"after_id":"0199a2b4-0000-7000-8000-000000000013"}`, http.StatusOK, treeNodeJSON,
 			[]any{id(12), app.Destination{Position: app.After(id(13))}, domain.ClientWeb}},
 		{"an edit session by the web", "session", http.MethodPost, openPath, "", http.StatusCreated, sessionJSON,
-			[]any{id(12), domain.ClientWeb}},
+			[]any{id(12), domain.ClientWeb, false}},
 		{"an edit session by the API", "pat", http.MethodPost, openPath, "", http.StatusCreated, sessionJSON,
-			[]any{id(12), domain.ClientAPI}},
+			[]any{id(12), domain.ClientAPI, false}},
+		{"an edit session taking over", "session", http.MethodPost, openPath, `{"take_over":true}`, http.StatusCreated, sessionJSON,
+			[]any{id(12), domain.ClientWeb, true}},
+		{"an edit session not taking over", "session", http.MethodPost, openPath, `{}`, http.StatusCreated, sessionJSON,
+			[]any{id(12), domain.ClientWeb, false}},
+		{"a held lock", "session", http.MethodGet, lockPath, "", http.StatusOK,
+			`{"expires_in":91,"holder":{"display_name":"Bob","user_id":"0199a2b4-0000-7000-8000-000000000002"}}`, []any{id(12)}},
+		{"a free lock", "session", http.MethodGet, freeLock, "", http.StatusOK, `{"expires_in":null,"holder":null}`, []any{id(13)}},
+		{"a release by the web", "session", http.MethodDelete, lockPath, "", http.StatusNoContent, "", []any{id(12), domain.ClientWeb}},
+		{"a release by the API", "pat", http.MethodDelete, lockPath, "", http.StatusNoContent, "", []any{id(12), domain.ClientAPI}},
 		{"a heartbeat", "session", http.MethodPost, beatPath, "", http.StatusOK, sessionJSON, []any{id(20)}},
 		{"an end", "session", http.MethodDelete, sessionPath, "", http.StatusNoContent, "", []any{id(20)}},
 		{"a deletion by the web", "session", http.MethodDelete, nodePath, "", http.StatusNoContent, "",
@@ -293,6 +321,8 @@ func TestTheOperationsAnswerEachProblem(t *testing.T) {
 	write := `{"content":"x","base_revision":1}`
 	contentInvalid := domain.CheckContent("content", "\x00")
 	busy := shared.ServerBusy(time.Second)
+	locked := domain.Locked(id(12), id(2), "Bob")
+	unlocked := domain.Unlocked(id(3), "Carol")
 	for _, tt := range []struct {
 		method, path, body string
 		err                error
@@ -330,6 +360,16 @@ func TestTheOperationsAnswerEachProblem(t *testing.T) {
 		{http.MethodDelete, nodePath, "", shared.Forbidden(), http.StatusForbidden, "forbidden"},
 		{http.MethodPost, openPath, "", domain.ErrNotFound, http.StatusNotFound, "page.not_found"},
 		{http.MethodPost, openPath, "", shared.Forbidden(), http.StatusForbidden, "forbidden"},
+		{http.MethodPost, openPath, "", locked, http.StatusConflict, "page.locked"},
+		{http.MethodPut, contentPath, write, locked, http.StatusConflict, "page.locked"},
+		{http.MethodPut, contentPath, write, domain.ErrEditSessionTakenOver, http.StatusConflict, "page.edit_session_taken_over"},
+		{http.MethodPut, contentPath, write, unlocked, http.StatusConflict, "page.edit_session_unlocked"},
+		{http.MethodDelete, nodePath, "", locked, http.StatusConflict, "page.locked"},
+		{http.MethodPost, beatPath, "", domain.ErrEditSessionTakenOver, http.StatusConflict, "page.edit_session_taken_over"},
+		{http.MethodPost, beatPath, "", unlocked, http.StatusConflict, "page.edit_session_unlocked"},
+		{http.MethodGet, lockPath, "", domain.ErrNotFound, http.StatusNotFound, "page.not_found"},
+		{http.MethodDelete, lockPath, "", domain.ErrNotFound, http.StatusNotFound, "page.not_found"},
+		{http.MethodDelete, lockPath, "", shared.Forbidden(), http.StatusForbidden, "forbidden"},
 		{http.MethodPost, beatPath, "", domain.ErrEditSessionNotFound, http.StatusNotFound, "page.edit_session_not_found"},
 		{http.MethodPost, beatPath, "", shared.Forbidden(), http.StatusForbidden, "forbidden"},
 		{http.MethodDelete, sessionPath, "", domain.ErrEditSessionNotFound, http.StatusNotFound, "page.edit_session_not_found"},
@@ -355,6 +395,8 @@ func TestAnIDThatIsNoUUID(t *testing.T) {
 		{http.MethodPost, "/api/v0/nodes/notes/move", `{"parent_id":null}`},
 		{http.MethodDelete, "/api/v0/nodes/notes", ""},
 		{http.MethodPost, "/api/v0/pages/notes/edit-sessions", ""},
+		{http.MethodGet, "/api/v0/pages/notes/edit-lock", ""},
+		{http.MethodDelete, "/api/v0/pages/notes/edit-lock", ""},
 		{http.MethodPost, "/api/v0/edit-sessions/s/heartbeat", ""},
 		{http.MethodDelete, "/api/v0/edit-sessions/s", ""},
 	} {

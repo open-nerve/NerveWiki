@@ -17,9 +17,13 @@ const (
 	// ActionEdit opens an edit session of a page and keeps it alive; ending
 	// one needs only that it is the caller's.
 	ActionEdit shared.Action = "page.edit"
+	// ActionReleaseEditLock ends whichever edit session holds a page's
+	// lock (M5 design 4.2).
+	ActionReleaseEditLock shared.Action = "page.release_edit_lock"
 )
 
 // Actions lists the module's actions.
 func Actions() []shared.Action {
-	return []shared.Action{ActionList, ActionRead, ActionCreate, ActionRename, ActionMove, ActionDelete, ActionWrite, ActionEdit}
+	return []shared.Action{ActionList, ActionRead, ActionCreate, ActionRename, ActionMove, ActionDelete, ActionWrite, ActionEdit,
+		ActionReleaseEditLock}
 }

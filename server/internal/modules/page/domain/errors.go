@@ -1,6 +1,10 @@
 package domain
 
-import "github.com/open-nerve/NerveWiki/server/internal/shared"
+import (
+	"uuid"
+
+	"github.com/open-nerve/NerveWiki/server/internal/shared"
+)
 
 // The module's problems (M4 design 5; M4/P1 design 3.5).
 var (
@@ -31,7 +35,34 @@ var (
 	// ErrEditSessionNotFound: no alive edit session of the caller has the
 	// id, or the caller may see its notebook no more.
 	ErrEditSessionNotFound = shared.NewError(shared.KindNotFound, "page.edit_session_not_found", "No such edit session.")
+	// ErrLocked: another edit session holds the page's lock (M5 design
+	// 4.4). Locked returns it with the lock member.
+	ErrLocked = shared.NewError(shared.KindConflict, "page.locked", "Another edit session holds the page's lock.")
+	// ErrEditSessionTakenOver: the caller's edit session was taken over by
+	// their own session elsewhere (M5 design 4.3).
+	ErrEditSessionTakenOver = shared.NewError(shared.KindConflict, "page.edit_session_taken_over",
+		"The edit session was taken over elsewhere.")
+	// ErrEditSessionUnlocked: an admin of the notebook released the page's
+	// lock, ending the caller's edit session. Unlocked returns it with the
+	// ended_by member.
+	ErrEditSessionUnlocked = shared.NewError(shared.KindConflict, "page.edit_session_unlocked",
+		"An admin of the notebook released the page's lock.")
 )
+
+// Locked is ErrLocked naming the lock: the page locked and its holder
+// (M5 design 4.5).
+func Locked(pageID, userID uuid.UUID, displayName string) error {
+	e := *ErrLocked
+	e.Lock = &shared.LockHolder{PageID: pageID, UserID: userID, DisplayName: displayName}
+	return &e
+}
+
+// Unlocked is ErrEditSessionUnlocked naming who released the lock.
+func Unlocked(userID uuid.UUID, displayName string) error {
+	e := *ErrEditSessionUnlocked
+	e.EndedBy = &shared.Person{UserID: userID, DisplayName: displayName}
+	return &e
+}
 
 // NotAllowed is 422 on field: a parent or a sibling the write names is no
 // node of the notebook, or not where the write says.

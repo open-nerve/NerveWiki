@@ -186,7 +186,9 @@ type NotebookPages interface {
 
 // EditSession is an edit session (M4 design 4): who edits which page from
 // where, the changeset its writes go to and the revision it last wrote
-// (zero both before its first write), and its lease.
+// (zero both before its first write), and its lease. A tombstone (M5
+// design 4.3), a session taken over or unlocked, has its end's reason, by
+// whom and when; a session not ended has none of them.
 type EditSession struct {
 	ID          uuid.UUID
 	NodeID      uuid.UUID
@@ -197,11 +199,27 @@ type EditSession struct {
 	Revision    int
 	CreatedAt   time.Time
 	ExpiresAt   time.Time
+	EndedReason domain.EndReason
+	EndedByID   uuid.UUID
+	EndedAt     time.Time
 }
 
-// Alive reports whether the session's lease lasts past now.
+// Alive reports whether the session holds its page's lock at now: it has
+// not ended, and its lease lasts past now (M5 design 4.1).
 func (s EditSession) Alive(now time.Time) bool {
-	return s.ExpiresAt.After(now)
+	return s.EndedReason == "" && s.ExpiresAt.After(now)
+}
+
+// SessionsEnd is an end that leaves tombstones (M5 design 4.2, 4.3): the
+// page's sessions alive at At, of UserID alone when it is not nil, end for
+// Reason by By, and keep their rows until Until at least.
+type SessionsEnd struct {
+	NodeID uuid.UUID
+	UserID *uuid.UUID
+	Reason domain.EndReason
+	By     uuid.UUID
+	At     time.Time
+	Until  time.Time
 }
 
 // SessionWriter is what a write unit does to edit sessions, under its
@@ -216,6 +234,14 @@ type SessionWriter interface {
 	// DeleteNodeSessions deletes the sessions of the pages ids and returns
 	// them.
 	DeleteNodeSessions(ctx context.Context, ids []uuid.UUID) ([]EditSession, error)
+	// DeleteExpiredSessionsOf deletes the page id's sessions expired at
+	// now, tombstones among them: an opening's first step, and an
+	// unlock's, so that a heartbeat that read an earlier time finds no row
+	// to keep alive.
+	DeleteExpiredSessionsOf(ctx context.Context, id uuid.UUID, now time.Time) error
+	// EndAliveSessions makes tombstones of the sessions e ends and returns
+	// them, ended.
+	EndAliveSessions(ctx context.Context, e SessionsEnd) ([]EditSession, error)
 }
 
 // Sessions is what a heartbeat and an end do: each one statement on the
@@ -226,8 +252,27 @@ type Sessions interface {
 	FindLiveSession(ctx context.Context, id, userID uuid.UUID, now time.Time) (EditSession, error)
 	// HeartbeatSession keeps the session until until.
 	HeartbeatSession(ctx context.Context, id, userID uuid.UUID, now, until time.Time) (EditSession, error)
-	// EndSession deletes the session and returns it.
+	// EndSession deletes the session, or the caller's tombstone id, and
+	// returns it.
 	EndSession(ctx context.Context, id, userID uuid.UUID, now time.Time) (EditSession, error)
+	// FindEndedSession reads the caller's tombstone id, unlocked: why a
+	// session the others found not alive ended.
+	FindEndedSession(ctx context.Context, id, userID uuid.UUID) (EditSession, error)
+}
+
+// AliveSessions reads the edit locks of pages: their sessions alive at
+// now, by when they opened, unlocked (M5 design 4.4: the unit that reads
+// them holds what serializes it with an opening).
+type AliveSessions interface {
+	AliveSessionsOf(ctx context.Context, ids []uuid.UUID, now time.Time) ([]EditSession, error)
+}
+
+// Names reads the accounts' display names, which a lock's problem and read
+// give (M5 design 4.5): bootstrap hands identity's directory to it. An id
+// of no account is left out, and its name is empty where it is given; the
+// sessions' ids reference users, which are never deleted, so none is.
+type Names interface {
+	DisplayNames(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]string, error)
 }
 
 // ExpiredSessions deletes the sessions expired at now, at most batch, and

@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
@@ -96,6 +97,29 @@ func TestIsMatchesKindAndCode(t *testing.T) {
 	}
 	if errors.Is(wrapped, shared.NewError(shared.KindConflict, "page.other", "")) {
 		t.Error("errors.Is matched another code")
+	}
+}
+
+// The lock and ended_by members are there when set, and absent otherwise:
+// the platform leaves a member out of the problem when ok is false.
+func TestProblemMembers(t *testing.T) {
+	page, user := uuid.New(), uuid.New()
+	err := shared.NewError(shared.KindConflict, "page.locked", "locked")
+
+	if _, _, _, ok := err.ProblemLock(); ok {
+		t.Error("ProblemLock() ok without a lock")
+	}
+	if _, _, ok := err.ProblemEndedBy(); ok {
+		t.Error("ProblemEndedBy() ok without ended_by")
+	}
+
+	err.Lock = &shared.LockHolder{PageID: page, UserID: user, DisplayName: "Ada"}
+	err.EndedBy = &shared.Person{UserID: user, DisplayName: "Grace"}
+	if p, u, name, ok := err.ProblemLock(); !ok || p != page || u != user || name != "Ada" {
+		t.Errorf("ProblemLock() = %s %s %q %v, want %s %s Ada true", p, u, name, ok, page, user)
+	}
+	if u, name, ok := err.ProblemEndedBy(); !ok || u != user || name != "Grace" {
+		t.Errorf("ProblemEndedBy() = %s %q %v, want %s Grace true", u, name, ok, user)
 	}
 }
 

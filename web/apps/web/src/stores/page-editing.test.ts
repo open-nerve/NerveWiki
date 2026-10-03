@@ -58,7 +58,7 @@ async function begun() {
   return { ...fake, editing };
 }
 
-test("the heartbeat's interval is 20 seconds, the server's lease a third of 60 (domain/session.go)", () => {
+test("the heartbeat's interval is 20 seconds, a sixth of the server's lease of 120 (domain/session.go)", () => {
   expect(editSessionHeartbeat).toBe(20_000);
 });
 

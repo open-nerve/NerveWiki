@@ -791,7 +791,7 @@ export interface paths {
         get: operations["getPageContent"];
         /**
          * Write a page's content
-         * @description Replaces the page's content, byte for byte, on the revision the writer read it at; its notebook's editors and admins can, a reader cannot (forbidden). A content of more than 5 MiB (5,242,880 bytes) or with a NUL character is validation_failed first, whatever the page. Then a page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found; an edit session that is not the caller's session of this page, opened from the same client (the web or a token), alive, is page.edit_session_ended; a base_revision that is not the page's revision is page.revision_mismatch: the page was written since, and the writer reads it again. A content the page holds already writes nothing, whatever the base. The writes of one edit session are one changeset, with one version of the page, until another write of the page comes in between. When the server parses as much content as it can at once, a content waits a moment, then is server_busy. A body that has not all arrived within the server's read timeout (server.read_timeout, 30 seconds by default, in which 5 MiB needs about 1.4 Mbit/s) is bad_request.
+         * @description Replaces the page's content, byte for byte, on the revision the writer read it at; its notebook's editors and admins can, a reader cannot (forbidden). A content of more than 5 MiB (5,242,880 bytes) or with a NUL character is validation_failed first, whatever the page. Then a page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found; an edit session that is not the caller's session of this page, opened from the same client (the web or a token), is page.edit_session_ended; then one taken over by the caller elsewhere is page.edit_session_taken_over, one whose lock an admin of the notebook released is page.edit_session_unlocked, naming them in ended_by, and one no longer alive is page.edit_session_ended; a base_revision that is not the page's revision is page.revision_mismatch: the page was written since, and the writer reads it again. A content the page holds already writes nothing, whatever the base. Then a page whose lock another edit session holds, the caller's elsewhere among them, is page.locked, naming the holder in lock: a write in no session too. The writes of one edit session are one changeset, with one version of the page, until another write of the page comes in between. When the server parses as much content as it can at once, a content waits a moment, then is server_busy. A body that has not all arrived within the server's read timeout (server.read_timeout, 30 seconds by default, in which 5 MiB needs about 1.4 Mbit/s) is bad_request.
          */
         put: operations["putPageContent"];
         post?: never;
@@ -815,10 +815,37 @@ export interface paths {
         put?: never;
         /**
          * Open an edit session
-         * @description Opens the caller's edit session of the page: a lease of 60 seconds, which a heartbeat every 20 seconds keeps alive. The content's writes that name it are one changeset. Its notebook's editors and admins can, a reader cannot (forbidden). A page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found alike.
+         * @description Opens the caller's edit session of the page: a lease of 120 seconds, which a heartbeat every 20 seconds keeps alive. The content's writes that name it are one changeset. The page's alive session holds its edit lock: while one does, another opening is page.locked, naming the holder in lock, the caller among them when they hold it elsewhere. With take_over, the caller's own alive sessions of the page end first (their next heartbeat or write is page.edit_session_taken_over); someone else's lock it does not pass. Its notebook's editors and admins can, a reader cannot (forbidden). A page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found alike.
          */
         post: operations["openEditSession"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v0/pages/{page_id}/edit-lock": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The page's id. */
+                page_id: components["parameters"]["PageID"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Read a page's edit lock
+         * @description Who holds the page's edit lock, and for how many seconds its lease lasts unless a heartbeat keeps it; no holder while no alive session holds it. Whoever may read the page may read it. A page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found alike.
+         */
+        get: operations["getEditLock"];
+        put?: never;
+        post?: never;
+        /**
+         * Release a page's edit lock
+         * @description Ends whichever edit session holds the page's lock: its next heartbeat or write is page.edit_session_unlocked, naming the caller. A page no session holds is released already. Its notebook's admins can, anyone else in it cannot (forbidden). A page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found.
+         */
+        delete: operations["releaseEditLock"];
         options?: never;
         head?: never;
         patch?: never;
@@ -861,7 +888,7 @@ export interface paths {
         put?: never;
         /**
          * Keep an edit session alive
-         * @description Keeps the caller's session alive for 60 seconds from now. A session that does not exist, has expired, is someone else's, or whose notebook the caller has no role in any more is page.edit_session_not_found alike: the editor opens a new one. One whose page the caller may only read now is forbidden.
+         * @description Keeps the caller's session alive for 120 seconds from now. The caller's session, alive or ended by a take-over or an unlock, is page.edit_session_not_found when the caller has no role in its notebook any more, and forbidden when they may only read its page now. Otherwise the caller's session taken over elsewhere is page.edit_session_taken_over; one whose lock an admin of the notebook released is page.edit_session_unlocked, naming them in ended_by: the editor does not open another. Either answers so until its record is cleaned up, at least 120 seconds after the end. A session that does not exist, has expired, or is someone else's is page.edit_session_not_found alike: the editor opens a new one.
          */
         post: operations["heartbeatEditSession"];
         delete?: never;
@@ -885,7 +912,7 @@ export interface paths {
         post?: never;
         /**
          * End an edit session
-         * @description Ends the caller's session: it asks only that the session is the caller's and alive. A session that does not exist, has expired, or is someone else's is page.edit_session_not_found alike, which the editor takes for ended.
+         * @description Ends the caller's session: it asks only that the session is the caller's, and alive, or taken over or unlocked, expired or not until its record is cleaned up (its record goes). A session that does not exist, has expired otherwise, or is someone else's is page.edit_session_not_found alike, which the editor takes for ended.
          */
         delete: operations["endEditSession"];
         options?: never;
@@ -908,7 +935,7 @@ export interface paths {
         post?: never;
         /**
          * Delete a page
-         * @description Deletes the page with every page under it, at one time: they go to the trash together. Its notebook's editors and admins can, a reader cannot (forbidden). A page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found.
+         * @description Deletes the page with every page under it, at one time: they go to the trash together. Its notebook's editors and admins can, a reader cannot (forbidden). A page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found. While another account's edit session holds the lock of the page or of one under it, the deletion is page.locked, naming the first such page, level by level, and its holder in lock; the caller's own sessions end with their pages.
          */
         delete: operations["deleteNode"];
         options?: never;
@@ -985,6 +1012,20 @@ export interface components {
             detail?: string;
             /** @description The invalid fields of the request. */
             errors?: components["schemas"]["FieldError"][];
+            /** @description The edit lock page.locked names: the page locked and who holds it (the caller themself when they hold it elsewhere). No other code carries it. */
+            lock?: {
+                /** Format: uuid */
+                page_id: string;
+                /** Format: uuid */
+                user_id: string;
+                display_name: string;
+            };
+            /** @description Who ended the caller's edit session: page.edit_session_unlocked names the notebook's admin who unlocked it. No other code carries it. */
+            ended_by?: {
+                /** Format: uuid */
+                user_id: string;
+                display_name: string;
+            };
         };
         /** @description A session's tokens. Send access_token as "Authorization: Bearer"; access_token_expires_in counts from the response, so a client's clock does not matter. When it expires, exchange refresh_token for the next pair at POST /api/v0/auth/refresh. */
         AuthTokens: {
@@ -1454,6 +1495,14 @@ export interface components {
              */
             edit_session_id?: string;
         };
+        /** @description How an edit session opens. */
+        EditSessionOpening: {
+            /**
+             * @description End the caller's own alive sessions of the page first, wherever they were opened.
+             * @default false
+             */
+            take_over: boolean;
+        };
         /** @description An edit session of a page, while its lease lasts. */
         EditSession: {
             /** Format: uuid */
@@ -1465,6 +1514,19 @@ export interface components {
              * @description When the session ends unless a heartbeat keeps it alive.
              */
             expires_at: string;
+        };
+        /** @description The account whose alive edit session holds a page's lock. */
+        EditLockHolder: {
+            /** Format: uuid */
+            user_id: string;
+            display_name: string;
+        };
+        /** @description A page's edit lock. */
+        EditLock: {
+            /** @description Who holds the lock; null while no one does. */
+            holder: components["schemas"]["EditLockHolder"] | null;
+            /** @description Whole seconds, rounded up, until the holder's lease ends unless a heartbeat keeps it; null while no one holds the lock. A span, not a time: the client's clock may be wrong. */
+            expires_in: number | null;
         };
         /** @description A page's reading view. */
         PageView: {
@@ -1591,7 +1653,10 @@ export type Ancestor = components['schemas']['Ancestor'];
 export type Page = components['schemas']['Page'];
 export type PageContent = components['schemas']['PageContent'];
 export type PageContentWrite = components['schemas']['PageContentWrite'];
+export type EditSessionOpening = components['schemas']['EditSessionOpening'];
 export type EditSession = components['schemas']['EditSession'];
+export type EditLockHolder = components['schemas']['EditLockHolder'];
+export type EditLock = components['schemas']['EditLock'];
 export type PageView = components['schemas']['PageView'];
 export type NodeRename = components['schemas']['NodeRename'];
 export type NodeMove = components['schemas']['NodeMove'];
@@ -2764,7 +2829,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["EditSessionOpening"];
+            };
+        };
         responses: {
             /** @description The session. */
             201: {
@@ -2774,6 +2843,52 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["EditSession"];
                 };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    getEditLock: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The page's id. */
+                page_id: components["parameters"]["PageID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The page's edit lock. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditLock"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    releaseEditLock: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The page's id. */
+                page_id: components["parameters"]["PageID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No session holds the page's lock. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             default: components["responses"]["Problem"];
         };

@@ -73,7 +73,7 @@ describe("errorText", () => {
       "Too many attempts. Try again in 12 s.",
     ],
     ["429 without", new ApiError(429, problem(429, "rate_limited")), "Too many attempts. Try again later."],
-    ["a code without one", new ApiError(409, problem(409, "page.locked")), "Something went wrong (page.locked)."],
+    ["a code without one", new ApiError(409, problem(409, "page.frozen")), "Something went wrong (page.frozen)."],
     ["a proxy's answer", new ApiError(502, "<html>"), "Something went wrong (HTTP 502)."],
     [
       "a network failure",

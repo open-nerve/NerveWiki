@@ -1,9 +1,11 @@
 // Package page is the module of a notebook's pages: the tree of nodes,
 // their content, the changesets and versions of their writes, the edit
-// sessions (v0.1 design 3.5, 3.6, 3.8, 3.9; M4 design). Its root is what
-// bootstrap sees: New for the HTTP side and the jobs; NewNotebookDeletion
-// and NewNotebookActivity, its parts in the notebook module's deletion and
-// activity; Purgers for the purge; Actions for the composition's checks.
+// sessions and their lock (v0.1 design 3.5, 3.6, 3.8, 3.9; M4 design; M5
+// design). Its root is what bootstrap sees: New for the HTTP side and the
+// jobs; NewNotebookDeletion and NewNotebookActivity, its parts in the
+// notebook module's deletion and activity; NewEditLock, its registrant of
+// its own extension points; Purgers for the purge; Actions for the
+// composition's checks.
 package page
 
 import (
@@ -39,6 +41,10 @@ type Workspaces = app.Workspaces
 // notebook.NewNotebooks to it.
 type Notebooks = app.Notebooks
 
+// Names reads the accounts' display names: bootstrap hands identity's
+// directory to it.
+type Names = app.Names
+
 // The module's extension points (M4 design 8): bootstrap composes their
 // registrants in registrants.go.
 type (
@@ -53,6 +59,7 @@ type (
 	// The edit sessions' (M4/P4 design 3.7).
 	SessionOpening        = app.SessionOpening
 	EditSessionVetoer     = app.EditSessionVetoer
+	SessionOpened         = app.SessionOpened
 	SessionEnded          = app.SessionEnded
 	EditSessionSubscriber = app.EditSessionSubscriber
 )
@@ -66,6 +73,8 @@ type Deps struct {
 	Authorizer shared.Authorizer
 	Workspaces Workspaces
 	Notebooks  Notebooks
+	// Names names a lock's holder and who released one.
+	Names Names
 	// Markdown is the one parse and rendering of Markdown, with the
 	// registered extensions (M4 design 8).
 	Markdown *markdown.Markdown
@@ -98,24 +107,26 @@ func New(d Deps) *Module {
 	budget := markdownadapter.NewBudget(d.ParseBudgetBytes, d.ParseMaxWait, d.Logger)
 	writer := app.NewWriter(app.WriterDeps{
 		Tx: d.Tx, Clock: d.Clock, Auth: d.Authorizer, Workspaces: d.Workspaces, Notebooks: d.Notebooks,
-		Nodes: store, NodeWriter: store, Changesets: store, SessionWriter: store,
+		Nodes: store, NodeWriter: store, Changesets: store, SessionWriter: store, Names: d.Names,
 		Guards: d.Guards, Participants: d.Participants, Observers: d.Observers,
 		SessionVetoers: d.EditSessionVetoers, SessionSubscribers: d.EditSessionSubscribers,
 	})
 	parser := app.NewContentParser(writer, md, budget)
 	return &Module{uc: httpadapter.UseCases{
-		ListNodes:      app.NewListNodes(d.Notebooks, store, d.Authorizer),
-		CreatePage:     app.NewCreatePage(writer, store, parser, d.Logger),
-		GetPage:        app.NewGetPage(d.Notebooks, store, d.Authorizer),
-		GetPageContent: app.NewGetPageContent(d.Notebooks, store, d.Authorizer),
-		PutPageContent: app.NewPutPageContent(writer, store, parser, d.Logger),
-		GetPageView:    app.NewGetPageView(d.Notebooks, store, d.Authorizer, md, budget),
-		RenameNode:     app.NewRenameNode(writer, store, d.Logger),
-		MoveNode:       app.NewMoveNode(writer, store, d.Logger),
-		DeleteNode:     app.NewDeleteNode(writer, store, d.Logger),
-		OpenSession:    app.NewOpenEditSession(writer, store, d.Logger),
-		Heartbeat:      app.NewHeartbeatEditSession(store, d.Notebooks, d.Authorizer, d.Clock),
-		EndSession:     app.NewEndEditSession(d.Tx, store, d.Notebooks, d.Clock, d.EditSessionSubscribers, d.Logger),
+		ListNodes:       app.NewListNodes(d.Notebooks, store, d.Authorizer),
+		CreatePage:      app.NewCreatePage(writer, store, parser, d.Logger),
+		GetPage:         app.NewGetPage(d.Notebooks, store, d.Authorizer),
+		GetPageContent:  app.NewGetPageContent(d.Notebooks, store, d.Authorizer),
+		PutPageContent:  app.NewPutPageContent(writer, store, parser, d.Logger),
+		GetPageView:     app.NewGetPageView(d.Notebooks, store, d.Authorizer, md, budget),
+		RenameNode:      app.NewRenameNode(writer, store, d.Logger),
+		MoveNode:        app.NewMoveNode(writer, store, d.Logger),
+		DeleteNode:      app.NewDeleteNode(writer, store, d.Logger),
+		OpenSession:     app.NewOpenEditSession(writer, store, d.Logger),
+		Heartbeat:       app.NewHeartbeatEditSession(store, d.Notebooks, d.Authorizer, d.Names, d.Clock),
+		EndSession:      app.NewEndEditSession(d.Tx, store, d.Notebooks, d.Clock, d.EditSessionSubscribers, d.Logger),
+		GetEditLock:     app.NewGetEditLock(d.Notebooks, store, store, d.Names, d.Authorizer, d.Clock),
+		ReleaseEditLock: app.NewReleaseEditLock(writer, store, d.Logger),
 	}, jobs: []jobs.Job{
 		riveradapter.CleanupJob(app.NewCleanupEditSessions(store, d.Clock, d.Logger), d.EditSessionCleanupInterval),
 	}}

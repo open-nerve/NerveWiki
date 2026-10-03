@@ -11,8 +11,9 @@ export type EditingService = Pick<
 
 /**
  * How often the editor beats to keep its edit session (M4 design 4): the
- * server's lease is 60 seconds, so that two beats may be lost before it
- * ends. The server holds the same numbers (EditSessionHeartbeat and
+ * server's lease is 120 seconds (M5 design 4.6), so that a hidden tab's
+ * beats, throttled to one a minute, still keep it. The server holds the
+ * same numbers (EditSessionHeartbeat and
  * EditSessionLease in server/internal/modules/page/domain/session.go);
  * each side's tests pin its own.
  */

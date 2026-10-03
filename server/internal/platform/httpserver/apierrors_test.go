@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"uuid"
 )
 
 // problemErr is a ProblemError as a module's error type would be.
@@ -33,6 +34,34 @@ type fieldErr struct{ field, code, message string }
 func (f fieldErr) Error() string        { return f.message }
 func (f fieldErr) ProblemField() string { return f.field }
 func (f fieldErr) ProblemCode() string  { return f.code }
+
+// memberErr is a ProblemError with the members only some codes carry: a
+// lock, who ended a session, or neither (ok false).
+type memberErr struct {
+	problemErr
+	lock    *ProblemLock
+	endedBy *ProblemPerson
+}
+
+func (e memberErr) ProblemLock() (pageID, userID uuid.UUID, displayName string, ok bool) {
+	if e.lock == nil {
+		return uuid.UUID{}, uuid.UUID{}, "", false
+	}
+	return e.lock.PageID, e.lock.UserID, e.lock.DisplayName, true
+}
+
+func (e memberErr) ProblemEndedBy() (userID uuid.UUID, displayName string, ok bool) {
+	if e.endedBy == nil {
+		return uuid.UUID{}, "", false
+	}
+	return e.endedBy.UserID, e.endedBy.DisplayName, true
+}
+
+// The ids a lock's problem names.
+const (
+	lockedPage = "0198a8f0-0000-7000-8000-000000000001"
+	lockHolder = "0198a8f0-0000-7000-8000-000000000002"
+)
 
 // minimalErr has only the required methods of ProblemError.
 type minimalErr struct{}
@@ -182,6 +211,16 @@ func TestWriteMapsProblemErrors(t *testing.T) {
 				`"errors":[{"field":"name","code":"too_long","message":"at most 255 characters"},{"field":"tags[1].name","code":"required","message":"is required"}]}`, ""},
 		{"retry after rounds up", problemErr{status: http.StatusServiceUnavailable, code: "server_busy", detail: "busy", retry: 1500 * time.Millisecond},
 			http.StatusServiceUnavailable, `{"status":503,"code":"server_busy","title":"Service Unavailable","detail":"busy"}`, "2"},
+		{"a lock", memberErr{problemErr: problemErr{status: http.StatusConflict, code: "page.locked", detail: "Ada is editing the page."},
+			lock: &ProblemLock{PageID: uuid.MustParse(lockedPage), UserID: uuid.MustParse(lockHolder), DisplayName: "Ada"}}, http.StatusConflict,
+			`{"status":409,"code":"page.locked","title":"Conflict","detail":"Ada is editing the page.",` +
+				`"lock":{"page_id":"` + lockedPage + `","user_id":"` + lockHolder + `","display_name":"Ada"}}`, ""},
+		{"who ended", memberErr{problemErr: problemErr{status: http.StatusConflict, code: "page.edit_session_unlocked", detail: "Unlocked."},
+			endedBy: &ProblemPerson{UserID: uuid.MustParse(lockHolder), DisplayName: "Ada"}}, http.StatusConflict,
+			`{"status":409,"code":"page.edit_session_unlocked","title":"Conflict","detail":"Unlocked.",` +
+				`"ended_by":{"user_id":"` + lockHolder + `","display_name":"Ada"}}`, ""},
+		{"members it has not", memberErr{problemErr: conflict}, http.StatusConflict,
+			`{"status":409,"code":"things.taken","title":"Conflict","detail":"The name is taken."}`, ""},
 		{"payload too large", fmt.Errorf("read body: %w", &http.MaxBytesError{Limit: 1048576}), http.StatusRequestEntityTooLarge,
 			`{"status":413,"code":"payload_too_large","title":"Request Entity Too Large","detail":"The request body exceeds 1048576 bytes."}`, ""},
 	}

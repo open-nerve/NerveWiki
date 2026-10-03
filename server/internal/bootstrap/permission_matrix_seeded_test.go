@@ -39,11 +39,13 @@ import (
 // 3.7): its admin, the ended member's column, left it, its editor stays;
 // lab has one audit event, gone-nb deleted ownerless.
 //
-// Each notebook column has an edit session of its own on the page its cells
-// target, alive, whatever its role (M4/P4 design 3.9): what the session's
-// operations answer is decided when they are called. Each of those pages has
-// one more, of acme's admin, an account outside lab: someone else's for every
-// column. gone-nb-page's are deleted with its notebook.
+// Each notebook column has an edit session of its own, alive, whatever its
+// role (M4/P4 design 3.9), on a page of its own at its notebook's root, its
+// draft: what the session's operations answer is decided when they are
+// called. Each notebook of the columns has one more draft, with a session of
+// acme's admin, an account outside lab: someone else's for every column. So
+// a page has at most one alive session, as the edit lock allows (M5/P1), and
+// the pages the other rows target have none. gone-nb's are deleted with it.
 
 // matrixWorkspace is a seeded workspace and the column that is its admin.
 type matrixWorkspace struct {
@@ -109,7 +111,8 @@ func matrixNotebooks() []matrixNotebook {
 }
 
 // matrixPage is a seeded page, by its title: under parent, a page before
-// it, or at its notebook's root. A deleted notebook's are deleted with it.
+// it, or at its notebook's root, its siblings in the list's order. A
+// deleted notebook's are deleted with it.
 type matrixPage struct {
 	name     string
 	notebook string
@@ -117,7 +120,7 @@ type matrixPage struct {
 }
 
 func matrixPages() []matrixPage {
-	return []matrixPage{
+	pages := []matrixPage{
 		{"priv-root", "priv", ""},
 		{"priv-child", "priv", "priv-root"},
 		{"team-page", "team", ""},
@@ -125,6 +128,34 @@ func matrixPages() []matrixPage {
 		{"gone-nb-page", "gone-nb", ""},
 		{"orphan-page", "orphan", ""},
 	}
+	for _, c := range notebookColumns() {
+		pages = append(pages, matrixPage{draftOf(c), notebookOf(c), ""})
+	}
+	for _, nb := range sessionNotebooks() {
+		pages = append(pages, matrixPage{othersDraftIn(nb), nb, ""})
+	}
+	return pages
+}
+
+// draftOf is the page of a notebook column's own edit session.
+func draftOf(c caller) string {
+	return "draft-" + strings.ReplaceAll(string(c), " ", "-")
+}
+
+// othersDraftIn is the page of someone else's edit session in a notebook.
+func othersDraftIn(notebook string) string {
+	return notebook + "-others-draft"
+}
+
+// sessionNotebooks are the notebooks of the notebook columns, once each.
+func sessionNotebooks() []string {
+	var out []string
+	for _, c := range notebookColumns() {
+		if nb := notebookOf(c); !slices.Contains(out, nb) {
+			out = append(out, nb)
+		}
+	}
+	return out
 }
 
 // matrixSession is a seeded edit session: owner's, of page.
@@ -139,12 +170,10 @@ const someoneElse = callerAdmin
 func matrixSessions() []matrixSession {
 	var out []matrixSession
 	for _, c := range notebookColumns() {
-		out = append(out, matrixSession{pageOf(c), c})
+		out = append(out, matrixSession{draftOf(c), c})
 	}
-	for _, p := range matrixPages() {
-		if slices.ContainsFunc(notebookColumns(), func(c caller) bool { return pageOf(c) == p.name }) {
-			out = append(out, matrixSession{p.name, someoneElse})
-		}
+	for _, nb := range sessionNotebooks() {
+		out = append(out, matrixSession{othersDraftIn(nb), someoneElse})
 	}
 	return out
 }
@@ -458,15 +487,15 @@ func prepareMatrix(t *testing.T) matrixData {
 				"VALUES ($6, $1, "+account+", $3, "+account+", "+account+", $4, $4, $5)",
 				d.seeded.notebooks[m.notebook], emailOf(m.c), string(m.role), now, ended, d.seeded.notebookMembers[m.notebook+"/"+string(m.c)])
 		}
-		for _, p := range matrixPages() {
+		for i, p := range matrixPages() {
 			var parent *uuid.UUID
 			if p.parent != "" {
 				id := d.seeded.pages[p.parent]
 				parent = &id
 			}
 			exec("INSERT INTO nodes (id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id, "+
-				"created_at, updated_at) SELECT $1, n.id, $3, 'page', $4, $4, 0, n.created_by_id, n.created_by_id, $5, $5 "+
-				"FROM notebooks n WHERE n.id = $2", d.seeded.pages[p.name], d.seeded.notebooks[p.notebook], parent, p.name, now)
+				"created_at, updated_at) SELECT $1, n.id, $3, 'page', $4, $4, $6, n.created_by_id, n.created_by_id, $5, $5 "+
+				"FROM notebooks n WHERE n.id = $2", d.seeded.pages[p.name], d.seeded.notebooks[p.notebook], parent, p.name, now, i)
 			exec("INSERT INTO page_contents (node_id, content, revision, content_hash, byte_size, updated_by_id, updated_at) "+
 				"SELECT id, '', 1, sha256(''), 0, created_by_id, $2 FROM nodes WHERE id = $1", d.seeded.pages[p.name], now)
 			exec(seededPageHistory, d.seeded.pages[p.name])

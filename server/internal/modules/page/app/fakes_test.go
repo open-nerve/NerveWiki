@@ -398,23 +398,90 @@ func (f *fakeStore) HeartbeatSession(ctx context.Context, id, userID uuid.UUID, 
 	return s, nil
 }
 
+// EndSession deletes the caller's session alive at now, or their
+// tombstone.
 func (f *fakeStore) EndSession(ctx context.Context, id, userID uuid.UUID, now time.Time) (app.EditSession, error) {
 	f.record(ctx, "EndSession")
 	s, ok := f.sessions[id]
-	if !ok || s.UserID != userID || !s.Alive(now) {
+	if !ok || s.UserID != userID || s.EndedReason == "" && !s.Alive(now) {
 		return app.EditSession{}, app.ErrNotFound
 	}
 	delete(f.sessions, id)
 	return s, nil
 }
 
+func (f *fakeStore) FindEndedSession(ctx context.Context, id, userID uuid.UUID) (app.EditSession, error) {
+	f.record(ctx, "FindEndedSession")
+	s, ok := f.sessions[id]
+	if !ok || s.UserID != userID || s.EndedReason == "" {
+		return app.EditSession{}, app.ErrNotFound
+	}
+	return s, nil
+}
+
+// AliveSessionsOf are the pages' sessions alive at now, by when they
+// opened.
+func (f *fakeStore) AliveSessionsOf(ctx context.Context, ids []uuid.UUID, now time.Time) ([]app.EditSession, error) {
+	f.record(ctx, "AliveSessionsOf")
+	var out []app.EditSession
+	for _, s := range f.sessions {
+		if slices.Contains(ids, s.NodeID) && s.Alive(now) {
+			out = append(out, s)
+		}
+	}
+	slices.SortFunc(out, func(a, b app.EditSession) int {
+		if c := a.CreatedAt.Compare(b.CreatedAt); c != 0 {
+			return c
+		}
+		return a.ID.Compare(b.ID)
+	})
+	return out, nil
+}
+
+// DeleteExpiredSessionsOf deletes the page's sessions expired at now,
+// tombstones among them.
+func (f *fakeStore) DeleteExpiredSessionsOf(ctx context.Context, id uuid.UUID, now time.Time) error {
+	f.record(ctx, "DeleteExpiredSessionsOf")
+	for sid, s := range f.sessions {
+		if s.NodeID == id && !s.ExpiresAt.After(now) {
+			delete(f.sessions, sid)
+		}
+	}
+	return nil
+}
+
+// EndAliveSessions makes tombstones of the sessions e ends, at e.At or
+// their opening, the later; it sorts them by when they opened, for the
+// tests' sake, as the SQL does not.
+func (f *fakeStore) EndAliveSessions(ctx context.Context, e app.SessionsEnd) ([]app.EditSession, error) {
+	f.record(ctx, "EndAliveSessions")
+	var out []app.EditSession
+	for id, s := range f.sessions {
+		if s.NodeID != e.NodeID || !s.Alive(e.At) || e.UserID != nil && s.UserID != *e.UserID {
+			continue
+		}
+		s.EndedReason, s.EndedByID, s.EndedAt = e.Reason, e.By, e.At
+		if s.CreatedAt.After(e.At) {
+			s.EndedAt = s.CreatedAt
+		}
+		if e.Until.After(s.ExpiresAt) {
+			s.ExpiresAt = e.Until
+		}
+		f.sessions[id] = s
+		out = append(out, s)
+	}
+	slices.SortFunc(out, func(a, b app.EditSession) int { return a.CreatedAt.Compare(b.CreatedAt) })
+	return out, nil
+}
+
 // DeleteExpiredSessions deletes at most batch of the sessions expired at
-// now; held are skipped, as rows another transaction holds.
+// now, tombstones among them; held are skipped, as rows another
+// transaction holds.
 func (f *fakeStore) DeleteExpiredSessions(ctx context.Context, now time.Time, batch int) (int, error) {
 	f.record(ctx, "DeleteExpiredSessions")
 	n := 0
 	for id, s := range f.sessions {
-		if n < batch && !s.Alive(now) && !f.held[id] {
+		if n < batch && !s.ExpiresAt.After(now) && !f.held[id] {
 			delete(f.sessions, id)
 			n++
 		}
@@ -453,6 +520,19 @@ func (f *fakeStore) DeleteNodeSessions(ctx context.Context, ids []uuid.UUID) ([]
 		if slices.Contains(ids, s.NodeID) {
 			out = append(out, s)
 			delete(f.sessions, s.ID)
+		}
+	}
+	return out, nil
+}
+
+// fakeNames gives each account's display name.
+type fakeNames map[uuid.UUID]string
+
+func (n fakeNames) DisplayNames(_ context.Context, ids []uuid.UUID) (map[uuid.UUID]string, error) {
+	out := make(map[uuid.UUID]string)
+	for _, id := range ids {
+		if name, ok := n[id]; ok {
+			out[id] = name
 		}
 	}
 	return out, nil
@@ -564,12 +644,20 @@ func (v *vetoer) VetoEditSession(ctx context.Context, o app.SessionOpening) erro
 	return v.err
 }
 
-// subscriber records the ends it follows and answers err.
+// subscriber records the openings and the ends it follows and answers
+// err.
 type subscriber struct {
 	*recorder
-	name  string
-	err   error
-	ended []app.SessionEnded
+	name   string
+	err    error
+	opened []app.SessionOpened
+	ended  []app.SessionEnded
+}
+
+func (s *subscriber) EditSessionOpened(ctx context.Context, o app.SessionOpened) error {
+	s.record(ctx, named("EditSessionOpened", s.name))
+	s.opened = append(s.opened, o)
+	return s.err
 }
 
 func (s *subscriber) EditSessionEnded(ctx context.Context, e app.SessionEnded) error {
@@ -596,6 +684,7 @@ type fixture struct {
 	observers  []app.PageObserver
 	vetoers    []app.EditSessionVetoer
 	enders     []app.EditSessionSubscriber
+	names      fakeNames
 	alice      uuid.UUID
 	acme, eng  uuid.UUID
 }
@@ -609,7 +698,7 @@ func newFixture() *fixture {
 			items: map[uuid.UUID]app.Item{}, touched: map[uuid.UUID]time.Time{}, sessions: map[uuid.UUID]app.EditSession{},
 			held: map[uuid.UUID]bool{}},
 		auth: &fakeAuthorizer{recorder: rec, grants: map[shared.Action]bool{}, forbidden: map[shared.Action]bool{}},
-		logs: &bytes.Buffer{}, alice: uuid.NewV7(), acme: uuid.NewV7(), eng: uuid.NewV7(),
+		logs: &bytes.Buffer{}, names: fakeNames{}, alice: uuid.NewV7(), acme: uuid.NewV7(), eng: uuid.NewV7(),
 	}
 	f.notebooks = fakeNotebooks{recorder: rec, workspaces: map[uuid.UUID]uuid.UUID{f.eng: f.acme}, gone: map[uuid.UUID]bool{}}
 	f.md = &fakeMarkdown{recorder: rec}
@@ -622,7 +711,7 @@ func (f *fixture) logger() *slog.Logger { return slog.New(slog.NewTextHandler(f.
 func (f *fixture) writer() *app.Writer {
 	return app.NewWriter(app.WriterDeps{
 		Tx: f.tx, Clock: f.clock, Auth: f.auth, Workspaces: f.workspaces, Notebooks: f.notebooks, Nodes: f.store,
-		NodeWriter: f.store, Changesets: f.store, SessionWriter: f.store, Guards: f.guards, Participants: f.partakers,
+		NodeWriter: f.store, Changesets: f.store, SessionWriter: f.store, Names: f.names, Guards: f.guards, Participants: f.partakers,
 		Observers: f.observers, SessionVetoers: f.vetoers, SessionSubscribers: f.enders,
 	})
 }

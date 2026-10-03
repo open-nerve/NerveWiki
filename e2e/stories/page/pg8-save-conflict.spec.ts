@@ -2,6 +2,7 @@ import { accountIdOf } from "../../fixtures/assert/identity";
 import { expectContentWritten, expectOneSessionRevision, sessionsOf } from "../../fixtures/assert/page";
 import { emailFor } from "../../fixtures/auth";
 import { failedToLoad } from "../../fixtures/browser";
+import type { Database } from "../../fixtures/db";
 import { joinAs } from "../../fixtures/invitations";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, openSession, putContent, readContent, writeContent } from "../../fixtures/pages";
@@ -19,9 +20,22 @@ import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 // PG8, a save that conflicts (M4 design 3, 4): a write that came in first
 // refuses a save on the version before it; the editor reads the current
 // content, shows the differences, and keeps the user's text on it or
-// takes theirs (M4/P6 design 3.8).
+// takes theirs (M4/P6 design 3.8). While the edit session holds the lock,
+// no write comes first (M5/P1): it expires, through the database rather
+// than the wall clock, another credential writes, and the save in it is
+// 409 page.edit_session_ended; the editor opens another, and its save on
+// the version before is the conflict.
 
-test("PG8 (API): another credential writes first, so a save on the version before is 409 page.revision_mismatch; the editor reads the current content and keeps theirs on its revision, in a changeset of its own", async ({
+/** Expires the page pageId's edit sessions, once one is open. */
+async function expireSessionsOf(db: Database, pageId: string): Promise<void> {
+  await expect.poll(async () => (await sessionsOf(db, pageId)).length).toBe(1);
+  await db.query(
+    "UPDATE edit_sessions SET created_at = now() - interval '3 minutes', expires_at = now() - interval '1 minute' WHERE node_id = $1",
+    [pageId]
+  );
+}
+
+test("PG8 (API): the session expires and another credential writes first, so a save in it is 409 page.edit_session_ended, and one in a new session on the version before is 409 page.revision_mismatch; the editor reads the current content and keeps theirs on its revision, in the new session's changeset", async ({
   api,
   db,
 }, testInfo) => {
@@ -32,8 +46,16 @@ test("PG8 (API): another credential writes first, so a save on the version befor
   const notebook = await createNotebook(api, adminPat, workspace.slug, "Plans", "editor");
   const page = await createPage(api, adminPat, notebook.id, "Notes");
 
-  const session = await openSession(api, editorPat, page.id);
+  const expired = await openSession(api, editorPat, page.id);
+  await expireSessionsOf(db, page.id);
   expect((await writeContent(api, adminPat, page.id, { content: "Theirs\n", base_revision: 1 })).revision).toBe(2);
+  const ended = await putContent(api, editorPat, page.id, {
+    content: "Mine\n",
+    base_revision: 1,
+    edit_session_id: expired.id,
+  });
+  expect([ended.response.status, ended.error?.code]).toEqual([409, "page.edit_session_ended"]);
+  const session = await openSession(api, editorPat, page.id);
   const stale = await putContent(api, editorPat, page.id, {
     content: "Mine\n",
     base_revision: 1,
@@ -53,7 +75,7 @@ test("PG8 (API): another credential writes first, so a save on the version befor
   await expectOneSessionRevision(db, session.id, page.id, 2, 3);
 });
 
-test("PG8 (page): a token writes while the page is edited; the save shows the differences, and Keep mine saves over them on their revision, in the edit's changeset; on another page Discard mine edits theirs, and the next save goes through", async ({
+test("PG8 (page): the edit's session expires and a token writes; the save opens another session and shows the differences, and Keep mine saves over them on their revision, in the edit's changeset; on another page Discard mine edits theirs, and the next save goes through", async ({
   api,
   db,
   pageWatch,
@@ -67,6 +89,7 @@ test("PG8 (page): a token writes while the page is edited; the save shows the di
 
   await page.goto(wikiPagePath(workspace.slug, notebook.id, kept.id));
   await startEditing(page);
+  await expireSessionsOf(db, kept.id);
   await writeContent(api, pat, kept.id, { content: "Base\nTheirs\n", base_revision: 1 });
   await page.keyboard.press("ControlOrMeta+End");
   await page.keyboard.type("Mine");
@@ -78,23 +101,28 @@ test("PG8 (page): a token writes while the page is edited; the save shows the di
     conflict.getByRole("textbox", { name: "Your text against the page as it is now", exact: true })
   ).toContainText("Mine");
   await expect(conflict).toContainText("Theirs");
-  pageWatch.expectConsole({ errors: [failedToLoad(409)] });
+  pageWatch.expectConsole({ errors: [failedToLoad(409), failedToLoad(409)] });
   await conflict.getByRole("button", { name: "Keep mine", exact: true }).click();
   await expect(editStatus(page)).toHaveText("Saved.");
   await expect(conflict).toHaveCount(0);
   expect(await readContent(api, pat, kept.id)).toMatchObject({ content: "Base\nMine", revision: 3 });
-  expect(await keptWrites.all()).toEqual([{ status: 409, code: "page.revision_mismatch" }, { status: 200 }]);
+  expect(await keptWrites.all()).toEqual([
+    { status: 409, code: "page.edit_session_ended" },
+    { status: 409, code: "page.revision_mismatch" },
+    { status: 200 },
+  ]);
   await expectContentWritten(db, await keptWrites.saved(), "Base\nMine", adminId);
   const [keptSession] = await sessionsOf(db, kept.id);
   await expectOneSessionRevision(db, keptSession ?? "", kept.id, 2, 3);
 
   await page.goto(wikiPagePath(workspace.slug, notebook.id, discarded.id));
   await startEditing(page);
+  await expireSessionsOf(db, discarded.id);
   await writeContent(api, pat, discarded.id, { content: "Base\r\nTheirs\r\n", base_revision: 1 });
   await page.keyboard.press("ControlOrMeta+End");
   await page.keyboard.type("Mine");
   await page.keyboard.press("ControlOrMeta+s");
-  pageWatch.expectConsole({ errors: [failedToLoad(409)] });
+  pageWatch.expectConsole({ errors: [failedToLoad(409), failedToLoad(409)] });
   await conflict.getByRole("button", { name: "Discard mine", exact: true }).click();
   const content = editorContent(page);
   await expect(content).toBeFocused();

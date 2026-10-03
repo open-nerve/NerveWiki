@@ -72,7 +72,7 @@ test("PG10 (API): a heartbeat moves the lease on; after the end a heartbeat is 4
   ]);
 });
 
-test("PG10 (page): the editor's heartbeat moves the lease on; a session expired meanwhile refuses the save with page.edit_session_ended, and the editor saves in a new one, nothing lost; Done ends the session", async ({
+test("PG10 (page): the editor's heartbeat moves the lease on; a session expired meanwhile refuses the save with page.edit_session_ended, and the editor saves in a new one, whose opening deletes the expired one, nothing lost; Done ends the session", async ({
   api,
   db,
   pageWatch,
@@ -115,9 +115,11 @@ test("PG10 (page): the editor's heartbeat moves the lease on; a session expired 
   // The save in the expired session is refused, then sent again in a new one.
   pageWatch.expectConsole({ errors: [failedToLoad(409)] });
   expect(await writes.all()).toEqual([{ status: 409, code: "page.edit_session_ended" }, { status: 200 }]);
-  const [, second] = await sessionsOf(db, notes.id);
+  // The new session's opening deleted the expired one (M5/P1).
+  const [second] = await sessionsOf(db, notes.id);
   expect((await live()).map((each) => each.id)).toEqual([second]);
   expect(second).not.toBe(first?.id);
+  await expectSessionGone(db, first?.id ?? "");
   expect(await readContent(api, pat, notes.id)).toMatchObject({ content: "One two", revision: 3 });
   await expectContentWritten(db, await writes.saved(), "One two", adminId);
   // The save sent again went in the new session: its version, from 2 to 3, is in that session's changeset.

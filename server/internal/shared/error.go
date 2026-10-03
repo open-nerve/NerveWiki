@@ -6,7 +6,10 @@
 // by structure, and bootstrap asserts that they do.
 package shared
 
-import "time"
+import (
+	"time"
+	"uuid"
+)
 
 // Kind is the category of a domain error. It decides the HTTP status of the
 // problem the error becomes (v0.1 design 6.1).
@@ -106,6 +109,26 @@ type Error struct {
 	Detail     string        // becomes the problem's detail
 	Fields     []FieldError  // the invalid fields, if any
 	RetryDelay time.Duration // becomes Retry-After when positive
+	// Lock is the edit lock a page.locked names: the problem's lock member.
+	Lock *LockHolder
+	// EndedBy is who ended the caller's edit session: the problem's
+	// ended_by member of page.edit_session_unlocked.
+	EndedBy *Person
+}
+
+// LockHolder is a page's edit lock as a problem names it (M5 design 4.5):
+// the page locked and who holds it. A display name is v0.1 design 6.1's
+// exception to "a response gives another resource by its id alone".
+type LockHolder struct {
+	PageID      uuid.UUID
+	UserID      uuid.UUID
+	DisplayName string
+}
+
+// Person is an account a problem names: its id and display name.
+type Person struct {
+	UserID      uuid.UUID
+	DisplayName string
 }
 
 // NewError returns an error of kind with a module code, e.g.
@@ -170,3 +193,19 @@ func (e *Error) ProblemFields() []error {
 
 // RetryAfter is how long the caller should wait before retrying; zero for none.
 func (e *Error) RetryAfter() time.Duration { return e.RetryDelay }
+
+// ProblemLock is the problem's lock member, if it has one.
+func (e *Error) ProblemLock() (pageID, userID uuid.UUID, displayName string, ok bool) {
+	if e.Lock == nil {
+		return uuid.UUID{}, uuid.UUID{}, "", false
+	}
+	return e.Lock.PageID, e.Lock.UserID, e.Lock.DisplayName, true
+}
+
+// ProblemEndedBy is the problem's ended_by member, if it has one.
+func (e *Error) ProblemEndedBy() (userID uuid.UUID, displayName string, ok bool) {
+	if e.EndedBy == nil {
+		return uuid.UUID{}, "", false
+	}
+	return e.EndedBy.UserID, e.EndedBy.DisplayName, true
+}

@@ -171,6 +171,9 @@ func TestConstraintAndIndexNames(t *testing.T) {
 		"changesets_pkey iu",
 		"changesets_pkey p",
 		"edit_sessions_client_check c",
+		"edit_sessions_ended_by_id_fkey f a",
+		"edit_sessions_ended_check c",
+		"edit_sessions_ended_reason_check c",
 		"edit_sessions_expires_at_check c",
 		"edit_sessions_node_id_idx i",
 		"edit_sessions_notebook_id_idx i",
@@ -421,6 +424,12 @@ func TestChecksRejectCounterexamples(t *testing.T) {
 		{"a session's revision without its changeset", "UPDATE edit_sessions SET changeset_id = NULL", "edit_sessions_written_check"},
 		{"a session's revision 0", "UPDATE edit_sessions SET revision = 0", "edit_sessions_written_check"},
 		{"a session expiring when opened", "UPDATE edit_sessions SET expires_at = created_at", "edit_sessions_expires_at_check"},
+		{"a session's end reason without who or when", "UPDATE edit_sessions SET ended_reason = 'unlocked'", "edit_sessions_ended_check"},
+		{"a session's end without its reason", "UPDATE edit_sessions SET ended_by_id = user_id, ended_at = created_at", "edit_sessions_ended_check"},
+		{"a session ended before it opened", "UPDATE edit_sessions SET ended_reason = 'unlocked', ended_by_id = user_id, " +
+			"ended_at = created_at - interval '1 second'", "edit_sessions_ended_check"},
+		{"a session's unknown end reason", "UPDATE edit_sessions SET ended_reason = 'expired', ended_by_id = user_id, ended_at = created_at",
+			"edit_sessions_ended_reason_check"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

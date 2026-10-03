@@ -113,7 +113,7 @@ func notebookDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, au
 func pageDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, authorizer shared.Authorizer,
 	md *markdown.Markdown,
 ) page.Deps {
-	ext := pageRegistrants()
+	ext := pageRegistrants(pool)
 	return page.Deps{
 		Pool:         pool,
 		Tx:           postgres.NewTxManager(pool, cfg.Database.CommitTimeout),
@@ -122,6 +122,7 @@ func pageDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, author
 		Authorizer:   authorizer,
 		Workspaces:   workspace.NewWorkspaces(pool),
 		Notebooks:    notebook.NewNotebooks(pool),
+		Names:        pageNames{identity.NewDirectory(pool)},
 		Markdown:     md,
 		Guards:       ext.guards,
 		Participants: ext.participants,

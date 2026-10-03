@@ -7,6 +7,7 @@ package httpserver
 import (
 	"encoding/json"
 	"net/http"
+	"uuid"
 )
 
 // ContentTypeProblem is the media type of RFC 9457 problem details.
@@ -34,6 +35,24 @@ type Problem struct {
 	Title  string       `json:"title"`
 	Detail string       `json:"detail,omitempty"`
 	Errors []FieldError `json:"errors,omitempty"`
+	// Lock and EndedBy are the members only some codes carry (M5 design
+	// 4.5): page.locked names the lock, page.edit_session_unlocked who
+	// unlocked.
+	Lock    *ProblemLock   `json:"lock,omitempty"`
+	EndedBy *ProblemPerson `json:"ended_by,omitempty"`
+}
+
+// ProblemLock is a page's edit lock: the page locked and who holds it.
+type ProblemLock struct {
+	PageID      uuid.UUID `json:"page_id"`
+	UserID      uuid.UUID `json:"user_id"`
+	DisplayName string    `json:"display_name"`
+}
+
+// ProblemPerson is an account a problem names.
+type ProblemPerson struct {
+	UserID      uuid.UUID `json:"user_id"`
+	DisplayName string    `json:"display_name"`
 }
 
 // FieldError points at one invalid field of a request. Code is one of a

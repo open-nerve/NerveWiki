@@ -69,6 +69,28 @@ func (n sqlNotebooks) LockByID(ctx context.Context, id uuid.UUID) (bool, error) 
 	return exists(ctx, n.pool, "SELECT 1 FROM notebooks WHERE id = $1 AND deleted_at IS NULL FOR NO KEY UPDATE", id)
 }
 
+// sqlNames stands in for identity's directory: the accounts' display
+// names.
+type sqlNames struct{ pool *pgxpool.Pool }
+
+func (n sqlNames) DisplayNames(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]string, error) {
+	rows, err := postgres.DB(ctx, n.pool).Query(ctx, "SELECT id, display_name FROM users WHERE id = ANY($1)", ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make(map[uuid.UUID]string)
+	for rows.Next() {
+		var id uuid.UUID
+		var name string
+		if err := rows.Scan(&id, &name); err != nil {
+			return nil, err
+		}
+		out[id] = name
+	}
+	return out, rows.Err()
+}
+
 func exists(ctx context.Context, pool *pgxpool.Pool, query string, id uuid.UUID) (bool, error) {
 	var one int
 	err := postgres.DB(ctx, pool).QueryRow(ctx, query, id).Scan(&one)
@@ -112,6 +134,8 @@ type fixture struct {
 	// The edit sessions' registrants serve wires.
 	vetoers     []page.EditSessionVetoer
 	subscribers []page.EditSessionSubscriber
+	// clock is the module's, fixedClock when nil.
+	clock page.Clock
 }
 
 func newFixture(t *testing.T) fixture {
@@ -162,20 +186,35 @@ func (f fixture) serve(t *testing.T, kind, method, path, body string, guards []p
 	observers []page.PageObserver,
 ) *httptest.ResponseRecorder {
 	t.Helper()
-	router := httpserver.NewRouter(slog.New(slog.DiscardHandler))
-	page.New(page.Deps{
-		Pool: f.pool, Tx: postgres.NewTxManager(f.pool, 5*time.Second), Clock: fixedClock{}, Logger: slog.New(slog.DiscardHandler),
-		Authorizer: aliceWrites{f.alice}, Workspaces: sqlWorkspaces{f.pool}, Notebooks: sqlNotebooks{f.pool},
-		Markdown: f.md, Guards: guards, Participants: participants, Observers: observers,
-		EditSessionVetoers: f.vetoers, EditSessionSubscribers: f.subscribers, EditSessionCleanupInterval: time.Hour,
-		ParseBudgetBytes: 8 << 20, ParseMaxWait: time.Second,
-	}).Register(router, httpservertest.NewAPI(t, httpservertest.APIOptions{Authenticator: tokenAuth{}}))
+	return f.request(f.router(t, guards, participants, observers), kind, method, path, body)
+}
+
+// request serves one request of alice's by token kind through router.
+func (f fixture) request(router http.Handler, kind, method, path, body string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(method, path, strings.NewReader(body))
 	req.Header.Set("Authorization", "Bearer "+kind+":"+f.alice.String())
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 	return rec
+}
+
+// router is the module wired with the registrants, on its root router.
+func (f fixture) router(t *testing.T, guards []page.WriteGuard, participants []page.Participant, observers []page.PageObserver) http.Handler {
+	t.Helper()
+	router := httpserver.NewRouter(slog.New(slog.DiscardHandler))
+	var clock page.Clock = fixedClock{}
+	if f.clock != nil {
+		clock = f.clock
+	}
+	page.New(page.Deps{
+		Pool: f.pool, Tx: postgres.NewTxManager(f.pool, 5*time.Second), Clock: clock, Logger: slog.New(slog.DiscardHandler),
+		Authorizer: aliceWrites{f.alice}, Workspaces: sqlWorkspaces{f.pool}, Notebooks: sqlNotebooks{f.pool}, Names: sqlNames{f.pool},
+		Markdown: f.md, Guards: guards, Participants: participants, Observers: observers,
+		EditSessionVetoers: f.vetoers, EditSessionSubscribers: f.subscribers, EditSessionCleanupInterval: time.Hour,
+		ParseBudgetBytes: 8 << 20, ParseMaxWait: time.Second,
+	}).Register(router, httpservertest.NewAPI(t, httpservertest.APIOptions{Authenticator: tokenAuth{}}))
+	return router
 }
 
 func (f fixture) createPath() string { return "/api/v0/notebooks/" + f.eng.String() + "/pages" }
@@ -405,15 +444,31 @@ func (f fixture) openSession(t *testing.T) uuid.UUID {
 	return s.ID
 }
 
-// subscriber records the ends it follows, and whether in a transaction.
+// subscriber records the openings and the ends it follows; inTx is false
+// once one of them was not in a transaction.
 type subscriber struct {
-	ended []page.SessionEnded
-	inTx  bool
+	opened []page.SessionOpened
+	ended  []page.SessionEnded
+	inTx   bool
+	outTx  bool
+}
+
+func (s *subscriber) EditSessionOpened(ctx context.Context, o page.SessionOpened) error {
+	s.opened = append(s.opened, o)
+	s.record(ctx)
+	return nil
+}
+
+// record notes whether ctx carries a transaction: inTx is whether every
+// call so far did.
+func (s *subscriber) record(ctx context.Context) {
+	s.outTx = s.outTx || !postgres.InTx(ctx)
+	s.inTx = !s.outTx
 }
 
 func (s *subscriber) EditSessionEnded(ctx context.Context, e page.SessionEnded) error {
 	s.ended = append(s.ended, e)
-	s.inTx = postgres.InTx(ctx)
+	s.record(ctx)
 	return nil
 }
 
@@ -437,8 +492,9 @@ func (v *vetoer) VetoEditSession(ctx context.Context, o page.SessionOpening) err
 
 // The edit sessions' registrants reach their paths through page.New: a
 // vetoer sees an opening under the page's gate, and its refusal is the
-// answer, with no session; an end by its owner and a page's deletion tell
-// the subscribers, in their transaction, with the reason and who.
+// answer, with no session; an opening tells the subscribers, and an end by
+// its owner and a page's deletion tell them with the reason and who, each
+// in its transaction.
 func TestTheEditSessionsReachTheirRegistrants(t *testing.T) {
 	f := newFixture(t)
 	locked := shared.NewError(shared.KindConflict, "page.locked", "Someone else is editing this page.")
@@ -470,6 +526,13 @@ func TestTheEditSessionsReachTheirRegistrants(t *testing.T) {
 	}
 	if !reflect.DeepEqual(sub.ended, want) || !sub.inTx || f.count(t, "SELECT count(*) FROM edit_sessions") != 0 {
 		t.Errorf("the subscriber followed %+v in a transaction %v, want %+v and no session left", sub.ended, sub.inTx, want)
+	}
+	opened := []page.SessionOpened{
+		{SessionID: ended, WorkspaceID: f.acme, NotebookID: f.eng, PageID: f.notes, UserID: f.alice, At: testNow()},
+		{SessionID: deleted, WorkspaceID: f.acme, NotebookID: f.eng, PageID: f.notes, UserID: f.alice, At: testNow()},
+	}
+	if !reflect.DeepEqual(sub.opened, opened) {
+		t.Errorf("the subscriber followed the openings %+v, want %+v", sub.opened, opened)
 	}
 }
 

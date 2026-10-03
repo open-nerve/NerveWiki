@@ -17,7 +17,7 @@ import (
 
 // open runs openEditSession on the page id as alice from the web.
 func (f *fixture) open(id uuid.UUID) (app.EditSession, error) {
-	return app.NewOpenEditSession(f.writer(), f.store, f.logger()).Execute(f.asAlice(), id, domain.ClientWeb)
+	return app.NewOpenEditSession(f.writer(), f.store, f.logger()).Execute(f.asAlice(), id, domain.ClientWeb, false)
 }
 
 // fixedClock reads at, whatever the times it is read.
@@ -27,7 +27,7 @@ func (c fixedClock) Now() time.Time { return c.at }
 
 // beat runs heartbeatEditSession on the session id as alice, at at.
 func (f *fixture) beat(id uuid.UUID, at time.Time) (app.EditSession, error) {
-	return app.NewHeartbeatEditSession(f.store, f.notebooks, f.auth, fixedClock{at}).Execute(f.asAlice(), id)
+	return app.NewHeartbeatEditSession(f.store, f.notebooks, f.auth, f.names, fixedClock{at}).Execute(f.asAlice(), id)
 }
 
 // end runs endEditSession on the session id as alice, at at.
@@ -36,9 +36,10 @@ func (f *fixture) end(id uuid.UUID, at time.Time) error {
 }
 
 // An opening finds the page unlocked, shares the workspace's row and the
-// notebook's, decides on editing, locks the page's gate, and only then
-// asks the vetoers and writes the session: alice's, from the web, alive a
-// lease from the unit's time. It writes no changeset and tells no observer.
+// notebook's, decides on editing, locks the page's gate, deletes its
+// expired rows, and only then asks the vetoers and writes the session:
+// alice's, from the web, alive a lease from the unit's time. It writes no
+// changeset and tells no observer.
 func TestOpenEditSessionLocksThenDecidesThenAsksTheVetoers(t *testing.T) {
 	f := newFixture()
 	f.grant(domain.ActionEdit)
@@ -50,7 +51,7 @@ func TestOpenEditSessionLocksThenDecidesThenAsksTheVetoers(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []string{"FindNode", "WorkspaceOf", "ShareWorkspace in tx", "ShareNotebook in tx", "Authorize page.edit in tx",
-		"LockContent in tx", "VetoEditSession in tx", "CreateSession in tx"}
+		"LockContent in tx", "DeleteExpiredSessionsOf in tx", "VetoEditSession in tx", "CreateSession in tx"}
 	if !slices.Equal(f.rec.calls, want) {
 		t.Errorf("calls = %v, want %v", f.rec.calls, want)
 	}
@@ -338,6 +339,29 @@ func TestANotebookDeletionEndsItsSessions(t *testing.T) {
 		Reason: domain.EndedWithPage, By: by, At: at}}
 	if !reflect.DeepEqual(sub.ended, want) || len(f.store.sessions) != 0 {
 		t.Errorf("the subscriber followed %+v, %d sessions left; want %+v, none", sub.ended, len(f.store.sessions), want)
+	}
+}
+
+// A session is alive while it has not ended and its lease lasts past now
+// (M5 design 4.1): a tombstone is not, whatever its lease.
+func TestASessionIsAliveUntilItEndsOrExpires(t *testing.T) {
+	at := now()
+	tests := []struct {
+		name    string
+		expires time.Time
+		reason  domain.EndReason
+		want    bool
+	}{
+		{"leased", at.Add(time.Second), "", true},
+		{"expiring now", at, "", false},
+		{"expired", at.Add(-time.Second), "", false},
+		{"taken over", at.Add(time.Minute), domain.EndedTakenOver, false},
+		{"unlocked", at.Add(time.Minute), domain.EndedUnlocked, false},
+	}
+	for _, tt := range tests {
+		if got := (app.EditSession{ExpiresAt: tt.expires, EndedReason: tt.reason}).Alive(at); got != tt.want {
+			t.Errorf("%s: Alive = %v, want %v", tt.name, got, tt.want)
+		}
 	}
 }
 

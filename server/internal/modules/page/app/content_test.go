@@ -273,6 +273,28 @@ func TestPutPageContentAnswersItsCodesInOrder(t *testing.T) {
 			s := f.session(n.ID, f.alice, now())
 			return n.ID, app.ContentPut{Content: "x", Base: 1, EditSession: s.ID}
 		}, "page.edit_session_ended"},
+		{"someone else's tombstone", func(f *fixture, n domain.Node) (uuid.UUID, app.ContentPut) {
+			f.grant(domain.ActionWrite)
+			s := f.tombstone(f.session(n.ID, uuid.NewV7(), now().Add(time.Minute)), domain.EndedTakenOver, f.alice)
+			return n.ID, app.ContentPut{Content: "x", Base: 9, EditSession: s.ID}
+		}, "page.edit_session_ended"},
+		{"a tombstone opened from another client", func(f *fixture, n domain.Node) (uuid.UUID, app.ContentPut) {
+			f.grant(domain.ActionWrite)
+			s := f.session(n.ID, f.alice, now().Add(time.Minute))
+			s.Client = domain.ClientAPI
+			s = f.tombstone(s, domain.EndedTakenOver, f.alice)
+			return n.ID, app.ContentPut{Content: "x", Base: 9, EditSession: s.ID}
+		}, "page.edit_session_ended"},
+		{"a session taken over, before the base", func(f *fixture, n domain.Node) (uuid.UUID, app.ContentPut) {
+			f.grant(domain.ActionWrite)
+			s := f.tombstone(f.session(n.ID, f.alice, now().Add(time.Minute)), domain.EndedTakenOver, f.alice)
+			return n.ID, app.ContentPut{Content: "x", Base: 9, EditSession: s.ID}
+		}, "page.edit_session_taken_over"},
+		{"a session unlocked, its lease run out", func(f *fixture, n domain.Node) (uuid.UUID, app.ContentPut) {
+			f.grant(domain.ActionWrite)
+			s := f.tombstone(f.session(n.ID, f.alice, now()), domain.EndedUnlocked, uuid.NewV7())
+			return n.ID, app.ContentPut{Content: "x", Base: 9, EditSession: s.ID}
+		}, "page.edit_session_unlocked"},
 		{"a base that is not the page's revision", func(f *fixture, n domain.Node) (uuid.UUID, app.ContentPut) {
 			f.grant(domain.ActionWrite)
 			f.guards = []app.WriteGuard{&guard{recorder: f.rec, err: refusal}}
