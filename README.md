@@ -248,7 +248,7 @@ make image-smoke VERSION=0.1.0   # 在镜像上跑 S1、S3：迁移、探针、�
 
 - 在反向代理之后运行时设置 `NWIKI_SERVER__TRUSTED_PROXIES`，否则每个客户端都被当成代理。
 - 反向代理不能缓冲事件流，读超时要长于心跳间隔（`events.heartbeat_interval`，默认 20 秒）。服务端在流的答复上设了 `X-Accel-Buffering: no`。下面两份配置都验证过：帧在写入答复的同一毫秒到达，心跳让连接一直活着（M5/P2）。
-  - Caddy 的默认配置即可：
+  - Caddy 的默认配置即可；开了 `encode`（`zstd gzip`）也一样：Caddy 不压缩 `text/event-stream`，不必排除它：
 
     ```caddyfile
     wiki.example.com {

@@ -258,7 +258,7 @@ e2e/fixtures/events.ts、e2e/stories/collab/c7-*.spec.ts、c8-*.spec.ts
 - 门禁：每个 Step 与两轮修复的 `make check` 为绿；`make gen-check`、`make e2e`（163 个）、`make image-smoke` 为绿；整个程序的事件测试 `-race -count=5` 为绿；持续集成为绿。
 - 审查：[P2 审查](reviews/P2-event-stream-review.md)。两位审查者，没有阻断合并的问题。Important 1：A-I1（停止读取的客户端让处理器的写永远阻塞：心跳、重新认证、到期都停了，停机等满 `server.shutdown_timeout`）；Minor 9，合并之前全部处置或记下。修复的核对没有 Important，Minor 2、Nit 5 一并处置。
 - 反向对照：S1 13、S2 11、S3 10、S4 8、S5（e2e）4，审查修复 7、核对之后的修复 5（其中一项让测试挂住而不是失败），都没有通过。
-- 反向代理（S4，自己起的容器，服务在本机，心跳 20 秒，读 78 秒）：`caddy:2.10-alpine` 只写 `reverse_proxy`，与 `nginx:1.29-alpine`（`proxy_http_version 1.1`、`Connection ""`、`proxy_read_timeout 30s`、`proxy_buffering` 默认开，由答复的 `X-Accel-Buffering: no` 关掉）结果相同：`hello` 在 3 毫秒内到达，`pages` 帧与写入的答复在同一毫秒，心跳在 20、40、60 秒，连接活过 78 秒，75 秒的写照常到达。对照：`proxy_read_timeout 10s` 的 nginx 在最后一帧之后 10 秒断开。
+- 反向代理（S4，自己起的容器，服务在本机，心跳 20 秒，读 78 秒）：`caddy:2.10-alpine` 只写 `reverse_proxy`，与 `nginx:1.29-alpine`（`proxy_http_version 1.1`、`Connection ""`、`proxy_read_timeout 30s`、`proxy_buffering` 默认开，由答复的 `X-Accel-Buffering: no` 关掉）结果相同：`hello` 在 3 毫秒内到达，`pages` 帧与写入的答复在同一毫秒，心跳在 20、40、60 秒，连接活过 78 秒，75 秒的写照常到达。对照：`proxy_read_timeout 10s` 的 nginx 在最后一帧之后 10 秒断开。Caddy 开 `encode zstd gzip`（[M0/P1 移交](handoffs/M0-P1-sse-proxies.md)第 1 项，合并之后补测）：客户端声明 gzip、zstd 或什么也不声明，答复都没有 `Content-Encoding`，帧同样即时到达，不必排除事件流。
 
 **与计划的出入**（已同步进上文）：
 
