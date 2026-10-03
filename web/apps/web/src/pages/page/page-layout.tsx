@@ -149,14 +149,20 @@ const PageShell = observer(function PageShell({ notebook, page }: { notebook: No
   }
 
   // A task item's toggle refused (M5/P6 design 3.5): page.locked as Edit's refusal is, the note reading who holds
-  // the lock and taking the focus; another refusal above the view. undefined, as a toggle starts, clears it.
+  // the lock and taking the focus from the checkbox, unless the focus has gone elsewhere meanwhile; another refusal
+  // above the view. undefined, as a toggle starts, clears it.
   async function toggleRefused(error: unknown): Promise<void> {
     if (!(error instanceof ApiError && error.code === "page.locked")) {
       setRefusal(error);
       return;
     }
     const lock = await mutate<EditLock>(["edit-lock", page.id]);
-    if (mounted() && lock?.holder) {
+    const focused = document.activeElement;
+    if (
+      mounted() &&
+      lock?.holder &&
+      (focused === null || focused === document.body || focused.matches("input[data-task]"))
+    ) {
       lockNote.current?.focus();
     }
   }
@@ -235,6 +241,8 @@ const PageShell = observer(function PageShell({ notebook, page }: { notebook: No
           done={(left) => {
             back.current = true;
             setIdleLeft(left.idle);
+            // A toggle's refusal that came while it edited is no longer news.
+            setRefusal(undefined);
             setEditing(undefined);
           }}
         />

@@ -63,14 +63,16 @@ test("a writer's checkboxes are enabled, each named by its item; a click asks fo
   expect([a.checked, b.checked]).toEqual([false, true]);
 });
 
-test("an item's name is its own text, in a paragraph or a heading, its sublists left out; an item with no text has no name", () => {
+test("an item's name is its own text, in a paragraph or a heading, up to its next block (a sublist, code, a quote); an item with no text has no name", () => {
   const container = document.createElement("article");
   container.innerHTML =
     '<ul><li><input disabled="" type="checkbox" data-task="3"> parent  <em>item</em>\n' +
     '<ul><li><input disabled="" type="checkbox" data-task="20"> child</li></ul></li>' +
     '<li><p><input disabled="" type="checkbox" data-task="40"> loose</p><p>more</p></li>' +
     '<li><h1><input disabled="" type="checkbox" data-task="60"> heading</h1></li>' +
-    '<li><input disabled="" type="checkbox" data-task="80"> </li></ul>';
+    '<li><input disabled="" type="checkbox" data-task="80"> </li>' +
+    '<li><input disabled="" type="checkbox" data-task="90"> step\n<pre><code>run it</code></pre></li>' +
+    '<li><input disabled="" type="checkbox" data-task="99"> said\n<blockquote><p>quoted</p></blockquote></li></ul>';
   const { context } = setUp();
 
   taskToggle(container, context);
@@ -81,6 +83,8 @@ test("an item's name is its own text, in a paragraph or a heading, its sublists 
     "loose",
     "heading",
     null,
+    "step",
+    "said",
   ]);
 });
 

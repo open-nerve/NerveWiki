@@ -26,8 +26,9 @@ import { useWorkspace } from "../workspace/workspace-layout";
  * oneToggle), and refused tells the page what was refused, undefined as a
  * toggle starts (M5/P6 design 3.5). A task item's checkbox that had the
  * focus as the HTML is replaced has it back in the new HTML, without a
- * scroll, while the box at its position is the same item's: a tick does
- * not move it, a write that moved the items does.
+ * scroll, while the box at its position is the same item's (its text, and
+ * its state unless the view's own toggle changed it): a tick does not move
+ * it, a write that moved the items does.
  */
 export const ReadingView = observer(function ReadingView({
   notebook,
@@ -43,8 +44,10 @@ export const ReadingView = observer(function ReadingView({
   const enhancements = useContext(Enhancements);
   const { data, error, mutate } = useSWR(["page-view", notebook.id, page.id], () => pages.view(page.id));
   const article = useRef<HTMLElement>(null);
-  // The task item focused as the HTML was replaced: its position and its text.
-  const focusedTask = useRef<{ task: string; text: string } | undefined>(undefined);
+  // The task item focused as the HTML was replaced: its position, its text and its state.
+  const focusedTask = useRef<{ task: string; text: string; checked: boolean } | undefined>(undefined);
+  // The position of the task item the view's own toggle has just changed, until the HTML is replaced.
+  const toggled = useRef<string | undefined>(undefined);
   // The page's latest refused: the HTML is not replaced for a new one.
   const latestRefused = useRef(refused);
   useEffect(() => {
@@ -78,6 +81,7 @@ export const ReadingView = observer(function ReadingView({
                 }
                 throw failure;
               }
+              toggled.current = offset.toString();
               await mutate();
             });
           }
@@ -85,9 +89,12 @@ export const ReadingView = observer(function ReadingView({
       report: (failure) => latestRefused.current(failure),
     });
     const focused = focusedTask.current;
+    const flipped = focused !== undefined && toggled.current === focused.task;
     focusedTask.current = undefined;
+    toggled.current = undefined;
     const box = focused && container.querySelector<HTMLElement>(`input[data-task="${CSS.escape(focused.task)}"]`);
-    if (box && taskText(box) === focused.text) {
+    // The same item: its text, and its state unless the view's own toggle changed it.
+    if (box && taskText(box) === focused.text && box.hasAttribute("checked") === (focused.checked !== flipped)) {
       box.focus({ preventScroll: true });
     }
     return () => {
@@ -96,7 +103,7 @@ export const ReadingView = observer(function ReadingView({
       const active = document.activeElement;
       focusedTask.current =
         active instanceof HTMLInputElement && active.dataset.task !== undefined && container.contains(active)
-          ? { task: active.dataset.task, text: taskText(active) }
+          ? { task: active.dataset.task, text: taskText(active), checked: active.hasAttribute("checked") }
           : undefined;
       undo();
     };

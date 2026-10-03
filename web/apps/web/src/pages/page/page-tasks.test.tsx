@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import { readingEnhancements, type Enhancement } from "../../reading/enhancement";
-import { problem } from "../../test/fakes";
+import { json, problem } from "../../test/fakes";
 import { bob, install, notes, pagePath, pageServer } from "../../test/page-server";
 import { renderApp } from "../../test/render";
 
@@ -151,4 +151,76 @@ test("a reader's checkboxes stay disabled", async () => {
 
   expect(boxes().map((box) => box.disabled)).toEqual([true, true]);
   expect(server.sent.filter((line) => line.startsWith("TOGGLE"))).toEqual([]);
+});
+
+test("the focus does not go to another item of the same text that a write moved to its place", async () => {
+  const { server } = await opened("editor", "- [ ] a\n- [x] a\n");
+  server.withTasks(install.id, "- [ ] a\n- [ ] a\n- [x] a\n", 2);
+  (boxes()[1] as HTMLElement).focus();
+
+  await userEvent.keyboard(" ");
+
+  await screen.findByRole("alert");
+  await waitFor(() => expect(boxes()).toHaveLength(3));
+  expect(document.activeElement).toBe(document.body);
+});
+
+test("a lock refusal does not take the focus from where the user went meanwhile", async () => {
+  let reads = 0;
+  let release: (() => void) | undefined;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const server = pageServer({
+    role: "editor",
+    answers: {
+      "GET /api/v0/pages/*/edit-lock": async () => {
+        reads += 1;
+        if (reads > 1) {
+          await held;
+        }
+        return json(server.lockOf(install.id));
+      },
+    },
+  });
+  await opened("editor", tasks, server);
+  server.hold(install.id, bob);
+
+  await userEvent.click(boxes()[0] as HTMLElement);
+  await waitFor(() => expect(reads).toBe(2));
+  const edit = screen.getByRole("button", { name: "Edit" });
+  edit.focus();
+  release?.();
+
+  await screen.findByText("Bob is editing this page.");
+  expect(document.activeElement).toBe(edit);
+});
+
+test("a toggle's refusal that comes while the page is edited is not shown once the edit is done", async () => {
+  let release: (() => void) | undefined;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const server = pageServer({
+    role: "editor",
+    answers: {
+      "POST /api/v0/pages/*/toggle-task": async () => {
+        await held;
+        return problem(409, "page.revision_mismatch");
+      },
+    },
+  });
+  await opened("editor", tasks, server);
+  const user = userEvent.setup();
+
+  await user.click(boxes()[0] as HTMLElement);
+  await user.click(screen.getByRole("button", { name: "Edit" }));
+  const done = await screen.findByRole("button", { name: "Done" });
+  // The refusal reaches the page while it edits: the view is gone, nothing is read again.
+  release?.();
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  await user.click(done);
+
+  await screen.findByRole("button", { name: "Edit" });
+  expect(screen.queryByRole("alert")).toBeNull();
 });

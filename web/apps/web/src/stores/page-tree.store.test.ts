@@ -1,9 +1,9 @@
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 
 import { ApiError } from "../services/api";
 import type { NodeMove, PageView, TreeNode } from "../services/page.service";
 import { guide, install, linux, notes, pageNode } from "../test/page-server";
-import { PageTreeStore } from "./page-tree.store";
+import { PageTreeStore, toggleLimit } from "./page-tree.store";
 
 /** A promise the test settles. */
 function held<T>() {
@@ -301,4 +301,26 @@ test("one toggle of a task item is out per page at a time, the view read after i
   await expect(refused).rejects.toThrow("refused");
   expect(await pages.oneToggle(guide.id, async () => void ran.push("again"))).toBe(true);
   expect(ran).toEqual(["first", "beside", "after", "again"]);
+});
+
+test("a toggle out longer than toggleLimit holds the page's others back no longer, and its end leaves the next one's hold", async () => {
+  vi.useFakeTimers();
+  try {
+    const { pages } = store();
+    let finish: (() => void) | undefined;
+    const lost = pages.oneToggle(guide.id, () => new Promise<void>((resolve) => (finish = resolve)));
+    expect(await pages.oneToggle(guide.id, async () => undefined)).toBe(false);
+
+    vi.advanceTimersByTime(toggleLimit);
+    let next: (() => void) | undefined;
+    const later = pages.oneToggle(guide.id, () => new Promise<void>((resolve) => (next = resolve)));
+    finish?.();
+    expect(await lost).toBe(true);
+
+    expect(await pages.oneToggle(guide.id, async () => undefined)).toBe(false);
+    next?.();
+    expect(await later).toBe(true);
+  } finally {
+    vi.useRealTimers();
+  }
 });

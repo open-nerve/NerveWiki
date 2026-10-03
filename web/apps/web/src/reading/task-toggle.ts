@@ -48,16 +48,35 @@ export const taskToggle: Enhancement = (container, context) => {
 
 /**
  * taskText is the text of the item box ticks: what follows the box in its
- * paragraph, heading or list item, the item's sublists left out, its
- * spaces collapsed.
+ * paragraph, heading or list item up to the item's next block (a sublist,
+ * a code block, a quote), its spaces collapsed.
  */
 export function taskText(box: Element): string {
   let text = "";
-  for (let node = box.nextSibling; node !== null; node = node.nextSibling) {
-    if (node instanceof Element && (node.tagName === "UL" || node.tagName === "OL")) {
-      break;
-    }
+  for (let node = box.nextSibling; node !== null && !(node instanceof Element && blocks.has(node.tagName));) {
     text += node.textContent ?? "";
+    node = node.nextSibling;
   }
   return text.replace(/\s+/g, " ").trim();
 }
+
+/** blocks are the elements a tight list item's next block starts with, as the server renders them. */
+const blocks = new Set([
+  "BLOCKQUOTE",
+  "DETAILS",
+  "DIV",
+  "DL",
+  "FIGURE",
+  "H1",
+  "H2",
+  "H3",
+  "H4",
+  "H5",
+  "H6",
+  "HR",
+  "OL",
+  "P",
+  "PRE",
+  "TABLE",
+  "UL",
+]);

@@ -5,6 +5,9 @@ import { ApiError } from "../services/api";
 import type { EditLock, NodeMove, PageService, PageView, TaskToggle, TreeNode } from "../services/page.service";
 import { ancestorsOf, childrenOf, indexTree, subtreeOf, type TreeIndex } from "./page-tree";
 
+/** How long a toggle of a task item holds its page's others back: more than the server takes to answer. */
+export const toggleLimit = 60_000;
+
 /**
  * PageTreeStore holds one notebook's page tree for one generation (M4/P5
  * design 3.4): the left column shows it, and a page's shell finds its page,
@@ -31,8 +34,8 @@ export class PageTreeStore {
   /** The pages this generation deleted, each with where its shell goes: the deleted subtree's parent (null: home). */
   private readonly removed = new Map<string, string | null>();
   private readonly inTurn = oneAtATime();
-  /** The pages with a toggle of a task item out, the view read again included. */
-  private readonly togglesOut = new Set<string>();
+  /** The pages with a toggle of a task item out, the view read again included, each with when it started. */
+  private readonly togglesOut = new Map<string, number>();
 
   constructor(
     private readonly service: Pick<
@@ -191,18 +194,24 @@ export class PageTreeStore {
   /**
    * oneToggle runs toggle, a toggle of a task item of the page id and the view read after it, unless one of the
    * page's runs (M5/P6 design 3.5): one is out per page at a time, across the views of the page and their HTML
-   * read again, which a view's own state would not hold. It answers whether toggle ran.
+   * read again, which a view's own state would not hold. One out for toggleLimit holds no longer: a request the
+   * connection lost without an answer would hold the page's toggles until the next sign-in. It answers whether
+   * toggle ran.
    */
   async oneToggle(id: string, toggle: () => Promise<void>): Promise<boolean> {
-    if (this.togglesOut.has(id)) {
+    const started = this.togglesOut.get(id);
+    if (started !== undefined && Date.now() - started < toggleLimit) {
       return false;
     }
-    this.togglesOut.add(id);
+    const mine = Date.now();
+    this.togglesOut.set(id, mine);
     try {
       await toggle();
       return true;
     } finally {
-      this.togglesOut.delete(id);
+      if (this.togglesOut.get(id) === mine) {
+        this.togglesOut.delete(id);
+      }
     }
   }
 

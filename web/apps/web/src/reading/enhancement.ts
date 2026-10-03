@@ -10,7 +10,7 @@ import { taskToggle } from "./task-toggle";
  * in (M4/P5 design 3.8): where the page is, the revision its HTML was
  * rendered from, the account's role in the notebook, and a way to read
  * the view again. An enhancement ticks a task item through it (M5/P6
- * design 3.5), and reports what it could not do above the view.
+ * design 3.5), and reports to the page what it could not do.
  */
 export type ReadingContext = {
   workspace: string;
@@ -22,12 +22,12 @@ export type ReadingContext = {
   /**
    * toggleTask ticks (checked) or clears the task item at offset in the
    * view's revision, then reads the view again, and settles once it is
-   * read. It rejects with the refusal: a revision passed reads the view
-   * again first, a lock someone holds reads the page's lock. Only a writer
-   * of the notebook's pages has it.
+   * read; while a toggle of the page is out, it does nothing. It rejects
+   * with the refusal, a revision passed once the view is read again. Only
+   * a writer of the notebook's pages has it.
    */
   toggleTask?: (offset: number, checked: boolean) => Promise<void>;
-  /** report shows error above the view, as the page shows a refusal. */
+  /** report hands error to the page, which says it as it says a refusal of Edit. */
   report: (error: unknown) => void;
 };
 
