@@ -10,6 +10,7 @@ import type { Notebook } from "../../services/notebook.service";
 import type { TreeNode } from "../../services/page.service";
 import { useNewPageEditing, usePageTree } from "../../stores/context";
 import { useWorkspace } from "../workspace/workspace-layout";
+import { ConflictPanel } from "./conflict-panel";
 import { PageEditingBar } from "./page-editing-bar";
 import { UnsavedGuard } from "./unsaved-guard";
 
@@ -32,7 +33,10 @@ type PageEditProps = {
  * for the reading view, which is read again first. A key pressed while
  * the input method composes waits for the composition's end, so that
  * half a word is never saved. While the edit is unsaved, leaving the
- * page asks first.
+ * page asks first. A save refused because the page changed shows the
+ * conflict above the editor, with its heading focused; until the user
+ * keeps their text or discards it, a save only brings the focus back
+ * there.
  */
 export const PageEdit = observer(function PageEdit({ notebook, page, done }: PageEditProps) {
   const { slug } = useWorkspace();
@@ -40,18 +44,45 @@ export const PageEdit = observer(function PageEdit({ notebook, page, done }: Pag
   const pages = usePageTree(notebook);
   const editing = useNewPageEditing(page.id);
   const editor = useRef<SourceEditorHandle>(null);
+  const conflictHeading = useRef<HTMLHeadingElement>(null);
+  const { conflict } = editing;
 
   useEffect(() => {
     editing.start();
     return () => editing.end();
   }, [editing]);
 
+  useEffect(() => {
+    if (conflict !== undefined) {
+      conflictHeading.current?.focus();
+    }
+  }, [conflict]);
+
   async function save(): Promise<boolean> {
     const current = editor.current;
+    if (editing.conflict !== undefined) {
+      conflictHeading.current?.focus();
+      return false;
+    }
     if (current === null) {
       return false;
     }
     return editing.save(current.text(), current.version());
+  }
+
+  async function keepMine(): Promise<void> {
+    const current = editor.current;
+    if (current !== null && (await editing.keepMine(current.text(), current.version()))) {
+      current.focus();
+    }
+  }
+
+  function discardMine() {
+    const theirs = editing.discardMine();
+    if (theirs !== undefined) {
+      editor.current?.load(theirs);
+      editor.current?.focus();
+    }
   }
 
   async function leave(): Promise<void> {
@@ -94,6 +125,14 @@ export const PageEdit = observer(function PageEdit({ notebook, page, done }: Pag
   return (
     <div className="space-y-3">
       <PageEditingBar editing={editing} save={() => void save()} leave={() => void leave()} />
+      {conflict !== undefined && (
+        <ConflictPanel
+          conflict={conflict}
+          heading={conflictHeading}
+          keep={() => void keepMine()}
+          discard={discardMine}
+        />
+      )}
       <Suspense fallback={<Loading />}>
         <SourceEditor
           ref={editor}

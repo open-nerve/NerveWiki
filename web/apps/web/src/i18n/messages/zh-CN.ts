@@ -126,6 +126,13 @@ export const zhCN: Messages = {
   "editor.leaveDescription": "这一页的修改还没有保存。",
   "editor.stay": "留下",
   "editor.leave": "离开",
+  "editor.conflictTitle": "这一页在你编辑时被改过",
+  "editor.conflictDescription":
+    "下面是你的文字与这一页现在的样子的差异：你加的有标记，你会去掉的划了线。保留你的，就用它覆盖这一页；放弃你的，就在这一页现在的样子上接着编辑。",
+  "editor.conflictDiff": "你的文字与这一页现在的样子的差异",
+  "editor.conflictDiffNotLoaded": "差异显示不出来。你仍然可以保留或放弃你的文字。",
+  "editor.keepMine": "保留我的",
+  "editor.discardMine": "放弃我的",
   "editor.label": "页面正文",
   "editor.phrase.find": "查找",
   "editor.phrase.replace": "替换为",

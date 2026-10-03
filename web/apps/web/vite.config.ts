@@ -53,9 +53,17 @@ export default defineConfig({
     rolldownOptions: {
       output: {
         // React and the router change less often than the app: their own chunk
-        // stays cached across releases that change only the app.
+        // stays cached across releases that change only the app. So does the
+        // editor's CodeMirror, which the conflict's diff shares; its merge
+        // view stays out, loaded with the diff alone.
         codeSplitting: {
-          groups: [{ name: "react", test: /node_modules[\\/](react|react-dom|react-router|scheduler)[\\/]/ }],
+          groups: [
+            { name: "react", test: /node_modules[\\/](react|react-dom|react-router|scheduler)[\\/]/ },
+            {
+              name: "codemirror",
+              test: /node_modules[\\/](@codemirror[\\/](?!merge[\\/])|@lezer[\\/]|style-mod[\\/]|w3c-keyname[\\/]|crelt[\\/])/,
+            },
+          ],
         },
       },
     },

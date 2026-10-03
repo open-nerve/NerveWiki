@@ -127,6 +127,13 @@ export const en = {
   "editor.leaveDescription": "Your changes to this page are not saved.",
   "editor.stay": "Stay",
   "editor.leave": "Leave",
+  "editor.conflictTitle": "This page changed while you edited it",
+  "editor.conflictDescription":
+    "Your text, against the page as it is now: what you add is marked, what you would take away is struck out. Keep yours to save it over the page, or discard it to edit the page as it is now.",
+  "editor.conflictDiff": "Your text against the page as it is now",
+  "editor.conflictDiffNotLoaded": "The differences could not be shown. You can still keep your text or discard it.",
+  "editor.keepMine": "Keep mine",
+  "editor.discardMine": "Discard mine",
   "editor.label": "Page content",
   "editor.phrase.find": "Find",
   "editor.phrase.replace": "Replace",

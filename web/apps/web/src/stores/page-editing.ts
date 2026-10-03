@@ -24,6 +24,13 @@ const busyRetries = 3;
 /** A text to save, and the editor's version it is. */
 type Draft = { text: string; version: number };
 
+/**
+ * A Conflict is a save refused because the page changed since the edit
+ * read it (M4/P6 design 3.8): the page's content as it is now, read then,
+ * with its revision, and the user's text that was refused.
+ */
+export type Conflict = { theirs: string; revision: number; mine: string };
+
 function refused(error: unknown, status: number, code?: string): boolean {
   return error instanceof ApiError && error.status === status && (code === undefined || error.code === code);
 }
@@ -40,7 +47,9 @@ function refused(error: unknown, status: number, code?: string): boolean {
  * hidden tab's timers are slowed. One not found is opened anew; a save
  * whose session ended opens one and is sent once more. One save is out
  * at a time; a save asked for meanwhile goes once it is answered, with
- * the latest text asked for.
+ * the latest text asked for. A save refused because the page changed
+ * reads the page as it is now: the edit is then in conflict, and saves
+ * nothing until the user keeps their text or discards it.
  */
 export class PageEditing {
   /** The content as the edit began; undefined until it is read. */
@@ -59,6 +68,7 @@ export class PageEditing {
   failure: unknown = undefined;
   /** Whether the account may no longer edit the page: a heartbeat was forbidden. */
   lostAccess = false;
+  conflict: Conflict | undefined = undefined;
 
   private base = 0;
   private session: string | undefined = undefined;
@@ -84,6 +94,7 @@ export class PageEditing {
         content: observableRef,
         readFailure: observableRef,
         failure: observableRef,
+        conflict: observableRef,
         base: false,
         session: false,
         opening: false,
@@ -133,6 +144,9 @@ export class PageEditing {
    * whether it went through (nothing to save goes through at once).
    */
   save(text: string, version: number): Promise<boolean> {
+    if (this.conflict !== undefined) {
+      return Promise.resolve(false);
+    }
     if (this.out !== undefined) {
       this.next = { text, version };
       this.nextSent ??= this.out.then(() => {
@@ -149,6 +163,35 @@ export class PageEditing {
     const out = this.send({ text, version }, false, 0).finally(() => (this.out = undefined));
     this.out = out;
     return out;
+  }
+
+  /**
+   * keepMine saves text over the page as it was when the conflict read it:
+   * on that revision, so that a write since is a conflict again.
+   */
+  keepMine(text: string, version: number): Promise<boolean> {
+    if (this.conflict !== undefined) {
+      this.base = this.conflict.revision;
+      this.conflict = undefined;
+    }
+    return this.save(text, version);
+  }
+
+  /**
+   * discardMine ends the conflict for the page as it is now: it answers
+   * the content the editor is to load, which the edit goes on from, with
+   * nothing unsaved.
+   */
+  discardMine(): string | undefined {
+    const conflict = this.conflict;
+    if (conflict === undefined) {
+      return undefined;
+    }
+    this.base = conflict.revision;
+    this.savedVersion = this.version;
+    this.conflict = undefined;
+    this.failure = undefined;
+    return conflict.theirs;
   }
 
   /** end ends the edit: the heartbeat stops, the session ends, unanswered. */
@@ -184,6 +227,9 @@ export class PageEditing {
       });
       return true;
     } catch (error) {
+      if (refused(error, 409, "page.revision_mismatch")) {
+        return this.inConflict(draft, error);
+      }
       if (!reopened && refused(error, 409, "page.edit_session_ended")) {
         this.session = undefined;
         return this.send(draft, true, waited);
@@ -200,6 +246,21 @@ export class PageEditing {
       });
       return false;
     }
+  }
+
+  /** inConflict reads the page as it is now for the conflict of draft; a read that fails leaves refusal the save's failure. */
+  private async inConflict(draft: Draft, refusal: unknown): Promise<boolean> {
+    try {
+      const now = await this.service.getPageContent(this.pageId);
+      runInAction(() => (this.conflict = { theirs: now.content, revision: now.revision, mine: draft.text }));
+    } catch {
+      runInAction(() => (this.failure = refusal));
+    }
+    runInAction(() => {
+      this.saving = false;
+      this.busy = false;
+    });
+    return false;
   }
 
   /** sessionId is the edit's session, opened if it has none. */

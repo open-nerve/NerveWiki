@@ -239,3 +239,75 @@ test("the end ends the session unanswered and stops the beats; a session opening
   await vi.advanceTimersByTimeAsync(0);
   expect(late.sent).toEqual(["OPEN", "END s9"]);
 });
+
+/** An edit begun on revision 3 whose next save is refused because the page changed to revision 5, "theirs". */
+async function inConflict() {
+  const fake = await begun();
+  fake.answers.put = () => {
+    fake.answers.put = undefined;
+    throw refusal(409, "page.revision_mismatch");
+  };
+  fake.answers.content = () => ({ content: "theirs", revision: 5, content_hash: "" });
+  fake.editing.changed(1);
+  expect(await fake.editing.save("mine", 1)).toBe(false);
+  return fake;
+}
+
+test("a save refused because the page changed reads the page as it is now; until kept or discarded, saves send nothing", async () => {
+  const { editing, sent } = await inConflict();
+
+  expect(editing.conflict).toEqual({ theirs: "theirs", revision: 5, mine: "mine" });
+  expect(editing.saving).toBe(false);
+  expect(editing.failure).toBeUndefined();
+  editing.changed(2);
+  expect(await editing.save("mine, more", 2)).toBe(false);
+  expect(sent.filter((line) => line.startsWith("PUT"))).toEqual(['PUT "mine" on 3 in s1']);
+  editing.end();
+});
+
+test("keep mine saves on the revision the conflict read; a write since is a conflict again", async () => {
+  const { editing, sent, answers } = await inConflict();
+
+  expect(await editing.keepMine("mine", 1)).toBe(true);
+  expect(sent.at(-1)).toBe('PUT "mine" on 5 in s1');
+  expect(editing.conflict).toBeUndefined();
+  expect(editing.unsaved).toBe(false);
+
+  answers.put = () => {
+    answers.put = undefined;
+    throw refusal(409, "page.revision_mismatch");
+  };
+  answers.content = () => ({ content: "theirs again", revision: 8, content_hash: "" });
+  editing.changed(2);
+  expect(await editing.save("mine again", 2)).toBe(false);
+  expect(await editing.keepMine("mine again", 2)).toBe(true);
+  expect(sent.at(-1)).toBe('PUT "mine again" on 8 in s1');
+  editing.end();
+});
+
+test("discard mine gives the page as it is now, nothing unsaved; the next save goes on its revision", async () => {
+  const { editing, sent } = await inConflict();
+
+  expect(editing.discardMine()).toBe("theirs");
+  expect(editing.conflict).toBeUndefined();
+  expect(editing.unsaved).toBe(false);
+  expect(editing.discardMine()).toBeUndefined();
+  editing.changed(2);
+  expect(await editing.save("theirs, edited", 2)).toBe(true);
+  expect(sent.at(-1)).toBe('PUT "theirs, edited" on 5 in s1');
+  editing.end();
+});
+
+test("a conflict whose page cannot be read is the save's failure", async () => {
+  const { editing, answers } = await begun();
+  answers.put = () => {
+    throw refusal(409, "page.revision_mismatch");
+  };
+  answers.content = () => Promise.reject(new TypeError("offline"));
+
+  editing.changed(1);
+  expect(await editing.save("mine", 1)).toBe(false);
+  expect(editing.conflict).toBeUndefined();
+  expect((editing.failure as ApiError).code).toBe("page.revision_mismatch");
+  editing.end();
+});
