@@ -3,6 +3,9 @@ package postgres_test
 import (
 	"context"
 	"log/slog"
+	"net"
+	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -61,8 +64,16 @@ func notify(t *testing.T, pool *pgxpool.Pool, channel, payload string) {
 // it heard and how to stop it, which waits for Run to return.
 func listen(t *testing.T, pool *pgxpool.Pool, channel string) (heard, func()) {
 	t.Helper()
+	return listenPinging(t, pool, channel, 0)
+}
+
+// listenPinging is listen with the Listener's PingInterval.
+func listenPinging(t *testing.T, pool *pgxpool.Pool, channel string, ping time.Duration) (heard, func()) {
+	t.Helper()
 	h := make(heard, 64)
-	l := postgres.NewListener(pool, channel, slog.New(slog.DiscardHandler), h.options())
+	opts := h.options()
+	opts.PingInterval = ping
+	l := postgres.NewListener(pool, channel, slog.New(slog.DiscardHandler), opts)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() {
@@ -133,5 +144,128 @@ func TestAListenerClosesItsConnectionWhenStopped(t *testing.T) {
 	}
 	if n != 0 {
 		t.Errorf("%d backends still listen 5 s after Run returned, want none", n)
+	}
+}
+
+// A Listener's connection that stays quiet past PingInterval is pinged and
+// kept: the notifications that come after several pings arrive on it.
+func TestAListenerKeepsAQuietConnection(t *testing.T) {
+	pool := newNotes(t, 4)
+	h, _ := listenPinging(t, pool, "things", 50*time.Millisecond)
+	h.expect(t, "listening")
+
+	time.Sleep(300 * time.Millisecond)
+	notify(t, pool, "things", "late")
+
+	h.expect(t, "notify late")
+}
+
+// A Listener whose connection goes silent without a word of its end, as
+// after a failover or a NAT that forgot it, finds it lost at its ping and
+// connects again: OnReconnect tells that the notifications meanwhile were
+// lost (M5 design 4.10).
+func TestAListenerFindsASilentConnectionLost(t *testing.T) {
+	notes := newNotes(t, 4)
+	silent := newSilencer(t, notes.Config().ConnConfig.Host, notes.Config().ConnConfig.Port)
+	cfg := notes.Config()
+	cfg.ConnConfig.Host, cfg.ConnConfig.Port = "127.0.0.1", silent.port()
+	pool, err := pgxpool.NewWithConfig(context.Background(), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pool.Close)
+	h, _ := listenPinging(t, pool, "things", 100*time.Millisecond)
+	h.expect(t, "listening")
+
+	silent.silence()
+
+	h.expect(t, "not listening", "listening", "reconnect")
+	notify(t, notes, "things", "after")
+	h.expect(t, "notify after")
+}
+
+// silencer is a TCP proxy to a database server whose connections can be
+// silenced: they stay open and pass nothing more, either way. A connection
+// made after it silences passes as usual.
+type silencer struct {
+	ln     net.Listener
+	mu     sync.Mutex
+	open   []*silenced
+	closed chan struct{}
+}
+
+// silenced is one proxied connection, quiet once its channel is closed.
+type silenced struct{ quiet chan struct{} }
+
+func newSilencer(t *testing.T, host string, port uint16) *silencer {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := &silencer{ln: ln, closed: make(chan struct{})}
+	t.Cleanup(func() {
+		close(s.closed)
+		_ = ln.Close()
+	})
+	target := net.JoinHostPort(host, strconv.Itoa(int(port)))
+	go func() {
+		for {
+			client, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			server, err := net.Dial("tcp", target)
+			if err != nil {
+				_ = client.Close()
+				continue
+			}
+			c := &silenced{quiet: make(chan struct{})}
+			s.mu.Lock()
+			s.open = append(s.open, c)
+			s.mu.Unlock()
+			go s.pass(c, client, server)
+			go s.pass(c, server, client)
+		}
+	}()
+	return s
+}
+
+func (s *silencer) port() uint16 { return uint16(s.ln.Addr().(*net.TCPAddr).Port) }
+
+// silence quiets every connection open now.
+func (s *silencer) silence() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, c := range s.open {
+		close(c.quiet)
+	}
+	s.open = nil
+}
+
+// pass copies from src to dst until either fails, or c is quieted: then it
+// holds both open, passing nothing, until the test ends.
+func (s *silencer) pass(c *silenced, dst, src net.Conn) {
+	defer func() {
+		_ = dst.Close()
+		_ = src.Close()
+	}()
+	buf := make([]byte, 32*1024)
+	for {
+		n, err := src.Read(buf)
+		select {
+		case <-c.quiet:
+			<-s.closed
+			return
+		default:
+		}
+		if n > 0 {
+			if _, werr := dst.Write(buf[:n]); werr != nil {
+				return
+			}
+		}
+		if err != nil {
+			return
+		}
 	}
 }

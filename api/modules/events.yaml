@@ -36,7 +36,15 @@ paths:
         now), notebooks_deleted, expired (the credential, at its expiry),
         unauthenticated (it failed at a heartbeat: revoked, signed out, the
         account deactivated), reconnected (the server missed events), or
-        overflow (the client fell behind).
+        overflow (the client fell behind). A reset for access,
+        notebooks_deleted, reconnected or overflow comes after the events
+        the stream held.
+
+
+        The stream may also end without a reset: when the server stops,
+        when the credential cannot be checked at a heartbeat, or when the
+        client does not take a frame within a heartbeat. The client
+        reconnects then too, and refreshes.
 
 
         Other event types may come; a client ignores those it does not know.
@@ -47,7 +55,7 @@ paths:
       x-problem-codes: [not_ready]
       responses:
         "200":
-          description: The stream; it stays open until a reset or the client goes.
+          description: The stream; it stays open until it ends as above or the client goes.
           content:
             text/event-stream:
               schema:

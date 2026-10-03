@@ -2,7 +2,7 @@ import { createClient } from "@nervewiki/api-client";
 
 import { accountIdOf } from "../../fixtures/assert/identity";
 import { emailFor, register } from "../../fixtures/auth";
-import { fetchEvents } from "../../fixtures/events";
+import { fetchEvents, settleEvents } from "../../fixtures/events";
 import { joinAs } from "../../fixtures/invitations";
 import { addedNotebookMember, removeNotebookMember } from "../../fixtures/notebook-members";
 import { createNotebook, deleteNotebook } from "../../fixtures/notebooks";
@@ -30,6 +30,7 @@ test("C8 (API): a stream ends with reset expired as its access token expires", a
 test("C8 (API): B removed from Eng gets reset access; reconnected, B receives nothing of Eng", async ({
   api,
   db,
+  nervewiki,
   openEvents,
 }, testInfo) => {
   const { pat: a, workspace } = await newTeam(api, testInfo);
@@ -39,6 +40,7 @@ test("C8 (API): B removed from Eng gets reset access; reconnected, B receives no
   const membership = await addedNotebookMember(api, a, eng.id, await accountIdOf(db, bEmail), "editor");
   const mine = await createNotebook(api, b, workspace.slug, "Mine");
   const control = await createPage(api, b, mine.id, "Control");
+  await settleEvents(api, nervewiki.baseURL, a, (await createPage(api, a, eng.id, "Marker")).id);
   const stream = await openEvents(b);
 
   expect((await removeNotebookMember(api, a, membership.id)).response.status).toBe(204);
@@ -71,6 +73,7 @@ test("C8 (API): B signs out elsewhere; within a heartbeat, B's stream ends with 
 test("C8 (API): Eng deleted, B's stream ends with reset notebooks_deleted", async ({
   api,
   db,
+  nervewiki,
   openEvents,
 }, testInfo) => {
   const { pat: a, workspace } = await newTeam(api, testInfo);
@@ -78,6 +81,7 @@ test("C8 (API): Eng deleted, B's stream ends with reset notebooks_deleted", asyn
   const b = await joinAs(api, a, workspace.slug, bEmail, "member");
   const eng = await createNotebook(api, a, workspace.slug, "Eng");
   await addedNotebookMember(api, a, eng.id, await accountIdOf(db, bEmail), "reader");
+  await settleEvents(api, nervewiki.baseURL, a, (await createPage(api, a, eng.id, "Marker")).id);
   const stream = await openEvents(b);
 
   expect((await deleteNotebook(api, a, eng.id)).response.status).toBe(204);

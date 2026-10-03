@@ -28,6 +28,9 @@ type Config struct {
 	Errors    httpserver.APIErrors
 	Logger    *slog.Logger
 	Heartbeat time.Duration // events.heartbeat_interval
+	// OpenTimeout bounds the opening, which reads what the caller sees:
+	// server.request_timeout, as for any other request.
+	OpenTimeout time.Duration
 	// Now is the clock's time; After a timer, time.After in the server.
 	Now   func() time.Time
 	After func(time.Duration) <-chan time.Time
@@ -58,19 +61,22 @@ func New(open Opener, cfg Config) *Handler {
 //     unauthenticated when it fails with a 401, else a comment line. A
 //     fault ends the stream without a frame: the client reconnects.
 //
-// A frame that cannot be written ends it: the client is gone.
+// A frame that cannot be written within a heartbeat ends it: the client is
+// gone or has stopped reading.
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	s, err := h.open.Execute(ctx)
+	opening, cancel := context.WithTimeout(ctx, h.cfg.OpenTimeout)
+	s, err := h.open.Execute(opening)
+	cancel()
 	if err != nil {
-		h.cfg.Errors.Write(w, r, err)
+		h.cfg.Errors.Write(w, r.WithContext(opening), err)
 		return
 	}
 	defer s.Close()
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("X-Accel-Buffering", "no")
 	w.WriteHeader(http.StatusOK)
-	out := writer{w: w, rc: http.NewResponseController(w)}
+	out := writer{w: w, rc: http.NewResponseController(w), wait: h.cfg.Heartbeat}
 	if !out.write(domain.HelloFrame(h.cfg.Heartbeat)) {
 		return
 	}
@@ -97,9 +103,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		case <-beat:
 			if err := h.reauthenticate(ctx); err != nil {
-				if unauthenticated(err) {
+				switch {
+				case ctx.Err() != nil:
+					// The client went, or the server stops: no fault.
+				case unauthenticated(err):
 					out.write(domain.ResetFrame(domain.ResetUnauthenticated))
-				} else {
+				default:
 					h.cfg.Logger.ErrorContext(ctx, "event stream ended: the credential could not be checked",
 						slog.String("request_id", httpserver.RequestID(ctx)), slog.Any("error", err))
 				}
@@ -153,14 +162,20 @@ func unauthenticated(err error) bool {
 	return errors.As(err, &pe) && pe.ProblemStatus() == http.StatusUnauthorized
 }
 
-// writer writes frames and flushes each.
+// writer writes frames and flushes each, each within wait: LongLived lifts
+// the server's write deadline, and a client that stops reading would hold
+// a write, and the stream, forever.
 type writer struct {
-	w  http.ResponseWriter
-	rc *http.ResponseController
+	w    http.ResponseWriter
+	rc   *http.ResponseController
+	wait time.Duration
 }
 
 // write writes f and flushes it, and reports whether it could.
 func (o writer) write(f []byte) bool {
+	if o.rc.SetWriteDeadline(time.Now().Add(o.wait)) != nil {
+		return false
+	}
 	if _, err := o.w.Write(f); err != nil {
 		return false
 	}

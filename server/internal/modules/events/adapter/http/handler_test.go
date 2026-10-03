@@ -2,14 +2,18 @@ package httpadapter_test
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -44,14 +48,33 @@ func (everyone) NotebooksIn(context.Context, uuid.UUID, uuid.UUID, shared.Worksp
 	return []uuid.UUID{uuid.MustParse(notebookText)}, nil
 }
 
+// slowly sees nothing until its caller gives up.
+type slowly struct{}
+
+func (slowly) WorkspacesOf(ctx context.Context, _ uuid.UUID) ([]app.Membership, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+func (slowly) NotebooksIn(context.Context, uuid.UUID, uuid.UUID, shared.WorkspaceRole) ([]uuid.UUID, error) {
+	return nil, nil
+}
+
 // tokens accepts "tok", and "short", which expires a minute from now;
-// once revoked, it refuses both with a 401, once down with a fault.
+// once revoked, it refuses both with a 401, once down with a fault; once
+// hung, it answers when its caller gives up, and tells hanging it has
+// begun to.
 type tokens struct {
-	revoked, down atomic.Bool
+	revoked, down, hung atomic.Bool
+	hanging             chan struct{}
 }
 
 func (a *tokens) Authenticate(ctx context.Context, token string) (context.Context, string, error) {
 	switch {
+	case a.hung.Load():
+		a.hanging <- struct{}{}
+		<-ctx.Done()
+		return nil, "", ctx.Err()
 	case a.down.Load():
 		return nil, "", errors.New("database is down")
 	case a.revoked.Load() || (token != "tok" && token != "short"):
@@ -70,24 +93,68 @@ type timer struct {
 	c chan time.Time
 }
 
-// stream is the server of the tests, its hub, its tokens and its timers.
-// A test that sets held before it opens a stream holds the handler in its
-// first timer's making, past hello, until it closes held.
+// logs is what the handler logged.
+type logs struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (l *logs) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.buf.Write(p)
+}
+
+func (l *logs) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.buf.String()
+}
+
+// stream is the server of the tests, its hub, its tokens, its timers and
+// its handler's logs. A test that sets held before it opens a stream holds
+// the handler in its first timer's making, past hello, until it closes
+// held.
 type stream struct {
 	url    string
 	hub    *app.Hub
 	tokens *tokens
 	timers chan timer
 	held   chan struct{}
+	logs   *logs
+}
+
+// options are a test server's heartbeat, opening timeout and visibility,
+// when not the usual ones.
+type options struct {
+	heartbeat, openTimeout time.Duration
+	visibility             app.Visibility
 }
 
 func newStream(t *testing.T) *stream {
 	t.Helper()
-	s := &stream{hub: app.NewHub(slog.New(slog.DiscardHandler)), tokens: &tokens{}, timers: make(chan timer, 16)}
+	return newStreamWith(t, options{})
+}
+
+func newStreamWith(t *testing.T, o options) *stream {
+	t.Helper()
+	if o.heartbeat == 0 {
+		o.heartbeat = heartbeat
+	}
+	if o.openTimeout == 0 {
+		o.openTimeout = 5 * time.Second
+	}
+	if o.visibility == nil {
+		o.visibility = everyone{}
+	}
+	s := &stream{
+		hub: app.NewHub(slog.New(slog.DiscardHandler)), tokens: &tokens{hanging: make(chan struct{}, 1)},
+		timers: make(chan timer, 16), logs: &logs{},
+	}
 	s.hub.Listening(true)
-	logger := slog.New(slog.DiscardHandler)
-	h := httpadapter.New(app.NewOpenStream(s.hub, everyone{}), httpadapter.Config{
-		Errors: httpserver.NewAPIErrors(logger), Logger: logger, Heartbeat: heartbeat, Now: now,
+	logger := slog.New(slog.NewTextHandler(s.logs, nil))
+	h := httpadapter.New(app.NewOpenStream(s.hub, o.visibility), httpadapter.Config{
+		Errors: httpserver.NewAPIErrors(logger), Logger: logger, Heartbeat: o.heartbeat, OpenTimeout: o.openTimeout, Now: now,
 		After: func(d time.Duration) <-chan time.Time {
 			if s.held != nil {
 				<-s.held
@@ -321,6 +388,78 @@ func TestAResetStreamWritesItsEventsFirst(t *testing.T) {
 		t.Errorf("reset = %s", data)
 	}
 	expect(t, r, "EOF", "")
+}
+
+// A client that stops reading ends its stream once a frame waits a
+// heartbeat to be written: the handler does not hang on it, and the stream
+// leaves the hub. Its events come one a millisecond, so that the client's
+// buffers fill before the stream's own does.
+func TestAClientThatStopsReadingEndsItsStream(t *testing.T) {
+	s := newStreamWith(t, options{heartbeat: 200 * time.Millisecond})
+	conn, err := net.Dial("tcp", strings.TrimPrefix(s.url, "http://"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+	if err := conn.(*net.TCPConn).SetReadBuffer(4096); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fmt.Fprint(conn, "GET /api/v0/events HTTP/1.1\r\nHost: test\r\nAuthorization: Bearer tok\r\n\r\n"); err != nil {
+		t.Fatal(err)
+	}
+	for deadline := time.Now().Add(5 * time.Second); s.hub.Streams() == 0; time.Sleep(time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("the stream did not open")
+		}
+	}
+	big := domain.Event{Type: "big", WorkspaceID: uuid.MustParse(workspaceText), NotebookID: uuid.MustParse(notebookText),
+		Data: json.RawMessage(`{"filler":"` + strings.Repeat("x", 32*1024) + `"}`)}
+
+	for deadline := time.Now().Add(10 * time.Second); s.hub.Streams() != 0; time.Sleep(time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("the stream of a client that stopped reading is still open after 10 s")
+		}
+		s.hub.Dispatch(big)
+	}
+}
+
+// A heartbeat whose authentication the client's going cuts short is no
+// fault: the stream ends without an error logged.
+func TestAHeartbeatCutShortIsNoFault(t *testing.T) {
+	s := newStream(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, s.url+"/api/v0/events", nil)
+	req.Header.Set("Authorization", "Bearer tok")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = res.Body.Close() })
+	expect(t, bufio.NewReader(res.Body), "hello", "")
+	s.tokens.hung.Store(true)
+	s.timer(t).c <- now()
+	<-s.tokens.hanging
+
+	cancel()
+
+	waitForNoStream(t, s.hub)
+	if logged := s.logs.String(); strings.Contains(logged, "level=ERROR") {
+		t.Errorf("logged %s; want no error", logged)
+	}
+}
+
+// An opening that cannot read what its caller sees within its timeout,
+// server.request_timeout, ends: 500, and no stream is left.
+func TestASlowOpeningEndsAtItsTimeout(t *testing.T) {
+	s := newStreamWith(t, options{openTimeout: 100 * time.Millisecond, visibility: slowly{}})
+
+	res, r := s.open(t, "tok")
+
+	body, _ := io.ReadAll(r)
+	if res.StatusCode != http.StatusInternalServerError || !strings.Contains(string(body), `"internal_error"`) {
+		t.Errorf("GET = %d %s; want 500 internal_error", res.StatusCode, body)
+	}
+	waitForNoStream(t, s.hub)
 }
 
 // A client that goes ends its stream, which leaves the hub.

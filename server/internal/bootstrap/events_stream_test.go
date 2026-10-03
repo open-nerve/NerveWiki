@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -34,30 +35,16 @@ func (f streamFrame) field(t *testing.T, name string) string {
 type eventStream struct {
 	name   string
 	frames chan streamFrame
+	close  context.CancelFunc
 }
 
 // openStream opens name's event stream on base with token, past its hello,
-// closed when the test ends.
+// closed when the test ends. A 503 not_ready, while the server's listener
+// connects, is asked again.
 func openStream(t *testing.T, base, name, token string) *eventStream {
 	t.Helper()
-	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/api/v0/events", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	req.Header.Set("Authorization", "Bearer "+token)
-	late := time.AfterFunc(interleavingWait, cancel)
-	res, err := http.DefaultClient.Do(req)
-	late.Stop()
-	if err != nil {
-		t.Fatalf("%s's stream: %v", name, err)
-	}
-	if res.StatusCode != http.StatusOK {
-		_ = res.Body.Close()
-		t.Fatalf("%s's stream = %d", name, res.StatusCode)
-	}
-	s := &eventStream{name: name, frames: make(chan streamFrame, 256)}
+	res, cancel := streamResponse(t, base, name, token)
+	s := &eventStream{name: name, frames: make(chan streamFrame, 256), close: cancel}
 	go func() {
 		defer close(s.frames)
 		defer func() { _ = res.Body.Close() }()
@@ -83,6 +70,67 @@ func openStream(t *testing.T, base, name, token string) *eventStream {
 		t.Fatalf("%s's stream began with %s %s, want hello", name, f.event, f.data)
 	}
 	return s
+}
+
+// streamResponse is the 200 of name's stream on base, asked again while it
+// is 503 not_ready, interleavingWait at most, and what closes it, which the
+// test's end does too.
+func streamResponse(t *testing.T, base, name, token string) (*http.Response, context.CancelFunc) {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	late := time.AfterFunc(interleavingWait, cancel)
+	defer late.Stop()
+	for {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/api/v0/events", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("%s's stream: %v", name, err)
+		}
+		if res.StatusCode == http.StatusOK {
+			return res, cancel
+		}
+		_ = res.Body.Close()
+		if res.StatusCode != http.StatusServiceUnavailable {
+			t.Fatalf("%s's stream = %d", name, res.StatusCode)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+// settle waits until the notifications of the writes committed so far have
+// reached the hub, so that a stream opened after it gets none of them: one
+// arriving late would be taken for the frame a test awaits. PostgreSQL
+// delivers notifications in commit order, so once alice's stream gets the
+// frame of a write of the marker of nb made now, every earlier one has
+// been dispatched. A stream of alice that an earlier write resets is
+// opened again.
+func (tm acmeTeam) settle(t *testing.T, nb, marker string) {
+	t.Helper()
+	for {
+		s := openStream(t, tm.base, "alice", tm.tokens["alice"])
+		rev := tm.content(t, "alice", marker).Revision
+		tm.send(t, contentWrite("alice", marker, fmt.Sprintf("# Marker %d", rev+1), rev, ""), http.StatusOK)
+		want := fmt.Sprint(map[string]int{marker: rev + 1})
+		for f := s.next(t); f.event != "EOF"; f = s.next(t) {
+			if f.event != "pages" {
+				continue
+			}
+			var p pagesData
+			if err := json.Unmarshal([]byte(f.data), &p); err != nil {
+				t.Fatal(err)
+			}
+			if p.NotebookID == nb && fmt.Sprint(p.written()) == want {
+				s.close()
+				return
+			}
+		}
+		s.close()
+	}
 }
 
 // next returns the stream's next frame; an ended stream gives "EOF".

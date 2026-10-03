@@ -1348,7 +1348,9 @@ paths:
         - hello: the first frame; heartbeat_seconds is how often a heartbeat comes, a comment line. The server authenticates the credential again at each.
         - pages: a write of a notebook's pages; tree tells whether the tree changed (a page created, renamed, moved or deleted), pages lists the pages whose content was written with their new revisions, empty for none, null for more than 20, when the client takes every page as written.
         - lock: an edit session of a page opened or ended; the client reads the page's lock again.
-        - reset: the last frame; the client reconnects at once and refreshes all it shows. reason is access (the caller may see other notebooks now), notebooks_deleted, expired (the credential, at its expiry), unauthenticated (it failed at a heartbeat: revoked, signed out, the account deactivated), reconnected (the server missed events), or overflow (the client fell behind).
+        - reset: the last frame; the client reconnects at once and refreshes all it shows. reason is access (the caller may see other notebooks now), notebooks_deleted, expired (the credential, at its expiry), unauthenticated (it failed at a heartbeat: revoked, signed out, the account deactivated), reconnected (the server missed events), or overflow (the client fell behind). A reset for access, notebooks_deleted, reconnected or overflow comes after the events the stream held.
+
+        The stream may also end without a reset: when the server stops, when the credential cannot be checked at a heartbeat, or when the client does not take a frame within a heartbeat. The client reconnects then too, and refreshes.
 
         Other event types may come; a client ignores those it does not know. While the server cannot listen for events yet, starting or reconnecting, it answers not_ready with Retry-After.
       security:
@@ -1358,7 +1360,7 @@ paths:
         - not_ready
       responses:
         '200':
-          description: The stream; it stays open until a reset or the client goes.
+          description: The stream; it stays open until it ends as above or the client goes.
           content:
             text/event-stream:
               schema:

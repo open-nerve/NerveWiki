@@ -39,6 +39,9 @@ type Deps struct {
 	Logger     *slog.Logger
 	// HeartbeatInterval is events.heartbeat_interval.
 	HeartbeatInterval time.Duration
+	// RequestTimeout is server.request_timeout: it bounds a stream's
+	// opening.
+	RequestTimeout time.Duration
 	// After is a timer: time.After when nil, a test's own otherwise.
 	After func(time.Duration) <-chan time.Time
 }
@@ -57,7 +60,8 @@ func New(d Deps) *Module {
 	}
 	hub := app.NewHub(d.Logger)
 	return &Module{hub: hub, handler: httpadapter.New(app.NewOpenStream(hub, d.Visibility), httpadapter.Config{
-		Errors: httpserver.NewAPIErrors(d.Logger), Logger: d.Logger, Heartbeat: d.HeartbeatInterval, Now: d.Clock.Now, After: after,
+		Errors: httpserver.NewAPIErrors(d.Logger), Logger: d.Logger, Heartbeat: d.HeartbeatInterval, OpenTimeout: d.RequestTimeout,
+		Now: d.Clock.Now, After: after,
 	})}
 }
 

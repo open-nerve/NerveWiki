@@ -82,6 +82,7 @@ func eventsTeam(t *testing.T) (tm acmeTeam, nb, marker string, bob *eventStream)
 	tm = newAcmeTeam(t, "member", "")
 	nb = tm.openNotebook(t, "alice", "Eng")
 	marker = tm.createPage(t, "alice", nb, "", "Marker")
+	tm.settle(t, nb, marker)
 	return tm, nb, marker, openStream(t, tm.base, "bob", tm.tokens["bob"])
 }
 

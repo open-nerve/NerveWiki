@@ -116,6 +116,7 @@ func TestEveryVisibilityChangeResetsItsStreams(t *testing.T) {
 			eng := tm.openNotebook(t, "alice", "Eng")
 			marker := tm.createPage(t, "alice", eng, "", "Marker")
 			trigger := tt.setup(t, tm)
+			tm.settle(t, eng, marker)
 			streams := map[string]*eventStream{}
 			for _, name := range append(append([]string{}, tt.reset...), tt.kept...) {
 				streams[name] = openStream(t, tm.base, name, tm.tokens[name])

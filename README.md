@@ -142,11 +142,12 @@ make run      # 以 dev 配置启动 nervewiki serve，监听 127.0.0.1:8080；C
   - `hello`：第一帧，`{"heartbeat_seconds"}`；
   - `pages`：一个写入单元，`tree` 说明是否改了树（新建、改名、移动、删除），`pages` 是写了正文的页与新版本 `[{id, revision}]`（新建的页在版本 1）；多于 20 页时是 `null`，当作每一页都写过；
   - `lock`：一页的编辑会话开启或结束，`{page_id, session_id}`，去读锁；接管是先结束、再开启的两帧；
-  - `reset`：`{reason}`，流的最后一帧，之前已经送到这条流的事件先写出；
+  - `reset`：`{reason}`，流的最后一帧；
   - 心跳是一行注释 `: heartbeat`。不认识的类型跳过：之后的 M 会加自己的类型。
-- **`reset`**：服务端随即关闭连接，客户端重连并整体刷新（树与打开的页），不补发事件。原因：`access`（看得到的笔记本可能变了：工作区或笔记本的成员身份、笔记本的开放程度、停用与恢复）、`notebooks_deleted`（看得到的笔记本被删除，删工作区也是）、`expired`（凭证到期，续期之后重连）、`unauthenticated`（心跳时重新认证失败：撤销、别处退出登录、停用）、`reconnected`（服务端接收通知的连接断开又连上，期间的事件丢了）、`overflow`（客户端读得太慢，缓冲的 64 个事件满了）。
-- **心跳**：每 `events.heartbeat_interval`（默认 20 秒，5–50 秒）一次，同时重新认证凭证，所以撤销与别处的退出登录在一个心跳之内生效。认证服务出错时连接直接断开、不发 `reset`，客户端重连。
-- 服务刚启动、接收通知的连接还没连上或正在重连时，打开流答 503 `not_ready`（`Retry-After: 1`）。打开一条流在限流中算一次请求；连着的流不受请求期限与写超时约束，停机开始时关闭。
+- **`reset`**：服务端随即关闭连接，客户端重连并整体刷新（树与打开的页），不补发事件。原因：`access`（看得到的笔记本可能变了：工作区或笔记本的成员身份、笔记本的开放程度、停用与恢复）、`notebooks_deleted`（看得到的笔记本被删除，删工作区也是）、`expired`（凭证到期，续期之后重连）、`unauthenticated`（心跳时重新认证失败：撤销、别处退出登录、停用）、`reconnected`（服务端接收通知的连接断开又连上，期间的事件丢了）、`overflow`（客户端读得太慢，缓冲的 64 个事件满了）。后四种之前已经送到这条流的事件先写出；凭证到期或失效时不再写出。流也可能不带 `reset` 就结束：服务停机、心跳时认证服务出错、客户端一个心跳之内收不下一帧，客户端同样重连并刷新。
+- **心跳**：每 `events.heartbeat_interval`（默认 20 秒，5–50 秒）一次，同时重新认证凭证，所以撤销与别处的退出登录在一个心跳之内生效。
+- 服务刚启动、接收通知的连接还没连上或正在重连时，打开流答 503 `not_ready`（`Retry-After: 1`）；`/readyz` 不看这条连接，这期间实例照常就绪，其余接口不受影响。接收通知的连接安静 30 秒就 ping 一次，悄悄断掉的连接（数据库切换、NAT 忘了它）由此发现并重连。
+- 打开一条流在限流中算一次请求，读它看得到的笔记本受 `server.request_timeout` 约束；连着的流不受请求期限与服务端写超时约束，每一帧要在一个心跳之内写出，停机开始时关闭。
 
 ## 接口与代码生成
 
@@ -272,7 +273,7 @@ make image-smoke VERSION=0.1.0   # 在镜像上跑 S1、S3：迁移、探针、�
 - 数据库必须以 builtin provider 的 `C.UTF-8` 初始化，否则服务拒绝启动，见[总体设计](docs/v0.1/v0.1-design.md) 7.1。
 - 探针：存活用 `GET /healthz`（不访问任何依赖），就绪用 `GET /readyz`（数据库可用、迁移已执行完）。镜像里没有 shell 与 curl，所以没有写 `HEALTHCHECK`，由编排系统探测。
 - 后台任务（River：每小时一次的过期会话清理 `auth.session_cleanup_interval`，每小时一次的软删除清理 `jobs.purge_interval`，每 10 分钟一次的过期编辑会话清理 `page.edit_session_cleanup_interval`）随 `serve` 运行，表在同一条迁移链上。关闭自动迁移时，服务在迁移执行完之前不启动后台任务，迁移之后自动启动，不必重启。River 从连接池里借走一个连接专门监听通知，事件流也借走一个（`LISTEN nwiki_events`，断开后自动重连），数据库要为每个实例多留两个连接（`database.max_conns` + 2）。
-- 停止时发 SIGTERM：服务停止接收新连接，关闭开着的事件流，等正在处理的请求结束（最多 `server.shutdown_timeout`，默认 20 秒），再等正在执行的后台任务（最多 `jobs.shutdown_timeout`，默认 10 秒，之后取消它们，再宽限 1 秒），最后关闭连接池（最多 5 秒）后退出。停机的宽限期要比这些之和长：`docker stop` 默认只等 10 秒，用 `docker stop -t 40`。启动之后不久就停止时（重启循环、端到端测试），River 通常记一条 ERROR `maintenance.PeriodicJobEnqueuer: Error starting transaction`（`context canceled`，它启动时的定时任务入队被停机打断），退出码仍是 0；运行了一段时间的服务停止时一般没有。
+- 停止时发 SIGTERM：服务停止接收新连接，关闭开着的事件流，等正在处理的请求结束（最多 `server.shutdown_timeout`，默认 20 秒），关闭接收通知的连接（最多 2 秒），再等正在执行的后台任务（最多 `jobs.shutdown_timeout`，默认 10 秒，之后取消它们，再宽限 1 秒），最后关闭连接池（最多 5 秒）后退出。停机的宽限期要比这些之和长：`docker stop` 默认只等 10 秒，用 `docker stop -t 40`。启动之后不久就停止时（重启循环、端到端测试），River 通常记一条 ERROR `maintenance.PeriodicJobEnqueuer: Error starting transaction`（`context canceled`，它启动时的定时任务入队被停机打断），退出码仍是 0；运行了一段时间的服务停止时一般没有。
 
 ## Markdown 样例集
 

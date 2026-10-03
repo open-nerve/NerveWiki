@@ -1,7 +1,10 @@
-import type { EventHello, EventLock, EventPages, EventReset } from "@nervewiki/api-client";
+import { setTimeout as sleep } from "node:timers/promises";
+
+import type { ApiClient, EventHello, EventLock, EventPages, EventReset } from "@nervewiki/api-client";
 import { expect } from "@playwright/test";
 
 import { bearer } from "./auth";
+import { readContent, writeContent } from "./pages";
 
 // The event stream of the stories, read with Node's fetch (M5 design 4.10;
 // M5/P2 design 3.13): its frames one at a time, the heartbeat's comment
@@ -42,10 +45,24 @@ export async function fetchEvents(baseURL: string, credential?: string, signal?:
   return fetch(`${baseURL}/api/v0/events`, { headers: credential === undefined ? {} : bearer(credential), signal });
 }
 
+/** How long a story asks again for a stream answered 503 not_ready, while the server's listener connects. */
+const notReadyForMs = 10_000;
+
+/** credential's stream at baseURL, asked again after Retry-After while it is 503 not_ready, until deadline. */
+async function streamResponse(baseURL: string, credential: string, signal: AbortSignal, deadline: number) {
+  const response = await fetchEvents(baseURL, credential, signal);
+  if (response.status !== 503 || Date.now() > deadline) {
+    return response;
+  }
+  await response.body?.cancel();
+  await sleep(Number(response.headers.get("retry-after") ?? "1") * 1000);
+  return streamResponse(baseURL, credential, signal, deadline);
+}
+
 /** Opens credential's event stream at baseURL, past its hello. */
 export async function connectEvents(baseURL: string, credential: string): Promise<EventStream> {
   const controller = new AbortController();
-  const response = await fetchEvents(baseURL, credential, controller.signal);
+  const response = await streamResponse(baseURL, credential, controller.signal, Date.now() + notReadyForMs);
   expect(response.status, "open the event stream").toBe(200);
   expect(response.headers.get("content-type")).toBe("text/event-stream");
   if (!response.body) {
@@ -71,6 +88,38 @@ export async function connectEvents(baseURL: string, credential: string): Promis
     },
     close: () => controller.abort(),
   };
+}
+
+/**
+ * Waits until the notifications of the writes committed so far have reached the server's streams, so that a
+ * stream opened after it gets none of them: one arriving late would be taken for a frame the story awaits.
+ * credential writes the page id, whose notebook it sees, and waits for that write's frame on a stream of its
+ * own; PostgreSQL delivers notifications in commit order. A stream that an earlier write resets is opened again.
+ */
+export async function settleEvents(api: ApiClient, baseURL: string, credential: string, pageId: string): Promise<void> {
+  const stream = await connectEvents(baseURL, credential);
+  try {
+    const { revision } = await readContent(api, credential, pageId);
+    await writeContent(api, credential, pageId, { content: `Settled at ${revision + 1}\n`, base_revision: revision });
+    if (await framed(stream, pageId, revision + 1)) {
+      return;
+    }
+  } finally {
+    stream.close();
+  }
+  await settleEvents(api, baseURL, credential, pageId);
+}
+
+/** Whether the stream gets the frame of the page id's write at revision before it ends. */
+async function framed(stream: EventStream, pageId: string, revision: number): Promise<boolean> {
+  const frame = await stream.next();
+  if (frame.event === "end") {
+    return false;
+  }
+  if (frame.event === "pages" && frame.data.pages?.some((p) => p.id === pageId && p.revision === revision)) {
+    return true;
+  }
+  return framed(stream, pageId, revision);
 }
 
 /** The frames of a stream's body, read as they come, in order. */

@@ -47,6 +47,7 @@ func TestEveryNotebookDeletionResetsItsStreams(t *testing.T) {
 			marker := tm.createPage(t, "alice", eng, "", "Marker")
 			page, editor, trigger := tt.setup(t, tm, eng)
 			session := tm.openSession(t, editor, page)
+			tm.settle(t, eng, marker)
 			streams := map[string]*eventStream{}
 			for _, name := range append(append([]string{}, tt.reset...), tt.kept...) {
 				streams[name] = openStream(t, tm.base, name, tm.tokens[name])

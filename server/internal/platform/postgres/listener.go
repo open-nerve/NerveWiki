@@ -26,6 +26,12 @@ type ListenerOptions struct {
 	// The wait before connecting again, doubled after each failure from
 	// MinBackoff (100 ms when zero) up to MaxBackoff (5 s when zero).
 	MinBackoff, MaxBackoff time.Duration
+	// How long the connection may stay quiet before the Listener pings it
+	// (30 s when zero); the ping waits as long at most, 5 s at most. A
+	// connection lost without a word, as after a failover or a NAT that
+	// forgot it, fails there instead of keeping the notifications from
+	// coming.
+	PingInterval time.Duration
 }
 
 // Listener holds one connection that LISTENs on a channel (M5 design 4.10).
@@ -46,6 +52,9 @@ func NewListener(pool *pgxpool.Pool, channel string, logger *slog.Logger, opts L
 	}
 	if opts.MaxBackoff <= 0 {
 		opts.MaxBackoff = 5 * time.Second
+	}
+	if opts.PingInterval <= 0 {
+		opts.PingInterval = 30 * time.Second
 	}
 	return &Listener{pool: pool, channel: channel, logger: logger, opts: opts}
 }
@@ -98,19 +107,37 @@ func (l *Listener) connect(ctx context.Context) (*pgx.Conn, error) {
 }
 
 // listen hands every notification on conn to OnNotify until conn fails or
-// ctx ends, then closes conn.
+// ctx ends, then closes conn. A wait of PingInterval with no notification
+// pings conn: a wait that times out leaves the connection usable.
 func (l *Listener) listen(ctx context.Context, conn *pgx.Conn) error {
 	defer closeConn(conn)
 	for {
-		n, err := conn.WaitForNotification(ctx)
-		if err != nil {
-			if errors.Is(err, context.Canceled) && ctx.Err() != nil {
-				return nil
+		wait, cancel := context.WithTimeout(ctx, l.opts.PingInterval)
+		n, err := conn.WaitForNotification(wait)
+		cancel()
+		switch {
+		case ctx.Err() != nil:
+			return nil
+		case err == nil:
+			l.opts.OnNotify(n.Payload)
+		case errors.Is(err, context.DeadlineExceeded):
+			if err := l.ping(ctx, conn); err != nil && ctx.Err() == nil {
+				return err
 			}
+		default:
 			return fmt.Errorf("postgres: listener: %w", err)
 		}
-		l.opts.OnNotify(n.Payload)
 	}
+}
+
+// ping checks that the server still answers on conn.
+func (l *Listener) ping(ctx context.Context, conn *pgx.Conn) error {
+	ctx, cancel := context.WithTimeout(ctx, min(l.opts.PingInterval, 5*time.Second))
+	defer cancel()
+	if err := conn.Ping(ctx); err != nil {
+		return fmt.Errorf("postgres: listener: ping: %w", err)
+	}
+	return nil
 }
 
 // closeConn closes conn, waiting a little for the server to hear of it

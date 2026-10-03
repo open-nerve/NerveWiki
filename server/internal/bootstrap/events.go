@@ -25,6 +25,7 @@ func eventsModule(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger) (*
 		Clock:             clock.System{},
 		Logger:            logger,
 		HeartbeatInterval: cfg.Events.HeartbeatInterval,
+		RequestTimeout:    cfg.Server.RequestTimeout,
 	})
 	return ev, postgres.NewListener(pool, events.Channel, logger, postgres.ListenerOptions{
 		OnNotify:    ev.Notified,

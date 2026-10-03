@@ -264,9 +264,14 @@ func TestWhatComesWhileAStreamOpens(t *testing.T) {
 			h.Dispatch(ev(t, domain.TypePages, acme(), seen(), domain.Pages{}))
 			h.Dispatch(ev(t, domain.TypePages, acme(), unseen(), domain.Pages{}))
 		}, "", 1},
-		{"more than a buffer", func(t *testing.T, h *app.Hub) {
+		{"more than a buffer of others' events", func(t *testing.T, h *app.Hub) {
 			for range app.BufferSize + 1 {
-				h.Dispatch(ev(t, domain.TypePages, acme(), seen(), domain.Pages{}))
+				h.Dispatch(ev(t, domain.TypePages, other(), elsewise(), domain.Pages{}))
+			}
+		}, "", 0},
+		{"more than an opening holds", func(t *testing.T, h *app.Hub) {
+			for range app.PendingSize + 1 {
+				h.Dispatch(ev(t, domain.TypePages, other(), elsewise(), domain.Pages{}))
 			}
 		}, domain.ResetOverflow, 0},
 	} {

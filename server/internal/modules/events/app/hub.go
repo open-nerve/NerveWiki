@@ -14,6 +14,11 @@ import (
 // up nor loses events unseen (M5 design 4.10).
 const BufferSize = 64
 
+// PendingSize is how many events a stream holds while it opens: every
+// event of the server, its own or not, until it knows what it sees. More,
+// and it is reset.
+const PendingSize = 1024
+
 // Hub holds this process's streams and hands each event to those that may
 // see it (M5 design 4.10). The listener feeds it: Notified with each
 // payload, Listening with its state, ResetAll after it reconnects. It

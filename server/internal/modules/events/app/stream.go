@@ -42,13 +42,13 @@ func (s *Stream) Close() { s.hub.close(s) }
 
 // offer gives the stream an event, which waits while the stream does not
 // know what it sees; a stream whose client is behind, or one waiting with
-// BufferSize events, is reset.
+// PendingSize events, is reset.
 func (s *Stream) offer(r routed) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	switch {
 	case s.reason != "":
-	case s.seen == nil && len(s.pending) == BufferSize:
+	case s.seen == nil && len(s.pending) == PendingSize:
 		s.reset(domain.ResetOverflow)
 	case s.seen == nil:
 		s.pending = append(s.pending, r)

@@ -1,5 +1,6 @@
 import { accountIdOf } from "../../fixtures/assert/identity";
 import { emailFor } from "../../fixtures/auth";
+import { settleEvents } from "../../fixtures/events";
 import { joinAs } from "../../fixtures/invitations";
 import { addedNotebookMember } from "../../fixtures/notebook-members";
 import { createNotebook } from "../../fixtures/notebooks";
@@ -23,6 +24,7 @@ import { newTeam } from "../../fixtures/workspaces";
 test("C7 (API): B, who sees Eng, receives a pages frame of each of A's writes and a lock frame of each session change; C, who does not, receives nothing of them", async ({
   api,
   db,
+  nervewiki,
   openEvents,
 }, testInfo) => {
   const { pat: a, workspace } = await newTeam(api, testInfo);
@@ -33,6 +35,7 @@ test("C7 (API): B, who sees Eng, receives a pages frame of each of A's writes an
   await addedNotebookMember(api, a, eng.id, await accountIdOf(db, bEmail), "reader");
   const mine = await createNotebook(api, c, workspace.slug, "Mine");
   const control = await createPage(api, c, mine.id, "Control");
+  await settleEvents(api, nervewiki.baseURL, a, (await createPage(api, a, eng.id, "Marker")).id);
   const bStream = await openEvents(b);
   const cStream = await openEvents(c);
   const ofEng = { workspace_id: workspace.id, notebook_id: eng.id };
