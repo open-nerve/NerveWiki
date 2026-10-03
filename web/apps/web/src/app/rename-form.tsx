@@ -21,6 +21,8 @@ type RenameFormProps = {
   rename: (name: string) => Promise<unknown>;
   saveLabel: string;
   savedLabel: string;
+  /** Called once a save went through, as a dialog that closes then. */
+  onSaved?: () => void;
 };
 
 /**
@@ -43,6 +45,7 @@ export function RenameForm({
   rename,
   saveLabel,
   savedLabel,
+  onSaved,
 }: RenameFormProps) {
   /** What was typed since the last save; none, the current name. */
   const [draft, setDraft] = useState<string>();
@@ -66,6 +69,7 @@ export function RenameForm({
         setDraft(undefined);
         setSaved(true);
       }
+      onSaved?.();
     });
   }
 

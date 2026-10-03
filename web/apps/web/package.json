@@ -11,6 +11,8 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@atlaskit/pragmatic-drag-and-drop": "4.0.0",
+    "@atlaskit/pragmatic-drag-and-drop-hitbox": "3.0.0",
     "@nervewiki/api-client": "workspace:*",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",

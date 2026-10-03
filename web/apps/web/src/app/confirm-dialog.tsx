@@ -15,8 +15,14 @@ import { useT } from "../i18n/i18n";
 import { errorText, type ProblemTexts } from "./problem-messages";
 
 type ConfirmDialogProps = {
-  /** The button that opens the dialog. */
-  trigger: ReactElement;
+  /** The button that opens the dialog; without it, the caller holds the dialog (held), as a menu's item does. */
+  trigger?: ReactElement;
+  /**
+   * The dialog held by the caller: whether it is open, the change the
+   * dialog asks for, and, once closed, whether confirm went through; the
+   * caller then moves the focus, which no trigger takes back.
+   */
+  held?: { open: boolean; onOpenChange: (open: boolean) => void; onClosed: (confirmed: boolean) => void };
   title: string;
   description: string;
   confirmLabel: string;
@@ -49,6 +55,7 @@ type ConfirmDialogProps = {
  */
 export function ConfirmDialog({
   trigger,
+  held,
   title,
   description,
   confirmLabel,
@@ -60,7 +67,8 @@ export function ConfirmDialog({
   texts,
 }: ConfirmDialogProps) {
   const t = useT();
-  const [open, setOpen] = useState(false);
+  const [own, setOwn] = useState(false);
+  const open = held?.open ?? own;
   const [typed, setTyped] = useState("");
   const ready = typedConfirmation === undefined || typed === typedConfirmation.value;
   const [failure, setFailure] = useState<unknown>();
@@ -83,6 +91,15 @@ export function ConfirmDialog({
     setOpen(false);
   }
 
+  function setOpen(next: boolean) {
+    if (held === undefined) {
+      setOwn(next);
+    } else {
+      held.onOpenChange(next);
+      setSending(false);
+    }
+  }
+
   return (
     <AlertDialog
       open={open}
@@ -94,7 +111,7 @@ export function ConfirmDialog({
         }
       }}
     >
-      <AlertDialogTrigger asChild>{trigger}</AlertDialogTrigger>
+      {trigger !== undefined && <AlertDialogTrigger asChild>{trigger}</AlertDialogTrigger>}
       <AlertDialogContent
         onOpenAutoFocus={(event) => {
           if (typedConfirmation !== undefined) {
@@ -103,10 +120,14 @@ export function ConfirmDialog({
           }
         }}
         onCloseAutoFocus={(event) => {
-          if (confirmed.current && focusAfter !== undefined) {
+          if (held !== undefined) {
+            event.preventDefault();
+            held.onClosed(confirmed.current);
+          } else if (confirmed.current && focusAfter !== undefined) {
             event.preventDefault();
             focusAfter();
           }
+          confirmed.current = false;
         }}
       >
         <AlertDialogTitle>{title}</AlertDialogTitle>
