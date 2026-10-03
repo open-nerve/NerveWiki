@@ -1,5 +1,6 @@
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
+import type { Plugin } from "vite";
 import { defineConfig } from "vitest/config";
 
 // make web-dev serves the app with hot reload and forwards everything that is
@@ -7,8 +8,39 @@ import { defineConfig } from "vitest/config";
 // production.
 const backend = "http://127.0.0.1:8080";
 
+/** A module of CodeMirror or lezer, wherever pnpm keeps it. */
+const editorModule = /[\\/]node_modules[\\/](?:\.pnpm[\\/][^\\/]+[\\/]node_modules[\\/])?@(?:codemirror|lezer)[\\/]/;
+
+/**
+ * editorOutOfMain fails the build when the app's entry, or a chunk it
+ * imports statically, holds a module of the editor (M4/P6 design 3.11):
+ * the editor is loaded when a page is first edited, in a chunk of its own.
+ */
+function editorOutOfMain(): Plugin {
+  return {
+    name: "nervewiki:editor-out-of-main",
+    apply: "build",
+    generateBundle(_, bundle) {
+      const chunks = new Map(
+        Object.values(bundle).flatMap((output) => (output.type === "chunk" ? [[output.fileName, output] as const] : []))
+      );
+      const loaded = [...chunks.values()].filter((chunk) => chunk.isEntry).map((chunk) => chunk.fileName);
+      // loaded grows as the chunks it holds import others.
+      for (let i = 0; i < loaded.length; i++) {
+        const name = loaded[i] ?? "";
+        const chunk = chunks.get(name);
+        loaded.push(...(chunk?.imports ?? []).filter((imported) => !loaded.includes(imported)));
+        const editor = chunk?.moduleIds.find((id) => editorModule.test(id));
+        if (editor !== undefined) {
+          this.error(`${name}, which the app loads first, holds the editor's ${editor}`);
+        }
+      }
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), editorOutOfMain()],
   server: {
     host: "127.0.0.1",
     port: 5173,
