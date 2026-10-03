@@ -5,9 +5,13 @@ const strong = "**";
 /**
  * toggleStrong is Mod+B (M4/P6 design 3.5): it puts ** on both sides of
  * each selection, or takes them away when they are there already; an
- * empty selection gets **** with the cursor between.
+ * empty selection gets **** with the cursor between. A read-only content
+ * is left as it is, as CodeMirror's own commands leave it.
  */
 export const toggleStrong: StateCommand = ({ state, dispatch }) => {
+  if (state.readOnly) {
+    return false;
+  }
   const changes = state.changeByRange((range) => {
     const before = state.sliceDoc(range.from - strong.length, range.from);
     const after = state.sliceDoc(range.to, range.to + strong.length);
@@ -35,9 +39,13 @@ export const toggleStrong: StateCommand = ({ state, dispatch }) => {
 /**
  * insertLink is Mod+K (M4/P6 design 3.5): a selection becomes the text of
  * [selection]() with the cursor in the parentheses, for the address; an
- * empty one gets []() with the cursor in the brackets, for the text.
+ * empty one gets []() with the cursor in the brackets, for the text. A
+ * read-only content is left as it is.
  */
 export const insertLink: StateCommand = ({ state, dispatch }) => {
+  if (state.readOnly) {
+    return false;
+  }
   const changes = state.changeByRange((range) => {
     const text = state.sliceDoc(range.from, range.to);
     const cursor = range.empty ? range.from + 1 : range.from + text.length + 3;

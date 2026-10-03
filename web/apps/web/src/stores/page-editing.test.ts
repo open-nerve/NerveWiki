@@ -240,6 +240,119 @@ test("the end ends the session unanswered and stops the beats; a session opening
   expect(late.sent).toEqual(["OPEN", "END s9"]);
 });
 
+test("an edit ended and begun again, as StrictMode runs an effect, reads its content once and keeps its one session", async () => {
+  vi.useFakeTimers();
+  const { service, sent } = fakeService();
+  const editing = new PageEditing(service, "p1");
+  editing.start();
+  editing.end();
+  editing.start();
+  await vi.advanceTimersByTimeAsync(0);
+
+  expect(editing.content?.revision).toBe(3);
+  expect(await editing.save("text", 1)).toBe(true);
+  await vi.advanceTimersByTimeAsync(editSessionHeartbeat);
+  expect(sent).toEqual(["OPEN", 'PUT "text" on 3 in s1', "BEAT s1"]);
+  editing.end();
+  editing.start();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(service.getPageContent).toHaveBeenCalledTimes(1);
+  expect(sent.slice(3)).toEqual(["END s1", "OPEN"]);
+  editing.end();
+});
+
+test("once the edit ends nothing more is sent: a save asked for then, one waiting for its turn, one waiting out a 503", async () => {
+  vi.useFakeTimers();
+  const { editing, sent, answers } = await begun();
+  let answer: (() => void) | undefined;
+  answers.put = () => new Promise((resolve) => (answer = () => resolve({ revision: 4 })));
+  const first = editing.save("one", 1);
+  const second = editing.save("one two", 2);
+  await vi.advanceTimersByTimeAsync(0);
+  editing.end();
+  answer?.();
+  expect(await first).toBe(true);
+  expect(await second).toBe(false);
+  expect(await editing.save("one two three", 3)).toBe(false);
+  expect(sent).toEqual(["OPEN", 'PUT "one" on 3 in s1', "END s1"]);
+
+  const busy = await begun();
+  busy.answers.put = () => {
+    throw refusal(503, "server_busy", 30);
+  };
+  const waiting = busy.editing.save("text", 1);
+  await vi.waitFor(() => expect(busy.editing.busy).toBe(true));
+  busy.editing.end();
+  expect(vi.getTimerCount()).toBe(0);
+  expect(await waiting).toBe(false);
+  expect(busy.editing.saving).toBe(false);
+  expect(busy.sent).toEqual(["OPEN", 'PUT "text" on 3 in s1', "END s1"]);
+
+  const answered = await begun();
+  let refuse: (() => void) | undefined;
+  answered.answers.put = () => new Promise((_, reject) => (refuse = () => reject(refusal(503, "server_busy", 30))));
+  const out = answered.editing.save("text", 1);
+  await vi.advanceTimersByTimeAsync(0);
+  answered.editing.end();
+  refuse?.();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(vi.getTimerCount()).toBe(0);
+  expect(await out).toBe(false);
+  expect(answered.editing.busy).toBe(false);
+});
+
+test("a save waiting for the session to open is not sent once the edit ends; the session is ended as it opens", async () => {
+  const { service, sent, answers } = fakeService();
+  let open: ((session: { id: string }) => void) | undefined;
+  answers.open = () => new Promise((resolve) => (open = resolve));
+  const editing = new PageEditing(service, "p1");
+  editing.start();
+  await vi.waitFor(() => expect(editing.content).toBeDefined());
+
+  const saving = editing.save("text", 1);
+  editing.end();
+  open?.({ id: "s9" });
+  expect(await saving).toBe(false);
+  expect(sent).toEqual(["OPEN", "END s9"]);
+});
+
+test("a save whose session ended after the heartbeat opened another goes in that one", async () => {
+  vi.useFakeTimers();
+  const { editing, sent, answers } = await begun();
+  let answer: (() => void) | undefined;
+  answers.put = () => new Promise((_, reject) => (answer = () => reject(refusal(409, "page.edit_session_ended"))));
+  const saving = editing.save("text", 1);
+  await vi.advanceTimersByTimeAsync(0);
+  answers.beat = () => {
+    throw refusal(404, "page.edit_session_not_found");
+  };
+  await vi.advanceTimersByTimeAsync(editSessionHeartbeat);
+  answers.put = undefined;
+  answer?.();
+
+  expect(await saving).toBe(true);
+  expect(sent).toEqual(["OPEN", 'PUT "text" on 3 in s1', "BEAT s1", "OPEN", 'PUT "text" on 3 in s2']);
+  editing.end();
+});
+
+test("access lost, a save that goes through gets it back: the session beats again", async () => {
+  vi.useFakeTimers();
+  const { editing, sent, answers } = await begun();
+  answers.beat = () => {
+    throw refusal(403, "forbidden");
+  };
+  await vi.advanceTimersByTimeAsync(editSessionHeartbeat);
+  expect(editing.lostAccess).toBe(true);
+  answers.beat = undefined;
+
+  expect(await editing.save("text", 1)).toBe(true);
+  expect(editing.lostAccess).toBe(false);
+  await vi.advanceTimersByTimeAsync(editSessionHeartbeat);
+  expect(sent).toEqual(["OPEN", "BEAT s1", 'PUT "text" on 3 in s1', "BEAT s1"]);
+  editing.end();
+  expect(vi.getTimerCount()).toBe(0);
+});
+
 /** An edit begun on revision 3 whose next save is refused because the page changed to revision 5, "theirs". */
 async function inConflict() {
   const fake = await begun();

@@ -3,6 +3,7 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 
+import { problem } from "../../test/fakes";
 import { guide, pagePath, pageServer } from "../../test/page-server";
 import { renderApp } from "../../test/render";
 
@@ -28,16 +29,15 @@ async function editorView() {
 }
 
 /**
- * Guide edited, "mine" typed and saved after another wrote "theirs" as
+ * Guide edited, "mine" typed and saved after another wrote theirs as
  * revision 2: the conflict is shown.
  */
-async function inConflict() {
+async function inConflict(server = pageServer(), theirs = "Guide\ntheirs\r\n") {
   const user = userEvent.setup();
-  const server = pageServer();
   renderApp(pagePath(guide.id), server.app);
   await user.click(await screen.findByRole("button", { name: "Edit" }));
   const { content, view } = await editorView();
-  server.contents.set(guide.id, { content: "Guide\ntheirs\r\n", revision: 2 });
+  server.contents.set(guide.id, { content: theirs, revision: 2 });
   view.dispatch({ changes: { from: view.state.doc.length, insert: "mine" } });
   await waitFor(() => expect(screen.getByRole("status").textContent).toBe("Unsaved changes"));
   ctrl("s");
@@ -112,4 +112,36 @@ test("differences that cannot load say so; the buttons still work, and Try again
   vi.doUnmock("../../editor/conflict-view");
   await user.click(within(region).getByRole("button", { name: "Try again" }));
   await within(region).findByRole("textbox", { name: "Your text against the page as it is now" });
+});
+
+test("Keep mine that fails says why, the focus in the editor", async () => {
+  let writes = 0;
+  const server = pageServer({
+    answers: {
+      "PUT /api/v0/pages/*/content": () =>
+        ++writes === 1 ? problem(409, "page.revision_mismatch") : problem(500, "internal_error"),
+    },
+  });
+  const { user, content, region } = await inConflict(server);
+
+  await user.click(within(region).getByRole("button", { name: "Keep mine" }));
+  await waitFor(() => expect(screen.getByRole("status").textContent).not.toBe("Saving…"));
+  expect(screen.getByRole("status").textContent).not.toBe("");
+  expect(screen.queryByRole("region", { name: conflictTitle })).toBeNull();
+  expect(document.activeElement).toBe(content);
+});
+
+test("the unchanged stretches are folded; Show unchanged lines, which the keyboard reaches, shows them all", async () => {
+  const lines = Array.from({ length: 12 }, (_, i) => `line ${i.toString()}`).join("\n");
+  const server = pageServer();
+  server.contents.set(guide.id, { content: `Guide\n${lines}\n`, revision: 1 });
+  const { user, region } = await inConflict(server, `Guide\ntheirs\n${lines}\n`);
+  await within(region).findByRole("textbox", { name: "Your text against the page as it is now" });
+  expect(region.querySelector(".cm-collapsedLines")).not.toBeNull();
+
+  const show = within(region).getByRole("button", { name: "Show unchanged lines" });
+  expect(show.getAttribute("aria-pressed")).toBe("false");
+  await user.click(show);
+  expect(show.getAttribute("aria-pressed")).toBe("true");
+  await waitFor(() => expect(region.querySelector(".cm-collapsedLines")).toBeNull());
 });

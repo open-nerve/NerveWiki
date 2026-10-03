@@ -20,15 +20,18 @@ type ConflictPanelProps = {
  * ConflictPanel is a save refused because the page changed meanwhile
  * (M4/P6 design 3.8): what the user's text changes of the page as it is
  * now, then Keep mine, which saves it over the page, and Discard mine,
- * which edits the page as it is now. The diff comes in a chunk of its own;
- * one that cannot load says so, with Try again, and the two buttons still
- * work: the user's text is in the editor whatever happens here.
+ * which edits the page as it is now. The diff's unchanged stretches are
+ * folded; Show unchanged lines, which the keyboard reaches as it does not
+ * a fold, shows them all. The diff comes in a chunk of its own; one that
+ * cannot load says so, with Try again, and the two buttons still work:
+ * the user's text is in the editor whatever happens here.
  */
 export function ConflictPanel({ conflict, heading, keep, discard }: ConflictPanelProps) {
   const t = useT();
   const title = useId();
   const [diff, setDiff] = useState<Diff>();
   const [failed, setFailed] = useState(false);
+  const [unfolded, setUnfolded] = useState(false);
   const load = useCallback(() => import("../../editor/conflict-view").then(setDiff, () => setFailed(true)), []);
   useEffect(() => void load(), [load]);
   return (
@@ -38,7 +41,12 @@ export function ConflictPanel({ conflict, heading, keep, discard }: ConflictPane
       </h2>
       <p className="text-sm text-muted-foreground">{t("editor.conflictDescription")}</p>
       {diff !== undefined ? (
-        <diff.ConflictDiff theirs={conflict.theirs} mine={conflict.mine} />
+        <div className="space-y-2">
+          <diff.ConflictDiff theirs={conflict.theirs} mine={conflict.mine} unfolded={unfolded} />
+          <Button variant="outline" aria-pressed={unfolded} onClick={() => setUnfolded(!unfolded)}>
+            {t("editor.showUnchanged")}
+          </Button>
+        </div>
       ) : failed ? (
         <div className="space-y-2">
           <Alert>{t("editor.conflictDiffNotLoaded")}</Alert>

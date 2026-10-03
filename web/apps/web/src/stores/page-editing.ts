@@ -50,6 +50,10 @@ function refused(error: unknown, status: number, code?: string): boolean {
  * the latest text asked for. A save refused because the page changed
  * reads the page as it is now: the edit is then in conflict, and saves
  * nothing until the user keeps their text or discards it.
+ *
+ * Once the edit ends, nothing more is sent: a save waiting for its turn,
+ * a session or a busy server is not. An edit ended may begin again, as
+ * StrictMode ends an effect and runs it once more.
  */
 export class PageEditing {
   /** The content as the edit began; undefined until it is read. */
@@ -74,6 +78,8 @@ export class PageEditing {
   private session: string | undefined = undefined;
   private opening: Promise<string> | undefined = undefined;
   private ended = false;
+  private reading: Promise<void> | undefined = undefined;
+  private woken: (() => void) | undefined = undefined;
   private beating: ReturnType<typeof setInterval> | undefined = undefined;
   private out: Promise<boolean> | undefined = undefined;
   private next: Draft | undefined = undefined;
@@ -85,7 +91,17 @@ export class PageEditing {
   ) {
     makeAutoObservable<
       this,
-      "service" | "base" | "session" | "opening" | "ended" | "beating" | "out" | "next" | "nextSent"
+      | "service"
+      | "base"
+      | "session"
+      | "opening"
+      | "ended"
+      | "reading"
+      | "woken"
+      | "beating"
+      | "out"
+      | "next"
+      | "nextSent"
     >(
       this,
       {
@@ -99,6 +115,8 @@ export class PageEditing {
         session: false,
         opening: false,
         ended: false,
+        reading: false,
+        woken: false,
         beating: false,
         out: false,
         next: false,
@@ -112,16 +130,31 @@ export class PageEditing {
     return this.version !== this.savedVersion;
   }
 
-  /** start begins the edit: it opens the session, starts its heartbeat and reads the content. */
+  /**
+   * start begins the edit: it opens the session, starts its heartbeat and
+   * reads the content, unless it has it.
+   */
   start(): void {
+    this.ended = false;
     this.beating = setInterval(() => void this.beat(), editSessionHeartbeat);
     document.addEventListener("visibilitychange", this.shown);
     void this.sessionId().catch(() => undefined);
-    void this.read();
+    if (this.content === undefined) {
+      void this.read();
+    }
   }
 
-  /** read reads the content the edit begins on, again after it failed. */
-  async read(): Promise<void> {
+  /**
+   * read reads the content the edit begins on, again after it failed; a
+   * read out is the one asked for, so that the editor's content and the
+   * revision a save goes on come from one answer.
+   */
+  read(): Promise<void> {
+    this.reading ??= this.readContent().finally(() => (this.reading = undefined));
+    return this.reading;
+  }
+
+  private async readContent(): Promise<void> {
     this.readFailure = undefined;
     try {
       const content = await this.service.getPageContent(this.pageId);
@@ -194,11 +227,16 @@ export class PageEditing {
     return conflict.theirs;
   }
 
-  /** end ends the edit: the heartbeat stops, the session ends, unanswered. */
+  /**
+   * end ends the edit: the heartbeat stops, the session ends, unanswered,
+   * and a save not sent yet is not sent: leaving without saving leaves
+   * the page as it was last saved.
+   */
   end(): void {
     this.ended = true;
     clearInterval(this.beating);
     document.removeEventListener("visibilitychange", this.shown);
+    this.woken?.();
     // A session still opening ends as it opens (sessionId).
     const id = this.session;
     this.session = undefined;
@@ -212,11 +250,13 @@ export class PageEditing {
       this.saving = true;
       this.failure = undefined;
     });
+    let session: string | undefined;
     try {
+      session = await this.sessionId();
       const page = await this.service.putPageContent(this.pageId, {
         content: draft.text,
         base_revision: this.base,
-        edit_session_id: await this.sessionId(),
+        edit_session_id: session,
       });
       runInAction(() => {
         this.base = page.revision;
@@ -224,28 +264,55 @@ export class PageEditing {
         this.saved = true;
         this.saving = false;
         this.busy = false;
+        if (this.lostAccess) {
+          // The account may edit again: its session beats again.
+          this.lostAccess = false;
+          this.beating = setInterval(() => void this.beat(), editSessionHeartbeat);
+        }
       });
       return true;
     } catch (error) {
+      if (this.ended) {
+        return this.failed(error);
+      }
       if (refused(error, 409, "page.revision_mismatch")) {
         return this.inConflict(draft, error);
       }
       if (!reopened && refused(error, 409, "page.edit_session_ended")) {
-        this.session = undefined;
+        // A session the heartbeat opened meanwhile is the edit's: it is kept.
+        if (this.session === session) {
+          this.session = undefined;
+        }
         return this.send(draft, true, waited);
       }
       if (waited < busyRetries && error instanceof ApiError && error.status === 503 && error.retryAfter !== undefined) {
         runInAction(() => (this.busy = true));
-        await new Promise((resolve) => setTimeout(resolve, (error.retryAfter ?? 0) * 1000));
+        await this.waitOut(error.retryAfter);
         return this.send(draft, reopened, waited + 1);
       }
-      runInAction(() => {
-        this.failure = error;
-        this.saving = false;
-        this.busy = false;
-      });
-      return false;
+      return this.failed(error);
     }
+  }
+
+  private failed(error: unknown): false {
+    runInAction(() => {
+      this.failure = error;
+      this.saving = false;
+      this.busy = false;
+    });
+    return false;
+  }
+
+  /** waitOut waits seconds, or until the edit ends. */
+  private waitOut(seconds: number): Promise<void> {
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => this.woken?.(), seconds * 1000);
+      this.woken = () => {
+        clearTimeout(timer);
+        this.woken = undefined;
+        resolve();
+      };
+    });
   }
 
   /** inConflict reads the page as it is now for the conflict of draft; a read that fails leaves refusal the save's failure. */
@@ -263,8 +330,11 @@ export class PageEditing {
     return false;
   }
 
-  /** sessionId is the edit's session, opened if it has none. */
+  /** sessionId is the edit's session, opened if it has none; an edit ended has none. */
   private sessionId(): Promise<string> {
+    if (this.ended) {
+      return Promise.reject(new Error("The edit has ended."));
+    }
     if (this.session !== undefined) {
       return Promise.resolve(this.session);
     }
@@ -273,9 +343,9 @@ export class PageEditing {
       .then((session) => {
         if (this.ended) {
           void this.service.endEditSession(session.id).catch(() => undefined);
-        } else {
-          this.session = session.id;
+          throw new Error("The edit has ended.");
         }
+        this.session = session.id;
         return session.id;
       })
       .finally(() => (this.opening = undefined));

@@ -90,7 +90,6 @@ export function useNotebookMembers(notebook: Notebook): NotebookMemberStore {
   return members;
 }
 
-/** usePageTree is the page tree of notebook: only for the pages the SignedIn guard shows. */
 /** useNewPageEditing is a new edit of the page id, made once for the component: only for the pages the SignedIn guard shows. */
 export function useNewPageEditing(id: string): PageEditing {
   const store = useStore();
@@ -101,6 +100,7 @@ export function useNewPageEditing(id: string): PageEditing {
   return editing;
 }
 
+/** usePageTree is the page tree of notebook: only for the pages the SignedIn guard shows. */
 export function usePageTree(notebook: Notebook): PageTreeStore {
   const pages = useStore().pagesOf(notebook);
   if (pages === undefined) {

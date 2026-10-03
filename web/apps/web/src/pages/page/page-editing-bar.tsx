@@ -1,6 +1,6 @@
 import { observer } from "mobx-react-lite";
 
-import { errorText } from "../../app/problem-messages";
+import { errorText, fieldErrors } from "../../app/problem-messages";
 import { Button } from "../../components/ui/button";
 import { useT } from "../../i18n/i18n";
 import type { PageEditing } from "../../stores/page-editing";
@@ -14,14 +14,16 @@ type PageEditingBarProps = {
 /**
  * PageEditingBar is the edit's status and buttons (M4/P6 design 3.7): what
  * the last save came to, or that the edit is unsaved, in an output that
- * screen readers announce; Save and Done.
+ * screen readers announce; Save and Done. A content refused says which of
+ * its rules it breaks.
  */
 export const PageEditingBar = observer(function PageEditingBar({ editing, save, leave }: PageEditingBarProps) {
   const t = useT();
   const failed =
     editing.failure === undefined
       ? undefined
-      : errorText(editing.failure, t, { bad_request: "editor.tooSlow", forbidden: "editor.lostAccess" });
+      : (fieldErrors(editing.failure, t).content ??
+        errorText(editing.failure, t, { bad_request: "editor.tooSlow", forbidden: "editor.lostAccess" }));
   const status = editing.lostAccess
     ? t("editor.lostAccess")
     : failed !== undefined

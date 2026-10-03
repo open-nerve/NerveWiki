@@ -19,6 +19,15 @@ const SourceEditor = lazy(() =>
   import("../../editor/source-editor").then((module) => ({ default: module.SourceEditor }))
 );
 
+/** composed runs act once the editor's input method composition ends, or now while there is no editor. */
+function composed(editor: SourceEditorHandle | null, act: () => void) {
+  if (editor === null) {
+    act();
+  } else {
+    editor.whenComposed(act);
+  }
+}
+
 type PageEditProps = {
   notebook: Notebook;
   page: TreeNode;
@@ -32,11 +41,13 @@ type PageEditProps = {
  * and Done. Mod+S saves; Mod+E and Done save what is unsaved, then leave
  * for the reading view, which is read again first. A key pressed while
  * the input method composes waits for the composition's end, so that
- * half a word is never saved. While the edit is unsaved, leaving the
- * page asks first. A save refused because the page changed shows the
- * conflict above the editor, with its heading focused; until the user
- * keeps their text or discards it, a save only brings the focus back
- * there.
+ * half a word is never saved; so does a button pressed. While the edit is
+ * left, its content is held as it is: what was saved is what the reading
+ * view shows. While the edit is unsaved, leaving the page asks first. A
+ * save refused because the page changed shows the conflict above the
+ * editor, with its heading focused; until the user keeps their text or
+ * discards it, a save only brings the focus back there. A save that went
+ * through leaves the reading view in SWR's cache to be read again.
  */
 export const PageEdit = observer(function PageEdit({ notebook, page, done }: PageEditProps) {
   const { slug } = useWorkspace();
@@ -67,12 +78,22 @@ export const PageEdit = observer(function PageEdit({ notebook, page, done }: Pag
     if (current === null) {
       return false;
     }
-    return editing.save(current.text(), current.version());
+    const saved = await editing.save(current.text(), current.version());
+    if (saved && editing.saved) {
+      // The reading view cached is older than the page: it goes, and is read when shown, deduplication or not.
+      await mutate(["page-view", page.id], undefined);
+    }
+    return saved;
   }
 
   async function keepMine(): Promise<void> {
     const current = editor.current;
-    if (current !== null && (await editing.keepMine(current.text(), current.version()))) {
+    if (current === null) {
+      return;
+    }
+    await editing.keepMine(current.text(), current.version());
+    // A conflict again takes the focus to its heading; a save that failed otherwise leaves the panel gone.
+    if (editing.conflict === undefined) {
       current.focus();
     }
   }
@@ -86,7 +107,14 @@ export const PageEdit = observer(function PageEdit({ notebook, page, done }: Pag
   }
 
   async function leave(): Promise<void> {
+    const current = editor.current;
+    // What is typed while the edit is left would not be saved: the content is held as it is.
+    current?.hold(true);
     if (editing.unsaved && !(await save())) {
+      current?.hold(false);
+      if (editing.conflict === undefined) {
+        current?.focus();
+      }
       return;
     }
     editing.end();
@@ -108,12 +136,7 @@ export const PageEdit = observer(function PageEdit({ notebook, page, done }: Pag
         return;
       }
       event.preventDefault();
-      const run = () => void act();
-      if (editor.current === null) {
-        run();
-      } else {
-        editor.current.whenComposed(run);
-      }
+      composed(editor.current, () => void act());
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
@@ -124,12 +147,16 @@ export const PageEdit = observer(function PageEdit({ notebook, page, done }: Pag
   }
   return (
     <div className="space-y-3">
-      <PageEditingBar editing={editing} save={() => void save()} leave={() => void leave()} />
+      <PageEditingBar
+        editing={editing}
+        save={() => composed(editor.current, () => void save())}
+        leave={() => composed(editor.current, () => void leave())}
+      />
       {conflict !== undefined && (
         <ConflictPanel
           conflict={conflict}
           heading={conflictHeading}
-          keep={() => void keepMine()}
+          keep={() => composed(editor.current, () => void keepMine())}
           discard={discardMine}
         />
       )}
@@ -143,7 +170,7 @@ export const PageEdit = observer(function PageEdit({ notebook, page, done }: Pag
           onChange={editing.changed}
         />
       </Suspense>
-      {editing.unsaved && <UnsavedGuard />}
+      <UnsavedGuard unsaved={editing.unsaved} stay={() => editor.current?.focus()} />
     </div>
   );
 });

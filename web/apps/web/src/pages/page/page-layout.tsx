@@ -59,9 +59,10 @@ export const PageLayout = observer(function PageLayout() {
 /**
  * PageShell is the page found: where it is, its title, its reading view
  * and its children. A writer edits it in its place (M4/P6 design 3.7): by
- * Edit or Mod+E, which leave the reading view for the editor; back from
- * the edit, the focus is on Edit. The edit is not in the address: a
- * reload shows the reading view.
+ * Edit or Mod+E, which leave the reading view for the editor, the focus on
+ * the page's title until the editor takes it; back from the edit, the
+ * focus is on Edit. The edit is not in the address: a reload shows the
+ * reading view.
  */
 const PageShell = observer(function PageShell({ notebook, page }: { notebook: Notebook; page: TreeNode }) {
   const { slug } = useWorkspace();
@@ -87,12 +88,16 @@ const PageShell = observer(function PageShell({ notebook, page }: { notebook: No
     const onKeyDown = (event: KeyboardEvent) => {
       if (isMod(event, "e", mac) && !dialogOpen()) {
         event.preventDefault();
-        setEditing(true);
+        // A key held down acts once: the edit just left is not entered again.
+        if (!event.repeat) {
+          heading.current?.focus();
+          setEditing(true);
+        }
       }
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [writer, editing]);
+  }, [writer, editing, heading]);
   return (
     <div className="space-y-6">
       <div className="space-y-2">
@@ -102,7 +107,14 @@ const PageShell = observer(function PageShell({ notebook, page }: { notebook: No
             {page.name}
           </h1>
           {writer && !editing && (
-            <Button ref={edit} variant="outline" onClick={() => setEditing(true)}>
+            <Button
+              ref={edit}
+              variant="outline"
+              onClick={() => {
+                heading.current?.focus();
+                setEditing(true);
+              }}
+            >
               {t("page.edit")}
             </Button>
           )}

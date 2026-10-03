@@ -2,7 +2,7 @@ import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirro
 import { search, searchKeymap } from "@codemirror/search";
 import { Compartment, EditorState } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
-import { useContext, useImperativeHandle, useLayoutEffect, useRef, type Ref, type RefObject } from "react";
+import { useContext, useId, useImperativeHandle, useLayoutEffect, useRef, type Ref, type RefObject } from "react";
 
 import { useT, type Translate } from "../i18n/i18n";
 import { insertLink, toggleStrong } from "./commands";
@@ -24,6 +24,8 @@ export type SourceEditorHandle = {
   whenComposed(act: () => void): void;
   /** load replaces the content with raw: a new state, whose history does not reach the old content. */
   load(raw: string): void;
+  /** hold keeps the content from being changed while on, whatever the extensions set: while the edit is left. */
+  hold(on: boolean): void;
 };
 
 type SourceEditorProps = {
@@ -47,20 +49,33 @@ type Live = Pick<SourceEditorProps, "context" | "controls" | "onChange"> & {
 /** How long a composition's end waits for its text, which some browsers give after it. */
 const compositionSettles = 50;
 
-const phrases = new Compartment();
+/** The editor's words in the language of the app: its phrases and its content's label. */
+const wording = new Compartment();
 
-/** EditorHost holds an EditorView, made once, and what goes with it: the changes counted, what waits on a composition. */
+/** Why the content may not be changed: an extension set it read-only, or the edit holds it. */
+type Lock = "readOnly" | "held";
+
+/**
+ * EditorHost holds an EditorView, made once, and what goes with it: the
+ * changes counted, what waits on a composition, the locks, which a new
+ * content keeps.
+ */
 class EditorHost {
   readonly view: EditorView;
   private changes = 0;
   private readonly waiting: (() => void)[] = [];
+  private settling: ReturnType<typeof setTimeout> | undefined = undefined;
+  private readonly locks: Record<Lock, boolean> = { readOnly: false, held: false };
 
   constructor(
     parent: HTMLElement,
     raw: string,
+    private readonly hint: string,
     private readonly live: RefObject<Live>
   ) {
-    this.view = new EditorView({ parent, state: this.stateOf(raw) });
+    // The view comes first: an extension may set it read-only as it is built.
+    this.view = new EditorView({ parent });
+    this.view.setState(this.stateOf(raw));
   }
 
   get version(): number {
@@ -76,8 +91,32 @@ class EditorHost {
     this.runWaiting();
   }
 
-  setPhrases(t: Translate): void {
-    this.view.dispatch({ effects: phrases.reconfigure(editorPhrases(t)) });
+  setWording(t: Translate): void {
+    this.view.dispatch({ effects: wording.reconfigure(this.wordingOf(t)) });
+  }
+
+  lock(lock: Lock, on: boolean): void {
+    this.locks[lock] = on;
+    // Before its state is made, the state is made locked.
+    if (readOnly.get(this.view.state) !== undefined) {
+      this.view.dispatch({ effects: readOnly.reconfigure(readOnlyAs(this.locked)) });
+    }
+  }
+
+  destroy(): void {
+    clearTimeout(this.settling);
+    this.view.destroy();
+  }
+
+  private get locked(): boolean {
+    return this.locks.readOnly || this.locks.held;
+  }
+
+  private wordingOf(t: Translate) {
+    return [
+      editorPhrases(t),
+      EditorView.contentAttributes.of({ "aria-label": t("editor.label"), "aria-describedby": this.hint }),
+    ];
   }
 
   private runWaiting(): void {
@@ -92,10 +131,14 @@ class EditorHost {
     const { t, context, registered } = this.live.current;
     const split = splitBreaks(raw);
     const controls: EditorControls = {
-      save: () => this.live.current.controls.save(),
+      save: () =>
+        new Promise((resolve, reject) =>
+          this.whenComposed(() => this.live.current.controls.save().then(resolve, reject))
+        ),
       saving: () => this.live.current.controls.saving(),
-      setReadOnly: (on) => this.view.dispatch({ effects: readOnly.reconfigure(readOnlyAs(on)) }),
+      setReadOnly: (on) => this.lock("readOnly", on),
     };
+    const composed = composeExtensions(registered, context, controls);
     return EditorState.create({
       doc: split.text,
       extensions: [
@@ -112,9 +155,8 @@ class EditorHost {
           ...searchKeymap,
         ]),
         editorTheme,
-        phrases.of(editorPhrases(t)),
-        readOnly.of(readOnlyAs(false)),
-        EditorView.contentAttributes.of({ "aria-label": t("editor.label") }),
+        wording.of(this.wordingOf(t)),
+        readOnly.of(readOnlyAs(this.locked)),
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {
             this.changes += 1;
@@ -124,10 +166,11 @@ class EditorHost {
         }),
         EditorView.domEventObservers({
           compositionend: () => {
-            setTimeout(() => this.runWaiting(), compositionSettles);
+            clearTimeout(this.settling);
+            this.settling = setTimeout(() => this.runWaiting(), compositionSettles);
           },
         }),
-        composeExtensions(registered, context, controls).extension,
+        composed.extension,
       ],
     });
   }
@@ -138,11 +181,13 @@ class EditorHost {
  * EditorView is made once; a content loaded is a new state. The content
  * goes in and out as written: the line breaks and the byte order mark
  * are kept apart (editor/line-breaks.ts). The registered extensions come
- * after the editor's own, each in its compartment.
+ * after the editor's own, each in its compartment. Tab indents: a line
+ * under the editor, which its content refers to, says how to move out.
  */
 export function SourceEditor({ content, focusOnOpen = false, context, controls, onChange, ref }: SourceEditorProps) {
   const t = useT();
   const registered = useContext(EditorExtensions);
+  const hint = useId();
   const element = useRef<HTMLDivElement>(null);
   const editor = useRef<EditorHost>(null);
   const first = useRef({ content, focusOnOpen });
@@ -154,17 +199,17 @@ export function SourceEditor({ content, focusOnOpen = false, context, controls, 
     if (element.current === null) {
       return undefined;
     }
-    const made = new EditorHost(element.current, first.current.content, live);
+    const made = new EditorHost(element.current, first.current.content, hint, live);
     editor.current = made;
     if (first.current.focusOnOpen) {
       made.view.focus();
     }
     return () => {
-      made.view.destroy();
+      made.destroy();
       editor.current = null;
     };
-  }, []);
-  useLayoutEffect(() => editor.current?.setPhrases(t), [t]);
+  }, [hint]);
+  useLayoutEffect(() => editor.current?.setWording(t), [t]);
   useImperativeHandle(
     ref,
     () => ({
@@ -173,8 +218,16 @@ export function SourceEditor({ content, focusOnOpen = false, context, controls, 
       focus: () => editor.current?.view.focus(),
       whenComposed: (act) => (editor.current === null ? act() : editor.current.whenComposed(act)),
       load: (raw) => editor.current?.load(raw),
+      hold: (on) => editor.current?.lock("held", on),
     }),
     []
   );
-  return <div ref={element} />;
+  return (
+    <div className="space-y-1">
+      <div ref={element} />
+      <p id={hint} className="text-xs text-muted-foreground">
+        {t("editor.tabHint")}
+      </p>
+    </div>
+  );
 }

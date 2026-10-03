@@ -43,3 +43,14 @@ test("Mod+K makes a selection a link's text, the cursor where its address goes",
 test("Mod+K on an empty selection puts the cursor where the link's text goes", () => {
   expect(apply(insertLink, "ab", [1, 1])).toEqual({ doc: "a[]()b", ranges: [[2, 2]] });
 });
+
+const refused = () => {
+  throw new Error("dispatched");
+};
+
+test("Mod+B and Mod+K leave a read-only content as it is", () => {
+  const state = EditorState.create({ doc: "word", extensions: EditorState.readOnly.of(true) });
+
+  expect(toggleStrong({ state, dispatch: refused })).toBe(false);
+  expect(insertLink({ state, dispatch: refused })).toBe(false);
+});

@@ -1,15 +1,18 @@
 import { EditorView } from "@codemirror/view";
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, configure, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, expect, test, vi } from "vitest";
 
-import { problem } from "../../test/fakes";
+import { json, problem } from "../../test/fakes";
 import { guide, pagePath, pageServer } from "../../test/page-server";
 import { renderApp } from "../../test/render";
 
-// A page's edit mode (M4/P6 design 3.6, 3.7). jsdom's platform is not
-// macOS: Mod is Ctrl.
+// A page's edit mode (M4/P6 design 3.6, 3.7), in StrictMode as the app
+// runs: React runs a new component's effects twice there. jsdom's platform
+// is not macOS: Mod is Ctrl.
 
+beforeAll(() => configure({ reactStrictMode: true }));
+afterAll(() => configure({ reactStrictMode: false }));
 afterEach(() => vi.useRealTimers());
 
 /** Presses Ctrl+key where the focus is; tells whether the browser's own action was let be. */
@@ -20,9 +23,15 @@ const status = () => screen.getByRole("status");
 const unload = () => window.dispatchEvent(new Event("beforeunload", { cancelable: true }));
 const tree = () => screen.getByRole("navigation", { name: "Pages of Plans" });
 
-/** The editor once it shows, and a way to type at its end. */
+/**
+ * The editor once it shows, and a way to type at its end. StrictMode makes
+ * the editor again as the effects of the first one run: they are run
+ * before it is looked for.
+ */
 async function editor() {
-  const content = await screen.findByRole("textbox", { name: "Page content" });
+  await screen.findByRole("textbox", { name: "Page content" });
+  await act(async () => {});
+  const content = screen.getByRole("textbox", { name: "Page content" });
   const element = content.closest<HTMLElement>(".cm-editor");
   const view = element === null ? null : EditorView.findFromDOM(element);
   if (view === null) {
@@ -142,7 +151,9 @@ test("unsaved, going to another page asks first: Stay keeps the edit, Leave goes
   const ask = await screen.findByRole("alertdialog", { name: "Leave without saving?" });
   await user.click(within(ask).getByRole("button", { name: "Stay" }));
   expect(screen.getByRole("heading", { level: 1, name: "Guide" })).toBeTruthy();
-  expect((await editor()).view.state.doc.toString()).toBe("Guide\ndraft");
+  const { content, view } = await editor();
+  expect(view.state.doc.toString()).toBe("Guide\ndraft");
+  await waitFor(() => expect(document.activeElement).toBe(content));
 
   await user.click(within(tree()).getByRole("link", { name: "Notes" }));
   await user.click(
@@ -161,9 +172,23 @@ test("saved, going to another page asks nothing", async () => {
   ctrl("s");
   await waitFor(() => expect(status().textContent).toBe("Saved."));
 
+  // Not even for a moment: a dialog that comes and goes is watched for as it is added.
+  const asked = vi.fn();
+  const watch = new MutationObserver((records) => {
+    for (const added of records.flatMap((record) => [...record.addedNodes])) {
+      if (
+        added instanceof Element &&
+        (added.matches('[role="alertdialog"]') || added.querySelector('[role="alertdialog"]'))
+      ) {
+        asked();
+      }
+    }
+  });
+  watch.observe(document.body, { childList: true, subtree: true });
   await user.click(within(tree()).getByRole("link", { name: "Notes" }));
   await screen.findByRole("heading", { level: 1, name: "Notes" });
-  expect(screen.queryByRole("alertdialog")).toBeNull();
+  watch.disconnect();
+  expect(asked).not.toHaveBeenCalled();
 });
 
 test("closing the tab is stopped only while the edit is unsaved", async () => {
@@ -189,4 +214,154 @@ test("Ctrl+S while the input method composes waits for the composition's end, th
   type("你好");
   content.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true }));
   await waitFor(() => expect(server.sent).toContain('PUT Guide "Guide\\nni你好" on 1 in session-1'));
+});
+
+/** A write's answer that waits until answer is called with the answer to give. */
+function held() {
+  const write: { answer?: (response: Response) => void } = {};
+  const route = () => new Promise<Response>((resolve) => (write.answer = resolve));
+  return { write, route };
+}
+
+const savedGuide = () =>
+  json({
+    ...guide,
+    ancestors: [],
+    revision: 2,
+    byte_size: 6,
+    content_updated_at: guide.updated_at,
+    content_updated_by: "",
+  });
+
+test("while Done saves, the content is held as it is; a save that fails gives it back, the focus in the editor", async () => {
+  const { write, route } = held();
+  const { user, view, content, type } = await editing(
+    pageServer({ answers: { "PUT /api/v0/pages/*/content": route } })
+  );
+  type("one");
+
+  await user.click(screen.getByRole("button", { name: "Done" }));
+  await waitFor(() => expect(write.answer).toBeDefined());
+  expect(view.state.readOnly).toBe(true);
+  expect(content.getAttribute("contenteditable")).toBe("false");
+  write.answer?.(problem(500, "internal_error"));
+  await waitFor(() => expect(status().textContent).not.toBe("Saving…"));
+  expect(view.state.readOnly).toBe(false);
+  expect(content.getAttribute("contenteditable")).toBe("true");
+  await waitFor(() => expect(document.activeElement).toBe(content));
+});
+
+test("Save and Done pressed while the input method composes wait for the composition's end", async () => {
+  const { user, server, content, type } = await editing();
+  const composing = vi.spyOn(EditorView.prototype, "composing", "get").mockReturnValue(true);
+  type("ni");
+
+  await user.click(screen.getByRole("button", { name: "Save" }));
+  await user.click(screen.getByRole("button", { name: "Done" }));
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  expect(server.sent.some((line) => line.startsWith("PUT"))).toBe(false);
+  composing.mockReturnValue(false);
+  type("你好");
+  content.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true }));
+  await screen.findByRole("button", { name: "Edit" });
+  expect(server.sent.filter((line) => line.startsWith("PUT"))).toEqual([
+    'PUT Guide "Guide\\nni你好" on 1 in session-1',
+  ]);
+});
+
+test("a save that goes through while leaving is asked about lets the move go on", async () => {
+  const { write, route } = held();
+  const { user, type } = await editing(pageServer({ answers: { "PUT /api/v0/pages/*/content": route } }));
+  type("draft");
+  ctrl("s");
+  await waitFor(() => expect(write.answer).toBeDefined());
+
+  await user.click(within(tree()).getByRole("link", { name: "Notes" }));
+  await screen.findByRole("alertdialog", { name: "Leave without saving?" });
+  write.answer?.(savedGuide());
+  await screen.findByRole("heading", { level: 1, name: "Notes" });
+  expect(screen.queryByRole("alertdialog")).toBeNull();
+});
+
+test("Ctrl+E held down leaves once", async () => {
+  const { server, type } = await editing();
+  type("!");
+
+  fireEvent.keyDown(document.activeElement ?? document.body, { key: "e", ctrlKey: true });
+  fireEvent.keyDown(document.activeElement ?? document.body, { key: "e", ctrlKey: true, repeat: true });
+  const edit = await screen.findByRole("button", { name: "Edit" });
+  await waitFor(() => expect(document.activeElement).toBe(edit));
+  expect(fireEvent.keyDown(edit, { key: "e", ctrlKey: true, repeat: true })).toBe(false);
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  expect(screen.queryByRole("textbox", { name: "Page content" })).toBeNull();
+  expect(server.sent.filter((line) => line === "GET content Guide")).toHaveLength(1);
+});
+
+test("Edit takes the focus to the page's title until the editor takes it: there it is when the content cannot be read", async () => {
+  const user = userEvent.setup();
+  const server = pageServer({
+    answers: { "GET /api/v0/pages/*/content": () => Promise.reject(new TypeError("offline")) },
+  });
+  renderApp(pagePath(guide.id), server.app);
+
+  await user.click(await screen.findByRole("button", { name: "Edit" }));
+  await screen.findByRole("button", { name: "Try again" });
+  expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1, name: "Guide" }));
+});
+
+test.each([
+  {
+    what: "a busy server",
+    answers: { "PUT /api/v0/pages/*/content": () => problem(503, "server_busy", {}, { "Retry-After": "30" }) },
+    says: "The server is busy: the page is saved again in a moment.",
+  },
+  {
+    what: "a network too slow",
+    answers: { "PUT /api/v0/pages/*/content": () => problem(400, "bad_request") },
+    says: "The network was too slow to send the page in time. Save again.",
+  },
+  {
+    what: "a page too large",
+    answers: {
+      "PUT /api/v0/pages/*/content": () =>
+        problem(422, "validation_failed", { errors: [{ field: "content", code: "too_long", message: "" }] }),
+    },
+    says: "The page is over 5 MiB: shorten it to save it.",
+  },
+  {
+    what: "a NUL character",
+    answers: {
+      "PUT /api/v0/pages/*/content": () =>
+        problem(422, "validation_failed", { errors: [{ field: "content", code: "invalid_format", message: "" }] }),
+    },
+    says: "The page has a NUL character, which cannot be saved: take it out to save it.",
+  },
+])("the status says what a save came to: $what", async ({ answers, says }) => {
+  const { type } = await editing(pageServer({ answers }));
+  type("!");
+
+  ctrl("s");
+  await waitFor(() => expect(status().textContent).toBe(says));
+});
+
+test("the status says when the account may no longer edit the page", async () => {
+  await editing(pageServer({ answers: { "POST /api/v0/edit-sessions/*/heartbeat": () => problem(403, "forbidden") } }));
+
+  document.dispatchEvent(new Event("visibilitychange"));
+  await waitFor(() =>
+    expect(status().textContent).toBe("You can no longer edit this page. Copy your text before you leave.")
+  );
+});
+
+test("a page saved and left for another shows its reading view read again when it is back", async () => {
+  const { user, server, type } = await editing();
+  type("edited");
+  ctrl("s");
+  await waitFor(() => expect(status().textContent).toBe("Saved."));
+  server.views.set(guide.id, { html: "<p>Guide edited</p>", revision: 2 });
+
+  await user.click(within(tree()).getByRole("link", { name: "Notes" }));
+  await screen.findByRole("heading", { level: 1, name: "Notes" });
+  await user.click(within(tree()).getByRole("link", { name: "Guide" }));
+  expect((await screen.findByRole("article")).textContent).toBe("Guide edited");
 });
