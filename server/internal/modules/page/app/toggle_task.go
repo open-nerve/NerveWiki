@@ -37,10 +37,12 @@ type TaskToggle struct {
 // Then its content is read, outside a transaction: a base that is not its
 // revision is page.revision_mismatch (an offset means something in its
 // revision only); then, parsed within the budget, an offset that is no
-// task item's is validation_failed. An item in that state already writes
-// nothing. The new content is parsed (the write decided already), and one
-// that has no item in that state at the offset is validation_failed:
-// ticking "- [ ]: /u" makes a link reference definition. Then the unit
+// task item's is validation_failed (out_of_range). An item in that state
+// already writes nothing: the page as it is, page.revision_mismatch if a
+// write came since. The new content is parsed (the write decided
+// already), and one that has no item in that state at the offset is
+// validation_failed (not_allowed): ticking "- [ ]: /u" makes a link
+// reference definition. Then the unit
 // writes it as PutPageContent writes a content in no edit session: the
 // page's lock, its base, its observers.
 func (t *ToggleTask) Execute(ctx context.Context, id uuid.UUID, p TaskToggle, client domain.Client) (PageView, error) {
@@ -68,7 +70,7 @@ func (t *ToggleTask) Execute(ctx context.Context, id uuid.UUID, p TaskToggle, cl
 	case err != nil:
 		return PageView{}, err
 	case task.Checked == p.Checked:
-		return readPage(ctx, t.nodes, id)
+		return t.unchanged(ctx, id, p.Base)
 	}
 	content := domain.Flip(current.Content, p.Offset, p.Checked)
 	parse, release, err := t.parser.Decided(ctx, content)
@@ -77,7 +79,7 @@ func (t *ToggleTask) Execute(ctx context.Context, id uuid.UUID, p TaskToggle, cl
 	}
 	defer release()
 	if task, ok := find(t.markdown.Tasks(parse), p.Offset); !ok || task.Checked != p.Checked {
-		return PageView{}, domain.NotATask()
+		return PageView{}, domain.TaskWouldGo()
 	}
 	var out PageView
 	outcome, err := t.writer.Run(ctx, spec, func(ctx context.Context, u *Unit) error {
@@ -95,6 +97,20 @@ func (t *ToggleTask) Execute(ctx context.Context, id uuid.UUID, p TaskToggle, cl
 			slog.Int("revision", out.Content.Revision), slog.Int("offset", p.Offset), slog.Bool("checked", p.Checked))...)
 	}
 	return out, nil
+}
+
+// unchanged answers the page id, its item in the state asked for at base
+// already: the page as it is, unless a write came since, which is
+// page.revision_mismatch, as a write on base would be.
+func (t *ToggleTask) unchanged(ctx context.Context, id uuid.UUID, base int) (PageView, error) {
+	v, err := readPage(ctx, t.nodes, id)
+	switch {
+	case err != nil:
+		return PageView{}, err
+	case v.Content.Revision != base:
+		return PageView{}, domain.ErrRevisionMismatch
+	}
+	return v, nil
 }
 
 // taskAt is content's task item at offset, from its parse within the

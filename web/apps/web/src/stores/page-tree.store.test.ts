@@ -272,3 +272,33 @@ test("a tree read the same as before is kept as it was; one changed replaces it"
   expect(pages.nodes).not.toBe(before);
   expect(pages.byId(notes.id)?.name).toBe("Notes 2");
 });
+
+test("one toggle of a task item is out per page at a time, the view read after it included; another page's runs beside it", async () => {
+  const { pages } = store();
+  const ran: string[] = [];
+  let finish: (() => void) | undefined;
+  const out = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+
+  const first = pages.oneToggle(guide.id, async () => {
+    ran.push("first");
+    await out;
+  });
+  const meanwhile = await pages.oneToggle(guide.id, async () => {
+    ran.push("meanwhile");
+  });
+  const beside = await pages.oneToggle(install.id, async () => {
+    ran.push("beside");
+  });
+  finish?.();
+
+  expect([await first, meanwhile, beside]).toEqual([true, false, true]);
+  const refused = pages.oneToggle(guide.id, async () => {
+    ran.push("after");
+    throw new Error("refused");
+  });
+  await expect(refused).rejects.toThrow("refused");
+  expect(await pages.oneToggle(guide.id, async () => void ran.push("again"))).toBe(true);
+  expect(ran).toEqual(["first", "beside", "after", "again"]);
+});

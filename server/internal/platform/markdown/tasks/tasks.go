@@ -5,7 +5,9 @@
 package tasks
 
 import (
+	"cmp"
 	"regexp"
+	"slices"
 	"strconv"
 
 	"github.com/yuin/goldmark/ast"
@@ -31,7 +33,7 @@ type Task struct {
 // Extension is the extension of task items. It replaces goldmark's: its
 // parser recognizes what goldmark's does, its renderer writes what
 // goldmark's writes and the checkbox's position in data-task, and Extract
-// gives the document's tasks in order.
+// gives the document's tasks in the content's order.
 func Extension() markdown.Extension {
 	return markdown.Extension{
 		Name: Name,
@@ -115,8 +117,9 @@ func (taskRenderer) RegisterFuncs(reg renderer.NodeRendererFuncRegisterer) {
 	})
 }
 
-// extract is the document's tasks in order. A checkbox is a block's inline
-// child, so the walk skips every inline's children.
+// extract is the document's tasks in the content's order: the tree's is
+// the reading view's, which puts the footnotes' last. A checkbox is a
+// block's inline child, so the walk skips every inline's children.
 func extract(root ast.Node, _ []byte) any {
 	var tasks []Task
 	_ = ast.Walk(root, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
@@ -128,5 +131,6 @@ func extract(root ast.Node, _ []byte) any {
 		}
 		return ast.WalkSkipChildren, nil
 	})
+	slices.SortFunc(tasks, func(a, b Task) int { return cmp.Compare(a.Offset, b.Offset) })
 	return tasks
 }

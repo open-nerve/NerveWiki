@@ -119,8 +119,8 @@ func theirs(src []byte) (string, error) {
 var position = regexp.MustCompile(` data-task="(\d+)"`)
 
 // sameAsGoldmark checks that src renders as goldmark renders it but for the
-// checkboxes' positions, and that each position is a task's character, in
-// the order Extract gives.
+// checkboxes' positions, and that each position is a task's character, the
+// rendered ones the extracted ones, in the content's order.
 func sameAsGoldmark(t *testing.T, src string) bool {
 	t.Helper()
 	got, found, err := ours([]byte(src))
@@ -137,6 +137,8 @@ func sameAsGoldmark(t *testing.T, src string) bool {
 		box := got[strings.LastIndex(got[:m[0]], "<input"):m[0]]
 		shown = append(shown, tasks.Task{Offset: o, Checked: strings.Contains(box, "checked")})
 	}
+	// The view puts the footnotes' tasks last; Extract gives the content's order.
+	slices.SortFunc(shown, func(a, b tasks.Task) int { return a.Offset - b.Offset })
 	ok := true
 	if stripped := position.ReplaceAllString(got, ""); stripped != want {
 		t.Errorf("input %q\nours   %q\ntheirs %q", src, stripped, want)

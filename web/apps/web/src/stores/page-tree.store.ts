@@ -31,6 +31,8 @@ export class PageTreeStore {
   /** The pages this generation deleted, each with where its shell goes: the deleted subtree's parent (null: home). */
   private readonly removed = new Map<string, string | null>();
   private readonly inTurn = oneAtATime();
+  /** The pages with a toggle of a task item out, the view read again included. */
+  private readonly togglesOut = new Set<string>();
 
   constructor(
     private readonly service: Pick<
@@ -48,15 +50,19 @@ export class PageTreeStore {
     /** The notebook whose pages these are. */
     readonly notebookId: string
   ) {
-    makeAutoObservable<this, "service" | "changesAnswered" | "readsStarted" | "readKept" | "inTurn">(this, {
-      service: false,
-      notebookId: false,
-      nodes: observableRef,
-      changesAnswered: false,
-      readsStarted: false,
-      readKept: false,
-      inTurn: false,
-    });
+    makeAutoObservable<this, "service" | "changesAnswered" | "readsStarted" | "readKept" | "inTurn" | "togglesOut">(
+      this,
+      {
+        service: false,
+        notebookId: false,
+        nodes: observableRef,
+        changesAnswered: false,
+        readsStarted: false,
+        readKept: false,
+        inTurn: false,
+        togglesOut: false,
+      }
+    );
   }
 
   /** tree is the tree looked up, once read, without the pages this generation deleted. */
@@ -180,6 +186,24 @@ export class PageTreeStore {
   /** toggleTask ticks or clears a task item of the page id, which changes its view: SWR reads it again. */
   async toggleTask(id: string, toggle: TaskToggle): Promise<void> {
     await this.service.toggleTask(id, toggle);
+  }
+
+  /**
+   * oneToggle runs toggle, a toggle of a task item of the page id and the view read after it, unless one of the
+   * page's runs (M5/P6 design 3.5): one is out per page at a time, across the views of the page and their HTML
+   * read again, which a view's own state would not hold. It answers whether toggle ran.
+   */
+  async oneToggle(id: string, toggle: () => Promise<void>): Promise<boolean> {
+    if (this.togglesOut.has(id)) {
+      return false;
+    }
+    this.togglesOut.add(id);
+    try {
+      await toggle();
+      return true;
+    } finally {
+      this.togglesOut.delete(id);
+    }
   }
 
   /** editLock reads who edits the page id, which SWR keeps by page, as it does the view (M5/P3 design 3.10). */

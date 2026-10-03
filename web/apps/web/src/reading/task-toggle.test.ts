@@ -47,34 +47,40 @@ function setUp(role: NotebookRole = "editor") {
 /** settled waits for the promises a toggle settled to run on. */
 const settled = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-test("a writer's checkboxes are enabled; a click asks for the other state and leaves the box as the server has it", async () => {
+test("a writer's checkboxes are enabled, each named by its item; a click asks for the other state and leaves the box as the server has it", async () => {
   const { container, context, toggles, a, b } = setUp();
   taskToggle(container, context);
   expect([a.disabled, b.disabled]).toEqual([false, false]);
+  expect([a.getAttribute("aria-label"), b.getAttribute("aria-label")]).toEqual(["a", "b"]);
 
   await userEvent.click(a);
   await userEvent.click(b);
 
-  expect(toggles.map(({ offset, checked }) => [offset, checked])).toEqual([[3, true]]);
-  expect([a.checked, b.checked]).toEqual([false, true]);
-});
-
-test("one toggle is out at a time: a click meanwhile does nothing, and changes no box", async () => {
-  const { container, context, toggles, a, b } = setUp();
-  taskToggle(container, context);
-
-  await userEvent.click(a);
-  await userEvent.click(b);
-  await userEvent.click(a);
-  expect(toggles).toHaveLength(1);
-  expect([a.checked, b.checked]).toEqual([false, true]);
-
-  toggles[0]?.settle();
-  await settled();
-  await userEvent.click(b);
   expect(toggles.map(({ offset, checked }) => [offset, checked])).toEqual([
     [3, true],
     [11, false],
+  ]);
+  expect([a.checked, b.checked]).toEqual([false, true]);
+});
+
+test("an item's name is its own text, in a paragraph or a heading, its sublists left out; an item with no text has no name", () => {
+  const container = document.createElement("article");
+  container.innerHTML =
+    '<ul><li><input disabled="" type="checkbox" data-task="3"> parent  <em>item</em>\n' +
+    '<ul><li><input disabled="" type="checkbox" data-task="20"> child</li></ul></li>' +
+    '<li><p><input disabled="" type="checkbox" data-task="40"> loose</p><p>more</p></li>' +
+    '<li><h1><input disabled="" type="checkbox" data-task="60"> heading</h1></li>' +
+    '<li><input disabled="" type="checkbox" data-task="80"> </li></ul>';
+  const { context } = setUp();
+
+  taskToggle(container, context);
+
+  expect([...container.querySelectorAll("input")].map((box) => box.getAttribute("aria-label"))).toEqual([
+    "parent item",
+    "child",
+    "loose",
+    "heading",
+    null,
   ]);
 });
 
@@ -124,7 +130,7 @@ test("a click elsewhere in the view is the view's", async () => {
   expect(toggles).toEqual([]);
 });
 
-test("undone, the checkboxes are disabled again and a click asks nothing", async () => {
+test("undone, the checkboxes are disabled again, without their names, and a click asks nothing", async () => {
   const { container, context, toggles, a, b } = setUp();
   const undo = taskToggle(container, context);
 
@@ -132,5 +138,6 @@ test("undone, the checkboxes are disabled again and a click asks nothing", async
   a.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
 
   expect([a.disabled, b.disabled]).toEqual([true, true]);
+  expect([a.hasAttribute("aria-label"), b.hasAttribute("aria-label")]).toEqual([false, false]);
   expect(toggles).toEqual([]);
 });

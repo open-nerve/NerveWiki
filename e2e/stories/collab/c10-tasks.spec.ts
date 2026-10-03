@@ -93,7 +93,7 @@ test("C10 (API): an editor ticks and clears task items in a content with a byte 
   );
 });
 
-test("C10 (page): A ticks a task item in the reading view, the content written and the focus on the same checkbox, and the space key clears it; a reader's checkboxes are disabled; while A edits, B's click is refused saying the page is being edited, A named below, the checkbox as it was", async ({
+test("C10 (page): A ticks a task item in the reading view, its checkbox named by its text, the content written and the focus on the same checkbox, and the space key clears it; a reader's checkboxes are disabled; while A edits, B's click is refused as Edit is, the note naming A taking the focus, no alert, the checkbox as it was", async ({
   anotherPage,
   api,
   db,
@@ -116,7 +116,7 @@ test("C10 (page): A ticks a task item in the reading view, the content written a
   await page.goto(path);
   const boxes = boxesOf(page);
   await expect(boxes).toHaveCount(2);
-  await boxes.first().click();
+  await page.getByRole("main").getByRole("article").getByRole("checkbox", { name: "open", exact: true }).click();
 
   await expect(boxes.first()).toBeChecked();
   await expect(boxes.first()).toBeFocused();
@@ -136,8 +136,10 @@ test("C10 (page): A ticks a task item in the reading view, the content written a
   await startEditing(page);
   await boxesOf(b).first().click();
 
-  await expect(b.getByRole("main").getByRole("alert")).toHaveText("This page is being edited in another session.");
-  await expect(b.getByText(`${displayNameOf(adminEmail)} is editing this page.`, { exact: true })).toBeVisible();
+  const holder = `${displayNameOf(adminEmail)} is editing this page.`;
+  await expect(b.getByText(holder, { exact: true })).toBeVisible();
+  await expect.poll(() => b.evaluate(() => document.activeElement?.textContent ?? "")).toContain(holder);
+  await expect(b.getByRole("main").getByRole("alert")).toHaveCount(0);
   await expect(boxesOf(b).first()).not.toBeChecked();
   expect(await readContent(api, a, tasks.id)).toMatchObject({ content, revision: 3 });
   watchOf(b).expectConsole({ errors: [failedToLoad(409)] });

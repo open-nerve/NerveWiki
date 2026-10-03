@@ -291,9 +291,11 @@ paths:
         role in is page.not_found; a base_revision that is not the page's
         revision is page.revision_mismatch: an offset means something in
         that revision only. Then an offset that is no task item's, of that
-        content, is validation_failed, as is a tick or a clear that would
-        leave none there (ticking "- [ ]: /u" makes a link reference
-        definition). A task item in that state already writes nothing.
+        content, is validation_failed (out_of_range on offset), and a tick
+        or a clear that would leave none there is too (not_allowed: ticking
+        "- [ ]: /u" makes a link reference definition). A task item in that
+        state already writes nothing: the page is answered as it is, or
+        page.revision_mismatch if a write came since.
         Then a page whose lock an edit session holds, the caller's
         elsewhere among them, is page.locked, naming the holder in lock.
         When the server parses as much content as it can at once, a toggle

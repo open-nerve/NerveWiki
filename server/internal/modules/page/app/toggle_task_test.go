@@ -1,6 +1,7 @@
 package app_test
 
 import (
+	"errors"
 	"slices"
 	"strconv"
 	"strings"
@@ -94,7 +95,8 @@ func TestToggleTaskChangesTheOneByte(t *testing.T) {
 
 // An item in the state asked for already writes nothing, its character
 // kept, a capital X or a tab among them: the page as it is, no guard, no
-// event, no log.
+// event, no log. A write that came while the item was read makes it
+// page.revision_mismatch: the page answered is no longer the one checked.
 func TestToggleTaskOfAnItemInThatStateWritesNothing(t *testing.T) {
 	for _, p := range []app.TaskToggle{{Base: 2, Offset: 18, Checked: false}, {Base: 2, Offset: 27, Checked: true},
 		{Base: 2, Offset: 36, Checked: true}, {Base: 2, Offset: 45, Checked: false}} {
@@ -111,6 +113,36 @@ func TestToggleTaskOfAnItemInThatStateWritesNothing(t *testing.T) {
 			f.logs.Len() != 0 || f.budget.held != 0 {
 			t.Errorf("%+v: guarded %d, events %d, logs %q, %d bytes held; want nothing", p, len(g.steps), len(o.events), f.logs,
 				f.budget.held)
+		}
+	}
+}
+
+func TestToggleTaskOfAnItemInThatStateAfterAWriteIsAMismatch(t *testing.T) {
+	f := newFixture()
+	f.grant(domain.ActionToggleTask)
+	n := f.taskPage()
+	f.md.tasksRead = func() { f.writeAs(n.ID, "- [ ] a\n- [ ] b\n") }
+	if _, err := f.toggle(n.ID, app.TaskToggle{Base: 2, Offset: 27, Checked: true}); codeOf(err) != "page.revision_mismatch" {
+		t.Errorf("toggleTask = %q, want page.revision_mismatch", codeOf(err))
+	}
+}
+
+// An offset of no item is out of range; a tick or a clear that would
+// leave no item there is not allowed: the offset is an item's.
+func TestToggleTaskTellsWhyAnOffsetIsRefused(t *testing.T) {
+	for content, want := range map[string]string{"- [ ] a\n": shared.FieldOutOfRange, "- [ ]: /u\n": shared.FieldNotAllowed} {
+		f := newFixture()
+		f.grant(domain.ActionToggleTask)
+		n := f.page("Notes", nil, 0)
+		f.writeAs(n.ID, content)
+		offset := 3
+		if want == shared.FieldOutOfRange {
+			offset = 4
+		}
+		_, err := f.toggle(n.ID, app.TaskToggle{Base: 2, Offset: offset, Checked: true})
+		var e *shared.Error
+		if !errors.As(err, &e) || len(e.Fields) != 1 || e.Fields[0].Field != "offset" || e.Fields[0].Code != want {
+			t.Errorf("%q at %d: %v, want 422 on offset, %s", content, offset, err, want)
 		}
 	}
 }
@@ -171,6 +203,17 @@ func TestToggleTaskAnswersItsCodesInOrder(t *testing.T) {
 		}, "validation_failed offset"},
 		{"a tick that makes a link reference definition", func(f *fixture, n domain.Node) (uuid.UUID, app.TaskToggle) {
 			f.grant(domain.ActionToggleTask)
+			f.writeAs(n.ID, "- [ ]: /u\n")
+			return n.ID, app.TaskToggle{Base: 3, Offset: 3, Checked: true}
+		}, "validation_failed offset"},
+		{"a base passed, before the guard", func(f *fixture, n domain.Node) (uuid.UUID, app.TaskToggle) {
+			f.grant(domain.ActionToggleTask)
+			f.guards = []app.WriteGuard{&guard{recorder: f.rec, err: refusal}}
+			return n.ID, app.TaskToggle{Base: 1, Offset: 18, Checked: true}
+		}, "page.revision_mismatch"},
+		{"a tick that makes a link reference definition, before the guard", func(f *fixture, n domain.Node) (uuid.UUID, app.TaskToggle) {
+			f.grant(domain.ActionToggleTask)
+			f.guards = []app.WriteGuard{&guard{recorder: f.rec, err: refusal}}
 			f.writeAs(n.ID, "- [ ]: /u\n")
 			return n.ID, app.TaskToggle{Base: 3, Offset: 3, Checked: true}
 		}, "validation_failed offset"},

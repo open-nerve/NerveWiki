@@ -235,6 +235,9 @@ type fakeMarkdown struct {
 	err   error
 	// panics has Parse panic.
 	panics bool
+	// tasksRead, when set, runs once after Tasks: someone's write while
+	// the tasks are read.
+	tasksRead func()
 }
 
 func (f *fakeMarkdown) Parse(content string) app.Parsed {
@@ -258,6 +261,10 @@ func (f *fakeMarkdown) Tasks(parsed app.Parsed) []app.Task {
 			out = append(out, app.Task{Offset: at + 3, Checked: line[3] == 'x' || line[3] == 'X'})
 		}
 		at += len(line)
+	}
+	if read := f.tasksRead; read != nil {
+		f.tasksRead = nil
+		read()
 	}
 	return out
 }
