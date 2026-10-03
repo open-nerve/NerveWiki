@@ -5,7 +5,7 @@ import { expect, test } from "vitest";
 import { FakePage } from "../events/testing/fake-page";
 import type { EditLock } from "../services/page.service";
 import { eventServer, withEvents } from "../test/event-server";
-import { json, notebookJSON, workspaceJSON } from "../test/fakes";
+import { json, notebookJSON, workspaceJSON, type Answer } from "../test/fakes";
 import { guide, install, linux, notes, pagePath, pageServer } from "../test/page-server";
 import { renderApp } from "../test/render";
 
@@ -37,11 +37,12 @@ const lockEvent = (pageId: string) => ({
  * waits for what the connection read again: from then on, what is read is
  * the events' doing.
  */
-async function open(page = new FakePage()) {
+async function open(page = new FakePage(), answers: Record<string, Answer> = {}) {
   const events = eventServer();
   const workspaces: string[] = [];
   const server = pageServer({
     answers: {
+      ...answers,
       "GET /api/v0/events": events.answer,
       "GET /api/v0/workspaces": () => {
         workspaces.push("GET workspaces");
@@ -136,6 +137,23 @@ test("each connection reads again the workspaces, the tree, the reading view and
   await waitFor(() => expect(screen.getByRole("article", { name: "Handbook" }).innerHTML).toBe("<p>Guide, again</p>"));
   expect((await screen.findByRole("status")).textContent).toContain("Bob is editing this page.");
   expect(workspaces).toEqual(["GET workspaces"]);
+});
+
+test("a connection reads from the outside in: a notebook no longer seen leaves the page before its tree is read", async () => {
+  let seen = true;
+  const { server, events } = await open(new FakePage(), {
+    "GET /api/v0/workspaces/lab/notebooks": () => json({ data: seen ? [{ ...notebookJSON, role: "admin" }] : [] }),
+  });
+  seen = false;
+  server.nodesDown = true;
+
+  events.last().send("reset", { reason: "access" });
+  await waitFor(() => expect(events.streams).toHaveLength(2));
+  events.last().hello();
+
+  expect(await screen.findByRole("heading", { level: 1, name: "Page not found" })).toBeTruthy();
+  await settle();
+  expect(server.sent).toEqual([]);
 });
 
 test("the tab editing the page does not read its reading view again", async () => {

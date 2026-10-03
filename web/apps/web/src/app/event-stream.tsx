@@ -7,8 +7,16 @@ import type { PageView } from "../services/page.service";
 import { useStore } from "../stores/context";
 import { useSession } from "./guards";
 
-/** The lists that each connection of the stream reads again: what was written while it was not connected went unseen. */
-const refreshedOnConnect = new Set(["notebooks", "pages", "page-view", "edit-lock"]);
+/**
+ * What each connection of the stream reads again, since what was written
+ * while it was not connected went unseen: from the outside in, a level once
+ * the one before it is read and shown, so that a workspace or a notebook
+ * no longer seen, or a page deleted, leaves the page before what is in it
+ * is read, which would be not found.
+ */
+const refreshedOnConnect = [["workspaces"], ["notebooks"], ["pages"], ["page-view", "edit-lock"]].map(
+  (level) => new Set(level)
+);
 
 /**
  * EventStream shows what others write as they write it (M5/P3 design 3.8):
@@ -46,8 +54,7 @@ export function EventStream() {
 function route(event: HubEvent, cache: Cache, mutate: ScopedMutator, refresher: Refresher): void {
   switch (event.type) {
     case "connected":
-      void mutate("workspaces");
-      void mutate((key) => Array.isArray(key) && refreshedOnConnect.has(key[0] as string));
+      void refreshAll(mutate);
       break;
     case "lock":
       void mutate(["edit-lock", event.data.page_id]);
@@ -73,5 +80,15 @@ function route(event: HubEvent, cache: Cache, mutate: ScopedMutator, refresher: 
       }
       break;
     }
+  }
+}
+
+async function refreshAll(mutate: ScopedMutator): Promise<void> {
+  for (const level of refreshedOnConnect) {
+    // oxlint-disable-next-line no-await-in-loop -- one level after another
+    await mutate((key) => level.has((Array.isArray(key) ? key[0] : key) as string));
+    // React shows what the level read, unmounting what is gone, before the next is read.
+    // oxlint-disable-next-line no-await-in-loop -- one level after another
+    await new Promise((resolve) => setTimeout(resolve, 0));
   }
 }

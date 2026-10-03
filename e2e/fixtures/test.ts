@@ -61,6 +61,11 @@ interface TestFixtures {
    */
   anotherPage: (tokens: AuthTokens) => Promise<Page>;
   /**
+   * Opens another tab in page's browser context, signed in as page is: it has loaded nothing yet. It is
+   * watched as the test's page is, and a test that passes must have left it quiet too, unless it closed it.
+   */
+  anotherTab: (page: Page) => Promise<Page>;
+  /**
    * When the test fails, a pg_dump of the worker's database joins its trace and screenshot. The logs are
    * in test-results/: the worker's nervewiki's at its root, those of nervewikiWith in the test's directory.
    * The databases of newDatabase are not dumped.
@@ -193,6 +198,18 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
       }
     } finally {
       await Promise.all(contexts.map((context) => context.close()));
+    }
+  },
+  // oxlint-disable-next-line no-empty-pattern -- Playwright reads a fixture's dependencies from this pattern
+  anotherTab: async ({}, use, testInfo) => {
+    const watched: [Page, PageWatch][] = [];
+    await use(async (page) => {
+      const tab = await page.context().newPage();
+      watched.push([tab, await watchPage(tab)]);
+      return tab;
+    });
+    if (testInfo.status === testInfo.expectedStatus) {
+      await Promise.all(watched.filter(([tab]) => !tab.isClosed()).map(([tab, watch]) => expectQuietPage(tab, watch)));
     }
   },
   databaseSnapshot: [
