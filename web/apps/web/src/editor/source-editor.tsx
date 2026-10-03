@@ -29,6 +29,8 @@ export type SourceEditorHandle = {
 type SourceEditorProps = {
   /** The content the editor opens on, as written. */
   content: string;
+  /** Whether the editor takes the focus as it is made: the user asked to edit. */
+  focusOnOpen?: boolean;
   context: EditorContext;
   controls: Omit<EditorControls, "setReadOnly">;
   /** onChange is told the content's version after each change. */
@@ -138,12 +140,12 @@ class EditorHost {
  * are kept apart (editor/line-breaks.ts). The registered extensions come
  * after the editor's own, each in its compartment.
  */
-export function SourceEditor({ content, context, controls, onChange, ref }: SourceEditorProps) {
+export function SourceEditor({ content, focusOnOpen = false, context, controls, onChange, ref }: SourceEditorProps) {
   const t = useT();
   const registered = useContext(EditorExtensions);
   const element = useRef<HTMLDivElement>(null);
   const editor = useRef<EditorHost>(null);
-  const first = useRef(content);
+  const first = useRef({ content, focusOnOpen });
   const live = useRef<Live>({ t, context, controls, onChange, registered });
   useLayoutEffect(() => {
     live.current = { t, context, controls, onChange, registered };
@@ -152,8 +154,11 @@ export function SourceEditor({ content, context, controls, onChange, ref }: Sour
     if (element.current === null) {
       return undefined;
     }
-    const made = new EditorHost(element.current, first.current, live);
+    const made = new EditorHost(element.current, first.current.content, live);
     editor.current = made;
+    if (first.current.focusOnOpen) {
+      made.view.focus();
+    }
     return () => {
       made.view.destroy();
       editor.current = null;
@@ -163,7 +168,7 @@ export function SourceEditor({ content, context, controls, onChange, ref }: Sour
   useImperativeHandle(
     ref,
     () => ({
-      text: () => (editor.current === null ? first.current : joinBreaks(editor.current.view.state)),
+      text: () => (editor.current === null ? first.current.content : joinBreaks(editor.current.view.state)),
       version: () => editor.current?.version ?? 0,
       focus: () => editor.current?.view.focus(),
       whenComposed: (act) => (editor.current === null ? act() : editor.current.whenComposed(act)),

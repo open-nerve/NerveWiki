@@ -5,7 +5,7 @@ import useSWR from "swr";
 
 import { arrived } from "../../app/arrival";
 import { NotLoaded } from "../../app/not-loaded";
-import { isMod, onMac } from "../../app/shortcuts";
+import { dialogOpen, isMod, onMac } from "../../app/shortcuts";
 import { Dialog, DialogContent, DialogTitle } from "../../components/ui/dialog";
 import { Input } from "../../components/ui/input";
 import { useT } from "../../i18n/i18n";
@@ -38,7 +38,7 @@ export function QuickSwitch({ notebook }: { notebook: Notebook }) {
         return;
       }
       event.preventDefault();
-      if (document.querySelector('[role="dialog"], [role="alertdialog"]') === null) {
+      if (!dialogOpen()) {
         opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
         went.current = false;
         setOpen(true);

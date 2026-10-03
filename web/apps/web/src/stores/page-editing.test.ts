@@ -1,0 +1,241 @@
+import { afterEach, expect, test, vi } from "vitest";
+
+import { ApiError } from "../services/api";
+import type { PageContent } from "../services/page.service";
+import { editSessionHeartbeat, PageEditing, type EditingService } from "./page-editing";
+
+// One edit of a page (M4/P6 design 3.6): the content it begins on, its
+// session and the session's heartbeat, its saves.
+
+afterEach(() => vi.useRealTimers());
+
+const refusal = (status: number, code: string, retryAfter?: number) =>
+  new ApiError(status, { status, code, title: code }, retryAfter);
+
+type Answer<T> = () => T | Promise<T>;
+
+/** A service whose answers the test sets; what went out is in sent. */
+function fakeService() {
+  const sent: string[] = [];
+  let opened = 0;
+  const answers = {
+    content: (): PageContent | Promise<PageContent> => ({ content: "# Notes\n", revision: 3, content_hash: "" }),
+    put: undefined as Answer<{ revision: number }> | undefined,
+    open: undefined as Answer<{ id: string }> | undefined,
+    beat: undefined as Answer<unknown> | undefined,
+  };
+  let revision = 3;
+  const service = {
+    getPageContent: vi.fn(async () => answers.content()),
+    putPageContent: vi.fn(
+      async (_: string, write: { content: string; base_revision: number; edit_session_id?: string }) => {
+        sent.push(`PUT ${JSON.stringify(write.content)} on ${write.base_revision} in ${write.edit_session_id}`);
+        const page = answers.put === undefined ? { revision: ++revision } : await answers.put();
+        return { ...page } as never;
+      }
+    ),
+    openEditSession: vi.fn(async () => {
+      sent.push("OPEN");
+      return answers.open === undefined ? { id: `s${++opened}` } : await answers.open();
+    }) as never,
+    heartbeatEditSession: vi.fn(async (id: string) => {
+      sent.push(`BEAT ${id}`);
+      return answers.beat === undefined ? {} : await answers.beat();
+    }) as never,
+    endEditSession: vi.fn(async (id: string) => {
+      sent.push(`END ${id}`);
+    }),
+  } satisfies EditingService;
+  return { service, sent, answers };
+}
+
+/** An edit of p1 begun, its content read. */
+async function begun() {
+  const fake = fakeService();
+  const editing = new PageEditing(fake.service, "p1");
+  editing.start();
+  await vi.waitFor(() => expect(editing.content).toBeDefined());
+  return { ...fake, editing };
+}
+
+test("the heartbeat's interval is 20 seconds, the server's lease a third of 60 (domain/session.go)", () => {
+  expect(editSessionHeartbeat).toBe(20_000);
+});
+
+test("begins by reading the content and opening the session together; a read that fails is read again", async () => {
+  const { service, sent, answers } = fakeService();
+  answers.content = () => Promise.reject(new TypeError("offline"));
+  const editing = new PageEditing(service, "p1");
+
+  editing.start();
+  await vi.waitFor(() => expect(editing.readFailure).toBeInstanceOf(TypeError));
+  expect(sent).toEqual(["OPEN"]);
+  answers.content = () => ({ content: "x", revision: 7, content_hash: "" });
+  await editing.read();
+  expect(editing.content?.revision).toBe(7);
+  expect(editing.readFailure).toBeUndefined();
+  editing.end();
+});
+
+test("a save goes on the revision read, in the session; the next goes on the one the first answered", async () => {
+  const { editing, sent } = await begun();
+
+  editing.changed(1);
+  expect(editing.unsaved).toBe(true);
+  expect(await editing.save("one", 1)).toBe(true);
+  editing.changed(2);
+  expect(await editing.save("two", 2)).toBe(true);
+  expect(sent).toEqual(["OPEN", 'PUT "one" on 3 in s1', 'PUT "two" on 4 in s1']);
+  expect(editing.unsaved).toBe(false);
+  expect(editing.saved).toBe(true);
+  editing.end();
+});
+
+test("nothing unsaved, a save sends nothing", async () => {
+  const { editing, sent } = await begun();
+
+  expect(await editing.save("# Notes\n", 0)).toBe(true);
+  expect(sent).toEqual(["OPEN"]);
+  editing.end();
+});
+
+test("one save is out at a time; those asked for meanwhile go once, with the latest text", async () => {
+  const { editing, sent, answers } = await begun();
+  let answer: ((page: { revision: number }) => void) | undefined;
+  answers.put = () => new Promise((resolve) => (answer = resolve));
+
+  const first = editing.save("one", 1);
+  await vi.waitFor(() => expect(sent).toHaveLength(2));
+  const second = editing.save("two", 2);
+  const third = editing.save("three", 3);
+  answers.put = undefined;
+  answer?.({ revision: 4 });
+  expect(await Promise.all([first, second, third])).toEqual([true, true, true]);
+  expect(sent).toEqual(["OPEN", 'PUT "one" on 3 in s1', 'PUT "three" on 4 in s1']);
+  expect(editing.savedVersion).toBe(3);
+  editing.end();
+});
+
+test("a save whose session ended opens another and goes once more", async () => {
+  const { editing, sent, answers } = await begun();
+  answers.put = () => {
+    answers.put = undefined;
+    throw refusal(409, "page.edit_session_ended");
+  };
+
+  expect(await editing.save("text", 1)).toBe(true);
+  expect(sent).toEqual(["OPEN", 'PUT "text" on 3 in s1', "OPEN", 'PUT "text" on 3 in s2']);
+  editing.end();
+});
+
+test("a session that ends again is a failure, not a loop", async () => {
+  const { editing, sent, answers } = await begun();
+  answers.put = () => {
+    throw refusal(409, "page.edit_session_ended");
+  };
+
+  editing.changed(1);
+  expect(await editing.save("text", 1)).toBe(false);
+  expect(sent.filter((line) => line.startsWith("PUT"))).toHaveLength(2);
+  expect(editing.failure).toBeInstanceOf(ApiError);
+  expect(editing.unsaved).toBe(true);
+  editing.end();
+});
+
+test("a 503 server_busy is waited out by its Retry-After, three times at most", async () => {
+  const { editing, sent, answers } = await begun();
+  vi.useFakeTimers();
+  answers.put = () => {
+    throw refusal(503, "server_busy", 2);
+  };
+
+  const saving = editing.save("text", 1);
+  await vi.waitFor(() => expect(editing.busy).toBe(true));
+  await vi.advanceTimersByTimeAsync(3 * 2000);
+  expect(await saving).toBe(false);
+  expect(sent.filter((line) => line.startsWith("PUT"))).toHaveLength(4);
+  expect(editing.busy).toBe(false);
+  expect(editing.failure).toBeInstanceOf(ApiError);
+  editing.end();
+});
+
+test("a 503 waited out saves when the server can", async () => {
+  const { editing, answers } = await begun();
+  vi.useFakeTimers();
+  answers.put = () => {
+    answers.put = undefined;
+    throw refusal(503, "server_busy", 1);
+  };
+
+  const saving = editing.save("text", 1);
+  await vi.advanceTimersByTimeAsync(1000);
+  expect(await saving).toBe(true);
+  expect(editing.failure).toBeUndefined();
+  editing.end();
+});
+
+test("another refusal is the save's failure; the next save clears it", async () => {
+  const { editing, answers } = await begun();
+  answers.put = () => {
+    throw refusal(400, "bad_request");
+  };
+
+  expect(await editing.save("text", 1)).toBe(false);
+  expect((editing.failure as ApiError).code).toBe("bad_request");
+  answers.put = undefined;
+  expect(await editing.save("text", 1)).toBe(true);
+  expect(editing.failure).toBeUndefined();
+  editing.end();
+});
+
+test("the session beats every 20 seconds; one not found is opened anew; forbidden, the beats stop", async () => {
+  vi.useFakeTimers();
+  const { service, sent, answers } = fakeService();
+  const editing = new PageEditing(service, "p1");
+  editing.start();
+  await vi.advanceTimersByTimeAsync(0);
+
+  await vi.advanceTimersByTimeAsync(editSessionHeartbeat);
+  expect(sent).toEqual(["OPEN", "BEAT s1"]);
+  answers.beat = () => {
+    throw refusal(404, "page.edit_session_not_found");
+  };
+  await vi.advanceTimersByTimeAsync(editSessionHeartbeat);
+  expect(sent).toEqual(["OPEN", "BEAT s1", "BEAT s1", "OPEN"]);
+  answers.beat = () => {
+    throw refusal(403, "forbidden");
+  };
+  await vi.advanceTimersByTimeAsync(editSessionHeartbeat);
+  expect(editing.lostAccess).toBe(true);
+  await vi.advanceTimersByTimeAsync(editSessionHeartbeat * 3);
+  expect(sent).toEqual(["OPEN", "BEAT s1", "BEAT s1", "OPEN", "BEAT s2"]);
+  editing.end();
+});
+
+test("the tab shown again beats at once", async () => {
+  const { editing, sent } = await begun();
+
+  document.dispatchEvent(new Event("visibilitychange"));
+  await vi.waitFor(() => expect(sent).toEqual(["OPEN", "BEAT s1"]));
+  editing.end();
+});
+
+test("the end ends the session unanswered and stops the beats; a session opening as it ends is ended too", async () => {
+  vi.useFakeTimers();
+  const { editing, sent } = await begun();
+  editing.end();
+  expect(vi.getTimerCount()).toBe(0);
+  await vi.advanceTimersByTimeAsync(editSessionHeartbeat * 2);
+  document.dispatchEvent(new Event("visibilitychange"));
+  expect(sent).toEqual(["OPEN", "END s1"]);
+
+  const late = fakeService();
+  let open: ((session: { id: string }) => void) | undefined;
+  late.answers.open = () => new Promise((resolve) => (open = resolve));
+  const leaving = new PageEditing(late.service, "p1");
+  leaving.start();
+  leaving.end();
+  open?.({ id: "s9" });
+  await vi.advanceTimersByTimeAsync(0);
+  expect(late.sent).toEqual(["OPEN", "END s9"]);
+});

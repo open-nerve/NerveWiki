@@ -19,3 +19,8 @@ export function isMod(keys: Keys, key: string, mac: boolean): boolean {
     : /^Key[A-Z]$/.exec(keys.code)?.[0].slice(3).toLowerCase();
   return mod && !keys.altKey && !keys.shiftKey && letter === key;
 }
+
+/** dialogOpen tells whether a dialog is open: the page's own shortcuts then leave the keys to it. */
+export function dialogOpen(): boolean {
+  return document.querySelector('[role="dialog"], [role="alertdialog"]') !== null;
+}

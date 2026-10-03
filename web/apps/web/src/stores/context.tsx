@@ -1,4 +1,4 @@
-import { createContext, use, type ReactNode } from "react";
+import { createContext, use, useState, type ReactNode } from "react";
 
 import type { User } from "../services/account.service";
 import type { Notebook } from "../services/notebook.service";
@@ -11,6 +11,7 @@ import type { MemberStore } from "./member.store";
 import type { NotebookMemberStore } from "./notebook-member.store";
 import type { NotebookStore } from "./notebook.store";
 import type { OwnerlessStore } from "./ownerless.store";
+import type { PageEditing } from "./page-editing";
 import type { PageTreeStore } from "./page-tree.store";
 import type { RootStore } from "./root.store";
 import type { WorkspaceStore } from "./workspace.store";
@@ -90,6 +91,16 @@ export function useNotebookMembers(notebook: Notebook): NotebookMemberStore {
 }
 
 /** usePageTree is the page tree of notebook: only for the pages the SignedIn guard shows. */
+/** useNewPageEditing is a new edit of the page id, made once for the component: only for the pages the SignedIn guard shows. */
+export function useNewPageEditing(id: string): PageEditing {
+  const store = useStore();
+  const [editing] = useState(() => store.editPage(id));
+  if (editing === undefined) {
+    throw new Error("useNewPageEditing is used outside SignedIn");
+  }
+  return editing;
+}
+
 export function usePageTree(notebook: Notebook): PageTreeStore {
   const pages = useStore().pagesOf(notebook);
   if (pages === undefined) {

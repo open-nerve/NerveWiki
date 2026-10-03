@@ -20,6 +20,7 @@ import { MemberStore } from "./member.store";
 import { NotebookMemberStore } from "./notebook-member.store";
 import { NotebookStore } from "./notebook.store";
 import { OwnerlessStore } from "./ownerless.store";
+import { PageEditing } from "./page-editing";
 import { PageTreeStore } from "./page-tree.store";
 import type { PreferencesStore } from "./preferences.store";
 import { WorkspaceStore } from "./workspace.store";
@@ -144,6 +145,11 @@ export class RootStore {
   pagesOf(notebook: Notebook): PageTreeStore | undefined {
     const service = this.pages;
     return service && once(this.pageTrees, notebook.id, () => new PageTreeStore(service, notebook.id));
+  }
+
+  /** editPage is a new edit of the page id, which its edit mode holds, not this generation (M4/P6 design 3.6). */
+  editPage(id: string): PageEditing | undefined {
+    return this.pages && new PageEditing(this.pages, id);
   }
 }
 
