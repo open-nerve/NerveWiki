@@ -75,7 +75,7 @@ P3 是 M6 最大的一个 Phase。为了让每次审查的范围可控，它分�
 | 文件 | 内容 |
 |---|---|
 | `migrations/sql/00019_page_nodes_name_key.sql` | `nodes (notebook_id, name_key) WHERE deleted_at IS NULL` 的索引（page 的迁移） |
-| `migrations/sql/00020_linking_index.sql` | linking 的五张表 |
+| `migrations/sql/00020`–`00024_linking_*.sql` | linking 的五张表，照约定一张表一个迁移 |
 | `modules/page/adapter/postgres/queries/links.sql`、`page/link_targets.go`（模块根） | page 的读端口 `LinkTargets`：按标题键找节点（带从根起的路径）、一组节点的路径、子树、一个笔记本的页面与正文、重算标题键 |
 | `modules/linking/domain/` | `target.go`（切分）、`resolve.go`（解析与落点）、`facts.go`（一页的链接、标签、属性、别名）、`change.go`（受影响的键与节点） |
 | `modules/linking/app/` | `ports.go`、`index.go`（观察者）、`resolver.go`（取候选、解析一批链接）、`reindex.go`、`deletion.go` |
@@ -223,7 +223,7 @@ linking 的 `Index` 实现 `page.PageObserver`，经组合根登记（`pageRegis
 
 - 解析规则：第 2 节的三处。
 - 索引表不带外键：第 3.2 节。
-- 迁移编号：page 的索引是 00019，linking 的表是 00020（总设计写的是 00019）。
+- 迁移编号：page 的索引是 00019，linking 的五张表是 00020–00024（总设计写的是一个 00019）。
 - P3 分 A、B 两部分合并。
 
 ## 8. 完成标准
