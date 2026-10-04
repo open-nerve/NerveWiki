@@ -621,7 +621,7 @@ M6 写出的移交（P3、P4 合并时落档）：
 | P | 名称 | 状态 | Phase 文档 | 审查 |
 |---|---|---|---|---|
 | P1 | 方言（服务端） | 已完成（2026-10-05，`4f6e419`） | [01-P1-dialect.md](01-P1-dialect.md) | [P1-dialect-review.md](reviews/P1-dialect-review.md) |
-| P2 | 提取结果与平台的预算 | 进行中 | [02-P2-facts-budget.md](02-P2-facts-budget.md) | — |
+| P2 | 提取结果与平台的预算 | 已完成（2026-10-05，`f2fea43`） | [02-P2-facts-budget.md](02-P2-facts-budget.md) | [P2-facts-budget-review.md](reviews/P2-facts-budget-review.md) |
 | P3 | 索引与解析 | 未开始 | — | — |
 | P4 | 链接改写 | 未开始 | — | — |
 | P5 | 接口 | 未开始 | — | — |
