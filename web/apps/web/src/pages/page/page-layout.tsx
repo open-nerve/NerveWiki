@@ -115,7 +115,7 @@ const PageShell = observer(function PageShell({ notebook, page }: { notebook: No
     if (opening.current !== undefined) {
       return;
     }
-    const next = store.editPage(notebook.id, page.id);
+    const next = store.editPage(notebook, page.id);
     if (next === undefined) {
       return;
     }

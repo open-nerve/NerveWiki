@@ -138,6 +138,39 @@ test("signing out saves what was typed since the last save, then ends the sessio
   ]);
 });
 
+test("while the sign-out saves, the content is held as it is: what it saves is all that was typed", async () => {
+  let release: (() => void) | undefined;
+  const writes: string[] = [];
+  const server = pageServer({
+    answers: {
+      "PUT /api/v0/pages/*/content": async (request) => {
+        writes.push(((await request.clone().json()) as { content: string }).content);
+        await new Promise<void>((resolve) => (release = resolve));
+        return json({
+          ...guide,
+          ancestors: [],
+          revision: 2,
+          byte_size: 0,
+          content_updated_at: "",
+          content_updated_by: "",
+        });
+      },
+    },
+  });
+  const { user } = await pressEdit(server);
+  const { type, view } = await pageEditor();
+  type(" more");
+
+  await user.click(screen.getByRole("button", { name: "Ada" }));
+  await user.click(await screen.findByRole("menuitem", { name: "Sign out" }));
+  await waitFor(() => expect(writes).toEqual(["Guide\n more"]));
+  expect(view.state.readOnly).toBe(true);
+  release?.();
+
+  expect(await screen.findByRole("heading", { name: "Sign in" })).toBeTruthy();
+  expect(server.sent.filter((line) => line.startsWith("END"))).toEqual(["END session-1"]);
+});
+
 test("signing out while the save is not answered ends the session after 1.5 seconds, before the logout", async () => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
   const sent: string[] = [];
@@ -402,12 +435,12 @@ test("an edit lost with nothing unsaved goes back to reading at once; its sessio
 /** Guide shown to Ada over server and its event stream, connected; notebooks is Lab's list, which the test changes. */
 async function connected(answers: Record<string, Answer> = {}) {
   const events = eventServer();
-  const lab = { notebooks: [{ ...notebookJSON, role: "admin" as const }] };
+  const lab = { workspaces: [workspaceJSON], notebooks: [{ ...notebookJSON, role: "admin" as const }] };
   const server = pageServer({
     answers: {
       ...answers,
       "GET /api/v0/events": events.answer,
-      "GET /api/v0/workspaces": () => json({ data: [workspaceJSON] }),
+      "GET /api/v0/workspaces": () => json({ data: lab.workspaces }),
       "GET /api/v0/workspaces/lab/notebooks": () => json({ data: lab.notebooks }),
     },
   });
@@ -465,6 +498,31 @@ test("a page deleted while this tab edits it with nothing unsaved is no page at 
   server.sessions.clear();
   deleted(events);
 
+  expect(await screen.findByRole("heading", { level: 1, name: "Page not found" })).toBeTruthy();
+});
+
+test("removed from the workspace while this tab edits a page of it unsaved, the page stays until the edit is left (M4–M5 Codex review R3)", async () => {
+  const { user, server, events, lab, type, view } = await connected();
+  type(" more");
+
+  lab.workspaces = [];
+  lab.notebooks = [];
+  server.nodes = [];
+  server.notebookGone = true;
+  server.sessions.clear();
+  act(() => events.last().send("reset", { reason: "access" }));
+  await waitFor(() => expect(events.streams).toHaveLength(2));
+  act(() => events.last().hello());
+
+  expect((await screen.findByRole("alert")).textContent).toContain("This page no longer exists");
+  expect(screen.getByRole("heading", { level: 1, name: "Guide" })).toBeTruthy();
+  expect(view.state.doc.toString()).toBe("Guide\n more");
+  await user.click(screen.getByRole("button", { name: "Back to reading" }));
+  await user.click(
+    within(await screen.findByRole("alertdialog", { name: "Leave without saving?" })).getByRole("button", {
+      name: "Leave",
+    })
+  );
   expect(await screen.findByRole("heading", { level: 1, name: "Page not found" })).toBeTruthy();
 });
 

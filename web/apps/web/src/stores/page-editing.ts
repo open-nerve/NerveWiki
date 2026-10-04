@@ -65,6 +65,9 @@ export class PageEditing {
   failure: unknown = undefined;
   conflict: Conflict | undefined = undefined;
   readonly pageId: string;
+  /** The notebook of the page, and its workspace: their shells stay while the edit is unsaved (M5/P4 design 3.9). */
+  readonly notebookId: string;
+  readonly workspaceId: string;
 
   private base = 0;
   private ended = false;
@@ -81,10 +84,12 @@ export class PageEditing {
   constructor(
     private readonly service: EditingService,
     readonly session: EditSession,
-    readonly notebookId: string,
+    notebook: { id: string; workspace_id: string },
     private readonly record?: EditRecord
   ) {
     this.pageId = session.pageId;
+    this.notebookId = notebook.id;
+    this.workspaceId = notebook.workspace_id;
     makeAutoObservable<
       this,
       | "service"
@@ -105,6 +110,7 @@ export class PageEditing {
         service: false,
         session: false,
         notebookId: false,
+        workspaceId: false,
         record: false,
         pageId: false,
         content: observableRef,

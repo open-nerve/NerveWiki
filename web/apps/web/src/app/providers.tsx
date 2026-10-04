@@ -8,6 +8,7 @@ import type { RootStore } from "../stores/root.store";
 import { DocumentSync } from "./document-sync";
 import { EventStream } from "./event-stream";
 import { onErrorRetry } from "./retry";
+import { SignOutElsewhere } from "./sign-out-elsewhere";
 
 // SWR drives the loading of the stores. SWR makes its cache when SWRConfig
 // mounts and keeps it for as long as it stays mounted: each generation of
@@ -31,6 +32,7 @@ export const AppProviders = observer(function AppProviders({
         <I18nProvider locale={store.preferences.locale}>
           <DocumentSync />
           <EventStream />
+          <SignOutElsewhere />
           {children}
         </I18nProvider>
       </SWRConfig>

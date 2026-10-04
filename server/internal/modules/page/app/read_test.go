@@ -92,6 +92,19 @@ func TestGetPageOfAPageNotSeen(t *testing.T) {
 	}
 }
 
+// A page deleted after its node was read, unlocked, before its content's
+// meta is: page.not_found, as if it was deleted before (M4–M5 Codex review
+// R4).
+func TestGetPageOfAPageDeletedWhileItIsRead(t *testing.T) {
+	f := newFixture()
+	f.grant(domain.ActionRead)
+	n := f.page("A", nil, 0)
+	delete(f.store.contents, n.ID)
+	if _, err := app.NewGetPage(f.notebooks, f.store, f.auth).Execute(f.asAlice(), n.ID); codeOf(err) != "page.not_found" {
+		t.Errorf("getPage = %v, want page.not_found", err)
+	}
+}
+
 // A page's reading view reads as the page does, without a transaction:
 // its node, its notebook's workspace, the decision, then its content and
 // version, parsed and rendered for this page.

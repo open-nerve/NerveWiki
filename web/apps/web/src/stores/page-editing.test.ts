@@ -35,7 +35,7 @@ function fakeService() {
     ),
   } satisfies EditingService;
   const record = new Set<PageEditing>();
-  const editing = new PageEditing(service, fake.session, "n1", record);
+  const editing = new PageEditing(service, fake.session, { id: "n1", workspace_id: "w1" }, record);
   return { ...fake, service, sent, answers, record, editing };
 }
 

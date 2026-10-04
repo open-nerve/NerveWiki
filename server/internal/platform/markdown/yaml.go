@@ -8,6 +8,7 @@ import (
 	"math/big"
 	"regexp"
 	"strconv"
+	"strings"
 
 	"go.yaml.in/yaml/v3"
 )
@@ -267,10 +268,16 @@ func resolve(s string) any {
 
 // integer is the integer written s, its digits in base: an int64, or past
 // its range the nearest float64, as a JavaScript number would hold it, or
-// past a float64's s itself, which JSON cannot hold.
+// past a float64's s itself, which JSON cannot hold. Digits past those of
+// the largest float64, its sign and leading zeros aside, are past it at
+// once: big.Int would take a time and memory of the square of their
+// number to tell (M4–M5 Codex review R5).
 func integer(s, digits string, base int) any {
 	if v, err := strconv.ParseInt(digits, base, 64); err == nil {
 		return v
+	}
+	if len(strings.TrimLeft(strings.TrimLeft(digits, "+-"), "0")) > floatDigits(base) {
+		return s
 	}
 	b, _ := new(big.Int).SetString(digits, base)
 	f, _ := new(big.Float).SetInt(b).Float64()
@@ -278,4 +285,16 @@ func integer(s, digits string, base int) any {
 		return s
 	}
 	return f
+}
+
+// floatDigits is how many digits in base the largest float64, about
+// 1.8e308 or 2^1024, is written with: an integer of more is past it.
+func floatDigits(base int) int {
+	switch base {
+	case 8:
+		return 342
+	case 16:
+		return 256
+	}
+	return 309
 }
