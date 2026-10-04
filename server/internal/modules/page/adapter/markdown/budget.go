@@ -39,5 +39,18 @@ func (b *Budget) Take(ctx context.Context, n int) (app.BudgetHold, error) {
 	case err != nil:
 		return nil, err
 	}
-	return hold, nil
+	return budgetHold{hold}, nil
 }
+
+// budgetHold implements app.BudgetHold with the platform's Hold: the facts
+// it keeps are the platform's, which app.Facts are.
+type budgetHold struct {
+	hold *markdown.Hold
+}
+
+func (h budgetHold) KeepFacts(facts app.Facts) {
+	f, _ := facts.(markdown.Facts)
+	h.hold.KeepFacts(f)
+}
+
+func (h budgetHold) Release() { h.hold.Release() }

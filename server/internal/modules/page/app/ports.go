@@ -292,9 +292,10 @@ type ParseBudget interface {
 }
 
 // BudgetHold is the bytes of the budget a content holds: KeepFacts gives
-// back what its parse held beyond what its facts hold, Release all of it.
+// back what its parse held beyond what facts, its facts, hold; Release all
+// of it.
 type BudgetHold interface {
-	KeepFacts()
+	KeepFacts(facts Facts)
 	Release()
 }
 

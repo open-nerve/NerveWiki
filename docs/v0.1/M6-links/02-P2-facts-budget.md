@@ -30,7 +30,7 @@
 做（总设计第 7 节 P2、4.7）：
 
 - 平台：`markdown.Facts`（frontmatter 与各扩展的提取结果，不含语法树与原文）；`markdown.Budget`（从 page 的适配器移来）；`markdown.Page.Revision`。
-- page：写入路径只带 `Facts`，提取之后只留下 `Facts` 那一份预算（正文字节的十分之一），到单元结束；`PageRef.Revision`；预算由组合根交给模块。
+- page：写入路径只带 `Facts`，提取之后只留下 `Facts` 那一份预算（约为正文字节的十分之一），到单元结束；`PageRef.Revision`；预算由组合根交给模块。
 - 组合根：建一个预算交给 page（P3 起也交给 linking）。
 - 总体设计 4.3、13.1 第 19 条、13.3 第 3 条与风险表随之修订；M12 移交第 3 项随之改写（缓解，没有关闭）。
 
@@ -47,12 +47,12 @@
 | 文件 | 内容 |
 |---|---|
 | `platform/markdown/facts.go`（新） | `Facts`、`Document.Facts()` |
-| `platform/markdown/markdowntest/facts.go`（新）、`costs.go` | `CheckFacts`：树不随 `Facts` 存活；`CheckCosts` 加 `Facts` 留下的堆不超过 `FactsRatio` 倍 |
-| `platform/markdown/budget.go`（新，移自 `page/adapter/markdown/budget.go`） | `Budget`、`NewBudget`、`Take` 答 `Hold`（`KeepFacts`、`Release`）、`ErrBusy`、`FactsRatio` |
+| `platform/markdown/markdowntest/facts.go`（新）、`costs.go` | `CheckFacts`：树不随 `Facts` 存活；`CheckCosts` 加 `Facts` 留下的堆不超过 `Facts.Limit` |
+| `platform/markdown/budget.go`（新，移自 `page/adapter/markdown/budget.go`） | `Budget`、`NewBudget`、`Take` 答 `Hold`（`KeepFacts(facts)`、`Release`）、`ErrBusy`、`FactsRatio`；`facts.go` 的 `Facts.Limit` |
 | `platform/markdown/markdown.go` | `Page.Revision`；`Extension.Extract` 的说明加"结果不得留着语法树"；包说明加 `golang.org/x/sync` |
 | `page/adapter/markdown/markdown.go` | `Facts(content)`、`Render(ctx, content, page)`、`Tasks(facts)` |
 | `page/adapter/markdown/budget.go` | 只剩把平台的预算接到 `app.ParseBudget`：`ErrBusy` 换成 `shared.ServerBusy`（`Retry-After` 1 秒） |
-| `page/app/ports.go`、`content.go`、`create_page.go`、`put_page_content.go`、`toggle_task.go`、`unit_*.go`、`get_page_view.go` | `Parsed` 改名 `Facts`；`ContentParser` 不再交出 `release`；`PageRef.Revision` |
+| `page/app/ports.go`、`content.go`、`create_page.go`、`put_page_content.go`、`toggle_task.go`、`unit_*.go`、`get_page_view.go` | `Parsed` 改名 `Facts`；`ContentParser` 交出 `Facts` 与放回 `Facts` 那一份的 `release`；`PageRef.Revision` |
 | `page/domain/change.go` | `Change.Parsed` 改名 `Facts` |
 | `page/module.go` | `Deps.Budget *markdown.Budget` 代替 `ParseBudgetBytes`、`ParseMaxWait` |
 | `bootstrap/deps.go`、`wire.go` | `parsing`：建一个 Markdown 与一个预算（配置的大小与等待），预算交给 page |
@@ -75,7 +75,7 @@ func (f Facts) Extracted(name string) any
 
 - `Document` 的 `Frontmatter()`、`Extracted()` 照旧（阅读视图与测试用）。
 - `Extension.Extract` 的约定加一句：它的结果比语法树活得久，不得留着树的节点（节点互相指着，留一个就留住整棵树）或 `Tree.Content`。tasks 与 obsidian 今天都满足：位置是整数，字符串是复制出来的。
-- `Facts` 的内存与正文同阶，但常数不小（审查 M1 实测）：普通的正文约 1.1 倍；满页的 `[[a]]` 约 19–24 倍（每条链接一个约 96 字节的 `obsidian.Link`），`[a](b)` 约 15 倍，`#a` 约 10 倍，转义的引号字符串约 10 倍（标量表每个字节一个位置）。上限 `FactsRatio` 定为 30 倍，由 `CheckCosts` 对每个病态输入核对。
+- `Facts` 的内存与正文同阶，但常数不小（审查 M1、修复核对 M-1 实测）：普通的正文约 1.1 倍；满页的 `[[a]]` 约 19–24 倍（每条链接一个约 96 字节的 `obsidian.Link`），`[a](b)` 约 15 倍，`#a` 约 10–13 倍，只有一个转义的引号字符串约 10 倍（标量表每个字节一个位置）；frontmatter 的每个值另有约 130–300 字节（属性、标量、属性链接），在 YAML 的值数上限（一万）之下，很密的小 frontmatter 可达正文的 66 倍。所以上限 `Facts.Limit(n)` 是 `FactsRatio`（30）倍正文，加 frontmatter 每个值 400 字节，由 `CheckCosts` 对每个病态输入在 512 KB 与 16 KB 两种大小核对（实测至多为上限的 0.76）。
 
 ### 3.3 平台：`Budget`
 
@@ -92,10 +92,10 @@ func (f Facts) Extracted(name string) any
   - `Facts(content string) Facts`：解析、提取，丢掉语法树；
   - `Render(ctx, content string, page PageRef) (string, error)`：阅读视图自己解析再渲染，语法树只活在这一次调用里；
   - `Tasks(facts Facts) []Task`。
-- **`Facts` 仍在预算之内，只占一小份**（审查 M1）：解析约占正文的 300 倍，`Facts` 至多 30 倍，所以解析完之后只留正文字节的十分之一（`FactsRatio / 300`，向上取整）。
-  - 平台的 `Budget.Take` 答 `*Hold`：`KeepFacts()` 放回解析多占的部分，`Release()` 放回全部；page 的端口 `ParseBudget.Take` 答 `BudgetHold`（同样两个方法）。
+- **`Facts` 仍在预算之内，只占一小份**（审查 M1、修复核对 M-1）：解析约占正文的 300 倍，`Facts` 至多 `Facts.Limit`，所以解析完之后只留 `Limit` 的三百分之一（向上取整）：正文字节的十分之一，加 frontmatter 每个值约 1.3 字节。
+  - 平台的 `Budget.Take` 答 `*Hold`：`KeepFacts(facts)` 放回解析多占的部分，`Release()` 放回全部；page 的端口 `ParseBudget.Take` 答 `BudgetHold`（同样两个方法，`facts` 是不透明的 `app.Facts`，适配器转换）。
   - `ContentParser.Parse`、`Decided` 答 `(Facts, release, error)`：取预算、`Facts`、`KeepFacts`，用例 `defer release()` 到单元结束；解析 panic 时全部放回。勾选任务项的第一次解析只为找任务项，用完即放回。
-- 于是写入在单元里等锁时只占十分之一：一页 5 MiB 的写等锁时占 512 KiB，默认 8 MiB 的预算要十几个这样的写同时等锁才会让阅读视图 503。M4/P4 第 7 节与[M12 移交](../M12-release/handoffs/M4-performance.md)第 3 项的那条风险随之缓解，移交第 3 项改写为剩下的部分。
+- 于是写入在单元里等锁时只占约十分之一：一页 5 MiB 的写等锁时占约 512 KiB。默认 8 MiB 的预算里，一个 5 MiB 页面的阅读视图要 5 MiB 空闲，7 个这样的写同时等锁就会让它 503；小页面的阅读视图要十几个。M4/P4 第 7 节与[M12 移交](../M12-release/handoffs/M4-performance.md)第 3 项的那条风险随之缓解，移交第 3 项改写为剩下的部分。
 - `Parsed` 改名 `Facts`（`app.Facts`、`ContentWrite.Facts`、`PageDraft.Facts`、`domain.Change.Facts`），在 page 里仍不透明。P3 的观察者经组合根拿到的是 `markdown.Facts`。
 - 观察者调用之后不得留着 `Facts` 的约定（总体设计 13.3 第 3 条）照旧：单元结束时预算放回，留着的 `Facts` 就不在预算之内了。
 
@@ -119,9 +119,9 @@ func (f Facts) Extracted(name string) any
 
 - **平台**：
   - 树不随 `Facts` 存活（`markdowntest.CheckFacts`）：一个探针扩展在 `Extract` 里弱引用语法树的根（`weak.Pointer`），解析带属性链接的 frontmatter 加普通正文（以及调用方给的正文）、只留 `Facts`，`runtime.GC()` 之后根已被回收；Markdown 本身保持存活（扩展的状态留着树也算）；某个扩展从这些正文里什么都没取到时检查失败（否则看不到它）。平台不带扩展与带测试扩展各跑一次，obsidian、tasks 各在自己的包里跑一次，组合根以应用注册的扩展跑一次；
-  - `Facts` 的大小：`CheckCosts` 对每个病态输入（加了满页的 `[[a]]`、`[a](b)`、`#a` 与转义的引号字符串）量 `Facts` 留下的堆，不超过 `FactsRatio` 倍正文；
+  - `Facts` 的大小：`CheckCosts` 对每个病态输入（加了满页的 `[[a]]`、`[a](b)`、`#a`、转义的引号字符串、很密的 frontmatter 列表）在 512 KB 与 16 KB 量 `Facts` 留下的堆（三次中最少的，正文保持存活），不超过 `Facts.Limit`；`Limit` 数 frontmatter 的值；
   - `Facts` 与 `Document` 的 frontmatter、提取结果相同；
-  - 预算的测试随代码移来（取、放、等待、饱和、`ErrBusy`、零与负的拒绝）；`KeepFacts` 留下十分之一（向上取整），比预算大的正文至多留下整个预算。
+  - 预算的测试随代码移来（取、放、等待、饱和、`ErrBusy`、零与负的拒绝）；`KeepFacts` 留下 `Limit` 的三百分之一（向上取整），带 frontmatter 时多留它的值的那一份，比预算大的正文至多留下整个预算，负的大小什么都不取、不留、不放回。
 - **page**：
   - 调用的次序：`Take n`、`Facts`、`KeepFacts` 在单元之前，`Release` 在最后（写、建、勾选；勾选的第一次解析用完即放回）；
   - 预算取不到时 503 在解析与单元之前；解析 panic 时放回；只有写者让服务端解析（照旧）；
@@ -135,7 +135,7 @@ func (f Facts) Extracted(name string) any
 ## 6. 完成标准
 
 - 写入路径里没有语法树：`Change` 带的是 `Facts`，平台的测试证明树不随它存活。
-- 预算在提取之后只留 `Facts` 那一份，由组合根建一个、交给 page；`Facts` 至多 `FactsRatio` 倍正文，由 `CheckCosts` 核对。
+- 预算在提取之后只留 `Facts` 那一份，由组合根建一个、交给 page；`Facts` 至多 `Facts.Limit`，由 `CheckCosts` 核对。
 - `markdown.Page`、`app.PageRef` 带 `Revision`。
 - M4、M5 的写入路径测试照旧通过（只改调用次序与名称）。
 - 总体设计与 M12 移交的修订落档。

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	markdownadapter "github.com/open-nerve/NerveWiki/server/internal/modules/page/adapter/markdown"
+	"github.com/open-nerve/NerveWiki/server/internal/modules/page/app"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown"
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
@@ -37,6 +38,41 @@ func TestTheAdapterAnswersABusyBudget(t *testing.T) {
 		t.Errorf("Take after the release = %v", err)
 	} else {
 		all.Release()
+	}
+}
+
+// A hold the adapter gives keeps the share of the facts it is handed, the
+// platform's: with its frontmatter's values; facts of elsewhere keep the
+// content's share alone.
+func TestTheAdapterKeepsTheFactsShare(t *testing.T) {
+	m, err := markdown.New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 21 bytes and four values keep 8 bytes; 21 bytes alone keep 3.
+	content := "---\na: [x, x, x]\n---\n"
+	for _, tt := range []struct {
+		name  string
+		facts app.Facts
+		kept  int
+	}{{"the platform's facts", m.Parse([]byte(content)).Facts(), 8}, {"facts of elsewhere", content, 3}} {
+		t.Run(tt.name, func(t *testing.T) {
+			b := markdown.NewBudget(100, 20*time.Millisecond, slog.New(slog.DiscardHandler))
+			hold, err := markdownadapter.NewBudget(b).Take(context.Background(), len(content))
+			if err != nil {
+				t.Fatal(err)
+			}
+			hold.KeepFacts(tt.facts)
+			rest, err := b.Take(context.Background(), 100-tt.kept)
+			if err != nil {
+				t.Fatalf("the budget beside the facts' %d bytes: %v", tt.kept, err)
+			}
+			if _, err := b.Take(context.Background(), 1); !errors.Is(err, markdown.ErrBusy) {
+				t.Errorf("a byte more = %v, want busy: the facts keep %d bytes", err, tt.kept)
+			}
+			rest.Release()
+			hold.Release()
+		})
 	}
 }
 

@@ -58,8 +58,9 @@ func TestABudgetHoldsWhatIsTaken(t *testing.T) {
 }
 
 // A content's facts keep a tenth of its bytes once its parse is done
-// (FactsRatio of parseRatio, rounded up), until the release; a content
-// larger than the budget keeps no more than all of it.
+// (FactsRatio of parseRatio, rounded up), until the release, and a share for
+// each value of its frontmatter; a content larger than the budget keeps no
+// more than all of it; a negative size holds and keeps nothing.
 func TestAHoldKeepsItsFactsShare(t *testing.T) {
 	b := markdown.NewBudget(100, 20*time.Millisecond, slog.New(slog.DiscardHandler))
 	ctx := context.Background()
@@ -67,8 +68,8 @@ func TestAHoldKeepsItsFactsShare(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h.KeepFacts()
-	h.KeepFacts() // keeping again gives nothing more back
+	h.KeepFacts(markdown.Facts{})
+	h.KeepFacts(markdown.Facts{}) // keeping again gives nothing more back
 	rest, err := b.Take(ctx, 90)
 	if err != nil {
 		t.Fatalf("the budget beside a kept tenth of 91 bytes: %v", err)
@@ -87,11 +88,48 @@ func TestAHoldKeepsItsFactsShare(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	large.KeepFacts()
+	large.KeepFacts(markdown.Facts{})
 	if _, err := b.Take(ctx, 1); !errors.Is(err, markdown.ErrBusy) {
 		t.Errorf("a byte beside the facts of a content ten times the budget = %v, want busy", err)
 	}
 	large.Release()
+
+	m, err := markdown.New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 21 bytes and four values: 30 times 21 and 400 times four, 2,230
+	// bytes of facts, keep 8 bytes of the budget.
+	content := "---\na: [x, x, x]\n---\n"
+	fm, err := b.Take(ctx, len(content))
+	if err != nil {
+		t.Fatal(err)
+	}
+	fm.KeepFacts(m.Parse([]byte(content)).Facts())
+	if rest, err := b.Take(ctx, 92); err != nil {
+		t.Errorf("the budget beside the facts of a frontmatter of four values: %v", err)
+	} else {
+		rest.Release()
+	}
+	if _, err := b.Take(ctx, 93); !errors.Is(err, markdown.ErrBusy) {
+		t.Errorf("a byte more = %v, want busy: the facts keep 8 bytes", err)
+	}
+	fm.Release()
+
+	all, err := b.Take(ctx, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	negative, err := b.Take(ctx, -1000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	negative.KeepFacts(markdown.Facts{})
+	negative.Release()
+	if _, err := b.Take(ctx, 1); !errors.Is(err, markdown.ErrBusy) {
+		t.Errorf("a byte once a negative size kept and released = %v, want busy: it gave back what it never held", err)
+	}
+	all.Release()
 }
 
 // A take that does not get its bytes within the wait is busy, and logs it;

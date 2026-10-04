@@ -236,6 +236,13 @@ func Pathological() []Input {
 		{"a frontmatter string of escapes", func(n int) string {
 			return "---\na: \"" + repeat("\\t")(n) + "\"\n---\nbody\n"
 		}},
+		{"a frontmatter string of one escape", func(n int) string {
+			return "---\na: \"\\t" + strings.Repeat("a", n) + "\"\n---\nbody\n"
+		}},
+		{"a frontmatter list of plain strings", func(n int) string { return "---\na: [" + repeat("x,")(n) + "]\n---\nbody\n" }},
+		{"a frontmatter list of property links", func(n int) string {
+			return "---\na: [" + repeat("'[[a]]',")(n) + "]\n---\nbody\n"
+		}},
 	}
 }
 

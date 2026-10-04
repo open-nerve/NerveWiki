@@ -320,12 +320,19 @@ func TestAWriteWaitingForItsLockKeepsItsFactsShare(t *testing.T) {
 		status      int
 		code, retry string
 	}{{64 << 10, http.StatusOK, "", ""}, {640 << 10, http.StatusServiceUnavailable, "server_busy", "1"}} {
+		var took time.Duration
 		view := writeWaitingForItsLock(t, tm, a, strings.Repeat("a", tt.size), i+1, func() answer {
+			start := time.Now()
+			defer func() { took = time.Since(start) }()
 			return tm.sender(t, request("bob", http.MethodGet, "/api/v0/pages/"+b+"/view", ""))()
 		})
 		if !view.is(tt.status, tt.code) || view.res.Header.Get("Retry-After") != tt.retry {
 			t.Errorf("B's reading view while A's write of %d KiB waits for its lock = %d %s, Retry-After %q; want %d %s, %q",
 				tt.size>>10, view.status, view.code, view.res.Header.Get("Retry-After"), tt.status, tt.code, tt.retry)
+		}
+		// The configured wait, not another: the 503 comes once it has passed.
+		if tt.code != "" && (took < 300*time.Millisecond || took > time.Second) {
+			t.Errorf("B's reading view answered %s after %s, want after the configured wait of 300ms", tt.code, took)
 		}
 	}
 	tm.send(t, request("bob", http.MethodGet, "/api/v0/pages/"+b+"/view", ""), http.StatusOK)

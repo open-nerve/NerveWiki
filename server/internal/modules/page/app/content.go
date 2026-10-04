@@ -54,7 +54,7 @@ func (c *ContentParser) Decided(ctx context.Context, content string) (Facts, fun
 		}
 	}()
 	facts := c.markdown.Facts(content)
-	hold.KeepFacts()
+	hold.KeepFacts(facts)
 	taken = true
 	return facts, hold.Release, nil
 }

@@ -295,7 +295,7 @@ type fakeHold struct {
 	done   bool
 }
 
-func (h *fakeHold) KeepFacts() {
+func (h *fakeHold) KeepFacts(app.Facts) {
 	h.budget.record(context.Background(), fmt.Sprintf("KeepFacts %d", h.n))
 }
 

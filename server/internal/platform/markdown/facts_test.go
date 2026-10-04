@@ -24,6 +24,30 @@ func TestADocumentsFactsAreWhatItFound(t *testing.T) {
 	}
 }
 
+// What a frontmatter's facts may keep counts each of its values: each
+// property, each item of a list and each nested property; beside it,
+// FactsRatio times the content.
+func TestTheFactsLimitCountsTheFrontmattersValues(t *testing.T) {
+	m, err := markdown.New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tt := range []struct {
+		content string
+		values  int
+	}{
+		{"body\n", 0},
+		{"---\na: 1\n---\n", 1},
+		{"---\na: [x, [y, z]]\nb: {c: 1, d: [e]}\n---\n", 9},
+		{"---\n- not a mapping\n---\n", 0},
+	} {
+		f := m.Parse([]byte(tt.content)).Facts()
+		if got, want := f.Limit(100), markdown.FactsRatio*100+400*tt.values; got != want {
+			t.Errorf("%q: Limit(100) = %d, want %d: %d values", tt.content, got, want, tt.values)
+		}
+	}
+}
+
 // The facts of a parse keep none of its tree, with an extension or none.
 func TestAParsesFactsOutliveItsTree(t *testing.T) {
 	markdowntest.CheckFacts(t, nil)
