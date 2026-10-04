@@ -56,10 +56,18 @@ func ids(n int) []uuid.UUID {
 // wrote none, null past MaxPages.
 func TestAPagesEventSaysWhatTheUnitWrote(t *testing.T) {
 	p1, p2, p3 := uuid.NewV7(), uuid.NewV7(), uuid.NewV7()
-	many := make([]app.PageChange, domain.MaxPages+1)
-	for i := range many {
-		many[i] = app.PageChange{PageID: uuid.NewV7(), Revision: 2}
+	// MaxPages contents are listed, one more are not (M4–M5 Codex review R7).
+	contents := func(n int) ([]app.PageChange, []domain.PageRevision) {
+		changes, listed := make([]app.PageChange, n), make([]domain.PageRevision, n)
+		for i := range changes {
+			changes[i] = app.PageChange{PageID: uuid.NewV7(), Revision: 2}
+			listed[i] = domain.PageRevision{ID: changes[i].PageID, Revision: 2}
+		}
+		return changes, listed
 	}
+	most, mostListed := contents(domain.MaxPages)
+	fewer, fewerListed := contents(domain.MaxPages - 1)
+	many, _ := contents(domain.MaxPages + 1)
 	for _, tt := range []struct {
 		name    string
 		changes []app.PageChange
@@ -70,6 +78,8 @@ func TestAPagesEventSaysWhatTheUnitWrote(t *testing.T) {
 			true, []domain.PageRevision{{ID: p2, Revision: 3}, {ID: p3, Revision: 4}}},
 		{"a content alone", []app.PageChange{{PageID: p2, Revision: 3}}, false, []domain.PageRevision{{ID: p2, Revision: 3}}},
 		{"the tree alone", []app.PageChange{{PageID: p1, Tree: true}}, true, []domain.PageRevision{}},
+		{"as many contents as it lists", most, false, mostListed},
+		{"one content fewer", fewer, false, fewerListed},
 		{"more contents than it lists", many, false, nil},
 	} {
 		t.Run(tt.name, func(t *testing.T) {

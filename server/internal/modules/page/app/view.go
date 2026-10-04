@@ -36,7 +36,9 @@ func viewOf(ctx context.Context, nodes Nodes, n domain.Node) (PageView, error) {
 	}
 	meta, err := nodes.ContentMeta(ctx, n.ID)
 	if err != nil {
-		return PageView{}, err
+		// Unlocked, the page may be deleted since its node was read: it is
+		// as if it was then (M4–M5 Codex review R4).
+		return PageView{}, found(err, domain.ErrNotFound)
 	}
 	return PageView{Node: n, Ancestors: ancestors, Content: meta}, nil
 }

@@ -2,6 +2,7 @@ import { expect, test, vi } from "vitest";
 
 import type { EventDeps } from "../events/deps";
 import { EventHub } from "../events/hub";
+import { FakeChannels } from "../events/testing/fake-channels";
 import { FakePage } from "../events/testing/fake-page";
 import { SharedStorage } from "../session/testing/fake-browser";
 import { SessionChangedError } from "../session/token-manager";
@@ -196,7 +197,7 @@ test("an edit's session ends as the page is left, with the login's token while i
     await base.session.start();
     const page = new FakePage();
     const store = new RootStore(withEvents(base, page), "login-0");
-    const editing = store.editPage("n1", "p1");
+    const editing = store.editPage({ id: "n1", workspace_id: "w1" }, "p1");
     expect(await editing?.begin(false)).toEqual({ opened: true });
     expect([...store.edits]).toEqual([editing]);
 
@@ -209,7 +210,7 @@ test("an edit's session ends as the page is left, with the login's token while i
     sent.length = 0;
     page.fire("pagehide");
     expect(sent).toEqual([]);
-    expect(new RootStore(base, undefined).editPage("n1", "p1")).toBeUndefined();
+    expect(new RootStore(base, undefined).editPage({ id: "n1", workspace_id: "w1" }, "p1")).toBeUndefined();
   } finally {
     vi.useRealTimers();
   }
@@ -234,18 +235,43 @@ async function editingP1(ends: boolean) {
   }, storedSession("login-0"));
   await base.session.start();
   const store = new RootStore(withEvents(base, new FakePage()), "login-0");
-  await store.editPage("n1", "p1")?.begin(false);
+  await store.editPage({ id: "n1", workspace_id: "w1" }, "p1")?.begin(false);
   // The content, read once the lock is the edit's.
   await vi.advanceTimersByTimeAsync(0);
   sent.length = 0;
   return { store, sent };
 }
 
+test("unsavedEdit tells an edit with changes not saved, by its page, its notebook and its workspace", async () => {
+  vi.useFakeTimers();
+  try {
+    const { store } = await editingP1(true);
+    const [editing] = store.edits;
+    const asked = [
+      {},
+      { pageId: "p1" },
+      { notebookId: "n1" },
+      { workspaceId: "w1" },
+      { pageId: "p2" },
+      { notebookId: "n2" },
+    ];
+    expect(asked.map((edit) => store.unsavedEdit(edit))).toEqual([false, false, false, false, false, false]);
+    editing?.changed(1);
+    expect(asked.map((edit) => store.unsavedEdit(edit))).toEqual([true, true, true, true, false, false]);
+    expect(store.unsavedEdit({ workspaceId: "w2" })).toBe(false);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
 test("signing out ends the generation's edits first, waiting for their ends 2 seconds at most", async () => {
   vi.useFakeTimers();
   try {
     const answered = await editingP1(true);
-    await answered.store.auth.signOut();
+    // The other tabs have their time to say they have edits (stores/edit-closing.ts): none does.
+    const signedOut = answered.store.auth.signOut();
+    await vi.advanceTimersByTimeAsync(100);
+    await signedOut;
     expect(answered.sent).toEqual(["DELETE /api/v0/edit-sessions/s1", "POST /api/v0/auth/logout"]);
     expect(answered.store.edits.size).toBe(0);
 
@@ -281,20 +307,83 @@ test("signing out while an edit's session opens ends it as it opens, before the 
     }, storedSession("login-0"));
     await base.session.start();
     const store = new RootStore(withEvents(base, new FakePage()), "login-0");
-    const beginning = store.editPage("n1", "p1")?.begin(false);
+    const beginning = store.editPage({ id: "n1", workspace_id: "w1" }, "p1")?.begin(false);
     await vi.advanceTimersByTimeAsync(0);
 
     const signingOut = store.auth.signOut();
     await vi.advanceTimersByTimeAsync(0);
     expect(sent).toEqual(["POST /api/v0/pages/p1/edit-sessions"]);
     open?.();
+    const refused = expect(beginning).rejects.toThrow("The edit has ended.");
+    await vi.advanceTimersByTimeAsync(100);
     await signingOut;
-    await expect(beginning).rejects.toThrow("The edit has ended.");
+    await refused;
     expect(sent).toEqual([
       "POST /api/v0/pages/p1/edit-sessions",
       "DELETE /api/v0/edit-sessions/s1",
       "POST /api/v0/auth/logout",
     ]);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("signing out in one tab saves and ends another tab's edit of the login before the logout (M4–M5 Codex review R2)", async () => {
+  vi.useFakeTimers();
+  try {
+    const sent: string[] = [];
+    const base = testApp((request) => {
+      const { pathname } = new URL(request.url);
+      if (pathname === "/api/v0/auth/refresh") {
+        return json(tokensJSON);
+      }
+      sent.push(`${request.method} ${pathname}`);
+      if (pathname === "/api/v0/auth/logout" || request.method === "DELETE") {
+        return new Response(null, { status: 204 });
+      }
+      if (request.method === "GET") {
+        return json({ content: "Saved.\n", revision: 1 });
+      }
+      if (request.method === "PUT") {
+        // A's save outlasts the window for the answers: the sign-out waits for it to be done, not just begun.
+        return new Promise<Response>((resolve) => setTimeout(() => resolve(json({ revision: 2 })), 500));
+      }
+      return json({ id: "s1", page_id: "p1", expires_at: "2026-10-03T08:02:00Z" }, 201);
+    }, storedSession("login-0"));
+    await base.session.start();
+    const channels = new FakeChannels();
+    const tabOf = (tabId: string) => {
+      const storage = new SharedStorage().tab(tabId);
+      const deps: EventDeps = {
+        locks: undefined,
+        storage,
+        onStorage: storage.onStorage,
+        channel: (name) => channels.port(name),
+        page: new FakePage(),
+        now: () => Date.now(),
+        tabId,
+      };
+      return new RootStore(new AppStores(base.preferences, base.session, deps), "login-0");
+    };
+    const [a, b] = [tabOf("tab-a"), tabOf("tab-b")];
+    const answering = a.answerSignOuts();
+    const editing = a.editPage({ id: "n1", workspace_id: "w1" }, "p1");
+    await editing?.begin(false);
+    await vi.advanceTimersByTimeAsync(0);
+    editing?.changed(1);
+    editing?.savesThrough(() => editing.save("Saved.\nTyped.\n", 1));
+    sent.length = 0;
+
+    const signingOut = b.auth.signOut();
+    await vi.advanceTimersByTimeAsync(500);
+    await signingOut;
+    expect(sent).toEqual([
+      "PUT /api/v0/pages/p1/content",
+      "DELETE /api/v0/edit-sessions/s1",
+      "POST /api/v0/auth/logout",
+    ]);
+    expect(a.edits.size).toBe(0);
+    answering();
   } finally {
     vi.useRealTimers();
   }

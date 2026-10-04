@@ -65,6 +65,9 @@ export class PageEditing {
   failure: unknown = undefined;
   conflict: Conflict | undefined = undefined;
   readonly pageId: string;
+  /** The notebook of the page, and its workspace: their shells stay while the edit is unsaved (M5/P4 design 3.9). */
+  readonly notebookId: string;
+  readonly workspaceId: string;
 
   private base = 0;
   private ended = false;
@@ -81,10 +84,12 @@ export class PageEditing {
   constructor(
     private readonly service: EditingService,
     readonly session: EditSession,
-    readonly notebookId: string,
+    notebook: { id: string; workspace_id: string },
     private readonly record?: EditRecord
   ) {
     this.pageId = session.pageId;
+    this.notebookId = notebook.id;
+    this.workspaceId = notebook.workspace_id;
     makeAutoObservable<
       this,
       | "service"
@@ -105,6 +110,7 @@ export class PageEditing {
         service: false,
         session: false,
         notebookId: false,
+        workspaceId: false,
         record: false,
         pageId: false,
         content: observableRef,
@@ -262,11 +268,13 @@ export class PageEditing {
   /**
    * close saves what is unsaved through the shown editor, then ends the
    * edit: the sign-out's end, which does not drop what was typed since the
-   * last save. A save that fails, or is not answered within ms, ends it
-   * all the same: the end goes out while the sign-out's token is valid.
+   * last save. The editor's save holds the content first, with nothing
+   * unsaved as well: what is typed after it would not be saved. A save
+   * that fails, or is not answered within ms, ends it all the same: the end
+   * goes out while the sign-out's token is valid.
    */
   async close(within: number): Promise<void> {
-    if (!this.ended && this.unsaved && this.saveShown !== undefined) {
+    if (!this.ended && this.saveShown !== undefined) {
       let timer: ReturnType<typeof setTimeout> | undefined;
       const late = new Promise<void>((resolve) => (timer = setTimeout(resolve, within)));
       await Promise.race([this.saveShown().catch(() => false), late]);

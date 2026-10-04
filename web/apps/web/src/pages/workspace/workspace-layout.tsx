@@ -1,5 +1,5 @@
 import { observer } from "mobx-react-lite";
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, use, useContext, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Navigate, Outlet, useParams } from "react-router";
 import useSWR from "swr";
@@ -16,14 +16,16 @@ import { NotFoundPage } from "../not-found";
 import { NotebookNav } from "./notebook-nav";
 import { WorkspaceSwitcher } from "./workspace-switcher";
 
+/** The workspace WorkspaceLayout shows. */
+const WorkspaceContext = createContext<Workspace | undefined>(undefined);
+
 /**
  * useWorkspace is the workspace of the page's address, as the account's list
- * holds it, renamed too: only below WorkspaceLayout, which shows its pages
- * once it has found it.
+ * holds it, renamed too, or as it was last found while it stays: only below
+ * WorkspaceLayout, which shows its pages once it has found it.
  */
 export function useWorkspace(): Workspace {
-  const { slug = "" } = useParams();
-  const workspace = useWorkspaces().bySlug(slug);
+  const workspace = use(WorkspaceContext);
   if (workspace === undefined) {
     throw new Error("useWorkspace is used outside WorkspaceLayout");
   }
@@ -58,20 +60,36 @@ const sections: readonly { path: string; label: Extract<MessageKey, `workspace.$
  * It finds the workspace of the address in the account's list: a slug the
  * list does not have is no page of the app's, whether the account was
  * never a member or the workspace is gone; one this tab has just deleted
- * or left goes to the landing instead, arrived at. A workspace found is
- * the one this device showed last. Its pages start anew with each
- * workspace: what a form holds of one is never sent to another.
+ * or left goes to the landing instead, arrived at. One gone otherwise
+ * while this tab edits a page of it with changes not saved, the account
+ * removed from it or the workspace deleted, stays as it was last found
+ * until the edit ends, as the notebook's and the page's shells do (M5/P4
+ * design 3.9; M4–M5 Codex review R3), by its id: another made since by
+ * its name waits for the edit too. A workspace found is the one this
+ * device showed last. Its pages start anew with each workspace: what a
+ * form holds of one is never sent to another.
  */
 export const WorkspaceLayout = observer(function WorkspaceLayout() {
   const { slug = "" } = useParams();
   const workspaces = useWorkspaces();
-  const { preferences } = useStore();
+  const store = useStore();
+  const { preferences } = store;
   const t = useT();
   const column = useShellColumn();
   const [notebookColumn, setNotebookColumn] = useState<HTMLElement | null>(null);
   const { error, mutate } = useSWR("workspaces", () => workspaces.load());
-  const workspace = workspaces.bySlug(slug);
-  const found = workspace !== undefined;
+  const [last, setLast] = useState<Workspace | undefined>(undefined);
+  const listed = workspaces.bySlug(slug);
+  const kept =
+    last?.slug === slug &&
+    last.id !== listed?.id &&
+    !workspaces.wasRemoved(slug) &&
+    store.unsavedEdit({ workspaceId: last.id });
+  const workspace = kept ? last : listed;
+  if (workspace !== undefined && workspace !== last) {
+    setLast(workspace);
+  }
+  const found = listed !== undefined;
 
   useEffect(() => {
     if (found) {
@@ -102,11 +120,11 @@ export const WorkspaceLayout = observer(function WorkspaceLayout() {
     </div>
   );
   return (
-    <>
+    <WorkspaceContext value={workspace}>
       {column !== null && createPortal(left, column)}
       <NotebookColumn value={notebookColumn}>
         <Outlet key={workspace.id} />
       </NotebookColumn>
-    </>
+    </WorkspaceContext>
   );
 });

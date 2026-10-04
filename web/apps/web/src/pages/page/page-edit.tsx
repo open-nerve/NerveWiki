@@ -251,14 +251,29 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
     }
   }
 
+  /**
+   * signingOut saves what is unsaved for the sign-out, quietly: the content is
+   * held as it is, as when the edit is left, since what is typed meanwhile
+   * would not be saved before the edit ends (M4–M5 Codex review R1).
+   */
+  function signingOut(): Promise<boolean> {
+    editor.current?.hold(true);
+    return save(true);
+  }
+
   // The keys of the latest render: save and leave read its editing; an edit lost goes back to reading.
-  const keys = useRef({ save, leave, leaveIdle });
+  const keys = useRef({ save, leave, leaveIdle, signingOut });
   useEffect(() => {
-    keys.current = { save, leave: lost === undefined ? leave : () => Promise.resolve(backToReading()), leaveIdle };
+    keys.current = {
+      save,
+      leave: lost === undefined ? leave : () => Promise.resolve(backToReading()),
+      leaveIdle,
+      signingOut,
+    };
   });
-  // The sign-out saves what is unsaved through the editor shown, quietly, before the edit ends.
+  // The sign-out saves what is unsaved through the editor shown, before the edit ends.
   useEffect(() => {
-    editing.savesThrough(() => keys.current.save(true));
+    editing.savesThrough(() => keys.current.signingOut());
     return () => editing.savesThrough(undefined);
   }, [editing]);
   // An edit whose content is not read has no editor to time it: it is left as idle after as long all the same,

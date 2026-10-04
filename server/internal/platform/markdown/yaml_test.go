@@ -56,6 +56,12 @@ func TestScalarsFollowTheCoreSchema(t *testing.T) {
 		{"!!str 10", "10"}, {"!!int 10", int64(10)}, {`!!int "10"`, int64(10)}, {"!!float .inf", ".inf"}, {"!!bool true", true},
 		{"!!null ~", nil}, {"!!float 1", 1.0}, {"!!float -12", -12.0}, {"0.0", 0.0}, {"-0.0", math.Copysign(0, -1)},
 		{"1" + strings.Repeat("0", 400), "1" + strings.Repeat("0", 400)}, {"0x" + strings.Repeat("F", 300), "0x" + strings.Repeat("F", 300)},
+		// The digits of the largest float64, its sign and leading zeros aside, and one more (M4–M5 Codex review R5).
+		{"1" + strings.Repeat("0", 308), 1e308}, {strings.Repeat("9", 309), strings.Repeat("9", 309)},
+		{"1" + strings.Repeat("0", 309), "1" + strings.Repeat("0", 309)}, {"-1" + strings.Repeat("0", 309), "-1" + strings.Repeat("0", 309)},
+		{strings.Repeat("0", 400) + "1", int64(1)}, {"-" + strings.Repeat("0", 400) + "1" + strings.Repeat("0", 300), -1e300},
+		{"0o1" + strings.Repeat("0", 341), math.Ldexp(1, 1023)}, {"0o1" + strings.Repeat("0", 342), "0o1" + strings.Repeat("0", 342)},
+		{"0x1" + strings.Repeat("0", 255), math.Ldexp(1, 1020)}, {"0x1" + strings.Repeat("0", 256), "0x1" + strings.Repeat("0", 256)},
 	}
 	for _, tt := range tests {
 		t.Run(tt.yaml, func(t *testing.T) {

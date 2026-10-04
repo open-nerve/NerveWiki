@@ -2,6 +2,7 @@ import { aliveSessionsOf, expectAliveSessions } from "../../fixtures/assert/coll
 import { expectSessionGone, sessionsOf } from "../../fixtures/assert/page";
 import { accountIdOf } from "../../fixtures/assert/identity";
 import { displayNameOf, emailFor } from "../../fixtures/auth";
+import { signOutThroughMenu } from "../../fixtures/auth-pages";
 import { readLock } from "../../fixtures/collab";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { createNotebook } from "../../fixtures/notebooks";
@@ -14,7 +15,8 @@ import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 // holds nothing, through the database rather than the wall clock (v0.1
 // design 13.4, item 3). The page versions: released as A is done, as A's
 // tab closes, and as A's edit goes 30 minutes without input (M5 design
-// 4.7), on the page's clock.
+// 4.7), on the page's clock; and as A signs out in another tab, what A's
+// edit has unsaved saved first (M4–M5 Codex review R2).
 
 test("C6 (API): once A's session has expired, B opens the page, deleting it; A's save in the expired session is 409 page.edit_session_ended, and the lock names B", async ({
   api,
@@ -74,6 +76,44 @@ test("C6 (page): A done editing, B edits at once; A's tab closed while it edits,
   await expectSessionGone(db, held ?? "");
   await expect(aEditing).toBeHidden();
   await startEditing(b);
+});
+
+test("C6 (page, signed out elsewhere): A's edit of Notes has unsaved text as A signs out in another tab: the text is saved, the session ended, then both tabs are signed out", async ({
+  anotherTab,
+  api,
+  db,
+  signedInPage,
+}, testInfo) => {
+  const { adminEmail, pat: a, tokens, workspace } = await newOnboardedTeam(api, testInfo);
+  const notebook = await createNotebook(api, a, workspace.slug, "Plans");
+  const notes = await createPage(api, a, notebook.id, "Notes", null, "Drafted.\n");
+  const page = await signedInPage(tokens);
+  // The context's clock, paused once A types: autosave's 2 seconds do not pass unless the story runs them.
+  await page.clock.install();
+  await page.goto(wikiPagePath(workspace.slug, notebook.id, notes.id));
+  await startEditing(page);
+  const [session] = await aliveSessionsOf(db, notes.id);
+  await page.keyboard.press("ControlOrMeta+End");
+  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1_000));
+  await page.keyboard.type("Unsaved");
+  await expect(editStatus(page)).toHaveText("Unsaved changes");
+  // A's save takes half a second: the sign-out waits for it, rather than winning the race by being late.
+  await page.route(`**/api/v0/pages/${notes.id}/content`, async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    await route.continue();
+  });
+
+  const tab = await anotherTab(page);
+  await tab.goto(`/${workspace.slug}`);
+  await signOutThroughMenu(tab, displayNameOf(adminEmail));
+  // The other tabs' answers come within 100 ms; autosave would take 2 seconds.
+  await page.clock.runFor(200);
+
+  await Promise.all(
+    [page, tab].map((each) => expect(each.getByRole("heading", { level: 1, name: "Sign in" })).toBeVisible())
+  );
+  expect((await readContent(api, a, notes.id)).content).toBe("Drafted.\nUnsaved");
+  await expectSessionGone(db, session ?? "");
 });
 
 test("C6 (page, idle): A's edit of Notes goes 30 minutes without input: what A typed is saved, the edit is left, the reading view saying why, the focus on Edit; its session is gone, and B edits at once", async ({
