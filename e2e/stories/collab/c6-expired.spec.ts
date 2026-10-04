@@ -4,6 +4,7 @@ import { accountIdOf } from "../../fixtures/assert/identity";
 import { displayNameOf, emailFor } from "../../fixtures/auth";
 import { signOutThroughMenu } from "../../fixtures/auth-pages";
 import { readLock } from "../../fixtures/collab";
+import { holdStream } from "../../fixtures/events";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, openSession, putContent, readContent } from "../../fixtures/pages";
@@ -90,6 +91,9 @@ test("C6 (page, signed out elsewhere): A's edit of Notes has unsaved text as A s
   const page = await signedInPage(tokens);
   // The context's clock, paused once A types: autosave's 2 seconds do not pass unless the story runs them.
   await page.clock.install();
+  // No stream: the sign-out goes by the tabs' channel and storage, and the event of A's save, had A heard it,
+  // would read the tree again as the logout goes out, its answer a 401 or not.
+  await holdStream(page);
   await page.goto(wikiPagePath(workspace.slug, notebook.id, notes.id));
   await startEditing(page);
   const [session] = await aliveSessionsOf(db, notes.id);
