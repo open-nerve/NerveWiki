@@ -4,7 +4,7 @@ import { createClient, type ApiClient, type AuthTokens } from "@nervewiki/api-cl
 import { test as base, type BrowserContext, type Page } from "@playwright/test";
 
 import { signInContext } from "./auth";
-import { attachPageState, expectQuietPage, watchPage, type PageWatch } from "./browser";
+import { expectQuietPage, reportPageStates, watchPage, type PageWatch } from "./browser";
 import { createDatabase, dropDatabase, openDatabase, templateDatabase, type Database } from "./db";
 import { connectEvents, type EventStream } from "./events";
 import { nervewikiFixtureTimeoutMs, startNervewiki, type Nervewiki, type StartOptions } from "./server";
@@ -144,7 +144,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
     if (testInfo.status === testInfo.expectedStatus) {
       await expectQuietPage(page, watch);
     } else {
-      await attachPageState(page, watch, testInfo, "page");
+      await reportPageStates([["page", page, watch]], testInfo);
     }
   },
   pageWatch: async ({ page }, use) => {
@@ -214,8 +214,9 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
           watched.filter(([page]) => !page.isClosed()).map(([page, watch]) => expectQuietPage(page, watch))
         );
       } else {
-        await Promise.all(
-          watched.map(([page, watch], i) => attachPageState(page, watch, testInfo, `another page ${i + 1}`))
+        await reportPageStates(
+          watched.map(([page, watch], i) => [`another page ${i + 1}`, page, watch]),
+          testInfo
         );
       }
     } finally {
@@ -235,8 +236,9 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
     if (testInfo.status === testInfo.expectedStatus) {
       await Promise.all(watched.filter(([tab]) => !tab.isClosed()).map(([tab, watch]) => expectQuietPage(tab, watch)));
     } else {
-      await Promise.all(
-        watched.map(([tab, watch], i) => attachPageState(tab, watch, testInfo, `another tab ${i + 1}`))
+      await reportPageStates(
+        watched.map(([tab, watch], i) => [`another tab ${i + 1}`, tab, watch]),
+        testInfo
       );
     }
   },

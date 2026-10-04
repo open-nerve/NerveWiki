@@ -183,18 +183,16 @@ export async function expectQuietPage(page: Page, watch: PageWatch): Promise<voi
     });
 }
 
-/** How much of a page's ARIA snapshot attachPageState keeps. */
+/** How much of a page's ARIA snapshot pageState keeps. */
 const snapshotLimit = 3000;
 
 /**
- * attachPageState attaches to a test that failed what page showed and did last, as text: its address, the
- * element in focus, its last API requests and their failures, its errors, and its ARIA snapshot cut short.
- * The reporter prints a text attachment with the failure, so CI's annotations carry it, where the trace and
- * the job's log are not public; it prints only the first 300 characters of each, so the state goes in parts.
+ * pageState is what page showed and did last, as text: its address, the element in focus, its last API
+ * requests and their failures, its errors, and its ARIA snapshot cut short; none for a closed page.
  */
-export async function attachPageState(page: Page, watch: PageWatch, testInfo: TestInfo, name: string): Promise<void> {
+async function pageState(page: Page, watch: PageWatch): Promise<string | undefined> {
   if (page.isClosed()) {
-    return;
+    return undefined;
   }
   const focused = await page
     .evaluate(() => {
@@ -211,7 +209,7 @@ export async function attachPageState(page: Page, watch: PageWatch, testInfo: Te
     .ariaSnapshot({ timeout: 2_000 })
     .catch((error: unknown) => `none: ${String(error)}`);
   const cut = snapshot.length > snapshotLimit ? `${snapshot.slice(0, snapshotLimit)}\n…` : snapshot;
-  const lines = [
+  return [
     `url: ${page.url()}`,
     `focused: ${focused}`,
     `api requests, the last 20: ${watch.apiRequests.slice(-20).join(", ") || "none"}`,
@@ -220,32 +218,24 @@ export async function attachPageState(page: Page, watch: PageWatch, testInfo: Te
     `console errors: ${watch.consoleErrors.join(" | ") || "none"}`,
     "aria snapshot:",
     cut,
-  ];
-  const parts = partsOf(lines.join("\n").split("\n"), attachmentPrinted);
-  for (const [i, part] of parts.entries()) {
-    // oxlint-disable-next-line no-await-in-loop -- the parts are attached in their order
-    await testInfo.attach(`page state: ${name} (${i + 1}/${parts.length})`, { body: part, contentType: "text/plain" });
-  }
+  ].join("\n");
 }
 
-/** How many characters of a text attachment the reporter prints. */
-const attachmentPrinted = 290;
-
-/** partsOf joins lines into parts of at most size characters, cutting a longer line. */
-function partsOf(lines: string[], size: number): string[] {
-  const parts: string[] = [];
-  let part = "";
-  for (const line of lines.flatMap((l) =>
-    l.length > size ? (l.match(new RegExp(`.{1,${size}}`, "gs")) ?? []) : [l]
-  )) {
-    if (part !== "" && part.length + 1 + line.length > size) {
-      parts.push(part);
-      part = "";
-    }
-    part = part === "" ? line : `${part}\n${line}`;
+/**
+ * reportPageStates attaches to a test that failed the state of each of its pages, named, and fails the
+ * fixture's teardown with them too: CI's annotations carry a failure's errors, not its attachments, and the
+ * trace and the job's log are not public. A test that passed against its expectation is not touched.
+ */
+export async function reportPageStates(pages: [string, Page, PageWatch][], testInfo: TestInfo): Promise<void> {
+  const states = (
+    await Promise.all(pages.map(async ([name, page, watch]) => [name, await pageState(page, watch)] as const))
+  ).filter((entry): entry is readonly [string, string] => entry[1] !== undefined);
+  await Promise.all(
+    states.map(([name, state]) => testInfo.attach(`page state: ${name}`, { body: state, contentType: "text/plain" }))
+  );
+  if (states.length > 0 && (testInfo.status === "failed" || testInfo.status === "timedOut")) {
+    throw new Error(
+      `What the pages showed last:\n\n${states.map(([name, state]) => `${name}\n${state}`).join("\n\n")}`
+    );
   }
-  if (part !== "") {
-    parts.push(part);
-  }
-  return parts;
 }
