@@ -280,9 +280,10 @@ func Amplifying() []Input {
 		{"a long page embedded often", func(n int) string {
 			return "[[" + strings.Repeat("a", n/2) + "]]\n\n" + strings.Repeat("![[p]]", n/12)
 		}},
-		// Some 190 KB of paths at AmplifyingSize, within their limit.
-		{"a long key over a list", func(n int) string {
-			return "---\n" + strings.Repeat("k", n/16) + ": [" + strings.Repeat("a,", n/91) + "]\n---\nbody\n"
+		// Some 160 KB of paths at AmplifyingSize, within their limit
+		// (pathsInput).
+		{pathsInput, func(n int) string {
+			return "---\n" + strings.Repeat("k", n/160) + ": [" + strings.Repeat("a,", n/11) + "]\n---\nbody\n"
 		}},
 		{"long keys nested over a list", func(n int) string {
 			key := strings.Repeat("k", n/32)
@@ -297,6 +298,12 @@ func Amplifying() []Input {
 		}},
 	}
 }
+
+// pathsInput is the Amplifying input whose frontmatter's paths are many,
+// within their limit: CheckCosts requires its frontmatter valid, so that a
+// limit changed does not leave the paths' facts unmeasured (M6/P2 fix check
+// 5 L1).
+const pathsInput = "a long key over a list"
 
 // AmplifyingSize is the size the Amplifying inputs are checked at.
 const AmplifyingSize = 16 << 10

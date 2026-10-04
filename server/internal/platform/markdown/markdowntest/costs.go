@@ -135,6 +135,9 @@ func CheckCosts(t *testing.T, m *markdown.Markdown) {
 		if err := CheckSize(content, out); err != nil {
 			t.Errorf("%s: %v", in.Name, err)
 		}
+		if in.Name == pathsInput && !m.Parse(content).Frontmatter().Valid {
+			t.Errorf("%s: its frontmatter is not valid, its paths not measured", in.Name)
+		}
 		logKept(t, m, in.Name, content)
 	}
 	const size = 512 << 10

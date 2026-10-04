@@ -55,7 +55,8 @@ func NewBudget(size int, wait time.Duration, logger *slog.Logger) *Budget {
 // short, a frontmatter's aliases may expand to the YAML's limit of values,
 // whose facts keep up to some 480 KB, the parse not much more; 4 KiB counts
 // 1.2 MB. Its strings' paths take at most maxYAMLPathsRatio times the
-// YAML's size, well within the parseRatio times it counts for.
+// YAML's size; with the aliases beside them, the parse of a content of
+// 4 KB peaks at some 0.95 of it (M6/P2 fix check 5 L2).
 const minTake = 4 << 10
 
 // Take holds the bytes of a content of n bytes, for its parse, waiting for

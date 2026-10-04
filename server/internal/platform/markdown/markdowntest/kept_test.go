@@ -8,7 +8,9 @@ import (
 
 // kept reads what the facts keep (M6/P2 fix check 4 L3): an extension that
 // takes 64 KB for each parse keeps them, which a reading that lost the facts
-// before the heap with them is read would not see.
+// before the heap with them is read would not see. The runtime allocates a
+// few KB of its own between the readings early in a process (fix check 5
+// M1): 8 KB either way.
 func TestKeptReadsWhatTheFactsKeep(t *testing.T) {
 	const ballast = 64 << 10
 	m, err := markdown.New([]markdown.Extension{{Name: "ballast", Extract: func(markdown.Tree) any {
@@ -17,7 +19,7 @@ func TestKeptReadsWhatTheFactsKeep(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if f, _ := kept(m, []byte("a\n")); f < ballast || f > ballast+8<<10 {
+	if f, _ := kept(m, []byte("a\n")); f < ballast-8<<10 || f > ballast+8<<10 {
 		t.Errorf("the facts of an extension keeping 64 KB read %d bytes", f)
 	}
 }

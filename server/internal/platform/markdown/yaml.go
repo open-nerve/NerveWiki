@@ -34,8 +34,10 @@ const (
 	// nor past maxYAMLPathsRatio times its size, a path of some 128 bytes
 	// for each value written in two, so that a short YAML's paths are no
 	// more for its size than the parse budget counts it for (fix check 4
-	// L1). Twice: the keys an alias repeats are in the paths of the values
-	// under them too.
+	// L1): with aliases at the limit of values beside them, a content of
+	// 4 KB peaks at some 0.95 of what its take counts (fix check 5), so 64
+	// is the most. Twice: the keys an alias repeats are in the paths of the
+	// values under them too.
 	minYAMLPaths      = 100 * maxYAMLNodes
 	yamlPathsRatio    = 2
 	maxYAMLPathsRatio = 64
