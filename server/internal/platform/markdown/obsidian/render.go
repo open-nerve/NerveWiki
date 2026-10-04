@@ -5,6 +5,7 @@ import (
 	"github.com/yuin/goldmark/renderer"
 	"github.com/yuin/goldmark/util"
 
+	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown/internal/harden"
 )
 
@@ -87,7 +88,7 @@ func renderMath(w util.BufWriter, source []byte, node ast.Node, entering bool) (
 	if !entering {
 		return ast.WalkContinue, nil
 	}
-	if node.(*math).display {
+	if node.(*inlineMath).display {
 		_, _ = w.WriteString(`<span class="nw-math nw-math-block">`)
 	} else {
 		_, _ = w.WriteString(`<span class="nw-math">`)
@@ -160,8 +161,25 @@ func renderCalloutTitle(w util.BufWriter, _ []byte, node ast.Node, entering bool
 	} else {
 		_, _ = w.WriteString(`<div class="nw-callout-title">`)
 	}
-	if !n.HasChildren() {
+	if !shows(n) {
 		escaped(w, []byte(n.of.standing()))
 	}
 	return ast.WalkContinue, nil
+}
+
+// shows tells whether n holds something that shows: neither what hides
+// nor an empty text, such as the one that ended a callout's line.
+func shows(n ast.Node) bool {
+	for c := n.FirstChild(); c != nil; c = c.NextSibling() {
+		switch c := c.(type) {
+		case markdown.Hider:
+		case *ast.Text:
+			if !c.Segment.IsEmpty() {
+				return true
+			}
+		default:
+			return true
+		}
+	}
+	return false
 }

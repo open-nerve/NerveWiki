@@ -112,7 +112,7 @@ func atLineStart(block ast.Node, reader text.Reader) bool {
 // as one after any text is.
 type tagsAfterText struct{}
 
-func (tagsAfterText) Transform(doc *ast.Document, _ text.Reader, _ parser.Context) {
+func (tagsAfterText) Transform(doc *ast.Document, reader text.Reader, _ parser.Context) {
 	var tags []*tag
 	_ = ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if t, ok := n.(*tag); ok && entering {
@@ -123,9 +123,10 @@ func (tagsAfterText) Transform(doc *ast.Document, _ text.Reader, _ parser.Contex
 	})
 	// In the tree's order: a tag after one made text here is text too.
 	for _, t := range tags {
-		if next, ok := t.NextSibling().(*ast.Text); ok && t.cut > 0 && next.Segment.Start == t.seg.Stop {
-			t.name += strings.Repeat("_", t.cut)
-			t.seg = t.seg.WithStop(t.seg.Stop + t.cut)
+		if k := leftOver(t, reader.Source()); k > 0 {
+			next := t.NextSibling().(*ast.Text)
+			t.name += strings.Repeat("_", k)
+			t.seg = t.seg.WithStop(t.seg.Stop + k)
 			t.FirstChild().(*ast.Text).Segment = t.seg
 			next.Segment = next.Segment.WithStart(t.seg.Stop)
 		}
@@ -136,4 +137,18 @@ func (tagsAfterText) Transform(doc *ast.Document, _ text.Reader, _ parser.Contex
 			ast.MergeOrReplaceTextSegment(t.Parent(), t, t.seg)
 		}
 	}
+}
+
+// leftOver is how many of the '_' t left to the runs are text right after
+// it: none if a run took the first of them, fewer if it took the last.
+func leftOver(t *tag, source []byte) int {
+	next, ok := t.NextSibling().(*ast.Text)
+	if !ok || t.cut == 0 || next.Segment.Start != t.seg.Stop || next.Segment.Padding != 0 {
+		return 0
+	}
+	k := 0
+	for k < t.cut && next.Segment.Start+k < next.Segment.Stop && source[next.Segment.Start+k] == '_' {
+		k++
+	}
+	return k
 }

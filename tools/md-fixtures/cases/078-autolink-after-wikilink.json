@@ -1,0 +1,19 @@
+{
+  "description": "紧跟在 wikilink 之后的网址照常识别（goldmark 在行内元素之后都识别），吞掉其中的 [[y]]。",
+  "source": "obsidian-verified",
+  "frontmatter": null,
+  "links": [
+    {
+      "kind": "wikilink",
+      "target": "x",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        2,
+        3
+      ]
+    }
+  ],
+  "tags": []
+}

@@ -53,6 +53,9 @@ func (headingIDs) Transform(doc *ast.Document, reader text.Reader, _ parser.Cont
 		if !entering {
 			return ast.WalkContinue, nil
 		}
+		if _, hidden := n.(Hider); hidden {
+			return ast.WalkSkipChildren, nil
+		}
 		h, ok := n.(*ast.Heading)
 		if !ok {
 			if c := n.FirstChild(); c != nil && c.Type() == ast.TypeInline {
@@ -72,7 +75,7 @@ func (headingIDs) Transform(doc *ast.Document, reader text.Reader, _ parser.Cont
 	})
 }
 
-// plainText is the text of n's descendants.
+// plainText is the text of n's descendants, but for what a Hider hides.
 func plainText(n ast.Node, source []byte) string {
 	var b strings.Builder
 	_ = ast.Walk(n, func(c ast.Node, entering bool) (ast.WalkStatus, error) {
@@ -80,6 +83,8 @@ func plainText(n ast.Node, source []byte) string {
 			return ast.WalkContinue, nil
 		}
 		switch c := c.(type) {
+		case Hider:
+			return ast.WalkSkipChildren, nil
 		case *ast.Text:
 			b.Write(c.Segment.Value(source))
 			if c.SoftLineBreak() || c.HardLineBreak() {

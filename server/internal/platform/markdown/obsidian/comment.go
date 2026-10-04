@@ -23,7 +23,8 @@ type marker struct {
 	seg   text.Segment
 	block ast.Node // the block it was parsed in
 	line  int      // and the line of the block
-	// alone on the line's side: nothing but spaces before it, after it
+	// first: only spaces are before it on a paragraph's line; last: only
+	// spaces are after it on the content's line
 	first, last bool
 }
 
@@ -42,6 +43,9 @@ func (h *hidden) Kind() ast.NodeKind { return kindHidden }
 // Dump implements ast.Node.
 func (h *hidden) Dump(source []byte, level int) { ast.DumpHelper(h, source, level, nil, nil) }
 
+// Hides implements markdown.Hider.
+func (h *hidden) Hides() {}
+
 // hiddenBlocks is what a comment hides of blocks: blocks.
 type hiddenBlocks struct{ ast.BaseBlock }
 
@@ -50,6 +54,9 @@ func (h *hiddenBlocks) Kind() ast.NodeKind { return kindHiddenBlocks }
 
 // Dump implements ast.Node.
 func (h *hiddenBlocks) Dump(source []byte, level int) { ast.DumpHelper(h, source, level, nil, nil) }
+
+// Hides implements markdown.Hider.
+func (h *hiddenBlocks) Hides() {}
 
 // markerParser parses "%%". Raw content (code, math, HTML, autolinks, a
 // link's destination) is parsed first and keeps its own.
@@ -64,14 +71,36 @@ func (markerParser) Parse(parent ast.Node, block text.Reader, _ parser.Context) 
 	}
 	l, _ := block.Position()
 	m := &marker{seg: seg.WithStop(seg.Start + 2), block: parent, line: l}
-	if lines := parent.Lines(); l < lines.Len() {
-		whole := lines.At(l)
-		source := block.Source()
-		m.first = util.IsBlank(source[whole.Start:seg.Start])
-		m.last = util.IsBlank(source[seg.Start+2 : whole.Stop])
+	source := block.Source()
+	if lines := parent.Lines(); l < lines.Len() && starts(parent) {
+		m.first = util.IsBlank(source[lines.At(l).Start:seg.Start])
 	}
+	m.last = endsLine(source, seg.Start+2)
 	block.Advance(2)
 	return m
+}
+
+// starts tells whether a line of block may start a block comment: a
+// paragraph's line, which starts where its block quote's or list item's
+// marker leaves it; not a heading's, after its '#', nor a cell's.
+func starts(block ast.Node) bool {
+	k := block.Kind()
+	return k == ast.KindParagraph || k == ast.KindTextBlock
+}
+
+// endsLine tells whether only spaces and tabs are between at and the end of
+// its line in source.
+func endsLine(source []byte, at int) bool {
+	for ; at < len(source); at++ {
+		switch source[at] {
+		case ' ', '\t':
+		case '\n', '\r':
+			return true
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // comments pairs the markers in the tree's order (rule 6), which is the
@@ -85,13 +114,31 @@ func (markerParser) Parse(parent ast.Node, block text.Reader, _ parser.Context) 
 type comments struct{}
 
 func (comments) Transform(doc *ast.Document, _ text.Reader, _ parser.Context) {
-	var all []*marker
+	var all, raw []*marker
+	images := 0 // the images around the node
 	_ = ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if m, ok := n.(*marker); ok && entering {
-			all = append(all, m)
+		switch n := n.(type) {
+		case *ast.Image:
+			if entering {
+				images++
+			} else {
+				images--
+			}
+		case *marker:
+			switch {
+			case !entering:
+			case images > 0:
+				raw = append(raw, n)
+			default:
+				all = append(all, n)
+			}
 		}
 		return ast.WalkContinue, nil
 	})
+	// An image's text is raw (rule 4): its markers are text.
+	for _, m := range raw {
+		ast.MergeOrReplaceTextSegment(m.Parent(), m, m.seg)
+	}
 	var open *marker // a block comment's
 	for i := 0; i < len(all); {
 		j := i + 1

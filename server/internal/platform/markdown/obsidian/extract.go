@@ -151,7 +151,8 @@ func markdownLink(kind Kind, written string, at int) (Link, bool) {
 // parses the value as the body is parsed; the link's range is where the
 // content writes it, through s's offsets.
 func property(values parser.Parser, s markdown.Scalar) (Link, bool) {
-	if s.Value == "" || strings.TrimSpace(s.Value) != s.Value {
+	// Either link starts with '[': most values are parsed no further.
+	if !strings.HasPrefix(s.Value, "[") || strings.TrimSpace(s.Value) != s.Value {
 		return Link{}, false
 	}
 	value := []byte(s.Value)
@@ -164,10 +165,7 @@ func property(values parser.Parser, s markdown.Scalar) (Link, bool) {
 	var l Link
 	var ok bool
 	switch n := p.FirstChild().(type) {
-	case *wikilink:
-		if n.embed {
-			return Link{}, false
-		}
+	case *wikilink: // not an embed: the value starts with '['
 		l, ok = n.link()
 	case *ast.Link:
 		at, found := harden.Destinations(pc)(n)

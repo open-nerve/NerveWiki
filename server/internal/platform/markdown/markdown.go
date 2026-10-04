@@ -54,6 +54,13 @@ type Extension struct {
 	Markup Markup
 }
 
+// Hider is a node of an extension that hides what it holds from the
+// reading view (M6: what a comment spans). A heading in it takes no id, and
+// its text is no heading's or image's.
+type Hider interface {
+	Hides()
+}
+
 // Markup is the HTML an extension's renderers write.
 type Markup struct {
 	// Elements are the elements, each with the attributes it may carry.

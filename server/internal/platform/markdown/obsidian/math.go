@@ -19,18 +19,18 @@ var (
 	kindMathBlock = ast.NewNodeKind("MathBlock")
 )
 
-// math is an inline formula, $…$ or $$…$$ (display). Its children are its
-// raw lines, as a code span's are.
-type math struct {
+// inlineMath is an inline formula, $…$ or $$…$$ (display). Its children
+// are its raw lines, as a code span's are.
+type inlineMath struct {
 	ast.BaseInline
 	display bool
 }
 
 // Kind implements ast.Node.
-func (m *math) Kind() ast.NodeKind { return kindMath }
+func (m *inlineMath) Kind() ast.NodeKind { return kindMath }
 
 // Dump implements ast.Node.
-func (m *math) Dump(source []byte, level int) {
+func (m *inlineMath) Dump(source []byte, level int) {
 	ast.DumpHelper(m, source, level, map[string]string{"Display": strconv.FormatBool(m.display)}, nil)
 }
 
@@ -179,12 +179,12 @@ func (mathParser) Parse(parent ast.Node, block text.Reader, pc parser.Context) a
 		return nil
 	}
 	block.Advance(open)
-	return formula(block, &math{display: display}, ends[k], open)
+	return formula(block, &inlineMath{display: display}, ends[k], open)
 }
 
 // formula reads m's lines from the reader up to end, where its closing
 // delimiter of n bytes starts, and the delimiter.
-func formula(block text.Reader, m *math, end, n int) ast.Node {
+func formula(block text.Reader, m *inlineMath, end, n int) ast.Node {
 	for {
 		line, seg := block.PeekLine()
 		if line == nil {

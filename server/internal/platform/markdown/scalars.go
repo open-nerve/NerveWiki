@@ -1,6 +1,7 @@
 package markdown
 
 import (
+	"bytes"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -44,28 +45,70 @@ func (r *reader) note(n *yaml.Node, value string) {
 }
 
 // offset is where line and column (from 1, in characters, as the YAML
-// library counts them) are in src.
+// library counts them) are in src. The scalars come in the order they are
+// written, so it goes on from the last one on the same line: a line of a
+// thousand scalars is read once, not once for each.
 func (r *reader) offset(line, column int) (int, bool) {
 	if r.lines == nil {
-		r.lines = []int{0}
-		for i, b := range r.src {
-			if b == '\n' {
-				r.lines = append(r.lines, i+1)
-			}
-		}
+		r.lines = lineStarts(r.src)
 	}
 	if line < 1 || line > len(r.lines) || column < 1 {
 		return 0, false
 	}
-	i := r.lines[line-1]
-	for range column - 1 {
-		if i >= len(r.src) || r.src[i] == '\n' {
+	i, col := r.lines[line-1], 1
+	if c := r.last; c.line == line && c.column <= column {
+		i, col = c.at, c.column
+	}
+	for ; col < column; col++ {
+		if i >= len(r.src) || lineBreak(r.src[i:]) > 0 {
 			return 0, false
 		}
 		_, size := utf8.DecodeRune(r.src[i:])
 		i += size
 	}
+	r.last = position{line: line, column: column, at: i}
 	return i, true
+}
+
+// position is a line and column of the YAML and where it is.
+type position struct{ line, column, at int }
+
+// lineStarts is where each line of src starts, a line ending at a break as
+// the YAML library counts them.
+func lineStarts(src []byte) []int {
+	starts := []int{0}
+	for i := 0; i < len(src); {
+		if n := lineBreak(src[i:]); n > 0 {
+			i += n
+			starts = append(starts, i)
+			continue
+		}
+		i++
+	}
+	return starts
+}
+
+// lineBreak is how many bytes the line break at the head of b takes, 0 if
+// none: "\r\n", '\r', '\n', or NEL, LS and PS, which the YAML library breaks
+// lines at too.
+func lineBreak(b []byte) int {
+	switch {
+	case len(b) == 0:
+		return 0
+	case b[0] == '\n':
+		return 1
+	case b[0] == '\r':
+		if len(b) > 1 && b[1] == '\n' {
+			return 2
+		}
+		return 1
+	}
+	for _, br := range []string{"\u0085", "\u2028", "\u2029"} {
+		if bytes.HasPrefix(b, []byte(br)) {
+			return len(br)
+		}
+	}
+	return 0
 }
 
 // pastProperties is where the scalar at at is written past its anchor and

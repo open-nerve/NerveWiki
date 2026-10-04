@@ -115,6 +115,12 @@ func TestAFrontmattersStringsAreWhereTheyAreWritten(t *testing.T) {
 		{"BOM", "\ufeff---\na: x\n---\n", []noted{{"a", "x", "x", 0, []int{10, 11}}}},
 		{"not strings", "---\na: 1\nb: true\nc: null\nd: 2024-01-02\n---\n", []noted{{"d", "2024-01-02", "2024-01-02", 0, []int{28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38}}}},
 		{"an alias repeats a string where it is written once", "---\na: &x v\nb: *x\nc: !!str w\n---\n", []noted{{"a", "v", "v", 0, []int{10, 11}}, {"c", "w", "w", 0, []int{27, 28}}}},
+		{"many on a line", "---\na: [x, 'y', \"z\"]\n---\n", []noted{
+			{"a.0", "x", "x", 0, []int{8, 9}}, {"a.1", "y", "y", '\'', []int{12, 13}}, {"a.2", "z", "z", '"', []int{17, 18}},
+		}},
+		{"after the YAML library's other line breaks", "---\na: \"p\u0085q\"\rb: x\u2028c: y\u2029d: z\n---\n", []noted{
+			{"b", "x", "x", 0, []int{17, 18}}, {"c", "y", "y", 0, []int{24, 25}}, {"d", "z", "z", 0, []int{31, 32}},
+		}},
 		{"over lines", "---\na: \"x\n  y\"\nb: |\n  z\nc: >-\n  w\nd: plain\n  more\n---\n", nil},
 	} {
 		t.Run(tt.name, func(t *testing.T) {

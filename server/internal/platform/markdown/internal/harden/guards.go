@@ -193,12 +193,36 @@ func (rawHTMLGuard) Parse(parent ast.Node, block text.Reader, pc parser.Context)
 // might start there, to the end of its run of local-part characters and
 // past its '@'; reading a run that is no address once per node in it is
 // quadratic. Whether a run is one is known once, in the index. A "www."
-// that goldmark's pattern does not take is read as an address too.
-type linkify struct{ inner parser.InlineParser }
+// that goldmark's pattern does not take is read as an address too. An
+// address ends before any of ends (AddressesEndBefore).
+type linkify struct {
+	inner parser.InlineParser
+	ends  [][]byte
+}
 
-func (l linkify) Trigger() []byte { return l.inner.Trigger() }
+// addressesEnd names the option of AddressesEndBefore.
+const addressesEnd parser.OptionName = "nw-addresses-end"
 
-func (l linkify) Parse(parent ast.Node, block text.Reader, pc parser.Context) ast.Node {
+// AddressesEndBefore is the option of a dialect whose markers an address
+// would take in: a literal autolink ends before each of seqs, as an
+// Obsidian comment's "%%" (M6/P1 design 3.8). No address holds "%%", which
+// escapes nothing.
+func AddressesEndBefore(seqs ...string) parser.Option {
+	return parser.WithOption(addressesEnd, seqs)
+}
+
+// SetOption implements parser.SetOptioner.
+func (l *linkify) SetOption(name parser.OptionName, value any) {
+	if seqs, ok := value.([]string); ok && name == addressesEnd {
+		for _, seq := range seqs {
+			l.ends = append(l.ends, []byte(seq))
+		}
+	}
+}
+
+func (l *linkify) Trigger() []byte { return l.inner.Trigger() }
+
+func (l *linkify) Parse(parent ast.Node, block text.Reader, pc parser.Context) ast.Node {
 	if inLinkLabel(pc) {
 		return nil
 	}
@@ -215,20 +239,86 @@ func (l linkify) Parse(parent ast.Node, block text.Reader, pc parser.Context) as
 	if at > 0 && block.Source()[at-1] == '=' {
 		return nil
 	}
+	read := l.reader(parent, block, pc)
 	for _, p := range []string{"http:", "https:", "ftp:"} {
 		if bytes.HasPrefix(line, []byte(p)) {
-			return l.inner.Parse(parent, block, pc)
+			return l.inner.Parse(parent, read, pc)
 		}
 	}
 	if isWWW(line) {
-		return l.inner.Parse(parent, block, pc)
+		return l.inner.Parse(parent, read, pc)
 	}
 	emails := indexOf(parent, block.Source(), pc).emails
 	k := sort.Search(len(emails), func(i int) bool { return emails[i].end > at })
 	if k < len(emails) && emails[k].start <= at && !emails[k].link {
 		return nil
 	}
-	return l.inner.Parse(parent, block, pc)
+	return l.inner.Parse(parent, read, pc)
+}
+
+// reader is block, its line cut before the first of l's ends on it, which
+// the block's ends index finds by a binary search.
+func (l *linkify) reader(parent ast.Node, block text.Reader, pc parser.Context) text.Reader {
+	if len(l.ends) == 0 {
+		return block
+	}
+	_, seg := block.PeekLine()
+	ends := endsOf(parent, block.Source(), l.ends, pc).at
+	if k := sort.SearchInts(ends, seg.Start+1); k < len(ends) && ends[k] < seg.Stop {
+		return cutLine{Reader: block, stop: ends[k]}
+	}
+	return block
+}
+
+// endsIndex is where, in the block being parsed, an address's ends are, in
+// order.
+type endsIndex struct {
+	block ast.Node
+	at    []int
+}
+
+var endsKey = parser.NewContextKey() //nolint:gochecknoglobals // a key is made once, as goldmark's are
+
+// endsOf is the ends index of block, made the first time an address may
+// start in it.
+func endsOf(block ast.Node, source []byte, ends [][]byte, pc parser.Context) *endsIndex {
+	if ix, ok := pc.Get(endsKey).(*endsIndex); ok && ix.block == block {
+		return ix
+	}
+	ix := &endsIndex{block: block}
+	lines := block.Lines()
+	for i := range lines.Len() {
+		seg := lines.At(i)
+		line := source[seg.Start:seg.Stop]
+		for _, end := range ends {
+			for j := 0; ; {
+				k := bytes.Index(line[j:], end)
+				if k < 0 {
+					break
+				}
+				ix.at = append(ix.at, seg.Start+j+k)
+				j += k + len(end)
+			}
+		}
+	}
+	sort.Ints(ix.at)
+	pc.Set(endsKey, ix)
+	return ix
+}
+
+// cutLine is a reader whose line ends at stop, a position in the source:
+// what goldmark's autolink parser reads, which reads no further than a line.
+type cutLine struct {
+	text.Reader
+	stop int
+}
+
+func (c cutLine) PeekLine() ([]byte, text.Segment) {
+	line, seg := c.Reader.PeekLine()
+	if n := c.stop - (seg.Start - seg.Padding); n >= 0 && n < len(line) {
+		return line[:n], seg.WithStop(c.stop)
+	}
+	return line, seg
 }
 
 // isWWW tells whether goldmark's pattern of a "www." link takes the head

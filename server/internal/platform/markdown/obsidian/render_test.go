@@ -90,6 +90,14 @@ func TestATagsUnderscoresAndRuns(t *testing.T) {
 				`<span class="nw-tag" data-nw-tag="___">#___</span></p>` + "\n",
 		},
 		{"a run left as text, a bracket", "a*#t [#u\n", "<p>a*#t [#u</p>\n"},
+		{
+			"an emphasis its underscores open", "#a/___.b_ c\n",
+			`<p><span class="nw-tag" data-nw-tag="a/__">#a/__</span><em>.b</em> c</p>` + "\n",
+		},
+		{
+			"a strong emphasis its underscores open", "#a-___(b__ c\n",
+			`<p><span class="nw-tag" data-nw-tag="a-_">#a-_</span><strong>(b</strong> c</p>` + "\n",
+		},
 		{"a number and an underscore", "#123_ #123\n", `<p><span class="nw-tag" data-nw-tag="123_">#123_</span> #123</p>` + "\n"},
 		{
 			"at the start of a quote's line", "> a\n>#b\n",
@@ -132,11 +140,19 @@ func TestCommentsHide(t *testing.T) {
 		{"part of the blocks at its ends", "a\n%%\nb\n\nc %%\nd\n", "<p>a\n</p>\n<p>\nd</p>\n"},
 		{"a table it spans", "%%\n\n| a |\n| - |\n| b |\n\n%%\n\nshown\n", "<p>shown</p>\n"},
 		{"in code, not a marker", "`%%` a `%%`\n", "<p><code>%%</code> a <code>%%</code></p>\n"},
+		{"in a heading or a cell, alone, text", "# %%\n\n| %% |\n| - |\n| a |\n\nb\n",
+			"<h1 id=\"nw-section\">%%</h1>\n<div class=\"nw-scroll\" tabindex=\"0\"><table>\n<thead>\n<tr>\n<th>%%</th>\n</tr>\n</thead>\n" +
+				"<tbody>\n<tr>\n<td>a</td>\n</tr>\n</tbody>\n</table>\n</div>\n<p>b</p>\n"},
 		{
-			"from a table's cell: its rows and cells stay", "| %% | b |\n| - | - |\n| c | d |\n\ne %%\n\nf\n",
-			"<div class=\"nw-scroll\" tabindex=\"0\"><table>\n<thead>\n<tr>\n<th></th>\n<th>b</th>\n</tr>\n</thead>\n" +
-				"<tbody>\n<tr>\n<td>c</td>\n<td>d</td>\n</tr>\n</tbody>\n</table>\n</div>\n<p>f</p>\n",
+			"ending in a cell's line: the table's rows and cells stay", "%%\n\n| a | b |\n| - | - |\n| c | d %%\n\nf\n",
+			"<div class=\"nw-scroll\" tabindex=\"0\"><table>\n<thead>\n<tr>\n<th>a</th>\n<th>b</th>\n</tr>\n</thead>\n" +
+				"<tbody>\n<tr>\n<td>c</td>\n<td></td>\n</tr>\n</tbody>\n</table>\n</div>\n<p>f</p>\n",
 		},
+		{"an address ends before a marker", "a %%see https://example.com/x%% b\n", "<p>a  b</p>\n"},
+		{"an address at a block comment's end", "%%\nsecret www.example.com/%%\n\nshown\n", "<p>shown</p>\n"},
+		{"in an image's text, text", "![a %% b](i.png) %%\n", "<p><span class=\"nw-image\">a %% b <a href=\"i.png\">i.png</a></span> %%</p>\n"},
+		{"a heading it hides takes no id", "%%\n# A\n%%\n\n# A\n", "<h1 id=\"nw-a\">A</h1>\n"},
+		{"what it hides is no heading's id", "# a %%b%%\n", "<h1 id=\"nw-a\">a </h1>\n"},
 		{
 			"a list it starts in keeps its container", "- %%\n  a\n- b\n\nc %%\n\nd\n",
 			"<ul>\n<li>\n</li>\n</ul>\n<p>d</p>\n",
@@ -172,6 +188,10 @@ func TestCallouts(t *testing.T) {
 			`<div class="nw-callout" data-callout="a">` + "\n" + `<div class="nw-callout-title">A</div>` + "\n" +
 				`<div class="nw-callout" data-callout="b">` + "\n" + `<div class="nw-callout-title">B</div>` + "\n" +
 				"<p>inner</p>\n</div>\n</div>\n",
+		},
+		{
+			"a title it hides is the type's", "> [!note] %%x%%\n> body\n",
+			`<div class="nw-callout" data-callout="note">` + "\n" + `<div class="nw-callout-title">Note</div>` + "\n<p>body</p>\n</div>\n",
 		},
 		{"not one", "> [!a b]\n> \\[!c]\n", "<blockquote>\n<p>[!a b]\n[!c]</p>\n</blockquote>\n"},
 	})

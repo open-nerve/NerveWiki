@@ -48,9 +48,11 @@ func Extension() markdown.Extension {
 // goldmark's, a lower one first: a wikilink is tried after a footnote's
 // reference and before a link, which '[' and '!' also start; a formula's
 // block before a paragraph, which it interrupts; the callouts, the comments
-// and then the tags' second look after the emphasis is paired.
+// and then the tags' second look after the emphasis is paired. An address
+// ends before a comment's "%%", so that a comment may end with one.
 func dialect() []parser.Option {
 	return []parser.Option{
+		harden.AddressesEndBefore("%%"),
 		parser.WithBlockParsers(util.Prioritized(mathBlockParser{}, 750)),
 		parser.WithInlineParsers(
 			util.Prioritized(wikilinkParser{}, 150),

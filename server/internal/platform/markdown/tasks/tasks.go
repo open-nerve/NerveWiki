@@ -119,17 +119,15 @@ func (taskRenderer) RegisterFuncs(reg renderer.NodeRendererFuncRegisterer) {
 
 // extract is the document's tasks in the content's order: the tree's is
 // the reading view's, which puts the footnotes' last. A checkbox is a
-// block's inline child, so the walk skips every inline's children.
+// block's inline child, or in the inline node another extension moved it
+// into (M6: what a comment hides), so the walk goes into inline nodes too.
 func extract(t markdown.Tree) any {
 	var tasks []Task
 	_ = ast.Walk(t.Root, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering || n.Type() != ast.TypeInline {
-			return ast.WalkContinue, nil
-		}
-		if t, ok := n.(*node); ok {
+		if t, ok := n.(*node); ok && entering {
 			tasks = append(tasks, t.Task)
 		}
-		return ast.WalkSkipChildren, nil
+		return ast.WalkContinue, nil
 	})
 	slices.SortFunc(tasks, func(a, b Task) int { return cmp.Compare(a.Offset, b.Offset) })
 	return tasks

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown/obsidian"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown/tasks"
 )
 
 // brief is a link in a line: kind, target, anchor, display, key and the
@@ -34,7 +35,7 @@ func TestTheLinksOfAPage(t *testing.T) {
 		},
 		{
 			"a property that is not one link", "---\na: \"[[x]](y.md)\"\nb: \"![t](i.png)\"\nc: \"[[x]] [[y]]\"\n" +
-				"d: \"[t](https://x.com)\"\ne: \"[[#h]]\"\nf: \"$[[x]]$\"\ng: \" [[x]]\"\n---\n",
+				"d: \"[t](https://x.com)\"\ne: \"[[#h]]\"\nf: \"$[[x]]$\"\ng: \" [[x]]\"\nh: \"[[x]] \"\n---\n",
 			nil,
 		},
 		{
@@ -82,5 +83,17 @@ func TestTheTagsOfAPage(t *testing.T) {
 	}
 	if want := []string{"b=#b", "a=#a", "c=#c"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("tags %q, want %q", got, want)
+	}
+}
+
+// A comment changes what shows, not what the page holds: a task item it
+// hides is the page's, wherever the comment ends (rules 6, 11).
+func TestACommentsTaskItemsAreThePages(t *testing.T) {
+	m := newMarkdown(t)
+	for _, content := range []string{"%%\n- [ ] task %%\n  more\n", "%%\n- [ ] task\n  more %%\n"} {
+		got := m.Parse([]byte(content)).Extracted(tasks.Name)
+		if want := []tasks.Task{{Offset: 6}}; !reflect.DeepEqual(got, want) {
+			t.Errorf("%q: tasks %+v, want %+v", content, got, want)
+		}
 	}
 }

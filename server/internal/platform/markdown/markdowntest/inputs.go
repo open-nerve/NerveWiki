@@ -186,6 +186,9 @@ func Pathological() []Input {
 			}
 			return b.String() + "---\nbody\n"
 		}},
+		{"a frontmatter's strings on one line", func(n int) string {
+			return "---\na: [" + repeat("xxxx, 'y', ")(n) + "]\n---\nbody\n"
+		}},
 		{"a frontmatter of one long value", func(n int) string { return "---\na: " + strings.Repeat("x", n) + "\n---\nbody\n" }},
 		{"a frontmatter of one long number", func(n int) string { return "---\na: " + strings.Repeat("9", n) + "\n---\nbody\n" }},
 		{"inline tags <b>", repeat("<b>")},
