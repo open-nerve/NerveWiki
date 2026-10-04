@@ -450,7 +450,7 @@ Nerve 没有实时推送、编辑锁与自动保存：它的 v0 去掉了 Plane 
 
 | 风险 | 应对 |
 |---|---|
-| "一个事务几条 NOTIFY 只取一次全局锁"依据的是 PG 13–18 的源码 | P2 的文档引用 PG 18 的 `async.c`；升级 PostgreSQL 大版本时复核 |
+| "一个事务几条 NOTIFY 只取一次全局锁"依据的是 PG 13–18 的源码 | 论证见 4.10（PG 18 的 `async.c` 的 `PreCommit_Notify`）；升级 PostgreSQL 大版本时复核（[M12 的移交](../M12-release/handoffs/M5-performance.md)第 5 项） |
 | `pagehide` 里带 `keepalive` 的请求在某些浏览器上发不出去（Safari） | 租约兜底，最多 2 分钟；从 bfcache 回来先心跳；人工清单里记一笔 |
 | 被冻结的持有者与 `steal` 的行为在 Safari、Firefox 上没有自动验证 | 人工清单里加多标签页的一步；最坏是隐藏的标签页收不到事件，重新可见时持有者重连并刷新 |
 | `reached` 的可见性变化让整个工作区的流一起重连 | 团队规模下可以接受；M12 的压测看重连与刷新的代价 |
