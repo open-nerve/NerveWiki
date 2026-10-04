@@ -17,9 +17,10 @@ import (
 // them waits for a release; nothing is taken for an empty content, and a
 // content larger than the budget takes all of it.
 func TestABudgetHoldsWhatIsTaken(t *testing.T) {
-	b := markdown.NewBudget(10, time.Minute, slog.New(slog.DiscardHandler))
+	const size = 10 * markdown.MinTake
+	b := markdown.NewBudget(size, time.Minute, slog.New(slog.DiscardHandler))
 	ctx := context.Background()
-	six, err := b.Take(ctx, 6)
+	six, err := b.Take(ctx, 6*markdown.MinTake)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -30,7 +31,7 @@ func TestABudgetHoldsWhatIsTaken(t *testing.T) {
 	}
 	got := make(chan error, 1)
 	go func() {
-		all, err := b.Take(ctx, 20)
+		all, err := b.Take(ctx, 2*size)
 		if err == nil {
 			all.Release()
 		}
@@ -38,7 +39,7 @@ func TestABudgetHoldsWhatIsTaken(t *testing.T) {
 	}()
 	select {
 	case err := <-got:
-		t.Fatalf("all of the budget taken while 6 bytes are held: %v", err)
+		t.Fatalf("all of the budget taken while six tenths are held: %v", err)
 	case <-time.After(50 * time.Millisecond):
 	}
 	six.Release()
@@ -51,99 +52,103 @@ func TestABudgetHoldsWhatIsTaken(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("all of the budget not taken 5s after the release")
 	}
-	all, err := b.Take(ctx, 10)
+	all, err := b.Take(ctx, size)
 	if err != nil {
 		t.Fatalf("the budget after both releases: %v", err)
 	}
 	all.Release()
 }
 
+// A short content takes MinTake, however short (M6/P2 fix check 3 L1); a
+// longer one its size.
+func TestAShortContentTakesAtLeastMinTake(t *testing.T) {
+	b := markdown.NewBudget(3*markdown.MinTake, 20*time.Millisecond, slog.New(slog.DiscardHandler))
+	ctx := context.Background()
+	var holds []*markdown.Hold
+	for range 3 {
+		h, err := b.Take(ctx, 1)
+		if err != nil {
+			t.Fatalf("a byte beside %d others: %v", len(holds), err)
+		}
+		holds = append(holds, h)
+	}
+	if _, err := b.Take(ctx, 1); !errors.Is(err, markdown.ErrBusy) {
+		t.Errorf("a fourth byte = %v, want busy: each takes MinTake", err)
+	}
+	holds[0].Release()
+	if _, err := b.Take(ctx, markdown.MinTake+1); !errors.Is(err, markdown.ErrBusy) {
+		t.Errorf("a byte more than MinTake beside two of them = %v, want busy: it takes its size", err)
+	}
+	if h, err := b.Take(ctx, 1); err != nil {
+		t.Errorf("a byte once one is released: %v", err)
+	} else {
+		h.Release()
+	}
+	for _, h := range holds[1:] {
+		h.Release()
+	}
+}
+
 // A content's facts keep their Limit's share of the budget once its parse is
 // done (a parseRatio-th, rounded up: about a tenth of its bytes, and a share
-// for each value of its frontmatter), until the release; but no more than
-// the content took: all of the budget for a content larger than it, all of
-// its bytes for a content smaller than its share (M6/P2 fix check 2 L1); a
+// for each value of its frontmatter and its paths' bytes), until the
+// release; but no more than the content took: all of the budget for a
+// content larger than it, math.MaxInt bytes too, the limit not wrapping
+// around; MinTake for a frontmatter whose aliases' share is more. A
 // negative size holds and keeps nothing.
 func TestAHoldKeepsItsFactsShare(t *testing.T) {
-	const size = 1000
+	const size = 20 * markdown.MinTake
 	b := markdown.NewBudget(size, 20*time.Millisecond, slog.New(slog.DiscardHandler))
 	ctx := context.Background()
 	share := func(limit int) int { return (limit + markdown.ParseRatio - 1) / markdown.ParseRatio }
-	// 910 bytes: FactsBase and 30 times 910, 31,396 bytes of facts, keep 105.
-	kept := share(markdown.FactsBase + markdown.FactsRatio*910)
-	h, err := b.Take(ctx, 910)
-	if err != nil {
-		t.Fatal(err)
-	}
-	h.KeepFacts(markdown.Facts{})
-	h.KeepFacts(markdown.Facts{}) // keeping again gives nothing more back
-	rest, err := b.Take(ctx, size-kept)
-	if err != nil {
-		t.Fatalf("the budget beside the facts of 910 bytes: %v", err)
-	}
-	if _, err := b.Take(ctx, 1); !errors.Is(err, markdown.ErrBusy) {
-		t.Errorf("a byte beside them = %v, want busy: the facts keep %d bytes", err, kept)
-	}
-	h.Release()
-	if one, err := b.Take(ctx, 1); err != nil {
-		t.Errorf("a byte once the facts are released: %v", err)
-	} else {
-		one.Release()
-	}
-	rest.Release()
-	large, err := b.Take(ctx, 50*size)
-	if err != nil {
-		t.Fatal(err)
-	}
-	large.KeepFacts(markdown.Facts{})
-	if _, err := b.Take(ctx, 1); !errors.Is(err, markdown.ErrBusy) {
-		t.Errorf("a byte beside the facts of a content fifty times the budget = %v, want busy", err)
-	}
-	large.Release()
-	huge, err := b.Take(ctx, math.MaxInt)
-	if err != nil {
-		t.Fatal(err)
-	}
-	huge.KeepFacts(markdown.Facts{})
-	if _, err := b.Take(ctx, 1); !errors.Is(err, markdown.ErrBusy) {
-		t.Errorf("a byte beside the facts of a content of math.MaxInt bytes = %v, want busy: their limit wrapped around", err)
-	}
-	huge.Release()
-
 	m, err := markdown.New(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	frontmatter := "---\na: [x, x, x]\n---\n"
+	frontmatter := "---\na: [x, x, x]\n---\n" + strings.Repeat("b", 179)
+	aliases := "---\na: &a [x, x, x, x, x, x, x, x, x, x]\nb: [" + strings.Repeat("*a, ", 300) + "]\n---\n"
+	aliased := m.Parse([]byte(aliases)).Facts()
+	if s := share(aliased.Limit(len(aliases))); s <= markdown.MinTake {
+		t.Fatalf("the aliases' share is %d, not more than MinTake", s)
+	}
 	for _, tt := range []struct {
-		name, content string
-		kept          int
+		name  string
+		n     int
+		facts markdown.Facts
+		kept  int
 	}{
+		// FactsBase and 30 times 9,100, 277,096 bytes of facts, keep 924.
+		{"a content of 9,100 bytes", 9100, markdown.Facts{}, share(markdown.FactsBase + markdown.FactsRatio*9100)},
 		// 200 bytes, four values and the paths "a.0", "a.1", "a.2": FactsBase,
 		// 30 times 200, 400 times four and 9, 11,705 bytes of facts, keep 40.
-		{"a frontmatter of four values", frontmatter + strings.Repeat("b", 179), share(markdown.FactsBase + markdown.FactsRatio*200 + 400*4 + 9)},
-		// Its share is 22 bytes.
-		{"a content smaller than its share", frontmatter, len(frontmatter)},
+		{"a frontmatter of four values", len(frontmatter), m.Parse([]byte(frontmatter)).Facts(),
+			share(markdown.FactsBase + markdown.FactsRatio*200 + 400*4 + 9)},
+		{"a frontmatter's aliases", len(aliases), aliased, markdown.MinTake},
+		{"a content fifty times the budget", 50 * size, markdown.Facts{}, size},
+		{"a content of math.MaxInt bytes", math.MaxInt, markdown.Facts{}, size},
 	} {
-		fm, err := b.Take(ctx, len(tt.content))
+		h, err := b.Take(ctx, tt.n)
 		if err != nil {
 			t.Fatal(err)
 		}
-		fm.KeepFacts(m.Parse([]byte(tt.content)).Facts())
-		if rest, err := b.Take(ctx, size-tt.kept); err != nil {
-			t.Errorf("the budget beside the facts of %s: %v", tt.name, err)
-		} else {
-			rest.Release()
+		h.KeepFacts(tt.facts)
+		h.KeepFacts(tt.facts) // keeping again gives nothing more back
+		if tt.kept < size {
+			if rest, err := b.Take(ctx, size-tt.kept); err != nil {
+				t.Errorf("the budget beside the facts of %s: %v", tt.name, err)
+			} else {
+				rest.Release()
+			}
 		}
 		if _, err := b.Take(ctx, size-tt.kept+1); !errors.Is(err, markdown.ErrBusy) {
 			t.Errorf("a byte more beside %s = %v, want busy: the facts keep %d bytes", tt.name, err, tt.kept)
 		}
-		fm.Release()
+		h.Release()
 	}
 
 	all, err := b.Take(ctx, size)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("the budget once every facts' share is released: %v", err)
 	}
 	negative, err := b.Take(ctx, -1000)
 	if err != nil {

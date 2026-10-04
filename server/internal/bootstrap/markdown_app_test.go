@@ -57,8 +57,8 @@ func TestTheAppsFactsOutliveTheTree(t *testing.T) {
 }
 
 // The server's parse budget is the configuration's (M6 design 4.7): all but
-// a byte of it held, a byte is free; all of it held, a take is busy once
-// the configured wait has passed.
+// 8 KiB of it held, 8 KiB are free, and a byte more is busy once the
+// configured wait has passed.
 func TestTheServersParseBudgetIsTheConfigurations(t *testing.T) {
 	cfg := config.Config{Page: config.PageConfig{ParseBudgetBytes: 64 << 10, ParseMaxWait: 50 * time.Millisecond}}
 	_, budget, err := parsing(cfg, slog.New(slog.DiscardHandler))
@@ -66,18 +66,20 @@ func TestTheServersParseBudgetIsTheConfigurations(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
-	most, err := budget.Take(ctx, 64<<10-1)
+	// Takes past the least a take holds: the budget's last 8 KiB fit, and a
+	// byte more does not.
+	most, err := budget.Take(ctx, 56<<10)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer most.Release()
-	last, err := budget.Take(ctx, 1)
+	last, err := budget.Take(ctx, 8<<10)
 	if err != nil {
-		t.Fatalf("the budget's last byte: %v", err)
+		t.Fatalf("the budget's last 8 KiB: %v", err)
 	}
-	defer last.Release()
+	last.Release()
 	start := time.Now()
-	if _, err := budget.Take(ctx, 1); !errors.Is(err, markdown.ErrBusy) || time.Since(start) < cfg.Page.ParseMaxWait ||
+	if _, err := budget.Take(ctx, 8<<10+1); !errors.Is(err, markdown.ErrBusy) || time.Since(start) < cfg.Page.ParseMaxWait ||
 		time.Since(start) > time.Second {
 		t.Errorf("a byte beyond the budget = %v after %s, want busy after %s", err, time.Since(start), cfg.Page.ParseMaxWait)
 	}

@@ -192,10 +192,11 @@ func TestAliasesRepeatAtMostTheirBudget(t *testing.T) {
 	}
 }
 
-// The paths of the strings noted take at most yamlPathsRatio times the
-// larger of the YAML's size and minYAMLRepeated, past it the frontmatter not
+// The paths of the strings noted take at most the larger of minYAMLPaths
+// and yamlPathsRatio times the YAML's size, past it the frontmatter not
 // valid: a long key over a list of thousands copies itself for each item
-// (M6/P2 fix check 2 C1). A value not noted, a number, has no path.
+// (M6/P2 fix check 2 C1). A value not noted, a number, has no path; nor
+// does one an alias repeats.
 func TestThePathsOfTheStringsTakeAtMostTheirBudget(t *testing.T) {
 	key := strings.Repeat("k", 1000)
 	tests := []struct {
@@ -203,7 +204,7 @@ func TestThePathsOfTheStringsTakeAtMostTheirBudget(t *testing.T) {
 	}{
 		{"a long key", key + ": [", "a, ", "]\n", key},
 		{"long keys nested", key + ": {" + key + "1: {" + key + "2: [", "a, ", "]}}\n", key + "." + key + "1." + key + "2"},
-		{"a long key in a long YAML", "f: " + strings.Repeat("y", 2*minYAMLRepeated) + "\n" + key + ": [", "a, ", "]\n", key},
+		{"a long key in a long YAML", "f: " + strings.Repeat("y", minYAMLPaths) + "\n" + key + ": [", "a, ", "]\n", key},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -211,7 +212,7 @@ func TestThePathsOfTheStringsTakeAtMostTheirBudget(t *testing.T) {
 			n, paths := 0, 0
 			for {
 				next := paths + len(tt.path+"."+strconv.Itoa(n))
-				if next > yamlPathsRatio*max(len(yaml(n+1)), minYAMLRepeated) {
+				if next > max(yamlPathsRatio*len(yaml(n+1)), minYAMLPaths) {
 					break
 				}
 				n, paths = n+1, next
@@ -224,9 +225,22 @@ func TestThePathsOfTheStringsTakeAtMostTheirBudget(t *testing.T) {
 			}
 		})
 	}
-	numbers := key + ": [" + strings.Repeat("1, ", maxYAMLNodes-10) + "]\n"
-	if _, ok := propertiesOf([]byte(numbers)); !ok {
-		t.Error("numbers under a long key, not noted, not valid")
+	for name, yaml := range map[string]string{
+		"numbers under a long key":  key + ": [" + strings.Repeat("1, ", maxYAMLNodes-10) + "]\n",
+		"a long key's list aliased": "a: &a {" + key + ": [" + strings.Repeat("x, ", 900) + "]}\nb: [*a, *a, *a, *a, *a, *a, *a, *a]\n",
+	} {
+		if _, ok := propertiesOf([]byte(yaml)); !ok {
+			t.Errorf("%s, not noted, not valid", name)
+		}
+	}
+	// A frontmatter at the limit of values (a key and its value two), each
+	// path some 96 bytes, is valid however short (M6/P2 fix check 3 L3).
+	long := "project_management_dashboard_configuration:\n  quarterly_objectives_and_key_results_tracking:\n"
+	for i := range (maxYAMLNodes - 10) / 2 {
+		long += fmt.Sprintf("    item_%04d: done\n", i)
+	}
+	if _, ok := propertiesOf([]byte(long)); !ok {
+		t.Error("a frontmatter at the limit of values, its paths of some 96 bytes, not valid")
 	}
 }
 

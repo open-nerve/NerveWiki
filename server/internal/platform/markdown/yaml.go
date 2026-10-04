@@ -25,11 +25,15 @@ const (
 	// make every reading blow up either. Past the larger of it and the
 	// YAML's size the frontmatter is not valid.
 	minYAMLRepeated = 100_000
-	// yamlPathsRatio is how many times that the paths of the noted strings
-	// may take, each its keys over again (M6/P2 fix check 2 C1): long keys
-	// over a list of thousands must not copy them for each item either.
-	// Twice: the keys an alias repeats are in the paths of the values under
-	// them too.
+	// minYAMLPaths and yamlPathsRatio are how many bytes the paths of the
+	// noted strings may take, each its keys over again (M6/P2 fix check 2
+	// C1): long keys over a list of thousands must not copy them for each
+	// item either. Past the larger of minYAMLPaths, a path of a hundred
+	// bytes for each value at the limit of values however short the YAML
+	// (fix check 3 L3), and twice the YAML's size, the frontmatter is not
+	// valid. Twice: the keys an alias repeats are in the paths of the
+	// values under them too.
+	minYAMLPaths   = 100 * maxYAMLNodes
 	yamlPathsRatio = 2
 )
 
@@ -61,7 +65,10 @@ func properties(src []byte, at int) ([]Property, []Scalar, bool) {
 	if top.Kind != yaml.MappingNode {
 		return nil, nil, false
 	}
-	r := reader{budget: max(len(src), minYAMLRepeated), src: src, at: at}
+	r := reader{
+		budget: max(len(src), minYAMLRepeated), pathsBudget: max(yamlPathsRatio*len(src), minYAMLPaths),
+		src: src, at: at,
+	}
 	v, err := r.value(top, 0)
 	if err != nil {
 		return nil, nil, false
@@ -72,9 +79,10 @@ func properties(src []byte, at int) ([]Property, []Scalar, bool) {
 // reader walks the YAML's nodes, counting what it expands: the nodes, and
 // the bytes of keys and scalars an alias repeats, up to budget. It notes
 // the strings written on one line on the way (scalars.go), counting the
-// bytes of their paths, up to yamlPathsRatio times budget.
+// bytes of their paths, up to pathsBudget.
 type reader struct {
-	nodes, aliased, repeated, budget, paths int
+	nodes, aliased, repeated, budget int
+	paths, pathsBudget               int
 
 	src     []byte   // the YAML
 	at      int      // where src starts in the content

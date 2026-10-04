@@ -31,6 +31,18 @@ const factsSlack = 1 << 10
 // slices grow by doubling (M6/P2 fix check 2 L2).
 var factsSizes = []int{16 << 10, 1 << 10} //nolint:gochecknoglobals // read only
 
+// sweep are the sizes the dense inputs' facts are measured at too: from 256
+// bytes to 8 KB, each 5% more than the last, where a slice that appending
+// left up to twice as long as what it holds would show (M6/P2 fix check 3
+// M1).
+func sweep() []int {
+	var out []int
+	for n := 256.0; n <= 8<<10; n *= 1.05 {
+		out = append(out, int(n))
+	}
+	return out
+}
+
 // fastest is the least of three runs of parsing and rendering src, the
 // others carrying the machine's noise; a run past limit is not repeated.
 // Each starts from a collected heap: what the collector of the one before
@@ -66,15 +78,27 @@ func allocated(t *testing.T, m *markdown.Markdown, content []byte) (uint64, stri
 	return after.TotalAlloc - before.TotalAlloc, out
 }
 
-// checkKept checks that the facts of content keep at most their Limit.
-func checkKept(t *testing.T, m *markdown.Markdown, name string, content []byte) {
+// checkKept checks that the facts of content keep at most their Limit, and
+// answers what part of it they keep.
+func checkKept(t *testing.T, m *markdown.Markdown, name string, content []byte) float64 {
 	t.Helper()
-	if f, limit := kept(m, content); f > uint64(limit)+factsSlack {
+	f, limit := kept(m, content)
+	if f > uint64(limit)+factsSlack {
 		t.Errorf("%s: its facts keep %d bytes for %d, more than their limit of %d", name, f, len(content), limit)
-	} else {
-		t.Logf("%s, %d bytes: its facts keep %d bytes, %.1f times the content, %.2f of their limit; %d to spare", name,
-			len(content), f, float64(f)/float64(len(content)), float64(f)/float64(limit), int64(limit)-int64(f))
 	}
+	return float64(f) / float64(limit)
+}
+
+// logKept checks the facts of content as checkKept does, and logs them.
+func logKept(t *testing.T, m *markdown.Markdown, name string, content []byte) {
+	t.Helper()
+	f, limit := kept(m, content)
+	if f > uint64(limit)+factsSlack {
+		t.Errorf("%s: its facts keep %d bytes for %d, more than their limit of %d", name, f, len(content), limit)
+		return
+	}
+	t.Logf("%s, %d bytes: its facts keep %d bytes, %.1f times the content, %.2f of their limit; %d to spare", name,
+		len(content), f, float64(f)/float64(len(content)), float64(f)/float64(limit), int64(limit)-int64(f))
 }
 
 // CheckCosts checks what m costs (M4/P3 design 3.10): every pathological
@@ -111,7 +135,7 @@ func CheckCosts(t *testing.T, m *markdown.Markdown) {
 		if err := CheckSize(content, out); err != nil {
 			t.Errorf("%s: %v", in.Name, err)
 		}
-		checkKept(t, m, in.Name, content)
+		logKept(t, m, in.Name, content)
 	}
 	const size = 512 << 10
 	normal := fastest(t, m, Normal(size), time.Second)
@@ -132,9 +156,9 @@ func CheckCosts(t *testing.T, m *markdown.Markdown) {
 		if err := CheckSize(content, out); err != nil {
 			t.Errorf("%s: %v", in.Name, err)
 		}
-		checkKept(t, m, in.Name, content)
+		logKept(t, m, in.Name, content)
 		for _, n := range factsSizes {
-			checkKept(t, m, in.Name, []byte(in.Make(n)))
+			logKept(t, m, in.Name, []byte(in.Make(n)))
 		}
 		if alloc > kAlloc*normalAlloc {
 			t.Errorf("%s: %d KB allocated for %d KB, more than %d times an ordinary document's %d KB",
@@ -146,6 +170,16 @@ func CheckCosts(t *testing.T, m *markdown.Markdown) {
 		case full > 8*quarter+time.Millisecond:
 			t.Errorf("%s: %v for %d KB, more than eight times the %v for a quarter of it", in.Name, full, size>>10, quarter)
 		}
+	}
+	for _, in := range dense() {
+		worst, at := 0.0, 0
+		for _, n := range sweep() {
+			content := []byte(in.Make(n))
+			if part := checkKept(t, m, in.Name, content); part > worst {
+				worst, at = part, len(content)
+			}
+		}
+		t.Logf("%s, from 256 bytes to 8 KB: its facts keep at most %.2f of their limit, at %d bytes", in.Name, worst, at)
 	}
 	if d := fastest(t, m, Normal(1<<20), time.Second); d > time.Second {
 		t.Errorf("an ordinary megabyte: %v", d)

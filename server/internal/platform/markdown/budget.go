@@ -18,7 +18,7 @@ var ErrBusy = errors.New("markdown: the parse budget did not free up in time")
 
 // FactsRatio is the most the Facts of a content hold, in times its size,
 // beyond what its frontmatter's values hold (Facts.Limit;
-// markdowntest.CheckCosts; M6/P2 review M1: some 24 at worst, a page of
+// markdowntest.CheckCosts; M6/P2 review M1: some 20 at worst, a page of
 // nothing but wikilinks), where its parse holds some 300 (parseRatio, M4/P3
 // design 3.10).
 const (
@@ -51,16 +51,23 @@ func NewBudget(size int, wait time.Duration, logger *slog.Logger) *Budget {
 	return &Budget{bytes: semaphore.NewWeighted(int64(size)), size: size, wait: wait, logger: logger}
 }
 
+// minTake is the least a content takes (M6/P2 fix check 3 L1): however
+// short, its parse may cost the YAML library's own hundred-odd KB, and a
+// frontmatter's aliases expanded to the YAML's limit of values, whose
+// facts keep up to some 480 KB; 4 KiB counts 1.2 MB.
+const minTake = 4 << 10
+
 // Take holds the bytes of a content of n bytes, for its parse, waiting for
 // them at most the budget's wait: then it answers ErrBusy, or the
-// context's error if the request ran out first. A content larger than the
-// budget takes all of it; nothing is taken for an empty one.
+// context's error if the request ran out first. A content takes at least
+// minTake, one larger than the budget all of it; nothing is taken for an
+// empty one.
 func (b *Budget) Take(ctx context.Context, n int) (*Hold, error) {
-	h := &Hold{budget: b, content: max(n, 0), n: min(n, b.size)}
-	if h.n <= 0 {
-		h.n = 0
+	h := &Hold{budget: b, content: max(n, 0)}
+	if n <= 0 {
 		return h, nil
 	}
+	h.n = min(max(n, minTake), b.size)
 	if b.bytes.TryAcquire(int64(h.n)) {
 		return h, nil
 	}
@@ -92,10 +99,8 @@ type Hold struct {
 // KeepFacts gives back what the content's parse held beyond what f, its
 // facts, hold: f.Limit counted as the parse is, a parseRatio-th of it. The
 // tree is gone, the facts are kept until Release (M6/P2 review M1). It
-// keeps no more than the take held: a frontmatter whose aliases expand a
-// few hundred bytes to the YAML's limit of values keeps up to some 350 KB,
-// some 250 KB beyond what it took, a constant of a request as its body is,
-// which the budget does not count either (M6/P2 fix check 2 L1).
+// keeps no more than the take held, at least minTake, which what a short
+// frontmatter's aliases keep is within.
 func (h *Hold) KeepFacts(f Facts) {
 	h.keep((f.Limit(h.content) + parseRatio - 1) / parseRatio)
 }

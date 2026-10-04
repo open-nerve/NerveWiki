@@ -59,20 +59,21 @@ func TestTheAdapterKeepsTheFactsShare(t *testing.T) {
 		kept  int
 	}{{"the platform's facts", m.Parse([]byte(content)).Facts(), 40}, {"facts of elsewhere", content, 34}} {
 		t.Run(tt.name, func(t *testing.T) {
-			b := markdown.NewBudget(1000, 20*time.Millisecond, slog.New(slog.DiscardHandler))
+			const size = 10_000
+			b := markdown.NewBudget(size, 20*time.Millisecond, slog.New(slog.DiscardHandler))
 			hold, err := markdownadapter.NewBudget(b).Take(context.Background(), len(content))
 			if err != nil {
 				t.Fatal(err)
 			}
 			hold.KeepFacts(tt.facts)
-			rest, err := b.Take(context.Background(), 1000-tt.kept)
+			rest, err := b.Take(context.Background(), size-tt.kept)
 			if err != nil {
 				t.Fatalf("the budget beside the facts' %d bytes: %v", tt.kept, err)
 			}
-			if _, err := b.Take(context.Background(), 1); !errors.Is(err, markdown.ErrBusy) {
+			rest.Release()
+			if _, err := b.Take(context.Background(), size-tt.kept+1); !errors.Is(err, markdown.ErrBusy) {
 				t.Errorf("a byte more = %v, want busy: the facts keep %d bytes", err, tt.kept)
 			}
-			rest.Release()
 			hold.Release()
 		})
 	}

@@ -75,7 +75,7 @@ func repeat(unit string) func(int) string {
 // addresses: each must cost about what an ordinary document of its size
 // costs.
 func Pathological() []Input {
-	return []Input{
+	return append([]Input{
 		{"mismatched emphasis a*_", repeat("a*_")},
 		{"mismatched emphasis *a_", repeat("*a_ ")},
 		{"closers in multiples of three", func(n int) string { return "a**b" + repeat("c* ")(n) }},
@@ -229,7 +229,14 @@ func Pathological() []Input {
 		{"a tag's underscores", func(n int) string { return "#a" + repeat("_")(n) }},
 		{"highlight runs ==a", repeat("==a")},
 		{"highlights", repeat("==a== ")},
-		// The most facts for their size (M6/P2 review M1).
+	}, dense()...)
+}
+
+// dense are the inputs whose facts are the most for their size (M6/P2
+// review M1), among the Pathological: CheckCosts measures them at many
+// sizes too.
+func dense() []Input {
+	return []Input{
 		{"wikilinks [[a]]", repeat("[[a]]")},
 		{"links [a](b)", repeat("[a](b) ")},
 		{"tags #a", repeat("#a ")},
@@ -243,6 +250,7 @@ func Pathological() []Input {
 		{"a frontmatter list of property links", func(n int) string {
 			return "---\na: [" + repeat("'[[a]]',")(n) + "]\n---\nbody\n"
 		}},
+		{"embeds ![[a]]", repeat("![[a]]")},
 	}
 }
 

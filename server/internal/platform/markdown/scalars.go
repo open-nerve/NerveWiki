@@ -41,7 +41,7 @@ func (r *reader) note(n *yaml.Node, value string) error {
 	if !ok {
 		return nil
 	}
-	if r.paths += pathBytes(r.path); r.paths > yamlPathsRatio*r.budget {
+	if r.paths += pathBytes(r.path); r.paths > r.pathsBudget {
 		return errInvalid
 	}
 	s.Path = strings.Join(r.path, ".")

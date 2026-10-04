@@ -32,8 +32,8 @@ const (
 // Limit is the most f, the facts of a content of n bytes, keep: factsBase,
 // FactsRatio times n, factsPerValue for each value of the frontmatter,
 // whose count the YAML's limit bounds, and the bytes of its strings' paths,
-// which it bounds too (markdowntest.CheckCosts). A size past what an int
-// holds FactsRatio times of counts as that, the limit not wrapping
+// which it bounds too (markdowntest.CheckCosts). A size past
+// math.MaxInt/(2*FactsRatio) counts as that, the limit not wrapping
 // around (M6/P2 fix check 2 L5).
 func (f Facts) Limit(n int) int {
 	n = min(max(n, 0), math.MaxInt/(2*FactsRatio))

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"math"
 	"reflect"
 	"runtime"
 	"slices"
@@ -84,24 +83,27 @@ func FactsError(exts []markdown.Extension, contents ...string) error {
 }
 
 // kept is the heap the Facts of content keep once its parse is done, the
-// bytes the parse reads included, the least of three runs: the heap's
-// accounting only adds noise; and what the facts may keep, their Limit.
-// Each reading follows two collections: the first leaves what the parse
-// pooled (sync.Pool) to the second (M6/P2 fix check 2 L3).
+// bytes the parse reads included, the median of three readings: the heap's
+// accounting adds noise either way (M6/P2 fix check 3 L2); and what the
+// facts may keep, their Limit. A reading is the heap with the facts less
+// the heap once they are dropped, each after two collections: the first
+// leaves what the parse pooled (sync.Pool) to the second (fix check 2 L3).
 func kept(m *markdown.Markdown, content []byte) (uint64, int) {
-	least, limit := uint64(math.MaxUint64), 0
+	readings := make([]uint64, 0, 3)
+	limit := 0
 	for range 3 {
-		var before, after runtime.MemStats
-		runtime.GC()
-		runtime.GC()
-		runtime.ReadMemStats(&before)
+		var with, without runtime.MemStats
 		facts := m.Parse(bytes.Clone(content)).Facts()
+		limit = facts.Limit(len(content))
 		runtime.GC()
 		runtime.GC()
-		runtime.ReadMemStats(&after)
-		runtime.KeepAlive(facts)
-		runtime.KeepAlive(content)
-		least, limit = min(least, after.HeapAlloc-min(before.HeapAlloc, after.HeapAlloc)), facts.Limit(len(content))
+		runtime.ReadMemStats(&with)
+		runtime.KeepAlive(facts) // dead from here on
+		runtime.GC()
+		runtime.GC()
+		runtime.ReadMemStats(&without)
+		readings = append(readings, with.HeapAlloc-min(without.HeapAlloc, with.HeapAlloc))
 	}
-	return least, limit
+	slices.Sort(readings)
+	return readings[1], limit
 }
