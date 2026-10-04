@@ -275,17 +275,20 @@ export interface HeldWrites {
 /**
  * Holds the editor's writes of the page id's content from now on: each is sent and waits, unanswered, until released.
  * A save held is out, so that what the editor shows stays unsaved however long it rests, not racing autosave's 2
- * seconds.
+ * seconds. Released, the route stays, and lets every request through: unrouting the page's last route turns
+ * Playwright's interception off, and a request the page sends meanwhile, such as the edit session's end as the
+ * held write is answered, may stay paused in Chromium, never sent nor failed.
  */
 export async function holdContentWrites(page: Page, id: string): Promise<HeldWrites> {
   const path = `/api/v0/pages/${id}/content`;
+  let released = false;
   let letGo!: () => void;
   const going = new Promise<void>((resolve) => (letGo = resolve));
   let tellSent!: () => void;
   const first = new Promise<void>((resolve) => (tellSent = resolve));
   const answers: Promise<Response | null>[] = [];
   const hold = async (route: Route) => {
-    if (route.request().method() !== "PUT") {
+    if (released || route.request().method() !== "PUT") {
       await route.fallback();
       return;
     }
@@ -298,9 +301,9 @@ export async function holdContentWrites(page: Page, id: string): Promise<HeldWri
   return {
     sent: () => first,
     release: async () => {
+      released = true;
       letGo();
       const answered = await Promise.all(answers);
-      await page.unroute(`**${path}`, hold);
       return answered.filter((answer) => answer !== null);
     },
   };
