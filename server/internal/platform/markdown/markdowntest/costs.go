@@ -129,16 +129,23 @@ func CheckCosts(t *testing.T, m *markdown.Markdown) {
 	if raceEnabled {
 		t.Skip("costs are checked without the race detector (make test-go runs it)")
 	}
+	paths := false
 	for _, in := range Amplifying() {
 		content := []byte(in.Make(AmplifyingSize))
 		_, out := allocated(t, m, content)
 		if err := CheckSize(content, out); err != nil {
 			t.Errorf("%s: %v", in.Name, err)
 		}
-		if in.Name == pathsInput && !m.Parse(content).Frontmatter().Valid {
-			t.Errorf("%s: its frontmatter is not valid, its paths not measured", in.Name)
+		if in.Name == pathsInput {
+			paths = true
+			if !m.Parse(content).Frontmatter().Valid {
+				t.Errorf("%s: its frontmatter is not valid, its paths not measured", in.Name)
+			}
 		}
 		logKept(t, m, in.Name, content)
+	}
+	if !paths {
+		t.Errorf("no %q among the Amplifying inputs: the paths' facts are not measured", pathsInput)
 	}
 	const size = 512 << 10
 	normal := fastest(t, m, Normal(size), time.Second)
