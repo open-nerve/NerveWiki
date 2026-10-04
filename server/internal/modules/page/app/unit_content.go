@@ -12,12 +12,12 @@ import (
 // Writing a page's content in a unit (M4/P4 design 3.4).
 
 // ContentWrite is a write of a page's content: the new content, checked
-// and parsed before the transaction, the revision the writer read the page
-// at, and the edit session it is made in (zero: none).
+// and its facts taken before the transaction, the revision the writer read
+// the page at, and the edit session it is made in (zero: none).
 type ContentWrite struct {
 	NodeID      uuid.UUID
 	Content     string
-	Parsed      Parsed
+	Facts       Facts
 	Base        int
 	EditSession uuid.UUID
 }
@@ -72,7 +72,7 @@ func (u *Unit) writeContent(ctx context.Context, w ContentWrite, participate boo
 		}
 	}
 	state := n.State()
-	step := u.step(domain.OpContent, domain.Change{NodeID: n.ID, Before: &state, After: &state, Revision: c.Revision, Parsed: w.Parsed})
+	step := u.step(domain.OpContent, domain.Change{NodeID: n.ID, Before: &state, After: &state, Revision: c.Revision, Facts: w.Facts})
 	step.EditSessionID = session.ID
 	base := current.Revision
 	err = u.apply(ctx, step, participate, func(ctx context.Context) error {

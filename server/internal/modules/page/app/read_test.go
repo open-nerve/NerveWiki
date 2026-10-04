@@ -107,7 +107,7 @@ func TestGetPageOfAPageDeletedWhileItIsRead(t *testing.T) {
 
 // A page's reading view reads as the page does, without a transaction:
 // its node, its notebook's workspace, the decision, then its content and
-// version, parsed and rendered for this page.
+// version, parsed and rendered for this page at that version.
 func TestGetPageViewRendersThePagesContent(t *testing.T) {
 	f := newFixture()
 	f.grant(domain.ActionRead)
@@ -123,13 +123,13 @@ func TestGetPageViewRendersThePagesContent(t *testing.T) {
 	if v != (app.ReadingView{HTML: "<p># Hello</p>", Revision: 3}) {
 		t.Errorf("view = %+v, want the content rendered at revision 3", v)
 	}
-	if !slices.Equal(f.rec.calls, []string{"FindNode", "WorkspaceOf", "Authorize page.read", "PageContent", "Take 7", "Parse", "Render",
+	if !slices.Equal(f.rec.calls, []string{"FindNode", "WorkspaceOf", "Authorize page.read", "PageContent", "Take 7", "Render",
 		"Release 7"}) {
 		t.Errorf("calls = %v, want the node, the workspace, the decision, the content, then its parse and rendering within the"+
 			" budget, outside a transaction", f.rec.calls)
 	}
-	if !slices.Equal(md.pages, []app.PageRef{{NotebookID: f.eng, PageID: n.ID}}) {
-		t.Errorf("rendered for %v, want eng's page", md.pages)
+	if !slices.Equal(md.pages, []app.PageRef{{NotebookID: f.eng, PageID: n.ID, Revision: 3}}) {
+		t.Errorf("rendered for %v, want eng's page at revision 3", md.pages)
 	}
 }
 

@@ -1,7 +1,8 @@
 // Package markdowntest holds what tests of Markdown use: ordinary and
-// pathological documents of a given size, the check of a reading view's
-// HTML (M4/P3 design 3.10) and the fixture set. Only test code may import it
-// (enforced by internal/archtest).
+// pathological documents of a given size, the checks of what a parse
+// costs (CheckCosts), of a reading view's HTML (M4/P3 design 3.10) and of
+// a parse's facts (CheckFacts, M6 design 4.7), and the fixture set. Only
+// test code may import it (enforced by internal/archtest).
 package markdowntest
 
 import (
@@ -74,7 +75,7 @@ func repeat(unit string) func(int) string {
 // addresses: each must cost about what an ordinary document of its size
 // costs.
 func Pathological() []Input {
-	return []Input{
+	return append([]Input{
 		{"mismatched emphasis a*_", repeat("a*_")},
 		{"mismatched emphasis *a_", repeat("*a_ ")},
 		{"closers in multiples of three", func(n int) string { return "a**b" + repeat("c* ")(n) }},
@@ -228,15 +229,39 @@ func Pathological() []Input {
 		{"a tag's underscores", func(n int) string { return "#a" + repeat("_")(n) }},
 		{"highlight runs ==a", repeat("==a")},
 		{"highlights", repeat("==a== ")},
+	}, dense()...)
+}
+
+// dense are the inputs whose facts are the most for their size (M6/P2
+// review M1), among the Pathological: CheckCosts measures them at many
+// sizes too.
+func dense() []Input {
+	return []Input{
+		{"wikilinks [[a]]", repeat("[[a]]")},
+		{"links [a](b)", repeat("[a](b) ")},
+		{"tags #a", repeat("#a ")},
+		{"a frontmatter string of escapes", func(n int) string {
+			return "---\na: \"" + repeat("\\t")(n) + "\"\n---\nbody\n"
+		}},
+		{"a frontmatter string of one escape", func(n int) string {
+			return "---\na: \"\\t" + strings.Repeat("a", n) + "\"\n---\nbody\n"
+		}},
+		{"a frontmatter list of plain strings", func(n int) string { return "---\na: [" + repeat("x,")(n) + "]\n---\nbody\n" }},
+		{"a frontmatter list of property links", func(n int) string {
+			return "---\na: [" + repeat("'[[a]]',")(n) + "]\n---\nbody\n"
+		}},
+		{"embeds ![[a]]", repeat("![[a]]")},
 	}
 }
 
 // Amplifying are the inputs whose HTML goldmark or YAML's aliases make
 // grow faster than the input: a table's short rows filled to the header's
 // width, a reference link repeating a long destination or title, an alias
-// repeating a long value. They are checked at AmplifyingSize, which a
-// regression cannot make exhaust the machine's memory: their HTML must
-// pass CheckSize.
+// repeating a long value; or whose facts would: long keys over a list, each
+// item's path repeating them (M6/P2 fix check 2 C1). They are checked at
+// AmplifyingSize, which a regression cannot make exhaust the machine's
+// memory: their HTML must pass CheckSize, their facts keep at most their
+// Limit.
 func Amplifying() []Input {
 	return []Input{
 		{"a wide header over short rows", func(n int) string {
@@ -255,8 +280,30 @@ func Amplifying() []Input {
 		{"a long page embedded often", func(n int) string {
 			return "[[" + strings.Repeat("a", n/2) + "]]\n\n" + strings.Repeat("![[p]]", n/12)
 		}},
+		// A 1 KB key over 48 items at AmplifyingSize: some 49 KB of paths,
+		// within their limit, most of what the facts keep (pathsInput).
+		{pathsInput, func(n int) string {
+			return "---\n" + strings.Repeat("k", n/16) + ": [" + strings.Repeat("a,", n/341) + "]\n---\nbody\n"
+		}},
+		{"long keys nested over a list", func(n int) string {
+			key := strings.Repeat("k", n/32)
+			return "---\n" + strings.Repeat(key+": {", 7) + key + ": [" + strings.Repeat("a,", n/4) + "]" +
+				strings.Repeat("}", 7) + "\n---\nbody\n"
+		}},
+		{"a long key aliased over a list", func(n int) string {
+			return "---\nx: &k " + strings.Repeat("k", n/2) + "\ny: {*k : [" + strings.Repeat("a,", n/4) + "]}\n---\nbody\n"
+		}},
+		{"a long explicit key over a list", func(n int) string {
+			return "---\n? " + strings.Repeat("k", n/2) + "\n: [" + strings.Repeat("a,", n/4) + "]\n---\nbody\n"
+		}},
 	}
 }
+
+// pathsInput is the Amplifying input whose frontmatter's paths are most of
+// its facts, within their limit: CheckCosts requires it among the inputs
+// and its frontmatter valid, so that a limit changed does not leave the
+// paths' facts unmeasured (M6/P2 fix checks 5 L1, 6 L2).
+const pathsInput = "a long key over a list"
 
 // AmplifyingSize is the size the Amplifying inputs are checked at.
 const AmplifyingSize = 16 << 10

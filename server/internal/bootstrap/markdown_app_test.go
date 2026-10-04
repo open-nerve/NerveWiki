@@ -2,9 +2,13 @@ package bootstrap
 
 import (
 	"context"
+	"errors"
+	"log/slog"
 	"testing"
+	"time"
 	"uuid"
 
+	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown/markdowntest"
 )
@@ -42,6 +46,42 @@ func TestTheAppsMarkdownRendersCheckedHTML(t *testing.T) {
 		if err := markdowntest.CheckHTML(html, exts...); err != nil {
 			t.Errorf("%s: %v", name, err)
 		}
+	}
+}
+
+// The facts of the application's parse keep none of its tree (M6 design
+// 4.7): a write keeps them through its unit, its extensions' results
+// among them.
+func TestTheAppsFactsOutliveTheTree(t *testing.T) {
+	markdowntest.CheckFacts(t, markdownExtensions())
+}
+
+// The server's parse budget is the configuration's (M6 design 4.7): all but
+// 8 KiB of it held, 8 KiB are free, and a byte more is busy once the
+// configured wait has passed.
+func TestTheServersParseBudgetIsTheConfigurations(t *testing.T) {
+	cfg := config.Config{Page: config.PageConfig{ParseBudgetBytes: 64 << 10, ParseMaxWait: 50 * time.Millisecond}}
+	_, budget, err := parsing(cfg, slog.New(slog.DiscardHandler))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	// Takes past the least a take holds: the budget's last 8 KiB fit, and a
+	// byte more does not.
+	most, err := budget.Take(ctx, 56<<10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer most.Release()
+	last, err := budget.Take(ctx, 8<<10)
+	if err != nil {
+		t.Fatalf("the budget's last 8 KiB: %v", err)
+	}
+	last.Release()
+	start := time.Now()
+	if _, err := budget.Take(ctx, 8<<10+1); !errors.Is(err, markdown.ErrBusy) || time.Since(start) < cfg.Page.ParseMaxWait ||
+		time.Since(start) > time.Second {
+		t.Errorf("a byte beyond the budget = %v after %s, want busy after %s", err, time.Since(start), cfg.Page.ParseMaxWait)
 	}
 }
 

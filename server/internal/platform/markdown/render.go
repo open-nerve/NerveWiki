@@ -34,7 +34,7 @@ func (m *Markdown) Render(ctx context.Context, d *Document, page Page) (string, 
 		var data any
 		if e.Fetch != nil {
 			var err error
-			if data, err = e.Fetch(ctx, page, d.extracted[e.Name]); err != nil {
+			if data, err = e.Fetch(ctx, page, d.facts.Extracted(e.Name)); err != nil {
 				return "", err
 			}
 		}
@@ -44,7 +44,7 @@ func (m *Markdown) Render(ctx context.Context, d *Document, page Page) (string, 
 	}
 	sanitize(d.root, d.source)
 	var out bytes.Buffer
-	if fm := d.frontmatter; fm.Valid && len(fm.Properties) > 0 {
+	if fm := d.facts.frontmatter; fm.Valid && len(fm.Properties) > 0 {
 		writeProperties(&out, fm.Properties)
 		out.WriteByte('\n')
 	}

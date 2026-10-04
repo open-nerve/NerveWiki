@@ -162,6 +162,7 @@ test("C10 (page): A ticks a task item in the reading view, its checkbox named by
   // way could show B revision 4.
   const views = `**/api/v0/pages/${tasks.id}/view`;
   let holding = false;
+  let released = false;
   let passed = 0;
   let answered = 0;
   let releaseViews: (() => void) | undefined;
@@ -169,6 +170,10 @@ test("C10 (page): A ticks a task item in the reading view, its checkbox named by
     releaseViews = resolve;
   });
   await b.route(views, async (route) => {
+    if (released) {
+      await route.fallback();
+      return;
+    }
     const held = holding;
     if (held) {
       await viewsHeld;
@@ -190,10 +195,13 @@ test("C10 (page): A ticks a task item in the reading view, its checkbox named by
   const refused = answerTo(b, "POST", toggles);
   await boxesOf(b).first().click();
   expect((await refused).status()).toBe(409);
+  released = true;
   releaseViews?.();
   await expect(b.getByRole("main").getByRole("alert")).toHaveText("This page has changed since you read it.");
   await expect(boxesOf(b)).toHaveCount(3);
-  await b.unroute(views);
+  // The route stays, letting the views through once released: unrouting the page's last route turns Playwright's
+  // interception off, and a request sent in that instant may stay paused, never sent nor failed (as holdContentWrites
+  // says).
   expect(await readContent(api, a, tasks.id)).toMatchObject({ content: moved, revision: 4 });
 
   await startEditing(page);

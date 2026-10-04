@@ -1,11 +1,10 @@
 // Package markdownadapter connects platform/markdown to the page module's
-// app.Markdown (M4/P3 design 3.9): a Parsed is the platform's Document,
-// which only Render and Tasks look into.
+// app.Markdown (M4/P3 design 3.9) and app.ParseBudget: app.Facts are the
+// platform's Facts, which only Tasks looks into (M6 design 4.7).
 package markdownadapter
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/app"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown"
@@ -22,30 +21,26 @@ func New(md *markdown.Markdown) *Markdown {
 	return &Markdown{md: md}
 }
 
-// Parse implements app.Markdown.
-func (m *Markdown) Parse(content string) app.Parsed {
-	return m.md.Parse([]byte(content))
+// Facts implements app.Markdown: the parse's tree is garbage once they are
+// taken.
+func (m *Markdown) Facts(content string) app.Facts {
+	return m.md.Parse([]byte(content)).Facts()
 }
 
-// Render implements app.Markdown. A Parsed that Parse did not return is an
-// error.
-func (m *Markdown) Render(ctx context.Context, parsed app.Parsed, page app.PageRef) (string, error) {
-	d, ok := parsed.(*markdown.Document)
-	if !ok || d == nil {
-		return "", fmt.Errorf("render: %T is not a parse of the adapter", parsed)
-	}
-	return m.md.Render(ctx, d, markdown.Page{NotebookID: page.NotebookID, PageID: page.PageID})
+// Render implements app.Markdown.
+func (m *Markdown) Render(ctx context.Context, content string, page app.PageRef) (string, error) {
+	return m.md.Render(ctx, m.md.Parse([]byte(content)),
+		markdown.Page{NotebookID: page.NotebookID, PageID: page.PageID, Revision: page.Revision})
 }
 
-// Tasks implements app.Markdown: what the tasks extension took from the
-// Document. A Markdown without the extension, or a Parsed that Parse did
-// not return, has none.
-func (m *Markdown) Tasks(parsed app.Parsed) []app.Task {
-	d, ok := parsed.(*markdown.Document)
-	if !ok || d == nil {
+// Tasks implements app.Markdown: what the tasks extension took. A Markdown
+// without the extension, or facts that Facts did not return, have none.
+func (m *Markdown) Tasks(facts app.Facts) []app.Task {
+	f, ok := facts.(markdown.Facts)
+	if !ok {
 		return nil
 	}
-	found, _ := d.Extracted(tasks.Name).([]tasks.Task)
+	found, _ := f.Extracted(tasks.Name).([]tasks.Task)
 	out := make([]app.Task, len(found))
 	for i, t := range found {
 		out[i] = app.Task{Offset: t.Offset, Checked: t.Checked}

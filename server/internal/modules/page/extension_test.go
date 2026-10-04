@@ -131,6 +131,8 @@ type fixture struct {
 	alice            uuid.UUID
 	acme, eng, notes uuid.UUID
 	md               *markdown.Markdown
+	// budget is the parse budget handed to the module, a free one when nil.
+	budget *markdown.Budget
 	// The edit sessions' registrants serve wires.
 	vetoers     []page.EditSessionVetoer
 	subscribers []page.EditSessionSubscriber
@@ -207,12 +209,15 @@ func (f fixture) router(t *testing.T, guards []page.WriteGuard, participants []p
 	if f.clock != nil {
 		clock = f.clock
 	}
+	budget := f.budget
+	if budget == nil {
+		budget = markdown.NewBudget(8<<20, time.Second, slog.New(slog.DiscardHandler))
+	}
 	page.New(page.Deps{
 		Pool: f.pool, Tx: postgres.NewTxManager(f.pool, 5*time.Second), Clock: clock, Logger: slog.New(slog.DiscardHandler),
 		Authorizer: aliceWrites{f.alice}, Workspaces: sqlWorkspaces{f.pool}, Notebooks: sqlNotebooks{f.pool}, Names: sqlNames{f.pool},
-		Markdown: f.md, Guards: guards, Participants: participants, Observers: observers,
+		Markdown: f.md, Budget: budget, Guards: guards, Participants: participants, Observers: observers,
 		EditSessionVetoers: f.vetoers, EditSessionSubscribers: f.subscribers, EditSessionCleanupInterval: time.Hour,
-		ParseBudgetBytes: 8 << 20, ParseMaxWait: time.Second,
 	}).Register(router, httpservertest.NewAPI(t, httpservertest.APIOptions{Authenticator: tokenAuth{}}))
 	return router
 }
@@ -576,14 +581,14 @@ func TestTheTreesWritesReachTheUnit(t *testing.T) {
 }
 
 // pageMark is a Markdown extension's test double: it takes the content's
-// size, fetches the page it renders for, and writes both in a mark before
-// the body.
+// size, fetches the page it renders for and its revision, and writes them
+// in a mark before the body.
 func pageMark() markdown.Extension {
 	return markdown.Extension{
 		Name:    "page-mark",
 		Extract: func(t markdown.Tree) any { return len(t.Content) },
 		Fetch: func(_ context.Context, p markdown.Page, extracted any) (any, error) {
-			return fmt.Sprintf("%s/%s:%d", p.NotebookID, p.PageID, extracted), nil
+			return fmt.Sprintf("%s/%s@%d:%d", p.NotebookID, p.PageID, p.Revision, extracted), nil
 		},
 		Renderer: func(data any) []util.PrioritizedValue {
 			return []util.PrioritizedValue{util.Prioritized(markRenderer(data.(string)), 50)}
@@ -604,8 +609,8 @@ func (r markRenderer) RegisterFuncs(reg renderer.NodeRendererFuncRegisterer) {
 }
 
 // A registered extension reaches the reading view through page.New: what
-// it fetched for this page, from what it took from the content, is in the
-// HTML, with the content rendered at its revision.
+// it fetched for this page at the revision read, from what it took from
+// the content, is in the HTML, with the content rendered at that revision.
 func TestAnExtensionReachesTheReadingView(t *testing.T) {
 	f := newFixture(t)
 	md, err := markdown.New([]markdown.Extension{pageMark()})
@@ -626,7 +631,7 @@ func TestAnExtensionReachesTheReadingView(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &view); err != nil {
 		t.Fatal(err)
 	}
-	want := `<mark data-page="` + f.eng.String() + "/" + f.notes.String() + `:7"></mark><h1 id="nw-hello">Hello</h1>` + "\n"
+	want := `<mark data-page="` + f.eng.String() + "/" + f.notes.String() + `@2:7"></mark><h1 id="nw-hello">Hello</h1>` + "\n"
 	if view.HTML != want || view.Revision != 2 {
 		t.Errorf("view = %+v, want %q at revision 2", view, want)
 	}
@@ -635,7 +640,7 @@ func TestAnExtensionReachesTheReadingView(t *testing.T) {
 // A content's write and a page created with a content reach the unit
 // through page.New: the write is the page's next revision, its version on
 // its base in a changeset of the credentials' client; the guard and the
-// observers get its parse by the composition's Markdown, which the
+// observers get its facts by the composition's Markdown, what the
 // registered extension took from the content.
 func TestTheContentsWritesReachTheUnit(t *testing.T) {
 	f := newFixture(t)
@@ -646,11 +651,8 @@ func TestTheContentsWritesReachTheUnit(t *testing.T) {
 	f.md = md
 	g, o := &guard{}, &observer{f: f}
 	marked := func(c domain.Change) any {
-		d, _ := c.Parsed.(*markdown.Document)
-		if d == nil {
-			return nil
-		}
-		return d.Extracted("page-mark")
+		facts, _ := c.Facts.(markdown.Facts)
+		return facts.Extracted("page-mark")
 	}
 	written := f.serve(t, "pat", http.MethodPut, "/api/v0/pages/"+f.notes.String()+"/content", `{"content":"# Hello","base_revision":1}`,
 		[]page.WriteGuard{g}, nil, []page.PageObserver{o})
@@ -664,7 +666,7 @@ func TestTheContentsWritesReachTheUnit(t *testing.T) {
 	}
 	if len(g.steps) != 1 || g.steps[0].Operation != domain.OpContent || !g.inTx || marked(g.steps[0].Changes[0]) != 7 ||
 		len(o.events) != 1 || marked(o.events[0].Changes[0]) != 7 {
-		t.Errorf("the guard saw %+v in a transaction %v, the observers %+v; want the write with its parse", g.steps, g.inTx, o.events)
+		t.Errorf("the guard saw %+v in a transaction %v, the observers %+v; want the write with its facts", g.steps, g.inTx, o.events)
 	}
 	created := f.serve(t, "session", http.MethodPost, f.createPath(), `{"parent_id":null,"title":"New","content":"abc"}`,
 		nil, nil, []page.PageObserver{o})
@@ -672,7 +674,44 @@ func TestTheContentsWritesReachTheUnit(t *testing.T) {
 		t.Fatalf("POST = %d %s, want 201 with its 3 bytes", created.Code, created.Body)
 	}
 	if len(o.events) != 2 || marked(o.events[1].Changes[0]) != 3 {
-		t.Errorf("the observers followed %+v, want the creation with its parse", o.events)
+		t.Errorf("the observers followed %+v, want the creation with its facts", o.events)
+	}
+}
+
+// The module parses within the budget the composition root hands it, the
+// server's one (M6 design 4.7): while all of it is held elsewhere, a
+// content's write and a reading view are 503 server_busy; once it is back,
+// both are answered.
+func TestTheModuleParsesWithinTheBudgetItIsGiven(t *testing.T) {
+	f := newFixture(t)
+	f.exec(t, "UPDATE page_contents SET content = $2, byte_size = octet_length($2), content_hash = sha256(convert_to($2, 'UTF8')),"+
+		" revision = 2 WHERE node_id = $1", f.notes, "# Notes")
+	f.budget = markdown.NewBudget(1<<10, 20*time.Millisecond, slog.New(slog.DiscardHandler))
+	all, err := f.budget.Take(context.Background(), 1<<10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	router := f.router(t, nil, nil, nil)
+	write := func() *httptest.ResponseRecorder {
+		return f.request(router, "session", http.MethodPut, "/api/v0/pages/"+f.notes.String()+"/content",
+			`{"content":"# Hello","base_revision":2}`)
+	}
+	view := func() *httptest.ResponseRecorder {
+		return f.request(router, "session", http.MethodGet, "/api/v0/pages/"+f.notes.String()+"/view", "")
+	}
+	for name, rec := range map[string]*httptest.ResponseRecorder{"the write": write(), "the view": view()} {
+		if rec.Code != http.StatusServiceUnavailable || !strings.Contains(rec.Body.String(), `"server_busy"`) ||
+			rec.Header().Get("Retry-After") != "1" {
+			t.Errorf("%s while the budget is held = %d %s, Retry-After %q; want 503 server_busy, 1", name, rec.Code, rec.Body,
+				rec.Header().Get("Retry-After"))
+		}
+	}
+	all.Release()
+	if rec := write(); rec.Code != http.StatusOK {
+		t.Errorf("the write once the budget is back = %d %s, want 200", rec.Code, rec.Body)
+	}
+	if rec := view(); rec.Code != http.StatusOK {
+		t.Errorf("the view once the budget is back = %d %s, want 200", rec.Code, rec.Body)
 	}
 }
 
@@ -684,7 +723,7 @@ func TestTheBodyLimitsAreTheModulesRoutes(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := page.New(page.Deps{Clock: fixedClock{}, Logger: slog.New(slog.DiscardHandler), Markdown: md, EditSessionCleanupInterval: time.Hour,
-		ParseBudgetBytes: 8 << 20, ParseMaxWait: time.Second})
+		Budget: markdown.NewBudget(8<<20, time.Second, slog.New(slog.DiscardHandler))})
 	router := httpserver.NewRouter(slog.New(slog.DiscardHandler))
 	m.Register(router, httpservertest.NewAPI(t, httpservertest.APIOptions{Authenticator: tokenAuth{}, BodyLimits: m.BodyLimits()}))
 	if len(m.BodyLimits()) == 0 {

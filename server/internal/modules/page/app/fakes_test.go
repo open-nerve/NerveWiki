@@ -227,21 +227,21 @@ func (f *fakeStore) LockContent(ctx context.Context, notebookID, id uuid.UUID) (
 	return app.ContentLock{Revision: c.Revision, Hash: c.Hash, ByteSize: c.ByteSize}, nil
 }
 
-// fakeMarkdown parses a content to itself and renders it in a <p>, with the
-// page it rendered for; err, when set, is Render's.
+// fakeMarkdown takes a content's facts as the content itself and renders
+// it in a <p>, with the page it rendered for; err, when set, is Render's.
 type fakeMarkdown struct {
 	*recorder
 	pages []app.PageRef
 	err   error
-	// panics has Parse panic.
+	// panics has Facts panic.
 	panics bool
 	// tasksRead, when set, runs once after Tasks: someone's write while
 	// the tasks are read.
 	tasksRead func()
 }
 
-func (f *fakeMarkdown) Parse(content string) app.Parsed {
-	f.record(context.Background(), "Parse")
+func (f *fakeMarkdown) Facts(content string) app.Facts {
+	f.record(context.Background(), "Facts")
 	if f.panics {
 		panic("the parse failed")
 	}
@@ -251,11 +251,11 @@ func (f *fakeMarkdown) Parse(content string) app.Parsed {
 // Tasks finds a task item at the start of a line, "- [ ]", "- [\t]",
 // "- [x]" or "- [X]", but for a "- [x]: " line, which a link reference definition
 // is: ticking "- [ ]: /u" makes one, as in the tasks extension.
-func (f *fakeMarkdown) Tasks(parsed app.Parsed) []app.Task {
+func (f *fakeMarkdown) Tasks(facts app.Facts) []app.Task {
 	f.record(context.Background(), "Tasks")
 	var out []app.Task
 	at := 0
-	for line := range strings.SplitAfterSeq(parsed.(string), "\n") {
+	for line := range strings.SplitAfterSeq(facts.(string), "\n") {
 		if strings.HasPrefix(line, "- [") && len(line) > 4 && strings.ContainsRune(" \txX", rune(line[3])) && line[4] == ']' &&
 			!strings.HasPrefix(line, "- [x]: ") {
 			out = append(out, app.Task{Offset: at + 3, Checked: line[3] == 'x' || line[3] == 'X'})
@@ -269,8 +269,8 @@ func (f *fakeMarkdown) Tasks(parsed app.Parsed) []app.Task {
 	return out
 }
 
-// fakeBudget records each take of the parse budget with its bytes, and
-// each release; err, when set, is Take's.
+// fakeBudget records each take of the parse budget with its bytes, each
+// keeping of the facts' share and each release; err, when set, is Take's.
 type fakeBudget struct {
 	*recorder
 	err      error
@@ -278,23 +278,43 @@ type fakeBudget struct {
 	released int
 }
 
-func (b *fakeBudget) Take(ctx context.Context, n int) (func(), error) {
+func (b *fakeBudget) Take(ctx context.Context, n int) (app.BudgetHold, error) {
 	b.record(ctx, fmt.Sprintf("Take %d", n))
 	if b.err != nil {
 		return nil, b.err
 	}
 	b.held += n
-	return func() {
-		b.record(ctx, fmt.Sprintf("Release %d", n))
-		b.held -= n
-		b.released++
-	}, nil
+	return &fakeHold{budget: b, n: n}, nil
 }
 
-func (f *fakeMarkdown) Render(ctx context.Context, parsed app.Parsed, page app.PageRef) (string, error) {
+// fakeHold is a take of fakeBudget: it records the facts it keeps by their
+// size, fakeMarkdown's facts being the content, and keeps nothing back, as
+// the bytes they keep do not matter here; it gives all back once.
+type fakeHold struct {
+	budget *fakeBudget
+	n      int
+	done   bool
+}
+
+func (h *fakeHold) KeepFacts(f app.Facts) {
+	content, _ := f.(string)
+	h.budget.record(context.Background(), fmt.Sprintf("KeepFacts %d", len(content)))
+}
+
+func (h *fakeHold) Release() {
+	if h.done {
+		return
+	}
+	h.done = true
+	h.budget.record(context.Background(), fmt.Sprintf("Release %d", h.n))
+	h.budget.held -= h.n
+	h.budget.released++
+}
+
+func (f *fakeMarkdown) Render(ctx context.Context, content string, page app.PageRef) (string, error) {
 	f.record(ctx, "Render")
 	f.pages = append(f.pages, page)
-	return "<p>" + parsed.(string) + "</p>", f.err
+	return "<p>" + content + "</p>", f.err
 }
 
 func (f *fakeStore) CreateNode(ctx context.Context, n domain.Node) error {

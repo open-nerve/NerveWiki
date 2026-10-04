@@ -44,8 +44,9 @@ func TestToggleTaskDecidesReadsParsesThenWrites(t *testing.T) {
 		t.Fatal(err)
 	}
 	take, release := "Take "+strconv.Itoa(len(taskList)), "Release "+strconv.Itoa(len(taskList))
-	want := []string{"FindNode", "WorkspaceOf", "Authorize page.toggle_task", "PageContent", take, "Parse", "Tasks", release,
-		take, "Parse", "Tasks", "WorkspaceOf", "ShareWorkspace in tx", "ShareNotebook in tx", "Authorize page.toggle_task in tx",
+	keep := "KeepFacts " + strconv.Itoa(len(taskList))
+	want := []string{"FindNode", "WorkspaceOf", "Authorize page.toggle_task", "PageContent", take, "Facts", keep, "Tasks", release,
+		take, "Facts", keep, "Tasks", "WorkspaceOf", "ShareWorkspace in tx", "ShareNotebook in tx", "Authorize page.toggle_task in tx",
 		"LockContent in tx", "FindNodeIn in tx", "CreateChangeset in tx", "WriteContent in tx", "RecordRevision in tx"}
 	if !slices.Equal(f.rec.calls[:min(len(want), len(f.rec.calls))], want) || f.rec.calls[len(f.rec.calls)-1] != release ||
 		f.budget.held != 0 {
@@ -55,7 +56,7 @@ func TestToggleTaskDecidesReadsParsesThenWrites(t *testing.T) {
 
 // A tick or a clear changes the one byte between the brackets, whatever
 // was around it, and writes a version as a content write in no session
-// does: the guard sees the step, the observers the new content's parse.
+// does: the guard sees the step, the observers the new content's facts.
 func TestToggleTaskChangesTheOneByte(t *testing.T) {
 	for _, tt := range []struct {
 		offset  int
@@ -83,8 +84,8 @@ func TestToggleTaskChangesTheOneByte(t *testing.T) {
 		if len(g.steps) != 1 || g.steps[0].Operation != domain.OpContent || g.steps[0].EditSessionID != (uuid.UUID{}) {
 			t.Errorf("guarded %+v, want one content step in no session", g.steps)
 		}
-		if len(o.events) != 1 || o.events[0].Changes[0].Parsed != tt.want {
-			t.Errorf("observed %+v, want one event with the new content's parse", o.events)
+		if len(o.events) != 1 || o.events[0].Changes[0].Facts != tt.want {
+			t.Errorf("observed %+v, want one event with the new content's facts", o.events)
 		}
 		if logs := f.logs.String(); !strings.Contains(logs, `msg="page task toggled"`) ||
 			!strings.Contains(logs, "offset="+strconv.Itoa(tt.offset)) || strings.Contains(logs, "Cafe") {

@@ -99,6 +99,9 @@ func extract(t markdown.Tree, values parser.Parser) any {
 	}
 	slices.SortStableFunc(out.Links, func(a, b Link) int { return cmp.Compare(a.Range.Start, b.Range.Start) })
 	slices.SortStableFunc(out.Tags, func(a, b Tag) int { return cmp.Compare(a.Range.Start, b.Range.Start) })
+	// The facts outlive the parse: each slice as long as what it holds, not
+	// the twice as long that appending may leave (M6/P2 fix check 3 M1).
+	out.Links, out.Tags = slices.Clone(out.Links), slices.Clone(out.Tags)
 	return out
 }
 

@@ -1,12 +1,13 @@
 // Package markdown is the one parse of Markdown and its rendering (overall
 // design 4.3, 4.6; M4 design 4 and 8): Parse turns a page's content into a
 // Document, its frontmatter, its tree and what each extension takes from the
-// tree; Render turns a Document into the HTML of a reading view. Its parse
-// is goldmark's, hardened (internal/harden), so it costs about the size of
-// the content whatever the content is.
+// tree; Render turns a Document into the HTML of a reading view; a write
+// keeps a Document's Facts, which outlive its tree. Its parse is goldmark's,
+// hardened (internal/harden), so it costs about the size of the content
+// whatever the content is; a Budget bounds the content parsed at once.
 //
-// It imports goldmark, go.yaml.in/yaml and golang.org/x/net/html, and no
-// other platform package.
+// It imports goldmark, go.yaml.in/yaml, golang.org/x/net/html and
+// golang.org/x/sync, and no other platform package.
 package markdown
 
 import (
@@ -37,8 +38,12 @@ type Extension struct {
 	// Context.IsInLinkLabel is always false; and a link an extension makes
 	// does not count for "a link may not contain a link".
 	Parser []parser.Option
-	// Extract takes the extension's result from the parse's tree. It may be
-	// nil.
+	// Extract takes the extension's result from the parse's tree. The
+	// result outlives the tree, in the Document's Facts: it holds none of
+	// the tree's nodes, each of which holds the whole tree
+	// (markdowntest.CheckFacts), and with the frontmatter and the other
+	// extensions' results at most Facts.Limit, as the budget counts them
+	// (markdowntest.CheckCosts). It may be nil.
 	Extract func(t Tree) any
 	// Fetch gets the extension's data for one page before Render renders
 	// it, from what Extract took: in the caller's read, holding no lock. Its
@@ -99,10 +104,12 @@ func (t Tree) Destination(n ast.Node) (Span, bool) {
 	return Span{Start: s.Start, Stop: s.Stop}, ok
 }
 
-// Page is the page a Render is for.
+// Page is the page a Render is for, and the revision of its content
+// rendered (M6: Fetch tells whether the link index is of it).
 type Page struct {
 	NotebookID uuid.UUID
 	PageID     uuid.UUID
+	Revision   int
 }
 
 // Markdown parses and renders. It is safe for concurrent use.
@@ -132,16 +139,17 @@ func New(exts []Extension) (*Markdown, error) {
 // Document is a parse of a page's content. A Render changes its tree: it
 // serves one request.
 type Document struct {
-	content     []byte
-	source      []byte // content as the parser read it: its frontmatter blank
-	root        ast.Node
-	frontmatter Frontmatter
-	extracted   map[string]any
+	source []byte // the content as the parser read it: its frontmatter blank
+	root   ast.Node
+	facts  Facts
 }
 
 // Frontmatter is the document's frontmatter.
-func (d *Document) Frontmatter() Frontmatter { return d.frontmatter }
+func (d *Document) Frontmatter() Frontmatter { return d.facts.frontmatter }
 
 // Extracted is what the extension named name took from the document, nil
 // for none.
-func (d *Document) Extracted(name string) any { return d.extracted[name] }
+func (d *Document) Extracted(name string) any { return d.facts.Extracted(name) }
+
+// Facts is what the document found that outlives its tree.
+func (d *Document) Facts() Facts { return d.facts }

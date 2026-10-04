@@ -87,11 +87,9 @@ type Deps struct {
 	// EditSessionCleanupInterval is how often the expired edit sessions
 	// are deleted (page.edit_session_cleanup_interval).
 	EditSessionCleanupInterval time.Duration
-	// ParseBudgetBytes is the bytes of content parsed and rendered at once
-	// (page.parse_budget_bytes), which a request waits for at most
-	// ParseMaxWait (page.parse_max_wait).
-	ParseBudgetBytes int
-	ParseMaxWait     time.Duration
+	// Budget bounds the content parsed and rendered at once: the server's
+	// one, which every module that parses shares (M6 design 4.7).
+	Budget *markdown.Budget
 }
 
 // Module is the wired page module.
@@ -104,7 +102,7 @@ type Module struct {
 func New(d Deps) *Module {
 	store := postgresadapter.New(d.Pool)
 	md := markdownadapter.New(d.Markdown)
-	budget := markdownadapter.NewBudget(d.ParseBudgetBytes, d.ParseMaxWait, d.Logger)
+	budget := markdownadapter.NewBudget(d.Budget)
 	writer := app.NewWriter(app.WriterDeps{
 		Tx: d.Tx, Clock: d.Clock, Auth: d.Authorizer, Workspaces: d.Workspaces, Notebooks: d.Notebooks,
 		Nodes: store, NodeWriter: store, Changesets: store, SessionWriter: store, Names: d.Names,

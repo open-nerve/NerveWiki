@@ -23,16 +23,18 @@ func SameParent(a, b *uuid.UUID) bool {
 // Change is what a write did to a node: where it was before (nil: the
 // write created it) and after (nil: the write deleted it), the revision it
 // left the content at (0: the content is untouched), and that content's
-// parse. A change of the content alone has the same before and after.
+// facts. A change of the content alone has the same before and after.
 type Change struct {
 	NodeID   uuid.UUID
 	Before   *TreeState
 	After    *TreeState
 	Revision int
-	// Parsed is the content's parse when Revision is set: opaque here, the
-	// app's Parsed, taken before the transaction (M4 design 4, "parse
-	// timing"); the observers and the guards read it.
-	Parsed any
+	// Facts are the content's facts when Revision is set: opaque here, the
+	// app's Facts, taken before the transaction (M4 design 4, "parse
+	// timing"; M6 design 4.7), without the tree; the guards, the
+	// participants and the observers read them. They need not be
+	// comparable: two Changes are not compared with == (M6/P2 review L3).
+	Facts any
 }
 
 // Moves reports whether the change moves the node in the tree: it is
@@ -44,11 +46,11 @@ func (c Change) Moves() bool {
 
 // Then is c followed by a later change of the same node, as one change:
 // the first before and the last after, and the last revision written with
-// its parse.
+// its facts.
 func (c Change) Then(later Change) Change {
-	out := Change{NodeID: c.NodeID, Before: c.Before, After: later.After, Revision: c.Revision, Parsed: c.Parsed}
+	out := Change{NodeID: c.NodeID, Before: c.Before, After: later.After, Revision: c.Revision, Facts: c.Facts}
 	if later.Revision != 0 {
-		out.Revision, out.Parsed = later.Revision, later.Parsed
+		out.Revision, out.Facts = later.Revision, later.Facts
 	}
 	return out
 }

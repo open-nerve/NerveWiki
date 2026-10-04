@@ -299,14 +299,15 @@ func TestDeletingASubtreeDeletesItsSessions(t *testing.T) {
 	checkPages(t, tm.pool)
 }
 
-// The configuration's parse budget bounds the content writes' parses and
-// the reading views' together (M4/P4 review P2; fix check, finding 2): a
-// write that waits for its page's lock holds its content's bytes, and
-// another page's reading view, which the budget cannot fit beside them,
-// is 503 server_busy once page.parse_max_wait has passed. The budget here
-// is 64 KiB, less than the configuration takes, so that the test writes
-// no large body.
-func TestTheParseBudgetBoundsWritesAndViews(t *testing.T) {
+// A content's write keeps only its facts' share of the server's parse
+// budget once it has them, a tenth of its content's bytes, until its unit
+// is over (M6 design 4.7; M6/P2 review M1, L1). One that waits for its
+// page's lock with a content as large as the budget leaves room for
+// another page's reading view, which M4/P4 had 503 server_busy; one with
+// ten times the budget keeps all of it, and the view is 503 once
+// page.parse_max_wait has passed. The budget here is 64 KiB, less than
+// the configuration takes, so that the test writes no large body.
+func TestAWriteWaitingForItsLockKeepsItsFactsShare(t *testing.T) {
 	tm := newAcmeTeamWith(t, "member", "", func(c *config.Config) {
 		c.Page.ParseBudgetBytes, c.Page.ParseMaxWait = 64<<10, 300*time.Millisecond
 	})
@@ -314,42 +315,67 @@ func TestTheParseBudgetBoundsWritesAndViews(t *testing.T) {
 	a := tm.createPage(t, "alice", nb, "", "A")
 	b := tm.createPage(t, "alice", nb, "", "B")
 	tm.send(t, contentWrite("alice", b, "# B", 1, ""), http.StatusOK)
+	for i, tt := range []struct {
+		size        int
+		status      int
+		code, retry string
+	}{{64 << 10, http.StatusOK, "", ""}, {640 << 10, http.StatusServiceUnavailable, "server_busy", "1"}} {
+		var took time.Duration
+		view := writeWaitingForItsLock(t, tm, a, strings.Repeat("a", tt.size), i+1, func() answer {
+			start := time.Now()
+			defer func() { took = time.Since(start) }()
+			return tm.sender(t, request("bob", http.MethodGet, "/api/v0/pages/"+b+"/view", ""))()
+		})
+		if !view.is(tt.status, tt.code) || view.res.Header.Get("Retry-After") != tt.retry {
+			t.Errorf("B's reading view while A's write of %d KiB waits for its lock = %d %s, Retry-After %q; want %d %s, %q",
+				tt.size>>10, view.status, view.code, view.res.Header.Get("Retry-After"), tt.status, tt.code, tt.retry)
+		}
+		// The configured wait, not another: the 503 comes once it has passed.
+		if tt.code != "" && (took < 300*time.Millisecond || took > time.Second) {
+			t.Errorf("B's reading view answered %s after %s, want after the configured wait of 300ms", tt.code, took)
+		}
+	}
+	tm.send(t, request("bob", http.MethodGet, "/api/v0/pages/"+b+"/view", ""), http.StatusOK)
+	checkPages(t, tm.pool)
+}
+
+// writeWaitingForItsLock writes content to the page id at base while
+// another transaction holds the page's content row, answers then what
+// meanwhile answers, checked against the contract, and lets the write go:
+// it must answer 200.
+func writeWaitingForItsLock(t *testing.T, tm acmeTeam, id, content string, base int, meanwhile func() answer) answer {
+	t.Helper()
 	ctx := context.Background()
 	holder, err := tm.pool.Begin(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = holder.Rollback(ctx) }()
-	if _, err := holder.Exec(ctx, contentRow(a).lock); err != nil {
+	if _, err := holder.Exec(ctx, contentRow(id).lock); err != nil {
 		t.Fatal(err)
 	}
-	send := tm.sender(t, contentWrite("alice", a, strings.Repeat("a", 64<<10), 1, ""))
+	send := tm.sender(t, contentWrite("alice", id, content, base, ""))
 	written := make(chan answer, 1)
 	go func() { written <- send() }()
 	pgtest.WaitForLockWaitsOn(t, tm.pool, "page_contents", 1, interleavingWait)
 
-	view := tm.sender(t, request("bob", http.MethodGet, "/api/v0/pages/"+b+"/view", ""))()
-	if view.res == nil {
-		t.Fatalf("B's reading view: %v", view.err)
+	got := meanwhile()
+	if got.res == nil {
+		t.Fatalf("meanwhile: %v", got.err)
 	}
-	tm.contract.CheckResponse(t, view.req, view.res)
-	if !view.is(http.StatusServiceUnavailable, "server_busy") || view.res.Header.Get("Retry-After") != "1" {
-		t.Errorf("B's reading view while A's write holds the budget = %d %s, Retry-After %q; want 503 server_busy, 1", view.status,
-			view.code, view.res.Header.Get("Retry-After"))
-	}
+	tm.contract.CheckResponse(t, got.req, got.res)
 	if err := holder.Commit(ctx); err != nil {
 		t.Fatal(err)
 	}
 	select {
 	case w := <-written:
 		if !w.is(http.StatusOK, "") {
-			t.Errorf("A's write = %d %s, want 200", w.status, w.code)
+			t.Errorf("the write = %d %s, want 200", w.status, w.code)
 		}
 	case <-time.After(interleavingWait):
-		t.Fatal("A's write did not answer")
+		t.Fatal("the write did not answer")
 	}
-	tm.send(t, request("bob", http.MethodGet, "/api/v0/pages/"+b+"/view", ""), http.StatusOK)
-	checkPages(t, tm.pool)
+	return got
 }
 
 // The least parse budget the configuration takes is a page's largest

@@ -39,11 +39,12 @@ func (f *fixture) writeAs(id uuid.UUID, text string) {
 	f.store.contents[id] = c
 }
 
-// A content write finds the page unlocked and decides, then parses the
-// content within the budget, outside the unit (M4/P4 review P1, P2); the
-// unit shares the workspace's row and the notebook's, decides again, and
-// locks the page's gate before it reads the node again: its content row,
-// not the node's. The budget is released once the unit is over.
+// A content write finds the page unlocked and decides, then takes the
+// content's facts within the budget, outside the unit (M4/P4 review P1,
+// P2), keeping only the facts' share of it from then (M6 design 4.7, M6/P2
+// review M1) until the unit is over; the unit shares the workspace's row
+// and the notebook's, decides again, and locks the page's gate before it
+// reads the node again: its content row, not the node's.
 func TestPutPageContentDecidesThenParsesThenLocks(t *testing.T) {
 	f := newFixture()
 	f.grant(domain.ActionWrite)
@@ -51,11 +52,11 @@ func TestPutPageContentDecidesThenParsesThenLocks(t *testing.T) {
 	if _, err := f.put(n.ID, app.ContentPut{Content: "# Notes\n", Base: 1}); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"FindNode", "WorkspaceOf", "Authorize page.write", "Take 8", "Parse", "WorkspaceOf", "ShareWorkspace in tx",
-		"ShareNotebook in tx", "Authorize page.write in tx", "LockContent in tx", "FindNodeIn in tx", "CreateChangeset in tx",
-		"WriteContent in tx", "RecordRevision in tx"}
-	if !slices.Equal(f.rec.calls[:len(want)], want) || f.rec.calls[len(f.rec.calls)-1] != "Release 8" {
-		t.Errorf("calls = %v, want them to begin %v and end with the release", f.rec.calls, want)
+	want := []string{"FindNode", "WorkspaceOf", "Authorize page.write", "Take 8", "Facts", "KeepFacts 8", "WorkspaceOf",
+		"ShareWorkspace in tx", "ShareNotebook in tx", "Authorize page.write in tx", "LockContent in tx", "FindNodeIn in tx",
+		"CreateChangeset in tx", "WriteContent in tx", "RecordRevision in tx"}
+	if !slices.Equal(f.rec.calls[:len(want)], want) || f.rec.calls[len(f.rec.calls)-1] != "Release 8" || f.budget.held != 0 {
+		t.Errorf("calls = %v, %d bytes held; want them to begin %v and end with the release", f.rec.calls, f.budget.held, want)
 	}
 }
 
@@ -87,7 +88,7 @@ func TestOnlyAWriterMakesTheContentParsed(t *testing.T) {
 			if createWant == "page.not_found" {
 				createWant = "notebook.not_found"
 			}
-			if codeOf(putErr) != tt.want || codeOf(createErr) != createWant || f.called("Parse") || f.budget.held != 0 ||
+			if codeOf(putErr) != tt.want || codeOf(createErr) != createWant || f.called("Facts") || f.budget.held != 0 ||
 				slices.ContainsFunc(f.rec.calls, func(c string) bool { return strings.HasPrefix(c, "Take") }) {
 				t.Errorf("put %q, create %q, calls %v; want %q and %q, no take and no parse", codeOf(putErr), codeOf(createErr),
 					f.rec.calls, tt.want, createWant)
@@ -103,7 +104,7 @@ func TestAContentWriteTakesTheBudget(t *testing.T) {
 	f.grant(domain.ActionWrite)
 	n := f.page("Notes", nil, 0)
 	f.budget.err = shared.ServerBusy(time.Second)
-	if _, err := f.put(n.ID, app.ContentPut{Content: "x", Base: 1}); codeOf(err) != "server_busy" || f.called("Parse") ||
+	if _, err := f.put(n.ID, app.ContentPut{Content: "x", Base: 1}); codeOf(err) != "server_busy" || f.called("Facts") ||
 		f.called("ShareWorkspace in tx") {
 		t.Errorf("put = %q, calls %v; want server_busy before the parse and the unit", codeOf(err), f.rec.calls)
 	}
@@ -165,20 +166,20 @@ func TestPutPageContentWritesAVersion(t *testing.T) {
 		t.Errorf("versions = %+v, want revision 2 on 1 in the changeset", r)
 	}
 	state := n.State()
-	want := domain.Change{NodeID: n.ID, Before: &state, After: &state, Revision: 2, Parsed: text}
+	want := domain.Change{NodeID: n.ID, Before: &state, After: &state, Revision: 2, Facts: text}
 	if len(g.steps) != 1 || g.steps[0].Operation != domain.OpContent || !sameChange(g.steps[0].Changes[0], want) ||
 		g.steps[0].EditSessionID != (uuid.UUID{}) {
-		t.Errorf("the guard saw %+v, want the content's write with its parse, in no session", g.steps)
+		t.Errorf("the guard saw %+v, want the content's write with its facts, in no session", g.steps)
 	}
 	if len(o.events) != 1 || !sameChange(o.events[0].Changes[0], want) {
-		t.Errorf("events = %+v, want the content's write with its parse", o.events)
+		t.Errorf("events = %+v, want the content's write with its facts", o.events)
 	}
 }
 
 // sameChange compares two changes, their states by value.
 func sameChange(a, b domain.Change) bool {
 	same := func(x, y *domain.TreeState) bool { return x == nil && y == nil || x != nil && y != nil && x.Same(*y) }
-	return a.NodeID == b.NodeID && same(a.Before, b.Before) && same(a.After, b.After) && a.Revision == b.Revision && a.Parsed == b.Parsed
+	return a.NodeID == b.NodeID && same(a.Before, b.Before) && same(a.After, b.After) && a.Revision == b.Revision && a.Facts == b.Facts
 }
 
 // A content the page holds already writes nothing, whatever the base: no
@@ -320,10 +321,10 @@ func TestPutPageContentAnswersItsCodesInOrder(t *testing.T) {
 			if after, ok := f.store.contents[n.ID]; ok && after.Revision != before.Revision || f.logs.Len() != 0 {
 				t.Errorf("a refused write left revision %d, logged %q; want %d and nothing", after.Revision, f.logs, before.Revision)
 			}
-			if f.called("Parse") && !slices.Equal(f.rec.calls[:5], []string{"FindNode", "WorkspaceOf", "Authorize page.write", "Take " +
-				strconv.Itoa(len(p.Content)), "Parse"}) || f.budget.held != 0 {
-				t.Errorf("calls = %v, %d bytes held; want the decision, the take and the parse first, then the take released", f.rec.calls,
-					f.budget.held)
+			if f.called("Facts") && !slices.Equal(f.rec.calls[:6], []string{"FindNode", "WorkspaceOf", "Authorize page.write", "Take " +
+				strconv.Itoa(len(p.Content)), "Facts", "KeepFacts " + strconv.Itoa(len(p.Content))}) || f.budget.held != 0 {
+				t.Errorf("calls = %v, %d bytes held; want the decision, the take, the parse and the facts kept first, then all"+
+					" released", f.rec.calls, f.budget.held)
 			}
 		})
 	}
@@ -393,7 +394,7 @@ func TestAParticipantWritesAContent(t *testing.T) {
 	renamed, linking := f.page("Renamed", nil, 0), f.page("Linking", nil, 1)
 	g, o := &guard{recorder: f.rec}, &observer{recorder: f.rec}
 	s := f.session(linking.ID, uuid.NewV7(), now().Add(time.Hour))
-	p := &participant{recorder: f.rec, write: &app.ContentWrite{NodeID: linking.ID, Content: "[[Moved]]", Parsed: "links", Base: 1,
+	p := &participant{recorder: f.rec, write: &app.ContentWrite{NodeID: linking.ID, Content: "[[Moved]]", Facts: "links", Base: 1,
 		EditSession: s.ID}}
 	f.guards, f.observers, f.partakers = []app.WriteGuard{g}, []app.PageObserver{o}, []app.Participant{p}
 	if _, err := f.run(f.asAlice(), domain.ClientWeb, func(ctx context.Context, u *app.Unit) error {
@@ -412,8 +413,8 @@ func TestAParticipantWritesAContent(t *testing.T) {
 	if len(f.store.changesets) != 1 || len(f.store.revisions) != 1 || f.store.revisions[0].ChangesetID != f.store.changesets[0].ID {
 		t.Errorf("changesets %+v, versions %+v; want the content's version in the one changeset", f.store.changesets, f.store.revisions)
 	}
-	if len(o.events) != 1 || len(o.events[0].Changes) != 2 || o.events[0].Changes[1].Parsed != "links" {
-		t.Errorf("events = %+v, want one with the rename and the content's write with its parse", o.events)
+	if len(o.events) != 1 || len(o.events[0].Changes) != 2 || o.events[0].Changes[1].Facts != "links" {
+		t.Errorf("events = %+v, want one with the rename and the content's write with its facts", o.events)
 	}
 }
 
@@ -458,7 +459,7 @@ func TestGetPageContent(t *testing.T) {
 }
 
 // A page created with a content holds it at revision 1, and its creation
-// carries the parse.
+// carries the content's facts.
 func TestCreatePageWithAContent(t *testing.T) {
 	f := newFixture()
 	f.grant(domain.ActionCreate)
@@ -475,7 +476,7 @@ func TestCreatePageWithAContent(t *testing.T) {
 	if r := f.store.revisions[0]; r.Content != "# Notes\n" || r.Base != nil {
 		t.Errorf("version = %+v, want the content without a base", r)
 	}
-	if len(o.events) != 1 || o.events[0].Changes[0].Parsed != "# Notes\n" {
-		t.Errorf("events = %+v, want the creation with its parse", o.events)
+	if len(o.events) != 1 || o.events[0].Changes[0].Facts != "# Notes\n" {
+		t.Errorf("events = %+v, want the creation with its facts", o.events)
 	}
 }

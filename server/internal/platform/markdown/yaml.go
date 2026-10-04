@@ -25,6 +25,22 @@ const (
 	// make every reading blow up either. Past the larger of it and the
 	// YAML's size the frontmatter is not valid.
 	minYAMLRepeated = 100_000
+	// minYAMLPaths, yamlPathsRatio and maxYAMLPathsRatio are how many
+	// bytes the paths of the noted strings may take, each its keys over
+	// again (M6/P2 fix check 2 C1): long keys over a list of thousands must
+	// not copy them for each item either. Past the larger of minYAMLPaths,
+	// a path of a hundred bytes for each value at the limit of values (fix
+	// check 3 L3), and twice the YAML's size, the frontmatter is not valid;
+	// nor past maxYAMLPathsRatio times its size, a path of some 128 bytes
+	// for each value written in two, so that a short YAML's paths are no
+	// more for its size than the parse budget counts it for (fix check 4
+	// L1): with aliases at the limit of values beside them, a content of
+	// 4 KB peaks at some 0.95 of what its take counts (fix check 5), so 64
+	// is the most. Twice: the keys an alias repeats are in the paths of the
+	// values under them too.
+	minYAMLPaths      = 100 * maxYAMLNodes
+	yamlPathsRatio    = 2
+	maxYAMLPathsRatio = 64
 )
 
 var errInvalid = errors.New("not a frontmatter's YAML")
@@ -55,7 +71,10 @@ func properties(src []byte, at int) ([]Property, []Scalar, bool) {
 	if top.Kind != yaml.MappingNode {
 		return nil, nil, false
 	}
-	r := reader{budget: max(len(src), minYAMLRepeated), src: src, at: at}
+	r := reader{
+		budget: max(len(src), minYAMLRepeated), pathsBudget: pathsBudget(len(src)),
+		src: src, at: at,
+	}
 	v, err := r.value(top, 0)
 	if err != nil {
 		return nil, nil, false
@@ -63,11 +82,18 @@ func properties(src []byte, at int) ([]Property, []Scalar, bool) {
 	return v.([]Property), r.scalars, true
 }
 
+// pathsBudget is how many bytes the paths of a YAML of n bytes may take.
+func pathsBudget(n int) int {
+	return min(maxYAMLPathsRatio*n, max(yamlPathsRatio*n, minYAMLPaths))
+}
+
 // reader walks the YAML's nodes, counting what it expands: the nodes, and
 // the bytes of keys and scalars an alias repeats, up to budget. It notes
-// the strings written on one line on the way (scalars.go).
+// the strings written on one line on the way (scalars.go), counting the
+// bytes of their paths, up to pathsBudget.
 type reader struct {
 	nodes, aliased, repeated, budget int
+	paths, pathsBudget               int
 
 	src     []byte   // the YAML
 	at      int      // where src starts in the content
@@ -93,7 +119,7 @@ func (r *reader) value(n *yaml.Node, depth int) (any, error) {
 		}
 		v, err := scalar(n)
 		if s, ok := v.(string); ok && err == nil && r.aliased == 0 {
-			r.note(n, s)
+			err = r.note(n, s)
 		}
 		return v, err
 	case yaml.SequenceNode:
