@@ -1,6 +1,6 @@
 import { STATUS_CODES } from "node:http";
 
-import { expect, type Locator, type Page, type Request, type Response } from "@playwright/test";
+import { expect, type Locator, type Page, type Request, type Response, type TestInfo } from "@playwright/test";
 
 /**
  * What a page did that a story checks: its API calls, and what went wrong in it. The event stream (M5/P3
@@ -181,4 +181,71 @@ export async function expectQuietPage(page: Page, watch: PageWatch): Promise<voi
       errors: [...watch.expectedConsole.errors, probe],
       warnings: [...watch.expectedConsole.warnings, probe],
     });
+}
+
+/** How much of a page's ARIA snapshot attachPageState keeps. */
+const snapshotLimit = 3000;
+
+/**
+ * attachPageState attaches to a test that failed what page showed and did last, as text: its address, the
+ * element in focus, its last API requests and their failures, its errors, and its ARIA snapshot cut short.
+ * The reporter prints a text attachment with the failure, so CI's annotations carry it, where the trace and
+ * the job's log are not public; it prints only the first 300 characters of each, so the state goes in parts.
+ */
+export async function attachPageState(page: Page, watch: PageWatch, testInfo: TestInfo, name: string): Promise<void> {
+  if (page.isClosed()) {
+    return;
+  }
+  const focused = await page
+    .evaluate(() => {
+      const element = document.activeElement;
+      if (element === null) {
+        return "none";
+      }
+      const label = element.getAttribute("aria-label") ?? element.textContent?.trim().slice(0, 40) ?? "";
+      return `${element.tagName.toLowerCase()}${element.getAttribute("role") ? `[role=${element.getAttribute("role")}]` : ""} "${label}"`;
+    })
+    .catch((error: unknown) => `unknown: ${String(error)}`);
+  const snapshot = await page
+    .locator("body")
+    .ariaSnapshot({ timeout: 2_000 })
+    .catch((error: unknown) => `none: ${String(error)}`);
+  const cut = snapshot.length > snapshotLimit ? `${snapshot.slice(0, snapshotLimit)}\n…` : snapshot;
+  const lines = [
+    `url: ${page.url()}`,
+    `focused: ${focused}`,
+    `api requests, the last 20: ${watch.apiRequests.slice(-20).join(", ") || "none"}`,
+    `api failures: ${watch.apiFailures.join(", ") || "none"}`,
+    `page errors: ${watch.pageErrors.join(" | ") || "none"}`,
+    `console errors: ${watch.consoleErrors.join(" | ") || "none"}`,
+    "aria snapshot:",
+    cut,
+  ];
+  const parts = partsOf(lines.join("\n").split("\n"), attachmentPrinted);
+  for (const [i, part] of parts.entries()) {
+    // oxlint-disable-next-line no-await-in-loop -- the parts are attached in their order
+    await testInfo.attach(`page state: ${name} (${i + 1}/${parts.length})`, { body: part, contentType: "text/plain" });
+  }
+}
+
+/** How many characters of a text attachment the reporter prints. */
+const attachmentPrinted = 290;
+
+/** partsOf joins lines into parts of at most size characters, cutting a longer line. */
+function partsOf(lines: string[], size: number): string[] {
+  const parts: string[] = [];
+  let part = "";
+  for (const line of lines.flatMap((l) =>
+    l.length > size ? (l.match(new RegExp(`.{1,${size}}`, "gs")) ?? []) : [l]
+  )) {
+    if (part !== "" && part.length + 1 + line.length > size) {
+      parts.push(part);
+      part = "";
+    }
+    part = part === "" ? line : `${part}\n${line}`;
+  }
+  if (part !== "") {
+    parts.push(part);
+  }
+  return parts;
 }

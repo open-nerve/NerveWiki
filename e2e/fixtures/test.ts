@@ -4,7 +4,7 @@ import { createClient, type ApiClient, type AuthTokens } from "@nervewiki/api-cl
 import { test as base, type BrowserContext, type Page } from "@playwright/test";
 
 import { signInContext } from "./auth";
-import { expectQuietPage, watchPage, type PageWatch } from "./browser";
+import { attachPageState, expectQuietPage, watchPage, type PageWatch } from "./browser";
 import { createDatabase, dropDatabase, openDatabase, templateDatabase, type Database } from "./db";
 import { connectEvents, type EventStream } from "./events";
 import { nervewikiFixtureTimeoutMs, startNervewiki, type Nervewiki, type StartOptions } from "./server";
@@ -143,6 +143,8 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
     await use(page);
     if (testInfo.status === testInfo.expectedStatus) {
       await expectQuietPage(page, watch);
+    } else {
+      await attachPageState(page, watch, testInfo, "page");
     }
   },
   pageWatch: async ({ page }, use) => {
@@ -211,6 +213,10 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
         await Promise.all(
           watched.filter(([page]) => !page.isClosed()).map(([page, watch]) => expectQuietPage(page, watch))
         );
+      } else {
+        await Promise.all(
+          watched.map(([page, watch], i) => attachPageState(page, watch, testInfo, `another page ${i + 1}`))
+        );
       }
     } finally {
       await Promise.all(contexts.map((context) => context.close()));
@@ -228,6 +234,10 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
     });
     if (testInfo.status === testInfo.expectedStatus) {
       await Promise.all(watched.filter(([tab]) => !tab.isClosed()).map(([tab, watch]) => expectQuietPage(tab, watch)));
+    } else {
+      await Promise.all(
+        watched.map(([tab, watch], i) => attachPageState(tab, watch, testInfo, `another tab ${i + 1}`))
+      );
     }
   },
   databaseSnapshot: [
