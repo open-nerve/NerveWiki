@@ -34,15 +34,15 @@ func TestChangeThen(t *testing.T) {
 	a, b, c := domain.TreeState{Name: "a"}, domain.TreeState{Name: "b"}, domain.TreeState{Name: "c"}
 	got := domain.Change{NodeID: id, After: &a, Revision: 1, Facts: "one"}.Then(domain.Change{NodeID: id, Before: &a, After: &b})
 	if got.Before != nil || got.After.Name != "b" || got.Revision != 1 || got.Facts != "one" {
-		t.Errorf("created then renamed = %+v; want created, named b, at revision 1 with its parse", got)
+		t.Errorf("created then renamed = %+v; want created, named b, at revision 1 with its facts", got)
 	}
 	got = domain.Change{NodeID: id, Before: &a, After: &b}.Then(domain.Change{NodeID: id, Before: &b, After: &c, Revision: 4, Facts: "four"})
 	if got.Before.Name != "a" || got.After.Name != "c" || got.Revision != 4 || got.Facts != "four" {
-		t.Errorf("renamed twice, then written = %+v; want a to c at revision 4 with its parse", got)
+		t.Errorf("renamed twice, then written = %+v; want a to c at revision 4 with its facts", got)
 	}
 	got = domain.Change{NodeID: id, Before: &a, After: &a, Revision: 2, Facts: "two"}.Then(
 		domain.Change{NodeID: id, Before: &a, After: &a, Revision: 3, Facts: "three"})
 	if got.Revision != 3 || got.Facts != "three" {
-		t.Errorf("written twice = %+v; want revision 3 with its parse", got)
+		t.Errorf("written twice = %+v; want revision 3 with its facts", got)
 	}
 }

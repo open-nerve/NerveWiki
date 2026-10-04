@@ -35,10 +35,11 @@ func (c *CreatePage) Execute(ctx context.Context, id uuid.UUID, d PageDraft, cli
 	}
 	spec := UnitSpec{NotebookID: id, Action: domain.ActionCreate, Tree: true, Client: client,
 		Options: Options{UpdateLinks: true}, NotFound: domain.ErrNotebookNotFound}
-	facts, err := c.parser.Parse(ctx, spec, d.Content)
+	facts, release, err := c.parser.Parse(ctx, spec, d.Content)
 	if err != nil {
 		return PageView{}, err
 	}
+	defer release()
 	d.Facts = facts
 	var out PageView
 	outcome, err := c.writer.Run(ctx, spec, func(ctx context.Context, u *Unit) error {

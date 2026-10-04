@@ -32,7 +32,8 @@ type Change struct {
 	// Facts are the content's facts when Revision is set: opaque here, the
 	// app's Facts, taken before the transaction (M4 design 4, "parse
 	// timing"; M6 design 4.7), without the tree; the guards, the
-	// participants and the observers read them.
+	// participants and the observers read them. They need not be
+	// comparable: two Changes are not compared with == (M6/P2 review L3).
 	Facts any
 }
 

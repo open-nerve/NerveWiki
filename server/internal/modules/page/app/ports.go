@@ -281,13 +281,21 @@ type ExpiredSessions interface {
 	DeleteExpiredSessions(ctx context.Context, now time.Time, batch int) (int, error)
 }
 
-// ParseBudget bounds the content parsed and rendered at once (M4/P4
-// review P2; M6 design 4.7): the largest content's parse can hold some 300
-// times its size in memory. Take holds n bytes of it until release; it
-// waits a while for them, then answers shared.ServerBusy. The composition
-// root hands the module the one budget of the server.
+// ParseBudget bounds the content parsed and rendered at once, and the
+// facts kept of it (M4/P4 review P2; M6 design 4.7): the largest content's
+// parse can hold some 300 times its size in memory, its facts a tenth of
+// that. Take holds a content's n bytes for its parse; it waits a while for
+// them, then answers shared.ServerBusy. The composition root hands the
+// module the one budget of the server.
 type ParseBudget interface {
-	Take(ctx context.Context, n int) (release func(), err error)
+	Take(ctx context.Context, n int) (BudgetHold, error)
+}
+
+// BudgetHold is the bytes of the budget a content holds: KeepFacts gives
+// back what its parse held beyond what its facts hold, Release all of it.
+type BudgetHold interface {
+	KeepFacts()
+	Release()
 }
 
 // Markdown parses and renders a page's content (M4/P3 design 3.9):

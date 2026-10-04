@@ -73,10 +73,11 @@ func (t *ToggleTask) Execute(ctx context.Context, id uuid.UUID, p TaskToggle, cl
 		return t.unchanged(ctx, id, p.Base)
 	}
 	content := domain.Flip(current.Content, p.Offset, p.Checked)
-	facts, err := t.parser.Decided(ctx, content)
+	facts, release, err := t.parser.Decided(ctx, content)
 	if err != nil {
 		return PageView{}, err
 	}
+	defer release()
 	if task, ok := find(t.markdown.Tasks(facts), p.Offset); !ok || task.Checked != p.Checked {
 		return PageView{}, domain.TaskWouldGo()
 	}
@@ -113,12 +114,13 @@ func (t *ToggleTask) unchanged(ctx context.Context, id uuid.UUID, base int) (Pag
 }
 
 // taskAt is content's task item at offset, from its facts, taken within
-// the budget; 422 for none.
+// the budget, which it gives back at once; 422 for none.
 func (t *ToggleTask) taskAt(ctx context.Context, content string, offset int) (Task, error) {
-	facts, err := t.parser.Decided(ctx, content)
+	facts, release, err := t.parser.Decided(ctx, content)
 	if err != nil {
 		return Task{}, err
 	}
+	defer release()
 	task, ok := find(t.markdown.Tasks(facts), offset)
 	if !ok {
 		return Task{}, domain.NotATask()

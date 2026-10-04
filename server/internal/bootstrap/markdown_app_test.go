@@ -53,7 +53,7 @@ func TestTheAppsMarkdownRendersCheckedHTML(t *testing.T) {
 // 4.7): a write keeps them through its unit, its extensions' results
 // among them.
 func TestTheAppsFactsOutliveTheTree(t *testing.T) {
-	markdowntest.CheckFacts(t, markdownExtensions()...)
+	markdowntest.CheckFacts(t, markdownExtensions())
 }
 
 // The server's parse budget is the configuration's (M6 design 4.7): all but
@@ -70,12 +70,12 @@ func TestTheServersParseBudgetIsTheConfigurations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer most()
+	defer most.Release()
 	last, err := budget.Take(ctx, 1)
 	if err != nil {
 		t.Fatalf("the budget's last byte: %v", err)
 	}
-	defer last()
+	defer last.Release()
 	start := time.Now()
 	if _, err := budget.Take(ctx, 1); !errors.Is(err, markdown.ErrBusy) || time.Since(start) < cfg.Page.ParseMaxWait ||
 		time.Since(start) > time.Second {

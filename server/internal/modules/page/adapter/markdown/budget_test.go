@@ -18,7 +18,7 @@ import (
 func TestTheAdapterAnswersABusyBudget(t *testing.T) {
 	b := markdown.NewBudget(10, 20*time.Millisecond, slog.New(slog.DiscardHandler))
 	adapter := markdownadapter.NewBudget(b)
-	release, err := adapter.Take(context.Background(), 10)
+	all, err := adapter.Take(context.Background(), 10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,11 +32,21 @@ func TestTheAdapterAnswersABusyBudget(t *testing.T) {
 	if _, err := adapter.Take(ctx, 1); !errors.Is(err, context.Canceled) || errors.As(err, &se) {
 		t.Errorf("Take with a cancelled context = %v, want its error", err)
 	}
-	release()
-	release, err = adapter.Take(context.Background(), 10)
-	if err != nil {
+	all.Release()
+	if all, err = adapter.Take(context.Background(), 10); err != nil {
 		t.Errorf("Take after the release = %v", err)
 	} else {
-		release()
+		all.Release()
 	}
+}
+
+// A module wired without the server's budget fails at its wiring, not at
+// its first write (M6/P2 review L2).
+func TestTheAdapterRefusesNoBudget(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Error("NewBudget(nil) did not panic")
+		}
+	}()
+	markdownadapter.NewBudget(nil)
 }

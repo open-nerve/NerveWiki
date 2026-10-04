@@ -111,8 +111,9 @@ func notebookDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, au
 // parsing is the server's one parse and rendering of Markdown, with the
 // registered extensions: the page module's reading view and, from M6, the
 // links (M4 design 8); and its one budget of the content parsed at once,
-// of the configuration's size and wait, which every module that parses
-// shares (M6 design 4.7).
+// of the configuration's size and wait (page.parse_budget_bytes,
+// page.parse_max_wait), which every module that parses shares (M6 design
+// 4.7).
 func parsing(cfg config.Config, logger *slog.Logger) (*markdown.Markdown, *markdown.Budget, error) {
 	md, err := markdown.New(markdownExtensions())
 	if err != nil {

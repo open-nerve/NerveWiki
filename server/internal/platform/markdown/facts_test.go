@@ -26,6 +26,6 @@ func TestADocumentsFactsAreWhatItFound(t *testing.T) {
 
 // The facts of a parse keep none of its tree, with an extension or none.
 func TestAParsesFactsOutliveItsTree(t *testing.T) {
-	markdowntest.CheckFacts(t)
-	markdowntest.CheckFacts(t, markdown.Words())
+	markdowntest.CheckFacts(t, nil)
+	markdowntest.CheckFacts(t, []markdown.Extension{markdown.Words()}, "say @@hello@@\n")
 }

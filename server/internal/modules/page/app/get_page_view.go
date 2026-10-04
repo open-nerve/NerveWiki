@@ -44,11 +44,11 @@ func (g *GetPageView) Execute(ctx context.Context, id uuid.UUID) (ReadingView, e
 	if err != nil {
 		return ReadingView{}, found(err, domain.ErrNotFound)
 	}
-	release, err := g.budget.Take(ctx, len(c.Content))
+	hold, err := g.budget.Take(ctx, len(c.Content))
 	if err != nil {
 		return ReadingView{}, err
 	}
-	defer release()
+	defer hold.Release()
 	html, err := g.markdown.Render(ctx, c.Content, PageRef{NotebookID: n.NotebookID, PageID: n.ID, Revision: c.Revision})
 	if err != nil {
 		return ReadingView{}, err

@@ -41,7 +41,9 @@ type Extension struct {
 	// Extract takes the extension's result from the parse's tree. The
 	// result outlives the tree, in the Document's Facts: it holds none of
 	// the tree's nodes, each of which holds the whole tree
-	// (markdowntest.CheckFacts). It may be nil.
+	// (markdowntest.CheckFacts), and with the frontmatter and the other
+	// extensions' results at most FactsRatio times the content, as the
+	// budget counts them (markdowntest.CheckCosts). It may be nil.
 	Extract func(t Tree) any
 	// Fetch gets the extension's data for one page before Render renders
 	// it, from what Extract took: in the caller's read, holding no lock. Its

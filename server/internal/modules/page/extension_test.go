@@ -687,7 +687,7 @@ func TestTheModuleParsesWithinTheBudgetItIsGiven(t *testing.T) {
 	f.exec(t, "UPDATE page_contents SET content = $2, byte_size = octet_length($2), content_hash = sha256(convert_to($2, 'UTF8')),"+
 		" revision = 2 WHERE node_id = $1", f.notes, "# Notes")
 	f.budget = markdown.NewBudget(1<<10, 20*time.Millisecond, slog.New(slog.DiscardHandler))
-	release, err := f.budget.Take(context.Background(), 1<<10)
+	all, err := f.budget.Take(context.Background(), 1<<10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -700,11 +700,13 @@ func TestTheModuleParsesWithinTheBudgetItIsGiven(t *testing.T) {
 		return f.request(router, "session", http.MethodGet, "/api/v0/pages/"+f.notes.String()+"/view", "")
 	}
 	for name, rec := range map[string]*httptest.ResponseRecorder{"the write": write(), "the view": view()} {
-		if rec.Code != http.StatusServiceUnavailable || !strings.Contains(rec.Body.String(), `"server_busy"`) {
-			t.Errorf("%s while the budget is held = %d %s, want 503 server_busy", name, rec.Code, rec.Body)
+		if rec.Code != http.StatusServiceUnavailable || !strings.Contains(rec.Body.String(), `"server_busy"`) ||
+			rec.Header().Get("Retry-After") != "1" {
+			t.Errorf("%s while the budget is held = %d %s, Retry-After %q; want 503 server_busy, 1", name, rec.Code, rec.Body,
+				rec.Header().Get("Retry-After"))
 		}
 	}
-	release()
+	all.Release()
 	if rec := write(); rec.Code != http.StatusOK {
 		t.Errorf("the write once the budget is back = %d %s, want 200", rec.Code, rec.Body)
 	}

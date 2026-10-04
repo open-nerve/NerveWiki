@@ -20,6 +20,10 @@ const (
 	kAlloc = 14
 )
 
+// factsSlack is the heap a parse's Facts may keep beyond FactsRatio times
+// the content: the noise of the heap's accounting.
+const factsSlack = 256 << 10
+
 // fastest is the least of three runs of parsing and rendering src, the
 // others carrying the machine's noise; a run past limit is not repeated.
 // Each starts from a collected heap: what the collector of the one before
@@ -72,7 +76,9 @@ func allocated(t *testing.T, m *markdown.Markdown, content []byte) (uint64, stri
 // takes later shows in it (a tokenizer for each of thousands of tags
 // allocates hundreds of megabytes, and takes only a few times longer).
 // Each input's HTML is checked against CheckSize, which no machine's load
-// sways, the Amplifying inputs' at AmplifyingSize.
+// sways, the Amplifying inputs' at AmplifyingSize; and what its Facts keep
+// once the parse is done, at most markdown.FactsRatio times the content,
+// which the budget counts them as (M6/P2 review M1).
 // The race detector makes the code several times slower: under it the
 // check is skipped, and make test-go runs it in a build without.
 func CheckCosts(t *testing.T, m *markdown.Markdown) {
@@ -105,6 +111,11 @@ func CheckCosts(t *testing.T, m *markdown.Markdown) {
 			float64(alloc)/float64(normalAlloc))
 		if err := CheckSize(content, out); err != nil {
 			t.Errorf("%s: %v", in.Name, err)
+		}
+		if f := kept(m, string(content)); f > markdown.FactsRatio*uint64(len(content))+factsSlack {
+			t.Errorf("%s: its facts keep %d KB for %d KB, more than %d times", in.Name, f>>10, len(content)>>10, markdown.FactsRatio)
+		} else {
+			t.Logf("%s: its facts keep %.1f times the content", in.Name, float64(f)/float64(len(content)))
 		}
 		if alloc > kAlloc*normalAlloc {
 			t.Errorf("%s: %d KB allocated for %d KB, more than %d times an ordinary document's %d KB",

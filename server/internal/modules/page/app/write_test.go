@@ -57,18 +57,19 @@ func TestCreatePageLocksThenDecides(t *testing.T) {
 }
 
 // A creation with a content decides unlocked, then takes its facts within
-// the budget, given back before its unit, which decides again; an empty
-// content is parsed at once, nothing taken.
+// the budget, of which it keeps the facts' share until its unit is over;
+// the unit decides again; an empty content is parsed at once, nothing
+// taken.
 func TestCreatePageDecidesBeforeItParses(t *testing.T) {
 	f := newFixture()
 	f.grant(domain.ActionCreate)
 	if _, err := f.create(app.PageDraft{Title: "Notes", Content: "abc"}); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"WorkspaceOf", "Authorize page.create", "Take 3", "Facts", "Release 3", "WorkspaceOf", "ShareWorkspace in tx",
+	want := []string{"WorkspaceOf", "Authorize page.create", "Take 3", "Facts", "KeepFacts 3", "WorkspaceOf", "ShareWorkspace in tx",
 		"LockNotebook in tx", "Authorize page.create in tx"}
-	if !slices.Equal(f.rec.calls[:len(want)], want) || f.budget.held != 0 {
-		t.Errorf("calls = %v, %d bytes held; want them to begin %v", f.rec.calls, f.budget.held, want)
+	if !slices.Equal(f.rec.calls[:len(want)], want) || f.rec.calls[len(f.rec.calls)-1] != "Release 3" || f.budget.held != 0 {
+		t.Errorf("calls = %v, %d bytes held; want them to begin %v and end with the release", f.rec.calls, f.budget.held, want)
 	}
 }
 

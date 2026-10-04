@@ -269,8 +269,8 @@ func (f *fakeMarkdown) Tasks(facts app.Facts) []app.Task {
 	return out
 }
 
-// fakeBudget records each take of the parse budget with its bytes, and
-// each release; err, when set, is Take's.
+// fakeBudget records each take of the parse budget with its bytes, each
+// keeping of the facts' share and each release; err, when set, is Take's.
 type fakeBudget struct {
 	*recorder
 	err      error
@@ -278,17 +278,35 @@ type fakeBudget struct {
 	released int
 }
 
-func (b *fakeBudget) Take(ctx context.Context, n int) (func(), error) {
+func (b *fakeBudget) Take(ctx context.Context, n int) (app.BudgetHold, error) {
 	b.record(ctx, fmt.Sprintf("Take %d", n))
 	if b.err != nil {
 		return nil, b.err
 	}
 	b.held += n
-	return func() {
-		b.record(ctx, fmt.Sprintf("Release %d", n))
-		b.held -= n
-		b.released++
-	}, nil
+	return &fakeHold{budget: b, n: n}, nil
+}
+
+// fakeHold is a take of fakeBudget: it keeps nothing back on KeepFacts, as
+// the bytes the facts keep do not matter here, and gives all back once.
+type fakeHold struct {
+	budget *fakeBudget
+	n      int
+	done   bool
+}
+
+func (h *fakeHold) KeepFacts() {
+	h.budget.record(context.Background(), fmt.Sprintf("KeepFacts %d", h.n))
+}
+
+func (h *fakeHold) Release() {
+	if h.done {
+		return
+	}
+	h.done = true
+	h.budget.record(context.Background(), fmt.Sprintf("Release %d", h.n))
+	h.budget.held -= h.n
+	h.budget.released++
 }
 
 func (f *fakeMarkdown) Render(ctx context.Context, content string, page app.PageRef) (string, error) {

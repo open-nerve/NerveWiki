@@ -53,10 +53,11 @@ func (w *PutPageContent) Execute(ctx context.Context, id uuid.UUID, p ContentPut
 	}
 	spec := UnitSpec{NotebookID: n.NotebookID, Action: domain.ActionWrite, Client: client,
 		Options: Options{UpdateLinks: true}, NotFound: domain.ErrNotFound}
-	facts, err := w.parser.Parse(ctx, spec, p.Content)
+	facts, release, err := w.parser.Parse(ctx, spec, p.Content)
 	if err != nil {
 		return PageView{}, err
 	}
+	defer release()
 	var out PageView
 	outcome, err := w.writer.Run(ctx, spec, func(ctx context.Context, u *Unit) error {
 		cw := ContentWrite{NodeID: id, Content: p.Content, Facts: facts, Base: p.Base, EditSession: p.EditSession}

@@ -1,7 +1,8 @@
 // Package markdowntest holds what tests of Markdown use: ordinary and
-// pathological documents of a given size, the check of a reading view's
-// HTML (M4/P3 design 3.10) and the fixture set. Only test code may import it
-// (enforced by internal/archtest).
+// pathological documents of a given size, the checks of what a parse
+// costs (CheckCosts), of a reading view's HTML (M4/P3 design 3.10) and of
+// a parse's facts (CheckFacts, M6 design 4.7), and the fixture set. Only
+// test code may import it (enforced by internal/archtest).
 package markdowntest
 
 import (
@@ -228,6 +229,13 @@ func Pathological() []Input {
 		{"a tag's underscores", func(n int) string { return "#a" + repeat("_")(n) }},
 		{"highlight runs ==a", repeat("==a")},
 		{"highlights", repeat("==a== ")},
+		// The most facts for their size (M6/P2 review M1).
+		{"wikilinks [[a]]", repeat("[[a]]")},
+		{"links [a](b)", repeat("[a](b) ")},
+		{"tags #a", repeat("#a ")},
+		{"a frontmatter string of escapes", func(n int) string {
+			return "---\na: \"" + repeat("\\t")(n) + "\"\n---\nbody\n"
+		}},
 	}
 }
 
