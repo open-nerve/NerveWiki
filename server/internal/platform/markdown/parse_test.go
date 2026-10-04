@@ -61,7 +61,7 @@ func TestTheFrontmatterNeverTouchesTheBody(t *testing.T) {
 				return found
 			}
 			if g, w := first(got), first(want); g == nil || g.Segment.Start != w.Segment.Start+offset ||
-				!bytes.Equal(g.Segment.Value(got.content), w.Segment.Value(want.content)) {
+				!bytes.Equal(g.Segment.Value([]byte(tt.src)), w.Segment.Value([]byte(tt.body))) {
 				t.Errorf("the first text is not the body's at the content's offset")
 			}
 		})

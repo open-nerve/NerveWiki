@@ -3,13 +3,9 @@ package markdownadapter
 import (
 	"context"
 	"errors"
-	"fmt"
-	"log/slog"
-	"sync/atomic"
 	"time"
 
-	"golang.org/x/sync/semaphore"
-
+	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown"
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
@@ -17,62 +13,23 @@ import (
 // up in time.
 const retryAfter = time.Second
 
-// Budget implements app.ParseBudget (M4/P4 review P2): the bytes of
-// content parsed and rendered at once, page.parse_budget_bytes, which a
-// request waits for at most page.parse_max_wait, as the password hashes'
-// slots (auth.password.max_concurrent_hashes) do. The waiters are served in
-// the order they came.
+// Budget implements app.ParseBudget with the platform's budget, the one
+// the composition root hands to every module that parses (M6 design 4.7).
 type Budget struct {
-	bytes   *semaphore.Weighted
-	size    int
-	wait    time.Duration
-	logger  *slog.Logger
-	waiting atomic.Int64
+	budget *markdown.Budget
 }
 
-// NewBudget returns a budget of size bytes; a request waits at most wait.
-// Both must be positive, as the configuration's validation has them: a
-// budget of nothing would bound nothing, silently.
-func NewBudget(size int, wait time.Duration, logger *slog.Logger) *Budget {
-	if size < 1 || wait <= 0 {
-		panic(fmt.Sprintf("markdownadapter: a parse budget of %d bytes and a wait of %s", size, wait))
-	}
-	return &Budget{bytes: semaphore.NewWeighted(int64(size)), size: size, wait: wait, logger: logger}
+// NewBudget returns the adapter of b.
+func NewBudget(b *markdown.Budget) *Budget {
+	return &Budget{budget: b}
 }
 
-// Take implements app.ParseBudget. A content larger than the budget takes
-// all of it; nothing is taken for an empty one.
+// Take implements app.ParseBudget: a budget that does not free up in time
+// is 503 server_busy, to retry after a second.
 func (b *Budget) Take(ctx context.Context, n int) (func(), error) {
-	n = min(n, b.size)
-	if n <= 0 {
-		return func() {}, nil
+	release, err := b.budget.Take(ctx, n)
+	if errors.Is(err, markdown.ErrBusy) {
+		return nil, shared.ServerBusy(retryAfter)
 	}
-	if b.bytes.TryAcquire(int64(n)) {
-		return b.releaser(n), nil
-	}
-	queued := b.waiting.Add(1)
-	defer b.waiting.Add(-1)
-	waited, cancel := context.WithTimeout(ctx, b.wait)
-	defer cancel()
-	if err := b.bytes.Acquire(waited, int64(n)); err != nil {
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
-		if errors.Is(err, context.DeadlineExceeded) {
-			b.logger.LogAttrs(ctx, slog.LevelInfo, "content parsing is saturated", slog.Int64("queued", queued))
-			return nil, shared.ServerBusy(retryAfter)
-		}
-		return nil, err
-	}
-	return b.releaser(n), nil
-}
-
-// releaser gives n bytes back once, however often it is called.
-func (b *Budget) releaser(n int) func() {
-	var once atomic.Bool
-	return func() {
-		if once.CompareAndSwap(false, true) {
-			b.bytes.Release(int64(n))
-		}
-	}
+	return release, err
 }

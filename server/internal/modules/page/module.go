@@ -104,7 +104,7 @@ type Module struct {
 func New(d Deps) *Module {
 	store := postgresadapter.New(d.Pool)
 	md := markdownadapter.New(d.Markdown)
-	budget := markdownadapter.NewBudget(d.ParseBudgetBytes, d.ParseMaxWait, d.Logger)
+	budget := markdownadapter.NewBudget(markdown.NewBudget(d.ParseBudgetBytes, d.ParseMaxWait, d.Logger))
 	writer := app.NewWriter(app.WriterDeps{
 		Tx: d.Tx, Clock: d.Clock, Auth: d.Authorizer, Workspaces: d.Workspaces, Notebooks: d.Notebooks,
 		Nodes: store, NodeWriter: store, Changesets: store, SessionWriter: store, Names: d.Names,

@@ -21,14 +21,14 @@ func (m *Markdown) Parse(content []byte) *Document {
 	source := blank(content, end)
 	pc := parser.NewContext()
 	root := m.parser.Parse(text.NewReader(source), parser.WithContext(pc))
-	d := &Document{content: content, source: source, root: root, frontmatter: fm, extracted: map[string]any{}}
+	facts := Facts{frontmatter: fm, extracted: map[string]any{}}
 	tree := Tree{Root: root, Content: content, Frontmatter: fm, destinations: harden.Destinations(pc)}
 	for _, e := range m.exts {
 		if e.Extract != nil {
-			d.extracted[e.Name] = e.Extract(tree)
+			facts.extracted[e.Name] = e.Extract(tree)
 		}
 	}
-	return d
+	return &Document{source: source, root: root, facts: facts}
 }
 
 const (

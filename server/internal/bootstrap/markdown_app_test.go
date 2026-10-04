@@ -45,6 +45,13 @@ func TestTheAppsMarkdownRendersCheckedHTML(t *testing.T) {
 	}
 }
 
+// The facts of the application's parse keep none of its tree (M6 design
+// 4.7): a write keeps them through its unit, its extensions' results
+// among them.
+func TestTheAppsFactsOutliveTheTree(t *testing.T) {
+	markdowntest.CheckFacts(t, markdownExtensions()...)
+}
+
 // The application's Markdown costs about the size of what it parses, with
 // its extensions' parsers: each must be linear too (M4/P3 design 3.4).
 func TestTheAppsMarkdownCostsAboutItsSize(t *testing.T) {
