@@ -157,18 +157,34 @@ test("C10 (page): A ticks a task item in the reading view, its checkbox named by
   await expect(boxesOf(reader).first()).toBeDisabled();
   await expect(boxesOf(reader).nth(1)).toBeDisabled();
 
-  await b.goto(path);
-  await expect(boxesOf(b)).toHaveCount(2);
-  // B's view is not read again meanwhile: B's toggle goes on revision 3, which A's write has passed.
+  // B's view is not read again while A writes: B's toggle goes on revision 3, which A's write has passed. The
+  // reads let through before the hold, the stream's refresh among them, are answered before A writes: one on its
+  // way could show B revision 4.
   const views = `**/api/v0/pages/${tasks.id}/view`;
+  let holding = false;
+  let passed = 0;
+  let answered = 0;
   let releaseViews: (() => void) | undefined;
   const viewsHeld = new Promise<void>((resolve) => {
     releaseViews = resolve;
   });
   await b.route(views, async (route) => {
-    await viewsHeld;
-    await route.continue();
+    const held = holding;
+    if (held) {
+      await viewsHeld;
+    } else {
+      passed += 1;
+    }
+    const answer = await route.fetch();
+    if (!held) {
+      answered += 1;
+    }
+    await route.fulfill({ response: answer });
   });
+  await b.goto(path);
+  await expect(boxesOf(b)).toHaveCount(2);
+  holding = true;
+  await expect.poll(() => answered).toBe(passed);
   const moved = `- [ ] new\n${content}`;
   await writeContent(api, a, tasks.id, { content: moved, base_revision: 3 });
   const refused = answerTo(b, "POST", toggles);

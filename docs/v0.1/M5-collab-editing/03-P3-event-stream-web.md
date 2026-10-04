@@ -108,7 +108,7 @@ e2e/stories/collab/c7-push.spec.ts、c8-stream-life.spec.ts、c9-one-stream.spec
 每一代一个（`RootStore.events()` 建，不启动），只经 `EventService` 与注入的依赖：
 
 - **`start()` / `stop()`**：`start` 打开频道、挂上页面生命周期的监听、开始选举；`stop` 中止连接（`AbortController`）、放手、关闭频道、去掉监听与计时器。可以再次 `start`：`StrictMode` 下 effect 会挂、卸、再挂；再次 `start` 的选举等上一次的结束了才开始，一个标签页不会同时持有两次。
-- **`subscribe(listener)`**：本标签页的事件，`{type: "pages" | "lock", data}` 与 `{type: "connected"}`（一次连上，要整体刷新），无论是自己的连接还是持有者转来的。
+- **`subscribe(listener)`**：本标签页的事件，`{type: "pages" | "lock", data}`、后来的 M 的类型 `{type: "other", event, data}`（M5 收尾时加，见 `events/handlers.ts`）与 `{type: "connected"}`（一次连上，要整体刷新），无论是自己的连接还是持有者转来的。
 - **持有者的循环**（hub 的 `#lead` 里，直到 `lost` 中止）：
   1. `connect`：每帧交给本标签页、发到频道、续租约；`hello` 记下间隔，发 `connected`（本标签页也收到），退避归零；
   2. 结束于 `reset`：立刻重连（`expired` 时开流前令牌照常续期；`unauthenticated` 时开流答 401，中间件续期失败就结束会话、换代，hub 随之停止）；

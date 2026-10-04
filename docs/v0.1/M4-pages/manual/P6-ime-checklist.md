@@ -50,7 +50,7 @@
 | 12 | 先在终端里起一个延迟的改名，把"IME 二"改名为"IME 三"：`sleep 15; curl -sS -X PATCH "$BASE/api/v0/nodes/$PAGE" -H "Authorization: Bearer $PAT" -H "Content-Type: application/json" -d '{"name":"IME 三"}'`（`$PAGE` 是"IME 二"的 id）；随即回到这个标签页，不离开它，输入拼音 `tuisong`，不确认，等到改名到达 | 左栏的页面树随即显示"IME 三"（推送）；候选框不关、拼音不丢；确认"推送"之后随即保存（等改名时自动保存已在等组合结束），正文里是"推送"。离开这个标签页会让浏览器确认或取消组合，所以改名由终端（或另一个人）来做 |
 | 13 | 仍编辑"IME 一"。终端里起一个延迟的开启会话，用同一个账户的令牌打开"IME 三"的编辑锁：`sleep 15; curl -sS -X POST "$BASE/api/v0/pages/$PAGE/edit-sessions" -H "Authorization: Bearer $PAT"`；随即回到这个标签页，输入拼音 `suoding`，不确认，等到开启到达 | 树随锁的推送重读一次，候选框不关、拼音不丢；确认"锁定"之后随即保存，正文里是"锁定"。做完用 `curl -sS -X DELETE "$BASE/api/v0/edit-sessions/<答复里的 id>" -H "Authorization: Bearer $PAT"` 结束那个会话 |
 | 14 | 编辑"IME 一"，输入几个字，等"已保存"，然后直接关闭这个标签页（不点"完成"）。随即在终端里读锁：`curl -sS "$BASE/api/v0/pages/<IME 一的 id>/edit-lock" -H "Authorization: Bearer $PAT"` | 读到的锁没有持有者：关闭时的释放请求到达了。若仍有持有者、约 2 分钟之后才没有，记为"释放没到达，靠租约"（Safari 上的已知风险，M5 总设计第 10 节），不算不通过 |
-| 15 | 同一个账户开两个标签页 A、B，都打开"IME 一"的阅读视图；切到 B，让 A 留在后台 5 分钟以上（Safari、Firefox 可能冻结它）。然后在终端里改名"IME 一"为"IME 四"（同第 12 步的 `PATCH`，不带 `sleep`） | B 的左栏在约 1 分钟之内显示"IME 四"（A 若冻结着，B 接手事件流）；切回 A，它的左栏随即或在几秒之内也显示"IME 四"。记下 B 用了多久 |
+| 15 | 同一个账户开两个标签页 A、B，都打开"IME 一"的阅读视图；切到 B，让 A 留在后台 5 分钟以上（Safari、Firefox 可能冻结它）。然后在终端里改名"IME 一"为"IME 四"：`curl -sS -X PATCH "$BASE/api/v0/nodes/<IME 一的 id>" -H "Authorization: Bearer $PAT" -H "Content-Type: application/json" -d '{"name":"IME 四"}'` | B 的左栏在 1–1.5 分钟之内显示"IME 四"（A 若冻结着，B 在 3 个心跳的沉默之后接手事件流，默认 60 秒，每 20 秒查一次，再加上连接的时间）；切回 A，它的左栏随即或在几秒之内也显示"IME 四"。记下 B 用了多久 |
 
 ## 不在这份清单里的
 

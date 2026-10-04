@@ -283,3 +283,53 @@ test("the focus stays on the item ticked when the event of the toggle reads the 
   await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
   expect(document.activeElement).toBe(boxes()[0]);
 });
+
+test("the focus stays on the item ticked when another's write, read again for its event, comes before the toggle's 409", async () => {
+  const events = eventServer();
+  let release: (() => void) | undefined;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let posted = false;
+  const server = pageServer({
+    role: "editor",
+    answers: {
+      "GET /api/v0/events": events.answer,
+      // Another writes below the items meanwhile: the toggle, on revision 1, is refused late.
+      "POST /api/v0/pages/*/toggle-task": async () => {
+        server.withTasks(install.id, `${tasks}- [ ] c\n`, 2);
+        posted = true;
+        await held;
+        return problem(409, "page.revision_mismatch");
+      },
+    },
+  });
+  server.withTasks(install.id, tasks);
+  renderApp(pagePath(install.id), withEvents(server.app, new FakePage()), {
+    enhancements: [focusFixup, ...readingEnhancements],
+    eventHandlers,
+  });
+  await waitFor(() => expect(boxes()).toHaveLength(2));
+  await waitFor(() => expect(events.streams).toHaveLength(1));
+  act(() => events.last().hello());
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  (boxes()[0] as HTMLElement).focus();
+
+  await userEvent.keyboard(" ");
+  await waitFor(() => expect(posted).toBe(true));
+  act(() =>
+    events.last().send("pages", {
+      workspace_id: workspaceJSON.id,
+      notebook_id: notebookJSON.id,
+      tree: false,
+      pages: [{ id: install.id, revision: 2 }],
+    })
+  );
+
+  await waitFor(() => expect(boxes()).toHaveLength(3));
+  expect(document.activeElement).toBe(boxes()[0]);
+  release?.();
+  expect((await screen.findByRole("alert")).textContent).toBe("This page has changed since you read it.");
+  expect(boxes()[0]?.checked).toBe(false);
+  expect(document.activeElement).toBe(boxes()[0]);
+});

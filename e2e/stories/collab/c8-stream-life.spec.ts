@@ -221,7 +221,10 @@ test("C8 (page): B signs out in a second tab: both tabs sign out, and B's stream
     [page, second].map((tab) => expect(tab.getByRole("heading", { level: 1, name: "Sign in" })).toBeVisible())
   );
   await expect.poll(() => streams.count()).toBe(0);
-  // Signed out, no tab asks for a stream again, which would be 401.
+  // Signed out, no tab asks for a stream again, which would be 401: not at once, nor after the first backoff (1 s).
+  const opened = streams.opened();
+  await page.waitForTimeout(1_500);
+  expect(streams.opened()).toBe(opened);
   expect([pageWatch.eventStreamErrors, watchOf(second).eventStreamErrors]).toEqual([[], []]);
 });
 

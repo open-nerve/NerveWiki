@@ -42,7 +42,8 @@
 ```
 server/internal/platform/markdown/
   tasks/tasks.go、tasks_test.go             任务项扩展（3.2）
-  internal/harden/parser.go；render.go      去掉 goldmark 的任务项（3.2）
+  internal/harden/parser.go                 去掉 goldmark 的任务项（3.2）
+  render.go                                 同上
   render_test.go、markdowntest、harden_test 随之改
 server/internal/bootstrap/registrants.go    markdownExtensions() 注册 tasks（3.2）
 tools/md-fixtures                           样例的 tasks 字段（README 规则 11、check.mjs），样例 062–067
@@ -50,7 +51,8 @@ server/internal/modules/page/
   domain/actions.go、task.go、errors.go     page.toggle_task；Flip；NotATask、TaskWouldGo（3.3）
   app/toggle_task.go、content.go、ports.go  ToggleTask 用例；Decided；Markdown.Tasks（3.3）
   adapter/markdown/markdown.go              Tasks（3.3）
-  adapter/http/handler.go；module.go        toggleTask 的处理器（3.4）
+  adapter/http/handler.go                   toggleTask 的处理器（3.4）
+  module.go                                 挂上它（3.4）
 server/internal/modules/access/domain/rules.go  page.toggle_task 的规则
 api/modules/page.yaml、api/openapi.yaml     契约（3.4）
 web/apps/web/src/

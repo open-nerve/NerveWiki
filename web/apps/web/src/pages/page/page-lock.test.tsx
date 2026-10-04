@@ -1,6 +1,6 @@
 import { act, configure, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterAll, beforeAll, expect, test } from "vitest";
+import { afterAll, afterEach, beforeAll, expect, test, vi } from "vitest";
 
 import { lockReadOnly } from "../../editor/lock-read-only";
 import { editorExtensions, type EditorExtension } from "../../editor/registry";
@@ -20,6 +20,7 @@ import { renderApp } from "../../test/render";
 
 beforeAll(() => configure({ reactStrictMode: true }));
 afterAll(() => configure({ reactStrictMode: false }));
+afterEach(() => void vi.useRealTimers());
 
 /** Presses Ctrl+key where the focus is. */
 const ctrl = (key: string) => fireEvent.keyDown(document.activeElement ?? document.body, { key, ctrlKey: true });
@@ -135,6 +136,44 @@ test("signing out saves what was typed since the last save, then ends the sessio
     'PUT Guide "Guide\\n more" on 1 in session-1',
     "END session-1",
   ]);
+});
+
+test("signing out while the save is not answered ends the session after 1.5 seconds, before the logout", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const sent: string[] = [];
+  const server = pageServer({
+    answers: {
+      "PUT /api/v0/pages/*/content": () => {
+        sent.push("PUT");
+        return new Promise<Response>(() => undefined);
+      },
+      "DELETE /api/v0/edit-sessions/*": () => {
+        sent.push("END");
+        return new Response(null, { status: 204 });
+      },
+      "POST /api/v0/auth/logout": () => {
+        sent.push("LOGOUT");
+        return new Response(null, { status: 204 });
+      },
+    },
+  });
+  const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+  renderApp(pagePath(guide.id), server.app, { editorExtensions: [lockReadOnly] });
+  await user.click(await screen.findByRole("button", { name: "Edit" }));
+  const { type } = await pageEditor();
+  type(" more");
+
+  await user.click(screen.getByRole("button", { name: "Ada" }));
+  await user.click(await screen.findByRole("menuitem", { name: "Sign out" }));
+  await waitFor(() => expect(sent).toEqual(["PUT"]));
+  // The save has a second at least; by 1.5 seconds the end is out, the logout after it.
+  await act(() => vi.advanceTimersByTimeAsync(1_000));
+  expect(sent).toEqual(["PUT"]);
+  await act(() => vi.advanceTimersByTimeAsync(500));
+  await waitFor(() => expect(sent).toContain("END"));
+
+  expect(await screen.findByRole("heading", { name: "Sign in" })).toBeTruthy();
+  expect(sent).toEqual(["PUT", "END", "LOGOUT"]);
 });
 
 test("Done goes back to reading once the session's end is answered: the lock read next is not the edit's own", async () => {

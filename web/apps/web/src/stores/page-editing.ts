@@ -262,11 +262,15 @@ export class PageEditing {
   /**
    * close saves what is unsaved through the shown editor, then ends the
    * edit: the sign-out's end, which does not drop what was typed since the
-   * last save. A save that fails ends it all the same.
+   * last save. A save that fails, or is not answered within ms, ends it
+   * all the same: the end goes out while the sign-out's token is valid.
    */
-  async close(): Promise<void> {
+  async close(within: number): Promise<void> {
     if (!this.ended && this.unsaved && this.saveShown !== undefined) {
-      await this.saveShown().catch(() => false);
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const late = new Promise<void>((resolve) => (timer = setTimeout(resolve, within)));
+      await Promise.race([this.saveShown().catch(() => false), late]);
+      clearTimeout(timer);
     }
     return this.end();
   }

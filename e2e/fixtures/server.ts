@@ -120,7 +120,7 @@ export async function startNervewiki(
     return { baseURL, stop: () => stop(child, logFile) };
   } catch (err) {
     await kill(child);
-    throw new Error(`nervewiki did not answer ${probe} with 200 (log: ${logFile})`, { cause: err });
+    throw new Error(`nervewiki was not ${until} (log: ${logFile})`, { cause: err });
   }
 }
 
@@ -153,21 +153,14 @@ function readAddr(addrFile: string): string | undefined {
   }
 }
 
-/**
- * Waits until nervewiki has written its address and probe there answers 200,
- * and returns the base URL; fails when nervewiki exits, fails to spawn, or
- * the deadline passes. Each request may only use the time left, so a server
- * that accepts the connection but never answers cannot hold the wait past
- * the deadline.
- */
 /** What nervewiki logs once the event stream's listener listens. */
 const listening = 'msg="notification listener listening"';
 
 /** waitForLog waits until logFile has text, while child runs, until deadline. */
 async function waitForLog(logFile: string, text: string, child: ChildProcess, deadline: number): Promise<void> {
   while (!readFileSync(logFile, "utf8").includes(text)) {
-    if (child.exitCode !== null) {
-      throw new Error(`nervewiki exited with code ${child.exitCode}`);
+    if (child.exitCode !== null || child.signalCode !== null) {
+      throw new Error(`nervewiki exited with ${child.exitCode ?? child.signalCode}`);
     }
     if (Date.now() > deadline) {
       throw new Error(`no ${text} in the log within ${startTimeoutMs} ms`);
@@ -177,6 +170,13 @@ async function waitForLog(logFile: string, text: string, child: ChildProcess, de
   }
 }
 
+/**
+ * Waits until nervewiki has written its address and probe there answers 200,
+ * and returns the base URL; fails when nervewiki exits, fails to spawn, or
+ * the deadline passes. Each request may only use the time left, so a server
+ * that accepts the connection but never answers cannot hold the wait past
+ * the deadline.
+ */
 async function waitFor(
   probe: string,
   child: ChildProcess,

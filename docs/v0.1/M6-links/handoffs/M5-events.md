@@ -15,7 +15,9 @@ M5 建了实时推送的事件类型（[M5 总设计](../../M5-collab-editing/00
    - `Data` 是只含 id 的 JSON 对象，不能是数组或标量：监听的一侧丢掉读不懂的载荷。
    - 载荷不超过 `MaxPayload`（7999 字节）。超出时 `Publish` 答 `ErrTooLong`，整个写入单元回滚，所以数据随写入变大的类型要照 `pages` 退化：多于 20 页时 `pages` 为 `null`，见 `events/app/publisher.go` 的 `shedding`。
    - 同一事务里载荷相同的两条 `NOTIFY` 会被 PostgreSQL 合并成一条，要带区分它们的内容。
+   - 类型不能为空，不能含冒号或换行，不能是流自己的帧 `hello`、`reset`：这样的类型 `Publish` 答 `ErrNoType`（`events/domain` 的 `CheckType`），整个写入单元回滚。也不要用 M5 的 `pages`、`lock`、`access`、`notebooks_deleted`：它们不被拒绝，但 hub 与前端会按 M5 的意思解释（`access`、`notebooks_deleted` 让流 `reset`）。
    - hub 不认识的类型照转（`events/app/hub_test.go`）。
+   - 模块根（`events/publisher.go`）现在只导出 `Publisher`、`Event` 与 M5 自己的几个值，`ErrTooLong`、`ErrNoType`、`MaxPayload` 在 `events/domain` 里，组合根导入不到（只有组合根导入模块，而且只导入模块根，archtest）：要按它们分支或退化时，先在模块根以别名导出。
 2. **前端**：在 `web/apps/web/src/events/handlers.ts` 的 `eventHandlers` 里加一项 `[类型, 处理函数]`，流与标签页之间会把不认识的类型连同数据转过来（帧 `other`）。
    - 处理函数拿到的是服务端发的 JSON（类型自己断言），以及 SWR 的 `cache`、`mutate`、合并阅读视图重读的 `refresher` 与 `stopped`。它只让 SWR 重读挂着的东西。
    - 每次连上时，`app/event-stream.tsx` 的 `refreshedOnConnect` 从外向内一层层重读工作区、笔记本、树、阅读视图与锁。新类型的数据若有自己的 SWR 键，就加进对应的一层（这是 M5 的代码，加一行）。
