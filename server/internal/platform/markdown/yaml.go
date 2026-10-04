@@ -33,39 +33,48 @@ var errInvalid = errors.New("not a frontmatter's YAML")
 // read by YAML 1.2's core schema with its aliases expanded (the fixtures'
 // rule 1). Empty YAML is a frontmatter without properties; anything else
 // that is not a mapping, or goes past the limits, is not valid. The YAML
-// library's errors are dropped: they may quote the content.
-func properties(src []byte) ([]Property, bool) {
+// library's errors are dropped: they may quote the content. It also gives
+// the strings written on one line, src being the content's from at.
+func properties(src []byte, at int) ([]Property, []Scalar, bool) {
 	dec := yaml.NewDecoder(bytes.NewReader(src))
 	var doc yaml.Node
 	switch err := dec.Decode(&doc); {
 	case errors.Is(err, io.EOF):
-		return nil, true
+		return nil, nil, true
 	case err != nil:
-		return nil, false
+		return nil, nil, false
 	}
 	var more yaml.Node
 	if err := dec.Decode(&more); !errors.Is(err, io.EOF) {
-		return nil, false // a second document, or an error after the first
+		return nil, nil, false // a second document, or an error after the first
 	}
 	if len(doc.Content) != 1 {
-		return nil, false
+		return nil, nil, false
 	}
 	top := doc.Content[0]
 	if top.Kind != yaml.MappingNode {
-		return nil, false
+		return nil, nil, false
 	}
-	r := reader{budget: max(len(src), minYAMLRepeated)}
+	r := reader{budget: max(len(src), minYAMLRepeated), src: src, at: at}
 	v, err := r.value(top, 0)
 	if err != nil {
-		return nil, false
+		return nil, nil, false
 	}
-	return v.([]Property), true
+	return v.([]Property), r.scalars, true
 }
 
 // reader walks the YAML's nodes, counting what it expands: the nodes, and
-// the bytes of keys and scalars an alias repeats, up to budget.
+// the bytes of keys and scalars an alias repeats, up to budget. It notes
+// the strings written on one line on the way (scalars.go).
 type reader struct {
 	nodes, aliased, repeated, budget int
+
+	src     []byte   // the YAML
+	at      int      // where src starts in the content
+	lines   []int    // where each line of src starts, once a scalar needs them
+	last    position // where the last scalar looked up starts
+	path    []string // the keys and indexes down to the value being read
+	scalars []Scalar
 }
 
 func (r *reader) value(n *yaml.Node, depth int) (any, error) {
@@ -82,14 +91,20 @@ func (r *reader) value(n *yaml.Node, depth int) (any, error) {
 		if err := r.repeat(n); err != nil {
 			return nil, err
 		}
-		return scalar(n)
+		v, err := scalar(n)
+		if s, ok := v.(string); ok && err == nil && r.aliased == 0 {
+			r.note(n, s)
+		}
+		return v, err
 	case yaml.SequenceNode:
 		if !tagIs(n, "!!seq") {
 			return nil, errInvalid
 		}
 		items := make([]any, 0, len(n.Content))
-		for _, c := range n.Content {
+		for i, c := range n.Content {
+			r.path = append(r.path, strconv.Itoa(i))
 			v, err := r.value(c, depth+1)
+			r.path = r.path[:len(r.path)-1]
 			if err != nil {
 				return nil, err
 			}
@@ -111,7 +126,9 @@ func (r *reader) value(n *yaml.Node, depth int) (any, error) {
 				return nil, errInvalid
 			}
 			seen[key] = true
+			r.path = append(r.path, key)
 			v, err := r.value(n.Content[i+1], depth+1)
+			r.path = r.path[:len(r.path)-1]
 			if err != nil {
 				return nil, err
 			}

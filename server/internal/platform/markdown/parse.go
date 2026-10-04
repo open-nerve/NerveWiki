@@ -8,6 +8,8 @@ import (
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/text"
+
+	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown/internal/harden"
 )
 
 // Parse parses content, any bytes: its frontmatter is read and then made
@@ -17,11 +19,13 @@ import (
 func (m *Markdown) Parse(content []byte) *Document {
 	fm, end := frontmatterOf(content)
 	source := blank(content, end)
-	root := m.parser.Parse(text.NewReader(source))
+	pc := parser.NewContext()
+	root := m.parser.Parse(text.NewReader(source), parser.WithContext(pc))
 	d := &Document{content: content, source: source, root: root, frontmatter: fm, extracted: map[string]any{}}
+	tree := Tree{Root: root, Content: content, Frontmatter: fm, destinations: harden.Destinations(pc)}
 	for _, e := range m.exts {
 		if e.Extract != nil {
-			d.extracted[e.Name] = e.Extract(root, content)
+			d.extracted[e.Name] = e.Extract(tree)
 		}
 	}
 	return d
@@ -49,6 +53,9 @@ func (headingIDs) Transform(doc *ast.Document, reader text.Reader, _ parser.Cont
 		if !entering {
 			return ast.WalkContinue, nil
 		}
+		if _, hidden := n.(Hider); hidden {
+			return ast.WalkSkipChildren, nil
+		}
 		h, ok := n.(*ast.Heading)
 		if !ok {
 			if c := n.FirstChild(); c != nil && c.Type() == ast.TypeInline {
@@ -68,7 +75,7 @@ func (headingIDs) Transform(doc *ast.Document, reader text.Reader, _ parser.Cont
 	})
 }
 
-// plainText is the text of n's descendants.
+// plainText is the text of n's descendants, but for what a Hider hides.
 func plainText(n ast.Node, source []byte) string {
 	var b strings.Builder
 	_ = ast.Walk(n, func(c ast.Node, entering bool) (ast.WalkStatus, error) {
@@ -76,6 +83,8 @@ func plainText(n ast.Node, source []byte) string {
 			return ast.WalkContinue, nil
 		}
 		switch c := c.(type) {
+		case Hider:
+			return ast.WalkSkipChildren, nil
 		case *ast.Text:
 			b.Write(c.Segment.Value(source))
 			if c.SoftLineBreak() || c.HardLineBreak() {

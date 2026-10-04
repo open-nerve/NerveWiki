@@ -7,7 +7,8 @@ import (
 	"github.com/yuin/goldmark/text"
 )
 
-// run is a delimiter run of '*', '_' or '~' waiting for the emphasis pass.
+// run is a delimiter run of '*', '_' or '~' (or '=', highlight.go) waiting
+// for the emphasis pass.
 // goldmark pairs its delimiters with no openers_bottom, each closer looking
 // back over every delimiter before it; the pass pairs the runs with
 // CommonMark's algorithm instead, and the same rules as goldmark.
@@ -100,6 +101,8 @@ func bottomOf(closer *run) int {
 		c = 1
 	case '~':
 		c = 2
+	case '=':
+		c = 3
 	}
 	o := 0
 	if closer.canOpen {
@@ -137,7 +140,7 @@ func pair(parent ast.Node) {
 	if len(stack) == 0 {
 		return
 	}
-	var bottoms [18]int
+	var bottoms [24]int
 	for i := range bottoms {
 		bottoms[i] = -1
 	}
@@ -187,9 +190,12 @@ func match(parent ast.Node, opener, closer *run, consume int) *run {
 	closer.length -= consume
 	closer.seg = closer.seg.WithStart(closer.seg.Start + consume)
 	var node ast.Node
-	if closer.char == '~' {
+	switch closer.char {
+	case '~':
 		node = east.NewStrikethrough()
-	} else {
+	case '=':
+		node = &Highlight{}
+	default:
 		node = ast.NewEmphasis(consume)
 	}
 	node.SetPos(opener.seg.Start)

@@ -1,0 +1,9 @@
+{
+  "description": "没配成对的 *、_、~~ 与没闭合的 [ 是文字，紧跟其后的不是标签。",
+  "source": "obsidian-verified",
+  "frontmatter": null,
+  "links": [],
+  "tags": [
+    "t1"
+  ]
+}

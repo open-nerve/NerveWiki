@@ -13,6 +13,34 @@ type Frontmatter struct {
 	Valid bool
 	// Properties are its keys and values in the order they are written.
 	Properties []Property
+	// Scalars are its strings written on one line, where they are written
+	// (M6/P1 design 3.2): a property link is one. A value an alias repeats
+	// is not among them.
+	Scalars []Scalar
+}
+
+// Scalar is a string of a frontmatter written on one line.
+type Scalar struct {
+	// Path is its property's: the keys and the list indexes down to it,
+	// joined by '.', as "sources.0".
+	Path string
+	// Value is the string.
+	Value string
+	// Quote is how it is written: 0 plain, '\'' or '"'.
+	Quote byte
+
+	start   int   // where Value is written in the content, past its quote
+	offsets []int // where each byte of Value is written, and its end; nil when at start+i
+}
+
+// Offset is where byte i of the value is written in the content, for i
+// from 0 to len(Value): a quoted string may write a byte with more (two
+// single quotes for one in single quotes, an escape in double quotes).
+func (s Scalar) Offset(i int) int {
+	if s.offsets == nil {
+		return s.start + i
+	}
+	return s.offsets[i]
 }
 
 // Property is one key of a frontmatter. Its value is nil, a bool, an int64,
@@ -66,8 +94,8 @@ func frontmatterOf(src []byte) (Frontmatter, int) {
 	if !ok {
 		return Frontmatter{}, 0
 	}
-	props, valid := properties(src[s.from:s.to])
-	return Frontmatter{Present: true, Valid: valid, Properties: props}, s.end
+	props, scalars, valid := properties(src[s.from:s.to], s.from)
+	return Frontmatter{Present: true, Valid: valid, Properties: props, Scalars: scalars}, s.end
 }
 
 // blank is src as the parser reads it: the byte order mark made line

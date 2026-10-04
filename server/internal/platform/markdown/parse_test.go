@@ -148,9 +148,9 @@ func words() Extension {
 	return Extension{
 		Name:   "words",
 		Parser: []parser.Option{parser.WithInlineParsers(util.Prioritized(wordParser{}, 50))},
-		Extract: func(root ast.Node, _ []byte) any {
+		Extract: func(t Tree) any {
 			var out []string
-			_ = ast.Walk(root, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+			_ = ast.Walk(t.Root, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 				if w, ok := n.(*wordNode); ok && entering {
 					out = append(out, string(w.word))
 				}
@@ -176,15 +176,15 @@ func TestAnExtensionParsesAndExtracts(t *testing.T) {
 // the tree's offsets are the content's.
 func TestAnExtensionExtractsFromTheContent(t *testing.T) {
 	ext := words()
-	ext.Extract = func(root ast.Node, content []byte) any {
+	ext.Extract = func(t Tree) any {
 		var at []string
-		_ = ast.Walk(root, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		_ = ast.Walk(t.Root, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 			if txt, ok := n.(*ast.Text); ok && entering {
-				at = append(at, string(content[txt.Segment.Start:txt.Segment.Stop]))
+				at = append(at, string(t.Content[txt.Segment.Start:txt.Segment.Stop]))
 			}
 			return ast.WalkContinue, nil
 		})
-		return string(content[:3]) + strings.Join(at, "|")
+		return string(t.Content[:3]) + strings.Join(at, "|")
 	}
 	m := newMarkdown(t, ext)
 	content := "---\na: 1\n---\nsay *hi*\n"

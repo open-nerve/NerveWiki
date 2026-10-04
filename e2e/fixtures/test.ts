@@ -4,7 +4,7 @@ import { createClient, type ApiClient, type AuthTokens } from "@nervewiki/api-cl
 import { test as base, type BrowserContext, type Page } from "@playwright/test";
 
 import { signInContext } from "./auth";
-import { attachPageState, expectQuietPage, watchPage, type PageWatch } from "./browser";
+import { expectQuietPage, pageStatesOf, watchPage, type PageStates, type PageWatch } from "./browser";
 import { createDatabase, dropDatabase, openDatabase, templateDatabase, type Database } from "./db";
 import { connectEvents, type EventStream } from "./events";
 import { nervewikiFixtureTimeoutMs, startNervewiki, type Nervewiki, type StartOptions } from "./server";
@@ -30,6 +30,8 @@ interface TestFixtures {
   api: ApiClient;
   /** What the test's page did, watched from before its first navigation: see page. */
   pageWatch: PageWatch;
+  /** The states of the test's pages once it failed, reported once as it ends: see pageStatesOf. */
+  pageStates: PageStates;
   /**
    * Creates another database on the run's PostgreSQL: "migrated", a copy of the
    * template; "empty", with no migration applied. It outlives the test, until
@@ -137,15 +139,22 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
   // Every test's page is watched from before its first navigation, and a test that passes must have left it
   // quiet (expectQuietPage): the check runs as the test ends, so no story can forget it. What the page asked
   // of the API stays each story's to assert, through pageWatch.
-  page: async ({ page }, use, testInfo) => {
+  page: async ({ page, pageStates }, use, testInfo) => {
     const watch = await watchPage(page);
     watches.set(page, watch);
     await use(page);
     if (testInfo.status === testInfo.expectedStatus) {
       await expectQuietPage(page, watch);
     } else {
-      await attachPageState(page, watch, testInfo, "page");
+      await pageStates.add([["page", page, watch]]);
     }
+  },
+  // Torn down after the fixtures of pages, which depend on it.
+  // oxlint-disable-next-line no-empty-pattern -- Playwright reads a fixture's dependencies from this pattern
+  pageStates: async ({}, use, testInfo) => {
+    const states = pageStatesOf(testInfo);
+    await use(states);
+    states.fail();
   },
   pageWatch: async ({ page }, use) => {
     const watch = watches.get(page);
@@ -195,7 +204,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
       return page;
     });
   },
-  anotherPage: async ({ browser, nervewiki }, use, testInfo) => {
+  anotherPage: async ({ browser, nervewiki, pageStates }, use, testInfo) => {
     const contexts: BrowserContext[] = [];
     const watched: [Page, PageWatch][] = [];
     await use(async (tokens) => {
@@ -214,16 +223,13 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
           watched.filter(([page]) => !page.isClosed()).map(([page, watch]) => expectQuietPage(page, watch))
         );
       } else {
-        await Promise.all(
-          watched.map(([page, watch], i) => attachPageState(page, watch, testInfo, `another page ${i + 1}`))
-        );
+        await pageStates.add(watched.map(([page, watch], i) => [`another page ${i + 1}`, page, watch]));
       }
     } finally {
       await Promise.all(contexts.map((context) => context.close()));
     }
   },
-  // oxlint-disable-next-line no-empty-pattern -- Playwright reads a fixture's dependencies from this pattern
-  anotherTab: async ({}, use, testInfo) => {
+  anotherTab: async ({ pageStates }, use, testInfo) => {
     const watched: [Page, PageWatch][] = [];
     await use(async (page) => {
       const tab = await page.context().newPage();
@@ -235,9 +241,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
     if (testInfo.status === testInfo.expectedStatus) {
       await Promise.all(watched.filter(([tab]) => !tab.isClosed()).map(([tab, watch]) => expectQuietPage(tab, watch)));
     } else {
-      await Promise.all(
-        watched.map(([tab, watch], i) => attachPageState(tab, watch, testInfo, `another tab ${i + 1}`))
-      );
+      await pageStates.add(watched.map(([tab, watch], i) => [`another tab ${i + 1}`, tab, watch]));
     }
   },
   databaseSnapshot: [

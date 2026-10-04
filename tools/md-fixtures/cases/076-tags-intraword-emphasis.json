@@ -1,0 +1,10 @@
+{
+  "description": "字母之后、标点之前的 ** 不能开始强调，是文字，紧跟其后的 # 不是标签。",
+  "source": "nerve-defined",
+  "note": "Obsidian 把 a**#e2** 当作加粗，#e2 是标签。CommonMark 规定 ** 前面是字母、后面是标点时不能开始强调，我们照 CommonMark 解析强调，所以 ** 是文字，#e2 跟在文字后面不是标签。",
+  "frontmatter": null,
+  "links": [],
+  "tags": [
+    "e1"
+  ]
+}

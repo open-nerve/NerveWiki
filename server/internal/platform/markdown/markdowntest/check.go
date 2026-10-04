@@ -23,7 +23,7 @@ import (
 var allowed = map[string][]string{
 	"a": {"href", "title", "class", "role"}, "abbr": {"title"}, "b": nil, "bdi": nil, "bdo": {"dir"},
 	"blockquote": nil, "br": nil, "caption": nil, "cite": nil, "code": {"class"}, "dd": nil, "del": nil,
-	"details": {"open"}, "dfn": nil, "div": {"class", "role"}, "dl": nil, "dt": nil, "em": nil,
+	"details": {"open"}, "dfn": nil, "div": {"class", "role", "tabindex"}, "dl": nil, "dt": nil, "em": nil,
 	"figcaption": nil, "figure": nil, "h1": {"id"}, "h2": {"id"}, "h3": {"id"}, "h4": {"id"}, "h5": {"id"},
 	"h6": {"id"}, "hr": nil, "i": nil, "ins": nil, "kbd": nil,
 	"li": {"id"}, "mark": nil, "ol": {"start", "reversed"}, "p": nil, "pre": nil, "q": nil, "rp": nil,
@@ -38,7 +38,7 @@ var allowed = map[string][]string{
 //
 //nolint:gochecknoglobals // read only
 var (
-	classes  = []string{"footnote-ref", "footnote-backref", "footnotes", "nw-image", "nw-props"}
+	classes  = []string{"footnote-ref", "footnote-backref", "footnotes", "nw-image", "nw-props", "nw-scroll"}
 	language = regexp.MustCompile(`^language-[a-z0-9_+#.-]+$`)
 )
 

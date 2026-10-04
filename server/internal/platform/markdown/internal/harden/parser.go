@@ -89,6 +89,6 @@ func inlineParsers() []util.PrioritizedValue {
 		util.Prioritized(rawHTMLGuard{}, 350),
 		util.Prioritized(parser.NewRawHTMLParser(), 400),
 		util.Prioritized(runs{}, 500),
-		util.Prioritized(linkify{extension.NewLinkifyParser()}, 999),
+		util.Prioritized(&linkify{inner: extension.NewLinkifyParser()}, 999),
 	}
 }

@@ -1,0 +1,30 @@
+{
+  "description": "块注释从段落里的一行开始，到列表项里以 %% 结尾的一行结束：注释只影响显示，里面的链接照常计入。",
+  "source": "obsidian-verified",
+  "frontmatter": null,
+  "links": [
+    {
+      "kind": "wikilink",
+      "target": "c",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        12,
+        13
+      ]
+    },
+    {
+      "kind": "wikilink",
+      "target": "e",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        26,
+        27
+      ]
+    }
+  ],
+  "tags": []
+}
