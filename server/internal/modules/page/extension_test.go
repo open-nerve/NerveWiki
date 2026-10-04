@@ -581,7 +581,7 @@ func TestTheTreesWritesReachTheUnit(t *testing.T) {
 func pageMark() markdown.Extension {
 	return markdown.Extension{
 		Name:    "page-mark",
-		Extract: func(_ gast.Node, content []byte) any { return len(content) },
+		Extract: func(t markdown.Tree) any { return len(t.Content) },
 		Fetch: func(_ context.Context, p markdown.Page, extracted any) (any, error) {
 			return fmt.Sprintf("%s/%s:%d", p.NotebookID, p.PageID, extracted), nil
 		},
