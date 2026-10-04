@@ -192,14 +192,14 @@ linking 的 `Index` 实现 `page.PageObserver`，经组合根登记（`pageRegis
 | 步 | 内容 | 提交 |
 |---|---|---|
 | S1 | `resolve/` 样例、`check.mjs` 的格式检查、`verify-resolve.mjs`；与 Obsidian 核对 | `md-fixtures: link resolution cases, checked with Obsidian (M6/P3/S1)` |
-| S2 | `linking/domain`：切分、解析、落点、受影响的键；表格测试与样例测试 | `linking: the resolution rules (M6/P3/S2)` |
+| S2 | `linking/domain`：切分与解析；表格测试与样例测试（受影响的键随 S4 的观察者，落点随 B 的渲染，各自与用它的代码一起测） | `linking: the resolution rules (M6/P3/S2)` |
 | S3 | 迁移、sqlc、page 的读端口、linking 的 store 与锁 | `page, linking: the index tables and the page's link targets (M6/P3/S3)` |
 | S4 | 观察者、笔记本删除、`links` 事件、组合根；整个程序的测试 | `linking, bootstrap: the index follows every write (M6/P3/S4)` |
 | S5 | `nervewiki reindex`；性质测试"增量等于重建"；交错 | `linking, cmd: reindex, and the index equals its rebuild (M6/P3/S5)` |
 
 ## 5. A：测试与验证
 
-- **解析**：`domain` 的表格测试（每一步、`.md` 的两种写法、`..` 到根为止、空段、歧义、别名、落点）；`resolve/` 样例全部通过，`obsidian-verified` 的与 Obsidian 一致。
+- **解析**：`domain` 的表格测试（每一步、`.md` 的两种写法、`..` 到根为止、空段、歧义、别名在名称之后；落点在 B）；`resolve/` 样例全部通过，`obsidian-verified` 的与 Obsidian 一致。
 - **store 与端口**：`ByKeys` 的路径、跨笔记本不串、已删的不算、`Rekey` 的撞键；数据库测试。
 - **每条写入路径**（整个程序，`serve` 上）：新建、改名（带子页）、移动（带子页）、删除子树、写正文（含改别名）、勾选任务、笔记本删除（三条路径），各有一个测试：索引行随之更新，`links` 事件到达流（`s.expect(t, "links")`），载荷的 `pages`、`targets` 对；组合根不登记观察者时失败。
 - **性质测试**：随机的树与一串操作（新建、改名、移动、删除，带子页；写正文，带链接、别名、相对路径与重名），每步之后增量维护的索引等于 `reindex` 从头重建的结果（同一事务里比较）。
