@@ -3,6 +3,7 @@ import { expectContentWritten, expectOneSessionRevision, sessionsOf } from "../.
 import { emailFor } from "../../fixtures/auth";
 import { countAnswers, failedToLoad } from "../../fixtures/browser";
 import type { Database } from "../../fixtures/db";
+import { holdStream } from "../../fixtures/events";
 import { joinAs } from "../../fixtures/invitations";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, openSession, putContent, readContent, writeContent } from "../../fixtures/pages";
@@ -87,10 +88,14 @@ test("PG8 (page): the edit's session expires and a token writes; the save opens 
   const discarded = await createPage(api, pat, notebook.id, "Discarded", null, "Base\n");
   const page = await signedInPage(tokens);
 
+  const letStreamIn = await holdStream(page);
   const viewReads = countAnswers(page, "GET", `/api/v0/pages/${kept.id}/view`);
   await page.goto(wikiPagePath(workspace.slug, notebook.id, kept.id));
-  // The event stream connects, its refresh reading the page again, before the edit: a connection after the
-  // session expired would have the edit beat and open another, which the token's write would find locked.
+  await expect.poll(viewReads).toBe(1);
+  // The event stream connects once the page shows, its refresh reading the page again, before the edit: a
+  // connection after the session expired would have the edit beat and open another, which the token's write
+  // would find locked. Let in before the page shows, it would have nothing to read again.
+  letStreamIn();
   await expect.poll(viewReads).toBeGreaterThanOrEqual(2);
   await startEditing(page);
   await expireSessionsOf(db, kept.id);
