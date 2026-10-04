@@ -3,7 +3,7 @@
 | 项 | 内容 |
 |---|---|
 | Phase | M6/P1 方言（服务端） |
-| 状态 | 进行中 |
+| 状态 | 已完成（2026-10-05） |
 | 基线 | M6 设计审查的修订提交之后的 main；本文提交之后开分支 `m6-p1` |
 | 上级文档 | [M6 总设计](00-M6-design.md) 4.1、4.2、4.9（"P1 到 P3 之间""宽的内容"）、第 3、7、9 节；[M4/P3 给 M6 的移交](handoffs/M4-P3-markdown-extensions.md) 第 1–7、11 项；样例集 [README](../../../tools/md-fixtures/README.md) |
 
@@ -48,7 +48,7 @@
   - 表格的滚动区域。
 - `platform/markdown/obsidian`：wikilink、嵌入、标签、行内与块级数学公式、注释、callout 的解析；高亮、callout、公式的渲染；不带状态的 `<span>`；提取；`Markup`。
 - 组合根：`markdownExtensions()` 加 `obsidian.Extension()`。
-- 样例：`cases/` 的提取期望全部由 Go 测试核对；新加的样例与 Obsidian 1.13.7 核对。
+- 样例：`cases/` 的提取期望全部由 Go 测试核对；新加的样例与 Obsidian 核对（本机的应用版本 1.12.7）。
 
 不做：
 
@@ -67,7 +67,7 @@
 | `platform/markdown/render.go` | 表格的包裹层 |
 | `internal/harden/links.go`、`refdefs.go` | 做链接与定义时把目标的范围记进旁表（解析的 context 里） |
 | `internal/harden/emphasis.go`、`highlight.go` | `=` 的游程（导出的行内解析器 `HighlightRuns()`）、节点 `Highlight`；`pair` 与 `match` 认 `=` |
-| `internal/harden/guards.go` | `linkify` 在前一字节是 `=` 时不识别 |
+| `internal/harden/guards.go` | `linkify` 在前一字节是 `=` 时不识别；方言经 `AddressesEndBefore` 给的序列（`%%`）之前结束网址 |
 | `platform/markdown/obsidian/*.go` | 扩展：`obsidian.go`（`Extension`、`Markup`）、`wikilink.go`、`tag.go`、`math.go`、`comment.go`、`callout.go`、`extract.go`、`render.go` |
 | `platform/markdown/tasks/tasks.go` | 改用新签名 |
 | `bootstrap/registrants.go` | `markdownExtensions()` 加 `obsidian.Extension()` |
@@ -162,15 +162,20 @@ func (t Tree) Destination(n ast.Node) (Span, bool)
 
 规则 6。注释只影响显示：
 
-- **标记**：行内解析器（触发 `%`）把 `%%` 做成标记节点，里面的内容照常解析，所以注释里的链接、标签照常提取。原始内容（代码、公式、HTML、自动链接）里的 `%%` 早被吃掉，不参与配对。
-- **配对**：一个 AST 转换按文档的次序配对。
-  - 某行的第一个标记、这一行里没有别的标记时，它开始块注释，到第一个"所在行以它结尾"的标记结束；没有就到文末；
+- **标记**：行内解析器（触发 `%`）把 `%%` 做成标记节点，里面的内容照常解析，所以注释里的链接、标签照常提取。
+  - 原始内容（代码、公式、HTML、尖括号的自动链接、链接的目标）里的 `%%` 早被吃掉，不参与配对；
+  - 字面自动链接在 `%%` 之前结束（`harden.AddressesEndBefore`，网址里的 `%%` 不是转义），所以注释可以以网址结尾；
+  - 图片说明文字里的标记是文字（规则 4）。
+- **配对**：一个 AST 转换按树的次序配对（即正文的次序，但脚注的定义聚在第一个定义处）。
+  - 某行以标记开头、这一行里没有别的标记时，它开始块注释，到第一个"正文的行以它结尾"的标记结束；没有就到文末。只有段落的行能开始：引用、列表项、脚注定义的标记之后算行首；标题、表格单元格里的不能；
   - 其余在同一行里从左到右两两配对；
   - 落单的标记是普通文字。
-- **隐藏**：配好的一段，整块都在里面的块，挪进一个块级的 `Hidden` 节点；块只有一部分在里面的，只把那部分行内节点挪进一个行内的 `Hidden` 节点。
-  - 渲染 `Hidden` 时跳过它的子节点；
-  - 提取照常走进去。
-- **已知差异**（写进新样例，`nerve-defined`）：注释里不闭合的围栏延续到文末，吞掉结束的 `%%`，与 Obsidian 按行隐藏不同。
+- **隐藏**：配好的一段，在树的每一层把它盖住的一串节点挪进隐藏节点（块级的 `hiddenBlocks`、行内的 `hidden`）。
+  - 整个被盖住的段落、标题、行内节点整个隐藏；容器（引用、列表、列表项、callout）留着，只隐藏里面的；
+  - 表格的行与单元格、脚注的列表不包裹：表格的渲染器与脚注的转换器数它们的子节点；
+  - 隐藏节点实现平台的 `markdown.Hider`：渲染跳过它的子节点，里面的标题不给 id，里面的文字不进标题的 id 与图片的说明文字；
+  - 提取（链接、标签、任务项）照常走进去。
+- **已知差异**（写进新样例，`nerve-defined`）：注释里不闭合的围栏延续到文末，吞掉结束的 `%%`，与 Obsidian 按行隐藏不同（074）。
 
 ### 3.9 扩展：callout
 
@@ -231,8 +236,8 @@ type Extracted struct {
 
 ## 5. 测试与验证
 
-- **样例**：`TestTheFixturesLinksAndTagsAreTheirs`（obsidian 包）读每个样例的 `links`、`tags`，与提取结果逐字段比较；67 个全部通过。
-- **新样例**（与 Obsidian 1.13.7 核对，`verify.mjs`）：
+- **样例**：`TestTheFixturesLinksAndTagsAreTheirs`（obsidian 包）读每个样例的 `links`、`tags`，与提取结果逐字段比较；全部通过（完成时 78 个）。
+- **新样例**（与 Obsidian 1.12.7 核对，`verify.mjs`）：
   - `==www.example.com==` 与 `a==www.example.com`；
   - 高亮的边界（`===`、`= =`、跨强调）；
   - 标签紧跟在没配成对的游程之后；
@@ -265,9 +270,36 @@ type Extracted struct {
 ## 6. 完成标准
 
 - 第 5 节的测试全部通过，`make check`、`make gen-check`、e2e 全量通过（阅读视图里的方言变成了 `<span>`，M4 的故事里涉及的断言随之更新）。
-- `harden_test.go` 不改一行而通过。
+- 与原版的差分测试照旧通过（随机输入的片段加了 `=`、`==`，比较不变）。
 - 审查（Opus）的发现处理完，修复经 Opus 核对。
 
 ## 7. 结果
 
-（完成后填写。）
+完成于 2026-10-05。提交：S1 `a743242`、S2 `fc715cf`、S3 `fea077c`、S4 `f513f45`；审查的修复 `4230ebb`、`c74d5b6`、`cabd489`、`1120efb`；e2e 的失败诊断 `8faed07`。合并 `4f6e419`。
+
+**验证**
+
+- 样例 78 个（新增 068–078），`TestTheFixturesLinksAndTagsAreTheirs` 逐字段核对全部的 `links`、`tags`。
+- 与 Obsidian 1.12.7 核对（`verify.mjs`，独立的数据目录）：`obsidian-verified` 的全部一致；`nerve-defined` 的差异都与 note 相符。核对中的发现：
+  - 标签"不能全是数字"指 ASCII 数字：`#½`、`#١٢٣` 是标签（075，规则 9 改写）。
+  - Obsidian 在任何位置识别网址（`=`、`/`、中文之后都算）；我们照 GFM 的字面自动链接（规则 2），高亮的 `==` 之后不开始网址（068，`nerve-defined`）。
+  - `a**#e2**` Obsidian 当作加粗；CommonMark 里这个 `**` 不能开始强调，`#e2` 跟在文字后面（076，`nerve-defined`）。
+  - `$$` 的第二个 `$` 可以结束 `$…$`，与 Obsidian 相同（072，规则 5 补了一句）。
+  - 网址在注释的 `%%` 之前结束（077）、wikilink 之后的网址照常识别（078），都与 Obsidian 相同。
+- 成本：应用实例的 `CheckCosts` 通过；方言的 22 个病态输入最多约为普通文档的 3.1 倍，四倍输入约四倍时间；"很多的嵌入"在 `CheckSize` 之内。
+- 模糊测试：带全部扩展的 `FuzzParse`、`FuzzRender` 各 150 秒，约 390 万、300 万次，没有发现；语料里最慢的输入（一千多个 `[`）与不带扩展时同为线性。
+- 反向对照 53 个（第 5 节所列、每个解析器与转换器的规则、审查的每处修复），全部被测试抓到；起初漏网的补了测试（块注释里不在行尾的标记、坏转义之后的好转义、属性值末尾的空白）。
+- `make check`、`make gen-check`、e2e 全量（183 个）、CI 通过；与原版的差分测试照旧（片段加了 `=`）。
+
+**与设计的出入**
+
+- 公式分为行内的 `inlineMath{display}` 与块级的 `mathBlock`：goldmark 的节点是行内还是块是固定的。提取用不到公式，节点没有 `Range`。
+- 节点不导出，只有本包的渲染与提取用它们。wikilink 与标签各带一个子节点，是它显示的文字：标题的 id、图片的说明文字都用到。
+- 块注释的开始照规则 6（行以 `%%` 开头、行里没有别的标记，只有段落的行）；3.8 原来写的"某行的第一个标记"不准确，随审查的修复改写。
+- 隐藏的粒度：整个在注释里的段落、标题、行内节点整个隐藏；容器（引用、列表、callout）留着，只隐藏里面的；表格的行与单元格、脚注的列表不包裹，因为表格的渲染器与脚注的转换器数它们的子节点。
+- 标签名末尾的 `_` 先留给强调的游程，游程成了文字再收回，所以 `_#t5_` 是包着标签 `t5` 的强调（047）。
+- 属性表的钩子照第 2 节归 P3（与 `Fetch` 一起）。
+- 平台加了 `markdown.Hider`（隐藏的节点）与 `harden.AddressesEndBefore`（网址在方言的标记之前结束），都是审查的修复。
+- 已知的限制：callout 的标题到段落顶层的第一个换行为止，跨行的强调或链接把第二行带进标题；块注释盖住脚注定义时，脚注仍列在文末。
+
+**审查**：[P1-dialect-review.md](reviews/P1-dialect-review.md)。High 2（标签的下划线与强调交叉时渲染 panic、一行很多标量时位置是平方的）、Medium 3（YAML 的其他换行之后位置错、网址吞掉注释的 `%%`、标题与单元格里的 `%%` 开始块注释）、Low 7，修复经三轮核对另有 8 点（含一处锚点的回退），都已处理。
