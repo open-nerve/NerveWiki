@@ -86,13 +86,17 @@ func FactsError(exts []markdown.Extension, contents ...string) error {
 // kept is the heap the Facts of content keep once its parse is done, the
 // bytes the parse reads included, the least of three runs: the heap's
 // accounting only adds noise; and what the facts may keep, their Limit.
+// Each reading follows two collections: the first leaves what the parse
+// pooled (sync.Pool) to the second (M6/P2 fix check 2 L3).
 func kept(m *markdown.Markdown, content []byte) (uint64, int) {
 	least, limit := uint64(math.MaxUint64), 0
 	for range 3 {
 		var before, after runtime.MemStats
 		runtime.GC()
+		runtime.GC()
 		runtime.ReadMemStats(&before)
 		facts := m.Parse(bytes.Clone(content)).Facts()
+		runtime.GC()
 		runtime.GC()
 		runtime.ReadMemStats(&after)
 		runtime.KeepAlive(facts)

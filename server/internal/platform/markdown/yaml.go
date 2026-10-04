@@ -25,6 +25,12 @@ const (
 	// make every reading blow up either. Past the larger of it and the
 	// YAML's size the frontmatter is not valid.
 	minYAMLRepeated = 100_000
+	// yamlPathsRatio is how many times that the paths of the noted strings
+	// may take, each its keys over again (M6/P2 fix check 2 C1): long keys
+	// over a list of thousands must not copy them for each item either.
+	// Twice: the keys an alias repeats are in the paths of the values under
+	// them too.
+	yamlPathsRatio = 2
 )
 
 var errInvalid = errors.New("not a frontmatter's YAML")
@@ -65,9 +71,10 @@ func properties(src []byte, at int) ([]Property, []Scalar, bool) {
 
 // reader walks the YAML's nodes, counting what it expands: the nodes, and
 // the bytes of keys and scalars an alias repeats, up to budget. It notes
-// the strings written on one line on the way (scalars.go).
+// the strings written on one line on the way (scalars.go), counting the
+// bytes of their paths, up to yamlPathsRatio times budget.
 type reader struct {
-	nodes, aliased, repeated, budget int
+	nodes, aliased, repeated, budget, paths int
 
 	src     []byte   // the YAML
 	at      int      // where src starts in the content
@@ -93,7 +100,7 @@ func (r *reader) value(n *yaml.Node, depth int) (any, error) {
 		}
 		v, err := scalar(n)
 		if s, ok := v.(string); ok && err == nil && r.aliased == 0 {
-			r.note(n, s)
+			err = r.note(n, s)
 		}
 		return v, err
 	case yaml.SequenceNode:

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -188,6 +189,44 @@ func TestAliasesRepeatAtMostTheirBudget(t *testing.T) {
 	long := "a: &a " + strings.Repeat("x", minYAMLRepeated+1) + "\nb: [*a]\n"
 	if _, ok := propertiesOf([]byte(long)); !ok {
 		t.Error("a value longer than minYAMLRepeated, aliased once, not valid")
+	}
+}
+
+// The paths of the strings noted take at most yamlPathsRatio times the
+// larger of the YAML's size and minYAMLRepeated, past it the frontmatter not
+// valid: a long key over a list of thousands copies itself for each item
+// (M6/P2 fix check 2 C1). A value not noted, a number, has no path.
+func TestThePathsOfTheStringsTakeAtMostTheirBudget(t *testing.T) {
+	key := strings.Repeat("k", 1000)
+	tests := []struct {
+		name, head, item, tail, path string
+	}{
+		{"a long key", key + ": [", "a, ", "]\n", key},
+		{"long keys nested", key + ": {" + key + "1: {" + key + "2: [", "a, ", "]}}\n", key + "." + key + "1." + key + "2"},
+		{"a long key in a long YAML", "f: " + strings.Repeat("y", 2*minYAMLRepeated) + "\n" + key + ": [", "a, ", "]\n", key},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			yaml := func(n int) string { return tt.head + strings.Repeat(tt.item, n) + tt.tail }
+			n, paths := 0, 0
+			for {
+				next := paths + len(tt.path+"."+strconv.Itoa(n))
+				if next > yamlPathsRatio*max(len(yaml(n+1)), minYAMLRepeated) {
+					break
+				}
+				n, paths = n+1, next
+			}
+			if _, ok := propertiesOf([]byte(yaml(n))); !ok {
+				t.Errorf("%d items, at the limit, not valid", n)
+			}
+			if _, ok := propertiesOf([]byte(yaml(n + 1))); ok {
+				t.Errorf("%d items, past the limit, valid", n+1)
+			}
+		})
+	}
+	numbers := key + ": [" + strings.Repeat("1, ", maxYAMLNodes-10) + "]\n"
+	if _, ok := propertiesOf([]byte(numbers)); !ok {
+		t.Error("numbers under a long key, not noted, not valid")
 	}
 }
 

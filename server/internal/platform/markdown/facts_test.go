@@ -25,25 +25,28 @@ func TestADocumentsFactsAreWhatItFound(t *testing.T) {
 }
 
 // What a frontmatter's facts may keep counts each of its values: each
-// property, each item of a list and each nested property; beside it,
-// FactsRatio times the content.
+// property, each item of a list and each nested property; and the bytes of
+// its strings' paths; beside them, FactsRatio times the content and
+// FactsBase.
 func TestTheFactsLimitCountsTheFrontmattersValues(t *testing.T) {
 	m, err := markdown.New(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, tt := range []struct {
-		content string
-		values  int
+		content       string
+		values, paths int
 	}{
-		{"body\n", 0},
-		{"---\na: 1\n---\n", 1},
-		{"---\na: [x, [y, z]]\nb: {c: 1, d: [e]}\n---\n", 9},
-		{"---\n- not a mapping\n---\n", 0},
+		{"body\n", 0, 0},
+		{"---\na: 1\n---\n", 1, 0},
+		{"---\na: [x, [y, z]]\nb: {c: 1, d: [e]}\n---\n", 9, len("a.0a.1.0a.1.1b.d.0")},
+		{"---\nsources: ['[[A]]', B]\n---\n", 3, len("sources.0sources.1")},
+		{"---\n- not a mapping\n---\n", 0, 0},
 	} {
 		f := m.Parse([]byte(tt.content)).Facts()
-		if got, want := f.Limit(100), markdown.FactsRatio*100+400*tt.values; got != want {
-			t.Errorf("%q: Limit(100) = %d, want %d: %d values", tt.content, got, want, tt.values)
+		want := markdown.FactsBase + markdown.FactsRatio*100 + 400*tt.values + tt.paths
+		if got := f.Limit(100); got != want {
+			t.Errorf("%q: Limit(100) = %d, want %d: %d values, %d bytes of paths", tt.content, got, want, tt.values, tt.paths)
 		}
 	}
 }

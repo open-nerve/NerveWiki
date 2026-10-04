@@ -249,9 +249,11 @@ func Pathological() []Input {
 // Amplifying are the inputs whose HTML goldmark or YAML's aliases make
 // grow faster than the input: a table's short rows filled to the header's
 // width, a reference link repeating a long destination or title, an alias
-// repeating a long value. They are checked at AmplifyingSize, which a
-// regression cannot make exhaust the machine's memory: their HTML must
-// pass CheckSize.
+// repeating a long value; or whose facts would: long keys over a list, each
+// item's path repeating them (M6/P2 fix check 2 C1). They are checked at
+// AmplifyingSize, which a regression cannot make exhaust the machine's
+// memory: their HTML must pass CheckSize, their facts keep at most their
+// Limit.
 func Amplifying() []Input {
 	return []Input{
 		{"a wide header over short rows", func(n int) string {
@@ -269,6 +271,21 @@ func Amplifying() []Input {
 		// v0.1 shows an embed as a link (M6 design 4.1): it repeats nothing.
 		{"a long page embedded often", func(n int) string {
 			return "[[" + strings.Repeat("a", n/2) + "]]\n\n" + strings.Repeat("![[p]]", n/12)
+		}},
+		// Some 190 KB of paths at AmplifyingSize, within their limit.
+		{"a long key over a list", func(n int) string {
+			return "---\n" + strings.Repeat("k", n/16) + ": [" + strings.Repeat("a,", n/91) + "]\n---\nbody\n"
+		}},
+		{"long keys nested over a list", func(n int) string {
+			key := strings.Repeat("k", n/32)
+			return "---\n" + strings.Repeat(key+": {", 7) + key + ": [" + strings.Repeat("a,", n/4) + "]" +
+				strings.Repeat("}", 7) + "\n---\nbody\n"
+		}},
+		{"a long key aliased over a list", func(n int) string {
+			return "---\nx: &k " + strings.Repeat("k", n/2) + "\ny: {*k : [" + strings.Repeat("a,", n/4) + "]}\n---\nbody\n"
+		}},
+		{"a long explicit key over a list", func(n int) string {
+			return "---\n? " + strings.Repeat("k", n/2) + "\n: [" + strings.Repeat("a,", n/4) + "]\n---\nbody\n"
 		}},
 	}
 }

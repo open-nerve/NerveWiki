@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -49,21 +50,22 @@ func TestTheAdapterKeepsTheFactsShare(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 21 bytes and four values keep 8 bytes; 21 bytes alone keep 3.
-	content := "---\na: [x, x, x]\n---\n"
+	// 200 bytes, four values and 9 bytes of paths keep 40 bytes (Limit
+	// 11,705); 200 bytes alone keep 34 (10,096).
+	content := "---\na: [x, x, x]\n---\n" + strings.Repeat("b", 179)
 	for _, tt := range []struct {
 		name  string
 		facts app.Facts
 		kept  int
-	}{{"the platform's facts", m.Parse([]byte(content)).Facts(), 8}, {"facts of elsewhere", content, 3}} {
+	}{{"the platform's facts", m.Parse([]byte(content)).Facts(), 40}, {"facts of elsewhere", content, 34}} {
 		t.Run(tt.name, func(t *testing.T) {
-			b := markdown.NewBudget(100, 20*time.Millisecond, slog.New(slog.DiscardHandler))
+			b := markdown.NewBudget(1000, 20*time.Millisecond, slog.New(slog.DiscardHandler))
 			hold, err := markdownadapter.NewBudget(b).Take(context.Background(), len(content))
 			if err != nil {
 				t.Fatal(err)
 			}
 			hold.KeepFacts(tt.facts)
-			rest, err := b.Take(context.Background(), 100-tt.kept)
+			rest, err := b.Take(context.Background(), 1000-tt.kept)
 			if err != nil {
 				t.Fatalf("the budget beside the facts' %d bytes: %v", tt.kept, err)
 			}

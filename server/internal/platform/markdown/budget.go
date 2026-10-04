@@ -91,7 +91,11 @@ type Hold struct {
 
 // KeepFacts gives back what the content's parse held beyond what f, its
 // facts, hold: f.Limit counted as the parse is, a parseRatio-th of it. The
-// tree is gone, the facts are kept until Release (M6/P2 review M1).
+// tree is gone, the facts are kept until Release (M6/P2 review M1). It
+// keeps no more than the take held: a frontmatter whose aliases expand a
+// few hundred bytes to the YAML's limit of values keeps up to some 350 KB,
+// some 250 KB beyond what it took, a constant of a request as its body is,
+// which the budget does not count either (M6/P2 fix check 2 L1).
 func (h *Hold) KeepFacts(f Facts) {
 	h.keep((f.Limit(h.content) + parseRatio - 1) / parseRatio)
 }

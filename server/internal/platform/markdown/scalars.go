@@ -12,19 +12,20 @@ import (
 // note notes the string scalar n, valued value, if it is written on one
 // line: plain, in single quotes or in double quotes (M6/P1 design 3.2). A
 // block scalar, a string over lines, or one whose bytes do not read back
-// as its value is not noted.
-func (r *reader) note(n *yaml.Node, value string) {
+// as its value is not noted. Its path past what the paths may take is not
+// valid.
+func (r *reader) note(n *yaml.Node, value string) error {
 	if n.Style&(yaml.LiteralStyle|yaml.FoldedStyle) != 0 {
-		return
+		return nil
 	}
 	at, ok := r.offset(n.Line, n.Column)
 	if !ok {
-		return
+		return nil
 	}
 	if at, ok = pastProperties(r.src, at); !ok {
-		return
+		return nil
 	}
-	s := Scalar{Path: strings.Join(r.path, "."), Value: value}
+	s := Scalar{Value: value}
 	switch {
 	case n.Style&yaml.SingleQuotedStyle != 0:
 		s.Quote = '\''
@@ -38,13 +39,27 @@ func (r *reader) note(n *yaml.Node, value string) {
 		ok = value != "" && plain(r.src, at, value)
 	}
 	if !ok {
-		return
+		return nil
 	}
+	if r.paths += pathBytes(r.path); r.paths > yamlPathsRatio*r.budget {
+		return errInvalid
+	}
+	s.Path = strings.Join(r.path, ".")
 	s.start += r.at
 	for i := range s.offsets {
 		s.offsets[i] += r.at
 	}
 	r.scalars = append(r.scalars, s)
+	return nil
+}
+
+// pathBytes is how many bytes path takes joined by '.'.
+func pathBytes(path []string) int {
+	n := max(len(path)-1, 0)
+	for _, key := range path {
+		n += len(key)
+	}
+	return n
 }
 
 // offset is where line and column (from 1, in characters, as the YAML

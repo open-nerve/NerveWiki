@@ -21,13 +21,15 @@ const (
 )
 
 // factsSlack is the heap a parse's Facts may keep beyond their Limit: the
-// noise of the heap's accounting.
-const factsSlack = 256 << 10
+// noise of the heap's accounting, some hundreds of bytes once two
+// collections have emptied the pools (kept).
+const factsSlack = 1 << 10
 
-// smallFacts is the size the facts of every input are measured at too,
-// below the YAML's limit of values, where a frontmatter keeps the most for
-// its size (M6/P2 fix check M-1).
-const smallFacts = 16 << 10
+// factsSizes are the sizes the facts of every pathological input are
+// measured at: below the YAML's limit of values, where a frontmatter keeps
+// the most for its size (M6/P2 fix check M-1), and where a small content's
+// slices grow by doubling (M6/P2 fix check 2 L2).
+var factsSizes = []int{16 << 10, 1 << 10} //nolint:gochecknoglobals // read only
 
 // fastest is the least of three runs of parsing and rendering src, the
 // others carrying the machine's noise; a run past limit is not repeated.
@@ -64,6 +66,17 @@ func allocated(t *testing.T, m *markdown.Markdown, content []byte) (uint64, stri
 	return after.TotalAlloc - before.TotalAlloc, out
 }
 
+// checkKept checks that the facts of content keep at most their Limit.
+func checkKept(t *testing.T, m *markdown.Markdown, name string, content []byte) {
+	t.Helper()
+	if f, limit := kept(m, content); f > uint64(limit)+factsSlack {
+		t.Errorf("%s: its facts keep %d bytes for %d, more than their limit of %d", name, f, len(content), limit)
+	} else {
+		t.Logf("%s, %d bytes: its facts keep %d bytes, %.1f times the content, %.2f of their limit; %d to spare", name,
+			len(content), f, float64(f)/float64(len(content)), float64(f)/float64(limit), int64(limit)-int64(f))
+	}
+}
+
 // CheckCosts checks what m costs (M4/P3 design 3.10): every pathological
 // input of 512 KB at most k times what an ordinary document of its size
 // costs (goldmark's own parse takes seconds on most of these at 256 KB),
@@ -82,8 +95,9 @@ func allocated(t *testing.T, m *markdown.Markdown, content []byte) (uint64, stri
 // allocates hundreds of megabytes, and takes only a few times longer).
 // Each input's HTML is checked against CheckSize, which no machine's load
 // sways, the Amplifying inputs' at AmplifyingSize; and what its Facts keep
-// once the parse is done, at 512 KB and at smallFacts, at most their
-// Limit, which the budget counts them as (M6/P2 review M1).
+// once the parse is done, at most their Limit, which the budget counts them
+// as (M6/P2 review M1): the pathological inputs' at 512 KB and at
+// factsSizes, the Amplifying inputs' at AmplifyingSize.
 // The race detector makes the code several times slower: under it the
 // check is skipped, and make test-go runs it in a build without.
 func CheckCosts(t *testing.T, m *markdown.Markdown) {
@@ -97,6 +111,7 @@ func CheckCosts(t *testing.T, m *markdown.Markdown) {
 		if err := CheckSize(content, out); err != nil {
 			t.Errorf("%s: %v", in.Name, err)
 		}
+		checkKept(t, m, in.Name, content)
 	}
 	const size = 512 << 10
 	normal := fastest(t, m, Normal(size), time.Second)
@@ -117,13 +132,9 @@ func CheckCosts(t *testing.T, m *markdown.Markdown) {
 		if err := CheckSize(content, out); err != nil {
 			t.Errorf("%s: %v", in.Name, err)
 		}
-		for _, c := range [][]byte{content, []byte(in.Make(smallFacts))} {
-			if f, limit := kept(m, c); f > uint64(limit)+factsSlack {
-				t.Errorf("%s: its facts keep %d KB for %d KB, more than their limit of %d KB", in.Name, f>>10, len(c)>>10, limit>>10)
-			} else {
-				t.Logf("%s, %d KB: its facts keep %.1f times the content, %.2f of their limit", in.Name, len(c)>>10,
-					float64(f)/float64(len(c)), float64(f)/float64(limit))
-			}
+		checkKept(t, m, in.Name, content)
+		for _, n := range factsSizes {
+			checkKept(t, m, in.Name, []byte(in.Make(n)))
 		}
 		if alloc > kAlloc*normalAlloc {
 			t.Errorf("%s: %d KB allocated for %d KB, more than %d times an ordinary document's %d KB",

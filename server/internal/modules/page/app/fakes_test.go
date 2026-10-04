@@ -287,16 +287,18 @@ func (b *fakeBudget) Take(ctx context.Context, n int) (app.BudgetHold, error) {
 	return &fakeHold{budget: b, n: n}, nil
 }
 
-// fakeHold is a take of fakeBudget: it keeps nothing back on KeepFacts, as
-// the bytes the facts keep do not matter here, and gives all back once.
+// fakeHold is a take of fakeBudget: it records the facts it keeps by their
+// size, fakeMarkdown's facts being the content, and keeps nothing back, as
+// the bytes they keep do not matter here; it gives all back once.
 type fakeHold struct {
 	budget *fakeBudget
 	n      int
 	done   bool
 }
 
-func (h *fakeHold) KeepFacts(app.Facts) {
-	h.budget.record(context.Background(), fmt.Sprintf("KeepFacts %d", h.n))
+func (h *fakeHold) KeepFacts(f app.Facts) {
+	content, _ := f.(string)
+	h.budget.record(context.Background(), fmt.Sprintf("KeepFacts %d", len(content)))
 }
 
 func (h *fakeHold) Release() {

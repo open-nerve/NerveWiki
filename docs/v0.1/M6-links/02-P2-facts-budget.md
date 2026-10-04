@@ -75,7 +75,10 @@ func (f Facts) Extracted(name string) any
 
 - `Document` 的 `Frontmatter()`、`Extracted()` 照旧（阅读视图与测试用）。
 - `Extension.Extract` 的约定加一句：它的结果比语法树活得久，不得留着树的节点（节点互相指着，留一个就留住整棵树）或 `Tree.Content`。tasks 与 obsidian 今天都满足：位置是整数，字符串是复制出来的。
-- `Facts` 的内存与正文同阶，但常数不小（审查 M1、修复核对 M-1 实测）：普通的正文约 1.1 倍；满页的 `[[a]]` 约 19–24 倍（每条链接一个约 96 字节的 `obsidian.Link`），`[a](b)` 约 15 倍，`#a` 约 10–13 倍，只有一个转义的引号字符串约 10 倍（标量表每个字节一个位置）；frontmatter 的每个值另有约 130–300 字节（属性、标量、属性链接），在 YAML 的值数上限（一万）之下，很密的小 frontmatter 可达正文的 66 倍。所以上限 `Facts.Limit(n)` 是 `FactsRatio`（30）倍正文，加 frontmatter 每个值 400 字节，由 `CheckCosts` 对每个病态输入在 512 KB 与 16 KB 两种大小核对（实测至多为上限的 0.76）。
+- `Facts` 的内存与正文同阶，但常数不小（审查 M1、修复核对 M-1 实测）：普通的正文约 1.1 倍；满页的 `[[a]]` 约 19–24 倍（每条链接一个约 96 字节的 `obsidian.Link`），`[a](b)` 约 15 倍，`#a` 约 10–13 倍，只有一个转义的引号字符串约 10 倍（标量表每个字节一个位置）；frontmatter 的每个值另有约 130–300 字节（属性、标量、属性链接），在 YAML 的值数上限（一万）之下，很密的小 frontmatter 可达正文的 70 倍。
+  - 每个字符串标量还带它的路径（上面的键逐层以 `.` 连起来），长键压在长列表之上时每一项都复制一遍键（第二轮修复核对 C1：80 KB 的正文曾让解析分配 567 MB，1 MiB 的显式键压在一千项之上约 1 GB）。所以 YAML 的读取给路径的总字节数也设了上限：YAML 字节数与 100 000 中较大者的两倍，超出 frontmatter 无效，与别名重复的上限同一种做法；两倍是因为别名重复的键在它下面各值的路径里还要再算一次。`Limit` 按实际的路径字节数计。
+  - 小正文的切片按倍数增长，另有约 4 KB 的常数（第二轮核对 L2：1 KB 的满页 `[[a]]` 超出原来的上限 8%）。
+  - 所以上限 `Facts.Limit(n)` 是 4 KiB，加 `FactsRatio`（30）倍正文，加 frontmatter 每个值 400 字节，加各字符串路径的字节数。`CheckCosts` 核对它：每个病态输入在 512 KB、16 KB 与 1 KB，放大类输入（新增长键压在列表之上的三种，与一个路径接近上限的）在 16 KB；每次量之前两次 GC，`sync.Pool` 里的对象不算进去，噪声只有几百字节，余量 1 KB（第二轮核对 L3）。实测至多为上限的 0.96（1 KB 的满页 `[[a]]`），路径接近上限的约 0.78；第二轮核对在 5 MiB 量到 0.78。
 
 ### 3.3 平台：`Budget`
 
@@ -92,7 +95,8 @@ func (f Facts) Extracted(name string) any
   - `Facts(content string) Facts`：解析、提取，丢掉语法树；
   - `Render(ctx, content string, page PageRef) (string, error)`：阅读视图自己解析再渲染，语法树只活在这一次调用里；
   - `Tasks(facts Facts) []Task`。
-- **`Facts` 仍在预算之内，只占一小份**（审查 M1、修复核对 M-1）：解析约占正文的 300 倍，`Facts` 至多 `Facts.Limit`，所以解析完之后只留 `Limit` 的三百分之一（向上取整）：正文字节的十分之一，加 frontmatter 每个值约 1.3 字节。
+- **`Facts` 仍在预算之内，只占一小份**（审查 M1、修复核对 M-1）：解析约占正文的 300 倍，`Facts` 至多 `Facts.Limit`，所以解析完之后只留 `Limit` 的三百分之一（向上取整）：正文字节的十分之一，加 frontmatter 每个值约 1.3 字节与路径字节数的三百分之一，再加 14 字节。
+  - 但至多留下解析时取的那么多（`keep` 只放回）：别名把几百字节的 frontmatter 展开到值数上限时，提取结果约 350 KB，比它取的多约 250 KB。这与请求体（至多 5 MiB）一样，是每个请求的常数，预算都不计（第二轮核对 L1，写在 `KeepFacts` 的注释里）。
   - 平台的 `Budget.Take` 答 `*Hold`：`KeepFacts(facts)` 放回解析多占的部分，`Release()` 放回全部；page 的端口 `ParseBudget.Take` 答 `BudgetHold`（同样两个方法，`facts` 是不透明的 `app.Facts`，适配器转换）。
   - `ContentParser.Parse`、`Decided` 答 `(Facts, release, error)`：取预算、`Facts`、`KeepFacts`，用例 `defer release()` 到单元结束；解析 panic 时全部放回。勾选任务项的第一次解析只为找任务项，用完即放回。
 - 于是写入在单元里等锁时只占约十分之一：一页 5 MiB 的写等锁时占约 512 KiB。默认 8 MiB 的预算里，一个 5 MiB 页面的阅读视图要 5 MiB 空闲，7 个这样的写同时等锁就会让它 503；小页面的阅读视图要十几个。M4/P4 第 7 节与[M12 移交](../M12-release/handoffs/M4-performance.md)第 3 项的那条风险随之缓解，移交第 3 项改写为剩下的部分。
@@ -118,10 +122,11 @@ func (f Facts) Extracted(name string) any
 ## 5. 测试与验证
 
 - **平台**：
-  - 树不随 `Facts` 存活（`markdowntest.CheckFacts`）：一个探针扩展在 `Extract` 里弱引用语法树的根（`weak.Pointer`），解析带属性链接的 frontmatter 加普通正文（以及调用方给的正文）、只留 `Facts`，`runtime.GC()` 之后根已被回收；Markdown 本身保持存活（扩展的状态留着树也算）；某个扩展从这些正文里什么都没取到时检查失败（否则看不到它）。平台不带扩展与带测试扩展各跑一次，obsidian、tasks 各在自己的包里跑一次，组合根以应用注册的扩展跑一次；
-  - `Facts` 的大小：`CheckCosts` 对每个病态输入（加了满页的 `[[a]]`、`[a](b)`、`#a`、转义的引号字符串、很密的 frontmatter 列表）在 512 KB 与 16 KB 量 `Facts` 留下的堆（三次中最少的，正文保持存活），不超过 `Facts.Limit`；`Limit` 数 frontmatter 的值；
+  - 树不随 `Facts` 存活（`markdowntest.CheckFacts`）：一个探针扩展在 `Extract` 里弱引用语法树的根（`weak.Pointer`），解析带属性链接的 frontmatter 加普通正文（以及调用方给的正文）、只留 `Facts`，`runtime.GC()` 之后根已被回收；Markdown 本身保持存活（扩展的状态留着树也算）；某个扩展的提取结果与空正文的相同（`reflect.DeepEqual`）时检查失败：它什么都没取到，检查就看不到它。`FactsError` 有自己的测试：结果里留着树、空的非 nil 切片、扩展的状态留着树、干净的扩展。平台不带扩展与带测试扩展各跑一次，obsidian、tasks 各在自己的包里跑一次，组合根以应用注册的扩展跑一次；
+  - `Facts` 的大小：`CheckCosts` 对每个病态输入（加了满页的 `[[a]]`、`[a](b)`、`#a`、转义的引号字符串、很密的 frontmatter 列表）在 512 KB、16 KB 与 1 KB，对放大类输入（加了长键压在列表之上的）在 16 KB，量 `Facts` 留下的堆（三次中最少的，两次 GC 之后，正文保持存活），不超过 `Facts.Limit` 加 1 KB；`Limit` 数 frontmatter 的值与路径的字节数；
+  - YAML 字符串路径的上限：到上限有效，多一项无效；YAML 更长时上限随之变大；不收的值（数字）不计；
   - `Facts` 与 `Document` 的 frontmatter、提取结果相同；
-  - 预算的测试随代码移来（取、放、等待、饱和、`ErrBusy`、零与负的拒绝）；`KeepFacts` 留下 `Limit` 的三百分之一（向上取整），带 frontmatter 时多留它的值的那一份，比预算大的正文至多留下整个预算，负的大小什么都不取、不留、不放回。
+  - 预算的测试随代码移来（取、放、等待、饱和、`ErrBusy`、零与负的拒绝）；`KeepFacts` 留下 `Limit` 的三百分之一（向上取整），带 frontmatter 时多留它的值与路径的那一份；但至多留下取的那么多：比预算大的正文至多整个预算，比自己那一份还小的正文留下它的全部字节；`math.MaxInt` 字节的正文留下整个预算（`Limit` 饱和，不回绕，第二轮核对 L5）；负的大小什么都不取、不留、不放回。
 - **page**：
   - 调用的次序：`Take n`、`Facts`、`KeepFacts` 在单元之前，`Release` 在最后（写、建、勾选；勾选的第一次解析用完即放回）；
   - 预算取不到时 503 在解析与单元之前；解析 panic 时放回；只有写者让服务端解析（照旧）；

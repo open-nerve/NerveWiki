@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -57,25 +58,31 @@ func TestABudgetHoldsWhatIsTaken(t *testing.T) {
 	all.Release()
 }
 
-// A content's facts keep a tenth of its bytes once its parse is done
-// (FactsRatio of parseRatio, rounded up), until the release, and a share for
-// each value of its frontmatter; a content larger than the budget keeps no
-// more than all of it; a negative size holds and keeps nothing.
+// A content's facts keep their Limit's share of the budget once its parse is
+// done (a parseRatio-th, rounded up: about a tenth of its bytes, and a share
+// for each value of its frontmatter), until the release; but no more than
+// the content took: all of the budget for a content larger than it, all of
+// its bytes for a content smaller than its share (M6/P2 fix check 2 L1); a
+// negative size holds and keeps nothing.
 func TestAHoldKeepsItsFactsShare(t *testing.T) {
-	b := markdown.NewBudget(100, 20*time.Millisecond, slog.New(slog.DiscardHandler))
+	const size = 1000
+	b := markdown.NewBudget(size, 20*time.Millisecond, slog.New(slog.DiscardHandler))
 	ctx := context.Background()
-	h, err := b.Take(ctx, 91)
+	share := func(limit int) int { return (limit + markdown.ParseRatio - 1) / markdown.ParseRatio }
+	// 910 bytes: FactsBase and 30 times 910, 31,396 bytes of facts, keep 105.
+	kept := share(markdown.FactsBase + markdown.FactsRatio*910)
+	h, err := b.Take(ctx, 910)
 	if err != nil {
 		t.Fatal(err)
 	}
 	h.KeepFacts(markdown.Facts{})
 	h.KeepFacts(markdown.Facts{}) // keeping again gives nothing more back
-	rest, err := b.Take(ctx, 90)
+	rest, err := b.Take(ctx, size-kept)
 	if err != nil {
-		t.Fatalf("the budget beside a kept tenth of 91 bytes: %v", err)
+		t.Fatalf("the budget beside the facts of 910 bytes: %v", err)
 	}
 	if _, err := b.Take(ctx, 1); !errors.Is(err, markdown.ErrBusy) {
-		t.Errorf("a byte beside them = %v, want busy: the facts keep 10 bytes", err)
+		t.Errorf("a byte beside them = %v, want busy: the facts keep %d bytes", err, kept)
 	}
 	h.Release()
 	if one, err := b.Take(ctx, 1); err != nil {
@@ -84,39 +91,57 @@ func TestAHoldKeepsItsFactsShare(t *testing.T) {
 		one.Release()
 	}
 	rest.Release()
-	large, err := b.Take(ctx, 5000)
+	large, err := b.Take(ctx, 50*size)
 	if err != nil {
 		t.Fatal(err)
 	}
 	large.KeepFacts(markdown.Facts{})
 	if _, err := b.Take(ctx, 1); !errors.Is(err, markdown.ErrBusy) {
-		t.Errorf("a byte beside the facts of a content ten times the budget = %v, want busy", err)
+		t.Errorf("a byte beside the facts of a content fifty times the budget = %v, want busy", err)
 	}
 	large.Release()
+	huge, err := b.Take(ctx, math.MaxInt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	huge.KeepFacts(markdown.Facts{})
+	if _, err := b.Take(ctx, 1); !errors.Is(err, markdown.ErrBusy) {
+		t.Errorf("a byte beside the facts of a content of math.MaxInt bytes = %v, want busy: their limit wrapped around", err)
+	}
+	huge.Release()
 
 	m, err := markdown.New(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 21 bytes and four values: 30 times 21 and 400 times four, 2,230
-	// bytes of facts, keep 8 bytes of the budget.
-	content := "---\na: [x, x, x]\n---\n"
-	fm, err := b.Take(ctx, len(content))
-	if err != nil {
-		t.Fatal(err)
+	frontmatter := "---\na: [x, x, x]\n---\n"
+	for _, tt := range []struct {
+		name, content string
+		kept          int
+	}{
+		// 200 bytes, four values and the paths "a.0", "a.1", "a.2": FactsBase,
+		// 30 times 200, 400 times four and 9, 11,705 bytes of facts, keep 40.
+		{"a frontmatter of four values", frontmatter + strings.Repeat("b", 179), share(markdown.FactsBase + markdown.FactsRatio*200 + 400*4 + 9)},
+		// Its share is 22 bytes.
+		{"a content smaller than its share", frontmatter, len(frontmatter)},
+	} {
+		fm, err := b.Take(ctx, len(tt.content))
+		if err != nil {
+			t.Fatal(err)
+		}
+		fm.KeepFacts(m.Parse([]byte(tt.content)).Facts())
+		if rest, err := b.Take(ctx, size-tt.kept); err != nil {
+			t.Errorf("the budget beside the facts of %s: %v", tt.name, err)
+		} else {
+			rest.Release()
+		}
+		if _, err := b.Take(ctx, size-tt.kept+1); !errors.Is(err, markdown.ErrBusy) {
+			t.Errorf("a byte more beside %s = %v, want busy: the facts keep %d bytes", tt.name, err, tt.kept)
+		}
+		fm.Release()
 	}
-	fm.KeepFacts(m.Parse([]byte(content)).Facts())
-	if rest, err := b.Take(ctx, 92); err != nil {
-		t.Errorf("the budget beside the facts of a frontmatter of four values: %v", err)
-	} else {
-		rest.Release()
-	}
-	if _, err := b.Take(ctx, 93); !errors.Is(err, markdown.ErrBusy) {
-		t.Errorf("a byte more = %v, want busy: the facts keep 8 bytes", err)
-	}
-	fm.Release()
 
-	all, err := b.Take(ctx, 100)
+	all, err := b.Take(ctx, size)
 	if err != nil {
 		t.Fatal(err)
 	}
