@@ -21,7 +21,9 @@ func (r *reader) note(n *yaml.Node, value string) {
 	if !ok {
 		return
 	}
-	at = pastProperties(r.src, at)
+	if at, ok = pastProperties(r.src, at); !ok {
+		return
+	}
 	s := Scalar{Path: strings.Join(r.path, "."), Value: value}
 	switch {
 	case n.Style&yaml.SingleQuotedStyle != 0:
@@ -31,8 +33,9 @@ func (r *reader) note(n *yaml.Node, value string) {
 		s.Quote = '"'
 		s.start, s.offsets, ok = doubleQuoted(r.src, at, value)
 	default:
+		// An empty one is written nowhere: what is at at is the next node.
 		s.start = at
-		ok = plain(r.src, at, value)
+		ok = value != "" && plain(r.src, at, value)
 	}
 	if !ok {
 		return
@@ -112,21 +115,50 @@ func lineBreak(b []byte) int {
 }
 
 // pastProperties is where the scalar at at is written past its anchor and
-// tag (&x, !!str), which the YAML library counts as its start; they may be
-// on a line of their own.
-func pastProperties(src []byte, at int) int {
+// tag (&x, !!str), which the YAML library counts as its start: past the
+// spaces, line breaks and comments after them too, the scalar maybe on a
+// later line. An anchor ends at a character other than a letter, a digit,
+// '_' or '-', as in the YAML library; one that a character other than a
+// space or a line break ends is refused, as the code cannot tell where
+// what follows it starts.
+func pastProperties(src []byte, at int) (int, bool) {
 	for at < len(src) && (src[at] == '&' || src[at] == '!') {
-		for at < len(src) && src[at] != ' ' && src[at] != '\t' && lineBreak(src[at:]) == 0 {
-			at++
+		anchor := src[at] == '&'
+		for at++; at < len(src) && !isBlank(src, at) && (!anchor || isAnchorChar(src[at])); at++ {
 		}
-		for at < len(src) {
-			if src[at] == ' ' || src[at] == '\t' {
+		if at < len(src) && !isBlank(src, at) {
+			return 0, false
+		}
+		at = pastSeparation(src, at)
+	}
+	return at, true
+}
+
+// isBlank tells whether src at at is a space, a tab or a line break.
+func isBlank(src []byte, at int) bool {
+	return src[at] == ' ' || src[at] == '\t' || lineBreak(src[at:]) > 0
+}
+
+// isAnchorChar tells whether c may be in an anchor's name.
+func isAnchorChar(c byte) bool {
+	return c >= '0' && c <= '9' || c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z' || c == '_' || c == '-'
+}
+
+// pastSeparation is where something starts past spaces, tabs, line breaks
+// and comments from at: a '#' there follows a space or a line break.
+func pastSeparation(src []byte, at int) int {
+	for at < len(src) {
+		switch {
+		case src[at] == ' ' || src[at] == '\t':
+			at++
+		case src[at] == '#':
+			for at < len(src) && lineBreak(src[at:]) == 0 {
 				at++
-			} else if n := lineBreak(src[at:]); n > 0 {
-				at += n
-			} else {
-				break
 			}
+		case lineBreak(src[at:]) > 0:
+			at += lineBreak(src[at:])
+		default:
+			return at
 		}
 	}
 	return at

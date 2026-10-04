@@ -118,6 +118,11 @@ func TestAFrontmattersStringsAreWhereTheyAreWritten(t *testing.T) {
 		{"its anchor and tag on a line of their own", "---\na: &x\n  '[[p]]'\nb: !!str\n  q\n---\n", []noted{
 			{"a", "[[p]]", "[[p]]", '\'', []int{13, 14, 15, 16, 17, 18}}, {"b", "q", "q", 0, []int{31, 32}},
 		}},
+		{"a comment after its anchor", "---\na: &x # c\n  # d\n  '[[p]]'\n---\n", []noted{
+			{"a", "[[p]]", "[[p]]", '\'', []int{23, 24, 25, 26, 27, 28}},
+		}},
+		{"an anchor that no space ends is refused", "---\na: &x?b\n!!str ?b: c\n---\n", []noted{{"?b", "c", "c", 0, []int{22, 23}}}},
+		{"an empty string is written nowhere", "---\na: !!str\nb: c\n---\n", []noted{{"b", "c", "c", 0, []int{16, 17}}}},
 		{"many on a line", "---\na: [x, 'y', \"z\"]\n---\n", []noted{
 			{"a.0", "x", "x", 0, []int{8, 9}}, {"a.1", "y", "y", '\'', []int{12, 13}}, {"a.2", "z", "z", '"', []int{17, 18}},
 		}},

@@ -148,6 +148,7 @@ func TestCommentsHide(t *testing.T) {
 			"<div class=\"nw-scroll\" tabindex=\"0\"><table>\n<thead>\n<tr>\n<th>a</th>\n<th>b</th>\n</tr>\n</thead>\n" +
 				"<tbody>\n<tr>\n<td>c</td>\n<td></td>\n</tr>\n</tbody>\n</table>\n</div>\n<p>f</p>\n",
 		},
+		{"a marker before a heading's closing '#' does not end it", "%%\n\n# b %% #\n\nc %%\n\nd\n", "<p>d</p>\n"},
 		{"a marker before a cell's end does not end it", "%%\n\n| a |\n| - |\n| b %% |\n\nc %%\n\nd\n", "<p>d</p>\n"},
 		{"an address ends before a marker", "a %%see https://example.com/x%% b\n", "<p>a  b</p>\n"},
 		{"an address at a block comment's end", "%%\nsecret www.example.com/%%\n\nshown\n", "<p>shown</p>\n"},
