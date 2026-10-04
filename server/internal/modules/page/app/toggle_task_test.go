@@ -44,12 +44,11 @@ func TestToggleTaskDecidesReadsParsesThenWrites(t *testing.T) {
 		t.Fatal(err)
 	}
 	take, release := "Take "+strconv.Itoa(len(taskList)), "Release "+strconv.Itoa(len(taskList))
-	want := []string{"FindNode", "WorkspaceOf", "Authorize page.toggle_task", "PageContent", take, "Parse", "Tasks", release,
-		take, "Parse", "Tasks", "WorkspaceOf", "ShareWorkspace in tx", "ShareNotebook in tx", "Authorize page.toggle_task in tx",
+	want := []string{"FindNode", "WorkspaceOf", "Authorize page.toggle_task", "PageContent", take, "Facts", release, "Tasks",
+		take, "Facts", release, "Tasks", "WorkspaceOf", "ShareWorkspace in tx", "ShareNotebook in tx", "Authorize page.toggle_task in tx",
 		"LockContent in tx", "FindNodeIn in tx", "CreateChangeset in tx", "WriteContent in tx", "RecordRevision in tx"}
-	if !slices.Equal(f.rec.calls[:min(len(want), len(f.rec.calls))], want) || f.rec.calls[len(f.rec.calls)-1] != release ||
-		f.budget.held != 0 {
-		t.Errorf("calls = %v, %d bytes held; want them to begin %v and end with the release", f.rec.calls, f.budget.held, want)
+	if !slices.Equal(f.rec.calls[:min(len(want), len(f.rec.calls))], want) || f.budget.held != 0 {
+		t.Errorf("calls = %v, %d bytes held; want them to begin %v", f.rec.calls, f.budget.held, want)
 	}
 }
 
@@ -83,7 +82,7 @@ func TestToggleTaskChangesTheOneByte(t *testing.T) {
 		if len(g.steps) != 1 || g.steps[0].Operation != domain.OpContent || g.steps[0].EditSessionID != (uuid.UUID{}) {
 			t.Errorf("guarded %+v, want one content step in no session", g.steps)
 		}
-		if len(o.events) != 1 || o.events[0].Changes[0].Parsed != tt.want {
+		if len(o.events) != 1 || o.events[0].Changes[0].Facts != tt.want {
 			t.Errorf("observed %+v, want one event with the new content's parse", o.events)
 		}
 		if logs := f.logs.String(); !strings.Contains(logs, `msg="page task toggled"`) ||

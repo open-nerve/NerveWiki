@@ -108,10 +108,24 @@ func notebookDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, au
 	}
 }
 
+// parsing is the server's one parse and rendering of Markdown, with the
+// registered extensions: the page module's reading view and, from M6, the
+// links (M4 design 8); and its one budget of the content parsed at once,
+// of the configuration's size and wait, which every module that parses
+// shares (M6 design 4.7).
+func parsing(cfg config.Config, logger *slog.Logger) (*markdown.Markdown, *markdown.Budget, error) {
+	md, err := markdown.New(markdownExtensions())
+	if err != nil {
+		return nil, nil, err
+	}
+	return md, markdown.NewBudget(cfg.Page.ParseBudgetBytes, cfg.Page.ParseMaxWait, logger), nil
+}
+
 // pageDeps are the page module's dependencies: the workspace and notebook
-// modules' ports, the Markdown, and the registrants of its extension points.
+// modules' ports, the Markdown and the parse budget, and the registrants of
+// its extension points.
 func pageDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, authorizer shared.Authorizer,
-	md *markdown.Markdown,
+	md *markdown.Markdown, budget *markdown.Budget,
 ) page.Deps {
 	ext := pageRegistrants(pool)
 	return page.Deps{
@@ -131,8 +145,7 @@ func pageDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, author
 		EditSessionVetoers:         ext.sessionVetoers,
 		EditSessionSubscribers:     ext.sessionSubscribers,
 		EditSessionCleanupInterval: cfg.Page.EditSessionCleanupInterval,
-		ParseBudgetBytes:           cfg.Page.ParseBudgetBytes,
-		ParseMaxWait:               cfg.Page.ParseMaxWait,
+		Budget:                     budget,
 	}
 }
 

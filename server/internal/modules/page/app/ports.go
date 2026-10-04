@@ -282,9 +282,10 @@ type ExpiredSessions interface {
 }
 
 // ParseBudget bounds the content parsed and rendered at once (M4/P4
-// review P2): the largest content's parse can hold some 300 times its size
-// in memory. Take holds n bytes of it until release; it waits a while for
-// them, then answers shared.ServerBusy.
+// review P2; M6 design 4.7): the largest content's parse can hold some 300
+// times its size in memory. Take holds n bytes of it until release; it
+// waits a while for them, then answers shared.ServerBusy. The composition
+// root hands the module the one budget of the server.
 type ParseBudget interface {
 	Take(ctx context.Context, n int) (release func(), err error)
 }
@@ -292,18 +293,21 @@ type ParseBudget interface {
 // Markdown parses and renders a page's content (M4/P3 design 3.9):
 // bootstrap hands platform/markdown to it through adapter/markdown.
 type Markdown interface {
-	Parse(content string) Parsed
-	// Render is the HTML of the parse's reading view for page; parsed is
-	// what Parse returned.
-	Render(ctx context.Context, parsed Parsed, page PageRef) (string, error)
-	// Tasks are the parse's task items in order (M5/P6 design 3.3); parsed
-	// is what Parse returned.
-	Tasks(parsed Parsed) []Task
+	// Facts parses content and keeps what the parse found, not its tree
+	// (M6 design 4.7).
+	Facts(content string) Facts
+	// Render is the HTML of content's reading view for page: it parses the
+	// content, and the tree lives within the call.
+	Render(ctx context.Context, content string, page PageRef) (string, error)
+	// Tasks are the content's task items in order (M5/P6 design 3.3); facts
+	// is what Facts returned.
+	Tasks(facts Facts) []Task
 }
 
-// Parsed is a parse of a page's content. The use cases do not look into it:
-// they hand it back to Render and Tasks.
-type Parsed any
+// Facts is what a parse of a page's content found, without its tree. The
+// use cases do not look into it: they hand it to Tasks, and through the
+// unit to the guards, the participants and the observers.
+type Facts any
 
 // Task is a task item of a page's content: Offset is the byte position of
 // the character between its brackets.
@@ -312,8 +316,11 @@ type Task struct {
 	Checked bool
 }
 
-// PageRef is the page a Render is for: an extension fetches its data for it.
+// PageRef is the page a Render is for, and the revision of its content
+// rendered: an extension fetches its data for it (M6: the link index of
+// that revision).
 type PageRef struct {
 	NotebookID uuid.UUID
 	PageID     uuid.UUID
+	Revision   int
 }

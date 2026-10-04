@@ -11,14 +11,14 @@ import (
 
 // PageDraft is a new page: under ParentID (nil: at the notebook's root),
 // with Title, at Position among its siblings, holding Content. A unit
-// takes Content checked, and Parsed its parse, both before its
+// takes Content checked, and Facts its facts, both before its
 // transaction.
 type PageDraft struct {
 	ParentID *uuid.UUID
 	Title    string
 	Position Position
 	Content  string
-	Parsed   Parsed
+	Facts    Facts
 }
 
 // CreatePage creates the page d at revision 1 of its content. 422 for a title
@@ -55,7 +55,7 @@ func (u *Unit) CreatePage(ctx context.Context, d PageDraft) (domain.Node, error)
 	}
 	state := n.State()
 	content := u.content(n.ID, d.Content, 1)
-	step := u.step(domain.OpCreate, domain.Change{NodeID: n.ID, After: &state, Revision: content.Revision, Parsed: d.Parsed})
+	step := u.step(domain.OpCreate, domain.Change{NodeID: n.ID, After: &state, Revision: content.Revision, Facts: d.Facts})
 	err = u.apply(ctx, step, true, func(ctx context.Context) error {
 		if err := renumber(ctx); err != nil {
 			return err

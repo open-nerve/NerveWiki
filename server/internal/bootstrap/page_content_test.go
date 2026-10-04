@@ -299,14 +299,13 @@ func TestDeletingASubtreeDeletesItsSessions(t *testing.T) {
 	checkPages(t, tm.pool)
 }
 
-// The configuration's parse budget bounds the content writes' parses and
-// the reading views' together (M4/P4 review P2; fix check, finding 2): a
-// write that waits for its page's lock holds its content's bytes, and
-// another page's reading view, which the budget cannot fit beside them,
-// is 503 server_busy once page.parse_max_wait has passed. The budget here
-// is 64 KiB, less than the configuration takes, so that the test writes
-// no large body.
-func TestTheParseBudgetBoundsWritesAndViews(t *testing.T) {
+// A content's write gives the parse budget back once it has the content's
+// facts, before its unit (M6 design 4.7): one that waits for its page's
+// lock holds none of it, and another page's reading view, which the budget
+// could not fit beside the write's content, is answered meanwhile; M4/P4
+// had it 503 server_busy. The budget here is 64 KiB, less than the
+// configuration takes, so that the test writes no large body.
+func TestAWriteWaitingForItsLockHoldsNoBudget(t *testing.T) {
 	tm := newAcmeTeamWith(t, "member", "", func(c *config.Config) {
 		c.Page.ParseBudgetBytes, c.Page.ParseMaxWait = 64<<10, 300*time.Millisecond
 	})
@@ -333,9 +332,8 @@ func TestTheParseBudgetBoundsWritesAndViews(t *testing.T) {
 		t.Fatalf("B's reading view: %v", view.err)
 	}
 	tm.contract.CheckResponse(t, view.req, view.res)
-	if !view.is(http.StatusServiceUnavailable, "server_busy") || view.res.Header.Get("Retry-After") != "1" {
-		t.Errorf("B's reading view while A's write holds the budget = %d %s, Retry-After %q; want 503 server_busy, 1", view.status,
-			view.code, view.res.Header.Get("Retry-After"))
+	if !view.is(http.StatusOK, "") {
+		t.Errorf("B's reading view while A's write waits for its lock = %d %s, want 200", view.status, view.code)
 	}
 	if err := holder.Commit(ctx); err != nil {
 		t.Fatal(err)
@@ -348,7 +346,6 @@ func TestTheParseBudgetBoundsWritesAndViews(t *testing.T) {
 	case <-time.After(interleavingWait):
 		t.Fatal("A's write did not answer")
 	}
-	tm.send(t, request("bob", http.MethodGet, "/api/v0/pages/"+b+"/view", ""), http.StatusOK)
 	checkPages(t, tm.pool)
 }
 

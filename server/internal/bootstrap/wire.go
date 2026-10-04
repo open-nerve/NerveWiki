@@ -19,7 +19,6 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/jobs"
-	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/ratelimit"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/webui"
@@ -87,13 +86,11 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrati
 	})
 	ws := workspace.New(workspaceDeps(cfg, pool, logger, authorizer, invitationKey))
 	nb := notebook.New(notebookDeps(cfg, pool, logger, authorizer))
-	// One parse and rendering of Markdown with the registered extensions:
-	// the page module's reading view and, from M6, the links (M4 design 8).
-	md, err := markdown.New(markdownExtensions())
+	md, budget, err := parsing(cfg, logger)
 	if err != nil {
 		return nil, err
 	}
-	pg := page.New(pageDeps(cfg, pool, logger, authorizer, md))
+	pg := page.New(pageDeps(cfg, pool, logger, authorizer, md, budget))
 	ev, listener := eventsModule(cfg, pool, logger)
 	runner, err := jobs.New(pool, jobs.Config{ShutdownTimeout: cfg.Jobs.ShutdownTimeout, Logger: logger},
 		slices.Concat(ident.Jobs(), pg.Jobs(), []jobs.Job{purgeJob(cfg, pool, logger)}))

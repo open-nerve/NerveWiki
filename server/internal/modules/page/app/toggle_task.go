@@ -73,17 +73,16 @@ func (t *ToggleTask) Execute(ctx context.Context, id uuid.UUID, p TaskToggle, cl
 		return t.unchanged(ctx, id, p.Base)
 	}
 	content := domain.Flip(current.Content, p.Offset, p.Checked)
-	parse, release, err := t.parser.Decided(ctx, content)
+	facts, err := t.parser.Decided(ctx, content)
 	if err != nil {
 		return PageView{}, err
 	}
-	defer release()
-	if task, ok := find(t.markdown.Tasks(parse), p.Offset); !ok || task.Checked != p.Checked {
+	if task, ok := find(t.markdown.Tasks(facts), p.Offset); !ok || task.Checked != p.Checked {
 		return PageView{}, domain.TaskWouldGo()
 	}
 	var out PageView
 	outcome, err := t.writer.Run(ctx, spec, func(ctx context.Context, u *Unit) error {
-		if _, err := u.WriteContent(ctx, ContentWrite{NodeID: id, Content: content, Parsed: parse, Base: p.Base}); err != nil {
+		if _, err := u.WriteContent(ctx, ContentWrite{NodeID: id, Content: content, Facts: facts, Base: p.Base}); err != nil {
 			return err
 		}
 		out, err = readPage(ctx, t.nodes, id)
@@ -113,15 +112,14 @@ func (t *ToggleTask) unchanged(ctx context.Context, id uuid.UUID, base int) (Pag
 	return v, nil
 }
 
-// taskAt is content's task item at offset, from its parse within the
-// budget, which it gives back at once; 422 for none.
+// taskAt is content's task item at offset, from its facts, taken within
+// the budget; 422 for none.
 func (t *ToggleTask) taskAt(ctx context.Context, content string, offset int) (Task, error) {
-	parse, release, err := t.parser.Decided(ctx, content)
+	facts, err := t.parser.Decided(ctx, content)
 	if err != nil {
 		return Task{}, err
 	}
-	defer release()
-	task, ok := find(t.markdown.Tasks(parse), offset)
+	task, ok := find(t.markdown.Tasks(facts), offset)
 	if !ok {
 		return Task{}, domain.NotATask()
 	}

@@ -47,6 +47,7 @@
 | 文件 | 内容 |
 |---|---|
 | `platform/markdown/facts.go`（新） | `Facts`、`Document.Facts()` |
+| `platform/markdown/markdowntest/facts.go`（新） | `CheckFacts`：树不随 `Facts` 存活 |
 | `platform/markdown/budget.go`（新，移自 `page/adapter/markdown/budget.go`） | `Budget`、`NewBudget`、`Take`、`ErrBusy` |
 | `platform/markdown/markdown.go` | `Page.Revision`；`Extension.Extract` 的说明加"结果不得留着语法树"；包说明加 `golang.org/x/sync` |
 | `page/adapter/markdown/markdown.go` | `Facts(content)`、`Render(ctx, content, page)`、`Tasks(facts)` |
@@ -115,7 +116,7 @@ func (f Facts) Extracted(name string) any
 ## 5. 测试与验证
 
 - **平台**：
-  - 树不随 `Facts` 存活：带 tasks 与 obsidian 解析普通正文，取 `Facts`，丢掉 `Document`，`runtime.GC()` 之后语法树的根（`weak.Pointer`，经 `export_test.go` 取）已被回收，`Facts` 的内容照旧；
+  - 树不随 `Facts` 存活（`markdowntest.CheckFacts`）：一个探针扩展在 `Extract` 里弱引用语法树的根（`weak.Pointer`），解析普通正文、只留 `Facts`，`runtime.GC()` 之后根已被回收。平台不带扩展与带测试扩展各跑一次，组合根以应用注册的扩展跑一次；
   - `Facts` 与 `Document` 的 frontmatter、提取结果相同；
   - 预算的测试随代码移来（取、放、等待、饱和、`ErrBusy`、零与负的拒绝）。
 - **page**：
@@ -124,7 +125,7 @@ func (f Facts) Extracted(name string) any
   - 适配器：`ErrBusy` 答 503 `server_busy`，`Retry-After` 1 秒；其他错误照旧；
   - 阅读视图把读到的版本交给渲染（`PageRef.Revision`），扩展的 `Fetch` 收到它（`TestAnExtensionReachesTheReadingView`）；
   - 模块用交来的预算：测试先占满一个预算交给 `page.New`，写与阅读视图都答 503。
-- **整个程序**（`TestTheParseBudgetBoundsWritesAndViews` 改写）：A 的写在等页面的锁时，B 的阅读视图答 200，A 的写在锁放开之后答 200。改写之前它答 503，这一条钉住"提取之后即归还"。
+- **整个程序**（`TestTheParseBudgetBoundsWritesAndViews` 改写为 `TestAWriteWaitingForItsLockHoldsNoBudget`）：A 的写在等页面的锁时，B 的阅读视图答 200，A 的写在锁放开之后答 200。改写之前它答 503，这一条钉住"提取之后即归还"。
 - **反向对照**：`Facts` 留着 `Document`；`ContentParser` 照旧持到单元结束；`GetPageView` 不交版本；适配器不换 `ErrBusy`；`page.New` 自己建预算。每个都要有测试失败。
 - `make check`、`make gen-check`、e2e 全量。
 
