@@ -123,7 +123,7 @@ func definition(p ast.Node, block text.Reader, pc parser.Context) (*ast.LinkRefe
 	}
 	block.Advance(1)
 	block.SkipSpaces()
-	dest, ok := destination(block)
+	dest, at, ok := destination(block)
 	if !ok {
 		return nil, -1, -1
 	}
@@ -137,7 +137,7 @@ func definition(p ast.Node, block text.Reader, pc parser.Context) (*ast.LinkRefe
 		if !isNewLine {
 			return nil, -1, -1
 		}
-		return define(pc, label, dest, nil, startPos), startLine, endLine + 1
+		return define(pc, label, dest, at, nil, startPos), startLine, endLine + 1
 	}
 	if spaces == 0 {
 		return nil, -1, -1
@@ -153,7 +153,7 @@ func definition(p ast.Node, block text.Reader, pc parser.Context) (*ast.LinkRefe
 			return nil, -1, -1
 		}
 		block.AdvanceLine()
-		return define(pc, label, dest, nil, startPos), startLine, endLine + 1
+		return define(pc, label, dest, at, nil, startPos), startLine, endLine + 1
 	}
 	title := values(p, block.Source(), segments)
 
@@ -162,15 +162,16 @@ func definition(p ast.Node, block text.Reader, pc parser.Context) (*ast.LinkRefe
 		if !isNewLine {
 			return nil, -1, -1
 		}
-		return define(pc, label, dest, title, startPos), startLine, endLine
+		return define(pc, label, dest, at, title, startPos), startLine, endLine
 	}
 	endLine, _ = block.Position()
-	return define(pc, label, dest, title, startPos), startLine, endLine + 1
+	return define(pc, label, dest, at, title, startPos), startLine, endLine + 1
 }
 
-func define(pc parser.Context, label, dest, title []byte, at text.Segment) *ast.LinkReferenceDefinition {
+func define(pc parser.Context, label, dest []byte, written text.Segment, title []byte, at text.Segment) *ast.LinkReferenceDefinition {
 	ref := ast.NewLinkReferenceDefinition(label, dest, title)
 	ref.Lines().Append(at)
 	pc.AddReference(parser.NewReference(label, dest, title))
+	writtenOf(pc).define(label, written)
 	return ref
 }

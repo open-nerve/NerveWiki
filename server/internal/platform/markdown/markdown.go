@@ -17,6 +17,7 @@ import (
 
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/parser"
+	"github.com/yuin/goldmark/text"
 	"github.com/yuin/goldmark/util"
 
 	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown/internal/harden"
@@ -36,9 +37,9 @@ type Extension struct {
 	// Context.IsInLinkLabel is always false; and a link an extension makes
 	// does not count for "a link may not contain a link".
 	Parser []parser.Option
-	// Extract takes the extension's result from the tree; content is the
-	// page's, byte for byte. It may be nil.
-	Extract func(root ast.Node, content []byte) any
+	// Extract takes the extension's result from the parse's tree. It may be
+	// nil.
+	Extract func(t Tree) any
 	// Fetch gets the extension's data for one page before Render renders
 	// it, from what Extract took: in the caller's read, holding no lock. Its
 	// result goes to Renderer alone. It may be nil.
@@ -61,6 +62,34 @@ type Markup struct {
 	URLs []string
 	// Classes are the classes it gives.
 	Classes []string
+}
+
+// Tree is what an extension's Extract reads of a parse (M6/P1 design 3.2).
+type Tree struct {
+	// Root is the parse's tree: its offsets are Content's.
+	Root ast.Node
+	// Content is the page's content, byte for byte.
+	Content []byte
+	// Frontmatter is the content's frontmatter, with its scalars.
+	Frontmatter Frontmatter
+
+	destinations func(ast.Node) (text.Segment, bool)
+}
+
+// Span is the bytes of the content from Start up to Stop.
+type Span struct {
+	Start, Stop int
+}
+
+// Destination tells where the destination of n, a Markdown link or image,
+// is written in the content: its own, inside its angle brackets if it has
+// them, or its reference definition's. An empty destination is nowhere.
+func (t Tree) Destination(n ast.Node) (Span, bool) {
+	if t.destinations == nil {
+		return Span{}, false
+	}
+	s, ok := t.destinations(n)
+	return Span{Start: s.Start, Stop: s.Stop}, ok
 }
 
 // Page is the page a Render is for.

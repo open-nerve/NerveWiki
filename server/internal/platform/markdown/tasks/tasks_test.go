@@ -105,7 +105,7 @@ func ours(src []byte) (string, []tasks.Task, error) {
 	}, ext.Renderer(nil)...)...))
 	var b bytes.Buffer
 	err := r.Render(&b, src, root)
-	got, _ := ext.Extract(root, src).([]tasks.Task)
+	got, _ := ext.Extract(markdown.Tree{Root: root, Content: src}).([]tasks.Task)
 	return b.String(), got, err
 }
 

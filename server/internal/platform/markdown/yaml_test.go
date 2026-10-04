@@ -65,7 +65,7 @@ func TestScalarsFollowTheCoreSchema(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.yaml, func(t *testing.T) {
-			props, ok := properties([]byte("k: " + tt.yaml))
+			props, ok := propertiesOf([]byte("k: " + tt.yaml))
 			if !ok || len(props) != 1 {
 				t.Fatalf("properties = %v, %v", props, ok)
 			}
@@ -110,7 +110,7 @@ func TestAFrontmatterIsAMappingOfScalarKeys(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			props, ok := properties([]byte(tt.yaml))
+			props, ok := propertiesOf([]byte(tt.yaml))
 			if ok != tt.valid {
 				t.Fatalf("valid = %v, want %v (%v)", ok, tt.valid, props)
 			}
@@ -151,7 +151,7 @@ func TestAliasesExpandWithinTheLimits(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if _, ok := properties([]byte(tt.yaml)); ok != tt.valid {
+			if _, ok := propertiesOf([]byte(tt.yaml)); ok != tt.valid {
 				t.Errorf("valid = %v, want %v", ok, tt.valid)
 			}
 		})
@@ -177,16 +177,22 @@ func TestAliasesRepeatAtMostTheirBudget(t *testing.T) {
 			for (n+1)*len(value) <= max(len(yaml(n+1)), minYAMLRepeated) {
 				n++
 			}
-			if _, ok := properties([]byte(yaml(n))); !ok {
+			if _, ok := propertiesOf([]byte(yaml(n))); !ok {
 				t.Errorf("%d aliases, at the limit, not valid", n)
 			}
-			if _, ok := properties([]byte(yaml(n + 1))); ok {
+			if _, ok := propertiesOf([]byte(yaml(n + 1))); ok {
 				t.Errorf("%d aliases, past the limit, valid", n+1)
 			}
 		})
 	}
 	long := "a: &a " + strings.Repeat("x", minYAMLRepeated+1) + "\nb: [*a]\n"
-	if _, ok := properties([]byte(long)); !ok {
+	if _, ok := propertiesOf([]byte(long)); !ok {
 		t.Error("a value longer than minYAMLRepeated, aliased once, not valid")
 	}
+}
+
+// propertiesOf is the properties of a frontmatter's YAML src.
+func propertiesOf(src []byte) ([]Property, bool) {
+	props, _, ok := properties(src, 0)
+	return props, ok
 }

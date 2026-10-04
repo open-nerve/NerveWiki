@@ -8,6 +8,8 @@ import (
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/text"
+
+	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown/internal/harden"
 )
 
 // Parse parses content, any bytes: its frontmatter is read and then made
@@ -17,11 +19,13 @@ import (
 func (m *Markdown) Parse(content []byte) *Document {
 	fm, end := frontmatterOf(content)
 	source := blank(content, end)
-	root := m.parser.Parse(text.NewReader(source))
+	pc := parser.NewContext()
+	root := m.parser.Parse(text.NewReader(source), parser.WithContext(pc))
 	d := &Document{content: content, source: source, root: root, frontmatter: fm, extracted: map[string]any{}}
+	tree := Tree{Root: root, Content: content, Frontmatter: fm, destinations: harden.Destinations(pc)}
 	for _, e := range m.exts {
 		if e.Extract != nil {
-			d.extracted[e.Name] = e.Extract(root, content)
+			d.extracted[e.Name] = e.Extract(tree)
 		}
 	}
 	return d

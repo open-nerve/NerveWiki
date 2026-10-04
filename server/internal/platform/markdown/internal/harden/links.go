@@ -230,9 +230,10 @@ func (links) Parse(parent ast.Node, block text.Reader, pc parser.Context) ast.No
 	l, pos := block.Position()
 	var link *ast.Link
 	var hasValue bool
+	var dest text.Segment // an inline link's destination
 	switch c {
 	case '(':
-		link = inlineLink(parent, last, block, pc)
+		link, dest = inlineLink(parent, last, block, pc)
 	case '[':
 		link, hasValue = referenceLink(parent, last, block, pc)
 		if link == nil && hasValue {
@@ -267,6 +268,11 @@ func (links) Parse(parent ast.Node, block text.Reader, pc parser.Context) ast.No
 		pc.Set(linksKey, linksMade(pc)+1)
 	}
 	n.SetPos(last.seg.Start)
+	if link.Reference != nil {
+		writtenOf(pc).reference(n, link.Reference.Value)
+	} else {
+		writtenOf(pc).inline(n, dest)
+	}
 	return n
 }
 
@@ -330,17 +336,20 @@ func referenceLink(parent ast.Node, last *label, block text.Reader, pc parser.Co
 	return link, true
 }
 
-func inlineLink(parent ast.Node, last *label, block text.Reader, pc parser.Context) *ast.Link {
+// inlineLink is the link at the reader's '(', and where its destination is
+// written: nowhere for an empty one.
+func inlineLink(parent ast.Node, last *label, block text.Reader, pc parser.Context) (*ast.Link, text.Segment) {
 	block.Advance(1) // skip '('
 	block.SkipSpaces()
 	var title, destination []byte
+	var at text.Segment
 	if block.Peek() == ')' { // an empty link like '[link]()'
 		block.Advance(1)
 	} else {
 		var ok bool
-		destination, ok = inlineDestination(parent, block, pc)
+		destination, at, ok = inlineDestination(parent, block, pc)
 		if !ok {
-			return nil
+			return nil, text.Segment{}
 		}
 		block.SkipSpaces()
 		if block.Peek() == ')' {
@@ -348,11 +357,11 @@ func inlineLink(parent ast.Node, last *label, block text.Reader, pc parser.Conte
 		} else {
 			title, ok = linkTitle(parent, block)
 			if !ok {
-				return nil
+				return nil, text.Segment{}
 			}
 			block.SkipSpaces()
 			if block.Peek() != ')' {
-				return nil
+				return nil, text.Segment{}
 			}
 			block.Advance(1)
 		}
@@ -361,40 +370,42 @@ func inlineLink(parent ast.Node, last *label, block text.Reader, pc parser.Conte
 	takeText(parent, link, last)
 	link.Destination = destination
 	link.Title = title
-	return link
+	return link, at
 }
 
 // inlineDestination is goldmark's parseLinkDestination on the line from the
 // reader's position, the end of a destination in angle brackets taken from
-// the block's index rather than a scan to the end of the line.
-func inlineDestination(parent ast.Node, block text.Reader, pc parser.Context) ([]byte, bool) {
+// the block's index rather than a scan to the end of the line. It tells
+// where the destination is written, inside the brackets.
+func inlineDestination(parent ast.Node, block text.Reader, pc parser.Context) ([]byte, text.Segment, bool) {
 	block.SkipSpaces()
 	line, seg := block.PeekLine()
 	if block.Peek() != '<' {
 		n, ok := bareDestination(line, MaxDestinationParens)
 		block.Advance(n)
-		return line[:n], ok
+		return line[:n], text.NewSegment(seg.Start, seg.Start+n), ok
 	}
 	ends := indexOf(parent, block.Source(), pc).angles
 	k := sort.SearchInts(ends, seg.Start+1)
 	if k == len(ends) || ends[k] >= seg.Start+len(line) {
-		return nil, false
+		return nil, text.Segment{}, false
 	}
 	i := ends[k] - seg.Start
 	block.Advance(i + 1)
-	return line[1:i], true
+	return line[1:i], text.NewSegment(seg.Start+1, seg.Start+i), true
 }
 
 // destination is goldmark's parseLinkDestination on line, for a link
 // reference definition: its line is read once, so the scan stays linear
-// and its parentheses need no limit.
-func destination(block text.Reader) ([]byte, bool) {
+// and its parentheses need no limit. It tells where the destination is
+// written, inside the brackets.
+func destination(block text.Reader) ([]byte, text.Segment, bool) {
 	block.SkipSpaces()
-	line, _ := block.PeekLine()
+	line, seg := block.PeekLine()
 	if block.Peek() != '<' {
 		n, ok := bareDestination(line, len(line))
 		block.Advance(n)
-		return line[:n], ok
+		return line[:n], text.NewSegment(seg.Start, seg.Start+n), ok
 	}
 	for i := 1; i < len(line); i++ {
 		switch c := line[i]; {
@@ -402,10 +413,10 @@ func destination(block text.Reader) ([]byte, bool) {
 			i++
 		case c == '>':
 			block.Advance(i + 1)
-			return line[1:i], true
+			return line[1:i], text.NewSegment(seg.Start+1, seg.Start+i), true
 		}
 	}
-	return nil, false
+	return nil, text.Segment{}, false
 }
 
 // bareDestination is how many bytes of line a destination outside angle
