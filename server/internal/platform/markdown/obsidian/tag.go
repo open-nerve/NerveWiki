@@ -87,10 +87,10 @@ func (tagParser) Parse(parent ast.Node, block text.Reader, _ parser.Context) ast
 }
 
 // isTagName tells whether name, of tag runes, is one: not empty, not all
-// numbers.
+// ASCII digits (other numbers, ½ or ١, make a name, as in Obsidian).
 func isTagName(name []byte) bool {
-	for _, r := range string(name) {
-		if !unicode.IsNumber(r) {
+	for _, c := range name {
+		if c < '0' || c > '9' {
 			return true
 		}
 	}

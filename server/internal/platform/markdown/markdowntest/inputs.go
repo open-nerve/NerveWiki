@@ -11,7 +11,8 @@ import (
 
 // ordinary is a few kilobytes of what pages hold: headings, paragraphs with
 // emphasis, links and code, lists, tasks, a table, a quote, fenced code, a
-// footnote and a little inline HTML, in English and Chinese.
+// footnote, a little inline HTML and Obsidian's dialect, in English and
+// Chinese.
 const ordinary = `## Section heading
 
 Some *emphasis*, **strong** and ~~struck~~ words, ` + "`inline code`" + `, a [link](other-page.md "title"),
@@ -33,6 +34,16 @@ an autolink <https://example.com/path> and www.example.org, and a footnote[^n].
 | ` + "`code`" + ` | **b** |
 
 ` + "```go\nfunc main() {\n\tfmt.Println(\"hi\")\n}\n```" + `
+
+Obsidian's dialect: [[Another page]], [[页面#小节|别名]], ![[image.png|100]], #tag and #标签/子标签,
+==highlighted==, $e^{i\pi} + 1 = 0$ and a %%hidden%% comment.
+
+> [!note]- A callout
+> with [[a link]].
+
+$$
+\int_0^1 x\,dx
+$$
 
 [ref]: https://example.com/ref
 [^n]: The footnote's text.
@@ -189,6 +200,31 @@ func Pathological() []Input {
 		{"autolinks", repeat("<https://example.com/a> www.example.com a@b.co ")},
 		{"images in links", repeat("[![a](i.png)](/p) ")},
 		{"addresses in tags", repeat(`<a href="http://a/\b?c#d">x</a>`)},
+
+		// Obsidian's dialect (M6/P1 design 5).
+		{"wikilink openers [[a", repeat("[[a")},
+		{"embed openers ![[a", repeat("![[a ")},
+		{"a wikilink open to the line's end", func(n int) string { return "[[" + repeat("a")(n) }},
+		{"wikilinks and their display texts", repeat("[[a#b|c]] ")},
+		{"a '$' a line", repeat("$a\n")},
+		{"formula openers $a", repeat("$a ")},
+		{"a block formula left open", func(n int) string { return "$$\n" + repeat("a [[b]] #c\n")(n) }},
+		{"inline display formulas $$a", repeat("$$a ")},
+		{"comment markers %%", repeat("%% ")},
+		{"a block comment left open", func(n int) string { return "%%\n" + repeat("a [[b]] #c\n\n")(n) }},
+		{"block comments", repeat("%%\na\n%%\n\n")},
+		{"comments across emphasis", repeat("*a %%b* c%% ")},
+		{"a comment deep in emphasis", func(n int) string {
+			return repeat("*a ")(n/4) + repeat("%%b%% ")(n/4) + repeat(" a*")(n/4)
+		}},
+		{"comments climbing emphasis", func(n int) string { return repeat("%%*a ")(n/2) + repeat("a*%% ")(n/2) }},
+		{"callouts", repeat("> [!note] a\n\n")},
+		{"callouts nested deep", func(n int) string { return repeat("> ")(n) + "[!note] a\n" }},
+		{"tags", repeat("#tag ")},
+		{"tags after runs left as text", repeat("a*#t ")},
+		{"a tag's underscores", func(n int) string { return "#a" + repeat("_")(n) }},
+		{"highlight runs ==a", repeat("==a")},
+		{"highlights", repeat("==a== ")},
 	}
 }
 
@@ -211,6 +247,10 @@ func Amplifying() []Input {
 		}},
 		{"a long value aliased often", func(n int) string {
 			return "---\na: &a " + strings.Repeat("x", n/2) + "\nb: [" + strings.Repeat("*a, ", n/8) + "]\n---\nbody\n"
+		}},
+		// v0.1 shows an embed as a link (M6 design 4.1): it repeats nothing.
+		{"a long page embedded often", func(n int) string {
+			return "[[" + strings.Repeat("a", n/2) + "]]\n\n" + strings.Repeat("![[p]]", n/12)
 		}},
 	}
 }

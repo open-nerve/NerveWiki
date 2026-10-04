@@ -1,0 +1,19 @@
+{
+  "description": "$$ 的第二个 $ 前面不是空白、后面不是数字，结束了 $5 开始的公式。",
+  "source": "obsidian-verified",
+  "frontmatter": null,
+  "links": [
+    {
+      "kind": "wikilink",
+      "target": "b",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        15,
+        16
+      ]
+    }
+  ],
+  "tags": []
+}

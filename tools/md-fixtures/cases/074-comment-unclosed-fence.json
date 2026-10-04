@@ -1,0 +1,8 @@
+{
+  "description": "块注释里没有闭合的代码围栏延续到文末，吞掉了结束注释的 %% 与之后的 [[y]]。",
+  "source": "nerve-defined",
+  "note": "Obsidian 按行隐藏注释，围栏在注释结束处终止，之后的 [[y]] 是链接。我们先按 CommonMark 分块，注释只影响显示，所以围栏延续到文末，[[x]] 与 [[y]] 都是代码。",
+  "frontmatter": null,
+  "links": [],
+  "tags": []
+}

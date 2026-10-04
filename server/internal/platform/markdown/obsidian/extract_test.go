@@ -22,6 +22,7 @@ func TestDecodeURIIsJavaScripts(t *testing.T) {
 		{"%ED%A0%80", "%ED%A0%80"},             // a surrogate
 		{"%80", "%80"},                         // a continuation byte alone
 		{"ok %20 then %FF", "ok %20 then %FF"}, // one bad escape keeps all
+		{"%ZZ%20", "%ZZ%20"},
 	} {
 		if got := decodeURI(tt.in); got != tt.want {
 			t.Errorf("decodeURI(%q) = %q, want %q", tt.in, got, tt.want)

@@ -1,0 +1,30 @@
+{
+  "description": "注释只影响显示：跨块的注释里的链接照常计入。",
+  "source": "obsidian-verified",
+  "frontmatter": null,
+  "links": [
+    {
+      "kind": "wikilink",
+      "target": "c",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        11,
+        12
+      ]
+    },
+    {
+      "kind": "wikilink",
+      "target": "e",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        23,
+        24
+      ]
+    }
+  ],
+  "tags": []
+}

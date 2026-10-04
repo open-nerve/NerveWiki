@@ -1,0 +1,31 @@
+{
+  "description": "高亮的 == 之后不是字面自动链接的开头：[[x]]、[[y]] 是 wikilink；空格之后的网址照常吞掉 [[z]]。",
+  "source": "nerve-defined",
+  "note": "Obsidian 在任何位置识别网址（=、/、中文之后都算），吞掉了 [[x]] 与 [[y]]。我们照 GFM 的字面自动链接（规则 2）：网址只在行首、空白或 *、_、~、( 之后开始，高亮的 == 不算。",
+  "frontmatter": null,
+  "links": [
+    {
+      "kind": "wikilink",
+      "target": "x",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        20,
+        21
+      ]
+    },
+    {
+      "kind": "wikilink",
+      "target": "y",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        47,
+        48
+      ]
+    }
+  ],
+  "tags": []
+}

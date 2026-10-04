@@ -113,6 +113,7 @@ func TestHighlightsAndFormulas(t *testing.T) {
 		{"a block in a quote", "> $$\n> x\n> $$\n", "<blockquote>\n<div class=\"nw-math nw-math-block\">x\n</div>\n</blockquote>\n"},
 		{"a block to the end", "a\n$$\nb\n\nc\n", "<p>a</p>\n<div class=\"nw-math nw-math-block\">b\n\nc\n</div>\n"},
 		{"not formulas", "$ a $ and $5 or 6$7 and \\$b\\$\n", "<p>$ a $ and $5 or 6$7 and $b$</p>\n"},
+		{"an escaped '$' does not close one", "$a\\$b$ c\n", "<p><span class=\"nw-math\">a\\$b</span> c</p>\n"},
 		{"a $$ that nothing closes", "a $$b $c\n", "<p>a $$b $c</p>\n"},
 	})
 }
@@ -127,9 +128,15 @@ func TestCommentsHide(t *testing.T) {
 		{"a whole paragraph", "%%a%%\n\nb\n", "<p>b</p>\n"},
 		{"a block comment", "a\n\n%%\nb\n\nc\n%%\n\nd\n", "<p>a</p>\n<p>d</p>\n"},
 		{"one left open hides the rest", "a\n\n%%\nb\n\nc\n", "<p>a</p>\n"},
+		{"a marker not at its line's end does not end it", "%%\na %% b\nc %%\n\nd\n", "<p>d</p>\n"},
 		{"part of the blocks at its ends", "a\n%%\nb\n\nc %%\nd\n", "<p>a\n</p>\n<p>\nd</p>\n"},
 		{"a table it spans", "%%\n\n| a |\n| - |\n| b |\n\n%%\n\nshown\n", "<p>shown</p>\n"},
 		{"in code, not a marker", "`%%` a `%%`\n", "<p><code>%%</code> a <code>%%</code></p>\n"},
+		{
+			"from a table's cell: its rows and cells stay", "| %% | b |\n| - | - |\n| c | d |\n\ne %%\n\nf\n",
+			"<div class=\"nw-scroll\" tabindex=\"0\"><table>\n<thead>\n<tr>\n<th></th>\n<th>b</th>\n</tr>\n</thead>\n" +
+				"<tbody>\n<tr>\n<td>c</td>\n<td>d</td>\n</tr>\n</tbody>\n</table>\n</div>\n<p>f</p>\n",
+		},
 		{
 			"a list it starts in keeps its container", "- %%\n  a\n- b\n\nc %%\n\nd\n",
 			"<ul>\n<li>\n</li>\n</ul>\n<p>d</p>\n",

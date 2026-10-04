@@ -1,0 +1,43 @@
+{
+  "description": "折叠的 callout：标题与正文里的链接、标签照常计入。",
+  "source": "obsidian-verified",
+  "frontmatter": null,
+  "links": [
+    {
+      "kind": "wikilink",
+      "target": "f1",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        20,
+        22
+      ]
+    },
+    {
+      "kind": "wikilink",
+      "target": "f2",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        40,
+        42
+      ]
+    },
+    {
+      "kind": "wikilink",
+      "target": "f3",
+      "anchor": null,
+      "display": null,
+      "key": null,
+      "range": [
+        60,
+        62
+      ]
+    }
+  ],
+  "tags": [
+    "ft"
+  ]
+}
