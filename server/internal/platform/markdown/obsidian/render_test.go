@@ -148,6 +148,7 @@ func TestCommentsHide(t *testing.T) {
 			"<div class=\"nw-scroll\" tabindex=\"0\"><table>\n<thead>\n<tr>\n<th>a</th>\n<th>b</th>\n</tr>\n</thead>\n" +
 				"<tbody>\n<tr>\n<td>c</td>\n<td></td>\n</tr>\n</tbody>\n</table>\n</div>\n<p>f</p>\n",
 		},
+		{"a marker before a cell's end does not end it", "%%\n\n| a |\n| - |\n| b %% |\n\nc %%\n\nd\n", "<p>d</p>\n"},
 		{"an address ends before a marker", "a %%see https://example.com/x%% b\n", "<p>a  b</p>\n"},
 		{"an address at a block comment's end", "%%\nsecret www.example.com/%%\n\nshown\n", "<p>shown</p>\n"},
 		{"in an image's text, text", "![a %% b](i.png) %%\n", "<p><span class=\"nw-image\">a %% b <a href=\"i.png\">i.png</a></span> %%</p>\n"},
@@ -192,6 +193,10 @@ func TestCallouts(t *testing.T) {
 		{
 			"a title it hides is the type's", "> [!note] %%x%%\n> body\n",
 			`<div class="nw-callout" data-callout="note">` + "\n" + `<div class="nw-callout-title">Note</div>` + "\n<p>body</p>\n</div>\n",
+		},
+		{
+			"a title of comments and spaces is the type's", "> [!note] %%a%% %%b%%\n> body\n",
+			`<div class="nw-callout" data-callout="note">` + "\n" + `<div class="nw-callout-title">Note </div>` + "\n<p>body</p>\n</div>\n",
 		},
 		{"not one", "> [!a b]\n> \\[!c]\n", "<blockquote>\n<p>[!a b]\n[!c]</p>\n</blockquote>\n"},
 	})

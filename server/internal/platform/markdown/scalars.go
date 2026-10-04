@@ -112,14 +112,21 @@ func lineBreak(b []byte) int {
 }
 
 // pastProperties is where the scalar at at is written past its anchor and
-// tag (&x, !!str), which the YAML library counts as its start.
+// tag (&x, !!str), which the YAML library counts as its start; they may be
+// on a line of their own.
 func pastProperties(src []byte, at int) int {
 	for at < len(src) && (src[at] == '&' || src[at] == '!') {
-		for at < len(src) && src[at] != ' ' && src[at] != '\t' && src[at] != '\n' && src[at] != '\r' {
+		for at < len(src) && src[at] != ' ' && src[at] != '\t' && lineBreak(src[at:]) == 0 {
 			at++
 		}
-		for at < len(src) && (src[at] == ' ' || src[at] == '\t') {
-			at++
+		for at < len(src) {
+			if src[at] == ' ' || src[at] == '\t' {
+				at++
+			} else if n := lineBreak(src[at:]); n > 0 {
+				at += n
+			} else {
+				break
+			}
 		}
 	}
 	return at

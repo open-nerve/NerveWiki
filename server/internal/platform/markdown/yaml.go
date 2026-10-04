@@ -72,7 +72,7 @@ type reader struct {
 	src     []byte   // the YAML
 	at      int      // where src starts in the content
 	lines   []int    // where each line of src starts, once a scalar needs them
-	last    position // where the last scalar noted starts
+	last    position // where the last scalar looked up starts
 	path    []string // the keys and indexes down to the value being read
 	scalars []Scalar
 }

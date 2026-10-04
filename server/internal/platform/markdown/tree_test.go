@@ -115,6 +115,9 @@ func TestAFrontmattersStringsAreWhereTheyAreWritten(t *testing.T) {
 		{"BOM", "\ufeff---\na: x\n---\n", []noted{{"a", "x", "x", 0, []int{10, 11}}}},
 		{"not strings", "---\na: 1\nb: true\nc: null\nd: 2024-01-02\n---\n", []noted{{"d", "2024-01-02", "2024-01-02", 0, []int{28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38}}}},
 		{"an alias repeats a string where it is written once", "---\na: &x v\nb: *x\nc: !!str w\n---\n", []noted{{"a", "v", "v", 0, []int{10, 11}}, {"c", "w", "w", 0, []int{27, 28}}}},
+		{"its anchor and tag on a line of their own", "---\na: &x\n  '[[p]]'\nb: !!str\n  q\n---\n", []noted{
+			{"a", "[[p]]", "[[p]]", '\'', []int{13, 14, 15, 16, 17, 18}}, {"b", "q", "q", 0, []int{31, 32}},
+		}},
 		{"many on a line", "---\na: [x, 'y', \"z\"]\n---\n", []noted{
 			{"a.0", "x", "x", 0, []int{8, 9}}, {"a.1", "y", "y", '\'', []int{12, 13}}, {"a.2", "z", "z", '"', []int{17, 18}},
 		}},

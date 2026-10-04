@@ -145,7 +145,7 @@ func renderCallout(w util.BufWriter, _ []byte, node ast.Node, entering bool) (as
 
 // renderCalloutTitle writes a callout's title, its type's when its line
 // has none: the summary of a details element, else a div.
-func renderCalloutTitle(w util.BufWriter, _ []byte, node ast.Node, entering bool) (ast.WalkStatus, error) {
+func renderCalloutTitle(w util.BufWriter, source []byte, node ast.Node, entering bool) (ast.WalkStatus, error) {
 	n := node.(*calloutTitle)
 	folds := n.of.fold != 0
 	if !entering {
@@ -161,20 +161,21 @@ func renderCalloutTitle(w util.BufWriter, _ []byte, node ast.Node, entering bool
 	} else {
 		_, _ = w.WriteString(`<div class="nw-callout-title">`)
 	}
-	if !shows(n) {
+	if !shows(n, source) {
 		escaped(w, []byte(n.of.standing()))
 	}
 	return ast.WalkContinue, nil
 }
 
 // shows tells whether n holds something that shows: neither what hides
-// nor an empty text, such as the one that ended a callout's line.
-func shows(n ast.Node) bool {
+// nor a blank text, such as the one that ended a callout's line or the
+// spaces between two comments.
+func shows(n ast.Node, source []byte) bool {
 	for c := n.FirstChild(); c != nil; c = c.NextSibling() {
 		switch c := c.(type) {
 		case markdown.Hider:
 		case *ast.Text:
-			if !c.Segment.IsEmpty() {
+			if !util.IsBlank(c.Segment.Value(source)) {
 				return true
 			}
 		default:

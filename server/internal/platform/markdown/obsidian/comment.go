@@ -58,8 +58,10 @@ func (h *hiddenBlocks) Dump(source []byte, level int) { ast.DumpHelper(h, source
 // Hides implements markdown.Hider.
 func (h *hiddenBlocks) Hides() {}
 
-// markerParser parses "%%". Raw content (code, math, HTML, autolinks, a
-// link's destination) is parsed first and keeps its own.
+// markerParser parses "%%". Raw content (code, math, HTML, angle
+// autolinks, a link's destination) is parsed first and keeps its own; a
+// literal autolink ends before a marker, and an image's markers are made
+// text when the markers pair.
 type markerParser struct{}
 
 func (markerParser) Trigger() []byte { return []byte{'%'} }
@@ -81,8 +83,9 @@ func (markerParser) Parse(parent ast.Node, block text.Reader, _ parser.Context) 
 }
 
 // starts tells whether a line of block may start a block comment: a
-// paragraph's line, which starts where its block quote's or list item's
-// marker leaves it; not a heading's, after its '#', nor a cell's.
+// paragraph's line, which starts where its block quote's, list item's or
+// footnote definition's marker leaves it; not a heading's, after its '#',
+// nor a cell's.
 func starts(block ast.Node) bool {
 	k := block.Kind()
 	return k == ast.KindParagraph || k == ast.KindTextBlock
