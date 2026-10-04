@@ -1,11 +1,13 @@
 ```yaml
-status: open
+status: done
 from: M4/P1, M4/P2
 to: M5
 created: 2026-10-02
 ```
 
 # 页面事件与树的重读
+
+> 已全部处理（2026-10-04）：第 1 项在 M5/P3（`pages` 事件改树时重读整棵树，`mutate(["pages", …])`）；第 2、3 项：`pages` 事件只带笔记本、页与 revision，多于 20 页时 `pages` 为 `null`（M5/P2）；第 4 项是 `bootstrap/events_pages_test.go` 的 `TestEveryPageWriteReachesTheStreams`，组合根交空时失败。经[M5 收尾审查](../reviews/M5-closeout-review.md)核实。
 
 M4/P1 的写入单元在提交之前把一个单元的改动交给观察者，一个单元一次（[M4 总设计](../../M4-pages/00-M4-design.md)第 8 节；[P1 文档](../../M4-pages/01-P1-page-module-pipeline.md) 3.6）。新建一页时兄弟的次序挤不下，单元会给整组兄弟重新编号：重排不移动任何一页，所以不记条目、不经守卫，也不进事件（设计如此）。事件里只有新建的那一页（[P1 审查](../../M4-pages/reviews/P1-page-module-pipeline-review.md) Q2）。
 

@@ -69,7 +69,7 @@ e2e/stories/collab/c7-push.spec.ts、c8-stream-life.spec.ts、c9-one-stream.spec
 
 ### 3.3 帧与连接
 
-- **`parseFrames(chunks)`**：把字节流按行解析成帧：`event:` 与 `data:` 组成一帧（空行结束），`data` 解析成 JSON；注释行（`: heartbeat`）是心跳。产出 `{type: "hello" | "pages" | "lock" | "reset", data}`、`{type: "beat"}`，不认识的事件类型产出 `{type: "other", event, data}`，由调用者跳过。解析失败的一帧丢掉（不终止流）。
+- **`FrameParser.push(text)`**：把一段段到来的文字按行解析成帧：`event:` 与 `data:` 组成一帧（空行结束），`data` 解析成 JSON；注释行（`: heartbeat`）是心跳。产出 `{type: "hello" | "pages" | "lock" | "reset", data}`、`{type: "beat"}`，不认识的事件类型产出 `{type: "other", event, data}`：后来的 M 的类型，hub 照转给各标签页，由应用的按类型处理表处理（`events/handlers.ts`，M5 收尾审查 C-I2 补上）。解析失败的一帧丢掉（不终止流）。
 - **`connect(open, signal, onFrame)`**：调 `open(signal)`，逐帧交给 `onFrame`，返回流是怎样结束的：`{ended: "reset", reason}`、`{ended: "closed"}`（没有 `reset` 的结束）、`{ended: "failed", error}`（开流或读取出错，`ApiError` 带状态与 `retryAfter`）、`{ended: "aborted"}`（`signal` 中止，或 `SessionChangedError`：换代了）。
 
 ### 3.4 持有者的选举
@@ -77,7 +77,7 @@ e2e/stories/collab/c7-push.spec.ts、c8-stream-life.spec.ts、c9-one-stream.spec
 `Leadership` 接口：`run(lead: (lost: AbortSignal) => Promise<void>, signal)`：成为持有者时调 `lead`，`lost` 在被抢、让出或 `run` 结束时中止；`lead` 返回就放手。另有 `steal()`（让出期间不接受）、`yield()`、`rejoin()`（重新加入，忘掉之前要的 `steal`）与 `renew(ttl)`（持有者的存活，租约的到期；Web Locks 下不做事）。两种实现，键都是 `nwiki.events.<loginId>`：
 
 - **Web Locks**（`navigator.locks` 在时，安全上下文与 localhost）：
-  - `request(name, {signal}, cb)`：排队，前一个放手时浏览器把锁给下一个；`cb` 里调 `onLead`，持有到它结束；
+  - `request(name, {signal}, cb)`：排队，前一个放手时浏览器把锁给下一个；`cb` 里调 `run(lead, signal)` 交来的 `lead(lost)`，持有到它结束；
   - `steal()`：`request(name, {steal: true}, cb)`：原持有者的 `request` 以 `AbortError` 失败，它中止 `lost`、重新排队；
   - `yield()`：结束 `cb`，放手；`rejoin()` 时重新排队。
 - **租约**（没有 `navigator.locks`，如局域网地址上的 HTTP）：
@@ -108,8 +108,8 @@ e2e/stories/collab/c7-push.spec.ts、c8-stream-life.spec.ts、c9-one-stream.spec
 每一代一个（`RootStore.events()` 建，不启动），只经 `EventService` 与注入的依赖：
 
 - **`start()` / `stop()`**：`start` 打开频道、挂上页面生命周期的监听、开始选举；`stop` 中止连接（`AbortController`）、放手、关闭频道、去掉监听与计时器。可以再次 `start`：`StrictMode` 下 effect 会挂、卸、再挂；再次 `start` 的选举等上一次的结束了才开始，一个标签页不会同时持有两次。
-- **`subscribe(listener)`**：本标签页的事件，`{type: "pages" | "lock", data}` 与 `{type: "connected"}`（一次连上，要整体刷新），无论是自己的连接还是持有者转来的。
-- **持有者的循环**（`onLead` 里，直到 `lost` 中止）：
+- **`subscribe(listener)`**：本标签页的事件，`{type: "pages" | "lock", data}`、后来的 M 的类型 `{type: "other", event, data}`（M5 收尾时加，见 `events/handlers.ts`）与 `{type: "connected"}`（一次连上，要整体刷新），无论是自己的连接还是持有者转来的。
+- **持有者的循环**（hub 的 `#lead` 里，直到 `lost` 中止）：
   1. `connect`：每帧交给本标签页、发到频道、续租约；`hello` 记下间隔，发 `connected`（本标签页也收到），退避归零；
   2. 结束于 `reset`：立刻重连（`expired` 时开流前令牌照常续期；`unauthenticated` 时开流答 401，中间件续期失败就结束会话、换代，hub 随之停止）；
   3. 结束于"没有 `reset`"或出错：按退避等待（1 秒起，翻倍，上限 30 秒）再连；503 `not_ready` 按 `Retry-After`；

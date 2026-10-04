@@ -4,8 +4,11 @@ import type { EventLock, EventPages } from "../services/event.service";
 // the stream forwards its events and tells it is alive, with the server's
 // heartbeat, which the others need to tell a silent holder.
 
-/** An event of the stream, as each tab handles it. */
-export type StreamEvent = { type: "pages"; data: EventPages } | { type: "lock"; data: EventLock };
+/** An event of the stream, as each tab handles it; "other" is a later M's type, with its data. */
+export type StreamEvent =
+  | { type: "pages"; data: EventPages }
+  | { type: "lock"; data: EventLock }
+  | { type: "other"; event: string; data: unknown };
 
 /**
  * What the holder tells: an event; that it connected (each tab refreshes

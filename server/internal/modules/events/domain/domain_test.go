@@ -68,6 +68,26 @@ func TestAPayloadHasItsLimits(t *testing.T) {
 	}
 }
 
+// noTypes are types no event can have: empty, with a colon or a line break,
+// or a frame of the stream itself.
+func noTypes() []domain.Type {
+	return []domain.Type{"", "a:b", "a\nb", "a\rb", "hello", "reset"}
+}
+
+// An event of a type no event can have has no payload: its publisher's
+// write fails, not the frame a stream would write.
+func TestAnEventOfNoTypeHasNoPayload(t *testing.T) {
+	for _, typ := range noTypes() {
+		e := domain.Event{Type: typ, WorkspaceID: uuid.MustParse(workspaceText), Data: json.RawMessage(`{}`)}
+		if p, err := domain.Encode(e); !errors.Is(err, domain.ErrNoType) {
+			t.Errorf("Encode() of type %q = %q, %v; want ErrNoType", typ, p, err)
+		}
+	}
+	if err := domain.CheckType("links"); err != nil {
+		t.Errorf("CheckType(links) = %v, want a later M's type", err)
+	}
+}
+
 // The frames are server-sent events: hello with the heartbeat in seconds,
 // an event with its data and its workspace's and notebook's ids, a reset
 // with its reason, the heartbeat as a comment.
@@ -93,9 +113,9 @@ func TestTheFrames(t *testing.T) {
 	if got := string(domain.HeartbeatFrame()); got != ": heartbeat\n\n" {
 		t.Errorf("HeartbeatFrame() = %q", got)
 	}
-	for _, typ := range []domain.Type{"", "a\nb", "a:b"} {
-		if f, err := domain.EventFrame(domain.Event{Type: typ, Data: json.RawMessage(`{}`)}); err == nil {
-			t.Errorf("EventFrame() of type %q = %q, want an error", typ, f)
+	for _, typ := range noTypes() {
+		if f, err := domain.EventFrame(domain.Event{Type: typ, Data: json.RawMessage(`{}`)}); !errors.Is(err, domain.ErrNoType) {
+			t.Errorf("EventFrame() of type %q = %q, %v; want ErrNoType", typ, f, err)
 		}
 	}
 	if f, err := domain.EventFrame(domain.Event{Type: "x", Data: json.RawMessage(`[]`)}); err == nil {

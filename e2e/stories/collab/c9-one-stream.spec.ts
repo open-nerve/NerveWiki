@@ -33,6 +33,8 @@ for (const locks of [true, false]) {
     db,
     signedInPage,
   }, testInfo) => {
+    // Ten tabs open one after another: on a slow machine that alone takes most of the default time.
+    test.slow();
     const { pat: a, workspace } = await newTeam(api, testInfo);
     const bEmail = emailFor(testInfo, "b");
     const page = await signedInPage(await joinOnboarded(api, a, workspace.slug, bEmail, "member"));
@@ -63,6 +65,11 @@ for (const locks of [true, false]) {
       opened.push(await openTab());
     }
     await expect.poll(() => streams.count()).toBe(1);
+    // Web Locks elect one at a time; a lease is written, waited on and read back, and two tabs on a slow
+    // machine may both hold it until the first renewal: then one lets go.
+    if (locks) {
+      expect(streams.opened()).toBe(1);
+    }
 
     const [holder] = streams.holders();
     const others = opened.filter((tab) => tab !== holder);
@@ -71,8 +78,12 @@ for (const locks of [true, false]) {
     const reread = others.map((tab) => answerTo(tab, "GET", `/api/v0/pages/${notes.id}/view`));
     const before = streams.opened();
     await holder?.close();
-    await expect.poll(() => streams.count(), { timeout: 5_000 }).toBe(1);
-    expect(streams.opened()).toBe(before + 1);
+    await expect.poll(() => streams.count(), { timeout: 10_000 }).toBe(1);
+    if (locks) {
+      expect(streams.opened()).toBe(before + 1);
+    } else {
+      expect(streams.opened()).toBeGreaterThan(before);
+    }
     await Promise.all(reread);
 
     await writeContent(api, a, notes.id, { content: "Drafted.\n\nPushed.\n", base_revision: 1 });

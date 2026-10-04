@@ -42,7 +42,8 @@
 ```
 server/internal/platform/markdown/
   tasks/tasks.go、tasks_test.go             任务项扩展（3.2）
-  internal/harden/parser.go、render.go      去掉 goldmark 的任务项（3.2）
+  internal/harden/parser.go                 去掉 goldmark 的任务项（3.2）
+  render.go                                 同上
   render_test.go、markdowntest、harden_test 随之改
 server/internal/bootstrap/registrants.go    markdownExtensions() 注册 tasks（3.2）
 tools/md-fixtures                           样例的 tasks 字段（README 规则 11、check.mjs），样例 062–067
@@ -50,7 +51,8 @@ server/internal/modules/page/
   domain/actions.go、task.go、errors.go     page.toggle_task；Flip；NotATask、TaskWouldGo（3.3）
   app/toggle_task.go、content.go、ports.go  ToggleTask 用例；Decided；Markdown.Tasks（3.3）
   adapter/markdown/markdown.go              Tasks（3.3）
-  adapter/http/handler.go、module.go        toggleTask 的处理器（3.4）
+  adapter/http/handler.go                   toggleTask 的处理器（3.4）
+  module.go                                 挂上它（3.4）
 server/internal/modules/access/domain/rules.go  page.toggle_task 的规则
 api/modules/page.yaml、api/openapi.yaml     契约（3.4）
 web/apps/web/src/
@@ -167,5 +169,5 @@ M4/P3 给 M6 的移交第 7 项说"用 `Extract` 取 `TaskCheckBox` 节点所在
 
 **留给后面的**：
 
-- **给 M5 收尾**：负责人执行整份输入法清单（M4/P6 的第 1–9 步与 M5 的第 10–12 步）；e2e 在 CI 上的两次偶发失败，收尾的 e2e 审查看一遍可能不稳的用例，之后的失败从注释读。
+- **给 M5 收尾**：负责人执行整份输入法清单（M4/P6 的第 1–9 步与 M5 的第 10–12 步，收尾时扩为第 10–15 步）；e2e 在 CI 上的两次偶发失败，收尾的 e2e 审查看一遍可能不稳的用例，之后的失败从注释读。
 - **接受**，留给 v0.1 收官之后的统一打磨：勾了会消失（`- [ ]: /u`）的拒绝只说"有些值无效"；失去角色的编辑者在笔记本列表重读之前复选框仍放开（服务端答 403，与"编辑"按钮相同）；阅读者禁用的复选框没有名称（P6 之前就如此）；勾选开始时清掉提示，可能藏起之前"编辑"的拒绝（提示一直只说最近一次动作）。

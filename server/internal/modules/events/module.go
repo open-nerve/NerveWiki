@@ -83,11 +83,6 @@ func (m *Module) Reconnected() {
 	m.hub.ResetAll(domain.ResetReconnected)
 }
 
-// Streams is how many streams are open.
-func (m *Module) Streams() int {
-	return m.hub.Streams()
-}
-
 // Register mounts the stream on router behind api's long-lived
 // middlewares: authentication, the rate limit, no deadline.
 func (m *Module) Register(router *httpserver.Router, api *httpserver.API) {

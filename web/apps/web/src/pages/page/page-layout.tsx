@@ -225,7 +225,12 @@ const PageShell = observer(function PageShell({ notebook, page }: { notebook: No
             </output>
           )}
           <div ref={lockNote} tabIndex={-1} className="outline-none">
-            <EditLockNote notebook={notebook} page={page} editHere={writer ? () => void enter(true) : undefined} />
+            <EditLockNote
+              notebook={notebook}
+              page={page}
+              editHere={writer ? () => void enter(true) : undefined}
+              released={() => (edit.current ?? heading.current)?.focus()}
+            />
           </div>
           <ReadingView
             notebook={notebook}

@@ -1,10 +1,22 @@
+import type { Page } from "@nervewiki/api-client";
+
+import { expectToggleRevision } from "../../fixtures/assert/collab";
 import { accountIdOf } from "../../fixtures/assert/identity";
+import { expectContentWritten } from "../../fixtures/assert/page";
 import { displayNameOf, emailFor } from "../../fixtures/auth";
-import { failedToLoad } from "../../fixtures/browser";
+import { answerTo, failedToLoad } from "../../fixtures/browser";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { addNotebookMember } from "../../fixtures/notebook-members";
 import { createNotebook } from "../../fixtures/notebooks";
-import { createPage, endSession, getView, openSession, readContent, toggleTask } from "../../fixtures/pages";
+import {
+  createPage,
+  endSession,
+  getView,
+  openSession,
+  readContent,
+  toggleTask,
+  writeContent,
+} from "../../fixtures/pages";
 import { expect, test, watchOf } from "../../fixtures/test";
 import { startEditing, wikiPagePath } from "../../fixtures/wiki-pages";
 import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
@@ -23,8 +35,10 @@ test("C10 (API): an editor ticks and clears task items in a content with a byte 
   api,
   db,
 }, testInfo) => {
-  const { pat: a, workspace } = await newTeam(api, testInfo);
-  const b = await joinAs(api, a, workspace.slug, emailFor(testInfo, "b"), "member");
+  const { adminEmail, adminId, pat: a, workspace } = await newTeam(api, testInfo);
+  const bEmail = emailFor(testInfo, "b");
+  const b = await joinAs(api, a, workspace.slug, bEmail, "member");
+  const bId = await accountIdOf(db, bEmail);
   const readerEmail = emailFor(testInfo, "reader");
   const reader = await joinAs(api, a, workspace.slug, readerEmail, "guest");
   const notebook = await createNotebook(api, a, workspace.slug, "Plans", "editor");
@@ -53,12 +67,16 @@ test("C10 (API): an editor ticks and clears task items in a content with a byte 
   expect([ticked.response.status, ticked.data?.revision]).toEqual([200, 2]);
   let expected = "\ufeff# Cafe\u0301\r\n\r\n- [x] open\r\n- [X] done\r\n- [ ]: /u\r\n";
   expect(await readContent(api, b, page.id)).toMatchObject({ content: expected, revision: 2 });
+  await expectContentWritten(db, ticked.data as Page, expected, bId);
+  await expectToggleRevision(db, page.id, 2, bId, "api");
   const already = await toggleTask(api, b, page.id, { base_revision: 2, offset: done, checked: true });
   expect([already.response.status, already.data?.revision]).toEqual([200, 2]);
   const cleared = await toggleTask(api, b, page.id, { base_revision: 2, offset: done, checked: false });
   expect([cleared.response.status, cleared.data?.revision]).toEqual([200, 3]);
   expected = "\ufeff# Cafe\u0301\r\n\r\n- [x] open\r\n- [ ] done\r\n- [ ]: /u\r\n";
   expect(await readContent(api, b, page.id)).toMatchObject({ content: expected, revision: 3 });
+  await expectContentWritten(db, cleared.data as Page, expected, bId);
+  await expectToggleRevision(db, page.id, 3, bId, "api");
 
   const refused = [
     await toggleTask(api, reader, page.id, { base_revision: 3, offset: open, checked: false }),
@@ -81,9 +99,10 @@ test("C10 (API): an editor ticks and clears task items in a content with a byte 
     await toggleTask(api, b, page.id, { base_revision: 3, offset: open, checked: false }),
     await toggleTask(api, a, page.id, { base_revision: 3, offset: open, checked: false }),
   ];
-  expect(locked.map((r) => [r.response.status, r.error?.code, r.error?.lock?.page_id])).toEqual([
-    [409, "page.locked", page.id],
-    [409, "page.locked", page.id],
+  const lock = { page_id: page.id, user_id: adminId, display_name: displayNameOf(adminEmail) };
+  expect(locked.map((r) => [r.response.status, r.error?.code, r.error?.lock])).toEqual([
+    [409, "page.locked", lock],
+    [409, "page.locked", lock],
   ]);
   expect((await endSession(api, a, session.id)).response.status).toBe(204);
   const after = await toggleTask(api, b, page.id, { base_revision: 3, offset: open, checked: false });
@@ -93,13 +112,13 @@ test("C10 (API): an editor ticks and clears task items in a content with a byte 
   );
 });
 
-test("C10 (page): A ticks a task item in the reading view, its checkbox named by its text, the content written and the focus on the same checkbox, and the space key clears it; a reader's checkboxes are disabled; while A edits, B's click is refused as Edit is, the note naming A taking the focus, no alert, the checkbox as it was", async ({
+test("C10 (page): A ticks a task item in the reading view, its checkbox named by its text, the content written and the focus on the same checkbox, and the space key clears it; a reader's checkboxes are disabled; B's click on a revision passed says the page changed; while A edits, B's click is refused as Edit is, the note naming A taking the focus, no alert, the checkbox as it was", async ({
   anotherPage,
   api,
   db,
   signedInPage,
 }, testInfo) => {
-  const { adminEmail, pat: a, tokens, workspace } = await newOnboardedTeam(api, testInfo);
+  const { adminEmail, adminId, pat: a, tokens, workspace } = await newOnboardedTeam(api, testInfo);
   const b = await anotherPage(await joinOnboarded(api, a, workspace.slug, emailFor(testInfo, "b"), "member"));
   const readerEmail = emailFor(testInfo, "reader");
   const reader = await anotherPage(await joinOnboarded(api, a, workspace.slug, readerEmail, "guest"));
@@ -116,31 +135,75 @@ test("C10 (page): A ticks a task item in the reading view, its checkbox named by
   await page.goto(path);
   const boxes = boxesOf(page);
   await expect(boxes).toHaveCount(2);
+  const toggles = `/api/v0/pages/${tasks.id}/toggle-task`;
+  const tick = answerTo(page, "POST", toggles);
   await page.getByRole("main").getByRole("article").getByRole("checkbox", { name: "open", exact: true }).click();
 
   await expect(boxes.first()).toBeChecked();
   await expect(boxes.first()).toBeFocused();
   expect(await readContent(api, a, tasks.id)).toMatchObject({ content: "- [x] open\n- [x] done\n", revision: 2 });
+  await expectContentWritten(db, (await (await tick).json()) as Page, "- [x] open\n- [x] done\n", adminId);
+  await expectToggleRevision(db, tasks.id, 2, adminId, "web");
+  const clear = answerTo(page, "POST", toggles);
   await page.keyboard.press("Space");
   await expect(boxes.first()).not.toBeChecked();
   await expect(boxes.first()).toBeFocused();
   expect(await readContent(api, a, tasks.id)).toMatchObject({ content, revision: 3 });
+  await expectContentWritten(db, (await (await clear).json()) as Page, content, adminId);
+  await expectToggleRevision(db, tasks.id, 3, adminId, "web");
 
   await reader.goto(path);
   await expect(boxesOf(reader)).toHaveCount(2);
   await expect(boxesOf(reader).first()).toBeDisabled();
   await expect(boxesOf(reader).nth(1)).toBeDisabled();
 
+  // B's view is not read again while A writes: B's toggle goes on revision 3, which A's write has passed. The
+  // reads let through before the hold, the stream's refresh among them, are answered before A writes: one on its
+  // way could show B revision 4.
+  const views = `**/api/v0/pages/${tasks.id}/view`;
+  let holding = false;
+  let passed = 0;
+  let answered = 0;
+  let releaseViews: (() => void) | undefined;
+  const viewsHeld = new Promise<void>((resolve) => {
+    releaseViews = resolve;
+  });
+  await b.route(views, async (route) => {
+    const held = holding;
+    if (held) {
+      await viewsHeld;
+    } else {
+      passed += 1;
+    }
+    const answer = await route.fetch();
+    if (!held) {
+      answered += 1;
+    }
+    await route.fulfill({ response: answer });
+  });
   await b.goto(path);
   await expect(boxesOf(b)).toHaveCount(2);
-  await startEditing(page);
+  holding = true;
+  await expect.poll(() => answered).toBe(passed);
+  const moved = `- [ ] new\n${content}`;
+  await writeContent(api, a, tasks.id, { content: moved, base_revision: 3 });
+  const refused = answerTo(b, "POST", toggles);
   await boxesOf(b).first().click();
+  expect((await refused).status()).toBe(409);
+  releaseViews?.();
+  await expect(b.getByRole("main").getByRole("alert")).toHaveText("This page has changed since you read it.");
+  await expect(boxesOf(b)).toHaveCount(3);
+  await b.unroute(views);
+  expect(await readContent(api, a, tasks.id)).toMatchObject({ content: moved, revision: 4 });
+
+  await startEditing(page);
+  await boxesOf(b).nth(1).click();
 
   const holder = `${displayNameOf(adminEmail)} is editing this page.`;
   await expect(b.getByText(holder, { exact: true })).toBeVisible();
   await expect.poll(() => b.evaluate(() => document.activeElement?.textContent ?? "")).toContain(holder);
   await expect(b.getByRole("main").getByRole("alert")).toHaveCount(0);
-  await expect(boxesOf(b).first()).not.toBeChecked();
-  expect(await readContent(api, a, tasks.id)).toMatchObject({ content, revision: 3 });
-  watchOf(b).expectConsole({ errors: [failedToLoad(409)] });
+  await expect(boxesOf(b).nth(1)).not.toBeChecked();
+  expect(await readContent(api, a, tasks.id)).toMatchObject({ content: moved, revision: 4 });
+  watchOf(b).expectConsole({ errors: [failedToLoad(409), failedToLoad(409)] });
 });

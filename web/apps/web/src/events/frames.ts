@@ -4,14 +4,18 @@ import type { EventHello, EventLock, EventPages, EventReset } from "../services/
 // an event line and one line of JSON data ended by a blank line; a comment
 // line is the server's heartbeat.
 
-/** A frame of the stream, or a heartbeat; "other" is an event type this client does not know, which it skips. */
+/**
+ * A frame of the stream, or a heartbeat; "other" is an event of a type the
+ * stream does not know, a later M's, with its data, which the app's
+ * handlers by type may (events/handlers.ts).
+ */
 export type Frame =
   | { type: "hello"; data: EventHello }
   | { type: "pages"; data: EventPages }
   | { type: "lock"; data: EventLock }
   | { type: "reset"; data: EventReset }
   | { type: "beat" }
-  | { type: "other"; event: string };
+  | { type: "other"; event: string; data: unknown };
 
 const known = new Set(["hello", "pages", "lock", "reset"]);
 
@@ -66,13 +70,12 @@ export class FrameParser {
     if (event === "" && data === "") {
       return undefined;
     }
-    if (!known.has(event)) {
-      return { type: "other", event };
-    }
+    let parsed: unknown;
     try {
-      return { type: event, data: JSON.parse(data) } as Frame;
+      parsed = JSON.parse(data);
     } catch {
       return undefined;
     }
+    return known.has(event) ? ({ type: event, data: parsed } as Frame) : { type: "other", event, data: parsed };
   }
 }

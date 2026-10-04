@@ -145,14 +145,15 @@ export class RootStore {
   }
 
   /**
-   * endEdits ends this generation's edits, as the tab signs out: it
+   * endEdits ends this generation's edits, as the tab signs out, each once
+   * what it has unsaved is saved, or after 1.5 seconds of saving: it
    * resolves once their ends are answered, or after at most 2 seconds, so
    * that a network down does not hold the sign-out.
    */
   endEdits(): Promise<void> {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const waited = new Promise<void>((resolve) => (timer = setTimeout(resolve, signOutWait)));
-    const ended = Promise.all([...this.edits].map((editing) => editing.end()));
+    const ended = Promise.all([...this.edits].map((editing) => editing.close(signOutSave)));
     return Promise.race([ended, waited]).then(() => clearTimeout(timer));
   }
 
@@ -250,8 +251,9 @@ export class RootStore {
   }
 }
 
-/** How long signing out waits for the tab's edits to end. */
+/** How long signing out waits for the tab's edits to end, and for their saves before the ends go out. */
 const signOutWait = 2_000;
+const signOutSave = 1_500;
 
 /**
  * eventHub is the hub of login: the tabs of one login elect one holder of

@@ -1,6 +1,7 @@
 import type {
   ApiClient,
   EditLock,
+  EditLockHolder,
   EditSession,
   NodeMove,
   Page,
@@ -13,7 +14,7 @@ import type {
 
 import { unwrap } from "./api";
 
-export type { EditLock, NodeMove, PageContent, PageView, TaskToggle, TreeNode };
+export type { EditLock, EditLockHolder, NodeMove, PageContent, PageView, TaskToggle, TreeNode };
 
 /**
  * PageService reads a notebook's page tree and a page's reading view, and

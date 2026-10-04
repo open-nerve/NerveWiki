@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { EditorView } from "@codemirror/view";
 import { afterEach, expect, test, vi } from "vitest";
 
+import { eventHandlers, type EventHandler } from "../events/handlers";
 import { FakePage } from "../events/testing/fake-page";
 import { eventServer, withEvents } from "../test/event-server";
 import { json, notebookJSON, problem, workspaceJSON, type Answer } from "../test/fakes";
@@ -36,7 +37,7 @@ const idOf = (request: Request) => new URL(request.url).pathname.split("/")[4] ?
  * the events' doing. A page's next view read can be held (holdView, which
  * returns its release); the locks read are in lockReads, by page id.
  */
-async function open(page = new FakePage(), answers: Record<string, Answer> = {}) {
+async function open(page = new FakePage(), answers: Record<string, Answer> = {}, handlers = eventHandlers) {
   const events = eventServer();
   const workspaces: string[] = [];
   const lockReads: string[] = [];
@@ -72,7 +73,7 @@ async function open(page = new FakePage(), answers: Record<string, Answer> = {})
     holds.set(id, new Promise<void>((resolve) => (release = resolve)));
     return () => release();
   };
-  const view = renderApp(pagePath(guide.id), withEvents(server.app, page));
+  const view = renderApp(pagePath(guide.id), withEvents(server.app, page), { eventHandlers: handlers });
   expect((await screen.findByRole("article", { name: "Guide" })).innerHTML).toBe("<p>Guide</p>");
   await waitFor(() => expect(events.streams).toHaveLength(1));
   const before = server.sent.length;
@@ -179,6 +180,22 @@ test("a hidden tab reads the reading view once it is shown again", async () => {
 
   act(() => page.show(true));
   await waitFor(() => expect(screen.getByRole("article", { name: "Guide" }).innerHTML).toBe("<p>Guide, again</p>"));
+});
+
+test("an event of a type a later M adds goes to the app's handler of its type, with its data, which can read again what it changed; one of no handler is let be", async () => {
+  const links: unknown[] = [];
+  const handler: EventHandler = (data, { mutate }) => {
+    links.push(data);
+    void mutate(["pages", notebookJSON.id]);
+  };
+  const { server, events } = await open(new FakePage(), {}, new Map([...eventHandlers, ["links", handler]]));
+
+  events.last().send("links", { workspace_id: workspaceJSON.id, page_id: guide.id });
+  events.last().send("modes", { workspace_id: workspaceJSON.id });
+  await settle();
+
+  expect(links).toEqual([{ workspace_id: workspaceJSON.id, page_id: guide.id }]);
+  expect(server.sent).toEqual(["GET nodes"]);
 });
 
 test("an event of a page's lock reads its lock again", async () => {

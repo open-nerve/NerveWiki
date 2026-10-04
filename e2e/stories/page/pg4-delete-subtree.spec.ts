@@ -1,6 +1,6 @@
 import { accountIdOf } from "../../fixtures/assert/identity";
 import { expectSubtreeDeleted } from "../../fixtures/assert/page";
-import { emailFor } from "../../fixtures/auth";
+import { displayNameOf, emailFor } from "../../fixtures/auth";
 import { answerTo } from "../../fixtures/browser";
 import type { Database } from "../../fixtures/db";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
@@ -26,7 +26,7 @@ test("PG4 (API): a member deletes a page with its subpages at one time, their ed
   api,
   db,
 }, testInfo) => {
-  const { pat, workspace } = await newTeam(api, testInfo);
+  const { adminEmail, adminId, pat, workspace } = await newTeam(api, testInfo);
   const editorEmail = emailFor(testInfo, "editor");
   const editorPat = await joinAs(api, pat, workspace.slug, editorEmail, "member");
   const editorId = await accountIdOf(db, editorEmail);
@@ -41,10 +41,10 @@ test("PG4 (API): a member deletes a page with its subpages at one time, their ed
   const siblings = await openSession(api, pat, sibling.id);
 
   const refused = await deleteNode(api, editorPat, doomed.id);
-  expect([refused.response.status, refused.error?.code, refused.error?.lock?.page_id]).toEqual([
+  expect([refused.response.status, refused.error?.code, refused.error?.lock]).toEqual([
     409,
     "page.locked",
-    child.id,
+    { page_id: child.id, user_id: adminId, display_name: displayNameOf(adminEmail) },
   ]);
   await expire(db, childs.id);
   expect((await deleteNode(api, editorPat, doomed.id)).response.status).toBe(204);

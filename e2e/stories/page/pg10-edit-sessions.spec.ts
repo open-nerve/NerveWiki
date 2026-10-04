@@ -14,7 +14,7 @@ import {
   readContent,
   writeContent,
 } from "../../fixtures/pages";
-import { answerTo, failedToLoad } from "../../fixtures/browser";
+import { answerTo, countAnswers, failedToLoad } from "../../fixtures/browser";
 import { expect, test } from "../../fixtures/test";
 import { contentWrites, editStatus, saveEdit, startEditing, wikiPagePath } from "../../fixtures/wiki-pages";
 import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
@@ -89,7 +89,10 @@ test("PG10 (page): the editor's heartbeat moves the lease on; a session expired 
       [notes.id]
     );
 
+  const viewReads = countAnswers(page, "GET", `/api/v0/pages/${notes.id}/view`);
   await page.goto(wikiPagePath(workspace.slug, notebook.id, notes.id));
+  // The event stream connects, its refresh reading the page again, before the edit (as in PG8).
+  await expect.poll(viewReads).toBeGreaterThanOrEqual(2);
   await startEditing(page);
   await expect.poll(async () => (await live()).length).toBe(1);
   const [first] = await live();

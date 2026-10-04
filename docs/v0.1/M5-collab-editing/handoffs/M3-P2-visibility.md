@@ -1,11 +1,13 @@
 ```yaml
-status: open
+status: done
 from: M3/P2
 to: M5
 created: 2026-10-02
 ```
 
 # 可见性变化事件的第一个注册者
+
+> 已全部处理（2026-10-04）：第 1 项是 `bootstrap/events_access_test.go` 的 `TestEveryVisibilityChangeResetsItsStreams`，每条路径一行（收尾时补了"笔记本对成员关闭"与"以管理员接受邀请"两行），把组合根交给可见性的订阅者换成空时失败；第 2 项：`Reached` 时 hub 按工作区重置流；第 3 项：订阅者只发 `NOTIFY`，随提交才送达；第 4 项：关闭事件流用不到执行者，不加。经[M5 收尾审查](../reviews/M5-closeout-review.md)核实。
 
 M3/P2 建了可见性变化事件（[M3 总设计](../../M3-notebook/00-M3-design.md)第 4、8 节；[P2 文档](../../M3-notebook/02-P2-notebook-members.md) 3.6）：一个工作区、一组账户 id、"默认角色所及"的标记 `Reached`、时刻；在引起变化的写入之后、同一事务内调用，错误整体回滚。M3 没有注册者，组合根的 `notebookRegistrants()` 返回空集合，交给每一条发布路径；把 `deps.go` 里交给 workspace 的两组订阅者、交给 notebook 的可见性订阅者换成 nil，测试照样全部通过（[P2 审查](../../M3-notebook/reviews/P2-notebook-members-review.md) Q1，与 [M2 移交](../../M3-notebook/handoffs/M2-workspace.md)第 1 项、[M4 的移交](../../M4-pages/handoffs/M3-P1-notebook-deletion.md)同一种情形）。
 

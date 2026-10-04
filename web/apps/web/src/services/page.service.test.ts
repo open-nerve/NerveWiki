@@ -20,6 +20,30 @@ describe("PageService.openEditSession", () => {
   });
 });
 
+describe("PageService.heartbeatEditSession", () => {
+  test("asks POST of the session's heartbeat with the signal: aborted, the beat is given up", async () => {
+    let asked: Request | undefined;
+    const service = new PageService(
+      fakeApi((request) => {
+        asked = request;
+        // An answer that never comes, but for the abort, as fetch's.
+        return new Promise<Response>((_, reject) => {
+          request.signal.addEventListener("abort", () => reject(request.signal.reason as Error));
+        });
+      })
+    );
+    const stop = new AbortController();
+
+    const beat = service.heartbeatEditSession("s1", stop.signal);
+    await Promise.resolve();
+    stop.abort();
+
+    await expect(beat).rejects.toThrow();
+    expect(`${asked?.method} ${new URL(asked?.url ?? "").pathname}`).toBe("POST /api/v0/edit-sessions/s1/heartbeat");
+    expect(asked?.signal.aborted).toBe(true);
+  });
+});
+
 describe("EditLeaveService.endOnLeave", () => {
   test("sends DELETE of the session before it returns, with the token and keepalive, and waits for no answer", () => {
     const asked: Request[] = [];

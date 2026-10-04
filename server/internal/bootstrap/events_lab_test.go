@@ -17,11 +17,13 @@ import (
 )
 
 // Who receives lab's events (M5 design 4.10): a pages event of each seeded
-// notebook, published as the page module's observer publishes one,
-// reaches the stream of each notebook column that reads the notebook (GET
-// answers 200), and no other, through the whole program. An access event
-// of every column, published last in the same transaction, ends each
-// stream: what came before it is all the stream received.
+// notebook, published as the page module's observer publishes one, and an
+// event of a type a later M adds (M5 design 8), published as another
+// module will publish M6's links, reach the stream of each notebook column
+// that reads the notebook (GET answers 200), and no other, through the
+// whole program. An access event of every column, published last in the
+// same transaction, ends each stream: what came before it is all the
+// stream received.
 func TestLabsEventsReachTheColumnsThatReadThem(t *testing.T) {
 	ctx := context.Background()
 	d := prepareMatrix(t)
@@ -55,6 +57,11 @@ func TestLabsEventsReachTheColumnsThatReadThem(t *testing.T) {
 				Changes: []events.PageChange{{PageID: uuid.New(), Tree: true, Revision: 1}}}); err != nil {
 				return err
 			}
+			links := events.Event{Type: "links", WorkspaceID: s.workspaces[n.slug], NotebookID: s.notebook(n.name),
+				Data: json.RawMessage(`{"page_id":"` + uuid.New().String() + `"}`)}
+			if err := publisher.Publish(ctx, links); err != nil {
+				return err
+			}
 		}
 		return publisher.AccessChanged(ctx, events.AccessChanged{WorkspaceID: s.workspaces["lab"], UserIDs: users})
 	})
@@ -63,22 +70,24 @@ func TestLabsEventsReachTheColumnsThatReadThem(t *testing.T) {
 	}
 
 	for _, c := range notebookColumns() {
-		got := map[uuid.UUID]bool{}
+		got := map[string]map[uuid.UUID]bool{"pages": {}, "links": {}}
 		f := streams[c].next(t)
-		for ; f.event == "pages"; f = streams[c].next(t) {
+		for ; f.event == "pages" || f.event == "links"; f = streams[c].next(t) {
 			var p struct {
 				NotebookID uuid.UUID `json:"notebook_id"`
 			}
 			if err := json.Unmarshal([]byte(f.data), &p); err != nil {
-				t.Fatalf("%s: pages %s: %v", c, f.data, err)
+				t.Fatalf("%s: %s %s: %v", c, f.event, f.data, err)
 			}
-			got[p.NotebookID] = true
+			got[f.event][p.NotebookID] = true
 		}
 		if f.event != "reset" || f.field(t, "reason") != "access" {
 			t.Fatalf("%s: %s %s after the pages events, want the reset of the access event", c, f.event, f.data)
 		}
-		if !maps.Equal(got, read[c]) {
-			t.Errorf("%s: the stream received the events of %v, reads %v; want the same notebooks", c, got, read[c])
+		for event, notebooks := range got {
+			if !maps.Equal(notebooks, read[c]) {
+				t.Errorf("%s: the stream received the %s events of %v, reads %v; want the same notebooks", c, event, notebooks, read[c])
+			}
 		}
 	}
 }

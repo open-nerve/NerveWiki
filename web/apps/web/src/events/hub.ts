@@ -238,9 +238,10 @@ export class EventHub {
         this.#emit({ type: "connected" });
         break;
       case "pages":
-      case "lock": {
-        const event: StreamEvent =
-          frame.type === "pages" ? { type: "pages", data: frame.data } : { type: "lock", data: frame.data };
+      case "lock":
+      case "other": {
+        // A type the stream does not know is a later M's: its handler is the app's, by type.
+        const event: StreamEvent = frame;
         channel.post({ kind: "event", event });
         this.#emit(event);
         break;
@@ -249,7 +250,6 @@ export class EventHub {
         channel.post({ kind: "beat", heartbeatSeconds: this.#heartbeatSeconds });
         break;
       case "reset":
-      case "other":
         break;
     }
   }

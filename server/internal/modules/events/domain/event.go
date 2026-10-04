@@ -4,12 +4,28 @@ package domain
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
+	"strings"
 	"uuid"
 )
 
 // Type is an event's type. A stream passes on a type it does not know:
 // another M adds its own (M5 design 8).
 type Type string
+
+// ErrNoType is a type no event can have: empty, with a colon or a line
+// break, which a frame's event field cannot hold, or one of the stream's
+// own frames, hello and reset.
+var ErrNoType = errors.New("events: no event type")
+
+// CheckType returns ErrNoType for a type no event can have.
+func CheckType(t Type) error {
+	if t == "" || t == "hello" || t == "reset" || strings.ContainsAny(string(t), "\r\n:") {
+		return fmt.Errorf("%w: %q", ErrNoType, t)
+	}
+	return nil
+}
 
 // The types of M5.
 const (

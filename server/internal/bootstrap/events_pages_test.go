@@ -153,13 +153,16 @@ func TestEverySessionChangeReachesTheStreams(t *testing.T) {
 	tm.send(t, request("alice", http.MethodDelete, "/api/v0/edit-sessions/"+second, ""), http.StatusNoContent)
 	tm.quiet(t, nb, marker, s)
 
+	// expire has the session expired a minute ago, whatever the clocks of the server and the database.
+	expire := func(id string) {
+		if _, err := tm.pool.Exec(context.Background(),
+			"UPDATE edit_sessions SET created_at = created_at - interval '2 minutes', expires_at = created_at - interval '1 minute' WHERE id = $1", id); err != nil {
+			t.Fatal(err)
+		}
+	}
 	third := tm.openSession(t, "bob", a)
 	s.lock(t, a, third)
-	// Expired a minute ago, whatever the clocks of the server and the database.
-	if _, err := tm.pool.Exec(context.Background(),
-		"UPDATE edit_sessions SET created_at = created_at - interval '2 minutes', expires_at = created_at - interval '1 minute' WHERE id = $1", third); err != nil {
-		t.Fatal(err)
-	}
+	expire(third)
 	fourth := tm.openSession(t, "alice", a)
 	s.lock(t, a, fourth)
 	tm.quiet(t, nb, marker, s)
@@ -180,6 +183,15 @@ func TestEverySessionChangeReachesTheStreams(t *testing.T) {
 	s.lock(t, under, sixth)
 	tm.send(t, nodeDeletion("alice", top), http.StatusNoContent)
 	s.lock(t, under, sixth)
+	s.tree(t, nb, map[string]int{})
+
+	// An expired session ends with its page's deletion untold: the stream has the tree alone.
+	lapsed := tm.createPage(t, "alice", nb, "", "Lapsed")
+	s.tree(t, nb, map[string]int{lapsed: 1})
+	seventh := tm.openSession(t, "bob", lapsed)
+	s.lock(t, lapsed, seventh)
+	expire(seventh)
+	tm.send(t, nodeDeletion("alice", lapsed), http.StatusNoContent)
 	s.tree(t, nb, map[string]int{})
 	tm.quiet(t, nb, marker, s)
 }

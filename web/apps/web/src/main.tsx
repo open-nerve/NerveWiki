@@ -8,6 +8,7 @@ import { routes } from "./app/routes";
 import { SessionRoot } from "./app/session-root";
 import { EditorExtensions, editorExtensions } from "./editor/registry";
 import { browserEventDeps } from "./events/deps";
+import { EventHandlers, eventHandlers } from "./events/handlers";
 import { Enhancements, readingEnhancements } from "./reading/enhancement";
 import { browserSessionDeps, Session, type SessionDeps } from "./session/session";
 import { PreferencesStore } from "./stores/preferences.store";
@@ -33,7 +34,9 @@ createRoot(root).render(
   <StrictMode>
     <Enhancements value={readingEnhancements}>
       <EditorExtensions value={editorExtensions}>
-        <SessionRoot app={new AppStores(preferences, session, events)} router={createBrowserRouter(routes)} />
+        <EventHandlers value={eventHandlers}>
+          <SessionRoot app={new AppStores(preferences, session, events)} router={createBrowserRouter(routes)} />
+        </EventHandlers>
       </EditorExtensions>
     </Enhancements>
   </StrictMode>

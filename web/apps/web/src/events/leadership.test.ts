@@ -126,6 +126,25 @@ describe.each(["Web Locks", "the lease"] as const)("the election with %s", (kind
   });
 });
 
+describe("the election with Web Locks", () => {
+  test("its rounds take their listeners off the tab's signal: however many went by, none is left behind", async () => {
+    const stopped = new AbortController();
+    const adds = vi.spyOn(stopped.signal, "addEventListener");
+    const removes = vi.spyOn(stopped.signal, "removeEventListener");
+    let leads = 0;
+    void webLockLeadership(new FakeLocks(), NAME).run(async () => {
+      leads += 1;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }, stopped.signal);
+    await settle(200);
+
+    expect(leads).toBeGreaterThan(10);
+    // The run's own, and the round's under way.
+    expect(adds.mock.calls.length - removes.mock.calls.length).toBeLessThanOrEqual(2);
+    stopped.abort();
+  });
+});
+
 describe("the election with the lease", () => {
   test("of tabs that take a free lease at once, only one holds", async () => {
     const tab = browserOf("the lease");

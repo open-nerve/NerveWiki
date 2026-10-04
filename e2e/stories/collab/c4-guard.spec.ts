@@ -1,8 +1,9 @@
-import { expectAliveSessions } from "../../fixtures/assert/collab";
+import { aliveSessionsOf, expectAliveSessions } from "../../fixtures/assert/collab";
 import { expectSessionGone, sessionsOf } from "../../fixtures/assert/page";
 import { displayNameOf, emailFor } from "../../fixtures/auth";
 import { failedToLoad } from "../../fixtures/browser";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
+import { notebookHeading } from "../../fixtures/notebook-pages";
 import { createNotebook, deleteNotebook } from "../../fixtures/notebooks";
 import {
   createPage,
@@ -19,7 +20,9 @@ import {
   editorContent,
   holdContentWrites,
   lostBanner,
+  movePageWith,
   pageHeading,
+  renamePageWith,
   startEditing,
   wikiPagePath,
 } from "../../fixtures/wiki-pages";
@@ -34,7 +37,7 @@ test("C4 (API): while A edits Notes, a write without A's session, B's or A's own
   api,
   db,
 }, testInfo) => {
-  const { pat: a, workspace } = await newTeam(api, testInfo);
+  const { adminEmail, adminId, pat: a, workspace } = await newTeam(api, testInfo);
   const b = await joinAs(api, a, workspace.slug, emailFor(testInfo, "b"), "member");
   const notebook = await createNotebook(api, a, workspace.slug, "Plans", "editor");
   const parent = await createPage(api, a, notebook.id, "Parent");
@@ -46,11 +49,12 @@ test("C4 (API): while A edits Notes, a write without A's session, B's or A's own
     await putContent(api, a, notes.id, { content: "Mine\n", base_revision: 1 }),
   ];
   const deletions = [await deleteNode(api, b, notes.id), await deleteNode(api, b, parent.id)];
-  expect([...writes, ...deletions].map((r) => [r.response.status, r.error?.code, r.error?.lock?.page_id])).toEqual([
-    [409, "page.locked", notes.id],
-    [409, "page.locked", notes.id],
-    [409, "page.locked", notes.id],
-    [409, "page.locked", notes.id],
+  const lock = { page_id: notes.id, user_id: adminId, display_name: displayNameOf(adminEmail) };
+  expect([...writes, ...deletions].map((r) => [r.response.status, r.error?.code, r.error?.lock])).toEqual([
+    [409, "page.locked", lock],
+    [409, "page.locked", lock],
+    [409, "page.locked", lock],
+    [409, "page.locked", lock],
   ]);
   expect(await readContent(api, a, notes.id)).toMatchObject({ content: "Held\n", revision: 1 });
 
@@ -69,10 +73,11 @@ test("C4 (API): while A edits Notes, a write without A's session, B's or A's own
   expect(await sessionsOf(db, other.id)).toEqual([]);
 });
 
-test("C4 (page): while A edits Linux, B's deletion of its parent is refused, the dialog naming A and Linux; A deleting Linux in another tab keeps the editor and its unsaved text, saying the page is gone, until A leaves it", async ({
+test("C4 (page): while A edits Linux, B's deletion of its parent is refused, the dialog naming A and Linux, A's session alive; B renames and moves it, A's editor staying; A deleting it in another tab keeps the editor and its unsaved text, saying the page is gone, until A leaves it, its session gone", async ({
   anotherPage,
   anotherTab,
   api,
+  db,
   pageWatch,
   signedInPage,
 }, testInfo) => {
@@ -91,6 +96,7 @@ test("C4 (page): while A edits Linux, B's deletion of its parent is refused, the
   await page.keyboard.press("ControlOrMeta+End");
   await page.keyboard.type("Unsaved");
   await held.sent();
+  const [mine] = await aliveSessionsOf(db, linux.id);
 
   await b.goto(wikiPagePath(workspace.slug, notebook.id, guide.id));
   await expect(pageHeading(b, "Guide")).toBeVisible();
@@ -100,22 +106,33 @@ test("C4 (page): while A edits Linux, B's deletion of its parent is refused, the
   await expect(dialog.getByRole("alert")).toHaveText(`${displayNameOf(adminEmail)} is editing “Linux”.`);
   watchOf(b).expectConsole({ errors: [failedToLoad(409)] });
   await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expectAliveSessions(db, linux.id, [mine ?? ""]);
+
+  // A rename and a move of what A edits pass (M5 design 4.4): A's editor stays, its heading following.
+  await b.goto(linuxPath);
+  await expect(pageHeading(b, "Linux")).toBeVisible();
+  expect((await renamePageWith(b, "Plans", linux.id, "Linux", "Kernel")).status()).toBe(200);
+  expect((await movePageWith(b, "Plans", linux.id, "Kernel", "The notebook's top level", "Last")).status()).toBe(200);
+  await expect(pageHeading(page, "Kernel")).toBeVisible();
+  await expect(editorContent(page)).toContainText("Drafted.Unsaved");
+  await expectAliveSessions(db, linux.id, [mine ?? ""]);
 
   // A's own edit does not refuse A's deletion (M5 design 4.4).
   const tab = await anotherTab(page);
   await tab.goto(linuxPath);
-  await expect(pageHeading(tab, "Linux")).toBeVisible();
-  await choosePageAction(tab, "Plans", "Linux", "Delete");
+  await expect(pageHeading(tab, "Kernel")).toBeVisible();
+  await choosePageAction(tab, "Plans", "Kernel", "Delete");
   await tab
-    .getByRole("alertdialog", { name: "Delete Linux?" })
+    .getByRole("alertdialog", { name: "Delete Kernel?" })
     .getByRole("button", { name: "Delete", exact: true })
     .click();
-  await expect(pageHeading(tab, "Guide")).toBeVisible();
+  await expect(notebookHeading(tab, "Plans")).toBeVisible();
 
   await expect(lostBanner(page)).toContainText("This page no longer exists: this editor saves no more.");
   await expect(lostBanner(page)).toContainText("Your changes here are not saved: copy them before you leave.");
-  await expect(pageHeading(page, "Linux")).toBeVisible();
+  await expect(pageHeading(page, "Kernel")).toBeVisible();
   await expect(editorContent(page)).toContainText("Drafted.Unsaved");
+  await expectSessionGone(db, mine ?? "");
   await lostBanner(page).getByRole("button", { name: "Back to reading", exact: true }).click();
   await page
     .getByRole("alertdialog", { name: "Leave without saving?" })
@@ -126,4 +143,42 @@ test("C4 (page): while A edits Linux, B's deletion of its parent is refused, the
   expect((await held.release()).map((answer) => answer.status())).toEqual([404]);
   // The session's beat on the event, the opening it tried again, and the write held: all not found.
   pageWatch.expectConsole({ errors: [failedToLoad(404), failedToLoad(404), failedToLoad(404)] });
+});
+
+test("C4 (page, notebook): while A edits Notes, unsaved, the notebook's deletion passes: A's editor keeps its text, saying the page is gone, until A leaves it; the session is gone", async ({
+  api,
+  db,
+  pageWatch,
+  signedInPage,
+}, testInfo) => {
+  const { pat: a, tokens, workspace } = await newOnboardedTeam(api, testInfo);
+  const notebook = await createNotebook(api, a, workspace.slug, "Plans");
+  const notes = await createPage(api, a, notebook.id, "Notes", null, "Drafted.\n");
+  const page = await signedInPage(tokens);
+  await page.goto(wikiPagePath(workspace.slug, notebook.id, notes.id));
+  await startEditing(page);
+  const held = await holdContentWrites(page, notes.id);
+  await page.keyboard.press("ControlOrMeta+End");
+  await page.keyboard.type("Unsaved");
+  await held.sent();
+  const [mine] = await aliveSessionsOf(db, notes.id);
+
+  expect((await deleteNotebook(api, a, notebook.id)).response.status).toBe(204);
+
+  await expect(lostBanner(page)).toContainText("This page no longer exists: this editor saves no more.");
+  await expect(lostBanner(page)).toContainText("Your changes here are not saved: copy them before you leave.");
+  await expect(pageHeading(page, "Notes")).toBeVisible();
+  await expect(editorContent(page)).toContainText("Drafted.Unsaved");
+  expect(await sessionsOf(db, notes.id)).toEqual([]);
+  await expectSessionGone(db, mine ?? "");
+  await lostBanner(page).getByRole("button", { name: "Back to reading", exact: true }).click();
+  await page
+    .getByRole("alertdialog", { name: "Leave without saving?" })
+    .getByRole("button", { name: "Leave", exact: true })
+    .click();
+  await expect(pageHeading(page, "Page not found")).toBeVisible();
+  expect((await held.release()).map((answer) => answer.status())).toEqual([404]);
+  // The tree read again on the lock's event and on the connection after the stream's reset, the session's beat,
+  // the opening tried again, and the write held: all not found.
+  pageWatch.expectConsole({ errors: Array.from({ length: 5 }, () => failedToLoad(404)) });
 });

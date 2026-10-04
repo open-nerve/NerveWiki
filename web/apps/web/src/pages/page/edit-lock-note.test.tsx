@@ -40,7 +40,7 @@ test("a page no one edits says nothing", async () => {
   expect(screen.queryByRole("status")).toBeNull();
 });
 
-test("an admin releases the lock once confirmed, and the lock is read again", async () => {
+test("an admin releases the lock once confirmed, and the lock is read again, the focus on Edit", async () => {
   const user = userEvent.setup();
   const server = await shown(bob);
 
@@ -51,6 +51,7 @@ test("an admin releases the lock once confirmed, and the lock is read again", as
 
   await waitFor(() => expect(screen.queryByRole("status")).toBeNull());
   expect(server.sent).toContain("RELEASE Guide");
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "Edit" })));
 });
 
 test("a release refused stays in the dialog with the reason", async () => {
