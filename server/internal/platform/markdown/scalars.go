@@ -119,8 +119,8 @@ func lineBreak(b []byte) int {
 // spaces, line breaks and comments after them too, the scalar maybe on a
 // later line. An anchor ends at a character other than a letter, a digit,
 // '_' or '-', as in the YAML library; one that a character other than a
-// space or a line break ends is refused, as the code cannot tell where
-// what follows it starts.
+// space, a tab or a line break ends is refused, as the code cannot tell
+// where what follows it starts.
 func pastProperties(src []byte, at int) (int, bool) {
 	for at < len(src) && (src[at] == '&' || src[at] == '!') {
 		anchor := src[at] == '&'

@@ -221,21 +221,36 @@ async function pageState(page: Page, watch: PageWatch): Promise<string | undefin
   ].join("\n");
 }
 
+/** PageStates gathers the states of a test's pages that failed: see pageStatesOf. */
+export interface PageStates {
+  /** add attaches each open page's state, named, as its fixture ends: the page is still open. */
+  add(pages: [string, Page, PageWatch][]): Promise<void>;
+  /** fail fails the teardown once with every state added, if the test failed or timed out. */
+  fail(): void;
+}
+
 /**
- * reportPageStates attaches to a test that failed the state of each of its pages, named, and fails the
- * fixture's teardown with them too: CI's annotations carry a failure's errors, not its attachments, and the
- * trace and the job's log are not public. A test that passed against its expectation is not touched.
+ * pageStatesOf is the page states of the test of testInfo. A failure's state goes in an error as well as an
+ * attachment, one for the test: CI's annotations carry a failure's errors, not its attachments, and keep only
+ * a few of them; the trace and the job's log are not public. A test that ended as expected only has them
+ * attached.
  */
-export async function reportPageStates(pages: [string, Page, PageWatch][], testInfo: TestInfo): Promise<void> {
-  const states = (
-    await Promise.all(pages.map(async ([name, page, watch]) => [name, await pageState(page, watch)] as const))
-  ).filter((entry): entry is readonly [string, string] => entry[1] !== undefined);
-  await Promise.all(
-    states.map(([name, state]) => testInfo.attach(`page state: ${name}`, { body: state, contentType: "text/plain" }))
-  );
-  if (states.length > 0 && (testInfo.status === "failed" || testInfo.status === "timedOut")) {
-    throw new Error(
-      `What the pages showed last:\n\n${states.map(([name, state]) => `${name}\n${state}`).join("\n\n")}`
-    );
-  }
+export function pageStatesOf(testInfo: TestInfo): PageStates {
+  const states: string[] = [];
+  return {
+    async add(pages) {
+      const named = (
+        await Promise.all(pages.map(async ([name, page, watch]) => [name, await pageState(page, watch)] as const))
+      ).filter((entry): entry is readonly [string, string] => entry[1] !== undefined);
+      await Promise.all(
+        named.map(([name, state]) => testInfo.attach(`page state: ${name}`, { body: state, contentType: "text/plain" }))
+      );
+      states.push(...named.map(([name, state]) => `${name}\n${state}`));
+    },
+    fail() {
+      if (states.length > 0 && (testInfo.status === "failed" || testInfo.status === "timedOut")) {
+        throw new Error(`What the pages showed last:\n\n${states.join("\n\n")}`);
+      }
+    },
+  };
 }
