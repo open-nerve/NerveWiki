@@ -88,6 +88,11 @@ type ReleaseEditLockUseCase interface {
 	Execute(ctx context.Context, id uuid.UUID, client domain.Client) error
 }
 
+// ToggleTaskUseCase is app.ToggleTask.
+type ToggleTaskUseCase interface {
+	Execute(ctx context.Context, id uuid.UUID, p app.TaskToggle, client domain.Client) (app.PageView, error)
+}
+
 // UseCases are the use cases behind the module's operations.
 type UseCases struct {
 	ListNodes       ListNodesUseCase
@@ -104,6 +109,7 @@ type UseCases struct {
 	EndSession      EndEditSessionUseCase
 	GetEditLock     GetEditLockUseCase
 	ReleaseEditLock ReleaseEditLockUseCase
+	ToggleTask      ToggleTaskUseCase
 }
 
 // Register mounts the module's routes on router, the root router from
@@ -296,6 +302,20 @@ func (h handler) ReleaseEditLock(ctx context.Context, req gen.ReleaseEditLockReq
 		return nil, err
 	}
 	return gen.ReleaseEditLock204Response{}, nil
+}
+
+// ToggleTask serves POST /api/v0/pages/{page_id}/toggle-task.
+func (h handler) ToggleTask(ctx context.Context, req gen.ToggleTaskRequestObject) (gen.ToggleTaskResponseObject, error) {
+	client, err := clientOf(ctx)
+	if err != nil {
+		return nil, err
+	}
+	p := app.TaskToggle{Base: req.Body.BaseRevision, Offset: req.Body.Offset, Checked: req.Body.Checked}
+	v, err := h.uc.ToggleTask.Execute(ctx, req.PageID, p, client)
+	if err != nil {
+		return nil, err
+	}
+	return gen.ToggleTask200JSONResponse(pageOf(v)), nil
 }
 
 // editLockOf is the lock's answer: both members null while no one holds

@@ -296,11 +296,21 @@ type Markdown interface {
 	// Render is the HTML of the parse's reading view for page; parsed is
 	// what Parse returned.
 	Render(ctx context.Context, parsed Parsed, page PageRef) (string, error)
+	// Tasks are the parse's task items in order (M5/P6 design 3.3); parsed
+	// is what Parse returned.
+	Tasks(parsed Parsed) []Task
 }
 
 // Parsed is a parse of a page's content. The use cases do not look into it:
-// they hand it back to Render.
+// they hand it back to Render and Tasks.
 type Parsed any
+
+// Task is a task item of a page's content: Offset is the byte position of
+// the character between its brackets.
+type Task struct {
+	Offset  int
+	Checked bool
+}
 
 // PageRef is the page a Render is for: an extension fetches its data for it.
 type PageRef struct {

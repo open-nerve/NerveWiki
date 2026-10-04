@@ -64,6 +64,21 @@ func Unlocked(userID uuid.UUID, displayName string) error {
 	return &e
 }
 
+// NotATask is 422 on offset: no task item of the content has its character
+// there (M5/P6 design 3.3).
+func NotATask() error {
+	return shared.Invalid(shared.FieldError{Field: "offset", Code: shared.FieldOutOfRange,
+		Message: "is not a task item's position in the content at base_revision"})
+}
+
+// TaskWouldGo is 422 on offset: ticking or clearing the task item there
+// would leave none, as ticking "- [ ]: /u" makes a link reference
+// definition (M5/P6 design 3.3).
+func TaskWouldGo() error {
+	return shared.Invalid(shared.FieldError{Field: "offset", Code: shared.FieldNotAllowed,
+		Message: "ticking or clearing the task item there would leave none"})
+}
+
 // NotAllowed is 422 on field: a parent or a sibling the write names is no
 // node of the notebook, or not where the write says.
 func NotAllowed(field, message string) error {

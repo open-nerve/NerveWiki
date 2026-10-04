@@ -132,10 +132,19 @@ func matrixPages() []matrixPage {
 		pages = append(pages, matrixPage{draftOf(c), notebookOf(c), ""})
 	}
 	for _, nb := range sessionNotebooks() {
-		pages = append(pages, matrixPage{othersDraftIn(nb), nb, ""})
+		pages = append(pages, matrixPage{othersDraftIn(nb), nb, ""}, matrixPage{tasksIn(nb), nb, ""})
 	}
 	return pages
 }
+
+// tasksIn is a notebook's page of task items, its content matrixTasks;
+// every other seeded page's is empty.
+func tasksIn(notebook string) string {
+	return notebook + "-tasks"
+}
+
+// matrixTasks is the content of the pages of task items: one open at 3.
+const matrixTasks = "- [ ] a\n"
 
 // draftOf is the page of a notebook column's own edit session.
 func draftOf(c caller) string {
@@ -411,18 +420,20 @@ func (d matrixData) config(t *testing.T, url string, change func(*config.Config)
 	return cfg
 }
 
-// seededPageHistory writes, beside the page node $1 seeded by SQL, what
-// its creation through the API would: a changeset of its own, its item and
-// its first version, at the node's time and in its state, so that the
-// pages' invariant (checkPages) holds on the seeded data.
-const seededPageHistory = `WITH n AS (SELECT * FROM nodes WHERE id = $1),
+// seededPageHistory writes, beside the page node $1 and its content
+// seeded by SQL, what its creation through the API would: a changeset of
+// its own, its item and its first version, at the node's time and in its
+// state, so that the pages' invariant (checkPages) holds on the seeded
+// data.
+const seededPageHistory = `WITH n AS (SELECT * FROM nodes WHERE id = $1), c AS (SELECT * FROM page_contents WHERE node_id = $1),
 	s AS (INSERT INTO changesets (id, notebook_id, kind, client, created_by_id, created_at, updated_at, deleted_at)
 		SELECT gen_random_uuid(), notebook_id, 'edit', 'web', created_by_id, created_at, created_at, deleted_at FROM n RETURNING id),
 	i AS (INSERT INTO changeset_items (id, changeset_id, node_id, after_parent_id, after_name, after_sort_order,
 			created_at, updated_at, deleted_at)
 		SELECT gen_random_uuid(), s.id, n.id, n.parent_id, n.name, n.sort_order, n.created_at, n.created_at, n.deleted_at FROM n, s)
 	INSERT INTO page_revisions (id, changeset_id, node_id, revision, content, content_hash, byte_size, created_at, updated_at, deleted_at)
-	SELECT gen_random_uuid(), s.id, n.id, 1, '', sha256(''), 0, n.created_at, n.created_at, n.deleted_at FROM n, s`
+	SELECT gen_random_uuid(), s.id, n.id, 1, c.content, c.content_hash, c.byte_size, n.created_at, n.created_at, n.deleted_at
+	FROM n, s, c`
 
 // prepareMatrix fills a database for the matrix: an account for each
 // column, registered through the API for its token; the workspaces,
@@ -496,8 +507,13 @@ func prepareMatrix(t *testing.T) matrixData {
 			exec("INSERT INTO nodes (id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id, "+
 				"created_at, updated_at) SELECT $1, n.id, $3, 'page', $4, $4, $6, n.created_by_id, n.created_by_id, $5, $5 "+
 				"FROM notebooks n WHERE n.id = $2", d.seeded.pages[p.name], d.seeded.notebooks[p.notebook], parent, p.name, now, i)
+			content := ""
+			if p.name == tasksIn(p.notebook) {
+				content = matrixTasks
+			}
 			exec("INSERT INTO page_contents (node_id, content, revision, content_hash, byte_size, updated_by_id, updated_at) "+
-				"SELECT id, '', 1, sha256(''), 0, created_by_id, $2 FROM nodes WHERE id = $1", d.seeded.pages[p.name], now)
+				"SELECT id, $3, 1, sha256(convert_to($3, 'UTF8')), octet_length($3), created_by_id, $2 FROM nodes WHERE id = $1",
+				d.seeded.pages[p.name], now, content)
 			exec(seededPageHistory, d.seeded.pages[p.name])
 		}
 		for _, e := range matrixSessions() {

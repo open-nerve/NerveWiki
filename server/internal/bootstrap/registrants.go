@@ -14,6 +14,7 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/modules/workspace"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/jobs"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown/tasks"
 )
 
 // deactivationRegistrants are the modules that take part in an account's
@@ -244,11 +245,11 @@ func pageRegistrants(pool *pgxpool.Pool) pageExtensions {
 	}
 }
 
-// markdownExtensions are the extensions of the one Markdown: none in M4;
-// M5's task items take their byte positions, M6's dialect its links, tags
+// markdownExtensions are the extensions of the one Markdown: M5's task
+// items, with their byte positions; M6's dialect will take its links, tags
 // and embeds, M7's attachments their inline rendering.
 func markdownExtensions() []markdown.Extension {
-	return nil
+	return []markdown.Extension{tasks.Extension()}
 }
 
 // purgers are the modules' purgers of the soft-deleted rows, leaf to root

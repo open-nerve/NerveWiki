@@ -9,6 +9,7 @@ const context: ReadingContext = {
   revision: 1,
   role: "editor",
   reload: () => undefined,
+  report: () => undefined,
 };
 
 const throws: Enhancement = () => {

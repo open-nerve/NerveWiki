@@ -127,6 +127,7 @@ func New(d Deps) *Module {
 		EndSession:      app.NewEndEditSession(d.Tx, store, d.Notebooks, d.Clock, d.EditSessionSubscribers, d.Logger),
 		GetEditLock:     app.NewGetEditLock(d.Notebooks, store, store, d.Names, d.Authorizer, d.Clock),
 		ReleaseEditLock: app.NewReleaseEditLock(writer, store, d.Logger),
+		ToggleTask:      app.NewToggleTask(writer, store, parser, md, d.Logger),
 	}, jobs: []jobs.Job{
 		riveradapter.CleanupJob(app.NewCleanupEditSessions(store, d.Clock, d.Logger), d.EditSessionCleanupInterval),
 	}}

@@ -1,9 +1,9 @@
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 
 import { ApiError } from "../services/api";
 import type { NodeMove, PageView, TreeNode } from "../services/page.service";
 import { guide, install, linux, notes, pageNode } from "../test/page-server";
-import { PageTreeStore } from "./page-tree.store";
+import { PageTreeStore, toggleLimit } from "./page-tree.store";
 
 /** A promise the test settles. */
 function held<T>() {
@@ -53,6 +53,14 @@ function store(nodes: TreeNode[] = [guide, install, linux, notes]) {
     deleteNode: (id: string) => answer(`delete ${id}`, () => undefined),
     lock: async () => ({ holder: null, expires_in: null }),
     releaseLock: async () => undefined,
+    toggleTask: async () => ({
+      ...guide,
+      ancestors: [],
+      revision: 2,
+      byte_size: 0,
+      content_updated_at: "",
+      content_updated_by: "",
+    }),
   };
   return { pages: new PageTreeStore(service, "plans"), sent, state };
 }
@@ -263,4 +271,56 @@ test("a tree read the same as before is kept as it was; one changed replaces it"
   await pages.load();
   expect(pages.nodes).not.toBe(before);
   expect(pages.byId(notes.id)?.name).toBe("Notes 2");
+});
+
+test("one toggle of a task item is out per page at a time, the view read after it included; another page's runs beside it", async () => {
+  const { pages } = store();
+  const ran: string[] = [];
+  let finish: (() => void) | undefined;
+  const out = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+
+  const first = pages.oneToggle(guide.id, async () => {
+    ran.push("first");
+    await out;
+  });
+  const meanwhile = await pages.oneToggle(guide.id, async () => {
+    ran.push("meanwhile");
+  });
+  const beside = await pages.oneToggle(install.id, async () => {
+    ran.push("beside");
+  });
+  finish?.();
+
+  expect([await first, meanwhile, beside]).toEqual([true, false, true]);
+  const refused = pages.oneToggle(guide.id, async () => {
+    ran.push("after");
+    throw new Error("refused");
+  });
+  await expect(refused).rejects.toThrow("refused");
+  expect(await pages.oneToggle(guide.id, async () => void ran.push("again"))).toBe(true);
+  expect(ran).toEqual(["first", "beside", "after", "again"]);
+});
+
+test("a toggle out longer than toggleLimit holds the page's others back no longer, and its end leaves the next one's hold", async () => {
+  vi.useFakeTimers();
+  try {
+    const { pages } = store();
+    let finish: (() => void) | undefined;
+    const lost = pages.oneToggle(guide.id, () => new Promise<void>((resolve) => (finish = resolve)));
+    expect(await pages.oneToggle(guide.id, async () => undefined)).toBe(false);
+
+    vi.advanceTimersByTime(toggleLimit);
+    let next: (() => void) | undefined;
+    const later = pages.oneToggle(guide.id, () => new Promise<void>((resolve) => (next = resolve)));
+    finish?.();
+    expect(await lost).toBe(true);
+
+    expect(await pages.oneToggle(guide.id, async () => undefined)).toBe(false);
+    next?.();
+    expect(await later).toBe(true);
+  } finally {
+    vi.useRealTimers();
+  }
 });

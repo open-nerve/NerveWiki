@@ -13,6 +13,7 @@ import { dialogOpen, isMod, onMac } from "../../app/shortcuts";
 import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
 import { useT } from "../../i18n/i18n";
+import { ApiError } from "../../services/api";
 import type { Notebook } from "../../services/notebook.service";
 import type { EditLock, TreeNode } from "../../services/page.service";
 import { usePageTree, useStore } from "../../stores/context";
@@ -147,6 +148,25 @@ const PageShell = observer(function PageShell({ notebook, page }: { notebook: No
     }
   }
 
+  // A task item's toggle refused (M5/P6 design 3.5): page.locked as Edit's refusal is, the note reading who holds
+  // the lock and taking the focus from the checkbox, unless the focus has gone elsewhere meanwhile; another refusal
+  // above the view. undefined, as a toggle starts, clears it.
+  async function toggleRefused(error: unknown): Promise<void> {
+    if (!(error instanceof ApiError && error.code === "page.locked")) {
+      setRefusal(error);
+      return;
+    }
+    const lock = await mutate<EditLock>(["edit-lock", page.id]);
+    const focused = document.activeElement;
+    if (
+      mounted() &&
+      lock?.holder &&
+      (focused === null || focused === document.body || focused.matches("input[data-task]"))
+    ) {
+      lockNote.current?.focus();
+    }
+  }
+
   // The keys of the latest render: enter reads its page.
   const keys = useRef({ enter });
   useEffect(() => {
@@ -207,7 +227,11 @@ const PageShell = observer(function PageShell({ notebook, page }: { notebook: No
           <div ref={lockNote} tabIndex={-1} className="outline-none">
             <EditLockNote notebook={notebook} page={page} editHere={writer ? () => void enter(true) : undefined} />
           </div>
-          <ReadingView notebook={notebook} page={page} />
+          <ReadingView
+            notebook={notebook}
+            page={page}
+            refused={(error) => (error === undefined ? setRefusal(undefined) : void toggleRefused(error))}
+          />
         </>
       ) : (
         <PageEdit
@@ -217,6 +241,8 @@ const PageShell = observer(function PageShell({ notebook, page }: { notebook: No
           done={(left) => {
             back.current = true;
             setIdleLeft(left.idle);
+            // A toggle's refusal that came while it edited is no longer news.
+            setRefusal(undefined);
             setEditing(undefined);
           }}
         />

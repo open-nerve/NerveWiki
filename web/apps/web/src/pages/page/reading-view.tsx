@@ -1,9 +1,12 @@
 import { observer } from "mobx-react-lite";
-import { useContext, useLayoutEffect, useRef } from "react";
+import { useContext, useEffect, useLayoutEffect, useRef } from "react";
 import useSWR from "swr";
 
+import { writesPages } from "../../app/effective-role";
 import { NotLoaded } from "../../app/not-loaded";
 import { enhance, Enhancements } from "../../reading/enhancement";
+import { taskText } from "../../reading/task-toggle";
+import { ApiError } from "../../services/api";
 import type { Notebook } from "../../services/notebook.service";
 import type { TreeNode } from "../../services/page.service";
 import { usePageTree } from "../../stores/context";
@@ -18,14 +21,38 @@ import { useWorkspace } from "../workspace/workspace-layout";
  *
  * Once the HTML is in, the app's enhancements run on it in their order;
  * before the HTML is replaced, and when the view goes, they are undone in
- * the reverse order (reading/enhancement.ts).
+ * the reverse order (reading/enhancement.ts). A writer's tick task items
+ * through it, one of the page's at a time (the page tree store's
+ * oneToggle), and refused tells the page what was refused, undefined as a
+ * toggle starts (M5/P6 design 3.5). A task item's checkbox that had the
+ * focus as the HTML is replaced has it back in the new HTML, without a
+ * scroll, while the box at its position is the same item's (its text, and
+ * its state unless the view's own toggle changed it): a tick does not move
+ * it, a write that moved the items does.
  */
-export const ReadingView = observer(function ReadingView({ notebook, page }: { notebook: Notebook; page: TreeNode }) {
+export const ReadingView = observer(function ReadingView({
+  notebook,
+  page,
+  refused,
+}: {
+  notebook: Notebook;
+  page: TreeNode;
+  refused: (error: unknown) => void;
+}) {
   const { slug } = useWorkspace();
   const pages = usePageTree(notebook);
   const enhancements = useContext(Enhancements);
   const { data, error, mutate } = useSWR(["page-view", notebook.id, page.id], () => pages.view(page.id));
   const article = useRef<HTMLElement>(null);
+  // The task item focused as the HTML was replaced: its position, its text and its state.
+  const focusedTask = useRef<{ task: string; text: string; checked: boolean } | undefined>(undefined);
+  // The position of the task item the view's own toggle has just changed, until the HTML is replaced.
+  const toggled = useRef<string | undefined>(undefined);
+  // The page's latest refused: the HTML is not replaced for a new one.
+  const latestRefused = useRef(refused);
+  useEffect(() => {
+    latestRefused.current = refused;
+  });
   const html = data?.html;
   const revision = data?.revision;
   const { id: notebookId, role } = notebook;
@@ -35,15 +62,52 @@ export const ReadingView = observer(function ReadingView({ notebook, page }: { n
       return undefined;
     }
     container.innerHTML = html;
-    return enhance(enhancements, container, {
+    const undo = enhance(enhancements, container, {
       workspace: slug,
       notebook: notebookId,
       page: page.id,
       revision,
       role,
       reload: () => void mutate(),
+      toggleTask: writesPages(role)
+        ? async (offset, checked) => {
+            await pages.oneToggle(page.id, async () => {
+              latestRefused.current(undefined);
+              try {
+                await pages.toggleTask(page.id, { base_revision: revision, offset, checked });
+              } catch (failure) {
+                if (failure instanceof ApiError && failure.code === "page.revision_mismatch") {
+                  await mutate();
+                }
+                throw failure;
+              }
+              toggled.current = offset.toString();
+              await mutate();
+            });
+          }
+        : undefined,
+      report: (failure) => latestRefused.current(failure),
     });
-  }, [html, revision, enhancements, slug, notebookId, role, page.id, mutate]);
+    const focused = focusedTask.current;
+    const flipped = focused !== undefined && toggled.current === focused.task;
+    focusedTask.current = undefined;
+    toggled.current = undefined;
+    const box = focused && container.querySelector<HTMLElement>(`input[data-task="${CSS.escape(focused.task)}"]`);
+    // The same item: its text, and its state unless the view's own toggle changed it.
+    if (box && taskText(box) === focused.text && box.hasAttribute("checked") === (focused.checked !== flipped)) {
+      box.focus({ preventScroll: true });
+    }
+    return () => {
+      // Undone, a checkbox is disabled again, which HTML's focus fixup takes the focus from: Chromium at the next
+      // rendering, an engine that applies the rule at once before the new HTML is in. Which had it is read first.
+      const active = document.activeElement;
+      focusedTask.current =
+        active instanceof HTMLInputElement && active.dataset.task !== undefined && container.contains(active)
+          ? { task: active.dataset.task, text: taskText(active), checked: active.hasAttribute("checked") }
+          : undefined;
+      undo();
+    };
+  }, [html, revision, enhancements, slug, notebookId, role, page.id, mutate, pages]);
   if (data === undefined) {
     return <NotLoaded error={error} retry={() => void mutate()} />;
   }

@@ -2,8 +2,11 @@ import { makeAutoObservable, observableRef, runInAction } from "mobx";
 
 import { oneAtATime } from "../lib/one-at-a-time";
 import { ApiError } from "../services/api";
-import type { EditLock, NodeMove, PageService, PageView, TreeNode } from "../services/page.service";
+import type { EditLock, NodeMove, PageService, PageView, TaskToggle, TreeNode } from "../services/page.service";
 import { ancestorsOf, childrenOf, indexTree, subtreeOf, type TreeIndex } from "./page-tree";
+
+/** How long a toggle of a task item holds its page's others back: more than the server takes to answer. */
+export const toggleLimit = 60_000;
 
 /**
  * PageTreeStore holds one notebook's page tree for one generation (M4/P5
@@ -31,24 +34,38 @@ export class PageTreeStore {
   /** The pages this generation deleted, each with where its shell goes: the deleted subtree's parent (null: home). */
   private readonly removed = new Map<string, string | null>();
   private readonly inTurn = oneAtATime();
+  /** The pages with a toggle of a task item out, the view read again included, each with when it started. */
+  private readonly togglesOut = new Map<string, number>();
 
   constructor(
     private readonly service: Pick<
       PageService,
-      "listNodes" | "getPageView" | "createPage" | "renameNode" | "moveNode" | "deleteNode" | "lock" | "releaseLock"
+      | "listNodes"
+      | "getPageView"
+      | "createPage"
+      | "renameNode"
+      | "moveNode"
+      | "deleteNode"
+      | "lock"
+      | "releaseLock"
+      | "toggleTask"
     >,
     /** The notebook whose pages these are. */
     readonly notebookId: string
   ) {
-    makeAutoObservable<this, "service" | "changesAnswered" | "readsStarted" | "readKept" | "inTurn">(this, {
-      service: false,
-      notebookId: false,
-      nodes: observableRef,
-      changesAnswered: false,
-      readsStarted: false,
-      readKept: false,
-      inTurn: false,
-    });
+    makeAutoObservable<this, "service" | "changesAnswered" | "readsStarted" | "readKept" | "inTurn" | "togglesOut">(
+      this,
+      {
+        service: false,
+        notebookId: false,
+        nodes: observableRef,
+        changesAnswered: false,
+        readsStarted: false,
+        readKept: false,
+        inTurn: false,
+        togglesOut: false,
+      }
+    );
   }
 
   /** tree is the tree looked up, once read, without the pages this generation deleted. */
@@ -167,6 +184,35 @@ export class PageTreeStore {
   /** view reads the page id's reading view, which the store does not keep: SWR does, by page. */
   view(id: string): Promise<PageView> {
     return this.service.getPageView(id);
+  }
+
+  /** toggleTask ticks or clears a task item of the page id, which changes its view: SWR reads it again. */
+  async toggleTask(id: string, toggle: TaskToggle): Promise<void> {
+    await this.service.toggleTask(id, toggle);
+  }
+
+  /**
+   * oneToggle runs toggle, a toggle of a task item of the page id and the view read after it, unless one of the
+   * page's runs (M5/P6 design 3.5): one is out per page at a time, across the views of the page and their HTML
+   * read again, which a view's own state would not hold. One out for toggleLimit holds no longer: a request the
+   * connection lost without an answer would hold the page's toggles until the next sign-in. It answers whether
+   * toggle ran.
+   */
+  async oneToggle(id: string, toggle: () => Promise<void>): Promise<boolean> {
+    const started = this.togglesOut.get(id);
+    if (started !== undefined && Date.now() - started < toggleLimit) {
+      return false;
+    }
+    const mine = Date.now();
+    this.togglesOut.set(id, mine);
+    try {
+      await toggle();
+      return true;
+    } finally {
+      if (this.togglesOut.get(id) === mine) {
+        this.togglesOut.delete(id);
+      }
+    }
   }
 
   /** editLock reads who edits the page id, which SWR keeps by page, as it does the view (M5/P3 design 3.10). */

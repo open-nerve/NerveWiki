@@ -20,10 +20,13 @@ const (
 	// ActionReleaseEditLock ends whichever edit session holds a page's
 	// lock (M5 design 4.2).
 	ActionReleaseEditLock shared.Action = "page.release_edit_lock"
+	// ActionToggleTask ticks or clears a task item of a page's content
+	// (M5/P6): a write of its content, by the same rule.
+	ActionToggleTask shared.Action = "page.toggle_task"
 )
 
 // Actions lists the module's actions.
 func Actions() []shared.Action {
 	return []shared.Action{ActionList, ActionRead, ActionCreate, ActionRename, ActionMove, ActionDelete, ActionWrite, ActionEdit,
-		ActionReleaseEditLock}
+		ActionReleaseEditLock, ActionToggleTask}
 }

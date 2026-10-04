@@ -13,17 +13,19 @@ import (
 
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/extension"
+	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/renderer"
 	"github.com/yuin/goldmark/renderer/html"
 	"github.com/yuin/goldmark/util"
 )
 
-// hardened is the parser of this package with goldmark's renderers for its
-// nodes; original is goldmark with the same syntax as it comes. Raw HTML is
-// rendered so that the two are compared on it too.
+// hardened is the parser of this package, with goldmark's task lists (the
+// tasks extension's test compares its own with goldmark's), and goldmark's
+// renderers for its nodes; original is goldmark with the same syntax as it
+// comes. Raw HTML is rendered so that the two are compared on it too.
 func hardened() goldmark.Markdown {
 	return goldmark.New(
-		goldmark.WithParser(NewParser()),
+		goldmark.WithParser(NewParser(parser.WithInlineParsers(util.Prioritized(extension.NewTaskCheckBoxParser(), 0)))),
 		goldmark.WithRendererOptions(
 			html.WithUnsafe(),
 			renderer.WithNodeRenderers(

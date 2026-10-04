@@ -1,5 +1,6 @@
 // Checks that every fixture is well-formed and self-consistent:
-// each range points at the bytes where its target is written.
+// each range points at the bytes where its target is written,
+// each task's offset at the character between its brackets.
 // Usage: node tools/md-fixtures/check.mjs
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
@@ -57,13 +58,35 @@ function checkLink(name, src, fm, l, i) {
   if (!ok) fail(name, `${at}: bytes ${JSON.stringify(written)} do not spell target ${JSON.stringify(l.target)}`);
 }
 
+// The characters between a task's brackets: Go's \s, or x for a done one.
+const OPEN = new Set([0x20, 0x09, 0x0a, 0x0c, 0x0d]);
+const DONE = new Set([0x78, 0x58]);
+
+function checkTasks(name, src, tasks) {
+  if (!Array.isArray(tasks) || tasks.length === 0) return fail(name, "tasks must be a non-empty array, or absent");
+  tasks.forEach((t, i) => {
+    const at = `tasks[${i}]`;
+    if (Object.keys(t).toSorted().join(",") !== "checked,offset")
+      return fail(name, `${at}: fields must be offset, checked`);
+    const o = t.offset;
+    if (!Number.isInteger(o) || o < 1 || o + 1 >= src.length) return fail(name, `${at}.offset ${o}`);
+    if (src[o - 1] !== 0x5b || src[o + 1] !== 0x5d) fail(name, `${at}: offset ${o} is not between brackets`);
+    if (!(t.checked ? DONE : OPEN).has(src[o]))
+      fail(name, `${at}: byte ${src[o]} is not a ${t.checked ? "done" : "open"} task's`);
+    if (i > 0 && o <= tasks[i - 1].offset) fail(name, `${at} is out of order`);
+  });
+}
+
 function checkCase(dir, base) {
   const name = `cases/${base}`;
   const jsonPath = join(dir, `${base}.json`);
   if (!existsSync(jsonPath)) return fail(name, "missing .json");
   const src = readFileSync(join(dir, `${base}.md`));
   const exp = JSON.parse(readFileSync(jsonPath, "utf8"));
-  const keys = Object.keys(exp).toSorted().join(",");
+  const keys = Object.keys(exp)
+    .filter((k) => k !== "tasks")
+    .toSorted()
+    .join(",");
   const want =
     exp.source === "nerve-defined"
       ? "description,frontmatter,links,note,source,tags"
@@ -85,6 +108,7 @@ function checkCase(dir, base) {
   }
   if (!Array.isArray(exp.tags) || exp.tags.some((t) => typeof t !== "string" || t === "" || t.startsWith("#")))
     fail(name, "tags must be non-empty strings without #");
+  if ("tasks" in exp) checkTasks(name, src, exp.tasks);
 }
 
 function checkRename(dir, base) {

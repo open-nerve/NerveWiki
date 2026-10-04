@@ -1,9 +1,9 @@
 // Package harden assembles goldmark's parser for platform/markdown:
-// CommonMark, GFM's tables, task lists, strikethrough and autolinks, and
-// footnotes. Every part of goldmark whose cost grows faster than its input
-// is replaced or guarded here (M4/P3 design 3.4), so a parse costs about its
-// size, and so does the tree it gives: it is goldmark's, but for four
-// limits. Block quotes, list items and footnote definitions nest at most
+// CommonMark, GFM's tables, strikethrough and autolinks, and footnotes; GFM's
+// task lists are an extension's (platform/markdown/tasks). Every part of
+// goldmark whose cost grows faster than its input is replaced or guarded
+// here (M4/P3 design 3.4), so a parse costs about its size, and so does the
+// tree it gives: it is goldmark's, but for four limits. Block quotes, list items and footnote definitions nest at most
 // MaxNesting deep; an inline link's destination opens at most
 // MaxDestinationParens parentheses; a table holds at most as many cells as
 // it has bytes; and reference links repeat at most the larger of the
@@ -81,7 +81,6 @@ func blockParsers() []util.PrioritizedValue {
 // The priorities are goldmark's: a lower one is tried first.
 func inlineParsers() []util.PrioritizedValue {
 	return []util.PrioritizedValue{
-		util.Prioritized(extension.NewTaskCheckBoxParser(), 0),
 		util.Prioritized(codeSpanGuard{}, 90),
 		util.Prioritized(parser.NewCodeSpanParser(), 100),
 		util.Prioritized(footnoteRef{}, 101),

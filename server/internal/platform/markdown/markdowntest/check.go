@@ -25,7 +25,7 @@ var allowed = map[string][]string{
 	"blockquote": nil, "br": nil, "caption": nil, "cite": nil, "code": {"class"}, "dd": nil, "del": nil,
 	"details": {"open"}, "dfn": nil, "div": {"class", "role"}, "dl": nil, "dt": nil, "em": nil,
 	"figcaption": nil, "figure": nil, "h1": {"id"}, "h2": {"id"}, "h3": {"id"}, "h4": {"id"}, "h5": {"id"},
-	"h6": {"id"}, "hr": nil, "i": nil, "input": {"type", "checked", "disabled"}, "ins": nil, "kbd": nil,
+	"h6": {"id"}, "hr": nil, "i": nil, "ins": nil, "kbd": nil,
 	"li": {"id"}, "mark": nil, "ol": {"start", "reversed"}, "p": nil, "pre": nil, "q": nil, "rp": nil,
 	"rt": nil, "ruby": nil, "s": nil, "samp": nil, "small": nil, "span": {"class"}, "strong": nil,
 	"sub": nil, "summary": nil, "sup": {"id"}, "table": {"class"}, "tbody": nil,

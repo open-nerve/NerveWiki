@@ -1,0 +1,23 @@
+{
+  "description": "BOM、frontmatter 与 CRLF 之后的任务项：位置按文件的原始字节计算（含 BOM 与 frontmatter）；frontmatter 里的 `- [ ]` 不是任务项。",
+  "source": "nerve-defined",
+  "note": "GFM 的任务列表，照 goldmark 的识别（阅读视图用它）：列表项的第一个块是段落或标题、以 [ ]、[x] 或 [X] 开头（方括号里的也可以是制表符等空白，] 之后不要求空格）。Obsidian 把方括号里的任何一个字符（如 [-]、[?]）都当任务项，这里不当。任务项不影响链接和标签。",
+  "frontmatter": {
+    "valid": true,
+    "properties": {
+      "note": "- [ ] not a task"
+    }
+  },
+  "links": [],
+  "tags": [],
+  "tasks": [
+    {
+      "offset": 42,
+      "checked": false
+    },
+    {
+      "offset": 51,
+      "checked": true
+    }
+  ]
+}

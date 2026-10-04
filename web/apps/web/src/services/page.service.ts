@@ -7,18 +7,19 @@ import type {
   PageContent,
   PageContentWrite,
   PageView,
+  TaskToggle,
   TreeNode,
 } from "@nervewiki/api-client";
 
 import { unwrap } from "./api";
 
-export type { EditLock, NodeMove, PageContent, PageView, TreeNode };
+export type { EditLock, NodeMove, PageContent, PageView, TaskToggle, TreeNode };
 
 /**
  * PageService reads a notebook's page tree and a page's reading view, and
  * writes the tree: creates, renames, moves and deletes pages (M4/P5 design
  * 3.4). It reads and writes a page's content, in an edit session (M4/P6
- * design 3.6).
+ * design 3.6), and ticks its task items (M5/P6).
  */
 export class PageService {
   constructor(private readonly api: ApiClient) {}
@@ -73,6 +74,16 @@ export class PageService {
   async putPageContent(id: string, write: PageContentWrite): Promise<Page> {
     return unwrap(
       await this.api.PUT("/api/v0/pages/{page_id}/content", { params: { path: { page_id: id } }, body: write })
+    );
+  }
+
+  /**
+   * toggleTask ticks or clears the page's task item at the offset its checkbox carries, in the revision the
+   * reading view was rendered from (M5/P6 design 3.4); it answers the page, with its new revision.
+   */
+  async toggleTask(id: string, toggle: TaskToggle): Promise<Page> {
+    return unwrap(
+      await this.api.POST("/api/v0/pages/{page_id}/toggle-task", { params: { path: { page_id: id } }, body: toggle })
     );
   }
 

@@ -8,9 +8,15 @@ import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 // PG5, reading a page (M4 design 3; M4/P4 design 3.12): the reading view of
 // a page created with its Markdown, and in the browser its code coloured by
 // a worker of the app's own, which loads nothing (M4/P5 design 3.8, 3.9);
-// writing it comes with the editor (M4/P6).
+// writing it comes with the editor (M4/P6). A task item's checkbox carries
+// its byte position (M5/P6 design 3.2): C10 ticks it.
 
-test("PG5 (API): a page created with Markdown reads as HTML, its properties first, then its table, task items, strikethrough, autolink, footnote and code in its language; the frontmatter is neither a rule nor a heading; the HTML names the revision it is of", async ({
+/** taskAt is the byte position of the character between the brackets of the task item that starts item. */
+function taskAt(content: string, item: string): string {
+  return (Buffer.byteLength(content.slice(0, content.indexOf(item))) + 3).toString();
+}
+
+test("PG5 (API): a page created with Markdown reads as HTML, its properties first, then its table, task items with their positions, strikethrough, autolink, footnote and code in its language; the frontmatter is neither a rule nor a heading; the HTML names the revision it is of", async ({
   api,
   db,
 }, testInfo) => {
@@ -55,8 +61,8 @@ test("PG5 (API): a page created with Markdown reads as HTML, its properties firs
   for (const element of [
     '<h1 id="nw-q4">Q4</h1>',
     '<th align="left">a</th>',
-    '<input disabled="" type="checkbox"> open',
-    '<input checked="" disabled="" type="checkbox"> done',
+    `<input disabled="" type="checkbox" data-task="${taskAt(content, "- [ ] open")}"> open`,
+    `<input checked="" disabled="" type="checkbox" data-task="${taskAt(content, "- [x] done")}"> done`,
     "<del>gone</del>",
     '<a href="https://example.com/a">https://example.com/a</a>',
     'class="footnote-ref"',
@@ -76,7 +82,7 @@ test("PG5 (API): a page created with Markdown reads as HTML, its properties firs
   expect(again.data?.html).toContain('<h1 id="nw-q5">Q5</h1>');
 });
 
-test("PG5 (page): the reading view shows the page's properties first, then its heading, table, task items, strikethrough, autolink and footnote, the frontmatter neither a rule nor a heading; its code is coloured by a worker of the app's own origin, and nothing breaks the CSP; a wide table lets the keyboard scroll the view", async ({
+test("PG5 (page): the reading view shows the page's properties first, then its heading, table, task items (the admin's enabled, with their positions), strikethrough, autolink and footnote, the frontmatter neither a rule nor a heading; its code is coloured by a worker of the app's own origin, and nothing breaks the CSP; a wide table lets the keyboard scroll the view", async ({
   api,
   db,
   signedInPage,
@@ -124,6 +130,10 @@ test("PG5 (page): the reading view shows the page's properties first, then its h
   await expect(article.locator('th[align="left"]')).toHaveText("a");
   await expect(article.getByRole("checkbox")).toHaveCount(2);
   await expect(article.getByRole("checkbox").nth(1)).toBeChecked();
+  // The admin writes the page: its checkboxes are enabled, each with its position.
+  await expect(article.getByRole("checkbox").first()).toBeEnabled();
+  await expect(article.getByRole("checkbox").first()).toHaveAttribute("data-task", taskAt(content, "- [ ] open"));
+  await expect(article.getByRole("checkbox").nth(1)).toHaveAttribute("data-task", taskAt(content, "- [x] done"));
   await expect(article.locator("del")).toHaveText("gone");
   await expect(article.getByRole("link", { name: "https://example.com/a", exact: true })).toHaveAttribute(
     "href",

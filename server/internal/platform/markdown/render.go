@@ -25,7 +25,6 @@ func (m *Markdown) Render(ctx context.Context, d *Document, page Page) (string, 
 		util.Prioritized(extension.NewTableHTMLRenderer(
 			extension.WithTableCellAlignMethod(extension.TableCellAlignAttribute)), 500),
 		util.Prioritized(extension.NewStrikethroughHTMLRenderer(), 500),
-		util.Prioritized(extension.NewTaskCheckBoxHTMLRenderer(), 500),
 		util.Prioritized(extension.NewFootnoteHTMLRenderer(extension.WithFootnoteIDPrefix(idPrefix)), 500),
 		util.Prioritized(&marks{}, 100),
 	}
