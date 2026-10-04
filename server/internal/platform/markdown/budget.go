@@ -52,9 +52,10 @@ func NewBudget(size int, wait time.Duration, logger *slog.Logger) *Budget {
 }
 
 // minTake is the least a content takes (M6/P2 fix check 3 L1): however
-// short, its parse may cost the YAML library's own hundred-odd KB, and a
-// frontmatter's aliases expanded to the YAML's limit of values, whose
-// facts keep up to some 480 KB; 4 KiB counts 1.2 MB.
+// short, a frontmatter's aliases may expand to the YAML's limit of values,
+// whose facts keep up to some 480 KB, the parse not much more; 4 KiB counts
+// 1.2 MB. Its strings' paths take at most maxYAMLPathsRatio times the
+// YAML's size, well within the parseRatio times it counts for.
 const minTake = 4 << 10
 
 // Take holds the bytes of a content of n bytes, for its parse, waiting for

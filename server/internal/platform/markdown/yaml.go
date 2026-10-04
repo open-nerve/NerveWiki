@@ -25,16 +25,20 @@ const (
 	// make every reading blow up either. Past the larger of it and the
 	// YAML's size the frontmatter is not valid.
 	minYAMLRepeated = 100_000
-	// minYAMLPaths and yamlPathsRatio are how many bytes the paths of the
-	// noted strings may take, each its keys over again (M6/P2 fix check 2
-	// C1): long keys over a list of thousands must not copy them for each
-	// item either. Past the larger of minYAMLPaths, a path of a hundred
-	// bytes for each value at the limit of values however short the YAML
-	// (fix check 3 L3), and twice the YAML's size, the frontmatter is not
-	// valid. Twice: the keys an alias repeats are in the paths of the
-	// values under them too.
-	minYAMLPaths   = 100 * maxYAMLNodes
-	yamlPathsRatio = 2
+	// minYAMLPaths, yamlPathsRatio and maxYAMLPathsRatio are how many
+	// bytes the paths of the noted strings may take, each its keys over
+	// again (M6/P2 fix check 2 C1): long keys over a list of thousands must
+	// not copy them for each item either. Past the larger of minYAMLPaths,
+	// a path of a hundred bytes for each value at the limit of values (fix
+	// check 3 L3), and twice the YAML's size, the frontmatter is not valid;
+	// nor past maxYAMLPathsRatio times its size, a path of some 128 bytes
+	// for each value written in two, so that a short YAML's paths are no
+	// more for its size than the parse budget counts it for (fix check 4
+	// L1). Twice: the keys an alias repeats are in the paths of the values
+	// under them too.
+	minYAMLPaths      = 100 * maxYAMLNodes
+	yamlPathsRatio    = 2
+	maxYAMLPathsRatio = 64
 )
 
 var errInvalid = errors.New("not a frontmatter's YAML")
@@ -66,7 +70,7 @@ func properties(src []byte, at int) ([]Property, []Scalar, bool) {
 		return nil, nil, false
 	}
 	r := reader{
-		budget: max(len(src), minYAMLRepeated), pathsBudget: max(yamlPathsRatio*len(src), minYAMLPaths),
+		budget: max(len(src), minYAMLRepeated), pathsBudget: pathsBudget(len(src)),
 		src: src, at: at,
 	}
 	v, err := r.value(top, 0)
@@ -74,6 +78,11 @@ func properties(src []byte, at int) ([]Property, []Scalar, bool) {
 		return nil, nil, false
 	}
 	return v.([]Property), r.scalars, true
+}
+
+// pathsBudget is how many bytes the paths of a YAML of n bytes may take.
+func pathsBudget(n int) int {
+	return min(maxYAMLPathsRatio*n, max(yamlPathsRatio*n, minYAMLPaths))
 }
 
 // reader walks the YAML's nodes, counting what it expands: the nodes, and

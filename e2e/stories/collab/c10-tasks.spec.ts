@@ -193,7 +193,8 @@ test("C10 (page): A ticks a task item in the reading view, its checkbox named by
   releaseViews?.();
   await expect(b.getByRole("main").getByRole("alert")).toHaveText("This page has changed since you read it.");
   await expect(boxesOf(b)).toHaveCount(3);
-  await b.unroute(views);
+  // The route stays, letting the views through: unrouting the page's last route turns Playwright's interception off,
+  // and a request sent in that instant may stay paused, never sent nor failed (as holdContentWrites says).
   expect(await readContent(api, a, tasks.id)).toMatchObject({ content: moved, revision: 4 });
 
   await startEditing(page);

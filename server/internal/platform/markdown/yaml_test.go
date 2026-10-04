@@ -193,10 +193,11 @@ func TestAliasesRepeatAtMostTheirBudget(t *testing.T) {
 }
 
 // The paths of the strings noted take at most the larger of minYAMLPaths
-// and yamlPathsRatio times the YAML's size, past it the frontmatter not
-// valid: a long key over a list of thousands copies itself for each item
-// (M6/P2 fix check 2 C1). A value not noted, a number, has no path; nor
-// does one an alias repeats.
+// and yamlPathsRatio times the YAML's size, and no more than
+// maxYAMLPathsRatio times it, past it the frontmatter not valid: a long key
+// over a list of thousands copies itself for each item (M6/P2 fix check 2
+// C1). A value not noted, a number, has no path; nor does one an alias
+// repeats.
 func TestThePathsOfTheStringsTakeAtMostTheirBudget(t *testing.T) {
 	key := strings.Repeat("k", 1000)
 	tests := []struct {
@@ -212,7 +213,7 @@ func TestThePathsOfTheStringsTakeAtMostTheirBudget(t *testing.T) {
 			n, paths := 0, 0
 			for {
 				next := paths + len(tt.path+"."+strconv.Itoa(n))
-				if next > max(yamlPathsRatio*len(yaml(n+1)), minYAMLPaths) {
+				if next > min(maxYAMLPathsRatio*len(yaml(n+1)), max(yamlPathsRatio*len(yaml(n+1)), minYAMLPaths)) {
 					break
 				}
 				n, paths = n+1, next
@@ -227,7 +228,7 @@ func TestThePathsOfTheStringsTakeAtMostTheirBudget(t *testing.T) {
 	}
 	for name, yaml := range map[string]string{
 		"numbers under a long key":  key + ": [" + strings.Repeat("1, ", maxYAMLNodes-10) + "]\n",
-		"a long key's list aliased": "a: &a {" + key + ": [" + strings.Repeat("x, ", 900) + "]}\nb: [*a, *a, *a, *a, *a, *a, *a, *a]\n",
+		"a long key's list aliased": "a: &a {" + key + ": [" + strings.Repeat("x, ", 60) + "]}\nb: [*a, *a, *a, *a, *a, *a, *a, *a]\n",
 	} {
 		if _, ok := propertiesOf([]byte(yaml)); !ok {
 			t.Errorf("%s, not noted, not valid", name)
