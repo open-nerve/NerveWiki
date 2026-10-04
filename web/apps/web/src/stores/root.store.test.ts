@@ -345,7 +345,8 @@ test("signing out in one tab saves and ends another tab's edit of the login befo
         return json({ content: "Saved.\n", revision: 1 });
       }
       if (request.method === "PUT") {
-        return json({ revision: 2 });
+        // A's save outlasts the window for the answers: the sign-out waits for it to be done, not just begun.
+        return new Promise<Response>((resolve) => setTimeout(() => resolve(json({ revision: 2 })), 500));
       }
       return json({ id: "s1", page_id: "p1", expires_at: "2026-10-03T08:02:00Z" }, 201);
     }, storedSession("login-0"));
@@ -374,7 +375,7 @@ test("signing out in one tab saves and ends another tab's edit of the login befo
     sent.length = 0;
 
     const signingOut = b.auth.signOut();
-    await vi.advanceTimersByTimeAsync(100);
+    await vi.advanceTimersByTimeAsync(500);
     await signingOut;
     expect(sent).toEqual([
       "PUT /api/v0/pages/p1/content",

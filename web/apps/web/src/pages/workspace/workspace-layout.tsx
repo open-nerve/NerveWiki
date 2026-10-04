@@ -64,7 +64,8 @@ const sections: readonly { path: string; label: Extract<MessageKey, `workspace.$
  * while this tab edits a page of it with changes not saved, the account
  * removed from it or the workspace deleted, stays as it was last found
  * until the edit ends, as the notebook's and the page's shells do (M5/P4
- * design 3.9; M4–M5 Codex review R3). A workspace found is the one this
+ * design 3.9; M4–M5 Codex review R3), by its id: another made since by
+ * its name waits for the edit too. A workspace found is the one this
  * device showed last. Its pages start anew with each workspace: what a
  * form holds of one is never sent to another.
  */
@@ -78,11 +79,17 @@ export const WorkspaceLayout = observer(function WorkspaceLayout() {
   const [notebookColumn, setNotebookColumn] = useState<HTMLElement | null>(null);
   const { error, mutate } = useSWR("workspaces", () => workspaces.load());
   const [last, setLast] = useState<Workspace | undefined>(undefined);
-  const shown = workspaces.bySlug(slug);
-  if (shown !== undefined && shown !== last) {
-    setLast(shown);
+  const listed = workspaces.bySlug(slug);
+  const kept =
+    last?.slug === slug &&
+    last.id !== listed?.id &&
+    !workspaces.wasRemoved(slug) &&
+    store.unsavedEdit({ workspaceId: last.id });
+  const workspace = kept ? last : listed;
+  if (workspace !== undefined && workspace !== last) {
+    setLast(workspace);
   }
-  const found = shown !== undefined;
+  const found = listed !== undefined;
 
   useEffect(() => {
     if (found) {
@@ -93,11 +100,8 @@ export const WorkspaceLayout = observer(function WorkspaceLayout() {
   if (workspaces.list === undefined) {
     return <NotLoaded error={error} retry={() => void mutate()} />;
   }
-  const removed = workspaces.wasRemoved(slug);
-  const kept = !removed && last?.slug === slug && store.unsavedEdit({ workspaceId: last.id });
-  const workspace = shown ?? (kept ? last : undefined);
   if (workspace === undefined) {
-    return removed ? <Navigate replace to="/" state={arrived} /> : <NotFoundPage />;
+    return workspaces.wasRemoved(slug) ? <Navigate replace to="/" state={arrived} /> : <NotFoundPage />;
   }
   const left = (
     <div data-shell className="space-y-4 border-b p-3 md:w-60 md:shrink-0 md:border-r md:border-b-0">

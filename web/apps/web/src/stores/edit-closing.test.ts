@@ -19,12 +19,13 @@ async function settled(promise: Promise<unknown>): Promise<boolean> {
   return done;
 }
 
-/** A tab of login-0, tabId, whose edits close as close resolves. */
+/** A tab of login-0, tabId, whose edits close as close resolves; its unsubscribe closes its port, as a RootStore's does. */
 function tab(channels: FakeChannels, tabId: string, hasEdits = true) {
   let closed: (() => void) | undefined;
   const closes: string[] = [];
+  const port = channels.port("nwiki.edits");
   const unsubscribe = answerClosings(
-    channels.port("nwiki.edits"),
+    port,
     { loginId: "login-0", tabId },
     () => hasEdits,
     () => {
@@ -32,7 +33,14 @@ function tab(channels: FakeChannels, tabId: string, hasEdits = true) {
       return new Promise<void>((resolve) => (closed = resolve));
     }
   );
-  return { closes, close: () => closed?.(), unsubscribe };
+  return {
+    closes,
+    close: () => closed?.(),
+    unsubscribe: () => {
+      unsubscribe();
+      port.close();
+    },
+  };
 }
 
 test("with no other tab that has edits, a sign-out waits only for the answers", async () => {
@@ -115,4 +123,19 @@ test("a tab unsubscribed answers no more", async () => {
   await vi.advanceTimersByTimeAsync(closingAnswerWait);
   expect(await settled(closing)).toBe(true);
   expect(b.closes).toEqual([]);
+});
+
+test("a tab unsubscribed while it closes its edits, its port closed, says nothing more", async () => {
+  const channels = new FakeChannels();
+  const b = tab(channels, "tab-b");
+  const closing = closeOtherTabs(channels.port("nwiki.edits"), login, "c1", 2_000);
+
+  await vi.advanceTimersByTimeAsync(0);
+  expect(b.closes).toEqual(["tab-b"]);
+  b.unsubscribe();
+  b.close();
+  await vi.advanceTimersByTimeAsync(closingAnswerWait);
+  expect(await settled(closing)).toBe(false);
+  await vi.advanceTimersByTimeAsync(2_000);
+  expect(await settled(closing)).toBe(true);
 });

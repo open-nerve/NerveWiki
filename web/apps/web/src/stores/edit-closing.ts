@@ -14,8 +14,8 @@ export const closingAnswerWait = 100;
 /**
  * answerClosings closes this tab's edits through close each time another
  * tab of the login asks, while it has edits (hasEdits): it tells that it
- * closes them, and once close resolves that it did. It returns the
- * unsubscribe.
+ * closes them, and once close resolves that it did, unless unsubscribed
+ * by then. It returns the unsubscribe.
  */
 export function answerClosings(
   port: Port,
@@ -23,18 +23,28 @@ export function answerClosings(
   hasEdits: () => boolean,
   close: () => Promise<void>
 ): () => void {
+  let subscribed = true;
+  const tell = (kind: "closing" | "closed", id: string) => {
+    // Unsubscribed, the port may be closed: posting on it would throw.
+    if (subscribed) {
+      post(port, { loginId, kind, id, tab: tabId });
+    }
+  };
   const handle = (event: MessageEvent) => {
     const asked = messageOf(event, loginId);
     if (asked?.kind !== "close" || asked.tab === tabId || !hasEdits()) {
       return;
     }
-    post(port, { loginId, kind: "closing", id: asked.id, tab: tabId });
+    tell("closing", asked.id);
     void close()
       .catch(() => undefined)
-      .then(() => post(port, { loginId, kind: "closed", id: asked.id, tab: tabId }));
+      .then(() => tell("closed", asked.id));
   };
   port.addEventListener("message", handle);
-  return () => port.removeEventListener("message", handle);
+  return () => {
+    subscribed = false;
+    port.removeEventListener("message", handle);
+  };
 }
 
 /**

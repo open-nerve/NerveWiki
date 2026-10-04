@@ -171,6 +171,29 @@ test("while the sign-out saves, the content is held as it is: what it saves is a
   expect(server.sent.filter((line) => line.startsWith("END"))).toEqual(["END session-1"]);
 });
 
+test("signing out with nothing unsaved holds the content as well, while the edit ends", async () => {
+  let ended: (() => void) | undefined;
+  const server = pageServer({
+    answers: {
+      "DELETE /api/v0/edit-sessions/*": () =>
+        new Promise((resolve) => {
+          ended = () => resolve(new Response(null, { status: 204 }));
+        }),
+    },
+  });
+  const { user } = await pressEdit(server);
+  const { view } = await pageEditor();
+
+  await user.click(screen.getByRole("button", { name: "Ada" }));
+  await user.click(await screen.findByRole("menuitem", { name: "Sign out" }));
+  await waitFor(() => expect(ended).toBeDefined());
+  expect(view.state.readOnly).toBe(true);
+  act(() => ended?.());
+
+  expect(await screen.findByRole("heading", { name: "Sign in" })).toBeTruthy();
+  expect(server.sent.filter((line) => line.startsWith("PUT"))).toEqual([]);
+});
+
 test("signing out while the save is not answered ends the session after 1.5 seconds, before the logout", async () => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
   const sent: string[] = [];
@@ -501,30 +524,37 @@ test("a page deleted while this tab edits it with nothing unsaved is no page at 
   expect(await screen.findByRole("heading", { level: 1, name: "Page not found" })).toBeTruthy();
 });
 
-test("removed from the workspace while this tab edits a page of it unsaved, the page stays until the edit is left (M4–M5 Codex review R3)", async () => {
-  const { user, server, events, lab, type, view } = await connected();
-  type(" more");
+test.each<[string, (typeof workspaceJSON)[]]>([
+  ["removed from the workspace", []],
+  // What is kept goes by its id: another workspace of the slug is another workspace (v0.1 design 13.2, item 15).
+  ["the workspace deleted and another made by its name", [{ ...workspaceJSON, id: "workspace-2" }]],
+])(
+  "%s while this tab edits a page of it unsaved, the page stays until the edit is left (M4–M5 Codex review R3)",
+  async (_, listed) => {
+    const { user, server, events, lab, type, view } = await connected();
+    type(" more");
 
-  lab.workspaces = [];
-  lab.notebooks = [];
-  server.nodes = [];
-  server.notebookGone = true;
-  server.sessions.clear();
-  act(() => events.last().send("reset", { reason: "access" }));
-  await waitFor(() => expect(events.streams).toHaveLength(2));
-  act(() => events.last().hello());
+    lab.workspaces = listed;
+    lab.notebooks = [];
+    server.nodes = [];
+    server.notebookGone = true;
+    server.sessions.clear();
+    act(() => events.last().send("reset", { reason: "access" }));
+    await waitFor(() => expect(events.streams).toHaveLength(2));
+    act(() => events.last().hello());
 
-  expect((await screen.findByRole("alert")).textContent).toContain("This page no longer exists");
-  expect(screen.getByRole("heading", { level: 1, name: "Guide" })).toBeTruthy();
-  expect(view.state.doc.toString()).toBe("Guide\n more");
-  await user.click(screen.getByRole("button", { name: "Back to reading" }));
-  await user.click(
-    within(await screen.findByRole("alertdialog", { name: "Leave without saving?" })).getByRole("button", {
-      name: "Leave",
-    })
-  );
-  expect(await screen.findByRole("heading", { level: 1, name: "Page not found" })).toBeTruthy();
-});
+    expect((await screen.findByRole("alert")).textContent).toContain("This page no longer exists");
+    expect(screen.getByRole("heading", { level: 1, name: "Guide" })).toBeTruthy();
+    expect(view.state.doc.toString()).toBe("Guide\n more");
+    await user.click(screen.getByRole("button", { name: "Back to reading" }));
+    await user.click(
+      within(await screen.findByRole("alertdialog", { name: "Leave without saving?" })).getByRole("button", {
+        name: "Leave",
+      })
+    );
+    expect(await screen.findByRole("heading", { level: 1, name: "Page not found" })).toBeTruthy();
+  }
+);
 
 test.each<[string, string, Record<string, Answer>]>([
   ["deleted", "This page no longer exists", {}],

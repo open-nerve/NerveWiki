@@ -2,8 +2,8 @@ import type { Port } from "../channel";
 
 // The BroadcastChannels of one browser for the tests: what a port posts
 // reaches every other open port of the same name, in a microtask, never
-// itself; a closed port neither sends nor hears, and a deaf one, as a
-// frozen page's, does not hear.
+// itself; a closed port throws as it is posted on, as a browser's does,
+// and hears nothing; a deaf one, as a frozen page's, does not hear.
 
 export class FakeChannels {
   readonly #ports = new Map<string, Set<FakePort>>();
@@ -27,7 +27,7 @@ class FakePort implements Port {
 
   postMessage(message: unknown): void {
     if (!this.#open) {
-      return;
+      throw new DOMException("Channel is closed", "InvalidStateError");
     }
     const data = structuredClone(message);
     for (const port of this.ports) {
