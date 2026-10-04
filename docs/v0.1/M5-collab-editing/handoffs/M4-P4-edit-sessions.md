@@ -1,11 +1,13 @@
 ```yaml
-status: open
+status: done
 from: M4/P4
 to: M5
 created: 2026-10-03
 ```
 
 # 编辑会话、写入守卫与锁
+
+> 已全部处理（2026-10-04）：第 1 项见 M5 总设计 4.2、4.4 与交错 45–51；第 2 项接受（4.4）；第 3 项不做（M5 总设计第 2 节：锁至多再留一个租约，管理员可以强制解锁）；第 4 项转给 M12（[部署与压测的移交](../../M12-release/handoffs/M5-performance.md)第 2 项）；第 5 项：正文按会话、删除按账户，同一账户可以接管（4.1、4.2、4.4）；第 6 项：租约 120 秒，重新可见时先心跳（4.6）；第 7 项是已有的测试；第 8 项是 `TestTheEditLockReachesEveryPath` 与 `TestEverySessionChangeReachesTheStreams`（收尾时补了"过期的会话随删页结束、不告诉"），组合根交空时失败。经[M5 收尾审查](../reviews/M5-closeout-review.md)核实。
 
 M4/P4 交付了编辑会话：开启、60 秒的租约、每 20 秒的心跳、结束、过期的清理；带着会话的写是一个变更集（[P4 文档](../../M4-pages/04-P4-content-sessions.md) 3.2–3.5）。M5 在它上面加锁：开启时的否决者、结束时的订阅者、页面写入的守卫（[M4 总设计](../../M4-pages/00-M4-design.md)第 8 节）。M4 没有注册者，组合根交空集合。
 

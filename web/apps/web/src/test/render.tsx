@@ -4,6 +4,7 @@ import { createMemoryRouter, type RouteObject } from "react-router";
 import { routes } from "../app/routes";
 import { SessionRoot } from "../app/session-root";
 import { EditorExtensions, type EditorExtension } from "../editor/registry";
+import { EventHandlers, type EventHandler } from "../events/handlers";
 import { Enhancements, type Enhancement } from "../reading/enhancement";
 import { testApp } from "./fakes";
 
@@ -14,19 +15,26 @@ type RenderOptions = {
   enhancements?: readonly Enhancement[];
   /** The editor's extensions: none unless given, where main.tsx gives the registry. */
   editorExtensions?: readonly EditorExtension[];
+  /** The event stream's handlers by type: none unless given, where main.tsx gives the app's. */
+  eventHandlers?: ReadonlyMap<string, EventHandler>;
 };
 
 /**
  * renderApp renders the app's routes at path for app's session, started
  * as the page starts it: by default signed out, over an API that answers
  * GET /api/v0/instance with instanceJSON. The reading views get
- * enhancements and the editor its extensions as the composition root
- * gives them, by default none.
+ * enhancements, the editor its extensions and the event stream its
+ * handlers as the composition root gives them, by default none.
  */
 export function renderApp(
   path: string,
   app = testApp(),
-  { routes: appRoutes = routes, enhancements = [], editorExtensions = [] }: RenderOptions = {}
+  {
+    routes: appRoutes = routes,
+    enhancements = [],
+    editorExtensions = [],
+    eventHandlers = new Map(),
+  }: RenderOptions = {}
 ) {
   const router = createMemoryRouter(appRoutes, { initialEntries: [path] });
   void app.session.start();
@@ -36,7 +44,9 @@ export function renderApp(
     ...render(
       <Enhancements value={enhancements}>
         <EditorExtensions value={editorExtensions}>
-          <SessionRoot app={app} router={router} />
+          <EventHandlers value={eventHandlers}>
+            <SessionRoot app={app} router={router} />
+          </EventHandlers>
         </EditorExtensions>
       </Enhancements>
     ),

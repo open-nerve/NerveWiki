@@ -4,6 +4,7 @@ import { afterAll, beforeAll, expect, test } from "vitest";
 
 import { lockReadOnly } from "../../editor/lock-read-only";
 import { editorExtensions, type EditorExtension } from "../../editor/registry";
+import { eventHandlers } from "../../events/handlers";
 import { FakePage } from "../../events/testing/fake-page";
 import { eventServer, withEvents } from "../../test/event-server";
 import { type Answer, json, notebookJSON, problem, workspaceJSON } from "../../test/fakes";
@@ -119,6 +120,21 @@ test("signing out while Edit's session opens shows no failure: the session, open
   act(() => ended?.());
 
   expect(await screen.findByRole("heading", { name: "Sign in" })).toBeTruthy();
+});
+
+test("signing out saves what was typed since the last save, then ends the session", async () => {
+  const { user, server } = await pressEdit();
+  const { type } = await pageEditor();
+  type(" more");
+
+  await user.click(screen.getByRole("button", { name: "Ada" }));
+  await user.click(await screen.findByRole("menuitem", { name: "Sign out" }));
+
+  expect(await screen.findByRole("heading", { name: "Sign in" })).toBeTruthy();
+  expect(server.sent.filter((line) => line.startsWith("PUT") || line.startsWith("END"))).toEqual([
+    'PUT Guide "Guide\\n more" on 1 in session-1',
+    "END session-1",
+  ]);
 });
 
 test("Done goes back to reading once the session's end is answered: the lock read next is not the edit's own", async () => {
@@ -357,7 +373,10 @@ async function connected(answers: Record<string, Answer> = {}) {
     },
   });
   const user = userEvent.setup();
-  renderApp(pagePath(guide.id), withEvents(server.app, new FakePage()), { editorExtensions: [lockReadOnly] });
+  renderApp(pagePath(guide.id), withEvents(server.app, new FakePage()), {
+    editorExtensions: [lockReadOnly],
+    eventHandlers,
+  });
   await waitFor(() => expect(events.streams).toHaveLength(1));
   act(() => events.last().hello());
   await user.click(await screen.findByRole("button", { name: "Edit" }));

@@ -303,6 +303,10 @@ test("one toggle of a task item is out per page at a time, the view read after i
   expect(ran).toEqual(["first", "beside", "after", "again"]);
 });
 
+test("a toggle holds the page's others back a minute at most (M5/P6 design 3.5)", () => {
+  expect(toggleLimit).toBe(60_000);
+});
+
 test("a toggle out longer than toggleLimit holds the page's others back no longer, and its end leaves the next one's hold", async () => {
   vi.useFakeTimers();
   try {

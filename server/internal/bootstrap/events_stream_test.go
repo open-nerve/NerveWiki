@@ -169,7 +169,7 @@ func (s *eventStream) reset(t *testing.T, reason string) {
 	}
 }
 
-// The listener's reconnection (M5 design 4.11): its connection cut, the
+// The listener's reconnection (M5 design 4.10): its connection cut, the
 // listener listens again and resets every open stream, whose client reads
 // again what it may have missed; a stream opened after it receives the
 // events.

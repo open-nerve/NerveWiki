@@ -4,7 +4,7 @@ import { SharedStorage } from "../session/testing/fake-browser";
 import { SessionChangedError } from "../session/token-manager";
 import { TabChannel } from "./channel";
 import type { Open } from "./connection";
-import { EventHub, type HubEvent } from "./hub";
+import { EventHub } from "./hub";
 import { leaseLeadership, webLockLeadership } from "./leadership";
 import { FakeChannels } from "./testing/fake-channels";
 import { FakeLocks } from "./testing/fake-locks";
@@ -18,6 +18,8 @@ const beat = ": heartbeat\n\n";
 const pages = 'event: pages\ndata: {"workspace_id":"w","notebook_id":"n","tree":true,"pages":[]}\n\n';
 const lock = 'event: lock\ndata: {"workspace_id":"w","notebook_id":"n","page_id":"p","session_id":"s"}\n\n';
 const reset = 'event: reset\ndata: {"reason":"expired"}\n\n';
+/** An event of a type a later M adds. */
+const links = 'event: links\ndata: {"page_id":"p"}\n\n';
 
 /** A stream the server opened for a tab, which the test writes to and ends; it ends too when the tab aborts it. */
 type Stream = { tab: string; opened: number; ended: boolean; write: (text: string) => void; close: () => void };
@@ -82,7 +84,8 @@ type Tab = {
   id: string;
   hub: EventHub;
   page: FakePage;
-  events: HubEvent["type"][];
+  /** The events the tab's subscribers got, by type; a later M's type with its data. */
+  events: string[];
   /** Makes the tab hear nothing on the channel, as a frozen page, or hear again. */
   deafen(deaf: boolean): void;
 };
@@ -112,8 +115,10 @@ function browserOf(kind: "Web Locks" | "the lease") {
       page,
       now: () => Date.now(),
     });
-    const events: HubEvent["type"][] = [];
-    hub.subscribe((event) => events.push(event.type));
+    const events: string[] = [];
+    hub.subscribe((event) =>
+      events.push(event.type === "other" ? `${event.event} ${JSON.stringify(event.data)}` : event.type)
+    );
     hub.start();
     const deafen = (deaf: boolean) => {
       for (const port of ports) {
@@ -144,7 +149,7 @@ afterEach(() => {
 });
 
 describe.each(["Web Locks", "the lease"] as const)("the hub with %s", (kind) => {
-  test("one tab holds the one stream and hands each event to its subscribers and to the other tabs", async () => {
+  test("one tab holds the one stream and hands each event to its subscribers and to the other tabs, one of a type a later M adds with its data", async () => {
     const browser = browserOf(kind);
     const [a, b, c] = [browser.tab("a"), browser.tab("b"), browser.tab("c")];
     await settle();
@@ -155,10 +160,11 @@ describe.each(["Web Locks", "the lease"] as const)("the hub with %s", (kind) => 
     stream.write(pages);
     stream.write(beat);
     stream.write(lock);
+    stream.write(links);
     await settle();
 
     for (const t of [a, b, c]) {
-      expect(t.events).toEqual(["connected", "pages", "lock"]);
+      expect(t.events).toEqual(["connected", "pages", "lock", 'links {"page_id":"p"}']);
     }
   });
 

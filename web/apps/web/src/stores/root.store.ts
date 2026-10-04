@@ -145,14 +145,15 @@ export class RootStore {
   }
 
   /**
-   * endEdits ends this generation's edits, as the tab signs out: it
-   * resolves once their ends are answered, or after at most 2 seconds, so
-   * that a network down does not hold the sign-out.
+   * endEdits ends this generation's edits, as the tab signs out, each once
+   * what it has unsaved is saved: it resolves once their ends are
+   * answered, or after at most 2 seconds, so that a network down does not
+   * hold the sign-out.
    */
   endEdits(): Promise<void> {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const waited = new Promise<void>((resolve) => (timer = setTimeout(resolve, signOutWait)));
-    const ended = Promise.all([...this.edits].map((editing) => editing.end()));
+    const ended = Promise.all([...this.edits].map((editing) => editing.close()));
     return Promise.race([ended, waited]).then(() => clearTimeout(timer));
   }
 

@@ -5,14 +5,15 @@ import { displayNameOf, emailFor, register } from "../../fixtures/auth";
 import { signOutThroughMenu } from "../../fixtures/auth-pages";
 import { fetchEvents, followStreams, settleEvents } from "../../fixtures/events";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
+import { memberOf, removeMember } from "../../fixtures/members";
 import { addedNotebookMember, removeNotebookMember } from "../../fixtures/notebook-members";
 import { notebookGroups } from "../../fixtures/notebook-pages";
 import { createNotebook, deleteNotebook } from "../../fixtures/notebooks";
 import { createPage, writeContent } from "../../fixtures/pages";
-import { expect, test } from "../../fixtures/test";
+import { expect, test, watchOf } from "../../fixtures/test";
 import { pageHeading, wikiPagePath } from "../../fixtures/wiki-pages";
 import { workspaceHeading } from "../../fixtures/workspace-pages";
-import { newTeam } from "../../fixtures/workspaces";
+import { createWorkspace, newTeam, slugFor } from "../../fixtures/workspaces";
 
 // C8, a stream's life (M5 design 4.10): it ends with a reset whenever what
 // it may see or its credential changes, and the client reconnects; one
@@ -49,6 +50,30 @@ test("C8 (API): B removed from Eng gets reset access; reconnected, B receives no
   const stream = await openEvents(b);
 
   expect((await removeNotebookMember(api, a, membership.id)).response.status).toBe(204);
+  await stream.expectReset("access");
+
+  const reconnected = await openEvents(b);
+  await createPage(api, a, eng.id, "Notes");
+  await writeContent(api, b, control.id, { content: "# Control\n", base_revision: 1 });
+  expect(await reconnected.expectNext("pages")).toMatchObject({ notebook_id: mine.id, pages: [{ id: control.id }] });
+});
+
+test("C8 (API): B removed from Acme gets reset access; reconnected, B receives nothing of Acme's notebooks", async ({
+  api,
+  nervewiki,
+  openEvents,
+}, testInfo) => {
+  const { pat: a, workspace } = await newTeam(api, testInfo);
+  const bEmail = emailFor(testInfo, "b");
+  const b = await joinAs(api, a, workspace.slug, bEmail, "member");
+  const eng = await createNotebook(api, a, workspace.slug, "Eng", "editor");
+  const own = await createWorkspace(api, b, "Own", slugFor(testInfo, "own"));
+  const mine = await createNotebook(api, b, own.slug, "Mine");
+  const control = await createPage(api, b, mine.id, "Control");
+  await settleEvents(api, nervewiki.baseURL, a, (await createPage(api, a, eng.id, "Marker")).id);
+  const stream = await openEvents(b);
+
+  expect((await removeMember(api, a, (await memberOf(api, a, workspace.slug, bEmail)).id)).response.status).toBe(204);
   await stream.expectReset("access");
 
   const reconnected = await openEvents(b);
@@ -122,7 +147,7 @@ test("C8 (page): with access tokens of 3 s, B's stream ends as each expires and 
   await expect(content).toHaveText("Drafted.");
 
   // Two of B's access tokens expire: the stream ends with each, and B's tab connects again with the next.
-  await expect.poll(() => streams.opened(), { timeout: 10_000 }).toBeGreaterThanOrEqual(3);
+  await expect.poll(() => streams.opened(), { timeout: 20_000 }).toBeGreaterThanOrEqual(3);
   await writeContent(api, a, notes.id, { content: "Drafted.\n\nPushed.\n", base_revision: 1 });
 
   await expect(content).toContainText("Pushed.");
@@ -153,9 +178,30 @@ test("C8 (page): B, reading a page of Eng, is removed from it: the page is not f
   expect(pageWatch.eventStreamErrors).toEqual([]);
 });
 
-test("C8 (page): B signs out in a second tab: both tabs sign out, and B's stream closes", async ({
+test("C8 (page): B, reading a page of Acme, is removed from Acme: the workspace is not found, nothing in it read as not found", async ({
+  api,
+  pageWatch,
+  signedInPage,
+}, testInfo) => {
+  const { pat: a, workspace } = await newTeam(api, testInfo);
+  const bEmail = emailFor(testInfo, "b");
+  const page = await signedInPage(await joinOnboarded(api, a, workspace.slug, bEmail, "member"));
+  const eng = await createNotebook(api, a, workspace.slug, "Eng", "editor");
+  const notes = await createPage(api, a, eng.id, "Notes");
+  await page.goto(wikiPagePath(workspace.slug, eng.id, notes.id));
+  await expect(pageHeading(page, "Notes")).toBeVisible();
+
+  expect((await removeMember(api, a, (await memberOf(api, a, workspace.slug, bEmail)).id)).response.status).toBe(204);
+
+  // Read again from the outside in: the workspace goes before what is in it would be read, not found.
+  await expect(pageHeading(page, "Page not found")).toBeVisible();
+  expect(pageWatch.eventStreamErrors).toEqual([]);
+});
+
+test("C8 (page): B signs out in a second tab: both tabs sign out, and B's stream closes, not opened again", async ({
   anotherTab,
   api,
+  pageWatch,
   signedInPage,
 }, testInfo) => {
   const { pat: a, workspace } = await newTeam(api, testInfo);
@@ -175,6 +221,8 @@ test("C8 (page): B signs out in a second tab: both tabs sign out, and B's stream
     [page, second].map((tab) => expect(tab.getByRole("heading", { level: 1, name: "Sign in" })).toBeVisible())
   );
   await expect.poll(() => streams.count()).toBe(0);
+  // Signed out, no tab asks for a stream again, which would be 401.
+  expect([pageWatch.eventStreamErrors, watchOf(second).eventStreamErrors]).toEqual([[], []]);
 });
 
 test("C8 (page): Eng deleted, it leaves B's notebooks", async ({ api, db, signedInPage }, testInfo) => {

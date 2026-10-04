@@ -31,7 +31,7 @@
 - 控制加 `onChange`、`onClose`、`leave(reason)`；宿主在状态结束时取消订阅、调用 `onClose`；nt-3。
 - 两个扩展：自动保存（`editor/autosave.ts`）、闲置退出（`editor/idle-exit.ts`），注册在只读之后。
 - 页面：自动保存不抢冲突的焦点；闲置的离开；阅读视图上的说明。
-- e2e：C5、C6（闲置）的页面版本；改写 PG7、PG9、PG10、C4；人工清单补上 M5 的部分。
+- e2e：C5、C6（闲置）的页面版本；改写 PG7、C4（PG9、PG10 不改，3.9）；人工清单补上 M5 的部分。
 
 **不做**：推送的外部更新（持锁期间用不到，转给 M6）；失败之后的自动重试；状态栏读屏播报的节流（v0.1 收官之后的打磨）。
 
@@ -55,7 +55,7 @@ web/apps/web/src/
 e2e/fixtures/wiki-pages.ts               holdContentWrites（3.9）
 e2e/stories/collab/c5-autosave.spec.ts   C5（新）
 e2e/stories/collab/c6-expired.spec.ts    C6 的闲置
-e2e/stories/page/pg7、pg9、pg10，collab/c4  改写（3.9）
+e2e/stories/page/pg7，collab/c4           改写（3.9）
 docs/v0.1/M4-pages/manual/P6-ime-checklist.md  M5 的部分（3.10）
 ```
 
@@ -148,7 +148,7 @@ docs/v0.1/M4-pages/manual/P6-ime-checklist.md  M5 的部分（3.10）
 |---|---|---|
 | S1 | 编辑器：控制的 `onChange`、`onClose`、`leave`；宿主的订阅与关闭；nt-3；自动保存与闲置的扩展（未注册） | [P5-S1](plans/P5-S1-editor.md) |
 | S2 | 页面：注册两个扩展；`PageEdit` 的 `save` 与 `leave`；闲置退出的说明；组件测试 | [P5-S2](plans/P5-S2-page.md) |
-| S3 | 端到端：`holdContentWrites`；C5、C6 的闲置；改写 PG7、PG9、PG10、C4；人工清单 | [P5-S3](plans/P5-S3-e2e.md) |
+| S3 | 端到端：`holdContentWrites`；C5、C6 的闲置；改写 PG7、C4；人工清单 | [P5-S3](plans/P5-S3-e2e.md) |
 
 ## 5. 测试与验证
 
@@ -195,5 +195,5 @@ docs/v0.1/M4-pages/manual/P6-ime-checklist.md  M5 的部分（3.10）
 
 **留给后面的**：
 
-- **给 M5 收尾**：负责人执行整份输入法清单（M4/P6 的第 1–9 步与 M5 的第 10–12 步）。
+- **给 M5 收尾**：负责人执行整份输入法清单（M4/P6 的第 1–9 步与 M5 的第 10–12 步，收尾时扩为第 10–15 步）。
 - **接受**：自动保存失败不自己重试（下一次停顿、Mod+S、闲置再试）；状态栏每次自动保存都礼貌地播报，算不算吵留给 v0.1 收官之后的打磨；浏览器始终不发 `compositionend` 时保存与闲置都一直等着（M4/P6 审查 Q4）。

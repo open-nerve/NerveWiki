@@ -1,5 +1,5 @@
 ```yaml
-status: open
+status: done
 from: M4/P6
 to: M5
 cc: [M6, M7]
@@ -7,6 +7,8 @@ created: 2026-10-03
 ```
 
 # 源码编辑器：自动保存、推送与扩展管线
+
+> 已处理（2026-10-04）：第 1 项的自动化部分在 M5/P5（自动保存等组合结束、nt-3 补上），真实输入法的部分与第 3 项是[输入法清单](../../M4-pages/manual/P6-ime-checklist.md)的第 10–15 步，由负责人执行，随 [M0/P1 编辑器移交](../../M4-pages/handoffs/M0-P1-editor.md)跟踪，结果写进[M5 收尾审查](../reviews/M5-closeout-review.md)；第 2 项转给 M6（[M6 的移交](../../M6-links/handoffs/M5-locks.md)第 1、4 项）；第 4 项见 M5 总设计 4.6；第 5 项在 M5/P4、P5（控制加 `session`、`onSessionChange`、`onChange`、`onClose`、`leave`，`renderApp` 有了 `editorExtensions` 选项，`lockReadOnly` 与自动保存各有经组合根的测试）；第 6 项见 M5 总设计 4.9；第 7 项转给 v0.1 收官之后的统一打磨（[M12 的移交](../../M12-release/handoffs/M5-polish.md)第 2 项）；第 8 项在 M5/P4（`stores/edit-session.ts`）。经[M5 收尾审查](../reviews/M5-closeout-review.md)核实。
 
 M4/P6 交付了源码编辑器与页面的编辑模式（[P6 文档](../../M4-pages/06-P6-source-editor.md) 3.3–3.8）：换行写法与 BOM 的记录、保存的队列与冲突、编辑会话、编辑器扩展管线（`editor/registry.ts`、`editor/extensions.ts`）。M5 的只读（锁）与自动保存是管线的第一个注册者，推送是第一个外部更新。
 

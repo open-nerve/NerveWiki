@@ -71,6 +71,7 @@ test("C6 (page): A done editing, B edits at once; A's tab closed while it edits,
   const [held] = await aliveSessionsOf(db, notes.id);
   await tab.close();
   await expect.poll(() => sessionsOf(db, notes.id)).not.toContain(held);
+  await expectSessionGone(db, held ?? "");
   await expect(aEditing).toBeHidden();
   await startEditing(b);
 });
@@ -101,6 +102,7 @@ test("C6 (page, idle): A's edit of Notes goes 30 minutes without input: what A t
   await expect(page.getByRole("main").getByRole("button", { name: "Edit", exact: true })).toBeFocused();
   await expect(page.getByRole("article")).toContainText("One");
   await expect.poll(() => sessionsOf(db, notes.id)).not.toContain(held);
+  await expectSessionGone(db, held ?? "");
   expect((await readContent(api, a, notes.id)).content).toBe("Drafted.\nOne");
   await b.goto(path);
   await startEditing(b);

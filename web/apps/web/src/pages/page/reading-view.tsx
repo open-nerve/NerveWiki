@@ -46,7 +46,7 @@ export const ReadingView = observer(function ReadingView({
   const article = useRef<HTMLElement>(null);
   // The task item focused as the HTML was replaced: its position, its text and its state.
   const focusedTask = useRef<{ task: string; text: string; checked: boolean } | undefined>(undefined);
-  // The position of the task item the view's own toggle has just changed, until the HTML is replaced.
+  // The position of the task item the view's own toggle changes, from its sending until the HTML is replaced.
   const toggled = useRef<string | undefined>(undefined);
   // The page's latest refused: the HTML is not replaced for a new one.
   const latestRefused = useRef(refused);
@@ -73,15 +73,17 @@ export const ReadingView = observer(function ReadingView({
         ? async (offset, checked) => {
             await pages.oneToggle(page.id, async () => {
               latestRefused.current(undefined);
+              // The HTML that shows the toggle may come before its answer, read again for its event.
+              toggled.current = offset.toString();
               try {
                 await pages.toggleTask(page.id, { base_revision: revision, offset, checked });
               } catch (failure) {
+                toggled.current = undefined;
                 if (failure instanceof ApiError && failure.code === "page.revision_mismatch") {
                   await mutate();
                 }
                 throw failure;
               }
-              toggled.current = offset.toString();
               await mutate();
             });
           }

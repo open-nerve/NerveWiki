@@ -2,7 +2,7 @@ import { action, makeObservable, observableRef } from "mobx";
 
 import type { HubEvent, PageLifecycle } from "../events/hub";
 import { ApiError } from "../services/api";
-import type { PageService } from "../services/page.service";
+import type { EditLockHolder, PageService } from "../services/page.service";
 
 /** SessionService is the part of PageService an edit session uses. */
 export type SessionService = Pick<PageService, "openEditSession" | "heartbeatEditSession" | "endEditSession">;
@@ -17,9 +17,6 @@ export type SessionService = Pick<PageService, "openEditSession" | "heartbeatEdi
  */
 export const editSessionHeartbeat = 20_000;
 
-/** Who holds a page's edit lock, as page.locked names them. */
-type LockHolder = { user_id: string; display_name: string };
-
 /**
  * Why an edit may no longer write (M5 design 4.3, 4.9): its session was
  * taken over by the account elsewhere; an admin unlocked it (by, their
@@ -29,12 +26,12 @@ type LockHolder = { user_id: string; display_name: string };
 export type EditLost =
   | { reason: "taken_over" }
   | { reason: "unlocked"; by: string }
-  | { reason: "taken"; holder: LockHolder }
+  | { reason: "taken"; holder: EditLockHolder }
   | { reason: "gone" }
   | { reason: "no_access" };
 
 /** What opening the session answered: the lock, or who holds it. */
-export type Opening = { opened: true } | { opened: false; holder: LockHolder };
+export type Opening = { opened: true } | { opened: false; holder: EditLockHolder };
 
 export type EditSessionDeps = {
   service: SessionService;

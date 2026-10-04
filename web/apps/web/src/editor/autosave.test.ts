@@ -20,6 +20,10 @@ function built() {
   return fake;
 }
 
+test("the pause is 2 seconds (M5 design 4.8)", () => {
+  expect(autosavePause).toBe(2_000);
+});
+
 test("a change is saved once the content has rested 2 seconds, once", () => {
   const { controls, change } = built();
 

@@ -35,8 +35,9 @@ export interface StartOptions {
   /** Variables added to the test configuration, e.g. NWIKI_DATABASE__AUTO_MIGRATE=false. */
   env?: Record<string, string>;
   /**
-   * What the start waits for: "ready", /readyz answering 200 (the default);
-   * "live", /healthz answering 200, for a nervewiki that is meant not to be ready.
+   * What the start waits for: "ready", /readyz answering 200 and the event
+   * stream's listener listening (the default); "live", /healthz answering
+   * 200, for a nervewiki that is meant not to be ready.
    */
   until?: "ready" | "live";
 }
@@ -108,8 +109,14 @@ export async function startNervewiki(
     spawnError = err;
   });
   const probe = until === "ready" ? "/readyz" : "/healthz";
+  const deadline = Date.now() + startTimeoutMs;
   try {
-    const baseURL = await waitFor(probe, child, addrFile, Date.now() + startTimeoutMs, () => spawnError);
+    const baseURL = await waitFor(probe, child, addrFile, deadline, () => spawnError);
+    if (until === "ready") {
+      // /readyz does not wait for the listener: until it listens, a stream is 503 not_ready, which a page's
+      // first stream would wait out (README, the event stream).
+      await waitForLog(logFile, listening, child, deadline);
+    }
     return { baseURL, stop: () => stop(child, logFile) };
   } catch (err) {
     await kill(child);
@@ -153,6 +160,23 @@ function readAddr(addrFile: string): string | undefined {
  * that accepts the connection but never answers cannot hold the wait past
  * the deadline.
  */
+/** What nervewiki logs once the event stream's listener listens. */
+const listening = 'msg="notification listener listening"';
+
+/** waitForLog waits until logFile has text, while child runs, until deadline. */
+async function waitForLog(logFile: string, text: string, child: ChildProcess, deadline: number): Promise<void> {
+  while (!readFileSync(logFile, "utf8").includes(text)) {
+    if (child.exitCode !== null) {
+      throw new Error(`nervewiki exited with code ${child.exitCode}`);
+    }
+    if (Date.now() > deadline) {
+      throw new Error(`no ${text} in the log within ${startTimeoutMs} ms`);
+    }
+    // oxlint-disable-next-line no-await-in-loop -- polled until it is there
+    await sleep(pollIntervalMs);
+  }
+}
+
 async function waitFor(
   probe: string,
   child: ChildProcess,

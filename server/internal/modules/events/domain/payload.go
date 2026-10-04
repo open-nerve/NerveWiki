@@ -32,9 +32,13 @@ func NewEvent(t Type, workspaceID, notebookID uuid.UUID, data any) (Event, error
 	return Event{Type: t, WorkspaceID: workspaceID, NotebookID: notebookID, Data: raw}, nil
 }
 
-// Encode returns e's payload: ErrTooLong when it is longer than
-// MaxPayload, which the publisher sheds first.
+// Encode returns e's payload: ErrNoType for a type no event can have,
+// ErrTooLong when it is longer than MaxPayload, which the publisher sheds
+// first.
 func Encode(e Event) (string, error) {
+	if err := CheckType(e.Type); err != nil {
+		return "", err
+	}
 	p := payload{Type: e.Type, WorkspaceID: e.WorkspaceID, Data: e.Data}
 	if e.NotebookID != uuid.Nil() {
 		p.NotebookID = &e.NotebookID

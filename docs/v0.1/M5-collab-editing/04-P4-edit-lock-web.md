@@ -56,7 +56,7 @@ web/apps/web/src/
   app/event-stream.tsx                          P3 的修复：清理之后整体刷新与锁的重读停下（3.3）
   i18n/messages/en.ts、zh-CN.ts                 文案
   test/render.tsx、test/page-server.ts          编辑器扩展的参数；锁随会话（3.11）
-e2e/fixtures/wiki-pages.ts、pages.ts、test.ts   进入编辑被拒、失锁的横幅；开启带接管；watchOf（3.12）
+e2e/fixtures/wiki-pages.ts、collab.ts、test.ts  进入编辑被拒、失锁的横幅；开启带接管；watchOf（3.12）
 e2e/stories/collab/c1–c4、c6                    页面版本
 ```
 
@@ -155,7 +155,7 @@ e2e/stories/collab/c1–c4、c6                    页面版本
 
 ### 3.12 端到端
 
-- **夹具**：`wiki-pages.ts` 的 `startEditing` 不变（拿到锁之后编辑器才拿到焦点）；加 `editRefused(page)`（按 Edit 之后停在阅读视图、显示持锁人）与 `lostBanner(page)`；`pages.ts` 的开启带 `takeOver`；`test.ts` 导出 `watchOf(page)`（别的标签页与页面的请求与控制台），`anotherPage` 的安静检查跳过已关掉的页；`assert/collab.ts` 加 `aliveSessionsOf`。
+- **夹具**：`wiki-pages.ts` 的 `startEditing` 不变（拿到锁之后编辑器才拿到焦点）；加 `editRefused(page)`（按 Edit 之后停在阅读视图、显示持锁人）与 `lostBanner(page)`；`collab.ts` 的开启带接管（`takeOver`）；`test.ts` 导出 `watchOf(page)`（别的标签页与页面的请求与控制台），`anotherPage` 的安静检查跳过已关掉的页；`assert/collab.ts` 加 `aliveSessionsOf`。
 - **C1（页面）**：A 在页面上编辑；B（另一账户）打开同一页看到"A 正在编辑"，按 Edit 被拒、停在阅读视图；A 退出编辑之后 B 能编辑。落库：至多一个活着的会话。
 - **C2（页面）**：同一账户的第二个标签页（`anotherTab`）按 Edit：说"你正在别处编辑"，给"在这里编辑"；按下之后第二个编辑，第一个标签页的编辑器只读并说明被接管（经锁事件，不等心跳：`clock.install` 之后快进 20 秒让它先心跳一次，断言横幅在下一次周期心跳之前出现，审查 B-m5）；落库：第一个会话是 `taken_over` 的墓碑。
 - **C3（页面）**：笔记本的管理员（另一账户的页面）解除 A 的锁：A 的编辑器只读并说明是谁解除的（同 C2，经锁事件），之前保存的都在。

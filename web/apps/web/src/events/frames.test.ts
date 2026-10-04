@@ -32,15 +32,15 @@ describe("FrameParser", () => {
     ]);
   });
 
-  test("joins the lines of a frame's data; names an event it does not know without its data; drops a frame that is not JSON", () => {
+  test("joins the lines of a frame's data; names an event it does not know, with its data; drops a frame that is not JSON", () => {
     const parser = new FrameParser();
 
     expect(
       parser.push(
-        'event: links\ndata: {"a":1}\n\nevent: lock\ndata: {"page_id":\ndata: "p"}\n\nevent: pages\ndata: {nope\n\n'
+        'event: links\ndata: {"a":1}\n\nevent: lock\ndata: {"page_id":\ndata: "p"}\n\nevent: pages\ndata: {nope\n\nevent: links\ndata: {nope\n\n'
       )
     ).toEqual([
-      { type: "other", event: "links" },
+      { type: "other", event: "links", data: { a: 1 } },
       { type: "lock", data: { page_id: "p" } },
     ]);
   });

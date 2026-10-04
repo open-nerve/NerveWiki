@@ -26,6 +26,10 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+test("a visible tab reads a key at most once in 5 seconds (M5 design 4.11)", () => {
+  expect(INTERVAL_MS).toBe(5_000);
+});
+
 describe("Refresher", () => {
   test("reads at once, then at most once an interval per key, the interval's last request", async () => {
     const reads: string[] = [];

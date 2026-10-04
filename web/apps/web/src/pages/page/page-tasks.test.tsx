@@ -2,8 +2,11 @@ import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
+import { eventHandlers } from "../../events/handlers";
+import { FakePage } from "../../events/testing/fake-page";
 import { readingEnhancements, type Enhancement } from "../../reading/enhancement";
-import { json, problem } from "../../test/fakes";
+import { eventServer, withEvents } from "../../test/event-server";
+import { json, notebookJSON, problem, workspaceJSON } from "../../test/fakes";
 import { bob, install, notes, pagePath, pageServer } from "../../test/page-server";
 import { renderApp } from "../../test/render";
 
@@ -223,4 +226,60 @@ test("a toggle's refusal that comes while the page is edited is not shown once t
 
   await screen.findByRole("button", { name: "Edit" });
   expect(screen.queryByRole("alert")).toBeNull();
+});
+
+test("the focus stays on the item ticked when the event of the toggle reads the view again before the toggle's answer comes", async () => {
+  const events = eventServer();
+  let release: (() => void) | undefined;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let posted = false;
+  const server = pageServer({
+    role: "editor",
+    answers: {
+      "GET /api/v0/events": events.answer,
+      // The toggle is written, its event sent, and its answer comes late.
+      "POST /api/v0/pages/*/toggle-task": async () => {
+        server.withTasks(install.id, "- [x] a\n- [x] b\n", 2);
+        posted = true;
+        await held;
+        return json({
+          ...install,
+          ancestors: [],
+          revision: 2,
+          byte_size: 0,
+          content_updated_at: install.updated_at,
+          content_updated_by: "",
+        });
+      },
+    },
+  });
+  server.withTasks(install.id, tasks);
+  renderApp(pagePath(install.id), withEvents(server.app, new FakePage()), {
+    enhancements: [focusFixup, ...readingEnhancements],
+    eventHandlers,
+  });
+  await waitFor(() => expect(boxes()).toHaveLength(2));
+  await waitFor(() => expect(events.streams).toHaveLength(1));
+  act(() => events.last().hello());
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  (boxes()[0] as HTMLElement).focus();
+
+  await userEvent.keyboard(" ");
+  await waitFor(() => expect(posted).toBe(true));
+  act(() =>
+    events.last().send("pages", {
+      workspace_id: workspaceJSON.id,
+      notebook_id: notebookJSON.id,
+      tree: false,
+      pages: [{ id: install.id, revision: 2 }],
+    })
+  );
+
+  await waitFor(() => expect(boxes()[0]?.checked).toBe(true));
+  expect(document.activeElement).toBe(boxes()[0]);
+  release?.();
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  expect(document.activeElement).toBe(boxes()[0]);
 });

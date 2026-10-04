@@ -52,8 +52,9 @@ test("C3 (API): an editor's and a reader's release of A's lock are 403; the note
   expect((await releaseLock(api, admin, page.id)).response.status).toBe(204);
 });
 
-test("C3 (page): the notebook's admin, reading Notes that A edits, releases A's lock: A's editor hears it as an event, read-only, saying who released it; what A saved is kept", async ({
+test("C3 (page): A, an editor, sees no Release lock; the notebook's admin, reading Notes that A edits, releases A's lock: A's editor hears it as an event, read-only, saying who released it; what A saved is kept", async ({
   anotherPage,
+  anotherTab,
   api,
   db,
   pageWatch,
@@ -72,18 +73,25 @@ test("C3 (page): the notebook's admin, reading Notes that A edits, releases A's 
   await page.keyboard.type("One");
   await saveEdit(page);
   const [held] = await aliveSessionsOf(db, notes.id);
-  // A's editor beats now: its next beat is 20 seconds off, so that what it hears sooner comes as an event.
-  const beat = answerTo(page, "POST", `/api/v0/edit-sessions/${held}/heartbeat`);
-  await page.clock.fastForward(20_000);
-  expect((await beat).status()).toBe(200);
-  const beaten = Date.now();
-
+  await expectAliveSessions(db, notes.id, [held ?? ""]);
+  // Only the notebook's admins release a lock (M5 design 4.2): A, an editor, reading Notes in another tab, cannot.
+  const elsewhere = await anotherTab(page);
+  await elsewhere.goto(path);
+  await expect(elsewhere.getByText("You are editing this page elsewhere.", { exact: true })).toBeVisible();
+  await expect(elsewhere.getByRole("main").getByRole("button", { name: "Release lock" })).toHaveCount(0);
+  await elsewhere.close();
   const adminPage = await anotherPage(tokens);
   await adminPage.goto(path);
   const aEditing = adminPage.getByText(`${displayNameOf(emailFor(testInfo, "a"))} is editing this page.`, {
     exact: true,
   });
   await expect(aEditing).toBeVisible();
+  // A's editor beats now: its next beat is 20 seconds off, so that what it hears sooner comes as an event.
+  const beat = answerTo(page, "POST", `/api/v0/edit-sessions/${held}/heartbeat`);
+  await page.clock.fastForward(20_000);
+  expect((await beat).status()).toBe(200);
+  const beaten = Date.now();
+
   await adminPage.getByRole("main").getByRole("button", { name: "Release lock", exact: true }).click();
   await adminPage
     .getByRole("alertdialog", { name: "Release the edit lock?" })
@@ -101,5 +109,6 @@ test("C3 (page): the notebook's admin, reading Notes that A edits, releases A's 
   // A's beat on the event: page.edit_session_unlocked.
   pageWatch.expectConsole({ errors: [failedToLoad(409)] });
   await expectTombstone(db, held ?? "", "unlocked", adminId);
+  await expectAliveSessions(db, notes.id, []);
   expect((await readContent(api, admin, notes.id)).content).toBe("Drafted.\nOne");
 });

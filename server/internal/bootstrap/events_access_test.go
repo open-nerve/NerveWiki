@@ -35,6 +35,12 @@ func TestEveryVisibilityChangeResetsItsStreams(t *testing.T) {
 				tm.send(t, request("alice", http.MethodPatch, "/api/v0/notebooks/"+nb, `{"workspace_access":"viewer"}`), http.StatusOK)
 			}
 		}, []string{"alice", "bob", "carol"}, nil},
+		{"a notebook closed to the members", func(t *testing.T, tm acmeTeam) func() {
+			nb := tm.openNotebook(t, "alice", "Open")
+			return func() {
+				tm.send(t, request("alice", http.MethodPatch, "/api/v0/notebooks/"+nb, `{"workspace_access":"none"}`), http.StatusOK)
+			}
+		}, []string{"alice", "bob", "carol"}, nil},
 		{"a notebook member added", func(t *testing.T, tm acmeTeam) func() {
 			nb := tm.createNotebook(t, "alice", "Private")
 			return func() { notebookMember(t, tm, nb) }
@@ -59,6 +65,10 @@ func TestEveryVisibilityChangeResetsItsStreams(t *testing.T) {
 		}, []string{"bob"}, []string{"alice"}},
 		{"an invitation accepted as a member", func(t *testing.T, tm acmeTeam) func() {
 			inv := tm.invite(t, "dana", "member")
+			return func() { tm.send(t, accept("dana", inv), http.StatusOK) }
+		}, []string{"dana"}, []string{"alice", "bob"}},
+		{"an invitation accepted as an admin", func(t *testing.T, tm acmeTeam) func() {
+			inv := tm.invite(t, "dana", "admin")
 			return func() { tm.send(t, accept("dana", inv), http.StatusOK) }
 		}, []string{"dana"}, []string{"alice", "bob"}},
 		{"a member made a guest", func(t *testing.T, tm acmeTeam) func() {

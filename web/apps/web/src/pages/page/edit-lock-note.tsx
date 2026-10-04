@@ -14,6 +14,8 @@ type EditLockNoteProps = {
   page: TreeNode;
   /** editHere edits the page here, taking the lock over from the account elsewhere: for those who may edit it. */
   editHere?: () => void;
+  /** released takes the focus once a release went through, the note, its trigger with it, gone. */
+  released: () => void;
 };
 
 /**
@@ -25,7 +27,7 @@ type EditLockNoteProps = {
  * ends learns so as they save. The account editing elsewhere may edit here
  * instead (M5/P4 design 3.6): the edit elsewhere is then taken over.
  */
-export const EditLockNote = observer(function EditLockNote({ notebook, page, editHere }: EditLockNoteProps) {
+export const EditLockNote = observer(function EditLockNote({ notebook, page, editHere, released }: EditLockNoteProps) {
   const t = useT();
   const pages = usePageTree(notebook);
   const me = useStore().account?.me;
@@ -52,6 +54,7 @@ export const EditLockNote = observer(function EditLockNote({ notebook, page, edi
         {notebook.role === "admin" && (
           <ConfirmDialog
             trigger={<Button variant="outline">{t("page.releaseLock")}</Button>}
+            focusAfter={released}
             title={t("page.releaseLockTitle")}
             description={
               self ? t("page.releaseLockBodySelf") : t("page.releaseLockBody", { name: holder.display_name })

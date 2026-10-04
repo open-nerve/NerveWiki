@@ -1,11 +1,13 @@
 ```yaml
-status: open
+status: done
 from: M0/P1
 to: M5
 created: 2026-09-30
 ```
 
 # SSE 经过反向代理的验证
+
+> 已全部处理（2026-10-04）：第 1、2 项在 M5/P2 实测（[P2 文档](../02-P2-event-stream.md)第 7 节）：Caddy 开 `encode` 也不缓冲、不压缩事件流，nginx 的配置已验证，两者写进 README 的部署一节；第 3 项是 C9 的页面版本（Web Locks 与租约两种，十个标签页一条流，持有者关闭之后别的接手）；第 4 项是平台导出的 `API.LongLived`（`platform/httpserver/longlived.go`）与 `TestTheAPIsLongLivedRoutesAuthenticate`，C8 有"不带凭证 401"。经[M5 收尾审查](../reviews/M5-closeout-review.md)核实。
 
 M0/P1 的实验 ③（[结果](../../M0-foundation/01-P1-spikes.md) 第 7 节）验证了直连与 Caddy 默认配置下的 SSE：不缓冲、心跳有效、`Authorization` 在日志中脱敏。以下情况没有测，由 M5 实测，并把可用的配置写进部署文档：
 

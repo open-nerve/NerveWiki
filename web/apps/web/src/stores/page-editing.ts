@@ -75,6 +75,8 @@ export class PageEditing {
   private out: Promise<boolean> | undefined = undefined;
   private next: Draft | undefined = undefined;
   private nextSent: Promise<boolean> | undefined = undefined;
+  /** The shown editor's quiet save of what it holds: the sign-out saves through it. */
+  private saveShown: (() => Promise<boolean>) | undefined = undefined;
 
   constructor(
     private readonly service: EditingService,
@@ -96,6 +98,7 @@ export class PageEditing {
       | "out"
       | "next"
       | "nextSent"
+      | "saveShown"
     >(
       this,
       {
@@ -117,6 +120,7 @@ export class PageEditing {
         out: false,
         next: false,
         nextSent: false,
+        saveShown: false,
       },
       { autoBind: true }
     );
@@ -248,6 +252,23 @@ export class PageEditing {
     this.conflict = undefined;
     this.failure = undefined;
     return conflict.theirs;
+  }
+
+  /** savesThrough is told the shown editor's quiet save, and undefined once the editor goes. */
+  savesThrough(save: (() => Promise<boolean>) | undefined): void {
+    this.saveShown = save;
+  }
+
+  /**
+   * close saves what is unsaved through the shown editor, then ends the
+   * edit: the sign-out's end, which does not drop what was typed since the
+   * last save. A save that fails ends it all the same.
+   */
+  async close(): Promise<void> {
+    if (!this.ended && this.unsaved && this.saveShown !== undefined) {
+      await this.saveShown().catch(() => false);
+    }
+    return this.end();
   }
 
   /**

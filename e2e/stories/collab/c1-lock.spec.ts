@@ -1,7 +1,7 @@
 import { aliveSessionsOf, expectAliveSessions } from "../../fixtures/assert/collab";
 import { accountIdOf } from "../../fixtures/assert/identity";
 import { displayNameOf, emailFor } from "../../fixtures/auth";
-import { failedToLoad } from "../../fixtures/browser";
+import { answerTo, failedToLoad } from "../../fixtures/browser";
 import { readLock } from "../../fixtures/collab";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { createNotebook } from "../../fixtures/notebooks";
@@ -50,7 +50,7 @@ test("C1 (page): while A edits Notes, B's Edit keeps the reading view, saying A 
   db,
   signedInPage,
 }, testInfo) => {
-  const { adminEmail, pat: a, tokens, workspace } = await newOnboardedTeam(api, testInfo);
+  const { adminEmail, adminId, pat: a, tokens, workspace } = await newOnboardedTeam(api, testInfo);
   const b = await anotherPage(await joinOnboarded(api, a, workspace.slug, emailFor(testInfo, "b"), "member"));
   const notebook = await createNotebook(api, a, workspace.slug, "Plans", "editor");
   const notes = await createPage(api, a, notebook.id, "Notes", null, "Drafted.\n");
@@ -63,8 +63,16 @@ test("C1 (page): while A edits Notes, B's Edit keeps the reading view, saying A 
   const [held] = await aliveSessionsOf(db, notes.id);
   await b.goto(path);
   const aEditing = `${displayNameOf(adminEmail)} is editing this page.`;
+  // B sees A editing as the page opens, before pressing Edit.
+  await expect(b.getByText(aEditing, { exact: true })).toBeVisible();
+  const opening = answerTo(b, "POST", `/api/v0/pages/${notes.id}/edit-sessions`);
   await editRefused(b, aEditing);
-  // B's opening was refused: page.locked.
+  // B's opening was refused: page.locked, naming A.
+  const refused = await opening;
+  expect([refused.status(), ((await refused.json()) as { lock?: unknown }).lock]).toEqual([
+    409,
+    { page_id: notes.id, user_id: adminId, display_name: displayNameOf(adminEmail) },
+  ]);
   watchOf(b).expectConsole({ errors: [failedToLoad(409)] });
   await expectAliveSessions(db, notes.id, [held ?? ""]);
 

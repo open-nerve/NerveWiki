@@ -1,4 +1,5 @@
 import { aliveSessionsOf, expectAliveSessions, expectTombstone } from "../../fixtures/assert/collab";
+import { expectSessionGone } from "../../fixtures/assert/page";
 import { displayNameOf, emailFor } from "../../fixtures/auth";
 import { answerTo, failedToLoad } from "../../fixtures/browser";
 import { postTakeOver, takeOver } from "../../fixtures/collab";
@@ -57,6 +58,7 @@ test("C2 (API): A's second opening is 409 page.locked naming A, and B's take-ove
     [409, "page.edit_session_taken_over"],
   ]);
   expect((await endSession(api, a, first.id)).response.status).toBe(204);
+  await expectSessionGone(db, first.id);
   await expectAliveSessions(db, page.id, [second.id]);
 });
 
@@ -80,16 +82,17 @@ test("C2 (page): A edits Notes in one tab; in a second, Edit says A edits it els
   await first.keyboard.type("One");
   await saveEdit(first);
   const [held] = await aliveSessionsOf(db, notes.id);
+  await expectAliveSessions(db, notes.id, [held ?? ""]);
+  const second = await anotherTab(first);
+  await second.goto(path);
+  await editRefused(second, "You are editing this page elsewhere.");
+  watchOf(second).expectConsole({ errors: [failedToLoad(409)] });
   // The first tab beats now: its next beat is 20 seconds off, so that what it hears sooner comes as an event.
   const beat = answerTo(first, "POST", `/api/v0/edit-sessions/${held}/heartbeat`);
   await first.clock.fastForward(20_000);
   expect((await beat).status()).toBe(200);
   const beaten = Date.now();
 
-  const second = await anotherTab(first);
-  await second.goto(path);
-  await editRefused(second, "You are editing this page elsewhere.");
-  watchOf(second).expectConsole({ errors: [failedToLoad(409)] });
   await second.getByRole("main").getByRole("button", { name: "Edit here", exact: true }).click();
   await expect(editorContent(second)).toBeFocused();
 
@@ -102,8 +105,8 @@ test("C2 (page): A edits Notes in one tab; in a second, Edit says A edits it els
   // The first session's beat on the event: page.edit_session_taken_over.
   pageWatch.expectConsole({ errors: [failedToLoad(409)] });
   await expectTombstone(db, held ?? "", "taken_over", adminId);
-  const alive = await aliveSessionsOf(db, notes.id);
-  expect(alive).toHaveLength(1);
-  expect(alive).not.toEqual([held]);
+  const [taker] = await aliveSessionsOf(db, notes.id);
+  expect(taker).not.toBe(held);
+  await expectAliveSessions(db, notes.id, [taker ?? ""]);
   expect((await readContent(api, a, notes.id)).content).toBe("Drafted.\nOne");
 });

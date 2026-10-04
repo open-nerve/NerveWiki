@@ -19,6 +19,10 @@ function built() {
   return fake;
 }
 
+test("the limit is 30 minutes (M5 design 4.7; the owner's decision)", () => {
+  expect(idleLimit).toBe(30 * 60_000);
+});
+
 test("an editor left alone 30 minutes from its opening is left, as idle", async () => {
   const { controls } = built();
 

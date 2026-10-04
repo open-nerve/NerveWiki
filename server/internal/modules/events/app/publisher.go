@@ -21,7 +21,9 @@ func NewPublisher(n Notifier) *Publisher {
 }
 
 // Publish publishes e: another M's events come this way (M5 design 8). Its
-// data must fit a payload: it holds ids only.
+// type must be one an event can have (domain.CheckType), and its data fit a
+// payload: it holds ids only. Either error is the caller's, whose
+// transaction rolls back.
 func (p *Publisher) Publish(ctx context.Context, e domain.Event) error {
 	payload, err := domain.Encode(e)
 	if err != nil {

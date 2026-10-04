@@ -3,7 +3,6 @@ package domain
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 	"uuid"
 )
@@ -39,8 +38,8 @@ func HelloFrame(heartbeat time.Duration) []byte {
 // EventFrame is e as a frame: its event field is e's type, its data e's
 // data with the workspace's id, and the notebook's when e is of one.
 func EventFrame(e Event) ([]byte, error) {
-	if strings.ContainsAny(string(e.Type), "\r\n:") || e.Type == "" {
-		return nil, fmt.Errorf("events: %q is no event type", e.Type)
+	if err := CheckType(e.Type); err != nil {
+		return nil, err
 	}
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal(e.Data, &fields); err != nil || fields == nil {

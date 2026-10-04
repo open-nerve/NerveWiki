@@ -49,7 +49,8 @@ export function webLockLeadership(locks: Locks, name: string): Leadership {
       return;
     }
     waiting = new AbortController();
-    const options: LockOptions = stealNext ? { steal: true } : { signal: either(signal, waiting.signal) };
+    const asked = either(signal, waiting.signal);
+    const options: LockOptions = stealNext ? { steal: true } : { signal: asked.signal };
     stealNext = false;
     try {
       await locks.request(name, options, async () => {
@@ -62,6 +63,8 @@ export function webLockLeadership(locks: Locks, name: string): Leadership {
       });
     } catch {
       // A request let go of while it waited, or a lock stolen from this tab.
+    } finally {
+      asked.release();
     }
     holding?.abort();
     holding = undefined;
@@ -270,14 +273,21 @@ function pause(ms: number, signal: AbortSignal, onWake: (wake: () => void) => vo
   });
 }
 
-/** either aborts once a or b does. */
-function either(a: AbortSignal, b: AbortSignal): AbortSignal {
+/** either is a signal that aborts once a or b does; release takes its listeners off a and b. */
+function either(a: AbortSignal, b: AbortSignal): { signal: AbortSignal; release: () => void } {
   const both = new AbortController();
+  const cut = () => both.abort();
   for (const s of [a, b]) {
     if (s.aborted) {
       both.abort();
     }
-    s.addEventListener("abort", () => both.abort(), { once: true });
+    s.addEventListener("abort", cut, { once: true });
   }
-  return both.signal;
+  return {
+    signal: both.signal,
+    release: () => {
+      a.removeEventListener("abort", cut);
+      b.removeEventListener("abort", cut);
+    },
+  };
 }

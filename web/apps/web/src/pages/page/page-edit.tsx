@@ -256,6 +256,11 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
   useEffect(() => {
     keys.current = { save, leave: lost === undefined ? leave : () => Promise.resolve(backToReading()), leaveIdle };
   });
+  // The sign-out saves what is unsaved through the editor shown, quietly, before the edit ends.
+  useEffect(() => {
+    editing.savesThrough(() => keys.current.save(true));
+    return () => editing.savesThrough(undefined);
+  }, [editing]);
   // An edit whose content is not read has no editor to time it: it is left as idle after as long all the same,
   // from the last try to read it.
   const unread = editing.readFailure;
