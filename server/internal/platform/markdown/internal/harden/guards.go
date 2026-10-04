@@ -209,6 +209,12 @@ func (l linkify) Parse(parent ast.Node, block text.Reader, pc parser.Context) as
 		line = line[1:]
 		at++
 	}
+	// GFM's autolinks start after a space, '*', '_', '~' or '(' only; goldmark
+	// tries one after any inline node too, and a highlight's '=' run is one.
+	// Without highlights no node ends in '=' (M6/P1 design 3.3).
+	if at > 0 && block.Source()[at-1] == '=' {
+		return nil
+	}
 	for _, p := range []string{"http:", "https:", "ftp:"} {
 		if bytes.HasPrefix(line, []byte(p)) {
 			return l.inner.Parse(parent, block, pc)
