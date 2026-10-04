@@ -1,0 +1,12 @@
+{
+  "description": "出发文件夹是出发页的父节点，不是它自己的子节点：根下的 Y3 链接 [[d7]]，选层数少的 Z3/d7，不选 Y3/sub/d7",
+  "source": "obsidian-verified",
+  "pages": ["Y3", "Y3/sub", "Y3/sub/d7", "Z3", "Z3/d7"],
+  "links": [
+    {
+      "from": "Y3",
+      "link": "[[d7]]",
+      "to": "Z3/d7"
+    }
+  ]
+}

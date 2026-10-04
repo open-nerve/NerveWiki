@@ -1,0 +1,22 @@
+{
+  "description": "按标题键比较：不分大小写，不分 Unicode 的规范化形式",
+  "source": "obsidian-verified",
+  "pages": ["note", "Café", "src"],
+  "links": [
+    {
+      "from": "src",
+      "link": "[[NOTE]]",
+      "to": "note"
+    },
+    {
+      "from": "src",
+      "link": "[[café]]",
+      "to": "Café"
+    },
+    {
+      "from": "src",
+      "link": "[[CAFÉ]]",
+      "to": "Café"
+    }
+  ]
+}

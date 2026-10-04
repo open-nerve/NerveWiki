@@ -1,0 +1,33 @@
+{
+  "description": "别名也解析（Obsidian 只在补全时用别名，[[别名]] 本身不解析）",
+  "source": "nerve-defined",
+  "note": "总体设计 4.4 有意与 Obsidian 不同：别名也解析，只对不带 / 的名称。",
+  "pages": ["aliased", "other", "src"],
+  "aliases": {
+    "aliased": ["Al", "Other name"]
+  },
+  "links": [
+    {
+      "from": "src",
+      "link": "[[Al]]",
+      "to": "aliased"
+    },
+    {
+      "from": "src",
+      "link": "[[other name]]",
+      "to": "aliased"
+    },
+    {
+      "from": "src",
+      "link": "[[other]]",
+      "to": "other",
+      "source": "obsidian-verified"
+    },
+    {
+      "from": "src",
+      "link": "[[A/Al]]",
+      "to": null,
+      "source": "obsidian-verified"
+    }
+  ]
+}

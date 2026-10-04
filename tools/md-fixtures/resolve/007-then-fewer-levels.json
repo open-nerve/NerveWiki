@@ -1,0 +1,50 @@
+{
+  "description": "同在或同不在出发文件夹的子树里时，选层数少的",
+  "source": "obsidian-verified",
+  "pages": [
+    "P",
+    "P/Q",
+    "P/Q/dup3",
+    "R",
+    "R/dup3",
+    "Y",
+    "Y/a",
+    "Y/a/d5",
+    "Y/b",
+    "Y/b/c",
+    "Y/b/c/d5",
+    "Q",
+    "Q/d5",
+    "src",
+    "P/src",
+    "Y/src",
+    "Y/b/src"
+  ],
+  "links": [
+    {
+      "from": "src",
+      "link": "[[dup3]]",
+      "to": "R/dup3"
+    },
+    {
+      "from": "P/src",
+      "link": "[[dup3]]",
+      "to": "P/Q/dup3"
+    },
+    {
+      "from": "src",
+      "link": "[[d5]]",
+      "to": "Q/d5"
+    },
+    {
+      "from": "Y/src",
+      "link": "[[d5]]",
+      "to": "Y/a/d5"
+    },
+    {
+      "from": "Y/b/src",
+      "link": "[[d5]]",
+      "to": "Y/b/c/d5"
+    }
+  ]
+}

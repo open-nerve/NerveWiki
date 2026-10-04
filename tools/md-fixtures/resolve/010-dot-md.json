@@ -1,0 +1,32 @@
+{
+  "description": "以 .md 结尾的先去掉 .md 匹配，再原样匹配标题以 .md 结尾的页",
+  "source": "obsidian-verified",
+  "pages": ["pp", "pp.md", "p.md", "src"],
+  "links": [
+    {
+      "from": "src",
+      "link": "[[pp.md]]",
+      "to": "pp"
+    },
+    {
+      "from": "src",
+      "link": "[[pp]]",
+      "to": "pp"
+    },
+    {
+      "from": "src",
+      "link": "[[p.md]]",
+      "to": "p.md"
+    },
+    {
+      "from": "src",
+      "link": "[[p.md.md]]",
+      "to": "p.md"
+    },
+    {
+      "from": "src",
+      "link": "[[pp.md.md]]",
+      "to": "pp.md"
+    }
+  ]
+}

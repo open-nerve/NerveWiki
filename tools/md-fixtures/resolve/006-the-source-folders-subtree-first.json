@@ -1,0 +1,32 @@
+{
+  "description": "多个同名的页：先选在出发文件夹整棵子树里的",
+  "source": "obsidian-verified",
+  "pages": ["X", "X/dup", "Y", "Y/Z", "Y/Z/dup", "M", "src", "X/src", "Y/src", "Y/Z/src", "M/src"],
+  "links": [
+    {
+      "from": "src",
+      "link": "[[dup]]",
+      "to": "X/dup"
+    },
+    {
+      "from": "X/src",
+      "link": "[[dup]]",
+      "to": "X/dup"
+    },
+    {
+      "from": "Y/src",
+      "link": "[[dup]]",
+      "to": "Y/Z/dup"
+    },
+    {
+      "from": "Y/Z/src",
+      "link": "[[dup]]",
+      "to": "Y/Z/dup"
+    },
+    {
+      "from": "M/src",
+      "link": "[[dup]]",
+      "to": "X/dup"
+    }
+  ]
+}

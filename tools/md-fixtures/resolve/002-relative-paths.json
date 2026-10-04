@@ -1,0 +1,42 @@
+{
+  "description": "./ 与 ../ 从出发页所在的文件夹起，../ 到根为止；出发文件夹是出发页的父节点",
+  "source": "obsidian-verified",
+  "pages": ["note", "A", "A/note", "A/B", "A/B/note", "A/B/deep", "src", "A/src", "A/B/src"],
+  "links": [
+    {
+      "from": "src",
+      "link": "[[./note]]",
+      "to": "note"
+    },
+    {
+      "from": "A/src",
+      "link": "[[./note]]",
+      "to": "A/note"
+    },
+    {
+      "from": "A/B/src",
+      "link": "[[../note]]",
+      "to": "A/note"
+    },
+    {
+      "from": "A/B/src",
+      "link": "[[../../note]]",
+      "to": "note"
+    },
+    {
+      "from": "src",
+      "link": "[[../note]]",
+      "to": "note"
+    },
+    {
+      "from": "A/B/src",
+      "link": "[[./note]]",
+      "to": "A/B/note"
+    },
+    {
+      "from": "A/src",
+      "link": "[[./missing]]",
+      "to": null
+    }
+  ]
+}
