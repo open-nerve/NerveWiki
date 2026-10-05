@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 
 import { json, notebookJSON, problem } from "../../test/fakes";
-import { bob, guide, install, linux, notes, pageNode, pagePath, pageServer } from "../../test/page-server";
+import { ada, bob, guide, install, linux, notes, pageNode, pagePath, pageServer } from "../../test/page-server";
 import { renderApp } from "../../test/render";
 
 // The tree's writes: new pages, renaming, moving, deleting (M4/P5 design
@@ -179,6 +179,59 @@ test("a title taken, or one the rules refuse, stays in the rename dialog", async
   expect(await within(dialog).findByRole("alert")).toBeTruthy();
   expect(server.sent).toContain("PATCH Notes to guide");
   expect(screen.getByRole("dialog", { name: "Rename Notes" })).toBeTruthy();
+});
+
+/** linking.pages_locked of Linux, which Bob edits, and Notes, which Ada does: the links a rename or move writes again. */
+const pagesLocked = () =>
+  problem(409, "linking.pages_locked", {
+    locks: [
+      { page_id: linux.id, ...bob },
+      { page_id: notes.id, ...ada },
+    ],
+  });
+
+test("a rename whose links' pages are being edited names them and their editors in its dialog", async () => {
+  const user = userEvent.setup();
+  const server = pageServer({ answers: { "PATCH /api/v0/nodes/*": pagesLocked } });
+  renderApp(home, server.app);
+  await choose(user, "Guide", "Rename");
+  const dialog = await screen.findByRole("dialog", { name: "Rename Guide" });
+  await user.clear(within(dialog).getByLabelText("Title"));
+  await user.type(within(dialog).getByLabelText("Title"), "Handbook");
+  await user.click(within(dialog).getByRole("button", { name: "Save" }));
+
+  const alert = await within(dialog).findByRole("alert");
+  expect(
+    within(alert)
+      .getAllByRole("listitem")
+      .map((item) => item.textContent)
+  ).toEqual(["Bob is editing “Linux”.", "You are editing “Notes”."]);
+  expect(alert.textContent).toContain("This change writes the links on these pages again");
+  expect(server.nodes.map((node) => node.name)).toEqual(["Guide", "Install", "Linux", "Notes"]);
+});
+
+test("a move whose links' pages are being edited names them and their editors in its dialog; a busy server says so", async () => {
+  const user = userEvent.setup();
+  let answer = pagesLocked;
+  const server = pageServer({ answers: { "POST /api/v0/nodes/*/move": () => answer() } });
+  renderApp(home, server.app);
+  await choose(user, "Notes", "Move to…");
+  const dialog = await screen.findByRole("dialog", { name: "Move Notes" });
+  await user.selectOptions(within(dialog).getByLabelText("Parent page"), "Guide");
+  await user.click(within(dialog).getByRole("button", { name: "Move" }));
+
+  const alert = await within(dialog).findByRole("alert");
+  expect(
+    within(alert)
+      .getAllByRole("listitem")
+      .map((item) => item.textContent)
+  ).toEqual(["Bob is editing “Linux”.", "You are editing “Notes”."]);
+
+  answer = () => problem(503, "server_busy", {}, { "Retry-After": "1" });
+  await user.click(within(dialog).getByRole("button", { name: "Move" }));
+  await waitFor(() =>
+    expect(within(dialog).getByRole("alert").textContent).toBe("The server is busy. Try again in a moment.")
+  );
 });
 
 test("Delete says how many subpages go with the page; the page shown goes to the parent's place", async () => {

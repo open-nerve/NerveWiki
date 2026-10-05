@@ -1,16 +1,17 @@
 import { countAnswers } from "../../fixtures/browser";
 import { holdStream } from "../../fixtures/events";
 import { createNotebook } from "../../fixtures/notebooks";
-import { createPage, getView } from "../../fixtures/pages";
+import { createPage, getView, renameNode } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
 import { pageHeading, wikiPagePath } from "../../fixtures/wiki-pages";
 import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 
-// L1, a link to a page (M6 design 9; M6/P3 design 6.2, 6.7): a wikilink and
-// a Markdown link to a page of the notebook lead there, and to its anchor's
-// heading; one to a page not there shows so, with no address, until the
-// page is created elsewhere (the links event). That a link still leads to
-// its page once the page is renamed is P4's half.
+// L1, a link to a page (M6 design 9; M6/P3 design 6.2, 6.7; M6/P4 design
+// 8): a wikilink and a Markdown link to a page of the notebook lead there,
+// and to its anchor's heading; one to a page not there shows so, with no
+// address, until the page is created elsewhere (the links event); a link
+// leads to its page still once the page is renamed elsewhere, written
+// again.
 
 test("L1 (API): a reading view's links to pages carry the page each leads to and its anchor's heading, or that it leads nowhere, and no address", async ({
   api,
@@ -150,4 +151,30 @@ test("L1 (page): a link to a page not there leads to it once the page is created
   // Read again, the view keeps the heading's focus and stays where it was.
   await expect(partA).toBeFocused();
   await expect(partA).toBeInViewport();
+});
+
+test("L1 (page): a link leads to its page once the page is renamed elsewhere: the rename writes the link again, and the view is read again with the event", async ({
+  api,
+  signedInPage,
+}, testInfo) => {
+  const { pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
+  const notebook = await createNotebook(api, pat, workspace.slug, "Plans");
+  const target = await createPage(api, pat, notebook.id, "Target");
+  const source = await createPage(api, pat, notebook.id, "Source", null, "[[Target]]\n");
+  const targetPath = wikiPagePath(workspace.slug, notebook.id, target.id);
+  const page = await signedInPage(tokens);
+  const letStreamIn = await holdStream(page);
+  const viewReads = countAnswers(page, "GET", `/api/v0/pages/${source.id}/view`);
+  await page.goto(wikiPagePath(workspace.slug, notebook.id, source.id));
+  const article = page.getByRole("article", { name: "Source" });
+  await expect(article.getByRole("link", { name: "Target", exact: true })).toHaveAttribute("href", targetPath);
+  // The stream connects, and its refresh reads the view again: from then on, the rename comes as events.
+  letStreamIn();
+  await expect.poll(viewReads).toBeGreaterThanOrEqual(2);
+
+  expect((await renameNode(api, pat, target.id, "Renamed")).response.status).toBe(200);
+  const renamed = article.getByRole("link", { name: "Renamed", exact: true });
+  await expect(renamed).toHaveAttribute("href", targetPath);
+  await renamed.click();
+  await expect(pageHeading(page, "Renamed")).toBeFocused();
 });

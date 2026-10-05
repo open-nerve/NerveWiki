@@ -123,6 +123,8 @@ export const zhCN: Messages = {
   "page.idleLeft": "长时间没有输入，已退出编辑。",
   "page.lockedTitled": "{name} 正在编辑「{page}」。",
   "page.lockedTitledSelf": "你正在别处编辑「{page}」。",
+  "page.editingTitledSelf": "你正在编辑「{page}」。",
+  "page.pagesLocked": "这次改动要改写这些页里的链接，而它们正在被编辑。请等编辑结束，或请笔记本管理员强制解锁。",
   "page.releaseLock": "解除锁定",
   "page.releaseLockTitle": "解除编辑锁定？",
   "page.releaseLockBody": "{name} 的编辑随之结束：还没保存的修改不会存进这一页。",

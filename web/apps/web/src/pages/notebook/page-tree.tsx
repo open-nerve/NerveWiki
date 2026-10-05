@@ -8,12 +8,13 @@ import useSWR from "swr";
 
 import { writesPages } from "../../app/effective-role";
 import { NotLoaded } from "../../app/not-loaded";
+import { pagesLocked } from "../../app/pages-locked";
 import { errorText } from "../../app/problem-messages";
 import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
 import { useT } from "../../i18n/i18n";
 import type { Notebook } from "../../services/notebook.service";
-import { usePageTree } from "../../stores/context";
+import { usePageTree, useStore } from "../../stores/context";
 import { useNewPage } from "./new-page";
 import { dropMove } from "./page-drag";
 import { isDragData, PageList, type TreeContext } from "./page-tree-item";
@@ -29,13 +30,16 @@ import { isDragData, PageList, type TreeContext } from "./page-tree-item";
  * An editor or admin also gets New page, each page's menu (New subpage,
  * Rename, Move to…, Delete) and dragging: before a page, after it, or into
  * it. A drop the tree forbids shows blocked and sends nothing. The last
- * write refused, or a creation that gave up, says why below the heading.
+ * write refused, or a creation that gave up, says why below the heading: a
+ * move refused for the pages whose links it would write again being
+ * edited names those pages and their editors (M6/P4).
  * A page moved keeps the focus on its menu's button, wherever it went.
  */
 export const PageTree = observer(function PageTree({ notebook }: { notebook: Notebook }) {
   const pages = usePageTree(notebook);
   const { pageId } = useParams();
   const t = useT();
+  const me = useStore().account?.me?.id;
   const nav = useRef<HTMLElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
   const newPage = useNewPage(notebook);
@@ -124,7 +128,9 @@ export const PageTree = observer(function PageTree({ notebook }: { notebook: Not
           </Button>
         )}
       </div>
-      {failure !== undefined && <Alert>{errorText(failure, t)}</Alert>}
+      {failure !== undefined && (
+        <Alert>{pagesLocked(failure, t, me, (id) => pages.byId(id)?.name) ?? errorText(failure, t)}</Alert>
+      )}
       {read ? (
         <PageList context={context} parent={null} depth={0} />
       ) : (

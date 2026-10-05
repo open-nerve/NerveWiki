@@ -124,6 +124,9 @@ export const en = {
   "page.idleLeft": "Editing ended after 30 minutes without input.",
   "page.lockedTitled": "{name} is editing “{page}”.",
   "page.lockedTitledSelf": "You are editing “{page}” elsewhere.",
+  "page.editingTitledSelf": "You are editing “{page}”.",
+  "page.pagesLocked":
+    "This change writes the links on these pages again, and they are being edited. Wait until their editors are done, or ask a notebook admin to unlock them.",
   "page.releaseLock": "Release lock",
   "page.releaseLockTitle": "Release the edit lock?",
   "page.releaseLockBody": "{name}'s edit ends: what they have not saved yet is not saved to the page.",
