@@ -37,6 +37,7 @@ function setUp(role: NotebookRole = "editor") {
               toggles.push({ offset, checked, settle: (error) => (error === undefined ? resolve() : reject(error)) });
             }),
     report: (error) => reports.push(error),
+    unresolved: () => undefined,
   };
   const [a, b] = container.querySelectorAll<HTMLInputElement>("input");
   if (a === undefined || b === undefined) {

@@ -13,6 +13,7 @@ import type { Notebook } from "../../services/notebook.service";
 import type { TreeNode } from "../../services/page.service";
 import { usePageTree } from "../../stores/context";
 import { useWorkspace } from "../workspace/workspace-layout";
+import { useUnresolvedLinks } from "./unresolved-link";
 
 /**
  * ReadingView is the page's content as the server renders it (M4/P5 design
@@ -51,6 +52,10 @@ import { useWorkspace } from "../workspace/workspace-layout";
  * id that had the focus as the HTML is replaced, the anchor's among them,
  * has it back in the new HTML, shown again if it showed and no longer
  * does: a view read again stays where it is.
+ *
+ * A link to a page that is not there, acted on, opens the view's dialog
+ * (unresolved-link.tsx): a writer may create the page, where the server
+ * says it would go (M6/P6 design 7).
  */
 export const ReadingView = observer(function ReadingView({
   notebook,
@@ -89,9 +94,19 @@ export const ReadingView = observer(function ReadingView({
   // The page's latest refused: the HTML is not replaced for a new one.
   const latestRefused = useRef(refused);
   const latestUnanchored = useRef(unanchored);
+  const links = useUnresolvedLinks({
+    notebook,
+    page: page.id,
+    pages,
+    article,
+    reload: () => void mutate(),
+    report: (failure) => latestRefused.current(failure),
+  });
+  const latestUnresolved = useRef(links.unresolved);
   useEffect(() => {
     latestRefused.current = refused;
     latestUnanchored.current = unanchored;
+    latestUnresolved.current = links.unresolved;
   });
   const html = data?.html;
   const revision = data?.revision;
@@ -130,6 +145,7 @@ export const ReadingView = observer(function ReadingView({
           }
         : undefined,
       report: (failure) => latestRefused.current(failure),
+      unresolved: (link) => void latestUnresolved.current(link),
     });
     const focused = focusedTask.current;
     const asked = toggled.current;
@@ -223,7 +239,12 @@ export const ReadingView = observer(function ReadingView({
     return <NotLoaded error={error} retry={() => void mutate()} />;
   }
   // Named by the page: it can get the focus to scroll a wide content (reading/scroll-focus.ts).
-  return <article ref={article} aria-label={page.name} className="nw-reading min-w-0" />;
+  return (
+    <>
+      <article ref={article} aria-label={page.name} className="nw-reading min-w-0" />
+      {links.dialog}
+    </>
+  );
 });
 
 /**

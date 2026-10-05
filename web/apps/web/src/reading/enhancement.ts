@@ -5,13 +5,23 @@ import { appLinks } from "./app-links";
 import { codeHighlight, highlightWorker } from "./highlight";
 import { scrollFocus } from "./scroll-focus";
 import { taskToggle } from "./task-toggle";
+import { unresolvedLinks } from "./unresolved-links";
+
+/**
+ * UnresolvedLink is a link to a page that is not there (nw-unresolved) as
+ * a reader acts on it (M6/P6 design 7): its target as the view carries it
+ * (data-nw-target), what it is (a link, an embed's or an image's), and its
+ * element.
+ */
+export type UnresolvedLink = { target: string; kind: "link" | "embed" | "image"; element: HTMLElement };
 
 /**
  * ReadingContext is what an enhancement knows of the reading view it runs
  * in (M4/P5 design 3.8): where the page is, the revision its HTML was
  * rendered from, the account's role in the notebook, and a way to read
  * the view again. An enhancement ticks a task item through it (M5/P6
- * design 3.5), goes to another address of the app (M6/P3 design 6.7), and
+ * design 3.5), goes to another address of the app (M6/P3 design 6.7),
+ * hands it a link to a page that is not there (M6/P6 design 7), and
  * reports to the page what it could not do.
  */
 export type ReadingContext = {
@@ -33,6 +43,12 @@ export type ReadingContext = {
   toggleTask?: (offset: number, checked: boolean) => Promise<void>;
   /** report hands error to the page, which says it as it says a refusal of Edit. */
   report: (error: unknown) => void;
+  /**
+   * unresolved has the view answer link, acted on: its dialog creates the
+   * page for a writer, where the server says it would go, or says why it
+   * is not there; or the view goes to the page the link leads to by now.
+   */
+  unresolved: (link: UnresolvedLink) => void;
 };
 
 /**
@@ -47,7 +63,8 @@ export type Enhancement = (container: HTMLElement, context: ReadingContext) => (
 /**
  * readingEnhancements are the app's enhancements, in the order they run
  * (M4 design 8): M4 has code highlighting, and the keyboard's way to what
- * scrolls sideways; M5 the task items' ticks; M6 the links into the app; M7
+ * scrolls sideways; M5 the task items' ticks; M6 the links into the app,
+ * and those to pages not there; M7
  * adds its own here. The app's composition root (main.tsx) gives them to
  * the reading views through Enhancements; without it they have none.
  */
@@ -56,6 +73,7 @@ export const readingEnhancements: readonly Enhancement[] = [
   scrollFocus,
   taskToggle,
   appLinks,
+  unresolvedLinks,
 ];
 
 export const Enhancements = createContext<readonly Enhancement[]>([]);

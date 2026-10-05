@@ -41,6 +41,7 @@ const context = {
   reload: () => {},
   navigate: () => {},
   report: () => {},
+  unresolved: () => {},
 };
 
 test("the view and each code block take the focus while wider than they show, and only then", () => {

@@ -39,6 +39,7 @@ function setUp() {
     reload: () => undefined,
     navigate: (to) => went.push(to),
     report: () => undefined,
+    unresolved: () => undefined,
   };
   const link = (name: string) => {
     const found = [...container.querySelectorAll("a")].find((a) => a.textContent === name);

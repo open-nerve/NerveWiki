@@ -20,6 +20,7 @@ const context: ReadingContext = {
   reload: () => undefined,
   navigate: () => undefined,
   report: () => undefined,
+  unresolved: () => undefined,
 };
 
 afterEach(() => {
