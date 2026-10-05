@@ -132,7 +132,8 @@ func TestACaseOnlyRenameRewritesNoLinkWrittenAsNow(t *testing.T) {
 // pairs with a '$' or a '`' before it loses links; the text of a Markdown
 // link that follows the title is left then, the targets written alone; and
 // when that loses links too, the content is left as it is (M6/P4 review
-// R1-1). So is one whose writing changes the page's aliases.
+// R1-1). So is one whose writing changes the page's aliases, or the
+// targets of its body are written alone, its property links left.
 func TestAWritingIsReadBack(t *testing.T) {
 	m, err := markdown.New([]markdown.Extension{tasks.Extension(), obsidian.Extension(obsidian.Options{})})
 	if err != nil {
@@ -140,25 +141,30 @@ func TestAWritingIsReadBack(t *testing.T) {
 	}
 	for _, tt := range []struct {
 		to, content, want string
+		left              int // property links left, the body written
 	}{
-		{"A$B", "[Old](Old.md)\n", "[Old](A$B.md)\n"},
-		{"Don`t", "[Old](Old.md) [[Old]]\n", "[Old](Don`t.md) [[Don`t]]\n"},
-		{"US$", "costs $5 [[Other]] [[Old]]\n", ""},
-		{"Don`t", "x ` [[Other]] [[Old]]\n", ""},
+		{"A$B", "[Old](Old.md)\n", "[Old](A$B.md)\n", 0},
+		{"Don`t", "[Old](Old.md) [[Old]]\n", "[Old](Don`t.md) [[Don`t]]\n", 0},
+		{"US$", "costs $5 [[Other]] [[Old]]\n", "", 0},
+		{"Don`t", "x ` [[Other]] [[Old]]\n", "", 0},
 		// A value of the aliases a YAML alias repeats from another key (M6/P4
 		// fix check c3 F1): the link is that key's, and writing it changes
-		// the aliases.
-		{"New", "---\nx: &x '[[Old]]'\naliases: *x\n---\n", ""},
-		{"New", "---\nx: &x ['[[Old]]']\naliases: *x\n---\n", ""},
-		{"New", "---\naliases: &a ['[[Old]]']\ny: *a\n---\n[[Old]]\n", "---\naliases: &a ['[[Old]]']\ny: *a\n---\n[[New]]\n"},
+		// the aliases; the body is written alone (c5-1).
+		{"New", "---\nx: &x '[[Old]]'\naliases: *x\n---\n", "", 0},
+		{"New", "---\nx: &x ['[[Old]]']\naliases: *x\n---\n", "", 0},
+		{
+			"New", "---\nx: &x '[[Old]]'\naliases: [nick, *x]\nup: '[[Old]]'\n---\n[[Old]] [Old](Old.md)\n",
+			"---\nx: &x '[[Old]]'\naliases: [nick, *x]\nup: '[[Old]]'\n---\n[[New]] [Old](New.md)\n", 2,
+		},
+		{"New", "---\naliases: &a ['[[Old]]']\ny: *a\n---\n[[Old]]\n", "---\naliases: &a ['[[Old]]']\ny: *a\n---\n[[New]]\n", 0},
 	} {
 		c := renameCase{Pages: []string{"Old", "Other", "src"}, From: "Old", To: tt.to}
 		got, left := rewrite(t, m, c, tt.content)
 		if tt.want == "" {
 			tt.want = tt.content
 		}
-		if got != tt.want || len(left) > 0 {
-			t.Errorf("%q renamed %s: written %q, want %q; left %+v", tt.content, tt.to, got, tt.want, left)
+		if got != tt.want || len(left) != tt.left {
+			t.Errorf("%q renamed %s: written %q, want %q; left %+v, want %d", tt.content, tt.to, got, tt.want, left, tt.left)
 		}
 	}
 }

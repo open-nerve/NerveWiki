@@ -129,12 +129,12 @@ func (tm acmeTeam) indexOf(ctx context.Context, t *testing.T, nb string) []strin
 }
 
 // ledTo is where the links of the notebook nb's pages resolve, by page, in
-// the order written, "" for none; "alias" for a value of the aliases, which
-// a rewrite leaves.
+// the order written, "" for none; "alias" and its target for a value of the
+// aliases, which a rewrite leaves as it was.
 func (tm acmeTeam) ledTo(t *testing.T, nb string) map[string][]string {
 	t.Helper()
 	rows, err := tm.pool.Query(context.Background(), `SELECT source_id::text,
-			CASE WHEN aliases THEN 'alias' ELSE coalesce(resolved_id::text, '') END
+			CASE WHEN aliases THEN 'alias ' || target ELSE coalesce(resolved_id::text, '') END
 		FROM page_links WHERE notebook_id = $1 ORDER BY source_id, range_start`, nb)
 	if err != nil {
 		t.Fatal(err)

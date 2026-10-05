@@ -332,6 +332,50 @@ func TestAPageThatCannotBeWrittenIsLeft(t *testing.T) {
 	hold.Release()
 }
 
+// A page left says why, at the level its why takes: one whose writing
+// with the links' texts does not read back, and whose writing with their
+// targets alone would hold more than a page may, at the error a writing
+// read back and not kept takes, with the sizes (M6/P4 fix check c4-5,
+// c5-3); one whose writings would all hold more, at a warning.
+func TestAPageLeftSaysWhy(t *testing.T) {
+	w := newRewriting(t, "A", "A/x", "B", "B/q$", "big", "src")
+	src := "[A/x](x.md)\n" + strings.Repeat("a", 1022-12)
+	w.write("src", src)
+	w.write("big", "[[A/x]]\n"+strings.Repeat("a", 1<<10-8))
+	u, err := w.follow(nil, w.rename("A/x", "q$"))
+	if err != nil || len(u.writes) != 0 {
+		t.Fatalf("the rename: %v, %d writes; want it to pass, writing none", err, len(u.writes))
+	}
+	for _, line := range []string{
+		`level=ERROR msg="the links of a page are not rewritten: no writing reads back as its links and aliases" page_id=` +
+			w.id("src").String() + " bytes=1022 written=1025",
+		`level=WARN msg="the links of a page are not rewritten: it would hold more than a page may" page_id=` +
+			w.id("big").String() + " bytes=1024 written=1025",
+	} {
+		if !strings.Contains(w.logs.String(), line) {
+			t.Errorf("the log\n%s\nwant a line with\n%s", w.logs, line)
+		}
+	}
+}
+
+// A page whose aliases a YAML alias repeats from the key a link is written
+// in has the targets of its body written again alone, its property links
+// left and logged: writing them would change the aliases (M6/P4 fix check
+// c5-1).
+func TestAPageWhoseFrontmatterWouldChangeHasItsBodyWritten(t *testing.T) {
+	w := newRewriting(t, "A", "A/x", "src")
+	front := "---\nx: &x '[[A/x]]'\naliases: *x\n---\n"
+	w.write("src", front+"[[A/x]] [t](A/x.md)\n")
+	u, err := w.follow(nil, w.rename("A/x", "z"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.written(u, map[string]string{"src": front + "[[z]] [t](z.md)\n"})
+	if !strings.Contains(w.logs.String(), `msg="a link is not rewritten: writing the frontmatter again would change more than its links"`) {
+		t.Errorf("the log %q, want the property link left", w.logs)
+	}
+}
+
 // A budget not free now is server_busy at once, nothing written.
 func TestABudgetNotFreeIsBusy(t *testing.T) {
 	w := newRewriting(t, "A", "A/x", "src")

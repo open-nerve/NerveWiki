@@ -57,7 +57,7 @@ func TestARewriteKeepsWhereEveryLinkLeads(t *testing.T) {
 		}
 		tree := rewriteTree(before, after, links, c.recased)
 		w := domain.Rewrite(c.content, after.paths[c.pageAfter], links, tree, c.recased)
-		written, ok, err := w.Written(c.content, facts, after.paths[c.pageAfter], tree, parse)
+		written, left, ok, err := w.Written(c.content, facts, after.paths[c.pageAfter], tree, parse)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -72,8 +72,8 @@ func TestARewriteKeepsWhereEveryLinkLeads(t *testing.T) {
 		fail := func(format string, args ...any) {
 			t.Fatalf("seed %d: %s\ncase %+v\nedits %+v\nwritten %q", seed, fmt.Sprintf(format, args...), c, w.Edits, written)
 		}
-		if len(w.Left) > 0 {
-			fail("left %+v", w.Left)
+		if len(w.Left) > 0 || len(left) > 0 {
+			fail("left %+v, %+v", w.Left, left)
 		}
 		for _, e := range w.Edits {
 			if !slices.ContainsFunc(facts.Links, func(l domain.Link) bool { return withinLink(c.content, l, e) }) {

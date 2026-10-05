@@ -3,6 +3,7 @@ package domain
 import (
 	"cmp"
 	"errors"
+	"maps"
 	"slices"
 	"strings"
 	"uuid"
@@ -29,11 +30,13 @@ type Tree struct {
 }
 
 // Edit writes Text over a content's bytes from Start to End; Shown when it
-// writes what a link shows, its display or its text, not where it leads.
+// writes what a link shows, its display or its text, not where it leads;
+// Frontmatter when it writes a property link.
 type Edit struct {
-	Start, End int
-	Text       string
-	Shown      bool
+	Start, End  int
+	Text        string
+	Shown       bool
+	Frontmatter bool
 }
 
 // Rewriting is how Rewrite writes a page's content again: the edits, which
@@ -85,6 +88,9 @@ func Rewrite(content string, from []Step, links []Resolved, tree Tree, recased R
 			w.Left = append(w.Left, r.Link)
 			continue
 		}
+		for i := range e {
+			e[i].Frontmatter = r.Link.Property != ""
+		}
 		w.Edits, w.Leads[r.Link.Start] = append(w.Edits, e...), now
 	}
 	return w
@@ -98,33 +104,61 @@ var ErrTooLarge = errors.New("linking: the page written again would hold more th
 // facts back (M6/P4 design 3.1): with them all when its links are those of
 // was, content's facts, in their places, its aliases was's (Kept); else
 // with those of the targets alone, what the links show left as it was;
-// else ok is false, no writing keeping content's: a title the Markdown
-// around a link reads into it, such as a '$' or a '`' that pairs with
-// another; a value of the aliases a YAML alias repeats from a key the link
-// is written in. A writing parse answers ErrTooLarge is not content's
-// either.
+// else with those of the body's targets alone, the property links left as
+// they were too (left): a writing of the frontmatter may change more than
+// its links, a value of the aliases that a YAML alias repeats from the key
+// a link is written in (aliases: *x; M6/P4 fix check c5-1). Else ok is
+// false, no writing keeping content's: a title the Markdown around a link
+// reads into it, such as a '$' or a '`' that pairs with another. A writing
+// parse answers ErrTooLarge is not content's either.
 func (w Rewriting) Written(content string, was Facts, from []Step, tree Tree,
 	parse func(content string) (Facts, error),
-) (written string, ok bool, err error) {
-	tries := [][]Edit{w.Edits}
+) (written string, left []Link, ok bool, err error) {
+	type try struct {
+		edits []Edit
+		body  bool // the body's alone
+	}
+	tries := []try{{edits: w.Edits}}
 	targets := slices.DeleteFunc(slices.Clone(w.Edits), func(e Edit) bool { return e.Shown })
 	if len(targets) > 0 && len(targets) < len(w.Edits) {
-		tries = append(tries, targets)
+		tries = append(tries, try{edits: targets})
 	}
-	for _, edits := range tries {
-		written = Apply(content, edits)
+	body := slices.DeleteFunc(slices.Clone(targets), func(e Edit) bool { return e.Frontmatter })
+	if len(body) > 0 && len(body) < len(targets) {
+		tries = append(tries, try{edits: body, body: true})
+	}
+	for _, t := range tries {
+		leads, left := w.Leads, []Link(nil)
+		if t.body {
+			leads, left = w.inBody(was.Links)
+		}
+		written = Apply(content, t.edits)
 		now, err := parse(written)
 		switch {
 		case errors.Is(err, ErrTooLarge):
 			continue
 		case err != nil:
-			return "", false, err
+			return "", nil, false, err
 		}
-		if w.Kept(was, now, from, tree) {
-			return written, true, nil
+		if kept(was, now, leads, from, tree) {
+			return written, left, true, nil
 		}
 	}
-	return "", false, nil
+	return "", nil, false, nil
+}
+
+// inBody is w.Leads but for the property links of was, which a writing of
+// the body's edits alone leaves.
+func (w Rewriting) inBody(was []Link) (map[int]Node, []Link) {
+	leads := maps.Clone(w.Leads)
+	var left []Link
+	for _, l := range was {
+		if _, ok := leads[l.Start]; ok && l.Property != "" {
+			delete(leads, l.Start)
+			left = append(left, l)
+		}
+	}
+	return leads, left
 }
 
 // Kept tells whether now, the facts of a writing of content with some of
@@ -135,6 +169,12 @@ func (w Rewriting) Written(content string, was Facts, from []Step, tree Tree,
 // design 2): a link in a key's value that the aliases repeat with a YAML
 // alias (aliases: *x) is not flagged as theirs (M6/P4 fix check c3 F1).
 func (w Rewriting) Kept(was, now Facts, from []Step, tree Tree) bool {
+	return kept(was, now, w.Leads, from, tree)
+}
+
+// kept is Kept of a writing that writes again the links leads has, each to
+// its page.
+func kept(was, now Facts, leads map[int]Node, from []Step, tree Tree) bool {
 	if len(now.Links) != len(was.Links) || !slices.Equal(now.Aliases, was.Aliases) {
 		return false
 	}
@@ -143,7 +183,7 @@ func (w Rewriting) Kept(was, now Facts, from []Step, tree Tree) bool {
 		if n.Kind != l.Kind || n.Property != l.Property || n.Anchor != l.Anchor {
 			return false
 		}
-		page, written := w.Leads[l.Start]
+		page, written := leads[l.Start]
 		switch {
 		case written && !tree.leads(n.Target, from, page):
 			return false

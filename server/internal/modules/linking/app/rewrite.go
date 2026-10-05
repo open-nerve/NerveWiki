@@ -236,11 +236,13 @@ func (r Rewrite) rewrite(ctx context.Context, id uuid.UUID, revision int, reache
 		}
 	}
 	// The content's share goes back before a writing's parse takes its own,
-	// its links kept for Written uncounted until then: some tenth of what
-	// that parse holds (markdown.Hold.KeepFacts). Held, the two would ask
-	// more than the smallest budget, a page's largest content, for a page
-	// at its largest, which no wait would free (M6/P4 fix check c1).
+	// its links and aliases kept for Written uncounted until then, within
+	// some tenth of what that parse holds (markdown.Hold.KeepFacts); the
+	// rest of its facts go. Held, the two would ask more than the smallest
+	// budget, a page's largest content, for a page at its largest, which no
+	// wait would free (M6/P4 fix check c1, c5-6).
 	was.Release()
+	facts := domain.Facts{Links: was.Facts.Links, Aliases: was.Facts.Aliases} // what a writing is read back against
 	rewriting := domain.Rewrite(content, from, links, tree, recased)
 	for _, l := range rewriting.Left {
 		r.Logger.LogAttrs(ctx, slog.LevelError, "a link is not rewritten: no writing leads where it led",
@@ -252,7 +254,7 @@ func (r Rewrite) rewrite(ctx context.Context, id uuid.UUID, revision int, reache
 	var now Parsed // the last writing's parse
 	var large int  // the bytes of a writing past MaxContent, if one was
 	read := false  // whether a writing was parsed, to read back
-	written, kept, err := rewriting.Written(content, was.Facts, from, tree, func(writing string) (domain.Facts, error) {
+	written, left, kept, err := rewriting.Written(content, facts, from, tree, func(writing string) (domain.Facts, error) {
 		now.release()
 		now = Parsed{}
 		if len(writing) > r.MaxContent {
@@ -269,7 +271,7 @@ func (r Rewrite) rewrite(ctx context.Context, id uuid.UUID, revision int, reache
 	}
 	if !kept {
 		now.release()
-		level, msg := slog.LevelError, "the links of a page are not rewritten: no writing reads back as its links"
+		level, msg := slog.LevelError, "the links of a page are not rewritten: no writing reads back as its links and aliases"
 		if !read {
 			level, msg = slog.LevelWarn, "the links of a page are not rewritten: it would hold more than a page may"
 		}
@@ -279,6 +281,10 @@ func (r Rewrite) rewrite(ctx context.Context, id uuid.UUID, revision int, reache
 		}
 		r.Logger.LogAttrs(ctx, level, msg, attrs...)
 		return nil
+	}
+	for _, l := range left {
+		r.Logger.LogAttrs(ctx, slog.LevelError, "a link is not rewritten: writing the frontmatter again would change more than its links",
+			slog.String("page_id", id.String()), slog.Int("start", l.Start), slog.String("target", l.Target))
 	}
 	u.Defer(now.Release)
 	return u.WriteContent(ctx, Rewritten{PageID: id, Base: revision, Content: written, Facts: now.Written})
