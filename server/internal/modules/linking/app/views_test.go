@@ -215,11 +215,12 @@ func TestAViewOfNoPathReadsNoPages(t *testing.T) {
 
 // The links of a page to one name written in other forms, relative,
 // rooted, up the tree or not, each resolve as written: a view resolves a
-// target once by its whole parse (P3B fix check).
+// target once by its whole parse (P3B fix check). The name alone is the
+// page of it in the source folder's subtree.
 func TestAViewsLinksToOneNameResolveAsWritten(t *testing.T) {
 	w := newWorld(t, "a", "a/x", "a/b", "a/b/src", "a/b/c", "a/b/c/x")
 	got := w.view("a/b/src", 0, "x", "./x", "/x", "../x", "../../x")
-	if want := w.leads("a/x", "", "", "a/x", ""); !reflect.DeepEqual(got, want) {
+	if want := w.leads("a/b/c/x", "", "", "a/x", ""); !reflect.DeepEqual(got, want) {
 		t.Errorf("got %v, want %v", got, want)
 	}
 }
