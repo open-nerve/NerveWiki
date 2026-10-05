@@ -23,11 +23,15 @@ type tag struct {
 	spaced bool
 	// cut is how many '_' the name ends with that the parse left to the
 	// emphasis: they are the name's if they are text after it.
-	cut int
+	cut    int
+	inLink bool // in a Markdown link's text
 }
 
 // Kind implements ast.Node.
 func (t *tag) Kind() ast.NodeKind { return kindTag }
+
+// RendersLink implements markdown.Linker: a user's <a> around it is dropped.
+func (t *tag) RendersLink() {}
 
 // Dump implements ast.Node.
 func (t *tag) Dump(source []byte, level int) {

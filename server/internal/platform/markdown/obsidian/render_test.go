@@ -33,10 +33,10 @@ func checkRenders(t *testing.T, tests []renderCase) {
 	}
 }
 
-// Wikilinks and embeds are links, here to no page; a tag is a span; what
-// they show is escaped, as their attributes are (M6/P1 design 3.10, M6/P3
-// design 6.2).
-func TestWikilinksAreLinksAndTagsSpans(t *testing.T) {
+// Wikilinks and embeds are links, here to no page, and tags are links to
+// their pages; what they show is escaped, as their attributes are (M6/P1
+// design 3.10, M6/P3 design 6.2, M6/P6 design 3).
+func TestWikilinksAndTagsAreLinks(t *testing.T) {
 	checkRenders(t, []renderCase{
 		{
 			"a wikilink, its display text, its anchor, an anchor alone", "[[a]] [[b|显示]] [[c#h]] [[#h]]\n",
@@ -56,12 +56,12 @@ func TestWikilinksAreLinksAndTagsSpans(t *testing.T) {
 		{"no target and no anchor is text", "[[]] [[ | x]] ![[ ]]\n", "<p>[[]] [[ | x]] ![[ ]]</p>\n"},
 		{
 			"a tag", "#tag and *#t1* x#no\n",
-			`<p><span class="nw-tag" data-nw-tag="tag">#tag</span> and <em><span class="nw-tag" data-nw-tag="t1">#t1</span></em> x#no</p>` + "\n",
+			`<p><a class="nw-tag" data-nw-tag="tag">#tag</a> and <em><a class="nw-tag" data-nw-tag="t1">#t1</a></em> x#no</p>` + "\n",
 		},
 		{
 			"a heading's id has what its wikilinks and tags show", "# Head [[x|y]] #t\n",
 			`<h1 id="nw-head-y-t">Head <a class="nw-wikilink nw-unresolved" data-nw-target="x">y</a> ` +
-				`<span class="nw-tag" data-nw-tag="t">#t</span></h1>` + "\n",
+				`<a class="nw-tag" data-nw-tag="t">#t</a></h1>` + "\n",
 		},
 		{
 			"an image's text has what they show", "![alt [[w]] #t](p.png)\n",
@@ -85,26 +85,58 @@ func TestATagsUnderscoresAndRuns(t *testing.T) {
 	checkRenders(t, []renderCase{
 		{
 			"an emphasis around it", "_#t5_ __#t6__\n",
-			`<p><em><span class="nw-tag" data-nw-tag="t5">#t5</span></em> <strong><span class="nw-tag" data-nw-tag="t6">#t6</span></strong></p>` + "\n",
+			`<p><em><a class="nw-tag" data-nw-tag="t5">#t5</a></em> <strong><a class="nw-tag" data-nw-tag="t6">#t6</a></strong></p>` + "\n",
 		},
 		{
 			"none", "#t5_ #t7__ #___\n",
-			`<p><span class="nw-tag" data-nw-tag="t5_">#t5_</span> <span class="nw-tag" data-nw-tag="t7__">#t7__</span> ` +
-				`<span class="nw-tag" data-nw-tag="___">#___</span></p>` + "\n",
+			`<p><a class="nw-tag" data-nw-tag="t5_">#t5_</a> <a class="nw-tag" data-nw-tag="t7__">#t7__</a> ` +
+				`<a class="nw-tag" data-nw-tag="___">#___</a></p>` + "\n",
 		},
 		{"a run left as text, a bracket", "a*#t [#u\n", "<p>a*#t [#u</p>\n"},
 		{
 			"an emphasis its underscores open", "#a/___.b_ c\n",
-			`<p><span class="nw-tag" data-nw-tag="a/__">#a/__</span><em>.b</em> c</p>` + "\n",
+			`<p><a class="nw-tag" data-nw-tag="a/__">#a/__</a><em>.b</em> c</p>` + "\n",
 		},
 		{
 			"a strong emphasis its underscores open", "#a-___(b__ c\n",
-			`<p><span class="nw-tag" data-nw-tag="a-_">#a-_</span><strong>(b</strong> c</p>` + "\n",
+			`<p><a class="nw-tag" data-nw-tag="a-_">#a-_</a><strong>(b</strong> c</p>` + "\n",
 		},
-		{"a number and an underscore", "#123_ #123\n", `<p><span class="nw-tag" data-nw-tag="123_">#123_</span> #123</p>` + "\n"},
+		{"a number and an underscore", "#123_ #123\n", `<p><a class="nw-tag" data-nw-tag="123_">#123_</a> #123</p>` + "\n"},
 		{
 			"at the start of a quote's line", "> a\n>#b\n",
-			"<blockquote>\n<p>a\n" + `<span class="nw-tag" data-nw-tag="b">#b</span></p>` + "\n</blockquote>\n",
+			"<blockquote>\n<p>a\n" + `<a class="nw-tag" data-nw-tag="b">#b</a></p>` + "\n</blockquote>\n",
+		},
+	})
+}
+
+// A tag Obsidian's tag pane counts is a link to the pages with it, by the
+// name the pane counts, as written, but for its last '/'; one the pane does
+// not count is a span, as is one in a Markdown link's text; a user's link
+// around one goes, as around a wikilink (M6/P6 design 3).
+func TestATagIsALinkToItsPages(t *testing.T) {
+	checkRenders(t, []renderCase{
+		{
+			"as written, nested", "#Tag #a/b/c #a/\n",
+			`<p><a class="nw-tag" data-nw-tag="Tag">#Tag</a> <a class="nw-tag" data-nw-tag="a/b/c">#a/b/c</a> ` +
+				`<a class="nw-tag" data-nw-tag="a">#a/</a></p>` + "\n",
+		},
+		{
+			// U+2E2F is a letter in the Supplemental Punctuation block.
+			"not counted", "#1/ #/ #a\u2e2fb\n",
+			`<p><span class="nw-tag" data-nw-tag="1/">#1/</span> <span class="nw-tag" data-nw-tag="/">#/</span> ` +
+				`<span class="nw-tag" data-nw-tag="a` + "\u2e2f" + `b">#a` + "\u2e2f" + `b</span></p>` + "\n",
+		},
+		{
+			"in a link's text, a span", "[see #t and [[P]]](https://x.example)\n",
+			`<p><a href="https://x.example">see <span class="nw-tag" data-nw-tag="t">#t</span> and <span class="nw-wikilink">P</span></a></p>` + "\n",
+		},
+		{
+			"in brackets that are no link, a link", "[see #t] [x]\n",
+			`<p>[see <a class="nw-tag" data-nw-tag="t">#t</a>] [x]</p>` + "\n",
+		},
+		{
+			"in a user's link, which goes", `<a href="https://x.example">see *#t*</a>` + "\n",
+			`<p>see <em><a class="nw-tag" data-nw-tag="t">#t</a></em></p>` + "\n",
 		},
 	})
 }
@@ -177,7 +209,7 @@ func TestCallouts(t *testing.T) {
 			"a title, links and tags", "> [!note] Title [[c1]]\n> body #t\n",
 			`<div class="nw-callout" data-callout="note">` + "\n" +
 				`<div class="nw-callout-title">Title <a class="nw-wikilink nw-unresolved" data-nw-target="c1">c1</a></div>` + "\n" +
-				`<p>body <span class="nw-tag" data-nw-tag="t">#t</span></p>` + "\n</div>\n",
+				`<p>body <a class="nw-tag" data-nw-tag="t">#t</a></p>` + "\n</div>\n",
 		},
 		{
 			"folded, no title", "> [!TIP]-\n> folded\n",

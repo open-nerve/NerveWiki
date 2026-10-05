@@ -52,7 +52,7 @@ func Extension(o Options) markdown.Extension {
 		},
 		Markup: markdown.Markup{
 			Elements: map[string][]string{
-				"a":       {"class", "href", "data-nw-node", "data-nw-anchor", "data-nw-target"},
+				"a":       {"class", "href", "data-nw-node", "data-nw-anchor", "data-nw-target", "data-nw-tag"},
 				"span":    {"class", "data-nw-tag"},
 				"mark":    nil,
 				"div":     {"class", "data-callout"},
@@ -72,7 +72,7 @@ func Extension(o Options) markdown.Extension {
 // reference and before a link, which '[' and '!' also start; a formula's
 // block before a paragraph, which it interrupts; the callouts, the comments,
 // the tags' second look after the emphasis is paired, and then the marks of
-// the wikilinks in a link's text. An address ends before a comment's "%%",
+// the wikilinks and tags in a link's text. An address ends before a comment's "%%",
 // so that a comment may end with one.
 func dialect() []parser.Option {
 	return []parser.Option{
@@ -89,7 +89,7 @@ func dialect() []parser.Option {
 			util.Prioritized(callouts{}, 10),
 			util.Prioritized(comments{}, 20),
 			util.Prioritized(tagsAfterText{}, 30),
-			util.Prioritized(linkedWikilinks{}, 40),
+			util.Prioritized(inLinks{}, 40),
 		),
 	}
 }

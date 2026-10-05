@@ -265,6 +265,10 @@ paths:
         and have no address, which the app gives: each carries the page it
         leads to as it reads now (data-nw-node) and its anchor's heading id
         (data-nw-anchor), or nw-unresolved and its target (data-nw-target).
+        A tag (nw-tag) that the notebook's tag list counts links to its
+        pages and has no address either: it carries the tag as listTags
+        writes it and getTag takes it (data-nw-tag); one the list does not
+        count is a span, as is a tag in a link's text.
         A wikilink in a link's text is a span, as is one written with a
         block's anchor alone ([[#^b]]); one written with a heading's anchor
         alone ([[#h]]) has the heading's id as its address; an image in a

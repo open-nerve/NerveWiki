@@ -83,14 +83,15 @@ func anchorID(anchor string) (string, bool) {
 	return markdown.HeadingID(anchor), true
 }
 
-// linkedWikilinks marks the wikilinks in a Markdown link's text, which
-// render as the text they show: a link holds no link (M6/P3 design 6.2).
-// The parse's own "within a link's brackets" would not do: the brackets
-// may turn out to be no link. A Markdown link whose address is not let
-// through is its text alone, its wikilinks too (P3B review L4).
-type linkedWikilinks struct{}
+// inLinks marks the wikilinks and the tags in a Markdown link's text, which
+// render as the text they show: a link holds no link (M6/P3 design 6.2,
+// M6/P6 design 3). The parse's own "within a link's brackets" would not
+// do: the brackets may turn out to be no link. A Markdown link whose
+// address is not let through is its text alone, its wikilinks and tags
+// too (P3B review L4).
+type inLinks struct{}
 
-func (linkedWikilinks) Transform(doc *ast.Document, _ text.Reader, _ parser.Context) {
+func (inLinks) Transform(doc *ast.Document, _ text.Reader, _ parser.Context) {
 	links := 0
 	_ = ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		switch n := n.(type) {
@@ -101,6 +102,10 @@ func (linkedWikilinks) Transform(doc *ast.Document, _ text.Reader, _ parser.Cont
 				links--
 			}
 		case *wikilink:
+			if entering && links > 0 {
+				n.inLink = true
+			}
+		case *tag:
 			if entering && links > 0 {
 				n.inLink = true
 			}

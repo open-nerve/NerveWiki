@@ -23,6 +23,8 @@ func seeds(f *testing.F) {
 		f.Add([]byte(in.Make(1 << 10)))
 	}
 	f.Add([]byte(markdowntest.Normal(4 << 10)))
+	// Tags as links (M6/P6 design 3): in a link's text, in a user's link.
+	f.Add([]byte("[see #t and [[P]]](https://x.example) <a href=\"/x\">#u *#v*</a> #a/ #1/ #/\n"))
 }
 
 // Any bytes parse, and each link's and tag's range is in the content: a

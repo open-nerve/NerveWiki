@@ -96,15 +96,28 @@ func (r nodeRenderer) renderWikilink(w util.BufWriter, _ []byte, node ast.Node, 
 	return ast.WalkContinue, nil
 }
 
-// renderTag writes the span of a tag around its text, its child.
+// renderTag writes a tag around its text, its child (M6/P6 design 3): one
+// Obsidian's tag pane counts, as a link to the pages with it, by the name
+// the pane counts it as; one it does not count, or one in a Markdown
+// link's text, as a span with its name.
 func renderTag(w util.BufWriter, _ []byte, node ast.Node, entering bool) (ast.WalkStatus, error) {
-	if !entering {
+	t := node.(*tag)
+	counted, ok := CountedTag(t.name)
+	link := ok && !t.inLink
+	switch {
+	case !entering && link:
+		_, _ = w.WriteString("</a>")
+	case !entering:
 		_, _ = w.WriteString("</span>")
-		return ast.WalkContinue, nil
+	case link:
+		_, _ = w.WriteString(`<a class="nw-tag" data-nw-tag="`)
+		escaped(w, []byte(counted))
+		_, _ = w.WriteString(`">`)
+	default:
+		_, _ = w.WriteString(`<span class="nw-tag" data-nw-tag="`)
+		escaped(w, []byte(t.name))
+		_, _ = w.WriteString(`">`)
 	}
-	_, _ = w.WriteString(`<span class="nw-tag" data-nw-tag="`)
-	escaped(w, []byte(node.(*tag).name))
-	_, _ = w.WriteString(`">`)
 	return ast.WalkContinue, nil
 }
 
