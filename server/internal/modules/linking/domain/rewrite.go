@@ -240,6 +240,22 @@ func Written(n Node, named []Node) string {
 	return n.name()
 }
 
+// Linktext is how a wikilink in the page at from is written to lead to n
+// (M6/P4 design 3.1): Written, else n's path from the root, else that with
+// ".md" after it, which a title ending in ".md" may need; the first that
+// tree's pages read as n alone. None of them is relative, so where it
+// leads does not depend on from: the link targets of a notebook's
+// completion are written from its root (M6/P5 design 6). ok is false when
+// none leads there, which siblings' distinct title keys rule out.
+func Linktext(n Node, from []Step, tree Tree) (string, bool) {
+	for _, target := range []string{Written(n, tree.Named[n.key()]), n.path(), n.path() + ".md"} {
+		if tree.leads(target, from, n) {
+			return target, true
+		}
+	}
+	return "", false
+}
+
 // WrittenKeys are the title keys of the pages a writing of n may be read
 // with, which a rewrite reads (Tree.Named): its name's, with ".md" after it,
 // and without one it ends with.
@@ -261,23 +277,17 @@ func WrittenKeys(n Node) []string {
 // double-quoted string, which the content's bytes do not tell. ok is false
 // when no writing leads there.
 func relink(content string, from []Step, l Link, was, now Node, tree Tree) ([]Edit, bool) {
-	var targets []string
 	markdownLink := l.Kind == "link" || l.Kind == "image"
-	switch {
-	case !markdownLink:
-		targets = []string{Written(now, tree.Named[now.key()]), now.path(), now.path() + ".md"}
-	case strings.HasPrefix(l.Target, "./") || strings.HasPrefix(l.Target, "../"):
-		targets = []string{relative(from, now) + ".md"}
-	case strings.HasPrefix(l.Target, "/"):
-		targets = []string{"/" + now.path() + ".md"}
-	default:
-		targets = []string{Written(now, tree.Named[now.key()]) + ".md", now.path() + ".md"}
+	var target string
+	var ok bool
+	if markdownLink {
+		target, ok = markdownTarget(l, now, from, tree)
+	} else {
+		target, ok = Linktext(now, from, tree)
 	}
-	at := slices.IndexFunc(targets, func(t string) bool { return tree.leads(t, from, now) })
-	if at < 0 {
+	if !ok {
 		return nil, false
 	}
-	target := targets[at]
 	if markdownLink {
 		target = destination(target, l.Start > 0 && content[l.Start-1] == '<')
 	}
@@ -324,6 +334,27 @@ func relink(content string, from []Step, l Link, was, now Node, tree Tree) ([]Ed
 	return edits, true
 }
 
+// markdownTarget is how l, a Markdown link or image in the page at from, is
+// written to lead to n, before its escapes (M6/P4 design 3.2): from the
+// page's folder, or from the root, as it was; as a wikilink is, with
+// ".md" after it, otherwise. ok is false when none leads there.
+func markdownTarget(l Link, n Node, from []Step, tree Tree) (string, bool) {
+	var targets []string
+	switch {
+	case strings.HasPrefix(l.Target, "./") || strings.HasPrefix(l.Target, "../"):
+		targets = []string{relative(from, n) + ".md"}
+	case strings.HasPrefix(l.Target, "/"):
+		targets = []string{"/" + n.path() + ".md"}
+	default:
+		targets = []string{Written(n, tree.Named[n.key()]) + ".md", n.path() + ".md"}
+	}
+	at := slices.IndexFunc(targets, func(t string) bool { return tree.leads(t, from, n) })
+	if at < 0 {
+		return "", false
+	}
+	return targets[at], true
+}
+
 // leads tells whether target, written in the page at from, resolves to n
 // and no other page alike.
 func (t Tree) leads(target string, from []Step, n Node) bool {
@@ -331,9 +362,12 @@ func (t Tree) leads(target string, from []Step, n Node) bool {
 	if !ok {
 		return false
 	}
-	var candidates []Node
-	for _, key := range parsed.LastKeys() {
-		candidates = append(candidates, t.Named[key]...)
+	// The pages of one key are not copied: the link targets read every
+	// page's writing against the pages of its title (M6/P5 design 6).
+	keys := parsed.LastKeys()
+	candidates := t.Named[keys[0]]
+	if len(keys) > 1 {
+		candidates = slices.Concat(candidates, t.Named[keys[1]])
 	}
 	r := Resolve(parsed, from, candidates, nil)
 	return r.ID == n.ID && !r.Ambiguous
