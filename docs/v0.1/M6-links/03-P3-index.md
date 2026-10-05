@@ -100,13 +100,14 @@ P3 是 M6 最大的一个 Phase。为了让每次审查的范围可控，它分�
 | 表 | 列 | 键与索引 |
 |---|---|---|
 | `indexed_pages` | `node_id`、`notebook_id`、`revision`、`extractor`、`frontmatter_valid` | 主键 `node_id`；`(notebook_id)` |
-| `page_links` | `source_id`、`range_start`、`range_end`、`notebook_id`、`kind`、`property_key`、`target`、`anchor`、`display`、`target_key`、`target_alt_key`、`resolved_id`、`ambiguous`；`aliases`（M6/P4，迁移 00025：是不是这一页 `aliases` 的值） | 主键 `(source_id, range_start)`（一段字节只有一条链接）；`(notebook_id, target_key)`、`(notebook_id, target_alt_key)`、`(resolved_id)` |
+| `page_links` | `source_id`、`range_start`、`range_end`、`notebook_id`、`kind`、`property_key`、`target`、`anchor`、`display`、`target_key`、`target_alt_key`、`resolved_id`、`ambiguous`；`aliases`（M6/P4，迁移 00025：是不是这一页 `aliases` 的值） | 主键 `(source_id, range_start)`（一段字节只有一条链接）；`(notebook_id, target_key)`、`(notebook_id, target_alt_key)`；`(resolved_id, source_id, range_start) INCLUDE (range_end)`（M6/P5，迁移 00026，代替 `(resolved_id)`：反链按出发页分页）；属性链接的 `(source_id, range_start)`（同上） |
 | `page_tags` | `source_id`、`notebook_id`、`tag`（第一次出现时的写法）、`tag_key`、`count` | 主键 `(source_id, tag_key)`；`(notebook_id, tag_key)` |
 | `page_properties` | `source_id`、`notebook_id`、`position`、`key`、`value`（jsonb） | 主键 `(source_id, position)` |
 | `page_aliases` | `source_id`、`notebook_id`、`alias`、`alias_key` | 主键 `(source_id, alias_key)`；`(notebook_id, alias_key)` |
 
 - `target_key` 是目标最后一段的标题键（去掉 `.md` 之后），`target_alt_key` 是带 `.md` 的那一种（没有时为空）。节点出现、消失、改名、移动时，按这两列找可能受影响的链接。
 - **键的上限**（P3A 审查 H2）：标题键长于 `domain.MaxKey`（1024 字节）的不记：这条链接的键为空（解析不到，任何标题的键都到不了这么长：255 字节的标题，键至多约 510 字节，`TestNoTitlesKeyComesNearMaxKey` 核对），这样的别名、标签不记。B-tree 的一项至多约 2.7 KB，超过的写入会失败。
+- **一页至多 1000 个标签与别名**（M6/P5 审查 r2-M2，`domain.MaxNames`）：之后的不记，那样的标签找不到，那样的别名不解析。一页 5 MiB 可以写约一百万个，每次读笔记本的标签都要带上。
 - `property_key` 为空是正文里的链接。YAML 键为空串的属性链接，它的属性路径也是空串，同样记为空：P4 的改写按链接的范围是否在 frontmatter 里区分两者（它本来就在单元里重新解析要改写的页），不靠这一列（P3A 审查）。
 - **U+0000**：Markdown 链接的 `%00` 与 YAML 字符串的转义会写出 U+0000，PostgreSQL 的 `text` 与 `jsonb` 都不收；`PageFacts` 把每个事实里的它记作 U+FFFD（P3A 审查 H1：否则这样的正文保存答 500，reindex 也停在这一页）。
 - **不带外键**（与 M6 总设计 4.3 的出入）：指向 `nodes`、`notebooks` 的外键与 `purge_test` 的两条规则冲突（见第 1 节）。照 `edit_sessions` 的先例，索引行由观察者与笔记本删除的注册者在同一个事务里删掉，"只指向活着的节点"由测试的不变式 `checkLinks` 核对。

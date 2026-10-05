@@ -422,19 +422,22 @@ linking 注册为写入单元的参与者，在改名与移动之后调用（`Pa
 
 **反链**
 
-- 按出发页的 id 分页（游标是 id，13.1 第 27 条、13.2 第 19 条）。
+- 一项是一个出发页：`{id, count, contexts}`；不算这一页自己的链接，有歧义、解析到它的算。
+- 按出发页的 id 分页（游标是 id，13.1 第 27 条、13.2 第 19 条）；出发页在索引上一步一个地找，不读它们的链接。
+- `count` 是这一页里指向它的链接数，至多数到 1000（一千或更多）。
 - 名称由前端取自已加载的树。
-- 上下文是链接所在的那一行，按字节截到至多 240 字节（在 UTF-8 字符的边界上）。
+- 上下文：按位置取前 10 条链接，同一行只留一处，是链接所在的那一行；长于 240 字节的行取含链接起点的至多 240 字节（在 UTF-8 字符的边界上，从链接之前约 80 字节起），截掉的一端加 `…`。
+- 没有上下文的出发页：两次读之间写过或删了、索引的提取版本不是当前的、这次请求已读过 32 MiB 的内容（[P5 文档](05-P5-api.md)第 3 节）。
 
 **补全的数据** `GET …/link-targets`：
 
-- 每个节点给出它的标题、种类、别名，以及 `link`；
-- `link` 是从笔记本任何地方都只解析到它的最短写法，总是存在：至少有它的完整路径（第 4.4 节第 2 步）；
-- 它与改写用同一个函数，前端不重算标题键（JavaScript 没有完整的大小写折叠）。
+- 每个节点给出它的标题、种类、别名（前 1000 个），以及 `link`；
+- `link` 是 P4 写法（[P4 文档](04-P4-rewrite.md) 3.1）的三种里第一个从笔记本任何地方都只解析到它的：名称唯一时的名称、完整路径、完整路径加 `.md`。总是存在；不试路径的后缀，所以不总是最短；
+- 它与改写用同一个函数（`domain.Linktext`），前端不重算标题键（JavaScript 没有完整的大小写折叠）。
 
 **属性**
 
-`getPageProperties` 给出每个属性的值，以及属性链接的解析结果（属性路径到节点 id），右栏据此显示可以点击的链接。
+`getPageProperties` 给出每个属性的值，以及属性链接的解析结果（属性路径到节点 id），右栏据此显示可以点击的链接。`key` 是属性的完整路径（列表的项是 `sources.0`），解析不到的也给出，`node_id` 为 `null`。
 
 ### 4.12 右栏
 
@@ -477,11 +480,11 @@ linking 注册为写入单元的参与者，在改名与移动之后调用（`Pa
 
 | 方法与路径 | 操作 | 说明 |
 |---|---|---|
-| `GET /api/v0/pages/{page_id}/backlinks` | `listBacklinks` | 链接到这一页的页面与每条链接的上下文，按出发页分页（`limit`、`cursor`） |
+| `GET /api/v0/pages/{page_id}/backlinks` | `listBacklinks` | `{data: [{id, count, contexts}], next_cursor}`：链接到这一页的出发页，各带链接数（至多 1000）与至多 10 行上下文，按出发页的 id 分页（`limit`、`cursor`） |
 | `GET /api/v0/pages/{page_id}/properties` | `getPageProperties` | `{valid, properties: [{key, value}], links: [{key, node_id}]}` |
-| `GET /api/v0/notebooks/{notebook_id}/tags` | `listTags` | `[{tag, count}]`，`count` 是页数 |
-| `GET /api/v0/notebooks/{notebook_id}/tags/{tag}` | `getTag` | 有这个标签（含它下层的 `tag/…`）的页面 id |
-| `GET /api/v0/notebooks/{notebook_id}/link-targets` | `listLinkTargets` | 补全用：`[{id, kind, name, link, aliases}]` |
+| `GET /api/v0/notebooks/{notebook_id}/tags` | `listTags` | `{data: [{tag, count}]}`，`count` 是页数，`tag` 是各页里最常见的写法；不合成父标签 |
+| `GET /api/v0/notebooks/{notebook_id}/tags/{tag}` | `getTag` | `{data: [{id}]}`：有这个标签（含它下层的 `tag/…`）的页面；不是标签的输入答空列表 |
+| `GET /api/v0/notebooks/{notebook_id}/link-targets` | `listLinkTargets` | 补全用：`{data: [{id, kind, name, link, aliases}]}`，`kind` 的枚举另起名 `LinkTargetKind` |
 | `PATCH /api/v0/nodes/{node_id}`、`POST …/move` | 已有 | 新增 409 `linking.pages_locked`（带 `locks`）与 503 `server_busy` |
 | 事件 `links` | — | `{pages, targets}`，见第 4.8 节 |
 
@@ -632,7 +635,7 @@ M6 写出的移交（P3、P4 合并时落档）：
 | P2 | 提取结果与平台的预算 | 已完成（2026-10-05，`f2fea43`） | [02-P2-facts-budget.md](02-P2-facts-budget.md) | [P2-facts-budget-review.md](reviews/P2-facts-budget-review.md) |
 | P3 | 索引与解析 | 已完成（2026-10-05，A `b802987`，B `23ce06e`） | [03-P3-index.md](03-P3-index.md) | A：[P3A-index-review.md](reviews/P3A-index-review.md)；B：[P3B-render-review.md](reviews/P3B-render-review.md) |
 | P4 | 链接改写 | 已完成（2026-10-05，`4646495`） | [04-P4-rewrite.md](04-P4-rewrite.md) | [P4-rewrite-review.md](reviews/P4-rewrite-review.md) |
-| P5 | 接口 | 未开始 | — | — |
+| P5 | 接口 | 已完成（2026-10-06，`1f3daf8`） | [05-P5-api.md](05-P5-api.md) | [P5-api-review.md](reviews/P5-api-review.md) |
 | P6 | 阅读视图（前端） | 未开始 | — | — |
 | P7 | 编辑器与右栏（前端） | 未开始 | — | — |
 
@@ -645,3 +648,4 @@ M6 写出的移交（P3、P4 合并时落档）：
 | 2026-10-05 | P3 A 部分定稿：解析的次序与 Obsidian 1.12.7 逐条核对之后改写（先定 `.md` 的写法；子树含文件夹自己的页；路径短按字符数；与 Obsidian 的不同列全）（4.4）；索引表不带外键、迁移编号、`target_alt_key`（4.3）；观察者的锁的写法，候选加上别名的键，只写正文的单元缩小范围，同键不同长度的改名（4.5）；reindex 失败时继续、只插入、何时执行（4.10） | [P3 文档](03-P3-index.md)、[P3A 审查](reviews/P3A-index-review.md) |
 | 2026-10-05 | P3 B 部分定稿：阅读视图先读索引，即时解析不在一个快照里（4.7）；`links` 的前端先只重读阅读视图（4.8）；Markdown 链接不写相对地址，锚点取最后一段，一个链接里没有链接；落点与点击新建、标签链接、属性表里的链接、本站完整地址推到 P6（4.9、Phase 表） | [P3 文档](03-P3-index.md)第 6 节、[P3B 审查](reviews/P3B-render-review.md) |
 | 2026-10-05 | P4 定稿：改写的判定、写法与读回（4.6 第 1–3 项），预检只查要改写的页、守卫之后的重查（4.6 第 4 项）；参与者逐页不排队地取预算（4.7） | [P4 文档](04-P4-rewrite.md)、[P4 审查](reviews/P4-rewrite-review.md) |
+| 2026-10-06 | P5 定稿：反链的一项、分页、计数的上限、上下文的规则与没有上下文的情形；补全的 `link` 是 P4 的三种写法，不总是最短；属性链接的 `key`（4.11）；接口的回答（第 5 节）；一页至多 1000 个标签与别名（P3 文档 3.2） | [P5 文档](05-P5-api.md)、[P5 审查](reviews/P5-api-review.md) |
