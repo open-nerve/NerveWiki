@@ -1,0 +1,62 @@
+{
+  "description": "多个同名的页：先选在出发文件夹整棵子树里的，文件夹自己的页也算（导出时 A.md 与 A/ 并排）",
+  "source": "obsidian-verified",
+  "pages": [
+    "X",
+    "X/dup",
+    "Y",
+    "Y/Z",
+    "Y/Z/dup",
+    "M",
+    "src",
+    "X/src",
+    "Y/src",
+    "Y/Z/src",
+    "M/src",
+    "Docs",
+    "Docs/API",
+    "Docs/API/Overview",
+    "Docs/API/v2",
+    "Docs/API/v2/API",
+    "P",
+    "P/q",
+    "P/q/q"
+  ],
+  "links": [
+    {
+      "from": "src",
+      "link": "[[dup]]",
+      "to": "X/dup"
+    },
+    {
+      "from": "X/src",
+      "link": "[[dup]]",
+      "to": "X/dup"
+    },
+    {
+      "from": "Y/src",
+      "link": "[[dup]]",
+      "to": "Y/Z/dup"
+    },
+    {
+      "from": "Y/Z/src",
+      "link": "[[dup]]",
+      "to": "Y/Z/dup"
+    },
+    {
+      "from": "M/src",
+      "link": "[[dup]]",
+      "to": "X/dup"
+    },
+    {
+      "from": "Docs/API/Overview",
+      "link": "[[API]]",
+      "to": "Docs/API"
+    },
+    {
+      "from": "P/q/q",
+      "link": "[[q]]",
+      "to": "P/q"
+    }
+  ]
+}

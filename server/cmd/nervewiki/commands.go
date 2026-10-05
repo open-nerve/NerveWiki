@@ -32,7 +32,7 @@ func newRootCommand(environ []string, stdin io.Reader) *cobra.Command {
 		return config.Load(config.Sources{Embedded: configs.FS(), Environ: environ, LocalFile: localConfigFile})
 	}
 	root.AddCommand(newServeCommand(load), newMigrateCommand(load), newUsersCommand(load, stdin, realTerminal{}),
-		newWorkspacesCommand(load), newVersionCommand())
+		newWorkspacesCommand(load), newReindexCommand(load), newVersionCommand())
 	return root
 }
 

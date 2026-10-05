@@ -198,3 +198,12 @@ func (s *Store) DeleteNotebooksOf(ctx context.Context, workspaceID, by uuid.UUID
 	}
 	return ids, nil
 }
+
+// NotebookIDs is the notebooks not deleted, by id.
+func (s *Store) NotebookIDs(ctx context.Context) ([]uuid.UUID, error) {
+	ids, err := s.queries(ctx).NotebookIDs(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("notebook ids: %w", err)
+	}
+	return ids, nil
+}

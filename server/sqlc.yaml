@@ -83,11 +83,37 @@ sql:
       - migrations/sql/00016_page_page_revisions.sql
       - migrations/sql/00017_page_edit_sessions.sql
       - migrations/sql/00018_page_edit_session_ends.sql
+      - migrations/sql/00019_page_nodes_name_key.sql
     queries: internal/modules/page/adapter/postgres/queries
     gen:
       go:
         package: gen
         out: internal/modules/page/adapter/postgres/gen
+        sql_package: pgx/v5
+        emit_pointers_for_null_types: true
+        overrides:
+          - db_type: uuid
+            go_type: { import: uuid, type: UUID }
+          - db_type: uuid
+            nullable: true
+            go_type: { import: uuid, type: UUID, pointer: true }
+          - db_type: timestamptz
+            go_type: { import: time, type: Time }
+          - db_type: timestamptz
+            nullable: true
+            go_type: { import: time, type: Time, pointer: true }
+  - engine: postgresql
+    schema:
+      - migrations/sql/00020_linking_indexed_pages.sql
+      - migrations/sql/00021_linking_page_links.sql
+      - migrations/sql/00022_linking_page_tags.sql
+      - migrations/sql/00023_linking_page_properties.sql
+      - migrations/sql/00024_linking_page_aliases.sql
+    queries: internal/modules/linking/adapter/postgres/queries
+    gen:
+      go:
+        package: gen
+        out: internal/modules/linking/adapter/postgres/gen
         sql_package: pgx/v5
         emit_pointers_for_null_types: true
         overrides:

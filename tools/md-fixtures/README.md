@@ -14,15 +14,18 @@ rename/
   NNN-<slug>.md        重命名之前的原文
   NNN-<slug>.out.md    期望的改写结果
   NNN-<slug>.json      说明与重命名参数
-check.mjs              自检：格式正确，每个 range 确实指向目标的原文写法
-obsidian/verify.mjs    与真实的 Obsidian 核对
+resolve/
+  NNN-<slug>.json      一棵页面树、从其中各页写出的链接与它们应当解析到的页面
+check.mjs              自检：格式正确，每个 range 确实指向目标的原文写法，解析样例的链接都在它的页面之间
+obsidian/verify.mjs    提取结果与真实的 Obsidian 核对
+obsidian/verify-resolve.mjs  解析与真实的 Obsidian 核对
 ```
 
 ## 来源
 
 每个样例都标明规则的来源：
 
-- `obsidian-verified`：结果与 Obsidian 一致，由 `obsidian/verify.mjs` 核对（最近一次：Obsidian 1.12.7 与 1.13.7）。
+- `obsidian-verified`：结果与 Obsidian 一致，由 `obsidian/verify.mjs` 核对（最近一次：Obsidian 1.12.7 与 1.13.7）；解析样例由 `obsidian/verify-resolve.mjs` 核对（Obsidian 1.12.7）。
 - `nerve-defined`：我们有意与 Obsidian 不同，或 Obsidian 没有对应的行为；`note` 写明差异和理由。
 
 与 Obsidian 保持一致是默认选择：用户会从 Obsidian 导入笔记，agent 也按 Obsidian 的习惯书写。偏离必须有明确的好处。
@@ -120,6 +123,55 @@ obsidian/verify.mjs    与真实的 Obsidian 核对
 
 树结构和路径（相对路径、`[[路径/页面]]`）的改写样例由 M6 补充。
 
+## 链接解析样例
+
+`resolve/` 里的每个样例是一棵页面树和从其中各页写出的链接，以及每条链接应当解析到的页面（v0.1 设计 4.4，M6/P3 设计第 2 节）。
+
+```json
+{
+  "description": "这个样例在验证什么",
+  "source": "obsidian-verified",
+  "pages": ["note", "A", "A/note", "A/B", "A/B/note", "src", "A/B/src"],
+  "aliases": { "A/B": ["Al"] },
+  "links": [
+    { "from": "A/B/src", "link": "[[note]]", "to": "note" },
+    { "from": "src", "link": "[[Al]]", "to": "A/B", "source": "nerve-defined" }
+  ]
+}
+```
+
+- `pages`：页面从笔记本根起的路径，父页排在子页之前。导出时页面 `A` 是 `A.md`，它的子页在 `A/` 下。
+- `aliases`：可选，页面在 frontmatter 的 `aliases` 里写的别名。
+- `links`：每条一个链接。
+  - `from` 是写出它的页面；
+  - `link` 是链接的写法，可以是 wikilink、嵌入或 Markdown 链接；
+  - `to` 是解析到的页面，解析不到时为 `null`；
+  - `ambiguous: true` 表示有歧义：多个候选在每一项偏好上都相同，按 id 选；
+  - `source` 可选，覆盖样例的来源。
+- 样例或其中的链接是 `nerve-defined` 时，样例的 `note` 写明差异与理由。
+- 样例里页面的 id 按 `pages` 的次序递增，与新建的先后一致。
+
+先定目标的写法：最后一段以 `.md` 结尾（不分大小写）的，笔记本里任何地方有去掉 `.md` 的那个名称的页时，读作去掉 `.md` 的；没有时读作原样（标题以 `.md` 结尾的页）。之后每一步只用这一种写法（Obsidian 的 `getLinkpathDest` 如此）。
+
+解析的次序（前一步找到就停）：
+
+1. **相对**：以 `./`、`../` 开头的，从出发页的父页（根下的页是笔记本根）起，`..` 每个上一层（到根为止），再按段往下。找不到就解析不到。
+2. **从根起**：以 `/` 开头的，或者目标恰好是某页从根起的路径（单个名称也算）。
+3. **路径后缀**：页面的路径以目标的各段结尾（按整段对齐）。多个时先选在出发页父页的子树里的（父页自己也算：导出时 `A.md` 与 `A/` 并排），再选路径短的（导出路径的字符数，按 JavaScript 的计法，即 UTF-16 码元，与层数无关），再按 id，并标记歧义。
+4. **别名**：只对单个名称；以 `.md` 结尾的，先按去掉 `.md` 的别名，再按原样的。多个时同第 3 步。
+
+Obsidian 用小写路径的字符串前缀、后缀比较子树与路径后缀，相对路径找不到时还按算出的路径找后缀；这里按整段比较，相对路径找不到就解析不到（样例 015，`nerve-defined`）。
+
+核对：
+
+```sh
+node tools/md-fixtures/obsidian/verify-resolve.mjs prepare /tmp/nwiki-resolve
+# 按提示用独立的数据目录启动 Obsidian：每个样例一个库、一个窗口，不碰你自己的库
+node tools/md-fixtures/obsidian/verify-resolve.mjs check /tmp/nwiki-resolve
+```
+
+每条链接单独放在出发页所在的文件夹里的一个文件中，读 Obsidian 的 `resolvedLinks` 与 `unresolvedLinks`（等每个文件都有了它们）；每个文件要恰好一条链接。`obsidian-verified` 必须一致；`nerve-defined` 只报告差异。`prepare` 会清空工作目录，所以只接受它自己准备过的目录或空目录。
+
 ## 新增样例
 
 1. 手写 `.md` 与 `.json`。`range` 是 UTF-8 字节偏移，可以用 `python3 -c 'print(len("前缀".encode()))'` 之类的办法计算。
@@ -135,3 +187,5 @@ obsidian/verify.mjs    与真实的 Obsidian 核对
    `obsidian-verified` 样例必须一致。`nerve-defined` 样例只报告差异；如果 Obsidian 其实一致，把来源改成 `obsidian-verified`。
 
 4. 运行提取器的测试。结果与期望不一致时，先判断是样例写错了还是实现有问题。
+
+解析样例照同样的步骤：手写 `resolve/` 的 `.json`，运行 `check.mjs`，用 `verify-resolve.mjs` 与 Obsidian 核对，再运行 linking 的解析测试。

@@ -1,0 +1,37 @@
+{
+  "description": "恰好是从根起的完整路径的先于后缀：从 G 下出发，[[A/B/note]] 仍是根下的 A/B/note；只是后缀的，才按出发文件夹偏好",
+  "source": "obsidian-verified",
+  "pages": [
+    "note",
+    "A",
+    "A/note",
+    "A/B",
+    "A/B/note",
+    "A/B/deep",
+    "src",
+    "A/src",
+    "A/B/src",
+    "G",
+    "G/A",
+    "G/A/B",
+    "G/A/B/note",
+    "G/src"
+  ],
+  "links": [
+    {
+      "from": "G/src",
+      "link": "[[A/B/note]]",
+      "to": "A/B/note"
+    },
+    {
+      "from": "G/src",
+      "link": "[[B/note]]",
+      "to": "G/A/B/note"
+    },
+    {
+      "from": "src",
+      "link": "[[B/note]]",
+      "to": "A/B/note"
+    }
+  ]
+}

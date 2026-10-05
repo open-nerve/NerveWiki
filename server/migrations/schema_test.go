@@ -181,6 +181,11 @@ func TestConstraintAndIndexNames(t *testing.T) {
 		"edit_sessions_pkey p",
 		"edit_sessions_user_id_fkey f a",
 		"edit_sessions_written_check c",
+		"indexed_pages_extractor_check c",
+		"indexed_pages_notebook_id_idx i",
+		"indexed_pages_pkey iu",
+		"indexed_pages_pkey p",
+		"indexed_pages_revision_check c",
 		"nodes_created_by_id_fkey f a",
 		"nodes_deleted_at_idx iw",
 		"nodes_kind_check c",
@@ -189,6 +194,7 @@ func TestConstraintAndIndexNames(t *testing.T) {
 		"nodes_notebook_id_fkey f r",
 		"nodes_notebook_id_id_key iu",
 		"nodes_notebook_id_id_key u",
+		"nodes_notebook_id_name_key_idx iw",
 		"nodes_notebook_id_parent_id_fkey f r",
 		"nodes_notebook_id_parent_id_idx i",
 		"nodes_notebook_id_parent_id_name_key_idx iuwn",
@@ -226,6 +232,11 @@ func TestConstraintAndIndexNames(t *testing.T) {
 		"notebooks_workspace_access_check c",
 		"notebooks_workspace_id_fkey f r",
 		"notebooks_workspace_id_idx i",
+		"page_aliases_alias_check c",
+		"page_aliases_alias_key_check c",
+		"page_aliases_notebook_id_alias_key_idx i",
+		"page_aliases_pkey iu",
+		"page_aliases_pkey p",
 		"page_contents_byte_size_check c",
 		"page_contents_content_hash_check c",
 		"page_contents_deleted_at_idx iw",
@@ -234,6 +245,20 @@ func TestConstraintAndIndexNames(t *testing.T) {
 		"page_contents_pkey p",
 		"page_contents_revision_check c",
 		"page_contents_updated_by_id_fkey f a",
+		"page_links_ambiguous_check c",
+		"page_links_kind_check c",
+		"page_links_notebook_id_target_alt_key_idx iw",
+		"page_links_notebook_id_target_key_idx i",
+		"page_links_pkey iu",
+		"page_links_pkey p",
+		"page_links_range_check c",
+		"page_links_range_start_check c",
+		"page_links_resolved_id_idx iw",
+		"page_links_target_check c",
+		"page_properties_notebook_id_idx i",
+		"page_properties_pkey iu",
+		"page_properties_pkey p",
+		"page_properties_position_check c",
 		"page_revisions_byte_size_check c",
 		"page_revisions_changeset_id_fkey f c",
 		"page_revisions_changeset_id_node_id_key iu",
@@ -245,6 +270,12 @@ func TestConstraintAndIndexNames(t *testing.T) {
 		"page_revisions_pkey iu",
 		"page_revisions_pkey p",
 		"page_revisions_revision_check c",
+		"page_tags_count_check c",
+		"page_tags_notebook_id_tag_key_idx i",
+		"page_tags_pkey iu",
+		"page_tags_pkey p",
+		"page_tags_tag_check c",
+		"page_tags_tag_key_check c",
 		"users_display_name_check c",
 		"users_email_check c",
 		"users_email_key iu",
@@ -332,6 +363,18 @@ func TestChecksRejectCounterexamples(t *testing.T) {
 		"INSERT INTO edit_sessions (id, node_id, notebook_id, user_id, client, changeset_id, revision, created_at, expires_at) VALUES " +
 			"('0199a2b4-0000-7000-8000-000000000015', '0199a2b4-0000-7000-8000-000000000010', '0199a2b4-0000-7000-8000-000000000008', " +
 			user + ", 'mcp:claude-code', '0199a2b4-0000-7000-8000-000000000012', 1, now(), now() + interval '1 minute')",
+		// The root's index: its version, an ambiguous link in a property, a tag, a property and an alias.
+		"INSERT INTO indexed_pages (node_id, notebook_id, revision, extractor, frontmatter_valid) VALUES " +
+			"('0199a2b4-0000-7000-8000-000000000010', '0199a2b4-0000-7000-8000-000000000008', 1, 1, true)",
+		"INSERT INTO page_links (source_id, range_start, range_end, notebook_id, kind, property_key, target, target_key, " +
+			"resolved_id, ambiguous) VALUES ('0199a2b4-0000-7000-8000-000000000010', 0, 1, '0199a2b4-0000-7000-8000-000000000008', " +
+			"'wikilink', 'sources.0', 'b', 'b', '0199a2b4-0000-7000-8000-000000000011', true)",
+		"INSERT INTO page_tags (source_id, tag_key, notebook_id, tag, count) VALUES " +
+			"('0199a2b4-0000-7000-8000-000000000010', 'tag', '0199a2b4-0000-7000-8000-000000000008', 'Tag', 1)",
+		"INSERT INTO page_properties (source_id, position, notebook_id, key, value) VALUES " +
+			"('0199a2b4-0000-7000-8000-000000000010', 0, '0199a2b4-0000-7000-8000-000000000008', 'sources', '[\"[[b]]\"]')",
+		"INSERT INTO page_aliases (source_id, alias_key, notebook_id, alias) VALUES " +
+			"('0199a2b4-0000-7000-8000-000000000010', 'al', '0199a2b4-0000-7000-8000-000000000008', 'Al')",
 	} {
 		if _, err := pool.Exec(ctx, stmt); err != nil {
 			t.Fatalf("%s: %v", stmt, err)
@@ -430,6 +473,19 @@ func TestChecksRejectCounterexamples(t *testing.T) {
 			"ended_at = created_at - interval '1 second'", "edit_sessions_ended_check"},
 		{"a session's unknown end reason", "UPDATE edit_sessions SET ended_reason = 'expired', ended_by_id = user_id, ended_at = created_at",
 			"edit_sessions_ended_reason_check"},
+		{"an indexed revision 0", "UPDATE indexed_pages SET revision = 0", "indexed_pages_revision_check"},
+		{"an extractor 0", "UPDATE indexed_pages SET extractor = 0", "indexed_pages_extractor_check"},
+		{"a link before the content", "UPDATE page_links SET range_start = -1", "page_links_range_start_check"},
+		{"an empty link range", "UPDATE page_links SET range_end = range_start", "page_links_range_check"},
+		{"a fifth kind of link", "UPDATE page_links SET kind = 'tag'", "page_links_kind_check"},
+		{"an empty target", "UPDATE page_links SET target = ''", "page_links_target_check"},
+		{"ambiguous and resolved to nothing", "UPDATE page_links SET resolved_id = NULL", "page_links_ambiguous_check"},
+		{"an empty tag key", "UPDATE page_tags SET tag_key = ''", "page_tags_tag_key_check"},
+		{"an empty tag", "UPDATE page_tags SET tag = ''", "page_tags_tag_check"},
+		{"a tag written 0 times", "UPDATE page_tags SET count = 0", "page_tags_count_check"},
+		{"a property before the first", "UPDATE page_properties SET position = -1", "page_properties_position_check"},
+		{"an empty alias key", "UPDATE page_aliases SET alias_key = ''", "page_aliases_alias_key_check"},
+		{"an empty alias", "UPDATE page_aliases SET alias = ''", "page_aliases_alias_check"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

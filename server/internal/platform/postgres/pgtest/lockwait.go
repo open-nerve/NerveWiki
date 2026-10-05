@@ -2,6 +2,7 @@ package pgtest
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -75,6 +76,23 @@ func WaitForKeyWaitOn(t testing.TB, pool *pgxpool.Pool, table string, n int, lim
 				AND l.mode = 'RowExclusiveLock' AND l.granted)
 			AND NOT EXISTS (SELECT 1 FROM pg_locks l WHERE l.pid = a.pid AND l.locktype = 'tuple')`,
 		relation(ctx, t, pool, table))
+}
+
+// WaitForAdvisoryLockWaits returns once at least n backends connected to
+// pool's database wait for the advisory lock of the key pair space, key
+// (pg_advisory_xact_lock(space, key) and its kin), and fails the test when
+// fewer have within limit. A wait for another key, or for a lock of
+// another kind, does not count: other waits in a running server, such as
+// River's, are not mistaken for it.
+func WaitForAdvisoryLockWaits(t testing.TB, pool *pgxpool.Pool, space, key int32, n int, limit time.Duration) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), limit)
+	defer cancel()
+	waitForCount(ctx, t, pool, n, limit, fmt.Sprintf("the advisory lock %d, %d", space, key), `
+		SELECT count(DISTINCT l.pid) FROM pg_locks l JOIN pg_database d ON d.oid = l.database
+		WHERE d.datname = current_database() AND l.locktype = 'advisory' AND NOT l.granted
+			AND l.classid::bigint = $1 AND l.objid::bigint = $2 AND l.objsubid = 2`,
+		int64(uint32(space)), int64(uint32(key)))
 }
 
 // relation is the OID of table in pool's database. A database without the

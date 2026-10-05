@@ -1,0 +1,62 @@
+{
+  "description": "以 .md 结尾（不分大小写）的目标只读作一种：笔记本里任何地方有去掉 .md 的那个名称的页时，每一步都读作它；没有时，读作标题以 .md 结尾的页",
+  "source": "obsidian-verified",
+  "pages": ["pp", "pp.md", "p.md", "src", "A", "A/x", "x.md", "y", "B", "B/y.md"],
+  "links": [
+    {
+      "from": "src",
+      "link": "[[pp.md]]",
+      "to": "pp"
+    },
+    {
+      "from": "src",
+      "link": "[[pp]]",
+      "to": "pp"
+    },
+    {
+      "from": "src",
+      "link": "[[p.md]]",
+      "to": "p.md"
+    },
+    {
+      "from": "src",
+      "link": "[[p.md.md]]",
+      "to": "p.md"
+    },
+    {
+      "from": "src",
+      "link": "[[pp.md.md]]",
+      "to": "pp.md"
+    },
+    {
+      "from": "src",
+      "link": "[[x.md]]",
+      "to": "A/x"
+    },
+    {
+      "from": "src",
+      "link": "[t](x.md)",
+      "to": "A/x"
+    },
+    {
+      "from": "src",
+      "link": "[[/x.md]]",
+      "to": null
+    },
+    {
+      "from": "src",
+      "link": "[[B/y.md]]",
+      "to": null
+    },
+    {
+      "from": "src",
+      "link": "[[pp.MD]]",
+      "to": "pp"
+    },
+    {
+      "from": "src",
+      "link": "[[P.Md]]",
+      "to": "p.md"
+    }
+  ]
+}

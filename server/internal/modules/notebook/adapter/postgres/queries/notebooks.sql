@@ -81,3 +81,7 @@ WITH locked AS (
     RETURNING n.id
 )
 SELECT id FROM deleted ORDER BY id;
+
+-- name: NotebookIDs :many
+-- The notebooks not deleted, by id: nervewiki reindex goes through them one at a time.
+SELECT id FROM notebooks WHERE deleted_at IS NULL ORDER BY id;

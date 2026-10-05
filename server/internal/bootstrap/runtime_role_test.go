@@ -1,6 +1,7 @@
 package bootstrap
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"log/slog"
@@ -13,6 +14,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"uuid"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -115,10 +117,11 @@ func call(t *testing.T, method, url, token, body string, want int) []byte {
 
 // nervewiki serves on the role and its administrator's commands run on it:
 // ready; the sessions' and the edit sessions' cleanups and the purge run
-// as the jobs start; every
-// statement of the account's API and of the commands goes through; River's
-// daily reindex goes through, as River runs it, index by index. Nothing
-// logs a permission denied, the shutdown included.
+// as the jobs start; every statement of the account's API and of the
+// commands goes through, nervewiki reindex's too, which rekeys the nodes
+// and rebuilds the link index; River's daily reindex goes through, as River
+// runs it, index by index. Nothing logs a permission denied, the shutdown
+// included.
 func TestTheRuntimeRoleServesWithTheGrantsFile(t *testing.T) {
 	roles := newSplitRoles(t)
 	ctx := context.Background()
@@ -215,6 +218,26 @@ func TestTheRuntimeRoleServesWithTheGrantsFile(t *testing.T) {
 		if out, logs, err := runWorkspaces(t, roles.serverURL, cmd); err != nil {
 			t.Errorf("a workspaces command as %s = %q, %v: %s", roles.serverName, out, err, logs)
 		}
+	}
+	if _, err := roles.owner.Exec(ctx, `WITH n AS (
+			INSERT INTO notebooks (id, workspace_id, name, created_by_id, updated_by_id, created_at, updated_at)
+			SELECT gen_random_uuid(), w.id, 'Notes', w.created_by_id, w.created_by_id, now(), now() FROM workspaces w WHERE w.slug = 'acme'
+			RETURNING id, created_by_id
+		), p AS (
+			INSERT INTO nodes (id, notebook_id, kind, name, name_key, sort_order, created_by_id, updated_by_id, created_at, updated_at)
+			SELECT gen_random_uuid(), id, 'page', 'Note', 'old', 0, created_by_id, created_by_id, now(), now() FROM n
+			RETURNING id, created_by_id
+		)
+		INSERT INTO page_contents (node_id, content, revision, content_hash, byte_size, updated_by_id, updated_at)
+		SELECT id, c, 1, sha256(convert_to(c, 'UTF8')), octet_length(c), created_by_id, now()
+		FROM p, (SELECT E'---\naliases: [N]\ntags: [t]\n---\n[[Note]]' AS c) content`); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	if err := Reindex(ctx, testConfig(t, roles.serverURL, false), &stderr, &stdout, uuid.Nil()); err != nil ||
+		count(t, roles.owner, `SELECT (SELECT count(*) FROM page_links WHERE resolved_id IS NOT NULL) + (SELECT count(*) FROM page_aliases)
+			+ (SELECT count(*) FROM page_tags) + (SELECT count(*) FROM page_properties)`) != 5 {
+		t.Errorf("reindex as %s = %q, %v: %s", roles.serverName, stdout.String(), err, stderr.String())
 	}
 
 	for _, index := range river.ReindexerIndexNamesDefault() {

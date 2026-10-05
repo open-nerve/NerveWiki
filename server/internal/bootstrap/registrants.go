@@ -9,6 +9,7 @@ import (
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/events"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/identity"
+	"github.com/open-nerve/NerveWiki/server/internal/modules/linking"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/notebook"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/workspace"
@@ -172,15 +173,17 @@ type notebookExtensions struct {
 // notebookRegistrants are the modules that take part in a notebook's
 // deletion, in a visibility change and in its activity: the page module
 // follows a deletion (M4/P1), with its edit sessions' subscribers, and
-// tells its pages' activity (M4/P4); M7's attachments do both; M5's event
-// streams follow a deletion, after the pages, and a visibility change
-// (M5/P2). The module's use cases and its parts in the
-// workspace module's events all take them from here.
+// tells its pages' activity (M4/P4); M7's attachments do both; M6's link
+// index drops the notebooks' rows after the pages (M6/P3); M5's event
+// streams follow a deletion, after those, and a visibility change
+// (M5/P2). The module's use cases and its parts in the workspace module's
+// events all take them from here.
 func notebookRegistrants(pool *pgxpool.Pool) notebookExtensions {
 	pages := page.NewNotebookDeletion(pool, pageRegistrants(pool).sessionSubscribers)
+	links := linkNotebookDeletion{linking.NewNotebookDeletion(pool)}
 	streams := notebookEvents{events.NewPublisher()}
 	return notebookExtensions{
-		deletionSubscribers:   []notebook.NotebookDeletionSubscriber{pageNotebookDeletion{pages}, streams},
+		deletionSubscribers:   []notebook.NotebookDeletionSubscriber{pageNotebookDeletion{pages}, links, streams},
 		visibilitySubscribers: []notebook.VisibilitySubscriber{streams},
 		activitySources:       []notebook.NotebookActivitySource{pageActivity{page.NewNotebookActivity(pool)}},
 	}
@@ -231,16 +234,19 @@ type pageExtensions struct {
 // pageRegistrants are the modules that take part in the page module's
 // writes and edit sessions: M5's edit lock guards the writes and vetoes an
 // opening (M5/P1), and its event stream observes the writes and follows
-// the sessions' openings and ends (M5/P2); M6's links take part in the writes and
-// observe them; M11's freeze vetoes an opening. serve, the notebook
-// module's deletion and this package's tests take them from here; the
-// page module's own tests build the lock themselves.
+// the sessions' openings and ends (M5/P2); M6's link index observes the
+// writes after the stream, so that a unit's pages event comes before its
+// links event (M6/P3), and M6's rewriting of links takes part in them;
+// M11's freeze vetoes an opening. serve, the notebook module's deletion
+// and this package's tests take them from here; the page module's own
+// tests build the lock themselves.
 func pageRegistrants(pool *pgxpool.Pool) pageExtensions {
 	lock := page.NewEditLock(pool, pageNames{identity.NewDirectory(pool)})
 	streams := pageEvents{events.NewPublisher()}
+	links := linkIndex{linking.NewIndex(pool, linkTargets{page.NewLinkTargets(pool)}, linkEvents{events.NewPublisher()})}
 	return pageExtensions{
 		guards:             []page.WriteGuard{lock},
-		observers:          []page.PageObserver{streams},
+		observers:          []page.PageObserver{streams, links},
 		sessionVetoers:     []page.EditSessionVetoer{lock},
 		sessionSubscribers: []page.EditSessionSubscriber{streams},
 	}

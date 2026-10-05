@@ -1,0 +1,40 @@
+{
+  "description": "别名也解析（Obsidian 只在补全时用别名，[[别名]] 本身不解析）",
+  "source": "nerve-defined",
+  "note": "总体设计 4.4 有意与 Obsidian 不同：别名也解析，只对不带 / 的名称，在其余各步之后；以 .md 结尾的，先按去掉 .md 的别名，再按原样的别名。",
+  "pages": ["aliased", "other", "P", "P/Q", "P/Q/X", "Y", "src"],
+  "aliases": {
+    "aliased": ["Al", "Other name"],
+    "P/Q/X": ["Al2"],
+    "Y": ["Al2.md"]
+  },
+  "links": [
+    {
+      "from": "src",
+      "link": "[[Al]]",
+      "to": "aliased"
+    },
+    {
+      "from": "src",
+      "link": "[[other name]]",
+      "to": "aliased"
+    },
+    {
+      "from": "src",
+      "link": "[[other]]",
+      "to": "other",
+      "source": "obsidian-verified"
+    },
+    {
+      "from": "src",
+      "link": "[[A/Al]]",
+      "to": null,
+      "source": "obsidian-verified"
+    },
+    {
+      "from": "src",
+      "link": "[[Al2.md]]",
+      "to": "P/Q/X"
+    }
+  ]
+}

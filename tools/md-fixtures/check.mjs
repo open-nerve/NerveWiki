@@ -1,6 +1,7 @@
 // Checks that every fixture is well-formed and self-consistent:
 // each range points at the bytes where its target is written,
-// each task's offset at the character between its brackets.
+// each task's offset at the character between its brackets,
+// each resolution case's links go from and to its pages.
 // Usage: node tools/md-fixtures/check.mjs
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
@@ -120,6 +121,85 @@ function checkRename(dir, base) {
   if (!SOURCES.has(exp.source)) fail(name, `source ${exp.source}`);
 }
 
+const parentOf = (page) => (page.includes("/") ? page.slice(0, page.lastIndexOf("/")) : null);
+
+// titleKey approximates the server's title key (NFC, Unicode case folding, NFC): JavaScript
+// has no case folding, and upper then lower case folds as it does for the titles of cases
+// (ß, ﬃ), so that siblings that would share a key are caught.
+const titleKey = (s) => s.normalize("NFC").toUpperCase().toLowerCase().normalize("NFC");
+
+// titleError is why the server refuses s as a title (shared.CheckTitle), or "".
+function titleError(s) {
+  if (s === "" || s !== s.trim()) return "empty, or with spaces around it";
+  if (s !== s.normalize("NFC")) return "not NFC";
+  if (Buffer.byteLength(s) > 255) return "longer than 255 bytes";
+  if (/[\\/:*?"<>|#^[\]\p{Cc}\p{Zl}\p{Zp}\p{Bidi_Control}]/u.test(s))
+    return 'with one of / \\ : * ? " < > | # ^ [ ] or a control, line or paragraph separator, or bidi control';
+  if (s.startsWith(".") || s.endsWith(".")) return "starting or ending with a dot";
+  if (/^(con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])$/i.test(s.split(".")[0])) return "a name Windows reserves";
+  return "";
+}
+
+const sameKeys = (o, want) => Object.keys(o).every((k) => want.includes(k));
+
+// A resolution case: its keys those the README lists; its pages a tree of titles the server
+// takes (each page's parent listed before it, no siblings that would share a title key), its
+// aliases of listed pages, each link from a listed page to a listed page or none; a case or a
+// link that is nerve-defined says why in the case's note.
+function checkResolveCase(dir, base) {
+  const name = `resolve/${base}`;
+  let c;
+  try {
+    c = JSON.parse(readFileSync(join(dir, base), "utf8"));
+  } catch (e) {
+    return fail(name, `not JSON: ${e.message}`);
+  }
+  if (!sameKeys(c, ["description", "source", "pages", "aliases", "links", "note"]))
+    fail(name, "fields are description, source, pages, links, and aliases and note when set");
+  if (typeof c.description !== "string" || c.description === "") fail(name, "description must be non-empty");
+  if (!SOURCES.has(c.source)) fail(name, `source ${c.source}`);
+  if (!Array.isArray(c.pages) || c.pages.length === 0) return fail(name, "pages must be a non-empty array");
+  const pages = new Set();
+  const keys = new Set();
+  for (const p of c.pages) {
+    const why =
+      typeof p === "string"
+        ? p
+            .split("/")
+            .map(titleError)
+            .find((e) => e !== "")
+        : "not a string";
+    const key = typeof p === "string" ? `${parentOf(p)}/${titleKey(p.slice(p.lastIndexOf("/") + 1))}` : "";
+    if (why !== undefined) fail(name, `page ${JSON.stringify(p)}: a segment is ${why}`);
+    else if (keys.has(key)) fail(name, `page ${p}: a sibling has its title key`);
+    else if (parentOf(p) !== null && !pages.has(parentOf(p)))
+      fail(name, `page ${p}: its parent must be listed before it`);
+    pages.add(p);
+    keys.add(key);
+  }
+  for (const [p, aliases] of Object.entries(c.aliases ?? {})) {
+    if (!pages.has(p)) fail(name, `aliases of ${p}, which is not a page`);
+    if (!Array.isArray(aliases) || aliases.length === 0 || aliases.some((a) => typeof a !== "string" || a === ""))
+      fail(name, `aliases of ${p} must be non-empty strings`);
+  }
+  if (!Array.isArray(c.links) || c.links.length === 0) return fail(name, "links must be a non-empty array");
+  let nerveDefined = c.source === "nerve-defined";
+  c.links.forEach((l, i) => {
+    const at = `links[${i}]`;
+    if (!sameKeys(l, ["from", "link", "to", "ambiguous", "source"]) || !("to" in l))
+      fail(name, `${at}: fields are from, link, to, and ambiguous and source when set`);
+    if (!pages.has(l.from)) fail(name, `${at}.from ${l.from} is not a page`);
+    if (typeof l.link !== "string" || l.link === "") fail(name, `${at}.link must be non-empty`);
+    if (l.to !== null && !pages.has(l.to)) fail(name, `${at}.to ${l.to} is neither null nor a page`);
+    if (l.ambiguous !== undefined && (l.ambiguous !== true || l.to === null))
+      fail(name, `${at}.ambiguous is true or absent, and true only for a link that resolves`);
+    if (l.source !== undefined && !SOURCES.has(l.source)) fail(name, `${at}.source ${l.source}`);
+    nerveDefined ||= l.source === "nerve-defined";
+  });
+  if (nerveDefined !== (typeof c.note === "string" && c.note !== ""))
+    fail(name, "note must be set exactly when the case or one of its links is nerve-defined");
+}
+
 const casesDir = join(root, "cases");
 const cases = readdirSync(casesDir)
   .filter((f) => f.endsWith(".md"))
@@ -130,9 +210,12 @@ const renames = readdirSync(renameDir)
   .filter((f) => f.endsWith(".json"))
   .map((f) => f.slice(0, -5));
 renames.forEach((b) => checkRename(renameDir, b));
+const resolveDir = join(root, "resolve");
+const resolves = readdirSync(resolveDir).filter((f) => f.endsWith(".json"));
+resolves.forEach((f) => checkResolveCase(resolveDir, f));
 
 if (problems.length) {
   console.error(problems.join("\n"));
   process.exit(1);
 }
-console.log(`ok: ${cases.length} cases, ${renames.length} rename cases`);
+console.log(`ok: ${cases.length} cases, ${renames.length} rename cases, ${resolves.length} resolution cases`);

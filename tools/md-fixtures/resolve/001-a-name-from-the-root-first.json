@@ -1,0 +1,22 @@
+{
+  "description": "普通的名称先按从根起的路径找：根下有同名的页时，从哪里出发都是它，同一文件夹里的同名页不优先",
+  "source": "obsidian-verified",
+  "pages": ["note", "A", "A/note", "A/B", "A/B/note", "A/B/deep", "src", "A/src", "A/B/src"],
+  "links": [
+    {
+      "from": "src",
+      "link": "[[note]]",
+      "to": "note"
+    },
+    {
+      "from": "A/src",
+      "link": "[[note]]",
+      "to": "note"
+    },
+    {
+      "from": "A/B/src",
+      "link": "[[note]]",
+      "to": "note"
+    }
+  ]
+}

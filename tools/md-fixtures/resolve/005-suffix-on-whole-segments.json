@@ -1,0 +1,32 @@
+{
+  "description": "后缀按整段对齐：名称的一部分不匹配，不相连的段也不匹配",
+  "source": "obsidian-verified",
+  "pages": ["note", "A", "A/note", "A/B", "A/B/note", "A/B/deep", "src", "A/src", "A/B/src"],
+  "links": [
+    {
+      "from": "src",
+      "link": "[[ote]]",
+      "to": null
+    },
+    {
+      "from": "src",
+      "link": "[[B/deep]]",
+      "to": "A/B/deep"
+    },
+    {
+      "from": "src",
+      "link": "[[A/deep]]",
+      "to": null
+    },
+    {
+      "from": "src",
+      "link": "[[deep]]",
+      "to": "A/B/deep"
+    },
+    {
+      "from": "src",
+      "link": "[[B]]",
+      "to": "A/B"
+    }
+  ]
+}

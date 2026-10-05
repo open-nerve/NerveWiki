@@ -1,0 +1,52 @@
+{
+  "description": "Markdown 链接解码之后照同样的规则：不带 ./、../ 的不是相对路径",
+  "source": "obsidian-verified",
+  "pages": ["note", "A", "A/note", "A/B", "A/B/note", "A/B/deep", "src", "A/src", "A/B/src", "Sp ace"],
+  "links": [
+    {
+      "from": "src",
+      "link": "[t](note.md)",
+      "to": "note"
+    },
+    {
+      "from": "A/B/src",
+      "link": "[t](note.md)",
+      "to": "note"
+    },
+    {
+      "from": "A/B/src",
+      "link": "[t](./note.md)",
+      "to": "A/B/note"
+    },
+    {
+      "from": "A/B/src",
+      "link": "[t](../note.md)",
+      "to": "A/note"
+    },
+    {
+      "from": "src",
+      "link": "[t](note)",
+      "to": "note"
+    },
+    {
+      "from": "src",
+      "link": "[t](Sp%20ace.md)",
+      "to": "Sp ace"
+    },
+    {
+      "from": "src",
+      "link": "[t](<Sp ace.md>)",
+      "to": "Sp ace"
+    },
+    {
+      "from": "src",
+      "link": "[t](/A/note.md)",
+      "to": "A/note"
+    },
+    {
+      "from": "src",
+      "link": "[t](B/note.md)",
+      "to": "A/B/note"
+    }
+  ]
+}

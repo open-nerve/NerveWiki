@@ -31,6 +31,14 @@ paths:
         - lock: an edit session of a page opened or ended; the client reads
         the page's lock again.
 
+        - links: a write of a notebook's pages changed its link index;
+        pages lists the pages whose links resolve to other pages now, but
+        for those whose content the write wrote, which a pages event lists;
+        targets lists the pages whose backlinks changed. Each is empty for
+        none, and null for more than 20 or for all of them, as after
+        nervewiki reindex rebuilt the index, when the client takes every
+        page of the notebook as changed.
+
         - reset: the last frame; the client reconnects at once and refreshes
         all it shows. reason is access (the caller may see other notebooks
         now), notebooks_deleted, expired (the credential, at its expiry),
@@ -64,6 +72,7 @@ paths:
                   - $ref: "#/components/schemas/EventHello"
                   - $ref: "#/components/schemas/EventPages"
                   - $ref: "#/components/schemas/EventLock"
+                  - $ref: "#/components/schemas/EventLinks"
                   - $ref: "#/components/schemas/EventReset"
         default:
           $ref: "#/components/responses/Problem"
@@ -157,6 +166,37 @@ components:
         session_id:
           type: string
           format: uuid
+    EventLinks:
+      description: The data of links, a write's changes of a notebook's link index.
+      type: object
+      additionalProperties: false
+      required: [workspace_id, notebook_id, pages, targets]
+      properties:
+        workspace_id:
+          type: string
+          format: uuid
+        notebook_id:
+          type: string
+          format: uuid
+        pages:
+          description: >-
+            The pages whose links resolve to other pages now, but for those
+            whose content was written: empty for none, null for more than
+            20 or for all of them (a rebuilt index).
+          type: [array, "null"]
+          maxItems: 20
+          items:
+            type: string
+            format: uuid
+        targets:
+          description: >-
+            The pages whose backlinks changed: empty for none, null for more
+            than 20 or for all of them (a rebuilt index).
+          type: [array, "null"]
+          maxItems: 20
+          items:
+            type: string
+            format: uuid
     EventReset:
       description: The data of reset, the last frame.
       type: object

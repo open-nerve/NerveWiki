@@ -423,9 +423,12 @@ func (d matrixData) config(t *testing.T, url string, change func(*config.Config)
 // seededPageHistory writes, beside the page node $1 and its content
 // seeded by SQL, what its creation through the API would: a changeset of
 // its own, its item and its first version, at the node's time and in its
-// state, so that the pages' invariant (checkPages) holds on the seeded
-// data.
+// state, and, for a page not deleted, its index at that version, so that
+// the pages' invariant (checkPages) holds on the seeded data. The seeded
+// contents have no frontmatter and no link.
 const seededPageHistory = `WITH n AS (SELECT * FROM nodes WHERE id = $1), c AS (SELECT * FROM page_contents WHERE node_id = $1),
+	x AS (INSERT INTO indexed_pages (node_id, notebook_id, revision, extractor, frontmatter_valid)
+		SELECT id, notebook_id, 1, 1, true FROM n WHERE deleted_at IS NULL),
 	s AS (INSERT INTO changesets (id, notebook_id, kind, client, created_by_id, created_at, updated_at, deleted_at)
 		SELECT gen_random_uuid(), notebook_id, 'edit', 'web', created_by_id, created_at, created_at, deleted_at FROM n RETURNING id),
 	i AS (INSERT INTO changeset_items (id, changeset_id, node_id, after_parent_id, after_name, after_sort_order,
@@ -532,6 +535,7 @@ func prepareMatrix(t *testing.T) matrixData {
 				}
 				exec("UPDATE changesets SET deleted_at = $2 WHERE notebook_id = $1", d.seeded.notebooks[n.name], now)
 				exec("DELETE FROM edit_sessions WHERE notebook_id = $1", d.seeded.notebooks[n.name])
+				exec("DELETE FROM indexed_pages WHERE notebook_id = $1", d.seeded.notebooks[n.name])
 			}
 		}
 		// orphan is ownerless of an account still active in lab, a state no

@@ -1,0 +1,17 @@
+{
+  "description": "嵌入照同样的规则解析到页面",
+  "source": "obsidian-verified",
+  "pages": ["note", "A", "A/note", "A/B", "A/B/note", "A/B/deep", "src", "A/src", "A/B/src"],
+  "links": [
+    {
+      "from": "src",
+      "link": "![[note]]",
+      "to": "note"
+    },
+    {
+      "from": "A/B/src",
+      "link": "![[./note]]",
+      "to": "A/B/note"
+    }
+  ]
+}
