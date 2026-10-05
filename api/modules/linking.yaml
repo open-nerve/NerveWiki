@@ -82,6 +82,7 @@ paths:
         only when a page has the parent itself. Any role in the notebook can
         list them. A notebook that does not exist, is deleted, or that the
         caller has no role in is notebook.not_found. The list is not paged.
+        The tag "/" (#//) is listed, though getTag cannot name it.
       security: [{ bearer: [] }]
       x-problem-codes: [notebook.not_found]
       responses:

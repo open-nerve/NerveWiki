@@ -1074,7 +1074,7 @@ export interface paths {
         };
         /**
          * List a notebook's tags
-         * @description The tags of the notebook's pages, the body's and the frontmatter's, one a tag, which tags compare by case-folded, in the order of that key's bytes; each as most of its pages write it, and how many pages have it. Of a page's tags, its first 1000 are kept. A nested tag (a/b) is one of its own: its parent is listed only when a page has the parent itself. Any role in the notebook can list them. A notebook that does not exist, is deleted, or that the caller has no role in is notebook.not_found. The list is not paged.
+         * @description The tags of the notebook's pages, the body's and the frontmatter's, one a tag, which tags compare by case-folded, in the order of that key's bytes; each as most of its pages write it, and how many pages have it. Of a page's tags, its first 1000 are kept. A nested tag (a/b) is one of its own: its parent is listed only when a page has the parent itself. Any role in the notebook can list them. A notebook that does not exist, is deleted, or that the caller has no role in is notebook.not_found. The list is not paged. The tag "/" (#//) is listed, though getTag cannot name it.
          */
         get: operations["listTags"];
         put?: never;
