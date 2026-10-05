@@ -132,8 +132,9 @@ func TestACaseOnlyRenameRewritesNoLinkWrittenAsNow(t *testing.T) {
 // pairs with a '$' or a '`' before it loses links; the text of a Markdown
 // link that follows the title is left then, the targets written alone; and
 // when that loses links too, the content is left as it is (M6/P4 review
-// R1-1). So is one whose writing changes the page's aliases, or the
-// targets of its body are written alone, its property links left.
+// R1-1). So is one whose writing changes the page's aliases, or its body
+// is written alone, its property links left, a key's that is empty too
+// (M6/P4 fix check c5-1, c6-1, c6-3).
 func TestAWritingIsReadBack(t *testing.T) {
 	m, err := markdown.New([]markdown.Extension{tasks.Extension(), obsidian.Extension(obsidian.Options{})})
 	if err != nil {
@@ -154,8 +155,9 @@ func TestAWritingIsReadBack(t *testing.T) {
 		{"New", "---\nx: &x ['[[Old]]']\naliases: *x\n---\n", "", 0},
 		{
 			"New", "---\nx: &x '[[Old]]'\naliases: [nick, *x]\nup: '[[Old]]'\n---\n[[Old]] [Old](Old.md)\n",
-			"---\nx: &x '[[Old]]'\naliases: [nick, *x]\nup: '[[Old]]'\n---\n[[New]] [Old](New.md)\n", 2,
+			"---\nx: &x '[[Old]]'\naliases: [nick, *x]\nup: '[[Old]]'\n---\n[[New]] [New](New.md)\n", 2,
 		},
+		{"New", "---\n\"\": &x '[[Old]]'\naliases: *x\n---\n[[Old]]\n", "---\n\"\": &x '[[Old]]'\naliases: *x\n---\n[[New]]\n", 1},
 		{"New", "---\naliases: &a ['[[Old]]']\ny: *a\n---\n[[Old]]\n", "---\naliases: &a ['[[Old]]']\ny: *a\n---\n[[New]]\n", 0},
 	} {
 		c := renameCase{Pages: []string{"Old", "Other", "src"}, From: "Old", To: tt.to}

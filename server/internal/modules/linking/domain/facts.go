@@ -45,6 +45,14 @@ type Link struct {
 	Aliases  bool
 }
 
+// InFrontmatter tells a property link: the value of a frontmatter's string
+// in quotes, as a plain one cannot start with '[', its path maybe empty, as
+// a key may be ("": '[[x]]'), which the index keeps as none (M6/P4 fix
+// check c6-1).
+func (l Link) InFrontmatter() bool {
+	return l.Property != "" || l.Quote != 0
+}
+
 // MaxKey is the most bytes of a title key the index keeps: twice a title's
 // most, which no title's key comes near (a title has at most 255 bytes, and
 // its key at most about twice as many). A link whose target's last key is

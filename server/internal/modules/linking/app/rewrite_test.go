@@ -359,20 +359,34 @@ func TestAPageLeftSaysWhy(t *testing.T) {
 }
 
 // A page whose aliases a YAML alias repeats from the key a link is written
-// in has the targets of its body written again alone, its property links
-// left and logged: writing them would change the aliases (M6/P4 fix check
-// c5-1).
+// in has its body written again alone, its property links left and logged:
+// writing them would change the aliases (M6/P4 fix check c5-1). So has one
+// whose writings with its property links would hold more than a page may,
+// logged with the sizes (c6-2).
 func TestAPageWhoseFrontmatterWouldChangeHasItsBodyWritten(t *testing.T) {
-	w := newRewriting(t, "A", "A/x", "src")
+	w := newRewriting(t, "A", "A/x", "src", "near")
 	front := "---\nx: &x '[[A/x]]'\naliases: *x\n---\n"
 	w.write("src", front+"[[A/x]] [t](A/x.md)\n")
-	u, err := w.follow(nil, w.rename("A/x", "z"))
+	near := "---\nup: '[[A/x]]'\n---\n[[A/x]]\n"
+	pad := strings.Repeat("a", 1023-len(near))
+	w.write("near", near+pad)
+	u, err := w.follow(nil, w.rename("A/x", "zzzz"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	w.written(u, map[string]string{"src": front + "[[z]] [t](z.md)\n"})
-	if !strings.Contains(w.logs.String(), `msg="a link is not rewritten: writing the frontmatter again would change more than its links"`) {
-		t.Errorf("the log %q, want the property link left", w.logs)
+	w.written(u, map[string]string{
+		"src":  front + "[[zzzz]] [t](zzzz.md)\n",
+		"near": "---\nup: '[[A/x]]'\n---\n[[zzzz]]\n" + pad,
+	})
+	for _, line := range []string{
+		`level=ERROR msg="a link is not rewritten: writing the frontmatter again would change more than its links" page_id=` +
+			w.id("src").String() + " start=13 target=A/x\n",
+		`level=WARN msg="a link is not rewritten: writing the frontmatter again would hold more than a page may" page_id=` +
+			w.id("near").String() + " start=11 target=A/x bytes=1023 written=1025\n",
+	} {
+		if !strings.Contains(w.logs.String(), line) {
+			t.Errorf("the log\n%s\nwant a line with\n%s", w.logs, line)
+		}
 	}
 }
 

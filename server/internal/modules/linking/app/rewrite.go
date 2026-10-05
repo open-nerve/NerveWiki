@@ -253,7 +253,7 @@ func (r Rewrite) rewrite(ctx context.Context, id uuid.UUID, revision int, reache
 	}
 	var now Parsed // the last writing's parse
 	var large int  // the bytes of a writing past MaxContent, if one was
-	read := false  // whether a writing was parsed, to read back
+	parsed := 0    // the writings parsed, to read back
 	written, left, kept, err := rewriting.Written(content, facts, from, tree, func(writing string) (domain.Facts, error) {
 		now.release()
 		now = Parsed{}
@@ -263,28 +263,35 @@ func (r Rewrite) rewrite(ctx context.Context, id uuid.UUID, revision int, reache
 		}
 		var err error
 		now, err = r.Parser.ParseNow(ctx, writing)
-		read = true
+		parsed++
 		return now.Facts, err
 	})
 	if err != nil {
 		return err
 	}
+	var sizes []slog.Attr
+	if large > 0 {
+		sizes = []slog.Attr{slog.Int("bytes", len(content)), slog.Int("written", large)}
+	}
 	if !kept {
 		now.release()
 		level, msg := slog.LevelError, "the links of a page are not rewritten: no writing reads back as its links and aliases"
-		if !read {
+		if parsed == 0 {
 			level, msg = slog.LevelWarn, "the links of a page are not rewritten: it would hold more than a page may"
 		}
-		attrs := []slog.Attr{slog.String("page_id", id.String())}
-		if large > 0 {
-			attrs = append(attrs, slog.Int("bytes", len(content)), slog.Int("written", large))
-		}
-		r.Logger.LogAttrs(ctx, level, msg, attrs...)
+		r.Logger.LogAttrs(ctx, level, msg, append([]slog.Attr{slog.String("page_id", id.String())}, sizes...)...)
 		return nil
 	}
+	// Left are the property links of a writing of the body alone, the one
+	// writing parsed when those with them would all hold too much.
+	level, msg := slog.LevelError, "a link is not rewritten: writing the frontmatter again would change more than its links"
+	if parsed == 1 {
+		level, msg = slog.LevelWarn, "a link is not rewritten: writing the frontmatter again would hold more than a page may"
+	}
 	for _, l := range left {
-		r.Logger.LogAttrs(ctx, slog.LevelError, "a link is not rewritten: writing the frontmatter again would change more than its links",
-			slog.String("page_id", id.String()), slog.Int("start", l.Start), slog.String("target", l.Target))
+		r.Logger.LogAttrs(ctx, level, msg, append([]slog.Attr{
+			slog.String("page_id", id.String()), slog.Int("start", l.Start), slog.String("target", l.Target),
+		}, sizes...)...)
 	}
 	u.Defer(now.Release)
 	return u.WriteContent(ctx, Rewritten{PageID: id, Base: revision, Content: written, Facts: now.Written})

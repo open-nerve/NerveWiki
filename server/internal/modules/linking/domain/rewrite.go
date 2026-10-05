@@ -89,7 +89,7 @@ func Rewrite(content string, from []Step, links []Resolved, tree Tree, recased R
 			continue
 		}
 		for i := range e {
-			e[i].Frontmatter = r.Link.Property != ""
+			e[i].Frontmatter = r.Link.InFrontmatter()
 		}
 		w.Edits, w.Leads[r.Link.Start] = append(w.Edits, e...), now
 	}
@@ -104,13 +104,14 @@ var ErrTooLarge = errors.New("linking: the page written again would hold more th
 // facts back (M6/P4 design 3.1): with them all when its links are those of
 // was, content's facts, in their places, its aliases was's (Kept); else
 // with those of the targets alone, what the links show left as it was;
-// else with those of the body's targets alone, the property links left as
-// they were too (left): a writing of the frontmatter may change more than
-// its links, a value of the aliases that a YAML alias repeats from the key
-// a link is written in (aliases: *x; M6/P4 fix check c5-1). Else ok is
-// false, no writing keeping content's: a title the Markdown around a link
-// reads into it, such as a '$' or a '`' that pairs with another. A writing
-// parse answers ErrTooLarge is not content's either.
+// else with those of the body, then with those of the body's targets
+// alone, the property links left as they were too (left): a writing of the
+// frontmatter may change more than its links, a value of the aliases that
+// a YAML alias repeats from the key a link is written in (aliases: *x;
+// M6/P4 fix check c5-1, c6-3). Else ok is false, no writing keeping
+// content's: a title the Markdown around a link reads into it, such as a
+// '$' or a '`' that pairs with another. A writing parse answers
+// ErrTooLarge is not content's either.
 func (w Rewriting) Written(content string, was Facts, from []Step, tree Tree,
 	parse func(content string) (Facts, error),
 ) (written string, left []Link, ok bool, err error) {
@@ -118,14 +119,16 @@ func (w Rewriting) Written(content string, was Facts, from []Step, tree Tree,
 		edits []Edit
 		body  bool // the body's alone
 	}
+	shown := func(e Edit) bool { return e.Shown }
+	body := slices.DeleteFunc(slices.Clone(w.Edits), func(e Edit) bool { return e.Frontmatter })
 	tries := []try{{edits: w.Edits}}
-	targets := slices.DeleteFunc(slices.Clone(w.Edits), func(e Edit) bool { return e.Shown })
-	if len(targets) > 0 && len(targets) < len(w.Edits) {
-		tries = append(tries, try{edits: targets})
-	}
-	body := slices.DeleteFunc(slices.Clone(targets), func(e Edit) bool { return e.Frontmatter })
-	if len(body) > 0 && len(body) < len(targets) {
-		tries = append(tries, try{edits: body, body: true})
+	for _, t := range []try{
+		{edits: slices.DeleteFunc(slices.Clone(w.Edits), shown)},
+		{edits: body, body: true}, {edits: slices.DeleteFunc(slices.Clone(body), shown), body: true},
+	} {
+		if len(t.edits) > 0 && !slices.ContainsFunc(tries, func(u try) bool { return slices.Equal(u.edits, t.edits) }) {
+			tries = append(tries, t)
+		}
 	}
 	for _, t := range tries {
 		leads, left := w.Leads, []Link(nil)
@@ -153,7 +156,7 @@ func (w Rewriting) inBody(was []Link) (map[int]Node, []Link) {
 	leads := maps.Clone(w.Leads)
 	var left []Link
 	for _, l := range was {
-		if _, ok := leads[l.Start]; ok && l.Property != "" {
+		if _, ok := leads[l.Start]; ok && l.InFrontmatter() {
 			delete(leads, l.Start)
 			left = append(left, l)
 		}
