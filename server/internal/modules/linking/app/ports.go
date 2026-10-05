@@ -4,6 +4,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"time"
 	"uuid"
@@ -89,6 +90,71 @@ type Store interface {
 	// View is the index of the page id, in one statement; false for a page
 	// the index does not have.
 	View(ctx context.Context, id uuid.UUID) (Indexed, bool, error)
+}
+
+// Reads is what the reads of the index read of its tables (M6/P5), on the
+// pool, each in one statement: one snapshot.
+type Reads interface {
+	// Backlinks is the pages that link to target, but for target itself,
+	// whose id is after after, at most size of them, by id; of each, the
+	// ranges of the first contexts of its links there.
+	Backlinks(ctx context.Context, target, after uuid.UUID, size, contexts int) ([]Backlink, error)
+	// Properties is the properties of the page id; false for a page the
+	// index does not have.
+	Properties(ctx context.Context, id uuid.UUID) (Properties, bool, error)
+	// Tags is the tags of notebookID, by key.
+	Tags(ctx context.Context, notebookID uuid.UUID) ([]Tag, error)
+	// TagPages is the pages of notebookID with the tag of key or one under
+	// it, by id.
+	TagPages(ctx context.Context, notebookID uuid.UUID, key string) ([]uuid.UUID, error)
+	// NotebookAliases is the aliases of the pages of notebookID, by page,
+	// each page's by key.
+	NotebookAliases(ctx context.Context, notebookID uuid.UUID) (map[uuid.UUID][]string, error)
+}
+
+// Backlink is a page that links to another as the index has it: the
+// revision of the content its rows are of, how many of its links lead
+// there, and where the targets of the first of them start and end, by
+// start.
+type Backlink struct {
+	SourceID uuid.UUID
+	Revision int
+	Links    int
+	Ranges   []Range
+}
+
+// Range is where a link's target is written in a content, in bytes.
+type Range struct {
+	Start, End int
+}
+
+// Properties is a page's properties as the index has them: whether its
+// frontmatter is valid, its properties in the order written, and its
+// property links, by where they start.
+type Properties struct {
+	Valid      bool
+	Properties []Property
+	Links      []PropertyLink
+}
+
+// Property is a property of a page: its key and its value's JSON.
+type Property struct {
+	Key   string
+	Value json.RawMessage
+}
+
+// PropertyLink is a property link of a page: its property's path and the
+// page it resolves to, the zero id for none.
+type PropertyLink struct {
+	Key    string
+	NodeID uuid.UUID
+}
+
+// Tag is a tag of a notebook as most of its pages write it, and how many
+// pages have it.
+type Tag struct {
+	Tag   string
+	Pages int
 }
 
 // Pages is what the index reads of a notebook's pages, in the transaction
