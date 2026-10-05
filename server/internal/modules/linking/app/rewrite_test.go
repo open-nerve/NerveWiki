@@ -379,9 +379,9 @@ func TestAPageWhoseFrontmatterWouldChangeHasItsBodyWritten(t *testing.T) {
 		"near": "---\nup: '[[A/x]]'\n---\n[[zzzz]]\n" + pad,
 	})
 	for _, line := range []string{
-		`level=ERROR msg="a link is not rewritten: writing the frontmatter again would change more than its links" page_id=` +
+		`level=ERROR msg="a link is not rewritten: no writing of the page with it was kept" page_id=` +
 			w.id("src").String() + " start=13 target=A/x\n",
-		`level=WARN msg="a link is not rewritten: writing the frontmatter again would hold more than a page may" page_id=` +
+		`level=ERROR msg="a link is not rewritten: no writing of the page with it was kept" page_id=` +
 			w.id("near").String() + " start=11 target=A/x bytes=1023 written=1025\n",
 	} {
 		if !strings.Contains(w.logs.String(), line) {
@@ -390,59 +390,36 @@ func TestAPageWhoseFrontmatterWouldChangeHasItsBodyWritten(t *testing.T) {
 	}
 }
 
-// A link a writing of the body alone leaves says why by the last writing
-// with it, whatever the body's writings did: too large, with its size,
-// though a body's writing with the texts did not read back, or though the
-// writing with them all did not, for the body's '$'; changing more than
-// the links, though the writing with them all was too large (M6/P4 fix
-// check c7-1), or though the writing with the targets alone was, when the
-// one with them all did not read back for the frontmatter's edits alone
-// (c8-1).
-func TestALinkLeftSaysWhyByTheWritingWithIt(t *testing.T) {
+// A link a writing of the body alone leaves is logged with the size of the
+// last writing with it that was too large, whatever the others did, and
+// the body's writings (M6/P4 fix check c7-1, c8-1, c9): the writings do not
+// tell why the others were not kept.
+func TestALinkLeftIsLoggedWithTheSizeOfAWritingWithIt(t *testing.T) {
 	for _, tt := range []struct {
 		name, from, to, page string
 		pages                []string
 		written              string
-		start, left          int
-		at                   int    // the size logged, too large; 0 for none, changing more than the links
-		target               string // the target of the property links left, when they change more
+		start, left, at      int // at: the size logged
 	}{
 		{
-			"the writings with the frontmatter too large", "A/x", "qq$qq",
+			"the writings with the frontmatter too large, the body's with the texts not read back", "A/x", "qq$qq",
 			"---\na: '[[A/x]]'\nb: '[[A/x]]'\nc: '[[A/x]]'\n---\n[x](A/x.md)\n", []string{"A", "A/x"},
-			"---\na: '[[A/x]]'\nb: '[[A/x]]'\nc: '[[A/x]]'\n---\n[x](qq$qq.md)\n", 1018, 3, 1026, "",
+			"---\na: '[[A/x]]'\nb: '[[A/x]]'\nc: '[[A/x]]'\n---\n[x](qq$qq.md)\n", 1018, 3, 1026,
 		},
 		{
 			"the body's writing with the texts too large too", "A/x", "qq$qq",
 			"---\na: '[[A/x]]'\nb: '[[A/x]]'\nc: '[[A/x]]'\n---\n[x](A/x.md)\n", []string{"A", "A/x"},
-			"---\na: '[[A/x]]'\nb: '[[A/x]]'\nc: '[[A/x]]'\n---\n[x](qq$qq.md)\n", 1022, 3, 1030, "",
+			"---\na: '[[A/x]]'\nb: '[[A/x]]'\nc: '[[A/x]]'\n---\n[x](qq$qq.md)\n", 1022, 3, 1030,
 		},
 		{
 			"the writing with them all not read back, with the targets too large", "Deep/Folder/x", "y$",
 			"---\nup: '[[x]]'\n---\n[Deep/Folder/x](x.md)\n", []string{"Deep", "Deep/Folder", "Deep/Folder/x", "Other", "Other/y$"},
-			"---\nup: '[[x]]'\n---\n[Deep/Folder/x](Deep/Folder/y$.md)\n", 1005, 1, 1031, "",
-		},
-		{
-			"the writing with them all not read back for the aliases, with the targets too large", "Deep/Folder/Sub/LongLongName", "z",
-			"---\nx: &x '[[LongLongName]]'\naliases: *x\n---\n[LongLongName](LongLongName.md)\n",
-			[]string{"Deep", "Deep/Folder", "Deep/Folder/Sub", "Deep/Folder/Sub/LongLongName", "Other", "Other/z"},
-			"---\nx: &x '[[LongLongName]]'\naliases: *x\n---\n[z](Deep/Folder/Sub/z.md)\n", 1015, 1, 0, "LongLongName",
+			"---\nup: '[[x]]'\n---\n[Deep/Folder/x](Deep/Folder/y$.md)\n", 1005, 1, 1031,
 		},
 		{
 			"the writing with them all too large, with the targets not read back for the aliases", "A/x", "zzzz",
-			"---\nx: &x '[[A/x|x]]'\naliases: *x\n---\n[[A/x]]\n", []string{"A", "A/x"},
-			"---\nx: &x '[[A/x|x]]'\naliases: *x\n---\n[[zzzz]]\n", 1020, 1, 0, "A/x",
-		},
-		{
-			"the writing with them all not read back for the aliases, with the targets too large, the body's edits one", "Deeply/Nested/Lo", "z",
-			"---\nx: &x '[Lo](Lo.md)'\naliases: *x\n---\n[[Lo]]\n",
-			[]string{"Deeply", "Deeply/Nested", "Deeply/Nested/Lo", "Other", "Other/z"},
-			"---\nx: &x '[Lo](Lo.md)'\naliases: *x\n---\n[[Deeply/Nested/z]]\n", 999, 1, 0, "Lo.md",
-		},
-		{
-			"the writing with the targets not read back, with them all too large", "A/x", "xxxxxxxxxx",
 			"---\nx: &x '[[A/x]]'\naliases: *x\n---\n[x](A/x.md)\n", []string{"A", "A/x"},
-			"---\nx: &x '[[A/x]]'\naliases: *x\n---\n[x](xxxxxxxxxx.md)\n", 1010, 1, 0, "A/x",
+			"---\nx: &x '[[A/x]]'\naliases: *x\n---\n[zzzz](zzzz.md)\n", 1020, 1, 1025,
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -454,17 +431,12 @@ func TestALinkLeftSaysWhyByTheWritingWithIt(t *testing.T) {
 				t.Fatal(err)
 			}
 			w.written(u, map[string]string{"near": tt.written + pad})
-			logged := `level=ERROR msg="a link is not rewritten: writing the frontmatter again would change more than its links"`
-			end := " target=" + tt.target
-			if tt.at > 0 {
-				logged = `level=WARN msg="a link is not rewritten: writing the frontmatter again would hold more than a page may"`
-				end = fmt.Sprintf(" bytes=%d written=%d", tt.start, tt.at)
-			}
-			logged += " page_id=" + w.id("near").String()
+			logged := `level=ERROR msg="a link is not rewritten: no writing of the page with it was kept" page_id=` + w.id("near").String()
+			sizes := fmt.Sprintf(" bytes=%d written=%d", tt.start, tt.at)
 			lines := strings.Split(strings.TrimSpace(w.logs.String()), "\n")
 			for _, line := range lines {
-				if !strings.Contains(line, logged) || !strings.HasSuffix(line, end) {
-					t.Errorf("logged %q, want %q ending with %q", line, logged, end)
+				if !strings.Contains(line, logged) || !strings.HasSuffix(line, sizes) {
+					t.Errorf("logged %q, want %q ending with %q", line, logged, sizes)
 				}
 			}
 			if len(lines) != tt.left {

@@ -282,14 +282,15 @@ func (r Rewrite) rewrite(ctx context.Context, id uuid.UUID, revision int, reache
 		r.Logger.LogAttrs(ctx, level, msg, attrs...)
 		return nil
 	}
-	level, msg := slog.LevelError, "a link is not rewritten: writing the frontmatter again would change more than its links"
+	// The links a writing of the body alone left: with the sizes when a
+	// writing with them was too large; whether the others changed more than
+	// the links, or failed for the body's edits, the writings do not tell.
 	var sizes []slog.Attr
 	if left.TooLarge > 0 {
-		level, msg = slog.LevelWarn, "a link is not rewritten: writing the frontmatter again would hold more than a page may"
 		sizes = []slog.Attr{slog.Int("bytes", len(content)), slog.Int("written", left.TooLarge)}
 	}
 	for _, l := range left.Links {
-		r.Logger.LogAttrs(ctx, level, msg, append([]slog.Attr{
+		r.Logger.LogAttrs(ctx, slog.LevelError, "a link is not rewritten: no writing of the page with it was kept", append([]slog.Attr{
 			slog.String("page_id", id.String()), slog.Int("start", l.Start), slog.String("target", l.Target),
 		}, sizes...)...)
 	}
