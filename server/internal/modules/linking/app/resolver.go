@@ -31,13 +31,20 @@ func (x Index) resolve(ctx context.Context, notebookID uuid.UUID, links []Link) 
 	return changed, nil
 }
 
+// checkEvery is how many links resolutions resolves between two looks at
+// its context.
+const checkEvery = 4096
+
 // resolutions is where links, of notebookID, resolve (M6/P3 design 3.4,
 // step 7), in links' order: it reads the candidates of all of them at
 // once, the pages with their last keys, the pages with an alias of them,
-// and the paths of those and of the links' pages. A link whose page is not
-// one of the notebook's resolves to none, and an alias whose page is not
-// is none: missing has those pages, each once. A target that is no path
-// resolves to none.
+// and the paths of those and of the links' pages; none for links of which
+// no target is a path. A link whose page is not one of the notebook's
+// resolves to none, and an alias whose page is not is none: missing has
+// those pages, each once. A target that is no path resolves to none. The
+// links of a page to one target resolve once, so that a page that writes
+// one link many times costs one resolution against the pages of its name
+// (P3B review M1); and a context ended stops it.
 func resolutions(ctx context.Context, store Store, pages Pages, notebookID uuid.UUID, links []Link) (
 	[]domain.Resolution, []uuid.UUID, error,
 ) {
@@ -56,6 +63,10 @@ func resolutions(ctx context.Context, store Store, pages Pages, notebookID uuid.
 	}
 	slices.Sort(keys)
 	keys = slices.Compact(keys)
+	out := make([]domain.Resolution, len(links))
+	if len(keys) == 0 {
+		return out, nil, nil
+	}
 	candidates, err := pages.ByKeys(ctx, notebookID, keys)
 	if err != nil {
 		return nil, nil, err
@@ -84,14 +95,28 @@ func resolutions(ctx context.Context, store Store, pages Pages, notebookID uuid.
 		byID[n.ID] = n
 	}
 	var missing []uuid.UUID
-	out := make([]domain.Resolution, len(links))
+	type written struct {
+		source uuid.UUID
+		target string
+	}
+	resolved := make(map[written]domain.Resolution)
 	for i, l := range links {
+		if i%checkEvery == 0 {
+			if err := ctx.Err(); err != nil {
+				return nil, nil, err
+			}
+		}
 		if !parsed[i] {
 			continue
 		}
 		from, ok := byID[l.SourceID]
 		if !ok {
 			missing = append(missing, l.SourceID)
+			continue
+		}
+		w := written{source: l.SourceID, target: l.Target}
+		if r, ok := resolved[w]; ok {
+			out[i] = r
 			continue
 		}
 		var named []domain.Node
@@ -107,6 +132,7 @@ func resolutions(ctx context.Context, store Store, pages Pages, notebookID uuid.
 			}
 		}
 		out[i] = domain.Resolve(targets[i], from.Path, named, aliased)
+		resolved[w] = out[i]
 	}
 	slices.SortFunc(missing, uuid.UUID.Compare)
 	return out, slices.Compact(missing), nil

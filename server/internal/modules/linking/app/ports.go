@@ -51,7 +51,7 @@ type Alias struct {
 }
 
 // Store is the index's tables (M6/P3 design 3.2), in the transaction ctx
-// carries.
+// carries, or on the pool outside one (a reading view's, Views).
 type Store interface {
 	// Lock takes the notebook's lock of the index until the transaction
 	// ends: its maintenance runs one at a time (M6 design 4.5).
@@ -83,7 +83,7 @@ type Store interface {
 }
 
 // Pages is what the index reads of a notebook's pages, in the transaction
-// ctx carries: the page module's, which bootstrap wires to it (M6/P3
+// ctx carries or on the pool outside one: the page module's, which bootstrap wires to it (M6/P3
 // design 3.3). Attachments and deleted pages are never among them.
 type Pages interface {
 	// ByKeys is the pages of notebookID whose title key is one of keys,

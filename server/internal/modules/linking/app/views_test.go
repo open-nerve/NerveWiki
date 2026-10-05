@@ -2,8 +2,10 @@ package app_test
 
 import (
 	"context"
+	"errors"
 	"reflect"
 	"testing"
+	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/linking/app"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/linking/domain"
@@ -118,5 +120,53 @@ func TestAViewOfWhatWentMeanwhileIsNoError(t *testing.T) {
 	w.tree.nodes[w.id("src")].gone = true
 	if got, want := w.view("src", 0, "nick", "X"), w.leads("", ""); !reflect.DeepEqual(got, want) {
 		t.Errorf("the page gone: got %v, want %v", got, want)
+	}
+}
+
+// failing is the index's tables and the notebook's tree, and err from the
+// index's view of a page or from the tree's pages by key.
+type failing struct {
+	*store
+	*tree
+	viewErr, keysErr error
+}
+
+func (f failing) View(ctx context.Context, id uuid.UUID) (app.Indexed, bool, error) {
+	if f.viewErr != nil {
+		return app.Indexed{}, false, f.viewErr
+	}
+	return f.store.View(ctx, id)
+}
+
+func (f failing) ByKeys(ctx context.Context, notebookID uuid.UUID, keys []string) ([]domain.Node, error) {
+	if f.keysErr != nil {
+		return nil, f.keysErr
+	}
+	return f.tree.ByKeys(ctx, notebookID, keys)
+}
+
+// A view's read that fails is its error, and so is its context ended.
+func TestAViewsFailureIsItsError(t *testing.T) {
+	w := newWorld(t, "A", "src")
+	down := errors.New("down")
+	links := []app.Link{{SourceID: w.id("src"), Target: "A"}}
+	page := app.Page{ID: w.id("src"), NotebookID: w.notebook, Revision: 1}
+	for _, f := range []failing{{store: w.store, tree: w.tree, viewErr: down}, {store: w.store, tree: w.tree, keysErr: down}} {
+		if _, err := (app.Views{Store: f, Pages: f}).Resolve(context.Background(), page, links); !errors.Is(err, down) {
+			t.Errorf("Resolve = %v, want %v", err, down)
+		}
+	}
+	ended, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := (app.Views{Store: w.store, Pages: w.tree}).Resolve(ended, page, links); !errors.Is(err, context.Canceled) {
+		t.Errorf("Resolve with its context ended = %v", err)
+	}
+}
+
+// Links of which no target is a path resolve to none without a read.
+func TestAViewOfNoPathReadsNoPages(t *testing.T) {
+	w := newWorld(t, "src")
+	if got, want := w.view("src", 0, "a//", "./"), w.leads("", ""); !reflect.DeepEqual(got, want) || w.tree.reads != 0 {
+		t.Errorf("got %v, read the pages %d times; want %v", got, w.tree.reads, want)
 	}
 }
