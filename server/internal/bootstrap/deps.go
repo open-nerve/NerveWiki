@@ -152,6 +152,20 @@ func pageDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, author
 	}
 }
 
+// linkingDeps are the linking module's HTTP side's, the index's reads
+// (M6/P5): the notebook module's notebooks and the page module's tree and
+// contents.
+func linkingDeps(pool *pgxpool.Pool, authorizer shared.Authorizer) linking.Deps {
+	targets := page.NewLinkTargets(pool)
+	return linking.Deps{
+		Pool:       pool,
+		Authorizer: authorizer,
+		Notebooks:  notebook.NewNotebooks(pool),
+		Pages:      linkTargets{targets},
+		Contents:   targets,
+	}
+}
+
 // purgeJob is the purge of the modules' soft-deleted rows, on
 // jobs.purge_interval and jobs.purge_retention.
 func purgeJob(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger) jobs.Job {

@@ -1,12 +1,12 @@
 // Package linking is the module of the link index (v0.1 design 4.4; M6
 // design 4): each page's links, tags, properties and aliases, and where
 // each link resolves to, kept with every write of the pages. Its root is
-// what bootstrap sees: NewIndex, the page module's observer; NewRewrite,
-// its participant; NewNotebookDeletion, its part in the notebook module's
-// deletion;
+// what bootstrap sees: New for the HTTP side, the index's reads (M6/P5);
+// NewIndex, the page module's observer; NewRewrite, its participant;
+// NewNotebookDeletion, its part in the notebook module's deletion;
 // PageFacts, which reads a page's facts from the Markdown's; ResolveLinks,
 // where a reading view's links lead; NewAdmin, the rebuild of the indexes
-// (nervewiki reindex).
+// (nervewiki reindex); Actions for the composition's checks.
 package linking
 
 import (
@@ -14,13 +14,66 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	httpadapter "github.com/open-nerve/NerveWiki/server/internal/modules/linking/adapter/http"
 	markdownadapter "github.com/open-nerve/NerveWiki/server/internal/modules/linking/adapter/markdown"
 	postgresadapter "github.com/open-nerve/NerveWiki/server/internal/modules/linking/adapter/postgres"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/linking/app"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/linking/domain"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown/obsidian"
+	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
+
+// What the index's reads read of the other modules: bootstrap wires the
+// notebook module's notebooks and the page module's tree.
+type (
+	// NotebookWorkspaces reads the notebooks' workspaces: bootstrap hands
+	// notebook.NewNotebooks to it.
+	NotebookWorkspaces = app.NotebookWorkspaces
+	// PageTree reads a notebook's whole tree and a page's notebook:
+	// bootstrap hands page.NewLinkTargets to it.
+	PageTree = app.PageTree
+)
+
+// Deps are what the HTTP side, the index's reads, needs.
+type Deps struct {
+	Pool       *pgxpool.Pool
+	Authorizer shared.Authorizer
+	Notebooks  NotebookWorkspaces
+	Pages      PageTree
+	Contents   PageContents
+}
+
+// Module is the wired linking module's HTTP side.
+type Module struct {
+	uc httpadapter.UseCases
+}
+
+// New wires the index's reads (M6/P5): they read on the pool, each in its
+// own statements, and parse nothing.
+func New(d Deps) *Module {
+	store := postgresadapter.New(d.Pool)
+	access := app.Access{Notebooks: d.Notebooks, Pages: d.Pages, Auth: d.Authorizer}
+	return &Module{uc: httpadapter.UseCases{
+		ListBacklinks:     app.ListBacklinks{Access: access, Reads: store, Contents: d.Contents},
+		GetPageProperties: app.GetPageProperties{Access: access, Reads: store},
+		ListTags:          app.ListTags{Access: access, Reads: store},
+		GetTag:            app.GetTag{Access: access, Reads: store, TagKey: markdownadapter.TagKey},
+		ListLinkTargets:   app.ListLinkTargets{Access: access, Reads: store},
+	}}
+}
+
+// Register mounts the module's routes.
+func (m *Module) Register(router *httpserver.Router, api *httpserver.API) {
+	httpadapter.Register(router, api, m.uc)
+}
+
+// Actions are the module's actions: bootstrap checks they are the access
+// module's rule table.
+func Actions() []shared.Action {
+	return domain.Actions()
+}
 
 // What the module reads of the pages, and the page module's changes as it
 // follows them: bootstrap converts the page module's values, field by

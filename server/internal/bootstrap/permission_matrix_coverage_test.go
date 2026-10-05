@@ -132,6 +132,8 @@ func targetViolation(pattern, path string, c caller, s seeded) string {
 			if got[i] != workspaceOf(c) {
 				return fmt.Sprintf("targets the workspace %s, not its column's %s", got[i], workspaceOf(c))
 			}
+		case segment == "{tag}" && i > 0 && want[i-1] == "tags":
+			// A tag is no target: the notebook before it is.
 		case strings.HasSuffix(segment, "_id}"):
 			id, err := uuid.Parse(got[i])
 			slug, isRow := s.workspaceOfRow(id)

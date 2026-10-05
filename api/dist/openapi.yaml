@@ -17,6 +17,8 @@ tags:
     description: Notebooks and their members.
   - name: page
     description: The pages of a notebook's tree.
+  - name: linking
+    description: The link index's reads, backlinks, properties, tags and link targets.
   - name: events
     description: The stream of the events of what the caller sees.
 paths:
@@ -1373,6 +1375,122 @@ paths:
                 $ref: '#/components/schemas/TreeNode'
         default:
           $ref: '#/components/responses/Problem'
+  /api/v0/pages/{page_id}/backlinks:
+    parameters:
+      - $ref: '#/components/parameters/PageID'
+    get:
+      operationId: listBacklinks
+      tags:
+        - linking
+      summary: List the pages that link to a page
+      description: 'The pages whose links resolve to this page, the page itself left out, by id, a page at a time; each with how many of its links lead here, and the line of each of its first 10, one a line, as written: of a line of more than 240 bytes, at most 240 of them with the link, cut on characters, an ellipsis (…) where it is cut. A page written since the index read it has no lines; the links event that follows says to read again. Any role in the page''s notebook can read them. A cursor the list cannot read is bad_request, before anything else; a page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found; a limit outside 1–100 is validation_failed. Pages the index does not have, before nervewiki reindex after an upgrade, are not among them.'
+      security:
+        - bearer: []
+      x-problem-codes:
+        - bad_request
+        - page.not_found
+        - validation_failed
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: A page of the pages that link here.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BacklinkPage'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v0/pages/{page_id}/properties:
+    parameters:
+      - $ref: '#/components/parameters/PageID'
+    get:
+      operationId: getPageProperties
+      tags:
+        - linking
+      summary: Read a page's properties
+      description: The page's frontmatter properties as the link index has them, and where each of its property links resolves. Any role in its notebook can read them. A page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found. A page the index does not have, before nervewiki reindex after an upgrade, has a valid frontmatter and no properties.
+      security:
+        - bearer: []
+      x-problem-codes:
+        - page.not_found
+      responses:
+        '200':
+          description: The page's properties.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PageProperties'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v0/notebooks/{notebook_id}/tags:
+    parameters:
+      - $ref: '#/components/parameters/NotebookID'
+    get:
+      operationId: listTags
+      tags:
+        - linking
+      summary: List a notebook's tags
+      description: 'The tags of the notebook''s pages, the body''s and the frontmatter''s, one a tag, which tags compare by case-folded, in the order of that key''s bytes; each as most of its pages write it, and how many pages have it. A nested tag (a/b) is one of its own: its parent is listed only when a page has the parent itself. Any role in the notebook can list them. A notebook that does not exist, is deleted, or that the caller has no role in is notebook.not_found. The list is not paged.'
+      security:
+        - bearer: []
+      x-problem-codes:
+        - notebook.not_found
+      responses:
+        '200':
+          description: The notebook's tags.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TagList'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v0/notebooks/{notebook_id}/tags/{tag}:
+    parameters:
+      - $ref: '#/components/parameters/NotebookID'
+      - $ref: '#/components/parameters/Tag'
+    get:
+      operationId: getTag
+      tags:
+        - linking
+      summary: List the pages with a tag
+      description: The ids of the notebook's pages with the tag, in any case, or a tag under it (tag/…), by id. A tag that no page could have, such as one with a space or a '#', has none. Any role in the notebook can list them. A notebook that does not exist, is deleted, or that the caller has no role in is notebook.not_found. The list is not paged.
+      security:
+        - bearer: []
+      x-problem-codes:
+        - notebook.not_found
+      responses:
+        '200':
+          description: The pages with the tag.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TagPageList'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v0/notebooks/{notebook_id}/link-targets:
+    parameters:
+      - $ref: '#/components/parameters/NotebookID'
+    get:
+      operationId: listLinkTargets
+      tags:
+        - linking
+      summary: List what a notebook's links may lead to
+      description: 'The notebook''s pages, for the editor''s completion, by id: each with its title, how a wikilink is written to lead to it alone from anywhere in the notebook, as a rename writes it again, and its aliases. Any role in the notebook can list them. A notebook that does not exist, is deleted, or that the caller has no role in is notebook.not_found. The list is not paged.'
+      security:
+        - bearer: []
+      x-problem-codes:
+        - notebook.not_found
+      responses:
+        '200':
+          description: The notebook's link targets.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LinkTargetList'
+        default:
+          $ref: '#/components/responses/Problem'
   /api/v0/events:
     get:
       operationId: streamEvents
@@ -2566,6 +2684,175 @@ components:
             - string
             - 'null'
           format: uuid
+    Backlink:
+      description: A page that links to another.
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - count
+        - contexts
+      properties:
+        id:
+          description: The page with the links.
+          type: string
+          format: uuid
+        count:
+          description: How many of its links lead to the other page.
+          type: integer
+          minimum: 1
+        contexts:
+          description: The lines of its first 10 links there, by where they are written, one a line; none when it was written since the index read it.
+          type: array
+          maxItems: 10
+          items:
+            type: string
+    BacklinkPage:
+      type: object
+      additionalProperties: false
+      required:
+        - data
+        - next_cursor
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Backlink'
+        next_cursor:
+          $ref: '#/components/schemas/NextCursor'
+    PageProperty:
+      type: object
+      additionalProperties: false
+      required:
+        - key
+        - value
+      properties:
+        key:
+          type: string
+        value:
+          description: The property's value as JSON; an object's keys are not in the order written.
+    PropertyLink:
+      description: A property whose value, or an item of whose list, is a link.
+      type: object
+      additionalProperties: false
+      required:
+        - key
+        - node_id
+      properties:
+        key:
+          description: The property's path, a list's item after a dot (sources.0).
+          type: string
+        node_id:
+          description: The page the link resolves to; null for none.
+          type:
+            - string
+            - 'null'
+          format: uuid
+    PageProperties:
+      type: object
+      additionalProperties: false
+      required:
+        - valid
+        - properties
+        - links
+      properties:
+        valid:
+          description: Whether the page's frontmatter is valid; a page without one is. An invalid one has no properties.
+          type: boolean
+        properties:
+          description: The frontmatter's properties, in the order written.
+          type: array
+          items:
+            $ref: '#/components/schemas/PageProperty'
+        links:
+          description: The property links, by where they are written.
+          type: array
+          items:
+            $ref: '#/components/schemas/PropertyLink'
+    TagCount:
+      type: object
+      additionalProperties: false
+      required:
+        - tag
+        - count
+      properties:
+        tag:
+          description: The tag, without its '#'.
+          type: string
+        count:
+          description: How many pages have it.
+          type: integer
+          minimum: 1
+    TagList:
+      type: object
+      additionalProperties: false
+      required:
+        - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/TagCount'
+    TagPage:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+      properties:
+        id:
+          type: string
+          format: uuid
+    TagPageList:
+      type: object
+      additionalProperties: false
+      required:
+        - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/TagPage'
+    LinkTargetKind:
+      description: What a link target is. Attachments come later.
+      type: string
+      enum:
+        - page
+    LinkTarget:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - kind
+        - name
+        - link
+        - aliases
+      properties:
+        id:
+          type: string
+          format: uuid
+        kind:
+          $ref: '#/components/schemas/LinkTargetKind'
+        name:
+          description: The page's title.
+          type: string
+        link:
+          description: 'How a wikilink is written to lead to the page alone, from anywhere in the notebook: its title, or its path from the root where another page has its title.'
+          type: string
+        aliases:
+          description: The page's aliases, in the order of their case-folded keys.
+          type: array
+          items:
+            type: string
+    LinkTargetList:
+      type: object
+      additionalProperties: false
+      required:
+        - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/LinkTarget'
     EventHello:
       description: The data of hello, the first frame.
       type: object
@@ -2784,6 +3071,13 @@ components:
       schema:
         type: string
         format: uuid
+    Tag:
+      name: tag
+      in: path
+      required: true
+      description: A tag's name, without its '#'; a nested tag's '/' is written %2F (a%2Fb).
+      schema:
+        type: string
 x-problem-codes:
   - bad_request
   - payload_too_large

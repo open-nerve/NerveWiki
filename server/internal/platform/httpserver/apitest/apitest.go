@@ -15,6 +15,7 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"net/url"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -50,7 +51,7 @@ func Load(t testing.TB) *Contract {
 // status and Content-Type alone are checked, and its body is not read.
 func (c *Contract) CheckResponse(t testing.TB, req *http.Request, res *http.Response) {
 	t.Helper()
-	if route, _, err := c.router.FindRoute(req); err == nil && longLived(route.Operation) && res.StatusCode == http.StatusOK {
+	if route, _, err := c.findRoute(req); err == nil && longLived(route.Operation) && res.StatusCode == http.StatusOK {
 		if err := streamHead(route.Operation, res.Header); err != nil {
 			t.Errorf("%s %s answered %d: %v", req.Method, req.URL.Path, res.StatusCode, err)
 		}
@@ -145,8 +146,30 @@ func load(path string) (*Contract, error) {
 	return &Contract{doc: doc, router: router}, nil
 }
 
+// findRoute is the operation req is for, and the parameters of its path:
+// found by the path as sent, escaped, so that a parameter's escaped '/'
+// (%2F, a nested tag's) stays in its segment, as the server's router keeps
+// it; each parameter unescaped.
+func (c *Contract) findRoute(req *http.Request) (*routers.Route, map[string]string, error) {
+	if req.URL.RawPath == "" {
+		return c.router.FindRoute(req)
+	}
+	escaped := req.Clone(req.Context())
+	escaped.URL.Path, escaped.URL.RawPath = req.URL.EscapedPath(), ""
+	route, params, err := c.router.FindRoute(escaped)
+	if err != nil {
+		return nil, nil, err
+	}
+	for name, value := range params {
+		if params[name], err = url.PathUnescape(value); err != nil {
+			return nil, nil, err
+		}
+	}
+	return route, params, nil
+}
+
 func (c *Contract) validateResponse(req *http.Request, status int, header http.Header, body []byte) error {
-	route, pathParams, err := c.router.FindRoute(req)
+	route, pathParams, err := c.findRoute(req)
 	if err != nil {
 		return fmt.Errorf("no documented operation: %w", err)
 	}
@@ -173,7 +196,7 @@ func (c *Contract) validateRequest(req *http.Request) error {
 	}
 	defer func() { req.Body = io.NopCloser(bytes.NewReader(body)) }()
 	req.Body = io.NopCloser(bytes.NewReader(body))
-	route, pathParams, err := c.router.FindRoute(req)
+	route, pathParams, err := c.findRoute(req)
 	if err != nil {
 		return fmt.Errorf("no documented operation: %w", err)
 	}
