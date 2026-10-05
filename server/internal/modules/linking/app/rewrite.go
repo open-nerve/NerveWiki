@@ -253,7 +253,7 @@ func (r Rewrite) rewrite(ctx context.Context, id uuid.UUID, revision int, reache
 	}
 	var now Parsed // the last writing's parse
 	var large int  // the bytes of a writing past MaxContent, if one was
-	parsed := 0    // the writings parsed, to read back
+	read := false  // whether a writing was parsed, to read back
 	written, left, kept, err := rewriting.Written(content, facts, from, tree, func(writing string) (domain.Facts, error) {
 		now.release()
 		now = Parsed{}
@@ -263,32 +263,32 @@ func (r Rewrite) rewrite(ctx context.Context, id uuid.UUID, revision int, reache
 		}
 		var err error
 		now, err = r.Parser.ParseNow(ctx, writing)
-		parsed++
+		read = true
 		return now.Facts, err
 	})
 	if err != nil {
 		return err
 	}
-	var sizes []slog.Attr
-	if large > 0 {
-		sizes = []slog.Attr{slog.Int("bytes", len(content)), slog.Int("written", large)}
-	}
 	if !kept {
 		now.release()
 		level, msg := slog.LevelError, "the links of a page are not rewritten: no writing reads back as its links and aliases"
-		if parsed == 0 {
+		if !read {
 			level, msg = slog.LevelWarn, "the links of a page are not rewritten: it would hold more than a page may"
 		}
-		r.Logger.LogAttrs(ctx, level, msg, append([]slog.Attr{slog.String("page_id", id.String())}, sizes...)...)
+		attrs := []slog.Attr{slog.String("page_id", id.String())}
+		if large > 0 {
+			attrs = append(attrs, slog.Int("bytes", len(content)), slog.Int("written", large))
+		}
+		r.Logger.LogAttrs(ctx, level, msg, attrs...)
 		return nil
 	}
-	// Left are the property links of a writing of the body alone, the one
-	// writing parsed when those with them would all hold too much.
 	level, msg := slog.LevelError, "a link is not rewritten: writing the frontmatter again would change more than its links"
-	if parsed == 1 {
+	var sizes []slog.Attr
+	if left.TooLarge > 0 {
 		level, msg = slog.LevelWarn, "a link is not rewritten: writing the frontmatter again would hold more than a page may"
+		sizes = []slog.Attr{slog.Int("bytes", len(content)), slog.Int("written", left.TooLarge)}
 	}
-	for _, l := range left {
+	for _, l := range left.Links {
 		r.Logger.LogAttrs(ctx, level, msg, append([]slog.Attr{
 			slog.String("page_id", id.String()), slog.Int("start", l.Start), slog.String("target", l.Target),
 		}, sizes...)...)

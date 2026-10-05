@@ -96,6 +96,16 @@ func Rewrite(content string, from []Step, links []Resolved, tree Tree, recased R
 	return w
 }
 
+// Unwritten is what a writing of the body alone leaves (Written): the
+// property links, as they were; and the bytes of the last writing with
+// them, when it would have held more than a page may, else 0: a writing of
+// the frontmatter would then have been too large, not changed more than
+// its links (M6/P4 fix check c7-1).
+type Unwritten struct {
+	Links    []Link
+	TooLarge int
+}
+
 // ErrTooLarge is parse's answer, for Written, to a writing that would hold
 // more than a page may: none, the next tried (M6/P4 fix check c1-3).
 var ErrTooLarge = errors.New("linking: the page written again would hold more than a page may")
@@ -105,16 +115,16 @@ var ErrTooLarge = errors.New("linking: the page written again would hold more th
 // was, content's facts, in their places, its aliases was's (Kept); else
 // with those of the targets alone, what the links show left as it was;
 // else with those of the body, then with those of the body's targets
-// alone, the property links left as they were too (left): a writing of the
-// frontmatter may change more than its links, a value of the aliases that
-// a YAML alias repeats from the key a link is written in (aliases: *x;
-// M6/P4 fix check c5-1, c6-3). Else ok is false, no writing keeping
-// content's: a title the Markdown around a link reads into it, such as a
-// '$' or a '`' that pairs with another. A writing parse answers
+// alone, the property links left as they were too (Unwritten): a writing
+// of the frontmatter may change more than its links, a value of the
+// aliases that a YAML alias repeats from the key a link is written in
+// (aliases: *x; M6/P4 fix check c5-1, c6-3). Else ok is false, no writing
+// keeping content's: a title the Markdown around a link reads into it,
+// such as a '$' or a '`' that pairs with another. A writing parse answers
 // ErrTooLarge is not content's either.
 func (w Rewriting) Written(content string, was Facts, from []Step, tree Tree,
 	parse func(content string) (Facts, error),
-) (written string, left []Link, ok bool, err error) {
+) (written string, left Unwritten, ok bool, err error) {
 	type try struct {
 		edits []Edit
 		body  bool // the body's alone
@@ -130,24 +140,31 @@ func (w Rewriting) Written(content string, was Facts, from []Step, tree Tree,
 			tries = append(tries, t)
 		}
 	}
+	large := 0 // the bytes of the last writing with the frontmatter's edits, if too large
 	for _, t := range tries {
-		leads, left := w.Leads, []Link(nil)
+		leads, left := w.Leads, Unwritten{}
 		if t.body {
-			leads, left = w.inBody(was.Links)
+			left.TooLarge = large
+			leads, left.Links = w.inBody(was.Links)
 		}
 		written = Apply(content, t.edits)
 		now, err := parse(written)
 		switch {
 		case errors.Is(err, ErrTooLarge):
+			if !t.body {
+				large = len(written)
+			}
 			continue
 		case err != nil:
-			return "", nil, false, err
+			return "", Unwritten{}, false, err
+		case !t.body:
+			large = 0
 		}
 		if kept(was, now, leads, from, tree) {
 			return written, left, true, nil
 		}
 	}
-	return "", nil, false, nil
+	return "", Unwritten{}, false, nil
 }
 
 // inBody is w.Leads but for the property links of was, which a writing of

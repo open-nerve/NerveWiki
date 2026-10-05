@@ -93,7 +93,7 @@ func rewrite(t *testing.T, m *markdown.Markdown, c renameCase, content string) (
 	if !ok {
 		return content, w.Left
 	}
-	return written, append(w.Left, left...)
+	return written, append(w.Left, left.Links...)
 }
 
 // pages is a tree of pages at their paths, by path, by id, by title key

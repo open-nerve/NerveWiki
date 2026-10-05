@@ -72,8 +72,8 @@ func TestARewriteKeepsWhereEveryLinkLeads(t *testing.T) {
 		fail := func(format string, args ...any) {
 			t.Fatalf("seed %d: %s\ncase %+v\nedits %+v\nwritten %q", seed, fmt.Sprintf(format, args...), c, w.Edits, written)
 		}
-		if len(w.Left) > 0 || len(left) > 0 {
-			fail("left %+v, %+v", w.Left, left)
+		if len(w.Left) > 0 || len(left.Links) > 0 {
+			fail("left %+v, %+v", w.Left, left.Links)
 		}
 		for _, e := range w.Edits {
 			if !slices.ContainsFunc(facts.Links, func(l domain.Link) bool { return withinLink(c.content, l, e) }) {

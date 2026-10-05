@@ -390,6 +390,69 @@ func TestAPageWhoseFrontmatterWouldChangeHasItsBodyWritten(t *testing.T) {
 	}
 }
 
+// A link a writing of the body alone leaves says why by the last writing
+// with it, whatever the body's writings did: too large, with its size,
+// though a body's writing with the texts did not read back, or though the
+// writing with them all did not, for the body's '$'; changing more than
+// the links, though the writing with them all was too large (M6/P4 fix
+// check c7-1).
+func TestALinkLeftSaysWhyByTheWritingWithIt(t *testing.T) {
+	for _, tt := range []struct {
+		name, from, to, page string
+		pages                []string
+		written              string
+		start, at, left      int // at: the size logged, 0 for none, the reason the change
+	}{
+		{
+			"the writings with the frontmatter too large", "A/x", "qq$qq",
+			"---\na: '[[A/x]]'\nb: '[[A/x]]'\nc: '[[A/x]]'\n---\n[x](A/x.md)\n", []string{"A", "A/x"},
+			"---\na: '[[A/x]]'\nb: '[[A/x]]'\nc: '[[A/x]]'\n---\n[x](qq$qq.md)\n", 1018, 1026, 3,
+		},
+		{
+			"the body's writing with the texts too large too", "A/x", "qq$qq",
+			"---\na: '[[A/x]]'\nb: '[[A/x]]'\nc: '[[A/x]]'\n---\n[x](A/x.md)\n", []string{"A", "A/x"},
+			"---\na: '[[A/x]]'\nb: '[[A/x]]'\nc: '[[A/x]]'\n---\n[x](qq$qq.md)\n", 1022, 1030, 3,
+		},
+		{
+			"the writing with them all not read back, with the targets too large", "Deep/Folder/x", "y$",
+			"---\nup: '[[x]]'\n---\n[Deep/Folder/x](x.md)\n", []string{"Deep", "Deep/Folder", "Deep/Folder/x", "Other", "Other/y$"},
+			"---\nup: '[[x]]'\n---\n[Deep/Folder/x](Deep/Folder/y$.md)\n", 1005, 1031, 1,
+		},
+		{
+			"the writing with the targets not read back, with them all too large", "A/x", "xxxxxxxxxx",
+			"---\nx: &x '[[A/x]]'\naliases: *x\n---\n[x](A/x.md)\n", []string{"A", "A/x"},
+			"---\nx: &x '[[A/x]]'\naliases: *x\n---\n[x](xxxxxxxxxx.md)\n", 1010, 0, 1,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			w := newRewriting(t, append(tt.pages, "near")...)
+			pad := strings.Repeat("a", tt.start-len(tt.page))
+			w.write("near", tt.page+pad)
+			u, err := w.follow(nil, w.rename(tt.from, tt.to))
+			if err != nil {
+				t.Fatal(err)
+			}
+			w.written(u, map[string]string{"near": tt.written + pad})
+			logged := `level=ERROR msg="a link is not rewritten: writing the frontmatter again would change more than its links"`
+			end := " target=" + tt.from
+			if tt.at > 0 {
+				logged = `level=WARN msg="a link is not rewritten: writing the frontmatter again would hold more than a page may"`
+				end = fmt.Sprintf(" bytes=%d written=%d", tt.start, tt.at)
+			}
+			logged += " page_id=" + w.id("near").String()
+			lines := strings.Split(strings.TrimSpace(w.logs.String()), "\n")
+			for _, line := range lines {
+				if !strings.Contains(line, logged) || !strings.HasSuffix(line, end) {
+					t.Errorf("logged %q, want %q ending with %q", line, logged, end)
+				}
+			}
+			if len(lines) != tt.left {
+				t.Errorf("%d lines logged, want one for each of the %d property links", len(lines), tt.left)
+			}
+		})
+	}
+}
+
 // A budget not free now is server_busy at once, nothing written.
 func TestABudgetNotFreeIsBusy(t *testing.T) {
 	w := newRewriting(t, "A", "A/x", "src")
