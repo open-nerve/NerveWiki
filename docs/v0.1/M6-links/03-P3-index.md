@@ -100,7 +100,7 @@ P3 是 M6 最大的一个 Phase。为了让每次审查的范围可控，它分�
 | 表 | 列 | 键与索引 |
 |---|---|---|
 | `indexed_pages` | `node_id`、`notebook_id`、`revision`、`extractor`、`frontmatter_valid` | 主键 `node_id`；`(notebook_id)` |
-| `page_links` | `source_id`、`range_start`、`range_end`、`notebook_id`、`kind`、`property_key`、`target`、`anchor`、`display`、`target_key`、`target_alt_key`、`resolved_id`、`ambiguous` | 主键 `(source_id, range_start)`（一段字节只有一条链接）；`(notebook_id, target_key)`、`(notebook_id, target_alt_key)`、`(resolved_id)` |
+| `page_links` | `source_id`、`range_start`、`range_end`、`notebook_id`、`kind`、`property_key`、`target`、`anchor`、`display`、`target_key`、`target_alt_key`、`resolved_id`、`ambiguous`；`aliases`（M6/P4，迁移 00025：是不是这一页 `aliases` 的值） | 主键 `(source_id, range_start)`（一段字节只有一条链接）；`(notebook_id, target_key)`、`(notebook_id, target_alt_key)`、`(resolved_id)` |
 | `page_tags` | `source_id`、`notebook_id`、`tag`（第一次出现时的写法）、`tag_key`、`count` | 主键 `(source_id, tag_key)`；`(notebook_id, tag_key)` |
 | `page_properties` | `source_id`、`notebook_id`、`position`、`key`、`value`（jsonb） | 主键 `(source_id, position)` |
 | `page_aliases` | `source_id`、`notebook_id`、`alias`、`alias_key` | 主键 `(source_id, alias_key)`；`(notebook_id, alias_key)` |
