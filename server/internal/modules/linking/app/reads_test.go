@@ -148,11 +148,13 @@ func reader() context.Context {
 // A read by page answers page.not_found for a page that is not there, one
 // in a deleted notebook, and one in a notebook the caller cannot see, the
 // index unread; a read by notebook answers notebook.not_found alike (M6/P5
-// design 2).
+// design 2). A deleted notebook is not found by its workspace, whatever
+// the decision on the roles it had would say.
 func TestAReadOfWhatTheCallerCannotSeeIsNotFound(t *testing.T) {
 	l := newLibrary()
-	gone := uuid.NewV7()
-	l.notebooks[gone] = uuid.NewV7() // its notebook is deleted
+	deleted, gone := uuid.NewV7(), uuid.NewV7()
+	l.visible[deleted] = true // the caller had a role in it
+	l.notebooks[gone] = deleted
 	for _, id := range []uuid.UUID{uuid.NewV7(), gone, l.q} {
 		if _, err := l.listBacklinks().Execute(reader(), id, nil, nil); !errors.Is(err, domain.ErrPageNotFound) {
 			t.Errorf("backlinks of %v: %v", id, err)
@@ -161,7 +163,7 @@ func TestAReadOfWhatTheCallerCannotSeeIsNotFound(t *testing.T) {
 			t.Errorf("properties of %v: %v", id, err)
 		}
 	}
-	for _, id := range []uuid.UUID{uuid.NewV7(), l.hidden} {
+	for _, id := range []uuid.UUID{uuid.NewV7(), deleted, l.hidden} {
 		if _, err := (app.ListTags{Access: l.access(), Reads: l.library}).Execute(reader(), id); !errors.Is(err, domain.ErrNotebookNotFound) {
 			t.Errorf("tags of %v: %v", id, err)
 		}
