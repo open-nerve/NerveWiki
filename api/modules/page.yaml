@@ -259,9 +259,20 @@ paths:
         frontmatter's properties as a table first, and the revision it was
         rendered from. The HTML holds only what the renderer writes and a
         typographic allowlist of the content's own HTML, every address on
-        this site, http(s) or mailto, and no image loaded. A page that does
-        not exist, is deleted, or whose notebook the caller has no role in
-        is page.not_found alike. When the server parses as much content as
+        this site, http(s) or mailto, and no image loaded. In the content, a
+        wikilink, an embed (nw-embed), and a Markdown link or image whose
+        address is a path, from the root too, link to pages of the notebook
+        and have no address, which the app gives: each carries the page it
+        leads to as it reads now (data-nw-node) and its anchor's heading id
+        (data-nw-anchor), or nw-unresolved and its target (data-nw-target).
+        A wikilink in a link's text is a span, as is one written with a
+        block's anchor alone ([[#^b]]); one written with a heading's anchor
+        alone ([[#h]]) has the heading's id as its address; an image in a
+        link's text has no link of its own; the properties are text. Once
+        the page is in the link index (nervewiki reindex after an upgrade),
+        a links event tells when where its links lead changes. A page that
+        does not exist, is deleted, or whose notebook the caller has no role
+        in is page.not_found alike. When the server parses as much content as
         it can at once, the page waits a moment, then is server_busy.
       security: [{ bearer: [] }]
       x-problem-codes: [page.not_found, server_busy]

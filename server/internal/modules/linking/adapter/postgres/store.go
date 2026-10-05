@@ -196,6 +196,32 @@ func (s *Store) Links(ctx context.Context, notebookID uuid.UUID, r domain.Reach)
 	return out, nil
 }
 
+// View implements app.Store.
+func (s *Store) View(ctx context.Context, id uuid.UUID) (app.Indexed, bool, error) {
+	rows, err := s.queries(ctx).PageView(ctx, id)
+	if err != nil {
+		return app.Indexed{}, false, fmt.Errorf("the index of %s: %w", id, err)
+	}
+	if len(rows) == 0 {
+		return app.Indexed{}, false, nil
+	}
+	out := app.Indexed{
+		Revision: int(rows[0].Revision), Extractor: int(rows[0].Extractor),
+		Resolutions: make(map[int]domain.Resolution, len(rows)),
+	}
+	for _, row := range rows {
+		if row.RangeStart == nil {
+			continue // no link
+		}
+		var r domain.Resolution
+		if row.ResolvedID != nil {
+			r = domain.Resolution{ID: *row.ResolvedID, Ambiguous: *row.Ambiguous}
+		}
+		out.Resolutions[int(*row.RangeStart)] = r
+	}
+	return out, true, nil
+}
+
 // Aliases implements app.Store.
 func (s *Store) Aliases(ctx context.Context, notebookID uuid.UUID, keys []string) ([]app.Alias, error) {
 	rows, err := s.queries(ctx).AliasesByKeys(ctx, gen.AliasesByKeysParams{NotebookID: notebookID, Keys: keys})

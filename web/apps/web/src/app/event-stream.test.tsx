@@ -11,8 +11,9 @@ import { bob, guide, install, linux, notes, pagePath, pageServer } from "../test
 import { renderApp } from "../test/render";
 
 // Each event has what it changed read again (M5/P3 design 3.8): the tree,
-// a page's reading view whose revision is newer, a page's edit lock; each
-// connection, all of them.
+// a page's reading view whose revision is newer, or whose links lead
+// elsewhere (M6/P3 design 6.7), a page's edit lock; each connection, all
+// of them.
 
 const pagesEvent = (tree: boolean, pages: { id: string; revision: number }[] | null) => ({
   workspace_id: workspaceJSON.id,
@@ -183,19 +184,56 @@ test("a hidden tab reads the reading view once it is shown again", async () => {
 });
 
 test("an event of a type a later M adds goes to the app's handler of its type, with its data, which can read again what it changed; one of no handler is let be", async () => {
-  const links: unknown[] = [];
+  const modes: unknown[] = [];
   const handler: EventHandler = (data, { mutate }) => {
-    links.push(data);
+    modes.push(data);
     void mutate(["pages", notebookJSON.id]);
   };
-  const { server, events } = await open(new FakePage(), {}, new Map([...eventHandlers, ["links", handler]]));
+  const { server, events } = await open(new FakePage(), {}, new Map([...eventHandlers, ["mode", handler]]));
 
-  events.last().send("links", { workspace_id: workspaceJSON.id, page_id: guide.id });
-  events.last().send("modes", { workspace_id: workspaceJSON.id });
+  events.last().send("mode", { workspace_id: workspaceJSON.id, page_id: guide.id });
+  events.last().send("watch", { workspace_id: workspaceJSON.id });
   await settle();
 
-  expect(links).toEqual([{ workspace_id: workspaceJSON.id, page_id: guide.id }]);
+  expect(modes).toEqual([{ workspace_id: workspaceJSON.id, page_id: guide.id }]);
   expect(server.sent).toEqual(["GET nodes"]);
+});
+
+const linksEvent = (pages: string[] | null, notebook = notebookJSON.id) => ({
+  workspace_id: workspaceJSON.id,
+  notebook_id: notebook,
+  pages,
+  targets: [],
+});
+
+test("a links event reads again the reading view of a page it names, at the revision shown, not those of pages not shown", async () => {
+  const { server, events } = await open();
+  server.views.set(guide.id, { html: "<p>Guide, its links again</p>", revision: 1 });
+
+  events.last().send("links", linksEvent([install.id]));
+  await settle();
+  expect(server.sent).toEqual([]);
+
+  events.last().send("links", linksEvent([guide.id, install.id]));
+  await waitFor(() =>
+    expect(screen.getByRole("article", { name: "Guide" }).innerHTML).toBe("<p>Guide, its links again</p>")
+  );
+  expect(server.sent).toEqual(["GET view Guide"]);
+});
+
+test("a links event of too many pages to name reads the notebook's reading views again, not another notebook's", async () => {
+  const { server, events } = await open();
+  server.views.set(guide.id, { html: "<p>Guide, its links again</p>", revision: 1 });
+
+  events.last().send("links", linksEvent(null, "0199a2b4-0000-7000-8000-0000000000b2"));
+  await settle();
+  expect(server.sent).toEqual([]);
+
+  events.last().send("links", linksEvent(null));
+  await waitFor(() =>
+    expect(screen.getByRole("article", { name: "Guide" }).innerHTML).toBe("<p>Guide, its links again</p>")
+  );
+  expect(server.sent).toEqual(["GET view Guide"]);
 });
 
 test("an event of a page's lock reads its lock again", async () => {

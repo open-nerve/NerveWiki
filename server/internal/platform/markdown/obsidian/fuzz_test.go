@@ -56,20 +56,22 @@ func FuzzParse(f *testing.F) {
 }
 
 // Any bytes render to HTML that passes the checks with the extensions'
-// markup.
+// markup, every link resolved or none.
 func FuzzRender(f *testing.F) {
 	seeds(f)
-	m := newMarkdown(f)
+	all, none := newMarkdownWith(f, obsidian.Options{Resolve: resolveAll}), newMarkdownWith(f, obsidian.Options{})
 	f.Fuzz(func(t *testing.T, content []byte) {
-		out, err := m.Render(context.Background(), m.Parse(content), markdown.Page{})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := markdowntest.CheckHTML(out, tasks.Extension(), obsidian.Extension()); err != nil {
-			t.Errorf("%q\nrenders to\n%q:\n%v", content, out, err)
-		}
-		if err := markdowntest.CheckSize(content, out); err != nil {
-			t.Errorf("%q: %v", content, err)
+		for _, m := range []*markdown.Markdown{all, none} {
+			out, err := m.Render(context.Background(), m.Parse(content), markdown.Page{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := markdowntest.CheckHTML(out, tasks.Extension(), obsidian.Extension(obsidian.Options{})); err != nil {
+				t.Errorf("%q\nrenders to\n%q:\n%v", content, out, err)
+			}
+			if err := markdowntest.CheckSize(content, out); err != nil {
+				t.Errorf("%q: %v", content, err)
+			}
 		}
 	})
 }

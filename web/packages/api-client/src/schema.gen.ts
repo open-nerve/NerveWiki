@@ -863,7 +863,7 @@ export interface paths {
         };
         /**
          * Read a page
-         * @description The page's reading view: its content rendered to HTML, its frontmatter's properties as a table first, and the revision it was rendered from. The HTML holds only what the renderer writes and a typographic allowlist of the content's own HTML, every address on this site, http(s) or mailto, and no image loaded. A page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found alike. When the server parses as much content as it can at once, the page waits a moment, then is server_busy.
+         * @description The page's reading view: its content rendered to HTML, its frontmatter's properties as a table first, and the revision it was rendered from. The HTML holds only what the renderer writes and a typographic allowlist of the content's own HTML, every address on this site, http(s) or mailto, and no image loaded. In the content, a wikilink, an embed (nw-embed), and a Markdown link or image whose address is a path, from the root too, link to pages of the notebook and have no address, which the app gives: each carries the page it leads to as it reads now (data-nw-node) and its anchor's heading id (data-nw-anchor), or nw-unresolved and its target (data-nw-target). A wikilink in a link's text is a span, as is one written with a block's anchor alone ([[#^b]]); one written with a heading's anchor alone ([[#h]]) has the heading's id as its address; an image in a link's text has no link of its own; the properties are text. Once the page is in the link index (nervewiki reindex after an upgrade), a links event tells when where its links lead changes. A page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found alike. When the server parses as much content as it can at once, the page waits a moment, then is server_busy.
          */
         get: operations["getPageView"];
         put?: never;
@@ -1007,7 +1007,7 @@ export interface paths {
          *     - hello: the first frame; heartbeat_seconds is how often a heartbeat comes, a comment line. The server authenticates the credential again at each.
          *     - pages: a write of a notebook's pages; tree tells whether the tree changed (a page created, renamed, moved or deleted), pages lists the pages whose content was written with their new revisions, empty for none, null for more than 20, when the client takes every page as written.
          *     - lock: an edit session of a page opened or ended; the client reads the page's lock again.
-         *     - links: a write of a notebook's pages changed its link index; pages lists the pages whose links resolve to other pages now, but for those whose content the write wrote, which a pages event lists; targets lists the pages whose backlinks changed. Each is empty for none, and null for more than 20 or for all of them, as after nervewiki reindex rebuilt the index, when the client takes every page of the notebook as changed.
+         *     - links: a write of a notebook's pages changed its link index; pages lists the pages of the index (so after an upgrade once nervewiki reindex has run) whose links resolve to other pages now, but for those whose content the write wrote, which a pages event lists; targets lists the pages whose backlinks changed. Each is empty for none, and null for more than 20 or for all of them, as after nervewiki reindex rebuilt the index, when the client takes every page of the notebook as changed.
          *     - reset: the last frame; the client reconnects at once and refreshes all it shows. reason is access (the caller may see other notebooks now), notebooks_deleted, expired (the credential, at its expiry), unauthenticated (it failed at a heartbeat: revoked, signed out, the account deactivated), reconnected (the server missed events), or overflow (the client fell behind). A reset for access, notebooks_deleted, reconnected or overflow comes after the events the stream held.
          *
          *     The stream may also end without a reset: when the server stops, when the credential cannot be checked at a heartbeat, or when the client does not take a frame within a heartbeat. The client reconnects then too, and refreshes.
@@ -1652,7 +1652,7 @@ export interface components {
             workspace_id: string;
             /** Format: uuid */
             notebook_id: string;
-            /** @description The pages whose links resolve to other pages now, but for those whose content was written: empty for none, null for more than 20 or for all of them (a rebuilt index). */
+            /** @description The pages of the link index whose links resolve to other pages now, but for those whose content was written: empty for none, null for more than 20 or for all of them (a rebuilt index). */
             pages: string[] | null;
             /** @description The pages whose backlinks changed: empty for none, null for more than 20 or for all of them (a rebuilt index). */
             targets: string[] | null;

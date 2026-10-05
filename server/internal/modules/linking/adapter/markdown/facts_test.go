@@ -18,7 +18,7 @@ import (
 
 func factsOf(t *testing.T, content string) domain.Facts {
 	t.Helper()
-	md, err := markdown.New([]markdown.Extension{obsidian.Extension()})
+	md, err := markdown.New([]markdown.Extension{obsidian.Extension(obsidian.Options{})})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -177,7 +177,7 @@ func TestAFrontmatterNotValidHasNothing(t *testing.T) {
 // The rebuild's parse takes its share of the parse budget: with none left
 // within its wait, it is refused.
 func TestTheParserTakesTheBudget(t *testing.T) {
-	md, err := markdown.New([]markdown.Extension{obsidian.Extension()})
+	md, err := markdown.New([]markdown.Extension{obsidian.Extension(obsidian.Options{})})
 	if err != nil {
 		t.Fatal(err)
 	}

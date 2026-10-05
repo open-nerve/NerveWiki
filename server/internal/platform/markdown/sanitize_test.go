@@ -42,6 +42,54 @@ func TestAUsersHTMLKeepsTheTypographicAllowlist(t *testing.T) {
 		{"an a after a link", "[a](/d)\n\n<a href=\"/b\">b</a>", "<p><a href=\"/d\">a</a></p>\n<p><a href=\"/b\">b</a></p>\n"},
 		{"an a in emphasis after a link", "[a](/d) *<a href=\"/b\">b</a>*", "<p><a href=\"/d\">a</a> <em><a href=\"/b\">b</a></em></p>\n"},
 		{"an a after an a", "<a href=\"/d\">a</a> <a href=\"/b\">b</a>", "<p><a href=\"/d\">a</a> <a href=\"/b\">b</a></p>\n"},
+		// A link holds no link (M6/P3B review L1).
+		{"an a around a link", `<a href="/x">see [l](/y)</a>`, "<p>see <a href=\"/y\">l</a></p>\n"},
+		{"an a around a link in emphasis", `<a href="/x">*[l](/y)*</a>`, "<p><em><a href=\"/y\">l</a></em></p>\n"},
+		{"an a around an autolink", `<a href="/x"><https://y.example></a>`, "<p><a href=\"https://y.example\">https://y.example</a></p>\n"},
+		{"an a around an image", `<a href="/x">![i](p.png)</a>`, "<p><span class=\"nw-image\">i <a href=\"p.png\">p.png</a></span></p>\n"},
+		{
+			"an a around a footnote's reference", "<a href=\"/x\">a[^1]</a>\n\n[^1]: n\n",
+			`<p>a<sup id="nw-fnref:1"><a href="#nw-fn:1" class="footnote-ref" role="doc-noteref">1</a></sup></p>` + "\n" +
+				`<div class="footnotes" role="doc-endnotes">` + "\n<hr>\n<ol>\n" + `<li id="nw-fn:1">` + "\n" +
+				`<p>n&#160;<a href="#nw-fnref:1" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p>` + "\n</li>\n</ol>\n</div>\n",
+		},
+		{"an a closed before a link", `<a href="/x">t</a> [l](/y)`, "<p><a href=\"/x\">t</a> <a href=\"/y\">l</a></p>\n"},
+		{"an a another end tag closes before a link, to its scope's end", `<b><a href="/x">t</b> [l](/y)`, "<p><b>t</b> <a href=\"/y\">l</a></p>\n"},
+		{"an a in an a", `<a href="/x">a <a href="/y">b</a></a>`, "<p><a href=\"/x\">a b</a></p>\n"},
+		{"an a in emphasis in an a", `<a href="/x">*<a href="/y">b</a>*</a>`, "<p><a href=\"/x\"><em>b</em></a></p>\n"},
+		{"an autolink in a link", `[see <https://y.example>](/x)`, "<p><a href=\"/x\">see https://y.example</a></p>\n"},
+		{
+			"a footnote's reference in a link", "[a[^1]](/x) b[^1]\n\n[^1]: n\n",
+			`<p><a href="/x">a<sup id="nw-fnref:1">1</sup></a> b<sup id="nw-fnref1:1"><a href="#nw-fn:1" class="footnote-ref" role="doc-noteref">1</a></sup></p>` + "\n" +
+				`<div class="footnotes" role="doc-endnotes">` + "\n<hr>\n<ol>\n" + `<li id="nw-fn:1">` + "\n" +
+				`<p>n&#160;<a href="#nw-fnref:1" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a>` +
+				`&#160;<a href="#nw-fnref1:1" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p>` + "\n</li>\n</ol>\n</div>\n",
+		},
+		{
+			"an a unclosed in a footnote, before its back link", "x[^1]\n\n[^1]: <a href=\"/x\">note\n",
+			`<p>x<sup id="nw-fnref:1"><a href="#nw-fn:1" class="footnote-ref" role="doc-noteref">1</a></sup></p>` + "\n" +
+				`<div class="footnotes" role="doc-endnotes">` + "\n<hr>\n<ol>\n" + `<li id="nw-fn:1">` + "\n" +
+				`<p>note&#160;<a href="#nw-fnref:1" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p>` + "\n</li>\n</ol>\n</div>\n",
+		},
+		// An </a> that a dropped element holds ends nothing (P3B fix check).
+		{"an a whose end a script holds, around a link", `x <a href="/1"><script></a></script>[y](/u)</a>`, "<p>x <a href=\"/u\">y</a></p>\n"},
+		{"an a whose end a textarea holds, around a link", `x <a href="/1"><textarea></a></textarea>[y](/u)</a> z`, "<p>x <a href=\"/u\">y</a> z</p>\n"},
+		{"an a closed after a script, before a link", `<a href="/x"><script>s</script>t</a> [l](/y)`, "<p><a href=\"/x\">t</a> <a href=\"/y\">l</a></p>\n"},
+		{"an a whose end a script holds, with another's end tag, around a link", `x <a href="/1"><script></style></a></script>[y](/u)</a>`, "<p>x <a href=\"/u\">y</a></p>\n"},
+		{"an a closed after a script with another's start tag, before a link", `<a href="/x"><script><style></script></a> [l](/y)`, "<p><a href=\"/x\"></a> <a href=\"/y\">l</a></p>\n"},
+		{"an a around a link after a script with another's start tag", `<a href="/x"><script><style></script>[l](/y)</a>`, "<p><a href=\"/y\">l</a></p>\n"},
+		{"an a around a link a script holds", `<a href=/x>t<script>[l](/y)</script></a> u`, "<p><a href=\"/x\">t</a> u</p>\n"},
+		{"an a around a link a script holds after another's end tag", `<a href=/x><script></style>[l](/y)</script></a>`, "<p><a href=\"/x\"></a></p>\n"},
+		{"an a before an unclosed script that holds a link", `<a href=/x>t<script></a>[l](/y) u`, "<p><a href=\"/x\">t</a></p>\n"},
+		{"an a closed in an element, before a link", `<i><a href="/x">t</a></i> [l](/y)`, "<p><i><a href=\"/x\">t</a></i> <a href=\"/y\">l</a></p>\n"},
+		{
+			"a footnote's reference in a link, referred to before", "b[^1] [a[^1]](/x)\n\n[^1]: n\n",
+			`<p>b<sup id="nw-fnref:1"><a href="#nw-fn:1" class="footnote-ref" role="doc-noteref">1</a></sup> <a href="/x">a<sup id="nw-fnref1:1">1</sup></a></p>` + "\n" +
+				`<div class="footnotes" role="doc-endnotes">` + "\n<hr>\n<ol>\n" + `<li id="nw-fn:1">` + "\n" +
+				`<p>n&#160;<a href="#nw-fnref:1" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a>` +
+				`&#160;<a href="#nw-fnref1:1" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p>` + "\n</li>\n</ol>\n</div>\n",
+		},
+		{"an autolink in a link whose address is refused, its label", `[a <https://y.example> b](javascript:x)`, "<p>a https://y.example b</p>\n"},
 		{
 			"an address's parameters like references", "<a href=\"/s?q=x&section=n&copy=2&amp;t=1&sect\" title=\"&amp=\">a</a>",
 			"<p><a href=\"/s?q=x&amp;section=n&amp;copy=2&amp;t=1§\" title=\"&amp;amp=\">a</a></p>\n",

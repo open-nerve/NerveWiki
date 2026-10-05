@@ -12,10 +12,12 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
-// tree is a notebook's tree, as the fake Pages reads it.
+// tree is a notebook's tree, as the fake Pages reads it, and how many
+// reads of candidates and paths it answered.
 type tree struct {
 	nodes map[uuid.UUID]*node
 	names map[string]uuid.UUID
+	reads int
 }
 
 type node struct {
@@ -51,6 +53,7 @@ func (t *tree) path(id uuid.UUID) []domain.Step {
 }
 
 func (t *tree) ByKeys(_ context.Context, _ uuid.UUID, keys []string) ([]domain.Node, error) {
+	t.reads++
 	var out []domain.Node
 	for id, n := range t.nodes {
 		if !n.gone && slices.Contains(keys, shared.TitleKey(n.name)) {
@@ -61,6 +64,7 @@ func (t *tree) ByKeys(_ context.Context, _ uuid.UUID, keys []string) ([]domain.N
 }
 
 func (t *tree) Paths(_ context.Context, _ uuid.UUID, ids []uuid.UUID) ([]domain.Node, error) {
+	t.reads++
 	var out []domain.Node
 	for _, id := range ids {
 		if n, ok := t.nodes[id]; ok && !n.gone {
@@ -85,17 +89,21 @@ func (t *tree) Subtree(_ context.Context, _ uuid.UUID, id uuid.UUID) ([]domain.S
 	return out, nil
 }
 
-// store is the index's tables in memory, and the last reach it read.
+// store is the index's tables in memory, the extractor its rows are of
+// (0 for this one), the last reach it read and the views it answered.
 type store struct {
-	locked  []uuid.UUID
-	facts   map[uuid.UUID]domain.Facts
-	links   []app.Link
-	missing bool // SetResolutions finds no link
-	reached domain.Reach
+	locked    []uuid.UUID
+	facts     map[uuid.UUID]domain.Facts
+	revisions map[uuid.UUID]int
+	links     []app.Link
+	missing   bool // SetResolutions finds no link
+	extractor int
+	reached   domain.Reach
+	viewed    int
 }
 
 func newStore() *store {
-	return &store{facts: map[uuid.UUID]domain.Facts{}}
+	return &store{facts: map[uuid.UUID]domain.Facts{}, revisions: map[uuid.UUID]int{}}
 }
 
 func (s *store) Lock(_ context.Context, notebookID uuid.UUID) error {
@@ -115,7 +123,7 @@ func (s *store) AddPage(_ context.Context, p app.Page, f domain.Facts) error {
 	if _, ok := s.facts[p.ID]; ok {
 		return fmt.Errorf("the page %s has rows", p.ID)
 	}
-	s.facts[p.ID] = f
+	s.facts[p.ID], s.revisions[p.ID] = f, p.Revision
 	for _, l := range f.Links {
 		s.links = append(s.links, app.Link{SourceID: p.ID, Start: l.Start, Target: l.Target})
 	}
@@ -129,6 +137,7 @@ func (s *store) DeletePages(_ context.Context, ids []uuid.UUID) (app.Dropped, er
 			d.AliasKeys = append(d.AliasKeys, a.Key)
 		}
 		delete(s.facts, id)
+		delete(s.revisions, id)
 	}
 	s.links = slices.DeleteFunc(s.links, func(l app.Link) bool {
 		if !slices.Contains(ids, l.SourceID) {
@@ -192,6 +201,23 @@ func (s *store) SetResolutions(_ context.Context, links []app.Link) error {
 		s.links[i].Resolution = l.Resolution
 	}
 	return nil
+}
+
+func (s *store) View(_ context.Context, id uuid.UUID) (app.Indexed, bool, error) {
+	s.viewed++
+	if _, ok := s.facts[id]; !ok {
+		return app.Indexed{}, false, nil
+	}
+	out := app.Indexed{Revision: s.revisions[id], Extractor: s.extractor, Resolutions: map[int]domain.Resolution{}}
+	if out.Extractor == 0 {
+		out.Extractor = domain.Extractor
+	}
+	for _, l := range s.links {
+		if l.SourceID == id {
+			out.Resolutions[l.Start] = l.Resolution
+		}
+	}
+	return out, true, nil
 }
 
 // resolution is where the link of source at start resolves.

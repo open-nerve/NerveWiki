@@ -1,7 +1,9 @@
 import { observer } from "mobx-react-lite";
-import { useContext, useEffect, useLayoutEffect, useRef } from "react";
+import { useContext, useEffect, useLayoutEffect, useRef, type RefObject } from "react";
+import { useLocation, useNavigate } from "react-router";
 import useSWR from "swr";
 
+import { arrived } from "../../app/arrival";
 import { writesPages } from "../../app/effective-role";
 import { NotLoaded } from "../../app/not-loaded";
 import { enhance, Enhancements } from "../../reading/enhancement";
@@ -29,20 +31,55 @@ import { useWorkspace } from "../workspace/workspace-layout";
  * scroll, while the box at its position is the same item's (its text, and
  * its state, or the state the view's own toggle asked for): a tick does
  * not move it, a write that moved the items does.
+ *
+ * An enhancement goes to another address through the router: to a page,
+ * whose heading takes the focus; or to an anchor. An address with an
+ * anchor has the view go to the element it names, once the HTML is in,
+ * once for each time the app goes to the address: the element shows and
+ * takes the focus (M6/P3 design 6.7). The page keeps the last navigation
+ * its view took in (anchored), as the view goes while the page is edited:
+ * coming back from editing goes nowhere. When the anchor names no element
+ * as the page opens (its first navigation, by a load or from another
+ * page), unanchored gives the page's heading the focus if it is nowhere
+ * (what had it went with the page before); and a view from the cache, which
+ * may be older than the link, is read again: the element it brings shows
+ * and takes the focus, if the reader has done nothing since (scrolled,
+ * clicked, touched, pressed a key: the browser's own scrolling is none of
+ * these, nor are an assistive technology's moves) and the focus is where it
+ * was; a read after that one moves nothing. A link of the page to no
+ * element leaves the focus where it is, and the page. An element with an
+ * id that had the focus as the HTML is replaced, the anchor's among them,
+ * has it back in the new HTML, shown again if it showed and no longer
+ * does: a view read again stays where it is.
  */
 export const ReadingView = observer(function ReadingView({
   notebook,
   page,
   refused,
+  unanchored,
+  anchored,
 }: {
   notebook: Notebook;
   page: TreeNode;
   refused: (error: unknown) => void;
+  unanchored: () => void;
+  // The last navigation the page's view took in, its anchor gone to: the location's key and fragment (one key may
+  // have several: an address typed in).
+  anchored: RefObject<string | undefined>;
 }) {
   const { slug } = useWorkspace();
   const pages = usePageTree(notebook);
   const enhancements = useContext(Enhancements);
+  const navigate = useNavigate();
+  const location = useLocation();
+  // The element with an id focused as the HTML was replaced, and whether it showed.
+  const focusedTarget = useRef<{ id: string; shown: boolean } | undefined>(undefined);
+  // While the view from the cache is read again for the anchor the page opened at, which named no element of it:
+  // what had the focus then, and how the wait ends.
+  const awaited = useRef<{ focus: Element | null; end: () => void } | undefined>(undefined);
   const { data, error, mutate } = useSWR(["page-view", notebook.id, page.id], () => pages.view(page.id));
+  // Whether the view came from the cache: older, maybe, than the address.
+  const cached = useRef(data !== undefined);
   const article = useRef<HTMLElement>(null);
   // The task item focused as the HTML was replaced: its position, its text and its state.
   const focusedTask = useRef<{ task: string; text: string; checked: boolean } | undefined>(undefined);
@@ -51,8 +88,10 @@ export const ReadingView = observer(function ReadingView({
   const toggled = useRef<{ task: string; checked: boolean } | undefined>(undefined);
   // The page's latest refused: the HTML is not replaced for a new one.
   const latestRefused = useRef(refused);
+  const latestUnanchored = useRef(unanchored);
   useEffect(() => {
     latestRefused.current = refused;
+    latestUnanchored.current = unanchored;
   });
   const html = data?.html;
   const revision = data?.revision;
@@ -70,6 +109,8 @@ export const ReadingView = observer(function ReadingView({
       revision,
       role,
       reload: () => void mutate(),
+      // An address without an anchor arrives at the page, whose heading takes the focus: the link had it.
+      navigate: (to) => void navigate(to, to.includes("#") ? undefined : { state: arrived }),
       toggleTask: writesPages(role)
         ? async (offset, checked) => {
             await pages.oneToggle(page.id, async () => {
@@ -107,6 +148,13 @@ export const ReadingView = observer(function ReadingView({
     ) {
       box.focus({ preventScroll: true });
     }
+    const target = focusedTarget.current;
+    focusedTarget.current = undefined;
+    const again = target && byId(container, target.id);
+    if (again) {
+      // Scrolled only when it no longer shows: a scroll would reset a wide content's too.
+      focusOn(again, target.shown && !shows(again) ? { block: "nearest" } : undefined);
+    }
     return () => {
       // Undone, a checkbox is disabled again, which HTML's focus fixup takes the focus from: Chromium at the next
       // rendering, an engine that applies the rule at once before the new HTML is in. Which had it is read first.
@@ -115,12 +163,104 @@ export const ReadingView = observer(function ReadingView({
         active instanceof HTMLInputElement && active.dataset.task !== undefined && container.contains(active)
           ? { task: active.dataset.task, text: taskText(active), checked: active.hasAttribute("checked") }
           : undefined;
+      focusedTarget.current =
+        active instanceof HTMLElement && active.id !== "" && container.contains(active)
+          ? { id: active.id, shown: shows(active) }
+          : undefined;
       undo();
     };
-  }, [html, revision, enhancements, slug, notebookId, role, page.id, mutate, pages]);
+  }, [html, revision, enhancements, slug, notebookId, role, page.id, mutate, pages, navigate]);
+  useLayoutEffect(() => {
+    const container = article.current;
+    if (container === null || html === undefined) {
+      return;
+    }
+    const navigation = location.key + location.hash;
+    const anchor = location.hash.slice(1);
+    const target = anchor === "" ? undefined : named(container, anchor);
+    if (anchored.current === navigation) {
+      // The view read again for it has the element, the reader having done nothing, the focus where it was.
+      const waiting = awaited.current;
+      if (waiting !== undefined && target !== undefined && document.activeElement === waiting.focus) {
+        waiting.end();
+        focusOn(target, {});
+      }
+      return;
+    }
+    // The page's first navigation: it opened, by a load or from another page.
+    const opened = anchored.current === undefined;
+    anchored.current = navigation;
+    awaited.current?.end();
+    if (target !== undefined) {
+      focusOn(target, {});
+      return;
+    }
+    if (anchor === "" || !opened) {
+      return;
+    }
+    if (document.activeElement === document.body) {
+      latestUnanchored.current();
+    }
+    if (cached.current) {
+      // Once per page: the wait ends with this read, at the next navigation, or as the reader does something. Not as
+      // the view goes: StrictMode's second mount would end it at once; the page left, its read settling ends it.
+      const end = () => {
+        for (const type of readersInput) {
+          window.removeEventListener(type, end, true);
+        }
+        if (awaited.current?.end === end) {
+          awaited.current = undefined;
+        }
+      };
+      for (const type of readersInput) {
+        window.addEventListener(type, end, { capture: true, passive: true });
+      }
+      awaited.current = { focus: document.activeElement, end };
+      void mutate().finally(end);
+    }
+  }, [anchored, html, location.hash, location.key, mutate]);
   if (data === undefined) {
     return <NotLoaded error={error} retry={() => void mutate()} />;
   }
   // Named by the page: it can get the focus to scroll a wide content (reading/scroll-focus.ts).
   return <article ref={article} aria-label={page.name} className="nw-reading min-w-0" />;
 });
+
+/**
+ * readersInput are the events of what a reader does: a scroll, a click (the window's scrollbar pressed too, in
+ * Chromium and WebKit), a touch, a key. An assistive technology's moves, a screen reader's virtual cursor, send none.
+ */
+const readersInput = ["wheel", "touchmove", "pointerdown", "keydown"] as const;
+
+/** named is the element of container whose id the address's fragment is, decoded, if there is one. */
+function named(container: HTMLElement, fragment: string): HTMLElement | undefined {
+  let id = fragment;
+  try {
+    id = decodeURIComponent(fragment);
+  } catch {
+    // Not an escape: the fragment as it is.
+  }
+  return byId(container, id);
+}
+
+/** byId is the element of container whose id is id, if there is one. */
+function byId(container: HTMLElement, id: string): HTMLElement | undefined {
+  return container.querySelector<HTMLElement>(`[id="${CSS.escape(id)}"]`) ?? undefined;
+}
+
+/** shows tells whether element is in the window's view. */
+function shows(element: HTMLElement): boolean {
+  const { top, bottom } = element.getBoundingClientRect();
+  return bottom > 0 && top < window.innerHeight;
+}
+
+/** focusOn gives element the focus, focusable as an anchor's target is, scrolled into view as show says, if it does. */
+function focusOn(element: HTMLElement, show: ScrollIntoViewOptions | undefined) {
+  if (!element.hasAttribute("tabindex")) {
+    element.setAttribute("tabindex", "-1");
+  }
+  if (show !== undefined) {
+    element.scrollIntoView(show);
+  }
+  element.focus({ preventScroll: true });
+}

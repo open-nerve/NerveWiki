@@ -8,6 +8,7 @@ import (
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/identity"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/instance"
+	"github.com/open-nerve/NerveWiki/server/internal/modules/linking"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/notebook"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/workspace"
@@ -110,12 +111,13 @@ func notebookDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, au
 
 // parsing is the server's one parse and rendering of Markdown, with the
 // registered extensions: the page module's reading view and, from M6, the
-// links (M4 design 8); and its one budget of the content parsed at once,
-// of the configuration's size and wait (page.parse_budget_bytes,
+// links (M4 design 8), a reading view's links resolved by the linking
+// module on pool; and its one budget of the content parsed at once, of the
+// configuration's size and wait (page.parse_budget_bytes,
 // page.parse_max_wait), which every module that parses shares (M6 design
 // 4.7).
-func parsing(cfg config.Config, logger *slog.Logger) (*markdown.Markdown, *markdown.Budget, error) {
-	md, err := markdown.New(markdownExtensions())
+func parsing(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) (*markdown.Markdown, *markdown.Budget, error) {
+	md, err := markdown.New(markdownExtensions(linking.ResolveLinks(pool, linkTargets{page.NewLinkTargets(pool)})))
 	if err != nil {
 		return nil, nil, err
 	}

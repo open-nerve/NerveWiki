@@ -35,6 +35,15 @@ type Link struct {
 	Resolution domain.Resolution
 }
 
+// Indexed is a page's index as its reading view reads it: the revision of
+// the content and the extractor its rows are of, and where each of its
+// links resolves to, by where its target starts.
+type Indexed struct {
+	Revision    int
+	Extractor   int
+	Resolutions map[int]domain.Resolution
+}
+
 // Alias is a page with an alias, by its key.
 type Alias struct {
 	PageID uuid.UUID
@@ -42,7 +51,7 @@ type Alias struct {
 }
 
 // Store is the index's tables (M6/P3 design 3.2), in the transaction ctx
-// carries.
+// carries, or on the pool outside one (a reading view's, Views).
 type Store interface {
 	// Lock takes the notebook's lock of the index until the transaction
 	// ends: its maintenance runs one at a time (M6 design 4.5).
@@ -68,11 +77,15 @@ type Store interface {
 	// SetResolutions has each of links, by its page and start, resolve as
 	// it says.
 	SetResolutions(ctx context.Context, links []Link) error
+	// View is the index of the page id, in one statement; false for a page
+	// the index does not have.
+	View(ctx context.Context, id uuid.UUID) (Indexed, bool, error)
 }
 
 // Pages is what the index reads of a notebook's pages, in the transaction
-// ctx carries: the page module's, which bootstrap wires to it (M6/P3
-// design 3.3). Attachments and deleted pages are never among them.
+// ctx carries or on the pool outside one: the page module's, which
+// bootstrap wires to it (M6/P3 design 3.3). Attachments and deleted pages
+// are never among them.
 type Pages interface {
 	// ByKeys is the pages of notebookID whose title key is one of keys,
 	// each with its path from the root.

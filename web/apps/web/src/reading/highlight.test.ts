@@ -18,6 +18,7 @@ const context: ReadingContext = {
   revision: 1,
   role: "reader",
   reload: () => undefined,
+  navigate: () => undefined,
   report: () => undefined,
 };
 

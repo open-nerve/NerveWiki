@@ -32,7 +32,8 @@ paths:
         the page's lock again.
 
         - links: a write of a notebook's pages changed its link index;
-        pages lists the pages whose links resolve to other pages now, but
+        pages lists the pages of the index (so after an upgrade once
+        nervewiki reindex has run) whose links resolve to other pages now, but
         for those whose content the write wrote, which a pages event lists;
         targets lists the pages whose backlinks changed. Each is empty for
         none, and null for more than 20 or for all of them, as after
@@ -180,8 +181,9 @@ components:
           format: uuid
         pages:
           description: >-
-            The pages whose links resolve to other pages now, but for those
-            whose content was written: empty for none, null for more than
+            The pages of the link index whose links resolve to other pages
+            now, but for those whose content was written: empty for none,
+            null for more than
             20 or for all of them (a rebuilt index).
           type: [array, "null"]
           maxItems: 20

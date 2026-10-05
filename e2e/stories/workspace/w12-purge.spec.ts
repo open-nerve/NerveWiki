@@ -45,11 +45,19 @@ test("W12: the purge deletes a workspace deleted 61 days ago with its members an
     withdrawn.id,
   ]);
 
+  // Each kind of row is purged by its own age: a run between the updates above takes the workspace, its members
+  // and invitations before the withdrawn invitation is as old, and the next run that one.
   await expect
-    .poll(async () => (await db.query("SELECT id FROM workspaces WHERE id = $1", [old.id])).length, {
-      message: "the workspace deleted 61 days ago is purged",
-      timeout: 15_000,
-    })
+    .poll(
+      async () =>
+        (
+          await db.query(
+            "SELECT id FROM workspaces WHERE id = $1 UNION ALL SELECT id FROM workspace_invitations WHERE id = $2",
+            [old.id, withdrawn.id]
+          )
+        ).length,
+      { message: "the workspace and the invitation deleted 61 days ago are purged", timeout: 15_000 }
+    )
     .toBe(0);
   await expectPurged(db, { workspaces: [old.id], invitations: [withdrawn.id] });
   // Younger than the retention, or never deleted: all there.

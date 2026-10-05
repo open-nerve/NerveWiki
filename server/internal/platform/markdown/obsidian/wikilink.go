@@ -19,12 +19,16 @@ var kindWikilink = ast.NewNodeKind("Wikilink") //nolint:gochecknoglobals // a ki
 // heading's id and an image's text have it.
 type wikilink struct {
 	ast.BaseInline
-	embed bool
+	embed  bool
+	inLink bool // in a Markdown link's text
 	parts
 }
 
 // Kind implements ast.Node.
 func (w *wikilink) Kind() ast.NodeKind { return kindWikilink }
+
+// RendersLink implements markdown.Linker: a user's <a> around it is dropped.
+func (w *wikilink) RendersLink() {}
 
 // Dump implements ast.Node.
 func (w *wikilink) Dump(source []byte, level int) {

@@ -84,6 +84,10 @@ func Pathological() []Input {
 		{"strikethrough closers a~", repeat("a~")},
 		{"mismatched strikethrough ~a~~", repeat("~a~~")},
 		{"emphasis in links", repeat("[*a*](b) ")},
+		{"users' links around links", repeat("<a href=/p>[a](b) ")},
+		{"users' links whose end a script holds, around links", repeat("<a href=/p><script></a></script>[a](b) ")},
+		{"users' links whose end a script holds with another's, around links", repeat("<a href=/p><script></style></a></script>[a](b) ")},
+		{"users' links around links a script holds after another's end tag", repeat("<a href=/p><script></style>[a](b)</script></a> ")},
 		{"code spans `a", repeat("`a")},
 		{"code span openers with no closer ``a`", repeat("``a`")},
 		{"backtick strings of every length", func(n int) string {
@@ -160,6 +164,14 @@ func Pathological() []Input {
 			for i := 0; refs.Len()+defs.Len() < n; i++ {
 				fmt.Fprintf(&refs, "x[^%d] ", i)
 				fmt.Fprintf(&defs, "[^%d]: d\n", i)
+			}
+			return refs.String() + "\n\n" + defs.String()
+		}},
+		{"users' links unclosed in footnote definitions", func(n int) string {
+			var refs, defs strings.Builder
+			for i := 0; refs.Len()+defs.Len() < n; i++ {
+				fmt.Fprintf(&refs, "x[^%d] ", i)
+				fmt.Fprintf(&defs, "[^%d]: <a href=/p>d\n", i)
 			}
 			return refs.String() + "\n\n" + defs.String()
 		}},
@@ -275,6 +287,12 @@ func Amplifying() []Input {
 		}},
 		{"a long value aliased often", func(n int) string {
 			return "---\na: &a " + strings.Repeat("x", n/2) + "\nb: [" + strings.Repeat("*a, ", n/8) + "]\n---\nbody\n"
+		}},
+		// A link to a page carries its state, and an image its address as
+		// well, each time a reference is used: an image of a short address
+		// is the most per byte (M6/P3B review L3).
+		{"an image of a short address referred to often", func(n int) string {
+			return "[x]: p#&\n\n" + strings.Repeat("![x] ", n/5)
 		}},
 		// v0.1 shows an embed as a link (M6 design 4.1): it repeats nothing.
 		{"a long page embedded often", func(n int) string {

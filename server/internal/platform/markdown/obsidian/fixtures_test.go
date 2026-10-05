@@ -12,10 +12,18 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown/tasks"
 )
 
-// newMarkdown is the Markdown with the composition root's extensions.
+// newMarkdown is the Markdown with the composition root's extensions, its
+// links resolving to the pages the tests know.
 func newMarkdown(t testing.TB) *markdown.Markdown {
 	t.Helper()
-	m, err := markdown.New([]markdown.Extension{tasks.Extension(), obsidian.Extension()})
+	return newMarkdownWith(t, obsidian.Options{Resolve: resolveKnown})
+}
+
+// newMarkdownWith is the Markdown with the composition root's extensions,
+// the dialect's with o.
+func newMarkdownWith(t testing.TB, o obsidian.Options) *markdown.Markdown {
+	t.Helper()
+	m, err := markdown.New([]markdown.Extension{tasks.Extension(), obsidian.Extension(o)})
 	if err != nil {
 		t.Fatal(err)
 	}

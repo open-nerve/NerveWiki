@@ -54,7 +54,8 @@ var void = []string{"area", "base", "br", "col", "embed", "hr", "img", "input", 
 // doctype; every address is on this site, http or https with a host, or
 // mailto; every id starts with "nw-"; every class is the renderers' or the
 // extensions'; each end tag closes the innermost element open, and none is
-// left open, so a user's HTML stays inside where it was written. It reads
+// left open, so a user's HTML stays inside where it was written; and no
+// link is in a link, which a browser would take apart. It reads
 // tokens, not a tree: the tree builder refuses more than 512 elements open,
 // which a user's nested tags reach, and a check of the tags needs no tree.
 func CheckHTML(s string, exts ...markdown.Extension) error {
@@ -93,6 +94,9 @@ func CheckHTML(s string, exts ...markdown.Extension) error {
 				if err := checkAttr(t.Data, a, attrs, urls, known); err != nil {
 					errs = append(errs, err)
 				}
+			}
+			if tt == html.StartTagToken && t.Data == "a" && slices.Contains(open, "a") {
+				errs = append(errs, errors.New("a link in a link"))
 			}
 			var err error
 			if open, err = nest(open, tt, t.Data); err != nil {

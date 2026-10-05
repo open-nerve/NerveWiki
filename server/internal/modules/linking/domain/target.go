@@ -14,13 +14,28 @@ import (
 // is relative (written from "./" or "../", Up the "../"), from the root (a
 // leading "/"), and its segments' title keys, the last one without its
 // ".md", in any case, when it was written with one; AltLast is then the
-// last one with it.
+// last one with it. Key holds each of its fields.
 type Target struct {
 	Relative bool
 	Up       int
 	Rooted   bool
 	Keys     []string
 	AltLast  string
+}
+
+// TargetKey is a Target as a value to compare: targets of one key resolve
+// alike from one page (P3B fix check), however each was written.
+type TargetKey struct {
+	relative, rooted bool
+	up               int
+	keys, alt        string
+}
+
+// Key is t's TargetKey. No title key holds a '/' (NFC and case folding
+// make none from a segment, which holds none), so the keys joined by it
+// are one string.
+func (t Target) Key() TargetKey {
+	return TargetKey{t.Relative, t.Rooted, t.Up, strings.Join(t.Keys, "/"), t.AltLast}
 }
 
 // ParseTarget cuts target, a link's target as extracted. A target with an

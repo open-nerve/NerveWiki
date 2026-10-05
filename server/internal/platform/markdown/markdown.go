@@ -47,16 +47,32 @@ type Extension struct {
 	Extract func(t Tree) any
 	// Fetch gets the extension's data for one page before Render renders
 	// it, from what Extract took: in the caller's read, holding no lock. Its
-	// result goes to Renderer alone. It may be nil.
+	// result goes to Links and Renderer alone. It may be nil.
 	Fetch func(ctx context.Context, page Page, extracted any) (any, error)
+	// Links is, given what Fetch got, how the Markdown links and images
+	// the extension knows are written (M6: a link to a page of the
+	// notebook, whose address the front end gives): by where a link's or
+	// an image's destination starts in the content (Tree.Destination), the
+	// attributes its <a> carries in place of its address, an image's inner
+	// one too, and true; false leaves the address. Of the extensions that
+	// answer true, the first registered is taken. They are written as
+	// WriteAttrs writes them; Markup has the names. It may be nil.
+	Links func(data any) func(start int) ([]Attr, bool)
 	// Renderer is goldmark's node renderers of the extension, given what
-	// Fetch got. Its addresses must go through SafeURL. It must render
-	// every kind of node Parser makes: goldmark's renderer panics on a
-	// kind made after every kind it renders. It may be nil.
+	// Fetch got. Its addresses must go through SafeURL (WriteAttrs), and a
+	// node it renders as a link is a Linker. It must render every kind of
+	// node Parser makes: goldmark's renderer panics on a kind made after
+	// every kind it renders. It may be nil.
 	Renderer func(data any) []util.PrioritizedValue
 	// Markup is what Renderer writes, for the test of the final HTML
 	// (markdowntest.CheckHTML).
 	Markup Markup
+}
+
+// Attr is an attribute of an element: its name, and its value, which the
+// renderer escapes.
+type Attr struct {
+	Name, Value string
 }
 
 // Hider is a node of an extension that hides what it holds from the
@@ -64,6 +80,14 @@ type Extension struct {
 // its text is no heading's or image's.
 type Hider interface {
 	Hides()
+}
+
+// Linker is a node of an extension that renders as a link (M6: a
+// wikilink; P6: a tag): a user's <a> around it is dropped, as one around a
+// Markdown link is. In a Markdown link's text it must render no link: the
+// platform drops only a user's <a>.
+type Linker interface {
+	RendersLink()
 }
 
 // Markup is the HTML an extension's renderers write.
@@ -142,6 +166,9 @@ type Document struct {
 	source []byte // the content as the parser read it: its frontmatter blank
 	root   ast.Node
 	facts  Facts
+	// destinations is where the parse found the links' and images'
+	// destinations written, for the extensions' Links.
+	destinations func(ast.Node) (text.Segment, bool)
 }
 
 // Frontmatter is the document's frontmatter.

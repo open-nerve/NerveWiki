@@ -32,7 +32,7 @@ type resolveCase struct {
 // markdownExtensions): the cases' ids go in the pages' order, as they would
 // were the pages made in it.
 func TestTheResolutionCasesResolveAsWritten(t *testing.T) {
-	m, err := markdown.New([]markdown.Extension{tasks.Extension(), obsidian.Extension()})
+	m, err := markdown.New([]markdown.Extension{tasks.Extension(), obsidian.Extension(obsidian.Options{})})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -27,6 +27,22 @@ func TestCheckHTMLPassesWhatTheRenderersWrite(t *testing.T) {
 	}
 }
 
+// A link in a link, which a browser takes apart, is reported; two links
+// one after the other are not.
+func TestCheckHTMLReportsALinkInALink(t *testing.T) {
+	for _, s := range []string{
+		`<p><a href="/x">a <a href="/y">b</a></a></p>`,
+		`<p><a href="/x"><em><a href="/y">b</a></em></a></p>`,
+	} {
+		if err := markdowntest.CheckHTML(s); err == nil || !strings.Contains(err.Error(), "a link in a link") {
+			t.Errorf("%s: %v", s, err)
+		}
+	}
+	if err := markdowntest.CheckHTML(`<p><a href="/x">a</a> <a href="/y">b</a></p>`); err != nil {
+		t.Errorf("two links: %v", err)
+	}
+}
+
 func TestCheckHTMLReportsWhatNoRendererWrites(t *testing.T) {
 	for name, s := range map[string]string{
 		"an event attribute":           `<p onclick="x()">a</p>`,
