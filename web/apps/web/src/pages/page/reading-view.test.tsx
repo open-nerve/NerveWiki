@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, expect, onTestFinished, test, vi } from "vitest";
 
 import { readingEnhancements, type Enhancement } from "../../reading/enhancement";
-import { notebookJSON } from "../../test/fakes";
+import { json, notebookJSON } from "../../test/fakes";
 import { pageEditor } from "../../test/page-editor";
 import { guide, install, pagePath, pageServer } from "../../test/page-server";
 import { renderApp } from "../../test/render";
@@ -174,8 +174,106 @@ test("a view from the cache is read again, once, for an anchor of no element, th
   await act(() => router.navigate(`${pagePath(install.id)}#nw-none`));
   const heading = await screen.findByRole("heading", { level: 1, name: "Install" });
   await waitFor(() => expect(document.activeElement).toBe(heading));
-  expect(screen.getByRole("article").innerHTML).toBe("<p>read 2</p>");
+  await waitFor(() => expect(screen.getByRole("article").innerHTML).toBe("<p>read 2</p>"));
+  expect(document.activeElement).toBe(heading);
   expect(viewReads(server)).toBe(2);
+  expect(scrolled).toEqual([]);
+});
+
+/**
+ * heldServer is a server whose views of Install are htmls in turn, the
+ * second held until release is called; reads() is how many were asked for.
+ */
+function heldServer(htmls: string[]) {
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => (release = resolve));
+  let reads = 0;
+  const server = pageServer({
+    answers: {
+      "GET /api/v0/pages/*/view": async (request) => {
+        if (!request.url.includes(install.id)) {
+          return json({ html: "<p>Guide</p>", revision: 1 });
+        }
+        const read = ++reads;
+        if (read === 2) {
+          await held;
+        }
+        return json({ html: htmls[Math.min(read, htmls.length) - 1], revision: read });
+      },
+    },
+  });
+  return { server, release, reads: () => reads };
+}
+
+/** openedFromTheCache has Install opened, left for Guide and opened again at anchor, its view from the cache. */
+async function openedFromTheCache(
+  server: ReturnType<typeof pageServer>,
+  anchor: string,
+  enhancements: Enhancement[] = []
+) {
+  const rendered = renderApp(pagePath(install.id), server.app, { enhancements });
+  await screen.findByRole("article");
+  await act(() => rendered.router.navigate(pagePath(guide.id)));
+  await screen.findByRole("heading", { level: 1, name: "Guide" });
+  await act(() => rendered.router.navigate(`${pagePath(install.id)}${anchor}`));
+  return rendered;
+}
+
+test("while the view is read again for the anchor the page opened at, the page has taken the address in: a link of the page to no element reads nothing more, and the read moves no focus", async () => {
+  const scrolled = scrolls();
+  const { server, release, reads } = heldServer(['<p><a href="#nw-gone">gone</a></p>', '<h2 id="nw-none">None</h2>']);
+  const { router } = await openedFromTheCache(server, "#nw-none");
+  const heading = await screen.findByRole("heading", { level: 1, name: "Install" });
+  await waitFor(() => expect(document.activeElement).toBe(heading));
+  expect(reads()).toBe(2);
+
+  // A link of the page clicked, as Safari leaves it: the focus nowhere.
+  heading.blur();
+  await act(() => router.navigate(`${pagePath(install.id)}#nw-gone`));
+  expect(reads()).toBe(2);
+  expect(document.activeElement).toBe(document.body);
+  await act(async () => release());
+  await screen.findByRole("heading", { level: 2, name: "None" });
+  expect(document.activeElement).toBe(document.body);
+  expect(scrolled).toEqual([]);
+});
+
+test("once the view read again for the anchor is in without its element, a later read with it moves no focus", async () => {
+  const scrolled = scrolls();
+  const { server, release } = heldServer(["<p>one</p>", "<p>two</p>", '<h2 id="nw-x">X</h2>']);
+  const reloads: (() => void)[] = [];
+  await openedFromTheCache(server, "#nw-x", [
+    (_container, context) => {
+      reloads.push(context.reload);
+      return undefined;
+    },
+  ]);
+  const heading = await screen.findByRole("heading", { level: 1, name: "Install" });
+  await waitFor(() => expect(document.activeElement).toBe(heading));
+  await act(async () => release());
+  await waitFor(() => expect(screen.getByRole("article").innerHTML).toBe("<p>two</p>"));
+
+  // Read again later, as an event has it.
+  act(() => reloads.at(-1)?.());
+  await screen.findByRole("heading", { level: 2, name: "X" });
+  expect(document.activeElement).toBe(heading);
+  expect(scrolled).toEqual([]);
+});
+
+test("the element the view read again brings takes the focus only if the reader has not moved it", async () => {
+  const scrolled = scrolls();
+  const { server, release } = heldServer(["<p>Install</p>", '<h2 id="nw-x">X</h2>']);
+  await openedFromTheCache(server, "#nw-x");
+  const heading = await screen.findByRole("heading", { level: 1, name: "Install" });
+  await waitFor(() => expect(document.activeElement).toBe(heading));
+
+  const outside = document.createElement("button");
+  document.body.append(outside);
+  onTestFinished(() => outside.remove());
+  outside.focus();
+  await act(async () => release());
+  await screen.findByRole("heading", { level: 2, name: "X" });
+  expect(document.activeElement).toBe(outside);
   expect(scrolled).toEqual([]);
 });
 

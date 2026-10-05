@@ -1,5 +1,5 @@
 import { observer } from "mobx-react-lite";
-import { useContext, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
+import { useContext, useEffect, useLayoutEffect, useRef, type RefObject } from "react";
 import { useLocation, useNavigate } from "react-router";
 import useSWR from "swr";
 
@@ -40,10 +40,11 @@ import { useWorkspace } from "../workspace/workspace-layout";
  * its view took in (anchored), as the view goes while the page is edited:
  * coming back from editing goes nowhere. When the anchor names no element
  * as the page opens (its first navigation, by a load or from another
- * page), the view is read again first if it came from the cache, as it may
- * be older than the link; then, if the focus is nowhere (what had it went
- * with the page before), unanchored gives it the page's heading. A link of
- * the page to no element leaves the focus where it is, and the page. An
+ * page), unanchored gives the page's heading the focus if it is nowhere
+ * (what had it went with the page before); and a view from the cache, which
+ * may be older than the link, is read again: the element it brings takes
+ * the focus if it has not moved since. A link of the page to no element
+ * leaves the focus where it is, and the page. An
  * element with an id that had the focus as the HTML is replaced, the
  * anchor's among them, has it back in the new HTML, shown again if it
  * showed and no longer does: a view read again stays where it is.
@@ -70,10 +71,9 @@ export const ReadingView = observer(function ReadingView({
   const location = useLocation();
   // The element with an id focused as the HTML was replaced, and whether it showed.
   const focusedTarget = useRef<{ id: string; shown: boolean } | undefined>(undefined);
-  // The navigation whose anchor named no element of the view, which is read again for it (the view, from the
-  // cache, may be older than the link), and the one whose read for it is in.
-  const rereading = useRef<string | undefined>(undefined);
-  const [reread, setReread] = useState<string | undefined>(undefined);
+  // The navigation the page opened at whose anchor named no element of the view from the cache, while the view is
+  // read again for it, and what had the focus then.
+  const awaited = useRef<{ navigation: string; focus: Element | null } | undefined>(undefined);
   const { data, error, mutate } = useSWR(["page-view", notebook.id, page.id], () => pages.view(page.id));
   // Whether the view came from the cache: older, maybe, than the address.
   const cached = useRef(data !== undefined);
@@ -169,28 +169,44 @@ export const ReadingView = observer(function ReadingView({
   }, [html, revision, enhancements, slug, notebookId, role, page.id, mutate, pages, navigate]);
   useLayoutEffect(() => {
     const container = article.current;
-    const navigation = location.key + location.hash;
-    if (container === null || html === undefined || anchored.current === navigation) {
+    if (container === null || html === undefined) {
       return;
     }
+    const navigation = location.key + location.hash;
     const anchor = location.hash.slice(1);
     const target = anchor === "" ? undefined : named(container, anchor);
-    // The page's first navigation: it opened, by a load or from another page.
-    const opened = anchored.current === undefined;
-    if (anchor !== "" && target === undefined && opened && cached.current && reread !== navigation) {
-      if (rereading.current !== navigation) {
-        rereading.current = navigation;
-        void mutate().finally(() => setReread(navigation));
+    if (anchored.current === navigation) {
+      // The view read again for it has the element, the focus where it was: the element takes it.
+      const waiting = awaited.current;
+      if (waiting?.navigation === navigation && target !== undefined && document.activeElement === waiting.focus) {
+        awaited.current = undefined;
+        focusOn(target, {});
       }
       return;
     }
+    // The page's first navigation: it opened, by a load or from another page.
+    const opened = anchored.current === undefined;
     anchored.current = navigation;
+    awaited.current = undefined;
     if (target !== undefined) {
       focusOn(target, {});
-    } else if (anchor !== "" && opened && document.activeElement === document.body) {
+      return;
+    }
+    if (anchor === "" || !opened) {
+      return;
+    }
+    if (document.activeElement === document.body) {
       latestUnanchored.current();
     }
-  }, [anchored, html, location.hash, location.key, mutate, reread]);
+    if (cached.current) {
+      awaited.current = { navigation, focus: document.activeElement };
+      void mutate().finally(() => {
+        if (awaited.current?.navigation === navigation) {
+          awaited.current = undefined;
+        }
+      });
+    }
+  }, [anchored, html, location.hash, location.key, mutate]);
   if (data === undefined) {
     return <NotLoaded error={error} retry={() => void mutate()} />;
   }
