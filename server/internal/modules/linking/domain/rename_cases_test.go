@@ -84,9 +84,8 @@ func rewrite(t *testing.T, m *markdown.Markdown, c renameCase, content string) (
 	}
 	tree := rewriteTree(was, now, links, recased)
 	w := domain.Rewrite(content, now.paths[moved(c.Page)], links, tree, recased)
-	written, ok, err := w.Written(content, facts.Links, now.paths[moved(c.Page)], tree, func(s string) ([]domain.Link, error) {
-		f, err := markdownadapter.PageFacts(m.Parse([]byte(s)).Facts())
-		return f.Links, err
+	written, ok, err := w.Written(content, facts, now.paths[moved(c.Page)], tree, func(s string) (domain.Facts, error) {
+		return markdownadapter.PageFacts(m.Parse([]byte(s)).Facts())
 	})
 	if err != nil {
 		t.Fatal(err)

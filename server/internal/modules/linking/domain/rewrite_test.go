@@ -132,7 +132,7 @@ func TestACaseOnlyRenameRewritesNoLinkWrittenAsNow(t *testing.T) {
 // pairs with a '$' or a '`' before it loses links; the text of a Markdown
 // link that follows the title is left then, the targets written alone; and
 // when that loses links too, the content is left as it is (M6/P4 review
-// R1-1).
+// R1-1). So is one whose writing changes the page's aliases.
 func TestAWritingIsReadBack(t *testing.T) {
 	m, err := markdown.New([]markdown.Extension{tasks.Extension(), obsidian.Extension(obsidian.Options{})})
 	if err != nil {
@@ -145,6 +145,12 @@ func TestAWritingIsReadBack(t *testing.T) {
 		{"Don`t", "[Old](Old.md) [[Old]]\n", "[Old](Don`t.md) [[Don`t]]\n"},
 		{"US$", "costs $5 [[Other]] [[Old]]\n", ""},
 		{"Don`t", "x ` [[Other]] [[Old]]\n", ""},
+		// A value of the aliases a YAML alias repeats from another key (M6/P4
+		// fix check c3 F1): the link is that key's, and writing it changes
+		// the aliases.
+		{"New", "---\nx: &x '[[Old]]'\naliases: *x\n---\n", ""},
+		{"New", "---\nx: &x ['[[Old]]']\naliases: *x\n---\n", ""},
+		{"New", "---\naliases: &a ['[[Old]]']\ny: *a\n---\n[[Old]]\n", "---\naliases: &a ['[[Old]]']\ny: *a\n---\n[[New]]\n"},
 	} {
 		c := renameCase{Pages: []string{"Old", "Other", "src"}, From: "Old", To: tt.to}
 		got, left := rewrite(t, m, c, tt.content)
@@ -158,25 +164,31 @@ func TestAWritingIsReadBack(t *testing.T) {
 }
 
 // Kept holds each link a writing does not write again as it was, its
-// display too, and each it writes again to its page.
+// display too, each it writes again to its page, and the page's aliases.
 func TestKeptHoldsTheLinksInTheirPlaces(t *testing.T) {
 	a := domain.Node{ID: uuid.UUID{15: 1}, Path: []domain.Step{{ID: uuid.UUID{15: 1}, Key: "a", Name: "A"}}}
 	tree := domain.Tree{Named: map[string][]domain.Node{"a": {a}}}
 	w := domain.Rewriting{Leads: map[int]domain.Node{2: a}}
-	was := []domain.Link{{Kind: "wikilink", Target: "Old", Start: 2}, {Kind: "wikilink", Target: "x", Display: "t", Start: 12}}
+	aliases := []domain.Alias{{Key: "al", Name: "Al"}}
+	was := domain.Facts{
+		Links:   []domain.Link{{Kind: "wikilink", Target: "Old", Start: 2}, {Kind: "wikilink", Target: "x", Display: "t", Start: 12}},
+		Aliases: aliases,
+	}
 	for _, tt := range []struct {
-		name string
-		now  []domain.Link
-		kept bool
+		name    string
+		now     []domain.Link
+		aliases []domain.Alias
+		kept    bool
 	}{
-		{"as written", []domain.Link{{Kind: "wikilink", Target: "A"}, {Kind: "wikilink", Target: "x", Display: "t"}}, true},
-		{"the other's display changed", []domain.Link{{Kind: "wikilink", Target: "A"}, {Kind: "wikilink", Target: "x", Display: "u"}}, false},
-		{"the other's target changed", []domain.Link{{Kind: "wikilink", Target: "A"}, {Kind: "wikilink", Target: "y", Display: "t"}}, false},
-		{"leading elsewhere", []domain.Link{{Kind: "wikilink", Target: "B"}, {Kind: "wikilink", Target: "x", Display: "t"}}, false},
-		{"of another kind", []domain.Link{{Kind: "embed", Target: "A"}, {Kind: "wikilink", Target: "x", Display: "t"}}, false},
-		{"one fewer", []domain.Link{{Kind: "wikilink", Target: "A"}}, false},
+		{"as written", []domain.Link{{Kind: "wikilink", Target: "A"}, {Kind: "wikilink", Target: "x", Display: "t"}}, aliases, true},
+		{"the other's display changed", []domain.Link{{Kind: "wikilink", Target: "A"}, {Kind: "wikilink", Target: "x", Display: "u"}}, aliases, false},
+		{"the other's target changed", []domain.Link{{Kind: "wikilink", Target: "A"}, {Kind: "wikilink", Target: "y", Display: "t"}}, aliases, false},
+		{"leading elsewhere", []domain.Link{{Kind: "wikilink", Target: "B"}, {Kind: "wikilink", Target: "x", Display: "t"}}, aliases, false},
+		{"of another kind", []domain.Link{{Kind: "embed", Target: "A"}, {Kind: "wikilink", Target: "x", Display: "t"}}, aliases, false},
+		{"one fewer", []domain.Link{{Kind: "wikilink", Target: "A"}}, aliases, false},
+		{"the aliases changed", []domain.Link{{Kind: "wikilink", Target: "A"}, {Kind: "wikilink", Target: "x", Display: "t"}}, nil, false},
 	} {
-		if got := w.Kept(was, tt.now, nil, tree); got != tt.kept {
+		if got := w.Kept(was, domain.Facts{Links: tt.now, Aliases: tt.aliases}, nil, tree); got != tt.kept {
 			t.Errorf("%s: kept %t, want %t", tt.name, got, tt.kept)
 		}
 	}

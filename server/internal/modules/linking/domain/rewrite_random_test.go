@@ -37,9 +37,8 @@ func TestARewriteKeepsWhereEveryLinkLeads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	parse := func(content string) ([]domain.Link, error) {
-		facts, err := markdownadapter.PageFacts(m.Parse([]byte(content)).Facts())
-		return facts.Links, err
+	parse := func(content string) (domain.Facts, error) {
+		return markdownadapter.PageFacts(m.Parse([]byte(content)).Facts())
 	}
 	// Cases with edits, those that write a '$' or a '`', cases left, links
 	// whose page moved by kind.
@@ -58,7 +57,7 @@ func TestARewriteKeepsWhereEveryLinkLeads(t *testing.T) {
 		}
 		tree := rewriteTree(before, after, links, c.recased)
 		w := domain.Rewrite(c.content, after.paths[c.pageAfter], links, tree, c.recased)
-		written, ok, err := w.Written(c.content, facts.Links, after.paths[c.pageAfter], tree, parse)
+		written, ok, err := w.Written(c.content, facts, after.paths[c.pageAfter], tree, parse)
 		if err != nil {
 			t.Fatal(err)
 		}

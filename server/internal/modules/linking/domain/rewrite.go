@@ -95,14 +95,16 @@ func Rewrite(content string, from []Step, links []Resolved, tree Tree, recased R
 var ErrTooLarge = errors.New("linking: the page written again would hold more than a page may")
 
 // Written is content written again with w's edits, as parse reads its
-// links back (M6/P4 design 3.1): with them all when its links are was,
-// content's, in their places (Kept); else with those of the targets alone,
-// what the links show left as it was; else ok is false, the links of no
-// writing being content's: a title the Markdown around a link reads into
-// it, such as a '$' or a '`' that pairs with another. A writing parse
-// answers ErrTooLarge is not content's either.
-func (w Rewriting) Written(content string, was []Link, from []Step, tree Tree,
-	parse func(content string) ([]Link, error),
+// facts back (M6/P4 design 3.1): with them all when its links are those of
+// was, content's facts, in their places, its aliases was's (Kept); else
+// with those of the targets alone, what the links show left as it was;
+// else ok is false, no writing keeping content's: a title the Markdown
+// around a link reads into it, such as a '$' or a '`' that pairs with
+// another; a value of the aliases a YAML alias repeats from a key the link
+// is written in. A writing parse answers ErrTooLarge is not content's
+// either.
+func (w Rewriting) Written(content string, was Facts, from []Step, tree Tree,
+	parse func(content string) (Facts, error),
 ) (written string, ok bool, err error) {
 	tries := [][]Edit{w.Edits}
 	targets := slices.DeleteFunc(slices.Clone(w.Edits), func(e Edit) bool { return e.Shown })
@@ -125,17 +127,19 @@ func (w Rewriting) Written(content string, was []Link, from []Step, tree Tree,
 	return "", false, nil
 }
 
-// Kept tells whether now, the links of a writing of content with some of
-// w's edits, read back, are was, content's links, in their places: as
+// Kept tells whether now, the facts of a writing of content with some of
+// w's edits, read back, keep was, content's: its links in their places, as
 // many, each of the same kind, property and anchor; each that w writes
 // again leading, from from, to its page alone; each other as it was
-// written, with its display.
-func (w Rewriting) Kept(was, now []Link, from []Step, tree Tree) bool {
-	if len(now) != len(was) {
+// written, with its display. And its aliases, which a rewrite leaves (M6/P4
+// design 2): a link in a key's value that the aliases repeat with a YAML
+// alias (aliases: *x) is not flagged as theirs (M6/P4 fix check c3 F1).
+func (w Rewriting) Kept(was, now Facts, from []Step, tree Tree) bool {
+	if len(now.Links) != len(was.Links) || !slices.Equal(now.Aliases, was.Aliases) {
 		return false
 	}
-	for i, l := range was {
-		n := now[i]
+	for i, l := range was.Links {
+		n := now.Links[i]
 		if n.Kind != l.Kind || n.Property != l.Property || n.Anchor != l.Anchor {
 			return false
 		}

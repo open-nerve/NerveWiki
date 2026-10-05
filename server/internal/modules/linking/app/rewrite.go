@@ -252,17 +252,17 @@ func (r Rewrite) rewrite(ctx context.Context, id uuid.UUID, revision int, reache
 	var now Parsed // the last writing's parse
 	var large int  // the bytes of a writing past MaxContent, if one was
 	read := false  // whether a writing was parsed, to read back
-	written, kept, err := rewriting.Written(content, was.Facts.Links, from, tree, func(writing string) ([]domain.Link, error) {
+	written, kept, err := rewriting.Written(content, was.Facts, from, tree, func(writing string) (domain.Facts, error) {
 		now.release()
 		now = Parsed{}
 		if len(writing) > r.MaxContent {
 			large = len(writing)
-			return nil, domain.ErrTooLarge
+			return domain.Facts{}, domain.ErrTooLarge
 		}
 		var err error
 		now, err = r.Parser.ParseNow(ctx, writing)
 		read = true
-		return now.Facts.Links, err
+		return now.Facts, err
 	})
 	if err != nil {
 		return err
