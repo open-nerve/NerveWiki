@@ -485,6 +485,18 @@ func TestAPageWithoutACurrentIndexIsLeft(t *testing.T) {
 	}
 }
 
+// A page whose content is gone when the rewrite reads it fails the unit:
+// the unit's lock of the notebook keeps its pages, so it is a defect, not
+// a page to leave (M6/P5 design 7).
+func TestAPageGoneUnderTheRewriteFailsIt(t *testing.T) {
+	w := newRewriting(t, "A", "A/x", "src")
+	w.write("src", "[[A/x]]\n")
+	delete(w.contents, w.id("src"))
+	if u, err := w.follow(nil, w.rename("A/x", "z")); err == nil || !strings.Contains(err.Error(), "is gone") || len(u.writes) != 0 {
+		t.Errorf("Participate = %v, %d writes; want the page gone", err, len(u.writes))
+	}
+}
+
 // A write the edit lock refuses, a session a heartbeat kept alive past the
 // precheck, has the rewrite read the locks again: linking.pages_locked,
 // naming it.
