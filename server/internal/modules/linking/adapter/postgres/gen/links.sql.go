@@ -98,12 +98,20 @@ func (q *Queries) InsertLinks(ctx context.Context, arg InsertLinksParams) error 
 }
 
 const linksReached = `-- name: LinksReached :many
-SELECT source_id, range_start, target, resolved_id, ambiguous FROM page_links
-WHERE notebook_id = $1 AND (
-    target_key = ANY($2::text[]) OR target_alt_key = ANY($2::text[])
-    OR resolved_id = ANY($3::uuid[]) OR source_id = ANY($4::uuid[])
+SELECT l.source_id, l.range_start, l.target, l.resolved_id, l.ambiguous,
+    coalesce(l.property_key = a.key OR (left(l.property_key, length(a.key) + 1) = a.key || '.'
+        AND substr(l.property_key, length(a.key) + 2) ~ '^[0-9]+$'), false)::boolean AS aliases
+FROM page_links l
+LEFT JOIN LATERAL (
+    SELECT p.key FROM page_properties p
+    WHERE p.source_id = l.source_id AND translate(p.key, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz') = 'aliases'
+    ORDER BY p.position LIMIT 1
+) a ON l.property_key IS NOT NULL
+WHERE l.notebook_id = $1 AND (
+    l.target_key = ANY($2::text[]) OR l.target_alt_key = ANY($2::text[])
+    OR l.resolved_id = ANY($3::uuid[]) OR l.source_id = ANY($4::uuid[])
 )
-ORDER BY source_id, range_start
+ORDER BY l.source_id, l.range_start
 `
 
 type LinksReachedParams struct {
@@ -119,10 +127,13 @@ type LinksReachedRow struct {
 	Target     string
 	ResolvedID *uuid.UUID
 	Ambiguous  bool
+	Aliases    bool
 }
 
 // The links of a notebook whose target's keys meet keys, that resolve to one of targets, or that are written in
-// one of sources (M6/P3 design 3.4, step 6).
+// one of sources (M6/P3 design 3.4, step 6). Each tells whether it is a value of its page's aliases, as the
+// extraction tells it (linking/adapter/markdown, keyOf and valueOf): its property is the first key that is
+// "aliases" but for ASCII case, or one of that key's list (M6/P4 design 2).
 func (q *Queries) LinksReached(ctx context.Context, arg LinksReachedParams) ([]LinksReachedRow, error) {
 	rows, err := q.db.Query(ctx, linksReached,
 		arg.NotebookID,
@@ -143,6 +154,7 @@ func (q *Queries) LinksReached(ctx context.Context, arg LinksReachedParams) ([]L
 			&i.Target,
 			&i.ResolvedID,
 			&i.Ambiguous,
+			&i.Aliases,
 		); err != nil {
 			return nil, err
 		}

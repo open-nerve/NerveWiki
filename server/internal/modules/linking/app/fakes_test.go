@@ -126,7 +126,7 @@ func (s *store) AddPage(_ context.Context, p app.Page, f domain.Facts) error {
 	}
 	s.facts[p.ID], s.revisions[p.ID] = f, p.Revision
 	for _, l := range f.Links {
-		s.links = append(s.links, app.Link{SourceID: p.ID, Start: l.Start, Target: l.Target})
+		s.links = append(s.links, app.Link{SourceID: p.ID, Start: l.Start, Target: l.Target, Aliases: l.Aliases})
 	}
 	return nil
 }

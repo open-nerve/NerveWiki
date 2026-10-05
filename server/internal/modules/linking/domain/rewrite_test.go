@@ -76,7 +76,7 @@ func TestALinkWhosePageTheTreeLacksIsLeft(t *testing.T) {
 	var id uuid.UUID
 	id[15] = 1
 	link := domain.Link{Kind: "wikilink", Target: "x", Start: 2, End: 3}
-	edits, left := domain.Rewrite("[[x]]\n", nil, []domain.Resolved{{Link: link, Before: domain.Resolution{ID: id}}}, domain.Tree{}, uuid.UUID{})
+	edits, left := domain.Rewrite("[[x]]\n", nil, []domain.Resolved{{Link: link, Before: domain.Resolution{ID: id}}}, domain.Tree{}, domain.Recased{})
 	if len(edits) != 0 || len(left) != 1 || left[0] != link {
 		t.Errorf("edits %+v, left %+v", edits, left)
 	}

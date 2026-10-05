@@ -47,7 +47,7 @@ func TestARewriteKeepsWhereEveryLinkLeads(t *testing.T) {
 			links[i] = domain.Resolved{Link: l, Before: before.resolve(l, c.page), After: after.resolve(l, c.pageAfter)}
 		}
 		tree := domain.Tree{Before: before.byID, After: after.byID, Named: after.named}
-		edits, left := domain.Rewrite(c.content, after.paths[c.pageAfter], links, tree, c.caseOnly)
+		edits, left := domain.Rewrite(c.content, after.paths[c.pageAfter], links, tree, c.recased)
 		written := domain.Apply(c.content, edits)
 		if len(edits) > 0 {
 			rewritten++
@@ -103,7 +103,7 @@ type randomCaseOf struct {
 	aliases         [][]string
 	page, pageAfter string
 	content         string
-	caseOnly        uuid.UUID
+	recased         domain.Recased
 }
 
 func randomCase(r *rand.Rand) randomCaseOf {
@@ -139,7 +139,7 @@ func randomCase(r *rand.Rand) randomCaseOf {
 	if parentOf(from) == parentOf(to) && shared.TitleKey(lastOf(from)) == shared.TitleKey(lastOf(to)) {
 		var id uuid.UUID
 		id[15] = byte(slices.Index(c.pages, from) + 1)
-		c.caseOnly = id
+		c.recased = domain.Recased{ID: id, Name: lastOf(to)}
 	}
 	var body, properties []string
 	for range 1 + r.IntN(8) {

@@ -78,12 +78,12 @@ func rewrite(t *testing.T, m *markdown.Markdown, c renameCase, content string) (
 	for i, l := range facts.Links {
 		links[i] = domain.Resolved{Link: l, Before: was.resolve(l, c.Page), After: now.resolve(l, moved(c.Page))}
 	}
-	var caseOnly uuid.UUID
+	var recased domain.Recased
 	if parentOf(c.From) == parentOf(c.To) && shared.TitleKey(lastOf(c.From)) == shared.TitleKey(lastOf(c.To)) {
-		caseOnly = was.ids[c.From]
+		recased = domain.Recased{ID: was.ids[c.From], Name: lastOf(c.To)}
 	}
 	tree := domain.Tree{Before: was.byID, After: now.byID, Named: now.named}
-	edits, left := domain.Rewrite(content, now.paths[moved(c.Page)], links, tree, caseOnly)
+	edits, left := domain.Rewrite(content, now.paths[moved(c.Page)], links, tree, recased)
 	return domain.Apply(content, edits), left
 }
 

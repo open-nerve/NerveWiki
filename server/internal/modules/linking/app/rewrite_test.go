@@ -271,6 +271,33 @@ func TestALockedPageRefusesTheWhole(t *testing.T) {
 	}
 }
 
+// A page being edited whose links the operation does not write does not
+// refuse it (M6/P4 review r3-1): a value of the
+// aliases that led to the page renamed; and, a rename of the case alone, a
+// link written as now, one by an alias, and one by the title's path not as
+// now written, which alone is written again.
+func TestAPageBeingEditedThatIsNotWrittenDoesNotRefuse(t *testing.T) {
+	w := newRewriting(t, "A", "A/x", "Old", "p", "now", "alias", "path")
+	w.write("Old", "---\naliases: [Al]\n---\n")
+	w.write("p", "---\naliases: [\"[[A/x]]\"]\n---\n")
+	w.write("now", "[[old]]\n")
+	w.write("alias", "[[Al]]\n")
+	w.write("path", "[[Old]]\n")
+	for _, page := range []string{"p", "now", "alias"} {
+		w.locks.held[w.id(page)] = shared.LockHolder{PageID: w.id(page), UserID: uuid.NewV7(), DisplayName: "Ann"}
+	}
+	u, err := w.follow(nil, w.rename("A/x", "z"))
+	if err != nil {
+		t.Fatalf("the rename: %v, want it to pass", err)
+	}
+	w.written(u, map[string]string{})
+	u, err = w.follow(nil, w.rename("Old", "old"))
+	if err != nil {
+		t.Fatalf("the rename of the case: %v, want it to pass", err)
+	}
+	w.written(u, map[string]string{"path": "[[old]]\n"})
+}
+
 // A budget not free now is server_busy at once, nothing written.
 func TestABudgetNotFreeIsBusy(t *testing.T) {
 	w := newRewriting(t, "A", "A/x", "src")

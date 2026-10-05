@@ -94,23 +94,24 @@ func TestRelocationIsWhatARewriteFollows(t *testing.T) {
 		name      string
 		changes   []domain.Change
 		relocates bool
-		caseOnly  uuid.UUID
+		recased   domain.Recased
 	}{
-		{"a rename", []domain.Change{{NodeID: a, Before: at(nil, "x"), After: at(nil, "y")}}, true, uuid.UUID{}},
+		{"a rename", []domain.Change{{NodeID: a, Before: at(nil, "x"), After: at(nil, "y")}}, true, domain.Recased{}},
 		{"a move with its subtree", []domain.Change{
 			{NodeID: a, Before: at(nil, "x"), After: at(&root, "x")},
 			{NodeID: b, Before: at(&a, "y"), After: at(&a, "y")},
-		}, true, uuid.UUID{}},
-		{"the case alone", []domain.Change{{NodeID: a, Before: at(nil, "Old"), After: at(nil, "old")}}, false, a},
-		{"the case alone, another length", []domain.Change{{NodeID: a, Before: at(nil, "ß"), After: at(nil, "SS")}}, true, a},
-		{"a move among siblings", []domain.Change{{NodeID: a, Before: at(&root, "x"), After: at(&root, "x")}}, false, uuid.UUID{}},
-		{"a creation", []domain.Change{{NodeID: a, After: at(nil, "x"), Revision: 1}}, false, uuid.UUID{}},
-		{"a deletion", []domain.Change{{NodeID: a, Before: at(nil, "x")}}, false, uuid.UUID{}},
-		{"a content", []domain.Change{{NodeID: a, Before: at(nil, "x"), After: at(nil, "x"), Revision: 2}}, false, uuid.UUID{}},
-		{"nothing", nil, false, uuid.UUID{}},
+		}, true, domain.Recased{}},
+		{"the case alone", []domain.Change{{NodeID: a, Before: at(nil, "Old"), After: at(nil, "old")}}, false, domain.Recased{ID: a, Name: "old"}},
+		{"the case alone, another length", []domain.Change{{NodeID: a, Before: at(nil, "ß"), After: at(nil, "SS")}}, true,
+			domain.Recased{ID: a, Name: "SS"}},
+		{"a move among siblings", []domain.Change{{NodeID: a, Before: at(&root, "x"), After: at(&root, "x")}}, false, domain.Recased{}},
+		{"a creation", []domain.Change{{NodeID: a, After: at(nil, "x"), Revision: 1}}, false, domain.Recased{}},
+		{"a deletion", []domain.Change{{NodeID: a, Before: at(nil, "x")}}, false, domain.Recased{}},
+		{"a content", []domain.Change{{NodeID: a, Before: at(nil, "x"), After: at(nil, "x"), Revision: 2}}, false, domain.Recased{}},
+		{"nothing", nil, false, domain.Recased{}},
 	} {
-		if relocates, caseOnly := domain.Relocation(tt.changes); relocates != tt.relocates || caseOnly != tt.caseOnly {
-			t.Errorf("%s: relocates %t, case only %v; want %t, %v", tt.name, relocates, caseOnly, tt.relocates, tt.caseOnly)
+		if relocates, recased := domain.Relocation(tt.changes); relocates != tt.relocates || recased != tt.recased {
+			t.Errorf("%s: relocates %t, recased %v; want %t, %v", tt.name, relocates, recased, tt.relocates, tt.recased)
 		}
 	}
 }

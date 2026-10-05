@@ -36,6 +36,9 @@ type Link struct {
 	Start      int
 	Target     string
 	Resolution domain.Resolution
+	// Aliases is a link that is a value of its page's aliases, which a
+	// rewrite leaves (M6/P4 design 2).
+	Aliases bool
 }
 
 // Indexed is a page's index as its reading view reads it: the revision of

@@ -34,20 +34,19 @@ type rewritten struct {
 
 // Participate follows m, an operation of a unit that rewrites links: a
 // rename or a move of nodes that relocates one, or a rename of a title's
-// case alone. It finds the links of the index the operation reaches whose
-// page now resolves to another, to none, or ambiguously (domain.Rewrite
-// decides each), on the pages the index has with the current extractor;
-// refuses with linking.pages_locked when one of these pages is being
-// edited, the caller's own too; then writes each again, one page after
-// another by id, its contents parsed with the budget taken now
-// (server_busy). A page whose content was written since its index, and a
-// link no writing leads back, are logged and left.
+// case alone. It finds the links of the index the operation reaches that
+// it writes again (domain.Rewrites tells each), on the pages the index has
+// with the current extractor; refuses with linking.pages_locked when one
+// of these pages is being edited, the caller's own too; then writes each
+// again, one page after another by id, its contents parsed with the budget
+// taken now (server_busy). A page whose content was written since its
+// index, and a link no writing leads back, are logged and left.
 func (r Rewrite) Participate(ctx context.Context, m Moved, u Appender) error {
-	relocates, caseOnly := domain.Relocation(m.Changes)
-	if !m.UpdateLinks || !relocates && caseOnly == (uuid.UUID{}) {
+	relocates, recased := domain.Relocation(m.Changes)
+	if !m.UpdateLinks || !relocates && recased.ID == (uuid.UUID{}) {
 		return nil
 	}
-	reached, targets, err := r.reached(ctx, m, relocates, caseOnly)
+	reached, targets, err := r.reached(ctx, m, relocates, recased)
 	if err != nil || len(reached) == 0 {
 		return err
 	}
@@ -75,7 +74,7 @@ func (r Rewrite) Participate(ctx context.Context, m Moved, u Appender) error {
 		return err
 	}
 	for _, id := range pages {
-		err := r.rewrite(ctx, id, indexed[id].Revision, reached[id], from[id], tree, caseOnly, u)
+		err := r.rewrite(ctx, id, indexed[id].Revision, reached[id], from[id], tree, recased, u)
 		if errors.Is(err, ErrGuardLocked) {
 			if locked := r.refuseLocked(ctx, pages, m); locked != nil {
 				return locked
@@ -88,15 +87,14 @@ func (r Rewrite) Participate(ctx context.Context, m Moved, u Appender) error {
 	return nil
 }
 
-// reached is the links of the index m reaches that may be written again,
-// by their page and where their target starts: those that resolved to a
-// page and resolve, after m, to another, to none or ambiguously, and those
-// that resolved to the page whose title's case alone m changed; with the
-// pages they resolved to.
-func (r Rewrite) reached(ctx context.Context, m Moved, relocates bool, caseOnly uuid.UUID) (
+// reached is the links of the index m reaches that it writes again, as
+// domain.Rewrites tells from the index's rows, by their page and where
+// their target starts; with the pages they resolved to. recased is the
+// page whose title's case alone m changed.
+func (r Rewrite) reached(ctx context.Context, m Moved, relocates bool, recased domain.Recased) (
 	map[uuid.UUID]map[int]rewritten, []uuid.UUID, error,
 ) {
-	reach := domain.Reach{Targets: []uuid.UUID{caseOnly}}
+	reach := domain.Reach{Targets: []uuid.UUID{recased.ID}}
 	if relocates {
 		var renamed []uuid.UUID
 		reach, renamed, _ = domain.Affected(m.Changes)
@@ -120,8 +118,7 @@ func (r Rewrite) reached(ctx context.Context, m Moved, relocates bool, caseOnly 
 	var targets []uuid.UUID
 	for i, l := range links {
 		before := l.Resolution
-		moved := after[i].ID != before.ID || after[i].Ambiguous && !before.Ambiguous
-		if before.ID == (uuid.UUID{}) || !moved && before.ID != caseOnly {
+		if !domain.Rewrites(domain.Link{Target: l.Target, Aliases: l.Aliases}, before, after[i], recased) {
 			continue
 		}
 		if out[l.SourceID] == nil {
@@ -198,7 +195,7 @@ func (r Rewrite) tree(ctx context.Context, m Moved, targets, sources []uuid.UUID
 // unit's lock keeps out, is logged and left; so is a link no writing leads
 // back.
 func (r Rewrite) rewrite(ctx context.Context, id uuid.UUID, revision int, reached map[int]rewritten, from []domain.Step,
-	tree domain.Tree, caseOnly uuid.UUID, u Appender,
+	tree domain.Tree, recased domain.Recased, u Appender,
 ) error {
 	content, current, err := r.Contents.Content(ctx, id)
 	if err != nil {
@@ -220,7 +217,7 @@ func (r Rewrite) rewrite(ctx context.Context, id uuid.UUID, revision int, reache
 		}
 	}
 	was.Release()
-	edits, left := domain.Rewrite(content, from, links, tree, caseOnly)
+	edits, left := domain.Rewrite(content, from, links, tree, recased)
 	for _, l := range left {
 		r.Logger.LogAttrs(ctx, slog.LevelError, "a link is not rewritten: no writing leads where it led",
 			slog.String("page_id", id.String()), slog.Int("start", l.Start), slog.String("target", l.Target))

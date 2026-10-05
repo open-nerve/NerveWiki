@@ -188,7 +188,7 @@ func (s *Store) Links(ctx context.Context, notebookID uuid.UUID, r domain.Reach)
 	}
 	out := make([]app.Link, len(rows))
 	for i, row := range rows {
-		out[i] = app.Link{SourceID: row.SourceID, Start: int(row.RangeStart), Target: row.Target}
+		out[i] = app.Link{SourceID: row.SourceID, Start: int(row.RangeStart), Target: row.Target, Aliases: row.Aliases}
 		if row.ResolvedID != nil {
 			out[i].Resolution = domain.Resolution{ID: *row.ResolvedID, Ambiguous: row.Ambiguous}
 		}

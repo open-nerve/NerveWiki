@@ -33,31 +33,38 @@ type Edit struct {
 	Text       string
 }
 
+// Rewrites tells whether a rename or move writes l again (M6/P4 design 2):
+// l, no value of the aliases, resolved to a page before it, and resolves
+// after it to another, to none, or ambiguously where it did not; or l
+// resolved to recased, the page a rename changed the case of the title of
+// only, and names it by its title not as now written.
+func Rewrites(l Link, before, after Resolution, recased Recased) bool {
+	switch {
+	case before.ID == (uuid.UUID{}) || l.Aliases:
+		return false
+	case after.ID != before.ID || after.Ambiguous && !before.Ambiguous:
+		return true
+	}
+	return before.ID == recased.ID && byKey(l, shared.TitleKey(recased.Name)) && stem(last(l.Target)) != recased.Name
+}
+
 // Rewrite is how the links of content, the page's at from (its path after
 // the change), are written again to lead where they led before a rename or
-// move (M6/P4 design 2, 3). A link is written again when it resolved to a
-// page and resolves to another after, to none, or ambiguously where it did
-// not; and, when caseOnly is the page a rename changed the case of the
-// title of only, when it names it by its title not as now written. A link
-// that is a value of the aliases is left. It returns the edits, which do
+// move (M6/P4 design 2, 3): those Rewrites tells, recased the page a rename
+// changed the case of the title of only. It returns the edits, which do
 // not overlap, and the links of these no writing leads back (none should:
 // a page's path from the root always does).
-func Rewrite(content string, from []Step, links []Resolved, tree Tree, caseOnly uuid.UUID) ([]Edit, []Link) {
+func Rewrite(content string, from []Step, links []Resolved, tree Tree, recased Recased) ([]Edit, []Link) {
 	var edits []Edit
 	var left []Link
 	for _, r := range links {
-		if r.Before.ID == (uuid.UUID{}) || r.Link.Aliases {
+		if !Rewrites(r.Link, r.Before, r.After, recased) {
 			continue
 		}
 		was, ok := tree.Before[r.Before.ID]
 		now, found := tree.After[r.Before.ID]
 		if !ok || !found {
 			left = append(left, r.Link)
-			continue
-		}
-		moved := r.After.ID != r.Before.ID || r.After.Ambiguous && !r.Before.Ambiguous
-		recased := r.Before.ID == caseOnly && byTitle(r.Link, was) && stem(last(r.Link.Target)) != now.name()
-		if !moved && !recased {
 			continue
 		}
 		e, ok := relink(content, from, r.Link, was, now, tree)
@@ -185,8 +192,13 @@ func (t Tree) leads(target string, from []Step, n Node) bool {
 // byTitle tells whether l names was, the page it led to, by its title,
 // not by one of its aliases.
 func byTitle(l Link, was Node) bool {
+	return byKey(l, was.key())
+}
+
+// byKey tells whether l names a page by the title key key.
+func byKey(l Link, key string) bool {
 	t, ok := ParseTarget(l.Target)
-	return ok && slices.Contains(t.LastKeys(), was.key())
+	return ok && slices.Contains(t.LastKeys(), key)
 }
 
 // relative is n's path from the folder of the page at from: "./", then

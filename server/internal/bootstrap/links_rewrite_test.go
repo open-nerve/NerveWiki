@@ -103,6 +103,33 @@ func TestARewriteOfAPageBeingEditedIsRefused(t *testing.T) {
 	checkPages(t, tm.pool)
 }
 
+// A page being edited whose links a rename does not write does not refuse
+// it (M6/P4 review r3-1): a value of the aliases that led to the page
+// renamed; and, for a rename of the case alone, a link written as now and
+// one by an alias. Neither is written.
+func TestARenameIsNotRefusedForAPageItDoesNotWrite(t *testing.T) {
+	tm := newAcmeTeam(t, "member", "")
+	nb := tm.openNotebook(t, "alice", "Eng")
+	old := tm.createPageWith(t, "alice", nb, "", "Old", "---\naliases: [Al]\n---\n")
+	a := tm.createPage(t, "alice", nb, "", "A")
+	pages := map[string]string{
+		tm.createPageWith(t, "alice", nb, "", "Aliased", "---\naliases: [\"[[A]]\"]\n---\n"): "---\naliases: [\"[[A]]\"]\n---\n",
+		tm.createPageWith(t, "alice", nb, "", "Now", "[[old]]\n"):                            "[[old]]\n",
+		tm.createPageWith(t, "alice", nb, "", "Alias", "[[Al]]\n"):                           "[[Al]]\n",
+	}
+	for id := range pages {
+		tm.openSession(t, "bob", id)
+	}
+
+	tm.send(t, nodeRename("alice", a, "B"), http.StatusOK)
+	tm.send(t, nodeRename("alice", old, "old"), http.StatusOK)
+	for id, content := range pages {
+		tm.wrote(t, id, content, 1)
+	}
+	checkLinks(t, tm.pool)
+	checkPages(t, tm.pool)
+}
+
 // A rewrite that finds no budget for a page's parse is refused whole, 503
 // server_busy, and changes nothing: under a budget of one take's least,
 // which the configuration would not let, the first page's facts hold it
