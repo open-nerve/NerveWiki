@@ -1,5 +1,5 @@
 import { render } from "@testing-library/react";
-import { createMemoryRouter, type RouteObject } from "react-router";
+import { createMemoryRouter, type InitialEntry, type RouteObject } from "react-router";
 
 import { routes } from "../app/routes";
 import { SessionRoot } from "../app/session-root";
@@ -20,14 +20,15 @@ type RenderOptions = {
 };
 
 /**
- * renderApp renders the app's routes at path for app's session, started
+ * renderApp renders the app's routes at path, or at the last of a history's
+ * entries, for app's session, started
  * as the page starts it: by default signed out, over an API that answers
  * GET /api/v0/instance with instanceJSON. The reading views get
  * enhancements, the editor its extensions and the event stream its
  * handlers as the composition root gives them, by default none.
  */
 export function renderApp(
-  path: string,
+  path: string | InitialEntry[],
   app = testApp(),
   {
     routes: appRoutes = routes,
@@ -36,7 +37,7 @@ export function renderApp(
     eventHandlers = new Map(),
   }: RenderOptions = {}
 ) {
-  const router = createMemoryRouter(appRoutes, { initialEntries: [path] });
+  const router = createMemoryRouter(appRoutes, { initialEntries: typeof path === "string" ? [path] : path });
   void app.session.start();
   return {
     app,

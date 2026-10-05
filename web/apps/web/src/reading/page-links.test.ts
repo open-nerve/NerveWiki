@@ -101,6 +101,11 @@ test("undone, the links have no address and a click goes nowhere", async () => {
   expect(link("B").hasAttribute("href")).toBe(false);
   expect(link("x").getAttribute("href")).toBe("https://x.example/");
   await userEvent.click(link("A"));
+  // An address the link has again, another's: its click is not the view's.
+  link("A").setAttribute("href", "/elsewhere");
+  document.addEventListener("click", browser);
+  await userEvent.click(link("A"));
+  document.removeEventListener("click", browser);
   expect(went).toEqual([]);
 });
 

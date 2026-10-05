@@ -86,6 +86,11 @@ test("an enhancement reads the view again through its context", async () => {
   expect(server.sent.filter((line) => line === "GET view Install")).toHaveLength(2);
 });
 
+/** section is the view's heading named name. */
+function section(name: string): HTMLElement {
+  return screen.getByRole("heading", { level: 2, name });
+}
+
 /** scrolls records the elements scrolled into view, as jsdom scrolls none. */
 function scrolls(): Element[] {
   const scrolled: Element[] = [];
@@ -133,11 +138,74 @@ test("an anchor written escaped names the element of its id", async () => {
   expect(scrolled).toEqual([heading]);
 });
 
-test("an anchor the view has no element of goes nowhere", async () => {
+test.each(["#nw-none", "#nw-%E0%A4"])(
+  "an anchor the view has no element of, a malformed escape among them, gives the page's heading the focus: %s",
+  async (anchor) => {
+    const scrolled = scrolls();
+    renderApp(`${pagePath(install.id)}${anchor}`, pageServer().app);
+    expect((await screen.findByRole("article")).innerHTML).toBe("<p>Install</p>");
+    expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1, name: "Install" }));
+    expect(scrolled).toEqual([]);
+  }
+);
+
+test("an anchor the address changes to has the view go there, though the history's key is the same (an address typed in)", async () => {
   const scrolled = scrolls();
-  renderApp(`${pagePath(install.id)}#nw-%E0%A4`, pageServer().app);
-  expect((await screen.findByRole("article")).innerHTML).toBe("<p>Install</p>");
-  expect(scrolled).toEqual([]);
+  const server = pageServer();
+  server.views.set(install.id, { html: '<h2 id="nw-a">A</h2><h2 id="nw-b">B</h2>', revision: 1 });
+  const { router } = renderApp(
+    [
+      { pathname: pagePath(install.id), hash: "#nw-b", key: "typed" },
+      { pathname: pagePath(install.id), hash: "#nw-a", key: "typed" },
+    ],
+    server.app
+  );
+
+  const a = await screen.findByRole("heading", { level: 2, name: "A" });
+  expect(scrolled).toEqual([a]);
+  await act(() => router.navigate(-1));
+  expect(scrolled).toEqual([a, screen.getByRole("heading", { level: 2, name: "B" })]);
+});
+
+test("an element with an id that had the focus has it back in the view read again, shown again if it showed", async () => {
+  const scroll = vi.fn();
+  Element.prototype.scrollIntoView = scroll;
+  const server = pageServer();
+  server.views.set(install.id, { html: '<h2 id="nw-a">A</h2>', revision: 1 });
+  const reloads: (() => void)[] = [];
+  renderApp(`${pagePath(install.id)}#nw-a`, server.app, {
+    enhancements: [
+      (_container, context) => {
+        reloads.push(context.reload);
+        return undefined;
+      },
+    ],
+  });
+  /** readAgain has the view read again, its HTML html, what scrolled before forgotten. */
+  const readAgain = async (html: string, revision: number) => {
+    scroll.mockClear();
+    server.views.set(install.id, { html, revision });
+    act(() => reloads.at(-1)?.());
+    await waitFor(() => expect(screen.getByRole("article").textContent).toBe(html.replace(/<[^>]*>/g, "")));
+  };
+
+  // In the window's view: the focus, and shown again.
+  const a = await screen.findByRole("heading", { level: 2, name: "A" });
+  vi.spyOn(a, "getBoundingClientRect").mockReturnValue({ top: 10, bottom: 30 } as DOMRect);
+  await readAgain('<h2 id="nw-a" tabindex="-1">A, again</h2>', 2);
+  expect(document.activeElement).toBe(section("A, again"));
+  expect([scroll.mock.contexts, scroll.mock.calls]).toEqual([[section("A, again")], [[{ block: "nearest" }]]]);
+
+  // Out of it: the focus, no scroll; focusable as the anchor's target is.
+  await readAgain('<h2 id="nw-a">A, out of view</h2>', 3);
+  expect(document.activeElement).toBe(section("A, out of view"));
+  expect(section("A, out of view").getAttribute("tabindex")).toBe("-1");
+  expect(scroll).not.toHaveBeenCalled();
+
+  // Not in the new HTML: no focus.
+  await readAgain('<p id="nw-p">gone</p>', 4);
+  expect(document.activeElement).toBe(document.body);
+  expect(scroll).not.toHaveBeenCalled();
 });
 
 test("a link to a page goes there through the router, with the app's enhancements, arriving at the page unless at an anchor", async () => {

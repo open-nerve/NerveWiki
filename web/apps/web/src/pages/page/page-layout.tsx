@@ -236,6 +236,7 @@ const PageShell = observer(function PageShell({ notebook, page }: { notebook: No
             notebook={notebook}
             page={page}
             refused={(error) => (error === undefined ? setRefusal(undefined) : void toggleRefused(error))}
+            unanchored={() => heading.current?.focus()}
           />
         </>
       ) : (

@@ -1,3 +1,5 @@
+import { countAnswers } from "../../fixtures/browser";
+import { holdStream } from "../../fixtures/events";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, getView } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
@@ -38,7 +40,7 @@ test("L1 (API): a reading view's links to pages carry the page each leads to and
   expect(html).not.toContain("href");
 });
 
-test("L1 (page): a link to a page opens it in the app, or in a new tab with a modifier, and goes to its anchor's heading; one to a page not there is no link until the page is created elsewhere", async ({
+test("L1 (page): a link to a page opens it in the app, or in a new tab with a modifier, and goes to its anchor's heading; one to a page not there is no link", async ({
   api,
   signedInPage,
 }, testInfo) => {
@@ -98,14 +100,31 @@ test("L1 (page): a link to a page opens it in the app, or in a new tab with a mo
   await expect(heading).toBeFocused();
   await expect(heading).toBeInViewport();
   await expect(page).toHaveURL(`${targetPath}#nw-part-two`);
+  expect(await notReloaded()).toBe(true);
+});
 
-  // The page created elsewhere, the link leads to it: the view is read again with the links event.
-  await page.goBack();
-  await expect(pageHeading(page, "Source")).toBeVisible();
+test("L1 (page): a link to a page not there leads to it once the page is created elsewhere: the view is read again with the links event", async ({
+  api,
+  signedInPage,
+}, testInfo) => {
+  const { pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
+  const notebook = await createNotebook(api, pat, workspace.slug, "Plans");
+  const source = await createPage(api, pat, notebook.id, "Source", null, "[[Missing]]\n");
+  const page = await signedInPage(tokens);
+  const letStreamIn = await holdStream(page);
+  const viewReads = countAnswers(page, "GET", `/api/v0/pages/${source.id}/view`);
+  await page.goto(wikiPagePath(workspace.slug, notebook.id, source.id));
+  const article = page.getByRole("article", { name: "Source" });
+  await expect(article.getByText("Missing", { exact: true })).toHaveClass(/nw-unresolved/);
+  // The stream connects, and its refresh reads the view again: from then on, the page created comes as events.
+  letStreamIn();
+  await expect.poll(viewReads).toBeGreaterThanOrEqual(2);
+  const read = viewReads();
+
   const missing = await createPage(api, pat, notebook.id, "Missing");
   await expect(article.getByRole("link", { name: "Missing", exact: true })).toHaveAttribute(
     "href",
     wikiPagePath(workspace.slug, notebook.id, missing.id)
   );
-  expect(await notReloaded()).toBe(true);
+  expect(viewReads()).toBeGreaterThan(read);
 });

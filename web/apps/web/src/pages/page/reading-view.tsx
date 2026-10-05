@@ -34,27 +34,34 @@ import { useWorkspace } from "../workspace/workspace-layout";
  *
  * An enhancement goes to another address through the router: to a page,
  * whose heading takes the focus; or to an anchor. An address with an
- * anchor has the view go to the element it names, once
- * the HTML is in, once for each time the app goes to the address: the
- * element shows and takes the focus (M6/P3 design 6.7). A view read again
- * stays where it is.
+ * anchor has the view go to the element it names, once the HTML is in,
+ * once for each time the app goes to the address: the element shows and
+ * takes the focus (M6/P3 design 6.7); unanchored, when it names none,
+ * gives the page's heading the focus. An element with an id that had the
+ * focus as the HTML is replaced, the anchor's among them, has it back in
+ * the new HTML, and is shown again if it showed: a view read again stays
+ * where it is.
  */
 export const ReadingView = observer(function ReadingView({
   notebook,
   page,
   refused,
+  unanchored,
 }: {
   notebook: Notebook;
   page: TreeNode;
   refused: (error: unknown) => void;
+  unanchored: () => void;
 }) {
   const { slug } = useWorkspace();
   const pages = usePageTree(notebook);
   const enhancements = useContext(Enhancements);
   const navigate = useNavigate();
   const location = useLocation();
-  // The navigation whose anchor the view went to: the location's key.
+  // The navigation whose anchor the view went to: the location's key and fragment (one key may have several).
   const anchored = useRef<string | undefined>(undefined);
+  // The element with an id focused as the HTML was replaced, and whether it showed.
+  const focusedTarget = useRef<{ id: string; shown: boolean } | undefined>(undefined);
   const { data, error, mutate } = useSWR(["page-view", notebook.id, page.id], () => pages.view(page.id));
   const article = useRef<HTMLElement>(null);
   // The task item focused as the HTML was replaced: its position, its text and its state.
@@ -64,8 +71,10 @@ export const ReadingView = observer(function ReadingView({
   const toggled = useRef<{ task: string; checked: boolean } | undefined>(undefined);
   // The page's latest refused: the HTML is not replaced for a new one.
   const latestRefused = useRef(refused);
+  const latestUnanchored = useRef(unanchored);
   useEffect(() => {
     latestRefused.current = refused;
+    latestUnanchored.current = unanchored;
   });
   const html = data?.html;
   const revision = data?.revision;
@@ -122,6 +131,12 @@ export const ReadingView = observer(function ReadingView({
     ) {
       box.focus({ preventScroll: true });
     }
+    const target = focusedTarget.current;
+    focusedTarget.current = undefined;
+    const again = target && byId(container, target.id);
+    if (again) {
+      focusOn(again, target.shown ? { block: "nearest" } : undefined);
+    }
     return () => {
       // Undone, a checkbox is disabled again, which HTML's focus fixup takes the focus from: Chromium at the next
       // rendering, an engine that applies the rule at once before the new HTML is in. Which had it is read first.
@@ -130,22 +145,28 @@ export const ReadingView = observer(function ReadingView({
         active instanceof HTMLInputElement && active.dataset.task !== undefined && container.contains(active)
           ? { task: active.dataset.task, text: taskText(active), checked: active.hasAttribute("checked") }
           : undefined;
+      focusedTarget.current =
+        active instanceof HTMLElement &&
+        active.id !== "" &&
+        focusedTask.current === undefined &&
+        container.contains(active)
+          ? { id: active.id, shown: shows(active) }
+          : undefined;
       undo();
     };
   }, [html, revision, enhancements, slug, notebookId, role, page.id, mutate, pages, navigate]);
   useLayoutEffect(() => {
     const container = article.current;
-    if (container === null || html === undefined || location.hash === "" || anchored.current === location.key) {
+    const navigation = location.key + location.hash;
+    if (container === null || html === undefined || location.hash === "" || anchored.current === navigation) {
       return;
     }
-    anchored.current = location.key;
+    anchored.current = navigation;
     const target = named(container, location.hash.slice(1));
-    if (target !== undefined) {
-      if (!target.hasAttribute("tabindex")) {
-        target.setAttribute("tabindex", "-1");
-      }
-      target.scrollIntoView();
-      target.focus({ preventScroll: true });
+    if (target === undefined) {
+      latestUnanchored.current();
+    } else {
+      focusOn(target, {});
     }
   }, [html, location.hash, location.key]);
   if (data === undefined) {
@@ -163,5 +184,27 @@ function named(container: HTMLElement, fragment: string): HTMLElement | undefine
   } catch {
     // Not an escape: the fragment as it is.
   }
+  return byId(container, id);
+}
+
+/** byId is the element of container whose id is id, if there is one. */
+function byId(container: HTMLElement, id: string): HTMLElement | undefined {
   return container.querySelector<HTMLElement>(`[id="${CSS.escape(id)}"]`) ?? undefined;
+}
+
+/** shows tells whether element is in the window's view. */
+function shows(element: HTMLElement): boolean {
+  const { top, bottom } = element.getBoundingClientRect();
+  return bottom > 0 && top < window.innerHeight;
+}
+
+/** focusOn gives element the focus, focusable as an anchor's target is, scrolled into view as show says, if it does. */
+function focusOn(element: HTMLElement, show: ScrollIntoViewOptions | undefined) {
+  if (!element.hasAttribute("tabindex")) {
+    element.setAttribute("tabindex", "-1");
+  }
+  if (show !== undefined) {
+    element.scrollIntoView(show);
+  }
+  element.focus({ preventScroll: true });
 }
