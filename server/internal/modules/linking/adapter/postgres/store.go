@@ -171,7 +171,7 @@ func (s *Store) DeleteNotebooks(ctx context.Context, ids []uuid.UUID) error {
 }
 
 // Links implements app.Store.
-func (s *Store) Links(ctx context.Context, notebookID uuid.UUID, r app.Reach) ([]app.Link, error) {
+func (s *Store) Links(ctx context.Context, notebookID uuid.UUID, r domain.Reach) ([]app.Link, error) {
 	rows, err := s.queries(ctx).LinksReached(ctx, gen.LinksReachedParams{
 		NotebookID: notebookID, Keys: r.Keys, Targets: r.Targets, Sources: r.Sources,
 	})

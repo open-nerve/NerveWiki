@@ -35,15 +35,6 @@ type Link struct {
 	Resolution domain.Resolution
 }
 
-// Reach is the links a change may resolve anew (M6/P3 design 3.4, step 6):
-// those whose target's keys meet Keys, those resolved to one of Targets,
-// and those written in one of Sources.
-type Reach struct {
-	Keys    []string
-	Targets []uuid.UUID
-	Sources []uuid.UUID
-}
-
 // Alias is a page with an alias, by its key.
 type Alias struct {
 	PageID uuid.UUID
@@ -65,11 +56,45 @@ type Store interface {
 	// DeleteNotebooks deletes the rows of the notebooks ids.
 	DeleteNotebooks(ctx context.Context, ids []uuid.UUID) error
 	// Links is the links of notebookID that r reaches.
-	Links(ctx context.Context, notebookID uuid.UUID, r Reach) ([]Link, error)
+	Links(ctx context.Context, notebookID uuid.UUID, r domain.Reach) ([]Link, error)
 	// Aliases is the pages of notebookID with an alias whose key is one of
 	// keys.
 	Aliases(ctx context.Context, notebookID uuid.UUID, keys []string) ([]Alias, error)
 	// SetResolutions has each of links, by its page and start, resolve as
 	// it says.
 	SetResolutions(ctx context.Context, links []Link) error
+}
+
+// Pages is what the index reads of a notebook's pages, in the transaction
+// ctx carries: the page module's, which bootstrap wires to it (M6/P3
+// design 3.3). Attachments and deleted pages are never among them.
+type Pages interface {
+	// ByKeys is the pages of notebookID whose title key is one of keys,
+	// each with its path from the root.
+	ByKeys(ctx context.Context, notebookID uuid.UUID, keys []string) ([]domain.Node, error)
+	// Paths is the pages of notebookID among ids, each with its path from
+	// the root.
+	Paths(ctx context.Context, notebookID uuid.UUID, ids []uuid.UUID) ([]domain.Node, error)
+	// Subtree is the page id of notebookID and the pages under it.
+	Subtree(ctx context.Context, notebookID, id uuid.UUID) ([]domain.Step, error)
+}
+
+// LinksChanged is the links event of a unit (M6 design 4.8): the pages
+// whose links resolve otherwise, but for those whose content it wrote, and
+// the pages whose backlinks changed. Each is empty for none, and nil for
+// more than MaxEventPages.
+type LinksChanged struct {
+	WorkspaceID uuid.UUID
+	NotebookID  uuid.UUID
+	Pages       []uuid.UUID
+	Targets     []uuid.UUID
+}
+
+// MaxEventPages is the most pages a links event lists in each of its sets,
+// as a pages event does.
+const MaxEventPages = 20
+
+// Publisher publishes the links events, in the caller's transaction.
+type Publisher interface {
+	LinksChanged(ctx context.Context, e LinksChanged) error
 }

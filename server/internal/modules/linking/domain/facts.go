@@ -1,5 +1,7 @@
 package domain
 
+import "github.com/open-nerve/NerveWiki/server/internal/shared"
+
 // Extractor is the version of what a page's facts are, which the index
 // records of each page (indexed_pages.extractor): a release that changes it
 // asks for nervewiki reindex.
@@ -59,4 +61,36 @@ type Property struct {
 type Alias struct {
 	Key  string
 	Name string
+}
+
+// TagsOf is the tags of names, a page's in the order written, without
+// their '#': one a title key, as first written, with how often.
+func TagsOf(names []string) []Tag {
+	var out []Tag
+	at := map[string]int{}
+	for _, name := range names {
+		key := shared.TitleKey(name)
+		if i, ok := at[key]; ok {
+			out[i].Count++
+			continue
+		}
+		at[key] = len(out)
+		out = append(out, Tag{Key: key, Name: name, Count: 1})
+	}
+	return out
+}
+
+// AliasesOf is the aliases of names, a page's in the order written: one a
+// title key, as first written.
+func AliasesOf(names []string) []Alias {
+	var out []Alias
+	seen := map[string]bool{}
+	for _, name := range names {
+		key := shared.TitleKey(name)
+		if !seen[key] {
+			seen[key] = true
+			out = append(out, Alias{Key: key, Name: name})
+		}
+	}
+	return out
 }

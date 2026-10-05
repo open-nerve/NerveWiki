@@ -12,8 +12,9 @@ import (
 // 13.1, item 21): a notebook's deletion by its admin, its workspace's
 // deletion, and an ownerless notebook's deletion by the workspace's admin.
 // Each takes the notebook's tree of three levels, what follows its pages
-// and its changesets at the notebook's time, and the pages' edit sessions
-// (M4/P4 design 3.7); the pages read 404 after.
+// and its changesets at the notebook's time, the pages' edit sessions
+// (M4/P4 design 3.7) and their index (M6/P3 design 3.5); the pages read
+// 404 after.
 func TestDeletingANotebookDeletesItsPages(t *testing.T) {
 	for _, tt := range []struct {
 		name string
@@ -52,7 +53,7 @@ func TestDeletingANotebookDeletesItsPages(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			tm, nb, writer := tt.setup(t)
 			root := tm.createPage(t, writer, nb, "", "Root")
-			child := tm.createPage(t, writer, nb, root, "Child")
+			child := tm.createPageWith(t, writer, nb, root, "Child", "---\naliases: [C]\ntags: [t]\n---\n[[Root]]")
 			pages := []string{root, child, tm.createPage(t, writer, nb, child, "Grandchild")}
 			for _, page := range pages {
 				tm.openSession(t, writer, page)
@@ -60,8 +61,20 @@ func TestDeletingANotebookDeletesItsPages(t *testing.T) {
 			if tt.before != nil {
 				tt.before(t, tm)
 			}
+			indexed := func() int {
+				return count(t, tm.pool, `SELECT (SELECT count(*) FROM indexed_pages WHERE notebook_id = $1)
+					+ (SELECT count(*) FROM page_links WHERE notebook_id = $1) + (SELECT count(*) FROM page_tags WHERE notebook_id = $1)
+					+ (SELECT count(*) FROM page_properties WHERE notebook_id = $1) + (SELECT count(*) FROM page_aliases WHERE notebook_id = $1)`, nb)
+			}
+			if n := indexed(); n != 3+1+1+2+1 {
+				t.Fatalf("the notebook's index holds %d rows, want the three pages', the child's link, tag, properties and alias", n)
+			}
 
 			tm.send(t, tt.deletion(nb), http.StatusNoContent)
+
+			if n := indexed(); n != 0 {
+				t.Errorf("the deleted notebook's index holds %d rows, want none", n)
+			}
 
 			for table, join := range map[string]string{
 				"nodes":           "nodes x",

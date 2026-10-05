@@ -57,6 +57,7 @@ func checkPages(t *testing.T, pool *pgxpool.Pool) {
 			t.Errorf("%d pages %s, want none", n, what)
 		}
 	}
+	checkLinks(t, pool)
 }
 
 // openNotebook creates a notebook named name in acme as by, open to acme's

@@ -259,15 +259,15 @@ func TestTheLinksAChangeReaches(t *testing.T) {
 	qElse.Resolution = domain.Resolution{ID: x, Ambiguous: true}
 	tests := []struct {
 		name  string
-		reach app.Reach
+		reach domain.Reach
 		want  []app.Link
 	}{
-		{"nothing", app.Reach{}, nil},
-		{"by key", app.Reach{Keys: []string{"note", "other"}}, []app.Link{pOther, pNote, qNote}},
-		{"by key with .md", app.Reach{Keys: []string{"note.md", "strasse.md"}}, []app.Link{pStrasse, qNote}},
-		{"by target", app.Reach{Targets: []uuid.UUID{x}}, []app.Link{qElse}},
-		{"by source", app.Reach{Sources: []uuid.UUID{p}}, []app.Link{pOther, pNote, pStrasse, pNone}},
-		{"each once", app.Reach{Keys: []string{"else"}, Targets: []uuid.UUID{x}, Sources: []uuid.UUID{q}}, []app.Link{qNote, qElse}},
+		{"nothing", domain.Reach{}, nil},
+		{"by key", domain.Reach{Keys: []string{"note", "other"}}, []app.Link{pOther, pNote, qNote}},
+		{"by key with .md", domain.Reach{Keys: []string{"note.md", "strasse.md"}}, []app.Link{pStrasse, qNote}},
+		{"by target", domain.Reach{Targets: []uuid.UUID{x}}, []app.Link{qElse}},
+		{"by source", domain.Reach{Sources: []uuid.UUID{p}}, []app.Link{pOther, pNote, pStrasse, pNone}},
+		{"each once", domain.Reach{Keys: []string{"else"}, Targets: []uuid.UUID{x}, Sources: []uuid.UUID{q}}, []app.Link{qNote, qElse}},
 	}
 	for _, tt := range tests {
 		got, err := f.s.Links(ctx, f.eng, tt.reach)

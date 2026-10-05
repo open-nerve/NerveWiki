@@ -86,6 +86,18 @@ func (tagParser) Parse(parent ast.Node, block text.Reader, _ parser.Context) ast
 	return t
 }
 
+// IsTag tells whether name, without its '#', is a tag's (rule 9): tag
+// runes, not all ASCII digits. A frontmatter's tags count only when they
+// are, as Obsidian's tag pane counts them.
+func IsTag(name string) bool {
+	for _, r := range name {
+		if !isTagRune(r) {
+			return false
+		}
+	}
+	return isTagName([]byte(name))
+}
+
 // isTagName tells whether name, of tag runes, is one: not empty, not all
 // ASCII digits (other numbers, ½ or ١, make a name, as in Obsidian).
 func isTagName(name []byte) bool {
