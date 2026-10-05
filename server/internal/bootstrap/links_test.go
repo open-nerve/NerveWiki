@@ -5,23 +5,27 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/open-nerve/NerveWiki/server/internal/modules/linking"
 )
 
 // The link index through serve (M6/P3 design 3.4, 3.5; M6 design 4.8).
 
 // checkLinks fails t unless the index is its pages' (M6/P3 design 5): each
-// page not deleted is indexed at its content's revision, in its notebook;
-// no row is of another page; and a link resolves only to a page not
-// deleted of its notebook.
+// page not deleted is indexed at its content's revision, by the current
+// extractor, in its notebook; no row is of another page or notebook; and a
+// link resolves only to a page not deleted of its notebook.
 func checkLinks(t *testing.T, pool *pgxpool.Pool) {
 	t.Helper()
 	for what, query := range map[string]string{
-		"not indexed at its content's revision": `SELECT count(*) FROM nodes n JOIN page_contents c ON c.node_id = n.id
+		"not indexed at its content's revision": fmt.Sprintf(`SELECT count(*) FROM nodes n JOIN page_contents c ON c.node_id = n.id
 			WHERE n.deleted_at IS NULL AND n.kind = 'page' AND c.deleted_at IS NULL AND NOT EXISTS (
-				SELECT 1 FROM indexed_pages i WHERE i.node_id = n.id AND i.notebook_id = n.notebook_id AND i.revision = c.revision)`,
+				SELECT 1 FROM indexed_pages i WHERE i.node_id = n.id AND i.notebook_id = n.notebook_id AND i.revision = c.revision
+					AND i.extractor = %d)`, linking.Extractor),
 		"indexed, not a page or deleted": `SELECT count(*) FROM (
 				SELECT node_id AS id, notebook_id FROM indexed_pages UNION ALL SELECT source_id, notebook_id FROM page_links
 				UNION ALL SELECT source_id, notebook_id FROM page_tags UNION ALL SELECT source_id, notebook_id FROM page_properties
@@ -186,5 +190,50 @@ func TestALinksEventOfManyPagesListsNone(t *testing.T) {
 	s.links(t, nb, nil, []string{n})
 	for _, src := range srcs {
 		tm.resolves(t, src, n)
+	}
+}
+
+// A content whose facts PostgreSQL's text would not hold saves, as it did
+// before the index: a U+0000 that a Markdown link's %00 or a YAML escape
+// writes is kept as U+FFFD; and a target, alias or tag longer than any
+// title's key (linking's MaxKey) is kept without its key: such a link
+// resolves to none, and such an alias or tag is none.
+func TestAContentOfAnyFactsSaves(t *testing.T) {
+	tm := newAcmeTeam(t, "member", "")
+	nb := tm.openNotebook(t, "alice", "Eng")
+	p := tm.createPage(t, "alice", nb, "", "P")
+	long := strings.Repeat("x", 2800)
+	for i, content := range []string{
+		"[[" + long + "]] #" + long,
+		"---\naliases: [" + long + ", short]\ntags: [" + long + "]\n---\n",
+		"---\nn: \"a\\0b\"\n\"k\\0\": [\"\\0\"]\naliases: [\"x\\0\"]\nsrc: \"[[a\\0b]]\"\n---\n[x](a%00b)",
+	} {
+		c := contentWrite("alice", p, content, i+1, "")
+		if status, got := ask(t, tm.contract, c.method, tm.base+c.path, tm.tokens["alice"], c.body); status != http.StatusOK {
+			t.Fatalf("content %d = %d %s, want 200", i, status, got)
+		}
+		checkPages(t, tm.pool)
+		switch i {
+		case 0:
+			if n := count(t, tm.pool, fmt.Sprintf(`SELECT count(*) FROM page_links WHERE source_id = '%s' AND target_key IS NULL
+				AND resolved_id IS NULL`, p)); n != 1 || count(t, tm.pool, fmt.Sprintf("SELECT count(*) FROM page_tags WHERE source_id = '%s'", p)) != 0 {
+				t.Errorf("a long target's link without a key: %d; want one, and no long tag", n)
+			}
+		case 1:
+			if n := count(t, tm.pool, fmt.Sprintf("SELECT count(*) FROM page_aliases WHERE source_id = '%s' AND alias = 'short'", p)); n != 1 ||
+				count(t, tm.pool, fmt.Sprintf("SELECT count(*) FROM page_aliases WHERE source_id = '%s'", p)) != 1 {
+				t.Errorf("the aliases kept: want short alone")
+			}
+		case 2:
+			for what, query := range map[string]string{
+				"links":      "SELECT count(*) FROM page_links WHERE source_id = '%s' AND target = 'a' || chr(65533) || 'b'",
+				"aliases":    "SELECT count(*) FROM page_aliases WHERE source_id = '%s' AND alias = 'x' || chr(65533)",
+				"properties": "SELECT count(*) FROM page_properties WHERE source_id = '%s' AND (key = 'k' || chr(65533) OR value->>0 = chr(65533) OR value #>> '{}' = 'a' || chr(65533) || 'b')",
+			} {
+				if n := count(t, tm.pool, fmt.Sprintf(query, p)); n != map[string]int{"links": 2, "aliases": 1, "properties": 2}[what] {
+					t.Errorf("%d %s with U+FFFD for U+0000", n, what)
+				}
+			}
+		}
 	}
 }

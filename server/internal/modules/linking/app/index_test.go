@@ -171,8 +171,8 @@ func (w *world) ids(paths []string) []uuid.UUID {
 
 // A unit that writes no content of a page it leaves, and relocates no node,
 // leaves the index alone, untouched and unlocked: a move among siblings,
-// with the pages under it, a rename that keeps the key, a page created and
-// deleted.
+// with the pages under it, a rename to the same key and length, a page
+// created and deleted.
 func TestAUnitWithNothingForTheIndexIsLeftAlone(t *testing.T) {
 	w := newWorld(t, "A", "A/B", "src")
 	w.run(w.write("src", []string{"B"}))
@@ -321,6 +321,39 @@ func TestAnEventWithTooManyPagesListsNone(t *testing.T) {
 	if e.Pages != nil || !reflect.DeepEqual(e.Targets, []uuid.UUID{w.id("New")}) {
 		t.Errorf("the event = %+v, want no pages and the one target", e)
 	}
+}
+
+// Both sets past MaxEventPages are still an event, which lists none: a
+// rename of a folder that many pages link into.
+func TestAnEventWithTooManyPagesAndTargetsListsNone(t *testing.T) {
+	w := newWorld(t, "A")
+	for i := range app.MaxEventPages + 1 {
+		name := string(rune('a' + i))
+		w.tree.add("A/" + name)
+		w.tree.add("src" + name)
+		w.run(w.write("src"+name, []string{"A/" + name}))
+	}
+	w.run(w.rename("A", "Z"))
+	if len(w.published.events) != 1 || w.published.events[0].Pages != nil || w.published.events[0].Targets != nil {
+		t.Errorf("published %+v, want one event that lists none", w.published.events)
+	}
+}
+
+// A content written moves no page: it reaches its own links, and the links
+// by the aliases it drops or adds, not those to it or by the aliases it
+// keeps.
+func TestAContentWrittenReachesItsLinksAndTheAliasesItChanges(t *testing.T) {
+	w := newWorld(t, "X", "src")
+	w.run(w.write("src", []string{"X", "kept", "dropped", "added"}))
+	w.run(w.write("X", []string{"Y"}, "kept", "dropped"))
+	w.run(w.write("X", []string{"Z"}, "kept", "added"))
+	if want := (domain.Reach{Keys: []string{"added", "dropped"}, Sources: []uuid.UUID{w.id("X")}}); !reflect.DeepEqual(w.store.reached, want) {
+		t.Errorf("the write reached %+v, want %+v", w.store.reached, want)
+	}
+	w.resolves("src", 10, "X", false)
+	w.resolves("src", 20, "", false)
+	w.resolves("src", 30, "X", false)
+	w.publishedEvent([]string{"src"}, []string{"X"})
 }
 
 // A link whose page the tree does not have is a defect: an error, as is a

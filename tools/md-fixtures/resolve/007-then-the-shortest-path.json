@@ -1,5 +1,5 @@
 {
-  "description": "同在或同不在出发文件夹的子树里时，选层数少的",
+  "description": "同在或同不在出发文件夹的子树里时，选路径短的：导出路径的字符数，按 JavaScript 的计法（UTF-16 码元），与层数无关",
   "source": "obsidian-verified",
   "pages": [
     "P",
@@ -18,7 +18,19 @@
     "src",
     "P/src",
     "Y/src",
-    "Y/b/src"
+    "Y/b/src",
+    "Longfoldername",
+    "Longfoldername/lv",
+    "a",
+    "a/b",
+    "a/b/lv",
+    "abc",
+    "abc/e1",
+    "éé",
+    "éé/e1",
+    "abc/e2",
+    "😀😀",
+    "😀😀/e2"
   ],
   "links": [
     {
@@ -45,6 +57,21 @@
       "from": "Y/b/src",
       "link": "[[d5]]",
       "to": "Y/b/c/d5"
+    },
+    {
+      "from": "src",
+      "link": "[[lv]]",
+      "to": "a/b/lv"
+    },
+    {
+      "from": "src",
+      "link": "[[e1]]",
+      "to": "éé/e1"
+    },
+    {
+      "from": "src",
+      "link": "[[e2]]",
+      "to": "abc/e2"
     }
   ]
 }

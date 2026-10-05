@@ -35,8 +35,9 @@ paths:
         pages lists the pages whose links resolve to other pages now, but
         for those whose content the write wrote, which a pages event lists;
         targets lists the pages whose backlinks changed. Each is empty for
-        none, and null for more than 20, when the client takes every page
-        of the notebook as changed.
+        none, and null for more than 20 or for all of them, as after
+        nervewiki reindex rebuilt the index, when the client takes every
+        page of the notebook as changed.
 
         - reset: the last frame; the client reconnects at once and refreshes
         all it shows. reason is access (the caller may see other notebooks
@@ -181,7 +182,7 @@ components:
           description: >-
             The pages whose links resolve to other pages now, but for those
             whose content was written: empty for none, null for more than
-            20.
+            20 or for all of them (a rebuilt index).
           type: [array, "null"]
           maxItems: 20
           items:
@@ -190,7 +191,7 @@ components:
         targets:
           description: >-
             The pages whose backlinks changed: empty for none, null for more
-            than 20.
+            than 20 or for all of them (a rebuilt index).
           type: [array, "null"]
           maxItems: 20
           items:

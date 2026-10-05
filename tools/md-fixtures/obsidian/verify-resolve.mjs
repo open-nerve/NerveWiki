@@ -5,7 +5,7 @@
 //
 // A page A is A.md, its children are in A/. Each link is a file of its own, holding only the link, in the folder of
 // the page it is written in. Obsidian-verified cases must match; nerve-defined ones only report how they differ.
-import { readFileSync, readdirSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -24,6 +24,11 @@ const folderOf = (page) => (page.includes("/") ? page.slice(0, page.lastIndexOf(
 const query = (c, i) => join(folderOf(c.links[i].from), `q${String(i).padStart(3, "0")}.md`);
 
 if (cmd === "prepare") {
+  // It empties work: only a directory it made before, or none.
+  if (existsSync(work) && readdirSync(work).length > 0 && !existsSync(join(work, "userdata", "obsidian.json"))) {
+    console.error(`${work} is not empty and was not prepared by this script: choose another directory`);
+    process.exit(2);
+  }
   rmSync(work, { recursive: true, force: true });
   mkdirSync(join(work, "userdata"), { recursive: true });
   const vaults = {};
@@ -72,16 +77,21 @@ async function evaluate(target, expression) {
   return res.result.value;
 }
 
+// Each file's links, resolved and not: Obsidian sets both maps of a file together, once it
+// resolved its links; until every file has its entry, it has not.
 const DUMP = `(async () => {
-  for (let i = 0; i < 150; i++) {
+  const cache = app.metadataCache;
+  for (let i = 0; i < 300; i++) {
     const files = app.vault.getMarkdownFiles();
-    if (files.length > 0 && files.every((f) => app.metadataCache.getFileCache(f))) break;
+    if (files.length > 0 && files.every((f) => f.path in cache.resolvedLinks && f.path in cache.unresolvedLinks)) break;
     await new Promise((r) => setTimeout(r, 100));
   }
-  await new Promise((r) => setTimeout(r, 1000));
   let version; try { version = require('electron').ipcRenderer.sendSync('version'); } catch { version = navigator.userAgent.match(/obsidian\\/([\\d.]+)/)?.[1]; }
-  const out = { version, base: app.vault.adapter.basePath, resolved: {} };
-  for (const f of app.vault.getMarkdownFiles()) out.resolved[f.path] = Object.keys(app.metadataCache.resolvedLinks[f.path] || {});
+  const out = { version, base: app.vault.adapter.basePath, resolved: {}, unresolved: {} };
+  for (const f of app.vault.getMarkdownFiles()) {
+    out.resolved[f.path] = Object.keys(cache.resolvedLinks[f.path] ?? {});
+    out.unresolved[f.path] = Object.keys(cache.unresolvedLinks[f.path] ?? {});
+  }
   return JSON.stringify(out);
 })()`;
 
@@ -92,20 +102,28 @@ let version;
 for (const dump of await Promise.all(targets.map((t) => evaluate(t, DUMP)))) {
   const out = JSON.parse(dump);
   version = out.version;
-  byVault[out.base] = out.resolved;
+  byVault[out.base] = out;
 }
 console.log(`Obsidian ${version}, ${cases.length} cases, ${Object.keys(byVault).length} vaults open`);
 let failed = 0;
 for (const c of cases) {
-  const resolved = byVault[join(work, c.name)];
-  if (!resolved) {
+  const vault = byVault[join(work, c.name)];
+  if (!vault) {
     console.log(`FAIL ${c.name}: its vault is not open`);
     failed++;
     continue;
   }
   c.links.forEach((l, i) => {
-    const got = resolved[query(c, i)] ?? [];
-    const gotPage = got.length === 1 ? got[0].replace(/\.md$/, "") : got.length === 0 ? null : got.join(",");
+    const got = vault.resolved[query(c, i)];
+    const unresolved = vault.unresolved[query(c, i)];
+    if (got === undefined || got.length + unresolved.length !== 1) {
+      console.log(
+        `FAIL ${c.name} ${l.from} ${l.link}: Obsidian took ${got === undefined ? "no" : got.length + unresolved.length} links`
+      );
+      failed++;
+      return;
+    }
+    const gotPage = got.length === 1 ? got[0].replace(/\.md$/, "") : null;
     const source = l.source ?? c.source;
     if (gotPage === l.to) {
       if (source === "nerve-defined")

@@ -27,7 +27,7 @@ import (
 // properties, and aliases: after each, in a transaction that rolls back,
 // the notebook's index before its rebuild is the index after.
 func TestTheIndexIsItsRebuild(t *testing.T) {
-	for seed := range uint64(3) {
+	for seed := range uint64(6) {
 		t.Run(fmt.Sprint(seed), func(t *testing.T) {
 			tm := newAcmeTeam(t, "member", "")
 			admin, err := reindexAdmin(tm.pool, testConfig(t, tm.url, false), slog.New(slog.NewTextHandler(io.Discard, nil)))
@@ -133,16 +133,16 @@ type writer struct {
 }
 
 // The titles, targets and aliases the writes draw from: titles that repeat
-// and differ only by case or by "ß", a title with ".md", targets of every
-// form the resolution takes, and aliases that are titles too.
+// and differ only by case, by "ß" or by length, a title with ".md", targets
+// of every form the resolution takes, and aliases that are titles too.
 
 func (w writer) title() string {
-	return pickOf(w.rnd, "A", "B", "note", "Note.md", "dup", "Straße", "STRASSE")
+	return pickOf(w.rnd, "A", "B", "AB", "note", "Note.md", "dup", "Straße", "STRASSE")
 }
 
 func (w writer) target() string {
-	return pickOf(w.rnd, "A", "B", "note", "dup", "A/dup", "B/note", "A/B/dup", "../dup", "./note", "../../A", "/A",
-		"/B/dup", "Note.md", "note.md", "A/Note.md", "nick", "Nick", "Straße", "strasse", "missing", "A//B")
+	return pickOf(w.rnd, "A", "B", "note", "dup", "A/dup", "B/note", "AB/dup", "A/B/dup", "../dup", "./note", "../../A", "/A",
+		"/B/dup", "Note.md", "note.MD", "A/Note.md", "nick", "Nick", "Straße", "strasse", "missing", "A//B")
 }
 
 func (w writer) aliases() []string {
@@ -196,7 +196,7 @@ func (w writer) random() (string, bool) {
 	pages := w.pages()
 	pick := func() livePage { return pages[w.rnd.IntN(len(pages))] }
 	parent := func() string {
-		if len(pages) == 0 || w.rnd.IntN(3) == 0 {
+		if len(pages) == 0 || w.rnd.IntN(2) == 0 {
 			return ""
 		}
 		return pick().id

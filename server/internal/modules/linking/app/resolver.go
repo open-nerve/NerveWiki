@@ -65,7 +65,8 @@ func (x Index) resolve(ctx context.Context, notebookID uuid.UUID, links []Link) 
 			if !ok {
 				return nil, fmt.Errorf("linking: the page %s of a link is not a page of %s", l.SourceID, notebookID)
 			}
-			var named, aliased []domain.Node
+			var named []domain.Node
+			aliased := make(map[string][]domain.Node)
 			for _, key := range targets[i].LastKeys() {
 				named = append(named, byKey[key]...)
 				for _, id := range aliasedBy[key] {
@@ -73,9 +74,7 @@ func (x Index) resolve(ctx context.Context, notebookID uuid.UUID, links []Link) 
 					if !ok {
 						return nil, fmt.Errorf("linking: the page %s of an alias is not a page of %s", id, notebookID)
 					}
-					if !slices.ContainsFunc(aliased, func(a domain.Node) bool { return a.ID == id }) {
-						aliased = append(aliased, n)
-					}
+					aliased[key] = append(aliased[key], n)
 				}
 			}
 			r = domain.Resolve(targets[i], from.Path, named, aliased)

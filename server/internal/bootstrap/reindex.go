@@ -24,9 +24,10 @@ import (
 // deleted, one at a time and each in a transaction, on the command line's
 // composition: a pool, the Markdown and its budget as serve's, and the
 // linking module's rebuild; no HTTP server or jobs client. A line a
-// notebook goes to out. A notebook whose siblings' title keys would clash
-// is left as it was, the siblings listed on errOut, with the logs; the
-// command then fails, after the others.
+// notebook goes to out. A notebook whose siblings' title keys would clash,
+// or whose rebuild fails, is left as it was, told on errOut, with the
+// logs; when every notebook is rebuilt, the command then fails, after the
+// others.
 func Reindex(ctx context.Context, cfg config.Config, errOut, out io.Writer, id uuid.UUID) error {
 	c, err := openAdminCommand(ctx, cfg, errOut)
 	if err != nil {
@@ -43,31 +44,44 @@ func Reindex(ctx context.Context, cfg config.Config, errOut, out io.Writer, id u
 			return err
 		}
 	}
-	clashed := 0
+	failed := 0
 	for _, nb := range ids {
 		r, err := admin.Rebuild(ctx, nb)
+		var line string
 		switch {
 		case errors.Is(err, linking.ErrNoNotebook) && id == uuid.Nil():
 			continue // deleted since it was listed
 		case errors.Is(err, linking.ErrNoNotebook):
 			return fmt.Errorf("no notebook %s", nb)
-		case err != nil:
+		case err != nil && (id != uuid.Nil() || ctx.Err() != nil):
 			return fmt.Errorf("notebook %s: %w", nb, err)
+		case err != nil:
+			line = fmt.Sprintf("notebook %s: not reindexed: %v", nb, err)
 		case len(r.Clashes) > 0:
-			clashed++
-			if err := writeLine(errOut, clashLine(nb, r.Clashes)); err != nil {
+			line = clashLine(nb, r.Clashes)
+		default:
+			if err := writeLine(out, fmt.Sprintf("notebook %s: %s, %s, %d unresolved", nb, plural(r.Pages, "page"), plural(r.Links, "link"), r.Unresolved)); err != nil {
 				return err
 			}
 			continue
 		}
-		if err := writeLine(out, fmt.Sprintf("notebook %s: %d pages, %d links, %d unresolved", nb, r.Pages, r.Links, r.Unresolved)); err != nil {
+		failed++
+		if err := writeLine(errOut, line); err != nil {
 			return err
 		}
 	}
-	if clashed > 0 {
-		return fmt.Errorf("%d notebooks not reindexed: their titles listed above would share a key under one parent; rename them, then run reindex again", clashed)
+	if failed > 0 {
+		return fmt.Errorf("%s not reindexed, as listed above: rename the titles that would share a key under one parent, or see the logs, then run reindex again", plural(failed, "notebook"))
 	}
 	return nil
+}
+
+// plural is n things, "1 page", "2 pages".
+func plural(n int, thing string) string {
+	if n == 1 {
+		return "1 " + thing
+	}
+	return fmt.Sprintf("%d %ss", n, thing)
 }
 
 // clashLine tells the siblings of the notebook nb whose title keys would

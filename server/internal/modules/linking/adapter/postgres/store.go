@@ -58,8 +58,16 @@ func (s *Store) ReplacePage(ctx context.Context, p app.Page, f domain.Facts) (ap
 	if err != nil {
 		return app.Dropped{}, err
 	}
+	if err := s.AddPage(ctx, p, f); err != nil {
+		return app.Dropped{}, err
+	}
+	return dropped, nil
+}
+
+// AddPage implements app.Store.
+func (s *Store) AddPage(ctx context.Context, p app.Page, f domain.Facts) error {
 	q := s.queries(ctx)
-	err = q.InsertIndexedPage(ctx, gen.InsertIndexedPageParams{
+	err := q.InsertIndexedPage(ctx, gen.InsertIndexedPageParams{
 		NodeID: p.ID, NotebookID: p.NotebookID, Revision: int32(p.Revision), Extractor: domain.Extractor,
 		FrontmatterValid: f.FrontmatterValid,
 	})
@@ -76,9 +84,9 @@ func (s *Store) ReplacePage(ctx context.Context, p app.Page, f domain.Facts) (ap
 		err = q.InsertAliases(ctx, aliasesParams(p, f.Aliases))
 	}
 	if err != nil {
-		return app.Dropped{}, fmt.Errorf("index page %s: %w", p.ID, err)
+		return fmt.Errorf("index page %s: %w", p.ID, err)
 	}
-	return dropped, nil
+	return nil
 }
 
 func linksParams(p app.Page, links []domain.Link) gen.InsertLinksParams {

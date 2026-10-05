@@ -50,6 +50,9 @@ type Store interface {
 	// ReplacePage has the page's rows hold f, its links resolved to none,
 	// and returns what its rows held before.
 	ReplacePage(ctx context.Context, p Page, f domain.Facts) (Dropped, error)
+	// AddPage has the rows of a page that has none hold f, its links
+	// resolved to none: a rebuild's, after DeleteNotebooks.
+	AddPage(ctx context.Context, p Page, f domain.Facts) error
 	// DeletePages deletes the rows of the pages ids, and returns what they
 	// held.
 	DeletePages(ctx context.Context, ids []uuid.UUID) (Dropped, error)

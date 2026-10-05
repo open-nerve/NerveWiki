@@ -11,6 +11,7 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown/markdowntest"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown/obsidian"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown/tasks"
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
@@ -27,10 +28,11 @@ type resolveCase struct {
 }
 
 // Every link of the fixture set's resolution cases resolves to its page, as
-// extracted by the application's dialect: the cases' ids go in the pages'
-// order, as they would were the pages made in it.
+// extracted by the application's extensions (bootstrap's
+// markdownExtensions): the cases' ids go in the pages' order, as they would
+// were the pages made in it.
 func TestTheResolutionCasesResolveAsWritten(t *testing.T) {
-	m, err := markdown.New([]markdown.Extension{obsidian.Extension()})
+	m, err := markdown.New([]markdown.Extension{tasks.Extension(), obsidian.Extension()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,7 +42,7 @@ func TestTheResolutionCasesResolveAsWritten(t *testing.T) {
 			if err := json.Unmarshal(f.JSON, &c); err != nil {
 				t.Fatal(err)
 			}
-			tree := treeOf(c.Pages, c.Aliases)
+			tree := treeOf(t, c.Pages, c.Aliases)
 			for _, l := range c.Links {
 				links := m.Parse([]byte(l.Link)).Facts().Extracted(obsidian.Name).(obsidian.Extracted).Links
 				if len(links) != 1 {
@@ -52,7 +54,9 @@ func TestTheResolutionCasesResolveAsWritten(t *testing.T) {
 				}
 				want := domain.Resolution{Ambiguous: l.Ambiguous}
 				if l.To != nil {
-					want.ID = tree.ids[*l.To]
+					if want.ID = tree.ids[*l.To]; want.ID == (uuid.UUID{}) {
+						t.Fatalf("%s: to %q, not a page of the case", l.Link, *l.To)
+					}
 				}
 				if got != want {
 					t.Errorf("%s from %s: %s, want %s", l.Link, l.From, tree.name(got), tree.name(want))
@@ -69,14 +73,22 @@ type caseTree struct {
 	aliases map[string][]string // a page's alias keys
 }
 
-func treeOf(pages []string, aliases map[string][]string) caseTree {
+// treeOf is the tree of pages, each after its parent, with aliases.
+func treeOf(t *testing.T, pages []string, aliases map[string][]string) caseTree {
+	t.Helper()
 	tree := caseTree{ids: map[string]uuid.UUID{}, paths: map[string][]domain.Step{}, aliases: map[string][]string{}}
 	for i, p := range pages {
 		var id uuid.UUID
 		id[15] = byte(i + 1)
 		tree.ids[p] = id
-		parent := p[:max(strings.LastIndex(p, "/"), 0)]
-		step := domain.Step{ID: id, Key: shared.TitleKey(p[strings.LastIndex(p, "/")+1:])}
+		parent, name := "", p
+		if at := strings.LastIndex(p, "/"); at >= 0 {
+			parent, name = p[:at], p[at+1:]
+			if _, ok := tree.paths[parent]; !ok {
+				t.Fatalf("the page %q comes before its parent", p)
+			}
+		}
+		step := domain.Step{ID: id, Key: shared.TitleKey(name), Name: name}
 		tree.paths[p] = append(slices.Clone(tree.paths[parent]), step)
 		for _, a := range aliases[p] {
 			tree.aliases[p] = append(tree.aliases[p], shared.TitleKey(a))
@@ -85,17 +97,20 @@ func treeOf(pages []string, aliases map[string][]string) caseTree {
 	return tree
 }
 
-// resolve finds target's candidates as the index does, by the last key, and
-// its aliased pages for a name alone, and resolves it from the page from.
+// resolve finds target's candidates as the index does, by the last keys,
+// and its aliased pages by those keys, and resolves it from the page from.
 func (c caseTree) resolve(target domain.Target, from string) domain.Resolution {
-	var candidates, aliased []domain.Node
+	var candidates []domain.Node
+	aliased := map[string][]domain.Node{}
 	for p, path := range c.paths {
 		node := domain.Node{ID: c.ids[p], Path: path}
 		if slices.Contains(target.LastKeys(), path[len(path)-1].Key) {
 			candidates = append(candidates, node)
 		}
-		if slices.ContainsFunc(c.aliases[p], func(a string) bool { return slices.Contains(target.LastKeys(), a) }) {
-			aliased = append(aliased, node)
+		for _, a := range c.aliases[p] {
+			if slices.Contains(target.LastKeys(), a) {
+				aliased[a] = append(aliased[a], node)
+			}
 		}
 	}
 	return domain.Resolve(target, c.paths[from], candidates, aliased)

@@ -1,0 +1,39 @@
+{
+  "description": "Obsidian 按字符串比较路径的三处，这里按整段：出发文件夹的子树、路径后缀，以及相对路径找不到时不再按后缀找",
+  "source": "nerve-defined",
+  "note": "Obsidian 1.12.7 的 getLinkpathDest 用小写路径的 startsWith、endsWith 比较：YZ/Q/dup 算在 Y 的子树里，XB/item 以 B/item 结尾；相对路径找不到时按算出的路径找后缀（C/leaf 找到 G/C/leaf）。这些是字符串比较的副作用，Obsidian 生成的链接不依赖它们；这里按整段比较，相对路径找不到就解析不到（M6/P3 设计第 2 节）。",
+  "pages": [
+    "Y",
+    "Y/src",
+    "YZ",
+    "YZ/Q",
+    "YZ/Q/dup",
+    "A",
+    "A/dup",
+    "XB",
+    "XB/item",
+    "G",
+    "G/C",
+    "G/C/leaf",
+    "C",
+    "C/src",
+    "src"
+  ],
+  "links": [
+    {
+      "from": "Y/src",
+      "link": "[[dup]]",
+      "to": "A/dup"
+    },
+    {
+      "from": "src",
+      "link": "[[B/item]]",
+      "to": null
+    },
+    {
+      "from": "C/src",
+      "link": "[[./leaf]]",
+      "to": null
+    }
+  ]
+}

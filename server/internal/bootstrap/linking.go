@@ -64,6 +64,25 @@ func (l linkTargets) Subtree(ctx context.Context, notebookID, id uuid.UUID) ([]l
 	return linkSteps(steps), err
 }
 
+func (l linkTargets) PageIDs(ctx context.Context, notebookID uuid.UUID) ([]uuid.UUID, error) {
+	return l.page.PageIDs(ctx, notebookID)
+}
+
+func (l linkTargets) Content(ctx context.Context, id uuid.UUID) (string, int, error) {
+	return l.page.Content(ctx, id)
+}
+
+func (l linkTargets) Rekey(ctx context.Context, notebookID uuid.UUID) ([]linking.Clash, error) {
+	clashes, err := l.page.Rekey(ctx, notebookID)
+	out := make([]linking.Clash, len(clashes))
+	for i, c := range clashes {
+		for _, n := range c {
+			out[i] = append(out[i], linking.NamedNode(n))
+		}
+	}
+	return out, err
+}
+
 func linkNodes(nodes []page.LinkNode) []linking.Node {
 	out := make([]linking.Node, len(nodes))
 	for i, n := range nodes {
@@ -109,23 +128,4 @@ type linkNotebookDeletion struct {
 
 func (d linkNotebookDeletion) NotebookDeleted(ctx context.Context, x notebook.NotebookDeletion) error {
 	return d.linking.NotebookDeleted(ctx, linking.NotebooksDeleted{NotebookIDs: x.NotebookIDs})
-}
-
-func (l linkTargets) PageIDs(ctx context.Context, notebookID uuid.UUID) ([]uuid.UUID, error) {
-	return l.page.PageIDs(ctx, notebookID)
-}
-
-func (l linkTargets) Content(ctx context.Context, id uuid.UUID) (string, int, error) {
-	return l.page.Content(ctx, id)
-}
-
-func (l linkTargets) Rekey(ctx context.Context, notebookID uuid.UUID) ([]linking.Clash, error) {
-	clashes, err := l.page.Rekey(ctx, notebookID)
-	out := make([]linking.Clash, len(clashes))
-	for i, c := range clashes {
-		for _, n := range c {
-			out[i] = append(out[i], linking.NamedNode(n))
-		}
-	}
-	return out, err
 }

@@ -21,7 +21,7 @@ func newReindexCommand(load configLoader) *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			var id uuid.UUID
-			if notebook != "" {
+			if cmd.Flags().Changed("notebook") {
 				var err error
 				if id, err = uuid.Parse(notebook); err != nil || id == uuid.Nil() {
 					return fmt.Errorf("--notebook %q is not a notebook id", notebook)

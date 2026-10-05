@@ -23,7 +23,7 @@ type LinkTargets interface {
 	// path from the root.
 	Paths(ctx context.Context, notebookID uuid.UUID, ids []uuid.UUID) ([]LinkNode, error)
 	// Subtree is the page id of notebookID and the pages not deleted under
-	// it, each its id and title key.
+	// it, each its id, title key and name.
 	Subtree(ctx context.Context, notebookID, id uuid.UUID) ([]LinkStep, error)
 	// PageIDs is the pages not deleted of notebookID, by id (nervewiki
 	// reindex).
@@ -49,10 +49,11 @@ type LinkNode struct {
 	Path []LinkStep
 }
 
-// LinkStep is a page on a path: its id and title key.
+// LinkStep is a page on a path: its id, title key and name.
 type LinkStep struct {
-	ID  uuid.UUID
-	Key string
+	ID   uuid.UUID
+	Key  string
+	Name string
 }
 
 // NewLinkTargets returns LinkTargets over pool alone.
@@ -88,7 +89,7 @@ func (l linkTargets) Subtree(ctx context.Context, notebookID, id uuid.UUID) ([]L
 	var out []LinkStep
 	for _, n := range sub {
 		if n.Node.Kind == domain.KindPage {
-			out = append(out, LinkStep{ID: n.Node.ID, Key: n.Node.NameKey})
+			out = append(out, LinkStep{ID: n.Node.ID, Key: n.Node.NameKey, Name: n.Node.Name})
 		}
 	}
 	return out, nil

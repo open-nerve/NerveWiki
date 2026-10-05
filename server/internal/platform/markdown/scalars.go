@@ -257,7 +257,7 @@ func doubleQuoted(src []byte, at int, value string) (int, []int, bool) {
 var escapes = map[byte]string{ //nolint:gochecknoglobals // read only
 	'0': "\x00", 'a': "\a", 'b': "\b", 't': "\t", '\t': "\t", 'n': "\n", 'v': "\v", 'f': "\f",
 	'r': "\r", 'e': "\x1b", ' ': " ", '"': "\"", '/': "/", '\\': "\\",
-	'N': "\u0085", '_': " ", 'L': " ", 'P': " ",
+	'N': "\u0085", '_': " ", 'L': "\u2028", 'P': "\u2029",
 }
 
 // unescape reads the escape at the head of b: the bytes it stands for and

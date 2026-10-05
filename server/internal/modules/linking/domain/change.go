@@ -27,8 +27,8 @@ type Change struct {
 }
 
 // relocates reports whether c may change where links resolve by the tree:
-// it creates its node, deletes it, renames it to another key or moves it
-// under another parent. A move among siblings does not.
+// it creates its node, deletes it, renames it or moves it under another
+// parent. A move among siblings does not.
 func (c Change) relocates() bool {
 	if c.Before == nil || c.After == nil {
 		return c.Before != c.After
@@ -36,10 +36,15 @@ func (c Change) relocates() bool {
 	return c.renames() || !sameParent(c.Before.ParentID, c.After.ParentID)
 }
 
-// renames reports whether c gives its node another title key, which every
-// node under it has on its path.
+// renames reports whether c gives its node another name where links
+// resolve by it, which every node under it has on its path: another key, or
+// the same key of another length (Node.length).
 func (c Change) renames() bool {
-	return c.Before != nil && c.After != nil && shared.TitleKey(c.Before.Name) != shared.TitleKey(c.After.Name)
+	if c.Before == nil || c.After == nil {
+		return false
+	}
+	before, after := c.Before.Name, c.After.Name
+	return shared.TitleKey(before) != shared.TitleKey(after) || units(before) != units(after)
 }
 
 func sameParent(a, b *uuid.UUID) bool {
@@ -76,11 +81,14 @@ func (r *Reach) Compact() {
 }
 
 // Affected is what a unit's changes reach, but for the pages under the
-// nodes they rename, which the caller reads and adds: every node changed,
-// by its keys before and after and by its id. A move lists the nodes under
-// the one it moves, and a deletion those it deletes. It is false for a
-// unit the index has nothing to do for: one that writes no content of a
-// page it leaves, and relocates no node.
+// nodes they rename, which the caller reads and adds, and the aliases'
+// keys, which the caller adds too. A unit that relocates a node reaches
+// every node changed, by its keys before and after and by its id: a move
+// lists the nodes under the one it moves, and a deletion those it deletes.
+// One that relocates none reaches the pages whose content it writes, by
+// their ids, as sources alone. It is false for a unit the index has
+// nothing to do for: one that writes no content of a page it leaves, and
+// relocates no node.
 //
 // The links a unit may resolve anew are those its changes may resolve
 // otherwise (M6/P3 design 3.4): where a link resolves depends on the pages
@@ -90,14 +98,22 @@ func (r *Reach) Compact() {
 // under it, whose links to them and keys are reached, and the keys of
 // their aliases, which the caller adds; a page's place changes only when it
 // moves, and its links are reached; aliases change only with a content,
-// whose aliases' keys the caller adds.
+// whose aliases' keys, those it drops and those it adds, the caller adds.
+// A content written changes none of these but its own links and aliases.
 func Affected(changes []Change) (r Reach, renamed []uuid.UUID, ok bool) {
+	moves := slices.ContainsFunc(changes, Change.relocates)
 	for _, c := range changes {
-		ok = ok || c.Revision != 0 && c.After != nil || c.relocates()
-		for _, p := range []*Place{c.Before, c.After} {
-			if p != nil {
-				r.Add(Step{ID: c.NodeID, Key: shared.TitleKey(p.Name)})
+		written := c.Revision != 0 && c.After != nil
+		ok = ok || written || moves
+		switch {
+		case moves:
+			for _, p := range []*Place{c.Before, c.After} {
+				if p != nil {
+					r.Add(Step{ID: c.NodeID, Key: shared.TitleKey(p.Name)})
+				}
 			}
+		case written:
+			r.Sources = append(r.Sources, c.NodeID)
 		}
 		if c.renames() {
 			renamed = append(renamed, c.NodeID)

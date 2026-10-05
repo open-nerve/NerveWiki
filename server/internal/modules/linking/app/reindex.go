@@ -134,8 +134,8 @@ func (r Rebuild) Notebook(ctx context.Context, notebookID uuid.UUID) (Rebuilt, e
 	return out, err
 }
 
-// page has the rows of the page id hold the facts of its content, its
-// links resolved to none.
+// page has the rows of the page id, which has none, hold the facts of its
+// content, its links resolved to none.
 func (r Rebuild) page(ctx context.Context, notebookID, id uuid.UUID) error {
 	content, revision, err := r.Contents.Content(ctx, id)
 	if err != nil {
@@ -145,6 +145,5 @@ func (r Rebuild) page(ctx context.Context, notebookID, id uuid.UUID) error {
 	if err != nil {
 		return err
 	}
-	_, err = r.Index.Store.ReplacePage(ctx, Page{ID: id, NotebookID: notebookID, Revision: revision}, facts)
-	return err
+	return r.Index.Store.AddPage(ctx, Page{ID: id, NotebookID: notebookID, Revision: revision}, facts)
 }

@@ -151,12 +151,16 @@ obsidian/verify-resolve.mjs  解析与真实的 Obsidian 核对
 - 样例或其中的链接是 `nerve-defined` 时，样例的 `note` 写明差异与理由。
 - 样例里页面的 id 按 `pages` 的次序递增，与新建的先后一致。
 
-解析的次序（前一步找到就停；最后一段以 `.md` 结尾的，每一步先去掉 `.md` 试，再原样试）：
+先定目标的写法：最后一段以 `.md` 结尾（不分大小写）的，笔记本里任何地方有去掉 `.md` 的那个名称的页时，读作去掉 `.md` 的；没有时读作原样（标题以 `.md` 结尾的页）。之后每一步只用这一种写法（Obsidian 的 `getLinkpathDest` 如此）。
+
+解析的次序（前一步找到就停）：
 
 1. **相对**：以 `./`、`../` 开头的，从出发页的父页（根下的页是笔记本根）起，`..` 每个上一层（到根为止），再按段往下。找不到就解析不到。
 2. **从根起**：以 `/` 开头的，或者目标恰好是某页从根起的路径（单个名称也算）。
-3. **路径后缀**：页面的路径以目标的各段结尾（按整段对齐）。多个时先选在出发页父页的子树里的，再选层数少的，再按 id，并标记歧义。
-4. **别名**：只对单个名称。多个时同第 3 步。
+3. **路径后缀**：页面的路径以目标的各段结尾（按整段对齐）。多个时先选在出发页父页的子树里的，再选路径短的（导出路径的字符数，按 JavaScript 的计法，即 UTF-16 码元，与层数无关），再按 id，并标记歧义。
+4. **别名**：只对单个名称；以 `.md` 结尾的，先按去掉 `.md` 的别名，再按原样的。多个时同第 3 步。
+
+Obsidian 用小写路径的字符串前缀、后缀比较子树与路径后缀，相对路径找不到时还按算出的路径找后缀；这里按整段比较，相对路径找不到就解析不到（样例 015，`nerve-defined`）。
 
 核对：
 
@@ -166,7 +170,7 @@ node tools/md-fixtures/obsidian/verify-resolve.mjs prepare /tmp/nwiki-resolve
 node tools/md-fixtures/obsidian/verify-resolve.mjs check /tmp/nwiki-resolve
 ```
 
-每条链接单独放在出发页所在的文件夹里的一个文件中，读 Obsidian 的 `resolvedLinks`。`obsidian-verified` 必须一致；`nerve-defined` 只报告差异。
+每条链接单独放在出发页所在的文件夹里的一个文件中，读 Obsidian 的 `resolvedLinks` 与 `unresolvedLinks`（等每个文件都有了它们）；每个文件要恰好一条链接。`obsidian-verified` 必须一致；`nerve-defined` 只报告差异。`prepare` 会清空工作目录，所以只接受它自己准备过的目录或空目录。
 
 ## 新增样例
 

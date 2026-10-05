@@ -15,7 +15,7 @@ import (
 func pathOf(nodes ...domain.Node) postgresadapter.LinkPath {
 	p := postgresadapter.LinkPath{ID: nodes[len(nodes)-1].ID}
 	for _, n := range nodes {
-		p.Steps = append(p.Steps, postgresadapter.LinkStep{ID: n.ID, Key: n.NameKey})
+		p.Steps = append(p.Steps, postgresadapter.LinkStep{ID: n.ID, Key: n.NameKey, Name: n.Name})
 	}
 	return p
 }
@@ -67,15 +67,23 @@ func TestLinkTargetsAreTheNotebooksPagesWithTheirPaths(t *testing.T) {
 	}
 }
 
-// A path that loops never reaches a root: a defect, which the read reports
-// rather than answering a path cut short.
-func TestALinkTargetsPathThatLoopsIsAnError(t *testing.T) {
+// A path that loops, or goes through a deleted page, never reaches a root:
+// a defect, which the read reports rather than answering a path cut short
+// or one through the trash.
+func TestALinkTargetsPathThatReachesNoRootIsAnError(t *testing.T) {
 	f := newFixture(t)
+	ctx := context.Background()
 	a := f.page(t, f.eng, nil, "A", 0)
 	b := f.page(t, f.eng, &a.ID, "B", 0)
 	f.exec(t, "UPDATE nodes SET parent_id = $1 WHERE id = $2", b.ID, a.ID)
-	if got, err := f.s.LinkTargetsByIDs(context.Background(), f.eng, []uuid.UUID{b.ID}); err == nil {
+	if got, err := f.s.LinkTargetsByIDs(ctx, f.eng, []uuid.UUID{b.ID}); err == nil {
 		t.Errorf("a loop's path = %+v, want an error", got)
+	}
+	c := f.page(t, f.eng, nil, "C", 1)
+	d := f.page(t, f.eng, &c.ID, "D", 0)
+	f.exec(t, "UPDATE nodes SET deleted_at = now() WHERE id = $1", c.ID)
+	if got, err := f.s.LinkTargetsByKeys(ctx, f.eng, []string{"d"}); err == nil {
+		t.Errorf("the path of %s under a deleted page = %+v, want an error", d.ID, got)
 	}
 }
 
@@ -99,5 +107,24 @@ func TestSetNameKeysSetsTheNodesNotDeleted(t *testing.T) {
 	gone.NameKey = "new"
 	if err := f.s.SetNameKeys(ctx, []domain.Node{gone}); err == nil {
 		t.Error("a deleted node's key was set")
+	}
+}
+
+// Siblings' keys set at once may each take another's old one, x's y while
+// y's goes to z, in either order: no key is held twice on the way.
+func TestSetNameKeysPassesKeysOnAmongSiblings(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	x := f.page(t, f.eng, nil, "X", 0)
+	y := f.page(t, f.eng, nil, "Y", 1)
+	x.NameKey, y.NameKey = "y", "z"
+	for _, nodes := range [][]domain.Node{{x, y}, {y, x}} {
+		f.exec(t, "UPDATE nodes SET name_key = lower(name) WHERE id = ANY($1)", []uuid.UUID{x.ID, y.ID})
+		if err := f.s.SetNameKeys(ctx, nodes); err != nil {
+			t.Fatalf("set the keys in the order %s, %s: %v", nodes[0].Name, nodes[1].Name, err)
+		}
+		if n := f.count(t, "SELECT count(*) FROM nodes WHERE id = $1 AND name_key = 'y' OR id = $2 AND name_key = 'z'", x.ID, y.ID); n != 2 {
+			t.Errorf("in the order %s, %s, %d keys set, want 2", nodes[0].Name, nodes[1].Name, n)
+		}
 	}
 }

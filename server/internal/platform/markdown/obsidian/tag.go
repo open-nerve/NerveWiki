@@ -86,16 +86,26 @@ func (tagParser) Parse(parent ast.Node, block text.Reader, _ parser.Context) ast
 	return t
 }
 
-// IsTag tells whether name, without its '#', is a tag's (rule 9): tag
-// runes, not all ASCII digits. A frontmatter's tags count only when they
-// are, as Obsidian's tag pane counts them.
-func IsTag(name string) bool {
-	for _, r := range name {
-		if !isTagRune(r) {
-			return false
-		}
+// CountedTag is the tag Obsidian's tag pane counts for name, a tag's name
+// or a frontmatter's tag, without its '#' (its getTags, read from its
+// code): name without one '/' it ends with, if that is not empty, not all
+// ASCII digits, and has none of the characters the pane refuses, white
+// space as JavaScript's \s takes it, the General and Supplemental
+// Punctuation blocks, and ASCII's !"#$%&'()*+,.:;<=>?@[\]^`{|}~. A body's
+// tag is one but for its last '/'.
+func CountedTag(name string) (string, bool) {
+	name = strings.TrimSuffix(name, "/")
+	if strings.ContainsFunc(name, refused) || !isTagName([]byte(name)) {
+		return "", false
 	}
-	return isTagName([]byte(name))
+	return name, true
+}
+
+// refused tells whether Obsidian's tag pane refuses r in a tag.
+func refused(r rune) bool {
+	return r == '\uFEFF' || r != '\u0085' && unicode.IsSpace(r) ||
+		'\u2000' <= r && r <= '\u206F' || '\u2E00' <= r && r <= '\u2E7F' ||
+		r < utf8.RuneSelf && strings.ContainsRune(`!"#$%&'()*+,.:;<=>?@[\]^`+"`"+`{|}~`, r)
 }
 
 // isTagName tells whether name, of tag runes, is one: not empty, not all

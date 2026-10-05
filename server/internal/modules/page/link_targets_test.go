@@ -68,8 +68,8 @@ func TestTheLinkIndexReadsTheNotebooksPages(t *testing.T) {
 	l := newLinkTree(t)
 	ctx := context.Background()
 	targets := page.NewLinkTargets(l.pool)
-	a := page.LinkStep{ID: l.a, Key: "a"}
-	b := page.LinkStep{ID: l.b, Key: "b"}
+	a := page.LinkStep{ID: l.a, Key: "a", Name: "A"}
+	b := page.LinkStep{ID: l.b, Key: "b", Name: "B"}
 
 	got, err := targets.ByKeys(ctx, l.notebook, []string{"b", "c", "b.png"})
 	if err != nil {

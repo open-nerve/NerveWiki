@@ -16,10 +16,11 @@ type LinkPath struct {
 	Steps []LinkStep
 }
 
-// LinkStep is a page on a path: its id and title key.
+// LinkStep is a page on a path: its id, title key and name.
 type LinkStep struct {
-	ID  uuid.UUID
-	Key string
+	ID   uuid.UUID
+	Key  string
+	Name string
 }
 
 // LinkTargetsByKeys is the pages not deleted of notebookID whose title key
@@ -47,8 +48,8 @@ func (s *Store) LinkTargetsByIDs(ctx context.Context, notebookID uuid.UUID, ids 
 }
 
 // linkPaths groups rows, each a step of a page's path, the root's first,
-// into the pages' paths. A path that does not reach a root is a defect: the
-// bound of the query cut a loop.
+// into the pages' paths. A path that does not reach a root is a defect: it
+// meets a deleted node, or the bound of the query cut a loop.
 func linkPaths(rows []gen.LinkTargetsByKeysRow) ([]LinkPath, error) {
 	var out []LinkPath
 	for _, r := range rows {
@@ -59,25 +60,31 @@ func linkPaths(rows []gen.LinkTargetsByKeysRow) ([]LinkPath, error) {
 			out = append(out, LinkPath{ID: r.PageID})
 		}
 		last := &out[len(out)-1]
-		last.Steps = append(last.Steps, LinkStep{ID: r.ID, Key: r.NameKey})
+		last.Steps = append(last.Steps, LinkStep{ID: r.ID, Key: r.NameKey, Name: r.Name})
 	}
 	return out, nil
 }
 
-// SetNameKeys sets each of nodes' title key to its NameKey; a node it does
-// not find, deleted or none, is an error.
+// SetNameKeys sets each of nodes' title key to its NameKey, which may be
+// another's old one: first to a key of its own, then to its new one. A node
+// it does not find, deleted or none, is an error.
 func (s *Store) SetNameKeys(ctx context.Context, nodes []domain.Node) error {
 	var p gen.SetNameKeysParams
 	for _, n := range nodes {
 		p.Ids = append(p.Ids, n.ID)
 		p.NameKeys = append(p.NameKeys, n.NameKey)
 	}
-	n, err := s.queries(ctx).SetNameKeys(ctx, p)
+	q := s.queries(ctx)
+	unset, err := q.UnsetNameKeys(ctx, p.Ids)
+	if err != nil {
+		return fmt.Errorf("unset name keys: %w", err)
+	}
+	set, err := q.SetNameKeys(ctx, p)
 	if err != nil {
 		return fmt.Errorf("set name keys: %w", err)
 	}
-	if int(n) != len(nodes) {
-		return fmt.Errorf("set the name keys of %d nodes, of %d", n, len(nodes))
+	if int(unset) != len(nodes) || int(set) != len(nodes) {
+		return fmt.Errorf("set the name keys of %d nodes, of %d", min(unset, set), len(nodes))
 	}
 	return nil
 }

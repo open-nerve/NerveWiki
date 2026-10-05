@@ -30,10 +30,11 @@ func (tm acmeTeam) interleaveOnIndex(t *testing.T, nb string, first, second step
 }
 
 // Two content writes of a notebook, which hold its row FOR SHARE and may
-// run at once, keep its index one after the other: one page gains the
-// alias x while another writes [[x]], and whichever comes first, the link
-// resolves to the alias's page. Without the index's lock, each would miss
-// the other's rows, and the link would resolve to none.
+// run at once, keep its index one after the other at its lock of the
+// index: one page gains the alias x while another writes [[x]], and
+// whichever comes first, the link resolves to the alias's page, the second
+// writer reading what the first committed. Without the lock, nothing would
+// order them, and each could miss the other's rows.
 func TestTwoContentWritesKeepTheIndexOneAfterTheOther(t *testing.T) {
 	for _, aliasFirst := range []bool{true, false} {
 		t.Run(fmt.Sprintf("the alias first: %v", aliasFirst), func(t *testing.T) {
@@ -113,4 +114,27 @@ func TestReindexSkipsANotebookDeletedMeanwhile(t *testing.T) {
 	if err := <-done; err != nil || stdout.String() != fmt.Sprintf("notebook %s: 0 pages, 0 links, 0 unresolved\n", first) {
 		t.Errorf("reindex = %q, %v: %s; want the first notebook's line alone", stdout.String(), err, stderr.String())
 	}
+}
+
+// A reindex of a notebook behind a content write of it in flight, which
+// holds the notebook's row FOR SHARE and waits at its content's row, waits
+// at the notebook's row before it takes the index's lock: the write then
+// takes that lock, and both end. Taken the other way round, the reindex
+// would hold the index's lock and wait for the row, the write would wait
+// for the index's lock, and the two would deadlock.
+func TestAReindexWaitsAtTheNotebooksRowBeforeTheIndexsLock(t *testing.T) {
+	tm := newAcmeTeam(t, "member", "")
+	nb := tm.openNotebook(t, "alice", "Eng")
+	b := tm.createPage(t, "alice", nb, "", "B")
+	src := tm.createPage(t, "alice", nb, "", "Src")
+	cfg := testConfig(t, tm.url, false)
+	var stdout, stderr bytes.Buffer
+	reindex := step{command: func() error { return Reindex(context.Background(), cfg, &stderr, &stdout, uuid.MustParse(nb)) }}
+	row := held{"page_contents", fmt.Sprintf("SELECT 1 FROM page_contents WHERE node_id = '%s' FOR NO KEY UPDATE", src)}
+	write, re := tm.interleaveBehind(t, row, contentWrite("alice", src, "[[B]]", 1, ""), reindex, "notebooks")
+	if write.status != http.StatusOK || re.err != nil {
+		t.Fatalf("the write = %d %s, the reindex = %v %s; want both to end", write.status, write.body, re.err, stderr.String())
+	}
+	tm.resolves(t, src, b)
+	checkPages(t, tm.pool)
 }

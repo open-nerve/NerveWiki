@@ -1,6 +1,10 @@
 package domain
 
-import "github.com/open-nerve/NerveWiki/server/internal/shared"
+import (
+	"slices"
+
+	"github.com/open-nerve/NerveWiki/server/internal/shared"
+)
 
 // Extractor is the version of what a page's facts are, which the index
 // records of each page (indexed_pages.extractor): a release that changes it
@@ -32,14 +36,22 @@ type Link struct {
 	End      int
 }
 
-// Keys are the title keys a page must have to be l's target: none when its
-// target resolves to nothing whatever the tree.
+// MaxKey is the most bytes of a title key the index keeps: twice a title's
+// most, which no title's key comes near (a title has at most 255 bytes, and
+// its key at most about twice as many). A link whose target's last key is
+// longer resolves to nothing whatever the tree, and an alias or a tag with
+// a longer key is not kept: the index's keys stay within PostgreSQL's
+// bound of a B-tree's entry.
+const MaxKey = 1024
+
+// Keys are the title keys a page must have to be l's target, each within
+// MaxKey: none when its target resolves to nothing whatever the tree.
 func (l Link) Keys() []string {
 	t, ok := ParseTarget(l.Target)
 	if !ok {
 		return nil
 	}
-	return t.LastKeys()
+	return slices.DeleteFunc(t.LastKeys(), func(k string) bool { return len(k) > MaxKey })
 }
 
 // Tag is a tag of a page, one a title key: as first written, and how often
@@ -64,12 +76,16 @@ type Alias struct {
 }
 
 // TagsOf is the tags of names, a page's in the order written, without
-// their '#': one a title key, as first written, with how often.
+// their '#': one a title key, as first written, with how often; none whose
+// key is longer than MaxKey.
 func TagsOf(names []string) []Tag {
 	var out []Tag
 	at := map[string]int{}
 	for _, name := range names {
 		key := shared.TitleKey(name)
+		if len(key) > MaxKey {
+			continue
+		}
 		if i, ok := at[key]; ok {
 			out[i].Count++
 			continue
@@ -81,13 +97,13 @@ func TagsOf(names []string) []Tag {
 }
 
 // AliasesOf is the aliases of names, a page's in the order written: one a
-// title key, as first written.
+// title key, as first written; none whose key is longer than MaxKey.
 func AliasesOf(names []string) []Alias {
 	var out []Alias
 	seen := map[string]bool{}
 	for _, name := range names {
 		key := shared.TitleKey(name)
-		if !seen[key] {
+		if len(key) <= MaxKey && !seen[key] {
 			seen[key] = true
 			out = append(out, Alias{Key: key, Name: name})
 		}

@@ -29,8 +29,8 @@ type Index struct {
 // drops those of the pages it deleted, resolves anew the links e reaches,
 // sets those that resolve otherwise, and publishes the links event of
 // what changed. It reaches what domain.Affected does, the pages under the
-// nodes it renamed, and the keys of every alias of those pages, of those
-// it wrote and of those it deleted.
+// nodes it renamed, the keys of every alias of those pages and of those it
+// deleted, and the keys of the aliases a content it wrote drops or adds.
 func (x Index) PagesChanged(ctx context.Context, e PagesChanged) error {
 	reach, renamed, ok := domain.Affected(e.Changes)
 	if !ok {
@@ -48,10 +48,7 @@ func (x Index) PagesChanged(ctx context.Context, e PagesChanged) error {
 				return err
 			}
 			written, dropped = append(written, c.NodeID), append(dropped, old.Targets...)
-			reach.Keys = append(reach.Keys, old.AliasKeys...)
-			for _, a := range c.Facts.Aliases {
-				reach.Keys = append(reach.Keys, a.Key)
-			}
+			reach.Keys = append(reach.Keys, changedAliases(old.AliasKeys, c.Facts.Aliases)...)
 		case c.After == nil && c.Before != nil:
 			deleted = append(deleted, c.NodeID)
 		}
@@ -117,11 +114,35 @@ func (x Index) publish(ctx context.Context, e PagesChanged, links, changed []Lin
 		}
 		targets = append(targets, old.ID, l.Resolution.ID)
 	}
-	pages, targets = eventPages(pages), eventPages(slices.DeleteFunc(targets, func(id uuid.UUID) bool { return id == uuid.Nil() }))
+	targets = slices.DeleteFunc(targets, func(id uuid.UUID) bool { return id == uuid.Nil() })
 	if len(pages) == 0 && len(targets) == 0 {
 		return nil
 	}
-	return x.Publisher.LinksChanged(ctx, LinksChanged{WorkspaceID: e.WorkspaceID, NotebookID: e.NotebookID, Pages: pages, Targets: targets})
+	return x.Publisher.LinksChanged(ctx, LinksChanged{
+		WorkspaceID: e.WorkspaceID, NotebookID: e.NotebookID, Pages: eventPages(pages), Targets: eventPages(targets),
+	})
+}
+
+// changedAliases is the keys of the aliases a page had, before, or has,
+// after, but not both.
+func changedAliases(before []string, after []domain.Alias) []string {
+	now := make(map[string]bool, len(after))
+	for _, a := range after {
+		now[a.Key] = true
+	}
+	var out []string
+	for _, k := range before {
+		if !now[k] {
+			out = append(out, k)
+		}
+		delete(now, k)
+	}
+	for _, a := range after {
+		if now[a.Key] {
+			out = append(out, a.Key)
+		}
+	}
+	return out
 }
 
 // linkKey is a link's key: its page and where its target is written.

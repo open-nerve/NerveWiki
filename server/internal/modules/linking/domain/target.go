@@ -4,6 +4,7 @@
 package domain
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
@@ -12,7 +13,8 @@ import (
 // Target is a link's target cut into what its resolution reads: whether it
 // is relative (written from "./" or "../", Up the "../"), from the root (a
 // leading "/"), and its segments' title keys, the last one without its
-// ".md" when it was written with one; AltLast is then the last one with it.
+// ".md", in any case, when it was written with one; AltLast is then the
+// last one with it.
 type Target struct {
 	Relative bool
 	Up       int
@@ -45,9 +47,9 @@ func ParseTarget(target string) (Target, bool) {
 		}
 	}
 	last := segments[len(segments)-1]
-	if stem, ok := strings.CutSuffix(last, ".md"); ok && stem != "" {
+	if n := len(last) - len(".md"); n > 0 && strings.EqualFold(last[n:], ".md") {
 		t.AltLast = shared.TitleKey(last)
-		segments[len(segments)-1] = stem
+		segments[len(segments)-1] = last[:n]
 	}
 	t.Keys = make([]string, len(segments))
 	for i, s := range segments {
@@ -65,13 +67,14 @@ func (t Target) LastKeys() []string {
 	return []string{t.Keys[len(t.Keys)-1], t.AltLast}
 }
 
-// forms are the key paths the target may be written as: without the
-// ".md", then with it.
-func (t Target) forms() [][]string {
-	out := [][]string{t.Keys}
-	if t.AltLast != "" {
-		alt := append(append([]string(nil), t.Keys[:len(t.Keys)-1]...), t.AltLast)
-		out = append(out, alt)
+// form is the key path the target is read as among candidates, the pages
+// with one of its LastKeys (M6/P3 design 2), as Obsidian reads it: written
+// with ".md", it is the page without it when the notebook has a page of
+// that name anywhere, and the page with it otherwise.
+func (t Target) form(candidates []Node) []string {
+	stem := t.Keys[len(t.Keys)-1]
+	if t.AltLast == "" || slices.ContainsFunc(candidates, func(c Node) bool { return c.key() == stem }) {
+		return t.Keys
 	}
-	return out
+	return append(slices.Clone(t.Keys[:len(t.Keys)-1]), t.AltLast)
 }

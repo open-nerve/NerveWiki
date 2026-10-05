@@ -13,16 +13,16 @@ import (
 
 const linkTargetsByIDs = `-- name: LinkTargetsByIDs :many
 WITH RECURSIVE chain AS (
-    SELECT n.id AS page_id, n.id, n.parent_id, n.name_key, 0 AS up
+    SELECT n.id AS page_id, n.id, n.parent_id, n.name, n.name_key, 0 AS up
     FROM nodes n
     WHERE n.notebook_id = $1 AND n.id = ANY($2::uuid[])
         AND n.kind = 'page' AND n.deleted_at IS NULL
     UNION ALL
-    SELECT c.page_id, p.id, p.parent_id, p.name_key, c.up + 1
+    SELECT c.page_id, p.id, p.parent_id, p.name, p.name_key, c.up + 1
     FROM chain c JOIN nodes p ON p.notebook_id = $1 AND p.id = c.parent_id
-    WHERE c.up < 64
+    WHERE c.up < 64 AND p.deleted_at IS NULL
 )
-SELECT page_id, id, parent_id, name_key, up::integer AS up FROM chain ORDER BY page_id, up DESC
+SELECT page_id, id, parent_id, name, name_key, up::integer AS up FROM chain ORDER BY page_id, up DESC
 `
 
 type LinkTargetsByIDsParams struct {
@@ -34,6 +34,7 @@ type LinkTargetsByIDsRow struct {
 	PageID   uuid.UUID
 	ID       uuid.UUID
 	ParentID *uuid.UUID
+	Name     string
 	NameKey  string
 	Up       int32
 }
@@ -53,6 +54,7 @@ func (q *Queries) LinkTargetsByIDs(ctx context.Context, arg LinkTargetsByIDsPara
 			&i.PageID,
 			&i.ID,
 			&i.ParentID,
+			&i.Name,
 			&i.NameKey,
 			&i.Up,
 		); err != nil {
@@ -68,16 +70,16 @@ func (q *Queries) LinkTargetsByIDs(ctx context.Context, arg LinkTargetsByIDsPara
 
 const linkTargetsByKeys = `-- name: LinkTargetsByKeys :many
 WITH RECURSIVE chain AS (
-    SELECT n.id AS page_id, n.id, n.parent_id, n.name_key, 0 AS up
+    SELECT n.id AS page_id, n.id, n.parent_id, n.name, n.name_key, 0 AS up
     FROM nodes n
     WHERE n.notebook_id = $1 AND n.name_key = ANY($2::text[])
         AND n.kind = 'page' AND n.deleted_at IS NULL
     UNION ALL
-    SELECT c.page_id, p.id, p.parent_id, p.name_key, c.up + 1
+    SELECT c.page_id, p.id, p.parent_id, p.name, p.name_key, c.up + 1
     FROM chain c JOIN nodes p ON p.notebook_id = $1 AND p.id = c.parent_id
-    WHERE c.up < 64
+    WHERE c.up < 64 AND p.deleted_at IS NULL
 )
-SELECT page_id, id, parent_id, name_key, up::integer AS up FROM chain ORDER BY page_id, up DESC
+SELECT page_id, id, parent_id, name, name_key, up::integer AS up FROM chain ORDER BY page_id, up DESC
 `
 
 type LinkTargetsByKeysParams struct {
@@ -89,13 +91,15 @@ type LinkTargetsByKeysRow struct {
 	PageID   uuid.UUID
 	ID       uuid.UUID
 	ParentID *uuid.UUID
+	Name     string
 	NameKey  string
 	Up       int32
 }
 
 // The pages not deleted of a notebook whose title key is one of keys, each with its path from the root (the link
-// index's candidates, M6/P3 design 3.3): a row a step of a page's path, its own the step 0 up. The bound stops
-// a chain that loops, which only a defect could make.
+// index's candidates, M6/P3 design 3.3): a row a step of a page's path, its own the step 0 up. The chain stops at
+// a deleted node, and the bound at a chain that loops, both of which only a defect could make: such a path reaches
+// no root.
 func (q *Queries) LinkTargetsByKeys(ctx context.Context, arg LinkTargetsByKeysParams) ([]LinkTargetsByKeysRow, error) {
 	rows, err := q.db.Query(ctx, linkTargetsByKeys, arg.NotebookID, arg.Keys)
 	if err != nil {
@@ -109,6 +113,7 @@ func (q *Queries) LinkTargetsByKeys(ctx context.Context, arg LinkTargetsByKeysPa
 			&i.PageID,
 			&i.ID,
 			&i.ParentID,
+			&i.Name,
 			&i.NameKey,
 			&i.Up,
 		); err != nil {
@@ -137,6 +142,22 @@ type SetNameKeysParams struct {
 // neither updated_at nor a changeset moves.
 func (q *Queries) SetNameKeys(ctx context.Context, arg SetNameKeysParams) (int64, error) {
 	result, err := q.db.Exec(ctx, setNameKeys, arg.Ids, arg.NameKeys)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const unsetNameKeys = `-- name: UnsetNameKeys :execrows
+UPDATE nodes SET name_key = chr(1) || id::text
+WHERE id = ANY($1::uuid[]) AND deleted_at IS NULL
+`
+
+// Each node's title key, before nervewiki reindex sets it anew (M6/P3 design 3.6), a value of its own that no
+// name's key is (a title has no control character): one statement sets every key, and the unique index of the
+// siblings' keys is checked row by row, so a key set to another's old one would clash before that one moves.
+func (q *Queries) UnsetNameKeys(ctx context.Context, ids []uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, unsetNameKeys, ids)
 	if err != nil {
 		return 0, err
 	}

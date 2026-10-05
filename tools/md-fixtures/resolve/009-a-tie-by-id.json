@@ -1,5 +1,5 @@
 {
-  "description": "层数也相同时按 id，并标记歧义",
+  "description": "路径一样长时按 id，并标记歧义",
   "source": "nerve-defined",
   "note": "Obsidian 这时没有稳定的规则：两次运行分别选了 ab/sib 与 aa/sib。按 id 选，id 随新建的先后，并在索引里记下歧义（M10 的 lint）。样例的 id 按 pages 的次序。",
   "pages": ["aa", "aa/sib", "ab", "ab/sib", "src"],

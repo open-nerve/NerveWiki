@@ -8,8 +8,8 @@ import (
 )
 
 // A target is cut into whether it is relative, how far up, whether it is
-// from the root, and its segments' title keys, the last without ".md" and
-// with it; an empty segment, or "." or ".." past its head, is none.
+// from the root, and its segments' title keys, the last without ".md", in
+// any case, and with it; an empty segment, or "." or ".." past its head, is none.
 func TestATargetIsCutIntoItsSegmentsKeys(t *testing.T) {
 	tests := []struct {
 		target string
@@ -24,6 +24,9 @@ func TestATargetIsCutIntoItsSegmentsKeys(t *testing.T) {
 		{"/A/Note", domain.Target{Rooted: true, Keys: []string{"a", "note"}}, true},
 		{"A/Note.md", domain.Target{Keys: []string{"a", "note"}, AltLast: "note.md"}, true},
 		{"Note.md.md", domain.Target{Keys: []string{"note.md"}, AltLast: "note.md.md"}, true},
+		{"Note.MD", domain.Target{Keys: []string{"note"}, AltLast: "note.md"}, true},
+		{"Note.mD", domain.Target{Keys: []string{"note"}, AltLast: "note.md"}, true},
+		{"Notemd", domain.Target{Keys: []string{"notemd"}}, true},
 		{".md", domain.Target{Keys: []string{".md"}}, true},
 		{"Straße", domain.Target{Keys: []string{"strasse"}}, true},
 		{"", domain.Target{}, false},

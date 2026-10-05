@@ -16,37 +16,44 @@ import (
 )
 
 // PageFacts is what the index keeps of facts, the platform's facts of a
-// page's content: the links the obsidian extension took, the frontmatter's
-// tags before the body's, its aliases, and its properties. Facts of
-// another kind are an error.
+// page's content: the links the obsidian extension took, the tags, the
+// frontmatter's before the body's, its aliases, and its properties, each
+// U+0000 written as U+FFFD, which PostgreSQL's text does not hold. Facts
+// of another kind, or without the obsidian extension's, are an error.
 //
 // The frontmatter's tags and aliases are read as Obsidian 1.12.7 reads
 // them (parseFrontMatterTags, parseFrontMatterAliases): the first key that
 // is "tags" or "aliases" but for ASCII case; a string is one, trimmed, and
-// a list's strings are; an empty one is none. A tag is one by rule 9,
-// after one '#' it may start with, as Obsidian's tag pane counts them.
+// a list's strings are; an empty one is none. A tag, after one '#' it may
+// start with, is one as Obsidian's tag pane counts it (obsidian.CountedTag),
+// a body's too.
 func PageFacts(facts any) (domain.Facts, error) {
 	f, ok := facts.(markdown.Facts)
 	if !ok {
 		return domain.Facts{}, fmt.Errorf("linking: a page's facts are %T, not the Markdown's", facts)
 	}
+	x, ok := f.Extracted(obsidian.Name).(obsidian.Extracted)
+	if !ok {
+		return domain.Facts{}, fmt.Errorf("linking: a page's facts have no %s extraction", obsidian.Name)
+	}
 	fm := f.Frontmatter()
 	out := domain.Facts{FrontmatterValid: !fm.Present || fm.Valid}
-	x, _ := f.Extracted(obsidian.Name).(obsidian.Extracted)
 	for _, l := range x.Links {
 		out.Links = append(out.Links, domain.Link{
-			Kind: string(l.Kind), Property: l.Key, Target: l.Target, Anchor: l.Anchor, Display: l.Display,
+			Kind: string(l.Kind), Property: text(l.Key), Target: text(l.Target), Anchor: text(l.Anchor), Display: text(l.Display),
 			Start: l.Range.Start, End: l.Range.Stop,
 		})
 	}
 	var tags, aliases []string
 	for _, s := range stringsOf(fm.Properties, "tags") {
-		if s = strings.TrimPrefix(s, "#"); obsidian.IsTag(s) {
-			tags = append(tags, s)
+		if tag, ok := obsidian.CountedTag(strings.TrimPrefix(s, "#")); ok {
+			tags = append(tags, tag)
 		}
 	}
 	for _, t := range x.Tags {
-		tags = append(tags, t.Name)
+		if tag, ok := obsidian.CountedTag(t.Name); ok {
+			tags = append(tags, tag)
+		}
 	}
 	for _, s := range stringsOf(fm.Properties, "aliases") {
 		if s != "" {
@@ -59,14 +66,20 @@ func PageFacts(facts any) (domain.Facts, error) {
 		if err != nil {
 			return domain.Facts{}, fmt.Errorf("linking: the property %q: %w", p.Key, err)
 		}
-		out.Properties = append(out.Properties, domain.Property{Key: p.Key, Value: value})
+		out.Properties = append(out.Properties, domain.Property{Key: text(p.Key), Value: value})
 	}
 	return out, nil
 }
 
+// text is s with U+0000, which a Markdown link's %00 or a YAML string's
+// escape writes, as U+FFFD.
+func text(s string) string {
+	return strings.ReplaceAll(s, "\x00", "\uFFFD")
+}
+
 // stringsOf is the strings of the first of props whose key is key but for
-// ASCII case, trimmed as JavaScript trims: its value when a string, its
-// value's strings when a list.
+// ASCII case, trimmed as JavaScript trims, as text: its value when a
+// string, its value's strings when a list.
 func stringsOf(props []markdown.Property, key string) []string {
 	for _, p := range props {
 		if !asciiFold(p.Key, key) {
@@ -75,11 +88,11 @@ func stringsOf(props []markdown.Property, key string) []string {
 		var out []string
 		switch v := p.Value.(type) {
 		case string:
-			out = append(out, jsTrim(v))
+			out = append(out, text(jsTrim(v)))
 		case []any:
 			for _, item := range v {
 				if s, ok := item.(string); ok {
-					out = append(out, jsTrim(s))
+					out = append(out, text(jsTrim(s)))
 				}
 			}
 		}
@@ -118,10 +131,12 @@ func jsTrim(s string) string {
 	})
 }
 
-// jsonOf is a property's value as the fixture set's JSON writes it: a
-// mapping is an object.
+// jsonOf is a property's value as the fixture set's JSON writes it, its
+// strings as text: a mapping is an object.
 func jsonOf(v any) any {
 	switch v := v.(type) {
+	case string:
+		return text(v)
 	case []any:
 		out := make([]any, len(v))
 		for i, item := range v {
@@ -131,7 +146,7 @@ func jsonOf(v any) any {
 	case []markdown.Property:
 		out := make(map[string]any, len(v))
 		for _, p := range v {
-			out[p.Key] = jsonOf(p.Value)
+			out[text(p.Key)] = jsonOf(p.Value)
 		}
 		return out
 	}

@@ -87,10 +87,10 @@ func newRebuild(w *world, texts map[string]string) (app.Rebuild, *contents, *not
 }
 
 // A rebuild drops the notebook's rows, those of a page no longer there
-// too, and takes each page's facts anew,
-// at its revision, resolving every link, under the notebook's row lock and
-// then its lock of the index; it tells its pages, links and those that
-// resolve to none, and publishes a links event that lists no page.
+// too, and takes each page's facts anew, at its revision, resolving every
+// link, under the notebook's row lock and then its lock of the index; it
+// tells its pages, links and those that resolve to none, and publishes a
+// links event that lists no page.
 func TestARebuildTakesEveryPageAnew(t *testing.T) {
 	w := newWorld(t, "A", "A/note", "src", "nick", "gone")
 	w.run(w.write("src", []string{"stale"}))

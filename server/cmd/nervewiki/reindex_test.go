@@ -108,7 +108,7 @@ func TestReindexRebuildsTheNotebooks(t *testing.T) {
 	expectLinksEvent(t, listener.Conn(), r.eng)
 
 	code, stdout, stderr = execute(ctx, r.environ, "reindex")
-	want := fmt.Sprintf("notebook %s: 2 pages, 2 links, 1 unresolved\nnotebook %s: 1 pages, 1 links, 0 unresolved\n", r.eng, r.ops)
+	want := fmt.Sprintf("notebook %s: 2 pages, 2 links, 1 unresolved\nnotebook %s: 1 page, 1 link, 0 unresolved\n", r.eng, r.ops)
 	if code != 0 || stdout != want {
 		t.Fatalf("reindex = %d, %q, %s; want %q", code, stdout, stderr, want)
 	}
@@ -136,37 +136,66 @@ func expectLinksEvent(t *testing.T, conn *pgx.Conn, nb uuid.UUID) {
 }
 
 // A notebook whose siblings' title keys would clash under the current
-// Unicode data is left as it was and listed on stderr, the others are
+// Unicode data is left as it was, its rows and keys, with no links event,
+// and listed on stderr, as is one whose rebuild fails; the others are
 // rebuilt, and the command fails; a --notebook that is not a notebook's
 // id fails at once.
-func TestReindexReportsClashesAndRefusesNoNotebook(t *testing.T) {
+func TestReindexReportsClashesAndFailuresAndRefusesNoNotebook(t *testing.T) {
 	r := newReindexed(t)
 	ctx := context.Background()
+	if code, _, stderr := execute(ctx, r.environ, "reindex"); code != 0 {
+		t.Fatalf("reindex = %d, %s", code, stderr)
+	}
 	twin := uuid.NewV7()
 	r.exec(t, "UPDATE nodes SET name = 'Straße', name_key = 'old' WHERE id = $1", r.plan)
 	r.exec(t, `INSERT INTO nodes (id, notebook_id, kind, name, name_key, sort_order, created_by_id, updated_by_id, created_at, updated_at)
 		SELECT $1, notebook_id, 'page', 'STRASSE', 'strasse', 1, created_by_id, created_by_id, now(), now() FROM nodes WHERE id = $2`, twin, r.plan)
 	r.exec(t, `INSERT INTO page_contents (node_id, content, revision, content_hash, byte_size, updated_by_id, updated_at)
 		SELECT $1, '', 2, sha256(''), 0, created_by_id, now() FROM nodes WHERE id = $1`, twin)
+	r.exec(t, "UPDATE nodes SET parent_id = $1 WHERE id = $2", r.other, r.note)
+	r.exec(t, "UPDATE nodes SET parent_id = $1 WHERE id = $2", r.note, r.other)
+	listener, err := r.pool.Acquire(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Release()
+	if _, err := listener.Exec(ctx, "LISTEN nwiki_events"); err != nil {
+		t.Fatal(err)
+	}
 
 	code, stdout, stderr := execute(ctx, r.environ, "reindex")
 	clash := fmt.Sprintf(`notebook %s: not reindexed: titles that would share a key: "Straße" (%s), "STRASSE" (%s)`, r.ops, r.plan, twin)
-	if code != 1 || stdout != fmt.Sprintf("notebook %s: 2 pages, 2 links, 1 unresolved\n", r.eng) || !strings.Contains(stderr, clash+"\n") ||
-		!strings.Contains(stderr, "nervewiki: 1 notebooks not reindexed") {
-		t.Errorf("reindex with a clash = %d, %q, %q; want 1, eng's line, and %q", code, stdout, stderr, clash)
+	failure := fmt.Sprintf("notebook %s: not reindexed: ", r.eng)
+	if code != 1 || stdout != "" || !strings.Contains(stderr, clash+"\n") || !strings.Contains(stderr, failure) ||
+		!strings.Contains(stderr, "nervewiki: 2 notebooks not reindexed") {
+		t.Errorf("reindex with a clash and a loop = %d, %q, %q; want 1, no line, and %q", code, stdout, stderr, clash)
 	}
-	if n := r.count(t, "SELECT count(*) FROM nodes WHERE notebook_id = $1 AND name_key = 'old'", r.ops); n != 1 || r.indexed(t, r.ops) != 0 {
+	if n := r.count(t, "SELECT count(*) FROM nodes WHERE notebook_id = $1 AND name_key = 'old'", r.ops); n != 1 || r.indexed(t, r.ops) != 1 ||
+		r.count(t, "SELECT count(*) FROM page_links WHERE source_id = $1 AND resolved_id = $1", r.plan) != 1 {
 		t.Errorf("ops after a clash: %d stale keys, %d pages indexed; want it as it was", n, r.indexed(t, r.ops))
 	}
+	if r.indexed(t, r.eng) != 2 {
+		t.Errorf("eng after its rebuild failed: %d pages indexed; want its two kept", r.indexed(t, r.eng))
+	}
+	wait, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
+	defer cancel()
+	if n, err := listener.Conn().WaitForNotification(wait); err == nil {
+		t.Errorf("a notebook not reindexed published %s", n.Payload)
+	}
 
-	for _, tt := range []struct{ notebook, want string }{
-		{"x", `nervewiki: --notebook "x" is not a notebook id` + "\n"},
-		{uuid.Nil().String(), fmt.Sprintf("nervewiki: --notebook %q is not a notebook id\n", uuid.Nil())},
-		{r.gone.String(), fmt.Sprintf("nervewiki: no notebook %s\n", r.gone)},
+	for _, tt := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"--notebook", "x"}, `nervewiki: --notebook "x" is not a notebook id` + "\n"},
+		{[]string{"--notebook", ""}, `nervewiki: --notebook "" is not a notebook id` + "\n"},
+		{[]string{"--notebook", uuid.Nil().String()}, fmt.Sprintf("nervewiki: --notebook %q is not a notebook id\n", uuid.Nil())},
+		{[]string{"--notebook", r.gone.String()}, fmt.Sprintf("nervewiki: no notebook %s\n", r.gone)},
+		{[]string{"--notebook", r.eng.String()}, fmt.Sprintf("nervewiki: notebook %s: ", r.eng)},
 	} {
-		code, stdout, stderr := execute(ctx, r.environ, "reindex", "--notebook", tt.notebook)
-		if code != 1 || stdout != "" || !strings.HasSuffix(stderr, tt.want) {
-			t.Errorf("reindex --notebook %s = %d, %q, %q; want 1 and %q", tt.notebook, code, stdout, stderr, tt.want)
+		code, stdout, stderr := execute(ctx, r.environ, append([]string{"reindex"}, tt.args...)...)
+		if code != 1 || stdout != "" || !strings.Contains(stderr, tt.want) {
+			t.Errorf("reindex %v = %d, %q, %q; want 1 and %q", tt.args, code, stdout, stderr, tt.want)
 		}
 	}
 }

@@ -25,7 +25,7 @@ type (
 	Pages = app.Pages
 	// Node is a page with its path from the root, itself last.
 	Node = domain.Node
-	// Step is a page on a path: its id and title key.
+	// Step is a page on a path: its id, title key and name.
 	Step = domain.Step
 	// PagesChanged is a page write unit's changes.
 	PagesChanged = app.PagesChanged
@@ -65,9 +65,14 @@ func NewNotebookDeletion(pool *pgxpool.Pool) NotebookDeletion {
 	return app.NotebookDeletion{Store: postgresadapter.New(pool)}
 }
 
+// Extractor is the version of what the index keeps of a page
+// (indexed_pages.extractor): a release that changes it asks for nervewiki
+// reindex.
+const Extractor = domain.Extractor
+
 // PageFacts is what the index keeps of facts, the platform's Markdown
 // facts of a page's content that the page module's changes carry; facts
-// of another kind are an error.
+// of another kind, or without the obsidian extension's, are an error.
 func PageFacts(facts any) (Facts, error) {
 	return markdownadapter.PageFacts(facts)
 }

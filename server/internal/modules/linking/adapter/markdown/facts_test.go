@@ -70,8 +70,8 @@ func TestAPagesFactsAreWhatTheIndexKeeps(t *testing.T) {
 // The frontmatter's tags and aliases are read as Obsidian reads them: the
 // first key that is "tags" or "aliases" but for ASCII case, a string one
 // (commas and all), a list's strings, trimmed as JavaScript trims; an empty
-// one is none, and a tag must be one by rule 9, after a '#' it may start
-// with. "alias" and "tag" are other keys, as is a key that is one but for
+// one is none, and a tag must be one the tag pane counts, after a '#' it may
+// start with. "alias" and "tag" are other keys, as is a key that is one but for
 // a case other than ASCII's (a long s); a first key with no string is
 // none, not the next key.
 func TestTheFrontmattersTagsAndAliasesAreReadAsObsidianReadsThem(t *testing.T) {
@@ -86,7 +86,7 @@ func TestTheFrontmattersTagsAndAliasesAreReadAsObsidianReadsThem(t *testing.T) {
 		{"alias: Single\ntag: single", nil, nil},
 		{"aliases: [First]\nAliases: [Second]\ntags: first\nTags: second", []string{"first"}, []string{"First"}},
 		{"aliases: 3.5\ntags: 42", nil, nil},
-		{"aliases: \"\u00a0\u3000Wide\u2028\ufeff\"\ntags: \"\\Nx\"", nil, []string{"Wide"}},
+		{"aliases: \"\u00a0\u3000Wide\u2028\ufeff\"\ntags: \"\\Nx\"", []string{"\u0085x"}, []string{"Wide"}},
 		{"aliases: \u212aelvin", nil, []string{"\u212aelvin"}},
 		{"alia\u017fes: [No]\ntag\u017f: no", nil, nil},
 		{"aliases: 3\nAliases: [Second]\ntags:\nTags: [second]", nil, nil},
@@ -106,8 +106,55 @@ func TestTheFrontmattersTagsAndAliasesAreReadAsObsidianReadsThem(t *testing.T) {
 	}
 }
 
+// The tags are those Obsidian's tag pane counts, the frontmatter's and the
+// body's: without one '/' they end with, and none with a character it
+// refuses.
+func TestTheTagsAreThoseTheTagPaneCounts(t *testing.T) {
+	got := factsOf(t, "---\ntags: [a/, a😀, a→b, /, a—b, a。b]\n---\n#y/ #z #/\n")
+	var tags []string
+	for _, tag := range got.Tags {
+		tags = append(tags, tag.Name)
+	}
+	if want := []string{"a", "a😀", "a→b", "a。b", "y", "z"}; !reflect.DeepEqual(tags, want) {
+		t.Errorf("tags %q, want %q", tags, want)
+	}
+}
+
+// A U+0000, which PostgreSQL's text does not hold, written by a Markdown
+// link's %00 or a YAML string's escape, is U+FFFD in every fact.
+func TestU0000IsWrittenAsTheReplacementCharacter(t *testing.T) {
+	got := factsOf(t, "---\nn: \"a\\0b\"\n\"k\\0\": [\"\\0\", {\"m\\0\": \"v\\0\"}]\naliases: [\"x\\0\"]\n"+
+		"tags: [\"t\\0\"]\nsrc: \"[[a\\0b|d\\0]]\"\n\"l\\0\": \"[[y]]\"\n---\n[x](a%00b.md#p%00q)\n")
+	r := "\uFFFD"
+	want := domain.Facts{
+		FrontmatterValid: true,
+		Links: []domain.Link{
+			{Kind: "wikilink", Property: "src", Target: "a" + r + "b", Display: "d" + r},
+			{Kind: "wikilink", Property: "l" + r, Target: "y"},
+			{Kind: "link", Target: "a" + r + "b.md", Anchor: "p" + r + "q"},
+		},
+		Tags:    []domain.Tag{{Key: "t" + r, Name: "t" + r, Count: 1}},
+		Aliases: []domain.Alias{{Key: "x" + r, Name: "x" + r}},
+		Properties: []domain.Property{
+			{Key: "n", Value: []byte(`"a` + r + `b"`)},
+			{Key: "k" + r, Value: []byte(`["` + r + `",{"m` + r + `":"v` + r + `"}]`)},
+			{Key: "aliases", Value: []byte(`["x` + r + `"]`)},
+			{Key: "tags", Value: []byte(`["t` + r + `"]`)},
+			{Key: "src", Value: []byte(`"[[a` + r + `b|d` + r + `]]"`)},
+			{Key: "l" + r, Value: []byte(`"[[y]]"`)},
+		},
+	}
+	for i := range got.Links {
+		got.Links[i].Start, got.Links[i].End = 0, 0
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("facts = %+v\nwant %+v", got, want)
+	}
+}
+
 // A frontmatter that is not valid has nothing; none is valid; facts that
-// are not the Markdown's are an error.
+// are not the Markdown's, or that the obsidian extension did not take, are
+// an error.
 func TestAFrontmatterNotValidHasNothing(t *testing.T) {
 	if got := factsOf(t, "---\n[a\n---\n#t"); got.FrontmatterValid || got.Properties != nil || len(got.Tags) != 1 {
 		t.Errorf("an invalid frontmatter's facts = %+v", got)
@@ -117,6 +164,13 @@ func TestAFrontmatterNotValidHasNothing(t *testing.T) {
 	}
 	if _, err := markdownadapter.PageFacts("not facts"); err == nil {
 		t.Error("facts of another kind were read")
+	}
+	md, err := markdown.New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := markdownadapter.PageFacts(md.Parse([]byte("[[A]]")).Facts()); err == nil {
+		t.Error("facts without the obsidian extension's were read")
 	}
 }
 

@@ -80,7 +80,7 @@ func TestCheckUserPatch(t *testing.T) {
 	if got, err := CheckUserPatch(UserPatch{}); err != nil || got.DisplayName != nil {
 		t.Errorf("CheckUserPatch(empty) = %+v, %v; want nothing to change", got, err)
 	}
-	for in, code := range map[string]string{" ": "required", strings.Repeat("a", 101): "too_long", "a b\x07": "invalid_format"} {
+	for in, code := range map[string]string{" ": "required", strings.Repeat("a", 101): "too_long", "a\u2028b\x07": "invalid_format"} {
 		_, err := CheckUserPatch(UserPatch{DisplayName: &in})
 		var se *shared.Error
 		if !errors.As(err, &se) || se.Code != shared.CodeValidationFailed || len(se.Fields) != 1 ||

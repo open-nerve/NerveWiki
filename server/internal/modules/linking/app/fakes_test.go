@@ -44,7 +44,7 @@ func (t *tree) add(path string) uuid.UUID {
 func (t *tree) path(id uuid.UUID) []domain.Step {
 	var out []domain.Step
 	for cur := &id; cur != nil; cur = t.nodes[*cur].parent {
-		out = append(out, domain.Step{ID: *cur, Key: shared.TitleKey(t.nodes[*cur].name)})
+		out = append(out, domain.Step{ID: *cur, Key: shared.TitleKey(t.nodes[*cur].name), Name: t.nodes[*cur].name})
 	}
 	slices.Reverse(out)
 	return out
@@ -74,23 +74,24 @@ func (t *tree) Subtree(_ context.Context, _ uuid.UUID, id uuid.UUID) ([]domain.S
 	if n, ok := t.nodes[id]; !ok || n.gone {
 		return nil, fmt.Errorf("no page %s", id)
 	}
-	out := []domain.Step{{ID: id, Key: shared.TitleKey(t.nodes[id].name)}}
+	out := []domain.Step{{ID: id, Key: shared.TitleKey(t.nodes[id].name), Name: t.nodes[id].name}}
 	for i := 0; i < len(out); i++ {
 		for child, n := range t.nodes {
 			if !n.gone && n.parent != nil && *n.parent == out[i].ID {
-				out = append(out, domain.Step{ID: child, Key: shared.TitleKey(n.name)})
+				out = append(out, domain.Step{ID: child, Key: shared.TitleKey(n.name), Name: n.name})
 			}
 		}
 	}
 	return out, nil
 }
 
-// store is the index's tables in memory.
+// store is the index's tables in memory, and the last reach it read.
 type store struct {
 	locked  []uuid.UUID
 	facts   map[uuid.UUID]domain.Facts
 	links   []app.Link
 	missing bool // SetResolutions finds no link
+	reached domain.Reach
 }
 
 func newStore() *store {
@@ -104,11 +105,21 @@ func (s *store) Lock(_ context.Context, notebookID uuid.UUID) error {
 
 func (s *store) ReplacePage(ctx context.Context, p app.Page, f domain.Facts) (app.Dropped, error) {
 	dropped, err := s.DeletePages(ctx, []uuid.UUID{p.ID})
+	if err == nil {
+		err = s.AddPage(ctx, p, f)
+	}
+	return dropped, err
+}
+
+func (s *store) AddPage(_ context.Context, p app.Page, f domain.Facts) error {
+	if _, ok := s.facts[p.ID]; ok {
+		return fmt.Errorf("the page %s has rows", p.ID)
+	}
 	s.facts[p.ID] = f
 	for _, l := range f.Links {
 		s.links = append(s.links, app.Link{SourceID: p.ID, Start: l.Start, Target: l.Target})
 	}
-	return dropped, err
+	return nil
 }
 
 func (s *store) DeletePages(_ context.Context, ids []uuid.UUID) (app.Dropped, error) {
@@ -138,6 +149,7 @@ func (s *store) DeleteNotebooks(context.Context, []uuid.UUID) error {
 }
 
 func (s *store) Links(_ context.Context, _ uuid.UUID, r domain.Reach) ([]app.Link, error) {
+	s.reached = r
 	var out []app.Link
 	for _, l := range s.links {
 		keys := domain.Link{Target: l.Target}.Keys()
