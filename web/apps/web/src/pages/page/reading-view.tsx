@@ -45,12 +45,12 @@ import { useWorkspace } from "../workspace/workspace-layout";
  * may be older than the link, is read again: the element it brings shows
  * and takes the focus, if the reader has done nothing since (scrolled,
  * clicked, touched, pressed a key: the browser's own scrolling is none of
- * these) and the focus is where it was; a read after that one moves
- * nothing. A link of the page to no element leaves the focus where it is,
- * and the page. An element with an id that had the focus as the HTML is
- * replaced, the anchor's among them, has it back in the new HTML, shown
- * again if it showed and no longer does: a view read again stays where it
- * is.
+ * these, nor are an assistive technology's moves) and the focus is where it
+ * was; a read after that one moves nothing. A link of the page to no
+ * element leaves the focus where it is, and the page. An element with an
+ * id that had the focus as the HTML is replaced, the anchor's among them,
+ * has it back in the new HTML, shown again if it showed and no longer
+ * does: a view read again stays where it is.
  */
 export const ReadingView = observer(function ReadingView({
   notebook,
@@ -202,7 +202,8 @@ export const ReadingView = observer(function ReadingView({
       latestUnanchored.current();
     }
     if (cached.current) {
-      // Once per page: the wait ends with this read, at the next navigation, or as the reader does something.
+      // Once per page: the wait ends with this read, at the next navigation, or as the reader does something. Not as
+      // the view goes: StrictMode's second mount would end it at once; the page left, its read settling ends it.
       const end = () => {
         for (const type of readersInput) {
           window.removeEventListener(type, end, true);
@@ -225,7 +226,10 @@ export const ReadingView = observer(function ReadingView({
   return <article ref={article} aria-label={page.name} className="nw-reading min-w-0" />;
 });
 
-/** readersInput are the events of what a reader does: a scroll, a click, a touch, a key. */
+/**
+ * readersInput are the events of what a reader does: a scroll, a click (the window's scrollbar pressed too, in
+ * Chromium and WebKit), a touch, a key. An assistive technology's moves, a screen reader's virtual cursor, send none.
+ */
 const readersInput = ["wheel", "touchmove", "pointerdown", "keydown"] as const;
 
 /** named is the element of container whose id the address's fragment is, decoded, if there is one. */

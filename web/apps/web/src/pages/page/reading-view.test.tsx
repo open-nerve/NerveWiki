@@ -277,6 +277,46 @@ test.each(["wheel", "touchmove", "pointerdown", "keydown"])(
   }
 );
 
+test("the wait hears an input stopped where it went: it listens in the capture phase", async () => {
+  const scrolled = scrolls();
+  const { server, release } = heldServer(["<p>Install</p>", '<h2 id="nw-x">X</h2>']);
+  await openedFromTheCache(server, "#nw-x");
+  const heading = await screen.findByRole("heading", { level: 1, name: "Install" });
+  await waitFor(() => expect(document.activeElement).toBe(heading));
+
+  const article = screen.getByRole("article");
+  article.addEventListener("keydown", (event) => event.stopPropagation());
+  fireEvent.keyDown(article, { key: "ArrowDown" });
+  await act(async () => release());
+  await screen.findByRole("heading", { level: 2, name: "X" });
+  expect(document.activeElement).toBe(heading);
+  expect(scrolled).toEqual([]);
+});
+
+test("the wait's listeners go once its read settles", async () => {
+  scrolls();
+  const added = vi.spyOn(window, "addEventListener");
+  const removed = vi.spyOn(window, "removeEventListener");
+  onTestFinished(() => {
+    added.mockRestore();
+    removed.mockRestore();
+  });
+  // The inputs listened to in the capture phase: the wait's.
+  const inputs = (spy: typeof added | typeof removed) =>
+    spy.mock.calls
+      .filter(([type, , options]) => ["wheel", "touchmove", "pointerdown", "keydown"].includes(type))
+      .filter(([, , options]) => options === true || (typeof options === "object" && options.capture === true))
+      .map(([type]) => type);
+  const { server, release } = heldServer(["<p>Install</p>", '<h2 id="nw-x">X</h2>']);
+  await openedFromTheCache(server, "#nw-x");
+  await waitFor(() => expect(inputs(added)).toHaveLength(4));
+  expect(inputs(removed)).toEqual([]);
+
+  await act(async () => release());
+  await screen.findByRole("heading", { level: 2, name: "X" });
+  expect(new Set(inputs(removed))).toEqual(new Set(inputs(added)));
+});
+
 test("the browser's own scrolling during the wait is not the reader's: the element the read brings takes the focus", async () => {
   const scrolled = scrolls();
   const { server, release } = heldServer(["<p>Install</p>", '<h2 id="nw-x">X</h2>']);
