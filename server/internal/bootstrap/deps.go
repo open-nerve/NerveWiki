@@ -126,7 +126,7 @@ func parsing(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) (*markd
 
 // pageDeps are the page module's dependencies: the workspace and notebook
 // modules' ports, the Markdown and the parse budget, and the registrants of
-// its extension points.
+// its extension points, its participants among them.
 func pageDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, authorizer shared.Authorizer,
 	md *markdown.Markdown, budget *markdown.Budget,
 ) page.Deps {
@@ -142,7 +142,7 @@ func pageDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, author
 		Names:        pageNames{identity.NewDirectory(pool)},
 		Markdown:     md,
 		Guards:       ext.guards,
-		Participants: ext.participants,
+		Participants: pageParticipants(pool, md, budget, logger),
 		Observers:    ext.observers,
 		// The edit sessions' (M4/P4 design 3.7).
 		EditSessionVetoers:         ext.sessionVetoers,

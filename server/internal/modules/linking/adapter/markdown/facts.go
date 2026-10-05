@@ -6,13 +6,17 @@ package markdownadapter
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
+	"time"
 	"unicode"
 
+	"github.com/open-nerve/NerveWiki/server/internal/modules/linking/app"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/linking/domain"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown/obsidian"
+	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
 // PageFacts is what the index keeps of facts, the platform's facts of a
@@ -208,4 +212,30 @@ func (p Parser) Facts(ctx context.Context, content string) (domain.Facts, error)
 	}
 	defer hold.Release()
 	return PageFacts(p.md.Parse([]byte(content)).Facts())
+}
+
+// retryAfter is the Retry-After of a rewrite's 503 when the budget is not
+// free.
+const retryAfter = time.Second
+
+// ParseNow implements app.RewriteParser: content's facts, as the index
+// keeps them and as the page module writes them, holding their share of
+// the budget, taken now, until released; server_busy, to retry after a
+// second, when it is not free (M6/P4 design 4.2).
+func (p Parser) ParseNow(ctx context.Context, content string) (app.Parsed, error) {
+	hold, err := p.budget.TakeNow(ctx, len(content))
+	switch {
+	case errors.Is(err, markdown.ErrBusy):
+		return app.Parsed{}, shared.ServerBusy(retryAfter)
+	case err != nil:
+		return app.Parsed{}, err
+	}
+	f := p.md.Parse([]byte(content)).Facts()
+	hold.KeepFacts(f)
+	facts, err := PageFacts(f)
+	if err != nil {
+		hold.Release()
+		return app.Parsed{}, err
+	}
+	return app.Parsed{Facts: facts, Written: f, Release: hold.Release}, nil
 }

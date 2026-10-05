@@ -222,6 +222,19 @@ func (s *Store) View(ctx context.Context, id uuid.UUID) (app.Indexed, bool, erro
 	return out, true, nil
 }
 
+// IndexedOf implements app.Store.
+func (s *Store) IndexedOf(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]app.Indexed, error) {
+	rows, err := s.queries(ctx).IndexedPagesOf(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("the index of %d pages: %w", len(ids), err)
+	}
+	out := make(map[uuid.UUID]app.Indexed, len(rows))
+	for _, row := range rows {
+		out[row.NodeID] = app.Indexed{Revision: int(row.Revision), Extractor: int(row.Extractor)}
+	}
+	return out, nil
+}
+
 // Aliases implements app.Store.
 func (s *Store) Aliases(ctx context.Context, notebookID uuid.UUID, keys []string) ([]app.Alias, error) {
 	rows, err := s.queries(ctx).AliasesByKeys(ctx, gen.AliasesByKeysParams{NotebookID: notebookID, Keys: keys})

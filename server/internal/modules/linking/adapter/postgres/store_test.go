@@ -369,6 +369,21 @@ func TestAPagesView(t *testing.T) {
 	}
 }
 
+// The index of pages, by id: the revision and the extractor of the rows of
+// those the index has; none of the others.
+func TestThePagesIndexed(t *testing.T) {
+	f := newFixture(t)
+	p, q := uuid.NewV7(), uuid.NewV7()
+	f.replace(t, app.Page{ID: p, NotebookID: f.eng, Revision: 7}, facts())
+	f.replace(t, app.Page{ID: q, NotebookID: f.eng, Revision: 2}, domain.Facts{FrontmatterValid: true})
+	f.replace(t, app.Page{ID: uuid.NewV7(), NotebookID: f.eng, Revision: 1}, facts())
+	got, err := f.s.IndexedOf(context.Background(), []uuid.UUID{p, q, uuid.NewV7()})
+	want := map[uuid.UUID]app.Indexed{p: {Revision: 7, Extractor: domain.Extractor}, q: {Revision: 2, Extractor: domain.Extractor}}
+	if err != nil || !reflect.DeepEqual(got, want) {
+		t.Errorf("IndexedOf = %+v, %v; want %+v", got, err, want)
+	}
+}
+
 // The index's lock is a notebook's, held until the transaction ends: a
 // second taker of the notebook waits for it, a taker of another notebook
 // does not. Outside a transaction it is refused.

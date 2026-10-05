@@ -14,6 +14,7 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/modules/linking/domain"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown/obsidian"
+	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
 func factsOf(t *testing.T, content string) domain.Facts {
@@ -216,5 +217,42 @@ func TestTheParserTakesTheBudget(t *testing.T) {
 	defer hold.Release()
 	if _, err := parser.Facts(context.Background(), "[[A]]"); !errors.Is(err, markdown.ErrBusy) {
 		t.Errorf("Facts with the budget taken = %v, want ErrBusy", err)
+	}
+}
+
+// A parse now holds its facts' share of the budget, taken now, until
+// released, with the facts the page module writes; a budget not free now
+// is server_busy at once, whatever its wait.
+func TestAParseNowHoldsItsShareTakenNow(t *testing.T) {
+	md, err := markdown.New([]markdown.Extension{obsidian.Extension(obsidian.Options{})})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const size = 64 << 10
+	budget := markdown.NewBudget(size, time.Hour, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	parser := markdownadapter.NewParser(md, budget)
+	content := strings.Repeat("[[A]] ", 4000)
+	parsed, err := parser.ParseNow(context.Background(), content)
+	if err != nil || len(parsed.Facts.Links) != 4000 {
+		t.Fatalf("ParseNow = %d links, %v; want 4000", len(parsed.Facts.Links), err)
+	}
+	if _, ok := parsed.Written.(markdown.Facts); !ok {
+		t.Errorf("the facts written are %T, want the platform's", parsed.Written)
+	}
+	share := (parsed.Written.(markdown.Facts).Limit(len(content)) + 299) / 300
+	if hold, err := budget.TakeNow(context.Background(), size-share+1); err == nil {
+		hold.Release()
+		t.Errorf("all but the share %d taken beside it, and one byte more", share)
+	}
+	parsed.Release()
+	all, err := budget.TakeNow(context.Background(), size)
+	if err != nil {
+		t.Fatalf("the budget after the release: %v", err)
+	}
+	defer all.Release()
+	at := time.Now()
+	var busy *shared.Error
+	if _, err := parser.ParseNow(context.Background(), "[[A]]"); !errors.As(err, &busy) || busy.Code != "server_busy" || time.Since(at) > time.Second {
+		t.Errorf("ParseNow with the budget taken = %v after %s, want server_busy at once", err, time.Since(at))
 	}
 }

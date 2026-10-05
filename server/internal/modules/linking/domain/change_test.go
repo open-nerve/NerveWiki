@@ -7,6 +7,7 @@ import (
 	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/linking/domain"
+	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
 // What a unit reaches: when it relocates a node, every node it changed, by
@@ -79,5 +80,80 @@ func TestAReachAddsNodesAndCompacts(t *testing.T) {
 	want := domain.Reach{Keys: []string{"a", "b", "z"}, Targets: []uuid.UUID{a, b}, Sources: []uuid.UUID{a, b}}
 	if !reflect.DeepEqual(r, want) {
 		t.Errorf("reach = %+v, want %+v", r, want)
+	}
+}
+
+// What a rewrite follows: a rename or a move that relocates a node, a
+// rename of the case alone (with the length too: "ß" to "SS"), and nothing
+// else: a move among siblings, a rename to itself, a creation, a deletion,
+// a content written.
+func TestRelocationIsWhatARewriteFollows(t *testing.T) {
+	a, b, root := uuid.NewV7(), uuid.NewV7(), uuid.NewV7()
+	at := func(parent *uuid.UUID, name string) *domain.Place { return &domain.Place{ParentID: parent, Name: name} }
+	for _, tt := range []struct {
+		name      string
+		changes   []domain.Change
+		relocates bool
+		caseOnly  uuid.UUID
+	}{
+		{"a rename", []domain.Change{{NodeID: a, Before: at(nil, "x"), After: at(nil, "y")}}, true, uuid.UUID{}},
+		{"a move with its subtree", []domain.Change{
+			{NodeID: a, Before: at(nil, "x"), After: at(&root, "x")},
+			{NodeID: b, Before: at(&a, "y"), After: at(&a, "y")},
+		}, true, uuid.UUID{}},
+		{"the case alone", []domain.Change{{NodeID: a, Before: at(nil, "Old"), After: at(nil, "old")}}, false, a},
+		{"the case alone, another length", []domain.Change{{NodeID: a, Before: at(nil, "ß"), After: at(nil, "SS")}}, true, a},
+		{"a move among siblings", []domain.Change{{NodeID: a, Before: at(&root, "x"), After: at(&root, "x")}}, false, uuid.UUID{}},
+		{"a creation", []domain.Change{{NodeID: a, After: at(nil, "x"), Revision: 1}}, false, uuid.UUID{}},
+		{"a deletion", []domain.Change{{NodeID: a, Before: at(nil, "x")}}, false, uuid.UUID{}},
+		{"a content", []domain.Change{{NodeID: a, Before: at(nil, "x"), After: at(nil, "x"), Revision: 2}}, false, uuid.UUID{}},
+		{"nothing", nil, false, uuid.UUID{}},
+	} {
+		if relocates, caseOnly := domain.Relocation(tt.changes); relocates != tt.relocates || caseOnly != tt.caseOnly {
+			t.Errorf("%s: relocates %t, case only %v; want %t, %v", tt.name, relocates, caseOnly, tt.relocates, tt.caseOnly)
+		}
+	}
+}
+
+// A page's path before a rename or a move: the name before on the path of
+// every page under the node renamed, its own too; the former parent's path
+// before those under the node moved, the root's none; a page off them as
+// it is. The former parents are those of the nodes moved under another
+// parent, each once.
+func TestAPathBeforeARenameOrAMove(t *testing.T) {
+	a, b, x, y, z := uuid.NewV7(), uuid.NewV7(), uuid.NewV7(), uuid.NewV7(), uuid.NewV7()
+	step := func(id uuid.UUID, name string) domain.Step {
+		return domain.Step{ID: id, Key: shared.TitleKey(name), Name: name}
+	}
+	at := func(parent *uuid.UUID, name string) *domain.Place { return &domain.Place{ParentID: parent, Name: name} }
+	node := func(steps ...domain.Step) domain.Node { return domain.Node{ID: steps[len(steps)-1].ID, Path: steps} }
+	renamed := []domain.Change{{NodeID: x, Before: at(&a, "Old"), After: at(&a, "New")}}
+	moved := []domain.Change{
+		{NodeID: x, Before: at(&a, "X"), After: at(&b, "X")},
+		{NodeID: y, Before: at(&x, "Y"), After: at(&x, "Y")},
+	}
+	toRoot := []domain.Change{{NodeID: x, Before: at(&a, "X"), After: at(nil, "X")}}
+	fromRoot := []domain.Change{{NodeID: x, Before: at(nil, "X"), After: at(&b, "X")}}
+	parents := map[uuid.UUID][]domain.Step{a: {step(a, "A")}}
+	for _, tt := range []struct {
+		name    string
+		n       domain.Node
+		changes []domain.Change
+		want    domain.Node
+	}{
+		{"the page renamed", node(step(a, "A"), step(x, "New")), renamed, node(step(a, "A"), step(x, "Old"))},
+		{"a page under it", node(step(a, "A"), step(x, "New"), step(y, "Y")), renamed, node(step(a, "A"), step(x, "Old"), step(y, "Y"))},
+		{"a page off it", node(step(a, "A"), step(z, "Z")), renamed, node(step(a, "A"), step(z, "Z"))},
+		{"the page moved", node(step(b, "B"), step(x, "X")), moved, node(step(a, "A"), step(x, "X"))},
+		{"a page under it", node(step(b, "B"), step(x, "X"), step(y, "Y")), moved, node(step(a, "A"), step(x, "X"), step(y, "Y"))},
+		{"a page moved to the root", node(step(x, "X")), toRoot, node(step(a, "A"), step(x, "X"))},
+		{"a page moved from the root", node(step(b, "B"), step(x, "X")), fromRoot, node(step(x, "X"))},
+	} {
+		if got := domain.PathBefore(tt.n, tt.changes, parents); !reflect.DeepEqual(got, tt.want) {
+			t.Errorf("%s: %+v, want %+v", tt.name, got, tt.want)
+		}
+	}
+	if got := domain.FormerParents(append(append(moved, toRoot...), fromRoot...)); !slices.Equal(got, []uuid.UUID{a}) {
+		t.Errorf("former parents %v, want %v", got, []uuid.UUID{a})
 	}
 }

@@ -61,21 +61,10 @@ func (x Index) PagesChanged(ctx context.Context, e PagesChanged) error {
 		dropped = append(dropped, old.Targets...)
 		reach.Keys = append(reach.Keys, old.AliasKeys...)
 	}
-	for _, id := range renamed {
-		sub, err := x.Pages.Subtree(ctx, e.NotebookID, id)
-		if err != nil {
-			return err
-		}
-		reach.Add(sub...)
-	}
-	// A page's path decides between the pages with an alias as between
-	// those with a name: the aliases of the pages reached are too.
-	aliasKeys, err := x.Store.AliasKeys(ctx, reach.Targets)
+	reach, err := spread(ctx, x.Store, x.Pages, e.NotebookID, reach, renamed)
 	if err != nil {
 		return err
 	}
-	reach.Keys = append(reach.Keys, aliasKeys...)
-	reach.Compact()
 	links, err := x.Store.Links(ctx, e.NotebookID, reach)
 	if err != nil {
 		return err
@@ -88,6 +77,29 @@ func (x Index) PagesChanged(ctx context.Context, e PagesChanged) error {
 		return err
 	}
 	return x.publish(ctx, e, links, changed, written, dropped)
+}
+
+// spread has reach, a unit's, reach the pages under the nodes renamed,
+// their links and those to them, and the keys of every alias of the pages
+// it reaches: a page's path decides between the pages with an alias as
+// between those with a name.
+func spread(ctx context.Context, store Store, pages Pages, notebookID uuid.UUID, reach domain.Reach, renamed []uuid.UUID) (
+	domain.Reach, error,
+) {
+	for _, id := range renamed {
+		sub, err := pages.Subtree(ctx, notebookID, id)
+		if err != nil {
+			return domain.Reach{}, err
+		}
+		reach.Add(sub...)
+	}
+	aliasKeys, err := store.AliasKeys(ctx, reach.Targets)
+	if err != nil {
+		return domain.Reach{}, err
+	}
+	reach.Keys = append(reach.Keys, aliasKeys...)
+	reach.Compact()
+	return reach, nil
 }
 
 // publish publishes the links event of the unit e, which wrote the content

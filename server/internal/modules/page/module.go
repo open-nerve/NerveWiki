@@ -51,6 +51,7 @@ type (
 	Write        = app.Write
 	Options      = app.Options
 	Step         = app.Step
+	Change       = domain.Change
 	WriteGuard   = app.WriteGuard
 	Participant  = app.Participant
 	Appender     = app.Appender
