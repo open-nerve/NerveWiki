@@ -1,16 +1,16 @@
 import { createContext } from "react";
 import { unstable_serialize, type Cache, type ScopedMutator } from "swr";
 
-import type { EventLock, EventPages } from "../services/event.service";
+import type { EventLinks, EventLock, EventPages } from "../services/event.service";
 import type { PageView } from "../services/page.service";
 import type { StreamEvent } from "./channel";
 import type { Refresher } from "./refresher";
 
 // The app's handlers of the stream's events, by type (M5 design 8): each
 // has SWR read again what an event of its type changed, which only what
-// is mounted does. M5 has pages and lock; a later M adds its type here
-// (M6 a link's state, M10 and M11 a notebook's mode), the stream and the
-// tabs passing on a type they do not know with its data.
+// is mounted does. M5 has pages and lock, M6 links; a later M adds its
+// type here (M10 and M11 a notebook's mode), the stream and the tabs
+// passing on a type they do not know with its data.
 
 /**
  * EventContext is what a handler has besides the event: SWR's cache and
@@ -32,16 +32,14 @@ export function typeOf(event: StreamEvent): string {
  * whose cached revision is older than the one written (or not read yet),
  * through the refresher.
  */
-const pagesChanged: EventHandler = (data, { cache, mutate, refresher }) => {
+const pagesChanged: EventHandler = (data, context) => {
+  const { cache, mutate, refresher } = context;
   const { notebook_id: notebook, tree, pages } = data as EventPages;
   if (tree) {
     void mutate(["pages", notebook]);
   }
   if (pages === null) {
-    // Too many pages to name: every reading view of the notebook.
-    refresher.request(`page-views ${notebook}`, () => {
-      void mutate((key) => Array.isArray(key) && key[0] === "page-view" && key[1] === notebook);
-    });
+    readViews(notebook, context);
     return;
   }
   for (const { id, revision } of pages) {
@@ -55,6 +53,33 @@ const pagesChanged: EventHandler = (data, { cache, mutate, refresher }) => {
     }
   }
 };
+
+/**
+ * linksChanged reads again the reading views of the pages whose links lead
+ * elsewhere (M6 design 4.8, M6/P3 design 6.7): at the revision shown, so
+ * whatever that is, through the refresher; every view of the notebook for
+ * too many pages to name. The pages whose backlinks changed, its targets,
+ * are for the backlinks to read again.
+ */
+const linksChanged: EventHandler = (data, context) => {
+  const { mutate, refresher } = context;
+  const { notebook_id: notebook, pages } = data as EventLinks;
+  if (pages === null) {
+    readViews(notebook, context);
+    return;
+  }
+  for (const id of pages) {
+    const key = ["page-view", notebook, id];
+    refresher.request(unstable_serialize(key), () => void mutate(key));
+  }
+};
+
+/** readViews reads every reading view of notebook again, through the refresher: too many pages to name. */
+function readViews(notebook: string, { mutate, refresher }: EventContext) {
+  refresher.request(`page-views ${notebook}`, () => {
+    void mutate((key) => Array.isArray(key) && key[0] === "page-view" && key[1] === notebook);
+  });
+}
 
 /**
  * lockChanged reads the page's lock again, after the notebook's tree: the
@@ -80,6 +105,7 @@ const lockChanged: EventHandler = (data, { mutate, stopped }) => {
 export const eventHandlers: ReadonlyMap<string, EventHandler> = new Map([
   ["pages", pagesChanged],
   ["lock", lockChanged],
+  ["links", linksChanged],
 ]);
 
 export const EventHandlers = createContext<ReadonlyMap<string, EventHandler>>(new Map());

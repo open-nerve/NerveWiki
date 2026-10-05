@@ -1,7 +1,8 @@
 /* The reading view (M4/P5 design 3.8): the server's HTML, whose elements
    Tailwind's preflight leaves unstyled, set as a page to read, with the
-   renderer's marks (.nw-props, .nw-image, footnotes, task items) and the
-   code highlighting's colours, light and, under .dark, dark. */
+   renderer's marks (.nw-props, .nw-image, footnotes, task items, links to
+   pages not there) and the code highlighting's colours, light and, under
+   .dark, dark. */
 
 @layer components {
   .nw-reading {
@@ -71,6 +72,12 @@
   .nw-reading a {
     text-decoration: underline;
     text-underline-offset: 4px;
+  }
+
+  /* A link to a page that is not there (M6/P3 design 6.7): no address. */
+  .nw-reading a.nw-unresolved {
+    color: var(--muted-foreground);
+    text-decoration-style: dashed;
   }
 
   .nw-reading :is(ul, ol) {

@@ -2,6 +2,7 @@ import { createContext } from "react";
 
 import type { NotebookRole } from "../services/notebook.service";
 import { codeHighlight, highlightWorker } from "./highlight";
+import { pageLinks } from "./page-links";
 import { scrollFocus } from "./scroll-focus";
 import { taskToggle } from "./task-toggle";
 
@@ -10,7 +11,8 @@ import { taskToggle } from "./task-toggle";
  * in (M4/P5 design 3.8): where the page is, the revision its HTML was
  * rendered from, the account's role in the notebook, and a way to read
  * the view again. An enhancement ticks a task item through it (M5/P6
- * design 3.5), and reports to the page what it could not do.
+ * design 3.5), goes to another address of the app (M6/P3 design 6.7), and
+ * reports to the page what it could not do.
  */
 export type ReadingContext = {
   workspace: string;
@@ -19,6 +21,8 @@ export type ReadingContext = {
   revision: number;
   role: NotebookRole;
   reload: () => void;
+  /** navigate goes to the app's address to through the router. */
+  navigate: (to: string) => void;
   /**
    * toggleTask ticks (checked) or clears the task item at offset in the
    * view's revision, then reads the view again, and settles once it is
@@ -43,11 +47,16 @@ export type Enhancement = (container: HTMLElement, context: ReadingContext) => (
 /**
  * readingEnhancements are the app's enhancements, in the order they run
  * (M4 design 8): M4 has code highlighting, and the keyboard's way to what
- * scrolls sideways; M5 the task items' ticks; M6 and M7 add theirs here.
- * The app's composition root (main.tsx) gives them to the reading views
- * through Enhancements; without it they have none.
+ * scrolls sideways; M5 the task items' ticks; M6 the links to pages; M7
+ * adds its own here. The app's composition root (main.tsx) gives them to
+ * the reading views through Enhancements; without it they have none.
  */
-export const readingEnhancements: readonly Enhancement[] = [codeHighlight(highlightWorker), scrollFocus, taskToggle];
+export const readingEnhancements: readonly Enhancement[] = [
+  codeHighlight(highlightWorker),
+  scrollFocus,
+  taskToggle,
+  pageLinks,
+];
 
 export const Enhancements = createContext<readonly Enhancement[]>([]);
 

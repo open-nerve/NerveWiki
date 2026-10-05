@@ -39,6 +39,7 @@ const context = {
   revision: 1,
   role: "reader" as const,
   reload: () => {},
+  navigate: () => {},
   report: () => {},
 };
 

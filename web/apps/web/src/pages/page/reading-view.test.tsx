@@ -1,14 +1,19 @@
-import { act, screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 
-import type { Enhancement } from "../../reading/enhancement";
+import { readingEnhancements, type Enhancement } from "../../reading/enhancement";
 import { notebookJSON } from "../../test/fakes";
-import { install, pagePath, pageServer } from "../../test/page-server";
+import { guide, install, pagePath, pageServer } from "../../test/page-server";
 import { renderApp } from "../../test/render";
 
 // The reading view's enhancements (M4/P5 design 3.8).
 
-afterEach(() => vi.useRealTimers());
+afterEach(() => {
+  vi.useRealTimers();
+  // jsdom scrolls nothing: scrolls gives elements a way.
+  Reflect.deleteProperty(Element.prototype, "scrollIntoView");
+});
 
 /** recording is an enhancement that logs, as name, the HTML it runs on and what it knows, and the HTML it is undone on. */
 function recording(log: string[], name: string): Enhancement {
@@ -78,4 +83,79 @@ test("an enhancement reads the view again through its context", async () => {
 
   await waitFor(() => expect(screen.getByRole("article").innerHTML).toBe("<p>Install, again</p>"));
   expect(server.sent.filter((line) => line === "GET view Install")).toHaveLength(2);
+});
+
+/** scrolls records the elements scrolled into view, as jsdom scrolls none. */
+function scrolls(): Element[] {
+  const scrolled: Element[] = [];
+  Element.prototype.scrollIntoView = function (this: Element) {
+    scrolled.push(this);
+  };
+  return scrolled;
+}
+
+test("an address's anchor has the view go to its element once the HTML is in, which takes the focus; read again, the view stays", async () => {
+  const scrolled = scrolls();
+  const server = pageServer();
+  server.views.set(install.id, { html: '<p>intro</p><h2 id="nw-part-two">Part Two</h2>', revision: 1 });
+  const reloads: (() => void)[] = [];
+  const { router } = renderApp(`${pagePath(install.id)}#nw-part-two`, server.app, {
+    enhancements: [
+      (_container, context) => {
+        reloads.push(context.reload);
+        return undefined;
+      },
+    ],
+  });
+
+  const heading = await screen.findByRole("heading", { level: 2, name: "Part Two" });
+  expect(scrolled).toEqual([heading]);
+  expect(document.activeElement).toBe(heading);
+  expect(heading.getAttribute("tabindex")).toBe("-1");
+
+  server.views.set(install.id, { html: '<p>intro, again</p><h2 id="nw-part-two">Part Two</h2>', revision: 2 });
+  act(() => reloads.at(-1)?.());
+  await waitFor(() => expect(screen.getByRole("article").textContent).toContain("intro, again"));
+  expect(scrolled).toHaveLength(1);
+
+  await act(() => router.navigate(`${pagePath(install.id)}#nw-part-two`));
+  expect(scrolled).toEqual([heading, screen.getByRole("heading", { level: 2, name: "Part Two" })]);
+});
+
+test("an anchor written escaped names the element of its id", async () => {
+  const scrolled = scrolls();
+  const server = pageServer();
+  server.views.set(install.id, { html: '<h2 id="nw-über">Über</h2>', revision: 1 });
+  renderApp(`${pagePath(install.id)}#nw-%C3%BCber`, server.app);
+
+  const heading = await screen.findByRole("heading", { level: 2, name: "Über" });
+  expect(scrolled).toEqual([heading]);
+});
+
+test("an anchor the view has no element of goes nowhere", async () => {
+  const scrolled = scrolls();
+  renderApp(`${pagePath(install.id)}#nw-%E0%A4`, pageServer().app);
+  expect((await screen.findByRole("article")).innerHTML).toBe("<p>Install</p>");
+  expect(scrolled).toEqual([]);
+});
+
+test("a link to a page goes there through the router, with the app's enhancements, arriving at the page unless at an anchor", async () => {
+  scrolls();
+  const user = userEvent.setup();
+  const server = pageServer();
+  server.views.set(install.id, {
+    html: `<p><a data-nw-node="${guide.id}" data-nw-anchor="nw-x">at x</a> <a data-nw-node="${guide.id}">Guide</a></p>`,
+    revision: 1,
+  });
+  const { router } = renderApp(pagePath(install.id), server.app, { enhancements: readingEnhancements });
+
+  await user.click(within(await screen.findByRole("article")).getByRole("link", { name: "Guide" }));
+  expect(await screen.findByRole("heading", { level: 1, name: "Guide" })).toBeTruthy();
+  expect(router.state.location.pathname).toBe(pagePath(guide.id));
+  expect(router.state.location.state).toEqual({ arrived: true });
+
+  await act(() => router.navigate(-1));
+  await user.click(within(await screen.findByRole("article", { name: "Install" })).getByRole("link", { name: "at x" }));
+  await waitFor(() => expect(router.state.location.hash).toBe("#nw-x"));
+  expect([router.state.location.pathname, router.state.location.state]).toEqual([pagePath(guide.id), null]);
 });

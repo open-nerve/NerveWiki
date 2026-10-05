@@ -1,8 +1,8 @@
-import type { ApiClient, EventHello, EventLock, EventPages, EventReset } from "@nervewiki/api-client";
+import type { ApiClient, EventHello, EventLinks, EventLock, EventPages, EventReset } from "@nervewiki/api-client";
 
 import { unwrap } from "./api";
 
-export type { EventHello, EventLock, EventPages, EventReset };
+export type { EventHello, EventLinks, EventLock, EventPages, EventReset };
 
 /**
  * EventService opens the account's event stream (M5 design 4.10): GET

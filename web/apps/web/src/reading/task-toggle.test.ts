@@ -28,6 +28,7 @@ function setUp(role: NotebookRole = "editor") {
     revision: 4,
     role,
     reload: () => undefined,
+    navigate: () => undefined,
     toggleTask:
       role === "reader"
         ? undefined

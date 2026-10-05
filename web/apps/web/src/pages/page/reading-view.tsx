@@ -1,7 +1,9 @@
 import { observer } from "mobx-react-lite";
 import { useContext, useEffect, useLayoutEffect, useRef } from "react";
+import { useLocation, useNavigate } from "react-router";
 import useSWR from "swr";
 
+import { arrived } from "../../app/arrival";
 import { writesPages } from "../../app/effective-role";
 import { NotLoaded } from "../../app/not-loaded";
 import { enhance, Enhancements } from "../../reading/enhancement";
@@ -29,6 +31,13 @@ import { useWorkspace } from "../workspace/workspace-layout";
  * scroll, while the box at its position is the same item's (its text, and
  * its state, or the state the view's own toggle asked for): a tick does
  * not move it, a write that moved the items does.
+ *
+ * An enhancement goes to another address through the router: to a page,
+ * whose heading takes the focus; or to an anchor. An address with an
+ * anchor has the view go to the element it names, once
+ * the HTML is in, once for each time the app goes to the address: the
+ * element shows and takes the focus (M6/P3 design 6.7). A view read again
+ * stays where it is.
  */
 export const ReadingView = observer(function ReadingView({
   notebook,
@@ -42,6 +51,10 @@ export const ReadingView = observer(function ReadingView({
   const { slug } = useWorkspace();
   const pages = usePageTree(notebook);
   const enhancements = useContext(Enhancements);
+  const navigate = useNavigate();
+  const location = useLocation();
+  // The navigation whose anchor the view went to: the location's key.
+  const anchored = useRef<string | undefined>(undefined);
   const { data, error, mutate } = useSWR(["page-view", notebook.id, page.id], () => pages.view(page.id));
   const article = useRef<HTMLElement>(null);
   // The task item focused as the HTML was replaced: its position, its text and its state.
@@ -70,6 +83,8 @@ export const ReadingView = observer(function ReadingView({
       revision,
       role,
       reload: () => void mutate(),
+      // An address without an anchor arrives at the page, whose heading takes the focus: the link had it.
+      navigate: (to) => void navigate(to, to.includes("#") ? undefined : { state: arrived }),
       toggleTask: writesPages(role)
         ? async (offset, checked) => {
             await pages.oneToggle(page.id, async () => {
@@ -117,10 +132,36 @@ export const ReadingView = observer(function ReadingView({
           : undefined;
       undo();
     };
-  }, [html, revision, enhancements, slug, notebookId, role, page.id, mutate, pages]);
+  }, [html, revision, enhancements, slug, notebookId, role, page.id, mutate, pages, navigate]);
+  useLayoutEffect(() => {
+    const container = article.current;
+    if (container === null || html === undefined || location.hash === "" || anchored.current === location.key) {
+      return;
+    }
+    anchored.current = location.key;
+    const target = named(container, location.hash.slice(1));
+    if (target !== undefined) {
+      if (!target.hasAttribute("tabindex")) {
+        target.setAttribute("tabindex", "-1");
+      }
+      target.scrollIntoView();
+      target.focus({ preventScroll: true });
+    }
+  }, [html, location.hash, location.key]);
   if (data === undefined) {
     return <NotLoaded error={error} retry={() => void mutate()} />;
   }
   // Named by the page: it can get the focus to scroll a wide content (reading/scroll-focus.ts).
   return <article ref={article} aria-label={page.name} className="nw-reading min-w-0" />;
 });
+
+/** named is the element of container whose id the address's fragment is, decoded, if there is one. */
+function named(container: HTMLElement, fragment: string): HTMLElement | undefined {
+  let id = fragment;
+  try {
+    id = decodeURIComponent(fragment);
+  } catch {
+    // Not an escape: the fragment as it is.
+  }
+  return container.querySelector<HTMLElement>(`[id="${CSS.escape(id)}"]`) ?? undefined;
+}
