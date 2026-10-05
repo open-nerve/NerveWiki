@@ -3,7 +3,8 @@
 // each link resolves to, kept with every write of the pages. Its root is
 // what bootstrap sees: NewIndex, the page module's observer;
 // NewNotebookDeletion, its part in the notebook module's deletion;
-// PageFacts, which reads a page's facts from the Markdown's.
+// PageFacts, which reads a page's facts from the Markdown's; NewAdmin,
+// the rebuild of the indexes (nervewiki reindex).
 package linking
 
 import (

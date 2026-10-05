@@ -28,3 +28,10 @@ WITH RECURSIVE chain AS (
     WHERE c.up < 64
 )
 SELECT page_id, id, parent_id, name_key, up::integer AS up FROM chain ORDER BY page_id, up DESC;
+
+-- name: SetNameKeys :execrows
+-- Each node's title key, taken anew from its name by nervewiki reindex (M6/P3 design 3.6): a derived column, so
+-- neither updated_at nor a changeset moves.
+UPDATE nodes n SET name_key = u.name_key
+FROM (SELECT unnest(sqlc.arg(ids)::uuid[]) AS id, unnest(sqlc.arg(name_keys)::text[]) AS name_key) AS u
+WHERE n.id = u.id AND n.deleted_at IS NULL;

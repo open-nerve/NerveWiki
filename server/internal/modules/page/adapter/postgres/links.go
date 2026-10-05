@@ -6,6 +6,7 @@ import (
 	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/adapter/postgres/gen"
+	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
 )
 
 // LinkPath is a page and its path from the root, itself last (M6/P3 design
@@ -61,4 +62,22 @@ func linkPaths(rows []gen.LinkTargetsByKeysRow) ([]LinkPath, error) {
 		last.Steps = append(last.Steps, LinkStep{ID: r.ID, Key: r.NameKey})
 	}
 	return out, nil
+}
+
+// SetNameKeys sets each of nodes' title key to its NameKey; a node it does
+// not find, deleted or none, is an error.
+func (s *Store) SetNameKeys(ctx context.Context, nodes []domain.Node) error {
+	var p gen.SetNameKeysParams
+	for _, n := range nodes {
+		p.Ids = append(p.Ids, n.ID)
+		p.NameKeys = append(p.NameKeys, n.NameKey)
+	}
+	n, err := s.queries(ctx).SetNameKeys(ctx, p)
+	if err != nil {
+		return fmt.Errorf("set name keys: %w", err)
+	}
+	if int(n) != len(nodes) {
+		return fmt.Errorf("set the name keys of %d nodes, of %d", n, len(nodes))
+	}
+	return nil
 }

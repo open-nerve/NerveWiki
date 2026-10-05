@@ -141,13 +141,28 @@ func (tm acmeTeam) interleaveOn(t *testing.T, h held, first, second step) (answe
 // h's.
 func (tm acmeTeam) interleaveBehind(t *testing.T, h held, first, second step, secondOn string) (answer, answer) {
 	t.Helper()
+	return tm.interleaveWith(t, h.lock, func(i int) {
+		table, waiting := h.table, i+1
+		if i == 1 && secondOn != h.table {
+			table, waiting = secondOn, 1
+		}
+		pgtest.WaitForLockWaitsOn(t, tm.pool, table, waiting, interleavingWait)
+	}, first, second)
+}
+
+// interleaveWith holds what the statement lock locks, in a transaction of
+// the test's own, while it sends first, then second, each once wait(i)
+// returns after the step i is sent; then lets them run, and returns their
+// answers, a request's checked against the contract.
+func (tm acmeTeam) interleaveWith(t *testing.T, lock string, wait func(i int), first, second step) (answer, answer) {
+	t.Helper()
 	ctx := context.Background()
 	holder, err := tm.pool.Begin(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = holder.Rollback(ctx) }()
-	if _, err := holder.Exec(ctx, h.lock); err != nil {
+	if _, err := holder.Exec(ctx, lock); err != nil {
 		t.Fatal(err)
 	}
 	steps := []step{first, second}
@@ -156,11 +171,7 @@ func (tm acmeTeam) interleaveBehind(t *testing.T, h held, first, second step, se
 		send := tm.sender(t, c)
 		answers[i] = make(chan answer, 1)
 		go func() { answers[i] <- send() }()
-		table, waiting := h.table, i+1
-		if i == 1 && secondOn != h.table {
-			table, waiting = secondOn, 1
-		}
-		pgtest.WaitForLockWaitsOn(t, tm.pool, table, waiting, interleavingWait)
+		wait(i)
 	}
 	if err := holder.Commit(ctx); err != nil {
 		t.Fatal(err)

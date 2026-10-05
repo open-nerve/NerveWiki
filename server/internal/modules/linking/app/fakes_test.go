@@ -131,7 +131,11 @@ func (s *store) DeletePages(_ context.Context, ids []uuid.UUID) (app.Dropped, er
 	return d, nil
 }
 
-func (s *store) DeleteNotebooks(context.Context, []uuid.UUID) error { return nil }
+// DeleteNotebooks drops every row: the store holds one notebook's.
+func (s *store) DeleteNotebooks(context.Context, []uuid.UUID) error {
+	s.facts, s.links = map[uuid.UUID]domain.Facts{}, nil
+	return nil
+}
 
 func (s *store) Links(_ context.Context, _ uuid.UUID, r domain.Reach) ([]app.Link, error) {
 	var out []app.Link
@@ -152,6 +156,16 @@ func (s *store) Aliases(_ context.Context, _ uuid.UUID, keys []string) ([]app.Al
 			if slices.Contains(keys, a.Key) {
 				out = append(out, app.Alias{PageID: id, Key: a.Key})
 			}
+		}
+	}
+	return out, nil
+}
+
+func (s *store) AliasKeys(_ context.Context, ids []uuid.UUID) ([]string, error) {
+	var out []string
+	for _, id := range ids {
+		for _, a := range s.facts[id].Aliases {
+			out = append(out, a.Key)
 		}
 	}
 	return out, nil

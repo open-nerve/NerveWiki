@@ -265,6 +265,31 @@ func (q *Queries) NotebookFacts(ctx context.Context, arg NotebookFactsParams) (N
 	return i, err
 }
 
+const notebookIDs = `-- name: NotebookIDs :many
+SELECT id FROM notebooks WHERE deleted_at IS NULL ORDER BY id
+`
+
+// The notebooks not deleted, by id: nervewiki reindex goes through them one at a time.
+func (q *Queries) NotebookIDs(ctx context.Context) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, notebookIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const shareNotebook = `-- name: ShareNotebook :one
 SELECT id FROM notebooks
 WHERE id = $1 AND deleted_at IS NULL

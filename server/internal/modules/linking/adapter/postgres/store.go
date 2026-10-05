@@ -201,6 +201,15 @@ func (s *Store) Aliases(ctx context.Context, notebookID uuid.UUID, keys []string
 	return out, nil
 }
 
+// AliasKeys implements app.Store.
+func (s *Store) AliasKeys(ctx context.Context, ids []uuid.UUID) ([]string, error) {
+	keys, err := s.queries(ctx).AliasKeysOf(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("the alias keys of %d pages: %w", len(ids), err)
+	}
+	return keys, nil
+}
+
 // SetResolutions implements app.Store. A link it does not find, or finds
 // twice, is a defect: the maintenance read each once, in the same
 // transaction.

@@ -283,7 +283,8 @@ func TestTheLinksAChangeReaches(t *testing.T) {
 	}
 }
 
-// The pages with an alias are found by its key, in their notebook only.
+// The pages with an alias are found by its key, in their notebook only;
+// the keys of pages' aliases, each once.
 func TestThePagesWithAnAlias(t *testing.T) {
 	f := newFixture(t)
 	p, q := uuid.NewV7(), uuid.NewV7()
@@ -296,6 +297,10 @@ func TestThePagesWithAnAlias(t *testing.T) {
 	}
 	if want := []app.Alias{{PageID: p, Key: "al"}, {PageID: p, Key: "strasse"}, {PageID: q, Key: "al"}}; !reflect.DeepEqual(got, want) {
 		t.Errorf("aliases = %+v\nwant %+v", got, want)
+	}
+	keys, err := f.s.AliasKeys(context.Background(), []uuid.UUID{p, q, uuid.NewV7()})
+	if err != nil || !reflect.DeepEqual(keys, []string{"al", "strasse"}) {
+		t.Errorf("the alias keys of the pages = %v, %v; want al and strasse, once each", keys, err)
 	}
 }
 

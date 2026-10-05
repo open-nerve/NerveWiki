@@ -136,6 +136,13 @@ make run      # 以 dev 配置启动 nervewiki serve，监听 127.0.0.1:8080；C
 - **勾选任务项**：`POST /api/v0/pages/{page_id}/toggle-task`，`{base_revision, offset, checked}`：把位置 `offset` 上的那个字节换成 `x` 或空格，其余字节不变，答这一页；权限与写正文相同，有人持锁时同样答 409 `page.locked`。`base_revision` 不是当前版本答 409 `page.revision_mismatch`（位置只在它所依据的版本里有意义，先于 422）；`offset` 上不是任务项答 422（`offset`，`out_of_range`），勾了会让那里不再有任务项（例如 `- [ ]: /u` 勾上之后成了链接引用定义）答 422（`offset`，`not_allowed`）；已经是那个状态的什么也不写，有人持锁时也答 200。
 - **解析预算**：服务端同时解析的正文字节数有上限（`page.parse_budget_bytes`，默认 8 MiB，每次至少记 4 KiB），取不到额度的请求最多等 `page.parse_max_wait`（默认 2 秒），然后答 503 `server_busy`（带 `Retry-After`）；写正文、新建带正文的页与阅读视图都经它。最坏的正文解析时约占它字节数 300 倍的内存（默认预算约 2.4 GB），普通的约 40 倍：内存小的机器调小预算（不能小于 5 MiB），并设置 `GOMEMLIMIT`。
 
+### 链接索引
+
+- **索引**：每一页正文里的链接（wikilink、嵌入、Markdown 链接与图片，以及 frontmatter 里的属性链接）、标签、属性与别名，和每条链接解析到的页，随每次写入在同一个事务里更新：新建、改名、移动、删除（连同子页）、写正文、勾选任务项，删除笔记本时一并删除。同一笔记本的索引维护一个接一个进行（索引自己按笔记本的锁），所以同一笔记本的保存在提交处排队。
+- **解析**：链接按目标最后一段的标题键找页（`.md` 可写可不写）：`./`、`../` 开头的从出发页所在的文件夹（它的父页）算起；`/` 开头的从根算起；否则先找从根起路径恰好如此的页，再找路径以这几段结尾的页（出发文件夹的子树里的优先，再按层数少的，再按 id，最后这一步时算有歧义）；只有一段的名称最后才找别名。规则与样例在 `tools/md-fixtures/resolve/`，除了别名都与 Obsidian 一致（Obsidian 不按别名解析）。
+- **别名与 frontmatter 的标签**照 Obsidian 的读法：第一个名为 `aliases`、`tags` 的键（ASCII 字母不分大小写），字符串是一个（不按逗号拆开），列表取其中的字符串，去掉首尾空白，空的不算；标签去掉开头的一个 `#` 之后要合乎正文标签的规则。`alias`、`tag` 不读。
+- **`nervewiki reindex [--notebook <id>]`**：从页面重建链接索引，不给 `--notebook` 时逐个重建每个没删除的笔记本，每个一行（页数、链接数、解析不到的数）。升级到带链接索引的版本（M6）之后、或发布说明要求时（提取规则的版本 `indexed_pages.extractor` 变了）执行一次；重建一个笔记本时它的写入在等待。它同时按当前的 Unicode 数据重算标题键：同一父页下有两页会撞键时，这个笔记本不重建、什么也不改，标准错误上列出这些页的标题与 id，其余笔记本照常，命令最后以退出码 1 结束；改掉其中一个标题之后再执行。
+
 ### 事件流
 
 - `GET /api/v0/events` 是一条 SSE（`text/event-stream`），一个账户一条：推送它看得到的笔记本里的变化，只带 id，客户端收到后自己重新取数。访问令牌与 PAT 都可以（`Authorization: Bearer`）；浏览器的 `EventSource` 带不了这个头，用 `fetch` 流式读取。看得到的笔记本与 `GET /api/v0/notebooks/{notebook_id}` 答 200 的相同，在连接建立时算好；帧按提交的次序到达，回滚的事务什么也不发。
@@ -143,6 +150,7 @@ make run      # 以 dev 配置启动 nervewiki serve，监听 127.0.0.1:8080；C
   - `hello`：第一帧，`{"heartbeat_seconds"}`；
   - `pages`：一个写入单元，`tree` 说明是否改了树（新建、改名、移动、删除），`pages` 是写了正文的页与新版本 `[{id, revision}]`（新建的页在版本 1）；多于 20 页时是 `null`，当作每一页都写过；
   - `lock`：一页的编辑会话开启或结束，`{page_id, session_id}`，去读锁；接管是先结束、再开启的两帧；
+  - `links`：一个写入单元改变了链接索引，`{pages, targets}`：`pages` 是链接改指别的页的页（不含这个单元写了正文的页，它们在 `pages` 帧里），`targets` 是反链变了的页；各自多于 20 页时是 `null`，当作这个笔记本的每一页都变了。`nervewiki reindex` 每个笔记本发一帧，两者都是 `null`；
   - `reset`：`{reason}`，流的最后一帧；
   - 心跳是一行注释 `: heartbeat`。不认识的类型跳过：之后的 M 会加自己的类型。
 - **`reset`**：服务端随即关闭连接，客户端重连并整体刷新（树与打开的页），不补发事件。原因：`access`（看得到的笔记本可能变了：工作区或笔记本的成员身份、笔记本的开放程度、停用与恢复）、`notebooks_deleted`（看得到的笔记本被删除，删工作区也是）、`expired`（凭证到期，续期之后重连）、`unauthenticated`（心跳时重新认证失败：撤销、别处退出登录、停用）、`reconnected`（服务端接收通知的连接断开又连上，期间的事件丢了）、`overflow`（客户端读得太慢，缓冲的 64 个事件满了）。因 `access`、`notebooks_deleted`、`reconnected`、`overflow` 而 `reset` 时，之前已经送到这条流的事件先写出；凭证到期或失效时不再写出。流也可能不带 `reset` 就结束：服务停机、心跳时认证服务出错、客户端一个心跳之内收不下一帧，客户端同样重连并刷新。
@@ -240,6 +248,8 @@ make image-smoke VERSION=0.1.0   # 在镜像上跑 S1、S3：迁移、探针、�
   docker run --rm -e NWIKI_DATABASE__URL=… "${key[@]}" nervewiki:0.1.0 migrate up
   docker run -d -p 8080:8080 -e NWIKI_DATABASE__URL=… "${key[@]}" nervewiki:0.1.0
   ```
+
+- 升级到带链接索引的版本（M6）时，`migrate up` 之后执行一次 `nervewiki reindex`（见上文"链接索引"），已有页面的链接才进入索引；之后的写入自己维护索引。
 
 - **迁移与服务分用两个数据库角色时**（表的所有者执行迁移，服务用另一个角色登录，`database.auto_migrate` 关闭），服务需要的权限全部写在 [`deploy/runtime-grants.sql`](deploy/runtime-grants.sql)，授予组角色 `nervewiki_runtime`：业务表逐表的读写（不给 `TRUNCATE`、`REFERENCES`、`TRIGGER` 与 DDL），River 的表与序列，`river_job` 的 `MAINTAIN`（River 每天用 `REINDEX INDEX CONCURRENTLY` 重建它的索引，需要 PostgreSQL 17 起），`goose_db_version` 的读（`/readyz` 靠它判断迁移是否执行完）。函数与类型不在文件里，靠 PostgreSQL 默认给 PUBLIC 的权限。
   - 组角色建一次，服务登录的角色加入它：`CREATE ROLE nervewiki_runtime NOLOGIN;`、`CREATE ROLE nervewiki_app LOGIN PASSWORD '…' IN ROLE nervewiki_runtime;`。

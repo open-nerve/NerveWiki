@@ -80,9 +80,11 @@ P3 是 M6 最大的一个 Phase。为了让每次审查的范围可控，它分�
 | `modules/linking/domain/` | `target.go`（切分）、`resolve.go`（解析与落点）、`facts.go`（一页的链接、标签、属性、别名）、`change.go`（受影响的键与节点） |
 | `modules/linking/app/` | `ports.go`、`index.go`（观察者）、`resolver.go`（取候选、解析一批链接）、`reindex.go`、`deletion.go` |
 | `modules/linking/adapter/postgres/` | 索引表的 store、按笔记本的锁（`pg_advisory_xact_lock`） |
-| `modules/linking/adapter/markdown/` | `markdown.Facts` → `domain.PageFacts`（obsidian 的提取结果、frontmatter 的 `aliases`、`tags` 与属性）；reindex 的解析 |
-| `modules/linking/` 模块根 | `module.go`（`New`：观察者、笔记本删除的注册者）、`admin.go`（`NewAdmin`：reindex，命令行用） |
-| `bootstrap/` | `linking.go`（组装、page 事件与 `links` 事件的转换）、`registrants.go`、`reindex.go` |
+| `modules/linking/adapter/markdown/` | `PageFacts`：`markdown.Facts` → `domain.Facts`（obsidian 的提取结果、frontmatter 的 `aliases`、`tags` 与属性，见 3.4 末）；`Parser`：reindex 在预算之内的解析 |
+| `modules/linking/` 模块根 | `module.go`（`NewIndex`：观察者；`NewNotebookDeletion`；`PageFacts`）、`admin.go`（`NewAdmin`：reindex，命令行用）。观察者不叫 `New`：archtest 把模块根的 `New` 当作它的 HTTP 端（命令行的组装不许构造它），P4 的接口用这个名字 |
+| `bootstrap/` | `linking.go`（page 事件、读端口与 `links` 事件的转换）、`registrants.go`、`reindex.go` |
+| `modules/notebook/catalog.go` | `notebook.NewCatalog(pool)`：活着的笔记本的 id，按 id（reindex 逐个重建） |
+| `platform/markdown/obsidian`、`platform/postgres/pgtest` | `obsidian.IsTag`（规则 9，frontmatter 的标签用）；`pgtest.WaitForAdvisoryLockWaits`（交错测试按索引的锁排先后） |
 | `cmd/nervewiki/reindex.go` | `nervewiki reindex [--notebook <id>]` |
 | `tools/md-fixtures/resolve/`、`check.mjs`、`obsidian/verify-resolve.mjs`、`README.md` | 解析样例与核对（解析要每个样例一个库，与提取的单库核对分开写） |
 | `deploy/runtime-grants.sql`、`sqlc.yaml`、`migrations/schema_test.go` | 新表 |
@@ -105,25 +107,25 @@ P3 是 M6 最大的一个 Phase。为了让每次审查的范围可控，它分�
 
 ### 3.3 page 的读端口
 
-模块根 `page.NewLinkTargets(pool) LinkTargets`，全部在调用方的事务里，只读活着的节点：
+模块根 `page.NewLinkTargets(pool) LinkTargets`，全部在调用方的事务里，只读活着的页（附件与已删的页都不在其中）：
 
 ```go
 type LinkTargets interface {
-	// ByKeys: 笔记本里标题键在 keys 中的节点，各带从根起的路径（id、标题键）。
+	// ByKeys: 笔记本里标题键在 keys 中的页，各带从根起的路径（id、标题键）。
 	ByKeys(ctx, notebookID uuid.UUID, keys []string) ([]LinkNode, error)
-	// Paths: 一组节点从根起的路径。
+	// Paths: 一组页从根起的路径。
 	Paths(ctx, notebookID uuid.UUID, ids []uuid.UUID) ([]LinkNode, error)
-	// Subtree: 一个节点与它活着的后代。
-	Subtree(ctx, notebookID, id uuid.UUID) ([]LinkNode, error)
-	// Pages: 笔记本里每一页的正文与版本，按 id 逐页读（reindex）。
+	// Subtree: 一页与它下面的页（id、标题键）。
+	Subtree(ctx, notebookID, id uuid.UUID) ([]LinkStep, error)
+	// reindex 用：笔记本的页（按 id）；一页的正文与版本；
 	PageIDs(ctx, notebookID uuid.UUID) ([]uuid.UUID, error)
 	Content(ctx, id uuid.UUID) (string, int, error)
-	// Rekey: 按当前的 Unicode 数据重算标题键；同一父节点下撞键时不改，答撞键的节点。
-	Rekey(ctx, notebookID uuid.UUID) ([][]uuid.UUID, error)
+	// Rekey: 按当前的 Unicode 数据重算全部活着的节点的标题键；同一父节点下会撞键时一个也不改，答撞键的节点（每组按 id）。
+	Rekey(ctx, notebookID uuid.UUID) ([][]NamedNode, error)
 }
 ```
 
-`LinkNode{ID, Kind, Path []PathStep{ID, Key}}`（路径的最后一步是它自己）。`ByKeys` 是一条递归 CTE：先按 `(notebook_id, name_key)` 找到节点，再沿父节点上溯，层数受 `MaxDepth` 约束。
+`LinkNode{ID, Path []LinkStep{ID, Key}}`（路径的最后一步是它自己）。`ByKeys`、`Paths` 是递归 CTE：先找到页，再沿父节点上溯，上限 64 层；路径到不了根（只有缺陷造成的环）是错误，不答截断的路径。`Rekey` 的规则在 `page/domain`（`domain.Rekey`），写回只改 `name_key`（派生的列：不动 `updated_at`，不记变更集）。
 
 ### 3.4 观察者：增量维护
 
@@ -138,33 +140,36 @@ linking 的 `Index` 实现 `page.PageObserver`，经组合根登记（`pageRegis
    - 改名：旧键、新键，以及经端口取的子树里每个节点的键；
    - 移动：列出的每个节点的键（子树已在变更里）；
    - 删除：列出的每个节点的键；
-   - 别名变了的页：旧别名与新别名的键。
+   - 别名变了的页：旧别名与新别名的键；
+   - 以上触及的每一页现有别名的键（实现时由性质测试发现：别名之间同样按路径取舍，移动一页会改变按它的别名解析的结果，哪怕它的别名没变）。
 6. **候选链接**：`target_key` 或 `target_alt_key` 在这些键里的；解析到受影响节点（改名、移动、删除的子树）的；出发页在改名、移动的子树里的（出发文件夹变了）；以及第 3 步写入的全部链接。
 7. **解析**（`app.resolver`）：一次切分全部目标，一次 `ByKeys` 取全部候选，一次取别名，一次 `Paths` 取出发页的路径，逐条 `domain.Resolve`。
 8. **更新**：只写解析结果真的变了的行。
 9. **事件**：`pages` 是链接状态（解析到的节点）变了的出发页，不含本单元写了正文的页；`targets` 是反链变了的页（变了的行的新旧目标，加上写了正文的页的新旧目标）。都空时不发。
 
-**为什么候选是全的**：解析结果只取决于（一）最后一段的标题键对应的节点集合，（二）这些节点从根起的路径，（三）出发页的位置，（四）别名。（一）由新建、删除、改名、移动的键覆盖；（二）只有改名、移动会改，它们的子树全部计入；（三）只有移动会改，子树计入；（四）由正文写的别名覆盖。这是推理，不是证明，所以有"增量等于重建"的性质测试（第 5 节）。
+**为什么候选是全的**：解析结果只取决于（一）最后一段的标题键对应的节点集合，（二）这些节点从根起的路径，（三）出发页的位置，（四）别名与有别名的页的路径。（一）由新建、删除、改名、移动的键覆盖；（二）只有改名、移动会改，它们的子树全部计入；（三）只有移动会改，子树计入；（四）由正文写的新旧别名，以及路径变了的页的别名覆盖。这是推理，不是证明，所以有"增量等于重建"的性质测试（第 5 节）；它在第一次运行时就找到了（四）原先漏掉的后半句。
+
+**frontmatter 的别名与标签**照 Obsidian 1.12.7 自己的代码读（`parseFrontMatterAliases`、`parseFrontMatterTags`、`getAllTags`，从它安装包里的代码读出，只读）：第一个名为 `aliases`、`tags` 的键（ASCII 字母不分大小写，同 JavaScript 不带 `u` 的 `/i`），字符串是一个（不按逗号拆），列表取其中的字符串，按 JavaScript 的 `trim` 去掉首尾空白，空的不算；`alias`、`tag` 不读；第一个键没有字符串就没有，不往后找。标签去掉开头的一个 `#` 之后要合乎规则 9（Obsidian 的标签面板这样计），frontmatter 的标签排在正文的之前。Obsidian 不按别名解析（样例 012），所以只有别名的读法照它。
 
 ### 3.5 笔记本删除、`links` 事件、组合根
 
 - **笔记本删除**：linking 登记笔记本删除事件（`notebookRegistrants`，排在 page 之后、事件流的 `reset` 之前），在同一个事务里删掉这些笔记本的全部索引行。
 - **`links` 事件**：linking 的端口 `Publisher.LinksChanged(ctx, LinksChanged{WorkspaceID, NotebookID, Pages, Targets})`；多于 20 页的一组为 `null`（linking 里先判断，不靠 `ErrTooLong`）。组合根的 `linkEvents` 经 `events.Publisher.Publish` 发出类型 `links`，载荷 `{"pages": […]|null, "targets": […]|null}`；契约 `api/modules/events.yaml` 加这个类型。
 - **组合根**：
-  - `pageRegistrants(pool)` 加 linking 的观察者（只凭连接池与发布者就能构造：它不解析正文），所以 `users`、`workspaces` 两个命令的笔记本删除也删索引行；
+  - `pageRegistrants(pool)` 加 linking 的观察者（只凭连接池与发布者就能构造：它不解析正文），排在事件流之后（一个单元的 `pages` 帧先于 `links` 帧），所以 `users`、`workspaces` 两个命令的笔记本删除也删索引行；
   - page 的 `Event` 经 `bootstrap` 转成 linking 的（两个模块互不导入），`Facts` 经 linking 的模块根 `linking.PageFacts(any)` 转成 linking 的提取结果（实现在 `adapter/markdown`）。
 
 ### 3.6 `nervewiki reindex`
 
-- `nervewiki reindex [--notebook <id>]`，照 `workspaces` 的样板经 `bootstrap.Reindex` 组装，不起 HTTP 与后台任务；archtest 的命令清单加上它。
-- 列出笔记本：notebook 模块根加 `notebook.NewCatalog(pool)`（活着的笔记本 id 与工作区，按 id）。
-- 每个笔记本一个事务：
+- `nervewiki reindex [--notebook <id>]`，照 `workspaces` 的样板经 `bootstrap.Reindex` 组装，不起 HTTP 与后台任务；Markdown 与预算同 `serve`（`parsing`）；archtest 的命令组装规则加上它。
+- 列出笔记本：`notebook.NewCatalog(pool)`（活着的笔记本 id，按 id）；锁与工作区：`notebook.NewNotebooks`（`WorkspaceOf`、`LockByID`）。
+- 每个笔记本一个事务（`linking` 的 `app.Rebuild`）：
   1. 笔记本行 `FOR NO KEY UPDATE`（与改名同级），linking 的锁；
-  2. `Rekey`：撞键时报告这些节点（标题与 id），这个笔记本不做，命令最后以退出码 1 结束；
-  3. 删掉这个笔记本的索引行，逐页取预算、解析、写行（`adapter/markdown` 用平台的 Markdown 与预算）；
+  2. `Rekey`：会撞键时这个笔记本什么也不改，答撞键的节点；
+  3. 删掉这个笔记本的索引行，逐页取正文、在预算之内解析、写行；
   4. 解析全部链接；
   5. 发一条 `links`（`pages: null, targets: null`）。
-- 输出：每个笔记本一行（页数、链接数、解析不到的数）；撞键的笔记本在标准错误上列出。
+- 输出：每个笔记本一行（`notebook <id>: N pages, M links, K unresolved`）；撞键的笔记本在标准错误上列出（标题与 id），其余照常，命令最后以退出码 1 结束；`--notebook` 不是 id（零 id 也算）或笔记本不存在时立即失败；列出之后被删除的笔记本跳过。
 - README 写明：升级到 M6 之后运行一次；reindex 期间，这个笔记本的写在等待。
 
 ### 3.7 `resolve/` 样例
@@ -224,6 +229,8 @@ linking 的 `Index` 实现 `page.PageObserver`，经组合根登记（`pageRegis
 - 解析规则：第 2 节的三处。
 - 索引表不带外键：第 3.2 节。
 - 迁移编号：page 的索引是 00019，linking 的五张表是 00020–00024（总设计写的是一个 00019）。
+- 受影响的范围加上"触及的页的别名的键"（第 3.4 节，性质测试发现）；总设计 4.4 的观察者一节随之修订。
+- frontmatter 的别名与标签照 Obsidian 的读法（第 3.4 节末），总设计只写了"frontmatter 的 aliases"。
 - P3 分 A、B 两部分合并。
 
 ## 8. 完成标准

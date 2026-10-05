@@ -43,7 +43,8 @@ func (l linkIndex) PagesChanged(ctx context.Context, e page.Event) error {
 	return l.index.PagesChanged(ctx, linking.PagesChanged{WorkspaceID: e.WorkspaceID, NotebookID: e.NotebookID, Changes: changes})
 }
 
-// linkTargets is what linking reads of the pages, page's LinkTargets.
+// linkTargets is what linking reads of the pages, page's LinkTargets: the
+// observer's reads, and the rebuild's.
 type linkTargets struct {
 	page page.LinkTargets
 }
@@ -108,4 +109,23 @@ type linkNotebookDeletion struct {
 
 func (d linkNotebookDeletion) NotebookDeleted(ctx context.Context, x notebook.NotebookDeletion) error {
 	return d.linking.NotebookDeleted(ctx, linking.NotebooksDeleted{NotebookIDs: x.NotebookIDs})
+}
+
+func (l linkTargets) PageIDs(ctx context.Context, notebookID uuid.UUID) ([]uuid.UUID, error) {
+	return l.page.PageIDs(ctx, notebookID)
+}
+
+func (l linkTargets) Content(ctx context.Context, id uuid.UUID) (string, int, error) {
+	return l.page.Content(ctx, id)
+}
+
+func (l linkTargets) Rekey(ctx context.Context, notebookID uuid.UUID) ([]linking.Clash, error) {
+	clashes, err := l.page.Rekey(ctx, notebookID)
+	out := make([]linking.Clash, len(clashes))
+	for i, c := range clashes {
+		for _, n := range c {
+			out[i] = append(out[i], linking.NamedNode(n))
+		}
+	}
+	return out, err
 }

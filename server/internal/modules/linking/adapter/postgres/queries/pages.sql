@@ -62,3 +62,7 @@ DELETE FROM page_aliases WHERE notebook_id = ANY(sqlc.arg(ids)::uuid[]);
 SELECT source_id, alias_key FROM page_aliases
 WHERE notebook_id = sqlc.arg(notebook_id) AND alias_key = ANY(sqlc.arg(keys)::text[])
 ORDER BY source_id, alias_key;
+
+-- name: AliasKeysOf :many
+-- The keys of the aliases of the pages ids, each once.
+SELECT DISTINCT alias_key FROM page_aliases WHERE source_id = ANY(sqlc.arg(ids)::uuid[]) ORDER BY alias_key;

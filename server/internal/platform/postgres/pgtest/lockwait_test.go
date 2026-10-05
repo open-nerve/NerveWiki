@@ -87,6 +87,25 @@ func TestWaitForLockWaitsOnCountsTheRowsOfItsTable(t *testing.T) {
 	}
 }
 
+// WaitForAdvisoryLockWaits counts the waits for its key pair only, a
+// negative key too: not those for another pair, nor for a row.
+func TestWaitForAdvisoryLockWaitsCountsItsKeys(t *testing.T) {
+	t.Parallel()
+	url := pgtest.NewDatabase(t)
+	pool := newPool(t, url)
+	holdAndWaitIn(t, url, "SELECT pg_advisory_xact_lock(7, -9)", "SELECT pg_advisory_xact_lock(7, -9)", 2)
+	holdAndWaitIn(t, url, "SELECT pg_advisory_xact_lock(7, 8)", "SELECT pg_advisory_xact_lock(7, 8)", 1)
+	holdRowAndWait(t, url)
+
+	pgtest.WaitForAdvisoryLockWaits(t, pool, 7, -9, 2, 10*time.Second)
+	three := fatalOf(func(tb testing.TB) { pgtest.WaitForAdvisoryLockWaits(tb, pool, 7, -9, 3, 300*time.Millisecond) })
+	other := fatalOf(func(tb testing.TB) { pgtest.WaitForAdvisoryLockWaits(tb, pool, 9, -9, 1, 300*time.Millisecond) })
+	if three != "2 statement(s) waited for the advisory lock 7, -9 within 300ms, want at least 3" ||
+		other != "0 statement(s) waited for the advisory lock 9, -9 within 300ms, want at least 1" {
+		t.Errorf("3 waits failed with %q, another pair with %q; want both to fail at their deadline", three, other)
+	}
+}
+
 // WaitForKeyWaitOn counts the INSERTs that wait for the transaction that
 // inserted the same key into its table: a wait WaitForLockWaitsOn does not
 // see, having no tuple lock. It does not count a wait for a row of its

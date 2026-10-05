@@ -60,6 +60,8 @@ type Store interface {
 	// Aliases is the pages of notebookID with an alias whose key is one of
 	// keys.
 	Aliases(ctx context.Context, notebookID uuid.UUID, keys []string) ([]Alias, error)
+	// AliasKeys is the keys of the aliases of the pages ids, each once.
+	AliasKeys(ctx context.Context, ids []uuid.UUID) ([]string, error)
 	// SetResolutions has each of links, by its page and start, resolve as
 	// it says.
 	SetResolutions(ctx context.Context, links []Link) error

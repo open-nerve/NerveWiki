@@ -78,3 +78,26 @@ func TestALinkTargetsPathThatLoopsIsAnError(t *testing.T) {
 		t.Errorf("a loop's path = %+v, want an error", got)
 	}
 }
+
+// The title keys reindex takes anew are set on the nodes not deleted; a
+// node deleted, or none, is a defect: an error, which rolls the unit back.
+func TestSetNameKeysSetsTheNodesNotDeleted(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	a := f.page(t, f.eng, nil, "A", 0)
+	gone := f.page(t, f.eng, nil, "Gone", 1)
+	if err := f.s.DeleteNodes(ctx, []uuid.UUID{gone.ID}, f.alice, now().Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	a.NameKey = "new"
+	if err := f.s.SetNameKeys(ctx, []domain.Node{a}); err != nil {
+		t.Fatal(err)
+	}
+	if n := f.count(t, "SELECT count(*) FROM nodes WHERE id = $1 AND name_key = 'new'", a.ID); n != 1 {
+		t.Errorf("A's key was not set")
+	}
+	gone.NameKey = "new"
+	if err := f.s.SetNameKeys(ctx, []domain.Node{gone}); err == nil {
+		t.Error("a deleted node's key was set")
+	}
+}

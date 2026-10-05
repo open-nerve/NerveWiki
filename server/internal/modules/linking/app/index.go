@@ -28,7 +28,9 @@ type Index struct {
 // it has the rows of the pages whose content e wrote hold their facts and
 // drops those of the pages it deleted, resolves anew the links e reaches,
 // sets those that resolve otherwise, and publishes the links event of
-// what changed.
+// what changed. It reaches what domain.Affected does, the pages under the
+// nodes it renamed, and the keys of every alias of those pages, of those
+// it wrote and of those it deleted.
 func (x Index) PagesChanged(ctx context.Context, e PagesChanged) error {
 	reach, renamed, ok := domain.Affected(e.Changes)
 	if !ok {
@@ -69,6 +71,13 @@ func (x Index) PagesChanged(ctx context.Context, e PagesChanged) error {
 		}
 		reach.Add(sub...)
 	}
+	// A page's path decides between the pages with an alias as between
+	// those with a name: the aliases of the pages reached are too.
+	aliasKeys, err := x.Store.AliasKeys(ctx, reach.Targets)
+	if err != nil {
+		return err
+	}
+	reach.Keys = append(reach.Keys, aliasKeys...)
 	reach.Compact()
 	links, err := x.Store.Links(ctx, e.NotebookID, reach)
 	if err != nil {

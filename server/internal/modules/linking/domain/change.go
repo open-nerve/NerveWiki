@@ -85,11 +85,12 @@ func (r *Reach) Compact() {
 // The links a unit may resolve anew are those its changes may resolve
 // otherwise (M6/P3 design 3.4): where a link resolves depends on the pages
 // whose key is its target's last, their paths, its page's place and the
-// aliases. A page appearing, going or renamed has its keys; a path changes
-// only for a node renamed or moved, with the nodes under it, whose links
-// to them and keys are reached; a page's place changes only when it moves,
-// and its links are reached; aliases change only with a content, whose
-// aliases' keys the caller adds.
+// aliases with their pages' paths. A page appearing, going or renamed has
+// its keys; a path changes only for a node renamed or moved, with the nodes
+// under it, whose links to them and keys are reached, and the keys of
+// their aliases, which the caller adds; a page's place changes only when it
+// moves, and its links are reached; aliases change only with a content,
+// whose aliases' keys the caller adds.
 func Affected(changes []Change) (r Reach, renamed []uuid.UUID, ok bool) {
 	for _, c := range changes {
 		ok = ok || c.Revision != 0 && c.After != nil || c.relocates()

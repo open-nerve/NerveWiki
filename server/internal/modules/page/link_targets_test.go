@@ -96,3 +96,54 @@ func TestTheLinkIndexReadsTheNotebooksPages(t *testing.T) {
 		t.Errorf("a deleted page's subtree = %+v, want an error", sub)
 	}
 }
+
+// For nervewiki reindex: the notebook's pages by id, a page's content and
+// revision, and the title keys taken anew from the names: a stale one is
+// set; when siblings would share one, each key stays and they are told.
+func TestTheLinkIndexsRebuildReadsAndRekeysThePages(t *testing.T) {
+	l := newLinkTree(t)
+	ctx := context.Background()
+	targets := page.NewLinkTargets(l.pool)
+	exec := func(sql string, args ...any) {
+		t.Helper()
+		if _, err := l.pool.Exec(ctx, sql, args...); err != nil {
+			t.Fatalf("%s: %v", sql, err)
+		}
+	}
+	key := func(id uuid.UUID) string {
+		t.Helper()
+		var k string
+		if err := l.pool.QueryRow(ctx, "SELECT name_key FROM nodes WHERE id = $1", id).Scan(&k); err != nil {
+			t.Fatal(err)
+		}
+		return k
+	}
+
+	if ids, err := targets.PageIDs(ctx, l.notebook); err != nil || !reflect.DeepEqual(ids, []uuid.UUID{l.a, l.b}) {
+		t.Errorf("page ids = %v, %v; want A and B", ids, err)
+	}
+	exec(`INSERT INTO page_contents (node_id, content, revision, content_hash, byte_size, updated_by_id, updated_at)
+		SELECT id, '# A', 3, sha256('# A'), 3, created_by_id, now() FROM nodes WHERE id = $1`, l.a)
+	if content, revision, err := targets.Content(ctx, l.a); err != nil || content != "# A" || revision != 3 {
+		t.Errorf("A's content = %q, %d, %v; want # A at 3", content, revision, err)
+	}
+	if _, _, err := targets.Content(ctx, l.c); err == nil {
+		t.Error("a deleted page's content was read")
+	}
+
+	exec("UPDATE nodes SET name_key = 'stale' WHERE id = $1", l.b)
+	if clashes, err := targets.Rekey(ctx, l.notebook); err != nil || clashes != nil {
+		t.Fatalf("Rekey = %v, %v; want no clash", clashes, err)
+	}
+	if got := key(l.b); got != "b" {
+		t.Errorf("B's key = %q, want b", got)
+	}
+	exec("UPDATE nodes SET name = 'B.PNG', name_key = 'z' WHERE id = $1", l.b)
+	clashes, err := targets.Rekey(ctx, l.notebook)
+	if want := [][]page.NamedNode{{{ID: l.b, Name: "B.PNG"}, {ID: l.x, Name: "b.png"}}}; err != nil || !reflect.DeepEqual(clashes, want) {
+		t.Errorf("Rekey of a clash = %v, %v; want %v", clashes, err, want)
+	}
+	if got := key(l.b); got != "z" {
+		t.Errorf("after a clash, B's key = %q, want it kept", got)
+	}
+}

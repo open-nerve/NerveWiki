@@ -1,9 +1,14 @@
 package markdownadapter_test
 
 import (
+	"context"
+	"errors"
+	"io"
+	"log/slog"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	markdownadapter "github.com/open-nerve/NerveWiki/server/internal/modules/linking/adapter/markdown"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/linking/domain"
@@ -112,5 +117,27 @@ func TestAFrontmatterNotValidHasNothing(t *testing.T) {
 	}
 	if _, err := markdownadapter.PageFacts("not facts"); err == nil {
 		t.Error("facts of another kind were read")
+	}
+}
+
+// The rebuild's parse takes its share of the parse budget: with none left
+// within its wait, it is refused.
+func TestTheParserTakesTheBudget(t *testing.T) {
+	md, err := markdown.New([]markdown.Extension{obsidian.Extension()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	budget := markdown.NewBudget(64<<10, 10*time.Millisecond, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	parser := markdownadapter.NewParser(md, budget)
+	if f, err := parser.Facts(context.Background(), "[[A]]"); err != nil || len(f.Links) != 1 {
+		t.Fatalf("Facts = %+v, %v; want the link", f, err)
+	}
+	hold, err := budget.Take(context.Background(), 64<<10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer hold.Release()
+	if _, err := parser.Facts(context.Background(), "[[A]]"); !errors.Is(err, markdown.ErrBusy) {
+		t.Errorf("Facts with the budget taken = %v, want ErrBusy", err)
 	}
 }

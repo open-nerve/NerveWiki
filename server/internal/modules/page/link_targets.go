@@ -3,6 +3,7 @@ package page
 import (
 	"context"
 	"fmt"
+	"slices"
 	"uuid"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -24,6 +25,22 @@ type LinkTargets interface {
 	// Subtree is the page id of notebookID and the pages not deleted under
 	// it, each its id and title key.
 	Subtree(ctx context.Context, notebookID, id uuid.UUID) ([]LinkStep, error)
+	// PageIDs is the pages not deleted of notebookID, by id (nervewiki
+	// reindex).
+	PageIDs(ctx context.Context, notebookID uuid.UUID) ([]uuid.UUID, error)
+	// Content is the content of the page not deleted id and its revision.
+	Content(ctx context.Context, id uuid.UUID) (string, int, error)
+	// Rekey takes the title keys of notebookID's nodes not deleted anew
+	// from their names by the current Unicode data. When siblings would
+	// share a key it changes none and returns them, a group a key, each by
+	// id.
+	Rekey(ctx context.Context, notebookID uuid.UUID) ([][]NamedNode, error)
+}
+
+// NamedNode is a node by its id and name.
+type NamedNode struct {
+	ID   uuid.UUID
+	Name string
 }
 
 // LinkNode is a page with its path from the root, itself last.
@@ -87,4 +104,52 @@ func linkNodes(paths []postgresadapter.LinkPath) []LinkNode {
 		out[i] = LinkNode{ID: p.ID, Path: steps}
 	}
 	return out
+}
+
+func (l linkTargets) PageIDs(ctx context.Context, notebookID uuid.UUID) ([]uuid.UUID, error) {
+	nodes, err := l.store.ListNodes(ctx, notebookID)
+	if err != nil {
+		return nil, fmt.Errorf("page: the pages of %s: %w", notebookID, err)
+	}
+	var out []uuid.UUID
+	for _, n := range nodes {
+		if n.Kind == domain.KindPage {
+			out = append(out, n.ID)
+		}
+	}
+	slices.SortFunc(out, uuid.UUID.Compare)
+	return out, nil
+}
+
+func (l linkTargets) Content(ctx context.Context, id uuid.UUID) (string, int, error) {
+	c, err := l.store.PageContent(ctx, id)
+	if err != nil {
+		return "", 0, fmt.Errorf("page: the content of %s: %w", id, err)
+	}
+	return c.Content, c.Revision, nil
+}
+
+func (l linkTargets) Rekey(ctx context.Context, notebookID uuid.UUID) ([][]NamedNode, error) {
+	nodes, err := l.store.ListNodes(ctx, notebookID)
+	if err != nil {
+		return nil, fmt.Errorf("page: the nodes of %s: %w", notebookID, err)
+	}
+	slices.SortFunc(nodes, func(a, b domain.Node) int { return a.ID.Compare(b.ID) })
+	changed, clashes := domain.Rekey(nodes)
+	if len(clashes) > 0 {
+		out := make([][]NamedNode, len(clashes))
+		for i, c := range clashes {
+			for _, n := range c {
+				out[i] = append(out[i], NamedNode{ID: n.ID, Name: n.Name})
+			}
+		}
+		return out, nil
+	}
+	if len(changed) == 0 {
+		return nil, nil
+	}
+	if err := l.store.SetNameKeys(ctx, changed); err != nil {
+		return nil, fmt.Errorf("page: rekey %s: %w", notebookID, err)
+	}
+	return nil, nil
 }

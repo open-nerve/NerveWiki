@@ -11,6 +11,31 @@ import (
 	"uuid"
 )
 
+const aliasKeysOf = `-- name: AliasKeysOf :many
+SELECT DISTINCT alias_key FROM page_aliases WHERE source_id = ANY($1::uuid[]) ORDER BY alias_key
+`
+
+// The keys of the aliases of the pages ids, each once.
+func (q *Queries) AliasKeysOf(ctx context.Context, ids []uuid.UUID) ([]string, error) {
+	rows, err := q.db.Query(ctx, aliasKeysOf, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var alias_key string
+		if err := rows.Scan(&alias_key); err != nil {
+			return nil, err
+		}
+		items = append(items, alias_key)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const aliasesByKeys = `-- name: AliasesByKeys :many
 SELECT source_id, alias_key FROM page_aliases
 WHERE notebook_id = $1 AND alias_key = ANY($2::text[])

@@ -121,3 +121,24 @@ func (q *Queries) LinkTargetsByKeys(ctx context.Context, arg LinkTargetsByKeysPa
 	}
 	return items, nil
 }
+
+const setNameKeys = `-- name: SetNameKeys :execrows
+UPDATE nodes n SET name_key = u.name_key
+FROM (SELECT unnest($1::uuid[]) AS id, unnest($2::text[]) AS name_key) AS u
+WHERE n.id = u.id AND n.deleted_at IS NULL
+`
+
+type SetNameKeysParams struct {
+	Ids      []uuid.UUID
+	NameKeys []string
+}
+
+// Each node's title key, taken anew from its name by nervewiki reindex (M6/P3 design 3.6): a derived column, so
+// neither updated_at nor a changeset moves.
+func (q *Queries) SetNameKeys(ctx context.Context, arg SetNameKeysParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setNameKeys, arg.Ids, arg.NameKeys)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}

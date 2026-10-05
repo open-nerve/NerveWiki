@@ -12,18 +12,19 @@ import (
 	"golang.org/x/tools/go/ssa/ssautil"
 )
 
-// The command line's compositions, bootstrap.Users, bootstrap.Workspaces
-// and those to come, are a pool and the modules' administrator use cases
-// (M1/P4 design 3.8): nothing they call builds a module's HTTP side (a
-// module's New), the HTTP server, a rate limiter or a jobs client. The
-// rule follows the static calls from each; the commands are func values it
-// calls dynamically, so they are not followed: they only receive the
-// composition. Reaching the module's NewAdmin shows the walk sees the
-// composition at all. The registrants come from one place for serve and
-// the command line alike (design 3.6; v0.1 design 13.1, item 21): serve
+// The command line's compositions, bootstrap.Users, bootstrap.Workspaces,
+// bootstrap.Reindex and those to come, are a pool and the modules'
+// administrator use cases (M1/P4 design 3.8): nothing they call builds a
+// module's HTTP side (a module's New), the HTTP server, a rate limiter or a
+// jobs client. The rule follows the static calls from each; the commands are
+// func values it calls dynamically, so they are not followed: they only
+// receive the composition. Reaching the module's NewAdmin shows the walk
+// sees the composition at all. The registrants come from one place for serve
+// and the command line alike (design 3.6; v0.1 design 13.1, item 21): serve
 // and Users reach the deactivation's, and through them the workspace
 // module's (M2/P2 review, Q2); Workspaces reaches the workspace module's.
-// serve reaches the Markdown's extensions too (M4/P3 design 3.11).
+// serve reaches the Markdown's extensions too (M4/P3 design 3.11), and so
+// does Reindex, whose parse must be serve's (M6/P3 design 3.6).
 func TestCommandsComposeNoServerAndNoJobs(t *testing.T) {
 	registerSources(t)
 	cfg := &packages.Config{
@@ -49,6 +50,7 @@ func TestCommandsComposeNoServerAndNoJobs(t *testing.T) {
 	}{
 		{"Users", append([]string{m("internal/modules/identity") + ".NewAdmin"}, registrants...)},
 		{"Workspaces", []string{m("internal/modules/workspace") + ".NewAdmin", m("internal/bootstrap") + ".workspaceRegistrants"}},
+		{"Reindex", []string{m("internal/modules/linking") + ".NewAdmin", m("internal/bootstrap") + ".markdownExtensions"}},
 	} {
 		root := bootstrap.Func(c.root)
 		if root == nil {

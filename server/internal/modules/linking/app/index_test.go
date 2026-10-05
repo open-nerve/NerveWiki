@@ -393,3 +393,20 @@ func TestAnAliasOfNoPageIsAnError(t *testing.T) {
 		t.Error("a link resolved by the alias of no page")
 	}
 }
+
+// A page with an alias moved: its path decides between the pages with
+// that alias as between those with a name, so the links to the alias
+// resolve anew, those to the other page's too.
+func TestAPageWithAnAliasMovedResolvesTheLinksToItsAliasAnew(t *testing.T) {
+	w := newWorld(t, "X", "Y", "P", "src")
+	w.run(w.write("X", nil, "nick"))
+	w.run(w.write("Y", nil, "nick"))
+	w.run(w.write("src", []string{"nick"}))
+	w.resolves("src", 0, "X", true)
+	w.run(w.move("X", "P")...)
+	w.resolves("src", 0, "Y", false)
+	w.publishedEvent([]string{"src"}, []string{"P/X", "Y"})
+	w.run(w.move("Y", "P")...)
+	w.resolves("src", 0, "P/X", true)
+	w.publishedEvent([]string{"src"}, []string{"P/X", "P/Y"})
+}

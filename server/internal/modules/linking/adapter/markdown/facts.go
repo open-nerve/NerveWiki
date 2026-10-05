@@ -1,9 +1,10 @@
 // Package markdownadapter reads the platform's Markdown for the link
 // index (M6/P3 design 3.1): what it keeps of a page, from the facts of its
-// content's parse.
+// content's parse, and, for nervewiki reindex, the parse itself.
 package markdownadapter
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -135,4 +136,26 @@ func jsonOf(v any) any {
 		return out
 	}
 	return v
+}
+
+// Parser takes a content's facts as the index keeps them, holding its
+// share of the parse budget while it parses (nervewiki reindex).
+type Parser struct {
+	md     *markdown.Markdown
+	budget *markdown.Budget
+}
+
+// NewParser returns the parser of md within budget.
+func NewParser(md *markdown.Markdown, budget *markdown.Budget) Parser {
+	return Parser{md: md, budget: budget}
+}
+
+// Facts is content's facts as the index keeps them.
+func (p Parser) Facts(ctx context.Context, content string) (domain.Facts, error) {
+	hold, err := p.budget.Take(ctx, len(content))
+	if err != nil {
+		return domain.Facts{}, err
+	}
+	defer hold.Release()
+	return PageFacts(p.md.Parse([]byte(content)).Facts())
 }
