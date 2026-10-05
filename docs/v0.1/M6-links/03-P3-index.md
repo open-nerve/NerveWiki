@@ -3,7 +3,7 @@
 | 项 | 内容 |
 |---|---|
 | Phase | M6/P3 索引与解析 |
-| 状态 | 进行中（A 已合并 `b802987`，B 未开始） |
+| 状态 | 进行中（A 已合并 `b802987`，B 的设计已定） |
 | 基线 | P2 合并之后的 main；本文提交之后开分支 `m6-p3a`，A 部分合并之后开 `m6-p3b` |
 | 上级文档 | [M6 总设计](00-M6-design.md) 4.3–4.5、4.7（"阅读视图的一致性"）、4.8–4.10、第 7–9 节；[M4/P3 给 M6 的移交](handoffs/M4-P3-markdown-extensions.md)第 8、10、11 项；[M5 的事件移交](handoffs/M5-events.md)第 1–3 项；[M9 的批量移交](../M9-mcp/handoffs/M4-P2-unit-merge.md)第 2 项；样例集 [README](../../../tools/md-fixtures/README.md) |
 
@@ -16,7 +16,7 @@ P3 是 M6 最大的一个 Phase。为了让每次审查的范围可控，它分�
 - **A：解析与索引（服务端）**：`resolve/` 样例与 Obsidian 的核对；`linking` 模块（解析规则、索引表、索引的观察者、按笔记本的锁）；page 的读端口；笔记本删除的注册；`links` 事件；`nervewiki reindex`。
 - **B：链接的渲染与跳转**：`Fetch`（链接改为 `<a>`，带解析状态）；Markdown 链接与属性链接的状态（平台的钩子）；锚点的 id；前端的最小增强（`href`、经路由跳转）与 `links` 事件的处理。
 
-第 1–5 节是 A，第 6 节是 B 的设计（B 开始时细化），第 7–9 节两部分共用。
+第 1–5 节是 A，第 6 节是 B，第 7–9 节两部分共用。
 
 ## 1. 基线
 
@@ -70,7 +70,7 @@ P3 是 M6 最大的一个 Phase。为了让每次审查的范围可控，它分�
 - 第 2 步对单个名称也成立：`[[note]]` 从 `A` 下的页出发，选根下的 `note`，不选同一文件夹的 `A/note`。
 - 不带 `./`、`../` 的 Markdown 链接与 wikilink 同样处理（`[t](note.md)` 从 `A/B` 出发是根下的 `note`），已确认。
 
-**落点**（`domain.Landing`，B 部分渲染 `data-nw-parent` 用）：解析不到的普通单名，落在出发页的父节点下；带路径的，落在路径的父页下（父页要存在，按同样的规则解析）；相对的照相对算；名称不是合法标题的没有落点。
+**落点**（`domain.Landing`，P6 点击新建时用；原定 B 渲染 `data-nw-parent`，见 6.1）：解析不到的普通单名，落在出发页的父节点下；带路径的，落在路径的父页下（父页要存在，按同样的规则解析）；相对的照相对算；名称不是合法标题的没有落点。
 
 ## 3. A：`linking` 模块
 
@@ -81,7 +81,7 @@ P3 是 M6 最大的一个 Phase。为了让每次审查的范围可控，它分�
 | `migrations/sql/00019_page_nodes_name_key.sql` | `nodes (notebook_id, name_key) WHERE deleted_at IS NULL` 的索引（page 的迁移） |
 | `migrations/sql/00020`–`00024_linking_*.sql` | linking 的五张表，照约定一张表一个迁移 |
 | `modules/page/adapter/postgres/queries/links.sql`、`page/link_targets.go`（模块根） | page 的读端口 `LinkTargets`：按标题键找节点（带从根起的路径）、一组节点的路径、子树、一个笔记本的页面与正文、重算标题键 |
-| `modules/linking/domain/` | `target.go`（切分）、`resolve.go`（解析与落点）、`facts.go`（一页的链接、标签、属性、别名）、`change.go`（受影响的键与节点） |
+| `modules/linking/domain/` | `target.go`（切分）、`resolve.go`（解析；落点在 P6）、`facts.go`（一页的链接、标签、属性、别名）、`change.go`（受影响的键与节点） |
 | `modules/linking/app/` | `ports.go`、`index.go`（观察者）、`resolver.go`（取候选、解析一批链接）、`reindex.go`、`deletion.go` |
 | `modules/linking/adapter/postgres/` | 索引表的 store、按笔记本的锁（`pg_advisory_xact_lock`） |
 | `modules/linking/adapter/markdown/` | `PageFacts`：`markdown.Facts` → `domain.Facts`（obsidian 的提取结果、frontmatter 的 `aliases`、`tags` 与属性，见 3.4 末）；`Parser`：reindex 在预算之内的解析 |
@@ -205,14 +205,14 @@ linking 的 `Index` 实现 `page.PageObserver`，经组合根登记（`pageRegis
 | 步 | 内容 | 提交 |
 |---|---|---|
 | S1 | `resolve/` 样例、`check.mjs` 的格式检查、`verify-resolve.mjs`；与 Obsidian 核对 | `md-fixtures: link resolution cases, checked with Obsidian (M6/P3/S1)` |
-| S2 | `linking/domain`：切分与解析；表格测试与样例测试（受影响的键随 S4 的观察者，落点随 B 的渲染，各自与用它的代码一起测） | `linking: the resolution rules (M6/P3/S2)` |
+| S2 | `linking/domain`：切分与解析；表格测试与样例测试（受影响的键随 S4 的观察者，落点随 P6 的新建，各自与用它的代码一起测） | `linking: the resolution rules (M6/P3/S2)` |
 | S3 | 迁移、sqlc、page 的读端口、linking 的 store 与锁 | `page, linking: the index tables and the page's link targets (M6/P3/S3)` |
 | S4 | 观察者、笔记本删除、`links` 事件、组合根；整个程序的测试 | `linking, bootstrap: the index follows every write (M6/P3/S4)` |
 | S5 | `nervewiki reindex`；性质测试"增量等于重建"；交错 | `linking, cmd: reindex, and the index equals its rebuild (M6/P3/S5)` |
 
 ## 5. A：测试与验证
 
-- **解析**：`domain` 的表格测试（每一步、`.md` 的两种写法、`..` 到根为止、空段、歧义、别名在名称之后；落点在 B）；`resolve/` 样例全部通过，`obsidian-verified` 的与 Obsidian 一致。
+- **解析**：`domain` 的表格测试（每一步、`.md` 的两种写法、`..` 到根为止、空段、歧义、别名在名称之后；落点在 P6）；`resolve/` 样例全部通过，`obsidian-verified` 的与 Obsidian 一致。
 - **store 与端口**：`ByKeys` 的路径、跨笔记本不串、已删的不算、`Rekey` 的撞键；数据库测试。
 - **每条写入路径**（整个程序，`serve` 上）：新建、改名（带子页）、移动（带子页）、删除子树、写正文（含改别名）、勾选任务、笔记本删除（三条路径），各有一个测试：索引行随之更新，`links` 事件到达流（`s.expect(t, "links")`），载荷的 `pages`、`targets` 对；组合根不登记观察者时失败。
 - **性质测试**：随机的树与一串操作（新建、改名、移动、删除，带子页；写正文，带链接、别名、相对路径与重名），每步之后增量维护的索引等于 `reindex` 从头重建的结果（同一事务里比较）。
@@ -224,15 +224,171 @@ linking 的 `Index` 实现 `page.PageObserver`，经组合根登记（`pageRegis
 - **反向对照**：解析的每一步、候选的每一类、锁、事件的退化，各有一个变体要有测试失败。
 - `make check`、`make gen-check`、e2e 全量。
 
-## 6. B：链接的渲染与跳转（B 开始时细化）
+## 6. B：链接的渲染与跳转
 
-- **`Fetch`**：`obsidian.Extension(fetch)`，`fetch` 由 linking 给出：一条语句读 `indexed_pages` 与这一页的链接行；`revision` 与 `extractor` 都相同时按字节位置取状态，不同时即时解析（用 A 的 `resolver`）。`Render` 在 `Fetch` 读库期间仍占着预算（P2 审查的提醒；每次至少 4 KiB，P2 第四轮修复核对）。
-- **wikilink 与嵌入**：`<a class="nw-wikilink" data-nw-node="…" data-nw-anchor="nw-…">`；解析不到的 `nw-unresolved`、`data-nw-target`、`data-nw-parent`（落点）；链接文字里的 wikilink 仍是 `<span>`（不嵌套 `<a>`）。
-- **Markdown 链接与图片**：平台加一个钩子，扩展按目标的范围给核心渲染的 `<a>` 加属性（`data-nw-node`、`nw-unresolved`）；`Document` 保留目标范围的旁表到渲染。
-- **属性表**：平台加写属性值的钩子，属性链接同样渲染为链接。
-- **锚点**：平台导出标题 id 的函数（`markdown.HeadingID`），`data-nw-anchor` 与标题的 id 一致（去重的后缀算不出，指向第一个）。
-- **前端**：增强给 `a[data-nw-node]` 设应用内的地址（`/{slug}/notebooks/{nb}/pages/{id}#…`），普通点击经路由跳转，修饰键与中键照浏览器；`eventHandlers` 加 `links`（重读 `pages` 里各页的阅读视图，`null` 时重读这个笔记本的全部）；`refreshedOnConnect` 不变（阅读视图已在其中）。标签仍是 `<span>`，P6 改为链接。
-- **测试**：渲染的表格测试与 `CheckHTML`；`Fetch` 的版本一致与不一致；vitest 的增强与事件处理；e2e：wikilink 跳转、解析不到的显示为未建（L1 的一半，改名之后仍跳到那一页在 P4）。
+### 6.1 取舍（梳理之后定）
+
+作者读代码（2026-10-05，一位 Opus 只读梳理）之后，B 的范围与总设计 4.7–4.9 有几处出入：
+
+- **地址仍由前端给**（总设计 4.9）：服务端不写笔记本里的链接的 `href`，只写状态。
+  - 解析到的写 `data-nw-node`，由增强给出应用内的地址；解析不到的没有地址。
+  - 提取到的 Markdown 链接与图片也一样：现在写的相对地址（`note.md`）在应用里落到 404。
+  - 外部地址、只有锚点的（`#h`）、自动链接照旧写 `href`。
+- **根路径是笔记本里的路径**：`[x](/slug/notebooks/…)` 照规则 8 是笔记本里的路径，解析不到时显示为未建。本站的完整地址（`https://…`）不是笔记本里的链接，照旧是 `<a href>`。
+- **推到 P6**：
+  - **落点（`data-nw-parent`）与点击新建**。B 不新建页面，落点没有使用者。而且落点变了（路径的父页新建或删除、来源页移动）不改任何解析，不发 `links` 事件，现在算出来会过时。P6 在点击时问服务端，第 2 节的 `domain.Landing` 一起移过去。
+  - **属性表里的链接**。要平台写属性值的钩子，还要先解决属性路径的歧义：`{"a.b": …, a: {b: …}}` 两个都是 `a.b`。右栏（P5）先让属性链接可以点。
+  - **本站完整地址经路由跳转**（[M4/P3 移交](handoffs/M4-P3-markdown-extensions.md)第 11 项）。P6 按路由表判断哪些是应用的页面。
+- **`Fetch` 先读索引**：
+  - 版本与提取规则都与这次渲染一致时，一条语句按主键取到这一页全部链接的状态。
+  - 不一致、没有索引（M6 之前的页，`reindex` 之前）或缺某条链接时，即时解析。
+  - 即时解析不在事务里。其间页被删不算错误：那一页的链接解析不到，那个别名不算。下一次事件会重读。
+- **歧义照解析到的渲染**：只有歧义变了时，A 不发事件，渲染也不区分。
+
+### 6.2 标记
+
+| 链接 | 解析到 | 解析不到 |
+|---|---|---|
+| wikilink `[[x#h\|y]]` | `<a class="nw-wikilink" data-nw-node="ID" data-nw-anchor="nw-h">y</a>` | `<a class="nw-wikilink nw-unresolved" data-nw-target="x">y</a>` |
+| 嵌入 `![[x]]` | 同上，class 加 `nw-embed` | 同上 |
+| 只有锚点 `[[#h]]` | `<a class="nw-wikilink" href="#nw-h">h</a>`：同一页，照脚注，不经 `Fetch` | — |
+| 链接文字里的 wikilink | `<span class="nw-wikilink">y</span>`：不嵌套 `<a>`，没有状态 | 同左 |
+| Markdown 链接 `[t](x.md#h "T")` | `<a data-nw-node="ID" data-nw-anchor="nw-h" title="T">t</a>` | `<a class="nw-unresolved" data-nw-target="x.md" title="T">t</a>` |
+| Markdown 图片 `![a](x.png)` | `<span class="nw-image">a <a data-nw-node="ID">x.png</a></span>` | 里面的 `<a>` 是 `class="nw-unresolved" data-nw-target="x.png"` |
+
+- `data-nw-target` 是提取结果的 `Target`：wikilink 去掉首尾空白的，Markdown 链接解码之后的。
+- 链接里的图片照旧没有里面的 `<a>`；外部地址、`#h`、自动链接照旧；标签照旧是 `<span class="nw-tag">`，P6 改为链接。
+- **锚点**：`data-nw-anchor` 是 `markdown.HeadingID(锚点的最后一段)`。
+  - `HeadingID` 与标题的 id 是同一个函数：`nw-` 加 slug。
+  - `H1#H2` 取 `H2`。空的，或以 `^` 开头的块引用（v0.1 没有块的 id），不带锚点；只有这样一个锚点的 wikilink（`[[#^b]]`）是没有状态的 `<span>`。
+  - 去重的后缀算不出，所以指向同名标题里的第一个。
+  - 标题里有链接或格式时，可能对不上：标题的 id 来自显示的文字，锚点来自写下的文字。
+
+### 6.3 平台（`platform/markdown`）
+
+- **钩子**：`Attr{Name, Value}`，`Extension` 加一项：
+
+  ```go
+  Links func(data any) func(start int) ([]Attr, bool)
+  ```
+
+  - 给定 `Fetch` 的结果，按目标在正文里的起点（`Tree.Destination`，即提取结果的 `Range.Start`）答出一个 Markdown 链接或图片里面的 `<a>` 带的属性。
+  - 答 true 时，这些属性代替地址，`title` 照旧；答 false 时地址照旧。
+  - 几个扩展都答时，取注册在前的那个。
+  - 值由平台转义，属性名要写进扩展的 `Markup`。
+- **`Document` 留着目标的位置表**（`harden.Destinations`）到渲染。它不进 `Facts`，所以写入路径不受影响。
+- **`marks` 拿到位置表与钩子**：链接进入与离开时判断一致；图片里面的 `<a>` 同样处理。
+- **导出 `HeadingID(text string) string`**。
+- 没有扩展给 `Links` 时，输出逐字节不变（现有的 `render_test` 不改）。
+
+### 6.4 obsidian 扩展
+
+- **入口**：`Extension(Options)`，`Options{Resolve Resolve}`；M7 的附件在这里加一项。
+
+  ```go
+  type Resolve func(ctx context.Context, page markdown.Page, links []Link) (map[int]uuid.UUID, error)
+  ```
+
+  - 答出每条链接按 `Range.Start` 解析到的页，不在表里的是解析不到。
+  - 类型只用平台的类型（archtest 的 `platformIsBusinessFree`、`markdownLibrariesStayInMarkdown`）。
+- **`Fetch`**：
+  - 没有链接，或 `Resolve` 为 nil 时，不读任何东西。
+  - 否则把全部提取结果交给 `Resolve`。属性链接也在其中，P6 用。
+  - 结果按起点记着：解析到的页，以及那条链接（目标、锚点）。
+- **渲染**：
+  - wikilink 与嵌入照 6.2 的表。
+  - 链接文字里的 wikilink 由新的变换（优先级 40）在一次遍历里标出：它是否在 `*ast.Link` 之下。`harden` 的 `inLinkLabel` 是解析时"在方括号里"，方括号最终不成链接时就是错的。
+- **`Links` 钩子**：起点是提取到的链接时，照 6.2 答；其余答 false。
+- **`Markup`**：
+  - `a` 加 `class`、`href`、`data-nw-node`、`data-nw-anchor`、`data-nw-target`；
+  - class 加 `nw-unresolved`；
+  - `span` 不再带 `data-nw-target`。
+
+### 6.5 linking
+
+- **即时解析的公共部分**：`Index.resolve` 拆出
+  `resolutions(ctx, Store, Pages, notebookID, links) ([]domain.Resolution, missing []uuid.UUID, error)`。
+  - 链接所在的页不在笔记本里时，那条链接解析不到；别名所在的页不在时，那个别名不算。两种都列进 `missing`。
+  - `Index.resolve` 遇到 `missing` 仍然报错：持着锁时缺页是缺陷。
+- **索引的读取**：`Store.View(ctx, pageID)` 答 `Indexed{Revision, Extractor, Resolutions map[int]domain.Resolution}`，以及是否有索引。
+  - 查询是 `indexed_pages` 左连 `page_links`，都按主键。
+  - 没有行，就是没有索引。
+- **用例**：`app.Views{Store, Pages}.Resolve(ctx, Page, []Link) (map[int]domain.Resolution, error)`。
+  - 没有链接时，不读。
+  - 索引的 `revision` 与 `extractor` 都一致时，用它的解析；它没有的起点逐条即时解析。
+  - 否则全部即时解析。`missing` 不算错误。
+- **适配器**（`adapter/markdown`）：`Resolve(app.Views) obsidian.Resolve`。链接的转换与 `PageFacts` 是同一个（U+0000 记作 U+FFFD），所以即时解析与索引的答案相同。
+- **模块根**：`ResolveLinks(pool, pages Pages) obsidian.Resolve`。不能叫 `New`：`reindex` 的组装也到达 `markdownExtensions`（archtest `composesMore`）。
+
+### 6.6 组合根
+
+- `markdownExtensions(resolve obsidian.Resolve)`。
+- `parsing(cfg, logger, pool)` 交给它 `linking.ResolveLinks(pool, linkTargets{page.NewLinkTargets(pool)})`，`serve` 与 `reindex` 一样（`reindex` 不渲染）。
+- 不连库的测试交一个替身。
+- `GetPageView` 在 `Fetch` 期间仍占着解析预算（P2 审查的提醒）。索引一致时，`Fetch` 只是一条按主键的语句。
+
+### 6.7 前端
+
+- **跳转的手段**：`ReadingContext` 加 `navigate(to, state?)`，由 `ReadingView` 用 `useNavigate` 给出。它是必填项，测试里写死的上下文随之补上。
+- **增强 `pageLinks`**，排在 `taskToggle` 之后：
+  - 给 `a[data-nw-node]` 设 `href`：`/{slug}/notebooks/{nb}/pages/{id}`，有锚点时加 `#锚点`。
+  - 在容器上委托点击：没被处理过的左键、不带修饰键时，`preventDefault` 并经路由跳转；修饰键与中键照浏览器。
+  - 没有锚点的跳转带 `arrived`，页面的标题拿到焦点，照快速切换。
+  - 撤销时去掉监听与它设的 `href`。
+- **定位到锚点**：`ReadingView` 在 HTML 放进去之后，每次导航（`location.key`）一次：找到 id 是地址里锚点（解码之后）的元素，滚动到它并给它焦点（`tabindex="-1"`）。事件引起的重读不再滚动。
+- **`links` 的处理**（`eventHandlers` 加一项）：
+  - `pages` 里各页挂着的阅读视图（有数据或正在读）一律重读，不比版本，经 refresher、与 `pages` 同样的键；
+  - `null` 时重读这个笔记本的全部阅读视图；
+  - `targets` 留给反链（P5、P7）。
+- **类型与测试**：`event.service.ts` 导出 `EventLinks`；`event-stream.test.tsx` 里"后来的类型"的例子改用别的类型名。
+- **样式**：`.nw-unresolved` 颜色淡、虚线下划线。B 里它不可聚焦；P6 给 `role="button"`、`tabindex` 与点击。
+
+### 6.8 测试
+
+- **平台**：
+  - 钩子用测试替身：属性与转义、`title`、图片里面的 `<a>`、先注册的优先、引用式链接的各次使用同一个状态、没有钩子时逐字节不变。
+  - `HeadingID` 与纯文字标题的 id 相同。
+- **obsidian**：渲染的表格测试用替身 `Resolve`，覆盖 6.2 的每一行、锚点的规则、链接文字里的 wikilink、callout 的标题，并跑 `CheckHTML`。
+- **linking 的 app**（替身）：
+  - 没有链接时不读；
+  - 索引一致时不读 `Pages`；
+  - 版本不同、提取规则不同、没有索引时，即时解析；
+  - 缺起点时，只即时解析那几条；
+  - 来源页不见了，全部解析不到，不报错；
+  - 别名的页不见了，那个别名不算；
+  - `Index.resolve` 仍然报错。
+- **linking 的 postgres**：`View` 的几种情况：没有索引、没有链接、有解析与没有解析。
+- **组合根的 Markdown**：
+  - 样例集、病态输入与放大类输入在两个替身下跑 `CheckHTML` 与 `CheckSize`：全部解析到（带最长的锚点），与全部解析不到。
+  - 放大类加一条：引用式链接多次使用同一个长目标。
+- **最后一跳**：经 `serve` 的阅读视图显示状态；`markdownExtensions` 不给 `Resolve` 时失败。改索引来证明读的是哪一条路：
+  - 版本一致时把 `resolved_id` 置空，显示解析不到（读的是索引）；
+  - 再改 `revision`、改 `extractor`、删掉 `indexed_pages` 的行，各自显示解析到（即时解析）。
+- **vitest**：
+  - `pageLinks`：地址；普通点击带与不带锚点；修饰键、中键、已处理的不拦；撤销。
+  - `ReadingView`：每次导航定位一次。
+  - `links` 的处理经组合根的 `eventHandlers`：同版本也重读，`null` 时重读全部，别的笔记本与没挂着的不读。
+- **e2e**：`stories/links/l1-links.spec.ts`，L1 的一半。
+  - API：状态的标记。
+  - 页面：点击跳转与锚点；未建的没有地址；Ctrl/⌘ 点击开新标签页；在另一处新建那一页之后，不刷新，未建的变成链接（`links` 事件）。
+  - 改名之后仍跳到那一页，在 P4。
+- **反向对照**：S1–S5 各自的变体都让测试失败。
+
+### 6.9 实施步骤
+
+1. **S1 平台**：`Attr`、`Extension.Links`、`Document` 留位置表、`marks`、`HeadingID`。
+2. **S2 obsidian**：`Options` 与 `Resolve`、`Fetch`、渲染、链接文字里的变换、钩子、`Markup`；`Extension()` 的各处调用改为 `Extension(Options{})`。
+3. **S3 linking**：`resolutions`、`Store.View` 与查询、`Views`、适配器、模块根。
+4. **S4 组合根**：接线、Markdown 的检查、最后一跳。
+5. **S5 前端**：`navigate`、`pageLinks`、定位到锚点、`links` 的处理、样式、vitest、e2e。
+
+### 6.10 留给 P6
+
+- 落点与点击新建、`role="button"` 与键盘、"页面不存在"的说明；
+- 属性表里的链接；
+- 本站完整地址经路由跳转；
+- 标签改为链接；
+- 附件的嵌入在 M7：之前 `![[img.png]]` 显示为未建，影响导入的库。
 
 ## 7. 与 M6 总设计的出入（本文定稿，总设计随 A 的合并修订）
 
@@ -245,6 +401,7 @@ linking 的 `Index` 实现 `page.PageObserver`，经组合根登记（`pageRegis
 - 只写正文的单元只到它自己的链接与增删的别名（第 3.4 节第 5 步）。
 - 索引的键有上限，U+0000 记作 U+FFFD（第 3.2 节）。
 - P3 分 A、B 两部分合并。
+- B（第 6.1 节）：落点与点击新建、属性表里的链接、本站完整地址经路由跳转推到 P6；提取到的 Markdown 链接不再写相对地址；锚点取最后一段，块引用不带锚点；`[[#h]]` 写同页的 `href`；链接文字里的 wikilink 是没有状态的 `<span>`；`links` 的最小处理（只重读阅读视图）从 P6 提前到 B。总设计 4.7–4.9 与 Phase 表随 B 的合并修订。
 
 ## 8. 完成标准
 
