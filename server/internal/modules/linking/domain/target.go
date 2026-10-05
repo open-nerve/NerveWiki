@@ -14,7 +14,7 @@ import (
 // is relative (written from "./" or "../", Up the "../"), from the root (a
 // leading "/"), and its segments' title keys, the last one without its
 // ".md", in any case, when it was written with one; AltLast is then the
-// last one with it.
+// last one with it. Key holds each of its fields.
 type Target struct {
 	Relative bool
 	Up       int

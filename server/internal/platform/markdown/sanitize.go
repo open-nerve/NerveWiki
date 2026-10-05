@@ -101,7 +101,10 @@ func (n *safeBlock) Dump(source []byte, level int) { ast.DumpHelper(n, source, l
 // a dropped element holds is dropped up to its end tag in the scope, the
 // Markdown between too. A link holds no link (M6/P3B review L1): a user's
 // <a> is dropped in a Markdown link, in a user's <a>, and where a node
-// that renders a link comes before its end tag in its scope.
+// that renders a link comes before its end tag in its scope. A sibling
+// that a dropped element holds goes with it and counts for none; one
+// holding such a link deeper, or a hidden one (Hider), still counts: the
+// <a> is dropped, its text kept (accepted, P3B fix check).
 func sanitize(root ast.Node, source []byte) {
 	links := 0                     // the links around n, n among them, a user's <a> open around them too
 	var linked map[ast.Node]bool   // the nodes that render or hold a link, once raw HTML needs them
@@ -192,7 +195,9 @@ func holding(first ast.Node, source []byte, linked map[ast.Node]bool) map[ast.No
 	for c := first; c != nil; c = c.NextSibling() {
 		raw, ok := c.(*ast.RawHTML)
 		if !ok {
-			held[c] = skip != ""
+			if skip != "" {
+				held[c] = true
+			}
 			continue
 		}
 		switch name, end, _ := readTag(raw.Segments.Value(source)); {

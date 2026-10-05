@@ -223,4 +223,9 @@ func TestAViewsLinksToOneNameResolveAsWritten(t *testing.T) {
 	if want := w.leads("a/b/c/x", "", "", "a/x", ""); !reflect.DeepEqual(got, want) {
 		t.Errorf("got %v, want %v", got, want)
 	}
+	// Paths of the same letters cut otherwise.
+	w = newWorld(t, "ab", "ab/c", "a", "a/bc", "src")
+	if got, want := w.view("src", 0, "ab/c", "a/bc"), w.leads("ab/c", "a/bc"); !reflect.DeepEqual(got, want) {
+		t.Errorf("paths cut otherwise: got %v, want %v", got, want)
+	}
 }

@@ -79,6 +79,7 @@ func TestAUsersHTMLKeepsTheTypographicAllowlist(t *testing.T) {
 		{"an a closed after a script with another's start tag, before a link", `<a href="/x"><script><style></script></a> [l](/y)`, "<p><a href=\"/x\"></a> <a href=\"/y\">l</a></p>\n"},
 		{"an a around a link after a script with another's start tag", `<a href="/x"><script><style></script>[l](/y)</a>`, "<p><a href=\"/y\">l</a></p>\n"},
 		{"an a around a link a script holds", `<a href=/x>t<script>[l](/y)</script></a> u`, "<p><a href=\"/x\">t</a> u</p>\n"},
+		{"an a around a link a script holds after another's end tag", `<a href=/x><script></style>[l](/y)</script></a>`, "<p><a href=\"/x\"></a></p>\n"},
 		{"an a before an unclosed script that holds a link", `<a href=/x>t<script></a>[l](/y) u`, "<p><a href=\"/x\">t</a></p>\n"},
 		{"an a closed in an element, before a link", `<i><a href="/x">t</a></i> [l](/y)`, "<p><i><a href=\"/x\">t</a></i> <a href=\"/y\">l</a></p>\n"},
 		{
