@@ -304,7 +304,7 @@ test("the wait's listeners go once its read settles", async () => {
   // The inputs listened to in the capture phase: the wait's.
   const inputs = (spy: typeof added | typeof removed) =>
     spy.mock.calls
-      .filter(([type, , options]) => ["wheel", "touchmove", "pointerdown", "keydown"].includes(type))
+      .filter(([type]) => ["wheel", "touchmove", "pointerdown", "keydown"].includes(type))
       .filter(([, , options]) => options === true || (typeof options === "object" && options.capture === true))
       .map(([type]) => type);
   const { server, release } = heldServer(["<p>Install</p>", '<h2 id="nw-x">X</h2>']);
