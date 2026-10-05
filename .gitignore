@@ -10,8 +10,10 @@
 # 个人本地配置覆盖
 config.local.yaml
 
-# 工具产物：Claude Code 的隔离工作区、Playwright MCP 的截图与快照
+# 工具产物：Claude Code 的隔离工作区、个人设置与计划任务的状态，Playwright MCP 的截图与快照
 .claude/worktrees/
+.claude/settings.local.json
+.claude/scheduled_tasks.*
 .playwright-mcp/
 
 # 构建与依赖产物。make build 把前端复制进 webui/dist，那里只提交 .gitkeep

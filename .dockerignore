@@ -15,8 +15,10 @@
 # 个人本地配置覆盖
 **/config.local.yaml
 
-# 工具产物
+# 工具产物。Claude Code 也把它的个人文件写进用户的全局 ignore，构建阶段里没有那份全局配置，所以要在这里与 .gitignore 写明
 .claude/worktrees/
+.claude/settings.local.json
+.claude/scheduled_tasks.*
 .playwright-mcp/
 
 # 构建与依赖产物。webui/dist 里只提交 .gitkeep
