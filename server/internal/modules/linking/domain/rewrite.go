@@ -97,10 +97,11 @@ func Rewrite(content string, from []Step, links []Resolved, tree Tree, recased R
 }
 
 // Unwritten is what a writing of the body alone leaves (Written): the
-// property links, as they were; and the bytes of the last writing with
-// them, when it would have held more than a page may, else 0: a writing of
-// the frontmatter would then have been too large, not changed more than
-// its links (M6/P4 fix check c7-1).
+// property links, as they were; and, when each writing with them and with
+// the body's edits it kept would have held more than a page may, the
+// bytes of the last, else 0: one was read back, and not kept for the
+// frontmatter's edits alone, which changed more than the links (M6/P4 fix
+// check c7-1, c8-1).
 type Unwritten struct {
 	Links    []Link
 	TooLarge int
@@ -130,7 +131,8 @@ func (w Rewriting) Written(content string, was Facts, from []Step, tree Tree,
 		body  bool // the body's alone
 	}
 	shown := func(e Edit) bool { return e.Shown }
-	body := slices.DeleteFunc(slices.Clone(w.Edits), func(e Edit) bool { return e.Frontmatter })
+	front := func(e Edit) bool { return e.Frontmatter }
+	body := slices.DeleteFunc(slices.Clone(w.Edits), front)
 	tries := []try{{edits: w.Edits}}
 	for _, t := range []try{
 		{edits: slices.DeleteFunc(slices.Clone(w.Edits), shown)},
@@ -140,31 +142,55 @@ func (w Rewriting) Written(content string, was Facts, from []Step, tree Tree,
 			tries = append(tries, t)
 		}
 	}
-	large := 0 // the bytes of the last writing with the frontmatter's edits, if too large
+	var failed []failure // the writings with the frontmatter's edits, not kept
 	for _, t := range tries {
 		leads, left := w.Leads, Unwritten{}
 		if t.body {
-			left.TooLarge = large
 			leads, left.Links = w.inBody(was.Links)
 		}
 		written = Apply(content, t.edits)
 		now, err := parse(written)
+		large := 0
 		switch {
 		case errors.Is(err, ErrTooLarge):
-			if !t.body {
-				large = len(written)
-			}
-			continue
+			large = len(written)
 		case err != nil:
 			return "", Unwritten{}, false, err
-		case !t.body:
-			large = 0
-		}
-		if kept(was, now, leads, from, tree) {
+		case kept(was, now, leads, from, tree):
+			if t.body {
+				left.TooLarge = tooLarge(failed, t.edits)
+			}
 			return written, left, true, nil
+		}
+		if !t.body {
+			failed = append(failed, failure{body: slices.DeleteFunc(slices.Clone(t.edits), front), large: large})
 		}
 	}
 	return "", Unwritten{}, false, nil
+}
+
+// failure is a writing with the frontmatter's edits not kept: its edits but
+// the frontmatter's, and its bytes when it would have held more than a page
+// may, else 0, read back.
+type failure struct {
+	body  []Edit
+	large int
+}
+
+// tooLarge is Unwritten.TooLarge for body, the edits of a writing of the
+// body kept, after the writings failed with the frontmatter's edits: those
+// of them with body's edits besides.
+func tooLarge(failed []failure, body []Edit) int {
+	n := 0
+	for _, f := range failed {
+		if slices.Equal(f.body, body) {
+			if f.large == 0 {
+				return 0
+			}
+			n = f.large
+		}
+	}
+	return n
 }
 
 // inBody is w.Leads but for the property links of was, which a writing of

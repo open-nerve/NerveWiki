@@ -395,33 +395,54 @@ func TestAPageWhoseFrontmatterWouldChangeHasItsBodyWritten(t *testing.T) {
 // though a body's writing with the texts did not read back, or though the
 // writing with them all did not, for the body's '$'; changing more than
 // the links, though the writing with them all was too large (M6/P4 fix
-// check c7-1).
+// check c7-1), or though the writing with the targets alone was, when the
+// one with them all did not read back for the frontmatter's edits alone
+// (c8-1).
 func TestALinkLeftSaysWhyByTheWritingWithIt(t *testing.T) {
 	for _, tt := range []struct {
 		name, from, to, page string
 		pages                []string
 		written              string
-		start, at, left      int // at: the size logged, 0 for none, the reason the change
+		start, left          int
+		at                   int    // the size logged, too large; 0 for none, changing more than the links
+		target               string // the target of the property links left, when they change more
 	}{
 		{
 			"the writings with the frontmatter too large", "A/x", "qq$qq",
 			"---\na: '[[A/x]]'\nb: '[[A/x]]'\nc: '[[A/x]]'\n---\n[x](A/x.md)\n", []string{"A", "A/x"},
-			"---\na: '[[A/x]]'\nb: '[[A/x]]'\nc: '[[A/x]]'\n---\n[x](qq$qq.md)\n", 1018, 1026, 3,
+			"---\na: '[[A/x]]'\nb: '[[A/x]]'\nc: '[[A/x]]'\n---\n[x](qq$qq.md)\n", 1018, 3, 1026, "",
 		},
 		{
 			"the body's writing with the texts too large too", "A/x", "qq$qq",
 			"---\na: '[[A/x]]'\nb: '[[A/x]]'\nc: '[[A/x]]'\n---\n[x](A/x.md)\n", []string{"A", "A/x"},
-			"---\na: '[[A/x]]'\nb: '[[A/x]]'\nc: '[[A/x]]'\n---\n[x](qq$qq.md)\n", 1022, 1030, 3,
+			"---\na: '[[A/x]]'\nb: '[[A/x]]'\nc: '[[A/x]]'\n---\n[x](qq$qq.md)\n", 1022, 3, 1030, "",
 		},
 		{
 			"the writing with them all not read back, with the targets too large", "Deep/Folder/x", "y$",
 			"---\nup: '[[x]]'\n---\n[Deep/Folder/x](x.md)\n", []string{"Deep", "Deep/Folder", "Deep/Folder/x", "Other", "Other/y$"},
-			"---\nup: '[[x]]'\n---\n[Deep/Folder/x](Deep/Folder/y$.md)\n", 1005, 1031, 1,
+			"---\nup: '[[x]]'\n---\n[Deep/Folder/x](Deep/Folder/y$.md)\n", 1005, 1, 1031, "",
+		},
+		{
+			"the writing with them all not read back for the aliases, with the targets too large", "Deep/Folder/Sub/LongLongName", "z",
+			"---\nx: &x '[[LongLongName]]'\naliases: *x\n---\n[LongLongName](LongLongName.md)\n",
+			[]string{"Deep", "Deep/Folder", "Deep/Folder/Sub", "Deep/Folder/Sub/LongLongName", "Other", "Other/z"},
+			"---\nx: &x '[[LongLongName]]'\naliases: *x\n---\n[z](Deep/Folder/Sub/z.md)\n", 1015, 1, 0, "LongLongName",
+		},
+		{
+			"the writing with them all too large, with the targets not read back for the aliases", "A/x", "zzzz",
+			"---\nx: &x '[[A/x|x]]'\naliases: *x\n---\n[[A/x]]\n", []string{"A", "A/x"},
+			"---\nx: &x '[[A/x|x]]'\naliases: *x\n---\n[[zzzz]]\n", 1020, 1, 0, "A/x",
+		},
+		{
+			"the writing with them all not read back for the aliases, with the targets too large, the body's edits one", "Deeply/Nested/Lo", "z",
+			"---\nx: &x '[Lo](Lo.md)'\naliases: *x\n---\n[[Lo]]\n",
+			[]string{"Deeply", "Deeply/Nested", "Deeply/Nested/Lo", "Other", "Other/z"},
+			"---\nx: &x '[Lo](Lo.md)'\naliases: *x\n---\n[[Deeply/Nested/z]]\n", 999, 1, 0, "Lo.md",
 		},
 		{
 			"the writing with the targets not read back, with them all too large", "A/x", "xxxxxxxxxx",
 			"---\nx: &x '[[A/x]]'\naliases: *x\n---\n[x](A/x.md)\n", []string{"A", "A/x"},
-			"---\nx: &x '[[A/x]]'\naliases: *x\n---\n[x](xxxxxxxxxx.md)\n", 1010, 0, 1,
+			"---\nx: &x '[[A/x]]'\naliases: *x\n---\n[x](xxxxxxxxxx.md)\n", 1010, 1, 0, "A/x",
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -434,7 +455,7 @@ func TestALinkLeftSaysWhyByTheWritingWithIt(t *testing.T) {
 			}
 			w.written(u, map[string]string{"near": tt.written + pad})
 			logged := `level=ERROR msg="a link is not rewritten: writing the frontmatter again would change more than its links"`
-			end := " target=" + tt.from
+			end := " target=" + tt.target
 			if tt.at > 0 {
 				logged = `level=WARN msg="a link is not rewritten: writing the frontmatter again would hold more than a page may"`
 				end = fmt.Sprintf(" bytes=%d written=%d", tt.start, tt.at)
