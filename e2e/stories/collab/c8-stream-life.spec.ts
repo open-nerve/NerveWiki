@@ -3,7 +3,8 @@ import { createClient } from "@nervewiki/api-client";
 import { accountIdOf } from "../../fixtures/assert/identity";
 import { displayNameOf, emailFor, register } from "../../fixtures/auth";
 import { signOutThroughMenu } from "../../fixtures/auth-pages";
-import { fetchEvents, followStreams, settleEvents } from "../../fixtures/events";
+import { countAnswers } from "../../fixtures/browser";
+import { fetchEvents, followStreams, holdStream, settleEvents } from "../../fixtures/events";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { memberOf, removeMember } from "../../fixtures/members";
 import { addedNotebookMember, removeNotebookMember } from "../../fixtures/notebook-members";
@@ -188,8 +189,17 @@ test("C8 (page): B, reading a page of Acme, is removed from Acme: the workspace 
   const page = await signedInPage(await joinOnboarded(api, a, workspace.slug, bEmail, "member"));
   const eng = await createNotebook(api, a, workspace.slug, "Eng", "editor");
   const notes = await createPage(api, a, eng.id, "Notes");
+  const letStreamIn = await holdStream(page);
+  const reads = [`/api/v0/pages/${notes.id}/view`, `/api/v0/pages/${notes.id}/edit-lock`].map((path) =>
+    countAnswers(page, "GET", path)
+  );
   await page.goto(wikiPagePath(workspace.slug, eng.id, notes.id));
   await expect(pageHeading(page, "Notes")).toBeVisible();
+  // B's stream connects once the page shows, and its refresh reads it all again, the view and the lock last: once
+  // they have answered, B's tab reads nothing until an event comes. Removed sooner, B would have a read of the page
+  // still to come, which the removal answers not found before the stream's reset reaches the tab.
+  letStreamIn();
+  await expect.poll(() => Math.min(...reads.map((answers) => answers()))).toBeGreaterThanOrEqual(2);
 
   expect((await removeMember(api, a, (await memberOf(api, a, workspace.slug, bEmail)).id)).response.status).toBe(204);
 
