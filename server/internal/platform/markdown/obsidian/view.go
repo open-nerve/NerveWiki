@@ -75,13 +75,13 @@ func (v view) markdownAttrs(start int) ([]markdown.Attr, bool) {
 // shows; values parses s as the extraction did.
 func (v view) property(values parser.Parser) func(s markdown.Scalar) ([]markdown.Attr, string, bool) {
 	return func(s markdown.Scalar) ([]markdown.Attr, string, bool) {
-		l, shown, ok := property(values, s)
+		p, ok := property(values, s)
 		if !ok {
 			return nil, "", false
 		}
-		attrs, resolved := v.lead(l.Range.Start, l.Target, l.Anchor)
+		attrs, resolved := v.lead(p.Range.Start, p.Target, p.Anchor)
 		var class []string
-		if l.Kind == KindWikilink {
+		if p.Kind == KindWikilink {
 			class = append(class, "nw-wikilink")
 		}
 		if !resolved {
@@ -90,7 +90,7 @@ func (v view) property(values parser.Parser) func(s markdown.Scalar) ([]markdown
 		if len(class) > 0 {
 			attrs = append([]markdown.Attr{{Name: "class", Value: strings.Join(class, " ")}}, attrs...)
 		}
-		return attrs, shown, true
+		return attrs, p.shown(), true
 	}
 }
 

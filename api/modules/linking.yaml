@@ -221,7 +221,8 @@ components:
       description: >-
         A tag's name, without its '#', as listTags writes it and a reading
         view's tag link carries it; a nested tag's '/' is written %2F
-        (a%2Fb).
+        (a%2Fb). The tag "/" alone cannot be named: the path reads its %2F
+        as a trailing slash.
       schema:
         type: string
   responses:

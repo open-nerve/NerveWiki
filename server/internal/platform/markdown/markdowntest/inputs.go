@@ -215,6 +215,8 @@ func Pathological() []Input {
 		{"links with long addresses", repeat("[a](/" + strings.Repeat("p", 200) + ") ")},
 		{"autolinks", repeat("<https://example.com/a> www.example.com a@b.co ")},
 		{"images in links", repeat("[![a](i.png)](/p) ")},
+		// Each image's text is what it shows (M6/P6 fix check M1).
+		{"images referred to often", func(n int) string { return "[x]: p\n\n" + strings.Repeat("![x] ", n/5) }},
 		{"addresses in tags", repeat(`<a href="http://a/\b?c#d">x</a>`)},
 
 		// Obsidian's dialect (M6/P1 design 5).

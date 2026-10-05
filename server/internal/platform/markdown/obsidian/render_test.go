@@ -122,8 +122,9 @@ func TestATagIsALinkToItsPages(t *testing.T) {
 		},
 		{
 			// U+2E2F is a letter in the Supplemental Punctuation block.
-			"not counted", "#1/ #/ #a\u2e2fb\n",
+			"not counted, or no address's", "#1/ #/ #// #a\u2e2fb\n",
 			`<p><span class="nw-tag" data-nw-tag="1/">#1/</span> <span class="nw-tag" data-nw-tag="/">#/</span> ` +
+				`<span class="nw-tag" data-nw-tag="//">#//</span> ` +
 				`<span class="nw-tag" data-nw-tag="a` + "\u2e2f" + `b">#a` + "\u2e2f" + `b</span></p>` + "\n",
 		},
 		{

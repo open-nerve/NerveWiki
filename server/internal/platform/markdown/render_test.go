@@ -109,8 +109,8 @@ func TestLinksAndImagesGoThroughSafeURL(t *testing.T) {
 		{
 			// As the body shows it (M6/P6 review): escapes and references
 			// resolved, a code span as written.
-			"an image's text as shown", "![a &amp; b \\* c &#65; `d&amp;`](i.png)",
-			"<p><span class=\"nw-image\">a &amp; b * c A d&amp;amp; <a href=\"i.png\">i.png</a></span></p>\n",
+			"an image's text as shown", "![a &amp; b \\* c &#65; `d&amp;` <https://e.example>](i.png)",
+			"<p><span class=\"nw-image\">a &amp; b * c A d&amp;amp; https://e.example <a href=\"i.png\">i.png</a></span></p>\n",
 		},
 		{
 			"an image's text escaped", `![a < b & "c" <b>](i.png)`,

@@ -863,7 +863,7 @@ export interface paths {
         };
         /**
          * Read a page
-         * @description The page's reading view: its content rendered to HTML, its frontmatter's properties as a table first, and the revision it was rendered from. The HTML holds only what the renderer writes and a typographic allowlist of the content's own HTML, every address on this site, http(s) or mailto, and no image loaded. In the content, a wikilink, an embed (nw-embed), and a Markdown link or image whose address is a path, from the root too, link to pages of the notebook and have no address, which the app gives: each carries the page it leads to as it reads now (data-nw-node) and its anchor's heading id (data-nw-anchor), or nw-unresolved and its target (data-nw-target). A tag (nw-tag) of a name tag lists count links to its pages and has no address either: it carries the tag as this page writes it, but for its '#' and a last '/', which getTag takes (data-nw-tag); a tag the index does not keep of the page, its key longer than 1024 bytes or past the page's first 1000 tags, links still, though getTag does not list the page for it. A tag of a name the lists do not count (#1/) is a span, as is a tag in a link's text. A wikilink in a link's text is a span, as is one written with a block's anchor alone ([[#^b]]); one written with a heading's anchor alone ([[#h]]) has the heading's id as its address, as has a Markdown link to an anchor alone (#h), which is its text alone for a block's anchor or an empty one; an image in a link's text has no link of its own. A table, the properties' table and a block formula are each in a div of class nw-scroll, a region of their own that may scroll sideways. In the properties' table, a string written on one line that is one link to a page and nothing else, a wikilink or a Markdown link whose address is a path, is a link as in the content, without a title, showing the text the link shows; a value a YAML alias repeats, and every other value, is text. Once the page is in the link index (nervewiki reindex after an upgrade), a links event tells when where its links lead changes. A page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found alike. When the server parses as much content as it can at once, the page waits a moment, then is server_busy.
+         * @description The page's reading view: its content rendered to HTML, its frontmatter's properties as a table first, and the revision it was rendered from. The HTML holds only what the renderer writes and a typographic allowlist of the content's own HTML, every address on this site, http(s) or mailto, and no image loaded. In the content, a wikilink, an embed (nw-embed), and a Markdown link or image whose address is a path, from the root too, link to pages of the notebook and have no address, which the app gives: each carries the page it leads to as it reads now (data-nw-node) and its anchor's heading id (data-nw-anchor), or nw-unresolved and its target (data-nw-target). A tag (nw-tag) of a name tag lists count links to its pages and has no address either: it carries the tag as this page writes it, but for its '#' and a last '/', which getTag takes (data-nw-tag); a tag the index does not keep of the page, its key longer than 1024 bytes or past the page's first 1000 tags, links still, though getTag does not list the page for it. A tag of a name the lists do not count (#1/) is a span, as are the tag "/" (#//), which getTag's path cannot name, and a tag in a link's text. A wikilink in a link's text is a span, as is one written with a block's anchor alone ([[#^b]]); one written with a heading's anchor alone ([[#h]]) has the heading's id as its address, as has a Markdown link to an anchor alone (#h), which is its text alone for a block's anchor or an empty one; an image in a link's text has no link of its own. A table, the properties' table and a block formula are each in a div of class nw-scroll, a region of their own that may scroll sideways. In the properties' table, a string written on one line that is one link to a page and nothing else, a wikilink with a target (not an anchor alone) or a Markdown link whose address is a path, is a link as in the content, without a title, showing the text the link shows; a value a YAML alias repeats, and every other value, is text. Once the page is in the link index (nervewiki reindex after an upgrade), a links event tells when where its links lead changes. A page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found alike. When the server parses as much content as it can at once, the page waits a moment, then is server_busy.
          */
         get: operations["getPageView"];
         put?: never;
@@ -1092,7 +1092,7 @@ export interface paths {
             path: {
                 /** @description The notebook's id. */
                 notebook_id: components["parameters"]["NotebookID"];
-                /** @description A tag's name, without its '#', as listTags writes it and a reading view's tag link carries it; a nested tag's '/' is written %2F (a%2Fb). */
+                /** @description A tag's name, without its '#', as listTags writes it and a reading view's tag link carries it; a nested tag's '/' is written %2F (a%2Fb). The tag "/" alone cannot be named: the path reads its %2F as a trailing slash. */
                 tag: components["parameters"]["Tag"];
             };
             cookie?: never;
@@ -1948,7 +1948,7 @@ export interface components {
         EditSessionID: string;
         /** @description The id of a node of a notebook's tree. */
         NodeID: string;
-        /** @description A tag's name, without its '#', as listTags writes it and a reading view's tag link carries it; a nested tag's '/' is written %2F (a%2Fb). */
+        /** @description A tag's name, without its '#', as listTags writes it and a reading view's tag link carries it; a nested tag's '/' is written %2F (a%2Fb). The tag "/" alone cannot be named: the path reads its %2F as a trailing slash. */
         Tag: string;
     };
     requestBodies: never;
@@ -3565,7 +3565,7 @@ export interface operations {
             path: {
                 /** @description The notebook's id. */
                 notebook_id: components["parameters"]["NotebookID"];
-                /** @description A tag's name, without its '#', as listTags writes it and a reading view's tag link carries it; a nested tag's '/' is written %2F (a%2Fb). */
+                /** @description A tag's name, without its '#', as listTags writes it and a reading view's tag link carries it; a nested tag's '/' is written %2F (a%2Fb). The tag "/" alone cannot be named: the path reads its %2F as a trailing slash. */
                 tag: components["parameters"]["Tag"];
             };
             cookie?: never;

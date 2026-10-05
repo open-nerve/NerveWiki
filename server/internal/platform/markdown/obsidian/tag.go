@@ -31,10 +31,12 @@ type tag struct {
 func (t *tag) Kind() ast.NodeKind { return kindTag }
 
 // RendersLink implements markdown.Linker: a tag the tag pane counts
-// renders as a link but in a Markdown link's text (M6/P6 design 3).
+// renders as a link but in a Markdown link's text (M6/P6 design 3), and
+// but for the tag "/" (#//), which an address's path cannot name: the
+// server's router reads its %2F as a trailing slash (M6/P6 fix check).
 func (t *tag) RendersLink() bool {
-	_, counted := CountedTag(t.name)
-	return counted && !t.inLink
+	counted, ok := CountedTag(t.name)
+	return ok && counted != "/" && !t.inLink
 }
 
 // Dump implements ast.Node.

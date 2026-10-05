@@ -1,7 +1,6 @@
 package markdown
 
 import (
-	"bufio"
 	"bytes"
 	"strconv"
 	"strings"
@@ -110,11 +109,9 @@ func PlainText(n ast.Node, source []byte) string {
 // 4, review).
 func ShownText(n ast.Node, source []byte) string {
 	var b strings.Builder
-	var written bytes.Buffer
-	w := bufio.NewWriter(&written)
+	var written textWriter
 	shown := func(value []byte) {
-		gmhtml.DefaultWriter.Write(w, value)
-		_ = w.Flush()
+		gmhtml.DefaultWriter.Write(&written, value)
 		b.WriteString(html.UnescapeString(written.String()))
 		written.Reset()
 	}
@@ -134,6 +131,8 @@ func ShownText(n ast.Node, source []byte) string {
 			if c.SoftLineBreak() || c.HardLineBreak() {
 				b.WriteByte(' ')
 			}
+		case *ast.AutoLink:
+			b.Write(c.Label(source))
 		case *ast.String:
 			switch {
 			case c.IsCode():
@@ -148,6 +147,14 @@ func ShownText(n ast.Node, source []byte) string {
 	})
 	return strings.ReplaceAll(b.String(), "\x00", "\uFFFD")
 }
+
+// textWriter is the buffer goldmark's writer writes a text to for
+// ShownText: a bytes.Buffer, written at once, so that a text costs no 4 KB
+// buffer of bufio's (M6/P6 fix check M1).
+type textWriter struct{ bytes.Buffer }
+
+func (*textWriter) Buffered() int { return 0 }
+func (*textWriter) Flush() error  { return nil }
 
 // HeadingID is the id the first heading of text takes, when no heading
 // before it took that id: the id a link's anchor of text leads to (M6/P3

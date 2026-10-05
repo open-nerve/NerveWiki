@@ -131,9 +131,9 @@ func TestAPropertyLinkIsALinkInTheTable(t *testing.T) {
 		// As the body shows a link's text (M6/P6 review): escapes and
 		// references resolved, a U+0000 as U+FFFD.
 		"a Markdown link's text as shown",
-		"---\na: '[a &amp; b \\* c &#65;](Page)'\nb: \"[x\\0y `z\\0`](Page)\"\n---\n",
+		"---\na: '[a &amp; b \\* c &#65;](Page)'\nb: \"[x\\0y `z\\0`](Page)\"\nc: '[<https://a.example> x](Page)'\n---\n",
 		`<div class="nw-scroll"><table class="nw-props">` + row("a", `<a `+page+`>a &amp; b * c A</a>`) +
-			row("b", `<a `+page+">x\uFFFDy z\uFFFD</a>") + "</table></div>\n",
+			row("b", `<a `+page+">x\uFFFDy z\uFFFD</a>") + row("c", `<a `+page+`>https://a.example x</a>`) + "</table></div>\n",
 	}})
 }
 
