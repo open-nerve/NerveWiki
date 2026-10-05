@@ -5,9 +5,10 @@
 -- One statement, so one snapshot. The pages are found a step each, the next id after the last on
 -- page_links_resolved_id_source_id_idx, not by reading all their links: a page may write a million (review r1-1,
 -- r2-M1). So is target, though not counted, and left out at the end: a filter on the step would read each of its
--- links to itself (review c1). The links are read by a target the plan does not know, as a generic plan reads them:
--- planned for a page most links lead to, the steps, counts and contexts read the primary key and each other link of
--- the pages, or sort all of a page's links, until the table is vacuumed (review c3).
+-- links to itself (review c1). The links are read by a target and limits the plan does not know, as a generic plan
+-- reads them: planned for a page most links lead to, the steps, counts and contexts read the primary key and each
+-- other link of the pages, or sort all of a page's links, until the table is vacuumed (review c3); planned for limits
+-- above the rows a table without statistics is thought to have, they sort all of a page's links (review c5).
 WITH RECURSIVE sources (source_id, n) AS (
     (
         SELECT l.source_id, CASE WHEN l.source_id = sqlc.arg(target)::uuid THEN 0 ELSE 1 END
@@ -40,7 +41,7 @@ CROSS JOIN LATERAL (
         SELECT 1 FROM page_links
         WHERE resolved_id = (SELECT sqlc.arg(target)::uuid) AND source_id = s.source_id
         ORDER BY range_start
-        LIMIT sqlc.arg(max_count)::integer
+        LIMIT (SELECT sqlc.arg(max_count)::integer)
     ) counted
 ) c
 CROSS JOIN LATERAL (
@@ -48,7 +49,7 @@ CROSS JOIN LATERAL (
     FROM page_links
     WHERE resolved_id = (SELECT sqlc.arg(target)::uuid) AND source_id = s.source_id
     ORDER BY range_start
-    LIMIT sqlc.arg(contexts)::integer
+    LIMIT (SELECT sqlc.arg(contexts)::integer)
 ) f
 WHERE s.source_id <> sqlc.arg(target)::uuid
 ORDER BY s.source_id, f.range_start;

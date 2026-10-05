@@ -151,8 +151,9 @@ func TestThePagesThatLinkToAPage(t *testing.T) {
 // (review c1, c4); of a page one page writes most of the links to, the
 // others' links too, though each writes more links to other pages, before
 // the table is vacuumed, with no scan of the whole table (review c1, c3,
-// c4). The table is under the 30,000 rows ANALYZE samples, so it reads
-// them all, and the plans do not vary by its sample.
+// c4), and on a table with no statistics yet (review c5). The table that
+// is analyzed is under the 30,000 rows ANALYZE samples, so it reads them
+// all, and the plans do not vary by its sample.
 func TestTheBacklinksReadAFewLinks(t *testing.T) {
 	t.Run("of a page that links to itself", func(t *testing.T) {
 		f := newFixture(t)
@@ -171,24 +172,37 @@ func TestTheBacklinksReadAFewLinks(t *testing.T) {
 			}
 		}
 	})
-	t.Run("of a page one page writes most links to", func(t *testing.T) {
-		f := newFixture(t)
-		p := ids(22)
-		many, target, others := p[1], p[2], append([]uuid.UUID{p[0]}, p[3:]...)
-		f.links(t, many, target, 0, 25000)
-		for _, o := range others {
-			f.links(t, o, uuid.NewV7(), 0, 200)
-			f.links(t, o, target, 200, 3)
-		}
-		if _, err := f.pool.Exec(context.Background(), `ANALYZE page_links`); err != nil {
-			t.Fatal(err)
-		}
-		got, table, index := f.readBacklinks(t, target, uuid.UUID{})
-		if want := slices.Insert(slices.Clone(others), 1, many); !slices.Equal(sourcesOf(got), want) || got[1].Links != domain.MaxCount ||
-			table > 0 || index > domain.MaxCount+200 {
-			t.Errorf("%d pages, %d rows of the table and %d entries of its indexes read", len(got), table, index)
-		}
-	})
+	for _, tt := range []struct {
+		name            string
+		many, elsewhere int  // the links of the page that writes most, of each other's to other pages
+		others          int  // the other pages, each with 3 links to the page after its links elsewhere
+		analyzed        bool // the table
+		slack           int  // the index entries a read may take past the count of the page that writes most
+	}{
+		{"of a page one page writes most links to", 25000, 200, 21, true, 200},
+		{"of a page one page writes most links to, with no statistics", 250000, 1000, 50, false, 500},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newFixture(t)
+			p := ids(tt.others + 2)
+			many, target, others := p[1], p[2], append([]uuid.UUID{p[0]}, p[3:]...)
+			f.links(t, many, target, 0, tt.many)
+			for _, o := range others {
+				f.links(t, o, uuid.NewV7(), 0, tt.elsewhere)
+				f.links(t, o, target, tt.elsewhere, 3)
+			}
+			if tt.analyzed {
+				if _, err := f.pool.Exec(context.Background(), `ANALYZE page_links`); err != nil {
+					t.Fatal(err)
+				}
+			}
+			got, table, index := f.readBacklinks(t, target, uuid.UUID{})
+			if want := slices.Insert(slices.Clone(others), 1, many); !slices.Equal(sourcesOf(got), want) || got[1].Links != domain.MaxCount ||
+				table > 0 || index > int64(domain.MaxCount+tt.slack) {
+				t.Errorf("%d pages, %d rows of the table and %d entries of its indexes read", len(got), table, index)
+			}
+		})
+	}
 }
 
 // links writes n links of source that resolve to target, from start on.
@@ -202,19 +216,30 @@ func (f fixture) links(t *testing.T, source, target uuid.UUID, start, n int) {
 }
 
 // readBacklinks is target's backlinks after the page after, a page of 50,
-// up to domain.MaxCount links counted, and how many rows of page_links
-// their transaction read by scans of the whole table, and how many entries
-// of its indexes.
+// up to domain.MaxCount links counted, and how many rows of page_links the
+// read took by scans of the whole table, and how many entries of its
+// indexes: the counts before it and after it in its transaction, which
+// holds them, as a connection's sum over its transactions until it reports
+// them, about each second, would not.
 func (f fixture) readBacklinks(t *testing.T, target, after uuid.UUID) (got []app.Backlink, table, index int64) {
 	t.Helper()
 	err := f.tx.WithinTx(context.Background(), func(ctx context.Context) error {
-		var err error
+		read := func() (table, index int64, err error) {
+			err = postgres.DB(ctx, f.pool).QueryRow(ctx, `SELECT pg_stat_get_xact_tuples_returned('page_links'::regclass),
+				(SELECT sum(pg_stat_get_xact_tuples_returned(indexrelid))::bigint FROM pg_index WHERE indrelid = 'page_links'::regclass)`,
+			).Scan(&table, &index)
+			return table, index, err
+		}
+		table0, index0, err := read()
+		if err != nil {
+			return err
+		}
 		if got, err = f.s.Backlinks(ctx, target, after, 51, domain.MaxCount, domain.MaxContexts); err != nil {
 			return err
 		}
-		return postgres.DB(ctx, f.pool).QueryRow(ctx, `SELECT pg_stat_get_xact_tuples_returned('page_links'::regclass),
-			(SELECT sum(pg_stat_get_xact_tuples_returned(indexrelid))::bigint FROM pg_index WHERE indrelid = 'page_links'::regclass)`,
-		).Scan(&table, &index)
+		table, index, err = read()
+		table, index = table-table0, index-index0
+		return err
 	})
 	if err != nil {
 		t.Fatal(err)
