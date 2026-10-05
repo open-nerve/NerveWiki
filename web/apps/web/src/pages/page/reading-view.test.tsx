@@ -11,6 +11,7 @@ import { renderApp } from "../../test/render";
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.unstubAllGlobals();
   // jsdom scrolls nothing: scrolls gives elements a way.
   Reflect.deleteProperty(Element.prototype, "scrollIntoView");
 });
@@ -141,6 +142,14 @@ test("an anchor the view has no element of goes nowhere", async () => {
 
 test("a link to a page goes there through the router, with the app's enhancements, arriving at the page unless at an anchor", async () => {
   scrolls();
+  // The view's scrolling enhancement watches widths, which jsdom does not have.
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      disconnect() {}
+    }
+  );
   const user = userEvent.setup();
   const server = pageServer();
   server.views.set(install.id, {
