@@ -86,7 +86,7 @@ type BacklinksRow struct {
 // other link of the pages, or sort all of a page's links, until the table is vacuumed (review c3); planned for limits
 // above the rows a table without statistics is thought to have, they sort all of a page's links (review c5). Left as
 // it is: where an instance's links lead to a few pages only, a target the plan does not know is thought a common one,
-// and until the table is vacuumed the same reads take the primary key (review c6).
+// and until the table is vacuumed the same reads take the primary key, or the plan is compiled (review c6, c7).
 func (q *Queries) Backlinks(ctx context.Context, arg BacklinksParams) ([]BacklinksRow, error) {
 	rows, err := q.db.Query(ctx, backlinks,
 		arg.Target,

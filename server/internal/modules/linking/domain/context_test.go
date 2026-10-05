@@ -180,14 +180,14 @@ func TestAPagesContextsAreOneALine(t *testing.T) {
 }
 
 // A line's links after its first are told on it by the bytes since the
-// link before, so a page's contexts read its bytes once: thirty thousand
+// link before, so a page's contexts read its bytes once: sixty thousand
 // links on a line of a MiB take well under a second, where reading from
-// the line's first link again for each took seconds (review c3, c6).
+// the line's first link again for each took seconds (review c3, c6, c8).
 func TestAPagesContextsReadItsBytesOnce(t *testing.T) {
 	content := strings.Repeat("y", 1<<20)
-	ranges := make([]domain.Range, 30_000)
+	ranges := make([]domain.Range, 60_000)
 	for i := range ranges {
-		ranges[i] = domain.Range{Start: i * 34, End: i*34 + 1}
+		ranges[i] = domain.Range{Start: i * 17, End: i*17 + 1}
 	}
 	start := time.Now()
 	got := domain.Contexts(content, ranges)

@@ -64,6 +64,9 @@ func ids(n int) []uuid.UUID {
 // their own, not the ids' (review c4).
 func TestThePagesThatLinkToAPage(t *testing.T) {
 	f := newFixture(t)
+	// No statistics: with them, planning reads an index's ends, which the
+	// check that a plan is heeded would count (review c8).
+	f.still(t)
 	ctx := context.Background()
 	p := ids(6)
 	many, ambiguous, target, one, other, unindexed := p[0], p[1], p[2], p[3], p[4], p[5]
@@ -98,16 +101,16 @@ func TestThePagesThatLinkToAPage(t *testing.T) {
 					if err := plan.set(ctx, postgres.DB(ctx, f.pool)); err != nil {
 						return err
 					}
-					_, index0, err := f.counts(ctx)
+					table0, index0, err := f.counts(ctx)
 					if err != nil {
 						return err
 					}
 					if got, err = f.s.Backlinks(ctx, target, after, size, count, contexts); err != nil {
 						return err
 					}
-					_, index, err := f.counts(ctx)
-					if index > index0 && !plan.indexes {
-						t.Errorf("the plan is not heeded: %d entries of the indexes read", index-index0)
+					table, index, err := f.counts(ctx)
+					if index > index0 && !plan.indexes || table > table0 && !plan.tables {
+						t.Errorf("the plan is not heeded: %d rows of the table and %d entries of its indexes read", table-table0, index-index0)
 					}
 					return err
 				})
@@ -159,18 +162,43 @@ func TestThePagesThatLinkToAPage(t *testing.T) {
 	}
 }
 
-// The backlinks read a few of the links to a page, not each: of a page
-// that links to itself 25,000 times, from either side of it, with no
-// statistics or with them (review c1, c4, c6); of a page one page writes
-// most of the links to, the
-// others' links too, though each writes more links to other pages, before
-// the table is vacuumed, with no scan of the whole table (review c1, c3,
-// c4), and on a table with no statistics yet (review c5). The table that
-// is analyzed is under the 30,000 rows ANALYZE samples, so it reads them
-// all, and the plans do not vary by its sample.
+// The backlinks read a few of the links to a page, not each: a page of
+// them among two thousand, from the first or after a thousand (review c8);
+// of a page that links to itself 25,000 times, from before it, past it by
+// the walk's first read or by a step, with no statistics or with them
+// (review c1, c4, c6); of a page one page writes
+// most of the links to, the others' links too, though each writes more
+// links to other pages, before the table is vacuumed, with no scan of the
+// whole table (review c1, c3, c4), and on a table with no statistics yet
+// (review c5). The table that is analyzed is under the 30,000 rows ANALYZE
+// samples, so it reads them all, and the plans do not vary by its sample;
+// no table is vacuumed or analyzed but by the test (review c7).
 func TestTheBacklinksReadAFewLinks(t *testing.T) {
+	t.Run("a page of them among many", func(t *testing.T) {
+		f := newFixture(t)
+		f.still(t)
+		p := ids(2001)
+		target, sources := p[0], p[1:]
+		if _, err := f.pool.Exec(context.Background(), `INSERT INTO page_links (source_id, range_start, range_end, notebook_id,
+			kind, target, resolved_id, ambiguous) SELECT s, 0, 1, $2, 'wikilink', 'x', $3, false FROM unnest($1::uuid[]) s`,
+			sources, f.eng, target); err != nil {
+			t.Fatal(err)
+		}
+		for _, from := range []int{0, 1000} {
+			after := uuid.UUID{}
+			if from > 0 {
+				after = sources[from-1]
+			}
+			// Each of the page's sources: a step, a count and a context.
+			got, table, index := f.readBacklinks(t, target, after)
+			if !slices.Equal(sourcesOf(got), sources[from:from+51]) || table > 0 || index > 3*51+20 {
+				t.Errorf("from %d: %d pages, %d rows of the table and %d entries of its indexes read", from, len(got), table, index)
+			}
+		}
+	})
 	t.Run("of a page that links to itself", func(t *testing.T) {
 		f := newFixture(t)
+		f.still(t)
 		p := ids(3)
 		before, target, after := p[0], p[1], p[2]
 		f.links(t, target, target, 0, 25000)
@@ -204,6 +232,7 @@ func TestTheBacklinksReadAFewLinks(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			f := newFixture(t)
+			f.still(t)
 			p := ids(tt.others + 2)
 			many, target, others := p[1], p[2], append([]uuid.UUID{p[0]}, p[3:]...)
 			f.links(t, many, target, 0, tt.many)
@@ -275,6 +304,15 @@ func (f fixture) counts(ctx context.Context) (table, index int64, err error) {
 	return table, index, err
 }
 
+// still has page_links's statistics change only by analyze: autovacuum,
+// on in the tests' cluster, could analyze or vacuum it in a test.
+func (f fixture) still(t *testing.T) {
+	t.Helper()
+	if _, err := f.pool.Exec(context.Background(), `ALTER TABLE page_links SET (autovacuum_enabled = off)`); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // analyze has the planner's statistics of page_links read.
 func (f fixture) analyze(t *testing.T) {
 	t.Helper()
@@ -284,11 +322,12 @@ func (f fixture) analyze(t *testing.T) {
 }
 
 // plan is a way the planner may read a query, which its answer must not
-// tell: the planner's settings it turns off, and whether it reads indexes.
+// tell: the planner's settings it turns off, and whether it reads indexes
+// and whole tables.
 type plan struct {
-	name    string
-	off     []string
-	indexes bool
+	name            string
+	off             []string
+	indexes, tables bool
 }
 
 // plans are the ways a query is read in a test: as planned, and with each
@@ -296,10 +335,10 @@ type plan struct {
 // lateral joins have no other (review c6).
 func plans() []plan {
 	return []plan{
-		{"as planned", nil, true},
-		{"without index scans", []string{"enable_indexscan", "enable_indexonlyscan", "enable_bitmapscan"}, false},
-		{"without scans of whole tables", []string{"enable_seqscan"}, true},
-		{"without hash and merge joins", []string{"enable_hashjoin", "enable_mergejoin"}, true},
+		{"as planned", nil, true, true},
+		{"without index scans", []string{"enable_indexscan", "enable_indexonlyscan", "enable_bitmapscan"}, false, true},
+		{"without scans of whole tables", []string{"enable_seqscan"}, true, false},
+		{"without hash and merge joins", []string{"enable_hashjoin", "enable_mergejoin"}, true, true},
 	}
 }
 
@@ -450,29 +489,31 @@ func TestTheReadsUseTheirIndexes(t *testing.T) {
 		scans int    // of page_links
 		scan  string // each of them
 		cond  string // how each's index condition starts
+		also  string // a line the plan has too
 	}{
 		{"Backlinks: the walk, the count and the contexts", statementOf(t, func(q *gen.Queries) error {
 			_, err := q.Backlinks(ctx, gen.BacklinksParams{Target: id, After: id, Size: 51, MaxCount: 1000, Contexts: 10})
 			return err
-		}), 4, "Index Only Scan using page_links_resolved_id_source_id_idx", "((resolved_id = (InitPlan "},
+		}), 4, "Index Only Scan using page_links_resolved_id_source_id_idx", "((resolved_id = (InitPlan ",
+			"Index Scan using indexed_pages_pkey on indexed_pages ip"},
 		{"PageProperties: the property links", statementOf(t, func(q *gen.Queries) error {
 			_, err := q.PageProperties(ctx, id)
 			return err
-		}), 2, "Index Scan using page_links_source_id_range_start_idx", "(source_id = "},
+		}), 2, "Index Scan using page_links_source_id_range_start_idx", "(source_id = ", ""},
 		// LinksReached's part by the pages its links resolve to: the whole
 		// statement, of four parts, is planned on another index while the
 		// tables are empty.
 		{"LinksReached: by the pages resolved to", statement{
 			sql: `SELECT source_id FROM page_links WHERE resolved_id = ANY($1::uuid[])`, args: []any{[]uuid.UUID{id}},
-		}, 1, "Index Only Scan using page_links_resolved_id_source_id_idx", "(resolved_id = ANY "},
+		}, 1, "Index Only Scan using page_links_resolved_id_source_id_idx", "(resolved_id = ANY ", ""},
 	} {
 		plan := f.planOf(t, tt.s)
 		scans := scansOf(plan)
 		if len(scans) != tt.scans || slices.ContainsFunc(scans, func(s [2]string) bool {
 			return s[0] != tt.scan || !strings.HasPrefix(s[1], tt.cond)
-		}) {
-			t.Errorf("%s: %d scans of page_links, want %d, each a %s on %s…:\n%s", tt.name, len(scans), tt.scans, tt.scan, tt.cond,
-				strings.Join(plan, "\n"))
+		}) || !slices.ContainsFunc(plan, func(line string) bool { return strings.Contains(line, tt.also) }) {
+			t.Errorf("%s: %d scans of page_links, want %d, each a %s on %s…, and %q:\n%s", tt.name, len(scans), tt.scans, tt.scan,
+				tt.cond, tt.also, strings.Join(plan, "\n"))
 		}
 	}
 }
