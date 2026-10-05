@@ -163,6 +163,11 @@ func TestAPagesContextsAreOneALine(t *testing.T) {
 	if got := domain.Contexts(content, nil); got == nil || len(got) != 0 {
 		t.Errorf("no ranges: %#v", got)
 	}
+	// The line told is the last context's: a second line's second link is
+	// on it too (review c2).
+	if got := domain.Contexts("[[x]]\n[[x]] [[x]]", []domain.Range{{Start: 2, End: 3}, {Start: 8, End: 9}, {Start: 14, End: 15}}); !slices.Equal(got, []string{"[[x]]", "[[x]] [[x]]"}) {
+		t.Errorf("a second line's links: %q", got)
+	}
 	// Lines ended by a lone CR are lines too.
 	if got := domain.Contexts("a [[x]]\rb [[x]]", []domain.Range{{Start: 4, End: 5}, {Start: 12, End: 13}}); !slices.Equal(got, []string{"a [[x]]", "b [[x]]"}) {
 		t.Errorf("lines of CR: %q", got)

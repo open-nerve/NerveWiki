@@ -27,9 +27,6 @@ type Tree struct {
 	Before map[uuid.UUID]Node
 	After  map[uuid.UUID]Node
 	Named  map[string][]Node
-	// merged is the pages of two keys of Named, by the keys, once joined:
-	// Linktexts reads every page's writing against the pages of its title.
-	merged map[[2]string][]Node
 }
 
 // Edit writes Text over a content's bytes from Start to End; Shown when it
@@ -273,7 +270,7 @@ func Linktexts(nodes []Node) []string {
 	for _, n := range nodes {
 		named[n.key()] = append(named[n.key()], n)
 	}
-	tree := Tree{Named: named, merged: map[[2]string][]Node{}}
+	tree := Tree{Named: named}
 	out := make([]string, len(nodes))
 	for i, n := range nodes {
 		text, ok := Linktext(n, nil, tree)
@@ -391,36 +388,21 @@ func (t Tree) leads(target string, from []Step, n Node) bool {
 	if !ok {
 		return false
 	}
-	keys := parsed.LastKeys()
-	candidates := t.Named[keys[0]]
-	if len(keys) > 1 {
-		candidates = t.both(keys[0], keys[1])
-	}
-	r := Resolve(parsed, from, candidates, nil)
+	r := Resolve(parsed, from, t.candidates(parsed.LastKeys()), nil)
 	return r.ID == n.ID && !r.Ambiguous
 }
 
-// both is the pages of the keys a and b: those of one of them when the
-// other has none, else joined once for a tree that keeps them (Linktexts),
-// anew otherwise. The pages of a key are not copied: the link targets read
-// every page's writing against the pages of its title (M6/P5 design 6,
-// review r1-3, r2-L3).
-func (t Tree) both(a, b string) []Node {
-	switch {
-	case len(t.Named[b]) == 0:
-		return t.Named[a]
-	case len(t.Named[a]) == 0:
-		return t.Named[b]
+// candidates is the pages a target of the last keys keys may resolve to:
+// those of its first key when there are any, as a target written with
+// ".md" is then read without it (Target.form) and no page of the other key
+// is its page; else those of the other. The pages are not copied: the link
+// targets read every page's writing against the pages of its title (M6/P5
+// design 6, review r1-3, r2-L3, c2).
+func (t Tree) candidates(keys []string) []Node {
+	if nodes := t.Named[keys[0]]; len(nodes) > 0 || len(keys) == 1 {
+		return nodes
 	}
-	key := [2]string{a, b}
-	if joined, ok := t.merged[key]; ok {
-		return joined
-	}
-	joined := slices.Concat(t.Named[a], t.Named[b])
-	if t.merged != nil {
-		t.merged[key] = joined
-	}
-	return joined
+	return t.Named[keys[1]]
 }
 
 // byTitle tells whether l names was, the page it led to, by its title,

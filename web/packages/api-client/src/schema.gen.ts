@@ -1076,7 +1076,7 @@ export interface paths {
         };
         /**
          * List the pages with a tag
-         * @description The ids of the notebook's pages with the tag, in any case, or a tag under it (tag/…), by id. A tag that no page could have, such as one with a space or a '#', has none. Any role in the notebook can list them. A notebook that does not exist, is deleted, or that the caller has no role in is notebook.not_found. The list is not paged.
+         * @description The ids of the notebook's pages with the tag, in any case, or a tag under it (tag/…), by id. Of a page's tags, its first 1000 are kept: a page with the tag past them is not listed. A tag that no page could have, such as one with a space or a '#', has none. Any role in the notebook can list them. A notebook that does not exist, is deleted, or that the caller has no role in is notebook.not_found. The list is not paged.
          */
         get: operations["getTag"];
         put?: never;

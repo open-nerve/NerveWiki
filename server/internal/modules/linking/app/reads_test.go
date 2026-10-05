@@ -269,13 +269,14 @@ func TestTheBacklinksComeAPageAtATimeWithTheirContexts(t *testing.T) {
 // A page whose rows are of another extractor, before nervewiki reindex,
 // has no contexts, its content unread: its ranges may mean other bytes
 // (review r1-4). Past domain.MaxContentRead bytes of contents read, the
-// pages have none, unread (review r2-L1).
+// pages have none, unread (review r2-L1): those read count, of a revision
+// the index has or not (review c2).
 func TestABacklinksContextsAreOfTheExtractorAndWithinTheRead(t *testing.T) {
 	l := newLibrary()
 	ids := []uuid.UUID{uuid.NewV7(), uuid.NewV7(), uuid.NewV7(), uuid.NewV7()}
 	half := strings.Repeat("a", domain.MaxContentRead/2) + "[[p]]"
 	link := []domain.Range{{Start: len(half) - 3, End: len(half) - 2}}
-	l.contents = map[uuid.UUID]revised{ids[0]: {"[[p]]", 1}, ids[1]: {half, 1}, ids[2]: {half, 1}, ids[3]: {"[[p]]", 1}}
+	l.contents = map[uuid.UUID]revised{ids[0]: {"[[p]]", 1}, ids[1]: {half, 2}, ids[2]: {half, 1}, ids[3]: {"[[p]]", 1}}
 	e := domain.Extractor
 	l.backlinks = []app.Backlink{
 		{SourceID: ids[0], Revision: 1, Extractor: e - 1, Links: 1, Ranges: []domain.Range{{Start: 2, End: 3}}},
@@ -291,8 +292,8 @@ func TestABacklinksContextsAreOfTheExtractorAndWithinTheRead(t *testing.T) {
 	for _, b := range got.Pages {
 		contexts = append(contexts, len(b.Contexts))
 	}
-	if reads := strings.Count(strings.Join(l.calls, " "), "Content"); !slices.Equal(contexts, []int{0, 1, 1, 0}) || reads != 2 {
-		t.Errorf("contexts %v after %d reads, want [0 1 1 0] after 2", contexts, reads)
+	if reads := strings.Count(strings.Join(l.calls, " "), "Content"); !slices.Equal(contexts, []int{0, 0, 1, 0}) || reads != 2 {
+		t.Errorf("contexts %v after %d reads, want [0 0 1 0] after 2", contexts, reads)
 	}
 }
 
