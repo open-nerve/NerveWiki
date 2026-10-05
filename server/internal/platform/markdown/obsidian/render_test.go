@@ -26,30 +26,32 @@ func checkRenders(t *testing.T, tests []renderCase) {
 			if got != tt.want {
 				t.Errorf("render %q\n got %q\nwant %q", tt.src, got, tt.want)
 			}
-			if err := markdowntest.CheckHTML(got, tasks.Extension(), obsidian.Extension()); err != nil {
+			if err := markdowntest.CheckHTML(got, tasks.Extension(), obsidian.Extension(obsidian.Options{})); err != nil {
 				t.Error(err)
 			}
 		})
 	}
 }
 
-// Wikilinks, embeds and tags are spans with no state until P3; what they
-// show is escaped, as their attributes are (M6/P1 design 3.10).
-func TestWikilinksAndTagsAreSpans(t *testing.T) {
+// Wikilinks and embeds are links, here to no page; a tag is a span; what
+// they show is escaped, as their attributes are (M6/P1 design 3.10, M6/P3
+// design 6.2).
+func TestWikilinksAreLinksAndTagsSpans(t *testing.T) {
 	checkRenders(t, []renderCase{
 		{
 			"a wikilink, its display text, its anchor, an anchor alone", "[[a]] [[b|显示]] [[c#h]] [[#h]]\n",
-			`<p><span class="nw-wikilink" data-nw-target="a">a</span> <span class="nw-wikilink" data-nw-target="b">显示</span> ` +
-				`<span class="nw-wikilink" data-nw-target="c#h">c &gt; h</span> <span class="nw-wikilink" data-nw-target="#h">h</span></p>` + "\n",
+			`<p><a class="nw-wikilink nw-unresolved" data-nw-target="a">a</a> ` +
+				`<a class="nw-wikilink nw-unresolved" data-nw-target="b">显示</a> ` +
+				`<a class="nw-wikilink nw-unresolved" data-nw-target="c">c &gt; h</a> <a class="nw-wikilink" href="#nw-h">h</a></p>` + "\n",
 		},
 		{
 			"an embed shows its target, not its size", "![[d.png|100]]\n",
-			`<p><span class="nw-wikilink nw-embed" data-nw-target="d.png">d.png</span></p>` + "\n",
+			`<p><a class="nw-wikilink nw-embed nw-unresolved" data-nw-target="d.png">d.png</a></p>` + "\n",
 		},
 		{
 			"escaped", "[[a <b>&\"x]] [[y|<i>\\_]]\n",
-			`<p><span class="nw-wikilink" data-nw-target="a &lt;b&gt;&amp;&quot;x">a &lt;b&gt;&amp;&quot;x</span> ` +
-				`<span class="nw-wikilink" data-nw-target="y">&lt;i&gt;\_</span></p>` + "\n",
+			`<p><a class="nw-wikilink nw-unresolved" data-nw-target="a &lt;b&gt;&amp;&quot;x">a &lt;b&gt;&amp;&quot;x</a> ` +
+				`<a class="nw-wikilink nw-unresolved" data-nw-target="y">&lt;i&gt;\_</a></p>` + "\n",
 		},
 		{"no target and no anchor is text", "[[]] [[ | x]] ![[ ]]\n", "<p>[[]] [[ | x]] ![[ ]]</p>\n"},
 		{
@@ -58,20 +60,21 @@ func TestWikilinksAndTagsAreSpans(t *testing.T) {
 		},
 		{
 			"a heading's id has what its wikilinks and tags show", "# Head [[x|y]] #t\n",
-			`<h1 id="nw-head-y-t">Head <span class="nw-wikilink" data-nw-target="x">y</span> <span class="nw-tag" data-nw-tag="t">#t</span></h1>` + "\n",
+			`<h1 id="nw-head-y-t">Head <a class="nw-wikilink nw-unresolved" data-nw-target="x">y</a> ` +
+				`<span class="nw-tag" data-nw-tag="t">#t</span></h1>` + "\n",
 		},
 		{
 			"an image's text has what they show", "![alt [[w]] #t](p.png)\n",
-			`<p><span class="nw-image">alt w #t <a href="p.png">p.png</a></span></p>` + "\n",
+			`<p><span class="nw-image">alt w #t <a class="nw-unresolved" data-nw-target="p.png">p.png</a></span></p>` + "\n",
 		},
 		{
 			"in a link's text", "[see [[x]]](z.md)\n",
-			`<p><a href="z.md">see <span class="nw-wikilink" data-nw-target="x">x</span></a></p>` + "\n",
+			`<p><a class="nw-unresolved" data-nw-target="z.md">see <span class="nw-wikilink">x</span></a></p>` + "\n",
 		},
 		{
 			"in a table, the escaped pipe", "| a |\n| - |\n| [[x\\|y]] |\n",
 			"<div class=\"nw-scroll\" tabindex=\"0\"><table>\n<thead>\n<tr>\n<th>a</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n" +
-				`<td><span class="nw-wikilink" data-nw-target="x">y</span></td>` + "\n</tr>\n</tbody>\n</table>\n</div>\n",
+				`<td><a class="nw-wikilink nw-unresolved" data-nw-target="x">y</a></td>` + "\n</tr>\n</tbody>\n</table>\n</div>\n",
 		},
 	})
 }
@@ -132,7 +135,7 @@ func TestCommentsHide(t *testing.T) {
 	checkRenders(t, []renderCase{
 		{"inline, in pairs", "a %%b%% c %%d%% e %% f\n", "<p>a  c  e %% f</p>\n"},
 		{"across an emphasis", "*a %%b* c%% d\n", "<p><em>a </em> d</p>\n"},
-		{"across a link", "[x %%y](z) w%%\n", "<p><a href=\"z\">x </a></p>\n"},
+		{"across a link", "[x %%y](z) w%%\n", `<p><a class="nw-unresolved" data-nw-target="z">x </a></p>` + "\n"},
 		{"a whole paragraph", "%%a%%\n\nb\n", "<p>b</p>\n"},
 		{"a block comment", "a\n\n%%\nb\n\nc\n%%\n\nd\n", "<p>a</p>\n<p>d</p>\n"},
 		{"one left open hides the rest", "a\n\n%%\nb\n\nc\n", "<p>a</p>\n"},
@@ -152,7 +155,10 @@ func TestCommentsHide(t *testing.T) {
 		{"a marker before a cell's end does not end it", "%%\n\n| a |\n| - |\n| b %% |\n\nc %%\n\nd\n", "<p>d</p>\n"},
 		{"an address ends before a marker", "a %%see https://example.com/x%% b\n", "<p>a  b</p>\n"},
 		{"an address at a block comment's end", "%%\nsecret www.example.com/%%\n\nshown\n", "<p>shown</p>\n"},
-		{"in an image's text, text", "![a %% b](i.png) %%\n", "<p><span class=\"nw-image\">a %% b <a href=\"i.png\">i.png</a></span> %%</p>\n"},
+		{
+			"in an image's text, text", "![a %% b](i.png) %%\n",
+			`<p><span class="nw-image">a %% b <a class="nw-unresolved" data-nw-target="i.png">i.png</a></span> %%</p>` + "\n",
+		},
 		{"a heading it hides takes no id", "%%\n# A\n%%\n\n# A\n", "<h1 id=\"nw-a\">A</h1>\n"},
 		{"what it hides is no heading's id", "# a %%b%%\n", "<h1 id=\"nw-a\">a </h1>\n"},
 		{
@@ -170,7 +176,7 @@ func TestCallouts(t *testing.T) {
 		{
 			"a title, links and tags", "> [!note] Title [[c1]]\n> body #t\n",
 			`<div class="nw-callout" data-callout="note">` + "\n" +
-				`<div class="nw-callout-title">Title <span class="nw-wikilink" data-nw-target="c1">c1</span></div>` + "\n" +
+				`<div class="nw-callout-title">Title <a class="nw-wikilink nw-unresolved" data-nw-target="c1">c1</a></div>` + "\n" +
 				`<p>body <span class="nw-tag" data-nw-tag="t">#t</span></p>` + "\n</div>\n",
 		},
 		{

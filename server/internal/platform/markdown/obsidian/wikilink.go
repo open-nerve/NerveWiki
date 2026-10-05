@@ -19,7 +19,8 @@ var kindWikilink = ast.NewNodeKind("Wikilink") //nolint:gochecknoglobals // a ki
 // heading's id and an image's text have it.
 type wikilink struct {
 	ast.BaseInline
-	embed bool
+	embed  bool
+	inLink bool // in a Markdown link's text
 	parts
 }
 

@@ -9,13 +9,13 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown/internal/harden"
 )
 
-// nodeRenderer renders the dialect's nodes (M6/P1 design 3.10). A wikilink,
-// an embed and a tag are spans with no state until P3 gives them their
-// pages; each text is escaped, and no address is written.
-type nodeRenderer struct{}
+// nodeRenderer renders the dialect's nodes (M6/P1 design 3.10), a
+// wikilink and an embed as a link with the state view has of it (M6/P3
+// design 6.2); each text is escaped.
+type nodeRenderer struct{ view view }
 
-func (nodeRenderer) RegisterFuncs(reg renderer.NodeRendererFuncRegisterer) {
-	reg.Register(kindWikilink, renderWikilink)
+func (r nodeRenderer) RegisterFuncs(reg renderer.NodeRendererFuncRegisterer) {
+	reg.Register(kindWikilink, r.renderWikilink)
 	reg.Register(kindTag, renderTag)
 	reg.Register(harden.KindHighlight, element("<mark>", "</mark>"))
 	reg.Register(kindMath, renderMath)
@@ -48,25 +48,56 @@ func nothing(util.BufWriter, []byte, ast.Node, bool) (ast.WalkStatus, error) {
 	return ast.WalkSkipChildren, nil
 }
 
-// renderWikilink writes the span of a wikilink or an embed around the text
-// it shows, its child; data-nw-target is its target and anchor.
-func renderWikilink(w util.BufWriter, _ []byte, node ast.Node, entering bool) (ast.WalkStatus, error) {
+// renderWikilink writes a wikilink or an embed around the text it shows,
+// its child (M6/P3 design 6.2): a link to the page it resolves to, with
+// the heading its anchor leads to; one unresolved, with its target; one
+// to its own page's heading, to the heading's id. One in a Markdown
+// link's text, or to its own page's block, is a span.
+func (r nodeRenderer) renderWikilink(w util.BufWriter, _ []byte, node ast.Node, entering bool) (ast.WalkStatus, error) {
+	n := node.(*wikilink)
+	heading, own := "", n.target == ""
+	if own {
+		heading, own = anchorID(n.anchor)
+	}
+	link := !n.inLink && (n.target != "" || own)
 	if !entering {
-		_, _ = w.WriteString("</span>")
+		if link {
+			_, _ = w.WriteString("</a>")
+		} else {
+			_, _ = w.WriteString("</span>")
+		}
 		return ast.WalkContinue, nil
 	}
-	n := node.(*wikilink)
-	_, _ = w.WriteString(`<span class="nw-wikilink`)
+	class := "nw-wikilink"
 	if n.embed {
-		_, _ = w.WriteString(" nw-embed")
+		class += " nw-embed"
 	}
-	_, _ = w.WriteString(`" data-nw-target="`)
-	target := n.target
-	if n.anchor != "" {
-		target += "#" + n.anchor
+	var attrs []markdown.Attr
+	switch {
+	case !link:
+	case own:
+		href, _ := markdown.SafeURL("#" + heading)
+		attrs = []markdown.Attr{{Name: "href", Value: href}}
+	default:
+		var resolved bool
+		attrs, resolved = r.view.lead(n.at.Start, n.target, n.anchor)
+		if !resolved {
+			class += " nw-unresolved"
+		}
 	}
-	escaped(w, []byte(target))
-	_, _ = w.WriteString(`">`)
+	if link {
+		_, _ = w.WriteString(`<a class="`)
+	} else {
+		_, _ = w.WriteString(`<span class="`)
+	}
+	_, _ = w.WriteString(class)
+	_ = w.WriteByte('"')
+	for _, a := range attrs {
+		_, _ = w.WriteString(" " + a.Name + `="`)
+		escaped(w, []byte(a.Value))
+		_ = w.WriteByte('"')
+	}
+	_ = w.WriteByte('>')
 	return ast.WalkContinue, nil
 }
 

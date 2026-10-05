@@ -256,7 +256,7 @@ func pageRegistrants(pool *pgxpool.Pool) pageExtensions {
 // items, with their byte positions; M6's dialect, with its links and tags;
 // M7's attachments will take their inline rendering.
 func markdownExtensions() []markdown.Extension {
-	return []markdown.Extension{tasks.Extension(), obsidian.Extension()}
+	return []markdown.Extension{tasks.Extension(), obsidian.Extension(obsidian.Options{})}
 }
 
 // purgers are the modules' purgers of the soft-deleted rows, leaf to root
