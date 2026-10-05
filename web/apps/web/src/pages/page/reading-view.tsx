@@ -43,12 +43,14 @@ import { useWorkspace } from "../workspace/workspace-layout";
  * page), unanchored gives the page's heading the focus if it is nowhere
  * (what had it went with the page before); and a view from the cache, which
  * may be older than the link, is read again: the element it brings shows
- * and takes the focus, if the reader has moved neither the focus nor the
- * page since; a read after that one moves nothing. A link of the page to no
- * element leaves the focus where it is, and the page. An element with an
- * id that had the focus as the HTML is replaced, the anchor's among them,
- * has it back in the new HTML, shown again if it showed and no longer
- * does: a view read again stays where it is.
+ * and takes the focus, if the reader has done nothing since (scrolled,
+ * clicked, touched, pressed a key: the browser's own scrolling is none of
+ * these) and the focus is where it was; a read after that one moves
+ * nothing. A link of the page to no element leaves the focus where it is,
+ * and the page. An element with an id that had the focus as the HTML is
+ * replaced, the anchor's among them, has it back in the new HTML, shown
+ * again if it showed and no longer does: a view read again stays where it
+ * is.
  */
 export const ReadingView = observer(function ReadingView({
   notebook,
@@ -73,8 +75,8 @@ export const ReadingView = observer(function ReadingView({
   // The element with an id focused as the HTML was replaced, and whether it showed.
   const focusedTarget = useRef<{ id: string; shown: boolean } | undefined>(undefined);
   // While the view from the cache is read again for the anchor the page opened at, which named no element of it:
-  // what had the focus then, and where the window was scrolled.
-  const awaited = useRef<{ focus: Element | null; scrollY: number } | undefined>(undefined);
+  // what had the focus then, and how the wait ends.
+  const awaited = useRef<{ focus: Element | null; end: () => void } | undefined>(undefined);
   const { data, error, mutate } = useSWR(["page-view", notebook.id, page.id], () => pages.view(page.id));
   // Whether the view came from the cache: older, maybe, than the address.
   const cached = useRef(data !== undefined);
@@ -177,15 +179,10 @@ export const ReadingView = observer(function ReadingView({
     const anchor = location.hash.slice(1);
     const target = anchor === "" ? undefined : named(container, anchor);
     if (anchored.current === navigation) {
-      // The view read again for it has the element, the reader having moved neither the focus nor the page.
+      // The view read again for it has the element, the reader having done nothing, the focus where it was.
       const waiting = awaited.current;
-      if (
-        waiting !== undefined &&
-        target !== undefined &&
-        document.activeElement === waiting.focus &&
-        window.scrollY === waiting.scrollY
-      ) {
-        awaited.current = undefined;
+      if (waiting !== undefined && target !== undefined && document.activeElement === waiting.focus) {
+        waiting.end();
         focusOn(target, {});
       }
       return;
@@ -193,7 +190,7 @@ export const ReadingView = observer(function ReadingView({
     // The page's first navigation: it opened, by a load or from another page.
     const opened = anchored.current === undefined;
     anchored.current = navigation;
-    awaited.current = undefined;
+    awaited.current?.end();
     if (target !== undefined) {
       focusOn(target, {});
       return;
@@ -205,11 +202,20 @@ export const ReadingView = observer(function ReadingView({
       latestUnanchored.current();
     }
     if (cached.current) {
-      // Once per page: the wait ends with this read, or at the next navigation.
-      awaited.current = { focus: document.activeElement, scrollY: window.scrollY };
-      void mutate().finally(() => {
-        awaited.current = undefined;
-      });
+      // Once per page: the wait ends with this read, at the next navigation, or as the reader does something.
+      const end = () => {
+        for (const type of readersInput) {
+          window.removeEventListener(type, end, true);
+        }
+        if (awaited.current?.end === end) {
+          awaited.current = undefined;
+        }
+      };
+      for (const type of readersInput) {
+        window.addEventListener(type, end, { capture: true, passive: true });
+      }
+      awaited.current = { focus: document.activeElement, end };
+      void mutate().finally(end);
     }
   }, [anchored, html, location.hash, location.key, mutate]);
   if (data === undefined) {
@@ -218,6 +224,9 @@ export const ReadingView = observer(function ReadingView({
   // Named by the page: it can get the focus to scroll a wide content (reading/scroll-focus.ts).
   return <article ref={article} aria-label={page.name} className="nw-reading min-w-0" />;
 });
+
+/** readersInput are the events of what a reader does: a scroll, a click, a touch, a key. */
+const readersInput = ["wheel", "touchmove", "pointerdown", "keydown"] as const;
 
 /** named is the element of container whose id the address's fragment is, decoded, if there is one. */
 function named(container: HTMLElement, fragment: string): HTMLElement | undefined {

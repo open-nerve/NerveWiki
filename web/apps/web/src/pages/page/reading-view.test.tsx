@@ -260,17 +260,48 @@ test("once the view read again for the anchor is in without its element, a later
   expect(scrolled).toEqual([]);
 });
 
-test("the element the view read again brings moves nothing once the reader scrolled", async () => {
+test.each(["wheel", "touchmove", "pointerdown", "keydown"])(
+  "the element the view read again brings moves nothing once the reader did something: %s",
+  async (type) => {
+    const scrolled = scrolls();
+    const { server, release } = heldServer(["<p>Install</p>", '<h2 id="nw-x">X</h2>']);
+    await openedFromTheCache(server, "#nw-x");
+    const heading = await screen.findByRole("heading", { level: 1, name: "Install" });
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+
+    fireEvent(window, new Event(type));
+    await act(async () => release());
+    await screen.findByRole("heading", { level: 2, name: "X" });
+    expect(document.activeElement).toBe(heading);
+    expect(scrolled).toEqual([]);
+  }
+);
+
+test("the browser's own scrolling during the wait is not the reader's: the element the read brings takes the focus", async () => {
   const scrolled = scrolls();
   const { server, release } = heldServer(["<p>Install</p>", '<h2 id="nw-x">X</h2>']);
   await openedFromTheCache(server, "#nw-x");
   const heading = await screen.findByRole("heading", { level: 1, name: "Install" });
   await waitFor(() => expect(document.activeElement).toBe(heading));
 
-  Object.defineProperty(window, "scrollY", { configurable: true, value: 600 });
-  onTestFinished(() => void Object.defineProperty(window, "scrollY", { configurable: true, value: 0 }));
+  fireEvent(window, new Event("scroll"));
   await act(async () => release());
-  await screen.findByRole("heading", { level: 2, name: "X" });
+  const x = await screen.findByRole("heading", { level: 2, name: "X" });
+  await waitFor(() => expect(document.activeElement).toBe(x));
+  expect(scrolled).toEqual([x]);
+});
+
+test("while the view is read again for the anchor the page opened at, another address of the page ends the wait: the read moves nothing", async () => {
+  const scrolled = scrolls();
+  const { server, release } = heldServer(["<p>Install</p>", '<h2 id="nw-x">X</h2><h2 id="nw-y">Y</h2>']);
+  const { router } = await openedFromTheCache(server, "#nw-x");
+  const heading = await screen.findByRole("heading", { level: 1, name: "Install" });
+  await waitFor(() => expect(document.activeElement).toBe(heading));
+
+  // As an address typed in: neither the focus nor the page moved.
+  await act(() => router.navigate(`${pagePath(install.id)}#nw-y`));
+  await act(async () => release());
+  await screen.findByRole("heading", { level: 2, name: "Y" });
   expect(document.activeElement).toBe(heading);
   expect(scrolled).toEqual([]);
 });
