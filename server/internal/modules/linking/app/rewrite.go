@@ -285,6 +285,9 @@ func (r Rewrite) rewrite(ctx context.Context, id uuid.UUID, revision int, reache
 	// The links a writing of the body alone left: with the sizes when a
 	// writing with them was too large; whether the others changed more than
 	// the links, or failed for the body's edits, the writings do not tell.
+	// An error, too large alone or not, where a page left whole for its size
+	// is a warning: the page is written, its links lead elsewhere unseen
+	// (M6/P4 fix check c10-1).
 	var sizes []slog.Attr
 	if left.TooLarge > 0 {
 		sizes = []slog.Attr{slog.Int("bytes", len(content)), slog.Int("written", left.TooLarge)}
