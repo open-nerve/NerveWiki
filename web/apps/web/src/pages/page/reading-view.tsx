@@ -1,5 +1,5 @@
 import { observer } from "mobx-react-lite";
-import { useContext, useEffect, useLayoutEffect, useRef } from "react";
+import { useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 import useSWR from "swr";
 
@@ -36,11 +36,14 @@ import { useWorkspace } from "../workspace/workspace-layout";
  * whose heading takes the focus; or to an anchor. An address with an
  * anchor has the view go to the element it names, once the HTML is in,
  * once for each time the app goes to the address: the element shows and
- * takes the focus (M6/P3 design 6.7); unanchored, when it names none,
- * gives the page's heading the focus. An element with an id that had the
- * focus as the HTML is replaced, the anchor's among them, has it back in
- * the new HTML, and is shown again if it showed: a view read again stays
- * where it is.
+ * takes the focus (M6/P3 design 6.7). When it names none, the view is read
+ * again first, as the one shown may be from the cache, older than the
+ * link; then, if the focus is nowhere (what had it went with the page
+ * before), unanchored gives it the page's heading, and otherwise it stays
+ * where it is, as a link to no element leaves it. An
+ * element with an id that had the focus as the HTML is replaced, the
+ * anchor's among them, has it back in the new HTML, shown again if it
+ * showed and no longer does: a view read again stays where it is.
  */
 export const ReadingView = observer(function ReadingView({
   notebook,
@@ -58,10 +61,15 @@ export const ReadingView = observer(function ReadingView({
   const enhancements = useContext(Enhancements);
   const navigate = useNavigate();
   const location = useLocation();
-  // The navigation whose anchor the view went to: the location's key and fragment (one key may have several).
+  // The last navigation the view took in, its anchor gone to: the location's key and fragment (one key may have
+  // several: an address typed in).
   const anchored = useRef<string | undefined>(undefined);
   // The element with an id focused as the HTML was replaced, and whether it showed.
   const focusedTarget = useRef<{ id: string; shown: boolean } | undefined>(undefined);
+  // The navigation whose anchor named no element of the view, which is read again for it (the view, from the
+  // cache, may be older than the link), and the one whose read for it is in.
+  const rereading = useRef<string | undefined>(undefined);
+  const [reread, setReread] = useState<string | undefined>(undefined);
   const { data, error, mutate } = useSWR(["page-view", notebook.id, page.id], () => pages.view(page.id));
   const article = useRef<HTMLElement>(null);
   // The task item focused as the HTML was replaced: its position, its text and its state.
@@ -135,7 +143,8 @@ export const ReadingView = observer(function ReadingView({
     focusedTarget.current = undefined;
     const again = target && byId(container, target.id);
     if (again) {
-      focusOn(again, target.shown ? { block: "nearest" } : undefined);
+      // Scrolled only when it no longer shows: a scroll would reset a wide content's too.
+      focusOn(again, target.shown && !shows(again) ? { block: "nearest" } : undefined);
     }
     return () => {
       // Undone, a checkbox is disabled again, which HTML's focus fixup takes the focus from: Chromium at the next
@@ -146,10 +155,7 @@ export const ReadingView = observer(function ReadingView({
           ? { task: active.dataset.task, text: taskText(active), checked: active.hasAttribute("checked") }
           : undefined;
       focusedTarget.current =
-        active instanceof HTMLElement &&
-        active.id !== "" &&
-        focusedTask.current === undefined &&
-        container.contains(active)
+        active instanceof HTMLElement && active.id !== "" && container.contains(active)
           ? { id: active.id, shown: shows(active) }
           : undefined;
       undo();
@@ -158,17 +164,25 @@ export const ReadingView = observer(function ReadingView({
   useLayoutEffect(() => {
     const container = article.current;
     const navigation = location.key + location.hash;
-    if (container === null || html === undefined || location.hash === "" || anchored.current === navigation) {
+    if (container === null || html === undefined || anchored.current === navigation) {
+      return;
+    }
+    const anchor = location.hash.slice(1);
+    const target = anchor === "" ? undefined : named(container, anchor);
+    if (anchor !== "" && target === undefined && reread !== navigation) {
+      if (rereading.current !== navigation) {
+        rereading.current = navigation;
+        void mutate().finally(() => setReread(navigation));
+      }
       return;
     }
     anchored.current = navigation;
-    const target = named(container, location.hash.slice(1));
-    if (target === undefined) {
-      latestUnanchored.current();
-    } else {
+    if (target !== undefined) {
       focusOn(target, {});
+    } else if (anchor !== "" && (document.activeElement === null || document.activeElement === document.body)) {
+      latestUnanchored.current();
     }
-  }, [html, location.hash, location.key]);
+  }, [html, location.hash, location.key, mutate, reread]);
   if (data === undefined) {
     return <NotLoaded error={error} retry={() => void mutate()} />;
   }

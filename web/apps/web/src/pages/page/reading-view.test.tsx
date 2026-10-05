@@ -1,6 +1,6 @@
 import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, expect, onTestFinished, test, vi } from "vitest";
 
 import { readingEnhancements, type Enhancement } from "../../reading/enhancement";
 import { notebookJSON } from "../../test/fakes";
@@ -138,13 +138,26 @@ test("an anchor written escaped names the element of its id", async () => {
   expect(scrolled).toEqual([heading]);
 });
 
+/** viewReads is how many times server's view of Install was read. */
+function viewReads(server: ReturnType<typeof pageServer>): number {
+  return server.sent.filter((line) => line === "GET view Install").length;
+}
+
 test.each(["#nw-none", "#nw-%E0%A4"])(
-  "an anchor the view has no element of, a malformed escape among them, gives the page's heading the focus: %s",
+  "an anchor the view has no element of, a malformed escape among them, has it read again, once, then gives the page's heading the focus: %s",
   async (anchor) => {
     const scrolled = scrolls();
-    renderApp(`${pagePath(install.id)}${anchor}`, pageServer().app);
-    expect((await screen.findByRole("article")).innerHTML).toBe("<p>Install</p>");
-    expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1, name: "Install" }));
+    const server = pageServer();
+    // Each read another HTML, none with the element.
+    const read = server.views.get.bind(server.views);
+    let reads = 0;
+    server.views.get = (id) => (id === install.id ? { html: `<p>read ${++reads}</p>`, revision: reads } : read(id));
+    renderApp(`${pagePath(install.id)}${anchor}`, server.app);
+
+    const heading = await screen.findByRole("heading", { level: 1, name: "Install" });
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+    expect(screen.getByRole("article").innerHTML).toBe("<p>read 2</p>");
+    expect(viewReads(server)).toBe(2);
     expect(scrolled).toEqual([]);
   }
 );
@@ -167,11 +180,17 @@ test("an anchor the address changes to has the view go there, though the history
   expect(scrolled).toEqual([a, screen.getByRole("heading", { level: 2, name: "B" })]);
 });
 
-test("an element with an id that had the focus has it back in the view read again, shown again if it showed", async () => {
+test("an element with an id that had the focus has it back in the view read again, shown again if it showed and no longer does", async () => {
   const scroll = vi.fn();
   Element.prototype.scrollIntoView = scroll;
+  // Where an element is in the window: at its data-at, 20 high, as jsdom lays out nothing.
+  const laidOut = vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) {
+    const top = Number(this.getAttribute("data-at") ?? 0);
+    return { top, bottom: top + 20 } as DOMRect;
+  });
+  onTestFinished(() => laidOut.mockRestore());
   const server = pageServer();
-  server.views.set(install.id, { html: '<h2 id="nw-a">A</h2>', revision: 1 });
+  server.views.set(install.id, { html: '<h2 id="nw-a" data-at="10">A</h2>', revision: 1 });
   const reloads: (() => void)[] = [];
   renderApp(`${pagePath(install.id)}#nw-a`, server.app, {
     enhancements: [
@@ -188,24 +207,76 @@ test("an element with an id that had the focus has it back in the view read agai
     act(() => reloads.at(-1)?.());
     await waitFor(() => expect(screen.getByRole("article").textContent).toBe(html.replace(/<[^>]*>/g, "")));
   };
+  await screen.findByRole("heading", { level: 2, name: "A" });
 
-  // In the window's view: the focus, and shown again.
-  const a = await screen.findByRole("heading", { level: 2, name: "A" });
-  vi.spyOn(a, "getBoundingClientRect").mockReturnValue({ top: 10, bottom: 30 } as DOMRect);
-  await readAgain('<h2 id="nw-a" tabindex="-1">A, again</h2>', 2);
-  expect(document.activeElement).toBe(section("A, again"));
-  expect([scroll.mock.contexts, scroll.mock.calls]).toEqual([[section("A, again")], [[{ block: "nearest" }]]]);
+  // It showed and shows still: the focus, no scroll; focusable as the anchor's target is.
+  await readAgain('<h2 id="nw-a" data-at="20">A, still</h2>', 2);
+  expect(document.activeElement).toBe(section("A, still"));
+  expect(section("A, still").getAttribute("tabindex")).toBe("-1");
+  expect(scroll).not.toHaveBeenCalled();
 
-  // Out of it: the focus, no scroll; focusable as the anchor's target is.
-  await readAgain('<h2 id="nw-a">A, out of view</h2>', 3);
+  // It showed and no longer does: the focus, and shown again.
+  await readAgain('<h2 id="nw-a" data-at="2000">A, moved</h2>', 3);
+  expect(document.activeElement).toBe(section("A, moved"));
+  expect([scroll.mock.contexts, scroll.mock.calls]).toEqual([[section("A, moved")], [[{ block: "nearest" }]]]);
+
+  // It did not show: the focus, no scroll.
+  await readAgain('<h2 id="nw-a" data-at="3000">A, out of view</h2>', 4);
   expect(document.activeElement).toBe(section("A, out of view"));
-  expect(section("A, out of view").getAttribute("tabindex")).toBe("-1");
   expect(scroll).not.toHaveBeenCalled();
 
   // Not in the new HTML: no focus.
-  await readAgain('<p id="nw-p">gone</p>', 4);
+  await readAgain('<p id="nw-p">gone</p>', 5);
   expect(document.activeElement).toBe(document.body);
   expect(scroll).not.toHaveBeenCalled();
+});
+
+test("an anchor of no element that a link of the page goes to leaves the focus on the link", async () => {
+  const scrolled = scrolls();
+  const server = pageServer();
+  server.views.set(install.id, { html: '<p><a href="#nw-gone">gone</a></p>', revision: 1 });
+  const { router } = renderApp(pagePath(install.id), server.app);
+  const link = within(await screen.findByRole("article")).getByRole("link", { name: "gone" });
+  link.focus();
+
+  await act(() => router.navigate(`${pagePath(install.id)}#nw-gone`));
+  // The view read again for the anchor, and that read in.
+  await waitFor(() => expect(viewReads(server)).toBe(2));
+  await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+  expect(router.state.location.hash).toBe("#nw-gone");
+  expect(document.activeElement).toBe(link);
+  expect(scrolled).toEqual([]);
+});
+
+test("an anchor that only the view on its way has is gone to once it is in", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const scrolled = scrolls();
+  const server = pageServer();
+  const { router } = renderApp(pagePath(install.id), server.app);
+  expect((await screen.findByRole("article")).innerHTML).toBe("<p>Install</p>");
+  await act(() => router.navigate(pagePath(guide.id)));
+  await screen.findByRole("heading", { level: 1, name: "Guide" });
+  server.views.set(install.id, { html: '<h2 id="nw-x">X</h2>', revision: 2 });
+  // Past SWR's deduplication: the view shown again from its cache is read again.
+  await act(() => vi.advanceTimersByTimeAsync(3_000));
+
+  await act(() => router.navigate(`${pagePath(install.id)}#nw-x`));
+  const x = await screen.findByRole("heading", { level: 2, name: "X" });
+  expect(document.activeElement).toBe(x);
+  expect(scrolled).toEqual([x]);
+});
+
+test("going back to an address with an anchor goes to it again, after an address of the page without one", async () => {
+  const scrolled = scrolls();
+  const server = pageServer();
+  server.views.set(install.id, { html: '<h2 id="nw-a">A</h2>', revision: 1 });
+  const { router } = renderApp(`${pagePath(install.id)}#nw-a`, server.app);
+  const a = await screen.findByRole("heading", { level: 2, name: "A" });
+
+  await act(() => router.navigate(pagePath(install.id)));
+  await act(() => router.navigate(-1));
+  expect(router.state.location.hash).toBe("#nw-a");
+  expect(scrolled).toEqual([a, a]);
 });
 
 test("a link to a page goes there through the router, with the app's enhancements, arriving at the page unless at an anchor", async () => {

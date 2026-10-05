@@ -103,13 +103,20 @@ test("L1 (page): a link to a page opens it in the app, or in a new tab with a mo
   expect(await notReloaded()).toBe(true);
 });
 
-test("L1 (page): a link to a page not there leads to it once the page is created elsewhere: the view is read again with the links event", async ({
+test("L1 (page): a link to a page not there leads to it once the page is created elsewhere: the view is read again with the links event, the focus and the scroll kept", async ({
   api,
   signedInPage,
 }, testInfo) => {
   const { pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
   const notebook = await createNotebook(api, pat, workspace.slug, "Plans");
-  const source = await createPage(api, pat, notebook.id, "Source", null, "[[Missing]]\n");
+  const source = await createPage(
+    api,
+    pat,
+    notebook.id,
+    "Source",
+    null,
+    "[[Missing]]\n\n" + "filler\n\n".repeat(80) + "# Part A\n\n[[#Gone]] [[#Part A|to part a]]\n"
+  );
   const page = await signedInPage(tokens);
   const letStreamIn = await holdStream(page);
   const viewReads = countAnswers(page, "GET", `/api/v0/pages/${source.id}/view`);
@@ -119,6 +126,19 @@ test("L1 (page): a link to a page not there leads to it once the page is created
   // The stream connects, and its refresh reads the view again: from then on, the page created comes as events.
   letStreamIn();
   await expect.poll(viewReads).toBeGreaterThanOrEqual(2);
+
+  // A link of the page to no heading leaves the focus on it, and the page where it is; one to a heading goes there.
+  const gone = article.getByRole("link", { name: "Gone", exact: true });
+  await gone.click();
+  await expect(page).toHaveURL(/#nw-gone$/);
+  await expect(gone).toBeFocused();
+  await expect(gone).toBeInViewport();
+  await article.getByRole("link", { name: "to part a", exact: true }).click();
+  const partA = article.getByRole("heading", { name: "Part A", exact: true });
+  await expect(partA).toBeFocused();
+  await expect(partA).toBeInViewport();
+  // The view read again for the missing heading is in before the page is created.
+  await expect.poll(viewReads).toBeGreaterThanOrEqual(3);
   const read = viewReads();
 
   const missing = await createPage(api, pat, notebook.id, "Missing");
@@ -127,4 +147,7 @@ test("L1 (page): a link to a page not there leads to it once the page is created
     wikiPagePath(workspace.slug, notebook.id, missing.id)
   );
   expect(viewReads()).toBeGreaterThan(read);
+  // Read again, the view keeps the heading's focus and stays where it was.
+  await expect(partA).toBeFocused();
+  await expect(partA).toBeInViewport();
 });
