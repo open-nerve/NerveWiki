@@ -1,13 +1,17 @@
 package markdown
 
 import (
+	"bufio"
+	"bytes"
 	"strconv"
 	"strings"
 	"unicode"
 
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/parser"
+	gmhtml "github.com/yuin/goldmark/renderer/html"
 	"github.com/yuin/goldmark/text"
+	"golang.org/x/net/html"
 
 	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown/internal/harden"
 )
@@ -75,9 +79,8 @@ func (headingIDs) Transform(doc *ast.Document, reader text.Reader, _ parser.Cont
 	})
 }
 
-// PlainText is the text of n's descendants, from source, but for what a
-// Hider hides: a heading's for its id, an image's for its text, a property
-// link's for what it shows (M6/P6 design 4).
+// PlainText is the text of n's descendants, from source, as written, but
+// for what a Hider hides: a heading's, for its id.
 func PlainText(n ast.Node, source []byte) string {
 	var b strings.Builder
 	_ = ast.Walk(n, func(c ast.Node, entering bool) (ast.WalkStatus, error) {
@@ -98,6 +101,52 @@ func PlainText(n ast.Node, source []byte) string {
 		return ast.WalkContinue, nil
 	})
 	return b.String()
+}
+
+// ShownText is the text n's descendants show, from source, but for what a
+// Hider hides: each text as goldmark writes it, its backslash escapes and
+// character references resolved, a code span's as written, and U+0000 as
+// U+FFFD; an image's text, and what a property link shows (M6/P6 design
+// 4, review).
+func ShownText(n ast.Node, source []byte) string {
+	var b strings.Builder
+	var written bytes.Buffer
+	w := bufio.NewWriter(&written)
+	shown := func(value []byte) {
+		gmhtml.DefaultWriter.Write(w, value)
+		_ = w.Flush()
+		b.WriteString(html.UnescapeString(written.String()))
+		written.Reset()
+	}
+	_ = ast.Walk(n, func(c ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering {
+			return ast.WalkContinue, nil
+		}
+		switch c := c.(type) {
+		case Hider:
+			return ast.WalkSkipChildren, nil
+		case *ast.Text:
+			if value := c.Segment.Value(source); c.IsRaw() {
+				b.Write(value)
+			} else {
+				shown(value)
+			}
+			if c.SoftLineBreak() || c.HardLineBreak() {
+				b.WriteByte(' ')
+			}
+		case *ast.String:
+			switch {
+			case c.IsCode():
+				b.WriteString(html.UnescapeString(string(c.Value)))
+			case c.IsRaw():
+				b.Write(c.Value)
+			default:
+				shown(c.Value)
+			}
+		}
+		return ast.WalkContinue, nil
+	})
+	return strings.ReplaceAll(b.String(), "\x00", "\uFFFD")
 }
 
 // HeadingID is the id the first heading of text takes, when no heading

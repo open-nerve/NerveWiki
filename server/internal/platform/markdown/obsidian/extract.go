@@ -181,7 +181,7 @@ func property(values parser.Parser, s markdown.Scalar) (Link, string, bool) {
 			return Link{}, "", false
 		}
 		l, ok = markdownLink(KindLink, s.Value[at.Start:at.Stop], at.Start)
-		shown = markdown.PlainText(n, value)
+		shown = markdown.ShownText(n, value)
 	}
 	if !ok {
 		return Link{}, "", false

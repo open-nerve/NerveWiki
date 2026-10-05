@@ -56,16 +56,19 @@ func (m *marks) known(n ast.Node) ([]Attr, bool) {
 	return nil, false
 }
 
+// Writer is what WriteAttrs writes to: a renderer's util.BufWriter, or
+// the property table's buffer (M6/P6 design 4).
+type Writer interface {
+	io.Writer
+	io.ByteWriter
+	io.StringWriter
+}
+
 // WriteAttrs writes attrs as an extension's renderer writes the attributes
 // it gives an element: each value escaped, an address (href, src) through
 // SafeURL, and left out when it is not let through, as is a name that is
 // not lower-case letters, digits and '-' (P3B review L2).
-func WriteAttrs(w interface {
-	io.Writer
-	io.ByteWriter
-	io.StringWriter
-}, attrs []Attr,
-) {
+func WriteAttrs(w Writer, attrs []Attr) {
 	for _, a := range attrs {
 		value := a.Value
 		if a.Name == "href" || a.Name == "src" {
@@ -205,7 +208,7 @@ func (m *marks) image(w util.BufWriter, source []byte, node ast.Node, entering b
 		return ast.WalkContinue, nil
 	}
 	n := node.(*ast.Image)
-	alt := util.EscapeHTML([]byte(PlainText(n, source)))
+	alt := util.EscapeHTML([]byte(ShownText(n, source)))
 	_, _ = w.WriteString(`<span class="nw-image">`)
 	_, _ = w.Write(alt)
 	if m.links == 0 {

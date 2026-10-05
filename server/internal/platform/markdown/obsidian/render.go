@@ -55,11 +55,8 @@ func nothing(util.BufWriter, []byte, ast.Node, bool) (ast.WalkStatus, error) {
 // link's text, or to its own page's block, is a span.
 func (r nodeRenderer) renderWikilink(w util.BufWriter, _ []byte, node ast.Node, entering bool) (ast.WalkStatus, error) {
 	n := node.(*wikilink)
-	heading, own := "", n.target == ""
-	if own {
-		heading, own = markdown.AnchorID(n.anchor)
-	}
-	link := !n.inLink && (n.target != "" || own)
+	heading, own := n.ownHeading()
+	link := n.RendersLink()
 	if !entering {
 		if link {
 			_, _ = w.WriteString("</a>")
@@ -102,8 +99,8 @@ func (r nodeRenderer) renderWikilink(w util.BufWriter, _ []byte, node ast.Node, 
 // link's text, as a span with its name.
 func renderTag(w util.BufWriter, _ []byte, node ast.Node, entering bool) (ast.WalkStatus, error) {
 	t := node.(*tag)
-	counted, ok := CountedTag(t.name)
-	link := ok && !t.inLink
+	link := t.RendersLink()
+	counted, _ := CountedTag(t.name)
 	switch {
 	case !entering && link:
 		_, _ = w.WriteString("</a>")

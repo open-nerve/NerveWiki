@@ -138,6 +138,11 @@ func TestATagIsALinkToItsPages(t *testing.T) {
 			"in a user's link, which goes", `<a href="https://x.example">see *#t*</a>` + "\n",
 			`<p>see <em><a class="nw-tag" data-nw-tag="t">#t</a></em></p>` + "\n",
 		},
+		{
+			// Neither renders a link: the user's stays (M6/P6 review).
+			"not counted in a user's link, which stays", `<a href="/x">#1/ [[#^b]]</a>` + "\n",
+			`<p><a href="/x"><span class="nw-tag" data-nw-tag="1/">#1/</span> <span class="nw-wikilink">^b</span></a></p>` + "\n",
+		},
 	})
 }
 

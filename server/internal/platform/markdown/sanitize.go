@@ -165,8 +165,8 @@ func rendersLink(n ast.Node) bool {
 	case ast.KindLink, ast.KindAutoLink, ast.KindImage, east.KindFootnoteLink, east.KindFootnoteBacklink:
 		return true
 	}
-	_, ok := n.(Linker)
-	return ok
+	l, ok := n.(Linker)
+	return ok && l.RendersLink()
 }
 
 // linksIn is the nodes of root's tree that render a link or hold one.

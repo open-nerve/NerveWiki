@@ -127,6 +127,13 @@ func TestAPropertyLinkIsALinkInTheTable(t *testing.T) {
 			row("l", `<ul><li><a class="nw-unresolved" data-nw-target="b.md">a</a></li><li>x</li></ul>`) +
 			row("r", `<a class="nw-wikilink" `+page+`>Page</a>`) + row("again", "[[Page]]") + row("m", "[[Page]]\n") +
 			row("more", "[[Page]] and") + row("emb", "![[Page]]") + "</table></div>\n",
+	}, {
+		// As the body shows a link's text (M6/P6 review): escapes and
+		// references resolved, a U+0000 as U+FFFD.
+		"a Markdown link's text as shown",
+		"---\na: '[a &amp; b \\* c &#65;](Page)'\nb: \"[x\\0y `z\\0`](Page)\"\n---\n",
+		`<div class="nw-scroll"><table class="nw-props">` + row("a", `<a `+page+`>a &amp; b * c A</a>`) +
+			row("b", `<a `+page+">x\uFFFDy z\uFFFD</a>") + "</table></div>\n",
 	}})
 }
 

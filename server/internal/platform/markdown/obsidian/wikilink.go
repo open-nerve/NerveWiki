@@ -29,8 +29,21 @@ type wikilink struct {
 // Kind implements ast.Node.
 func (w *wikilink) Kind() ast.NodeKind { return kindWikilink }
 
-// RendersLink implements markdown.Linker: a user's <a> around it is dropped.
-func (w *wikilink) RendersLink() {}
+// RendersLink implements markdown.Linker: a wikilink renders as a link but
+// in a Markdown link's text, or to its own page's block, or to nothing.
+func (w *wikilink) RendersLink() bool {
+	_, own := w.ownHeading()
+	return !w.inLink && (w.target != "" || own)
+}
+
+// ownHeading is the id of the heading of its own page that a wikilink
+// without a target leads to, if it leads to one (M6/P3 design 6.2).
+func (w *wikilink) ownHeading() (string, bool) {
+	if w.target != "" {
+		return "", false
+	}
+	return markdown.AnchorID(w.anchor)
+}
 
 // Dump implements ast.Node.
 func (w *wikilink) Dump(source []byte, level int) {

@@ -54,7 +54,7 @@ func SafeURL(raw string) (string, bool) {
 // reserved are the characters whose escapes DecodeURI keeps.
 const reserved = ";/?:@&=+$,#"
 
-// DecodeURI is JavaScript's DecodeURI: each %XX decoded, an escaped
+// DecodeURI is JavaScript's decodeURI: each %XX decoded, an escaped
 // reserved character's kept as it is; s as it is if an escape is malformed
 // or its bytes are not UTF-8.
 func DecodeURI(s string) string {
