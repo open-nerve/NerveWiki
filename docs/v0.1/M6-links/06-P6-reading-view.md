@@ -3,7 +3,7 @@
 | 项 | 内容 |
 |---|---|
 | Phase | M6/P6 阅读视图 |
-| 状态 | 设计定稿，实施中 |
+| 状态 | A 已完成（2026-10-06，合并 `4181768`）；B 实施中 |
 | 基线 | P5 合并之后的 main（`b0e2668`）。分 A（服务端）、B（前端）两部分，照 P3 的先例各开分支（`m6-p6a`、`m6-p6b`），各自审查、合并；B 在 A 合并之后开始 |
 | 上级文档 | [M6 总设计](00-M6-design.md) 4.2、4.4、4.8、4.9、第 7 节 P6、第 11 节第 2 项；[P3 文档](03-P3-index.md)第 2 节（落点）、6.1、6.2、6.10；[P5 文档](05-P5-api.md)；[M4/P3 移交](handoffs/M4-P3-markdown-extensions.md)第 11 项；[M5 的事件](handoffs/M5-events.md)；[总体设计](../v0.1-design.md) 4.6、13.1、13.2 |
 
@@ -54,7 +54,7 @@
 - 路径的前段经别名找到父页（`[[Al/x]]`，`Al` 是 `P` 的别名）：别名只用于单名，新建的 `P/x` 不被 `Al/x` 解析到；
 - 段里有空格（`[[B/ x]]`）：`CheckTitle` 去掉首尾空白，标题键不去，新建的 `x` 不被 ` x` 解析到。
 
-**`domain.Landing(t, from, candidates, aliased)`**，答已解析到的节点、落点、或没有落点的原因之一：
+**`domain.Land(t, from, candidates, parents, aliased, maxDepth)`**，答 `Landing{Node, Parent, Title, Reason}`：已解析到的节点、落点、或没有落点的原因之一。`candidates` 是键为最后一段的页，`parents` 是键为前一段的页，`aliased` 是单名的别名指向的页（实施时的写法）：
 
 1. 现在就解析得到（两次读之间别人新建了）：答那个节点，前端直接去。
 2. 标题：写的最后一段，去掉 `.md`（同 Obsidian），经 `shared.CheckTitle`；不合法答 `title_invalid`。`Target` 加字段 `Name`（写的最后一段）：现在的 `Target` 只留标题键。
@@ -63,17 +63,20 @@
    - 相对的：上溯 `Up` 层的文件夹，再按写的前段逐段精确匹配；
    - 根路径：从根逐段精确匹配；
    - 其余的路径：用前段的标题键（`t.Keys[:n-1]`，不重新切分：`A.md/x` 里的 `.md` 不是后缀）按解析的前三步（相对、从根、后缀）找，**不用别名**。
+   - 父页就是前段解析到的页：它已经在最深一层时答 `too_deep`，不另找子树之外放得下的同名页（审查 r1-1，第 15 节）。
    - 找不到答 `parent_missing`。
 4. 深度：父页的深度加一超过 `MaxDepth`（页面模块导出）答 `too_deep`。
-5. **后置条件**：把假想的新页加进候选，`Resolve` 必须只解析到它（不歧义），否则答 `not_resolvable`。前两种情形由这一步拦下，规则以后变了也拦得住。
-6. 切分失败、含 NUL 或不是合法 UTF-8 的目标答 `target_invalid`，不查询（否则 `ByKeys` 答 500）。
+5. **后置条件**：把假想的新页加进候选，`Resolve` 必须只解析到它（不歧义），否则答 `not_resolvable`。前两种情形里，别名的前段在第 3 步已答 `parent_missing`（父页不用别名），段里的空格由这一步拦下；规则以后变了也拦得住（审查 r1-3 修订）。新页的 id 取最大的 UUID，同分时输给 id 最小的页，所以"解析到它"已含"只解析到它"。
+6. 切分失败、含 NUL 或不是合法 UTF-8 的目标答 `target_invalid`，不查询（否则 `ByKeys` 答 500）。这一条在用例里判定，`Land` 只收切分好的目标。
+7. 别名只为单名读（`Target.ByAlias`：一段、不是相对的、不从根；`Resolve` 也按它决定用不用别名，审查 r1-4）。
 
 **接口** `GET /api/v0/pages/{page_id}/link-landing?target=…`，操作 `getLinkLanding`，契约在 `api/modules/linking.yaml`：
 
 - 回答 `{node_id, landing, reason}`，三者恰有一个不为 `null`：`landing` 是 `{parent_id, title}`（`parent_id` 为 `null` 是根）；`reason` 的枚举是上面五种。
 - 动作 `link_landing.read`，笔记本级，`writers()`：落点是写的一半，读者用不上，前端不为读者问。
 - 次序：页面不可见答 404 `page.not_found`；读者答 403 `forbidden`；`target` 缺失或长于 4096 字节答 422 `validation_failed`。"没有落点"是 200，不加新码（照 P5 的 `getTag`）。
-- `target` 是自由文本的查询参数：契约测试 `TestFreeTextParametersDoNotAnswer5xx` 会发 NUL 与 `\xff`。
+- `target` 是自由文本的查询参数：契约测试 `TestFreeTextParametersDoNotAnswer5xx` 会发 NUL 与 `\xff`，但那时页面不存在，只到 404；含 NUL、`\xff` 的目标由整个程序的测试（`links_landing_test.go`）核对。
+- `target` 在契约里是可选的参数，缺失的 422 由用例给出（码 `required`，同其他 422）。
 - 读不开事务、不取锁（总体设计 8.3）。
 
 **新建**：前端在确认之后调已有的 `createPage(parent_id, title)`，不加新的写入口（13.1 第 1 条）；它的检查、码、事件与仓库照旧。两次调用之间的竞争：
@@ -82,14 +85,16 @@
 - 出发页移动、路径的父页改名：在旧的落点新建，链接可能仍解析不到。罕见、看得见，接受。
 - 新建之后观察者重新解析，`links` 事件让出发页的阅读视图重读，链接变成已解析。
 
-**用例** `linking/app.GetLinkLanding`：`Access.page`（同 P5）、写者的判定，再按目标与父页的键读候选、别名与出发页的路径（复用 `resolutions` 的读法）。`linking.Deps.Pages` 要 `ByKeys`、`Paths`：`PageTree` 加这两项（组合根已经传入完整的 `linkTargets`）。
+**用例** `linking/app.GetLinkLanding`：`Access.page`（同 P5）、写者的判定，再按目标最后一段与前一段的键读候选与父页（`PageTree.ByKeys`），单名时读别名（`Reads.Aliases`，实施时加进 `Reads`），最后读出发页与别名页的路径（`PageTree.Paths`）。不复用 `resolutions`：那是一批链接、取锁的读，这里是一个目标、带父页的键、只为单名读别名（审查 r3，不合并）。`linking.Deps.Pages` 要 `ByKeys`、`Paths`：`PageTree` 加这两项（组合根已经传入完整的 `linkTargets`）；`linking.Deps.MaxDepth` 由组合根给页面模块的 `MaxDepth`。
 
 ## 3. 标签（A）
 
-- 计数的标签（`obsidian.CountedTag` 接受的）渲染为 `<a class="nw-tag" data-nw-tag="名">#名</a>`，`名` 是 `CountedTag` 给出的写法（去掉末尾的 `/`），不是键：前端不折叠大小写，`getTag` 在服务端算键。嵌套的标签整个写（`a/b`）。
-- `CountedTag` 不接受的（`#/`、`#1/`）照旧是 `<span class="nw-tag">`：索引里没有它们，点了也没有页。
-- 标签的节点实现 `markdown.Linker`：净化丢掉用户围着它的 `<a>`（P3 B）。
-- Markdown 链接的文字里的标签是 `<span>`：`linkedWikilinks` 这一变换（`obsidian/view.go`，优先级 40）一并标出链接里的标签。
+- 计数的标签（`obsidian.CountedTag` 接受的）渲染为 `<a class="nw-tag" data-nw-tag="名">#名</a>`，`名` 是 `CountedTag` 给出的这一页的写法（去掉末尾一个 `/`），不是键：前端不折叠大小写，`getTag` 在服务端算键。嵌套的标签整个写（`a/b`）。
+- `getTag` 的 `{tag}` 按 `listTags` 列出的写法取键：`TagKey(名)` 是 `CountedTag(名 + "/")`。P5 对 `#a//`（记为 `a/`）又去掉一个 `/`，读成 `a`（P5 的遗漏，审查 r2-L3）。
+- `CountedTag` 不接受的（`#/`、`#1/`）照旧是 `<span class="nw-tag">`：索引里没有它们，点了也没有页。标签 `/`（`#//`）也是 span：路由把单独的 `%2F` 读成末尾的斜杠，`getTag` 的路径叫不到它（修复核对 f1-F1）；`listTags` 仍列出它，契约写明。
+- 一页第 1000 个之后的标签、键超过 1024 字节的标签仍是链接，`getTag` 不列这一页（P5 的上限），契约写明。
+- 标签与 wikilink 的节点实现 `markdown.Linker`，它改为按节点问的 `RendersLink() bool`：渲染成链接的，净化丢掉用户围着它的 `<a>`（P3 B）；渲染成 span 的不丢（审查 r2-L2）。
+- Markdown 链接的文字里的标签是 `<span>`：`linkedWikilinks` 这一变换（`obsidian/view.go`，优先级 40）改名 `inLinks`，一并标出链接里的标签。
 - `Markup`：`a` 的属性加 `data-nw-tag`。
 
 ## 4. 属性表里的链接（A）
@@ -99,10 +104,11 @@
 **歧义**：`{"a.b": "[[P]]", a: {b: "[[Q]]"}}` 的两个值路径都是 `a.b`（P5 文档第 4 节）。表里按**值的身份**对齐，不按路径，歧义就不存在：
 
 - `markdown.Scalar` 加一个序号（不导出），读 frontmatter 时按文档的次序给每个字符串值编号（经锚点引用的也算一次，与写表的次序一致）。
-- 平台的扩展加钩子 `Properties`：`writeValue` 写每个字符串值之前按同样的次序问它，扩展答"写成链接"（属性与文字）或不管。
-- obsidian 对范围落在这个值里的属性链接答应：属性同正文的链接（`data-nw-node`、`data-nw-anchor` 或 `nw-unresolved`、`data-nw-target`），文字是链接显示的文字（wikilink 的显示文字或名称，Markdown 链接的文字）。
+- 平台的扩展加钩子 `Properties func(data any) func(Scalar) ([]Attr, string, bool)`（实施时的形状）：写表时按同样的次序把每个字符串值交给它，扩展答"写成链接"（属性与文字）或不管；先答的扩展算数。
+- obsidian 在渲染时用抽取的同一个解析器重新解析这个值（属性链接本来只在抽取里），是指向页的链接才答应：wikilink 要有目标（`[[#h]]` 是文字），Markdown 链接要是抽取留下的。属性同正文的链接（`class="nw-wikilink"`、`data-nw-node`、`data-nw-anchor` 或 `nw-unresolved`、`data-nw-target`），文字是链接显示的文字：wikilink 的显示文字或名称，Markdown 链接的文字照 goldmark 写出的文字（`markdown.ShownText`：转义与字符引用解出、代码原样、自动链接写标签、U+0000 写 U+FFFD；审查 r2-L1、修复核对 f2-L1）。正文里图片的文字也改用它；标题的 id 仍由源文算（`PlainText`），不变。
+- 属性链接的文字不经净化：Markdown 链接文字里原始 HTML 的标签不写，标签之间的文字照样显示（`<script>b</script>` 显示 `b`，转义一次），正文里净化连文字一起去掉（修复核对 f2-L2，接受）。
 - 这改了 M4 的扩展点（核心属性表的钩子），记进总设计第 8 节。
-- 病态输入：一万个属性链接进 `CheckCosts`、`CheckSize`。
+- 病态输入：9000 个属性链接（YAML 一个值的上限之内，约 512 KB）进 `CheckCosts`、`CheckSize`；`ShownText` 的分配另由"引用很多次的图片"钉住（修复核对 f2-M1）。
 - P5 的 `links: [{key, node_id}]` 按路径，歧义仍在：交给 P7 的右栏决定（第 15 节）。
 
 契约 `getPageView` 的"属性是文字"改为写明链接、标签链接与锚点的地址。
@@ -110,8 +116,9 @@
 ## 5. 只有锚点的链接（A）
 
 - `[t](#Heading%20Two)` 现在写 `href="#Heading%20Two"`，标题的 id 却是 `nw-heading-two`，点了不动（P3 文档 6.10）。
-- 核心的 `marks`（写链接的地方）：地址以 `#` 开头时，按百分号解码，取最后一个 `#` 之后的部分，写 `#` 加 `HeadingID` 的结果。标题的 id 本来就是核心算的，地址也由核心写。
-  - `^` 开头的块引用、算出空 id 的：只写文字，不写链接（同 `[[#^b]]`）。
+- 核心的 `marks`（写链接的地方）：地址以 `#` 开头时，按百分号解码，取最后一个 `#` 之后的部分，写 `#` 加 `HeadingID` 的结果：`AnchorID(DecodeURI(锚点))`，两个函数从 obsidian 移进核心，wikilink 的锚点用同一个。标题的 id 本来就是核心算的，地址也由核心写。
+  - `^` 开头的块引用、空的锚点（`[t](#)`）：只写文字，不写链接（同 `[[#^b]]`）。
+  - 只有锚点的图片不变，照旧写原地址（审查 r2-S1，接受）。
   - 用户写的 `#nw-…` 也经同一个函数，与 `[[#…]]` 一致。
 - 与 goldmark 逐字节对照的测试比的是 goldmark 自己的渲染器，不经 `marks`，不受影响。
 
@@ -120,7 +127,8 @@
 **A**：
 
 - 块公式（`div.nw-math-block`）与属性表（`.nw-props`）由服务端包 `<div class="nw-scroll">`，同表格：增强不改结构（13.2 第 23 条）。mermaid 的图由增强包（总设计 4.9 已写明的例外）。
-- `tabindex` 不再由服务端写：不溢出的包装不该是一个 Tab 停留点，服务端不知道是否溢出。
+- `tabindex` 不再由服务端写：不溢出的包装不该是一个 Tab 停留点，服务端不知道是否溢出。`CheckHTML` 不让 `div` 带 `tabindex`。
+- e2e PG5 里钉住 HTML 形状的两处（属性表是文章的第一个子元素）随 A 改为包装里的表，否则 A 的 e2e 失败；滚动的断言仍是 B 的。
 
 **B**：
 
@@ -264,7 +272,7 @@ M6 的目标 1 是"看起来像 Obsidian"，各 Phase 都没有认领这些样�
 - **4.9**："没有落点的"补上太深、目标不合法、新建之后也解析不到；落点只给写者。
 - **P3 文档第 2 节**：落点的规则改为本文第 2 节（父页不用别名、后置条件）。
 - **4.9 宽的内容**：`tabindex` 由前端按是否溢出给；块公式与属性表由服务端包。
-- **第 8 节扩展点**：核心属性表的钩子 `Properties`（改了 M4 的扩展点）。
+- **第 8 节扩展点**：核心属性表的钩子 `Properties`（改了 M4 的扩展点）；`Linker` 改为 `RendersLink() bool`；`WriteAttrs` 写进 `markdown.Writer`。
 - **4.9 KaTeX、mermaid**：版本、上限的数值、只在可见时渲染与缓存。
 - **总体设计 4.6**：CSP 的实测结果（不改）。
 
@@ -275,6 +283,9 @@ M6 的目标 1 是"看起来像 Obsidian"，各 Phase 都没有认领这些样�
 - 落点只给写者；读者不问服务端，只说明不存在。
 - mermaid 12 不用；`maxEdges` 200、原文 20,000 字节、公式 4,000 字节的上限。
 - 属性表按值的身份对齐，右栏按路径的歧义交给 P7。
+- 父页在最深一层时答 `too_deep`，不另找放得下的同名页（第 2 节，审查 r1-1）。
+- 只有锚点的图片照旧写原地址；`[t](#)` 只写文字（第 5 节）。
+- 属性链接文字里原始 HTML 标签之间的文字照样显示，不经净化（第 4 节）。
 
 ## 16. 实施步骤
 
@@ -300,3 +311,22 @@ M6 的目标 1 是"看起来像 Obsidian"，各 Phase 都没有认领这些样�
 ## 18. 结果
 
 （A、B 合并时各自填写。）
+
+### A（服务端）
+
+- **提交**：S1 `0087b8e`、S2 `e2aae59`、S3 `7089453`、S4 `855b264`、S5 `dfbf0a4`；审查的修复 `7630c11`、`7c8c767`、`80ba307`；修复核对两轮，第一轮之后的修复 `459184b`，第二轮没有行为上的发现，只改契约的措辞（`7d1fba1`）。合并 `4181768`。审查记录：[P6A-reading-server-review.md](reviews/P6A-reading-server-review.md)。
+- **与本文的出入**（已改进上文）：`Land` 的签名与 `parents`（第 2 节）；别名经 `Reads.Aliases`、只为单名读（第 2 节）；`linkedWikilinks` 改名 `inLinks`，`Linker` 按节点问（第 3 节）；钩子的形状、渲染时重新解析、`ShownText`（第 4 节）；`AnchorID`、`DecodeURI` 移进核心（第 5 节）；PG5 钉住形状的两处随 A 改（第 6 节）。另加了属性链接经整个程序的测试（`links_view_test.go`）。
+- **测量**（作者的笔记本电脑，macOS、Apple 芯片）：
+  - 成本（`CheckCosts`，对普通文档 512 KB 的倍数，上限时间 10 倍、分配 14 倍）：表里的 9000 个属性链接时间 1.0 倍、分配 1.6 倍；引用很多次的图片 5.5 倍、5.6 倍（`ShownText` 每次 4 KB 的缓冲时是 17.8 倍分配）。
+  - 大小（`CheckSize`，上限 64 倍加 4 MB）：约 512 KB 的属性链接，全部解析到时 2.4 倍，都解析不到时 2.9 倍。
+- **负对照**：S1–S5 52 个变异，50 个让测试失败，2 个等价（第 2 节第 5 步：新页的 id 取最大，"解析到它"已含"不歧义"；多给 `Resolve` 的父页按路径结尾匹配，不会被选中）。审查的修复 10 个、核对的修复 3 个，都让测试失败。
+- **镜像**：合并之后 `make image-smoke` 通过（版本 0.1.0-dev，提交 `4181768`，`modified=false`）。
+- **负责人可以推翻的决定**：第 15 节末的各条。
+- **留给 B 与后续**：
+  - 标签的路由要把整个名字编码成一段（`a/`、`a//b`；`encodeURIComponent`），标签 `/` 没有链接。
+  - 前端发 `encodeURIComponent(target)`，`target` 就是视图里的 `data-nw-target`；长于 4096 字节的目标答 422，前端当作"没有落点"说明。4096 字节的目标编码之后可能超过 nginx 默认 8 KB 的请求行（已知的限制）。
+  - `parent_missing` 不说是哪一段不存在：说明对话框只能写"路径里的页不存在"。
+  - 段落里的展示公式（行内写的 `$$…$$`，`span.nw-math.nw-math-block`）不在块里，服务端没有包它：宽的时候由 B 的样式处理。
+  - A 合并到 B 的 S1 之间，标签是没有地址的 `<a>`：点了不动（前端还没有它的增强）。
+  - 同名的附件（M7）：落点答一个标题，`createPage` 答 409 `page.title_taken`，再问一次落点又是它；M7 让落点拒绝读作附件的目标时一并处理。
+  - M12：能叫到标签 `/` 的路由（随标签总览，`{tag...}`）；标题的 id 丢了自动链接与原始 HTML 的文字（修复核对 f3-2）；属性链接文字里 `<script>` 之间的文字显示出来（f2-L2）。已写进 [M12 的打磨移交](../M12-release/handoffs/M5-polish.md)第 10 项。

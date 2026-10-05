@@ -166,14 +166,14 @@ P5 做：
 
 - 有这个标签或它下层 `tag/…` 的页的 id，按 id，不分页。一页前 1000 个之后的标签找不到。
 - `{tag}` 按提取的同一条规则变成键：
-  - `obsidian.CountedTag`（去掉末尾一个 `/`，拒绝的字符）；
+  - `obsidian.CountedTag`（拒绝的字符）。`{tag}` 是 `listTags` 列出的写法，末尾的 `/` 已经去掉过一次，所以按 `CountedTag(tag + "/")` 取，不再去掉（P6 修订：原来 `#a//` 记为 `a/`，`getTag("a/")` 又去掉一个，读成 `a`；P6A 审查 r2-L3）；
   - `shared.TitleKey`；
   - 不超过 `MaxKey`。
 - 不是合法 UTF-8、含 NUL，或者不是标签的：答空列表，不查询。
   - PostgreSQL 的文本存不下这些字节。契约的测试（`TestFreeTextParametersDoNotAnswer5xx`）发过来时笔记本不存在，先答 404；守卫由 `tag_test.go` 与整个程序的测试（NUL、`\xff`）核对（审查 r3-3）。
   - 次序在笔记本的判定之后：笔记本不可见时仍答 404。
   - 不加新码：它是筛选的条件，不是地址里的资源。
-- 嵌套的标签在路径里写作 `%2F`（`a%2Fb`）：Go 的路由解出 `a/b`，openapi-fetch 用 `encodeURIComponent`。
+- 嵌套的标签在路径里写作 `%2F`（`a%2Fb`）：Go 的路由解出 `a/b`，openapi-fetch 用 `encodeURIComponent`。标签 `/`（`#//`）叫不到：单独的 `%2F` 被读成末尾的斜杠；`listTags` 仍列出它，契约写明（P6 修订，[P6 文档](06-P6-reading-view.md)第 3 节）。
 - 查询：`tag_key = k OR (tag_key >= k || '/' AND tag_key < k || '0')`。`'0'` 是 `/` 之后的那个字节，`tag_key` 是 `COLLATE "C"`，所以范围正好是 `k/…`。不用 `LIKE`：`_` 可以在标签里，是 `LIKE` 的通配符。
 
 ## 6. 链接目标
