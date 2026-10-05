@@ -270,11 +270,12 @@ func TestTheBacklinksComeAPageAtATimeWithTheirContexts(t *testing.T) {
 // has no contexts, its content unread: its ranges may mean other bytes
 // (review r1-4). Past domain.MaxContentRead bytes of contents read, the
 // pages have none, unread (review r2-L1): those read count, of a revision
-// the index has or not (review c2).
+// the index has or not (review c2); two pages of half the bytes reach it
+// (review c4).
 func TestABacklinksContextsAreOfTheExtractorAndWithinTheRead(t *testing.T) {
 	l := newLibrary()
 	ids := []uuid.UUID{uuid.NewV7(), uuid.NewV7(), uuid.NewV7(), uuid.NewV7()}
-	half := strings.Repeat("a", domain.MaxContentRead/2) + "[[p]]"
+	half := strings.Repeat("a", domain.MaxContentRead/2-len("[[p]]")) + "[[p]]"
 	link := []domain.Range{{Start: len(half) - 3, End: len(half) - 2}}
 	l.contents = map[uuid.UUID]revised{ids[0]: {"[[p]]", 1}, ids[1]: {half, 2}, ids[2]: {half, 1}, ids[3]: {"[[p]]", 1}}
 	e := domain.Extractor

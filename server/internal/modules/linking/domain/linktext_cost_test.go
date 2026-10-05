@@ -17,11 +17,12 @@ import (
 // page of the same title, which only its path writes, are written in under
 // two seconds and 64 MiB, though each one's path is read against all the
 // others of its title (M6/P5 design 6): also when the title ends with
-// ".md", whose writings are read against the pages of its stem too, none
-// or one at the root, which has them written with ".md" after the path.
-// Joining the pages of the two keys anew for each writing allocated GBs
-// (review r1-3, r2-L3). The race detector slows the code too much for a
-// bound in time: make test-go runs it in a build without.
+// ".md", whose writings are read against the pages of its stem instead
+// when there are any, here none or one at the root, which has them
+// written with ".md" after the path. Joining the pages of the two keys
+// anew for each writing allocated GBs (review r1-3, r2-L3, c4). The race
+// detector slows the code too much for a bound in time: make test-go runs
+// it in a build without.
 func TestTheLinktextsOfManyPagesOfOneTitleAreCheap(t *testing.T) {
 	const folders = 10_000
 	for _, tt := range []struct {

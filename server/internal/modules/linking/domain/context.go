@@ -91,9 +91,10 @@ func Context(content string, start, end int) string {
 
 // Contexts is the contexts of links whose targets are content's bytes at
 // ranges, by start (M6/P5 design 3): one a line, the first link's on it,
-// told by no line's end between it and the link before. A range past
-// content is none: the index's ranges are of the content of its revision,
-// which the caller compares.
+// told by no line's end between it and the link before, so that the bytes
+// between links are read once (review c3). A range past content is none:
+// the index's ranges are of the content of its revision, which the caller
+// compares.
 func Contexts(content string, ranges []Range) []string {
 	out := []string{}
 	last := -1
@@ -101,11 +102,11 @@ func Contexts(content string, ranges []Range) []string {
 		if r.Start < 0 || r.End > len(content) || r.Start >= r.End {
 			continue
 		}
-		if last >= 0 && last <= r.Start && !strings.ContainsAny(content[last:r.Start], "\r\n") {
-			continue
-		}
+		sameLine := last >= 0 && last <= r.Start && !strings.ContainsAny(content[last:r.Start], "\r\n")
 		last = r.Start
-		out = append(out, Context(content, r.Start, r.End))
+		if !sameLine {
+			out = append(out, Context(content, r.Start, r.End))
+		}
 	}
 	return out
 }

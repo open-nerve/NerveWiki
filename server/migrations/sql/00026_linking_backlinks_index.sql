@@ -1,8 +1,7 @@
 -- The links to a page by the page they are written in, which its backlinks are paged by; and a page's property
 -- links, which its properties read (M6/P5 design 8). page_links_resolved_id_idx's queries, the links to a page
 -- its move or deletion may change, use the first's leading column. The first holds the links' ends too, in what its
--- rows' alignment leaves free: a page's first contexts are read from it alone, which keeps it the plan's choice over
--- the primary key even where one page writes most of the links to a page (review c1).
+-- rows' alignment leaves free: a page's first contexts are read from it alone (review c1, c3).
 
 -- +goose Up
 CREATE INDEX page_links_resolved_id_source_id_idx ON page_links (resolved_id, source_id, range_start)

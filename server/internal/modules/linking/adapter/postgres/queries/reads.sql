@@ -5,12 +5,14 @@
 -- One statement, so one snapshot. The pages are found a step each, the next id after the last on
 -- page_links_resolved_id_source_id_idx, not by reading all their links: a page may write a million (review r1-1,
 -- r2-M1). So is target, though not counted, and left out at the end: a filter on the step would read each of its
--- links to itself (review c1).
+-- links to itself (review c1). The links are read by a target the plan does not know, as a generic plan reads them:
+-- planned for a page most links lead to, the steps, counts and contexts read the primary key and each other link of
+-- the pages, or sort all of a page's links, until the table is vacuumed (review c3).
 WITH RECURSIVE sources (source_id, n) AS (
     (
         SELECT l.source_id, CASE WHEN l.source_id = sqlc.arg(target)::uuid THEN 0 ELSE 1 END
         FROM page_links l
-        WHERE l.resolved_id = sqlc.arg(target)::uuid AND l.source_id > sqlc.arg(after)::uuid
+        WHERE l.resolved_id = (SELECT sqlc.arg(target)::uuid) AND l.source_id > sqlc.arg(after)::uuid
         ORDER BY l.source_id
         LIMIT 1
     )
@@ -20,7 +22,7 @@ WITH RECURSIVE sources (source_id, n) AS (
     CROSS JOIN LATERAL (
         SELECT l.source_id
         FROM page_links l
-        WHERE l.resolved_id = sqlc.arg(target)::uuid AND l.source_id > s.source_id
+        WHERE l.resolved_id = (SELECT sqlc.arg(target)::uuid) AND l.source_id > s.source_id
         ORDER BY l.source_id
         LIMIT 1
     ) x
@@ -36,7 +38,7 @@ CROSS JOIN LATERAL (
     SELECT count(*) AS links
     FROM (
         SELECT 1 FROM page_links
-        WHERE resolved_id = sqlc.arg(target)::uuid AND source_id = s.source_id
+        WHERE resolved_id = (SELECT sqlc.arg(target)::uuid) AND source_id = s.source_id
         ORDER BY range_start
         LIMIT sqlc.arg(max_count)::integer
     ) counted
@@ -44,7 +46,7 @@ CROSS JOIN LATERAL (
 CROSS JOIN LATERAL (
     SELECT range_start, range_end
     FROM page_links
-    WHERE resolved_id = sqlc.arg(target)::uuid AND source_id = s.source_id
+    WHERE resolved_id = (SELECT sqlc.arg(target)::uuid) AND source_id = s.source_id
     ORDER BY range_start
     LIMIT sqlc.arg(contexts)::integer
 ) f
