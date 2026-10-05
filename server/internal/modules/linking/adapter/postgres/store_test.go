@@ -336,6 +336,39 @@ func TestSettingResolutions(t *testing.T) {
 	}
 }
 
+// A page's view is the revision and the extractor of its rows, and where
+// each link resolves to, by its start, read outside a transaction; none
+// for a page the index does not have, no links for one without.
+func TestAPagesView(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	p, empty := uuid.NewV7(), uuid.NewV7()
+	f.replace(t, app.Page{ID: p, NotebookID: f.eng, Revision: 7}, facts())
+	f.replace(t, app.Page{ID: empty, NotebookID: f.eng, Revision: 2}, domain.Facts{FrontmatterValid: true})
+	f.replace(t, app.Page{ID: uuid.NewV7(), NotebookID: f.eng, Revision: 1}, facts())
+	x := uuid.NewV7()
+	err := f.tx.WithinTx(ctx, func(ctx context.Context) error {
+		return f.s.SetResolutions(ctx, []app.Link{{SourceID: p, Start: 40, Resolution: domain.Resolution{ID: x, Ambiguous: true}}})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, ok, err := f.s.View(ctx, p)
+	want := app.Indexed{Revision: 7, Extractor: domain.Extractor, Resolutions: map[int]domain.Resolution{
+		40: {ID: x, Ambiguous: true}, 60: {}, 12: {}, 80: {},
+	}}
+	if err != nil || !ok || !reflect.DeepEqual(got, want) {
+		t.Errorf("View = %+v, %v, %v; want %+v", got, ok, err, want)
+	}
+	got, ok, err = f.s.View(ctx, empty)
+	if want := (app.Indexed{Revision: 2, Extractor: domain.Extractor, Resolutions: map[int]domain.Resolution{}}); err != nil || !ok || !reflect.DeepEqual(got, want) {
+		t.Errorf("without links: View = %+v, %v, %v; want %+v", got, ok, err, want)
+	}
+	if got, ok, err := f.s.View(ctx, uuid.NewV7()); err != nil || ok {
+		t.Errorf("not indexed: View = %+v, %v, %v", got, ok, err)
+	}
+}
+
 // The index's lock is a notebook's, held until the transaction ends: a
 // second taker of the notebook waits for it, a taker of another notebook
 // does not. Outside a transaction it is refused.

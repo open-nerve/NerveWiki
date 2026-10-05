@@ -44,3 +44,11 @@ FROM (
         unnest(sqlc.arg(resolved_ids)::uuid[]) AS resolved_id, unnest(sqlc.arg(ambiguous)::boolean[]) AS ambiguous
 ) AS u
 WHERE l.source_id = u.source_id AND l.range_start = u.range_start;
+
+-- name: PageView :many
+-- A page's index for its reading view (M6/P3 design 6.5): the revision and the extractor its rows are of, with where
+-- each of its links resolves to; one row without a link for a page without links, none for a page the index does not
+-- have. Both tables are read by their primary keys.
+SELECT ip.revision, ip.extractor, l.range_start, l.resolved_id, l.ambiguous
+FROM indexed_pages ip LEFT JOIN page_links l ON l.source_id = ip.node_id
+WHERE ip.node_id = sqlc.arg(node_id);

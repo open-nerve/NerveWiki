@@ -154,6 +154,49 @@ func (q *Queries) LinksReached(ctx context.Context, arg LinksReachedParams) ([]L
 	return items, nil
 }
 
+const pageView = `-- name: PageView :many
+SELECT ip.revision, ip.extractor, l.range_start, l.resolved_id, l.ambiguous
+FROM indexed_pages ip LEFT JOIN page_links l ON l.source_id = ip.node_id
+WHERE ip.node_id = $1
+`
+
+type PageViewRow struct {
+	Revision   int32
+	Extractor  int32
+	RangeStart *int32
+	ResolvedID *uuid.UUID
+	Ambiguous  *bool
+}
+
+// A page's index for its reading view (M6/P3 design 6.5): the revision and the extractor its rows are of, with where
+// each of its links resolves to; one row without a link for a page without links, none for a page the index does not
+// have. Both tables are read by their primary keys.
+func (q *Queries) PageView(ctx context.Context, nodeID uuid.UUID) ([]PageViewRow, error) {
+	rows, err := q.db.Query(ctx, pageView, nodeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []PageViewRow
+	for rows.Next() {
+		var i PageViewRow
+		if err := rows.Scan(
+			&i.Revision,
+			&i.Extractor,
+			&i.RangeStart,
+			&i.ResolvedID,
+			&i.Ambiguous,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const setResolutions = `-- name: SetResolutions :execrows
 UPDATE page_links l
 SET resolved_id = NULLIF(u.resolved_id, '00000000-0000-0000-0000-000000000000'::uuid), ambiguous = u.ambiguous

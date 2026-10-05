@@ -3,8 +3,9 @@
 // each link resolves to, kept with every write of the pages. Its root is
 // what bootstrap sees: NewIndex, the page module's observer;
 // NewNotebookDeletion, its part in the notebook module's deletion;
-// PageFacts, which reads a page's facts from the Markdown's; NewAdmin,
-// the rebuild of the indexes (nervewiki reindex).
+// PageFacts, which reads a page's facts from the Markdown's; ResolveLinks,
+// where a reading view's links lead; NewAdmin, the rebuild of the indexes
+// (nervewiki reindex).
 package linking
 
 import (
@@ -14,6 +15,7 @@ import (
 	postgresadapter "github.com/open-nerve/NerveWiki/server/internal/modules/linking/adapter/postgres"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/linking/app"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/linking/domain"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown/obsidian"
 )
 
 // What the module reads of the pages, and the page module's changes as it
@@ -75,4 +77,12 @@ const Extractor = domain.Extractor
 // of another kind, or without the obsidian extension's, are an error.
 func PageFacts(facts any) (Facts, error) {
 	return markdownadapter.PageFacts(facts)
+}
+
+// ResolveLinks is where a page's links lead for its reading view, the
+// obsidian extension's Resolve: from the index when it is of the content
+// rendered, else anew, over the pool and the page module's reads (M6/P3
+// design 6.5). Not New: the command line's compositions reach it too.
+func ResolveLinks(pool *pgxpool.Pool, pages Pages) obsidian.Resolve {
+	return markdownadapter.Resolve(app.Views{Store: postgresadapter.New(pool), Pages: pages})
 }
