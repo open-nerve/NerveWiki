@@ -251,6 +251,7 @@ func (r Rewrite) rewrite(ctx context.Context, id uuid.UUID, revision int, reache
 	}
 	var now Parsed // the last writing's parse
 	var large int  // the bytes of a writing past MaxContent, if one was
+	read := false  // whether a writing was parsed, to read back
 	written, kept, err := rewriting.Written(content, was.Facts.Links, from, tree, func(writing string) ([]domain.Link, error) {
 		now.release()
 		now = Parsed{}
@@ -260,20 +261,23 @@ func (r Rewrite) rewrite(ctx context.Context, id uuid.UUID, revision int, reache
 		}
 		var err error
 		now, err = r.Parser.ParseNow(ctx, writing)
+		read = true
 		return now.Facts.Links, err
 	})
-	switch {
-	case err != nil:
+	if err != nil {
 		return err
-	case !kept && large > 0:
+	}
+	if !kept {
 		now.release()
-		r.Logger.LogAttrs(ctx, slog.LevelWarn, "the links of a page are not rewritten: it would hold more than a page may",
-			slog.String("page_id", id.String()), slog.Int("bytes", len(content)), slog.Int("written", large))
-		return nil
-	case !kept:
-		now.release()
-		r.Logger.LogAttrs(ctx, slog.LevelError, "the links of a page are not rewritten: no writing reads back as its links",
-			slog.String("page_id", id.String()))
+		level, msg := slog.LevelError, "the links of a page are not rewritten: no writing reads back as its links"
+		if !read {
+			level, msg = slog.LevelWarn, "the links of a page are not rewritten: it would hold more than a page may"
+		}
+		attrs := []slog.Attr{slog.String("page_id", id.String())}
+		if large > 0 {
+			attrs = append(attrs, slog.Int("bytes", len(content)), slog.Int("written", large))
+		}
+		r.Logger.LogAttrs(ctx, level, msg, attrs...)
 		return nil
 	}
 	u.Defer(now.Release)

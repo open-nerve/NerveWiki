@@ -43,7 +43,7 @@ func TestTheIndexIsItsRebuild(t *testing.T) {
 				t.Fatal(err)
 			}
 			w := writer{t: t, tm: tm, nb: tm.openNotebook(t, "alice", "Eng"), rnd: rand.New(rand.NewPCG(seed, 6))}
-			written := 0
+			written, flagged := 0, false // flagged: a link was a value of the aliases after some step
 			for step := range 60 {
 				led := tm.ledTo(t, w.nb)
 				what, ok, relocates := w.random()
@@ -54,6 +54,7 @@ func TestTheIndexIsItsRebuild(t *testing.T) {
 				if !slices.Equal(before, after) {
 					t.Fatalf("after step %d, %s, the index is not its rebuild:\n%s", step, what, diff(before, after))
 				}
+				flagged = flagged || slices.ContainsFunc(after, func(row string) bool { return strings.HasSuffix(row, " aliases=true") })
 				if now := tm.ledTo(t, w.nb); ok && relocates && !leadStill(led, now) {
 					t.Fatalf("after step %d, %s, a link leads elsewhere:\n%v\nwas\n%v", step, what, now, led)
 				}
@@ -64,6 +65,9 @@ func TestTheIndexIsItsRebuild(t *testing.T) {
 			rewritten += count(t, tm.pool, `SELECT count(*) FROM page_revisions r WHERE EXISTS (SELECT 1 FROM changeset_items i
 				WHERE i.changeset_id = r.changeset_id AND i.node_id <> r.node_id AND i.before_name IS NOT NULL
 				AND i.after_name IS NOT NULL)`)
+			if !flagged {
+				t.Errorf("no link was a value of the aliases: the run tests little of the index's flag")
+			}
 			checkPages(t, tm.pool)
 		})
 	}
@@ -100,7 +104,8 @@ func (tm acmeTeam) indexOf(ctx context.Context, t *testing.T, nb string) []strin
 		SELECT format('page %s %s %s %s', node_id, revision, extractor, frontmatter_valid) FROM indexed_pages WHERE notebook_id = $1
 		UNION ALL SELECT format('link %s %s-%s %s %s %L %s %s %s %s %s %s', source_id, range_start, range_end, kind,
 			coalesce(property_key, '-'), target, coalesce(anchor, '-'), coalesce(display, '-'), coalesce(target_key, '-'),
-			coalesce(target_alt_key, '-'), coalesce(resolved_id::text, '-'), ambiguous) FROM page_links WHERE notebook_id = $1
+			coalesce(target_alt_key, '-'), coalesce(resolved_id::text, '-'), ambiguous) || ' aliases=' || aliases::text
+		FROM page_links WHERE notebook_id = $1
 		UNION ALL SELECT format('tag %s %s %s %s', source_id, tag_key, tag, count) FROM page_tags WHERE notebook_id = $1
 		UNION ALL SELECT format('property %s %s %s %s', source_id, position, key, value) FROM page_properties WHERE notebook_id = $1
 		UNION ALL SELECT format('alias %s %s %s', source_id, alias_key, alias) FROM page_aliases WHERE notebook_id = $1
@@ -124,11 +129,13 @@ func (tm acmeTeam) indexOf(ctx context.Context, t *testing.T, nb string) []strin
 }
 
 // ledTo is where the links of the notebook nb's pages resolve, by page, in
-// the order written, "" for none.
+// the order written, "" for none; "alias" for a value of the aliases, which
+// a rewrite leaves.
 func (tm acmeTeam) ledTo(t *testing.T, nb string) map[string][]string {
 	t.Helper()
-	rows, err := tm.pool.Query(context.Background(), `SELECT source_id::text, coalesce(resolved_id::text, '') FROM page_links
-		WHERE notebook_id = $1 ORDER BY source_id, range_start`, nb)
+	rows, err := tm.pool.Query(context.Background(), `SELECT source_id::text,
+			CASE WHEN aliases THEN 'alias' ELSE coalesce(resolved_id::text, '') END
+		FROM page_links WHERE notebook_id = $1 ORDER BY source_id, range_start`, nb)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -207,6 +214,9 @@ func (w writer) aliases() []string {
 		if w.rnd.IntN(2) == 0 {
 			out = append(out, a)
 		}
+	}
+	if w.rnd.IntN(2) == 0 {
+		out = append(out, `"[[`+w.target()+`]]"`) // a link, which the index flags (M6/P4 fix check c4-2)
 	}
 	return out
 }
