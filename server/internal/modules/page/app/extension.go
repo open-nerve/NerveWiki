@@ -69,6 +69,11 @@ type Appender interface {
 	// edit session: the participant read the page at w.Base in the unit's
 	// transaction, and took the new content's facts.
 	WriteContent(ctx context.Context, w ContentWrite) (int, error)
+	// Defer has f called once the unit is over, its observers done and its
+	// transaction committed or rolled back: M6 gives back then the parse
+	// budget the facts of the contents it wrote hold, which the observers
+	// read (M6/P4 design 4.1).
+	Defer(f func())
 }
 
 // Event is a unit's changes, merged by node, the earliest before and the
