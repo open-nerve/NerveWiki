@@ -265,10 +265,13 @@ paths:
         and have no address, which the app gives: each carries the page it
         leads to as it reads now (data-nw-node) and its anchor's heading id
         (data-nw-anchor), or nw-unresolved and its target (data-nw-target).
-        A tag (nw-tag) that the notebook's tag list counts links to its
-        pages and has no address either: it carries the tag as listTags
-        writes it and getTag takes it (data-nw-tag); one the list does not
-        count is a span, as is a tag in a link's text.
+        A tag (nw-tag) of a name tag lists count links to its pages and has
+        no address either: it carries the tag as this page writes it, but for
+        its '#' and a last '/', which getTag takes (data-nw-tag); a tag the
+        index does not keep of the page, its key longer than 1024 bytes or
+        past the page's first 1000 tags, links still, though getTag does not
+        list the page for it. A tag of a name the lists do
+        not count (#1/) is a span, as is a tag in a link's text.
         A wikilink in a link's text is a span, as is one written with a
         block's anchor alone ([[#^b]]); one written with a heading's anchor
         alone ([[#h]]) has the heading's id as its address, as has a
@@ -276,10 +279,11 @@ paths:
         block's anchor or an empty one; an image in a link's text has no
         link of its own. A table, the properties' table and a block formula
         are each in a div of class nw-scroll, a region of their own that
-        may scroll sideways. In the properties' table, a
-        string written on one line that is one wikilink or Markdown link
-        and nothing else is a link as in the content, showing what the link
-        shows; every other value is text. Once
+        may scroll sideways. In the properties' table, a string written on
+        one line that is one link to a page and nothing else, a wikilink or
+        a Markdown link whose address is a path, is a link as in the
+        content, without a title, showing the text the link shows; a value
+        a YAML alias repeats, and every other value, is text. Once
         the page is in the link index (nervewiki reindex after an upgrade),
         a links event tells when where its links lead changes. A page that
         does not exist, is deleted, or whose notebook the caller has no role
