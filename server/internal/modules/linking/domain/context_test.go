@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf8"
 	"unsafe"
 
@@ -175,6 +176,23 @@ func TestAPagesContextsAreOneALine(t *testing.T) {
 	// Out of order, the line is not told: each has its own.
 	if got := domain.Contexts(content, []domain.Range{ranges[1], ranges[0]}); len(got) != 2 {
 		t.Errorf("out of order: %q", got)
+	}
+}
+
+// A line's links after its first are told on it by the bytes since the
+// link before, so a page's contexts read its bytes once: thirty thousand
+// links on a line of a MiB take well under a second, where reading from
+// the line's first link again for each took seconds (review c3, c6).
+func TestAPagesContextsReadItsBytesOnce(t *testing.T) {
+	content := strings.Repeat("y", 1<<20)
+	ranges := make([]domain.Range, 30_000)
+	for i := range ranges {
+		ranges[i] = domain.Range{Start: i * 34, End: i*34 + 1}
+	}
+	start := time.Now()
+	got := domain.Contexts(content, ranges)
+	if elapsed := time.Since(start); len(got) != 1 || elapsed > time.Second {
+		t.Errorf("%d contexts in %v", len(got), elapsed)
 	}
 }
 

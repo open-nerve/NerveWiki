@@ -8,7 +8,9 @@
 -- links to itself (review c1). The links are read by a target and limits the plan does not know, as a generic plan
 -- reads them: planned for a page most links lead to, the steps, counts and contexts read the primary key and each
 -- other link of the pages, or sort all of a page's links, until the table is vacuumed (review c3); planned for limits
--- above the rows a table without statistics is thought to have, they sort all of a page's links (review c5).
+-- above the rows a table without statistics is thought to have, they sort all of a page's links (review c5). Left as
+-- it is: where an instance's links lead to a few pages only, a target the plan does not know is thought a common one,
+-- and until the table is vacuumed the same reads take the primary key (review c6).
 WITH RECURSIVE sources (source_id, n) AS (
     (
         SELECT l.source_id, CASE WHEN l.source_id = sqlc.arg(target)::uuid THEN 0 ELSE 1 END

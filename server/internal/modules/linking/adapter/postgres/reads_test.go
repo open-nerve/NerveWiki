@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 	"uuid"
 
 	"github.com/jackc/pgx/v5"
@@ -91,11 +92,23 @@ func TestThePagesThatLinkToAPage(t *testing.T) {
 	for _, plan := range plans() {
 		t.Run(plan.name, func(t *testing.T) {
 			backlinks := func(target, after uuid.UUID, size, count, contexts int) (got []app.Backlink, err error) {
+				ctx, cancel := context.WithTimeout(ctx, readTime)
+				defer cancel()
 				err = f.tx.WithinTx(ctx, func(ctx context.Context) error {
 					if err := plan.set(ctx, postgres.DB(ctx, f.pool)); err != nil {
 						return err
 					}
-					got, err = f.s.Backlinks(ctx, target, after, size, count, contexts)
+					_, index0, err := f.counts(ctx)
+					if err != nil {
+						return err
+					}
+					if got, err = f.s.Backlinks(ctx, target, after, size, count, contexts); err != nil {
+						return err
+					}
+					_, index, err := f.counts(ctx)
+					if index > index0 && !plan.indexes {
+						t.Errorf("the plan is not heeded: %d entries of the indexes read", index-index0)
+					}
 					return err
 				})
 				return got, err
@@ -147,8 +160,9 @@ func TestThePagesThatLinkToAPage(t *testing.T) {
 }
 
 // The backlinks read a few of the links to a page, not each: of a page
-// that links to itself a hundred thousand times, from either side of it
-// (review c1, c4); of a page one page writes most of the links to, the
+// that links to itself 25,000 times, from either side of it, with no
+// statistics or with them (review c1, c4, c6); of a page one page writes
+// most of the links to, the
 // others' links too, though each writes more links to other pages, before
 // the table is vacuumed, with no scan of the whole table (review c1, c3,
 // c4), and on a table with no statistics yet (review c5). The table that
@@ -159,16 +173,22 @@ func TestTheBacklinksReadAFewLinks(t *testing.T) {
 		f := newFixture(t)
 		p := ids(3)
 		before, target, after := p[0], p[1], p[2]
-		f.links(t, target, target, 0, 100000)
+		f.links(t, target, target, 0, 25000)
 		f.links(t, before, target, 0, 1)
 		f.links(t, after, target, 0, 1)
-		for _, tt := range []struct {
-			after uuid.UUID
-			want  []uuid.UUID
-		}{{uuid.UUID{}, []uuid.UUID{before, after}}, {before, []uuid.UUID{after}}} {
-			got, table, index := f.readBacklinks(t, target, tt.after)
-			if !slices.Equal(sourcesOf(got), tt.want) || table > 0 || index > 100 {
-				t.Errorf("after %v: %v, %d rows of the table and %d entries of its indexes read", tt.after, sourcesOf(got), table, index)
+		for _, analyzed := range []bool{false, true} {
+			if analyzed {
+				f.analyze(t)
+			}
+			for _, tt := range []struct {
+				after uuid.UUID
+				want  []uuid.UUID
+			}{{uuid.UUID{}, []uuid.UUID{before, after}}, {before, []uuid.UUID{after}}} {
+				got, table, index := f.readBacklinks(t, target, tt.after)
+				if !slices.Equal(sourcesOf(got), tt.want) || table > 0 || index > 100 {
+					t.Errorf("analyzed %t, after %v: %v, %d rows of the table and %d entries of its indexes read", analyzed, tt.after,
+						sourcesOf(got), table, index)
+				}
 			}
 		}
 	})
@@ -192,9 +212,7 @@ func TestTheBacklinksReadAFewLinks(t *testing.T) {
 				f.links(t, o, target, tt.elsewhere, 3)
 			}
 			if tt.analyzed {
-				if _, err := f.pool.Exec(context.Background(), `ANALYZE page_links`); err != nil {
-					t.Fatal(err)
-				}
+				f.analyze(t)
 			}
 			got, table, index := f.readBacklinks(t, target, uuid.UUID{})
 			if want := slices.Insert(slices.Clone(others), 1, many); !slices.Equal(sourcesOf(got), want) || got[1].Links != domain.MaxCount ||
@@ -215,29 +233,27 @@ func (f fixture) links(t *testing.T, source, target uuid.UUID, start, n int) {
 	}
 }
 
+// readTime is how long a test's read of the backlinks may take: a walk
+// that never ends fails it, not the run's limit (review c6).
+const readTime = 10 * time.Second
+
 // readBacklinks is target's backlinks after the page after, a page of 50,
 // up to domain.MaxCount links counted, and how many rows of page_links the
 // read took by scans of the whole table, and how many entries of its
-// indexes: the counts before it and after it in its transaction, which
-// holds them, as a connection's sum over its transactions until it reports
-// them, about each second, would not.
+// indexes (counts).
 func (f fixture) readBacklinks(t *testing.T, target, after uuid.UUID) (got []app.Backlink, table, index int64) {
 	t.Helper()
-	err := f.tx.WithinTx(context.Background(), func(ctx context.Context) error {
-		read := func() (table, index int64, err error) {
-			err = postgres.DB(ctx, f.pool).QueryRow(ctx, `SELECT pg_stat_get_xact_tuples_returned('page_links'::regclass),
-				(SELECT sum(pg_stat_get_xact_tuples_returned(indexrelid))::bigint FROM pg_index WHERE indrelid = 'page_links'::regclass)`,
-			).Scan(&table, &index)
-			return table, index, err
-		}
-		table0, index0, err := read()
+	ctx, cancel := context.WithTimeout(context.Background(), readTime)
+	defer cancel()
+	err := f.tx.WithinTx(ctx, func(ctx context.Context) error {
+		table0, index0, err := f.counts(ctx)
 		if err != nil {
 			return err
 		}
 		if got, err = f.s.Backlinks(ctx, target, after, 51, domain.MaxCount, domain.MaxContexts); err != nil {
 			return err
 		}
-		table, index, err = read()
+		table, index, err = f.counts(ctx)
 		table, index = table-table0, index-index0
 		return err
 	})
@@ -247,22 +263,43 @@ func (f fixture) readBacklinks(t *testing.T, target, after uuid.UUID) (got []app
 	return got, table, index
 }
 
+// counts is how many rows of page_links the connection of ctx's
+// transaction has read by scans of the whole table, and how many entries
+// of its indexes, since it last reported them: the difference of two in a
+// transaction is its statements', as a connection reports them, about each
+// second, between transactions (review c5, c6).
+func (f fixture) counts(ctx context.Context) (table, index int64, err error) {
+	err = postgres.DB(ctx, f.pool).QueryRow(ctx, `SELECT pg_stat_get_xact_tuples_returned('page_links'::regclass),
+		(SELECT sum(pg_stat_get_xact_tuples_returned(indexrelid))::bigint FROM pg_index WHERE indrelid = 'page_links'::regclass)`,
+	).Scan(&table, &index)
+	return table, index, err
+}
+
+// analyze has the planner's statistics of page_links read.
+func (f fixture) analyze(t *testing.T) {
+	t.Helper()
+	if _, err := f.pool.Exec(context.Background(), `ANALYZE page_links`); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // plan is a way the planner may read a query, which its answer must not
-// tell: the planner's settings it turns off.
+// tell: the planner's settings it turns off, and whether it reads indexes.
 type plan struct {
-	name string
-	off  []string
+	name    string
+	off     []string
+	indexes bool
 }
 
 // plans are the ways a query is read in a test: as planned, and with each
-// kind of scan or join the plans choose off.
+// kind of scan or join the plans choose off. Nested loops are not: the
+// lateral joins have no other (review c6).
 func plans() []plan {
 	return []plan{
-		{"as planned", nil},
-		{"without index scans", []string{"enable_indexscan", "enable_indexonlyscan", "enable_bitmapscan"}},
-		{"without scans of whole tables", []string{"enable_seqscan"}},
-		{"without nested loops", []string{"enable_nestloop"}},
-		{"without hash and merge joins", []string{"enable_hashjoin", "enable_mergejoin"}},
+		{"as planned", nil, true},
+		{"without index scans", []string{"enable_indexscan", "enable_indexonlyscan", "enable_bitmapscan"}, false},
+		{"without scans of whole tables", []string{"enable_seqscan"}, true},
+		{"without hash and merge joins", []string{"enable_hashjoin", "enable_mergejoin"}, true},
 	}
 }
 
@@ -417,7 +454,7 @@ func TestTheReadsUseTheirIndexes(t *testing.T) {
 		{"Backlinks: the walk, the count and the contexts", statementOf(t, func(q *gen.Queries) error {
 			_, err := q.Backlinks(ctx, gen.BacklinksParams{Target: id, After: id, Size: 51, MaxCount: 1000, Contexts: 10})
 			return err
-		}), 4, "Index Only Scan using page_links_resolved_id_source_id_idx", "((resolved_id = "},
+		}), 4, "Index Only Scan using page_links_resolved_id_source_id_idx", "((resolved_id = (InitPlan "},
 		{"PageProperties: the property links", statementOf(t, func(q *gen.Queries) error {
 			_, err := q.PageProperties(ctx, id)
 			return err
