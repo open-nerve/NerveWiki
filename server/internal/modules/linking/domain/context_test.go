@@ -2,6 +2,7 @@ package domain_test
 
 import (
 	"math/rand/v2"
+	"slices"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -142,4 +143,24 @@ func notAPiece(content string, start int, got string) string {
 func sharesMemory(content, s string) bool {
 	c, p := uintptr(unsafe.Pointer(unsafe.StringData(content))), uintptr(unsafe.Pointer(unsafe.StringData(s)))
 	return p >= c && p < c+uintptr(len(content))
+}
+
+// A page's contexts are its links', by start, one a line, the first link's
+// on it; a range past the content, or of no bytes, is none.
+func TestAPagesContextsAreOneALine(t *testing.T) {
+	content := "a [[x]] b [[x]]\r\nc [[x]]\n\n[[x]]"
+	var ranges []domain.Range
+	for i := range len(content) {
+		if strings.HasPrefix(content[i:], "[[") {
+			ranges = append(ranges, domain.Range{Start: i + 2, End: i + 3})
+		}
+	}
+	ranges = append(ranges, domain.Range{Start: len(content) - 1, End: len(content) + 1}, domain.Range{Start: 3, End: 3})
+	got := domain.Contexts(content, ranges)
+	if want := []string{"a [[x]] b [[x]]", "c [[x]]", "[[x]]"}; !slices.Equal(got, want) {
+		t.Errorf("Contexts = %q, want %q", got, want)
+	}
+	if got := domain.Contexts(content, nil); got == nil || len(got) != 0 {
+		t.Errorf("no ranges: %#v", got)
+	}
 }

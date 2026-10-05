@@ -256,6 +256,27 @@ func Linktext(n Node, from []Step, tree Tree) (string, bool) {
 	return "", false
 }
 
+// Linktexts is the linktext of each of nodes, all of a notebook's pages,
+// written from its root (M6/P5 design 6), in their order. Siblings'
+// distinct title keys leave none without one; were one, it would be its
+// path from the root.
+func Linktexts(nodes []Node) []string {
+	named := map[string][]Node{}
+	for _, n := range nodes {
+		named[n.key()] = append(named[n.key()], n)
+	}
+	tree := Tree{Named: named}
+	out := make([]string, len(nodes))
+	for i, n := range nodes {
+		text, ok := Linktext(n, nil, tree)
+		if !ok {
+			text = n.path()
+		}
+		out[i] = text
+	}
+	return out
+}
+
 // WrittenKeys are the title keys of the pages a writing of n may be read
 // with, which a rewrite reads (Tree.Named): its name's, with ".md" after it,
 // and without one it ends with.

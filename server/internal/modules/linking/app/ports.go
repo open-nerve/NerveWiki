@@ -120,12 +120,7 @@ type Backlink struct {
 	SourceID uuid.UUID
 	Revision int
 	Links    int
-	Ranges   []Range
-}
-
-// Range is where a link's target is written in a content, in bytes.
-type Range struct {
-	Start, End int
+	Ranges   []domain.Range
 }
 
 // Properties is a page's properties as the index has them: whether its

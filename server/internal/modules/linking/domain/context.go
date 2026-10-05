@@ -9,6 +9,16 @@ import (
 // (M6 design 4.11).
 const MaxContext = 240
 
+// MaxContexts is the most links of a page whose contexts its backlink
+// gives (M6/P5 design 3): a page may write a link to another a million
+// times.
+const MaxContexts = 10
+
+// Range is where a link's target is written in a content, in bytes.
+type Range struct {
+	Start, End int
+}
+
 // contextLead is about how many bytes of a long line a backlink's context
 // holds before the link (M6/P5 design 3).
 const contextLead = 80
@@ -55,4 +65,23 @@ func Context(content string, start, end int) string {
 		b.WriteString(ellipsis)
 	}
 	return b.String()
+}
+
+// Contexts is the contexts of links whose targets are content's bytes at
+// ranges, by start (M6/P5 design 3): one a line, the first link's on it. A
+// range past content is none: the index's ranges are of the content of
+// its revision, which the caller compares.
+func Contexts(content string, ranges []Range) []string {
+	out := []string{}
+	line := -1
+	for _, r := range ranges {
+		if r.Start < 0 || r.End > len(content) || r.Start >= r.End {
+			continue
+		}
+		if from := strings.LastIndexAny(content[:r.Start], "\r\n") + 1; from != line {
+			line = from
+			out = append(out, Context(content, r.Start, r.End))
+		}
+	}
+	return out
 }

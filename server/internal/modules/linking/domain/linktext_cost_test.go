@@ -19,7 +19,6 @@ import (
 // for a bound in time: make test-go runs it in a build without.
 func TestTheLinktextsOfManyPagesOfOneTitleTakeUnderASecond(t *testing.T) {
 	const folders = 10_000
-	named := map[string][]domain.Node{}
 	var nodes []domain.Node
 	for i := range folders {
 		var folder, page uuid.UUID
@@ -27,19 +26,17 @@ func TestTheLinktextsOfManyPagesOfOneTitleTakeUnderASecond(t *testing.T) {
 		page[0], page[1], page[2] = 2, byte(i>>8), byte(i)
 		name := fmt.Sprintf("f%d", i)
 		f := domain.Step{ID: folder, Key: shared.TitleKey(name), Name: name}
-		n := domain.Node{ID: page, Path: []domain.Step{f, {ID: page, Key: "index", Name: "index"}}}
-		named[f.Key] = append(named[f.Key], domain.Node{ID: folder, Path: []domain.Step{f}})
-		named["index"] = append(named["index"], n)
-		nodes = append(nodes, n)
+		nodes = append(nodes, domain.Node{ID: folder, Path: []domain.Step{f}},
+			domain.Node{ID: page, Path: []domain.Step{f, {ID: page, Key: "index", Name: "index"}}})
 	}
-	tree := domain.Tree{Named: named}
 	start := time.Now()
-	for i, n := range nodes {
-		if got, ok := domain.Linktext(n, nil, tree); !ok || got != fmt.Sprintf("f%d/index", i) {
-			t.Fatalf("the linktext of %d is %q, %t", i, got, ok)
-		}
-	}
+	got := domain.Linktexts(nodes)
 	if took := time.Since(start); took > time.Second {
 		t.Errorf("the linktexts took %s", took)
+	}
+	for i := range folders {
+		if want := fmt.Sprintf("f%d/index", i); got[2*i] != fmt.Sprintf("f%d", i) || got[2*i+1] != want {
+			t.Fatalf("the linktexts of folder %d are %q, %q", i, got[2*i], got[2*i+1])
+		}
 	}
 }

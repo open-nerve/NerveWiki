@@ -11,6 +11,7 @@ import (
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/linking/adapter/postgres/gen"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/linking/app"
+	"github.com/open-nerve/NerveWiki/server/internal/modules/linking/domain"
 )
 
 // Backlinks implements app.Reads.
@@ -27,7 +28,7 @@ func (s *Store) Backlinks(ctx context.Context, target, after uuid.UUID, size, co
 			out = append(out, app.Backlink{SourceID: row.SourceID, Revision: int(row.Revision), Links: int(row.Links)})
 		}
 		last := &out[len(out)-1]
-		last.Ranges = append(last.Ranges, app.Range{Start: int(row.RangeStart), End: int(row.RangeEnd)})
+		last.Ranges = append(last.Ranges, domain.Range{Start: int(row.RangeStart), End: int(row.RangeEnd)})
 	}
 	return out, nil
 }

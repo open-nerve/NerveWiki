@@ -71,23 +71,23 @@ func TestThePagesThatLinkToAPage(t *testing.T) {
 	f.resolve(t, target, domain.Resolution{ID: target}, 3)
 	f.replace(t, app.Page{ID: other, NotebookID: f.eng, Revision: 1}, wikilinks(3))
 
-	var first []app.Range
+	var first []domain.Range
 	for s := 0; s < 100; s += 10 {
-		first = append(first, app.Range{Start: s, End: s + 1})
+		first = append(first, domain.Range{Start: s, End: s + 1})
 	}
 	got, err := f.s.Backlinks(ctx, target, uuid.UUID{}, 2, 10)
-	if want := []app.Backlink{{SourceID: many, Revision: 4, Links: 12, Ranges: first}, {SourceID: ambiguous, Revision: 1, Links: 1, Ranges: []app.Range{{Start: 5, End: 6}}}}; err != nil || !reflect.DeepEqual(got, want) {
+	if want := []app.Backlink{{SourceID: many, Revision: 4, Links: 12, Ranges: first}, {SourceID: ambiguous, Revision: 1, Links: 1, Ranges: []domain.Range{{Start: 5, End: 6}}}}; err != nil || !reflect.DeepEqual(got, want) {
 		t.Errorf("the first two: %+v, %v\nwant %+v", got, err, want)
 	}
 	got, err = f.s.Backlinks(ctx, target, ambiguous, 2, 10)
-	if want := []app.Backlink{{SourceID: one, Revision: 2, Links: 1, Ranges: []app.Range{{Start: 9, End: 10}}}}; err != nil || !reflect.DeepEqual(got, want) {
+	if want := []app.Backlink{{SourceID: one, Revision: 2, Links: 1, Ranges: []domain.Range{{Start: 9, End: 10}}}}; err != nil || !reflect.DeepEqual(got, want) {
 		t.Errorf("after the first two: %+v, %v\nwant %+v", got, err, want)
 	}
 	if got, err := f.s.Backlinks(ctx, target, one, 2, 10); err != nil || len(got) != 0 {
 		t.Errorf("after the last: %+v, %v", got, err)
 	}
 	got, err = f.s.Backlinks(ctx, other, uuid.UUID{}, 2, 3)
-	if want := []app.Backlink{{SourceID: many, Revision: 4, Links: 1, Ranges: []app.Range{{Start: 200, End: 201}}}}; err != nil || !reflect.DeepEqual(got, want) {
+	if want := []app.Backlink{{SourceID: many, Revision: 4, Links: 1, Ranges: []domain.Range{{Start: 200, End: 201}}}}; err != nil || !reflect.DeepEqual(got, want) {
 		t.Errorf("of the other page: %+v, %v\nwant %+v", got, err, want)
 	}
 }
