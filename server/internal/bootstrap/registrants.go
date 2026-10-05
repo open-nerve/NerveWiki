@@ -253,10 +253,11 @@ func pageRegistrants(pool *pgxpool.Pool) pageExtensions {
 }
 
 // markdownExtensions are the extensions of the one Markdown: M5's task
-// items, with their byte positions; M6's dialect, with its links and tags;
+// items, with their byte positions; M6's dialect, with its links and tags,
+// a reading view's links leading where resolve tells (M6/P3 design 6.6);
 // M7's attachments will take their inline rendering.
-func markdownExtensions() []markdown.Extension {
-	return []markdown.Extension{tasks.Extension(), obsidian.Extension(obsidian.Options{})}
+func markdownExtensions(resolve obsidian.Resolve) []markdown.Extension {
+	return []markdown.Extension{tasks.Extension(), obsidian.Extension(obsidian.Options{Resolve: resolve})}
 }
 
 // purgers are the modules' purgers of the soft-deleted rows, leaf to root

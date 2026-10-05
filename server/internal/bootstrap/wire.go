@@ -86,7 +86,7 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrati
 	})
 	ws := workspace.New(workspaceDeps(cfg, pool, logger, authorizer, invitationKey))
 	nb := notebook.New(notebookDeps(cfg, pool, logger, authorizer))
-	md, budget, err := parsing(cfg, logger)
+	md, budget, err := parsing(cfg, logger, pool)
 	if err != nil {
 		return nil, err
 	}

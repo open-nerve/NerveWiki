@@ -11,13 +11,14 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown/markdowntest"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown/obsidian"
 )
 
 // appMarkdown is the Markdown serve builds, with the extensions it
-// registers.
-func appMarkdown(t *testing.T) (*markdown.Markdown, []markdown.Extension) {
+// registers, a reading view's links leading where resolve tells.
+func appMarkdown(t *testing.T, resolve obsidian.Resolve) (*markdown.Markdown, []markdown.Extension) {
 	t.Helper()
-	exts := markdownExtensions()
+	exts := markdownExtensions(resolve)
 	md, err := markdown.New(exts)
 	if err != nil {
 		t.Fatal(err)
@@ -25,11 +26,21 @@ func appMarkdown(t *testing.T) (*markdown.Markdown, []markdown.Extension) {
 	return md, exts
 }
 
+// everyLink resolves every link, to one page: the largest markup of a
+// reading view's links but for the targets of those that resolve to none.
+func everyLink(_ context.Context, _ markdown.Page, links []obsidian.Link) (map[int]uuid.UUID, error) {
+	to := make(map[int]uuid.UUID, len(links))
+	for _, l := range links {
+		to[l.Range.Start] = uuid.Max()
+	}
+	return to, nil
+}
+
 // The application's Markdown renders every fixture and every generated
-// input to HTML that passes the check with its extensions' markup (M4/P3
-// design 3.10).
+// input to HTML that passes the check with its extensions' markup, and
+// is no larger than CheckSize allows, every link resolved or none (M4/P3
+// design 3.10, M6/P3 design 6.8).
 func TestTheAppsMarkdownRendersCheckedHTML(t *testing.T) {
-	md, exts := appMarkdown(t)
 	inputs := map[string]string{"ordinary": markdowntest.Normal(64 << 10)}
 	for _, f := range markdowntest.Fixtures(t) {
 		inputs[f.Name] = string(f.Content)
@@ -37,14 +48,23 @@ func TestTheAppsMarkdownRendersCheckedHTML(t *testing.T) {
 	for _, in := range markdowntest.Pathological() {
 		inputs[in.Name] = in.Make(16 << 10)
 	}
+	for _, in := range markdowntest.Amplifying() {
+		inputs[in.Name] = in.Make(markdowntest.AmplifyingSize)
+	}
 	page := markdown.Page{NotebookID: uuid.NewV7(), PageID: uuid.NewV7()}
-	for name, content := range inputs {
-		html, err := md.Render(context.Background(), md.Parse([]byte(content)), page)
-		if err != nil {
-			t.Fatalf("%s: %v", name, err)
-		}
-		if err := markdowntest.CheckHTML(html, exts...); err != nil {
-			t.Errorf("%s: %v", name, err)
+	for _, resolve := range []obsidian.Resolve{everyLink, nil} {
+		md, exts := appMarkdown(t, resolve)
+		for name, content := range inputs {
+			html, err := md.Render(context.Background(), md.Parse([]byte(content)), page)
+			if err != nil {
+				t.Fatalf("%s: %v", name, err)
+			}
+			if err := markdowntest.CheckHTML(html, exts...); err != nil {
+				t.Errorf("%s: %v", name, err)
+			}
+			if err := markdowntest.CheckSize([]byte(content), html); err != nil {
+				t.Errorf("%s: %v", name, err)
+			}
 		}
 	}
 }
@@ -53,7 +73,7 @@ func TestTheAppsMarkdownRendersCheckedHTML(t *testing.T) {
 // 4.7): a write keeps them through its unit, its extensions' results
 // among them.
 func TestTheAppsFactsOutliveTheTree(t *testing.T) {
-	markdowntest.CheckFacts(t, markdownExtensions())
+	markdowntest.CheckFacts(t, markdownExtensions(nil))
 }
 
 // The server's parse budget is the configuration's (M6 design 4.7): all but
@@ -61,7 +81,7 @@ func TestTheAppsFactsOutliveTheTree(t *testing.T) {
 // configured wait has passed.
 func TestTheServersParseBudgetIsTheConfigurations(t *testing.T) {
 	cfg := config.Config{Page: config.PageConfig{ParseBudgetBytes: 64 << 10, ParseMaxWait: 50 * time.Millisecond}}
-	_, budget, err := parsing(cfg, slog.New(slog.DiscardHandler))
+	_, budget, err := parsing(cfg, slog.New(slog.DiscardHandler), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,8 +106,9 @@ func TestTheServersParseBudgetIsTheConfigurations(t *testing.T) {
 }
 
 // The application's Markdown costs about the size of what it parses, with
-// its extensions' parsers: each must be linear too (M4/P3 design 3.4).
+// its extensions' parsers, every link resolved: each must be linear too
+// (M4/P3 design 3.4).
 func TestTheAppsMarkdownCostsAboutItsSize(t *testing.T) {
-	md, _ := appMarkdown(t)
+	md, _ := appMarkdown(t, everyLink)
 	markdowntest.CheckCosts(t, md)
 }

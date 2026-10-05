@@ -101,7 +101,7 @@ func clashLine(nb uuid.UUID, clashes []linking.Clash) string {
 // reindexAdmin is the linking module's rebuild on pool: the Markdown and
 // its budget are serve's (parsing), its links events go to the stream.
 func reindexAdmin(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger) (linking.Admin, error) {
-	md, budget, err := parsing(cfg, logger)
+	md, budget, err := parsing(cfg, logger, pool)
 	if err != nil {
 		return linking.Admin{}, err
 	}

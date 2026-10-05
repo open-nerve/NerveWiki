@@ -863,7 +863,7 @@ export interface paths {
         };
         /**
          * Read a page
-         * @description The page's reading view: its content rendered to HTML, its frontmatter's properties as a table first, and the revision it was rendered from. The HTML holds only what the renderer writes and a typographic allowlist of the content's own HTML, every address on this site, http(s) or mailto, and no image loaded. A page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found alike. When the server parses as much content as it can at once, the page waits a moment, then is server_busy.
+         * @description The page's reading view: its content rendered to HTML, its frontmatter's properties as a table first, and the revision it was rendered from. The HTML holds only what the renderer writes and a typographic allowlist of the content's own HTML, every address on this site, http(s) or mailto, and no image loaded. A link to a page of the notebook has no address, which the app gives: it carries the page it leads to as it reads now (data-nw-node) and its anchor's heading id (data-nw-anchor), or nw-unresolved and its target (data-nw-target); a links event tells when where they lead changes. A page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found alike. When the server parses as much content as it can at once, the page waits a moment, then is server_busy.
          */
         get: operations["getPageView"];
         put?: never;
