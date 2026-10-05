@@ -97,6 +97,33 @@ func TestTheLinkIndexReadsTheNotebooksPages(t *testing.T) {
 	}
 }
 
+// For the link targets and the reads by page (M6/P5 design 7): the
+// notebook's pages, each with its path; a page's notebook. Never an
+// attachment or a deleted page.
+func TestTheLinkIndexsReadsReadTheWholeTreeAndAPagesNotebook(t *testing.T) {
+	l := newLinkTree(t)
+	ctx := context.Background()
+	targets := page.NewLinkTargets(l.pool)
+	a := page.LinkStep{ID: l.a, Key: "a", Name: "A"}
+	b := page.LinkStep{ID: l.b, Key: "b", Name: "B"}
+
+	got, err := targets.All(ctx, l.notebook)
+	if want := []page.LinkNode{{ID: l.a, Path: []page.LinkStep{a}}, {ID: l.b, Path: []page.LinkStep{a, b}}}; err != nil || !reflect.DeepEqual(got, want) {
+		t.Errorf("All = %+v, %v\nwant %+v", got, err, want)
+	}
+	if got, err := targets.All(ctx, uuid.NewV7()); err != nil || len(got) != 0 {
+		t.Errorf("All of no notebook = %+v, %v", got, err)
+	}
+	if nb, ok, err := targets.NotebookOf(ctx, l.b); err != nil || !ok || nb != l.notebook {
+		t.Errorf("NotebookOf(B) = %v, %t, %v", nb, ok, err)
+	}
+	for _, id := range []uuid.UUID{l.c, l.x, uuid.NewV7()} {
+		if nb, ok, err := targets.NotebookOf(ctx, id); err != nil || ok || nb != (uuid.UUID{}) {
+			t.Errorf("NotebookOf(%v) = %v, %t, %v; want none", id, nb, ok, err)
+		}
+	}
+}
+
 // For nervewiki reindex: the notebook's pages by id, a page's content and
 // revision, and the title keys taken anew from the names: a stale one is
 // set; when siblings would share one, each key stays and they are told.
@@ -124,11 +151,11 @@ func TestTheLinkIndexsRebuildReadsAndRekeysThePages(t *testing.T) {
 	}
 	exec(`INSERT INTO page_contents (node_id, content, revision, content_hash, byte_size, updated_by_id, updated_at)
 		SELECT id, '# A', 3, sha256('# A'), 3, created_by_id, now() FROM nodes WHERE id = $1`, l.a)
-	if content, revision, err := targets.Content(ctx, l.a); err != nil || content != "# A" || revision != 3 {
-		t.Errorf("A's content = %q, %d, %v; want # A at 3", content, revision, err)
+	if content, revision, ok, err := targets.Content(ctx, l.a); err != nil || !ok || content != "# A" || revision != 3 {
+		t.Errorf("A's content = %q, %d, %t, %v; want # A at 3", content, revision, ok, err)
 	}
-	if _, _, err := targets.Content(ctx, l.c); err == nil {
-		t.Error("a deleted page's content was read")
+	if _, _, ok, err := targets.Content(ctx, l.c); err != nil || ok {
+		t.Errorf("a deleted page's content was read: %t, %v", ok, err)
 	}
 
 	exec("UPDATE nodes SET name_key = 'stale' WHERE id = $1", l.b)

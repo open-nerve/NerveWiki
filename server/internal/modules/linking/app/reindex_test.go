@@ -30,8 +30,8 @@ func (c *contents) PageIDs(context.Context, uuid.UUID) ([]uuid.UUID, error) {
 	return out, nil
 }
 
-func (c *contents) Content(_ context.Context, id uuid.UUID) (string, int, error) {
-	return c.texts[id], 7, nil
+func (c *contents) Content(_ context.Context, id uuid.UUID) (string, int, bool, error) {
+	return c.texts[id], 7, true, nil
 }
 
 func (c *contents) Rekey(context.Context, uuid.UUID) ([]app.Clash, error) {

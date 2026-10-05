@@ -103,12 +103,9 @@ type page struct {
 // pageContents are the pages' contents and revisions.
 type pageContents map[uuid.UUID]page
 
-func (c pageContents) Content(_ context.Context, id uuid.UUID) (string, int, error) {
+func (c pageContents) Content(_ context.Context, id uuid.UUID) (string, int, bool, error) {
 	p, ok := c[id]
-	if !ok {
-		return "", 0, fmt.Errorf("no content of %s", id)
-	}
-	return p.content, p.revision, nil
+	return p.content, p.revision, ok, nil
 }
 
 // locks are the pages' edit locks, and how often they were read; after

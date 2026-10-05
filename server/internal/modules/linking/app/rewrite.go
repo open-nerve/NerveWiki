@@ -216,9 +216,13 @@ func (r Rewrite) tree(ctx context.Context, m Moved, targets, sources []uuid.UUID
 func (r Rewrite) rewrite(ctx context.Context, id uuid.UUID, revision int, reached map[int]rewritten, from []domain.Step,
 	tree domain.Tree, recased domain.Recased, u Appender,
 ) error {
-	content, current, err := r.Contents.Content(ctx, id)
-	if err != nil {
+	content, current, ok, err := r.Contents.Content(ctx, id)
+	switch {
+	case err != nil:
 		return err
+	case !ok:
+		// The unit's lock of the notebook keeps its pages.
+		return fmt.Errorf("the content of page %s, which the rewrite reads, is gone", id)
 	}
 	if current != revision {
 		r.Logger.LogAttrs(ctx, slog.LevelWarn, "the links of a page are not rewritten: its content is not the index's",

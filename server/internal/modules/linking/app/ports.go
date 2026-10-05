@@ -213,9 +213,10 @@ type Appender interface {
 }
 
 // PageContents reads a page's content and its revision, in the
-// transaction ctx carries: the page module's, which bootstrap wires.
+// transaction ctx carries or on the pool outside one: the page module's,
+// which bootstrap wires. False for a page deleted.
 type PageContents interface {
-	Content(ctx context.Context, id uuid.UUID) (string, int, error)
+	Content(ctx context.Context, id uuid.UUID) (string, int, bool, error)
 }
 
 // Rewritten is a page's content a rewrite writes on its revision Base,
