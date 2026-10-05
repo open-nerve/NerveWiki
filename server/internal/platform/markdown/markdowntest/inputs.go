@@ -86,6 +86,7 @@ func Pathological() []Input {
 		{"emphasis in links", repeat("[*a*](b) ")},
 		{"users' links around links", repeat("<a href=/p>[a](b) ")},
 		{"users' links whose end a script holds, around links", repeat("<a href=/p><script></a></script>[a](b) ")},
+		{"users' links whose end a script holds with another's, around links", repeat("<a href=/p><script></style></a></script>[a](b) ")},
 		{"code spans `a", repeat("`a")},
 		{"code span openers with no closer ``a`", repeat("``a`")},
 		{"backtick strings of every length", func(n int) string {

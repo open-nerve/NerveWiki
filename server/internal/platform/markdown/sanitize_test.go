@@ -75,6 +75,11 @@ func TestAUsersHTMLKeepsTheTypographicAllowlist(t *testing.T) {
 		{"an a whose end a script holds, around a link", `x <a href="/1"><script></a></script>[y](/u)</a>`, "<p>x <a href=\"/u\">y</a></p>\n"},
 		{"an a whose end a textarea holds, around a link", `x <a href="/1"><textarea></a></textarea>[y](/u)</a> z`, "<p>x <a href=\"/u\">y</a> z</p>\n"},
 		{"an a closed after a script, before a link", `<a href="/x"><script>s</script>t</a> [l](/y)`, "<p><a href=\"/x\">t</a> <a href=\"/y\">l</a></p>\n"},
+		{"an a whose end a script holds, with another's end tag, around a link", `x <a href="/1"><script></style></a></script>[y](/u)</a>`, "<p>x <a href=\"/u\">y</a></p>\n"},
+		{"an a closed after a script with another's start tag, before a link", `<a href="/x"><script><style></script></a> [l](/y)`, "<p><a href=\"/x\"></a> <a href=\"/y\">l</a></p>\n"},
+		{"an a around a link after a script with another's start tag", `<a href="/x"><script><style></script>[l](/y)</a>`, "<p><a href=\"/y\">l</a></p>\n"},
+		{"an a around a link a script holds", `<a href=/x>t<script>[l](/y)</script></a> u`, "<p><a href=\"/x\">t</a> u</p>\n"},
+		{"an a before an unclosed script that holds a link", `<a href=/x>t<script></a>[l](/y) u`, "<p><a href=\"/x\">t</a></p>\n"},
 		{"an a closed in an element, before a link", `<i><a href="/x">t</a></i> [l](/y)`, "<p><i><a href=\"/x\">t</a></i> <a href=\"/y\">l</a></p>\n"},
 		{
 			"a footnote's reference in a link, referred to before", "b[^1] [a[^1]](/x)\n\n[^1]: n\n",

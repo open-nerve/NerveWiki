@@ -182,22 +182,26 @@ func linksIn(root ast.Node) map[ast.Node]bool {
 
 // holding is, of the user's <a> start tags among first and the siblings
 // after it, those after which a sibling renders or holds a link before an
-// </a> that ends it: one look ahead over the tags, for the </a> a dropped
-// element holds, which ends nothing (scope.start, scope.end; P3B fix
-// check), and one look back over the siblings.
+// </a> that ends it: one look ahead over the siblings, for what a dropped
+// element holds, as scope.start and scope.end read the tags (P3B fix
+// check): an </a>, which ends nothing, and the others, which go with it;
+// then one look back.
 func holding(first ast.Node, source []byte, linked map[ast.Node]bool) map[ast.Node]bool {
-	held := map[ast.Node]bool{} // the </a> a dropped element holds
+	held := map[ast.Node]bool{} // what a dropped element holds
 	skip := ""
 	for c := first; c != nil; c = c.NextSibling() {
-		if raw, ok := c.(*ast.RawHTML); ok {
-			switch name, end, _ := readTag(raw.Segments.Value(source)); {
-			case skip == "" && !end && dropped[name]:
-				skip = name
-			case skip != "" && end && name == skip:
-				skip = ""
-			case skip != "" && end && name == "a":
-				held[c] = true
-			}
+		raw, ok := c.(*ast.RawHTML)
+		if !ok {
+			held[c] = skip != ""
+			continue
+		}
+		switch name, end, _ := readTag(raw.Segments.Value(source)); {
+		case skip == "" && !end && dropped[name]:
+			skip = name
+		case skip != "" && end && name == skip:
+			skip = ""
+		case skip != "" && end && name == "a":
+			held[c] = true
 		}
 	}
 	out := map[ast.Node]bool{}
@@ -207,10 +211,10 @@ func holding(first ast.Node, source []byte, linked map[ast.Node]bool) map[ast.No
 			switch name, end, _ := readTag(raw.Segments.Value(source)); {
 			case name == "a" && end && !held[c]:
 				link = false
-			case name == "a" && link:
+			case name == "a" && !end && link:
 				out[c] = true
 			}
-		} else if linked[c] {
+		} else if linked[c] && !held[c] {
 			link = true
 		}
 		if c == first {
