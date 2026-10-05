@@ -101,6 +101,8 @@ const PageShell = observer(function PageShell({ notebook, page }: { notebook: No
   // The note of an idle exit describes Edit, where the focus lands: it is heard as it comes.
   const idleNote = useId();
   const edit = useRef<HTMLButtonElement>(null);
+  // The last navigation the reading view took in, which outlives it while the page is edited.
+  const anchored = useRef<string | undefined>(undefined);
   const lockNote = useRef<HTMLDivElement>(null);
   const back = useRef(false);
   // The edit whose session is opening: one that opens once the shell is gone ends.
@@ -237,6 +239,7 @@ const PageShell = observer(function PageShell({ notebook, page }: { notebook: No
             page={page}
             refused={(error) => (error === undefined ? setRefusal(undefined) : void toggleRefused(error))}
             unanchored={() => heading.current?.focus()}
+            anchored={anchored}
           />
         </>
       ) : (

@@ -1,5 +1,5 @@
 import { observer } from "mobx-react-lite";
-import { useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useContext, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { useLocation, useNavigate } from "react-router";
 import useSWR from "swr";
 
@@ -36,11 +36,14 @@ import { useWorkspace } from "../workspace/workspace-layout";
  * whose heading takes the focus; or to an anchor. An address with an
  * anchor has the view go to the element it names, once the HTML is in,
  * once for each time the app goes to the address: the element shows and
- * takes the focus (M6/P3 design 6.7). When it names none, the view is read
- * again first, as the one shown may be from the cache, older than the
- * link; then, if the focus is nowhere (what had it went with the page
- * before), unanchored gives it the page's heading, and otherwise it stays
- * where it is, as a link to no element leaves it. An
+ * takes the focus (M6/P3 design 6.7). The page keeps the last navigation
+ * its view took in (anchored), as the view goes while the page is edited:
+ * coming back from editing goes nowhere. When the anchor names no element
+ * as the page opens (its first navigation, by a load or from another
+ * page), the view is read again first if it came from the cache, as it may
+ * be older than the link; then, if the focus is nowhere (what had it went
+ * with the page before), unanchored gives it the page's heading. A link of
+ * the page to no element leaves the focus where it is, and the page. An
  * element with an id that had the focus as the HTML is replaced, the
  * anchor's among them, has it back in the new HTML, shown again if it
  * showed and no longer does: a view read again stays where it is.
@@ -50,20 +53,21 @@ export const ReadingView = observer(function ReadingView({
   page,
   refused,
   unanchored,
+  anchored,
 }: {
   notebook: Notebook;
   page: TreeNode;
   refused: (error: unknown) => void;
   unanchored: () => void;
+  // The last navigation the page's view took in, its anchor gone to: the location's key and fragment (one key may
+  // have several: an address typed in).
+  anchored: RefObject<string | undefined>;
 }) {
   const { slug } = useWorkspace();
   const pages = usePageTree(notebook);
   const enhancements = useContext(Enhancements);
   const navigate = useNavigate();
   const location = useLocation();
-  // The last navigation the view took in, its anchor gone to: the location's key and fragment (one key may have
-  // several: an address typed in).
-  const anchored = useRef<string | undefined>(undefined);
   // The element with an id focused as the HTML was replaced, and whether it showed.
   const focusedTarget = useRef<{ id: string; shown: boolean } | undefined>(undefined);
   // The navigation whose anchor named no element of the view, which is read again for it (the view, from the
@@ -71,6 +75,8 @@ export const ReadingView = observer(function ReadingView({
   const rereading = useRef<string | undefined>(undefined);
   const [reread, setReread] = useState<string | undefined>(undefined);
   const { data, error, mutate } = useSWR(["page-view", notebook.id, page.id], () => pages.view(page.id));
+  // Whether the view came from the cache: older, maybe, than the address.
+  const cached = useRef(data !== undefined);
   const article = useRef<HTMLElement>(null);
   // The task item focused as the HTML was replaced: its position, its text and its state.
   const focusedTask = useRef<{ task: string; text: string; checked: boolean } | undefined>(undefined);
@@ -169,7 +175,9 @@ export const ReadingView = observer(function ReadingView({
     }
     const anchor = location.hash.slice(1);
     const target = anchor === "" ? undefined : named(container, anchor);
-    if (anchor !== "" && target === undefined && reread !== navigation) {
+    // The page's first navigation: it opened, by a load or from another page.
+    const opened = anchored.current === undefined;
+    if (anchor !== "" && target === undefined && opened && cached.current && reread !== navigation) {
       if (rereading.current !== navigation) {
         rereading.current = navigation;
         void mutate().finally(() => setReread(navigation));
@@ -179,10 +187,10 @@ export const ReadingView = observer(function ReadingView({
     anchored.current = navigation;
     if (target !== undefined) {
       focusOn(target, {});
-    } else if (anchor !== "" && (document.activeElement === null || document.activeElement === document.body)) {
+    } else if (anchor !== "" && opened && document.activeElement === document.body) {
       latestUnanchored.current();
     }
-  }, [html, location.hash, location.key, mutate, reread]);
+  }, [anchored, html, location.hash, location.key, mutate, reread]);
   if (data === undefined) {
     return <NotLoaded error={error} retry={() => void mutate()} />;
   }

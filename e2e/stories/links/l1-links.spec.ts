@@ -127,18 +127,18 @@ test("L1 (page): a link to a page not there leads to it once the page is created
   letStreamIn();
   await expect.poll(viewReads).toBeGreaterThanOrEqual(2);
 
-  // A link of the page to no heading leaves the focus on it, and the page where it is; one to a heading goes there.
+  // A link of the page to no heading leaves the focus where the browser put it, and the page where it is, once the
+  // view has taken the address in (a frame); one to a heading goes there.
   const gone = article.getByRole("link", { name: "Gone", exact: true });
   await gone.click();
   await expect(page).toHaveURL(/#nw-gone$/);
-  await expect(gone).toBeFocused();
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0))));
+  await expect(pageHeading(page, "Source")).not.toBeFocused();
   await expect(gone).toBeInViewport();
   await article.getByRole("link", { name: "to part a", exact: true }).click();
   const partA = article.getByRole("heading", { name: "Part A", exact: true });
   await expect(partA).toBeFocused();
   await expect(partA).toBeInViewport();
-  // The view read again for the missing heading is in before the page is created.
-  await expect.poll(viewReads).toBeGreaterThanOrEqual(3);
   const read = viewReads();
 
   const missing = await createPage(api, pat, notebook.id, "Missing");
