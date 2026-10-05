@@ -48,7 +48,7 @@ func (v view) lead(start int, target, anchor string) ([]markdown.Attr, bool) {
 		return []markdown.Attr{{Name: "data-nw-target", Value: target}}, false
 	}
 	attrs := []markdown.Attr{{Name: "data-nw-node", Value: id.String()}}
-	if heading, ok := anchorID(anchor); ok {
+	if heading, ok := markdown.AnchorID(anchor); ok {
 		attrs = append(attrs, markdown.Attr{Name: "data-nw-anchor", Value: heading})
 	}
 	return attrs, true
@@ -92,20 +92,6 @@ func (v view) property(values parser.Parser) func(s markdown.Scalar) ([]markdown
 		}
 		return attrs, shown, true
 	}
-}
-
-// anchorID is the id of the heading an anchor leads to (M6/P3 design 6.2):
-// that of the first heading of its last part's text, H2 of H1#H2. A block's
-// anchor (^…) has none, v0.1 giving blocks no id, and an empty one none.
-func anchorID(anchor string) (string, bool) {
-	if k := strings.LastIndexByte(anchor, '#'); k >= 0 {
-		anchor = anchor[k+1:]
-	}
-	anchor = strings.Trim(anchor, " \t")
-	if anchor == "" || anchor[0] == '^' {
-		return "", false
-	}
-	return markdown.HeadingID(anchor), true
 }
 
 // inLinks marks the wikilinks and the tags in a Markdown link's text, which

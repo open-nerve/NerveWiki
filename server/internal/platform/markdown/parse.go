@@ -105,6 +105,21 @@ func PlainText(n ast.Node, source []byte) string {
 // design 6.2). A heading whose id another took gets a suffix.
 func HeadingID(text string) string { return idPrefix + slug(text) }
 
+// AnchorID is the id of the heading an anchor leads to (M6/P3 design 6.2,
+// M6/P6 design 5): that of the first heading of its last part's text, H2
+// of H1#H2. A block's anchor (^…) has none, v0.1 giving blocks no id, and
+// an empty one none.
+func AnchorID(anchor string) (string, bool) {
+	if k := strings.LastIndexByte(anchor, '#'); k >= 0 {
+		anchor = anchor[k+1:]
+	}
+	anchor = strings.Trim(anchor, " \t")
+	if anchor == "" || anchor[0] == '^' {
+		return "", false
+	}
+	return HeadingID(anchor), true
+}
+
 func slug(s string) string {
 	var b strings.Builder
 	n := 0 // characters written

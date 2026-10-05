@@ -4,32 +4,6 @@ import (
 	"testing"
 )
 
-// decodeURI is JavaScript's (rule 8).
-func TestDecodeURIIsJavaScripts(t *testing.T) {
-	for _, tt := range []struct{ in, want string }{
-		{"a.md", "a.md"},
-		{"c%20d.md", "c d.md"},
-		{"%E4%B8%AD", "中"},
-		{"%e4%b8%ad%2F", "中%2F"},
-		{"a%2Fb%3F%23%25", "a%2Fb%3F%23%"},
-		{"%41%3b", "A%3b"},
-		{"%F0%9F%98%80", "😀"},
-		{"%", "%"},
-		{"%4", "%4"},
-		{"%ZZ x", "%ZZ x"},
-		{"%E4%B8 x", "%E4%B8 x"},               // a character cut short
-		{"%C0%80", "%C0%80"},                   // an overlong form
-		{"%ED%A0%80", "%ED%A0%80"},             // a surrogate
-		{"%80", "%80"},                         // a continuation byte alone
-		{"ok %20 then %FF", "ok %20 then %FF"}, // one bad escape keeps all
-		{"%ZZ%20", "%ZZ%20"},
-	} {
-		if got := decodeURI(tt.in); got != tt.want {
-			t.Errorf("decodeURI(%q) = %q, want %q", tt.in, got, tt.want)
-		}
-	}
-}
-
 // A Markdown link's destination is a link of the notebook's unless it has
 // a scheme, starts with "//", or is an anchor alone (rule 8). Its range is
 // its target's, as written.

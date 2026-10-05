@@ -45,7 +45,7 @@ func FuzzParse(f *testing.F) {
 			case l.Key != "":
 			case (l.Kind == obsidian.KindWikilink || l.Kind == obsidian.KindEmbed) && written != l.Target:
 				t.Errorf("%q: link %+v writes %q", content, l, written)
-			case (l.Kind == obsidian.KindLink || l.Kind == obsidian.KindImage) && obsidian.DecodeURI(written) != l.Target:
+			case (l.Kind == obsidian.KindLink || l.Kind == obsidian.KindImage) && markdown.DecodeURI(written) != l.Target:
 				t.Errorf("%q: link %+v writes %q", content, l, written)
 			}
 		}

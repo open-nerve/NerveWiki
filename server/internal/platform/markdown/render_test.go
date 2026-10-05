@@ -58,7 +58,7 @@ func TestTheMarksAreTheReadingViews(t *testing.T) {
 		{"task items without their extension", "- [ ] a\n- [x] b\n", "<ul>\n<li>[ ] a</li>\n<li>[x] b</li>\n</ul>\n"},
 		{
 			"a table's alignment", "| a | b | c | d |\n|:--|:-:|--:|---|\n| 1 | 2 | 3 | 4 |\n",
-			"<div class=\"nw-scroll\" tabindex=\"0\"><table>\n<thead>\n<tr>\n<th align=\"left\">a</th>\n<th align=\"center\">b</th>\n" +
+			"<div class=\"nw-scroll\"><table>\n<thead>\n<tr>\n<th align=\"left\">a</th>\n<th align=\"center\">b</th>\n" +
 				"<th align=\"right\">c</th>\n<th>d</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td align=\"left\">1</td>\n" +
 				"<td align=\"center\">2</td>\n<td align=\"right\">3</td>\n<td>4</td>\n</tr>\n</tbody>\n</table>\n</div>\n",
 		},
@@ -113,21 +113,37 @@ func TestLinksAndImagesGoThroughSafeURL(t *testing.T) {
 	})
 }
 
+// A Markdown link to an anchor alone leads to the id of its heading, its
+// escapes decoded as JavaScript's decodeURI does, the last part's, as a
+// wikilink's anchor does, one written as an id too; a block's anchor and
+// an empty one are the text alone (M6/P6 design 5).
+func TestALinkToAnAnchorAloneLeadsToItsHeading(t *testing.T) {
+	checkRenders(t, []renderCase{
+		{
+			"a heading's", "[a](#Heading%20Two) [b](<#Part One> \"T\") [c](#H1#H2) [d](#a%23b) [e][r]\n\n[r]: #Ref\n",
+			`<p><a href="#nw-heading-two">a</a> <a href="#nw-part-one" title="T">b</a> <a href="#nw-h2">c</a> ` +
+				`<a href="#nw-a23b">d</a> <a href="#nw-ref">e</a></p>` + "\n",
+		},
+		{"one written as an id", "[a](#nw-x) [b](#中文)\n", `<p><a href="#nw-nw-x">a</a> <a href="#nw-中文">b</a></p>` + "\n"},
+		{"none", "[a](#^b) [b](#) [c](#%20) [d](#%ZZ)\n", `<p>a b c <a href="#nw-zz">d</a></p>` + "\n"},
+	})
+}
+
 func TestThePropertiesComeFirstAsATable(t *testing.T) {
 	checkRenders(t, []renderCase{
 		{
 			"each kind of value",
 			"---\ns: a<b\nn: 010\nf: 1.5\nbig: 1e21\nb: true\nz: ~\nl: [a, 1]\nm: {k: v}\nq: \"x\"\n---\nbody\n",
-			`<table class="nw-props"><tr><th>s</th><td>a&lt;b</td></tr><tr><th>n</th><td>10</td></tr>` +
+			`<div class="nw-scroll"><table class="nw-props"><tr><th>s</th><td>a&lt;b</td></tr><tr><th>n</th><td>10</td></tr>` +
 				`<tr><th>f</th><td>1.5</td></tr><tr><th>big</th><td>1e+21</td></tr><tr><th>b</th><td>true</td></tr>` +
 				`<tr><th>z</th><td></td></tr><tr><th>l</th><td><ul><li>a</li><li>1</li></ul></td></tr>` +
 				`<tr><th>m</th><td><table class="nw-props"><tr><th>k</th><td>v</td></tr></table></td></tr>` +
-				`<tr><th>q</th><td>x</td></tr></table>` + "\n<p>body</p>\n",
+				`<tr><th>q</th><td>x</td></tr></table></div>` + "\n<p>body</p>\n",
 		},
-		{"a key escaped", "---\n\"<k>\": 1\n---\n", "<table class=\"nw-props\"><tr><th>&lt;k&gt;</th><td>1</td></tr></table>\n"},
-		{"a large number in decimal", "---\nn: 1e20\n---\n", "<table class=\"nw-props\"><tr><th>n</th><td>100000000000000000000</td></tr></table>\n"},
-		{"zero, negative or not", "---\nn: 0.0\nm: -0.0\n---\n", "<table class=\"nw-props\"><tr><th>n</th><td>0</td></tr><tr><th>m</th><td>0</td></tr></table>\n"},
-		{"a small number with an exponent", "---\nn: 1.5e-7\n---\n", "<table class=\"nw-props\"><tr><th>n</th><td>1.5e-7</td></tr></table>\n"},
+		{"a key escaped", "---\n\"<k>\": 1\n---\n", "<div class=\"nw-scroll\"><table class=\"nw-props\"><tr><th>&lt;k&gt;</th><td>1</td></tr></table></div>\n"},
+		{"a large number in decimal", "---\nn: 1e20\n---\n", "<div class=\"nw-scroll\"><table class=\"nw-props\"><tr><th>n</th><td>100000000000000000000</td></tr></table></div>\n"},
+		{"zero, negative or not", "---\nn: 0.0\nm: -0.0\n---\n", "<div class=\"nw-scroll\"><table class=\"nw-props\"><tr><th>n</th><td>0</td></tr><tr><th>m</th><td>0</td></tr></table></div>\n"},
+		{"a small number with an exponent", "---\nn: 1.5e-7\n---\n", "<div class=\"nw-scroll\"><table class=\"nw-props\"><tr><th>n</th><td>1.5e-7</td></tr></table></div>\n"},
 		{"an empty frontmatter", "---\n---\nbody\n", "<p>body</p>\n"},
 		{"a frontmatter not valid", "---\n- a\n---\nbody\n", "<p>body</p>\n"},
 		{"no frontmatter", "body\n", "<p>body</p>\n"},
@@ -159,13 +175,13 @@ func TestAnExtensionWritesAPropertysStringAsALink(t *testing.T) {
 	}
 	m := newMarkdown(t, linking("one", "L"), linking("two", "M"))
 	src := "---\na: &x L/a\nb: [*x, L/b, M/c, Ljavascript:x, z]\n\"a.b\": L/d\nc: {b: L/e, \"<k>\": L/f}\nm: |\n  L/g\n---\n"
-	want := `<table class="nw-props"><tr><th>a</th><td><a href="/a" class="one">a</a></td></tr>` +
+	want := `<div class="nw-scroll"><table class="nw-props"><tr><th>a</th><td><a href="/a" class="one">a</a></td></tr>` +
 		`<tr><th>b</th><td><ul><li>L/a</li><li><a href="/b" class="one">b.1</a></li><li><a href="/c" class="two">b.2</a></li>` +
 		`<li><a class="one">b.3</a></li><li>z</li></ul></td></tr>` +
 		`<tr><th>a.b</th><td><a href="/d" class="one">a.b</a></td></tr>` +
 		`<tr><th>c</th><td><table class="nw-props"><tr><th>b</th><td><a href="/e" class="one">c.b</a></td></tr>` +
 		`<tr><th>&lt;k&gt;</th><td><a href="/f" class="one">c.&lt;k&gt;</a></td></tr></table></td></tr>` +
-		`<tr><th>m</th><td>L/g` + "\n" + `</td></tr></table>` + "\n"
+		`<tr><th>m</th><td>L/g` + "\n" + `</td></tr></table></div>` + "\n"
 	if got := renderString(t, m, src); got != want {
 		t.Errorf("got  %q\nwant %q", got, want)
 	}

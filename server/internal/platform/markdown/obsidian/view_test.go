@@ -77,7 +77,7 @@ func TestLinksLeadWhereTheyResolve(t *testing.T) {
 		{
 			"addresses elsewhere", "[e](https://x.example/Page) <https://x.example/a> [f](#Page)\n",
 			`<p><a href="https://x.example/Page">e</a> <a href="https://x.example/a">https://x.example/a</a> ` +
-				`<a href="#Page">f</a></p>` + "\n",
+				`<a href="#nw-page">f</a></p>` + "\n",
 		},
 		{
 			"in a link's text, a span", "[see [[Page]] *and ![[x]]*](Page)\n",
@@ -117,7 +117,7 @@ func TestAPropertyLinkIsALinkInTheTable(t *testing.T) {
 		"---\nup: \"[[Page]]\"\nsee: \"[[Page#Part Two|the <part>]]\"\nmd: \"[t *x*](Page#h)\"\nnone: '[[Missing]]'\n" +
 			"\"a.b\": \"[[Page]]\"\na: {b: \"[[Missing]]\"}\nl: ['[a](b.md)', x]\n" +
 			"r: &r \"[[Page]]\"\nagain: *r\nm: |\n  [[Page]]\nmore: \"[[Page]] and\"\nemb: \"![[Page]]\"\n---\n",
-		`<table class="nw-props">` +
+		`<div class="nw-scroll"><table class="nw-props">` +
 			row("up", `<a class="nw-wikilink" `+page+`>Page</a>`) +
 			row("see", `<a class="nw-wikilink" `+page+` data-nw-anchor="nw-part-two">the &lt;part&gt;</a>`) +
 			row("md", `<a `+page+` data-nw-anchor="nw-h">t x</a>`) +
@@ -126,7 +126,7 @@ func TestAPropertyLinkIsALinkInTheTable(t *testing.T) {
 			row("a", `<table class="nw-props">`+row("b", `<a class="nw-wikilink nw-unresolved" data-nw-target="Missing">Missing</a>`)+`</table>`) +
 			row("l", `<ul><li><a class="nw-unresolved" data-nw-target="b.md">a</a></li><li>x</li></ul>`) +
 			row("r", `<a class="nw-wikilink" `+page+`>Page</a>`) + row("again", "[[Page]]") + row("m", "[[Page]]\n") +
-			row("more", "[[Page]] and") + row("emb", "![[Page]]") + "</table>\n",
+			row("more", "[[Page]] and") + row("emb", "![[Page]]") + "</table></div>\n",
 	}})
 }
 

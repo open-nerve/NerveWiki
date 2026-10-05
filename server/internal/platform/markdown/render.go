@@ -16,7 +16,8 @@ import (
 
 // Render is the HTML of d's reading view for page (M4 design 4,
 // "rendering"; M4/P3 design 3.5–3.8): the frontmatter's properties as a
-// table, then the body. Each extension's Fetch gets its data for the page
+// table, in a region of its own that scrolls sideways (M6/P6 design 6),
+// then the body. Each extension's Fetch gets its data for the page
 // first, in order, and its error is Render's. The tree's raw HTML is
 // replaced by what the sanitizer keeps of it, so d serves this one Render.
 func (m *Markdown) Render(ctx context.Context, d *Document, page Page) (string, error) {
@@ -57,8 +58,9 @@ func (m *Markdown) Render(ctx context.Context, d *Document, page Page) (string, 
 	var out bytes.Buffer
 	if fm.Valid && len(fm.Properties) > 0 {
 		props.out = &out
+		out.WriteString(`<div class="nw-scroll">`)
 		props.write(fm.Properties)
-		out.WriteByte('\n')
+		out.WriteString("</div>\n")
 	}
 	if err := renderer.NewRenderer(renderer.WithNodeRenderers(nodes...)).Render(&out, d.source, d.root); err != nil {
 		return "", err
@@ -140,9 +142,10 @@ func (t *table) link() ([]Attr, string, bool) {
 }
 
 // scrollingTables is goldmark's table renderer, each table in a region of
-// its own that scrolls sideways and takes the focus, so that a wide table
-// scrolls with the keyboard and not the whole reading view (M6/P1 design
-// 3.4; WCAG 2.1.1).
+// its own that scrolls sideways, so that a wide table scrolls and not the
+// whole reading view (M6/P1 design 3.4). The front end gives the region
+// the focus while it is wider than it shows, so that the keyboard scrolls
+// it (WCAG 2.1.1; M6/P6 design 6): the server cannot tell.
 type scrollingTables struct{ inner renderer.NodeRenderer }
 
 // registered is a registerer that keeps what it is given, and the
@@ -167,7 +170,7 @@ func (s scrollingTables) RegisterFuncs(reg renderer.NodeRendererFuncRegisterer) 
 		}
 		reg.Register(kind, func(w util.BufWriter, source []byte, n ast.Node, entering bool) (ast.WalkStatus, error) {
 			if entering {
-				_, _ = w.WriteString(`<div class="nw-scroll" tabindex="0">`)
+				_, _ = w.WriteString(`<div class="nw-scroll">`)
 			}
 			status, err := f(w, source, n, entering)
 			if !entering {

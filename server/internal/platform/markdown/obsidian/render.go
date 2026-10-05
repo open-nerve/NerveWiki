@@ -57,7 +57,7 @@ func (r nodeRenderer) renderWikilink(w util.BufWriter, _ []byte, node ast.Node, 
 	n := node.(*wikilink)
 	heading, own := "", n.target == ""
 	if own {
-		heading, own = anchorID(n.anchor)
+		heading, own = markdown.AnchorID(n.anchor)
 	}
 	link := !n.inLink && (n.target != "" || own)
 	if !entering {
@@ -141,18 +141,19 @@ func renderMath(w util.BufWriter, source []byte, node ast.Node, entering bool) (
 	return ast.WalkSkipChildren, nil
 }
 
-// renderMathBlock writes a block formula's TeX.
+// renderMathBlock writes a block formula's TeX, in a region of its own
+// that scrolls sideways, as a table's (M6/P6 design 6).
 func renderMathBlock(w util.BufWriter, source []byte, node ast.Node, entering bool) (ast.WalkStatus, error) {
 	if !entering {
 		return ast.WalkContinue, nil
 	}
-	_, _ = w.WriteString(`<div class="nw-math nw-math-block">`)
+	_, _ = w.WriteString(`<div class="nw-scroll"><div class="nw-math nw-math-block">`)
 	lines := node.Lines()
 	for i := range lines.Len() {
 		seg := lines.At(i)
 		escaped(w, seg.Value(source))
 	}
-	_, _ = w.WriteString("</div>\n")
+	_, _ = w.WriteString("</div></div>\n")
 	return ast.WalkSkipChildren, nil
 }
 

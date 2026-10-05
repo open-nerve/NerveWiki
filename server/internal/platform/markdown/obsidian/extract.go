@@ -5,7 +5,6 @@ import (
 	"regexp"
 	"slices"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/parser"
@@ -147,7 +146,7 @@ func markdownLink(kind Kind, written string, at int) (Link, bool) {
 		return Link{}, false
 	}
 	return Link{
-		Kind: kind, Target: decodeURI(target), Anchor: decodeURI(anchor),
+		Kind: kind, Target: markdown.DecodeURI(target), Anchor: markdown.DecodeURI(anchor),
 		Range: markdown.Span{Start: at, Stop: at + len(target)},
 	}, true
 }
@@ -190,84 +189,4 @@ func property(values parser.Parser, s markdown.Scalar) (Link, string, bool) {
 	l.Key = s.Path
 	l.Range = markdown.Span{Start: s.Offset(l.Range.Start), Stop: s.Offset(l.Range.Stop)}
 	return l, shown, true
-}
-
-// reserved are the characters whose escapes decodeURI keeps.
-const reserved = ";/?:@&=+$,#"
-
-// decodeURI is JavaScript's decodeURI: each %XX decoded, an escaped
-// reserved character's kept as it is; s as it is if an escape is malformed
-// or its bytes are not UTF-8.
-func decodeURI(s string) string {
-	if !strings.Contains(s, "%") {
-		return s
-	}
-	var b strings.Builder
-	for i := 0; i < len(s); {
-		if s[i] != '%' {
-			b.WriteByte(s[i])
-			i++
-			continue
-		}
-		c, ok := unhex(s, i)
-		if !ok {
-			return s
-		}
-		if c < utf8.RuneSelf {
-			if strings.IndexByte(reserved, c) >= 0 {
-				b.WriteString(s[i : i+3])
-			} else {
-				b.WriteByte(c)
-			}
-			i += 3
-			continue
-		}
-		var size int
-		switch {
-		case c&0xE0 == 0xC0:
-			size = 2
-		case c&0xF0 == 0xE0:
-			size = 3
-		case c&0xF8 == 0xF0:
-			size = 4
-		default:
-			return s
-		}
-		bs := []byte{c}
-		for k := 1; k < size; k++ {
-			c, ok := unhex(s, i+3*k)
-			if !ok || c&0xC0 != 0x80 {
-				return s
-			}
-			bs = append(bs, c)
-		}
-		if r, n := utf8.DecodeRune(bs); r == utf8.RuneError && n <= 1 {
-			return s
-		}
-		b.Write(bs)
-		i += 3 * size
-	}
-	return b.String()
-}
-
-// unhex is the byte the escape %XX at s[i] writes.
-func unhex(s string, i int) (byte, bool) {
-	if i+2 >= len(s) || s[i] != '%' {
-		return 0, false
-	}
-	hi, ok1 := hexDigit(s[i+1])
-	lo, ok2 := hexDigit(s[i+2])
-	return hi<<4 | lo, ok1 && ok2
-}
-
-func hexDigit(c byte) (byte, bool) {
-	switch {
-	case c >= '0' && c <= '9':
-		return c - '0', true
-	case c >= 'a' && c <= 'f':
-		return c - 'a' + 10, true
-	case c >= 'A' && c <= 'F':
-		return c - 'A' + 10, true
-	}
-	return 0, false
 }
