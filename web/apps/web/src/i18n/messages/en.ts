@@ -80,6 +80,8 @@ export const en = {
   "access.editorHint": "The workspace's admins and members can edit it; a guest, once added.",
   "notebook.homeEmpty": "No pages yet.",
   "notebook.pages": "Pages",
+  "tag.pages": "Pages tagged #{tag}",
+  "tag.empty": "No page has this tag.",
   "page.tree": "Pages of {notebook}",
   "page.subpagesOf": "Subpages of {name}",
   "page.breadcrumb": "Breadcrumb",

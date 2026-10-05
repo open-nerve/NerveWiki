@@ -2,6 +2,7 @@ import { makeAutoObservable, observableRef, runInAction } from "mobx";
 
 import { oneAtATime } from "../lib/one-at-a-time";
 import { ApiError } from "../services/api";
+import type { LinkingService, LinkLanding } from "../services/linking.service";
 import type { EditLock, NodeMove, PageService, PageView, TaskToggle, TreeNode } from "../services/page.service";
 import { ancestorsOf, childrenOf, indexTree, subtreeOf, type TreeIndex } from "./page-tree";
 
@@ -20,6 +21,10 @@ export const toggleLimit = 60_000;
  * answers is not put in the tree here, since the client does not work out
  * the siblings' order. The pages this generation deleted leave the tree at
  * once, whether it could be read again or not.
+ *
+ * It reads for the notebook what its pages' links and tags lead to (M6/P6
+ * design 13): the pages of a tag, and where a page made for a link would
+ * go. SWR keeps them, as it does the views.
  */
 export class PageTreeStore {
   /** The tree as read, replaced whole by each read: its nodes are not observed one by one. */
@@ -51,21 +56,23 @@ export class PageTreeStore {
       | "toggleTask"
     >,
     /** The notebook whose pages these are. */
-    readonly notebookId: string
+    readonly notebookId: string,
+    private readonly linking: Pick<LinkingService, "tagPages" | "linkLanding">
   ) {
-    makeAutoObservable<this, "service" | "changesAnswered" | "readsStarted" | "readKept" | "inTurn" | "togglesOut">(
+    makeAutoObservable<
       this,
-      {
-        service: false,
-        notebookId: false,
-        nodes: observableRef,
-        changesAnswered: false,
-        readsStarted: false,
-        readKept: false,
-        inTurn: false,
-        togglesOut: false,
-      }
-    );
+      "service" | "linking" | "changesAnswered" | "readsStarted" | "readKept" | "inTurn" | "togglesOut"
+    >(this, {
+      service: false,
+      linking: false,
+      notebookId: false,
+      nodes: observableRef,
+      changesAnswered: false,
+      readsStarted: false,
+      readKept: false,
+      inTurn: false,
+      togglesOut: false,
+    });
   }
 
   /** tree is the tree looked up, once read, without the pages this generation deleted. */
@@ -184,6 +191,16 @@ export class PageTreeStore {
   /** view reads the page id's reading view, which the store does not keep: SWR does, by page. */
   view(id: string): Promise<PageView> {
     return this.service.getPageView(id);
+  }
+
+  /** tagPages reads the ids of the notebook's pages that have tag, or a tag under it (tag/…), by id. */
+  tagPages(tag: string): Promise<string[]> {
+    return this.linking.tagPages(this.notebookId, tag);
+  }
+
+  /** landing reads where a page made for target, a link's target on the page id, would go (M6/P6 design 2). */
+  landing(id: string, target: string): Promise<LinkLanding> {
+    return this.linking.linkLanding(id, target);
   }
 
   /** toggleTask ticks or clears a task item of the page id, which changes its view: SWR reads it again. */

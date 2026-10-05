@@ -79,6 +79,8 @@ export const zhCN: Messages = {
   "access.editorHint": "工作区的管理员与成员都能编辑；访客要加入它才看得到。",
   "notebook.homeEmpty": "还没有页面。",
   "notebook.pages": "页面",
+  "tag.pages": "带有 #{tag} 的页面",
+  "tag.empty": "没有页面带有这个标签。",
   "page.tree": "{notebook}的页面",
   "page.subpagesOf": "{name}的子页面",
   "page.breadcrumb": "页面路径",

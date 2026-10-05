@@ -1,8 +1,8 @@
 import { createContext } from "react";
 
 import type { NotebookRole } from "../services/notebook.service";
+import { appLinks } from "./app-links";
 import { codeHighlight, highlightWorker } from "./highlight";
-import { pageLinks } from "./page-links";
 import { scrollFocus } from "./scroll-focus";
 import { taskToggle } from "./task-toggle";
 
@@ -47,7 +47,7 @@ export type Enhancement = (container: HTMLElement, context: ReadingContext) => (
 /**
  * readingEnhancements are the app's enhancements, in the order they run
  * (M4 design 8): M4 has code highlighting, and the keyboard's way to what
- * scrolls sideways; M5 the task items' ticks; M6 the links to pages; M7
+ * scrolls sideways; M5 the task items' ticks; M6 the links into the app; M7
  * adds its own here. The app's composition root (main.tsx) gives them to
  * the reading views through Enhancements; without it they have none.
  */
@@ -55,7 +55,7 @@ export const readingEnhancements: readonly Enhancement[] = [
   codeHighlight(highlightWorker),
   scrollFocus,
   taskToggle,
-  pageLinks,
+  appLinks,
 ];
 
 export const Enhancements = createContext<readonly Enhancement[]>([]);

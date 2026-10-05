@@ -1,4 +1,4 @@
-import { act, screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { EditorView } from "@codemirror/view";
 import { afterEach, expect, test, vi } from "vitest";
@@ -12,8 +12,8 @@ import { renderApp } from "../test/render";
 
 // Each event has what it changed read again (M5/P3 design 3.8): the tree,
 // a page's reading view whose revision is newer, or whose links lead
-// elsewhere (M6/P3 design 6.7), a page's edit lock; each connection, all
-// of them.
+// elsewhere (M6/P3 design 6.7), the pages of a tag (M6/P6 design 11), a
+// page's edit lock; each connection, all of them.
 
 const pagesEvent = (tree: boolean, pages: { id: string; revision: number }[] | null) => ({
   workspace_id: workspaceJSON.id,
@@ -236,6 +236,55 @@ test("a links event of too many pages to name reads the notebook's reading views
   expect(server.sent).toEqual(["GET view Guide"]);
 });
 
+/** onTag opens the tag t's pages, Guide's, after open, and waits until they show: what is read from then on is the events' doing. */
+async function onTag(opened: Awaited<ReturnType<typeof open>>) {
+  const { server, router } = opened;
+  server.tags.set("t", [guide.id]);
+  await act(() => router.navigate(`/lab/notebooks/${notebookJSON.id}/tags/t`));
+  await screen.findByRole("list", { name: "Pages tagged #t" });
+  await settle();
+  server.sent.length = 0;
+}
+
+test("an event of the notebook's pages written, or its tree, reads the pages of its tags shown again, once in the refresher's interval", async () => {
+  const opened = await open();
+  const { server, events } = opened;
+  await onTag(opened);
+  server.tags.set("t", [guide.id, notes.id]);
+
+  events.last().send("pages", { ...pagesEvent(true, null), notebook_id: "0199a2b4-0000-7000-8000-0000000000b2" });
+  events.last().send("pages", pagesEvent(false, []));
+  await settle();
+  expect(server.sent).toEqual([]);
+
+  events.last().send("pages", pagesEvent(false, [{ id: guide.id, revision: 2 }]));
+  events.last().send("pages", pagesEvent(true, []));
+  const list = screen.getByRole("list", { name: "Pages tagged #t" });
+  await waitFor(() =>
+    expect(
+      within(list)
+        .getAllByRole("link")
+        .map((link) => link.textContent)
+    ).toEqual(["Guide", "Notes"])
+  );
+  await settle();
+  expect(server.sent).toEqual(["GET tag t", "GET nodes"]);
+});
+
+test("a links event of too many pages to name reads the pages of the notebook's tags again; one that names its pages does not", async () => {
+  const opened = await open();
+  const { server, events } = opened;
+  await onTag(opened);
+
+  events.last().send("links", linksEvent([guide.id]));
+  events.last().send("links", linksEvent(null, "0199a2b4-0000-7000-8000-0000000000b2"));
+  await settle();
+  expect(server.sent).toEqual([]);
+
+  events.last().send("links", linksEvent(null));
+  await waitFor(() => expect(server.sent).toEqual(["GET tag t"]));
+});
+
 test("an event of a page's lock reads its lock again", async () => {
   const { server, events } = await open();
   server.hold(guide.id, bob, 60);
@@ -270,6 +319,18 @@ test("each connection reads again the workspaces, the tree, the reading view and
   await waitFor(() => expect(screen.getByRole("article", { name: "Handbook" }).innerHTML).toBe("<p>Guide, again</p>"));
   expect((await screen.findByRole("status")).textContent).toContain("Bob is editing this page.");
   expect(workspaces).toEqual(["GET workspaces"]);
+});
+
+test("each connection reads again the pages of a tag shown, with the tree", async () => {
+  const opened = await open();
+  const { server, events } = opened;
+  await onTag(opened);
+
+  events.last().send("reset", { reason: "expired" });
+  await waitFor(() => expect(events.streams).toHaveLength(2));
+  events.last().hello();
+
+  await waitFor(() => expect(server.sent).toEqual(expect.arrayContaining(["GET nodes", "GET tag t"])));
 });
 
 test("a connection reads from the outside in: a notebook no longer seen leaves the page before its tree is read", async () => {

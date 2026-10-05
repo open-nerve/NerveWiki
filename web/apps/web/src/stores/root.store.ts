@@ -11,6 +11,7 @@ import { AuthService } from "../services/auth.service";
 import { EventService } from "../services/event.service";
 import { InstanceService } from "../services/instance.service";
 import { InvitationPreviewService, InvitationService } from "../services/invitation.service";
+import { LinkingService } from "../services/linking.service";
 import { MemberService } from "../services/member.service";
 import { NotebookMemberService } from "../services/notebook-member.service";
 import { NotebookService, type Notebook } from "../services/notebook.service";
@@ -80,6 +81,7 @@ export class RootStore {
   private readonly notebookMembers: NotebookMemberService | undefined;
   private readonly ownerless: OwnerlessService | undefined;
   private readonly pages: PageService | undefined;
+  private readonly linking: LinkingService | undefined;
   private readonly hub: EventHub | undefined;
   private readonly eventDeps: EventDeps | undefined;
   private readonly page: PageLifecycle;
@@ -118,6 +120,7 @@ export class RootStore {
     this.notebookMembers = client && new NotebookMemberService(client);
     this.ownerless = client && new OwnerlessService(client);
     this.pages = client && new PageService(client);
+    this.linking = client && new LinkingService(client);
     this.hub =
       client && app.events && loginId !== undefined
         ? eventHub(new EventService(client), app.events, loginId)
@@ -279,8 +282,10 @@ export class RootStore {
 
   /** pagesOf is the page tree of notebook, the same one for as long as this generation lives (M4/P5 design 3.4). */
   pagesOf(notebook: Notebook): PageTreeStore | undefined {
-    const service = this.pages;
-    return service && once(this.pageTrees, notebook.id, () => new PageTreeStore(service, notebook.id));
+    const { pages: service, linking } = this;
+    return (
+      service && linking && once(this.pageTrees, notebook.id, () => new PageTreeStore(service, notebook.id, linking))
+    );
   }
 
   /**
