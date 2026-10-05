@@ -6,9 +6,10 @@
 CREATE INDEX page_links_resolved_id_source_id_idx ON page_links (resolved_id, source_id, range_start)
     WHERE resolved_id IS NOT NULL;
 DROP INDEX page_links_resolved_id_idx;
-CREATE INDEX page_links_property_idx ON page_links (source_id, range_start) WHERE property_key IS NOT NULL;
+-- The primary key's columns, of the property links alone.
+CREATE INDEX page_links_source_id_range_start_idx ON page_links (source_id, range_start) WHERE property_key IS NOT NULL;
 
 -- +goose Down
-DROP INDEX page_links_property_idx;
+DROP INDEX page_links_source_id_range_start_idx;
 CREATE INDEX page_links_resolved_id_idx ON page_links (resolved_id) WHERE resolved_id IS NOT NULL;
 DROP INDEX page_links_resolved_id_source_id_idx;

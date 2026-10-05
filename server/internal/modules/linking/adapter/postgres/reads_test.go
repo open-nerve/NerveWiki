@@ -204,7 +204,7 @@ func TestTheReadsUseTheirIndexes(t *testing.T) {
 		{`SELECT range_start FROM page_links WHERE resolved_id = $1 AND source_id = $1 ORDER BY range_start LIMIT 3`, "page_links_resolved_id_source_id_idx"},
 		// LinksReached's part by the pages its links resolve to.
 		{`SELECT source_id FROM page_links WHERE resolved_id = ANY(ARRAY[$1::uuid])`, "page_links_resolved_id_source_id_idx"},
-		{`SELECT property_key FROM page_links WHERE source_id = $1 AND property_key IS NOT NULL ORDER BY range_start`, "page_links_property_idx"},
+		{`SELECT property_key FROM page_links WHERE source_id = $1 AND property_key IS NOT NULL ORDER BY range_start`, "page_links_source_id_range_start_idx"},
 	} {
 		var plan []string
 		err := pgx.BeginFunc(ctx, f.pool, func(tx pgx.Tx) error {
