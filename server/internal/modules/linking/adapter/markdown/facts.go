@@ -43,14 +43,14 @@ func PageFacts(facts any) (domain.Facts, error) {
 	}
 	fm := f.Frontmatter()
 	out := domain.Facts{FrontmatterValid: !fm.Present || fm.Valid}
-	aliasesKey, hasAliases := keyOf(fm.Properties, "aliases")
+	aliasesProperty, _ := propertyOf(fm.Properties, "aliases")
 	for _, l := range x.Links {
 		link := domain.Link{
 			Kind: string(l.Kind), Property: text(l.Key), Target: text(l.Target), Anchor: text(l.Anchor), Display: text(l.Display),
 			Start: l.Range.Start, End: l.Range.Stop, InTable: l.InTable,
 		}
 		if s, ok := scalarOf(fm.Scalars, l); ok {
-			link.Quote, link.Aliases = s.Quote, hasAliases && valueOf(s.Path, aliasesKey)
+			link.Quote, link.Aliases = s.Quote, valueOf(s, aliasesProperty)
 		}
 		out.Links = append(out.Links, link)
 	}
@@ -98,46 +98,49 @@ func scalarOf(scalars []markdown.Scalar, l obsidian.Link) (markdown.Scalar, bool
 	return markdown.Scalar{}, false
 }
 
-// valueOf tells whether path, a frontmatter string's, is key's value as
-// stringsOf reads it: the value itself, or one of its list's.
-func valueOf(path, key string) bool {
-	index, ok := strings.CutPrefix(path, key+".")
-	return path == key || ok && index != "" && strings.Trim(index, "0123456789") == ""
+// valueOf tells whether s, a frontmatter's string, is one of p's strings as
+// stringsOf reads them: p's value when a string, one of its list's when a
+// list, by s's depth too, as a key may hold a '.' ("aliases.0" is a key's
+// path as well as a list's first string's).
+func valueOf(s markdown.Scalar, p markdown.Property) bool {
+	switch p.Value.(type) {
+	case string:
+		return s.Path == p.Key
+	case []any:
+		index, ok := strings.CutPrefix(s.Path, p.Key+".")
+		return s.Depth == 2 && ok && index != "" && strings.Trim(index, "0123456789") == ""
+	}
+	return false
 }
 
-// keyOf is the first of props's keys that is key but for ASCII case, if
+// propertyOf is the first of props whose key is key but for ASCII case, if
 // one is: the one Obsidian reads.
-func keyOf(props []markdown.Property, key string) (string, bool) {
+func propertyOf(props []markdown.Property, key string) (markdown.Property, bool) {
 	for _, p := range props {
 		if asciiFold(p.Key, key) {
-			return p.Key, true
+			return p, true
 		}
 	}
-	return "", false
+	return markdown.Property{}, false
 }
 
 // stringsOf is the strings of the first of props whose key is key but for
 // ASCII case, trimmed as JavaScript trims, as text: its value when a
 // string, its value's strings when a list.
 func stringsOf(props []markdown.Property, key string) []string {
-	for _, p := range props {
-		if !asciiFold(p.Key, key) {
-			continue
-		}
-		var out []string
-		switch v := p.Value.(type) {
-		case string:
-			out = append(out, text(jsTrim(v)))
-		case []any:
-			for _, item := range v {
-				if s, ok := item.(string); ok {
-					out = append(out, text(jsTrim(s)))
-				}
+	p, _ := propertyOf(props, key)
+	var out []string
+	switch v := p.Value.(type) {
+	case string:
+		out = append(out, text(jsTrim(v)))
+	case []any:
+		for _, item := range v {
+			if s, ok := item.(string); ok {
+				out = append(out, text(jsTrim(s)))
 			}
 		}
-		return out
 	}
-	return nil
+	return out
 }
 
 // asciiFold tells whether a and b are one but for ASCII case, as a

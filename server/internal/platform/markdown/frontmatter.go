@@ -24,6 +24,10 @@ type Scalar struct {
 	// Path is its property's: the keys and the list indexes down to it,
 	// joined by '.', as "sources.0".
 	Path string
+	// Depth is how many keys and indexes Path joins: 1 for a property's
+	// own value. A key may hold a '.': "a.0" is a's list's first string at
+	// 2, the key "a.0"'s value at 1.
+	Depth int
 	// Value is the string.
 	Value string
 	// Quote is how it is written: 0 plain, '\'' or '"'.

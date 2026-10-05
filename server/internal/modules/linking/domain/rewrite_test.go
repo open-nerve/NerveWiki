@@ -53,6 +53,20 @@ func TestARewriteWritesEachLinkAsTheRulesSay(t *testing.T) {
 			"[[al]] [[old]] [[Old]]\n", "[[al]] [[old]] [[old]]\n",
 		},
 		{
+			"a rename of the case only of a title that ends with .md: a link written as now, as it was",
+			renameCase{Pages: []string{"x.md", "src"}, From: "x.md", To: "X.md"},
+			"[[X.md]] [[x.md]] [t](X.md.md)\n", "[[X.md]] [[X.md]] [t](X.md.md)\n",
+		},
+		{
+			"a title that holds a comment's %%, new or old: a Markdown link's text left, a wikilink's display followed",
+			renameCase{Pages: []string{"F", "F/Old", "src"}, From: "F/Old", To: "F/a %% b"},
+			"[Old](F/Old.md) [[F/Old|Old]] %% hidden %% shown\n", "[Old](a%20%25%25%20b.md) [[a %% b|a %% b]] %% hidden %% shown\n",
+		},
+		{
+			"a title that held a comment's %%: a Markdown link's text left",
+			renameCase{From: "a %% b", To: "New"}, "[a %% b](a%20%25%25%20b.md) %% hidden %%\n", "[a %% b](New.md) %% hidden %%\n",
+		},
+		{
 			"a link that was ambiguous, and leads to its page after: as it was",
 			renameCase{Pages: []string{"A", "A/x", "B", "B/x", "C", "C/y", "src"}, From: "C/y", To: "C/z"},
 			"[[x]]\n", "[[x]]\n",
@@ -89,6 +103,28 @@ func TestARewriteWritesEachLinkAsTheRulesSay(t *testing.T) {
 				t.Errorf("written\n%q\nwant\n%q\nleft %+v", got, tt.want, left)
 			}
 		})
+	}
+}
+
+// A rename of the case only writes no link that names the page by its
+// title as now written, a title that ends with ".md" too, with ".md" after
+// it or not (M6/P4 fix check c1-1): the page is not written again, nor the
+// rename refused for its being edited.
+func TestACaseOnlyRenameRewritesNoLinkWrittenAsNow(t *testing.T) {
+	id := uuid.NewV7()
+	at := domain.Resolution{ID: id}
+	for _, recased := range []struct {
+		name    string
+		targets map[string]bool
+	}{
+		{"X.md", map[string]bool{"X.md": false, "X.md.md": false, "A/X.md": false, "x.md": true, "x.md.md": true, "x.MD": true}},
+		{"X", map[string]bool{"X": false, "X.md": false, "X.MD": false, "x": true, "x.md": true}},
+	} {
+		for target, want := range recased.targets {
+			if got := domain.Rewrites(domain.Link{Target: target}, at, at, domain.Recased{ID: id, Name: recased.name}); got != want {
+				t.Errorf("a rename to %q: [[%s]] rewrites %t, want %t", recased.name, target, got, want)
+			}
+		}
 	}
 }
 

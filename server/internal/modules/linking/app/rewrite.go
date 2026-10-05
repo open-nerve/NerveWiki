@@ -29,9 +29,6 @@ type Rewrite struct {
 	MaxContent int
 }
 
-// errTooLarge is a writing of a page past MaxContent.
-var errTooLarge = errors.New("linking: the page written again would hold more than a page may")
-
 // rewritten is a link of the index to write again, where it resolved
 // before the operation and where it resolves after.
 type rewritten struct {
@@ -238,6 +235,11 @@ func (r Rewrite) rewrite(ctx context.Context, id uuid.UUID, revision int, reache
 			links = append(links, domain.Resolved{Link: l, Before: x.before, After: x.after})
 		}
 	}
+	// The content's share goes back before a writing's parse takes its own,
+	// its links kept for Written uncounted until then: some tenth of what
+	// that parse holds (markdown.Hold.KeepFacts). Held, the two would ask
+	// more than the smallest budget, a page's largest content, for a page
+	// at its largest, which no wait would free (M6/P4 fix check c1).
 	was.Release()
 	rewriting := domain.Rewrite(content, from, links, tree, recased)
 	for _, l := range rewriting.Left {
@@ -248,23 +250,26 @@ func (r Rewrite) rewrite(ctx context.Context, id uuid.UUID, revision int, reache
 		return nil
 	}
 	var now Parsed // the last writing's parse
+	var large int  // the bytes of a writing past MaxContent, if one was
 	written, kept, err := rewriting.Written(content, was.Facts.Links, from, tree, func(writing string) ([]domain.Link, error) {
 		now.release()
 		now = Parsed{}
 		if len(writing) > r.MaxContent {
-			return nil, errTooLarge
+			large = len(writing)
+			return nil, domain.ErrTooLarge
 		}
 		var err error
 		now, err = r.Parser.ParseNow(ctx, writing)
 		return now.Facts.Links, err
 	})
 	switch {
-	case errors.Is(err, errTooLarge):
-		r.Logger.LogAttrs(ctx, slog.LevelWarn, "the links of a page are not rewritten: it would hold more than a page may",
-			slog.String("page_id", id.String()), slog.Int("bytes", len(content)))
-		return nil
 	case err != nil:
 		return err
+	case !kept && large > 0:
+		now.release()
+		r.Logger.LogAttrs(ctx, slog.LevelWarn, "the links of a page are not rewritten: it would hold more than a page may",
+			slog.String("page_id", id.String()), slog.Int("bytes", len(content)), slog.Int("written", large))
+		return nil
 	case !kept:
 		now.release()
 		r.Logger.LogAttrs(ctx, slog.LevelError, "the links of a page are not rewritten: no writing reads back as its links",

@@ -2,6 +2,7 @@ package domain
 
 import (
 	"cmp"
+	"errors"
 	"slices"
 	"strings"
 	"uuid"
@@ -49,7 +50,8 @@ type Rewriting struct {
 // l, no value of the aliases, resolved to a page before it, and resolves
 // after it to another, to none, or ambiguously where it did not; or l
 // resolved to recased, the page a rename changed the case of the title of
-// only, and names it by its title not as now written.
+// only, and names it by its title not as now written, with ".md" or
+// without, a title that ends with ".md" too.
 func Rewrites(l Link, before, after Resolution, recased Recased) bool {
 	switch {
 	case before.ID == (uuid.UUID{}) || l.Aliases:
@@ -57,7 +59,9 @@ func Rewrites(l Link, before, after Resolution, recased Recased) bool {
 	case after.ID != before.ID || after.Ambiguous && !before.Ambiguous:
 		return true
 	}
-	return before.ID == recased.ID && byKey(l, shared.TitleKey(recased.Name)) && stem(last(l.Target)) != recased.Name
+	written := last(l.Target)
+	return before.ID == recased.ID && byKey(l, shared.TitleKey(recased.Name)) &&
+		written != recased.Name && stem(written) != recased.Name
 }
 
 // Rewrite is how the links of content, the page's at from (its path after
@@ -86,12 +90,17 @@ func Rewrite(content string, from []Step, links []Resolved, tree Tree, recased R
 	return w
 }
 
+// ErrTooLarge is parse's answer, for Written, to a writing that would hold
+// more than a page may: none, the next tried (M6/P4 fix check c1-3).
+var ErrTooLarge = errors.New("linking: the page written again would hold more than a page may")
+
 // Written is content written again with w's edits, as parse reads its
 // links back (M6/P4 design 3.1): with them all when its links are was,
 // content's, in their places (Kept); else with those of the targets alone,
 // what the links show left as it was; else ok is false, the links of no
 // writing being content's: a title the Markdown around a link reads into
-// it, such as a '$' or a '`' that pairs with another.
+// it, such as a '$' or a '`' that pairs with another. A writing parse
+// answers ErrTooLarge is not content's either.
 func (w Rewriting) Written(content string, was []Link, from []Step, tree Tree,
 	parse func(content string) ([]Link, error),
 ) (written string, ok bool, err error) {
@@ -103,7 +112,10 @@ func (w Rewriting) Written(content string, was []Link, from []Step, tree Tree,
 	for _, edits := range tries {
 		written = Apply(content, edits)
 		now, err := parse(written)
-		if err != nil {
+		switch {
+		case errors.Is(err, ErrTooLarge):
+			continue
+		case err != nil:
 			return "", false, err
 		}
 		if w.Kept(was, now, from, tree) {
@@ -213,9 +225,14 @@ func relink(content string, from []Step, l Link, was, now Node, tree Tree) ([]Ed
 	}
 	if markdownLink {
 		if s, e, ok := linkText(content, l.Start); ok {
-			text := content[s:e]
-			if text == quoted(l, was.name()) || strings.Contains(text, "/") && text == quoted(l, was.path()) {
-				edits = append(edits, Edit{Start: s, End: e, Text: quoted(l, now.name()), Shown: true})
+			text, shown := content[s:e], quoted(l, now.name())
+			// A link's text is Markdown, where a comment's "%%" pairs with
+			// the page's markers past the link: one written or taken out
+			// would show or hide text there and keep every link, which
+			// Written would not tell (M6/P4 fix check c1-5).
+			follows := text == quoted(l, was.name()) || strings.Contains(text, "/") && text == quoted(l, was.path())
+			if follows && !strings.Contains(text, "%%") && !strings.Contains(shown, "%%") {
+				edits = append(edits, Edit{Start: s, End: e, Text: shown, Shown: true})
 			}
 		}
 		return edits, true

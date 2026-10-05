@@ -284,32 +284,23 @@ func TestTheLinksAChangeReaches(t *testing.T) {
 }
 
 // A link reached tells whether it is a value of its page's aliases, as the
-// extraction tells it (M6/P4 review r3-1): its property is the first key
-// that is "aliases" but for ASCII case, a key that is it but for another
-// case not among them, or one of that key's list.
+// extraction told it when the page was indexed (M6/P4 design 2).
 func TestALinkReachedTellsWhetherItIsAValueOfTheAliases(t *testing.T) {
 	f := newFixture(t)
 	p := uuid.NewV7()
-	var props []domain.Property
-	for _, key := range []string{"tags", "ALİASES", "ALIASES", "aliases"} {
-		props = append(props, domain.Property{Key: key, Value: []byte("[]")})
+	links := []domain.Link{
+		{Kind: "wikilink", Property: "aliases.0", Target: "A", Start: 0, End: 1, Aliases: true},
+		{Kind: "wikilink", Property: "aliases.1", Target: "A", Start: 10, End: 11},
+		{Kind: "wikilink", Target: "A", Start: 20, End: 21},
 	}
-	paths := map[string]bool{
-		"ALIASES": true, "ALIASES.0": true, "ALIASES.12": true, "ALIASES.x": false, "ALIASES.": false, "ALIASESX": false,
-		"aliases.0": false, "ALİASES.0": false, "tags.0": false, "": false,
-	}
-	var links []domain.Link
-	for path := range paths {
-		links = append(links, domain.Link{Kind: "wikilink", Property: path, Target: "A", Start: 10 * len(links), End: 10*len(links) + 1})
-	}
-	f.replace(t, app.Page{ID: p, NotebookID: f.eng, Revision: 1}, domain.Facts{Links: links, Properties: props})
+	f.replace(t, app.Page{ID: p, NotebookID: f.eng, Revision: 1}, domain.Facts{Links: links})
 	got, err := f.s.Links(context.Background(), f.eng, domain.Reach{Sources: []uuid.UUID{p}})
 	if err != nil || len(got) != len(links) {
 		t.Fatalf("%d links, %v; want %d", len(got), err, len(links))
 	}
 	for i, l := range got {
-		if want := paths[links[i].Property]; l.Aliases != want {
-			t.Errorf("the link of %q: aliases %t, want %t", links[i].Property, l.Aliases, want)
+		if l.Aliases != links[i].Aliases {
+			t.Errorf("the link at %d: aliases %t, want %t", l.Start, l.Aliases, links[i].Aliases)
 		}
 	}
 }

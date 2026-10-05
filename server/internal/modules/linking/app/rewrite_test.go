@@ -302,17 +302,21 @@ func TestAPageBeingEditedThatIsNotWrittenDoesNotRefuse(t *testing.T) {
 // A page whose writing would hold more than MaxContent, and one whose
 // writing does not read back as its links, are logged and left, the
 // operation going on; their parses give their share of the budget back
-// (M6/P4 review r2-2, R1-1).
+// (M6/P4 review r2-2, R1-1). One whose writing with the links' texts would
+// hold more, but with their targets alone not, is written so (M6/P4 fix
+// check c1-3).
 func TestAPageThatCannotBeWrittenIsLeft(t *testing.T) {
-	w := newRewriting(t, "A", "A/x", "Other", "big", "math", "src")
+	w := newRewriting(t, "A", "A/x", "Other", "big", "near", "math", "src")
 	w.write("big", "[[A/x]]\n"+strings.Repeat("a", 1<<10-8))
+	near := strings.Repeat("a", 1<<10-18)
+	w.write("near", "[A/x](A/x.md)\n"+near)
 	w.write("math", "costs $5 [[Other]] [[A/x]]\n")
 	w.write("src", "[[A/x]]\n")
 	u, err := w.follow(nil, w.rename("A/x", "Dollar$"))
 	if err != nil {
 		t.Fatalf("the rename: %v, want it to pass", err)
 	}
-	w.written(u, map[string]string{"src": "[[Dollar$]]\n"})
+	w.written(u, map[string]string{"near": "[A/x](Dollar$.md)\n" + near, "src": "[[Dollar$]]\n"})
 	for _, logged := range []string{"it would hold more than a page may", "no writing reads back as its links"} {
 		if !strings.Contains(w.logs.String(), logged) {
 			t.Errorf("the log %q, want %q", w.logs, logged)

@@ -37,6 +37,7 @@ type PageLink struct {
 	TargetAltKey *string
 	ResolvedID   *uuid.UUID
 	Ambiguous    bool
+	Aliases      bool
 }
 
 type PageProperty struct {

@@ -51,17 +51,17 @@ func (q *Queries) DeleteNotebooksLinks(ctx context.Context, ids []uuid.UUID) err
 const insertLinks = `-- name: InsertLinks :exec
 INSERT INTO page_links (
     source_id, range_start, range_end, notebook_id, kind, property_key, target, anchor, display, target_key,
-    target_alt_key, resolved_id, ambiguous
+    target_alt_key, resolved_id, ambiguous, aliases
 )
 SELECT $1, u.range_start, u.range_end, $2, u.kind, NULLIF(u.property_key, ''),
     u.target, NULLIF(u.anchor, ''), NULLIF(u.display, ''), NULLIF(u.target_key, ''), NULLIF(u.target_alt_key, ''),
-    NULL, false
+    NULL, false, u.aliases
 FROM (
     SELECT unnest($3::integer[]) AS range_start, unnest($4::integer[]) AS range_end,
         unnest($5::text[]) AS kind, unnest($6::text[]) AS property_key,
         unnest($7::text[]) AS target, unnest($8::text[]) AS anchor,
         unnest($9::text[]) AS display, unnest($10::text[]) AS target_key,
-        unnest($11::text[]) AS target_alt_key
+        unnest($11::text[]) AS target_alt_key, unnest($12::boolean[]) AS aliases
 ) AS u
 `
 
@@ -77,6 +77,7 @@ type InsertLinksParams struct {
 	Displays      []string
 	TargetKeys    []string
 	TargetAltKeys []string
+	Aliases       []bool
 }
 
 // A page's links, resolved to none. An empty property path, anchor, display text or key is none.
@@ -93,20 +94,14 @@ func (q *Queries) InsertLinks(ctx context.Context, arg InsertLinksParams) error 
 		arg.Displays,
 		arg.TargetKeys,
 		arg.TargetAltKeys,
+		arg.Aliases,
 	)
 	return err
 }
 
 const linksReached = `-- name: LinksReached :many
-SELECT l.source_id, l.range_start, l.target, l.resolved_id, l.ambiguous,
-    coalesce(l.property_key = a.key OR (left(l.property_key, length(a.key) + 1) = a.key || '.'
-        AND substr(l.property_key, length(a.key) + 2) ~ '^[0-9]+$'), false)::boolean AS aliases
+SELECT l.source_id, l.range_start, l.target, l.resolved_id, l.ambiguous, l.aliases
 FROM page_links l
-LEFT JOIN LATERAL (
-    SELECT p.key FROM page_properties p
-    WHERE p.source_id = l.source_id AND translate(p.key, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz') = 'aliases'
-    ORDER BY p.position LIMIT 1
-) a ON l.property_key IS NOT NULL
 WHERE l.notebook_id = $1 AND (
     l.target_key = ANY($2::text[]) OR l.target_alt_key = ANY($2::text[])
     OR l.resolved_id = ANY($3::uuid[]) OR l.source_id = ANY($4::uuid[])
@@ -131,9 +126,7 @@ type LinksReachedRow struct {
 }
 
 // The links of a notebook whose target's keys meet keys, that resolve to one of targets, or that are written in
-// one of sources (M6/P3 design 3.4, step 6). Each tells whether it is a value of its page's aliases, as the
-// extraction tells it (linking/adapter/markdown, keyOf and valueOf): its property is the first key that is
-// "aliases" but for ASCII case, or one of that key's list (M6/P4 design 2).
+// one of sources (M6/P3 design 3.4, step 6), each with whether it is a value of its page's aliases (M6/P4 design 2).
 func (q *Queries) LinksReached(ctx context.Context, arg LinksReachedParams) ([]LinksReachedRow, error) {
 	rows, err := q.db.Query(ctx, linksReached,
 		arg.NotebookID,

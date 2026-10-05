@@ -27,11 +27,11 @@ type Facts struct {
 // value of, its target, anchor and display text, an empty one none; and
 // where its target is written, in bytes, one link a range.
 //
-// What a rewrite reads of it beside (M6/P4 design 3), which the index does
-// not keep: Quote is how the frontmatter writes a property link's value,
-// 0 plain, or the single or double quote around it; InTable tells a
-// wikilink in a table's cell; Aliases a link that is a value of the page's
-// aliases, which a rewrite leaves.
+// What a rewrite reads of it beside (M6/P4 design 2, 3): Aliases tells a
+// link that is a value of the page's aliases, which a rewrite leaves; and,
+// which the index does not keep, Quote is how the frontmatter writes a
+// property link's value, 0 plain, or the single or double quote around it,
+// and InTable tells a wikilink in a table's cell.
 type Link struct {
 	Kind     string
 	Property string

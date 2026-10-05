@@ -108,6 +108,7 @@ func linksParams(p app.Page, links []domain.Link) gen.InsertLinksParams {
 		out.Displays = append(out.Displays, l.Display)
 		out.TargetKeys = append(out.TargetKeys, key)
 		out.TargetAltKeys = append(out.TargetAltKeys, alt)
+		out.Aliases = append(out.Aliases, l.Aliases)
 	}
 	return out
 }

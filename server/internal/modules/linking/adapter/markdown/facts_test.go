@@ -72,11 +72,12 @@ func TestAPagesFactsAreWhatTheIndexKeeps(t *testing.T) {
 
 // What a rewrite reads of a link beside (M6/P4 design 3): a property
 // link's quote; whether it is a value of the aliases, the first key that is
-// "aliases" but for ASCII case, its string or its list's; whether a
-// wikilink is in a table's cell. A body's link has no quote.
+// "aliases" but for ASCII case, its string or its list's, not a key's
+// that holds a '.' or a mapping's; whether a wikilink is in a table's
+// cell. A body's link has no quote.
 func TestALinkTellsWhatARewriteReads(t *testing.T) {
-	content := "---\naliases: [\"[[A]]\", '[[B]]']\nAliases: \"[[C]]\"\nr: '[[D]]'\nn:\n  aliases: \"[[E]]\"\n---\n" +
-		"| h |\n| --- |\n| [[F]] |\n\n[[G]] [h](H.md)\n"
+	content := "---\naliases: [\"[[A]]\", '[[B]]']\nAliases: \"[[C]]\"\nr: '[[D]]'\nn:\n  aliases: \"[[E]]\"\naliases.1: \"[[F]]\"\n---\n" +
+		"| h |\n| --- |\n| [[G]] |\n\n[[H]] [i](I.md)\n"
 	type read struct {
 		Quote            byte
 		Aliases, InTable bool
@@ -85,9 +86,24 @@ func TestALinkTellsWhatARewriteReads(t *testing.T) {
 	for _, l := range factsOf(t, content).Links {
 		got = append(got, read{l.Quote, l.Aliases, l.InTable})
 	}
-	want := []read{{'"', true, false}, {'\'', true, false}, {'"', false, false}, {'\'', false, false}, {'"', false, false}, {0, false, true}, {0, false, false}, {0, false, false}}
+	want := []read{
+		{'"', true, false}, {'\'', true, false}, {'"', false, false}, {'\'', false, false}, {'"', false, false}, {'"', false, false},
+		{0, false, true}, {0, false, false}, {0, false, false},
+	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("read %+v\nwant %+v", got, want)
+	}
+	for frontmatter, want := range map[string]bool{
+		"ALIASES: '[[A]]'":               true,
+		"aliases: {\"0\": \"[[A]]\"}":    false,
+		"aliases: [[\"[[A]]\"]]":         false,
+		"aliases: {x: [\"[[A]]\"]}":      false,
+		"aliases: x\naliases.0: '[[A]]'": false,
+	} {
+		links := factsOf(t, "---\n"+frontmatter+"\n---\n").Links
+		if len(links) != 1 || links[0].Aliases != want {
+			t.Errorf("%q: links %+v, want one whose aliases is %t", frontmatter, links, want)
+		}
 	}
 }
 

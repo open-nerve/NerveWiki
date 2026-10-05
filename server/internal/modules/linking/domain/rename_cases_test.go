@@ -82,7 +82,7 @@ func rewrite(t *testing.T, m *markdown.Markdown, c renameCase, content string) (
 	if parentOf(c.From) == parentOf(c.To) && shared.TitleKey(lastOf(c.From)) == shared.TitleKey(lastOf(c.To)) {
 		recased = domain.Recased{ID: was.ids[c.From], Name: lastOf(c.To)}
 	}
-	tree := domain.Tree{Before: was.byID, After: now.byID, Named: now.named}
+	tree := rewriteTree(was, now, links, recased)
 	w := domain.Rewrite(content, now.paths[moved(c.Page)], links, tree, recased)
 	written, ok, err := w.Written(content, facts.Links, now.paths[moved(c.Page)], tree, func(s string) ([]domain.Link, error) {
 		f, err := markdownadapter.PageFacts(m.Parse([]byte(s)).Facts())
@@ -139,6 +139,22 @@ func pagesOf(t *testing.T, paths []string, aliases [][]string) pages {
 		}
 	}
 	return p
+}
+
+// rewriteTree is the tree a rewrite reads of the pages before a change and
+// after it, as linking/app reads it (Rewrite.tree): after it, by title
+// key, only the pages with the keys a writing of the pages of the links it
+// writes may be read with (WrittenKeys).
+func rewriteTree(before, after pages, links []domain.Resolved, recased domain.Recased) domain.Tree {
+	named := map[string][]domain.Node{}
+	for _, l := range links {
+		if n, ok := after.byID[l.Before.ID]; ok && domain.Rewrites(l.Link, l.Before, l.After, recased) {
+			for _, key := range domain.WrittenKeys(n) {
+				named[key] = after.named[key]
+			}
+		}
+	}
+	return domain.Tree{Before: before.byID, After: after.byID, Named: named}
 }
 
 // resolve resolves l from the page at from, its candidates found as the

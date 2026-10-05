@@ -20,7 +20,7 @@ import (
 // case, with ".md", with what a Markdown link escapes or decodes, and with
 // what the Markdown around a link may pair, so that names repeat.
 func randomTitle(r *rand.Rand) string {
-	titles := []string{"a", "A", "b", "x", "X", "y", "Plan", "a b", "é", "x.md", "Close) 50%", "x%41", "a$b", "Don`t"}
+	titles := []string{"a", "A", "b", "x", "X", "y", "Plan", "a b", "é", "x.md", "Close) 50%", "x%41", "a$b", "Don`t", "a %% b"}
 	return titles[r.IntN(len(titles))]
 }
 
@@ -29,9 +29,9 @@ func randomTitle(r *rand.Rand) string {
 // (Written), and no more ambiguously; one that did not is as it was, byte
 // for byte; the links are the same in number and kind, and none is left;
 // every edit is within a link's brackets and the rest of its line (M6/P4
-// design 8). A writing that does not read back as the links leaves the
-// page, only when it writes a '$' or a '`' that the Markdown around may
-// pair.
+// design 8); the comments' markers where they pair are as many. A writing
+// that does not read back as the links leaves the page, only when it
+// writes a '$' or a '`' that the Markdown around may pair.
 func TestARewriteKeepsWhereEveryLinkLeads(t *testing.T) {
 	m, err := markdown.New([]markdown.Extension{tasks.Extension(), obsidian.Extension(obsidian.Options{})})
 	if err != nil {
@@ -56,7 +56,7 @@ func TestARewriteKeepsWhereEveryLinkLeads(t *testing.T) {
 		for i, l := range facts.Links {
 			links[i] = domain.Resolved{Link: l, Before: before.resolve(l, c.page), After: after.resolve(l, c.pageAfter)}
 		}
-		tree := domain.Tree{Before: before.byID, After: after.byID, Named: after.named}
+		tree := rewriteTree(before, after, links, c.recased)
 		w := domain.Rewrite(c.content, after.paths[c.pageAfter], links, tree, c.recased)
 		written, ok, err := w.Written(c.content, facts.Links, after.paths[c.pageAfter], tree, parse)
 		if err != nil {
@@ -99,6 +99,9 @@ func TestARewriteKeepsWhereEveryLinkLeads(t *testing.T) {
 		if len(again.Links) != len(links) {
 			fail("%d links after, %d before", len(again.Links), len(links))
 		}
+		if got, want := comments(written, again.Links), comments(c.content, facts.Links); got != want {
+			fail("%d comments' markers after, %d before", got, want)
+		}
 		for i, l := range again.Links {
 			was := links[i]
 			if l.Kind != was.Link.Kind || l.Property != was.Link.Property {
@@ -126,6 +129,27 @@ func TestARewriteKeepsWhereEveryLinkLeads(t *testing.T) {
 	if pairing < 100 || unwritten > rewritten/10 {
 		t.Errorf("%d of %d cases with edits write a '$' or a '`', %d are left: want more, and few left", pairing, rewritten, unwritten)
 	}
+}
+
+// comments is how many comments' "%%" content holds where they pair:
+// outside its links' targets and its wikilinks' brackets. A writing that
+// changes it shows or hides text, keeping every link (M6/P4 fix check
+// c1-5).
+func comments(content string, links []domain.Link) int {
+	var outside strings.Builder
+	at := 0
+	for _, l := range links {
+		end := l.End
+		if i := strings.Index(content[l.End:], "]]"); (l.Kind == "wikilink" || l.Kind == "embed") && i >= 0 {
+			end += i
+		}
+		if l.Start >= at {
+			outside.WriteString(content[at:l.Start] + "\x00")
+			at = end
+		}
+	}
+	outside.WriteString(content[at:])
+	return strings.Count(outside.String(), "%%")
 }
 
 // withinLink tells whether e, an edit of content, is within l's brackets
@@ -184,6 +208,9 @@ func randomCase(r *rand.Rand) randomCaseOf {
 	var body, properties []string
 	for range 1 + r.IntN(8) {
 		body = append(body, randomLink(r, c.pages, c.page))
+		if r.IntN(3) == 0 {
+			body = append(body, []string{"**b**", "_i_", "~~s~~", "==h==", "%% c %%", "%%", "`code`"}[r.IntN(7)])
+		}
 	}
 	if r.IntN(3) == 0 {
 		body = append(body, "\n\n| h |\n| --- |\n| "+strings.ReplaceAll(randomWikilink(r, c.pages, c.page), "|", `\|`)+" |\n")
