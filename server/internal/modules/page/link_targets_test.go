@@ -1,0 +1,98 @@
+package page_test
+
+import (
+	"context"
+	"reflect"
+	"testing"
+	"uuid"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/open-nerve/NerveWiki/server/internal/modules/page"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres/pgtest"
+	"github.com/open-nerve/NerveWiki/server/internal/shared"
+)
+
+// linkTree is a notebook's tree as the link index reads it: A, A/B, A/C
+// deleted, and A/b.png, an attachment.
+type linkTree struct {
+	pool                 *pgxpool.Pool
+	notebook, a, b, c, x uuid.UUID
+}
+
+func newLinkTree(t *testing.T) linkTree {
+	t.Helper()
+	ctx := context.Background()
+	pool, err := postgres.NewPool(ctx, config.DatabaseConfig{URL: pgtest.NewDatabase(t), MaxConns: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pool.Close)
+	l := linkTree{pool: pool, notebook: uuid.NewV7(), a: uuid.NewV7(), b: uuid.NewV7(), c: uuid.NewV7(), x: uuid.NewV7()}
+	alice, acme := uuid.NewV7(), uuid.NewV7()
+	for _, stmt := range []struct {
+		sql  string
+		args []any
+	}{
+		{"INSERT INTO users (id, email, password, display_name, created_at, updated_at) VALUES ($1, 'alice@corp.com', 'x', 'x', now(), now())", []any{alice}},
+		{"INSERT INTO workspaces (id, slug, name, created_by_id, updated_by_id, created_at, updated_at) VALUES ($1, 'acme', 'Acme', $2, $2, now(), now())", []any{acme, alice}},
+		{"INSERT INTO notebooks (id, workspace_id, name, created_by_id, updated_by_id, created_at, updated_at) VALUES ($1, $2, 'Notes', $3, $3, now(), now())", []any{l.notebook, acme, alice}},
+	} {
+		if _, err := pool.Exec(ctx, stmt.sql, stmt.args...); err != nil {
+			t.Fatalf("%s: %v", stmt.sql, err)
+		}
+	}
+	for _, n := range []struct {
+		id     uuid.UUID
+		parent *uuid.UUID
+		kind   string
+		name   string
+		gone   bool
+	}{{l.a, nil, "page", "A", false}, {l.b, &l.a, "page", "B", false}, {l.c, &l.a, "page", "C", true}, {l.x, &l.a, "asset", "b.png", false}} {
+		_, err := pool.Exec(ctx, `INSERT INTO nodes (id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id,
+			updated_by_id, created_at, updated_at, deleted_at)
+			VALUES ($1, $2, $3, $4, $5, $6, 0, $7, $7, now(), now(), CASE WHEN $8 THEN now() END)`,
+			n.id, l.notebook, n.parent, n.kind, n.name, shared.TitleKey(n.name), alice, n.gone)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	return l
+}
+
+// The link index reads the pages by key and by id with their paths, and a
+// page with the pages under it: never an attachment or a deleted page.
+func TestTheLinkIndexReadsTheNotebooksPages(t *testing.T) {
+	l := newLinkTree(t)
+	ctx := context.Background()
+	targets := page.NewLinkTargets(l.pool)
+	a := page.LinkStep{ID: l.a, Key: "a"}
+	b := page.LinkStep{ID: l.b, Key: "b"}
+
+	got, err := targets.ByKeys(ctx, l.notebook, []string{"b", "c", "b.png"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []page.LinkNode{{ID: l.b, Path: []page.LinkStep{a, b}}}; !reflect.DeepEqual(got, want) {
+		t.Errorf("by keys = %+v\nwant %+v", got, want)
+	}
+	got, err = targets.Paths(ctx, l.notebook, []uuid.UUID{l.a, l.c, l.x})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []page.LinkNode{{ID: l.a, Path: []page.LinkStep{a}}}; !reflect.DeepEqual(got, want) {
+		t.Errorf("paths = %+v\nwant %+v", got, want)
+	}
+	sub, err := targets.Subtree(ctx, l.notebook, l.a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []page.LinkStep{a, b}; !reflect.DeepEqual(sub, want) {
+		t.Errorf("subtree = %+v\nwant %+v", sub, want)
+	}
+	if sub, err := targets.Subtree(ctx, l.notebook, l.c); err == nil {
+		t.Errorf("a deleted page's subtree = %+v, want an error", sub)
+	}
+}
