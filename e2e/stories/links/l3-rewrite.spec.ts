@@ -1,8 +1,9 @@
+import { accountIdOf } from "../../fixtures/assert/identity";
 import { displayNameOf, emailFor } from "../../fixtures/auth";
 import { failedToLoad } from "../../fixtures/browser";
 import { joinAs } from "../../fixtures/invitations";
 import { createNotebook } from "../../fixtures/notebooks";
-import { createPage, endSession, listNodes, openSession, readContent, renameNode } from "../../fixtures/pages";
+import { createPage, endSession, getPage, listNodes, openSession, readContent, renameNode } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
 import {
   dragPage,
@@ -23,10 +24,11 @@ import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 
 /** What linking.pages_locked says above the list of the pages it names. */
 const writesAgain =
-  "This change writes the links on these pages again, and they are being edited. Wait until their editors are done, or ask a notebook admin to unlock them.";
+  "This change would write the links on these pages again, and they are being edited. Try again once their editors are done; a notebook admin can also release a lock.";
 
 test("L3 (API): a rename writes the links to the page again, each as the renamer; one whose rewrite reaches a page another edits is 409 linking.pages_locked naming it and its editor, and renames nothing", async ({
   api,
+  db,
 }, testInfo) => {
   const { pat: admin, workspace } = await newTeam(api, testInfo);
   const aEmail = emailFor(testInfo, "a");
@@ -49,6 +51,7 @@ test("L3 (API): a rename writes the links to the page again, each as the renamer
   expect((await renameNode(api, a, target.id, "Renamed")).response.status).toBe(200);
   const written = await readContent(api, admin, source.id);
   expect([written.content, written.revision]).toEqual(["[[Renamed]] and [md](Renamed.md)\n", 2]);
+  expect((await getPage(api, admin, source.id)).data?.content_updated_by).toBe(await accountIdOf(db, aEmail));
 });
 
 test("L3 (page): a rename in the dialog, and a drag, whose links' page another edits say who edits which page and change nothing; once the editor is done, the rename goes through and the link leads to the page", async ({

@@ -16,6 +16,7 @@ import { useT } from "../../i18n/i18n";
 import type { Notebook } from "../../services/notebook.service";
 import { usePageTree, useStore } from "../../stores/context";
 import { useNewPage } from "./new-page";
+import { distinctName } from "./distinct-name";
 import { dropMove } from "./page-drag";
 import { isDragData, PageList, type TreeContext } from "./page-tree-item";
 
@@ -129,7 +130,9 @@ export const PageTree = observer(function PageTree({ notebook }: { notebook: Not
         )}
       </div>
       {failure !== undefined && (
-        <Alert>{pagesLocked(failure, t, me, (id) => pages.byId(id)?.name) ?? errorText(failure, t)}</Alert>
+        <Alert>
+          {pagesLocked(failure, t, me, (id) => distinctName(pages.tree, notebook, id, t)) ?? errorText(failure, t)}
+        </Alert>
       )}
       {read ? (
         <PageList context={context} parent={null} depth={0} />

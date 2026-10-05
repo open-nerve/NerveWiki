@@ -28,12 +28,12 @@ function parts(node: ReturnType<typeof pagesLocked>): string[] {
 
 test("pagesLocked says the change writes the pages' links again, and names who edits each, the account itself too", () => {
   expect(parts(pagesLocked(locked, t, "u-ada", titleOf))).toEqual([
-    "This change writes the links on these pages again, and they are being edited. Wait until their editors are done, or ask a notebook admin to unlock them.",
+    "This change would write the links on these pages again, and they are being edited. Try again once their editors are done; a notebook admin can also release a lock.",
     "Bob is editing “Linux”.",
     "You are editing “Notes”.",
   ]);
   expect(parts(pagesLocked(locked, translator("zh-CN"), "u-ada", titleOf))).toEqual([
-    "这次改动要改写这些页里的链接，而它们正在被编辑。请等编辑结束，或请笔记本管理员强制解锁。",
+    "这次改动需要改写这些页里的链接，而它们正在被编辑。等编辑结束后再试；笔记本管理员也可以解除锁定。",
     "Bob 正在编辑「Linux」。",
     "你正在编辑「Notes」。",
   ]);

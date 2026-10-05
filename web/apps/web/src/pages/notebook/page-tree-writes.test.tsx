@@ -206,7 +206,7 @@ test("a rename whose links' pages are being edited names them and their editors 
       .getAllByRole("listitem")
       .map((item) => item.textContent)
   ).toEqual(["Bob is editing “Linux”.", "You are editing “Notes”."]);
-  expect(alert.textContent).toContain("This change writes the links on these pages again");
+  expect(alert.textContent).toContain("This change would write the links on these pages again");
   expect(server.nodes.map((node) => node.name)).toEqual(["Guide", "Install", "Linux", "Notes"]);
 });
 
