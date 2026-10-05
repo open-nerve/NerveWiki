@@ -429,6 +429,7 @@ export const en = {
   "problem.page.edit_session_taken_over": "You took over editing this page elsewhere.",
   "problem.page.edit_session_unlocked": "An admin of the notebook released this page's edit lock.",
   "problem.page.locked": "This page is being edited in another session.",
+  "problem.linking.pages_locked": "Pages whose links this change would rewrite are being edited.",
   "problem.network": "Cannot reach the server. Check the connection and try again.",
   "problem.unavailable": "Cannot reach the server for now. You are still signed in; try again in a moment.",
   "problem.storage":

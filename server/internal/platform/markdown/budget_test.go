@@ -162,6 +162,38 @@ func TestAHoldKeepsItsFactsShare(t *testing.T) {
 	all.Release()
 }
 
+// A take now holds what is free as a take does, but answers ErrBusy at
+// once, well within the budget's wait, when it is not: it waits for
+// nothing. An empty content takes nothing; a content larger than the
+// budget takes all of it.
+func TestATakeNowWaitsForNothing(t *testing.T) {
+	const size = 4 * markdown.MinTake
+	b := markdown.NewBudget(size, time.Minute, slog.New(slog.DiscardHandler))
+	ctx := context.Background()
+	all, err := b.TakeNow(ctx, 2*size)
+	if err != nil {
+		t.Fatalf("the budget, free: %v", err)
+	}
+	at := time.Now()
+	if _, err := b.TakeNow(ctx, 1); !errors.Is(err, markdown.ErrBusy) || time.Since(at) > time.Second {
+		t.Fatalf("a take now of a held budget: %v after %s, want ErrBusy at once", err, time.Since(at))
+	}
+	if empty, err := b.TakeNow(ctx, 0); err != nil {
+		t.Fatalf("an empty content, the budget held: %v", err)
+	} else {
+		empty.Release()
+	}
+	all.Release()
+	one, err := b.TakeNow(ctx, 1)
+	if err != nil {
+		t.Fatalf("a short content after the release: %v", err)
+	}
+	if _, err := b.TakeNow(ctx, size-markdown.MinTake+1); !errors.Is(err, markdown.ErrBusy) {
+		t.Fatalf("more than is free beside a short content's MinTake: %v, want ErrBusy", err)
+	}
+	one.Release()
+}
+
 // A take that does not get its bytes within the wait is busy, and logs it;
 // a cancelled request, or one whose own deadline comes first, gets its
 // context's error: the request ran out, the server is not busy.

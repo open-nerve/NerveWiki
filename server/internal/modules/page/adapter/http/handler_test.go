@@ -334,6 +334,8 @@ func TestTheOperationsAnswerEachProblem(t *testing.T) {
 	busy := shared.ServerBusy(time.Second)
 	locked := domain.Locked(id(12), id(2), "Bob")
 	unlocked := domain.Unlocked(id(3), "Carol")
+	pagesLocked := shared.NewError(shared.KindConflict, "linking.pages_locked", "Pages are being edited.")
+	pagesLocked.Locks = []shared.LockHolder{{PageID: id(12), UserID: id(2), DisplayName: "Bob"}, {PageID: id(13), UserID: id(1), DisplayName: "Ann"}}
 	toggle := `{"base_revision":1,"offset":3,"checked":true}`
 	for _, tt := range []struct {
 		method, path, body string
@@ -362,12 +364,16 @@ func TestTheOperationsAnswerEachProblem(t *testing.T) {
 		{http.MethodPatch, nodePath, `{"name":"a/b"}`, shared.Forbidden(), http.StatusForbidden, "forbidden"},
 		{http.MethodPatch, nodePath, `{"name":"a/b"}`, invalid, http.StatusUnprocessableEntity, "validation_failed"},
 		{http.MethodPatch, nodePath, `{"name":"a/b"}`, domain.ErrTitleTaken, http.StatusConflict, "page.title_taken"},
+		{http.MethodPatch, nodePath, `{"name":"a/b"}`, pagesLocked, http.StatusConflict, "linking.pages_locked"},
+		{http.MethodPatch, nodePath, `{"name":"a/b"}`, busy, http.StatusServiceUnavailable, "server_busy"},
 		{http.MethodPost, movePath, move, domain.ErrNotFound, http.StatusNotFound, "page.not_found"},
 		{http.MethodPost, movePath, move, shared.Forbidden(), http.StatusForbidden, "forbidden"},
 		{http.MethodPost, movePath, move, parentInvalid, http.StatusUnprocessableEntity, "validation_failed"},
 		{http.MethodPost, movePath, move, domain.ErrCycle, http.StatusConflict, "page.cycle"},
 		{http.MethodPost, movePath, move, domain.ErrTitleTaken, http.StatusConflict, "page.title_taken"},
 		{http.MethodPost, movePath, move, domain.ErrTooDeep, http.StatusConflict, "page.too_deep"},
+		{http.MethodPost, movePath, move, pagesLocked, http.StatusConflict, "linking.pages_locked"},
+		{http.MethodPost, movePath, move, busy, http.StatusServiceUnavailable, "server_busy"},
 		{http.MethodDelete, nodePath, "", domain.ErrNotFound, http.StatusNotFound, "page.not_found"},
 		{http.MethodDelete, nodePath, "", shared.Forbidden(), http.StatusForbidden, "forbidden"},
 		{http.MethodPost, openPath, "", domain.ErrNotFound, http.StatusNotFound, "page.not_found"},

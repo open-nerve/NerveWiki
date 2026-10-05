@@ -65,12 +65,8 @@ const minTake = 4 << 10
 // minTake, one larger than the budget all of it; nothing is taken for an
 // empty one.
 func (b *Budget) Take(ctx context.Context, n int) (*Hold, error) {
-	h := &Hold{budget: b, content: max(n, 0)}
-	if n <= 0 {
-		return h, nil
-	}
-	h.n = min(max(n, minTake), b.size)
-	if b.bytes.TryAcquire(int64(h.n)) {
+	h := b.hold(n)
+	if h.n == 0 || b.bytes.TryAcquire(int64(h.n)) {
 		return h, nil
 	}
 	queued := b.waiting.Add(1)
@@ -88,6 +84,30 @@ func (b *Budget) Take(ctx context.Context, n int) (*Hold, error) {
 		return nil, err
 	}
 	return h, nil
+}
+
+// TakeNow holds the bytes of a content of n bytes as Take does, if they
+// are free now: it answers ErrBusy at once otherwise, and waits for
+// nothing. A caller that holds a lock while it parses takes so, as a
+// rename's rewrite holds its notebook's row (M6/P4 design 4.2): a take
+// that waited would wait on writers that wait on the lock.
+func (b *Budget) TakeNow(ctx context.Context, n int) (*Hold, error) {
+	h := b.hold(n)
+	if h.n == 0 || b.bytes.TryAcquire(int64(h.n)) {
+		return h, nil
+	}
+	b.logger.LogAttrs(ctx, slog.LevelInfo, "content parsing is saturated", slog.Int64("queued", b.waiting.Load()))
+	return nil, ErrBusy
+}
+
+// hold is a hold of what a content of n bytes takes: nothing for an empty
+// one, at least minTake, and no more than the budget.
+func (b *Budget) hold(n int) *Hold {
+	h := &Hold{budget: b, content: max(n, 0)}
+	if n > 0 {
+		h.n = min(max(n, minTake), b.size)
+	}
+	return h
 }
 
 // Hold is the bytes of the budget a content holds.

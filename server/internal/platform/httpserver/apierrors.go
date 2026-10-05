@@ -20,13 +20,15 @@ import (
 // not import internal/shared: shared.Error satisfies this by structure, and so
 // can any other error type, e.g. bodyshape's.
 //
-// Four methods are optional:
+// Five methods are optional:
 //
 //	ProblemFields() []error    each element has ProblemField() and
 //	                           ProblemCode() string, and Error() is the message
 //	RetryAfter() time.Duration a positive value becomes Retry-After
 //	ProblemLock() (pageID, userID uuid.UUID, displayName string, ok bool)
 //	                           the lock member, when ok
+//	ProblemLocks(each func(pageID, userID uuid.UUID, displayName string))
+//	                           gives each lock of the locks member, in order
 //	ProblemEndedBy() (userID uuid.UUID, displayName string, ok bool)
 //	                           the ended_by member, when ok
 type ProblemError interface {
@@ -51,6 +53,10 @@ type retryAfter interface {
 
 type problemLock interface {
 	ProblemLock() (pageID, userID uuid.UUID, displayName string, ok bool)
+}
+
+type problemLocks interface {
+	ProblemLocks(each func(pageID, userID uuid.UUID, displayName string))
 }
 
 type problemEndedBy interface {
@@ -243,6 +249,11 @@ func problemOf(pe ProblemError) (Problem, time.Duration) {
 		if pageID, userID, name, ok := l.ProblemLock(); ok {
 			p.Lock = &ProblemLock{PageID: pageID, UserID: userID, DisplayName: name}
 		}
+	}
+	if l, ok := pe.(problemLocks); ok {
+		l.ProblemLocks(func(pageID, userID uuid.UUID, name string) {
+			p.Locks = append(p.Locks, ProblemLock{PageID: pageID, UserID: userID, DisplayName: name})
+		})
 	}
 	if b, ok := pe.(problemEndedBy); ok {
 		if userID, name, ok := b.ProblemEndedBy(); ok {

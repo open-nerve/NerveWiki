@@ -416,6 +416,7 @@ export const zhCN: Messages = {
   "problem.page.edit_session_taken_over": "你已在别处接管了这个页面的编辑。",
   "problem.page.edit_session_unlocked": "笔记本的管理员解除了这个页面的编辑锁。",
   "problem.page.locked": "这个页面正在另一个会话中编辑。",
+  "problem.linking.pages_locked": "需要改写其中链接的页面正在被编辑。",
   "problem.network": "连不上服务器，请检查网络后重试。",
   "problem.unavailable": "暂时连不上服务器。你仍在登录状态，请稍后重试。",
   "problem.storage": "此浏览器无法保存登录状态：本站的存储空间已满或被阻止。请释放空间或允许本站的网站数据后重试。",

@@ -35,10 +35,12 @@ type Problem struct {
 	Title  string       `json:"title"`
 	Detail string       `json:"detail,omitempty"`
 	Errors []FieldError `json:"errors,omitempty"`
-	// Lock and EndedBy are the members only some codes carry (M5 design
-	// 4.5): page.locked names the lock, page.edit_session_unlocked who
+	// Lock, Locks and EndedBy are the members only some codes carry (M5
+	// design 4.5, M6/P4 design 4.1): page.locked names the lock,
+	// linking.pages_locked the locks, page.edit_session_unlocked who
 	// unlocked.
 	Lock    *ProblemLock   `json:"lock,omitempty"`
+	Locks   []ProblemLock  `json:"locks,omitempty"`
 	EndedBy *ProblemPerson `json:"ended_by,omitempty"`
 }
 
