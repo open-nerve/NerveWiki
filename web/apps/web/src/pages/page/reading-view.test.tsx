@@ -159,7 +159,7 @@ test.each(["#nw-none", "#nw-%E0%A4"])(
   }
 );
 
-test("a view from the cache is read again, once, for an anchor of no element, then the page's heading takes the focus", async () => {
+test("a view from the cache is read again, once, for an anchor of no element, the page's heading taking the focus at once", async () => {
   const scrolled = scrolls();
   const server = pageServer();
   // Each read another HTML, none with the element.
@@ -258,6 +258,40 @@ test("once the view read again for the anchor is in without its element, a later
   await screen.findByRole("heading", { level: 2, name: "X" });
   expect(document.activeElement).toBe(heading);
   expect(scrolled).toEqual([]);
+});
+
+test("the element the view read again brings moves nothing once the reader scrolled", async () => {
+  const scrolled = scrolls();
+  const { server, release } = heldServer(["<p>Install</p>", '<h2 id="nw-x">X</h2>']);
+  await openedFromTheCache(server, "#nw-x");
+  const heading = await screen.findByRole("heading", { level: 1, name: "Install" });
+  await waitFor(() => expect(document.activeElement).toBe(heading));
+
+  Object.defineProperty(window, "scrollY", { configurable: true, value: 600 });
+  onTestFinished(() => void Object.defineProperty(window, "scrollY", { configurable: true, value: 0 }));
+  await act(async () => release());
+  await screen.findByRole("heading", { level: 2, name: "X" });
+  expect(document.activeElement).toBe(heading);
+  expect(scrolled).toEqual([]);
+});
+
+test("while the view is read again for the anchor the page opened at, a link of the page to an element goes there, and the read moves nothing", async () => {
+  const scrolled = scrolls();
+  const { server, release } = heldServer([
+    '<h2 id="nw-intro">Intro</h2>',
+    '<h2 id="nw-intro">Intro</h2><h2 id="nw-x">X</h2>',
+  ]);
+  const { router } = await openedFromTheCache(server, "#nw-x");
+  const heading = await screen.findByRole("heading", { level: 1, name: "Install" });
+  await waitFor(() => expect(document.activeElement).toBe(heading));
+
+  await act(() => router.navigate(`${pagePath(install.id)}#nw-intro`));
+  const intro = screen.getByRole("heading", { level: 2, name: "Intro" });
+  expect(document.activeElement).toBe(intro);
+  await act(async () => release());
+  await screen.findByRole("heading", { level: 2, name: "X" });
+  expect(document.activeElement).toBe(screen.getByRole("heading", { level: 2, name: "Intro" }));
+  expect(scrolled).toEqual([intro]);
 });
 
 test("the element the view read again brings takes the focus only if the reader has not moved it", async () => {

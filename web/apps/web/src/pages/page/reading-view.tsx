@@ -42,12 +42,13 @@ import { useWorkspace } from "../workspace/workspace-layout";
  * as the page opens (its first navigation, by a load or from another
  * page), unanchored gives the page's heading the focus if it is nowhere
  * (what had it went with the page before); and a view from the cache, which
- * may be older than the link, is read again: the element it brings takes
- * the focus if it has not moved since. A link of the page to no element
- * leaves the focus where it is, and the page. An
- * element with an id that had the focus as the HTML is replaced, the
- * anchor's among them, has it back in the new HTML, shown again if it
- * showed and no longer does: a view read again stays where it is.
+ * may be older than the link, is read again: the element it brings shows
+ * and takes the focus, if the reader has moved neither the focus nor the
+ * page since; a read after that one moves nothing. A link of the page to no
+ * element leaves the focus where it is, and the page. An element with an
+ * id that had the focus as the HTML is replaced, the anchor's among them,
+ * has it back in the new HTML, shown again if it showed and no longer
+ * does: a view read again stays where it is.
  */
 export const ReadingView = observer(function ReadingView({
   notebook,
@@ -71,9 +72,9 @@ export const ReadingView = observer(function ReadingView({
   const location = useLocation();
   // The element with an id focused as the HTML was replaced, and whether it showed.
   const focusedTarget = useRef<{ id: string; shown: boolean } | undefined>(undefined);
-  // The navigation the page opened at whose anchor named no element of the view from the cache, while the view is
-  // read again for it, and what had the focus then.
-  const awaited = useRef<{ navigation: string; focus: Element | null } | undefined>(undefined);
+  // While the view from the cache is read again for the anchor the page opened at, which named no element of it:
+  // what had the focus then, and where the window was scrolled.
+  const awaited = useRef<{ focus: Element | null; scrollY: number } | undefined>(undefined);
   const { data, error, mutate } = useSWR(["page-view", notebook.id, page.id], () => pages.view(page.id));
   // Whether the view came from the cache: older, maybe, than the address.
   const cached = useRef(data !== undefined);
@@ -176,9 +177,14 @@ export const ReadingView = observer(function ReadingView({
     const anchor = location.hash.slice(1);
     const target = anchor === "" ? undefined : named(container, anchor);
     if (anchored.current === navigation) {
-      // The view read again for it has the element, the focus where it was: the element takes it.
+      // The view read again for it has the element, the reader having moved neither the focus nor the page.
       const waiting = awaited.current;
-      if (waiting?.navigation === navigation && target !== undefined && document.activeElement === waiting.focus) {
+      if (
+        waiting !== undefined &&
+        target !== undefined &&
+        document.activeElement === waiting.focus &&
+        window.scrollY === waiting.scrollY
+      ) {
         awaited.current = undefined;
         focusOn(target, {});
       }
@@ -199,11 +205,10 @@ export const ReadingView = observer(function ReadingView({
       latestUnanchored.current();
     }
     if (cached.current) {
-      awaited.current = { navigation, focus: document.activeElement };
+      // Once per page: the wait ends with this read, or at the next navigation.
+      awaited.current = { focus: document.activeElement, scrollY: window.scrollY };
       void mutate().finally(() => {
-        if (awaited.current?.navigation === navigation) {
-          awaited.current = undefined;
-        }
+        awaited.current = undefined;
       });
     }
   }, [anchored, html, location.hash, location.key, mutate]);
