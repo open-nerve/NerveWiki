@@ -14,6 +14,10 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
 )
 
+// MaxDepth is how deep pages nest, a root at depth 1: a link's landing is
+// no deeper (M6/P6 design 2).
+const MaxDepth = domain.MaxDepth
+
 // LinkTargets is what the link index reads of a notebook's pages (M6/P3
 // design 3.3), in the caller's transaction: bootstrap wires it to the
 // linking module.

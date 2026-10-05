@@ -31,8 +31,8 @@ type (
 	// NotebookWorkspaces reads the notebooks' workspaces: bootstrap hands
 	// notebook.NewNotebooks to it.
 	NotebookWorkspaces = app.NotebookWorkspaces
-	// PageTree reads a notebook's whole tree and a page's notebook:
-	// bootstrap hands page.NewLinkTargets to it.
+	// PageTree reads a notebook's tree, whole or by keys and ids, and a
+	// page's notebook: bootstrap hands page.NewLinkTargets to it.
 	PageTree = app.PageTree
 )
 
@@ -43,6 +43,8 @@ type Deps struct {
 	Notebooks  NotebookWorkspaces
 	Pages      PageTree
 	Contents   PageContents
+	// MaxDepth is how deep pages nest: bootstrap hands page.MaxDepth to it.
+	MaxDepth int
 }
 
 // Module is the wired linking module's HTTP side.
@@ -50,8 +52,8 @@ type Module struct {
 	uc httpadapter.UseCases
 }
 
-// New wires the index's reads (M6/P5): they read on the pool, each in its
-// own statements, and parse nothing.
+// New wires the index's reads (M6/P5) and a link's landing (M6/P6): they
+// read on the pool, each in its own statements, and parse nothing.
 func New(d Deps) *Module {
 	store := postgresadapter.New(d.Pool)
 	access := app.Access{Notebooks: d.Notebooks, Pages: d.Pages, Auth: d.Authorizer}
@@ -61,6 +63,7 @@ func New(d Deps) *Module {
 		ListTags:          app.ListTags{Access: access, Reads: store},
 		GetTag:            app.GetTag{Access: access, Reads: store, TagKey: markdownadapter.TagKey},
 		ListLinkTargets:   app.ListLinkTargets{Access: access, Reads: store},
+		GetLinkLanding:    app.GetLinkLanding{Access: access, Pages: d.Pages, Reads: store, MaxDepth: d.MaxDepth},
 	}}
 }
 

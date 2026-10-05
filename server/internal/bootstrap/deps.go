@@ -153,8 +153,8 @@ func pageDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, author
 }
 
 // linkingDeps are the linking module's HTTP side's, the index's reads
-// (M6/P5): the notebook module's notebooks and the page module's tree and
-// contents.
+// (M6/P5) and a link's landing (M6/P6): the notebook module's notebooks
+// and the page module's tree, contents and depth.
 func linkingDeps(pool *pgxpool.Pool, authorizer shared.Authorizer) linking.Deps {
 	targets := page.NewLinkTargets(pool)
 	return linking.Deps{
@@ -163,6 +163,7 @@ func linkingDeps(pool *pgxpool.Pool, authorizer shared.Authorizer) linking.Deps 
 		Notebooks:  notebook.NewNotebooks(pool),
 		Pages:      linkTargets{targets},
 		Contents:   targets,
+		MaxDepth:   page.MaxDepth,
 	}
 }
 

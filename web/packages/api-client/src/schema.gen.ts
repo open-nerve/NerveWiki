@@ -1039,6 +1039,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v0/pages/{page_id}/link-landing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The page's id. */
+                page_id: components["parameters"]["PageID"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Read where a page made for a link would go
+         * @description Where a page made for a link's target, written in this page, would go so that the link then leads to it: under which page, null for the notebook's root, and titled what, the target's last segment as written without ".md". createPage makes it. A target that leads to a page already answers that page instead; one with no such place answers why: target_invalid, it has an empty segment, a "." or ".." past its head, a NUL, or bytes that are not UTF-8; title_invalid, its last segment is no title; parent_missing, no page is where its other segments lead, read from this page's folder for "./" and "../", from the root for "/", else as links resolve but not by aliases; too_deep, the page made would be deeper than pages nest; not_resolvable, the target would not lead to the page made, or not to it alone. The notebook's admins and editors can read it. A page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found; then a role that does not write is forbidden; then a target absent or longer than 4096 bytes is validation_failed.
+         */
+        get: operations["getLinkLanding"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v0/notebooks/{notebook_id}/tags": {
         parameters: {
             query?: never;
@@ -1777,6 +1800,33 @@ export interface components {
             /** @description The property links, by where they are written. */
             links: components["schemas"]["PropertyLink"][];
         };
+        /** @description Where a page made for a link would go. */
+        Landing: {
+            /**
+             * Format: uuid
+             * @description The page it would go under; null for the notebook's root.
+             */
+            parent_id: string | null;
+            /** @description Its title, as createPage takes it. */
+            title: string;
+        };
+        /**
+         * @description Why a link's target has no landing; the operation says each.
+         * @enum {string}
+         */
+        LandingReason: "target_invalid" | "title_invalid" | "parent_missing" | "too_deep" | "not_resolvable";
+        /** @description Exactly one of node_id, landing and reason is not null. */
+        LinkLanding: {
+            /**
+             * Format: uuid
+             * @description The page the target leads to already; null for none.
+             */
+            node_id: string | null;
+            /** @description Where the page made would go; null for nowhere. */
+            landing: components["schemas"]["Landing"] | null;
+            /** @description Why the target has no landing; null when it has one. */
+            reason: components["schemas"]["LandingReason"] | null;
+        };
         TagCount: {
             /** @description The tag, without its '#'. */
             tag: string;
@@ -1978,6 +2028,9 @@ export type BacklinkPage = components['schemas']['BacklinkPage'];
 export type PageProperty = components['schemas']['PageProperty'];
 export type PropertyLink = components['schemas']['PropertyLink'];
 export type PageProperties = components['schemas']['PageProperties'];
+export type Landing = components['schemas']['Landing'];
+export type LandingReason = components['schemas']['LandingReason'];
+export type LinkLanding = components['schemas']['LinkLanding'];
 export type TagCount = components['schemas']['TagCount'];
 export type TagList = components['schemas']['TagList'];
 export type TagPage = components['schemas']['TagPage'];
@@ -3449,6 +3502,33 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PageProperties"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    getLinkLanding: {
+        parameters: {
+            query?: {
+                /** @description The link's target as written, without its heading, block or display text; at most 4096 bytes. Absent is validation_failed on target. */
+                target?: string;
+            };
+            header?: never;
+            path: {
+                /** @description The page's id. */
+                page_id: components["parameters"]["PageID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Where the page made would go, the page there, or why neither. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkLanding"];
                 };
             };
             default: components["responses"]["Problem"];

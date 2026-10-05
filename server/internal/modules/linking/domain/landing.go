@@ -25,6 +25,10 @@ const (
 	NotResolvable Reason = "not_resolvable"
 )
 
+// MaxLandingTarget is the longest target, in bytes, whose landing is read
+// (M6/P6 design 2).
+const MaxLandingTarget = 4096
+
 // Landing is where a page made for a link's target would go, so that the
 // link leads to it (M6/P6 design 2): under Parent, the zero id for the
 // root, titled Title. Node is the page the target leads to already; Reason

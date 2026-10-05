@@ -86,6 +86,8 @@ func TestATargetLandsWhereItWouldLeadToThePageMade(t *testing.T) {
 		{"Note", "A/src", 10, want{node: "Note"}},
 		{"Al", "A/src", 10, want{node: "P"}},
 		{"/Z/x", "B", 10, want{reason: domain.ParentMissing}},
+		// From the root exactly: A/B/C is no C there.
+		{"/C/x", "A", 10, want{reason: domain.ParentMissing}},
 		{"Z/x", "B", 10, want{reason: domain.ParentMissing}},
 		{"./Z/x", "A/src", 10, want{reason: domain.ParentMissing}},
 		// An alias leads from a name alone only.

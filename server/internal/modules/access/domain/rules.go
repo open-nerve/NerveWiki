@@ -108,6 +108,9 @@ func rules() map[shared.Action]Rule {
 		"tag.list":           {Level: LevelNotebook, Notebook: readers()},
 		"tag.read":           {Level: LevelNotebook, Notebook: readers()},
 		"link_target.list":   {Level: LevelNotebook, Notebook: readers()},
+		// Where a page made for a link would go (M6/P6 design 2): the half
+		// of a write, its writers'.
+		"link_landing.read": {Level: LevelNotebook, Notebook: writers()},
 	}
 }
 

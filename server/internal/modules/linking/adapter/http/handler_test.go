@@ -37,11 +37,13 @@ func id(n int) uuid.UUID {
 }
 
 // fakes are the use cases: each records what it got and answers err, or
-// the fixtures' answer; next is the backlinks' next cursor.
+// the fixtures' answer; next is the backlinks' next cursor, landing the
+// landing's answer.
 type fakes struct {
-	err  error
-	next string
-	got  []any
+	err     error
+	next    string
+	landing domain.Landing
+	got     []any
 }
 
 type (
@@ -50,6 +52,7 @@ type (
 	fakeTags       struct{ *fakes }
 	fakeTag        struct{ *fakes }
 	fakeTargets    struct{ *fakes }
+	fakeLanding    struct{ *fakes }
 )
 
 func (f fakeBacklinks) Execute(_ context.Context, pageID uuid.UUID, limit *int, cursor *string) (app.Backlinks, error) {
@@ -94,6 +97,11 @@ func (f fakeTargets) Execute(_ context.Context, notebookID uuid.UUID) ([]app.Lin
 	}, f.err
 }
 
+func (f fakeLanding) Execute(_ context.Context, pageID uuid.UUID, target *string) (domain.Landing, error) {
+	f.got = []any{pageID, target}
+	return f.landing, f.err
+}
+
 // serve mounts the module on f behind the platform's middlewares.
 func (f *fakes) serve(t *testing.T) http.Handler {
 	t.Helper()
@@ -101,7 +109,7 @@ func (f *fakes) serve(t *testing.T) http.Handler {
 	api := httpservertest.NewAPI(t, httpservertest.APIOptions{Authenticator: fakeAuth{}})
 	httpadapter.Register(router, api, httpadapter.UseCases{
 		ListBacklinks: fakeBacklinks{f}, GetPageProperties: fakeProperties{f}, ListTags: fakeTags{f}, GetTag: fakeTag{f},
-		ListLinkTargets: fakeTargets{f},
+		ListLinkTargets: fakeTargets{f}, GetLinkLanding: fakeLanding{f},
 	})
 	return router
 }
@@ -127,6 +135,7 @@ const (
 	notebookPath   = "/api/v0/notebooks/0199a2b4-0000-7000-8000-000000000010"
 	tagsPath       = notebookPath + "/tags"
 	targetsPath    = notebookPath + "/link-targets"
+	landingPath    = pagePath + "/link-landing"
 )
 
 func TestTheOperationsAnswerTheUseCases(t *testing.T) {
@@ -175,6 +184,39 @@ func TestTheOperationsAnswerTheUseCases(t *testing.T) {
 	}
 }
 
+// A landing answers one of its three fields, the others null; the target
+// is the use case's as the query has it, nil when absent.
+func TestTheLandingAnswersOneOfItsFields(t *testing.T) {
+	target := "../a b.md"
+	for _, tt := range []struct {
+		name, path string
+		landing    domain.Landing
+		want       string
+		got        []any
+	}{
+		{"a target that leads to a page", landingPath + "?target=x", domain.Landing{Node: id(13)},
+			`{"landing":null,"node_id":"0199a2b4-0000-7000-8000-000000000013","reason":null}`, []any{id(12), new("x")}},
+		{"a landing under a page", landingPath + "?target=..%2Fa%20b.md", domain.Landing{Parent: id(11), Title: "a b"},
+			`{"landing":{"parent_id":"0199a2b4-0000-7000-8000-000000000011","title":"a b"},"node_id":null,"reason":null}`,
+			[]any{id(12), &target}},
+		{"a landing at the root", landingPath + "?target=", domain.Landing{Title: "x"},
+			`{"landing":{"parent_id":null,"title":"x"},"node_id":null,"reason":null}`, []any{id(12), new("")}},
+		{"no landing", landingPath, domain.Landing{Reason: domain.TooDeep},
+			`{"landing":null,"node_id":null,"reason":"too_deep"}`, []any{id(12), (*string)(nil)}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			f := &fakes{landing: tt.landing}
+			status, body := call(t, f.serve(t), tt.path)
+			if status != http.StatusOK || body != tt.want {
+				t.Errorf("got %d %s\nwant %s", status, body, tt.want)
+			}
+			if !reflect.DeepEqual(f.got, tt.got) {
+				t.Errorf("the use case got %#v, want %#v", f.got, tt.got)
+			}
+		})
+	}
+}
+
 // The use cases' errors are answered as problems with their codes.
 func TestTheUseCasesErrorsAreProblems(t *testing.T) {
 	_, invalidLimit := shared.PageSize(new(101))
@@ -191,6 +233,10 @@ func TestTheUseCasesErrorsAreProblems(t *testing.T) {
 		{"tags of no notebook", tagsPath, domain.ErrNotebookNotFound, http.StatusNotFound, "notebook.not_found"},
 		{"a tag of no notebook", tagsPath + "/a", domain.ErrNotebookNotFound, http.StatusNotFound, "notebook.not_found"},
 		{"link targets of no notebook", targetsPath, domain.ErrNotebookNotFound, http.StatusNotFound, "notebook.not_found"},
+		{"a landing in no page", landingPath, domain.ErrPageNotFound, http.StatusNotFound, "page.not_found"},
+		{"a reader's landing", landingPath + "?target=x", shared.Forbidden(), http.StatusForbidden, "forbidden"},
+		{"a landing without a target", landingPath, shared.Invalid(shared.FieldError{Field: "target", Code: shared.FieldRequired, Message: "is required"}),
+			http.StatusUnprocessableEntity, "validation_failed"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			status, body := call(t, (&fakes{err: tt.err}).serve(t), tt.path)
@@ -205,7 +251,7 @@ func TestTheUseCasesErrorsAreProblems(t *testing.T) {
 // A limit that is no integer, or an id that is no uuid, is a bad request
 // before any use case.
 func TestParametersThatDoNotBindAreBadRequests(t *testing.T) {
-	for _, path := range []string{backlinksPath + "?limit=x", "/api/v0/pages/x/properties", "/api/v0/notebooks/x/tags/a"} {
+	for _, path := range []string{backlinksPath + "?limit=x", "/api/v0/pages/x/properties", "/api/v0/notebooks/x/tags/a", "/api/v0/pages/x/link-landing?target=a"} {
 		f := &fakes{}
 		if status, body := call(t, f.serve(t), path); status != http.StatusBadRequest || f.got != nil {
 			t.Errorf("%s: %d %s, the use case got %v", path, status, body, f.got)
