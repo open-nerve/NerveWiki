@@ -3,29 +3,38 @@ package markdown
 import (
 	"bytes"
 	"regexp"
+	"strconv"
 
 	"github.com/yuin/goldmark/ast"
+	east "github.com/yuin/goldmark/extension/ast"
 	"github.com/yuin/goldmark/renderer"
 	gmhtml "github.com/yuin/goldmark/renderer/html"
 	"github.com/yuin/goldmark/text"
 	"github.com/yuin/goldmark/util"
 )
 
-// language is what a code block's info string may give its class.
-var language = regexp.MustCompile(`^[a-z0-9_+#.-]{1,32}$`)
+// language is what a code block's info string may give its class, and
+// attrName an attribute's name an extension may write.
+var (
+	language = regexp.MustCompile(`^[a-z0-9_+#.-]{1,32}$`)
+	attrName = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
+)
 
 // marks renders what goldmark's HTML renderer would render unsafely, or
 // not as a reading view needs (M4/P3 design 3.6): every address through
 // SafeURL, an image as a link, a code block's language only if it is one,
 // and raw HTML only after the sanitizer; a link or an image an extension
-// knows with the attributes its Links gives in place of its address. A
-// Render has its own.
+// knows with the attributes its Links gives in place of its address; in a
+// link, an autolink and a footnote's reference with no link of their own.
+// A Render has its own.
 type marks struct {
 	links int // the links being rendered around the node
 	// destinations is where the parse found the destinations written, and
 	// written the extensions' Links, in their order.
 	destinations func(ast.Node) (text.Segment, bool)
 	written      []func(start int) ([]Attr, bool)
+	// footnoteLink renders a footnote's reference out of a link.
+	footnoteLink renderer.NodeRendererFunc
 }
 
 // known is the attributes an extension's Links has n, a Markdown link or
@@ -46,20 +55,34 @@ func (m *marks) known(n ast.Node) ([]Attr, bool) {
 	return nil, false
 }
 
-// writeAttrs writes attrs, each value escaped.
-func writeAttrs(w util.BufWriter, attrs []Attr) {
+// WriteAttrs writes attrs as an extension's renderer writes the attributes
+// it gives an element: each value escaped, an address (href, src) through
+// SafeURL, and left out when it is not let through, as is a name that is
+// not lower-case letters, digits and '-' (P3B review L2).
+func WriteAttrs(w util.BufWriter, attrs []Attr) {
 	for _, a := range attrs {
+		value := a.Value
+		if a.Name == "href" || a.Name == "src" {
+			var ok bool
+			if value, ok = SafeURL(value); !ok {
+				continue
+			}
+		}
+		if !attrName.MatchString(a.Name) {
+			continue
+		}
 		_ = w.WriteByte(' ')
 		_, _ = w.WriteString(a.Name)
 		_, _ = w.WriteString(`="`)
-		_, _ = w.Write(util.EscapeHTML([]byte(a.Value)))
+		_, _ = w.Write(util.EscapeHTML([]byte(value)))
 		_ = w.WriteByte('"')
 	}
 }
 
 func (m *marks) RegisterFuncs(reg renderer.NodeRendererFuncRegisterer) {
 	reg.Register(ast.KindLink, m.link)
-	reg.Register(ast.KindAutoLink, autoLink)
+	reg.Register(ast.KindAutoLink, m.autoLink)
+	reg.Register(east.KindFootnoteLink, m.footnote)
 	reg.Register(ast.KindImage, m.image)
 	reg.Register(ast.KindFencedCodeBlock, fencedCode)
 	reg.Register(kindSafeHTML, safe)
@@ -74,7 +97,10 @@ func (m *marks) link(w util.BufWriter, _ []byte, node ast.Node, entering bool) (
 		m.links--
 	}
 	attrs, known := m.known(n)
-	href, ok := SafeURL(string(util.URLEscape(n.Destination, true)))
+	href, ok := "", false
+	if !known {
+		href, ok = SafeURL(string(util.URLEscape(n.Destination, true)))
+	}
 	if !known && !ok {
 		return ast.WalkContinue, nil // the text alone
 	}
@@ -84,7 +110,7 @@ func (m *marks) link(w util.BufWriter, _ []byte, node ast.Node, entering bool) (
 	}
 	if known {
 		_, _ = w.WriteString("<a")
-		writeAttrs(w, attrs)
+		WriteAttrs(w, attrs)
 	} else {
 		_, _ = w.WriteString(`<a href="`)
 		_, _ = w.Write(util.EscapeHTML([]byte(href)))
@@ -99,7 +125,8 @@ func (m *marks) link(w util.BufWriter, _ []byte, node ast.Node, entering bool) (
 	return ast.WalkContinue, nil
 }
 
-func autoLink(w util.BufWriter, source []byte, node ast.Node, entering bool) (ast.WalkStatus, error) {
+// autoLink is an autolink, its label alone in a link.
+func (m *marks) autoLink(w util.BufWriter, source []byte, node ast.Node, entering bool) (ast.WalkStatus, error) {
 	n := node.(*ast.AutoLink)
 	if !entering {
 		return ast.WalkContinue, nil
@@ -110,7 +137,7 @@ func autoLink(w util.BufWriter, source []byte, node ast.Node, entering bool) (as
 		url = append([]byte("mailto:"), url...)
 	}
 	href, ok := SafeURL(string(url))
-	if !ok {
+	if !ok || m.links > 0 {
 		_, _ = w.Write(label)
 		return ast.WalkContinue, nil
 	}
@@ -119,6 +146,24 @@ func autoLink(w util.BufWriter, source []byte, node ast.Node, entering bool) (as
 	_, _ = w.WriteString(`">`)
 	_, _ = w.Write(label)
 	_, _ = w.WriteString("</a>")
+	return ast.WalkContinue, nil
+}
+
+// footnote is a footnote's reference: in a link, its number alone, with
+// the id its back link leads to, as goldmark writes them.
+func (m *marks) footnote(w util.BufWriter, source []byte, node ast.Node, entering bool) (ast.WalkStatus, error) {
+	if m.links == 0 {
+		return m.footnoteLink(w, source, node, entering)
+	}
+	if entering {
+		n := node.(*east.FootnoteLink)
+		id := idPrefix + "fnref"
+		if n.RefIndex > 0 {
+			id += strconv.Itoa(n.RefIndex)
+		}
+		index := strconv.Itoa(n.Index)
+		_, _ = w.WriteString(`<sup id="` + id + ":" + index + `">` + index + "</sup>")
+	}
 	return ast.WalkContinue, nil
 }
 
@@ -145,7 +190,7 @@ func (m *marks) image(w util.BufWriter, source []byte, node ast.Node, entering b
 		switch {
 		case known:
 			_, _ = w.WriteString("<a")
-			writeAttrs(w, attrs)
+			WriteAttrs(w, attrs)
 			_ = w.WriteByte('>')
 			_, _ = w.Write(util.EscapeHTML(util.URLEscape(n.Destination, true)))
 			_, _ = w.WriteString("</a>")

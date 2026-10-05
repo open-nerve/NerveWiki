@@ -88,6 +88,10 @@ func TestLinksLeadWhereTheyResolve(t *testing.T) {
 			`<p>[see <a class="nw-wikilink" ` + page + `>Page</a>] [x]</p>` + "\n",
 		},
 		{
+			"in a user's link, which goes", "<a href=\"https://x.example\">see *[[Page]]*</a> <a href=\"/x\">![[Page]]</a>\n",
+			`<p>see <em><a class="nw-wikilink" ` + page + `>Page</a></em> <a class="nw-wikilink nw-embed" ` + page + `>Page</a></p>` + "\n",
+		},
+		{
 			"after a link, a link", "[a](https://x.example) [[Page]]\n",
 			`<p><a href="https://x.example">a</a> <a class="nw-wikilink" ` + page + `>Page</a></p>` + "\n",
 		},

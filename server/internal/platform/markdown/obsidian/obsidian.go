@@ -44,7 +44,7 @@ func Extension(o Options) markdown.Extension {
 		Fetch:   o.fetch,
 		Links: func(data any) func(int) ([]markdown.Attr, bool) {
 			v, _ := data.(view)
-			return v.markdownLink
+			return v.markdownAttrs
 		},
 		Renderer: func(data any) []util.PrioritizedValue {
 			v, _ := data.(view)

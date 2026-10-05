@@ -76,8 +76,7 @@ func (r nodeRenderer) renderWikilink(w util.BufWriter, _ []byte, node ast.Node, 
 	switch {
 	case !link:
 	case own:
-		href, _ := markdown.SafeURL("#" + heading)
-		attrs = []markdown.Attr{{Name: "href", Value: href}}
+		attrs = []markdown.Attr{{Name: "href", Value: "#" + heading}}
 	default:
 		var resolved bool
 		attrs, resolved = r.view.lead(n.at.Start, n.target, n.anchor)
@@ -92,11 +91,7 @@ func (r nodeRenderer) renderWikilink(w util.BufWriter, _ []byte, node ast.Node, 
 	}
 	_, _ = w.WriteString(class)
 	_ = w.WriteByte('"')
-	for _, a := range attrs {
-		_, _ = w.WriteString(" " + a.Name + `="`)
-		escaped(w, []byte(a.Value))
-		_ = w.WriteByte('"')
-	}
+	markdown.WriteAttrs(w, attrs)
 	_ = w.WriteByte('>')
 	return ast.WalkContinue, nil
 }

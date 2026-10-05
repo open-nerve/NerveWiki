@@ -27,6 +27,9 @@ type wikilink struct {
 // Kind implements ast.Node.
 func (w *wikilink) Kind() ast.NodeKind { return kindWikilink }
 
+// RendersLink implements markdown.Linker: a user's <a> around it is dropped.
+func (w *wikilink) RendersLink() {}
+
 // Dump implements ast.Node.
 func (w *wikilink) Dump(source []byte, level int) {
 	ast.DumpHelper(w, source, level, map[string]string{

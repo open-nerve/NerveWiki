@@ -54,10 +54,10 @@ func (v view) lead(start int, target, anchor string) ([]markdown.Attr, bool) {
 	return attrs, true
 }
 
-// markdownLink is how the Markdown link or image whose destination starts
+// markdownAttrs is how the Markdown link or image whose destination starts
 // at start is written, if it is one of the page's links: its state in place
 // of its address, which the front end gives.
-func (v view) markdownLink(start int) ([]markdown.Attr, bool) {
+func (v view) markdownAttrs(start int) ([]markdown.Attr, bool) {
 	l, ok := v.links[start]
 	if !ok {
 		return nil, false
@@ -86,7 +86,8 @@ func anchorID(anchor string) (string, bool) {
 // linkedWikilinks marks the wikilinks in a Markdown link's text, which
 // render as the text they show: a link holds no link (M6/P3 design 6.2).
 // The parse's own "within a link's brackets" would not do: the brackets
-// may turn out to be no link.
+// may turn out to be no link. A Markdown link whose address is not let
+// through is its text alone, its wikilinks too (P3B review L4).
 type linkedWikilinks struct{}
 
 func (linkedWikilinks) Transform(doc *ast.Document, _ text.Reader, _ parser.Context) {

@@ -84,6 +84,27 @@ func TestALinksAttributesAreEscaped(t *testing.T) {
 	}
 }
 
+// An attribute an extension gives is written only when its name is lower
+// case letters, digits and '-', and an address only through SafeURL (P3B
+// review L2).
+func TestALinksAttributesAreCheckedAsWritten(t *testing.T) {
+	ext := Extension{Name: "q", Links: func(any) func(int) ([]Attr, bool) {
+		return func(start int) ([]Attr, bool) {
+			if start == 4 {
+				return []Attr{{Name: "href", Value: "/ok?a=1&b"}, {Name: "src", Value: "//evil.example"}}, true
+			}
+			return []Attr{
+				{Name: "href", Value: "javascript:alert(1)"}, {Name: `onclick="x" data-a`, Value: "v"},
+				{Name: "Data-A", Value: "v"}, {Name: "data-b2", Value: "v"},
+			}, true
+		}
+	}}
+	want := `<p><a href="/ok?a=1&amp;b">a</a> <span class="nw-image">i <a data-b2="v">y</a></span></p>` + "\n"
+	if got := renderWith(t, Page{}, "[a](x) ![i](y)", ext); got != want {
+		t.Errorf("got  %q\nwant %q", got, want)
+	}
+}
+
 // Of the extensions that know a link, the first registered gives its
 // attributes; one that answers false leaves the address.
 func TestTheFirstExtensionThatKnowsALinkIsTaken(t *testing.T) {

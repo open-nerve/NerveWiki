@@ -276,11 +276,11 @@ func Amplifying() []Input {
 		{"a long value aliased often", func(n int) string {
 			return "---\na: &a " + strings.Repeat("x", n/2) + "\nb: [" + strings.Repeat("*a, ", n/8) + "]\n---\nbody\n"
 		}},
-		// A link to a page carries its anchor's heading id, which may be
-		// longer than the anchor ('Ⱥ' lower-cased takes a byte more), each
-		// time a reference is used (M6/P3 design 6.2).
-		{"an anchor referred to often", func(n int) string {
-			return "[x]: p#" + strings.Repeat("Ⱥ", 64) + "\n\n" + strings.Repeat("[x]", n/6)
+		// A link to a page carries its state, and an image its address as
+		// well, each time a reference is used: an image of a short address
+		// is the most per byte (M6/P3B review L3).
+		{"an image of a short address referred to often", func(n int) string {
+			return "[x]: p#&\n\n" + strings.Repeat("![x] ", n/5)
 		}},
 		// v0.1 shows an embed as a link (M6 design 4.1): it repeats nothing.
 		{"a long page embedded often", func(n int) string {

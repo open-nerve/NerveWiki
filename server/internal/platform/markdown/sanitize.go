@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/yuin/goldmark/ast"
+	east "github.com/yuin/goldmark/extension/ast"
 	"golang.org/x/net/html"
 )
 
@@ -98,11 +99,15 @@ func (n *safeBlock) Dump(source []byte, level int) { ast.DumpHelper(n, source, l
 // closes what was opened after it first. So a user's elements nest in the
 // output as they nest in the tree, and none spills into what follows. What
 // a dropped element holds is dropped up to its end tag in the scope, the
-// Markdown between too.
+// Markdown between too. A link holds no link (M6/P3B review L1): a user's
+// <a> is dropped in a Markdown link, in a user's <a>, and where a node
+// that renders a link comes before its end tag in its scope.
 func sanitize(root ast.Node, source []byte) {
-	links := 0 // the links around n, n among them
+	links := 0                     // the links around n, n among them, a user's <a> open around them too
+	var linked map[ast.Node]bool   // the nodes that render or hold a link, once raw HTML needs them
+	inUsers := map[ast.Node]bool{} // the nodes a user's <a> is open around
 	_ = ast.Walk(root, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if n.Kind() == ast.KindLink {
+		if n.Kind() == ast.KindLink || inUsers[n] {
 			if entering {
 				links++
 			} else {
@@ -118,9 +123,12 @@ func sanitize(root ast.Node, source []byte) {
 			switch c := c.(type) {
 			case *ast.RawHTML:
 				if s == nil {
-					s = &scope{inLink: links > 0}
+					if linked == nil {
+						linked = linksIn(root)
+					}
+					s = &scope{inLink: links > 0, holding: holding(c, source, linked)}
 				}
-				n.ReplaceChild(n, c, &safeHTML{html: s.writeInline(c.Segments.Value(source))})
+				n.ReplaceChild(n, c, &safeHTML{html: s.writeInline(c.Segments.Value(source), s.holding[c])})
 			case *ast.HTMLBlock:
 				raw := c.Lines().Value(source)
 				if c.HasClosure() {
@@ -128,8 +136,12 @@ func sanitize(root ast.Node, source []byte) {
 				}
 				n.ReplaceChild(n, c, &safeBlock{html: (&scope{block: true}).writeBlock(raw)})
 			default:
-				if s != nil && s.skip != "" {
+				switch {
+				case s == nil:
+				case s.skip != "":
 					n.RemoveChild(n, c)
+				case s.opened["a"] > 0:
+					inUsers[c] = true
 				}
 			}
 			c = next
@@ -141,14 +153,72 @@ func sanitize(root ast.Node, source []byte) {
 	})
 }
 
+// Linker is a node of an extension that renders as a link (M6: a
+// wikilink): a user's <a> around it is dropped, as one around a Markdown
+// link is.
+type Linker interface {
+	RendersLink()
+}
+
+// rendersLink tells whether n renders as a link: a Markdown link, an
+// autolink, an image (its address), a footnote's reference, a Linker.
+func rendersLink(n ast.Node) bool {
+	switch n.Kind() {
+	case ast.KindLink, ast.KindAutoLink, ast.KindImage, east.KindFootnoteLink:
+		return true
+	}
+	_, ok := n.(Linker)
+	return ok
+}
+
+// linksIn is the nodes of root's tree that render a link or hold one.
+func linksIn(root ast.Node) map[ast.Node]bool {
+	out := map[ast.Node]bool{}
+	_ = ast.Walk(root, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering && (out[n] || rendersLink(n)) {
+			out[n] = true
+			if p := n.Parent(); p != nil {
+				out[p] = true
+			}
+		}
+		return ast.WalkContinue, nil
+	})
+	return out
+}
+
+// holding is, of the user's <a> start tags among first and the siblings
+// after it, those after which a sibling renders or holds a link before an
+// </a>: one look back over the siblings, each tag read once more.
+func holding(first ast.Node, source []byte, linked map[ast.Node]bool) map[ast.Node]bool {
+	out := map[ast.Node]bool{}
+	link := false // a link comes before the next </a>
+	for c := first.Parent().LastChild(); c != nil; c = c.PreviousSibling() {
+		if raw, ok := c.(*ast.RawHTML); ok {
+			switch name, end, _ := readTag(raw.Segments.Value(source)); {
+			case name == "a" && end:
+				link = false
+			case name == "a" && link:
+				out[c] = true
+			}
+		} else if linked[c] {
+			link = true
+		}
+		if c == first {
+			break
+		}
+	}
+	return out
+}
+
 // scope is the elements open in one scope.
 type scope struct {
-	block  bool // flow elements are allowed: an HTML block
-	inLink bool // a user's <a> would nest in a link
-	out    bytes.Buffer
-	open   []string
-	opened map[string]int // how many of each name are open
-	skip   string         // the dropped element whose content is being dropped
+	block   bool              // flow elements are allowed: an HTML block
+	inLink  bool              // a user's <a> would nest in a link
+	holding map[ast.Node]bool // the user's <a> start tags before whose end a link comes
+	out     bytes.Buffer
+	open    []string
+	opened  map[string]int // how many of each name are open
+	skip    string         // the dropped element whose content is being dropped
 }
 
 // writeInline is one inline raw HTML node as the allowlist keeps it. goldmark
@@ -156,12 +226,14 @@ type scope struct {
 // declaration or CDATA section as CommonMark defines them, so it is read
 // here rather than by a tokenizer: one for each of thousands of tags would
 // cost far more than the tags.
-func (s *scope) writeInline(raw []byte) []byte {
+// A start tag of a link that holds one is dropped.
+func (s *scope) writeInline(raw []byte, holdsLink bool) []byte {
 	s.out.Reset()
 	if name, end, attrs := readTag(raw); name != "" {
-		if end {
+		switch {
+		case end:
 			s.end(name)
-		} else {
+		case name != "a" || !holdsLink:
 			s.start(name, attrs)
 		}
 	}
@@ -199,7 +271,7 @@ func (s *scope) writeBlock(raw []byte) []byte {
 }
 
 func (s *scope) allows(tag string) bool {
-	if tag == "a" && s.inLink {
+	if tag == "a" && (s.inLink || s.opened["a"] > 0) {
 		return false
 	}
 	return phrasing[tag] || s.block && flow[tag]

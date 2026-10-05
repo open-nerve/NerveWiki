@@ -47,7 +47,7 @@ type Extension struct {
 	Extract func(t Tree) any
 	// Fetch gets the extension's data for one page before Render renders
 	// it, from what Extract took: in the caller's read, holding no lock. Its
-	// result goes to Renderer alone. It may be nil.
+	// result goes to Links and Renderer alone. It may be nil.
 	Fetch func(ctx context.Context, page Page, extracted any) (any, error)
 	// Links is, given what Fetch got, how the Markdown links and images
 	// the extension knows are written (M6: a link to a page of the
@@ -55,13 +55,14 @@ type Extension struct {
 	// an image's destination starts in the content (Tree.Destination), the
 	// attributes its <a> carries in place of its address, an image's inner
 	// one too, and true; false leaves the address. Of the extensions that
-	// answer true, the first registered is taken. The renderer escapes the
-	// values; Markup has the names. It may be nil.
+	// answer true, the first registered is taken. They are written as
+	// WriteAttrs writes them; Markup has the names. It may be nil.
 	Links func(data any) func(start int) ([]Attr, bool)
 	// Renderer is goldmark's node renderers of the extension, given what
-	// Fetch got. Its addresses must go through SafeURL. It must render
-	// every kind of node Parser makes: goldmark's renderer panics on a
-	// kind made after every kind it renders. It may be nil.
+	// Fetch got. Its addresses must go through SafeURL (WriteAttrs), and a
+	// node it renders as a link is a Linker. It must render every kind of
+	// node Parser makes: goldmark's renderer panics on a kind made after
+	// every kind it renders. It may be nil.
 	Renderer func(data any) []util.PrioritizedValue
 	// Markup is what Renderer writes, for the test of the final HTML
 	// (markdowntest.CheckHTML).

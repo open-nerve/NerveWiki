@@ -20,7 +20,9 @@ import (
 // first, in order, and its error is Render's. The tree's raw HTML is
 // replaced by what the sanitizer keeps of it, so d serves this one Render.
 func (m *Markdown) Render(ctx context.Context, d *Document, page Page) (string, error) {
-	links := &marks{destinations: d.destinations}
+	footnotes := registered{}
+	extension.NewFootnoteHTMLRenderer(extension.WithFootnoteIDPrefix(idPrefix)).RegisterFuncs(footnotes)
+	links := &marks{destinations: d.destinations, footnoteLink: footnotes[east.KindFootnoteLink]}
 	nodes := []util.PrioritizedValue{
 		// goldmark's renderer stays safe: a node that reached it unexpected
 		// would be an omitted comment or a dropped address.
@@ -28,7 +30,7 @@ func (m *Markdown) Render(ctx context.Context, d *Document, page Page) (string, 
 		util.Prioritized(scrollingTables{extension.NewTableHTMLRenderer(
 			extension.WithTableCellAlignMethod(extension.TableCellAlignAttribute))}, 500),
 		util.Prioritized(extension.NewStrikethroughHTMLRenderer(), 500),
-		util.Prioritized(extension.NewFootnoteHTMLRenderer(extension.WithFootnoteIDPrefix(idPrefix)), 500),
+		util.Prioritized(footnotes, 500),
 		util.Prioritized(links, 100),
 	}
 	for _, e := range m.exts {
@@ -101,10 +103,17 @@ func writeValue(out *bytes.Buffer, v any) {
 // 3.4; WCAG 2.1.1).
 type scrollingTables struct{ inner renderer.NodeRenderer }
 
-// registered is a registerer that keeps what it is given.
+// registered is a registerer that keeps what it is given, and the
+// renderer of what it keeps.
 type registered map[ast.NodeKind]renderer.NodeRendererFunc
 
 func (r registered) Register(kind ast.NodeKind, f renderer.NodeRendererFunc) { r[kind] = f }
+
+func (r registered) RegisterFuncs(reg renderer.NodeRendererFuncRegisterer) {
+	for kind, f := range r {
+		reg.Register(kind, f)
+	}
+}
 
 func (s scrollingTables) RegisterFuncs(reg renderer.NodeRendererFuncRegisterer) {
 	funcs := registered{}

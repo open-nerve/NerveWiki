@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 	"uuid"
@@ -62,6 +63,36 @@ func TestTheAppsMarkdownRendersCheckedHTML(t *testing.T) {
 			if err := markdowntest.CheckHTML(html, exts...); err != nil {
 				t.Errorf("%s: %v", name, err)
 			}
+			if err := markdowntest.CheckSize([]byte(content), html); err != nil {
+				t.Errorf("%s: %v", name, err)
+			}
+		}
+	}
+}
+
+// The links to pages, every one resolved or none, are within CheckSize at a
+// size where its bound, not its headroom, decides (M6/P3B review L3): the
+// state each carries, and an image its address, each time it is written
+// or a reference used.
+func TestTheAppsLinksAreWithinTheirBound(t *testing.T) {
+	const n = 512 << 10
+	inputs := map[string]string{
+		"images of a short address":   "[x]: p#&\n\n" + strings.Repeat("![x] ", n/5),
+		"images of an address of '&'": "[x]: &&&&\n\n" + strings.Repeat("![x] ", n/5),
+		"links of a short address":    "[x]: p#b\n\n" + strings.Repeat("[x] ", n/4),
+		"wikilinks with anchors":      strings.Repeat("[[a#b]]", n/7),
+		"embeds":                      strings.Repeat("![[p]]", n/6),
+		"wikilinks of a long anchor":  strings.Repeat("[[a#"+strings.Repeat("Ⱥ", 64)+"]]", n/134),
+	}
+	page := markdown.Page{NotebookID: uuid.NewV7(), PageID: uuid.NewV7()}
+	for _, resolve := range []obsidian.Resolve{everyLink, nil} {
+		md, _ := appMarkdown(t, resolve)
+		for name, content := range inputs {
+			html, err := md.Render(context.Background(), md.Parse([]byte(content)), page)
+			if err != nil {
+				t.Fatalf("%s: %v", name, err)
+			}
+			t.Logf("%s, resolved %t: %.1f times", name, resolve != nil, float64(len(html))/float64(len(content)))
 			if err := markdowntest.CheckSize([]byte(content), html); err != nil {
 				t.Errorf("%s: %v", name, err)
 			}

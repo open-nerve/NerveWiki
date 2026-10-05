@@ -42,6 +42,29 @@ func TestAUsersHTMLKeepsTheTypographicAllowlist(t *testing.T) {
 		{"an a after a link", "[a](/d)\n\n<a href=\"/b\">b</a>", "<p><a href=\"/d\">a</a></p>\n<p><a href=\"/b\">b</a></p>\n"},
 		{"an a in emphasis after a link", "[a](/d) *<a href=\"/b\">b</a>*", "<p><a href=\"/d\">a</a> <em><a href=\"/b\">b</a></em></p>\n"},
 		{"an a after an a", "<a href=\"/d\">a</a> <a href=\"/b\">b</a>", "<p><a href=\"/d\">a</a> <a href=\"/b\">b</a></p>\n"},
+		// A link holds no link (M6/P3B review L1).
+		{"an a around a link", `<a href="/x">see [l](/y)</a>`, "<p>see <a href=\"/y\">l</a></p>\n"},
+		{"an a around a link in emphasis", `<a href="/x">*[l](/y)*</a>`, "<p><em><a href=\"/y\">l</a></em></p>\n"},
+		{"an a around an autolink", `<a href="/x"><https://y.example></a>`, "<p><a href=\"https://y.example\">https://y.example</a></p>\n"},
+		{"an a around an image", `<a href="/x">![i](p.png)</a>`, "<p><span class=\"nw-image\">i <a href=\"p.png\">p.png</a></span></p>\n"},
+		{
+			"an a around a footnote's reference", "<a href=\"/x\">a[^1]</a>\n\n[^1]: n\n",
+			`<p>a<sup id="nw-fnref:1"><a href="#nw-fn:1" class="footnote-ref" role="doc-noteref">1</a></sup></p>` + "\n" +
+				`<div class="footnotes" role="doc-endnotes">` + "\n<hr>\n<ol>\n" + `<li id="nw-fn:1">` + "\n" +
+				`<p>n&#160;<a href="#nw-fnref:1" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p>` + "\n</li>\n</ol>\n</div>\n",
+		},
+		{"an a closed before a link", `<a href="/x">t</a> [l](/y)`, "<p><a href=\"/x\">t</a> <a href=\"/y\">l</a></p>\n"},
+		{"an a another end tag closes before a link, to its scope's end", `<b><a href="/x">t</b> [l](/y)`, "<p><b>t</b> <a href=\"/y\">l</a></p>\n"},
+		{"an a in an a", `<a href="/x">a <a href="/y">b</a></a>`, "<p><a href=\"/x\">a b</a></p>\n"},
+		{"an a in emphasis in an a", `<a href="/x">*<a href="/y">b</a>*</a>`, "<p><a href=\"/x\"><em>b</em></a></p>\n"},
+		{"an autolink in a link", `[see <https://y.example>](/x)`, "<p><a href=\"/x\">see https://y.example</a></p>\n"},
+		{
+			"a footnote's reference in a link", "[a[^1]](/x) b[^1]\n\n[^1]: n\n",
+			`<p><a href="/x">a<sup id="nw-fnref:1">1</sup></a> b<sup id="nw-fnref1:1"><a href="#nw-fn:1" class="footnote-ref" role="doc-noteref">1</a></sup></p>` + "\n" +
+				`<div class="footnotes" role="doc-endnotes">` + "\n<hr>\n<ol>\n" + `<li id="nw-fn:1">` + "\n" +
+				`<p>n&#160;<a href="#nw-fnref:1" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a>` +
+				`&#160;<a href="#nw-fnref1:1" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p>` + "\n</li>\n</ol>\n</div>\n",
+		},
 		{
 			"an address's parameters like references", "<a href=\"/s?q=x&section=n&copy=2&amp;t=1&sect\" title=\"&amp=\">a</a>",
 			"<p><a href=\"/s?q=x&amp;section=n&amp;copy=2&amp;t=1§\" title=\"&amp;amp=\">a</a></p>\n",
