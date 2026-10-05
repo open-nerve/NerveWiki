@@ -109,8 +109,17 @@ func (l linkTargets) PageIDs(ctx context.Context, notebookID uuid.UUID) ([]uuid.
 	return l.page.PageIDs(ctx, notebookID)
 }
 
-func (l linkTargets) Content(ctx context.Context, id uuid.UUID) (string, int, error) {
+func (l linkTargets) Content(ctx context.Context, id uuid.UUID) (string, int, bool, error) {
 	return l.page.Content(ctx, id)
+}
+
+func (l linkTargets) All(ctx context.Context, notebookID uuid.UUID) ([]linking.Node, error) {
+	nodes, err := l.page.All(ctx, notebookID)
+	return linkNodes(nodes), err
+}
+
+func (l linkTargets) NotebookOf(ctx context.Context, id uuid.UUID) (uuid.UUID, bool, error) {
+	return l.page.NotebookOf(ctx, id)
 }
 
 func (l linkTargets) Rekey(ctx context.Context, notebookID uuid.UUID) ([]linking.Clash, error) {

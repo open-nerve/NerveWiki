@@ -993,6 +993,123 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v0/pages/{page_id}/backlinks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The page's id. */
+                page_id: components["parameters"]["PageID"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List the pages that link to a page
+         * @description The pages whose links resolve to this page, the page itself left out, by id, a page at a time; each with how many of its links lead here, and the line of each of its first 10, one a line, as written: of a line of more than 240 bytes, at most 240 of them with the link, cut on characters, an ellipsis (…) where it is cut. A page written or deleted since the index read it has no lines; the links event that follows says to read again. So has a page the index read with an older extraction, before nervewiki reindex, and every page after 32 MiB of contents are read for the lines of one answer. Any role in the page's notebook can read them. A cursor the list cannot read is bad_request, before anything else; a page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found; a limit outside 1–100 is validation_failed. Pages the index does not have, before nervewiki reindex after an upgrade, are not among them.
+         */
+        get: operations["listBacklinks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v0/pages/{page_id}/properties": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The page's id. */
+                page_id: components["parameters"]["PageID"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Read a page's properties
+         * @description The page's frontmatter properties as the link index has them, and where each of its property links resolves. Any role in its notebook can read them. A page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found. A page the index does not have, before nervewiki reindex after an upgrade, has a valid frontmatter and no properties.
+         */
+        get: operations["getPageProperties"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v0/notebooks/{notebook_id}/tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List a notebook's tags
+         * @description The tags of the notebook's pages, the body's and the frontmatter's, one a tag, which tags compare by case-folded, in the order of that key's bytes; each as most of its pages write it, and how many pages have it. Of a page's tags, its first 1000 are kept. A nested tag (a/b) is one of its own: its parent is listed only when a page has the parent itself. Any role in the notebook can list them. A notebook that does not exist, is deleted, or that the caller has no role in is notebook.not_found. The list is not paged.
+         */
+        get: operations["listTags"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v0/notebooks/{notebook_id}/tags/{tag}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+                /** @description A tag's name, without its '#'; a nested tag's '/' is written %2F (a%2Fb). */
+                tag: components["parameters"]["Tag"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List the pages with a tag
+         * @description The ids of the notebook's pages with the tag, in any case, or a tag under it (tag/…), by id. Of a page's tags, its first 1000 are kept: a page with the tag past them is not listed. A tag that no page could have, such as one with a space or a '#', has none. Any role in the notebook can list them. A notebook that does not exist, is deleted, or that the caller has no role in is notebook.not_found. The list is not paged.
+         */
+        get: operations["getTag"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v0/notebooks/{notebook_id}/link-targets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List what a notebook's links may lead to
+         * @description The notebook's pages, for the editor's completion, by id: each with its title, how a wikilink is written to lead to it alone from anywhere in the notebook, as a rename writes it again, and its aliases. Any role in the notebook can list them. A notebook that does not exist, is deleted, or that the caller has no role in is notebook.not_found. The list is not paged.
+         */
+        get: operations["listLinkTargets"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v0/events": {
         parameters: {
             query?: never;
@@ -1621,6 +1738,80 @@ export interface components {
              */
             after_id?: string | null;
         };
+        /** @description A page that links to another. */
+        Backlink: {
+            /**
+             * Format: uuid
+             * @description The page with the links.
+             */
+            id: string;
+            /** @description How many of its links lead to the other page, counted up to 1000: 1000 is as many or more. */
+            count: number;
+            /** @description The lines of its first 10 links there, by where they are written, one a line; none in the cases the operation lists. */
+            contexts: string[];
+        };
+        BacklinkPage: {
+            data: components["schemas"]["Backlink"][];
+            next_cursor: components["schemas"]["NextCursor"];
+        };
+        PageProperty: {
+            key: string;
+            /** @description The property's value as JSON; an object's keys are not in the order written. */
+            value: unknown;
+        };
+        /** @description A property whose value, or an item of whose list, is a link. */
+        PropertyLink: {
+            /** @description The property's path, a list's item after a dot (sources.0). */
+            key: string;
+            /**
+             * Format: uuid
+             * @description The page the link resolves to; null for none.
+             */
+            node_id: string | null;
+        };
+        PageProperties: {
+            /** @description Whether the page's frontmatter is valid; a page without one is. An invalid one has no properties. */
+            valid: boolean;
+            /** @description The frontmatter's properties, in the order written. */
+            properties: components["schemas"]["PageProperty"][];
+            /** @description The property links, by where they are written. */
+            links: components["schemas"]["PropertyLink"][];
+        };
+        TagCount: {
+            /** @description The tag, without its '#'. */
+            tag: string;
+            /** @description How many pages have it. */
+            count: number;
+        };
+        TagList: {
+            data: components["schemas"]["TagCount"][];
+        };
+        TagPage: {
+            /** Format: uuid */
+            id: string;
+        };
+        TagPageList: {
+            data: components["schemas"]["TagPage"][];
+        };
+        /**
+         * @description What a link target is. Attachments come later.
+         * @enum {string}
+         */
+        LinkTargetKind: "page";
+        LinkTarget: {
+            /** Format: uuid */
+            id: string;
+            kind: components["schemas"]["LinkTargetKind"];
+            /** @description The page's title. */
+            name: string;
+            /** @description How a wikilink is written to lead to the page alone, from anywhere in the notebook: its title, or its path from the root where another page has its title; with ".md" after the path where a title ending with ".md" would be read as another page's without it. */
+            link: string;
+            /** @description The page's aliases, its first 1000, in the order of their case-folded keys. */
+            aliases: string[];
+        };
+        LinkTargetList: {
+            data: components["schemas"]["LinkTarget"][];
+        };
         /** @description The data of hello, the first frame. */
         EventHello: {
             /** @description Seconds between two heartbeats. */
@@ -1707,6 +1898,8 @@ export interface components {
         EditSessionID: string;
         /** @description The id of a node of a notebook's tree. */
         NodeID: string;
+        /** @description A tag's name, without its '#'; a nested tag's '/' is written %2F (a%2Fb). */
+        Tag: string;
     };
     requestBodies: never;
     headers: never;
@@ -1780,6 +1973,18 @@ export type PageView = components['schemas']['PageView'];
 export type TaskToggle = components['schemas']['TaskToggle'];
 export type NodeRename = components['schemas']['NodeRename'];
 export type NodeMove = components['schemas']['NodeMove'];
+export type Backlink = components['schemas']['Backlink'];
+export type BacklinkPage = components['schemas']['BacklinkPage'];
+export type PageProperty = components['schemas']['PageProperty'];
+export type PropertyLink = components['schemas']['PropertyLink'];
+export type PageProperties = components['schemas']['PageProperties'];
+export type TagCount = components['schemas']['TagCount'];
+export type TagList = components['schemas']['TagList'];
+export type TagPage = components['schemas']['TagPage'];
+export type TagPageList = components['schemas']['TagPageList'];
+export type LinkTargetKind = components['schemas']['LinkTargetKind'];
+export type LinkTarget = components['schemas']['LinkTarget'];
+export type LinkTargetList = components['schemas']['LinkTargetList'];
 export type EventHello = components['schemas']['EventHello'];
 export type EventPageRevision = components['schemas']['EventPageRevision'];
 export type EventPages = components['schemas']['EventPages'];
@@ -1797,6 +2002,7 @@ export type ParameterCursor = components['parameters']['Cursor'];
 export type ParameterPageId = components['parameters']['PageID'];
 export type ParameterEditSessionId = components['parameters']['EditSessionID'];
 export type ParameterNodeId = components['parameters']['NodeID'];
+export type ParameterTag = components['parameters']['Tag'];
 export type $defs = Record<string, never>;
 export interface operations {
     register: {
@@ -3190,6 +3396,133 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TreeNode"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    listBacklinks: {
+        parameters: {
+            query?: {
+                /** @description The page size, 1–100; 50 when absent. Outside that range the answer is 422 validation_failed on limit. */
+                limit?: components["parameters"]["Limit"];
+                /** @description The next_cursor of the page before; absent for the first page. A cursor that does not decode, has an unknown version or a payload of another shape than this list's, or is not spelled as the server writes it is 400 bad_request on cursor. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path: {
+                /** @description The page's id. */
+                page_id: components["parameters"]["PageID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of the pages that link here. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BacklinkPage"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    getPageProperties: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The page's id. */
+                page_id: components["parameters"]["PageID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The page's properties. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageProperties"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    listTags: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The notebook's tags. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagList"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    getTag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+                /** @description A tag's name, without its '#'; a nested tag's '/' is written %2F (a%2Fb). */
+                tag: components["parameters"]["Tag"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The pages with the tag. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagPageList"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    listLinkTargets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The notebook's link targets. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkTargetList"];
                 };
             };
             default: components["responses"]["Problem"];

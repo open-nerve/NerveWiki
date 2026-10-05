@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/linking/domain"
@@ -18,8 +19,9 @@ type Tx interface {
 type Contents interface {
 	// PageIDs is the pages not deleted of notebookID, by id.
 	PageIDs(ctx context.Context, notebookID uuid.UUID) ([]uuid.UUID, error)
-	// Content is the content of the page id and its revision.
-	Content(ctx context.Context, id uuid.UUID) (string, int, error)
+	// Content is the content of the page id and its revision; false for
+	// no such page.
+	Content(ctx context.Context, id uuid.UUID) (string, int, bool, error)
 	// Rekey takes the title keys of notebookID's nodes anew from their
 	// names; when siblings would share one, it changes none and returns
 	// them.
@@ -137,9 +139,13 @@ func (r Rebuild) Notebook(ctx context.Context, notebookID uuid.UUID) (Rebuilt, e
 // page has the rows of the page id, which has none, hold the facts of its
 // content, its links resolved to none.
 func (r Rebuild) page(ctx context.Context, notebookID, id uuid.UUID) error {
-	content, revision, err := r.Contents.Content(ctx, id)
-	if err != nil {
+	content, revision, ok, err := r.Contents.Content(ctx, id)
+	switch {
+	case err != nil:
 		return err
+	case !ok:
+		// The notebook's row, which the rebuild holds, keeps its pages.
+		return fmt.Errorf("the content of page %s, which the rebuild read, is gone", id)
 	}
 	facts, err := r.Parser.Facts(ctx, content)
 	if err != nil {

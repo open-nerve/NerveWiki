@@ -1,0 +1,363 @@
+# linking 模块的接口：链接索引的读——反链、页面属性、标签、链接目标（M6/P5）。生成的 Go 代码在
+# server/internal/modules/linking/adapter/http/gen（make gen-go）。
+openapi: 3.1.0
+info:
+  title: Nerve Wiki linking API
+  version: v0
+paths:
+  /api/v0/pages/{page_id}/backlinks:
+    parameters:
+      - $ref: "#/components/parameters/PageID"
+    get:
+      operationId: listBacklinks
+      tags: [linking]
+      summary: List the pages that link to a page
+      description: >-
+        The pages whose links resolve to this page, the page itself left out,
+        by id, a page at a time; each with how many of its links lead here,
+        and the line of each of its first 10, one a line, as written: of a
+        line of more than 240 bytes, at most 240 of them with the link, cut
+        on characters, an ellipsis (…) where it is cut. A page written or
+        deleted since the index read it has no lines; the links event that
+        follows says to read again. So has a page the index read with an
+        older extraction, before nervewiki reindex, and every page
+        after 32 MiB of contents are read for the lines of one answer. Any
+        role in the page's notebook can read them. A cursor
+        the list cannot read is bad_request, before anything else; a page
+        that does not exist, is deleted, or whose notebook the caller has no
+        role in is page.not_found; a limit outside 1–100 is
+        validation_failed. Pages the index does not have, before nervewiki
+        reindex after an upgrade, are not among them.
+      security: [{ bearer: [] }]
+      x-problem-codes: [bad_request, page.not_found, validation_failed]
+      parameters:
+        - $ref: "../common.yaml#/components/parameters/Limit"
+        - $ref: "../common.yaml#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: A page of the pages that link here.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BacklinkPage"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v0/pages/{page_id}/properties:
+    parameters:
+      - $ref: "#/components/parameters/PageID"
+    get:
+      operationId: getPageProperties
+      tags: [linking]
+      summary: Read a page's properties
+      description: >-
+        The page's frontmatter properties as the link index has them, and
+        where each of its property links resolves. Any role in its notebook
+        can read them. A page that does not exist, is deleted, or whose
+        notebook the caller has no role in is page.not_found. A page the
+        index does not have, before nervewiki reindex after an upgrade, has
+        a valid frontmatter and no properties.
+      security: [{ bearer: [] }]
+      x-problem-codes: [page.not_found]
+      responses:
+        "200":
+          description: The page's properties.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PageProperties"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v0/notebooks/{notebook_id}/tags:
+    parameters:
+      - $ref: "#/components/parameters/NotebookID"
+    get:
+      operationId: listTags
+      tags: [linking]
+      summary: List a notebook's tags
+      description: >-
+        The tags of the notebook's pages, the body's and the frontmatter's,
+        one a tag, which tags compare by case-folded, in the order of that
+        key's bytes; each as most of its pages write it, and how many pages
+        have it. Of a page's tags, its first 1000 are kept. A nested tag (a/b) is one of its own: its parent is listed
+        only when a page has the parent itself. Any role in the notebook can
+        list them. A notebook that does not exist, is deleted, or that the
+        caller has no role in is notebook.not_found. The list is not paged.
+      security: [{ bearer: [] }]
+      x-problem-codes: [notebook.not_found]
+      responses:
+        "200":
+          description: The notebook's tags.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TagList"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v0/notebooks/{notebook_id}/tags/{tag}:
+    parameters:
+      - $ref: "#/components/parameters/NotebookID"
+      - $ref: "#/components/parameters/Tag"
+    get:
+      operationId: getTag
+      tags: [linking]
+      summary: List the pages with a tag
+      description: >-
+        The ids of the notebook's pages with the tag, in any case, or a tag
+        under it (tag/…), by id. Of a page's tags, its first 1000 are kept:
+        a page with the tag past them is not listed. A tag that no page could
+        have, such as one with a space or a '#', has none. Any role in the
+        notebook can list
+        them. A notebook that does not exist, is deleted, or that the caller
+        has no role in is notebook.not_found. The list is not paged.
+      security: [{ bearer: [] }]
+      x-problem-codes: [notebook.not_found]
+      responses:
+        "200":
+          description: The pages with the tag.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TagPageList"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v0/notebooks/{notebook_id}/link-targets:
+    parameters:
+      - $ref: "#/components/parameters/NotebookID"
+    get:
+      operationId: listLinkTargets
+      tags: [linking]
+      summary: List what a notebook's links may lead to
+      description: >-
+        The notebook's pages, for the editor's completion, by id: each with
+        its title, how a wikilink is written to lead to it alone from
+        anywhere in the notebook, as a rename writes it again, and its
+        aliases. Any role in the notebook can list them. A notebook that
+        does not exist, is deleted, or that the caller has no role in is
+        notebook.not_found. The list is not paged.
+      security: [{ bearer: [] }]
+      x-problem-codes: [notebook.not_found]
+      responses:
+        "200":
+          description: The notebook's link targets.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LinkTargetList"
+        default:
+          $ref: "#/components/responses/Problem"
+components:
+  # 与 api/openapi.yaml 的相同：打包时丢掉模块文件的 securitySchemes，oapi-codegen 读这一份
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+  parameters:
+    NotebookID:
+      name: notebook_id
+      in: path
+      required: true
+      description: The notebook's id.
+      schema:
+        type: string
+        format: uuid
+    PageID:
+      name: page_id
+      in: path
+      required: true
+      description: The page's id.
+      schema:
+        type: string
+        format: uuid
+    Tag:
+      name: tag
+      in: path
+      required: true
+      description: >-
+        A tag's name, without its '#'; a nested tag's '/' is written %2F
+        (a%2Fb).
+      schema:
+        type: string
+  responses:
+    Problem:
+      description: Error (RFC 9457 problem details).
+      headers:
+        Retry-After:
+          description: >-
+            Whole seconds to wait before trying again, rounded up; sent with
+            rate_limited, server_busy and not_ready.
+          schema:
+            type: integer
+            minimum: 1
+        WWW-Authenticate:
+          description: >-
+            Sent with every 401 (RFC 9110 15.5.2): Bearer error="invalid_token"
+            (RFC 6750 3) when the bearer token sent is refused before the
+            operation runs, being invalid or expired; plain Bearer for every
+            other 401, including a credential that the operation finds revoked
+            while it runs.
+          schema:
+            type: string
+      content:
+        application/problem+json:
+          schema:
+            $ref: "../common.yaml#/components/schemas/Problem"
+  schemas:
+    BacklinkPage:
+      type: object
+      additionalProperties: false
+      required: [data, next_cursor]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Backlink"
+        next_cursor:
+          $ref: "../common.yaml#/components/schemas/NextCursor"
+    Backlink:
+      description: A page that links to another.
+      type: object
+      additionalProperties: false
+      required: [id, count, contexts]
+      properties:
+        id:
+          description: The page with the links.
+          type: string
+          format: uuid
+        count:
+          description: >-
+            How many of its links lead to the other page, counted up to 1000:
+            1000 is as many or more.
+          type: integer
+          minimum: 1
+          maximum: 1000
+        contexts:
+          description: >-
+            The lines of its first 10 links there, by where they are written,
+            one a line; none in the cases the operation lists.
+          type: array
+          maxItems: 10
+          items:
+            type: string
+    PageProperties:
+      type: object
+      additionalProperties: false
+      required: [valid, properties, links]
+      properties:
+        valid:
+          description: >-
+            Whether the page's frontmatter is valid; a page without one is. An
+            invalid one has no properties.
+          type: boolean
+        properties:
+          description: The frontmatter's properties, in the order written.
+          type: array
+          items:
+            $ref: "#/components/schemas/PageProperty"
+        links:
+          description: The property links, by where they are written.
+          type: array
+          items:
+            $ref: "#/components/schemas/PropertyLink"
+    PageProperty:
+      type: object
+      additionalProperties: false
+      required: [key, value]
+      properties:
+        key:
+          type: string
+        value:
+          description: >-
+            The property's value as JSON; an object's keys are not in the
+            order written.
+    PropertyLink:
+      description: A property whose value, or an item of whose list, is a link.
+      type: object
+      additionalProperties: false
+      required: [key, node_id]
+      properties:
+        key:
+          description: The property's path, a list's item after a dot (sources.0).
+          type: string
+        node_id:
+          description: The page the link resolves to; null for none.
+          type: [string, "null"]
+          format: uuid
+    TagList:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/TagCount"
+    TagCount:
+      type: object
+      additionalProperties: false
+      required: [tag, count]
+      properties:
+        tag:
+          description: The tag, without its '#'.
+          type: string
+        count:
+          description: How many pages have it.
+          type: integer
+          minimum: 1
+    TagPageList:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/TagPage"
+    TagPage:
+      type: object
+      additionalProperties: false
+      required: [id]
+      properties:
+        id:
+          type: string
+          format: uuid
+    LinkTargetKind:
+      description: What a link target is. Attachments come later.
+      type: string
+      enum: [page]
+    LinkTargetList:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/LinkTarget"
+    LinkTarget:
+      type: object
+      additionalProperties: false
+      required: [id, kind, name, link, aliases]
+      properties:
+        id:
+          type: string
+          format: uuid
+        kind:
+          $ref: "#/components/schemas/LinkTargetKind"
+        name:
+          description: The page's title.
+          type: string
+        link:
+          description: >-
+            How a wikilink is written to lead to the page alone, from anywhere
+            in the notebook: its title, or its path from the root where
+            another page has its title; with ".md" after the path where a
+            title ending with ".md" would be read as another page's without
+            it.
+          type: string
+        aliases:
+          description: >-
+            The page's aliases, its first 1000, in the order of their
+            case-folded keys.
+          type: array
+          items:
+            type: string

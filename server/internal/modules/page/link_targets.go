@@ -2,6 +2,7 @@ package page
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"uuid"
@@ -9,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	postgresadapter "github.com/open-nerve/NerveWiki/server/internal/modules/page/adapter/postgres"
+	"github.com/open-nerve/NerveWiki/server/internal/modules/page/app"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
 )
 
@@ -28,8 +30,15 @@ type LinkTargets interface {
 	// PageIDs is the pages not deleted of notebookID, by id (nervewiki
 	// reindex).
 	PageIDs(ctx context.Context, notebookID uuid.UUID) ([]uuid.UUID, error)
-	// Content is the content of the page not deleted id and its revision.
-	Content(ctx context.Context, id uuid.UUID) (string, int, error)
+	// All is the pages not deleted of notebookID, by id, each with its path
+	// from the root (M6/P5 design 7: the link targets).
+	All(ctx context.Context, notebookID uuid.UUID) ([]LinkNode, error)
+	// NotebookOf is the notebook of the page not deleted id; false for no
+	// such page (M6/P5 design 7: the reads by page).
+	NotebookOf(ctx context.Context, id uuid.UUID) (uuid.UUID, bool, error)
+	// Content is the content of the page not deleted id and its revision;
+	// false for no such page.
+	Content(ctx context.Context, id uuid.UUID) (string, int, bool, error)
 	// Rekey takes the title keys of notebookID's nodes not deleted anew
 	// from their names by the current Unicode data. When siblings would
 	// share a key it changes none and returns them, a group a key, each by
@@ -126,12 +135,59 @@ func (l linkTargets) PageIDs(ctx context.Context, notebookID uuid.UUID) ([]uuid.
 	return out, nil
 }
 
-func (l linkTargets) Content(ctx context.Context, id uuid.UUID) (string, int, error) {
-	c, err := l.store.PageContent(ctx, id)
+func (l linkTargets) All(ctx context.Context, notebookID uuid.UUID) ([]LinkNode, error) {
+	nodes, err := l.store.ListNodes(ctx, notebookID)
 	if err != nil {
-		return "", 0, fmt.Errorf("page: the content of %s: %w", id, err)
+		return nil, fmt.Errorf("page: the pages of %s: %w", notebookID, err)
 	}
-	return c.Content, c.Revision, nil
+	byID := make(map[uuid.UUID]domain.Node, len(nodes))
+	for _, n := range nodes {
+		byID[n.ID] = n
+	}
+	var out []LinkNode
+	for _, n := range nodes {
+		if n.Kind != domain.KindPage {
+			continue
+		}
+		path := []LinkStep{{ID: n.ID, Key: n.NameKey, Name: n.Name}}
+		for at := n; at.ParentID != nil; {
+			parent, ok := byID[*at.ParentID]
+			if !ok || len(path) == domain.MaxDepth {
+				return nil, fmt.Errorf("page: the path of %s in %s has no root within a page's depth", n.ID, notebookID)
+			}
+			path = append(path, LinkStep{ID: parent.ID, Key: parent.NameKey, Name: parent.Name})
+			at = parent
+		}
+		slices.Reverse(path)
+		out = append(out, LinkNode{ID: n.ID, Path: path})
+	}
+	slices.SortFunc(out, func(a, b LinkNode) int { return a.ID.Compare(b.ID) })
+	return out, nil
+}
+
+func (l linkTargets) NotebookOf(ctx context.Context, id uuid.UUID) (uuid.UUID, bool, error) {
+	n, err := l.store.FindNode(ctx, id)
+	switch {
+	case errors.Is(err, app.ErrNotFound):
+		return uuid.UUID{}, false, nil
+	case err != nil:
+		return uuid.UUID{}, false, fmt.Errorf("page: the notebook of %s: %w", id, err)
+	}
+	if n.Kind != domain.KindPage {
+		return uuid.UUID{}, false, nil
+	}
+	return n.NotebookID, true, nil
+}
+
+func (l linkTargets) Content(ctx context.Context, id uuid.UUID) (string, int, bool, error) {
+	c, err := l.store.PageContent(ctx, id)
+	switch {
+	case errors.Is(err, app.ErrNotFound):
+		return "", 0, false, nil
+	case err != nil:
+		return "", 0, false, fmt.Errorf("page: the content of %s: %w", id, err)
+	}
+	return c.Content, c.Revision, true, nil
 }
 
 func (l linkTargets) Rekey(ctx context.Context, notebookID uuid.UUID) ([][]NamedNode, error) {

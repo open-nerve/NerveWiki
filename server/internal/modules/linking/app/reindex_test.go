@@ -16,6 +16,7 @@ import (
 type contents struct {
 	w       *world
 	texts   map[uuid.UUID]string
+	gone    map[uuid.UUID]bool // listed, but gone when its content is read
 	clashes []app.Clash
 	rekeyed bool
 }
@@ -30,8 +31,8 @@ func (c *contents) PageIDs(context.Context, uuid.UUID) ([]uuid.UUID, error) {
 	return out, nil
 }
 
-func (c *contents) Content(_ context.Context, id uuid.UUID) (string, int, error) {
-	return c.texts[id], 7, nil
+func (c *contents) Content(_ context.Context, id uuid.UUID) (string, int, bool, error) {
+	return c.texts[id], 7, !c.gone[id], nil
 }
 
 func (c *contents) Rekey(context.Context, uuid.UUID) ([]app.Clash, error) {
@@ -117,6 +118,18 @@ func TestARebuildTakesEveryPageAnew(t *testing.T) {
 	}
 	if want := []app.LinksChanged{{WorkspaceID: nb.workspace, NotebookID: w.notebook}}; !reflect.DeepEqual(w.published.events, want) {
 		t.Errorf("published %+v, want %+v", w.published.events, want)
+	}
+}
+
+// A page whose content is gone when the rebuild reads it fails the
+// rebuild: the notebook's row, which it holds, keeps its pages (M6/P5
+// design 7).
+func TestAPageGoneUnderTheRebuildFailsIt(t *testing.T) {
+	w := newWorld(t, "src")
+	r, c, _ := newRebuild(w, map[string]string{"src": "missing"})
+	c.gone = map[uuid.UUID]bool{w.id("src"): true}
+	if _, err := r.Notebook(context.Background(), w.notebook); err == nil || !strings.Contains(err.Error(), "is gone") {
+		t.Errorf("the rebuild = %v, want the page gone", err)
 	}
 }
 

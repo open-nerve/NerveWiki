@@ -26,6 +26,8 @@ tags:
     description: Notebooks and their members.
   - name: page
     description: The pages of a notebook's tree.
+  - name: linking
+    description: The link index's reads, backlinks, properties, tags and link targets.
   - name: events
     description: The stream of the events of what the caller sees.
 paths:
@@ -113,6 +115,16 @@ paths:
     $ref: "modules/page.yaml#/paths/~1api~1v0~1nodes~1{node_id}"
   /api/v0/nodes/{node_id}/move:
     $ref: "modules/page.yaml#/paths/~1api~1v0~1nodes~1{node_id}~1move"
+  /api/v0/pages/{page_id}/backlinks:
+    $ref: "modules/linking.yaml#/paths/~1api~1v0~1pages~1{page_id}~1backlinks"
+  /api/v0/pages/{page_id}/properties:
+    $ref: "modules/linking.yaml#/paths/~1api~1v0~1pages~1{page_id}~1properties"
+  /api/v0/notebooks/{notebook_id}/tags:
+    $ref: "modules/linking.yaml#/paths/~1api~1v0~1notebooks~1{notebook_id}~1tags"
+  /api/v0/notebooks/{notebook_id}/tags/{tag}:
+    $ref: "modules/linking.yaml#/paths/~1api~1v0~1notebooks~1{notebook_id}~1tags~1{tag}"
+  /api/v0/notebooks/{notebook_id}/link-targets:
+    $ref: "modules/linking.yaml#/paths/~1api~1v0~1notebooks~1{notebook_id}~1link-targets"
   /api/v0/events:
     $ref: "modules/events.yaml#/paths/~1api~1v0~1events"
 components:

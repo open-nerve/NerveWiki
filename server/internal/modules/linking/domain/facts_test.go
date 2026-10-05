@@ -1,6 +1,7 @@
 package domain_test
 
 import (
+	"fmt"
 	"reflect"
 	"slices"
 	"strings"
@@ -89,5 +90,24 @@ func TestNoTitlesKeyComesNearMaxKey(t *testing.T) {
 	}
 	if worst > 2*255 || worst > domain.MaxKey/2 {
 		t.Errorf("a title of %U has a key of %d bytes, past twice its most", at, worst)
+	}
+}
+
+// Of a page's tags and aliases, the first domain.MaxNames keys are kept, in
+// the order written; a key kept counts every time it is written, a later
+// one too (M6/P5 review r2-M2).
+func TestAPagesFirstNamesAreKept(t *testing.T) {
+	var names []string
+	for i := range domain.MaxNames + 2 {
+		names = append(names, fmt.Sprintf("n%d", i))
+	}
+	names = append(names, "N0")
+	tags := domain.TagsOf(names)
+	if len(tags) != domain.MaxNames || tags[0].Count != 2 || tags[len(tags)-1].Key != fmt.Sprintf("n%d", domain.MaxNames-1) {
+		t.Errorf("%d tags, the first counted %d, the last %+v", len(tags), tags[0].Count, tags[len(tags)-1])
+	}
+	aliases := domain.AliasesOf(names)
+	if len(aliases) != domain.MaxNames || aliases[len(aliases)-1].Key != fmt.Sprintf("n%d", domain.MaxNames-1) {
+		t.Errorf("%d aliases, the last %+v", len(aliases), aliases[len(aliases)-1])
 	}
 }

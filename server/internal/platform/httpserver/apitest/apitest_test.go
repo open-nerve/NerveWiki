@@ -218,3 +218,29 @@ func TestValidateSchema(t *testing.T) {
 		})
 	}
 }
+
+// A path parameter's escaped '/' (a nested tag's, %2F) stays in its
+// segment, as the server's router keeps it, and is checked unescaped; an
+// unescaped one is another path, which no operation has.
+func TestAnEscapedSlashStaysInItsParameter(t *testing.T) {
+	c := Load(t)
+	const tags = "/api/v0/notebooks/0199a2b4-0000-7000-8000-000000000010/tags/"
+	for _, tt := range []struct {
+		path  string
+		valid bool
+	}{
+		{tags + "a", true},
+		{tags + "a%2Fb", true},
+		{tags + "a%2Fb%2F%E4%B8%AD", true},
+		{tags + "a/b", false},
+	} {
+		req := httptest.NewRequest(http.MethodGet, tt.path, nil)
+		if err := c.validateRequest(req); (err == nil) != tt.valid {
+			t.Errorf("%s: validateRequest() = %v, want valid = %v", tt.path, err, tt.valid)
+		}
+		route, params, err := c.findRoute(req)
+		if tt.valid && (err != nil || route.Operation.OperationID != "getTag" || params["tag"] != strings.TrimPrefix(req.URL.Path, tags)) {
+			t.Errorf("%s: the route %v, %v, %v", tt.path, route, params, err)
+		}
+	}
+}

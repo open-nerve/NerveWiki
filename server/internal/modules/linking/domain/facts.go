@@ -92,9 +92,15 @@ type Alias struct {
 	Name string
 }
 
+// MaxNames is the most tags, and the most aliases, the index keeps of a
+// page: its first, in the order written. A page of 5 MiB may write a
+// million tags, which every read of its notebook's tags would carry
+// (M6/P5 review r2-M2).
+const MaxNames = 1000
+
 // TagsOf is the tags of names, a page's in the order written, without
 // their '#': one a title key, as first written, with how often; none whose
-// key is longer than MaxKey.
+// key is longer than MaxKey, nor past the first MaxNames.
 func TagsOf(names []string) []Tag {
 	var out []Tag
 	at := map[string]int{}
@@ -107,6 +113,9 @@ func TagsOf(names []string) []Tag {
 			out[i].Count++
 			continue
 		}
+		if len(out) == MaxNames {
+			continue
+		}
 		at[key] = len(out)
 		out = append(out, Tag{Key: key, Name: name, Count: 1})
 	}
@@ -114,13 +123,14 @@ func TagsOf(names []string) []Tag {
 }
 
 // AliasesOf is the aliases of names, a page's in the order written: one a
-// title key, as first written; none whose key is longer than MaxKey.
+// title key, as first written; none whose key is longer than MaxKey, nor
+// past the first MaxNames.
 func AliasesOf(names []string) []Alias {
 	var out []Alias
 	seen := map[string]bool{}
 	for _, name := range names {
 		key := shared.TitleKey(name)
-		if len(key) <= MaxKey && !seen[key] {
+		if len(key) <= MaxKey && !seen[key] && len(out) < MaxNames {
 			seen[key] = true
 			out = append(out, Alias{Key: key, Name: name})
 		}

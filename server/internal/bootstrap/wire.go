@@ -13,6 +13,7 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/modules/access"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/identity"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/instance"
+	"github.com/open-nerve/NerveWiki/server/internal/modules/linking"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/notebook"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/workspace"
@@ -91,6 +92,7 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrati
 		return nil, err
 	}
 	pg := page.New(pageDeps(cfg, pool, logger, authorizer, md, budget))
+	ln := linking.New(linkingDeps(pool, authorizer))
 	ev, listener := eventsModule(cfg, pool, logger)
 	runner, err := jobs.New(pool, jobs.Config{ShutdownTimeout: cfg.Jobs.ShutdownTimeout, Logger: logger},
 		slices.Concat(ident.Jobs(), pg.Jobs(), []jobs.Job{purgeJob(cfg, pool, logger)}))
@@ -112,6 +114,7 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrati
 	ws.Register(router, api)
 	nb.Register(router, api)
 	pg.Register(router, api)
+	ln.Register(router, api)
 	ev.Register(router, api)
 	// "/" without a method is the least specific pattern: /api/ and the
 	// probes keep their routes, and a wrong method on a page path gets the
