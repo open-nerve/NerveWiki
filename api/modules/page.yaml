@@ -401,7 +401,8 @@ paths:
         them and its editor, and when their parse finds the server busy it
         is server_busy.
       security: [{ bearer: [] }]
-      x-problem-codes: [page.not_found, forbidden, validation_failed, page.title_taken, linking.pages_locked, server_busy]
+      x-problem-codes:
+        [page.not_found, forbidden, validation_failed, page.title_taken, linking.pages_locked, server_busy]
       requestBody:
         required: true
         content:
@@ -464,7 +465,17 @@ paths:
         linking.pages_locked naming each of them and its editor, and when
         their parse finds the server busy it is server_busy.
       security: [{ bearer: [] }]
-      x-problem-codes: [page.not_found, forbidden, validation_failed, page.cycle, page.title_taken, page.too_deep, linking.pages_locked, server_busy]
+      x-problem-codes:
+        [
+          page.not_found,
+          forbidden,
+          validation_failed,
+          page.cycle,
+          page.title_taken,
+          page.too_deep,
+          linking.pages_locked,
+          server_busy,
+        ]
       requestBody:
         required: true
         content:
