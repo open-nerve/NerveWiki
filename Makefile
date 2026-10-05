@@ -181,6 +181,7 @@ test-go: ## 运行 Go 测试，含集成测试与 server/tools（开启竞态检
 	cd server && go test -count=1 -run '^TestCheckCostsAboutTheBody$$' ./internal/platform/httpserver/bodyshape
 	cd server && go test -count=1 -run '^TestTheCostsAreAboutTheSize$$' ./internal/platform/markdown
 	cd server && go test -count=1 -run '^TestTheAppsMarkdownCostsAboutItsSize$$' ./internal/bootstrap
+	cd server && go test -count=1 -run '^TestALinkWrittenManyTimesResolvesOnce$$' ./internal/modules/linking/app
 	go -C server/tools test -race -count=1 ./...
 
 .PHONY: test-web

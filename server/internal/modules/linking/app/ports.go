@@ -83,8 +83,9 @@ type Store interface {
 }
 
 // Pages is what the index reads of a notebook's pages, in the transaction
-// ctx carries or on the pool outside one: the page module's, which bootstrap wires to it (M6/P3
-// design 3.3). Attachments and deleted pages are never among them.
+// ctx carries or on the pool outside one: the page module's, which
+// bootstrap wires to it (M6/P3 design 3.3). Attachments and deleted pages
+// are never among them.
 type Pages interface {
 	// ByKeys is the pages of notebookID whose title key is one of keys,
 	// each with its path from the root.

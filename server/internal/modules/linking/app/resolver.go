@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strings"
 	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/linking/domain"
@@ -42,9 +43,10 @@ const checkEvery = 4096
 // no target is a path. A link whose page is not one of the notebook's
 // resolves to none, and an alias whose page is not is none: missing has
 // those pages, each once. A target that is no path resolves to none. The
-// links of a page to one target resolve once, so that a page that writes
-// one link many times costs one resolution against the pages of its name
-// (P3B review M1); and a context ended stops it.
+// links of a page to one target, as it parses (written in any case or
+// form), resolve once, so that a page that writes one link many times
+// costs one resolution against the pages of its name (P3B review M1); and
+// a context ended stops it.
 func resolutions(ctx context.Context, store Store, pages Pages, notebookID uuid.UUID, links []Link) (
 	[]domain.Resolution, []uuid.UUID, error,
 ) {
@@ -95,9 +97,12 @@ func resolutions(ctx context.Context, store Store, pages Pages, notebookID uuid.
 		byID[n.ID] = n
 	}
 	var missing []uuid.UUID
+	// A link's resolution depends on its page and its target's parse alone: its keys, not how they are written.
 	type written struct {
-		source uuid.UUID
-		target string
+		source           uuid.UUID
+		relative, rooted bool
+		up               int
+		keys, alt        string
 	}
 	resolved := make(map[written]domain.Resolution)
 	for i, l := range links {
@@ -114,14 +119,16 @@ func resolutions(ctx context.Context, store Store, pages Pages, notebookID uuid.
 			missing = append(missing, l.SourceID)
 			continue
 		}
-		w := written{source: l.SourceID, target: l.Target}
+		t := targets[i]
+		// A segment holds no '/', nor does its key (NFC and case folding make none): joined by it, the keys are one.
+		w := written{l.SourceID, t.Relative, t.Rooted, t.Up, strings.Join(t.Keys, "/"), t.AltLast}
 		if r, ok := resolved[w]; ok {
 			out[i] = r
 			continue
 		}
 		var named []domain.Node
 		aliased := make(map[string][]domain.Node)
-		for _, key := range targets[i].LastKeys() {
+		for _, key := range t.LastKeys() {
 			named = append(named, byKey[key]...)
 			for _, id := range aliasedBy[key] {
 				if n, ok := byID[id]; ok {
@@ -131,7 +138,7 @@ func resolutions(ctx context.Context, store Store, pages Pages, notebookID uuid.
 				}
 			}
 		}
-		out[i] = domain.Resolve(targets[i], from.Path, named, aliased)
+		out[i] = domain.Resolve(t, from.Path, named, aliased)
 		resolved[w] = out[i]
 	}
 	slices.SortFunc(missing, uuid.UUID.Compare)

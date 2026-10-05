@@ -123,12 +123,12 @@ func TestAViewOfWhatWentMeanwhileIsNoError(t *testing.T) {
 	}
 }
 
-// failing is the index's tables and the notebook's tree, and err from the
-// index's view of a page or from the tree's pages by key.
+// failing is the index's tables and the notebook's tree, and an error from
+// one of the reads of a view.
 type failing struct {
 	*store
 	*tree
-	viewErr, keysErr error
+	viewErr, keysErr, aliasesErr, pathsErr error
 }
 
 func (f failing) View(ctx context.Context, id uuid.UUID) (app.Indexed, bool, error) {
@@ -145,21 +145,63 @@ func (f failing) ByKeys(ctx context.Context, notebookID uuid.UUID, keys []string
 	return f.tree.ByKeys(ctx, notebookID, keys)
 }
 
-// A view's read that fails is its error, and so is its context ended.
+func (f failing) Aliases(ctx context.Context, notebookID uuid.UUID, keys []string) ([]app.Alias, error) {
+	if f.aliasesErr != nil {
+		return nil, f.aliasesErr
+	}
+	return f.store.Aliases(ctx, notebookID, keys)
+}
+
+func (f failing) Paths(ctx context.Context, notebookID uuid.UUID, ids []uuid.UUID) ([]domain.Node, error) {
+	if f.pathsErr != nil {
+		return nil, f.pathsErr
+	}
+	return f.tree.Paths(ctx, notebookID, ids)
+}
+
+// endsLater is a context that ends after its first look: as one that ends
+// while its links resolve.
+type endsLater struct {
+	context.Context
+	looks int
+}
+
+func (c *endsLater) Err() error {
+	if c.looks++; c.looks > 1 {
+		return context.Canceled
+	}
+	return nil
+}
+
+// A view's read that fails is its error, and so is its context ended,
+// before or while its links resolve.
 func TestAViewsFailureIsItsError(t *testing.T) {
 	w := newWorld(t, "A", "src")
 	down := errors.New("down")
 	links := []app.Link{{SourceID: w.id("src"), Target: "A"}}
 	page := app.Page{ID: w.id("src"), NotebookID: w.notebook, Revision: 1}
-	for _, f := range []failing{{store: w.store, tree: w.tree, viewErr: down}, {store: w.store, tree: w.tree, keysErr: down}} {
+	for _, f := range []failing{
+		{store: w.store, tree: w.tree, viewErr: down},
+		{store: w.store, tree: w.tree, keysErr: down},
+		{store: w.store, tree: w.tree, aliasesErr: down},
+		{store: w.store, tree: w.tree, pathsErr: down},
+	} {
 		if _, err := (app.Views{Store: f, Pages: f}).Resolve(context.Background(), page, links); !errors.Is(err, down) {
 			t.Errorf("Resolve = %v, want %v", err, down)
 		}
 	}
+	views := app.Views{Store: w.store, Pages: w.tree}
 	ended, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := (app.Views{Store: w.store, Pages: w.tree}).Resolve(ended, page, links); !errors.Is(err, context.Canceled) {
+	if _, err := views.Resolve(ended, page, links); !errors.Is(err, context.Canceled) {
 		t.Errorf("Resolve with its context ended = %v", err)
+	}
+	many := make([]app.Link, 5000)
+	for i := range many {
+		many[i] = app.Link{SourceID: w.id("src"), Start: i, Target: "A"}
+	}
+	if _, err := views.Resolve(&endsLater{Context: context.Background()}, page, many); !errors.Is(err, context.Canceled) {
+		t.Errorf("Resolve with its context ended among its links = %v", err)
 	}
 }
 
@@ -168,5 +210,16 @@ func TestAViewOfNoPathReadsNoPages(t *testing.T) {
 	w := newWorld(t, "src")
 	if got, want := w.view("src", 0, "a//", "./"), w.leads("", ""); !reflect.DeepEqual(got, want) || w.tree.reads != 0 {
 		t.Errorf("got %v, read the pages %d times; want %v", got, w.tree.reads, want)
+	}
+}
+
+// The links of a page to one name written in other forms, relative,
+// rooted, up the tree or not, each resolve as written: a view resolves a
+// target once by its whole parse (P3B fix check).
+func TestAViewsLinksToOneNameResolveAsWritten(t *testing.T) {
+	w := newWorld(t, "a", "a/x", "a/b", "a/b/src", "a/b/c", "a/b/c/x")
+	got := w.view("a/b/src", 0, "x", "./x", "/x", "../x", "../../x")
+	if want := w.leads("a/x", "", "", "a/x", ""); !reflect.DeepEqual(got, want) {
+		t.Errorf("got %v, want %v", got, want)
 	}
 }

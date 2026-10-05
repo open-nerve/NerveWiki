@@ -16,9 +16,12 @@ type Views struct {
 // Resolve is where links, those of p's content at p.Revision, resolve, by
 // where each starts: the index's when its rows are of that revision and
 // of this extractor, and anew for the others, or for every one when they
-// are not. A page gone meanwhile resolves none of its links, and an alias
-// of a page gone is none: the view is read again with the event of what
-// went.
+// are not. Resolving anew reads the candidates, the aliases and the paths
+// in statements of their own, outside a transaction: a page moved or
+// renamed between them may have a link resolve as before the move, and
+// one gone meanwhile resolves none of its links, an alias of it none,
+// until the view is read again with the event of the change (M6/P3 design
+// 6.1, P3B review L2).
 func (v Views) Resolve(ctx context.Context, p Page, links []Link) (map[int]domain.Resolution, error) {
 	if len(links) == 0 {
 		return nil, nil
