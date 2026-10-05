@@ -3,6 +3,7 @@ import { createContext } from "react";
 import type { Translate } from "../i18n/i18n";
 import type { NotebookRole } from "../services/notebook.service";
 import { appLinks } from "./app-links";
+import { diagrams, loadMermaid } from "./diagrams";
 import { codeHighlight, highlightWorker } from "./highlight";
 import { loadKatex, math } from "./math";
 import { scrollRegions } from "./scroll-regions";
@@ -34,6 +35,8 @@ export type ReadingContext = {
   role: NotebookRole;
   /** t is the app's text of a key in the reader's language: an enhancement's names and labels. */
   t: Translate;
+  /** theme is the app's, as shown: a diagram is drawn in it, and drawn again as it changes. */
+  theme: "light" | "dark";
   reload: () => void;
   /** navigate goes to the app's address to through the router. */
   navigate: (to: string) => void;
@@ -68,13 +71,14 @@ export type Enhancement = (container: HTMLElement, context: ReadingContext) => (
  * readingEnhancements are the app's enhancements, in the order they run
  * (M4 design 8): M4 has code highlighting, and the keyboard's way to what
  * scrolls sideways (scrollRegions since M6); M5 the task items' ticks; M6 the links into the app,
- * and those to pages not there, and the formulas; M7
+ * and those to pages not there, the formulas and the diagrams; M7
  * adds its own here. The app's composition root (main.tsx) gives them to
  * the reading views through Enhancements; without it they have none.
  */
 export const readingEnhancements: readonly Enhancement[] = [
   codeHighlight(highlightWorker),
   math(loadKatex),
+  diagrams(loadMermaid),
   scrollRegions,
   taskToggle,
   appLinks,

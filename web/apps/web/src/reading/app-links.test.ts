@@ -38,6 +38,7 @@ function setUp() {
     revision: 1,
     role: "reader",
     t: translator("en"),
+    theme: "light",
     reload: () => undefined,
     navigate: (to) => went.push(to),
     report: () => undefined,

@@ -45,6 +45,7 @@ const context: ReadingContext = {
   revision: 1,
   role: "reader",
   t: translator("en"),
+  theme: "light",
   reload: () => {},
   navigate: () => {},
   report: () => {},

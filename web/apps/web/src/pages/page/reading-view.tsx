@@ -12,7 +12,7 @@ import { ApiError } from "../../services/api";
 import type { Notebook } from "../../services/notebook.service";
 import type { TreeNode } from "../../services/page.service";
 import { useT } from "../../i18n/i18n";
-import { usePageTree } from "../../stores/context";
+import { usePageTree, useStore } from "../../stores/context";
 import { useWorkspace } from "../workspace/workspace-layout";
 import { useUnresolvedLinks } from "./unresolved-link";
 
@@ -77,6 +77,7 @@ export const ReadingView = observer(function ReadingView({
   const pages = usePageTree(notebook);
   const enhancements = useContext(Enhancements);
   const t = useT();
+  const theme = useStore().preferences.resolvedTheme;
   const navigate = useNavigate();
   const location = useLocation();
   // The element with an id focused as the HTML was replaced, and whether it showed.
@@ -126,6 +127,7 @@ export const ReadingView = observer(function ReadingView({
       revision,
       role,
       t,
+      theme,
       reload: () => void mutate(),
       // An address without an anchor arrives at the page, whose heading takes the focus: the link had it.
       navigate: (to) => void navigate(to, to.includes("#") ? undefined : { state: arrived }),
@@ -188,7 +190,7 @@ export const ReadingView = observer(function ReadingView({
           : undefined;
       undo();
     };
-  }, [html, revision, enhancements, slug, notebookId, role, t, page.id, mutate, pages, navigate]);
+  }, [html, revision, enhancements, slug, notebookId, role, t, theme, page.id, mutate, pages, navigate]);
   useLayoutEffect(() => {
     const container = article.current;
     if (container === null || html === undefined) {

@@ -10,6 +10,7 @@ const context: ReadingContext = {
   revision: 1,
   role: "editor",
   t: translator("en"),
+  theme: "light",
   reload: () => undefined,
   navigate: () => undefined,
   report: () => undefined,
