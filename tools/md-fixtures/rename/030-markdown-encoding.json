@@ -1,0 +1,7 @@
+{
+  "description": "新标题里有 )、% 与空格：普通的 Markdown 地址把它们写成百分号编码；跨两行的链接文字原样。",
+  "source": "nerve-defined",
+  "from": "Old",
+  "to": "Close) 50%",
+  "note": "Obsidian 不编码 )、%：写出 [t](Close)%2050%.md)，之后它自己也解析成 [t](Close)；跨两行文字的那一条丢了文字，写成 [](Close)%2050%.md)。"
+}

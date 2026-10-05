@@ -1,0 +1,4 @@
+---
+aliases: ["[[Old]]"]
+related: "[[Old]]"
+---

@@ -965,7 +965,7 @@ export interface paths {
         head?: never;
         /**
          * Rename a page
-         * @description Renames the page; its notebook's editors and admins can, a reader cannot (forbidden). A page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found; the name is checked after both: its rules are validation_failed, a name a sibling has, compared by its key, is page.title_taken. The page's own name writes nothing; one that differs from it in case alone is written.
+         * @description Renames the page; its notebook's editors and admins can, a reader cannot (forbidden). A page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found; the name is checked after both: its rules are validation_failed, a name a sibling has, compared by its key, is page.title_taken. The page's own name writes nothing; one that differs from it in case alone is written. The links that led to the page, or under it, by a path that changes, and those the new name would lead elsewhere, are written again in the pages they are in, so that each leads where it did; when one of these pages is being edited, its own included, the rename is refused as a whole, linking.pages_locked naming each of them and its editor, and when their parse finds the server busy it is server_busy.
          */
         patch: operations["renameNode"];
         trace?: never;
@@ -984,7 +984,7 @@ export interface paths {
         put?: never;
         /**
          * Move a page
-         * @description Moves the page with every page under it: under another parent, to the notebook's root, or among its siblings. Its notebook's editors and admins can, a reader cannot (forbidden). A page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found; the destination is checked after both: a parent that is no page of the notebook and a page to follow that is no other child of the parent are validation_failed; then a parent that is the page itself or under it is page.cycle, a title a new sibling has, compared by its key, page.title_taken, and a page under it that would be deeper than ten levels page.too_deep. A move to where the page is writes nothing.
+         * @description Moves the page with every page under it: under another parent, to the notebook's root, or among its siblings. Its notebook's editors and admins can, a reader cannot (forbidden). A page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found; the destination is checked after both: a parent that is no page of the notebook and a page to follow that is no other child of the parent are validation_failed; then a parent that is the page itself or under it is page.cycle, a title a new sibling has, compared by its key, page.title_taken, and a page under it that would be deeper than ten levels page.too_deep. A move to where the page is writes nothing. The links that led to the page or under it by a path that changes, those from these pages that the move would lead elsewhere, and those the moved pages would take from other pages, are written again in the pages they are in, so that each leads where it did; when one of these pages is being edited, one of the moved included, the move is refused as a whole, linking.pages_locked naming each of them and its editor, and when their parse finds the server busy it is server_busy.
          */
         post: operations["moveNode"];
         delete?: never;
@@ -1073,6 +1073,14 @@ export interface components {
                 user_id: string;
                 display_name: string;
             };
+            /** @description The edit locks linking.pages_locked names, one a page: each page whose links a rename or move would write again and who edits it (the caller themself when they edit it). No other code carries it. */
+            locks?: {
+                /** Format: uuid */
+                page_id: string;
+                /** Format: uuid */
+                user_id: string;
+                display_name: string;
+            }[];
             /** @description Who ended the caller's edit session: page.edit_session_unlocked names the notebook's admin who unlocked it. No other code carries it. */
             ended_by?: {
                 /** Format: uuid */

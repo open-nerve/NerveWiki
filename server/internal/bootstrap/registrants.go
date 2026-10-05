@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"context"
+	"log/slog"
 	"slices"
 	"uuid"
 
@@ -220,12 +221,11 @@ func (d pageNotebookDeletion) NotebookDeleted(ctx context.Context, x notebook.No
 }
 
 // pageExtensions are the registrants of the page module's extension points
-// (M4 design 8): the guards of its writes, the participants of its write
-// units and the observers of their changes; the vetoers of an edit
+// (M4 design 8) but its participants (pageParticipants): the guards of its
+// writes and the observers of their changes; the vetoers of an edit
 // session's opening and the subscribers of its opening and end.
 type pageExtensions struct {
 	guards             []page.WriteGuard
-	participants       []page.Participant
 	observers          []page.PageObserver
 	sessionVetoers     []page.EditSessionVetoer
 	sessionSubscribers []page.EditSessionSubscriber
@@ -236,10 +236,9 @@ type pageExtensions struct {
 // opening (M5/P1), and its event stream observes the writes and follows
 // the sessions' openings and ends (M5/P2); M6's link index observes the
 // writes after the stream, so that a unit's pages event comes before its
-// links event (M6/P3), and M6's rewriting of links takes part in them;
-// M11's freeze vetoes an opening. serve, the notebook module's deletion
-// and this package's tests take them from here; the page module's own
-// tests build the lock themselves.
+// links event (M6/P3); M11's freeze vetoes an opening. serve, the notebook
+// module's deletion and this package's tests take them from here; the page
+// module's own tests build the lock themselves.
 func pageRegistrants(pool *pgxpool.Pool) pageExtensions {
 	lock := page.NewEditLock(pool, pageNames{identity.NewDirectory(pool)})
 	streams := pageEvents{events.NewPublisher()}
@@ -250,6 +249,17 @@ func pageRegistrants(pool *pgxpool.Pool) pageExtensions {
 		sessionVetoers:     []page.EditSessionVetoer{lock},
 		sessionSubscribers: []page.EditSessionSubscriber{streams},
 	}
+}
+
+// pageParticipants are the modules that take part in the page module's
+// write units: M6's rewriting of links, which parses with the server's
+// Markdown within its budget (M6/P4), and reads the pages' edit locks, as
+// the guard does.
+func pageParticipants(pool *pgxpool.Pool, md *markdown.Markdown, budget *markdown.Budget, logger *slog.Logger) []page.Participant {
+	targets := page.NewLinkTargets(pool)
+	locks := page.NewLockHolders(pool, pageNames{identity.NewDirectory(pool)})
+	rewrite := linking.NewRewrite(pool, linkTargets{targets}, targets, locks, page.MaxContentBytes, md, budget, logger)
+	return []page.Participant{linkRewrite{rewrite}}
 }
 
 // markdownExtensions are the extensions of the one Markdown: M5's task

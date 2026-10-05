@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 
 import { json, notebookJSON, problem } from "../../test/fakes";
-import { bob, guide, install, linux, notes, pageNode, pagePath, pageServer } from "../../test/page-server";
+import { ada, bob, guide, install, linux, notes, pageNode, pagePath, pageServer } from "../../test/page-server";
 import { renderApp } from "../../test/render";
 
 // The tree's writes: new pages, renaming, moving, deleting (M4/P5 design
@@ -181,6 +181,68 @@ test("a title taken, or one the rules refuse, stays in the rename dialog", async
   expect(screen.getByRole("dialog", { name: "Rename Notes" })).toBeTruthy();
 });
 
+/** linking.pages_locked of Linux, which Bob edits, and Notes, which Ada does: the links a rename or move writes again. */
+const pagesLocked = () =>
+  problem(409, "linking.pages_locked", {
+    locks: [
+      { page_id: linux.id, ...bob },
+      { page_id: notes.id, ...ada },
+    ],
+  });
+
+/** A second Notes, under Guide: the tree tells the two apart by where they are. */
+const otherNotes = pageNode(5, "Notes", guide);
+
+test("a rename whose links' pages are being edited names them, as the tree does, and their editors in its dialog", async () => {
+  const user = userEvent.setup();
+  const server = pageServer({
+    nodes: [guide, install, linux, notes, otherNotes],
+    answers: { "PATCH /api/v0/nodes/*": pagesLocked },
+  });
+  renderApp(home, server.app);
+  await choose(user, "Guide", "Rename");
+  const dialog = await screen.findByRole("dialog", { name: "Rename Guide" });
+  await user.clear(within(dialog).getByLabelText("Title"));
+  await user.type(within(dialog).getByLabelText("Title"), "Handbook");
+  await user.click(within(dialog).getByRole("button", { name: "Save" }));
+
+  const alert = await within(dialog).findByRole("alert");
+  expect(
+    within(alert)
+      .getAllByRole("listitem")
+      .map((item) => item.textContent)
+  ).toEqual(["Bob is editing “Linux”.", "You are editing “Notes (in Plans)”."]);
+  expect(alert.textContent).toContain("This change would write the links on these pages again");
+  expect(server.nodes.map((node) => node.name)).toEqual(["Guide", "Install", "Linux", "Notes", "Notes"]);
+});
+
+test("a move whose links' pages are being edited names them, as the tree does, and their editors in its dialog; a busy server says so", async () => {
+  const user = userEvent.setup();
+  let answer = pagesLocked;
+  const server = pageServer({
+    nodes: [guide, install, linux, notes, otherNotes],
+    answers: { "POST /api/v0/nodes/*/move": () => answer() },
+  });
+  renderApp(home, server.app);
+  await choose(user, "Notes (in Plans)", "Move to…");
+  const dialog = await screen.findByRole("dialog", { name: "Move Notes (in Plans)" });
+  await user.selectOptions(within(dialog).getByLabelText("Parent page"), "Guide");
+  await user.click(within(dialog).getByRole("button", { name: "Move" }));
+
+  const alert = await within(dialog).findByRole("alert");
+  expect(
+    within(alert)
+      .getAllByRole("listitem")
+      .map((item) => item.textContent)
+  ).toEqual(["Bob is editing “Linux”.", "You are editing “Notes (in Plans)”."]);
+
+  answer = () => problem(503, "server_busy", {}, { "Retry-After": "1" });
+  await user.click(within(dialog).getByRole("button", { name: "Move" }));
+  await waitFor(() =>
+    expect(within(dialog).getByRole("alert").textContent).toBe("The server is busy. Try again in a moment.")
+  );
+});
+
 test("Delete says how many subpages go with the page; the page shown goes to the parent's place", async () => {
   const user = userEvent.setup();
   const server = pageServer();
@@ -224,6 +286,19 @@ test("a deletion someone's edit refuses names them and the page they edit, in th
 
   expect((await within(dialog).findByRole("alert")).textContent).toBe("Bob is editing “Linux”.");
   expect(server.nodes).toHaveLength(4);
+});
+
+test("a deletion someone's edit refuses names the page they edit as the tree does, by where it is among pages of its title", async () => {
+  const user = userEvent.setup();
+  const server = pageServer({ nodes: [guide, install, linux, notes, pageNode(6, "Linux")] });
+  server.hold(linux.id, bob);
+  renderApp(home, server.app);
+
+  await choose(user, "Guide", "Delete");
+  const dialog = await screen.findByRole("alertdialog", { name: "Delete Guide?" });
+  await user.click(within(dialog).getByRole("button", { name: "Delete" }));
+
+  expect((await within(dialog).findByRole("alert")).textContent).toBe("Bob is editing “Linux (in Guide / Install)”.");
 });
 
 test("a deletion cancelled gives the focus back to the menu's button; one done, to the heading, though the tree is read late", async () => {

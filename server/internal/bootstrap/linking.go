@@ -3,6 +3,7 @@ package bootstrap
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"uuid"
 
@@ -22,15 +23,8 @@ type linkIndex struct {
 }
 
 func (l linkIndex) PagesChanged(ctx context.Context, e page.Event) error {
-	changes := make([]linking.Change, len(e.Changes))
+	changes := linkChanges(e.Changes)
 	for i, c := range e.Changes {
-		changes[i] = linking.Change{NodeID: c.NodeID, Revision: c.Revision}
-		if c.Before != nil {
-			changes[i].Before = &linking.Place{ParentID: c.Before.ParentID, Name: c.Before.Name}
-		}
-		if c.After != nil {
-			changes[i].After = &linking.Place{ParentID: c.After.ParentID, Name: c.After.Name}
-		}
 		if c.Revision == 0 {
 			continue
 		}
@@ -41,6 +35,53 @@ func (l linkIndex) PagesChanged(ctx context.Context, e page.Event) error {
 		changes[i].Facts = facts
 	}
 	return l.index.PagesChanged(ctx, linking.PagesChanged{WorkspaceID: e.WorkspaceID, NotebookID: e.NotebookID, Changes: changes})
+}
+
+// linkChanges are the page module's changes as linking reads them, without
+// their facts.
+func linkChanges(changes []page.Change) []linking.Change {
+	out := make([]linking.Change, len(changes))
+	for i, c := range changes {
+		out[i] = linking.Change{NodeID: c.NodeID, Revision: c.Revision}
+		if c.Before != nil {
+			out[i].Before = &linking.Place{ParentID: c.Before.ParentID, Name: c.Before.Name}
+		}
+		if c.After != nil {
+			out[i].After = &linking.Place{ParentID: c.After.ParentID, Name: c.After.Name}
+		}
+	}
+	return out
+}
+
+// linkRewrite is linking's participant of the page write units, as the
+// page module calls it (M6/P4 design 4.1): the step's changes as linking
+// reads them, the unit's appender adapted.
+type linkRewrite struct {
+	rewrite linking.Rewrite
+}
+
+func (l linkRewrite) Participate(ctx context.Context, s page.Step, u page.Appender) error {
+	m := linking.Moved{NotebookID: s.NotebookID, At: s.At, UpdateLinks: s.Options.UpdateLinks, Changes: linkChanges(s.Changes)}
+	return l.rewrite.Participate(ctx, m, linkAppender{u})
+}
+
+// linkAppender is the page module's appender as a rewrite adds to it: the
+// edit lock's page.locked, which the guard answers for a page the
+// precheck found free, is linking.ErrGuardLocked too.
+type linkAppender struct {
+	unit page.Appender
+}
+
+func (a linkAppender) WriteContent(ctx context.Context, w linking.Rewritten) error {
+	_, err := a.unit.WriteContent(ctx, page.ContentWrite{NodeID: w.PageID, Base: w.Base, Content: w.Content, Facts: w.Facts})
+	if errors.Is(err, page.ErrLocked) {
+		return fmt.Errorf("%w: %w", linking.ErrGuardLocked, err)
+	}
+	return err
+}
+
+func (a linkAppender) Defer(f func()) {
+	a.unit.Defer(f)
 }
 
 // linkTargets is what linking reads of the pages, page's LinkTargets: the

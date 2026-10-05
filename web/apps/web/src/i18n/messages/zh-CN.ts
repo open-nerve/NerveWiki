@@ -123,6 +123,9 @@ export const zhCN: Messages = {
   "page.idleLeft": "长时间没有输入，已退出编辑。",
   "page.lockedTitled": "{name} 正在编辑「{page}」。",
   "page.lockedTitledSelf": "你正在别处编辑「{page}」。",
+  "page.editingTitledSelf": "你正在编辑「{page}」。",
+  "page.pagesLocked":
+    "这次改动需要改写这些页里的链接，而它们正在被编辑。等编辑结束后再试；笔记本管理员也可以解除锁定。",
   "page.releaseLock": "解除锁定",
   "page.releaseLockTitle": "解除编辑锁定？",
   "page.releaseLockBody": "{name} 的编辑随之结束：还没保存的修改不会存进这一页。",
@@ -416,6 +419,7 @@ export const zhCN: Messages = {
   "problem.page.edit_session_taken_over": "你已在别处接管了这个页面的编辑。",
   "problem.page.edit_session_unlocked": "笔记本的管理员解除了这个页面的编辑锁。",
   "problem.page.locked": "这个页面正在另一个会话中编辑。",
+  "problem.linking.pages_locked": "需要改写其中链接的页面正在被编辑，等编辑结束后再试。",
   "problem.network": "连不上服务器，请检查网络后重试。",
   "problem.unavailable": "暂时连不上服务器。你仍在登录状态，请稍后重试。",
   "problem.storage": "此浏览器无法保存登录状态：本站的存储空间已满或被阻止。请释放空间或允许本站的网站数据后重试。",

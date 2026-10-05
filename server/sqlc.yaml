@@ -109,6 +109,7 @@ sql:
       - migrations/sql/00022_linking_page_tags.sql
       - migrations/sql/00023_linking_page_properties.sql
       - migrations/sql/00024_linking_page_aliases.sql
+      - migrations/sql/00025_linking_page_links_aliases.sql
     queries: internal/modules/linking/adapter/postgres/queries
     gen:
       go:

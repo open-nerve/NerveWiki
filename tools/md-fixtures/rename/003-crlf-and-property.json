@@ -2,5 +2,6 @@
   "description": "CRLF 原样保留；属性链接同样改写。",
   "source": "nerve-defined",
   "from": "Old",
-  "to": "New"
+  "to": "New",
+  "note": "Obsidian 正文相同；frontmatter 重新写出，这一行成了 up: \"[[New]]\" 加 LF（031）。"
 }

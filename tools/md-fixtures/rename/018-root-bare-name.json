@@ -1,0 +1,13 @@
+{
+  "description": "在根下的页写名称，哪怕别处有同名的：从根起的路径先找根下的。",
+  "source": "obsidian-verified",
+  "pages": [
+    "Old",
+    "A",
+    "A/Plan",
+    "A/s"
+  ],
+  "page": "A/s",
+  "from": "Old",
+  "to": "Plan"
+}

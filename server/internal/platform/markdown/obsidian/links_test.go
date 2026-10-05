@@ -73,6 +73,20 @@ func TestTheLinksOfAPage(t *testing.T) {
 	}
 }
 
+// A wikilink in a table's cell is marked so, inside emphasis too, where a
+// rename's display text follows "\|"; one outside a table, and a
+// Markdown link anywhere, is not.
+func TestAWikilinkInATableCellIsMarked(t *testing.T) {
+	content := "[[a]]\n\n| h |\n| --- |\n| [[b\\|t]] *[[c]]* [d](d.md) |\n\n> [[e]]\n"
+	var got []string
+	for _, l := range extracted(newMarkdown(t), content).Links {
+		got = append(got, fmt.Sprintf("%s=%t", l.Target, l.InTable))
+	}
+	if want := []string{"a=false", "b=true", "c=true", "d.md=false", "e=false"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("in a table: %q, want %q", got, want)
+	}
+}
+
 // Every tag counts, in the content's order, each where it is written.
 func TestTheTagsOfAPage(t *testing.T) {
 	m := newMarkdown(t)

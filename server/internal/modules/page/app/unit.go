@@ -128,6 +128,13 @@ func (w *Writer) Run(ctx context.Context, spec UnitSpec, do func(ctx context.Con
 		return Outcome{}, err
 	}
 	var u *Unit
+	defer func() {
+		if u != nil {
+			for _, f := range u.deferred {
+				f()
+			}
+		}
+	}()
 	err = w.d.Tx.WithinTx(ctx, func(ctx context.Context) error {
 		if ok, err := w.d.Workspaces.ShareByID(ctx, workspaceID); err != nil || !ok {
 			return orNotFound(err, spec.NotFound)
@@ -168,6 +175,8 @@ type Unit struct {
 	// merged indexes them.
 	changes []domain.Change
 	merged  map[uuid.UUID]int
+	// deferred are what participants have Run call once the unit is over.
+	deferred []func()
 }
 
 // step is an operation of the unit.
@@ -305,4 +314,8 @@ func (a appender) Rename(ctx context.Context, nodeID uuid.UUID, name string) (do
 func (a appender) WriteContent(ctx context.Context, w ContentWrite) (int, error) {
 	w.EditSession = uuid.UUID{}
 	return a.u.writeContent(ctx, w, false)
+}
+
+func (a appender) Defer(f func()) {
+	a.u.deferred = append(a.u.deferred, f)
 }

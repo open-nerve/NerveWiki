@@ -51,9 +51,11 @@ type (
 	Write        = app.Write
 	Options      = app.Options
 	Step         = app.Step
+	Change       = domain.Change
 	WriteGuard   = app.WriteGuard
 	Participant  = app.Participant
 	Appender     = app.Appender
+	ContentWrite = app.ContentWrite
 	Event        = app.Event
 	PageObserver = app.PageObserver
 	// The edit sessions' (M4/P4 design 3.7).

@@ -13,19 +13,20 @@ cases/
 rename/
   NNN-<slug>.md        重命名之前的原文
   NNN-<slug>.out.md    期望的改写结果
-  NNN-<slug>.json      说明与重命名参数
+  NNN-<slug>.json      说明、页面树与改名或移动
 resolve/
   NNN-<slug>.json      一棵页面树、从其中各页写出的链接与它们应当解析到的页面
 check.mjs              自检：格式正确，每个 range 确实指向目标的原文写法，解析样例的链接都在它的页面之间
 obsidian/verify.mjs    提取结果与真实的 Obsidian 核对
 obsidian/verify-resolve.mjs  解析与真实的 Obsidian 核对
+obsidian/verify-rename.mjs   改名、移动时的改写与真实的 Obsidian 核对
 ```
 
 ## 来源
 
 每个样例都标明规则的来源：
 
-- `obsidian-verified`：结果与 Obsidian 一致，由 `obsidian/verify.mjs` 核对（最近一次：Obsidian 1.12.7 与 1.13.7）；解析样例由 `obsidian/verify-resolve.mjs` 核对（Obsidian 1.12.7）。
+- `obsidian-verified`：结果与 Obsidian 一致，由 `obsidian/verify.mjs` 核对（最近一次：Obsidian 1.12.7 与 1.13.7）；解析样例由 `obsidian/verify-resolve.mjs` 核对，改写样例由 `obsidian/verify-rename.mjs` 核对（都是 Obsidian 1.12.7）。
 - `nerve-defined`：我们有意与 Obsidian 不同，或 Obsidian 没有对应的行为；`note` 写明差异和理由。
 
 与 Obsidian 保持一致是默认选择：用户会从 Obsidian 导入笔记，agent 也按 Obsidian 的习惯书写。偏离必须有明确的好处。
@@ -108,20 +109,47 @@ obsidian/verify-resolve.mjs  解析与真实的 Obsidian 核对
 
 ## 重命名改写样例
 
-`rename/` 里的每个样例：`.md` 所在的页面链接到一个页面，这个页面从 `from` 改名为 `to`，改写后应当得到 `.out.md`。两个页面都在笔记本根下，没有其他同名页面。
+`rename/` 里的每个样例：一棵页面树，其中一页的正文是 `.md`；树里的一页改名或移动之后，这一页的正文应当是 `.out.md`（v0.1 设计 4.5，M6/P4 设计第 2、3 节）。
 
 ```json
-{ "description": "…", "source": "nerve-defined", "from": "Old", "to": "New 名字" }
+{
+  "description": "这个样例在验证什么",
+  "source": "obsidian-verified",
+  "pages": ["top", "A", "A/x", "A/y", "s", "B", "B/C"],
+  "page": "s",
+  "from": "A/x",
+  "to": "B/C/x"
+}
 ```
 
-改写规则（v0.1 设计 4.5）：
+- `pages`：照解析样例；可选，没有时树只有 `from` 与 `page` 两页，都在根下。`aliases` 同解析样例。
+- `page`：`.md` 是哪一页的正文，默认 `src`。一个样例一页正文。
+- `from`、`to`：页面的路径。父页相同是改名，名称相同是移动；两者都变的不是一次操作。
+- `nerve-defined` 的样例在 `note` 里写明 Obsidian 的结果与理由。
 
-- 只替换 `range` 那一段字节，其余字节不动，包括换行符风格。
-- wikilink 写入新标题；别名、锚点、目标两侧的空白保留。
-- Markdown 链接保持原来的写法：尖括号写法原样写入；其他写法只编码空格（`%20`）、`%`、`(`、`)`，其余字符（包括中文）原样写入。
-- 属性链接按标量的引号风格编码：单引号里的 `'` 写成 `''`。标题不允许 `"` 和 `\`，所以双引号里不需要转义。
+改写哪些链接：
 
-树结构和路径（相对路径、`[[路径/页面]]`）的改写样例由 M6 补充。
+- 之前解析到一页、改名或移动之后解析不到、解析到别的页，或新有歧义的，改写成仍指向那一页的写法；只改大小写的改名，按标题指向它、写法与新标题不逐字相同的也改写。
+- 不改写：之前解析不到的；只有锚点的；之后仍解析到同一页、没有新歧义的（Obsidian 在候选的路径变了时也改，样例 024、027）；`aliases` 的值（样例 032）；代码里的。注释里的照改，引用式链接改它的定义。
+- 之前有歧义的，照之前解析到的那一个（并列按 id，样例里是先列出的）。
+
+写法：
+
+- wikilink 与嵌入：名称在笔记本里只有这一页（或它在根下）时写名称，否则写从根起的完整路径（不带开头的 `/`）；原来的相对、从根起、带 `.md` 的写法不保留（Obsidian 的 `fileToLinktext`）。只换目标那一段：锚点、显示文字、目标两侧的空白保留。
+- 显示文字：目标带 `/`、没有锚点、显示文字与目标的最后一段逐字相同的，换成新标题（样例 006）；经别名解析到、被别的页抢走的，写成那一页并加上原来写的别名作显示文字（样例 028）。
+- Markdown 链接：普通的写法同 wikilink，加 `.md`；`./`、`../` 开头的从出发页的父页重新算相对路径（在它之下的以 `./` 开头），`/` 开头的写完整路径。尖括号写法原样写入；其他写法只编码空格（`%20`）、`%`、`(`、`)`，其余字符（包括中文）原样。地址两侧的空白、标题、锚点保留。纯文本的链接文字等于原来的标题（带 `/` 时等于原来的完整路径）的，换成新标题。
+- 属性链接按标量的引号风格编码：单引号里的 `'` 写成 `''`。标题不允许 `"` 和 `\`，所以双引号里不需要转义。frontmatter 的其余字节不动。
+- 只替换链接的那几段字节，其余字节不动，包括换行符风格。
+
+核对：
+
+```sh
+node tools/md-fixtures/obsidian/verify-rename.mjs prepare /tmp/nwiki-rename
+# 按提示用独立的数据目录启动 Obsidian，它不会碰你自己的库
+node tools/md-fixtures/obsidian/verify-rename.mjs check /tmp/nwiki-rename
+```
+
+每个样例清空库，建出它的页面（页面 `A` 是 `A.md`，有子页的另有文件夹 `A/`），打开"始终更新内部链接"、最短的链接格式，经 `app.fileManager.renameFile` 改名或移动（有子页的页是两次：`A.md` 与 `A/`），读那一页之后的正文。`obsidian-verified` 必须一致；`nerve-defined` 只报告差异。
 
 ## 链接解析样例
 
@@ -188,4 +216,4 @@ node tools/md-fixtures/obsidian/verify-resolve.mjs check /tmp/nwiki-resolve
 
 4. 运行提取器的测试。结果与期望不一致时，先判断是样例写错了还是实现有问题。
 
-解析样例照同样的步骤：手写 `resolve/` 的 `.json`，运行 `check.mjs`，用 `verify-resolve.mjs` 与 Obsidian 核对，再运行 linking 的解析测试。
+解析样例照同样的步骤：手写 `resolve/` 的 `.json`，运行 `check.mjs`，用 `verify-resolve.mjs` 与 Obsidian 核对，再运行 linking 的解析测试。改写样例同样：`rename/` 的三个文件，`check.mjs`，`verify-rename.mjs`，再运行 linking 的改写测试。

@@ -1,0 +1,17 @@
+{
+  "description": "被移动的页里，相对的 wikilink 换了出发文件夹之后解析不到，写成名称；仍能解析的 [[y]]、[[A/y]]、[[top]]、指向自己的 [[x#h]] 与只有锚点的不改。",
+  "source": "obsidian-verified",
+  "pages": [
+    "top",
+    "A",
+    "A/x",
+    "A/y",
+    "A/s2",
+    "s",
+    "B",
+    "B/C"
+  ],
+  "page": "A/x",
+  "from": "A/x",
+  "to": "B/C/x"
+}

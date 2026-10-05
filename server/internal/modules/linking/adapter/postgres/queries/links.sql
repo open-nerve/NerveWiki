@@ -2,17 +2,17 @@
 -- A page's links, resolved to none. An empty property path, anchor, display text or key is none.
 INSERT INTO page_links (
     source_id, range_start, range_end, notebook_id, kind, property_key, target, anchor, display, target_key,
-    target_alt_key, resolved_id, ambiguous
+    target_alt_key, resolved_id, ambiguous, aliases
 )
 SELECT sqlc.arg(source_id), u.range_start, u.range_end, sqlc.arg(notebook_id), u.kind, NULLIF(u.property_key, ''),
     u.target, NULLIF(u.anchor, ''), NULLIF(u.display, ''), NULLIF(u.target_key, ''), NULLIF(u.target_alt_key, ''),
-    NULL, false
+    NULL, false, u.aliases
 FROM (
     SELECT unnest(sqlc.arg(range_starts)::integer[]) AS range_start, unnest(sqlc.arg(range_ends)::integer[]) AS range_end,
         unnest(sqlc.arg(kinds)::text[]) AS kind, unnest(sqlc.arg(property_keys)::text[]) AS property_key,
         unnest(sqlc.arg(targets)::text[]) AS target, unnest(sqlc.arg(anchors)::text[]) AS anchor,
         unnest(sqlc.arg(displays)::text[]) AS display, unnest(sqlc.arg(target_keys)::text[]) AS target_key,
-        unnest(sqlc.arg(target_alt_keys)::text[]) AS target_alt_key
+        unnest(sqlc.arg(target_alt_keys)::text[]) AS target_alt_key, unnest(sqlc.arg(aliases)::boolean[]) AS aliases
 ) AS u;
 
 -- name: DeleteLinksOf :many
@@ -27,13 +27,14 @@ DELETE FROM page_links WHERE notebook_id = ANY(sqlc.arg(ids)::uuid[]);
 
 -- name: LinksReached :many
 -- The links of a notebook whose target's keys meet keys, that resolve to one of targets, or that are written in
--- one of sources (M6/P3 design 3.4, step 6).
-SELECT source_id, range_start, target, resolved_id, ambiguous FROM page_links
-WHERE notebook_id = sqlc.arg(notebook_id) AND (
-    target_key = ANY(sqlc.arg(keys)::text[]) OR target_alt_key = ANY(sqlc.arg(keys)::text[])
-    OR resolved_id = ANY(sqlc.arg(targets)::uuid[]) OR source_id = ANY(sqlc.arg(sources)::uuid[])
+-- one of sources (M6/P3 design 3.4, step 6), each with whether it is a value of its page's aliases (M6/P4 design 2).
+SELECT l.source_id, l.range_start, l.target, l.resolved_id, l.ambiguous, l.aliases
+FROM page_links l
+WHERE l.notebook_id = sqlc.arg(notebook_id) AND (
+    l.target_key = ANY(sqlc.arg(keys)::text[]) OR l.target_alt_key = ANY(sqlc.arg(keys)::text[])
+    OR l.resolved_id = ANY(sqlc.arg(targets)::uuid[]) OR l.source_id = ANY(sqlc.arg(sources)::uuid[])
 )
-ORDER BY source_id, range_start;
+ORDER BY l.source_id, l.range_start;
 
 -- name: SetResolutions :execrows
 -- Each link, by its page and start, resolves to the page given, the zero id none.

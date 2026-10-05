@@ -1,0 +1,18 @@
+{
+  "description": "指向被移动的页的相对链接，从出发文件夹重新算：不在出发文件夹之下的以 ../ 开头。",
+  "source": "nerve-defined",
+  "pages": [
+    "top",
+    "A",
+    "A/x",
+    "A/y",
+    "A/s2",
+    "s",
+    "B",
+    "B/C"
+  ],
+  "page": "A/s2",
+  "from": "A/x",
+  "to": "B/C/x",
+  "note": "Obsidian 默认（最短）写成 [t](x.md)。理由同 011。"
+}

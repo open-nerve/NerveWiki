@@ -66,3 +66,7 @@ ORDER BY source_id, alias_key;
 -- name: AliasKeysOf :many
 -- The keys of the aliases of the pages ids, each once.
 SELECT DISTINCT alias_key FROM page_aliases WHERE source_id = ANY(sqlc.arg(ids)::uuid[]) ORDER BY alias_key;
+
+-- name: IndexedPagesOf :many
+-- The revision and the extractor of the rows of the pages among ids the index has (M6/P4 design 4.1).
+SELECT node_id, revision, extractor FROM indexed_pages WHERE node_id = ANY(sqlc.arg(ids)::uuid[]);

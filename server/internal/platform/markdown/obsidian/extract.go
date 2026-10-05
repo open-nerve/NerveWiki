@@ -37,7 +37,9 @@ const (
 // resolves (a wikilink's trimmed, a Markdown link's decoded), Anchor what
 // follows its '#', Display a wikilink's display text, Key the path of the
 // property it is the value of, and Range where its target is written, the
-// bytes a rename rewrites. An empty field is none.
+// bytes a rename rewrites. An empty field is none. InTable tells a wikilink
+// in a table's cell, where a display text a rename adds follows "\|", as
+// Obsidian writes it there (M6/P4 design 3.1).
 type Link struct {
 	Kind    Kind
 	Target  string
@@ -45,6 +47,7 @@ type Link struct {
 	Display string
 	Key     string
 	Range   markdown.Span
+	InTable bool
 }
 
 // Tag is one tag of the body: its name as written, and where it is written,
@@ -115,7 +118,7 @@ func (w *wikilink) link() (Link, bool) {
 	if w.embed {
 		kind = KindEmbed
 	}
-	return Link{Kind: kind, Target: w.target, Anchor: w.anchor, Display: w.display, Range: w.at}, true
+	return Link{Kind: kind, Target: w.target, Anchor: w.anchor, Display: w.display, Range: w.at, InTable: w.inTable}, true
 }
 
 // destination is the link n, a Markdown link or image, makes: its

@@ -3,6 +3,7 @@ import { useId, useRef, useState, type FormEvent } from "react";
 
 import { useForm } from "../../app/form";
 import type { HeldDialog } from "../../app/held-dialog";
+import { pagesLocked } from "../../app/pages-locked";
 import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "../../components/ui/dialog";
@@ -11,8 +12,9 @@ import { NativeSelect } from "../../components/ui/native-select";
 import { useT } from "../../i18n/i18n";
 import type { Notebook } from "../../services/notebook.service";
 import type { NodeMove, TreeNode } from "../../services/page.service";
-import { usePageTree } from "../../stores/context";
+import { usePageTree, useStore } from "../../stores/context";
 import { canHold, childrenOf } from "../../stores/page-tree";
+import { distinctName } from "./distinct-name";
 
 /** The root's value in the parent's select. */
 const root = "";
@@ -26,9 +28,11 @@ const root = "";
  * the page's place; a choice the tree, read again, no longer offers goes
  * back to the page's parent and last. It is sent as every form is
  * (useForm): a refusal (409 page.cycle, page.too_deep, page.title_taken)
- * stays in the dialog, above the form, one of a field's (422, a parent or
- * a page to follow gone meanwhile) under its select, which gets the focus;
- * once moved, the dialog closes. Its
+ * stays in the dialog, above the form, one for the pages whose links the
+ * move would write again being edited with those pages, named as the tree
+ * names them, and their editors (M6/P4), one of a field's (422, a parent
+ * or a page to follow gone meanwhile) under its select, which gets the
+ * focus; once moved, the dialog closes. onSend is called as it sends. Its
  * title names the page by name, which tells it from others of its title.
  */
 export function MovePageDialog({
@@ -36,11 +40,13 @@ export function MovePageDialog({
   page,
   name,
   held,
+  onSend,
 }: {
   notebook: Notebook;
   page: TreeNode;
   name: string;
   held: HeldDialog;
+  onSend: () => void;
 }) {
   const t = useT();
   const done = useRef(false);
@@ -59,6 +65,7 @@ export function MovePageDialog({
           <MoveForm
             notebook={notebook}
             page={page}
+            onSend={onSend}
             cancel={() => held.onOpenChange(false)}
             moved={() => {
               done.current = true;
@@ -71,15 +78,18 @@ export function MovePageDialog({
   );
 }
 
-type MoveFormProps = { notebook: Notebook; page: TreeNode; cancel: () => void; moved: () => void };
+type MoveFormProps = { notebook: Notebook; page: TreeNode; onSend: () => void; cancel: () => void; moved: () => void };
 
-const MoveForm = observer(function MoveForm({ notebook, page, cancel, moved }: MoveFormProps) {
+const MoveForm = observer(function MoveForm({ notebook, page, onSend, cancel, moved }: MoveFormProps) {
   const pages = usePageTree(notebook);
   const t = useT();
   const ids = { parent: useId(), position: useId() };
   const [parent, setParent] = useState(page.parent_id ?? root);
   const [position, setPosition] = useState(() => placeOf(pages.childrenOf(page.parent_id), page.id));
-  const { ref, sending, banner, problemOf, submit } = useForm(["parent_id", "after_id"]);
+  const me = useStore().account?.me?.id;
+  const { ref, sending, banner, problemOf, submit } = useForm(["parent_id", "after_id"], {
+    explain: (error) => pagesLocked(error, t, me, (id) => distinctName(pages.tree, notebook, id, t)),
+  });
   const problems = { parent: problemOf("parent_id"), position: problemOf("after_id") };
   const tree = pages.tree;
   if (tree === undefined) {
@@ -108,6 +118,7 @@ const MoveForm = observer(function MoveForm({ notebook, page, cancel, moved }: M
     const move: NodeMove =
       place === "last" ? { parent_id: parentId } : { parent_id: parentId, after_id: place === "first" ? null : place };
     void submit({}, async () => {
+      onSend();
       await pages.move(page.id, move);
       pages.openTo(page.id);
       moved();

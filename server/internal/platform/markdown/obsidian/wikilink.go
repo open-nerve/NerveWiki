@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/yuin/goldmark/ast"
+	east "github.com/yuin/goldmark/extension/ast"
 	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/text"
 
@@ -19,8 +20,9 @@ var kindWikilink = ast.NewNodeKind("Wikilink") //nolint:gochecknoglobals // a ki
 // heading's id and an image's text have it.
 type wikilink struct {
 	ast.BaseInline
-	embed  bool
-	inLink bool // in a Markdown link's text
+	embed   bool
+	inLink  bool // in a Markdown link's text
+	inTable bool // in a table's cell, where a display text follows "\|"
 	parts
 }
 
@@ -93,7 +95,7 @@ func (wikilinkParser) Trigger() []byte { return []byte{'[', '!'} }
 // other bracket comes between: each scan stops at the next bracket, so a
 // line's scans read it about twice. A wikilink with neither a target nor
 // an anchor is text.
-func (wikilinkParser) Parse(_ ast.Node, block text.Reader, _ parser.Context) ast.Node {
+func (wikilinkParser) Parse(parent ast.Node, block text.Reader, _ parser.Context) ast.Node {
 	line, seg := block.PeekLine()
 	open := 2
 	if line[0] == '!' {
@@ -128,7 +130,7 @@ scan:
 	from := seg.Start + open
 	p.at = markdown.Span{Start: from + p.at.Start, Stop: from + p.at.Stop}
 	block.Advance(end + 2)
-	w := &wikilink{embed: open == 3, parts: p}
+	w := &wikilink{embed: open == 3, inTable: parent.Kind() == east.KindTableCell, parts: p}
 	shown := ast.NewString([]byte(w.shown()))
 	shown.SetRaw(true)
 	w.AppendChild(w, shown)

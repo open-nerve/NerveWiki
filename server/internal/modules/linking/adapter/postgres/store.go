@@ -108,6 +108,7 @@ func linksParams(p app.Page, links []domain.Link) gen.InsertLinksParams {
 		out.Displays = append(out.Displays, l.Display)
 		out.TargetKeys = append(out.TargetKeys, key)
 		out.TargetAltKeys = append(out.TargetAltKeys, alt)
+		out.Aliases = append(out.Aliases, l.Aliases)
 	}
 	return out
 }
@@ -188,7 +189,7 @@ func (s *Store) Links(ctx context.Context, notebookID uuid.UUID, r domain.Reach)
 	}
 	out := make([]app.Link, len(rows))
 	for i, row := range rows {
-		out[i] = app.Link{SourceID: row.SourceID, Start: int(row.RangeStart), Target: row.Target}
+		out[i] = app.Link{SourceID: row.SourceID, Start: int(row.RangeStart), Target: row.Target, Aliases: row.Aliases}
 		if row.ResolvedID != nil {
 			out[i].Resolution = domain.Resolution{ID: *row.ResolvedID, Ambiguous: row.Ambiguous}
 		}
@@ -220,6 +221,19 @@ func (s *Store) View(ctx context.Context, id uuid.UUID) (app.Indexed, bool, erro
 		out.Resolutions[int(*row.RangeStart)] = r
 	}
 	return out, true, nil
+}
+
+// IndexedOf implements app.Store.
+func (s *Store) IndexedOf(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]app.Indexed, error) {
+	rows, err := s.queries(ctx).IndexedPagesOf(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("the index of %d pages: %w", len(ids), err)
+	}
+	out := make(map[uuid.UUID]app.Indexed, len(rows))
+	for _, row := range rows {
+		out[row.NodeID] = app.Indexed{Revision: int(row.Revision), Extractor: int(row.Extractor)}
+	}
+	return out, nil
 }
 
 // Aliases implements app.Store.

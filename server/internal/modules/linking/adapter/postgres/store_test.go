@@ -283,6 +283,28 @@ func TestTheLinksAChangeReaches(t *testing.T) {
 	}
 }
 
+// A link reached tells whether it is a value of its page's aliases, as the
+// extraction told it when the page was indexed (M6/P4 design 2).
+func TestALinkReachedTellsWhetherItIsAValueOfTheAliases(t *testing.T) {
+	f := newFixture(t)
+	p := uuid.NewV7()
+	links := []domain.Link{
+		{Kind: "wikilink", Property: "aliases.0", Target: "A", Start: 0, End: 1, Aliases: true},
+		{Kind: "wikilink", Property: "aliases.1", Target: "A", Start: 10, End: 11},
+		{Kind: "wikilink", Target: "A", Start: 20, End: 21},
+	}
+	f.replace(t, app.Page{ID: p, NotebookID: f.eng, Revision: 1}, domain.Facts{Links: links})
+	got, err := f.s.Links(context.Background(), f.eng, domain.Reach{Sources: []uuid.UUID{p}})
+	if err != nil || len(got) != len(links) {
+		t.Fatalf("%d links, %v; want %d", len(got), err, len(links))
+	}
+	for i, l := range got {
+		if l.Aliases != links[i].Aliases {
+			t.Errorf("the link at %d: aliases %t, want %t", l.Start, l.Aliases, links[i].Aliases)
+		}
+	}
+}
+
 // The pages with an alias are found by its key, in their notebook only;
 // the keys of pages' aliases, each once.
 func TestThePagesWithAnAlias(t *testing.T) {
@@ -366,6 +388,21 @@ func TestAPagesView(t *testing.T) {
 	}
 	if got, ok, err := f.s.View(ctx, uuid.NewV7()); err != nil || ok {
 		t.Errorf("not indexed: View = %+v, %v, %v", got, ok, err)
+	}
+}
+
+// The index of pages, by id: the revision and the extractor of the rows of
+// those the index has; none of the others.
+func TestThePagesIndexed(t *testing.T) {
+	f := newFixture(t)
+	p, q := uuid.NewV7(), uuid.NewV7()
+	f.replace(t, app.Page{ID: p, NotebookID: f.eng, Revision: 7}, facts())
+	f.replace(t, app.Page{ID: q, NotebookID: f.eng, Revision: 2}, domain.Facts{FrontmatterValid: true})
+	f.replace(t, app.Page{ID: uuid.NewV7(), NotebookID: f.eng, Revision: 1}, facts())
+	got, err := f.s.IndexedOf(context.Background(), []uuid.UUID{p, q, uuid.NewV7()})
+	want := map[uuid.UUID]app.Indexed{p: {Revision: 7, Extractor: domain.Extractor}, q: {Revision: 2, Extractor: domain.Extractor}}
+	if err != nil || !reflect.DeepEqual(got, want) {
+		t.Errorf("IndexedOf = %+v, %v; want %+v", got, err, want)
 	}
 }
 

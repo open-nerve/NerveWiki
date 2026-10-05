@@ -44,7 +44,7 @@ func (r *reader) note(n *yaml.Node, value string) error {
 	if r.paths += pathBytes(r.path); r.paths > r.pathsBudget {
 		return errInvalid
 	}
-	s.Path = strings.Join(r.path, ".")
+	s.Path, s.Depth = strings.Join(r.path, "."), len(r.path)
 	s.start += r.at
 	for i := range s.offsets {
 		s.offsets[i] += r.at

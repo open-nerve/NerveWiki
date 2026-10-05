@@ -56,6 +56,10 @@ type LinkStep struct {
 	Name string
 }
 
+// MaxContentBytes is the most bytes a page's content holds: M6's rewrite
+// of links leaves a page it would make larger (M6/P4 review r2-2).
+const MaxContentBytes = domain.MaxContentBytes
+
 // NewLinkTargets returns LinkTargets over pool alone.
 func NewLinkTargets(pool *pgxpool.Pool) LinkTargets {
 	return linkTargets{store: postgresadapter.New(pool)}

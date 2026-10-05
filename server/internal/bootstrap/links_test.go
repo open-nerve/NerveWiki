@@ -121,8 +121,10 @@ func sameSet(got *[]string, want []string) bool {
 
 // Each write of the pages keeps the index through serve, and its links
 // event reaches a stream that sees the notebook, after the unit's pages
-// event: a page created takes the links to its name; a rename the links
-// to it and to the pages under it, by their paths; a move alike; a content
+// event: a page created takes the links to its name; a rename takes the
+// links to the pages under it by their new paths, and writes again those
+// that led to them, whose page's links the index takes (M6/P4); a move the
+// links to it by its new path; a content
 // written its own links, and the links to its aliases; a task toggled
 // writes the content again; a subtree deleted the links to its pages. A
 // write that changes no link's resolution publishes no links event.
@@ -141,21 +143,22 @@ func TestEveryPageWriteKeepsTheIndex(t *testing.T) {
 	tm.resolves(t, src, target, sub, "", "", "")
 
 	tm.send(t, nodeRename("alice", target, "Renamed"), http.StatusOK)
-	s.tree(t, nb, map[string]int{})
-	s.links(t, nb, []string{src}, []string{target, sub})
-	tm.resolves(t, src, "", "", sub, "", "")
+	s.tree(t, nb, map[string]int{src: 2})
+	s.links(t, nb, []string{}, []string{target, sub})
+	tm.wrote(t, src, "[[Renamed]] [[Sub]] [[Renamed/Sub]] [[Box/Renamed]] [[Nick]]", 2)
+	tm.resolves(t, src, target, sub, sub, "", "")
 
 	box := tm.createPage(t, "alice", nb, "", "Box")
 	s.tree(t, nb, map[string]int{box: 1})
 	tm.send(t, nodeMove("alice", target, box), http.StatusOK)
 	s.tree(t, nb, map[string]int{})
 	s.links(t, nb, []string{src}, []string{target})
-	tm.resolves(t, src, "", "", sub, target, "")
+	tm.resolves(t, src, target, sub, sub, target, "")
 
 	tm.send(t, contentWrite("alice", target, "---\naliases: [Nick]\n---\n", 1, ""), http.StatusOK)
 	s.pages(t, nb)
 	s.links(t, nb, []string{src}, []string{target})
-	tm.resolves(t, src, "", "", sub, target, target)
+	tm.resolves(t, src, target, sub, sub, target, target)
 
 	tasks := tm.createPageWith(t, "alice", nb, "", "Tasks", "- [ ] [[Box]]\n")
 	s.tree(t, nb, map[string]int{tasks: 1})
@@ -170,7 +173,7 @@ func TestEveryPageWriteKeepsTheIndex(t *testing.T) {
 	tm.resolves(t, src, "", "", "", "", "")
 	tm.resolves(t, tasks, "")
 
-	tm.send(t, contentWrite("alice", src, "[[Tasks]]", 1, ""), http.StatusOK)
+	tm.send(t, contentWrite("alice", src, "[[Tasks]]", 2, ""), http.StatusOK)
 	s.pages(t, nb)
 	s.links(t, nb, []string{}, []string{tasks})
 	tm.quiet(t, nb, marker, s)

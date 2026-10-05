@@ -1,0 +1,15 @@
+{
+  "description": "新的名称不唯一时写完整路径，不写部分的路径后缀。",
+  "source": "obsidian-verified",
+  "pages": [
+    "Long",
+    "Long/Deep",
+    "Long/Deep/Old",
+    "Other",
+    "Other/Plan",
+    "s"
+  ],
+  "page": "s",
+  "from": "Long/Deep/Old",
+  "to": "Long/Deep/Plan"
+}

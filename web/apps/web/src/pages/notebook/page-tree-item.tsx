@@ -25,8 +25,9 @@ import type { Notebook } from "../../services/notebook.service";
 import type { TreeNode } from "../../services/page.service";
 import { useStore } from "../../stores/context";
 import type { PageTreeStore } from "../../stores/page-tree.store";
-import { depthOf, maxDepth, placeOfTitle, subtreeOf } from "../../stores/page-tree";
+import { depthOf, maxDepth, subtreeOf } from "../../stores/page-tree";
 import { useWorkspace } from "../workspace/workspace-layout";
+import { distinctName } from "./distinct-name";
 import { MovePageDialog } from "./move-page-dialog";
 import { dropOperations } from "./page-drag";
 import { RenamePageDialog } from "./rename-page-dialog";
@@ -146,9 +147,7 @@ const PageItem = observer(function PageItem({ context, node, depth }: ItemProps)
  */
 function useDistinctName({ notebook, pages }: TreeContext, node: TreeNode): string {
   const t = useT();
-  const tree = pages.tree;
-  const place = tree === undefined ? undefined : placeOfTitle(tree, node.id);
-  return place === undefined ? node.name : t("page.nameIn", { name: node.name, place: place || notebook.name });
+  return distinctName(pages.tree, notebook, node.id, t) ?? node.name;
 }
 
 /**
@@ -253,8 +252,15 @@ const PageMenu = observer(function PageMenu({
           <DropdownMenuItem onSelect={() => setDialog("delete")}>{t("page.delete")}</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-      <RenamePageDialog notebook={notebook} page={node} name={name} held={held("rename")} />
-      <MovePageDialog notebook={notebook} page={node} name={name} held={held("move")} />
+      {/* A rename or move sent: the tree's last refusal goes, as a deletion's has it. */}
+      <RenamePageDialog
+        notebook={notebook}
+        page={node}
+        name={name}
+        held={held("rename")}
+        onSend={() => fail(undefined)}
+      />
+      <MovePageDialog notebook={notebook} page={node} name={name} held={held("move")} onSend={() => fail(undefined)} />
       <ConfirmDialog
         held={{
           ...held("delete"),
@@ -280,7 +286,7 @@ const PageMenu = observer(function PageMenu({
           await pages.remove(node.id);
         }}
         // Someone editing the page or one under it refuses the deletion: the dialog names them, and the page.
-        explain={(error) => lockedText(error, t, me, (id) => pages.byId(id)?.name)}
+        explain={(error) => lockedText(error, t, me, (id) => distinctName(pages.tree, notebook, id, t))}
       />
     </>
   );

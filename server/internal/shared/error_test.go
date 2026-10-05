@@ -113,6 +113,11 @@ func TestProblemMembers(t *testing.T) {
 	if _, _, ok := err.ProblemEndedBy(); ok {
 		t.Error("ProblemEndedBy() ok without ended_by")
 	}
+	var locks []string
+	collect := func(p, u uuid.UUID, name string) { locks = append(locks, p.String()+" "+u.String()+" "+name) }
+	if err.ProblemLocks(collect); len(locks) != 0 {
+		t.Errorf("ProblemLocks() gave %q without locks", locks)
+	}
 
 	err.Lock = &shared.LockHolder{PageID: page, UserID: user, DisplayName: "Ada"}
 	err.EndedBy = &shared.Person{UserID: user, DisplayName: "Grace"}
@@ -121,6 +126,12 @@ func TestProblemMembers(t *testing.T) {
 	}
 	if u, name, ok := err.ProblemEndedBy(); !ok || u != user || name != "Grace" {
 		t.Errorf("ProblemEndedBy() = %s %q %v, want %s Grace true", u, name, ok, user)
+	}
+	other := uuid.New()
+	err.Locks = []shared.LockHolder{{PageID: page, UserID: user, DisplayName: "Ada"}, {PageID: other, UserID: user, DisplayName: "Ada"}}
+	err.ProblemLocks(collect)
+	if want := []string{page.String() + " " + user.String() + " Ada", other.String() + " " + user.String() + " Ada"}; !slices.Equal(locks, want) {
+		t.Errorf("ProblemLocks() gave %q, want %q", locks, want)
 	}
 }
 

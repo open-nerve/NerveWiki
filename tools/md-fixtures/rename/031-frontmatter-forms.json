@@ -1,0 +1,7 @@
+{
+  "description": "frontmatter 里只换链接目标那一段：注释、流式与块式列表、010、单引号、属性里的 Markdown 链接、CRLF 都原样。",
+  "source": "nerve-defined",
+  "from": "Old",
+  "to": "New",
+  "note": "Obsidian 只要属性链接有一条改写，就把整个 frontmatter 重新写出：去掉注释，单引号改双引号、去掉不需要的引号，流式列表改块式，010 写成 10，行内的 CRLF 改 LF。"
+}

@@ -164,6 +164,37 @@ func (q *Queries) DeleteTagsOf(ctx context.Context, ids []uuid.UUID) error {
 	return err
 }
 
+const indexedPagesOf = `-- name: IndexedPagesOf :many
+SELECT node_id, revision, extractor FROM indexed_pages WHERE node_id = ANY($1::uuid[])
+`
+
+type IndexedPagesOfRow struct {
+	NodeID    uuid.UUID
+	Revision  int32
+	Extractor int32
+}
+
+// The revision and the extractor of the rows of the pages among ids the index has (M6/P4 design 4.1).
+func (q *Queries) IndexedPagesOf(ctx context.Context, ids []uuid.UUID) ([]IndexedPagesOfRow, error) {
+	rows, err := q.db.Query(ctx, indexedPagesOf, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []IndexedPagesOfRow
+	for rows.Next() {
+		var i IndexedPagesOfRow
+		if err := rows.Scan(&i.NodeID, &i.Revision, &i.Extractor); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const insertAliases = `-- name: InsertAliases :exec
 INSERT INTO page_aliases (source_id, alias_key, notebook_id, alias)
 SELECT $1, u.alias_key, $2, u.alias

@@ -143,6 +143,23 @@ func TestAFrontmattersStringsAreWhereTheyAreWritten(t *testing.T) {
 	}
 }
 
+// A scalar's depth is how many keys and indexes its path joins, a key
+// that holds a '.' one: the paths alone do not tell "a.0" apart.
+func TestAScalarsDepthCountsTheKeysOfItsPath(t *testing.T) {
+	type depth struct {
+		Path  string
+		Depth int
+	}
+	var got []depth
+	for _, s := range treeOf(t, "---\na: [x, {\"0\": y}]\na.0: z\nb: {\"0\": w}\n---\n").Frontmatter.Scalars {
+		got = append(got, depth{s.Path, s.Depth})
+	}
+	want := []depth{{"a.0", 2}, {"a.1.0", 3}, {"a.0", 1}, {"b.0", 2}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("depths %+v\nwant %+v", got, want)
+	}
+}
+
 // A frontmatter that is not valid has no scalars.
 func TestAnInvalidFrontmatterHasNoScalars(t *testing.T) {
 	if got := treeOf(t, "---\na: x\na: y\n---\n").Frontmatter; got.Valid || len(got.Scalars) != 0 {

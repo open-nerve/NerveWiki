@@ -393,9 +393,16 @@ paths:
         checked after both: its rules are validation_failed, a name a
         sibling has, compared by its key, is page.title_taken. The page's
         own name writes nothing; one that differs from it in case alone is
-        written.
+        written. The links that led to the page, or under it, by a path
+        that changes, and those the new name would lead elsewhere, are
+        written again in the pages they are in, so that each leads where it
+        did; when one of these pages is being edited, its own included, the
+        rename is refused as a whole, linking.pages_locked naming each of
+        them and its editor, and when their parse finds the server busy it
+        is server_busy.
       security: [{ bearer: [] }]
-      x-problem-codes: [page.not_found, forbidden, validation_failed, page.title_taken]
+      x-problem-codes:
+        [page.not_found, forbidden, validation_failed, page.title_taken, linking.pages_locked, server_busy]
       requestBody:
         required: true
         content:
@@ -449,9 +456,26 @@ paths:
         is the page itself or under it is page.cycle, a title a new sibling
         has, compared by its key, page.title_taken, and a page under it
         that would be deeper than ten levels page.too_deep. A move to where
-        the page is writes nothing.
+        the page is writes nothing. The links that led to the page or under
+        it by a path that changes, those from these pages that the move
+        would lead elsewhere, and those the moved pages would take from
+        other pages, are written again in the pages they are in, so that
+        each leads where it did; when one of these pages is being edited,
+        one of the moved included, the move is refused as a whole,
+        linking.pages_locked naming each of them and its editor, and when
+        their parse finds the server busy it is server_busy.
       security: [{ bearer: [] }]
-      x-problem-codes: [page.not_found, forbidden, validation_failed, page.cycle, page.title_taken, page.too_deep]
+      x-problem-codes:
+        [
+          page.not_found,
+          forbidden,
+          validation_failed,
+          page.cycle,
+          page.title_taken,
+          page.too_deep,
+          linking.pages_locked,
+          server_busy,
+        ]
       requestBody:
         required: true
         content:

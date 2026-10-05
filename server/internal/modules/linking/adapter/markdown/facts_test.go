@@ -14,6 +14,7 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/modules/linking/domain"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown/obsidian"
+	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
 func factsOf(t *testing.T, content string) domain.Facts {
@@ -44,10 +45,12 @@ func TestAPagesFactsAreWhatTheIndexKeeps(t *testing.T) {
 		start, end := span(written)
 		return domain.Link{Kind: kind, Property: property, Target: target, Anchor: anchor, Display: display, Start: start, End: end}
 	}
+	quoted := link("wikilink", "src", "Other", "P", "o", "Other")
+	quoted.Quote = '"'
 	want := domain.Facts{
 		FrontmatterValid: true,
 		Links: []domain.Link{
-			link("wikilink", "src", "Other", "P", "o", "Other"),
+			quoted,
 			link("wikilink", "", "A/Note", "Part", "the note", "A/Note"),
 			link("embed", "", "Pic.png", "", "", "Pic.png"),
 			link("link", "", "Straße.md", "", "", "Straße.md"),
@@ -64,6 +67,43 @@ func TestAPagesFactsAreWhatTheIndexKeeps(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("facts = %+v\nwant %+v", got, want)
+	}
+}
+
+// What a rewrite reads of a link beside (M6/P4 design 3): a property
+// link's quote; whether it is a value of the aliases, the first key that is
+// "aliases" but for ASCII case, its string or its list's, not a key's
+// that holds a '.' or a mapping's; whether a wikilink is in a table's
+// cell. A body's link has no quote.
+func TestALinkTellsWhatARewriteReads(t *testing.T) {
+	content := "---\naliases: [\"[[A]]\", '[[B]]']\nAliases: \"[[C]]\"\nr: '[[D]]'\nn:\n  aliases: \"[[E]]\"\naliases.1: \"[[F]]\"\n---\n" +
+		"| h |\n| --- |\n| [[G]] |\n\n[[H]] [i](I.md)\n"
+	type read struct {
+		Quote            byte
+		Aliases, InTable bool
+	}
+	var got []read
+	for _, l := range factsOf(t, content).Links {
+		got = append(got, read{l.Quote, l.Aliases, l.InTable})
+	}
+	want := []read{
+		{'"', true, false}, {'\'', true, false}, {'"', false, false}, {'\'', false, false}, {'"', false, false}, {'"', false, false},
+		{0, false, true}, {0, false, false}, {0, false, false},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("read %+v\nwant %+v", got, want)
+	}
+	for frontmatter, want := range map[string]bool{
+		"ALIASES: '[[A]]'":               true,
+		"aliases: {\"0\": \"[[A]]\"}":    false,
+		"aliases: [[\"[[A]]\"]]":         false,
+		"aliases: {x: [\"[[A]]\"]}":      false,
+		"aliases: x\naliases.0: '[[A]]'": false,
+	} {
+		links := factsOf(t, "---\n"+frontmatter+"\n---\n").Links
+		if len(links) != 1 || links[0].Aliases != want {
+			t.Errorf("%q: links %+v, want one whose aliases is %t", frontmatter, links, want)
+		}
 	}
 }
 
@@ -129,8 +169,8 @@ func TestU0000IsWrittenAsTheReplacementCharacter(t *testing.T) {
 	want := domain.Facts{
 		FrontmatterValid: true,
 		Links: []domain.Link{
-			{Kind: "wikilink", Property: "src", Target: "a" + r + "b", Display: "d" + r},
-			{Kind: "wikilink", Property: "l" + r, Target: "y"},
+			{Kind: "wikilink", Property: "src", Target: "a" + r + "b", Display: "d" + r, Quote: '"'},
+			{Kind: "wikilink", Property: "l" + r, Target: "y", Quote: '"'},
 			{Kind: "link", Target: "a" + r + "b.md", Anchor: "p" + r + "q"},
 		},
 		Tags:    []domain.Tag{{Key: "t" + r, Name: "t" + r, Count: 1}},
@@ -193,5 +233,42 @@ func TestTheParserTakesTheBudget(t *testing.T) {
 	defer hold.Release()
 	if _, err := parser.Facts(context.Background(), "[[A]]"); !errors.Is(err, markdown.ErrBusy) {
 		t.Errorf("Facts with the budget taken = %v, want ErrBusy", err)
+	}
+}
+
+// A parse now holds its facts' share of the budget, taken now, until
+// released, with the facts the page module writes; a budget not free now
+// is server_busy at once, whatever its wait.
+func TestAParseNowHoldsItsShareTakenNow(t *testing.T) {
+	md, err := markdown.New([]markdown.Extension{obsidian.Extension(obsidian.Options{})})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const size = 64 << 10
+	budget := markdown.NewBudget(size, time.Hour, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	parser := markdownadapter.NewParser(md, budget)
+	content := strings.Repeat("[[A]] ", 4000)
+	parsed, err := parser.ParseNow(context.Background(), content)
+	if err != nil || len(parsed.Facts.Links) != 4000 {
+		t.Fatalf("ParseNow = %d links, %v; want 4000", len(parsed.Facts.Links), err)
+	}
+	if _, ok := parsed.Written.(markdown.Facts); !ok {
+		t.Errorf("the facts written are %T, want the platform's", parsed.Written)
+	}
+	share := (parsed.Written.(markdown.Facts).Limit(len(content)) + 299) / 300
+	if hold, err := budget.TakeNow(context.Background(), size-share+1); err == nil {
+		hold.Release()
+		t.Errorf("all but the share %d taken beside it, and one byte more", share)
+	}
+	parsed.Release()
+	all, err := budget.TakeNow(context.Background(), size)
+	if err != nil {
+		t.Fatalf("the budget after the release: %v", err)
+	}
+	defer all.Release()
+	at := time.Now()
+	var busy *shared.Error
+	if _, err := parser.ParseNow(context.Background(), "[[A]]"); !errors.As(err, &busy) || busy.Code != "server_busy" || time.Since(at) > time.Second {
+		t.Errorf("ParseNow with the budget taken = %v after %s, want server_busy at once", err, time.Since(at))
 	}
 }

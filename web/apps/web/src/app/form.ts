@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 
 import { useFocusOnInvalid } from "../components/form-field";
 import { useT } from "../i18n/i18n";
@@ -14,8 +14,9 @@ export type LocalProblems<Field extends string> = Partial<Record<Field, FieldMes
  * the fields (a problem code in onField under its field), the rest above
  * the form; the button is disabled while the form is out; after each
  * failure the first invalid field gets the focus; texts says some problem
- * codes the form's way, fieldTexts some field codes of its fields. The
- * form gets ref.
+ * codes the form's way, fieldTexts some field codes of its fields, and
+ * explain some problems more than a text does, above the form (M6/P4: the
+ * pages a rename's links lock). The form gets ref.
  */
 export function useForm<Field extends string>(
   fields: readonly Field[],
@@ -23,10 +24,13 @@ export function useForm<Field extends string>(
     onField = {},
     texts = {},
     fieldTexts,
+    explain,
   }: {
     onField?: Readonly<Record<string, Field>>;
     texts?: ProblemTexts;
     fieldTexts?: Readonly<Partial<Record<`${Field}.${FieldError["code"]}`, FieldMessage>>>;
+    /** What a problem says above the form, or undefined for its text. */
+    explain?: (error: unknown) => ReactNode;
   } = {}
 ) {
   const t = useT();
@@ -36,6 +40,7 @@ export function useForm<Field extends string>(
   const [failures, setFailures] = useState(0);
   const ref = useFocusOnInvalid(failures);
   const server = formErrors(failure, t, fields, { onField, texts, fieldTexts });
+  const banner: ReactNode = (failure === undefined ? undefined : explain?.(failure)) ?? server.banner;
 
   /** submit shows found, or runs send when it is empty; it resolves whether send went through. */
   async function submit(found: LocalProblems<Field>, send: () => Promise<void>): Promise<boolean> {
@@ -64,5 +69,5 @@ export function useForm<Field extends string>(
     return key === undefined ? server.fields[field] : t(key);
   }
 
-  return { ref, sending, banner: server.banner, problemOf, submit };
+  return { ref, sending, banner, problemOf, submit };
 }

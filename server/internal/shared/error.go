@@ -112,6 +112,9 @@ type Error struct {
 	RetryDelay time.Duration // becomes Retry-After when positive
 	// Lock is the edit lock a page.locked names: the problem's lock member.
 	Lock *LockHolder
+	// Locks are the edit locks a linking.pages_locked names, one a page:
+	// the problem's locks member (M6/P4 design 4.1).
+	Locks []LockHolder
 	// EndedBy is who ended the caller's edit session: the problem's
 	// ended_by member of page.edit_session_unlocked.
 	EndedBy *Person
@@ -208,6 +211,14 @@ func (e *Error) ProblemLock() (pageID, userID uuid.UUID, displayName string, ok 
 		return uuid.UUID{}, uuid.UUID{}, "", false
 	}
 	return e.Lock.PageID, e.Lock.UserID, e.Lock.DisplayName, true
+}
+
+// ProblemLocks gives each of the problem's locks members to each, in
+// order: none when it has none.
+func (e *Error) ProblemLocks(each func(pageID, userID uuid.UUID, displayName string)) {
+	for _, l := range e.Locks {
+		each(l.PageID, l.UserID, l.DisplayName)
+	}
 }
 
 // ProblemEndedBy is the problem's ended_by member, if it has one.

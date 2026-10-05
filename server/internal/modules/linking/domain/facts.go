@@ -26,6 +26,12 @@ type Facts struct {
 // kind (wikilink, embed, link or image), the path of the property it is the
 // value of, its target, anchor and display text, an empty one none; and
 // where its target is written, in bytes, one link a range.
+//
+// What a rewrite reads of it beside (M6/P4 design 2, 3): Aliases tells a
+// link that is a value of the page's aliases, which a rewrite leaves; and,
+// which the index does not keep, Quote is how the frontmatter writes a
+// property link's value, 0 plain, or the single or double quote around it,
+// and InTable tells a wikilink in a table's cell.
 type Link struct {
 	Kind     string
 	Property string
@@ -34,6 +40,17 @@ type Link struct {
 	Display  string
 	Start    int
 	End      int
+	Quote    byte
+	InTable  bool
+	Aliases  bool
+}
+
+// InFrontmatter tells a property link: the value of a frontmatter's string
+// in quotes, as a plain one cannot start with '[', its path maybe empty, as
+// a key may be ("": '[[x]]'), which the index keeps as none (M6/P4 fix
+// check c6-1).
+func (l Link) InFrontmatter() bool {
+	return l.Property != "" || l.Quote != 0
 }
 
 // MaxKey is the most bytes of a title key the index keeps: twice a title's

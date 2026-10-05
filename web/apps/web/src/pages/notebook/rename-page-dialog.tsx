@@ -2,33 +2,40 @@ import { useRef } from "react";
 
 import type { HeldDialog } from "../../app/held-dialog";
 import { notebookNameProblem, notebookNameTexts } from "../../app/notebook-name";
+import { pagesLocked } from "../../app/pages-locked";
 import { RenameForm } from "../../app/rename-form";
 import { Dialog, DialogContent, DialogTitle } from "../../components/ui/dialog";
 import { useT } from "../../i18n/i18n";
 import type { Notebook } from "../../services/notebook.service";
 import type { TreeNode } from "../../services/page.service";
-import { usePageTree } from "../../stores/context";
+import { usePageTree, useStore } from "../../stores/context";
+import { distinctName } from "./distinct-name";
 
 /**
  * RenamePageDialog renames page with the rename form a notebook's has: a
  * page's title follows a notebook name's rules (shared.CheckTitle). A
- * refusal (422, 409 page.title_taken) stays in the form; once saved, the
- * dialog closes. Its title names the page by name, which tells it from
- * others of its title.
+ * refusal (422, 409 page.title_taken) stays in the form, one for the pages
+ * whose links the rename would write again being edited with those pages
+ * and their editors (M6/P4), each named as the tree names it; once saved,
+ * the dialog closes. onSend is called as it sends. Its title names the
+ * page by name, which tells it from others of its title.
  */
 export function RenamePageDialog({
   notebook,
   page,
   name,
   held,
+  onSend,
 }: {
   notebook: Notebook;
   page: TreeNode;
   name: string;
   held: HeldDialog;
+  onSend: () => void;
 }) {
   const pages = usePageTree(notebook);
   const t = useT();
+  const me = useStore().account?.me?.id;
   const done = useRef(false);
   return (
     <Dialog open={held.open} onOpenChange={held.onOpenChange}>
@@ -48,7 +55,11 @@ export function RenamePageDialog({
             autoComplete="off"
             check={notebookNameProblem}
             fieldTexts={notebookNameTexts}
-            rename={(title) => pages.rename(page.id, title)}
+            rename={(title) => {
+              onSend();
+              return pages.rename(page.id, title);
+            }}
+            explain={(error) => pagesLocked(error, t, me, (id) => distinctName(pages.tree, notebook, id, t))}
             saveLabel={t("page.save")}
             savedLabel={t("page.saved")}
             onSaved={() => {

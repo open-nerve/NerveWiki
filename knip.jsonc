@@ -8,6 +8,7 @@
         "tools/md-fixtures/check.mjs",
         "tools/md-fixtures/obsidian/verify.mjs",
         "tools/md-fixtures/obsidian/verify-resolve.mjs",
+        "tools/md-fixtures/obsidian/verify-rename.mjs",
         "tools/password-blocklist/build.mjs",
       ],
     },

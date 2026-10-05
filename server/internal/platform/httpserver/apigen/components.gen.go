@@ -81,6 +81,13 @@ type Problem struct {
 		UserID      uuid.UUID `json:"user_id"`
 	} `json:"lock,omitempty"`
 
+	// Locks The edit locks linking.pages_locked names, one a page: each page whose links a rename or move would write again and who edits it (the caller themself when they edit it). No other code carries it.
+	Locks *[]struct {
+		DisplayName string    `json:"display_name"`
+		PageID      uuid.UUID `json:"page_id"`
+		UserID      uuid.UUID `json:"user_id"`
+	} `json:"locks,omitempty"`
+
 	// Status HTTP status code.
 	Status int `json:"status"`
 

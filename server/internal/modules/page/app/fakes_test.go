@@ -645,6 +645,7 @@ func (o *observer) PagesChanged(ctx context.Context, e app.Event) error {
 // renames that node to name through the unit; when retitle is, it renames
 // the node the step changed, adding " (retitled)" to its name; when write
 // is, it writes that content through the unit, and keeps the revision.
+// It defers deferred, when set, first.
 type participant struct {
 	*recorder
 	label    string
@@ -654,11 +655,15 @@ type participant struct {
 	retitle  bool
 	write    *app.ContentWrite
 	revision int
+	deferred func()
 }
 
 func (p *participant) Participate(ctx context.Context, s app.Step, u app.Appender) error {
 	p.record(ctx, named("Participate "+string(s.Operation), p.label))
 	p.steps = append(p.steps, s)
+	if p.deferred != nil {
+		u.Defer(p.deferred)
+	}
 	switch {
 	case p.rename != nil:
 		_, err := u.Rename(ctx, *p.rename, p.name)

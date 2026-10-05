@@ -3,6 +3,7 @@ package app_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -117,6 +118,34 @@ func TestAParticipantAddsToTheUnit(t *testing.T) {
 	}
 	if len(o.events) != 1 || len(o.events[0].Changes) != 2 || o.events[0].Changes[1].After.Name != "Renamed" {
 		t.Errorf("events = %+v, want one with both changes", o.events)
+	}
+}
+
+// What a participant defers runs once the unit is over: after its
+// observers, its transaction ended, committed or rolled back; once.
+func TestWhatAParticipantDefersRunsOnceTheUnitIsOver(t *testing.T) {
+	for _, fails := range []bool{false, true} {
+		f := newFixture()
+		f.grant(domain.ActionRename)
+		var ran []string
+		p := &participant{recorder: f.rec}
+		p.deferred = func() {
+			ran = append(ran, fmt.Sprintf("rolled back %t after %s", f.tx.rolledBack, f.rec.calls[len(f.rec.calls)-1]))
+		}
+		var err error
+		if fails {
+			err = errors.New("the observer failed")
+		}
+		f.partakers, f.observers = []app.Participant{p}, []app.PageObserver{&observer{recorder: f.rec, err: err}}
+		if _, got := f.run(f.asAlice(), domain.ClientWeb, func(ctx context.Context, u *app.Unit) error {
+			_, err := u.CreatePage(ctx, app.PageDraft{Title: "New"})
+			return err
+		}); !errors.Is(got, err) {
+			t.Fatalf("the unit: %v, want %v", got, err)
+		}
+		if want := []string{fmt.Sprintf("rolled back %t after PagesChanged in tx", fails)}; !slices.Equal(ran, want) {
+			t.Errorf("deferred ran %q, want %q", ran, want)
+		}
 	}
 }
 

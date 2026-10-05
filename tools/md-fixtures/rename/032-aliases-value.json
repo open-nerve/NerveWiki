@@ -1,0 +1,7 @@
+{
+  "description": "aliases 的值里的链接不改写：它是这一页的别名，改写会改变别的链接解析到哪里；别的属性照改。",
+  "source": "nerve-defined",
+  "from": "Old",
+  "to": "New",
+  "note": "Obsidian 照样改写 aliases 里的链接。"
+}

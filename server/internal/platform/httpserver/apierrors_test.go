@@ -40,7 +40,14 @@ func (f fieldErr) ProblemCode() string  { return f.code }
 type memberErr struct {
 	problemErr
 	lock    *ProblemLock
+	locks   []ProblemLock
 	endedBy *ProblemPerson
+}
+
+func (e memberErr) ProblemLocks(each func(pageID, userID uuid.UUID, displayName string)) {
+	for _, l := range e.locks {
+		each(l.PageID, l.UserID, l.DisplayName)
+	}
 }
 
 func (e memberErr) ProblemLock() (pageID, userID uuid.UUID, displayName string, ok bool) {
@@ -219,6 +226,14 @@ func TestWriteMapsProblemErrors(t *testing.T) {
 			endedBy: &ProblemPerson{UserID: uuid.MustParse(lockHolder), DisplayName: "Ada"}}, http.StatusConflict,
 			`{"status":409,"code":"page.edit_session_unlocked","title":"Conflict","detail":"Unlocked.",` +
 				`"ended_by":{"user_id":"` + lockHolder + `","display_name":"Ada"}}`, ""},
+		{"locks", memberErr{problemErr: problemErr{status: http.StatusConflict, code: "linking.pages_locked", detail: "Pages are being edited."},
+			locks: []ProblemLock{
+				{PageID: uuid.MustParse(lockedPage), UserID: uuid.MustParse(lockHolder), DisplayName: "Ada"},
+				{PageID: uuid.MustParse(lockHolder), UserID: uuid.MustParse(lockedPage), DisplayName: "Grace"},
+			}}, http.StatusConflict,
+			`{"status":409,"code":"linking.pages_locked","title":"Conflict","detail":"Pages are being edited.",` +
+				`"locks":[{"page_id":"` + lockedPage + `","user_id":"` + lockHolder + `","display_name":"Ada"},` +
+				`{"page_id":"` + lockHolder + `","user_id":"` + lockedPage + `","display_name":"Grace"}]}`, ""},
 		{"members it has not", memberErr{problemErr: conflict}, http.StatusConflict,
 			`{"status":409,"code":"things.taken","title":"Conflict","detail":"The name is taken."}`, ""},
 		{"payload too large", fmt.Errorf("read body: %w", &http.MaxBytesError{Limit: 1048576}), http.StatusRequestEntityTooLarge,

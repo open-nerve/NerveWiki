@@ -1,6 +1,7 @@
 package app_test
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"slices"
@@ -125,7 +126,7 @@ func (s *store) AddPage(_ context.Context, p app.Page, f domain.Facts) error {
 	}
 	s.facts[p.ID], s.revisions[p.ID] = f, p.Revision
 	for _, l := range f.Links {
-		s.links = append(s.links, app.Link{SourceID: p.ID, Start: l.Start, Target: l.Target})
+		s.links = append(s.links, app.Link{SourceID: p.ID, Start: l.Start, Target: l.Target, Aliases: l.Aliases})
 	}
 	return nil
 }
@@ -201,6 +202,16 @@ func (s *store) SetResolutions(_ context.Context, links []app.Link) error {
 		s.links[i].Resolution = l.Resolution
 	}
 	return nil
+}
+
+func (s *store) IndexedOf(_ context.Context, ids []uuid.UUID) (map[uuid.UUID]app.Indexed, error) {
+	out := make(map[uuid.UUID]app.Indexed)
+	for _, id := range ids {
+		if _, ok := s.facts[id]; ok {
+			out[id] = app.Indexed{Revision: s.revisions[id], Extractor: cmp.Or(s.extractor, domain.Extractor)}
+		}
+	}
+	return out, nil
 }
 
 func (s *store) View(_ context.Context, id uuid.UUID) (app.Indexed, bool, error) {

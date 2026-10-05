@@ -1,4 +1,4 @@
-import { useRef, useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent, type ReactNode } from "react";
 
 import { FormField } from "../components/form-field";
 import { Alert } from "../components/ui/alert";
@@ -19,6 +19,8 @@ type RenameFormProps = {
   fieldTexts?: Readonly<Partial<Record<`name.${FieldError["code"]}`, FieldMessage>>>;
   /** Sends name, trimmed and other than current; a refusal shows in the form. */
   rename: (name: string) => Promise<unknown>;
+  /** What a refusal says above the form, or undefined for its text (useForm). */
+  explain?: (error: unknown) => ReactNode;
   saveLabel: string;
   savedLabel: string;
   /** Called once a save went through, as a dialog that closes then. */
@@ -43,6 +45,7 @@ export function RenameForm({
   check,
   fieldTexts,
   rename,
+  explain,
   saveLabel,
   savedLabel,
   onSaved,
@@ -51,7 +54,7 @@ export function RenameForm({
   const [draft, setDraft] = useState<string>();
   const name = draft ?? current;
   const [saved, setSaved] = useState(false);
-  const { ref, sending, banner, problemOf, submit } = useForm(["name"], { fieldTexts });
+  const { ref, sending, banner, problemOf, submit } = useForm(["name"], { fieldTexts, explain });
   /** How many times the field was edited: a save tells whether the name it sent is still the one shown. */
   const edits = useRef(0);
 

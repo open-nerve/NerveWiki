@@ -1,20 +1,24 @@
 // Package linking is the module of the link index (v0.1 design 4.4; M6
 // design 4): each page's links, tags, properties and aliases, and where
 // each link resolves to, kept with every write of the pages. Its root is
-// what bootstrap sees: NewIndex, the page module's observer;
-// NewNotebookDeletion, its part in the notebook module's deletion;
+// what bootstrap sees: NewIndex, the page module's observer; NewRewrite,
+// its participant; NewNotebookDeletion, its part in the notebook module's
+// deletion;
 // PageFacts, which reads a page's facts from the Markdown's; ResolveLinks,
 // where a reading view's links lead; NewAdmin, the rebuild of the indexes
 // (nervewiki reindex).
 package linking
 
 import (
+	"log/slog"
+
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	markdownadapter "github.com/open-nerve/NerveWiki/server/internal/modules/linking/adapter/markdown"
 	postgresadapter "github.com/open-nerve/NerveWiki/server/internal/modules/linking/adapter/postgres"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/linking/app"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/linking/domain"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown/obsidian"
 )
 
@@ -56,6 +60,45 @@ type Index = app.Index
 // compositions build it too.
 func NewIndex(pool *pgxpool.Pool, pages Pages, publisher Publisher) Index {
 	return app.Index{Store: postgresadapter.New(pool), Pages: pages, Publisher: publisher}
+}
+
+// What a rewrite of links follows, what it reads and how it writes:
+// bootstrap converts the page module's step, adapts its appender and wires
+// its reads.
+type (
+	// Moved is an operation of a page write unit.
+	Moved = app.Moved
+	// Appender adds a content write to the unit.
+	Appender = app.Appender
+	// Rewritten is a content a rewrite writes.
+	Rewritten = app.Rewritten
+	// Locks reads the edit locks of pages: bootstrap hands
+	// page.NewLockHolders to it.
+	Locks = app.Locks
+	// PageContents reads a page's content: bootstrap hands
+	// page.NewLinkTargets to it.
+	PageContents = app.PageContents
+)
+
+// ErrGuardLocked is a write a rewrite adds that the page's edit lock
+// refuses: the appender wraps the lock's error with it.
+var ErrGuardLocked = app.ErrGuardLocked
+
+// Rewrite is the page module's participant that writes again the links a
+// rename or a move would lead elsewhere (M6/P4).
+type Rewrite = app.Rewrite
+
+// NewRewrite returns the participant over the pool, the page module's
+// reads of the pages, their contents and their edit locks, and its most
+// bytes of a page's content, parsing with the server's Markdown within its
+// budget.
+func NewRewrite(pool *pgxpool.Pool, pages Pages, contents PageContents, locks Locks, maxContent int,
+	md *markdown.Markdown, budget *markdown.Budget, logger *slog.Logger,
+) Rewrite {
+	return app.Rewrite{
+		Store: postgresadapter.New(pool), Pages: pages, Contents: contents, Locks: locks, MaxContent: maxContent,
+		Parser: markdownadapter.NewParser(md, budget), Logger: logger,
+	}
 }
 
 // NotebookDeletion is the module's registrant of the notebook module's

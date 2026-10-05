@@ -2,5 +2,6 @@
   "description": "wikilink 与嵌入改写为新标题；别名、锚点、目标两侧的空白保留；大小写不同的写法同样改写；代码里的不改；注释里的照样改。",
   "source": "nerve-defined",
   "from": "Old",
-  "to": "New 名字"
+  "to": "New 名字",
+  "note": "Obsidian 重写整条链接，去掉目标两侧的空白：[[  Old  ]] 写成 [[New 名字]]；其余相同。我们只换目标那一段。"
 }

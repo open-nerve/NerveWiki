@@ -3,6 +3,7 @@ package apitest
 import (
 	"fmt"
 	"maps"
+	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -34,6 +35,24 @@ func moduleNames() ([]string, error) {
 	return names, nil
 }
 
+// codeModules lists the modules a problem code's prefix may name: the
+// server's, each refusing with codes of its own whether or not it has an
+// api/modules/<m>.yaml (linking refuses a rename's rewrite through page's
+// operations, M6/P4 design 5).
+func codeModules() ([]string, error) {
+	entries, err := os.ReadDir(filepath.Join(apiDir(), "..", "server", "internal", "modules"))
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	for _, e := range entries {
+		if e.IsDir() {
+			names = append(names, e.Name())
+		}
+	}
+	return names, nil
+}
+
 // TestContractFollowsAuthoringRules holds api/dist/openapi.yaml to the
 // authoring rules of M0/P4 design 3.2. Generated Go code and the TS client
 // rely on them, but neither the bundler nor doc.Validate enforces them.
@@ -42,9 +61,9 @@ func TestContractFollowsAuthoringRules(t *testing.T) {
 	if c.doc.Paths.Len() == 0 {
 		t.Fatal("the contract has no paths")
 	}
-	modules, err := moduleNames()
+	modules, err := codeModules()
 	if err != nil || len(modules) == 0 {
-		t.Fatalf("module files = %q, %v; want at least one", modules, err)
+		t.Fatalf("modules = %q, %v; want at least one", modules, err)
 	}
 	for _, v := range authoringViolations(c.doc, modules) {
 		t.Error(v)

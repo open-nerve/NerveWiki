@@ -124,6 +124,9 @@ export const en = {
   "page.idleLeft": "Editing ended after 30 minutes without input.",
   "page.lockedTitled": "{name} is editing “{page}”.",
   "page.lockedTitledSelf": "You are editing “{page}” elsewhere.",
+  "page.editingTitledSelf": "You are editing “{page}”.",
+  "page.pagesLocked":
+    "This change would write the links on these pages again, and they are being edited. Try again once their editors are done; a notebook admin can also release a lock.",
   "page.releaseLock": "Release lock",
   "page.releaseLockTitle": "Release the edit lock?",
   "page.releaseLockBody": "{name}'s edit ends: what they have not saved yet is not saved to the page.",
@@ -429,6 +432,8 @@ export const en = {
   "problem.page.edit_session_taken_over": "You took over editing this page elsewhere.",
   "problem.page.edit_session_unlocked": "An admin of the notebook released this page's edit lock.",
   "problem.page.locked": "This page is being edited in another session.",
+  "problem.linking.pages_locked":
+    "Pages whose links this change would rewrite are being edited. Try again once their editors are done.",
   "problem.network": "Cannot reach the server. Check the connection and try again.",
   "problem.unavailable": "Cannot reach the server for now. You are still signed in; try again in a moment.",
   "problem.storage":

@@ -112,16 +112,8 @@ function checkCase(dir, base) {
   if ("tasks" in exp) checkTasks(name, src, exp.tasks);
 }
 
-function checkRename(dir, base) {
-  const name = `rename/${base}`;
-  for (const ext of [".md", ".out.md"]) if (!existsSync(join(dir, base + ext))) fail(name, `missing ${ext}`);
-  const exp = JSON.parse(readFileSync(join(dir, `${base}.json`), "utf8"));
-  if (Object.keys(exp).toSorted().join(",") !== "description,from,source,to")
-    fail(name, "fields must be description, source, from, to");
-  if (!SOURCES.has(exp.source)) fail(name, `source ${exp.source}`);
-}
-
 const parentOf = (page) => (page.includes("/") ? page.slice(0, page.lastIndexOf("/")) : null);
+const sameKeys = (o, want) => Object.keys(o).every((k) => want.includes(k));
 
 // titleKey approximates the server's title key (NFC, Unicode case folding, NFC): JavaScript
 // has no case folding, and upper then lower case folds as it does for the titles of cases
@@ -140,7 +132,78 @@ function titleError(s) {
   return "";
 }
 
-const sameKeys = (o, want) => Object.keys(o).every((k) => want.includes(k));
+const titleOf = (page) => page.slice(page.lastIndexOf("/") + 1);
+const siblingKey = (page) => `${parentOf(page)}/${titleKey(titleOf(page))}`;
+
+// checkTree checks a case's pages, a tree of titles the server takes (each page's parent listed
+// before it, no siblings that would share a title key), and its aliases, of listed pages; it
+// returns the pages.
+function checkTree(name, list, aliasesOf) {
+  const pages = new Set();
+  const keys = new Set();
+  for (const p of list) {
+    const why =
+      typeof p === "string"
+        ? p
+            .split("/")
+            .map(titleError)
+            .find((e) => e !== "")
+        : "not a string";
+    const key = typeof p === "string" ? siblingKey(p) : "";
+    if (why !== undefined) fail(name, `page ${JSON.stringify(p)}: a segment is ${why}`);
+    else if (keys.has(key)) fail(name, `page ${p}: a sibling has its title key`);
+    else if (parentOf(p) !== null && !pages.has(parentOf(p)))
+      fail(name, `page ${p}: its parent must be listed before it`);
+    pages.add(p);
+    keys.add(key);
+  }
+  for (const [p, aliases] of Object.entries(aliasesOf ?? {})) {
+    if (!pages.has(p)) fail(name, `aliases of ${p}, which is not a page`);
+    if (!Array.isArray(aliases) || aliases.length === 0 || aliases.some((a) => typeof a !== "string" || a === ""))
+      fail(name, `aliases of ${p} must be non-empty strings`);
+  }
+  return pages;
+}
+
+// A rename case: its keys those the README lists; its pages a tree as a resolution case's (none
+// listed: from and page, at the root); from and page among them; to either a rename (the same
+// parent, another title) or a move (the same title, a parent that is a page or the root, out of
+// from's subtree), with no sibling there that has its title key; a nerve-defined case says in
+// its note what Obsidian does.
+function checkRename(dir, base) {
+  const name = `rename/${base}`;
+  for (const ext of [".md", ".out.md"]) if (!existsSync(join(dir, base + ext))) fail(name, `missing ${ext}`);
+  let c;
+  try {
+    c = JSON.parse(readFileSync(join(dir, `${base}.json`), "utf8"));
+  } catch (e) {
+    return fail(name, `not JSON: ${e.message}`);
+  }
+  if (!sameKeys(c, ["description", "source", "pages", "aliases", "page", "from", "to", "note"]))
+    fail(name, "fields are description, source, from, to, and pages, aliases, page and note when set");
+  if (typeof c.description !== "string" || c.description === "") fail(name, "description must be non-empty");
+  if (!SOURCES.has(c.source)) fail(name, `source ${c.source}`);
+  if ((c.source === "nerve-defined") !== (typeof c.note === "string" && c.note !== ""))
+    fail(name, "note must be set exactly when the case is nerve-defined");
+  if (typeof c.from !== "string" || typeof c.to !== "string") return fail(name, "from and to must be paths");
+  const page = c.page ?? "src";
+  if (c.pages === undefined && c.aliases !== undefined) fail(name, "aliases need pages");
+  const pages = checkTree(name, c.pages ?? [c.from, page], c.aliases);
+  if (!pages.has(c.from)) return fail(name, `from ${c.from} is not a page`);
+  if (!pages.has(page)) fail(name, `page ${page} is not a page`);
+  const why = titleError(titleOf(c.to));
+  if (why !== "") return fail(name, `to ${JSON.stringify(c.to)}: its title is ${why}`);
+  const parent = parentOf(c.to);
+  if (parent === parentOf(c.from)) {
+    if (titleOf(c.to) === titleOf(c.from)) fail(name, "to is from: nothing is renamed");
+  } else if (titleOf(c.to) !== titleOf(c.from)) {
+    fail(name, "to changes both the parent and the title: a rename or a move does one");
+  } else if (parent !== null && (!pages.has(parent) || parent === c.from || parent.startsWith(`${c.from}/`))) {
+    fail(name, `to's parent ${parent} must be a page out of from's subtree`);
+  }
+  if ([...pages].some((p) => p !== c.from && siblingKey(p) === siblingKey(c.to)))
+    fail(name, `to ${c.to}: a sibling there has its title key`);
+}
 
 // A resolution case: its keys those the README lists; its pages a tree of titles the server
 // takes (each page's parent listed before it, no siblings that would share a title key), its
@@ -159,29 +222,7 @@ function checkResolveCase(dir, base) {
   if (typeof c.description !== "string" || c.description === "") fail(name, "description must be non-empty");
   if (!SOURCES.has(c.source)) fail(name, `source ${c.source}`);
   if (!Array.isArray(c.pages) || c.pages.length === 0) return fail(name, "pages must be a non-empty array");
-  const pages = new Set();
-  const keys = new Set();
-  for (const p of c.pages) {
-    const why =
-      typeof p === "string"
-        ? p
-            .split("/")
-            .map(titleError)
-            .find((e) => e !== "")
-        : "not a string";
-    const key = typeof p === "string" ? `${parentOf(p)}/${titleKey(p.slice(p.lastIndexOf("/") + 1))}` : "";
-    if (why !== undefined) fail(name, `page ${JSON.stringify(p)}: a segment is ${why}`);
-    else if (keys.has(key)) fail(name, `page ${p}: a sibling has its title key`);
-    else if (parentOf(p) !== null && !pages.has(parentOf(p)))
-      fail(name, `page ${p}: its parent must be listed before it`);
-    pages.add(p);
-    keys.add(key);
-  }
-  for (const [p, aliases] of Object.entries(c.aliases ?? {})) {
-    if (!pages.has(p)) fail(name, `aliases of ${p}, which is not a page`);
-    if (!Array.isArray(aliases) || aliases.length === 0 || aliases.some((a) => typeof a !== "string" || a === ""))
-      fail(name, `aliases of ${p} must be non-empty strings`);
-  }
+  const pages = checkTree(name, c.pages, c.aliases);
   if (!Array.isArray(c.links) || c.links.length === 0) return fail(name, "links must be a non-empty array");
   let nerveDefined = c.source === "nerve-defined";
   c.links.forEach((l, i) => {
