@@ -190,9 +190,15 @@ const pagesLocked = () =>
     ],
   });
 
-test("a rename whose links' pages are being edited names them and their editors in its dialog", async () => {
+/** A second Notes, under Guide: the tree tells the two apart by where they are. */
+const otherNotes = pageNode(5, "Notes", guide);
+
+test("a rename whose links' pages are being edited names them, as the tree does, and their editors in its dialog", async () => {
   const user = userEvent.setup();
-  const server = pageServer({ answers: { "PATCH /api/v0/nodes/*": pagesLocked } });
+  const server = pageServer({
+    nodes: [guide, install, linux, notes, otherNotes],
+    answers: { "PATCH /api/v0/nodes/*": pagesLocked },
+  });
   renderApp(home, server.app);
   await choose(user, "Guide", "Rename");
   const dialog = await screen.findByRole("dialog", { name: "Rename Guide" });
@@ -205,18 +211,21 @@ test("a rename whose links' pages are being edited names them and their editors 
     within(alert)
       .getAllByRole("listitem")
       .map((item) => item.textContent)
-  ).toEqual(["Bob is editing “Linux”.", "You are editing “Notes”."]);
+  ).toEqual(["Bob is editing “Linux”.", "You are editing “Notes (in Plans)”."]);
   expect(alert.textContent).toContain("This change would write the links on these pages again");
-  expect(server.nodes.map((node) => node.name)).toEqual(["Guide", "Install", "Linux", "Notes"]);
+  expect(server.nodes.map((node) => node.name)).toEqual(["Guide", "Install", "Linux", "Notes", "Notes"]);
 });
 
-test("a move whose links' pages are being edited names them and their editors in its dialog; a busy server says so", async () => {
+test("a move whose links' pages are being edited names them, as the tree does, and their editors in its dialog; a busy server says so", async () => {
   const user = userEvent.setup();
   let answer = pagesLocked;
-  const server = pageServer({ answers: { "POST /api/v0/nodes/*/move": () => answer() } });
+  const server = pageServer({
+    nodes: [guide, install, linux, notes, otherNotes],
+    answers: { "POST /api/v0/nodes/*/move": () => answer() },
+  });
   renderApp(home, server.app);
-  await choose(user, "Notes", "Move to…");
-  const dialog = await screen.findByRole("dialog", { name: "Move Notes" });
+  await choose(user, "Notes (in Plans)", "Move to…");
+  const dialog = await screen.findByRole("dialog", { name: "Move Notes (in Plans)" });
   await user.selectOptions(within(dialog).getByLabelText("Parent page"), "Guide");
   await user.click(within(dialog).getByRole("button", { name: "Move" }));
 
@@ -225,7 +234,7 @@ test("a move whose links' pages are being edited names them and their editors in
     within(alert)
       .getAllByRole("listitem")
       .map((item) => item.textContent)
-  ).toEqual(["Bob is editing “Linux”.", "You are editing “Notes”."]);
+  ).toEqual(["Bob is editing “Linux”.", "You are editing “Notes (in Plans)”."]);
 
   answer = () => problem(503, "server_busy", {}, { "Retry-After": "1" });
   await user.click(within(dialog).getByRole("button", { name: "Move" }));
@@ -277,6 +286,19 @@ test("a deletion someone's edit refuses names them and the page they edit, in th
 
   expect((await within(dialog).findByRole("alert")).textContent).toBe("Bob is editing “Linux”.");
   expect(server.nodes).toHaveLength(4);
+});
+
+test("a deletion someone's edit refuses names the page they edit as the tree does, by where it is among pages of its title", async () => {
+  const user = userEvent.setup();
+  const server = pageServer({ nodes: [guide, install, linux, notes, pageNode(6, "Linux")] });
+  server.hold(linux.id, bob);
+  renderApp(home, server.app);
+
+  await choose(user, "Guide", "Delete");
+  const dialog = await screen.findByRole("alertdialog", { name: "Delete Guide?" });
+  await user.click(within(dialog).getByRole("button", { name: "Delete" }));
+
+  expect((await within(dialog).findByRole("alert")).textContent).toBe("Bob is editing “Linux (in Guide / Install)”.");
 });
 
 test("a deletion cancelled gives the focus back to the menu's button; one done, to the heading, though the tree is read late", async () => {

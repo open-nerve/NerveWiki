@@ -107,7 +107,8 @@ func TestARewriteOfAPageBeingEditedIsRefused(t *testing.T) {
 // A page being edited whose links a rename does not write does not refuse
 // it (M6/P4 review r3-1): a value of the aliases that led to the page
 // renamed; and, for a rename of the case alone, a link written as now and
-// one by an alias. Neither is written.
+// one by an alias. None is written; the pages not edited whose links the
+// renames lead elsewhere are.
 func TestARenameIsNotRefusedForAPageItDoesNotWrite(t *testing.T) {
 	tm := newAcmeTeam(t, "member", "")
 	nb := tm.openNotebook(t, "alice", "Eng")
@@ -121,12 +122,16 @@ func TestARenameIsNotRefusedForAPageItDoesNotWrite(t *testing.T) {
 	for id := range pages {
 		tm.openSession(t, "bob", id)
 	}
+	toA := tm.createPageWith(t, "alice", nb, "", "To A", "[[A]]\n")
+	toOld := tm.createPageWith(t, "alice", nb, "", "To Old", "[[Old]]\n")
 
 	tm.send(t, nodeRename("alice", a, "B"), http.StatusOK)
 	tm.send(t, nodeRename("alice", old, "old"), http.StatusOK)
 	for id, content := range pages {
 		tm.wrote(t, id, content, 1)
 	}
+	tm.wrote(t, toA, "[[B]]\n", 2)
+	tm.wrote(t, toOld, "[[old]]\n", 2)
 	checkLinks(t, tm.pool)
 	checkPages(t, tm.pool)
 }

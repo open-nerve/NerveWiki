@@ -286,7 +286,7 @@ const PageMenu = observer(function PageMenu({
           await pages.remove(node.id);
         }}
         // Someone editing the page or one under it refuses the deletion: the dialog names them, and the page.
-        explain={(error) => lockedText(error, t, me, (id) => pages.byId(id)?.name)}
+        explain={(error) => lockedText(error, t, me, (id) => distinctName(pages.tree, notebook, id, t))}
       />
     </>
   );
