@@ -64,8 +64,8 @@ type Resolution struct {
 //  2. a target from the root, or one that is exactly a page's path from the
 //     root, a name alone too;
 //  3. a page whose path ends with t's segments, whole: those in the source
-//     folder's subtree first, then the shortest path (Node.length), then
-//     the least id;
+//     folder's subtree, its own page included, first, then the shortest
+//     path (Node.length), then the least id;
 //  4. for a name alone, a page with it as an alias, without the ".md" and
 //     then with it, preferred as in 3.
 //
@@ -133,8 +133,8 @@ func endsWith(path []Step, keys []string) bool {
 }
 
 // preferred is the one of nodes, which are not none, in folder's subtree if
-// one is, then with the shortest path, then with the least id: ambiguous
-// when the id decides.
+// one is, folder's own page included, then with the shortest path, then
+// with the least id: ambiguous when the id decides.
 func preferred(nodes []Node, folder []Step) Resolution {
 	in := nodes
 	if len(folder) > 0 {
@@ -159,8 +159,11 @@ func preferred(nodes []Node, folder []Step) Resolution {
 	return Resolution{ID: first.ID, Ambiguous: len(tied) > 1}
 }
 
-// under tells whether n is in the subtree of folder's last page, below it.
+// under tells whether n is folder's last page or below it. A page is its
+// folder in an export (A.md beside A/), and Obsidian, which compares paths
+// as strings, counts A.md in A too: from under A, [[A]] is A, not a deeper
+// page named so, nor the source page itself.
 func under(n Node, folder []Step) bool {
 	i := len(folder) - 1
-	return len(n.Path) > len(folder) && n.Path[i].ID == folder[i].ID
+	return len(n.Path) >= len(folder) && n.Path[i].ID == folder[i].ID
 }

@@ -83,7 +83,10 @@ func TestALinkTargetsPathThatReachesNoRootIsAnError(t *testing.T) {
 	d := f.page(t, f.eng, &c.ID, "D", 0)
 	f.exec(t, "UPDATE nodes SET deleted_at = now() WHERE id = $1", c.ID)
 	if got, err := f.s.LinkTargetsByKeys(ctx, f.eng, []string{"d"}); err == nil {
-		t.Errorf("the path of %s under a deleted page = %+v, want an error", d.ID, got)
+		t.Errorf("the path of %s under a deleted page, by key = %+v, want an error", d.ID, got)
+	}
+	if got, err := f.s.LinkTargetsByIDs(ctx, f.eng, []uuid.UUID{d.ID}); err == nil {
+		t.Errorf("the path of %s under a deleted page, by id = %+v, want an error", d.ID, got)
 	}
 }
 

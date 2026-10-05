@@ -7,6 +7,8 @@ import (
 	"testing"
 	"unicode/utf8"
 
+	"golang.org/x/text/unicode/norm"
+
 	"github.com/open-nerve/NerveWiki/server/internal/modules/linking/domain"
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
@@ -65,16 +67,18 @@ func TestKeysPastMaxKeyAreNotKept(t *testing.T) {
 }
 
 // No title's key comes near MaxKey: a title has at most 255 bytes, and the
-// key of a title of any one character, the most a fold or a normalization
-// grows a character by, has at most twice as many. Case folding and NFC
-// touch the first two planes alone.
+// key of a title of any one character, as NFC writes it, the most a fold
+// or a normalization grows a character by, has at most twice as many.
 func TestNoTitlesKeyComesNearMaxKey(t *testing.T) {
 	worst, at := 0, rune(0)
-	for r := rune(1); r < 0x20000; r++ {
+	for r := rune(1); r <= utf8.MaxRune; r++ {
 		if !utf8.ValidRune(r) {
 			continue
 		}
-		c := string(r)
+		c := norm.NFC.String(string(r))
+		if len(shared.TitleKey(c)) <= len(c) {
+			continue // a title of it has a key no longer than itself
+		}
 		name, f := shared.CheckTitle("title", strings.Repeat(c, 255/len(c)))
 		if f != nil {
 			continue

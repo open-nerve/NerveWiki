@@ -133,7 +133,8 @@ function titleError(s) {
   if (s === "" || s !== s.trim()) return "empty, or with spaces around it";
   if (s !== s.normalize("NFC")) return "not NFC";
   if (Buffer.byteLength(s) > 255) return "longer than 255 bytes";
-  if (/[\\/:*?"<>|#^[\]\p{Cc}]/u.test(s)) return 'with one of / \\ : * ? " < > | # ^ [ ] or a control character';
+  if (/[\\/:*?"<>|#^[\]\p{Cc}\p{Zl}\p{Zp}\p{Bidi_Control}]/u.test(s))
+    return 'with one of / \\ : * ? " < > | # ^ [ ] or a control, line or paragraph separator, or bidi control';
   if (s.startsWith(".") || s.endsWith(".")) return "starting or ending with a dot";
   if (/^(con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])$/i.test(s.split(".")[0])) return "a name Windows reserves";
   return "";

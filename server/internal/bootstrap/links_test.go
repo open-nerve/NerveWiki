@@ -3,9 +3,9 @@ package bootstrap
 import (
 	"encoding/json"
 	"fmt"
+	"math/rand/v2"
 	"net/http"
 	"slices"
-	"strings"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -202,7 +202,13 @@ func TestAContentOfAnyFactsSaves(t *testing.T) {
 	tm := newAcmeTeam(t, "member", "")
 	nb := tm.openNotebook(t, "alice", "Eng")
 	p := tm.createPage(t, "alice", nb, "", "P")
-	long := strings.Repeat("x", 2800)
+	// Letters at random: PostgreSQL compresses a repeated one into a B-tree
+	// entry, and would take it.
+	rnd, letters := rand.New(rand.NewPCG(1, 2)), make([]byte, 2800)
+	for i := range letters {
+		letters[i] = byte('a' + rnd.IntN(26))
+	}
+	long := string(letters)
 	for i, content := range []string{
 		"[[" + long + "]] #" + long,
 		"---\naliases: [" + long + ", short]\ntags: [" + long + "]\n---\n",

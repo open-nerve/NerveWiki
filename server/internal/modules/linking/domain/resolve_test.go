@@ -1,6 +1,7 @@
 package domain_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/linking/domain"
@@ -44,9 +45,10 @@ func TestResolveStopsAtEachStepsEdge(t *testing.T) {
 	}
 }
 
-// A page in the source folder's subtree wins over one with a shorter path
-// elsewhere, and among those in it, the one with the shorter path wins,
-// with no tie; from the root, every page is in it.
+// A page in the source folder's subtree, the folder's own page included,
+// wins over one with a shorter path elsewhere, and among those in it, the
+// one with the shorter path wins, with no tie; from the root, every page is
+// in it.
 func TestResolvePrefersTheSourceFoldersSubtree(t *testing.T) {
 	tree := treeOf(t, []string{"P", "P/src", "P/src/dup", "P/Q", "P/Q/Rr", "P/Q/Rr/dup", "P/Q/Rr/src", "S", "S/dup"}, nil)
 	for from, want := range map[string]string{
@@ -58,6 +60,13 @@ func TestResolvePrefersTheSourceFoldersSubtree(t *testing.T) {
 		target, _ := domain.ParseTarget("dup")
 		if got := tree.resolve(target, from); got != (domain.Resolution{ID: tree.ids[want]}) {
 			t.Errorf("dup from %s: %s, want %s", from, tree.name(got), want)
+		}
+	}
+	tree = treeOf(t, []string{"Docs", "Docs/API", "Docs/API/Overview", "Docs/API/v2", "Docs/API/v2/API", "P", "P/x", "P/x/x"}, nil)
+	for from, want := range map[string]string{"Docs/API/Overview": "Docs/API", "P/x/x": "P/x"} {
+		target, _ := domain.ParseTarget(want[strings.LastIndex(want, "/")+1:])
+		if got := tree.resolve(target, from); got != (domain.Resolution{ID: tree.ids[want]}) {
+			t.Errorf("the folder's name from %s: %s, want %s", from, tree.name(got), want)
 		}
 	}
 }

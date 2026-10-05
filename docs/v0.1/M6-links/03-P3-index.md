@@ -47,15 +47,15 @@ P3 是 M6 最大的一个 Phase。为了让每次审查的范围可控，它分�
 - `./`、`../` 开头的是相对的；`/` 开头的从根起；其余是普通的。
 - 按 `/` 切成段，每段算标题键（`shared.TitleKey`）。空段、中间的 `.`、`..` 解析不到（Obsidian 的行为没有核对，nerve-defined）。
 - 最后一段以 `.md` 结尾（不分大小写，Obsidian 把整个目标转成小写）时有两种写法：去掉 `.md`（`[[x.md]]` 是页面 `x`），或原样（标题为 `x.md` 的页）。没有 `.md` 的只有原样一种。
-- **只读作一种**（P3A 审查 H2，照 Obsidian 的 `getLinkpathDest`）：笔记本里任何地方有标题键等于去掉 `.md` 的那个名称的页时，读作去掉 `.md` 的；没有时读作原样。之后每一步只用这一种：`[[x.md]]` 在有 `A/x` 与根下的 `x.md` 时解析到 `A/x`；`[[B/x.md]]` 在有根下的 `x` 时解析不到，哪怕有 `B/x.md`。
+- **只读作一种**（P3A 审查 H3，照 Obsidian 的 `getLinkpathDest`）：笔记本里任何地方有标题键等于去掉 `.md` 的那个名称的页时，读作去掉 `.md` 的；没有时读作原样。之后每一步只用这一种：`[[x.md]]` 在有 `A/x` 与根下的 `x.md` 时解析到 `A/x`；`[[B/x.md]]` 在有根下的 `x` 时解析不到，哪怕有 `B/x.md`。
 
 **次序**（前一步找到就停）：
 
 1. **相对**：从出发文件夹起，`..` 每个上一层（到根为止），再按段往下：节点从根起的标题键路径恰好等于算出的路径，就是它。找不到就解析不到，不往下试。
 2. **从根起**：以 `/` 开头的，或者普通的目标恰好是某个节点从根起的路径（单个名称也算：`[[note]]` 先找根下的 `note`），就是它。
 3. **名称与路径后缀**：节点的标题键路径以这些段结尾（按整段对齐：`[[ote]]`、`[[A/deep]]` 都不匹配 `A/B/deep`）。多个时：
-   - 先选在出发文件夹的整棵子树里的（出发页在根下时，全部都算）；
-   - 再选路径短的：导出路径（`A/B/x.md`）的字符数，按 JavaScript 的 `String.length` 计（UTF-16 码元：`é` 一个，`😀` 两个），与层数无关（Obsidian 按 `path.length` 排序；P3A 审查 H2）。`Longfoldername/x` 与 `a/b/x` 选后者；
+   - 先选在出发文件夹的整棵子树里的，文件夹自己的页也算（出发页在根下时，全部都算）：导出时页 `A` 是 `A.md`，与它的文件夹 `A/` 并排，Obsidian 按字符串比较也把 `A.md` 算在 `A` 里。从 `Docs/API/Overview` 出发的 `[[API]]` 是 `Docs/API`，不是更深的 `Docs/API/v2/API`，也不是出发页自己（P3A 修复核对第一轮）；
+   - 再选路径短的：导出路径（`A/B/x.md`）的字符数，按 JavaScript 的 `String.length` 计（UTF-16 码元：`é` 一个，`😀` 两个），与层数无关（Obsidian 按 `path.length` 排序；P3A 审查 H3）。`Longfoldername/x` 与 `a/b/x` 选后者；
    - 再按 id，并标记歧义（Obsidian 这时没有稳定的规则：`aa/sib` 与 `ab/sib` 从根起选了 `ab`）。
 4. **别名**：只对不带 `/` 的普通目标，按页面的别名的标题键匹配，以 `.md` 结尾的先按去掉 `.md` 的键、再按原样的键，多个时同第 3 步。Obsidian 不解析别名（`[[Al]]` 解析不到），这是总体设计 4.4 有意的差异，样例标 `nerve-defined`。
 
@@ -65,7 +65,7 @@ P3 是 M6 最大的一个 Phase。为了让每次审查的范围可控，它分�
 
 **与 M6 总设计 4.4 原文的出入**（总设计与总体设计 4.4 随之修订）：
 
-- "再选层数少的" 改为 "再选路径短的（字符数）"；以 `.md` 结尾的目标在整个笔记本范围内只读作一种（P3A 审查 H2，修复时与 Obsidian 再次核对）。
+- "再选层数少的" 改为 "再选路径短的（字符数）"；以 `.md` 结尾的目标在整个笔记本范围内只读作一种（P3A 审查 H3，修复时与 Obsidian 再次核对）。
 - "先选同一父节点下的" 改为 "先选在出发文件夹的整棵子树里的"：`[[dup]]` 从 `Y` 下的页出发，选 `Y/Z/dup` 而不是 `X/dup`；`[[B/note]]` 从 `G` 下的页出发，选 `G/A/B/note`。
 - 第 2 步对单个名称也成立：`[[note]]` 从 `A` 下的页出发，选根下的 `note`，不选同一文件夹的 `A/note`。
 - 不带 `./`、`../` 的 Markdown 链接与 wikilink 同样处理（`[t](note.md)` 从 `A/B` 出发是根下的 `note`），已确认。
@@ -88,7 +88,7 @@ P3 是 M6 最大的一个 Phase。为了让每次审查的范围可控，它分�
 | `modules/linking/` 模块根 | `module.go`（`NewIndex`：观察者；`NewNotebookDeletion`；`PageFacts`）、`admin.go`（`NewAdmin`：reindex，命令行用）。观察者不叫 `New`：archtest 把模块根的 `New` 当作它的 HTTP 端（命令行的组装不许构造它），P4 的接口用这个名字 |
 | `bootstrap/` | `linking.go`（page 事件、读端口与 `links` 事件的转换）、`registrants.go`、`reindex.go` |
 | `modules/notebook/catalog.go` | `notebook.NewCatalog(pool)`：活着的笔记本的 id，按 id（reindex 逐个重建） |
-| `platform/markdown/obsidian`、`platform/postgres/pgtest` | `obsidian.IsTag`（规则 9，frontmatter 的标签用）；`pgtest.WaitForAdvisoryLockWaits`（交错测试按索引的锁排先后） |
+| `platform/markdown/obsidian`、`platform/postgres/pgtest` | `obsidian.CountedTag`（Obsidian 标签面板计入的标签，索引的标签用）；`pgtest.WaitForAdvisoryLockWaits`（交错测试按索引的锁排先后） |
 | `cmd/nervewiki/reindex.go` | `nervewiki reindex [--notebook <id>]` |
 | `tools/md-fixtures/resolve/`、`check.mjs`、`obsidian/verify-resolve.mjs`、`README.md` | 解析样例与核对（解析要每个样例一个库，与提取的单库核对分开写） |
 | `deploy/runtime-grants.sql`、`sqlc.yaml`、`migrations/schema_test.go` | 新表 |
@@ -106,7 +106,7 @@ P3 是 M6 最大的一个 Phase。为了让每次审查的范围可控，它分�
 | `page_aliases` | `source_id`、`notebook_id`、`alias`、`alias_key` | 主键 `(source_id, alias_key)`；`(notebook_id, alias_key)` |
 
 - `target_key` 是目标最后一段的标题键（去掉 `.md` 之后），`target_alt_key` 是带 `.md` 的那一种（没有时为空）。节点出现、消失、改名、移动时，按这两列找可能受影响的链接。
-- **键的上限**（P3A 审查 H1）：标题键长于 `domain.MaxKey`（1024 字节）的不记：这条链接的键为空（解析不到，任何标题的键都到不了这么长：255 字节的标题，键至多约 510 字节，`TestNoTitlesKeyComesNearMaxKey` 核对），这样的别名、标签不记。B-tree 的一项至多约 2.7 KB，超过的写入会失败。
+- **键的上限**（P3A 审查 H2）：标题键长于 `domain.MaxKey`（1024 字节）的不记：这条链接的键为空（解析不到，任何标题的键都到不了这么长：255 字节的标题，键至多约 510 字节，`TestNoTitlesKeyComesNearMaxKey` 核对），这样的别名、标签不记。B-tree 的一项至多约 2.7 KB，超过的写入会失败。
 - `property_key` 为空是正文里的链接。YAML 键为空串的属性链接，它的属性路径也是空串，同样记为空：P4 的改写按链接的范围是否在 frontmatter 里区分两者（它本来就在单元里重新解析要改写的页），不靠这一列（P3A 审查）。
 - **U+0000**：Markdown 链接的 `%00` 与 YAML 字符串的转义会写出 U+0000，PostgreSQL 的 `text` 与 `jsonb` 都不收；`PageFacts` 把每个事实里的它记作 U+FFFD（P3A 审查 H1：否则这样的正文保存答 500，reindex 也停在这一页）。
 - **不带外键**（与 M6 总设计 4.3 的出入）：指向 `nodes`、`notebooks` 的外键与 `purge_test` 的两条规则冲突（见第 1 节）。照 `edit_sessions` 的先例，索引行由观察者与笔记本删除的注册者在同一个事务里删掉，"只指向活着的节点"由测试的不变式 `checkLinks` 核对。
@@ -118,11 +118,11 @@ P3 是 M6 最大的一个 Phase。为了让每次审查的范围可控，它分�
 
 ```go
 type LinkTargets interface {
-	// ByKeys: 笔记本里标题键在 keys 中的页，各带从根起的路径（id、标题键）。
+	// ByKeys: 笔记本里标题键在 keys 中的页，各带从根起的路径（id、标题键、名称）。
 	ByKeys(ctx, notebookID uuid.UUID, keys []string) ([]LinkNode, error)
 	// Paths: 一组页从根起的路径。
 	Paths(ctx, notebookID uuid.UUID, ids []uuid.UUID) ([]LinkNode, error)
-	// Subtree: 一页与它下面的页（id、标题键）。
+	// Subtree: 一页与它下面的页（id、标题键、名称）。
 	Subtree(ctx, notebookID, id uuid.UUID) ([]LinkStep, error)
 	// reindex 用：笔记本的页（按 id）；一页的正文与版本；
 	PageIDs(ctx, notebookID uuid.UUID) ([]uuid.UUID, error)
@@ -241,7 +241,7 @@ linking 的 `Index` 实现 `page.PageObserver`，经组合根登记（`pageRegis
 - 迁移编号：page 的索引是 00019，linking 的五张表是 00020–00024（总设计写的是一个 00019）。
 - 受影响的范围加上"触及的页的别名的键"（第 3.4 节，性质测试发现）；总设计 4.4 的观察者一节随之修订。
 - frontmatter 的别名与标签照 Obsidian 的读法（第 3.4 节末），总设计只写了"frontmatter 的 aliases"；标签照 Obsidian 标签面板的计法。
-- 第 3 步的并列按路径的字符数，不按层数；`.md` 只读作一种（第 2 节，P3A 审查 H2）。
+- 第 3 步的并列按路径的字符数，不按层数；`.md` 只读作一种；出发文件夹的子树包括文件夹自己的页（第 2 节，P3A 审查 H3 与修复核对）。
 - 只写正文的单元只到它自己的链接与增删的别名（第 3.4 节第 5 步）。
 - 索引的键有上限，U+0000 记作 U+FFFD（第 3.2 节）。
 - P3 分 A、B 两部分合并。
