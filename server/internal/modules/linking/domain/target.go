@@ -14,13 +14,16 @@ import (
 // is relative (written from "./" or "../", Up the "../"), from the root (a
 // leading "/"), and its segments' title keys, the last one without its
 // ".md", in any case, when it was written with one; AltLast is then the
-// last one with it. Key holds each of its fields.
+// last one with it. Name is the last segment as written, without that
+// ".md": a page made for the target is titled so (Land). Key holds each
+// of the fields its resolution reads.
 type Target struct {
 	Relative bool
 	Up       int
 	Rooted   bool
 	Keys     []string
 	AltLast  string
+	Name     string
 }
 
 // TargetKey is a Target as a value to compare: targets of one key resolve
@@ -66,6 +69,7 @@ func ParseTarget(target string) (Target, bool) {
 		t.AltLast = shared.TitleKey(last)
 		segments[len(segments)-1] = last[:n]
 	}
+	t.Name = segments[len(segments)-1]
 	t.Keys = make([]string, len(segments))
 	for i, s := range segments {
 		t.Keys[i] = shared.TitleKey(s)
