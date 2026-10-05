@@ -98,6 +98,12 @@ export const en = {
   "unresolved.notResolvable":
     "A page created for it would not be the one it leads to: another page answers to its name, or the name is written otherwise.",
   "unresolved.ok": "OK",
+  "reading.table": "Table",
+  "reading.properties": "Properties",
+  "reading.formula": "Formula",
+  "reading.diagram": "Diagram",
+  "reading.code": "Code",
+  "reading.wide": "Wide content",
   "tag.pages": "Pages tagged #{tag}",
   "tag.empty": "No page has this tag.",
   "page.tree": "Pages of {notebook}",

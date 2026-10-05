@@ -4,6 +4,7 @@ import { afterEach, expect, test } from "vitest";
 import type { NotebookRole } from "../services/notebook.service";
 import type { ReadingContext } from "./enhancement";
 import { taskToggle } from "./task-toggle";
+import { translator } from "../i18n/i18n";
 
 // The task items' enhancement (M5/P6 design 3.5).
 
@@ -27,6 +28,7 @@ function setUp(role: NotebookRole = "editor") {
     page: "p",
     revision: 4,
     role,
+    t: translator("en"),
     reload: () => undefined,
     navigate: () => undefined,
     toggleTask:

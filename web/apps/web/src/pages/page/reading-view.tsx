@@ -11,6 +11,7 @@ import { taskText } from "../../reading/task-toggle";
 import { ApiError } from "../../services/api";
 import type { Notebook } from "../../services/notebook.service";
 import type { TreeNode } from "../../services/page.service";
+import { useT } from "../../i18n/i18n";
 import { usePageTree } from "../../stores/context";
 import { useWorkspace } from "../workspace/workspace-layout";
 import { useUnresolvedLinks } from "./unresolved-link";
@@ -75,6 +76,7 @@ export const ReadingView = observer(function ReadingView({
   const { slug } = useWorkspace();
   const pages = usePageTree(notebook);
   const enhancements = useContext(Enhancements);
+  const t = useT();
   const navigate = useNavigate();
   const location = useLocation();
   // The element with an id focused as the HTML was replaced, and whether it showed.
@@ -123,6 +125,7 @@ export const ReadingView = observer(function ReadingView({
       page: page.id,
       revision,
       role,
+      t,
       reload: () => void mutate(),
       // An address without an anchor arrives at the page, whose heading takes the focus: the link had it.
       navigate: (to) => void navigate(to, to.includes("#") ? undefined : { state: arrived }),
@@ -185,7 +188,7 @@ export const ReadingView = observer(function ReadingView({
           : undefined;
       undo();
     };
-  }, [html, revision, enhancements, slug, notebookId, role, page.id, mutate, pages, navigate]);
+  }, [html, revision, enhancements, slug, notebookId, role, t, page.id, mutate, pages, navigate]);
   useLayoutEffect(() => {
     const container = article.current;
     if (container === null || html === undefined) {
@@ -238,7 +241,7 @@ export const ReadingView = observer(function ReadingView({
   if (data === undefined) {
     return <NotLoaded error={error} retry={() => void mutate()} />;
   }
-  // Named by the page: it can get the focus to scroll a wide content (reading/scroll-focus.ts).
+  // Named by the page, a landmark: what is wider than it scrolls in its own region (reading/scroll-regions.ts).
   return (
     <>
       <article ref={article} aria-label={page.name} className="nw-reading min-w-0" />

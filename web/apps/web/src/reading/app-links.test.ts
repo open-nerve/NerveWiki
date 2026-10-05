@@ -3,6 +3,7 @@ import { afterEach, expect, test } from "vitest";
 
 import { appLinks, inApp } from "./app-links";
 import type { ReadingContext } from "./enhancement";
+import { translator } from "../i18n/i18n";
 
 // The links into the app (M6/P3 design 6.7, M6/P6 design 8, 9).
 
@@ -36,6 +37,7 @@ function setUp() {
     page: "p",
     revision: 1,
     role: "reader",
+    t: translator("en"),
     reload: () => undefined,
     navigate: (to) => went.push(to),
     report: () => undefined,

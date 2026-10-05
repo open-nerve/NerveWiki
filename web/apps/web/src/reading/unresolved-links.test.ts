@@ -3,6 +3,7 @@ import { afterEach, expect, test } from "vitest";
 
 import type { ReadingContext, UnresolvedLink } from "./enhancement";
 import { unresolvedLinks } from "./unresolved-links";
+import { translator } from "../i18n/i18n";
 
 // The links to pages that are not there (M6/P6 design 7).
 
@@ -30,6 +31,7 @@ function setUp() {
     page: "p",
     revision: 1,
     role: "editor",
+    t: translator("en"),
     reload: () => undefined,
     navigate: () => undefined,
     report: () => undefined,

@@ -1,6 +1,7 @@
 import { expect, test, vi } from "vitest";
 
 import { enhance, type Enhancement, type ReadingContext } from "./enhancement";
+import { translator } from "../i18n/i18n";
 
 const context: ReadingContext = {
   workspace: "lab",
@@ -8,6 +9,7 @@ const context: ReadingContext = {
   page: "p",
   revision: 1,
   role: "editor",
+  t: translator("en"),
   reload: () => undefined,
   navigate: () => undefined,
   report: () => undefined,

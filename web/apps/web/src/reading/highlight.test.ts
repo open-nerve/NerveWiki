@@ -10,6 +10,7 @@ import {
   type HighlightWorker,
 } from "./highlight";
 import { highlightBlock } from "./highlight-block";
+import { translator } from "../i18n/i18n";
 
 const context: ReadingContext = {
   workspace: "lab",
@@ -17,6 +18,7 @@ const context: ReadingContext = {
   page: "p",
   revision: 1,
   role: "reader",
+  t: translator("en"),
   reload: () => undefined,
   navigate: () => undefined,
   report: () => undefined,
