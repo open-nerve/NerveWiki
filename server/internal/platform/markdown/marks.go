@@ -89,6 +89,11 @@ func (m *marks) RegisterFuncs(reg renderer.NodeRendererFuncRegisterer) {
 	reg.Register(kindSafeBlock, safe)
 }
 
+// link is a Markdown link: the attributes an extension's Links gives, or
+// its address; its text alone when the address is not allowed. What it
+// holds renders as in a link either way, as the sanitizer reads it (an
+// autolink its label, a footnote's reference its number, an image no link:
+// P3B fix check).
 func (m *marks) link(w util.BufWriter, _ []byte, node ast.Node, entering bool) (ast.WalkStatus, error) {
 	n := node.(*ast.Link)
 	if entering {

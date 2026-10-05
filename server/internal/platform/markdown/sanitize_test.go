@@ -66,6 +66,25 @@ func TestAUsersHTMLKeepsTheTypographicAllowlist(t *testing.T) {
 				`&#160;<a href="#nw-fnref1:1" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p>` + "\n</li>\n</ol>\n</div>\n",
 		},
 		{
+			"an a unclosed in a footnote, before its back link", "x[^1]\n\n[^1]: <a href=\"/x\">note\n",
+			`<p>x<sup id="nw-fnref:1"><a href="#nw-fn:1" class="footnote-ref" role="doc-noteref">1</a></sup></p>` + "\n" +
+				`<div class="footnotes" role="doc-endnotes">` + "\n<hr>\n<ol>\n" + `<li id="nw-fn:1">` + "\n" +
+				`<p>note&#160;<a href="#nw-fnref:1" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p>` + "\n</li>\n</ol>\n</div>\n",
+		},
+		// An </a> that a dropped element holds ends nothing (P3B fix check).
+		{"an a whose end a script holds, around a link", `x <a href="/1"><script></a></script>[y](/u)</a>`, "<p>x <a href=\"/u\">y</a></p>\n"},
+		{"an a whose end a textarea holds, around a link", `x <a href="/1"><textarea></a></textarea>[y](/u)</a> z`, "<p>x <a href=\"/u\">y</a> z</p>\n"},
+		{"an a closed after a script, before a link", `<a href="/x"><script>s</script>t</a> [l](/y)`, "<p><a href=\"/x\">t</a> <a href=\"/y\">l</a></p>\n"},
+		{"an a closed in an element, before a link", `<i><a href="/x">t</a></i> [l](/y)`, "<p><i><a href=\"/x\">t</a></i> <a href=\"/y\">l</a></p>\n"},
+		{
+			"a footnote's reference in a link, referred to before", "b[^1] [a[^1]](/x)\n\n[^1]: n\n",
+			`<p>b<sup id="nw-fnref:1"><a href="#nw-fn:1" class="footnote-ref" role="doc-noteref">1</a></sup> <a href="/x">a<sup id="nw-fnref1:1">1</sup></a></p>` + "\n" +
+				`<div class="footnotes" role="doc-endnotes">` + "\n<hr>\n<ol>\n" + `<li id="nw-fn:1">` + "\n" +
+				`<p>n&#160;<a href="#nw-fnref:1" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a>` +
+				`&#160;<a href="#nw-fnref1:1" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p>` + "\n</li>\n</ol>\n</div>\n",
+		},
+		{"an autolink in a link whose address is refused, its label", `[a <https://y.example> b](javascript:x)`, "<p>a https://y.example b</p>\n"},
+		{
 			"an address's parameters like references", "<a href=\"/s?q=x&section=n&copy=2&amp;t=1&sect\" title=\"&amp=\">a</a>",
 			"<p><a href=\"/s?q=x&amp;section=n&amp;copy=2&amp;t=1§\" title=\"&amp;amp=\">a</a></p>\n",
 		},

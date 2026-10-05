@@ -82,6 +82,14 @@ type Hider interface {
 	Hides()
 }
 
+// Linker is a node of an extension that renders as a link (M6: a
+// wikilink; P6: a tag): a user's <a> around it is dropped, as one around a
+// Markdown link is. In a Markdown link's text it must render no link: the
+// platform drops only a user's <a>.
+type Linker interface {
+	RendersLink()
+}
+
 // Markup is the HTML an extension's renderers write.
 type Markup struct {
 	// Elements are the elements, each with the attributes it may carry.

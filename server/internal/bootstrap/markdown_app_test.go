@@ -77,12 +77,13 @@ func TestTheAppsMarkdownRendersCheckedHTML(t *testing.T) {
 func TestTheAppsLinksAreWithinTheirBound(t *testing.T) {
 	const n = 512 << 10
 	inputs := map[string]string{
-		"images of a short address":   "[x]: p#&\n\n" + strings.Repeat("![x] ", n/5),
-		"images of an address of '&'": "[x]: &&&&\n\n" + strings.Repeat("![x] ", n/5),
-		"links of a short address":    "[x]: p#b\n\n" + strings.Repeat("[x] ", n/4),
-		"wikilinks with anchors":      strings.Repeat("[[a#b]]", n/7),
-		"embeds":                      strings.Repeat("![[p]]", n/6),
-		"wikilinks of a long anchor":  strings.Repeat("[[a#"+strings.Repeat("Ⱥ", 64)+"]]", n/134),
+		"images of a short address":           "[x]: p#&\n\n" + strings.Repeat("![x] ", n/5),
+		"images of a short address, unspaced": "[x]: p#&\n\n" + strings.Repeat("![x]", n/4),
+		"images of an address of '&'":         "[x]: &&&&\n\n" + strings.Repeat("![x] ", n/5),
+		"links of a short address":            "[x]: p#b\n\n" + strings.Repeat("[x] ", n/4),
+		"wikilinks with anchors":              strings.Repeat("[[a#b]]", n/7),
+		"embeds":                              strings.Repeat("![[p]]", n/6),
+		"wikilinks of a long anchor":          strings.Repeat("[[a#"+strings.Repeat("Ⱥ", 64)+"]]", n/134),
 	}
 	page := markdown.Page{NotebookID: uuid.NewV7(), PageID: uuid.NewV7()}
 	for _, resolve := range []obsidian.Resolve{everyLink, nil} {
