@@ -1,0 +1,15 @@
+{
+  "description": "改名之后多了一个同名页，但出发文件夹的子树里的 [[x]] 仍只解析到 A/x：不改。",
+  "source": "nerve-defined",
+  "pages": [
+    "A",
+    "A/x",
+    "A/s",
+    "C",
+    "C/y"
+  ],
+  "page": "A/s",
+  "from": "C/y",
+  "to": "C/x",
+  "note": "Obsidian 在候选列表变了时改写，写成 [[A/x]] [t](A/x.md)。理由同 024。"
+}

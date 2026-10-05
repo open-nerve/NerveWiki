@@ -1,0 +1,7 @@
+{
+  "description": "以 ./ 开头的保持相对，以 / 开头的保持从根起。",
+  "source": "nerve-defined",
+  "from": "Old",
+  "to": "New",
+  "note": "Obsidian 改用它的链接格式设置，默认（最短）两条都写成 [t](New.md)。我们保持原来的写法：相对与从根起的地址在别的 Markdown 查看器里也能用。"
+}

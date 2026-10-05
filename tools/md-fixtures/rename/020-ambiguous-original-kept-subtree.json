@@ -1,0 +1,15 @@
+{
+  "description": "出发文件夹的子树里的 [[x]] 是 A/x；它改名之后，[[x]] 会解析到 B/x，改写成新名称。",
+  "source": "obsidian-verified",
+  "pages": [
+    "A",
+    "A/x",
+    "B",
+    "B/x",
+    "s",
+    "A/s"
+  ],
+  "page": "A/s",
+  "from": "A/x",
+  "to": "A/z"
+}

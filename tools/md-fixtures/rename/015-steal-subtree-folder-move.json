@@ -1,0 +1,16 @@
+{
+  "description": "移动一个文件夹页之后，它的子页落进了出发文件夹的子树，会抢走 [[x]]：改写成原来那一页的完整路径。",
+  "source": "obsidian-verified",
+  "pages": [
+    "B",
+    "B/xx",
+    "B/xx/x",
+    "Z",
+    "Z/x",
+    "A",
+    "A/s"
+  ],
+  "page": "A/s",
+  "from": "B/xx",
+  "to": "A/xx"
+}

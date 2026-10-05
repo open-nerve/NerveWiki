@@ -1,0 +1,14 @@
+{
+  "description": "新的名称在笔记本里不唯一：写从根起的完整路径，哪怕从这个出发页写名称也能解析到。",
+  "source": "obsidian-verified",
+  "pages": [
+    "Docs",
+    "Docs/Old",
+    "Work",
+    "Work/Plan",
+    "Docs/s"
+  ],
+  "page": "Docs/s",
+  "from": "Docs/Old",
+  "to": "Docs/Plan"
+}

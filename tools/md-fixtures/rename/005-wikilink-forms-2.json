@@ -1,0 +1,6 @@
+{
+  "description": "wikilink 的其余写法：带 .md、从根起、相对的都写成名称；块引用与嵌入的锚点、尺寸原样；目标不带 / 的显示文字不跟着改；表格里的 \\| 原样。",
+  "source": "obsidian-verified",
+  "from": "Old",
+  "to": "New"
+}

@@ -1,0 +1,16 @@
+{
+  "description": "被移动的文件夹页的子页里：仍能解析的不改，相对的 ../ 链接从新的出发文件夹重新算。",
+  "source": "nerve-defined",
+  "pages": [
+    "F",
+    "F/x",
+    "F/sub",
+    "F/sub/y",
+    "z",
+    "X"
+  ],
+  "page": "F/x",
+  "from": "F",
+  "to": "X/F",
+  "note": "Obsidian 默认（最短）写成 [[y]] [t](y.md) [t](y.md) [t](z.md)。理由同 011 与 024。"
+}

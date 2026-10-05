@@ -1,0 +1,16 @@
+{
+  "description": "路径后缀按整段对齐：XB/item 不以 B/item 结尾，[[B/item]] 不改。",
+  "source": "nerve-defined",
+  "pages": [
+    "A",
+    "A/B",
+    "A/B/item",
+    "C",
+    "C/item",
+    "XB",
+    "src"
+  ],
+  "from": "C/item",
+  "to": "XB/item",
+  "note": "Obsidian 按字符串比较，XB/item 以 b/item 结尾、路径更短，抢走了这条链接，于是改写成 [[A/B/item]]（P3 文档第 2 节）。"
+}

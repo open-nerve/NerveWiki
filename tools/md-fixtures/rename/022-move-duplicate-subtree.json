@@ -1,0 +1,16 @@
+{
+  "description": "出发文件夹的子树里的 [[x]] 指向被移走的 A/x：之后会解析到别的同名页，改写成完整路径。",
+  "source": "obsidian-verified",
+  "pages": [
+    "A",
+    "A/x",
+    "B",
+    "B/x",
+    "C",
+    "s",
+    "A/s"
+  ],
+  "page": "A/s",
+  "from": "A/x",
+  "to": "C/x"
+}

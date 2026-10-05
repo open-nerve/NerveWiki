@@ -2,5 +2,6 @@
   "description": "单引号标量里的 ' 写成 ''，否则 YAML 会被破坏；双引号标量不需要转义（标题不允许 \" 和 \\）。",
   "source": "nerve-defined",
   "from": "Bob",
-  "to": "Bob's"
+  "to": "Bob's",
+  "note": "Obsidian 重新写出 frontmatter：a: '[[Bob''s]]' 写成 a: \"[[Bob's]]\"。"
 }

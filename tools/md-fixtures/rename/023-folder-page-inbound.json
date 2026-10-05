@@ -1,0 +1,14 @@
+{
+  "description": "改名一个文件夹页：指向它的、经它的路径指向子页的都改写；子页的名称唯一，写名称。",
+  "source": "obsidian-verified",
+  "pages": [
+    "F",
+    "F/x",
+    "F/sub",
+    "F/sub/y",
+    "z"
+  ],
+  "page": "z",
+  "from": "F",
+  "to": "G"
+}

@@ -1,0 +1,11 @@
+{
+  "description": "目标带 /、没有锚点、显示文字与目标的最后一段逐字相同时，显示文字换成新标题；别的显示文字、带锚点的不改。",
+  "source": "obsidian-verified",
+  "pages": [
+    "F",
+    "F/Deep",
+    "src"
+  ],
+  "from": "F/Deep",
+  "to": "F/Deeper"
+}

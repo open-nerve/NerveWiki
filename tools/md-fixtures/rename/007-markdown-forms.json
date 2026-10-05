@@ -1,0 +1,6 @@
+{
+  "description": "Markdown 链接的普通写法：同 wikilink 的写法加 .md（没写 .md 的也加）；尖括号、标题、地址两边的空白、锚点原样；文字等于原来标题的跟着改；图片同样。",
+  "source": "obsidian-verified",
+  "from": "Old",
+  "to": "New"
+}

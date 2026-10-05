@@ -1,0 +1,14 @@
+{
+  "description": "改名之后有一个路径更短的同名页，[[x]] 会被它抢走：改写成原来那一页的完整路径（名称不唯一）。",
+  "source": "obsidian-verified",
+  "pages": [
+    "Long",
+    "Long/x",
+    "C",
+    "C/y",
+    "s"
+  ],
+  "page": "s",
+  "from": "C/y",
+  "to": "C/x"
+}

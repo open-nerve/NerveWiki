@@ -1,0 +1,15 @@
+{
+  "description": "之前有歧义的 [[x]] 照之前解析到的那一个（并列按 id，这里是先列出的 A/x）算：它改名之后，[[x]] 改写成它的新名称。",
+  "source": "obsidian-verified",
+  "pages": [
+    "A",
+    "A/x",
+    "B",
+    "B/x",
+    "s",
+    "A/s"
+  ],
+  "page": "s",
+  "from": "A/x",
+  "to": "A/z"
+}
