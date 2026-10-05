@@ -20,6 +20,7 @@ import (
 // first, in order, and its error is Render's. The tree's raw HTML is
 // replaced by what the sanitizer keeps of it, so d serves this one Render.
 func (m *Markdown) Render(ctx context.Context, d *Document, page Page) (string, error) {
+	links := &marks{destinations: d.destinations}
 	nodes := []util.PrioritizedValue{
 		// goldmark's renderer stays safe: a node that reached it unexpected
 		// would be an omitted comment or a dropped address.
@@ -28,7 +29,7 @@ func (m *Markdown) Render(ctx context.Context, d *Document, page Page) (string, 
 			extension.WithTableCellAlignMethod(extension.TableCellAlignAttribute))}, 500),
 		util.Prioritized(extension.NewStrikethroughHTMLRenderer(), 500),
 		util.Prioritized(extension.NewFootnoteHTMLRenderer(extension.WithFootnoteIDPrefix(idPrefix)), 500),
-		util.Prioritized(&marks{}, 100),
+		util.Prioritized(links, 100),
 	}
 	for _, e := range m.exts {
 		var data any
@@ -40,6 +41,9 @@ func (m *Markdown) Render(ctx context.Context, d *Document, page Page) (string, 
 		}
 		if e.Renderer != nil {
 			nodes = append(nodes, e.Renderer(data)...)
+		}
+		if e.Links != nil {
+			links.written = append(links.written, e.Links(data))
 		}
 	}
 	sanitize(d.root, d.source)

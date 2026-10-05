@@ -28,7 +28,7 @@ func (m *Markdown) Parse(content []byte) *Document {
 			facts.extracted[e.Name] = e.Extract(tree)
 		}
 	}
-	return &Document{source: source, root: root, facts: facts}
+	return &Document{source: source, root: root, facts: facts, destinations: tree.destinations}
 }
 
 const (
@@ -63,7 +63,7 @@ func (headingIDs) Transform(doc *ast.Document, reader text.Reader, _ parser.Cont
 			}
 			return ast.WalkContinue, nil
 		}
-		base := idPrefix + slug(plainText(h, reader.Source()))
+		base := HeadingID(plainText(h, reader.Source()))
 		id := base
 		for used[id] {
 			next[base]++
@@ -97,6 +97,12 @@ func plainText(n ast.Node, source []byte) string {
 	})
 	return b.String()
 }
+
+// HeadingID is the id a heading of text takes but for its suffix, which
+// tells it from the headings of the same text before it: the id of the
+// first of them, which a link's anchor of text leads to (M6/P3 design
+// 6.2).
+func HeadingID(text string) string { return idPrefix + slug(text) }
 
 func slug(s string) string {
 	var b strings.Builder

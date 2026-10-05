@@ -49,6 +49,15 @@ type Extension struct {
 	// it, from what Extract took: in the caller's read, holding no lock. Its
 	// result goes to Renderer alone. It may be nil.
 	Fetch func(ctx context.Context, page Page, extracted any) (any, error)
+	// Links is, given what Fetch got, how the Markdown links and images
+	// the extension knows are written (M6: a link to a page of the
+	// notebook, whose address the front end gives): by where a link's or
+	// an image's destination starts in the content (Tree.Destination), the
+	// attributes its <a> carries in place of its address, an image's inner
+	// one too, and true; false leaves the address. Of the extensions that
+	// answer true, the first registered is taken. The renderer escapes the
+	// values; Markup has the names. It may be nil.
+	Links func(data any) func(start int) ([]Attr, bool)
 	// Renderer is goldmark's node renderers of the extension, given what
 	// Fetch got. Its addresses must go through SafeURL. It must render
 	// every kind of node Parser makes: goldmark's renderer panics on a
@@ -57,6 +66,12 @@ type Extension struct {
 	// Markup is what Renderer writes, for the test of the final HTML
 	// (markdowntest.CheckHTML).
 	Markup Markup
+}
+
+// Attr is an attribute of an element: its name, and its value, which the
+// renderer escapes.
+type Attr struct {
+	Name, Value string
 }
 
 // Hider is a node of an extension that hides what it holds from the
@@ -142,6 +157,9 @@ type Document struct {
 	source []byte // the content as the parser read it: its frontmatter blank
 	root   ast.Node
 	facts  Facts
+	// destinations is where the parse found the links' and images'
+	// destinations written, for the extensions' Links.
+	destinations func(ast.Node) (text.Segment, bool)
 }
 
 // Frontmatter is the document's frontmatter.
