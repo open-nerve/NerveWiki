@@ -140,11 +140,19 @@ func (tm acmeTeam) wrote(t *testing.T, id, content string, revision int) {
 	}
 }
 
-// refused fails t unless c is 409 linking.pages_locked, its locks those
-// of want, page id to its editor's name, in the pages' order.
+// refused fails t unless c is 409 linking.pages_locked with the locks of
+// want.
 func (tm acmeTeam) refused(t *testing.T, c step, want map[string]string) {
 	t.Helper()
 	status, body := ask(t, tm.contract, c.method, tm.base+c.path, tm.tokens[c.by], c.body)
+	pagesLocked(t, c.name(), answer{status: status, body: body}, want)
+}
+
+// pagesLocked fails t unless a, what's answer, is 409
+// linking.pages_locked, its locks those of want, page id to its editor's
+// name, in the pages' order.
+func pagesLocked(t *testing.T, what string, a answer, want map[string]string) {
+	t.Helper()
 	var p struct {
 		Code  string `json:"code"`
 		Locks []struct {
@@ -152,7 +160,7 @@ func (tm acmeTeam) refused(t *testing.T, c step, want map[string]string) {
 			DisplayName string `json:"display_name"`
 		} `json:"locks"`
 	}
-	decodeAnswer(t, body, &p)
+	decodeAnswer(t, a.body, &p)
 	var got, wanted []string
 	for _, l := range p.Locks {
 		got = append(got, l.PageID+" "+l.DisplayName)
@@ -161,8 +169,8 @@ func (tm acmeTeam) refused(t *testing.T, c step, want map[string]string) {
 		wanted = append(wanted, id+" "+name)
 	}
 	slices.Sort(wanted)
-	if status != http.StatusConflict || p.Code != "linking.pages_locked" || !slices.Equal(got, wanted) {
-		t.Errorf("%s = %d %s, want 409 linking.pages_locked with %q", c.name(), status, body, wanted)
+	if a.status != http.StatusConflict || p.Code != "linking.pages_locked" || !slices.Equal(got, wanted) {
+		t.Errorf("%s = %d %s, want 409 linking.pages_locked with %q", what, a.status, a.body, wanted)
 	}
 }
 
