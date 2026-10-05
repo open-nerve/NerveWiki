@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/open-nerve/NerveWiki/server/internal/modules/page"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
 )
 
@@ -132,9 +133,10 @@ func TestARenameIsNotRefusedForAPageItDoesNotWrite(t *testing.T) {
 
 // A rewrite that finds no budget for a page's parse is refused whole, 503
 // server_busy, and changes nothing: under a budget of one take's least,
-// which the configuration would not let, the first page's facts hold it
-// all to the unit's end. A rewrite of one page fits, again and again: the
-// page's contents parsed give their share back.
+// which the configuration would not let, a take is the whole budget, and
+// the first page's facts hold some of it to the unit's end. A rewrite of
+// one page fits, again and again, the busy one's after it too: the
+// page's contents parsed give their share back, on every path.
 func TestARewriteWithoutTheBudgetIsBusy(t *testing.T) {
 	tm := newAcmeTeamWith(t, "member", "", func(c *config.Config) { c.Page.ParseBudgetBytes = 4 << 10 })
 	nb := tm.openNotebook(t, "alice", "Eng")
@@ -156,7 +158,31 @@ func TestARewriteWithoutTheBudgetIsBusy(t *testing.T) {
 	if now := tm.snapshot(t, nb); now != was {
 		t.Errorf("the busy rename changed the notebook:\n%s\nwas\n%s", now, was)
 	}
+	tm.send(t, nodeRename("alice", c, "F"), http.StatusOK)
+	tm.wrote(t, three, "[[F]]\n", 4)
 	checkLinks(t, tm.pool)
+}
+
+// A page that a rewrite would make larger than a page may be is left as it
+// is, logged, and the rename goes on; one that stays within writes again
+// (M6/P4 review r2-2): the most is the page module's.
+func TestAPageARewriteWouldMakeTooLargeIsLeft(t *testing.T) {
+	tm := newAcmeTeam(t, "member", "")
+	nb := tm.openNotebook(t, "alice", "Eng")
+	a := tm.createPage(t, "alice", nb, "", "A")
+	most := "[[A]]\n" + strings.Repeat("a", page.MaxContentBytes-6)
+	big := tm.createPageWith(t, "alice", nb, "", "Big", most)
+	near := tm.createPageWith(t, "alice", nb, "", "Near", most[:len(most)-7])
+
+	tm.send(t, nodeRename("alice", a, "ABCDEFGH"), http.StatusOK)
+	if c := tm.content(t, "alice", big); c.Revision != 1 || c.Content != most {
+		t.Errorf("the page at the most: revision %d, %d bytes; want it as it was", c.Revision, len(c.Content))
+	}
+	if c := tm.content(t, "alice", near); c.Revision != 2 || len(c.Content) != page.MaxContentBytes || !strings.HasPrefix(c.Content, "[[ABCDEFGH]]\n") {
+		t.Errorf("the page within: revision %d, %d bytes; want written again, at the most", c.Revision, len(c.Content))
+	}
+	checkLinks(t, tm.pool)
+	checkPages(t, tm.pool)
 }
 
 // wrote fails t unless the page id holds content at revision.

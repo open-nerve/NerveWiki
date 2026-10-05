@@ -58,6 +58,27 @@ func TestARewriteWritesEachLinkAsTheRulesSay(t *testing.T) {
 			"[[x]]\n", "[[x]]\n",
 		},
 		{
+			"a destination between angle brackets: its '%' escaped, which the reading decodes",
+			renameCase{From: "Old", To: "x%41"}, "[t](<Old.md>) [t](Old.md)\n", "[t](<x%2541.md>) [t](x%2541.md)\n",
+		},
+		{
+			"a display past an escape of a double-quoted string: left, the string's closing too",
+			stolen, "---\nr: \"[[x\\x5D\\x5D\"\ns: \"[[x\\x7Cshown]]\"\n---\nSee [[y]].\n",
+			"---\nr: \"[[P\\x5D\\x5D\"\ns: \"[[P\\x7Cshown]]\"\n---\nSee [[y]].\n",
+		},
+		{
+			"a Markdown link's text past an escaped bracket: not its title",
+			renameCase{From: "Old", To: "New"}, "[x\\[Old](Old.md)\n", "[x\\[Old](New.md)\n",
+		},
+		{
+			"an embed's display, its size or caption: left",
+			deep, "![[F/Deep|Deep]] ![[F/Deep|300]]\n", "![[Deeper|Deep]] ![[Deeper|300]]\n",
+		},
+		{
+			"an empty display of a link by an alias: the alias",
+			stolen, "[[x|]] [[x| ]]\n", "[[P|x]] [[P| x]]\n",
+		},
+		{
 			"a link that leads to its page after, but ambiguously: its page's path",
 			renameCase{Pages: []string{"A", "A/x", "C", "C/y", "src"}, From: "C/y", To: "C/x"},
 			"[[x]] [t](x.md)\n", "[[A/x]] [t](A/x.md)\n",
@@ -71,13 +92,67 @@ func TestARewriteWritesEachLinkAsTheRulesSay(t *testing.T) {
 	}
 }
 
+// A writing read back (Written): a title that the Markdown around a link
+// pairs with a '$' or a '`' before it loses links; the text of a Markdown
+// link that follows the title is left then, the targets written alone; and
+// when that loses links too, the content is left as it is (M6/P4 review
+// R1-1).
+func TestAWritingIsReadBack(t *testing.T) {
+	m, err := markdown.New([]markdown.Extension{tasks.Extension(), obsidian.Extension(obsidian.Options{})})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tt := range []struct {
+		to, content, want string
+	}{
+		{"A$B", "[Old](Old.md)\n", "[Old](A$B.md)\n"},
+		{"Don`t", "[Old](Old.md) [[Old]]\n", "[Old](Don`t.md) [[Don`t]]\n"},
+		{"US$", "costs $5 [[Other]] [[Old]]\n", ""},
+		{"Don`t", "x ` [[Other]] [[Old]]\n", ""},
+	} {
+		c := renameCase{Pages: []string{"Old", "Other", "src"}, From: "Old", To: tt.to}
+		got, left := rewrite(t, m, c, tt.content)
+		if tt.want == "" {
+			tt.want = tt.content
+		}
+		if got != tt.want || len(left) > 0 {
+			t.Errorf("%q renamed %s: written %q, want %q; left %+v", tt.content, tt.to, got, tt.want, left)
+		}
+	}
+}
+
+// Kept holds each link a writing does not write again as it was, its
+// display too, and each it writes again to its page.
+func TestKeptHoldsTheLinksInTheirPlaces(t *testing.T) {
+	a := domain.Node{ID: uuid.UUID{15: 1}, Path: []domain.Step{{ID: uuid.UUID{15: 1}, Key: "a", Name: "A"}}}
+	tree := domain.Tree{Named: map[string][]domain.Node{"a": {a}}}
+	w := domain.Rewriting{Leads: map[int]domain.Node{2: a}}
+	was := []domain.Link{{Kind: "wikilink", Target: "Old", Start: 2}, {Kind: "wikilink", Target: "x", Display: "t", Start: 12}}
+	for _, tt := range []struct {
+		name string
+		now  []domain.Link
+		kept bool
+	}{
+		{"as written", []domain.Link{{Kind: "wikilink", Target: "A"}, {Kind: "wikilink", Target: "x", Display: "t"}}, true},
+		{"the other's display changed", []domain.Link{{Kind: "wikilink", Target: "A"}, {Kind: "wikilink", Target: "x", Display: "u"}}, false},
+		{"the other's target changed", []domain.Link{{Kind: "wikilink", Target: "A"}, {Kind: "wikilink", Target: "y", Display: "t"}}, false},
+		{"leading elsewhere", []domain.Link{{Kind: "wikilink", Target: "B"}, {Kind: "wikilink", Target: "x", Display: "t"}}, false},
+		{"of another kind", []domain.Link{{Kind: "embed", Target: "A"}, {Kind: "wikilink", Target: "x", Display: "t"}}, false},
+		{"one fewer", []domain.Link{{Kind: "wikilink", Target: "A"}}, false},
+	} {
+		if got := w.Kept(was, tt.now, nil, tree); got != tt.kept {
+			t.Errorf("%s: kept %t, want %t", tt.name, got, tt.kept)
+		}
+	}
+}
+
 // A link whose page the tree lacks is left, as it is: the caller logs it.
 func TestALinkWhosePageTheTreeLacksIsLeft(t *testing.T) {
 	var id uuid.UUID
 	id[15] = 1
 	link := domain.Link{Kind: "wikilink", Target: "x", Start: 2, End: 3}
-	edits, left := domain.Rewrite("[[x]]\n", nil, []domain.Resolved{{Link: link, Before: domain.Resolution{ID: id}}}, domain.Tree{}, domain.Recased{})
-	if len(edits) != 0 || len(left) != 1 || left[0] != link {
-		t.Errorf("edits %+v, left %+v", edits, left)
+	w := domain.Rewrite("[[x]]\n", nil, []domain.Resolved{{Link: link, Before: domain.Resolution{ID: id}}}, domain.Tree{}, domain.Recased{})
+	if len(w.Edits) != 0 || len(w.Left) != 1 || w.Left[0] != link {
+		t.Errorf("edits %+v, left %+v", w.Edits, w.Left)
 	}
 }

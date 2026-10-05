@@ -45,6 +45,7 @@ func newRewriting(t *testing.T, pages ...string) *rewriting {
 	w.rewrite = app.Rewrite{
 		Store: w.store, Pages: w.tree, Contents: w.contents, Locks: w.locks,
 		Parser: markdownadapter.NewParser(md, w.budget), Logger: slog.New(slog.NewTextHandler(w.logs, nil)),
+		MaxContent: 1 << 10,
 	}
 	return w
 }
@@ -298,6 +299,35 @@ func TestAPageBeingEditedThatIsNotWrittenDoesNotRefuse(t *testing.T) {
 	w.written(u, map[string]string{"path": "[[old]]\n"})
 }
 
+// A page whose writing would hold more than MaxContent, and one whose
+// writing does not read back as its links, are logged and left, the
+// operation going on; their parses give their share of the budget back
+// (M6/P4 review r2-2, R1-1).
+func TestAPageThatCannotBeWrittenIsLeft(t *testing.T) {
+	w := newRewriting(t, "A", "A/x", "Other", "big", "math", "src")
+	w.write("big", "[[A/x]]\n"+strings.Repeat("a", 1<<10-8))
+	w.write("math", "costs $5 [[Other]] [[A/x]]\n")
+	w.write("src", "[[A/x]]\n")
+	u, err := w.follow(nil, w.rename("A/x", "Dollar$"))
+	if err != nil {
+		t.Fatalf("the rename: %v, want it to pass", err)
+	}
+	w.written(u, map[string]string{"src": "[[Dollar$]]\n"})
+	for _, logged := range []string{"it would hold more than a page may", "no writing reads back as its links"} {
+		if !strings.Contains(w.logs.String(), logged) {
+			t.Errorf("the log %q, want %q", w.logs, logged)
+		}
+	}
+	for _, f := range u.deferred {
+		f()
+	}
+	hold, err := w.budget.TakeNow(context.Background(), 1<<20)
+	if err != nil {
+		t.Fatalf("the whole budget after the unit: %v", err)
+	}
+	hold.Release()
+}
+
 // A budget not free now is server_busy at once, nothing written.
 func TestABudgetNotFreeIsBusy(t *testing.T) {
 	w := newRewriting(t, "A", "A/x", "src")
@@ -349,6 +379,21 @@ func TestALockTheGuardFindsIsReadAgain(t *testing.T) {
 	held := shared.LockHolder{PageID: w.id("src"), UserID: uuid.NewV7(), DisplayName: "Ann"}
 	w.locks.after = map[uuid.UUID]shared.LockHolder{held.PageID: held}
 	_, err := w.follow(fmt.Errorf("%w: %w", app.ErrGuardLocked, errors.New("page.locked")), w.rename("A/x", "z"))
+	var refused *shared.Error
+	if !errors.As(err, &refused) || refused.Code != "linking.pages_locked" || !slices.Equal(refused.Locks, []shared.LockHolder{held}) {
+		t.Errorf("the rename: %v, want linking.pages_locked naming %+v", err, held)
+	}
+}
+
+// A lock the guard finds and the locks read again do not, its session
+// ended since, is the one linking.pages_locked names, not the guard's own
+// page.locked, which the operation does not answer (M6/P4 review r2-4).
+func TestALockTheGuardFindsGoneSinceIsTheOneNamed(t *testing.T) {
+	w := newRewriting(t, "A", "A/x", "src")
+	w.write("src", "[[A/x]]\n")
+	held := shared.LockHolder{PageID: w.id("src"), UserID: uuid.NewV7(), DisplayName: "Ann"}
+	guard := &shared.Error{Kind: shared.KindConflict, Code: "page.locked", Lock: &held}
+	_, err := w.follow(fmt.Errorf("%w: %w", app.ErrGuardLocked, guard), w.rename("A/x", "z"))
 	var refused *shared.Error
 	if !errors.As(err, &refused) || refused.Code != "linking.pages_locked" || !slices.Equal(refused.Locks, []shared.LockHolder{held}) {
 		t.Errorf("the rename: %v, want linking.pages_locked naming %+v", err, held)

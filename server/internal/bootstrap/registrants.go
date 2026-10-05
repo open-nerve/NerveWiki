@@ -258,7 +258,8 @@ func pageRegistrants(pool *pgxpool.Pool) pageExtensions {
 func pageParticipants(pool *pgxpool.Pool, md *markdown.Markdown, budget *markdown.Budget, logger *slog.Logger) []page.Participant {
 	targets := page.NewLinkTargets(pool)
 	locks := page.NewLockHolders(pool, pageNames{identity.NewDirectory(pool)})
-	return []page.Participant{linkRewrite{linking.NewRewrite(pool, linkTargets{targets}, targets, locks, md, budget, logger)}}
+	rewrite := linking.NewRewrite(pool, linkTargets{targets}, targets, locks, page.MaxContentBytes, md, budget, logger)
+	return []page.Participant{linkRewrite{rewrite}}
 }
 
 // markdownExtensions are the extensions of the one Markdown: M5's task

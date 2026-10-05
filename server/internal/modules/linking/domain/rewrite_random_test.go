@@ -17,23 +17,33 @@ import (
 )
 
 // randomTitle is one of the titles the random trees take: alike but for
-// case, with ".md" and with what a Markdown link escapes, so that names
-// repeat.
+// case, with ".md", with what a Markdown link escapes or decodes, and with
+// what the Markdown around a link may pair, so that names repeat.
 func randomTitle(r *rand.Rand) string {
-	titles := []string{"a", "A", "b", "x", "X", "y", "Plan", "a b", "é", "x.md", "Close) 50%"}
+	titles := []string{"a", "A", "b", "x", "X", "y", "Plan", "a b", "é", "x.md", "Close) 50%", "x%41", "a$b", "Don`t"}
 	return titles[r.IntN(len(titles))]
 }
 
 // After a random rename or move in a random tree, every link of a random
-// page that resolved to a page resolves to it after the rewrite, and no
-// more ambiguously; one that did not is as it was, byte for byte; the
-// links are the same in number and kind, and none is left (M6/P4 design 8).
+// page that resolved to a page resolves to it after the rewrite, read back
+// (Written), and no more ambiguously; one that did not is as it was, byte
+// for byte; the links are the same in number and kind, and none is left;
+// every edit is within a link's brackets and the rest of its line (M6/P4
+// design 8). A writing that does not read back as the links leaves the
+// page, only when it writes a '$' or a '`' that the Markdown around may
+// pair.
 func TestARewriteKeepsWhereEveryLinkLeads(t *testing.T) {
 	m, err := markdown.New([]markdown.Extension{tasks.Extension(), obsidian.Extension(obsidian.Options{})})
 	if err != nil {
 		t.Fatal(err)
 	}
-	rewritten, moved := 0, map[string]int{} // cases with edits, links whose page moved by kind
+	parse := func(content string) ([]domain.Link, error) {
+		facts, err := markdownadapter.PageFacts(m.Parse([]byte(content)).Facts())
+		return facts.Links, err
+	}
+	// Cases with edits, those that write a '$' or a '`', cases left, links
+	// whose page moved by kind.
+	rewritten, pairing, unwritten, moved := 0, 0, 0, map[string]int{}
 	for seed := range uint64(4000) {
 		r := rand.New(rand.NewPCG(seed, 7))
 		c := randomCase(r)
@@ -47,9 +57,12 @@ func TestARewriteKeepsWhereEveryLinkLeads(t *testing.T) {
 			links[i] = domain.Resolved{Link: l, Before: before.resolve(l, c.page), After: after.resolve(l, c.pageAfter)}
 		}
 		tree := domain.Tree{Before: before.byID, After: after.byID, Named: after.named}
-		edits, left := domain.Rewrite(c.content, after.paths[c.pageAfter], links, tree, c.recased)
-		written := domain.Apply(c.content, edits)
-		if len(edits) > 0 {
+		w := domain.Rewrite(c.content, after.paths[c.pageAfter], links, tree, c.recased)
+		written, ok, err := w.Written(c.content, facts.Links, after.paths[c.pageAfter], tree, parse)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(w.Edits) > 0 {
 			rewritten++
 		}
 		for _, l := range links {
@@ -57,15 +70,31 @@ func TestARewriteKeepsWhereEveryLinkLeads(t *testing.T) {
 				moved[l.Link.Kind+map[bool]string{true: " property"}[l.Link.Property != ""]]++
 			}
 		}
+		fail := func(format string, args ...any) {
+			t.Fatalf("seed %d: %s\ncase %+v\nedits %+v\nwritten %q", seed, fmt.Sprintf(format, args...), c, w.Edits, written)
+		}
+		if len(w.Left) > 0 {
+			fail("left %+v", w.Left)
+		}
+		for _, e := range w.Edits {
+			if !slices.ContainsFunc(facts.Links, func(l domain.Link) bool { return withinLink(c.content, l, e) }) {
+				fail("the edit %+v is in no link's brackets", e)
+			}
+		}
+		pairs := slices.ContainsFunc(w.Edits, func(e domain.Edit) bool { return strings.ContainsAny(e.Text, "$`") })
+		if pairs {
+			pairing++
+		}
+		if !ok {
+			if !pairs {
+				fail("no writing reads back as the links")
+			}
+			unwritten++
+			continue
+		}
 		again, err := markdownadapter.PageFacts(m.Parse([]byte(written)).Facts())
 		if err != nil {
 			t.Fatal(err)
-		}
-		fail := func(format string, args ...any) {
-			t.Fatalf("seed %d: %s\ncase %+v\nwritten %q", seed, fmt.Sprintf(format, args...), c, written)
-		}
-		if len(left) > 0 {
-			fail("left %+v", left)
 		}
 		if len(again.Links) != len(links) {
 			fail("%d links after, %d before", len(again.Links), len(links))
@@ -90,10 +119,21 @@ func TestARewriteKeepsWhereEveryLinkLeads(t *testing.T) {
 			}
 		}
 	}
-	// Cases that rewrote nothing would prove nothing.
+	// Cases that rewrote nothing would prove nothing; few are left.
 	if rewritten < 1000 || slices.ContainsFunc([]string{"wikilink", "embed", "link", "wikilink property"}, func(k string) bool { return moved[k] < 100 }) {
 		t.Errorf("edits in %d cases, the links that moved %v: too few", rewritten, moved)
 	}
+	if pairing < 100 || unwritten > rewritten/10 {
+		t.Errorf("%d of %d cases with edits write a '$' or a '`', %d are left: want more, and few left", pairing, rewritten, unwritten)
+	}
+}
+
+// withinLink tells whether e, an edit of content, is within l's brackets
+// and the rest of its line: from the '[' before its target.
+func withinLink(content string, l domain.Link, e domain.Edit) bool {
+	start := strings.LastIndexByte(content[:l.Start], '[')
+	end := strings.IndexByte(content[l.End:], '\n')
+	return start >= 0 && end >= 0 && start <= e.Start && e.End <= l.End+end
 }
 
 // randomCase is a tree, a page of it whose content has links of every kind

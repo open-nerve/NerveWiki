@@ -27,10 +27,22 @@ type Tree struct {
 	Named  map[string][]Node
 }
 
-// Edit writes Text over a content's bytes from Start to End.
+// Edit writes Text over a content's bytes from Start to End; Shown when it
+// writes what a link shows, its display or its text, not where it leads.
 type Edit struct {
 	Start, End int
 	Text       string
+	Shown      bool
+}
+
+// Rewriting is how Rewrite writes a page's content again: the edits, which
+// do not overlap; the pages the links it writes again lead to, by where
+// each link's target starts; and the links no writing leads back (none
+// should: a page's path from the root always does).
+type Rewriting struct {
+	Edits []Edit
+	Leads map[int]Node
+	Left  []Link
 }
 
 // Rewrites tells whether a rename or move writes l again (M6/P4 design 2):
@@ -51,12 +63,9 @@ func Rewrites(l Link, before, after Resolution, recased Recased) bool {
 // Rewrite is how the links of content, the page's at from (its path after
 // the change), are written again to lead where they led before a rename or
 // move (M6/P4 design 2, 3): those Rewrites tells, recased the page a rename
-// changed the case of the title of only. It returns the edits, which do
-// not overlap, and the links of these no writing leads back (none should:
-// a page's path from the root always does).
-func Rewrite(content string, from []Step, links []Resolved, tree Tree, recased Recased) ([]Edit, []Link) {
-	var edits []Edit
-	var left []Link
+// changed the case of the title of only.
+func Rewrite(content string, from []Step, links []Resolved, tree Tree, recased Recased) Rewriting {
+	w := Rewriting{Leads: map[int]Node{}}
 	for _, r := range links {
 		if !Rewrites(r.Link, r.Before, r.After, recased) {
 			continue
@@ -64,17 +73,69 @@ func Rewrite(content string, from []Step, links []Resolved, tree Tree, recased R
 		was, ok := tree.Before[r.Before.ID]
 		now, found := tree.After[r.Before.ID]
 		if !ok || !found {
-			left = append(left, r.Link)
+			w.Left = append(w.Left, r.Link)
 			continue
 		}
 		e, ok := relink(content, from, r.Link, was, now, tree)
 		if !ok {
-			left = append(left, r.Link)
+			w.Left = append(w.Left, r.Link)
 			continue
 		}
-		edits = append(edits, e...)
+		w.Edits, w.Leads[r.Link.Start] = append(w.Edits, e...), now
 	}
-	return edits, left
+	return w
+}
+
+// Written is content written again with w's edits, as parse reads its
+// links back (M6/P4 design 3.1): with them all when its links are was,
+// content's, in their places (Kept); else with those of the targets alone,
+// what the links show left as it was; else ok is false, the links of no
+// writing being content's: a title the Markdown around a link reads into
+// it, such as a '$' or a '`' that pairs with another.
+func (w Rewriting) Written(content string, was []Link, from []Step, tree Tree,
+	parse func(content string) ([]Link, error),
+) (written string, ok bool, err error) {
+	tries := [][]Edit{w.Edits}
+	targets := slices.DeleteFunc(slices.Clone(w.Edits), func(e Edit) bool { return e.Shown })
+	if len(targets) > 0 && len(targets) < len(w.Edits) {
+		tries = append(tries, targets)
+	}
+	for _, edits := range tries {
+		written = Apply(content, edits)
+		now, err := parse(written)
+		if err != nil {
+			return "", false, err
+		}
+		if w.Kept(was, now, from, tree) {
+			return written, true, nil
+		}
+	}
+	return "", false, nil
+}
+
+// Kept tells whether now, the links of a writing of content with some of
+// w's edits, read back, are was, content's links, in their places: as
+// many, each of the same kind, property and anchor; each that w writes
+// again leading, from from, to its page alone; each other as it was
+// written, with its display.
+func (w Rewriting) Kept(was, now []Link, from []Step, tree Tree) bool {
+	if len(now) != len(was) {
+		return false
+	}
+	for i, l := range was {
+		n := now[i]
+		if n.Kind != l.Kind || n.Property != l.Property || n.Anchor != l.Anchor {
+			return false
+		}
+		page, written := w.Leads[l.Start]
+		switch {
+		case written && !tree.leads(n.Target, from, page):
+			return false
+		case !written && (n.Target != l.Target || n.Display != l.Display):
+			return false
+		}
+	}
+	return true
 }
 
 // Apply is content with edits made, which do not overlap.
@@ -118,10 +179,13 @@ func WrittenKeys(n Node) []string {
 }
 
 // relink is the edits that write l, a link of content in the page at from,
-// again to lead to now, the page it led to at was: its target; a display
-// text that was its target's last name; a Markdown link's text that was the
-// page's title; the alias it was written with, as a display text. ok is
-// false when no writing leads there.
+// again to lead to now, the page it led to at was: its target; a
+// wikilink's display text that was its target's last name; a Markdown
+// link's text that was the page's title; the alias it was written with, as
+// a wikilink's display text, an empty one too. An embed's display is its
+// size or its caption, left; so is a display past an escape of a
+// double-quoted string, which the content's bytes do not tell. ok is false
+// when no writing leads there.
 func relink(content string, from []Step, l Link, was, now Node, tree Tree) ([]Edit, bool) {
 	var targets []string
 	markdownLink := l.Kind == "link" || l.Kind == "image"
@@ -145,31 +209,38 @@ func relink(content string, from []Step, l Link, was, now Node, tree Tree) ([]Ed
 	}
 	var edits []Edit
 	if written := quoted(l, target); written != content[l.Start:l.End] {
-		edits = append(edits, Edit{l.Start, l.End, written})
+		edits = append(edits, Edit{Start: l.Start, End: l.End, Text: written})
 	}
 	if markdownLink {
 		if s, e, ok := linkText(content, l.Start); ok {
 			text := content[s:e]
 			if text == quoted(l, was.name()) || strings.Contains(text, "/") && text == quoted(l, was.path()) {
-				edits = append(edits, Edit{s, e, quoted(l, now.name())})
+				edits = append(edits, Edit{Start: s, End: e, Text: quoted(l, now.name()), Shown: true})
 			}
 		}
 		return edits, true
 	}
 	pipe, end := wikilinkTail(content, l.End)
+	if l.Kind != "wikilink" || end < 0 || l.Quote == '"' && strings.IndexByte(content[l.End:end], '\\') >= 0 {
+		return edits, true
+	}
+	alias := !byTitle(l, was)
+	if pipe < 0 {
+		if alias {
+			separator := "|"
+			if l.InTable {
+				separator = `\|`
+			}
+			edits = append(edits, Edit{Start: end, End: end, Text: separator + content[l.Start:l.End], Shown: true})
+		}
+		return edits, true
+	}
+	s, e := trimmed(content, pipe+1, end)
 	switch {
-	case end < 0:
-	case pipe < 0 && l.Kind == "wikilink" && !byTitle(l, was):
-		separator := "|"
-		if l.InTable {
-			separator = `\|`
-		}
-		edits = append(edits, Edit{end, end, separator + content[l.Start:l.End]})
-	case pipe >= 0 && l.Anchor == "" && strings.Contains(l.Target, "/"):
-		s, e := trimmed(content, pipe+1, end)
-		if content[s:e] == quoted(l, stem(last(l.Target))) {
-			edits = append(edits, Edit{s, e, quoted(l, now.name())})
-		}
+	case alias && s == e:
+		edits = append(edits, Edit{Start: s, End: e, Text: content[l.Start:l.End], Shown: true})
+	case l.Anchor == "" && strings.Contains(l.Target, "/") && content[s:e] == quoted(l, stem(last(l.Target))):
+		edits = append(edits, Edit{Start: s, End: e, Text: quoted(l, now.name()), Shown: true})
 	}
 	return edits, true
 }
@@ -218,12 +289,13 @@ func relative(from []Step, n Node) string {
 	return strings.Repeat("../", len(folder)-common) + down
 }
 
-// destination is a Markdown link's target written where it was: as it is
-// between angle brackets; with its spaces, '%', '(' and ')' escaped
-// otherwise, which would end or change it (the fixture set's rename/002).
+// destination is a Markdown link's target written where it was, its '%'
+// escaped, which the reading decodes: between angle brackets, as it is
+// otherwise; with its spaces, '(' and ')' escaped too otherwise, which
+// would end or change it (the fixture set's rename/002).
 func destination(target string, angle bool) string {
 	if angle {
-		return target
+		return strings.ReplaceAll(target, "%", "%25")
 	}
 	return strings.NewReplacer("%", "%25", " ", "%20", "(", "%28", ")", "%29").Replace(target)
 }
@@ -239,7 +311,8 @@ func quoted(l Link, s string) string {
 
 // linkText is where a Markdown link's text is written, without the space
 // around it, when it is on one line with no bracket before the destination
-// at start: "](" then space, and a '<', may come between.
+// at start: "](" then space, and a '<', may come between. A text that
+// starts past an escaped '[' is none: its bytes are not its text.
 func linkText(content string, start int) (int, int, bool) {
 	at := start
 	if at > 0 && content[at-1] == '<' {
@@ -253,11 +326,20 @@ func linkText(content string, start int) (int, int, bool) {
 	}
 	closing := at - 2
 	opening := strings.LastIndexAny(content[:closing], "[]\r\n")
-	if opening < 0 || content[opening] != '[' {
+	if opening < 0 || content[opening] != '[' || escaped(content, opening) {
 		return 0, 0, false
 	}
 	s, e := trimmed(content, opening+1, closing)
 	return s, e, true
+}
+
+// escaped tells whether the byte at i follows an odd run of backslashes.
+func escaped(content string, i int) bool {
+	n := 0
+	for i-n > 0 && content[i-n-1] == '\\' {
+		n++
+	}
+	return n%2 == 1
 }
 
 // wikilinkTail is where the '|' that starts a wikilink's display text is,

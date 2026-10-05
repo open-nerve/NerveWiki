@@ -89,13 +89,14 @@ var ErrGuardLocked = app.ErrGuardLocked
 type Rewrite = app.Rewrite
 
 // NewRewrite returns the participant over the pool, the page module's
-// reads of the pages, their contents and their edit locks, parsing with
-// the server's Markdown within its budget.
-func NewRewrite(pool *pgxpool.Pool, pages Pages, contents PageContents, locks Locks, md *markdown.Markdown,
-	budget *markdown.Budget, logger *slog.Logger,
+// reads of the pages, their contents and their edit locks, and its most
+// bytes of a page's content, parsing with the server's Markdown within its
+// budget.
+func NewRewrite(pool *pgxpool.Pool, pages Pages, contents PageContents, locks Locks, maxContent int,
+	md *markdown.Markdown, budget *markdown.Budget, logger *slog.Logger,
 ) Rewrite {
 	return app.Rewrite{
-		Store: postgresadapter.New(pool), Pages: pages, Contents: contents, Locks: locks,
+		Store: postgresadapter.New(pool), Pages: pages, Contents: contents, Locks: locks, MaxContent: maxContent,
 		Parser: markdownadapter.NewParser(md, budget), Logger: logger,
 	}
 }

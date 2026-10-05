@@ -10,6 +10,7 @@ import (
 	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/linking/domain"
+	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
 // Rewrite writes again the links a rename or a move would lead elsewhere,
@@ -24,7 +25,12 @@ type Rewrite struct {
 	Locks    Locks
 	Parser   RewriteParser
 	Logger   *slog.Logger
+	// MaxContent is the most bytes a page's content holds: the page module's.
+	MaxContent int
 }
+
+// errTooLarge is a writing of a page past MaxContent.
+var errTooLarge = errors.New("linking: the page written again would hold more than a page may")
 
 // rewritten is a link of the index to write again, where it resolved
 // before the operation and where it resolves after.
@@ -76,9 +82,7 @@ func (r Rewrite) Participate(ctx context.Context, m Moved, u Appender) error {
 	for _, id := range pages {
 		err := r.rewrite(ctx, id, indexed[id].Revision, reached[id], from[id], tree, recased, u)
 		if errors.Is(err, ErrGuardLocked) {
-			if locked := r.refuseLocked(ctx, pages, m); locked != nil {
-				return locked
-			}
+			return r.guardLocked(ctx, pages, m, err)
 		}
 		if err != nil {
 			return err
@@ -143,6 +147,22 @@ func (r Rewrite) refuseLocked(ctx context.Context, pages []uuid.UUID, m Moved) e
 	return nil
 }
 
+// guardLocked is linking.pages_locked for err, a write the edit lock
+// refused: naming the edit locks alive at m's time, read again; or, when
+// none is by then, its session ended since, the lock the guard named
+// (M6/P4 review r2-4). Another module's code would be the operation's
+// undeclared answer.
+func (r Rewrite) guardLocked(ctx context.Context, pages []uuid.UUID, m Moved, err error) error {
+	if locked := r.refuseLocked(ctx, pages, m); locked != nil {
+		return locked
+	}
+	var refused *shared.Error
+	if errors.As(err, &refused) && refused.Lock != nil {
+		return domain.PagesLocked([]shared.LockHolder{*refused.Lock})
+	}
+	return err
+}
+
 // tree is what the rewrite reads of the pages: those targets are, at their
 // paths after m and before it, and the pages with the keys a writing of
 // them reads; and the paths after m of sources, the pages written.
@@ -190,10 +210,12 @@ func (r Rewrite) tree(ctx context.Context, m Moved, targets, sources []uuid.UUID
 
 // rewrite writes the page id's links of reached again, through u: its
 // content parsed, its links matched to the index's by where their target
-// starts, written by domain.Rewrite, the content parsed again and
-// appended on revision, the index's. A content written since, which the
-// unit's lock keeps out, is logged and left; so is a link no writing leads
-// back.
+// starts, written by domain.Rewrite and read back (Written), and appended
+// on revision, the index's, with the facts of the writing kept, whose
+// share of the budget the unit's end gives back. A content written since,
+// which the unit's lock keeps out, is logged and left; so is a link no
+// writing leads back, a writing past MaxContent, and one whose links do
+// not read back as the content's.
 func (r Rewrite) rewrite(ctx context.Context, id uuid.UUID, revision int, reached map[int]rewritten, from []domain.Step,
 	tree domain.Tree, recased domain.Recased, u Appender,
 ) error {
@@ -217,19 +239,45 @@ func (r Rewrite) rewrite(ctx context.Context, id uuid.UUID, revision int, reache
 		}
 	}
 	was.Release()
-	edits, left := domain.Rewrite(content, from, links, tree, recased)
-	for _, l := range left {
+	rewriting := domain.Rewrite(content, from, links, tree, recased)
+	for _, l := range rewriting.Left {
 		r.Logger.LogAttrs(ctx, slog.LevelError, "a link is not rewritten: no writing leads where it led",
 			slog.String("page_id", id.String()), slog.Int("start", l.Start), slog.String("target", l.Target))
 	}
-	if len(edits) == 0 {
+	if len(rewriting.Edits) == 0 {
 		return nil
 	}
-	written := domain.Apply(content, edits)
-	now, err := r.Parser.ParseNow(ctx, written)
-	if err != nil {
+	var now Parsed // the last writing's parse
+	written, kept, err := rewriting.Written(content, was.Facts.Links, from, tree, func(writing string) ([]domain.Link, error) {
+		now.release()
+		now = Parsed{}
+		if len(writing) > r.MaxContent {
+			return nil, errTooLarge
+		}
+		var err error
+		now, err = r.Parser.ParseNow(ctx, writing)
+		return now.Facts.Links, err
+	})
+	switch {
+	case errors.Is(err, errTooLarge):
+		r.Logger.LogAttrs(ctx, slog.LevelWarn, "the links of a page are not rewritten: it would hold more than a page may",
+			slog.String("page_id", id.String()), slog.Int("bytes", len(content)))
+		return nil
+	case err != nil:
 		return err
+	case !kept:
+		now.release()
+		r.Logger.LogAttrs(ctx, slog.LevelError, "the links of a page are not rewritten: no writing reads back as its links",
+			slog.String("page_id", id.String()))
+		return nil
 	}
 	u.Defer(now.Release)
 	return u.WriteContent(ctx, Rewritten{PageID: id, Base: revision, Content: written, Facts: now.Written})
+}
+
+// release gives back what p holds of the budget, if it holds any.
+func (p Parsed) release() {
+	if p.Release != nil {
+		p.Release()
+	}
 }

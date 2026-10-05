@@ -87,8 +87,8 @@ func (b *Budget) Take(ctx context.Context, n int) (*Hold, error) {
 }
 
 // TakeNow holds the bytes of a content of n bytes as Take does, if they
-// are free now: it answers ErrBusy at once otherwise, and waits for
-// nothing. A caller that holds a lock while it parses takes so, as a
+// are free now and no Take waits for its own: it answers ErrBusy at once
+// otherwise, and waits for nothing. A caller that holds a lock while it parses takes so, as a
 // rename's rewrite holds its notebook's row (M6/P4 design 4.2): a take
 // that waited would wait on writers that wait on the lock.
 func (b *Budget) TakeNow(ctx context.Context, n int) (*Hold, error) {
