@@ -9,8 +9,9 @@ import (
 
 // The linking module's rows (M6/P5 design 7), by the notebook columns, as
 // the page module's reads: any role reads, the rest do not see the
-// notebook. The seeded pages' contents are empty, so the index's answers
-// are; the link targets are the notebook's pages.
+// notebook; a link's landing is its writers' (M6/P6 design 2). The seeded
+// pages' contents are empty, so the index's answers are; the link targets
+// are the notebook's pages.
 func linkingMatrixRows() []matrixRow {
 	notebookNotFound := cell{http.StatusNotFound, "notebook.not_found"}
 	pageNotFound := cell{http.StatusNotFound, "page.not_found"}
@@ -100,6 +101,23 @@ func linkingMatrixRows() []matrixRow {
 				if !slices.Equal(names, want) {
 					t.Errorf("link targets %q, want the notebook's pages %q", names, want)
 				}
+			},
+		},
+		{
+			// A page new to every notebook lands beside the caller's page.
+			op:      "getLinkLanding",
+			columns: notebookColumns(),
+			request: func(c caller, s seeded) (string, string, string) {
+				return http.MethodGet, pagePath(c, s) + "/link-landing?target=New", ""
+			},
+			cells: editorsOnly(cellOK(), pageNotFound),
+			check: func(t *testing.T, c caller, s seeded, answer string) {
+				t.Helper()
+				parent := "null"
+				if up := ancestorsOf(pageOf(c)); len(up) > 0 {
+					parent = `"` + s.page(up[len(up)-1]).String() + `"`
+				}
+				answers(`{"landing":{"parent_id":`+parent+`,"title":"New"},"node_id":null,"reason":null}`)(t, c, s, answer)
 			},
 		},
 	}

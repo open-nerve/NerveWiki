@@ -55,11 +55,8 @@ func nothing(util.BufWriter, []byte, ast.Node, bool) (ast.WalkStatus, error) {
 // link's text, or to its own page's block, is a span.
 func (r nodeRenderer) renderWikilink(w util.BufWriter, _ []byte, node ast.Node, entering bool) (ast.WalkStatus, error) {
 	n := node.(*wikilink)
-	heading, own := "", n.target == ""
-	if own {
-		heading, own = anchorID(n.anchor)
-	}
-	link := !n.inLink && (n.target != "" || own)
+	heading, own := n.ownHeading()
+	link := n.RendersLink()
 	if !entering {
 		if link {
 			_, _ = w.WriteString("</a>")
@@ -96,15 +93,28 @@ func (r nodeRenderer) renderWikilink(w util.BufWriter, _ []byte, node ast.Node, 
 	return ast.WalkContinue, nil
 }
 
-// renderTag writes the span of a tag around its text, its child.
+// renderTag writes a tag around its text, its child (M6/P6 design 3): one
+// Obsidian's tag pane counts, as a link to the pages with it, by the name
+// the pane counts it as; one it does not count, or one in a Markdown
+// link's text, as a span with its name.
 func renderTag(w util.BufWriter, _ []byte, node ast.Node, entering bool) (ast.WalkStatus, error) {
-	if !entering {
+	t := node.(*tag)
+	link := t.RendersLink()
+	counted, _ := CountedTag(t.name)
+	switch {
+	case !entering && link:
+		_, _ = w.WriteString("</a>")
+	case !entering:
 		_, _ = w.WriteString("</span>")
-		return ast.WalkContinue, nil
+	case link:
+		_, _ = w.WriteString(`<a class="nw-tag" data-nw-tag="`)
+		escaped(w, []byte(counted))
+		_, _ = w.WriteString(`">`)
+	default:
+		_, _ = w.WriteString(`<span class="nw-tag" data-nw-tag="`)
+		escaped(w, []byte(t.name))
+		_, _ = w.WriteString(`">`)
 	}
-	_, _ = w.WriteString(`<span class="nw-tag" data-nw-tag="`)
-	escaped(w, []byte(node.(*tag).name))
-	_, _ = w.WriteString(`">`)
 	return ast.WalkContinue, nil
 }
 
@@ -128,18 +138,19 @@ func renderMath(w util.BufWriter, source []byte, node ast.Node, entering bool) (
 	return ast.WalkSkipChildren, nil
 }
 
-// renderMathBlock writes a block formula's TeX.
+// renderMathBlock writes a block formula's TeX, in a region of its own
+// that scrolls sideways, as a table's (M6/P6 design 6).
 func renderMathBlock(w util.BufWriter, source []byte, node ast.Node, entering bool) (ast.WalkStatus, error) {
 	if !entering {
 		return ast.WalkContinue, nil
 	}
-	_, _ = w.WriteString(`<div class="nw-math nw-math-block">`)
+	_, _ = w.WriteString(`<div class="nw-scroll"><div class="nw-math nw-math-block">`)
 	lines := node.Lines()
 	for i := range lines.Len() {
 		seg := lines.At(i)
 		escaped(w, seg.Value(source))
 	}
-	_, _ = w.WriteString("</div>\n")
+	_, _ = w.WriteString("</div></div>\n")
 	return ast.WalkSkipChildren, nil
 }
 

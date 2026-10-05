@@ -16,13 +16,16 @@ import (
 
 // Render is the HTML of d's reading view for page (M4 design 4,
 // "rendering"; M4/P3 design 3.5–3.8): the frontmatter's properties as a
-// table, then the body. Each extension's Fetch gets its data for the page
+// table, in a region of its own that scrolls sideways (M6/P6 design 6),
+// then the body. Each extension's Fetch gets its data for the page
 // first, in order, and its error is Render's. The tree's raw HTML is
 // replaced by what the sanitizer keeps of it, so d serves this one Render.
 func (m *Markdown) Render(ctx context.Context, d *Document, page Page) (string, error) {
 	footnotes := registered{}
 	extension.NewFootnoteHTMLRenderer(extension.WithFootnoteIDPrefix(idPrefix)).RegisterFuncs(footnotes)
 	links := &marks{destinations: d.destinations, footnoteLink: footnotes[east.KindFootnoteLink]}
+	fm := d.facts.frontmatter
+	props := table{scalars: fm.Scalars}
 	nodes := []util.PrioritizedValue{
 		// goldmark's renderer stays safe: a node that reached it unexpected
 		// would be an omitted comment or a dropped address.
@@ -47,12 +50,17 @@ func (m *Markdown) Render(ctx context.Context, d *Document, page Page) (string, 
 		if e.Links != nil {
 			links.written = append(links.written, e.Links(data))
 		}
+		if e.Properties != nil {
+			props.links = append(props.links, e.Properties(data))
+		}
 	}
 	sanitize(d.root, d.source)
 	var out bytes.Buffer
-	if fm := d.facts.frontmatter; fm.Valid && len(fm.Properties) > 0 {
-		writeProperties(&out, fm.Properties)
-		out.WriteByte('\n')
+	if fm.Valid && len(fm.Properties) > 0 {
+		props.out = &out
+		out.WriteString(`<div class="nw-scroll">`)
+		props.write(fm.Properties)
+		out.WriteString("</div>\n")
 	}
 	if err := renderer.NewRenderer(renderer.WithNodeRenderers(nodes...)).Render(&out, d.source, d.root); err != nil {
 		return "", err
@@ -60,47 +68,84 @@ func (m *Markdown) Render(ctx context.Context, d *Document, page Page) (string, 
 	return out.String(), nil
 }
 
-// writeProperties writes props as a table, a row each: the key in a th,
-// the value in a td (M4/P3 design 3.6).
-func writeProperties(out *bytes.Buffer, props []Property) {
-	out.WriteString(`<table class="nw-props">`)
-	for _, p := range props {
-		out.WriteString("<tr><th>" + html.EscapeString(p.Key) + "</th><td>")
-		writeValue(out, p.Value)
-		out.WriteString("</td></tr>")
-	}
-	out.WriteString("</table>")
+// table writes the frontmatter's properties to out (M4/P3 design 3.6):
+// its strings in the order the reader numbered them, each written on one
+// line a scalar, which links may write as a link (M6/P6 design 4).
+type table struct {
+	out     *bytes.Buffer
+	scalars []Scalar // those after the strings written, by ordinal
+	links   []func(Scalar) ([]Attr, string, bool)
+	strings int // how many strings it wrote
 }
 
-// writeValue writes a property's value: null as nothing, a list as a ul, a
-// mapping as a table of its own, a number as JSON writes it.
-func writeValue(out *bytes.Buffer, v any) {
+// write writes props as a table, a row each: the key in a th, the value in
+// a td.
+func (t *table) write(props []Property) {
+	t.out.WriteString(`<table class="nw-props">`)
+	for _, p := range props {
+		t.out.WriteString("<tr><th>" + html.EscapeString(p.Key) + "</th><td>")
+		t.value(p.Value)
+		t.out.WriteString("</td></tr>")
+	}
+	t.out.WriteString("</table>")
+}
+
+// value writes a property's value: null as nothing, a list as a ul, a
+// mapping as a table of its own, a number as JSON writes it, a string as
+// a link if an extension writes it so.
+func (t *table) value(v any) {
 	switch v := v.(type) {
 	case bool:
-		out.WriteString(strconv.FormatBool(v))
+		t.out.WriteString(strconv.FormatBool(v))
 	case int64:
-		out.WriteString(strconv.FormatInt(v, 10))
+		t.out.WriteString(strconv.FormatInt(v, 10))
 	case float64:
-		out.WriteString(jsonNumber(v))
+		t.out.WriteString(jsonNumber(v))
 	case string:
-		out.WriteString(html.EscapeString(v))
-	case []any:
-		out.WriteString("<ul>")
-		for _, item := range v {
-			out.WriteString("<li>")
-			writeValue(out, item)
-			out.WriteString("</li>")
+		if attrs, text, ok := t.link(); ok {
+			t.out.WriteString("<a")
+			WriteAttrs(t.out, attrs)
+			t.out.WriteString(">" + html.EscapeString(text) + "</a>")
+		} else {
+			t.out.WriteString(html.EscapeString(v))
 		}
-		out.WriteString("</ul>")
+	case []any:
+		t.out.WriteString("<ul>")
+		for _, item := range v {
+			t.out.WriteString("<li>")
+			t.value(item)
+			t.out.WriteString("</li>")
+		}
+		t.out.WriteString("</ul>")
 	case []Property:
-		writeProperties(out, v)
+		t.write(v)
 	}
+}
+
+// link is how the next string is written as a link, if it is a scalar an
+// extension writes so.
+func (t *table) link() ([]Attr, string, bool) {
+	ordinal := t.strings
+	t.strings++
+	for len(t.scalars) > 0 && t.scalars[0].ordinal < ordinal {
+		t.scalars = t.scalars[1:]
+	}
+	if len(t.scalars) == 0 || t.scalars[0].ordinal != ordinal {
+		return nil, "", false
+	}
+	for _, link := range t.links {
+		if attrs, text, ok := link(t.scalars[0]); ok {
+			return attrs, text, true
+		}
+	}
+	return nil, "", false
 }
 
 // scrollingTables is goldmark's table renderer, each table in a region of
-// its own that scrolls sideways and takes the focus, so that a wide table
-// scrolls with the keyboard and not the whole reading view (M6/P1 design
-// 3.4; WCAG 2.1.1).
+// its own that scrolls sideways, so that a wide table scrolls and not the
+// whole reading view (M6/P1 design 3.4). The front end gives the region
+// the focus while it is wider than it shows, so that the keyboard scrolls
+// it (WCAG 2.1.1; M6/P6 design 6): the server cannot tell.
 type scrollingTables struct{ inner renderer.NodeRenderer }
 
 // registered is a registerer that keeps what it is given, and the
@@ -125,7 +170,7 @@ func (s scrollingTables) RegisterFuncs(reg renderer.NodeRendererFuncRegisterer) 
 		}
 		reg.Register(kind, func(w util.BufWriter, source []byte, n ast.Node, entering bool) (ast.WalkStatus, error) {
 			if entering {
-				_, _ = w.WriteString(`<div class="nw-scroll" tabindex="0">`)
+				_, _ = w.WriteString(`<div class="nw-scroll">`)
 			}
 			status, err := f(w, source, n, entering)
 			if !entering {

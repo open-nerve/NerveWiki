@@ -20,19 +20,23 @@ import (
 )
 
 // library is what the reads of the index read, faked: notebooks and their
-// workspaces, deleted ones absent; the notebooks the caller sees; pages and
-// their notebooks; the index's answers and the pages' contents. calls
-// records the reads made, in order.
+// workspaces, deleted ones absent; the notebooks the caller sees, and the
+// actions its role there does not allow; pages and their notebooks, and a
+// tree of them; the index's answers and the pages' contents. calls records
+// the reads made, in order.
 type library struct {
 	workspaces map[uuid.UUID]uuid.UUID
 	visible    map[uuid.UUID]bool
+	refused    []shared.Action
 	notebooks  map[uuid.UUID]uuid.UUID
 	nodes      []domain.Node
+	tree       *tree
 	backlinks  []app.Backlink
 	properties *app.Properties
 	tags       []app.Tag
 	tagPages   []uuid.UUID
 	aliases    map[uuid.UUID][]string
+	aliasRows  []app.Alias
 	contents   map[uuid.UUID]revised
 	calls      []string
 }
@@ -56,6 +60,9 @@ func (l *library) Authorize(_ context.Context, _ shared.Actor, action shared.Act
 	if !l.visible[t.NotebookID] || l.workspaces[t.NotebookID] != t.WorkspaceID {
 		return shared.Grant{}, shared.ErrNotVisible
 	}
+	if slices.Contains(l.refused, action) {
+		return shared.Grant{}, shared.Forbidden()
+	}
 	return shared.Grant{NotebookRole: shared.NotebookReader}, nil
 }
 
@@ -68,6 +75,16 @@ func (l *library) NotebookOf(_ context.Context, id uuid.UUID) (uuid.UUID, bool, 
 func (l *library) All(context.Context, uuid.UUID) ([]domain.Node, error) {
 	l.call("All")
 	return l.nodes, nil
+}
+
+func (l *library) ByKeys(ctx context.Context, notebookID uuid.UUID, keys []string) ([]domain.Node, error) {
+	l.call("ByKeys " + strings.Join(keys, " "))
+	return l.tree.ByKeys(ctx, notebookID, keys)
+}
+
+func (l *library) Paths(ctx context.Context, notebookID uuid.UUID, ids []uuid.UUID) ([]domain.Node, error) {
+	l.call("Paths")
+	return l.tree.Paths(ctx, notebookID, ids)
 }
 
 func (l *library) Backlinks(_ context.Context, target, after uuid.UUID, size, count, contexts int) ([]app.Backlink, error) {
@@ -108,6 +125,17 @@ func (l *library) NotebookAliases(context.Context, uuid.UUID) (map[uuid.UUID][]s
 	return l.aliases, nil
 }
 
+func (l *library) Aliases(_ context.Context, _ uuid.UUID, keys []string) ([]app.Alias, error) {
+	l.call("Aliases " + strings.Join(keys, " "))
+	var out []app.Alias
+	for _, a := range l.aliasRows {
+		if slices.Contains(keys, a.Key) {
+			out = append(out, a)
+		}
+	}
+	return out, nil
+}
+
 func (l *library) Content(_ context.Context, id uuid.UUID) (string, int, bool, error) {
 	l.call("Content")
 	c, ok := l.contents[id]
@@ -122,7 +150,7 @@ type lib struct {
 }
 
 func newLibrary() lib {
-	l := lib{library: &library{}, nb: uuid.NewV7(), hidden: uuid.NewV7(), p: uuid.NewV7(), q: uuid.NewV7()}
+	l := lib{library: &library{tree: newTree()}, nb: uuid.NewV7(), hidden: uuid.NewV7(), p: uuid.NewV7(), q: uuid.NewV7()}
 	l.workspaces = map[uuid.UUID]uuid.UUID{l.nb: uuid.NewV7(), l.hidden: uuid.NewV7()}
 	l.visible = map[uuid.UUID]bool{l.nb: true}
 	l.notebooks = map[uuid.UUID]uuid.UUID{l.p: l.nb, l.q: l.hidden}
@@ -139,6 +167,10 @@ func (l lib) listBacklinks() app.ListBacklinks {
 
 func (l lib) getProperties() app.GetPageProperties {
 	return app.GetPageProperties{Access: l.access(), Reads: l.library}
+}
+
+func (l lib) getLinkLanding(depth int) app.GetLinkLanding {
+	return app.GetLinkLanding{Access: l.access(), Pages: l.library, Reads: l.library, MaxDepth: depth}
 }
 
 func (l lib) getTag() app.GetTag {
@@ -168,6 +200,9 @@ func TestAReadOfWhatTheCallerCannotSeeIsNotFound(t *testing.T) {
 		}
 		if _, err := l.getProperties().Execute(reader(), id); !errors.Is(err, domain.ErrPageNotFound) {
 			t.Errorf("properties of %v: %v", id, err)
+		}
+		if _, err := l.getLinkLanding(10).Execute(reader(), id, nil); !errors.Is(err, domain.ErrPageNotFound) { // before the target
+			t.Errorf("a landing in %v: %v", id, err)
 		}
 	}
 	for _, id := range []uuid.UUID{uuid.NewV7(), deleted, l.hidden} {

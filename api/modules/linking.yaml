@@ -1,4 +1,4 @@
-# linking 模块的接口：链接索引的读——反链、页面属性、标签、链接目标（M6/P5）。生成的 Go 代码在
+# linking 模块的接口：链接索引的读——反链、页面属性、标签、链接目标（M6/P5），链接的落点（M6/P6）。生成的 Go 代码在
 # server/internal/modules/linking/adapter/http/gen（make gen-go）。
 openapi: 3.1.0
 info:
@@ -82,6 +82,7 @@ paths:
         only when a page has the parent itself. Any role in the notebook can
         list them. A notebook that does not exist, is deleted, or that the
         caller has no role in is notebook.not_found. The list is not paged.
+        The tag "/" (#//) is listed, though getTag cannot name it.
       security: [{ bearer: [] }]
       x-problem-codes: [notebook.not_found]
       responses:
@@ -145,6 +146,52 @@ paths:
                 $ref: "#/components/schemas/LinkTargetList"
         default:
           $ref: "#/components/responses/Problem"
+  /api/v0/pages/{page_id}/link-landing:
+    parameters:
+      - $ref: "#/components/parameters/PageID"
+    get:
+      operationId: getLinkLanding
+      tags: [linking]
+      summary: Read where a page made for a link would go
+      description: >-
+        Where a page made for a link's target, written in this page, would
+        go so that the link then leads to it: under which page, null for the
+        notebook's root, and titled what, the target's last segment as
+        written without ".md". createPage makes it. A target that leads to a
+        page already answers that page instead; one with no such place
+        answers why: target_invalid, it has an empty segment, a "." or ".."
+        past its head, a NUL, or bytes that are not UTF-8; title_invalid,
+        its last segment is no title; parent_missing, no page is where its
+        other segments lead, read from this page's folder for "./" and
+        "../", from the root for "/", else as links resolve but not by
+        aliases; too_deep, the page made would be deeper than pages nest;
+        not_resolvable, the target would not lead to the page made, or not
+        to it alone. The notebook's admins and editors can read it. A page
+        that does not exist, is deleted, or whose notebook the caller has no
+        role in is page.not_found; then a role that does not write is
+        forbidden; then a target absent or longer than 4096 bytes is
+        validation_failed.
+      security: [{ bearer: [] }]
+      x-problem-codes: [page.not_found, forbidden, validation_failed]
+      parameters:
+        - name: target
+          in: query
+          description: >-
+            The link's target as the reading view carries it
+            (data-nw-target): a wikilink's as written, a Markdown link's
+            decoded, without its anchor or display text; at most 4096 bytes.
+            Absent is validation_failed on target.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Where the page made would go, the page there, or why neither.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LinkLanding"
+        default:
+          $ref: "#/components/responses/Problem"
 components:
   # 与 api/openapi.yaml 的相同：打包时丢掉模块文件的 securitySchemes，oapi-codegen 读这一份
   securitySchemes:
@@ -173,8 +220,10 @@ components:
       in: path
       required: true
       description: >-
-        A tag's name, without its '#'; a nested tag's '/' is written %2F
-        (a%2Fb).
+        A tag's name, without its '#', as listTags writes it and a reading
+        view's tag link carries it; a nested tag's '/' is written %2F
+        (a%2Fb). The tag "/" alone cannot be named: the path reads its %2F
+        as a trailing slash.
       schema:
         type: string
   responses:
@@ -361,3 +410,40 @@ components:
           type: array
           items:
             type: string
+    LinkLanding:
+      description: Exactly one of node_id, landing and reason is not null.
+      type: object
+      additionalProperties: false
+      required: [node_id, landing, reason]
+      properties:
+        node_id:
+          description: The page the target leads to already; null for none.
+          type: [string, "null"]
+          format: uuid
+        landing:
+          description: Where the page made would go; null for nowhere.
+          anyOf:
+            - $ref: "#/components/schemas/Landing"
+            - type: "null"
+        reason:
+          description: Why the target has no landing; null when it has one.
+          anyOf:
+            - $ref: "#/components/schemas/LandingReason"
+            - type: "null"
+    Landing:
+      description: Where a page made for a link would go.
+      type: object
+      additionalProperties: false
+      required: [parent_id, title]
+      properties:
+        parent_id:
+          description: The page it would go under; null for the notebook's root.
+          type: [string, "null"]
+          format: uuid
+        title:
+          description: Its title, as createPage takes it.
+          type: string
+    LandingReason:
+      description: Why a link's target has no landing; the operation says each.
+      type: string
+      enum: [target_invalid, title_invalid, parent_missing, too_deep, not_resolvable]

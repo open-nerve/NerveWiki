@@ -96,7 +96,7 @@ func Resolve(t Target, from []Step, candidates []Node, aliased map[string][]Node
 	if len(ends) > 0 {
 		return preferred(ends, folder)
 	}
-	if len(t.Keys) == 1 {
+	if t.ByAlias() {
 		for _, key := range t.LastKeys() {
 			if nodes := aliased[key]; len(nodes) > 0 {
 				return preferred(nodes, folder)

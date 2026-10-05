@@ -863,7 +863,7 @@ export interface paths {
         };
         /**
          * Read a page
-         * @description The page's reading view: its content rendered to HTML, its frontmatter's properties as a table first, and the revision it was rendered from. The HTML holds only what the renderer writes and a typographic allowlist of the content's own HTML, every address on this site, http(s) or mailto, and no image loaded. In the content, a wikilink, an embed (nw-embed), and a Markdown link or image whose address is a path, from the root too, link to pages of the notebook and have no address, which the app gives: each carries the page it leads to as it reads now (data-nw-node) and its anchor's heading id (data-nw-anchor), or nw-unresolved and its target (data-nw-target). A wikilink in a link's text is a span, as is one written with a block's anchor alone ([[#^b]]); one written with a heading's anchor alone ([[#h]]) has the heading's id as its address; an image in a link's text has no link of its own; the properties are text. Once the page is in the link index (nervewiki reindex after an upgrade), a links event tells when where its links lead changes. A page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found alike. When the server parses as much content as it can at once, the page waits a moment, then is server_busy.
+         * @description The page's reading view: its content rendered to HTML, its frontmatter's properties as a table first, and the revision it was rendered from. The HTML holds only what the renderer writes and a typographic allowlist of the content's own HTML, every address on this site, http(s) or mailto, and no image loaded. In the content, a wikilink, an embed (nw-embed), and a Markdown link or image whose address is a path, from the root too, link to pages of the notebook and have no address, which the app gives: each carries the page it leads to as it reads now (data-nw-node) and its anchor's heading id (data-nw-anchor), or nw-unresolved and its target (data-nw-target). A tag (nw-tag) of a name tag lists count links to its pages and has no address either: it carries the tag as this page writes it, but for its '#' and a last '/', which getTag takes (data-nw-tag); a tag the index does not keep of the page, its key longer than 1024 bytes or past the page's first 1000 tags, links still, though getTag does not list the page for it. A tag of a name the lists do not count (#1/) is a span, as are the tag "/" (#//), which getTag's path cannot name, and a tag in a link's text. A wikilink in a link's text is a span, as is one written with a block's anchor alone ([[#^b]]); one written with a heading's anchor alone ([[#h]]) has the heading's id as its address, as has a Markdown link to an anchor alone (#h), which is its text alone for a block's anchor or an empty one; an image in a link's text has no link of its own. A table, the properties' table and a block formula are each in a div of class nw-scroll, a region of their own that may scroll sideways. In the properties' table, a string written on one line that is one link to a page and nothing else, a wikilink with a target (not an anchor alone) or a Markdown link whose address is a path, is a link as in the content, without a title, showing the text the link shows; a value a YAML alias repeats, and every other value, is text. Once the page is in the link index (nervewiki reindex after an upgrade), a links event tells when where its links lead changes. A page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found alike. When the server parses as much content as it can at once, the page waits a moment, then is server_busy.
          */
         get: operations["getPageView"];
         put?: never;
@@ -1039,6 +1039,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v0/pages/{page_id}/link-landing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The page's id. */
+                page_id: components["parameters"]["PageID"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Read where a page made for a link would go
+         * @description Where a page made for a link's target, written in this page, would go so that the link then leads to it: under which page, null for the notebook's root, and titled what, the target's last segment as written without ".md". createPage makes it. A target that leads to a page already answers that page instead; one with no such place answers why: target_invalid, it has an empty segment, a "." or ".." past its head, a NUL, or bytes that are not UTF-8; title_invalid, its last segment is no title; parent_missing, no page is where its other segments lead, read from this page's folder for "./" and "../", from the root for "/", else as links resolve but not by aliases; too_deep, the page made would be deeper than pages nest; not_resolvable, the target would not lead to the page made, or not to it alone. The notebook's admins and editors can read it. A page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found; then a role that does not write is forbidden; then a target absent or longer than 4096 bytes is validation_failed.
+         */
+        get: operations["getLinkLanding"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v0/notebooks/{notebook_id}/tags": {
         parameters: {
             query?: never;
@@ -1051,7 +1074,7 @@ export interface paths {
         };
         /**
          * List a notebook's tags
-         * @description The tags of the notebook's pages, the body's and the frontmatter's, one a tag, which tags compare by case-folded, in the order of that key's bytes; each as most of its pages write it, and how many pages have it. Of a page's tags, its first 1000 are kept. A nested tag (a/b) is one of its own: its parent is listed only when a page has the parent itself. Any role in the notebook can list them. A notebook that does not exist, is deleted, or that the caller has no role in is notebook.not_found. The list is not paged.
+         * @description The tags of the notebook's pages, the body's and the frontmatter's, one a tag, which tags compare by case-folded, in the order of that key's bytes; each as most of its pages write it, and how many pages have it. Of a page's tags, its first 1000 are kept. A nested tag (a/b) is one of its own: its parent is listed only when a page has the parent itself. Any role in the notebook can list them. A notebook that does not exist, is deleted, or that the caller has no role in is notebook.not_found. The list is not paged. The tag "/" (#//) is listed, though getTag cannot name it.
          */
         get: operations["listTags"];
         put?: never;
@@ -1069,7 +1092,7 @@ export interface paths {
             path: {
                 /** @description The notebook's id. */
                 notebook_id: components["parameters"]["NotebookID"];
-                /** @description A tag's name, without its '#'; a nested tag's '/' is written %2F (a%2Fb). */
+                /** @description A tag's name, without its '#', as listTags writes it and a reading view's tag link carries it; a nested tag's '/' is written %2F (a%2Fb). The tag "/" alone cannot be named: the path reads its %2F as a trailing slash. */
                 tag: components["parameters"]["Tag"];
             };
             cookie?: never;
@@ -1777,6 +1800,33 @@ export interface components {
             /** @description The property links, by where they are written. */
             links: components["schemas"]["PropertyLink"][];
         };
+        /** @description Where a page made for a link would go. */
+        Landing: {
+            /**
+             * Format: uuid
+             * @description The page it would go under; null for the notebook's root.
+             */
+            parent_id: string | null;
+            /** @description Its title, as createPage takes it. */
+            title: string;
+        };
+        /**
+         * @description Why a link's target has no landing; the operation says each.
+         * @enum {string}
+         */
+        LandingReason: "target_invalid" | "title_invalid" | "parent_missing" | "too_deep" | "not_resolvable";
+        /** @description Exactly one of node_id, landing and reason is not null. */
+        LinkLanding: {
+            /**
+             * Format: uuid
+             * @description The page the target leads to already; null for none.
+             */
+            node_id: string | null;
+            /** @description Where the page made would go; null for nowhere. */
+            landing: components["schemas"]["Landing"] | null;
+            /** @description Why the target has no landing; null when it has one. */
+            reason: components["schemas"]["LandingReason"] | null;
+        };
         TagCount: {
             /** @description The tag, without its '#'. */
             tag: string;
@@ -1898,7 +1948,7 @@ export interface components {
         EditSessionID: string;
         /** @description The id of a node of a notebook's tree. */
         NodeID: string;
-        /** @description A tag's name, without its '#'; a nested tag's '/' is written %2F (a%2Fb). */
+        /** @description A tag's name, without its '#', as listTags writes it and a reading view's tag link carries it; a nested tag's '/' is written %2F (a%2Fb). The tag "/" alone cannot be named: the path reads its %2F as a trailing slash. */
         Tag: string;
     };
     requestBodies: never;
@@ -1978,6 +2028,9 @@ export type BacklinkPage = components['schemas']['BacklinkPage'];
 export type PageProperty = components['schemas']['PageProperty'];
 export type PropertyLink = components['schemas']['PropertyLink'];
 export type PageProperties = components['schemas']['PageProperties'];
+export type Landing = components['schemas']['Landing'];
+export type LandingReason = components['schemas']['LandingReason'];
+export type LinkLanding = components['schemas']['LinkLanding'];
 export type TagCount = components['schemas']['TagCount'];
 export type TagList = components['schemas']['TagList'];
 export type TagPage = components['schemas']['TagPage'];
@@ -3454,6 +3507,33 @@ export interface operations {
             default: components["responses"]["Problem"];
         };
     };
+    getLinkLanding: {
+        parameters: {
+            query?: {
+                /** @description The link's target as the reading view carries it (data-nw-target): a wikilink's as written, a Markdown link's decoded, without its anchor or display text; at most 4096 bytes. Absent is validation_failed on target. */
+                target?: string;
+            };
+            header?: never;
+            path: {
+                /** @description The page's id. */
+                page_id: components["parameters"]["PageID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Where the page made would go, the page there, or why neither. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkLanding"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
     listTags: {
         parameters: {
             query?: never;
@@ -3485,7 +3565,7 @@ export interface operations {
             path: {
                 /** @description The notebook's id. */
                 notebook_id: components["parameters"]["NotebookID"];
-                /** @description A tag's name, without its '#'; a nested tag's '/' is written %2F (a%2Fb). */
+                /** @description A tag's name, without its '#', as listTags writes it and a reading view's tag link carries it; a nested tag's '/' is written %2F (a%2Fb). The tag "/" alone cannot be named: the path reads its %2F as a trailing slash. */
                 tag: components["parameters"]["Tag"];
             };
             cookie?: never;

@@ -23,11 +23,21 @@ type tag struct {
 	spaced bool
 	// cut is how many '_' the name ends with that the parse left to the
 	// emphasis: they are the name's if they are text after it.
-	cut int
+	cut    int
+	inLink bool // in a Markdown link's text
 }
 
 // Kind implements ast.Node.
 func (t *tag) Kind() ast.NodeKind { return kindTag }
+
+// RendersLink implements markdown.Linker: a tag the tag pane counts
+// renders as a link but in a Markdown link's text (M6/P6 design 3), and
+// but for the tag "/" (#//), which an address's path cannot name: the
+// server's router reads its %2F as a trailing slash (M6/P6 fix check).
+func (t *tag) RendersLink() bool {
+	counted, ok := CountedTag(t.name)
+	return ok && counted != "/" && !t.inLink
+}
 
 // Dump implements ast.Node.
 func (t *tag) Dump(source []byte, level int) {

@@ -7,9 +7,10 @@ import (
 	markdownadapter "github.com/open-nerve/NerveWiki/server/internal/modules/linking/adapter/markdown"
 )
 
-// A tag's name is kept by its title key, as a page's tags are: without
-// one '/' it ends with; a name no tag has, or that PostgreSQL's text would
-// not hold, or whose key is too long to be kept, has none (M6/P5 design 5).
+// A tag's name, as listTags writes it, is kept by its title key, as a
+// page's tags are, a '/' it ends with too (the tag #a// counts as "a/":
+// M6/P6 review); a name no tag has, or that PostgreSQL's text would not
+// hold, or whose key is too long to be kept, has none (M6/P5 design 5).
 func TestATagNameIsKeptByTheKeyOfItsTag(t *testing.T) {
 	tests := []struct {
 		name string
@@ -18,7 +19,8 @@ func TestATagNameIsKeptByTheKeyOfItsTag(t *testing.T) {
 	}{
 		{"Project", "project", true},
 		{"a/B", "a/b", true},
-		{"a/", "a", true},
+		{"a/", "a/", true},
+		{"/", "/", true},
 		{"a_b-c", "a_b-c", true},
 		{"中文", "中文", true},
 		{"Straße", "strasse", true},
@@ -28,7 +30,6 @@ func TestATagNameIsKeptByTheKeyOfItsTag(t *testing.T) {
 		{"a b", "", false},
 		{"a.b", "", false},
 		{"", "", false},
-		{"/", "", false},
 		{"a\x00b", "", false},
 		{"a\xffb", "", false},
 		{strings.Repeat("a", 1024), strings.Repeat("a", 1024), true},
@@ -44,13 +45,13 @@ func TestATagNameIsKeptByTheKeyOfItsTag(t *testing.T) {
 
 // A tag a page writes is kept by the key its name has.
 func TestATagOfAPageIsKeptByTheKeyOfItsName(t *testing.T) {
-	f := factsOf(t, "---\ntags: [Proj/Sub, '#Other']\n---\n#Body/Tag/ and #Straße\n")
+	f := factsOf(t, "---\ntags: [Proj/Sub, '#Other']\n---\n#Body/Tag/ and #Straße #a// #//\n")
 	for _, tag := range f.Tags {
 		if key, ok := markdownadapter.TagKey(tag.Name); !ok || key != tag.Key {
 			t.Errorf("the tag %+v: TagKey(%q) = %q, %t", tag, tag.Name, key, ok)
 		}
 	}
-	if len(f.Tags) != 4 {
+	if len(f.Tags) != 6 {
 		t.Errorf("tags %+v", f.Tags)
 	}
 }

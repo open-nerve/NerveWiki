@@ -159,14 +159,17 @@ func sanitize(root ast.Node, source []byte) {
 
 // rendersLink tells whether n renders as a link: a Markdown link, an
 // autolink, an image (its address), a footnote's reference or back link, a
-// Linker.
+// Linker that says so. A Markdown link or image counts though its address
+// may turn out not let through (javascript:, an anchor to a block): a
+// user's <a> around it is dropped then too, and the text kept (M6/P6 fix
+// check L3).
 func rendersLink(n ast.Node) bool {
 	switch n.Kind() {
 	case ast.KindLink, ast.KindAutoLink, ast.KindImage, east.KindFootnoteLink, east.KindFootnoteBacklink:
 		return true
 	}
-	_, ok := n.(Linker)
-	return ok
+	l, ok := n.(Linker)
+	return ok && l.RendersLink()
 }
 
 // linksIn is the nodes of root's tree that render a link or hold one.

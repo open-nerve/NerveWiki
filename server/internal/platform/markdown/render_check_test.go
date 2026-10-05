@@ -43,7 +43,7 @@ func TestTheFixturesRenderToCheckedHTML(t *testing.T) {
 			}
 			alone := render(t, m, body)
 			props, found := strings.CutSuffix(got, alone)
-			if !found || props != "" && !strings.HasPrefix(props, `<table class="nw-props">`) {
+			if !found || props != "" && !strings.HasPrefix(props, `<div class="nw-scroll"><table class="nw-props">`) {
 				t.Errorf("with its frontmatter\n%q\nthe body alone\n%q", got, alone)
 			}
 		})

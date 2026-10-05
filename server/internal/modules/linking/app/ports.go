@@ -111,6 +111,9 @@ type Reads interface {
 	// NotebookAliases is the aliases of the pages of notebookID, by page,
 	// each page's by key.
 	NotebookAliases(ctx context.Context, notebookID uuid.UUID) (map[uuid.UUID][]string, error)
+	// Aliases is the pages of notebookID with an alias whose key is one of
+	// keys, as Store has them.
+	Aliases(ctx context.Context, notebookID uuid.UUID, keys []string) ([]Alias, error)
 }
 
 // Backlink is a page that links to another as the index has it: the

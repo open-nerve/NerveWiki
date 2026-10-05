@@ -2,6 +2,7 @@ package markdown
 
 import (
 	"bytes"
+	"io"
 	"regexp"
 	"strconv"
 
@@ -55,11 +56,19 @@ func (m *marks) known(n ast.Node) ([]Attr, bool) {
 	return nil, false
 }
 
+// Writer is what WriteAttrs writes to: a renderer's util.BufWriter, or
+// the property table's buffer (M6/P6 design 4).
+type Writer interface {
+	io.Writer
+	io.ByteWriter
+	io.StringWriter
+}
+
 // WriteAttrs writes attrs as an extension's renderer writes the attributes
 // it gives an element: each value escaped, an address (href, src) through
 // SafeURL, and left out when it is not let through, as is a name that is
 // not lower-case letters, digits and '-' (P3B review L2).
-func WriteAttrs(w util.BufWriter, attrs []Attr) {
+func WriteAttrs(w Writer, attrs []Attr) {
 	for _, a := range attrs {
 		value := a.Value
 		if a.Name == "href" || a.Name == "src" {
@@ -90,10 +99,11 @@ func (m *marks) RegisterFuncs(reg renderer.NodeRendererFuncRegisterer) {
 }
 
 // link is a Markdown link: the attributes an extension's Links gives, or
-// its address; its text alone when the address is not allowed. What it
-// holds renders as in a link either way, as the sanitizer reads it (an
-// autolink its label, a footnote's reference its number, an image no link:
-// P3B fix check).
+// its address, an anchor alone its heading's id; its text alone when the
+// address is not allowed, or the anchor leads to no heading. What it holds
+// renders as in a link either way, as the sanitizer reads it (an autolink
+// its label, a footnote's reference its number, an image no link: P3B fix
+// check).
 func (m *marks) link(w util.BufWriter, _ []byte, node ast.Node, entering bool) (ast.WalkStatus, error) {
 	n := node.(*ast.Link)
 	if entering {
@@ -104,7 +114,7 @@ func (m *marks) link(w util.BufWriter, _ []byte, node ast.Node, entering bool) (
 	attrs, known := m.known(n)
 	href, ok := "", false
 	if !known {
-		href, ok = SafeURL(string(util.URLEscape(n.Destination, true)))
+		href, ok = address(n.Destination)
 	}
 	if !known && !ok {
 		return ast.WalkContinue, nil // the text alone
@@ -128,6 +138,21 @@ func (m *marks) link(w util.BufWriter, _ []byte, node ast.Node, entering bool) (
 	}
 	_ = w.WriteByte('>')
 	return ast.WalkContinue, nil
+}
+
+// address is the address a Markdown link writes for destination, through
+// SafeURL: an anchor alone (#…) is the id of the heading it leads to, its
+// escapes decoded as the links to other pages' anchors are, and none for a
+// block's anchor or an empty one, as a wikilink's (M6/P6 design 5).
+func address(destination []byte) (string, bool) {
+	if anchor, ok := bytes.CutPrefix(destination, []byte("#")); ok {
+		id, ok := AnchorID(DecodeURI(string(anchor)))
+		if !ok {
+			return "", false
+		}
+		return SafeURL("#" + id)
+	}
+	return SafeURL(string(util.URLEscape(destination, true)))
 }
 
 // autoLink is an autolink, its label alone in a link.
@@ -183,7 +208,7 @@ func (m *marks) image(w util.BufWriter, source []byte, node ast.Node, entering b
 		return ast.WalkContinue, nil
 	}
 	n := node.(*ast.Image)
-	alt := util.EscapeHTML([]byte(plainText(n, source)))
+	alt := util.EscapeHTML([]byte(ShownText(n, source)))
 	_, _ = w.WriteString(`<span class="nw-image">`)
 	_, _ = w.Write(alt)
 	if m.links == 0 {

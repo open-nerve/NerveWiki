@@ -1,13 +1,16 @@
 package markdown
 
 import (
+	"bytes"
 	"strconv"
 	"strings"
 	"unicode"
 
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/parser"
+	gmhtml "github.com/yuin/goldmark/renderer/html"
 	"github.com/yuin/goldmark/text"
+	"golang.org/x/net/html"
 
 	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown/internal/harden"
 )
@@ -63,7 +66,7 @@ func (headingIDs) Transform(doc *ast.Document, reader text.Reader, _ parser.Cont
 			}
 			return ast.WalkContinue, nil
 		}
-		base := HeadingID(plainText(h, reader.Source()))
+		base := HeadingID(PlainText(h, reader.Source()))
 		id := base
 		for used[id] {
 			next[base]++
@@ -75,8 +78,9 @@ func (headingIDs) Transform(doc *ast.Document, reader text.Reader, _ parser.Cont
 	})
 }
 
-// plainText is the text of n's descendants, but for what a Hider hides.
-func plainText(n ast.Node, source []byte) string {
+// PlainText is the text of n's descendants, from source, as written, but
+// for what a Hider hides: a heading's, for its id.
+func PlainText(n ast.Node, source []byte) string {
 	var b strings.Builder
 	_ = ast.Walk(n, func(c ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
@@ -98,10 +102,79 @@ func plainText(n ast.Node, source []byte) string {
 	return b.String()
 }
 
+// ShownText is the text n's descendants show, from source, but for what a
+// Hider hides: each text as goldmark writes it, its backslash escapes and
+// character references resolved, a code span's as written, and U+0000 as
+// U+FFFD; an image's text, and what a property link shows (M6/P6 design
+// 4, review).
+func ShownText(n ast.Node, source []byte) string {
+	var b strings.Builder
+	var written textWriter
+	shown := func(value []byte) {
+		gmhtml.DefaultWriter.Write(&written, value)
+		b.WriteString(html.UnescapeString(written.String()))
+		written.Reset()
+	}
+	_ = ast.Walk(n, func(c ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering {
+			return ast.WalkContinue, nil
+		}
+		switch c := c.(type) {
+		case Hider:
+			return ast.WalkSkipChildren, nil
+		case *ast.Text:
+			if value := c.Segment.Value(source); c.IsRaw() {
+				b.Write(value)
+			} else {
+				shown(value)
+			}
+			if c.SoftLineBreak() || c.HardLineBreak() {
+				b.WriteByte(' ')
+			}
+		case *ast.AutoLink:
+			b.Write(c.Label(source))
+		case *ast.String:
+			switch {
+			case c.IsCode():
+				b.WriteString(html.UnescapeString(string(c.Value)))
+			case c.IsRaw():
+				b.Write(c.Value)
+			default:
+				shown(c.Value)
+			}
+		}
+		return ast.WalkContinue, nil
+	})
+	return strings.ReplaceAll(b.String(), "\x00", "\uFFFD")
+}
+
+// textWriter is the buffer goldmark's writer writes a text to for
+// ShownText: a bytes.Buffer, written at once, so that a text costs no 4 KB
+// buffer of bufio's (M6/P6 fix check M1).
+type textWriter struct{ bytes.Buffer }
+
+func (*textWriter) Buffered() int { return 0 }
+func (*textWriter) Flush() error  { return nil }
+
 // HeadingID is the id the first heading of text takes, when no heading
 // before it took that id: the id a link's anchor of text leads to (M6/P3
 // design 6.2). A heading whose id another took gets a suffix.
 func HeadingID(text string) string { return idPrefix + slug(text) }
+
+// AnchorID is the id of the heading an anchor leads to (M6/P3 design 6.2,
+// M6/P6 design 5): that of the first heading of its last part's text, H2
+// of H1#H2. A block's anchor (^…) has none, v0.1 giving blocks no id, and
+// an empty one none.
+func AnchorID(anchor string) (string, bool) {
+	if k := strings.LastIndexByte(anchor, '#'); k >= 0 {
+		anchor = anchor[k+1:]
+	}
+	anchor = strings.Trim(anchor, " \t")
+	if anchor == "" || anchor[0] == '^' {
+		return "", false
+	}
+	return HeadingID(anchor), true
+}
 
 func slug(s string) string {
 	var b strings.Builder

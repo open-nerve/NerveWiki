@@ -19,6 +19,33 @@ import (
 	externalRef0 "github.com/open-nerve/NerveWiki/server/internal/platform/httpserver/apigen"
 )
 
+// Defines values for LandingReason.
+const (
+	LandingReasonNotResolvable LandingReason = "not_resolvable"
+	LandingReasonParentMissing LandingReason = "parent_missing"
+	LandingReasonTargetInvalid LandingReason = "target_invalid"
+	LandingReasonTitleInvalid  LandingReason = "title_invalid"
+	LandingReasonTooDeep       LandingReason = "too_deep"
+)
+
+// Valid indicates whether the value is a known member of the LandingReason enum.
+func (e LandingReason) Valid() bool {
+	switch e {
+	case LandingReasonNotResolvable:
+		return true
+	case LandingReasonParentMissing:
+		return true
+	case LandingReasonTargetInvalid:
+		return true
+	case LandingReasonTitleInvalid:
+		return true
+	case LandingReasonTooDeep:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for LinkTargetKind.
 const (
 	LinkTargetKindPage LinkTargetKind = "page"
@@ -52,6 +79,30 @@ type BacklinkPage struct {
 
 	// NextCursor The cursor of the next page; null on the last page.
 	NextCursor nullable.Nullable[externalRef0.NextCursor] `json:"next_cursor"`
+}
+
+// Landing Where a page made for a link would go.
+type Landing struct {
+	// ParentID The page it would go under; null for the notebook's root.
+	ParentID nullable.Nullable[uuid.UUID] `json:"parent_id"`
+
+	// Title Its title, as createPage takes it.
+	Title string `json:"title"`
+}
+
+// LandingReason Why a link's target has no landing; the operation says each.
+type LandingReason string
+
+// LinkLanding Exactly one of node_id, landing and reason is not null.
+type LinkLanding struct {
+	// Landing Where the page made would go; null for nowhere.
+	Landing nullable.Nullable[Landing] `json:"landing"`
+
+	// NodeID The page the target leads to already; null for none.
+	NodeID nullable.Nullable[uuid.UUID] `json:"node_id"`
+
+	// Reason Why the target has no landing; null when it has one.
+	Reason nullable.Nullable[LandingReason] `json:"reason"`
 }
 
 // LinkTarget defines model for LinkTarget.
@@ -152,6 +203,12 @@ type ListBacklinksParams struct {
 	Cursor *externalRef0.Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 }
 
+// GetLinkLandingParams defines parameters for GetLinkLanding.
+type GetLinkLandingParams struct {
+	// Target The link's target as the reading view carries it (data-nw-target): a wikilink's as written, a Markdown link's decoded, without its anchor or display text; at most 4096 bytes. Absent is validation_failed on target.
+	Target *string `form:"target,omitempty" json:"target,omitempty"`
+}
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// ListLinkTargets List what a notebook's links may lead to
@@ -166,6 +223,9 @@ type ServerInterface interface {
 	// ListBacklinks List the pages that link to a page
 	// (GET /api/v0/pages/{page_id}/backlinks)
 	ListBacklinks(w http.ResponseWriter, r *http.Request, pageID PageID, params ListBacklinksParams)
+	// GetLinkLanding Read where a page made for a link would go
+	// (GET /api/v0/pages/{page_id}/link-landing)
+	GetLinkLanding(w http.ResponseWriter, r *http.Request, pageID PageID, params GetLinkLandingParams)
 	// GetPageProperties Read a page's properties
 	// (GET /api/v0/pages/{page_id}/properties)
 	GetPageProperties(w http.ResponseWriter, r *http.Request, pageID PageID)
@@ -313,6 +373,48 @@ func (siw *ServerInterfaceWrapper) ListBacklinks(w http.ResponseWriter, r *http.
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListBacklinks(w, r, pageID, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetLinkLanding operation middleware
+func (siw *ServerInterfaceWrapper) GetLinkLanding(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "page_id" -------------
+	var pageID PageID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "page_id", r.PathValue("page_id"), &pageID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetLinkLandingParams
+
+	// ------------- Optional query parameter "target" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "target", r.URL.Query(), &params.Target, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "target"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "target", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetLinkLanding(w, r, pageID, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -473,6 +575,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v0/notebooks/{notebook_id}/tags", wrapper.ListTags)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v0/notebooks/{notebook_id}/tags/{tag}", wrapper.GetTag)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v0/notebooks/{notebook_id}/link-targets", wrapper.ListLinkTargets)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v0/pages/{page_id}/link-landing", wrapper.GetLinkLanding)
 
 	return m
 }
@@ -673,6 +776,53 @@ func (response ListBacklinksdefaultApplicationProblemPlusJSONResponse) VisitList
 	return err
 }
 
+type GetLinkLandingRequestObject struct {
+	PageID PageID `json:"page_id"`
+	Params GetLinkLandingParams
+}
+
+type GetLinkLandingResponseObject interface {
+	VisitGetLinkLandingResponse(w http.ResponseWriter) error
+}
+
+type GetLinkLanding200JSONResponse LinkLanding
+
+func (response GetLinkLanding200JSONResponse) VisitGetLinkLandingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetLinkLandingdefaultApplicationProblemPlusJSONResponse struct {
+	Body       externalRef0.Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response GetLinkLandingdefaultApplicationProblemPlusJSONResponse) VisitGetLinkLandingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	if response.Headers.WWWAuthenticate != nil {
+		w.Header().Set("WWW-Authenticate", fmt.Sprint(*response.Headers.WWWAuthenticate))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetPagePropertiesRequestObject struct {
 	PageID PageID `json:"page_id"`
 }
@@ -733,6 +883,9 @@ type StrictServerInterface interface {
 	// ListBacklinks List the pages that link to a page
 	// (GET /api/v0/pages/{page_id}/backlinks)
 	ListBacklinks(ctx context.Context, request ListBacklinksRequestObject) (ListBacklinksResponseObject, error)
+	// GetLinkLanding Read where a page made for a link would go
+	// (GET /api/v0/pages/{page_id}/link-landing)
+	GetLinkLanding(ctx context.Context, request GetLinkLandingRequestObject) (GetLinkLandingResponseObject, error)
 	// GetPageProperties Read a page's properties
 	// (GET /api/v0/pages/{page_id}/properties)
 	GetPageProperties(ctx context.Context, request GetPagePropertiesRequestObject) (GetPagePropertiesResponseObject, error)
@@ -876,6 +1029,33 @@ func (sh *strictHandler) ListBacklinks(w http.ResponseWriter, r *http.Request, p
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ListBacklinksResponseObject); ok {
 		if err := validResponse.VisitListBacklinksResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetLinkLanding operation middleware
+func (sh *strictHandler) GetLinkLanding(w http.ResponseWriter, r *http.Request, pageID PageID, params GetLinkLandingParams) {
+	var request GetLinkLandingRequestObject
+
+	request.PageID = pageID
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetLinkLanding(ctx, request.(GetLinkLandingRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetLinkLanding")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetLinkLandingResponseObject); ok {
+		if err := validResponse.VisitGetLinkLandingResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

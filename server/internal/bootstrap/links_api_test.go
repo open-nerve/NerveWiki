@@ -146,14 +146,16 @@ func TestAPagesPropertiesThroughServe(t *testing.T) {
 
 // A notebook's tags are its pages', the body's and the frontmatter's, one
 // a tag in any case, as most of its pages write it; a tag's pages are those
-// with it or a tag under it, the nested one's '/' escaped in the path; a
-// name no tag has has none (M6/P5 design 5).
+// with it or a tag under it, the nested one's '/' escaped in the path, a
+// tag written #a// listed and read as "a/" (M6/P6 review); a name no tag
+// has has none (M6/P5 design 5).
 func TestANotebooksTagsThroughServe(t *testing.T) {
 	tm := newAcmeTeam(t, "member", "")
 	nb := tm.openNotebook(t, "alice", "Eng")
 	tagged := tm.createPageWith(t, "alice", nb, "", "Tagged", "---\ntags: [Proj/Sub]\n---\n#Proj and #proj\n")
 	other := tm.createPageWith(t, "alice", nb, "", "Other", "#proj #中文\n")
 	tm.createPageWith(t, "alice", nb, "", "Untagged", "# Proj\n")
+	slashed := tm.createPageWith(t, "alice", nb, "", "Slashed", "#Proj//\n")
 
 	var tags struct {
 		Data []struct {
@@ -166,11 +168,12 @@ func TestANotebooksTagsThroughServe(t *testing.T) {
 	for _, tag := range tags.Data {
 		got = append(got, tag.Tag+" "+string(rune('0'+tag.Count)))
 	}
-	if want := []string{"Proj 2", "Proj/Sub 1", "中文 1"}; !slices.Equal(got, want) {
+	if want := []string{"Proj 2", "Proj/ 1", "Proj/Sub 1", "中文 1"}; !slices.Equal(got, want) {
 		t.Errorf("tags %q, want %q", got, want)
 	}
 	for tag, want := range map[string][]string{
-		"proj":                   {tagged, other},
+		"proj":                   {tagged, other, slashed},
+		"Proj%2F":                {slashed},
 		"PROJ%2Fsub":             {tagged},
 		url.PathEscape("中文"):     {other},
 		"Proj%2FSub%2FDeeper":    {},

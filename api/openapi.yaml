@@ -119,6 +119,8 @@ paths:
     $ref: "modules/linking.yaml#/paths/~1api~1v0~1pages~1{page_id}~1backlinks"
   /api/v0/pages/{page_id}/properties:
     $ref: "modules/linking.yaml#/paths/~1api~1v0~1pages~1{page_id}~1properties"
+  /api/v0/pages/{page_id}/link-landing:
+    $ref: "modules/linking.yaml#/paths/~1api~1v0~1pages~1{page_id}~1link-landing"
   /api/v0/notebooks/{notebook_id}/tags:
     $ref: "modules/linking.yaml#/paths/~1api~1v0~1notebooks~1{notebook_id}~1tags"
   /api/v0/notebooks/{notebook_id}/tags/{tag}:

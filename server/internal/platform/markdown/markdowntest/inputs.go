@@ -215,6 +215,8 @@ func Pathological() []Input {
 		{"links with long addresses", repeat("[a](/" + strings.Repeat("p", 200) + ") ")},
 		{"autolinks", repeat("<https://example.com/a> www.example.com a@b.co ")},
 		{"images in links", repeat("[![a](i.png)](/p) ")},
+		// Each image's text is what it shows (M6/P6 fix check M1).
+		{"images referred to often", func(n int) string { return "[x]: p\n\n" + strings.Repeat("![x] ", n/5) }},
 		{"addresses in tags", repeat(`<a href="http://a/\b?c#d">x</a>`)},
 
 		// Obsidian's dialect (M6/P1 design 5).
@@ -261,6 +263,13 @@ func dense() []Input {
 		{"a frontmatter list of plain strings", func(n int) string { return "---\na: [" + repeat("x,")(n) + "]\n---\nbody\n" }},
 		{"a frontmatter list of property links", func(n int) string {
 			return "---\na: [" + repeat("'[[a]]',")(n) + "]\n---\nbody\n"
+		}},
+		// Below the YAML's limit of values, so that the table writes each as
+		// a link (M6/P6 design 4), its target as long as the size takes.
+		{"a frontmatter list of property links in the table", func(n int) string {
+			links := max(1, min(n/16, 9000))
+			link := "'[[" + strings.Repeat("a", max(1, n/links-8)) + "]]',"
+			return "---\na: [" + strings.Repeat(link, links) + "]\n---\nbody\n"
 		}},
 		{"embeds ![[a]]", repeat("![[a]]")},
 	}

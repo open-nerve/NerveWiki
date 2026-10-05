@@ -55,7 +55,7 @@ test("PG5 (API): a page created with Markdown reads as HTML, its properties firs
   const html = data?.html ?? "";
   expect(
     html.startsWith(
-      '<table class="nw-props"><tr><th>status</th><td>draft</td></tr><tr><th>owner</th><td>ada</td></tr></table>'
+      '<div class="nw-scroll"><table class="nw-props"><tr><th>status</th><td>draft</td></tr><tr><th>owner</th><td>ada</td></tr></table></div>'
     )
   ).toBe(true);
   for (const element of [
@@ -124,7 +124,7 @@ test("PG5 (page): the reading view shows the page's properties first, then its h
 
   await expect(pageHeading(page, "Plan")).toBeVisible();
   const article = page.getByRole("article");
-  await expect(article.locator(":scope > :first-child")).toHaveClass("nw-props");
+  await expect(article.locator(":scope > :first-child > table")).toHaveClass("nw-props");
   await expect(article.locator("table.nw-props")).toContainText("statusdraft");
   await expect(article.getByRole("heading", { level: 1, name: "Q4", exact: true })).toBeVisible();
   await expect(article.locator('th[align="left"]')).toHaveText("a");

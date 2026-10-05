@@ -23,6 +23,8 @@ func seeds(f *testing.F) {
 		f.Add([]byte(in.Make(1 << 10)))
 	}
 	f.Add([]byte(markdowntest.Normal(4 << 10)))
+	// Tags as links (M6/P6 design 3): in a link's text, in a user's link.
+	f.Add([]byte("[see #t and [[P]]](https://x.example) <a href=\"/x\">#u *#v*</a> #a/ #1/ #/\n"))
 }
 
 // Any bytes parse, and each link's and tag's range is in the content: a
@@ -43,7 +45,7 @@ func FuzzParse(f *testing.F) {
 			case l.Key != "":
 			case (l.Kind == obsidian.KindWikilink || l.Kind == obsidian.KindEmbed) && written != l.Target:
 				t.Errorf("%q: link %+v writes %q", content, l, written)
-			case (l.Kind == obsidian.KindLink || l.Kind == obsidian.KindImage) && obsidian.DecodeURI(written) != l.Target:
+			case (l.Kind == obsidian.KindLink || l.Kind == obsidian.KindImage) && markdown.DecodeURI(written) != l.Target:
 				t.Errorf("%q: link %+v writes %q", content, l, written)
 			}
 		}

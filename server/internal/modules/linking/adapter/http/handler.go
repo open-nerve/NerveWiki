@@ -1,5 +1,5 @@
 // Package httpadapter serves the linking module's API, the link index's
-// reads (M6/P5): it implements the strict server that oapi-codegen
+// reads (M6/P5) and a link's landing (M6/P6): it implements the strict server that oapi-codegen
 // generates from api/modules/linking.yaml into the gen package, and
 // translates between the generated types and the use cases.
 package httpadapter
@@ -12,6 +12,7 @@ import (
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/linking/adapter/http/gen"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/linking/app"
+	"github.com/open-nerve/NerveWiki/server/internal/modules/linking/domain"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver"
 )
 
@@ -40,6 +41,11 @@ type ListLinkTargetsUseCase interface {
 	Execute(ctx context.Context, notebookID uuid.UUID) ([]app.LinkTarget, error)
 }
 
+// GetLinkLandingUseCase is app.GetLinkLanding.
+type GetLinkLandingUseCase interface {
+	Execute(ctx context.Context, id uuid.UUID, target *string) (domain.Landing, error)
+}
+
 // UseCases are the use cases behind the module's operations.
 type UseCases struct {
 	ListBacklinks     ListBacklinksUseCase
@@ -47,6 +53,7 @@ type UseCases struct {
 	ListTags          ListTagsUseCase
 	GetTag            GetTagUseCase
 	ListLinkTargets   ListLinkTargetsUseCase
+	GetLinkLanding    GetLinkLandingUseCase
 }
 
 // Register mounts the module's routes on router, the root router from
@@ -148,6 +155,31 @@ func (h handler) ListLinkTargets(ctx context.Context, req gen.ListLinkTargetsReq
 	out := gen.ListLinkTargets200JSONResponse{Data: make([]gen.LinkTarget, len(targets))}
 	for i, t := range targets {
 		out.Data[i] = gen.LinkTarget{ID: t.ID, Kind: gen.LinkTargetKindPage, Name: t.Name, Link: t.Link, Aliases: t.Aliases}
+	}
+	return out, nil
+}
+
+// GetLinkLanding serves GET /api/v0/pages/{page_id}/link-landing: one of
+// its three fields is set, the others null.
+func (h handler) GetLinkLanding(ctx context.Context, req gen.GetLinkLandingRequestObject) (gen.GetLinkLandingResponseObject, error) {
+	l, err := h.uc.GetLinkLanding.Execute(ctx, req.PageID, req.Params.Target)
+	if err != nil {
+		return nil, err
+	}
+	out := gen.GetLinkLanding200JSONResponse{
+		NodeID: nullable.NewNullNullable[uuid.UUID](), Landing: nullable.NewNullNullable[gen.Landing](), Reason: nullable.NewNullNullable[gen.LandingReason](),
+	}
+	switch {
+	case l.Node != (uuid.UUID{}):
+		out.NodeID = nullable.NewNullableWithValue(l.Node)
+	case l.Reason != "":
+		out.Reason = nullable.NewNullableWithValue(gen.LandingReason(l.Reason))
+	default:
+		landing := gen.Landing{ParentID: nullable.NewNullNullable[uuid.UUID](), Title: l.Title}
+		if l.Parent != (uuid.UUID{}) {
+			landing.ParentID = nullable.NewNullableWithValue(l.Parent)
+		}
+		out.Landing = nullable.NewNullableWithValue(landing)
 	}
 	return out, nil
 }

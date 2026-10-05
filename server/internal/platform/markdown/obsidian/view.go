@@ -48,7 +48,7 @@ func (v view) lead(start int, target, anchor string) ([]markdown.Attr, bool) {
 		return []markdown.Attr{{Name: "data-nw-target", Value: target}}, false
 	}
 	attrs := []markdown.Attr{{Name: "data-nw-node", Value: id.String()}}
-	if heading, ok := anchorID(anchor); ok {
+	if heading, ok := markdown.AnchorID(anchor); ok {
 		attrs = append(attrs, markdown.Attr{Name: "data-nw-anchor", Value: heading})
 	}
 	return attrs, true
@@ -69,28 +69,40 @@ func (v view) markdownAttrs(start int) ([]markdown.Attr, bool) {
 	return attrs, true
 }
 
-// anchorID is the id of the heading an anchor leads to (M6/P3 design 6.2):
-// that of the first heading of its last part's text, H2 of H1#H2. A block's
-// anchor (^…) has none, v0.1 giving blocks no id, and an empty one none.
-func anchorID(anchor string) (string, bool) {
-	if k := strings.LastIndexByte(anchor, '#'); k >= 0 {
-		anchor = anchor[k+1:]
+// property is how the property table writes the frontmatter's string s
+// (M6/P6 design 4): the property link it is, if it is one, as the body
+// writes its kind, a wikilink or a Markdown link, showing what the link
+// shows; values parses s as the extraction did.
+func (v view) property(values parser.Parser) func(s markdown.Scalar) ([]markdown.Attr, string, bool) {
+	return func(s markdown.Scalar) ([]markdown.Attr, string, bool) {
+		p, ok := property(values, s)
+		if !ok {
+			return nil, "", false
+		}
+		attrs, resolved := v.lead(p.Range.Start, p.Target, p.Anchor)
+		var class []string
+		if p.Kind == KindWikilink {
+			class = append(class, "nw-wikilink")
+		}
+		if !resolved {
+			class = append(class, "nw-unresolved")
+		}
+		if len(class) > 0 {
+			attrs = append([]markdown.Attr{{Name: "class", Value: strings.Join(class, " ")}}, attrs...)
+		}
+		return attrs, p.shown(), true
 	}
-	anchor = strings.Trim(anchor, " \t")
-	if anchor == "" || anchor[0] == '^' {
-		return "", false
-	}
-	return markdown.HeadingID(anchor), true
 }
 
-// linkedWikilinks marks the wikilinks in a Markdown link's text, which
-// render as the text they show: a link holds no link (M6/P3 design 6.2).
-// The parse's own "within a link's brackets" would not do: the brackets
-// may turn out to be no link. A Markdown link whose address is not let
-// through is its text alone, its wikilinks too (P3B review L4).
-type linkedWikilinks struct{}
+// inLinks marks the wikilinks and the tags in a Markdown link's text, which
+// render as the text they show: a link holds no link (M6/P3 design 6.2,
+// M6/P6 design 3). The parse's own "within a link's brackets" would not
+// do: the brackets may turn out to be no link. A Markdown link whose
+// address is not let through is its text alone, its wikilinks and tags
+// too (P3B review L4).
+type inLinks struct{}
 
-func (linkedWikilinks) Transform(doc *ast.Document, _ text.Reader, _ parser.Context) {
+func (inLinks) Transform(doc *ast.Document, _ text.Reader, _ parser.Context) {
 	links := 0
 	_ = ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		switch n := n.(type) {
@@ -101,6 +113,10 @@ func (linkedWikilinks) Transform(doc *ast.Document, _ text.Reader, _ parser.Cont
 				links--
 			}
 		case *wikilink:
+			if entering && links > 0 {
+				n.inLink = true
+			}
+		case *tag:
 			if entering && links > 0 {
 				n.inLink = true
 			}

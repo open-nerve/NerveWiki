@@ -18,19 +18,27 @@ type NotebookWorkspaces interface {
 }
 
 // PageTree is what the reads of the index read of a notebook's tree, on
-// the pool: the page module's, which bootstrap wires (M6/P5 design 7).
-// Attachments and deleted pages are never among them.
+// the pool: the page module's, which bootstrap wires (M6/P5 design 7; the
+// landing's, M6/P6 design 2). Attachments and deleted pages are never
+// among them.
 type PageTree interface {
 	// NotebookOf is the notebook of the page id; false for no such page.
 	NotebookOf(ctx context.Context, id uuid.UUID) (uuid.UUID, bool, error)
 	// All is the pages of notebookID, by id, each with its path from the
 	// root.
 	All(ctx context.Context, notebookID uuid.UUID) ([]domain.Node, error)
+	// ByKeys is the pages of notebookID whose title key is one of keys,
+	// each with its path from the root.
+	ByKeys(ctx context.Context, notebookID uuid.UUID, keys []string) ([]domain.Node, error)
+	// Paths is the pages of notebookID among ids, each with its path from
+	// the root.
+	Paths(ctx context.Context, notebookID uuid.UUID, ids []uuid.UUID) ([]domain.Node, error)
 }
 
 // Access decides the reads of the index (M6/P5 design 2): by the decision
 // on the notebook, which hides what the caller cannot see behind the
-// not-found of what it named. Every role reads, so none is forbidden.
+// not-found of what it named. Every role reads the index; a link's landing
+// is its writers' (M6/P6 design 2), and the decision's forbidden stands.
 type Access struct {
 	Notebooks NotebookWorkspaces
 	Pages     PageTree
