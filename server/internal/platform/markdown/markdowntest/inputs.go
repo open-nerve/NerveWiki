@@ -262,6 +262,13 @@ func dense() []Input {
 		{"a frontmatter list of property links", func(n int) string {
 			return "---\na: [" + repeat("'[[a]]',")(n) + "]\n---\nbody\n"
 		}},
+		// Below the YAML's limit of values, so that the table writes each as
+		// a link (M6/P6 design 4), its target as long as the size takes.
+		{"a frontmatter list of property links in the table", func(n int) string {
+			links := max(1, min(n/16, 9000))
+			link := "'[[" + strings.Repeat("a", max(1, n/links-8)) + "]]',"
+			return "---\na: [" + strings.Repeat(link, links) + "]\n---\nbody\n"
+		}},
 		{"embeds ![[a]]", repeat("![[a]]")},
 	}
 }

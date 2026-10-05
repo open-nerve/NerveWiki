@@ -66,3 +66,29 @@ func TestAReadingViewsLinksLeadWhereTheyResolve(t *testing.T) {
 	exec(`DELETE FROM indexed_pages WHERE node_id = $1`)
 	leads("no index", target)
 }
+
+// A reading view's property links through serve (M6/P6 design 4): the
+// property table writes them as the body writes its links, leading where
+// they resolve, or carrying their targets.
+func TestAReadingViewsPropertyLinksLeadWhereTheyResolve(t *testing.T) {
+	tm := newAcmeTeam(t, "member", "")
+	nb := tm.openNotebook(t, "alice", "Eng")
+	target := tm.createPage(t, "alice", nb, "", "Target")
+	src := tm.createPageWith(t, "alice", nb, "", "Source", "---\nup: \"[[Target#Part Two|top]]\"\nsee: [\"[x](Missing.md)\"]\n---\n")
+	status, body := ask(t, tm.contract, http.MethodGet, tm.base+"/api/v0/pages/"+src+"/view", tm.tokens["bob"], "")
+	if status != http.StatusOK {
+		t.Fatalf("bob's reading view = %d %s", status, body)
+	}
+	var v struct {
+		HTML string `json:"html"`
+	}
+	decodeAnswer(t, body, &v)
+	for _, want := range []string{
+		`<td><a class="nw-wikilink" data-nw-node="` + target + `" data-nw-anchor="nw-part-two">top</a></td>`,
+		`<td><ul><li><a class="nw-unresolved" data-nw-target="Missing.md">x</a></li></ul></td>`,
+	} {
+		if !strings.Contains(v.HTML, want) {
+			t.Errorf("the reading view %q holds no %s", v.HTML, want)
+		}
+	}
+}

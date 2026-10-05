@@ -84,6 +84,9 @@ func TestTheAppsLinksAreWithinTheirBound(t *testing.T) {
 		"wikilinks with anchors":              strings.Repeat("[[a#b]]", n/7),
 		"embeds":                              strings.Repeat("![[p]]", n/6),
 		"wikilinks of a long anchor":          strings.Repeat("[[a#"+strings.Repeat("Ⱥ", 64)+"]]", n/134),
+		// In the property table, below the YAML's limit of values (M6/P6 design 4).
+		"property links of a display of '&'": "---\na: [" + strings.Repeat("'[[&|"+strings.Repeat("&", n/9000-12)+"]]',", 9000) + "]\n---\n",
+		"property links":                     "---\na: [" + strings.Repeat("'[[a]]',", 9000) + "]\n---\n",
 	}
 	page := markdown.Page{NotebookID: uuid.NewV7(), PageID: uuid.NewV7()}
 	for _, resolve := range []obsidian.Resolve{everyLink, nil} {

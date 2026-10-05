@@ -69,6 +69,31 @@ func (v view) markdownAttrs(start int) ([]markdown.Attr, bool) {
 	return attrs, true
 }
 
+// property is how the property table writes the frontmatter's string s
+// (M6/P6 design 4): the property link it is, if it is one, as the body
+// writes its kind, a wikilink or a Markdown link, showing what the link
+// shows; values parses s as the extraction did.
+func (v view) property(values parser.Parser) func(s markdown.Scalar) ([]markdown.Attr, string, bool) {
+	return func(s markdown.Scalar) ([]markdown.Attr, string, bool) {
+		l, shown, ok := property(values, s)
+		if !ok {
+			return nil, "", false
+		}
+		attrs, resolved := v.lead(l.Range.Start, l.Target, l.Anchor)
+		var class []string
+		if l.Kind == KindWikilink {
+			class = append(class, "nw-wikilink")
+		}
+		if !resolved {
+			class = append(class, "nw-unresolved")
+		}
+		if len(class) > 0 {
+			attrs = append([]markdown.Attr{{Name: "class", Value: strings.Join(class, " ")}}, attrs...)
+		}
+		return attrs, shown, true
+	}
+}
+
 // anchorID is the id of the heading an anchor leads to (M6/P3 design 6.2):
 // that of the first heading of its last part's text, H2 of H1#H2. A block's
 // anchor (^…) has none, v0.1 giving blocks no id, and an empty one none.

@@ -103,6 +103,33 @@ func TestLinksLeadWhereTheyResolve(t *testing.T) {
 	})
 }
 
+// The property table writes a property link as the body writes its kind,
+// leading where it resolves or carrying its target, and showing what the
+// link shows: a wikilink's display text or target, a Markdown link's
+// text. It goes by the value, not its path: the key "a.b" and the key b
+// under a are each its own. A value an alias repeats, one over lines, an
+// embed and a value with more than its link are text (M6/P6 design 4).
+func TestAPropertyLinkIsALinkInTheTable(t *testing.T) {
+	page := `data-nw-node="` + known["Page"].String() + `"`
+	row := func(key, value string) string { return "<tr><th>" + key + "</th><td>" + value + "</td></tr>" }
+	checkRenders(t, []renderCase{{
+		"each kind",
+		"---\nup: \"[[Page]]\"\nsee: \"[[Page#Part Two|the <part>]]\"\nmd: \"[t *x*](Page#h)\"\nnone: '[[Missing]]'\n" +
+			"\"a.b\": \"[[Page]]\"\na: {b: \"[[Missing]]\"}\nl: ['[a](b.md)', x]\n" +
+			"r: &r \"[[Page]]\"\nagain: *r\nm: |\n  [[Page]]\nmore: \"[[Page]] and\"\nemb: \"![[Page]]\"\n---\n",
+		`<table class="nw-props">` +
+			row("up", `<a class="nw-wikilink" `+page+`>Page</a>`) +
+			row("see", `<a class="nw-wikilink" `+page+` data-nw-anchor="nw-part-two">the &lt;part&gt;</a>`) +
+			row("md", `<a `+page+` data-nw-anchor="nw-h">t x</a>`) +
+			row("none", `<a class="nw-wikilink nw-unresolved" data-nw-target="Missing">Missing</a>`) +
+			row("a.b", `<a class="nw-wikilink" `+page+`>Page</a>`) +
+			row("a", `<table class="nw-props">`+row("b", `<a class="nw-wikilink nw-unresolved" data-nw-target="Missing">Missing</a>`)+`</table>`) +
+			row("l", `<ul><li><a class="nw-unresolved" data-nw-target="b.md">a</a></li><li>x</li></ul>`) +
+			row("r", `<a class="nw-wikilink" `+page+`>Page</a>`) + row("again", "[[Page]]") + row("m", "[[Page]]\n") +
+			row("more", "[[Page]] and") + row("emb", "![[Page]]") + "</table>\n",
+	}})
+}
+
 // Fetch asks Resolve where the links the page's content has lead, for the
 // page rendered, and asks nothing of a page without links; Resolve's error
 // is Render's; a page id that is no one's resolves to none.

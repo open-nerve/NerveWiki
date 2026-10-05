@@ -50,6 +50,10 @@ func Extension(o Options) markdown.Extension {
 			v, _ := data.(view)
 			return []util.PrioritizedValue{util.Prioritized(nodeRenderer{v}, 500)}
 		},
+		Properties: func(data any) func(markdown.Scalar) ([]markdown.Attr, string, bool) {
+			v, _ := data.(view)
+			return v.property(values)
+		},
 		Markup: markdown.Markup{
 			Elements: map[string][]string{
 				"a":       {"class", "href", "data-nw-node", "data-nw-anchor", "data-nw-target", "data-nw-tag"},

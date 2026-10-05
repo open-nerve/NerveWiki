@@ -35,6 +35,10 @@ type Scalar struct {
 
 	start   int   // where Value is written in the content, past its quote
 	offsets []int // where each byte of Value is written, and its end; nil when at start+i
+	// ordinal is which of the frontmatter's string values it is, in the
+	// order the property table writes them, an alias's each time it
+	// repeats one (M6/P6 design 4).
+	ordinal int
 }
 
 // Offset is where byte i of the value is written in the content, for i

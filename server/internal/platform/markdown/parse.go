@@ -63,7 +63,7 @@ func (headingIDs) Transform(doc *ast.Document, reader text.Reader, _ parser.Cont
 			}
 			return ast.WalkContinue, nil
 		}
-		base := HeadingID(plainText(h, reader.Source()))
+		base := HeadingID(PlainText(h, reader.Source()))
 		id := base
 		for used[id] {
 			next[base]++
@@ -75,8 +75,10 @@ func (headingIDs) Transform(doc *ast.Document, reader text.Reader, _ parser.Cont
 	})
 }
 
-// plainText is the text of n's descendants, but for what a Hider hides.
-func plainText(n ast.Node, source []byte) string {
+// PlainText is the text of n's descendants, from source, but for what a
+// Hider hides: a heading's for its id, an image's for its text, a property
+// link's for what it shows (M6/P6 design 4).
+func PlainText(n ast.Node, source []byte) string {
 	var b strings.Builder
 	_ = ast.Walk(n, func(c ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {

@@ -64,8 +64,15 @@ type Extension struct {
 	// node Parser makes: goldmark's renderer panics on a kind made after
 	// every kind it renders. It may be nil.
 	Renderer func(data any) []util.PrioritizedValue
-	// Markup is what Renderer writes, for the test of the final HTML
-	// (markdowntest.CheckHTML).
+	// Properties is how the property table writes the frontmatter's
+	// strings written on one line, given what Fetch got (M6/P6 design 4):
+	// each as a link, with its attributes, which WriteAttrs writes, and the
+	// text it shows, which the table escapes; or as it is, false. Of the
+	// extensions that write a string as a link, the first does. It may be
+	// nil.
+	Properties func(data any) func(s Scalar) ([]Attr, string, bool)
+	// Markup is what Renderer and Properties write, for the test of the
+	// final HTML (markdowntest.CheckHTML).
 	Markup Markup
 }
 

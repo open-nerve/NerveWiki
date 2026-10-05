@@ -9,12 +9,12 @@ import (
 	"go.yaml.in/yaml/v3"
 )
 
-// note notes the string scalar n, valued value, if it is written on one
-// line: plain, in single quotes or in double quotes (M6/P1 design 3.2). A
-// block scalar, a string over lines, or one whose bytes do not read back
-// as its value is not noted. Its path past what the paths may take is not
-// valid.
-func (r *reader) note(n *yaml.Node, value string) error {
+// note notes the string scalar n, valued value, the ordinal-th string
+// value, if it is written on one line: plain, in single quotes or in
+// double quotes (M6/P1 design 3.2). A block scalar, a string over lines,
+// or one whose bytes do not read back as its value is not noted. Its path
+// past what the paths may take is not valid.
+func (r *reader) note(n *yaml.Node, value string, ordinal int) error {
 	if n.Style&(yaml.LiteralStyle|yaml.FoldedStyle) != 0 {
 		return nil
 	}
@@ -25,7 +25,7 @@ func (r *reader) note(n *yaml.Node, value string) error {
 	if at, ok = pastProperties(r.src, at); !ok {
 		return nil
 	}
-	s := Scalar{Value: value}
+	s := Scalar{Value: value, ordinal: ordinal}
 	switch {
 	case n.Style&yaml.SingleQuotedStyle != 0:
 		s.Quote = '\''

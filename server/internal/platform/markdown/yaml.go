@@ -90,10 +90,12 @@ func pathsBudget(n int) int {
 // reader walks the YAML's nodes, counting what it expands: the nodes, and
 // the bytes of keys and scalars an alias repeats, up to budget. It notes
 // the strings written on one line on the way (scalars.go), counting the
-// bytes of their paths, up to pathsBudget.
+// bytes of their paths, up to pathsBudget, and the string values, an
+// alias's too.
 type reader struct {
 	nodes, aliased, repeated, budget int
 	paths, pathsBudget               int
+	strings                          int
 
 	src     []byte   // the YAML
 	at      int      // where src starts in the content
@@ -118,8 +120,10 @@ func (r *reader) value(n *yaml.Node, depth int) (any, error) {
 			return nil, err
 		}
 		v, err := scalar(n)
-		if s, ok := v.(string); ok && err == nil && r.aliased == 0 {
-			err = r.note(n, s)
+		if s, ok := v.(string); ok && err == nil {
+			if r.strings++; r.aliased == 0 {
+				err = r.note(n, s, r.strings-1)
+			}
 		}
 		return v, err
 	case yaml.SequenceNode:

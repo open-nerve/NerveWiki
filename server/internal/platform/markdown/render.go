@@ -23,6 +23,8 @@ func (m *Markdown) Render(ctx context.Context, d *Document, page Page) (string, 
 	footnotes := registered{}
 	extension.NewFootnoteHTMLRenderer(extension.WithFootnoteIDPrefix(idPrefix)).RegisterFuncs(footnotes)
 	links := &marks{destinations: d.destinations, footnoteLink: footnotes[east.KindFootnoteLink]}
+	fm := d.facts.frontmatter
+	props := table{scalars: fm.Scalars}
 	nodes := []util.PrioritizedValue{
 		// goldmark's renderer stays safe: a node that reached it unexpected
 		// would be an omitted comment or a dropped address.
@@ -47,11 +49,15 @@ func (m *Markdown) Render(ctx context.Context, d *Document, page Page) (string, 
 		if e.Links != nil {
 			links.written = append(links.written, e.Links(data))
 		}
+		if e.Properties != nil {
+			props.links = append(props.links, e.Properties(data))
+		}
 	}
 	sanitize(d.root, d.source)
 	var out bytes.Buffer
-	if fm := d.facts.frontmatter; fm.Valid && len(fm.Properties) > 0 {
-		writeProperties(&out, fm.Properties)
+	if fm.Valid && len(fm.Properties) > 0 {
+		props.out = &out
+		props.write(fm.Properties)
 		out.WriteByte('\n')
 	}
 	if err := renderer.NewRenderer(renderer.WithNodeRenderers(nodes...)).Render(&out, d.source, d.root); err != nil {
@@ -60,41 +66,77 @@ func (m *Markdown) Render(ctx context.Context, d *Document, page Page) (string, 
 	return out.String(), nil
 }
 
-// writeProperties writes props as a table, a row each: the key in a th,
-// the value in a td (M4/P3 design 3.6).
-func writeProperties(out *bytes.Buffer, props []Property) {
-	out.WriteString(`<table class="nw-props">`)
-	for _, p := range props {
-		out.WriteString("<tr><th>" + html.EscapeString(p.Key) + "</th><td>")
-		writeValue(out, p.Value)
-		out.WriteString("</td></tr>")
-	}
-	out.WriteString("</table>")
+// table writes the frontmatter's properties to out (M4/P3 design 3.6):
+// its strings in the order the reader numbered them, each written on one
+// line a scalar, which links may write as a link (M6/P6 design 4).
+type table struct {
+	out     *bytes.Buffer
+	scalars []Scalar // those after the strings written, by ordinal
+	links   []func(Scalar) ([]Attr, string, bool)
+	strings int // how many strings it wrote
 }
 
-// writeValue writes a property's value: null as nothing, a list as a ul, a
-// mapping as a table of its own, a number as JSON writes it.
-func writeValue(out *bytes.Buffer, v any) {
+// write writes props as a table, a row each: the key in a th, the value in
+// a td.
+func (t *table) write(props []Property) {
+	t.out.WriteString(`<table class="nw-props">`)
+	for _, p := range props {
+		t.out.WriteString("<tr><th>" + html.EscapeString(p.Key) + "</th><td>")
+		t.value(p.Value)
+		t.out.WriteString("</td></tr>")
+	}
+	t.out.WriteString("</table>")
+}
+
+// value writes a property's value: null as nothing, a list as a ul, a
+// mapping as a table of its own, a number as JSON writes it, a string as
+// a link if an extension writes it so.
+func (t *table) value(v any) {
 	switch v := v.(type) {
 	case bool:
-		out.WriteString(strconv.FormatBool(v))
+		t.out.WriteString(strconv.FormatBool(v))
 	case int64:
-		out.WriteString(strconv.FormatInt(v, 10))
+		t.out.WriteString(strconv.FormatInt(v, 10))
 	case float64:
-		out.WriteString(jsonNumber(v))
+		t.out.WriteString(jsonNumber(v))
 	case string:
-		out.WriteString(html.EscapeString(v))
-	case []any:
-		out.WriteString("<ul>")
-		for _, item := range v {
-			out.WriteString("<li>")
-			writeValue(out, item)
-			out.WriteString("</li>")
+		if attrs, text, ok := t.link(); ok {
+			t.out.WriteString("<a")
+			WriteAttrs(t.out, attrs)
+			t.out.WriteString(">" + html.EscapeString(text) + "</a>")
+		} else {
+			t.out.WriteString(html.EscapeString(v))
 		}
-		out.WriteString("</ul>")
+	case []any:
+		t.out.WriteString("<ul>")
+		for _, item := range v {
+			t.out.WriteString("<li>")
+			t.value(item)
+			t.out.WriteString("</li>")
+		}
+		t.out.WriteString("</ul>")
 	case []Property:
-		writeProperties(out, v)
+		t.write(v)
 	}
+}
+
+// link is how the next string is written as a link, if it is a scalar an
+// extension writes so.
+func (t *table) link() ([]Attr, string, bool) {
+	ordinal := t.strings
+	t.strings++
+	for len(t.scalars) > 0 && t.scalars[0].ordinal < ordinal {
+		t.scalars = t.scalars[1:]
+	}
+	if len(t.scalars) == 0 || t.scalars[0].ordinal != ordinal {
+		return nil, "", false
+	}
+	for _, link := range t.links {
+		if attrs, text, ok := link(t.scalars[0]); ok {
+			return attrs, text, true
+		}
+	}
+	return nil, "", false
 }
 
 // scrollingTables is goldmark's table renderer, each table in a region of

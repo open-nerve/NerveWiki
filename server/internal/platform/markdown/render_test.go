@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"uuid"
@@ -131,6 +132,49 @@ func TestThePropertiesComeFirstAsATable(t *testing.T) {
 		{"a frontmatter not valid", "---\n- a\n---\nbody\n", "<p>body</p>\n"},
 		{"no frontmatter", "body\n", "<p>body</p>\n"},
 	})
+}
+
+// An extension writes the frontmatter's strings written on one line as
+// links through its Properties, given what its Fetch got, each asked by
+// its own scalar: in the order the table writes them, an alias's repeat
+// counted and not asked, nor a block scalar. Of two extensions, the first
+// that writes a string as a link does; the text is escaped, and an address
+// goes through SafeURL (M6/P6 design 4).
+func TestAnExtensionWritesAPropertysStringAsALink(t *testing.T) {
+	asked := map[string][]string{}
+	linking := func(name, prefix string) Extension {
+		return Extension{
+			Name:  name,
+			Fetch: func(context.Context, Page, any) (any, error) { return name, nil },
+			Properties: func(data any) func(Scalar) ([]Attr, string, bool) {
+				return func(s Scalar) ([]Attr, string, bool) {
+					asked[name] = append(asked[name], s.Value)
+					if !strings.HasPrefix(s.Value, prefix) {
+						return nil, "", false
+					}
+					return []Attr{{Name: "href", Value: s.Value[len(prefix):]}, {Name: "class", Value: data.(string)}}, s.Path, true
+				}
+			},
+		}
+	}
+	m := newMarkdown(t, linking("one", "L"), linking("two", "M"))
+	src := "---\na: &x L/a\nb: [*x, L/b, M/c, Ljavascript:x, z]\n\"a.b\": L/d\nc: {b: L/e, \"<k>\": L/f}\nm: |\n  L/g\n---\n"
+	want := `<table class="nw-props"><tr><th>a</th><td><a href="/a" class="one">a</a></td></tr>` +
+		`<tr><th>b</th><td><ul><li>L/a</li><li><a href="/b" class="one">b.1</a></li><li><a href="/c" class="two">b.2</a></li>` +
+		`<li><a class="one">b.3</a></li><li>z</li></ul></td></tr>` +
+		`<tr><th>a.b</th><td><a href="/d" class="one">a.b</a></td></tr>` +
+		`<tr><th>c</th><td><table class="nw-props"><tr><th>b</th><td><a href="/e" class="one">c.b</a></td></tr>` +
+		`<tr><th>&lt;k&gt;</th><td><a href="/f" class="one">c.&lt;k&gt;</a></td></tr></table></td></tr>` +
+		`<tr><th>m</th><td>L/g` + "\n" + `</td></tr></table>` + "\n"
+	if got := renderString(t, m, src); got != want {
+		t.Errorf("got  %q\nwant %q", got, want)
+	}
+	if want := []string{"L/a", "L/b", "M/c", "Ljavascript:x", "z", "L/d", "L/e", "L/f"}; !slices.Equal(asked["one"], want) {
+		t.Errorf("one asked of %q, want %q", asked["one"], want)
+	}
+	if want := []string{"M/c", "z"}; !slices.Equal(asked["two"], want) {
+		t.Errorf("two asked of %q, want %q", asked["two"], want)
+	}
 }
 
 // wordsRendered is words() rendering what fetch got: each word in a mark

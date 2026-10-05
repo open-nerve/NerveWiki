@@ -96,7 +96,7 @@ func extract(t markdown.Tree, values parser.Parser) any {
 		return ast.WalkContinue, nil
 	})
 	for _, s := range t.Frontmatter.Scalars {
-		if l, ok := property(values, s); ok {
+		if l, _, ok := property(values, s); ok {
 			add(l)
 		}
 	}
@@ -153,39 +153,43 @@ func markdownLink(kind Kind, written string, at int) (Link, bool) {
 }
 
 // property is the link the scalar s is, if its whole value is one wikilink,
-// not an embed, or one Markdown link, not an image (rule 10). values
-// parses the value as the body is parsed; the link's range is where the
-// content writes it, through s's offsets.
-func property(values parser.Parser, s markdown.Scalar) (Link, bool) {
+// not an embed, or one Markdown link, not an image (rule 10), and the text
+// it shows: a wikilink's as the body's shows, a Markdown link's text.
+// values parses the value as the body is parsed; the link's range is where
+// the content writes it, through s's offsets.
+func property(values parser.Parser, s markdown.Scalar) (Link, string, bool) {
 	// Either link starts with '[': most values are parsed no further.
 	if !strings.HasPrefix(s.Value, "[") || strings.TrimSpace(s.Value) != s.Value {
-		return Link{}, false
+		return Link{}, "", false
 	}
 	value := []byte(s.Value)
 	pc := parser.NewContext()
 	root := values.Parse(text.NewReader(value), parser.WithContext(pc))
 	p := root.FirstChild()
 	if p == nil || p != root.LastChild() || p.Kind() != ast.KindParagraph || p.FirstChild() != p.LastChild() {
-		return Link{}, false
+		return Link{}, "", false
 	}
 	var l Link
+	var shown string
 	var ok bool
 	switch n := p.FirstChild().(type) {
 	case *wikilink: // not an embed: the value starts with '['
 		l, ok = n.link()
+		shown = n.shown()
 	case *ast.Link:
 		at, found := harden.Destinations(pc)(n)
 		if !found {
-			return Link{}, false
+			return Link{}, "", false
 		}
 		l, ok = markdownLink(KindLink, s.Value[at.Start:at.Stop], at.Start)
+		shown = markdown.PlainText(n, value)
 	}
 	if !ok {
-		return Link{}, false
+		return Link{}, "", false
 	}
 	l.Key = s.Path
 	l.Range = markdown.Span{Start: s.Offset(l.Range.Start), Stop: s.Offset(l.Range.Stop)}
-	return l, true
+	return l, shown, true
 }
 
 // reserved are the characters whose escapes decodeURI keeps.
