@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"slices"
-	"strings"
 	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/linking/domain"
@@ -97,14 +96,12 @@ func resolutions(ctx context.Context, store Store, pages Pages, notebookID uuid.
 		byID[n.ID] = n
 	}
 	var missing []uuid.UUID
-	// A link's resolution depends on its page and its target's parse alone: its keys, not how they are written.
-	type written struct {
-		source           uuid.UUID
-		relative, rooted bool
-		up               int
-		keys, alt        string
+	// A link's resolution depends on its page and its target's parse alone.
+	type link struct {
+		source uuid.UUID
+		target domain.TargetKey
 	}
-	resolved := make(map[written]domain.Resolution)
+	resolved := make(map[link]domain.Resolution)
 	for i, l := range links {
 		if i%checkEvery == 0 {
 			if err := ctx.Err(); err != nil {
@@ -120,8 +117,7 @@ func resolutions(ctx context.Context, store Store, pages Pages, notebookID uuid.
 			continue
 		}
 		t := targets[i]
-		// A segment holds no '/', nor does its key (NFC and case folding make none): joined by it, the keys are one.
-		w := written{l.SourceID, t.Relative, t.Rooted, t.Up, strings.Join(t.Keys, "/"), t.AltLast}
+		w := link{l.SourceID, t.Key()}
 		if r, ok := resolved[w]; ok {
 			out[i] = r
 			continue

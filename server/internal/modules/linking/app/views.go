@@ -20,8 +20,8 @@ type Views struct {
 // in statements of their own, outside a transaction: a page moved or
 // renamed between them may have a link resolve as before the move, and
 // one gone meanwhile resolves none of its links, an alias of it none,
-// until the view is read again with the event of the change (M6/P3 design
-// 6.1, P3B review L2).
+// until the view is read again: with the event of the change, for a page
+// the index has, or by a later read (M6/P3 design 6.1, P3B review L1, L2).
 func (v Views) Resolve(ctx context.Context, p Page, links []Link) (map[int]domain.Resolution, error) {
 	if len(links) == 0 {
 		return nil, nil

@@ -196,7 +196,7 @@ func TestAViewsFailureIsItsError(t *testing.T) {
 	if _, err := views.Resolve(ended, page, links); !errors.Is(err, context.Canceled) {
 		t.Errorf("Resolve with its context ended = %v", err)
 	}
-	many := make([]app.Link, 5000)
+	many := make([]app.Link, app.CheckEvery+1)
 	for i := range many {
 		many[i] = app.Link{SourceID: w.id("src"), Start: i, Target: "A"}
 	}
