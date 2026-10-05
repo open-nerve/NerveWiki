@@ -99,6 +99,11 @@ func TestThePagesThatLinkToAPage(t *testing.T) {
 	if err != nil || !reflect.DeepEqual(got, want) {
 		t.Errorf("after the first two, past the page itself: %+v, %v\nwant %+v", got, err, want)
 	}
+	// A step past the page itself, which links to itself, between the others.
+	got, err = f.s.Backlinks(ctx, target, uuid.UUID{}, 3, 100, 1)
+	if ids := sourcesOf(got); err != nil || !slices.Equal(ids, []uuid.UUID{many, ambiguous, one}) {
+		t.Errorf("three from the first: %v, %v", ids, err)
+	}
 	if got, err := f.s.Backlinks(ctx, target, unindexed, 2, 100, 10); err != nil || len(got) != 0 {
 		t.Errorf("after the last: %+v, %v", got, err)
 	}
@@ -110,6 +115,15 @@ func TestThePagesThatLinkToAPage(t *testing.T) {
 	if want := []app.Backlink{{SourceID: many, Revision: 4, Extractor: e, Links: 1, Ranges: []domain.Range{{Start: 200, End: 201}}}}; err != nil || !reflect.DeepEqual(got, want) {
 		t.Errorf("of the other page: %+v, %v\nwant %+v", got, err, want)
 	}
+}
+
+// sourcesOf is the pages of backlinks.
+func sourcesOf(backlinks []app.Backlink) []uuid.UUID {
+	var out []uuid.UUID
+	for _, b := range backlinks {
+		out = append(out, b.SourceID)
+	}
+	return out
 }
 
 // A page's properties are its properties' keys and values in the order

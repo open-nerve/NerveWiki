@@ -163,6 +163,10 @@ func TestAPagesContextsAreOneALine(t *testing.T) {
 	if got := domain.Contexts(content, nil); got == nil || len(got) != 0 {
 		t.Errorf("no ranges: %#v", got)
 	}
+	// Lines ended by a lone CR are lines too.
+	if got := domain.Contexts("a [[x]]\rb [[x]]", []domain.Range{{Start: 4, End: 5}, {Start: 12, End: 13}}); !slices.Equal(got, []string{"a [[x]]", "b [[x]]"}) {
+		t.Errorf("lines of CR: %q", got)
+	}
 	// Out of order, the line is not told: each has its own.
 	if got := domain.Contexts(content, []domain.Range{ranges[1], ranges[0]}); len(got) != 2 {
 		t.Errorf("out of order: %q", got)
