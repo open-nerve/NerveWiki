@@ -4,11 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"reflect"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
+	"unsafe"
 	"uuid"
+	"weak"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/linking/app"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/linking/domain"
@@ -66,8 +70,11 @@ func (l *library) All(context.Context, uuid.UUID) ([]domain.Node, error) {
 	return l.nodes, nil
 }
 
-func (l *library) Backlinks(_ context.Context, target, after uuid.UUID, size, contexts int) ([]app.Backlink, error) {
+func (l *library) Backlinks(_ context.Context, target, after uuid.UUID, size, count, contexts int) ([]app.Backlink, error) {
 	l.call("Backlinks")
+	if count != domain.MaxCount || contexts != domain.MaxContexts {
+		return nil, fmt.Errorf("counted to %d, %d contexts", count, contexts)
+	}
 	var out []app.Backlink
 	for _, b := range l.backlinks {
 		if b.SourceID.Compare(after) > 0 && len(out) < size {
@@ -167,8 +174,10 @@ func TestAReadOfWhatTheCallerCannotSeeIsNotFound(t *testing.T) {
 		if _, err := (app.ListTags{Access: l.access(), Reads: l.library}).Execute(reader(), id); !errors.Is(err, domain.ErrNotebookNotFound) {
 			t.Errorf("tags of %v: %v", id, err)
 		}
-		if _, err := l.getTag().Execute(reader(), id, "a"); !errors.Is(err, domain.ErrNotebookNotFound) {
-			t.Errorf("a tag of %v: %v", id, err)
+		for _, name := range []string{"a", "a b"} { // the notebook before the name (review r3-2)
+			if _, err := l.getTag().Execute(reader(), id, name); !errors.Is(err, domain.ErrNotebookNotFound) {
+				t.Errorf("the tag %q of %v: %v", name, id, err)
+			}
 		}
 		if _, err := (app.ListLinkTargets{Access: l.access(), Reads: l.library}).Execute(reader(), id); !errors.Is(err, domain.ErrNotebookNotFound) {
 			t.Errorf("link targets of %v: %v", id, err)
@@ -225,11 +234,12 @@ func TestTheBacklinksComeAPageAtATimeWithTheirContexts(t *testing.T) {
 	for i := range 12 {
 		many = append(many, domain.Range{Start: 6 + i, End: 7 + i})
 	}
+	e := domain.Extractor
 	l.backlinks = []app.Backlink{
-		{SourceID: ids[0], Revision: 3, Links: 3, Ranges: []domain.Range{{Start: 6, End: 7}, {Start: 16, End: 17}, {Start: 22, End: 23}}},
-		{SourceID: ids[1], Revision: 1, Links: 1, Ranges: []domain.Range{{Start: 2, End: 3}}}, // written since
-		{SourceID: ids[2], Revision: 1, Links: 12, Ranges: many},                              // past its content
-		{SourceID: ids[3], Revision: 1, Links: 1, Ranges: []domain.Range{{Start: 2, End: 3}}}, // gone
+		{SourceID: ids[0], Revision: 3, Extractor: e, Links: 3, Ranges: []domain.Range{{Start: 6, End: 7}, {Start: 16, End: 17}, {Start: 22, End: 23}}},
+		{SourceID: ids[1], Revision: 1, Extractor: e, Links: 1, Ranges: []domain.Range{{Start: 2, End: 3}}}, // written since
+		{SourceID: ids[2], Revision: 1, Extractor: e, Links: 12, Ranges: many},                              // past its content
+		{SourceID: ids[3], Revision: 1, Extractor: e, Links: 1, Ranges: []domain.Range{{Start: 2, End: 3}}}, // gone
 	}
 	two := 2
 	first, err := l.listBacklinks().Execute(reader(), l.p, &two, nil)
@@ -253,6 +263,69 @@ func TestTheBacklinksComeAPageAtATimeWithTheirContexts(t *testing.T) {
 	}
 	if got, err := l.listBacklinks().Execute(reader(), l.p, nil, nil); err != nil || len(got.Pages) != 4 || got.NextCursor != "" {
 		t.Errorf("one page of all: %+v, %v", got, err)
+	}
+}
+
+// A page whose rows are of another extractor, before nervewiki reindex,
+// has no contexts, its content unread: its ranges may mean other bytes
+// (review r1-4). Past domain.MaxContentRead bytes of contents read, the
+// pages have none, unread (review r2-L1).
+func TestABacklinksContextsAreOfTheExtractorAndWithinTheRead(t *testing.T) {
+	l := newLibrary()
+	ids := []uuid.UUID{uuid.NewV7(), uuid.NewV7(), uuid.NewV7(), uuid.NewV7()}
+	half := strings.Repeat("a", domain.MaxContentRead/2) + "[[p]]"
+	link := []domain.Range{{Start: len(half) - 3, End: len(half) - 2}}
+	l.contents = map[uuid.UUID]revised{ids[0]: {"[[p]]", 1}, ids[1]: {half, 1}, ids[2]: {half, 1}, ids[3]: {"[[p]]", 1}}
+	e := domain.Extractor
+	l.backlinks = []app.Backlink{
+		{SourceID: ids[0], Revision: 1, Extractor: e - 1, Links: 1, Ranges: []domain.Range{{Start: 2, End: 3}}},
+		{SourceID: ids[1], Revision: 1, Extractor: e, Links: 1, Ranges: link},
+		{SourceID: ids[2], Revision: 1, Extractor: e, Links: 1, Ranges: link},
+		{SourceID: ids[3], Revision: 1, Extractor: e, Links: 1, Ranges: []domain.Range{{Start: 2, End: 3}}},
+	}
+	got, err := l.listBacklinks().Execute(reader(), l.p, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var contexts []int
+	for _, b := range got.Pages {
+		contexts = append(contexts, len(b.Contexts))
+	}
+	if reads := strings.Count(strings.Join(l.calls, " "), "Content"); !slices.Equal(contexts, []int{0, 1, 1, 0}) || reads != 2 {
+		t.Errorf("contexts %v after %d reads, want [0 1 1 0] after 2", contexts, reads)
+	}
+}
+
+// fresh is contents made anew at each read, and the reads, each of a
+// content the reads two before let go: the backlinks read one page's
+// content at a time, and keep none of it (M6/P5 design 3, review r3-1).
+type fresh struct {
+	t     *testing.T
+	given []weak.Pointer[byte]
+}
+
+func (f *fresh) Content(context.Context, uuid.UUID) (string, int, bool, error) {
+	runtime.GC()
+	if n := len(f.given); n >= 2 && f.given[n-2].Value() != nil {
+		f.t.Errorf("the content of read %d is held at read %d", n-1, n+1)
+	}
+	content := strings.Repeat("y", 1<<20) + "[[p]]"
+	f.given = append(f.given, weak.Make(unsafe.StringData(content)))
+	return content, 1, true, nil
+}
+
+func TestTheBacklinksHoldOneContentAtATime(t *testing.T) {
+	l := newLibrary()
+	for range 6 {
+		l.backlinks = append(l.backlinks, app.Backlink{
+			SourceID: uuid.NewV7(), Revision: 1, Extractor: domain.Extractor, Links: 1,
+			Ranges: []domain.Range{{Start: 1<<20 + 2, End: 1<<20 + 3}},
+		})
+	}
+	contents := &fresh{t: t}
+	got, err := app.ListBacklinks{Access: l.access(), Reads: l.library, Contents: contents}.Execute(reader(), l.p, nil, nil)
+	if err != nil || len(got.Pages) != 6 || len(contents.given) != 6 || len(got.Pages[5].Contexts) != 1 {
+		t.Errorf("%d pages, %d reads, %v", len(got.Pages), len(contents.given), err)
 	}
 }
 

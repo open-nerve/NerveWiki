@@ -52,13 +52,15 @@ func ids(n int) []uuid.UUID {
 
 // A page's backlinks are the pages with a link that resolves to it, an
 // ambiguous one too, but for itself, by id, at most a page's size of them
-// after the id given; each with its revision, how many of its links lead
-// there, and the ranges of the first of them, by start (M6/P5 design 3).
+// after the id given; each with its revision and extractor, none for a
+// page without rows, how many of its links lead there, up to a count, and
+// the ranges of the first of them, by start (M6/P5 design 3, review r1-1,
+// r2-M1, r3).
 func TestThePagesThatLinkToAPage(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()
-	p := ids(5)
-	target, many, ambiguous, one, other := p[0], p[1], p[2], p[3], p[4]
+	p := ids(6)
+	many, ambiguous, target, one, other, unindexed := p[0], p[1], p[2], p[3], p[4], p[5]
 	starts := []int{110, 0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100}
 	f.replace(t, app.Page{ID: many, NotebookID: f.eng, Revision: 4}, wikilinks(append(starts, 200)...))
 	f.resolve(t, many, domain.Resolution{ID: target}, starts...)
@@ -67,27 +69,45 @@ func TestThePagesThatLinkToAPage(t *testing.T) {
 	f.resolve(t, ambiguous, domain.Resolution{ID: target, Ambiguous: true}, 5)
 	f.replace(t, app.Page{ID: one, NotebookID: f.eng, Revision: 2}, wikilinks(7, 9))
 	f.resolve(t, one, domain.Resolution{ID: target}, 9)
-	f.replace(t, app.Page{ID: target, NotebookID: f.eng, Revision: 1}, wikilinks(3))
-	f.resolve(t, target, domain.Resolution{ID: target}, 3)
+	f.replace(t, app.Page{ID: target, NotebookID: f.eng, Revision: 1}, wikilinks(3, 4))
+	f.resolve(t, target, domain.Resolution{ID: target}, 3, 4)
 	f.replace(t, app.Page{ID: other, NotebookID: f.eng, Revision: 1}, wikilinks(3))
+	// A link whose page has no row of its own: the tables have no foreign key.
+	if _, err := f.pool.Exec(ctx, `INSERT INTO page_links (source_id, range_start, range_end, notebook_id, kind, target, resolved_id,
+		ambiguous) VALUES ($1, 8, 9, $2, 'wikilink', 'x', $3, false)`, unindexed, f.eng, target); err != nil {
+		t.Fatal(err)
+	}
 
 	var first []domain.Range
 	for s := 0; s < 100; s += 10 {
 		first = append(first, domain.Range{Start: s, End: s + 1})
 	}
-	got, err := f.s.Backlinks(ctx, target, uuid.UUID{}, 2, 10)
-	if want := []app.Backlink{{SourceID: many, Revision: 4, Links: 12, Ranges: first}, {SourceID: ambiguous, Revision: 1, Links: 1, Ranges: []domain.Range{{Start: 5, End: 6}}}}; err != nil || !reflect.DeepEqual(got, want) {
+	e := domain.Extractor
+	got, err := f.s.Backlinks(ctx, target, uuid.UUID{}, 2, 100, 10)
+	want := []app.Backlink{
+		{SourceID: many, Revision: 4, Extractor: e, Links: 12, Ranges: first},
+		{SourceID: ambiguous, Revision: 1, Extractor: e, Links: 1, Ranges: []domain.Range{{Start: 5, End: 6}}},
+	}
+	if err != nil || !reflect.DeepEqual(got, want) {
 		t.Errorf("the first two: %+v, %v\nwant %+v", got, err, want)
 	}
-	got, err = f.s.Backlinks(ctx, target, ambiguous, 2, 10)
-	if want := []app.Backlink{{SourceID: one, Revision: 2, Links: 1, Ranges: []domain.Range{{Start: 9, End: 10}}}}; err != nil || !reflect.DeepEqual(got, want) {
-		t.Errorf("after the first two: %+v, %v\nwant %+v", got, err, want)
+	got, err = f.s.Backlinks(ctx, target, ambiguous, 2, 100, 10)
+	want = []app.Backlink{
+		{SourceID: one, Revision: 2, Extractor: e, Links: 1, Ranges: []domain.Range{{Start: 9, End: 10}}},
+		{SourceID: unindexed, Links: 1, Ranges: []domain.Range{{Start: 8, End: 9}}},
 	}
-	if got, err := f.s.Backlinks(ctx, target, one, 2, 10); err != nil || len(got) != 0 {
+	if err != nil || !reflect.DeepEqual(got, want) {
+		t.Errorf("after the first two, past the page itself: %+v, %v\nwant %+v", got, err, want)
+	}
+	if got, err := f.s.Backlinks(ctx, target, unindexed, 2, 100, 10); err != nil || len(got) != 0 {
 		t.Errorf("after the last: %+v, %v", got, err)
 	}
-	got, err = f.s.Backlinks(ctx, other, uuid.UUID{}, 2, 3)
-	if want := []app.Backlink{{SourceID: many, Revision: 4, Links: 1, Ranges: []domain.Range{{Start: 200, End: 201}}}}; err != nil || !reflect.DeepEqual(got, want) {
+	got, err = f.s.Backlinks(ctx, target, uuid.UUID{}, 1, 5, 3)
+	if want := []app.Backlink{{SourceID: many, Revision: 4, Extractor: e, Links: 5, Ranges: first[:3]}}; err != nil || !reflect.DeepEqual(got, want) {
+		t.Errorf("counted up to 5: %+v, %v\nwant %+v", got, err, want)
+	}
+	got, err = f.s.Backlinks(ctx, other, uuid.UUID{}, 2, 100, 3)
+	if want := []app.Backlink{{SourceID: many, Revision: 4, Extractor: e, Links: 1, Ranges: []domain.Range{{Start: 200, End: 201}}}}; err != nil || !reflect.DeepEqual(got, want) {
 		t.Errorf("of the other page: %+v, %v\nwant %+v", got, err, want)
 	}
 }
@@ -181,10 +201,11 @@ func TestTheAliasesOfANotebook(t *testing.T) {
 	f := newFixture(t)
 	p, q := uuid.NewV7(), uuid.NewV7()
 	f.replace(t, app.Page{ID: p, NotebookID: f.eng, Revision: 1}, facts())
-	f.replace(t, app.Page{ID: q, NotebookID: f.eng, Revision: 1}, domain.Facts{Aliases: []domain.Alias{{Key: "b", Name: "B"}}})
+	// By key, alpha before zed, not by name, "Zed" before "alpha" (review r3-6).
+	f.replace(t, app.Page{ID: q, NotebookID: f.eng, Revision: 1}, domain.Facts{Aliases: []domain.Alias{{Key: "zed", Name: "Zed"}, {Key: "alpha", Name: "alpha"}}})
 	f.replace(t, app.Page{ID: uuid.NewV7(), NotebookID: f.ops, Revision: 1}, facts())
 	got, err := f.s.NotebookAliases(context.Background(), f.eng)
-	if want := map[uuid.UUID][]string{p: {"Al", "Straße"}, q: {"B"}}; err != nil || !reflect.DeepEqual(got, want) {
+	if want := map[uuid.UUID][]string{p: {"Al", "Straße"}, q: {"alpha", "Zed"}}; err != nil || !reflect.DeepEqual(got, want) {
 		t.Errorf("NotebookAliases = %v, %v\nwant %v", got, err, want)
 	}
 }
@@ -192,7 +213,11 @@ func TestTheAliasesOfANotebook(t *testing.T) {
 // The backlinks are read from the index of the links to a page by the page
 // they are written in, and so are those a page's move or deletion
 // reaches; a page's property links from their own (M6/P5 design 8). Scans
-// of the whole table are off, as they would be past a few rows.
+// of the whole table are off, as they would be past a few rows. The
+// statements here are the queries' parts, their predicates and orders as
+// written there: each index serves them, which the plans of the queries
+// themselves, measured on data of the size they are for, confirmed (the
+// design's 13).
 func TestTheReadsUseTheirIndexes(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()

@@ -14,6 +14,17 @@ const MaxContext = 240
 // times.
 const MaxContexts = 10
 
+// MaxCount is the most links of a page to another its backlink counts:
+// one of MaxCount is as many or more. Counting a million links of each
+// page of a backlinks page would pass a request's deadline (M6/P5 review
+// r1-1, r2-M1).
+const MaxCount = 1000
+
+// MaxContentRead is about the most bytes of contents a page of backlinks
+// reads for their contexts: past it, a page has none. A hundred pages of
+// 5 MiB would read 500 MB for one request (M6/P5 review r2-L1).
+const MaxContentRead = 32 << 20
+
 // Range is where a link's target is written in a content, in bytes.
 type Range struct {
 	Start, End int
@@ -36,10 +47,21 @@ const ellipsis = "…"
 // the link, though no later than MaxContext bytes before the line's end.
 // It holds no bytes of content's memory, which a list of contexts would
 // keep whole.
+//
+// The line's ends are looked for no further than MaxContext bytes and one
+// from start: one further changes nothing, so a page of one line of 5 MiB
+// is not read whole for each link (M6/P5 review r1-2, r2-L2). from is then
+// at most start-MaxContext-1 and to at least start+MaxContext+1, which the
+// rules above read alike.
 func Context(content string, start, end int) string {
-	from := strings.LastIndexAny(content[:start], "\r\n") + 1
-	to := len(content)
-	if i := strings.IndexAny(content[start:], "\r\n"); i >= 0 {
+	lo := max(0, start-MaxContext-1)
+	from := lo
+	if i := strings.LastIndexAny(content[lo:start], "\r\n"); i >= 0 {
+		from = lo + i + 1
+	}
+	hi := min(len(content), start+MaxContext+1)
+	to := hi
+	if i := strings.IndexAny(content[start:hi], "\r\n"); i >= 0 {
 		to = start + i
 	}
 	if to-from <= MaxContext {
@@ -53,7 +75,7 @@ func Context(content string, start, end int) string {
 		s++
 	}
 	e := min(to, s+MaxContext)
-	for e < to && !utf8.RuneStart(content[e]) {
+	for e > s && e < to && !utf8.RuneStart(content[e]) {
 		e--
 	}
 	var b strings.Builder
@@ -68,20 +90,22 @@ func Context(content string, start, end int) string {
 }
 
 // Contexts is the contexts of links whose targets are content's bytes at
-// ranges, by start (M6/P5 design 3): one a line, the first link's on it. A
-// range past content is none: the index's ranges are of the content of
-// its revision, which the caller compares.
+// ranges, by start (M6/P5 design 3): one a line, the first link's on it,
+// told by no line's end between it and the link before. A range past
+// content is none: the index's ranges are of the content of its revision,
+// which the caller compares.
 func Contexts(content string, ranges []Range) []string {
 	out := []string{}
-	line := -1
+	last := -1
 	for _, r := range ranges {
 		if r.Start < 0 || r.End > len(content) || r.Start >= r.End {
 			continue
 		}
-		if from := strings.LastIndexAny(content[:r.Start], "\r\n") + 1; from != line {
-			line = from
-			out = append(out, Context(content, r.Start, r.End))
+		if last >= 0 && last <= r.Start && !strings.ContainsAny(content[last:r.Start], "\r\n") {
+			continue
 		}
+		last = r.Start
+		out = append(out, Context(content, r.Start, r.End))
 	}
 	return out
 }

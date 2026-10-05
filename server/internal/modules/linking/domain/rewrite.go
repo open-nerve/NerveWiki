@@ -27,6 +27,9 @@ type Tree struct {
 	Before map[uuid.UUID]Node
 	After  map[uuid.UUID]Node
 	Named  map[string][]Node
+	// merged is the pages of two keys of Named, by the keys, once joined:
+	// Linktexts reads every page's writing against the pages of its title.
+	merged map[[2]string][]Node
 }
 
 // Edit writes Text over a content's bytes from Start to End; Shown when it
@@ -248,7 +251,12 @@ func Written(n Node, named []Node) string {
 // completion are written from its root (M6/P5 design 6). ok is false when
 // none leads there, which siblings' distinct title keys rule out.
 func Linktext(n Node, from []Step, tree Tree) (string, bool) {
-	for _, target := range []string{Written(n, tree.Named[n.key()]), n.path(), n.path() + ".md"} {
+	path := n.path()
+	targets := []string{Written(n, tree.Named[n.key()])}
+	if targets[0] != path {
+		targets = append(targets, path)
+	}
+	for _, target := range append(targets, path+".md") {
 		if tree.leads(target, from, n) {
 			return target, true
 		}
@@ -265,7 +273,7 @@ func Linktexts(nodes []Node) []string {
 	for _, n := range nodes {
 		named[n.key()] = append(named[n.key()], n)
 	}
-	tree := Tree{Named: named}
+	tree := Tree{Named: named, merged: map[[2]string][]Node{}}
 	out := make([]string, len(nodes))
 	for i, n := range nodes {
 		text, ok := Linktext(n, nil, tree)
@@ -383,15 +391,36 @@ func (t Tree) leads(target string, from []Step, n Node) bool {
 	if !ok {
 		return false
 	}
-	// The pages of one key are not copied: the link targets read every
-	// page's writing against the pages of its title (M6/P5 design 6).
 	keys := parsed.LastKeys()
 	candidates := t.Named[keys[0]]
 	if len(keys) > 1 {
-		candidates = slices.Concat(candidates, t.Named[keys[1]])
+		candidates = t.both(keys[0], keys[1])
 	}
 	r := Resolve(parsed, from, candidates, nil)
 	return r.ID == n.ID && !r.Ambiguous
+}
+
+// both is the pages of the keys a and b: those of one of them when the
+// other has none, else joined once for a tree that keeps them (Linktexts),
+// anew otherwise. The pages of a key are not copied: the link targets read
+// every page's writing against the pages of its title (M6/P5 design 6,
+// review r1-3, r2-L3).
+func (t Tree) both(a, b string) []Node {
+	switch {
+	case len(t.Named[b]) == 0:
+		return t.Named[a]
+	case len(t.Named[a]) == 0:
+		return t.Named[b]
+	}
+	key := [2]string{a, b}
+	if joined, ok := t.merged[key]; ok {
+		return joined
+	}
+	joined := slices.Concat(t.Named[a], t.Named[b])
+	if t.merged != nil {
+		t.merged[key] = joined
+	}
+	return joined
 }
 
 // byTitle tells whether l names was, the page it led to, by its title,

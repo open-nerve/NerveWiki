@@ -15,9 +15,9 @@ import (
 )
 
 // Backlinks implements app.Reads.
-func (s *Store) Backlinks(ctx context.Context, target, after uuid.UUID, size, contexts int) ([]app.Backlink, error) {
+func (s *Store) Backlinks(ctx context.Context, target, after uuid.UUID, size, count, contexts int) ([]app.Backlink, error) {
 	rows, err := s.queries(ctx).Backlinks(ctx, gen.BacklinksParams{
-		Target: target, After: after, Size: int32(size), Contexts: int32(contexts),
+		Target: target, After: after, Size: int32(size), MaxCount: int32(count), Contexts: int32(contexts),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("the backlinks of %s: %w", target, err)
@@ -25,7 +25,9 @@ func (s *Store) Backlinks(ctx context.Context, target, after uuid.UUID, size, co
 	var out []app.Backlink
 	for _, row := range rows {
 		if len(out) == 0 || out[len(out)-1].SourceID != row.SourceID {
-			out = append(out, app.Backlink{SourceID: row.SourceID, Revision: int(row.Revision), Links: int(row.Links)})
+			out = append(out, app.Backlink{
+				SourceID: row.SourceID, Revision: int(row.Revision), Extractor: int(row.Extractor), Links: int(row.Links),
+			})
 		}
 		last := &out[len(out)-1]
 		last.Ranges = append(last.Ranges, domain.Range{Start: int(row.RangeStart), End: int(row.RangeEnd)})

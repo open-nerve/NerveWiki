@@ -163,4 +163,20 @@ func TestAPagesContextsAreOneALine(t *testing.T) {
 	if got := domain.Contexts(content, nil); got == nil || len(got) != 0 {
 		t.Errorf("no ranges: %#v", got)
 	}
+	// Out of order, the line is not told: each has its own.
+	if got := domain.Contexts(content, []domain.Range{ranges[1], ranges[0]}); len(got) != 2 {
+		t.Errorf("out of order: %q", got)
+	}
+}
+
+// Content not valid UTF-8, which the page module refuses, gives a context
+// all the same, and no panic: the piece's end does not pass its start
+// (review r1, hardening).
+func TestAContextOfBytesNotUTF8DoesNotPanic(t *testing.T) {
+	content := strings.Repeat("\x80", 600)
+	for _, start := range []int{0, 100, 300, 599} {
+		if got := domain.Context(content, start, start+1); len(got) > domain.MaxContext+2*len("…") {
+			t.Errorf("at %d: %d bytes", start, len(got))
+		}
+	}
 }

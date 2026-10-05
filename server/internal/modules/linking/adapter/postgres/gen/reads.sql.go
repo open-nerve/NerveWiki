@@ -12,32 +12,52 @@ import (
 )
 
 const backlinks = `-- name: Backlinks :many
-WITH sources AS (
-    SELECT DISTINCT l.source_id
-    FROM page_links l
-    WHERE l.resolved_id = $1::uuid AND l.source_id > $3::uuid
-        AND l.source_id <> $1::uuid
-    ORDER BY l.source_id
-    LIMIT $4
+WITH RECURSIVE sources (source_id, n) AS (
+    (
+        SELECT l.source_id, 1
+        FROM page_links l
+        WHERE l.resolved_id = $1::uuid AND l.source_id > $4::uuid
+            AND l.source_id <> $1::uuid
+        ORDER BY l.source_id
+        LIMIT 1
+    )
+    UNION ALL
+    SELECT (
+        SELECT l.source_id
+        FROM page_links l
+        WHERE l.resolved_id = $1::uuid AND l.source_id > s.source_id AND l.source_id <> $1::uuid
+        ORDER BY l.source_id
+        LIMIT 1
+    ), s.n + 1
+    FROM sources s
+    WHERE s.source_id IS NOT NULL AND s.n < $5::integer
 )
-SELECT s.source_id, ip.revision, c.links, f.range_start, f.range_end
+SELECT s.source_id::uuid AS source_id, coalesce(ip.revision, 0)::integer AS revision,
+    coalesce(ip.extractor, 0)::integer AS extractor, c.links, f.range_start, f.range_end
 FROM sources s
-JOIN indexed_pages ip ON ip.node_id = s.source_id
+LEFT JOIN indexed_pages ip ON ip.node_id = s.source_id
 CROSS JOIN LATERAL (
-    SELECT count(*) AS links FROM page_links WHERE resolved_id = $1::uuid AND source_id = s.source_id
+    SELECT count(*) AS links
+    FROM (
+        SELECT 1 FROM page_links
+        WHERE resolved_id = $1::uuid AND source_id = s.source_id
+        LIMIT $2::integer
+    ) counted
 ) c
 CROSS JOIN LATERAL (
     SELECT range_start, range_end
     FROM page_links
     WHERE resolved_id = $1::uuid AND source_id = s.source_id
     ORDER BY range_start
-    LIMIT $2
+    LIMIT $3::integer
 ) f
+WHERE s.source_id IS NOT NULL
 ORDER BY s.source_id, f.range_start
 `
 
 type BacklinksParams struct {
 	Target   uuid.UUID
+	MaxCount int32
 	Contexts int32
 	After    uuid.UUID
 	Size     int32
@@ -46,18 +66,22 @@ type BacklinksParams struct {
 type BacklinksRow struct {
 	SourceID   uuid.UUID
 	Revision   int32
+	Extractor  int32
 	Links      int64
 	RangeStart int32
 	RangeEnd   int32
 }
 
 // The pages that link to target, but for target itself, whose id is after the id after, at most size of them by id
-// (M6/P5 design 3): each with the revision its rows are of, how many of its links lead to target, and where the
-// targets of its first contexts of them start and end, by start. One statement, so one snapshot; each part reads
-// page_links_resolved_id_source_id_idx alone.
+// (M6/P5 design 3): each with the revision and the extractor its rows are of, none for no row; how many of its links
+// lead to target, at most max_count; and where the targets of its first contexts of them start and end, by start.
+// One statement, so one snapshot. The pages are found a step each, the next id after the last on
+// page_links_resolved_id_source_id_idx, not by reading all their links: a page may write a million (review r1-1,
+// r2-M1).
 func (q *Queries) Backlinks(ctx context.Context, arg BacklinksParams) ([]BacklinksRow, error) {
 	rows, err := q.db.Query(ctx, backlinks,
 		arg.Target,
+		arg.MaxCount,
 		arg.Contexts,
 		arg.After,
 		arg.Size,
@@ -72,6 +96,7 @@ func (q *Queries) Backlinks(ctx context.Context, arg BacklinksParams) ([]Backlin
 		if err := rows.Scan(
 			&i.SourceID,
 			&i.Revision,
+			&i.Extractor,
 			&i.Links,
 			&i.RangeStart,
 			&i.RangeEnd,

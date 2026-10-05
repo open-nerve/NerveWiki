@@ -36,10 +36,10 @@ func (e LinkTargetKind) Valid() bool {
 
 // Backlink A page that links to another.
 type Backlink struct {
-	// Contexts The lines of its first 10 links there, by where they are written, one a line; none when it was written since the index read it.
+	// Contexts The lines of its first 10 links there, by where they are written, one a line; none in the cases the operation lists.
 	Contexts []string `json:"contexts"`
 
-	// Count How many of its links lead to the other page.
+	// Count How many of its links lead to the other page, counted up to 1000: 1000 is as many or more.
 	Count int `json:"count"`
 
 	// ID The page with the links.
@@ -56,14 +56,14 @@ type BacklinkPage struct {
 
 // LinkTarget defines model for LinkTarget.
 type LinkTarget struct {
-	// Aliases The page's aliases, in the order of their case-folded keys.
+	// Aliases The page's aliases, its first 1000, in the order of their case-folded keys.
 	Aliases []string  `json:"aliases"`
 	ID      uuid.UUID `json:"id"`
 
 	// Kind What a link target is. Attachments come later.
 	Kind LinkTargetKind `json:"kind"`
 
-	// Link How a wikilink is written to lead to the page alone, from anywhere in the notebook: its title, or its path from the root where another page has its title.
+	// Link How a wikilink is written to lead to the page alone, from anywhere in the notebook: its title, or its path from the root where another page has its title; with ".md" after the path where a title ending with ".md" would be read as another page's without it.
 	Link string `json:"link"`
 
 	// Name The page's title.

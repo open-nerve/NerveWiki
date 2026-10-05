@@ -1,29 +1,50 @@
 -- name: Backlinks :many
 -- The pages that link to target, but for target itself, whose id is after the id after, at most size of them by id
--- (M6/P5 design 3): each with the revision its rows are of, how many of its links lead to target, and where the
--- targets of its first contexts of them start and end, by start. One statement, so one snapshot; each part reads
--- page_links_resolved_id_source_id_idx alone.
-WITH sources AS (
-    SELECT DISTINCT l.source_id
-    FROM page_links l
-    WHERE l.resolved_id = sqlc.arg(target)::uuid AND l.source_id > sqlc.arg(after)::uuid
-        AND l.source_id <> sqlc.arg(target)::uuid
-    ORDER BY l.source_id
-    LIMIT sqlc.arg(size)
+-- (M6/P5 design 3): each with the revision and the extractor its rows are of, none for no row; how many of its links
+-- lead to target, at most max_count; and where the targets of its first contexts of them start and end, by start.
+-- One statement, so one snapshot. The pages are found a step each, the next id after the last on
+-- page_links_resolved_id_source_id_idx, not by reading all their links: a page may write a million (review r1-1,
+-- r2-M1).
+WITH RECURSIVE sources (source_id, n) AS (
+    (
+        SELECT l.source_id, 1
+        FROM page_links l
+        WHERE l.resolved_id = sqlc.arg(target)::uuid AND l.source_id > sqlc.arg(after)::uuid
+            AND l.source_id <> sqlc.arg(target)::uuid
+        ORDER BY l.source_id
+        LIMIT 1
+    )
+    UNION ALL
+    SELECT (
+        SELECT l.source_id
+        FROM page_links l
+        WHERE l.resolved_id = sqlc.arg(target)::uuid AND l.source_id > s.source_id AND l.source_id <> sqlc.arg(target)::uuid
+        ORDER BY l.source_id
+        LIMIT 1
+    ), s.n + 1
+    FROM sources s
+    WHERE s.source_id IS NOT NULL AND s.n < sqlc.arg(size)::integer
 )
-SELECT s.source_id, ip.revision, c.links, f.range_start, f.range_end
+SELECT s.source_id::uuid AS source_id, coalesce(ip.revision, 0)::integer AS revision,
+    coalesce(ip.extractor, 0)::integer AS extractor, c.links, f.range_start, f.range_end
 FROM sources s
-JOIN indexed_pages ip ON ip.node_id = s.source_id
+LEFT JOIN indexed_pages ip ON ip.node_id = s.source_id
 CROSS JOIN LATERAL (
-    SELECT count(*) AS links FROM page_links WHERE resolved_id = sqlc.arg(target)::uuid AND source_id = s.source_id
+    SELECT count(*) AS links
+    FROM (
+        SELECT 1 FROM page_links
+        WHERE resolved_id = sqlc.arg(target)::uuid AND source_id = s.source_id
+        LIMIT sqlc.arg(max_count)::integer
+    ) counted
 ) c
 CROSS JOIN LATERAL (
     SELECT range_start, range_end
     FROM page_links
     WHERE resolved_id = sqlc.arg(target)::uuid AND source_id = s.source_id
     ORDER BY range_start
-    LIMIT sqlc.arg(contexts)
+    LIMIT sqlc.arg(contexts)::integer
 ) f
+WHERE s.source_id IS NOT NULL
 ORDER BY s.source_id, f.range_start;
 
 -- name: PageProperties :one

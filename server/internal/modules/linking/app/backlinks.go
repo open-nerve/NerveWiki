@@ -16,8 +16,8 @@ type Backlinks struct {
 }
 
 // Backlinking is a page that links to another: how many of its links lead
-// there, and the contexts of the first of them, one a line (M6/P5
-// design 3).
+// there, up to domain.MaxCount, and the contexts of the first of them, one
+// a line (M6/P5 design 3).
 type Backlinking struct {
 	PageID   uuid.UUID
 	Links    int
@@ -39,8 +39,11 @@ type ListBacklinks struct {
 // page more than limit is read to tell whether another follows. Each
 // page's contexts are cut from its content, read one page at a time and
 // let go; a content written since the index's rows, or gone, gives none,
-// and the links event that follows has them read again. A read takes no
-// lock and opens no transaction.
+// and the links event that follows has them read again. So does a page
+// whose rows are of another extractor, before nervewiki reindex, whose
+// ranges may mean other bytes; and every page after domain.MaxContentRead
+// bytes of contents are read. A read takes no lock and opens no
+// transaction.
 func (l ListBacklinks) Execute(ctx context.Context, id uuid.UUID, limit *int, cursor *string) (Backlinks, error) {
 	actor, err := shared.RequireActor(ctx)
 	if err != nil {
@@ -59,7 +62,7 @@ func (l ListBacklinks) Execute(ctx context.Context, id uuid.UUID, limit *int, cu
 	if err != nil {
 		return Backlinks{}, err
 	}
-	rows, err := l.Reads.Backlinks(ctx, id, after, size+1, domain.MaxContexts)
+	rows, err := l.Reads.Backlinks(ctx, id, after, size+1, domain.MaxCount, domain.MaxContexts)
 	if err != nil {
 		return Backlinks{}, err
 	}
@@ -71,12 +74,17 @@ func (l ListBacklinks) Execute(ctx context.Context, id uuid.UUID, limit *int, cu
 		}
 	}
 	out.Pages = make([]Backlinking, len(rows))
+	read := 0
 	for i, b := range rows {
 		out.Pages[i] = Backlinking{PageID: b.SourceID, Links: b.Links, Contexts: []string{}}
+		if b.Extractor != domain.Extractor || read >= domain.MaxContentRead {
+			continue
+		}
 		content, revision, ok, err := l.Contents.Content(ctx, b.SourceID)
 		if err != nil {
 			return Backlinks{}, err
 		}
+		read += len(content)
 		if ok && revision == b.Revision {
 			out.Pages[i].Contexts = domain.Contexts(content, b.Ranges)
 		}

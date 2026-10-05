@@ -74,6 +74,17 @@ func TestAPagesBacklinksThroughServe(t *testing.T) {
 		t.Errorf("an exactly full last page: %+v", all)
 	}
 
+	// A rename takes the links to the page by its old title elsewhere, or
+	// to none: they are written again (M6/P4), and lead to it still; a
+	// page renamed to the title of the links of another now has them.
+	other := tm.createPageWith(t, "alice", nb, "", "Other", "[[Renamed]]\n")
+	tm.send(t, nodeRename("alice", target, "Renamed"), http.StatusOK)
+	tm.get(t, "bob", path+"?limit=5", &all)
+	if len(all.Data) != 4 || all.Data[0].ID != near || all.Data[3].ID != other ||
+		!slices.Equal(all.Data[0].Contexts, []string{"see [[Renamed]] here"}) || !slices.Equal(all.Data[3].Contexts, []string{"[[Renamed]]"}) {
+		t.Errorf("after the rename: %+v", all)
+	}
+
 	if _, err := tm.pool.Exec(t.Context(), `UPDATE indexed_pages SET revision = revision + 1 WHERE node_id = $1`, near); err != nil {
 		t.Fatal(err)
 	}
@@ -166,6 +177,7 @@ func TestANotebooksTagsThroughServe(t *testing.T) {
 		url.PathEscape("#proj"):  {},
 		url.PathEscape("a b"):    {},
 		url.PathEscape("\xffab"): {},
+		url.PathEscape("a\x00b"): {},
 	} {
 		var pages struct {
 			Data []struct {
@@ -208,8 +220,14 @@ func TestANotebooksLinkTargetsThroughServe(t *testing.T) {
 		}
 		tm.get(t, "bob", "/api/v0/notebooks/"+nb+"/link-targets", &list)
 		out := map[string]string{}
+		var ids []string
 		for _, l := range list.Data {
 			out[l.ID] = l.Kind + " " + l.Name + " " + l.Link + " " + strings.Join(l.Aliases, ",")
+			ids = append(ids, l.ID)
+		}
+		// By id: the pages in the order created, not the tree's (review r3-5).
+		if want := []string{a, b, aNote, bNote}; !slices.Equal(ids, want) {
+			t.Errorf("link targets %q, want by id %q", ids, want)
 		}
 		return out
 	}

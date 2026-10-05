@@ -1005,7 +1005,7 @@ export interface paths {
         };
         /**
          * List the pages that link to a page
-         * @description The pages whose links resolve to this page, the page itself left out, by id, a page at a time; each with how many of its links lead here, and the line of each of its first 10, one a line, as written: of a line of more than 240 bytes, at most 240 of them with the link, cut on characters, an ellipsis (…) where it is cut. A page written since the index read it has no lines; the links event that follows says to read again. Any role in the page's notebook can read them. A cursor the list cannot read is bad_request, before anything else; a page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found; a limit outside 1–100 is validation_failed. Pages the index does not have, before nervewiki reindex after an upgrade, are not among them.
+         * @description The pages whose links resolve to this page, the page itself left out, by id, a page at a time; each with how many of its links lead here, and the line of each of its first 10, one a line, as written: of a line of more than 240 bytes, at most 240 of them with the link, cut on characters, an ellipsis (…) where it is cut. A page written or deleted since the index read it has no lines; the links event that follows says to read again. So has a page the index read with an older version of the server, before nervewiki reindex, and every page after 32 MiB of contents are read for the lines of one answer. Any role in the page's notebook can read them. A cursor the list cannot read is bad_request, before anything else; a page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found; a limit outside 1–100 is validation_failed. Pages the index does not have, before nervewiki reindex after an upgrade, are not among them.
          */
         get: operations["listBacklinks"];
         put?: never;
@@ -1051,7 +1051,7 @@ export interface paths {
         };
         /**
          * List a notebook's tags
-         * @description The tags of the notebook's pages, the body's and the frontmatter's, one a tag, which tags compare by case-folded, in the order of that key's bytes; each as most of its pages write it, and how many pages have it. A nested tag (a/b) is one of its own: its parent is listed only when a page has the parent itself. Any role in the notebook can list them. A notebook that does not exist, is deleted, or that the caller has no role in is notebook.not_found. The list is not paged.
+         * @description The tags of the notebook's pages, the body's and the frontmatter's, one a tag, which tags compare by case-folded, in the order of that key's bytes; each as most of its pages write it, and how many pages have it. Of a page's tags, its first 1000 are kept. A nested tag (a/b) is one of its own: its parent is listed only when a page has the parent itself. Any role in the notebook can list them. A notebook that does not exist, is deleted, or that the caller has no role in is notebook.not_found. The list is not paged.
          */
         get: operations["listTags"];
         put?: never;
@@ -1745,9 +1745,9 @@ export interface components {
              * @description The page with the links.
              */
             id: string;
-            /** @description How many of its links lead to the other page. */
+            /** @description How many of its links lead to the other page, counted up to 1000: 1000 is as many or more. */
             count: number;
-            /** @description The lines of its first 10 links there, by where they are written, one a line; none when it was written since the index read it. */
+            /** @description The lines of its first 10 links there, by where they are written, one a line; none in the cases the operation lists. */
             contexts: string[];
         };
         BacklinkPage: {
@@ -1804,9 +1804,9 @@ export interface components {
             kind: components["schemas"]["LinkTargetKind"];
             /** @description The page's title. */
             name: string;
-            /** @description How a wikilink is written to lead to the page alone, from anywhere in the notebook: its title, or its path from the root where another page has its title. */
+            /** @description How a wikilink is written to lead to the page alone, from anywhere in the notebook: its title, or its path from the root where another page has its title; with ".md" after the path where a title ending with ".md" would be read as another page's without it. */
             link: string;
-            /** @description The page's aliases, in the order of their case-folded keys. */
+            /** @description The page's aliases, its first 1000, in the order of their case-folded keys. */
             aliases: string[];
         };
         LinkTargetList: {

@@ -96,9 +96,10 @@ type Store interface {
 // pool, each in one statement: one snapshot.
 type Reads interface {
 	// Backlinks is the pages that link to target, but for target itself,
-	// whose id is after after, at most size of them, by id; of each, the
-	// ranges of the first contexts of its links there.
-	Backlinks(ctx context.Context, target, after uuid.UUID, size, contexts int) ([]Backlink, error)
+	// whose id is after after, at most size of them, by id; of each, its
+	// links there counted up to count, and the ranges of the first
+	// contexts of them.
+	Backlinks(ctx context.Context, target, after uuid.UUID, size, count, contexts int) ([]Backlink, error)
 	// Properties is the properties of the page id; false for a page the
 	// index does not have.
 	Properties(ctx context.Context, id uuid.UUID) (Properties, bool, error)
@@ -113,14 +114,16 @@ type Reads interface {
 }
 
 // Backlink is a page that links to another as the index has it: the
-// revision of the content its rows are of, how many of its links lead
-// there, and where the targets of the first of them start and end, by
+// revision of the content its rows are of and the extractor they are by,
+// zero for no rows; how many of its links lead there, counted up to a
+// bound; and where the targets of the first of them start and end, by
 // start.
 type Backlink struct {
-	SourceID uuid.UUID
-	Revision int
-	Links    int
-	Ranges   []domain.Range
+	SourceID  uuid.UUID
+	Revision  int
+	Extractor int
+	Links     int
+	Ranges    []domain.Range
 }
 
 // Properties is a page's properties as the index has them: whether its
