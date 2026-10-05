@@ -21,8 +21,9 @@ import (
 // U+0000 written as U+FFFD, which PostgreSQL's text does not hold. Facts
 // of another kind, or without the obsidian extension's, are an error.
 //
-// The frontmatter's tags and aliases are read as Obsidian 1.12.7 reads
-// them (parseFrontMatterTags, parseFrontMatterAliases): the first key that
+// A property link has its value's quote, and tells whether it is one of
+// the aliases. The frontmatter's tags and aliases are read as Obsidian
+// 1.12.7 reads them (parseFrontMatterTags, parseFrontMatterAliases): the first key that
 // is "tags" or "aliases" but for ASCII case; a string is one, trimmed, and
 // a list's strings are; an empty one is none. A tag, after one '#' it may
 // start with, is one as Obsidian's tag pane counts it (obsidian.CountedTag),
@@ -38,11 +39,16 @@ func PageFacts(facts any) (domain.Facts, error) {
 	}
 	fm := f.Frontmatter()
 	out := domain.Facts{FrontmatterValid: !fm.Present || fm.Valid}
+	aliasesKey, hasAliases := keyOf(fm.Properties, "aliases")
 	for _, l := range x.Links {
-		out.Links = append(out.Links, domain.Link{
+		link := domain.Link{
 			Kind: string(l.Kind), Property: text(l.Key), Target: text(l.Target), Anchor: text(l.Anchor), Display: text(l.Display),
-			Start: l.Range.Start, End: l.Range.Stop,
-		})
+			Start: l.Range.Start, End: l.Range.Stop, InTable: l.InTable,
+		}
+		if s, ok := scalarOf(fm.Scalars, l); ok {
+			link.Quote, link.Aliases = s.Quote, hasAliases && valueOf(s.Path, aliasesKey)
+		}
+		out.Links = append(out.Links, link)
 	}
 	var tags, aliases []string
 	for _, s := range stringsOf(fm.Properties, "tags") {
@@ -75,6 +81,35 @@ func PageFacts(facts any) (domain.Facts, error) {
 // escape writes, as U+FFFD.
 func text(s string) string {
 	return strings.ReplaceAll(s, "\x00", "\uFFFD")
+}
+
+// scalarOf is the frontmatter's string that l, a property link, is: of its
+// path, its range within the string's. A body's link is in none.
+func scalarOf(scalars []markdown.Scalar, l obsidian.Link) (markdown.Scalar, bool) {
+	for _, s := range scalars {
+		if s.Path == l.Key && s.Offset(0) <= l.Range.Start && l.Range.Stop <= s.Offset(len(s.Value)) {
+			return s, true
+		}
+	}
+	return markdown.Scalar{}, false
+}
+
+// valueOf tells whether path, a frontmatter string's, is key's value as
+// stringsOf reads it: the value itself, or one of its list's.
+func valueOf(path, key string) bool {
+	index, ok := strings.CutPrefix(path, key+".")
+	return path == key || ok && index != "" && strings.Trim(index, "0123456789") == ""
+}
+
+// keyOf is the first of props's keys that is key but for ASCII case, if
+// one is: the one Obsidian reads.
+func keyOf(props []markdown.Property, key string) (string, bool) {
+	for _, p := range props {
+		if asciiFold(p.Key, key) {
+			return p.Key, true
+		}
+	}
+	return "", false
 }
 
 // stringsOf is the strings of the first of props whose key is key but for

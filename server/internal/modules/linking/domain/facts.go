@@ -26,6 +26,12 @@ type Facts struct {
 // kind (wikilink, embed, link or image), the path of the property it is the
 // value of, its target, anchor and display text, an empty one none; and
 // where its target is written, in bytes, one link a range.
+//
+// What a rewrite reads of it beside (M6/P4 design 3), which the index does
+// not keep: Quote is how the frontmatter writes a property link's value,
+// 0 plain, or the single or double quote around it; InTable tells a
+// wikilink in a table's cell; Aliases a link that is a value of the page's
+// aliases, which a rewrite leaves.
 type Link struct {
 	Kind     string
 	Property string
@@ -34,6 +40,9 @@ type Link struct {
 	Display  string
 	Start    int
 	End      int
+	Quote    byte
+	InTable  bool
+	Aliases  bool
 }
 
 // MaxKey is the most bytes of a title key the index keeps: twice a title's

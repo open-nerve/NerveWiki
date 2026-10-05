@@ -44,10 +44,12 @@ func TestAPagesFactsAreWhatTheIndexKeeps(t *testing.T) {
 		start, end := span(written)
 		return domain.Link{Kind: kind, Property: property, Target: target, Anchor: anchor, Display: display, Start: start, End: end}
 	}
+	quoted := link("wikilink", "src", "Other", "P", "o", "Other")
+	quoted.Quote = '"'
 	want := domain.Facts{
 		FrontmatterValid: true,
 		Links: []domain.Link{
-			link("wikilink", "src", "Other", "P", "o", "Other"),
+			quoted,
 			link("wikilink", "", "A/Note", "Part", "the note", "A/Note"),
 			link("embed", "", "Pic.png", "", "", "Pic.png"),
 			link("link", "", "Straße.md", "", "", "Straße.md"),
@@ -64,6 +66,27 @@ func TestAPagesFactsAreWhatTheIndexKeeps(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("facts = %+v\nwant %+v", got, want)
+	}
+}
+
+// What a rewrite reads of a link beside (M6/P4 design 3): a property
+// link's quote; whether it is a value of the aliases, the first key that is
+// "aliases" but for ASCII case, its string or its list's; whether a
+// wikilink is in a table's cell. A body's link has no quote.
+func TestALinkTellsWhatARewriteReads(t *testing.T) {
+	content := "---\naliases: [\"[[A]]\", '[[B]]']\nAliases: \"[[C]]\"\nr: '[[D]]'\nn:\n  aliases: \"[[E]]\"\n---\n" +
+		"| h |\n| --- |\n| [[F]] |\n\n[[G]] [h](H.md)\n"
+	type read struct {
+		Quote            byte
+		Aliases, InTable bool
+	}
+	var got []read
+	for _, l := range factsOf(t, content).Links {
+		got = append(got, read{l.Quote, l.Aliases, l.InTable})
+	}
+	want := []read{{'"', true, false}, {'\'', true, false}, {'"', false, false}, {'\'', false, false}, {'"', false, false}, {0, false, true}, {0, false, false}, {0, false, false}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("read %+v\nwant %+v", got, want)
 	}
 }
 
@@ -129,8 +152,8 @@ func TestU0000IsWrittenAsTheReplacementCharacter(t *testing.T) {
 	want := domain.Facts{
 		FrontmatterValid: true,
 		Links: []domain.Link{
-			{Kind: "wikilink", Property: "src", Target: "a" + r + "b", Display: "d" + r},
-			{Kind: "wikilink", Property: "l" + r, Target: "y"},
+			{Kind: "wikilink", Property: "src", Target: "a" + r + "b", Display: "d" + r, Quote: '"'},
+			{Kind: "wikilink", Property: "l" + r, Target: "y", Quote: '"'},
 			{Kind: "link", Target: "a" + r + "b.md", Anchor: "p" + r + "q"},
 		},
 		Tags:    []domain.Tag{{Key: "t" + r, Name: "t" + r, Count: 1}},

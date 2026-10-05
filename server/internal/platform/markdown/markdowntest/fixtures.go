@@ -15,11 +15,12 @@ type Fixture struct {
 	JSON    []byte
 }
 
-// casesDir and resolveDir are the fixture set's directories, from the
-// repository's root.
+// casesDir, resolveDir and renameDir are the fixture set's directories,
+// from the repository's root.
 const (
 	casesDir   = "tools/md-fixtures/cases"
 	resolveDir = "tools/md-fixtures/resolve"
+	renameDir  = "tools/md-fixtures/rename"
 )
 
 // Fixtures reads the fixture set, looking for it from the test's directory
@@ -64,6 +65,37 @@ func ResolveCases(tb testing.TB) []ResolveCase {
 		c := ResolveCase{Name: filepath.Base(name)}
 		if c.JSON, err = os.ReadFile(name); err != nil {
 			tb.Fatal(err)
+		}
+		out = append(out, c)
+	}
+	return out
+}
+
+// RenameCase is one case of the fixture set's rewriting of links on a rename
+// or move (M6/P4 design 7): its name, its JSON, and its page's content
+// before and after.
+type RenameCase struct {
+	Name          string
+	JSON          []byte
+	Content, Want []byte
+}
+
+// RenameCases reads the fixture set's rename cases, looking for them as
+// Fixtures does.
+func RenameCases(tb testing.TB) []RenameCase {
+	tb.Helper()
+	names, err := filepath.Glob(filepath.Join(fixtureDir(tb, renameDir), "*.json"))
+	if err != nil || len(names) == 0 {
+		tb.Fatalf("rename cases: %d, %v", len(names), err)
+	}
+	out := make([]RenameCase, 0, len(names))
+	for _, name := range names {
+		base := strings.TrimSuffix(name, ".json")
+		c := RenameCase{Name: filepath.Base(base)}
+		for path, into := range map[string]*[]byte{name: &c.JSON, base + ".md": &c.Content, base + ".out.md": &c.Want} {
+			if *into, err = os.ReadFile(path); err != nil {
+				tb.Fatal(err)
+			}
 		}
 		out = append(out, c)
 	}
