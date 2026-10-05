@@ -37,7 +37,8 @@ type PageTree interface {
 
 // Access decides the reads of the index (M6/P5 design 2): by the decision
 // on the notebook, which hides what the caller cannot see behind the
-// not-found of what it named. Every role reads, so none is forbidden.
+// not-found of what it named. Every role reads the index; a link's landing
+// is its writers' (M6/P6 design 2), and the decision's forbidden stands.
 type Access struct {
 	Notebooks NotebookWorkspaces
 	Pages     PageTree

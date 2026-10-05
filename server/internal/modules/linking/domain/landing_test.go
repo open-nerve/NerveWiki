@@ -8,6 +8,7 @@ import (
 	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/linking/domain"
+	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
 // land finds target's candidates, the pages of its segment before the last
@@ -52,7 +53,7 @@ func (c caseTree) pathOf(id uuid.UUID) string {
 // page would be too deep, or the target would not lead to the page made
 // (M6/P6 design 2).
 func TestATargetLandsWhereItWouldLeadToThePageMade(t *testing.T) {
-	tree := treeOf(t, []string{"A", "A/src", "A/B", "A/B/C", "B", "P", "Q", "Q/A", "Note", "R", "R/dup", "S", "S/dup", "T", "T/x.md"},
+	tree := treeOf(t, []string{"A", "A/src", "A/B", "A/B/C", "B", "P", "Q", "Q/A", "Note", "R", "R/dup", "S", "S/dup", "T", "T/x.md", "U.md"},
 		map[string][]string{"P": {"Al"}})
 	type want struct {
 		node, parent, title string
@@ -88,6 +89,10 @@ func TestATargetLandsWhereItWouldLeadToThePageMade(t *testing.T) {
 		{"/Z/x", "B", 10, want{reason: domain.ParentMissing}},
 		// From the root exactly: A/B/C is no C there.
 		{"/C/x", "A", 10, want{reason: domain.ParentMissing}},
+		// A segment before the last keeps its ".md": the page titled U.md, and
+		// no page titled Q.md.
+		{"U.md/x", "Note", 10, want{parent: "U.md", title: "x"}},
+		{"Q.md/x", "Note", 10, want{reason: domain.ParentMissing}},
 		{"Z/x", "B", 10, want{reason: domain.ParentMissing}},
 		{"./Z/x", "A/src", 10, want{reason: domain.ParentMissing}},
 		// An alias leads from a name alone only.
@@ -118,7 +123,10 @@ func TestATargetLandsWhereItWouldLeadToThePageMade(t *testing.T) {
 // In random trees, a random target written from a random page that does
 // not resolve lands where the page made is the one it then resolves to,
 // alone, and no sibling of it has its title key; one that resolves lands
-// on its page; one with no landing gives a reason (M6/P6 design 2).
+// on its page; one with no landing gives a reason, and for no parent page
+// nor the root, when no page is there or the target would not lead to it,
+// would a page of its title made there be the one it then resolves to
+// alone (M6/P6 design 2).
 func TestALandingLeadsTheTargetToThePageMade(t *testing.T) {
 	landed := 0
 	for seed := range uint64(4000) {
@@ -157,11 +165,40 @@ func TestALandingLeadsTheTargetToThePageMade(t *testing.T) {
 			}
 		case got.Reason == "":
 			t.Fatalf("seed %d: %s from %s: no node, landing nor reason", seed, written, from)
+		case got.Reason == domain.ParentMissing || got.Reason == domain.NotResolvable:
+			if made, ok := landsElsewhere(t, c.pages, aliases, target, from); ok {
+				t.Fatalf("seed %d: %s from %s: %s, but the page %s would lead it", seed, written, from, got.Reason, made)
+			}
 		}
 	}
 	if landed < 1000 {
 		t.Errorf("%d targets landed: the targets are not random enough", landed)
 	}
+}
+
+// landsElsewhere is a page of target's title, made under the root or one
+// of pages and beside no sibling of its title key, that target, written in
+// the page at from, would then resolve to alone, if one would.
+func landsElsewhere(t *testing.T, pages []string, aliases map[string][]string, target domain.Target, from string) (string, bool) {
+	t.Helper()
+	title, problem := shared.CheckTitle("title", target.Name)
+	if problem != nil {
+		t.Fatalf("%q: a reason after the title, which is none", target.Name)
+	}
+	for _, parent := range append([]string{""}, pages...) {
+		made := title
+		if parent != "" {
+			made = parent + "/" + title
+		}
+		if slices.ContainsFunc(pages, func(p string) bool { return siblings(p, made) }) {
+			continue
+		}
+		after := treeOf(t, append(slices.Clone(pages), made), aliases)
+		if r := after.resolve(target, from); r.ID == after.ids[made] && !r.Ambiguous {
+			return made, true
+		}
+	}
+	return "", false
 }
 
 // landingTarget is a target written from the page at from to a page none

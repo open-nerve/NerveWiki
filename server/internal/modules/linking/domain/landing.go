@@ -69,7 +69,9 @@ func Land(t Target, from []Step, candidates, parents []Node, aliased map[string]
 	if len(parent)+1 > maxDepth {
 		return Landing{Reason: TooDeep}
 	}
-	// The page made loses a tie: the least id wins one.
+	// The page made loses a tie, the least id winning one: resolving to it,
+	// t resolves to it alone, and Ambiguous only guards a rule that would
+	// break ties otherwise.
 	made := Node{ID: uuid.Max(), Path: append(slices.Clip(parent), Step{ID: uuid.Max(), Key: shared.TitleKey(title), Name: title})}
 	if r := Resolve(t, from, append(slices.Clip(candidates), made), aliased); r.ID != made.ID || r.Ambiguous {
 		return Landing{Reason: NotResolvable}

@@ -62,7 +62,15 @@ func TestALinksLandingThroughServe(t *testing.T) {
 	lands(deep+"/x", nowhere("too_deep"))
 	lands(strings.TrimSuffix(deep, "/D9")+"/x", `{"landing":{"parent_id":"`+chain[8]+`","title":"x"},"node_id":null,"reason":null}`)
 
-	made := tm.createPage(t, "bob", nb, plans, "2026")
+	// The page is made where the landing says, as the front end makes it.
+	var answer struct {
+		Landing struct {
+			ParentID string `json:"parent_id"`
+			Title    string `json:"title"`
+		} `json:"landing"`
+	}
+	tm.get(t, "bob", landing+"?target="+url.QueryEscape("Plans/2026.md"), &answer)
+	made := tm.createPage(t, "bob", nb, answer.Landing.ParentID, answer.Landing.Title)
 	s.tree(t, nb, map[string]int{made: 1})
 	s.links(t, nb, []string{src}, []string{made})
 	tm.resolves(t, src, made)

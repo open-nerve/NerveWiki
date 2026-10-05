@@ -77,6 +77,12 @@ func ParseTarget(target string) (Target, bool) {
 	return t, true
 }
 
+// ByAlias tells whether t may lead to a page by an alias: a name alone,
+// neither relative nor from the root (M6/P3 design 2, step 4).
+func (t Target) ByAlias() bool {
+	return len(t.Keys) == 1 && !t.Relative && !t.Rooted
+}
+
 // LastKeys are the keys a page must have to be the target: the last
 // segment's, in the forms it may be written in.
 func (t Target) LastKeys() []string {

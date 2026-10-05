@@ -59,8 +59,8 @@ func TestALandingJudgesTheRoleThenTheTarget(t *testing.T) {
 }
 
 // A landing reads the pages with the target's last keys and the key of
-// its segment before the last, the pages with an alias of its last keys,
-// and the paths of those and of its page; an aliased page deleted since
+// its segment before the last, the pages with an alias of its last keys
+// for a name alone, and the paths of those and of its page; an aliased page deleted since
 // is none, and its page deleted since the decision is page.not_found. It
 // lands as domain.Land says, pages nesting MaxDepth deep (M6/P6 design 2).
 func TestALandingReadsThePagesItsTargetNames(t *testing.T) {
@@ -77,8 +77,11 @@ func TestALandingReadsThePagesItsTargetNames(t *testing.T) {
 		calls  []string
 	}{
 		{"x", 10, domain.Landing{Parent: id("A"), Title: "x"}, []string{"ByKeys x", "Aliases x", "Paths"}},
-		{"B/x", 10, domain.Landing{Parent: id("A/B"), Title: "x"}, []string{"ByKeys x b", "Aliases x", "Paths"}},
-		{"Q/X.md", 10, domain.Landing{Parent: id("Q"), Title: "X"}, []string{"ByKeys x x.md q", "Aliases x x.md", "Paths"}},
+		// Only a name alone may lead by an alias (M6/P3 design 2, step 4).
+		{"B/x", 10, domain.Landing{Parent: id("A/B"), Title: "x"}, []string{"ByKeys x b", "Paths"}},
+		{"Q/X.md", 10, domain.Landing{Parent: id("Q"), Title: "X"}, []string{"ByKeys x x.md q", "Paths"}},
+		{"./x.md", 10, domain.Landing{Parent: id("A"), Title: "x"}, []string{"ByKeys x x.md", "Paths"}},
+		{"X.md", 10, domain.Landing{Parent: id("A"), Title: "X"}, []string{"ByKeys x x.md", "Aliases x x.md", "Paths"}},
 		{"Al", 10, domain.Landing{Node: id("P")}, nil},
 		{"src", 10, domain.Landing{Node: id("A/src")}, nil},
 		{"ghost", 10, domain.Landing{Parent: id("A"), Title: "ghost"}, nil},

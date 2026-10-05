@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"strings"
 	"unicode/utf8"
@@ -26,9 +27,10 @@ type GetLinkLanding struct {
 // page id, after the decision, a writer's. Then the target: absent or
 // longer than domain.MaxLandingTarget bytes is 422 on target; one that
 // cuts into no segments, holds a NUL or is not valid UTF-8 has no landing,
-// domain.TargetInvalid, without a read. A page deleted since the decision
-// is page.not_found, and an aliased page deleted since its alias was read
-// is none. A read takes no lock and opens no transaction.
+// domain.TargetInvalid, without a read. The aliases are read only for a
+// target that may lead by one. A page deleted since the decision is
+// page.not_found, and an aliased page deleted since its alias was read is
+// none. A read takes no lock and opens no transaction.
 func (g GetLinkLanding) Execute(ctx context.Context, id uuid.UUID, target *string) (domain.Landing, error) {
 	actor, err := shared.RequireActor(ctx)
 	if err != nil {
@@ -42,7 +44,7 @@ func (g GetLinkLanding) Execute(ctx context.Context, id uuid.UUID, target *strin
 	case target == nil:
 		return domain.Landing{}, shared.Invalid(shared.FieldError{Field: "target", Code: shared.FieldRequired, Message: "is required"})
 	case len(*target) > domain.MaxLandingTarget:
-		return domain.Landing{}, shared.Invalid(shared.FieldError{Field: "target", Code: shared.FieldTooLong, Message: "must be at most 4096 bytes"})
+		return domain.Landing{}, shared.Invalid(shared.FieldError{Field: "target", Code: shared.FieldTooLong, Message: fmt.Sprintf("must be at most %d bytes", domain.MaxLandingTarget)})
 	}
 	t, ok := domain.ParseTarget(*target)
 	if !ok || !utf8.ValidString(*target) || strings.ContainsRune(*target, 0) {
@@ -69,9 +71,11 @@ func (g GetLinkLanding) Execute(ctx context.Context, id uuid.UUID, target *strin
 			parents = append(parents, n)
 		}
 	}
-	aliases, err := g.Reads.Aliases(ctx, notebookID, last)
-	if err != nil {
-		return domain.Landing{}, err
+	var aliases []Alias
+	if t.ByAlias() {
+		if aliases, err = g.Reads.Aliases(ctx, notebookID, last); err != nil {
+			return domain.Landing{}, err
+		}
 	}
 	ids := []uuid.UUID{id}
 	for _, a := range aliases {

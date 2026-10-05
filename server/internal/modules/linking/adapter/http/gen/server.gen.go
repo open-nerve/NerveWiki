@@ -205,7 +205,7 @@ type ListBacklinksParams struct {
 
 // GetLinkLandingParams defines parameters for GetLinkLanding.
 type GetLinkLandingParams struct {
-	// Target The link's target as written, without its heading, block or display text; at most 4096 bytes. Absent is validation_failed on target.
+	// Target The link's target as the reading view carries it (data-nw-target): a wikilink's as written, a Markdown link's decoded, without its anchor or display text; at most 4096 bytes. Absent is validation_failed on target.
 	Target *string `form:"target,omitempty" json:"target,omitempty"`
 }
 
