@@ -240,9 +240,9 @@ func TestTheReadsUseTheirIndexes(t *testing.T) {
 		index string
 	}{
 		// Backlinks' step to the next page, its count and its contexts.
-		{`SELECT source_id FROM page_links WHERE resolved_id = $1 AND source_id > $1 AND source_id <> $1 ORDER BY source_id LIMIT 1`, "page_links_resolved_id_source_id_idx"},
-		{`SELECT 1 FROM page_links WHERE resolved_id = $1 AND source_id = $1 LIMIT 1000`, "page_links_resolved_id_source_id_idx"},
-		{`SELECT range_start, range_end FROM page_links WHERE resolved_id = $1 AND source_id = $1 ORDER BY range_start LIMIT 10`, "page_links_resolved_id_source_id_idx"},
+		{`SELECT source_id FROM page_links WHERE resolved_id = $1 AND source_id > $1 ORDER BY source_id LIMIT 1`, "page_links_resolved_id_source_id_idx"},
+		{`SELECT 1 FROM page_links WHERE resolved_id = $1 AND source_id = $1 ORDER BY range_start LIMIT 1000`, "page_links_resolved_id_source_id_idx"},
+		{`SELECT range_start, range_end FROM page_links WHERE resolved_id = $1 AND source_id = $1 ORDER BY range_start LIMIT 10`, "Index Only Scan using page_links_resolved_id_source_id_idx"},
 		// LinksReached's part by the pages its links resolve to.
 		{`SELECT source_id FROM page_links WHERE resolved_id = ANY(ARRAY[$1::uuid])`, "page_links_resolved_id_source_id_idx"},
 		{`SELECT property_key FROM page_links WHERE source_id = $1 AND property_key IS NOT NULL ORDER BY range_start`, "page_links_source_id_range_start_idx"},

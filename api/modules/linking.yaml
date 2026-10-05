@@ -20,7 +20,7 @@ paths:
         on characters, an ellipsis (…) where it is cut. A page written or
         deleted since the index read it has no lines; the links event that
         follows says to read again. So has a page the index read with an
-        older version of the server, before nervewiki reindex, and every page
+        older extraction, before nervewiki reindex, and every page
         after 32 MiB of contents are read for the lines of one answer. Any
         role in the page's notebook can read them. A cursor
         the list cannot read is bad_request, before anything else; a page

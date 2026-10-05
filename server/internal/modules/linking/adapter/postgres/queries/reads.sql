@@ -4,36 +4,40 @@
 -- lead to target, at most max_count; and where the targets of its first contexts of them start and end, by start.
 -- One statement, so one snapshot. The pages are found a step each, the next id after the last on
 -- page_links_resolved_id_source_id_idx, not by reading all their links: a page may write a million (review r1-1,
--- r2-M1).
+-- r2-M1). So is target, though not counted, and left out at the end: a filter on the step would read each of its
+-- links to itself (review c1).
 WITH RECURSIVE sources (source_id, n) AS (
     (
-        SELECT l.source_id, 1
+        SELECT l.source_id, CASE WHEN l.source_id = sqlc.arg(target)::uuid THEN 0 ELSE 1 END
         FROM page_links l
         WHERE l.resolved_id = sqlc.arg(target)::uuid AND l.source_id > sqlc.arg(after)::uuid
-            AND l.source_id <> sqlc.arg(target)::uuid
         ORDER BY l.source_id
         LIMIT 1
     )
     UNION ALL
-    SELECT (
+    SELECT x.source_id, s.n + CASE WHEN x.source_id = sqlc.arg(target)::uuid THEN 0 ELSE 1 END
+    FROM sources s
+    CROSS JOIN LATERAL (
         SELECT l.source_id
         FROM page_links l
-        WHERE l.resolved_id = sqlc.arg(target)::uuid AND l.source_id > s.source_id AND l.source_id <> sqlc.arg(target)::uuid
+        WHERE l.resolved_id = sqlc.arg(target)::uuid AND l.source_id > s.source_id
         ORDER BY l.source_id
         LIMIT 1
-    ), s.n + 1
-    FROM sources s
-    WHERE s.source_id IS NOT NULL AND s.n < sqlc.arg(size)::integer
+    ) x
+    WHERE s.n < sqlc.arg(size)::integer
 )
 SELECT s.source_id::uuid AS source_id, coalesce(ip.revision, 0)::integer AS revision,
     coalesce(ip.extractor, 0)::integer AS extractor, c.links, f.range_start, f.range_end
 FROM sources s
 LEFT JOIN indexed_pages ip ON ip.node_id = s.source_id
 CROSS JOIN LATERAL (
+    -- In the index's order, which only the index reads cheaply: unordered, a scan of the table stopped early looks
+    -- cheap where one page writes most of the links, and is not (review c1).
     SELECT count(*) AS links
     FROM (
         SELECT 1 FROM page_links
         WHERE resolved_id = sqlc.arg(target)::uuid AND source_id = s.source_id
+        ORDER BY range_start
         LIMIT sqlc.arg(max_count)::integer
     ) counted
 ) c
@@ -44,7 +48,7 @@ CROSS JOIN LATERAL (
     ORDER BY range_start
     LIMIT sqlc.arg(contexts)::integer
 ) f
-WHERE s.source_id IS NOT NULL
+WHERE s.source_id <> sqlc.arg(target)::uuid
 ORDER BY s.source_id, f.range_start;
 
 -- name: PageProperties :one
