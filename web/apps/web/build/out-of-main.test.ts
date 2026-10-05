@@ -1,9 +1,10 @@
 import { expect, test } from "vitest";
 
-import { editorLeak, type Chunk } from "./editor-out-of-main";
+import { lazyLeak, type Chunk } from "./out-of-main";
 
-// The build's check that the editor stays out of what loads before it
-// (M4/P6 design 3.11), on chunk graphs as rolldown answers them.
+// The build's check that the editor, KaTeX and mermaid stay out of what
+// loads before them (M4/P6 design 3.11, M6/P6 design 10), on chunk graphs
+// as rolldown answers them.
 
 const view = "/repo/node_modules/.pnpm/@codemirror+view@6.43.13/node_modules/@codemirror/view/dist/index.js";
 const crelt = "/repo/node_modules/crelt/index.js";
@@ -23,7 +24,7 @@ const codemirror = chunk("codemirror.js", { moduleIds: [view, crelt] });
 
 test("the editor and what it loads hold the editor's modules: nothing leaks", () => {
   expect(
-    editorLeak([
+    lazyLeak([
       app({ dynamicImports: ["page.js"] }),
       chunk("page.js", { dynamicImports: ["source-editor.js"] }),
       editor,
@@ -33,14 +34,14 @@ test("the editor and what it loads hold the editor's modules: nothing leaks", ()
 });
 
 test("the entry holding an editor's module leaks", () => {
-  expect(editorLeak([app({ moduleIds: [crelt] })])).toBe(
+  expect(lazyLeak([app({ moduleIds: [crelt] })])).toBe(
     `index.js, which is loaded before the editor, holds the editor's ${crelt}`
   );
 });
 
 test("a route's chunk that imports the editor's chunk statically leaks, said by the way to it", () => {
   expect(
-    editorLeak([
+    lazyLeak([
       app({ dynamicImports: ["page.js"] }),
       chunk("page.js", { imports: ["codemirror.js"] }),
       editor,
@@ -51,7 +52,7 @@ test("a route's chunk that imports the editor's chunk statically leaks, said by 
 
 test("a chunk reached by a dynamic import of a chunk the entry imports statically leaks", () => {
   expect(
-    editorLeak([
+    lazyLeak([
       app({ imports: ["shared.js"] }),
       chunk("shared.js", { dynamicImports: ["lazy.js"] }),
       chunk("lazy.js", { moduleIds: [view] }),
@@ -60,5 +61,35 @@ test("a chunk reached by a dynamic import of a chunk the entry imports staticall
 });
 
 test("a chunk no entry reaches is not looked at", () => {
-  expect(editorLeak([app(), chunk("orphan.js", { moduleIds: [view] })])).toBeUndefined();
+  expect(lazyLeak([app(), chunk("orphan.js", { moduleIds: [view] })])).toBeUndefined();
+});
+
+const katex = "/repo/node_modules/.pnpm/katex@0.16.47/node_modules/katex/dist/katex.mjs";
+const katexStyles = "/repo/node_modules/.pnpm/katex@0.16.47/node_modules/katex/dist/katex.min.css";
+const mermaid = "/repo/node_modules/.pnpm/mermaid@11.17.2/node_modules/mermaid/dist/mermaid.core.mjs";
+const mermaidParser =
+  "/repo/node_modules/.pnpm/@mermaid-js+parser@1.0.0/node_modules/@mermaid-js/parser/dist/mermaid-parser.core.mjs";
+
+test("KaTeX and mermaid in chunks of their own, each loaded by its module, leak nothing: mermaid's own KaTeX neither", () => {
+  expect(
+    lazyLeak([
+      app({ dynamicImports: ["page.js", "katex.js", "katex-css.js", "mermaid.js"] }),
+      chunk("page.js"),
+      chunk("katex.js", { facadeModuleId: katex, moduleIds: [katex] }),
+      chunk("katex-css.js", { facadeModuleId: katexStyles, moduleIds: [katexStyles] }),
+      chunk("mermaid.js", { facadeModuleId: mermaid, moduleIds: [mermaid, mermaidParser, katex] }),
+    ])
+  ).toBeUndefined();
+});
+
+test("KaTeX or mermaid in a chunk loaded before them leaks", () => {
+  expect(lazyLeak([app({ moduleIds: [katex] })])).toBe(
+    `index.js, which is loaded before KaTeX, holds KaTeX's ${katex}`
+  );
+  expect(
+    lazyLeak([
+      app({ imports: ["shared.js"] }),
+      chunk("shared.js", { moduleIds: ["/repo/web/apps/web/src/a.ts", mermaidParser] }),
+    ])
+  ).toBe(`index.js → shared.js, which is loaded before mermaid, holds mermaid's ${mermaidParser}`);
 });

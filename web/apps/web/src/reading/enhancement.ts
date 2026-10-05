@@ -4,6 +4,7 @@ import type { Translate } from "../i18n/i18n";
 import type { NotebookRole } from "../services/notebook.service";
 import { appLinks } from "./app-links";
 import { codeHighlight, highlightWorker } from "./highlight";
+import { loadKatex, math } from "./math";
 import { scrollRegions } from "./scroll-regions";
 import { taskToggle } from "./task-toggle";
 import { unresolvedLinks } from "./unresolved-links";
@@ -67,12 +68,13 @@ export type Enhancement = (container: HTMLElement, context: ReadingContext) => (
  * readingEnhancements are the app's enhancements, in the order they run
  * (M4 design 8): M4 has code highlighting, and the keyboard's way to what
  * scrolls sideways (scrollRegions since M6); M5 the task items' ticks; M6 the links into the app,
- * and those to pages not there; M7
+ * and those to pages not there, and the formulas; M7
  * adds its own here. The app's composition root (main.tsx) gives them to
  * the reading views through Enhancements; without it they have none.
  */
 export const readingEnhancements: readonly Enhancement[] = [
   codeHighlight(highlightWorker),
+  math(loadKatex),
   scrollRegions,
   taskToggle,
   appLinks,
