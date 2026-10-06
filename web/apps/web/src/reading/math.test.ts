@@ -111,7 +111,12 @@ test("a formula that defines a macro, or names one of KaTeX's own, shows its TeX
     String.raw`\tag{1}\df@tag\df@tag`,
     String.raw`a\@b`,
   ];
-  const typesetAll = [String.raw`\deg x \leftarrow y`, String.raw`a \newline b`, String.raw`\text{me@host} \tag{1}`];
+  // Commands whose names begin with one refused are not refused.
+  const typesetAll = [
+    String.raw`\deg x \longrightarrow y`,
+    String.raw`a \newline b \leftarrow c`,
+    String.raw`\text{me@host} \tag{1}`,
+  ];
   const article = view([...refused, ...typesetAll].map((tex) => `<span class="nw-math">${tex}</span>`).join(""));
 
   math(async () => typeset)(article, context);
