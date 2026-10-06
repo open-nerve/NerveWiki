@@ -29,10 +29,14 @@ import (
 // rename or a move, each link that led to a page leads to it still, the
 // links its rewrite wrote among them (M6/P4 design 8).
 func TestTheIndexIsItsRebuild(t *testing.T) {
-	rewritten := 0
+	rewritten, flagged := 0, 0 // flagged: the runs where a link was a value of the aliases after some step
 	defer func() {
 		if !t.Failed() && rewritten < 20 {
 			t.Errorf("the renames and moves wrote %d pages again, want more: the runs test little of the rewrite", rewritten)
+		}
+		// Counted over the runs, not each: a run may well have none (M6 closeout A-N6).
+		if !t.Failed() && flagged == 0 {
+			t.Errorf("no link was a value of the aliases: the runs test little of the index's flag")
 		}
 	}()
 	for seed := range uint64(6) {
@@ -43,7 +47,7 @@ func TestTheIndexIsItsRebuild(t *testing.T) {
 				t.Fatal(err)
 			}
 			w := writer{t: t, tm: tm, nb: tm.openNotebook(t, "alice", "Eng"), rnd: rand.New(rand.NewPCG(seed, 6))}
-			written, flagged := 0, false // flagged: a link was a value of the aliases after some step
+			written, aliased := 0, false // aliased: a link was a value of the aliases after some step
 			for step := range 60 {
 				led := tm.ledTo(t, w.nb)
 				what, ok, relocates := w.random()
@@ -54,7 +58,7 @@ func TestTheIndexIsItsRebuild(t *testing.T) {
 				if !slices.Equal(before, after) {
 					t.Fatalf("after step %d, %s, the index is not its rebuild:\n%s", step, what, diff(before, after))
 				}
-				flagged = flagged || slices.ContainsFunc(after, func(row string) bool { return strings.HasSuffix(row, " aliases=true") })
+				aliased = aliased || slices.ContainsFunc(after, func(row string) bool { return strings.HasSuffix(row, " aliases=true") })
 				if now := tm.ledTo(t, w.nb); ok && relocates && !leadStill(led, now) {
 					t.Fatalf("after step %d, %s, a link leads elsewhere:\n%v\nwas\n%v", step, what, now, led)
 				}
@@ -65,11 +69,25 @@ func TestTheIndexIsItsRebuild(t *testing.T) {
 			rewritten += count(t, tm.pool, `SELECT count(*) FROM page_revisions r WHERE EXISTS (SELECT 1 FROM changeset_items i
 				WHERE i.changeset_id = r.changeset_id AND i.node_id <> r.node_id AND i.before_name IS NOT NULL
 				AND i.after_name IS NOT NULL)`)
-			if !flagged {
-				t.Errorf("no link was a value of the aliases: the run tests little of the index's flag")
+			if aliased {
+				flagged++
 			}
 			checkPages(t, tm.pool)
 		})
+	}
+}
+
+// checkRebuilt fails t unless the notebook nb's index is what a rebuild of
+// it makes (M6 design 9: an interleaving ends with the index its pages
+// make; M6 closeout A-M5).
+func (tm acmeTeam) checkRebuilt(t *testing.T, nb string) {
+	t.Helper()
+	admin, err := reindexAdmin(tm.pool, testConfig(t, tm.url, false), slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if before, after := tm.rebuilt(t, admin, nb); !slices.Equal(before, after) {
+		t.Errorf("the index is not its rebuild:\n%s", diff(before, after))
 	}
 }
 

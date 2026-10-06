@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/linking"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver/apitest"
 )
 
 // The link index through serve (M6/P3 design 3.4, 3.5; M6 design 4.8).
@@ -92,10 +93,12 @@ func (tm acmeTeam) resolves(t *testing.T, id string, want ...string) {
 }
 
 // links fails t unless the stream's next frame is a links event of the
-// notebook nb listing pages and targets, in any order; nil is null.
+// notebook nb listing pages and targets, in any order; nil is null. The
+// frame is the contract's EventLinks (M6 closeout A-N3).
 func (s *eventStream) links(t *testing.T, nb string, pages, targets []string) {
 	t.Helper()
 	f := s.expect(t, "links")
+	apitest.Load(t).CheckSchema(t, "EventLinks", []byte(f.data))
 	var got struct {
 		NotebookID string    `json:"notebook_id"`
 		Pages      *[]string `json:"pages"`

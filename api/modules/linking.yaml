@@ -223,7 +223,7 @@ components:
         A tag's name, without its '#', as listTags writes it and a reading
         view's tag link carries it; a nested tag's '/' is written %2F
         (a%2Fb). The tag "/" alone cannot be named: the path reads its %2F
-        as a trailing slash.
+        as a trailing slash, a path no operation has (404 not_found).
       schema:
         type: string
   responses:
@@ -408,6 +408,7 @@ components:
             The page's aliases, its first 1000, in the order of their
             case-folded keys.
           type: array
+          maxItems: 1000
           items:
             type: string
     LinkLanding:

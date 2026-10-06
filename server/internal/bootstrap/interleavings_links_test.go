@@ -52,6 +52,7 @@ func TestTwoContentWritesKeepTheIndexOneAfterTheOther(t *testing.T) {
 			}
 			tm.resolves(t, src, named)
 			checkPages(t, tm.pool)
+			tm.checkRebuilt(t, nb)
 		})
 	}
 }
@@ -80,6 +81,7 @@ func TestAContentAndItsTargetsDeletionKeepTheIndexInEitherOrder(t *testing.T) {
 			}
 			tm.resolves(t, src, "")
 			checkPages(t, tm.pool)
+			tm.checkRebuilt(t, nb)
 		})
 	}
 }
@@ -114,6 +116,8 @@ func TestReindexSkipsANotebookDeletedMeanwhile(t *testing.T) {
 	if err := <-done; err != nil || stdout.String() != fmt.Sprintf("notebook %s: 0 pages, 0 links, 0 unresolved\n", first) {
 		t.Errorf("reindex = %q, %v: %s; want the first notebook's line alone", stdout.String(), err, stderr.String())
 	}
+	checkPages(t, tm.pool)
+	tm.checkRebuilt(t, first)
 }
 
 // A reindex of a notebook behind a content write of it in flight, which
@@ -137,4 +141,5 @@ func TestAReindexWaitsAtTheNotebooksRowBeforeTheIndexsLock(t *testing.T) {
 	}
 	tm.resolves(t, src, b)
 	checkPages(t, tm.pool)
+	tm.checkRebuilt(t, nb)
 }
