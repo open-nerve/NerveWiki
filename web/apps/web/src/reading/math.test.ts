@@ -3,7 +3,16 @@ import { afterEach, expect, test, vi } from "vitest";
 
 import { translator } from "../i18n/i18n";
 import type { ReadingContext } from "./enhancement";
-import { formulaLimit, guardLabels, loadKatex, math, taskTime, type LabelTypesetter, type Typesetter } from "./math";
+import {
+  formulaLimit,
+  guardLabels,
+  layoutBudget,
+  loadKatex,
+  math,
+  taskTime,
+  type LabelTypesetter,
+  type Typesetter,
+} from "./math";
 
 // The formulas, typeset by KaTeX (M6/P6 design 10).
 
@@ -50,8 +59,11 @@ function view(html: string) {
   return article;
 }
 
-/** settled lets the loading and the tasks of typesetting finish. */
-const settled = () => new Promise((resolve) => setTimeout(resolve, 0));
+/** settled lets the loading and the tasks of typesetting finish: the box the formulas are laid out in is gone by then. */
+const settled = async () => {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await vi.waitFor(() => expect(document.querySelector(".nw-math-measure")).toBeNull());
+};
 
 test("each formula is typeset, a block's displayed, with the options that trust nothing in the TeX", async () => {
   const { calls, typeset } = typesetter();
@@ -230,26 +242,92 @@ test("the formulas are typeset for a while at a time, the page's thread given ba
   expect(calls).toHaveLength(count);
 });
 
-test("each formula is laid out as it is put in, the clock counting the layout, which can take far longer than KaTeX", async () => {
-  vi.useFakeTimers();
-  const { calls, typeset } = typesetter();
+/**
+ * laidOut has laying out take the clock it gives formulaTime for a formula, in the box math measures it in, and
+ * viewTime for the view; it records where each formula was laid out, and what of the view was typeset by then.
+ */
+function laidOut(article: HTMLElement, formulaTime: number, viewTime = 0) {
   let time = 0;
-  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(() => {
-    time += 20;
+  let views = 0;
+  const where: { box: string | undefined; inView: boolean; typesetBefore: number }[] = [];
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+    if (this === article) {
+      time += viewTime;
+      views += 1;
+    } else {
+      time += formulaTime;
+      where.push({
+        box: this.parentElement?.className,
+        inView: this.parentElement?.parentElement === article,
+        typesetBefore: [...article.querySelectorAll(".nw-math")].filter((each) => each.textContent.startsWith("["))
+          .length,
+      });
+    }
     return new DOMRect();
   });
-  const count = 20;
-  const article = view(Array.from({ length: count }, (_, i) => `<span class="nw-math">${i}</span>`).join(""));
+  return { where, views: () => views, now: () => time };
+}
 
-  math(
-    async () => typeset,
-    () => time
-  )(article, context);
+/** formulas is a view of count formulas, 0 to count - 1, a paragraph each. */
+function formulas(count: number) {
+  return view(Array.from({ length: count }, (_, i) => `<p><span class="nw-math">${i}</span></p>`).join(""));
+}
+
+test("each formula is laid out on its own, in the view's box out of its flow, the clock counting the layout; a task's formulas are put in their places together as it ends", async () => {
+  vi.useFakeTimers();
+  const { calls, typeset } = typesetter();
+  const count = 20;
+  const article = formulas(count);
+  const { where, now } = laidOut(article, 20);
+
+  math(async () => typeset, now)(article, context);
   await vi.advanceTimersByTimeAsync(0);
-  expect(calls.length).toBeGreaterThanOrEqual(Math.ceil(taskTime / 20));
-  expect(calls.length).toBeLessThan(count);
+  const first = calls.length;
+  expect(first).toBeGreaterThanOrEqual(Math.ceil(taskTime / 20));
+  expect(first).toBeLessThan(count);
   await vi.runAllTimersAsync();
+
   expect(calls).toHaveLength(count);
+  expect(where.every((each) => each.box === "nw-math-measure" && each.inView)).toBe(true);
+  // A formula laid out sees in their places those of the tasks before its own, none of its own task's.
+  const perTask = Math.ceil(taskTime / 20);
+  expect(where.map((each) => each.typesetBefore)).toEqual(Array.from({ length: count }, (_, i) => i - (i % perTask)));
+  expect(article.textContent).toBe(Array.from({ length: count }, (_, i) => `[${i}]`).join(""));
+  expect(article.querySelector(".nw-math-measure")).toBeNull();
+});
+
+test("past layoutBudget of the formulas' layout, the rest show their TeX", async () => {
+  vi.useFakeTimers();
+  const { calls, typeset } = typesetter();
+  const count = 10;
+  const article = formulas(count);
+  const { now } = laidOut(article, 300);
+
+  math(async () => typeset, now)(article, context);
+  await vi.runAllTimersAsync();
+
+  const shown = Math.ceil(layoutBudget / 300);
+  expect(calls).toHaveLength(shown);
+  expect([...article.querySelectorAll(".nw-math")].map((each) => each.textContent)).toEqual(
+    Array.from({ length: count }, (_, i) => (i < shown ? `[${i}]` : `${i}`))
+  );
+  expect(article.querySelector(".nw-math-measure")).toBeNull();
+});
+
+test("what the view has to lay out as a task begins is laid out first, counted to the task, not to the formulas' budget", async () => {
+  vi.useFakeTimers();
+  const { calls, typeset } = typesetter();
+  const count = 5;
+  const article = formulas(count);
+  const { views, now } = laidOut(article, 1, layoutBudget);
+
+  math(async () => typeset, now)(article, context);
+  await vi.runAllTimersAsync();
+
+  // Each task laid the view out first, which took its time: one formula is typeset in each.
+  expect(views()).toBe(count);
+  expect(calls).toHaveLength(count);
+  expect(article.textContent).toBe(Array.from({ length: count }, (_, i) => `[${i}]`).join(""));
 });
 
 test("undone, the typeset formulas show their TeX again, and those not reached stay", async () => {
@@ -268,6 +346,7 @@ test("undone, the typeset formulas show their TeX again, and those not reached s
 
   expect(calls).toHaveLength(reached);
   expect(article.textContent).toBe(Array.from({ length: count }, (_, i) => i).join(""));
+  expect(article.querySelector(".nw-math-measure")).toBeNull();
 });
 
 test("undone before KaTeX has loaded, nothing is typeset", async () => {

@@ -18,6 +18,18 @@ const formulaDepth = 150;
 /** How long, in milliseconds, formulas are typeset in one task before the page's thread is given back. */
 export const taskTime = 50;
 
+/**
+ * How long, in milliseconds, a view's formulas may take to lay out, each
+ * measured on its own; past it, the rest show their TeX. The view laid out
+ * again (zoomed, printed) lays them out all at once, in one task: 40
+ * formulas of styled groups 150 deep, each laid out in a task of its own
+ * as it was typeset, took 5 s at once when the page was zoomed (M6/P6 B
+ * fix check 3). Within the budget, 9 of them are typeset, and zooming
+ * takes 1.1 s; 2,000 ordinary formulas are all typeset, in 0.7–0.8 s, and
+ * zooming takes 0.2 s.
+ */
+export const layoutBudget = 1000;
+
 /** What typesetting uses of KaTeX; the tests give their own. */
 export type Typesetter = { render: (tex: string, element: HTMLElement, options: KatexOptions) => void };
 
@@ -25,7 +37,9 @@ export type Typesetter = { render: (tex: string, element: HTMLElement, options: 
  * KaTeX's options (M6 design 4.9): no command that loads, links or styles
  * from the TeX (trust false), sizes and macro expansions bounded, and an
  * error thrown, never rendered, so that the formula shows its TeX instead.
- * What strict mode would warn of is let be: the console stays quiet.
+ * What strict mode would warn of, with the writer's TeX, is let be. KaTeX
+ * still warns of a character it has no metrics for (€, Hebrew, an emoji):
+ * one character, in a message of its own.
  */
 const options: KatexOptions = { trust: false, maxSize: 50, maxExpand: 1000, throwOnError: true, strict: false };
 
@@ -123,8 +137,16 @@ export function guardLabels(katex: LabelTypesetter): void {
  * formulaLimit, that defines a macro (definesMacros), or whose typesetting
  * nests deeper than formulaDepth, shows its TeX. They are typeset for
  * taskTime in a task, KaTeX working on the page's thread, which is given
- * back between (now is the clock); each is laid out as it is put in, so
- * that the clock counts the layout, which can take far longer than KaTeX. Undone, the formulas typeset show their
+ * back between (now is the clock). Each is laid out first on its own, in a
+ * box of the view out of its flow and unseen (nw-math-measure), so that
+ * the clock counts the layout, which can take far longer than KaTeX, and
+ * counts it once: laid out in its paragraph, each formula would lay out
+ * the paragraph again (2,000 in one took 12.8 s; M6/P6 B fix check 3). The
+ * formulas of a task are put in their places together as it ends. Past
+ * layoutBudget of layout, the rest show their TeX. What the view has to
+ * lay out as a task begins, the formulas put in before and what other
+ * enhancements changed, is laid out before the formulas are, counted to
+ * the task, not to the formulas. Undone, the formulas typeset show their
  * TeX again, and those not reached yet stay as they are.
  */
 export function math(load: () => Promise<Typesetter>, now: () => number = () => performance.now()): Enhancement {
@@ -135,6 +157,8 @@ export function math(load: () => Promise<Typesetter>, now: () => number = () => 
     }
     let undone = false;
     const typeset = new Map<HTMLElement, string>();
+    const measure = document.createElement("div");
+    measure.className = "nw-math-measure";
     void (async () => {
       let katex: Typesetter;
       try {
@@ -143,24 +167,54 @@ export function math(load: () => Promise<Typesetter>, now: () => number = () => 
         console.error("KaTeX could not be loaded: the formulas show their TeX", error);
         return;
       }
-      let started = now();
-      for (const formula of formulas) {
-        if (now() - started >= taskTime) {
-          // oxlint-disable-next-line no-await-in-loop -- the page's thread is given back between the tasks
-          await new Promise((resolve) => setTimeout(resolve, 0));
-          started = now();
-        }
-        if (undone) {
-          return;
-        }
-        const tex = formula.textContent;
-        if (encoder.encode(tex).length <= formulaLimit && !definesMacros(tex) && render(katex, tex, formula)) {
+      if (undone) {
+        return;
+      }
+      container.append(measure);
+      let laidOut = 0;
+      let ready: { formula: HTMLElement; tex: string; made: HTMLElement }[] = [];
+      const place = () => {
+        for (const { formula, tex, made } of ready) {
+          formula.replaceChildren(...made.childNodes);
           typeset.set(formula, tex);
         }
+        ready = [];
+      };
+      // Each task, the first too, lays the view out first.
+      let started = -Infinity;
+      for (const formula of formulas) {
+        if (now() - started >= taskTime) {
+          place();
+          // oxlint-disable-next-line no-await-in-loop -- the page's thread is given back between the tasks
+          await new Promise((resolve) => setTimeout(resolve, 0));
+          if (undone) {
+            return;
+          }
+          started = now();
+          container.getBoundingClientRect();
+        }
+        if (laidOut >= layoutBudget) {
+          break;
+        }
+        const tex = formula.textContent;
+        const made =
+          encoder.encode(tex).length <= formulaLimit && !definesMacros(tex)
+            ? render(katex, tex, formula.classList.contains("nw-math-block"))
+            : undefined;
+        if (made !== undefined) {
+          measure.replaceChildren(made);
+          const before = now();
+          made.getBoundingClientRect();
+          laidOut += now() - before;
+          ready.push({ formula, tex, made });
+        }
       }
+      place();
+      measure.remove();
     })();
     return () => {
       undone = true;
+      measure.remove();
       for (const [formula, tex] of typeset) {
         formula.textContent = tex;
       }
@@ -169,24 +223,18 @@ export function math(load: () => Promise<Typesetter>, now: () => number = () => 
 }
 
 /**
- * render puts tex typeset in formula, displayed for a block's, and tells
- * whether KaTeX could, within formulaDepth; otherwise formula is as it
- * was. It is typeset out of the page, where nothing is laid out.
+ * render is tex typeset, displayed if a block's, out of the page, where
+ * nothing is laid out; undefined if KaTeX cannot, or its typesetting nests
+ * deeper than formulaDepth.
  */
-function render(katex: Typesetter, tex: string, formula: HTMLElement): boolean {
+function render(katex: Typesetter, tex: string, displayed: boolean): HTMLElement | undefined {
   const typeset = document.createElement("span");
   try {
-    katex.render(tex, typeset, { ...options, displayMode: formula.classList.contains("nw-math-block") });
+    katex.render(tex, typeset, { ...options, displayMode: displayed });
   } catch {
-    return false;
+    return undefined;
   }
-  if (deeperThan(typeset, formulaDepth)) {
-    return false;
-  }
-  formula.replaceChildren(...typeset.childNodes);
-  // Laid out now: the task's clock counts it.
-  formula.getBoundingClientRect();
-  return true;
+  return deeperThan(typeset, formulaDepth) ? undefined : typeset;
 }
 
 /** deeperThan tells whether node's descendants nest more than levels deep. */

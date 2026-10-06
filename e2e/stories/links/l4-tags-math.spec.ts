@@ -1,3 +1,5 @@
+import type { Page } from "@playwright/test";
+
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
@@ -80,6 +82,15 @@ function mindmap(children: number): string {
   return ["mindmap", "  root", ...Array.from({ length: children }, (_, i) => `    node${i}`)].join("\n");
 }
 
+/** separated is a mindmap's source whose children are on one line: each after a line separator, ended by a comment. */
+function separated(children: number): string {
+  return ["mindmap\n  root", ...Array.from({ length: children }, (_, i) => `\u2028    l${i}[leaf${i}]%%`)].join("");
+}
+
+/** frames lets the page draw twice: what came into sight is seen. */
+const frames = (page: Page) =>
+  page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+
 test("L4 (page): what a writer's formulas and diagrams could do to a reader's page they cannot: wide, painted outside, expanding without end, crashing it, or marked up", async ({
   api,
   signedInPage,
@@ -150,6 +161,10 @@ test("L4 (page): what a writer's formulas and diagrams could do to a reader's pa
     "```",
     "",
     "```mermaid",
+    separated(160),
+    "```",
+    "",
+    "```mermaid",
     mindmap(30),
     "```",
     "",
@@ -193,21 +208,25 @@ test("L4 (page): what a writer's formulas and diagrams could do to a reader's pa
   expect(marked).toEqual({ handlers: [], scripts: 0, forged: 0 });
   await expect(page.locator("body")).toBeVisible();
 
-  // A mindmap of more lines than its bound, near the end, is tried as it shows, before the small one after it,
-  // which is drawn.
+  // A mindmap of more lines than its bound, and one of as many nodes on one line, near the end, are tried as they
+  // show, before the small one after them, which is drawn.
   await article.locator("code.language-mermaid", { hasText: "node149" }).scrollIntoViewIfNeeded();
+  await frames(page);
+  await article.locator("code.language-mermaid", { hasText: "leaf159" }).scrollIntoViewIfNeeded();
+  await frames(page);
   await article.locator("code.language-mermaid", { hasText: "node29" }).last().scrollIntoViewIfNeeded();
   await expect(article.locator(".nw-diagram svg")).toHaveCount(4);
   await expect(article.locator(".nw-diagram").last()).toContainText("node29");
 
   // A label's formula that defines a macro, one that does once mermaid has sanitized it, one of too many columns,
-  // one nested too deep, and the large mindmap: the diagram shows its source.
+  // one nested too deep, and the large mindmaps: the diagram shows its source.
   await expect(article.locator("code.language-mermaid")).toHaveText([
     String.raw`graph TD; M["$$\def\a{x}\a$$"]`,
     String.raw`graph TD; S["$$\d<x></x>ef\a{x}\a$$"]`,
     `graph TD; C["$$${columns}$$"]`,
     `graph TD; D["$$${deep}$$"]`,
     mindmap(150),
+    separated(160),
   ]);
 
   // A formula that would expand without end, one of too many columns, one nested too deep, and one whose styled
@@ -263,4 +282,27 @@ test("L4 (page): what a writer's formulas and diagrams could do to a reader's pa
     return document.elementFromPoint(x, y)?.closest(".nw-math") ? "paints over the app" : "kept in the view";
   });
   expect(aside).toBe("kept in the view");
+});
+
+test("L4 (page): a view's formulas take at most a while to lay out, which the view laid out again takes at once: past it, the rest show their TeX", async ({
+  api,
+  signedInPage,
+}, testInfo) => {
+  const { pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
+  const notebook = await createNotebook(api, pat, workspace.slug, "Plans");
+  // Four chains of styled groups, each 144 deep: a formula takes the layout a tenth of a second or more.
+  const chain = `${String.raw`\pmb{`.repeat(144)}x${"}".repeat(144)}`;
+  const heavy = Array.from({ length: 4 }, () => chain).join(" ");
+  const content = [...Array.from({ length: 30 }, (_, i) => `Heavy ${i}: $${heavy}$.\n`), "Last $y$.", ""].join("\n");
+  const styled = await createPage(api, pat, notebook.id, "Styled", null, content);
+  const page = await signedInPage(tokens);
+  await page.goto(wikiPagePath(workspace.slug, notebook.id, styled.id));
+  const article = page.getByRole("article");
+  const formulas = article.locator(".nw-math");
+
+  await expect(formulas.first().locator(".katex")).toHaveCount(1);
+  // The typesetting ends with the box the formulas are laid out in gone.
+  await expect(article.locator(".nw-math-measure")).toHaveCount(0);
+  await expect(formulas.last()).toHaveText("y");
+  await expect(formulas.last().locator(".katex")).toHaveCount(0);
 });

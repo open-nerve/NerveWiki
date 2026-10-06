@@ -238,6 +238,25 @@ test("a mindmap of more lines than mindmapLines shows its source: mermaid's layo
   expect(article.querySelectorAll("code.language-mermaid")).toHaveLength(1);
 });
 
+/** separated is a mindmap of mindmapLines nodes past its root, each after end, ended by a comment: one line of "\n". */
+function separated(end: string): string {
+  return ["mindmap\n  r", ...Array.from({ length: mindmapLines }, (_, i) => `${end}  a${i}[x]%%`)].join("");
+}
+
+test("a mindmap's lines are counted as a comment ends one: at a line or paragraph separator, a carriage return too", async () => {
+  const { drawn, draw } = drawer();
+  const { watch, show } = watcher();
+  const { article, blocks } = view(separated("\u2028"), separated("\u2029"), separated("\r"));
+  diagrams(async () => draw, watch)(article, context());
+  for (const block of blocks) {
+    show(block as Element);
+  }
+  await settled();
+
+  expect(drawn).toEqual([]);
+  expect(article.querySelectorAll("code.language-mermaid")).toHaveLength(3);
+});
+
 test("the latest drawings are kept, the one used longest ago dropped first", async () => {
   const { drawn, draw } = drawer();
   const { watch, show } = watcher();

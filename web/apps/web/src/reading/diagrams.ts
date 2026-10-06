@@ -245,6 +245,14 @@ async function render(
   }
 }
 
+/**
+ * A line's end as JavaScript's "." ends a line. A mindmap's comment (%%…),
+ * which mermaid reads with ".*", ends a node's line at any of them, and
+ * the next node begins after it: nodes a U+2028 apart are on one line of
+ * "\n" (1,000 of them in 9 KB took 19 s; M6/P6 B fix check 3).
+ */
+const lineEnd = /\r\n?|[\n\u2028\u2029]/;
+
 /** tooLarge tells whether source is a mindmap of more than mindmapLines lines, as mermaid tells its type. */
 function tooLarge(mermaid: Drawer, source: string): boolean {
   let type: string;
@@ -254,7 +262,7 @@ function tooLarge(mermaid: Drawer, source: string): boolean {
     // No type: mermaid cannot draw it either.
     return false;
   }
-  return type === "mindmap" && source.split("\n").filter((line) => line.trim() !== "").length > mindmapLines;
+  return type === "mindmap" && source.split(lineEnd).filter((line) => line.trim() !== "").length > mindmapLines;
 }
 
 /** nextId is an id no drawing's elements' ids begin with. */

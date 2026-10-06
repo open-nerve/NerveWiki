@@ -219,6 +219,16 @@
     overflow-y: hidden;
   }
 
+  /* Where a formula is laid out first, on its own, as it is typeset
+     (math.ts): out of the view's flow, unseen, nothing of it reaching out. */
+  .nw-reading .nw-math-measure {
+    position: absolute;
+    width: 0;
+    height: 0;
+    visibility: hidden;
+    contain: strict;
+  }
+
   .nw-reading :is(.nw-scroll, pre, span.nw-math-block):focus-visible {
     outline: 2px solid var(--ring);
     outline-offset: 2px;
