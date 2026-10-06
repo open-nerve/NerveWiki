@@ -1,13 +1,21 @@
 import { useMemo } from "react";
 import { Link } from "react-router";
-import useSWR from "swr";
 
 import { useT } from "../../i18n/i18n";
-import type { PageView } from "../../services/page.service";
+import type { Notebook } from "../../services/notebook.service";
+import { usePageView } from "./page-view";
 import { PanelSection } from "./panel-section";
 
 /** A heading of the page: its id, its level and its text. */
 type Heading = { id: string; level: number; text: string };
+
+/** The outline reads the view only as the reading view does: on its own, never. */
+const readsNothing = {
+  revalidateOnMount: false,
+  revalidateOnFocus: false,
+  revalidateOnReconnect: false,
+  revalidateIfStale: false,
+} as const;
 
 /**
  * PageOutline is the page's headings as its reading view has them (M6/P7
@@ -17,9 +25,9 @@ type Heading = { id: string; level: number; text: string };
  * anchor does: the view has the heading show and take the focus. A page
  * without headings has no outline.
  */
-export function PageOutline({ notebook, page }: { notebook: string; page: string }) {
+export function PageOutline({ notebook, page }: { notebook: Notebook; page: string }) {
   const t = useT();
-  const { data } = useSWR<PageView>(["page-view", notebook, page], null);
+  const { data } = usePageView(notebook, page, readsNothing);
   const html = data?.html;
   const headings = useMemo(() => (html === undefined ? [] : headingsOf(html)), [html]);
   if (headings.length === 0) {
@@ -45,10 +53,12 @@ export function PageOutline({ notebook, page }: { notebook: string; page: string
 
 /**
  * headingsOf is the headings of a page's HTML that an anchor leads to: those
- * with an id the server gave (nw-), in their order, with their text: a
- * formula's is its TeX, as the server writes it. One without text is left
- * out, as it would be a link to nothing one could read. The HTML, the
- * server's sanitized, is parsed in a template, inert: nothing of it loads.
+ * with an id the server gave (nw-), in their order, but those of the
+ * footnotes, with their text: a formula's is its TeX, as the server writes
+ * it; a footnote's number and an image's address are not. One without
+ * text is left out, as it would be a link to nothing one could read. The
+ * HTML, the server's sanitized, is parsed in a template, inert: nothing of
+ * it loads.
  */
 function headingsOf(html: string): Heading[] {
   const template = document.createElement("template");
@@ -57,7 +67,14 @@ function headingsOf(html: string): Heading[] {
   for (const heading of template.content.querySelectorAll<HTMLElement>(
     "h1[id^='nw-'], h2[id^='nw-'], h3[id^='nw-'], h4[id^='nw-'], h5[id^='nw-'], h6[id^='nw-']"
   )) {
-    const text = (heading.textContent ?? "").replace(/\s+/g, " ").trim();
+    if (heading.closest(".footnotes") !== null) {
+      continue;
+    }
+    const copy = heading.cloneNode(true) as HTMLElement;
+    for (const left of copy.querySelectorAll("sup[id^='nw-fnref'], .nw-image > a")) {
+      left.remove();
+    }
+    const text = (copy.textContent ?? "").replace(/\s+/g, " ").trim();
     if (text !== "") {
       headings.push({ id: heading.id, level: Number(heading.tagName.slice(1)), text });
     }

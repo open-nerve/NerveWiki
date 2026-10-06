@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 
 import { createNotebook } from "../../fixtures/notebooks";
+import { countAnswers } from "../../fixtures/browser";
 import { createPage, readContent } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
 import { pageHeading, saveEdit, startEditing, wikiPagePath } from "../../fixtures/wiki-pages";
@@ -56,7 +57,7 @@ test("L5 (page): [[ completes a page by its title and by an alias, # a tag; noth
   await expect.poll(() => completions(page)).toEqual([["Goal", "→ Target"]]);
   await pick(page);
   await page.keyboard.type(" #proj");
-  await expect.poll(() => completions(page)).toEqual([["project/alpha", "1 pages"]]);
+  await expect.poll(() => completions(page)).toEqual([["project/alpha", "1 page"]]);
   await pick(page);
 
   // In inline code, between its backticks, nothing completes.
@@ -80,4 +81,41 @@ test("L5 (page): [[ completes a page by its title and by an alias, # a tag; noth
     `/${workspace.slug}/notebooks/${notebook.id}/tags/${encodeURIComponent("project/alpha")}`
   );
   await expect(article.locator("code")).toHaveText("[[Tar");
+});
+
+test("L5 (page, input method): a composition closes the completion, none opens while it composes, and once it ends the page of its text is listed and picked; one read for the [[", async ({
+  api,
+  signedInPage,
+}, testInfo) => {
+  const { pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
+  const notebook = await createNotebook(api, pat, workspace.slug, "Plans");
+  await createPage(api, pat, notebook.id, "会议纪要");
+  await createPage(api, pat, notebook.id, "Plans");
+  const source = await createPage(api, pat, notebook.id, "Source", null, "");
+  const page = await signedInPage(tokens);
+  const targetReads = countAnswers(page, "GET", `/api/v0/notebooks/${notebook.id}/link-targets`);
+  await page.goto(wikiPagePath(workspace.slug, notebook.id, source.id));
+  await expect(pageHeading(page, "Source")).toBeVisible();
+  await startEditing(page);
+  // Chromium's input method, as the DevTools protocol drives it.
+  const ime = await page.context().newCDPSession(page);
+
+  await page.keyboard.type("[[");
+  await expect.poll(() => completions(page)).toEqual(expect.arrayContaining([["Plans", ""]]));
+  for (const text of ["h", "hu", "hui", "huiy", "huiyi"]) {
+    // oxlint-disable-next-line no-await-in-loop -- one composition step after another
+    await ime.send("Input.imeSetComposition", { text, selectionStart: text.length, selectionEnd: text.length });
+    // oxlint-disable-next-line no-await-in-loop -- as above
+    await expect(completion(page)).toHaveCount(0);
+  }
+  // A while for a completion to open, which none does.
+  await page.waitForTimeout(500);
+  await expect(completion(page)).toHaveCount(0);
+
+  await ime.send("Input.insertText", { text: "会议" });
+  await expect.poll(() => completions(page)).toEqual([["会议纪要", ""]]);
+  await pick(page);
+  await saveEdit(page);
+  expect((await readContent(api, pat, source.id)).content).toBe("[[会议纪要]]");
+  expect(targetReads()).toBe(1);
 });

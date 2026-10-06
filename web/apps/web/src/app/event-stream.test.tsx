@@ -434,6 +434,19 @@ test("a connection reads from the outside in: a notebook no longer seen leaves t
   expect(server.sent).toEqual([]);
 });
 
+test("a connection reads the right column after the tree: a page deleted meanwhile leaves before its backlinks and properties would be read", async () => {
+  const { server, events } = await open();
+  server.nodes = [notes];
+
+  events.last().send("reset", { reason: "expired" });
+  await waitFor(() => expect(events.streams).toHaveLength(2));
+  events.last().hello();
+
+  expect(await screen.findByRole("heading", { level: 1, name: "Page not found" })).toBeTruthy();
+  await settle();
+  expect(server.sent).toEqual(["GET nodes"]);
+});
+
 test("the tab editing the page does not read its reading view again", async () => {
   const user = userEvent.setup();
   const { server, events } = await open();

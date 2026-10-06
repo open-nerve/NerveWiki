@@ -32,6 +32,7 @@ export const phraseKeys = {
   "Selection deleted": "editor.phrase.selectionDeleted",
   "$ unchanged lines": "editor.phrase.unchangedLines",
   Completions: "editor.phrase.completions",
+  "$ page": "editor.phrase.page",
   "$ pages": "editor.phrase.pages",
 } as const satisfies Record<string, MessageKey>;
 

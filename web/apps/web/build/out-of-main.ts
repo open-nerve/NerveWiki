@@ -17,7 +17,7 @@ const lazy = [
   {
     name: "the editor",
     modules: packageModule(String.raw`@(?:codemirror|lezer)|style-mod|w3c-keyname|crelt`),
-    entries: /[\\/]src[\\/]editor[\\/](?:(?:source-editor|conflict-view)\.tsx|loaded[\\/][^\\/]+\.ts)$/,
+    entries: /[\\/]src[\\/]editor[\\/](?:(?:source-editor|conflict-view)\.tsx|loaded[\\/][^\\/]+\.tsx?)$/,
   },
   { name: "KaTeX", modules: packageModule("katex"), entries: packageModule("katex") },
   {

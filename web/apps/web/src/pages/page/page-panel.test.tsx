@@ -35,8 +35,8 @@ function shownPanel(): Promise<HTMLElement> {
 
 /** section is the right column's section titled title. */
 function section(title: string): HTMLElement {
-  const summary = within(panel()).getByText(title, { selector: "summary" });
-  const details = summary.closest("details");
+  const heading = within(panel()).getByRole("heading", { level: 2, name: title });
+  const details = heading.closest("details");
   expect(details).not.toBeNull();
   return details as HTMLElement;
 }
@@ -62,7 +62,7 @@ function outlined(): string[][] {
     .map((item) => [item.textContent ?? "", item.style.paddingLeft]);
 }
 
-test("the outline lists the page's headings with an id, by their text, indented by their level from the page's highest", async () => {
+test("the outline lists the page's headings with an id, but the footnotes', by their text without a footnote's number or an image's address, indented by their level from the page's highest", async () => {
   const server = pageServer();
   server.views.set(install.id, {
     html: [
@@ -71,6 +71,9 @@ test("the outline lists the page's headings with an id, by their text, indented 
       '<h4 id="nw-energy">Energy <span class="nw-math">E=mc^2</span></h4>',
       '<h2 id="nw-section"> </h2><h2>No id</h2>',
       '<h3 id="nw-intro-1">Intro</h3>',
+      '<h2 id="nw-notes">Notes<sup id="nw-fnref:1"><a href="#nw-fn:1" class="footnote-ref">1</a></sup></h2>',
+      '<h3 id="nw-has-image">Has <span class="nw-image">alt <a href="https://x.test/i.png">https://x.test/i.png</a></span> image</h3>',
+      '<div class="footnotes"><ol><li id="nw-fn:1"><h4 id="nw-in-a-note">In a note</h4></li></ol></div>',
     ].join(""),
     revision: 1,
   });
@@ -82,6 +85,8 @@ test("the outline lists the page's headings with an id, by their text, indented 
     ["Set up", "0.75rem"],
     ["Energy E=mc^2", "1.5rem"],
     ["Intro", "0.75rem"],
+    ["Notes", "0rem"],
+    ["Has alt image", "0.75rem"],
   ]);
 });
 
@@ -207,49 +212,63 @@ test("a page that links here the tree does not have yet shows once the tree is r
   expect(await within(section("Backlinks")).findByRole("link", { name: "Draft" })).toBeTruthy();
 });
 
-test("more reads the next page of the backlinks and adds it, until the last; read again, the list starts from its first", async () => {
+/** backlinkPage is a page of backlinks: a page that links here count times, then the cursor of the next. */
+function backlinkPage(id: string, count: number, next: string | null) {
+  return { data: [{ id, count, contexts: [] }], next_cursor: next };
+}
+
+test("more reads the next page and adds it, the last one taking the focus to it; read again, the list is as many pages, from the first", async () => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
   const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
   const server = pageServer();
-  server.backlinks.set(install.id, [
-    { data: [{ id: guide.id, count: 1, contexts: [] }], next_cursor: "1" },
-    { data: [{ id: notes.id, count: 1, contexts: [] }], next_cursor: null },
-  ]);
+  server.backlinks.set(install.id, [backlinkPage(guide.id, 1, "1"), backlinkPage(notes.id, 1, null)]);
   renderApp(pagePath(install.id), server.app);
   await within(await shownPanel()).findByRole("link", { name: "Guide" });
 
-  await user.click(within(section("Backlinks")).getByRole("button", { name: "More" }));
-  await within(section("Backlinks")).findByRole("link", { name: "Notes" });
+  within(section("Backlinks")).getByRole("button", { name: "More backlinks" }).focus();
+  await user.keyboard("{Enter}");
+  const added = await within(section("Backlinks")).findByRole("link", { name: "Notes" });
   expect(backlinked()).toEqual([["Guide"], ["Notes"]]);
-  expect(within(section("Backlinks")).queryByRole("button", { name: "More" })).toBeNull();
-  expect(server.sent).toContain(`GET backlinks ${install.id} 1`);
+  expect(within(section("Backlinks")).queryByRole("button", { name: "More backlinks" })).toBeNull();
+  await waitFor(() => expect(document.activeElement).toBe(added));
 
-  server.backlinks.set(install.id, [
-    { data: [{ id: guide.id, count: 2, contexts: [] }], next_cursor: "1" },
-    { data: [{ id: notes.id, count: 1, contexts: [] }], next_cursor: null },
-  ]);
+  server.backlinks.set(install.id, [backlinkPage(guide.id, 2, "1"), backlinkPage(notes.id, 3, null)]);
+  const before = server.sent.length;
   await readAgain();
-  await waitFor(() => expect(backlinked()).toEqual([["Guide", " · 2 links"]]));
-  expect(within(section("Backlinks")).getByRole("button", { name: "More" })).toBeTruthy();
+  await waitFor(() =>
+    expect(backlinked()).toEqual([
+      ["Guide", " · 2 links"],
+      ["Notes", " · 3 links"],
+    ])
+  );
+  expect(server.sent.slice(before).filter((each) => each.startsWith("GET backlinks"))).toEqual([
+    `GET backlinks ${install.id}`,
+    `GET backlinks ${install.id} 1`,
+  ]);
 });
 
-test("a next page read as the list is read again, which changed, is not added; one that fails says so, and more reads it again", async () => {
+test("a next page that fails says so, and more reads it again; one added while the list is read again has the list read again whole", async () => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
   const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
-  let first = { data: [{ id: guide.id, count: 1, contexts: [] as string[] }], next_cursor: "1" };
+  let first = backlinkPage(guide.id, 1, "1");
+  let held = Promise.resolve();
   let next: () => Promise<Response> = failing;
   const server = pageServer({
     answers: {
-      "GET /api/v0/pages/*/backlinks": (request) => {
+      "GET /api/v0/pages/*/backlinks": async (request) => {
         const cursor = new URL(request.url).searchParams.get("cursor");
         server.sent.push(`GET backlinks ${cursor ?? ""}`.trim());
-        return cursor === null ? json(first) : next();
+        if (cursor !== null) {
+          return next();
+        }
+        await held;
+        return json(first);
       },
     },
   });
   renderApp(pagePath(install.id), server.app);
   await within(await shownPanel()).findByRole("link", { name: "Guide" });
-  const more = within(section("Backlinks")).getByRole("button", { name: "More" });
+  const more = within(section("Backlinks")).getByRole("button", { name: "More backlinks" });
 
   await user.click(more);
   expect(await within(section("Backlinks")).findByRole("alert")).toBeTruthy();
@@ -260,12 +279,60 @@ test("a next page read as the list is read again, which changed, is not added; o
   await waitFor(() => expect(server.sent.filter((each) => each === "GET backlinks 1")).toHaveLength(2));
   expect(within(section("Backlinks")).queryByRole("alert")).toBeNull();
   expect(more.getAttribute("aria-busy")).toBe("true");
-  first = { data: [{ id: guide.id, count: 2, contexts: [] }], next_cursor: "1" };
+
+  // The list is read again, its first page's answer held, as the next page comes: SWR drops that read.
+  let release!: () => void;
+  held = new Promise((resolve) => (release = resolve));
+  first = backlinkPage(guide.id, 3, "1");
+  await readAgain();
+  await waitFor(() => expect(server.sent.filter((each) => each === "GET backlinks")).toHaveLength(2));
+  next = () => Promise.resolve(json(backlinkPage(notes.id, 2, null)));
+  answer(json(backlinkPage(notes.id, 1, null)));
+  await waitFor(() => expect(backlinked()).toEqual([["Guide"], ["Notes"]]));
+  release();
+  await waitFor(() =>
+    expect(backlinked()).toEqual([
+      ["Guide", " · 3 links"],
+      ["Notes", " · 2 links"],
+    ])
+  );
+});
+
+test("a next page read after a cursor the list read again no longer ends with is not added", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
+  let first = backlinkPage(guide.id, 1, "1");
+  let answer!: (response: Response) => void;
+  const server = pageServer({
+    answers: {
+      "GET /api/v0/pages/*/backlinks": (request) => {
+        const cursor = new URL(request.url).searchParams.get("cursor");
+        return cursor === null ? json(first) : new Promise((resolve) => (answer = resolve));
+      },
+    },
+  });
+  renderApp(pagePath(install.id), server.app);
+  await within(await shownPanel()).findByRole("link", { name: "Guide" });
+  const more = within(section("Backlinks")).getByRole("button", { name: "More backlinks" });
+
+  await user.click(more);
+  await waitFor(() => expect(more.getAttribute("aria-busy")).toBe("true"));
+  first = backlinkPage(guide.id, 2, "2");
   await readAgain();
   await waitFor(() => expect(backlinked()).toEqual([["Guide", " · 2 links"]]));
-  answer(json({ data: [{ id: notes.id, count: 1, contexts: [] }], next_cursor: null }));
+  answer(json(backlinkPage(notes.id, 1, null)));
   await waitFor(() => expect(more.getAttribute("aria-busy")).toBeNull());
   expect(backlinked()).toEqual([["Guide", " · 2 links"]]);
+});
+
+test("a first page of pages the tree does not have yet, with more to read, does not say none link here", async () => {
+  const draft = pageNode(9, "Draft");
+  const server = pageServer();
+  server.backlinks.set(install.id, [backlinkPage(draft.id, 1, "1"), backlinkPage(notes.id, 1, null)]);
+  renderApp(pagePath(install.id), server.app);
+
+  expect(await within(await shownPanel()).findByRole("button", { name: "More backlinks" })).toBeTruthy();
+  expect(within(section("Backlinks")).queryByText("No page links here.")).toBeNull();
 });
 
 /** failing answers a read that failed. */
@@ -297,6 +364,9 @@ test("the properties show each key and its value; a property link its text, lead
         key: "related",
         value: ["[[ Notes ]]", "[Linux *x*](Linux)", "[[Gone#Part]]", "[[Guide # Intro]]", "[[#Top]]", ["x"]],
       },
+      // A table's \\| ends the target; a title may hold ](.
+      { key: "escaped", value: "[[Guide\\|]]" },
+      { key: "titled", value: '[Linux](Linux "a](b")' },
     ],
     links: [
       { key: "up", node_id: guide.id },
@@ -304,6 +374,8 @@ test("the properties show each key and its value; a property link its text, lead
       { key: "related.1", node_id: linux.id },
       { key: "related.2", node_id: null },
       { key: "related.3", node_id: guide.id },
+      { key: "escaped", node_id: guide.id },
+      { key: "titled", node_id: linux.id },
     ],
   });
   const { router } = renderApp(pagePath(install.id), server.app);
@@ -317,6 +389,8 @@ test("the properties show each key and its value; a property link its text, lead
     ["meta", '{"a":1}'],
     ["up", "the guide"],
     ["related", 'NotesLinux *x*Gone > PartGuide > Intro[[#Top]]["x"]'],
+    ["escaped", "Guide"],
+    ["titled", "Linux"],
   ]);
   const links = within(section("Properties")).getAllByRole("link");
   expect(links.map((link) => [link.textContent, link.getAttribute("href")])).toEqual([
@@ -324,6 +398,8 @@ test("the properties show each key and its value; a property link its text, lead
     ["Notes", pagePath(notes.id)],
     ["Linux *x*", pagePath(linux.id)],
     ["Guide > Intro", pagePath(guide.id)],
+    ["Guide", pagePath(guide.id)],
+    ["Linux", pagePath(linux.id)],
   ]);
   expect(within(section("Properties")).getByText("Gone > Part").className).toContain("decoration-dashed");
 
@@ -356,4 +432,45 @@ test("while the page is edited its backlinks and properties are shown", async ()
   await pageEditor();
   expect(within(section("Backlinks")).getByRole("link", { name: "Guide" })).toBeTruthy();
   expect(properties()).toEqual([["status", "draft"]]);
+});
+
+test("property links at a path two values share are theirs in turn, in the order written, those an object holds too", async () => {
+  const server = pageServer();
+  server.properties.set(install.id, {
+    valid: true,
+    properties: [
+      { key: "rel.0", value: "[[Guide]]" },
+      { key: "rel", value: ["[[Notes]]", "[draft]"] },
+      { key: "a", value: { b: "[[Missing]]" } },
+      { key: "a.b", value: "[[Linux]]" },
+      // A value that is no link takes none: the next value at its path has it.
+      { key: "x.0", value: "plain" },
+      { key: "x", value: ["[[Guide]]"] },
+    ],
+    links: [
+      { key: "rel.0", node_id: guide.id },
+      { key: "rel.0", node_id: notes.id },
+      { key: "a.b", node_id: null },
+      { key: "a.b", node_id: linux.id },
+      { key: "x.0", node_id: guide.id },
+    ],
+  });
+  renderApp(pagePath(install.id), server.app);
+
+  await within(await shownPanel()).findByRole("link", { name: "Linux" });
+  expect(properties()).toEqual([
+    ["rel.0", "Guide"],
+    ["rel", "Notes[draft]"],
+    ["a", '{"b":"[[Missing]]"}'],
+    ["a.b", "Linux"],
+    ["x.0", "plain"],
+    ["x", "Guide"],
+  ]);
+  const links = within(section("Properties")).getAllByRole("link");
+  expect(links.map((link) => [link.textContent, link.getAttribute("href")])).toEqual([
+    ["Guide", pagePath(guide.id)],
+    ["Notes", pagePath(notes.id)],
+    ["Linux", pagePath(linux.id)],
+    ["Guide", pagePath(guide.id)],
+  ]);
 });

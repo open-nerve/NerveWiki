@@ -144,9 +144,15 @@
                   "../pages/**",
                   "../components/**",
                   "../onboarding/**",
-                  "../session/**"
+                  "../session/**",
+                  "../../app/**",
+                  "../../stores/**",
+                  "../../pages/**",
+                  "../../components/**",
+                  "../../onboarding/**",
+                  "../../session/**"
                 ],
-                "message": "编辑器与阅读视图不依赖页面、store 与会话：需要的经上下文交进来"
+                "message": "编辑器与阅读视图（及其子目录，如 editor/loaded/）不依赖页面、store 与会话：需要的经上下文交进来"
               }
             ]
           }

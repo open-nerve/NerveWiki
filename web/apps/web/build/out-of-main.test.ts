@@ -48,6 +48,9 @@ test("an editor's extension the editor loads (editor/loaded/), by a dynamic impo
   expect(lazyLeak([registry({ imports: ["link-completion.js"] }), chunk("page.js"), extension, codemirror])).toBe(
     `index.js → link-completion.js → codemirror.js, which is loaded before the editor, holds the editor's ${view}`
   );
+  // A module of React's there (.tsx) too.
+  const tsx = { ...extension, facadeModuleId: "/repo/web/apps/web/src/editor/loaded/link-panel.tsx" };
+  expect(lazyLeak([registry({ dynamicImports: ["link-completion.js"] }), tsx, codemirror])).toBeUndefined();
   // Elsewhere than editor/loaded/, it is not the editor's.
   const elsewhere = { ...extension, facadeModuleId: "/repo/web/apps/web/src/editor/link-completion.ts" };
   expect(lazyLeak([registry({ dynamicImports: ["link-completion.js"] }), elsewhere, codemirror])).toBe(

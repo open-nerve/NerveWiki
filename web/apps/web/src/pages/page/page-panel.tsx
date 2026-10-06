@@ -13,6 +13,7 @@ import { PageProperties } from "./page-properties";
  * itself when it is taller; narrower, after the content. Never the
  * window's scroll anchor: held at the top, it would not move as what is
  * above the reader in the page changes size, nor have the window follow.
+ * Scrolling itself, it pads its edges for the focus rings.
  */
 export function PagePanel({
   notebook,
@@ -29,9 +30,9 @@ export function PagePanel({
   return (
     <aside
       aria-label={t("page.panel")}
-      className="min-w-0 space-y-4 xl:sticky xl:top-6 xl:max-h-[calc(100svh-3rem)] xl:overflow-y-auto xl:[overflow-anchor:none]"
+      className="min-w-0 space-y-4 xl:sticky xl:top-5 xl:-m-1 xl:max-h-[calc(100svh-2.5rem)] xl:overflow-y-auto xl:p-1 xl:[overflow-anchor:none]"
     >
-      {!editing && <PageOutline notebook={notebook.id} page={page.id} />}
+      {!editing && <PageOutline notebook={notebook} page={page.id} />}
       <PageBacklinks notebook={notebook} page={page.id} href={href} />
       <PageProperties notebook={notebook} page={page.id} href={href} />
     </aside>

@@ -153,6 +153,21 @@ test("an address's anchor has the view go to its element once the HTML is in, wh
   expect(scrolled).toEqual([heading, screen.getByRole("heading", { level: 2, name: "Part Two" })]);
 });
 
+test("an anchor's element in a folded callout opens it to show, then takes the focus", async () => {
+  const scrolled = scrolls();
+  const server = pageServer();
+  server.views.set(install.id, {
+    html: '<details class="nw-callout"><summary>Folded</summary><div><details><summary>In</summary><h2 id="nw-deep">Deep</h2></details></div></details>',
+    revision: 1,
+  });
+  renderApp(`${pagePath(install.id)}#nw-deep`, server.app);
+
+  const heading = await screen.findByRole("heading", { level: 2, name: "Deep", hidden: true });
+  await waitFor(() => expect(document.activeElement).toBe(heading));
+  expect(scrolled).toEqual([heading]);
+  expect([...screen.getByRole("article").querySelectorAll("details")].map((each) => each.open)).toEqual([true, true]);
+});
+
 test("an anchor written escaped names the element of its id", async () => {
   const scrolled = scrolls();
   const server = pageServer();
