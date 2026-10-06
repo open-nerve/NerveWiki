@@ -1,3 +1,4 @@
+import type { LinkLanding } from "../services/linking.service";
 import type { NotebookRole } from "../services/notebook.service";
 import type { EditLock, NodeMove, PageContent, PageView, TaskToggle, TreeNode } from "../services/page.service";
 import { json, notebookJSON, problem, signedInApp, userJSON, type Answer } from "./fakes";
@@ -83,6 +84,11 @@ type PageServerOptions = {
  * page.revision_mismatch on another revision, 422 at an offset of no item,
  * the page as it is for an item in that state, 409 page.locked while a
  * session holds the page; otherwise it writes the content and its view.
+ *
+ * A tag's pages are the ids tags has for it, by its name as the path
+ * carries it decoded (M6/P5), none for a tag it does not have. A link's
+ * landing (M6/P6) is what landings has for its target, by default a page
+ * titled the target at the root.
  */
 export function pageServer({
   role = "admin",
@@ -99,6 +105,10 @@ export function pageServer({
     viewsDown: false,
     notebookGone: false,
     writesDown: false,
+    /** The pages of each tag, by its name. */
+    tags: new Map<string, string[]>(),
+    /** The landing of each link's target, or its answer. */
+    landings: new Map<string, LinkLanding | (() => Response | Promise<Response>)>(),
     /** hold opens holder's session of the page pageId, its lease expiresIn seconds; it answers its id. */
     hold(pageId: string, holder: Person = bob, expiresIn = 120): string {
       const id = `held-${(++held).toString()}`;
@@ -148,6 +158,21 @@ export function pageServer({
         : json(server.views.get(id) ?? { html: `<p>${page.name}</p>`, revision: 1 });
     },
     "GET /api/v0/pages/*/edit-lock": (request) => json(server.lockOf(idOf(request))),
+    "GET /api/v0/pages/*/link-landing": (request) => {
+      const target = new URL(request.url).searchParams.get("target") ?? "";
+      server.sent.push(`GET landing ${target}`);
+      const landing = server.landings.get(target) ?? {
+        node_id: null,
+        landing: { parent_id: null, title: target },
+        reason: null,
+      };
+      return typeof landing === "function" ? landing() : json(landing);
+    },
+    [`GET /api/v0/notebooks/${notebookJSON.id}/tags/*`]: (request) => {
+      const tag = decodeURIComponent(new URL(request.url).pathname.split("/")[6] ?? "");
+      server.sent.push(`GET tag ${tag}`);
+      return json({ data: (server.tags.get(tag) ?? []).map((id) => ({ id })) });
+    },
     "DELETE /api/v0/pages/*/edit-lock": (request) => {
       server.sent.push(`RELEASE ${server.nodes.find((node) => node.id === idOf(request))?.name}`);
       server.unlock(idOf(request), ada);

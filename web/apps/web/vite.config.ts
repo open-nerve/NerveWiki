@@ -2,7 +2,7 @@ import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vitest/config";
 
-import { editorOutOfMain } from "./build/editor-out-of-main.ts";
+import { outOfMain } from "./build/out-of-main.ts";
 
 // make web-dev serves the app with hot reload and forwards everything that is
 // the backend's to make run, so the pages talk to the same origin as in
@@ -10,7 +10,7 @@ import { editorOutOfMain } from "./build/editor-out-of-main.ts";
 const backend = "http://127.0.0.1:8080";
 
 export default defineConfig({
-  plugins: [react(), tailwindcss(), editorOutOfMain()],
+  plugins: [react(), tailwindcss(), outOfMain()],
   server: {
     host: "127.0.0.1",
     port: 5173,

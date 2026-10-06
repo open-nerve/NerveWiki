@@ -1,8 +1,9 @@
 /* The reading view (M4/P5 design 3.8): the server's HTML, whose elements
    Tailwind's preflight leaves unstyled, set as a page to read, with the
    renderer's marks (.nw-props, .nw-image, footnotes, task items, links to
-   pages not there) and the code highlighting's colours, light and, under
-   .dark, dark. */
+   pages not there, tags, callouts, highlights, embeds: M6/P6 design 12),
+   what scrolls sideways in its own region, and the code highlighting's
+   colours, light and, under .dark, dark. */
 
 @layer components {
   .nw-reading {
@@ -18,11 +19,27 @@
     --nw-hl-addition-background: #dafbe1;
     --nw-hl-deletion: #82071e;
     --nw-hl-deletion-background: #ffebe9;
+    --nw-tag: oklch(0.47 0.16 290);
+    --nw-tag-background: oklch(0.95 0.03 290);
+    --nw-mark-background: oklch(0.93 0.11 95);
 
     line-height: 1.7;
     overflow-wrap: break-word;
-    /* A table wider than the page scrolls here, not the page. */
+    /* What is wide and has no region of its own (a table of the writer's
+       own HTML, a long formula in a line) scrolls here, not the page; and
+       nothing of the view paints past it (a formula's negative space), over
+       the app. It does not scroll down: a formula's strut past its bottom
+       would take the wheel. Its padding keeps the focus rings in; its
+       margin, its place. */
     overflow-x: auto;
+    overflow-y: hidden;
+    margin-inline: -0.25rem;
+    padding: 0.25rem;
+  }
+
+  /* The padding keeps the first child's margin in the view: the page's heading has its own. */
+  .nw-reading > :first-child {
+    margin-top: 0;
   }
 
   .dark .nw-reading {
@@ -38,6 +55,9 @@
     --nw-hl-addition-background: #033a16;
     --nw-hl-deletion: #ffdcd7;
     --nw-hl-deletion-background: #67060c;
+    --nw-tag: oklch(0.82 0.09 290);
+    --nw-tag-background: oklch(0.32 0.07 290);
+    --nw-mark-background: oklch(0.45 0.09 95);
   }
 
   .nw-reading > * + * {
@@ -74,10 +94,60 @@
     text-underline-offset: 4px;
   }
 
-  /* A link to a page that is not there (M6/P3 design 6.7): no address. */
+  /* A link to a page that is not there (M6/P3 design 6.7): no address, a
+     button that opens a dialog (M6/P6 design 7), busy while the server
+     says where its page would go. */
   .nw-reading a.nw-unresolved {
     color: var(--muted-foreground);
     text-decoration-style: dashed;
+  }
+
+  .nw-reading a.nw-unresolved[role="button"] {
+    cursor: pointer;
+  }
+
+  .nw-reading a.nw-unresolved[aria-busy="true"] {
+    cursor: progress;
+    opacity: 0.6;
+  }
+
+  .nw-reading :is(a, [role="button"]):focus-visible {
+    border-radius: 0.125rem;
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+
+  .nw-reading a.nw-tag:focus-visible {
+    border-radius: 9999px;
+  }
+
+  /* A tag: a link to its pages, or its text where it has none. */
+  .nw-reading .nw-tag {
+    padding: 0.05rem 0.45rem;
+    border-radius: 9999px;
+    background: var(--nw-tag-background);
+    color: var(--nw-tag);
+    font-size: 0.875em;
+    text-decoration: none;
+  }
+
+  .nw-reading a.nw-tag:hover {
+    text-decoration: underline;
+  }
+
+  /* An embed, shown as a link to what it embeds. */
+  .nw-reading a.nw-embed {
+    padding: 0 0.3rem;
+    border: 1px solid var(--border);
+    border-radius: 0.25rem;
+    text-decoration: none;
+  }
+
+  .nw-reading mark {
+    padding: 0 0.1em;
+    border-radius: 0.125rem;
+    background: var(--nw-mark-background);
+    color: inherit;
   }
 
   .nw-reading :is(ul, ol) {
@@ -133,15 +203,39 @@
     line-height: 1.5;
   }
 
-  /* What scrolls sideways takes the focus while it does (scroll-focus.ts). */
-  .nw-reading:focus-visible,
-  .nw-reading pre:focus-visible {
+  /* What is wider than the page scrolls sideways in its own region, not the
+     view: the server's wrapper of a table, the properties and a block
+     formula, a diagram's, a code block, a formula displayed in a paragraph.
+     Each takes the focus while it does (scroll-regions.ts). None scrolls
+     down: a formula's strut past its bottom would take the wheel. */
+  .nw-reading .nw-scroll {
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  .nw-reading span.nw-math-block {
+    display: block;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  /* Where a formula is laid out first, on its own, as it is typeset
+     (math.ts): out of the view's flow, unseen, nothing of it reaching out. */
+  .nw-reading .nw-math-measure {
+    position: absolute;
+    width: 0;
+    height: 0;
+    visibility: hidden;
+    contain: strict;
+  }
+
+  .nw-reading :is(.nw-scroll, pre, span.nw-math-block):focus-visible {
     outline: 2px solid var(--ring);
     outline-offset: 2px;
   }
 
   /* A table stays a table, whose semantics some screen readers drop from
-     one displayed as a block: a wide one scrolls with the reading view. */
+     one displayed as a block: a wide one scrolls in its wrapper. */
   .nw-reading :is(th, td) {
     padding: 0.35rem 0.75rem;
     border: 1px solid var(--border);
@@ -169,6 +263,106 @@
 
   .nw-reading table.nw-props table.nw-props {
     margin: 0;
+  }
+
+  /* A callout (M6/P1): its type's colour and icon, as Obsidian's; one
+     whose type is none of these is a note. A folding one is a details. */
+  .nw-reading .nw-callout {
+    --nw-callout: 8 109 221;
+    --nw-callout-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z'/%3E%3Cpath d='m15 5 4 4'/%3E%3C/svg%3E");
+
+    padding: 0.75rem 1rem;
+    border-left: 3px solid rgb(var(--nw-callout));
+    border-radius: var(--radius);
+    background: rgb(var(--nw-callout) / 0.08);
+  }
+
+  .nw-reading .nw-callout > * + * {
+    margin-top: 0.5rem;
+  }
+
+  .nw-reading .nw-callout > :is(.nw-callout-title, summary) {
+    color: rgb(var(--nw-callout));
+    font-weight: 600;
+  }
+
+  .dark .nw-reading .nw-callout > :is(.nw-callout-title, summary) {
+    color: color-mix(in oklab, rgb(var(--nw-callout)) 65%, white);
+  }
+
+  .nw-reading .nw-callout > :is(.nw-callout-title, summary)::before {
+    content: "";
+    display: inline-block;
+    width: 1em;
+    height: 1em;
+    margin-right: 0.4rem;
+    vertical-align: -0.125em;
+    background-color: currentColor;
+    mask: var(--nw-callout-icon) center / contain no-repeat;
+  }
+
+  .nw-reading details.nw-callout > summary {
+    cursor: pointer;
+  }
+
+  .nw-reading .nw-callout:is([data-callout="abstract"], [data-callout="summary"], [data-callout="tldr"]) {
+    --nw-callout: 0 191 188;
+    --nw-callout-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect width='8' height='4' x='8' y='2' rx='1' ry='1'/%3E%3Cpath d='M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2'/%3E%3Cpath d='M12 11h4'/%3E%3Cpath d='M12 16h4'/%3E%3Cpath d='M8 11h.01'/%3E%3Cpath d='M8 16h.01'/%3E%3C/svg%3E");
+  }
+
+  .nw-reading .nw-callout:is([data-callout="info"]) {
+    --nw-callout: 8 109 221;
+    --nw-callout-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cpath d='M12 16v-4'/%3E%3Cpath d='M12 8h.01'/%3E%3C/svg%3E");
+  }
+
+  .nw-reading .nw-callout:is([data-callout="todo"]) {
+    --nw-callout: 8 109 221;
+    --nw-callout-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cpath d='m16 9-5.5 5.5L8 12'/%3E%3C/svg%3E");
+  }
+
+  .nw-reading .nw-callout:is([data-callout="tip"], [data-callout="hint"], [data-callout="important"]) {
+    --nw-callout: 0 191 188;
+    --nw-callout-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3q1 4 4 6.5t3 5.5a1 1 0 0 1-14 0 5 5 0 0 1 1-3 1 1 0 0 0 5 0c0-2-1.5-3-1.5-5q0-2 2.5-4'/%3E%3C/svg%3E");
+  }
+
+  .nw-reading .nw-callout:is([data-callout="success"], [data-callout="check"], [data-callout="done"]) {
+    --nw-callout: 8 185 78;
+    --nw-callout-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E");
+  }
+
+  .nw-reading .nw-callout:is([data-callout="question"], [data-callout="help"], [data-callout="faq"]) {
+    --nw-callout: 236 117 0;
+    --nw-callout-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cpath d='M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3'/%3E%3Cpath d='M12 17h.01'/%3E%3C/svg%3E");
+  }
+
+  .nw-reading .nw-callout:is([data-callout="warning"], [data-callout="caution"], [data-callout="attention"]) {
+    --nw-callout: 236 117 0;
+    --nw-callout-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3'/%3E%3Cpath d='M12 9v4'/%3E%3Cpath d='M12 17h.01'/%3E%3C/svg%3E");
+  }
+
+  .nw-reading .nw-callout:is([data-callout="failure"], [data-callout="fail"], [data-callout="missing"]) {
+    --nw-callout: 233 49 71;
+    --nw-callout-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M18 6 6 18'/%3E%3Cpath d='m6 6 12 12'/%3E%3C/svg%3E");
+  }
+
+  .nw-reading .nw-callout:is([data-callout="danger"], [data-callout="error"]) {
+    --nw-callout: 233 49 71;
+    --nw-callout-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M15.914 4a1.5 1.5 0 00-2.474-1.561l-9 9A1.5 1.5 0 005.5 14h4.002a.5.5 0 01.471.666L8.086 20a1.5 1.5 0 002.475 1.56l9-9A1.5 1.5 0 0018.5 10h-3.997a.5.5 0 01-.472-.667z'/%3E%3C/svg%3E");
+  }
+
+  .nw-reading .nw-callout:is([data-callout="bug"]) {
+    --nw-callout: 233 49 71;
+    --nw-callout-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 20v-9'/%3E%3Cpath d='M14 7a4 4 0 0 1 4 4v3a6 6 0 0 1-12 0v-3a4 4 0 0 1 4-4z'/%3E%3Cpath d='M14.12 3.88 16 2'/%3E%3Cpath d='M21 21a4 4 0 0 0-3.81-4'/%3E%3Cpath d='M21 5a4 4 0 0 1-3.55 3.97'/%3E%3Cpath d='M22 13h-4'/%3E%3Cpath d='M3 21a4 4 0 0 1 3.81-4'/%3E%3Cpath d='M3 5a4 4 0 0 0 3.55 3.97'/%3E%3Cpath d='M6 13H2'/%3E%3Cpath d='m8 2 1.88 1.88'/%3E%3Cpath d='M9 7.13V6a3 3 0 1 1 6 0v1.13'/%3E%3C/svg%3E");
+  }
+
+  .nw-reading .nw-callout:is([data-callout="example"]) {
+    --nw-callout: 120 82 238;
+    --nw-callout-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 5h.01'/%3E%3Cpath d='M3 12h.01'/%3E%3Cpath d='M3 19h.01'/%3E%3Cpath d='M8 5h13'/%3E%3Cpath d='M8 12h13'/%3E%3Cpath d='M8 19h13'/%3E%3C/svg%3E");
+  }
+
+  .nw-reading .nw-callout:is([data-callout="quote"], [data-callout="cite"]) {
+    --nw-callout: 158 158 158;
+    --nw-callout-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M16 3a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2 1 1 0 0 1 1 1v1a2 2 0 0 1-2 2 1 1 0 0 0-1 1v2a1 1 0 0 0 1 1 6 6 0 0 0 6-6V5a2 2 0 0 0-2-2z'/%3E%3Cpath d='M5 3a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2 1 1 0 0 1 1 1v1a2 2 0 0 1-2 2 1 1 0 0 0-1 1v2a1 1 0 0 0 1 1 6 6 0 0 0 6-6V5a2 2 0 0 0-2-2z'/%3E%3C/svg%3E");
   }
 
   /* An image, shown as its text and its address, which is a link. */

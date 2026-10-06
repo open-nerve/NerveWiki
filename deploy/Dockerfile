@@ -3,12 +3,13 @@
 # 基础镜像按摘要固定，注释中是对应的标签；升级时同时改两者。
 
 # 前端。先只复制包清单与锁文件安装依赖，源码变了这一层照样复用。
-# 只安装 @nervewiki/web 与它依赖的包；e2e 的清单也要复制，锁文件里有它
+# 只安装 @nervewiki/web 与它依赖的包；e2e 的清单也要复制，锁文件里有它；依赖的补丁（patches/，KaTeX 的）在安装时打上
 FROM node:24-trixie-slim@sha256:8ec5d7557396cfe32d21c3f9c13072355ceab22b584578ca4bb28af31120cffe AS web
 ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 RUN corepack enable
 WORKDIR /src
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY patches/ patches/
 COPY web/apps/web/package.json web/apps/web/
 COPY web/packages/api-client/package.json web/packages/api-client/
 COPY e2e/package.json e2e/

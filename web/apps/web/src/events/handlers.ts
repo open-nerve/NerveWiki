@@ -30,13 +30,17 @@ export function typeOf(event: StreamEvent): string {
 /**
  * pagesChanged reads again a tree that changed and a page's reading view
  * whose cached revision is older than the one written (or not read yet),
- * through the refresher.
+ * through the refresher; and the pages of the notebook's tags, which a page
+ * written or deleted may join or leave (M6 design 4.8).
  */
 const pagesChanged: EventHandler = (data, context) => {
   const { cache, mutate, refresher } = context;
   const { notebook_id: notebook, tree, pages } = data as EventPages;
   if (tree) {
     void mutate(["pages", notebook]);
+  }
+  if (tree || pages === null || pages.length > 0) {
+    readTagPages(notebook, context);
   }
   if (pages === null) {
     readViews(notebook, context);
@@ -58,14 +62,16 @@ const pagesChanged: EventHandler = (data, context) => {
  * linksChanged reads again the reading views of the pages whose links lead
  * elsewhere (M6 design 4.8, M6/P3 design 6.7): at the revision shown, so
  * whatever that is, through the refresher; every view of the notebook for
- * too many pages to name. The pages whose backlinks changed, its targets,
- * are for the backlinks to read again.
+ * too many pages to name, and its tags' pages, as after a reindex. The
+ * pages whose backlinks changed, its targets, are for the backlinks to
+ * read again.
  */
 const linksChanged: EventHandler = (data, context) => {
   const { mutate, refresher } = context;
   const { notebook_id: notebook, pages } = data as EventLinks;
   if (pages === null) {
     readViews(notebook, context);
+    readTagPages(notebook, context);
     return;
   }
   for (const id of pages) {
@@ -78,6 +84,13 @@ const linksChanged: EventHandler = (data, context) => {
 function readViews(notebook: string, { mutate, refresher }: EventContext) {
   refresher.request(`page-views ${notebook}`, () => {
     void mutate((key) => Array.isArray(key) && key[0] === "page-view" && key[1] === notebook);
+  });
+}
+
+/** readTagPages reads the pages of each tag of notebook shown again, through the refresher. */
+function readTagPages(notebook: string, { mutate, refresher }: EventContext) {
+  refresher.request(`tag-pages ${notebook}`, () => {
+    void mutate((key) => Array.isArray(key) && key[0] === "tag-pages" && key[1] === notebook);
   });
 }
 

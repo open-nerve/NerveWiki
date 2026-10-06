@@ -1,0 +1,335 @@
+import type { KatexOptions } from "katex";
+
+import type { Enhancement } from "./enhancement";
+
+/** The longest formula typeset, in bytes of UTF-8: a longer one shows its TeX (M6/P6 design 10). */
+export const formulaLimit = 4000;
+
+/**
+ * The deepest a typeset formula's elements may nest; a deeper one shows
+ * its TeX. Past about 800, Chromium's layout crashes the page (135 levels
+ * of x^{x^…}, in 541 bytes: M6/P6 B fix check f2-2), and well before, a
+ * chain of styled groups takes the layout a time that grows faster than
+ * its depth: 1.3 s at 489, 129 ms at 150 (second fix check). Ten nested
+ * fractions are 76 deep, a 30 by 30 matrix 21.
+ */
+const formulaDepth = 150;
+
+/** How long, in milliseconds, formulas are typeset in one task before the page's thread is given back. */
+export const taskTime = 50;
+
+/**
+ * How long, in milliseconds, a view's formulas may take to lay out in
+ * their places; past it, the rest show their TeX. The view laid out again
+ * (zoomed, printed) lays them out all at once, in one task: 40 formulas of
+ * styled groups 150 deep, each laid out in a task of its own as it was
+ * typeset, took 5 s at once when the page was zoomed (M6/P6 B fix check
+ * 3). Laid out in a box of its own, a wide formula takes a third of what
+ * it takes in its paragraph (fix check 4): the budget counts them in their
+ * places.
+ */
+export const layoutBudget = 1000;
+
+/** What typesetting uses of KaTeX; the tests give their own. */
+export type Typesetter = { render: (tex: string, element: HTMLElement, options: KatexOptions) => void };
+
+/**
+ * KaTeX's options (M6 design 4.9): no command that loads, links or styles
+ * from the TeX (trust false), sizes and macro expansions bounded, and an
+ * error thrown, never rendered, so that the formula shows its TeX instead.
+ * What strict mode would warn of, with the writer's TeX, is let be. KaTeX
+ * still warns of a character it has no metrics for (€, Hebrew, an emoji):
+ * one character, in a message of its own.
+ */
+const options: KatexOptions = { trust: false, maxSize: 50, maxExpand: 1000, throwOnError: true, strict: false };
+
+/** loadKatex loads KaTeX and its stylesheet, with its fonts, in chunks of their own, once a view has a formula. */
+export async function loadKatex(): Promise<Typesetter> {
+  const [katex] = await Promise.all([import("katex"), import("katex/dist/katex.min.css")]);
+  return katex.default;
+}
+
+const encoder = new TextEncoder();
+
+/** The control words refused in the TeX KaTeX reads: those that define a macro, and those that write to the console. */
+const refused = new Set([
+  "def",
+  "gdef",
+  "edef",
+  "xdef",
+  "let",
+  "futurelet",
+  "global",
+  "long",
+  "newcommand",
+  "renewcommand",
+  "providecommand",
+  "message",
+  "errmessage",
+  "show",
+]);
+
+/** A control sequence as KaTeX's lexer reads one: a word of letters and "@", or a symbol (\\ among them). */
+const controlSequence = /\\(?:[a-zA-Z@]+|[^])/g;
+
+/**
+ * definesMacros tells whether tex defines a macro (\def and its kin,
+ * \let, \global, \newcommand and its kin) or names one of KaTeX's own (a
+ * control word with "@": what \tag defines among them): it is not
+ * typeset; nor is one that writes to the reader's console (\message,
+ * \errmessage, \show). A macro used again and again makes a short formula expand
+ * without end, past what maxExpand bounds, which counts the expansions,
+ * not what they expand to (a formula of 290 bytes took 37 s, M6/P6 B
+ * review). KaTeX has no other way to make a control word (no \csname),
+ * and none of its own macros repeats what it is given. The control
+ * sequences are read as KaTeX's lexer reads them: \\@ is a row's end,
+ * then "@".
+ */
+function definesMacros(tex: string): boolean {
+  for (const [sequence] of tex.matchAll(controlSequence)) {
+    const name = sequence.slice(1);
+    if (refused.has(name) || name.includes("@")) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** What of KaTeX mermaid typesets a label's formulas with. */
+export type LabelTypesetter = { renderToString: (tex: string, options?: KatexOptions) => string };
+
+const guarded = new WeakSet<LabelTypesetter>();
+
+/**
+ * guardLabels has katex's renderToString, which mermaid calls for a
+ * label's $$…$$ with options of its own (no maxSize), refuse what math
+ * refuses and take math's options. What it is given is the label as
+ * mermaid sanitized it, which a look at the diagram's source cannot see:
+ * `\d<x></x>ef` is `\def` by then (M6/P6 B fix check f2-3). Longer than
+ * formulaLimit, or what it answers, parsed, nesting deeper than
+ * formulaDepth, is refused too. A refusal fails the drawing, and the
+ * diagram shows its source.
+ */
+export function guardLabels(katex: LabelTypesetter): void {
+  if (guarded.has(katex)) {
+    return;
+  }
+  guarded.add(katex);
+  const { renderToString } = katex;
+  katex.renderToString = (tex, given) => {
+    if (encoder.encode(tex).length > formulaLimit || definesMacros(tex)) {
+      throw new Error("A formula past the limits is not typeset");
+    }
+    const html = renderToString(tex, { ...given, ...options });
+    const parsed = document.createElement("template");
+    parsed.innerHTML = html;
+    if (deeperThan(parsed.content, formulaDepth)) {
+      throw new Error("A formula past the limits is not typeset");
+    }
+    return html;
+  };
+}
+
+/**
+ * math typesets the reading view's formulas with KaTeX, which load loads
+ * (M6/P6 design 10): each .nw-math, the TeX the server wrote, a block's
+ * (nw-math-block) displayed. One KaTeX cannot read, longer than
+ * formulaLimit, that defines a macro (definesMacros), or whose typesetting
+ * nests deeper than formulaDepth, shows its TeX. They are typeset for
+ * taskTime in a task, KaTeX working on the page's thread, which is given
+ * back between (now is the clock). Each is laid out first on its own, in a
+ * box of the view out of its flow and unseen (nw-math-measure), so that
+ * the task's clock counts the layout, which can take far longer than
+ * KaTeX, and counts it once: laid out in its paragraph, each formula would
+ * lay out the paragraph again (2,000 in one took 12.8 s; M6/P6 B fix check
+ * 3). The formulas of a task are put in their places together as it ends,
+ * and laid out there, which layoutBudget counts; past it, the rest show
+ * their TeX. What else the view has to lay out as a task begins, what
+ * other enhancements changed, is laid out before the formulas are,
+ * counted to the task, not to the formulas. Undone, the formulas typeset
+ * show their TeX again, their typesetting kept for the view (kept), and
+ * those not reached yet stay as they are. Run again in the view, read
+ * again (a task ticked, another session's save), a formula it typeset
+ * before is put again at once, each typesetting once, the budget counting
+ * on from what they took: the view keeps its heights, and what the reader
+ * looks at stays where it was, with no TeX shown meanwhile (M6/P6 B fix
+ * check 5). A formula typeset keeps its TeX (data-tex), which names a
+ * task's item (taskText) as before it was typeset (fix check 6).
+ */
+export function math(load: () => Promise<Typesetter>, now: () => number = () => performance.now()): Enhancement {
+  return (container) => {
+    const formulas = [...container.querySelectorAll<HTMLElement>(".nw-math")];
+    const previous = kept.get(container);
+    kept.delete(container);
+    if (formulas.length === 0) {
+      return undefined;
+    }
+    let undone = false;
+    const typeset = new Map<HTMLElement, Typeset>();
+    const pending = putKept(previous, formulas, typeset);
+    // The formulas put again took their shares of the layout: the budget counts on from them.
+    let laidOut = 0;
+    for (const { share } of typeset.values()) {
+      laidOut += share;
+    }
+    const measure = document.createElement("div");
+    measure.className = "nw-math-measure";
+    const undo = () => {
+      undone = true;
+      measure.remove();
+      kept.set(container, keep(typeset));
+    };
+    if (pending.length === 0) {
+      return undo;
+    }
+    void (async () => {
+      let katex: Typesetter;
+      try {
+        katex = await load();
+      } catch (error) {
+        console.error("KaTeX could not be loaded: the formulas show their TeX", error);
+        return;
+      }
+      if (undone) {
+        return;
+      }
+      container.append(measure);
+      let ready: { formula: HTMLElement; tex: string; made: HTMLElement }[] = [];
+      const place = () => {
+        if (ready.length === 0) {
+          return;
+        }
+        for (const { formula, tex, made } of ready) {
+          put(formula, [...made.childNodes], tex);
+        }
+        const before = now();
+        container.getBoundingClientRect();
+        const took = now() - before;
+        laidOut += took;
+        for (const { formula, tex } of ready) {
+          typeset.set(formula, { tex, share: took / ready.length });
+        }
+        ready = [];
+      };
+      // Each task, the first too, lays the view out first.
+      let started = -Infinity;
+      for (const formula of pending) {
+        if (now() - started >= taskTime) {
+          place();
+          // oxlint-disable-next-line no-await-in-loop -- the page's thread is given back between the tasks
+          await new Promise((resolve) => setTimeout(resolve, 0));
+          if (undone) {
+            return;
+          }
+          started = now();
+          container.getBoundingClientRect();
+        }
+        if (laidOut >= layoutBudget) {
+          break;
+        }
+        const tex = formula.textContent;
+        const made =
+          encoder.encode(tex).length <= formulaLimit && !definesMacros(tex)
+            ? render(katex, tex, formula.classList.contains("nw-math-block"))
+            : undefined;
+        if (made !== undefined) {
+          measure.replaceChildren(made);
+          made.getBoundingClientRect();
+          ready.push({ formula, tex, made });
+        }
+      }
+      place();
+      measure.remove();
+    })();
+    return undo;
+  };
+}
+
+/** A formula typeset: its TeX, and its share of the time its task's formulas took to lay out in their places. */
+type Typeset = { tex: string; share: number };
+
+/** A view's formulas' typesetting, kept as it is undone, by keyOf: each one's nodes and its share of the layout. */
+type Kept = Map<string, { nodes: Node[]; share: number }[]>;
+
+/** What each view's formulas were typeset as when it was last undone, by the view's container. */
+const kept = new WeakMap<HTMLElement, Kept>();
+
+/** keyOf is what a formula's typesetting is kept by: its TeX, displayed or not. */
+function keyOf(formula: HTMLElement, tex: string): string {
+  return `${formula.classList.contains("nw-math-block") ? "block" : "inline"}\n${tex}`;
+}
+
+/**
+ * putKept puts in each of formulas a typesetting of its TeX that previous
+ * keeps, each one once, and records it in typeset; it answers the formulas
+ * left to typeset.
+ */
+function putKept(
+  previous: Kept | undefined,
+  formulas: HTMLElement[],
+  typeset: Map<HTMLElement, Typeset>
+): HTMLElement[] {
+  const pending: HTMLElement[] = [];
+  for (const formula of formulas) {
+    const tex = formula.textContent;
+    const again = previous?.get(keyOf(formula, tex))?.pop();
+    if (again === undefined) {
+      pending.push(formula);
+    } else {
+      put(formula, again.nodes, tex);
+      typeset.set(formula, { tex, share: again.share });
+    }
+  }
+  return pending;
+}
+
+/** put has formula show nodes, tex typeset, keeping tex (data-tex). */
+function put(formula: HTMLElement, nodes: Node[], tex: string) {
+  formula.replaceChildren(...nodes);
+  formula.dataset.tex = tex;
+}
+
+/** keep has the typeset formulas show their TeX again, and answers their typesetting, by keyOf. */
+function keep(typeset: Map<HTMLElement, Typeset>): Kept {
+  const typesetting: Kept = new Map();
+  for (const [formula, { tex, share }] of typeset) {
+    const key = keyOf(formula, tex);
+    const one = { nodes: [...formula.childNodes], share };
+    formula.textContent = tex;
+    formula.removeAttribute("data-tex");
+    const same = typesetting.get(key);
+    if (same === undefined) {
+      typesetting.set(key, [one]);
+    } else {
+      same.push(one);
+    }
+  }
+  return typesetting;
+}
+
+/**
+ * render is tex typeset, displayed if a block's, out of the page, where
+ * nothing is laid out; undefined if KaTeX cannot, or its typesetting nests
+ * deeper than formulaDepth.
+ */
+function render(katex: Typesetter, tex: string, displayed: boolean): HTMLElement | undefined {
+  const typeset = document.createElement("span");
+  try {
+    katex.render(tex, typeset, { ...options, displayMode: displayed });
+  } catch {
+    return undefined;
+  }
+  return deeperThan(typeset, formulaDepth) ? undefined : typeset;
+}
+
+/** deeperThan tells whether node's descendants nest more than levels deep. */
+function deeperThan(node: ParentNode, levels: number): boolean {
+  let level = Array.from(node.children);
+  for (let depth = 1; level.length > 0; depth += 1) {
+    if (depth > levels) {
+      return true;
+    }
+    level = level.flatMap((each) => Array.from(each.children));
+  }
+  return false;
+}

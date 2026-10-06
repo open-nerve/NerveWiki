@@ -39,6 +39,25 @@ export function childrenOf(tree: TreeIndex, parent: string | null): readonly Tre
 }
 
 /**
+ * inTreeOrder are the pages of ids that the tree has, in the order the
+ * left column shows them: each before the pages under it, siblings in
+ * their order.
+ */
+export function inTreeOrder(tree: TreeIndex, ids: ReadonlySet<string>): TreeNode[] {
+  const found: TreeNode[] = [];
+  const visit = (parent: string | null) => {
+    for (const node of childrenOf(tree, parent)) {
+      if (ids.has(node.id)) {
+        found.push(node);
+      }
+      visit(node.id);
+    }
+  };
+  visit(null);
+  return found;
+}
+
+/**
  * ancestorsOf are the pages above the page id, from the root down to its
  * parent: none at the root, or for a page not in the tree.
  */

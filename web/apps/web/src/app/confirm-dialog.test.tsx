@@ -7,7 +7,7 @@ import { I18nProvider } from "../i18n/i18n";
 import { ConfirmDialog } from "./confirm-dialog";
 
 /** A caller that holds the dialog and stays: it opens it with its own button and logs each closing. */
-function Holder({ closed }: { closed: boolean[] }) {
+function Holder({ closed, tone }: { closed: boolean[]; tone?: "destructive" | "default" }) {
   const [open, setOpen] = useState(false);
   return (
     <>
@@ -22,6 +22,7 @@ function Holder({ closed }: { closed: boolean[] }) {
         sendingLabel="Deleting…"
         cancelLabel="Cancel"
         confirm={() => Promise.resolve()}
+        tone={tone}
       />
     </>
   );
@@ -47,4 +48,23 @@ test("a held dialog tells its caller whether confirm went through, and opens ane
   await user.click(within(again).getByRole("button", { name: "Cancel" }));
 
   await waitFor(() => expect(closed).toEqual([true, false]));
+});
+
+test("the confirm button is destructive unless the dialog's tone is the default one", async () => {
+  const user = userEvent.setup();
+  for (const [tone, look] of [
+    [undefined, "bg-destructive"],
+    ["default", "bg-primary"],
+  ] as const) {
+    const { unmount } = render(
+      <I18nProvider locale="en">
+        <Holder closed={[]} tone={tone} />
+      </I18nProvider>
+    );
+    // oxlint-disable-next-line no-await-in-loop -- one tone after another
+    await user.click(screen.getByRole("button", { name: "Open" }));
+    const button = within(screen.getByRole("alertdialog")).getByRole("button", { name: "Delete" });
+    expect(button.classList.contains(look), String(tone)).toBe(true);
+    unmount();
+  }
 });

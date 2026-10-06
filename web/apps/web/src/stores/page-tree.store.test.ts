@@ -19,7 +19,8 @@ function held<T>() {
 /**
  * store is a tree over a fake service: the tree it lists is nodes, and
  * what went out is in sent; a write answers what writes says for its
- * page, by default at once.
+ * page, by default at once. The tag's pages are Guide, and a landing is
+ * its target at the root.
  */
 function store(nodes: TreeNode[] = [guide, install, linux, notes]) {
   const sent: string[] = [];
@@ -62,7 +63,17 @@ function store(nodes: TreeNode[] = [guide, install, linux, notes]) {
       content_updated_by: "",
     }),
   };
-  return { pages: new PageTreeStore(service, "plans"), sent, state };
+  const linking = {
+    tagPages: async (notebook: string, tag: string) => {
+      sent.push(`tag ${notebook} ${tag}`);
+      return [guide.id];
+    },
+    linkLanding: async (id: string, target: string) => {
+      sent.push(`landing ${id} ${target}`);
+      return { node_id: null, landing: { parent_id: null, title: target }, reason: null };
+    },
+  };
+  return { pages: new PageTreeStore(service, "plans", linking), sent, state };
 }
 
 const titleTaken = new ApiError(409, { status: 409, code: "page.title_taken", title: "taken" });
@@ -327,4 +338,15 @@ test("a toggle out longer than toggleLimit holds the page's others back no longe
   } finally {
     vi.useRealTimers();
   }
+});
+
+test("the pages of a tag and a link's landing are read for the notebook", async () => {
+  const { pages, sent } = store();
+  expect(await pages.tagPages("a/b")).toEqual([guide.id]);
+  expect(await pages.landing(guide.id, "Plans/x")).toEqual({
+    node_id: null,
+    landing: { parent_id: null, title: "Plans/x" },
+    reason: null,
+  });
+  expect(sent).toEqual(["tag plans a/b", `landing ${guide.id} Plans/x`]);
 });

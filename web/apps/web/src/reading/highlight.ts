@@ -43,7 +43,10 @@ export function codeHighlight(worker: () => HighlightWorker): Enhancement {
   return (container) => {
     const blocks = new Map<number, { code: Element; text: string }>();
     const requests: HighlightRequest[] = [];
-    for (const [id, code] of container.querySelectorAll('pre > code[class^="language-"]').entries()) {
+    // A diagram's source is drawn, not coloured (diagrams.ts).
+    for (const [id, code] of container
+      .querySelectorAll('pre > code[class^="language-"]:not(.language-mermaid)')
+      .entries()) {
       const text = code.textContent;
       if (encoder.encode(text).length <= blockLimit) {
         blocks.set(id, { code, text });

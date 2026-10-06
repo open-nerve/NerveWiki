@@ -49,15 +49,27 @@ export const taskToggle: Enhancement = (container, context) => {
 /**
  * taskText is the text of the item box ticks: what follows the box in its
  * paragraph, heading or list item up to the item's next block (a sublist,
- * a code block, a quote), its spaces collapsed.
+ * a code block, a quote), its spaces collapsed; a formula's its TeX,
+ * typeset or not, which math keeps (data-tex): the same on every read.
  */
 export function taskText(box: Element): string {
   let text = "";
   for (let node = box.nextSibling; node !== null && !(node instanceof Element && blocks.has(node.tagName));) {
-    text += node.textContent ?? "";
+    text += textOf(node);
     node = node.nextSibling;
   }
   return text.replace(/\s+/g, " ").trim();
+}
+
+/** textOf is node's text, a typeset formula's its TeX. */
+function textOf(node: Node): string {
+  if (!(node instanceof Element)) {
+    return node.textContent ?? "";
+  }
+  if (node instanceof HTMLElement && node.classList.contains("nw-math") && node.dataset.tex !== undefined) {
+    return node.dataset.tex;
+  }
+  return Array.from(node.childNodes, textOf).join("");
 }
 
 /** blocks are the elements a tight list item's next block starts with, as the server renders them. */

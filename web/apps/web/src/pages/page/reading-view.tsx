@@ -1,3 +1,4 @@
+import { reaction } from "mobx";
 import { observer } from "mobx-react-lite";
 import { useContext, useEffect, useLayoutEffect, useRef, type RefObject } from "react";
 import { useLocation, useNavigate } from "react-router";
@@ -11,8 +12,10 @@ import { taskText } from "../../reading/task-toggle";
 import { ApiError } from "../../services/api";
 import type { Notebook } from "../../services/notebook.service";
 import type { TreeNode } from "../../services/page.service";
-import { usePageTree } from "../../stores/context";
+import { useT } from "../../i18n/i18n";
+import { usePageTree, useStore } from "../../stores/context";
 import { useWorkspace } from "../workspace/workspace-layout";
+import { useUnresolvedLinks } from "./unresolved-link";
 
 /**
  * ReadingView is the page's content as the server renders it (M4/P5 design
@@ -23,8 +26,11 @@ import { useWorkspace } from "../workspace/workspace-layout";
  *
  * Once the HTML is in, the app's enhancements run on it in their order;
  * before the HTML is replaced, and when the view goes, they are undone in
- * the reverse order (reading/enhancement.ts). A writer's tick task items
- * through it, one of the page's at a time (the page tree store's
+ * the reverse order (reading/enhancement.ts). They run again as the
+ * language changes, their names in it: the reader changes it in a menu,
+ * which has the focus. Not as the theme does, the system's maybe as one
+ * reads: those that draw in it follow it (onThemeChange). A writer's
+ * tick task items through it, one of the page's at a time (the page tree store's
  * oneToggle), and refused tells the page what was refused, undefined as a
  * toggle starts (M5/P6 design 3.5). A task item's checkbox that had the
  * focus as the HTML is replaced has it back in the new HTML, without a
@@ -51,6 +57,10 @@ import { useWorkspace } from "../workspace/workspace-layout";
  * id that had the focus as the HTML is replaced, the anchor's among them,
  * has it back in the new HTML, shown again if it showed and no longer
  * does: a view read again stays where it is.
+ *
+ * A link to a page that is not there, acted on, opens the view's dialog
+ * (unresolved-link.tsx): a writer may create the page, where the server
+ * says it would go (M6/P6 design 7).
  */
 export const ReadingView = observer(function ReadingView({
   notebook,
@@ -70,6 +80,8 @@ export const ReadingView = observer(function ReadingView({
   const { slug } = useWorkspace();
   const pages = usePageTree(notebook);
   const enhancements = useContext(Enhancements);
+  const t = useT();
+  const { preferences } = useStore();
   const navigate = useNavigate();
   const location = useLocation();
   // The element with an id focused as the HTML was replaced, and whether it showed.
@@ -89,9 +101,19 @@ export const ReadingView = observer(function ReadingView({
   // The page's latest refused: the HTML is not replaced for a new one.
   const latestRefused = useRef(refused);
   const latestUnanchored = useRef(unanchored);
+  const links = useUnresolvedLinks({
+    notebook,
+    page: page.id,
+    pages,
+    article,
+    reload: () => void mutate(),
+    report: (failure) => latestRefused.current(failure),
+  });
+  const latestUnresolved = useRef(links.unresolved);
   useEffect(() => {
     latestRefused.current = refused;
     latestUnanchored.current = unanchored;
+    latestUnresolved.current = links.unresolved;
   });
   const html = data?.html;
   const revision = data?.revision;
@@ -108,6 +130,9 @@ export const ReadingView = observer(function ReadingView({
       page: page.id,
       revision,
       role,
+      t,
+      theme: () => preferences.resolvedTheme,
+      onThemeChange: (listener) => reaction(() => preferences.resolvedTheme, listener),
       reload: () => void mutate(),
       // An address without an anchor arrives at the page, whose heading takes the focus: the link had it.
       navigate: (to) => void navigate(to, to.includes("#") ? undefined : { state: arrived }),
@@ -130,6 +155,7 @@ export const ReadingView = observer(function ReadingView({
           }
         : undefined,
       report: (failure) => latestRefused.current(failure),
+      unresolved: (link) => void latestUnresolved.current(link),
     });
     const focused = focusedTask.current;
     const asked = toggled.current;
@@ -169,7 +195,7 @@ export const ReadingView = observer(function ReadingView({
           : undefined;
       undo();
     };
-  }, [html, revision, enhancements, slug, notebookId, role, page.id, mutate, pages, navigate]);
+  }, [html, revision, enhancements, slug, notebookId, role, t, preferences, page.id, mutate, pages, navigate]);
   useLayoutEffect(() => {
     const container = article.current;
     if (container === null || html === undefined) {
@@ -222,8 +248,13 @@ export const ReadingView = observer(function ReadingView({
   if (data === undefined) {
     return <NotLoaded error={error} retry={() => void mutate()} />;
   }
-  // Named by the page: it can get the focus to scroll a wide content (reading/scroll-focus.ts).
-  return <article ref={article} aria-label={page.name} className="nw-reading min-w-0" />;
+  // Named by the page, a landmark: what is wider than it scrolls in its own region (reading/scroll-regions.ts).
+  return (
+    <>
+      <article ref={article} aria-label={page.name} className="nw-reading min-w-0" />
+      {links.dialog}
+    </>
+  );
 });
 
 /**

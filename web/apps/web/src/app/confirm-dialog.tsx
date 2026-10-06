@@ -43,14 +43,18 @@ type ConfirmDialogProps = Opening & {
   texts?: ProblemTexts;
   /** The dialog's own text of a refusal, where it has one: one that names more than its code does. */
   explain?: (error: unknown) => string | undefined;
+  /** How the confirm button looks: destructive, by default, or plain for what is not, a page's creation. */
+  tone?: "destructive" | "default";
 };
 
 /**
  * ConfirmDialog asks to confirm what cannot be undone (M1/P6 design 3.5,
- * 3.6): confirm goes out once, however often it is pressed, and nothing
- * closes the dialog while it is out; a refusal stays in the dialog. With
- * typedConfirmation, the user types a word first, in the field the
- * dialog opens on, where Enter confirms; closing the dialog clears it.
+ * 3.6), or, in the default tone, what is worth a question all the same (a
+ * page created for a link, M6/P6 design 7): confirm goes out once, however
+ * often it is pressed, and nothing closes the dialog while it is out; a
+ * refusal stays in the dialog. With typedConfirmation, the user types a
+ * word first, in the field the dialog opens on, where Enter confirms;
+ * closing the dialog clears it.
  */
 export function ConfirmDialog({
   trigger,
@@ -65,6 +69,7 @@ export function ConfirmDialog({
   typedConfirmation,
   texts,
   explain,
+  tone = "destructive",
 }: ConfirmDialogProps) {
   const t = useT();
   const [own, setOwn] = useState(false);
@@ -155,7 +160,7 @@ export function ConfirmDialog({
               {cancelLabel}
             </Button>
           </AlertDialogCancel>
-          <Button variant="destructive" disabled={sending || !ready} onClick={() => void run()}>
+          <Button variant={tone} disabled={sending || !ready} onClick={() => void run()}>
             {sending ? sendingLabel : confirmLabel}
           </Button>
         </div>

@@ -82,7 +82,7 @@ test("PG5 (API): a page created with Markdown reads as HTML, its properties firs
   expect(again.data?.html).toContain('<h1 id="nw-q5">Q5</h1>');
 });
 
-test("PG5 (page): the reading view shows the page's properties first, then its heading, table, task items (the admin's enabled, with their positions), strikethrough, autolink and footnote, the frontmatter neither a rule nor a heading; its code is coloured by a worker of the app's own origin, and nothing breaks the CSP; a wide table lets the keyboard scroll the view", async ({
+test("PG5 (page): the reading view shows the page's properties first, then its heading, table, task items (the admin's enabled, with their positions), strikethrough, autolink and footnote, the frontmatter neither a rule nor a heading; its code is coloured by a worker of the app's own origin, and nothing breaks the CSP; a wide table scrolls sideways in a region of its own, which the keyboard can scroll", async ({
   api,
   db,
   signedInPage,
@@ -143,11 +143,16 @@ test("PG5 (page): the reading view shows the page's properties first, then its h
   // The frontmatter's fences are no thematic break and no setext heading.
   await expect(article.locator("hr")).toHaveCount(1);
   await expect(article.locator("h2")).toHaveCount(0);
-  // A table wider than the view makes it scroll sideways: the keyboard can, as it takes the focus.
-  await expect(article).toHaveAttribute("tabindex", "0");
-  await article.focus();
+  // A table wider than the view scrolls sideways in its wrapper, not the view: the keyboard can scroll it, as it
+  // takes the focus, a region named for what it holds. What fits is no region.
+  const wide = article.getByRole("region", { name: "Table", exact: true });
+  await expect(wide).toHaveAttribute("tabindex", "0");
+  await expect(article.getByRole("region")).toHaveCount(1);
+  await expect(article).not.toHaveAttribute("tabindex");
+  await wide.focus();
   await page.keyboard.press("ArrowRight");
-  await expect.poll(() => article.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+  await expect.poll(() => wide.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+  expect(await article.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
 
   const keyword = article.locator("pre > code.language-go span.hljs-keyword").first();
   await expect(keyword).toHaveText("func");

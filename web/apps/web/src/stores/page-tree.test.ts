@@ -10,6 +10,7 @@ import {
   freeTitle,
   heightOf,
   indexTree,
+  inTreeOrder,
   maxDepth,
   placeOfTitle,
   subtreeOf,
@@ -32,6 +33,16 @@ test("the children are each parent's, in the list's order", () => {
   expect(childrenOf(tree, guide.id).map((n) => n.name)).toEqual(["Install"]);
   expect(childrenOf(tree, linux.id)).toEqual([]);
   expect(tree.byId.get(install.id)).toBe(install);
+});
+
+test("pages in the tree's order are each before the pages under it, siblings in their order; one not in the tree is left out", () => {
+  // Listed with a sibling after the children of the one before it: the tree's order is not the list's.
+  const later = pageNode(5, "Later", guide);
+  const listed = indexTree([guide, notes, install, later, linux]);
+  const ids = new Set([notes, linux, later, guide].map((page) => page.id));
+  expect(inTreeOrder(listed, ids).map((n) => n.name)).toEqual(["Guide", "Linux", "Later", "Notes"]);
+  expect(inTreeOrder(listed, new Set(["nowhere", install.id]))).toEqual([install]);
+  expect(inTreeOrder(listed, new Set())).toEqual([]);
 });
 
 test("the ancestors go from the root down to the parent", () => {

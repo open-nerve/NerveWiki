@@ -10,6 +10,7 @@ import {
   type HighlightWorker,
 } from "./highlight";
 import { highlightBlock } from "./highlight-block";
+import { translator } from "../i18n/i18n";
 
 const context: ReadingContext = {
   workspace: "lab",
@@ -17,9 +18,13 @@ const context: ReadingContext = {
   page: "p",
   revision: 1,
   role: "reader",
+  t: translator("en"),
+  theme: () => "light",
+  onThemeChange: () => () => undefined,
   reload: () => undefined,
   navigate: () => undefined,
   report: () => undefined,
+  unresolved: () => undefined,
 };
 
 afterEach(() => {
@@ -94,6 +99,19 @@ test("a view without a block that names a language starts no worker", () => {
 
   expect(start).not.toHaveBeenCalled();
   expect(undo).toBeUndefined();
+});
+
+test("a diagram's source is not coloured: it is drawn", () => {
+  const worker = new FakeWorker();
+  const container = view(
+    '<pre><code class="language-mermaid">graph TD; a-->b</code></pre><pre><code class="language-go">x</code></pre>'
+  );
+  run(container, worker);
+  expect(worker.sent.map((request) => request.language)).toEqual(["go"]);
+  expect(container.querySelector("code.language-mermaid")?.innerHTML).toBe("graph TD; a--&gt;b");
+  const start = vi.fn(() => new FakeWorker());
+  expect(codeHighlight(start)(view('<pre><code class="language-mermaid">a</code></pre>'), context)).toBeUndefined();
+  expect(start).not.toHaveBeenCalled();
 });
 
 test("a language highlight.js does not have stays plain", () => {
