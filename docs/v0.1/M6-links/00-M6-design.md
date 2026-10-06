@@ -95,8 +95,8 @@ M6 结束时：
 - 语法扩展是纯粹的语法：wikilink、嵌入、标签、callout、注释、数学公式与高亮的渲染。
   - 它放在 `platform/markdown/obsidian`，与 M5 的 `platform/markdown/tasks` 并列；
   - goldmark 仍然只在 `platform/markdown` 之下导入，archtest 的 `markdownLibrariesStayInMarkdown` 不必改；
-  - 它用 `platform/markdown` 导出的 `inLinks` 变换与 `Linker`（P3 B），处理"链接文字里的 wikilink"（样例 030、040）：两条链接都计入，渲染时里面那条不做成 `<a>`，避免嵌套的链接。
-- 需要数据库的部分不在平台里：渲染时按页取链接状态的 `Fetch` 由 `linking` 模块给出，组合根把它交给 `obsidian.Extension(…)`，照 `markdownExtensions()` 登记。
+  - 它用自己的 `inLinks` 变换（`obsidian/view.go`，不导出）与 `platform/markdown` 导出的 `Linker` 接口（P3 B），处理"链接文字里的 wikilink"（样例 030、040）：两条链接都计入，渲染时里面那条不做成 `<a>`，避免嵌套的链接（M6 收尾修订：原写 `inLinks` 由 `platform/markdown` 导出）。
+- 需要数据库的部分不在平台里：渲染时按页解析链接的 `obsidian.Resolve` 由 `linking` 模块的 `ResolveLinks` 给出，组合根把它交给 `obsidian.Extension(obsidian.Options{Resolve})`，照 `markdownExtensions(resolve)` 登记；按页取数据的 `Fetch` 是方言自己的，调用这个 `Resolve`（M6 收尾修订）。
 
 **高亮**
 
@@ -603,9 +603,9 @@ M6 写出的移交（P3、P4 合并时落档）：
   - `FuzzParse`、`FuzzRender` 加带扩展的实例；
   - 改写的随机测试（4,000 个固定的种子）：随机的多层、带重名的树，随机的改名与移动；不变量是第 3 节第 4 条。`FuzzParse`、`FuzzRender` 是真正的模糊测试。
 - **性质测试**：随机的操作序列之后，增量维护的索引等于从头重建的结果（第 3 节第 3 条）。它不靠"候选选全了"的推理，专门抓候选的遗漏。
-- **交错**（13.1 第 18 条的做法）：
+- **交错**（总体设计 13.4 第 4 条的做法）：
   - 场景：改名与正文写；改名与心跳（会话在需要改写的页上）；两次改名；两次正文写（别名与链接）；删除与正文写（链接指向被删的页）；
-  - 每个交错结束时核对索引的不变式 `checkLinks`：索引的 revision 与正文一致，`resolved_id` 不指向已删的节点（"索引等于重建的结果"由性质测试 `TestTheIndexIsItsRebuild` 核对，`checkLinks` 不重建）。
+  - 每个交错结束时核对索引的不变式 `checkLinks`：索引的 revision 与正文一致，`resolved_id` 不指向已删的节点（"索引等于重建的结果"由性质测试 `TestTheIndexIsItsRebuild` 核对；收尾修订：每个交错结束时还经 `checkRebuilt` 重建一遍比较，M6 收尾审查 A-M5）。
 - **最后一跳**（13.1 第 21 条）：
   - 索引、改写、事件、扩展、补全、事件处理各有一个经组合根的测试；
   - 组合根交空时失败。

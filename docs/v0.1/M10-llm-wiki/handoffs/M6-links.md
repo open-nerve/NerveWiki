@@ -14,7 +14,7 @@ created: 2026-10-06
 | 待建页面 | `page_links.resolved_id IS NULL` 的链接，按 `target_key`（目标最后一段的标题键）分组计数；`target_key` 为 `NULL` 的目标无论树怎样都解析不到 |
 | 孤儿页 | 没有别的页的 `page_links.resolved_id` 指向它（反链的查询，`linking/app/backlinks.go`） |
 | 链接有歧义 | `page_links.ambiguous`（几页在每一项偏好上都相同，按 id 选了一页） |
-| frontmatter 解析失败 | `indexed_pages.frontmatter_valid = false`（这时没有属性、标签与别名） |
+| frontmatter 解析失败 | `indexed_pages.frontmatter_valid = false`（这时没有属性、frontmatter 的标签与别名；正文里的 `#标签` 照记） |
 | `sources` 指向无效、未消化的来源 | 属性链接带属性路径：`page_links.property_key` 是 `sources.0` 这样的路径（只有整个值恰好是一个链接的字符串才算，总体设计 4.4 末） |
 | 缺类型、缺摘要 | `page_properties` 的顶层键（`position` 是书写的次序，值是 jsonb） |
 

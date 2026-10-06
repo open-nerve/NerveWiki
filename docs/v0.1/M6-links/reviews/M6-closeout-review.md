@@ -29,15 +29,15 @@
 
 | # | 级别 | 发现 | 处置 |
 |---|---|---|---|
-| A-I1 | Important | **链接很多的页**：一页 5 MiB 的 `[[a]] ` 是 87 万条链接，一次保存 11–15.5 秒、堆 1.2–2.0 GiB，同一笔记本的另一次 11 字节的保存在索引锁上等 10.8 秒；八本笔记本错开保存时 6.1 GiB，45 秒时答 500。解析预算只管解析与提取结果（留十分之一），观察者把提取结果转成索引的行、写进数据库时的工作集不在预算里；只有标签与别名有上限 | 索引每页至多记前 10,000 条链接（`linking/domain.MaxLinks`，`ff6b042`）：超过的不进反链与"指向这一页"，阅读视图对索引里没有的即时解析，照样跳到它们的页；改写按索引找链接，所以它们在改名、移动时不改写（P3 文档 3.2 写明）。`TestThePageFactsKeepTheFirstMaxLinks`；整个程序上 `TestAPagesLinksPastTheIndexsBoundLeadWhereTheyResolve`（10,000 条之后的一条在阅读视图里仍解析）。配置注释、P2 文档、M12 的性能移交第 6 项随之改写（`a895bcf`）；最坏的保存约是 5,000 条时（70 ms）的两倍。负责人可以改判上限 |
+| A-I1 | Important | **链接很多的页**：一页 5 MiB 的 `[[a]] ` 是 87 万条链接，一次保存 11–15.5 秒、堆 1.2–2.0 GiB，同一笔记本的另一次 11 字节的保存在索引锁上等 10.8 秒；八本笔记本错开保存时 6.1 GiB，45 秒时答 500。解析预算只管解析与提取结果（留十分之一），观察者把提取结果转成索引的行、写进数据库时的工作集不在预算里；只有标签与别名有上限 | 索引每页至多记前 10,000 条链接（`linking/domain.MaxLinks`，`ff6b042`）：超过的不进反链与"指向这一页"，阅读视图对索引里没有的即时解析，照样跳到它们的页；改写按索引找链接，所以它们在改名、移动时不改写（P3 文档 3.2 写明）。`TestThePageFactsKeepTheFirstMaxLinks`；整个程序上 `TestAPagesLinksPastTheIndexsBoundLeadWhereTheyResolve`（10,000 条之后的一条在阅读视图里仍解析）。配置注释、P2 文档、M12 的性能移交第 6 项随之改写（`a895bcf`）；最坏的保存约是 5,000 条时（70 ms）的两倍。修复核对发现上限之后的链接每次读取都即时解析、按同名页数变慢（FA-I1），解析已改为线性，见核实修复。负责人可以改判上限 |
 | A-I2 / C-I2 | Important | 附件嵌入的渲染扩展点没建：`obsidian.Options` 只有 `Resolve` | 改由 M7 建立（负责人可以改判）：它的形状取决于附件能被解析，M6 的解析只答页面，现在建只能是一个整个程序上走不到的接口。M6 总设计第 8 节、总体设计 12.4 改写，接缝写进 [M7 的移交](../../M7-assets-transfer/handoffs/M6-links.md)第 1 项（`7957264`、`38ca3b8`） |
 | A-I3 / C-I3 | Important | 写给后面的移交缺 M7、M8、M10，M9 缺反链与索引的工具，M12 缺几项 | 见下"handoff" |
-| B-I1 | Important | **编辑器解析一段之内的行内语法按方括号数的平方增长**（`@lezer/markdown` 1.7.2）：每成一个链接都把前面的标记扫一遍。一段 5 万条 wikilink（300 KB）进入编辑 9.5 秒，20 万条 89 秒（一个任务 80.7 秒），每按一个键整段重新解析；阅读视图是线性的。M4 的 Markdown 链接就有，M6 让 `[[` 成了主要语法 | 给 lezer 打补丁（`2206325`，`patches/@lezer__markdown@1.7.2.patch`，理由写在 `pnpm-workspace.yaml`）：链接标记的失效从上次失效到的下标起扫；作者另找到同类的两处，配不上的 `]` 往回扫完整段、配不上的 `*`、`_` 同样，前者记下"之下没有链接开始标记"的下标，后者照 CommonMark 的 openers_bottom 按配对所依赖的（类型、是否也能开、长度模 3）记下限，开始标记被截短时把下限降到它。解析的树与原版逐字相同：360 万段随机的行内语法（各种语法的词元，以及只有强调的字母表）逐节点比较没有差异；普通文档的解析时间不变。`editor/markdown.test.ts`：一段 10 万个链接、链接与配不上的 `]`、配不上的 `*` 各在 1 秒之内（换回原版分别 20、25、15 秒）。深层嵌套仍不是线性的，原版本来如此，写进 [M12 的移交](../../M12-release/handoffs/M4-performance.md)第 9 项 |
+| B-I1 | Important | **编辑器解析一段之内的行内语法按方括号数的平方增长**（`@lezer/markdown` 1.7.2）：每成一个链接都把前面的标记扫一遍。一段 5 万条 wikilink（300 KB）进入编辑 9.5 秒，20 万条 89 秒（一个任务 80.7 秒），每按一个键整段重新解析；阅读视图是线性的。M4 的 Markdown 链接就有，M6 让 `[[` 成了主要语法 | 给 lezer 打补丁（`2206325`，`patches/@lezer__markdown@1.7.2.patch`，理由写在 `pnpm-workspace.yaml`）：链接标记的失效从上次失效到的下标起扫；作者另找到同类的两处，配不上的 `]` 往回扫完整段、配不上的 `*`、`_` 同样，前者记下"之下没有链接开始标记"的下标，后者照 CommonMark 的 openers_bottom 按配对所依赖的（类型、是否也能开、长度模 3）记下限，开始标记被截短时把下限降到它。解析的树与原版逐字相同：360 万段随机的行内语法（各种语法的词元，以及只有强调的字母表）逐节点比较没有差异；普通文档的解析时间不变。`editor/markdown.test.ts`：一段 10 万个链接、链接与配不上的 `]`、配不上的 `*` 各在 1 秒之内（换回原版分别 20、25、15 秒）。修复核对另找到比开始标记长的结束标记（FB-I2），补丁一并修了，上限放宽到 3 秒（FB-N1），见核实修复。深层嵌套仍不是线性的，原版本来如此，写进 [M12 的移交](../../M12-release/handoffs/M4-performance.md)第 9 项 |
 | B-I2 / C-I6 / A-M7 | Important | L2、L4、L5、L6 只有页面版本，第 9 节没写例外；e2e 里没有一处查索引的表，M6 的六个接口从没经 PAT 调过，`links` 事件没断言过载荷 | 补 L1–L6 的接口版本与 `assert/links.ts`（`664b86f`）；B 的报告在这之前的快照上，之后补了 L5 两页同名时链接写成路径、L6 反链的分页（`2b907e0`）。例外写进 M6 总设计第 9 节 |
 | C-I1 | Important | 收到的 [M4/P3 Markdown 扩展](../handoffs/M4-P3-markdown-extensions.md)、[M5 事件类型](../handoffs/M5-events.md)仍是 `open` | 逐项对照代码改为 `done`，写明落实（`38ca3b8`） |
 | C-I4 / A-M6 / B-M4 | Important | 第 13 节与 6.1 没跟上 M6：预算的取法、`locks`、扩展管线、事件类型、交错的编号、窄端口、派生索引表、写者内容的代价、依赖的补丁等 | 见下"第 13 节" |
 | C-I5 | Important | README 写"新建、改名、移动不受锁限制"（M6 起改名、移动要改写的页被锁时答 409）；缺六个接口、方言的标记、前端的功能、`reindex` 命令 | 照代码补上（`38ca3b8`） |
-| A-M1 | Minor | 解析带路径的目标要扫过最后一段同名的每一页：一万页都叫 `x`、10 万条互不相同的 `[[gN/x]]` 保存 5.0 秒，新建一页 `x` 5.7 秒 | 有了 A-I1 的上限，一页至多 10,000 条，约 0.5 秒。更快的做法（候选按倒数第二段分组、对"目标数 × 同名页数"设上限）写进 [M12 的性能移交](../../M12-release/handoffs/M4-performance.md)第 8 项（负责人可以改判） |
+| A-M1 | Minor | 解析带路径的目标要扫过最后一段同名的每一页：一万页都叫 `x`、10 万条互不相同的 `[[gN/x]]` 保存 5.0 秒，新建一页 `x` 5.7 秒 | 修复核对之后（FA-I1）一条目标只看路径以它的写法结尾的页（`linking/domain.Suffixes`）：这种页不再随同名页数变慢，5 万条约 0.1 秒。剩下只写名字的目标在同名的页里挑（"写它的页数 × 同名页数"），写进 [M12 的性能移交](../../M12-release/handoffs/M4-performance.md)第 8 项（负责人可以改判） |
 | A-M2 | Minor | 读链接目标的递归查询在没有统计时是平方的：2 万个节点、没有 ANALYZE，31–39 秒（之后 18 毫秒） | 递归的一步按父节点的主键取（`CROSS JOIN LATERAL … WHERE p.id = c.parent_id LIMIT 1`，笔记本与 `deleted_at` 的条件放在子查询之外，`29e3eb1`）：没有统计时 19 毫秒。`TestLinkTargetsReadWithoutStatisticsInTimeAsLongAsThey`（2 万个节点、不 ANALYZE、3 秒之内）在中间一版（条件留在子查询里，仍走部分索引，13 秒）上失败。M7 的移交写明导入之后 `ANALYZE`（`a895bcf`） |
 | A-M3 | Minor | 属性链接按值配对是"链接数 × 标量数"：9,990 项 114 毫秒 | 标量按路径建表（`scalarsByPath`，`ff6b042`）；`TestThePropertyLinksFindTheirStringsInTimeAsLongAsThey`（2,000 与 8,000 项之比小于 8）。反向对照（扫全部标量）失败 |
 | A-M4 | Minor | `ParseNow` panic 时预算不还；改写在 `ParseNow` 与 `u.Defer(now.Release)` 之间有窗口 | `ParseNow` 用"取到了"的标记，panic 或出错时 `defer` 释放；改写在取到之后立即 `defer` 释放，交给单元之后才不释放（`ff6b042`）。`TestAParseNowThatPanicsHoldsNoneOfTheBudget`；反向对照见下 |
@@ -53,8 +53,8 @@
 | C-M5 | Minor | "HTML 里的链接与提取结果一致"（总体设计 4.3）没有测试 | `TestTheFixturesRenderedLinksAreTheirExtractedLinks`（`660ae2a`）：78 个样例逐个渲染，HTML 里每个链接都是提取到的，提取到的都渲染了，注释里的与链接文字里的 wikilink 逐个列出。反向对照（不渲染引导的那一条、嵌入不带标记）失败 |
 | A-N1 | Nit | `GET tags/%2F` 答 404 `not_found`，契约没写 | `linking.yaml` 的 Tag 参数写明（`e19ad68`） |
 | A-N2 | Nit | `LinkTarget.aliases` 没有 `maxItems` | `maxItems: 1000`（`e19ad68`） |
-| A-N3 | Nit | `links` 帧没有经契约的结构核对 | `links()` 经 `apitest.CheckSchema(..., "EventLinks", ...)`（`e19ad68`） |
-| A-N4 | Nit | 改写算写法（`domain.Linktexts`）对同名的页是平方的：4 万个 2.9 秒 | 与 A-M1 一起写进 M12 的移交第 8 项 |
+| A-N3 | Nit | `links` 帧没有经契约的结构核对 | `links()` 经 `apitest.Load(t).CheckSchema(..., "EventLinks", ...)`（`e19ad68`） |
+| A-N4 | Nit | 改写算写法（`domain.Linktexts`）对同名的页是平方的：4 万个 2.9 秒 | `Linktexts` 只有补全读的 `listLinkTargets` 用，改写用逐页的 `Linktext`（修复核对 FA-N2 更正）；与 A-M1 一起写进 M12 的移交第 8 项 |
 | A-N5 | Nit | `Rewriting.Kept` 只为测试导出 | 移到 `domain/export_test.go`（`e19ad68`） |
 | A-N6 | Nit | `TestTheIndexIsItsRebuild` 的别名标记按种子计，个别种子没覆盖 | 按全部运行计数，结束时核对覆盖（`e19ad68`） |
 | A-N7 | Nit | 文档里几处数字与代码不符 | 改正（`7957264`） |
@@ -62,7 +62,7 @@
 | B Nit 1 | Nit | mermaid 标签保留的 HTML 比服务端给用户 HTML 的白名单宽：`class`、`style`、`<img>`、表单与密码框（实测都限在图之内，没有 CSP 违规） | 禁掉表单与控件（`form`、`input`、`button`、`select`、`option`、`textarea`；图里问密码）；`class`、`style`、`img` 不禁（实测限在图里，`img` 只有 `data:`），写进 13.2 第 23 条的信任边界（`dfd5d3b`）。L4 的恶意标签加表单与密码框，断言它们不在；反向对照失败 |
 | B Nit 2 | Nit | C8 只等阅读视图与锁各答两次，同一层还重读反链与属性 | 四个都等（`2b907e0`） |
 | B Nit 3 | Nit | P3B 审查记录写 W12 的修法是"加 2.5 秒延迟"，代码是按行轮询 | 改正记录（`2b907e0`） |
-| B Nit 4 | Nit | 编辑器扩展的 `load` 失败也被缓存：一次分包加载失败，这个页面里补全就一直没有 | 失败的不缓存，下一个编辑器再试（`dfd5d3b`）；测试，反向对照失败 |
+| B Nit 4 | Nit | 编辑器扩展的 `load` 失败也被缓存：一次分包加载失败，这个页面里补全就一直没有 | 不采纳：`dfd5d3b` 改成失败的不缓存，核对发现它让编辑器在每次渲染时重新加载、被换掉，正文丢失（FB-I1），撤回；失败仍留着，重新加载页面才再试，写进 13.2 第 23 条 |
 | B Nit 5 | Nit | `app-links.ts` 的 `data-nw-node` 没编码就拼进路径 | `encodeURIComponent`（`dfd5d3b`）；测试，反向对照失败 |
 | B Nit 6 | Nit | 反链的列表与属性的 `<dl>` 没有名称 | `aria-label`（`dfd5d3b`）；反链的由同名的测试经名称找到 |
 | B Nit 7 | Nit | 反链"更多"的防重入没有测试 | 新测试：读取中再按，只读一次、`aria-busy` 留着（`dfd5d3b`）；反向对照失败 |
@@ -94,20 +94,20 @@
 - **P5**（[第 10 节末](../05-P5-api.md)）：每个出发页至多 10 条上下文；长行的窗口从链接之前约 80 字节开始；不算这一页自己的链接；没进索引的页按索引回答、不即时解析；`getTag` 的非法输入答空列表；嵌套属性的键序不保留；`count` 至多 1000、一页至多 1000 个标签与别名、一次请求至多读 32 MiB；VACUUM 之前很少几个链接目标时反链仍可能走主键。
 - **P6**（[第 15 节末](../06-P6-reading-view.md)）：全部标签的总览与 frontmatter 的 `tags` 链接交给 M12；附件那样的名称在 M7 之前新建为页；落点只给写者；mermaid 的上限（`maxEdges` 200、原文 20,000 字节）与公式 4,000 字节；属性表按值的身份对齐；父页在最深一层时答 `too_deep`；定义宏的公式不排；KaTeX 的补丁与 150 层、布局至多 1 秒；mindmap 至多 150 行，别的图画几秒；换语言重新增强整个视图。
 - **P7**（[第 15 节](../07-P7-editor-panel.md)）：补全的数据每个 `[[`、`#` 读一次、10 秒内同一处复用；不做 `[[页面#标题` 的补全；`#` 补全不认紧跟行内元素与块开头的标签；没闭合的 frontmatter 到第一个空行；编辑器不认 frontmatter；补全的表格照 lezer；右栏在 `xl` 以上才在旁边；大纲至多 1,000 项；反链的重读读已读的页数、不设上限；属性链接只去页面、路径长于 1,024 的不配对。
-- **收尾新加**：索引每页至多 10,000 条链接，之后的不进反链、改名时不改写（A-I1）；附件嵌入的渲染改由 M7 建立（C-I2）；很多同名的页、改名的预算交给 M12（A-M1、A-N4、A-Q1、A-Q3）；给 `@lezer/markdown` 打补丁，深层嵌套交给 M12（B-I1）；mermaid 标签只禁表单与控件（B Nit 1）。
+- **收尾新加**：索引每页至多 10,000 条链接，之后的不进反链、改名时不改写（A-I1）；附件嵌入的渲染改由 M7 建立（C-I2）；很多同名的页、改名的预算交给 M12（A-M1、A-N4、A-Q1、A-Q3）；给 `@lezer/markdown` 打补丁，深层嵌套交给 M12（B-I1、FB-I2）；mermaid 标签只禁表单与控件（B Nit 1）；编辑器扩展加载失败也留着，重新加载页面才再试（B Nit 4 不采纳，FB-I1）；不加有统计时的计划测试（FA-Q1）。
 
 ## 第 13 节
 
 由一位 Opus 逐条对照代码起草、作者核对，写进[总体设计](../../v0.1-design.md)第 13 节（第 15 节记一行修订，C-I4、A-M6、B-M4）：
 
 - **13.1 后端**：第 1 条写 `nervewiki reindex` 不经写入单元（只重算标题键与重建索引，不记变更集，只发一条不列页的 `links`）；第 5 条补 M6 的八个交错（代码里没有编号，按测试名引用）、`interleaveOnIndex`、`checkPages` 含 `checkLinks`、`checkRebuilt`，以及 reindex 不取工作区行的例外；第 6 条新增"派生的索引表"（不带外键、没有 `deleted_at`、不登记清理器，删除的路径删行）；第 8 条加 `locks`（`ProblemLocks`、`shared.Error.Locks`）；第 11 条列 M6 的窄端口与两个例外（`linking.NewIndex(pool, pages, publisher)`、`linking.ResolveLinks(pool, pages)`）；第 19 条新增"持着锁时不排队"（参与者 `TakeNow`、`KeepFacts` 到单元结束、reindex 排队取的例外）；第 21 条写 `markdownExtensions(resolve)` 与 M6 的最后一跳测试；第 30 条加 `links` 类型与载荷；新增第 31 条"写者控制的数量都有上限"（`MaxLinks`、`MaxNames`、`MaxKey`、上下文与计数、`MaxEventPages`、YAML 的值与层数）。
-- **13.2 前端**：第 7、15、16 条加 `tag-pages`、`backlinks`、`page-properties` 三个只在 SWR 里的键与连上时的重读；第 19 条写反链的分页（重读读回已读的页数）；第 23 条写注册表到 M6、编辑器扩展的 `load` 与 `editor/loaded/`、失败的下一次再试、`EditorContext` 的两个读、事件只为读过的键重读，以及 KaTeX 与 mermaid 的信任边界；第 24 条按滚动区改写；新增第 25 条"写者的内容在读者标签页里的代价有上限"（公式、图、大纲、属性路径、正则与参数、编辑器的解析）、第 26 条"读者动了就不抢焦点"（`watchReader`）。
+- **13.2 前端**：第 7、15、16 条加 `tag-pages`、`backlinks`、`page-properties` 三个只在 SWR 里的键与连上时的重读；第 19 条写反链的分页（重读读回已读的页数）；第 23 条写注册表到 M6、编辑器扩展的 `load` 与 `editor/loaded/`、失败也留着（重新加载页面才再试）、`EditorContext` 的两个读、事件只为读过的键重读，以及 KaTeX 与 mermaid 的信任边界；第 24 条按滚动区改写；新增第 25 条"写者的内容在读者标签页里的代价有上限"（公式、图、大纲、属性路径、正则与参数、编辑器的解析）、第 26 条"读者动了就不抢焦点"（`watchReader`）。
 - **13.3 Markdown**：第 2 条写三套样例与三个核对脚本；第 3 条改正"一次取够预算"（写入排队取，参与者逐页 `TakeNow`）；第 5 条的组合函数；新增第 6 条"提取规则的版本与链接的标记"（`Extractor` 与 reindex、过时索引的处理、`data-nw-*` 只由渲染器写、链接里没有链接、扩展的钩子）。
 - **13.4 测试**：第 3 条 `assert/links.ts`；第 4 条链接索引的交错与 `WaitForAdvisoryLockWaits`、`interleaveBehind`；第 6 条 M6 的六个操作；第 8 条 Makefile 多的两个耗时测试；新增第 9 条"查询计划的测试"（`planOf`、没有统计时的耗时）、第 10 条"派生数据等于重建"。
 - **13.5 工程**：新增第 5 条"依赖的补丁"（katex 与 `@lezer/markdown`，理由、升级时复核、改解析行为的要有差分与代价测试）。
 - 同时：12.6 的 M6 为"进行中（待负责人执行输入法清单）"；第 15 节补 P4、P6 B 两行（C-M3），收尾一行连同 `7957264` 改写的 6.1、8.6、9.3、12.2、12.4 与第 14 节；P1 文档的 `scroll-focus.ts` 与表格包装的 `tabindex`。
 
-核对时起草者报的五处文档与代码不一致，按代码处理：reindex 不取工作区行，写成第 5 条的例外（它第一条语句就锁笔记本行，此前什么也不持，不成环）；P1 文档写渲染器输出 `tabindex`，实际由前端给，改正；第 15 节没有 `7957264` 的行，并进收尾一行；改名的预检之后被心跳续活的交错结束时只核对 `checkLinks`，改为 `checkPages`；M5 的事件类型测试用 `links` 当替身类型，载荷是假的，与 M6 真的类型同名，服务端（events 模块的三个测试、`events_lab_test.go`）与前端（`events/hub.test.ts`）改名为 `later`。
+核对时起草者报的五处文档与代码不一致，按代码处理：reindex 不取工作区行，写成第 5 条的例外（它先不加锁地读出工作区，第一个加锁的语句锁笔记本行，此前不持行锁，不成环）；P1 文档写渲染器输出 `tabindex`，实际由前端给，改正；第 15 节没有 `7957264` 的行，并进收尾一行；改名的预检之后被心跳续活的交错结束时只核对 `checkLinks`，改为 `checkPages`；M5 的事件类型测试用 `links` 当替身类型，载荷是假的，与 M6 真的类型同名，服务端（events 模块的三个测试、`events_lab_test.go`）与前端（`events/hub.test.ts`）改名为 `later`。
 
 ## handoff
 
@@ -116,7 +116,7 @@
 - **M6→M8**：新的[链接索引与恢复、历史、还原](../../M8-history-search/handoffs/M6-links.md)：恢复带提取结果、只重新解析，历史版本即时解析，还原与整组撤销碰上改名、移动时的 `linking.pages_locked`，行为测试。
 - **M6→M9**：[改写的移交](../../M9-mcp/handoffs/M6-P4-rewrite.md)加第 4 项（反链与索引的工具）。
 - **M6→M10**：新的 [lint 的数据在链接索引里](../../M10-llm-wiki/handoffs/M6-links.md)（C-Q1）。
-- **M6→M12**：[性能](../../M12-release/handoffs/M4-performance.md)第 3 项（改名的预算，A-Q1、A-Q3）、第 6 项改写（链接很多的页，A-I1）、第 7 项（补全读整个笔记本的目标）、新的第 8 项（很多同名的页，A-M1、A-N4）与第 9 项（编辑器解析深层嵌套，B-I1）；[打磨](../../M12-release/handoffs/M5-polish.md)第 13 项（编辑时的大纲、全部标签的总览、别的引擎的锚点）与第 14 项（前端的几处结构，B Nit 8）。
+- **M6→M12**：[性能](../../M12-release/handoffs/M4-performance.md)第 3 项（改名的预算，A-Q1、A-Q3）、第 6 项改写（链接很多的页，A-I1）、第 7 项（补全读整个笔记本的目标）、新的第 8 项（很多同名的页，A-M1、A-N4）、第 9 项（编辑器解析深层嵌套，B-I1）与第 10 项（恢复、导入之后先 ANALYZE，FA-M1）；[打磨](../../M12-release/handoffs/M5-polish.md)第 13 项（编辑时的大纲、全部标签的总览、别的引擎的锚点）与第 14 项（前端的几处结构，B Nit 8）。
 
 ## 文档与代码的不一致
 
@@ -138,17 +138,47 @@
 作者在修复中做的（改动全部还原）：
 - **Go 8 项**，7 项失败：渲染按错的位置取解析、嵌入不渲染成链接（C-M5）；不设上限（单元测试与整个程序的测试各一项，A-I1）；`ParseNow` panic 时不还预算（A-M4）；每条链接都重建标量表（A-M3）；改写里新写法的那一份在没写成或 panic 时不还（A-M4）。存活的一项是等价的：改写里旧的那一份去掉 `defer` 释放之后，紧接着的显式释放照样还，`defer` 只为 panic。
 - **lezer 的补丁**（随机差分）：10 个改坏的副本，7 个出现差异（下限设高一位、键不含"也能开"或长度、截短开始标记时不降下限或降得不够、takeContent 不降"未失效"的下限、`]` 找不到时把下限设高一位），3 个等价（未失效的下限设到链接本身之后：那个位置已是链接元素；takeContent 不降链接开始标记的下限：只有 `LinkEnd` 调它，切的位置不低于下限；`hasOpenLink` 的下限设高一位：自动链接随即追加在那个位置）。第一版差分没抓住"截短时不降下限"，加了只有强调的字母表之后抓住。三个代价测试换回原版各 15–25 秒，失败。
-- **前端 vitest 9 项**全部失败：反链按标题、重试什么也不做（反链与属性）、属性不在聚焦时重读、去掉防重入、去掉列表的名称、失败的加载照旧缓存、页 id 不编码、mermaid 不禁表单。
+- **前端 vitest 9 项**全部失败：反链按标题、重试什么也不做（反链与属性）、属性不在聚焦时重读、去掉防重入、去掉列表的名称、失败的加载照旧缓存（B Nit 4 之后撤回，见核实修复 FB-I1）、页 id 不编码、mermaid 不禁表单。
 - **e2e 3 项**（各重新构建）全部失败：mermaid 不禁表单（L4）、完整地址不经路由（L1）、编辑时仍显示大纲（L6）。
 
 ## 核实修复
 
-<<FIXCHECK>>
+修复之后由两位 Opus 核对者各在自己的副本里核对（FA：后端与文档；FB：前端、端到端与 lezer 的补丁），直到一轮没有行为上的发现。
+
+**第一轮**（`1ea1eff`）
+- 门禁：
+  - FA：`gen-check`、`lint-go`、`go test -race` 64 个包、Makefile 的代价测试，以及改动的包 `-race -count=3`，全过；
+  - FB：`lint-web`、knip、`make build`；vitest 1,881 项在单跑、与 e2e 同跑、四个占满 CPU 的进程下各一遍；改动的 e2e 34/34，L 系列 `--repeat-each 2` 40/40，改动的故事 `--repeat-each 3` 与两份 vitest 同跑 102/102。
+- 反向对照：
+  - FA 13 项，11 项失败。存活的两项：改写里的 `defer` 等价（已记）；`ParseNow` 出错时不还预算写成 FA-N1。
+  - FB 的 vitest 10 项，9 项失败，存活的写成 FB-N2。lezer 换回原版，三个代价测试 16–21 秒，失败。e2e 1 项失败。
+- 探针：
+  - FA：新旧链接目标的查询在 4 个种子的随机树上逐行相同（含删除的、附件、80 层的链、别的笔记本的父节点）；没有统计时旧的 16 秒，新的 26–31 ms。
+  - FB：lezer 的差分约 3.4 亿段，与原版逐节点相同。覆盖 8 种字母表的穷举（强调到 11 个字符，链接、图片、自动链接到 9 个记号）、随机、构造、变异与长段。仓库 304 份文档与 143 份样例的树相同，耗时不变。10 个改坏的补丁抓住 8 个，另 2 个等价。
+  - FB：mermaid 14 种图在禁表单前后的 SVG 相同。
+
+| 编号 | 级别 | 发现 | 处置 |
+|---|---|---|---|
+| FA-I1 | Important | **上限之后的链接每次读取都即时解析，要扫同名的每一页**（A-I1 的后果）：<br>• 一万页都叫 `x`，一页 10 万条互不相同的 `[[gN/x]]`（1.3 MB）保存之后，每次读取 4 秒；<br>• 5 MiB（38 万条）每次读取 15 秒后答 500，其间占着 5 MiB 的解析预算，别处 4 MiB 的保存答 503。<br>A-M1 的处置与 M12 第 8 项的"约 0.5 秒"不对 | 解析改为按路径的结尾找：<br>• `linking/domain.Suffixes` 把一次读出的候选按倒过来的路径建成前缀树，一条目标只看路径以它的写法结尾的页；<br>• 索引、阅读视图、改写共用 `resolutions`；别名每个键只读一次。<br>测试：<br>• `TestSuffixesResolveAsTheCandidatesOfTheLastKeys`：4,000 棵随机树、每棵 20 条目标（带路径、相对、只写名字、别名），与逐页的解析相同，并核对各类的数量下限；<br>• `TestDistinctPathsToPagesOfOneTitleResolveInTimeAsLongAsThey`（Makefile 的代价步骤）：5 万个同名页、5 万条互不相同的路径，0.11 秒（逐页 4.8–6.3 秒）。<br>反向对照 7 项，4 项失败；存活的 3 项等价：<br>• `ending` 带上完整路径的页，或完整路径的页也记进更长的一组：`ending` 只在按完整路径找不到之后调用；<br>• 取完整路径的最后一页：一本笔记本里完整路径唯一。<br>A-M1 与 M12 第 8 项随之改写 |
+| FA-M1 | Minor | 子树的递归查询（`Subtree`）没有统计时是平方的：3 万个节点、一个一万个子节点的文件夹 21.4 秒，有统计 25 ms。删除、移动、reindex 都用它，在索引锁下 | 照 A-M2 改写：<br>• `CROSS JOIN LATERAL` 按 `(notebook_id, parent_id)` 取子节点；<br>• `deleted_at` 的条件放在外面，`OFFSET 0` 挡住上提。<br>`TestSubtreeReadsWithoutStatisticsInTimeAsLongAsIt`：关掉 autovacuum、`pg_stats` 为空，3 秒之内；改写之前 40 秒，去掉 `OFFSET 0` 或把条件放回里面各 32、36 秒，失败。恢复、导入之后先 ANALYZE 写进 M12 的性能移交第 10 项 |
+| FA-M2 | Minor | 4.5 的"改名不改变任何链接的指向""读回一条不少"没写上限之后的例外 | 4.5 两处补上 |
+| FA-N1 | Nit | `ParseNow` 出错时不还预算，所有测试照过 | `TestAParseNowOfFactsInErrorHoldsNoneOfTheBudget`：没有方言的 Markdown 让提取出错，之后整个预算取得到。反向对照失败 |
+| FA-N2 | Nit | 记录与提交不符：风险表的版本、`Linktexts` 的使用者、A-N3 的写法、reindex 的加锁次序 | 风险表、A-N3、A-N4、13.1 第 5 条改正 |
+| FA-N3 | Nit | 文档里的名字：<br>• `inLinks` 不由 `platform/markdown` 导出；<br>• linking 给的是 `ResolveLinks`，不是 `Fetch`；<br>• `markdownExtensions(resolve)`；<br>• `app/event-stream.test.tsx` 的替身类型；<br>• 13.1 第 11 条少 `NewRewrite`；<br>• 13.4 第 8 条的判据；<br>• 00-M6 的两处编号 | 逐条改正 |
+| FA-N4 | Nit | M12 性能第 3 项的改名预算、M10 移交的 frontmatter 失败、M5 的 C4 的锁 | 改正 |
+| FA-Q1 | Question | 有统计时新查询略慢（41/48 对 36/46 ms），要不要加有统计时的计划测试 | 不加：差在噪声之内，要守住的是没有统计时的退化，已有测试（负责人可以改判） |
+| FB-I1 | Important | **B Nit 4 的修复带来回归**：失败的加载不缓存之后，编辑器每次渲染都新建加载，Suspense 让它暂停、被换掉，写到一半的正文丢失。实测连续输入，两三次失焦之后编辑器是新的，之后的字丢了。另外，Chromium 本来就缓存失败的动态导入，"之后的编辑器再试"并不会发生 | 撤回 B Nit 4：失败也留着，重新加载页面才再试，写进 13.2 第 23 条。`source-editor.test.tsx` 加一项：一个扩展加载失败，外面的页重新渲染三次，编辑器还是那一个、正文保留、只加载一次。改回不缓存时失败 |
+| FB-I2 | Important | **B-I1 没修全**：比开始标记长的结束标记，`resolveMarkers` 把它剩下的部分留在原处，把新元素插在前面（`splice`），之后的标记逐个挪一位。`*a** `、`***a*** `、`___a___ ` 因此按个数的平方增长：Chromium 里一段 8 万个 `*a** `（400 KB）进入编辑 8.3 秒，16 万个 19.8 秒。原版本来如此 | 补丁里的 `resolveMarkers` 不再插入：读过的放进新的数组，部分保留的结束标记紧接着重读，下标与原版插入之后的相同。<br>差分，与原版逐节点相同：<br>• 随机 160 万段：三种字母表，含这些形状在链接、图片内外；<br>• 三组字母表穷举到 7 个记号，共 720 万段；<br>• 仓库 448 份 Markdown 的树。<br>3 个改坏的副本都被抓住。<br>代价：`editor/markdown.test.ts` 加两行，一段 20 万个 `*a** `、`***a*** ` 在 3 秒之内（约 0.15 秒），换回插入的补丁失败。Node 里 8 万个 `*a** ` 59 ms；原版 4 万个就要 6 秒。<br>`pnpm-workspace.yaml` 的注释、13.2 第 25 条、13.5 第 5 条、M12 第 9 项随之改写 |
+| FB-N1 | Nit | 编辑器解析的代价测试上限 1 秒，在负载下余量只有约 4.5 倍 | 放宽到 3 秒 |
+| FB-N2 | Nit | 属性列表的名称（`dl` 的 `aria-label`）没有测试 | 测试按名称找属性列表。去掉名称或换成别的名称，各有多项失败 |
+| FB-N3 | Nit | B-M5 之后，L6 的大页故事只看大纲显示，没有核对 1,000 项与"另有 N 个" | 这两点 vitest 已核对（`page-panel.test.tsx`）；L6 的大页故事也补上：列 1,000 项，并写"…and 139000 more" |
+
+<<FIXCHECK2>>
 
 ## 没能验证的风险
 
 - 只用 macOS 上的 headless Chromium：Safari、Firefox 的输入法与补全、折叠 callout 里已是地址锚点的链接、读屏激活"更多反向链接"之后焦点的去向，由清单与 M12 人工覆盖。
-- 链接很多与同名很多的页的代价是单机实测；上限之内的最坏情形、多本笔记本同时保存、导入之后没有统计的查询，留给 M12 的压测（[性能移交](../../M12-release/handoffs/M4-performance.md)第 3、6–9 项）。
+- 链接很多与同名很多的页的代价是单机实测；上限之内的最坏情形、多本笔记本同时保存、导入之后没有统计的查询，留给 M12 的压测（[性能移交](../../M12-release/handoffs/M4-performance.md)第 3、6–10 项）。
 - 编辑器解析的补丁只核对了随机差分与几种形状的代价；lezer 升级时要重新核对补丁是否还需要、是否还对（`pnpm-workspace.yaml` 的注释）。深层嵌套的强调让编辑器建不起来，原版本来如此，交给 M12。
 - 审查期间别的会话同时在跑测试容器。
 
