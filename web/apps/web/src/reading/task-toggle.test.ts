@@ -3,6 +3,7 @@ import { afterEach, expect, test } from "vitest";
 
 import type { NotebookRole } from "../services/notebook.service";
 import type { ReadingContext } from "./enhancement";
+import { math, type Typesetter } from "./math";
 import { taskToggle } from "./task-toggle";
 import { translator } from "../i18n/i18n";
 
@@ -92,6 +93,33 @@ test("an item's name is its own text, in a paragraph or a heading, up to its nex
     "step",
     "said",
   ]);
+});
+
+test("an item's formula names it by its TeX, typeset or not, read again after it was typeset too", async () => {
+  const { container, context } = setUp();
+  // A KaTeX that writes the formula otherwise than its TeX.
+  const typesetter: Typesetter = { render: (tex, element) => (element.textContent = `<${tex}>`) };
+  container.innerHTML =
+    '<ul><li><input disabled="" type="checkbox" data-task="3"> Prove <em><span class="nw-math">x^2</span></em> today</li></ul>';
+  const html = container.innerHTML;
+  const enhancements = [math(async () => typesetter), taskToggle];
+  const run = () => enhancements.map((enhancement) => enhancement(container, context));
+  const name = () => container.querySelector("input")?.getAttribute("aria-label");
+
+  const undo = run();
+  expect(name()).toBe("Prove x^2 today");
+  await settled();
+  await settled();
+  expect(container.querySelector(".nw-math")?.textContent).toBe("<x^2>");
+  for (const each of undo.toReversed()) {
+    each?.();
+  }
+  container.innerHTML = html;
+  run();
+
+  // The formula put again at once, typeset: the name is its TeX still.
+  expect(container.querySelector(".nw-math")?.textContent).toBe("<x^2>");
+  expect(name()).toBe("Prove x^2 today");
 });
 
 test("the space key toggles the focused item", async () => {

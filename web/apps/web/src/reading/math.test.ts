@@ -394,6 +394,22 @@ test("run again in its view, read again, a formula typeset before is put again a
   expect(calls.map((each) => each.tex)).toEqual(["x", "x", "x", "y"]);
 });
 
+test("a formula typeset keeps its TeX, newly typeset or put again; showing its TeX again, it has none", async () => {
+  const { typeset } = typesetter();
+  const article = view('<span class="nw-math">x</span> <span class="nw-math">bad</span>');
+  const enhancement = math(async () => typeset);
+  const undo = enhancement(article, context);
+  await settled();
+  const tex = () => [...article.querySelectorAll<HTMLElement>(".nw-math")].map((each) => each.dataset.tex);
+  expect(tex()).toEqual(["x", undefined]);
+  undo?.();
+  expect(tex()).toEqual([undefined, undefined]);
+
+  article.innerHTML = '<span class="nw-math">x</span>';
+  enhancement(article, context);
+  expect(tex()).toEqual(["x"]);
+});
+
 test("a view's formulas' typesetting is kept for it alone: another view's are typeset", async () => {
   const { calls, typeset } = typesetter();
   const enhancement = math(async () => typeset);
@@ -429,6 +445,32 @@ test("run again in its view, the budget counts on from what the formulas put aga
 
   expect(calls).toHaveLength(first);
   expect(shown(article)).toEqual(shownOf(count, first));
+});
+
+test("read again, the budget counts on from the shares of the formulas put again alone: those gone take theirs along", async () => {
+  vi.useFakeTimers();
+  const { calls, typeset } = typesetter();
+  const count = 12;
+  const article = formulas(count);
+  const { now } = laidOut(article, { box: 20, placed: 300 });
+  const enhancement = math(async () => typeset, now);
+  const undo = enhancement(article, context);
+  await vi.runAllTimersAsync();
+  const first = calls.length;
+  undo?.();
+
+  // Read again: 0 to 2 stay, the others gone, five new.
+  const fresh = ["a", "b", "c", "d", "e"];
+  article.innerHTML = ["0", "1", "2", ...fresh].map((tex) => `<p><span class="nw-math">${tex}</span></p>`).join("");
+  enhancement(article, context);
+  await vi.runAllTimersAsync();
+
+  // 0 to 2 put again, taking their shares, 300 each; then tasks of perTask new ones, 300 each, to the budget.
+  const perTask = Math.ceil(taskTime / 20);
+  const more = perTask * Math.ceil((layoutBudget - 3 * 300) / (perTask * 300));
+  expect(more).toBeGreaterThan(0);
+  expect(calls).toHaveLength(first + more);
+  expect(shown(article)).toEqual(["[0]", "[1]", "[2]", ...fresh.map((tex, i) => (i < more ? `[${tex}]` : tex))]);
 });
 
 test("undone, the typeset formulas show their TeX again, and those not reached stay", async () => {

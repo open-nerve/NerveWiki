@@ -320,7 +320,7 @@ test("L4 (page): a page opened at a heading shows it once the formulas above it 
     "# Far",
     "",
     ...Array.from({ length: 6 }, (_, i) => `After the heading, ${i}.\n`),
-    "- [ ] Tick me",
+    "- [ ] Tick me $x^2$",
     "",
     ...Array.from({ length: 40 }, (_, i) => `After the task, ${i}.\n`),
   ].join("\n");
@@ -331,13 +331,14 @@ test("L4 (page): a page opened at a heading shows it once the formulas above it 
   const far = article.getByRole("heading", { name: "Far", exact: true });
 
   await expect(far).toBeFocused();
-  await expect(article.locator(".nw-math .katex")).toHaveCount(20);
+  await expect(article.locator(".nw-math .katex")).toHaveCount(21);
   await expect(article.locator(".nw-math-measure")).toHaveCount(0);
   await expect(far).toBeInViewport();
 
   // A task ticked below them, the page is read again: its formulas are put again at once, as they were, and the
-  // box, focused, stays where it was.
+  // box, focused, stays where it was, named by its formula's TeX as before.
   const box = article.getByRole("checkbox");
+  await expect(box).toHaveAccessibleName("Tick me x^2");
   const top = await box.evaluate((element) => {
     element.dataset.before = "";
     return element.getBoundingClientRect().top;
@@ -348,5 +349,6 @@ test("L4 (page): a page opened at a heading shows it once the formulas above it 
   await expect(box).toBeFocused();
   await expect(box).toBeInViewport();
   expect(Math.abs((await box.evaluate((element) => element.getBoundingClientRect().top)) - top)).toBeLessThan(2);
-  await expect(article.locator(".nw-math .katex")).toHaveCount(20);
+  await expect(box).toHaveAccessibleName("Tick me x^2");
+  await expect(article.locator(".nw-math .katex")).toHaveCount(21);
 });
