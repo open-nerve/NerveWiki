@@ -210,6 +210,27 @@ test("what scrolls in a diagram is the writer's label, not the view's: only the 
   expect([state(diagram), state(label), state(code)]).toEqual(["0 region Diagram", "none", "none"]);
 });
 
+/** scrolled has element scrolled down to top, tells it so, and answers where it is then. */
+function scrolled(element: HTMLElement | null | undefined, top: number): () => number {
+  let at = top;
+  Object.defineProperty(element, "scrollTop", { configurable: true, get: () => at, set: (to: number) => (at = to) });
+  element?.dispatchEvent(new Event("scroll"));
+  return () => at;
+}
+
+test("the view and what scrolls in it do not scroll down: an anchor's scroll, which a hidden overflow lets through, is undone", () => {
+  observed();
+  const { article, table } = view();
+  const undo = scrollRegions(article, context);
+
+  expect([scrolled(article, 16)(), scrolled(table, 14)()]).toEqual([0, 0]);
+  // Not the view's: a paragraph is let be.
+  expect(scrolled(article.querySelector("p"), 3)()).toBe(3);
+
+  undo?.();
+  expect(scrolled(table, 14)()).toBe(14);
+});
+
 test("undone, nothing takes the focus, and nothing is followed", async () => {
   const observers = observed();
   const { article, table, code } = view();

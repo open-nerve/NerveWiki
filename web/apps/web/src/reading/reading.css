@@ -206,9 +206,11 @@
   /* What is wider than the page scrolls sideways in its own region, not the
      view: the server's wrapper of a table, the properties and a block
      formula, a diagram's, a code block, a formula displayed in a paragraph.
-     Each takes the focus while it does (scroll-regions.ts). */
+     Each takes the focus while it does (scroll-regions.ts). None scrolls
+     down: a formula's strut past its bottom would take the wheel. */
   .nw-reading .nw-scroll {
     overflow-x: auto;
+    overflow-y: hidden;
   }
 
   .nw-reading span.nw-math-block {

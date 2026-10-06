@@ -2,7 +2,7 @@ import type { MermaidConfig } from "mermaid";
 import { afterEach, expect, test, vi } from "vitest";
 
 import { translator } from "../i18n/i18n";
-import { diagramLimit, diagrams, edgeLimit, keptDrawings, type Drawer, type Watch } from "./diagrams";
+import { diagramLimit, diagrams, edgeLimit, keptDrawings, mindmapLines, type Drawer, type Watch } from "./diagrams";
 import type { ReadingContext } from "./enhancement";
 
 // The diagrams, drawn by mermaid (M6/P6 design 10). The drawings kept are
@@ -54,6 +54,7 @@ function drawer() {
   const held: (() => void)[] = [];
   const draw: Drawer = {
     initialize: (config) => configs.push(config),
+    detectType: (text) => (text.startsWith("mindmap") ? "mindmap" : "flowchart"),
     render: async (id, text) => {
       drawn.push(`${id} ${text}`);
       if (text.includes("held")) {
@@ -216,6 +217,25 @@ test("each drawing put has ids of its own, and its styles and elements follow: t
       `#${svg.id} text{}`,
     ]);
   }
+});
+
+/** mindmap is a mindmap's source of lines lines. */
+function mindmap(lines: number): string {
+  return ["mindmap", ...Array.from({ length: lines - 1 }, (_, i) => `  q${i}`)].join("\n");
+}
+
+test("a mindmap of more lines than mindmapLines shows its source: mermaid's layout of it grows faster than its nodes", async () => {
+  const { drawn, draw } = drawer();
+  const { watch, show } = watcher();
+  const { article, blocks } = view(mindmap(mindmapLines), mindmap(mindmapLines + 1));
+  diagrams(async () => draw, watch)(article, context());
+  show(blocks[0] as Element);
+  show(blocks[1] as Element);
+  await settled();
+
+  expect(drawn).toHaveLength(1);
+  expect(article.querySelectorAll(".nw-diagram")).toHaveLength(1);
+  expect(article.querySelectorAll("code.language-mermaid")).toHaveLength(1);
 });
 
 test("the latest drawings are kept, the one used longest ago dropped first", async () => {

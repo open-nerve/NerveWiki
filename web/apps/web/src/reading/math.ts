@@ -6,11 +6,14 @@ import type { Enhancement } from "./enhancement";
 export const formulaLimit = 4000;
 
 /**
- * The deepest a typeset formula's elements may nest: past about 900,
- * Chromium's layout crashes the page (135 levels of x^{x^…}, in 541
- * bytes). A deeper one shows its TeX (M6/P6 B fix check f2-2).
+ * The deepest a typeset formula's elements may nest; a deeper one shows
+ * its TeX. Past about 800, Chromium's layout crashes the page (135 levels
+ * of x^{x^…}, in 541 bytes: M6/P6 B fix check f2-2), and well before, a
+ * chain of styled groups takes the layout a time that grows faster than
+ * its depth: 1.3 s at 489, 129 ms at 150 (second fix check). Ten nested
+ * fractions are 76 deep, a 30 by 30 matrix 21.
  */
-const formulaDepth = 500;
+const formulaDepth = 150;
 
 /** How long, in milliseconds, formulas are typeset in one task before the page's thread is given back. */
 export const taskTime = 50;
@@ -34,8 +37,8 @@ export async function loadKatex(): Promise<Typesetter> {
 
 const encoder = new TextEncoder();
 
-/** The control words that define a macro in the TeX KaTeX reads. */
-const defining = new Set([
+/** The control words refused in the TeX KaTeX reads: those that define a macro, and those that write to the console. */
+const refused = new Set([
   "def",
   "gdef",
   "edef",
@@ -47,6 +50,9 @@ const defining = new Set([
   "newcommand",
   "renewcommand",
   "providecommand",
+  "message",
+  "errmessage",
+  "show",
 ]);
 
 /** A control sequence as KaTeX's lexer reads one: a word of letters and "@", or a symbol (\\ among them). */
@@ -56,7 +62,8 @@ const controlSequence = /\\(?:[a-zA-Z@]+|[^])/g;
  * definesMacros tells whether tex defines a macro (\def and its kin,
  * \let, \global, \newcommand and its kin) or names one of KaTeX's own (a
  * control word with "@": what \tag defines among them): it is not
- * typeset. A macro used again and again makes a short formula expand
+ * typeset; nor is one that writes to the reader's console (\message,
+ * \errmessage, \show). A macro used again and again makes a short formula expand
  * without end, past what maxExpand bounds, which counts the expansions,
  * not what they expand to (a formula of 290 bytes took 37 s, M6/P6 B
  * review). KaTeX has no other way to make a control word (no \csname),
@@ -67,7 +74,7 @@ const controlSequence = /\\(?:[a-zA-Z@]+|[^])/g;
 function definesMacros(tex: string): boolean {
   for (const [sequence] of tex.matchAll(controlSequence)) {
     const name = sequence.slice(1);
-    if (defining.has(name) || name.includes("@")) {
+    if (refused.has(name) || name.includes("@")) {
       return true;
     }
   }
@@ -84,9 +91,10 @@ const guarded = new WeakSet<LabelTypesetter>();
  * label's $$…$$ with options of its own (no maxSize), refuse what math
  * refuses and take math's options. What it is given is the label as
  * mermaid sanitized it, which a look at the diagram's source cannot see:
- * `\d<x></x>ef` is `\def` by then (M6/P6 B fix check f2-3). A refusal
- * fails the drawing, and the diagram shows its source. mermaid puts what
- * it answers in as HTML, whose parser bounds its depth.
+ * `\d<x></x>ef` is `\def` by then (M6/P6 B fix check f2-3). Longer than
+ * formulaLimit, or what it answers, parsed, nesting deeper than
+ * formulaDepth, is refused too. A refusal fails the drawing, and the
+ * diagram shows its source.
  */
 export function guardLabels(katex: LabelTypesetter): void {
   if (guarded.has(katex)) {
@@ -95,10 +103,16 @@ export function guardLabels(katex: LabelTypesetter): void {
   guarded.add(katex);
   const { renderToString } = katex;
   katex.renderToString = (tex, given) => {
-    if (definesMacros(tex)) {
-      throw new Error("A formula that defines a macro is not typeset");
+    if (encoder.encode(tex).length > formulaLimit || definesMacros(tex)) {
+      throw new Error("A formula past the limits is not typeset");
     }
-    return renderToString(tex, { ...given, ...options });
+    const html = renderToString(tex, { ...given, ...options });
+    const parsed = document.createElement("template");
+    parsed.innerHTML = html;
+    if (deeperThan(parsed.content, formulaDepth)) {
+      throw new Error("A formula past the limits is not typeset");
+    }
+    return html;
   };
 }
 
@@ -109,7 +123,8 @@ export function guardLabels(katex: LabelTypesetter): void {
  * formulaLimit, that defines a macro (definesMacros), or whose typesetting
  * nests deeper than formulaDepth, shows its TeX. They are typeset for
  * taskTime in a task, KaTeX working on the page's thread, which is given
- * back between (now is the clock). Undone, the formulas typeset show their
+ * back between (now is the clock); each is laid out as it is put in, so
+ * that the clock counts the layout, which can take far longer than KaTeX. Undone, the formulas typeset show their
  * TeX again, and those not reached yet stay as they are.
  */
 export function math(load: () => Promise<Typesetter>, now: () => number = () => performance.now()): Enhancement {
@@ -169,12 +184,14 @@ function render(katex: Typesetter, tex: string, formula: HTMLElement): boolean {
     return false;
   }
   formula.replaceChildren(...typeset.childNodes);
+  // Laid out now: the task's clock counts it.
+  formula.getBoundingClientRect();
   return true;
 }
 
-/** deeperThan tells whether element's descendants nest more than levels deep. */
-function deeperThan(element: Element, levels: number): boolean {
-  let level = Array.from(element.children);
+/** deeperThan tells whether node's descendants nest more than levels deep. */
+function deeperThan(node: ParentNode, levels: number): boolean {
+  let level = Array.from(node.children);
   for (let depth = 1; level.length > 0; depth += 1) {
     if (depth > levels) {
       return true;

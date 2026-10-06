@@ -20,7 +20,11 @@ const scrolling = ".nw-scroll, pre, span.nw-math-block";
  * it is: what scrolls around it, and what it adds. The view itself, which
  * scrolls what is wide and has no region of its own (a table of the
  * writer's own HTML, a long formula in a line), takes the focus as well
- * while it does; it is the page's article, named by it.
+ * while it does; it is the page's article, named by it. None of them
+ * scrolls down: a formula's strut past a bottom would take the wheel
+ * (reading.css hides it), and what scrolls a hidden overflow still (an
+ * anchor's scrollIntoView, the browser's find) would leave it where the
+ * reader cannot scroll back. Such a scroll is undone as it comes.
  */
 export const scrollRegions: Enhancement = (container, { t }) => {
   const followed = new Set<HTMLElement>();
@@ -85,7 +89,16 @@ export const scrollRegions: Enhancement = (container, { t }) => {
     }
   });
   changed.observe(container, { childList: true, subtree: true });
+  // A scroll does not bubble: it is heard on its way down.
+  const level = (event: Event) => {
+    const scroller = event.target;
+    if (scroller instanceof HTMLElement && followed.has(scroller) && scroller.scrollTop !== 0) {
+      scroller.scrollTop = 0;
+    }
+  };
+  container.addEventListener("scroll", level, { capture: true });
   return () => {
+    container.removeEventListener("scroll", level, { capture: true });
     changed.disconnect();
     resized.disconnect();
     container.removeAttribute("tabindex");

@@ -110,6 +110,9 @@ test("a formula that defines a macro, or names one of KaTeX's own, shows its TeX
     String.raw`\providecommand\a{x}`,
     String.raw`\tag{1}\df@tag\df@tag`,
     String.raw`a\@b`,
+    String.raw`\message{x}`,
+    String.raw`\errmessage{x}`,
+    String.raw`\show\x`,
   ];
   // Commands whose names begin with one refused are not refused; nor is a row's end before "@" (\\@, a CD arrow).
   const typesetAll = [
@@ -132,8 +135,8 @@ test("a formula that defines a macro, or names one of KaTeX's own, shows its TeX
 
 test("KaTeX as the app loads it refuses an alignment of more columns than it can make, and one nested past formulaDepth", async () => {
   const columns = String.raw`\begin{alignedat}{1000000}a\end{alignedat}`;
-  // A hundred levels nest some 670 elements deep; jsdom takes its time to make them.
-  const deep = `${"x^{".repeat(100)}x${"}".repeat(100)}`;
+  // Forty levels nest some 270 elements deep: past formulaDepth, though short of where Chromium crashes.
+  const deep = `${"x^{".repeat(40)}x${"}".repeat(40)}`;
   const article = view(
     `<span class="nw-math">${columns}</span><span class="nw-math">${deep}</span>` +
       String.raw`<span class="nw-math">\begin{alignedat}{2}a&=b&c&=d\end{alignedat} x^{x^{x}}</span>`
@@ -162,6 +165,11 @@ test("guarded, KaTeX's renderToString, as mermaid calls it for a label, refuses 
   expect(html).toContain("50em");
   expect(html).not.toContain("100em");
   expect(html).not.toContain("<a");
+  // Longer than formulaLimit, or nesting past the bound once typeset.
+  expect(() => labels.renderToString("x".repeat(formulaLimit + 1), { displayMode: true })).toThrow();
+  expect(labels.renderToString("x".repeat(formulaLimit), { displayMode: true, output: "mathml" })).toContain("<math");
+  expect(() => labels.renderToString(`${"x^{".repeat(40)}x${"}".repeat(40)}`, { displayMode: true })).toThrow();
+  expect(labels.renderToString(`${"x^{".repeat(5)}x${"}".repeat(5)}`, { displayMode: true })).toContain("katex");
 });
 
 test("KaTeX as the app loads it typesets a formula, and is not given one that would expand without end", async () => {
@@ -216,6 +224,28 @@ test("the formulas are typeset for a while at a time, the page's thread given ba
   math(async () => typeset, now)(article, context);
   await vi.advanceTimersByTimeAsync(0);
   // The first task, at least, is its own: as many as fit in taskTime.
+  expect(calls.length).toBeGreaterThanOrEqual(Math.ceil(taskTime / 20));
+  expect(calls.length).toBeLessThan(count);
+  await vi.runAllTimersAsync();
+  expect(calls).toHaveLength(count);
+});
+
+test("each formula is laid out as it is put in, the clock counting the layout, which can take far longer than KaTeX", async () => {
+  vi.useFakeTimers();
+  const { calls, typeset } = typesetter();
+  let time = 0;
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(() => {
+    time += 20;
+    return new DOMRect();
+  });
+  const count = 20;
+  const article = view(Array.from({ length: count }, (_, i) => `<span class="nw-math">${i}</span>`).join(""));
+
+  math(
+    async () => typeset,
+    () => time
+  )(article, context);
+  await vi.advanceTimersByTimeAsync(0);
   expect(calls.length).toBeGreaterThanOrEqual(Math.ceil(taskTime / 20));
   expect(calls.length).toBeLessThan(count);
   await vi.runAllTimersAsync();

@@ -75,6 +75,11 @@ test("L4 (page): a tag leads to the pages of the tag and those under it; formula
   await expect(page).toHaveURL(wikiPagePath(workspace.slug, notebook.id, deeper.id));
 });
 
+/** mindmap is a mindmap's source: a root and its children, a line each. */
+function mindmap(children: number): string {
+  return ["mindmap", "  root", ...Array.from({ length: children }, (_, i) => `    node${i}`)].join("\n");
+}
+
 test("L4 (page): what a writer's formulas and diagrams could do to a reader's page they cannot: wide, painted outside, expanding without end, crashing it, or marked up", async ({
   api,
   signedInPage,
@@ -86,8 +91,11 @@ test("L4 (page): what a writer's formulas and diagrams could do to a reader's pa
   const bomb = a + String.raw`\def\b{${String.raw`\a`.repeat(31)}}` + String.raw`\b`.repeat(31);
   const columns = String.raw`\begin{alignedat}{30000000}a\end{alignedat}`;
   const deep = `${"x^{".repeat(150)}x${"}".repeat(150)}`;
+  const styled = `${String.raw`\pmb{`.repeat(160)}x${"}".repeat(160)}`;
   // The diagrams mermaid cannot draw come first: they are tried, one at a time, before the twins are drawn.
   const content = [
+    "Go [[#Far|far]].",
+    "",
     "```mermaid",
     String.raw`graph TD; M["$$\def\a{x}\a$$"]`,
     "```",
@@ -98,6 +106,10 @@ test("L4 (page): what a writer's formulas and diagrams could do to a reader's pa
     "",
     "```mermaid",
     `graph TD; C["$$${columns}$$"]`,
+    "```",
+    "",
+    "```mermaid",
+    `graph TD; D["$$${deep}$$"]`,
     "```",
     "",
     "```mermaid",
@@ -115,6 +127,10 @@ test("L4 (page): what a writer's formulas and diagrams could do to a reader's pa
     '  click A href "javascript:alert(3)"',
     "```",
     "",
+    "| Name | Value |",
+    "|---|---|",
+    String.raw`| smashed | $\smash[b]{\underbrace{x}_{y}}$ |`,
+    "",
     `<table><tr>${cells}</tr></table>`,
     "",
     String.raw`A long one $\left(${"x".repeat(300)}\right)$ in a line.`,
@@ -127,6 +143,18 @@ test("L4 (page): what a writer's formulas and diagrams could do to a reader's pa
     "",
     `Too deep $${deep}$ here.`,
     "",
+    `Too styled $${styled}$ here.`,
+    "",
+    "```mermaid",
+    mindmap(150),
+    "```",
+    "",
+    "```mermaid",
+    mindmap(30),
+    "```",
+    "",
+    "# Far",
+    "",
     String.raw`The last $\smash[b]{\underbrace{x}_{y}}$ reaches past the view.`,
     "",
   ].join("\n");
@@ -134,7 +162,7 @@ test("L4 (page): what a writer's formulas and diagrams could do to a reader's pa
   const page = await signedInPage(tokens);
   await page.goto(wikiPagePath(workspace.slug, notebook.id, wide.id));
   const article = page.getByRole("article");
-  await expect(article.locator(".nw-math .katex")).toHaveCount(3);
+  await expect(article.locator(".nw-math .katex")).toHaveCount(4);
 
   // Two diagrams of a source, the second one kept: no id of one is another's.
   await expect(article.locator(".nw-diagram svg")).toHaveCount(3);
@@ -163,18 +191,27 @@ test("L4 (page): what a writer's formulas and diagrams could do to a reader's pa
   expect(marked).toEqual({ handlers: [], scripts: 0, forged: 0 });
   await expect(page.locator("body")).toBeVisible();
 
-  // A label's formula that defines a macro, one that does once mermaid has sanitized it, and one of too many
-  // columns: the diagram shows its source.
+  // A mindmap of more lines than its bound, near the end, is tried as it shows, before the small one after it,
+  // which is drawn.
+  await article.locator("code.language-mermaid", { hasText: "node149" }).scrollIntoViewIfNeeded();
+  await article.locator("code.language-mermaid", { hasText: "node29" }).last().scrollIntoViewIfNeeded();
+  await expect(article.locator(".nw-diagram svg")).toHaveCount(4);
+  await expect(article.locator(".nw-diagram").last()).toContainText("node29");
+
+  // A label's formula that defines a macro, one that does once mermaid has sanitized it, one of too many columns,
+  // one nested too deep, and the large mindmap: the diagram shows its source.
   await expect(article.locator("code.language-mermaid")).toHaveText([
     String.raw`graph TD; M["$$\def\a{x}\a$$"]`,
     String.raw`graph TD; S["$$\d<x></x>ef\a{x}\a$$"]`,
     `graph TD; C["$$${columns}$$"]`,
+    `graph TD; D["$$${deep}$$"]`,
+    mindmap(150),
   ]);
 
-  // A formula that would expand without end, one of too many columns, and one nested too deep show their TeX;
-  // the page is still there.
+  // A formula that would expand without end, one of too many columns, one nested too deep, and one whose styled
+  // groups would take the layout seconds show their TeX; the page is still there.
   await Promise.all(
-    [bomb, columns, deep].map(async (tex) => {
+    [bomb, columns, deep, styled].map(async (tex) => {
       const formula = article.locator(".nw-math").filter({ hasText: tex });
       await expect(formula).toHaveText(tex);
       await expect(formula.locator(".katex")).toHaveCount(0);
@@ -187,6 +224,18 @@ test("L4 (page): what a writer's formulas and diagrams could do to a reader's pa
   await page.mouse.wheel(0, 200);
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
   expect(await article.evaluate((view) => view.scrollTop)).toBe(0);
+  // Nor over a table whose last row's formula reaches past its wrapper's bottom.
+  const wrapper = article.locator(".nw-scroll", { has: page.locator("table", { hasText: "smashed" }) });
+  await wrapper.scrollIntoViewIfNeeded();
+  const before = await page.evaluate(() => window.scrollY);
+  await wrapper.hover();
+  await page.mouse.wheel(0, 100);
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(before);
+  expect(await wrapper.evaluate((element) => element.scrollTop)).toBe(0);
+  // An anchor's scroll, which a hidden overflow lets through, leaves the view where it was: its top in sight.
+  await article.getByRole("link", { name: "far", exact: true }).click();
+  await expect(article.getByRole("heading", { name: "Far", exact: true })).toBeFocused();
+  await expect.poll(() => article.evaluate((view) => view.scrollTop)).toBe(0);
 
   // What is wide without a region of its own scrolls in the view, which takes the focus, not the page.
   await expect(article).toHaveAttribute("tabindex", "0");

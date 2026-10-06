@@ -9,12 +9,22 @@ export const diagramLimit = 20_000;
 /** The most edges a diagram may have: mermaid draws on the page's thread, 450 edges in more than a second. */
 export const edgeLimit = 200;
 
+/**
+ * The most lines a mindmap may have, a node each: its layout grows faster
+ * than its nodes (100 in 0.44 s, 800 in 14.6 s, 2,000 in 116 s, within
+ * diagramLimit: M6/P6 B second fix check). A larger one shows its source.
+ * Its lines are counted as they are written, comments among them.
+ */
+export const mindmapLines = 150;
+
 /** How many drawings are kept, by theme and source, for a view read again. */
 export const keptDrawings = 50;
 
 /** What drawing uses of mermaid; the tests give their own. */
 export type Drawer = {
   initialize: (config: MermaidConfig) => void;
+  /** detectType is the type of diagram text is, as mermaid reads it; it throws for none. */
+  detectType: (text: string) => string;
   render: (id: string, text: string) => Promise<{ svg: string }>;
 };
 
@@ -52,7 +62,9 @@ const whenShown: Watch = (element, see) => {
  * script of the diagram's run, a label's HTML without a style element
  * (mermaid's own rule), an id, which could take an anchor of the page's,
  * nor a data attribute: the server's marks (data-task, data-nw-…) are the
- * enhancements' to act on, and a drawing kept is put before they run;
+ * enhancements' to act on, and a drawing kept is put before they run (a
+ * label's link loses its target with them, which mermaid keeps in one: it
+ * opens where it is, as the page's own do);
  * an error not drawn but thrown, so that the diagram shows its source; the
  * text and the edges bounded (the edges of a flowchart: mermaid counts no
  * other's); and none of these, nor the layout (which would load another
@@ -109,9 +121,9 @@ type Diagram = {
  * mermaid, which load loads (M6/P6 design 10): each once it shows (watch),
  * one at a time, in the theme shown as it is drawn. A drawing takes the
  * block's place in a wrapper of its own (nw-scroll nw-diagram), which
- * scrolls sideways; a diagram over diagramLimit, or one mermaid cannot
- * draw (a label's formula refused among them: loadMermaid), shows its
- * source. The latest keptDrawings drawings are kept, by
+ * scrolls sideways; a diagram over diagramLimit, a mindmap over
+ * mindmapLines, or one mermaid cannot draw (a label's formula refused
+ * among them: loadMermaid), shows its source. The latest keptDrawings drawings are kept, by
  * theme and source: a view read again, its HTML replaced whole, puts a
  * diagram whose source did not change at once. As the theme changes, each
  * diagram is drawn again in it, in its wrapper, once it shows: the old
@@ -221,6 +233,9 @@ async function render(
     return undefined;
   }
   mermaid.initialize(options(theme));
+  if (tooLarge(mermaid, source)) {
+    return undefined;
+  }
   const id = nextId();
   try {
     return { id, svg: (await mermaid.render(id, source)).svg };
@@ -228,6 +243,18 @@ async function render(
     // A diagram mermaid cannot read, or past its bounds: its source shows.
     return undefined;
   }
+}
+
+/** tooLarge tells whether source is a mindmap of more than mindmapLines lines, as mermaid tells its type. */
+function tooLarge(mermaid: Drawer, source: string): boolean {
+  let type: string;
+  try {
+    type = mermaid.detectType(source);
+  } catch {
+    // No type: mermaid cannot draw it either.
+    return false;
+  }
+  return type === "mindmap" && source.split("\n").filter((line) => line.trim() !== "").length > mindmapLines;
 }
 
 /** nextId is an id no drawing's elements' ids begin with. */
