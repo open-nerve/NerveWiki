@@ -96,6 +96,16 @@ func (t Target) LastKeys() []string {
 // with one of its LastKeys (M6/P3 design 2), as Obsidian reads it: written
 // with ".md", it is the page without it when the notebook has a page of
 // that name anywhere, and the page with it otherwise.
+// Reach is how many steps from the end of a page's path resolving t,
+// written in the page whose path is from, looks at: the keys of a relative
+// target's folder and its own, the keys alone of any other.
+func (t Target) Reach(from []Step) int {
+	if !t.Relative {
+		return len(t.Keys)
+	}
+	return max(len(from)-1-t.Up, 0) + len(t.Keys)
+}
+
 func (t Target) form(candidates candidateSet) []string {
 	stem := t.Keys[len(t.Keys)-1]
 	if t.AltLast == "" || candidates.has(stem) {

@@ -51,11 +51,12 @@ SELECT id, parent_id, name, hops::integer AS hops FROM chain ORDER BY hops;
 
 -- name: Subtree :many
 -- A node not deleted of the notebook and its descendants not deleted, each with its level (the node's is 1),
--- level by level. The level bound stops a chain that loops, which only a defect could make. Each step reads a
--- parent's children by (notebook_id, parent_id), deleted ones too, and leaves the deleted out after: with the
--- condition on deleted_at in the step, a plan without statistics (an import, a restore, before ANALYZE) read every
--- node of the notebook by the titles' partial index for each parent, 40 s for a folder of 10,000 pages in a notebook
--- of 30,000 (M6 closeout FA-M1). OFFSET 0 keeps the step a subquery of its own, the condition out of it.
+-- level by level. The level bound stops a chain that loops, which only a defect could make. The condition on
+-- deleted_at is written so that no partial index's predicate follows from it: without statistics (an import, a
+-- restore, before ANALYZE) the plan read every node of the notebook by the titles' partial index for each parent,
+-- 40 s for a folder of 10,000 pages in a notebook of 30,000 (M6 closeout FA-M1); with it, each step reads a
+-- parent's children by (notebook_id, parent_id). A step of its own (LATERAL … OFFSET 0) read the table whole for
+-- each parent once one folder held most nodes and the statistics said so: 19 s for 20,000 (FA2-I1).
 WITH RECURSIVE sub AS (
     SELECT n.id, n.notebook_id, n.parent_id, n.kind, n.name, n.name_key, n.sort_order, n.created_by_id,
         n.updated_by_id, n.created_at, n.updated_at, 1 AS level
@@ -64,14 +65,8 @@ WITH RECURSIVE sub AS (
     UNION ALL
     SELECT c.id, c.notebook_id, c.parent_id, c.kind, c.name, c.name_key, c.sort_order, c.created_by_id,
         c.updated_by_id, c.created_at, c.updated_at, s.level + 1
-    FROM sub s CROSS JOIN LATERAL (
-        SELECT k.id, k.notebook_id, k.parent_id, k.kind, k.name, k.name_key, k.sort_order, k.created_by_id,
-            k.updated_by_id, k.created_at, k.updated_at, k.deleted_at
-        FROM nodes k
-        WHERE k.notebook_id = s.notebook_id AND k.parent_id = s.id
-        OFFSET 0
-    ) c
-    WHERE c.deleted_at IS NULL AND s.level < 64
+    FROM sub s JOIN nodes c ON c.notebook_id = s.notebook_id AND c.parent_id = s.id
+    WHERE (c.deleted_at IS NULL) IS TRUE AND s.level < 64
 )
 SELECT id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id, created_at,
     updated_at, level::integer AS level

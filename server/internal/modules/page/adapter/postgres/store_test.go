@@ -443,6 +443,37 @@ func TestSubtreeReadsWithoutStatisticsInTimeAsLongAsIt(t *testing.T) {
 	}
 }
 
+// The subtree of a folder that holds most of the nodes, the statistics
+// saying so, reads in a time as long as it (M6 closeout FA2-I1: read step
+// by step, each parent's children took a scan of the table, 19 s for a
+// folder of 20,000).
+func TestSubtreeOfAFolderOfMostNodesReadsInTimeAsLongAsIt(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	folder := f.page(t, f.eng, nil, "Folder", 0)
+	f.exec(t, `INSERT INTO nodes (id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id,
+		created_at, updated_at)
+		SELECT gen_random_uuid(), $1, NULL, 'page', 'R' || i, 'r' || i, i, $2, $2, $3, $3 FROM generate_series(1, 10000) i`,
+		f.eng, f.alice, now())
+	f.exec(t, `INSERT INTO nodes (id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id,
+		created_at, updated_at)
+		SELECT gen_random_uuid(), $1, $4, 'page', 'C' || i, 'c' || i, i, $2, $2, $3, $3 FROM generate_series(1, 20000) i`,
+		f.eng, f.alice, now(), folder.ID)
+	f.exec(t, `ANALYZE nodes`)
+	var stats int
+	if err := f.pool.QueryRow(ctx, `SELECT count(*) FROM pg_stats WHERE tablename = 'nodes'`).Scan(&stats); err != nil || stats == 0 {
+		t.Fatalf("the nodes have statistics of %d columns, %v", stats, err)
+	}
+	at := time.Now()
+	sub, err := f.s.Subtree(ctx, f.eng, folder.ID)
+	if err != nil || len(sub) != 20_001 || sub.Height() != 2 {
+		t.Fatalf("Subtree of the folder: %d nodes, %v; want the folder and its 20,000 pages", len(sub), err)
+	}
+	if took := time.Since(at); took > 3*time.Second {
+		t.Errorf("the subtree of 20,001 nodes took %s", took)
+	}
+}
+
 // A move writes the parent, the order and who and when; a title a sibling
 // holds under the new parent is page.title_taken.
 func TestMoveNode(t *testing.T) {

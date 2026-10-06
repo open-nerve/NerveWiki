@@ -1,7 +1,9 @@
 package domain_test
 
 import (
+	"fmt"
 	"math/rand/v2"
+	"runtime"
 	"slices"
 	"testing"
 	"uuid"
@@ -24,7 +26,6 @@ func TestSuffixesResolveAsTheCandidatesOfTheLastKeys(t *testing.T) {
 		for i, path := range c.pages {
 			all[i] = p.byID[p.ids[path]]
 		}
-		suffixes := domain.NewSuffixes(all)
 		for range 20 {
 			from := c.pages[r.IntN(len(c.pages))]
 			written := randomTarget(r, c.pages, from)
@@ -37,6 +38,8 @@ func TestSuffixesResolveAsTheCandidatesOfTheLastKeys(t *testing.T) {
 				continue
 			}
 			want := p.resolve(domain.Link{Target: written}, from)
+			// As deep as the target reaches, no deeper.
+			suffixes := domain.NewSuffixes(all, target.Reach(p.paths[from]))
 			if got := suffixes.Resolve(target, p.paths[from], p.aliased); got != want {
 				t.Fatalf("seed %d: %q from %q resolves to %+v among the suffixes of %q, to %+v among its candidates",
 					seed, written, from, got, c.pages, want)
@@ -57,5 +60,32 @@ func TestSuffixesResolveAsTheCandidatesOfTheLastKeys(t *testing.T) {
 	}
 	if found < 10_000 || ambiguous < 20 || relative < 1_000 || aliased < 100 {
 		t.Errorf("the random targets found %d pages, %d ambiguously, %d relative, %d by alias: too few to tell", found, ambiguous, relative, aliased)
+	}
+}
+
+// Suffixes read pages only as deep as the targets reach: names alone among
+// 10,000 pages of distinct titles 64 steps deep read each page's last step,
+// not its 64 (M6 closeout FA2-M1: 100,000 such pages took 2.2 GB a read).
+func TestSuffixesReadThePathsAsDeepAsTheTargetsReach(t *testing.T) {
+	folders := make([]domain.Step, 63)
+	for i := range folders {
+		folders[i] = domain.Step{ID: uuid.NewV7(), Key: fmt.Sprintf("f%d", i), Name: fmt.Sprintf("F%d", i)}
+	}
+	pages := make([]domain.Node, 10_000)
+	for i := range pages {
+		id := uuid.NewV7()
+		key := fmt.Sprintf("t%d", i)
+		pages[i] = domain.Node{ID: id, Path: append(slices.Clip(folders), domain.Step{ID: id, Key: key, Name: key})}
+	}
+	target, _ := domain.ParseTarget("t9999")
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	suffixes := domain.NewSuffixes(pages, target.Reach(nil))
+	runtime.ReadMemStats(&after)
+	if got := suffixes.Resolve(target, nil, nil); got.ID != pages[9_999].ID {
+		t.Fatalf("t9999 resolves to %+v, want %s", got, pages[9_999].ID)
+	}
+	if allocated := after.TotalAlloc - before.TotalAlloc; allocated > 32<<20 {
+		t.Errorf("the suffixes of 10,000 pages read for names alone took %d MiB", allocated>>20)
 	}
 }
