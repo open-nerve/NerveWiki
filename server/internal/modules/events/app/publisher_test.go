@@ -200,14 +200,14 @@ func TestANotebooksDeletedEventListsTheNotebooks(t *testing.T) {
 // nothing is sent. The notifier's error is the publisher's.
 func TestPublishSendsAnEventAsItIs(t *testing.T) {
 	n := &fakeNotifier{}
-	e, err := domain.NewEvent("links", acme(), seen(), map[string]string{"x": "y"})
+	e, err := domain.NewEvent("later", acme(), seen(), map[string]string{"x": "y"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := app.NewPublisher(n).Publish(context.Background(), e); err != nil || len(n.sent) != 1 || !strings.Contains(n.sent[0], `"links"`) {
+	if err := app.NewPublisher(n).Publish(context.Background(), e); err != nil || len(n.sent) != 1 || !strings.Contains(n.sent[0], `"later"`) {
 		t.Errorf("Publish() = %v, sent %q", err, n.sent)
 	}
-	long, _ := domain.NewEvent("links", acme(), seen(), map[string]string{"x": strings.Repeat("y", domain.MaxPayload)})
+	long, _ := domain.NewEvent("later", acme(), seen(), map[string]string{"x": strings.Repeat("y", domain.MaxPayload)})
 	if err := app.NewPublisher(n).Publish(context.Background(), long); !errors.Is(err, domain.ErrTooLong) || len(n.sent) != 1 {
 		t.Errorf("Publish() of a long event = %v, sent %d; want ErrTooLong and nothing more", err, len(n.sent))
 	}
