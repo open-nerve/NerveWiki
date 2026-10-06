@@ -91,7 +91,8 @@ const linksChanged: EventHandler = (data, context) => {
  * readEach reads again what of kind, a page's backlinks or properties, is
  * shown of the pages ids of notebook, each through the refresher; of every
  * page of the notebook for null, too many to name. Of a page never read, it
- * reads nothing: the refresher keeps each key it is asked for.
+ * reads nothing (one whose first read is out was: SWR writes its key as it
+ * mounts): the refresher keeps each key it is asked for.
  */
 function readEach(
   kind: "backlinks" | "page-properties",

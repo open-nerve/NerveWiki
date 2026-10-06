@@ -98,9 +98,15 @@ function h3s(count: number): string {
 
 test("the outline lists the first 1,000 headings, indented from the highest of them, and says how many more the page has, after its list", async () => {
   const server = pageServer();
-  // 1,000 h3, then an h1 and an h2 not listed, counted; one without text, not.
+  // 1,000 h3, then an h1, an h2 and one whose text is a footnote's number alone not listed, counted; one without
+  // text and one of the footnotes, not.
   server.views.set(install.id, {
-    html: `${h3s(1_000)}<h1 id="nw-top">Top</h1><h2 id="nw-blank"> </h2><h2 id="nw-next">Next</h2>`,
+    html: [
+      h3s(1_000),
+      '<h1 id="nw-top">Top</h1><h2 id="nw-blank"> </h2><h2 id="nw-next">Next</h2>',
+      '<h2 id="nw-ref"><sup id="nw-fnref:1"><a href="#nw-fn:1">1</a></sup></h2>',
+      '<div class="footnotes"><ol><li id="nw-fn:1"><h4 id="nw-in-a-note">In a note</h4></li></ol></div>',
+    ].join(""),
     revision: 1,
   });
   const { unmount } = renderApp(pagePath(install.id), server.app);
@@ -108,7 +114,7 @@ test("the outline lists the first 1,000 headings, indented from the highest of t
   const outline = await screen.findByRole("navigation", { name: "Outline" });
   const items = within(outline).getAllByRole("listitem");
   expect([items.length, items.at(-1)?.textContent, items[0]?.style.paddingLeft]).toEqual([1_000, "H999", "0rem"]);
-  expect(within(outline).getByText("…and 2 more").closest("li")).toBeNull();
+  expect(within(outline).getByText("…and 3 more").closest("li")).toBeNull();
   unmount();
 
   // As many as listed: none more.

@@ -112,7 +112,8 @@ const PageShell = observer(function PageShell({ notebook, page }: { notebook: No
   const mounted = useMounted();
   const writer = writesPages(notebook.role);
   const home = `/${slug}/notebooks/${notebook.id}`;
-  // One for the notebook: what it is given to, memoized (observer), renders again as its own data changes only.
+  // One for the notebook: the backlinks (an observer, memoized) render again not as the shell's own state changes (the
+  // edit entered or left); the notebook and its tree read again still render them.
   const href = useCallback((id?: string) => (id === undefined ? home : `${home}/pages/${id}`), [home]);
   const children = pages.childrenOf(page.id);
 

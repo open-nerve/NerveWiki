@@ -372,6 +372,8 @@ test("an escaped [[, raw HTML, an autolink, and a # in a link being written (in 
     ["x\n‸", "`[[` #pro"],
     ["‸", "[t]([[x) #pro"],
     [table, "[[x | #pro"],
+    // Past an escaped '|' to the cell's own.
+    [table, "[[x | y \\| #pro"],
     // A table's row without a '|' is one cell.
     ["| a | b |\n| - | - |\n| x | y |\n‸", "row #pro"],
   ]) {
