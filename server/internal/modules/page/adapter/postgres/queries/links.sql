@@ -2,7 +2,9 @@
 -- The pages not deleted of a notebook whose title key is one of keys, each with its path from the root (the link
 -- index's candidates, M6/P3 design 3.3): a row a step of a page's path, its own the step 0 up. The chain stops at
 -- a deleted node, and the bound at a chain that loops, both of which only a defect could make: such a path reaches
--- no root.
+-- no root. Each step up reads its parent by its key alone, LIMIT 1 keeping the planner from joining the notebook's
+-- nodes instead, its notebook and deletion checked after: without statistics (an import, a restore) a step read by
+-- the notebook was the chain's rows times the notebook's (M6 closeout A-M2).
 WITH RECURSIVE chain AS (
     SELECT n.id AS page_id, n.id, n.parent_id, n.name, n.name_key, 0 AS up
     FROM nodes n
@@ -10,8 +12,12 @@ WITH RECURSIVE chain AS (
         AND n.kind = 'page' AND n.deleted_at IS NULL
     UNION ALL
     SELECT c.page_id, p.id, p.parent_id, p.name, p.name_key, c.up + 1
-    FROM chain c JOIN nodes p ON p.notebook_id = sqlc.arg(notebook_id) AND p.id = c.parent_id
-    WHERE c.up < 64 AND p.deleted_at IS NULL
+    FROM chain c CROSS JOIN LATERAL (
+        SELECT p.id, p.parent_id, p.name, p.name_key, p.notebook_id, p.deleted_at FROM nodes p
+        WHERE p.id = c.parent_id
+        LIMIT 1
+    ) p
+    WHERE c.up < 64 AND p.notebook_id = sqlc.arg(notebook_id) AND p.deleted_at IS NULL
 )
 SELECT page_id, id, parent_id, name, name_key, up::integer AS up FROM chain ORDER BY page_id, up DESC;
 
@@ -25,8 +31,12 @@ WITH RECURSIVE chain AS (
         AND n.kind = 'page' AND n.deleted_at IS NULL
     UNION ALL
     SELECT c.page_id, p.id, p.parent_id, p.name, p.name_key, c.up + 1
-    FROM chain c JOIN nodes p ON p.notebook_id = sqlc.arg(notebook_id) AND p.id = c.parent_id
-    WHERE c.up < 64 AND p.deleted_at IS NULL
+    FROM chain c CROSS JOIN LATERAL (
+        SELECT p.id, p.parent_id, p.name, p.name_key, p.notebook_id, p.deleted_at FROM nodes p
+        WHERE p.id = c.parent_id
+        LIMIT 1
+    ) p
+    WHERE c.up < 64 AND p.notebook_id = sqlc.arg(notebook_id) AND p.deleted_at IS NULL
 )
 SELECT page_id, id, parent_id, name, name_key, up::integer AS up FROM chain ORDER BY page_id, up DESC;
 

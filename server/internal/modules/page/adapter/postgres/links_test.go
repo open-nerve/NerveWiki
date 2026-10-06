@@ -131,3 +131,42 @@ func TestSetNameKeysPassesKeysOnAmongSiblings(t *testing.T) {
 		}
 	}
 }
+
+// The link targets' paths read each step up by its parent's key: without
+// statistics, as after an import or a restore, a notebook of 20,000 nodes,
+// 10,000 of them pages named x, reads them all in a time as long as they
+// are (M6 closeout A-M2: a step read by the notebook took 13 s, each
+// chain's row a scan of the notebook's nodes).
+func TestLinkTargetsReadWithoutStatisticsInTimeAsLongAsThey(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	f.exec(t, `ALTER TABLE nodes SET (autovacuum_enabled = false)`)
+	f.exec(t, `INSERT INTO nodes (id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id,
+		created_at, updated_at)
+		SELECT gen_random_uuid(), $1, NULL, 'page', 'F' || i, 'f' || i, i, $2, $2, $3, $3 FROM generate_series(1, 10000) i`,
+		f.eng, f.alice, now())
+	f.exec(t, `INSERT INTO nodes (id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id,
+		created_at, updated_at)
+		SELECT gen_random_uuid(), $1, n.id, 'page', 'x', 'x', 0, $2, $2, $3, $3 FROM nodes n WHERE n.notebook_id = $1`,
+		f.eng, f.alice, now())
+	var stats int
+	if err := f.pool.QueryRow(ctx, `SELECT count(*) FROM pg_stats WHERE tablename = 'nodes'`).Scan(&stats); err != nil || stats != 0 {
+		t.Fatalf("the nodes have statistics of %d columns, %v", stats, err)
+	}
+	at := time.Now()
+	byKeys, err := f.s.LinkTargetsByKeys(ctx, f.eng, []string{"x"})
+	if err != nil || len(byKeys) != 10_000 || len(byKeys[0].Steps) != 2 {
+		t.Fatalf("by keys: %d paths, %v; want 10,000 of two steps", len(byKeys), err)
+	}
+	ids := make([]uuid.UUID, len(byKeys))
+	for i, p := range byKeys {
+		ids[i] = p.ID
+	}
+	byIDs, err := f.s.LinkTargetsByIDs(ctx, f.eng, ids)
+	if err != nil || len(byIDs) != 10_000 {
+		t.Fatalf("by ids: %d paths, %v; want 10,000", len(byIDs), err)
+	}
+	if took := time.Since(at); took > 3*time.Second {
+		t.Errorf("the 10,000 paths, by keys and by ids, took %s", took)
+	}
+}
