@@ -43,7 +43,9 @@ test("a writer's link asks where its page would go, and creates it there once co
   const made = server.nodes.find((node) => node.name === "x");
   expect(router.state.location.pathname).toBe(pagePath(made?.id ?? ""));
   await waitFor(() => expect(document.activeElement).toBe(heading));
-  const sent = server.sent.filter((each) => !each.startsWith("GET nodes") && !each.startsWith("GET view x"));
+  // What the page made reads, its view and its right column's, is its own.
+  const its = new Set(["GET view x", `GET backlinks ${made?.id}`, `GET properties ${made?.id}`]);
+  const sent = server.sent.filter((each) => !each.startsWith("GET nodes") && !its.has(each));
   expect(sent.slice(sent.indexOf("GET landing Install/x"))).toEqual([
     "GET landing Install/x",
     "POST x under Install",

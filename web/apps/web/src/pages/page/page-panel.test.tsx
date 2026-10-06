@@ -1,14 +1,16 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 
+import { json, problem } from "../../test/fakes";
 import { pageEditor } from "../../test/page-editor";
-import { guide, install, pagePath, pageServer } from "../../test/page-server";
+import { guide, install, linux, notes, pageNode, pagePath, pageServer } from "../../test/page-server";
 import { renderApp } from "../../test/render";
 
-// The page's right column (M6/P7 design 7, 8).
+// The page's right column (M6/P7 design 7–10).
 
 afterEach(() => {
+  vi.useRealTimers();
   Reflect.deleteProperty(Element.prototype, "scrollIntoView");
 });
 
@@ -24,6 +26,32 @@ function scrolls(): Element[] {
 /** panel is the page's right column. */
 function panel(): HTMLElement {
   return screen.getByRole("complementary", { name: "About this page" });
+}
+
+/** shownPanel waits for the page's right column. */
+function shownPanel(): Promise<HTMLElement> {
+  return screen.findByRole("complementary", { name: "About this page" });
+}
+
+/** section is the right column's section titled title. */
+function section(title: string): HTMLElement {
+  const summary = within(panel()).getByText(title, { selector: "summary" });
+  const details = summary.closest("details");
+  expect(details).not.toBeNull();
+  return details as HTMLElement;
+}
+
+/** backlinked is what the backlinks list: for each page, its link's text, how many links, and its lines. */
+function backlinked(): (string | null)[][] {
+  return [...section("Backlinks").querySelectorAll(":scope > ul > li")].map((item) =>
+    [...item.querySelectorAll("a, span, li")].map((each) => each.textContent)
+  );
+}
+
+/** readAgain has SWR read what is shown again, as a refocus does once its interval is over. */
+async function readAgain() {
+  await act(() => vi.advanceTimersByTimeAsync(6_000));
+  act(() => void window.dispatchEvent(new Event("focus")));
 }
 
 /** outlined is what the outline lists: each heading's text, and how far it is indented. */
@@ -134,5 +162,198 @@ test("while the page is edited the outline is not shown; back to reading, it is"
 
   fireEvent.keyDown(document.activeElement ?? document.body, { key: "e", ctrlKey: true });
   await screen.findByRole("button", { name: "Edit" });
-  expect(await within(panel()).findByRole("navigation", { name: "Outline" })).toBeTruthy();
+  expect(await within(await shownPanel()).findByRole("navigation", { name: "Outline" })).toBeTruthy();
+});
+
+test("the backlinks are the pages that link here, by their title, with how many links when more than one and their lines; each goes to its page", async () => {
+  const user = userEvent.setup();
+  const server = pageServer();
+  server.backlinks.set(install.id, [
+    {
+      data: [
+        { id: guide.id, count: 1, contexts: ["See [[Install]]"] },
+        { id: notes.id, count: 3, contexts: ["a  [[Install]]", "b [[Install|it]]…"] },
+        { id: linux.id, count: 1000, contexts: [] },
+      ],
+      next_cursor: null,
+    },
+  ]);
+  const { router } = renderApp(pagePath(install.id), server.app);
+
+  await within(await shownPanel()).findByRole("link", { name: "Guide" });
+  expect(backlinked()).toEqual([
+    ["Guide", "See [[Install]]"],
+    ["Notes", " · 3 links", "a  [[Install]]", "b [[Install|it]]…"],
+    ["Linux", " · 1000+ links"],
+  ]);
+
+  await user.click(within(section("Backlinks")).getByRole("link", { name: "Notes" }));
+  const heading = await screen.findByRole("heading", { level: 1, name: "Notes" });
+  expect(router.state.location.pathname).toBe(pagePath(notes.id));
+  await waitFor(() => expect(document.activeElement).toBe(heading));
+});
+
+test("a page that links here the tree does not have yet shows once the tree is read again; with none, the backlinks say so", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const draft = pageNode(9, "Draft");
+  const server = pageServer();
+  server.backlinks.set(guide.id, [{ data: [{ id: draft.id, count: 1, contexts: ["[[Guide]]"] }], next_cursor: null }]);
+  renderApp(pagePath(guide.id), server.app);
+  await waitFor(() => expect(server.sent).toContain(`GET backlinks ${guide.id}`));
+  expect(await within(section("Backlinks")).findByText("No page links here.")).toBeTruthy();
+
+  server.nodes = [...server.nodes, draft];
+  await readAgain();
+  expect(await within(section("Backlinks")).findByRole("link", { name: "Draft" })).toBeTruthy();
+});
+
+test("more reads the next page of the backlinks and adds it, until the last; read again, the list starts from its first", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
+  const server = pageServer();
+  server.backlinks.set(install.id, [
+    { data: [{ id: guide.id, count: 1, contexts: [] }], next_cursor: "1" },
+    { data: [{ id: notes.id, count: 1, contexts: [] }], next_cursor: null },
+  ]);
+  renderApp(pagePath(install.id), server.app);
+  await within(await shownPanel()).findByRole("link", { name: "Guide" });
+
+  await user.click(within(section("Backlinks")).getByRole("button", { name: "More" }));
+  await within(section("Backlinks")).findByRole("link", { name: "Notes" });
+  expect(backlinked()).toEqual([["Guide"], ["Notes"]]);
+  expect(within(section("Backlinks")).queryByRole("button", { name: "More" })).toBeNull();
+  expect(server.sent).toContain(`GET backlinks ${install.id} 1`);
+
+  server.backlinks.set(install.id, [
+    { data: [{ id: guide.id, count: 2, contexts: [] }], next_cursor: "1" },
+    { data: [{ id: notes.id, count: 1, contexts: [] }], next_cursor: null },
+  ]);
+  await readAgain();
+  await waitFor(() => expect(backlinked()).toEqual([["Guide", " · 2 links"]]));
+  expect(within(section("Backlinks")).getByRole("button", { name: "More" })).toBeTruthy();
+});
+
+test("a next page read as the list is read again, which changed, is not added; one that fails says so, and more reads it again", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
+  let first = { data: [{ id: guide.id, count: 1, contexts: [] as string[] }], next_cursor: "1" };
+  let next: () => Promise<Response> = failing;
+  const server = pageServer({
+    answers: {
+      "GET /api/v0/pages/*/backlinks": (request) => {
+        const cursor = new URL(request.url).searchParams.get("cursor");
+        server.sent.push(`GET backlinks ${cursor ?? ""}`.trim());
+        return cursor === null ? json(first) : next();
+      },
+    },
+  });
+  renderApp(pagePath(install.id), server.app);
+  await within(await shownPanel()).findByRole("link", { name: "Guide" });
+  const more = within(section("Backlinks")).getByRole("button", { name: "More" });
+
+  await user.click(more);
+  expect(await within(section("Backlinks")).findByRole("alert")).toBeTruthy();
+
+  let answer!: (response: Response) => void;
+  next = () => new Promise((resolve) => (answer = resolve));
+  await user.click(more);
+  await waitFor(() => expect(server.sent.filter((each) => each === "GET backlinks 1")).toHaveLength(2));
+  expect(within(section("Backlinks")).queryByRole("alert")).toBeNull();
+  expect(more.getAttribute("aria-busy")).toBe("true");
+  first = { data: [{ id: guide.id, count: 2, contexts: [] }], next_cursor: "1" };
+  await readAgain();
+  await waitFor(() => expect(backlinked()).toEqual([["Guide", " · 2 links"]]));
+  answer(json({ data: [{ id: notes.id, count: 1, contexts: [] }], next_cursor: null }));
+  await waitFor(() => expect(more.getAttribute("aria-busy")).toBeNull());
+  expect(backlinked()).toEqual([["Guide", " · 2 links"]]);
+});
+
+/** failing answers a read that failed. */
+function failing(): Promise<Response> {
+  return Promise.resolve(problem(500, "internal"));
+}
+
+/** properties is what the properties show: each key, and its value's text. */
+function properties(): string[][] {
+  return [...section("Properties").querySelectorAll("dl > div")].map((row) => [
+    row.querySelector("dt")?.textContent ?? "",
+    row.querySelector("dd")?.textContent ?? "",
+  ]);
+}
+
+test("the properties show each key and its value; a property link its text, leading to its page, or to none, styled so", async () => {
+  const user = userEvent.setup();
+  const server = pageServer();
+  server.properties.set(install.id, {
+    valid: true,
+    properties: [
+      { key: "status", value: "draft" },
+      { key: "count", value: 3 },
+      { key: "done", value: false },
+      { key: "empty", value: null },
+      { key: "meta", value: { a: 1 } },
+      { key: "up", value: "[[Guide|the guide]]" },
+      {
+        key: "related",
+        value: ["[[Notes]]", "[Linux *x*](Linux)", "[[Gone#Part]]", "[[Guide#Intro]]", "[[#Top]]", ["x"]],
+      },
+    ],
+    links: [
+      { key: "up", node_id: guide.id },
+      { key: "related.0", node_id: notes.id },
+      { key: "related.1", node_id: linux.id },
+      { key: "related.2", node_id: null },
+      { key: "related.3", node_id: guide.id },
+    ],
+  });
+  const { router } = renderApp(pagePath(install.id), server.app);
+
+  await within(await shownPanel()).findByRole("link", { name: "the guide" });
+  expect(properties()).toEqual([
+    ["status", "draft"],
+    ["count", "3"],
+    ["done", "false"],
+    ["empty", ""],
+    ["meta", '{"a":1}'],
+    ["up", "the guide"],
+    ["related", 'NotesLinux *x*Gone > PartGuide > Intro[[#Top]]["x"]'],
+  ]);
+  const links = within(section("Properties")).getAllByRole("link");
+  expect(links.map((link) => [link.textContent, link.getAttribute("href")])).toEqual([
+    ["the guide", pagePath(guide.id)],
+    ["Notes", pagePath(notes.id)],
+    ["Linux *x*", pagePath(linux.id)],
+    ["Guide > Intro", pagePath(guide.id)],
+  ]);
+  expect(within(section("Properties")).getByText("Gone > Part").className).toContain("decoration-dashed");
+
+  await user.click(links[1] as HTMLElement);
+  const heading = await screen.findByRole("heading", { level: 1, name: "Notes" });
+  expect(router.state.location.pathname).toBe(pagePath(notes.id));
+  await waitFor(() => expect(document.activeElement).toBe(heading));
+});
+
+test("a frontmatter that is not valid says so, as one without properties does", async () => {
+  const server = pageServer();
+  server.properties.set(install.id, { valid: false, properties: [], links: [] });
+  renderApp(pagePath(install.id), server.app);
+  expect(
+    await within(await shownPanel()).findByText("The page's frontmatter is not valid: it has no properties.")
+  ).toBeTruthy();
+
+  renderApp(pagePath(guide.id), pageServer().app);
+  expect(await screen.findByText("No properties.")).toBeTruthy();
+});
+
+test("while the page is edited its backlinks and properties are shown", async () => {
+  const server = pageServer({ role: "editor" });
+  server.backlinks.set(install.id, [{ data: [{ id: guide.id, count: 1, contexts: [] }], next_cursor: null }]);
+  server.properties.set(install.id, { valid: true, properties: [{ key: "status", value: "draft" }], links: [] });
+  renderApp(pagePath(install.id), server.app);
+  await within(await shownPanel()).findByRole("link", { name: "Guide" });
+
+  fireEvent.keyDown(document.activeElement ?? document.body, { key: "e", ctrlKey: true });
+  await pageEditor();
+  expect(within(section("Backlinks")).getByRole("link", { name: "Guide" })).toBeTruthy();
+  expect(properties()).toEqual([["status", "draft"]]);
 });

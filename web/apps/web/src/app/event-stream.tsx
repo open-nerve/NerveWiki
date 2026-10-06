@@ -12,9 +12,12 @@ import { useSession } from "./guards";
  * no longer seen, or a page deleted, leaves the page before what is in it
  * is read, which would be not found.
  */
-const refreshedOnConnect = [["workspaces"], ["notebooks"], ["pages", "tag-pages"], ["page-view", "edit-lock"]].map(
-  (level) => new Set(level)
-);
+const refreshedOnConnect = [
+  ["workspaces"],
+  ["notebooks"],
+  ["pages", "tag-pages"],
+  ["page-view", "edit-lock", "backlinks", "page-properties"],
+].map((level) => new Set(level));
 
 /**
  * EventStream shows what others write as they write it (M5/P3 design 3.8):

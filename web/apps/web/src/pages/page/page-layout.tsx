@@ -267,7 +267,7 @@ const PageShell = observer(function PageShell({ notebook, page }: { notebook: No
             </section>
           )}
         </div>
-        <PagePanel notebook={notebook} page={page} editing={!reading} />
+        <PagePanel notebook={notebook} page={page} editing={!reading} href={href} />
       </div>
     </div>
   );
