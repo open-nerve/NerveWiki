@@ -292,10 +292,10 @@ test("the properties show each key and its value; a property link its text, lead
       { key: "done", value: false },
       { key: "empty", value: null },
       { key: "meta", value: { a: 1 } },
-      { key: "up", value: "[[Guide|the guide]]" },
+      { key: "up", value: "[[Guide| the guide ]]" },
       {
         key: "related",
-        value: ["[[Notes]]", "[Linux *x*](Linux)", "[[Gone#Part]]", "[[Guide#Intro]]", "[[#Top]]", ["x"]],
+        value: ["[[ Notes ]]", "[Linux *x*](Linux)", "[[Gone#Part]]", "[[Guide # Intro]]", "[[#Top]]", ["x"]],
       },
     ],
     links: [

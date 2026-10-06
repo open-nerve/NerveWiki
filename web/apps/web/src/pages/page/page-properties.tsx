@@ -95,26 +95,29 @@ function scalar(value: unknown, path: string, leads: Leads, href: (id: string) =
 }
 
 /**
- * linkText is the text a property link shows (M6/P6 design 4), from the
- * link it is written as: a wikilink's display, or its target, then its
- * anchor after " > ", as the reading view writes it; a Markdown link's
- * text as written.
+ * linkText is the text a property link shows, from the link it is written
+ * as, as the reading view writes it (M6/P6 design 4): a wikilink's display
+ * text, or its target, then its anchor after " > ", each without the
+ * spaces and tabs around it (a table's \| ends the target too); a Markdown
+ * link's text as written, its escapes and marks kept.
  */
 function linkText(written: string): string {
-  if (written.startsWith("[[") && written.endsWith("]]")) {
-    const inner = written.slice(2, -2);
-    const bar = inner.indexOf("|");
-    const display = bar === -1 ? "" : inner.slice(bar + 1);
-    if (display !== "") {
-      return display;
-    }
-    const link = bar === -1 ? inner : inner.slice(0, bar);
-    const hash = link.indexOf("#");
-    if (hash === -1) {
-      return link;
-    }
-    const [target, anchor] = [link.slice(0, hash), link.slice(hash + 1)];
-    return target === "" ? anchor : `${target} > ${anchor}`;
+  if (!(written.startsWith("[[") && written.endsWith("]]"))) {
+    return /^\[(.*)\]\(/s.exec(written)?.[1] ?? written;
   }
-  return /^\[(.*)\]\(/s.exec(written)?.[1] ?? written;
+  const inner = written.slice(2, -2);
+  const bar = inner.indexOf("|");
+  if (bar !== -1 && trimmed(inner.slice(bar + 1)) !== "") {
+    return trimmed(inner.slice(bar + 1));
+  }
+  const link = bar === -1 ? inner : inner.slice(0, bar > 0 && inner[bar - 1] === "\\" ? bar - 1 : bar);
+  const hash = link.indexOf("#");
+  // A property link has a target: one to an anchor of its own page alone is none.
+  const [target, anchor] = hash === -1 ? [link, ""] : [link.slice(0, hash), trimmed(link.slice(hash + 1))];
+  return anchor === "" ? trimmed(target) : `${trimmed(target)} > ${anchor}`;
+}
+
+/** trimmed is text without the spaces and tabs at its ends, as a wikilink's parts are read. */
+function trimmed(text: string): string {
+  return text.replace(/^[ \t]+|[ \t]+$/g, "");
 }
