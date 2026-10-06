@@ -83,7 +83,7 @@ page:
   # 后台任务删除过期而未结束的编辑会话的间隔，至少 1 秒。会话是否活着按租约判断，不等这个任务
   edit_session_cleanup_interval: 10m
   # 同时解析、渲染的正文字节数的上限，至少 5242880（一页正文的上限）；每次至少记 4 KiB。最坏的正文解析时约占它 300 倍的内存，
-  # 默认的 8 MiB 约 2.4 GB；普通的正文约 40 倍。取不到额度的请求最多等 parse_max_wait（必须短于
+  # 默认的 8 MiB 约 2.4 GB；普通的正文约 40 倍。链接索引每页至多记 10,000 条链接，保存时它另占的内存因此有界，不计入预算。取不到额度的请求最多等 parse_max_wait（必须短于
   # server.request_timeout，且应明显短于它：认证与权限判定也要时间），然后 503 server_busy
   parse_budget_bytes: 8388608
   parse_max_wait: 2s

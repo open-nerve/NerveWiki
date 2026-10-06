@@ -104,6 +104,7 @@ func (f Facts) Extracted(name string) any
   - 但至多留下解析时取的那么多（`keep` 只放回）。所以**每次至少取 4 KiB**（`minTake`，按 300 倍约 1.2 MB，第三轮核对 L1）：别名把两三百字节的 frontmatter 展开到值数上限时，提取结果约 400 KB（至多约 480 KB），解析的峰值也不过约 455 KB，都在其内；路径至多是 YAML 的 64 倍。两者叠加最紧：别名占满值数上限，旁边 1725 个值带 258 KB 的路径，4093 字节的正文解析时 YAML 阶段约 1.17 MB，为 4 KiB 所记的 0.95（第五轮核对 L2），所以 64 倍是上限，128 倍就会超出。第二轮修复只把这一点写成每个请求的常数，第三轮核对指出 236 字节就能在等锁时占住约 400 KB，8 MiB 的预算能容纳三万多个这样的写，所以改为至少取。代价：8 MiB 的预算同时最多约 2000 次解析，阅读视图解析完即放回，写入在解析之后只留自己那一份。
   - 平台的 `Budget.Take` 答 `*Hold`：`KeepFacts(facts)` 放回解析多占的部分，`Release()` 放回全部；page 的端口 `ParseBudget.Take` 答 `BudgetHold`（同样两个方法，`facts` 是不透明的 `app.Facts`，适配器转换）。
   - `ContentParser.Parse`、`Decided` 答 `(Facts, release, error)`：取预算、`Facts`、`KeepFacts`，用例 `defer release()` 到单元结束；解析 panic 时全部放回。勾选任务项的第一次解析只为找任务项，用完即放回。
+- 收尾修订（[M6 收尾审查](reviews/M6-closeout-review.md) A-I1）：预算只管解析与提取结果。观察者把提取结果转成索引的行、写进数据库时另有工作集：一页 5 MiB、87 万条链接时一次保存 11–15 秒、堆 1.2–2.0 GiB，同一笔记本的保存都在索引锁上等。索引于是每页至多记前 10,000 条链接（`linking/domain.MaxLinks`），这部分工作集随之有界。
 - 于是写入在单元里等锁时只占约十分之一：一页 5 MiB 的写等锁时占约 512 KiB。默认 8 MiB 的预算里，一个 5 MiB 页面的阅读视图要 5 MiB 空闲，7 个这样的写同时等锁就会让它 503；小页面的阅读视图要十几个。M4/P4 第 7 节与[M12 移交](../M12-release/handoffs/M4-performance.md)第 3 项的那条风险随之缓解，移交第 3 项改写为剩下的部分。
 - `Parsed` 改名 `Facts`（`app.Facts`、`ContentWrite.Facts`、`PageDraft.Facts`、`domain.Change.Facts`），在 page 里仍不透明。P3 的观察者经组合根拿到的是 `markdown.Facts`。
 - 观察者调用之后不得留着 `Facts` 的约定（总体设计 13.3 第 3 条）照旧：单元结束时预算放回，留着的 `Facts` 就不在预算之内了。
