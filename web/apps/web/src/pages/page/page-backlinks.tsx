@@ -33,11 +33,11 @@ type Shown = { id: string; name: string; count: number; contexts: string[] };
  * it; the last, More going, the focus falls to the first page it adds
  * that shows (or the last that shows, or the section's title), without a
  * scroll, unless the reader has done something meanwhile (scrolled,
- * clicked, touched, pressed a key: not on More) or put the focus
- * elsewhere than More (which a click in Safari, or a screen reader, may
- * give no focus). Read
- * again (an event, a refocus, a connection, the page come back to), the
- * list is as many pages as were read, from the first.
+ * clicked, touched, pressed a key: not More pressed again) or put the
+ * focus elsewhere than More (which a click in Safari, or a screen reader,
+ * may give no focus). Read again (an event, a refocus, a connection, the
+ * page come back to), the list is as many pages as were read, from the
+ * first.
  */
 export const PageBacklinks = observer(function PageBacklinks({
   notebook,

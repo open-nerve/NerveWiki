@@ -139,8 +139,9 @@ function placeOf({ state, pos, view }: CompletionContext): Place | undefined {
   }
   const at = nodesAt(state, pos);
   const frontmatter = frontmatterAt(state, pos);
-  // The editor parses a frontmatter as Markdown, which its YAML is not: no code, raw HTML nor table in one closed,
-  // which the server reads as YAML. One being written is the body's until it is closed: its code is code.
+  // The editor parses a frontmatter as Markdown, which its YAML is not. One closed, which the server reads as YAML,
+  // has no code nor raw HTML; one being written is the body's until it is closed: its code is code. Neither has a
+  // table: one being written is YAML being written, which an alias written \| in double quotes would make none.
   if (frontmatter !== "closed" && at.some((name) => raw.has(name))) {
     return undefined;
   }

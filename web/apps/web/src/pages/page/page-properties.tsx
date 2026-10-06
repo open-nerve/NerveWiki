@@ -13,6 +13,14 @@ import { PanelSection } from "./panel-section";
 /** A value as the properties show it: text, or a property link's text and the page it leads to (null: none). */
 type Shown = string | { text: string; lead: string | null };
 
+/**
+ * How long a property link's path may be to be paired with its value: one
+ * longer shows as its text (the reading view's property table has it as a
+ * link). A browser's map costs the square of their number for many strings
+ * that long, which a writer could have every reader's tab wait on.
+ */
+const pathsUpTo = 1024;
+
 /** A property as shown: its key, and its value, or its list's items, as shown. */
 type Row = { key: string; shown: Shown | Shown[] };
 
@@ -96,11 +104,14 @@ function rowsOf(data: Properties): Row[] {
  * first item) has its links theirs in turn, as the values are read in the
  * order written (an object's only hold their places: M6 design 4.9 aligns
  * the table's by the values for this): there one takes a link if it has a
- * link's shape.
+ * link's shape. A path longer than pathsUpTo is not looked up.
  */
 function taking({ properties, links }: Properties): Take {
   const byPath = new Map<string, (string | null)[]>();
   for (const { key, node_id: node } of links) {
+    if (key.length > pathsUpTo) {
+      continue;
+    }
     const queue = byPath.get(key);
     if (queue === undefined) {
       byPath.set(key, [node ?? null]);
@@ -110,23 +121,24 @@ function taking({ properties, links }: Properties): Take {
   }
   const shared = sharedPaths(properties, byPath);
   return (value, path) => {
-    const queue = byPath.get(path);
+    const queue = path.length > pathsUpTo ? undefined : byPath.get(path);
     return queue === undefined || (shared.has(path) && !linkLike(value)) ? undefined : queue.shift();
   };
 }
 
 /**
  * sharedPaths are the paths of links two strings or more of properties are
- * at, as shownOf goes through them. Only a link's path is kept: what a set
- * of the paths of all would cost is the square of their number where many
- * are long (V8 hashes a string that long by its length).
+ * at, as shownOf goes through them. Only a link's path is kept, up to
+ * pathsUpTo long: what a set of the paths of all would cost is the square
+ * of their number where many are long (V8 hashes a string that long by its
+ * length).
  */
 function sharedPaths(properties: Properties["properties"], linked: ReadonlyMap<string, unknown>): Set<string> {
   const seen = new Set<string>();
   const shared = new Set<string>();
   const visit = (value: unknown, path: string) => {
     if (typeof value === "string") {
-      if (linked.has(path)) {
+      if (path.length <= pathsUpTo && linked.has(path)) {
         (seen.has(path) ? shared : seen).add(path);
       }
     } else if (Array.isArray(value)) {

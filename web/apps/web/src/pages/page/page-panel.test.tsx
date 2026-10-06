@@ -306,7 +306,7 @@ function heldMore() {
   return { server, held };
 }
 
-test("the last more leaves the focus where the reader put it meanwhile, or left it doing something: on another link, on the content clicked, on More scrolled away", async () => {
+test("the last more leaves the focus where the reader put it meanwhile, or left it doing something: on another link, on the content clicked, on More scrolled away by the wheel or a key, the column pressed elsewhere", async () => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
   const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
   // What the reader does as More reads, and where the focus is left.
@@ -320,8 +320,21 @@ test("the last more leaves the focus where the reader put it meanwhile, or left 
       return document.body;
     },
     // More has the focus still, which goes with it.
+    (_guideLink: HTMLElement, more: HTMLElement) => {
+      fireEvent.wheel(more);
+      return document.body;
+    },
+    (_guideLink: HTMLElement, more: HTMLElement) => {
+      fireEvent.keyDown(more, { key: "PageDown" });
+      return document.body;
+    },
+    // The middle button's press, which scrolls as the pointer moves.
+    (_guideLink: HTMLElement, more: HTMLElement) => {
+      fireEvent.pointerDown(more, { button: 1 });
+      return document.body;
+    },
     () => {
-      fireEvent.wheel(window);
+      fireEvent.pointerDown(within(panel()).getByRole("heading", { level: 2, name: "Backlinks" }));
       return document.body;
     },
   ]) {
@@ -330,10 +343,11 @@ test("the last more leaves the focus where the reader put it meanwhile, or left 
     // oxlint-disable-next-line no-await-in-loop -- one app after another
     const guideLink = await within(await shownPanel()).findByRole("link", { name: "Guide" });
 
+    const more = within(section("Backlinks")).getByRole("button", { name: "More backlinks" });
     // oxlint-disable-next-line no-await-in-loop -- one app after another
-    await user.click(within(section("Backlinks")).getByRole("button", { name: "More backlinks" }));
+    await user.click(more);
     // oxlint-disable-next-line no-await-in-loop -- one app after another
-    const left = await elsewhere(guideLink);
+    const left = await elsewhere(guideLink, more);
     held.answer?.();
     // oxlint-disable-next-line no-await-in-loop -- one app after another
     await within(section("Backlinks")).findByRole("link", { name: "Notes" });
@@ -936,4 +950,47 @@ test("a path's strings are counted alone, in objects and lists' lists too, numbe
     pagePath(linux.id),
     pagePath(guide.id),
   ]);
+});
+
+test("a property link at a path longer than 1,024 characters shows as its text; one at 1,024 leads to its page", async () => {
+  const server = pageServer();
+  const [longest, longer] = ["q".repeat(1_024), "p".repeat(1_025)];
+  server.properties.set(install.id, {
+    valid: true,
+    properties: [
+      { key: longest, value: "[[Notes]]" },
+      { key: longer, value: "[[Guide]]" },
+    ],
+    links: [
+      { key: longest, node_id: notes.id },
+      { key: longer, node_id: guide.id },
+    ],
+  });
+  renderApp(pagePath(install.id), server.app);
+
+  await within(await shownPanel()).findByRole("link", { name: "Notes" });
+  expect(properties()).toEqual([
+    [longest, "Notes"],
+    [longer, "[[Guide]]"],
+  ]);
+});
+
+test("the properties are worked out once for each answer, not as the page's edit renders the column again", async () => {
+  const server = pageServer({ role: "editor" });
+  server.properties.set(install.id, { valid: true, properties: [{ key: "o", value: { "nw-once": 1 } }], links: [] });
+  renderApp(pagePath(install.id), server.app);
+  await within(await shownPanel()).findByText('{"nw-once":1}');
+  const stringify = vi.spyOn(JSON, "stringify");
+  onTestFinished(() => stringify.mockRestore());
+
+  fireEvent.keyDown(document.activeElement ?? document.body, { key: "e", ctrlKey: true });
+  const { type } = await pageEditor();
+  for (const key of "abc") {
+    act(() => type(key));
+  }
+  await act(async () => {});
+  expect(properties()).toEqual([["o", '{"nw-once":1}']]);
+  expect(
+    stringify.mock.calls.filter(([value]) => typeof value === "object" && value !== null && "nw-once" in value)
+  ).toEqual([]);
 });

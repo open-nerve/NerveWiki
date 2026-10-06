@@ -433,14 +433,22 @@ test("in a frontmatter, as the server finds it, a link completes in quotes, as a
   }
 });
 
-test("in a frontmatter a table the editor finds in a block's text is none: an alias is written with |, as YAML takes it", async () => {
-  const { view } = editingAt("---\nnote: |\n  intro\n\n  | a | b |\n  | - | - |\nup: ‸\n\nx: y\n---");
-  type(view, '"[[Road');
-  await opened(view);
-  await pick(view, "Roadmap");
-  expect(view.state.doc.toString()).toBe(
-    '---\nnote: |\n  intro\n\n  | a | b |\n  | - | - |\nup: "[[Plans|Roadmap]]\n\nx: y\n---'
-  );
+test("in a frontmatter a table the editor finds in a block's text is none, closed or being written: an alias is written with |, as YAML takes it", async () => {
+  for (const [doc, written] of [
+    [
+      "---\nnote: |\n  intro\n\n  | a | b |\n  | - | - |\nup: ‸\n\nx: y\n---",
+      '---\nnote: |\n  intro\n\n  | a | b |\n  | - | - |\nup: "[[Plans|Roadmap]]\n\nx: y\n---',
+    ],
+    ["---\nnote: >-\n  x | y\n  :-|-:\n  z\nup: ‸", '---\nnote: >-\n  x | y\n  :-|-:\n  z\nup: "[[Plans|Roadmap]]'],
+  ]) {
+    const { view } = editingAt(doc ?? "");
+    type(view, '"[[Road');
+    // oxlint-disable-next-line no-await-in-loop -- one editor after another
+    await opened(view);
+    // oxlint-disable-next-line no-await-in-loop -- one editor after another
+    await pick(view, "Roadmap");
+    expect(view.state.doc.toString()).toBe(written);
+  }
 });
 
 test("what the server reads as no frontmatter completes as the body does: one not closed after its first blank line, one opened by '--- ', after one, an empty one too", async () => {

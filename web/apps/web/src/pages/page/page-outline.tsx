@@ -25,7 +25,8 @@ export function PageOutline({ notebook, page }: { notebook: Notebook; page: stri
   if (headings.length === 0) {
     return null;
   }
-  const top = Math.min(...headings.map(({ level }) => level));
+  // Not by spreading them into Math.min: a call takes so many arguments only, a page may have more headings.
+  const top = headings.reduce((highest, { level }) => Math.min(highest, level), 6);
   return (
     <PanelSection title={t("page.outline")}>
       <nav aria-label={t("page.outline")}>

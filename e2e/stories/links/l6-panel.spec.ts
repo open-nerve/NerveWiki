@@ -106,11 +106,46 @@ test("L6 (page, keyboard): the last More adds the next page of backlinks and tak
 
   const more = backlinks.getByRole("button", { name: "More backlinks", exact: true });
   await more.focus();
-  const scrolled = await page.evaluate(() => window.scrollY);
+  // The window's scroll, and the column's own (at xl).
+  const scrolls = () => Promise.all([page.evaluate(() => window.scrollY), panel.evaluate((aside) => aside.scrollTop)]);
+  const scrolled = await scrolls();
   await page.keyboard.press("Enter");
   const added = backlinks.getByRole("link", { name: "P51", exact: true });
   await expect(added).toBeFocused();
   await expect(more).toHaveCount(0);
   await expect(added).toBeInViewport();
-  expect(await page.evaluate(() => window.scrollY)).toBe(scrolled);
+  expect(await scrolls()).toEqual(scrolled);
+});
+
+test("L6 (page, large): properties of many strings at long paths show at once; a page of 140,000 headings opens with its outline", async ({
+  api,
+  signedInPage,
+}, testInfo) => {
+  test.setTimeout(180_000);
+  const { pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
+  const notebook = await createNotebook(api, pat, workspace.slug, "Plans");
+  // A key past 16,383 characters, a browser's map's square for many strings at paths that long, each over two lines;
+  // as many as the server takes for a valid frontmatter, about.
+  const strings = await createPage(
+    api,
+    pat,
+    notebook.id,
+    "Strings",
+    null,
+    `---\n? ${"k".repeat(16_400)}\n: [${Array.from({ length: 9_800 }, () => '"a\n b"').join(", ")}]\n---\nbody\n`
+  );
+  const headings = await createPage(api, pat, notebook.id, "Headings", null, "# a\n".repeat(140_000));
+  const page = await signedInPage(tokens);
+  const panel = page.getByRole("complementary", { name: "About this page", exact: true });
+
+  const started = Date.now();
+  await page.goto(wikiPagePath(workspace.slug, notebook.id, strings.id));
+  await expect(panel.getByRole("heading", { level: 2, name: "Properties", exact: true })).toBeVisible();
+  await expect(panel.locator("dl dt")).toHaveCount(1);
+  expect(Date.now() - started).toBeLessThan(4_000);
+
+  // More headings than a call takes arguments.
+  await page.goto(wikiPagePath(workspace.slug, notebook.id, headings.id));
+  await expect(panel.getByRole("navigation", { name: "Outline", exact: true })).toBeVisible({ timeout: 120_000 });
+  await expect(page.getByText("Something went wrong")).toHaveCount(0);
 });
