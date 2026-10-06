@@ -192,25 +192,16 @@ test("extensions that load what builds them are loaded, then composed in the reg
   view.destroy();
 });
 
-test("one whose load fails is left out, the others are not; the registry's next load tries it again", async () => {
+test("one whose load fails is left out, the others are not", async () => {
   const failed = vi.spyOn(console, "error").mockImplementation(() => undefined);
   const broken = loading("broken", tags);
   const pages = loading("completion", pageNames);
-  const registered = [broken.extension, pages.extension, pasteUpload("upload")];
 
-  const loaded = loadExtensions(registered);
+  const loaded = loadExtensions([broken.extension, pages.extension, pasteUpload("upload")]);
   broken.fail(new Error("offline"));
   pages.go();
   const built = await loaded;
 
   expect(built.map(({ name }) => name)).toEqual(["completion", "upload"]);
   expect(failed).toHaveBeenCalledOnce();
-
-  const again = loadExtensions(registered);
-  expect(again).not.toBe(loaded);
-  broken.go();
-  pages.go();
-  expect((await again).map(({ name }) => name)).toEqual(["broken", "completion", "upload"]);
-  expect(broken.loads).toHaveLength(2);
-  expect(loadExtensions(registered)).toBe(again);
 });

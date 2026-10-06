@@ -202,6 +202,50 @@ test("an extension that loads what builds it is waited for, the editor suspended
   expect(save).toHaveBeenCalledOnce();
 });
 
+test("an extension whose load fails is left out; as the page around renders again, the editor stays, its content kept, the load not tried again", async () => {
+  const failed = vi.spyOn(console, "error").mockImplementation(() => undefined);
+  const broken = vi.fn(() => Promise.reject(new Error("offline")));
+  const extensions: readonly EditorExtension[] = [{ name: "broken", load: broken }, lockReadOnly];
+  const session = sessionState();
+  const tree = (saved: string) => (
+    <I18nProvider locale="en">
+      <EditorExtensions value={extensions}>
+        <p>{saved}</p>
+        <Suspense fallback={<p>loading</p>}>
+          <SourceEditor
+            content="text"
+            context={context}
+            controls={{
+              save: () => Promise.resolve(),
+              saving: () => false,
+              ...session,
+              leave: () => Promise.resolve(),
+            }}
+            onChange={() => undefined}
+          />
+        </Suspense>
+      </EditorExtensions>
+    </I18nProvider>
+  );
+  const { container, rerender } = await reactAct(async () => render(tree("unsaved")));
+  const view = () => {
+    const element = container.querySelector<HTMLElement>(".cm-editor");
+    return element === null ? null : EditorView.findFromDOM(element);
+  };
+  const made = view();
+  expect(made).not.toBeNull();
+  made?.dispatch({ changes: { from: 4, insert: " typed" } });
+
+  for (const saved of ["saving", "saved", "unsaved"]) {
+    // oxlint-disable-next-line no-await-in-loop -- one render after another
+    await reactAct(async () => rerender(tree(saved)));
+  }
+  expect(view()).toBe(made);
+  expect(made?.state.doc.toString()).toBe("text typed");
+  expect(broken).toHaveBeenCalledOnce();
+  expect(failed).toHaveBeenCalledOnce();
+});
+
 test("Mod+B is the editor's", () => {
   const { view, handle } = editor("word");
   view().dispatch({ selection: { anchor: 0, head: 4 } });

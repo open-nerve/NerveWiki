@@ -10,9 +10,9 @@ import { renderApp } from "../../test/render";
 
 // The right column's properties (M6/P7 design 10).
 
-/** properties is what the properties show: each key, and its value's text. */
+/** properties is what the properties show, in their list named so: each key, and its value's text. */
 function properties(): string[][] {
-  return [...section("Properties").querySelectorAll("dl > div")].map((row) => [
+  return [...within(section("Properties")).getByLabelText("Properties").querySelectorAll("dl > div")].map((row) => [
     row.querySelector("dt")?.textContent ?? "",
     row.querySelector("dd")?.textContent ?? "",
   ]);

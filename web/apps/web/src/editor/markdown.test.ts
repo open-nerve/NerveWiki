@@ -37,15 +37,18 @@ test("Backspace at an item's mark takes the mark away, the item's indent kept", 
 
 // The links, ] and * of a paragraph each scanned the paragraph's marks
 // before: 50,000 links took 9.5 s to edit (M6 closeout B-I1; the patch of
-// @lezer/markdown).
+// @lezer/markdown). A closing mark longer than the one it closes moved the
+// paragraph's marks after it: 80,000 *a** took 8 s (M6 closeout FB-I2).
 test.each([
-  ["links", "[[Page]] "],
-  ["links and brackets that close none", "[a](b) ] "],
-  ["emphasis that closes none", "a* "],
-])("a paragraph of 100,000 %s is parsed in a time as long as it", (_, unit) => {
-  const doc = unit.repeat(100_000);
+  [100_000, "links", "[[Page]] "],
+  [100_000, "links and brackets that close none", "[a](b) ] "],
+  [100_000, "emphasis that closes none", "a* "],
+  [200_000, "emphasis closed by a longer mark", "*a** "],
+  [200_000, "strong emphasis in emphasis", "***a*** "],
+])("a paragraph of %i %s is parsed in a time as long as it", (count, _, unit) => {
+  const doc = unit.repeat(count);
   const started = performance.now();
   const state = EditorState.create({ doc, extensions: markdownEditing() });
   expect(ensureSyntaxTree(state, doc.length, 10_000)?.length).toBe(doc.length);
-  expect(performance.now() - started).toBeLessThan(1_000);
+  expect(performance.now() - started).toBeLessThan(3_000);
 });

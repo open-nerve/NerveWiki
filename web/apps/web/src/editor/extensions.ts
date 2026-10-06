@@ -22,14 +22,11 @@ const loads = new WeakMap<readonly EditorExtension[], Promise<readonly ReadyExte
 /**
  * loadExtensions answers registered with what builds each of those that
  * load it loaded (M6/P7 design 2), in their order, once a registry. One
- * whose load fails is left out, the others are not; the registry's next
- * load, an editor made after it, tries it again (a deploy replaced its
- * chunk, the network was gone).
+ * whose load fails is left out, the others are not.
  */
 export function loadExtensions(registered: readonly EditorExtension[]): Promise<readonly ReadyExtension[]> {
   let loaded = loads.get(registered);
   if (loaded === undefined) {
-    let failed = false;
     loaded = Promise.all(
       registered.map(async (registration): Promise<ReadyExtension | undefined> => {
         if (!("load" in registration)) {
@@ -39,16 +36,10 @@ export function loadExtensions(registered: readonly EditorExtension[]): Promise<
           return { name: registration.name, extension: await registration.load() };
         } catch (error) {
           console.error(`The editor's extension ${registration.name} could not be loaded`, error);
-          failed = true;
           return undefined;
         }
       })
-    ).then((each) => {
-      if (failed) {
-        loads.delete(registered);
-      }
-      return each.filter((extension) => extension !== undefined);
-    });
+    ).then((each) => each.filter((extension) => extension !== undefined));
     loads.set(registered, loaded);
   }
   return loaded;

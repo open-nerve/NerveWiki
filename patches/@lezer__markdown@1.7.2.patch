@@ -1,5 +1,5 @@
 diff --git a/dist/index.cjs b/dist/index.cjs
-index a7f1502ce9663cff433857f3e353acff9b381a98..9a797fc58cb676056306c33efdccf694c8028a08 100644
+index a7f1502ce9663cff433857f3e353acff9b381a98..51710723a9a23d5f15bad1d942ab929cf42e978e 100644
 --- a/dist/index.cjs
 +++ b/dist/index.cjs
 @@ -1493,7 +1493,10 @@ const DefaultInline = {
@@ -68,7 +68,7 @@ index a7f1502ce9663cff433857f3e353acff9b381a98..9a797fc58cb676056306c33efdccf694
          return false;
      }
      /**
-@@ -1710,6 +1729,13 @@ class InlineContext {
+@@ -1710,17 +1729,36 @@ class InlineContext {
      appropriate node and updating the content of this.parts. @internal
      */
      resolveMarkers(from) {
@@ -79,10 +79,20 @@ index a7f1502ce9663cff433857f3e353acff9b381a98..9a797fc58cb676056306c33efdccf694
 +        // An opening token cut shorter brings them down to it. Unmatched
 +        // closing tokens each scanned all the parts before.
 +        let bottoms = new Map;
++        // Nerve Wiki (M6 closeout FB-I2): the parts read so far, resolved, are in head, part i at
++        // head[i - from], as the original has them in this.parts; a closing token kept in part
++        // is read again after the element before it. The original spliced that element into
++        // this.parts, moving all the parts after it each time.
++        let head = [], kept = null;
          // Scan forward, looking for closing tokens
-         for (let i = from; i < this.parts.length; i++) {
-             let close = this.parts[i];
-@@ -1717,9 +1743,13 @@ class InlineContext {
+-        for (let i = from; i < this.parts.length; i++) {
+-            let close = this.parts[i];
++        for (let r = from; r < this.parts.length || kept;) {
++            let i = from + head.length;
++            let close = kept || this.parts[r++];
++            kept = null;
++            head.push(close);
+             if (!(close instanceof InlineDelimiter && close.type.resolve && (close.side & 2 /* Mark.Close */)))
                  continue;
              let emp = close.type == EmphasisUnderscore || close.type == EmphasisAsterisk;
              let closeSize = close.to - close.from;
@@ -93,11 +103,13 @@ index a7f1502ce9663cff433857f3e353acff9b381a98..9a797fc58cb676056306c33efdccf694
              let open, j = i - 1;
              // Continue scanning for a matching opening token
 -            for (; j >= from; j--) {
+-                let part = this.parts[j];
 +            for (; j >= Math.max(from, below[kind] ?? from); j--) {
-                 let part = this.parts[j];
++                let part = head[j - from];
                  if (part instanceof InlineDelimiter && (part.side & 1 /* Mark.Open */) && part.type == close.type &&
                      // Ignore emphasis delimiters where the character count doesn't match
-@@ -1729,8 +1759,10 @@ class InlineContext {
+                     !(emp && ((close.side & 1 /* Mark.Open */) || (part.side & 2 /* Mark.Close */)) &&
+@@ -1729,8 +1767,10 @@ class InlineContext {
                      break;
                  }
              }
@@ -109,17 +121,48 @@ index a7f1502ce9663cff433857f3e353acff9b381a98..9a797fc58cb676056306c33efdccf694
              let type = close.type.resolve, content = [];
              let start = open.from, end = close.to;
              // Emphasis marker effect depends on the character count. Size consumed is minimum of the two
-@@ -1754,6 +1786,9 @@ class InlineContext {
+@@ -1745,26 +1785,27 @@ class InlineContext {
+             if (open.type.mark)
+                 content.push(this.elt(open.type.mark, start, open.to));
+             for (let k = j + 1; k < i; k++) {
+-                if (this.parts[k] instanceof Element)
+-                    content.push(this.parts[k]);
+-                this.parts[k] = null;
++                if (head[k - from] instanceof Element)
++                    content.push(head[k - from]);
++                head[k - from] = null;
+             }
+             if (close.type.mark)
+                 content.push(this.elt(close.type.mark, close.from, end));
              let element = this.elt(type, start, end, content);
              // If there are leftover emphasis marker characters, shrink the close/open markers. Otherwise, clear them.
-             this.parts[j] = emp && open.from != start ? new InlineDelimiter(open.type, open.from, start, open.side) : null;
-+            if (this.parts[j])
+-            this.parts[j] = emp && open.from != start ? new InlineDelimiter(open.type, open.from, start, open.side) : null;
+-            let keep = this.parts[i] = emp && close.to != end ? new InlineDelimiter(close.type, end, close.to, close.side) : null;
+-            // Insert the new element in this.parts
+-            if (keep)
+-                this.parts.splice(i, 0, element);
+-            else
+-                this.parts[i] = element;
++            head[j - from] = emp && open.from != start ? new InlineDelimiter(open.type, open.from, start, open.side) : null;
++            if (head[j - from])
 +                for (let kinds of bottoms.values())
 +                    kinds.forEach((b, k) => { if (b > j) kinds[k] = j; });
-             let keep = this.parts[i] = emp && close.to != end ? new InlineDelimiter(close.type, end, close.to, close.side) : null;
-             // Insert the new element in this.parts
-             if (keep)
-@@ -1793,6 +1828,8 @@ class InlineContext {
++            kept = emp && close.to != end ? new InlineDelimiter(close.type, end, close.to, close.side) : null;
++            // Put the new element where the closing token was; one kept in part is read again after it
++            head[i - from] = element;
+         }
+-        // Collect the elements remaining in this.parts into an array.
++        // Collect the elements remaining in this.parts into an array, this.parts left as the original leaves it.
+         let result = [];
+-        for (let i = from; i < this.parts.length; i++) {
+-            let part = this.parts[i];
++        this.parts.length = from;
++        for (let part of head) {
++            this.parts.push(part);
+             if (part instanceof Element)
+                 result.push(part);
+         }
+@@ -1793,6 +1834,8 @@ class InlineContext {
      takeContent(startIndex) {
          let content = this.resolveMarkers(startIndex);
          this.parts.length = startIndex;
@@ -129,7 +172,7 @@ index a7f1502ce9663cff433857f3e353acff9b381a98..9a797fc58cb676056306c33efdccf694
      }
      /**
 diff --git a/dist/index.js b/dist/index.js
-index e5725e7b76c21832da1a3d2ed188ae042c06224c..ed862c288892c58615045ef2fa076880573217eb 100644
+index e5725e7b76c21832da1a3d2ed188ae042c06224c..6a7ae091b2aad945398861b0aede456bdeaef271 100644
 --- a/dist/index.js
 +++ b/dist/index.js
 @@ -1491,7 +1491,10 @@ const DefaultInline = {
@@ -198,7 +241,7 @@ index e5725e7b76c21832da1a3d2ed188ae042c06224c..ed862c288892c58615045ef2fa076880
          return false;
      }
      /**
-@@ -1708,6 +1727,13 @@ class InlineContext {
+@@ -1708,17 +1727,36 @@ class InlineContext {
      appropriate node and updating the content of this.parts. @internal
      */
      resolveMarkers(from) {
@@ -209,10 +252,20 @@ index e5725e7b76c21832da1a3d2ed188ae042c06224c..ed862c288892c58615045ef2fa076880
 +        // An opening token cut shorter brings them down to it. Unmatched
 +        // closing tokens each scanned all the parts before.
 +        let bottoms = new Map;
++        // Nerve Wiki (M6 closeout FB-I2): the parts read so far, resolved, are in head, part i at
++        // head[i - from], as the original has them in this.parts; a closing token kept in part
++        // is read again after the element before it. The original spliced that element into
++        // this.parts, moving all the parts after it each time.
++        let head = [], kept = null;
          // Scan forward, looking for closing tokens
-         for (let i = from; i < this.parts.length; i++) {
-             let close = this.parts[i];
-@@ -1715,9 +1741,13 @@ class InlineContext {
+-        for (let i = from; i < this.parts.length; i++) {
+-            let close = this.parts[i];
++        for (let r = from; r < this.parts.length || kept;) {
++            let i = from + head.length;
++            let close = kept || this.parts[r++];
++            kept = null;
++            head.push(close);
+             if (!(close instanceof InlineDelimiter && close.type.resolve && (close.side & 2 /* Mark.Close */)))
                  continue;
              let emp = close.type == EmphasisUnderscore || close.type == EmphasisAsterisk;
              let closeSize = close.to - close.from;
@@ -223,11 +276,13 @@ index e5725e7b76c21832da1a3d2ed188ae042c06224c..ed862c288892c58615045ef2fa076880
              let open, j = i - 1;
              // Continue scanning for a matching opening token
 -            for (; j >= from; j--) {
+-                let part = this.parts[j];
 +            for (; j >= Math.max(from, below[kind] ?? from); j--) {
-                 let part = this.parts[j];
++                let part = head[j - from];
                  if (part instanceof InlineDelimiter && (part.side & 1 /* Mark.Open */) && part.type == close.type &&
                      // Ignore emphasis delimiters where the character count doesn't match
-@@ -1727,8 +1757,10 @@ class InlineContext {
+                     !(emp && ((close.side & 1 /* Mark.Open */) || (part.side & 2 /* Mark.Close */)) &&
+@@ -1727,8 +1765,10 @@ class InlineContext {
                      break;
                  }
              }
@@ -239,17 +294,48 @@ index e5725e7b76c21832da1a3d2ed188ae042c06224c..ed862c288892c58615045ef2fa076880
              let type = close.type.resolve, content = [];
              let start = open.from, end = close.to;
              // Emphasis marker effect depends on the character count. Size consumed is minimum of the two
-@@ -1752,6 +1784,9 @@ class InlineContext {
+@@ -1743,26 +1783,27 @@ class InlineContext {
+             if (open.type.mark)
+                 content.push(this.elt(open.type.mark, start, open.to));
+             for (let k = j + 1; k < i; k++) {
+-                if (this.parts[k] instanceof Element)
+-                    content.push(this.parts[k]);
+-                this.parts[k] = null;
++                if (head[k - from] instanceof Element)
++                    content.push(head[k - from]);
++                head[k - from] = null;
+             }
+             if (close.type.mark)
+                 content.push(this.elt(close.type.mark, close.from, end));
              let element = this.elt(type, start, end, content);
              // If there are leftover emphasis marker characters, shrink the close/open markers. Otherwise, clear them.
-             this.parts[j] = emp && open.from != start ? new InlineDelimiter(open.type, open.from, start, open.side) : null;
-+            if (this.parts[j])
+-            this.parts[j] = emp && open.from != start ? new InlineDelimiter(open.type, open.from, start, open.side) : null;
+-            let keep = this.parts[i] = emp && close.to != end ? new InlineDelimiter(close.type, end, close.to, close.side) : null;
+-            // Insert the new element in this.parts
+-            if (keep)
+-                this.parts.splice(i, 0, element);
+-            else
+-                this.parts[i] = element;
++            head[j - from] = emp && open.from != start ? new InlineDelimiter(open.type, open.from, start, open.side) : null;
++            if (head[j - from])
 +                for (let kinds of bottoms.values())
 +                    kinds.forEach((b, k) => { if (b > j) kinds[k] = j; });
-             let keep = this.parts[i] = emp && close.to != end ? new InlineDelimiter(close.type, end, close.to, close.side) : null;
-             // Insert the new element in this.parts
-             if (keep)
-@@ -1791,6 +1826,8 @@ class InlineContext {
++            kept = emp && close.to != end ? new InlineDelimiter(close.type, end, close.to, close.side) : null;
++            // Put the new element where the closing token was; one kept in part is read again after it
++            head[i - from] = element;
+         }
+-        // Collect the elements remaining in this.parts into an array.
++        // Collect the elements remaining in this.parts into an array, this.parts left as the original leaves it.
+         let result = [];
+-        for (let i = from; i < this.parts.length; i++) {
+-            let part = this.parts[i];
++        this.parts.length = from;
++        for (let part of head) {
++            this.parts.push(part);
+             if (part instanceof Element)
+                 result.push(part);
+         }
+@@ -1791,6 +1832,8 @@ class InlineContext {
      takeContent(startIndex) {
          let content = this.resolveMarkers(startIndex);
          this.parts.length = startIndex;

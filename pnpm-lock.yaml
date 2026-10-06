@@ -169,7 +169,7 @@ catalogs:
       version: 7.0.2
 
 patchedDependencies:
-  '@lezer/markdown@1.7.2': d08d3cb6b7d423f8361ac5c8ada6703a407aa39424c27261d7611098ac0f1837
+  '@lezer/markdown@1.7.2': 9a190975eefc17107e0078565967146e1fe16be980133b845a4e7716499ab698
   katex@0.16.47: f8d8456ac48a3e65ba450604d3de80c0bd3fdd07770bc969e2a63274c8d13b32
 
 importers:
@@ -4018,7 +4018,7 @@ snapshots:
       '@codemirror/state': 6.7.6
       '@codemirror/view': 6.43.13
       '@lezer/common': 1.5.3
-      '@lezer/markdown': 1.7.2(patch_hash=d08d3cb6b7d423f8361ac5c8ada6703a407aa39424c27261d7611098ac0f1837)
+      '@lezer/markdown': 1.7.2(patch_hash=9a190975eefc17107e0078565967146e1fe16be980133b845a4e7716499ab698)
 
   '@codemirror/language@6.12.4':
     dependencies:
@@ -4210,7 +4210,7 @@ snapshots:
     dependencies:
       '@lezer/common': 1.5.3
 
-  '@lezer/markdown@1.7.2(patch_hash=d08d3cb6b7d423f8361ac5c8ada6703a407aa39424c27261d7611098ac0f1837)':
+  '@lezer/markdown@1.7.2(patch_hash=9a190975eefc17107e0078565967146e1fe16be980133b845a4e7716499ab698)':
     dependencies:
       '@lezer/common': 1.5.3
       '@lezer/highlight': 1.2.5

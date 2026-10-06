@@ -201,7 +201,7 @@ test("L6 (page, keyboard): the last More adds the next page of backlinks and tak
   expect(await scrolls()).toEqual(scrolled);
 });
 
-test("L6 (page, large): properties of many strings at long paths show at once; a page of 140,000 headings opens with its outline", async ({
+test("L6 (page, large): properties of many strings at long paths show at once; a page of 140,000 headings opens with its outline of the first 1,000, the rest counted", async ({
   api,
   signedInPage,
 }, testInfo) => {
@@ -236,4 +236,7 @@ test("L6 (page, large): properties of many strings at long paths show at once; a
   // At once: an expect's timeout of 0 is none at all.
   expect(await failed.count()).toBe(0);
   await expect(outline).toBeVisible();
+  // The first 1,000 listed, the rest counted.
+  await expect(outline.getByRole("link")).toHaveCount(1_000);
+  await expect(outline.getByText("…and 139000 more", { exact: true })).toBeVisible();
 });
