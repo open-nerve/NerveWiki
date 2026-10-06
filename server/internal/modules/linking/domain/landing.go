@@ -111,7 +111,7 @@ func exactPath(base []Step, keys []string, parents []Node) ([]Step, bool) {
 	if len(keys) == 0 {
 		return base, true
 	}
-	id, ok := exactly(base, keys, parents)
+	id, ok := nodeList(parents).exactly(base, keys)
 	if !ok {
 		return nil, false
 	}

@@ -348,3 +348,23 @@ func TestAParseNowThatPanicsHoldsNoneOfTheBudget(t *testing.T) {
 	}
 	all.Release()
 }
+
+// A parse now whose facts are in error holds none of the budget (M6
+// closeout FA-N1): without the dialect's extraction its facts have no
+// links, PageFacts says so, and the whole budget is free after.
+func TestAParseNowOfFactsInErrorHoldsNoneOfTheBudget(t *testing.T) {
+	md, err := markdown.New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const size = 64 << 10
+	budget := markdown.NewBudget(size, time.Hour, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if _, err := markdownadapter.NewParser(md, budget).ParseNow(context.Background(), strings.Repeat("[[A]] ", 4000)); err == nil {
+		t.Fatal("facts without the dialect's extraction parsed")
+	}
+	all, err := budget.TakeNow(context.Background(), size)
+	if err != nil {
+		t.Fatalf("the whole budget after the error: %v", err)
+	}
+	all.Release()
+}

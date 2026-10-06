@@ -49,3 +49,29 @@ func TestALinkWrittenManyTimesResolvesOnce(t *testing.T) {
 		}
 	}
 }
+
+// Links to distinct paths of pages of one title each look only at the
+// pages whose path ends as theirs (M6 closeout FA-I1): 50,000 pages named
+// x, each under a page of its own, and a page with a link to each by its
+// path resolve in well under a second, where each link read every page
+// named x: seconds every time the page was read.
+func TestDistinctPathsToPagesOfOneTitleResolveInTimeAsLongAsThey(t *testing.T) {
+	const n = 50_000
+	w := newWorld(t, "src")
+	targets := make([]string, n)
+	for i := range n {
+		w.tree.add(fmt.Sprintf("g%d", i))
+		w.tree.add(fmt.Sprintf("g%d/x", i))
+		targets[i] = fmt.Sprintf("g%d/x", i)
+	}
+	start := time.Now()
+	got := w.view("src", 0, targets...)
+	if took := time.Since(start); took > time.Second {
+		t.Errorf("resolving took %s", took)
+	}
+	for i := range n {
+		if want := w.id(fmt.Sprintf("g%d/x", i)); got[10*i].ID != want || got[10*i].Ambiguous {
+			t.Fatalf("[[g%d/x]] resolves to %+v, want %v", i, got[10*i], want)
+		}
+	}
+}

@@ -405,6 +405,44 @@ func TestSubtreeReachesTheDeepestLevel(t *testing.T) {
 	}
 }
 
+// A subtree is read by each parent's children without statistics too (M6
+// closeout FA-M1): before a notebook's nodes are analyzed (after an import,
+// a restore), each level could read every node of the notebook by the index
+// of titles, the square of their number: 30,000 nodes, a folder of 10,000
+// of them, took 40 s.
+func TestSubtreeReadsWithoutStatisticsInTimeAsLongAsIt(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	f.exec(t, `ALTER TABLE nodes SET (autovacuum_enabled = false)`)
+	folder := f.page(t, f.eng, nil, "Folder", 0)
+	// 200 pages of 100 each beside the folder: with them the plan took the titles' index.
+	f.exec(t, `INSERT INTO nodes (id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id,
+		created_at, updated_at)
+		SELECT gen_random_uuid(), $1, NULL, 'page', 'R' || i, 'r' || i, i, $2, $2, $3, $3 FROM generate_series(1, 200) i`,
+		f.eng, f.alice, now())
+	f.exec(t, `INSERT INTO nodes (id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id,
+		created_at, updated_at)
+		SELECT gen_random_uuid(), $1, n.id, 'page', 'S' || i, 's' || i, i, $2, $2, $3, $3
+		FROM nodes n, generate_series(1, 100) i WHERE n.notebook_id = $1 AND n.name LIKE 'R%'`,
+		f.eng, f.alice, now())
+	f.exec(t, `INSERT INTO nodes (id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id,
+		created_at, updated_at)
+		SELECT gen_random_uuid(), $1, $4, 'page', 'C' || i, 'c' || i, i, $2, $2, $3, $3 FROM generate_series(1, 10000) i`,
+		f.eng, f.alice, now(), folder.ID)
+	var stats int
+	if err := f.pool.QueryRow(ctx, `SELECT count(*) FROM pg_stats WHERE tablename = 'nodes'`).Scan(&stats); err != nil || stats != 0 {
+		t.Fatalf("the nodes have statistics of %d columns, %v", stats, err)
+	}
+	at := time.Now()
+	sub, err := f.s.Subtree(ctx, f.eng, folder.ID)
+	if err != nil || len(sub) != 10_001 || sub.Height() != 2 {
+		t.Fatalf("Subtree of the folder: %d nodes, %v; want the folder and its 10,000 pages", len(sub), err)
+	}
+	if took := time.Since(at); took > 3*time.Second {
+		t.Errorf("the subtree of 10,001 nodes took %s", took)
+	}
+}
+
 // A move writes the parent, the order and who and when; a title a sibling
 // holds under the new parent is page.title_taken.
 func TestMoveNode(t *testing.T) {

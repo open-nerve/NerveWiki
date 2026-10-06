@@ -96,9 +96,9 @@ func (t Target) LastKeys() []string {
 // with one of its LastKeys (M6/P3 design 2), as Obsidian reads it: written
 // with ".md", it is the page without it when the notebook has a page of
 // that name anywhere, and the page with it otherwise.
-func (t Target) form(candidates []Node) []string {
+func (t Target) form(candidates candidateSet) []string {
 	stem := t.Keys[len(t.Keys)-1]
-	if t.AltLast == "" || slices.ContainsFunc(candidates, func(c Node) bool { return c.key() == stem }) {
+	if t.AltLast == "" || candidates.has(stem) {
 		return t.Keys
 	}
 	return append(slices.Clone(t.Keys[:len(t.Keys)-1]), t.AltLast)
