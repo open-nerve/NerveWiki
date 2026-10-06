@@ -233,6 +233,7 @@ func (r Rewrite) rewrite(ctx context.Context, id uuid.UUID, revision int, reache
 	if err != nil {
 		return err
 	}
+	defer was.release() // given back below; again, on a panic before, nothing held stays (M6 closeout A-M4)
 	var links []domain.Resolved
 	for _, l := range was.Facts.Links {
 		if x, ok := reached[l.Start]; ok {
@@ -255,10 +256,16 @@ func (r Rewrite) rewrite(ctx context.Context, id uuid.UUID, revision int, reache
 	if len(rewriting.Edits) == 0 {
 		return nil
 	}
-	var now Parsed // the last writing's parse
-	var large int  // the bytes of a writing past MaxContent, if one was
-	read := false  // whether a writing was parsed, to read back
-	written, left, kept, err := rewriting.Written(content, facts, from, tree, func(writing string) (domain.Facts, error) {
+	var now Parsed   // the last writing's parse
+	var large int    // the bytes of a writing past MaxContent, if one was
+	read := false    // whether a writing was parsed, to read back
+	written := false // whether now is the unit's, given back as it ends
+	defer func() {
+		if !written {
+			now.release() // a writing not written, or a panic, holds none of the budget
+		}
+	}()
+	writing, left, kept, err := rewriting.Written(content, facts, from, tree, func(writing string) (domain.Facts, error) {
 		now.release()
 		now = Parsed{}
 		if len(writing) > r.MaxContent {
@@ -274,7 +281,6 @@ func (r Rewrite) rewrite(ctx context.Context, id uuid.UUID, revision int, reache
 		return err
 	}
 	if !kept {
-		now.release()
 		level, msg := slog.LevelError, "the links of a page are not rewritten: no writing reads back as its links and aliases"
 		if !read {
 			level, msg = slog.LevelWarn, "the links of a page are not rewritten: it would hold more than a page may"
@@ -302,7 +308,8 @@ func (r Rewrite) rewrite(ctx context.Context, id uuid.UUID, revision int, reache
 		}, sizes...)...)
 	}
 	u.Defer(now.Release)
-	return u.WriteContent(ctx, Rewritten{PageID: id, Base: revision, Content: written, Facts: now.Written})
+	written = true
+	return u.WriteContent(ctx, Rewritten{PageID: id, Base: revision, Content: writing, Facts: now.Written})
 }
 
 // release gives back what p holds of the budget, if it holds any.
