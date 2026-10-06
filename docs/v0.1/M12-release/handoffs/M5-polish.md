@@ -61,4 +61,9 @@ created: 2026-10-03
     - 读屏（NVDA、JAWS、VoiceOver）激活"更多反向链接"之后焦点的去向，人工确认（P7 修复核对 fc3-c2-6）；
     - 页面树 `stores/page-tree.ts` 的 `Math.max(0, ...subtreeOf(...))`（M4）：一棵子树超过约 12.5 万页时参数超出上限而抛错，改成 `reduce`（P7 修复核对 fc6-c2，没有确认能否触发）。
 
+13. **M6 推迟的几项功能**（[M6 总设计](../../M6-links/00-M6-design.md) 4.12，[P6 文档](../../M6-links/06-P6-reading-view.md)第 1、15 节，[P7 文档](../../M6-links/07-P7-editor-panel.md)第 8 节；[M6 收尾审查](../../M6-links/reviews/M6-closeout-review.md) C-I3）：
+    - 编辑时的大纲：编辑器里的标题要另做解析（lezer），现在编辑时右栏不显示大纲；
+    - 全部标签的总览页（`listTags`），以及 frontmatter 的 `tags` 在属性表里显示为标签链接（负责人可以改判，提前做）；
+    - 正文里指向地址里已是的锚点的链接是浏览器自己的导航：Chromium 里同样打开折叠的 callout，Safari、Firefox 待人工确认。
+
 之后的 M 推迟的体验事项照样追加到这份移交。
