@@ -1,5 +1,5 @@
 import { expectIndexedLinks } from "../../fixtures/assert/links";
-import { countAnswers } from "../../fixtures/browser";
+import { countAnswers, expectQuietPage, watchPage } from "../../fixtures/browser";
 import { holdStream } from "../../fixtures/events";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, getView, readContent, renameNode } from "../../fixtures/pages";
@@ -73,8 +73,9 @@ test("L1 (API): a reading view's links to pages carry the page each leads to and
   ]);
 });
 
-test("L1 (page): a link to a page opens it in the app, or in a new tab with a modifier, and goes to its anchor's heading; one to a page not there is no link", async ({
+test("L1 (page): a link to a page opens it in the app, or in a new tab with a modifier, and goes to its anchor's heading, a Markdown link and the page's full address too; one to a page not there is no link", async ({
   api,
+  baseURL,
   signedInPage,
 }, testInfo) => {
   const { pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
@@ -87,15 +88,15 @@ test("L1 (page): a link to a page opens it in the app, or in a new tab with a mo
     null,
     "intro\n\n" + "filler\n\n".repeat(80) + "# Part Two\n"
   );
+  const targetPath = wikiPagePath(workspace.slug, notebook.id, target.id);
   const source = await createPage(
     api,
     pat,
     notebook.id,
     "Source",
     null,
-    "[[Target]] and [[Target#Part Two|part two]] and [[Missing]]\n"
+    `[[Target]] and [[Target#Part Two|part two]] and [[Missing]] and [as a file](Target.md) and [by address](${baseURL}${targetPath})\n`
   );
-  const targetPath = wikiPagePath(workspace.slug, notebook.id, target.id);
   const page = await signedInPage(tokens);
   await page.goto(wikiPagePath(workspace.slug, notebook.id, source.id));
   const article = page.getByRole("article");
@@ -117,6 +118,11 @@ test("L1 (page): a link to a page opens it in the app, or in a new tab with a mo
     toTarget.click({ modifiers: ["ControlOrMeta"] }),
   ]);
   await expect(pageHeading(opened, "Target")).toBeVisible();
+  // Watched from its start, as the stories' own tabs are: loaded again, it is quiet.
+  const openedWatch = await watchPage(opened);
+  await opened.reload();
+  await expect(pageHeading(opened, "Target")).toBeVisible();
+  await expectQuietPage(opened, openedWatch);
   await opened.close();
   await expect(pageHeading(page, "Source")).toBeVisible();
 
@@ -133,6 +139,18 @@ test("L1 (page): a link to a page opens it in the app, or in a new tab with a mo
   await expect(heading).toBeFocused();
   await expect(heading).toBeInViewport();
   await expect(page).toHaveURL(`${targetPath}#nw-part-two`);
+
+  // A Markdown link to the page, and the page's full address on this site, go through the router too.
+  for (const name of ["as a file", "by address"]) {
+    // oxlint-disable-next-line no-await-in-loop -- one link after another
+    await page.goBack();
+    // oxlint-disable-next-line no-await-in-loop -- as above
+    await article.getByRole("link", { name, exact: true }).click();
+    // oxlint-disable-next-line no-await-in-loop -- as above
+    await expect(pageHeading(page, "Target")).toBeFocused();
+    // oxlint-disable-next-line no-await-in-loop -- as above
+    await expect(page).toHaveURL(targetPath);
+  }
   expect(await notReloaded()).toBe(true);
 });
 

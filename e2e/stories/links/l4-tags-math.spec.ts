@@ -183,7 +183,7 @@ test("L4 (page): what a writer's formulas and diagrams could do to a reader's pa
     "```mermaid",
     '%%{init: {"securityLevel": "loose", "dompurifyConfig": {"ADD_ATTR": ["onmouseover"]}}}%%',
     "graph TD",
-    `  A["<b onmouseover=alert(1)>bold</b><a href='javascript:alert(2)'>go</a><a id='nw-forged' class='nw-unresolved' data-nw-target='Forged'>label</a><input type='checkbox' data-task='0'><style>body{display:none}</style>"] --> B`,
+    `  A["<b onmouseover=alert(1)>bold</b><a href='javascript:alert(2)'>go</a><a id='nw-forged' class='nw-unresolved' data-nw-target='Forged'>label</a><input type='checkbox' data-task='0'><form><input type='password'><button>Sign in</button></form><style>body{display:none}</style>"] --> B`,
     '  click A href "javascript:alert(3)"',
     "```",
     "",
@@ -251,7 +251,7 @@ test("L4 (page): what a writer's formulas and diagrams could do to a reader's pa
       /^\s*javascript:/i.test(link.getAttribute("href") ?? link.getAttribute("xlink:href") ?? "")
     ).length,
     forged: diagram.querySelectorAll(
-      "#nw-forged, [role=button], [data-task], [data-nw-target], [data-nw-node], [data-nw-tag], foreignObject style"
+      "#nw-forged, [role=button], [data-task], [data-nw-target], [data-nw-node], [data-nw-tag], foreignObject style, form, input, button"
     ).length,
   }));
   expect(marked).toEqual({ handlers: [], scripts: 0, forged: 0 });
@@ -333,7 +333,7 @@ test("L4 (page): what a writer's formulas and diagrams could do to a reader's pa
   expect(aside).toBe("kept in the view");
 });
 
-test("L4 (page): a view's formulas take at most a while to lay out, which the view laid out again takes at once: past it, the rest show their TeX", async ({
+test("L4 (page): a view's formulas take at most a while to lay out: past it, the rest show their TeX", async ({
   api,
   signedInPage,
 }, testInfo) => {

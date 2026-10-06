@@ -29,7 +29,7 @@ async function expectLinked(db: Database, docId: string, otherId: string, hubId:
   await expectIndexedLinks(db, otherId, [{ kind: "wikilink", property: null, target: "Hub", resolved: hubId }]);
 }
 
-test("L6 (API): a page's properties carry where their links lead; its backlinks list the pages that link to it with their lines, one another writes once written, the links event naming it", async ({
+test("L6 (API): a page's properties carry where their links lead; its backlinks list the pages that link to it with their lines, a page of them at a time, one another writes once written, the links event naming it", async ({
   api,
   db,
   openEvents,
@@ -60,6 +60,7 @@ test("L6 (API): a page's properties carry where their links lead; its backlinks 
   await writeContent(api, pat, other.id, { content: "Meet at [[Hub]] today\n", base_revision: 1 });
   let frame = await events.next();
   while (frame.event === "pages") {
+    // oxlint-disable-next-line no-await-in-loop -- one frame after another
     frame = await events.next();
   }
   // Hub's backlinks changed; no page's links lead elsewhere (Other's own view is the pages event's).
@@ -75,10 +76,17 @@ test("L6 (API): a page's properties carry where their links lead; its backlinks 
     ],
     next_cursor: null,
   });
+  const first = (await listBacklinks(api, pat, hub.id, { limit: 1 })).data;
+  expect(first?.data.map((backlink) => backlink.id)).toEqual([other.id]);
+  expect(
+    (await listBacklinks(api, pat, hub.id, { limit: 1, cursor: first?.next_cursor ?? "" })).data?.data.map(
+      (backlink) => backlink.id
+    )
+  ).toEqual([doc.id]);
   await expectLinked(db, doc.id, other.id, hub.id);
 });
 
-test("L6 (page): the right column's outline goes to a heading, one in a folded callout too, a property link to its page, whose backlinks show a link another writes as it is written", async ({
+test("L6 (page): the right column's outline goes to a heading, one in a folded callout too, and is not shown while the page is edited; a property link goes to its page, whose backlinks show a link another writes as it is written", async ({
   api,
   db,
   signedInPage,
@@ -127,6 +135,17 @@ test("L6 (page): the right column's outline goes to a heading, one in a folded c
   await expect(hidden).toBeInViewport();
   // Held at the top as the window scrolls.
   await expect(panel).toBeInViewport();
+
+  // The properties: each key and its value. Edited, the column keeps them and the backlinks, not the outline.
+  await expect(panel.getByRole("term")).toHaveText(["up", "see"]);
+  await expect(panel.getByRole("definition")).toHaveText(["Hub", "Nowhere"]);
+  await page.keyboard.press("ControlOrMeta+e");
+  await expect(page.getByRole("textbox", { name: "Page content" })).toBeVisible();
+  await expect(outline).toHaveCount(0);
+  await expect(panel.getByRole("term")).toHaveText(["up", "see"]);
+  await expect(panel.getByText("Backlinks", { exact: true })).toBeVisible();
+  await page.keyboard.press("ControlOrMeta+e");
+  await expect(outline.getByRole("link")).toHaveText(["Intro", "Setup", "Usage", "Hidden"]);
 
   await expect(panel.getByText("Nowhere", { exact: true })).toBeVisible();
   await expect(panel.getByRole("link", { name: "Nowhere" })).toHaveCount(0);

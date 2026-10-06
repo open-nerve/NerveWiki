@@ -4,10 +4,15 @@ import { bearer } from "./auth";
 
 // The links of the stories, through the API (M6 design 5).
 
-/** credential's read of the pages that link to the page id, as the API answers it. */
-export async function listBacklinks(api: ApiClient, credential: string, id: string) {
+/** credential's read of the pages that link to the page id, a page of them at a time, as the API answers it. */
+export async function listBacklinks(
+  api: ApiClient,
+  credential: string,
+  id: string,
+  query: { limit?: number; cursor?: string } = {}
+) {
   return api.GET("/api/v0/pages/{page_id}/backlinks", {
-    params: { path: { page_id: id } },
+    params: { path: { page_id: id }, query },
     headers: bearer(credential),
   });
 }

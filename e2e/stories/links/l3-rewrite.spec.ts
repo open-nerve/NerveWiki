@@ -65,7 +65,7 @@ test("L3 (page): a rename in the dialog, and a drag, whose links' page another e
   pageWatch,
   signedInPage,
 }, testInfo) => {
-  const { pat: admin, tokens, workspace } = await newOnboardedTeam(api, testInfo);
+  const { adminId, pat: admin, tokens, workspace } = await newOnboardedTeam(api, testInfo);
   const aEmail = emailFor(testInfo, "a");
   const a = await joinAs(api, admin, workspace.slug, aEmail, "member");
   const notebook = await createNotebook(api, admin, workspace.slug, "Plans", "editor");
@@ -100,6 +100,8 @@ test("L3 (page): a rename in the dialog, and a drag, whose links' page another e
   expect(renamed.status()).toBe(200);
   await expect(renameDialog(page, "Target")).toBeHidden();
   expect((await readContent(api, admin, source.id)).content).toBe("[[Renamed]] and [rooted](/Renamed.md)\n");
+  // Written again as the renamer.
+  expect((await getPage(api, admin, source.id)).data?.content_updated_by).toBe(adminId);
   await expectIndexedLinks(db, source.id, [
     { kind: "wikilink", property: null, target: "Renamed", resolved: target.id },
     { kind: "link", property: null, target: "/Renamed.md", resolved: target.id },

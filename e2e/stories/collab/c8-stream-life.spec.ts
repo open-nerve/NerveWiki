@@ -190,13 +190,13 @@ test("C8 (page): B, reading a page of Acme, is removed from Acme: the workspace 
   const eng = await createNotebook(api, a, workspace.slug, "Eng", "editor");
   const notes = await createPage(api, a, eng.id, "Notes");
   const letStreamIn = await holdStream(page);
-  const reads = [`/api/v0/pages/${notes.id}/view`, `/api/v0/pages/${notes.id}/edit-lock`].map((path) =>
-    countAnswers(page, "GET", path)
+  const reads = ["view", "edit-lock", "backlinks", "properties"].map((what) =>
+    countAnswers(page, "GET", `/api/v0/pages/${notes.id}/${what}`)
   );
   await page.goto(wikiPagePath(workspace.slug, eng.id, notes.id));
   await expect(pageHeading(page, "Notes")).toBeVisible();
-  // B's stream connects once the page shows, and its refresh reads it all again, the view and the lock last: once
-  // they have answered, B's tab reads nothing until an event comes. Removed sooner, B would have a read of the page
+  // B's stream connects once the page shows, and its refresh reads it all again, the page's view, lock, backlinks and
+  // properties last: once they have answered, B's tab reads nothing until an event comes. Removed sooner, B would have a read of the page
   // still to come, which the removal answers not found before the stream's reset reaches the tab.
   letStreamIn();
   await expect.poll(() => Math.min(...reads.map((answers) => answers()))).toBeGreaterThanOrEqual(2);

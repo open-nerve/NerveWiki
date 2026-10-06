@@ -30,7 +30,7 @@ async function expectWritten(db: Database, sourceId: string, targetId: string): 
   await expectIndexedAliases(db, targetId, ["Goal"]);
 }
 
-test("L5 (API): what [[ and # complete with, the notebook's pages with their links and aliases and its tags with their pages; a content written with them shows the links resolved and the tag", async ({
+test("L5 (API): what [[ and # complete with, the notebook's pages with their links (by path where two share a title) and aliases and its tags with their pages; a content written with them shows the links resolved and the tag", async ({
   api,
   db,
 }, testInfo) => {
@@ -39,11 +39,20 @@ test("L5 (API): what [[ and # complete with, the notebook's pages with their lin
   const target = await createPage(api, pat, notebook.id, "Target", null, "---\naliases: [Goal]\n---\n");
   const tagged = await createPage(api, pat, notebook.id, "Tagged", null, "#project/alpha\n");
   const source = await createPage(api, pat, notebook.id, "Source", null, "");
+  // Two pages of one title: each is written by its path.
+  const archive = await createPage(api, pat, notebook.id, "Archive");
+  const drafts = await createPage(api, pat, notebook.id, "Drafts");
+  const archived = await createPage(api, pat, notebook.id, "Notes", archive.id);
+  const drafted = await createPage(api, pat, notebook.id, "Notes", drafts.id);
 
   const targets = await listLinkTargets(api, pat, notebook.id);
-  expect([targets.response.status, targets.data?.data.toSorted((a, b) => a.name.localeCompare(b.name))]).toEqual([
+  expect([targets.response.status, targets.data?.data.toSorted((a, b) => a.link.localeCompare(b.link))]).toEqual([
     200,
     [
+      { id: archive.id, kind: "page", name: "Archive", link: "Archive", aliases: [] },
+      { id: archived.id, kind: "page", name: "Notes", link: "Archive/Notes", aliases: [] },
+      { id: drafts.id, kind: "page", name: "Drafts", link: "Drafts", aliases: [] },
+      { id: drafted.id, kind: "page", name: "Notes", link: "Drafts/Notes", aliases: [] },
       { id: source.id, kind: "page", name: "Source", link: "Source", aliases: [] },
       { id: tagged.id, kind: "page", name: "Tagged", link: "Tagged", aliases: [] },
       { id: target.id, kind: "page", name: "Target", link: "Target", aliases: ["Goal"] },
