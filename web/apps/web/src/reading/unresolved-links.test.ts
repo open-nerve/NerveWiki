@@ -32,7 +32,8 @@ function setUp() {
     revision: 1,
     role: "editor",
     t: translator("en"),
-    theme: "light",
+    theme: () => "light",
+    onThemeChange: () => () => undefined,
     reload: () => undefined,
     navigate: () => undefined,
     report: () => undefined,
@@ -72,8 +73,11 @@ test("a click, Enter or Space hands the link to the view with its target and wha
   await userEvent.click(link("p.png"));
   link("Up").focus();
   await userEvent.keyboard("{Enter}");
-  const space = new KeyboardEvent("keydown", { key: " ", bubbles: true, cancelable: true });
-  link("x").dispatchEvent(space);
+  // Space acts as it comes up, as on a button; down, it would scroll the page.
+  const down = new KeyboardEvent("keydown", { key: " ", bubbles: true, cancelable: true });
+  link("x").dispatchEvent(down);
+  expect(handed).toHaveLength(5);
+  link("x").dispatchEvent(new KeyboardEvent("keyup", { key: " ", bubbles: true, cancelable: true }));
 
   expect(handed).toEqual([
     ["Plans/x", "link", "x"],
@@ -83,8 +87,7 @@ test("a click, Enter or Space hands the link to the view with its target and wha
     ["Up", "link", "Up"],
     ["Plans/x", "link", "x"],
   ]);
-  // Space would scroll the page.
-  expect(space.defaultPrevented).toBe(true);
+  expect(down.defaultPrevented).toBe(true);
 });
 
 test("another key, a key with a modifier or while composing, another button, and what another handled hand nothing", () => {
@@ -100,8 +103,15 @@ test("another key, a key with a modifier or while composing, another button, and
     { key: "Enter", isComposing: true },
   ];
   for (const init of keys) {
-    link("x").dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init }));
+    for (const type of ["keydown", "keyup"]) {
+      link("x").dispatchEvent(new KeyboardEvent(type, { bubbles: true, cancelable: true, ...init }));
+    }
   }
+  // Enter acts as it goes down only.
+  link("x").dispatchEvent(new KeyboardEvent("keyup", { key: "Enter", bubbles: true, cancelable: true }));
+  const elsewhere = new KeyboardEvent("keydown", { key: " ", bubbles: true, cancelable: true });
+  link("A").dispatchEvent(elsewhere);
+  expect(elsewhere.defaultPrevented).toBe(false);
   link("x").dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, button: 1 }));
   link("x").addEventListener("click", (event) => event.preventDefault(), { once: true });
   link("x").dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
@@ -119,6 +129,19 @@ test("undone, the links are as the server wrote them and hand nothing", async ()
   expect(container.innerHTML).toBe(before);
   await userEvent.click(link("x"));
   link("x").dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+  expect(handed).toEqual([]);
+});
+
+test("a diagram's link is mermaid's, not the server's: it is left be", async () => {
+  const { container, context, handed } = setUp();
+  const diagram = Object.assign(document.createElement("div"), { className: "nw-scroll nw-diagram" });
+  diagram.innerHTML = '<svg><a class="nw-unresolved" data-nw-target="Secret/x"><text>make</text></a></svg>';
+  container.append(diagram);
+  unresolvedLinks(container, context);
+
+  const made = diagram.querySelector("a");
+  expect(made?.hasAttribute("role")).toBe(false);
+  made?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
   expect(handed).toEqual([]);
 });
 

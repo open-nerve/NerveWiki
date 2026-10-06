@@ -1,6 +1,7 @@
 import type { MermaidConfig } from "mermaid";
 
 import type { Enhancement } from "./enhancement";
+import { definesMacros } from "./math";
 
 /** The longest diagram drawn, in bytes of UTF-8: a longer one shows its source (M6/P6 design 10). */
 export const diagramLimit = 20_000;
@@ -42,10 +43,12 @@ const whenShown: Watch = (element, see) => {
 
 /**
  * mermaid's options (M6 design 4.9): strict, its labels sanitized and no
- * script of the diagram's run; an error not drawn but thrown, so that the
- * diagram shows its source; the text and the edges bounded; and none of
- * these, nor the layout (which would load another engine), changed by a
- * diagram's own directives.
+ * script of the diagram's run, a label's HTML without a style element
+ * (mermaid's own rule) nor an id, which could take an anchor of the page's;
+ * an error not drawn but thrown, so that the diagram shows its source; the
+ * text and the edges bounded (the edges of a flowchart: mermaid counts no
+ * other's); and none of these, nor the layout (which would load another
+ * engine), changed by a diagram's own directives.
  */
 function options(theme: "light" | "dark"): MermaidConfig {
   return {
@@ -54,96 +57,150 @@ function options(theme: "light" | "dark"): MermaidConfig {
     suppressErrorRendering: true,
     maxTextSize: diagramLimit,
     maxEdges: edgeLimit,
-    secure: ["secure", "securityLevel", "startOnLoad", "maxTextSize", "suppressErrorRendering", "maxEdges", "layout"],
+    dompurifyConfig: { FORBID_TAGS: ["style"], FORBID_ATTR: ["id"] },
+    secure: [
+      "secure",
+      "securityLevel",
+      "startOnLoad",
+      "maxTextSize",
+      "suppressErrorRendering",
+      "maxEdges",
+      "dompurifyConfig",
+      "layout",
+    ],
     theme: theme === "dark" ? "dark" : "default",
   };
 }
 
+/** A drawing: mermaid's SVG, and the id its elements' ids begin with. */
+type Drawing = { id: string; svg: string };
+
 /** The drawings kept, by theme and source, the one used last last. */
-const kept = new Map<string, string>();
+const drawings = new Map<string, Drawing>();
 
 /** The drawings out, one at a time across the views: mermaid keeps its state in the page. */
-let drawing: Promise<void> = Promise.resolve();
+let drawingsOut: Promise<void> = Promise.resolve();
 
-/** How many diagrams were drawn: the ids of each drawing's elements are its own (nw_mermaid_n, no heading's id). */
+/** How many drawings were drawn or put: the ids of each one's elements are its own (nw_mermaid_n, no heading's id). */
 let drawn = 0;
 
 const encoder = new TextEncoder();
 
+/** A diagram of the view: its block, its source, and, once drawn, its wrapper and the drawing's key in it. */
+type Diagram = {
+  block: Element;
+  source: string;
+  wrapper: HTMLElement | undefined;
+  shown: string | undefined;
+  /** What stops watching it, while it waits to show. */
+  stop: (() => void) | undefined;
+};
+
 /**
  * diagrams draws the reading view's mermaid code blocks (```mermaid) with
  * mermaid, which load loads (M6/P6 design 10): each once it shows (watch),
- * one at a time, in the view's theme. A drawing takes the block's place in
- * a wrapper of its own (nw-scroll nw-diagram), which scrolls sideways; a
- * diagram over diagramLimit, or one mermaid cannot draw, shows its source.
- * The latest keptDrawings drawings are kept, by theme and source: a view
- * read again, its HTML replaced whole, puts a diagram whose source did not
- * change at once. Undone, the blocks are back, and what is out is dropped.
+ * one at a time, in the theme shown as it is drawn. A drawing takes the
+ * block's place in a wrapper of its own (nw-scroll nw-diagram), which
+ * scrolls sideways; a diagram over diagramLimit, one whose formulas
+ * define a macro, or one mermaid cannot draw, shows its source. The latest keptDrawings drawings are kept, by
+ * theme and source: a view read again, its HTML replaced whole, puts a
+ * diagram whose source did not change at once. As the theme changes, each
+ * diagram is drawn again in it, in its wrapper, once it shows: the old
+ * drawing shows until then, and the view is not run again (its focus, its
+ * scroll). Undone, the blocks are back, and what is out is dropped.
  */
 export function diagrams(load: () => Promise<Drawer>, watch: Watch = whenShown): Enhancement {
-  return (container, { theme }) => {
-    const blocks = [...container.querySelectorAll<HTMLElement>("pre > code.language-mermaid")];
-    if (blocks.length === 0) {
+  return (container, { theme, onThemeChange }) => {
+    const found: Diagram[] = [];
+    for (const code of container.querySelectorAll<HTMLElement>("pre > code.language-mermaid")) {
+      const block = code.parentElement;
+      const source = code.textContent;
+      // mermaid typesets a label's $$…$$ with KaTeX: not one that defines a macro (math.ts).
+      if (
+        block !== null &&
+        encoder.encode(source).length <= diagramLimit &&
+        !(source.includes("$$") && definesMacros(source))
+      ) {
+        found.push({ block, source, wrapper: undefined, shown: undefined, stop: undefined });
+      }
+    }
+    if (found.length === 0) {
       return undefined;
     }
     let undone = false;
-    const placed: { block: Element; wrapper: Element }[] = [];
-    const watching: (() => void)[] = [];
-    const place = (block: Element, svg: string) => {
-      const wrapper = document.createElement("div");
+    const put = (diagram: Diagram, key: string, drawing: Drawing) => {
+      if (diagram.shown === key) {
+        return;
+      }
+      const wrapper = diagram.wrapper ?? document.createElement("div");
       wrapper.className = "nw-scroll nw-diagram";
       // mermaid's own SVG, strict, its labels sanitized: the exception to adding no markup from elsewhere (M6 design
       // 4.9). The pages' CSP runs no inline script either: no handler, no javascript: address.
-      wrapper.innerHTML = svg;
-      block.replaceWith(wrapper);
-      placed.push({ block, wrapper });
+      wrapper.innerHTML = withOwnIds(drawing);
+      if (diagram.wrapper === undefined) {
+        diagram.block.replaceWith(wrapper);
+        diagram.wrapper = wrapper;
+      }
+      diagram.shown = key;
     };
-    for (const code of blocks) {
-      const block = code.parentElement;
-      const source = code.textContent;
-      const key = `${theme}\n${source}`;
-      const keptDrawing = kept.get(key);
-      if (block === null) {
-        continue;
+    // Put at once if kept in the theme shown, or drawn once it shows.
+    const show = (diagram: Diagram) => {
+      diagram.stop?.();
+      diagram.stop = undefined;
+      const key = keyOf(theme(), diagram.source);
+      const kept = drawings.get(key);
+      if (kept !== undefined) {
+        keep(key, kept);
+        put(diagram, key, kept);
+        return;
       }
-      if (keptDrawing !== undefined) {
-        keep(key, keptDrawing);
-        place(block, keptDrawing);
-        continue;
-      }
-      if (encoder.encode(source).length > diagramLimit) {
-        continue;
-      }
-      watching.push(
-        watch(block, () => {
-          draw(async () => {
-            if (undone) {
-              return;
-            }
-            const svg = await render(load, theme, source);
-            if (svg !== undefined && !undone) {
-              keep(key, svg);
-              place(block, svg);
-            }
-          });
-        })
-      );
+      diagram.stop = watch(diagram.wrapper ?? diagram.block, () => {
+        diagram.stop = undefined;
+        draw(async () => {
+          // The theme as it is drawn: changed meanwhile, the drawing in it may be kept by now.
+          const shown = theme();
+          const drawnKey = keyOf(shown, diagram.source);
+          if (undone || diagram.shown === drawnKey) {
+            return;
+          }
+          const made = drawings.get(drawnKey) ?? (await render(load, shown, diagram.source));
+          if (made === undefined) {
+            return;
+          }
+          keep(drawnKey, made);
+          if (!undone && shown === theme()) {
+            put(diagram, drawnKey, made);
+          }
+        });
+      });
+    };
+    for (const diagram of found) {
+      show(diagram);
     }
+    const stopFollowing = onThemeChange(() => {
+      for (const diagram of found) {
+        show(diagram);
+      }
+    });
     return () => {
       undone = true;
-      for (const stop of watching) {
-        stop();
-      }
-      for (const { block, wrapper } of placed) {
-        wrapper.replaceWith(block);
+      stopFollowing();
+      for (const diagram of found) {
+        diagram.stop?.();
+        diagram.wrapper?.replaceWith(diagram.block);
       }
     };
   };
 }
 
+/** keyOf is what a drawing is kept by: its theme and its source. */
+function keyOf(theme: "light" | "dark", source: string): string {
+  return `${theme}\n${source}`;
+}
+
 /** draw runs task after the drawings out, whichever way they end. */
 function draw(task: () => Promise<void>) {
-  drawing = drawing.then(task).catch(() => undefined);
+  drawingsOut = drawingsOut.then(task).catch(() => undefined);
 }
 
 /** render is mermaid's drawing of source in theme, or undefined: mermaid could not load, or not draw it. */
@@ -151,7 +208,7 @@ async function render(
   load: () => Promise<Drawer>,
   theme: "light" | "dark",
   source: string
-): Promise<string | undefined> {
+): Promise<Drawing | undefined> {
   let mermaid: Drawer;
   try {
     mermaid = await load();
@@ -160,22 +217,38 @@ async function render(
     return undefined;
   }
   mermaid.initialize(options(theme));
+  const id = nextId();
   try {
-    return (await mermaid.render(`nw_mermaid_${(++drawn).toString()}`, source)).svg;
+    return { id, svg: (await mermaid.render(id, source)).svg };
   } catch {
     // A diagram mermaid cannot read, or past its bounds: its source shows.
     return undefined;
   }
 }
 
+/** nextId is an id no drawing's elements' ids begin with. */
+function nextId(): string {
+  drawn += 1;
+  return `nw_mermaid_${drawn.toString()}`;
+}
+
+/**
+ * withOwnIds is drawing's SVG, the ids its elements' begin with, and what
+ * names them (its styles, its markers' addresses), another's: a drawing
+ * put twice, two diagrams of a source, or one kept, has no id of another.
+ */
+function withOwnIds({ id, svg }: Drawing): string {
+  return svg.replace(new RegExp(`${id}(?![0-9])`, "g"), nextId());
+}
+
 /** keep keeps the drawing of key as the one used last, the oldest dropped past keptDrawings. */
-function keep(key: string, svg: string) {
-  kept.delete(key);
-  kept.set(key, svg);
-  for (const oldest of kept.keys()) {
-    if (kept.size <= keptDrawings) {
+function keep(key: string, drawing: Drawing) {
+  drawings.delete(key);
+  drawings.set(key, drawing);
+  for (const oldest of drawings.keys()) {
+    if (drawings.size <= keptDrawings) {
       break;
     }
-    kept.delete(oldest);
+    drawings.delete(oldest);
   }
 }

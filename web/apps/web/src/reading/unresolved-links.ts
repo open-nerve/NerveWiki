@@ -7,10 +7,14 @@ import type { Enhancement, UnresolvedLink } from "./enhancement";
  * Space, which hands it to the view (ReadingContext.unresolved) with what
  * it is: an embed's (nw-embed) or a Markdown image's link only says it is
  * not there, a link may have its page created. The view decides which,
- * by the reader's role.
+ * by the reader's role. Enter acts as it goes down, Space as it comes up,
+ * as on a button. A diagram's links are mermaid's, not the server's: they
+ * are left be (diagrams.ts).
  */
 export const unresolvedLinks: Enhancement = (container, { unresolved }) => {
-  const links = [...container.querySelectorAll<HTMLAnchorElement>("a.nw-unresolved[data-nw-target]")];
+  const links = [...container.querySelectorAll<HTMLAnchorElement>("a.nw-unresolved[data-nw-target]")].filter(
+    (link) => link.closest(".nw-diagram") === null
+  );
   if (links.length === 0) {
     return undefined;
   }
@@ -34,15 +38,28 @@ export const unresolvedLinks: Enhancement = (container, { unresolved }) => {
   };
   const onKey = (event: KeyboardEvent) => {
     const plain = !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey;
-    if (!event.defaultPrevented && plain && !event.isComposing && (event.key === "Enter" || event.key === " ")) {
+    if (event.defaultPrevented || !plain || event.isComposing) {
+      return;
+    }
+    if (event.type === "keydown" && event.key === "Enter") {
       act(event);
+    } else if (event.key === " ") {
+      // Down, Space would scroll the page.
+      const link = event.target instanceof Element ? event.target.closest("a") : null;
+      if (event.type === "keyup") {
+        act(event);
+      } else if (link !== null && links.includes(link)) {
+        event.preventDefault();
+      }
     }
   };
   container.addEventListener("click", onClick);
   container.addEventListener("keydown", onKey);
+  container.addEventListener("keyup", onKey);
   return () => {
     container.removeEventListener("click", onClick);
     container.removeEventListener("keydown", onKey);
+    container.removeEventListener("keyup", onKey);
     for (const link of links) {
       link.removeAttribute("role");
       link.removeAttribute("tabindex");

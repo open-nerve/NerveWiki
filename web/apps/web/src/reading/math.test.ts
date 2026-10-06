@@ -3,7 +3,7 @@ import { afterEach, expect, test, vi } from "vitest";
 
 import { translator } from "../i18n/i18n";
 import type { ReadingContext } from "./enhancement";
-import { formulaLimit, formulasAtOnce, math, type Typesetter } from "./math";
+import { formulaLimit, formulasAtOnce, loadKatex, math, type Typesetter } from "./math";
 
 // The formulas, typeset by KaTeX (M6/P6 design 10).
 
@@ -19,7 +19,8 @@ const context: ReadingContext = {
   revision: 1,
   role: "reader",
   t: translator("en"),
-  theme: "light",
+  theme: () => "light",
+  onThemeChange: () => () => undefined,
   reload: () => undefined,
   navigate: () => undefined,
   report: () => undefined,
@@ -91,6 +92,49 @@ test("a formula KaTeX cannot read, or longer than the limit, shows its TeX", asy
 
   expect([...article.querySelectorAll(".nw-math")].map((each) => each.textContent)).toEqual(["bad", long, `[${fits}]`]);
   expect(calls.map((call) => call.tex)).toEqual(["bad", fits]);
+});
+
+test("a formula that defines a macro, or names one of KaTeX's own, shows its TeX: KaTeX is not given it", async () => {
+  const { calls, typeset } = typesetter();
+  const refused = [
+    String.raw`\def\a{x}\a`,
+    String.raw`\gdef\a{x}`,
+    String.raw`\edef\a{x}`,
+    String.raw`\xdef\a{x}`,
+    String.raw`\let\a=x`,
+    String.raw`\futurelet\a\b`,
+    String.raw`\global\a`,
+    String.raw`\long\a`,
+    String.raw`\newcommand{\a}{x}`,
+    String.raw`\renewcommand*{\a}{x}`,
+    String.raw`\providecommand\a{x}`,
+    String.raw`\tag{1}\df@tag\df@tag`,
+    String.raw`a\@b`,
+  ];
+  const typesetAll = [String.raw`\deg x \leftarrow y`, String.raw`a \newline b`, String.raw`\text{me@host} \tag{1}`];
+  const article = view([...refused, ...typesetAll].map((tex) => `<span class="nw-math">${tex}</span>`).join(""));
+
+  math(async () => typeset)(article, context);
+  await settled();
+
+  expect(calls.map((call) => call.tex)).toEqual(typesetAll);
+  expect([...article.querySelectorAll(".nw-math")].slice(0, refused.length).map((each) => each.textContent)).toEqual(
+    refused
+  );
+});
+
+test("KaTeX as the app loads it typesets a formula, and is not given one that would expand without end", async () => {
+  const a = String.raw`\def\a{xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx}`;
+  const b = String.raw`\def\b{${String.raw`\a`.repeat(31)}}`;
+  const bomb = a + b + String.raw`\b`.repeat(31);
+  const article = view(
+    `<span class="nw-math">${bomb}</span><span class="nw-math nw-math-block">x = \\frac{1}{2} \\tag{1}</span>`
+  );
+
+  math(loadKatex)(article, context);
+  await vi.waitFor(() => expect(article.querySelector(".nw-math-block .katex-display")).not.toBeNull());
+
+  expect(article.querySelector(".nw-math")?.textContent).toBe(bomb);
 });
 
 test("KaTeX itself makes no link, nor loads anything, of the TeX, and throws on what it cannot read", async () => {

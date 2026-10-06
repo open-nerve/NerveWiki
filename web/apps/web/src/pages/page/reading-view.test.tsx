@@ -87,6 +87,30 @@ test("an enhancement reads the view again through its context", async () => {
   expect(server.sent.filter((line) => line === "GET view Install")).toHaveLength(2);
 });
 
+test("a change of the theme runs no enhancement again, those that follow it hearing it; one of the language runs them again", async () => {
+  const server = pageServer();
+  const log: string[] = [];
+  const heard: string[] = [];
+  renderApp(pagePath(install.id), server.app, {
+    enhancements: [
+      recording(log, "a"),
+      (_container, { theme, onThemeChange }) => onThemeChange(() => heard.push(theme())),
+    ],
+  });
+  await waitFor(() => expect(log).toHaveLength(1));
+
+  act(() => server.app.preferences.setTheme("dark"));
+  expect(heard).toEqual(["dark"]);
+  expect(log).toHaveLength(1);
+
+  act(() => server.app.preferences.setLocale("zh-CN"));
+  await waitFor(() => expect(log).toHaveLength(3));
+  expect(log[1]).toBe("undo a on <p>Install</p>");
+  // The listener undone hears no more: one for each change.
+  act(() => server.app.preferences.setTheme("light"));
+  expect(heard).toEqual(["dark", "light"]);
+});
+
 /** section is the view's heading named name. */
 function section(name: string): HTMLElement {
   return screen.getByRole("heading", { level: 2, name });

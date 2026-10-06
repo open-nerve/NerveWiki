@@ -45,7 +45,8 @@ const context: ReadingContext = {
   revision: 1,
   role: "reader",
   t: translator("en"),
-  theme: "light",
+  theme: () => "light",
+  onThemeChange: () => () => undefined,
   reload: () => {},
   navigate: () => {},
   report: () => {},
@@ -106,7 +107,50 @@ test("what is wider than it shows takes the focus as a region named for what it 
     "0 region Wide content",
   ]);
   expect(state(article)).toBe("none");
-  expect(observers[0]?.targets).toEqual([props, table, math, inline, code, other]);
+  expect(observers[0]?.targets).toEqual([article, props, table, math, inline, code, other]);
+});
+
+test("the view, wide with what has no region of its own, takes the focus as the page's article, its name its own", () => {
+  const observers = observed();
+  const { article } = view();
+  article.setAttribute("aria-label", "Install");
+  widths(article, 900, 600);
+
+  const undo = scrollRegions(article, context);
+  expect(state(article)).toBe("0 null Install");
+
+  widths(article, 600, 600);
+  observers[0]?.follow([{ target: article }]);
+  expect(state(article)).toBe("half");
+  expect(article.getAttribute("aria-label")).toBe("Install");
+
+  widths(article, 900, 600);
+  observers[0]?.follow([{ target: article }]);
+  undo?.();
+  expect([article.hasAttribute("tabindex"), article.getAttribute("aria-label")]).toEqual([false, "Install"]);
+});
+
+test("a change is looked at where it is: what scrolls around it, what it adds, and the view; no other is read again", async () => {
+  observed();
+  const { article, table, math } = view();
+  const reads = new Map<Element, number>();
+  for (const each of [article, table, math]) {
+    Object.defineProperty(each, "scrollWidth", {
+      configurable: true,
+      get: () => {
+        reads.set(each as Element, (reads.get(each as Element) ?? 0) + 1);
+        return 600;
+      },
+    });
+    Object.defineProperty(each, "clientWidth", { configurable: true, value: 600 });
+  }
+  scrollRegions(article, context);
+  reads.clear();
+
+  math?.firstElementChild?.replaceChildren(document.createElement("span"));
+  await mutated();
+
+  expect([reads.get(article), reads.get(table as Element), reads.get(math as Element)]).toEqual([1, undefined, 1]);
 });
 
 test("one no wider than it shows is no region, and becomes one as the window narrows, and none as it widens", () => {

@@ -48,7 +48,9 @@ type Asked = { n: number; link: UnresolvedLink; at: number } & ({ landing: Landi
  * then is gone to; else the dialog says why. No landing, an embed's link,
  * an image's, and any link to a reader, say why it is not there, without a
  * question to the server for those. What the server refuses otherwise
- * goes to the page (report), as a refusal of Edit does.
+ * goes to the page (report), as a refusal of Edit does, and the next
+ * question clears it. A page gone to that the tree does not have yet,
+ * another tab's, is read with the tree first.
  *
  * Closed without going, the dialog gives the focus back to its link, or,
  * read again since, to the link at the same place among those to its
@@ -78,7 +80,12 @@ export function useUnresolvedLinks({
   const asking = useRef(false);
   const openings = useRef(0);
 
-  const go = (id: string) => {
+  // The page id, created by now, goes to it; a page another tab made that this tab's tree does not have yet is read
+  // first, or the page would not be found.
+  const go = async (id: string) => {
+    if (pages.byId(id) === undefined) {
+      await pages.load().catch(() => undefined);
+    }
     if (mounted()) {
       void navigate(`/${slug}/notebooks/${notebook.id}/pages/${id}`, { state: arrived });
     }
@@ -98,18 +105,20 @@ export function useUnresolvedLinks({
     }
     asking.current = true;
     link.element.setAttribute("aria-busy", "true");
+    // A refusal said before is the last one's no longer, as Edit's and a tick's are not.
+    report(undefined);
     try {
       const answer = await pages.landing(page, link.target);
       if (answer.node_id !== null) {
-        go(answer.node_id);
+        await go(answer.node_id);
       } else if (answer.landing === null) {
         show({ why: answer.reason ?? "target_invalid" });
       } else {
         show({ landing: answer.landing });
       }
     } catch (error) {
-      // A target longer than the server takes has no landing.
-      if (error instanceof ApiError && error.code === "validation_failed") {
+      // A target longer than the server takes has no landing, nor one past a proxy's limit on the address (414).
+      if (error instanceof ApiError && (error.code === "validation_failed" || error.status === 414)) {
         show({ why: "target_invalid" });
       } else {
         report(error);
@@ -135,7 +144,7 @@ export function useUnresolvedLinks({
       id = again.node_id;
     }
     reload();
-    go(id);
+    await go(id);
   }
 
   const giveBack = (done: boolean) => {

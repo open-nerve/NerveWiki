@@ -1,3 +1,4 @@
+import { reaction } from "mobx";
 import { observer } from "mobx-react-lite";
 import { useContext, useEffect, useLayoutEffect, useRef, type RefObject } from "react";
 import { useLocation, useNavigate } from "react-router";
@@ -25,8 +26,11 @@ import { useUnresolvedLinks } from "./unresolved-link";
  *
  * Once the HTML is in, the app's enhancements run on it in their order;
  * before the HTML is replaced, and when the view goes, they are undone in
- * the reverse order (reading/enhancement.ts). A writer's tick task items
- * through it, one of the page's at a time (the page tree store's
+ * the reverse order (reading/enhancement.ts). They run again as the
+ * language changes, their names in it: the reader changes it in a menu,
+ * which has the focus. Not as the theme does, the system's maybe as one
+ * reads: those that draw in it follow it (onThemeChange). A writer's
+ * tick task items through it, one of the page's at a time (the page tree store's
  * oneToggle), and refused tells the page what was refused, undefined as a
  * toggle starts (M5/P6 design 3.5). A task item's checkbox that had the
  * focus as the HTML is replaced has it back in the new HTML, without a
@@ -77,7 +81,7 @@ export const ReadingView = observer(function ReadingView({
   const pages = usePageTree(notebook);
   const enhancements = useContext(Enhancements);
   const t = useT();
-  const theme = useStore().preferences.resolvedTheme;
+  const { preferences } = useStore();
   const navigate = useNavigate();
   const location = useLocation();
   // The element with an id focused as the HTML was replaced, and whether it showed.
@@ -127,7 +131,8 @@ export const ReadingView = observer(function ReadingView({
       revision,
       role,
       t,
-      theme,
+      theme: () => preferences.resolvedTheme,
+      onThemeChange: (listener) => reaction(() => preferences.resolvedTheme, listener),
       reload: () => void mutate(),
       // An address without an anchor arrives at the page, whose heading takes the focus: the link had it.
       navigate: (to) => void navigate(to, to.includes("#") ? undefined : { state: arrived }),
@@ -190,7 +195,7 @@ export const ReadingView = observer(function ReadingView({
           : undefined;
       undo();
     };
-  }, [html, revision, enhancements, slug, notebookId, role, t, theme, page.id, mutate, pages, navigate]);
+  }, [html, revision, enhancements, slug, notebookId, role, t, preferences, page.id, mutate, pages, navigate]);
   useLayoutEffect(() => {
     const container = article.current;
     if (container === null || html === undefined) {

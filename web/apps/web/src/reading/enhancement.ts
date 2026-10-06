@@ -35,8 +35,15 @@ export type ReadingContext = {
   role: NotebookRole;
   /** t is the app's text of a key in the reader's language: an enhancement's names and labels. */
   t: Translate;
-  /** theme is the app's, as shown: a diagram is drawn in it, and drawn again as it changes. */
-  theme: "light" | "dark";
+  /** theme is the app's, as shown now: a diagram is drawn in it. */
+  theme: () => "light" | "dark";
+  /**
+   * onThemeChange calls listener as the theme shown changes, until what it
+   * answers is called: a diagram is drawn again in its place, the view not
+   * run again, which would lose the reader's focus and scroll (the
+   * system's theme may change as one reads).
+   */
+  onThemeChange: (listener: () => void) => () => void;
   reload: () => void;
   /** navigate goes to the app's address to through the router. */
   navigate: (to: string) => void;

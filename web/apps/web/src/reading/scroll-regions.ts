@@ -16,12 +16,23 @@ const scrolling = ".nw-scroll, pre, span.nw-math-block";
  * for what it holds, which a screen reader announces as the focus comes. A
  * width follows the window's, and the content's as an enhancement renders
  * it (a formula, a diagram, the code's colours); one added later, a
- * diagram's wrapper, is followed as it comes.
+ * diagram's wrapper, is followed as it comes. A change is looked at where
+ * it is: what scrolls around it, and what it adds. The view itself, which
+ * scrolls what is wide and has no region of its own (a table of the
+ * writer's own HTML, a long formula in a line), takes the focus as well
+ * while it does; it is the page's article, named by it.
  */
 export const scrollRegions: Enhancement = (container, { t }) => {
   const followed = new Set<HTMLElement>();
   const follow = (scroller: HTMLElement) => {
-    if (scroller.scrollWidth > scroller.clientWidth) {
+    const wide = scroller.scrollWidth > scroller.clientWidth;
+    if (scroller === container) {
+      if (wide) {
+        container.setAttribute("tabindex", "0");
+      } else {
+        container.removeAttribute("tabindex");
+      }
+    } else if (wide) {
       scroller.setAttribute("tabindex", "0");
       scroller.setAttribute("role", "region");
       scroller.setAttribute("aria-label", nameOf(scroller, t));
@@ -34,26 +45,50 @@ export const scrollRegions: Enhancement = (container, { t }) => {
       follow(entry.target as HTMLElement);
     }
   });
-  const take = () => {
-    for (const scroller of container.querySelectorAll<HTMLElement>(scrolling)) {
-      if (!followed.has(scroller)) {
-        followed.add(scroller);
-        resized.observe(scroller);
+  const take = (scroller: HTMLElement) => {
+    if (!followed.has(scroller)) {
+      followed.add(scroller);
+      resized.observe(scroller);
+    }
+    follow(scroller);
+  };
+  take(container);
+  for (const scroller of container.querySelectorAll<HTMLElement>(scrolling)) {
+    take(scroller);
+  }
+  // What an enhancement renders changes the content's width, not the box's, which the resize observer watches.
+  const changed = new MutationObserver((records) => {
+    const touched = new Set<HTMLElement>([container]);
+    for (const record of records) {
+      const at = record.target instanceof Element ? record.target : record.target.parentElement;
+      let around = at?.closest<HTMLElement>(scrolling);
+      while (around && container.contains(around)) {
+        touched.add(around);
+        around = around.parentElement?.closest<HTMLElement>(scrolling);
+      }
+      for (const added of record.addedNodes) {
+        if (added instanceof HTMLElement) {
+          for (const scroller of [added, ...added.querySelectorAll<HTMLElement>(scrolling)]) {
+            if (scroller.matches(scrolling)) {
+              touched.add(scroller);
+            }
+          }
+        }
       }
     }
-    for (const scroller of followed) {
-      follow(scroller);
+    for (const scroller of touched) {
+      take(scroller);
     }
-  };
-  take();
-  // What an enhancement renders changes the content's width, not the box's, which the resize observer watches.
-  const changed = new MutationObserver(take);
+  });
   changed.observe(container, { childList: true, subtree: true });
   return () => {
     changed.disconnect();
     resized.disconnect();
+    container.removeAttribute("tabindex");
     for (const scroller of followed) {
-      release(scroller);
+      if (scroller !== container) {
+        release(scroller);
+      }
     }
   };
 };

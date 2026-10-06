@@ -271,6 +271,19 @@ test("an event of the notebook's pages written, or its tree, reads the pages of 
   expect(server.sent).toEqual(["GET tag t", "GET nodes"]);
 });
 
+test("an event of the tree alone, and one of too many pages to name, each read the pages of the notebook's tags again", async () => {
+  for (const event of [pagesEvent(true, []), pagesEvent(false, null)]) {
+    // oxlint-disable-next-line no-await-in-loop -- one event, in a refresher of its own, after another
+    const opened = await open();
+    // oxlint-disable-next-line no-await-in-loop -- as above
+    await onTag(opened);
+    opened.events.last().send("pages", event);
+    // oxlint-disable-next-line no-await-in-loop -- as above
+    await waitFor(() => expect(opened.server.sent).toContain("GET tag t"));
+    opened.unmount();
+  }
+});
+
 test("a links event of too many pages to name reads the pages of the notebook's tags again; one that names its pages does not", async () => {
   const opened = await open();
   const { server, events } = opened;
@@ -331,6 +344,8 @@ test("each connection reads again the pages of a tag shown, with the tree", asyn
   events.last().hello();
 
   await waitFor(() => expect(server.sent).toEqual(expect.arrayContaining(["GET nodes", "GET tag t"])));
+  await settle();
+  expect(server.sent.toSorted()).toEqual(["GET nodes", "GET tag t"]);
 });
 
 test("a connection reads from the outside in: a notebook no longer seen leaves the page before its tree is read", async () => {

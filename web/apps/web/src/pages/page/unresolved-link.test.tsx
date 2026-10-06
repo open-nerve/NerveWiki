@@ -186,14 +186,61 @@ test("a parent deleted since the landing was read says so in the dialog", async 
   expect(await within(dialog).findByText("The page it would go under no longer exists.")).toBeTruthy();
 });
 
-test("a landing refused otherwise is the page's to say, as a refusal of Edit is", async () => {
-  const { server } = await open(linkTo("x"));
+test("a landing refused otherwise is the page's to say, as a refusal of Edit is, until the next question", async () => {
+  const { server } = await open(`${linkTo("x")} ${linkTo("y")}`);
   server.landings.set("x", () => problem(403, "forbidden"));
 
   await userEvent.click(await button("x"));
 
   expect(await screen.findByText("You do not have permission to do this.")).toBeTruthy();
   expect(screen.queryByRole("alertdialog")).toBeNull();
+  await userEvent.click(await button("y"));
+  expect(await screen.findByRole("alertdialog", { name: "Create page “y”?" })).toBeTruthy();
+  expect(screen.queryByText("You do not have permission to do this.")).toBeNull();
+});
+
+test("a target past a proxy's limit on the address (414) has no landing", async () => {
+  const { server } = await open(linkTo("long"));
+  server.landings.set("long", () => new Response("URI Too Long", { status: 414 }));
+
+  await userEvent.click(await button("long"));
+
+  const dialog = await screen.findByRole("alertdialog", { name: "“long” does not exist" });
+  expect(within(dialog).getByText("This link's target cannot name a page.")).toBeTruthy();
+});
+
+test("a link that leads to a page another tab made, which this tab's tree does not have yet, reads the tree and goes there", async () => {
+  const { server, router } = await open(linkTo("Fresh"));
+  const fresh = { ...notes, id: "0199a2b4-0000-7000-8000-0000000000f8", name: "Fresh" };
+  server.nodes = [...server.nodes, fresh];
+  server.landings.set("Fresh", { node_id: fresh.id, landing: null, reason: null });
+
+  await userEvent.click(await button("Fresh"));
+
+  expect(await screen.findByRole("heading", { level: 1, name: "Fresh" })).toBeTruthy();
+  expect(router.state.location.pathname).toBe(pagePath(fresh.id));
+  expect(screen.queryByRole("heading", { name: "Page not found" })).toBeNull();
+});
+
+test("a landing answered once the reader left the page goes nowhere", async () => {
+  let answer!: () => void;
+  const { server, router } = await open(linkTo("Notes"));
+  server.landings.set(
+    "Notes",
+    () =>
+      new Promise<Response>((resolve) => {
+        answer = () => resolve(new Response(JSON.stringify({ node_id: notes.id, landing: null, reason: null })));
+      })
+  );
+
+  await userEvent.click(await button("Notes"));
+  await waitFor(() => expect(server.sent).toContain("GET landing Notes"));
+  const home = `/lab/notebooks/${notebookJSON.id}`;
+  await act(() => router.navigate(home));
+  act(() => answer());
+  await new Promise((resolve) => setTimeout(resolve, 50));
+
+  expect(router.state.location.pathname).toBe(home);
 });
 
 test("one link at a time: busy while the server answers, a second activation asks nothing", async () => {

@@ -23,8 +23,8 @@ export const toggleLimit = 60_000;
  * once, whether it could be read again or not.
  *
  * It reads for the notebook what its pages' links and tags lead to (M6/P6
- * design 13): the pages of a tag, and where a page made for a link would
- * go. SWR keeps them, as it does the views.
+ * design 13): the pages of a tag, which SWR keeps as it does the views,
+ * and where a page made for a link would go, read anew each time.
  */
 export class PageTreeStore {
   /** The tree as read, replaced whole by each read: its nodes are not observed one by one. */

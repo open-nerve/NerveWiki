@@ -10,24 +10,43 @@ import type { ReadingContext } from "./enhancement";
 
 afterEach(() => document.body.replaceChildren());
 
-const context = (theme: "light" | "dark" = "light"): ReadingContext => ({
-  workspace: "lab",
-  notebook: "n",
-  page: "p",
-  revision: 1,
-  role: "reader",
-  t: translator("en"),
-  theme,
-  reload: () => undefined,
-  navigate: () => undefined,
-  report: () => undefined,
-  unresolved: () => undefined,
-});
+/** themed is a view's context in theme, and a way to change the theme shown, telling those who follow it. */
+function themed(initial: "light" | "dark" = "light") {
+  let theme = initial;
+  const following = new Set<() => void>();
+  const context: ReadingContext = {
+    workspace: "lab",
+    notebook: "n",
+    page: "p",
+    revision: 1,
+    role: "reader",
+    t: translator("en"),
+    theme: () => theme,
+    onThemeChange: (listener) => {
+      following.add(listener);
+      return () => following.delete(listener);
+    },
+    reload: () => undefined,
+    navigate: () => undefined,
+    report: () => undefined,
+    unresolved: () => undefined,
+  };
+  const change = (to: "light" | "dark") => {
+    theme = to;
+    for (const listener of following) {
+      listener();
+    }
+  };
+  return { context, following, change };
+}
+
+const context = (theme: "light" | "dark" = "light") => themed(theme).context;
 
 /**
- * drawer is a mermaid that draws <svg id> of its text, recording the
- * options it was given and each drawing; it cannot draw a text with
- * "bad". A drawing of a text with "held" waits for release.
+ * drawer is a mermaid that draws <svg id> of its text and its theme, its
+ * styles and an element of it named by its id, recording the options it
+ * was given and each drawing; it cannot draw a text with "bad". A drawing
+ * of a text with "held" waits for release.
  */
 function drawer() {
   const configs: MermaidConfig[] = [];
@@ -43,7 +62,10 @@ function drawer() {
       if (text.includes("bad")) {
         throw new Error("Parse error");
       }
-      return { svg: `<svg id="${id}"><text>${text}</text></svg>` };
+      const theme = configs.at(-1)?.theme ?? "";
+      return {
+        svg: `<svg id="${id}"><style>#${id} text{}</style><g id="${id}-a"><text>${text}</text><desc>${theme}</desc></g></svg>`,
+      };
     },
   };
   return { configs, drawn, held, draw };
@@ -103,7 +125,17 @@ test("a diagram is drawn once it shows, in a wrapper of its own in the block's p
       suppressErrorRendering: true,
       maxTextSize: diagramLimit,
       maxEdges: edgeLimit,
-      secure: ["secure", "securityLevel", "startOnLoad", "maxTextSize", "suppressErrorRendering", "maxEdges", "layout"],
+      dompurifyConfig: { FORBID_TAGS: ["style"], FORBID_ATTR: ["id"] },
+      secure: [
+        "secure",
+        "securityLevel",
+        "startOnLoad",
+        "maxTextSize",
+        "suppressErrorRendering",
+        "maxEdges",
+        "dompurifyConfig",
+        "layout",
+      ],
       theme: "dark",
     },
   ]);
@@ -163,6 +195,39 @@ test("a view read again puts a drawing of the same theme and source at once; ano
   expect(drawn.map((each) => each.split(" ")[1])).toEqual(["d4", "d4"]);
 });
 
+test("each drawing put has ids of its own, and its styles and elements follow: two diagrams of a source are drawn once", async () => {
+  const { drawn, draw } = drawer();
+  const { watch, show } = watcher();
+  const { article, blocks } = view("o14", "o14");
+  diagrams(async () => draw, watch)(article, context());
+  show(blocks[0] as Element);
+  show(blocks[1] as Element);
+  await settled();
+  const again = view("o14");
+  diagrams(async () => draw, watch)(again.article, context());
+
+  expect(drawn).toHaveLength(1);
+  const svgs = [...document.querySelectorAll(".nw-diagram svg")];
+  const ids = svgs.map((svg) => svg.id);
+  expect(new Set(ids).size).toBe(3);
+  for (const svg of svgs) {
+    expect([svg.querySelector("g")?.id, svg.querySelector("style")?.textContent]).toEqual([
+      `${svg.id}-a`,
+      `#${svg.id} text{}`,
+    ]);
+  }
+});
+
+test("a diagram whose formula defines a macro shows its source, not even watched; one without a formula is drawn", () => {
+  const { watched, watch } = watcher();
+  const { article, blocks } = view(
+    String.raw`graph TD; A["$$\def\a{x}\a\a$$"]`,
+    String.raw`graph TD; B["\def is text"]`
+  );
+  diagrams(async () => drawer().draw, watch)(article, context());
+  expect([...watched.keys()]).toEqual([blocks[1]]);
+});
+
 test("the latest drawings are kept, the one used longest ago dropped first", async () => {
   const { drawn, draw } = drawer();
   const { watch, show } = watcher();
@@ -187,23 +252,87 @@ test("the latest drawings are kept, the one used longest ago dropped first", asy
   expect(third.article.querySelectorAll(".nw-diagram")).toHaveLength(1);
 });
 
-test("undone, the blocks are back, the watching stops, and a drawing out is not put", async () => {
+test("undone, the blocks are back, the watching and the theme's following stop, and a drawing out is kept, not put", async () => {
   const { held, draw } = drawer();
   const { stopped, watch, show } = watcher();
-  const { article, blocks } = view("f6", "held f6");
-  const undo = diagrams(async () => draw, watch)(article, context());
+  const { context: undoneContext, following } = themed();
+  const { article, blocks } = view("f6", "held f6", "f6 waits");
+  const undo = diagrams(async () => draw, watch)(article, undoneContext);
   show(blocks[0] as Element);
   await settled();
   show(blocks[1] as Element);
   await settled();
+  expect(following.size).toBe(1);
 
   undo?.();
   held[0]?.();
   await settled();
 
-  expect([...article.querySelectorAll("pre")].slice(0, 2)).toEqual(blocks);
+  expect([...article.querySelectorAll("pre")].slice(0, 3)).toEqual(blocks);
   expect(article.querySelector(".nw-diagram")).toBeNull();
-  expect(stopped).toEqual(blocks);
+  expect(stopped).toEqual([blocks[2]]);
+  expect(following.size).toBe(0);
+  // The drawing out is kept: the view read again puts it at once.
+  const again = view("held f6");
+  diagrams(async () => draw, watch)(again.article, context());
+  expect(again.article.querySelector(".nw-diagram svg text")?.textContent).toBe("held f6");
+});
+
+test("as the theme changes, a drawing is drawn again in it, in its wrapper, once it shows; until then the old one shows", async () => {
+  const { drawn, draw } = drawer();
+  const { watched, watch, show } = watcher();
+  const { context: shown, change } = themed();
+  const { article, blocks } = view("m12");
+  diagrams(async () => draw, watch)(article, shown);
+  show(blocks[0] as Element);
+  await settled();
+  const wrapper = article.querySelector(".nw-diagram");
+  const themeShown = () => wrapper?.querySelector("desc")?.textContent;
+  expect(themeShown()).toBe("default");
+
+  change("dark");
+  await settled();
+  expect(drawn).toHaveLength(1);
+  expect(themeShown()).toBe("default");
+  expect(watched.has(wrapper as Element)).toBe(true);
+
+  show(wrapper as Element);
+  await settled();
+  expect(drawn).toHaveLength(2);
+  expect(article.querySelector(".nw-diagram")).toBe(wrapper);
+  expect(themeShown()).toBe("dark");
+
+  // Kept in the theme it changes back to: put at once.
+  change("light");
+  expect(themeShown()).toBe("default");
+  expect(drawn).toHaveLength(2);
+});
+
+test("a diagram is drawn in the theme shown as it is drawn: a drawing out as it changes is kept, not put", async () => {
+  const { configs, drawn, held, draw } = drawer();
+  const { watch, show } = watcher();
+  const { context: shown, change } = themed();
+  const { article, blocks } = view("held n13");
+  diagrams(async () => draw, watch)(article, shown);
+  show(blocks[0] as Element);
+  await settled();
+
+  change("dark");
+  held[0]?.();
+  await settled();
+  expect(article.querySelector(".nw-diagram")).toBeNull();
+
+  show(blocks[0] as Element);
+  await settled();
+  held[1]?.();
+  await settled();
+  expect(configs.map((config) => config.theme)).toEqual(["default", "dark"]);
+  const wrapper = article.querySelector(".nw-diagram");
+  expect(wrapper?.querySelector("desc")?.textContent).toBe("dark");
+
+  change("light");
+  expect(wrapper?.querySelector("desc")?.textContent).toBe("default");
+  expect(drawn).toHaveLength(2);
 });
 
 test("mermaid that cannot be loaded leaves the source, says so on the console, and the next diagram is still drawn", async () => {

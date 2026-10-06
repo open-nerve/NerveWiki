@@ -15,11 +15,15 @@ const xlink = "http://www.w3.org/1999/xlink";
  * router as well, when it is a page of the app (inApp). A click with a
  * modifier or another button is the browser's, the address being real; a
  * link to no page (nw-unresolved) has none. The click is the container's:
- * a link added later, a diagram's, goes the same way.
+ * a link added later, a diagram's, goes the same way, by its address
+ * alone: what a diagram writes is mermaid's, not the server's, its marks
+ * left be.
  */
 export const appLinks: Enhancement = (container, { workspace, notebook, navigate }) => {
   const notebookPath = `/${workspace}/notebooks/${notebook}`;
-  const given = [...container.querySelectorAll<HTMLAnchorElement>("a[data-nw-node], a[data-nw-tag]")];
+  const given = [...container.querySelectorAll<HTMLAnchorElement>("a[data-nw-node], a[data-nw-tag]")].filter(
+    (link) => link.closest(".nw-diagram") === null
+  );
   for (const link of given) {
     link.setAttribute("href", addressOf(link, notebookPath));
   }
@@ -72,9 +76,11 @@ function addressOf(link: HTMLAnchorElement, notebookPath: string): string {
  * inApp is the address in the app that href names, when href is a full
  * address of this site, of origin, and a page of the app (M6/P6 design 9):
  * not one the server answers itself (its API, its probes, the build's
- * files), nor a file (its last segment has a dot). It is undefined for any
- * other: of another site, the browser's to follow, or an anchor of this
- * page (#…), which the server writes as it is.
+ * files), its segments decoded as the server decodes them, nor a file
+ * (its last segment has a dot). It is undefined for any other: of another
+ * site, the browser's to follow; an anchor of this page (#…), which the
+ * server writes as it is; and a path starting with "//", which the router
+ * would take for another site's address.
  */
 export function inApp(href: string | null, origin: string): string | undefined {
   if (href === null || !/^https?:/i.test(href)) {
@@ -86,9 +92,24 @@ export function inApp(href: string | null, origin: string): string | undefined {
   } catch {
     return undefined;
   }
-  const last = url.pathname.slice(url.pathname.lastIndexOf("/") + 1);
-  if (url.origin !== origin || serverPaths.test(url.pathname) || last.includes(".")) {
+  const path = decodedPath(url.pathname);
+  const last = path.slice(path.lastIndexOf("/") + 1);
+  if (url.origin !== origin || url.pathname.startsWith("//") || serverPaths.test(path) || last.includes(".")) {
     return undefined;
   }
   return url.pathname + url.search + url.hash;
+}
+
+/** decodedPath is path with each segment's escapes decoded, a segment that does not decode as it is. */
+function decodedPath(path: string): string {
+  return path
+    .split("/")
+    .map((segment) => {
+      try {
+        return decodeURIComponent(segment);
+      } catch {
+        return segment;
+      }
+    })
+    .join("/");
 }

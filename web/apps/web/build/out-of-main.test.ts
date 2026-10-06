@@ -93,3 +93,23 @@ test("KaTeX or mermaid in a chunk loaded before them leaks", () => {
     ])
   ).toBe(`index.js → shared.js, which is loaded before mermaid, holds mermaid's ${mermaidParser}`);
 });
+
+test("a route's chunk that imports KaTeX's, mermaid's or the editor's own chunk statically leaks: it loads with the route", () => {
+  const route = (imports: string[]) => [
+    app({ dynamicImports: ["page.js", "katex.js", "mermaid.js", "source-editor.js"] }),
+    chunk("page.js", { imports }),
+    chunk("katex.js", { facadeModuleId: katex, moduleIds: [katex] }),
+    chunk("mermaid.js", { facadeModuleId: mermaid, moduleIds: [mermaid] }),
+    editor,
+    codemirror,
+  ];
+  expect(lazyLeak(route(["katex.js"]))).toBe(
+    `index.js → page.js → katex.js, which is loaded before KaTeX, holds KaTeX's ${katex}`
+  );
+  expect(lazyLeak(route(["mermaid.js"]))).toBe(
+    `index.js → page.js → mermaid.js, which is loaded before mermaid, holds mermaid's ${mermaid}`
+  );
+  expect(lazyLeak(route(["source-editor.js"]))).toBe(
+    `index.js → page.js → source-editor.js → codemirror.js, which is loaded before the editor, holds the editor's ${view}`
+  );
+});

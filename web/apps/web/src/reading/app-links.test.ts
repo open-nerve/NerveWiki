@@ -38,7 +38,8 @@ function setUp() {
     revision: 1,
     role: "reader",
     t: translator("en"),
-    theme: "light",
+    theme: () => "light",
+    onThemeChange: () => () => undefined,
     reload: () => undefined,
     navigate: (to) => went.push(to),
     report: () => undefined,
@@ -125,6 +126,22 @@ test("a click with a modifier, of another button, or that another handled, and o
   expect(went).toEqual([]);
 });
 
+test("a diagram's marks are mermaid's, not the server's: its tag and page marks get no address", () => {
+  const { container, context, went } = setUp();
+  const diagram = Object.assign(document.createElement("div"), { className: "nw-scroll nw-diagram" });
+  diagram.innerHTML = '<svg><a data-nw-tag="t">tag</a><a data-nw-node="a1">page</a></svg>';
+  container.append(diagram);
+  appLinks(container, context);
+  document.addEventListener("click", browser);
+
+  for (const link of diagram.querySelectorAll("a")) {
+    expect(link.hasAttribute("href")).toBe(false);
+    link.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+  }
+  document.removeEventListener("click", browser);
+  expect(went).toEqual([]);
+});
+
 test("a link a diagram adds later goes through the router too, by its href or its xlink:href", async () => {
   const { container, context, went } = setUp();
   appLinks(container, context);
@@ -192,6 +209,12 @@ test("a full address is the app's when it is of this site and names a page of th
     "mailto:a@wiki.example",
     // A blob's address carries this site's origin, and is no page of it.
     `blob:${app}/acme`,
+    // The router takes a path starting with "//" for another site's address.
+    `${app}//acme/notebooks/n`,
+    `${app}/\\x.example/a`,
+    // The server decodes the path's segments: this is its API.
+    `${app}/%61pi/v0/instance`,
+    `${app}/x%2Emd`,
     "ftp://wiki.example/acme",
     "#nw-h",
     "/acme",

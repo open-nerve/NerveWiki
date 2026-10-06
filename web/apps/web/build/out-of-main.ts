@@ -39,17 +39,21 @@ export type Chunk = {
 /**
  * lazyLeak finds a chunk the app may load before what loads only when a
  * page needs it (lazy) that holds a module of it: one the app's entry
- * reaches, by static or dynamic imports (a route's chunk too), short of
- * the chunks that load such a thing. It answers what is wrong, with the
- * way to the chunk from the entry, or undefined when nothing is.
+ * reaches, by static or dynamic imports (a route's chunk too), short of a
+ * chunk that loads such a thing reached by a dynamic import, which with
+ * what it loads in turn is its own. One reached by a static import loads
+ * with what imports it: it leaks. It answers what is wrong, with the way
+ * to the chunk from the entry, or undefined when nothing is.
  */
 export function lazyLeak(output: readonly Chunk[]): string | undefined {
   const chunks = new Map(output.map((chunk) => [chunk.fileName, chunk]));
+  const loadsLazily = (name: string) =>
+    lazy.some(({ entries }) => entries.test(chunks.get(name)?.facadeModuleId ?? ""));
   // Each chunk reached, by the way to it.
   const ways = new Map(output.filter((chunk) => chunk.isEntry).map((chunk) => [chunk.fileName, [chunk.fileName]]));
   for (const [name, way] of ways) {
     const chunk = chunks.get(name);
-    if (chunk === undefined || lazy.some(({ entries }) => entries.test(chunk.facadeModuleId ?? ""))) {
+    if (chunk === undefined) {
       continue;
     }
     for (const { name: what, modules } of lazy) {
@@ -58,7 +62,7 @@ export function lazyLeak(output: readonly Chunk[]): string | undefined {
         return `${way.join(" → ")}, which is loaded before ${what}, holds ${what}'s ${held}`;
       }
     }
-    for (const next of [...chunk.imports, ...chunk.dynamicImports]) {
+    for (const next of [...chunk.imports, ...chunk.dynamicImports.filter((each) => !loadsLazily(each))]) {
       if (!ways.has(next)) {
         ways.set(next, [...way, next]);
       }

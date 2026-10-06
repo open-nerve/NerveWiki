@@ -29,7 +29,8 @@ function setUp(role: NotebookRole = "editor") {
     revision: 4,
     role,
     t: translator("en"),
-    theme: "light",
+    theme: () => "light",
+    onThemeChange: () => () => undefined,
     reload: () => undefined,
     navigate: () => undefined,
     toggleTask:

@@ -25,6 +25,13 @@
 
     line-height: 1.7;
     overflow-wrap: break-word;
+    /* What is wide and has no region of its own (a table of the writer's
+       own HTML, a long formula in a line) scrolls here, not the page; and
+       nothing of the view paints past it (a formula's negative space), over
+       the app. Its padding keeps the focus rings in; its margin, its place. */
+    overflow-x: auto;
+    margin-inline: -0.25rem;
+    padding: 0.25rem;
   }
 
   .dark .nw-reading {
@@ -100,6 +107,10 @@
     border-radius: 0.125rem;
     outline: 2px solid var(--ring);
     outline-offset: 2px;
+  }
+
+  .nw-reading a.nw-tag:focus-visible {
+    border-radius: 9999px;
   }
 
   /* A tag: a link to its pages, or its text where it has none. */
@@ -185,7 +196,7 @@
   }
 
   /* What is wider than the page scrolls sideways in its own region, not the
-     page: the server's wrapper of a table, the properties and a block
+     view: the server's wrapper of a table, the properties and a block
      formula, a diagram's, a code block, a formula displayed in a paragraph.
      Each takes the focus while it does (scroll-regions.ts). */
   .nw-reading .nw-scroll {
