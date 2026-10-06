@@ -377,6 +377,6 @@ M6 的目标 1 是"看起来像 Obsidian"，各 Phase 都没有认领这些样�
 - **镜像**：合并之后 `make image-smoke` 通过（版本 0.1.0-dev，提交 `ccfc395`，`modified=false`）；镜像的构建先复制 `patches/` 再安装依赖。
 - **负责人可以推翻的决定**：第 15 节末的各条，新加：定义宏的公式不排；KaTeX 的补丁与 150 层；视图的公式布局至多 1 秒，打印不受它限制；mindmap 至多 150 行，别的图画几秒；换语言重新增强。
 - **留给后续**：
-  - P7：右栏（大纲、反链、属性）与补全。
+  - P7：右栏（大纲、反链、属性）与补全（已完成，见 [P7 文档](07-P7-editor-panel.md)）。P7 另改了阅读视图两处：去锚点、勾选的任务框拿回焦点之前，先打开它所在的、关着的折叠 callout（P7 审查 r3-6、修复核对 fc2-c2-4）；读者做了什么（`readersInput`）挪进 `pages/page/readers-input.ts`，锚点的等待与反链的焦点共用 `watchReader({ on, acts })`。
   - M12：[打磨移交](../M12-release/handoffs/M5-polish.md)第 11 项（时序图、桑基图的 id，大图画几秒，定义宏的公式，换语言，对话框开着时的重读，mermaid 的临时元素，KaTeX 的字形警告，打印绘制重的公式）。
   - 升级 KaTeX 时重新核对补丁（`pnpm-workspace.yaml` 写明）。
