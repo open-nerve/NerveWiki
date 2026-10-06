@@ -182,6 +182,9 @@ test("the latest drawings are kept, the one used longest ago dropped first", asy
   show(again.blocks[1] as Element);
   await settled();
   expect(drawn.slice(keptDrawings + 1).map((each) => each.split(" ").slice(1).join(" "))).toEqual(["e5 0"]);
+  const third = view("e5 1");
+  diagrams(async () => draw, watch)(third.article, context());
+  expect(third.article.querySelectorAll(".nw-diagram")).toHaveLength(1);
 });
 
 test("undone, the blocks are back, the watching stops, and a drawing out is not put", async () => {

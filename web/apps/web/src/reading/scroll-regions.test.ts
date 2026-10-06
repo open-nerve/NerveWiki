@@ -113,7 +113,8 @@ test("one no wider than it shows is no region, and becomes one as the window nar
   const observers = observed();
   const { article, table, code } = view();
   widths(table, 300, 600);
-  widths(code, 300, 600);
+  // As wide as it shows: nothing to scroll.
+  widths(code, 600, 600);
 
   scrollRegions(article, context);
   expect([state(table), state(code)]).toEqual(["none", "none"]);

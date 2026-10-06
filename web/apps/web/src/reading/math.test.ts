@@ -79,9 +79,9 @@ test("each formula is typeset, a block's displayed, with the options that trust 
 
 test("a formula KaTeX cannot read, or longer than the limit, shows its TeX", async () => {
   const { calls, typeset } = typesetter();
-  // Each 中 is three bytes: the limit is of bytes.
-  const long = "中".repeat(formulaLimit / 3 + 1);
-  const fits = "中".repeat(formulaLimit / 3);
+  // Each 中 is three bytes: the limit is of bytes, and one of the limit's fits.
+  const long = "中".repeat(Math.floor(formulaLimit / 3) + 1);
+  const fits = "a".repeat(formulaLimit);
   const article = view(
     `<span class="nw-math">bad</span><span class="nw-math">${long}</span><span class="nw-math">${fits}</span>`
   );

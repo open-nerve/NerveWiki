@@ -190,6 +190,9 @@ test("a full address is the app's when it is of this site and names a page of th
     "https://wiki.example:8443/acme",
     "https://x.example/acme",
     "mailto:a@wiki.example",
+    // A blob's address carries this site's origin, and is no page of it.
+    `blob:${app}/acme`,
+    "ftp://wiki.example/acme",
     "#nw-h",
     "/acme",
     "https://",
