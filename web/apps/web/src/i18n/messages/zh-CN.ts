@@ -156,6 +156,8 @@ export const zhCN: Messages = {
   "page.releaseLockBody": "{name} 的编辑随之结束：还没保存的修改不会存进这一页。",
   "page.releaseLockBodySelf": "你在别处的编辑随之结束：那里还没保存的修改不会存进这一页。",
   "page.releasing": "解除中…",
+  "page.panel": "页面信息",
+  "page.outline": "大纲",
   "editor.done": "完成",
   "editor.unsaved": "有未保存的修改",
   "editor.saving": "保存中…",

@@ -158,6 +158,8 @@ export const en = {
   "page.releaseLockBody": "{name}'s edit ends: what they have not saved yet is not saved to the page.",
   "page.releaseLockBodySelf": "Your edit elsewhere ends: what is not saved there yet is not saved to the page.",
   "page.releasing": "Releasing…",
+  "page.panel": "About this page",
+  "page.outline": "Outline",
   "editor.done": "Done",
   "editor.unsaved": "Unsaved changes",
   "editor.saving": "Saving…",
