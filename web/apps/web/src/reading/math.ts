@@ -147,18 +147,36 @@ export function guardLabels(katex: LabelTypesetter): void {
  * their TeX. What else the view has to lay out as a task begins, what
  * other enhancements changed, is laid out before the formulas are,
  * counted to the task, not to the formulas. Undone, the formulas typeset
- * show their TeX again, and those not reached yet stay as they are.
+ * show their TeX again, their typesetting kept for the view (kept), and
+ * those not reached yet stay as they are. Run again in the view, read
+ * again (a task ticked, another session's save), a formula it typeset
+ * before is put again at once, each typesetting once, the budget counting
+ * on from what they took: the view keeps its heights, and what the reader
+ * looks at stays where it was, with no TeX shown meanwhile (M6/P6 B fix
+ * check 5).
  */
 export function math(load: () => Promise<Typesetter>, now: () => number = () => performance.now()): Enhancement {
   return (container) => {
     const formulas = [...container.querySelectorAll<HTMLElement>(".nw-math")];
+    const previous = kept.get(container);
+    kept.delete(container);
     if (formulas.length === 0) {
       return undefined;
     }
     let undone = false;
     const typeset = new Map<HTMLElement, string>();
+    const pending = putKept(previous, formulas, typeset);
+    let laidOut = typeset.size > 0 && previous !== undefined ? previous.laidOut : 0;
     const measure = document.createElement("div");
     measure.className = "nw-math-measure";
+    const undo = () => {
+      undone = true;
+      measure.remove();
+      kept.set(container, { typesetting: keep(typeset), laidOut });
+    };
+    if (pending.length === 0) {
+      return undo;
+    }
     void (async () => {
       let katex: Typesetter;
       try {
@@ -171,7 +189,6 @@ export function math(load: () => Promise<Typesetter>, now: () => number = () => 
         return;
       }
       container.append(measure);
-      let laidOut = 0;
       let ready: { formula: HTMLElement; tex: string; made: HTMLElement }[] = [];
       const place = () => {
         if (ready.length === 0) {
@@ -188,7 +205,7 @@ export function math(load: () => Promise<Typesetter>, now: () => number = () => 
       };
       // Each task, the first too, lays the view out first.
       let started = -Infinity;
-      for (const formula of formulas) {
+      for (const formula of pending) {
         if (now() - started >= taskTime) {
           place();
           // oxlint-disable-next-line no-await-in-loop -- the page's thread is given back between the tasks
@@ -216,14 +233,55 @@ export function math(load: () => Promise<Typesetter>, now: () => number = () => 
       place();
       measure.remove();
     })();
-    return () => {
-      undone = true;
-      measure.remove();
-      for (const [formula, tex] of typeset) {
-        formula.textContent = tex;
-      }
-    };
+    return undo;
   };
+}
+
+/** A view's formulas' typesetting, kept as it is undone: each one's nodes, by keyOf, and how long they took to lay out. */
+type Kept = { typesetting: Map<string, Node[][]>; laidOut: number };
+
+/** What each view's formulas were typeset as when it was last undone, by the view's container. */
+const kept = new WeakMap<HTMLElement, Kept>();
+
+/** keyOf is what a formula's typesetting is kept by: its TeX, displayed or not. */
+function keyOf(formula: HTMLElement, tex: string): string {
+  return `${formula.classList.contains("nw-math-block") ? "block" : "inline"}\n${tex}`;
+}
+
+/**
+ * putKept puts in each of formulas a typesetting of its TeX that previous
+ * keeps, each one once, and records it in typeset; it answers the formulas
+ * left to typeset.
+ */
+function putKept(
+  previous: Kept | undefined,
+  formulas: HTMLElement[],
+  typeset: Map<HTMLElement, string>
+): HTMLElement[] {
+  const pending: HTMLElement[] = [];
+  for (const formula of formulas) {
+    const tex = formula.textContent;
+    const nodes = previous?.typesetting.get(keyOf(formula, tex))?.pop();
+    if (nodes === undefined) {
+      pending.push(formula);
+    } else {
+      formula.replaceChildren(...nodes);
+      typeset.set(formula, tex);
+    }
+  }
+  return pending;
+}
+
+/** keep has the typeset formulas show their TeX again, and answers their typesetting, by keyOf. */
+function keep(typeset: Map<HTMLElement, string>): Map<string, Node[][]> {
+  const typesetting = new Map<string, Node[][]>();
+  for (const [formula, tex] of typeset) {
+    const key = keyOf(formula, tex);
+    const nodes = [...formula.childNodes];
+    formula.textContent = tex;
+    typesetting.set(key, [...(typesetting.get(key) ?? []), nodes]);
+  }
+  return typesetting;
 }
 
 /**

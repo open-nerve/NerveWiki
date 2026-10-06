@@ -307,7 +307,7 @@ test("L4 (page): a view's formulas take at most a while to lay out, which the vi
   await expect(formulas.last().locator(".katex")).toHaveCount(0);
 });
 
-test("L4 (page): a page opened at a heading shows it once the formulas above it are typeset, taller than their TeX", async ({
+test("L4 (page): a page opened at a heading shows it once the formulas above it are typeset, taller than their TeX; read again, they stay typeset, and what is below stays put", async ({
   api,
   signedInPage,
 }, testInfo) => {
@@ -319,7 +319,10 @@ test("L4 (page): a page opened at a heading shows it once the formulas above it 
     ),
     "# Far",
     "",
-    ...Array.from({ length: 12 }, (_, i) => `After the heading, ${i}.\n`),
+    ...Array.from({ length: 6 }, (_, i) => `After the heading, ${i}.\n`),
+    "- [ ] Tick me",
+    "",
+    ...Array.from({ length: 40 }, (_, i) => `After the task, ${i}.\n`),
   ].join("\n");
   const matrices = await createPage(api, pat, notebook.id, "Matrices", null, content);
   const page = await signedInPage(tokens);
@@ -331,4 +334,19 @@ test("L4 (page): a page opened at a heading shows it once the formulas above it 
   await expect(article.locator(".nw-math .katex")).toHaveCount(20);
   await expect(article.locator(".nw-math-measure")).toHaveCount(0);
   await expect(far).toBeInViewport();
+
+  // A task ticked below them, the page is read again: its formulas are put again at once, as they were, and the
+  // box, focused, stays where it was.
+  const box = article.getByRole("checkbox");
+  const top = await box.evaluate((element) => {
+    element.dataset.before = "";
+    return element.getBoundingClientRect().top;
+  });
+  await box.click();
+  await expect(article.locator("[data-before]")).toHaveCount(0);
+  await expect(box).toBeChecked();
+  await expect(box).toBeFocused();
+  await expect(box).toBeInViewport();
+  expect(Math.abs((await box.evaluate((element) => element.getBoundingClientRect().top)) - top)).toBeLessThan(2);
+  await expect(article.locator(".nw-math .katex")).toHaveCount(20);
 });

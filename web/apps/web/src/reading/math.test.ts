@@ -329,10 +329,10 @@ test("past layoutBudget of the formulas' layout in their places, the rest show t
 
   // Tasks of perTask formulas, each put in its place taking 300: typesetting stops at the task that passes the budget.
   const perTask = Math.ceil(taskTime / 20);
-  const shown = perTask * Math.ceil(layoutBudget / (perTask * 300));
-  expect(shown).toBeLessThan(count);
-  expect(calls).toHaveLength(shown);
-  expect([...article.querySelectorAll(".nw-math")].map((each) => each.textContent)).toEqual(shownOf(count, shown));
+  const typesetCount = perTask * Math.ceil(layoutBudget / (perTask * 300));
+  expect(typesetCount).toBeLessThan(count);
+  expect(calls).toHaveLength(typesetCount);
+  expect(shown(article)).toEqual(shownOf(count, typesetCount));
   expect(article.querySelector(".nw-math-measure")).toBeNull();
 });
 
@@ -364,6 +364,71 @@ test("what else the view has to lay out as a task begins is laid out first, coun
   expect(views()).toBe(count);
   expect(calls).toHaveLength(count);
   expect(article.textContent).toBe(shownOf(count, count).join(""));
+});
+
+/** shown is what each of article's formulas shows. */
+function shown(article: HTMLElement): string[] {
+  return [...article.querySelectorAll(".nw-math")].map((each) => each.textContent);
+}
+
+test("run again in its view, read again, a formula typeset before is put again at once, as it was, each typesetting once; the others are typeset", async () => {
+  const { calls, typeset } = typesetter();
+  const article = view('<p><span class="nw-math">x</span> <span class="nw-math nw-math-block">x</span></p>');
+  const enhancement = math(async () => typeset);
+  const undo = enhancement(article, context);
+  await settled();
+  const inline = article.querySelector(".nw-math")?.firstChild;
+  undo?.();
+  expect(shown(article)).toEqual(["x", "x"]);
+
+  // Read again: x twice in a line, displayed, and y.
+  article.innerHTML =
+    '<p><span class="nw-math">x</span> <span class="nw-math">x</span> <span class="nw-math nw-math-block">x</span> ' +
+    '<span class="nw-math">y</span></p>';
+  enhancement(article, context);
+  expect(shown(article)).toEqual(["[x]", "x", "[[x]]", "y"]);
+  expect(article.querySelector(".nw-math")?.firstChild).toBe(inline);
+  await settled();
+
+  expect(shown(article)).toEqual(["[x]", "[x]", "[[x]]", "[y]"]);
+  expect(calls.map((each) => each.tex)).toEqual(["x", "x", "x", "y"]);
+});
+
+test("a view's formulas' typesetting is kept for it alone: another view's are typeset", async () => {
+  const { calls, typeset } = typesetter();
+  const enhancement = math(async () => typeset);
+  const undo = enhancement(view('<span class="nw-math">x</span>'), context);
+  await settled();
+  undo?.();
+
+  const other = view('<span class="nw-math">x</span>');
+  enhancement(other, context);
+  expect(shown(other)).toEqual(["x"]);
+  await settled();
+  expect(shown(other)).toEqual(["[x]"]);
+  expect(calls).toHaveLength(2);
+});
+
+test("run again in its view, the budget counts on from what the formulas put again took", async () => {
+  vi.useFakeTimers();
+  const { calls, typeset } = typesetter();
+  const count = 12;
+  const article = formulas(count);
+  const html = article.innerHTML;
+  const { now } = laidOut(article, { box: 20, placed: 300 });
+  const enhancement = math(async () => typeset, now);
+  const undo = enhancement(article, context);
+  await vi.runAllTimersAsync();
+  const first = calls.length;
+  expect(first).toBeLessThan(count);
+  undo?.();
+
+  article.innerHTML = html;
+  enhancement(article, context);
+  await vi.runAllTimersAsync();
+
+  expect(calls).toHaveLength(first);
+  expect(shown(article)).toEqual(shownOf(count, first));
 });
 
 test("undone, the typeset formulas show their TeX again, and those not reached stay", async () => {
