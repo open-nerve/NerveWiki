@@ -1,3 +1,4 @@
+import { ensureSyntaxTree } from "@codemirror/language";
 import { EditorSelection, EditorState } from "@codemirror/state";
 import { EditorView, runScopeHandlers } from "@codemirror/view";
 import { expect, test } from "vitest";
@@ -32,4 +33,19 @@ test("Enter on an empty item makes room before it, and on that again ends the li
 
 test("Backspace at an item's mark takes the mark away, the item's indent kept", () => {
   expect(press("- item\n- ", "Backspace")).toBe("- item\n  ");
+});
+
+// The links, ] and * of a paragraph each scanned the paragraph's marks
+// before: 50,000 links took 9.5 s to edit (M6 closeout B-I1; the patch of
+// @lezer/markdown).
+test.each([
+  ["links", "[[Page]] "],
+  ["links and brackets that close none", "[a](b) ] "],
+  ["emphasis that closes none", "a* "],
+])("a paragraph of 100,000 %s is parsed in a time as long as it", (_, unit) => {
+  const doc = unit.repeat(100_000);
+  const started = performance.now();
+  const state = EditorState.create({ doc, extensions: markdownEditing() });
+  expect(ensureSyntaxTree(state, doc.length, 10_000)?.length).toBe(doc.length);
+  expect(performance.now() - started).toBeLessThan(1_000);
 });
