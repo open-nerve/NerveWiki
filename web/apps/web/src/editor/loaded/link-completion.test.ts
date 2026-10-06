@@ -380,11 +380,18 @@ test("an escaped [[, raw HTML, an autolink, and a # in a link being written (in 
     // oxlint-disable-next-line no-await-in-loop -- one editor after another
     await opened(view);
   }
-  // An escaped '!' makes no embed: the link has its aliases.
-  const link = editing("").view;
-  type(link, "\\![[Road");
-  await opened(link);
-  expect(shown(link).map(([label]) => label)).toContain("Roadmap");
+  // An escaped '!' makes no embed: the link has its aliases; two backslashes escape none, three do.
+  for (const [typed, aliases] of [
+    ["\\![[", true],
+    ["\\\\![[", false],
+    ["\\\\\\![[", true],
+  ] as const) {
+    const link = editing("").view;
+    type(link, typed);
+    // oxlint-disable-next-line no-await-in-loop -- one editor after another
+    await opened(link);
+    expect(shown(link).some(([label]) => label === "Roadmap")).toBe(aliases);
+  }
 });
 
 /** editingAt is an editor on doc, the cursor where ‸ is (taken out). */

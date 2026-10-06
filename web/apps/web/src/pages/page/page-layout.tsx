@@ -1,5 +1,5 @@
 import { observer } from "mobx-react-lite";
-import { useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Navigate, useParams } from "react-router";
 import useSWR, { useSWRConfig } from "swr";
 
@@ -112,7 +112,8 @@ const PageShell = observer(function PageShell({ notebook, page }: { notebook: No
   const mounted = useMounted();
   const writer = writesPages(notebook.role);
   const home = `/${slug}/notebooks/${notebook.id}`;
-  const href = (id?: string) => (id === undefined ? home : `${home}/pages/${id}`);
+  // One for the notebook: what it is given to, memoized (observer), renders again as its own data changes only.
+  const href = useCallback((id?: string) => (id === undefined ? home : `${home}/pages/${id}`), [home]);
   const children = pages.childrenOf(page.id);
 
   async function enter(takeOver: boolean): Promise<void> {

@@ -197,12 +197,22 @@ function frontmatterAt(state: EditorState, pos: number): "closed" | "open" | und
  * backslash escapes and is no code's nor raw HTML's.
  */
 function inLinkWritten(state: EditorState, from: number, before: string, table: boolean): boolean {
-  const cell = table ? ([...before.matchAll(/(?<!\\)\|/g)].at(-1)?.index ?? -1) + 1 : 0;
+  const cell = table ? cellStart(before) : 0;
   const opens = before.lastIndexOf("[[");
   if (opens < cell || before.includes("]]", opens)) {
     return false;
   }
   return slashesBefore(before, opens) % 2 === 0 && !nodesAt(state, from + opens + 1).some((name) => raw.has(name));
+}
+
+/** cellStart is where the table's cell the end of line is in starts: after its last '|' no backslash is just before. */
+function cellStart(line: string): number {
+  for (let at = line.lastIndexOf("|"); at !== -1; at = at === 0 ? -1 : line.lastIndexOf("|", at - 1)) {
+    if (at === 0 || line[at - 1] !== "\\") {
+      return at + 1;
+    }
+  }
+  return 0;
 }
 
 /** slashesBefore is how many backslashes text has just before at. */

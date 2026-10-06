@@ -149,6 +149,6 @@ test("L6 (page, large): properties of many strings at long paths show at once; a
   const outline = panel.getByRole("navigation", { name: "Outline", exact: true });
   const failed = page.getByText("Something went wrong");
   await expect(outline.or(failed)).toBeVisible({ timeout: 120_000 });
-  await expect(failed).toHaveCount(0);
+  await expect(failed).toHaveCount(0, { timeout: 0 });
   await expect(outline).toBeVisible();
 });

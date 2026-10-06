@@ -69,7 +69,7 @@ const pagesChanged: EventHandler = (data, context) => {
  * the pages whose backlinks changed, its targets (M6/P7 design 11).
  */
 const linksChanged: EventHandler = (data, context) => {
-  const { mutate, refresher } = context;
+  const { cache, mutate, refresher } = context;
   const { notebook_id: notebook, pages, targets } = data as EventLinks;
   readEach("backlinks", notebook, targets, context);
   readEach("page-properties", notebook, pages, context);
@@ -80,20 +80,24 @@ const linksChanged: EventHandler = (data, context) => {
   }
   for (const id of pages) {
     const key = ["page-view", notebook, id];
-    refresher.request(unstable_serialize(key), () => void mutate(key));
+    // Of a view never read, nothing: the refresher keeps each key it is asked for.
+    if (cache.get(unstable_serialize(key)) !== undefined) {
+      refresher.request(unstable_serialize(key), () => void mutate(key));
+    }
   }
 };
 
 /**
  * readEach reads again what of kind, a page's backlinks or properties, is
  * shown of the pages ids of notebook, each through the refresher; of every
- * page of the notebook for null, too many to name.
+ * page of the notebook for null, too many to name. Of a page never read, it
+ * reads nothing: the refresher keeps each key it is asked for.
  */
 function readEach(
   kind: "backlinks" | "page-properties",
   notebook: string,
   ids: readonly string[] | null,
-  { mutate, refresher }: EventContext
+  { cache, mutate, refresher }: EventContext
 ) {
   if (ids === null) {
     refresher.request(`${kind} ${notebook}`, () => {
@@ -103,7 +107,9 @@ function readEach(
   }
   for (const id of ids) {
     const key = [kind, notebook, id];
-    refresher.request(unstable_serialize(key), () => void mutate(key));
+    if (cache.get(unstable_serialize(key)) !== undefined) {
+      refresher.request(unstable_serialize(key), () => void mutate(key));
+    }
   }
 }
 

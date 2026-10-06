@@ -91,18 +91,32 @@ test("the outline lists the page's headings with an id, but the footnotes', by t
   ]);
 });
 
-test("the outline lists the first 1,000 headings and says how many more the page has", async () => {
+/** h3s is the HTML of count h3 headings, H0 on. */
+function h3s(count: number): string {
+  return Array.from({ length: count }, (_, at) => `<h3 id="nw-h${at.toString()}">H${at.toString()}</h3>`).join("");
+}
+
+test("the outline lists the first 1,000 headings, indented from the highest of them, and says how many more the page has, after its list", async () => {
   const server = pageServer();
+  // 1,000 h3, then an h1 and an h2 not listed, counted; one without text, not.
   server.views.set(install.id, {
-    html: Array.from({ length: 1_002 }, (_, at) => `<h2 id="nw-h${at.toString()}">H${at.toString()}</h2>`).join(""),
+    html: `${h3s(1_000)}<h1 id="nw-top">Top</h1><h2 id="nw-blank"> </h2><h2 id="nw-next">Next</h2>`,
     revision: 1,
   });
-  renderApp(pagePath(install.id), server.app);
+  const { unmount } = renderApp(pagePath(install.id), server.app);
 
   const outline = await screen.findByRole("navigation", { name: "Outline" });
-  const links = within(outline).getAllByRole("link");
-  expect([links.length, links.at(-1)?.textContent]).toEqual([1_000, "H999"]);
-  expect(within(outline).getByText("…and 2 more")).toBeTruthy();
+  const items = within(outline).getAllByRole("listitem");
+  expect([items.length, items.at(-1)?.textContent, items[0]?.style.paddingLeft]).toEqual([1_000, "H999", "0rem"]);
+  expect(within(outline).getByText("…and 2 more").closest("li")).toBeNull();
+  unmount();
+
+  // As many as listed: none more.
+  server.views.set(install.id, { html: h3s(1_000), revision: 2 });
+  renderApp(pagePath(install.id), server.app);
+  const all = await screen.findByRole("navigation", { name: "Outline" });
+  expect(within(all).getAllByRole("listitem")).toHaveLength(1_000);
+  expect(within(all).queryByText(/more/)).toBeNull();
 });
 
 test("the outline indents from the page's highest heading, whichever it is", async () => {
@@ -1018,7 +1032,7 @@ test("a property link at a path longer than 1,024 characters shows as its text; 
   ]);
 });
 
-test("the properties are worked out once for each answer, not as the column renders again: the edit entered, keys typed", async () => {
+test("the properties are worked out once for each answer, not as the column renders again: the edit entered (keys typed in it render none)", async () => {
   const server = pageServer({ role: "editor" });
   server.properties.set(install.id, { valid: true, properties: [{ key: "o", value: { "nw-once": 1 } }], links: [] });
   renderApp(pagePath(install.id), server.app);

@@ -19,20 +19,21 @@ type Heading = { id: string; level: number; text: string };
  * PageOutline is the page's headings as its reading view has them (M6/P7
  * design 8): from the HTML the view read, read the same way under its key
  * (SWR reads it once for both). Each is indented by its level, from the
- * page's highest, and leads to its heading through the router, as a link
- * of the page to its anchor does: the view has the heading show and take
- * the focus. A page without headings has no outline; one of more than
- * listedUpTo lists the first, and says how many more it has.
+ * highest of those listed, and leads to its heading through the router, as
+ * a link of the page to its anchor does: the view has the heading show and
+ * take the focus. A page without headings has no outline; one of more than
+ * listedUpTo lists the first, and says how many more it has. It renders
+ * again as its view does, not as the column does: the notebooks read again
+ * give it the same notebook anew, by its id.
  */
 export const PageOutline = memo(function PageOutline({ notebook, page }: { notebook: Notebook; page: string }) {
   const t = useT();
   const { data } = usePageView(notebook, page);
   const html = data?.html;
-  const headings = useMemo(() => (html === undefined ? [] : headingsOf(html)), [html]);
-  if (headings.length === 0) {
+  const { listed, more } = useMemo(() => (html === undefined ? { listed: [], more: 0 } : headingsOf(html)), [html]);
+  if (listed.length === 0) {
     return null;
   }
-  const listed = headings.slice(0, listedUpTo);
   // Not by spreading them into Math.min: a call takes so many arguments only.
   const top = listed.reduce((highest, { level }) => Math.min(highest, level), 6);
   return (
@@ -47,15 +48,18 @@ export const PageOutline = memo(function PageOutline({ notebook, page }: { noteb
             </li>
           ))}
         </ul>
-        {headings.length > listed.length && (
-          <p className="mt-1 text-sm text-muted-foreground">
-            {t("page.moreHeadings", { count: String(headings.length - listed.length) })}
-          </p>
+        {more > 0 && (
+          <p className="mt-1 text-sm text-muted-foreground">{t("page.moreHeadings", { count: String(more) })}</p>
         )}
       </nav>
     </PanelSection>
   );
-});
+}, sameView);
+
+/** sameView tells whether the outline's props are those of the same page's view: a notebook's by its id. */
+function sameView(before: { notebook: Notebook; page: string }, after: { notebook: Notebook; page: string }): boolean {
+  return before.notebook.id === after.notebook.id && before.page === after.page;
+}
 
 /**
  * headingsOf is the headings of a page's HTML that an anchor leads to: those
@@ -63,17 +67,26 @@ export const PageOutline = memo(function PageOutline({ notebook, page }: { noteb
  * footnotes, with their text: a formula's is its TeX, as the server writes
  * it; a footnote's number and an image's address are not. One without
  * text is left out, as it would be a link to nothing one could read. The
- * HTML, the server's sanitized, is parsed in a template, inert: nothing of
- * it loads.
+ * first listedUpTo are listed; the rest only counted, as they are (one
+ * whose text is a footnote's number or an image's address alone counts),
+ * not copied: a page may have a million. The HTML, the server's sanitized,
+ * is parsed in a template, inert: nothing of it loads.
  */
-function headingsOf(html: string): Heading[] {
+function headingsOf(html: string): { listed: Heading[]; more: number } {
   const template = document.createElement("template");
   template.innerHTML = html;
-  const headings: Heading[] = [];
+  const listed: Heading[] = [];
+  let more = 0;
   for (const heading of template.content.querySelectorAll<HTMLElement>(
     "h1[id^='nw-'], h2[id^='nw-'], h3[id^='nw-'], h4[id^='nw-'], h5[id^='nw-'], h6[id^='nw-']"
   )) {
     if (heading.closest(".footnotes") !== null) {
+      continue;
+    }
+    if (listed.length === listedUpTo) {
+      if ((heading.textContent ?? "").trim() !== "") {
+        more++;
+      }
       continue;
     }
     const copy = heading.cloneNode(true) as HTMLElement;
@@ -82,8 +95,8 @@ function headingsOf(html: string): Heading[] {
     }
     const text = (copy.textContent ?? "").replace(/\s+/g, " ").trim();
     if (text !== "") {
-      headings.push({ id: heading.id, level: Number(heading.tagName.slice(1)), text });
+      listed.push({ id: heading.id, level: Number(heading.tagName.slice(1)), text });
     }
   }
-  return headings;
+  return { listed, more };
 }
