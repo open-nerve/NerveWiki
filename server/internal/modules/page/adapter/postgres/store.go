@@ -39,6 +39,12 @@ func (s *Store) queries(ctx context.Context) *gen.Queries {
 	return gen.New(postgres.DB(ctx, s.pool))
 }
 
+// planned is queries with each statement planned with its arguments
+// (postgres.Planned): for those whose arrays grow with the data.
+func (s *Store) planned(ctx context.Context) *gen.Queries {
+	return gen.New(postgres.Planned(postgres.DB(ctx, s.pool)))
+}
+
 // uniqueViolation reports whether err broke the unique constraint or index
 // name.
 func uniqueViolation(err error, name string) bool {
@@ -132,9 +138,9 @@ const subtreeLevels = 64
 
 // Subtree implements app.Nodes: the node, then its descendants level by
 // level, each level in order and read in one statement by its parents,
-// planned with them (postgres.NewPool).
+// planned with them.
 func (s *Store) Subtree(ctx context.Context, notebookID, id uuid.UUID) (domain.Subtree, error) {
-	q := s.queries(ctx)
+	q, levels := s.queries(ctx), s.planned(ctx)
 	root, err := q.FindNodeIn(ctx, gen.FindNodeInParams{ID: id, NotebookID: notebookID})
 	if err != nil {
 		return nil, notFound("subtree", err)
@@ -142,7 +148,7 @@ func (s *Store) Subtree(ctx context.Context, notebookID, id uuid.UUID) (domain.S
 	out := domain.Subtree{{Level: 1, Node: nodeOf(gen.FindNodeRow(root))}}
 	parents := []uuid.UUID{root.ID}
 	for level := 2; level <= subtreeLevels && len(parents) > 0; level++ {
-		rows, err := q.ChildrenOfAll(ctx, gen.ChildrenOfAllParams{NotebookID: notebookID, Parents: parents})
+		rows, err := levels.ChildrenOfAll(ctx, gen.ChildrenOfAllParams{NotebookID: notebookID, Parents: parents})
 		if err != nil {
 			return nil, fmt.Errorf("subtree: %w", err)
 		}

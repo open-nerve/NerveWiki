@@ -283,6 +283,37 @@ func TestTheLinksAChangeReaches(t *testing.T) {
 	}
 }
 
+// The links a rename or a move reaches are read planned with its keys,
+// targets and sources however many times a connection reads them: pgx's
+// cached statement, which the server may plan once for any arguments from
+// its sixth run, compared each link with them one by one (M6 closeout
+// FA5-Q1). The rest are cached.
+func TestTheLinksReachedAreReadPlannedWithTheReach(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	pool, err := postgres.NewPool(ctx, config.DatabaseConfig{URL: f.pool.Config().ConnString(), MaxConns: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pool.Close)
+	s := postgresadapter.New(pool)
+	p := uuid.NewV7()
+	links := []domain.Link{{Kind: "wikilink", Target: "A", Start: 0, End: 5}}
+	if _, err := s.ReplacePage(ctx, app.Page{ID: p, NotebookID: f.eng, Revision: 1}, domain.Facts{Links: links}); err != nil {
+		t.Fatal(err)
+	}
+	for range 8 {
+		got, err := s.Links(ctx, f.eng, domain.Reach{Keys: []string{"a"}, Sources: []uuid.UUID{p}})
+		if err != nil || len(got) != 1 {
+			t.Fatalf("Links: %d, %v; want 1", len(got), err)
+		}
+	}
+	cached := pgtest.CachedStatements(t, pool)
+	if slices.Contains(cached, "LinksReached") || !slices.Contains(cached, "InsertIndexedPage") {
+		t.Errorf("the cached statements are %v: want InsertIndexedPage, not LinksReached", cached)
+	}
+}
+
 // A link reached tells whether it is a value of its page's aliases, as the
 // extraction told it when the page was indexed (M6/P4 design 2).
 func TestALinkReachedTellsWhetherItIsAValueOfTheAliases(t *testing.T) {

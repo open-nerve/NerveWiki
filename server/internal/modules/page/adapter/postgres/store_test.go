@@ -405,6 +405,45 @@ func TestSubtreeReachesTheDeepestLevel(t *testing.T) {
 	}
 }
 
+// The reads whose arrays grow with the data, a subtree's levels and link
+// targets by id, are planned with them however many times a connection runs
+// them; the rest are pgx's cached statements, which the server may plan once
+// for any arguments from their sixth run (M6 closeout FA4-M1, FA5-Q1).
+func TestTheReadsOfGrowingArraysArePlannedWithThem(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	root := f.page(t, f.eng, nil, "Root", 1)
+	child := f.page(t, f.eng, &root.ID, "Child", 1)
+	pool, err := postgres.NewPool(ctx, config.DatabaseConfig{URL: f.pool.Config().ConnString(), MaxConns: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pool.Close)
+	s := postgresadapter.New(pool)
+	for range 8 {
+		if sub, err := s.Subtree(ctx, f.eng, root.ID); err != nil || len(sub) != 2 {
+			t.Fatalf("Subtree: %d nodes, %v; want 2", len(sub), err)
+		}
+		if paths, err := s.LinkTargetsByIDs(ctx, f.eng, []uuid.UUID{child.ID}); err != nil || len(paths) != 1 {
+			t.Fatalf("LinkTargetsByIDs: %d paths, %v; want 1", len(paths), err)
+		}
+		if paths, err := s.LinkTargetsByKeys(ctx, f.eng, []string{"child"}); err != nil || len(paths) != 1 {
+			t.Fatalf("LinkTargetsByKeys: %d paths, %v; want 1", len(paths), err)
+		}
+	}
+	cached := pgtest.CachedStatements(t, pool)
+	for _, name := range []string{"ChildrenOfAll", "LinkTargetsByIDs"} {
+		if slices.Contains(cached, name) {
+			t.Errorf("%s is a cached statement: %v", name, cached)
+		}
+	}
+	for _, name := range []string{"FindNodeIn", "LinkTargetsByKeys"} {
+		if !slices.Contains(cached, name) {
+			t.Errorf("%s is not a cached statement: %v", name, cached)
+		}
+	}
+}
+
 // A move writes the parent, the order and who and when; a title a sibling
 // holds under the new parent is page.title_taken.
 func TestMoveNode(t *testing.T) {

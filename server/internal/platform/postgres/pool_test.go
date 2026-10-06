@@ -6,6 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres/pgtest"
@@ -58,27 +61,41 @@ func TestNewPoolRejectsUnusableURLWithoutLeakingPassword(t *testing.T) {
 	}
 }
 
-// The server plans each statement with its arguments, though pgx caches it
-// (M6 closeout FA4-M1): from a cached statement's sixth run it would plan
-// it once for any arguments.
-func TestPoolPlansEachStatementWithItsArguments(t *testing.T) {
+// Every connection of the pool, the one a listener takes for its own too,
+// has jit off (M6 closeout FA5-M1).
+func TestPoolTurnsJITOffOnEachConnection(t *testing.T) {
 	ctx := context.Background()
-	pool := newNotes(t, 1)
-	for i := range 8 {
-		rows, err := pool.Query(ctx, "SELECT id FROM notes WHERE id = $1", i)
+	pool := newPool(t, pgtest.NewEmptyDatabase(t))
+	jit := func(q interface {
+		QueryRow(context.Context, string, ...any) pgx.Row
+	}) string {
+		var v string
+		if err := q.QueryRow(ctx, "SHOW jit").Scan(&v); err != nil {
+			t.Fatal(err)
+		}
+		return v
+	}
+	conns := make([]*pgxpool.Conn, pool.Config().MaxConns)
+	for i := range conns {
+		c, err := pool.Acquire(ctx)
 		if err != nil {
 			t.Fatal(err)
 		}
-		rows.Close()
-		if err := rows.Err(); err != nil {
-			t.Fatal(err)
+		conns[i] = c
+		if v := jit(c); v != "off" {
+			t.Errorf("connection %d has jit %s, want off", i+1, v)
 		}
 	}
-	var generic, custom int
-	err := pool.QueryRow(ctx, `SELECT generic_plans, custom_plans FROM pg_prepared_statements
-		WHERE statement LIKE '%FROM notes%' AND statement NOT LIKE '%pg_prepared_statements%'`).Scan(&generic, &custom)
-	if err != nil || generic != 0 || custom != 8 {
-		t.Errorf("a statement run 8 times was planned for any arguments %d times, with its own %d, %v; want 8 with its own",
-			generic, custom, err)
+	own := conns[0].Hijack()
+	t.Cleanup(func() {
+		if err := own.Close(ctx); err != nil {
+			t.Error(err)
+		}
+	})
+	if v := jit(own); v != "off" {
+		t.Errorf("a connection taken from the pool has jit %s, want off", v)
+	}
+	for _, c := range conns[1:] {
+		c.Release()
 	}
 }

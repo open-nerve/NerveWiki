@@ -38,6 +38,12 @@ func (s *Store) queries(ctx context.Context) *gen.Queries {
 	return gen.New(postgres.DB(ctx, s.pool))
 }
 
+// planned is queries with each statement planned with its arguments
+// (postgres.Planned): for those whose arrays grow with the data.
+func (s *Store) planned(ctx context.Context) *gen.Queries {
+	return gen.New(postgres.Planned(postgres.DB(ctx, s.pool)))
+}
+
 // Lock implements app.Store. On the pool the lock would end with its
 // statement: it is refused there.
 func (s *Store) Lock(ctx context.Context, notebookID uuid.UUID) error {
@@ -179,9 +185,11 @@ func (s *Store) DeleteNotebooks(ctx context.Context, ids []uuid.UUID) error {
 	return nil
 }
 
-// Links implements app.Store.
+// Links implements app.Store, read planned with r's keys, targets and
+// sources: a plan for any compared each link with them one by one, 75–83 ms
+// of a rename where theirs took 16–26 ms (M6 closeout FA5-Q1).
 func (s *Store) Links(ctx context.Context, notebookID uuid.UUID, r domain.Reach) ([]app.Link, error) {
-	rows, err := s.queries(ctx).LinksReached(ctx, gen.LinksReachedParams{
+	rows, err := s.planned(ctx).LinksReached(ctx, gen.LinksReachedParams{
 		NotebookID: notebookID, Keys: r.Keys, Targets: r.Targets, Sources: r.Sources,
 	})
 	if err != nil {

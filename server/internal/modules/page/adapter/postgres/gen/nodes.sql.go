@@ -148,7 +148,7 @@ type ChildrenOfAllRow struct {
 }
 
 // The children not deleted of parents, of the notebook, in order: a level of a subtree, read a level a statement and
-// planned with its parents each time (Store.Subtree, postgres.NewPool). One recursive statement is planned whole, and
+// planned with its parents each time (Store.Subtree, postgres.Planned). One recursive statement is planned whole, and
 // some of its plans read the whole table for each parent or each level: without statistics, the notebook by the titles'
 // partial index for each parent, 40 s for a folder of 10,000 (M6 closeout FA-M1); with them and one folder holding most
 // nodes, each level a scan of every notebook's nodes (FA2-I1, FA3-M1). A plan for any parents, without statistics,
