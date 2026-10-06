@@ -1,6 +1,11 @@
 import { cleanup } from "@testing-library/react";
 import { afterEach, beforeEach, expect, vi } from "vitest";
 
+// jsdom lays nothing out, and has no rectangles of a range: CodeMirror
+// measures one to place its tooltips (the completion's, M6/P7).
+Range.prototype.getClientRects ??= () => [] as unknown as DOMRectList;
+Range.prototype.getBoundingClientRect ??= () => new DOMRect();
+
 // A warning or an error on the console fails the test that caused it: React
 // and React Router report misuse there (a missing HydrateFallback, a missing
 // key) and nothing else would notice. A test that expects output silences

@@ -1,5 +1,5 @@
 import { observer } from "mobx-react-lite";
-import { useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Navigate, useParams } from "react-router";
 import useSWR, { useSWRConfig } from "swr";
 
@@ -25,6 +25,7 @@ import { useWorkspace } from "../workspace/workspace-layout";
 import { Breadcrumbs } from "./breadcrumbs";
 import { EditLockNote } from "./edit-lock-note";
 import { PageEdit } from "./page-edit";
+import { PagePanel } from "./page-panel";
 import { ReadingView } from "./reading-view";
 import { SubpageList } from "./subpage-list";
 
@@ -84,7 +85,8 @@ export const PageLayout = observer(function PageLayout() {
  * may edit here, taking it over. Back from the edit, the focus is on
  * Edit; an edit left for a long time without input says so above the
  * reading view until the next (M5/P5 design 3.7). The edit is not in the
- * address: a reload shows the reading view.
+ * address: a reload shows the reading view. Beside its content, or after
+ * it on a narrow window, is its right column (M6/P7 design 7).
  */
 const PageShell = observer(function PageShell({ notebook, page }: { notebook: Notebook; page: TreeNode }) {
   const { slug } = useWorkspace();
@@ -110,7 +112,9 @@ const PageShell = observer(function PageShell({ notebook, page }: { notebook: No
   const mounted = useMounted();
   const writer = writesPages(notebook.role);
   const home = `/${slug}/notebooks/${notebook.id}`;
-  const href = (id?: string) => (id === undefined ? home : `${home}/pages/${id}`);
+  // One for the notebook: the backlinks (an observer, memoized) render again not as the shell's own state changes (the
+  // edit entered or left); the notebook and its tree read again still render them.
+  const href = useCallback((id?: string) => (id === undefined ? home : `${home}/pages/${id}`), [home]);
   const children = pages.childrenOf(page.id);
 
   async function enter(takeOver: boolean): Promise<void> {
@@ -218,50 +222,55 @@ const PageShell = observer(function PageShell({ notebook, page }: { notebook: No
           )}
         </div>
       </div>
-      {editing === undefined ? (
-        <>
-          {refusal !== undefined && <Alert>{errorText(refusal, t)}</Alert>}
-          {idleLeft && (
-            <output id={idleNote} className="block text-sm text-muted-foreground">
-              {t("page.idleLeft")}
-            </output>
-          )}
-          <div ref={lockNote} tabIndex={-1} className="outline-none">
-            <EditLockNote
+      <div className="space-y-6 xl:grid xl:grid-cols-[minmax(0,1fr)_15rem] xl:items-start xl:gap-8 xl:space-y-0">
+        <div className="min-w-0 space-y-6">
+          {editing === undefined ? (
+            <>
+              {refusal !== undefined && <Alert>{errorText(refusal, t)}</Alert>}
+              {idleLeft && (
+                <output id={idleNote} className="block text-sm text-muted-foreground">
+                  {t("page.idleLeft")}
+                </output>
+              )}
+              <div ref={lockNote} tabIndex={-1} className="outline-none">
+                <EditLockNote
+                  notebook={notebook}
+                  page={page}
+                  editHere={writer ? () => void enter(true) : undefined}
+                  released={() => (edit.current ?? heading.current)?.focus()}
+                />
+              </div>
+              <ReadingView
+                notebook={notebook}
+                page={page}
+                refused={(error) => (error === undefined ? setRefusal(undefined) : void toggleRefused(error))}
+                unanchored={() => heading.current?.focus()}
+                anchored={anchored}
+              />
+            </>
+          ) : (
+            <PageEdit
               notebook={notebook}
               page={page}
-              editHere={writer ? () => void enter(true) : undefined}
-              released={() => (edit.current ?? heading.current)?.focus()}
+              editing={editing}
+              done={(left) => {
+                back.current = true;
+                setIdleLeft(left.idle);
+                // A toggle's refusal that came while it edited is no longer news.
+                setRefusal(undefined);
+                setEditing(undefined);
+              }}
             />
-          </div>
-          <ReadingView
-            notebook={notebook}
-            page={page}
-            refused={(error) => (error === undefined ? setRefusal(undefined) : void toggleRefused(error))}
-            unanchored={() => heading.current?.focus()}
-            anchored={anchored}
-          />
-        </>
-      ) : (
-        <PageEdit
-          notebook={notebook}
-          page={page}
-          editing={editing}
-          done={(left) => {
-            back.current = true;
-            setIdleLeft(left.idle);
-            // A toggle's refusal that came while it edited is no longer news.
-            setRefusal(undefined);
-            setEditing(undefined);
-          }}
-        />
-      )}
-      {children.length > 0 && (
-        <section className="space-y-2">
-          <h2 className="text-sm font-medium text-muted-foreground">{t("page.subpages")}</h2>
-          <SubpageList label={t("page.subpages")} pages={children} href={href} />
-        </section>
-      )}
+          )}
+          {children.length > 0 && (
+            <section className="space-y-2">
+              <h2 className="text-sm font-medium text-muted-foreground">{t("page.subpages")}</h2>
+              <SubpageList label={t("page.subpages")} pages={children} href={href} />
+            </section>
+          )}
+        </div>
+        <PagePanel notebook={notebook} page={page} editing={!reading} href={href} />
+      </div>
     </div>
   );
 });

@@ -1,4 +1,4 @@
-import type { EditorExtension } from "./registry";
+import type { ReadyExtension } from "./registry";
 
 /** How long the content rests unchanged before it is saved (M5 design 4.8). */
 export const autosavePause = 2_000;
@@ -11,7 +11,7 @@ export const autosavePause = 2_000;
  * save says so on the edit's status: the next pause, Mod+S or leaving
  * tries again. It adds nothing to the editor's state.
  */
-export const autosave: EditorExtension = {
+export const autosave: ReadyExtension = {
   name: "autosave",
   extension(_context, controls) {
     let resting: ReturnType<typeof setTimeout> | undefined;

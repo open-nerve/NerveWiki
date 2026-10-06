@@ -2,7 +2,14 @@ import { makeAutoObservable, observableRef, runInAction } from "mobx";
 
 import { oneAtATime } from "../lib/one-at-a-time";
 import { ApiError } from "../services/api";
-import type { LinkingService, LinkLanding } from "../services/linking.service";
+import type {
+  BacklinkPage,
+  LinkingService,
+  LinkLanding,
+  LinkTarget,
+  PageProperties,
+  TagCount,
+} from "../services/linking.service";
 import type { EditLock, NodeMove, PageService, PageView, TaskToggle, TreeNode } from "../services/page.service";
 import { ancestorsOf, childrenOf, indexTree, subtreeOf, type TreeIndex } from "./page-tree";
 
@@ -57,7 +64,10 @@ export class PageTreeStore {
     >,
     /** The notebook whose pages these are. */
     readonly notebookId: string,
-    private readonly linking: Pick<LinkingService, "tagPages" | "linkLanding">
+    private readonly linking: Pick<
+      LinkingService,
+      "tagPages" | "linkLanding" | "linkTargets" | "tags" | "backlinks" | "properties"
+    >
   ) {
     makeAutoObservable<
       this,
@@ -201,6 +211,26 @@ export class PageTreeStore {
   /** landing reads where a page made for target, a link's target on the page id, would go (M6/P6 design 2). */
   landing(id: string, target: string): Promise<LinkLanding> {
     return this.linking.linkLanding(id, target);
+  }
+
+  /** linkTargets reads what the notebook's links may lead to, for the editor's completion (M6/P7 design 3). */
+  linkTargets(): Promise<LinkTarget[]> {
+    return this.linking.linkTargets(this.notebookId);
+  }
+
+  /** tags reads the notebook's tags, each with how many pages have it. */
+  tags(): Promise<TagCount[]> {
+    return this.linking.tags(this.notebookId);
+  }
+
+  /** backlinks reads a page of the pages that link to the page id, after cursor (none for the first). */
+  backlinks(id: string, cursor?: string): Promise<BacklinkPage> {
+    return this.linking.backlinks(id, cursor);
+  }
+
+  /** properties reads the page id's properties, and where its property links lead. */
+  properties(id: string): Promise<PageProperties> {
+    return this.linking.properties(id);
   }
 
   /** toggleTask ticks or clears a task item of the page id, which changes its view: SWR reads it again. */

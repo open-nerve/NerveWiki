@@ -178,7 +178,8 @@ test("C4 (page, notebook): while A edits Notes, unsaved, the notebook's deletion
     .click();
   await expect(pageHeading(page, "Page not found")).toBeVisible();
   expect((await held.release()).map((answer) => answer.status())).toEqual([404]);
-  // The tree read again on the lock's event and on the connection after the stream's reset, the session's beat,
-  // the opening tried again, and the write held: all not found.
-  pageWatch.expectConsole({ errors: Array.from({ length: 5 }, () => failedToLoad(404)) });
+  // The tree read again on the lock's event and on the connection after the stream's reset, the right column's
+  // backlinks and properties on the connection, the session's beat, the opening tried again, and the write held: all
+  // not found.
+  pageWatch.expectConsole({ errors: Array.from({ length: 7 }, () => failedToLoad(404)) });
 });

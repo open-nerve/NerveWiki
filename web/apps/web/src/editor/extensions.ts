@@ -1,7 +1,7 @@
 import { Compartment, EditorState, type Extension, type StateEffect } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 
-import type { EditorContext, EditorControls, EditorExtension } from "./registry";
+import type { EditorContext, EditorControls, EditorExtension, ReadyExtension } from "./registry";
 
 /** Composed is the registered extensions, built, each in its compartment. */
 export type Composed = {
@@ -16,6 +16,40 @@ export type Composed = {
   reconfigure(name: string, next: Extension | null): StateEffect<unknown> | undefined;
 };
 
+/** What each registry's extensions are once loaded: one load a registry. */
+const loads = new WeakMap<readonly EditorExtension[], Promise<readonly ReadyExtension[]>>();
+
+/**
+ * loadExtensions answers registered with what builds each of those that
+ * load it loaded (M6/P7 design 2), in their order, once a registry. One
+ * whose load fails is left out, the others are not.
+ */
+export function loadExtensions(registered: readonly EditorExtension[]): Promise<readonly ReadyExtension[]> {
+  let loaded = loads.get(registered);
+  if (loaded === undefined) {
+    loaded = Promise.all(
+      registered.map(async (registration): Promise<ReadyExtension | undefined> => {
+        if (!("load" in registration)) {
+          return registration;
+        }
+        try {
+          return { name: registration.name, extension: await registration.load() };
+        } catch (error) {
+          console.error(`The editor's extension ${registration.name} could not be loaded`, error);
+          return undefined;
+        }
+      })
+    ).then((each) => each.filter((extension) => extension !== undefined));
+    loads.set(registered, loaded);
+  }
+  return loaded;
+}
+
+/** ready tells whether each of registered builds its extension itself: none to load. */
+export function ready(registered: readonly EditorExtension[]): registered is readonly ReadyExtension[] {
+  return registered.every((registration) => !("load" in registration));
+}
+
 /**
  * composeExtensions builds registered for context and controls (M4/P6
  * design 3.4), in their order, each in a compartment of its own, so that
@@ -23,7 +57,7 @@ export type Composed = {
  * left out, the others are not.
  */
 export function composeExtensions(
-  registered: readonly EditorExtension[],
+  registered: readonly ReadyExtension[],
   context: EditorContext,
   controls: EditorControls
 ): Composed {

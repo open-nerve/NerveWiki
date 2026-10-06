@@ -2,7 +2,6 @@ import { reaction } from "mobx";
 import { observer } from "mobx-react-lite";
 import { useContext, useEffect, useLayoutEffect, useRef, type RefObject } from "react";
 import { useLocation, useNavigate } from "react-router";
-import useSWR from "swr";
 
 import { arrived } from "../../app/arrival";
 import { writesPages } from "../../app/effective-role";
@@ -15,6 +14,8 @@ import type { TreeNode } from "../../services/page.service";
 import { useT } from "../../i18n/i18n";
 import { usePageTree, useStore } from "../../stores/context";
 import { useWorkspace } from "../workspace/workspace-layout";
+import { usePageView } from "./page-view";
+import { watchReader } from "./readers-input";
 import { useUnresolvedLinks } from "./unresolved-link";
 
 /**
@@ -36,7 +37,8 @@ import { useUnresolvedLinks } from "./unresolved-link";
  * focus as the HTML is replaced has it back in the new HTML, without a
  * scroll, while the box at its position is the same item's (its text, and
  * its state, or the state the view's own toggle asked for): a tick does
- * not move it, a write that moved the items does.
+ * not move it, a write that moved the items does. A folded callout it is
+ * in opens again, as the reader had it.
  *
  * An enhancement goes to another address through the router: to a page,
  * whose heading takes the focus; or to an anchor. An address with an
@@ -89,7 +91,7 @@ export const ReadingView = observer(function ReadingView({
   // While the view from the cache is read again for the anchor the page opened at, which named no element of it:
   // what had the focus then, and how the wait ends.
   const awaited = useRef<{ focus: Element | null; end: () => void } | undefined>(undefined);
-  const { data, error, mutate } = useSWR(["page-view", notebook.id, page.id], () => pages.view(page.id));
+  const { data, error, mutate } = usePageView(notebook, page.id);
   // Whether the view came from the cache: older, maybe, than the address.
   const cached = useRef(data !== undefined);
   const article = useRef<HTMLElement>(null);
@@ -172,6 +174,7 @@ export const ReadingView = observer(function ReadingView({
       taskText(box) === focused.text &&
       (state === focused.checked || (asked?.task === focused.task && state === asked.checked))
     ) {
+      unfold(box);
       box.focus({ preventScroll: true });
     }
     const target = focusedTarget.current;
@@ -230,17 +233,13 @@ export const ReadingView = observer(function ReadingView({
     if (cached.current) {
       // Once per page: the wait ends with this read, at the next navigation, or as the reader does something. Not as
       // the view goes: StrictMode's second mount would end it at once; the page left, its read settling ends it.
+      const reader = watchReader({ acts: () => end() });
       const end = () => {
-        for (const type of readersInput) {
-          window.removeEventListener(type, end, true);
-        }
+        reader.end();
         if (awaited.current?.end === end) {
           awaited.current = undefined;
         }
       };
-      for (const type of readersInput) {
-        window.addEventListener(type, end, { capture: true, passive: true });
-      }
       awaited.current = { focus: document.activeElement, end };
       void mutate().finally(end);
     }
@@ -256,12 +255,6 @@ export const ReadingView = observer(function ReadingView({
     </>
   );
 });
-
-/**
- * readersInput are the events of what a reader does: a scroll, a click (the window's scrollbar pressed too, in
- * Chromium and WebKit), a touch, a key. An assistive technology's moves, a screen reader's virtual cursor, send none.
- */
-const readersInput = ["wheel", "touchmove", "pointerdown", "keydown"] as const;
 
 /** named is the element of container whose id the address's fragment is, decoded, if there is one. */
 function named(container: HTMLElement, fragment: string): HTMLElement | undefined {
@@ -285,8 +278,12 @@ function shows(element: HTMLElement): boolean {
   return bottom > 0 && top < window.innerHeight;
 }
 
-/** focusOn gives element the focus, focusable as an anchor's target is, scrolled into view as show says, if it does. */
+/**
+ * focusOn gives element the focus, focusable as an anchor's target is, scrolled into view as show says, if it does;
+ * a folded callout it is in opens first.
+ */
 function focusOn(element: HTMLElement, show: ScrollIntoViewOptions | undefined) {
+  unfold(element);
   if (!element.hasAttribute("tabindex")) {
     element.setAttribute("tabindex", "-1");
   }
@@ -294,4 +291,13 @@ function focusOn(element: HTMLElement, show: ScrollIntoViewOptions | undefined) 
     element.scrollIntoView(show);
   }
   element.focus({ preventScroll: true });
+}
+
+/** unfold opens the folded callouts (closed details) element is in, which could show nothing of it otherwise. */
+function unfold(element: HTMLElement) {
+  for (let parent = element.parentElement; parent !== null; parent = parent.parentElement) {
+    if (parent instanceof HTMLDetailsElement && !parent.open) {
+      parent.open = true;
+    }
+  }
 }

@@ -30,8 +30,9 @@ export function typeOf(event: StreamEvent): string {
 /**
  * pagesChanged reads again a tree that changed and a page's reading view
  * whose cached revision is older than the one written (or not read yet),
- * through the refresher; and the pages of the notebook's tags, which a page
- * written or deleted may join or leave (M6 design 4.8).
+ * through the refresher; the pages of the notebook's tags, which a page
+ * written or deleted may join or leave (M6 design 4.8); and the properties
+ * of the pages written, through the refresher (M6/P7 design 11).
  */
 const pagesChanged: EventHandler = (data, context) => {
   const { cache, mutate, refresher } = context;
@@ -42,6 +43,7 @@ const pagesChanged: EventHandler = (data, context) => {
   if (tree || pages === null || pages.length > 0) {
     readTagPages(notebook, context);
   }
+  readEach("page-properties", notebook, pages === null ? null : pages.map(({ id }) => id), context);
   if (pages === null) {
     readViews(notebook, context);
     return;
@@ -62,13 +64,15 @@ const pagesChanged: EventHandler = (data, context) => {
  * linksChanged reads again the reading views of the pages whose links lead
  * elsewhere (M6 design 4.8, M6/P3 design 6.7): at the revision shown, so
  * whatever that is, through the refresher; every view of the notebook for
- * too many pages to name, and its tags' pages, as after a reindex. The
- * pages whose backlinks changed, its targets, are for the backlinks to
- * read again.
+ * too many pages to name, and its tags' pages, as after a reindex. Their
+ * properties too, whose links lead elsewhere as well; and the backlinks of
+ * the pages whose backlinks changed, its targets (M6/P7 design 11).
  */
 const linksChanged: EventHandler = (data, context) => {
-  const { mutate, refresher } = context;
-  const { notebook_id: notebook, pages } = data as EventLinks;
+  const { cache, mutate, refresher } = context;
+  const { notebook_id: notebook, pages, targets } = data as EventLinks;
+  readEach("backlinks", notebook, targets, context);
+  readEach("page-properties", notebook, pages, context);
   if (pages === null) {
     readViews(notebook, context);
     readTagPages(notebook, context);
@@ -76,9 +80,39 @@ const linksChanged: EventHandler = (data, context) => {
   }
   for (const id of pages) {
     const key = ["page-view", notebook, id];
-    refresher.request(unstable_serialize(key), () => void mutate(key));
+    // Of a view never read, nothing: the refresher keeps each key it is asked for.
+    if (cache.get(unstable_serialize(key)) !== undefined) {
+      refresher.request(unstable_serialize(key), () => void mutate(key));
+    }
   }
 };
+
+/**
+ * readEach reads again what of kind, a page's backlinks or properties, is
+ * shown of the pages ids of notebook, each through the refresher; of every
+ * page of the notebook for null, too many to name. Of a page never read, it
+ * reads nothing (one whose first read is out was: SWR writes its key as it
+ * mounts): the refresher keeps each key it is asked for.
+ */
+function readEach(
+  kind: "backlinks" | "page-properties",
+  notebook: string,
+  ids: readonly string[] | null,
+  { cache, mutate, refresher }: EventContext
+) {
+  if (ids === null) {
+    refresher.request(`${kind} ${notebook}`, () => {
+      void mutate((key) => Array.isArray(key) && key[0] === kind && key[1] === notebook);
+    });
+    return;
+  }
+  for (const id of ids) {
+    const key = [kind, notebook, id];
+    if (cache.get(unstable_serialize(key)) !== undefined) {
+      refresher.request(unstable_serialize(key), () => void mutate(key));
+    }
+  }
+}
 
 /** readViews reads every reading view of notebook again, through the refresher: too many pages to name. */
 function readViews(notebook: string, { mutate, refresher }: EventContext) {

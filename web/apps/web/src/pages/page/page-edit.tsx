@@ -347,7 +347,14 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
           // An edit lost before its editor is made leaves the focus on the banner.
           focusOnOpen={lost === undefined}
           content={editing.content.content}
-          context={{ workspace: slug, notebook: notebook.id, page: page.id, role: notebook.role }}
+          context={{
+            workspace: slug,
+            notebook: notebook.id,
+            page: page.id,
+            role: notebook.role,
+            linkTargets: () => pages.linkTargets(),
+            tags: () => pages.tags(),
+          }}
           controls={{
             // Autosave's: quiet, a conflict open is its panel's, one run into moves no focus.
             save: async () => void (await save(true)),

@@ -72,6 +72,22 @@ function store(nodes: TreeNode[] = [guide, install, linux, notes]) {
       sent.push(`landing ${id} ${target}`);
       return { node_id: null, landing: { parent_id: null, title: target }, reason: null };
     },
+    linkTargets: async (notebook: string) => {
+      sent.push(`link targets ${notebook}`);
+      return [];
+    },
+    tags: async (notebook: string) => {
+      sent.push(`tags ${notebook}`);
+      return [];
+    },
+    backlinks: async (id: string, cursor?: string) => {
+      sent.push(`backlinks ${id} ${cursor ?? ""}`);
+      return { data: [], next_cursor: null };
+    },
+    properties: async (id: string) => {
+      sent.push(`properties ${id}`);
+      return { valid: true, properties: [], links: [] };
+    },
   };
   return { pages: new PageTreeStore(service, "plans", linking), sent, state };
 }

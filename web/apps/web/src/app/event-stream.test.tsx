@@ -80,7 +80,9 @@ async function open(page = new FakePage(), answers: Record<string, Answer> = {},
   const before = server.sent.length;
   events.last().hello();
   await waitFor(() =>
-    expect(server.sent.slice(before)).toEqual(expect.arrayContaining(["GET nodes", "GET view Guide"]))
+    expect(server.sent.slice(before)).toEqual(
+      expect.arrayContaining(["GET nodes", "GET view Guide", `GET backlinks ${guide.id}`, `GET properties ${guide.id}`])
+    )
   );
   server.sent.length = 0;
   workspaces.length = 0;
@@ -89,6 +91,11 @@ async function open(page = new FakePage(), answers: Record<string, Answer> = {},
 }
 
 afterEach(() => vi.useRealTimers());
+
+/** viewReads is what of sent read a reading view: an event reads the right column's too. */
+function viewReads(sent: string[]): string[] {
+  return sent.filter((each) => each.startsWith("GET view"));
+}
 
 /** Presses Ctrl and key on the page. */
 function ctrl(key: string) {
@@ -116,11 +123,11 @@ test("a page's reading view is read again when its revision is newer than the on
 
   events.last().send("pages", pagesEvent(false, [{ id: guide.id, revision: 1 }]));
   await settle();
-  expect(server.sent).toEqual([]);
+  expect(viewReads(server.sent)).toEqual([]);
 
   events.last().send("pages", pagesEvent(false, [{ id: guide.id, revision: 2 }]));
   await waitFor(() => expect(screen.getByRole("article", { name: "Guide" }).innerHTML).toBe("<p>Guide, again</p>"));
-  expect(server.sent).toEqual(["GET view Guide"]);
+  expect(viewReads(server.sent)).toEqual(["GET view Guide"]);
 });
 
 test("a page's reading view is not read again for an older revision than the one a connection read", async () => {
@@ -135,7 +142,7 @@ test("a page's reading view is not read again for an older revision than the one
   events.last().send("pages", pagesEvent(false, [{ id: guide.id, revision: 1 }]));
   await settle();
 
-  expect(server.sent).toEqual([]);
+  expect(viewReads(server.sent)).toEqual([]);
 });
 
 test("an event that comes while a reading view's first read is out reads it again: that read may be the older", async () => {
@@ -159,14 +166,14 @@ test("an event of too many pages to name reads the notebook's reading views agai
 
   events.last().send("pages", { ...pagesEvent(false, null), notebook_id: "0199a2b4-0000-7000-8000-0000000000b2" });
   await settle();
-  expect(server.sent).toEqual([]);
+  expect(viewReads(server.sent)).toEqual([]);
 
   events.last().send("pages", pagesEvent(false, null));
   events.last().send("pages", pagesEvent(false, null));
 
   await waitFor(() => expect(screen.getByRole("article", { name: "Guide" }).innerHTML).toBe("<p>Guide, again</p>"));
   await settle();
-  expect(server.sent).toEqual(["GET view Guide"]);
+  expect(viewReads(server.sent)).toEqual(["GET view Guide"]);
 });
 
 test("a hidden tab reads the reading view once it is shown again", async () => {
@@ -212,13 +219,13 @@ test("a links event reads again the reading view of a page it names, at the revi
 
   events.last().send("links", linksEvent([install.id]));
   await settle();
-  expect(server.sent).toEqual([]);
+  expect(viewReads(server.sent)).toEqual([]);
 
   events.last().send("links", linksEvent([guide.id, install.id]));
   await waitFor(() =>
     expect(screen.getByRole("article", { name: "Guide" }).innerHTML).toBe("<p>Guide, its links again</p>")
   );
-  expect(server.sent).toEqual(["GET view Guide"]);
+  expect(viewReads(server.sent)).toEqual(["GET view Guide"]);
 });
 
 test("a links event of too many pages to name reads the notebook's reading views again, not another notebook's", async () => {
@@ -227,13 +234,75 @@ test("a links event of too many pages to name reads the notebook's reading views
 
   events.last().send("links", linksEvent(null, "0199a2b4-0000-7000-8000-0000000000b2"));
   await settle();
-  expect(server.sent).toEqual([]);
+  expect(viewReads(server.sent)).toEqual([]);
 
   events.last().send("links", linksEvent(null));
   await waitFor(() =>
     expect(screen.getByRole("article", { name: "Guide" }).innerHTML).toBe("<p>Guide, its links again</p>")
   );
-  expect(server.sent).toEqual(["GET view Guide"]);
+  expect(viewReads(server.sent)).toEqual(["GET view Guide"]);
+});
+
+test("a links event reads again the backlinks of the pages whose backlinks changed, and the properties of the pages it names, of those shown", async () => {
+  const { server, events } = await open();
+  server.backlinks.set(guide.id, [{ data: [{ id: notes.id, count: 1, contexts: ["[[Guide]]"] }], next_cursor: null }]);
+  server.properties.set(guide.id, { valid: true, properties: [{ key: "status", value: "draft" }], links: [] });
+
+  events.last().send("links", { ...linksEvent([install.id]), targets: [install.id] });
+  await settle();
+  expect(server.sent).toEqual([]);
+
+  events.last().send("links", { ...linksEvent([]), targets: [guide.id] });
+  const panel = screen.getByRole("complementary", { name: "About this page" });
+  expect(await within(panel).findByRole("link", { name: "Notes" })).toBeTruthy();
+  expect(server.sent).toEqual([`GET backlinks ${guide.id}`]);
+
+  server.sent.length = 0;
+  events.last().send("links", linksEvent([guide.id]));
+  expect(await within(panel).findByText("draft")).toBeTruthy();
+  await settle();
+  expect(server.sent.toSorted()).toEqual([`GET properties ${guide.id}`, "GET view Guide"]);
+});
+
+test("a links event of too many pages to name reads again every backlinks and properties shown of the notebook, not another notebook's", async () => {
+  const { server, events } = await open();
+  server.backlinks.set(guide.id, [{ data: [{ id: notes.id, count: 1, contexts: [] }], next_cursor: null }]);
+  server.properties.set(guide.id, { valid: true, properties: [{ key: "status", value: "draft" }], links: [] });
+
+  events.last().send("links", { ...linksEvent(null, "0199a2b4-0000-7000-8000-0000000000b2"), targets: null });
+  await settle();
+  expect(server.sent).toEqual([]);
+
+  events.last().send("links", { ...linksEvent([]), targets: null });
+  const panel = screen.getByRole("complementary", { name: "About this page" });
+  expect(await within(panel).findByRole("link", { name: "Notes" })).toBeTruthy();
+  events.last().send("links", { ...linksEvent(null), targets: [] });
+  expect(await within(panel).findByText("draft")).toBeTruthy();
+  await settle();
+  expect(server.sent.filter((each) => !each.startsWith("GET view")).toSorted()).toEqual([
+    `GET backlinks ${guide.id}`,
+    `GET properties ${guide.id}`,
+  ]);
+});
+
+test("a pages event reads again the properties of the pages written that are shown, of every one for too many to name", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const { server, events } = await open();
+  server.properties.set(guide.id, { valid: true, properties: [{ key: "status", value: "draft" }], links: [] });
+
+  events.last().send("pages", pagesEvent(false, [{ id: install.id, revision: 2 }]));
+  await settle();
+  expect(server.sent).toEqual([]);
+
+  events.last().send("pages", pagesEvent(false, [{ id: guide.id, revision: 1 }]));
+  const panel = screen.getByRole("complementary", { name: "About this page" });
+  expect(await within(panel).findByText("draft")).toBeTruthy();
+  expect(server.sent).toEqual([`GET properties ${guide.id}`]);
+
+  server.properties.set(guide.id, { valid: true, properties: [{ key: "status", value: "done" }], links: [] });
+  events.last().send("pages", pagesEvent(false, null));
+  await act(() => vi.advanceTimersByTimeAsync(6_000));
+  expect(await within(panel).findByText("done")).toBeTruthy();
 });
 
 /** onTag opens the tag t's pages, Guide's, after open, and waits until they show: what is read from then on is the events' doing. */
@@ -363,6 +432,19 @@ test("a connection reads from the outside in: a notebook no longer seen leaves t
   expect(await screen.findByRole("heading", { level: 1, name: "Page not found" })).toBeTruthy();
   await settle();
   expect(server.sent).toEqual([]);
+});
+
+test("a connection reads the right column after the tree: a page deleted meanwhile leaves before its backlinks and properties would be read", async () => {
+  const { server, events } = await open();
+  server.nodes = [notes];
+
+  events.last().send("reset", { reason: "expired" });
+  await waitFor(() => expect(events.streams).toHaveLength(2));
+  events.last().hello();
+
+  expect(await screen.findByRole("heading", { level: 1, name: "Page not found" })).toBeTruthy();
+  await settle();
+  expect(server.sent).toEqual(["GET nodes"]);
 });
 
 test("the tab editing the page does not read its reading view again", async () => {

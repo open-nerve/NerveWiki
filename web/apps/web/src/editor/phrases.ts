@@ -5,7 +5,8 @@ import type { MessageKey } from "../i18n/messages/en";
 
 /**
  * The phrases CodeMirror shows or announces in the editor (M4/P6 design
- * 3.5): its search panel, go to line, and what the merge view says, by
+ * 3.5): its search panel, go to line, what the merge view says, and the
+ * completion's (M6/P7 design 4, 5), by
  * their English text, each with the app's message. $ stands for the
  * number CodeMirror puts in.
  */
@@ -30,6 +31,9 @@ export const phraseKeys = {
   "Control character": "editor.phrase.controlCharacter",
   "Selection deleted": "editor.phrase.selectionDeleted",
   "$ unchanged lines": "editor.phrase.unchangedLines",
+  Completions: "editor.phrase.completions",
+  "$ page": "editor.phrase.page",
+  "$ pages": "editor.phrase.pages",
 } as const satisfies Record<string, MessageKey>;
 
 /** editorPhrases is CodeMirror's phrases in the language of t. */

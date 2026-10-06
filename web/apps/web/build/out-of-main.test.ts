@@ -21,6 +21,8 @@ const editor = chunk("source-editor.js", {
   imports: ["codemirror.js"],
 });
 const codemirror = chunk("codemirror.js", { moduleIds: [view, crelt] });
+/** registry is the app's entry, whose registry of the editor's extensions may import one's module. */
+const registry = (facts: Partial<Chunk>) => app({ dynamicImports: ["page.js"], ...facts });
 
 test("the editor and what it loads hold the editor's modules: nothing leaks", () => {
   expect(
@@ -31,6 +33,29 @@ test("the editor and what it loads hold the editor's modules: nothing leaks", ()
       codemirror,
     ])
   ).toBeUndefined();
+});
+
+test("an editor's extension the editor loads (editor/loaded/), by a dynamic import of the app's, is the editor's: nothing leaks", () => {
+  const extension = chunk("link-completion.js", {
+    facadeModuleId: "/repo/web/apps/web/src/editor/loaded/link-completion.ts",
+    moduleIds: ["/repo/web/apps/web/src/editor/loaded/link-completion.ts"],
+    imports: ["codemirror.js"],
+  });
+  expect(
+    lazyLeak([registry({ dynamicImports: ["page.js", "link-completion.js"] }), chunk("page.js"), extension, codemirror])
+  ).toBeUndefined();
+  // Imported statically, it loads with the app.
+  expect(lazyLeak([registry({ imports: ["link-completion.js"] }), chunk("page.js"), extension, codemirror])).toBe(
+    `index.js → link-completion.js → codemirror.js, which is loaded before the editor, holds the editor's ${view}`
+  );
+  // A module of React's there (.tsx) too.
+  const tsx = { ...extension, facadeModuleId: "/repo/web/apps/web/src/editor/loaded/link-panel.tsx" };
+  expect(lazyLeak([registry({ dynamicImports: ["link-completion.js"] }), tsx, codemirror])).toBeUndefined();
+  // Elsewhere than editor/loaded/, it is not the editor's.
+  const elsewhere = { ...extension, facadeModuleId: "/repo/web/apps/web/src/editor/link-completion.ts" };
+  expect(lazyLeak([registry({ dynamicImports: ["link-completion.js"] }), elsewhere, codemirror])).toBe(
+    `index.js → link-completion.js → codemirror.js, which is loaded before the editor, holds the editor's ${view}`
+  );
 });
 
 test("the entry holding an editor's module leaks", () => {

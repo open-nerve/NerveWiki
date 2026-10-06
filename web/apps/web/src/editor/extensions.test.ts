@@ -2,21 +2,28 @@ import { EditorState, StateEffect, type Extension } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { afterEach, expect, test, vi } from "vitest";
 
-import { composeExtensions, readOnly, readOnlyAs, type Composed } from "./extensions";
-import type { EditorContext, EditorControls, EditorExtension } from "./registry";
+import { composeExtensions, loadExtensions, readOnly, readOnlyAs, ready, type Composed } from "./extensions";
+import type { Build, EditorContext, EditorControls, EditorExtension, ReadyExtension } from "./registry";
 
 // The editor's extension pipeline (M4/P6 design 3.4; M0/P1 editor handoff,
 // item 2), with an extension shaped as each of M5, M6 and M7 will register.
 
 afterEach(() => vi.useRealTimers());
 
-const context: EditorContext = { workspace: "lab", notebook: "n1", page: "p1", role: "editor" };
+const context: EditorContext = {
+  workspace: "lab",
+  notebook: "n1",
+  page: "p1",
+  role: "editor",
+  linkTargets: () => Promise.resolve([]),
+  tags: () => Promise.resolve([]),
+};
 
 /** M5's lock, as a push would tell it. */
 const locked = StateEffect.define<boolean>();
 
 /** M5: read-only while another holds the lock; a save a second after the last change. */
-const lockAndAutosave: EditorExtension = {
+const lockAndAutosave: ReadyExtension = {
   name: "lock-and-autosave",
   extension: (_, controls) => {
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -39,14 +46,14 @@ const lockAndAutosave: EditorExtension = {
 /** M6: completion of page names, as a completion source the language data offers; then of tags. */
 const pageNames = () => null;
 const tags = () => null;
-const completion = (source: () => null): EditorExtension => ({
+const completion = (source: () => null): ReadyExtension => ({
   name: "completion",
   extension: () => EditorState.languageData.of(() => [{ autocomplete: source }]),
 });
 
 /** M7: a paste of files goes to an upload. */
 const pasted: string[] = [];
-const pasteUpload = (name: string, takes = false): EditorExtension => ({
+const pasteUpload = (name: string, takes = false): ReadyExtension => ({
   name,
   extension: () =>
     EditorView.domEventHandlers({
@@ -58,7 +65,7 @@ const pasteUpload = (name: string, takes = false): EditorExtension => ({
 });
 
 /** A view with registered composed after a document, and its controls' save. */
-function editing(registered: readonly EditorExtension[]) {
+function editing(registered: readonly ReadyExtension[]) {
   pasted.length = 0;
   const save = vi.fn(() => Promise.resolve());
   let view: EditorView | undefined;
@@ -132,7 +139,7 @@ test("one replaced, the new one is in and the old one out", () => {
 
 test("one whose building throws is left out, the others are not", () => {
   const failed = vi.spyOn(console, "error").mockImplementation(() => undefined);
-  const broken: EditorExtension = {
+  const broken: ReadyExtension = {
     name: "broken",
     extension: () => {
       throw new Error("no");
@@ -145,4 +152,56 @@ test("one whose building throws is left out, the others are not", () => {
   paste();
   expect(pasted).toEqual(["upload"]);
   view.destroy();
+});
+
+/** loading is an extension that loads what builds it: the completion of source, once its load is let go. */
+function loading(name: string, source: () => null) {
+  let go!: () => void;
+  let fail!: (error: Error) => void;
+  const loads: Promise<Build>[] = [];
+  const extension: EditorExtension = {
+    name,
+    load: () => {
+      const loaded = new Promise<Build>((resolve, reject) => {
+        go = () => resolve(completion(source).extension);
+        fail = reject;
+      });
+      loads.push(loaded);
+      return loaded;
+    },
+  };
+  return { extension, loads, go: () => go(), fail: (error: Error) => fail(error) };
+}
+
+test("extensions that load what builds them are loaded, then composed in the registry's order with the others; once a registry", async () => {
+  const pages = loading("completion", pageNames);
+  const registered = [lockAndAutosave, pages.extension, pasteUpload("upload")];
+  expect(ready(registered)).toBe(false);
+  expect(ready([lockAndAutosave])).toBe(true);
+
+  const loaded = loadExtensions(registered);
+  expect(loadExtensions(registered)).toBe(loaded);
+  pages.go();
+  const built = await loaded;
+  expect(pages.loads).toHaveLength(1);
+  expect(built.map(({ name }) => name)).toEqual(["lock-and-autosave", "completion", "upload"]);
+  const { view, sources, paste } = editing(built);
+  expect(sources()).toEqual([pageNames]);
+  paste();
+  expect(pasted).toEqual(["upload"]);
+  view.destroy();
+});
+
+test("one whose load fails is left out, the others are not", async () => {
+  const failed = vi.spyOn(console, "error").mockImplementation(() => undefined);
+  const broken = loading("broken", tags);
+  const pages = loading("completion", pageNames);
+
+  const loaded = loadExtensions([broken.extension, pages.extension, pasteUpload("upload")]);
+  broken.fail(new Error("offline"));
+  pages.go();
+  const built = await loaded;
+
+  expect(built.map(({ name }) => name)).toEqual(["completion", "upload"]);
+  expect(failed).toHaveBeenCalledOnce();
 });
