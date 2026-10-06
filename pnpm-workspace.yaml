@@ -26,10 +26,5 @@ allowBuilds:
 # 依赖的补丁（pnpm patch），各注明理由；升级依赖时重新核对是否还需要：
 # - katex：alignedat 的列数照参数造，与行无关，{30000000} 四十几个字节就耗尽页面的内存；超过 100 时报解析错误，
 #   公式显示原文（M6/P6 B 修复核对 f2-1）
-# - @lezer/markdown：编辑器解析一段之内的行内语法，每个链接把前面的标记都扫一遍，每个配不上的 ]、*、_ 也往回扫完整段，
-#   一段 5 万个 [[x]] 进入编辑要 9.5 秒。改为记下扫过的下限（强调照 CommonMark 的 openers_bottom），解析的树不变，
-#   与原版的随机差分逐字相同（M6 收尾审查 B-I1）。比开始标记长的结束标记（*a** ）把之后的标记逐个挪一位，
-#   一段 8 万个要 8 秒；改为把读过的放进新的数组，不再插入（M6 收尾修复核对 FB-I2）
 patchedDependencies:
-  "@lezer/markdown@1.7.2": patches/@lezer__markdown@1.7.2.patch
   katex@0.16.47: patches/katex@0.16.47.patch
