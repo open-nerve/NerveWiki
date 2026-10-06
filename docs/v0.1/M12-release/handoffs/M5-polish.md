@@ -65,5 +65,6 @@ created: 2026-10-03
     - 编辑时的大纲：编辑器里的标题要另做解析（lezer），现在编辑时右栏不显示大纲；
     - 全部标签的总览页（`listTags`），以及 frontmatter 的 `tags` 在属性表里显示为标签链接（负责人可以改判，提前做）；
     - 正文里指向地址里已是的锚点的链接是浏览器自己的导航：Chromium 里同样打开折叠的 callout，Safari、Firefox 待人工确认。
+14. **前端的几处结构**（[M6 收尾审查](../../M6-links/reviews/M6-closeout-review.md) B Nit 8；右栏的测试收尾时已按节拆开）：`page-properties.tsx` 里约 170 行属性链接的配对与判断移成纯模块单独测；`PageTreeStore` 转发 6 个与树无关的 linking 读，改由 linking 自己的 store；`guardLabels` 从 `math.ts` 移到图与公式共用的地方；`reading-view.tsx` 一个文件管四件事，按职责拆开。
 
 之后的 M 推迟的体验事项照样追加到这份移交。
