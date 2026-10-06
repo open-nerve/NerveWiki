@@ -10,7 +10,14 @@ import { fakeControls } from "./testing/fake-controls";
 beforeEach(() => void vi.useFakeTimers());
 afterEach(() => void vi.useRealTimers());
 
-const context: EditorContext = { workspace: "lab", notebook: "n1", page: "p1", role: "editor" };
+const context: EditorContext = {
+  workspace: "lab",
+  notebook: "n1",
+  page: "p1",
+  role: "editor",
+  linkTargets: () => Promise.resolve([]),
+  tags: () => Promise.resolve([]),
+};
 
 /** idleExit built over fake controls. */
 function built() {

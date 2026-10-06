@@ -10,7 +10,14 @@ import type { Build, EditorContext, EditorControls, EditorExtension, ReadyExtens
 
 afterEach(() => vi.useRealTimers());
 
-const context: EditorContext = { workspace: "lab", notebook: "n1", page: "p1", role: "editor" };
+const context: EditorContext = {
+  workspace: "lab",
+  notebook: "n1",
+  page: "p1",
+  role: "editor",
+  linkTargets: () => Promise.resolve([]),
+  tags: () => Promise.resolve([]),
+};
 
 /** M5's lock, as a push would tell it. */
 const locked = StateEffect.define<boolean>();

@@ -1,4 +1,4 @@
-import type { LinkLanding } from "../services/linking.service";
+import type { BacklinkPage, LinkLanding, PageProperties } from "../services/linking.service";
 import type { NotebookRole } from "../services/notebook.service";
 import type { EditLock, NodeMove, PageContent, PageView, TaskToggle, TreeNode } from "../services/page.service";
 import { json, notebookJSON, problem, signedInApp, userJSON, type Answer } from "./fakes";
@@ -88,7 +88,11 @@ type PageServerOptions = {
  * A tag's pages are the ids tags has for it, by its name as the path
  * carries it decoded (M6/P5), none for a tag it does not have. A link's
  * landing (M6/P6) is what landings has for its target, by default a page
- * titled the target at the root.
+ * titled the target at the root. The notebook's link targets are its pages,
+ * each linked by its title, with the aliases aliases has for it; its tags,
+ * tags' names with their pages counted. A page's backlinks are what
+ * backlinks has for it, a page of them each; its properties, what
+ * properties has, by default none (M6/P7).
  */
 export function pageServer({
   role = "admin",
@@ -109,6 +113,12 @@ export function pageServer({
     tags: new Map<string, string[]>(),
     /** The landing of each link's target, or its answer. */
     landings: new Map<string, LinkLanding | (() => Response | Promise<Response>)>(),
+    /** The aliases of each page, by its id. */
+    aliases: new Map<string, string[]>(),
+    /** Each page's backlinks, a page of them each, by its id. */
+    backlinks: new Map<string, BacklinkPage[]>(),
+    /** Each page's properties, by its id. */
+    properties: new Map<string, PageProperties>(),
     /** hold opens holder's session of the page pageId, its lease expiresIn seconds; it answers its id. */
     hold(pageId: string, holder: Person = bob, expiresIn = 120): string {
       const id = `held-${(++held).toString()}`;
@@ -167,6 +177,34 @@ export function pageServer({
         reason: null,
       };
       return typeof landing === "function" ? landing() : json(landing);
+    },
+    [`GET /api/v0/notebooks/${notebookJSON.id}/link-targets`]: () => {
+      server.sent.push("GET link targets");
+      return json({
+        data: server.nodes
+          .filter((node) => node.kind === "page")
+          .map((node) => ({
+            id: node.id,
+            kind: "page",
+            name: node.name,
+            link: node.name,
+            aliases: server.aliases.get(node.id) ?? [],
+          })),
+      });
+    },
+    [`GET /api/v0/notebooks/${notebookJSON.id}/tags`]: () => {
+      server.sent.push("GET tags");
+      return json({ data: [...server.tags].map(([tag, pages]) => ({ tag, count: pages.length })) });
+    },
+    "GET /api/v0/pages/*/backlinks": (request) => {
+      const cursor = new URL(request.url).searchParams.get("cursor");
+      server.sent.push(`GET backlinks ${idOf(request)} ${cursor ?? ""}`.trim());
+      const pages = server.backlinks.get(idOf(request)) ?? [];
+      return json(pages[cursor === null ? 0 : Number(cursor)] ?? { data: [], next_cursor: null });
+    },
+    "GET /api/v0/pages/*/properties": (request) => {
+      server.sent.push(`GET properties ${idOf(request)}`);
+      return json(server.properties.get(idOf(request)) ?? { valid: true, properties: [], links: [] });
     },
     [`GET /api/v0/notebooks/${notebookJSON.id}/tags/*`]: (request) => {
       const tag = decodeURIComponent(new URL(request.url).pathname.split("/")[6] ?? "");

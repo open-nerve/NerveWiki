@@ -17,7 +17,14 @@ import { SourceEditor, type SourceEditorHandle } from "./source-editor";
 
 afterEach(() => vi.useRealTimers());
 
-const context: EditorContext = { workspace: "lab", notebook: "n1", page: "p1", role: "editor" };
+const context: EditorContext = {
+  workspace: "lab",
+  notebook: "n1",
+  page: "p1",
+  role: "editor",
+  linkTargets: () => Promise.resolve([]),
+  tags: () => Promise.resolve([]),
+};
 
 /** The edit's session as the controls tell it, which the test loses; following counts its listeners. */
 function sessionState() {

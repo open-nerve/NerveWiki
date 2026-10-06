@@ -204,6 +204,8 @@ export const zhCN: Messages = {
   "editor.phrase.controlCharacter": "控制字符",
   "editor.phrase.selectionDeleted": "已删除选中的内容",
   "editor.phrase.unchangedLines": "$ 行未改动",
+  "editor.phrase.completions": "补全",
+  "editor.phrase.pages": "$ 页",
   "notebookSettings.title": "笔记本设置",
   "notebookSettings.heading": "{name} 的设置",
   "notebookSettings.general": "常规",

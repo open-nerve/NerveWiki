@@ -1,18 +1,23 @@
 import type { Extension } from "@codemirror/state";
 import { createContext } from "react";
 
+import type { LinkTarget, TagCount } from "../services/linking.service";
 import type { NotebookRole } from "../services/notebook.service";
 import { autosave } from "./autosave";
 import { idleExit } from "./idle-exit";
 import { lockReadOnly } from "./lock-read-only";
 
-/** EditorContext is the page an editor's extension is built for. */
+/** EditorContext is the page an editor's extension is built for, and what it may read of its notebook. */
 export type EditorContext = {
   /** The workspace's slug. */
   workspace: string;
   notebook: string;
   page: string;
   role: NotebookRole;
+  /** linkTargets reads what the notebook's links may lead to: its pages, each with its link and aliases (M6/P7 design 3). */
+  linkTargets(): Promise<readonly LinkTarget[]>;
+  /** tags reads the notebook's tags, each with how many pages have it. */
+  tags(): Promise<readonly TagCount[]>;
 };
 
 /**
@@ -86,10 +91,16 @@ export type EditorExtension = ReadyExtension | { name: string; load: () => Promi
 /**
  * editorExtensions is the registry: M5's read-only while the edit's
  * session is lost first, then its autosave and idle exit (M5/P5 design
- * 3.4, 3.5). The composition root gives it to the editor
+ * 3.4, 3.5), then M6's completion of links and tags, which it loads
+ * (M6/P7 design 4, 5). The composition root gives it to the editor
  * through EditorExtensions. This module, and the extensions it registers,
  * hold only types of CodeMirror, so that the main chunk does not load it.
  */
-export const editorExtensions: readonly EditorExtension[] = [lockReadOnly, autosave, idleExit];
+export const editorExtensions: readonly EditorExtension[] = [
+  lockReadOnly,
+  autosave,
+  idleExit,
+  { name: "linkCompletion", load: () => import("./loaded/link-completion").then((module) => module.linkCompletion) },
+];
 
 export const EditorExtensions = createContext<readonly EditorExtension[]>([]);

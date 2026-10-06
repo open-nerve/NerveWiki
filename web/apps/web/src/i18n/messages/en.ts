@@ -206,6 +206,8 @@ export const en = {
   "editor.phrase.controlCharacter": "Control character",
   "editor.phrase.selectionDeleted": "Selection deleted",
   "editor.phrase.unchangedLines": "$ unchanged lines",
+  "editor.phrase.completions": "Completions",
+  "editor.phrase.pages": "$ pages",
   "notebookSettings.title": "Notebook settings",
   "notebookSettings.heading": "{name} settings",
   "notebookSettings.general": "General",
