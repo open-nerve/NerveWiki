@@ -126,7 +126,11 @@ test("a diagram is drawn once it shows, in a wrapper of its own in the block's p
       suppressErrorRendering: true,
       maxTextSize: diagramLimit,
       maxEdges: edgeLimit,
-      dompurifyConfig: { FORBID_TAGS: ["style"], FORBID_ATTR: ["id"], ALLOW_DATA_ATTR: false },
+      dompurifyConfig: {
+        FORBID_TAGS: ["style", "form", "input", "button", "select", "option", "textarea"],
+        FORBID_ATTR: ["id"],
+        ALLOW_DATA_ATTR: false,
+      },
       secure: [
         "secure",
         "securityLevel",

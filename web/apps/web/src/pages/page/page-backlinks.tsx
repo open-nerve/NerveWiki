@@ -14,6 +14,7 @@ import type { BacklinkPage } from "../../services/linking.service";
 import type { Notebook } from "../../services/notebook.service";
 import { usePageTree } from "../../stores/context";
 import type { PageTreeStore } from "../../stores/page-tree.store";
+import { distinctName } from "../notebook/distinct-name";
 import { PanelSection } from "./panel-section";
 import { watchReader } from "./readers-input";
 
@@ -25,8 +26,9 @@ type Shown = { id: string; name: string; count: number; contexts: string[] };
 
 /**
  * PageBacklinks is the pages that link to the page (M6/P7 design 9), as the
- * link index has them, a page of them at a time: each by its title in the
- * notebook's tree, leading there, with how many of its links lead here
+ * link index has them, a page of them at a time: each by its name in the
+ * notebook's tree (its title, and where it is when another has the same),
+ * leading there, with how many of its links lead here
  * when more than one, and the lines of its first ones, as the server
  * writes them. One the tree does not have yet, made in another tab, shows
  * once the tree is read again. More reads the next page of them and adds
@@ -55,6 +57,7 @@ export const PageBacklinks = observer(function PageBacklinks({
   const { cache } = useSWRConfig();
   // A read reads as many pages as the list has, by the cache as it reads: what More added, the page come back to.
   const cached = () => cache.get(unstable_serialize(key));
+  const nameOf = (id: string) => distinctName(pages.tree, notebook, id, t);
   const { data, error, mutate } = useSWR(key, () =>
     readPages(pages, page, (cached()?.data as BacklinkPage[] | undefined)?.length ?? 1)
   );
@@ -105,7 +108,7 @@ export const PageBacklinks = observer(function PageBacklinks({
       if (mounted() && held && read?.at(-1) === next && next.next_cursor === null) {
         // More goes: the focus to the first page it added that shows, or the last that shows, or the title.
         const added = next.data.find(({ id }) => pages.byId(id) !== undefined);
-        setFocusing(added?.id ?? shownOf(pages, read).at(-1)?.id ?? null);
+        setFocusing(added?.id ?? shownOf(read, nameOf).at(-1)?.id ?? null);
       }
     } catch (failed) {
       if (mounted()) {
@@ -129,7 +132,7 @@ export const PageBacklinks = observer(function PageBacklinks({
       </PanelSection>
     );
   }
-  const shown = shownOf(pages, data);
+  const shown = shownOf(data, nameOf);
   const cursor = data.at(-1)?.next_cursor ?? undefined;
   return (
     <PanelSection title={t("page.backlinks")} summaryRef={summary}>
@@ -137,7 +140,7 @@ export const PageBacklinks = observer(function PageBacklinks({
         <p className="text-sm text-muted-foreground">{t("page.noBacklinks")}</p>
       )}
       {shown.length > 0 && (
-        <ul className="space-y-3 text-sm">
+        <ul aria-label={t("page.backlinks")} className="space-y-3 text-sm">
           {shown.map(({ id, name, count, contexts }) => (
             <li key={id} className="space-y-1">
               <div className="break-words">
@@ -196,14 +199,14 @@ async function readPages(pages: PageTreeStore, id: string, count: number): Promi
   return read;
 }
 
-/** shownOf is what the list shows of the pages read: those that link here the tree has, by their title. */
-function shownOf(pages: PageTreeStore, read: readonly BacklinkPage[]): Shown[] {
+/** shownOf is what the list shows of the pages read: those that link here the tree names, by that name. */
+function shownOf(read: readonly BacklinkPage[], nameOf: (id: string) => string | undefined): Shown[] {
   const shown: Shown[] = [];
   for (const { data: links } of read) {
     for (const { id, count, contexts } of links) {
-      const node = pages.byId(id);
-      if (node !== undefined) {
-        shown.push({ id, name: node.name, count, contexts });
+      const name = nameOf(id);
+      if (name !== undefined) {
+        shown.push({ id, name, count, contexts });
       }
     }
   }

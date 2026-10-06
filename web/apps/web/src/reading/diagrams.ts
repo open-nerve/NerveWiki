@@ -60,8 +60,10 @@ const whenShown: Watch = (element, see) => {
 /**
  * mermaid's options (M6 design 4.9): strict, its labels sanitized and no
  * script of the diagram's run, a label's HTML without a style element
- * (mermaid's own rule), an id, which could take an anchor of the page's,
- * nor a data attribute: the server's marks (data-task, data-nw-…) are the
+ * (mermaid's own rule), a form or its controls, which no label needs and
+ * the server takes out of a page's own HTML (a password asked for in a
+ * diagram), an id, which could take an anchor of the page's, nor a data
+ * attribute: the server's marks (data-task, data-nw-…) are the
  * enhancements' to act on, and a drawing kept is put before they run (a
  * label's link loses its target with them, which mermaid keeps in one: it
  * opens where it is, as the page's own do);
@@ -77,7 +79,11 @@ function options(theme: "light" | "dark"): MermaidConfig {
     suppressErrorRendering: true,
     maxTextSize: diagramLimit,
     maxEdges: edgeLimit,
-    dompurifyConfig: { FORBID_TAGS: ["style"], FORBID_ATTR: ["id"], ALLOW_DATA_ATTR: false },
+    dompurifyConfig: {
+      FORBID_TAGS: ["style", "form", "input", "button", "select", "option", "textarea"],
+      FORBID_ATTR: ["id"],
+      ALLOW_DATA_ATTR: false,
+    },
     secure: [
       "secure",
       "securityLevel",
