@@ -218,12 +218,18 @@ function scrolled(element: HTMLElement | null | undefined, top: number): () => n
   return () => at;
 }
 
-test("the view and what scrolls in it do not scroll down: an anchor's scroll, which a hidden overflow lets through, is undone", () => {
+test("the view and what scrolls in it do not scroll down: an anchor's scroll, which a hidden overflow lets through, is the window's", () => {
   observed();
   const { article, table } = view();
+  const scrolledBy: number[] = [];
+  vi.spyOn(window, "scrollBy").mockImplementation((_x?: unknown, y?: unknown) => {
+    scrolledBy.push(Number(y));
+  });
   const undo = scrollRegions(article, context);
 
   expect([scrolled(article, 16)(), scrolled(table, 14)()]).toEqual([0, 0]);
+  // The window takes it instead: what the scroll put in sight stays there.
+  expect(scrolledBy).toEqual([16, 14]);
   // Not the view's: a paragraph is let be.
   expect(scrolled(article.querySelector("p"), 3)()).toBe(3);
 

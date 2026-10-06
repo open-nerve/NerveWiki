@@ -155,7 +155,9 @@ test("L4 (page): what a writer's formulas and diagrams could do to a reader's pa
     "",
     "# Far",
     "",
-    String.raw`The last $\smash[b]{\underbrace{x}_{y}}$ reaches past the view.`,
+    ...Array.from({ length: 12 }, (_, i) => `After the heading, ${i}.\n`),
+    // Its rule reaches 50em past the view's bottom, which hides it.
+    String.raw`The last $\smash[b]{\rule[-50em]{1pt}{1pt}}$ reaches past the view.`,
     "",
   ].join("\n");
   const wide = await createPage(api, pat, notebook.id, "Wide", null, content);
@@ -232,10 +234,13 @@ test("L4 (page): what a writer's formulas and diagrams could do to a reader's pa
   await page.mouse.wheel(0, 100);
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(before);
   expect(await wrapper.evaluate((element) => element.scrollTop)).toBe(0);
-  // An anchor's scroll, which a hidden overflow lets through, leaves the view where it was: its top in sight.
+  // An anchor's scroll, which a hidden overflow lets through, leaves the view where it was, its top in sight; the
+  // window scrolls instead, the heading in sight.
   await article.getByRole("link", { name: "far", exact: true }).click();
-  await expect(article.getByRole("heading", { name: "Far", exact: true })).toBeFocused();
+  const far = article.getByRole("heading", { name: "Far", exact: true });
+  await expect(far).toBeFocused();
   await expect.poll(() => article.evaluate((view) => view.scrollTop)).toBe(0);
+  await expect(far).toBeInViewport();
 
   // What is wide without a region of its own scrolls in the view, which takes the focus, not the page.
   await expect(article).toHaveAttribute("tabindex", "0");

@@ -24,7 +24,8 @@ const scrolling = ".nw-scroll, pre, span.nw-math-block";
  * scrolls down: a formula's strut past a bottom would take the wheel
  * (reading.css hides it), and what scrolls a hidden overflow still (an
  * anchor's scrollIntoView, the browser's find) would leave it where the
- * reader cannot scroll back. Such a scroll is undone as it comes.
+ * reader cannot scroll back. Such a scroll is undone as it comes, and the
+ * window scrolls as far instead.
  */
 export const scrollRegions: Enhancement = (container, { t }) => {
   const followed = new Set<HTMLElement>();
@@ -89,11 +90,14 @@ export const scrollRegions: Enhancement = (container, { t }) => {
     }
   });
   changed.observe(container, { childList: true, subtree: true });
-  // A scroll does not bubble: it is heard on its way down.
+  // A scroll does not bubble: it is heard on its way down. The window, which scrolls the view down, takes what the
+  // view or a region took: what an anchor's scroll put in sight stays there.
   const level = (event: Event) => {
     const scroller = event.target;
     if (scroller instanceof HTMLElement && followed.has(scroller) && scroller.scrollTop !== 0) {
+      const by = scroller.scrollTop;
       scroller.scrollTop = 0;
+      window.scrollBy(0, by);
     }
   };
   container.addEventListener("scroll", level, { capture: true });
