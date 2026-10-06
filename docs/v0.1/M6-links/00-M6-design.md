@@ -370,7 +370,7 @@ linking 注册为写入单元的参与者，在改名与移动之后调用（`Pa
   - 增强按 `ReadingContext` 的工作区、笔记本写出应用内的地址，点击经路由跳转；
   - 修饰键与中键照浏览器的默认行为，地址是真的；
   - 普通 Markdown 的本站完整地址同样经路由跳转（[M4/P3 移交](handoffs/M4-P3-markdown-extensions.md)第 11 项，P6）；解析不到的笔记本内路径不当作本站链接。
-- 解析不到的链接由增强给 `role="button"` 与 `tabindex="0"`，键盘可以聚焦与触发（P6）：
+- 解析不到的链接由增强给 `role="button"`、`tabindex="0"` 与 `aria-haspopup="dialog"`，键盘可以聚焦与触发（Enter 按下时，空格在同一条链接上抬起时；P6）：
   - 能写的人：问"新建页面「x」？"，点击时由服务端用同一个解析器算出落点（第 11 节第 2 项），确认之后在那里新建并打开；没有落点的（目标不合法、不是合法标题、路径的父页不存在、太深、新建之后也解析不到），说明页面不存在。落点不写进 HTML：它变了不改任何解析、不发事件，写进去会过时（P3 B）。落点的接口 `getLinkLanding` 只给写者（`link_landing.read`，读者 403），规则见 [P6 文档](06-P6-reading-view.md)第 2 节；
   - 只能读的人：说明页面不存在。
 
@@ -386,12 +386,20 @@ linking 注册为写入单元的参与者，在改名与移动之后调用（`Pa
   - KaTeX 以 `trust: false` 渲染，设 `maxSize`、`maxExpand`；
   - mermaid 用 `securityLevel: 'strict'`，设 `maxTextSize`、`maxEdges`；
   - 超出或出错时显示原文。
-- mermaid 只能在主线程渲染：图在可见时才渲染，一页至多同时一张。
-- CSP 现在的 `style-src 'self' 'unsafe-inline'` 与 `font-src 'self' data:` 应当已经容纳它们。P6 在 CSP 下实测，不放宽 `script-src`，结果写进总体设计 4.6（"具体写法在 M6 确定"）。
+- 这些上限不够（P6 B 的审查与修复核对，[P6 文档](06-P6-reading-view.md)第 10 节）。几十个字节的公式就能让读者的标签页卡住几十秒或崩溃，所以另有：
+  - 定义宏的公式不排（`maxExpand` 只数展开的次数）；
+  - KaTeX 打补丁，限住 `alignedat` 的列数；
+  - 排出的元素至多嵌套 150 层（Chromium 的布局约 800 层崩溃，远在这之前布局已要几秒）；
+  - 每个任务排 50 毫秒，连布局一起算；每个公式在流外单独布局，视图的公式布局至多 1 秒（缩放、打印时它们一起重新布局），之后的显示原文；
+  - 重读时视图排过的公式立即放回，高度不变：工作区的侧栏不作窗口的滚动锚点之后，锚点在页面里，重读前后高度一变就会把读者看的移开；
+  - mindmap 至多 150 行（它的布局比节点增长得快；行按 JavaScript 的行尾数）；
+  - mermaid 标签里的公式经同一道拦截与选项（`guardLabels`），标签的 HTML 不留 `id`、`data-*`。
+- mermaid 只能在主线程渲染：图在可见时才渲染，各视图一共同时一张。换主题时图在原来的包装里重画（`ReadingContext.onThemeChange`），视图不重新增强。
+- CSP 现在的 `style-src 'self' 'unsafe-inline'` 与 `font-src 'self' data:` 已经容纳它们：P6 在生产的 CSP 下实测，不放宽 `script-src`，CSP 不改，结果写进总体设计 4.6。
 
 **宽的内容**
 
-- 表格、块公式与属性表由渲染器包一层 `<div class="nw-scroll">`（P6 A），横向滚动从整个阅读视图移到这一层（P6 B）。
+- 表格、块公式与属性表由渲染器包一层 `<div class="nw-scroll">`（P6 A），横向滚动从整个阅读视图移到这一层（P6 B）。没有自己一层的宽内容（用户自写 HTML 的表格、行内很长的公式）仍在文章里横向滚动；文章溢出时可以聚焦，并裁掉公式画到外面的部分（P6 B）。
 - mermaid 图由增强包同样的一层。
 - 服务端不写 `tabindex`：不知道是否溢出。溢出时由前端的增强给 `tabindex`、`role` 与可访问的名称，可聚焦的代码块一起补（M4 收尾的修复核对 MN-3；P6 B）。
 
@@ -454,7 +462,7 @@ linking 注册为写入单元的参与者，在改名与移动之后调用（`Pa
 
 - 现在的编辑器扩展（`editor/registry.ts`）同步返回 CodeMirror 的扩展，注册表与它登记的模块由 `main.tsx` 静态导入，只许引用 CodeMirror 的类型。
   - M5 的三个扩展都只经 `controls` 做事，所以不受影响；
-  - 补全却要构造运行时的对象（`autocompletion`、`syntaxTree`）。一导入，`@codemirror/*` 就进了主 chunk，`build/editor-out-of-main.ts` 让构建失败。
+  - 补全却要构造运行时的对象（`autocompletion`、`syntaxTree`）。一导入，`@codemirror/*` 就进了主 chunk，构建检查让构建失败（`build/editor-out-of-main.ts`，P6 B 起是 `build/out-of-main.ts`，编辑器、KaTeX、mermaid 一起查）。
 - 所以 `EditorExtension` 可以带 `load: () => import("…")`：
   - 它指向的模块在编辑器的 chunk 里，可以导入 CodeMirror 的运行时值；
   - 编辑器在创建视图之前等这些模块载入，再组合；
@@ -641,7 +649,7 @@ M6 写出的移交（P3、P4 合并时落档）：
 | P3 | 索引与解析 | 已完成（2026-10-05，A `b802987`，B `23ce06e`） | [03-P3-index.md](03-P3-index.md) | A：[P3A-index-review.md](reviews/P3A-index-review.md)；B：[P3B-render-review.md](reviews/P3B-render-review.md) |
 | P4 | 链接改写 | 已完成（2026-10-05，`4646495`） | [04-P4-rewrite.md](04-P4-rewrite.md) | [P4-rewrite-review.md](reviews/P4-rewrite-review.md) |
 | P5 | 接口 | 已完成（2026-10-06，`1f3daf8`） | [05-P5-api.md](05-P5-api.md) | [P5-api-review.md](reviews/P5-api-review.md) |
-| P6 | 阅读视图 | A 已完成（2026-10-06，`4181768`）；B 未开始 | [06-P6-reading-view.md](06-P6-reading-view.md) | A：[P6A-reading-server-review.md](reviews/P6A-reading-server-review.md) |
+| P6 | 阅读视图 | 已完成（2026-10-06，A `4181768`，B `ccfc395`） | [06-P6-reading-view.md](06-P6-reading-view.md) | A：[P6A-reading-server-review.md](reviews/P6A-reading-server-review.md)；B：[P6B-reading-front-review.md](reviews/P6B-reading-front-review.md) |
 | P7 | 编辑器与右栏（前端） | 未开始 | — | — |
 
 ## 13. 变更记录
@@ -655,3 +663,4 @@ M6 写出的移交（P3、P4 合并时落档）：
 | 2026-10-05 | P4 定稿：改写的判定、写法与读回（4.6 第 1–3 项），预检只查要改写的页、守卫之后的重查（4.6 第 4 项）；参与者逐页不排队地取预算（4.7） | [P4 文档](04-P4-rewrite.md)、[P4 审查](reviews/P4-rewrite-review.md) |
 | 2026-10-06 | P5 定稿：反链的一项、分页、计数的上限、上下文的规则与没有上下文的情形；补全的 `link` 是 P4 的三种写法，不总是最短；属性链接的 `key`（4.11）；接口的回答（第 5 节）；一页至多 1000 个标签与别名（P3 文档 3.2） | [P5 文档](05-P5-api.md)、[P5 审查](reviews/P5-api-review.md) |
 | 2026-10-06 | P6 A 定稿：Phase 表的 P6 分 A（服务端）、B（前端）；没有落点的原因、落点只给写者；标签链接的写法与 `<span>` 的情形；属性表里的链接按值的身份对齐；`[t](#h)` 的地址；表格、块公式与属性表由服务端包，`tabindex` 由前端按溢出给（4.9）；属性表的钩子、`Linker` 按节点问、移进核心的函数（第 8 节） | [P6 文档](06-P6-reading-view.md)、[P6A 审查](reviews/P6A-reading-server-review.md) |
+| 2026-10-06 | P6 B 定稿：KaTeX、mermaid 另加的上限（定义宏的公式不排、KaTeX 的补丁、嵌套的上限、按时间分批、流外布局与布局的预算、标签里的公式与标签的净化）、换主题原地重画、CSP 不改、重读时公式立即放回；文章兜底横向滚动，侧栏不作滚动锚点；未建链接的键盘（4.9）；构建检查改名（4.13） | [P6 文档](06-P6-reading-view.md)第 10 节、[P6B 审查](reviews/P6B-reading-front-review.md) |
