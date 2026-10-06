@@ -15,7 +15,7 @@ import { useT } from "../../i18n/i18n";
 import { usePageTree, useStore } from "../../stores/context";
 import { useWorkspace } from "../workspace/workspace-layout";
 import { usePageView } from "./page-view";
-import { readersInput } from "./readers-input";
+import { watchReader } from "./readers-input";
 import { useUnresolvedLinks } from "./unresolved-link";
 
 /**
@@ -233,17 +233,13 @@ export const ReadingView = observer(function ReadingView({
     if (cached.current) {
       // Once per page: the wait ends with this read, at the next navigation, or as the reader does something. Not as
       // the view goes: StrictMode's second mount would end it at once; the page left, its read settling ends it.
+      const reader = watchReader({ acts: () => end() });
       const end = () => {
-        for (const type of readersInput) {
-          window.removeEventListener(type, end, true);
-        }
+        reader.end();
         if (awaited.current?.end === end) {
           awaited.current = undefined;
         }
       };
-      for (const type of readersInput) {
-        window.addEventListener(type, end, { capture: true, passive: true });
-      }
       awaited.current = { focus: document.activeElement, end };
       void mutate().finally(end);
     }

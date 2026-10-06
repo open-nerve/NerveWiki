@@ -138,12 +138,13 @@ function placeOf({ state, pos, view }: CompletionContext): Place | undefined {
     return undefined;
   }
   const at = nodesAt(state, pos);
-  const frontmatter = inFrontmatter(state, pos);
-  // The editor parses a frontmatter as Markdown, which its YAML is not: no code nor raw HTML there.
-  if (!frontmatter && at.some((name) => raw.has(name))) {
+  const frontmatter = frontmatterAt(state, pos);
+  // The editor parses a frontmatter as Markdown, which its YAML is not: no code, raw HTML nor table in one closed,
+  // which the server reads as YAML. One being written is the body's until it is closed: its code is code.
+  if (frontmatter !== "closed" && at.some((name) => raw.has(name))) {
     return undefined;
   }
-  return { table: at.includes("Table"), frontmatter };
+  return { table: frontmatter === undefined && at.includes("Table"), frontmatter: frontmatter !== undefined };
 }
 
 /** nodesAt is the names of the syntax nodes pos is in, from the innermost out. */
@@ -157,32 +158,32 @@ function nodesAt(state: EditorState, pos: number): string[] {
 }
 
 /**
- * inFrontmatter tells whether pos is in the content's frontmatter, as the
- * server's frontmatterSpan finds it: a first line "---", up to a later
- * line "---" ("..." closes nothing). The content the editor loads has
- * no byte order mark (line-breaks.ts); one pasted at its start is not
+ * frontmatterAt tells whether pos is in the content's frontmatter, as the
+ * server's frontmatterSpan finds it ("closed"): a first line "---", up to
+ * a later line "---" ("..." closes nothing). The content the editor loads
+ * has no byte order mark (line-breaks.ts); one pasted at its start is not
  * looked for (accepted). One not closed, which the server reads as the
- * body until it is, is one being written as far as a blank line: a
- * link or a tag written there as the body's would be nothing once it is
- * closed.
+ * body until it is, is one being written ("open") as far as a blank
+ * line: a link or a tag written there as the body's would be nothing
+ * once it is closed.
  */
-function inFrontmatter(state: EditorState, pos: number): boolean {
+function frontmatterAt(state: EditorState, pos: number): "closed" | "open" | undefined {
   const { doc } = state;
   const at = doc.lineAt(pos).number;
   if (at === 1 || doc.line(1).text !== "---") {
-    return false;
+    return undefined;
   }
   let empty: number | undefined;
   for (let n = 2; n <= doc.lines; n++) {
     const { text } = doc.line(n);
     if (text === "---") {
-      return at < n;
+      return at < n ? "closed" : undefined;
     }
     if (empty === undefined && /^[ \t]*$/.test(text)) {
       empty = n;
     }
   }
-  return at < (empty ?? doc.lines + 1);
+  return at < (empty ?? doc.lines + 1) ? "open" : undefined;
 }
 
 /**

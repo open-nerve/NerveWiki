@@ -85,3 +85,32 @@ test("L6 (page): the right column's outline goes to a heading, one in a folded c
   await expect(backlinks.getByText("Meet at [[Hub]] today", { exact: true })).toBeVisible();
   expect(await page.evaluate(() => "notReloaded" in window)).toBe(true);
 });
+
+test("L6 (page, keyboard): the last More adds the next page of backlinks and takes the focus to the first it adds, in view, without a scroll", async ({
+  api,
+  signedInPage,
+}, testInfo) => {
+  const { pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
+  const notebook = await createNotebook(api, pat, workspace.slug, "Plans");
+  const hub = await createPage(api, pat, notebook.id, "Hub");
+  // One more than a page of backlinks (50), made in order: the list is by id.
+  for (let n = 1; n <= 51; n++) {
+    // oxlint-disable-next-line no-await-in-loop -- one after another, in order
+    await createPage(api, pat, notebook.id, `P${String(n).padStart(2, "0")}`, null, "See [[Hub]]\n");
+  }
+  const page = await signedInPage(tokens);
+  await page.goto(wikiPagePath(workspace.slug, notebook.id, hub.id));
+  const panel = page.getByRole("complementary", { name: "About this page", exact: true });
+  const backlinks = panel.locator("details", { has: page.getByText("Backlinks", { exact: true }) });
+  await expect(backlinks.getByRole("link")).toHaveCount(50);
+
+  const more = backlinks.getByRole("button", { name: "More backlinks", exact: true });
+  await more.focus();
+  const scrolled = await page.evaluate(() => window.scrollY);
+  await page.keyboard.press("Enter");
+  const added = backlinks.getByRole("link", { name: "P51", exact: true });
+  await expect(added).toBeFocused();
+  await expect(more).toHaveCount(0);
+  await expect(added).toBeInViewport();
+  expect(await page.evaluate(() => window.scrollY)).toBe(scrolled);
+});

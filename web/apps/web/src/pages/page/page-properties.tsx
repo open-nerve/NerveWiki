@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 import { Link } from "react-router";
 import useSWR from "swr";
 
@@ -12,6 +12,9 @@ import { PanelSection } from "./panel-section";
 
 /** A value as the properties show it: text, or a property link's text and the page it leads to (null: none). */
 type Shown = string | { text: string; lead: string | null };
+
+/** A property as shown: its key, and its value, or its list's items, as shown. */
+type Row = { key: string; shown: Shown | Shown[] };
 
 /** Take answers where the property link a string at path is leads (null: no page), undefined when it is none. */
 type Take = (value: string, path: string) => string | null | undefined;
@@ -36,6 +39,8 @@ export function PageProperties({
   const t = useT();
   const pages = usePageTree(notebook);
   const { data, error, mutate } = useSWR(["page-properties", notebook.id, page], () => pages.properties(page));
+  // Once for each answer, not at each render: the page's edit renders the column as it goes.
+  const rows = useMemo(() => (data?.valid === true ? rowsOf(data) : []), [data]);
   let shown: ReactNode;
   if (data === undefined) {
     shown = (
@@ -48,22 +53,21 @@ export function PageProperties({
   } else if (data.properties.length === 0) {
     shown = <p className="text-sm text-muted-foreground">{t("page.noProperties")}</p>;
   } else {
-    const take = taking(data);
     shown = (
       <dl className="space-y-2 text-sm">
-        {data.properties.map(({ key, value }) => (
+        {rows.map(({ key, shown: value }) => (
           <div key={key}>
             <dt className="break-words text-muted-foreground">{key}</dt>
             <dd className="break-words">
               {Array.isArray(value) ? (
                 <ul>
-                  {value.map((item: unknown, at) => (
+                  {value.map((item, at) => (
                     // oxlint-disable-next-line react/no-array-index-key -- a list's items may repeat: by where they are
-                    <li key={at}>{show(shownOf(item, `${key}.${at}`, take), href)}</li>
+                    <li key={at}>{show(item, href)}</li>
                   ))}
                 </ul>
               ) : (
-                show(shownOf(value, key, take), href)
+                show(value, href)
               )}
             </dd>
           </div>
@@ -74,13 +78,25 @@ export function PageProperties({
   return <PanelSection title={t("page.properties")}>{shown}</PanelSection>;
 }
 
+/** rowsOf is each property as shown, its property links taken (taking). */
+function rowsOf(data: Properties): Row[] {
+  const take = taking(data);
+  return data.properties.map(({ key, value }) => ({
+    key,
+    shown: Array.isArray(value)
+      ? value.map((item: unknown, at) => shownOf(item, `${key}.${at}`, take))
+      : shownOf(value, key, take),
+  }));
+}
+
 /**
  * taking takes the property links by their paths, each path's in the order
  * written. A string at a path no other string is at has its path's link,
  * as the server pairs them. A path two share (a key "a.0", a list a's
  * first item) has its links theirs in turn, as the values are read in the
- * order written (M6 design 4.9 aligns the table's by the values for this):
- * there one takes a link if it has a link's shape.
+ * order written (an object's only hold their places: M6 design 4.9 aligns
+ * the table's by the values for this): there one takes a link if it has a
+ * link's shape.
  */
 function taking({ properties, links }: Properties): Take {
   const byPath = new Map<string, (string | null)[]>();
@@ -92,17 +108,27 @@ function taking({ properties, links }: Properties): Take {
       queue.push(node ?? null);
     }
   }
-  const shared = sharedPaths(properties);
-  return (value, path) => (shared.has(path) && !linkLike(value) ? undefined : byPath.get(path)?.shift());
+  const shared = sharedPaths(properties, byPath);
+  return (value, path) => {
+    const queue = byPath.get(path);
+    return queue === undefined || (shared.has(path) && !linkLike(value)) ? undefined : queue.shift();
+  };
 }
 
-/** sharedPaths are the paths two strings or more of properties are at, as shownOf goes through them. */
-function sharedPaths(properties: Properties["properties"]): Set<string> {
+/**
+ * sharedPaths are the paths of links two strings or more of properties are
+ * at, as shownOf goes through them. Only a link's path is kept: what a set
+ * of the paths of all would cost is the square of their number where many
+ * are long (V8 hashes a string that long by its length).
+ */
+function sharedPaths(properties: Properties["properties"], linked: ReadonlyMap<string, unknown>): Set<string> {
   const seen = new Set<string>();
   const shared = new Set<string>();
   const visit = (value: unknown, path: string) => {
     if (typeof value === "string") {
-      (seen.has(path) ? shared : seen).add(path);
+      if (linked.has(path)) {
+        (seen.has(path) ? shared : seen).add(path);
+      }
     } else if (Array.isArray(value)) {
       value.forEach((item: unknown, at) => visit(item, `${path}.${at}`));
     } else if (typeof value === "object" && value !== null) {

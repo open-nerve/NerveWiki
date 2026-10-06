@@ -6,6 +6,7 @@ import { json, problem } from "../../test/fakes";
 import { pageEditor } from "../../test/page-editor";
 import { guide, install, linux, notes, pageNode, pagePath, pageServer } from "../../test/page-server";
 import { renderApp } from "../../test/render";
+import { readersInput } from "./readers-input";
 
 // The page's right column (M6/P7 design 7–10).
 
@@ -360,10 +361,65 @@ test("a last more clicked as Safari does, which gives More no focus, takes the f
   await waitFor(() => expect(document.activeElement).toBe(addedPage));
   expect(focus).toHaveBeenLastCalledWith({ preventScroll: true });
   // What the reader did as More read is watched no more.
-  const wheel = (spy: typeof added | typeof removed) =>
-    spy.mock.calls.filter(([type]) => type === "wheel").map(([, listener]) => listener);
-  expect(wheel(added)).toHaveLength(1);
-  expect(wheel(removed)).toEqual(wheel(added));
+  for (const type of readersInput) {
+    const of = (spy: typeof added | typeof removed) =>
+      spy.mock.calls.filter(([each]) => each === type).map(([, listener]) => listener);
+    expect(of(added)).toHaveLength(1);
+    expect(of(removed)).toEqual(of(added));
+  }
+});
+
+test("More pressed again as it reads, a key on it or a double click, is no move elsewhere: the last takes the focus to the first page it adds", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
+  for (const press of [
+    async (more: HTMLElement, held: { answer: (() => void) | undefined }) => {
+      more.focus();
+      await user.keyboard("{Enter}");
+      await waitFor(() => expect(held.answer).toBeDefined());
+      await user.keyboard("{Enter}");
+    },
+    async (more: HTMLElement, held: { answer: (() => void) | undefined }) => {
+      await user.dblClick(more);
+      await waitFor(() => expect(held.answer).toBeDefined());
+    },
+  ]) {
+    const { server, held } = heldMore();
+    const { unmount } = renderApp(pagePath(install.id), server.app);
+    // oxlint-disable-next-line no-await-in-loop -- one app after another
+    const more = await within(await shownPanel()).findByRole("button", { name: "More backlinks" });
+    // oxlint-disable-next-line no-await-in-loop -- one app after another
+    await press(more, held);
+    held.answer?.();
+    // oxlint-disable-next-line no-await-in-loop -- one app after another
+    const added = await within(section("Backlinks")).findByRole("link", { name: "Notes" });
+    // oxlint-disable-next-line no-await-in-loop -- one app after another
+    await waitFor(() => expect(document.activeElement).toBe(added));
+    unmount();
+  }
+});
+
+test("the focus the reader moves as the list grows stays where they put it", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
+  const { server, held } = heldMore();
+  renderApp(pagePath(install.id), server.app);
+  const guideLink = await within(await shownPanel()).findByRole("link", { name: "Guide" });
+  within(section("Backlinks")).getByRole("button", { name: "More backlinks" }).focus();
+  await user.keyboard("{Enter}");
+  await waitFor(() => expect(held.answer).toBeDefined());
+  // As the list shows Notes, before the focus would fall there, the reader goes to Guide.
+  const observer = new MutationObserver(() => {
+    if (section("Backlinks").textContent?.includes("Notes") && document.activeElement !== guideLink) {
+      guideLink.focus();
+      observer.disconnect();
+    }
+  });
+  observer.observe(section("Backlinks"), { childList: true, subtree: true });
+  held.answer?.();
+  await within(section("Backlinks")).findByRole("link", { name: "Notes" });
+  await act(() => vi.advanceTimersByTimeAsync(50));
+  expect(document.activeElement).toBe(guideLink);
 });
 
 test("a more answered after the page was left and come back to stays in the list, which reads it again with it", async () => {
@@ -814,8 +870,10 @@ test("a value at a path of its own has the path's link, whatever its shape: the 
   expect(properties().at(-1)).toEqual(["plain", "[WIP]"]);
 });
 
-test("a long value costs a time as long: one that is no link at a path two share, a wikilink with long parts", async () => {
-  const spaces = " ".repeat(1 << 17);
+test("a property costs a time as long as it: a long value that is no link at a path two share, a wikilink with long parts, many strings at long paths", async () => {
+  const spaces = " ".repeat(1 << 18);
+  // Strings at paths as long as V8 hashes by their length alone.
+  const many = Array.from({ length: 5_000 }, () => "x");
   const server = pageServer();
   server.properties.set(install.id, {
     valid: true,
@@ -823,6 +881,7 @@ test("a long value costs a time as long: one that is no link at a path two share
       { key: "a.0", value: `[a](${spaces}x y)` },
       { key: "a", value: ["[[Guide]]"] },
       { key: "b", value: `[[Notes${spaces}x]]` },
+      { key: "k".repeat(17_000), value: [many] },
     ],
     links: [
       { key: "a.0", node_id: guide.id },
@@ -834,4 +893,47 @@ test("a long value costs a time as long: one that is no link at a path two share
 
   await within(await shownPanel()).findByRole("link", { name: "Guide" });
   expect(performance.now() - started).toBeLessThan(3_000);
+});
+
+test("a path's strings are counted alone, in objects and lists' lists too, numbers not; a wikilink's parts lose their tabs", async () => {
+  const server = pageServer();
+  server.properties.set(install.id, {
+    valid: true,
+    properties: [
+      // A number at the path of a list's item: the item is the only string there, whatever its shape.
+      { key: "a.0", value: 5 },
+      { key: "a", value: ["[Spec [v2]](Guide)"] },
+      // An object's string and a key's at one path, a list's list's and a key's: the shape tells.
+      { key: "m", value: { x: "plain" } },
+      { key: "m.x", value: "[[Notes]]" },
+      { key: "e", value: [["plain"]] },
+      { key: "e.0.0", value: "[[Linux]]" },
+      { key: "t", value: "[[\tGuide\t]]" },
+    ],
+    links: [
+      { key: "a.0", node_id: guide.id },
+      { key: "m.x", node_id: notes.id },
+      { key: "e.0.0", node_id: linux.id },
+      { key: "t", node_id: guide.id },
+    ],
+  });
+  renderApp(pagePath(install.id), server.app);
+
+  await within(await shownPanel()).findByRole("link", { name: "Spec [v2]" });
+  expect(properties()).toEqual([
+    ["a.0", "5"],
+    ["a", "Spec [v2]"],
+    ["m", '{"x":"plain"}'],
+    ["m.x", "Notes"],
+    ["e", '["plain"]'],
+    ["e.0.0", "Linux"],
+    ["t", "Guide"],
+  ]);
+  const links = within(section("Properties")).getAllByRole("link");
+  expect(links.map((link) => link.getAttribute("href"))).toEqual([
+    pagePath(guide.id),
+    pagePath(notes.id),
+    pagePath(linux.id),
+    pagePath(guide.id),
+  ]);
 });

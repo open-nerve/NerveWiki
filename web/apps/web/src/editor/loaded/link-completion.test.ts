@@ -423,12 +423,24 @@ test("in a frontmatter, as the server finds it, a link completes in quotes, as a
     ["---\nup: ‸", "[[Pla"],
     ["---\ntags: ‸\nup: x", "#pro"],
     ["---\nup: x\n...\n‸", "[[Pla"],
+    // Code in one being written is the body's code until it is closed.
+    ["---\n```js\nconst a = ‸", '"[[Pla'],
   ]) {
     const { view } = editingAt(doc ?? "");
     type(view, typed ?? "");
     // oxlint-disable-next-line no-await-in-loop -- one editor after another
     await none(view);
   }
+});
+
+test("in a frontmatter a table the editor finds in a block's text is none: an alias is written with |, as YAML takes it", async () => {
+  const { view } = editingAt("---\nnote: |\n  intro\n\n  | a | b |\n  | - | - |\nup: ‸\n\nx: y\n---");
+  type(view, '"[[Road');
+  await opened(view);
+  await pick(view, "Roadmap");
+  expect(view.state.doc.toString()).toBe(
+    '---\nnote: |\n  intro\n\n  | a | b |\n  | - | - |\nup: "[[Plans|Roadmap]]\n\nx: y\n---'
+  );
 });
 
 test("what the server reads as no frontmatter completes as the body does: one not closed after its first blank line, one opened by '--- ', after one, an empty one too", async () => {
