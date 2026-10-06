@@ -36,10 +36,12 @@ const markdownHighlight = HighlightStyle.define([
  * square of their length. 96 KB of spaces took 5.6 s to enter the edit, in
  * one task a writer's content alone decides (M6 closeout B-I1, FB-I2,
  * FB2-I1). At the limit the costliest takes about 80 ms. A paragraph that
- * may be a link reference definition stops being one at the limit too:
- * each of its lines read it again from its start, and a JSON array pasted
- * as text, 20,000 lines, took 0.74 s a keystroke (FB3-I1). A table keeps
- * its rows and cells, each cell bounded alone: link completion needs them.
+ * may be a link reference definition stops being one once its lines before
+ * the next pass the limit (one of one line, or whose last line crosses it,
+ * stays one): each of its lines read it again from its start, and a JSON
+ * array pasted as text, 20,000 lines, took 0.74 s a keystroke (FB3-I1,
+ * FB4-N1). A table keeps its rows and cells, each cell bounded alone: link
+ * completion needs them.
  */
 export const inlineLimit = 10_000;
 
@@ -90,6 +92,8 @@ const bounded: MarkdownConfig = {
   ],
   parseInline: [
     {
+      // Before every parser that takes a mark: after emphasis's or code's, a
+      // paragraph of their marks alone would never reach it (M6 closeout FB4-N2).
       name: "LongInlineAsText",
       before: "Escape",
       parse: (cx) => (cx.end - cx.offset > inlineLimit ? cx.end : -1),
@@ -99,7 +103,11 @@ const bounded: MarkdownConfig = {
 
 /**
  * markdownEditor is markdownLanguage with bounded: of its data,
- * so that what asks for markdownLanguage (its commands) finds it.
+ * so that what asks for markdownLanguage (its commands) finds it. Whether a
+ * paragraph's line heads a table, lezer matched the next line with a
+ * pattern that cost the square of its leading spaces, past either bound: a
+ * patch of @lezer/markdown has it take them one way (pnpm-workspace.yaml,
+ * M6 closeout FB4-I1).
  */
 const markdownEditor = new Language(
   markdownLanguage.data,

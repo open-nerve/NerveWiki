@@ -85,6 +85,8 @@ const costly: [string, (length: number) => string][] = [
   ],
   ["nested emphasis", (length) => "*a ".repeat(length / 6) + "b* ".repeat(length / 6)],
   ["nested brackets", (length) => "[".repeat(length / 2) + "]".repeat(length / 2)],
+  // Each of its marks begins what an inline parser after the limit's takes (M6 closeout FB4-N2).
+  ["marks of emphasis and code only", (length) => "*`*`".repeat(length / 4)],
 ];
 
 /** parsed is how long the editor takes to parse doc whole, in ms. */
@@ -131,11 +133,18 @@ test("lists in lists, quotes in quotes are read to blockDepth; past it the rest 
   expect(count(`${"> ".repeat(blockDepth + 10)}a`, "Blockquote")).toBe(blockDepth - 1);
 });
 
+/** A link reference definition whose title ends on its second line, its first before characters long. */
+const ending = (before: number) => `[a]: http://x "${"t".repeat(before - 15)}\nt"\n\ntext`;
+
 test("a link reference definition is one up to inlineLimit, over lines too; one still open past it is plain text; a table past it keeps its rows and cells", () => {
   expect(count('[a]: http://x "t"\n\ntext', "LinkReference")).toBe(1);
   expect(count('[a]:\n  http://x\n  "t"', "LinkReference")).toBe(1);
   const open = `[a]: http://x "${"t\n".repeat(inlineLimit / 2)}"`;
   expect([count(open, "LinkReference"), count(open, "Paragraph")]).toEqual([0, 1]);
+  // Its lines are counted before the next is read: the line that ends it may cross the limit (M6 closeout FB4-N1).
+  expect(count(ending(inlineLimit), "LinkReference")).toBe(1);
+  expect(count(ending(inlineLimit + 1), "LinkReference")).toBe(0);
+  expect(count(`[a]: http://x "${"t".repeat(2 * inlineLimit)}"\n\ntext`, "LinkReference")).toBe(1);
   const rows = Array.from({ length: 1_000 }, (_, i) => `| [a](b) | ${i} |`);
   const table = ["| x | y |", "|---|---|", ...rows].join("\n");
   expect(table.length).toBeGreaterThan(inlineLimit);
@@ -174,6 +183,33 @@ test.each<[string, (length: number) => string]>([
 test("a table of 10,000 rows is parsed in a time as long as it", () => {
   const rows = Array.from({ length: 10_000 }, (_, i) => `| row ${i} | [link](http://a.b/${i}) | **b** *e* \`c\` |`);
   expect(parsed(["| x | y | z |", "|---|---|---|", ...rows].join("\n"))).toBeLessThan(1_000);
+});
+
+test("a paragraph's line with a pipe heads a table when the next is a row of dashes, in a quote and indented too", () => {
+  for (const doc of [
+    "a\nb | c\n--|--\nd | e",
+    "a\nb | c\n   :--|--:\nd | e",
+    "> a\n> b | c\n>  | --- | --- |\n> d | e",
+    "- a\n  b | c\n  --|--\n  d | e",
+  ]) {
+    expect([count(doc, "Table"), count(doc, "TableRow")], doc).toEqual([1, 1]);
+  }
+  expect(count("a\nb | c\n--|--|--\nd | e", "Table")).toBe(0);
+  expect(count("a\nb | c\n-- x|--\nd | e", "Table")).toBe(0);
+});
+
+// Whether a paragraph's line with a pipe heads a table, lezer matched the next line whole with a pattern that tried
+// its leading spaces every way: 80,000 spaces took 4.3 s to enter the edit and as long a keystroke (M6 closeout
+// FB4-I1). The patch of @lezer/markdown has it take them one way.
+test.each<[string, (length: number) => string]>([
+  ["spaces", (length) => `a\nb|c\n${" ".repeat(length)}x`],
+  ["spaces only", (length) => `a\nb|c\n${" ".repeat(length)}`],
+  ["tabs", (length) => `a\nb|c\n${"\t".repeat(length)}x`],
+  ["ideographic spaces", (length) => `a\nb|c\n${"　".repeat(length)}x`],
+  ["spaces in a quote", (length) => `> a\n> b|c\n> ${" ".repeat(length)}x`],
+  ["spaces in a list item", (length) => `- a\n  b|c\n  ${" ".repeat(length)}x`],
+])("a line of 200,000 %s after a paragraph's line with a pipe is parsed in a time as long as it", (_, doc) => {
+  expect(parsed(doc(200_000))).toBeLessThan(1_000);
 });
 
 // Each list mark counted the line's columns again from its start: a line of 80,000 "- " took 19 s.
