@@ -405,17 +405,46 @@ func TestSubtreeReachesTheDeepestLevel(t *testing.T) {
 	}
 }
 
+// readsOnOneConnection reads the subtree of notebook's node id eight times
+// on one connection, as a busy instance does, and checks it has nodes nodes
+// and height levels: pgx caches the statements, and from a statement's
+// sixth run the server may plan it once for any arguments (M6 closeout
+// FA4-M1). It returns the longest read.
+func readsOnOneConnection(t *testing.T, f fixture, notebook, id uuid.UUID, nodes, height int) time.Duration {
+	t.Helper()
+	ctx := context.Background()
+	pool, err := postgres.NewPool(ctx, config.DatabaseConfig{URL: f.pool.Config().ConnString(), MaxConns: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pool.Close)
+	s := postgresadapter.New(pool)
+	var longest time.Duration
+	for range 8 {
+		at := time.Now()
+		sub, err := s.Subtree(ctx, notebook, id)
+		took := time.Since(at)
+		if err != nil || len(sub) != nodes || sub.Height() != height {
+			t.Fatalf("Subtree: %d nodes of %d levels, %v; want %d of %d", len(sub), sub.Height(), err, nodes, height)
+		}
+		longest = max(longest, took)
+	}
+	return longest
+}
+
 // A subtree is read by each parent's children without statistics too (M6
 // closeout FA-M1): before a notebook's nodes are analyzed (after an import,
 // a restore), each level could read every node of the notebook by the index
 // of titles, the square of their number: 30,000 nodes, a folder of 10,000
-// of them, took 40 s.
+// of them, took 40 s; a level planned for any parents, once its statement
+// was cached, compared each of them with the parents one by one: 100,000
+// nodes, a folder of 50,000, 3.5 s (FA4-M1).
 func TestSubtreeReadsWithoutStatisticsInTimeAsLongAsIt(t *testing.T) {
 	ctx := context.Background()
 	f := newFixture(t)
 	f.exec(t, `ALTER TABLE nodes SET (autovacuum_enabled = false)`)
 	folder := f.page(t, f.eng, nil, "Folder", 0)
-	// 200 pages of 100 each beside the folder: with them the plan took the titles' index.
+	// 200 pages of 250 each beside the folder: with them the plan took the titles' index.
 	f.exec(t, `INSERT INTO nodes (id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id,
 		created_at, updated_at)
 		SELECT gen_random_uuid(), $1, NULL, 'page', 'R' || i, 'r' || i, i, $2, $2, $3, $3 FROM generate_series(1, 200) i`,
@@ -423,23 +452,18 @@ func TestSubtreeReadsWithoutStatisticsInTimeAsLongAsIt(t *testing.T) {
 	f.exec(t, `INSERT INTO nodes (id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id,
 		created_at, updated_at)
 		SELECT gen_random_uuid(), $1, n.id, 'page', 'S' || i, 's' || i, i, $2, $2, $3, $3
-		FROM nodes n, generate_series(1, 100) i WHERE n.notebook_id = $1 AND n.name LIKE 'R%'`,
+		FROM nodes n, generate_series(1, 250) i WHERE n.notebook_id = $1 AND n.name LIKE 'R%'`,
 		f.eng, f.alice, now())
 	f.exec(t, `INSERT INTO nodes (id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id,
 		created_at, updated_at)
-		SELECT gen_random_uuid(), $1, $4, 'page', 'C' || i, 'c' || i, i, $2, $2, $3, $3 FROM generate_series(1, 10000) i`,
+		SELECT gen_random_uuid(), $1, $4, 'page', 'C' || i, 'c' || i, i, $2, $2, $3, $3 FROM generate_series(1, 50000) i`,
 		f.eng, f.alice, now(), folder.ID)
 	var stats int
 	if err := f.pool.QueryRow(ctx, `SELECT count(*) FROM pg_stats WHERE tablename = 'nodes'`).Scan(&stats); err != nil || stats != 0 {
 		t.Fatalf("the nodes have statistics of %d columns, %v", stats, err)
 	}
-	at := time.Now()
-	sub, err := f.s.Subtree(ctx, f.eng, folder.ID)
-	if err != nil || len(sub) != 10_001 || sub.Height() != 2 {
-		t.Fatalf("Subtree of the folder: %d nodes, %v; want the folder and its 10,000 pages", len(sub), err)
-	}
-	if took := time.Since(at); took > 3*time.Second {
-		t.Errorf("the subtree of 10,001 nodes took %s", took)
+	if took := readsOnOneConnection(t, f, f.eng, folder.ID, 50_001, 2); took > time.Second {
+		t.Errorf("the subtree of 50,001 nodes took %s", took)
 	}
 }
 
@@ -464,12 +488,7 @@ func TestSubtreeOfAFolderOfMostNodesReadsInTimeAsLongAsIt(t *testing.T) {
 	if err := f.pool.QueryRow(ctx, `SELECT count(*) FROM pg_stats WHERE tablename = 'nodes'`).Scan(&stats); err != nil || stats == 0 {
 		t.Fatalf("the nodes have statistics of %d columns, %v", stats, err)
 	}
-	at := time.Now()
-	sub, err := f.s.Subtree(ctx, f.eng, folder.ID)
-	if err != nil || len(sub) != 20_001 || sub.Height() != 2 {
-		t.Fatalf("Subtree of the folder: %d nodes, %v; want the folder and its 20,000 pages", len(sub), err)
-	}
-	if took := time.Since(at); took > 3*time.Second {
+	if took := readsOnOneConnection(t, f, f.eng, folder.ID, 20_001, 2); took > time.Second {
 		t.Errorf("the subtree of 20,001 nodes took %s", took)
 	}
 }

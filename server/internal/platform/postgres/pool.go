@@ -25,7 +25,12 @@ var errUnusableURL = errors.New("database.url: pgx cannot use it; check its synt
 
 // NewPool creates a connection pool for database.url with at most
 // database.max_conns connections. It connects lazily, on first use. Every
-// connection scans timestamptz values in UTC (scanTimestamptzInUTC).
+// connection scans timestamptz values in UTC (scanTimestamptzInUTC), and has
+// the server plan each statement with its arguments, though pgx caches it:
+// from a cached statement's sixth run the server may plan it once for any
+// arguments, and such a plan compares each row with an array argument's
+// elements one by one where a plan with the array hashes them. A subtree's
+// level of 50,000 parents took 3.5 s (M6 closeout FA4-M1).
 func NewPool(ctx context.Context, cfg config.DatabaseConfig) (*pgxpool.Pool, error) {
 	pc, err := pgxpool.ParseConfig(cfg.URL)
 	if err != nil {
@@ -33,6 +38,7 @@ func NewPool(ctx context.Context, cfg config.DatabaseConfig) (*pgxpool.Pool, err
 	}
 	pc.MaxConns = cfg.MaxConns
 	pc.AfterConnect = scanTimestamptzInUTC
+	pc.ConnConfig.RuntimeParams["plan_cache_mode"] = "force_custom_plan"
 	pool, err := pgxpool.NewWithConfig(ctx, pc)
 	if err != nil {
 		return nil, fmt.Errorf("create database pool: %w", err)

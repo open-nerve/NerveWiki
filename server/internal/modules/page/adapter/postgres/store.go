@@ -131,7 +131,8 @@ func (s *Store) Ancestors(ctx context.Context, id uuid.UUID) ([]domain.Ancestor,
 const subtreeLevels = 64
 
 // Subtree implements app.Nodes: the node, then its descendants level by
-// level, each level in order and read in one statement by its parents.
+// level, each level in order and read in one statement by its parents,
+// planned with them (postgres.NewPool).
 func (s *Store) Subtree(ctx context.Context, notebookID, id uuid.UUID) (domain.Subtree, error) {
 	q := s.queries(ctx)
 	root, err := q.FindNodeIn(ctx, gen.FindNodeInParams{ID: id, NotebookID: notebookID})

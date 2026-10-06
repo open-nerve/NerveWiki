@@ -57,3 +57,28 @@ func TestNewPoolRejectsUnusableURLWithoutLeakingPassword(t *testing.T) {
 		}
 	}
 }
+
+// The server plans each statement with its arguments, though pgx caches it
+// (M6 closeout FA4-M1): from a cached statement's sixth run it would plan
+// it once for any arguments.
+func TestPoolPlansEachStatementWithItsArguments(t *testing.T) {
+	ctx := context.Background()
+	pool := newNotes(t, 1)
+	for i := range 8 {
+		rows, err := pool.Query(ctx, "SELECT id FROM notes WHERE id = $1", i)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var generic, custom int
+	err := pool.QueryRow(ctx, `SELECT generic_plans, custom_plans FROM pg_prepared_statements
+		WHERE statement LIKE '%FROM notes%' AND statement NOT LIKE '%pg_prepared_statements%'`).Scan(&generic, &custom)
+	if err != nil || generic != 0 || custom != 8 {
+		t.Errorf("a statement run 8 times was planned for any arguments %d times, with its own %d, %v; want 8 with its own",
+			generic, custom, err)
+	}
+}
