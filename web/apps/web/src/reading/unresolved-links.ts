@@ -7,8 +7,8 @@ import type { Enhancement, UnresolvedLink } from "./enhancement";
  * Space, which hands it to the view (ReadingContext.unresolved) with what
  * it is: an embed's (nw-embed) or a Markdown image's link only says it is
  * not there, a link may have its page created. The view decides which,
- * by the reader's role. Enter acts as it goes down, Space as it comes up,
- * as on a button. A diagram's links are mermaid's, not the server's: they
+ * by the reader's role. Enter acts as it goes down, Space as it comes up
+ * on the link it went down on, as on a button. A diagram's links are mermaid's, not the server's: they
  * are left be (diagrams.ts).
  */
 export const unresolvedLinks: Enhancement = (container, { unresolved }) => {
@@ -36,6 +36,8 @@ export const unresolvedLinks: Enhancement = (container, { unresolved }) => {
       act(event);
     }
   };
+  // The link Space went down on: it acts as it comes up there, as on a button, not on another the focus went to.
+  let spaced: HTMLAnchorElement | undefined;
   const onKey = (event: KeyboardEvent) => {
     const plain = !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey;
     if (event.defaultPrevented || !plain || event.isComposing) {
@@ -44,12 +46,19 @@ export const unresolvedLinks: Enhancement = (container, { unresolved }) => {
     if (event.type === "keydown" && event.key === "Enter") {
       act(event);
     } else if (event.key === " ") {
-      // Down, Space would scroll the page.
       const link = event.target instanceof Element ? event.target.closest("a") : null;
-      if (event.type === "keyup") {
-        act(event);
-      } else if (link !== null && links.includes(link)) {
-        event.preventDefault();
+      if (event.type === "keydown") {
+        if (link !== null && links.includes(link)) {
+          // Down, Space would scroll the page.
+          event.preventDefault();
+          spaced = link;
+        }
+      } else {
+        const down = spaced;
+        spaced = undefined;
+        if (link !== null && link === down) {
+          act(event);
+        }
       }
     }
   };

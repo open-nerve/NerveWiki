@@ -1,7 +1,7 @@
 import type { MermaidConfig } from "mermaid";
 
 import type { Enhancement } from "./enhancement";
-import { definesMacros } from "./math";
+import { guardLabels } from "./math";
 
 /** The longest diagram drawn, in bytes of UTF-8: a longer one shows its source (M6/P6 design 10). */
 export const diagramLimit = 20_000;
@@ -18,9 +18,15 @@ export type Drawer = {
   render: (id: string, text: string) => Promise<{ svg: string }>;
 };
 
-/** loadMermaid loads mermaid, in chunks of its own, once a view has a diagram to draw. */
+/**
+ * loadMermaid loads mermaid, in chunks of its own, once a view has a
+ * diagram to draw, and KaTeX, which mermaid typesets a label's formulas
+ * with, guarded as math's are (guardLabels) before mermaid can use it.
+ */
 export async function loadMermaid(): Promise<Drawer> {
-  return (await import("mermaid")).default;
+  const [mermaid, katex] = await Promise.all([import("mermaid"), import("katex")]);
+  guardLabels(katex.default);
+  return mermaid.default;
 }
 
 /** A Watch calls see once element shows, and answers what stops watching it. */
@@ -44,7 +50,9 @@ const whenShown: Watch = (element, see) => {
 /**
  * mermaid's options (M6 design 4.9): strict, its labels sanitized and no
  * script of the diagram's run, a label's HTML without a style element
- * (mermaid's own rule) nor an id, which could take an anchor of the page's;
+ * (mermaid's own rule), an id, which could take an anchor of the page's,
+ * nor a data attribute: the server's marks (data-task, data-nw-…) are the
+ * enhancements' to act on, and a drawing kept is put before they run;
  * an error not drawn but thrown, so that the diagram shows its source; the
  * text and the edges bounded (the edges of a flowchart: mermaid counts no
  * other's); and none of these, nor the layout (which would load another
@@ -57,7 +65,7 @@ function options(theme: "light" | "dark"): MermaidConfig {
     suppressErrorRendering: true,
     maxTextSize: diagramLimit,
     maxEdges: edgeLimit,
-    dompurifyConfig: { FORBID_TAGS: ["style"], FORBID_ATTR: ["id"] },
+    dompurifyConfig: { FORBID_TAGS: ["style"], FORBID_ATTR: ["id"], ALLOW_DATA_ATTR: false },
     secure: [
       "secure",
       "securityLevel",
@@ -101,8 +109,9 @@ type Diagram = {
  * mermaid, which load loads (M6/P6 design 10): each once it shows (watch),
  * one at a time, in the theme shown as it is drawn. A drawing takes the
  * block's place in a wrapper of its own (nw-scroll nw-diagram), which
- * scrolls sideways; a diagram over diagramLimit, one whose formulas
- * define a macro, or one mermaid cannot draw, shows its source. The latest keptDrawings drawings are kept, by
+ * scrolls sideways; a diagram over diagramLimit, or one mermaid cannot
+ * draw (a label's formula refused among them: loadMermaid), shows its
+ * source. The latest keptDrawings drawings are kept, by
  * theme and source: a view read again, its HTML replaced whole, puts a
  * diagram whose source did not change at once. As the theme changes, each
  * diagram is drawn again in it, in its wrapper, once it shows: the old
@@ -115,12 +124,7 @@ export function diagrams(load: () => Promise<Drawer>, watch: Watch = whenShown):
     for (const code of container.querySelectorAll<HTMLElement>("pre > code.language-mermaid")) {
       const block = code.parentElement;
       const source = code.textContent;
-      // mermaid typesets a label's $$…$$ with KaTeX: not one that defines a macro (math.ts).
-      if (
-        block !== null &&
-        encoder.encode(source).length <= diagramLimit &&
-        !(source.includes("$$") && definesMacros(source))
-      ) {
+      if (block !== null && encoder.encode(source).length <= diagramLimit) {
         found.push({ block, source, wrapper: undefined, shown: undefined, stop: undefined });
       }
     }

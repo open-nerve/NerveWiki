@@ -1,0 +1,32 @@
+diff --git a/dist/katex.js b/dist/katex.js
+index 2de2003251a8e5dda149c3b707eaf28f42b459f2..f49668c8c9e4e21ee8108c74ce12a71a69c51348 100644
+--- a/dist/katex.js
++++ b/dist/katex.js
+@@ -10863,6 +10863,11 @@ const alignedHandler = function (context, args) {
+     }
+     numMaths = Number(arg0);
+     numCols = numMaths * 2;
++    // Nerve Wiki: as many columns are made as the argument says, whatever the rows: {30000000} took the page's
++    // memory. Past 100 the formula is refused (M6/P6 B fix check f2-1).
++    if (numMaths > 100) {
++      throw new ParseError("Too many columns: " + arg0, args[0]);
++    }
+   }
+   const isAligned = !numCols;
+   res.body.forEach(function (row) {
+diff --git a/dist/katex.mjs b/dist/katex.mjs
+index b4a83b4b7b9b31064413fa7eb5447823110d7305..850b27c1f7f15040a86f529767304740ba52e085 100644
+--- a/dist/katex.mjs
++++ b/dist/katex.mjs
+@@ -10104,6 +10104,11 @@ var alignedHandler = function alignedHandler(context, args) {
+     }
+     numMaths = Number(arg0);
+     numCols = numMaths * 2;
++    // Nerve Wiki: as many columns are made as the argument says, whatever the rows: {30000000} took the page's
++    // memory. Past 100 the formula is refused (M6/P6 B fix check f2-1).
++    if (numMaths > 100) {
++      throw new ParseError("Too many columns: " + arg0, args[0]);
++    }
+   }
+   var isAligned = !numCols;
+   res.body.forEach(function (row) {

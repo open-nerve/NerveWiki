@@ -75,7 +75,7 @@ test("L4 (page): a tag leads to the pages of the tag and those under it; formula
   await expect(page).toHaveURL(wikiPagePath(workspace.slug, notebook.id, deeper.id));
 });
 
-test("L4 (page): what a writer's formulas and diagrams could do to a reader's page they cannot: wide, painted outside, expanding without end, or marked up", async ({
+test("L4 (page): what a writer's formulas and diagrams could do to a reader's page they cannot: wide, painted outside, expanding without end, crashing it, or marked up", async ({
   api,
   signedInPage,
 }, testInfo) => {
@@ -84,7 +84,22 @@ test("L4 (page): what a writer's formulas and diagrams could do to a reader's pa
   const cells = Array.from({ length: 40 }, (_, i) => `<td>column-${i.toString().padStart(2, "0")}</td>`).join("");
   const a = String.raw`\def\a{xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx}`;
   const bomb = a + String.raw`\def\b{${String.raw`\a`.repeat(31)}}` + String.raw`\b`.repeat(31);
+  const columns = String.raw`\begin{alignedat}{30000000}a\end{alignedat}`;
+  const deep = `${"x^{".repeat(150)}x${"}".repeat(150)}`;
+  // The diagrams mermaid cannot draw come first: they are tried, one at a time, before the twins are drawn.
   const content = [
+    "```mermaid",
+    String.raw`graph TD; M["$$\def\a{x}\a$$"]`,
+    "```",
+    "",
+    "```mermaid",
+    String.raw`graph TD; S["$$\d<x></x>ef\a{x}\a$$"]`,
+    "```",
+    "",
+    "```mermaid",
+    `graph TD; C["$$${columns}$$"]`,
+    "```",
+    "",
     "```mermaid",
     "graph LR; Twin-->Other",
     "```",
@@ -96,12 +111,8 @@ test("L4 (page): what a writer's formulas and diagrams could do to a reader's pa
     "```mermaid",
     '%%{init: {"securityLevel": "loose", "dompurifyConfig": {"ADD_ATTR": ["onmouseover"]}}}%%',
     "graph TD",
-    `  A["<b onmouseover=alert(1)>bold</b><a href='javascript:alert(2)'>go</a><a id='nw-forged' class='nw-unresolved' data-nw-target='Forged'>label</a><style>body{display:none}</style>"] --> B`,
+    `  A["<b onmouseover=alert(1)>bold</b><a href='javascript:alert(2)'>go</a><a id='nw-forged' class='nw-unresolved' data-nw-target='Forged'>label</a><input type='checkbox' data-task='0'><style>body{display:none}</style>"] --> B`,
     '  click A href "javascript:alert(3)"',
-    "```",
-    "",
-    "```mermaid",
-    String.raw`graph TD; M["$$\def\a{x}\a$$"]`,
     "```",
     "",
     `<table><tr>${cells}</tr></table>`,
@@ -112,12 +123,18 @@ test("L4 (page): what a writer's formulas and diagrams could do to a reader's pa
     "",
     `Expanding $${bomb}$ without end.`,
     "",
+    `Too many columns $${columns}$ here.`,
+    "",
+    `Too deep $${deep}$ here.`,
+    "",
+    String.raw`The last $\smash[b]{\underbrace{x}_{y}}$ reaches past the view.`,
+    "",
   ].join("\n");
   const wide = await createPage(api, pat, notebook.id, "Wide", null, content);
   const page = await signedInPage(tokens);
   await page.goto(wikiPagePath(workspace.slug, notebook.id, wide.id));
   const article = page.getByRole("article");
-  await expect(article.locator(".nw-math .katex")).toHaveCount(2);
+  await expect(article.locator(".nw-math .katex")).toHaveCount(3);
 
   // Two diagrams of a source, the second one kept: no id of one is another's.
   await expect(article.locator(".nw-diagram svg")).toHaveCount(3);
@@ -127,8 +144,9 @@ test("L4 (page): what a writer's formulas and diagrams could do to a reader's pa
   expect(ids.length).toBeGreaterThan(3);
   expect(new Set(ids).size).toBe(ids.length);
 
-  // A label's markup: no handler, no javascript: address, no id of its own, nothing the app's enhancements take
-  // as theirs; its style element none; the directive changes nothing.
+  // A label's markup: no handler, no javascript: address, no id of its own, none of the server's marks that the
+  // app's enhancements act on (a task's box, a link's target); its style element none; the directive changes
+  // nothing.
   const hostile = article.locator(".nw-diagram").nth(2);
   await expect(hostile).toContainText("label");
   const marked = await hostile.evaluate((diagram) => ({
@@ -138,18 +156,37 @@ test("L4 (page): what a writer's formulas and diagrams could do to a reader's pa
     scripts: [...diagram.querySelectorAll("a")].filter((link) =>
       /^\s*javascript:/i.test(link.getAttribute("href") ?? link.getAttribute("xlink:href") ?? "")
     ).length,
-    forged: diagram.querySelectorAll("#nw-forged, [role=button], foreignObject style").length,
+    forged: diagram.querySelectorAll(
+      "#nw-forged, [role=button], [data-task], [data-nw-target], [data-nw-node], [data-nw-tag], foreignObject style"
+    ).length,
   }));
   expect(marked).toEqual({ handlers: [], scripts: 0, forged: 0 });
   await expect(page.locator("body")).toBeVisible();
 
-  // A label's formula that defines a macro: the diagram shows its source.
-  await expect(article.locator("code.language-mermaid")).toHaveCount(1);
-  await expect(article.locator("code.language-mermaid")).toContainText(String.raw`\def\a`);
+  // A label's formula that defines a macro, one that does once mermaid has sanitized it, and one of too many
+  // columns: the diagram shows its source.
+  await expect(article.locator("code.language-mermaid")).toHaveText([
+    String.raw`graph TD; M["$$\def\a{x}\a$$"]`,
+    String.raw`graph TD; S["$$\d<x></x>ef\a{x}\a$$"]`,
+    `graph TD; C["$$${columns}$$"]`,
+  ]);
 
-  // A formula that would expand without end shows its TeX.
-  await expect(article.locator(".nw-math").last()).toHaveText(bomb);
-  await expect(article.locator(".nw-math").last().locator(".katex")).toHaveCount(0);
+  // A formula that would expand without end, one of too many columns, and one nested too deep show their TeX;
+  // the page is still there.
+  await Promise.all(
+    [bomb, columns, deep].map(async (tex) => {
+      const formula = article.locator(".nw-math").filter({ hasText: tex });
+      await expect(formula).toHaveText(tex);
+      await expect(formula.locator(".katex")).toHaveCount(0);
+    })
+  );
+
+  // A formula past the view's bottom does not make the view scroll down: the wheel over it scrolls the page.
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await article.hover({ position: { x: 2, y: 2 } });
+  await page.mouse.wheel(0, 200);
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+  expect(await article.evaluate((view) => view.scrollTop)).toBe(0);
 
   // What is wide without a region of its own scrolls in the view, which takes the focus, not the page.
   await expect(article).toHaveAttribute("tabindex", "0");

@@ -168,6 +168,9 @@ catalogs:
       specifier: 7.0.2
       version: 7.0.2
 
+patchedDependencies:
+  katex@0.16.47: f8d8456ac48a3e65ba450604d3de80c0bd3fdd07770bc969e2a63274c8d13b32
+
 importers:
 
   .:
@@ -255,7 +258,7 @@ importers:
         version: 11.12.0
       katex:
         specifier: 0.16.47
-        version: 0.16.47
+        version: 0.16.47(patch_hash=f8d8456ac48a3e65ba450604d3de80c0bd3fdd07770bc969e2a63274c8d13b32)
       lucide-react:
         specifier: 1.48.0
         version: 1.48.0(react@19.3.0)
@@ -6304,7 +6307,7 @@ snapshots:
 
   json-schema-traverse@1.0.0: {}
 
-  katex@0.16.47:
+  katex@0.16.47(patch_hash=f8d8456ac48a3e65ba450604d3de80c0bd3fdd07770bc969e2a63274c8d13b32):
     dependencies:
       commander: 8.3.0
 
@@ -6479,7 +6482,7 @@ snapshots:
       dompurify: 3.4.16
       es-toolkit: 1.52.0
       fastdom: 1.0.12
-      katex: 0.16.47
+      katex: 0.16.47(patch_hash=f8d8456ac48a3e65ba450604d3de80c0bd3fdd07770bc969e2a63274c8d13b32)
       khroma: 2.1.0
       marked: 16.4.2
       roughjs: 4.6.6

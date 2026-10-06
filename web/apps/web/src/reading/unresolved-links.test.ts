@@ -90,6 +90,24 @@ test("a click, Enter or Space hands the link to the view with its target and wha
   expect(down.defaultPrevented).toBe(true);
 });
 
+test("Space acts only as it comes up on the link it went down on: not on another the focus went to, nor without going down", () => {
+  const { container, context, handed, link } = setUp();
+  unresolvedLinks(container, context);
+  const space = (name: string, type: string) =>
+    link(name).dispatchEvent(new KeyboardEvent(type, { key: " ", bubbles: true, cancelable: true }));
+
+  space("x", "keydown");
+  space("y", "keyup");
+  space("y", "keyup");
+  space("x", "keyup");
+  expect(handed).toEqual([]);
+
+  space("y", "keydown");
+  space("y", "keydown");
+  space("y", "keyup");
+  expect(handed).toEqual([["y.md", "link", "y"]]);
+});
+
 test("another key, a key with a modifier or while composing, another button, and what another handled hand nothing", () => {
   const { container, context, handed, link } = setUp();
   unresolvedLinks(container, context);

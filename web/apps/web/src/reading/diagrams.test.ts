@@ -125,7 +125,7 @@ test("a diagram is drawn once it shows, in a wrapper of its own in the block's p
       suppressErrorRendering: true,
       maxTextSize: diagramLimit,
       maxEdges: edgeLimit,
-      dompurifyConfig: { FORBID_TAGS: ["style"], FORBID_ATTR: ["id"] },
+      dompurifyConfig: { FORBID_TAGS: ["style"], FORBID_ATTR: ["id"], ALLOW_DATA_ATTR: false },
       secure: [
         "secure",
         "securityLevel",
@@ -216,16 +216,6 @@ test("each drawing put has ids of its own, and its styles and elements follow: t
       `#${svg.id} text{}`,
     ]);
   }
-});
-
-test("a diagram whose formula defines a macro shows its source, not even watched; one without a formula is drawn", () => {
-  const { watched, watch } = watcher();
-  const { article, blocks } = view(
-    String.raw`graph TD; A["$$\def\a{x}\a\a$$"]`,
-    String.raw`graph TD; B["\def is text"]`
-  );
-  diagrams(async () => drawer().draw, watch)(article, context());
-  expect([...watched.keys()]).toEqual([blocks[1]]);
 });
 
 test("the latest drawings are kept, the one used longest ago dropped first", async () => {

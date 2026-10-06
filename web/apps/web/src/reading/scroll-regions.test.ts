@@ -189,6 +189,27 @@ test("a content that an enhancement renders wider, and a wrapper it adds, are fo
   expect([state(math), state(diagram)]).toEqual(["0 region Formula", "0 region Diagram"]);
 });
 
+test("what scrolls in a diagram is the writer's label, not the view's: only the diagram's wrapper is a region", async () => {
+  observed();
+  const { article } = view();
+  const undo = scrollRegions(article, context);
+  const diagram = Object.assign(document.createElement("div"), { className: "nw-scroll nw-diagram" });
+  diagram.innerHTML = '<svg><foreignObject><div class="nw-scroll">label</div><pre>code</pre></foreignObject></svg>';
+  const [label, code] = [diagram.querySelector("div"), diagram.querySelector("pre")];
+  for (const each of [diagram, label, code]) {
+    widths(each, 1200, 600);
+  }
+  article.append(diagram);
+  await mutated();
+
+  expect([state(diagram), state(label), state(code)]).toEqual(["0 region Diagram", "none", "none"]);
+
+  // The view run again, the diagram there from the start (a drawing kept).
+  undo?.();
+  scrollRegions(article, context);
+  expect([state(diagram), state(label), state(code)]).toEqual(["0 region Diagram", "none", "none"]);
+});
+
 test("undone, nothing takes the focus, and nothing is followed", async () => {
   const observers = observed();
   const { article, table, code } = view();

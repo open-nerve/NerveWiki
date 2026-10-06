@@ -54,7 +54,9 @@ export const scrollRegions: Enhancement = (container, { t }) => {
   };
   take(container);
   for (const scroller of container.querySelectorAll<HTMLElement>(scrolling)) {
-    take(scroller);
+    if (ours(scroller)) {
+      take(scroller);
+    }
   }
   // What an enhancement renders changes the content's width, not the box's, which the resize observer watches.
   const changed = new MutationObserver((records) => {
@@ -77,7 +79,9 @@ export const scrollRegions: Enhancement = (container, { t }) => {
       }
     }
     for (const scroller of touched) {
-      take(scroller);
+      if (ours(scroller)) {
+        take(scroller);
+      }
     }
   });
   changed.observe(container, { childList: true, subtree: true });
@@ -92,6 +96,11 @@ export const scrollRegions: Enhancement = (container, { t }) => {
     }
   };
 };
+
+/** ours tells whether scroller is the view's: in a diagram, a label's markup is the writer's, not the server's. */
+function ours(scroller: HTMLElement): boolean {
+  return scroller.parentElement?.closest(".nw-diagram") === null;
+}
 
 /** release has scroller no longer take the focus, nor be a region. */
 function release(scroller: HTMLElement) {

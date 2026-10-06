@@ -1,9 +1,9 @@
-import katex, { type KatexOptions } from "katex";
+import katex, { renderToString, type KatexOptions } from "katex";
 import { afterEach, expect, test, vi } from "vitest";
 
 import { translator } from "../i18n/i18n";
 import type { ReadingContext } from "./enhancement";
-import { formulaLimit, formulasAtOnce, loadKatex, math, type Typesetter } from "./math";
+import { formulaLimit, guardLabels, loadKatex, math, taskTime, type LabelTypesetter, type Typesetter } from "./math";
 
 // The formulas, typeset by KaTeX (M6/P6 design 10).
 
@@ -111,11 +111,13 @@ test("a formula that defines a macro, or names one of KaTeX's own, shows its TeX
     String.raw`\tag{1}\df@tag\df@tag`,
     String.raw`a\@b`,
   ];
-  // Commands whose names begin with one refused are not refused.
+  // Commands whose names begin with one refused are not refused; nor is a row's end before "@" (\\@, a CD arrow).
   const typesetAll = [
     String.raw`\deg x \longrightarrow y`,
     String.raw`a \newline b \leftarrow c`,
     String.raw`\text{me@host} \tag{1}`,
+    String.raw`\begin{CD}A @>a>> B \\@VbVV @AAcA \\ C @= D\end{CD}`,
+    String.raw`a \\def`,
   ];
   const article = view([...refused, ...typesetAll].map((tex) => `<span class="nw-math">${tex}</span>`).join(""));
 
@@ -126,6 +128,40 @@ test("a formula that defines a macro, or names one of KaTeX's own, shows its TeX
   expect([...article.querySelectorAll(".nw-math")].slice(0, refused.length).map((each) => each.textContent)).toEqual(
     refused
   );
+});
+
+test("KaTeX as the app loads it refuses an alignment of more columns than it can make, and one nested past formulaDepth", async () => {
+  const columns = String.raw`\begin{alignedat}{1000000}a\end{alignedat}`;
+  // A hundred levels nest some 670 elements deep; jsdom takes its time to make them.
+  const deep = `${"x^{".repeat(100)}x${"}".repeat(100)}`;
+  const article = view(
+    `<span class="nw-math">${columns}</span><span class="nw-math">${deep}</span>` +
+      String.raw`<span class="nw-math">\begin{alignedat}{2}a&=b&c&=d\end{alignedat} x^{x^{x}}</span>`
+  );
+
+  math(loadKatex)(article, context);
+  await vi.waitFor(() => expect(article.querySelectorAll(".katex")).toHaveLength(1), { timeout: 10_000 });
+
+  const [first, second] = article.querySelectorAll(".nw-math");
+  expect([first?.textContent, second?.textContent]).toEqual([columns, deep]);
+});
+
+test("guarded, KaTeX's renderToString, as mermaid calls it for a label, refuses what math refuses and takes math's options", () => {
+  const labels: LabelTypesetter = { renderToString };
+  guardLabels(labels);
+  guardLabels(labels);
+
+  expect(() => labels.renderToString(String.raw`\d` + String.raw`ef\a{x}\a`, { displayMode: true })).toThrow();
+  // As HTML alone: MathML's annotation holds the TeX.
+  const html = labels.renderToString(String.raw`\rule{100em}{1em}\href{https://x.example}{x}`, {
+    displayMode: true,
+    throwOnError: true,
+    output: "html",
+  });
+  expect(html).toContain("katex-display");
+  expect(html).toContain("50em");
+  expect(html).not.toContain("100em");
+  expect(html).not.toContain("<a");
 });
 
 test("KaTeX as the app loads it typesets a formula, and is not given one that would expand without end", async () => {
@@ -158,32 +194,44 @@ test("KaTeX itself makes no link, nor loads anything, of the TeX, and throws on 
   expect(half?.querySelector(".katex")).not.toBeNull();
 });
 
-test("the formulas are typeset some at a time, the page's thread given back between", async () => {
-  vi.useFakeTimers();
+/** slow is a typesetter that takes 20 ms of its clock (now) for each formula. */
+function slow() {
   const { calls, typeset } = typesetter();
-  const article = view(
-    Array.from({ length: formulasAtOnce * 2 + 1 }, (_, i) => `<span class="nw-math">${i}</span>`).join("")
-  );
+  let time = 0;
+  const timed: Typesetter = {
+    render: (tex, element, options) => {
+      time += 20;
+      typeset.render(tex, element, options);
+    },
+  };
+  return { calls, typeset: timed, now: () => time };
+}
 
-  math(async () => typeset)(article, context);
+test("the formulas are typeset for a while at a time, the page's thread given back between", async () => {
+  vi.useFakeTimers();
+  const { calls, typeset, now } = slow();
+  const count = 20;
+  const article = view(Array.from({ length: count }, (_, i) => `<span class="nw-math">${i}</span>`).join(""));
+
+  math(async () => typeset, now)(article, context);
   await vi.advanceTimersByTimeAsync(0);
-  // The first task, at least, is its own.
-  expect(calls.length).toBeGreaterThanOrEqual(formulasAtOnce);
-  expect(calls.length).toBeLessThan(formulasAtOnce * 2 + 1);
+  // The first task, at least, is its own: as many as fit in taskTime.
+  expect(calls.length).toBeGreaterThanOrEqual(Math.ceil(taskTime / 20));
+  expect(calls.length).toBeLessThan(count);
   await vi.runAllTimersAsync();
-  expect(calls).toHaveLength(formulasAtOnce * 2 + 1);
+  expect(calls).toHaveLength(count);
 });
 
 test("undone, the typeset formulas show their TeX again, and those not reached stay", async () => {
   vi.useFakeTimers();
-  const { calls, typeset } = typesetter();
-  const count = formulasAtOnce * 3;
+  const { calls, typeset, now } = slow();
+  const count = 30;
   const article = view(Array.from({ length: count }, (_, i) => `<span class="nw-math">${i}</span>`).join(""));
 
-  const undo = math(async () => typeset)(article, context);
+  const undo = math(async () => typeset, now)(article, context);
   await vi.advanceTimersByTimeAsync(0);
   const reached = calls.length;
-  expect(reached).toBeGreaterThanOrEqual(formulasAtOnce);
+  expect(reached).toBeGreaterThanOrEqual(Math.ceil(taskTime / 20));
   expect(reached).toBeLessThan(count);
   undo?.();
   await vi.runAllTimersAsync();
