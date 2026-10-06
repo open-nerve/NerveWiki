@@ -25,9 +25,10 @@ const linkGoesOn = /^[^[\]|#^\n]*$/;
 
 /**
  * What follows the cursor in a link already closed: the rest of its target,
- * its anchor, its display text (after | or a table's \|), and its ]].
+ * its anchor (after #), its display text (after | or a table's \|), and its
+ * ]]. A '^' is the target's, as the server reads it (no title holds one).
  */
-const closedRest = /^([^[\]|#^\n]*?)((?:[#^][^[\]|\n]*?)?)((?:\\?\|[^[\]\n]*?)?)\]\]/;
+const closedRest = /^([^[\]|#\n]*?)((?:#[^[\]|\n]*?)?)((?:\\?\|[^[\]\n]*?)?)\]\]/;
 
 /**
  * A tag being written: a '#' at the line's start or after a space (a
@@ -62,12 +63,15 @@ const raw = new Set([
   "Autolink",
 ]);
 
-/** The lines that open and close a frontmatter (fixtures' rule 10). */
-const frontmatterOpens = /^---[ \t]*$/;
-const frontmatterCloses = /^(?:---|\.\.\.)[ \t]*$/;
+/** The line that opens a frontmatter, after a byte order mark maybe, as the server's frontmatterSpan reads it. */
+const frontmatterOpens = /^\ufeff?---$/;
 
-/** How long a read serves the completions of the same [[ or #: a composition ended starts one anew. */
-const servesMs = 30_000;
+/**
+ * How long a read serves the completions of the same [[ or #: an input
+ * method's compositions, and a query that matches nothing (whose results
+ * CodeMirror drops at each key), start one anew each time.
+ */
+const servesMs = 10_000;
 
 /** Where the cursor is, for a completion: in a table, in a frontmatter. */
 type Place = { table: boolean; frontmatter: boolean };
@@ -127,14 +131,8 @@ const completionTheme = EditorView.theme({
   },
   ".cm-completionDetail": { color: "var(--muted-foreground)", fontStyle: "normal", marginLeft: "0.75rem" },
   ".cm-completionMatchedText": { textDecoration: "none", fontWeight: "600" },
-  ".nw-completion-pause": {
-    position: "absolute",
-    width: "1px",
-    height: "1px",
-    overflow: "hidden",
-    clipPath: "inset(50%)",
-    whiteSpace: "nowrap",
-  },
+  // Of no size and in the flow: Chromium names an option out of the flow with spaces around it.
+  ".nw-completion-pause": { fontSize: "0" },
 });
 
 /** placeOf is where completion is asked, if it may answer there: undefined where it may not. */
@@ -142,30 +140,55 @@ function placeOf({ state, pos, view }: CompletionContext): Place | undefined {
   if (state.readOnly || view?.composing === true) {
     return undefined;
   }
-  let table = false;
-  for (let node: ReturnType<typeof syntaxTree>["topNode"] | null = syntaxTree(state).resolveInner(pos, -1); node;) {
-    if (raw.has(node.name)) {
-      return undefined;
-    }
-    table ||= node.name === "Table";
-    node = node.parent;
+  const at = nodesAt(state, pos);
+  if (at.some((name) => raw.has(name))) {
+    return undefined;
   }
-  return { table, frontmatter: inFrontmatter(state, pos) };
+  return { table: at.includes("Table"), frontmatter: inFrontmatter(state, pos) };
 }
 
-/** inFrontmatter tells whether pos is in the content's frontmatter: after its opening line, before its closing one. */
+/** nodesAt is the names of the syntax nodes pos is in, from the innermost out. */
+function nodesAt(state: EditorState, pos: number): string[] {
+  const names: string[] = [];
+  for (let node: ReturnType<typeof syntaxTree>["topNode"] | null = syntaxTree(state).resolveInner(pos, -1); node;) {
+    names.push(node.name);
+    node = node.parent;
+  }
+  return names;
+}
+
+/**
+ * inFrontmatter tells whether pos is in the content's frontmatter, as the
+ * server's frontmatterSpan finds it: a first line "---" (after a byte
+ * order mark maybe), up to a later line "---", without which there is
+ * none. One being written, not closed yet, is none either.
+ */
 function inFrontmatter(state: EditorState, pos: number): boolean {
   const { doc } = state;
   const at = doc.lineAt(pos).number;
   if (at === 1 || !frontmatterOpens.test(doc.line(1).text)) {
     return false;
   }
-  for (let n = 2; n < at; n++) {
-    if (frontmatterCloses.test(doc.line(n).text)) {
-      return false;
+  for (let n = 2; n <= doc.lines; n++) {
+    if (doc.line(n).text === "---") {
+      return at < n;
     }
   }
-  return !frontmatterCloses.test(doc.line(at).text);
+  return false;
+}
+
+/**
+ * inLinkWritten tells whether a '#' at the end of before, the line up to it
+ * from from, is in a link being written: after a [[ not closed on the line,
+ * which no backslash escapes and is no code's nor raw HTML's.
+ */
+function inLinkWritten(state: EditorState, from: number, before: string): boolean {
+  const opens = before.lastIndexOf("[[");
+  if (opens === -1 || before.includes("]]", opens)) {
+    return false;
+  }
+  const slashes = /\\*$/.exec(before.slice(0, opens))?.[0].length ?? 0;
+  return slashes % 2 === 0 && !nodesAt(state, from + opens + 1).some((name) => raw.has(name));
 }
 
 /** lineBefore is the cursor's line up to it. */
@@ -193,7 +216,7 @@ function pages(context: EditorContext): CompletionSource {
       return null;
     }
     const from = completion.pos - query.length;
-    const targets = await reading(from);
+    const targets = await reading(from, completion.explicit);
     if (targets === undefined || completion.aborted) {
       return null;
     }
@@ -210,8 +233,8 @@ function pages(context: EditorContext): CompletionSource {
         apply: writing(target.link, undefined, separator),
       });
       for (const alias of embed ? [] : target.aliases) {
-        // One with a bracket or a line's end would end the link it is written in.
-        if (!/[[\]\r\n]/.test(alias)) {
+        // One with a bracket or a line's end would end the link it is written in; in a table, one with a '|' the cell.
+        if (!(place.table ? /[[\]\r\n|]/ : /[[\]\r\n]/).test(alias)) {
           options.push({ label: alias, detail: `→ ${target.link}`, apply: writing(target.link, alias, separator) });
         }
       }
@@ -227,12 +250,13 @@ function tags(context: EditorContext): CompletionSource {
     const before = lineBefore(completion);
     const written = tagBefore.exec(before);
     const place = written === null ? undefined : placeOf(completion);
+    const line = completion.state.doc.lineAt(completion.pos).from;
     // In a link being written, a '#' is its anchor's.
-    if (written === null || place === undefined || place.frontmatter || /\[\[(?:(?!\]\]).)*$/.test(before)) {
+    if (written === null || place === undefined || place.frontmatter || inLinkWritten(completion.state, line, before)) {
       return null;
     }
     const from = completion.pos - (written[1] ?? "").length;
-    const counted = await reading(from);
+    const counted = await reading(from, completion.explicit);
     if (counted === undefined || completion.aborted) {
       return null;
     }
@@ -252,15 +276,17 @@ function tags(context: EditorContext): CompletionSource {
 
 /**
  * remembered reads through reading once for the completions that start at
- * the same place within servesMs: those of one [[ or # that an input
- * method's compositions start anew. A failed read is said on the console,
- * answers undefined (no completion), and is not remembered.
+ * the same place within servesMs: those of one [[ or # that compositions
+ * and keys start anew. One asked for (Ctrl+Space) reads anew. Within the
+ * while, a page made elsewhere meanwhile is not listed at the same place
+ * (accepted). A failed read is said on the console, answers undefined (no
+ * completion), and is not remembered.
  */
-function remembered<T>(reading: () => Promise<T>): (from: number) => Promise<T | undefined> {
+function remembered<T>(reading: () => Promise<T>): (from: number, explicit: boolean) => Promise<T | undefined> {
   let last: { from: number; at: number; read: Promise<T | undefined> } | undefined;
-  return (from) => {
+  return (from, explicit) => {
     const now = Date.now();
-    if (last !== undefined && last.from === from && now - last.at < servesMs) {
+    if (!explicit && last !== undefined && last.from === from && now - last.at < servesMs) {
       return last.read;
     }
     const read = reading().catch((error: unknown) => {

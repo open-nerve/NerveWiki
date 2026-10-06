@@ -123,9 +123,25 @@ function passOver(value: unknown, path: string, take: Take) {
   }
 }
 
-/** linkLike tells whether a string may be a property link: one starting with '[', with no space around it (server's rule). */
+/**
+ * linkLike tells whether a string has a property link's shape (fixtures'
+ * rule 10): one wikilink with a target, or one Markdown link to no
+ * address elsewhere nor an anchor alone, with no space around it. What
+ * the frontmatter's YAML wrote (an alias's value, a block on several
+ * lines) is not known here: such a value at a path a link shares may
+ * take it (accepted).
+ */
 function linkLike(value: string): boolean {
-  return value.startsWith("[") && value.trim() === value;
+  // Both shapes span the whole value: one with a space around it is neither.
+  const wikilink = /^\[\[([^[\]\n]*)\]\]$/.exec(value);
+  if (wikilink !== null) {
+    const inner = wikilink[1] ?? "";
+    const bar = inner.indexOf("|");
+    const link = bar === -1 ? inner : inner.slice(0, bar);
+    return trimmed(link.split("#")[0]?.replace(/\\$/, "") ?? "") !== "";
+  }
+  const destination = /^\[.*\]\((.*)\)$/s.exec(value)?.[1]?.trim() ?? "";
+  return destination !== "" && !/^(?:[A-Za-z][A-Za-z0-9+.-]*:|\/\/|#)/.test(destination);
 }
 
 /** show is a value shown: its text, or its link, leading to its page or styled as one to none. */

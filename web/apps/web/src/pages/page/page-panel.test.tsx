@@ -217,34 +217,112 @@ function backlinkPage(id: string, count: number, next: string | null) {
   return { data: [{ id, count, contexts: [] }], next_cursor: next };
 }
 
-test("more reads the next page and adds it, the last one taking the focus to it; read again, the list is as many pages, from the first", async () => {
+test("more reads the next page and adds it, the focus kept on it until the last, which takes it to the first page it adds; read again, or come back to, the list is as many pages, from the first", async () => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
   const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
-  const server = pageServer();
-  server.backlinks.set(install.id, [backlinkPage(guide.id, 1, "1"), backlinkPage(notes.id, 1, null)]);
-  renderApp(pagePath(install.id), server.app);
+  const draft = pageNode(9, "Draft");
+  const server = pageServer({ nodes: [guide, install, linux, notes, draft] });
+  const last = {
+    data: [
+      { id: linux.id, count: 1, contexts: [] },
+      { id: draft.id, count: 1, contexts: [] },
+    ],
+    next_cursor: null,
+  };
+  server.backlinks.set(install.id, [backlinkPage(guide.id, 1, "1"), backlinkPage(notes.id, 1, "2"), last]);
+  const { router } = renderApp(pagePath(install.id), server.app);
   await within(await shownPanel()).findByRole("link", { name: "Guide" });
+  const more = within(section("Backlinks")).getByRole("button", { name: "More backlinks" });
 
-  within(section("Backlinks")).getByRole("button", { name: "More backlinks" }).focus();
+  more.focus();
+  let before = server.sent.length;
   await user.keyboard("{Enter}");
-  const added = await within(section("Backlinks")).findByRole("link", { name: "Notes" });
-  expect(backlinked()).toEqual([["Guide"], ["Notes"]]);
+  await within(section("Backlinks")).findByRole("link", { name: "Notes" });
+  await act(() => vi.advanceTimersByTimeAsync(0));
+  expect(document.activeElement).toBe(more);
+  expect(server.sent.slice(before).filter((each) => each.startsWith("GET backlinks"))).toEqual([
+    `GET backlinks ${install.id} 1`,
+  ]);
+
+  await user.keyboard("{Enter}");
+  const added = await within(section("Backlinks")).findByRole("link", { name: "Linux" });
+  expect(backlinked()).toEqual([["Guide"], ["Notes"], ["Linux"], ["Draft"]]);
   expect(within(section("Backlinks")).queryByRole("button", { name: "More backlinks" })).toBeNull();
   await waitFor(() => expect(document.activeElement).toBe(added));
 
-  server.backlinks.set(install.id, [backlinkPage(guide.id, 2, "1"), backlinkPage(notes.id, 3, null)]);
-  const before = server.sent.length;
+  // Come back to, the page shows the pages read, and reads as many.
+  await act(() => router.navigate(pagePath(notes.id)));
+  await screen.findByRole("heading", { level: 1, name: "Notes" });
+  // Past SWR's deduping of the reads it starts.
+  await act(() => vi.advanceTimersByTimeAsync(3_000));
+  before = server.sent.length;
+  await act(() => router.navigate(pagePath(install.id)));
+  await within(await shownPanel()).findByRole("link", { name: "Draft" });
+  await waitFor(() =>
+    expect(server.sent.slice(before).filter((each) => each.startsWith(`GET backlinks ${install.id}`))).toEqual([
+      `GET backlinks ${install.id}`,
+      `GET backlinks ${install.id} 1`,
+      `GET backlinks ${install.id} 2`,
+    ])
+  );
+  expect(backlinked()).toEqual([["Guide"], ["Notes"], ["Linux"], ["Draft"]]);
+
+  server.backlinks.set(install.id, [backlinkPage(guide.id, 2, "1"), backlinkPage(notes.id, 3, "2"), last]);
+  before = server.sent.length;
   await readAgain();
   await waitFor(() =>
-    expect(backlinked()).toEqual([
-      ["Guide", " · 2 links"],
-      ["Notes", " · 3 links"],
-    ])
+    expect(backlinked()).toEqual([["Guide", " · 2 links"], ["Notes", " · 3 links"], ["Linux"], ["Draft"]])
   );
   expect(server.sent.slice(before).filter((each) => each.startsWith("GET backlinks"))).toEqual([
     `GET backlinks ${install.id}`,
     `GET backlinks ${install.id} 1`,
+    `GET backlinks ${install.id} 2`,
   ]);
+});
+
+test("the last more leaves the focus where the reader put it meanwhile", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
+  let answer!: (response: Response) => void;
+  const server = pageServer({
+    answers: {
+      "GET /api/v0/pages/*/backlinks": (request) =>
+        new URL(request.url).searchParams.get("cursor") === null
+          ? json(backlinkPage(guide.id, 1, "1"))
+          : new Promise((resolve) => (answer = resolve)),
+    },
+  });
+  renderApp(pagePath(install.id), server.app);
+  const guideLink = await within(await shownPanel()).findByRole("link", { name: "Guide" });
+
+  await user.click(within(section("Backlinks")).getByRole("button", { name: "More backlinks" }));
+  guideLink.focus();
+  answer(json(backlinkPage(notes.id, 1, null)));
+  await within(section("Backlinks")).findByRole("link", { name: "Notes" });
+  await act(() => vi.advanceTimersByTimeAsync(0));
+  expect(document.activeElement).toBe(guideLink);
+});
+
+test("a last more that adds no page shown takes the focus to the section's title", async () => {
+  const user = userEvent.setup();
+  const draft = pageNode(9, "Draft");
+  // A list whose pages the tree has none of yet.
+  const lone = pageServer({
+    answers: {
+      "GET /api/v0/pages/*/backlinks": (request) =>
+        json(
+          new URL(request.url).searchParams.get("cursor") === null
+            ? backlinkPage(draft.id, 1, "1")
+            : backlinkPage(draft.id, 1, null)
+        ),
+    },
+  });
+  renderApp(pagePath(guide.id), lone.app);
+  const button = await within(await shownPanel()).findByRole("button", { name: "More backlinks" });
+  button.focus();
+  await user.keyboard("{Enter}");
+  const title = within(panel()).getByRole("heading", { level: 2, name: "Backlinks" }).closest("summary");
+  await waitFor(() => expect(document.activeElement).toBe(title));
 });
 
 test("a next page that fails says so, and more reads it again; one added while the list is read again has the list read again whole", async () => {
@@ -472,5 +550,55 @@ test("property links at a path two values share are theirs in turn, in the order
     ["Notes", pagePath(notes.id)],
     ["Linux", pagePath(linux.id)],
     ["Guide", pagePath(guide.id)],
+  ]);
+});
+
+test("a value that is no link takes none of its path's: an anchor alone, a bracketed word, an address elsewhere, a space around; a list's lists pass theirs", async () => {
+  const server = pageServer();
+  server.properties.set(install.id, {
+    valid: true,
+    properties: [
+      { key: "a.0", value: "[[#Top]]" },
+      { key: "a", value: ["[[Guide]]"] },
+      { key: "b.0", value: "[WIP]" },
+      { key: "b", value: ["[[Notes]]"] },
+      { key: "c.0", value: "[site](https://example.com)" },
+      { key: "c", value: ["[[Linux]]"] },
+      { key: "d.0", value: " [[Guide]]" },
+      { key: "d", value: ["[[Notes]]"] },
+      { key: "e", value: [["[[Guide]]"]] },
+      { key: "e.0.0", value: "[[Linux]]" },
+    ],
+    links: [
+      { key: "a.0", node_id: guide.id },
+      { key: "b.0", node_id: notes.id },
+      { key: "c.0", node_id: linux.id },
+      { key: "d.0", node_id: notes.id },
+      { key: "e.0.0", node_id: guide.id },
+      { key: "e.0.0", node_id: linux.id },
+    ],
+  });
+  renderApp(pagePath(install.id), server.app);
+
+  await within(await shownPanel()).findByRole("link", { name: "Guide" });
+  expect(properties()).toEqual([
+    ["a.0", "[[#Top]]"],
+    ["a", "Guide"],
+    ["b.0", "[WIP]"],
+    ["b", "Notes"],
+    ["c.0", "[site](https://example.com)"],
+    ["c", "Linux"],
+    ["d.0", " [[Guide]]"],
+    ["d", "Notes"],
+    ["e", '["[[Guide]]"]'],
+    ["e.0.0", "Linux"],
+  ]);
+  const links = within(section("Properties")).getAllByRole("link");
+  expect(links.map((link) => [link.textContent, link.getAttribute("href")])).toEqual([
+    ["Guide", pagePath(guide.id)],
+    ["Notes", pagePath(notes.id)],
+    ["Linux", pagePath(linux.id)],
+    ["Notes", pagePath(notes.id)],
+    ["Linux", pagePath(linux.id)],
   ]);
 });

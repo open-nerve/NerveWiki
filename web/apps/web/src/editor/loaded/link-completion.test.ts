@@ -2,6 +2,7 @@ import {
   acceptCompletion,
   closeCompletion,
   completionStatus,
+  startCompletion,
   currentCompletions,
   setSelectedCompletion,
 } from "@codemirror/autocomplete";
@@ -335,40 +336,84 @@ test("an embed's [[ lists the pages, not the aliases: an embed's display text is
   ).toEqual(["Plans", "Q3", "Q3", "会议纪要"]);
 });
 
-test("an escaped [[, raw HTML, and a # in a link being written complete nothing; two backslashes escape none", async () => {
+test("an escaped [[, raw HTML, an autolink, and a # in a link being written complete nothing; two backslashes escape none", async () => {
   for (const [doc, typed] of [
-    ["", "\\[[Pl"],
-    ["<!-- ", "#pro"],
-    ["<div>\n", "[[Pl"],
-    ["", "[[Plans #pro"],
-    ["", "[[Plans|see #pro"],
+    ["‸", "\\[[Pl"],
+    ["<!-- ‸", "#pro"],
+    ["<div>\n‸", "[[Pl"],
+    ["a <!-- ‸ -->", "[[Pl"],
+    ["<https://x.test/‸>", "[[Pl"],
+    ["‸", "[[Plans #pro"],
+    ["‸", "[[Plans|see #pro"],
   ]) {
-    const { view } = editing(doc ?? "");
+    const { view } = editingAt(doc ?? "");
     type(view, typed ?? "");
     // oxlint-disable-next-line no-await-in-loop -- one editor after another
     await none(view);
   }
-  const escaped = editing("").view;
-  type(escaped, "\\\\[[Pl");
-  await opened(escaped);
+  for (const typed of ["\\\\[[Pl", "`[[` #pro", "\\[[x #pro"]) {
+    const { view } = editing("");
+    type(view, typed);
+    // oxlint-disable-next-line no-await-in-loop -- one editor after another
+    await opened(view);
+  }
+  // An escaped '!' makes no embed: the link has its aliases.
+  const link = editing("").view;
+  type(link, "\\![[Road");
+  await opened(link);
+  expect(shown(link).map(([label]) => label)).toContain("Roadmap");
 });
 
-test("in a frontmatter a link completes in quotes, as a property link is written; a tag not at all; after it, both", async () => {
-  const quoted = editing("---\nup: ").view;
-  type(quoted, '"[[Pla');
-  await opened(quoted);
-  await pick(quoted, "Plans");
-  expect(quoted.state.doc.toString()).toBe('---\nup: "[[Plans]]');
+/** editingAt is an editor on doc, the cursor where ‸ is (taken out). */
+function editingAt(doc: string, data: Parameters<typeof editing>[1] = {}) {
+  const at = doc.indexOf("‸");
+  const editor = editing(doc.replace("‸", ""), data);
+  editor.view.dispatch({ selection: { anchor: at } });
+  return editor;
+}
 
-  for (const typed of ["[[Pla", "#pro", "- #pro"]) {
-    const { view } = editing("---\nup: x\n");
+test("in a frontmatter, as the server finds it, a link completes in quotes, as a property link is written; a tag not at all", async () => {
+  for (const [doc, typed, written] of [
+    ["---\nup: ‸\n---", '"[[Pla', '---\nup: "[[Plans]]\n---'],
+    ["---\nup: ‸\n---", "'[[Pla", "---\nup: '[[Plans]]\n---"],
+    ["\ufeff---\nup: ‸\n---", '"[[Pla', '\ufeff---\nup: "[[Plans]]\n---'],
+  ] as const) {
+    const { view } = editingAt(doc);
     type(view, typed);
+    // oxlint-disable-next-line no-await-in-loop -- one editor after another
+    await opened(view);
+    // oxlint-disable-next-line no-await-in-loop -- one editor after another
+    await pick(view, "Plans");
+    expect(view.state.doc.toString()).toBe(written);
+  }
+  for (const [doc, typed] of [
+    ["---\nup: ‸\n---", "[[Pla"],
+    // "..." closes nothing: the frontmatter goes on to the "---".
+    ["---\nup: x\n...\n‸\n---", "[[Pla"],
+    ["---\nup: ‸\n---", "#pro"],
+    ["---\n- ‸\n---", "#pro"],
+    ["\ufeff---\nup: ‸\n---", "[[Pla"],
+  ]) {
+    const { view } = editingAt(doc ?? "");
+    type(view, typed ?? "");
     // oxlint-disable-next-line no-await-in-loop -- one editor after another
     await none(view);
   }
-  const after = editing("---\nup: x\n---\n").view;
-  type(after, "#pro");
-  await opened(after);
+});
+
+test("what the server reads as no frontmatter completes as the body does: one not closed, one closed by ..., one opened by '--- ', after one", async () => {
+  for (const [doc, typed] of [
+    ["---\nintro\n\n‸", "[[Pla"],
+    ["---\nintro\n\n‸", "#pro"],
+    ["---\nup: x\n...\n‸", "[[Pla"],
+    ["--- \nup: ‸\n---", "[[Pla"],
+    ["---\nup: x\n---\n‸", "#pro"],
+  ]) {
+    const { view } = editingAt(doc ?? "");
+    type(view, typed ?? "");
+    // oxlint-disable-next-line no-await-in-loop -- one editor after another
+    await opened(view);
+  }
 });
 
 test("a tag the body cannot write is not listed; a tag's characters go on: digits, a slash, after a full-width space", async () => {
@@ -482,4 +527,74 @@ test("what matched shows in a title whose link holds it before its end (.md afte
   const label = view.dom.querySelector("[role=option] .cm-completionLabel");
   expect(label?.textContent).toBe("Notes.md");
   expect(label?.querySelector(".cm-completionMatchedText")?.textContent).toBe("Notes");
+});
+
+test("in a link already closed: a table's \\| stays, a '^' is the target's, a display text holding '|' goes with an alias picked", async () => {
+  for (const [doc, picked, written] of [
+    ["| a | b |\n| - | - |\n| x | [[Pl‸\\|old]] |", "Plans", "| a | b |\n| - | - |\n| x | [[Plans\\|old]] |"],
+    ["[[Pl‸^b]]", "Plans", "[[Plans]]"],
+    ["[[Ro‸#a|b|c]]", "Roadmap", "[[Plans#a|Roadmap]]"],
+  ] as const) {
+    const { view } = editingAt(doc);
+    type(view, "a");
+    // oxlint-disable-next-line no-await-in-loop -- one editor after another
+    await opened(view);
+    // oxlint-disable-next-line no-await-in-loop -- one editor after another
+    await pick(view, picked);
+    expect(view.state.doc.toString()).toBe(written);
+  }
+});
+
+/** aliasesTargets is a page whose aliases hold a '|' and a line's end. */
+function aliasesTargets(): Promise<LinkTarget[]> {
+  return Promise.resolve([{ id: "p1", kind: "page", name: "Plans", link: "Plans", aliases: ["x|y", "x\ny", "xz"] }]);
+}
+
+test("an alias with a line's end is not listed; in a table, nor one with a '|'", async () => {
+  const linkTargets = aliasesTargets;
+  const { view } = editing("", { linkTargets });
+  type(view, "[[x");
+  await opened(view);
+  expect(shown(view).map(([label]) => label)).toEqual(["x|y", "xz"]);
+
+  const table = editing("| a | b |\n| - | - |\n| x | ", { linkTargets }).view;
+  type(table, "[[x");
+  await opened(table);
+  expect(shown(table).map(([label]) => label)).toEqual(["xz"]);
+});
+
+test("a failed read is not remembered: the next key reads again; a completion asked for reads anew", async () => {
+  vi.spyOn(console, "error").mockImplementation(() => undefined);
+  let calls = 0;
+  const { view, reads } = editing("", {
+    linkTargets: () => (++calls === 1 ? Promise.reject(new Error("offline")) : Promise.resolve(targets)),
+  });
+  type(view, "[[Pl");
+  await none(view);
+  type(view, "a");
+  await opened(view);
+  expect(reads.targets).toBe(2);
+
+  startCompletion(view);
+  await opened(view);
+  expect(reads.targets).toBe(3);
+});
+
+test("what matched shows in a title as the link's last: a path's folder of the same name is not the title", async () => {
+  const { view } = editing("", {
+    linkTargets: () => Promise.resolve([{ id: "p9", kind: "page", name: "Notes", link: "Notes/Notes", aliases: [] }]),
+  });
+  type(view, "[[Notes/N");
+  await opened(view);
+  const label = view.dom.querySelector("[role=option] .cm-completionLabel");
+  expect(label?.querySelector(".cm-completionMatchedText")?.textContent).toBe("N");
+});
+
+test("an option without a detail has no pause", async () => {
+  const { view } = editing("");
+  type(view, "[[Pla");
+  await opened(view);
+  const plans = [...view.dom.querySelectorAll("[role=option]")].find((option) => option.textContent === "Plans");
+  expect(plans).toBeDefined();
+  expect(plans?.querySelector(".nw-completion-pause")).toBeNull();
 });

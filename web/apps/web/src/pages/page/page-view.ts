@@ -1,15 +1,15 @@
-import useSWR, { type SWRConfiguration } from "swr";
+import useSWR from "swr";
 
 import type { Notebook } from "../../services/notebook.service";
-import type { PageView } from "../../services/page.service";
 import { usePageTree } from "../../stores/context";
 
 /**
  * usePageView reads the page's reading view, by the key the events read it
- * again by (events/handlers.ts). Each of its readers reads it the same way:
- * SWR has the first of them read it again, whichever that is.
+ * again by (events/handlers.ts). Its readers, the view and the outline,
+ * read it the same way: SWR has one of them read it again, whichever
+ * subscribed first, and reads it once for all.
  */
-export function usePageView(notebook: Notebook, page: string, config?: SWRConfiguration<PageView>) {
+export function usePageView(notebook: Notebook, page: string) {
   const pages = usePageTree(notebook);
-  return useSWR(["page-view", notebook.id, page], () => pages.view(page), config);
+  return useSWR(["page-view", notebook.id, page], () => pages.view(page));
 }

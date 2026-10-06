@@ -9,25 +9,18 @@ import { PanelSection } from "./panel-section";
 /** A heading of the page: its id, its level and its text. */
 type Heading = { id: string; level: number; text: string };
 
-/** The outline reads the view only as the reading view does: on its own, never. */
-const readsNothing = {
-  revalidateOnMount: false,
-  revalidateOnFocus: false,
-  revalidateOnReconnect: false,
-  revalidateIfStale: false,
-} as const;
-
 /**
  * PageOutline is the page's headings as its reading view has them (M6/P7
- * design 8): from the HTML the view read, under its key, with no read of
- * its own. Each is indented by its level, from the page's highest, and
+ * design 8): from the HTML the view read, read the same way under its key
+ * (SWR reads it once for both). Each is indented by its level, from the
+ * page's highest, and
  * leads to its heading through the router, as a link of the page to its
  * anchor does: the view has the heading show and take the focus. A page
  * without headings has no outline.
  */
 export function PageOutline({ notebook, page }: { notebook: Notebook; page: string }) {
   const t = useT();
-  const { data } = usePageView(notebook, page, readsNothing);
+  const { data } = usePageView(notebook, page);
   const html = data?.html;
   const headings = useMemo(() => (html === undefined ? [] : headingsOf(html)), [html]);
   if (headings.length === 0) {

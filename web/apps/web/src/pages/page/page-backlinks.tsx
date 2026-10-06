@@ -1,7 +1,7 @@
 import { observer } from "mobx-react-lite";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
-import useSWR from "swr";
+import useSWR, { unstable_serialize, useSWRConfig } from "swr";
 
 import { arrived } from "../../app/arrival";
 import { useMounted } from "../../app/mounted";
@@ -29,9 +29,11 @@ type Shown = { id: string; name: string; count: number; contexts: string[] };
  * when more than one, and the lines of its first ones, as the server
  * writes them. One the tree does not have yet, made in another tab, shows
  * once the tree is read again. More reads the next page of them and adds
- * it, the focus going to the first page it adds once there is no more to
- * read; read again (an event, a refocus, a connection), the list is as
- * many pages as were read, from the first.
+ * it; the last, as More goes, the focus falls to the first page it adds
+ * that shows (or the last that shows, or the section's title), unless
+ * the reader has put it elsewhere meanwhile. Read again (an event, a
+ * refocus, a connection, the page come back to), the list is as many
+ * pages as were read, from the first.
  */
 export const PageBacklinks = observer(function PageBacklinks({
   notebook,
@@ -45,11 +47,12 @@ export const PageBacklinks = observer(function PageBacklinks({
   const t = useT();
   const pages = usePageTree(notebook);
   const mounted = useMounted();
-  // How many pages of the list a read reads.
-  const loaded = useRef(1);
-  const { data, error, mutate, isValidating } = useSWR(["backlinks", notebook.id, page], () =>
-    readPages(pages, page, loaded.current)
-  );
+  const key = ["backlinks", notebook.id, page];
+  const { cache } = useSWRConfig();
+  // How many pages of the list a read reads: as many as the list read before, which the page come back to shows.
+  const [cached] = useState(() => (cache.get(unstable_serialize(key))?.data as BacklinkPage[] | undefined)?.length);
+  const loaded = useRef(cached ?? 1);
+  const { data, error, mutate, isValidating } = useSWR(key, () => readPages(pages, page, loaded.current));
   // Whether a read is out, as the latest render saw it.
   const validating = useRef(isValidating);
   useEffect(() => {
@@ -58,13 +61,19 @@ export const PageBacklinks = observer(function PageBacklinks({
   const [reading, setReading] = useState(false);
   const busy = useRef(false);
   const [failure, setFailure] = useState<unknown>(undefined);
-  // The page that links here whose link takes the focus once it shows.
-  const [focusing, setFocusing] = useState<string | undefined>(undefined);
+  // Where the focus falls as More goes: the link of a page that links here, or the section's title (null).
+  const [focusing, setFocusing] = useState<string | null | undefined>(undefined);
   const focused = useRef<HTMLAnchorElement>(null);
+  const summary = useRef<HTMLElement>(null);
   useEffect(() => {
-    if (focusing !== undefined) {
-      focused.current?.focus();
-      setFocusing(undefined);
+    if (focusing === undefined) {
+      return;
+    }
+    setFocusing(undefined);
+    // Only from where More's going left it: a reader who went elsewhere meanwhile, the editor, stays there.
+    const at = document.activeElement;
+    if (at === null || at === document.body) {
+      (focusing === null ? summary.current : focused.current)?.focus();
     }
   }, [focusing]);
 
@@ -87,9 +96,9 @@ export const PageBacklinks = observer(function PageBacklinks({
         void mutate();
       }
       if (mounted() && read?.at(-1) === next && next.next_cursor === null) {
-        // More goes: the focus to the first page it added that shows, or the last that shows.
+        // More goes: the focus to the first page it added that shows, or the last that shows, or the title.
         const added = next.data.find(({ id }) => pages.byId(id) !== undefined);
-        setFocusing(added?.id ?? shownOf(pages, read).at(-1)?.id);
+        setFocusing(added?.id ?? shownOf(pages, read).at(-1)?.id ?? null);
       }
     } catch (failed) {
       if (mounted()) {
@@ -115,7 +124,7 @@ export const PageBacklinks = observer(function PageBacklinks({
   const shown = shownOf(pages, data);
   const cursor = data.at(-1)?.next_cursor ?? undefined;
   return (
-    <PanelSection title={t("page.backlinks")}>
+    <PanelSection title={t("page.backlinks")} summaryRef={summary}>
       {shown.length === 0 && cursor === undefined && (
         <p className="text-sm text-muted-foreground">{t("page.noBacklinks")}</p>
       )}

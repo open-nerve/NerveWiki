@@ -58,6 +58,8 @@ test("L5 (page): [[ completes a page by its title and by an alias, # a tag; noth
   await pick(page);
   await page.keyboard.type(" #proj");
   await expect.poll(() => completions(page)).toEqual([["project/alpha", "1 page"]]);
+  // A screen reader hears the option's text and its detail apart.
+  await expect(completion(page).getByRole("option", { name: "project/alpha, 1 page", exact: true })).toBeVisible();
   await pick(page);
 
   // In inline code, between its backticks, nothing completes.
@@ -91,6 +93,8 @@ test("L5 (page, input method): a composition closes the completion, none opens w
   const notebook = await createNotebook(api, pat, workspace.slug, "Plans");
   await createPage(api, pat, notebook.id, "会议纪要");
   await createPage(api, pat, notebook.id, "Plans");
+  // What the composition's text matches: a completion that opened while it composes would list it.
+  await createPage(api, pat, notebook.id, "Huiyi notes");
   const source = await createPage(api, pat, notebook.id, "Source", null, "");
   const page = await signedInPage(tokens);
   const targetReads = countAnswers(page, "GET", `/api/v0/notebooks/${notebook.id}/link-targets`);
