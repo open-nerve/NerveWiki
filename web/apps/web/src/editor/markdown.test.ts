@@ -68,6 +68,7 @@ const costly: [string, (length: number) => string][] = [
   ["emphasis closed in part", (length) => "*a** ".repeat(length / 5)],
   ["strong emphasis in emphasis", (length) => "***a*** ".repeat(length / 8)],
   ["a run of spaces", (length) => `x${" ".repeat(length - 2)}y`],
+  ["an escape, then a run of spaces", (length) => `\\*${" ".repeat(length - 3)}y`],
   ["processing instructions", (length) => `x${"<?".repeat(length / 2 - 1)}`],
   ["images not closed", (length) => "![a](".repeat(length / 5)],
   ["autolinks not closed", (length) => "<http://a".repeat(length / 9)],
@@ -106,22 +107,73 @@ test.each(costly)("a paragraph of inlineLimit characters, %s, is parsed in under
   expect(parsed(doc)).toBeLessThan(1_000);
 });
 
-/** How many nodes named name doc's tree has, as the editor parses it. */
-function count(doc: string, name: string): number {
+/** The nodes named name of doc's tree, as the editor parses it, each from where to where. */
+function nodes(doc: string, name: string): [number, number][] {
   const state = EditorState.create({ doc, extensions: markdownEditing() });
-  let found = 0;
-  ensureSyntaxTree(state, doc.length, 10_000)?.iterate({ enter: (node) => void (node.name === name && found++) });
+  const found: [number, number][] = [];
+  ensureSyntaxTree(state, doc.length, 10_000)?.iterate({
+    enter: (node) => void (node.name === name && found.push([node.from, node.to])),
+  });
   return found;
 }
+
+const count = (doc: string, name: string) => nodes(doc, name).length;
 
 test("lists in lists, quotes in quotes are read to blockDepth; past it the rest of the line is plain text, and the next is read as ever", () => {
   // A list and its item are two blocks: the document's and blockDepth - 1 more hold half as many items.
   const deepest = blockDepth / 2;
   expect(count(`${"- ".repeat(deepest)}a`, "ListItem")).toBe(deepest);
-  expect(count(`${"- ".repeat(deepest + 10)}a`, "ListItem")).toBe(deepest);
-  expect(count(`${"- ".repeat(deepest + 10)}a\n\n- b`, "ListItem")).toBe(deepest + 1);
+  const deeper = `${"- ".repeat(deepest + 10)}a`;
+  expect(count(deeper, "ListItem")).toBe(deepest);
+  expect(nodes(deeper, "Paragraph")).toEqual([[2 * deepest, deeper.length]]);
+  expect(count(`${deeper}\n\n- b`, "ListItem")).toBe(deepest + 1);
   // A quote is one: below the document, blockDepth - 1 of them.
   expect(count(`${"> ".repeat(blockDepth + 10)}a`, "Blockquote")).toBe(blockDepth - 1);
+});
+
+test("a link reference definition is one up to inlineLimit, over lines too; one still open past it is plain text; a table past it keeps its rows and cells", () => {
+  expect(count('[a]: http://x "t"\n\ntext', "LinkReference")).toBe(1);
+  expect(count('[a]:\n  http://x\n  "t"', "LinkReference")).toBe(1);
+  const open = `[a]: http://x "${"t\n".repeat(inlineLimit / 2)}"`;
+  expect([count(open, "LinkReference"), count(open, "Paragraph")]).toEqual([0, 1]);
+  const rows = Array.from({ length: 1_000 }, (_, i) => `| [a](b) | ${i} |`);
+  const table = ["| x | y |", "|---|---|", ...rows].join("\n");
+  expect(table.length).toBeGreaterThan(inlineLimit);
+  expect([count(table, "Table"), count(table, "TableRow"), count(table, "Link")]).toEqual([1, 1_000, 1_000]);
+  // One whose head may begin a definition: no longer one, it is a table still.
+  const bracketed = ["[x] | y", "---|---", ...rows].join("\n");
+  expect([count(bracketed, "Table"), count(bracketed, "TableRow"), count(bracketed, "Link")]).toEqual([
+    1, 1_000, 1_001,
+  ]);
+});
+
+// A paragraph that may be a link reference definition read itself again at each line: a JSON array pasted as
+// text, 20,000 lines, took 0.74 s a keystroke; a "[" and 100,000 lines 15 s (M6 closeout FB3-I1).
+test.each<[string, (length: number) => string]>([
+  ["a bracket never closed", (length) => `[${"\nx".repeat(length / 2)}`],
+  ["a title never closed", (length) => `[a]: b "x${"\nx".repeat(length / 2)}`],
+  [
+    "a JSON array",
+    (length) => {
+      const lines = ["["];
+      for (let i = 0, size = 1; size < length; i++) {
+        const line = `  {"id": ${i}, "name": "item ${i}"},`;
+        lines.push(line);
+        size += line.length + 1;
+      }
+      return [...lines, "]"].join("\n");
+    },
+  ],
+])(
+  "a paragraph of 200,000 characters that may be a link reference definition, %s, is parsed in a time as long as it",
+  (_, paragraph) => {
+    expect(parsed(paragraph(200_000))).toBeLessThan(1_000);
+  }
+);
+
+test("a table of 10,000 rows is parsed in a time as long as it", () => {
+  const rows = Array.from({ length: 10_000 }, (_, i) => `| row ${i} | [link](http://a.b/${i}) | **b** *e* \`c\` |`);
+  expect(parsed(["| x | y | z |", "|---|---|---|", ...rows].join("\n"))).toBeLessThan(1_000);
 });
 
 // Each list mark counted the line's columns again from its start: a line of 80,000 "- " took 19 s.

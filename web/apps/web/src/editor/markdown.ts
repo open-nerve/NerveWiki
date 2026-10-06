@@ -27,26 +27,32 @@ const markdownHighlight = HighlightStyle.define([
 
 /**
  * inlineLimit is the longest inline text, a paragraph's, a heading's or a
- * table cell's, in which the editor finds links, emphasis and code; a
- * longer one shows as plain text. Many of lezer's inline parsers scan on
- * from each mark they meet, to the text's end or back to its start: a
- * paragraph's run of spaces, its "<?", its links, a link's address or
- * title not closed, its emphasis closed in part each cost the square of
- * their length. 96 KB of spaces took 5.6 s to enter the edit, in one task
- * a writer's content alone decides (M6 closeout B-I1, FB-I2, FB2-I1). At
- * the limit the costliest takes about 80 ms.
+ * table cell's, in which the editor finds links, emphasis and code, in
+ * UTF-16 code units, its line breaks and the marks of the blocks it is in
+ * counted; a longer one shows as plain text. Many of lezer's inline
+ * parsers scan on from each mark they meet, to the text's end or back to
+ * its start: a paragraph's run of spaces, its "<?", its links, a link's
+ * address or title not closed, its emphasis closed in part each cost the
+ * square of their length. 96 KB of spaces took 5.6 s to enter the edit, in
+ * one task a writer's content alone decides (M6 closeout B-I1, FB-I2,
+ * FB2-I1). At the limit the costliest takes about 80 ms. A paragraph that
+ * may be a link reference definition stops being one at the limit too:
+ * each of its lines read it again from its start, and a JSON array pasted
+ * as text, 20,000 lines, took 0.74 s a keystroke (FB3-I1). A table keeps
+ * its rows and cells, each cell bounded alone: link completion needs them.
  */
 export const inlineLimit = 10_000;
 
 /**
  * blockDepth is how deep in blocks (lists, their items, quotes) the editor
- * reads a line's structure; the rest of a line deeper is plain text. Each
- * list mark counted the line's columns again from its start: a line of
- * 80,000 "- " took 19 s (M6 closeout FB2-I1). 100 holds 50 lists, one in another.
+ * reads a line's structure, the document one of them; the rest of a line
+ * deeper is plain text. Each list mark counted the line's columns again
+ * from its start: a line of 80,000 "- " took 19 s (M6 closeout FB2-I1).
+ * 100 holds 50 lists one in another, or 99 quotes.
  */
 export const blockDepth = 100;
 
-/** bounded reads what is past inlineLimit or blockDepth as plain text, before any other parser. */
+/** bounded reads what is past inlineLimit or blockDepth as plain text. */
 const bounded: MarkdownConfig = {
   parseBlock: [
     {
@@ -61,12 +67,32 @@ const bounded: MarkdownConfig = {
         return true;
       },
     },
+    {
+      name: "LongReferenceAsText",
+      after: "LinkReference",
+      // Made right after LinkReference's: what the leaf has then is that one's.
+      leaf: (_, leaf) => {
+        const references = [...leaf.parsers];
+        if (references.length === 0) {
+          return null;
+        }
+        return {
+          nextLine: (_cx, _line, longer) => {
+            if (longer.content.length > inlineLimit) {
+              longer.parsers = longer.parsers.filter((parser) => !references.includes(parser));
+            }
+            return false;
+          },
+          finish: () => false,
+        };
+      },
+    },
   ],
   parseInline: [
     {
       name: "LongInlineAsText",
       before: "Escape",
-      parse: (cx, _, pos) => (pos === cx.offset && cx.end - cx.offset > inlineLimit ? cx.end : -1),
+      parse: (cx) => (cx.end - cx.offset > inlineLimit ? cx.end : -1),
     },
   ],
 };
