@@ -92,16 +92,18 @@ func resolutions(ctx context.Context, store Store, pages Pages, notebookID uuid.
 	for _, n := range nodes {
 		byID[n.ID] = n
 	}
-	depth := 0
+	reach := make(map[string]int)
 	for i, l := range links {
 		if from, ok := byID[l.SourceID]; ok && parsed[i] {
-			depth = max(depth, targets[i].Reach(from.Path))
+			for _, key := range targets[i].LastKeys() {
+				reach[key] = max(reach[key], targets[i].Reach(from.Path))
+			}
 		}
 	}
-	// Read once by the ends of their paths, as deep as the targets reach,
-	// for each target to find those that end as it does (M6 closeout FA-I1,
-	// FA2-M1).
-	suffixes := domain.NewSuffixes(candidates, depth)
+	// Read once by the ends of their paths, as deep as the targets ending
+	// with each key reach, for each target to find those that end as it
+	// does (M6 closeout FA-I1, FA2-M1, FA3-N2).
+	suffixes := domain.NewSuffixes(candidates, reach)
 	var missing []uuid.UUID
 	// A link's resolution depends on its page and its target's parse alone.
 	type link struct {

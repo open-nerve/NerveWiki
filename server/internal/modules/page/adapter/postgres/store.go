@@ -126,22 +126,30 @@ func (s *Store) Ancestors(ctx context.Context, id uuid.UUID) ([]domain.Ancestor,
 	return out, nil
 }
 
-// Subtree implements app.Nodes.
+// subtreeLevels bounds Subtree's levels: only a defect could make a chain
+// that loops, and the tree is far shallower (domain.MaxDepth).
+const subtreeLevels = 64
+
+// Subtree implements app.Nodes: the node, then its descendants level by
+// level, each level in order and read in one statement by its parents.
 func (s *Store) Subtree(ctx context.Context, notebookID, id uuid.UUID) (domain.Subtree, error) {
-	rows, err := s.queries(ctx).Subtree(ctx, gen.SubtreeParams{ID: id, NotebookID: notebookID})
-	switch {
-	case err != nil:
-		return nil, fmt.Errorf("subtree: %w", err)
-	case len(rows) == 0:
-		return nil, app.ErrNotFound
+	q := s.queries(ctx)
+	root, err := q.FindNodeIn(ctx, gen.FindNodeInParams{ID: id, NotebookID: notebookID})
+	if err != nil {
+		return nil, notFound("subtree", err)
 	}
-	out := make(domain.Subtree, len(rows))
-	for i, r := range rows {
-		out[i] = domain.SubtreeNode{Level: int(r.Level), Node: nodeOf(gen.FindNodeRow{
-			ID: r.ID, NotebookID: r.NotebookID, ParentID: r.ParentID, Kind: r.Kind, Name: r.Name, NameKey: r.NameKey,
-			SortOrder: r.SortOrder, CreatedByID: r.CreatedByID, UpdatedByID: r.UpdatedByID, CreatedAt: r.CreatedAt,
-			UpdatedAt: r.UpdatedAt,
-		})}
+	out := domain.Subtree{{Level: 1, Node: nodeOf(gen.FindNodeRow(root))}}
+	parents := []uuid.UUID{root.ID}
+	for level := 2; level <= subtreeLevels && len(parents) > 0; level++ {
+		rows, err := q.ChildrenOfAll(ctx, gen.ChildrenOfAllParams{NotebookID: notebookID, Parents: parents})
+		if err != nil {
+			return nil, fmt.Errorf("subtree: %w", err)
+		}
+		parents = make([]uuid.UUID, len(rows))
+		for i, r := range rows {
+			out = append(out, domain.SubtreeNode{Level: level, Node: nodeOf(gen.FindNodeRow(r))})
+			parents[i] = r.ID
+		}
 	}
 	return out, nil
 }

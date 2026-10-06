@@ -76,8 +76,9 @@ func Resolve(t Target, from []Step, candidates []Node, aliased map[string][]Node
 }
 
 // Resolve is Resolve among the pages s holds, those whose title key is one
-// of t's LastKeys, or more: the others are none of t's; s reads them as
-// deep as t reaches from from (Target.Reach), or deeper.
+// of t's LastKeys, or more: the others are none of t's; s reads those of
+// each of t's LastKeys as deep as t reaches from from (Target.Reach), or
+// deeper.
 func (s Suffixes) Resolve(t Target, from []Step, aliased map[string][]Node) Resolution {
 	return resolve(t, from, s, aliased)
 }
@@ -174,16 +175,17 @@ type suffix struct {
 	longer []Node
 }
 
-// NewSuffixes reads candidates by the ends of their paths, the last depth
-// steps of each, as deep as the targets of a read reach (Target.Reach): a
-// page is in as many suffixes as its path has steps, depth at most. Each
-// step whole cost 2.2 GB for 100,000 pages 64 steps deep (M6 closeout
-// FA2-M1).
-func NewSuffixes(candidates []Node, depth int) Suffixes {
+// NewSuffixes reads candidates by the ends of their paths, as deep as the
+// targets of a read that end with each title key reach (Target.Reach), by
+// the key: a page is in as many suffixes as its path has steps, its key's
+// reach at most, and in none if no target ends with its key. Each page's
+// every step cost 441 MiB a read of 100,000 pages 10 steps deep, 2.2 GB 64
+// deep (M6 closeout FA2-M1, FA3-N2).
+func NewSuffixes(candidates []Node, reach map[string]int) Suffixes {
 	root := &suffix{}
 	for _, c := range candidates {
 		at := root
-		for i := len(c.Path) - 1; i >= max(len(c.Path)-depth, 0); i-- {
+		for i := len(c.Path) - 1; i >= max(len(c.Path)-reach[c.key()], 0); i-- {
 			at = at.child(c.Path[i].Key)
 			if i == 0 {
 				at.exact = append(at.exact, c)

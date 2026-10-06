@@ -38,8 +38,12 @@ func TestSuffixesResolveAsTheCandidatesOfTheLastKeys(t *testing.T) {
 				continue
 			}
 			want := p.resolve(domain.Link{Target: written}, from)
-			// As deep as the target reaches, no deeper.
-			suffixes := domain.NewSuffixes(all, target.Reach(p.paths[from]))
+			// As deep as the target reaches, no deeper, the pages of its keys alone.
+			reach := map[string]int{}
+			for _, key := range target.LastKeys() {
+				reach[key] = target.Reach(p.paths[from])
+			}
+			suffixes := domain.NewSuffixes(all, reach)
 			if got := suffixes.Resolve(target, p.paths[from], p.aliased); got != want {
 				t.Fatalf("seed %d: %q from %q resolves to %+v among the suffixes of %q, to %+v among its candidates",
 					seed, written, from, got, c.pages, want)
@@ -63,9 +67,11 @@ func TestSuffixesResolveAsTheCandidatesOfTheLastKeys(t *testing.T) {
 	}
 }
 
-// Suffixes read pages only as deep as the targets reach: names alone among
-// 10,000 pages of distinct titles 64 steps deep read each page's last step,
-// not its 64 (M6 closeout FA2-M1: 100,000 such pages took 2.2 GB a read).
+// Suffixes read pages only as deep as the targets of their title keys reach:
+// names alone among 10,000 pages of distinct titles 64 steps deep read each
+// page's last step, not its 64; one target as deep as the paths reads its
+// key's pages so deep, not all (M6 closeout FA2-M1: 100,000 such pages
+// took 2.2 GB a read; FA3-N2).
 func TestSuffixesReadThePathsAsDeepAsTheTargetsReach(t *testing.T) {
 	folders := make([]domain.Step, 63)
 	for i := range folders {
@@ -78,9 +84,14 @@ func TestSuffixesReadThePathsAsDeepAsTheTargetsReach(t *testing.T) {
 		pages[i] = domain.Node{ID: id, Path: append(slices.Clip(folders), domain.Step{ID: id, Key: key, Name: key})}
 	}
 	target, _ := domain.ParseTarget("t9999")
+	reach := make(map[string]int, len(pages))
+	for i := range pages {
+		reach[fmt.Sprintf("t%d", i)] = 1
+	}
+	reach["t0"] = 64
 	var before, after runtime.MemStats
 	runtime.ReadMemStats(&before)
-	suffixes := domain.NewSuffixes(pages, target.Reach(nil))
+	suffixes := domain.NewSuffixes(pages, reach)
 	runtime.ReadMemStats(&after)
 	if got := suffixes.Resolve(target, nil, nil); got.ID != pages[9_999].ID {
 		t.Fatalf("t9999 resolves to %+v, want %s", got, pages[9_999].ID)
