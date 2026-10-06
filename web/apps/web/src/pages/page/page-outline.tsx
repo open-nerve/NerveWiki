@@ -1,10 +1,16 @@
-import { useMemo } from "react";
+import { memo, useMemo } from "react";
 import { Link } from "react-router";
 
 import { useT } from "../../i18n/i18n";
 import type { Notebook } from "../../services/notebook.service";
 import { usePageView } from "./page-view";
 import { PanelSection } from "./panel-section";
+
+/**
+ * How many headings the outline lists at most: a page may have a million, a
+ * list of links that long the tab's memory.
+ */
+const listedUpTo = 1000;
 
 /** A heading of the page: its id, its level and its text. */
 type Heading = { id: string; level: number; text: string };
@@ -15,9 +21,10 @@ type Heading = { id: string; level: number; text: string };
  * (SWR reads it once for both). Each is indented by its level, from the
  * page's highest, and leads to its heading through the router, as a link
  * of the page to its anchor does: the view has the heading show and take
- * the focus. A page without headings has no outline.
+ * the focus. A page without headings has no outline; one of more than
+ * listedUpTo lists the first, and says how many more it has.
  */
-export function PageOutline({ notebook, page }: { notebook: Notebook; page: string }) {
+export const PageOutline = memo(function PageOutline({ notebook, page }: { notebook: Notebook; page: string }) {
   const t = useT();
   const { data } = usePageView(notebook, page);
   const html = data?.html;
@@ -25,13 +32,14 @@ export function PageOutline({ notebook, page }: { notebook: Notebook; page: stri
   if (headings.length === 0) {
     return null;
   }
-  // Not by spreading them into Math.min: a call takes so many arguments only, a page may have more headings.
-  const top = headings.reduce((highest, { level }) => Math.min(highest, level), 6);
+  const listed = headings.slice(0, listedUpTo);
+  // Not by spreading them into Math.min: a call takes so many arguments only.
+  const top = listed.reduce((highest, { level }) => Math.min(highest, level), 6);
   return (
     <PanelSection title={t("page.outline")}>
       <nav aria-label={t("page.outline")}>
         <ul className="space-y-1 text-sm">
-          {headings.map(({ id, level, text }) => (
+          {listed.map(({ id, level, text }) => (
             <li key={id} style={{ paddingLeft: `${(level - top) * 0.75}rem` }}>
               <Link to={{ hash: encodeURIComponent(id) }} className="block break-words hover:underline">
                 {text}
@@ -39,10 +47,15 @@ export function PageOutline({ notebook, page }: { notebook: Notebook; page: stri
             </li>
           ))}
         </ul>
+        {headings.length > listed.length && (
+          <p className="mt-1 text-sm text-muted-foreground">
+            {t("page.moreHeadings", { count: String(headings.length - listed.length) })}
+          </p>
+        )}
       </nav>
     </PanelSection>
   );
-}
+});
 
 /**
  * headingsOf is the headings of a page's HTML that an anchor leads to: those

@@ -91,6 +91,33 @@ test("the outline lists the page's headings with an id, but the footnotes', by t
   ]);
 });
 
+test("the outline lists the first 1,000 headings and says how many more the page has", async () => {
+  const server = pageServer();
+  server.views.set(install.id, {
+    html: Array.from({ length: 1_002 }, (_, at) => `<h2 id="nw-h${at.toString()}">H${at.toString()}</h2>`).join(""),
+    revision: 1,
+  });
+  renderApp(pagePath(install.id), server.app);
+
+  const outline = await screen.findByRole("navigation", { name: "Outline" });
+  const links = within(outline).getAllByRole("link");
+  expect([links.length, links.at(-1)?.textContent]).toEqual([1_000, "H999"]);
+  expect(within(outline).getByText("…and 2 more")).toBeTruthy();
+});
+
+test("the outline indents from the page's highest heading, whichever it is", async () => {
+  const server = pageServer();
+  server.views.set(install.id, { html: '<h4 id="nw-a">A</h4><h3 id="nw-b">B</h3><h4 id="nw-c">C</h4>', revision: 1 });
+  renderApp(pagePath(install.id), server.app);
+
+  await screen.findByRole("navigation", { name: "Outline" });
+  expect(outlined()).toEqual([
+    ["A", "0.75rem"],
+    ["B", "0rem"],
+    ["C", "0.75rem"],
+  ]);
+});
+
 test("a heading of the outline goes to its heading through the router, which shows and takes the focus, each time", async () => {
   const scrolled = scrolls();
   const user = userEvent.setup();
@@ -328,9 +355,13 @@ test("the last more leaves the focus where the reader put it meanwhile, or left 
       fireEvent.keyDown(more, { key: "PageDown" });
       return document.body;
     },
-    // The middle button's press, which scrolls as the pointer moves.
+    // The middle button's press, which scrolls as the pointer moves; the right one's.
     (_guideLink: HTMLElement, more: HTMLElement) => {
       fireEvent.pointerDown(more, { button: 1 });
+      return document.body;
+    },
+    (_guideLink: HTMLElement, more: HTMLElement) => {
+      fireEvent.pointerDown(more, { button: 2 });
       return document.body;
     },
     () => {
@@ -383,10 +414,22 @@ test("a last more clicked as Safari does, which gives More no focus, takes the f
   }
 });
 
-test("More pressed again as it reads, a key on it or a double click, is no move elsewhere: the last takes the focus to the first page it adds", async () => {
+test("More pressed again as it reads, a key on it that presses it or moves nothing, a touch, a double click, is no move elsewhere: the last takes the focus to the first page it adds", async () => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
   const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
+  /** again presses More with Enter, then, as it reads, as fire does. */
+  const again =
+    (fire: (more: HTMLElement) => void) => async (more: HTMLElement, held: { answer: (() => void) | undefined }) => {
+      more.focus();
+      await user.keyboard("{Enter}");
+      await waitFor(() => expect(held.answer).toBeDefined());
+      fire(more);
+    };
   for (const press of [
+    ...[" ", "Escape", "Shift", "Control", "Alt", "Meta"].map((key) =>
+      again((more) => fireEvent.keyDown(more, { key }))
+    ),
+    again((more) => fireEvent.pointerDown(more, { button: 0, pointerType: "touch" })),
     async (more: HTMLElement, held: { answer: (() => void) | undefined }) => {
       more.focus();
       await user.keyboard("{Enter}");
@@ -975,7 +1018,7 @@ test("a property link at a path longer than 1,024 characters shows as its text; 
   ]);
 });
 
-test("the properties are worked out once for each answer, not as the page's edit renders the column again", async () => {
+test("the properties are worked out once for each answer, not as the column renders again: the edit entered, keys typed", async () => {
   const server = pageServer({ role: "editor" });
   server.properties.set(install.id, { valid: true, properties: [{ key: "o", value: { "nw-once": 1 } }], links: [] });
   renderApp(pagePath(install.id), server.app);
@@ -993,4 +1036,37 @@ test("the properties are worked out once for each answer, not as the page's edit
   expect(
     stringify.mock.calls.filter(([value]) => typeof value === "object" && value !== null && "nw-once" in value)
   ).toEqual([]);
+});
+
+test("no path past 1,024 is a map's or a set's key: a browser costs the square of their number for strings that long", async () => {
+  const long = "k".repeat(1_100);
+  const server = pageServer();
+  server.properties.set(install.id, {
+    valid: true,
+    properties: [
+      { key: long, value: ["[[Guide]]", "x"] },
+      { key: "short", value: "[[Notes]]" },
+    ],
+    links: [
+      { key: `${long}.0`, node_id: guide.id },
+      { key: "short", node_id: notes.id },
+    ],
+  });
+  const keyed = [
+    vi.spyOn(Map.prototype, "get"),
+    vi.spyOn(Map.prototype, "has"),
+    vi.spyOn(Map.prototype, "set"),
+    vi.spyOn(Set.prototype, "has"),
+    vi.spyOn(Set.prototype, "add"),
+  ];
+  onTestFinished(() => void vi.restoreAllMocks());
+  renderApp(pagePath(install.id), server.app);
+
+  await within(await shownPanel()).findByRole("link", { name: "Notes" });
+  const paths = keyed.flatMap((spy) => spy.mock.calls.map(([key]: unknown[]) => key));
+  expect(paths.filter((key) => typeof key === "string" && key.startsWith(`${long}.`))).toEqual([]);
+  expect(properties()).toEqual([
+    [long, "[[Guide]]x"],
+    ["short", "Notes"],
+  ]);
 });

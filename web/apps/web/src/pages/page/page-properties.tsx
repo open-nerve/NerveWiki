@@ -14,10 +14,12 @@ import { PanelSection } from "./panel-section";
 type Shown = string | { text: string; lead: string | null };
 
 /**
- * How long a property link's path may be to be paired with its value: one
- * longer shows as its text (the reading view's property table has it as a
- * link). A browser's map costs the square of their number for many strings
- * that long, which a writer could have every reader's tab wait on.
+ * How long a property link's path may be, in UTF-16 code units, to be
+ * paired with its value: one longer shows as its text (the reading view's
+ * property table has it as a link; a list's items may be either, by how
+ * long their paths are). A browser's map costs the square of their number
+ * for many strings that long, which a writer could have every reader's tab
+ * wait on.
  */
 const pathsUpTo = 1024;
 
@@ -47,7 +49,7 @@ export function PageProperties({
   const t = useT();
   const pages = usePageTree(notebook);
   const { data, error, mutate } = useSWR(["page-properties", notebook.id, page], () => pages.properties(page));
-  // Once for each answer, not at each render: the page's edit renders the column as it goes.
+  // Once for each answer, not at each render: the edit entered or left, the tree read again render the column.
   const rows = useMemo(() => (data?.valid === true ? rowsOf(data) : []), [data]);
   let shown: ReactNode;
   if (data === undefined) {

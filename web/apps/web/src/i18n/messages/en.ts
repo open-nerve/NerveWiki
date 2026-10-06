@@ -160,6 +160,7 @@ export const en = {
   "page.releasing": "Releasing…",
   "page.panel": "About this page",
   "page.outline": "Outline",
+  "page.moreHeadings": "…and {count} more",
   "page.backlinks": "Backlinks",
   "page.noBacklinks": "No page links here.",
   "page.backlinkCount": "{count} links",

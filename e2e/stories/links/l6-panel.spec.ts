@@ -146,6 +146,9 @@ test("L6 (page, large): properties of many strings at long paths show at once; a
 
   // More headings than a call takes arguments.
   await page.goto(wikiPagePath(workspace.slug, notebook.id, headings.id));
-  await expect(panel.getByRole("navigation", { name: "Outline", exact: true })).toBeVisible({ timeout: 120_000 });
-  await expect(page.getByText("Something went wrong")).toHaveCount(0);
+  const outline = panel.getByRole("navigation", { name: "Outline", exact: true });
+  const failed = page.getByText("Something went wrong");
+  await expect(outline.or(failed)).toBeVisible({ timeout: 120_000 });
+  await expect(failed).toHaveCount(0);
+  await expect(outline).toBeVisible();
 });

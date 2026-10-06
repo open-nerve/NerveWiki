@@ -158,6 +158,7 @@ export const zhCN: Messages = {
   "page.releasing": "解除中…",
   "page.panel": "页面信息",
   "page.outline": "大纲",
+  "page.moreHeadings": "……另有 {count} 个",
   "page.backlinks": "反向链接",
   "page.noBacklinks": "没有页面链接到这里。",
   "page.backlinkCount": "{count} 处",

@@ -15,10 +15,11 @@ import type { Build, EditorContext } from "../registry";
 
 /**
  * A link's target being written: after the last [[ of the line, what the
- * target's text may hold, to the cursor; the backslashes and the '!' before
- * it, which escape it or make it an embed.
+ * target's text may hold, to the cursor; the '!' before it, which makes it
+ * an embed. The backslashes before them are counted apart (slashesBefore):
+ * a pattern for them would try every run of them, as long as a line is.
  */
-const linkBefore = /(\\*)(!?)\[\[([^[\]|#^\n]*)$/;
+const linkBefore = /(!?)\[\[([^[\]|#^\n]*)$/;
 
 /** What a link's target being written may go on with, its completion kept. */
 const linkGoesOn = /^[^[\]|#^\n]*$/;
@@ -175,8 +176,10 @@ function frontmatterAt(state: EditorState, pos: number): "closed" | "open" | und
     return undefined;
   }
   let empty: number | undefined;
-  for (let n = 2; n <= doc.lines; n++) {
-    const { text } = doc.line(n);
+  // Line by line, as the text's own iterator goes: a content opened by "---" and never closed is read to its end.
+  let n = 1;
+  for (const text of doc.iterLines(2)) {
+    n++;
     if (text === "---") {
       return at < n ? "closed" : undefined;
     }
@@ -199,8 +202,16 @@ function inLinkWritten(state: EditorState, from: number, before: string, table: 
   if (opens < cell || before.includes("]]", opens)) {
     return false;
   }
-  const slashes = /\\*$/.exec(before.slice(0, opens))?.[0].length ?? 0;
-  return slashes % 2 === 0 && !nodesAt(state, from + opens + 1).some((name) => raw.has(name));
+  return slashesBefore(before, opens) % 2 === 0 && !nodesAt(state, from + opens + 1).some((name) => raw.has(name));
+}
+
+/** slashesBefore is how many backslashes text has just before at. */
+function slashesBefore(text: string, at: number): number {
+  let slashes = 0;
+  while (at - slashes > 0 && text[at - slashes - 1] === "\\") {
+    slashes++;
+  }
+  return slashes;
 }
 
 /** lineBefore is the cursor's line up to it. */
@@ -217,12 +228,13 @@ function pages(context: EditorContext): CompletionSource {
     if (written === null) {
       return null;
     }
-    const [whole, slashes = "", bang = "", query = ""] = written;
-    const opens = before.length - whole.length + slashes.length + bang.length;
+    const [whole, bang = "", query = ""] = written;
+    const opens = before.length - whole.length + bang.length;
+    const slashes = slashesBefore(before, before.length - whole.length);
     const place = placeOf(completion);
     if (
       place === undefined ||
-      (bang === "" && slashes.length % 2 === 1) ||
+      (bang === "" && slashes % 2 === 1) ||
       (place.frontmatter && !/["']$/.test(before.slice(0, opens)))
     ) {
       return null;
@@ -233,7 +245,7 @@ function pages(context: EditorContext): CompletionSource {
       return null;
     }
     // An embed shows its page: an alias would be its display text, which an embed takes for a size.
-    const embed = bang === "!" && slashes.length % 2 === 0;
+    const embed = bang === "!" && slashes % 2 === 0;
     const separator = place.table ? "\\|" : "|";
     const options: Completion[] = [];
     for (const target of targets) {

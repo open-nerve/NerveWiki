@@ -488,6 +488,17 @@ test("a tag the body cannot write is not listed; a tag's characters go on: digit
   }
 });
 
+test("a long run of backslashes before what is typed costs a time as long as it: a link's completion, a # in it", async () => {
+  const { view } = editing("\\".repeat(1 << 17));
+  const started = performance.now();
+  // What follows the run is not [[: a pattern for the run would try each of its places.
+  type(view, "a[[Pla");
+  await opened(view);
+  type(view, " #pro");
+  await none(view);
+  expect(performance.now() - started).toBeLessThan(2_000);
+});
+
 test("a link's completion ends at a character its target cannot hold, typed after it opened", async () => {
   const { view } = editing("");
   type(view, "[[C");
