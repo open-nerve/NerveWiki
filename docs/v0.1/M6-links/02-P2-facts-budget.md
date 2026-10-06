@@ -3,7 +3,7 @@
 | 项 | 内容 |
 |---|---|
 | Phase | M6/P2 提取结果与平台的预算 |
-| 状态 | 已完成 |
+| 状态 | 已完成（2026-10-05，合并 `f2fea43`） |
 | 基线 | P1 合并之后的 main；本文提交之后开分支 `m6-p2` |
 | 上级文档 | [M6 总设计](00-M6-design.md) 4.7、第 7、8 节；[M4/P3 给 M6 的移交](handoffs/M4-P3-markdown-extensions.md)第 9 项；[M12 的移交](../M12-release/handoffs/M4-performance.md)第 3 项 |
 

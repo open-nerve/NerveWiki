@@ -199,7 +199,7 @@ P4 做：
 - `page` 是 `.md` 所在的页，默认 `src`。一个样例一页正文；同一棵树的另一页另起一个样例。
 - `from`、`to` 是路径：父节点相同是改名，名称相同是移动，两者都变的不合，`check.mjs` 拒绝。
 - `.md` 是之前，`.out.md` 是之后。`note` 写 Obsidian 的结果与不跟的理由（nerve-defined 的必填）。
-- `check.mjs` 核对格式；`verify-rename.mjs`（`verify.mjs` 是 `resolve/` 的）对 `obsidian-verified` 的在隔离的 Obsidian 里改名或移动并比对，对 `nerve-defined` 的报告 Obsidian 的结果。文件夹页的改名在 Obsidian 里是两次改名：`F.md` 与 `F/`。
+- `check.mjs` 核对格式；`verify-rename.mjs`（`verify.mjs` 是 `cases/` 的，`verify-resolve.mjs` 是 `resolve/` 的）对 `obsidian-verified` 的在隔离的 Obsidian 里改名或移动并比对，对 `nerve-defined` 的报告 Obsidian 的结果。文件夹页的改名在 Obsidian 里是两次改名：`F.md` 与 `F/`。
 - Go 测试：linking 的领域测试读 `rename/`，逐个经改写核对（`rename_cases_test.go`）。
 
 ### 7.2 新加的样例
