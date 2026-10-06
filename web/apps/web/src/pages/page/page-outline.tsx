@@ -13,10 +13,9 @@ type Heading = { id: string; level: number; text: string };
  * PageOutline is the page's headings as its reading view has them (M6/P7
  * design 8): from the HTML the view read, read the same way under its key
  * (SWR reads it once for both). Each is indented by its level, from the
- * page's highest, and
- * leads to its heading through the router, as a link of the page to its
- * anchor does: the view has the heading show and take the focus. A page
- * without headings has no outline.
+ * page's highest, and leads to its heading through the router, as a link
+ * of the page to its anchor does: the view has the heading show and take
+ * the focus. A page without headings has no outline.
  */
 export function PageOutline({ notebook, page }: { notebook: Notebook; page: string }) {
   const t = useT();

@@ -85,6 +85,42 @@ test("a writer ticks an item, named by its text: the toggle on the view's revisi
   expect(document.activeElement).toBe(boxes()[0]);
 });
 
+/** folded is a view at revision whose one task item is in a folded callout, titled by the revision. */
+function folded(revision: number) {
+  return {
+    html: `<details class="nw-callout"><summary>Later ${revision.toString()}</summary><ul>\n<li><input disabled="" type="checkbox" data-task="3"> a</li>\n</ul></details>\n`,
+    revision,
+  };
+}
+
+/** callout is the reading view's first callout. */
+const callout = () => screen.getByRole("article").querySelector("details");
+
+test("an item of a folded callout the reader opened has the focus back in the view read again, the callout opened again", async () => {
+  const server = pageServer();
+  server.views.set(install.id, folded(1));
+  const reloads: (() => void)[] = [];
+  renderApp(pagePath(install.id), server.app, {
+    enhancements: [
+      (_container, context) => {
+        reloads.push(context.reload);
+        return undefined;
+      },
+      focusFixup,
+      ...readingEnhancements,
+    ],
+  });
+  await waitFor(() => expect(boxes()[0]?.disabled).toBe(false));
+  (callout() as HTMLDetailsElement).open = true;
+  boxes()[0]?.focus();
+
+  server.views.set(install.id, folded(2));
+  act(() => reloads.at(-1)?.());
+  await screen.findByText("Later 2");
+  expect(callout()?.open).toBe(true);
+  expect(document.activeElement).toBe(boxes()[0]);
+});
+
 test("a toggle on a revision passed reads the view again and says the page changed; the focus does not go to the item that moved to its place; the next toggle clears the refusal", async () => {
   const { server } = await opened("editor", "- [ ] a\n- [ ] b\n");
   server.withTasks(install.id, "- [ ] z\n- [ ] a\n- [ ] b\n", 2);

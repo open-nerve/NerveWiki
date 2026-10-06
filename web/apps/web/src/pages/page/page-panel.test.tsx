@@ -111,7 +111,7 @@ test("a heading of the outline goes to its heading through the router, which sho
   expect(document.activeElement).toBe(heading);
 });
 
-test("the outline follows the view read again, with no read of its own; a page without headings has none", async () => {
+test("the outline follows the view read again, its reads the view's; a page without headings has none", async () => {
   const server = pageServer();
   server.views.set(install.id, { html: '<h2 id="nw-a">A</h2>', revision: 1 });
   const reloads: (() => void)[] = [];
@@ -280,27 +280,77 @@ test("more reads the next page and adds it, the focus kept on it until the last,
   ]);
 });
 
-test("the last more leaves the focus where the reader put it meanwhile", async () => {
-  vi.useFakeTimers({ shouldAdvanceTime: true });
-  const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
-  let answer!: (response: Response) => void;
+/**
+ * heldMore is a server whose backlinks are Guide's, then Notes' on a last
+ * page, which the first time is held until answered; reads are the
+ * cursors of the backlinks read, null the first page's.
+ */
+function heldMore() {
+  const held = { reads: [] as (string | null)[], answer: undefined as (() => void) | undefined };
   const server = pageServer({
     answers: {
-      "GET /api/v0/pages/*/backlinks": (request) =>
-        new URL(request.url).searchParams.get("cursor") === null
-          ? json(backlinkPage(guide.id, 1, "1"))
-          : new Promise((resolve) => (answer = resolve)),
+      "GET /api/v0/pages/*/backlinks": (request) => {
+        const cursor = new URL(request.url).searchParams.get("cursor");
+        held.reads.push(cursor);
+        if (cursor === null) {
+          return json(backlinkPage(guide.id, 1, "1"));
+        }
+        const last = backlinkPage(notes.id, 1, null);
+        return held.answer === undefined
+          ? new Promise((resolve) => (held.answer = () => resolve(json(last))))
+          : json(last);
+      },
     },
   });
-  renderApp(pagePath(install.id), server.app);
-  const guideLink = await within(await shownPanel()).findByRole("link", { name: "Guide" });
+  return { server, held };
+}
 
+test("the last more leaves the focus where the reader put it meanwhile: on another link, on the content clicked", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
+  for (const elsewhere of [
+    (guideLink: HTMLElement) => act(() => guideLink.focus()),
+    () => user.click(screen.getByRole("article")),
+  ]) {
+    const { server, held } = heldMore();
+    const { unmount } = renderApp(pagePath(install.id), server.app);
+    // oxlint-disable-next-line no-await-in-loop -- one app after another
+    const guideLink = await within(await shownPanel()).findByRole("link", { name: "Guide" });
+
+    // oxlint-disable-next-line no-await-in-loop -- one app after another
+    await user.click(within(section("Backlinks")).getByRole("button", { name: "More backlinks" }));
+    // oxlint-disable-next-line no-await-in-loop -- one app after another
+    await elsewhere(guideLink);
+    const put = document.activeElement;
+    held.answer?.();
+    // oxlint-disable-next-line no-await-in-loop -- one app after another
+    await within(section("Backlinks")).findByRole("link", { name: "Notes" });
+    // oxlint-disable-next-line no-await-in-loop -- one app after another
+    await act(() => vi.advanceTimersByTimeAsync(0));
+    expect(document.activeElement).toBe(put);
+    unmount();
+  }
+});
+
+test("a more answered after the page was left and come back to stays in the list, which reads it again with it", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
+  const { server, held } = heldMore();
+  const { router } = renderApp(pagePath(install.id), server.app);
+  await within(await shownPanel()).findByRole("link", { name: "Guide" });
   await user.click(within(section("Backlinks")).getByRole("button", { name: "More backlinks" }));
-  guideLink.focus();
-  answer(json(backlinkPage(notes.id, 1, null)));
+
+  await act(() => router.navigate(pagePath(notes.id)));
+  await screen.findByRole("heading", { level: 1, name: "Notes" });
+  await act(() => router.navigate(pagePath(install.id)));
+  await within(await shownPanel()).findByRole("link", { name: "Guide" });
+  held.answer?.();
   await within(section("Backlinks")).findByRole("link", { name: "Notes" });
-  await act(() => vi.advanceTimersByTimeAsync(0));
-  expect(document.activeElement).toBe(guideLink);
+
+  held.reads.length = 0;
+  await readAgain();
+  await waitFor(() => expect(held.reads).toEqual([null, "1"]));
+  expect(backlinked()).toEqual([["Guide"], ["Notes"]]);
 });
 
 test("a last more that adds no page shown takes the focus to the section's title", async () => {
@@ -600,5 +650,66 @@ test("a value that is no link takes none of its path's: an anchor alone, a brack
     ["Linux", pagePath(linux.id)],
     ["Notes", pagePath(notes.id)],
     ["Linux", pagePath(linux.id)],
+  ]);
+});
+
+test("which values take their path's link is the server's shape of one: a target, no address elsewhere, one link whole", async () => {
+  const notLinks = [
+    "[[ ]]",
+    "[[\\|b]]",
+    "[[a]]x",
+    "[[a]b]]",
+    "[a](#x)",
+    "[a]( #x)",
+    "[a](//x.test)",
+    "[site](<https://x.test>)",
+    "[a](Hub) [b](Other)",
+    "[Install](Install Guide)",
+  ];
+  // An address in <> with a space, a title, parentheses a pair deep.
+  const links = ["[Install](<Install Guide>)", '[a](Linux "Linux")', "[a](Notes(1))"];
+  const server = pageServer();
+  // Each value at a path a list's first item shares: a value that is no link leaves the item its link.
+  server.properties.set(install.id, {
+    valid: true,
+    properties: [
+      ...notLinks.flatMap((value, at) => [
+        { key: `n${at.toString()}.0`, value },
+        { key: `n${at.toString()}`, value: ["[[Guide]]"] },
+      ]),
+      ...links.flatMap((value, at) => [
+        { key: `l${at.toString()}.0`, value },
+        { key: `l${at.toString()}`, value: ["[[Notes]]"] },
+      ]),
+    ],
+    links: [
+      ...notLinks.map((_, at) => ({ key: `n${at.toString()}.0`, node_id: guide.id })),
+      ...links.flatMap((_, at) => [
+        { key: `l${at.toString()}.0`, node_id: linux.id },
+        { key: `l${at.toString()}.0`, node_id: notes.id },
+      ]),
+    ],
+  });
+  renderApp(pagePath(install.id), server.app);
+
+  await within(await shownPanel()).findByRole("link", { name: "Install" });
+  expect(properties()).toEqual([
+    ...notLinks.flatMap((value, at) => [
+      [`n${at.toString()}.0`, value],
+      [`n${at.toString()}`, "Guide"],
+    ]),
+    ["l0.0", "Install"],
+    ["l0", "Notes"],
+    ["l1.0", "a"],
+    ["l1", "Notes"],
+    ["l2.0", "a"],
+    ["l2", "Notes"],
+  ]);
+  const led = within(section("Properties"))
+    .getAllByRole("link")
+    .map((link) => link.getAttribute("href"));
+  expect(led).toEqual([
+    ...notLinks.map(() => pagePath(guide.id)),
+    ...links.flatMap(() => [pagePath(linux.id), pagePath(notes.id)]),
   ]);
 });

@@ -323,6 +323,13 @@ test("in a table an alias is written with \\|, which the table does not split at
   await opened(closed);
   await pick(closed, "Roadmap");
   expect(closed.state.doc.toString()).toBe(`${head}[[Plans\\|Roadmap]] |`);
+
+  // The table's head as its body.
+  const header = editingAt("| ‸ | b |\n| - | - |\n| x | y |").view;
+  type(header, "[[Road");
+  await opened(header);
+  await pick(header, "Roadmap");
+  expect(header.state.doc.toString()).toBe("| [[Plans\\|Roadmap]] | b |\n| - | - |\n| x | y |");
 });
 
 test("an embed's [[ lists the pages, not the aliases: an embed's display text is its size", async () => {
@@ -336,7 +343,8 @@ test("an embed's [[ lists the pages, not the aliases: an embed's display text is
   ).toEqual(["Plans", "Q3", "Q3", "会议纪要"]);
 });
 
-test("an escaped [[, raw HTML, an autolink, and a # in a link being written complete nothing; two backslashes escape none", async () => {
+test("an escaped [[, raw HTML, an autolink, and a # in a link being written (in a table, the cell's) complete nothing; two backslashes escape none", async () => {
+  const table = "| a | b |\n| - | - |\n| ‸";
   for (const [doc, typed] of [
     ["‸", "\\[[Pl"],
     ["<!-- ‸", "#pro"],
@@ -345,15 +353,26 @@ test("an escaped [[, raw HTML, an autolink, and a # in a link being written comp
     ["<https://x.test/‸>", "[[Pl"],
     ["‸", "[[Plans #pro"],
     ["‸", "[[Plans|see #pro"],
+    // The last [[ is the one being written, in a table in the cell, which an escaped '|' does not end.
+    ["‸", "[[a]] [[b #pro"],
+    [table, "[[x #pro"],
+    [table, "[[x\\|y #pro"],
   ]) {
     const { view } = editingAt(doc ?? "");
     type(view, typed ?? "");
     // oxlint-disable-next-line no-await-in-loop -- one editor after another
     await none(view);
   }
-  for (const typed of ["\\\\[[Pl", "`[[` #pro", "\\[[x #pro"]) {
-    const { view } = editing("");
-    type(view, typed);
+  for (const [doc, typed] of [
+    ["‸", "\\\\[[Pl"],
+    ["‸", "\\[[x #pro"],
+    // Code's [[, on a line after the first; a link's address's; another cell's.
+    ["x\n‸", "`[[` #pro"],
+    ["‸", "[t]([[x) #pro"],
+    [table, "[[x | #pro"],
+  ]) {
+    const { view } = editingAt(doc ?? "");
+    type(view, typed ?? "");
     // oxlint-disable-next-line no-await-in-loop -- one editor after another
     await opened(view);
   }
@@ -376,7 +395,8 @@ test("in a frontmatter, as the server finds it, a link completes in quotes, as a
   for (const [doc, typed, written] of [
     ["---\nup: ‸\n---", '"[[Pla', '---\nup: "[[Plans]]\n---'],
     ["---\nup: ‸\n---", "'[[Pla", "---\nup: '[[Plans]]\n---"],
-    ["\ufeff---\nup: ‸\n---", '"[[Pla', '\ufeff---\nup: "[[Plans]]\n---'],
+    // One being written, not closed yet.
+    ["---\nup: ‸", '"[[Pla', '---\nup: "[[Plans]]'],
   ] as const) {
     const { view } = editingAt(doc);
     type(view, typed);
@@ -392,7 +412,10 @@ test("in a frontmatter, as the server finds it, a link completes in quotes, as a
     ["---\nup: x\n...\n‸\n---", "[[Pla"],
     ["---\nup: ‸\n---", "#pro"],
     ["---\n- ‸\n---", "#pro"],
-    ["\ufeff---\nup: ‸\n---", "[[Pla"],
+    // One being written, as far as an empty line: "..." closes nothing.
+    ["---\nup: ‸", "[[Pla"],
+    ["---\ntags: ‸\nup: x", "#pro"],
+    ["---\nup: x\n...\n‸", "[[Pla"],
   ]) {
     const { view } = editingAt(doc ?? "");
     type(view, typed ?? "");
@@ -401,11 +424,11 @@ test("in a frontmatter, as the server finds it, a link completes in quotes, as a
   }
 });
 
-test("what the server reads as no frontmatter completes as the body does: one not closed, one closed by ..., one opened by '--- ', after one", async () => {
+test("what the server reads as no frontmatter completes as the body does: one not closed after an empty line, one opened by '--- ', after one", async () => {
   for (const [doc, typed] of [
     ["---\nintro\n\n‸", "[[Pla"],
     ["---\nintro\n\n‸", "#pro"],
-    ["---\nup: x\n...\n‸", "[[Pla"],
+    ["---\nup: x\n...\n \n‸", "[[Pla"],
     ["--- \nup: ‸\n---", "[[Pla"],
     ["---\nup: x\n---\n‸", "#pro"],
   ]) {
@@ -452,7 +475,7 @@ test("the completions of one [[ read once, its completion closed and opened agai
   await opened(view);
   expect(reads.targets).toBe(1);
 
-  const later = vi.spyOn(Date, "now").mockReturnValue(Date.now() + 31_000);
+  const later = vi.spyOn(Date, "now").mockReturnValue(Date.now() + 11_000);
   closeCompletion(view);
   type(view, "l");
   await opened(view);
@@ -578,6 +601,13 @@ test("a failed read is not remembered: the next key reads again; a completion as
   startCompletion(view);
   await opened(view);
   expect(reads.targets).toBe(3);
+
+  const tagged = editing("");
+  type(tagged.view, "#pro");
+  await opened(tagged.view);
+  startCompletion(tagged.view);
+  await opened(tagged.view);
+  expect(tagged.reads.tags).toBe(2);
 });
 
 test("what matched shows in a title as the link's last: a path's folder of the same name is not the title", async () => {

@@ -63,9 +63,6 @@ const raw = new Set([
   "Autolink",
 ]);
 
-/** The line that opens a frontmatter, after a byte order mark maybe, as the server's frontmatterSpan reads it. */
-const frontmatterOpens = /^\ufeff?---$/;
-
 /**
  * How long a read serves the completions of the same [[ or #: an input
  * method's compositions, and a query that matches nothing (whose results
@@ -159,32 +156,42 @@ function nodesAt(state: EditorState, pos: number): string[] {
 
 /**
  * inFrontmatter tells whether pos is in the content's frontmatter, as the
- * server's frontmatterSpan finds it: a first line "---" (after a byte
- * order mark maybe), up to a later line "---", without which there is
- * none. One being written, not closed yet, is none either.
+ * server's frontmatterSpan finds it: a first line "---", up to a later
+ * line "---" ("..." closes nothing). The editor's content has no byte
+ * order mark (line-breaks.ts). One not closed, which the server reads as
+ * the body until it is, is one being written as far as an empty line: a
+ * link or a tag written there as the body's would be nothing once it is
+ * closed.
  */
 function inFrontmatter(state: EditorState, pos: number): boolean {
   const { doc } = state;
   const at = doc.lineAt(pos).number;
-  if (at === 1 || !frontmatterOpens.test(doc.line(1).text)) {
+  if (at === 1 || doc.line(1).text !== "---") {
     return false;
   }
+  let empty: number | undefined;
   for (let n = 2; n <= doc.lines; n++) {
-    if (doc.line(n).text === "---") {
+    const { text } = doc.line(n);
+    if (text === "---") {
       return at < n;
     }
+    if (empty === undefined && /^[ \t]*$/.test(text)) {
+      empty = n;
+    }
   }
-  return false;
+  return at < (empty ?? doc.lines + 1);
 }
 
 /**
  * inLinkWritten tells whether a '#' at the end of before, the line up to it
  * from from, is in a link being written: after a [[ not closed on the line,
- * which no backslash escapes and is no code's nor raw HTML's.
+ * in a table its cell (after its last '|' no backslash escapes), which no
+ * backslash escapes and is no code's nor raw HTML's.
  */
-function inLinkWritten(state: EditorState, from: number, before: string): boolean {
+function inLinkWritten(state: EditorState, from: number, before: string, table: boolean): boolean {
+  const cell = table ? ([...before.matchAll(/(?<!\\)\|/g)].at(-1)?.index ?? -1) + 1 : 0;
   const opens = before.lastIndexOf("[[");
-  if (opens === -1 || before.includes("]]", opens)) {
+  if (opens < cell || before.includes("]]", opens)) {
     return false;
   }
   const slashes = /\\*$/.exec(before.slice(0, opens))?.[0].length ?? 0;
@@ -252,7 +259,12 @@ function tags(context: EditorContext): CompletionSource {
     const place = written === null ? undefined : placeOf(completion);
     const line = completion.state.doc.lineAt(completion.pos).from;
     // In a link being written, a '#' is its anchor's.
-    if (written === null || place === undefined || place.frontmatter || inLinkWritten(completion.state, line, before)) {
+    if (
+      written === null ||
+      place === undefined ||
+      place.frontmatter ||
+      inLinkWritten(completion.state, line, before, place.table)
+    ) {
       return null;
     }
     const from = completion.pos - (written[1] ?? "").length;
@@ -277,7 +289,8 @@ function tags(context: EditorContext): CompletionSource {
 /**
  * remembered reads through reading once for the completions that start at
  * the same place within servesMs: those of one [[ or # that compositions
- * and keys start anew. One asked for (Ctrl+Space) reads anew. Within the
+ * and keys start anew. One asked for (Ctrl+Space; on macOS, where the
+ * system often takes it, Option+` or Option+I too) reads anew. Within the
  * while, a page made elsewhere meanwhile is not listed at the same place
  * (accepted). A failed read is said on the console, answers undefined (no
  * completion), and is not remembered.

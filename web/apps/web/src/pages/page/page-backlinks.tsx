@@ -29,11 +29,11 @@ type Shown = { id: string; name: string; count: number; contexts: string[] };
  * when more than one, and the lines of its first ones, as the server
  * writes them. One the tree does not have yet, made in another tab, shows
  * once the tree is read again. More reads the next page of them and adds
- * it; the last, as More goes, the focus falls to the first page it adds
- * that shows (or the last that shows, or the section's title), unless
- * the reader has put it elsewhere meanwhile. Read again (an event, a
- * refocus, a connection, the page come back to), the list is as many
- * pages as were read, from the first.
+ * it; the last, More going as it has the focus, the focus falls to the
+ * first page it adds that shows (or the last that shows, or the section's
+ * title), unless the reader has put it elsewhere meanwhile. Read again
+ * (an event, a refocus, a connection, the page come back to), the list is
+ * as many pages as were read, from the first.
  */
 export const PageBacklinks = observer(function PageBacklinks({
   notebook,
@@ -49,10 +49,10 @@ export const PageBacklinks = observer(function PageBacklinks({
   const mounted = useMounted();
   const key = ["backlinks", notebook.id, page];
   const { cache } = useSWRConfig();
-  // How many pages of the list a read reads: as many as the list read before, which the page come back to shows.
-  const [cached] = useState(() => (cache.get(unstable_serialize(key))?.data as BacklinkPage[] | undefined)?.length);
-  const loaded = useRef(cached ?? 1);
-  const { data, error, mutate, isValidating } = useSWR(key, () => readPages(pages, page, loaded.current));
+  // A read reads as many pages as the list has, by the cache as it reads: what More added, the page come back to.
+  const { data, error, mutate, isValidating } = useSWR(key, () =>
+    readPages(pages, page, (cache.get(unstable_serialize(key))?.data as BacklinkPage[] | undefined)?.length ?? 1)
+  );
   // Whether a read is out, as the latest render saw it.
   const validating = useRef(isValidating);
   useEffect(() => {
@@ -65,12 +65,13 @@ export const PageBacklinks = observer(function PageBacklinks({
   const [focusing, setFocusing] = useState<string | null | undefined>(undefined);
   const focused = useRef<HTMLAnchorElement>(null);
   const summary = useRef<HTMLElement>(null);
+  const moreButton = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (focusing === undefined) {
       return;
     }
     setFocusing(undefined);
-    // Only from where More's going left it: a reader who went elsewhere meanwhile, the editor, stays there.
+    // Only from where More's going left it: a reader who put it elsewhere since, the editor, keeps it there.
     const at = document.activeElement;
     if (at === null || at === document.body) {
       (focusing === null ? summary.current : focused.current)?.focus();
@@ -86,16 +87,17 @@ export const PageBacklinks = observer(function PageBacklinks({
     setFailure(undefined);
     try {
       const next = await pages.backlinks(page, cursor);
+      // Whether More has the focus still, as it answers: a reader who clicked the content meanwhile has it on body too.
+      const held = moreButton.current !== null && document.activeElement === moreButton.current;
       // Added after the page it was read after, which a read meanwhile may have read again.
       const read = await mutate((list) => (list?.at(-1)?.next_cursor === cursor ? [...list, next] : list), {
         revalidate: false,
       });
-      loaded.current = read?.length ?? loaded.current;
       if (validating.current) {
         // A read out as it was added answers what is older than the addition: SWR drops it. Another reads it all.
         void mutate();
       }
-      if (mounted() && read?.at(-1) === next && next.next_cursor === null) {
+      if (mounted() && held && read?.at(-1) === next && next.next_cursor === null) {
         // More goes: the focus to the first page it added that shows, or the last that shows, or the title.
         const added = next.data.find(({ id }) => pages.byId(id) !== undefined);
         setFocusing(added?.id ?? shownOf(pages, read).at(-1)?.id ?? null);
@@ -165,6 +167,7 @@ export const PageBacklinks = observer(function PageBacklinks({
       {failure !== undefined && <Alert>{errorText(failure, t)}</Alert>}
       {cursor !== undefined && (
         <Button
+          ref={moreButton}
           variant="outline"
           aria-busy={reading || undefined}
           aria-disabled={reading || undefined}

@@ -125,11 +125,14 @@ function passOver(value: unknown, path: string, take: Take) {
 
 /**
  * linkLike tells whether a string has a property link's shape (fixtures'
- * rule 10): one wikilink with a target, or one Markdown link to no
- * address elsewhere nor an anchor alone, with no space around it. What
- * the frontmatter's YAML wrote (an alias's value, a block on several
- * lines) is not known here: such a value at a path a link shares may
- * take it (accepted).
+ * rule 10): one wikilink with a target, or one Markdown link with a
+ * target, not to an address elsewhere, with no space around it. The
+ * server parses the value as the body; the Markdown link's shape here is
+ * near it, not it (accepted): its text holds no bracket but an escaped
+ * one, its destination in <> or with no space, and parentheses in it a
+ * pair deep at most. What the frontmatter's YAML wrote (an alias's value,
+ * a block on several lines) is not known here either: such a value at a
+ * path a link shares may take it (accepted).
  */
 function linkLike(value: string): boolean {
   // Both shapes span the whole value: one with a space around it is neither.
@@ -140,9 +143,18 @@ function linkLike(value: string): boolean {
     const link = bar === -1 ? inner : inner.slice(0, bar);
     return trimmed(link.split("#")[0]?.replace(/\\$/, "") ?? "") !== "";
   }
-  const destination = /^\[.*\]\((.*)\)$/s.exec(value)?.[1]?.trim() ?? "";
-  return destination !== "" && !/^(?:[A-Za-z][A-Za-z0-9+.-]*:|\/\/|#)/.test(destination);
+  const markdown = markdownLink.exec(value);
+  const destination = markdown?.[1] ?? markdown?.[2] ?? "";
+  return destination.split("#")[0] !== "" && !/^(?:[A-Za-z][A-Za-z0-9+.-]*:|\/\/)/.test(destination);
 }
+
+/**
+ * markdownLink is one Markdown link, a whole value: its text; its
+ * destination, in <> (the first group) or not (the second), after spaces
+ * maybe; a title maybe, in quotes or parentheses after a space.
+ */
+const markdownLink =
+  /^\[(?:[^[\]\\]|\\.)*\]\([ \t\n]*(?:<((?:[^<>\n\\]|\\.)*)>|((?:[^ \t\n()\\]|\\.|\([^ \t\n()]*\))*))(?:[ \t\n]+(?:"[^"]*"|'[^']*'|\([^()]*\)))?[ \t\n]*\)$/s;
 
 /** show is a value shown: its text, or its link, leading to its page or styled as one to none. */
 function show(shown: Shown, href: (id: string) => string): ReactNode {

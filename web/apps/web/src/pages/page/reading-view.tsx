@@ -36,7 +36,8 @@ import { useUnresolvedLinks } from "./unresolved-link";
  * focus as the HTML is replaced has it back in the new HTML, without a
  * scroll, while the box at its position is the same item's (its text, and
  * its state, or the state the view's own toggle asked for): a tick does
- * not move it, a write that moved the items does.
+ * not move it, a write that moved the items does. A folded callout it is
+ * in opens again, as the reader had it.
  *
  * An enhancement goes to another address through the router: to a page,
  * whose heading takes the focus; or to an anchor. An address with an
@@ -172,6 +173,7 @@ export const ReadingView = observer(function ReadingView({
       taskText(box) === focused.text &&
       (state === focused.checked || (asked?.task === focused.task && state === asked.checked))
     ) {
+      unfold(box);
       box.focus({ preventScroll: true });
     }
     const target = focusedTarget.current;
@@ -287,14 +289,10 @@ function shows(element: HTMLElement): boolean {
 
 /**
  * focusOn gives element the focus, focusable as an anchor's target is, scrolled into view as show says, if it does;
- * a folded callout (a closed details) it is in opens first, as it could show nothing otherwise.
+ * a folded callout it is in opens first.
  */
 function focusOn(element: HTMLElement, show: ScrollIntoViewOptions | undefined) {
-  for (let parent = element.parentElement; parent !== null; parent = parent.parentElement) {
-    if (parent instanceof HTMLDetailsElement && !parent.open) {
-      parent.open = true;
-    }
-  }
+  unfold(element);
   if (!element.hasAttribute("tabindex")) {
     element.setAttribute("tabindex", "-1");
   }
@@ -302,4 +300,13 @@ function focusOn(element: HTMLElement, show: ScrollIntoViewOptions | undefined) 
     element.scrollIntoView(show);
   }
   element.focus({ preventScroll: true });
+}
+
+/** unfold opens the folded callouts (closed details) element is in, which could show nothing of it otherwise. */
+function unfold(element: HTMLElement) {
+  for (let parent = element.parentElement; parent !== null; parent = parent.parentElement) {
+    if (parent instanceof HTMLDetailsElement && !parent.open) {
+      parent.open = true;
+    }
+  }
 }

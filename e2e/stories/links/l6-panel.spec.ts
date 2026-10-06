@@ -7,11 +7,12 @@ import { pageHeading, wikiPagePath } from "../../fixtures/wiki-pages";
 import { newOnboardedTeam } from "../../fixtures/workspaces";
 
 // L6, the page's right column (M6 design 9; M6/P7 design 7–11): beside the
-// page, its outline goes to a heading, a property link to its page; the
-// backlinks list the pages that link here, with their lines, and one
-// another writes shows as it is written (the links event).
+// page, its outline goes to a heading, one in a folded callout too, which
+// opens for it, a property link to its page; the backlinks list the pages
+// that link here, with their lines, and one another writes shows as it is
+// written (the links event).
 
-test("L6 (page): the right column's outline goes to a heading, a property link to its page, whose backlinks show a link another writes as it is written", async ({
+test("L6 (page): the right column's outline goes to a heading, one in a folded callout too, a property link to its page, whose backlinks show a link another writes as it is written", async ({
   api,
   signedInPage,
 }, testInfo) => {
@@ -31,6 +32,9 @@ test("L6 (page): the right column's outline goes to a heading, a property link t
     "filler\n\n".repeat(80),
     "## Usage",
     "",
+    "> [!note]- Later",
+    "> ## Hidden",
+    "",
   ].join("\n");
   const doc = await createPage(api, pat, notebook.id, "Doc", null, content);
   const hubPath = wikiPagePath(workspace.slug, notebook.id, hub.id);
@@ -47,12 +51,16 @@ test("L6 (page): the right column's outline goes to a heading, a property link t
   expect(column?.x).toBeGreaterThan((view?.x ?? 0) + (view?.width ?? 0));
 
   const outline = panel.getByRole("navigation", { name: "Outline", exact: true });
-  await expect(outline.getByRole("link")).toHaveText(["Intro", "Setup", "Usage"]);
+  await expect(outline.getByRole("link")).toHaveText(["Intro", "Setup", "Usage", "Hidden"]);
   await outline.getByRole("link", { name: "Usage", exact: true }).click();
   const usage = article.getByRole("heading", { level: 2, name: "Usage", exact: true });
   await expect(usage).toBeFocused();
   await expect(usage).toBeInViewport();
   await expect(page).toHaveURL(/#nw-usage$/);
+  await outline.getByRole("link", { name: "Hidden", exact: true }).click();
+  const hidden = article.getByRole("heading", { level: 2, name: "Hidden", exact: true });
+  await expect(hidden).toBeFocused();
+  await expect(hidden).toBeInViewport();
   // Held at the top as the window scrolls.
   await expect(panel).toBeInViewport();
 
