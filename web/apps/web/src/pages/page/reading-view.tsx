@@ -15,6 +15,7 @@ import { useT } from "../../i18n/i18n";
 import { usePageTree, useStore } from "../../stores/context";
 import { useWorkspace } from "../workspace/workspace-layout";
 import { usePageView } from "./page-view";
+import { readersInput } from "./readers-input";
 import { useUnresolvedLinks } from "./unresolved-link";
 
 /**
@@ -258,12 +259,6 @@ export const ReadingView = observer(function ReadingView({
     </>
   );
 });
-
-/**
- * readersInput are the events of what a reader does: a scroll, a click (the window's scrollbar pressed too, in
- * Chromium and WebKit), a touch, a key. An assistive technology's moves, a screen reader's virtual cursor, send none.
- */
-const readersInput = ["wheel", "touchmove", "pointerdown", "keydown"] as const;
 
 /** named is the element of container whose id the address's fragment is, decoded, if there is one. */
 function named(container: HTMLElement, fragment: string): HTMLElement | undefined {

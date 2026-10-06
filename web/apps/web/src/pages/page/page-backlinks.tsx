@@ -15,6 +15,7 @@ import type { Notebook } from "../../services/notebook.service";
 import { usePageTree } from "../../stores/context";
 import type { PageTreeStore } from "../../stores/page-tree.store";
 import { PanelSection } from "./panel-section";
+import { watchReader } from "./readers-input";
 
 /** How many links of a page the server counts: as many as this is as many or more. */
 const countedUpTo = 1000;
@@ -29,11 +30,13 @@ type Shown = { id: string; name: string; count: number; contexts: string[] };
  * when more than one, and the lines of its first ones, as the server
  * writes them. One the tree does not have yet, made in another tab, shows
  * once the tree is read again. More reads the next page of them and adds
- * it; the last, More going as it has the focus, the focus falls to the
- * first page it adds that shows (or the last that shows, or the section's
- * title), unless the reader has put it elsewhere meanwhile. Read again
- * (an event, a refocus, a connection, the page come back to), the list is
- * as many pages as were read, from the first.
+ * it; the last, More going, the focus falls to the first page it adds
+ * that shows (or the last that shows, or the section's title), without a
+ * scroll, unless the reader has done something meanwhile (scrolled,
+ * clicked, touched, pressed a key) or put the focus elsewhere than More
+ * (which a click in Safari, or a screen reader, may give no focus). Read
+ * again (an event, a refocus, a connection, the page come back to), the
+ * list is as many pages as were read, from the first.
  */
 export const PageBacklinks = observer(function PageBacklinks({
   notebook,
@@ -50,14 +53,10 @@ export const PageBacklinks = observer(function PageBacklinks({
   const key = ["backlinks", notebook.id, page];
   const { cache } = useSWRConfig();
   // A read reads as many pages as the list has, by the cache as it reads: what More added, the page come back to.
-  const { data, error, mutate, isValidating } = useSWR(key, () =>
-    readPages(pages, page, (cache.get(unstable_serialize(key))?.data as BacklinkPage[] | undefined)?.length ?? 1)
+  const cached = () => cache.get(unstable_serialize(key));
+  const { data, error, mutate } = useSWR(key, () =>
+    readPages(pages, page, (cached()?.data as BacklinkPage[] | undefined)?.length ?? 1)
   );
-  // Whether a read is out, as the latest render saw it.
-  const validating = useRef(isValidating);
-  useEffect(() => {
-    validating.current = isValidating;
-  });
   const [reading, setReading] = useState(false);
   const busy = useRef(false);
   const [failure, setFailure] = useState<unknown>(undefined);
@@ -71,10 +70,11 @@ export const PageBacklinks = observer(function PageBacklinks({
       return;
     }
     setFocusing(undefined);
-    // Only from where More's going left it: a reader who put it elsewhere since, the editor, keeps it there.
+    // Only from where More's going left it (a race: the focus moved as the list was added to keeps it there). Where
+    // More was: no scroll.
     const at = document.activeElement;
     if (at === null || at === document.body) {
-      (focusing === null ? summary.current : focused.current)?.focus();
+      (focusing === null ? summary.current : focused.current)?.focus({ preventScroll: true });
     }
   }, [focusing]);
 
@@ -85,16 +85,19 @@ export const PageBacklinks = observer(function PageBacklinks({
     busy.current = true;
     setReading(true);
     setFailure(undefined);
+    const reader = watchReader();
     try {
       const next = await pages.backlinks(page, cursor);
-      // Whether More has the focus still, as it answers: a reader who clicked the content meanwhile has it on body too.
-      const held = moreButton.current !== null && document.activeElement === moreButton.current;
+      // Whether the focus is More's still as it answers: on More or nowhere, the reader having done nothing since.
+      const at = document.activeElement;
+      const held = !reader.acted() && (at === moreButton.current || at === null || at === document.body);
       // Added after the page it was read after, which a read meanwhile may have read again.
       const read = await mutate((list) => (list?.at(-1)?.next_cursor === cursor ? [...list, next] : list), {
         revalidate: false,
       });
-      if (validating.current) {
-        // A read out as it was added answers what is older than the addition: SWR drops it. Another reads it all.
+      if (cached()?.isValidating === true) {
+        // A read out as it was added (this view's or the page's come back to) answers what is older than the
+        // addition: SWR drops it. Another reads it all.
         void mutate();
       }
       if (mounted() && held && read?.at(-1) === next && next.next_cursor === null) {
@@ -107,6 +110,7 @@ export const PageBacklinks = observer(function PageBacklinks({
         setFailure(failed);
       }
     } finally {
+      reader.end();
       busy.current = false;
       if (mounted()) {
         setReading(false);

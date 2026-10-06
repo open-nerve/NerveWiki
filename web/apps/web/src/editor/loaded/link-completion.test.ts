@@ -357,6 +357,8 @@ test("an escaped [[, raw HTML, an autolink, and a # in a link being written (in 
     ["‸", "[[a]] [[b #pro"],
     [table, "[[x #pro"],
     [table, "[[x\\|y #pro"],
+    // Nor does one after two backslashes, as the server reads it.
+    [table, "[[x \\\\| #pro"],
   ]) {
     const { view } = editingAt(doc ?? "");
     type(view, typed ?? "");
@@ -370,6 +372,8 @@ test("an escaped [[, raw HTML, an autolink, and a # in a link being written (in 
     ["x\n‸", "`[[` #pro"],
     ["‸", "[t]([[x) #pro"],
     [table, "[[x | #pro"],
+    // A table's row without a '|' is one cell.
+    ["| a | b |\n| - | - |\n| x | y |\n‸", "row #pro"],
   ]) {
     const { view } = editingAt(doc ?? "");
     type(view, typed ?? "");
@@ -395,6 +399,9 @@ test("in a frontmatter, as the server finds it, a link completes in quotes, as a
   for (const [doc, typed, written] of [
     ["---\nup: ‸\n---", '"[[Pla', '---\nup: "[[Plans]]\n---'],
     ["---\nup: ‸\n---", "'[[Pla", "---\nup: '[[Plans]]\n---"],
+    // What the editor parses as Markdown's code is YAML there: a value indented after a blank line, a block's fence.
+    ["---\nmeta:\n\n    up: ‸\n---", '"[[Pla', '---\nmeta:\n\n    up: "[[Plans]]\n---'],
+    ["---\nnote: |\n  ```\nup: ‸\n---", '"[[Pla', '---\nnote: |\n  ```\nup: "[[Plans]]\n---'],
     // One being written, not closed yet.
     ["---\nup: ‸", '"[[Pla', '---\nup: "[[Plans]]'],
   ] as const) {
@@ -424,10 +431,14 @@ test("in a frontmatter, as the server finds it, a link completes in quotes, as a
   }
 });
 
-test("what the server reads as no frontmatter completes as the body does: one not closed after an empty line, one opened by '--- ', after one", async () => {
+test("what the server reads as no frontmatter completes as the body does: one not closed after its first blank line, one opened by '--- ', after one, an empty one too", async () => {
   for (const [doc, typed] of [
     ["---\nintro\n\n‸", "[[Pla"],
     ["---\nintro\n\n‸", "#pro"],
+    // The first blank line ends it, one of spaces and tabs too; an empty one has the body after it.
+    ["---\nIntro\n\nmore ‸\n\nend", "[[Pla"],
+    ["---\nintro\n\t\n‸", "[[Pla"],
+    ["---\n---\n‸", "#pro"],
     ["---\nup: x\n...\n \n‸", "[[Pla"],
     ["--- \nup: ‸\n---", "[[Pla"],
     ["---\nup: x\n---\n‸", "#pro"],
@@ -475,9 +486,16 @@ test("the completions of one [[ read once, its completion closed and opened agai
   await opened(view);
   expect(reads.targets).toBe(1);
 
-  const later = vi.spyOn(Date, "now").mockReturnValue(Date.now() + 11_000);
+  const meanwhile = vi.spyOn(Date, "now").mockReturnValue(Date.now() + 9_000);
   closeCompletion(view);
   type(view, "l");
+  await opened(view);
+  expect(reads.targets).toBe(1);
+  meanwhile.mockRestore();
+
+  const later = vi.spyOn(Date, "now").mockReturnValue(Date.now() + 11_000);
+  closeCompletion(view);
+  type(view, "a");
   await opened(view);
   expect(reads.targets).toBe(2);
   later.mockRestore();

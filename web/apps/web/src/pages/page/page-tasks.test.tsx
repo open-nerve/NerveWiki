@@ -1,6 +1,6 @@
 import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, onTestFinished, test, vi } from "vitest";
 
 import { eventHandlers } from "../../events/handlers";
 import { FakePage } from "../../events/testing/fake-page";
@@ -85,18 +85,21 @@ test("a writer ticks an item, named by its text: the toggle on the view's revisi
   expect(document.activeElement).toBe(boxes()[0]);
 });
 
-/** folded is a view at revision whose one task item is in a folded callout, titled by the revision. */
-function folded(revision: number) {
+/**
+ * folded is a view at revision whose one task item, of text, is in a folded callout titled by the revision, before
+ * another folded callout.
+ */
+function folded(revision: number, text = "a") {
   return {
-    html: `<details class="nw-callout"><summary>Later ${revision.toString()}</summary><ul>\n<li><input disabled="" type="checkbox" data-task="3"> a</li>\n</ul></details>\n`,
+    html: `<details class="nw-callout"><summary>Later ${revision.toString()}</summary><ul>\n<li><input disabled="" type="checkbox" data-task="3"> ${text}</li>\n</ul></details>\n<details class="nw-callout"><summary>Other</summary><p>x</p></details>\n`,
     revision,
   };
 }
 
-/** callout is the reading view's first callout. */
-const callout = () => screen.getByRole("article").querySelector("details");
+/** callouts are whether the reading view's callouts are open, in order. */
+const callouts = () => [...screen.getByRole("article").querySelectorAll("details")].map((each) => each.open);
 
-test("an item of a folded callout the reader opened has the focus back in the view read again, the callout opened again", async () => {
+test("an item of a folded callout the reader opened has the focus back in the view read again, its callout opened first; another item, not", async () => {
   const server = pageServer();
   server.views.set(install.id, folded(1));
   const reloads: (() => void)[] = [];
@@ -111,14 +114,32 @@ test("an item of a folded callout the reader opened has the focus back in the vi
     ],
   });
   await waitFor(() => expect(boxes()[0]?.disabled).toBe(false));
-  (callout() as HTMLDetailsElement).open = true;
+  const first = screen.getByRole("article").querySelector("details") as HTMLDetailsElement;
+  first.open = true;
   boxes()[0]?.focus();
+  // Whether its callout is open as each element takes the focus: an engine gives none to one in a closed details.
+  const openAsFocused: (boolean | undefined)[] = [];
+  const focus = HTMLElement.prototype.focus;
+  const focusing = vi.spyOn(HTMLElement.prototype, "focus").mockImplementation(function (this: HTMLElement, options) {
+    openAsFocused.push(this.closest("details")?.open);
+    focus.call(this, options);
+  });
+  onTestFinished(() => focusing.mockRestore());
 
   server.views.set(install.id, folded(2));
   act(() => reloads.at(-1)?.());
   await screen.findByText("Later 2");
-  expect(callout()?.open).toBe(true);
+  expect(callouts()).toEqual([true, false]);
   expect(document.activeElement).toBe(boxes()[0]);
+  expect(openAsFocused).toContain(true);
+  expect(openAsFocused).not.toContain(false);
+
+  // The item at its position is another: its callout stays as the view has it.
+  server.views.set(install.id, folded(3, "b"));
+  act(() => reloads.at(-1)?.());
+  await screen.findByText("Later 3");
+  expect(callouts()).toEqual([false, false]);
+  expect(document.activeElement).toBe(document.body);
 });
 
 test("a toggle on a revision passed reads the view again and says the page changed; the focus does not go to the item that moved to its place; the next toggle clears the refusal", async () => {

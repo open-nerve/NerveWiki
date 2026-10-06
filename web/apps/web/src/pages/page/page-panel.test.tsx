@@ -1,6 +1,6 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, expect, onTestFinished, test, vi } from "vitest";
 
 import { json, problem } from "../../test/fakes";
 import { pageEditor } from "../../test/page-editor";
@@ -305,12 +305,24 @@ function heldMore() {
   return { server, held };
 }
 
-test("the last more leaves the focus where the reader put it meanwhile: on another link, on the content clicked", async () => {
+test("the last more leaves the focus where the reader put it meanwhile, or left it doing something: on another link, on the content clicked, on More scrolled away", async () => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
   const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
+  // What the reader does as More reads, and where the focus is left.
   for (const elsewhere of [
-    (guideLink: HTMLElement) => act(() => guideLink.focus()),
-    () => user.click(screen.getByRole("article")),
+    (guideLink: HTMLElement) => {
+      act(() => guideLink.focus());
+      return guideLink;
+    },
+    async () => {
+      await user.click(screen.getByRole("article"));
+      return document.body;
+    },
+    // More has the focus still, which goes with it.
+    () => {
+      fireEvent.wheel(window);
+      return document.body;
+    },
   ]) {
     const { server, held } = heldMore();
     const { unmount } = renderApp(pagePath(install.id), server.app);
@@ -320,16 +332,38 @@ test("the last more leaves the focus where the reader put it meanwhile: on anoth
     // oxlint-disable-next-line no-await-in-loop -- one app after another
     await user.click(within(section("Backlinks")).getByRole("button", { name: "More backlinks" }));
     // oxlint-disable-next-line no-await-in-loop -- one app after another
-    await elsewhere(guideLink);
-    const put = document.activeElement;
+    const left = await elsewhere(guideLink);
     held.answer?.();
     // oxlint-disable-next-line no-await-in-loop -- one app after another
     await within(section("Backlinks")).findByRole("link", { name: "Notes" });
     // oxlint-disable-next-line no-await-in-loop -- one app after another
     await act(() => vi.advanceTimersByTimeAsync(0));
-    expect(document.activeElement).toBe(put);
+    expect(document.activeElement).toBe(left);
     unmount();
   }
+});
+
+test("a last more clicked as Safari does, which gives More no focus, takes the focus to the first page it adds, without a scroll", async () => {
+  const { server, held } = heldMore();
+  renderApp(pagePath(install.id), server.app);
+  const more = await within(await shownPanel()).findByRole("button", { name: "More backlinks" });
+  const focus = vi.spyOn(HTMLElement.prototype, "focus");
+  const added = vi.spyOn(window, "addEventListener");
+  const removed = vi.spyOn(window, "removeEventListener");
+  onTestFinished(() => void vi.restoreAllMocks());
+
+  fireEvent.click(more);
+  expect(document.activeElement).toBe(document.body);
+  await waitFor(() => expect(held.answer).toBeDefined());
+  held.answer?.();
+  const addedPage = await within(section("Backlinks")).findByRole("link", { name: "Notes" });
+  await waitFor(() => expect(document.activeElement).toBe(addedPage));
+  expect(focus).toHaveBeenLastCalledWith({ preventScroll: true });
+  // What the reader did as More read is watched no more.
+  const wheel = (spy: typeof added | typeof removed) =>
+    spy.mock.calls.filter(([type]) => type === "wheel").map(([, listener]) => listener);
+  expect(wheel(added)).toHaveLength(1);
+  expect(wheel(removed)).toEqual(wheel(added));
 });
 
 test("a more answered after the page was left and come back to stays in the list, which reads it again with it", async () => {
@@ -351,6 +385,43 @@ test("a more answered after the page was left and come back to stays in the list
   await readAgain();
   await waitFor(() => expect(held.reads).toEqual([null, "1"]));
   expect(backlinked()).toEqual([["Guide"], ["Notes"]]);
+});
+
+test("a more answered as the page come back to reads its list again has the list read again whole: SWR drops that read", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
+  let links = 1;
+  let holding = false;
+  const answers: (() => void)[] = [];
+  const server = pageServer({
+    answers: {
+      "GET /api/v0/pages/*/backlinks": (request) => {
+        const cursor = new URL(request.url).searchParams.get("cursor");
+        const page = () => json(cursor === null ? backlinkPage(guide.id, links, "1") : backlinkPage(notes.id, 1, null));
+        return holding && request.url.includes(install.id)
+          ? new Promise((resolve) => answers.push(() => resolve(page())))
+          : page();
+      },
+    },
+  });
+  const { router } = renderApp(pagePath(install.id), server.app);
+  await within(await shownPanel()).findByRole("link", { name: "Guide" });
+  holding = true;
+  await user.click(within(section("Backlinks")).getByRole("button", { name: "More backlinks" }));
+
+  await act(() => router.navigate(pagePath(notes.id)));
+  await screen.findByRole("heading", { level: 1, name: "Notes" });
+  // Past SWR's deduping: the page come back to reads its list again.
+  await act(() => vi.advanceTimersByTimeAsync(3_000));
+  await act(() => router.navigate(pagePath(install.id)));
+  await within(await shownPanel()).findByRole("link", { name: "Guide" });
+  await waitFor(() => expect(answers).toHaveLength(2));
+  links = 5;
+  holding = false;
+  // More answers first: the read of the page come back to is dropped.
+  answers[0]?.();
+  await waitFor(() => expect(backlinked()).toEqual([["Guide", " · 5 links"], ["Notes"]]));
+  answers[1]?.();
 });
 
 test("a last more that adds no page shown takes the focus to the section's title", async () => {
@@ -663,6 +734,7 @@ test("which values take their path's link is the server's shape of one: a target
     "[a]( #x)",
     "[a](//x.test)",
     "[site](<https://x.test>)",
+    "[a](<Guide)",
     "[a](Hub) [b](Other)",
     "[Install](Install Guide)",
   ];
@@ -712,4 +784,54 @@ test("which values take their path's link is the server's shape of one: a target
     ...notLinks.map(() => pagePath(guide.id)),
     ...links.flatMap(() => [pagePath(linux.id), pagePath(notes.id)]),
   ]);
+});
+
+test("a value at a path of its own has the path's link, whatever its shape: the server pairs them", async () => {
+  const server = pageServer();
+  server.properties.set(install.id, {
+    valid: true,
+    properties: [
+      { key: "spec", value: "[Spec [v2]](Guide)" },
+      { key: "code", value: "[`a[0]`](Notes)" },
+      { key: "titled", value: '[T](Linux "Ti\\"tle")' },
+      { key: "plain", value: "[WIP]" },
+    ],
+    links: [
+      { key: "spec", node_id: guide.id },
+      { key: "code", node_id: notes.id },
+      { key: "titled", node_id: linux.id },
+    ],
+  });
+  renderApp(pagePath(install.id), server.app);
+
+  await within(await shownPanel()).findByRole("link", { name: "T" });
+  const links = within(section("Properties")).getAllByRole("link");
+  expect(links.map((link) => [link.textContent, link.getAttribute("href")])).toEqual([
+    ["Spec [v2]", pagePath(guide.id)],
+    ["`a[0]`", pagePath(notes.id)],
+    ["T", pagePath(linux.id)],
+  ]);
+  expect(properties().at(-1)).toEqual(["plain", "[WIP]"]);
+});
+
+test("a long value costs a time as long: one that is no link at a path two share, a wikilink with long parts", async () => {
+  const spaces = " ".repeat(1 << 17);
+  const server = pageServer();
+  server.properties.set(install.id, {
+    valid: true,
+    properties: [
+      { key: "a.0", value: `[a](${spaces}x y)` },
+      { key: "a", value: ["[[Guide]]"] },
+      { key: "b", value: `[[Notes${spaces}x]]` },
+    ],
+    links: [
+      { key: "a.0", node_id: guide.id },
+      { key: "b", node_id: notes.id },
+    ],
+  });
+  const started = performance.now();
+  renderApp(pagePath(install.id), server.app);
+
+  await within(await shownPanel()).findByRole("link", { name: "Guide" });
+  expect(performance.now() - started).toBeLessThan(3_000);
 });

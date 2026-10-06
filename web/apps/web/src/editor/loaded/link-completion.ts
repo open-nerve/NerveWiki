@@ -138,10 +138,12 @@ function placeOf({ state, pos, view }: CompletionContext): Place | undefined {
     return undefined;
   }
   const at = nodesAt(state, pos);
-  if (at.some((name) => raw.has(name))) {
+  const frontmatter = inFrontmatter(state, pos);
+  // The editor parses a frontmatter as Markdown, which its YAML is not: no code nor raw HTML there.
+  if (!frontmatter && at.some((name) => raw.has(name))) {
     return undefined;
   }
-  return { table: at.includes("Table"), frontmatter: inFrontmatter(state, pos) };
+  return { table: at.includes("Table"), frontmatter };
 }
 
 /** nodesAt is the names of the syntax nodes pos is in, from the innermost out. */
@@ -157,9 +159,10 @@ function nodesAt(state: EditorState, pos: number): string[] {
 /**
  * inFrontmatter tells whether pos is in the content's frontmatter, as the
  * server's frontmatterSpan finds it: a first line "---", up to a later
- * line "---" ("..." closes nothing). The editor's content has no byte
- * order mark (line-breaks.ts). One not closed, which the server reads as
- * the body until it is, is one being written as far as an empty line: a
+ * line "---" ("..." closes nothing). The content the editor loads has
+ * no byte order mark (line-breaks.ts); one pasted at its start is not
+ * looked for (accepted). One not closed, which the server reads as the
+ * body until it is, is one being written as far as a blank line: a
  * link or a tag written there as the body's would be nothing once it is
  * closed.
  */

@@ -13,8 +13,8 @@ import { PanelSection } from "./panel-section";
 /** A value as the properties show it: text, or a property link's text and the page it leads to (null: none). */
 type Shown = string | { text: string; lead: string | null };
 
-/** Take answers where the next property link written at path leads, undefined for no more there. */
-type Take = (path: string) => string | null | undefined;
+/** Take answers where the property link a string at path is leads (null: no page), undefined when it is none. */
+type Take = (value: string, path: string) => string | null | undefined;
 
 /**
  * PageProperties is the page's frontmatter properties as the link index has
@@ -48,7 +48,7 @@ export function PageProperties({
   } else if (data.properties.length === 0) {
     shown = <p className="text-sm text-muted-foreground">{t("page.noProperties")}</p>;
   } else {
-    const take = taking(data.links);
+    const take = taking(data);
     shown = (
       <dl className="space-y-2 text-sm">
         {data.properties.map(({ key, value }) => (
@@ -76,11 +76,13 @@ export function PageProperties({
 
 /**
  * taking takes the property links by their paths, each path's in the order
- * written: a path two values share (a key "a.0", a list a's first item) is
- * theirs in turn, as the values are read in the order written (M6 design
- * 4.9 aligns the table's by the values for this).
+ * written. A string at a path no other string is at has its path's link,
+ * as the server pairs them. A path two share (a key "a.0", a list a's
+ * first item) has its links theirs in turn, as the values are read in the
+ * order written (M6 design 4.9 aligns the table's by the values for this):
+ * there one takes a link if it has a link's shape.
  */
-function taking(links: Properties["links"]): Take {
+function taking({ properties, links }: Properties): Take {
   const byPath = new Map<string, (string | null)[]>();
   for (const { key, node_id: node } of links) {
     const queue = byPath.get(key);
@@ -90,7 +92,29 @@ function taking(links: Properties["links"]): Take {
       queue.push(node ?? null);
     }
   }
-  return (path) => byPath.get(path)?.shift();
+  const shared = sharedPaths(properties);
+  return (value, path) => (shared.has(path) && !linkLike(value) ? undefined : byPath.get(path)?.shift());
+}
+
+/** sharedPaths are the paths two strings or more of properties are at, as shownOf goes through them. */
+function sharedPaths(properties: Properties["properties"]): Set<string> {
+  const seen = new Set<string>();
+  const shared = new Set<string>();
+  const visit = (value: unknown, path: string) => {
+    if (typeof value === "string") {
+      (seen.has(path) ? shared : seen).add(path);
+    } else if (Array.isArray(value)) {
+      value.forEach((item: unknown, at) => visit(item, `${path}.${at}`));
+    } else if (typeof value === "object" && value !== null) {
+      for (const [key, item] of Object.entries(value)) {
+        visit(item, `${path}.${key}`);
+      }
+    }
+  };
+  for (const { key, value } of properties) {
+    visit(value, key);
+  }
+  return shared;
 }
 
 /**
@@ -101,7 +125,7 @@ function taking(links: Properties["links"]): Take {
  */
 function shownOf(value: unknown, path: string, take: Take): Shown {
   if (typeof value === "string") {
-    const lead = linkLike(value) ? take(path) : undefined;
+    const lead = take(value, path);
     return lead === undefined ? value : { text: linkText(value), lead };
   }
   passOver(value, path, take);
@@ -111,9 +135,7 @@ function shownOf(value: unknown, path: string, take: Take): Shown {
 /** passOver takes the property links value holds, at path and under it, as an object or a list shows none. */
 function passOver(value: unknown, path: string, take: Take) {
   if (typeof value === "string") {
-    if (linkLike(value)) {
-      take(path);
-    }
+    take(value, path);
   } else if (Array.isArray(value)) {
     value.forEach((item: unknown, at) => passOver(item, `${path}.${at}`, take));
   } else if (typeof value === "object" && value !== null) {
@@ -125,14 +147,14 @@ function passOver(value: unknown, path: string, take: Take) {
 
 /**
  * linkLike tells whether a string has a property link's shape (fixtures'
- * rule 10): one wikilink with a target, or one Markdown link with a
- * target, not to an address elsewhere, with no space around it. The
- * server parses the value as the body; the Markdown link's shape here is
- * near it, not it (accepted): its text holds no bracket but an escaped
- * one, its destination in <> or with no space, and parentheses in it a
- * pair deep at most. What the frontmatter's YAML wrote (an alias's value,
- * a block on several lines) is not known here either: such a value at a
- * path a link shares may take it (accepted).
+ * rule 10), which tells whose a link is where two values share its path:
+ * one wikilink with a target, or one Markdown link with a target, not to
+ * an address elsewhere, with no space around it. The server parses the
+ * value as the body; the Markdown link's shape here is near it, not it
+ * (accepted): its text holds no bracket but an escaped one, its
+ * destination in <> or with no space, and parentheses in it a pair deep
+ * at most. What the frontmatter's YAML wrote (an alias's value, a block on
+ * several lines) is not known here either (accepted).
  */
 function linkLike(value: string): boolean {
   // Both shapes span the whole value: one with a space around it is neither.
@@ -150,11 +172,13 @@ function linkLike(value: string): boolean {
 
 /**
  * markdownLink is one Markdown link, a whole value: its text; its
- * destination, in <> (the first group) or not (the second), after spaces
- * maybe; a title maybe, in quotes or parentheses after a space.
+ * destination, in <> (the first group) or not (the second, not empty: the
+ * spaces around it go to no two parts, which would cost a time the
+ * square of their length), after spaces maybe; a title maybe, in quotes or
+ * parentheses after a space.
  */
 const markdownLink =
-  /^\[(?:[^[\]\\]|\\.)*\]\([ \t\n]*(?:<((?:[^<>\n\\]|\\.)*)>|((?:[^ \t\n()\\]|\\.|\([^ \t\n()]*\))*))(?:[ \t\n]+(?:"[^"]*"|'[^']*'|\([^()]*\)))?[ \t\n]*\)$/s;
+  /^\[(?:[^[\]\\]|\\.)*\]\([ \t\n]*(?:<((?:[^<>\n\\]|\\.)*)>|(?!<)((?:[^ \t\n()\\]|\\.|\([^ \t\n()]*\))+))(?:[ \t\n]+(?:"[^"]*"|'[^']*'|\([^()]*\)))?[ \t\n]*\)$/s;
 
 /** show is a value shown: its text, or its link, leading to its page or styled as one to none. */
 function show(shown: Shown, href: (id: string) => string): ReactNode {
@@ -195,7 +219,18 @@ function linkText(written: string): string {
   return anchor === "" ? trimmed(target) : `${trimmed(target)} > ${anchor}`;
 }
 
-/** trimmed is text without the spaces and tabs at its ends, as a wikilink's parts are read. */
+/**
+ * trimmed is text without the spaces and tabs at its ends, as a wikilink's parts are read; by going in from each end,
+ * as a pattern for the last would try every run of them and cost a time the square of its length.
+ */
 function trimmed(text: string): string {
-  return text.replace(/^[ \t]+|[ \t]+$/g, "");
+  let start = 0;
+  let end = text.length;
+  while (start < end && (text[start] === " " || text[start] === "\t")) {
+    start++;
+  }
+  while (end > start && (text[end - 1] === " " || text[end - 1] === "\t")) {
+    end--;
+  }
+  return text.slice(start, end);
 }
