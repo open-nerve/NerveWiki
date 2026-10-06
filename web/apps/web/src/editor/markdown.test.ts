@@ -191,11 +191,15 @@ test("a paragraph's line with a pipe heads a table when the next is a row of das
     "a\nb | c\n   :--|--:\nd | e",
     "> a\n> b | c\n>  | --- | --- |\n> d | e",
     "- a\n  b | c\n  --|--\n  d | e",
+    // A tab before the quote's mark (M6 closeout FB5-N1).
+    "- a\n\t> x\n\t> b | c\n\t> --|--\n\t> d | e",
   ]) {
     expect([count(doc, "Table"), count(doc, "TableRow")], doc).toEqual([1, 1]);
   }
   expect(count("a\nb | c\n--|--|--\nd | e", "Table")).toBe(0);
   expect(count("a\nb | c\n-- x|--\nd | e", "Table")).toBe(0);
+  // A row of dashes with no pipe is no delimiter line.
+  expect([count("|b\n:-:\n|c", "Table"), count("|b\n:-:\n|c", "Paragraph")]).toEqual([0, 1]);
 });
 
 // Whether a paragraph's line with a pipe heads a table, lezer matched the next line whole with a pattern that tried
@@ -205,7 +209,7 @@ test.each<[string, (length: number) => string]>([
   ["spaces", (length) => `a\nb|c\n${" ".repeat(length)}x`],
   ["spaces only", (length) => `a\nb|c\n${" ".repeat(length)}`],
   ["tabs", (length) => `a\nb|c\n${"\t".repeat(length)}x`],
-  ["ideographic spaces", (length) => `a\nb|c\n${"　".repeat(length)}x`],
+  ["ideographic spaces", (length) => `a\nb|c\n${"\u3000".repeat(length)}x`],
   ["spaces in a quote", (length) => `> a\n> b|c\n> ${" ".repeat(length)}x`],
   ["spaces in a list item", (length) => `- a\n  b|c\n  ${" ".repeat(length)}x`],
 ])("a line of 200,000 %s after a paragraph's line with a pipe is parsed in a time as long as it", (_, doc) => {
