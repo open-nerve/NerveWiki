@@ -1,6 +1,6 @@
 import { EditorView, keymap } from "@codemirror/view";
-import { render, screen } from "@testing-library/react";
-import { createRef, StrictMode, type ReactNode } from "react";
+import { act as reactAct, render, screen } from "@testing-library/react";
+import { createRef, StrictMode, Suspense, type ReactNode } from "react";
 import { afterEach, expect, test, vi } from "vitest";
 
 import { I18nProvider } from "../i18n/i18n";
@@ -150,6 +150,47 @@ test("the registered extensions are in; their controls reach the latest save", a
   const { type, save } = editor("text", [saving]);
 
   type("!");
+  await Promise.resolve();
+  expect(save).toHaveBeenCalledOnce();
+});
+
+test("an extension that loads what builds it is waited for, the editor suspended, then composed with the others", async () => {
+  let go!: () => void;
+  const saving: EditorExtension = {
+    name: "save on change, loaded",
+    load: () =>
+      new Promise((resolve) => {
+        go = () =>
+          resolve((_, controls) =>
+            EditorView.updateListener.of((update) => void (update.docChanged && controls.save()))
+          );
+      }),
+  };
+  const save = vi.fn(() => Promise.resolve());
+  const session = sessionState();
+  const { container } = await reactAct(async () =>
+    render(
+      <I18nProvider locale="en">
+        <EditorExtensions value={[lockReadOnly, saving]}>
+          <Suspense fallback={<p>loading</p>}>
+            <SourceEditor
+              content="text"
+              context={context}
+              controls={{ save, saving: () => false, ...session, leave: () => Promise.resolve() }}
+              onChange={() => undefined}
+            />
+          </Suspense>
+        </EditorExtensions>
+      </I18nProvider>
+    )
+  );
+  expect(screen.getByText("loading")).toBeTruthy();
+  expect(container.querySelector(".cm-editor")).toBeNull();
+
+  await reactAct(async () => go());
+  const element = container.querySelector<HTMLElement>(".cm-editor");
+  const view = element === null ? null : EditorView.findFromDOM(element);
+  view?.dispatch({ changes: { from: 4, insert: "!" } });
   await Promise.resolve();
   expect(save).toHaveBeenCalledOnce();
 });

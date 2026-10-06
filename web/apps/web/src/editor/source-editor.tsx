@@ -2,11 +2,11 @@ import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirro
 import { search, searchKeymap } from "@codemirror/search";
 import { Compartment, EditorState } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
-import { useContext, useId, useImperativeHandle, useLayoutEffect, useRef, type Ref, type RefObject } from "react";
+import { use, useContext, useId, useImperativeHandle, useLayoutEffect, useRef, type Ref, type RefObject } from "react";
 
 import { useT, type Translate } from "../i18n/i18n";
 import { insertLink, toggleStrong } from "./commands";
-import { composeExtensions, readOnly, readOnlyAs } from "./extensions";
+import { composeExtensions, loadExtensions, readOnly, readOnlyAs, ready } from "./extensions";
 import { joinBreaks, lineBreaks, splitBreaks } from "./line-breaks";
 import { markdownEditing } from "./markdown";
 import { editorPhrases } from "./phrases";
@@ -15,7 +15,7 @@ import {
   EditorExtensions,
   type EditorContext,
   type EditorControls,
-  type EditorExtension,
+  type ReadyExtension,
 } from "./registry";
 import { editorTheme } from "./theme";
 
@@ -53,7 +53,7 @@ type SourceEditorProps = {
 /** Live is the latest of the editor's props, which its extensions, made once, read when called. */
 type Live = Pick<SourceEditorProps, "context" | "controls" | "onChange"> & {
   t: Translate;
-  registered: readonly EditorExtension[];
+  registered: readonly ReadyExtension[];
 };
 
 /** How long a composition's end waits for its text, which some browsers give after it. */
@@ -232,10 +232,12 @@ class EditorHost {
  * are kept apart (editor/line-breaks.ts). The registered extensions come
  * after the editor's own, each in its compartment. Tab indents: a line
  * under the editor, which its content refers to, says how to move out.
+ * An extension that loads what builds it is waited for, suspended.
  */
 export function SourceEditor({ content, focusOnOpen = false, context, controls, onChange, ref }: SourceEditorProps) {
   const t = useT();
-  const registered = useContext(EditorExtensions);
+  const extensions = useContext(EditorExtensions);
+  const registered = ready(extensions) ? extensions : use(loadExtensions(extensions));
   const hint = useId();
   const element = useRef<HTMLDivElement>(null);
   const editor = useRef<EditorHost>(null);

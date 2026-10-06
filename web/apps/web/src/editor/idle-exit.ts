@@ -1,4 +1,4 @@
-import type { EditorExtension } from "./registry";
+import type { ReadyExtension } from "./registry";
 
 /** How long an edit may go without input before it is left (M5 design 4.7). */
 export const idleLimit = 30 * 60_000;
@@ -11,7 +11,7 @@ export const idleLimit = 30 * 60_000;
  * timer runs late by up to a minute, a frozen tab's once it thaws. It adds
  * nothing to the editor's state.
  */
-export const idleExit: EditorExtension = {
+export const idleExit: ReadyExtension = {
   name: "idle-exit",
   extension(_context, controls) {
     let idle: ReturnType<typeof setTimeout> | undefined;

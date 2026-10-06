@@ -65,17 +65,23 @@ export type EditorControls = {
   leave(reason: "idle"): Promise<void>;
 };
 
+/** Build builds an editor's extension for its context and controls. */
+export type Build = (context: EditorContext, controls: EditorControls) => Extension;
+
+/** A ReadyExtension builds its extension itself. */
+export type ReadyExtension = { name: string; extension: Build };
+
 /**
  * An EditorExtension adds to the source editor (M4 design 8; M4/P6 design
  * 3.4): M5 read-only and autosave, M6 completion, M7 pasted uploads. Its
  * extension is built once per content the editor loads, and goes into a
  * compartment of its own, in the order of the registry, after the
- * editor's own.
+ * editor's own. It builds it itself, holding only types of CodeMirror, or
+ * loads what builds it (M6/P7 design 2): a module of the editor's chunk,
+ * under editor/loaded/, which may use CodeMirror's values, imported as the
+ * editor opens.
  */
-export type EditorExtension = {
-  name: string;
-  extension(context: EditorContext, controls: EditorControls): Extension;
-};
+export type EditorExtension = ReadyExtension | { name: string; load: () => Promise<Build> };
 
 /**
  * editorExtensions is the registry: M5's read-only while the edit's
