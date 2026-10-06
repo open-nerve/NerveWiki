@@ -1,41 +1,90 @@
 import type { Page } from "@playwright/test";
 
+import { expectIndexedTags } from "../../fixtures/assert/links";
+import type { Database } from "../../fixtures/db";
+import { getTag, listTags } from "../../fixtures/links";
 import { createNotebook } from "../../fixtures/notebooks";
-import { createPage } from "../../fixtures/pages";
+import { createPage, getView } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
 import { wikiPagePath } from "../../fixtures/wiki-pages";
-import { newOnboardedTeam } from "../../fixtures/workspaces";
+import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 
 // L4, tags, formulas and diagrams (M6 design 9; M6/P6 design 8, 10): a
 // tag leads to its pages, those of a tag under it too; a formula is
 // typeset by KaTeX and a diagram drawn by mermaid, each loaded with the
 // first one, under the pages' Content-Security-Policy, which the page's
 // watch checks as the test ends: no violation, no console error. The
-// diagram follows the theme.
+// diagram follows the theme. Through the API, the view carries the tags,
+// formulas and diagrams for the page to make them (typeset and drawn in
+// the browser, page only), and a tag's pages are read.
+
+/** The page's content: a tag, a formula inline and one in a block, a diagram. */
+const tagged = [
+  "Tagged #proj/alpha.",
+  "",
+  "Inline $E = mc^2$, and a block:",
+  "",
+  "$$",
+  String.raw`\int_0^1 x\,dx = \frac{1}{2}`,
+  "$$",
+  "",
+  "```mermaid",
+  "graph TD; Start-->Finish",
+  "```",
+  "",
+].join("\n");
+
+/** The tags of Source, Deeper and Other as the index has them. */
+async function expectTagged(db: Database, source: string, deeper: string, other: string): Promise<void> {
+  await expectIndexedTags(db, source, [{ tag: "proj/alpha", count: 1 }]);
+  await expectIndexedTags(db, deeper, [{ tag: "proj/alpha/beta", count: 1 }]);
+  await expectIndexedTags(db, other, [{ tag: "proj", count: 1 }]);
+}
+
+test("L4 (API): a reading view's tag carries its name, its formulas and diagram their source; a tag's pages are those of the tag and those under it", async ({
+  api,
+  db,
+}, testInfo) => {
+  const { pat, workspace } = await newTeam(api, testInfo);
+  const notebook = await createNotebook(api, pat, workspace.slug, "Plans");
+  const source = await createPage(api, pat, notebook.id, "Source", null, tagged);
+  const deeper = await createPage(api, pat, notebook.id, "Deeper", null, "#proj/alpha/beta\n");
+  const other = await createPage(api, pat, notebook.id, "Other", null, "#proj\n");
+
+  const html = (await getView(api, pat, source.id)).data?.html ?? "";
+  for (const element of [
+    '<a class="nw-tag" data-nw-tag="proj/alpha">#proj/alpha</a>',
+    '<span class="nw-math">E = mc^2</span>',
+    '<div class="nw-math nw-math-block">',
+    '<code class="language-mermaid">graph TD; Start--&gt;Finish\n</code>',
+  ]) {
+    expect(html).toContain(element);
+  }
+  await expectTagged(db, source.id, deeper.id, other.id);
+
+  const pages = await getTag(api, pat, notebook.id, "proj/alpha");
+  expect([pages.response.status, pages.data?.data.map((page) => page.id).toSorted()]).toEqual([
+    200,
+    [source.id, deeper.id].toSorted(),
+  ]);
+  expect((await listTags(api, pat, notebook.id)).data?.data).toEqual([
+    { tag: "proj", count: 1 },
+    { tag: "proj/alpha", count: 1 },
+    { tag: "proj/alpha/beta", count: 1 },
+  ]);
+});
 
 test("L4 (page): a tag leads to the pages of the tag and those under it; formulas and a diagram are typeset and drawn under the CSP", async ({
   api,
+  db,
   signedInPage,
 }, testInfo) => {
   const { pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
   const notebook = await createNotebook(api, pat, workspace.slug, "Plans");
-  const content = [
-    "Tagged #proj/alpha.",
-    "",
-    "Inline $E = mc^2$, and a block:",
-    "",
-    "$$",
-    String.raw`\int_0^1 x\,dx = \frac{1}{2}`,
-    "$$",
-    "",
-    "```mermaid",
-    "graph TD; Start-->Finish",
-    "```",
-    "",
-  ].join("\n");
-  const source = await createPage(api, pat, notebook.id, "Source", null, content);
+  const source = await createPage(api, pat, notebook.id, "Source", null, tagged);
   const deeper = await createPage(api, pat, notebook.id, "Deeper", null, "#proj/alpha/beta\n");
-  await createPage(api, pat, notebook.id, "Other", null, "#proj\n");
+  const other = await createPage(api, pat, notebook.id, "Other", null, "#proj\n");
+  await expectTagged(db, source.id, deeper.id, other.id);
   const page = await signedInPage(tokens);
   const katex = page.waitForResponse((response) => /\/assets\/katex-[^/]*\.js$/.test(response.url()));
   await page.goto(wikiPagePath(workspace.slug, notebook.id, source.id));

@@ -1,19 +1,86 @@
+import { expectIndexedLinks } from "../../fixtures/assert/links";
 import { countAnswers } from "../../fixtures/browser";
+import type { Database } from "../../fixtures/db";
 import { holdStream } from "../../fixtures/events";
+import { getPageProperties, listBacklinks } from "../../fixtures/links";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, writeContent } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
 import { pageHeading, wikiPagePath } from "../../fixtures/wiki-pages";
-import { newOnboardedTeam } from "../../fixtures/workspaces";
+import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 
 // L6, the page's right column (M6 design 9; M6/P7 design 7–11): beside the
 // page, its outline goes to a heading, one in a folded callout too, which
 // opens for it, a property link to its page; the backlinks list the pages
 // that link here, with their lines, and one another writes shows as it is
-// written (the links event).
+// written (the links event). Through the API, the backlinks and the
+// properties' links, and the event; the outline, the focus and the column
+// itself are the page's alone.
+
+/** Doc's frontmatter: a property link to Hub, one to a page not there. */
+const properties = ["---", 'up: "[[Hub]]"', 'see: "[[Nowhere]]"', "---"];
+
+/** Doc's and Other's links as the index has them: to Hub, by Doc's property and Other's body, and to no page. */
+async function expectLinked(db: Database, docId: string, otherId: string, hubId: string): Promise<void> {
+  await expectIndexedLinks(db, docId, [
+    { kind: "wikilink", property: "up", target: "Hub", resolved: hubId },
+    { kind: "wikilink", property: "see", target: "Nowhere", resolved: null },
+  ]);
+  await expectIndexedLinks(db, otherId, [{ kind: "wikilink", property: null, target: "Hub", resolved: hubId }]);
+}
+
+test("L6 (API): a page's properties carry where their links lead; its backlinks list the pages that link to it with their lines, one another writes once written, the links event naming it", async ({
+  api,
+  db,
+  openEvents,
+}, testInfo) => {
+  const { pat, workspace } = await newTeam(api, testInfo);
+  const notebook = await createNotebook(api, pat, workspace.slug, "Plans");
+  const hub = await createPage(api, pat, notebook.id, "Hub");
+  const other = await createPage(api, pat, notebook.id, "Other");
+  const doc = await createPage(api, pat, notebook.id, "Doc", null, [...properties, "# Intro", ""].join("\n"));
+
+  expect((await getPageProperties(api, pat, doc.id)).data).toEqual({
+    valid: true,
+    properties: [
+      { key: "up", value: "[[Hub]]" },
+      { key: "see", value: "[[Nowhere]]" },
+    ],
+    links: [
+      { key: "up", node_id: hub.id },
+      { key: "see", node_id: null },
+    ],
+  });
+  expect((await listBacklinks(api, pat, hub.id)).data).toEqual({
+    data: [{ id: doc.id, count: 1, contexts: ['up: "[[Hub]]"'] }],
+    next_cursor: null,
+  });
+
+  const events = await openEvents(pat);
+  await writeContent(api, pat, other.id, { content: "Meet at [[Hub]] today\n", base_revision: 1 });
+  let frame = await events.next();
+  while (frame.event === "pages") {
+    frame = await events.next();
+  }
+  // Hub's backlinks changed; no page's links lead elsewhere (Other's own view is the pages event's).
+  expect(frame).toEqual({
+    event: "links",
+    data: { workspace_id: workspace.id, notebook_id: notebook.id, pages: [], targets: [hub.id] },
+  });
+  // By id: Other was made first.
+  expect((await listBacklinks(api, pat, hub.id)).data).toEqual({
+    data: [
+      { id: other.id, count: 1, contexts: ["Meet at [[Hub]] today"] },
+      { id: doc.id, count: 1, contexts: ['up: "[[Hub]]"'] },
+    ],
+    next_cursor: null,
+  });
+  await expectLinked(db, doc.id, other.id, hub.id);
+});
 
 test("L6 (page): the right column's outline goes to a heading, one in a folded callout too, a property link to its page, whose backlinks show a link another writes as it is written", async ({
   api,
+  db,
   signedInPage,
 }, testInfo) => {
   const { pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
@@ -21,10 +88,7 @@ test("L6 (page): the right column's outline goes to a heading, one in a folded c
   const hub = await createPage(api, pat, notebook.id, "Hub");
   const other = await createPage(api, pat, notebook.id, "Other");
   const content = [
-    "---",
-    'up: "[[Hub]]"',
-    'see: "[[Nowhere]]"',
-    "---",
+    ...properties,
     "# Intro",
     "",
     "## Setup",
@@ -84,6 +148,7 @@ test("L6 (page): the right column's outline goes to a heading, one in a folded c
   await expect(backlinks.getByRole("link")).toHaveText(["Other", "Doc"]);
   await expect(backlinks.getByText("Meet at [[Hub]] today", { exact: true })).toBeVisible();
   expect(await page.evaluate(() => "notReloaded" in window)).toBe(true);
+  await expectLinked(db, doc.id, other.id, hub.id);
 });
 
 test("L6 (page, keyboard): the last More adds the next page of backlinks and takes the focus to the first it adds, in view, without a scroll", async ({
