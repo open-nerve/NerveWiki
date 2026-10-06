@@ -650,7 +650,7 @@ M6 写出的移交（P3、P4 合并时落档）：
 | P4 | 链接改写 | 已完成（2026-10-05，`4646495`） | [04-P4-rewrite.md](04-P4-rewrite.md) | [P4-rewrite-review.md](reviews/P4-rewrite-review.md) |
 | P5 | 接口 | 已完成（2026-10-06，`1f3daf8`） | [05-P5-api.md](05-P5-api.md) | [P5-api-review.md](reviews/P5-api-review.md) |
 | P6 | 阅读视图 | 已完成（2026-10-06，A `4181768`，B `ccfc395`） | [06-P6-reading-view.md](06-P6-reading-view.md) | A：[P6A-reading-server-review.md](reviews/P6A-reading-server-review.md)；B：[P6B-reading-front-review.md](reviews/P6B-reading-front-review.md) |
-| P7 | 编辑器与右栏（前端） | 未开始 | — | — |
+| P7 | 编辑器与右栏（前端） | 实施中 | [07-P7-editor-panel.md](07-P7-editor-panel.md) | — |
 
 ## 13. 变更记录
 
