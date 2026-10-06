@@ -19,14 +19,14 @@ const formulaDepth = 150;
 export const taskTime = 50;
 
 /**
- * How long, in milliseconds, a view's formulas may take to lay out, each
- * measured on its own; past it, the rest show their TeX. The view laid out
- * again (zoomed, printed) lays them out all at once, in one task: 40
- * formulas of styled groups 150 deep, each laid out in a task of its own
- * as it was typeset, took 5 s at once when the page was zoomed (M6/P6 B
- * fix check 3). Within the budget, 9 of them are typeset, and zooming
- * takes 1.1 s; 2,000 ordinary formulas are all typeset, in 0.7–0.8 s, and
- * zooming takes 0.2 s.
+ * How long, in milliseconds, a view's formulas may take to lay out in
+ * their places; past it, the rest show their TeX. The view laid out again
+ * (zoomed, printed) lays them out all at once, in one task: 40 formulas of
+ * styled groups 150 deep, each laid out in a task of its own as it was
+ * typeset, took 5 s at once when the page was zoomed (M6/P6 B fix check
+ * 3). Laid out in a box of its own, a wide formula takes a third of what
+ * it takes in its paragraph (fix check 4): the budget counts them in their
+ * places.
  */
 export const layoutBudget = 1000;
 
@@ -139,15 +139,15 @@ export function guardLabels(katex: LabelTypesetter): void {
  * taskTime in a task, KaTeX working on the page's thread, which is given
  * back between (now is the clock). Each is laid out first on its own, in a
  * box of the view out of its flow and unseen (nw-math-measure), so that
- * the clock counts the layout, which can take far longer than KaTeX, and
- * counts it once: laid out in its paragraph, each formula would lay out
- * the paragraph again (2,000 in one took 12.8 s; M6/P6 B fix check 3). The
- * formulas of a task are put in their places together as it ends. Past
- * layoutBudget of layout, the rest show their TeX. What the view has to
- * lay out as a task begins, the formulas put in before and what other
- * enhancements changed, is laid out before the formulas are, counted to
- * the task, not to the formulas. Undone, the formulas typeset show their
- * TeX again, and those not reached yet stay as they are.
+ * the task's clock counts the layout, which can take far longer than
+ * KaTeX, and counts it once: laid out in its paragraph, each formula would
+ * lay out the paragraph again (2,000 in one took 12.8 s; M6/P6 B fix check
+ * 3). The formulas of a task are put in their places together as it ends,
+ * and laid out there, which layoutBudget counts; past it, the rest show
+ * their TeX. What else the view has to lay out as a task begins, what
+ * other enhancements changed, is laid out before the formulas are,
+ * counted to the task, not to the formulas. Undone, the formulas typeset
+ * show their TeX again, and those not reached yet stay as they are.
  */
 export function math(load: () => Promise<Typesetter>, now: () => number = () => performance.now()): Enhancement {
   return (container) => {
@@ -174,11 +174,17 @@ export function math(load: () => Promise<Typesetter>, now: () => number = () => 
       let laidOut = 0;
       let ready: { formula: HTMLElement; tex: string; made: HTMLElement }[] = [];
       const place = () => {
+        if (ready.length === 0) {
+          return;
+        }
         for (const { formula, tex, made } of ready) {
           formula.replaceChildren(...made.childNodes);
           typeset.set(formula, tex);
         }
         ready = [];
+        const before = now();
+        container.getBoundingClientRect();
+        laidOut += now() - before;
       };
       // Each task, the first too, lays the view out first.
       let started = -Infinity;
@@ -203,9 +209,7 @@ export function math(load: () => Promise<Typesetter>, now: () => number = () => 
             : undefined;
         if (made !== undefined) {
           measure.replaceChildren(made);
-          const before = now();
           made.getBoundingClientRect();
-          laidOut += now() - before;
           ready.push({ formula, tex, made });
         }
       }

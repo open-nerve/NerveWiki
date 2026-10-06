@@ -209,12 +209,12 @@ test("L4 (page): what a writer's formulas and diagrams could do to a reader's pa
   await expect(page.locator("body")).toBeVisible();
 
   // A mindmap of more lines than its bound, and one of as many nodes on one line, near the end, are tried as they
-  // show, before the small one after them, which is drawn.
+  // show, before the small one after them, which is drawn: the heading after it shown, which its drawing leaves.
   await article.locator("code.language-mermaid", { hasText: "node149" }).scrollIntoViewIfNeeded();
   await frames(page);
   await article.locator("code.language-mermaid", { hasText: "leaf159" }).scrollIntoViewIfNeeded();
   await frames(page);
-  await article.locator("code.language-mermaid", { hasText: "node29" }).last().scrollIntoViewIfNeeded();
+  await article.getByRole("heading", { name: "Far", exact: true }).scrollIntoViewIfNeeded();
   await expect(article.locator(".nw-diagram svg")).toHaveCount(4);
   await expect(article.locator(".nw-diagram").last()).toContainText("node29");
 
@@ -305,4 +305,30 @@ test("L4 (page): a view's formulas take at most a while to lay out, which the vi
   await expect(article.locator(".nw-math-measure")).toHaveCount(0);
   await expect(formulas.last()).toHaveText("y");
   await expect(formulas.last().locator(".katex")).toHaveCount(0);
+});
+
+test("L4 (page): a page opened at a heading shows it once the formulas above it are typeset, taller than their TeX", async ({
+  api,
+  signedInPage,
+}, testInfo) => {
+  const { pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
+  const notebook = await createNotebook(api, pat, workspace.slug, "Plans");
+  const content = [
+    ...Array.from({ length: 20 }, (_, i) =>
+      ["$$", String.raw`\begin{pmatrix}a_{${i}}&b\\c&d\end{pmatrix}`, "$$", ""].join("\n")
+    ),
+    "# Far",
+    "",
+    ...Array.from({ length: 12 }, (_, i) => `After the heading, ${i}.\n`),
+  ].join("\n");
+  const matrices = await createPage(api, pat, notebook.id, "Matrices", null, content);
+  const page = await signedInPage(tokens);
+  await page.goto(`${wikiPagePath(workspace.slug, notebook.id, matrices.id)}#nw-far`);
+  const article = page.getByRole("article");
+  const far = article.getByRole("heading", { name: "Far", exact: true });
+
+  await expect(far).toBeFocused();
+  await expect(article.locator(".nw-math .katex")).toHaveCount(20);
+  await expect(article.locator(".nw-math-measure")).toHaveCount(0);
+  await expect(far).toBeInViewport();
 });

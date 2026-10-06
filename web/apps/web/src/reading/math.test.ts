@@ -242,25 +242,41 @@ test("the formulas are typeset for a while at a time, the page's thread given ba
   expect(calls).toHaveLength(count);
 });
 
+/** typesetIn is how many of article's formulas are typeset. */
+function typesetIn(article: HTMLElement): number {
+  return [...article.querySelectorAll(".nw-math")].filter((each) => each.textContent.startsWith("[")).length;
+}
+
 /**
- * laidOut has laying out take the clock it gives formulaTime for a formula, in the box math measures it in, and
- * viewTime for the view; it records where each formula was laid out, and what of the view was typeset by then.
+ * laidOut has laying out take the clock: box for a formula, in the box math measures it in; placed for each
+ * formula put in its place since the view was laid out before; others for the view with nothing put in since,
+ * what other enhancements changed. It records where each formula was laid out, what of the view was typeset by
+ * then, and how many times the view was laid out with nothing put in.
  */
-function laidOut(article: HTMLElement, formulaTime: number, viewTime = 0) {
+function laidOut(
+  article: HTMLElement,
+  { box = 0, placed = 0, others = 0 }: { box?: number; placed?: number; others?: number }
+) {
   let time = 0;
   let views = 0;
+  let typesetBefore = 0;
   const where: { box: string | undefined; inView: boolean; typesetBefore: number }[] = [];
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
     if (this === article) {
-      time += viewTime;
-      views += 1;
+      const put = typesetIn(article) - typesetBefore;
+      typesetBefore += put;
+      if (put > 0) {
+        time += placed * put;
+      } else {
+        time += others;
+        views += 1;
+      }
     } else {
-      time += formulaTime;
+      time += box;
       where.push({
         box: this.parentElement?.className,
         inView: this.parentElement?.parentElement === article,
-        typesetBefore: [...article.querySelectorAll(".nw-math")].filter((each) => each.textContent.startsWith("["))
-          .length,
+        typesetBefore: typesetIn(article),
       });
     }
     return new DOMRect();
@@ -273,12 +289,17 @@ function formulas(count: number) {
   return view(Array.from({ length: count }, (_, i) => `<p><span class="nw-math">${i}</span></p>`).join(""));
 }
 
+/** shownOf is what count formulas show, the first typeset of them typeset. */
+function shownOf(count: number, typeset: number): string[] {
+  return Array.from({ length: count }, (_, i) => (i < typeset ? `[${i}]` : `${i}`));
+}
+
 test("each formula is laid out on its own, in the view's box out of its flow, the clock counting the layout; a task's formulas are put in their places together as it ends", async () => {
   vi.useFakeTimers();
   const { calls, typeset } = typesetter();
   const count = 20;
   const article = formulas(count);
-  const { where, now } = laidOut(article, 20);
+  const { where, now } = laidOut(article, { box: 20 });
 
   math(async () => typeset, now)(article, context);
   await vi.advanceTimersByTimeAsync(0);
@@ -292,34 +313,49 @@ test("each formula is laid out on its own, in the view's box out of its flow, th
   // A formula laid out sees in their places those of the tasks before its own, none of its own task's.
   const perTask = Math.ceil(taskTime / 20);
   expect(where.map((each) => each.typesetBefore)).toEqual(Array.from({ length: count }, (_, i) => i - (i % perTask)));
-  expect(article.textContent).toBe(Array.from({ length: count }, (_, i) => `[${i}]`).join(""));
+  expect(article.textContent).toBe(shownOf(count, count).join(""));
   expect(article.querySelector(".nw-math-measure")).toBeNull();
 });
 
-test("past layoutBudget of the formulas' layout, the rest show their TeX", async () => {
+test("past layoutBudget of the formulas' layout in their places, the rest show their TeX", async () => {
   vi.useFakeTimers();
   const { calls, typeset } = typesetter();
-  const count = 10;
+  const count = 12;
   const article = formulas(count);
-  const { now } = laidOut(article, 300);
+  const { now } = laidOut(article, { box: 20, placed: 300 });
 
   math(async () => typeset, now)(article, context);
   await vi.runAllTimersAsync();
 
-  const shown = Math.ceil(layoutBudget / 300);
+  // Tasks of perTask formulas, each put in its place taking 300: typesetting stops at the task that passes the budget.
+  const perTask = Math.ceil(taskTime / 20);
+  const shown = perTask * Math.ceil(layoutBudget / (perTask * 300));
+  expect(shown).toBeLessThan(count);
   expect(calls).toHaveLength(shown);
-  expect([...article.querySelectorAll(".nw-math")].map((each) => each.textContent)).toEqual(
-    Array.from({ length: count }, (_, i) => (i < shown ? `[${i}]` : `${i}`))
-  );
+  expect([...article.querySelectorAll(".nw-math")].map((each) => each.textContent)).toEqual(shownOf(count, shown));
   expect(article.querySelector(".nw-math-measure")).toBeNull();
 });
 
-test("what the view has to lay out as a task begins is laid out first, counted to the task, not to the formulas' budget", async () => {
+test("the budget counts a formula laid out in its place, not in the box, where it is laid out only to end the task in time", async () => {
+  vi.useFakeTimers();
+  const { calls, typeset } = typesetter();
+  const count = 12;
+  const article = formulas(count);
+  const { now } = laidOut(article, { box: 300, placed: 1 });
+
+  math(async () => typeset, now)(article, context);
+  await vi.runAllTimersAsync();
+
+  expect(calls).toHaveLength(count);
+  expect(article.textContent).toBe(shownOf(count, count).join(""));
+});
+
+test("what else the view has to lay out as a task begins is laid out first, counted to the task, not to the formulas' budget", async () => {
   vi.useFakeTimers();
   const { calls, typeset } = typesetter();
   const count = 5;
   const article = formulas(count);
-  const { views, now } = laidOut(article, 1, layoutBudget);
+  const { views, now } = laidOut(article, { box: 1, placed: 1, others: layoutBudget });
 
   math(async () => typeset, now)(article, context);
   await vi.runAllTimersAsync();
@@ -327,7 +363,7 @@ test("what the view has to lay out as a task begins is laid out first, counted t
   // Each task laid the view out first, which took its time: one formula is typeset in each.
   expect(views()).toBe(count);
   expect(calls).toHaveLength(count);
-  expect(article.textContent).toBe(Array.from({ length: count }, (_, i) => `[${i}]`).join(""));
+  expect(article.textContent).toBe(shownOf(count, count).join(""));
 });
 
 test("undone, the typeset formulas show their TeX again, and those not reached stay", async () => {

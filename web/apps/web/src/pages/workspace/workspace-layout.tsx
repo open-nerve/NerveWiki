@@ -103,8 +103,13 @@ export const WorkspaceLayout = observer(function WorkspaceLayout() {
   if (workspace === undefined) {
     return workspaces.wasRemoved(slug) ? <Navigate replace to="/" state={arrived} /> : <NotFoundPage />;
   }
+  // Beside the page and as tall, the column would be the window's scroll anchor: what changes size above the
+  // reader in the page (a formula typeset, a diagram drawn) would move what they read (M6/P6 B fix check 4).
   const left = (
-    <div data-shell className="space-y-4 border-b p-3 md:w-60 md:shrink-0 md:border-r md:border-b-0">
+    <div
+      data-shell
+      className="space-y-4 border-b p-3 md:w-60 md:shrink-0 md:border-r md:border-b-0 md:[overflow-anchor:none]"
+    >
       <nav aria-label={workspace.name} className="space-y-4">
         <WorkspaceSwitcher current={workspace} />
         <div className="flex flex-col gap-1">
