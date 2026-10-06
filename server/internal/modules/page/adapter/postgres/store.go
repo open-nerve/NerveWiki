@@ -40,7 +40,7 @@ func (s *Store) queries(ctx context.Context) *gen.Queries {
 }
 
 // planned is queries with each statement planned with its arguments
-// (postgres.Planned): for those whose arrays grow with the data.
+// (postgres.Planned): for those a plan for any arguments makes much slower.
 func (s *Store) planned(ctx context.Context) *gen.Queries {
 	return gen.New(postgres.Planned(postgres.DB(ctx, s.pool)))
 }

@@ -10,7 +10,8 @@
 -- other link of the pages, or sort all of a page's links, until the table is vacuumed (review c3); planned for limits
 -- above the rows a table without statistics is thought to have, they sort all of a page's links (review c5). Left as
 -- it is: where an instance's links lead to a few pages only, a target the plan does not know is thought a common one,
--- and until the table is vacuumed the same reads take the primary key, or the plan is compiled (review c6, c7).
+-- and until the table is vacuumed the same reads take the primary key, or, before jit was off (M6 closeout FA5-M1),
+-- the plan was compiled (review c6, c7).
 WITH RECURSIVE sources (source_id, n) AS (
     (
         SELECT l.source_id, CASE WHEN l.source_id = sqlc.arg(target)::uuid THEN 0 ELSE 1 END

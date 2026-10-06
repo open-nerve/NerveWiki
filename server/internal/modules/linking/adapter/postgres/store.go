@@ -39,7 +39,7 @@ func (s *Store) queries(ctx context.Context) *gen.Queries {
 }
 
 // planned is queries with each statement planned with its arguments
-// (postgres.Planned): for those whose arrays grow with the data.
+// (postgres.Planned): for those a plan for any arguments makes much slower.
 func (s *Store) planned(ctx context.Context) *gen.Queries {
 	return gen.New(postgres.Planned(postgres.DB(ctx, s.pool)))
 }
@@ -186,8 +186,9 @@ func (s *Store) DeleteNotebooks(ctx context.Context, ids []uuid.UUID) error {
 }
 
 // Links implements app.Store, read planned with r's keys, targets and
-// sources: a plan for any compared each link with them one by one, 75–83 ms
-// of a rename where theirs took 16–26 ms (M6 closeout FA5-Q1).
+// sources, in each unit that writes: a plan for any compared each link with
+// them one by one, 75–83 ms of a rename where theirs took 16–26 ms (M6
+// closeout FA5-Q1).
 func (s *Store) Links(ctx context.Context, notebookID uuid.UUID, r domain.Reach) ([]app.Link, error) {
 	rows, err := s.planned(ctx).LinksReached(ctx, gen.LinksReachedParams{
 		NotebookID: notebookID, Keys: r.Keys, Targets: r.Targets, Sources: r.Sources,

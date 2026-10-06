@@ -41,6 +41,23 @@ func TestNewPoolAppliesMaxConns(t *testing.T) {
 	}
 }
 
+// The pool sends no parameter at startup that database.url does not: a
+// connection pooler refuses those it does not track (M6 closeout FA5-M2).
+// What a connection needs set it sets once it starts (afterConnect).
+func TestNewPoolSendsNoStartupParameters(t *testing.T) {
+	pool, err := postgres.NewPool(context.Background(), config.DatabaseConfig{
+		URL:      "postgres://nervewiki:secret@127.0.0.1:1/nervewiki",
+		MaxConns: 1,
+	})
+	if err != nil {
+		t.Fatalf("NewPool() error = %v", err)
+	}
+	defer pool.Close()
+	if got := pool.Config().ConnConfig.RuntimeParams; len(got) != 0 {
+		t.Errorf("startup parameters %v, want none", got)
+	}
+}
+
 // pgx quotes the connection string in its parse error and masks the password
 // only on a best-effort basis, e.g. not in the legal key/value form
 // "password = secret"; NewPool shows none of that text, whether the string is
