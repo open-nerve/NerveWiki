@@ -98,6 +98,16 @@ type Alias struct {
 // (M6/P5 review r2-M2).
 const MaxNames = 1000
 
+// MaxLinks is the most links the index keeps of a page: its first, in the
+// order written, the frontmatter's before the body's. A page of 5 MiB may
+// write 870,000 links, whose rows a save would write in the notebook's
+// index lock for seconds, every other save of the notebook waiting, and
+// whose working set would be some GiB the parse budget does not count (M6
+// closeout A-I1). The reading view resolves those past it as it does a
+// link the index has not: anew; they lead nowhere's backlinks, and a
+// rename does not write them again, nor reads them back.
+const MaxLinks = 10_000
+
 // TagsOf is the tags of names, a page's in the order written, without
 // their '#': one a title key, as first written, with how often; none whose
 // key is longer than MaxKey, nor past the first MaxNames.

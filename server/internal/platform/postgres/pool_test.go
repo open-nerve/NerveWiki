@@ -2,9 +2,13 @@ package postgres_test
 
 import (
 	"context"
+	"maps"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres"
@@ -38,6 +42,26 @@ func TestNewPoolAppliesMaxConns(t *testing.T) {
 	}
 }
 
+// The pool sends no parameter at startup but those database.url and the
+// PG* environment variables ask for: a connection pooler refuses those it
+// does not track (M6 closeout FA5-M2, FA7-N2). What a connection needs set
+// it sets once it starts (afterConnect).
+func TestNewPoolSendsNoStartupParameters(t *testing.T) {
+	const url = "postgres://nervewiki:secret@127.0.0.1:1/nervewiki?application_name=wiki"
+	pool, err := postgres.NewPool(context.Background(), config.DatabaseConfig{URL: url, MaxConns: 1})
+	if err != nil {
+		t.Fatalf("NewPool() error = %v", err)
+	}
+	defer pool.Close()
+	asked, err := pgxpool.ParseConfig(url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := pool.Config().ConnConfig.RuntimeParams, asked.ConnConfig.RuntimeParams; !maps.Equal(got, want) {
+		t.Errorf("startup parameters %v, want %v", got, want)
+	}
+}
+
 // pgx quotes the connection string in its parse error and masks the password
 // only on a best-effort basis, e.g. not in the legal key/value form
 // "password = secret"; NewPool shows none of that text, whether the string is
@@ -55,5 +79,44 @@ func TestNewPoolRejectsUnusableURLWithoutLeakingPassword(t *testing.T) {
 		if err == nil || err.Error() != want || strings.Contains(err.Error(), "secret") {
 			t.Errorf("NewPool(%q) error = %v, want %q", url, err, want)
 		}
+	}
+}
+
+// Every connection of the pool, the one a listener takes for its own too,
+// has jit off (M6 closeout FA5-M1).
+func TestPoolTurnsJITOffOnEachConnection(t *testing.T) {
+	ctx := context.Background()
+	pool := newPool(t, pgtest.NewEmptyDatabase(t))
+	jit := func(q interface {
+		QueryRow(context.Context, string, ...any) pgx.Row
+	}) string {
+		var v string
+		if err := q.QueryRow(ctx, "SHOW jit").Scan(&v); err != nil {
+			t.Fatal(err)
+		}
+		return v
+	}
+	conns := make([]*pgxpool.Conn, pool.Config().MaxConns)
+	for i := range conns {
+		c, err := pool.Acquire(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		conns[i] = c
+		if v := jit(c); v != "off" {
+			t.Errorf("connection %d has jit %s, want off", i+1, v)
+		}
+	}
+	own := conns[0].Hijack()
+	t.Cleanup(func() {
+		if err := own.Close(ctx); err != nil {
+			t.Error(err)
+		}
+	})
+	if v := jit(own); v != "off" {
+		t.Errorf("a connection taken from the pool has jit %s, want off", v)
+	}
+	for _, c := range conns[1:] {
+		c.Release()
 	}
 }

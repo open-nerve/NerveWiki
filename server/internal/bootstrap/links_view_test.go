@@ -92,3 +92,39 @@ func TestAReadingViewsPropertyLinksLeadWhereTheyResolve(t *testing.T) {
 		}
 	}
 }
+
+// A page's links past the first 10,000 (linking/domain.MaxLinks; M6
+// closeout A-I1) are not in the index: no page has its backlink, and the
+// reading view resolves them anew, leading where they resolve still.
+func TestAPagesLinksPastTheIndexsBoundLeadWhereTheyResolve(t *testing.T) {
+	tm := newAcmeTeam(t, "member", "")
+	nb := tm.openNotebook(t, "alice", "Eng")
+	tm.createPage(t, "alice", nb, "", "Target")
+	last := tm.createPage(t, "alice", nb, "", "Last")
+	src := tm.createPage(t, "alice", nb, "", "Source")
+	tm.send(t, contentWrite("alice", src, strings.Repeat("[[Target]] ", 10_000)+"[[Last]]\n", 1, ""), http.StatusOK)
+
+	var rows, toLast int
+	if err := tm.pool.QueryRow(t.Context(), `SELECT count(*), count(*) FILTER (WHERE resolved_id = $2)
+		FROM page_links WHERE source_id = $1`, src, last).Scan(&rows, &toLast); err != nil {
+		t.Fatal(err)
+	}
+	if rows != 10_000 || toLast != 0 {
+		t.Errorf("the index has %d links of the page, %d to Last; want 10,000, none", rows, toLast)
+	}
+	status, body := ask(t, tm.contract, http.MethodGet, tm.base+"/api/v0/pages/"+src+"/view", tm.tokens["bob"], "")
+	if status != http.StatusOK {
+		t.Fatalf("bob's reading view = %d %s", status, body)
+	}
+	var v struct {
+		HTML string `json:"html"`
+	}
+	decodeAnswer(t, body, &v)
+	if want := `<a class="nw-wikilink" data-nw-node="` + last + `">Last</a>`; !strings.HasSuffix(strings.TrimSpace(v.HTML), want+"</p>") {
+		t.Errorf("bob's reading view ends %q, want %s", v.HTML[max(0, len(v.HTML)-120):], want)
+	}
+	status, body = ask(t, tm.contract, http.MethodGet, tm.base+"/api/v0/pages/"+last+"/backlinks", tm.tokens["bob"], "")
+	if status != http.StatusOK || !strings.Contains(body, `"data":[]`) {
+		t.Errorf("Last's backlinks = %d %s, want none", status, body)
+	}
+}

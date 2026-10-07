@@ -336,8 +336,8 @@ func riverStaysInJobs(from, to string) bool {
 // markdownLibrariesStayInMarkdown keeps the Markdown libraries behind
 // platform/markdown (M4/P3 design 3.11): the one parse and its rendering,
 // hardened, and the one reading of a frontmatter. platform/config reads YAML
-// through koanf, which is no direct import. M6's registrants, which build on
-// goldmark, change the rule.
+// through koanf, which is no direct import. M6's dialect is within it
+// (platform/markdown/obsidian), so the rule held.
 func markdownLibrariesStayInMarkdown(from, to string) bool {
 	library := within(to, "github.com/yuin/goldmark") || within(to, "golang.org/x/net/html") ||
 		strings.HasPrefix(to, "go.yaml.in/yaml/")

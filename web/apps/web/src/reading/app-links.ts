@@ -68,7 +68,7 @@ function addressOf(link: HTMLAnchorElement, notebookPath: string): string {
     // The tag's name is one segment, its '/' too: a nested tag (a/b), and one the page writes ending with '/' (#a//).
     return `${notebookPath}/tags/${encodeURIComponent(tag ?? "")}`;
   }
-  const page = `${notebookPath}/pages/${node}`;
+  const page = `${notebookPath}/pages/${encodeURIComponent(node)}`;
   return anchor === undefined ? page : `${page}#${anchor}`;
 }
 

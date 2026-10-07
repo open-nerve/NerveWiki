@@ -51,6 +51,7 @@ func TestARenameAndAContentWriteOfALinkingPageInEitherOrder(t *testing.T) {
 			tm.resolves(t, src, a)
 			checkLinks(t, tm.pool)
 			checkPages(t, tm.pool)
+			tm.checkRebuilt(t, nb)
 		})
 	}
 }
@@ -78,6 +79,7 @@ func TestTwoRenamesWriteALinkingPageOneAfterTheOther(t *testing.T) {
 			tm.resolves(t, src, a, c)
 			checkLinks(t, tm.pool)
 			checkPages(t, tm.pool)
+			tm.checkRebuilt(t, nb)
 		})
 	}
 }
@@ -117,6 +119,7 @@ func TestARenameAndAnOpeningOfALinkingPageInEitherOrder(t *testing.T) {
 			tm.resolves(t, src, a)
 			checkLinks(t, tm.pool)
 			checkPages(t, tm.pool)
+			tm.checkRebuilt(t, nb)
 		})
 	}
 }
@@ -172,5 +175,6 @@ func TestAHeartbeatAfterTheRenamesPrecheckRefusesTheRename(t *testing.T) {
 	if now := tm.snapshot(t, nb); now != was {
 		t.Errorf("the refused rename changed the notebook:\n%s\nwas\n%s", now, was)
 	}
-	checkLinks(t, tm.pool)
+	checkPages(t, tm.pool)
+	tm.checkRebuilt(t, nb)
 }

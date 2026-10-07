@@ -72,28 +72,35 @@ type Resolution struct {
 // The source folder is the source page's parent, the root for a page at
 // the root.
 func Resolve(t Target, from []Step, candidates []Node, aliased map[string][]Node) Resolution {
+	return resolve(t, from, nodeList(candidates), aliased)
+}
+
+// Resolve is Resolve among the pages s holds, those whose title key is one
+// of t's LastKeys, or more: the others are none of t's; s reads those of
+// each of t's LastKeys as deep as t reaches from from (Target.Reach), or
+// deeper.
+func (s Suffixes) Resolve(t Target, from []Step, aliased map[string][]Node) Resolution {
+	return resolve(t, from, s, aliased)
+}
+
+// resolve is Resolve among candidates.
+func resolve(t Target, from []Step, candidates candidateSet, aliased map[string][]Node) Resolution {
 	folder := from[:max(len(from)-1, 0)]
 	form := t.form(candidates)
 	if t.Relative {
 		up := folder[:max(len(folder)-t.Up, 0)]
-		if c, ok := exactly(up, form, candidates); ok {
+		if c, ok := candidates.exactly(up, form); ok {
 			return Resolution{ID: c}
 		}
 		return Resolution{}
 	}
-	if c, ok := exactly(nil, form, candidates); ok {
+	if c, ok := candidates.exactly(nil, form); ok {
 		return Resolution{ID: c}
 	}
 	if t.Rooted {
 		return Resolution{}
 	}
-	var ends []Node
-	for _, c := range candidates {
-		if len(c.Path) > len(form) && endsWith(c.Path, form) {
-			ends = append(ends, c)
-		}
-	}
-	if len(ends) > 0 {
+	if ends := candidates.ending(form); len(ends) > 0 {
 		return preferred(ends, folder)
 	}
 	if t.ByAlias() {
@@ -106,10 +113,28 @@ func Resolve(t Target, from []Step, candidates []Node, aliased map[string][]Node
 	return Resolution{}
 }
 
-// exactly is the candidate whose path is the steps of base, then keys, if
-// one is.
-func exactly(base []Step, keys []string, candidates []Node) (uuid.UUID, bool) {
-	for _, c := range candidates {
+// A candidateSet is the pages a target may resolve to, as Resolve reads
+// them: a list, or a list read once into Suffixes.
+type candidateSet interface {
+	// has tells whether a page's title key is key.
+	has(key string) bool
+	// exactly is the first page whose path is the steps of base, then keys,
+	// if one is.
+	exactly(base []Step, keys []string) (uuid.UUID, bool)
+	// ending is the pages whose path is longer than keys and ends with them,
+	// in their order.
+	ending(keys []string) []Node
+}
+
+// nodeList is a candidateSet read as it is, page by page.
+type nodeList []Node
+
+func (ns nodeList) has(key string) bool {
+	return slices.ContainsFunc(ns, func(c Node) bool { return c.key() == key })
+}
+
+func (ns nodeList) exactly(base []Step, keys []string) (uuid.UUID, bool) {
+	for _, c := range ns {
 		if len(c.Path) != len(base)+len(keys) || !endsWith(c.Path, keys) {
 			continue
 		}
@@ -119,6 +144,101 @@ func exactly(base []Step, keys []string, candidates []Node) (uuid.UUID, bool) {
 		return c.ID, true
 	}
 	return uuid.UUID{}, false
+}
+
+func (ns nodeList) ending(keys []string) []Node {
+	var ends []Node
+	for _, c := range ns {
+		if len(c.Path) > len(keys) && endsWith(c.Path, keys) {
+			ends = append(ends, c)
+		}
+	}
+	return ends
+}
+
+// Suffixes are pages read once by the ends of their paths, for the targets
+// of a read to look up: each finds the pages whose path ends as it does,
+// not every page of its title. Read page by page, a page of distinct paths
+// to pages of one title cost the square of their number: 10,000 pages
+// named x and a page of [[g1/x]] … [[g10000/x]] took seconds each time it
+// was read (M6 closeout FA-I1).
+type Suffixes struct {
+	root *suffix
+}
+
+// suffix is the pages whose paths end with the keys from the root to it,
+// the last key first: exact, whose path is just these keys, and longer,
+// whose path has more; each in the order read.
+type suffix struct {
+	next   map[string]*suffix
+	exact  []Node
+	longer []Node
+}
+
+// NewSuffixes reads candidates by the ends of their paths, as deep as the
+// targets of a read that end with each title key reach (Target.Reach), by
+// the key: a page is in as many suffixes as its path has steps, its key's
+// reach at most, and in none if no target ends with its key. Each page's
+// every step cost 441 MiB a read of 100,000 pages 10 steps deep, 2.2 GB 64
+// deep (M6 closeout FA2-M1, FA3-N2).
+func NewSuffixes(candidates []Node, reach map[string]int) Suffixes {
+	root := &suffix{}
+	for _, c := range candidates {
+		at := root
+		for i := len(c.Path) - 1; i >= max(len(c.Path)-reach[c.key()], 0); i-- {
+			at = at.child(c.Path[i].Key)
+			if i == 0 {
+				at.exact = append(at.exact, c)
+			} else {
+				at.longer = append(at.longer, c)
+			}
+		}
+	}
+	return Suffixes{root: root}
+}
+
+// child is the suffix of s and key before it, made if it was not.
+func (s *suffix) child(key string) *suffix {
+	if s.next == nil {
+		s.next = make(map[string]*suffix)
+	}
+	c, ok := s.next[key]
+	if !ok {
+		c = &suffix{}
+		s.next[key] = c
+	}
+	return c
+}
+
+// at is the suffix of the steps of base, then keys; nil for none.
+func (s Suffixes) at(base []Step, keys []string) *suffix {
+	at := s.root
+	for i := len(keys) - 1; i >= 0 && at != nil; i-- {
+		at = at.next[keys[i]]
+	}
+	for i := len(base) - 1; i >= 0 && at != nil; i-- {
+		at = at.next[base[i].Key]
+	}
+	return at
+}
+
+func (s Suffixes) has(key string) bool {
+	_, ok := s.root.next[key]
+	return ok
+}
+
+func (s Suffixes) exactly(base []Step, keys []string) (uuid.UUID, bool) {
+	if at := s.at(base, keys); at != nil && len(at.exact) > 0 {
+		return at.exact[0].ID, true
+	}
+	return uuid.UUID{}, false
+}
+
+func (s Suffixes) ending(keys []string) []Node {
+	if at := s.at(nil, keys); at != nil {
+		return at.longer
+	}
+	return nil
 }
 
 // endsWith tells whether path ends with steps of keys, which is no longer.

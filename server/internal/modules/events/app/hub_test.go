@@ -108,15 +108,15 @@ func TestAStreamGetsWhatItSees(t *testing.T) {
 	pages := domain.Pages{Pages: []domain.PageRevision{}}
 	want := []domain.Event{
 		ev(t, domain.TypePages, acme(), seen(), pages),
-		ev(t, "links", acme(), uuid.Nil(), map[string]int{"n": 1}),
-		ev(t, "links", acme(), seen(), map[string]int{"n": 2}),
+		ev(t, "later", acme(), uuid.Nil(), map[string]int{"n": 1}),
+		ev(t, "later", acme(), seen(), map[string]int{"n": 2}),
 	}
 	for _, e := range []domain.Event{
 		want[0],
 		ev(t, domain.TypePages, acme(), unseen(), pages),
 		ev(t, domain.TypePages, other(), elsewise(), pages),
 		want[1],
-		ev(t, "links", other(), uuid.Nil(), map[string]int{"n": 3}),
+		ev(t, "later", other(), uuid.Nil(), map[string]int{"n": 3}),
 		want[2],
 	} {
 		h.Dispatch(e)

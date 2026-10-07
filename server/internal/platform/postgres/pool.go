@@ -25,19 +25,35 @@ var errUnusableURL = errors.New("database.url: pgx cannot use it; check its synt
 
 // NewPool creates a connection pool for database.url with at most
 // database.max_conns connections. It connects lazily, on first use. Every
-// connection scans timestamptz values in UTC (scanTimestamptzInUTC).
+// connection is set up by afterConnect.
 func NewPool(ctx context.Context, cfg config.DatabaseConfig) (*pgxpool.Pool, error) {
 	pc, err := pgxpool.ParseConfig(cfg.URL)
 	if err != nil {
 		return nil, errUnusableURL
 	}
 	pc.MaxConns = cfg.MaxConns
-	pc.AfterConnect = scanTimestamptzInUTC
+	pc.AfterConnect = afterConnect
 	pool, err := pgxpool.NewWithConfig(ctx, pc)
 	if err != nil {
 		return nil, fmt.Errorf("create database pool: %w", err)
 	}
 	return pool, nil
+}
+
+// afterConnect sets a new connection up: it scans timestamptz values in UTC,
+// and the server compiles none of its statements to machine code. They read
+// tens of thousands of rows at most, and compiling took longer than it
+// saved: the link targets of a page of 2,000 links, planned with them, took
+// 49 ms, 6 ms without (M6 closeout FA5-M1). A SET, not a parameter at
+// startup: a connection pooler refuses those it does not know (FA5-M2).
+func afterConnect(ctx context.Context, conn *pgx.Conn) error {
+	if err := scanTimestamptzInUTC(ctx, conn); err != nil {
+		return err
+	}
+	if _, err := conn.Exec(ctx, "SET jit = off"); err != nil {
+		return fmt.Errorf("turn jit off: %w", err)
+	}
+	return nil
 }
 
 // scanTimestamptzInUTC makes the connection return timestamptz values in UTC.

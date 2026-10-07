@@ -4,7 +4,7 @@
 |---|---|
 | 里程碑 | M6 链接与 Obsidian 方言（`M6-links`） |
 | 日期 | 2026-10-04 |
-| 状态 | 进行中 |
+| 状态 | 进行中（收尾完成，待负责人执行输入法清单） |
 | 依赖 | M4、M5 |
 | 上级文档 | [v0.1 总体设计](../v0.1-design.md) 第 3.5、4、6.1、6.3、7.2、8.3、9.2、9.3、12.4、13 节 |
 
@@ -46,13 +46,13 @@ M6 结束时：
   - 右栏。
 - 样例集：
   - 补上解析样例 `resolve/`，以及树与路径的改写样例 `rename/`；
-  - 补上渲染的期望（注释、callout、公式、高亮）；
-  - `obsidian/verify.mjs` 扩展到解析与改写，与 Obsidian 1.13.7 核对。
+  - 渲染的期望（注释、callout、公式、高亮）写在 `obsidian/render_test.go` 的表格测试里；
+  - 解析与改写各有自己的核对脚本（`obsidian/verify-resolve.mjs`、`verify-rename.mjs`），与 Obsidian 1.12.7 核对（收尾修订：设计时写的 1.13.7 是 M0 的版本，隔离的实例报告的是 1.12.7）。
 
 不做：
 
 - 嵌入整篇页面（v0.1 显示为链接，总体设计 4.1）。
-  - 附件的嵌入属于 M7。M6 留出渲染的接缝（第 8 节）；
+  - 附件的嵌入属于 M7，渲染的接缝也由 M7 建立（第 8 节，收尾修订）；
   - M7 之前没有附件节点，`![[x.png]]` 显示为解析不到的嵌入。
 - 块引用 `^id` 的校验、锚点是否存在的校验（总体设计 4.4）。
 - "没有链接的提及"（Obsidian 反链面板的 unlinked mentions）与关系图。
@@ -65,9 +65,9 @@ M6 结束时：
 总体设计 12.5 的通用标准之外：
 
 1. **样例集**：
-   - `cases/` 的 67 个提取期望（链接、标签、属性链接、frontmatter、任务项）全部由 Go 测试核对；
+   - `cases/` 的 78 个提取期望（设计时 67 个，P1 加到 78）（链接、标签、属性链接、frontmatter、任务项）全部由 Go 测试核对；
    - `resolve/` 与 `rename/` 的样例同样全部通过；
-   - `obsidian-verified` 的样例由 `verify.mjs` 与 Obsidian 1.13.7 核对一致，`nerve-defined` 的样例写明差异与理由。
+   - `obsidian-verified` 的样例由 `verify.mjs` 与 Obsidian 1.12.7 核对一致，`nerve-defined` 的样例写明差异与理由。
 2. **扩展的约束**：
    - `CheckCosts`、`CheckSize`、`CheckHTML` 在应用的实例上全部通过；
    - 新语法的病态输入加进 `Pathological()`、`Amplifying()`；
@@ -78,7 +78,7 @@ M6 结束时：
    - 性质测试：随机一串操作之后，增量维护的索引等于从头重建的结果。操作包括带子页的改名、移动、删除、新建、改别名、写正文。
 4. **改写**：
    - 有样例；
-   - 有模糊测试：随机的多层、带重名的树，随机的改名与移动。不变量是：改写之后，每条原来解析到的链接仍指向原来的节点，范围之外的字节不变；
+   - 有随机测试（4,000 个固定的种子，[P4 文档](04-P4-rewrite.md)）：随机的多层、带重名的树，随机的改名与移动。不变量是：改写之后，每条原来解析到的链接仍指向原来的节点，范围之外的字节不变；
    - 有整个程序上"引用它的页被锁"的行为测试；
    - 改名与正文写、两次改名、改名与心跳之间的交错各有测试，结束时核对索引的不变式。
 5. **前端**：
@@ -95,8 +95,8 @@ M6 结束时：
 - 语法扩展是纯粹的语法：wikilink、嵌入、标签、callout、注释、数学公式与高亮的渲染。
   - 它放在 `platform/markdown/obsidian`，与 M5 的 `platform/markdown/tasks` 并列；
   - goldmark 仍然只在 `platform/markdown` 之下导入，archtest 的 `markdownLibrariesStayInMarkdown` 不必改；
-  - 它可以用 `internal/harden` 的链接状态（`inLinkLabel`），处理"链接文字里的 wikilink"（样例 030、040）：两条链接都计入，渲染时里面那条不做成 `<a>`，避免嵌套的链接。
-- 需要数据库的部分不在平台里：渲染时按页取链接状态的 `Fetch` 由 `linking` 模块给出，组合根把它交给 `obsidian.Extension(…)`，照 `markdownExtensions()` 登记。
+  - 它用自己的 `inLinks` 变换（`obsidian/view.go`，不导出）与 `platform/markdown` 导出的 `Linker` 接口（P3 B），处理"链接文字里的 wikilink"（样例 030、040）：两条链接都计入，渲染时里面那条不做成 `<a>`，避免嵌套的链接（M6 收尾修订：原写 `inLinks` 由 `platform/markdown` 导出）。
+- 需要数据库的部分不在平台里：渲染时按页解析链接的 `obsidian.Resolve` 由 `linking` 模块的 `ResolveLinks` 给出，组合根把它交给 `obsidian.Extension(obsidian.Options{Resolve})`，照 `markdownExtensions(resolve)` 登记；按页取数据的 `Fetch` 是方言自己的，调用这个 `Resolve`（M6 收尾修订）。
 
 **高亮**
 
@@ -127,7 +127,7 @@ M6 结束时：
 
 - 每种节点都有渲染函数；元素、属性与 class 登记在 `Markup`（`nw-` 前缀），由 `CheckHTML` 核对。
 - **样例先行**（13.3 第 2 条）：语法细节以 `cases/` 为准，P1 的 Phase 文档逐条列出实现与规则的对应。
-  - 样例另加渲染的期望（注释、callout、公式、高亮）；
+  - 渲染的期望（注释、callout、公式、高亮）在 `obsidian/render_test.go`；
   - "HTML 里的链接与提取结果一致"（总体设计 4.3）扣掉注释里的链接，以及链接文字里那层 wikilink。
 
 ### 4.2 提取结果
@@ -145,7 +145,7 @@ M6 结束时：
   - `Frontmatter` 带一张标量表：属性路径、值、字节范围、引号风格；只收写在一行之内的字符串标量；
   - 范围从 `yaml.Node` 的起点按标量风格扫出：单引号的 `''`、双引号的转义；go-yaml 的列按字符计，换算成 UTF-8 字节；
   - 别名展开出来的值（`b: *x`）不在表里，不算属性链接（"同一段字节只出现一次"）；
-  - `Extract` 改为 `Extract(root, content, frontmatter)`。这是改 M4 扩展点的签名（总体设计 12.1 第 6 条的例外），M5 的任务项随之改一行；
+  - `Extract` 改为 `Extract(Tree)`：语法树、正文与 frontmatter 一起给出。这是改 M4 扩展点的签名（总体设计 12.1 第 6 条的例外），M5 的任务项随之改一行；
   - 样例 060 守住。
 - **Markdown 链接与图片的目标范围**：现在由核心的 `marks` 渲染，`ast.Link` 不带目标的字节位置。改为在 `internal/harden/links.go` 做链接时记下目标的范围，引用式链接的范围取自定义（规则 8，`LinkReferenceDefinition`）。
   - 范围不能存成节点的属性：goldmark 的 `renderLink` 会把 `data-` 开头或在 `LinkAttributeFilter` 里的属性写出来，差分测试就不再逐字节相同；
@@ -161,15 +161,17 @@ M6 结束时：
 - `app`：索引的观察者、改写的参与者、查询；
 - `adapter/postgres`、`adapter/http`。
 
-表（linking 的迁移 00020–00024，一张表一个；page 的 00019 给 `nodes` 加 `(notebook_id, name_key)` 的索引。都是派生数据，没有 `deleted_at`；P3 的定稿见 [P3 文档](03-P3-index.md) 3.2）：
+表（linking 的迁移 00020–00024，一张表一个，P4 的 00025 给 `page_links` 加 `aliases`，P5 的 00026 加反链的索引；page 的 00019 给 `nodes` 加 `(notebook_id, name_key)` 的索引。都是派生数据，没有 `deleted_at`；P3 的定稿见 [P3 文档](03-P3-index.md) 3.2）：
 
 | 表 | 列（要点） |
 |---|---|
 | `indexed_pages` | `node_id`（主键）、`notebook_id`、`revision`（索引所依据的正文版本）、`extractor`（提取规则的版本）、`frontmatter_valid` |
-| `page_links` | 主键 `(source_id, range_start)`；`notebook_id`、`kind`、`property_key`、`target`、`anchor`、`display`、`range_end`、`target_key`、`target_alt_key`（目标最后一段的标题键，去掉 `.md` 与原样的两种，用来找候选；长于 1024 字节的不记）、`resolved_id`、`ambiguous` |
+| `page_links` | 主键 `(source_id, range_start)`；`notebook_id`、`kind`、`property_key`、`target`、`anchor`、`display`、`range_end`、`target_key`、`target_alt_key`（目标最后一段的标题键，去掉 `.md` 与原样的两种，用来找候选；长于 1024 字节的不记）、`resolved_id`、`ambiguous`、`aliases`（属性链接写在 `aliases` 的值里，P4） |
 | `page_tags` | `source_id`、`notebook_id`、`tag`（第一次出现时的写法）、`tag_key`（标题键）、`count` |
 | `page_properties` | `source_id`、`notebook_id`、`position`、`key`、`value`（`jsonb`） |
 | `page_aliases` | `source_id`、`notebook_id`、`alias`、`alias_key` |
+
+上限（收尾修订，[M6 收尾审查](reviews/M6-closeout-review.md) A-I1）：一页至多记前 10,000 条链接（`domain.MaxLinks`）、1000 个标签与别名（`domain.MaxNames`），之后的不进索引；阅读视图对索引里没有的链接即时解析，改名、移动时不改写它们（改写按索引找链接）。
 
 **外键与删除**
 
@@ -496,10 +498,11 @@ linking 注册为写入单元的参与者，在改名与移动之后调用（`Pa
 | `GET /api/v0/notebooks/{notebook_id}/tags` | `listTags` | `{data: [{tag, count}]}`，`count` 是页数，`tag` 是各页里最常见的写法；不合成父标签 |
 | `GET /api/v0/notebooks/{notebook_id}/tags/{tag}` | `getTag` | `{data: [{id}]}`：有这个标签（含它下层的 `tag/…`）的页面；不是标签的输入答空列表 |
 | `GET /api/v0/notebooks/{notebook_id}/link-targets` | `listLinkTargets` | 补全用：`{data: [{id, kind, name, link, aliases}]}`，`kind` 的枚举另起名 `LinkTargetKind` |
+| `GET /api/v0/pages/{page_id}/link-landing?target=` | `getLinkLanding` | 新建未建的页时问落点（P6 A）：`{node_id, landing: {parent_id, title}, reason}`，只给笔记本的管理员与编辑者 |
 | `PATCH /api/v0/nodes/{node_id}`、`POST …/move` | 已有 | 新增 409 `linking.pages_locked`（带 `locks`）与 503 `server_busy` |
 | 事件 `links` | — | `{pages, targets}`，见第 4.8 节 |
 
-- 读的权限都是"能读这个笔记本"，access 的规则表加这几个动作，权限矩阵各加一行。
+- 读的权限都是"能读这个笔记本"，落点除外（能写这个笔记本）；access 的规则表加这几个动作，权限矩阵各加一行。
 - 契约是新文件 `api/modules/linking.yaml`；`links` 事件写进 `api/modules/events.yaml` 的事件描述。
 - `Problem` 加 `locks`（`api/common.yaml`、`httpserver.Problem`、平台的可选接口与它们的契约测试）；总体设计 6.1 与 13.1 第 8 条随之修订（P4）。
 
@@ -520,7 +523,7 @@ Nerve 没有链接、标签与数学公式的功能，没有可借鉴的代码�
 |---|---|---|---|
 | P1 | 方言（服务端） | `platform/markdown/obsidian`（wikilink、嵌入、标签、callout、注释、数学公式、高亮的渲染）；`==` 进游程（选项）与 linkify 的防护；frontmatter 的标量表与 `Extract` 的新签名；Markdown 链接目标的范围；属性表的钩子；表格的滚动区域；`Markup`；没有 `Fetch` 时的 `<span>` | 样例集 `cases/` 的提取期望全部核对（新测试读 JSON 的 `links`、`tags`）；渲染的期望；新语法的病态与放大输入进 `CheckCosts`、`CheckSize`；带扩展的 `FuzzParse`、`FuzzRender`；`CheckHTML`；不开高亮时与原版逐字节相同；新加的样例与 Obsidian 核对 |
 | P2 | 提取结果与平台的预算 | `markdown.Facts` 代替写入路径里的语法树；预算移到平台，提取之后只留提取结果那一份；`Page.Revision`；组合根共享预算 | M4、M5 的写入路径测试照旧通过；提取之后只留那一份的测试；内存：一个单元里多页写时语法树不同时存活 |
-| P3 | 索引与解析 | `linking` 模块、迁移 00019–00024；page 的读端口；解析规则与 `resolve/` 样例（`verify.mjs` 扩展到解析）；索引的观察者与按笔记本的锁；笔记本删除的注册；`Fetch`（链接改为 `<a>`）与设 `href`、经路由跳转的最小增强；`links` 事件与只重读阅读视图的处理；`nervewiki reindex` | 解析的表格测试与样例；每条写入路径的行为测试（索引与事件，组合根交空时失败）；增量等于重建的性质测试；交错：两次正文写（别名与链接）、正文写与删除；`reindex` 的命令测试（含撞键） |
+| P3 | 索引与解析 | `linking` 模块、迁移 00019–00024；page 的读端口；解析规则与 `resolve/` 样例（`verify-resolve.mjs`）；索引的观察者与按笔记本的锁；笔记本删除的注册；`Fetch`（链接改为 `<a>`）与设 `href`、经路由跳转的最小增强；`links` 事件与只重读阅读视图的处理；`nervewiki reindex` | 解析的表格测试与样例；每条写入路径的行为测试（索引与事件，组合根交空时失败）；增量等于重建的性质测试；交错：两次正文写（别名与链接）、正文写与删除；`reindex` 的命令测试（含撞键） |
 | P4 | 链接改写 | 改写的参与者；写法；字节替换；锁的整体拒绝与 `linking.pages_locked`（平台、契约、`locks`）；`UpdateLinks`；`rename/` 的树与路径样例；前端改名、移动被拒时的说明 | 改写样例（与 Obsidian 的改名核对，差异写明）；改写的模糊测试（多层、重名、移动）；"引用它的页被锁"与"移动自己正在编辑、带相对链接的页"的整个程序测试；交错：改名与正文写、两次改名、改名与心跳 |
 | P5 | 接口 | 反链、属性、标签、标签下的页面、链接目标；access 动作；契约与生成 | 接口测试；权限矩阵；反链的分页与上下文的截断 |
 | P6 A | 阅读视图（服务端） | 落点与 `getLinkLanding`；标签渲染为链接；属性表的钩子与表里的链接；只有锚点的 Markdown 链接的地址；块公式与属性表的包装 | 落点的表格与随机测试；权限矩阵；整个程序：落点、新建、链接已解析；渲染的期望、病态输入、`CheckHTML` 与模糊测试的种子 |
@@ -571,11 +574,11 @@ M6 写出的移交（P3、P4 合并时落档）：
 
 建立：
 
-- **附件嵌入的渲染**（M7 注册）：`obsidian.Extension` 的一个参数，按嵌入解析到的附件节点写出内联的标记；M6 交空，嵌入照链接渲染。总体设计 12.4 加这一行。
+- **附件嵌入的渲染**：改由 M7 建立并注册（收尾修订，[M6 收尾审查](reviews/M6-closeout-review.md) C-I2，负责人可以改判）。设计时写的是 M6 建立、交空；但它的形状取决于附件能被解析，M6 的解析只答页面，现在建只能是一个整个程序上走不到的接口。接缝放在 `obsidian.Options`，见 [M7 的移交](../M7-assets-transfer/handoffs/M6-links.md)第 1 项；总体设计 12.4 的那一行随之修订。
 
 改 M4、M5 的扩展点与代码（12.1 第 6 条的例外，逐项写明）：
 
-- `Extract` 的签名（多了 frontmatter）；
+- `Extract` 的签名（`Extract(Tree)`，多了 frontmatter）；`Extension` 另加 `Links`、`Properties` 与核心的 `Linker`、`Hider`（P3 B、P6 A）；
 - `markdown.Page` 多了 `Revision`；
 - `Parsed` 改为 `Facts`；
 - 解析预算移到平台；
@@ -590,7 +593,7 @@ M6 写出的移交（P3、P4 合并时落档）：
 
 - **样例集是规范**（13.3 第 2 条）：
   - `cases/` 的提取与渲染、`resolve/` 的解析、`rename/` 的改写，各有一个读样例的 Go 测试；
-  - 样例与 Obsidian 的核对用 `verify.mjs`。它在独立的数据目录启动 Obsidian，不碰本机已有的库。
+  - 样例与 Obsidian 的核对用 `verify.mjs`（提取）、`verify-resolve.mjs`（解析）、`verify-rename.mjs`（改写）。它在独立的数据目录启动 Obsidian，不碰本机已有的库。
 - **成本**：新语法的病态输入，全部经应用实例的 `CheckCosts`：
   - 不闭合的 `[[`、`==`、`$`、`%%`；
   - 深层嵌套的 callout；
@@ -598,11 +601,11 @@ M6 写出的移交（P3、P4 合并时落档）：
   - 每行一个 `$` 的长段落。
 - **模糊测试**：
   - `FuzzParse`、`FuzzRender` 加带扩展的实例；
-  - 改写的模糊测试：随机的多层、带重名的树，随机的改名与移动；不变量是第 3 节第 4 条。
+  - 改写的随机测试（4,000 个固定的种子）：随机的多层、带重名的树，随机的改名与移动；不变量是第 3 节第 4 条。`FuzzParse`、`FuzzRender` 是真正的模糊测试。
 - **性质测试**：随机的操作序列之后，增量维护的索引等于从头重建的结果（第 3 节第 3 条）。它不靠"候选选全了"的推理，专门抓候选的遗漏。
-- **交错**（13.1 第 18 条的做法）：
+- **交错**（总体设计 13.4 第 4 条的做法）：
   - 场景：改名与正文写；改名与心跳（会话在需要改写的页上）；两次改名；两次正文写（别名与链接）；删除与正文写（链接指向被删的页）；
-  - 每个交错结束时核对索引的不变式 `checkLinks`：索引的 revision 与正文一致，`resolved_id` 不指向已删的节点，索引等于重建的结果。
+  - 每个交错结束时核对索引的不变式 `checkLinks`：索引的 revision 与正文一致，`resolved_id` 不指向已删的节点（"索引等于重建的结果"由性质测试 `TestTheIndexIsItsRebuild` 核对；收尾修订：每个交错结束时还经 `checkRebuilt` 重建一遍比较，M6 收尾审查 A-M5）。
 - **最后一跳**（13.1 第 21 条）：
   - 索引、改写、事件、扩展、补全、事件处理各有一个经组合根的测试；
   - 组合根交空时失败。
@@ -612,16 +615,17 @@ M6 写出的移交（P3、P4 合并时落档）：
   - L3：改名时引用它的页被别人编辑，改名被拒，并说明是谁在编辑哪一页；
   - L4：标签跳到标签页；数学公式与 mermaid 渲染出来；
   - L5：`[[` 与 `#` 补全；
-  - L6：右栏的大纲、反链、属性；别的标签页加了链接，反链实时出现。
+  - L6：右栏的大纲、反链、属性；另一个会话（接口）加了链接，反链实时出现。
+  - **对等验收**（收尾修订，[M6 收尾审查](reviews/M6-closeout-review.md) C-I6）：L1–L6 各有接口版本，两个版本调用 `e2e/fixtures/assert/links.ts` 断言索引（页按当前版本索引、它的链接与指向、标签、别名）。例外（总体设计 10.1）：只在浏览器里发生的只有页面版本：L1 的应用内跳转与焦点，L2 的对话框与键盘，L4 的 KaTeX 排版、mermaid 画图与它们的上限，L5 的补全列表、按键与输入法，L6 的大纲、焦点与右栏的布局，以及 L4、L6 的大页故事。
 
 ## 10. 风险
 
 | 风险 | 应对 |
 |---|---|
 | 解析规则与 Obsidian 不一致，导入的笔记链接解析不到 | P3 的 `resolve/` 样例与 Obsidian 核对（次序、路径后缀、相对路径、Markdown 链接的路径）；有意的差异写明理由 |
-| 改写一个被很多页引用的页面很慢：同一事务里逐页解析，持笔记本的锁 | 一次取够预算，取不到立即 503；逐页只保留提取结果；P4 测量一次改写 500 页的耗时与内存，写进 Phase 文档；超出时考虑分批（v0.1 不做） |
+| 改写一个被很多页引用的页面很慢：同一事务里逐页解析，持笔记本的锁 | 逐页不排队地取预算（`TakeNow`，收尾修订：设计时写的是一次取够），取不到立即 503；逐页只保留提取结果；P4 测量一次改写 500 页的耗时与内存，写进 Phase 文档；超出时考虑分批（v0.1 不做） |
 | 改名被锁挡住的频率 | 负责人已接受（第 11 节第 1 项）。409 列出全部编辑者，管理员可以强制解锁，闲置 30 分钟也会释放 |
-| 候选漏了某种情形，索引悄悄过时，或改名之后链接指向别处 | 性质测试"增量等于重建"；改写的模糊测试以"原来解析到的都不变"为不变量 |
+| 候选漏了某种情形，索引悄悄过时，或改名之后链接指向别处 | 性质测试"增量等于重建"；改写的随机测试以"原来解析到的都不变"为不变量 |
 | KaTeX、mermaid 卡住正文或带来不安全的标记 | 单独的 chunk 按需加载；设大小与复杂度的上限，超出显示原文；mermaid 可见时才渲染；P6 在 CSP 下实测 |
 | Unicode 数据升级改变标题键 | `nervewiki reindex` 先重算标题键，撞键时报告并停下 |
 | 同一笔记本的正文写在 linking 的锁上串行 | 锁只持到提交；P3 测量自动保存的延迟；给 M12 的性能移交 |
@@ -641,7 +645,7 @@ M6 写出的移交（P3、P4 合并时落档）：
 - 改名、移动时"被抢走"的链接也改写，保住原来的指向；新建、删除只重新解析，不改写别的页面（第 4.4、4.6 节）。
 - 编辑时右栏不显示大纲（第 4.12 节）。
 - M6 加的输入法步骤与 M4、M5 的一样：M6 的收尾之后，等负责人执行完整份清单，M6 才改为已完成。
-- P6 的几项（全部标签的总览与 frontmatter 的 `tags` 交给 M12、附件那样的名称在 M7 之前新建为页、落点只给写者、mermaid 与 KaTeX 的上限、属性表按值的身份对齐等）见 [P6 文档](06-P6-reading-view.md)第 15 节。
+- P6 的几项（全部标签的总览与 frontmatter 的 `tags` 交给 M12、附件那样的名称在 M7 之前新建为页、落点只给写者、mermaid 与 KaTeX 的上限、属性表按值的身份对齐等）见 [P6 文档](06-P6-reading-view.md)第 15 节；P3、P4、P5、P7 的见它们的文档（[P3](03-P3-index.md) A 部分末、[P4](04-P4-rewrite.md)第 9 节末、[P5](05-P5-api.md)第 10 节末、[P7](07-P7-editor-panel.md)第 15 节），收尾时汇总在 [M6 收尾审查](reviews/M6-closeout-review.md)。
 
 ## 12. Phase 进度表
 
@@ -668,3 +672,4 @@ M6 写出的移交（P3、P4 合并时落档）：
 | 2026-10-06 | P6 A 定稿：Phase 表的 P6 分 A（服务端）、B（前端）；没有落点的原因、落点只给写者；标签链接的写法与 `<span>` 的情形；属性表里的链接按值的身份对齐；`[t](#h)` 的地址；表格、块公式与属性表由服务端包，`tabindex` 由前端按溢出给（4.9）；属性表的钩子、`Linker` 按节点问、移进核心的函数（第 8 节） | [P6 文档](06-P6-reading-view.md)、[P6A 审查](reviews/P6A-reading-server-review.md) |
 | 2026-10-06 | P6 B 定稿：KaTeX、mermaid 另加的上限（定义宏的公式不排、KaTeX 的补丁、嵌套的上限、按时间分批、流外布局与布局的预算、标签里的公式与标签的净化）、换主题原地重画、CSP 不改、重读时公式立即放回；文章兜底横向滚动，侧栏不作滚动锚点；未建链接的键盘（4.9）；构建检查改名（4.13） | [P6 文档](06-P6-reading-view.md)第 10 节、[P6B 审查](reviews/P6B-reading-front-review.md) |
 | 2026-10-06 | P7 定稿：补全的数据每个 `[[` 或 `#` 读一次、不经事件，事件只为读过的页请求重读，连上时补全的数据不在树那一层（4.8）；大纲至多 1,000 个标题，反链的重读读已读的页数（4.12）；补全不弹出的地方、frontmatter 与表格里的写法，输入法不另写键位（4.13） | [P7 文档](07-P7-editor-panel.md)、[P7 审查](reviews/P7-editor-panel-review.md) |
+| 2026-10-07 | M6 收尾：Obsidian 的版本、样例数、随机测试、`Extract(Tree)`、迁移与接口按实际改写（第 1、4、5 节）；附件嵌入的渲染改由 M7 建立（第 8 节）；L 系列的对等验收与例外（第 9 节）；风险表的预算取法、负责人的决定的指向（第 10、11 节）。收尾的修复：索引每页至多 10,000 条链接、读链接目标的递归按主键、编辑器解析的上限等，见收尾审查 | [M6 收尾审查](reviews/M6-closeout-review.md) |

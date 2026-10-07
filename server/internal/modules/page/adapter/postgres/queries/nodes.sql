@@ -49,24 +49,18 @@ WITH RECURSIVE chain AS (
 )
 SELECT id, parent_id, name, hops::integer AS hops FROM chain ORDER BY hops;
 
--- name: Subtree :many
--- A node not deleted of the notebook and its descendants not deleted, each with its level (the node's is 1),
--- level by level. The level bound stops a chain that loops, which only a defect could make.
-WITH RECURSIVE sub AS (
-    SELECT n.id, n.notebook_id, n.parent_id, n.kind, n.name, n.name_key, n.sort_order, n.created_by_id,
-        n.updated_by_id, n.created_at, n.updated_at, 1 AS level
-    FROM nodes n
-    WHERE n.id = sqlc.arg(id) AND n.notebook_id = sqlc.arg(notebook_id) AND n.deleted_at IS NULL
-    UNION ALL
-    SELECT c.id, c.notebook_id, c.parent_id, c.kind, c.name, c.name_key, c.sort_order, c.created_by_id,
-        c.updated_by_id, c.created_at, c.updated_at, s.level + 1
-    FROM sub s JOIN nodes c ON c.notebook_id = s.notebook_id AND c.parent_id = s.id
-    WHERE c.deleted_at IS NULL AND s.level < 64
-)
+-- name: ChildrenOfAll :many
+-- The children not deleted of parents, of the notebook, in order: a level of a subtree, read a level a statement and
+-- planned with its parents each time (Store.Subtree, postgres.Planned). One recursive statement is planned whole, and
+-- some of its plans read the whole table for each parent or each level: without statistics, the notebook by the titles'
+-- partial index for each parent, 40 s for a folder of 10,000 (M6 closeout FA-M1); with them and one folder holding most
+-- nodes, each level a scan of every notebook's nodes (FA2-I1, FA3-M1). A plan for any parents, without statistics,
+-- reads the notebook by the titles' index for each level and compares each row with the parents one by one (FA4-M1).
 SELECT id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id, created_at,
-    updated_at, level::integer AS level
-FROM sub
-ORDER BY level, sort_order, id;
+    updated_at
+FROM nodes
+WHERE notebook_id = sqlc.arg(notebook_id) AND parent_id = ANY(sqlc.arg(parents)::uuid[]) AND deleted_at IS NULL
+ORDER BY sort_order, id;
 
 -- name: RenameNode :exec
 UPDATE nodes

@@ -64,7 +64,7 @@ export function PageProperties({
     shown = <p className="text-sm text-muted-foreground">{t("page.noProperties")}</p>;
   } else {
     shown = (
-      <dl className="space-y-2 text-sm">
+      <dl aria-label={t("page.properties")} className="space-y-2 text-sm">
         {rows.map(({ key, shown: value }) => (
           <div key={key}>
             <dt className="break-words text-muted-foreground">{key}</dt>

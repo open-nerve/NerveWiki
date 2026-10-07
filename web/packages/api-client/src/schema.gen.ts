@@ -1092,7 +1092,7 @@ export interface paths {
             path: {
                 /** @description The notebook's id. */
                 notebook_id: components["parameters"]["NotebookID"];
-                /** @description A tag's name, without its '#', as listTags writes it and a reading view's tag link carries it; a nested tag's '/' is written %2F (a%2Fb). The tag "/" alone cannot be named: the path reads its %2F as a trailing slash. */
+                /** @description A tag's name, without its '#', as listTags writes it and a reading view's tag link carries it; a nested tag's '/' is written %2F (a%2Fb). The tag "/" alone cannot be named: the path reads its %2F as a trailing slash, a path no operation has (404 not_found). */
                 tag: components["parameters"]["Tag"];
             };
             cookie?: never;
@@ -1948,7 +1948,7 @@ export interface components {
         EditSessionID: string;
         /** @description The id of a node of a notebook's tree. */
         NodeID: string;
-        /** @description A tag's name, without its '#', as listTags writes it and a reading view's tag link carries it; a nested tag's '/' is written %2F (a%2Fb). The tag "/" alone cannot be named: the path reads its %2F as a trailing slash. */
+        /** @description A tag's name, without its '#', as listTags writes it and a reading view's tag link carries it; a nested tag's '/' is written %2F (a%2Fb). The tag "/" alone cannot be named: the path reads its %2F as a trailing slash, a path no operation has (404 not_found). */
         Tag: string;
     };
     requestBodies: never;
@@ -3565,7 +3565,7 @@ export interface operations {
             path: {
                 /** @description The notebook's id. */
                 notebook_id: components["parameters"]["NotebookID"];
-                /** @description A tag's name, without its '#', as listTags writes it and a reading view's tag link carries it; a nested tag's '/' is written %2F (a%2Fb). The tag "/" alone cannot be named: the path reads its %2F as a trailing slash. */
+                /** @description A tag's name, without its '#', as listTags writes it and a reading view's tag link carries it; a nested tag's '/' is written %2F (a%2Fb). The tag "/" alone cannot be named: the path reads its %2F as a trailing slash, a path no operation has (404 not_found). */
                 tag: components["parameters"]["Tag"];
             };
             cookie?: never;

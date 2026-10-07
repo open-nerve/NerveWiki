@@ -34,9 +34,11 @@ func (s *Store) LinkTargetsByKeys(ctx context.Context, notebookID uuid.UUID, key
 }
 
 // LinkTargetsByIDs is the pages not deleted of notebookID among ids, with
-// their paths.
+// their paths, read planned with ids: without statistics, a plan for any
+// compared each node with them one by one, 10,000 of 55,500 nodes 0.7 s
+// where theirs took 40 ms (M6 closeout FA5-Q1).
 func (s *Store) LinkTargetsByIDs(ctx context.Context, notebookID uuid.UUID, ids []uuid.UUID) ([]LinkPath, error) {
-	rows, err := s.queries(ctx).LinkTargetsByIDs(ctx, gen.LinkTargetsByIDsParams{NotebookID: notebookID, Ids: ids})
+	rows, err := s.planned(ctx).LinkTargetsByIDs(ctx, gen.LinkTargetsByIDsParams{NotebookID: notebookID, Ids: ids})
 	if err != nil {
 		return nil, fmt.Errorf("link targets by ids: %w", err)
 	}

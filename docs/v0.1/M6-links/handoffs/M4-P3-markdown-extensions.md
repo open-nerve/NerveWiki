@@ -1,5 +1,5 @@
 ```yaml
-status: open
+status: done
 from: M4/P3, M4 收尾
 to: M6
 cc: [M5, M7]
@@ -29,3 +29,17 @@ M4/P3 交付了唯一的 Markdown 解析与渲染 `platform/markdown`（[P3 文�
 11. **阅读视图**（M4 收尾的待定项）：
     - **同站链接的应用内跳转**：现在正文里的同站链接整页导航（重新加载应用、多一次续期，没有正确性问题）。M6 的"链接跳转"增强也覆盖普通 Markdown 的同站地址，保留修饰键与中键的点击；`ReadingContext` 没有应用内导航的手段，加一个（M4 收尾审查 B-Q1）。
     - **宽表格**：现在宽表格让整个阅读视图横向滚动，视图在比显示的宽时可以聚焦（`reading/scroll-focus.ts`，代码块同样）。更好的是渲染器给每个表格包一层自己滚动、可以聚焦的区域：带 `nw-` 前缀的 class 与 `tabindex="0"`，登记进 `Markup`，`CheckHTML` 与样例集随之更新，横向滚动从 `.nw-reading` 移到包裹层，可访问名称由前端的增强补上（[P5 审查](../../M4-pages/reviews/P5-tree-reading-review.md) Q4）。现在阅读视图以页面的标题为名称，代码块可以聚焦却还没有名称（[M4 收尾审查](../../M4-pages/reviews/M4-closeout-review.md)的修复核对 MN-3），随包裹层一起补上。KaTeX、mermaid 一类同样宽的内容一起考虑。
+
+**落实**（M6，收尾时逐项核对，[M6 收尾审查](../reviews/M6-closeout-review.md) C-I1）：
+
+1. 方言是 `platform/markdown/obsidian` 的 `obsidian.Extension(obsidian.Options{Resolve})`，组合根的 `markdownExtensions(resolve)`（`bootstrap/registrants.go`）在任务项之后登记它。`Extract` 的签名改为 `Extract(Tree)`（frontmatter 随树给出，M6 总设计第 8 节）。
+2. `==` 照 `harden` 的游程与按作用域的配对加进去，`%%` 是隐藏的变换（[P1 文档](../01-P1-dialect.md)），都线性。
+3. 链接里的 wikilink 经方言自己的 `inLinks` 变换（`obsidian/view.go`，不导出）与 `platform/markdown` 导出的 `Linker` 接口识别（[P3 文档](../03-P3-index.md) B 部分），`CheckHTML` 拒绝 `<a>` 套 `<a>`；与原版逐字节对照的测试照旧。
+4. 病态与放大输入加进 `markdowntest` 的 `Pathological()`、`Amplifying()`，`TestTheAppsMarkdownCostsAboutItsSize` 在应用的实例上跑。嵌入不把目标的内容写一遍（照链接渲染），不需要展开的预算。
+5. 每种节点都有渲染函数；元素、属性与 class 登记在 `Markup`，地址经 `SafeURL`，`TestTheAppsMarkdownRendersCheckedHTML` 跑 `CheckHTML` 与 `CheckSize`（全解析与全不解析两种）。
+6. 方言在 `platform/markdown` 之内，`markdownLibrariesStayInMarkdown` 不必改（总体设计 13.3 第 5 条）。
+7. 现状照旧：任务项是 M5 的扩展；图片的内联与附件归 M7（[M7 的移交](../../M7-assets-transfer/handoffs/M6-links.md)）。
+8. 最后一跳：参与者 `bootstrap/links_rewrite_test.go`（改名、移动的改写进同一个变更集与同一次事件）；观察者 `links_test.go` 的 `TestEveryPageWriteKeepsTheIndex`（每条写入路径）；Markdown 扩展 `links_view_test.go`；补全 `web/apps/web/src/pages/page/page-completion.test.tsx`（经组合根的 `editorExtensions`）。组合根交空时各自失败。
+9. 解析预算移到平台（`platform/markdown` 的预算，[P2 文档](../02-P2-facts-budget.md)），参与者逐页不排队地取（`TakeNow`）；观察者只拿提取结果（`Facts`），不留语法树；改写的各页按节点 id 的次序追加正文写（`linking/app/rewrite.go`）。
+10. linking 自己注册笔记本删除，删掉这个笔记本的索引行（`linking.NewNotebookDeletion`，`bootstrap/page_registrants_test.go` 的 `TestDeletingANotebookDeletesItsPages`）；总体设计 12.4 的那一行已改。
+11. 同站链接经路由在应用内跳转（`reading/app-links.ts`，保留修饰键与中键）；表格、块公式与属性表由服务端包一层 `nw-scroll`，前端按溢出给 `tabindex` 与名称（`reading/scroll-regions.ts`，[P6 文档](../06-P6-reading-view.md)第 6 节）。

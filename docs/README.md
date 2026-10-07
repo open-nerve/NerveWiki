@@ -97,9 +97,9 @@ created: 2026-10-01
 - 文档（版本设计、M 总设计、Phase 文档）直接提交到 `main`。
 - 代码按 Phase 在分支上开发（例如 `m0-p3-server-platform`），审查、修复、门禁全绿之后以 `--no-ff` 合并回 `main` 并推送。
 - 提交信息：
-  - 代码提交写成 `<范围>: <说明> (M<n>/P<n>/S<m>)`，例如 `server: add the httpserver platform package (M0/P3/S3)`。范围是改动所在的部件（`server`、`web`、`api`、`e2e`、`deploy`、`build` 等），多个用逗号分隔；审查修复只写到 Phase，例如 `(M0/P3)`。
-  - 文档提交写成 `docs(M<n>/P<n>): <说明>`，M 级的文档写成 `docs(M<n>): <说明>`。
-  - 合并提交写成 `Merge branch '<分支>': M<n>/P<n> <名称>`。
+  - 代码提交写成 `<范围>: <说明> (M<n>/P<n>/S<m>)`，例如 `server: add the httpserver platform package (M0/P3/S3)`。范围是改动所在的部件（`server`、`web`、`api`、`e2e`、`deploy`、`build`、`docs` 等），多个用逗号分隔；审查修复只写到 Phase，例如 `(M0/P3)`，修复的核对写明第几轮，例如 `(M6/P7 fix check 2)`，收尾写 `(M6 closeout)`。
+  - 文档提交写成 `docs: <说明> (M<n>/P<n>)`，M 级的写成 `(M<n>)`（M5 之前的提交用 `docs(M<n>/P<n>): <说明>`）。
+  - 合并提交写成 `Merge branch '<分支>': <说明> (M<n>/P<n>)`，用 `git merge --no-ff -F <文件>` 写出说明的正文。
 
 ## 其他
 

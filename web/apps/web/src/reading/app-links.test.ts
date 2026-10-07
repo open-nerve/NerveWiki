@@ -65,6 +65,14 @@ test("a link to a page, a property's too, has the page's address in the app, wit
   expect(link("x").getAttribute("href")).toBe("https://x.example/");
 });
 
+test("a page's id is one segment of its address, whatever it holds", () => {
+  // Only the server writes data-nw-node, a page's id; the address takes no other path from it either.
+  const { container, context, link } = setUp();
+  link("A").dataset.nwNode = "../../x?y#z";
+  appLinks(container, context);
+  expect(link("A").getAttribute("href")).toBe("/lab/notebooks/n/pages/..%2F..%2Fx%3Fy%23z");
+});
+
 test("a tag has the address of its pages, its name one segment, a nested tag's and a last '/' too", () => {
   const { container, context, link } = setUp();
   appLinks(container, context);

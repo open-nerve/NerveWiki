@@ -44,12 +44,13 @@ func PageFacts(facts any) (domain.Facts, error) {
 	fm := f.Frontmatter()
 	out := domain.Facts{FrontmatterValid: !fm.Present || fm.Valid}
 	aliasesProperty, _ := propertyOf(fm.Properties, "aliases")
-	for _, l := range x.Links {
+	scalars := scalarsByPath(fm.Scalars)
+	for _, l := range x.Links[:min(len(x.Links), domain.MaxLinks)] {
 		link := domain.Link{
 			Kind: string(l.Kind), Property: text(l.Key), Target: text(l.Target), Anchor: text(l.Anchor), Display: text(l.Display),
 			Start: l.Range.Start, End: l.Range.Stop, InTable: l.InTable,
 		}
-		if s, ok := scalarOf(fm.Scalars, l); ok {
+		if s, ok := scalarOf(scalars, l); ok {
 			link.Quote, link.Aliases = s.Quote, valueOf(s, aliasesProperty)
 		}
 		out.Links = append(out.Links, link)
@@ -87,11 +88,22 @@ func text(s string) string {
 	return strings.ReplaceAll(s, "\x00", "\uFFFD")
 }
 
+// scalarsByPath is the frontmatter's strings by their paths: a link finds
+// its own among those of its path alone, each looked up once (M6 closeout
+// A-M3: a scan of them all for each link was some 10,000 squared).
+func scalarsByPath(scalars []markdown.Scalar) map[string][]markdown.Scalar {
+	out := make(map[string][]markdown.Scalar)
+	for _, s := range scalars {
+		out[s.Path] = append(out[s.Path], s)
+	}
+	return out
+}
+
 // scalarOf is the frontmatter's string that l, a property link, is: of its
 // path, its range within the string's. A body's link is in none.
-func scalarOf(scalars []markdown.Scalar, l obsidian.Link) (markdown.Scalar, bool) {
-	for _, s := range scalars {
-		if s.Path == l.Key && s.Offset(0) <= l.Range.Start && l.Range.Stop <= s.Offset(len(s.Value)) {
+func scalarOf(byPath map[string][]markdown.Scalar, l obsidian.Link) (markdown.Scalar, bool) {
+	for _, s := range byPath[l.Key] { // a body's link, of no key, is within no string of the empty key's
+		if s.Offset(0) <= l.Range.Start && l.Range.Stop <= s.Offset(len(s.Value)) {
 			return s, true
 		}
 	}
@@ -233,12 +245,18 @@ func (p Parser) ParseNow(ctx context.Context, content string) (app.Parsed, error
 	case err != nil:
 		return app.Parsed{}, err
 	}
+	taken := false
+	defer func() {
+		if !taken {
+			hold.Release() // a parse that panicked, or facts in error, hold none of it (M6 closeout A-M4)
+		}
+	}()
 	f := p.md.Parse([]byte(content)).Facts()
 	hold.KeepFacts(f)
 	facts, err := PageFacts(f)
 	if err != nil {
-		hold.Release()
 		return app.Parsed{}, err
 	}
+	taken = true
 	return app.Parsed{Facts: facts, Written: f, Release: hold.Release}, nil
 }

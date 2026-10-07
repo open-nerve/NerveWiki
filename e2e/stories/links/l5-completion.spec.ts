@@ -1,16 +1,77 @@
 import type { Page } from "@playwright/test";
 
-import { createNotebook } from "../../fixtures/notebooks";
+import { expectIndexedAliases, expectIndexedLinks, expectIndexedTags } from "../../fixtures/assert/links";
 import { countAnswers } from "../../fixtures/browser";
-import { createPage, readContent } from "../../fixtures/pages";
+import type { Database } from "../../fixtures/db";
+import { listLinkTargets, listTags } from "../../fixtures/links";
+import { createNotebook } from "../../fixtures/notebooks";
+import { createPage, getView, readContent, writeContent } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
 import { pageHeading, saveEdit, startEditing, wikiPagePath } from "../../fixtures/wiki-pages";
-import { newOnboardedTeam } from "../../fixtures/workspaces";
+import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 
 // L5, the editor's completion (M6 design 9; M6/P7 design 4, 5): after [[
 // the notebook's pages and their aliases, after # its tags; a pick writes
 // the link or the tag, which the reading view shows resolved once saved.
-// Nothing completes in code.
+// Nothing completes in code. Through the API, what the completion reads,
+// and a content written with what it lists; the completion itself, its
+// list, keys and input method, is the page's alone.
+
+/** What Source is written with, the page version's picks: a link, one by an alias, a tag; a link in code. */
+const written = "See [[Target]] and [[Target|Goal]] #project/alpha `[[Tar`";
+
+/** Source written so, as the index has it: both links lead to Target, whose alias is Goal; the tag. */
+async function expectWritten(db: Database, sourceId: string, targetId: string): Promise<void> {
+  await expectIndexedLinks(db, sourceId, [
+    { kind: "wikilink", property: null, target: "Target", resolved: targetId },
+    { kind: "wikilink", property: null, target: "Target", resolved: targetId },
+  ]);
+  await expectIndexedTags(db, sourceId, [{ tag: "project/alpha", count: 1 }]);
+  await expectIndexedAliases(db, targetId, ["Goal"]);
+}
+
+test("L5 (API): what [[ and # complete with, the notebook's pages with their links (by path where two share a title) and aliases and its tags with their pages; a content written with them shows the links resolved and the tag", async ({
+  api,
+  db,
+}, testInfo) => {
+  const { pat, workspace } = await newTeam(api, testInfo);
+  const notebook = await createNotebook(api, pat, workspace.slug, "Plans");
+  const target = await createPage(api, pat, notebook.id, "Target", null, "---\naliases: [Goal]\n---\n");
+  const tagged = await createPage(api, pat, notebook.id, "Tagged", null, "#project/alpha\n");
+  const source = await createPage(api, pat, notebook.id, "Source", null, "");
+  // Two pages of one title: each is written by its path.
+  const archive = await createPage(api, pat, notebook.id, "Archive");
+  const drafts = await createPage(api, pat, notebook.id, "Drafts");
+  const archived = await createPage(api, pat, notebook.id, "Notes", archive.id);
+  const drafted = await createPage(api, pat, notebook.id, "Notes", drafts.id);
+
+  const targets = await listLinkTargets(api, pat, notebook.id);
+  expect([targets.response.status, targets.data?.data.toSorted((a, b) => a.link.localeCompare(b.link))]).toEqual([
+    200,
+    [
+      { id: archive.id, kind: "page", name: "Archive", link: "Archive", aliases: [] },
+      { id: archived.id, kind: "page", name: "Notes", link: "Archive/Notes", aliases: [] },
+      { id: drafts.id, kind: "page", name: "Drafts", link: "Drafts", aliases: [] },
+      { id: drafted.id, kind: "page", name: "Notes", link: "Drafts/Notes", aliases: [] },
+      { id: source.id, kind: "page", name: "Source", link: "Source", aliases: [] },
+      { id: tagged.id, kind: "page", name: "Tagged", link: "Tagged", aliases: [] },
+      { id: target.id, kind: "page", name: "Target", link: "Target", aliases: ["Goal"] },
+    ],
+  ]);
+  expect((await listTags(api, pat, notebook.id)).data?.data).toEqual([{ tag: "project/alpha", count: 1 }]);
+
+  await writeContent(api, pat, source.id, { content: written, base_revision: 1 });
+  const html = (await getView(api, pat, source.id)).data?.html ?? "";
+  for (const element of [
+    `<a class="nw-wikilink" data-nw-node="${target.id}">Target</a>`,
+    `<a class="nw-wikilink" data-nw-node="${target.id}">Goal</a>`,
+    '<a class="nw-tag" data-nw-tag="project/alpha">#project/alpha</a>',
+    "<code>[[Tar</code>",
+  ]) {
+    expect(html).toContain(element);
+  }
+  await expectWritten(db, source.id, target.id);
+});
 
 /** The editor's completion: CodeMirror's list. */
 function completion(page: Page) {
@@ -38,6 +99,7 @@ async function pick(page: Page): Promise<void> {
 
 test("L5 (page): [[ completes a page by its title and by an alias, # a tag; nothing completes in code; saved, the view shows the links resolved and the tag", async ({
   api,
+  db,
   signedInPage,
 }, testInfo) => {
   const { pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
@@ -70,9 +132,8 @@ test("L5 (page): [[ completes a page by its title and by an alias, # a tag; noth
   await expect(completion(page)).toHaveCount(0);
 
   await saveEdit(page);
-  expect((await readContent(api, pat, source.id)).content).toBe(
-    "See [[Target]] and [[Target|Goal]] #project/alpha `[[Tar`"
-  );
+  expect((await readContent(api, pat, source.id)).content).toBe(written);
+  await expectWritten(db, source.id, target.id);
   await page.keyboard.press("ControlOrMeta+e");
   const article = page.getByRole("article", { name: "Source" });
   const targetPath = wikiPagePath(workspace.slug, notebook.id, target.id);

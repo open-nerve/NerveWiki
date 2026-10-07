@@ -3,8 +3,10 @@ package markdownadapter_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"reflect"
 	"strings"
 	"testing"
@@ -271,4 +273,98 @@ func TestAParseNowHoldsItsShareTakenNow(t *testing.T) {
 	if _, err := parser.ParseNow(context.Background(), "[[A]]"); !errors.As(err, &busy) || busy.Code != "server_busy" || time.Since(at) > time.Second {
 		t.Errorf("ParseNow with the budget taken = %v after %s, want server_busy at once", err, time.Since(at))
 	}
+}
+
+// The index keeps a page's first MaxLinks links, in the order written, the
+// frontmatter's first: a page of 870,000 would hold the notebook's index
+// lock for seconds (M6 closeout A-I1).
+func TestThePageFactsKeepTheFirstMaxLinks(t *testing.T) {
+	content := "---\nup: \"[[Up]]\"\n---\n" + strings.Repeat("[[a]] ", domain.MaxLinks) + "[[last]]\n"
+	f := factsOf(t, content)
+	if len(f.Links) != domain.MaxLinks {
+		t.Fatalf("%d links kept, want %d", len(f.Links), domain.MaxLinks)
+	}
+	if first, last := f.Links[0], f.Links[len(f.Links)-1]; first.Target != "Up" || first.Property != "up" || last.Target != "a" {
+		t.Errorf("first %+v, last %+v; want the property's link first, the body's [[a]] last", first, last)
+	}
+}
+
+// A property link finds its string among those of its path: many of them,
+// each a link, take a time as long as they are (M6 closeout A-M3: some
+// 10,000 squared before). Four times as many take less than eight times as
+// long, the best of three.
+func TestThePropertyLinksFindTheirStringsInTimeAsLongAsThey(t *testing.T) {
+	md, err := markdown.New([]markdown.Extension{obsidian.Extension(obsidian.Options{})})
+	if err != nil {
+		t.Fatal(err)
+	}
+	took := func(n int) time.Duration {
+		var b strings.Builder
+		b.WriteString("---\nrelated:\n")
+		for i := range n {
+			fmt.Fprintf(&b, "  - \"[[a%d]]\"\n", i)
+		}
+		b.WriteString("---\n")
+		facts := md.Parse([]byte(b.String())).Facts()
+		best := time.Duration(math.MaxInt64)
+		for range 3 {
+			at := time.Now()
+			f, err := markdownadapter.PageFacts(facts)
+			best = min(best, time.Since(at))
+			if err != nil || len(f.Links) != n || f.Links[n-1].Quote == 0 || f.Links[n-1].Property != fmt.Sprintf("related.%d", n-1) {
+				t.Fatalf("%d property links: %d facts, %v; want each with its string's quote", n, len(f.Links), err)
+			}
+		}
+		return best
+	}
+	small, large := took(2_000), took(8_000)
+	if large > 8*small {
+		t.Errorf("8,000 property links took %s, 2,000 %s: more than 8 times as long", large, small)
+	}
+}
+
+// A parse now that panics holds none of the budget (M6 closeout A-M4):
+// what it took goes back, and the whole budget is free after.
+func TestAParseNowThatPanicsHoldsNoneOfTheBudget(t *testing.T) {
+	panicking := markdown.Extension{Name: "panicking", Extract: func(markdown.Tree) any { panic("an extension's bug") }}
+	md, err := markdown.New([]markdown.Extension{obsidian.Extension(obsidian.Options{}), panicking})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const size = 64 << 10
+	budget := markdown.NewBudget(size, time.Hour, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	parser := markdownadapter.NewParser(md, budget)
+	func() {
+		defer func() {
+			if recover() == nil {
+				t.Error("the parse did not panic")
+			}
+		}()
+		_, _ = parser.ParseNow(context.Background(), strings.Repeat("[[A]] ", 4000))
+	}()
+	all, err := budget.TakeNow(context.Background(), size)
+	if err != nil {
+		t.Fatalf("the whole budget after the panic: %v", err)
+	}
+	all.Release()
+}
+
+// A parse now whose facts are in error holds none of the budget (M6
+// closeout FA-N1): without the dialect's extraction its facts have no
+// links, PageFacts says so, and the whole budget is free after.
+func TestAParseNowOfFactsInErrorHoldsNoneOfTheBudget(t *testing.T) {
+	md, err := markdown.New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const size = 64 << 10
+	budget := markdown.NewBudget(size, time.Hour, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if _, err := markdownadapter.NewParser(md, budget).ParseNow(context.Background(), strings.Repeat("[[A]] ", 4000)); err == nil {
+		t.Fatal("facts without the dialect's extraction parsed")
+	}
+	all, err := budget.TakeNow(context.Background(), size)
+	if err != nil {
+		t.Fatalf("the whole budget after the error: %v", err)
+	}
+	all.Release()
 }

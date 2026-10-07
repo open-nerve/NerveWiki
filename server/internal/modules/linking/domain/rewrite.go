@@ -112,7 +112,7 @@ var ErrTooLarge = errors.New("linking: the page written again would hold more th
 
 // Written is content written again with w's edits, as parse reads its
 // facts back (M6/P4 design 3.1): with them all when its links are those of
-// was, content's facts, in their places, its aliases was's (Kept); else
+// was, content's facts, in their places, its aliases was's (kept); else
 // with those of the targets alone, what the links show left as it was;
 // else with those of the body, then with those of the body's targets
 // alone, the property links left as they were too (Unwritten): a writing
@@ -179,19 +179,14 @@ func (w Rewriting) inBody(was []Link) (map[int]Node, Unwritten) {
 	return leads, left
 }
 
-// Kept tells whether now, the facts of a writing of content with some of
-// w's edits, read back, keep was, content's: its links in their places, as
-// many, each of the same kind, property and anchor; each that w writes
-// again leading, from from, to its page alone; each other as it was
-// written, with its display. And its aliases, which a rewrite leaves (M6/P4
-// design 2): a link in a key's value that the aliases repeat with a YAML
-// alias (aliases: *x) is not flagged as theirs (M6/P4 fix check c3 F1).
-func (w Rewriting) Kept(was, now Facts, from []Step, tree Tree) bool {
-	return kept(was, now, w.Leads, from, tree)
-}
-
-// kept is Kept of a writing that writes again the links leads has, each to
-// its page.
+// kept tells whether now, the facts of a writing of content with some of
+// a rewriting's edits, read back, keep was, content's: its links in their
+// places, as many, each of the same kind, property and anchor; each that
+// leads has written again leading, from from, to its page alone; each
+// other as it was written, with its display. And its aliases, which a
+// rewrite leaves (M6/P4 design 2): a link in a key's value that the
+// aliases repeat with a YAML alias (aliases: *x) is not flagged as theirs
+// (M6/P4 fix check c3 F1).
 func kept(was, now Facts, leads map[int]Node, from []Step, tree Tree) bool {
 	if len(now.Links) != len(was.Links) || !slices.Equal(now.Aliases, was.Aliases) {
 		return false

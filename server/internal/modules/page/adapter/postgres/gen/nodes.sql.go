@@ -120,6 +120,71 @@ func (q *Queries) Children(ctx context.Context, arg ChildrenParams) ([]ChildrenR
 	return items, nil
 }
 
+const childrenOfAll = `-- name: ChildrenOfAll :many
+SELECT id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id, created_at,
+    updated_at
+FROM nodes
+WHERE notebook_id = $1 AND parent_id = ANY($2::uuid[]) AND deleted_at IS NULL
+ORDER BY sort_order, id
+`
+
+type ChildrenOfAllParams struct {
+	NotebookID uuid.UUID
+	Parents    []uuid.UUID
+}
+
+type ChildrenOfAllRow struct {
+	ID          uuid.UUID
+	NotebookID  uuid.UUID
+	ParentID    *uuid.UUID
+	Kind        string
+	Name        string
+	NameKey     string
+	SortOrder   float64
+	CreatedByID uuid.UUID
+	UpdatedByID uuid.UUID
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+// The children not deleted of parents, of the notebook, in order: a level of a subtree, read a level a statement and
+// planned with its parents each time (Store.Subtree, postgres.Planned). One recursive statement is planned whole, and
+// some of its plans read the whole table for each parent or each level: without statistics, the notebook by the titles'
+// partial index for each parent, 40 s for a folder of 10,000 (M6 closeout FA-M1); with them and one folder holding most
+// nodes, each level a scan of every notebook's nodes (FA2-I1, FA3-M1). A plan for any parents, without statistics,
+// reads the notebook by the titles' index for each level and compares each row with the parents one by one (FA4-M1).
+func (q *Queries) ChildrenOfAll(ctx context.Context, arg ChildrenOfAllParams) ([]ChildrenOfAllRow, error) {
+	rows, err := q.db.Query(ctx, childrenOfAll, arg.NotebookID, arg.Parents)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ChildrenOfAllRow
+	for rows.Next() {
+		var i ChildrenOfAllRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.NotebookID,
+			&i.ParentID,
+			&i.Kind,
+			&i.Name,
+			&i.NameKey,
+			&i.SortOrder,
+			&i.CreatedByID,
+			&i.UpdatedByID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const createNode = `-- name: CreateNode :exec
 INSERT INTO nodes (id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id,
     created_at, updated_at)
@@ -425,77 +490,4 @@ type SetSortOrderParams struct {
 func (q *Queries) SetSortOrder(ctx context.Context, arg SetSortOrderParams) error {
 	_, err := q.db.Exec(ctx, setSortOrder, arg.SortOrder, arg.ID)
 	return err
-}
-
-const subtree = `-- name: Subtree :many
-WITH RECURSIVE sub AS (
-    SELECT n.id, n.notebook_id, n.parent_id, n.kind, n.name, n.name_key, n.sort_order, n.created_by_id,
-        n.updated_by_id, n.created_at, n.updated_at, 1 AS level
-    FROM nodes n
-    WHERE n.id = $1 AND n.notebook_id = $2 AND n.deleted_at IS NULL
-    UNION ALL
-    SELECT c.id, c.notebook_id, c.parent_id, c.kind, c.name, c.name_key, c.sort_order, c.created_by_id,
-        c.updated_by_id, c.created_at, c.updated_at, s.level + 1
-    FROM sub s JOIN nodes c ON c.notebook_id = s.notebook_id AND c.parent_id = s.id
-    WHERE c.deleted_at IS NULL AND s.level < 64
-)
-SELECT id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id, created_at,
-    updated_at, level::integer AS level
-FROM sub
-ORDER BY level, sort_order, id
-`
-
-type SubtreeParams struct {
-	ID         uuid.UUID
-	NotebookID uuid.UUID
-}
-
-type SubtreeRow struct {
-	ID          uuid.UUID
-	NotebookID  uuid.UUID
-	ParentID    *uuid.UUID
-	Kind        string
-	Name        string
-	NameKey     string
-	SortOrder   float64
-	CreatedByID uuid.UUID
-	UpdatedByID uuid.UUID
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
-	Level       int32
-}
-
-// A node not deleted of the notebook and its descendants not deleted, each with its level (the node's is 1),
-// level by level. The level bound stops a chain that loops, which only a defect could make.
-func (q *Queries) Subtree(ctx context.Context, arg SubtreeParams) ([]SubtreeRow, error) {
-	rows, err := q.db.Query(ctx, subtree, arg.ID, arg.NotebookID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []SubtreeRow
-	for rows.Next() {
-		var i SubtreeRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.NotebookID,
-			&i.ParentID,
-			&i.Kind,
-			&i.Name,
-			&i.NameKey,
-			&i.SortOrder,
-			&i.CreatedByID,
-			&i.UpdatedByID,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.Level,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
 }

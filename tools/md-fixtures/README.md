@@ -26,7 +26,7 @@ obsidian/verify-rename.mjs   改名、移动时的改写与真实的 Obsidian �
 
 每个样例都标明规则的来源：
 
-- `obsidian-verified`：结果与 Obsidian 一致，由 `obsidian/verify.mjs` 核对（最近一次：Obsidian 1.12.7 与 1.13.7）；解析样例由 `obsidian/verify-resolve.mjs` 核对，改写样例由 `obsidian/verify-rename.mjs` 核对（都是 Obsidian 1.12.7）。
+- `obsidian-verified`：结果与 Obsidian 一致，由 `obsidian/verify.mjs` 核对（最近一次是 M6 的 Obsidian 1.12.7；M0 时的样例另与 1.13.7 核对过）；解析样例由 `obsidian/verify-resolve.mjs` 核对，改写样例由 `obsidian/verify-rename.mjs` 核对（都是 Obsidian 1.12.7）。
 - `nerve-defined`：我们有意与 Obsidian 不同，或 Obsidian 没有对应的行为；`note` 写明差异和理由。
 
 与 Obsidian 保持一致是默认选择：用户会从 Obsidian 导入笔记，agent 也按 Obsidian 的习惯书写。偏离必须有明确的好处。

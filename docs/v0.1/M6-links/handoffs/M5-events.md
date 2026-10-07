@@ -1,5 +1,5 @@
 ```yaml
-status: open
+status: done
 from: M5 收尾
 to: M6
 created: 2026-10-04
@@ -32,3 +32,10 @@ M5 建了实时推送的事件类型（[M5 总设计](../../M5-collab-editing/00
    - 新建工作区。
 
    M5 的类型都按笔记本过滤，不受影响。加工作区级类型的 M 要同时让这些路径发 `access`，并各加一个行为测试。
+
+**落实**（M6/P3、P6、P7，收尾时逐项核对，[M6 收尾审查](../reviews/M6-closeout-review.md) C-I1）：
+
+1. linking 在写入单元的事务里经 `events.Publisher` 发 `links`（`bootstrap/linking.go` 的 `linkEvents`），载荷 `{pages, targets}`，多于 20 页时为 `null`，在 linking 里先判断（[P3 文档](../03-P3-index.md)）。
+2. 前端：`events/handlers.ts` 的 `eventHandlers` 有 `links`（阅读视图、反链、属性），只为读过的页请求重读；`refreshedOnConnect` 把反链、属性加进阅读视图那一层（[P7 文档](../07-P7-editor-panel.md)第 11 节）；`api/modules/events.yaml` 描述了这个类型。
+3. 最后一跳：服务端 `bootstrap/links_test.go` 经每条写入路径在 `serve` 的流上读到 `links`；前端 `app/event-stream.test.tsx` 与 `events/handlers.test.ts` 经组合根的表。组合根不发布、表里没有这一项时失败。e2e L1、L6 经流到达页面。
+4. 不适用：`links` 按笔记本过滤。

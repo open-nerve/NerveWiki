@@ -18,8 +18,8 @@ const beat = ": heartbeat\n\n";
 const pages = 'event: pages\ndata: {"workspace_id":"w","notebook_id":"n","tree":true,"pages":[]}\n\n';
 const lock = 'event: lock\ndata: {"workspace_id":"w","notebook_id":"n","page_id":"p","session_id":"s"}\n\n';
 const reset = 'event: reset\ndata: {"reason":"expired"}\n\n';
-/** An event of a type a later M adds. */
-const links = 'event: links\ndata: {"page_id":"p"}\n\n';
+/** An event of a type a later M adds ("later", which no module sends: M6's links is a real one). */
+const later = 'event: later\ndata: {"page_id":"p"}\n\n';
 
 /** A stream the server opened for a tab, which the test writes to and ends; it ends too when the tab aborts it. */
 type Stream = { tab: string; opened: number; ended: boolean; write: (text: string) => void; close: () => void };
@@ -160,11 +160,11 @@ describe.each(["Web Locks", "the lease"] as const)("the hub with %s", (kind) => 
     stream.write(pages);
     stream.write(beat);
     stream.write(lock);
-    stream.write(links);
+    stream.write(later);
     await settle();
 
     for (const t of [a, b, c]) {
-      expect(t.events).toEqual(["connected", "pages", "lock", 'links {"page_id":"p"}']);
+      expect(t.events).toEqual(["connected", "pages", "lock", 'later {"page_id":"p"}']);
     }
   });
 

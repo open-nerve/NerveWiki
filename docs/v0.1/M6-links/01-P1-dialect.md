@@ -115,9 +115,9 @@ func (t Tree) Destination(n ast.Node) (Span, bool)
 
 ### 3.4 平台：表格的滚动区域
 
-- `render.go` 为 `east.KindTable` 登记一个包装：先写 `<div class="nw-scroll" tabindex="0">`，再交给 goldmark 的表格渲染函数，最后写 `</div>`。
-- 横向滚动改在这一层（前端的样式与 `reading/scroll-focus.ts` 在 P6 跟上）。
-- `CheckHTML` 的核心白名单加 `div` 的 `tabindex` 与 class `nw-scroll`。
+- `render.go` 为 `east.KindTable` 登记一个包装：先写 `<div class="nw-scroll">`，再交给 goldmark 的表格渲染函数，最后写 `</div>`（收尾更正：原写带 `tabindex="0"`；P6 起 `tabindex` 由前端的 `scrollRegions` 按是否溢出给）。
+- 横向滚动改在这一层（前端的样式与 `reading/scroll-regions.ts` 的 `scrollRegions` 在 P6 跟上；收尾更正：原写 `reading/scroll-focus.ts`，P6 B 以 `scroll-regions.ts` 取代了它）。
+- `CheckHTML` 的核心白名单加 `div` 与 class `nw-scroll`（收尾更正：原写还有 `tabindex`）。
 
 ### 3.5 扩展：wikilink 与嵌入
 

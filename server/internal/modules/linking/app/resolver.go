@@ -44,8 +44,10 @@ const checkEvery = 4096
 // those pages, each once. A target that is no path resolves to none. The
 // links of a page to one target, as it parses (written in any case or
 // form), resolve once, so that a page that writes one link many times
-// costs one resolution against the pages of its name (P3B review M1); and
-// a context ended stops it.
+// costs one resolution against the pages of its name (P3B review M1). A
+// target looks only at the pages whose path ends as it does, so that a page
+// of distinct paths to pages of one name costs about as many as it has
+// (M6 closeout FA-I1); and a context ended stops it.
 func resolutions(ctx context.Context, store Store, pages Pages, notebookID uuid.UUID, links []Link) (
 	[]domain.Resolution, []uuid.UUID, error,
 ) {
@@ -72,11 +74,6 @@ func resolutions(ctx context.Context, store Store, pages Pages, notebookID uuid.
 	if err != nil {
 		return nil, nil, err
 	}
-	byKey := make(map[string][]domain.Node)
-	for _, n := range candidates {
-		key := n.Path[len(n.Path)-1].Key
-		byKey[key] = append(byKey[key], n)
-	}
 	aliases, err := store.Aliases(ctx, notebookID, keys)
 	if err != nil {
 		return nil, nil, err
@@ -95,6 +92,18 @@ func resolutions(ctx context.Context, store Store, pages Pages, notebookID uuid.
 	for _, n := range nodes {
 		byID[n.ID] = n
 	}
+	reach := make(map[string]int)
+	for i, l := range links {
+		if from, ok := byID[l.SourceID]; ok && parsed[i] {
+			for _, key := range targets[i].LastKeys() {
+				reach[key] = max(reach[key], targets[i].Reach(from.Path))
+			}
+		}
+	}
+	// Read once by the ends of their paths, as deep as the targets ending
+	// with each key reach, for each target to find those that end as it
+	// does (M6 closeout FA-I1, FA2-M1, FA3-N2).
+	suffixes := domain.NewSuffixes(candidates, reach)
 	var missing []uuid.UUID
 	// A link's resolution depends on its page and its target's parse alone.
 	type link struct {
@@ -102,6 +111,8 @@ func resolutions(ctx context.Context, store Store, pages Pages, notebookID uuid.
 		target domain.TargetKey
 	}
 	resolved := make(map[link]domain.Resolution)
+	// The pages of each alias key, read once a key, as a target of it comes.
+	aliased := make(map[string][]domain.Node)
 	for i, l := range links {
 		if i%checkEvery == 0 {
 			if err := ctx.Err(); err != nil {
@@ -122,19 +133,21 @@ func resolutions(ctx context.Context, store Store, pages Pages, notebookID uuid.
 			out[i] = r
 			continue
 		}
-		var named []domain.Node
-		aliased := make(map[string][]domain.Node)
 		for _, key := range t.LastKeys() {
-			named = append(named, byKey[key]...)
+			if _, ok := aliased[key]; ok {
+				continue
+			}
+			var named []domain.Node
 			for _, id := range aliasedBy[key] {
 				if n, ok := byID[id]; ok {
-					aliased[key] = append(aliased[key], n)
+					named = append(named, n)
 				} else {
 					missing = append(missing, id)
 				}
 			}
+			aliased[key] = named
 		}
-		out[i] = domain.Resolve(t, from.Path, named, aliased)
+		out[i] = suffixes.Resolve(t, from.Path, aliased)
 		resolved[w] = out[i]
 	}
 	slices.SortFunc(missing, uuid.UUID.Compare)

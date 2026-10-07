@@ -32,7 +32,7 @@ func TestAnEventGoesThroughItsPayload(t *testing.T) {
 	for _, e := range []domain.Event{
 		event(t, domain.TypePages, uuid.MustParse(notebookText), domain.Pages{Tree: true, Pages: []domain.PageRevision{}}),
 		event(t, domain.TypeAccess, uuid.Nil(), domain.Access{UserIDs: []uuid.UUID{uuid.MustParse(pageText)}}),
-		event(t, "links", uuid.Nil(), map[string]string{"x": "y"}),
+		event(t, "later", uuid.Nil(), map[string]string{"x": "y"}),
 	} {
 		payload, err := domain.Encode(e)
 		if err != nil {
@@ -83,8 +83,8 @@ func TestAnEventOfNoTypeHasNoPayload(t *testing.T) {
 			t.Errorf("Encode() of type %q = %q, %v; want ErrNoType", typ, p, err)
 		}
 	}
-	if err := domain.CheckType("links"); err != nil {
-		t.Errorf("CheckType(links) = %v, want a later M's type", err)
+	if err := domain.CheckType("later"); err != nil {
+		t.Errorf("CheckType(later) = %v, want a later M's type", err)
 	}
 }
 

@@ -18,8 +18,9 @@ import (
 
 // Who receives lab's events (M5 design 4.10): a pages event of each seeded
 // notebook, published as the page module's observer publishes one, and an
-// event of a type a later M adds (M5 design 8), published as another
-// module will publish M6's links, reach the stream of each notebook column
+// event of a type a later M adds (M5 design 8; "later", which no module
+// publishes), published as another module publishes its own (M6's links,
+// links_test.go), reach the stream of each notebook column
 // that reads the notebook (GET answers 200), and no other, through the
 // whole program. An access event of every column, published last in the
 // same transaction, ends each stream: what came before it is all the
@@ -57,9 +58,9 @@ func TestLabsEventsReachTheColumnsThatReadThem(t *testing.T) {
 				Changes: []events.PageChange{{PageID: uuid.New(), Tree: true, Revision: 1}}}); err != nil {
 				return err
 			}
-			links := events.Event{Type: "links", WorkspaceID: s.workspaces[n.slug], NotebookID: s.notebook(n.name),
+			later := events.Event{Type: "later", WorkspaceID: s.workspaces[n.slug], NotebookID: s.notebook(n.name),
 				Data: json.RawMessage(`{"page_id":"` + uuid.New().String() + `"}`)}
-			if err := publisher.Publish(ctx, links); err != nil {
+			if err := publisher.Publish(ctx, later); err != nil {
 				return err
 			}
 		}
@@ -70,9 +71,9 @@ func TestLabsEventsReachTheColumnsThatReadThem(t *testing.T) {
 	}
 
 	for _, c := range notebookColumns() {
-		got := map[string]map[uuid.UUID]bool{"pages": {}, "links": {}}
+		got := map[string]map[uuid.UUID]bool{"pages": {}, "later": {}}
 		f := streams[c].next(t)
-		for ; f.event == "pages" || f.event == "links"; f = streams[c].next(t) {
+		for ; f.event == "pages" || f.event == "later"; f = streams[c].next(t) {
 			var p struct {
 				NotebookID uuid.UUID `json:"notebook_id"`
 			}

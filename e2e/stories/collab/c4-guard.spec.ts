@@ -31,7 +31,10 @@ import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 // C4, what the lock guards (M5 design 4.4): a content write in another
 // session than the lock's, and a deletion of what another account holds;
 // a rename, a move and a write of the content the page holds pass, and so
-// does the holder's own deletion, and a notebook's.
+// does the holder's own deletion, and a notebook's. Since M6 a rename or a
+// move whose links are written again in a page held, the page renamed's own
+// content too, is 409 linking.pages_locked (M6/P4 design 6; L3): no page
+// here links to the page renamed.
 
 test("C4 (API): while A edits Notes, a write without A's session, B's or A's own token's, is 409 page.locked, as is B's deletion of Notes or of its parent; a rename, a move and a write of the same content pass; A's deletion passes and ends A's session; the notebook's deletion passes", async ({
   api,
@@ -108,7 +111,8 @@ test("C4 (page): while A edits Linux, B's deletion of its parent is refused, the
   await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
   await expectAliveSessions(db, linux.id, [mine ?? ""]);
 
-  // A rename and a move of what A edits pass (M5 design 4.4): A's editor stays, its heading following.
+  // A rename and a move of what A edits pass (M5 design 4.4; no link to it to write again, M6): A's editor stays,
+  // its heading following.
   await b.goto(linuxPath);
   await expect(pageHeading(b, "Linux")).toBeVisible();
   expect((await renamePageWith(b, "Plans", linux.id, "Linux", "Kernel")).status()).toBe(200);

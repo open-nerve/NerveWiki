@@ -1,4 +1,5 @@
 import { accountIdOf } from "../../fixtures/assert/identity";
+import { expectIndexedLinks } from "../../fixtures/assert/links";
 import { displayNameOf, emailFor } from "../../fixtures/auth";
 import { failedToLoad } from "../../fixtures/browser";
 import { joinAs } from "../../fixtures/invitations";
@@ -52,14 +53,19 @@ test("L3 (API): a rename writes the links to the page again, each as the renamer
   const written = await readContent(api, admin, source.id);
   expect([written.content, written.revision]).toEqual(["[[Renamed]] and [md](Renamed.md)\n", 2]);
   expect((await getPage(api, admin, source.id)).data?.content_updated_by).toBe(await accountIdOf(db, aEmail));
+  await expectIndexedLinks(db, source.id, [
+    { kind: "wikilink", property: null, target: "Renamed", resolved: target.id },
+    { kind: "link", property: null, target: "Renamed.md", resolved: target.id },
+  ]);
 });
 
 test("L3 (page): a rename in the dialog, and a drag, whose links' page another edits say who edits which page and change nothing; once the editor is done, the rename goes through and the link leads to the page", async ({
   api,
+  db,
   pageWatch,
   signedInPage,
 }, testInfo) => {
-  const { pat: admin, tokens, workspace } = await newOnboardedTeam(api, testInfo);
+  const { adminId, pat: admin, tokens, workspace } = await newOnboardedTeam(api, testInfo);
   const aEmail = emailFor(testInfo, "a");
   const a = await joinAs(api, admin, workspace.slug, aEmail, "member");
   const notebook = await createNotebook(api, admin, workspace.slug, "Plans", "editor");
@@ -93,6 +99,13 @@ test("L3 (page): a rename in the dialog, and a drag, whose links' page another e
   const renamed = await renamePageWith(page, "Plans", target.id, "Target", "Renamed");
   expect(renamed.status()).toBe(200);
   await expect(renameDialog(page, "Target")).toBeHidden();
+  expect((await readContent(api, admin, source.id)).content).toBe("[[Renamed]] and [rooted](/Renamed.md)\n");
+  // Written again as the renamer.
+  expect((await getPage(api, admin, source.id)).data?.content_updated_by).toBe(adminId);
+  await expectIndexedLinks(db, source.id, [
+    { kind: "wikilink", property: null, target: "Renamed", resolved: target.id },
+    { kind: "link", property: null, target: "/Renamed.md", resolved: target.id },
+  ]);
   const article = page.getByRole("article", { name: "Source" });
   const link = article.getByRole("link", { name: "Renamed", exact: true });
   await expect(link).toHaveAttribute("href", wikiPagePath(workspace.slug, notebook.id, target.id));

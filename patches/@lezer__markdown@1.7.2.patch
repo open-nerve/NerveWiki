@@ -1,0 +1,32 @@
+diff --git a/dist/index.cjs b/dist/index.cjs
+index a7f1502ce9663cff433857f3e353acff9b381a98..14f677e24caff63b64dcb11f88bd7ac7c6bfc362 100644
+--- a/dist/index.cjs
++++ b/dist/index.cjs
+@@ -2095,7 +2095,10 @@ function hasPipe(str, start) {
+     }
+     return false;
+ }
+-const delimiterLine = /^[>\s]*\|?(\s*:?-+:?\s*\|)+(\s*:?-+:?\s*)?$/;
++// The leading ">" and spaces are taken one way, all of them (a lookahead does not backtrack): tried every way,
++// a run of them cost the square of its length (Nerve Wiki, M6 closeout FB4-I1). It matches the lines the original
++// does: 4.4 million, each of up to 7 of " \t>|-:x\u3000" and random ones of the pieces of delimiter lines.
++const delimiterLine = /^(?=([>\s]*))\1\|?(\s*:?-+:?\s*\|)+(\s*:?-+:?\s*)?$/;
+ class TableParser {
+     constructor() {
+         // Null means we haven't seen the second line yet, false means this
+diff --git a/dist/index.js b/dist/index.js
+index e5725e7b76c21832da1a3d2ed188ae042c06224c..b6fe4fdd22fc6d45db16e28eb43aad74ba491c61 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -2093,7 +2093,10 @@ function hasPipe(str, start) {
+     }
+     return false;
+ }
+-const delimiterLine = /^[>\s]*\|?(\s*:?-+:?\s*\|)+(\s*:?-+:?\s*)?$/;
++// The leading ">" and spaces are taken one way, all of them (a lookahead does not backtrack): tried every way,
++// a run of them cost the square of its length (Nerve Wiki, M6 closeout FB4-I1). It matches the lines the original
++// does: 4.4 million, each of up to 7 of " \t>|-:x\u3000" and random ones of the pieces of delimiter lines.
++const delimiterLine = /^(?=([>\s]*))\1\|?(\s*:?-+:?\s*\|)+(\s*:?-+:?\s*)?$/;
+ class TableParser {
+     constructor() {
+         // Null means we haven't seen the second line yet, false means this

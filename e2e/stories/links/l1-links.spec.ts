@@ -1,7 +1,8 @@
-import { countAnswers } from "../../fixtures/browser";
+import { expectIndexedLinks } from "../../fixtures/assert/links";
+import { countAnswers, expectQuietPage, watchPage } from "../../fixtures/browser";
 import { holdStream } from "../../fixtures/events";
 import { createNotebook } from "../../fixtures/notebooks";
-import { createPage, getView, renameNode } from "../../fixtures/pages";
+import { createPage, getView, readContent, renameNode } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
 import { pageHeading, wikiPagePath } from "../../fixtures/wiki-pages";
 import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
@@ -13,8 +14,9 @@ import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 // leads to its page still once the page is renamed elsewhere, written
 // again.
 
-test("L1 (API): a reading view's links to pages carry the page each leads to and its anchor's heading, or that it leads nowhere, and no address", async ({
+test("L1 (API): a reading view's links to pages carry the page each leads to and its anchor's heading, or that it leads nowhere, and no address; one leads to its page once it is created, and once it is renamed, written again", async ({
   api,
+  db,
 }, testInfo) => {
   const { pat, workspace } = await newTeam(api, testInfo);
   const notebook = await createNotebook(api, pat, workspace.slug, "Plans");
@@ -39,10 +41,41 @@ test("L1 (API): a reading view's links to pages carry the page each leads to and
     expect(html).toContain(element);
   }
   expect(html).not.toContain("href");
+  await expectIndexedLinks(db, source.id, [
+    { kind: "wikilink", property: null, target: "Target", resolved: target.id },
+    { kind: "wikilink", property: null, target: "Missing", resolved: null },
+    { kind: "link", property: null, target: "Target.md", resolved: target.id },
+  ]);
+
+  // The page created, the link leads to it.
+  const missing = await createPage(api, pat, notebook.id, "Missing");
+  expect((await getView(api, pat, source.id)).data?.html).toContain(
+    `<a class="nw-wikilink" data-nw-node="${missing.id}">Missing</a>`
+  );
+  await expectIndexedLinks(db, source.id, [
+    { kind: "wikilink", property: null, target: "Target", resolved: target.id },
+    { kind: "wikilink", property: null, target: "Missing", resolved: missing.id },
+    { kind: "link", property: null, target: "Target.md", resolved: target.id },
+  ]);
+
+  // The page renamed, the links to it are written again, and lead to it.
+  expect((await renameNode(api, pat, target.id, "Renamed")).response.status).toBe(200);
+  expect((await readContent(api, pat, source.id)).content).toBe(
+    "[[Renamed#Part Two|see]] [[Missing]] [md](Renamed.md)\n"
+  );
+  expect((await getView(api, pat, source.id)).data?.html).toContain(
+    `<a class="nw-wikilink" data-nw-node="${target.id}" data-nw-anchor="nw-part-two">see</a>`
+  );
+  await expectIndexedLinks(db, source.id, [
+    { kind: "wikilink", property: null, target: "Renamed", resolved: target.id },
+    { kind: "wikilink", property: null, target: "Missing", resolved: missing.id },
+    { kind: "link", property: null, target: "Renamed.md", resolved: target.id },
+  ]);
 });
 
-test("L1 (page): a link to a page opens it in the app, or in a new tab with a modifier, and goes to its anchor's heading; one to a page not there is no link", async ({
+test("L1 (page): a link to a page opens it in the app, or in a new tab with a modifier, and goes to its anchor's heading, a Markdown link and the page's full address too; one to a page not there is no link", async ({
   api,
+  baseURL,
   signedInPage,
 }, testInfo) => {
   const { pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
@@ -55,15 +88,15 @@ test("L1 (page): a link to a page opens it in the app, or in a new tab with a mo
     null,
     "intro\n\n" + "filler\n\n".repeat(80) + "# Part Two\n"
   );
+  const targetPath = wikiPagePath(workspace.slug, notebook.id, target.id);
   const source = await createPage(
     api,
     pat,
     notebook.id,
     "Source",
     null,
-    "[[Target]] and [[Target#Part Two|part two]] and [[Missing]]\n"
+    `[[Target]] and [[Target#Part Two|part two]] and [[Missing]] and [as a file](Target.md) and [by address](${baseURL}${targetPath})\n`
   );
-  const targetPath = wikiPagePath(workspace.slug, notebook.id, target.id);
   const page = await signedInPage(tokens);
   await page.goto(wikiPagePath(workspace.slug, notebook.id, source.id));
   const article = page.getByRole("article");
@@ -85,6 +118,11 @@ test("L1 (page): a link to a page opens it in the app, or in a new tab with a mo
     toTarget.click({ modifiers: ["ControlOrMeta"] }),
   ]);
   await expect(pageHeading(opened, "Target")).toBeVisible();
+  // Watched from its start, as the stories' own tabs are: loaded again, it is quiet.
+  const openedWatch = await watchPage(opened);
+  await opened.reload();
+  await expect(pageHeading(opened, "Target")).toBeVisible();
+  await expectQuietPage(opened, openedWatch);
   await opened.close();
   await expect(pageHeading(page, "Source")).toBeVisible();
 
@@ -101,11 +139,24 @@ test("L1 (page): a link to a page opens it in the app, or in a new tab with a mo
   await expect(heading).toBeFocused();
   await expect(heading).toBeInViewport();
   await expect(page).toHaveURL(`${targetPath}#nw-part-two`);
+
+  // A Markdown link to the page, and the page's full address on this site, go through the router too.
+  for (const name of ["as a file", "by address"]) {
+    // oxlint-disable-next-line no-await-in-loop -- one link after another
+    await page.goBack();
+    // oxlint-disable-next-line no-await-in-loop -- as above
+    await article.getByRole("link", { name, exact: true }).click();
+    // oxlint-disable-next-line no-await-in-loop -- as above
+    await expect(pageHeading(page, "Target")).toBeFocused();
+    // oxlint-disable-next-line no-await-in-loop -- as above
+    await expect(page).toHaveURL(targetPath);
+  }
   expect(await notReloaded()).toBe(true);
 });
 
 test("L1 (page): a link to a page not there leads to it once the page is created elsewhere: the view is read again with the links event, the focus and the scroll kept", async ({
   api,
+  db,
   signedInPage,
 }, testInfo) => {
   const { pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
@@ -148,6 +199,9 @@ test("L1 (page): a link to a page not there leads to it once the page is created
     wikiPagePath(workspace.slug, notebook.id, missing.id)
   );
   expect(viewReads()).toBeGreaterThan(read);
+  await expectIndexedLinks(db, source.id, [
+    { kind: "wikilink", property: null, target: "Missing", resolved: missing.id },
+  ]);
   // Read again, the view keeps the heading's focus and stays where it was.
   await expect(partA).toBeFocused();
   await expect(partA).toBeInViewport();
@@ -155,6 +209,7 @@ test("L1 (page): a link to a page not there leads to it once the page is created
 
 test("L1 (page): a link leads to its page once the page is renamed elsewhere: the rename writes the link again, and the view is read again with the event", async ({
   api,
+  db,
   signedInPage,
 }, testInfo) => {
   const { pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
@@ -175,6 +230,9 @@ test("L1 (page): a link leads to its page once the page is renamed elsewhere: th
   expect((await renameNode(api, pat, target.id, "Renamed")).response.status).toBe(200);
   const renamed = article.getByRole("link", { name: "Renamed", exact: true });
   await expect(renamed).toHaveAttribute("href", targetPath);
+  await expectIndexedLinks(db, source.id, [
+    { kind: "wikilink", property: null, target: "Renamed", resolved: target.id },
+  ]);
   await renamed.click();
   await expect(pageHeading(page, "Renamed")).toBeFocused();
 });
