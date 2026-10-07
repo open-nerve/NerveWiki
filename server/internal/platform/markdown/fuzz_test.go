@@ -36,6 +36,15 @@ func FuzzParse(f *testing.F) {
 		if _, ok := afterFrontmatter(content); d.Frontmatter().Present != ok {
 			t.Errorf("a frontmatter %v, rule 1 says %v", d.Frontmatter().Present, ok)
 		}
+		// Its strings in the order they are written, none over another: the
+		// link index finds a property link's by where it is (Codex review R3).
+		scalars := d.Frontmatter().Scalars
+		for i := 1; i < len(scalars); i++ {
+			if was, s := scalars[i-1], scalars[i]; was.Offset(len(was.Value)) > s.Offset(0) {
+				t.Errorf("%q: the string %q at %d before the string %q at %d, which ends after it starts",
+					content, was.Value, was.Offset(0), s.Value, s.Offset(0))
+			}
+		}
 	})
 }
 

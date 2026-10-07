@@ -28,14 +28,8 @@ type Contents interface {
 	Rekey(ctx context.Context, notebookID uuid.UUID) ([]Clash, error)
 }
 
-// Clash is siblings whose names would share a title key.
-type Clash []NamedNode
-
-// NamedNode is a node by its id and name.
-type NamedNode struct {
-	ID   uuid.UUID
-	Name string
-}
+// Clash is siblings whose names would share a title key, by their ids.
+type Clash []uuid.UUID
 
 // Notebooks is what a rebuild reads and locks of the notebooks: the
 // notebook module's.

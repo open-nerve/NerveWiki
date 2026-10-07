@@ -85,17 +85,19 @@ func plural(n int, thing string) string {
 }
 
 // clashLine tells the siblings of the notebook nb whose title keys would
-// clash, each group by its titles and ids.
+// clash, each group by its pages' ids: the titles are the notebook's, which
+// the server's administrator may not read (v0.1 design 13.1 rule 10; M6
+// Codex review), and its members find a page by its id.
 func clashLine(nb uuid.UUID, clashes []linking.Clash) string {
 	groups := make([]string, len(clashes))
 	for i, c := range clashes {
-		names := make([]string, len(c))
-		for j, n := range c {
-			names[j] = fmt.Sprintf("%q (%s)", n.Name, n.ID)
+		ids := make([]string, len(c))
+		for j, id := range c {
+			ids[j] = id.String()
 		}
-		groups[i] = strings.Join(names, ", ")
+		groups[i] = strings.Join(ids, ", ")
 	}
-	return fmt.Sprintf("notebook %s: not reindexed: titles that would share a key: %s", nb, strings.Join(groups, "; "))
+	return fmt.Sprintf("notebook %s: not reindexed: the pages whose titles would share a key: %s", nb, strings.Join(groups, "; "))
 }
 
 // reindexAdmin is the linking module's rebuild on pool: the Markdown and

@@ -21,10 +21,8 @@ type (
 	// Contents is what the rebuild reads and repairs of the pages:
 	// bootstrap hands page.NewLinkTargets to it.
 	Contents = app.Contents
-	// Clash is siblings whose names would share a title key.
+	// Clash is siblings whose names would share a title key, by their ids.
 	Clash = app.Clash
-	// NamedNode is a node by its id and name.
-	NamedNode = app.NamedNode
 	// Notebooks is what the rebuild reads and locks of the notebooks:
 	// bootstrap hands notebook.NewNotebooks to it.
 	Notebooks = app.Notebooks

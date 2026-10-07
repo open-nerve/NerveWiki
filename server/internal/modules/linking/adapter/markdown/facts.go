@@ -73,10 +73,10 @@ func PageFacts(facts any) (domain.Facts, error) {
 		}
 	}
 	out.Tags, out.Aliases = domain.TagsOf(tags), domain.AliasesOf(aliases)
-	for _, p := range fm.Properties {
+	for i, p := range fm.Properties {
 		value, err := json.Marshal(jsonOf(p.Value))
-		if err != nil {
-			return domain.Facts{}, fmt.Errorf("linking: the property %q: %w", p.Key, err)
+		if err != nil { // by its place: its key is the page's text, which no log holds
+			return domain.Facts{}, fmt.Errorf("linking: the frontmatter's property %d: %w", i+1, err)
 		}
 		out.Properties = append(out.Properties, domain.Property{Key: text(p.Key), Value: value})
 	}

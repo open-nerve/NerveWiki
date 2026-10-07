@@ -109,7 +109,7 @@ func withRecover(logger *slog.Logger, next http.Handler) http.Handler {
 			logger.ErrorContext(r.Context(), "panic serving request",
 				slog.String("request_id", RequestID(r.Context())),
 				slog.String("method", r.Method),
-				slog.String("path", r.URL.Path),
+				slog.String("path", loggedPath(r)),
 				slog.Any("panic", v),
 				slog.String("stack", string(debug.Stack())),
 			)
@@ -131,6 +131,31 @@ func withRecover(logger *slog.Logger, next http.Handler) http.Handler {
 		}()
 		next.ServeHTTP(rec, r)
 	})
+}
+
+// loggedPath is r's path as the logs write it: the value a wildcard of its
+// route matched written as the wildcard, but an id's or a slug's, as it
+// may be a page's text (getTag's tag; v0.1 design 13.1 rule 10). A path
+// no wildcard matched, as the web app's, is written as it is. It reads the
+// route the router found, which sets it on r: once r has been served, or
+// in its handler.
+func loggedPath(r *http.Request) string {
+	_, pattern, ok := strings.Cut(r.Pattern, " ")
+	if !ok {
+		pattern = r.Pattern
+	}
+	if !strings.Contains(pattern, "{") {
+		return r.URL.Path
+	}
+	segments := strings.Split(pattern, "/")
+	for i, segment := range segments {
+		name, ok := strings.CutPrefix(segment, "{")
+		name = strings.TrimSuffix(name, "}")
+		if ok && (name == "slug" || name == "id" || strings.HasSuffix(name, "_id")) {
+			segments[i] = r.PathValue(name)
+		}
+	}
+	return strings.Join(segments, "/")
 }
 
 // withAccessLog logs one line per request: method, path, status, duration
@@ -157,7 +182,7 @@ func withAccessLog(logger *slog.Logger, next http.Handler) http.Handler {
 			logger.LogAttrs(r.Context(), level, "http request",
 				slog.String("request_id", RequestID(r.Context())),
 				slog.String("method", r.Method),
-				slog.String("path", r.URL.Path),
+				slog.String("path", loggedPath(r)),
 				slog.Int("status", status),
 				slog.Duration("duration", time.Since(start)),
 			)

@@ -186,7 +186,7 @@ func (e APIErrors) Write(w http.ResponseWriter, r *http.Request, err error) {
 	attrs := []slog.Attr{
 		slog.String("request_id", RequestID(r.Context())),
 		slog.String("method", r.Method),
-		slog.String("path", r.URL.Path),
+		slog.String("path", loggedPath(r)),
 		slog.Any("error", err),
 	}
 	if responseStarted(w) {

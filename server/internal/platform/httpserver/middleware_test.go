@@ -3,6 +3,7 @@ package httpserver
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -320,6 +321,48 @@ func TestAccessLogOfProbesIsDebug(t *testing.T) {
 
 		if entry := findLog(logs(), "http request"); entry == nil || entry["level"] != "DEBUG" {
 			t.Errorf("GET %s access log = %v, want level DEBUG", path, entry)
+		}
+	}
+}
+
+// The logs write a path's values of its route's wildcards as the wildcards,
+// but an id's and a slug's: a value may be a page's text, as getTag's tag
+// is (v0.1 design 13.1 rule 10; M6 Codex review). The access log, the
+// recover's and the API errors' alike; a path no wildcard matched as it is.
+func TestTheLogsWriteARoutesValuesButIdsAsItsWildcards(t *testing.T) {
+	logger, logs := captureLogs(t)
+	errs := NewAPIErrors(logger)
+	router := NewRouter(slog.New(slog.DiscardHandler))
+	router.HandleFunc("GET /api/v0/notebooks/{notebook_id}/tags/{tag}", func(w http.ResponseWriter, r *http.Request) {
+		errs.Write(w, r, errors.New("a fault"))
+	})
+	router.HandleFunc("GET /api/v0/workspaces/{slug}/members/{workspace_member_id}", func(http.ResponseWriter, *http.Request) {
+		panic("boom")
+	})
+	router.HandleFunc("GET /api/v0/things", func(http.ResponseWriter, *http.Request) {})
+	h := middleware(router, logger)
+	for _, tt := range []struct{ path, logged, msg string }{
+		{"/api/v0/notebooks/n1/tags/layoff%2Fplan", "/api/v0/notebooks/n1/tags/{tag}", "API handler failed"},
+		{"/api/v0/workspaces/lab/members/m1", "/api/v0/workspaces/lab/members/m1", "panic serving request"},
+		{"/api/v0/things", "/api/v0/things", ""},
+		{"/api/v0/notebooks/n1/tag/layoff", "/api/v0/notebooks/n1/tag/layoff", ""},
+	} {
+		serve(h, httptest.NewRequest(http.MethodGet, tt.path, nil))
+		entries := logs()
+		msgs := []string{"http request"}
+		if tt.msg != "" {
+			msgs = append(msgs, tt.msg)
+		}
+		for _, msg := range msgs {
+			var last map[string]any
+			for _, e := range entries {
+				if e["msg"] == msg {
+					last = e
+				}
+			}
+			if last == nil || last["path"] != tt.logged {
+				t.Errorf("GET %s: %q logged %v, want the path %s", tt.path, msg, last, tt.logged)
+			}
 		}
 	}
 }

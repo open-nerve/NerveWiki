@@ -39,7 +39,7 @@ func LongLived(logger *slog.Logger, h http.Handler) http.Handler {
 		if err := http.NewResponseController(w).SetWriteDeadline(time.Time{}); err != nil {
 			logger.ErrorContext(r.Context(), "cannot lift the write deadline of a long-lived response",
 				slog.String("request_id", RequestID(r.Context())),
-				slog.String("path", r.URL.Path),
+				slog.String("path", loggedPath(r)),
 				slog.Any("error", err),
 			)
 			WriteProblem(w, Problem{

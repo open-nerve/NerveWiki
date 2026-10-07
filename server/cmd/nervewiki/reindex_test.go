@@ -164,11 +164,14 @@ func TestReindexReportsClashesAndFailuresAndRefusesNoNotebook(t *testing.T) {
 	}
 
 	code, stdout, stderr := execute(ctx, r.environ, "reindex")
-	clash := fmt.Sprintf(`notebook %s: not reindexed: titles that would share a key: "Straße" (%s), "STRASSE" (%s)`, r.ops, r.plan, twin)
+	clash := fmt.Sprintf(`notebook %s: not reindexed: the pages whose titles would share a key: %s, %s`, r.ops, r.plan, twin)
 	failure := fmt.Sprintf("notebook %s: not reindexed: ", r.eng)
 	if code != 1 || stdout != "" || !strings.Contains(stderr, clash+"\n") || !strings.Contains(stderr, failure) ||
 		!strings.Contains(stderr, "nervewiki: 2 notebooks not reindexed") {
 		t.Errorf("reindex with a clash and a loop = %d, %q, %q; want 1, no line, and %q", code, stdout, stderr, clash)
+	}
+	if strings.Contains(stderr, "Straße") || strings.Contains(stderr, "STRASSE") {
+		t.Errorf("reindex printed the titles: %q", stderr)
 	}
 	if n := r.count(t, "SELECT count(*) FROM nodes WHERE notebook_id = $1 AND name_key = 'old'", r.ops); n != 1 || r.indexed(t, r.ops) != 1 ||
 		r.count(t, "SELECT count(*) FROM page_links WHERE source_id = $1 AND resolved_id = $1", r.plan) != 1 {
