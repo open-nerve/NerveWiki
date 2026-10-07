@@ -181,19 +181,18 @@ func loggedPath(r *http.Request) string {
 }
 
 // webPath is the path of r that the web app's route took, as the logs
-// write it: as it is, or, when the router redirects it to its clean path,
-// as where it redirects to. The router reads that of the path as written,
-// its escapes kept, and of no CONNECT (fix checks B4-M1, B5-M1).
+// write it, unescaped as the handler reads it: as it is, or, when the
+// router redirects it to its clean path, as where it redirects to. The
+// router cleans the path as written, its escapes kept, and no CONNECT's
+// (fix checks B4-M1, B5-M1); a path it does not change unescapes to r's.
 func webPath(r *http.Request) string {
-	escaped := r.URL.EscapedPath()
-	cleaned := cleanPath(escaped)
-	if r.Method == http.MethodConnect || cleaned == escaped {
+	if r.Method == http.MethodConnect {
 		return r.URL.Path
 	}
-	if p, err := url.PathUnescape(cleaned); err == nil {
+	if p, err := url.PathUnescape(cleanPath(r.URL.EscapedPath())); err == nil {
 		return p
 	}
-	return cleaned
+	return r.URL.Path // not reached: r's escapes are valid, and cleaning splits none
 }
 
 // cleanPath is p as the router cleans it: its "." and ".." segments

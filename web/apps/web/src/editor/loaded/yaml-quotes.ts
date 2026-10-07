@@ -17,12 +17,13 @@ export type Quote = "'" | '"' | "";
  * node of its own; a block's header ('|' or '>') makes the lines indented
  * past its node its text, and a plain string the lines indented past its
  * node, where nothing starts; a '#' starts a comment but in a plain
- * string's text after no space, and in [ ] and { } ends the plain string. A
- * line's node is where its key (its anchor or tag first), "-", "?" or ":"
- * is; a line with none, a value alone, is of the node of the line before
- * that left a value to come (Codex review fix checks A-M1, A2-M1). A line
- * ends at '\n' and at YAML's other line breaks (U+0085, U+2028, U+2029;
- * CodeMirror's lines end at the first alone).
+ * string's text after no space, and ends the plain string. A line's node is
+ * where its key (its anchor or tag first), "-", "?" or ":" is; a line with
+ * none, a value alone, is of the node of the line before that left a value
+ * to come (Codex review fix checks A-M1, A2-M1). A line ends at '\n' and at
+ * YAML's other line breaks (U+0085, U+2028, U+2029; CodeMirror's lines end
+ * at the first alone). Past a '?' alone in [ ] that a ']' closes, which the
+ * library reads unlike YAML, it tells no string to open.
  */
 export function openingQuote(state: EditorState, at: number): Quote {
   let quote: Quote = "";
@@ -33,6 +34,7 @@ export function openingQuote(state: EditorState, at: number): Quote {
   let start = true; // whether a key or a value may start
   let plain = false; // whether in a plain string's text
   let pending: number | undefined; // the node of the line before, if it left a value to come
+  let keyAlone = false; // whether just past a '?' in [ ] or { }, no token after it yet
   const lines = state.sliceDoc(state.doc.line(2).from, at).split(/[\n\u0085\u2028\u2029]/);
   for (const line of lines) {
     let i = 0;
@@ -85,12 +87,16 @@ export function openingQuote(state: EditorState, at: number): Quote {
         continue;
       }
       if (c === "#" && (!plain || i === 0 || line[i - 1] === " " || line[i - 1] === "\t")) {
-        plain &&= flow === 0; // in [ ] and { } a comment ends a plain string: the next line is none of its text
+        plain = false; // a comment ends a plain string: the next line is none of its text
         break;
       }
-      // Past [ ] and { } a ',' that is no plain string's text is theirs too: the YAML library reads the ']'
-      // after a '?' alone in [ ] as the key's and goes on in [ ] (fix check A5-M1).
-      if ((flow > 0 || (c === "," && !plain)) && (c === "," || c === "]" || c === "}")) {
+      if (keyAlone && c === "]") {
+        // The YAML library takes the ']' after a '?' alone in [ ] as the key's and reads on in [ ] what is
+        // past it: no string is told to open there (fix checks A5-M1, A6-M1, A6-M2).
+        return "";
+      }
+      keyAlone = c === "?" && flow > 0;
+      if (flow > 0 && (c === "," || c === "]" || c === "}")) {
         flow -= c === "," ? 0 : 1;
         start = c === ",";
         plain = false;

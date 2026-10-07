@@ -140,11 +140,24 @@ test("what a line leaves goes on to the next: a string in quotes, a block, a pla
     ['---\nx: &a v\nk:\n  *a : v\n  b: "c,\n\'‸d"', ""],
     ["---\nx: &a v\nk:\n  *a : |\n    x\n  '‸b': c", "'"],
     ["---\nm: [? k\n# c\n:'‸", "'"],
-    // The library reads the ']' after a '?' alone in [ ] as the key's and goes on in [ ] (fix check A5-M1, A5-M3).
+    // The library takes the ']' just past a '?' alone in [ ] as the key's and reads on in [ ] what is past it,
+    // unlike YAML: no string is told to open there; past a '?' that something else follows, or in { }, they do
+    // (fix checks A5-M1, A5-M3, A6-M1, A6-M2).
     ['---\nk: [?], "d,\n  \'‸x"]', ""],
-    ["---\nk: [?], '‸", "'"],
-    ["---\ntags: [?], \"rock,\n  'n roll\"]\nref: '‸", "'"],
+    ["---\nk: [?], '‸", ""],
+    ["---\ntags: [?], \"rock,\n  'n roll\"]\nref: '‸", ""],
     ["---\nk: [?], [a: b, c: d, \"e,\n     '‸x\"]]\nref: 'z'", ""],
+    ["---\ntags: [?]\n  , a\n  , '‸b'\n]", ""],
+    ["---\ntags: [?\n  # c\n  ], a\n  , '‸b'\n]", ""],
+    ["---\nk: [a, ? ], ]#c: '‸x'", ""],
+    ["---\nm: {a: [?]]\n}#c: '‸x'", ""],
+    ["---\nm: [? k]\nref: '‸", "'"],
+    ["---\nm: [?x]\nref: '‸", "'"],
+    ["---\nm: {?}\nref: '‸", "'"],
+    ["---\nm: [{?}]\nref: '‸", "'"],
+    ["---\nm: [? :]\nref: '‸", "'"],
+    ['---\ntags: [?\n  # c\n  ], "rock,\n  \'‸n roll"]', ""],
+    ["---\nk: ?]\nref: '‸", "'"],
   ] as const;
   expect(openingAt(docs)).toEqual(docs);
 });

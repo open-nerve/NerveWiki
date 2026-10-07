@@ -333,8 +333,8 @@ func TestAccessLogOfProbesIsDebug(t *testing.T) {
 // subtree; a path the router cleans to a route's, as the route (fix check
 // B3-M1). The access log, the recover's, the API errors' and LongLived's
 // alike; the web app's paths, that "/" takes, as they are, or as where the
-// router redirects them to, of the path as written and of no CONNECT (fix
-// check B3-M4, B4-M1, B5-M1).
+// router redirects them to, of the path as written and of no CONNECT, by
+// any other method, and no query (fix check B3-M4, B4-M1, B5-M1, B6-M1).
 func TestTheLogsWriteARoutesValuesButIdsAsItsWildcards(t *testing.T) {
 	logger, logs := captureLogs(t)
 	errs := NewAPIErrors(logger)
@@ -378,6 +378,11 @@ func TestTheLogsWriteARoutesValuesButIdsAsItsWildcards(t *testing.T) {
 		{http.MethodGet, "/x/%2E%2E/lab/tags/layoff", "/x/../lab/tags/layoff", ""},
 		{http.MethodGet, "/lab/x/../c%20d", "/lab/c d", ""},
 		{http.MethodConnect, "/x/../lab/tags/layoff", "/x/../lab/tags/layoff", ""},
+		{http.MethodHead, "/api/v0/notebooks/" + id + "/tags/layoff/../../../../../../lab", "/lab", ""},
+		{http.MethodPost, "/api/v0/notebooks/" + id + "/tags/layoff/../../../../../../lab", "/lab", ""},
+		{"connect", "/x/../lab", "/lab", ""},
+		{http.MethodGet, "/lab/x/../tags?next=/lab/tags/layoff", "/lab/tags", ""},
+		{http.MethodGet, "http://example.com", "/", ""},
 	} {
 		serve(h, httptest.NewRequest(tt.method, tt.path, nil))
 		entries := logs()
