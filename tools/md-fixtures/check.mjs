@@ -1,7 +1,8 @@
 // Checks that every fixture is well-formed and self-consistent:
 // each range points at the bytes where its target is written,
 // each task's offset at the character between its brackets,
-// each resolution case's links go from and to its pages.
+// each resolution case's links go from and to its pages,
+// each render case's reading view is text of blocks and line breaks.
 // Usage: node tools/md-fixtures/check.mjs
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
@@ -241,6 +242,26 @@ function checkResolveCase(dir, base) {
     fail(name, "note must be set exactly when the case or one of its links is nerve-defined");
 }
 
+// A render case (M6/P8 design 4): its reading view as text, "¶" between
+// blocks and "⏎" a line break, none at a block's end or the text's.
+function checkRender(dir, base) {
+  const name = `render/${base}`;
+  let c;
+  try {
+    c = JSON.parse(readFileSync(join(dir, `${base}.json`), "utf8"));
+  } catch (e) {
+    return fail(name, `not JSON: ${e.message}`);
+  }
+  if (!sameKeys(c, ["description", "source", "rendered", "note"]))
+    fail(name, "fields are description, source, rendered, and note when set");
+  if (typeof c.description !== "string" || c.description === "") fail(name, "description must be non-empty");
+  if (!SOURCES.has(c.source)) fail(name, `source ${c.source}`);
+  if ((c.source === "nerve-defined") !== (typeof c.note === "string" && c.note !== ""))
+    fail(name, "note must be set exactly when the case is nerve-defined");
+  if (typeof c.rendered !== "string" || /¶¶|⏎¶|^¶|¶$|\s[¶⏎]|[¶⏎]\s|\s\s/.test(c.rendered))
+    fail(name, "rendered must be text, its blocks one ¶ apart, no ⏎ at a block's end, its white space one space");
+}
+
 const casesDir = join(root, "cases");
 const cases = readdirSync(casesDir)
   .filter((f) => f.endsWith(".md"))
@@ -254,9 +275,16 @@ renames.forEach((b) => checkRename(renameDir, b));
 const resolveDir = join(root, "resolve");
 const resolves = readdirSync(resolveDir).filter((f) => f.endsWith(".json"));
 resolves.forEach((f) => checkResolveCase(resolveDir, f));
+const renderDir = join(root, "render");
+const renders = readdirSync(renderDir)
+  .filter((f) => f.endsWith(".md"))
+  .map((f) => f.slice(0, -3));
+renders.forEach((b) => checkRender(renderDir, b));
 
 if (problems.length) {
   console.error(problems.join("\n"));
   process.exit(1);
 }
-console.log(`ok: ${cases.length} cases, ${renames.length} rename cases, ${resolves.length} resolution cases`);
+console.log(
+  `ok: ${cases.length} cases, ${renames.length} rename cases, ${resolves.length} resolution cases, ${renders.length} render cases`
+);

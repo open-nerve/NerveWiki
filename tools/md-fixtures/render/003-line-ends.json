@@ -1,0 +1,5 @@
+{
+  "description": "行尾是标签、wikilink、强调、行内代码、高亮、链接时，换行照样显示",
+  "source": "obsidian-verified",
+  "rendered": "标签 #tag⏎链接 Page⏎强调 粗⏎代码 c⏎高亮 亮⏎外链 x⏎末行"
+}

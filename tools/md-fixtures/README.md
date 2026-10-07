@@ -16,17 +16,21 @@ rename/
   NNN-<slug>.json      说明、页面树与改名或移动
 resolve/
   NNN-<slug>.json      一棵页面树、从其中各页写出的链接与它们应当解析到的页面
-check.mjs              自检：格式正确，每个 range 确实指向目标的原文写法，解析样例的链接都在它的页面之间
+render/
+  NNN-<slug>.md        阅读视图的输入：逐字节的原文
+  NNN-<slug>.json      期望的显示：各块与块里的换行
+check.mjs              自检：格式正确，每个 range 确实指向目标的原文写法，解析样例的链接都在它的页面之间，渲染样例的显示写法正确
 obsidian/verify.mjs    提取结果与真实的 Obsidian 核对
 obsidian/verify-resolve.mjs  解析与真实的 Obsidian 核对
 obsidian/verify-rename.mjs   改名、移动时的改写与真实的 Obsidian 核对
+obsidian/verify-render.mjs   阅读视图的显示与真实的 Obsidian 核对
 ```
 
 ## 来源
 
 每个样例都标明规则的来源：
 
-- `obsidian-verified`：结果与 Obsidian 一致，由 `obsidian/verify.mjs` 核对（最近一次是 M6 的 Obsidian 1.12.7；M0 时的样例另与 1.13.7 核对过）；解析样例由 `obsidian/verify-resolve.mjs` 核对，改写样例由 `obsidian/verify-rename.mjs` 核对（都是 Obsidian 1.12.7）。
+- `obsidian-verified`：结果与 Obsidian 一致，由 `obsidian/verify.mjs` 核对（最近一次是 M6 的 Obsidian 1.12.7；M0 时的样例另与 1.13.7 核对过）；解析样例由 `obsidian/verify-resolve.mjs` 核对，改写样例由 `obsidian/verify-rename.mjs` 核对，渲染样例由 `obsidian/verify-render.mjs` 核对（都是 Obsidian 1.12.7）。
 - `nerve-defined`：我们有意与 Obsidian 不同，或 Obsidian 没有对应的行为；`note` 写明差异和理由。
 
 与 Obsidian 保持一致是默认选择：用户会从 Obsidian 导入笔记，agent 也按 Obsidian 的习惯书写。偏离必须有明确的好处。
@@ -84,6 +88,8 @@ obsidian/verify-rename.mjs   改名、移动时的改写与真实的 Obsidian �
    - 行内注释：同一行里的 `%%…%%`，从左到右两两配对；
    - 块注释：某行以 `%%` 开头，且这一行后面没有另一个 `%%`，就开始块注释；遇到第一个以 `%%` 结尾的行结束。没有结束行时延续到文末。引用、列表项和脚注定义的标记之后算行首；标题和表格单元格里的 `%%` 不开始块注释；
    - 其余落单的 `%%` 是普通文字；原始内容（包括图片的说明文字）里的 `%%` 不参与配对。字面自动链接在 `%%` 之前结束，所以注释可以以网址结尾。
+   - 块注释的各行不显示，也不留空行（渲染样例 013、020）；只有一个行内注释的行留下一个空行（012），与 Obsidian 相同。
+   - 与 Obsidian 不同（`nerve-defined`）：Obsidian 的块注释在下一个 `%%` 处结束，不管它是否在行尾，这一行剩下的照常显示；这里到以 `%%` 结尾的行才结束（渲染样例 021）。块注释在一段的中间时，Obsidian 把这一段分成两段，这里是一段的两行（014、018）。
 7. **wikilink**
    - 写法是 `[[…]]`，必须在同一行内，内部不能含 `[` 或 `]`；`![[…]]` 是嵌入。
    - `[` 前面有奇数个反斜杠时，按普通文字处理；`!` 被转义时，是普通的 wikilink 而不是嵌入。
@@ -106,6 +112,11 @@ obsidian/verify-rename.mjs   改名、移动时的改写与真实的 Obsidian �
     - 脚注定义里的列表照样有任务项；没被引用的脚注定义不显示，其中的任务项也不算。
     - `- [x]: /u` 是引用定义，不是任务项；`- [ ]: /u` 是任务项（只有空白的标签不能作定义）。
     - 任务项不影响链接和标签的提取。
+12. **换行**（阅读视图）：段落、列表项、引用、callout 的正文、脚注里的单个换行显示为换行，与 Obsidian 关闭"严格换行"（它的默认）时相同；行尾的两个空格或反斜杠同样是一个换行。
+    - 行尾是标签、wikilink、强调、代码、高亮、链接时也是（渲染样例 003）；跨行的链接文字、显示文字照样换行（008）。
+    - callout 的标题到第一个换行为止（006）。
+    - setext 标题：Obsidian 只把一行的当标题（023），两行的连同 `===` 显示为一段；这里照 CommonMark，两行的也是标题，显示为标题里的两行（007，`nerve-defined`）。
+    - 换行不影响提取：标题的 id、图片的说明文字、属性链接的文字都把它读成空格。
 
 ## 重命名改写样例
 
@@ -200,6 +211,34 @@ node tools/md-fixtures/obsidian/verify-resolve.mjs check /tmp/nwiki-resolve
 
 每条链接单独放在出发页所在的文件夹里的一个文件中，读 Obsidian 的 `resolvedLinks` 与 `unresolvedLinks`（等每个文件都有了它们）；每个文件要恰好一条链接。`obsidian-verified` 必须一致；`nerve-defined` 只报告差异。`prepare` 会清空工作目录，所以只接受它自己准备过的目录或空目录。
 
+## 渲染样例
+
+`render/` 里的每个样例是一页的原文与它在阅读视图里的显示（规则 6、12；M6/P8 设计第 4 节）。
+
+```json
+{
+  "description": "段落里的单个换行显示为换行；空行分段",
+  "source": "obsidian-verified",
+  "rendered": "第一行⏎第二行⏎第三行¶另一段"
+}
+```
+
+- `rendered`：显示的文字。块之间是一个 `¶`，块里的换行（`<br>`）是 `⏎`；块末尾的换行不显示，不写；连续的空白写成一个空格，`¶`、`⏎` 两侧不留空白。
+- 块是段落、标题、列表与列表项、引用、callout 与它的标题、代码块、表格与它的行和单元格、分隔线这类元素，它们的嵌套只算一个 `¶`。所以样例只比较块与换行，不比较块的种类、链接的地址与样式。
+- `nerve-defined` 的样例在 `note` 里写明 Obsidian 的显示与理由。
+
+服务端的测试（`obsidian/render_fixtures_test.go`）把阅读视图的 HTML 按同样的规则读成文字，与 `rendered` 比较。
+
+核对：
+
+```sh
+node tools/md-fixtures/obsidian/verify-render.mjs prepare /tmp/nwiki-render
+# 按提示用独立的数据目录启动 Obsidian，它不会碰你自己的库
+node tools/md-fixtures/obsidian/verify-render.mjs check /tmp/nwiki-render
+```
+
+所有样例放进一个库，逐个在阅读视图里打开，按同样的规则读它的 DOM（跳过页头、页脚、文件名的标题、属性区与反链区）。`obsidian-verified` 必须一致；`nerve-defined` 只报告差异。`prepare` 会清空工作目录，所以只接受它自己准备过的目录或空目录。
+
 ## 新增样例
 
 1. 手写 `.md` 与 `.json`。`range` 是 UTF-8 字节偏移，可以用 `python3 -c 'print(len("前缀".encode()))'` 之类的办法计算。
@@ -216,4 +255,4 @@ node tools/md-fixtures/obsidian/verify-resolve.mjs check /tmp/nwiki-resolve
 
 4. 运行提取器的测试。结果与期望不一致时，先判断是样例写错了还是实现有问题。
 
-解析样例照同样的步骤：手写 `resolve/` 的 `.json`，运行 `check.mjs`，用 `verify-resolve.mjs` 与 Obsidian 核对，再运行 linking 的解析测试。改写样例同样：`rename/` 的三个文件，`check.mjs`，`verify-rename.mjs`，再运行 linking 的改写测试。
+解析样例照同样的步骤：手写 `resolve/` 的 `.json`，运行 `check.mjs`，用 `verify-resolve.mjs` 与 Obsidian 核对，再运行 linking 的解析测试。改写样例同样：`rename/` 的三个文件，`check.mjs`，`verify-rename.mjs`，再运行 linking 的改写测试。渲染样例同样：`render/` 的两个文件，`check.mjs`，`verify-render.mjs`，再运行 `platform/markdown/obsidian` 的渲染测试。

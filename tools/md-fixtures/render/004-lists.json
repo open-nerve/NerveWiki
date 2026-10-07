@@ -1,0 +1,5 @@
+{
+  "description": "列表项里的续行与惰性续行显示为换行",
+  "source": "obsidian-verified",
+  "rendered": "第一项⏎续行¶第二项⏎惰性续行¶一⏎二"
+}
