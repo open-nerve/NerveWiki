@@ -202,4 +202,13 @@ func TestReindexReportsClashesAndFailuresAndRefusesNoNotebook(t *testing.T) {
 			t.Errorf("reindex %v = %d, %q, %q; want 1 and %q", tt.args, code, stdout, stderr, tt.want)
 		}
 	}
+
+	// Of a workspace deleted, the pages are told by their ids, and no read
+	// failed (M6 Codex review, fix check B4-N1).
+	r.exec(t, "UPDATE workspaces SET deleted_at = now()")
+	code, stdout, stderr = execute(ctx, r.environ, "reindex", "--notebook", r.ops.String())
+	byID := fmt.Sprintf("notebook %s: not reindexed: the pages whose titles would share a key: %s, %s", r.ops, r.plan, twin)
+	if code != 1 || stdout != "" || !strings.Contains(stderr, byID+"\n") || strings.Contains(stderr, "slug is not read") {
+		t.Errorf("reindex of a deleted workspace's notebook = %d, %q, %q; want 1 and %q alone", code, stdout, stderr, byID)
+	}
 }

@@ -442,7 +442,7 @@ test("in a frontmatter, as the server finds it, a link completes in quotes, as a
   }
 });
 
-/** quotedTargets is a page whose title holds a ', and whose aliases hold quotes, a backslash, and characters YAML takes or not in quotes. */
+/** quotedTargets are a page whose title holds a ', its aliases quotes, a backslash and characters YAML takes or not in quotes, and a page whose title holds U+FFFE. */
 function quotedTargets(): Promise<LinkTarget[]> {
   return Promise.resolve([
     {
@@ -528,7 +528,7 @@ test("in a frontmatter a link completes just after a string's quote alone: not i
   }
 });
 
-test("in a frontmatter an alias with a character YAML does not take in quotes as written is not listed: a control but a tab, a line's end of YAML's, U+FFFE, U+FFFF; in the body it is", async () => {
+test("in a frontmatter a page or an alias with a character YAML does not take in quotes as written is not listed: a control but a tab, a line's end of YAML's, U+FFFE, U+FFFF; in the body it is", async () => {
   const linkTargets = quotedTargets;
   const { view } = editingAt("---\nref: ‸\n---", { linkTargets });
   type(view, '"[[');

@@ -11,6 +11,7 @@ import (
 	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/linking"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres/pgtest"
 )
 
 // The pages whose titles would share a key are told by their addresses,
@@ -57,5 +58,49 @@ func TestClashLineTellsThePagesByIDWhenTheSlugIsNotRead(t *testing.T) {
 				t.Errorf("logs = %s, want the error logged %v", logs.String(), tt.logged)
 			}
 		})
+	}
+}
+
+// A notebook's workspace slug is "" when the notebook or its workspace was
+// deleted, or there is no such notebook: no read failed, and its pages are
+// told by their ids with no error logged (M6 Codex review, fix check
+// B4-N1).
+func TestTheWorkspaceSlugOfANotebookOrWorkspaceDeletedIsNone(t *testing.T) {
+	pool := connect(t, pgtest.NewDatabase(t))
+	ctx := context.Background()
+	user, ws, nb := uuid.NewV7(), uuid.NewV7(), uuid.NewV7()
+	for _, stmt := range []struct {
+		sql  string
+		args []any
+	}{
+		{`INSERT INTO users (id, email, password, display_name, created_at, updated_at) VALUES ($1, 'alice@example.com', 'x', 'Alice', now(), now())`,
+			[]any{user}},
+		{`INSERT INTO workspaces (id, slug, name, created_by_id, updated_by_id, created_at, updated_at) VALUES ($1, 'acme', 'Acme', $2, $2, now(), now())`,
+			[]any{ws, user}},
+		{`INSERT INTO notebooks (id, workspace_id, name, created_by_id, updated_by_id, created_at, updated_at) VALUES ($1, $2, 'Notes', $3, $3, now(), now())`,
+			[]any{nb, ws, user}},
+	} {
+		if _, err := pool.Exec(ctx, stmt.sql, stmt.args...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, tt := range []struct {
+		name, stmt string
+		nb         uuid.UUID
+		want       string
+	}{
+		{"live", "", nb, "acme"},
+		{"no such notebook", "", uuid.NewV7(), ""},
+		{"the notebook deleted", "UPDATE notebooks SET deleted_at = now()", nb, ""},
+		{"the workspace deleted", "UPDATE notebooks SET deleted_at = NULL; UPDATE workspaces SET deleted_at = now()", nb, ""},
+	} {
+		if tt.stmt != "" {
+			if _, err := pool.Exec(ctx, tt.stmt); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if slug, err := workspaceSlug(ctx, pool, tt.nb); slug != tt.want || err != nil {
+			t.Errorf("%s: workspaceSlug = %q, %v; want %q", tt.name, slug, err, tt.want)
+		}
 	}
 }

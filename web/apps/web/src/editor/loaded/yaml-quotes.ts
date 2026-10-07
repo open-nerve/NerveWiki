@@ -9,18 +9,19 @@ export type Quote = "'" | '"' | "";
  * opens a string (Codex review R1). A property link is a string's whole
  * value (M6/P1 rule 10), so a link completes there alone.
  *
- * It reads the YAML from the frontmatter's second line, after its "---",
- * as far as at, as the server's YAML library reads it (go.yaml.in/yaml/v3),
- * as much as tells that: a quote opens a string where a key or a value
- * starts (a line's start, after "- ", "? ", ": ", "[", "{", ",", in them a
- * '?', an anchor or a tag); a string in quotes goes on over lines; a block's header ('|'
- * or '>') makes the lines indented past its node its text, and a plain
- * string the lines indented past its node, where nothing starts; a '#'
- * starts a comment but in a plain string's text after no space. A line's
- * node is where its key (its anchor or tag first), "-", "?" or ":" is; a
- * line with none, a value alone, is of the node of the line before that
- * left a value to come (Codex review fix checks A-M1, A2-M1). A line ends
- * at '\n' and at YAML's other line breaks (U+0085, U+2028, U+2029;
+ * It reads the YAML from the frontmatter's second line, after its "---", as
+ * far as at, as the server's YAML library reads it (go.yaml.in/yaml/v3), as
+ * much as tells that: a quote opens a string where a key or a value starts
+ * (a line's start, after "- ", "? ", ": ", "[", "{", ",", in them a '?', an
+ * anchor or a tag); a string in quotes goes on over lines; an alias is a
+ * node of its own; a block's header ('|' or '>') makes the lines indented
+ * past its node its text, and a plain string the lines indented past its
+ * node, where nothing starts; a '#' starts a comment but in a plain
+ * string's text after no space, and in [ ] and { } ends the plain string. A
+ * line's node is where its key (its anchor or tag first), "-", "?" or ":"
+ * is; a line with none, a value alone, is of the node of the line before
+ * that left a value to come (Codex review fix checks A-M1, A2-M1). A line
+ * ends at '\n' and at YAML's other line breaks (U+0085, U+2028, U+2029;
  * CodeMirror's lines end at the first alone).
  */
 export function openingQuote(state: EditorState, at: number): Quote {
@@ -83,7 +84,8 @@ export function openingQuote(state: EditorState, at: number): Quote {
       if (c === " " || c === "\t") {
         continue;
       }
-      if (c === "#" && (!plain || line[i - 1] === " " || line[i - 1] === "\t")) {
+      if (c === "#" && (!plain || i === 0 || line[i - 1] === " " || line[i - 1] === "\t")) {
+        plain &&= flow === 0; // in [ ] and { } a comment ends a plain string: the next line starts anew
         break;
       }
       if (flow > 0 && (c === "," || c === "]" || c === "}")) {
@@ -92,12 +94,13 @@ export function openingQuote(state: EditorState, at: number): Quote {
         plain = false;
       } else if (c === ":" && (spaceNext || (flow > 0 && (!plain || ",[]{}".includes(next))))) {
         // A value's: after a key, or alone at the start (after "? k"), an empty key's anchor or tag before it.
+        // Alone it is as "- " and "? ": a key may follow it on the line, its node (fix check A4-M3).
+        const alone: boolean = flow === 0 && !value && start && props === undefined;
         if (flow === 0 && !value) {
           node = start ? (props ?? i) : key;
           own = true;
         }
-        start = value = true;
-        plain = false;
+        [start, value, plain] = [true, !alone, false];
       } else if (plain || !start) {
         // A plain string's text, or past a string in quotes.
       } else if (c === "'" || c === '"') {
@@ -120,6 +123,12 @@ export function openingQuote(state: EditorState, at: number): Quote {
       } else if ((c === "|" || c === ">") && flow === 0) {
         block = own ? node : (pending ?? node);
         break;
+      } else if (c === "*") {
+        // An alias, a node of its own, no plain string's text: its name is an anchor's (fix check A4-M2).
+        [start, key] = [false, value ? key : (props ?? i)];
+        while (i + 1 < line.length && /[\w-]/.test(line[i + 1] ?? "")) {
+          i++;
+        }
       } else {
         [plain, start, key] = [true, false, value ? key : (props ?? i)];
       }

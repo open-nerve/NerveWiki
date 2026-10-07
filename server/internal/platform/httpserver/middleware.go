@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"path"
 	"runtime/debug"
 	"strings"
 	"time"
@@ -140,16 +141,22 @@ func withRecover(logger *slog.Logger, next http.Handler) http.Handler {
 // written, and any other wildcard's, or one of no value, as the wildcard
 // ("{tag}"); a path a route's subtree took, which no route of its own did
 // (the API's 404), as the subtree and "..." (fix check B2-M1). The web
-// app's paths, that "/" takes, are written as they are. It reads the route
-// the router sets on r: once r has been served, or in its handler.
+// app's paths, that "/" takes, are written as they are, cleaned as the
+// router cleans them (fix check B4-M1). It reads the route the router sets
+// on r: once r has been served, or in its handler. Of a CONNECT the router
+// redirects to a slash, that is the path it redirects to, which holds no
+// wildcard while no route of any method does (bootstrap's
+// TestTheRoutesOfAnyMethodHoldNoWildcard; fix check B4-Q1).
 func loggedPath(r *http.Request) string {
 	_, pattern, ok := strings.Cut(r.Pattern, " ")
 	if !ok {
 		pattern = r.Pattern
 	}
 	switch {
-	case pattern == "" || pattern == "/":
+	case pattern == "":
 		return r.URL.Path
+	case pattern == "/":
+		return cleanPath(r.URL.Path)
 	case strings.HasSuffix(pattern, "/") && r.URL.Path != pattern:
 		return pattern + "..."
 	case !strings.Contains(pattern, "{"):
@@ -170,6 +177,18 @@ func loggedPath(r *http.Request) string {
 		}
 	}
 	return strings.Join(segments, "/")
+}
+
+// cleanPath is p as the router cleans it before it routes it, so a path
+// it redirects is written as where it redirects to: its "." and ".."
+// segments resolved and its doubled slashes made one, the slash at its end
+// kept.
+func cleanPath(p string) string {
+	cleaned := path.Clean("/" + p)
+	if strings.HasSuffix(p, "/") && cleaned != "/" {
+		cleaned += "/"
+	}
+	return cleaned
 }
 
 // withAccessLog logs one line per request: method, path, status, duration

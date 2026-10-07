@@ -332,7 +332,8 @@ func TestAccessLogOfProbesIsDebug(t *testing.T) {
 // took, which no route did (a method, a segment, a slash more), as the
 // subtree; a path the router cleans to a route's, as the route (fix check
 // B3-M1). The access log, the recover's, the API errors' and LongLived's
-// alike; the web app's paths, that "/" takes, as they are (fix check B3-M4).
+// alike; the web app's paths, that "/" takes, as they are, cleaned as the
+// router cleans them (fix check B3-M4, B4-M1).
 func TestTheLogsWriteARoutesValuesButIdsAsItsWildcards(t *testing.T) {
 	logger, logs := captureLogs(t)
 	errs := NewAPIErrors(logger)
@@ -368,6 +369,8 @@ func TestTheLogsWriteARoutesValuesButIdsAsItsWildcards(t *testing.T) {
 		{http.MethodGet, "/api/v0/notebooks/" + id + "/tags/x/../layoff", "/api/v0/notebooks/{notebook_id}/tags/{tag}", ""},
 		{http.MethodGet, "/api/v0/workspaces/lab/tags/x/../layoff", "/api/v0/workspaces/{slug}/tags/{tag}", ""},
 		{http.MethodGet, "/lab/notebooks/" + id, "/lab/notebooks/" + id, ""},
+		{http.MethodGet, "/api/v0/notebooks/" + id + "/tags/layoff/../../../../../../lab", "/lab", ""},
+		{http.MethodGet, "/lab//tags/layoff/../", "/lab/tags/", ""},
 	} {
 		serve(h, httptest.NewRequest(tt.method, tt.path, nil))
 		entries := logs()

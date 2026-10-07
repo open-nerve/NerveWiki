@@ -119,6 +119,21 @@ test("what a line leaves goes on to the next: a string in quotes, a block, a pla
     // A document's start: what follows it is the document's.
     ["---\n--- # c\n  k: |\n    '‸", ""],
     ["---\n--- # c\n  k: '‸", "'"],
+    // In [ ] and { } a comment ends a plain string; an alias is a node of its own, no plain string's text;
+    // a ':' alone at a line's start may have a key after it, its node (fix check A4-M1..A4-M3).
+    ["---\nm: [? k # c\n  :\"a, '‸b c'\"]", ""],
+    ["---\ntags: [a, b\n# old: ], c\n, \"it's\n'‸90s\"]", ""],
+    ["---\nm: [? k # c\n  :'‸", "'"],
+    ["---\nm: [? k\n  # c\n  :'‸", "'"],
+    ["---\na: &a k\nm: [*a:\"x, '‸y'\"]", ""],
+    ["---\nm: {? *a :\"x, '‸y'\"}", ""],
+    ["---\nm: {*a:'‸", "'"],
+    ["---\nm: {? *a :'‸", "'"],
+    ['---\n? x\n: a: v\n  b: "first,\n\'‸second"', ""],
+    ['---\nk:\n  ? x\n  : &a : v\n    b: "first,\n  \'‸second"', ""],
+    ["---\n? x\n: a: v\n  c: '‸", "'"],
+    ["---\n? x\n: a: v\n  '‸c': d", "'"],
+    ["---\n? x\n: &a : v\n  '‸c': d", "'"],
   ] as const;
   expect(openingAt(docs)).toEqual(docs);
 });
