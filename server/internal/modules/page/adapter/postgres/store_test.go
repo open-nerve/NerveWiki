@@ -405,10 +405,11 @@ func TestSubtreeReachesTheDeepestLevel(t *testing.T) {
 	}
 }
 
-// The reads whose arrays grow with the data, a subtree's levels and link
-// targets by id, are planned with them however many times a connection runs
-// them; the rest are pgx's cached statements, which the server may plan once
-// for any arguments from their sixth run (M6 closeout FA4-M1, FA5-Q1).
+// The reads a plan for any arguments makes much slower, a subtree's levels
+// and link targets by id, are planned with theirs however many times a
+// connection runs them; the rest are pgx's cached statements, which the
+// server may plan once for any arguments from their sixth run, link targets
+// by key among them: theirs are as fast (M6 closeout FA4-M1, FA5-Q1, FA6-N2).
 func TestTheReadsOfGrowingArraysArePlannedWithThem(t *testing.T) {
 	ctx := context.Background()
 	f := newFixture(t)

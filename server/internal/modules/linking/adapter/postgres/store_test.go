@@ -283,7 +283,7 @@ func TestTheLinksAChangeReaches(t *testing.T) {
 	}
 }
 
-// The links a rename or a move reaches are read planned with its keys,
+// The links a unit that writes reaches are read planned with its keys,
 // targets and sources however many times a connection reads them: pgx's
 // cached statement, which the server may plan once for any arguments from
 // its sixth run, compared each link with them one by one (M6 closeout

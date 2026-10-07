@@ -2,6 +2,7 @@ package postgres_test
 
 import (
 	"context"
+	"maps"
 	"strings"
 	"testing"
 	"time"
@@ -41,20 +42,23 @@ func TestNewPoolAppliesMaxConns(t *testing.T) {
 	}
 }
 
-// The pool sends no parameter at startup that database.url does not: a
-// connection pooler refuses those it does not track (M6 closeout FA5-M2).
-// What a connection needs set it sets once it starts (afterConnect).
+// The pool sends no parameter at startup but those database.url and the
+// PG* environment variables ask for: a connection pooler refuses those it
+// does not track (M6 closeout FA5-M2, FA7-N2). What a connection needs set
+// it sets once it starts (afterConnect).
 func TestNewPoolSendsNoStartupParameters(t *testing.T) {
-	pool, err := postgres.NewPool(context.Background(), config.DatabaseConfig{
-		URL:      "postgres://nervewiki:secret@127.0.0.1:1/nervewiki",
-		MaxConns: 1,
-	})
+	const url = "postgres://nervewiki:secret@127.0.0.1:1/nervewiki?application_name=wiki"
+	pool, err := postgres.NewPool(context.Background(), config.DatabaseConfig{URL: url, MaxConns: 1})
 	if err != nil {
 		t.Fatalf("NewPool() error = %v", err)
 	}
 	defer pool.Close()
-	if got := pool.Config().ConnConfig.RuntimeParams; len(got) != 0 {
-		t.Errorf("startup parameters %v, want none", got)
+	asked, err := pgxpool.ParseConfig(url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := pool.Config().ConnConfig.RuntimeParams, asked.ConnConfig.RuntimeParams; !maps.Equal(got, want) {
+		t.Errorf("startup parameters %v, want %v", got, want)
 	}
 }
 
