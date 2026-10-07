@@ -158,6 +158,9 @@ test("what a line leaves goes on to the next: a string in quotes, a block, a pla
     ["---\nm: [? :]\nref: '‸", "'"],
     ['---\ntags: [?\n  # c\n  ], "rock,\n  \'‸n roll"]', ""],
     ["---\nk: ?]\nref: '‸", "'"],
+    ['---\ntags: [?\t], "rock,\n  \'‸n roll"]', ""],
+    ["---\nm: [?, ]\nref: '‸", "'"],
+    ["---\nm: [?,, '‸", "'"],
   ] as const;
   expect(openingAt(docs)).toEqual(docs);
 });

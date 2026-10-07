@@ -142,7 +142,7 @@ func withRecover(logger *slog.Logger, next http.Handler) http.Handler {
 // written, and any other wildcard's, or one of no value, as the wildcard
 // ("{tag}"); a path a route's subtree took, which no route of its own did
 // (the API's 404), as the subtree and "..." (fix check B2-M1). The web
-// app's paths, that "/" takes, are written as they are (webPath). It reads
+// app's paths, that "/" takes, are written as webPath writes them. It reads
 // the route the router sets on r: once r has been served, or in its
 // handler. Of a CONNECT the router redirects to a slash, that is the path
 // it redirects to, which holds no wildcard while no route a CONNECT may

@@ -334,7 +334,9 @@ func TestAccessLogOfProbesIsDebug(t *testing.T) {
 // B3-M1). The access log, the recover's, the API errors' and LongLived's
 // alike; the web app's paths, that "/" takes, as they are, or as where the
 // router redirects them to, of the path as written and of no CONNECT, by
-// any other method, and no query (fix check B3-M4, B4-M1, B5-M1, B6-M1).
+// any other method, with no query, an empty one in the absolute form as
+// "/", unescaped as a path is (fix check B3-M4, B4-M1, B5-M1, B6-M1,
+// B7-N1, B7-N2).
 func TestTheLogsWriteARoutesValuesButIdsAsItsWildcards(t *testing.T) {
 	logger, logs := captureLogs(t)
 	errs := NewAPIErrors(logger)
@@ -383,6 +385,7 @@ func TestTheLogsWriteARoutesValuesButIdsAsItsWildcards(t *testing.T) {
 		{"connect", "/x/../lab", "/lab", ""},
 		{http.MethodGet, "/lab/x/../tags?next=/lab/tags/layoff", "/lab/tags", ""},
 		{http.MethodGet, "http://example.com", "/", ""},
+		{http.MethodGet, "/lab/x/../a+b", "/lab/a+b", ""},
 	} {
 		serve(h, httptest.NewRequest(tt.method, tt.path, nil))
 		entries := logs()
