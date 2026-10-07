@@ -180,6 +180,8 @@ func TestCommentsHide(t *testing.T) {
 		{"a marker not at its line's end does not end it", "%%\na %% b\nc %%\n\nd\n", "<p>d</p>\n"},
 		{"part of the blocks at its ends: no line of its own shown", "a\n%%\nb\n\nc %%\nd\n", "<p>a<br>\n</p>\n<p>d</p>\n"},
 		{"in a paragraph, its lines not shown, nor its last's hard line break", "a\n%%\nb\n%%  \nc\n", "<p>a<br>\nc</p>\n"},
+		{"nor its last's line break after blanks", "a\n%%\nb\n%%    \nc\n\n%%\nd\n%% \t\ne\n", "<p>a<br>\n c</p>\n<p> e</p>\n"},
+		{"a text after its last marker keeps its line break", "%%\nb\n%%\rc\nd\n", "<p>\rc<br>\nd</p>\n"},
 		{"a table it spans", "%%\n\n| a |\n| - |\n| b |\n\n%%\n\nshown\n", "<p>shown</p>\n"},
 		{"in code, not a marker", "`%%` a `%%`\n", "<p><code>%%</code> a <code>%%</code></p>\n"},
 		{"in a heading or a cell, alone, text", "# %%\n\n| %% |\n| - |\n| a |\n\nb\n",
@@ -292,6 +294,20 @@ func TestALineBreakIsShownAsOne(t *testing.T) {
 			`<ul>` + "\n" + `<li><input disabled="" type="checkbox" data-task="3"> a<br>` + "\nb</li>\n</ul>\n",
 		},
 		{"a hard line break is one", "a  \nb\\\nc\n", "<p>a<br>\nb<br>\nc</p>\n"},
+		{
+			"after a task item's checkbox alone", "- [ ]\n  b\n- [x]  \n  c\n",
+			`<ul>` + "\n" + `<li><input disabled="" type="checkbox" data-task="3"> <br>` + "\nb</li>\n" +
+				`<li><input checked="" disabled="" type="checkbox" data-task="13"> <br>` + "\nc</li>\n</ul>\n",
+		},
+		{
+			"none after a $$ formula ending a paragraph's line, shown as a block", "a\n$$x$$\nb $$y$$  \nc\n",
+			`<p>a<br>` + "\n" + `<span class="nw-math nw-math-block">x</span>b <span class="nw-math nw-math-block">y</span>c</p>` + "\n",
+		},
+		{
+			"after a $$ formula with text after it, or in a heading", "$$x$$ a\nb\n\n$$y$$\nc\n===\n",
+			`<p><span class="nw-math nw-math-block">x</span> a<br>` + "\nb</p>\n" +
+				`<h1 id="nw-y-c"><span class="nw-math nw-math-block">y</span><br>` + "\nc</h1>\n",
+		},
 		{"after a CR LF", "a\r\nb\r\n", "<p>a<br>\nb</p>\n"},
 		{"a heading of two lines: its id as before", "a\nb\n===\n", `<h1 id="nw-a-b">a<br>` + "\nb</h1>\n"},
 	})

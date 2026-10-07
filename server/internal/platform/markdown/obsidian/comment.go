@@ -116,7 +116,7 @@ func endsLine(source []byte, at int) bool {
 // What a comment spans is hidden.
 type comments struct{}
 
-func (comments) Transform(doc *ast.Document, _ text.Reader, _ parser.Context) {
+func (comments) Transform(doc *ast.Document, reader text.Reader, _ parser.Context) {
 	var all, raw []*marker
 	images := 0 // the images around the node
 	_ = ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
@@ -155,7 +155,7 @@ func (comments) Transform(doc *ast.Document, _ text.Reader, _ parser.Context) {
 			if last.last {
 				after := last.NextSibling()
 				hide(open, last)
-				noBreak(after)
+				noBreak(after, reader.Source())
 				open = nil
 			}
 		case len(line) == 1 && last.first:
@@ -174,14 +174,22 @@ func (comments) Transform(doc *ast.Document, _ text.Reader, _ parser.Context) {
 	}
 }
 
-// noBreak takes away the line break that ends a block comment's last line,
-// which an empty text after its closing marker holds: Obsidian's reading
-// view shows no line of a block comment, nor an empty one where it was
-// (M6/P8 design 3).
-func noBreak(n ast.Node) {
-	if t, ok := n.(*ast.Text); ok && t.Segment.IsEmpty() {
-		t.SetSoftLineBreak(false)
-		t.SetHardLineBreak(false)
+// noBreak takes away the line break that ends a line after the node before
+// n, when only blanks are between them: the text that holds it comes after
+// any texts of the blanks. A block comment's closing marker takes it away,
+// as Obsidian's reading view shows no line of a block comment, nor an empty
+// one where it was (M6/P8 design 3).
+func noBreak(n ast.Node, source []byte) {
+	for ; n != nil; n = n.NextSibling() {
+		t, ok := n.(*ast.Text)
+		if !ok || !util.IsBlank(t.Segment.Value(source)) {
+			return
+		}
+		if t.SoftLineBreak() || t.HardLineBreak() {
+			t.SetSoftLineBreak(false)
+			t.SetHardLineBreak(false)
+			return
+		}
 	}
 }
 

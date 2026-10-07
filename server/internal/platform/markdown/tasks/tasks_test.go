@@ -118,9 +118,15 @@ func theirs(src []byte) (string, error) {
 
 var position = regexp.MustCompile(` data-task="(\d+)"`)
 
+// boxBreak is a line break right after a checkbox, which goldmark's parser
+// takes away with the blanks after ']' when the line ends there and the
+// extension's leaves; the comparison leaves out all of them.
+var boxBreak = regexp.MustCompile(`(<input [^>]*> )(?:<br>)?\n`)
+
 // sameAsGoldmark checks that src renders as goldmark renders it but for the
-// checkboxes' positions, and that each position is a task's character, the
-// rendered ones the extracted ones, in the content's order.
+// checkboxes' positions and the line breaks right after them, and that each
+// position is a task's character, the rendered ones the extracted ones, in
+// the content's order.
 func sameAsGoldmark(t *testing.T, src string) bool {
 	t.Helper()
 	got, found, err := ours([]byte(src))
@@ -131,6 +137,7 @@ func sameAsGoldmark(t *testing.T, src string) bool {
 	if err != nil {
 		t.Fatal(err)
 	}
+	want = boxBreak.ReplaceAllString(want, "$1")
 	var shown []tasks.Task
 	for _, m := range position.FindAllStringSubmatchIndex(got, -1) {
 		o, _ := strconv.Atoi(got[m[2]:m[3]])
@@ -140,7 +147,7 @@ func sameAsGoldmark(t *testing.T, src string) bool {
 	// The view puts the footnotes' tasks last; Extract gives the content's order.
 	slices.SortFunc(shown, func(a, b tasks.Task) int { return a.Offset - b.Offset })
 	ok := true
-	if stripped := position.ReplaceAllString(got, ""); stripped != want {
+	if stripped := boxBreak.ReplaceAllString(position.ReplaceAllString(got, ""), "$1"); stripped != want {
 		t.Errorf("input %q\nours   %q\ntheirs %q", src, stripped, want)
 		ok = false
 	}

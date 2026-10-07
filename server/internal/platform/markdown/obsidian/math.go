@@ -201,3 +201,23 @@ func formula(block text.Reader, m *inlineMath, end, n int) ast.Node {
 		block.AdvanceLine()
 	}
 }
+
+// formulaLines takes away the line break after a $$…$$ formula that ends a
+// paragraph's line: the reading view shows the formula as a block of its
+// own, after which a <br> would show an empty line, and Obsidian's reading
+// view shows none (M6/P8 design 3). A heading's line keeps it, for its id.
+type formulaLines struct{}
+
+// Transform implements parser.ASTTransformer.
+func (formulaLines) Transform(doc *ast.Document, reader text.Reader, _ parser.Context) {
+	_ = ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		m, ok := n.(*inlineMath)
+		if !ok {
+			return ast.WalkContinue, nil
+		}
+		if entering && m.display && starts(m.Parent()) {
+			noBreak(m.NextSibling(), reader.Source())
+		}
+		return ast.WalkSkipChildren, nil
+	})
+}

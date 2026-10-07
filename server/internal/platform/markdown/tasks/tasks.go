@@ -5,6 +5,7 @@
 package tasks
 
 import (
+	"bytes"
 	"cmp"
 	"regexp"
 	"slices"
@@ -92,7 +93,10 @@ func (taskParser) Parse(parent ast.Node, block text.Reader, _ parser.Context) as
 	// The line starts with '[', so it has no padding (padding is spaces
 	// before it): line[i] is the source's seg.Start+i.
 	value := line[m[2]]
-	block.Advance(m[1])
+	// Unlike goldmark, it leaves the line's end: past it, goldmark would not
+	// end the line with its line break, which is the item's, shown as one when
+	// nothing follows the checkbox (M6/P8 design 3).
+	block.Advance(len(bytes.TrimSuffix(line[:m[1]], []byte("\n"))))
 	return &node{Task: Task{Offset: seg.Start + m[2], Checked: value == 'x' || value == 'X'}}
 }
 

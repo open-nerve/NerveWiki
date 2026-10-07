@@ -92,6 +92,7 @@ func dialect() []parser.Option {
 		parser.WithASTTransformers(
 			util.Prioritized(callouts{}, 10),
 			util.Prioritized(comments{}, 20),
+			util.Prioritized(formulaLines{}, 25),
 			util.Prioritized(tagsAfterText{}, 30),
 			util.Prioritized(inLinks{}, 40),
 		),
