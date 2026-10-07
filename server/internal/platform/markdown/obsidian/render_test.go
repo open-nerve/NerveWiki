@@ -104,7 +104,7 @@ func TestATagsUnderscoresAndRuns(t *testing.T) {
 		{"a number and an underscore", "#123_ #123\n", `<p><a class="nw-tag" data-nw-tag="123_">#123_</a> #123</p>` + "\n"},
 		{
 			"at the start of a quote's line", "> a\n>#b\n",
-			"<blockquote>\n<p>a\n" + `<a class="nw-tag" data-nw-tag="b">#b</a></p>` + "\n</blockquote>\n",
+			"<blockquote>\n<p>a<br>\n" + `<a class="nw-tag" data-nw-tag="b">#b</a></p>` + "\n</blockquote>\n",
 		},
 	})
 }
@@ -178,7 +178,8 @@ func TestCommentsHide(t *testing.T) {
 		{"a block comment", "a\n\n%%\nb\n\nc\n%%\n\nd\n", "<p>a</p>\n<p>d</p>\n"},
 		{"one left open hides the rest", "a\n\n%%\nb\n\nc\n", "<p>a</p>\n"},
 		{"a marker not at its line's end does not end it", "%%\na %% b\nc %%\n\nd\n", "<p>d</p>\n"},
-		{"part of the blocks at its ends", "a\n%%\nb\n\nc %%\nd\n", "<p>a\n</p>\n<p>\nd</p>\n"},
+		{"part of the blocks at its ends: no line of its own shown", "a\n%%\nb\n\nc %%\nd\n", "<p>a<br>\n</p>\n<p>d</p>\n"},
+		{"in a paragraph, its lines not shown, nor its last's hard line break", "a\n%%\nb\n%%  \nc\n", "<p>a<br>\nc</p>\n"},
 		{"a table it spans", "%%\n\n| a |\n| - |\n| b |\n\n%%\n\nshown\n", "<p>shown</p>\n"},
 		{"in code, not a marker", "`%%` a `%%`\n", "<p><code>%%</code> a <code>%%</code></p>\n"},
 		{"in a heading or a cell, alone, text", "# %%\n\n| %% |\n| - |\n| a |\n\nb\n",
@@ -243,6 +244,55 @@ func TestCallouts(t *testing.T) {
 			"a title of comments and spaces is the type's", "> [!note] %%a%% %%b%%\n> body\n",
 			`<div class="nw-callout" data-callout="note">` + "\n" + `<div class="nw-callout-title">Note </div>` + "\n<p>body</p>\n</div>\n",
 		},
-		{"not one", "> [!a b]\n> \\[!c]\n", "<blockquote>\n<p>[!a b]\n[!c]</p>\n</blockquote>\n"},
+		{"not one", "> [!a b]\n> \\[!c]\n", "<blockquote>\n<p>[!a b]<br>\n[!c]</p>\n</blockquote>\n"},
+		{
+			"its title's line ends with no line break, its body's lines are shown apart", "> [!note] T\n> a\n> b\n",
+			`<div class="nw-callout" data-callout="note">` + "\n" + `<div class="nw-callout-title">T</div>` + "\n<p>a<br>\nb</p>\n</div>\n",
+		},
+		{
+			"its title's hard line break is not shown either", "> [!note] T  \n> a\n",
+			`<div class="nw-callout" data-callout="note">` + "\n" + `<div class="nw-callout-title">T</div>` + "\n<p>a</p>\n</div>\n",
+		},
+		{
+			"an emphasis over its title's line takes the next line in, shown as one (a known limit)", "> [!note] **a\n> b**\n",
+			`<div class="nw-callout" data-callout="note">` + "\n" + `<div class="nw-callout-title"><strong>a<br>` + "\n" +
+				`b</strong></div>` + "\n</div>\n",
+		},
+	})
+}
+
+// A line break in a block is shown as one, after any node that ends its
+// line too, as Obsidian's reading view shows it; a heading's id reads it as
+// a space, as before (M6/P8 design 3).
+func TestALineBreakIsShownAsOne(t *testing.T) {
+	checkRenders(t, []renderCase{
+		{
+			"after an embed, a formula, a highlight", "![[x]]\n$y$\n==h==\nb\n",
+			`<p><a class="nw-wikilink nw-embed nw-unresolved" data-nw-target="x">x</a><br>` + "\n" +
+				`<span class="nw-math">y</span><br>` + "\n<mark>h</mark><br>\nb</p>\n",
+		},
+		{
+			"after a tag, a wikilink, a comment", "#t\n[[x]]\na %%c%%\nb\n",
+			`<p><a class="nw-tag" data-nw-tag="t">#t</a><br>` + "\n" +
+				`<a class="nw-wikilink nw-unresolved" data-nw-target="x">x</a><br>` + "\na <br>\nb</p>\n",
+		},
+		{
+			"after an address, a strikethrough, an image, HTML", "www.a.com\n~~s~~\n![i](u)\n<b>x</b>\nb\n",
+			`<p><a href="http://www.a.com">www.a.com</a><br>` + "\n<del>s</del><br>\n" +
+				`<span class="nw-image">i <a class="nw-unresolved" data-nw-target="u">u</a></span><br>` + "\n<b>x</b><br>\nb</p>\n",
+		},
+		{
+			"after a footnote's reference, and in its definition", "a [^1]\nb\n\n[^1]: c\nd\n",
+			`<p>a <sup id="nw-fnref:1"><a href="#nw-fn:1" class="footnote-ref" role="doc-noteref">1</a></sup><br>` + "\nb</p>\n" +
+				`<div class="footnotes" role="doc-endnotes">` + "\n<hr>\n<ol>\n" + `<li id="nw-fn:1">` + "\n<p>c<br>\nd&#160;" +
+				`<a href="#nw-fnref:1" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p>` + "\n</li>\n</ol>\n</div>\n",
+		},
+		{
+			"in a task item", "- [ ] a\n  b\n",
+			`<ul>` + "\n" + `<li><input disabled="" type="checkbox" data-task="3"> a<br>` + "\nb</li>\n</ul>\n",
+		},
+		{"a hard line break is one", "a  \nb\\\nc\n", "<p>a<br>\nb<br>\nc</p>\n"},
+		{"after a CR LF", "a\r\nb\r\n", "<p>a<br>\nb</p>\n"},
+		{"a heading of two lines: its id as before", "a\nb\n===\n", `<h1 id="nw-a-b">a<br>` + "\nb</h1>\n"},
 	})
 }

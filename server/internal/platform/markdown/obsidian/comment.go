@@ -153,7 +153,9 @@ func (comments) Transform(doc *ast.Document, _ text.Reader, _ parser.Context) {
 		switch last := line[len(line)-1]; {
 		case open != nil:
 			if last.last {
+				after := last.NextSibling()
 				hide(open, last)
+				noBreak(after)
 				open = nil
 			}
 		case len(line) == 1 && last.first:
@@ -169,6 +171,17 @@ func (comments) Transform(doc *ast.Document, _ text.Reader, _ parser.Context) {
 	}
 	if open != nil {
 		hide(open, nil)
+	}
+}
+
+// noBreak takes away the line break that ends a block comment's last line,
+// which an empty text after its closing marker holds: Obsidian's reading
+// view shows no line of a block comment, nor an empty one where it was
+// (M6/P8 design 3).
+func noBreak(n ast.Node) {
+	if t, ok := n.(*ast.Text); ok && t.Segment.IsEmpty() {
+		t.SetSoftLineBreak(false)
+		t.SetHardLineBreak(false)
 	}
 }
 
