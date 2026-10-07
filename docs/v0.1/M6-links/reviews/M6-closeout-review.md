@@ -116,7 +116,7 @@
 - **M6→M8**：新的[链接索引与恢复、历史、还原](../../M8-history-search/handoffs/M6-links.md)：恢复带提取结果、只重新解析，历史版本即时解析，还原与整组撤销碰上改名、移动时的 `linking.pages_locked`，行为测试。
 - **M6→M9**：[改写的移交](../../M9-mcp/handoffs/M6-P4-rewrite.md)加第 4 项（反链与索引的工具）。
 - **M6→M10**：新的 [lint 的数据在链接索引里](../../M10-llm-wiki/handoffs/M6-links.md)（C-Q1）。
-- **M6→M12**：[性能](../../M12-release/handoffs/M4-performance.md)第 3 项（改名的预算，A-Q1、A-Q3）、第 6 项改写（链接很多的页，A-I1）、第 7 项（补全读整个笔记本的目标）、新的第 8 项（很多同名的页，A-M1、A-N4）、第 9 项（编辑器解析的上限，B-I1、FB-I2、FB2-I1、FB3-I1、FB4-I1、FB4-N1）与第 10 项（恢复、导入之后先 ANALYZE，缓存的语句，FA-M1、FA2-I1、FA3-M1、FA4-M1、FA5-M1、FA5-Q1）；[打磨](../../M12-release/handoffs/M5-polish.md)第 13 项（编辑时的大纲、全部标签的总览、别的引擎的锚点）与第 14 项（前端的几处结构，B Nit 8）。
+- **M6→M12**：[性能](../../M12-release/handoffs/M4-performance.md)第 3 项（改名的预算，A-Q1、A-Q3）、第 6 项改写（链接很多的页，A-I1）、第 7 项（补全读整个笔记本的目标）、第 4 项补上删除大文件夹的规模（FA6-Q1）、新的第 8 项（很多同名的页，A-M1、A-N4）、第 9 项（编辑器解析的上限，B-I1、FB-I2、FB2-I1、FB3-I1、FB4-I1、FB4-N1）与第 10 项（恢复、导入之后先 ANALYZE，缓存的语句，FA-M1、FA2-I1、FA3-M1、FA4-M1、FA5-M1、FA5-Q1、FA6-N2、FA7-Q1、FA7-Q2）；[打磨](../../M12-release/handoffs/M5-polish.md)第 13 项（编辑时的大纲、全部标签的总览、别的引擎的锚点）与第 14 项（前端的几处结构，B Nit 8）。
 
 ## 文档与代码的不一致
 
@@ -143,7 +143,7 @@
 
 ## 核实修复
 
-修复之后由两位 Opus 核对者各在自己的副本里核对（FA：后端与文档；FB：前端、端到端与 lezer 的补丁），直到一轮没有行为上的发现。
+修复之后由两位 Opus 核对者各在自己的副本里核对（FA：后端与文档；FB：前端、端到端与 lezer 的补丁），直到一轮没有行为上的发现。第五轮之后只有后端还有行为上的发现，第六、七轮由 FA 一位核对（前端的改动只有测试与注释，一并核对）；第七轮没有行为上的发现。
 
 **第一轮**（`1ea1eff`）
 - 门禁：
@@ -245,7 +245,7 @@
 | 编号 | 级别 | 发现 | 处置 |
 |---|---|---|---|
 | FA5-M1 | Minor | **按参数规划让链接目标的两条递归语句在候选多时每次都做 JIT**：有参数的计划代价约每个候选 285，约 350 个起越过 `jit_above_cost`；2,000 个键 48.9 ms（JIT 40 ms），关掉 JIT 6.0 ms，通用计划 6.5 ms。2,000 条不同链接的页保存一次 51–57 → 106–113 ms，改名一页（83 条反链）248–318 → 395–471 ms，移动子文件夹 206–249 → 337–419 ms；同一笔记本的保存在索引锁处串行 | 连接建立时 `SET jit = off`（`afterConnect`）：应用的语句至多读几万行，编译比省下的久。`TestPoolTurnsJITOffOnEachConnection` 逐条看池里的每条连接与 Listener 那样取走的一条；反向对照 2 项（不设、只设一部分连接）都失败 |
-| FA5-M2 | Minor | 启动参数 `plan_cache_mode` 让 PgBouncer 拒绝连接（`unsupported startup parameter`）；用 `ignore_startup_parameters` 绕开，修复就悄悄失效 | 不再用启动参数：按参数规划改在语句上（FA5-Q1），JIT 用连接建立之后的 `SET`，连接池代理照常可用 |
+| FA5-M2 | Minor | 启动参数 `plan_cache_mode` 让 PgBouncer 拒绝连接（`unsupported startup parameter`）；用 `ignore_startup_parameters` 绕开，修复就悄悄失效 | 不再用启动参数：按参数规划改在语句上（FA5-Q1），JIT 用连接建立之后的 `SET`，会话模式的连接池代理照常可用（事务模式本来就用不了：事件流的 `LISTEN`、会话级的 `SET`，第七轮 FA7-Q2） |
 | FA5-N1 | Nit | 测试守不住"只对一部分连接设"；去掉设置时有统计的子树测试照过，记录的"各对两条测试"读作两条子树测试 | 池的测试逐条看全部连接与取走的一条；记录写明失败的测试 |
 | FA5-N2 | Nit | 竞态检测下没有统计的子树测试正常时 0.43 秒，占 1 秒上限的 43%；13.4 第 8 条还写"各 3 秒" | 已在 `7074df0`、`7703581` 改（持续集成在竞态检测下 1.36 秒失败）：两条移到不带竞态检测的构建里跑，第 8 条改正 |
 | FA5-N3 | Nit | FA-M1 行"改名在索引锁下读它改写链接"不对：改写经 `Rewrite.Participate` 读子树，不取索引锁；索引锁下 `PagesChanged` 再读一遍是为了重新解析；移动不读这一遍。M6→M12 一行第 9、10 项的出处没跟上 | 改正 |
@@ -260,14 +260,28 @@
 
 | 编号 | 级别 | 发现 | 处置 |
 |---|---|---|---|
-| FA6-M1 | Minor | **`Planned` 依赖 pgx 的描述缓存**：`database.url` 带 `description_cache_capacity=0` 时 pgx 拒绝 `QueryExecModeCacheDescribe`，每个写单元都读的 `LinksReached` 因此报错，连新建一页都答 500（第五轮之前答 201） | `Planned` 改用 `QueryExecModeDescribeExec`：每次描述再执行，多一次往返，不用 pgx 的任何缓存。`TestPlannedNeedsNoCacheOfPgx` 在两个缓存都关掉的连接上走 `Planned`；改回描述缓存时失败 |
+| FA6-M1 | Minor | **`Planned` 依赖 pgx 的描述缓存**：`database.url` 带 `description_cache_capacity=0` 时 pgx 拒绝 `QueryExecModeCacheDescribe`，每个写单元都读的 `LinksReached` 因此报错，连新建一页都答 500（第五轮之前答 201） | `Planned` 改用 `QueryExecModeDescribeExec`：每次描述再执行，多一次往返，不用 pgx 的任何缓存。`TestPlannedNeedsNoCacheOfPgx` 在两个缓存都关掉的连接上走 `Planned`；改回描述缓存时失败（第七轮补上 `Query` 与事务里的一遍，FA7-N1）。每条多一次往返：本机约 0.12 ms，改名一页约 9–11 条（FA7-Q1） |
 | FA6-N1 | Nit | FA5-M2 没有测试守住：把 JIT 写成启动参数，测试照过 | `TestNewPoolSendsNoStartupParameters`：普通地址下池不带启动参数；那个变体失败 |
 | FA6-N2 | Nit | "数组随数据增长的三条"与代码不符：这样的语句还有十几条，照旧缓存，实测通用计划不慢；选这三条是因为通用计划明显更慢。`LinksReached` 每个写单元都读，不只改名与移动 | 13.4 第 9 条、M12 第 10 项、记录与注释改为"通用计划明显更慢的"；给新语句的规则改为比较第 6 次起的通用计划与有参数的计划 |
 | FA6-N3 | Nit | 反链语句的注释还写计划会被编译 | 注明那是关掉 JIT 之前（FA5-M1） |
 | FA6-N4 | Nit | 第五轮一节"16 万个空格……（原版 4.1 秒……）"的原版数字是 8 万个时量的；FB5-N1 行写原版的正则也让新断言失败，实际失败的是代价测试 | 改正 |
 | FA6-Q1 | Question | 经 HTTP 删除一个 5 万个节点的文件夹 10.4–12.7 秒（两个版本一样），默认的请求期限 15 秒，约 6–7 万个节点以上的文件夹删不掉；M12 第 4 项只写了 3,000 个节点 | 写进 M12 第 4 项 |
 
-<<FIXCHECK7>>
+**第七轮**（`fa51fed`）
+- 门禁：`lint-go`、`make test-go`（竞态检测下 64 个包，不带竞态检测的 6 步）、`gen-check`、改动的包与 pgtest `-race -count=3`，全过。
+- 反向对照：13 项，12 项失败；存活的一项（只把 `Query` 改回描述缓存）写成 FA7-N1。改用 `QueryExecModeExec` 时 12 项失败（参数的编码），`DescribeExec` 是对的选择。
+- 探针：13 种 `database.url`（两个缓存的容量设 0 的组合、`default_query_exec_mode` 的五种取值）× 池上与事务里 × `Exec`、`Query`、`QueryRow`，`Planned` 都能执行、每次都按参数规划（auto_explain 逐次读回计划），`pg_prepared_statements` 里一条也没有；`f2a7969` 在其中 5 种下报错。经 `serve` 的 10 种地址，新建、保存、改名（含改写）、改名文件夹、移动、反链、链接目标、删除：关掉描述缓存的两种，这一版全对，上一版新建页就答 500；其余两版相同。
+
+| 编号 | 级别 | 发现 | 处置 |
+|---|---|---|---|
+| FA7-N1 | Nit | FA6-M1 的测试只走 `Exec`、`QueryRow`，经 `Planned` 的三条都是 `Query`：只把 `Query` 改回描述缓存，测试照过，经 `serve` 新建页又答 500 | 测试三条路都走，池上一遍、事务里一遍；三条路各自改回描述缓存，都失败 |
+| FA7-N2 | Nit | `TestNewPoolSendsNoStartupParameters` 在设了 `PGAPPNAME`、`PGTZ`、`PGOPTIONS` 的环境里失败（pgx 把它们转成启动参数） | 改为与 `pgxpool.ParseConfig` 读同一地址的结果比较；带这两个环境变量照过，JIT 写成启动参数仍失败 |
+| FA7-N3 | Nit | 两条适配器测试的注释还写"数组随数据增长的"与"改名、移动读到的链接" | 改正 |
+| FA7-N4 | Nit | M6→M12 一行缺第 4 项（FA6-Q1）与第 10 项的 FA6-N2；M12 第 10 项的出处缺 FA6-N2；13.4 第 9 条列举照旧缓存的语句漏了按键读链接目标与 reindex 的标题键 | 补上 |
+| FA7-Q1 | Question | 多一次往返的代价没有记下：每条 `Planned` 语句本机约多 0.12 ms，改名一页约 9–11 条（小笔记本里改名多 1–2.5 ms），别的请求在噪声之内；数据库在远端时每条多一个网络往返 | 写进 FA6-M1 行与 M12 第 10 项，压测时看远端库上改名的时延（负责人可以改判：要省这一次往返，就让 `NewPool` 保证描述缓存在，`Planned` 用描述缓存） |
+| FA7-Q2 | Question | `DescribeExec` 的描述与执行分两次往返，事务模式的连接池代理可能换连接；不过事务模式本来就用不了（`LISTEN`、会话级的 `SET`） | M12 第 10 项写明部署文档只支持会话模式的连接池代理；FA5-M2 行改正 |
+
+第七轮没有行为上的发现，核对到此为止。
 
 ## 没能验证的风险
 
