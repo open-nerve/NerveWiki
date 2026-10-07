@@ -262,6 +262,10 @@ function pages(context: EditorContext): CompletionSource {
     const unwritten = unwritable(place);
     const options: Completion[] = [];
     for (const target of targets) {
+      // A title may hold what YAML does not take (U+FFFE, U+FFFF): its page is not listed where it would be written so.
+      if (unwritten.test(target.link)) {
+        continue;
+      }
       const link = quoted(quote, target.link);
       // Matched by its link, which holds its title: a path for a title others share.
       options.push({
@@ -285,12 +289,12 @@ function pages(context: EditorContext): CompletionSource {
 }
 
 /**
- * unwritable is what an alias written at place may not hold: a bracket or
+ * unwritable is what a link or an alias written at place may not hold: a bracket or
  * a line's end would end the link it is written in; in a table, a '|' the
  * cell; in a frontmatter's string in quotes, a character YAML does not
  * take there as written: a control but a tab, a line's end of YAML's
- * (U+0085, U+2028, U+2029: the string would be one over lines, the spaces
- * around the line's end gone, no property link), U+FFFE and U+FFFF.
+ * (U+0085, U+2028, U+2029: the string would be one over lines, or lose
+ * the spaces around it, and no property link), U+FFFE and U+FFFF.
  */
 function unwritable(place: Place): RegExp {
   if (place.table) {

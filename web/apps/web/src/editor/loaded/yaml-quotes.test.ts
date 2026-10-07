@@ -101,6 +101,18 @@ test("what a line leaves goes on to the next: a string in quotes, a block, a pla
     ["---\nl: [a\n  '‸", ""],
     // A '#' in a plain string's text after no space is text.
     ["---\nC#: '‸", "'"],
+    // An empty key's anchor or tag is its node's; in [ ] and { } a '?' is a key's, a space after it or not.
+    ["---\n&a : Notes from\n  '‸", ""],
+    ["---\nk:\n  !!str : v\n   '‸", ""],
+    ["---\nm: {? 'a,': 1}\nn: it's, '‸", ""],
+    ["---\nm: [?'‸", "'"],
+    ["---\nm: [? 'k,', '‸", "'"],
+    // A key's anchor and tag, the first of them its node; a value alone after a line of its own node.
+    ["---\n!!str &a k: v\n '‸", ""],
+    ["---\n&a 'k': v\n '‸", ""],
+    ["---\nx:\n  y:\nk: |\n '‸", ""],
+    ["---\nx:\n  y:\nk: v\n '‸", ""],
+    ["---\n?\n  v\n '‸", ""],
     // An anchor's name ends at what is no letter, digit, '-' or '_': a '?' after it starts a plain string.
     ["---\nref: &x?y '‸", ""],
     ["---\nref: &x-1_b '‸", "'"],

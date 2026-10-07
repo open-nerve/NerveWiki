@@ -12,8 +12,8 @@ export type Quote = "'" | '"' | "";
  * It reads the YAML from the frontmatter's second line, after its "---",
  * as far as at, as the server's YAML library reads it (go.yaml.in/yaml/v3),
  * as much as tells that: a quote opens a string where a key or a value
- * starts (a line's start, after "- ", "? ", ": ", "[", "{", ",", an anchor
- * or a tag); a string in quotes goes on over lines; a block's header ('|'
+ * starts (a line's start, after "- ", "? ", ": ", "[", "{", ",", in them a
+ * '?', an anchor or a tag); a string in quotes goes on over lines; a block's header ('|'
  * or '>') makes the lines indented past its node its text, and a plain
  * string the lines indented past its node, where nothing starts; a '#'
  * starts a comment but in a plain string's text after no space. A line's
@@ -91,9 +91,9 @@ export function openingQuote(state: EditorState, at: number): Quote {
         start = c === ",";
         plain = false;
       } else if (c === ":" && (spaceNext || (flow > 0 && (!plain || ",[]{}".includes(next))))) {
-        // A value's: after a key, or alone at the start (after "? k").
+        // A value's: after a key, or alone at the start (after "? k"), an empty key's anchor or tag before it.
         if (flow === 0 && !value) {
-          node = start ? i : key;
+          node = start ? (props ?? i) : key;
           own = true;
         }
         start = value = true;
@@ -108,6 +108,8 @@ export function openingQuote(state: EditorState, at: number): Quote {
         node = i;
         value = false;
         own = true;
+      } else if (c === "?" && flow > 0) {
+        // In [ ] and { } a '?' is a key's, a space after it or not, as the library reads it.
       } else if (c === "&" || c === "!") {
         // An anchor's name is letters, digits, '-' and '_' (what follows it starts anew); a tag goes on to a space.
         props ??= value ? undefined : i;

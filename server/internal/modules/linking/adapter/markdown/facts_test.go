@@ -297,7 +297,9 @@ func TestThePageFactsKeepTheFirstMaxLinks(t *testing.T) {
 // less than 48 times as long (a square, 256): the best of five, the two
 // counts timed in turn after a collection, so that neither pays for the
 // other's garbage and a while the machine is busy slows both (fix check
-// B2-M2: four times as many against eight was too near under load).
+// B2-M2: four times as many against eight was too near under load), and of
+// up to fifteen while over it: a busy machine's pause may fall on the five,
+// a square on each (fix check B3-M5).
 func TestThePropertyLinksFindTheirStringsInTimeAsLongAsThey(t *testing.T) {
 	md, err := markdown.New([]markdown.Extension{obsidian.Extension(obsidian.Options{})})
 	if err != nil {
@@ -348,7 +350,7 @@ func TestThePropertyLinksFindTheirStringsInTimeAsLongAsThey(t *testing.T) {
 		}
 		few, many := facts(shape.small), facts(16*shape.small)
 		small, large := time.Duration(math.MaxInt64), time.Duration(math.MaxInt64)
-		for range 5 {
+		for i := 0; i < 15 && (i < 5 || large > 48*small); i++ {
 			small, large = min(small, took(few)), min(large, took(many))
 		}
 		if large > 48*small {

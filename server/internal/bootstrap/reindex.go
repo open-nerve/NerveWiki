@@ -59,7 +59,8 @@ func Reindex(ctx context.Context, cfg config.Config, errOut, out io.Writer, id u
 		case err != nil:
 			line = fmt.Sprintf("notebook %s: not reindexed: %v", nb, err)
 		case len(r.Clashes) > 0:
-			if line, err = clashLine(ctx, c.pool, nb, r.Clashes); err != nil {
+			slugOf := func(ctx context.Context, nb uuid.UUID) (string, error) { return workspaceSlug(ctx, c.pool, nb) }
+			if line, err = clashLine(ctx, c.logger, slugOf, nb, r.Clashes); err != nil {
 				return err
 			}
 		default:
@@ -90,23 +91,25 @@ func plural(n int, thing string) string {
 // clashLine tells the siblings of the notebook nb whose title keys would
 // clash, each group by its pages' addresses in the web app, which the
 // notebook's members open: the titles are the notebook's, which the
-// server's administrator may not read, but its workspace's slug is said
-// (v0.1 design 13.1 rule 10; M6 Codex review, fix check B2-Q1). Of a
-// workspace deleted meanwhile, by the pages' ids.
-func clashLine(ctx context.Context, pool *pgxpool.Pool, nb uuid.UUID, clashes []linking.Clash) (string, error) {
-	path := func(id uuid.UUID) string { return id.String() }
-	ws, ok, err := notebook.NewNotebooks(pool).WorkspaceOf(ctx, nb)
-	if err != nil {
-		return "", fmt.Errorf("notebook %s: its workspace: %w", nb, err)
+// server's administrator may not read, but its workspace's slug, of
+// slugOf, is said (v0.1 design 13.1 rule 10; M6 Codex review, fix check
+// B2-Q1). Of a workspace deleted meanwhile, or whose slug is not read, the
+// error logged, by the pages' ids (fix check B3-M3): it fails only when ctx
+// is done.
+func clashLine(ctx context.Context, logger *slog.Logger, slugOf func(context.Context, uuid.UUID) (string, error),
+	nb uuid.UUID, clashes []linking.Clash) (string, error) {
+	slug, err := slugOf(ctx, nb)
+	if err != nil && ctx.Err() != nil {
+		return "", fmt.Errorf("notebook %s: %w", nb, err)
 	}
-	if ok {
-		slugs, err := workspace.NewWorkspaces(pool).Slugs(ctx, []uuid.UUID{ws})
-		if err != nil {
-			return "", fmt.Errorf("notebook %s: its workspace's slug: %w", nb, err)
-		}
-		if slug, ok := slugs[ws]; ok {
-			path = func(id uuid.UUID) string { return fmt.Sprintf("/%s/notebooks/%s/pages/%s", slug, nb, id) }
-		}
+	if err != nil {
+		logger.LogAttrs(ctx, slog.LevelError, "the pages whose titles would share a key are told by id: their workspace's slug is not read",
+			slog.String("notebook_id", nb.String()), slog.Any("error", err))
+		slug = ""
+	}
+	path := func(id uuid.UUID) string { return id.String() }
+	if slug != "" {
+		path = func(id uuid.UUID) string { return fmt.Sprintf("/%s/notebooks/%s/pages/%s", slug, nb, id) }
 	}
 	groups := make([]string, len(clashes))
 	for i, c := range clashes {
@@ -117,6 +120,17 @@ func clashLine(ctx context.Context, pool *pgxpool.Pool, nb uuid.UUID, clashes []
 		groups[i] = strings.Join(pages, ", ")
 	}
 	return fmt.Sprintf("notebook %s: not reindexed: the pages whose titles would share a key: %s", nb, strings.Join(groups, "; ")), nil
+}
+
+// workspaceSlug is the slug of the workspace of the notebook nb on pool; ""
+// when the notebook or its workspace was deleted meanwhile.
+func workspaceSlug(ctx context.Context, pool *pgxpool.Pool, nb uuid.UUID) (string, error) {
+	ws, ok, err := notebook.NewNotebooks(pool).WorkspaceOf(ctx, nb)
+	if err != nil || !ok {
+		return "", err
+	}
+	slugs, err := workspace.NewWorkspaces(pool).Slugs(ctx, []uuid.UUID{ws})
+	return slugs[ws], err
 }
 
 // reindexAdmin is the linking module's rebuild on pool: the Markdown and

@@ -446,6 +446,13 @@ test("in a frontmatter, as the server finds it, a link completes in quotes, as a
 function quotedTargets(): Promise<LinkTarget[]> {
   return Promise.resolve([
     {
+      id: "p6",
+      kind: "page",
+      name: `Plan${String.fromCodePoint(0xfffe)}`,
+      link: `Plan${String.fromCodePoint(0xfffe)}`,
+      aliases: ["Plan B"],
+    },
+    {
       id: "p5",
       kind: "page",
       name: "Bob's",
@@ -526,6 +533,7 @@ test("in a frontmatter an alias with a character YAML does not take in quotes as
   const { view } = editingAt("---\nref: ‸\n---", { linkTargets });
   type(view, '"[[');
   await opened(view);
+  // Nor a page whose title holds U+FFFE, with its aliases.
   expect(shown(view).map(([label]) => label)).toHaveLength(5);
   expect(shown(view).map(([label]) => label)).toEqual(
     expect.arrayContaining(["Bob's", "Bob's plan", 'He said "Hi"', String.raw`a\nb`, "tab\there"])
@@ -534,7 +542,7 @@ test("in a frontmatter an alias with a character YAML does not take in quotes as
   const body = editing("", { linkTargets }).view;
   type(body, "[[");
   await opened(body);
-  expect(shown(body)).toHaveLength(13);
+  expect(shown(body)).toHaveLength(15);
 });
 
 test("in a frontmatter a table the editor finds in a block's text is none, closed or being written: an alias is written with |, as YAML takes it", async () => {
