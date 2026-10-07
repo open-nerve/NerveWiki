@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"math"
+	"math/bits"
 	"reflect"
 	"strings"
 	"testing"
@@ -291,35 +292,72 @@ func TestThePageFactsKeepTheFirstMaxLinks(t *testing.T) {
 
 // A property link finds its string among those of its path: many of them,
 // each a link, take a time as long as they are (M6 closeout A-M3: some
-// 10,000 squared before). Four times as many take less than eight times as
-// long, the best of three.
+// 10,000 squared before), at paths of their own and all at one path, as
+// keys holding a '.' write it (Codex review R3). Four times as many take
+// less than eight times as long, the best of three.
 func TestThePropertyLinksFindTheirStringsInTimeAsLongAsThey(t *testing.T) {
 	md, err := markdown.New([]markdown.Extension{obsidian.Extension(obsidian.Options{})})
 	if err != nil {
 		t.Fatal(err)
 	}
-	took := func(n int) time.Duration {
-		var b strings.Builder
-		b.WriteString("---\nrelated:\n")
-		for i := range n {
-			fmt.Fprintf(&b, "  - \"[[a%d]]\"\n", i)
-		}
-		b.WriteString("---\n")
-		facts := md.Parse([]byte(b.String())).Facts()
-		best := time.Duration(math.MaxInt64)
-		for range 3 {
-			at := time.Now()
-			f, err := markdownadapter.PageFacts(facts)
-			best = min(best, time.Since(at))
-			if err != nil || len(f.Links) != n || f.Links[n-1].Quote == 0 || f.Links[n-1].Property != fmt.Sprintf("related.%d", n-1) {
-				t.Fatalf("%d property links: %d facts, %v; want each with its string's quote", n, len(f.Links), err)
+	for _, shape := range []struct {
+		name  string
+		small int // and four times as many; at one path, as many as the YAML's values may be
+		write func(b *strings.Builder, n int)
+		path  func(i, n int) string // the path of the i-th of n
+	}{
+		{"a list's", 2_000, func(b *strings.Builder, n int) {
+			b.WriteString("related:\n")
+			for i := range n {
+				fmt.Fprintf(b, "  - \"[[a%d]]\"\n", i)
 			}
+		}, func(i, _ int) string { return fmt.Sprintf("related.%d", i) }},
+		{"one path's", 1 << 9, func(b *strings.Builder, n int) {
+			onePath(b, "", bits.Len(uint(n)))
+		}, func(_, n int) string { return strings.Repeat("a.", bits.Len(uint(n))-1) + "a" }},
+	} {
+		took := func(n int) time.Duration {
+			var b strings.Builder
+			b.WriteString("---\n")
+			shape.write(&b, n)
+			b.WriteString("---\n")
+			facts := md.Parse([]byte(b.String())).Facts()
+			best := time.Duration(math.MaxInt64)
+			for range 3 {
+				at := time.Now()
+				f, err := markdownadapter.PageFacts(facts)
+				best = min(best, time.Since(at))
+				if err != nil || len(f.Links) != n {
+					t.Fatalf("%s %d property links: %d facts, %v", shape.name, n, len(f.Links), err)
+				}
+				for i, l := range f.Links {
+					if l.Quote == 0 || l.Property != shape.path(i, n) {
+						t.Fatalf("%s %d property links: the %d-th is %+v, want it with its string's quote, at %s",
+							shape.name, n, i, l, shape.path(i, n))
+					}
+				}
+			}
+			return best
 		}
-		return best
+		small, large := took(shape.small), took(4*shape.small)
+		if large > 8*small {
+			t.Errorf("%s %d property links took %s, %d %s: more than 8 times as long",
+				shape.name, 4*shape.small, large, shape.small, small)
+		}
 	}
-	small, large := took(2_000), took(8_000)
-	if large > 8*small {
-		t.Errorf("8,000 property links took %s, 2,000 %s: more than 8 times as long", large, small)
+}
+
+// onePath writes, at indent, the 2^(n-1) strings at the path of n keys
+// "a" (a.a.a…): one for each way keys holding a '.' split it, each a link.
+func onePath(b *strings.Builder, indent string, n int) {
+	for k := 1; k <= n; k++ {
+		key := strings.Repeat("a.", k-1) + "a"
+		if k == n {
+			fmt.Fprintf(b, "%s%s: '[[x]]'\n", indent, key)
+			continue
+		}
+		fmt.Fprintf(b, "%s%s:\n", indent, key)
+		onePath(b, indent+"  ", n-k)
 	}
 }
 

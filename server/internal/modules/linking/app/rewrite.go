@@ -249,9 +249,11 @@ func (r Rewrite) rewrite(ctx context.Context, id uuid.UUID, revision int, reache
 	was.Release()
 	facts := domain.Facts{Links: was.Facts.Links, Aliases: was.Facts.Aliases} // what a writing is read back against
 	rewriting := domain.Rewrite(content, from, links, tree, recased)
+	// A link is logged by where it starts: its target holds a title, which
+	// no log holds (v0.1 design 13.1 rule 10; Codex review R2).
 	for _, l := range rewriting.Left {
 		r.Logger.LogAttrs(ctx, slog.LevelError, "a link is not rewritten: no writing leads where it led",
-			slog.String("page_id", id.String()), slog.Int("start", l.Start), slog.String("target", l.Target))
+			slog.String("page_id", id.String()), slog.Int("start", l.Start))
 	}
 	if len(rewriting.Edits) == 0 {
 		return nil
@@ -304,7 +306,7 @@ func (r Rewrite) rewrite(ctx context.Context, id uuid.UUID, revision int, reache
 	}
 	for _, l := range left.Links {
 		r.Logger.LogAttrs(ctx, slog.LevelError, "a link is not rewritten: no writing of the page with it was kept", append([]slog.Attr{
-			slog.String("page_id", id.String()), slog.Int("start", l.Start), slog.String("target", l.Target),
+			slog.String("page_id", id.String()), slog.Int("start", l.Start),
 		}, sizes...)...)
 	}
 	u.Defer(now.Release)

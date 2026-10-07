@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 	"unicode"
@@ -88,9 +89,12 @@ func text(s string) string {
 	return strings.ReplaceAll(s, "\x00", "\uFFFD")
 }
 
-// scalarsByPath is the frontmatter's strings by their paths: a link finds
-// its own among those of its path alone, each looked up once (M6 closeout
-// A-M3: a scan of them all for each link was some 10,000 squared).
+// scalarsByPath is the frontmatter's strings by their paths, each path's
+// in the order they are written, as the frontmatter gives them: a link
+// finds its own among those of its path alone, by where it is (M6 closeout
+// A-M3: a scan of them all for each link was some 10,000 squared; Codex
+// review R3: so was a scan of a path's, as keys holding a '.' give
+// thousands of strings one path).
 func scalarsByPath(scalars []markdown.Scalar) map[string][]markdown.Scalar {
 	out := make(map[string][]markdown.Scalar)
 	for _, s := range scalars {
@@ -100,12 +104,13 @@ func scalarsByPath(scalars []markdown.Scalar) map[string][]markdown.Scalar {
 }
 
 // scalarOf is the frontmatter's string that l, a property link, is: of its
-// path, its range within the string's. A body's link is in none.
+// path, its range within the string's, the last of them to start before
+// it, as strings do not overlap. A body's link is in none.
 func scalarOf(byPath map[string][]markdown.Scalar, l obsidian.Link) (markdown.Scalar, bool) {
-	for _, s := range byPath[l.Key] { // a body's link, of no key, is within no string of the empty key's
-		if s.Offset(0) <= l.Range.Start && l.Range.Stop <= s.Offset(len(s.Value)) {
-			return s, true
-		}
+	ss := byPath[l.Key] // a body's link, of no key, is within no string of the empty key's
+	i := sort.Search(len(ss), func(i int) bool { return ss[i].Offset(0) > l.Range.Start }) - 1
+	if i >= 0 && l.Range.Stop <= ss[i].Offset(len(ss[i].Value)) {
+		return ss[i], true
 	}
 	return markdown.Scalar{}, false
 }

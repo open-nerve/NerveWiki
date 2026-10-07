@@ -3,7 +3,7 @@ import type { Page } from "@playwright/test";
 import { expectIndexedAliases, expectIndexedLinks, expectIndexedTags } from "../../fixtures/assert/links";
 import { countAnswers } from "../../fixtures/browser";
 import type { Database } from "../../fixtures/db";
-import { listLinkTargets, listTags } from "../../fixtures/links";
+import { getPageProperties, listLinkTargets, listTags } from "../../fixtures/links";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, getView, readContent, writeContent } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
@@ -183,4 +183,64 @@ test("L5 (page, input method): a composition closes the completion, none opens w
   await saveEdit(page);
   expect((await readContent(api, pat, source.id)).content).toBe("[[会议纪要]]");
   expect(targetReads()).toBe(1);
+});
+
+test("L5 (page, frontmatter): a page and an alias picked in a property's quotes are written as its YAML string writes them; saved, the frontmatter is valid, its values as picked, its links leading to the page (Codex review R1)", async ({
+  api,
+  db,
+  signedInPage,
+}, testInfo) => {
+  const { pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
+  const notebook = await createNotebook(api, pat, workspace.slug, "Plans");
+  const target = await createPage(
+    api,
+    pat,
+    notebook.id,
+    "Bob's",
+    null,
+    "---\naliases: ['He said \"Hi\"', 'C:\\x']\n---\n"
+  );
+  const source = await createPage(api, pat, notebook.id, "Source", null, "");
+  const page = await signedInPage(tokens);
+  await page.goto(wikiPagePath(workspace.slug, notebook.id, source.id));
+  await expect(pageHeading(page, "Source")).toBeVisible();
+  await startEditing(page);
+
+  await page.keyboard.type("---\nref: '[[Bo");
+  await expect.poll(() => completions(page)).toEqual([["Bob's", ""]]);
+  await pick(page);
+  await page.keyboard.type("'\nalt: \"[[He");
+  await expect.poll(() => completions(page)).toEqual([['He said "Hi"', "→ Bob's"]]);
+  await pick(page);
+  await page.keyboard.type('"\nwin: "[[C:');
+  await expect.poll(() => completions(page)).toEqual([[String.raw`C:\x`, "→ Bob's"]]);
+  await pick(page);
+  await page.keyboard.type('"\n---\n');
+  await saveEdit(page);
+
+  expect((await readContent(api, pat, source.id)).content).toBe(
+    "---\nref: '[[Bob''s]]'\n" +
+      String.raw`alt: "[[Bob's|He said \"Hi\"]]"` +
+      "\n" +
+      String.raw`win: "[[Bob's|C:\\x]]"` +
+      "\n---\n"
+  );
+  expect((await getPageProperties(api, pat, source.id)).data).toEqual({
+    valid: true,
+    properties: [
+      { key: "ref", value: "[[Bob's]]" },
+      { key: "alt", value: `[[Bob's|He said "Hi"]]` },
+      { key: "win", value: String.raw`[[Bob's|C:\x]]` },
+    ],
+    links: [
+      { key: "ref", node_id: target.id },
+      { key: "alt", node_id: target.id },
+      { key: "win", node_id: target.id },
+    ],
+  });
+  await expectIndexedLinks(
+    db,
+    source.id,
+    ["ref", "alt", "win"].map((property) => ({ kind: "wikilink", property, target: "Bob's", resolved: target.id }))
+  );
 });

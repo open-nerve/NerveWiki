@@ -12,6 +12,7 @@ import type { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 
 import type { Build, EditorContext } from "../registry";
+import { quoteAt, quoted } from "./yaml-quotes";
 
 /**
  * A link's target being written: after the last [[ of the line, what the
@@ -83,8 +84,8 @@ type Place = { table: boolean; frontmatter: boolean };
  * one starts, and started again by CodeMirror as it ends having changed
  * the text. CodeMirror lets an input method have the keys while it
  * composes, Enter among them. In a frontmatter only a link in quotes
- * completes, the way a property link is written; no tag, as YAML reads a
- * comment there.
+ * completes, the way a property link is written, and is written as its
+ * YAML string writes it; no tag, as YAML reads a comment there.
  */
 export const linkCompletion: Build = (context) => [
   autocompletion({
@@ -257,24 +258,44 @@ function pages(context: EditorContext): CompletionSource {
     // An embed shows its page: an alias would be its display text, which an embed takes for a size.
     const embed = bang === "!" && slashes % 2 === 0;
     const separator = place.table ? "\\|" : "|";
+    // In a frontmatter, written as the YAML string it is in writes it (Codex review R1).
+    const quote = place.frontmatter ? quoteAt(completion.state, completion.state.doc.lineAt(from).from + opens) : "";
+    const unwritten = unwritable(place);
     const options: Completion[] = [];
     for (const target of targets) {
+      const link = quoted(quote, target.link);
       // Matched by its link, which holds its title: a path for a title others share.
       options.push({
         label: target.link,
         displayLabel: target.name,
         detail: target.link === target.name ? undefined : target.link,
-        apply: writing(target.link, undefined, separator),
+        apply: writing(link, undefined, separator),
       });
       for (const alias of embed ? [] : target.aliases) {
-        // One with a bracket or a line's end would end the link it is written in; in a table, one with a '|' the cell.
-        if (!(place.table ? /[[\]\r\n|]/ : /[[\]\r\n]/).test(alias)) {
-          options.push({ label: alias, detail: `→ ${target.link}`, apply: writing(target.link, alias, separator) });
+        if (!unwritten.test(alias)) {
+          options.push({
+            label: alias,
+            detail: `→ ${target.link}`,
+            apply: writing(link, quoted(quote, alias), separator),
+          });
         }
       }
     }
     return { from, options, validFor: linkGoesOn, getMatch: shownMatch };
   };
+}
+
+/**
+ * unwritable is what an alias written at place may not hold: a bracket or
+ * a line's end would end the link it is written in; in a table, a '|' the
+ * cell; in a frontmatter, a character YAML does not take as written (a
+ * control, a line's end of its own) its YAML.
+ */
+function unwritable(place: Place): RegExp {
+  if (place.table) {
+    return /[[\]\r\n|]/;
+  }
+  return place.frontmatter ? /[[\]\p{Cc}\u2028\u2029\uFFFE\uFFFF]/u : /[[\]\r\n]/;
 }
 
 /** tags completes a tag with the notebook's tags the body can write, each with how many pages have it. */

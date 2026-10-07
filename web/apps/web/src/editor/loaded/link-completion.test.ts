@@ -442,6 +442,80 @@ test("in a frontmatter, as the server finds it, a link completes in quotes, as a
   }
 });
 
+/** quotedTargets is a page whose title holds a ', and whose aliases hold quotes, a backslash, and characters YAML does not take as written. */
+function quotedTargets(): Promise<LinkTarget[]> {
+  return Promise.resolve([
+    {
+      id: "p5",
+      kind: "page",
+      name: "Bob's",
+      link: "Bob's",
+      aliases: ["Bob's plan", 'He said "Hi"', String.raw`a\nb`, "next\u0085line", "tab\there"],
+    },
+  ]);
+}
+
+test("in a frontmatter a pick is written as its YAML string writes it: in single quotes a ' twice, in double quotes a \\ and a \" escaped; in a block's text, a plain string or a comment as it is (Codex review R1)", async () => {
+  const linkTargets = quotedTargets;
+  for (const [doc, typed, picked, written] of [
+    ["---\nref: ‸\n---", "'[[Bo", "Bob's", "---\nref: '[[Bob''s]]\n---"],
+    ["---\nref: ‸\n---", "'[[Bob's p", "Bob's plan", "---\nref: '[[Bob''s|Bob''s plan]]\n---"],
+    [
+      "---\nref: ‸\n---",
+      '"[[He',
+      'He said "Hi"',
+      String.raw`---
+ref: "[[Bob's|He said \"Hi\"]]
+---`,
+    ],
+    [
+      "---\nref: ‸\n---",
+      '"[[a',
+      String.raw`a\nb`,
+      String.raw`---
+ref: "[[Bob's|a\\nb]]
+---`,
+    ],
+    // In a link already closed, its anchor and display text stay as written.
+    ["---\nref: '[[‸Seed#It''s|It''s]]'\n---", "Bo", "Bob's", "---\nref: '[[Bob''s#It''s|It''s]]'\n---"],
+    ["---\nref: '[[‸Seed|old]]'\n---", "Bo", "Bob's plan", "---\nref: '[[Bob''s|Bob''s plan]]'\n---"],
+    ["---\nref: \"it's ‸\n---", "'[[Bo", "Bob's", "---\nref: \"it's '[[Bob's]]\n---"],
+    ["---\nnote: |\n  ‸\n---", "'[[Bo", "Bob's", "---\nnote: |\n  '[[Bob's]]\n---"],
+    ["---\nref: it‸\n---", "'[[Bo", "Bob's", "---\nref: it'[[Bob's]]\n---"],
+  ] as const) {
+    const { view } = editingAt(doc, { linkTargets });
+    type(view, typed);
+    // oxlint-disable-next-line no-await-in-loop -- one editor after another
+    await opened(view);
+    // oxlint-disable-next-line no-await-in-loop -- one editor after another
+    await pick(view, picked);
+    expect(view.state.doc.toString()).toBe(written);
+    // The cursor after the link.
+    expect(view.state.selection.main.head).toBe(written.indexOf("]]") + 2);
+  }
+});
+
+test("in a frontmatter an alias with a character YAML does not take as written is not listed: a control, a line's end of its own; in the body it is", async () => {
+  const linkTargets = quotedTargets;
+  const { view } = editingAt("---\nref: ‸\n---", { linkTargets });
+  type(view, '"[[');
+  await opened(view);
+  expect(
+    shown(view)
+      .map(([label]) => label)
+      .toSorted()
+  ).toEqual(["Bob's", "Bob's plan", 'He said "Hi"', String.raw`a\nb`]);
+
+  const body = editing("", { linkTargets }).view;
+  type(body, "[[");
+  await opened(body);
+  expect(
+    shown(body)
+      .map(([label]) => label)
+      .toSorted()
+  ).toEqual(["Bob's", "Bob's plan", 'He said "Hi"', String.raw`a\nb`, "next\u0085line", "tab\there"]);
+});
+
 test("in a frontmatter a table the editor finds in a block's text is none, closed or being written: an alias is written with |, as YAML takes it", async () => {
   for (const [doc, written] of [
     [
