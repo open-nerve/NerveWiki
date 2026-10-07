@@ -332,8 +332,9 @@ func TestAccessLogOfProbesIsDebug(t *testing.T) {
 // took, which no route did (a method, a segment, a slash more), as the
 // subtree; a path the router cleans to a route's, as the route (fix check
 // B3-M1). The access log, the recover's, the API errors' and LongLived's
-// alike; the web app's paths, that "/" takes, as they are, cleaned as the
-// router cleans them (fix check B3-M4, B4-M1).
+// alike; the web app's paths, that "/" takes, as they are, or as where the
+// router redirects them to, of the path as written and of no CONNECT (fix
+// check B3-M4, B4-M1, B5-M1).
 func TestTheLogsWriteARoutesValuesButIdsAsItsWildcards(t *testing.T) {
 	logger, logs := captureLogs(t)
 	errs := NewAPIErrors(logger)
@@ -371,6 +372,12 @@ func TestTheLogsWriteARoutesValuesButIdsAsItsWildcards(t *testing.T) {
 		{http.MethodGet, "/lab/notebooks/" + id, "/lab/notebooks/" + id, ""},
 		{http.MethodGet, "/api/v0/notebooks/" + id + "/tags/layoff/../../../../../../lab", "/lab", ""},
 		{http.MethodGet, "/lab//tags/layoff/../", "/lab/tags/", ""},
+		{http.MethodGet, "/", "/", ""},
+		{http.MethodGet, "/lab/../", "/", ""},
+		{http.MethodGet, "/api/v0/notebooks/" + id + "/tags/layoff/a%2Fb%2Fc%2Fd%2Fe%2Ff%2Fg/../../../../../../../lab", "/lab", ""},
+		{http.MethodGet, "/x/%2E%2E/lab/tags/layoff", "/x/../lab/tags/layoff", ""},
+		{http.MethodGet, "/lab/x/../c%20d", "/lab/c d", ""},
+		{http.MethodConnect, "/x/../lab/tags/layoff", "/x/../lab/tags/layoff", ""},
 	} {
 		serve(h, httptest.NewRequest(tt.method, tt.path, nil))
 		entries := logs()

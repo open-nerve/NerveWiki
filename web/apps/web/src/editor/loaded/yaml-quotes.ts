@@ -85,10 +85,12 @@ export function openingQuote(state: EditorState, at: number): Quote {
         continue;
       }
       if (c === "#" && (!plain || i === 0 || line[i - 1] === " " || line[i - 1] === "\t")) {
-        plain &&= flow === 0; // in [ ] and { } a comment ends a plain string: the next line starts anew
+        plain &&= flow === 0; // in [ ] and { } a comment ends a plain string: the next line is none of its text
         break;
       }
-      if (flow > 0 && (c === "," || c === "]" || c === "}")) {
+      // Past [ ] and { } a ',' that is no plain string's text is theirs too: the YAML library reads the ']'
+      // after a '?' alone in [ ] as the key's and goes on in [ ] (fix check A5-M1).
+      if ((flow > 0 || (c === "," && !plain)) && (c === "," || c === "]" || c === "}")) {
         flow -= c === "," ? 0 : 1;
         start = c === ",";
         plain = false;

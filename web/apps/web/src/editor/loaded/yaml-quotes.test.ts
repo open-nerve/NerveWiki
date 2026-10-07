@@ -134,6 +134,17 @@ test("what a line leaves goes on to the next: a string in quotes, a block, a pla
     ["---\n? x\n: a: v\n  c: '‸", "'"],
     ["---\n? x\n: a: v\n  '‸c': d", "'"],
     ["---\n? x\n: &a : v\n  '‸c': d", "'"],
+    // An alias in a block is a node of its own, a key's; a comment at a line's start ends a plain string in [ ] (fix check A5-M2).
+    ["---\nx: &a v\n*a: |\n  '‸", ""],
+    ["---\nx: &a v\nk:\n  *a : v\n   '‸x", ""],
+    ['---\nx: &a v\nk:\n  *a : v\n  b: "c,\n\'‸d"', ""],
+    ["---\nx: &a v\nk:\n  *a : |\n    x\n  '‸b': c", "'"],
+    ["---\nm: [? k\n# c\n:'‸", "'"],
+    // The library reads the ']' after a '?' alone in [ ] as the key's and goes on in [ ] (fix check A5-M1, A5-M3).
+    ['---\nk: [?], "d,\n  \'‸x"]', ""],
+    ["---\nk: [?], '‸", "'"],
+    ["---\ntags: [?], \"rock,\n  'n roll\"]\nref: '‸", "'"],
+    ["---\nk: [?], [a: b, c: d, \"e,\n     '‸x\"]]\nref: 'z'", ""],
   ] as const;
   expect(openingAt(docs)).toEqual(docs);
 });
