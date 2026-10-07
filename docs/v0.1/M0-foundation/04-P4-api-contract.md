@@ -133,7 +133,7 @@ Go 的生成只需要 Go（直接读 `api/common.yaml` 与模块文件，不读 
 
 | 出口 | 何时 | 回答 |
 |---|---|---|
-| `BadRequest`（生成代码的 `ErrorHandlerFunc`） | 路径、查询、头部参数绑定失败 | 400 `bad_request`，`errors` 中给出参数名；细节只进 debug 日志（它含 Go 的类型名） |
+| `BadRequest`（生成代码的 `ErrorHandlerFunc`） | 路径、查询、头部参数绑定失败 | 400 `bad_request`，`errors` 中给出参数名；debug 日志只记参数名与错误的类型：错误消息含 Go 的类型名与原值，不记（M6 Codex 评审修复核对 B3-M2） |
 | `BodyError`（`RequestErrorHandlerFunc` 与 bodyshape） | 请求体读不出、不是 JSON、结构不对 | `ProblemError` 与 `*http.MaxBytesError` 交给 `Write`；其余 400 `bad_request`，细节只进 debug 日志 |
 | `Write`（`ResponseErrorHandlerFunc`，以及中间件） | 处理器返回的错误 | `ProblemError`：它的状态、码、detail、fields、`Retry-After`；`*http.MaxBytesError`：413 `payload_too_large`；客户端已断开的 `context.Canceled`：debug 日志，不记 500；请求已过期限的 `context.DeadlineExceeded`：warn 日志，500 `internal_error`；其余：error 日志，500 `internal_error`，不带 detail |
 

@@ -180,7 +180,7 @@ linking 的 `Index` 实现 `page.PageObserver`，经组合根登记（`pageRegis
   3. 删掉这个笔记本的索引行，逐页取正文、在预算之内解析、写行（只插入，`Store.AddPage`：删过之后不再逐页删，P3A 审查测得一万页的笔记本从 17 秒降到 11 秒）；
   4. 解析全部链接；
   5. 发一条 `links`（`pages: null, targets: null`）。
-- 输出：每个笔记本一行（`notebook <id>: N pages, M links, K unresolved`，单数时 `1 page`）；撞键的笔记本在标准错误上列出（标题与 id），别的原因重建失败的连同原因列出（P3A 审查：此前第一个失败就停下，后面的笔记本都不重建），其余照常，命令最后以退出码 1 结束；`--notebook` 不是 id（零 id、空串也算）或笔记本不存在时立即失败；列出之后被删除的笔记本跳过。
+- 输出：每个笔记本一行（`notebook <id>: N pages, M links, K unresolved`，单数时 `1 page`）；撞键的笔记本在标准错误上列出撞键的页：按页在网页里的地址（`/<工作区 slug>/notebooks/<笔记本 id>/pages/<页 id>`），读不到工作区的 slug 时按 id，不列标题（v0.1 总设计 13.1 第 10 条；M6 Codex 评审修复核对 B-Q2、B2-Q1、B3-M3），别的原因重建失败的连同原因列出（P3A 审查：此前第一个失败就停下，后面的笔记本都不重建），其余照常，命令最后以退出码 1 结束；`--notebook` 不是 id（零 id、空串也算）或笔记本不存在时立即失败；列出之后被删除的笔记本跳过。
 - README 写明：升级到 M6 之后、启动服务之前运行一次（Docker 的写法）；reindex 期间，这个笔记本的写在等待，大的笔记本等不到的保存答 500。
 
 ### 3.7 `resolve/` 样例
