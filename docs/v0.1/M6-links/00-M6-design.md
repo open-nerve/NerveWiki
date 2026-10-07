@@ -658,6 +658,7 @@ M6 写出的移交（P3、P4 合并时落档）：
 | P5 | 接口 | 已完成（2026-10-06，`1f3daf8`） | [05-P5-api.md](05-P5-api.md) | [P5-api-review.md](reviews/P5-api-review.md) |
 | P6 | 阅读视图 | 已完成（2026-10-06，A `4181768`，B `ccfc395`） | [06-P6-reading-view.md](06-P6-reading-view.md) | A：[P6A-reading-server-review.md](reviews/P6A-reading-server-review.md)；B：[P6B-reading-front-review.md](reviews/P6B-reading-front-review.md) |
 | P7 | 编辑器与右栏（前端） | 已完成（2026-10-06，`6eb3b70`） | [07-P7-editor-panel.md](07-P7-editor-panel.md) | [P7-editor-panel-review.md](reviews/P7-editor-panel-review.md) |
+| P8 | 软换行（阅读视图） | 进行中 | [08-P8-soft-breaks.md](08-P8-soft-breaks.md) | — |
 
 ## 13. 变更记录
 
