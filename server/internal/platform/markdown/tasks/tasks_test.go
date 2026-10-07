@@ -92,6 +92,21 @@ func TestTheCheckboxCarriesItsPosition(t *testing.T) {
 	}
 }
 
+// A checkbox alone on its line leaves the item's line break, shown as one;
+// goldmark's parser takes it with the blanks after ']' (M6/P8 design 3).
+func TestACheckboxAloneOnItsLineLeavesItsLineBreak(t *testing.T) {
+	m := newMarkdown(t)
+	got, err := m.Render(context.Background(), m.Parse([]byte("- [ ]\n  a\n- [x]  \r\n  b\n")), markdown.Page{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "<ul>\n<li><input disabled=\"\" type=\"checkbox\" data-task=\"3\"> <br>\na</li>\n" +
+		"<li><input checked=\"\" disabled=\"\" type=\"checkbox\" data-task=\"13\"> <br>\nb</li>\n</ul>\n"
+	if got != want {
+		t.Errorf("got  %q\nwant %q", got, want)
+	}
+}
+
 // ours is the hardened parser with the extension, rendered as goldmark
 // renders the rest; theirs is goldmark's GFM, task lists and all.
 func ours(src []byte) (string, []tasks.Task, error) {
@@ -118,10 +133,10 @@ func theirs(src []byte) (string, error) {
 
 var position = regexp.MustCompile(` data-task="(\d+)"`)
 
-// boxBreak is a line break right after a checkbox, which goldmark's parser
-// takes away with the blanks after ']' when the line ends there and the
-// extension's leaves; the comparison leaves out all of them.
-var boxBreak = regexp.MustCompile(`(<input [^>]*> )(?:<br>)?\n`)
+// boxBreak is a soft line break right after a checkbox, which goldmark's
+// parser takes away with the blanks after ']' when the line ends there and
+// the extension's leaves; the comparison leaves out all of them.
+var boxBreak = regexp.MustCompile(`(<input [^>]*> )\n`)
 
 // sameAsGoldmark checks that src renders as goldmark renders it but for the
 // checkboxes' positions and the line breaks right after them, and that each

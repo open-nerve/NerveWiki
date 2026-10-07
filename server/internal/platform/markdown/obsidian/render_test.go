@@ -304,9 +304,19 @@ func TestALineBreakIsShownAsOne(t *testing.T) {
 			`<p>a<br>` + "\n" + `<span class="nw-math nw-math-block">x</span>b <span class="nw-math nw-math-block">y</span>c</p>` + "\n",
 		},
 		{
+			"none after a $$ formula ending a list item's line", "- a\n  $$x$$\n  b\n",
+			"<ul>\n<li>a<br>\n" + `<span class="nw-math nw-math-block">x</span>b</li>` + "\n</ul>\n",
+		},
+		{
 			"after a $$ formula with text after it, or in a heading", "$$x$$ a\nb\n\n$$y$$\nc\n===\n",
 			`<p><span class="nw-math nw-math-block">x</span> a<br>` + "\nb</p>\n" +
 				`<h1 id="nw-y-c"><span class="nw-math nw-math-block">y</span><br>` + "\nc</h1>\n",
+		},
+		{
+			"after a $$ formula and a backslash, a tag, or in an emphasis, as Obsidian's", "$$x$$\\\na\n$$y$$ #t\nb\n*$$z$$*\nc\n",
+			`<p><span class="nw-math nw-math-block">x</span><br>` + "\na<br>\n" +
+				`<span class="nw-math nw-math-block">y</span> <a class="nw-tag" data-nw-tag="t">#t</a><br>` + "\nb<br>\n" +
+				`<em><span class="nw-math nw-math-block">z</span></em><br>` + "\nc</p>\n",
 		},
 		{"after a CR LF", "a\r\nb\r\n", "<p>a<br>\nb</p>\n"},
 		{"a heading of two lines: its id as before", "a\nb\n===\n", `<h1 id="nw-a-b">a<br>` + "\nb</h1>\n"},

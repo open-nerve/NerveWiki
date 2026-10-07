@@ -1,0 +1,5 @@
+{
+  "description": "行尾的 $$…$$ 公式之后有空白（两个空格的硬换行、空格加制表符）：之后同样不换行",
+  "source": "obsidian-verified",
+  "rendered": "a⏎b¶c⏎d"
+}

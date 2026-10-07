@@ -84,7 +84,12 @@ function checkCase(dir, base) {
   const jsonPath = join(dir, `${base}.json`);
   if (!existsSync(jsonPath)) return fail(name, "missing .json");
   const src = readFileSync(join(dir, `${base}.md`));
-  const exp = JSON.parse(readFileSync(jsonPath, "utf8"));
+  let exp;
+  try {
+    exp = readObject(jsonPath);
+  } catch (e) {
+    return fail(name, `bad JSON: ${e.message}`);
+  }
   const keys = Object.keys(exp)
     .filter((k) => k !== "tasks")
     .toSorted()
@@ -93,8 +98,9 @@ function checkCase(dir, base) {
     exp.source === "nerve-defined"
       ? "description,frontmatter,links,note,source,tags"
       : "description,frontmatter,links,source,tags";
-  if (keys !== want) fail(name, `fields ${keys}, want ${want}`);
+  if (keys !== want) return fail(name, `fields ${keys}, want ${want}`);
   if (!SOURCES.has(exp.source)) fail(name, `source ${exp.source}`);
+  if (!Array.isArray(exp.links)) return fail(name, "links must be an array");
   const fm = exp.frontmatter;
   const fmOk =
     fm === null ||
@@ -279,6 +285,12 @@ const cases = readdirSync(casesDir)
   .filter((f) => f.endsWith(".md"))
   .map((f) => f.slice(0, -3));
 cases.forEach((b) => checkCase(casesDir, b));
+// A JSON of no case: its .md renamed or gone.
+const orphans = (dir, bases) =>
+  readdirSync(join(root, dir))
+    .filter((f) => f.endsWith(".json") && !bases.includes(f.slice(0, -5)))
+    .forEach((f) => fail(`${dir}/${f}`, "no .md"));
+orphans("cases", cases);
 const renameDir = join(root, "rename");
 const renames = readdirSync(renameDir)
   .filter((f) => f.endsWith(".json"))
@@ -292,9 +304,7 @@ const renders = readdirSync(renderDir)
   .filter((f) => f.endsWith(".md"))
   .map((f) => f.slice(0, -3));
 renders.forEach((b) => checkRender(renderDir, b));
-readdirSync(renderDir)
-  .filter((f) => f.endsWith(".json") && !renders.includes(f.slice(0, -5)))
-  .forEach((f) => fail(`render/${f}`, "no .md"));
+orphans("render", renders);
 
 if (problems.length) {
   console.error(problems.join("\n"));

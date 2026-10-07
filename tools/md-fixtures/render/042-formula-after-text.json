@@ -1,0 +1,5 @@
+{
+  "description": "段落里行尾的 $$…$$ 公式前面有文字时，之后同样不换行",
+  "source": "obsidian-verified",
+  "rendered": "a⏎b c"
+}

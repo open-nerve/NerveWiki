@@ -32,9 +32,10 @@ type Task struct {
 }
 
 // Extension is the extension of task items. It replaces goldmark's: its
-// parser recognizes what goldmark's does, its renderer writes what
-// goldmark's writes and the checkbox's position in data-task, and Extract
-// gives the document's tasks in the content's order.
+// parser recognizes what goldmark's does, leaving the line break of a
+// checkbox alone on its line, its renderer writes what goldmark's writes
+// and the checkbox's position in data-task, and Extract gives the
+// document's tasks in the content's order.
 func Extension() markdown.Extension {
 	return markdown.Extension{
 		Name: Name,
@@ -71,7 +72,8 @@ func (n *node) Dump(source []byte, level int) {
 // pattern is goldmark's (extension/tasklist.go).
 var pattern = regexp.MustCompile(`^\[([\sxX])\]\s*`)
 
-// taskParser is goldmark's task list parser with the checkbox's position.
+// taskParser is goldmark's task list parser with the checkbox's position,
+// which leaves the line's end after it.
 type taskParser struct{}
 
 func (taskParser) Trigger() []byte { return []byte{'['} }
