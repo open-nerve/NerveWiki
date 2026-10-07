@@ -1,3 +1,5 @@
+import type { Locator } from "@playwright/test";
+
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, getView } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
@@ -11,6 +13,19 @@ import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 
 /** The page's content: a paragraph of two lines, a callout with a title and a body of two lines. */
 const lines = ["第一行", "第二行", "", "> [!note] 标题", "> 正文一", "> 正文二", ""].join("\n");
+
+/** Each text of the element's own, top to bottom on the page. */
+function textTops(element: Locator): Promise<number[]> {
+  return element.evaluate((e) =>
+    [...e.childNodes]
+      .filter((n) => n.nodeType === Node.TEXT_NODE && n.textContent?.trim())
+      .map((n) => {
+        const range = document.createRange();
+        range.selectNodeContents(n);
+        return range.getBoundingClientRect().top;
+      })
+  );
+}
 
 test("L7 (API): a reading view's paragraph and callout body carry their line breaks, the callout's title none", async ({
   api,
@@ -45,17 +60,7 @@ test("L7 (page): a paragraph's lines and a callout body's are shown apart, the c
   await expect(callout.locator(".nw-callout-title")).toHaveJSProperty("innerText", "标题");
   await expect(callout.locator("p")).toHaveJSProperty("innerText", "正文一\n正文二");
   // Each line is a line of its own: the second's text below the first's.
-  const [first, second] = await article
-    .locator("p")
-    .first()
-    .evaluate((p) =>
-      [...p.childNodes]
-        .filter((n) => n.nodeType === Node.TEXT_NODE && n.textContent?.trim())
-        .map((n) => {
-          const range = document.createRange();
-          range.selectNodeContents(n);
-          return range.getBoundingClientRect().top;
-        })
-    );
-  expect(second).toBeGreaterThan(first ?? Number.POSITIVE_INFINITY);
+  for (const [first, second] of await Promise.all([article.locator("p").first(), callout.locator("p")].map(textTops))) {
+    expect(second).toBeGreaterThan(first ?? Number.POSITIVE_INFINITY);
+  }
 });

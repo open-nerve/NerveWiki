@@ -116,6 +116,13 @@ function checkCase(dir, base) {
 const parentOf = (page) => (page.includes("/") ? page.slice(0, page.lastIndexOf("/")) : null);
 const sameKeys = (o, want) => Object.keys(o).every((k) => want.includes(k));
 
+// readObject reads a case's JSON, which must be an object.
+function readObject(path) {
+  const o = JSON.parse(readFileSync(path, "utf8"));
+  if (o === null || typeof o !== "object" || Array.isArray(o)) throw new Error("not an object");
+  return o;
+}
+
 // titleKey approximates the server's title key (NFC, Unicode case folding, NFC): JavaScript
 // has no case folding, and upper then lower case folds as it does for the titles of cases
 // (ß, ﬃ), so that siblings that would share a key are caught.
@@ -176,9 +183,9 @@ function checkRename(dir, base) {
   for (const ext of [".md", ".out.md"]) if (!existsSync(join(dir, base + ext))) fail(name, `missing ${ext}`);
   let c;
   try {
-    c = JSON.parse(readFileSync(join(dir, `${base}.json`), "utf8"));
+    c = readObject(join(dir, `${base}.json`));
   } catch (e) {
-    return fail(name, `not JSON: ${e.message}`);
+    return fail(name, `bad JSON: ${e.message}`);
   }
   if (!sameKeys(c, ["description", "source", "pages", "aliases", "page", "from", "to", "note"]))
     fail(name, "fields are description, source, from, to, and pages, aliases, page and note when set");
@@ -214,9 +221,9 @@ function checkResolveCase(dir, base) {
   const name = `resolve/${base}`;
   let c;
   try {
-    c = JSON.parse(readFileSync(join(dir, base), "utf8"));
+    c = readObject(join(dir, base));
   } catch (e) {
-    return fail(name, `not JSON: ${e.message}`);
+    return fail(name, `bad JSON: ${e.message}`);
   }
   if (!sameKeys(c, ["description", "source", "pages", "aliases", "links", "note"]))
     fail(name, "fields are description, source, pages, links, and aliases and note when set");
@@ -243,14 +250,16 @@ function checkResolveCase(dir, base) {
 }
 
 // A render case (M6/P8 design 4): its reading view as text, "¶" between
-// blocks and "⏎" a line break, none at a block's end or the text's.
+// blocks and "⏎" a line break, the one at a block's end left out (so "⏎¶"
+// and a "⏎" at the end are a block's two), runs of ASCII white space one
+// space, none next to a "¶" or "⏎" or at the ends.
 function checkRender(dir, base) {
   const name = `render/${base}`;
   let c;
   try {
-    c = JSON.parse(readFileSync(join(dir, `${base}.json`), "utf8"));
+    c = readObject(join(dir, `${base}.json`));
   } catch (e) {
-    return fail(name, `not JSON: ${e.message}`);
+    return fail(name, `bad JSON: ${e.message}`);
   }
   if (!sameKeys(c, ["description", "source", "rendered", "note"]))
     fail(name, "fields are description, source, rendered, and note when set");
@@ -258,8 +267,11 @@ function checkRender(dir, base) {
   if (!SOURCES.has(c.source)) fail(name, `source ${c.source}`);
   if ((c.source === "nerve-defined") !== (typeof c.note === "string" && c.note !== ""))
     fail(name, "note must be set exactly when the case is nerve-defined");
-  if (typeof c.rendered !== "string" || /¶¶|⏎¶|^¶|¶$|\s[¶⏎]|[¶⏎]\s|\s\s/.test(c.rendered))
-    fail(name, "rendered must be text, its blocks one ¶ apart, no ⏎ at a block's end, its white space one space");
+  if (typeof c.rendered !== "string" || /¶¶|^¶|¶$|^ | $|[¶⏎] | [¶⏎]| {2}|[\t\n\f\r]/.test(c.rendered))
+    fail(
+      name,
+      "rendered must be text, its blocks one ¶ apart, its white space one space, none at its ends or by a ¶ or ⏎"
+    );
 }
 
 const casesDir = join(root, "cases");
@@ -280,6 +292,9 @@ const renders = readdirSync(renderDir)
   .filter((f) => f.endsWith(".md"))
   .map((f) => f.slice(0, -3));
 renders.forEach((b) => checkRender(renderDir, b));
+readdirSync(renderDir)
+  .filter((f) => f.endsWith(".json") && !renders.includes(f.slice(0, -5)))
+  .forEach((f) => fail(`render/${f}`, "no .md"));
 
 if (problems.length) {
   console.error(problems.join("\n"));

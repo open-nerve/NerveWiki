@@ -1,0 +1,6 @@
+{
+  "description": "脚注的定义里的换行",
+  "source": "nerve-defined",
+  "rendered": "a1⏎b¶c⏎d ↩︎",
+  "note": "换行与 Obsidian 相同；脚注的引用与返回链接照 goldmark 的写法，Obsidian 显示 \"a[1]⏎b¶c⏎d↩︎\""
+}

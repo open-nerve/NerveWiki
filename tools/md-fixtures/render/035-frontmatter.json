@@ -1,0 +1,5 @@
+{
+  "description": "frontmatter 不显示在正文里（两边都不读属性区），正文照常换行",
+  "source": "obsidian-verified",
+  "rendered": "第一行⏎第二行"
+}

@@ -1,0 +1,5 @@
+{
+  "description": "嵌套的容器（引用里的列表、列表项的第二段）里的换行",
+  "source": "obsidian-verified",
+  "rendered": "a⏎b¶c¶d⏎e"
+}

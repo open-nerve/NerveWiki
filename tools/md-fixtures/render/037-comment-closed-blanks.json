@@ -1,0 +1,5 @@
+{
+  "description": "块注释以 %% 加不成硬换行的空白（四个空格、空格加制表符）结束：不留空行",
+  "source": "obsidian-verified",
+  "rendered": "c¶e"
+}

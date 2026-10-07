@@ -1,6 +1,8 @@
 package markdowntest
 
 import (
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -61,7 +63,7 @@ func RenderCases(tb testing.TB) []Fixture {
 		if f.Content, err = os.ReadFile(name); err != nil {
 			tb.Fatal(err)
 		}
-		if f.JSON, err = os.ReadFile(strings.TrimSuffix(name, ".md") + ".json"); err != nil && !os.IsNotExist(err) {
+		if f.JSON, err = os.ReadFile(strings.TrimSuffix(name, ".md") + ".json"); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			tb.Fatal(err)
 		}
 		out = append(out, f)

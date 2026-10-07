@@ -1,0 +1,5 @@
+{
+  "description": "行尾写了 <br> 的行：它的 <br> 加上换行，显示一个空行",
+  "source": "obsidian-verified",
+  "rendered": "a⏎⏎b"
+}

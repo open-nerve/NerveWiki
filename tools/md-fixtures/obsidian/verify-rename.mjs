@@ -87,6 +87,8 @@ function caseExpression(c) {
   const moved = c.page === c.from || c.page.startsWith(`${c.from}/`);
   const after = `${moved ? c.to + c.page.slice(c.from.length) : c.page}.md`;
   return `(async () => {
+    // It empties the vault: only the scratch one.
+    if (app.vault.adapter.basePath !== ${JSON.stringify(join(work, "vault"))}) throw new Error("not the scratch vault: " + app.vault.adapter.basePath);
     const settle = async () => {
       for (let i = 0; i < 200; i++) {
         const files = app.vault.getMarkdownFiles();

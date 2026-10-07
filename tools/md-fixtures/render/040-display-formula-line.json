@@ -1,0 +1,5 @@
+{
+  "description": "段落里独占一行的 $$…$$ 公式：公式自成一块，之后没有空行（两边都不读公式的文字）",
+  "source": "obsidian-verified",
+  "rendered": "a⏎b"
+}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -12,6 +13,8 @@ import (
 
 	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown/markdowntest"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown/obsidian"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown/tasks"
 )
 
 // blocks are the elements a reading view shows as blocks, as the render
@@ -33,8 +36,10 @@ var (
 )
 
 // shown is a reading view's HTML as text: "¶" between blocks, "⏎" a line
-// break, a line break at a block's end left out (it shows none), runs of
-// white space one space.
+// break, the one line break at a block's end left out (it shows none), runs
+// of ASCII white space (RE2's \s) one space. The properties' table is left
+// out, as the script leaves out Obsidian's, and so are formulas, which
+// Obsidian typesets with MathJax and the front end with KaTeX.
 func shown(t *testing.T, s string) string {
 	t.Helper()
 	nodes, err := html.ParseFragment(strings.NewReader(s), &html.Node{Type: html.ElementNode, DataAtom: atom.Body, Data: "body"})
@@ -50,6 +55,7 @@ func shown(t *testing.T, s string) string {
 		case n.Type != html.ElementNode:
 		case n.DataAtom == atom.Br:
 			b.WriteString("⏎")
+		case slices.ContainsFunc(strings.Fields(attr(n, "class")), func(c string) bool { return c == "nw-props" || c == "nw-math" }):
 		default:
 			if blocks[n.DataAtom] {
 				b.WriteString("¶")
@@ -71,9 +77,20 @@ func shown(t *testing.T, s string) string {
 	return strings.TrimSuffix(strings.TrimPrefix(out, "¶"), "¶")
 }
 
-// A render fixture's reading view is what its JSON says, as Obsidian 1.12.7
-// shows it: a line break in a paragraph is shown as one (M6/P8 design 4).
-func TestTheRenderFixturesShowWhatObsidianShows(t *testing.T) {
+// attr is n's attribute key, "" when it has none.
+func attr(n *html.Node, key string) string {
+	for _, a := range n.Attr {
+		if a.Key == key {
+			return a.Val
+		}
+	}
+	return ""
+}
+
+// A render fixture's reading view is what its JSON says: as Obsidian 1.12.7
+// shows it, or as its note says it differs; a line break in a paragraph is
+// shown as one (M6/P8 design 4).
+func TestTheRenderFixturesShowWhatTheirJSONSays(t *testing.T) {
 	m := newMarkdown(t)
 	for _, f := range markdowntest.RenderCases(t) {
 		t.Run(f.Name, func(t *testing.T) {
@@ -92,6 +109,9 @@ func TestTheRenderFixturesShowWhatObsidianShows(t *testing.T) {
 			}
 			if s := shown(t, got); s != want.Rendered {
 				t.Errorf("the reading view shows %q, want %q\n%s", s, want.Rendered, got)
+			}
+			if err := markdowntest.CheckHTML(got, tasks.Extension(), obsidian.Extension(obsidian.Options{})); err != nil {
+				t.Error(err)
 			}
 		})
 	}

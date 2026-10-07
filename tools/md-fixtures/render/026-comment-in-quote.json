@@ -1,0 +1,6 @@
+{
+  "description": "引用里的块注释在一段的中间",
+  "source": "nerve-defined",
+  "rendered": "a⏎c",
+  "note": "Obsidian 在块注释处把这一段分成两段：\"a¶c\"（同 014），这里是一段的两行"
+}
