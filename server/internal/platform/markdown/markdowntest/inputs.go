@@ -125,6 +125,8 @@ func Pathological() []Input {
 		{"nested footnote definitions", func(n int) string { return repeat("[^a]: ")(n) + "x\n" }},
 		{"task items - [ ] a", repeat("- [ ] a\n")},
 		{"task items in quotes > - [x]", repeat("> - [x] \t \n")},
+		// A line break shown as one, "<br>", in each line's two bytes (M6/P8 design 5).
+		{"a paragraph of one-character lines", repeat("a\n")},
 		{"nested lists by indentation", func(n int) string {
 			var b strings.Builder
 			for i := 0; b.Len() < n; i++ {

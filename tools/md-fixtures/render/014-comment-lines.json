@@ -1,0 +1,6 @@
+{
+  "description": "段落里的块注释",
+  "source": "nerve-defined",
+  "rendered": "a⏎c",
+  "note": "Obsidian 在段落里的块注释处把段落分开：\"a¶c\"。我们的段落接着往下，块注释的行不显示，前后只隔一个换行"
+}

@@ -201,3 +201,35 @@ func formula(block text.Reader, m *inlineMath, end, n int) ast.Node {
 		block.AdvanceLine()
 	}
 }
+
+// formulaLines takes away the line break after a $$…$$ formula that ends a
+// paragraph's line, blanks only after it: the reading view shows the
+// formula as a block of its own, after which a <br> would show an empty
+// line, and Obsidian's reading view writes none there. As Obsidian's, a
+// backslash's line break stays, and so does one after a formula in an
+// emphasis or a link; a heading's line keeps it too, for its id (M6/P8
+// design 3).
+type formulaLines struct{}
+
+// Transform implements parser.ASTTransformer.
+func (formulaLines) Transform(doc *ast.Document, reader text.Reader, _ parser.Context) {
+	source := reader.Source()
+	_ = ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		m, ok := n.(*inlineMath)
+		if !ok {
+			return ast.WalkContinue, nil
+		}
+		if k := m.Parent().Kind(); entering && m.display && (k == ast.KindParagraph || k == ast.KindTextBlock) {
+			if t := lineBreak(m.NextSibling(), source); t != nil && !backslashed(t, source) {
+				noBreak(t)
+			}
+		}
+		return ast.WalkSkipChildren, nil
+	})
+}
+
+// backslashed tells whether t's line break is a hard one written with a
+// backslash, which its segment stops at.
+func backslashed(t *ast.Text, source []byte) bool {
+	return t.HardLineBreak() && t.Segment.Stop < len(source) && source[t.Segment.Stop] == '\\'
+}

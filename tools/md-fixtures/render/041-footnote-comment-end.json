@@ -1,0 +1,6 @@
+{
+  "description": "脚注定义的末行只有行内注释：返回链接在下一行，与 Obsidian 相同",
+  "source": "nerve-defined",
+  "rendered": "x1¶a⏎ ↩︎",
+  "note": "脚注的引用与返回链接照 goldmark 的写法（同 034），Obsidian 显示 \"x[1]¶a⏎↩︎\""
+}

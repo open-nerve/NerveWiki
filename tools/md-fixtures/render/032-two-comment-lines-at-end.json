@@ -1,0 +1,5 @@
+{
+  "description": "连续两行只有行内注释，在段末：留下一个空行（块末尾的一个换行不显示）",
+  "source": "obsidian-verified",
+  "rendered": "a⏎¶b"
+}

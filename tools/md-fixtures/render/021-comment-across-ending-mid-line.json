@@ -1,0 +1,6 @@
+{
+  "description": "跨块的块注释结束在行中",
+  "source": "nerve-defined",
+  "rendered": "a",
+  "note": "Obsidian 的块注释在下一个 %% 处结束，不管它是否在行尾，这一行剩下的照常显示：\"a¶b⏎c\"（它的 metadataCache 也这样分段）。我们照规则 6 只在以 %% 结尾的行结束，后面的都藏起来。这是 P8 之前就有的方言差别，不影响提取"
+}

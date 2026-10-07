@@ -4,7 +4,7 @@
 //   node verify.mjs check <workdir> [port]   read Obsidian's results and compare (default port 9333)
 //
 // Obsidian-verified cases must match; nerve-defined cases only report how they differ.
-import { readFileSync, readdirSync, writeFileSync, mkdirSync, rmSync, copyFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, writeFileSync, mkdirSync, rmSync, copyFileSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -21,6 +21,11 @@ const caseNames = readdirSync(casesDir)
   .toSorted();
 
 if (cmd === "prepare") {
+  // It empties work: only a directory it made before, or none.
+  if (existsSync(work) && readdirSync(work).length > 0 && !existsSync(join(work, "userdata", "obsidian.json"))) {
+    console.error(`${work} is not empty and was not prepared by this script: choose another directory`);
+    process.exit(2);
+  }
   rmSync(work, { recursive: true, force: true });
   mkdirSync(vault, { recursive: true });
   mkdirSync(join(work, "userdata"));

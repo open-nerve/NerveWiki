@@ -1,0 +1,5 @@
+{
+  "description": "$$…$$ 公式在强调、高亮、链接里，或之后还有注释、标签：换行留着，与 Obsidian 相同",
+  "source": "obsidian-verified",
+  "rendered": "a⏎⏎b¶c⏎⏎d¶e⏎#t⏎f¶g⏎⏎h¶i⏎⏎j"
+}

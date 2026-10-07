@@ -1,0 +1,5 @@
+{
+  "description": "跨行的链接文字显示为换行；wikilink 不能跨行，照原文显示",
+  "source": "obsidian-verified",
+  "rendered": "链接⏎文字¶[[Page|显示⏎文字]]"
+}

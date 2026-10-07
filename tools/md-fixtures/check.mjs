@@ -1,7 +1,8 @@
 // Checks that every fixture is well-formed and self-consistent:
 // each range points at the bytes where its target is written,
 // each task's offset at the character between its brackets,
-// each resolution case's links go from and to its pages.
+// each resolution case's links go from and to its pages,
+// each render case's reading view is text of blocks and line breaks.
 // Usage: node tools/md-fixtures/check.mjs
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
@@ -83,7 +84,15 @@ function checkCase(dir, base) {
   const jsonPath = join(dir, `${base}.json`);
   if (!existsSync(jsonPath)) return fail(name, "missing .json");
   const src = readFileSync(join(dir, `${base}.md`));
-  const exp = JSON.parse(readFileSync(jsonPath, "utf8"));
+  let exp;
+  try {
+    exp = readObject(jsonPath);
+  } catch (e) {
+    return fail(name, `bad JSON: ${e.message}`);
+  }
+  if (typeof exp.description !== "string" || exp.description === "") fail(name, "description must be non-empty");
+  if ((exp.source === "nerve-defined") !== (typeof exp.note === "string" && exp.note !== ""))
+    fail(name, "note must be set exactly when the case is nerve-defined");
   const keys = Object.keys(exp)
     .filter((k) => k !== "tasks")
     .toSorted()
@@ -92,8 +101,9 @@ function checkCase(dir, base) {
     exp.source === "nerve-defined"
       ? "description,frontmatter,links,note,source,tags"
       : "description,frontmatter,links,source,tags";
-  if (keys !== want) fail(name, `fields ${keys}, want ${want}`);
+  if (keys !== want) return fail(name, `fields ${keys}, want ${want}`);
   if (!SOURCES.has(exp.source)) fail(name, `source ${exp.source}`);
+  if (!Array.isArray(exp.links)) return fail(name, "links must be an array");
   const fm = exp.frontmatter;
   const fmOk =
     fm === null ||
@@ -114,6 +124,13 @@ function checkCase(dir, base) {
 
 const parentOf = (page) => (page.includes("/") ? page.slice(0, page.lastIndexOf("/")) : null);
 const sameKeys = (o, want) => Object.keys(o).every((k) => want.includes(k));
+
+// readObject reads a case's JSON, which must be an object.
+function readObject(path) {
+  const o = JSON.parse(readFileSync(path, "utf8"));
+  if (o === null || typeof o !== "object" || Array.isArray(o)) throw new Error("not an object");
+  return o;
+}
 
 // titleKey approximates the server's title key (NFC, Unicode case folding, NFC): JavaScript
 // has no case folding, and upper then lower case folds as it does for the titles of cases
@@ -175,9 +192,9 @@ function checkRename(dir, base) {
   for (const ext of [".md", ".out.md"]) if (!existsSync(join(dir, base + ext))) fail(name, `missing ${ext}`);
   let c;
   try {
-    c = JSON.parse(readFileSync(join(dir, `${base}.json`), "utf8"));
+    c = readObject(join(dir, `${base}.json`));
   } catch (e) {
-    return fail(name, `not JSON: ${e.message}`);
+    return fail(name, `bad JSON: ${e.message}`);
   }
   if (!sameKeys(c, ["description", "source", "pages", "aliases", "page", "from", "to", "note"]))
     fail(name, "fields are description, source, from, to, and pages, aliases, page and note when set");
@@ -213,9 +230,9 @@ function checkResolveCase(dir, base) {
   const name = `resolve/${base}`;
   let c;
   try {
-    c = JSON.parse(readFileSync(join(dir, base), "utf8"));
+    c = readObject(join(dir, base));
   } catch (e) {
-    return fail(name, `not JSON: ${e.message}`);
+    return fail(name, `bad JSON: ${e.message}`);
   }
   if (!sameKeys(c, ["description", "source", "pages", "aliases", "links", "note"]))
     fail(name, "fields are description, source, pages, links, and aliases and note when set");
@@ -241,22 +258,71 @@ function checkResolveCase(dir, base) {
     fail(name, "note must be set exactly when the case or one of its links is nerve-defined");
 }
 
+// A render case (M6/P8 design 4): its reading view as text, "¶" between
+// blocks and "⏎" a line break, the one at a block's end left out (so "⏎¶"
+// and a "⏎" at the end are a block's two), runs of ASCII white space one
+// space, none next to a "¶" or "⏎" or at the ends.
+function checkRender(dir, base) {
+  const name = `render/${base}`;
+  if (!existsSync(join(dir, `${base}.json`))) return fail(name, "missing .json");
+  let c;
+  try {
+    c = readObject(join(dir, `${base}.json`));
+  } catch (e) {
+    return fail(name, `bad JSON: ${e.message}`);
+  }
+  if (!sameKeys(c, ["description", "source", "rendered", "note"]))
+    fail(name, "fields are description, source, rendered, and note when set");
+  if (typeof c.description !== "string" || c.description === "") fail(name, "description must be non-empty");
+  if (!SOURCES.has(c.source)) fail(name, `source ${c.source}`);
+  if ((c.source === "nerve-defined") !== (typeof c.note === "string" && c.note !== ""))
+    fail(name, "note must be set exactly when the case is nerve-defined");
+  if (typeof c.rendered !== "string" || /¶¶|^¶|¶$|^ | $|[¶⏎] | [¶⏎]| {2}|[\t\n\f\r]/.test(c.rendered))
+    fail(
+      name,
+      "rendered must be text, its blocks one ¶ apart, its white space one space, none at its ends or by a ¶ or ⏎"
+    );
+}
+
+// guarded runs a case's check, a malformed case's crash one more problem.
+const guarded = (check, dir, prefix) => (base) => {
+  try {
+    check(dir, base);
+  } catch (e) {
+    fail(`${prefix}/${base}`, `malformed: ${e.message}`);
+  }
+};
+
 const casesDir = join(root, "cases");
 const cases = readdirSync(casesDir)
   .filter((f) => f.endsWith(".md"))
   .map((f) => f.slice(0, -3));
-cases.forEach((b) => checkCase(casesDir, b));
+cases.forEach(guarded(checkCase, casesDir, "cases"));
+// A JSON of no case: its .md renamed or gone.
+const orphans = (dir, bases) =>
+  readdirSync(join(root, dir))
+    .filter((f) => f.endsWith(".json") && !bases.includes(f.slice(0, -5)))
+    .forEach((f) => fail(`${dir}/${f}`, "no .md"));
+orphans("cases", cases);
 const renameDir = join(root, "rename");
 const renames = readdirSync(renameDir)
   .filter((f) => f.endsWith(".json"))
   .map((f) => f.slice(0, -5));
-renames.forEach((b) => checkRename(renameDir, b));
+renames.forEach(guarded(checkRename, renameDir, "rename"));
 const resolveDir = join(root, "resolve");
 const resolves = readdirSync(resolveDir).filter((f) => f.endsWith(".json"));
-resolves.forEach((f) => checkResolveCase(resolveDir, f));
+resolves.forEach(guarded(checkResolveCase, resolveDir, "resolve"));
+const renderDir = join(root, "render");
+const renders = readdirSync(renderDir)
+  .filter((f) => f.endsWith(".md"))
+  .map((f) => f.slice(0, -3));
+renders.forEach(guarded(checkRender, renderDir, "render"));
+orphans("render", renders);
 
 if (problems.length) {
   console.error(problems.join("\n"));
   process.exit(1);
 }
-console.log(`ok: ${cases.length} cases, ${renames.length} rename cases, ${resolves.length} resolution cases`);
+console.log(
+  `ok: ${cases.length} cases, ${renames.length} rename cases, ${resolves.length} resolution cases, ${renders.length} render cases`
+);

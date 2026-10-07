@@ -1,0 +1,5 @@
+{
+  "description": "行尾的 $$…$$ 公式之后是反斜杠的硬换行，前面有空白时也是：这个换行留着，显示一个空行",
+  "source": "obsidian-verified",
+  "rendered": "a⏎⏎b¶c⏎⏎d"
+}

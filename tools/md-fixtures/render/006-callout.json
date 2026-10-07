@@ -1,0 +1,5 @@
+{
+  "description": "callout 的标题到第一个换行为止，正文里的换行显示为换行；折叠的同样",
+  "source": "obsidian-verified",
+  "rendered": "标题¶正文一⏎正文二¶折叠¶内一⏎内二"
+}

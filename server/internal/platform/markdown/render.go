@@ -28,8 +28,10 @@ func (m *Markdown) Render(ctx context.Context, d *Document, page Page) (string, 
 	props := table{scalars: fm.Scalars}
 	nodes := []util.PrioritizedValue{
 		// goldmark's renderer stays safe: a node that reached it unexpected
-		// would be an omitted comment or a dropped address.
-		util.Prioritized(gmhtml.NewRenderer(), 1000),
+		// would be an omitted comment or a dropped address. A line break in a
+		// paragraph is shown as one, as Obsidian's reading view shows it (its
+		// strict line breaks off, the default; M6/P8 design 3).
+		util.Prioritized(gmhtml.NewRenderer(gmhtml.WithHardWraps()), 1000),
 		util.Prioritized(scrollingTables{extension.NewTableHTMLRenderer(
 			extension.WithTableCellAlignMethod(extension.TableCellAlignAttribute))}, 500),
 		util.Prioritized(extension.NewStrikethroughHTMLRenderer(), 500),

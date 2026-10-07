@@ -1,0 +1,5 @@
+{
+  "description": "行尾的一个空格、制表符不是硬换行，换行照样显示",
+  "source": "obsidian-verified",
+  "rendered": "a⏎b⏎c"
+}

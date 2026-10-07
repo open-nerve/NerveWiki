@@ -1,0 +1,5 @@
+{
+  "description": "连续两行只有行内注释，留下两个空行",
+  "source": "obsidian-verified",
+  "rendered": "a⏎⏎⏎b"
+}

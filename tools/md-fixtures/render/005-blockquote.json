@@ -1,0 +1,5 @@
+{
+  "description": "引用里的换行，含惰性续行",
+  "source": "obsidian-verified",
+  "rendered": "引用一⏎引用二¶惰性⏎续行"
+}

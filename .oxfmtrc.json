@@ -7,6 +7,7 @@
     "pnpm-lock.yaml",
     "tools/md-fixtures/cases/**",
     "tools/md-fixtures/rename/**",
+    "tools/md-fixtures/render/**",
     "api/dist/**",
     "web/packages/api-client/src/schema.gen.ts",
     "web/apps/web/dist/**"

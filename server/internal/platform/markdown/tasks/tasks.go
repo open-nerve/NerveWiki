@@ -5,6 +5,7 @@
 package tasks
 
 import (
+	"bytes"
 	"cmp"
 	"regexp"
 	"slices"
@@ -31,9 +32,10 @@ type Task struct {
 }
 
 // Extension is the extension of task items. It replaces goldmark's: its
-// parser recognizes what goldmark's does, its renderer writes what
-// goldmark's writes and the checkbox's position in data-task, and Extract
-// gives the document's tasks in the content's order.
+// parser recognizes what goldmark's does, leaving the line break of a
+// checkbox alone on its line, its renderer writes what goldmark's writes
+// and the checkbox's position in data-task, and Extract gives the
+// document's tasks in the content's order.
 func Extension() markdown.Extension {
 	return markdown.Extension{
 		Name: Name,
@@ -70,7 +72,8 @@ func (n *node) Dump(source []byte, level int) {
 // pattern is goldmark's (extension/tasklist.go).
 var pattern = regexp.MustCompile(`^\[([\sxX])\]\s*`)
 
-// taskParser is goldmark's task list parser with the checkbox's position.
+// taskParser is goldmark's task list parser with the checkbox's position,
+// which leaves the line's end after it.
 type taskParser struct{}
 
 func (taskParser) Trigger() []byte { return []byte{'['} }
@@ -92,7 +95,10 @@ func (taskParser) Parse(parent ast.Node, block text.Reader, _ parser.Context) as
 	// The line starts with '[', so it has no padding (padding is spaces
 	// before it): line[i] is the source's seg.Start+i.
 	value := line[m[2]]
-	block.Advance(m[1])
+	// Unlike goldmark, it leaves the line's end: past it, goldmark would not
+	// end the line with its line break, which is the item's, shown as one when
+	// nothing follows the checkbox (M6/P8 design 3).
+	block.Advance(len(bytes.TrimSuffix(line[:m[1]], []byte("\n"))))
 	return &node{Task: Task{Offset: seg.Start + m[2], Checked: value == 'x' || value == 'X'}}
 }
 

@@ -22,7 +22,7 @@ trim_trailing_whitespace = false
 indent_style = tab
 
 # Markdown 样例集的输入是逐字节的规范（CRLF、BOM、行尾空白、缺少末尾换行都是有意的），编辑器不能改动
-[tools/md-fixtures/{cases,rename}/**]
+[tools/md-fixtures/{cases,rename,render}/**]
 charset = unset
 end_of_line = unset
 insert_final_newline = unset

@@ -1,0 +1,6 @@
+{
+  "description": "两行的 setext 标题",
+  "source": "nerve-defined",
+  "rendered": "第一行⏎第二行¶正文",
+  "note": "Obsidian 只把一行的 setext 标题当标题（023），这里两行连同 === 显示为一段：\"第一行⏎第二行⏎===¶正文\"。我们照 CommonMark 读成一个两行的标题。这是 P8 之前就有的方言差别"
+}

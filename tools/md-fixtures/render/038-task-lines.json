@@ -1,0 +1,6 @@
+{
+  "description": "任务项的复选框之后换行",
+  "source": "nerve-defined",
+  "rendered": "⏎b¶a⏎c",
+  "note": "Obsidian 不把 \"- [ ]\" 之后直接换行的当任务项，显示 \"[ ]⏎b¶a⏎c\"；这里照 goldmark 是任务项（规则 11），复选框独占一行。换行与 Obsidian 相同"
+}

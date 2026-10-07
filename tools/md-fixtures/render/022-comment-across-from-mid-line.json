@@ -1,0 +1,5 @@
+{
+  "description": "从行中开始的 %% 不跨块，照原文显示",
+  "source": "obsidian-verified",
+  "rendered": "a %%x¶y%%⏎b"
+}

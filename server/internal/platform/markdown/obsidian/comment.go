@@ -116,7 +116,7 @@ func endsLine(source []byte, at int) bool {
 // What a comment spans is hidden.
 type comments struct{}
 
-func (comments) Transform(doc *ast.Document, _ text.Reader, _ parser.Context) {
+func (comments) Transform(doc *ast.Document, reader text.Reader, _ parser.Context) {
 	var all, raw []*marker
 	images := 0 // the images around the node
 	_ = ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
@@ -153,7 +153,9 @@ func (comments) Transform(doc *ast.Document, _ text.Reader, _ parser.Context) {
 		switch last := line[len(line)-1]; {
 		case open != nil:
 			if last.last {
+				after := last.NextSibling()
 				hide(open, last)
+				noBreak(lineBreak(after, reader.Source()))
 				open = nil
 			}
 		case len(line) == 1 && last.first:
@@ -169,6 +171,32 @@ func (comments) Transform(doc *ast.Document, _ text.Reader, _ parser.Context) {
 	}
 	if open != nil {
 		hide(open, nil)
+	}
+}
+
+// lineBreak is the text that holds the line break ending the line of the
+// node before n, when only blanks are between them: it comes after any
+// texts of the blanks. It is nil when something else is, or no line break.
+func lineBreak(n ast.Node, source []byte) *ast.Text {
+	for ; n != nil; n = n.NextSibling() {
+		t, ok := n.(*ast.Text)
+		if !ok || !util.IsBlank(t.Segment.Value(source)) {
+			return nil
+		}
+		if t.SoftLineBreak() || t.HardLineBreak() {
+			return t
+		}
+	}
+	return nil
+}
+
+// noBreak takes away t's line break, t nil for none. A block comment's
+// closing marker takes away its line's, as Obsidian's reading view shows no
+// line of a block comment, nor an empty one where it was (M6/P8 design 3).
+func noBreak(t *ast.Text) {
+	if t != nil {
+		t.SetSoftLineBreak(false)
+		t.SetHardLineBreak(false)
 	}
 }
 

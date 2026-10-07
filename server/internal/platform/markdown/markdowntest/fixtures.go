@@ -1,6 +1,8 @@
 package markdowntest
 
 import (
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,12 +17,13 @@ type Fixture struct {
 	JSON    []byte
 }
 
-// casesDir, resolveDir and renameDir are the fixture set's directories,
-// from the repository's root.
+// casesDir, resolveDir, renameDir and renderDir are the fixture set's
+// directories, from the repository's root.
 const (
 	casesDir   = "tools/md-fixtures/cases"
 	resolveDir = "tools/md-fixtures/resolve"
 	renameDir  = "tools/md-fixtures/rename"
+	renderDir  = "tools/md-fixtures/render"
 )
 
 // Fixtures reads the fixture set, looking for it from the test's directory
@@ -38,6 +41,29 @@ func Fixtures(tb testing.TB) []Fixture {
 			tb.Fatal(err)
 		}
 		if f.JSON, err = os.ReadFile(strings.TrimSuffix(name, ".md") + ".json"); err != nil {
+			tb.Fatal(err)
+		}
+		out = append(out, f)
+	}
+	return out
+}
+
+// RenderCases reads the fixture set's render cases (M6/P8 design 4): a
+// page's content and the JSON of its reading view, looking for them as
+// Fixtures does.
+func RenderCases(tb testing.TB) []Fixture {
+	tb.Helper()
+	names, err := filepath.Glob(filepath.Join(fixtureDir(tb, renderDir), "*.md"))
+	if err != nil || len(names) == 0 {
+		tb.Fatalf("render fixtures: %d, %v", len(names), err)
+	}
+	out := make([]Fixture, 0, len(names))
+	for _, name := range names {
+		f := Fixture{Name: filepath.Base(name)}
+		if f.Content, err = os.ReadFile(name); err != nil {
+			tb.Fatal(err)
+		}
+		if f.JSON, err = os.ReadFile(strings.TrimSuffix(name, ".md") + ".json"); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			tb.Fatal(err)
 		}
 		out = append(out, f)

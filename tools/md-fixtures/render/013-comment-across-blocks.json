@@ -1,0 +1,5 @@
+{
+  "description": "跨块的块注释结束在行尾：它的行不显示，后面的段落开头没有空行",
+  "source": "obsidian-verified",
+  "rendered": "a¶d"
+}
