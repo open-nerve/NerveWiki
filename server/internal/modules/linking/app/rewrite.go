@@ -250,8 +250,7 @@ func (r Rewrite) rewrite(ctx context.Context, id uuid.UUID, revision int, reache
 	facts := domain.Facts{Links: was.Facts.Links, Aliases: was.Facts.Aliases} // what a writing is read back against
 	rewriting := domain.Rewrite(content, from, links, tree, recased)
 	for _, l := range rewriting.Left {
-		r.Logger.LogAttrs(ctx, slog.LevelError, "a link is not rewritten: no writing leads where it led",
-			slog.String("page_id", id.String()), slog.Int("start", l.Start), slog.String("target", l.Target))
+		r.left(ctx, "no writing leads where it led", id, l)
 	}
 	if len(rewriting.Edits) == 0 {
 		return nil
@@ -303,13 +302,19 @@ func (r Rewrite) rewrite(ctx context.Context, id uuid.UUID, revision int, reache
 		sizes = []slog.Attr{slog.Int("bytes", len(content)), slog.Int("written", left.TooLarge)}
 	}
 	for _, l := range left.Links {
-		r.Logger.LogAttrs(ctx, slog.LevelError, "a link is not rewritten: no writing of the page with it was kept", append([]slog.Attr{
-			slog.String("page_id", id.String()), slog.Int("start", l.Start), slog.String("target", l.Target),
-		}, sizes...)...)
+		r.left(ctx, "no writing of the page with it was kept", id, l, sizes...)
 	}
 	u.Defer(now.Release)
 	written = true
 	return u.WriteContent(ctx, Rewritten{PageID: id, Base: revision, Content: writing, Facts: now.Written})
+}
+
+// left logs l, a link of the page id not rewritten, why, and attrs: by
+// where it starts, as its target holds a title, which no log holds (v0.1
+// design 13.1 rule 10; Codex review R2).
+func (r Rewrite) left(ctx context.Context, why string, id uuid.UUID, l domain.Link, attrs ...slog.Attr) {
+	r.Logger.LogAttrs(ctx, slog.LevelError, "a link is not rewritten: "+why,
+		append([]slog.Attr{slog.String("page_id", id.String()), slog.Int("start", l.Start)}, attrs...)...)
 }
 
 // release gives back what p holds of the budget, if it holds any.

@@ -3,6 +3,7 @@ package httpserver
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -320,6 +321,88 @@ func TestAccessLogOfProbesIsDebug(t *testing.T) {
 
 		if entry := findLog(logs(), "http request"); entry == nil || entry["level"] != "DEBUG" {
 			t.Errorf("GET %s access log = %v, want level DEBUG", path, entry)
+		}
+	}
+}
+
+// The logs write a path's values of its route's wildcards as the wildcards,
+// but a slug's and an id's that is a uuid, the uuid as uuids are written: a
+// value may be a page's text, as getTag's tag is (v0.1 design 13.1 rule 10;
+// M6 Codex review, fix check B2-M1, B2-M3, B3-N1). A path the API's subtree
+// took, which no route did (a method, a segment, a slash more), as the
+// subtree; a path the router cleans to a route's, as the route (fix check
+// B3-M1). The access log, the recover's, the API errors' and LongLived's
+// alike; the web app's paths, that "/" takes, as they are, or as where the
+// router redirects them to, of the path as written and of no CONNECT, by
+// any other method, with no query, an empty one in the absolute form as
+// "/", unescaped as a path is (fix check B3-M4, B4-M1, B5-M1, B6-M1,
+// B7-N1, B7-N2).
+func TestTheLogsWriteARoutesValuesButIdsAsItsWildcards(t *testing.T) {
+	logger, logs := captureLogs(t)
+	errs := NewAPIErrors(logger)
+	router := NewRouter(slog.New(slog.DiscardHandler))
+	router.HandleFunc("GET /api/v0/notebooks/{notebook_id}/tags/{tag}", func(w http.ResponseWriter, r *http.Request) {
+		errs.Write(w, r, errors.New("a fault"))
+	})
+	router.HandleFunc("GET /api/v0/workspaces/{slug}/tags/{tag}", func(http.ResponseWriter, *http.Request) {
+		panic("boom")
+	})
+	router.Handle("GET /api/v0/streams/{tag}", LongLived(logger, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})))
+	router.HandleFunc("GET /api/v0/things", func(http.ResponseWriter, *http.Request) {})
+	router.Handle("/", http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})) // the web app's, as wire.go has it
+	h := middleware(router, logger)
+	id := uuid.NewV7().String()
+	for _, tt := range []struct{ method, path, logged, msg string }{
+		{http.MethodGet, "/api/v0/notebooks/" + id + "/tags/layoff%2Fplan", "/api/v0/notebooks/" + id + "/tags/{tag}",
+			"API handler failed"},
+		{http.MethodGet, "/api/v0/notebooks/layoff/tags/plan", "/api/v0/notebooks/{notebook_id}/tags/{tag}", ""},
+		{http.MethodGet, "/api/v0/workspaces/lab/tags/layoff", "/api/v0/workspaces/lab/tags/{tag}", "panic serving request"},
+		{http.MethodGet, "/api/v0/streams/layoff", "/api/v0/streams/{tag}",
+			"cannot lift the write deadline of a long-lived response"},
+		{http.MethodGet, "/api/v0/streams/" + id, "/api/v0/streams/{tag}",
+			"cannot lift the write deadline of a long-lived response"},
+		{http.MethodGet, "/api/v0/things", "/api/v0/things", ""},
+		{http.MethodGet, "/api/v0/things/layoff/..", "/api/v0/things", ""},
+		{http.MethodGet, "/api/v0/notebooks/urn:uuid:" + strings.ToUpper(id) + "/tags/layoff",
+			"/api/v0/notebooks/" + id + "/tags/{tag}", "API handler failed"},
+		{http.MethodPost, "/api/v0/notebooks/" + id + "/tags/layoff", "/api/...", ""},
+		{http.MethodOptions, "/api/v0/notebooks/" + id + "/tags/layoff", "/api/...", ""},
+		{http.MethodGet, "/api/v0/notebooks/" + id + "/tags/layoff/", "/api/...", ""},
+		{http.MethodGet, "/api/v0/notebooks/" + id + "/tag/layoff", "/api/...", ""},
+		{http.MethodGet, "/api/v0/notebooks/" + id + "/tags/x/../layoff", "/api/v0/notebooks/{notebook_id}/tags/{tag}", ""},
+		{http.MethodGet, "/api/v0/workspaces/lab/tags/x/../layoff", "/api/v0/workspaces/{slug}/tags/{tag}", ""},
+		{http.MethodGet, "/lab/notebooks/" + id, "/lab/notebooks/" + id, ""},
+		{http.MethodGet, "/api/v0/notebooks/" + id + "/tags/layoff/../../../../../../lab", "/lab", ""},
+		{http.MethodGet, "/lab//tags/layoff/../", "/lab/tags/", ""},
+		{http.MethodGet, "/", "/", ""},
+		{http.MethodGet, "/lab/../", "/", ""},
+		{http.MethodGet, "/api/v0/notebooks/" + id + "/tags/layoff/a%2Fb%2Fc%2Fd%2Fe%2Ff%2Fg/../../../../../../../lab", "/lab", ""},
+		{http.MethodGet, "/x/%2E%2E/lab/tags/layoff", "/x/../lab/tags/layoff", ""},
+		{http.MethodGet, "/lab/x/../c%20d", "/lab/c d", ""},
+		{http.MethodConnect, "/x/../lab/tags/layoff", "/x/../lab/tags/layoff", ""},
+		{http.MethodHead, "/api/v0/notebooks/" + id + "/tags/layoff/../../../../../../lab", "/lab", ""},
+		{http.MethodPost, "/api/v0/notebooks/" + id + "/tags/layoff/../../../../../../lab", "/lab", ""},
+		{"connect", "/x/../lab", "/lab", ""},
+		{http.MethodGet, "/lab/x/../tags?next=/lab/tags/layoff", "/lab/tags", ""},
+		{http.MethodGet, "http://example.com", "/", ""},
+		{http.MethodGet, "/lab/x/../a+b", "/lab/a+b", ""},
+	} {
+		serve(h, httptest.NewRequest(tt.method, tt.path, nil))
+		entries := logs()
+		msgs := []string{"http request"}
+		if tt.msg != "" {
+			msgs = append(msgs, tt.msg)
+		}
+		for _, msg := range msgs {
+			var last map[string]any
+			for _, e := range entries {
+				if e["msg"] == msg {
+					last = e
+				}
+			}
+			if last == nil || last["path"] != tt.logged {
+				t.Errorf("%s %s: %q logged %v, want the path %s", tt.method, tt.path, msg, last, tt.logged)
+			}
 		}
 	}
 }

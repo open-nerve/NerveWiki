@@ -139,7 +139,7 @@ func TestARebuildStopsAtAClashOrNoNotebook(t *testing.T) {
 	w := newWorld(t, "src", "B")
 	w.run(w.write("src", []string{"B"}))
 	r, c, _ := newRebuild(w, map[string]string{"src": "missing"})
-	clash := app.Clash{{ID: w.id("B"), Name: "B"}, {ID: w.id("src"), Name: "b"}}
+	clash := app.Clash{w.id("B"), w.id("src")}
 	c.clashes = []app.Clash{clash}
 	w.published.events = nil
 	got, err := r.Notebook(context.Background(), w.notebook)

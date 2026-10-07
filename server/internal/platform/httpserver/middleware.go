@@ -4,6 +4,8 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"net/url"
+	"path"
 	"runtime/debug"
 	"strings"
 	"time"
@@ -109,7 +111,7 @@ func withRecover(logger *slog.Logger, next http.Handler) http.Handler {
 			logger.ErrorContext(r.Context(), "panic serving request",
 				slog.String("request_id", RequestID(r.Context())),
 				slog.String("method", r.Method),
-				slog.String("path", r.URL.Path),
+				slog.String("path", loggedPath(r)),
 				slog.Any("panic", v),
 				slog.String("stack", string(debug.Stack())),
 			)
@@ -131,6 +133,76 @@ func withRecover(logger *slog.Logger, next http.Handler) http.Handler {
 		}()
 		next.ServeHTTP(rec, r)
 	})
+}
+
+// loggedPath is r's path as the logs write it, as a path may hold a page's
+// text (getTag's tag; v0.1 design 13.1 rule 10): the route the router found
+// (a path it redirects to a clean one among them, fix check B3-M1), a
+// slug's value and an id's that is a uuid in it, the uuid as uuids are
+// written, and any other wildcard's, or one of no value, as the wildcard
+// ("{tag}"); a path a route's subtree took, which no route of its own did
+// (the API's 404), as the subtree and "..." (fix check B2-M1). The web
+// app's paths, that "/" takes, are written as webPath writes them. It reads
+// the route the router sets on r: once r has been served, or in its
+// handler. Of a CONNECT the router redirects to a slash, that is the path
+// it redirects to, which holds no wildcard while no route a CONNECT may
+// take does (bootstrap's TestTheRoutesOfAConnectHoldNoWildcard; fix checks
+// B4-Q1, B5-N2).
+func loggedPath(r *http.Request) string {
+	_, pattern, ok := strings.Cut(r.Pattern, " ")
+	if !ok {
+		pattern = r.Pattern
+	}
+	switch {
+	case pattern == "":
+		return r.URL.Path
+	case pattern == "/":
+		return webPath(r)
+	case strings.HasSuffix(pattern, "/") && r.URL.Path != pattern:
+		return pattern + "..."
+	case !strings.Contains(pattern, "{"):
+		return pattern
+	}
+	segments := strings.Split(pattern, "/")
+	for i, segment := range segments {
+		name, ok := strings.CutPrefix(segment, "{")
+		if !ok {
+			continue
+		}
+		name = strings.TrimSuffix(name, "}")
+		v := r.PathValue(name)
+		if id, err := uuid.Parse(v); err == nil && (name == "id" || strings.HasSuffix(name, "_id")) {
+			segments[i] = id.String()
+		} else if v != "" && name == "slug" {
+			segments[i] = v
+		}
+	}
+	return strings.Join(segments, "/")
+}
+
+// webPath is the path of r that the web app's route took, as the logs
+// write it, unescaped as the handler reads it: as it is, or, when the
+// router redirects it to its clean path, as where it redirects to. The
+// router cleans the path as written, its escapes kept, and no CONNECT's
+// (fix checks B4-M1, B5-M1); a path it does not change unescapes to r's.
+func webPath(r *http.Request) string {
+	if r.Method == http.MethodConnect {
+		return r.URL.Path
+	}
+	if p, err := url.PathUnescape(cleanPath(r.URL.EscapedPath())); err == nil {
+		return p
+	}
+	return r.URL.Path // not reached: r's escapes are valid, and cleaning splits none
+}
+
+// cleanPath is p as the router cleans it: its "." and ".." segments
+// resolved and its doubled slashes made one, the slash at its end kept.
+func cleanPath(p string) string {
+	cleaned := path.Clean("/" + p)
+	if strings.HasSuffix(p, "/") && cleaned != "/" {
+		cleaned += "/"
+	}
+	return cleaned
 }
 
 // withAccessLog logs one line per request: method, path, status, duration
@@ -157,7 +229,7 @@ func withAccessLog(logger *slog.Logger, next http.Handler) http.Handler {
 			logger.LogAttrs(r.Context(), level, "http request",
 				slog.String("request_id", RequestID(r.Context())),
 				slog.String("method", r.Method),
-				slog.String("path", r.URL.Path),
+				slog.String("path", loggedPath(r)),
 				slog.Int("status", status),
 				slog.Duration("duration", time.Since(start)),
 			)

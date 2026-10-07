@@ -12,6 +12,7 @@ import type { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 
 import type { Build, EditorContext } from "../registry";
+import { openingQuote, quoted } from "./yaml-quotes";
 
 /**
  * A link's target being written: after the last [[ of the line, what the
@@ -82,9 +83,9 @@ type Place = { table: boolean; frontmatter: boolean };
  * while an input method composes (design 6): its completion is closed as
  * one starts, and started again by CodeMirror as it ends having changed
  * the text. CodeMirror lets an input method have the keys while it
- * composes, Enter among them. In a frontmatter only a link in quotes
- * completes, the way a property link is written; no tag, as YAML reads a
- * comment there.
+ * composes, Enter among them. In a frontmatter a link completes just after
+ * a string's quote, the way a property link is written, and is written as
+ * the string writes it; no tag, as YAML reads a comment there.
  */
 export const linkCompletion: Build = (context) => [
   autocompletion({
@@ -242,11 +243,12 @@ function pages(context: EditorContext): CompletionSource {
     const opens = before.length - whole.length + bang.length;
     const slashes = slashesBefore(before, before.length - whole.length);
     const place = placeOf(completion);
-    if (
-      place === undefined ||
-      (bang === "" && slashes % 2 === 1) ||
-      (place.frontmatter && !/["']$/.test(before.slice(0, opens)))
-    ) {
+    // In a frontmatter, a property link is a string's whole value: a link completes just after the string's quote,
+    // and is written as the string writes it (Codex review R1).
+    const quote = place?.frontmatter
+      ? openingQuote(completion.state, completion.state.doc.lineAt(completion.pos).from + opens)
+      : "";
+    if (place === undefined || (bang === "" && slashes % 2 === 1) || (place.frontmatter && quote === "")) {
       return null;
     }
     const from = completion.pos - query.length;
@@ -257,24 +259,48 @@ function pages(context: EditorContext): CompletionSource {
     // An embed shows its page: an alias would be its display text, which an embed takes for a size.
     const embed = bang === "!" && slashes % 2 === 0;
     const separator = place.table ? "\\|" : "|";
+    const unwritten = unwritable(place);
     const options: Completion[] = [];
     for (const target of targets) {
+      // A title may hold what YAML does not take (U+FFFE, U+FFFF): its page is not listed where it would be written so.
+      if (unwritten.test(target.link)) {
+        continue;
+      }
+      const link = quoted(quote, target.link);
       // Matched by its link, which holds its title: a path for a title others share.
       options.push({
         label: target.link,
         displayLabel: target.name,
         detail: target.link === target.name ? undefined : target.link,
-        apply: writing(target.link, undefined, separator),
+        apply: writing(link, undefined, separator),
       });
       for (const alias of embed ? [] : target.aliases) {
-        // One with a bracket or a line's end would end the link it is written in; in a table, one with a '|' the cell.
-        if (!(place.table ? /[[\]\r\n|]/ : /[[\]\r\n]/).test(alias)) {
-          options.push({ label: alias, detail: `→ ${target.link}`, apply: writing(target.link, alias, separator) });
+        if (!unwritten.test(alias)) {
+          options.push({
+            label: alias,
+            detail: `→ ${target.link}`,
+            apply: writing(link, quoted(quote, alias), separator),
+          });
         }
       }
     }
     return { from, options, validFor: linkGoesOn, getMatch: shownMatch };
   };
+}
+
+/**
+ * unwritable is what a link or an alias written at place may not hold: a bracket or
+ * a line's end would end the link it is written in; in a table, a '|' the
+ * cell; in a frontmatter's string in quotes, a character YAML does not
+ * take there as written: a control but a tab, a line's end of YAML's
+ * (U+0085, U+2028, U+2029: the string would be one over lines, or lose
+ * the spaces around it, and no property link), U+FFFE and U+FFFF.
+ */
+function unwritable(place: Place): RegExp {
+  if (place.table) {
+    return /[[\]\r\n|]/;
+  }
+  return place.frontmatter ? /[[\]\u2028\u2029\uFFFE\uFFFF]|(?!\t)\p{Cc}/u : /[[\]\r\n]/;
 }
 
 /** tags completes a tag with the notebook's tags the body can write, each with how many pages have it. */

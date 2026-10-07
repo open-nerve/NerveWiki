@@ -15,6 +15,7 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/modules/linking"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/notebook"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page"
+	"github.com/open-nerve/NerveWiki/server/internal/modules/workspace"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres"
 )
@@ -58,7 +59,10 @@ func Reindex(ctx context.Context, cfg config.Config, errOut, out io.Writer, id u
 		case err != nil:
 			line = fmt.Sprintf("notebook %s: not reindexed: %v", nb, err)
 		case len(r.Clashes) > 0:
-			line = clashLine(nb, r.Clashes)
+			slugOf := func(ctx context.Context, nb uuid.UUID) (string, error) { return workspaceSlug(ctx, c.pool, nb) }
+			if line, err = clashLine(ctx, c.logger, slugOf, nb, r.Clashes); err != nil {
+				return err
+			}
 		default:
 			if err := writeLine(out, fmt.Sprintf("notebook %s: %s, %s, %d unresolved", nb, plural(r.Pages, "page"), plural(r.Links, "link"), r.Unresolved)); err != nil {
 				return err
@@ -71,7 +75,7 @@ func Reindex(ctx context.Context, cfg config.Config, errOut, out io.Writer, id u
 		}
 	}
 	if failed > 0 {
-		return fmt.Errorf("%s not reindexed, as listed above: rename the titles that would share a key under one parent, or see the logs, then run reindex again", plural(failed, "notebook"))
+		return fmt.Errorf("%s not reindexed, as listed above: have the notebook's members rename one page of each group that would share a key, or see the logs, then run reindex again", plural(failed, "notebook"))
 	}
 	return nil
 }
@@ -85,17 +89,48 @@ func plural(n int, thing string) string {
 }
 
 // clashLine tells the siblings of the notebook nb whose title keys would
-// clash, each group by its titles and ids.
-func clashLine(nb uuid.UUID, clashes []linking.Clash) string {
+// clash, each group by its pages' addresses in the web app, which the
+// notebook's members open: the titles are the notebook's, which the
+// server's administrator may not read, but its workspace's slug, of
+// slugOf, is said (v0.1 design 13.1 rule 10; M6 Codex review, fix check
+// B2-Q1). Of a workspace deleted meanwhile, or whose slug is not read, the
+// error logged, by the pages' ids (fix check B3-M3): it fails only when ctx
+// is done.
+func clashLine(ctx context.Context, logger *slog.Logger, slugOf func(context.Context, uuid.UUID) (string, error),
+	nb uuid.UUID, clashes []linking.Clash) (string, error) {
+	slug, err := slugOf(ctx, nb)
+	if err != nil && ctx.Err() != nil {
+		return "", fmt.Errorf("notebook %s: %w", nb, err)
+	}
+	if err != nil {
+		logger.LogAttrs(ctx, slog.LevelError, "the pages whose titles would share a key are told by id: their workspace's slug is not read",
+			slog.String("notebook_id", nb.String()), slog.Any("error", err))
+		slug = ""
+	}
+	path := func(id uuid.UUID) string { return id.String() }
+	if slug != "" {
+		path = func(id uuid.UUID) string { return fmt.Sprintf("/%s/notebooks/%s/pages/%s", slug, nb, id) }
+	}
 	groups := make([]string, len(clashes))
 	for i, c := range clashes {
-		names := make([]string, len(c))
-		for j, n := range c {
-			names[j] = fmt.Sprintf("%q (%s)", n.Name, n.ID)
+		pages := make([]string, len(c))
+		for j, id := range c {
+			pages[j] = path(id)
 		}
-		groups[i] = strings.Join(names, ", ")
+		groups[i] = strings.Join(pages, ", ")
 	}
-	return fmt.Sprintf("notebook %s: not reindexed: titles that would share a key: %s", nb, strings.Join(groups, "; "))
+	return fmt.Sprintf("notebook %s: not reindexed: the pages whose titles would share a key: %s", nb, strings.Join(groups, "; ")), nil
+}
+
+// workspaceSlug is the slug of the workspace of the notebook nb on pool; ""
+// when the notebook or its workspace was deleted meanwhile.
+func workspaceSlug(ctx context.Context, pool *pgxpool.Pool, nb uuid.UUID) (string, error) {
+	ws, ok, err := notebook.NewNotebooks(pool).WorkspaceOf(ctx, nb)
+	if err != nil || !ok {
+		return "", err
+	}
+	slugs, err := workspace.NewWorkspaces(pool).Slugs(ctx, []uuid.UUID{ws})
+	return slugs[ws], err
 }
 
 // reindexAdmin is the linking module's rebuild on pool: the Markdown and

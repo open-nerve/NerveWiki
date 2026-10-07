@@ -126,9 +126,7 @@ func (l linkTargets) Rekey(ctx context.Context, notebookID uuid.UUID) ([]linking
 	clashes, err := l.page.Rekey(ctx, notebookID)
 	out := make([]linking.Clash, len(clashes))
 	for i, c := range clashes {
-		for _, n := range c {
-			out[i] = append(out[i], linking.NamedNode(n))
-		}
+		out[i] = c
 	}
 	return out, err
 }

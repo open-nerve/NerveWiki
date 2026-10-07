@@ -442,6 +442,109 @@ test("in a frontmatter, as the server finds it, a link completes in quotes, as a
   }
 });
 
+/** quotedTargets are a page whose title holds a ', its aliases quotes, a backslash and characters YAML takes or not in quotes, and a page whose title holds U+FFFE. */
+function quotedTargets(): Promise<LinkTarget[]> {
+  return Promise.resolve([
+    {
+      id: "p6",
+      kind: "page",
+      name: `Plan${String.fromCodePoint(0xfffe)}`,
+      link: `Plan${String.fromCodePoint(0xfffe)}`,
+      aliases: ["Plan B"],
+    },
+    {
+      id: "p5",
+      kind: "page",
+      name: "Bob's",
+      link: "Bob's",
+      aliases: [
+        "Bob's plan",
+        'He said "Hi"',
+        String.raw`a\nb`,
+        "tab\there",
+        ...[0x2028, 0x2029, 0x85, 0x7f, 0x80, 0x01, 0xfffe, 0xffff].map((c) => `a${String.fromCodePoint(c)}b`),
+      ],
+    },
+  ]);
+}
+
+test("in a frontmatter a pick is written as its string in quotes writes it: in single quotes a ' twice, in double quotes a \\ and a \" escaped; in a link already closed its anchor and display text stay as written (Codex review R1)", async () => {
+  const linkTargets = quotedTargets;
+  for (const [doc, typed, picked, written] of [
+    ["---\nref: ‸\n---", "'[[Bo", "Bob's", "---\nref: '[[Bob''s]]\n---"],
+    ["---\nref: ‸\n---", "'[[Bob's p", "Bob's plan", "---\nref: '[[Bob''s|Bob''s plan]]\n---"],
+    [
+      "---\nref: ‸\n---",
+      '"[[He',
+      'He said "Hi"',
+      String.raw`---
+ref: "[[Bob's|He said \"Hi\"]]
+---`,
+    ],
+    [
+      "---\nref: ‸\n---",
+      '"[[a',
+      String.raw`a\nb`,
+      String.raw`---
+ref: "[[Bob's|a\\nb]]
+---`,
+    ],
+    ["---\nref: '[[‸Seed#It''s|It''s]]'\n---", "Bo", "Bob's", "---\nref: '[[Bob''s#It''s|It''s]]'\n---"],
+    ["---\nref: '[[‸Seed|old]]'\n---", "Bo", "Bob's plan", "---\nref: '[[Bob''s|Bob''s plan]]'\n---"],
+    // A plain string's lines before do not open strings.
+    [
+      "---\nnote: Music from the\n  '90s\nref: ‸\n---",
+      "'[[Bo",
+      "Bob's",
+      "---\nnote: Music from the\n  '90s\nref: '[[Bob''s]]\n---",
+    ],
+  ] as const) {
+    const { view } = editingAt(doc, { linkTargets });
+    type(view, typed);
+    // oxlint-disable-next-line no-await-in-loop -- one editor after another
+    await opened(view);
+    // oxlint-disable-next-line no-await-in-loop -- one editor after another
+    await pick(view, picked);
+    expect(view.state.doc.toString()).toBe(written);
+    // The cursor after the link.
+    expect(view.state.selection.main.head).toBe(written.indexOf("]]") + 2);
+  }
+});
+
+test("in a frontmatter a link completes just after a string's quote alone: not in a string in quotes, a plain string, a block's text or a comment, where no property link is", async () => {
+  const linkTargets = quotedTargets;
+  for (const [doc, typed] of [
+    ["---\nref: \"it's ‸\n---", "'[[Bo"],
+    ["---\nref: 'see ‸\n---", "'[[Bo"],
+    ["---\nref: it‸\n---", "'[[Bo"],
+    ["---\nnote: |\n  ‸\n---", "'[[Bo"],
+    ["---\nnote: a\n  ‸\n---", "'[[Bo"],
+    ["---\n# ‸\n---", "'[[Bo"],
+  ]) {
+    const { view } = editingAt(doc ?? "", { linkTargets });
+    type(view, typed ?? "");
+    // oxlint-disable-next-line no-await-in-loop -- one editor after another
+    await none(view);
+  }
+});
+
+test("in a frontmatter a page or an alias with a character YAML does not take in quotes as written is not listed: a control but a tab, a line's end of YAML's, U+FFFE, U+FFFF; in the body it is", async () => {
+  const linkTargets = quotedTargets;
+  const { view } = editingAt("---\nref: ‸\n---", { linkTargets });
+  type(view, '"[[');
+  await opened(view);
+  // Nor a page whose title holds U+FFFE, with its aliases.
+  expect(shown(view).map(([label]) => label)).toHaveLength(5);
+  expect(shown(view).map(([label]) => label)).toEqual(
+    expect.arrayContaining(["Bob's", "Bob's plan", 'He said "Hi"', String.raw`a\nb`, "tab\there"])
+  );
+
+  const body = editing("", { linkTargets }).view;
+  type(body, "[[");
+  await opened(body);
+  expect(shown(body)).toHaveLength(15);
+});
+
 test("in a frontmatter a table the editor finds in a block's text is none, closed or being written: an alias is written with |, as YAML takes it", async () => {
   for (const [doc, written] of [
     [

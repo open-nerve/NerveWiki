@@ -47,13 +47,7 @@ type LinkTargets interface {
 	// from their names by the current Unicode data. When siblings would
 	// share a key it changes none and returns them, a group a key, each by
 	// id.
-	Rekey(ctx context.Context, notebookID uuid.UUID) ([][]NamedNode, error)
-}
-
-// NamedNode is a node by its id and name.
-type NamedNode struct {
-	ID   uuid.UUID
-	Name string
+	Rekey(ctx context.Context, notebookID uuid.UUID) ([][]uuid.UUID, error)
 }
 
 // LinkNode is a page with its path from the root, itself last.
@@ -194,7 +188,7 @@ func (l linkTargets) Content(ctx context.Context, id uuid.UUID) (string, int, bo
 	return c.Content, c.Revision, true, nil
 }
 
-func (l linkTargets) Rekey(ctx context.Context, notebookID uuid.UUID) ([][]NamedNode, error) {
+func (l linkTargets) Rekey(ctx context.Context, notebookID uuid.UUID) ([][]uuid.UUID, error) {
 	nodes, err := l.store.ListNodes(ctx, notebookID)
 	if err != nil {
 		return nil, fmt.Errorf("page: the nodes of %s: %w", notebookID, err)
@@ -202,10 +196,10 @@ func (l linkTargets) Rekey(ctx context.Context, notebookID uuid.UUID) ([][]Named
 	slices.SortFunc(nodes, func(a, b domain.Node) int { return a.ID.Compare(b.ID) })
 	changed, clashes := domain.Rekey(nodes)
 	if len(clashes) > 0 {
-		out := make([][]NamedNode, len(clashes))
+		out := make([][]uuid.UUID, len(clashes))
 		for i, c := range clashes {
 			for _, n := range c {
-				out[i] = append(out[i], NamedNode{ID: n.ID, Name: n.Name})
+				out[i] = append(out[i], n.ID)
 			}
 		}
 		return out, nil

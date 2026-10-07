@@ -113,24 +113,26 @@ func (e *numberedParamError) Error() string { return fmt.Sprint("parameter numbe
 func (e codeError) Error() string           { return string(e) }
 
 // The parameter comes from the binding error; its message names Go
-// functions, so the detail is generic and the message goes to the debug log.
+// functions and holds the value, so the detail is generic and the debug log
+// names the parameter and the error's type alone (fix check B3-M2).
 func TestAPIErrorsBadRequestNamesTheParameter(t *testing.T) {
 	const detail = `"detail":"The request parameters do not match the API description."`
 	invalid := &InvalidParamFormatError{ParamName: "limit", Err: errors.New(`error binding string parameter: strconv.ParseInt: parsing "abc": invalid syntax`)}
 	tests := []struct {
-		name string
-		err  error
-		want string
+		name      string
+		err       error
+		parameter string
+		want      string
 	}{
-		{"invalid format", invalid, `,"errors":[{"field":"limit","code":"invalid_format","message":"has the wrong type or format"}]`},
-		{"required", &RequiredParamError{ParamName: "view"}, `,"errors":[{"field":"view","code":"required","message":"is required"}]`},
-		{"required header", &RequiredHeaderError{ParamName: "X-Thing", Err: errors.New("missing")},
+		{"invalid format", invalid, "limit", `,"errors":[{"field":"limit","code":"invalid_format","message":"has the wrong type or format"}]`},
+		{"required", &RequiredParamError{ParamName: "view"}, "view", `,"errors":[{"field":"view","code":"required","message":"is required"}]`},
+		{"required header", &RequiredHeaderError{ParamName: "X-Thing", Err: errors.New("missing")}, "X-Thing",
 			`,"errors":[{"field":"X-Thing","code":"required","message":"is required"}]`},
-		{"too many values", &TooManyValuesForParamError{ParamName: "X-Thing", Count: 2},
+		{"too many values", &TooManyValuesForParamError{ParamName: "X-Thing", Count: 2}, "X-Thing",
 			`,"errors":[{"field":"X-Thing","code":"invalid_format","message":"has the wrong type or format"}]`},
-		{"not a binding error", errors.New("Invalid format for parameter limit"), ""},
-		{"ParamName not a string", &numberedParamError{ParamName: 7}, ""},
-		{"not a struct", codeError("limit"), ""},
+		{"not a binding error", errors.New("Invalid format for parameter limit: abc"), "", ""},
+		{"ParamName not a string", &numberedParamError{ParamName: 7}, "", ""},
+		{"not a struct", codeError("limit abc"), "", ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -148,8 +150,11 @@ func TestAPIErrorsBadRequestNamesTheParameter(t *testing.T) {
 				t.Errorf("response = %d %s %s, want 400 problem+json %s", rec.Code, sent.Get("Content-Type"), rec.Body, want)
 			}
 			entry := findLog(logs(), "request parameters not bound")
-			if entry == nil || entry["level"] != "DEBUG" || entry["error"] != tt.err.Error() || entry["request_id"] != "req-9" {
-				t.Errorf("log = %v, want the binding error with request_id at debug level", entry)
+			if entry == nil || entry["level"] != "DEBUG" || entry["parameter"] != tt.parameter ||
+				entry["error_type"] != fmt.Sprintf("%T", tt.err) || entry["request_id"] != "req-9" ||
+				strings.Contains(fmt.Sprint(entry), "abc") {
+				t.Errorf("log = %v, want the parameter %q and the error's type with request_id at debug level, not the value",
+					entry, tt.parameter)
 			}
 		})
 	}

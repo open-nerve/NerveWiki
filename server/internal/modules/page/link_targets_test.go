@@ -167,7 +167,7 @@ func TestTheLinkIndexsRebuildReadsAndRekeysThePages(t *testing.T) {
 	}
 	exec("UPDATE nodes SET name = 'B.PNG', name_key = 'z' WHERE id = $1", l.b)
 	clashes, err := targets.Rekey(ctx, l.notebook)
-	if want := [][]page.NamedNode{{{ID: l.b, Name: "B.PNG"}, {ID: l.x, Name: "b.png"}}}; err != nil || !reflect.DeepEqual(clashes, want) {
+	if want := [][]uuid.UUID{{l.b, l.x}}; err != nil || !reflect.DeepEqual(clashes, want) {
 		t.Errorf("Rekey of a clash = %v, %v; want %v", clashes, err, want)
 	}
 	if got := key(l.b); got != "z" {

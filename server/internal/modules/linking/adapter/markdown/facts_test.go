@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"math"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -291,35 +292,91 @@ func TestThePageFactsKeepTheFirstMaxLinks(t *testing.T) {
 
 // A property link finds its string among those of its path: many of them,
 // each a link, take a time as long as they are (M6 closeout A-M3: some
-// 10,000 squared before). Four times as many take less than eight times as
-// long, the best of three.
+// 10,000 squared before), at paths of their own and all at one path, as
+// keys holding a '.' write it (Codex review R3). Sixteen times as many take
+// less than 48 times as long (a square, 256): the best of five, the two
+// counts timed in turn after a collection, so that neither pays for the
+// other's garbage and a while the machine is busy slows both (fix check
+// B2-M2: four times as many against eight was too near under load), and of
+// up to fifteen while over it: a busy machine's pause may fall on the five,
+// a square on each (fix check B3-M5).
 func TestThePropertyLinksFindTheirStringsInTimeAsLongAsThey(t *testing.T) {
 	md, err := markdown.New([]markdown.Extension{obsidian.Extension(obsidian.Options{})})
 	if err != nil {
 		t.Fatal(err)
 	}
-	took := func(n int) time.Duration {
-		var b strings.Builder
-		b.WriteString("---\nrelated:\n")
-		for i := range n {
-			fmt.Fprintf(&b, "  - \"[[a%d]]\"\n", i)
-		}
-		b.WriteString("---\n")
-		facts := md.Parse([]byte(b.String())).Facts()
-		best := time.Duration(math.MaxInt64)
-		for range 3 {
-			at := time.Now()
-			f, err := markdownadapter.PageFacts(facts)
-			best = min(best, time.Since(at))
-			if err != nil || len(f.Links) != n || f.Links[n-1].Quote == 0 || f.Links[n-1].Property != fmt.Sprintf("related.%d", n-1) {
-				t.Fatalf("%d property links: %d facts, %v; want each with its string's quote", n, len(f.Links), err)
+	for _, shape := range []struct {
+		name  string
+		small int // and 16 times as many; at one path, as many as the YAML's values may be
+		write func(b *strings.Builder, n int)
+		path  func(i int) string // the path of the i-th
+	}{
+		{"a list's", 500, func(b *strings.Builder, n int) {
+			b.WriteString("related:\n")
+			for i := range n {
+				fmt.Fprintf(b, "  - \"[[a%d]]\"\n", i)
 			}
+		}, func(i int) string { return fmt.Sprintf("related.%d", i) }},
+		// Of one path as long for either count: its key's bytes are hashed for each link.
+		{"one path's", 1 << 7, func(b *strings.Builder, n int) {
+			onePath(b, "", onePathKeys, &n)
+		}, func(int) string { return strings.Repeat("a.", onePathKeys-1) + "a" }},
+	} {
+		facts := func(n int) any {
+			var b strings.Builder
+			b.WriteString("---\n")
+			shape.write(&b, n)
+			b.WriteString("---\n")
+			facts := md.Parse([]byte(b.String())).Facts()
+			f, err := markdownadapter.PageFacts(facts)
+			if err != nil || len(f.Links) != n {
+				t.Fatalf("%s %d property links: %d facts, %v", shape.name, n, len(f.Links), err)
+			}
+			for i, l := range f.Links {
+				if l.Quote == 0 || l.Property != shape.path(i) {
+					t.Fatalf("%s %d property links: the %d-th is %+v, want it with its string's quote, at %s",
+						shape.name, n, i, l, shape.path(i))
+				}
+			}
+			return facts
 		}
-		return best
+		took := func(facts any) time.Duration {
+			runtime.GC()
+			at := time.Now()
+			if _, err := markdownadapter.PageFacts(facts); err != nil {
+				t.Fatal(err)
+			}
+			return time.Since(at)
+		}
+		few, many := facts(shape.small), facts(16*shape.small)
+		small, large := time.Duration(math.MaxInt64), time.Duration(math.MaxInt64)
+		for i := 0; i < 15 && (i < 5 || large > 48*small); i++ {
+			small, large = min(small, took(few)), min(large, took(many))
+		}
+		if large > 48*small {
+			t.Errorf("%s %d property links took %s, %d %s: more than 48 times as long",
+				shape.name, 16*shape.small, large, shape.small, small)
+		}
 	}
-	small, large := took(2_000), took(8_000)
-	if large > 8*small {
-		t.Errorf("8,000 property links took %s, 2,000 %s: more than 8 times as long", large, small)
+}
+
+// onePathKeys is how many keys "a" the path of onePath's strings joins:
+// 2^11 ways to split it, as many as the YAML's values may be.
+const onePathKeys = 12
+
+// onePath writes, at indent, *left of the 2^(n-1) strings at the path of
+// n keys "a" (a.a.a…), each a link: one for each way keys holding a '.'
+// split it.
+func onePath(b *strings.Builder, indent string, n int, left *int) {
+	for k := 1; k <= n && *left > 0; k++ {
+		key := strings.Repeat("a.", k-1) + "a"
+		if k == n {
+			fmt.Fprintf(b, "%s%s: '[[x]]'\n", indent, key)
+			*left--
+			continue
+		}
+		fmt.Fprintf(b, "%s%s:\n", indent, key)
+		onePath(b, indent+"  ", n-k, left)
 	}
 }
 

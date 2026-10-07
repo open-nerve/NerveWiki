@@ -359,7 +359,8 @@ func TestAPageLeftSaysWhy(t *testing.T) {
 // in has its body written again alone, its property links left and logged:
 // writing them would change the aliases (M6/P4 fix check c5-1). So has one
 // whose writings with its property links would hold more than a page may,
-// logged with the sizes (c6-2).
+// logged with the sizes (c6-2). A link is logged by where it starts, its
+// target not: it holds a title (Codex review R2).
 func TestAPageWhoseFrontmatterWouldChangeHasItsBodyWritten(t *testing.T) {
 	w := newRewriting(t, "A", "A/x", "src", "near")
 	front := "---\nx: &x '[[A/x]]'\naliases: *x\n---\n"
@@ -377,13 +378,16 @@ func TestAPageWhoseFrontmatterWouldChangeHasItsBodyWritten(t *testing.T) {
 	})
 	for _, line := range []string{
 		`level=ERROR msg="a link is not rewritten: no writing of the page with it was kept" page_id=` +
-			w.id("src").String() + " start=13 target=A/x\n",
+			w.id("src").String() + " start=13\n",
 		`level=ERROR msg="a link is not rewritten: no writing of the page with it was kept" page_id=` +
-			w.id("near").String() + " start=11 target=A/x bytes=1023 written=1025\n",
+			w.id("near").String() + " start=11 bytes=1023 written=1025\n",
 	} {
 		if !strings.Contains(w.logs.String(), line) {
 			t.Errorf("the log\n%s\nwant a line with\n%s", w.logs, line)
 		}
+	}
+	if strings.Contains(w.logs.String(), "A/x") {
+		t.Errorf("the log\n%s\nholds a title", w.logs)
 	}
 }
 

@@ -13,9 +13,9 @@ type Frontmatter struct {
 	Valid bool
 	// Properties are its keys and values in the order they are written.
 	Properties []Property
-	// Scalars are its strings written on one line, where they are written
-	// (M6/P1 design 3.2): a property link is one. A value an alias repeats
-	// is not among them.
+	// Scalars are its strings written on one line, in the order they are
+	// written, and where they are written (M6/P1 design 3.2): a property
+	// link is one. A value an alias repeats is not among them.
 	Scalars []Scalar
 }
 

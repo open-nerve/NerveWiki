@@ -164,11 +164,15 @@ func TestReindexReportsClashesAndFailuresAndRefusesNoNotebook(t *testing.T) {
 	}
 
 	code, stdout, stderr := execute(ctx, r.environ, "reindex")
-	clash := fmt.Sprintf(`notebook %s: not reindexed: titles that would share a key: "Straße" (%s), "STRASSE" (%s)`, r.ops, r.plan, twin)
+	clash := fmt.Sprintf(`notebook %[1]s: not reindexed: the pages whose titles would share a key: /acme/notebooks/%[1]s/pages/%[2]s, /acme/notebooks/%[1]s/pages/%[3]s`,
+		r.ops, r.plan, twin)
 	failure := fmt.Sprintf("notebook %s: not reindexed: ", r.eng)
 	if code != 1 || stdout != "" || !strings.Contains(stderr, clash+"\n") || !strings.Contains(stderr, failure) ||
 		!strings.Contains(stderr, "nervewiki: 2 notebooks not reindexed") {
 		t.Errorf("reindex with a clash and a loop = %d, %q, %q; want 1, no line, and %q", code, stdout, stderr, clash)
+	}
+	if strings.Contains(stderr, "Straße") || strings.Contains(stderr, "STRASSE") {
+		t.Errorf("reindex printed the titles: %q", stderr)
 	}
 	if n := r.count(t, "SELECT count(*) FROM nodes WHERE notebook_id = $1 AND name_key = 'old'", r.ops); n != 1 || r.indexed(t, r.ops) != 1 ||
 		r.count(t, "SELECT count(*) FROM page_links WHERE source_id = $1 AND resolved_id = $1", r.plan) != 1 {
@@ -197,5 +201,14 @@ func TestReindexReportsClashesAndFailuresAndRefusesNoNotebook(t *testing.T) {
 		if code != 1 || stdout != "" || !strings.Contains(stderr, tt.want) {
 			t.Errorf("reindex %v = %d, %q, %q; want 1 and %q", tt.args, code, stdout, stderr, tt.want)
 		}
+	}
+
+	// Of a workspace deleted, the pages are told by their ids, and no read
+	// failed (M6 Codex review, fix check B4-N1).
+	r.exec(t, "UPDATE workspaces SET deleted_at = now()")
+	code, stdout, stderr = execute(ctx, r.environ, "reindex", "--notebook", r.ops.String())
+	byID := fmt.Sprintf("notebook %s: not reindexed: the pages whose titles would share a key: %s, %s", r.ops, r.plan, twin)
+	if code != 1 || stdout != "" || !strings.Contains(stderr, byID+"\n") || strings.Contains(stderr, "slug is not read") {
+		t.Errorf("reindex of a deleted workspace's notebook = %d, %q, %q; want 1 and %q alone", code, stdout, stderr, byID)
 	}
 }

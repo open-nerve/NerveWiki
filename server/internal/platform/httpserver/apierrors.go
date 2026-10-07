@@ -87,18 +87,22 @@ func NewAPIErrors(logger *slog.Logger) APIErrors {
 
 // BadRequest answers a request whose path, query or header parameters the
 // generated code could not bind: 400 bad_request, with the parameter in
-// errors. The binding errors' messages name Go functions and
-// types, so the detail is generic and err is logged at debug level only.
+// errors. The binding errors' messages name Go functions and types and hold
+// the value that did not bind, which the logs do not write (v0.1 design
+// 13.1 rule 10; fix check B3-M2): the detail is generic, and the debug log
+// names the parameter and the error's type.
 func (e APIErrors) BadRequest(w http.ResponseWriter, r *http.Request, err error) {
+	f, ok := parameterOf(err)
 	e.logger.LogAttrs(r.Context(), slog.LevelDebug, "request parameters not bound",
-		slog.String("request_id", RequestID(r.Context())), slog.Any("error", err))
+		slog.String("request_id", RequestID(r.Context())), slog.String("parameter", f.Field),
+		slog.String("error_type", fmt.Sprintf("%T", err)))
 	p := Problem{
 		Status: http.StatusBadRequest,
 		Code:   CodeBadRequest,
 		Title:  http.StatusText(http.StatusBadRequest),
 		Detail: "The request parameters do not match the API description.",
 	}
-	if f, ok := parameterOf(err); ok {
+	if ok {
 		p.Errors = []FieldError{f}
 	}
 	WriteProblem(w, p)
@@ -186,7 +190,7 @@ func (e APIErrors) Write(w http.ResponseWriter, r *http.Request, err error) {
 	attrs := []slog.Attr{
 		slog.String("request_id", RequestID(r.Context())),
 		slog.String("method", r.Method),
-		slog.String("path", r.URL.Path),
+		slog.String("path", loggedPath(r)),
 		slog.Any("error", err),
 	}
 	if responseStarted(w) {
