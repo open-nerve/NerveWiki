@@ -288,14 +288,15 @@ function pages(context: EditorContext): CompletionSource {
  * unwritable is what an alias written at place may not hold: a bracket or
  * a line's end would end the link it is written in; in a table, a '|' the
  * cell; in a frontmatter's string in quotes, a character YAML does not
- * take there: a control but a tab, U+0085 (a line's end, which makes the
- * string one over lines, no property link), U+FFFE and U+FFFF.
+ * take there as written: a control but a tab, a line's end of YAML's
+ * (U+0085, U+2028, U+2029: the string would be one over lines, the spaces
+ * around the line's end gone, no property link), U+FFFE and U+FFFF.
  */
 function unwritable(place: Place): RegExp {
   if (place.table) {
     return /[[\]\r\n|]/;
   }
-  return place.frontmatter ? /[[\]\uFFFE\uFFFF]|(?!\t)\p{Cc}/u : /[[\]\r\n]/;
+  return place.frontmatter ? /[[\]\u2028\u2029\uFFFE\uFFFF]|(?!\t)\p{Cc}/u : /[[\]\r\n]/;
 }
 
 /** tags completes a tag with the notebook's tags the body can write, each with how many pages have it. */

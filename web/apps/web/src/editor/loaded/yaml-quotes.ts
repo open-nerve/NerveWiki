@@ -14,11 +14,14 @@ export type Quote = "'" | '"' | "";
  * as much as tells that: a quote opens a string where a key or a value
  * starts (a line's start, after "- ", "? ", ": ", "[", "{", ",", an anchor
  * or a tag); a string in quotes goes on over lines; a block's header ('|'
- * or '>') makes the lines indented past its key, "-" or ":" its text, and
- * a plain string the lines indented past them, where nothing starts; a
- * '#' starts a comment but in a plain string's text after no space. A
- * line ends at '\n' and at YAML's other line breaks (U+0085, U+2028,
- * U+2029; CodeMirror's lines end at the first alone).
+ * or '>') makes the lines indented past its node its text, and a plain
+ * string the lines indented past its node, where nothing starts; a '#'
+ * starts a comment but in a plain string's text after no space. A line's
+ * node is where its key (its anchor or tag first), "-", "?" or ":" is; a
+ * line with none, a value alone, is of the node of the line before that
+ * left a value to come (Codex review fix checks A-M1, A2-M1). A line ends
+ * at '\n' and at YAML's other line breaks (U+0085, U+2028, U+2029;
+ * CodeMirror's lines end at the first alone).
  */
 export function openingQuote(state: EditorState, at: number): Quote {
   let quote: Quote = "";
@@ -28,12 +31,15 @@ export function openingQuote(state: EditorState, at: number): Quote {
   let flow = 0; // how deep in [ ] and { }
   let start = true; // whether a key or a value may start
   let plain = false; // whether in a plain string's text
+  let pending: number | undefined; // the node of the line before, if it left a value to come
   const lines = state.sliceDoc(state.doc.line(2).from, at).split(/[\n\u0085\u2028\u2029]/);
   for (const line of lines) {
     let i = 0;
     let node = 0; // the column of the line's key, "-" or ":"
     let value = false; // whether past the line's ": ", where a string starts a value, not a key
     let key = 0; // where the line's last string that may be a key started
+    let own = false; // whether the line has its own node
+    let props: number | undefined; // where the anchor or tag before a key started
     opened = -1;
     if (quote === "") {
       i = line.search(/[^ \t]|$/); // YAML indents with spaces; a tab is taken as one
@@ -50,6 +56,9 @@ export function openingQuote(state: EditorState, at: number): Quote {
         plain = false;
       }
       node = i;
+      if (i === 0 && /^---(?:[ \t]|$)/.test(line)) {
+        i = 3; // a document's start: what follows it on its line is the document's
+      }
     }
     for (; i < line.length; i++) {
       const c = line[i];
@@ -85,31 +94,39 @@ export function openingQuote(state: EditorState, at: number): Quote {
         // A value's: after a key, or alone at the start (after "? k").
         if (flow === 0 && !value) {
           node = start ? i : key;
+          own = true;
         }
         start = value = true;
         plain = false;
       } else if (plain || !start) {
         // A plain string's text, or past a string in quotes.
       } else if (c === "'" || c === '"') {
-        [quote, opened, key, start] = [c, i, value ? key : i, false];
+        [quote, opened, key, start] = [c, i, value ? key : (props ?? i), false];
       } else if (c === "[" || c === "{") {
         flow++;
       } else if ((c === "-" || c === "?") && flow === 0 && spaceNext) {
         node = i;
         value = false;
+        own = true;
       } else if (c === "&" || c === "!") {
-        while (i + 1 < line.length && line[i + 1] !== " " && line[i + 1] !== "\t") {
+        // An anchor's name is letters, digits, '-' and '_' (what follows it starts anew); a tag goes on to a space.
+        props ??= value ? undefined : i;
+        const name = c === "&" ? /[\w-]/ : /[^ \t]/;
+        while (i + 1 < line.length && name.test(line[i + 1] ?? "")) {
           i++;
         }
       } else if ((c === "|" || c === ">") && flow === 0) {
-        block = node;
+        block = own ? node : (pending ?? node);
         break;
       } else {
-        [plain, start, key] = [true, false, value ? key : i];
+        [plain, start, key] = [true, false, value ? key : (props ?? i)];
       }
     }
     if (plain && flow === 0) {
-      goesOn = node;
+      goesOn = own ? node : (pending ?? node);
+    }
+    if (quote === "" && flow === 0 && block === undefined) {
+      pending = start ? (own ? node : pending) : undefined;
     }
   }
   const last = lines.at(-1) ?? "";

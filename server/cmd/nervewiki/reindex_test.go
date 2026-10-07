@@ -164,7 +164,8 @@ func TestReindexReportsClashesAndFailuresAndRefusesNoNotebook(t *testing.T) {
 	}
 
 	code, stdout, stderr := execute(ctx, r.environ, "reindex")
-	clash := fmt.Sprintf(`notebook %s: not reindexed: the pages whose titles would share a key: %s, %s`, r.ops, r.plan, twin)
+	clash := fmt.Sprintf(`notebook %[1]s: not reindexed: the pages whose titles would share a key: /acme/notebooks/%[1]s/pages/%[2]s, /acme/notebooks/%[1]s/pages/%[3]s`,
+		r.ops, r.plan, twin)
 	failure := fmt.Sprintf("notebook %s: not reindexed: ", r.eng)
 	if code != 1 || stdout != "" || !strings.Contains(stderr, clash+"\n") || !strings.Contains(stderr, failure) ||
 		!strings.Contains(stderr, "nervewiki: 2 notebooks not reindexed") {

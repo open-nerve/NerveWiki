@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"math"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -292,9 +293,11 @@ func TestThePageFactsKeepTheFirstMaxLinks(t *testing.T) {
 // A property link finds its string among those of its path: many of them,
 // each a link, take a time as long as they are (M6 closeout A-M3: some
 // 10,000 squared before), at paths of their own and all at one path, as
-// keys holding a '.' write it (Codex review R3). Four times as many take
-// less than eight times as long: the best of five, the two counts timed in
-// turn, so that a while the machine is busy slows both.
+// keys holding a '.' write it (Codex review R3). Sixteen times as many take
+// less than 48 times as long (a square, 256): the best of five, the two
+// counts timed in turn after a collection, so that neither pays for the
+// other's garbage and a while the machine is busy slows both (fix check
+// B2-M2: four times as many against eight was too near under load).
 func TestThePropertyLinksFindTheirStringsInTimeAsLongAsThey(t *testing.T) {
 	md, err := markdown.New([]markdown.Extension{obsidian.Extension(obsidian.Options{})})
 	if err != nil {
@@ -302,18 +305,18 @@ func TestThePropertyLinksFindTheirStringsInTimeAsLongAsThey(t *testing.T) {
 	}
 	for _, shape := range []struct {
 		name  string
-		small int // and four times as many; at one path, as many as the YAML's values may be
+		small int // and 16 times as many; at one path, as many as the YAML's values may be
 		write func(b *strings.Builder, n int)
 		path  func(i int) string // the path of the i-th
 	}{
-		{"a list's", 2_000, func(b *strings.Builder, n int) {
+		{"a list's", 500, func(b *strings.Builder, n int) {
 			b.WriteString("related:\n")
 			for i := range n {
 				fmt.Fprintf(b, "  - \"[[a%d]]\"\n", i)
 			}
 		}, func(i int) string { return fmt.Sprintf("related.%d", i) }},
 		// Of one path as long for either count: its key's bytes are hashed for each link.
-		{"one path's", 1 << 9, func(b *strings.Builder, n int) {
+		{"one path's", 1 << 7, func(b *strings.Builder, n int) {
 			onePath(b, "", onePathKeys, &n)
 		}, func(int) string { return strings.Repeat("a.", onePathKeys-1) + "a" }},
 	} {
@@ -322,12 +325,8 @@ func TestThePropertyLinksFindTheirStringsInTimeAsLongAsThey(t *testing.T) {
 			b.WriteString("---\n")
 			shape.write(&b, n)
 			b.WriteString("---\n")
-			return md.Parse([]byte(b.String())).Facts()
-		}
-		took := func(n int, facts any) time.Duration {
-			at := time.Now()
+			facts := md.Parse([]byte(b.String())).Facts()
 			f, err := markdownadapter.PageFacts(facts)
-			took := time.Since(at)
 			if err != nil || len(f.Links) != n {
 				t.Fatalf("%s %d property links: %d facts, %v", shape.name, n, len(f.Links), err)
 			}
@@ -337,16 +336,24 @@ func TestThePropertyLinksFindTheirStringsInTimeAsLongAsThey(t *testing.T) {
 						shape.name, n, i, l, shape.path(i))
 				}
 			}
-			return took
+			return facts
 		}
-		few, many := facts(shape.small), facts(4*shape.small)
+		took := func(facts any) time.Duration {
+			runtime.GC()
+			at := time.Now()
+			if _, err := markdownadapter.PageFacts(facts); err != nil {
+				t.Fatal(err)
+			}
+			return time.Since(at)
+		}
+		few, many := facts(shape.small), facts(16*shape.small)
 		small, large := time.Duration(math.MaxInt64), time.Duration(math.MaxInt64)
 		for range 5 {
-			small, large = min(small, took(shape.small, few)), min(large, took(4*shape.small, many))
+			small, large = min(small, took(few)), min(large, took(many))
 		}
-		if large > 8*small {
-			t.Errorf("%s %d property links took %s, %d %s: more than 8 times as long",
-				shape.name, 4*shape.small, large, shape.small, small)
+		if large > 48*small {
+			t.Errorf("%s %d property links took %s, %d %s: more than 48 times as long",
+				shape.name, 16*shape.small, large, shape.small, small)
 		}
 	}
 }

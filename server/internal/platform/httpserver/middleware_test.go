@@ -326,9 +326,12 @@ func TestAccessLogOfProbesIsDebug(t *testing.T) {
 }
 
 // The logs write a path's values of its route's wildcards as the wildcards,
-// but an id's and a slug's: a value may be a page's text, as getTag's tag
-// is (v0.1 design 13.1 rule 10; M6 Codex review). The access log, the
-// recover's and the API errors' alike; a path no wildcard matched as it is.
+// but a slug's and an id's that is a uuid: a value may be a page's text, as
+// getTag's tag is (v0.1 design 13.1 rule 10; M6 Codex review, fix check
+// B2-M1, B2-M3). A path the API's subtree took, which no route did (a
+// method, a segment, a slash more), as the subtree. The access log, the
+// recover's, the API errors' and LongLived's alike; a path no wildcard
+// matched as it is.
 func TestTheLogsWriteARoutesValuesButIdsAsItsWildcards(t *testing.T) {
 	logger, logs := captureLogs(t)
 	errs := NewAPIErrors(logger)
@@ -336,18 +339,30 @@ func TestTheLogsWriteARoutesValuesButIdsAsItsWildcards(t *testing.T) {
 	router.HandleFunc("GET /api/v0/notebooks/{notebook_id}/tags/{tag}", func(w http.ResponseWriter, r *http.Request) {
 		errs.Write(w, r, errors.New("a fault"))
 	})
-	router.HandleFunc("GET /api/v0/workspaces/{slug}/members/{workspace_member_id}", func(http.ResponseWriter, *http.Request) {
+	router.HandleFunc("GET /api/v0/workspaces/{slug}/tags/{tag}", func(http.ResponseWriter, *http.Request) {
 		panic("boom")
 	})
+	router.Handle("GET /api/v0/streams/{tag}", LongLived(logger, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})))
 	router.HandleFunc("GET /api/v0/things", func(http.ResponseWriter, *http.Request) {})
 	h := middleware(router, logger)
-	for _, tt := range []struct{ path, logged, msg string }{
-		{"/api/v0/notebooks/n1/tags/layoff%2Fplan", "/api/v0/notebooks/n1/tags/{tag}", "API handler failed"},
-		{"/api/v0/workspaces/lab/members/m1", "/api/v0/workspaces/lab/members/m1", "panic serving request"},
-		{"/api/v0/things", "/api/v0/things", ""},
-		{"/api/v0/notebooks/n1/tag/layoff", "/api/v0/notebooks/n1/tag/layoff", ""},
+	id := uuid.NewV7().String()
+	for _, tt := range []struct{ method, path, logged, msg string }{
+		{http.MethodGet, "/api/v0/notebooks/" + id + "/tags/layoff%2Fplan", "/api/v0/notebooks/" + id + "/tags/{tag}",
+			"API handler failed"},
+		{http.MethodGet, "/api/v0/notebooks/layoff/tags/plan", "/api/v0/notebooks/{notebook_id}/tags/{tag}", ""},
+		{http.MethodGet, "/api/v0/workspaces/lab/tags/layoff", "/api/v0/workspaces/lab/tags/{tag}", "panic serving request"},
+		{http.MethodGet, "/api/v0/streams/layoff", "/api/v0/streams/{tag}",
+			"cannot lift the write deadline of a long-lived response"},
+		{http.MethodGet, "/api/v0/things", "/api/v0/things", ""},
+		{http.MethodPost, "/api/v0/notebooks/" + id + "/tags/layoff", "/api/...", ""},
+		{http.MethodOptions, "/api/v0/notebooks/" + id + "/tags/layoff", "/api/...", ""},
+		{http.MethodGet, "/api/v0/notebooks/" + id + "/tags/layoff/", "/api/...", ""},
+		{http.MethodGet, "/api/v0/notebooks/" + id + "/tag/layoff", "/api/...", ""},
+		{http.MethodGet, "/api/v0/notebooks/" + id + "/tags/x/../layoff", "/api/v0/notebooks/{notebook_id}/tags/{tag}", ""},
+		{http.MethodGet, "/api/v0/workspaces/lab/tags/x/../layoff", "/api/v0/workspaces/{slug}/tags/{tag}", ""},
+		{http.MethodGet, "/lab/notebooks/" + id, "/lab/notebooks/" + id, ""},
 	} {
-		serve(h, httptest.NewRequest(http.MethodGet, tt.path, nil))
+		serve(h, httptest.NewRequest(tt.method, tt.path, nil))
 		entries := logs()
 		msgs := []string{"http request"}
 		if tt.msg != "" {
@@ -361,7 +376,7 @@ func TestTheLogsWriteARoutesValuesButIdsAsItsWildcards(t *testing.T) {
 				}
 			}
 			if last == nil || last["path"] != tt.logged {
-				t.Errorf("GET %s: %q logged %v, want the path %s", tt.path, msg, last, tt.logged)
+				t.Errorf("%s %s: %q logged %v, want the path %s", tt.method, tt.path, msg, last, tt.logged)
 			}
 		}
 	}

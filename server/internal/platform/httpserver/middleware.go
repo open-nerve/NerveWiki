@@ -133,16 +133,22 @@ func withRecover(logger *slog.Logger, next http.Handler) http.Handler {
 	})
 }
 
-// loggedPath is r's path as the logs write it: the value a wildcard of its
-// route matched written as the wildcard, but an id's or a slug's, as it
-// may be a page's text (getTag's tag; v0.1 design 13.1 rule 10). A path
-// no wildcard matched, as the web app's, is written as it is. It reads the
-// route the router found, which sets it on r: once r has been served, or
-// in its handler.
+// loggedPath is r's path as the logs write it, as a path may hold a page's
+// text (getTag's tag; v0.1 design 13.1 rule 10): of the route the router
+// found, a slug's value and an id's that is a uuid as they are, any other
+// wildcard's, or one of no value (a path the router redirects), as the
+// wildcard ("{tag}"); a path a route's subtree took, which no route of its
+// own did (the API's 404), as the subtree and "..." (fix check B2-M1). A
+// path of no wildcard, the web app's that "/" takes among them, is written
+// as it is. It reads the route the router sets on r: once r has been
+// served, or in its handler.
 func loggedPath(r *http.Request) string {
 	_, pattern, ok := strings.Cut(r.Pattern, " ")
 	if !ok {
 		pattern = r.Pattern
+	}
+	if pattern != "/" && strings.HasSuffix(pattern, "/") && r.URL.Path != pattern {
+		return pattern + "..."
 	}
 	if !strings.Contains(pattern, "{") {
 		return r.URL.Path
@@ -150,9 +156,14 @@ func loggedPath(r *http.Request) string {
 	segments := strings.Split(pattern, "/")
 	for i, segment := range segments {
 		name, ok := strings.CutPrefix(segment, "{")
+		if !ok {
+			continue
+		}
 		name = strings.TrimSuffix(name, "}")
-		if ok && (name == "slug" || name == "id" || strings.HasSuffix(name, "_id")) {
-			segments[i] = r.PathValue(name)
+		v := r.PathValue(name)
+		_, err := uuid.Parse(v)
+		if v != "" && (name == "slug" || (name == "id" || strings.HasSuffix(name, "_id")) && err == nil) {
+			segments[i] = v
 		}
 	}
 	return strings.Join(segments, "/")

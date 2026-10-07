@@ -86,15 +86,38 @@ test("what a line leaves goes on to the next: a string in quotes, a block, a pla
     ["---\nl: [a\n  'b', '‸", "'"],
     ["---\nl: [#c\n  '‸", "'"],
     ["---\nup: x # a: 'b\nnext: \"‸", '"'],
+    // A value alone on its line is of the node of the line before; an anchor or a tag before a key is its node's.
+    ["---\nsummary:\n  Notes from the\n  '‸", ""],
+    ["---\nlist:\n  -\n    first\n    '‸", ""],
+    ["---\n&d summary: Notes from the\n  '‸", ""],
+    ["---\nsummary:\n  >\n  folded text\n  '‸", ""],
+    ["---\nsummary:\n  >\n  'a\nref: '‸", "'"],
+    ["---\nsummary:\n\n  Notes from the\n  '‸", ""],
+    ["---\n!!str summary: |\n  text\n  '‸", ""],
+    ["---\nnote:\n  Music from the\n  '90s\nref: '‸", "'"],
+    // In [ ] a ',' closes none; past a plain string's text a ':' is no value's; a line goes on with what it left.
+    ["---\nl: [a, b, '‸", "'"],
+    ["---\nl: [k:'‸", ""],
+    ["---\nl: [a\n  '‸", ""],
+    // A '#' in a plain string's text after no space is text.
+    ["---\nC#: '‸", "'"],
+    // An anchor's name ends at what is no letter, digit, '-' or '_': a '?' after it starts a plain string.
+    ["---\nref: &x?y '‸", ""],
+    ["---\nref: &x-1_b '‸", "'"],
+    // A document's start: what follows it is the document's.
+    ["---\n--- # c\n  k: |\n    '‸", ""],
+    ["---\n--- # c\n  k: '‸", "'"],
   ] as const;
   expect(openingAt(docs)).toEqual(docs);
 });
 
 test("a line ends at YAML's other line breaks too: U+0085, U+2028, U+2029", () => {
+  const [nel, ls, ps] = [0x85, 0x2028, 0x2029].map((c) => String.fromCodePoint(c));
   const docs = [
-    ["---\n# c\u0085ref: '‸", "'"],
-    ['---\n# c ref: "‸', '"'],
-    ["---\nup: 'a next: '‸", ""],
+    [`---\n# c${nel}ref: '‸`, "'"],
+    [`---\n# c${ls}ref: "‸`, '"'],
+    [`---\n# c${ps}ref: '‸`, "'"],
+    [`---\nup: 'a${ps}next: '‸`, ""],
   ] as const;
   expect(openingAt(docs)).toEqual(docs);
 });

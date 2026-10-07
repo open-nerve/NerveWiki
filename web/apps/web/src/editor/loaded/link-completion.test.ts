@@ -455,12 +455,7 @@ function quotedTargets(): Promise<LinkTarget[]> {
         'He said "Hi"',
         String.raw`a\nb`,
         "tab\there",
-        "a b",
-        "next\u0085line",
-        "a\u007fb",
-        "a\u0080b",
-        "a\u0001b",
-        "a￾b",
+        ...[0x2028, 0x2029, 0x85, 0x7f, 0x80, 0x01, 0xfffe, 0xffff].map((c) => `a${String.fromCodePoint(c)}b`),
       ],
     },
   ]);
@@ -526,20 +521,20 @@ test("in a frontmatter a link completes just after a string's quote alone: not i
   }
 });
 
-test("in a frontmatter an alias with a character YAML does not take in quotes is not listed: a control but a tab, U+0085, U+FFFE; in the body it is", async () => {
+test("in a frontmatter an alias with a character YAML does not take in quotes as written is not listed: a control but a tab, a line's end of YAML's, U+FFFE, U+FFFF; in the body it is", async () => {
   const linkTargets = quotedTargets;
   const { view } = editingAt("---\nref: ‸\n---", { linkTargets });
   type(view, '"[[');
   await opened(view);
-  expect(shown(view).map(([label]) => label)).toHaveLength(6);
+  expect(shown(view).map(([label]) => label)).toHaveLength(5);
   expect(shown(view).map(([label]) => label)).toEqual(
-    expect.arrayContaining(["Bob's", "Bob's plan", 'He said "Hi"', String.raw`a\nb`, "tab\there", "a b"])
+    expect.arrayContaining(["Bob's", "Bob's plan", 'He said "Hi"', String.raw`a\nb`, "tab\there"])
   );
 
   const body = editing("", { linkTargets }).view;
   type(body, "[[");
   await opened(body);
-  expect(shown(body)).toHaveLength(11);
+  expect(shown(body)).toHaveLength(13);
 });
 
 test("in a frontmatter a table the editor finds in a block's text is none, closed or being written: an alias is written with |, as YAML takes it", async () => {
