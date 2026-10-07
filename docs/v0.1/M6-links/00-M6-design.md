@@ -529,6 +529,7 @@ Nerve 没有链接、标签与数学公式的功能，没有可借鉴的代码�
 | P6 A | 阅读视图（服务端） | 落点与 `getLinkLanding`；标签渲染为链接；属性表的钩子与表里的链接；只有锚点的 Markdown 链接的地址；块公式与属性表的包装 | 落点的表格与随机测试；权限矩阵；整个程序：落点、新建、链接已解析；渲染的期望、病态输入、`CheckHTML` 与模糊测试的种子 |
 | P6 B | 阅读视图（前端） | 新建未建的页（点击时问服务端落点）；标签与属性表里的链接的增强；本站完整地址经路由跳转；标签页的路由；KaTeX 与 mermaid 的增强与 chunk、限制；CSP 实测；宽内容的滚动与名称；`links` 的处理与 `pages`、连上时的重读 | vitest：增强（地址、修饰键、新建的确认与权限、键盘）、事件处理经组合根的表；e2e：L1–L4 |
 | P7 | 编辑器与右栏（前端） | 编辑器扩展的 `load`；`linkCompletion`；`EditorContext` 的补全数据；右栏的大纲、反链、属性；输入法清单第 16–18 步 | vitest：补全（触发、过滤、插入、组合中不弹出）经组合根的 `editorExtensions`，构建检查仍通过；右栏；e2e：L5、L6 |
+| P8 | 软换行（阅读视图，Codex 评审之后由负责人决定） | 服务端渲染的硬换行；块注释、行尾的 `$$` 公式之后的换行，任务项复选框的行尾；`render/` 样例与 `verify-render.mjs` | 渲染的测试与样例（与 Obsidian 1.12.7 核对）；tasks 与 goldmark 的差分测试；e2e：L7 |
 
 收尾：三位 Opus 审查者并行（后端、前端与端到端、完成标准与文档），然后 Opus 核对修复。
 
@@ -616,6 +617,7 @@ M6 写出的移交（P3、P4 合并时落档）：
   - L4：标签跳到标签页；数学公式与 mermaid 渲染出来；
   - L5：`[[` 与 `#` 补全；
   - L6：右栏的大纲、反链、属性；另一个会话（接口）加了链接，反链实时出现。
+  - L7（M6/P8）：阅读视图里段落与 callout 正文的换行显示为换行，标题不带；接口版本断言 HTML 的 `<br>`，页面版本断言各行的位置（不涉及索引，不调用 `links.ts`）。
   - **对等验收**（收尾修订，[M6 收尾审查](reviews/M6-closeout-review.md) C-I6）：L1–L6 各有接口版本，两个版本调用 `e2e/fixtures/assert/links.ts` 断言索引（页按当前版本索引、它的链接与指向、标签、别名）。例外（总体设计 10.1）：只在浏览器里发生的只有页面版本：L1 的应用内跳转与焦点，L2 的对话框与键盘，L4 的 KaTeX 排版、mermaid 画图与它们的上限，L5 的补全列表、按键与输入法，L6 的大纲、焦点与右栏的布局，以及 L4、L6 的大页故事。
 
 ## 10. 风险
@@ -658,7 +660,7 @@ M6 写出的移交（P3、P4 合并时落档）：
 | P5 | 接口 | 已完成（2026-10-06，`1f3daf8`） | [05-P5-api.md](05-P5-api.md) | [P5-api-review.md](reviews/P5-api-review.md) |
 | P6 | 阅读视图 | 已完成（2026-10-06，A `4181768`，B `ccfc395`） | [06-P6-reading-view.md](06-P6-reading-view.md) | A：[P6A-reading-server-review.md](reviews/P6A-reading-server-review.md)；B：[P6B-reading-front-review.md](reviews/P6B-reading-front-review.md) |
 | P7 | 编辑器与右栏（前端） | 已完成（2026-10-06，`6eb3b70`） | [07-P7-editor-panel.md](07-P7-editor-panel.md) | [P7-editor-panel-review.md](reviews/P7-editor-panel-review.md) |
-| P8 | 软换行（阅读视图） | 进行中 | [08-P8-soft-breaks.md](08-P8-soft-breaks.md) | — |
+| P8 | 软换行（阅读视图） | 已完成（2026-10-08，`51b406e`） | [08-P8-soft-breaks.md](08-P8-soft-breaks.md) | [P8-soft-breaks-review.md](reviews/P8-soft-breaks-review.md) |
 
 ## 13. 变更记录
 
@@ -675,3 +677,4 @@ M6 写出的移交（P3、P4 合并时落档）：
 | 2026-10-06 | P7 定稿：补全的数据每个 `[[` 或 `#` 读一次、不经事件，事件只为读过的页请求重读，连上时补全的数据不在树那一层（4.8）；大纲至多 1,000 个标题，反链的重读读已读的页数（4.12）；补全不弹出的地方、frontmatter 与表格里的写法，输入法不另写键位（4.13） | [P7 文档](07-P7-editor-panel.md)、[P7 审查](reviews/P7-editor-panel-review.md) |
 | 2026-10-07 | M6 收尾：Obsidian 的版本、样例数、随机测试、`Extract(Tree)`、迁移与接口按实际改写（第 1、4、5 节）；附件嵌入的渲染改由 M7 建立（第 8 节）；L 系列的对等验收与例外（第 9 节）；风险表的预算取法、负责人的决定的指向（第 10、11 节）。收尾的修复（`d3ac211` 合并，七轮修复核对）：索引每页至多 10,000 条链接、读链接目标的路径按主键逐步、按每个标题键的深度读候选的路径、子树逐层读、通用计划明显更慢的三条语句每次按参数规划、连接关掉 JIT、编辑器解析的上限与表格分隔行的补丁等，见收尾审查。M6 仍进行中，待负责人执行输入法清单 | [M6 收尾审查](reviews/M6-closeout-review.md) |
 | 2026-10-07 | M6 的 Codex 评审：三项发现与七轮修复核对（`m6-codex-review`，合并 `6b9882e`）：frontmatter 里只在紧跟字符串开引号处补全，按所在的字符串写入，`[ ]` 里 `?` 之后紧跟 `]` 时不补；改写的日志不记目标；属性链接按起点二分查找；日志按路由写请求的路径；参数绑定失败的 debug 日志不记值；reindex 按网页地址列出撞键的页。M6 仍进行中，待负责人执行输入法清单 | [M6 Codex 评审](reviews/M6-codex-review.md)第 9 节 |
+| 2026-10-08 | P8 软换行（`m6-soft-breaks`，合并 `51b406e`）：阅读视图把段落里的单个换行显示为换行，与 Obsidian 相同；块注释不留空行，行尾的 `$$` 公式之后不换行，任务项复选框之后的换行留着；样例集加 `render/`（46 个，38 个与 Obsidian 1.12.7 一致）；e2e L7（第 7、9、12 节）。M6 仍进行中，待负责人执行输入法清单 | [P8 文档](08-P8-soft-breaks.md)、[P8 审查](reviews/P8-soft-breaks-review.md) |

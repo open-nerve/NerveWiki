@@ -157,6 +157,7 @@ func (t Tree) Destination(n ast.Node) (Span, bool)
   - `\$` 是普通字符。
 - 线性：每个块第一次需要时，扫一遍它的行，记下所有可以结束公式的 `$` 的位置（照 harden 的 `indexOf`），开头的 `$` 二分查找下一个。
 - 节点 `Math{Display, Range}`，内容不再解析。
+- M6/P8 起：段落或紧凑列表项里的 `$$…$$` 公式之后到行尾只有空白时，这一行的换行去掉（`formulaLines`）：前端把它显示成块，Obsidian 在那里不写 `<br>`；反斜杠的硬换行留着（[P8](08-P8-soft-breaks.md) 第 3 节）。
 
 ### 3.8 扩展：注释
 
@@ -176,6 +177,7 @@ func (t Tree) Destination(n ast.Node) (Span, bool)
   - 隐藏节点实现平台的 `markdown.Hider`：渲染跳过它的子节点，里面的标题不给 id，里面的文字不进标题的 id 与图片的说明文字；
   - 提取（链接、标签、任务项）照常走进去。
 - **已知差异**（写进新样例，`nerve-defined`）：注释里不闭合的围栏延续到文末，吞掉结束的 `%%`，与 Obsidian 按行隐藏不同（074）。
+- **显示的换行**（M6/P8 起）：阅读视图把软换行显示为换行；块注释结束的标记之后，这一行的换行去掉（`lineBreak`、`noBreak`），不显示块注释的行，也不留空行。与 Obsidian 不同的（渲染样例，`nerve-defined`）：块注释在一段的中间时这里是一段的两行，Obsidian 分成两段（014、018、026）；块注释结束在行中时这里藏起这一行剩下的，Obsidian 照常显示（021，P8 核对时发现，交给负责人）。
 
 ### 3.9 扩展：callout
 
@@ -186,6 +188,7 @@ func (t Tree) Destination(n ast.Node) (Span, bool)
   - 带 `-` 或 `+` 的是 `<details class="nw-callout" data-callout="type">`（`+` 带 `open`），标题在 `<summary>`；
   - 其余是 `<div class="nw-callout" data-callout="type">`，标题在 `<div class="nw-callout-title">`。
   - 没有标题时，标题是类型的首字母大写，与 Obsidian 相同。
+  - M6/P8 起正文的换行显示为换行；标题照旧到第一个换行为止，不带 `<br>`。
 
 ### 3.10 扩展：渲染（不带状态）
 
@@ -300,6 +303,6 @@ type Extracted struct {
 - 标签名末尾的 `_` 先留给强调的游程，游程成了文字再收回，所以 `_#t5_` 是包着标签 `t5` 的强调（047）。
 - 属性表的钩子照第 2 节归 P3（与 `Fetch` 一起）。
 - 平台加了 `markdown.Hider`（隐藏的节点）与 `harden.AddressesEndBefore`（网址在方言的标记之前结束），都是审查的修复。
-- 已知的限制：callout 的标题到段落顶层的第一个换行为止，跨行的强调或链接把第二行带进标题；块注释盖住脚注定义时，脚注仍列在文末。
+- 已知的限制：callout 的标题到段落顶层的第一个换行为止，跨行的强调或链接把第二行带进标题（M6/P8 起显示为标题里的两行）；块注释盖住脚注定义时，脚注仍列在文末；块注释从 callout 之前开始、在它的正文里结束时，标题整个藏起来，折叠的 callout 没有 `<summary>`（M6/P8 审查 A-N4，交给负责人）。
 
 **审查**：[P1-dialect-review.md](reviews/P1-dialect-review.md)。High 2（标签的下划线与强调交叉时渲染 panic、一行很多标量时位置是平方的）、Medium 3（YAML 的其他换行之后位置错、网址吞掉注释的 `%%`、标题与单元格里的 `%%` 开始块注释）、Low 7，修复经三轮核对另有 8 点（含一处锚点的回退），都已处理。
