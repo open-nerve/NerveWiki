@@ -139,9 +139,9 @@ var position = regexp.MustCompile(` data-task="(\d+)"`)
 var boxBreak = regexp.MustCompile(`(<input [^>]*> )\n`)
 
 // sameAsGoldmark checks that src renders as goldmark renders it but for the
-// checkboxes' positions and the line breaks right after them, and that each
-// position is a task's character, the rendered ones the extracted ones, in
-// the content's order.
+// checkboxes' positions and the soft line breaks right after them, and that
+// each position is a task's character, the rendered ones the extracted ones,
+// in the content's order.
 func sameAsGoldmark(t *testing.T, src string) bool {
 	t.Helper()
 	got, found, err := ours([]byte(src))

@@ -90,6 +90,9 @@ function checkCase(dir, base) {
   } catch (e) {
     return fail(name, `bad JSON: ${e.message}`);
   }
+  if (typeof exp.description !== "string" || exp.description === "") fail(name, "description must be non-empty");
+  if ((exp.source === "nerve-defined") !== (typeof exp.note === "string" && exp.note !== ""))
+    fail(name, "note must be set exactly when the case is nerve-defined");
   const keys = Object.keys(exp)
     .filter((k) => k !== "tasks")
     .toSorted()
@@ -261,6 +264,7 @@ function checkResolveCase(dir, base) {
 // space, none next to a "¶" or "⏎" or at the ends.
 function checkRender(dir, base) {
   const name = `render/${base}`;
+  if (!existsSync(join(dir, `${base}.json`))) return fail(name, "missing .json");
   let c;
   try {
     c = readObject(join(dir, `${base}.json`));
@@ -280,11 +284,20 @@ function checkRender(dir, base) {
     );
 }
 
+// guarded runs a case's check, a malformed case's crash one more problem.
+const guarded = (check, dir, prefix) => (base) => {
+  try {
+    check(dir, base);
+  } catch (e) {
+    fail(`${prefix}/${base}`, `malformed: ${e.message}`);
+  }
+};
+
 const casesDir = join(root, "cases");
 const cases = readdirSync(casesDir)
   .filter((f) => f.endsWith(".md"))
   .map((f) => f.slice(0, -3));
-cases.forEach((b) => checkCase(casesDir, b));
+cases.forEach(guarded(checkCase, casesDir, "cases"));
 // A JSON of no case: its .md renamed or gone.
 const orphans = (dir, bases) =>
   readdirSync(join(root, dir))
@@ -295,15 +308,15 @@ const renameDir = join(root, "rename");
 const renames = readdirSync(renameDir)
   .filter((f) => f.endsWith(".json"))
   .map((f) => f.slice(0, -5));
-renames.forEach((b) => checkRename(renameDir, b));
+renames.forEach(guarded(checkRename, renameDir, "rename"));
 const resolveDir = join(root, "resolve");
 const resolves = readdirSync(resolveDir).filter((f) => f.endsWith(".json"));
-resolves.forEach((f) => checkResolveCase(resolveDir, f));
+resolves.forEach(guarded(checkResolveCase, resolveDir, "resolve"));
 const renderDir = join(root, "render");
 const renders = readdirSync(renderDir)
   .filter((f) => f.endsWith(".md"))
   .map((f) => f.slice(0, -3));
-renders.forEach((b) => checkRender(renderDir, b));
+renders.forEach(guarded(checkRender, renderDir, "render"));
 orphans("render", renders);
 
 if (problems.length) {

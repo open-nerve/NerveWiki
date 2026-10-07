@@ -318,6 +318,11 @@ func TestALineBreakIsShownAsOne(t *testing.T) {
 				`<span class="nw-math nw-math-block">y</span> <a class="nw-tag" data-nw-tag="t">#t</a><br>` + "\nb<br>\n" +
 				`<em><span class="nw-math nw-math-block">z</span></em><br>` + "\nc</p>\n",
 		},
+		{
+			"after a $$ formula and blanks and a backslash, or a backslash and a CR LF", "$$x$$ \\\na\n$$y$$\\\r\nb\n",
+			`<p><span class="nw-math nw-math-block">x</span> <br>` + "\na<br>\n" +
+				`<span class="nw-math nw-math-block">y</span><br>` + "\nb</p>\n",
+		},
 		{"after a CR LF", "a\r\nb\r\n", "<p>a<br>\nb</p>\n"},
 		{"a heading of two lines: its id as before", "a\nb\n===\n", `<h1 id="nw-a-b">a<br>` + "\nb</h1>\n"},
 	})

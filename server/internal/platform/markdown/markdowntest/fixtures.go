@@ -17,8 +17,8 @@ type Fixture struct {
 	JSON    []byte
 }
 
-// casesDir, resolveDir and renameDir are the fixture set's directories,
-// from the repository's root.
+// casesDir, resolveDir, renameDir and renderDir are the fixture set's
+// directories, from the repository's root.
 const (
 	casesDir   = "tools/md-fixtures/cases"
 	resolveDir = "tools/md-fixtures/resolve"

@@ -76,8 +76,9 @@ func Extension(o Options) markdown.Extension {
 // reference and before a link, which '[' and '!' also start; a formula's
 // block before a paragraph, which it interrupts; the callouts, the comments,
 // the line breaks after formulas, the tags' second look after the emphasis
-// is paired, and then the marks of the wikilinks and tags in a link's text. An address ends before a comment's "%%",
-// so that a comment may end with one.
+// is paired, and then the marks of the wikilinks and tags in a link's text.
+// An address ends before a comment's "%%", so that a comment may end with
+// one.
 func dialect() []parser.Option {
 	return []parser.Option{
 		harden.AddressesEndBefore("%%"),
