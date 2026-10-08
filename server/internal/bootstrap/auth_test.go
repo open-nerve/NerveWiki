@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/open-nerve/NerveWiki/server/internal/modules/asset"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/identity"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/workspace"
 )
@@ -66,6 +67,20 @@ func TestTheInvitationKeyIsPinned(t *testing.T) {
 	const want = "c0783e2fa68061920382ee164bf763501d6d86756f892f96bb2881119619c6ee"
 	if got := hex.EncodeToString(keys.Derive(workspace.InvitationKeyInfo)); got != want {
 		t.Errorf("the invitations' key = %s, want %s", got, want)
+	}
+}
+
+// The contents' addresses are signed with the key a signing key derives
+// for them (M7/P2 design 3.6): pinned as the invitations' is, since
+// changing ContentKeyInfo would end every address signed.
+func TestTheContentKeyIsPinned(t *testing.T) {
+	keys, err := identity.LoadSigningKeys([]byte(openSSLKey), slog.New(slog.DiscardHandler))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const want = "f4e21001e2dc0386e88c29492da621d700995d9a7da656798f795ab84ae44864"
+	if got := hex.EncodeToString(keys.Derive(asset.ContentKeyInfo)); got != want {
+		t.Errorf("the contents' key = %s, want %s", got, want)
 	}
 }
 

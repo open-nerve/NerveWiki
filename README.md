@@ -137,6 +137,14 @@ make run      # 以 dev 配置启动 nervewiki serve，监听 127.0.0.1:8080；C
 - **勾选任务项**：`POST /api/v0/pages/{page_id}/toggle-task`，`{base_revision, offset, checked}`：把位置 `offset` 上的那个字节换成 `x` 或空格，其余字节不变，答这一页；权限与写正文相同，有人持锁时同样答 409 `page.locked`。`base_revision` 不是当前版本答 409 `page.revision_mismatch`（位置只在它所依据的版本里有意义，先于 422）；`offset` 上不是任务项答 422（`offset`，`out_of_range`），勾了会让那里不再有任务项（例如 `- [ ]: /u` 勾上之后成了链接引用定义）答 422（`offset`，`not_allowed`）；已经是那个状态的什么也不写，有人持锁时也答 200。
 - **解析预算**：服务端同时解析的正文字节数有上限（`page.parse_budget_bytes`，默认 8 MiB，每次至少记 4 KiB），取不到额度的请求最多等 `page.parse_max_wait`（默认 2 秒），然后答 503 `server_busy`（带 `Retry-After`）；写正文、新建带正文的页与阅读视图都经它。最坏的正文解析时约占它字节数 300 倍的内存（默认预算约 2.4 GB），普通的约 40 倍：内存小的机器调小预算（不能小于 5 MiB），并设置 `GOMEMLIMIT`。
 
+### 附件
+
+- 附件是笔记本树里的节点（`kind: "asset"`），在一页下或根下，与页面同一套改名、移动、删除（`/api/v0/nodes/{node_id}`）。它不算树的一层；名称与兄弟页面同一规则、同一唯一性，不能以 `.md` 结尾。`GET /api/v0/notebooks/{notebook_id}/nodes` 列出它们，网页的左栏只显示页面。
+- **上传**：`POST /api/v0/notebooks/{notebook_id}/assets`，`multipart/form-data`，部分依次是 `parent_id`、`name`（都可省，省了名称取文件名）、`file`；笔记本的编辑者与管理员能传。单个附件至多 `asset.max_bytes`（默认 50 MiB，即 `GET /api/v0/instance` 的 `asset_max_bytes`），超过答 413；存储没有余量答 507 `storage_full`。文件边收边写；读文件之前先核对笔记本、权限、名称与父页，没有发完文件的客户端也收得到这些答复。类型按扩展名与文件头测定，PNG、JPEG、GIF 读出宽高。
+- **读**：`GET /api/v0/assets/{node_id}` 读一个，`GET /api/v0/notebooks/{notebook_id}/assets`（`parent_id` 可选）按名称分页列出一页下或根下的附件，能读这本笔记本的人都可以。答复的 `content_url` 与 `download_url` 是签名的地址，不带令牌也能打开，1 到 2 小时内有效（`expires_at`，同一小时签出的地址相同）；改动任何参数、过期、附件已删除都答 404。
+- **内容**：图片、音频、视频与 PDF 在浏览器里显示（`inline`），其余（包括 HTML）一律以 `application/octet-stream` 下载，`download_url` 总是下载。每个答复都带 `Content-Security-Policy: sandbox; …`：SVG 里的脚本不执行，也不向别的站请求；私有缓存到地址过期，`ETag` 是 SHA-256，支持 `Range` 与条件请求。PDF 在 Chromium 的内置阅读器里照常显示（Firefox 未实测；显示不了的浏览器会提示下载）。下载按客户端 IP 限速（`ratelimit.asset_content`），不占匿名请求的桶。
+- 删除附件、它的上级页或笔记本时，它的行一起软删除；保留期过后清理任务先删文件、再删行。没有行的文件（例如上传中途失败留下的）一天之后由每天的清扫删掉。笔记本的活动（无主笔记本列表的大小与最后活动）算上附件。
+
 ### 链接索引
 
 - **索引**：每一页正文里的链接（wikilink、嵌入、Markdown 链接与图片，以及 frontmatter 里的属性链接）、标签、属性与别名，和每条链接解析到的页，随每次写入在同一个事务里更新：新建、改名、移动、删除（连同子页）、写正文、勾选任务项，删除笔记本时一并删除。同一笔记本的索引维护一个接一个进行（索引自己按笔记本的锁），所以同一笔记本的保存在提交处排队。
@@ -247,7 +255,7 @@ cd e2e && pnpm exec playwright show-report                      # 查看上一�
 
 ```bash
 make image VERSION=0.1.0         # 构建 nervewiki:0.1.0
-make image-smoke VERSION=0.1.0   # 在镜像上跑 S1、S3：迁移、探针、前端、实例与提交信息、注册关闭、管理员建账户、非 root、优雅停机、附件目录不可写时拒绝启动（另需 curl、jq、openssl）
+make image-smoke VERSION=0.1.0   # 在镜像上跑 S1、S3：迁移、探针、前端、实例与提交信息、注册关闭、管理员建账户、非 root、附件在重启之后读回、优雅停机、附件目录不可写时拒绝启动（另需 curl、jq、openssl）
 ```
 
 镜像的提交信息取自构建上下文中的 `.git`，所以要在普通的克隆中构建：`git worktree` 的 `.git` 是指向别处的文件，`make image` 会直接报错。`.dockerignore` 排除的正好是 `.gitignore` 忽略的，改一个时同步另一个：否则镜像里的二进制报告的 `modified` 与工作区不符，`make image-smoke` 失败。
@@ -309,7 +317,7 @@ make image-smoke VERSION=0.1.0   # 在镜像上跑 S1、S3：迁移、探针、�
 
 - 数据库必须以 builtin provider 的 `C.UTF-8` 初始化，否则服务拒绝启动，见[总体设计](docs/v0.1/v0.1-design.md) 7.1。
 - 探针：存活用 `GET /healthz`（不访问任何依赖），就绪用 `GET /readyz`（数据库可用、迁移已执行完）。镜像里没有 shell 与 curl，所以没有写 `HEALTHCHECK`，由编排系统探测。
-- 后台任务（River：每小时一次的过期会话清理 `auth.session_cleanup_interval`，每小时一次的软删除清理 `jobs.purge_interval`，每 10 分钟一次的过期编辑会话清理 `page.edit_session_cleanup_interval`）随 `serve` 运行，表在同一条迁移链上。关闭自动迁移时，服务在迁移执行完之前不启动后台任务，迁移之后自动启动，不必重启。River 从连接池里借走一个连接专门监听通知，事件流也借走一个（`LISTEN nwiki_events`，断开后自动重连），数据库要为每个实例多留两个连接（`database.max_conns` + 2）。
+- 后台任务（River：每小时一次的过期会话清理 `auth.session_cleanup_interval`，每小时一次的软删除清理 `jobs.purge_interval`，每 10 分钟一次的过期编辑会话清理 `page.edit_session_cleanup_interval`，每天一次的附件目录清扫）随 `serve` 运行，表在同一条迁移链上。关闭自动迁移时，服务在迁移执行完之前不启动后台任务，迁移之后自动启动，不必重启。River 从连接池里借走一个连接专门监听通知，事件流也借走一个（`LISTEN nwiki_events`，断开后自动重连），数据库要为每个实例多留两个连接（`database.max_conns` + 2）。
 - 停止时发 SIGTERM：服务停止接收新连接，关闭开着的事件流，等正在处理的请求结束（最多 `server.shutdown_timeout`，默认 20 秒），关闭接收通知的连接（最多 2 秒），再等正在执行的后台任务（最多 `jobs.shutdown_timeout`，默认 10 秒，之后取消它们，再宽限 1 秒），最后关闭连接池（最多 5 秒）后退出。停机的宽限期要比这些之和长：`docker stop` 默认只等 10 秒，用 `docker stop -t 40`。启动之后不久就停止时（重启循环、端到端测试），River 通常记一条 ERROR `maintenance.PeriodicJobEnqueuer: Error starting transaction`（`context canceled`，它启动时的定时任务入队被停机打断），退出码仍是 0；运行了一段时间的服务停止时一般没有。
 
 ## Markdown 样例集
