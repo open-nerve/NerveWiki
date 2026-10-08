@@ -90,16 +90,17 @@ P3 改的面很宽：解析规则、索引、改写、落点、补全、渲染�
 | 文件 | 内容 |
 |---|---|
 | `tools/md-fixtures/resolve/016-…`–`02x-…`（新）、`rename/033-…`–`04x-…`（新）、`README.md`、`check.mjs`、`obsidian/verify-resolve.mjs`、`verify-rename.mjs` | 样例的 `assets`，核对脚本建附件（4.8） |
-| `server/internal/modules/page/link_targets.go`、`adapter/postgres/queries/links.sql` | 读端口带上附件与类型（4.3） |
-| `server/internal/modules/linking/domain/`：`resolve.go`、`target.go`、`landing.go`、`rewrite.go`、`facts.go`（`Node`、`Resolution`） | 三种读法、按类型的候选、落点、改写（4.2、4.4、4.5） |
-| `server/internal/modules/linking/app/`：`ports.go`、`resolver.go`、`views.go`、`link_targets.go`、`asset_links.go`（新）、`properties.go` | 解析到的类型、补全的类型、附件的 `link`（4.5、4.6） |
-| `server/internal/modules/linking/adapter/postgres/`、`server/migrations/sql/00028_linking_page_links_resolved_asset.sql`（新） | `page_links.resolved_asset`（4.3） |
+| `server/internal/modules/page/link_targets.go`、`adapter/postgres/links.go`、`adapter/postgres/queries/links.sql` | 读端口带上附件与类型（4.3）；附件的路径与同键附件的个数（`AttachmentsByIDs`，4.6） |
+| `server/internal/modules/linking/domain/`：`resolve.go`（`Node`、`Resolution`、`Linkable`）、`target.go`、`landing.go`、`rewrite.go`（`AssetLinktext`）、`change.go`（`PathBefore` 带上类型） | 三种读法、按类型的候选、落点、改写（4.2、4.4、4.5） |
+| `server/internal/modules/linking/app/`：`ports.go`、`access.go`、`link_targets.go`、`asset_links.go`（新） | 解析到的类型、补全的类型与过滤、附件的 `link`（4.5、4.6） |
+| `server/internal/modules/linking/adapter/postgres/`、`server/migrations/sql/00028_linking_page_links_resolved_asset.sql`（新）、`server/migrations/schema_test.go` | `page_links.resolved_asset`（4.3） |
 | `server/internal/modules/linking/adapter/markdown/views.go` | A 里不把附件交给渲染（4.6） |
 | `server/internal/modules/linking/module.go` | `AssetLinks`（4.6） |
 | `server/internal/modules/asset/app/`（`upload.go`、`reads.go`、`ports.go`）、`adapter/http` | 答复带 `link`（4.6） |
-| `api/modules/linking.yaml`、`api/modules/asset.yaml` | `LinkTargetKind`、`LandingReason`、`PropertyLink.kind`、`Asset.link`（4.7） |
-| `server/internal/bootstrap/`：`linking.go`、`assets.go`、`links_test.go` 等 | 读端口的类型、`AssetLinks` 的组合、`checkLinks`、整个程序的测试（4.9） |
-| `web/apps/web/src/pages/page/unresolved-link.tsx`、`page-properties.tsx`、`locales` | 落点的新原因、属性里的附件不当作页面（4.7） |
+| `api/modules/linking.yaml`、`api/modules/asset.yaml`、`api/modules/events.yaml`、`api/modules/page.yaml` | `LinkTargetKind`、`LandingReason`、`PropertyLink.kind`、`Asset.link`；links 事件的两个集合、改名与移动的说明（4.7） |
+| `server/internal/bootstrap/`：`linking.go`、`deps.go`、`links_test.go`、`links_assets_test.go`（新）、`links_rebuild_test.go`、`permission_matrix_linking_test.go` | 读端口的类型、`AssetLinks` 的组合、`checkLinks`、整个程序的测试（4.9） |
+| `web/apps/web/src/pages/page/unresolved-link.tsx`、`page-properties.tsx`、`i18n/messages` | 落点的新原因、属性里的附件不当作页面（4.7） |
+| `e2e/stories/links/l5-completion.spec.ts`、`l6-panel.spec.ts` | 属性链接的 `kind`（4.7） |
 
 ### 4.2 解析：三种读法
 
@@ -118,10 +119,10 @@ P3 改的面很宽：解析规则、索引、改写、落点、补全、渲染�
 
 ### 4.3 索引：读端口、`resolved_asset`、观察者
 
-- **page 的读端口**：`LinkTargetsByKeys`、`LinkTargetsByIDs` 去掉 `kind = 'page'`，答出 `kind`；`LinkNode` 加 `Asset`；`Subtree` 带上子树里的附件（改名、移动一页时它们的路径随之变，指向它们的链接要重解析，总设计 4.7）；`All` 带上附件（补全与重建）。`PageIDs`、`NotebookOf`、`Content` 仍只认页面（它们读正文）。
-- **`page_links.resolved_asset`**（迁移 `00028`，linking 的表）：`boolean NOT NULL DEFAULT false`，`CHECK (NOT resolved_asset OR resolved_id IS NOT NULL)`。节点的类型不会变，所以它跟着 `resolved_id` 定；`SetResolutions` 写它，`Links`、`View`、`Properties` 读它。不提升 `Extractor`：提取结果没变，P3 之前的行都解析到页面，`false` 是对的。
+- **page 的读端口**：`LinkTargetsByKeys`、`LinkTargetsByIDs` 去掉 `kind = 'page'`，答出 `kind`；`LinkNode` 加 `Asset`；`Subtree` 带上子树里的附件（改名、移动一页时它们的路径随之变，指向它们的链接要重解析，总设计 4.7）；`All` 带上附件（补全）。`PageIDs`、`NotebookOf`、`Content` 仍只认页面（它们读正文）。
+- **`page_links.resolved_asset`**（迁移 `00028`，linking 的表）：`boolean NOT NULL DEFAULT false`，`CHECK (NOT resolved_asset OR resolved_id IS NOT NULL)`。节点的类型不会变，所以它跟着 `resolved_id` 定；`SetResolutions` 写它，`Links`、`View`、`Properties` 读它。不提升 `Extractor`：提取结果没变，P3 之前的行都解析到页面，`false` 是对的。down 先把指向附件的链接置为解析不到，旧程序不会把附件的 id 当作页面，之后由它的 `nervewiki reindex` 按它的规则重新解析（审查 B7）。
 - **观察者**不改：附件的新建（`Before` 为空）、删除（`After` 为空）、改名、移动经 `Affected` 按键与 id 圈出链接，`ByKeys` 读到附件之后它们就重新解析；一页改名、移动时 `spread` 经 `Subtree` 圈进子树里的附件。`DeletePages` 收到附件的 id 时什么都不删（附件没有行）。
-- **`checkLinks`**（`bootstrap/links_test.go` 的不变式）：从头按 `kind IN ('page', 'asset')` 的节点解析每条链接，比较 `resolved_id`、`ambiguous`、`resolved_asset`。
+- **`checkLinks`**（`bootstrap/links_test.go` 的不变式）：每条解析到的链接指向同一本笔记本里未删除的节点，类型与 `resolved_asset` 相符。从头解析的对照是 `TestTheIndexIsItsRebuild`（增量维护等于重建，随机的写入加了附件的上传、改名、移动、删除与指向附件的目标）与附件的整个程序测试每一步之后的 `checkRebuilt`（审查 C3）。
 
 ### 4.4 改名、移动的改写
 
@@ -136,12 +137,12 @@ P3 改的面很宽：解析规则、索引、改写、落点、补全、渲染�
 
 ### 4.5 落点与补全
 
-- **落点**：目标读作附件（第 4.2 节）时答 `target_is_asset`，`node_id` 为空，不论它是否解析到——解析到附件的不是"已有的页"，解析不到的（`[[B/x.png]]`）新建页面也解析不到它。`parents` 只取页面。这解决 M6 的移交第 3 项的循环：同名的附件存在时，不再提议新建一个 `createPage` 会答 409 的页。
-- **补全**：`LinkTarget` 加 `Kind`（`page`、`asset`）；附件的 `aliases` 为空；`link` 按第 4.4 节的写法（附件：名称唯一时写名称，否则写完整路径；被遮住的页写 `.md` 的写法）。`Linktexts` 收全部节点，按类型分组。
+- **落点**：目标读作附件（第 4.2 节）时答 `target_is_asset`，`node_id` 为空，不论它是否解析到——解析到附件的不是"已有的页"，解析不到的（`[[B/x.png]]`）新建页面也解析不到它。`parents` 只取页面。读作页面的目标（写了 `.md`，或附件没有扩展名），新页要放的地方已有同标题键的附件时同样答 `target_is_asset`（实施中随机测试找到：`../v1.2.md` 落在附件 `v1.2` 旁边会撞名）。这解决 M6 的移交第 3 项的循环：同名的附件存在时，不再提议新建一个 `createPage` 会答 409 的页。
+- **补全**：`LinkTarget` 加 `Kind`（`page`、`asset`）；附件的 `aliases` 为空；`link` 按第 4.4 节的写法（附件：名称在附件里唯一时写名称，否则写完整路径；被遮住的页写 `.md` 的写法）。没有扩展名的附件不列：没有链接引向它，它的路径可能按后缀引向同路径的页（审查 A1）。`Linktexts` 收全部节点、按标题键分组；附件按 `AssetLinktext`（同键附件的个数）写，代价随它们线性，与逐个的 `Linktext` 相同（性质测试）。
 
 ### 4.6 附件的 `link`、A 里的阅读视图
 
-- **附件的 `link`**：与 `LinkTarget.link` 同一个算法（`domain.Linktext`）。linking 的模块根给 `AssetLinks(pool, pages)`：按附件的标题键读候选（`ByKeys`），答每个附件的写法。asset 的 app 加端口 `Links`，组合根把它接上。
+- **附件的 `link`**：与 `LinkTarget.link` 同一个写法。linking 的模块根给 `NewAssetLinks(attachments)`：page 的 `AttachmentsByIDs` 一条语句读附件的路径与同标题键的附件个数（数到 2，一个快照），`domain.AssetLinktext` 只有它一个时写名称、否则写完整路径，与 `Linktext` 一致（随机树的性质测试）；没有扩展名的附件 `link` 为 null。原定按标题键读全部候选（`ByKeys`）再走 `Linktext`：同名的附件多时读得多、上传时在锁里，池上分两次读时并发的改名可能写出指向另一个附件的名称（审查 B4、B6）。asset 的 app 加端口 `Links`，组合根把它接上。
   - 元数据与列表：读完节点之后按笔记本一次读。
   - 上传：在单元的 `after` 里、写完行之后读（同一个事务，看得到新的节点，持着单元的锁，没有别的同名节点同时出现）；读失败时单元回滚，文件留给孤儿清扫（P2 的规则）。
   - `link` 是读取时的写法：之后别处出现同名的附件，旧的答复里的写法就不再唯一，粘贴插入时（P4）以当时读到的为准。
@@ -151,7 +152,8 @@ P3 改的面很宽：解析规则、索引、改写、落点、补全、渲染�
 ### 4.7 契约与前端
 
 - `linking.yaml`：`LinkTargetKind` 加 `asset`，说明改写；`LinkTarget.name`、`link` 的说明（附件的名称带扩展名；被遮住的页的 `.md`）；`LandingReason` 加 `target_is_asset`，`getLinkLanding` 的说明；`PropertyLink.kind`（`LinkTargetKind` 或 `null`）。
-- `asset.yaml`：`Asset.link`（必有），说明它是读取时的写法。
+- `asset.yaml`：`Asset.link`（必有，没有扩展名的附件为 null），说明它是读取时的写法。
+- `events.yaml`：links 事件的 `pages`、`targets` 可以含附件。`page.yaml`：renameNode、moveNode 的说明写进附件：改名、移动附件会改写指向它的链接，引用它的页正在编辑时整个拒绝（审查 B5）。
 - 前端：`unresolved-link.tsx` 给 `target_is_asset` 一句说明（"这个名称是附件"），照"没有落点"处理并重读视图；`page-properties.tsx` 对 `kind = asset` 的属性链接只显示文字；`LinkTarget.kind` 不影响补全的插入（附件的标记与排序在 P4）。
 
 ### 4.8 样例与核对
@@ -162,6 +164,7 @@ P3 改的面很宽：解析规则、索引、改写、落点、补全、渲染�
   - 解析：附件遮住页面（根下、同文件夹、`[[B/x.png]]`、相对、从根起）；只有页面时读作页面；`.md` 的写法；没有扩展名的附件；名称里的点；大小写与 NFC、NFD；子树、路径长短、后缀；与附件同名的别名（`nerve-defined`）；pdf、音视频、没见过的扩展名；Markdown 链接、图片、嵌入。
   - 改写：附件改名（各种写法，相对与从根起的那几条 `nerve-defined`）；换扩展名；只改大小写；移动（名称不再唯一）；移动一页带着附件；页面移出子树；显示文字的去掉扩展名；Markdown 链接的文字；frontmatter；被遮住的页、被抢走的页（`nerve-defined`）。
 - 服务端的样例测试（`resolve_cases_test.go`、`rename_cases_test.go`）读 `assets`，附件的 id 接着页面的递增。
+- 实施中改写样例 038 拆成两条：038（`obsidian-verified`，`![[x.png]]` 随页面移动写成 `![[B/A/x.png]]`）与 046（`nerve-defined`：按后缀仍能解析的 `[[A/x.png]]`、`[t](A/x.png)` 不改写，M6 的规则）。
 
 ### 4.9 A 的测试与最后一跳
 
@@ -173,7 +176,9 @@ P3 改的面很宽：解析规则、索引、改写、落点、补全、渲染�
   - 落点：同名的附件存在时答 `target_is_asset`，不再循环。
   - 附件的 `link`：上传、元数据、列表的答复；同名的第二个附件之后写完整路径。
   - A 里的阅读视图不写指向附件的 `data-nw-node`。
-- 权限矩阵不加格：没有新操作。
+  - 引用附件的页正在编辑时，附件的改名答 409 `linking.pages_locked`，什么都不变（审查 B5）。
+  - 索引等于重建：`TestTheIndexIsItsRebuild` 的随机写入加附件的上传、改名、移动、删除，目标加附件的写法。
+- 权限矩阵不加格：没有新操作；`listLinkTargets` 的核对认附件与类型。
 
 ## 5. B：渲染
 
@@ -325,4 +330,28 @@ type Options struct {
 
 ## 9. 结果
 
-（各部分合并之后填写。）
+### 9.1 A：解析、索引与改写（2026-10-09，合并 `5138ad6`）
+
+- 提交：
+  - 实施：样例 `b45e9a3`、page 的读端口 `acb9208`、linking 的领域规则 `1264619`、索引与读 `7d4dbc0`、asset 的 `link` `7cee2c4`、整个程序的测试 `d551e4d`、前端 `1a3a715`、契约的生成物 `44a3eb5`。
+  - 负对照的补测 `fecde45`；CI 首轮的修补 `5af8112`（schema 的约束名、属性的三次扫描、附件的列表按父节点、`format` 把布尔写成 `t`、权限矩阵的补全）。
+  - 审查的修复 `4cc138b`；两轮修复核对的修复 `4ea331e`、`99a279e`、`852aac1`。合并 `5138ad6`。
+- 审查：三位审查者（Opus），没有高、中。
+  - A（领域规则与索引）：中低 1（没有扩展名的附件的 `link` 可能引向同路径的页），低 7。
+  - B（应用层、接口、asset 与组合根）：CI 必挂的测试期望 3，中低 2（附件的 `link` 读同键的全部节点；契约没写附件的改名、移动会改写与被拒），低 8。
+  - C（测试、前端、样例与文档）：CI 必挂的测试期望 2，中低 1（`checkLinks` 比设计说的弱），低 10。
+  - 修复核对两轮，都没有行为问题；第一轮的两条性能建议（同键的计数数到 2、补全对附件按计数写）照做。逐条见[审查记录](reviews/P3A-assets-links-review.md)。
+- 审查之后改了的设计（第 4 节已改写）：没有扩展名的附件 `link` 为 null、补全不列它；附件的 `link` 由一条语句的路径与计数写出（`AssetLinktext`）；落点的第二种 `target_is_asset`；down 迁移先把指向附件的链接置为解析不到；契约里改名、移动的说明。
+- 与 Obsidian 1.12.7 的核对：实施时一次；审查修复（核对脚本的 PNG 换成合法的）之后重跑，`verify-resolve` 27 例、`verify-rename` 46 例，`obsidian-verified` 全部一致，差异都是 `nerve-defined` 的（解析 7 处，改写 20 处）。都在隔离的数据目录里，用完按 PID 关掉。
+- 样例集：`78 cases, 46 rename cases, 27 resolution cases, 46 render cases`。
+- 反向对照：本机 44 个（实施 35，其中 2 个等价：标题不以点开头、附件多给的 `WrittenKeys` 只多读节点；修复 7；核对后 2），都被抓到或说明；数据库上的 7 个由三条临时分支在 CI 上跑（`SetResolutions` 不写、page 的路径丢类型、三处读不读、`Subtree` 漏附件、组合根丢类型），都被抓到，分支已删。
+- CI 与发布：分支的 CI 在 `4cc138b`、`852aac1` 上全部通过（server、web、image、e2e；`image` 一步跑 `make image-smoke`）。本机的 Docker Desktop 起不来，数据库的测试、e2e 与合并之后的 `image-smoke` 都由 CI 跑。
+- 交给 B 与后面的：
+  1. B：`linking/adapter/markdown/views.go` 的 `Resolve` 不再跳过附件，换成带类型的答复（5.3）；`TestAnAttachmentsNameThroughServe` 里"阅读视图把三条链接写成未解析"的断言随之改成附件的标记；属性链接的 `url`（5.6）。
+  2. P4：粘贴插入用 `Asset.link`，为 null 时（没有扩展名）不插入嵌入；补全里附件的标记与排序。
+  3. 补全里很多同名的页仍是平方的代价，见 [M12 的性能移交](../M12-release/handoffs/M4-performance.md)第 8 项；附件已是线性。
+- 负责人可以改判的取舍：没有扩展名的附件 `link` 为 null、补全不列（也可以照完整路径给出并在契约里写明可能引向同路径的页）；改名、移动附件时引用它的页正在编辑就整个拒绝（与页面相同）；links 事件的 `targets` 含附件的 id；A 期间指向附件的链接在阅读视图里是未解析的，未解析对话框对它说"这个名称是附件"并重读视图。
+
+### 9.2 B：渲染
+
+（合并之后填写。）

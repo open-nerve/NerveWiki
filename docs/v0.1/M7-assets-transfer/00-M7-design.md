@@ -213,9 +213,9 @@
   - 渲染用的 `Assets` 只在 serve 的组合里给；reindex 的组合交空（它只提取），有测试证明提取不受它影响（`markdownExtensions(resolve, assets)`）。
 - **属性链接**：`PropertyLink` 加 `kind`，附件的带签名地址；右栏的属性对附件给地址，不经 `href(lead)`。
 - **改名、移动**：附件改名、移动时，解析到它的链接照页面的规则改写（M6 的改写参与者；Obsidian 打开"始终更新内部链接"时同样改写附件的嵌入）；移动、改名一页时，它子树里的附件同样进候选。`Linktexts` 给被同名附件遮住的页写 `x.png.md`。与 Obsidian 核对（`rename/`）。
-- **落点**：落点的 `node_id` 从不是附件；读作附件的目标答新的原因 `target_is_asset`，`parents` 只有页面；前端照"没有落点"说明并重读视图（解决 M6 的移交第 3 项的循环）。
-- **补全**：`LinkTarget` 带类型，补全列出附件并标出类型（`![[` 之后附件排前）；`link` 与名称的说明随之改（`linking.yaml`）。
-- **附件的 `link`**：附件的元数据、列表与上传的答复带 `link`（与 `LinkTarget.link` 同一个算法：名称在笔记本里只有这一个时写名称，否则写完整路径），粘贴插入与"复制嵌入"用 `![[link]]`，不会嵌到别处的同名文件。asset 经组合根从 linking 取（P3）。
+- **落点**：落点的 `node_id` 从不是附件；读作附件的目标答新的原因 `target_is_asset`，读作页面、落点旁边却有同名附件的也这样答，`parents` 只有页面；前端照"没有落点"说明并重读视图（解决 M6 的移交第 3 项的循环）。
+- **补全**：`LinkTarget` 带类型，补全列出附件并标出类型（`![[` 之后附件排前），没有扩展名的附件不列（任何写法都读不到它）；`link` 与名称的说明随之改（`linking.yaml`）。
+- **附件的 `link`**：附件的元数据、列表与上传的答复带 `link`（与 `LinkTarget.link` 同一个算法：笔记本里只有这一个附件有这个名称时写名称，否则写完整路径；没有扩展名的附件为 null），粘贴插入与"复制嵌入"用 `![[link]]`，不会嵌到别处的同名文件。asset 经组合根从 linking 取，路径与同名附件的个数由 page 的一条语句读出（P3）。
 - **地址在 HTML 里**：M6 的链接地址由前端给，是因为服务端不知道工作区的 slug；附件的签名地址服务端完全知道，所以渲染时直接写进 `src` 与 `href`（相对地址，过 `SafeURL`）。阅读视图本来就不缓存（总体设计 4.3），签名依赖时钟与密钥不是问题；总体设计 13.3 第 6 条写明这个例外。`PageView` 带 `assets_expire_at`（视图里最早的到期时刻），前端据此重读（4.8）。CSP 不改：`img-src 'self'`，`media-src` 退到 `default-src 'self'`。
 - **索引**：附件的新建、改名、移动、删除经观察者重新解析指向它们的链接；`checkLinks` 认附件；M6 的性质测试与改写的随机测试加上附件的操作。
 
@@ -514,7 +514,7 @@ M7 开工时负责人确认进入 M7（2026-10-08："可以了"）。下面是�
 |---|---|---|---|---|
 | P1 | 平台：存储与流式路由 | 已完成 | [01-P1-storage-stream.md](01-P1-storage-stream.md) | [P1 审查](reviews/P1-storage-stream-review.md) |
 | P2 | 附件（服务端） | 已完成 | [02-P2-assets-server.md](02-P2-assets-server.md) | [P2 审查](reviews/P2-assets-server-review.md) |
-| P3 | 附件与链接（服务端） | 进行中（分 A、B 两部分合并） | [03-P3-assets-links.md](03-P3-assets-links.md) | — |
+| P3 | 附件与链接（服务端） | 进行中（A 已合并 `5138ad6`，B 待做） | [03-P3-assets-links.md](03-P3-assets-links.md) | [P3A 审查](reviews/P3A-assets-links-review.md) |
 | P4 | 附件（前端） | 未开始 | — | — |
 | P5 | 导出 | 未开始 | — | — |
 | P6 | 导入 | 未开始 | — | — |
@@ -529,3 +529,4 @@ M7 开工时负责人确认进入 M7（2026-10-08："可以了"）。下面是�
 | 2026-10-08 | P2 开工：第 7 节 P2 的 `InstanceInfo` 只加 `asset_max_bytes`，`import_max_bytes` 随 P6 | [02-P2-assets-server.md](02-P2-assets-server.md) 第 2 节 |
 | 2026-10-09 | P2 完成：4.3 处理器之前的答复对有请求体的请求关闭连接，宣告的答复按步写出、写截止时间随写出的字节前移（`Sending(r)`）；4.4 上传的 `name` 为空取文件名；4.5 严格的读法（规范的路径，参数依次、键名对位），CSP 与 CORP 在每个答复上，去掉对改动的条件；4.6 活动只报字节数；4.8 树的重读至多每 500 毫秒一次 | P2 的实施、审查与九轮修复核对：[02-P2-assets-server.md](02-P2-assets-server.md)、[P2 审查](reviews/P2-assets-server-review.md) |
 | 2026-10-09 | P3 开工：分 A（解析、索引与改写）、B（渲染）两部分合并；与 Obsidian 1.12.7 实测之后定下附件的三种读法（带扩展名、笔记本里有这个名称的附件时只读作附件），被同名附件遮住的页、被抢走的页的 wikilink 写 `.md` 的写法（Obsidian 写出解析不到的，`nerve-defined`），附件的显示文字按去掉扩展名的名称跟着改；索引记下解析到的是附件（`page_links.resolved_asset`）；4.7 的 `Assets` 由 asset 只凭连接池给出（`asset.NewEmbeds`）；平台的 `Render` 答 `View`（带到期） | [03-P3-assets-links.md](03-P3-assets-links.md) 第 2、4、5 节 |
+| 2026-10-09 | P3A 完成：没有扩展名的附件 `link` 为 null、补全不列它；附件的 `link` 由 page 的一条语句读出路径与同名附件的个数（`AssetLinktext`）；落点在同名附件旁边也答 `target_is_asset`；down 迁移先把指向附件的链接置为解析不到；契约写明附件的改名、移动会改写、会被编辑锁拒绝 | P3A 的实施、审查与两轮修复核对：[03-P3-assets-links.md](03-P3-assets-links.md) 第 4、9 节、[P3A 审查](reviews/P3A-assets-links-review.md) |

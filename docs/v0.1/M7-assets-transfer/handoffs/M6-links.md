@@ -25,3 +25,7 @@ M6 的链接只解析到页面（[M6 总设计](../../M6-links/00-M6-design.md) 
 4. **导入是多操作的单元**（M6 总设计 4.5）：改写的参与者要求单元开始前的索引是新的，所以单元里在改名、移动之前不做别的写，或者让观察者逐操作运行。导入的页经观察者进索引（每个正文写一次）；在单元里持锁解析时照参与者，不排队地取预算（`TakeNow`，[P2 文档](../../M6-links/02-P2-facts-budget.md)）。导入之后不需要 `nervewiki reindex`，但要 `ANALYZE` 导入写到的表：没有统计时，`LinksReached` 要把笔记本的链接扫一遍，读链接目标的递归查询收尾时改成了按主键逐步读（[M6 收尾审查](../../M6-links/reviews/M6-closeout-review.md) A-M2，`page/adapter/postgres/queries/links.sql`），别的查询仍要靠统计选计划。
 5. **导出：没有正文、只有子页、被链接的页**（[P3 文档](../../M6-links/03-P3-index.md)第 2 节，[P4 文档](../../M6-links/04-P4-rewrite.md)，[P3A 审查](../../M6-links/reviews/P3A-index-review.md) C2-L3）：总体设计 3.5 写导出时这种页只有文件夹、不生成空的 `.md`。Obsidian 里没有它这个文件，解析到它的链接（从文件夹出发的那一步，以及文件夹自己的页）在 Obsidian 里解析到别处。M7 定：给被链接的这种页写一个空的 `.md`，或者照旧并写明差异。
 6. **最后一跳与测试**：附件嵌入的渲染、附件的解析、导入的索引，各在整个程序上有行为测试（总体设计 13.1 第 21 条），组合根交空时失败；e2e 的故事调用 [`e2e/fixtures/assert/links.ts`](../../../../e2e/fixtures/assert/links.ts) 断言索引。
+
+## 处理进展
+
+- M7/P3A（2026-10-09，合并 `5138ad6`）：第 2 项（附件进解析，三种读法；page 的读端口读附件，`LinkTargetKind` 加 `asset`，`checkLinks` 认附件，附件的新建、删除、改名、移动经观察者重新解析，改名、移动照页面的规则改写）与第 3 项（落点答 `target_is_asset`）完成；第 6 项里附件的解析在整个程序上有行为测试（`bootstrap/links_assets_test.go`）。第 1 项与第 6 项里附件嵌入的渲染随 P3B，第 4 项随 P6，第 5 项随 P5。见 [P3 文档](../03-P3-assets-links.md)第 9 节。
