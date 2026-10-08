@@ -110,7 +110,9 @@ test("a property link to an attachment leads to its content, in a tab of its own
   ]);
   expect(links[0]?.getAttribute("target")).toBe("_blank");
   expect(links[0]?.getAttribute("rel")).toBe("noopener noreferrer");
-  expect(within(section("Properties")).getByText("t").className).not.toContain("decoration-dashed");
+  const text = within(section("Properties")).getByText("t");
+  expect(text.closest("a")).toBeNull();
+  expect(text.className).not.toContain("decoration-dashed");
   await userEvent.click(links[0] as HTMLElement);
   expect(router.state.location.pathname).toBe(pagePath(install.id));
 });

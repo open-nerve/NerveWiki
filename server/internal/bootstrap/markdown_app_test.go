@@ -42,7 +42,8 @@ type mode struct {
 	name     string
 	resolve  obsidian.Resolve
 	assets   obsidian.Assets
-	toAssets bool // every link leads to an attachment
+	toAssets bool   // every link leads to an attachment
+	embed    string // how an embed starts
 }
 
 // modes are every link resolved to one page, to none, and to one
@@ -52,13 +53,13 @@ type mode struct {
 // Assets does not answer.
 func modes() []mode {
 	return []mode{
-		{"to a page", everyLink, nil, false},
-		{"to none", nil, nil, false},
-		{"to an image", everyAsset, shownAs("image/png", maxSide, maxSide), true},
-		{"to an audio", everyAsset, shownAs("audio/mpeg", 0, 0), true},
-		{"to a video", everyAsset, shownAs("video/webm", 0, 0), true},
-		{"to a PDF", everyAsset, shownAs("application/pdf", 0, 0), true},
-		{"to an attachment not shown", everyAsset, nil, true},
+		{"to a page", everyLink, nil, false, `<a class="nw-wikilink nw-embed" data-nw-node=`},
+		{"to none", nil, nil, false, `<a class="nw-wikilink nw-embed nw-unresolved"`},
+		{"to an image", everyAsset, shownAs("image/png", maxSide, maxSide), true, `<img class="nw-asset" src=`},
+		{"to an audio", everyAsset, shownAs("audio/mpeg", 0, 0), true, `<audio class="nw-asset" src=`},
+		{"to a video", everyAsset, shownAs("video/webm", 0, 0), true, `<video class="nw-asset" src=`},
+		{"to a PDF", everyAsset, shownAs("application/pdf", 0, 0), true, `<a class="nw-wikilink nw-embed nw-asset" href=`},
+		{"to an attachment not shown", everyAsset, nil, true, `<span class="nw-wikilink nw-embed nw-asset">`},
 	}
 }
 
@@ -157,6 +158,11 @@ func TestTheAppsMarkdownRendersCheckedHTML(t *testing.T) {
 	page := markdown.Page{NotebookID: uuid.NewV7(), PageID: uuid.NewV7()}
 	for _, m := range modes() {
 		md, exts := appMarkdown(t, m)
+		// Each mode is what it says: an embed's markup tells where it leads.
+		if view, err := md.Render(context.Background(), md.Parse([]byte("![[p.x]]")), page); err != nil ||
+			!strings.HasPrefix(view.HTML, "<p>"+m.embed) {
+			t.Errorf("%s: an embed is %q, %v; want it to start %s", m.name, view.HTML, err, m.embed)
+		}
 		for name, content := range inputs {
 			view, err := md.Render(context.Background(), md.Parse([]byte(content)), page)
 			if err != nil {

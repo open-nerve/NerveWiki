@@ -127,6 +127,7 @@ func TestAnAttachmentIsItsImageAudioVideoOrALink(t *testing.T) {
 			p(img("dims.png", "dims.png", ` width="7" height="5"`) + " " + img("x.png", "x.png", "") + " " +
 				img("x.png", "x.png", ` height="200"`) + " " + img("x.png", "x.png", "")),
 		},
+		{"the largest and the least size", "![[x.png|10000x1]]", p(img("x.png", "x.png", ` width="10000" height="1"`))},
 		{"an anchor", "![[x.png#a]]", p(img("x.png", "x.png &gt; a", ""))},
 		{"escaped", `![[x.png|<b>&"]]`, p(img("x.png", "&lt;b&gt;&amp;&quot;", ""))},
 		{"a Markdown image", "![](x.png)", p(img("x.png", "x.png", ""))},

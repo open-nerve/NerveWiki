@@ -16,6 +16,10 @@ import (
 // attachments its links lead to shown at their contents' addresses, which
 // the composition root's Assets gives the obsidian extension.
 
+// sevenByFive is a PNG image 7 pixels wide and 5 high.
+const sevenByFive = "\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x07\x00\x00\x00\x05\x08\x06\x00\x00\x00\x89\x9a\xf6\xd8\x00\x00\x00\x12" +
+	"IDATx\xdac8ac\xf3\x1f\x17f\x18\x00I\x00:\nN\x9e\xe88\xd8\x1a\x00\x00\x00\x00IEND\xaeB`\x82"
+
 // readingView is the reading view of the page id as by reads it: its HTML
 // and when its attachments' addresses expire, nil for none.
 func (tm acmeTeam) readingView(t *testing.T, by, id string) (string, *time.Time) {
@@ -73,41 +77,43 @@ func assetElements(html string) []element {
 }
 
 // A reading view shows the attachments its links lead to (M7/P3 design
-// 5.5, 5.10): an image embedded as its <img>, of its caption and size, an
-// audio as its <audio>, a PDF embedded and an image linked as links to
+// 5.5, 5.10): an image embedded as its <img>, of its caption and the size
+// written, else of its own, an audio as its <audio>, a PDF embedded and an image linked as links to
 // them, and a property link to one as a link, each at its content's
 // address, which downloads its bytes; the view expires when the addresses
 // do, as the content route signs them. Deleted, an attachment's links
 // lead nowhere and the others stay. The properties answer a property link
-// to one with its kind and its address. Its Assets nil, the composition
+// to one with its kind and its address. Each address is the content's
+// shown, not downloaded. Its Assets nil, the composition
 // root fails it: the links would be text.
 func TestAReadingViewShowsTheAttachmentsThroughServe(t *testing.T) {
 	tm := newAcmeTeam(t, "member", "")
 	nb := tm.openNotebook(t, "alice", "Eng")
 	a := tm.createPage(t, "alice", nb, "", "A")
-	x := tm.upload(t, "alice", nb, a, "x.png", pngFile)
+	x := tm.upload(t, "alice", nb, a, "x.png", sevenByFive)
 	sound := tm.upload(t, "alice", nb, a, "a.mp3", "ID3 a sound")
 	doc := tm.upload(t, "alice", nb, "", "doc.pdf", "%PDF-1.4 a document")
 	src := tm.createPageWith(t, "alice", nb, "", "Src",
-		"---\ncover: \"[[doc.pdf]]\"\n---\n![[x.png|说明|300]] ![[a.mp3]] ![[doc.pdf]] [t](A/x.png)\n")
+		"---\ncover: \"[[doc.pdf]]\"\n---\n![[x.png|说明|300]] ![[x.png]] ![[a.mp3]] ![[doc.pdf]] [t](A/x.png)\n")
 
 	before := time.Now()
 	html, expires := tm.readingView(t, "bob", src)
 	got := assetElements(html)
 	type shown struct{ name, class, text, asset string }
 	want := []shown{
-		{"a", "nw-wikilink nw-asset", "doc.pdf", doc.ID}, {"img", "nw-asset", "", x.ID}, {"audio", "nw-asset", "", sound.ID},
+		{"a", "nw-wikilink nw-asset", "doc.pdf", doc.ID}, {"img", "nw-asset", "", x.ID}, {"img", "nw-asset", "", x.ID},
+		{"audio", "nw-asset", "", sound.ID},
 		{"a", "nw-wikilink nw-embed nw-asset", "doc.pdf", doc.ID}, {"a", "nw-asset", "t", x.ID},
 	}
 	if len(got) != len(want) || strings.Contains(html, "data-nw-node") {
 		t.Fatalf("the reading view shows %+v, want %+v, and no page:\n%s", got, want, html)
 	}
-	bytes := map[string]string{x.ID: pngFile, sound.ID: "ID3 a sound", doc.ID: "%PDF-1.4 a document"}
+	bytes := map[string]string{x.ID: sevenByFive, sound.ID: "ID3 a sound", doc.ID: "%PDF-1.4 a document"}
 	for i, e := range got {
 		address := e.attrs["src"] + e.attrs["href"]
 		u, err := url.Parse(address)
 		if err != nil || e.name != want[i].name || e.attrs["class"] != want[i].class || e.text != want[i].text ||
-			u.Path != "/api/v0/assets/"+want[i].asset+"/content" {
+			u.Path != "/api/v0/assets/"+want[i].asset+"/content" || u.Query().Has("d") {
 			t.Errorf("element %d is <%s %v>%s, want %+v", i, e.name, e.attrs, e.text, want[i])
 			continue
 		}
@@ -121,8 +127,11 @@ func TestAReadingViewShowsTheAttachmentsThroughServe(t *testing.T) {
 			t.Errorf("%s is of %s bytes, want %d", address, e.attrs["data-nw-size"], len(bytes[want[i].asset]))
 		}
 	}
-	if img := got[1].attrs; img["alt"] != "说明" || img["width"] != "300" || img["loading"] != "lazy" {
+	if img := got[1].attrs; img["alt"] != "说明" || img["width"] != "300" || img["height"] != "" || img["loading"] != "lazy" {
 		t.Errorf("the image's attributes are %v, want its caption and width", img)
+	}
+	if img := got[2].attrs; img["alt"] != "x.png" || img["width"] != "7" || img["height"] != "5" {
+		t.Errorf("the image's attributes are %v, want its target and its own size", img)
 	}
 	if expires != nil && (expires.Before(before.Add(time.Hour)) || expires.After(time.Now().Add(2*time.Hour))) {
 		t.Errorf("the view expires at %v, not one to two hours from now", expires)
