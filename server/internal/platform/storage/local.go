@@ -32,18 +32,35 @@ const probePrefix = ".probe-"
 type Local struct {
 	dir     string
 	minFree int64
+	create  createTemp
 	mkdir   sync.Mutex // one goroutine at a time makes and syncs directories
+}
+
+// createTemp makes a new file in dir, its name pattern's "*" made unique:
+// os.CreateTemp, and in tests a file on a full disk.
+type createTemp func(dir, pattern string) (tempFile, error)
+
+func osCreateTemp(dir, pattern string) (tempFile, error) {
+	f, err := os.CreateTemp(dir, pattern)
+	if err != nil {
+		return nil, err
+	}
+	return f, nil
 }
 
 var _ Store = (*Local)(nil)
 
 // OpenLocal opens the store in dir, making dir when it is missing. It
-// fails, naming the directory and the process's uid and gid, when it cannot
-// write there or in an area already in it: serve refuses to start (M0/P6
-// handoff, item 2). It then deletes what earlier processes left half
-// written. Writes that would leave less than minFree bytes free answer
-// ErrFull.
+// deletes what earlier processes left half written, and fails, naming the
+// directory and the process's uid and gid, when it cannot write there or
+// in an area already in it: serve refuses to start (M0/P6 handoff, item 2).
+// A disk out of space is no failure: writes that would leave less than
+// minFree bytes free answer ErrFull.
 func OpenLocal(dir string, minFree int64) (*Local, error) {
+	return openLocal(dir, minFree, osCreateTemp)
+}
+
+func openLocal(dir string, minFree int64, create createTemp) (*Local, error) {
 	if dir == "" {
 		return nil, errors.New("storage: no directory")
 	}
@@ -54,10 +71,10 @@ func OpenLocal(dir string, minFree int64) (*Local, error) {
 	if err != nil {
 		return nil, fmt.Errorf("storage: %s: %w", dir, err)
 	}
-	if err := probe(abs); err != nil {
+	l := &Local{dir: abs, minFree: minFree, create: create}
+	if err := l.probe(abs); err != nil {
 		return nil, cannotWrite(abs, err)
 	}
-	l := &Local{dir: abs, minFree: minFree}
 	if err := l.dropTemporaries(); err != nil {
 		return nil, err
 	}
@@ -69,12 +86,20 @@ func cannotWrite(dir string, err error) error {
 }
 
 // probe makes dir when it is missing and writes, syncs and deletes a file
-// in it.
-func probe(dir string) error {
+// in it. Running out of space passes: the process may write there, and
+// Create answers ErrFull until there is space again.
+func (l *Local) probe(dir string) error {
+	if err := l.write(dir); err != nil && !isFull(err) {
+		return err
+	}
+	return nil
+}
+
+func (l *Local) write(dir string) error {
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return err
 	}
-	f, err := os.CreateTemp(dir, probePrefix+"*")
+	f, err := l.create(dir, probePrefix+"*")
 	if err != nil {
 		return err
 	}
@@ -85,10 +110,11 @@ func probe(dir string) error {
 	return errors.Join(werr, serr, cerr, rerr)
 }
 
-// dropTemporaries probes every area, in its directory of files being
-// written, and deletes that directory, and the probes left in the store's
-// directory: with one process to a directory, they are what a process
-// stopped midway left.
+// dropTemporaries deletes every area's directory of files being written,
+// then probes the area in it and deletes it again, and deletes the probes
+// left in the store's directory: with one process to a directory, they are
+// what a process stopped midway left. Deleting first frees the space a
+// half-written file took, and a file in the directory's place.
 func (l *Local) dropTemporaries() error {
 	entries, err := os.ReadDir(l.dir)
 	if err != nil {
@@ -102,11 +128,17 @@ func (l *Local) dropTemporaries() error {
 			}
 			continue
 		}
-		if !e.IsDir() || CheckArea(e.Name()) != nil {
+		if CheckArea(e.Name()) != nil {
 			continue
 		}
+		if info, err := os.Stat(path); err != nil || !info.IsDir() {
+			continue // not an area: a mounted area is a directory or a link to one
+		}
 		tmp := filepath.Join(path, tmpDir)
-		if err := probe(tmp); err != nil {
+		if err := os.RemoveAll(tmp); err != nil {
+			return cannotWrite(path, err)
+		}
+		if err := l.probe(tmp); err != nil {
 			return cannotWrite(path, err)
 		}
 		if err := os.RemoveAll(tmp); err != nil {
@@ -137,7 +169,7 @@ func (l *Local) Create(ctx context.Context, key string) (Writer, error) {
 	if err := l.ensureDir(tmp); err != nil {
 		return nil, fmt.Errorf("storage: %w", noSpace(err))
 	}
-	f, err := os.CreateTemp(tmp, name+".*")
+	f, err := l.create(tmp, name+".*")
 	if err != nil {
 		return nil, fmt.Errorf("storage: %w", noSpace(err))
 	}
@@ -326,7 +358,7 @@ func syncDir(dir string) error {
 // noSpace makes a write that ran out of space or of quota ErrFull, keeping
 // err.
 func noSpace(err error) error {
-	if errors.Is(err, syscall.ENOSPC) || errors.Is(err, syscall.EDQUOT) {
+	if isFull(err) {
 		return fmt.Errorf("%w: %w", ErrFull, err)
 	}
 	return err
@@ -403,6 +435,11 @@ func (w *localWriter) Abort() error {
 		return fmt.Errorf("storage: %w", err)
 	}
 	return nil
+}
+
+// isFull tells whether err is a write's that ran out of space or of quota.
+func isFull(err error) bool {
+	return errors.Is(err, syscall.ENOSPC) || errors.Is(err, syscall.EDQUOT)
 }
 
 func noSpaceErr(err error) error {

@@ -119,6 +119,24 @@ func TestOpeningDropsWhatAStoppedProcessLeftHalfWritten(t *testing.T) {
 	if err := os.WriteFile(probe, []byte{0}, 0o600); err != nil {
 		t.Fatal(err)
 	}
+	// An area's .tmp that is a file, and an area that links to a directory
+	// elsewhere, as a mount may.
+	if err := os.MkdirAll(filepath.Join(dir, "exports"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "exports", ".tmp"), []byte("not a directory"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	elsewhere := filepath.Join(t.TempDir(), "media")
+	if err := os.MkdirAll(filepath.Join(elsewhere, ".tmp"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(elsewhere, ".tmp", "half"), []byte("half"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(elsewhere, filepath.Join(dir, "media")); err != nil {
+		t.Fatal(err)
+	}
 
 	if _, err := storage.OpenLocal(dir, 0); err != nil {
 		t.Fatal(err)
@@ -126,8 +144,8 @@ func TestOpeningDropsWhatAStoppedProcessLeftHalfWritten(t *testing.T) {
 	if _, err := os.Stat(probe); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("a probe left by a stopped process: %v, want it gone", err)
 	}
-	for _, area := range []string{"blobs", "imports"} {
-		if _, err := os.Stat(filepath.Join(dir, area, ".tmp")); !errors.Is(err, fs.ErrNotExist) {
+	for _, area := range []string{"blobs", "imports", "exports", "media"} {
+		if _, err := os.Lstat(filepath.Join(dir, area, ".tmp")); !errors.Is(err, fs.ErrNotExist) {
 			t.Errorf("%s/.tmp after opening: %v, want it gone", area, err)
 		}
 	}

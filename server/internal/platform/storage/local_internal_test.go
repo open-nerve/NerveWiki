@@ -64,3 +64,50 @@ func TestRunningOutOfSpaceIsFullAndLeavesNothing(t *testing.T) {
 		t.Errorf("the file at the key: %v, want none", err)
 	}
 }
+
+// onFullDisk makes real files whose writes fail with ENOSPC.
+func onFullDisk(dir, pattern string) (tempFile, error) {
+	f, err := os.CreateTemp(dir, pattern)
+	if err != nil {
+		return nil, err
+	}
+	if err := f.Close(); err != nil {
+		return nil, err
+	}
+	return fullDisk{name: f.Name()}, nil
+}
+
+// A disk out of space is no reason to refuse to start: the store opens,
+// deleting what a stopped process left half written, the likely cause, and
+// its writes answer ErrFull.
+func TestAFullDiskOpensAndDropsWhatWasLeft(t *testing.T) {
+	dir := t.TempDir()
+	left := filepath.Join(dir, "imports", tmpDir, "a.zip.123")
+	if err := os.MkdirAll(filepath.Dir(left), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(left, []byte("half an import"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	l, err := openLocal(dir, 0, onFullDisk)
+	if err != nil {
+		t.Fatalf("openLocal on a full disk: %v", err)
+	}
+	if _, err := os.Stat(filepath.Dir(left)); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("imports/.tmp after opening: %v, want it gone", err)
+	}
+	if entries, err := os.ReadDir(dir); err != nil || len(entries) != 1 {
+		t.Errorf("the directory holds %v, %v; want the area alone, no probe left", entries, err)
+	}
+	w, err := l.Create(t.Context(), "blobs/a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.Write([]byte("x")); !errors.Is(err, ErrFull) {
+		t.Errorf("Write = %v, want ErrFull", err)
+	}
+	if err := w.Abort(); err != nil {
+		t.Error(err)
+	}
+}

@@ -37,8 +37,9 @@ const maxWait = 100 * 365 * 24 * time.Hour
 
 var errNotStream = errors.New("httpserver: outside API.Stream")
 
-// ErrShuttingDown is Sending's error once the server is shutting down: a
-// download does not start then.
+// ErrShuttingDown is Sending's error once the server is shutting down, a
+// download not starting then, and a stream's body read's when shutdown cuts
+// it off.
 var ErrShuttingDown = errors.New("httpserver: the server is shutting down")
 
 // Stream wraps the handler of a route that reads or writes its bytes as

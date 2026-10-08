@@ -338,18 +338,21 @@ func TestTheStepOfAStream(t *testing.T) {
 // end or an answer announced with Sending, is cut off: both deadlines pass
 // and its context is cancelled. One between the two is left to finish, but
 // can no longer announce an answer; nor is one whose handler has returned
-// cut off. A request without a body has no read deadline before.
+// cut off. A request without a body, even behind a wrapper, has no read
+// deadline until a shutdown cuts it off.
 func TestAShutdownCutsAStreamOnlyWhileItMovesBytes(t *testing.T) {
 	for _, tt := range []struct {
 		name             string
 		body, read, send bool
 		cut              bool
+		wrapped          bool // the body behind a middleware's wrapper
 	}{
-		{"before its body", true, false, false, true},
-		{"after its body", true, true, false, false},
-		{"without a body", false, false, false, false},
-		{"sending its answer", false, false, true, true},
-		{"sending after its body", true, true, true, true},
+		{"before its body", true, false, false, true, false},
+		{"after its body", true, true, false, false, false},
+		{"without a body", false, false, false, false, false},
+		{"without a body behind a wrapper", false, false, false, false, true},
+		{"sending its answer", false, false, true, true, false},
+		{"sending after its body", true, true, true, true, false},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			stopping, shutdown := context.WithCancel(context.Background())
@@ -391,6 +394,9 @@ func TestAShutdownCutsAStreamOnlyWhileItMovesBytes(t *testing.T) {
 			if !tt.body {
 				r = httptest.NewRequest(http.MethodGet, "/api/v0/downloads", nil)
 				r.Header.Set("Authorization", "Bearer tok")
+			}
+			if tt.wrapped {
+				r.Body = io.NopCloser(r.Body)
 			}
 			h.ServeHTTP(w, r.WithContext(withStopping(r.Context(), stopping)))
 
@@ -479,17 +485,17 @@ func streamServer(t *testing.T, h http.Handler) (string, context.CancelFunc, <-c
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	done := make(chan error, 1)
-	go func() { done <- srv.Serve(ctx, smallBuffers{ln}) }()
+	go func() { done <- srv.Serve(ctx, boundedSendBuffer{ln}) }()
 	return "http://" + ln.Addr().String(), cancel, done
 }
 
-// smallBuffers gives each connection a 256 KiB send buffer: with the
-// client's receive buffer, about 650 KB wait unread on Linux and macOS. A
-// buffer below loopback's 64 KiB segment would stall every send on the
-// kernel's timers on Linux, to about 3 MB/s.
-type smallBuffers struct{ net.Listener }
+// boundedSendBuffer gives each connection a 256 KiB send buffer, which the
+// kernel may double: with the client's receive buffer, under 1 MB waits
+// unread. A buffer below loopback's 64 KiB segment would stall every send
+// on the kernel's timers on Linux, to about 3 MB/s.
+type boundedSendBuffer struct{ net.Listener }
 
-func (l smallBuffers) Accept() (net.Conn, error) {
+func (l boundedSendBuffer) Accept() (net.Conn, error) {
 	c, err := l.Listener.Accept()
 	if tc, ok := c.(*net.TCPConn); ok {
 		_ = tc.SetWriteBuffer(256 << 10)

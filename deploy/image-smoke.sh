@@ -107,7 +107,7 @@ stopped() {
 wait_for stopped || fail "附件目录不可写时 serve 照样启动了（${timeout_s} 秒后仍在运行）：$(docker logs "$refused" 2>&1)"
 [[ $(docker container inspect -f '{{.State.ExitCode}}' "$refused") != 0 ]] ||
   fail "附件目录不可写时 serve 以 0 退出：$(docker logs "$refused" 2>&1)"
-docker logs "$refused" 2>&1 | grep -q "cannot write in /data as uid 65532" ||
+grep -q "cannot write in /data as uid 65532" <<<"$(docker logs "$refused" 2>&1)" ||
   fail "附件目录不可写时的错误没有写明目录与 uid：$(docker logs "$refused" 2>&1)"
 
 docker run -d --name "$app" --network "$name" -e NWIKI_DATABASE__URL="$database_url" "${key[@]}" -v "$volume:/data" \
