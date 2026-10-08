@@ -372,11 +372,11 @@ Nerve 的文件里程碑还没开始，只有计划与平台的做法（只读�
 | P | 名称 | 交付 | 验证 |
 |---|---|---|---|
 | P1 | 平台：存储与流式路由 | `platform/storage`（端口、本地实现、契约测试、启动检查、磁盘余量）；`API.Stream`（次序、按速率的截止时间、`Bounded`、停机时取消、路由的桶）；配置 `storage.*`；镜像的 `/data` 卷、`.gitignore`、README 的挂载与反向代理；e2e 的存储目录 | 存储的契约测试与原子性；流式路由的测试（第 3 节第 2 条）与次序的反向对照；`image-smoke` 的不可写检查 |
-| P2 | 附件（服务端） | `x-raw` 的契约规则与代码生成的排除；平台码 `storage_full`；asset 的配置与 `ratelimit.asset_content`（test 配置调到用不完）；page：`TreeWrites`（`CreateAsset`、预检）、读端口、深度只数页面、附件的名称规则、`NodeKind`；asset 模块：`asset_blobs`、上传、类型测定与宽高、下载与响应头（含 PDF 的实测）、元数据与列表、观察者与笔记本删除、清理器、孤儿清扫、活动；`InstanceInfo` 的上限；前端：页面树只列页面、树的重读经合并；e2e 的 `deletedDaysAgo` 先挪 `asset_blobs`；`image-smoke` 的附件一步 | 契约测试认 `x-raw`；handler 的表格测试；签名与响应头的表格；整个程序上的删除（三条路径）、清理（含文件已删、结果不明）、活动，组合根交空时失败；交错与权限矩阵；e2e：AS1 的接口版本、AS4、AS5 |
+| P2 | 附件（服务端） | `x-raw` 的契约规则与代码生成的排除；平台码 `storage_full`；asset 的配置与 `ratelimit.asset_content`（test 配置调到用不完）；page：`TreeWrites`（`CreateAsset`、预检）、读端口、深度只数页面、附件的名称规则、`NodeKind`；asset 模块：`asset_blobs`、上传、类型测定与宽高、下载与响应头（含 PDF 的实测）、元数据与列表、观察者与笔记本删除、清理器、孤儿清扫、活动；`InstanceInfo.asset_max_bytes`；前端：页面树只列页面、树的重读经合并；e2e 的 `deletedDaysAgo` 先挪 `asset_blobs`；`image-smoke` 的附件一步 | 契约测试认 `x-raw`；handler 的表格测试；签名与响应头的表格；整个程序上的删除（三条路径）、清理（含文件已删、结果不明）、活动，组合根交空时失败；交错与权限矩阵；e2e：AS1 的接口版本、AS4、AS5 |
 | P3 | 附件与链接（服务端） | 附件进解析；附件的标记与核心的图片钩子；属性链接；改名、移动的改写；落点、补全；附件的 `link`；`PageView.assets_expire_at`；`checkLinks` | `resolve/`、`rename/` 的附件样例与 Obsidian 1.12.7 核对（真的二进制文件，打开"检测所有类型的文件"）；渲染样例加图片与媒体；索引的性质测试与改写的随机测试加附件；`CheckHTML` 的第三种模式；整个程序上的最后一跳 |
 | P4 | 附件（前端） | 附件面板（页面与笔记本首页）；上传的服务；编辑器的粘贴、拖入上传；文档的拖放保护；阅读视图的 `assets` 增强（新标签页、到期重读、保留媒体）；输入法清单的粘贴一步 | vitest：面板、上传、扩展经组合根到达编辑器、增强；e2e：AS1 的页面版本、AS2、AS3 |
 | P5 | 导出 | `platform/jobs` 的队列与超时、只投递的客户端；`shared.Actor` 的 `JobID`；transfer 模块：`transfer_jobs`、任务的身份、心跳与收拾、数量、文件的清扫；导出（快照、映射、`meta.json`、空页的规则）、导出贡献者、签名的下载、到期清理；前端：导出的对话框、笔记本设置里的任务列表、"导出此页" | 映射的逐项测试；导出的库在 Obsidian 里逐条解析；贡献者的示例测试；收拾与超时；e2e：TR1 |
-| P6 | 导入 | page：`CreatePage` 进 `TreeWrites`、`Parse`、变更集的类型与并入；导入的上传、校验（EOCD）、写入（分批、名称在单元里决定、`ANALYZE`）、报告、取消；前端的导入对话框 | 恶意 zip 的表格测试；导出再导入的性质测试；Obsidian 库样例的解析核对；交错；e2e：TR2–TR4 |
+| P6 | 导入 | page：`CreatePage` 进 `TreeWrites`、`Parse`、变更集的类型与并入；`InstanceInfo.import_max_bytes`；导入的上传、校验（EOCD）、写入（分批、名称在单元里决定、`ANALYZE`）、报告、取消；前端的导入对话框 | 恶意 zip 的表格测试；导出再导入的性质测试；Obsidian 库样例的解析核对；交错；e2e：TR2–TR4 |
 
 收尾：三位 Opus 审查者并行（后端、前端与端到端、完成标准与文档），然后 Opus 核对修复。
 
@@ -513,7 +513,7 @@ M7 开工时负责人确认进入 M7（2026-10-08："可以了"）。下面是�
 | P | 名称 | 状态 | Phase 文档 | 审查 |
 |---|---|---|---|---|
 | P1 | 平台：存储与流式路由 | 已完成 | [01-P1-storage-stream.md](01-P1-storage-stream.md) | [P1 审查](reviews/P1-storage-stream-review.md) |
-| P2 | 附件（服务端） | 未开始 | — | — |
+| P2 | 附件（服务端） | 进行中 | [02-P2-assets-server.md](02-P2-assets-server.md) | — |
 | P3 | 附件与链接（服务端） | 未开始 | — | — |
 | P4 | 附件（前端） | 未开始 | — | — |
 | P5 | 导出 | 未开始 | — | — |
@@ -526,3 +526,4 @@ M7 开工时负责人确认进入 M7（2026-10-08："可以了"）。下面是�
 | 2026-10-08 | 初稿（`293cdf0`） | 总体设计 12.2；7 份移交；对照 `629f741` 的代码复核 |
 | 2026-10-08 | 按设计审查修订：树写入端口（接好线的 page 模块给出）、平台的流式路由、提交结果不明时不删文件、任务的表与生命周期、心跳与超时、数量与磁盘余量、EOCD、附件答复的 CSP；附件的一种标记与核心的图片钩子、解析的写法规则、根下的附件与面板的位置、上传经会话的客户端、到期与媒体的保留；12.1 第 6 条的例外逐项列出；拆成六个 Phase | [设计审查记录](reviews/M7-design-review.md) |
 | 2026-10-08 | P1 完成：4.1 的启动检查（先删掉全部残留、再探测根与各区；写满照常启动、写入答 507；断链的区拒绝启动）；4.3 的流式路由（低速率时更小的一步、没有请求体不设读截止时间、停机只切断还在传字节的流、`ErrShuttingDown`）；4.4 的 multipart 读到结尾；4.5 停机之后的下载答 503；第 7 节 P2 的交付与验证补项、修订表补 P1 的配置 | P1 的实施、审查与五轮修复核对：[01-P1-storage-stream.md](01-P1-storage-stream.md)、[P1 审查](reviews/P1-storage-stream-review.md) |
+| 2026-10-08 | P2 开工：第 7 节 P2 的 `InstanceInfo` 只加 `asset_max_bytes`，`import_max_bytes` 随 P6 | [02-P2-assets-server.md](02-P2-assets-server.md) 第 2 节 |
