@@ -31,8 +31,8 @@ type Server struct {
 // whole request with its body (server.read_timeout), the response
 // (server.write_timeout) and idle keep-alive (idleTimeout). A route that
 // holds its response open, such as an event stream, lifts them with
-// LongLived; any other handler that legitimately needs longer, such as a
-// file upload, extends its own deadlines with http.ResponseController
+// LongLived; a route that reads or writes its bytes as they come, such as a
+// file upload or download, moves them with its bytes through API.Stream,
 // instead of raising them for every request. A handler's own run time is not
 // bounded: write_timeout fails its writes but neither stops it nor cancels
 // its context, so its blocking calls need their own deadlines.

@@ -166,6 +166,7 @@ func testAPIConfig(auth Authenticator, logger *slog.Logger) APIConfig {
 		MaxBodyBytes:     64,
 		RequestTimeout:   2 * time.Second,
 		BodyReadTimeout:  3 * time.Second,
+		WriteTimeout:     10 * time.Second,
 		TrustedProxies:   []netip.Prefix{netip.MustParsePrefix("fd00::/8")},
 		IPv6PrefixLen:    64,
 		Anonymous:        newFakeLimiter(100),
@@ -355,7 +356,7 @@ func TestARouteBodyLimitLengthensItsDeadline(t *testing.T) {
 // A route body limit must be positive, and needs a body read timeout.
 func TestNewAPIChecksRouteBodyLimits(t *testing.T) {
 	cfg := testAPIConfig(&fakeAuth{}, slog.New(slog.DiscardHandler))
-	cfg.BodyLimits, cfg.BodyReadTimeout = map[string]int64{openRoute: 100}, 0
+	cfg.BodyLimits, cfg.BodyReadTimeout, cfg.WriteTimeout = map[string]int64{openRoute: 100}, 0, 0
 	if _, err := NewAPI(cfg); err == nil || err.Error() != "httpserver: APIConfig: BodyReadTimeout must be positive when BodyLimits relaxes a route" {
 		t.Errorf("NewAPI(BodyLimits without BodyReadTimeout) error = %v", err)
 	}

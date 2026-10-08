@@ -39,6 +39,7 @@ func NewAPI(t testing.TB, o APIOptions) *httpserver.API {
 		RequestTimeouts:  o.RequestTimeouts,
 		BodyLimits:       o.BodyLimits,
 		BodyReadTimeout:  5 * time.Second,
+		WriteTimeout:     15 * time.Second,
 		IPv6PrefixLen:    64,
 		Anonymous:        unlimited{},
 		Authenticated:    unlimited{},
