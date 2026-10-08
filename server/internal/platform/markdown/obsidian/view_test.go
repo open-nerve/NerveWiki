@@ -21,21 +21,21 @@ var known = map[string]uuid.UUID{
 }
 
 // resolveKnown resolves the links to the pages known has.
-func resolveKnown(_ context.Context, _ markdown.Page, links []obsidian.Link) (map[int]uuid.UUID, error) {
-	to := map[int]uuid.UUID{}
+func resolveKnown(_ context.Context, _ markdown.Page, links []obsidian.Link) (map[int]obsidian.Target, error) {
+	to := map[int]obsidian.Target{}
 	for _, l := range links {
 		if id, ok := known[l.Target]; ok {
-			to[l.Range.Start] = id
+			to[l.Range.Start] = obsidian.Target{Node: id}
 		}
 	}
 	return to, nil
 }
 
 // resolveAll resolves every link, to the same page.
-func resolveAll(_ context.Context, _ markdown.Page, links []obsidian.Link) (map[int]uuid.UUID, error) {
-	to := map[int]uuid.UUID{}
+func resolveAll(_ context.Context, _ markdown.Page, links []obsidian.Link) (map[int]obsidian.Target, error) {
+	to := map[int]obsidian.Target{}
 	for _, l := range links {
-		to[l.Range.Start] = uuid.Max()
+		to[l.Range.Start] = obsidian.Target{Node: uuid.Max()}
 	}
 	return to, nil
 }
@@ -145,19 +145,20 @@ func TestFetchAsksResolveOfThePagesLinks(t *testing.T) {
 	var got []obsidian.Link
 	down := errors.New("down")
 	fail := false
-	m := newMarkdownWith(t, obsidian.Options{Resolve: func(_ context.Context, p markdown.Page, links []obsidian.Link) (map[int]uuid.UUID, error) {
+	m := newMarkdownWith(t, obsidian.Options{Resolve: func(_ context.Context, p markdown.Page, links []obsidian.Link) (map[int]obsidian.Target, error) {
 		asked, got = append(asked, p), links
 		if fail {
 			return nil, down
 		}
-		return map[int]uuid.UUID{2: known["Page"], 11: uuid.Nil()}, nil
+		return map[int]obsidian.Target{2: {Node: known["Page"]}, 11: {}}, nil
 	}})
 	page := markdown.Page{NotebookID: uuid.New(), PageID: uuid.New(), Revision: 3}
 	content := "[[Page]] [[x]]\n"
-	out, err := m.Render(context.Background(), m.Parse([]byte(content)), page)
+	view, err := m.Render(context.Background(), m.Parse([]byte(content)), page)
 	if err != nil {
 		t.Fatal(err)
 	}
+	out := view.HTML
 	want := `<p><a class="nw-wikilink" data-nw-node="` + known["Page"].String() + `">Page</a> ` +
 		`<a class="nw-wikilink nw-unresolved" data-nw-target="x">x</a></p>` + "\n"
 	if out != want {
@@ -179,10 +180,11 @@ func TestFetchAsksResolveOfThePagesLinks(t *testing.T) {
 // Without Resolve, no link leads anywhere.
 func TestWithoutResolveNoLinkLeads(t *testing.T) {
 	m := newMarkdownWith(t, obsidian.Options{})
-	out, err := m.Render(context.Background(), m.Parse([]byte("[[Page]] [p](Page)\n")), markdown.Page{})
+	view, err := m.Render(context.Background(), m.Parse([]byte("[[Page]] [p](Page)\n")), markdown.Page{})
 	if err != nil {
 		t.Fatal(err)
 	}
+	out := view.HTML
 	want := `<p><a class="nw-wikilink nw-unresolved" data-nw-target="Page">Page</a> ` +
 		`<a class="nw-unresolved" data-nw-target="Page">p</a></p>` + "\n"
 	if out != want {

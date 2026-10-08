@@ -16,12 +16,12 @@ import (
 
 // resolveByStart resolves every link to a page whose id is where the link's
 // target starts: the HTML then tells which link each of its links is.
-func resolveByStart(_ context.Context, _ markdown.Page, links []obsidian.Link) (map[int]uuid.UUID, error) {
-	to := map[int]uuid.UUID{}
+func resolveByStart(_ context.Context, _ markdown.Page, links []obsidian.Link) (map[int]obsidian.Target, error) {
+	to := map[int]obsidian.Target{}
 	for _, l := range links {
 		var id uuid.UUID
 		binary.BigEndian.PutUint64(id[8:], uint64(l.Range.Start)+1)
-		to[l.Range.Start] = id
+		to[l.Range.Start] = obsidian.Target{Node: id}
 	}
 	return to, nil
 }
@@ -53,10 +53,11 @@ func TestTheFixturesRenderedLinksAreTheirExtractedLinks(t *testing.T) {
 		t.Run(f.Name, func(t *testing.T) {
 			d := m.Parse(f.Content)
 			page := markdown.Page{NotebookID: uuid.New(), PageID: uuid.New(), Revision: 1}
-			html, err := m.Render(context.Background(), d, page)
+			view, err := m.Render(context.Background(), d, page)
 			if err != nil {
 				t.Fatal(err)
 			}
+			html := view.HTML
 			rendered := map[int]bool{}
 			for _, match := range nodeID.FindAllStringSubmatch(html, -1) {
 				id := uuid.MustParse(match[1])

@@ -64,10 +64,11 @@ func FuzzRender(f *testing.F) {
 	all, none := newMarkdownWith(f, obsidian.Options{Resolve: resolveAll}), newMarkdownWith(f, obsidian.Options{})
 	f.Fuzz(func(t *testing.T, content []byte) {
 		for _, m := range []*markdown.Markdown{all, none} {
-			out, err := m.Render(context.Background(), m.Parse(content), markdown.Page{})
+			view, err := m.Render(context.Background(), m.Parse(content), markdown.Page{})
 			if err != nil {
 				t.Fatal(err)
 			}
+			out := view.HTML
 			if err := markdowntest.CheckHTML(out, tasks.Extension(), obsidian.Extension(obsidian.Options{})); err != nil {
 				t.Errorf("%q\nrenders to\n%q:\n%v", content, out, err)
 			}
