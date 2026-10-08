@@ -9,11 +9,12 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
 )
 
-// LinkPath is a page and its path from the root, itself last (M6/P3 design
-// 3.3).
+// LinkPath is a page or an attachment and its path from the root, itself
+// last (M6/P3 design 3.3; M7/P3 design 4.3); Asset tells an attachment.
 type LinkPath struct {
 	ID    uuid.UUID
 	Steps []LinkStep
+	Asset bool
 }
 
 // LinkStep is a page on a path: its id, title key and name.
@@ -23,8 +24,8 @@ type LinkStep struct {
 	Name string
 }
 
-// LinkTargetsByKeys is the pages not deleted of notebookID whose title key
-// is one of keys, with their paths.
+// LinkTargetsByKeys is the pages and attachments not deleted of notebookID
+// whose title key is one of keys, with their paths.
 func (s *Store) LinkTargetsByKeys(ctx context.Context, notebookID uuid.UUID, keys []string) ([]LinkPath, error) {
 	rows, err := s.queries(ctx).LinkTargetsByKeys(ctx, gen.LinkTargetsByKeysParams{NotebookID: notebookID, Keys: keys})
 	if err != nil {
@@ -33,8 +34,8 @@ func (s *Store) LinkTargetsByKeys(ctx context.Context, notebookID uuid.UUID, key
 	return linkPaths(rows)
 }
 
-// LinkTargetsByIDs is the pages not deleted of notebookID among ids, with
-// their paths, read planned with ids: without statistics, a plan for any
+// LinkTargetsByIDs is the pages and attachments not deleted of notebookID
+// among ids, with their paths, read planned with ids: without statistics, a plan for any
 // compared each node with them one by one, 10,000 of 55,500 nodes 0.7 s
 // where theirs took 40 ms (M6 closeout FA5-Q1).
 func (s *Store) LinkTargetsByIDs(ctx context.Context, notebookID uuid.UUID, ids []uuid.UUID) ([]LinkPath, error) {
@@ -49,9 +50,10 @@ func (s *Store) LinkTargetsByIDs(ctx context.Context, notebookID uuid.UUID, ids 
 	return linkPaths(same)
 }
 
-// linkPaths groups rows, each a step of a page's path, the root's first,
-// into the pages' paths. A path that does not reach a root is a defect: it
-// meets a deleted node, or the bound of the query cut a loop.
+// linkPaths groups rows, each a step of a node's path, the root's first,
+// into the nodes' paths, each node's kind its own step's, the last. A path
+// that does not reach a root is a defect: it meets a deleted node, or the
+// bound of the query cut a loop.
 func linkPaths(rows []gen.LinkTargetsByKeysRow) ([]LinkPath, error) {
 	var out []LinkPath
 	for _, r := range rows {
@@ -63,6 +65,7 @@ func linkPaths(rows []gen.LinkTargetsByKeysRow) ([]LinkPath, error) {
 		}
 		last := &out[len(out)-1]
 		last.Steps = append(last.Steps, LinkStep{ID: r.ID, Key: r.NameKey, Name: r.Name})
+		last.Asset = r.Kind == string(domain.KindAsset)
 	}
 	return out, nil
 }

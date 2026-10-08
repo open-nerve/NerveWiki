@@ -11,19 +11,21 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
 )
 
-// pathOf is the path the link index reads of nodes, from the root down.
+// pathOf is the path the link index reads of nodes, from the root down, the
+// last's kind its own.
 func pathOf(nodes ...domain.Node) postgresadapter.LinkPath {
-	p := postgresadapter.LinkPath{ID: nodes[len(nodes)-1].ID}
+	p := postgresadapter.LinkPath{ID: nodes[len(nodes)-1].ID, Asset: nodes[len(nodes)-1].Kind == domain.KindAsset}
 	for _, n := range nodes {
 		p.Steps = append(p.Steps, postgresadapter.LinkStep{ID: n.ID, Key: n.NameKey, Name: n.Name})
 	}
 	return p
 }
 
-// The link index's candidates are the pages of the notebook whose title key
-// it names, each with its path from the root: not another notebook's, not an
-// attachment, not a deleted page; and the pages of the notebook among ids.
-func TestLinkTargetsAreTheNotebooksPagesWithTheirPaths(t *testing.T) {
+// The link index's candidates are the pages and attachments of the notebook
+// whose title key it names, each with its path from the root and its kind:
+// not another notebook's, not a deleted one; and the pages and attachments
+// of the notebook among ids (M7/P3 design 4.3).
+func TestLinkTargetsAreTheNotebooksNodesWithTheirPaths(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()
 	note := f.page(t, f.eng, nil, "Note", 0)
@@ -47,7 +49,7 @@ func TestLinkTargetsAreTheNotebooksPagesWithTheirPaths(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []postgresadapter.LinkPath{pathOf(note), pathOf(a, aNote), pathOf(a, b), pathOf(a, b, bNote)}
+	want := []postgresadapter.LinkPath{pathOf(note), pathOf(a, aNote), pathOf(a, b), pathOf(a, b, bNote), pathOf(c, asset)}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("by keys = %+v\nwant %+v", got, want)
 	}
@@ -59,7 +61,7 @@ func TestLinkTargetsAreTheNotebooksPagesWithTheirPaths(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := []postgresadapter.LinkPath{pathOf(a), pathOf(a, b, bNote)}; !reflect.DeepEqual(got, want) {
+	if want := []postgresadapter.LinkPath{pathOf(a), pathOf(a, b, bNote), pathOf(c, asset)}; !reflect.DeepEqual(got, want) {
 		t.Errorf("by ids = %+v\nwant %+v", got, want)
 	}
 	if got, err := f.s.LinkTargetsByIDs(ctx, f.eng, nil); err != nil || got != nil {
