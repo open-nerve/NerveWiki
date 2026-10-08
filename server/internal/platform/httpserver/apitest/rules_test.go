@@ -18,7 +18,7 @@ import (
 func platformCodes() []string {
 	return []string{
 		"bad_request", "unauthorized", "forbidden", "not_found", "payload_too_large", "validation_failed",
-		"rate_limited", "internal_error", "not_ready", "server_busy",
+		"rate_limited", "internal_error", "not_ready", "server_busy", "storage_full",
 	}
 }
 
@@ -153,7 +153,8 @@ func authoringViolations(doc *openapi3.T, modules []string) []string {
 // ruleCheck walks one document and collects its violations: path checks the
 // /api/v0/ prefix, operation the operationId, tags, default problem,
 // security and problem codes, parameter and requestBody the shapes the
-// whole-program tests build, and schema the keywords that oapi-codegen
+// whole-program tests build, operation, requestBody and response what only
+// a raw operation may declare, and schema the keywords that oapi-codegen
 // mistranslates and, through closedObject, additionalProperties.
 type ruleCheck struct {
 	doc         *openapi3.T
@@ -279,13 +280,21 @@ func (r *ruleCheck) operation(where string, op *openapi3.Operation) {
 		r.parameter(where+" parameters/"+p.Value.Name, p)
 	}
 	if body := op.RequestBody; body != nil && body.Ref == "" {
-		r.requestBody(where+" requestBody", body.Value.Content)
+		r.requestBody(where+" requestBody", body.Value.Content, raw(op))
 	}
 	responses := op.Responses.Map()
 	for _, status := range slices.Sorted(maps.Keys(responses)) {
-		r.response(where+" responses/"+status, responses[status])
+		if !raw(op) && slices.Contains(rawStatuses(), status) {
+			r.report(where+" responses/"+status, "only a raw operation (%s: true) answers %s", rawKey, status)
+		}
+		r.response(where+" responses/"+status, responses[status], raw(op))
 	}
 }
+
+// rawStatuses are the statuses of a download that serves ranges and
+// conditional requests, which a raw operation's own handler answers: the
+// generated code has no use for them.
+func rawStatuses() []string { return []string{"206", "304", "416"} }
 
 // defaultIsProblem compares by schema identity: the bundler turns every
 // reference into a local $ref, and the loader resolves each one to the
@@ -314,11 +323,11 @@ func (r *ruleCheck) components(c *openapi3.Components) {
 	}
 	for _, name := range slices.Sorted(maps.Keys(c.RequestBodies)) {
 		if body := c.RequestBodies[name]; body.Ref == "" {
-			r.requestBody("components/requestBodies/"+name, body.Value.Content)
+			r.requestBody("components/requestBodies/"+name, body.Value.Content, false)
 		}
 	}
 	for _, name := range slices.Sorted(maps.Keys(c.Responses)) {
-		r.response("components/responses/"+name, c.Responses[name])
+		r.response("components/responses/"+name, c.Responses[name], false)
 	}
 }
 
@@ -359,17 +368,56 @@ func (r *ruleCheck) parameter(where string, p *openapi3.ParameterRef) {
 
 // requestBody: a JSON request body is an object, which can take new
 // properties without breaking clients. The whole-program tests build every
-// body as one (Operation.BodyCases).
-func (r *ruleCheck) requestBody(where string, content openapi3.Content) {
-	if media := content.Get("application/json"); media != nil && media.Schema != nil && !isObject(media.Schema.Value) {
-		r.report(where, "application/json schema is not an object")
+// body as one (Operation.BodyCases). A raw operation may take
+// multipart/form-data instead, which its handler reads part by part: an
+// object whose every part is text or, with format: binary, a file. No
+// other media type is read.
+func (r *ruleCheck) requestBody(where string, content openapi3.Content, isRaw bool) {
+	for _, name := range slices.Sorted(maps.Keys(content)) {
+		media := content[name]
+		switch name {
+		case "application/json":
+			if media.Schema != nil && !isObject(media.Schema.Value) {
+				r.report(where, "application/json schema is not an object")
+			}
+		case "multipart/form-data":
+			if !isRaw {
+				r.report(where+" "+name, "only a raw operation (%s: true) takes multipart/form-data", rawKey)
+			}
+			r.parts(where+" "+name, media.Schema)
+		default:
+			r.report(where+" "+name, "a request body is application/json, or multipart/form-data in a raw operation")
+		}
 	}
 	r.content(where, content)
 }
 
-func (r *ruleCheck) response(where string, res *openapi3.ResponseRef) {
+// parts checks a multipart/form-data schema: an object of strings.
+func (r *ruleCheck) parts(where string, ref *openapi3.SchemaRef) {
+	if ref == nil || ref.Value == nil || !isObject(ref.Value) {
+		r.report(where, "schema is not an object")
+		return
+	}
+	for _, name := range slices.Sorted(maps.Keys(ref.Value.Properties)) {
+		if p := ref.Value.Properties[name].Value; !p.Type.Is("string") {
+			r.report(where+"/properties/"+name, "is not a string; a part is text or, with format: binary, a file")
+		}
+	}
+}
+
+// response: only a raw operation answers */*, bytes of any type, which its
+// schema describes as a binary string.
+func (r *ruleCheck) response(where string, res *openapi3.ResponseRef, isRaw bool) {
 	if res.Ref != "" {
 		return
+	}
+	if media := res.Value.Content["*/*"]; media != nil {
+		if !isRaw {
+			r.report(where+" */*", "only a raw operation (%s: true) answers */*", rawKey)
+		}
+		if s := media.Schema; s == nil || s.Value == nil || !s.Value.Type.Is("string") || s.Value.Format != "binary" {
+			r.report(where+" */*", "schema is not type: string, format: binary")
+		}
 	}
 	for _, name := range slices.Sorted(maps.Keys(res.Value.Headers)) {
 		if h := res.Value.Headers[name]; h.Ref == "" {

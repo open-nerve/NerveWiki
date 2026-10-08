@@ -17,6 +17,7 @@ ratelimit:
   login_ip_email: { per_minute: 600000, burst: 100000 }
   register_ip: { per_minute: 600000, burst: 100000 }
   password_user: { per_minute: 600000, burst: 100000 }
+  asset_content: { per_minute: 600000, burst: 100000 }
 
 # 端到端的清理故事（W12）等得起
 jobs:

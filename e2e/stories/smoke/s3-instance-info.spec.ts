@@ -14,5 +14,7 @@ test("S3: a caller reads the instance information with the typed client", async 
     signup_enabled: true,
     // Every profile lets accounts create workspaces.
     workspace_creation_enabled: true,
+    // asset.max_bytes, 50 MiB in every profile.
+    asset_max_bytes: 52_428_800,
   });
 });

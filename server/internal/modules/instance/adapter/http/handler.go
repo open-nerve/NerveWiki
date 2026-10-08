@@ -59,5 +59,6 @@ func (h handler) GetInstance(context.Context, gen.GetInstanceRequestObject) (gen
 		APIVersion:               gen.InstanceInfoAPIVersion(info.APIVersion),
 		SignupEnabled:            info.SignupEnabled,
 		WorkspaceCreationEnabled: info.WorkspaceCreationEnabled,
+		AssetMaxBytes:            info.AssetMaxBytes,
 	}, nil
 }

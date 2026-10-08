@@ -220,7 +220,7 @@ export interface paths {
         };
         /**
          * Describe this instance
-         * @description Reports the product, the build and the API version this instance runs, whether it is open for sign-up, and whether accounts may create workspaces. Public: needs no authentication.
+         * @description Reports the product, the build and the API version this instance runs, whether it is open for sign-up, whether accounts may create workspaces, and the largest attachment it takes. Public: needs no authentication.
          */
         get: operations["getInstance"];
         put?: never;
@@ -1197,7 +1197,7 @@ export interface components {
         Problem: {
             /** @description HTTP status code. */
             status: number;
-            /** @description Stable error code. Platform codes have no prefix (bad_request, unauthorized, forbidden, not_found, payload_too_large, validation_failed, rate_limited, server_busy, internal_error, not_ready); module codes are prefixed with the module that refuses, e.g. page.locked. Each operation lists the codes it can answer in x-problem-codes. */
+            /** @description Stable error code. Platform codes have no prefix (bad_request, unauthorized, forbidden, not_found, payload_too_large, validation_failed, rate_limited, server_busy, internal_error, not_ready, storage_full); module codes are prefixed with the module that refuses, e.g. page.locked. Each operation lists the codes it can answer in x-problem-codes. */
             code: string;
             /** @description HTTP status phrase, e.g. "Not Found". */
             title: string;
@@ -1351,6 +1351,11 @@ export interface components {
             signup_enabled: boolean;
             /** @description Whether accounts may create workspaces (workspace.creation_enabled); when off, the server's administrator creates them. */
             workspace_creation_enabled: boolean;
+            /**
+             * Format: int64
+             * @description The largest attachment an upload may send, in bytes (asset.max_bytes); a larger one is payload_too_large.
+             */
+            asset_max_bytes: number;
         };
         /**
          * @description A member's role: admin manages the workspace and its members, member and guest take part. Rules compare roles by set, never by order.

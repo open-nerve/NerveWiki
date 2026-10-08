@@ -51,6 +51,7 @@ ratelimit:
   login_ip_email: {per_minute: 10, burst: 5}
   register_ip: {per_minute: 10, burst: 5}
   password_user: {per_minute: 5, burst: 5}
+  asset_content: {per_minute: 6000, burst: 1000}
 page:
   edit_session_cleanup_interval: 10m
   parse_budget_bytes: 8388608
@@ -64,6 +65,9 @@ jobs:
 storage:
   dir: data
   min_free_bytes: 1073741824
+asset:
+  max_bytes: 52428800
+  upload_min_rate: 65536
 log:
   level: info
   format: json
@@ -146,11 +150,13 @@ func TestLoadAppliesLayersInOrder(t *testing.T) {
 			LoginIPEmail:  BucketConfig{PerMinute: 10, Burst: 5},
 			RegisterIP:    BucketConfig{PerMinute: 10, Burst: 5},
 			PasswordUser:  BucketConfig{PerMinute: 5, Burst: 5},
+			AssetContent:  BucketConfig{PerMinute: 6000, Burst: 1000},
 		},
 		Page:    PageConfig{EditSessionCleanupInterval: 10 * time.Minute, ParseBudgetBytes: 8 << 20, ParseMaxWait: 2 * time.Second},
 		Events:  EventsConfig{HeartbeatInterval: 20 * time.Second},
 		Jobs:    JobsConfig{ShutdownTimeout: 10 * time.Second, PurgeInterval: time.Hour, PurgeRetention: 1440 * time.Hour},
 		Storage: StorageConfig{Dir: "data", MinFreeBytes: 1 << 30},
+		Asset:   AssetConfig{MaxBytes: 50 << 20, UploadMinRate: 64 << 10},
 		Log:     LogConfig{Level: "debug", Format: "text"},
 	}
 	if !reflect.DeepEqual(cfg, want) {

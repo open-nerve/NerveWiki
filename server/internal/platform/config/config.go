@@ -29,6 +29,7 @@ type Config struct {
 	Events    EventsConfig    `koanf:"events"`
 	Jobs      JobsConfig      `koanf:"jobs"`
 	Storage   StorageConfig   `koanf:"storage"`
+	Asset     AssetConfig     `koanf:"asset"`
 	Log       LogConfig       `koanf:"log"`
 }
 
@@ -117,6 +118,10 @@ type RateLimitConfig struct {
 	// PasswordUser limits the authenticated operations that verify the
 	// current password (changing it, creating a token), by account.
 	PasswordUser BucketConfig `koanf:"password_user"`
+	// AssetContent limits the signed downloads of attachments, by client
+	// IP, instead of Anonymous (M7/P2 design 3.6): a page's images come
+	// many at once.
+	AssetContent BucketConfig `koanf:"asset_content"`
 }
 
 // BucketConfig is a token bucket: it holds at most Burst units and gains
@@ -194,6 +199,26 @@ type StorageConfig struct {
 	MinFreeBytes int64 `koanf:"min_free_bytes"`
 }
 
+// AssetConfig configures the attachments (M7/P2 design 3.9).
+type AssetConfig struct {
+	// MaxBytes is the largest attachment: a larger upload is answered 413.
+	// From MinAssetBytes to MaxAssetBytes.
+	MaxBytes int64 `koanf:"max_bytes"`
+	// UploadMinRate is the slowest average rate, in bytes a second, at
+	// which an upload and a download may run: their deadlines grow with
+	// the bytes at this rate (M7/P1 design 3.3). An upload of MaxBytes at
+	// it takes at most MaxAssetTransfer.
+	UploadMinRate int64 `koanf:"upload_min_rate"`
+}
+
+// The bounds of asset.max_bytes, and the longest an upload of max_bytes
+// at upload_min_rate may hold its connection.
+const (
+	MinAssetBytes    = 1 << 10
+	MaxAssetBytes    = 4 << 30
+	MaxAssetTransfer = time.Hour
+)
+
 // LogConfig configures the process logger.
 type LogConfig struct {
 	Level  string `koanf:"level"`  // debug, info, warn or error
@@ -249,6 +274,7 @@ func (c Config) LogValue() slog.Value {
 			slog.Any("login_ip_email", c.RateLimit.LoginIPEmail),
 			slog.Any("register_ip", c.RateLimit.RegisterIP),
 			slog.Any("password_user", c.RateLimit.PasswordUser),
+			slog.Any("asset_content", c.RateLimit.AssetContent),
 		),
 		slog.Group("workspace",
 			slog.Bool("creation_enabled", c.Workspace.CreationEnabled),
@@ -269,6 +295,10 @@ func (c Config) LogValue() slog.Value {
 		slog.Group("storage",
 			slog.String("dir", c.Storage.Dir),
 			slog.Int64("min_free_bytes", c.Storage.MinFreeBytes),
+		),
+		slog.Group("asset",
+			slog.Int64("max_bytes", c.Asset.MaxBytes),
+			slog.Int64("upload_min_rate", c.Asset.UploadMinRate),
 		),
 		slog.Group("log",
 			slog.String("level", c.Log.Level),

@@ -53,6 +53,7 @@ export const instanceJSON: InstanceInfo = {
   api_version: "v0",
   signup_enabled: true,
   workspace_creation_enabled: true,
+  asset_max_bytes: 52_428_800,
 };
 
 /** tokensJSON is a valid answer to a sign-in, a sign-up or a refresh. */

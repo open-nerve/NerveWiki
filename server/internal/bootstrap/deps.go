@@ -59,7 +59,8 @@ func identityDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, li
 // instanceDeps are instance's: what GET /instance reports of the
 // configuration.
 func instanceDeps(cfg config.Config) instance.Deps {
-	return instance.Deps{SignupEnabled: cfg.Auth.SignupEnabled, WorkspaceCreationEnabled: cfg.Workspace.CreationEnabled}
+	return instance.Deps{SignupEnabled: cfg.Auth.SignupEnabled, WorkspaceCreationEnabled: cfg.Workspace.CreationEnabled,
+		AssetMaxBytes: cfg.Asset.MaxBytes}
 }
 
 // workspaceDeps are workspace's: the decisions of the access module;

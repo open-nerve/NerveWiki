@@ -85,6 +85,7 @@ func testConfig(t *testing.T, dbURL string, autoMigrate bool) config.Config {
 		// The purge's first run starts with the jobs too.
 		Jobs:    config.JobsConfig{ShutdownTimeout: 5 * time.Second, PurgeInterval: time.Hour, PurgeRetention: 1440 * time.Hour},
 		Storage: config.StorageConfig{Dir: t.TempDir()},
+		Asset:   config.AssetConfig{MaxBytes: 50 << 20, UploadMinRate: 64 << 10},
 		Log:     config.LogConfig{Level: "error", Format: "text"},
 	}
 }
@@ -94,7 +95,7 @@ func roomyLimits() config.RateLimitConfig {
 	roomy := config.BucketConfig{PerMinute: 600000, Burst: 100000}
 	return config.RateLimitConfig{
 		IPv6PrefixLen: 64, Anonymous: roomy, AuthFailure: roomy, Authenticated: roomy,
-		LoginIP: roomy, LoginIPEmail: roomy, RegisterIP: roomy, PasswordUser: roomy,
+		LoginIP: roomy, LoginIPEmail: roomy, RegisterIP: roomy, PasswordUser: roomy, AssetContent: roomy,
 	}
 }
 

@@ -35,6 +35,9 @@ type InstanceInfo struct {
 	// APIVersion Version of this HTTP API; every path starts with /api/{api_version}.
 	APIVersion InstanceInfoAPIVersion `json:"api_version"`
 
+	// AssetMaxBytes The largest attachment an upload may send, in bytes (asset.max_bytes); a larger one is payload_too_large.
+	AssetMaxBytes int64 `json:"asset_max_bytes"`
+
 	// Commit Git revision of the running build; "unknown" when the build carries no VCS stamp.
 	Commit string `json:"commit"`
 

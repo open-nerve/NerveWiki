@@ -48,7 +48,7 @@ components:
             Stable error code. Platform codes have no prefix (bad_request,
             unauthorized, forbidden, not_found, payload_too_large,
             validation_failed, rate_limited, server_busy, internal_error,
-            not_ready); module codes are prefixed with the module that
+            not_ready, storage_full); module codes are prefixed with the module that
             refuses, e.g. page.locked. Each operation lists the codes it can
             answer in x-problem-codes.
           type: string
