@@ -382,6 +382,63 @@ func TestAPagesPropertiesAreTheIndexs(t *testing.T) {
 	}
 }
 
+// urls is the attachments' addresses as the asset module gives them: of
+// those it has, the notebook and ids it was asked of.
+type urls struct {
+	of    map[uuid.UUID]string
+	asked [][]uuid.UUID
+	nbs   []uuid.UUID
+	err   error
+}
+
+func (u *urls) URLs(_ context.Context, notebookID uuid.UUID, ids []uuid.UUID) (map[uuid.UUID]string, error) {
+	u.asked, u.nbs = append(u.asked, ids), append(u.nbs, notebookID)
+	out := map[uuid.UUID]string{}
+	for _, id := range ids {
+		if s, ok := u.of[id]; ok {
+			out[id] = s
+		}
+	}
+	return out, u.err
+}
+
+// A property link to an attachment carries its content's address, which
+// the asset module gives of the page's notebook, asked once of each
+// attachment; one it does not give, a page's and none's have none; a page
+// without links to attachments asks nothing (M7/P3 design 5.6).
+func TestAPropertyLinkToAnAttachmentHasItsAddress(t *testing.T) {
+	l := newLibrary()
+	x, gone, page := uuid.NewV7(), uuid.NewV7(), uuid.NewV7()
+	u := &urls{of: map[uuid.UUID]string{x: "/x"}}
+	get := app.GetPageProperties{Access: l.access(), Reads: l.library, Assets: u}
+	l.properties = &app.Properties{Valid: true, Links: []app.PropertyLink{
+		{Key: "a", NodeID: x, Asset: true}, {Key: "b", NodeID: page}, {Key: "c"}, {Key: "d", NodeID: gone, Asset: true},
+		{Key: "e", NodeID: x, Asset: true},
+	}}
+	got, err := get.Execute(reader(), l.p)
+	want := []app.PropertyLink{
+		{Key: "a", NodeID: x, Asset: true, URL: "/x"}, {Key: "b", NodeID: page}, {Key: "c"}, {Key: "d", NodeID: gone, Asset: true},
+		{Key: "e", NodeID: x, Asset: true, URL: "/x"},
+	}
+	if err != nil || !reflect.DeepEqual(got.Links, want) || !reflect.DeepEqual(u.asked, [][]uuid.UUID{{x, gone}}) ||
+		!reflect.DeepEqual(u.nbs, []uuid.UUID{l.nb}) {
+		t.Errorf("got %+v, %v; asked %v of %v", got.Links, err, u.asked, u.nbs)
+	}
+	u.asked = nil
+	l.properties = &app.Properties{Valid: true, Links: []app.PropertyLink{{Key: "b", NodeID: page}}}
+	if _, err := get.Execute(reader(), l.p); err != nil || u.asked != nil {
+		t.Errorf("no attachments: asked %v, %v", u.asked, err)
+	}
+	l.properties = &app.Properties{Valid: true, Links: []app.PropertyLink{{Key: "a", NodeID: x, Asset: true}}}
+	u.err = errors.New("down")
+	if _, err := get.Execute(reader(), l.p); !errors.Is(err, u.err) {
+		t.Errorf("the asset module down: %v", err)
+	}
+	if got, err := (app.GetPageProperties{Access: l.access(), Reads: l.library}).Execute(reader(), l.p); err != nil || got.Links[0].URL != "" {
+		t.Errorf("without Assets: %+v, %v", got, err)
+	}
+}
+
 // A tag's pages are read by its key; a name no tag has has none, unread
 // (M6/P5 design 5).
 func TestATagsPagesAreReadByItsKey(t *testing.T) {

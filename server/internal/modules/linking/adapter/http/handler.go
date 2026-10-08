@@ -112,10 +112,16 @@ func (h handler) GetPageProperties(ctx context.Context, req gen.GetPagePropertie
 		out.Properties[i] = gen.PageProperty{Key: prop.Key, Value: prop.Value}
 	}
 	for i, l := range p.Links {
-		out.Links[i] = gen.PropertyLink{Key: l.Key, NodeID: nullable.NewNullNullable[uuid.UUID](), Kind: nullable.NewNullNullable[gen.LinkTargetKind]()}
+		out.Links[i] = gen.PropertyLink{
+			Key: l.Key, NodeID: nullable.NewNullNullable[uuid.UUID](), Kind: nullable.NewNullNullable[gen.LinkTargetKind](),
+			URL: nullable.NewNullNullable[string](),
+		}
 		if l.NodeID != (uuid.UUID{}) {
 			out.Links[i].NodeID = nullable.NewNullableWithValue(l.NodeID)
 			out.Links[i].Kind = nullable.NewNullableWithValue(kind(l.Asset))
+		}
+		if l.URL != "" {
+			out.Links[i].URL = nullable.NewNullableWithValue(l.URL)
 		}
 	}
 	return out, nil

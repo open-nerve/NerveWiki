@@ -34,6 +34,9 @@ type (
 	// PageTree reads a notebook's tree, whole or by keys and ids, and a
 	// page's notebook: bootstrap hands page.NewLinkTargets to it.
 	PageTree = app.PageTree
+	// AttachmentURLs gives the attachments' contents' addresses: bootstrap
+	// adapts the asset module's Embeds to it.
+	AttachmentURLs = app.AttachmentURLs
 )
 
 // Deps are what the HTTP side, the index's reads, needs.
@@ -45,6 +48,8 @@ type Deps struct {
 	Contents   PageContents
 	// MaxDepth is how deep pages nest: bootstrap hands page.MaxDepth to it.
 	MaxDepth int
+	// Assets gives a property link to an attachment its content's address.
+	Assets AttachmentURLs
 }
 
 // Module is the wired linking module's HTTP side.
@@ -59,7 +64,7 @@ func New(d Deps) *Module {
 	access := app.Access{Notebooks: d.Notebooks, Pages: d.Pages, Auth: d.Authorizer}
 	return &Module{uc: httpadapter.UseCases{
 		ListBacklinks:     app.ListBacklinks{Access: access, Reads: store, Contents: d.Contents},
-		GetPageProperties: app.GetPageProperties{Access: access, Reads: store},
+		GetPageProperties: app.GetPageProperties{Access: access, Reads: store, Assets: d.Assets},
 		ListTags:          app.ListTags{Access: access, Reads: store},
 		GetTag:            app.GetTag{Access: access, Reads: store, TagKey: markdownadapter.TagKey},
 		ListLinkTargets:   app.ListLinkTargets{Access: access, Reads: store},
