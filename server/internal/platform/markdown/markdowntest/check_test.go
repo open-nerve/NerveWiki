@@ -103,6 +103,37 @@ func TestCheckHTMLTakesAnExtensionsMarkup(t *testing.T) {
 	}
 }
 
+// A src, which loads what it names, is a path of this site from its root,
+// on an element whose extension writes it (M7/P3 design 5.9): what another
+// address may name, a link to it, is not loaded.
+func TestCheckHTMLTakesASrcOfAPathHereAlone(t *testing.T) {
+	img := markdown.Extension{Name: "i", Markup: markdown.Markup{Elements: map[string][]string{"img": {"src"}}, URLs: []string{"src"}}}
+	for _, s := range []string{`<img src="/i.png">`, `<img src="/api/v0/assets/a/content?b=c&amp;e=1&amp;s=d">`} {
+		if err := markdowntest.CheckHTML(s, img); err != nil {
+			t.Errorf("%s: %v", s, err)
+		}
+	}
+	for _, s := range []string{
+		`<img src="https://example.com/i.png">`,
+		`<img src="//example.com/i.png">`,
+		`<img src="/\example.com/i.png">`,
+		`<img src="i.png">`,
+		`<img src="?x">`,
+		`<img src="#x">`,
+		`<img src="mailto:a@example.com">`,
+		`<img src="data:image/png;base64,AA">`,
+		`<img src="java&#9;script:x">`,
+	} {
+		if err := markdowntest.CheckHTML(s, img); err == nil {
+			t.Errorf("%s passed", s)
+		}
+	}
+	link := markdown.Extension{Name: "l", Markup: markdown.Markup{Elements: map[string][]string{"a": {"src"}}}}
+	if err := markdowntest.CheckHTML(`<a src="https://example.com/x">a</a>`, link); err == nil {
+		t.Error("a src of another site on an element of no address passed")
+	}
+}
+
 func TestCheckSizeTakesAmplificationTimesTheContentPlusHeadroom(t *testing.T) {
 	content := []byte("abc")
 	limit := markdowntest.Amplification*len(content) + markdowntest.Headroom

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"strconv"
+	"time"
 
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/extension"
@@ -14,18 +15,20 @@ import (
 	"golang.org/x/net/html"
 )
 
-// Render is the HTML of d's reading view for page (M4 design 4,
-// "rendering"; M4/P3 design 3.5–3.8): the frontmatter's properties as a
-// table, in a region of its own that scrolls sideways (M6/P6 design 6),
-// then the body. Each extension's Fetch gets its data for the page
-// first, in order, and its error is Render's. The tree's raw HTML is
-// replaced by what the sanitizer keeps of it, so d serves this one Render.
-func (m *Markdown) Render(ctx context.Context, d *Document, page Page) (string, error) {
+// Render is d's reading view for page (M4 design 4, "rendering"; M4/P3
+// design 3.5–3.8): the frontmatter's properties as a table, in a region of
+// its own that scrolls sideways (M6/P6 design 6), then the body; and when
+// it stops being valid, the earliest of the extensions' Expires (M7/P3
+// design 5.2). Each extension's Fetch gets its data for the page first, in
+// order, and its error is Render's. The tree's raw HTML is replaced by
+// what the sanitizer keeps of it, so d serves this one Render.
+func (m *Markdown) Render(ctx context.Context, d *Document, page Page) (View, error) {
 	footnotes := registered{}
 	extension.NewFootnoteHTMLRenderer(extension.WithFootnoteIDPrefix(idPrefix)).RegisterFuncs(footnotes)
 	links := &marks{destinations: d.destinations, footnoteLink: footnotes[east.KindFootnoteLink]}
 	fm := d.facts.frontmatter
 	props := table{scalars: fm.Scalars}
+	var expires time.Time
 	nodes := []util.PrioritizedValue{
 		// goldmark's renderer stays safe: a node that reached it unexpected
 		// would be an omitted comment or a dropped address. A line break in a
@@ -43,7 +46,7 @@ func (m *Markdown) Render(ctx context.Context, d *Document, page Page) (string, 
 		if e.Fetch != nil {
 			var err error
 			if data, err = e.Fetch(ctx, page, d.facts.Extracted(e.Name)); err != nil {
-				return "", err
+				return View{}, err
 			}
 		}
 		if e.Renderer != nil {
@@ -51,6 +54,14 @@ func (m *Markdown) Render(ctx context.Context, d *Document, page Page) (string, 
 		}
 		if e.Links != nil {
 			links.written = append(links.written, e.Links(data))
+		}
+		if e.Images != nil {
+			links.images = append(links.images, e.Images(data))
+		}
+		if e.Expires != nil {
+			if t := e.Expires(data); !t.IsZero() && (expires.IsZero() || t.Before(expires)) {
+				expires = t
+			}
 		}
 		if e.Properties != nil {
 			props.links = append(props.links, e.Properties(data))
@@ -65,9 +76,9 @@ func (m *Markdown) Render(ctx context.Context, d *Document, page Page) (string, 
 		out.WriteString("</div>\n")
 	}
 	if err := renderer.NewRenderer(renderer.WithNodeRenderers(nodes...)).Render(&out, d.source, d.root); err != nil {
-		return "", err
+		return View{}, err
 	}
-	return out.String(), nil
+	return View{HTML: out.String(), Expires: expires}, nil
 }
 
 // table writes the frontmatter's properties to out (M4/P3 design 3.6):

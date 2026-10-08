@@ -20,10 +20,11 @@ func newMarkdown(t testing.TB, exts ...markdown.Extension) *markdown.Markdown {
 
 func render(t *testing.T, m *markdown.Markdown, src []byte) string {
 	t.Helper()
-	out, err := m.Render(context.Background(), m.Parse(src), markdown.Page{})
+	view, err := m.Render(context.Background(), m.Parse(src), markdown.Page{})
 	if err != nil {
 		t.Fatal(err)
 	}
+	out := view.HTML
 	return out
 }
 

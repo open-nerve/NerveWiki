@@ -70,12 +70,12 @@ func allocated(t *testing.T, m *markdown.Markdown, content []byte) (uint64, stri
 	t.Helper()
 	var before, after runtime.MemStats
 	runtime.ReadMemStats(&before)
-	out, err := m.Render(context.Background(), m.Parse(content), markdown.Page{})
+	view, err := m.Render(context.Background(), m.Parse(content), markdown.Page{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	runtime.ReadMemStats(&after)
-	return after.TotalAlloc - before.TotalAlloc, out
+	return after.TotalAlloc - before.TotalAlloc, view.HTML
 }
 
 // checkKept checks that the facts of content keep at most their Limit, and

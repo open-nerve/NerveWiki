@@ -75,10 +75,11 @@ func TestTheFixturesTasksAreTheirs(t *testing.T) {
 func TestTheCheckboxCarriesItsPosition(t *testing.T) {
 	m := newMarkdown(t)
 	src := []byte("- [ ] a\n- [x] b\n")
-	got, err := m.Render(context.Background(), m.Parse(src), markdown.Page{})
+	view, err := m.Render(context.Background(), m.Parse(src), markdown.Page{})
 	if err != nil {
 		t.Fatal(err)
 	}
+	got := view.HTML
 	want := "<ul>\n<li><input disabled=\"\" type=\"checkbox\" data-task=\"3\"> a</li>\n" +
 		"<li><input checked=\"\" disabled=\"\" type=\"checkbox\" data-task=\"11\"> b</li>\n</ul>\n"
 	if got != want {
@@ -96,10 +97,11 @@ func TestTheCheckboxCarriesItsPosition(t *testing.T) {
 // goldmark's parser takes it with the blanks after ']' (M6/P8 design 3).
 func TestACheckboxAloneOnItsLineLeavesItsLineBreak(t *testing.T) {
 	m := newMarkdown(t)
-	got, err := m.Render(context.Background(), m.Parse([]byte("- [ ]\n  a\n- [x]  \r\n  b\n")), markdown.Page{})
+	view, err := m.Render(context.Background(), m.Parse([]byte("- [ ]\n  a\n- [x]  \r\n  b\n")), markdown.Page{})
 	if err != nil {
 		t.Fatal(err)
 	}
+	got := view.HTML
 	want := "<ul>\n<li><input disabled=\"\" type=\"checkbox\" data-task=\"3\"> <br>\na</li>\n" +
 		"<li><input checked=\"\" disabled=\"\" type=\"checkbox\" data-task=\"13\"> <br>\nb</li>\n</ul>\n"
 	if got != want {

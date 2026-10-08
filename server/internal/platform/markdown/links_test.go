@@ -2,9 +2,12 @@ package markdown
 
 import (
 	"context"
+	"html"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 	"uuid"
 )
 
@@ -27,11 +30,11 @@ func pathLinks(name string) Extension {
 func renderWith(t *testing.T, page Page, src string, exts ...Extension) string {
 	t.Helper()
 	m := newMarkdown(t, exts...)
-	out, err := m.Render(context.Background(), m.Parse([]byte(src)), page)
+	view, err := m.Render(context.Background(), m.Parse([]byte(src)), page)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return out
+	return view.HTML
 }
 
 // An extension's Links has the links and images it knows carry its
@@ -60,10 +63,11 @@ func TestTheLinksAnExtensionKnowsCarryItsAttributes(t *testing.T) {
 	m := newMarkdown(t, pathLinks("p"))
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			out, err := m.Render(context.Background(), m.Parse([]byte(tt.src)), page)
+			view, err := m.Render(context.Background(), m.Parse([]byte(tt.src)), page)
 			if err != nil {
 				t.Fatal(err)
 			}
+			out := view.HTML
 			if out != tt.want {
 				t.Errorf("render %q\n got %q\nwant %q", tt.src, out, tt.want)
 			}
@@ -149,5 +153,96 @@ func TestHeadingIDIsAHeadingsID(t *testing.T) {
 	}
 	if got := HeadingID("A b"); got != "nw-a-b" {
 		t.Errorf("HeadingID(%q) = %q", "A b", got)
+	}
+}
+
+// images is an extension's test double whose Images writes the images whose
+// destinations start at the starts it is given: a <b> with the text the
+// image shows, whether it is in a link, and what Fetch got; and whose
+// Expires is expires.
+func images(name string, expires time.Time, starts ...int) Extension {
+	return Extension{
+		Name:  name,
+		Fetch: func(context.Context, Page, any) (any, error) { return name, nil },
+		Images: func(data any) func(int) (Image, bool) {
+			return func(start int) (Image, bool) {
+				if !slices.Contains(starts, start) {
+					return nil, false
+				}
+				return func(w Writer, shown string, inLink bool) {
+					_, _ = w.WriteString("<b")
+					WriteAttrs(w, []Attr{{Name: "data-by", Value: data.(string)}, {Name: "data-in-link", Value: strconv.FormatBool(inLink)}})
+					_, _ = w.WriteString(">" + html.EscapeString(shown) + "</b>")
+				}, true
+			}
+		},
+		Expires: func(any) time.Time { return expires },
+	}
+}
+
+// An extension's Images writes the Markdown images it knows, by where
+// their destinations start, the first registered that knows one; the
+// others are the core's (M7/P3 design 5.2).
+func TestTheImagesAnExtensionKnowsAreWrittenByIt(t *testing.T) {
+	tests := []struct {
+		name, src string
+		a, b      string // the destinations each knows
+		want      string
+	}{
+		{"an image", "![i <&>](x.png)", "x.png", "", `<p><b data-by="a" data-in-link="false">i &lt;&amp;&gt;</b></p>` + "\n"},
+		{"an image of its caption's emphasis", "![*i*](x.png)", "x.png", "", `<p><b data-by="a" data-in-link="false">i</b></p>` + "\n"},
+		{"an image in a link", "[![i](x.png)](y)", "x.png", "", `<p><a href="y"><b data-by="a" data-in-link="true">i</b></a></p>` + "\n"},
+		{
+			"a reference image's uses, by the definition", "![a][r] ![b][r]\n\n[r]: x.png\n", "x.png", "",
+			`<p><b data-by="a" data-in-link="false">a</b> <b data-by="a" data-in-link="false">b</b></p>` + "\n",
+		},
+		{"an image both know", "![i](x.png)", "x.png", "x.png", `<p><b data-by="a" data-in-link="false">i</b></p>` + "\n"},
+		{"an image the second knows", "![i](x.png)", "", "x.png", `<p><b data-by="b" data-in-link="false">i</b></p>` + "\n"},
+		{"an image none knows", "![i](x.png)", "", "", `<p><span class="nw-image">i <a href="x.png">x.png</a></span></p>` + "\n"},
+		{"a link", "[i](x.png)", "x.png", "", `<p><a href="x.png">i</a></p>` + "\n"},
+	}
+	starts := func(src, dest string) []int {
+		var out []int
+		for at := 0; dest != "" && strings.Contains(src[at:], dest); at += strings.Index(src[at:], dest) + 1 {
+			out = append(out, at+strings.Index(src[at:], dest))
+		}
+		return out
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			a, b := images("a", time.Time{}, starts(tt.src, tt.a)...), images("b", time.Time{}, starts(tt.src, tt.b)...)
+			if got := renderWith(t, Page{}, tt.src, a, b); got != tt.want {
+				t.Errorf("render %q\n got %q\nwant %q", tt.src, got, tt.want)
+			}
+		})
+	}
+}
+
+// A view expires at the earliest of its extensions' Expires, none of them
+// zero: never (M7/P3 design 5.2).
+func TestAViewExpiresAtItsExtensionsEarliest(t *testing.T) {
+	at := time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name string
+		exts []Extension
+		want time.Time
+	}{
+		{"none", nil, time.Time{}},
+		{"never", []Extension{images("a", time.Time{})}, time.Time{}},
+		{"one", []Extension{images("a", at)}, at},
+		{"the earliest", []Extension{images("a", at.Add(time.Hour)), images("b", at), images("c", at.Add(2*time.Hour))}, at},
+		{"never and one", []Extension{images("a", time.Time{}), images("b", at), images("c", time.Time{})}, at},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := newMarkdown(t, tt.exts...)
+			view, err := m.Render(context.Background(), m.Parse([]byte("a")), Page{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !view.Expires.Equal(tt.want) {
+				t.Errorf("Expires = %v, want %v", view.Expires, tt.want)
+			}
+		})
 	}
 }

@@ -25,15 +25,18 @@ var (
 // not as a reading view needs (M4/P3 design 3.6): every address through
 // SafeURL, an image as a link, a code block's language only if it is one,
 // and raw HTML only after the sanitizer; a link or an image an extension
-// knows with the attributes its Links gives in place of its address; in a
-// link, an autolink and a footnote's reference with no link of their own.
-// A Render has its own.
+// knows with the attributes its Links gives in place of its address, an
+// image an extension's Images writes as it writes it; in a link, an
+// autolink and a footnote's reference with no link of their own. A Render
+// has its own.
 type marks struct {
 	links int // the links being rendered around the node
-	// destinations is where the parse found the destinations written, and
-	// written the extensions' Links, in their order.
+	// destinations is where the parse found the destinations written,
+	// written the extensions' Links and images their Images, in their
+	// order.
 	destinations func(ast.Node) (text.Segment, bool)
 	written      []func(start int) ([]Attr, bool)
+	images       []func(start int) (Image, bool)
 	// footnoteLink renders a footnote's reference out of a link.
 	footnoteLink renderer.NodeRendererFunc
 }
@@ -197,17 +200,39 @@ func (m *marks) footnote(w util.BufWriter, source []byte, node ast.Node, enterin
 	return ast.WalkContinue, nil
 }
 
-// image is never an <img>: the reading view loads nothing from elsewhere,
-// and nothing from here before M7's attachments (M4 design 4, "external
-// images"). It is its text and a link to its address, or its text alone
-// when the address is not allowed or the image is in a link already. The
-// link of one an extension knows carries the attributes its Links gives
-// in place of the address, and shows the address.
+// claimed is the Image of the extension whose Images writes n, a Markdown
+// image, if one does.
+func (m *marks) claimed(n ast.Node) (Image, bool) {
+	if len(m.images) == 0 || m.destinations == nil {
+		return nil, false
+	}
+	at, ok := m.destinations(n)
+	if !ok {
+		return nil, false
+	}
+	for _, f := range m.images {
+		if img, ok := f(at.Start); ok {
+			return img, true
+		}
+	}
+	return nil, false
+}
+
+// image is an <img> only as an extension's Images writes it (M7: an
+// attachment's): the reading view loads nothing from elsewhere (M4 design
+// 4, "external images"). Else it is its text and a link to its address,
+// or its text alone when the address is not allowed or the image is in a
+// link already. The link of one an extension's Links knows carries the
+// attributes it gives in place of the address, and shows the address.
 func (m *marks) image(w util.BufWriter, source []byte, node ast.Node, entering bool) (ast.WalkStatus, error) {
 	if !entering {
 		return ast.WalkContinue, nil
 	}
 	n := node.(*ast.Image)
+	if img, ok := m.claimed(n); ok {
+		img(w, ShownText(n, source), m.links > 0)
+		return ast.WalkSkipChildren, nil
+	}
 	alt := util.EscapeHTML([]byte(ShownText(n, source)))
 	_, _ = w.WriteString(`<span class="nw-image">`)
 	_, _ = w.Write(alt)
