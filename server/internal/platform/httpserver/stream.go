@@ -35,10 +35,11 @@ const streamChunk = 64 << 10
 // deadlines stay far from overflowing whatever the byte count.
 const maxWait = 100 * 365 * 24 * time.Hour
 
-var (
-	errNotStream     = errors.New("httpserver: outside API.Stream")
-	errStreamStopped = errors.New("httpserver: the server is shutting down")
-)
+var errNotStream = errors.New("httpserver: outside API.Stream")
+
+// ErrShuttingDown is Sending's error once the server is shutting down: a
+// download does not start then.
+var ErrShuttingDown = errors.New("httpserver: the server is shutting down")
 
 // Stream wraps the handler of a route that reads or writes its bytes as
 // they come, such as a file upload or download, in the per-route
@@ -133,7 +134,7 @@ func (a *API) streaming(p StreamPolicy, h http.Handler) http.Handler {
 			requestTimeout: a.requestTimeout,
 			minRate:        p.MinRate,
 			step:           step,
-			drained:        r.Body == nil || r.Body == http.NoBody,
+			drained:        r.ContentLength == 0,
 		}
 		if err := s.arm(0); err != nil {
 			a.logger.ErrorContext(r.Context(), "cannot set the deadlines of a stream",
@@ -179,8 +180,9 @@ func Bounded(ctx context.Context) (context.Context, context.CancelFunc) {
 
 // Sending sets the write deadline to read_timeout from now plus the time n
 // bytes take at the route's MinRate: a stream handler calls it before it
-// writes an answer of n bytes. It fails outside API.Stream and once the
-// server is shutting down.
+// writes an answer of n bytes. From then on the stream moves bytes until
+// the handler returns: a shutdown cuts it off. It fails outside API.Stream,
+// and with ErrShuttingDown once the server is shutting down.
 func Sending(r *http.Request, n int64) error {
 	s, ok := r.Context().Value(streamKey{}).(*stream)
 	if !ok {
@@ -212,7 +214,7 @@ func (s *stream) arm(n int64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.stopped {
-		return errStreamStopped
+		return ErrShuttingDown
 	}
 	s.armed = n
 	read := s.start.Add(s.readTimeout + atRate(n, s.minRate))
@@ -228,7 +230,7 @@ func (s *stream) sending(n int64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.stopped {
-		return errStreamStopped
+		return ErrShuttingDown
 	}
 	s.sent = true
 	return s.rc.SetWriteDeadline(time.Now().Add(s.readTimeout + atRate(n, s.minRate)))

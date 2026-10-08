@@ -263,7 +263,7 @@ make image-smoke VERSION=0.1.0   # 在镜像上跑 S1、S3：迁移、探针、�
 
 - **附件目录**（M7）：附件与导入导出的文件在 `/data`（`storage.dir`，镜像以 `NWIKI_STORAGE__DIR=/data` 设定），它是镜像声明的卷。环境变量优先于配置文件：挂载了配置目录也要改目录时，改 `NWIKI_STORAGE__DIR`。
   - 要挂载具名卷（如上例的 `-v nervewiki-data:/data`）或宿主机目录（`-v /srv/nervewiki/data:/data`）。不挂载时 Docker 建一个匿名卷，删掉容器之后就找不回来了。
-  - 进程以 uid 65532 运行：宿主机目录的属主要是它（`sudo chown -R 65532:65532 /srv/nervewiki/data`；Kubernetes 里设 `securityContext.fsGroup: 65532`）。目录或其中的子目录不可写时 `serve` 拒绝启动，错误写明目录与 uid（`storage: cannot write in /data as uid 65532, gid 65532: …`）。
+  - 进程以 uid 65532 运行：宿主机目录的属主要是它（`sudo chown -R 65532:65532 /srv/nervewiki/data`；Kubernetes 里设 `securityContext.fsGroup: 65532`）。目录或其中的区（`blobs/` 等）不可写时 `serve` 拒绝启动，错误写明目录与 uid（`storage: cannot write in /data as uid 65532, gid 65532: …`）。
   - 一个目录只给一个 `serve` 进程用（v0.1 只支持单实例）：启动时它删掉上次中途退出留下的半截文件。升级时先停旧的再起新的（Kubernetes 的 `strategy: Recreate`），不要让两个进程同时挂着它。
   - 剩余空间低于 `storage.min_free_bytes`（默认 1 GiB）时不再接受写入，启动时也记一条 WARN。监控这块磁盘。
   - 备份：先 `pg_dump`，再复制 `/data/blobs`（附件写入后不变，物理清除要等 60 天，按这个次序得到的备份里数据库引用的附件都在；其余子目录是过程中的文件）。恢复时用同一次备份的两份，先恢复数据库，再放回目录；目录里多出的文件（数据库里没有的）由每天的清扫删掉。

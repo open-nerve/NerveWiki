@@ -42,7 +42,9 @@ type Store interface {
 // is for one goroutine at a time.
 type Writer interface {
 	io.Writer
-	// Commit makes the file durable and visible at its key.
+	// Commit makes the file durable and visible at its key. On failure the
+	// file may be at the key all the same, with no promise that it
+	// outlives a crash: the caller treats it as an orphan.
 	Commit() error
 	// Abort drops what was written.
 	Abort() error

@@ -105,7 +105,7 @@
 
   - 键由调用方给：`blobs/<blob id>`、`exports/<job id>.zip`、`imports/<job id>.zip`。本地实现按名的哈希散开目录（`blobs/3f/a2/<id>`；UUIDv7 的前段是时间，按它散开，一段时间的文件都在一个目录里）。
   - 写入：在这个区自己的 `.tmp/` 里建临时文件，`Commit` 时 `fsync`、`rename` 到位、`fsync` 目录（新建的分片目录同样）；`Abort` 删掉临时文件。读者只看得到完整的文件；`rename` 总在一个区之内，不会跨文件系统。
-  - 启动检查：根目录不存在就建；写一个探测文件再删掉，不可写时返回带 uid 的错误，`serve` 拒绝启动（M0/P6 的移交）；然后删掉各区残留的临时文件（只有进程中途被杀才会留下）。
+  - 启动检查：根目录不存在就建；写一个探测文件再删掉，不可写时返回带 uid 的错误，`serve` 拒绝启动（M0/P6 的移交）；已有的区同样探测（在它的 `.tmp/` 里）；然后删掉各区残留的临时文件与根下残留的探测文件（只有进程中途被杀才会留下）。
   - 磁盘余量：写入之前看 `Free`，低于 `storage.min_free_bytes`（默认 1 GiB）时答 507 `storage_full`（新的平台码，6.1）；写到一半写满同样。
   - 契约测试放在 `platform/storage/storagetest`（加进 archtest 的 `testHelpersOnlyInTests`），本地实现与以后的实现都跑它。
 
@@ -130,7 +130,7 @@
   - 次序：请求信息 → 在 `request_timeout` 之内的失败闸门与认证（公开的操作不认证）→ 路由的限流桶 → 请求体上限 → 处理器。
   - `StreamPolicy`：`MaxBytes`（请求体上限）、`MinRate`（最低速率）、`Bucket`（这条路由用的桶，取代 `anonymous` 或 `authenticated`）与它在日志里的名字 `BucketName`；公开与否照模块的 `PublicOperations()`。
   - 读：连接的读截止时间每读 64 KiB（`MinRate` 低到 64 KiB 要超过半个 `read_timeout` 时取更小的一步）重设为"开始时刻 + `read_timeout` + 已读字节 / `MinRate`"：平均速率达不到最低速率就断开，不发正文的连接在原来的 `read_timeout` 断开。没有请求体的请求（下载）不设读截止时间：net/http 从一开始就在后台读连接，截止时间一到会取消处理器的上下文（P1 审查 A-H1）。
-  - 写：上传的写截止时间放宽到读完之后再加 `request_timeout`；下载的写截止时间由处理器经平台设为"现在 + `read_timeout` + 字节数 / `MinRate`"。
+  - 写：写截止时间是"读截止时间 + (`write_timeout` − `read_timeout`)"，跟着读截止时间放宽：上传读完之后还有 `request_timeout` 写入、答复；下载的写截止时间由处理器经平台设为"现在 + `read_timeout` + 字节数 / `MinRate`"（`Sending`）。
   - 期限：读完请求体之后的一步（写入单元）在一个新的 `request_timeout` 期限里运行。
   - 停机：开始停机时切断还在传字节的流（请求体没读完的上传、已经 `Sending` 的下载）：截止时间立刻到期、处理器的上下文取消，上传中止、临时文件删掉，下载断开。读完请求体之后的一步照普通请求在 `shutdown_timeout` 之内做完并答复，不在 `COMMIT` 上被取消（P1 审查 A-M2）；这时的 `Sending` 答错误。
 - **按路由的桶**：签名的下载用 `ratelimit.asset_content`（按 IP），不消耗 `anonymous`（登录、续期、注册共用它，一页几百张图会让同一出口的同事续期失败、被登出）。上传用 `authenticated`。
@@ -176,6 +176,7 @@
   - `d=1` 时一律 `attachment`。文件名按 RFC 6266 写 `filename*=UTF-8''…`，另带一个 ASCII 的 `filename` 兜底。
   - 签名核对通过之后才设 `Cache-Control: private, max-age=<到期前的秒数>, immutable`（覆盖 `/api/` 默认的 `no-store`）、`ETag`（SHA-256）、`Cross-Origin-Resource-Policy: same-origin`。
   - 用 `http.ServeContent` 下发：支持 `Range`（视频拖动）与条件请求；Go 在 412、416 时去掉 `Cache-Control`，照它。
+- **停机**：停机开始之后 `Sending` 答 `httpserver.ErrShuttingDown`，下载不再开始，答 503（码由 P2 定）。
 - **元数据**：`GET /api/v0/assets/{node_id}` 答附件的元数据：节点的字段，加 MIME、字节数、SHA-256、宽高、内联与下载的两个签名地址（`d` 在签名里，所以是两个），P3 起加 `link`（4.7）。
 
 ### 4.6 删除、清理与孤儿文件

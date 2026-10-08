@@ -236,6 +236,7 @@ func TestAStreamMovesItsDeadlinesWithItsBytes(t *testing.T) {
 	// before it, and the fourth, which it ends, moves nothing.
 	r := post("/api/v0/uploads", "")
 	r.Body = &chunkedBody{content: bytes.Repeat([]byte("x"), 256<<10), size: 16 << 10}
+	r.ContentLength = -1 // chunked
 	start := time.Now()
 	h.ServeHTTP(w, r)
 
@@ -337,7 +338,7 @@ func TestTheStepOfAStream(t *testing.T) {
 // end or an answer announced with Sending, is cut off: both deadlines pass
 // and its context is cancelled. One between the two is left to finish, but
 // can no longer announce an answer; nor is one whose handler has returned
-// cut off. A request without a body never has a read deadline.
+// cut off. A request without a body has no read deadline before.
 func TestAShutdownCutsAStreamOnlyWhileItMovesBytes(t *testing.T) {
 	for _, tt := range []struct {
 		name             string
@@ -373,16 +374,9 @@ func TestAShutdownCutsAStreamOnlyWhileItMovesBytes(t *testing.T) {
 				writes := len(w.writes)
 				w.mu.Unlock()
 				shutdown()
-				s := r.Context().Value(streamKey{}).(*stream)
-				for stopped, give := false, time.Now().Add(2*time.Second); !stopped; {
-					if time.Now().After(give) {
-						t.Error("the stream did not learn of the shutdown in 2s")
-						return
-					}
-					time.Sleep(time.Millisecond)
-					s.mu.Lock()
-					stopped = s.stopped
-					s.mu.Unlock()
+				if !awaitStopped(r) {
+					t.Error("the stream did not learn of the shutdown in 2s")
+					return
 				}
 				select {
 				case <-r.Context().Done():
@@ -412,8 +406,8 @@ func TestAShutdownCutsAStreamOnlyWhileItMovesBytes(t *testing.T) {
 			if !tt.cut && len(cutAt) != 0 {
 				t.Errorf("deadlines set once shutdown began %v, want none", cutAt)
 			}
-			if !errors.Is(sendErr, errStreamStopped) {
-				t.Errorf("Sending once shutdown began = %v, want errStreamStopped", sendErr)
+			if !errors.Is(sendErr, ErrShuttingDown) {
+				t.Errorf("Sending once shutdown began = %v, want ErrShuttingDown", sendErr)
 			}
 		})
 	}
@@ -425,6 +419,21 @@ func TestAShutdownCutsAStreamOnlyWhileItMovesBytes(t *testing.T) {
 			t.Errorf("stop cut a stream whose handler returned: deadlines %v, %v", w.reads, w.writes)
 		}
 	})
+}
+
+// awaitStopped waits until r's stream knows the server is shutting down;
+// false after 2s.
+func awaitStopped(r *http.Request) bool {
+	s := r.Context().Value(streamKey{}).(*stream)
+	for give := time.Now().Add(2 * time.Second); time.Now().Before(give); time.Sleep(time.Millisecond) {
+		s.mu.Lock()
+		stopped := s.stopped
+		s.mu.Unlock()
+		if stopped {
+			return true
+		}
+	}
+	return false
 }
 
 func TestTheTimeAtARateSaturates(t *testing.T) {
@@ -754,7 +763,13 @@ func TestShutdownEndsAStreamAtOnce(t *testing.T) {
 			stall := make(chan struct{})
 			t.Cleanup(func() { close(stall) })
 			go func() { _, _, _ = upload(url, tt.body(stall), 64<<20) }()
-			<-reading
+			select {
+			case <-reading:
+			case err := <-ended:
+				t.Fatalf("the body read ended before the shutdown: %v", err)
+			case <-time.After(5 * time.Second):
+				t.Fatal("no body read in 5s")
+			}
 			time.Sleep(100 * time.Millisecond) // the quiet client's bytes are in
 
 			begin := time.Now()
@@ -785,18 +800,17 @@ func TestShutdownEndsAStreamAtOnce(t *testing.T) {
 // as any request does; it can no longer announce a long answer.
 func TestShutdownLetsAStreamFinishTheStepAfterItsBody(t *testing.T) {
 	api := streamTestAPI(t)
-	read := make(chan struct{})
-	proceed := make(chan struct{})
+	read := make(chan error, 1)
 	after := make(chan error, 2)
 	url, cancel, done := streamServer(t, api.Stream(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		n, err := io.Copy(io.Discard, r.Body)
+		read <- err
 		if err != nil {
-			after <- err
-			after <- err
 			return
 		}
-		close(read)
-		<-proceed
+		if !awaitStopped(r) {
+			t.Error("the stream did not learn of the shutdown in 2s")
+		}
 		ctx, cancelStep := Bounded(r.Context())
 		defer cancelStep()
 		select {
@@ -813,16 +827,21 @@ func TestShutdownLetsAStreamFinishTheStepAfterItsBody(t *testing.T) {
 		status, body, err := upload(url, &pacedBody{chunks: 2, size: 32 << 10}, 64<<10)
 		answered <- fmt.Sprintf("%d %s %v", status, body, err)
 	}()
-	<-read
+	select {
+	case err := <-read:
+		if err != nil {
+			t.Fatalf("the body read failed: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the body was not read in 5s")
+	}
 	cancel()
-	time.Sleep(100 * time.Millisecond) // the shutdown reaches the stream
-	close(proceed)
 
 	if err := <-after; err != nil {
 		t.Errorf("the step after the body ended with %v, want it finished", err)
 	}
-	if err := <-after; !errors.Is(err, errStreamStopped) {
-		t.Errorf("Sending during shutdown = %v, want errStreamStopped", err)
+	if err := <-after; !errors.Is(err, ErrShuttingDown) {
+		t.Errorf("Sending during shutdown = %v, want ErrShuttingDown", err)
 	}
 	if got, want := <-answered, fmt.Sprintf("200 %d <nil>", 64<<10); got != want {
 		t.Errorf("the client got %q, want %q", got, want)

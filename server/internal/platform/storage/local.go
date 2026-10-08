@@ -85,9 +85,10 @@ func probe(dir string) error {
 	return errors.Join(werr, serr, cerr, rerr)
 }
 
-// dropTemporaries probes every area and deletes its files being written,
-// and the probes left in the store's directory: with one process to a
-// directory, they are what a process stopped midway left.
+// dropTemporaries probes every area, in its directory of files being
+// written, and deletes that directory, and the probes left in the store's
+// directory: with one process to a directory, they are what a process
+// stopped midway left.
 func (l *Local) dropTemporaries() error {
 	entries, err := os.ReadDir(l.dir)
 	if err != nil {
@@ -104,10 +105,11 @@ func (l *Local) dropTemporaries() error {
 		if !e.IsDir() || CheckArea(e.Name()) != nil {
 			continue
 		}
-		if err := probe(path); err != nil {
+		tmp := filepath.Join(path, tmpDir)
+		if err := probe(tmp); err != nil {
 			return cannotWrite(path, err)
 		}
-		if err := os.RemoveAll(filepath.Join(path, tmpDir)); err != nil {
+		if err := os.RemoveAll(tmp); err != nil {
 			return cannotWrite(path, err)
 		}
 	}
