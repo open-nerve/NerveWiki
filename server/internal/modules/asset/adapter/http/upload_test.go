@@ -289,18 +289,25 @@ func TestUploadPastItsDeadlineIsLoggedAsAWarning(t *testing.T) {
 	}
 }
 
-// A body that goes on after the form's end, past the route's limit, is
-// 400: the file stored is deleted.
+// The route's limit is the largest file and the Envelope, 64 KiB: a body
+// that goes on after the form's end up to the limit is taken; one byte
+// past it is 400, the file stored deleted.
 func TestUploadRefusesABodyAfterTheForm(t *testing.T) {
-	h := newHarness(t)
-	ct, body := form(t, file("a.png", "x"))
-	body = append(body, strings.Repeat("z", maxBytes+64<<10)...) // the route's limit, the file's and the envelope's
-	res, answer := h.post(t, uploadPath(), "session", ct, bytes.NewReader(body))
-	if res.StatusCode != http.StatusBadRequest || !strings.Contains(string(answer), "after the form's end") {
-		t.Errorf("upload = %d %s, want 400 for the body after the form", res.StatusCode, answer)
-	}
-	if keys, deleted, open := h.files.state(); len(keys) != 0 || len(deleted) != 1 || open != 0 || len(h.tree.created) != 0 {
-		t.Errorf("files %q, deleted %q, %d open, created %+v; want the file deleted, nothing created", keys, deleted, open, h.tree.created)
+	for _, past := range []int{0, 1} {
+		h := newHarness(t)
+		ct, body := form(t, file("a.png", "x"))
+		body = append(body, strings.Repeat("z", maxBytes+64<<10-len(body)+past)...)
+		res, answer := h.post(t, uploadPath(), "session", ct, bytes.NewReader(body))
+		keys, deleted, open := h.files.state()
+		switch {
+		case past == 0 && (res.StatusCode != http.StatusCreated || len(keys) != 1 || len(h.tree.created) != 1):
+			t.Errorf("a body of the limit = %d %s, files %q; want 201, the file kept", res.StatusCode, answer, keys)
+		case past == 1 && (res.StatusCode != http.StatusBadRequest || !strings.Contains(string(answer), "after the form's end")):
+			t.Errorf("a body past the limit = %d %s, want 400 for the body after the form", res.StatusCode, answer)
+		case past == 1 && (len(keys) != 0 || len(deleted) != 1 || open != 0 || len(h.tree.created) != 0):
+			t.Errorf("files %q, deleted %q, %d open, created %+v; want the file deleted, nothing created", keys, deleted, open,
+				h.tree.created)
+		}
 	}
 }
 
@@ -391,8 +398,9 @@ func TestUploadBindsTheNotebookIDFirst(t *testing.T) {
 	res, answer := h.post(t, "/api/v0/notebooks/nope/assets", "", ct, bytes.NewReader(body))
 	var p problem
 	_ = json.Unmarshal(answer, &p)
-	if res.StatusCode != http.StatusBadRequest || len(p.Errors) != 1 || p.Errors[0].Field != "notebook_id" || !res.Close {
-		t.Errorf("upload = %d %s, closing %v; want 400 on notebook_id, closing", res.StatusCode, answer, res.Close)
+	if res.StatusCode != http.StatusBadRequest || len(p.Errors) != 1 || p.Errors[0].Field != "notebook_id" ||
+		p.Errors[0].Code != "invalid_format" || !res.Close {
+		t.Errorf("upload = %d %s, closing %v; want 400, invalid_format on notebook_id, closing", res.StatusCode, answer, res.Close)
 	}
 }
 

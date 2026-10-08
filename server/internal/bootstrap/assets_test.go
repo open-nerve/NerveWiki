@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"io"
 	"io/fs"
 	"maps"
 	"mime/multipart"
@@ -196,13 +195,9 @@ func TestALargeFileUploadsAndDownloadsWhole(t *testing.T) {
 		t.Fatal(err)
 	}
 	req.Header.Set("Range", "bytes=2000000-2000009")
-	res, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = res.Body.Close() }()
-	got, err := io.ReadAll(res.Body)
-	if err != nil || res.StatusCode != http.StatusPartialContent || !bytes.Equal(got, content[2000000:2000010]) {
-		t.Errorf("a range = %d %v, %v; want 206, those 10 bytes", res.StatusCode, got, err)
+	res, got := sendRequest(t, req)
+	tm.contract.CheckResponse(t, req, res)
+	if res.StatusCode != http.StatusPartialContent || !bytes.Equal(got, content[2000000:2000010]) {
+		t.Errorf("a range = %d %v, want 206, those 10 bytes", res.StatusCode, got)
 	}
 }

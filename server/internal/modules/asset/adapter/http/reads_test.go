@@ -40,6 +40,7 @@ func TestGetAssetAnswersTheAttachment(t *testing.T) {
 // and the cursor of the next; the last page's is null.
 func TestListAssetsPagesTheAttachments(t *testing.T) {
 	h := newHarness(t)
+	h.attach("c.png", "image/png", "abc")
 	h.attach("b.png", "image/png", "abc")
 	h.attach("a.png", "image/png", "abc")
 	list := "/api/v0/notebooks/" + notebookID().String() + "/assets"
@@ -47,16 +48,16 @@ func TestListAssetsPagesTheAttachments(t *testing.T) {
 		Data       []assetAnswer `json:"data"`
 		NextCursor *string       `json:"next_cursor"`
 	}
-	res, body := h.get(t, http.MethodGet, list+"?limit=1", "session")
-	if err := json.Unmarshal(body, &page); err != nil || res.StatusCode != http.StatusOK || len(page.Data) != 1 || page.Data[0].Name != "a.png" ||
-		page.NextCursor == nil {
-		t.Fatalf("listAssets = %d %s, want a.png and a cursor", res.StatusCode, body)
+	res, body := h.get(t, http.MethodGet, list+"?limit=2", "session")
+	if err := json.Unmarshal(body, &page); err != nil || res.StatusCode != http.StatusOK || len(page.Data) != 2 || page.Data[0].Name != "a.png" ||
+		page.Data[1].Name != "b.png" || page.NextCursor == nil {
+		t.Fatalf("listAssets = %d %s, want a.png, b.png and a cursor", res.StatusCode, body)
 	}
-	res, body = h.get(t, http.MethodGet, list+"?limit=1&cursor="+url.QueryEscape(*page.NextCursor), "session")
+	res, body = h.get(t, http.MethodGet, list+"?limit=2&cursor="+url.QueryEscape(*page.NextCursor), "session")
 	page.NextCursor = nil
-	if err := json.Unmarshal(body, &page); err != nil || res.StatusCode != http.StatusOK || len(page.Data) != 1 || page.Data[0].Name != "b.png" ||
+	if err := json.Unmarshal(body, &page); err != nil || res.StatusCode != http.StatusOK || len(page.Data) != 1 || page.Data[0].Name != "c.png" ||
 		page.NextCursor != nil {
-		t.Errorf("listAssets(the cursor) = %d %s, want b.png, the last page", res.StatusCode, body)
+		t.Errorf("listAssets(the cursor) = %d %s, want c.png, the last page", res.StatusCode, body)
 	}
 }
 

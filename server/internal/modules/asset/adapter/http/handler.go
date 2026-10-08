@@ -65,11 +65,21 @@ func Register(router *httpserver.Router, api *httpserver.API, uc UseCases, limit
 		ErrorHandlerFunc: api.Errors.BadRequest,
 	})
 	router.Handle(uploadRoute, bindID("notebook_id", api.Errors, api.Stream(
-		upload{uc: uc.Upload, errors: api.Errors, logger: logger, maxBytes: limits.MaxBytes},
-		httpserver.StreamPolicy{MaxBytes: limits.MaxBytes + Envelope, MinRate: limits.MinRate})))
+		upload{uc: uc.Upload, errors: api.Errors, logger: logger, maxBytes: limits.MaxBytes}, uploadPolicy(limits))))
 	router.Handle(contentRoute, sandboxed(bindID("node_id", api.Errors, api.Stream(
-		content{uc: uc.Content, errors: api.Errors},
-		httpserver.StreamPolicy{MinRate: limits.MinRate, Bucket: limits.ContentBucket, BucketName: "asset_content"}))))
+		content{uc: uc.Content, errors: api.Errors}, downloadPolicy(limits)))))
+}
+
+// uploadPolicy bounds the upload's body by the largest file and the
+// Envelope, at the lowest rate, under the platform's buckets.
+func uploadPolicy(limits Limits) httpserver.StreamPolicy {
+	return httpserver.StreamPolicy{MaxBytes: limits.MaxBytes + Envelope, MinRate: limits.MinRate}
+}
+
+// downloadPolicy sends the download at the lowest rate, under its own
+// bucket; its body is the platform's to bound.
+func downloadPolicy(limits Limits) httpserver.StreamPolicy {
+	return httpserver.StreamPolicy{MinRate: limits.MinRate, Bucket: limits.ContentBucket, BucketName: "asset_content"}
 }
 
 type pathIDKey struct{ param string }

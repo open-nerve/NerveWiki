@@ -184,8 +184,8 @@ func TestUploadNamesWhatIsWrong(t *testing.T) {
 
 // What follows the file, malformed, is a body not read whole, whatever was
 // read before the file: 400, the file deleted, nothing created. A part
-// after the file whose header runs past the route's limit is a part after
-// the file, 400.
+// after the file whose header runs past the route's limit, or holds more
+// lines than the parser takes (10000), is a part after the file, 400.
 func TestUploadReadsWhatFollowsTheFile(t *testing.T) {
 	head := "--b\r\nContent-Disposition: form-data; name=\"name\"\r\nX-Pad: "
 	rest := "\r\n\r\na.png\r\n--b\r\nContent-Disposition: form-data; name=\"file\"; filename=\"a.png\"\r\n\r\n"
@@ -197,6 +197,8 @@ func TestUploadReadsWhatFollowsTheFile(t *testing.T) {
 			"FILE\r\n--b\r\nQQQQ-no-colon\r\n\r\nv\r\n--b--\r\n", "not read whole"},
 		{"a part whose header runs past the limit", head + "p" + rest + "FILE\r\n--b\r\nX-Long: " + strings.Repeat("q", 80<<10) +
 			"\r\n\r\nv\r\n--b--\r\n", "a part after the file"},
+		{"a part whose header has 10001 lines", head + "p" + rest + "FILE\r\n--b\r\n" + strings.Repeat("A: b\r\n", 10001) +
+			"\r\nv\r\n--b--\r\n", "a part after the file"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			h := newHarness(t)

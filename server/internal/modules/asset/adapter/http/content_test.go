@@ -214,8 +214,11 @@ func TestContentReadsItsAddressStrictly(t *testing.T) {
 		}
 	}
 	res, body := h.get(t, http.MethodGet, "/api/v0/assets/nope/content?"+query, "")
-	if res.StatusCode != http.StatusBadRequest || !strings.Contains(string(body), `"field":"node_id"`) || !isSandboxed(res) {
-		t.Errorf("a node id that is no id = %d %s, CSP %q; want 400 on node_id, sandboxed", res.StatusCode, body,
+	var p problem
+	_ = json.Unmarshal(body, &p)
+	if res.StatusCode != http.StatusBadRequest || len(p.Errors) != 1 || p.Errors[0].Field != "node_id" ||
+		p.Errors[0].Code != "invalid_format" || !isSandboxed(res) {
+		t.Errorf("a node id that is no id = %d %s, CSP %q; want 400, invalid_format on node_id, sandboxed", res.StatusCode, body,
 			res.Header.Get("Content-Security-Policy"))
 	}
 }
