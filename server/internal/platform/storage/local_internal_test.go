@@ -115,3 +115,54 @@ func TestAFullDiskOpensAndDropsWhatWasLeft(t *testing.T) {
 		t.Error(err)
 	}
 }
+
+// The full disk is the one opening finds after its deletions: a
+// half-written file that filled it, once deleted, leaves no warning.
+func TestFullAtOpenIsAfterTheDeletions(t *testing.T) {
+	dir := t.TempDir()
+	left := filepath.Join(dir, "imports", tmpDir, "a.zip.123")
+	if err := os.MkdirAll(filepath.Dir(left), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(left, []byte("the import that filled the disk"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	fullWhileLeft := func(dir, pattern string) (tempFile, error) {
+		if _, err := os.Stat(left); err == nil {
+			return onFullDisk(dir, pattern)
+		}
+		return osCreateTemp(dir, pattern)
+	}
+	l, err := openLocal(dir, 0, fullWhileLeft)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if full := l.FullAtOpen(); full != nil {
+		t.Errorf("FullAtOpen() = %v, though the deletions made room", full)
+	}
+}
+
+// An area full on its own, a mount or a quota of its own, is found full.
+func TestFullAtOpenFindsAnAreaFullOnItsOwn(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "blobs"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	areaFull := func(dir, pattern string) (tempFile, error) {
+		if filepath.Base(dir) != tmpDir {
+			return osCreateTemp(dir, pattern)
+		}
+		f, err := onFullDisk(dir, pattern)
+		if err != nil {
+			return nil, err
+		}
+		return fullDisk{name: f.Name(), errno: syscall.EDQUOT}, nil
+	}
+	l, err := openLocal(dir, 0, areaFull)
+	if err != nil {
+		t.Fatalf("openLocal with an area over its quota: %v", err)
+	}
+	if full := l.FullAtOpen(); !errors.Is(full, syscall.EDQUOT) {
+		t.Errorf("FullAtOpen() = %v, want the area's EDQUOT", full)
+	}
+}

@@ -307,8 +307,8 @@ func TestATooLargeStreamBodyFailsItsRead(t *testing.T) {
 		_, readErr = io.ReadAll(r.Body)
 	}), StreamPolicy{MinRate: 1, MaxBytes: 10})
 	h.ServeHTTP(&deadlineWriter{ResponseRecorder: httptest.NewRecorder()}, post("/api/v0/uploads", "eleven char"))
-	if _, ok := errors.AsType[*http.MaxBytesError](readErr); !ok {
-		t.Errorf("read = %v, want *http.MaxBytesError", readErr)
+	if _, ok := errors.AsType[*http.MaxBytesError](readErr); !ok || errors.Is(readErr, ErrShuttingDown) {
+		t.Errorf("read = %v, want *http.MaxBytesError, no shutdown", readErr)
 	}
 }
 
@@ -640,8 +640,8 @@ func TestATrickleBelowTheRateIsCutOff(t *testing.T) {
 	}()
 	select {
 	case err := <-ended:
-		if ne, ok := errors.AsType[net.Error](err); !ok || !ne.Timeout() {
-			t.Errorf("the read ended with %v, want a timeout", err)
+		if ne, ok := errors.AsType[net.Error](err); !ok || !ne.Timeout() || errors.Is(err, ErrShuttingDown) {
+			t.Errorf("the read ended with %v, want a timeout, no shutdown", err)
 		}
 		if elapsed := time.Since(start); elapsed > 2*time.Second {
 			t.Errorf("cut off after %v, want at the 300ms read timeout", elapsed)
@@ -664,8 +664,8 @@ func TestAStalledStreamIsCutOff(t *testing.T) {
 	go func() { _, _, _ = upload(url, &pacedBody{chunks: 4, size: 32 << 10, stall: stall}, 1<<20) }()
 	select {
 	case err := <-ended:
-		if ne, ok := errors.AsType[net.Error](err); !ok || !ne.Timeout() {
-			t.Errorf("the read ended with %v, want a timeout", err)
+		if ne, ok := errors.AsType[net.Error](err); !ok || !ne.Timeout() || errors.Is(err, ErrShuttingDown) {
+			t.Errorf("the read ended with %v, want a timeout, no shutdown", err)
 		}
 		// 300ms and the time the bytes read when the deadline last moved
 		// take at 256 KiB/s: it moves with every 38.4 KiB, half the read

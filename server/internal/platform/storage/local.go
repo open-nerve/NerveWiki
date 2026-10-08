@@ -74,11 +74,25 @@ func openLocal(dir string, minFree int64, create createTemp) (*Local, error) {
 		return nil, fmt.Errorf("storage: %s: %w", dir, err)
 	}
 	l := &Local{dir: abs, minFree: minFree, create: create}
+	if err := os.MkdirAll(abs, 0o750); err != nil {
+		return nil, cannotWrite(abs, err)
+	}
+	areas, err := l.dropTemporaries()
+	if err != nil {
+		return nil, err
+	}
+	// Probed once every deletion has made what room it could.
 	if err := l.probe(abs); err != nil {
 		return nil, cannotWrite(abs, err)
 	}
-	if err := l.dropTemporaries(); err != nil {
-		return nil, err
+	for _, area := range areas {
+		tmp := filepath.Join(area, tmpDir)
+		if err := l.probe(tmp); err != nil {
+			return nil, cannotWrite(area, err)
+		}
+		if err := os.RemoveAll(tmp); err != nil {
+			return nil, cannotWrite(area, err)
+		}
 	}
 	return l, nil
 }
@@ -122,21 +136,24 @@ func (l *Local) write(dir string) error {
 	return errors.Join(werr, serr, cerr, rerr)
 }
 
-// dropTemporaries deletes every area's directory of files being written,
-// then probes the area in it and deletes it again, and deletes the probes
-// left in the store's directory: with one process to a directory, they are
-// what a process stopped midway left. Deleting first frees the space a
-// half-written file took, and a file in the directory's place.
-func (l *Local) dropTemporaries() error {
+// dropTemporaries deletes every area's directory of files being written
+// and the probes left in the store's directory, and answers the areas'
+// directories, which opening then probes in their directory of files being
+// written: with one process to a directory, these are what a process
+// stopped midway left. Deleting before probing frees the space a
+// half-written file took, likely what filled the disk, and a file in the
+// directory's place.
+func (l *Local) dropTemporaries() ([]string, error) {
 	entries, err := os.ReadDir(l.dir)
 	if err != nil {
-		return cannotWrite(l.dir, err)
+		return nil, cannotWrite(l.dir, err)
 	}
+	var areas []string
 	for _, e := range entries {
 		path := filepath.Join(l.dir, e.Name())
 		if strings.HasPrefix(e.Name(), probePrefix) {
 			if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
-				return cannotWrite(l.dir, err)
+				return nil, cannotWrite(l.dir, err)
 			}
 			continue
 		}
@@ -145,23 +162,17 @@ func (l *Local) dropTemporaries() error {
 		}
 		info, err := os.Stat(path)
 		if err != nil {
-			return cannotWrite(path, err) // a link to nothing, or out of reach
+			return nil, cannotWrite(path, err) // a link to nothing, or out of reach
 		}
 		if !info.IsDir() {
 			continue // not an area: a mounted area is a directory or a link to one
 		}
-		tmp := filepath.Join(path, tmpDir)
-		if err := os.RemoveAll(tmp); err != nil {
-			return cannotWrite(path, err)
+		if err := os.RemoveAll(filepath.Join(path, tmpDir)); err != nil {
+			return nil, cannotWrite(path, err)
 		}
-		if err := l.probe(tmp); err != nil {
-			return cannotWrite(path, err)
-		}
-		if err := os.RemoveAll(tmp); err != nil {
-			return cannotWrite(path, err)
-		}
+		areas = append(areas, path)
 	}
-	return nil
+	return areas, nil
 }
 
 // Dir is the store's directory, absolute.
