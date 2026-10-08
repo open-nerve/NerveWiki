@@ -127,8 +127,9 @@ func TestAnAttachmentIsItsImageAudioVideoOrALink(t *testing.T) {
 				img("x.png", "说明", ` width="300"`)),
 		},
 		{
-			"a blank caption, the target", "![[x.png| ]] ![ ](a.mp3) ![ |300](x.png) ![&#10;](a.mp3)",
-			p(img("x.png", "x.png", "") + " " + audio("a.mp3", "a.mp3") + " " + img("x.png", "x.png", ` width="300"`) + " " + audio("a.mp3", "a.mp3")),
+			"a blank caption, the target", "![[x.png| ]] ![ ](a.mp3) ![ |300](x.png) ![&#10;](a.mp3) ![&nbsp;](a.mp3) ![[x.png|\u3000|300]]",
+			p(img("x.png", "x.png", "") + " " + audio("a.mp3", "a.mp3") + " " + img("x.png", "x.png", ` width="300"`) + " " + audio("a.mp3", "a.mp3") +
+				" " + audio("a.mp3", "a.mp3") + " " + img("x.png", "x.png", ` width="300"`)),
 		},
 		{"in a folder", "![[A/x.png]] ![](A/x.png)", p(img("x.png", "A/x.png", "") + " " + img("x.png", "A/x.png", ""))},
 		{"captions of '|' and a size", "![[x.png|a|b | 300x200 ]]", p(img("x.png", "a|b", ` width="300" height="200"`))},

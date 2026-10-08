@@ -24,7 +24,9 @@ type size struct {
 // or the whole of it, has a size's shape, that is the size and what comes
 // before the '|' its caption; else it is all caption ("300x" and "x200"
 // are captions). The caption is without the white space around it (an
-// image's caption may be written of a line break, &#10;). A
+// image's caption may be written of a line break, &#10;); one of white
+// space alone, a no-break or an ideographic space too, is no caption,
+// which its caller takes the target for. A
 // number outside 1–10,000 is not given, though the shape is still a
 // size's (nerve-defined: Obsidian writes 0 and 20000 as they are).
 func sized(s string) (string, size) {

@@ -67,7 +67,7 @@ func (v view) image(start int) (markdown.Image, bool) {
 	l := v.links[start]
 	return func(w markdown.Writer, shown string, inLink bool) {
 		caption, sz := sized(shown)
-		if caption == "" {
+		if strings.TrimSpace(caption) == "" {
 			caption = targetShown(l.Target, l.Anchor)
 		}
 		v.embed(w, t.Node, nil, caption, sz, inLink)

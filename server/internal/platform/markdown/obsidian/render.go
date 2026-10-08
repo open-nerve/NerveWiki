@@ -1,6 +1,8 @@
 package obsidian
 
 import (
+	"strings"
+
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/renderer"
 	"github.com/yuin/goldmark/util"
@@ -64,7 +66,7 @@ func (r nodeRenderer) renderWikilink(w util.BufWriter, _ []byte, node ast.Node, 
 	}
 	if t, ok := r.view.target(n.at.Start); ok && t.Asset && n.target != "" && n.embed {
 		caption, sz := sized(n.display)
-		if caption == "" {
+		if strings.TrimSpace(caption) == "" {
 			caption = targetShown(n.target, n.anchor)
 		}
 		r.view.embed(w, t.Node, []string{"nw-wikilink", "nw-embed"}, caption, sz, n.inLink)
