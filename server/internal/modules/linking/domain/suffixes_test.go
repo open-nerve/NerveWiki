@@ -11,24 +11,25 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/modules/linking/domain"
 )
 
-// The pages of a read, read once by the ends of their paths (Suffixes),
-// resolve a target as the pages of its last keys read one by one do (M6
-// closeout FA-I1): over random trees, a target to one of their pages or to
-// none, written from a random page in each way a page is, or a name alone,
-// resolves to the same page, as ambiguously, as none.
+// The nodes of a read, read once by the ends of their paths (Suffixes),
+// resolve a target as the nodes of its last keys read one by one do (M6
+// closeout FA-I1): over random trees of pages and attachments, a target to
+// one of their nodes or to none, written from a random page in each way a
+// node is, or a name alone, resolves to the same node, as ambiguously, as
+// none.
 func TestSuffixesResolveAsTheCandidatesOfTheLastKeys(t *testing.T) {
-	var found, ambiguous, relative, aliased int
+	var found, ambiguous, relative, aliased, assets int
 	for seed := range uint64(4000) {
 		r := rand.New(rand.NewPCG(seed, 11))
 		c := randomCase(r)
-		p := pagesOf(t, c.pages, c.aliases)
-		all := make([]domain.Node, len(c.pages))
-		for i, path := range c.pages {
+		p := pagesOf(t, c.nodes(), c.aliases, c.kinds()...)
+		all := make([]domain.Node, len(c.nodes()))
+		for i, path := range c.nodes() {
 			all[i] = p.byID[p.ids[path]]
 		}
 		for range 20 {
 			from := c.pages[r.IntN(len(c.pages))]
-			written := randomTarget(r, c.pages, from)
+			written := randomTarget(r, c.nodes(), from)
 			if r.IntN(3) == 0 {
 				// A name alone: a page's, an alias, or none's.
 				written = randomTitle(r)
@@ -50,6 +51,9 @@ func TestSuffixesResolveAsTheCandidatesOfTheLastKeys(t *testing.T) {
 			}
 			if want.ID != (uuid.UUID{}) {
 				found++
+				if want.Asset {
+					assets++
+				}
 				switch {
 				case want.Ambiguous:
 					ambiguous++
@@ -62,8 +66,9 @@ func TestSuffixesResolveAsTheCandidatesOfTheLastKeys(t *testing.T) {
 			}
 		}
 	}
-	if found < 10_000 || ambiguous < 20 || relative < 1_000 || aliased < 100 {
-		t.Errorf("the random targets found %d pages, %d ambiguously, %d relative, %d by alias: too few to tell", found, ambiguous, relative, aliased)
+	if found < 10_000 || ambiguous < 20 || relative < 1_000 || aliased < 100 || assets < 1_000 {
+		t.Errorf("the random targets found %d nodes, %d ambiguously, %d relative, %d by alias, %d attachments: too few to tell",
+			found, ambiguous, relative, aliased, assets)
 	}
 }
 

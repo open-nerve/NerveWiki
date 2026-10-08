@@ -102,14 +102,28 @@ func (t Target) Reach(from []Step) int {
 	return max(len(from)-1-t.Up, 0) + len(t.Keys)
 }
 
-// form is the key path the target is read as among candidates, the pages
-// with one of its LastKeys (M6/P3 design 2), as Obsidian reads it: written
-// with ".md", it is the page without it when the notebook has a page of
-// that name anywhere, and the page with it otherwise.
-func (t Target) form(candidates candidateSet) []string {
+// form is the key path the target is read as among candidates, the nodes
+// with one of its LastKeys, and whether as an attachment's (M6/P3 design 2;
+// M7/P3 design 4.2), as Obsidian reads it: written with ".md", a page's,
+// without the ".md" when the notebook has a page of that name anywhere, and
+// with it otherwise; else an attachment's when the notebook has an
+// attachment of its last segment's name anywhere, which only a name with
+// an extension may be (Node.candidate); else a page's.
+func (t Target) form(candidates candidateSet) ([]string, bool) {
 	stem := t.Keys[len(t.Keys)-1]
-	if t.AltLast == "" || candidates.has(stem) {
-		return t.Keys
+	switch {
+	case t.AltLast == "":
+		return t.Keys, candidates.has(stem, true)
+	case candidates.has(stem, false):
+		return t.Keys, false
 	}
-	return append(slices.Clone(t.Keys[:len(t.Keys)-1]), t.AltLast)
+	return append(slices.Clone(t.Keys[:len(t.Keys)-1]), t.AltLast), false
+}
+
+// ReadsAsAsset tells whether t, among candidates, the nodes with one of its
+// LastKeys, is read as an attachment's (form): a page made for it would not
+// be its target (M7/P3 design 4.5).
+func (t Target) ReadsAsAsset(candidates []Node) bool {
+	_, asset := t.form(nodeList(candidates))
+	return asset
 }

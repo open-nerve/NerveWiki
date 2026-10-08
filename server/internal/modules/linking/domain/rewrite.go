@@ -19,10 +19,10 @@ type Resolved struct {
 	After  Resolution
 }
 
-// Tree is what a rewrite reads of a notebook's pages: those the links
-// resolved to before the change, at their paths before it and after it, by
-// id; and, after it, the pages with each of the title keys a writing of
-// them may be read with (WrittenKeys), by key.
+// Tree is what a rewrite reads of a notebook's pages and attachments: those
+// the links resolved to before the change, at their paths before it and
+// after it, by id; and, after it, the nodes with each of the title keys a
+// writing of them may be read with (WrittenKeys), of both kinds, by key.
 type Tree struct {
 	Before map[uuid.UUID]Node
 	After  map[uuid.UUID]Node
@@ -223,13 +223,14 @@ func Apply(content string, edits []Edit) string {
 	return out.String()
 }
 
-// Written is how a wikilink is written to lead to n, a page at its path, from
-// anywhere, as Obsidian's fileToLinktext writes it (M6/P4 design 3.1): its
-// name when named, the pages with its title key, holds no other page; its
-// path from the root otherwise, which is its name at the root, where the
-// root's page comes first.
+// Written is how a wikilink is written to lead to n, a page or an
+// attachment at its path, from anywhere, as Obsidian's fileToLinktext
+// writes it (M6/P4 design 3.1): its name when named, the nodes with its
+// title key, holds no other of its kind, which alone its name is read
+// among (M7/P3 design 4.4); its path from the root otherwise, which is its
+// name at the root, where the root's node comes first.
 func Written(n Node, named []Node) string {
-	if slices.ContainsFunc(named, func(o Node) bool { return o.ID != n.ID }) {
+	if slices.ContainsFunc(named, func(o Node) bool { return o.ID != n.ID && o.Asset == n.Asset }) {
 		return n.path()
 	}
 	return n.name()
@@ -237,8 +238,9 @@ func Written(n Node, named []Node) string {
 
 // Linktext is how a wikilink in the page at from is written to lead to n
 // (M6/P4 design 3.1): Written, else n's path from the root, else that with
-// ".md" after it, which a title ending in ".md" may need; the first that
-// tree's pages read as n alone. None of them is relative, so where it
+// ".md" after it, which a title ending in ".md" may need, and a page whose
+// title an attachment has (M7/P3 design 4.4); the first that tree's nodes
+// read as n alone. None of them is relative, so where it
 // leads does not depend on from: the link targets of a notebook's
 // completion are written from its root (M6/P5 design 6). ok is false when
 // none leads there, which siblings' distinct title keys rule out.
@@ -256,10 +258,11 @@ func Linktext(n Node, from []Step, tree Tree) (string, bool) {
 	return "", false
 }
 
-// Linktexts is the linktext of each of nodes, all of a notebook's pages,
-// written from its root (M6/P5 design 6), in their order. Siblings'
-// distinct title keys leave none without one; were one, it would be its
-// path from the root.
+// Linktexts is the linktext of each of nodes, all of a notebook's pages and
+// attachments, written from its root (M6/P5 design 6; M7/P3 design 4.5), in
+// their order. Siblings' distinct title keys leave none without one but an
+// attachment without an extension, which nothing leads to: its path from
+// the root.
 func Linktexts(nodes []Node) []string {
 	named := map[string][]Node{}
 	for _, n := range nodes {
@@ -277,10 +280,14 @@ func Linktexts(nodes []Node) []string {
 	return out
 }
 
-// WrittenKeys are the title keys of the pages a writing of n may be read
+// WrittenKeys are the title keys of the nodes a writing of n may be read
 // with, which a rewrite reads (Tree.Named): its name's, with ".md" after it,
-// and without one it ends with.
+// and without one it ends with; an attachment's alone, which its writings,
+// never with ".md", are read with.
 func WrittenKeys(n Node) []string {
+	if n.Asset {
+		return []string{n.key()}
+	}
 	name := n.name()
 	keys := []string{n.key(), shared.TitleKey(name + ".md")}
 	if s := stem(name); s != name {
@@ -290,10 +297,11 @@ func WrittenKeys(n Node) []string {
 }
 
 // relink is the edits that write l, a link of content in the page at from,
-// again to lead to now, the page it led to at was: its target; a
-// wikilink's display text that was its target's last name; a Markdown
-// link's text that was the page's title; the alias it was written with, as
-// a wikilink's display text, an empty one too. An embed's display is its
+// again to lead to now, the node it led to at was: its target; a
+// wikilink's display text that was its target's last name, an attachment's
+// without its extension, as Obsidian's basename (M7/P3 design 4.4); a
+// Markdown link's text that was the node's name; the alias it was written
+// with, as a wikilink's display text, an empty one too. An embed's display is its
 // size or its caption, left; so is a display past an escape of a
 // double-quoted string, which the content's bytes do not tell. ok is false
 // when no writing leads there.
@@ -349,25 +357,30 @@ func relink(content string, from []Step, l Link, was, now Node, tree Tree) ([]Ed
 	switch {
 	case alias && s == e:
 		edits = append(edits, Edit{Start: s, End: e, Text: content[l.Start:l.End], Shown: true})
-	case l.Anchor == "" && strings.Contains(l.Target, "/") && content[s:e] == quoted(l, stem(last(l.Target))):
-		edits = append(edits, Edit{Start: s, End: e, Text: quoted(l, now.name()), Shown: true})
+	case l.Anchor == "" && strings.Contains(l.Target, "/") && content[s:e] == quoted(l, now.shown(last(l.Target))):
+		edits = append(edits, Edit{Start: s, End: e, Text: quoted(l, now.title()), Shown: true})
 	}
 	return edits, true
 }
 
 // markdownTarget is how l, a Markdown link or image in the page at from, is
 // written to lead to n, before its escapes (M6/P4 design 3.2): from the
-// page's folder, or from the root, as it was; as a wikilink is, with
-// ".md" after it, otherwise. ok is false when none leads there.
+// page's folder, or from the root, as it was; as a wikilink is otherwise; a
+// page's with ".md" after it, an attachment's as its file is named (M7/P3
+// design 4.4). ok is false when none leads there.
 func markdownTarget(l Link, n Node, from []Step, tree Tree) (string, bool) {
+	file := ".md"
+	if n.Asset {
+		file = ""
+	}
 	var targets []string
 	switch {
 	case strings.HasPrefix(l.Target, "./") || strings.HasPrefix(l.Target, "../"):
-		targets = []string{relative(from, n) + ".md"}
+		targets = []string{relative(from, n) + file}
 	case strings.HasPrefix(l.Target, "/"):
-		targets = []string{"/" + n.path() + ".md"}
+		targets = []string{"/" + n.path() + file}
 	default:
-		targets = []string{Written(n, tree.Named[n.key()]) + ".md", n.path() + ".md"}
+		targets = []string{Written(n, tree.Named[n.key()]) + file, n.path() + file}
 	}
 	at := slices.IndexFunc(targets, func(t string) bool { return tree.leads(t, from, n) })
 	if at < 0 {
@@ -377,7 +390,7 @@ func markdownTarget(l Link, n Node, from []Step, tree Tree) (string, bool) {
 }
 
 // leads tells whether target, written in the page at from, resolves to n
-// and no other page alike.
+// and no other node alike.
 func (t Tree) leads(target string, from []Step, n Node) bool {
 	parsed, ok := ParseTarget(target)
 	if !ok {
@@ -387,20 +400,21 @@ func (t Tree) leads(target string, from []Step, n Node) bool {
 	return r.ID == n.ID && !r.Ambiguous
 }
 
-// candidates is the pages a target of the last keys keys may resolve to:
-// those of its first key when there are any, as a target written with
-// ".md" is then read without it (Target.form) and no page of the other key
-// is its page; else those of the other. The pages are not copied: the link
-// targets read every page's writing against the pages of its title (M6/P5
-// design 6, review r1-3, r2-L3, c2).
+// candidates is the nodes a target of the last keys keys may resolve to:
+// those of its key; for one written with ".md", of two keys, those of its
+// first key when there is a page among them, as the target is then read
+// without it (Target.form) and no node of the other key is its, else
+// those of the other. The nodes are not copied: the link targets read
+// every node's writing against the nodes of its title (M6/P5 design 6,
+// review r1-3, r2-L3, c2).
 func (t Tree) candidates(keys []string) []Node {
-	if nodes := t.Named[keys[0]]; len(nodes) > 0 || len(keys) == 1 {
+	if nodes := t.Named[keys[0]]; len(keys) == 1 || slices.ContainsFunc(nodes, func(n Node) bool { return !n.Asset }) {
 		return nodes
 	}
 	return t.Named[keys[1]]
 }
 
-// byTitle tells whether l names was, the page it led to, by its title,
+// byTitle tells whether l names was, the node it led to, by its title,
 // not by one of its aliases.
 func byTitle(l Link, was Node) bool {
 	return byKey(l, was.key())
@@ -523,9 +537,29 @@ func stem(s string) string {
 	return s
 }
 
-// name is n's title.
+// name is n's title, an attachment's name.
 func (n Node) name() string {
 	return n.Path[len(n.Path)-1].Name
+}
+
+// shown is name, the last segment of a target that leads to n, as a
+// wikilink's display text that shows n by its title writes it: without a
+// ".md" it ends with for a page, without its extension for an attachment,
+// as Obsidian's basename (M7/P3 design 4.4).
+func (n Node) shown(name string) string {
+	if n.Asset {
+		return withoutExtension(name)
+	}
+	return stem(name)
+}
+
+// title is how a wikilink's display text that shows n by its title writes
+// it: a page's title, an attachment's name without its extension.
+func (n Node) title() string {
+	if n.Asset {
+		return withoutExtension(n.name())
+	}
+	return n.name()
 }
 
 // path is n's path from the root, its names joined by '/'.

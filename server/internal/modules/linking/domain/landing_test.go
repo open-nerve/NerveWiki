@@ -11,14 +11,14 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
-// land finds target's candidates, the pages of its segment before the last
+// land finds target's candidates, the nodes of its segment before the last
 // and its aliased pages as the index does, by their keys, and lands it
 // from the page from.
 func (c caseTree) land(target domain.Target, from string, maxDepth int) domain.Landing {
 	var candidates, parents []domain.Node
 	aliased := map[string][]domain.Node{}
 	for p, path := range c.paths {
-		node := domain.Node{ID: c.ids[p], Path: path}
+		node := domain.Node{ID: c.ids[p], Path: path, Asset: c.assets[p]}
 		key := path[len(path)-1].Key
 		if slices.Contains(target.LastKeys(), key) {
 			candidates = append(candidates, node)
@@ -33,6 +33,17 @@ func (c caseTree) land(target domain.Target, from string, maxDepth int) domain.L
 		}
 	}
 	return domain.Land(target, c.paths[from], candidates, parents, aliased, maxDepth)
+}
+
+// nodes are the case's nodes whose title key is one of keys.
+func (c caseTree) nodes(keys []string) []domain.Node {
+	var out []domain.Node
+	for p, path := range c.paths {
+		if slices.Contains(keys, path[len(path)-1].Key) {
+			out = append(out, domain.Node{ID: c.ids[p], Path: path, Asset: c.assets[p]})
+		}
+	}
+	return out
 }
 
 // pathOf is the page of id, by its path in the case; "" for the root.
@@ -120,15 +131,62 @@ func TestATargetLandsWhereItWouldLeadToThePageMade(t *testing.T) {
 	}
 }
 
+// A target read as an attachment's has no landing, target_is_asset, which
+// it leads to or not; one written with ".md", or with no attachment of its
+// name, an attachment without an extension, lands as a page's would; a
+// segment before the last leads to a page, never to an attachment of its
+// name (M7/P3 design 4.5).
+func TestATargetReadAsAnAttachmentsHasNoLanding(t *testing.T) {
+	tree := treeOf(t, []string{"A", "src", "B", "B/x.png"}, nil, "A/x.png", "A/noext", "A/y.png", "v1.2")
+	type want struct {
+		node, parent, title string
+		reason              domain.Reason
+	}
+	for _, tt := range []struct {
+		target string
+		want   want
+	}{
+		{"x.png", want{reason: domain.TargetIsAsset}},
+		{"X.PNG", want{reason: domain.TargetIsAsset}},
+		{"B/x.png", want{reason: domain.TargetIsAsset}},
+		{"./x.png", want{reason: domain.TargetIsAsset}},
+		{"x.png.md", want{node: "B/x.png"}},
+		{"noext", want{title: "noext"}},
+		{"z.png", want{title: "z.png"}},
+		{"B/z.png", want{parent: "B", title: "z.png"}},
+		{"y.png/z", want{reason: domain.ParentMissing}},
+		{"x.png/z", want{parent: "B/x.png", title: "z"}},
+		// Read as a page's, no page titled v1.2 anywhere: the page made, v1.2,
+		// would be beside the attachment v1.2 (the random test's seed 148).
+		{"v1.2.md", want{reason: domain.TargetIsAsset}},
+		{"A/v1.2.md", want{parent: "A", title: "v1.2"}},
+	} {
+		target, ok := domain.ParseTarget(tt.target)
+		if !ok {
+			t.Fatalf("ParseTarget(%q) refused", tt.target)
+		}
+		got := tree.land(target, "src", 10)
+		g := want{node: tree.pathOf(got.Node), parent: tree.pathOf(got.Parent), title: got.Title, reason: got.Reason}
+		if got.Node == (uuid.UUID{}) {
+			g.node = ""
+		}
+		if g != tt.want {
+			t.Errorf("%s: %+v, want %+v", tt.target, g, tt.want)
+		}
+	}
+}
+
 // In random trees, a random target written from a random page that does
 // not resolve lands where the page made is the one it then resolves to,
 // alone, and no sibling of it has its title key; one that resolves lands
 // on its page; one with no landing gives a reason, and for no parent page
-// nor the root, when no page is there or the target would not lead to it,
-// would a page of its title made there be the one it then resolves to
-// alone (M6/P6 design 2).
+// nor the root, when no page is there, the target would not lead to it or
+// it is read as an attachment's, would a page of its title made there be
+// the one it then resolves to alone; one read as a page's and still
+// target_is_asset has an attachment of its title, where the page would go
+// (the table's test tells where) (M6/P6 design 2; M7/P3 design 4.5).
 func TestALandingLeadsTheTargetToThePageMade(t *testing.T) {
-	landed := 0
+	landed, assets := 0, 0
 	for seed := range uint64(4000) {
 		r := rand.New(rand.NewPCG(seed, 9))
 		c := randomCase(r)
@@ -136,7 +194,7 @@ func TestALandingLeadsTheTargetToThePageMade(t *testing.T) {
 		for i, p := range c.pages {
 			aliases[p] = c.aliases[i]
 		}
-		tree := treeOf(t, c.pages, aliases)
+		tree := treeOf(t, c.pages, aliases, c.assets...)
 		from := c.pages[r.IntN(len(c.pages))]
 		written := landingTarget(r, c.pages, aliases, from)
 		target, ok := domain.ParseTarget(written)
@@ -156,30 +214,39 @@ func TestALandingLeadsTheTargetToThePageMade(t *testing.T) {
 			if parent != "" {
 				made = parent + "/" + got.Title
 			}
-			if slices.ContainsFunc(c.pages, func(p string) bool { return siblings(p, made) }) {
+			if slices.ContainsFunc(c.nodes(), func(p string) bool { return siblings(p, made) }) {
 				t.Fatalf("seed %d: %s from %s lands as %s, beside a sibling of its key", seed, written, from, made)
 			}
-			after := treeOf(t, append(slices.Clone(c.pages), made), aliases)
+			after := treeOf(t, append(slices.Clone(c.pages), made), aliases, c.assets...)
 			if r := after.resolve(target, from); r.ID != after.ids[made] || r.Ambiguous {
 				t.Fatalf("seed %d: %s from %s lands as %s, then resolves to %s", seed, written, from, made, after.name(r))
 			}
 		case got.Reason == "":
 			t.Fatalf("seed %d: %s from %s: no node, landing nor reason", seed, written, from)
-		case got.Reason == domain.ParentMissing || got.Reason == domain.NotResolvable:
-			if made, ok := landsElsewhere(t, c.pages, aliases, target, from); ok {
+		case got.Reason == domain.TargetIsAsset && !target.ReadsAsAsset(tree.nodes(target.LastKeys())):
+			key := shared.TitleKey(target.Name)
+			if !slices.ContainsFunc(c.assets, func(a string) bool { return shared.TitleKey(lastOf(a)) == key }) {
+				t.Fatalf("seed %d: %s from %s, read as a page's: target_is_asset, with no attachment of its title", seed, written, from)
+			}
+		case got.Reason == domain.ParentMissing || got.Reason == domain.NotResolvable || got.Reason == domain.TargetIsAsset:
+			if got.Reason == domain.TargetIsAsset {
+				assets++
+			}
+			if made, ok := landsElsewhere(t, c.pages, c.assets, aliases, target, from); ok {
 				t.Fatalf("seed %d: %s from %s: %s, but the page %s would lead it", seed, written, from, got.Reason, made)
 			}
 		}
 	}
-	if landed < 1000 {
-		t.Errorf("%d targets landed: the targets are not random enough", landed)
+	if landed < 1000 || assets < 100 {
+		t.Errorf("%d targets landed, %d read as attachments': the targets are not random enough", landed, assets)
 	}
 }
 
 // landsElsewhere is a page of target's title, made under the root or one
-// of pages and beside no sibling of its title key, that target, written in
-// the page at from, would then resolve to alone, if one would.
-func landsElsewhere(t *testing.T, pages []string, aliases map[string][]string, target domain.Target, from string) (string, bool) {
+// of pages and beside no sibling of its title key, a page's or one of
+// assets', that target, written in the page at from, would then resolve to
+// alone, if one would.
+func landsElsewhere(t *testing.T, pages, assets []string, aliases map[string][]string, target domain.Target, from string) (string, bool) {
 	t.Helper()
 	title, problem := shared.CheckTitle("title", target.Name)
 	if problem != nil {
@@ -190,10 +257,10 @@ func landsElsewhere(t *testing.T, pages []string, aliases map[string][]string, t
 		if parent != "" {
 			made = parent + "/" + title
 		}
-		if slices.ContainsFunc(pages, func(p string) bool { return siblings(p, made) }) {
+		if slices.ContainsFunc(slices.Concat(pages, assets), func(p string) bool { return siblings(p, made) }) {
 			continue
 		}
-		after := treeOf(t, append(slices.Clone(pages), made), aliases)
+		after := treeOf(t, append(slices.Clone(pages), made), aliases, assets...)
 		if r := after.resolve(target, from); r.ID == after.ids[made] && !r.Ambiguous {
 			return made, true
 		}
@@ -207,8 +274,11 @@ func landsElsewhere(t *testing.T, pages []string, aliases map[string][]string, t
 // ".md" or a space at times.
 func landingTarget(r *rand.Rand, pages []string, aliases map[string][]string, from string) string {
 	title := []string{"new", "New", "x", "a b", "x.md", "é", "a:b", " pad", "Plan"}[r.IntN(9)]
-	if r.IntN(3) == 0 {
+	switch r.IntN(4) {
+	case 0:
 		title = randomTitle(r)
+	case 1:
+		title = randomAssetName(r)
 	}
 	page := pages[r.IntN(len(pages))]
 	var target string
