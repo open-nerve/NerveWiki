@@ -182,6 +182,7 @@ func TestUploadStoresTheFileAsSent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() { _ = f.Close() }()
 	if got, err := io.ReadAll(f); err != nil || string(got) != "a=3Db" {
 		t.Errorf("the file holds %q, %v; want a=3Db", got, err)
 	}

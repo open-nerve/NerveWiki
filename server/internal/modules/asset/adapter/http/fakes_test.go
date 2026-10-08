@@ -199,12 +199,14 @@ func (b *bucket) Reserve(key string) (func(), time.Duration, bool) {
 }
 
 // memFiles is the store in memory. full refuses a Create; fullAfter fails
-// a write past so many bytes; creating signals each Create.
+// a write past so many bytes; creating signals each Create; reading counts
+// the files opened and not closed.
 type memFiles struct {
 	mu        sync.Mutex
 	files     map[string][]byte
 	deleted   []string
 	open      int
+	reading   int
 	full      bool
 	fullAfter int
 	free      int64
@@ -233,7 +235,15 @@ func (f *memFiles) Open(_ context.Context, key string) (app.File, error) {
 	if !ok {
 		return nil, app.ErrNoFile
 	}
-	return memFile{bytes.NewReader(b)}, nil
+	f.reading++
+	return &memFile{Reader: bytes.NewReader(b), f: f}, nil
+}
+
+// unclosed is how many files are open to read.
+func (f *memFiles) unclosed() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.reading
 }
 
 func (f *memFiles) Delete(_ context.Context, key string) error {
@@ -283,10 +293,19 @@ func (w *memWriter) close(keep bool) error {
 	return nil
 }
 
-type memFile struct{ *bytes.Reader }
+type memFile struct {
+	*bytes.Reader
+	f *memFiles
+}
 
-func (memFile) Close() error       { return nil }
-func (memFile) ModTime() time.Time { return now() }
+func (m *memFile) Close() error {
+	m.f.mu.Lock()
+	defer m.f.mu.Unlock()
+	m.f.reading--
+	return nil
+}
+
+func (*memFile) ModTime() time.Time { return now() }
 
 // sniffer is net/http's sniffing; it reads no image's size.
 type sniffer struct{}

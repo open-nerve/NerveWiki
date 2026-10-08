@@ -16,6 +16,7 @@ import (
 	"time"
 	"uuid"
 
+	httpadapter "github.com/open-nerve/NerveWiki/server/internal/modules/asset/adapter/http"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/asset/app"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/asset/domain"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver/httpservertest"
@@ -171,6 +172,8 @@ func TestContentReadsItsAddressStrictly(t *testing.T) {
 		{"s padded", "", "b=" + q["b"] + "&e=" + q["e"] + "&s=" + q["s"][:21] + "="},
 		{"s of another address", "", "b=" + q["b"] + "&e=" + q["e"] + "&s=" + strings.Repeat("A", 22)},
 		{"d=0", "", query + "&d=0"},
+		{"d=0 on the download's signature", "", "b=" + q["b"] + "&e=" + q["e"] + "&s=" + ds + "&d=0"},
+		{"d empty on the download's signature", "", "b=" + q["b"] + "&e=" + q["e"] + "&s=" + ds + "&d="},
 		{"d=1 on the shown signature", "", query + "&d=1"},
 		{"b twice", "", query + "&b=" + q["b"]},
 		{"another member", "", query + "&x=1"},
@@ -182,6 +185,9 @@ func TestContentReadsItsAddressStrictly(t *testing.T) {
 		{"the keys swapped, the values in place", "", "e=" + q["b"] + "&b=" + q["e"] + "&s=" + q["s"]},
 		{"d twice", "", downloadQuery + "&d=1"},
 		{"a member after d", "", downloadQuery + "&x=1"},
+		{"d twice on the shown signature", "", query + "&d=1&d=1"},
+		{"a member after d on the shown signature", "", query + "&d=1&x=1"},
+		{"longer keys, the values in place", "", "bb=" + q["b"] + "&ee=" + q["e"] + "&ss=" + q["s"]},
 		{"another key for d", "", "b=" + q["b"] + "&e=" + q["e"] + "&s=" + ds + "&x=1"},
 		{"d before s", "", "b=" + q["b"] + "&e=" + q["e"] + "&d=1&s=" + ds},
 		{"the path's id in upper case", strings.ToUpper(n.ID.String()), query},
@@ -220,6 +226,32 @@ func isSandboxed(res *http.Response) bool {
 	return res.Header.Get("Content-Security-Policy") == contentPolicy && res.Header.Get("Cross-Origin-Resource-Policy") == "same-origin"
 }
 
+// A signature is spelled with 22 base64url characters, whatever they are,
+// and nothing else.
+func TestSignatureIsSpelledInBase64URL(t *testing.T) {
+	for _, tt := range []struct {
+		s    string
+		want bool
+	}{
+		{"AZaz09-_AZaz09-_AZaz09", true},
+		{"ZZZZZZZZZZZZZZZZZZZZZZ", true},
+		{"zzzzzzzzzzzzzzzzzzzzzz", true},
+		{"9999999999999999999999", true},
+		{"----------------------", true},
+		{"______________________", true},
+		{"AZaz09-_AZaz09-_AZaz0", false},
+		{"AZaz09-_AZaz09-_AZaz09A", false},
+		{"AZaz09+/AZaz09+/AZaz09", false},
+		{"AZaz09-_AZaz09-_AZaz0=", false},
+		{"AZaz09-_AZaz09-_AZaz0.", false},
+		{"AZaz09-_AZaz09-_AZazé", false}, // 22 bytes
+	} {
+		if got := httpadapter.Signature(tt.s); got != tt.want {
+			t.Errorf("Signature(%q) = %v, want %v", tt.s, got, tt.want)
+		}
+	}
+}
+
 // code is a problem's code.
 func code(body []byte) string {
 	var p problem
@@ -239,9 +271,10 @@ func TestContentOfAnAddressExpiredIsNotFound(t *testing.T) {
 }
 
 // A range is 206, several ranges too, as multipart/byteranges; a copy the
-// ETag names 304, a range outside the file 416, sandboxed still; a
-// condition on a change is passed by, the file served; HEAD answers the
-// headers alone.
+// ETag names, or one as new as the file's Last-Modified, 304; a range
+// outside the file 416, sandboxed still; a condition on a change is passed
+// by, the file served; HEAD answers the headers alone. Each closes the
+// file it opened.
 func TestContentAnswersRangesAndConditionalRequests(t *testing.T) {
 	h := newHarness(t)
 	n, b := h.attach("a.png", "image/png", "abcdef")
@@ -258,6 +291,13 @@ func TestContentAnswersRangesAndConditionalRequests(t *testing.T) {
 	if res, body := h.get(t, http.MethodGet, u, "", "If-None-Match", etag); res.StatusCode != http.StatusNotModified || len(body) != 0 {
 		t.Errorf("a copy the ETag names = %d %q, want 304", res.StatusCode, body)
 	}
+	res, _ := h.get(t, http.MethodGet, u, "")
+	if modified := res.Header.Get("Last-Modified"); modified != now().Format(http.TimeFormat) {
+		t.Errorf("Last-Modified = %q, want the file's time", modified)
+	} else if res, body := h.get(t, http.MethodGet, u, "", "If-Modified-Since", modified); res.StatusCode != http.StatusNotModified ||
+		len(body) != 0 {
+		t.Errorf("a copy as new as the file = %d %q, want 304", res.StatusCode, body)
+	}
 	if res, _ := h.get(t, http.MethodGet, u, "", "Range", "bytes=10-20"); res.StatusCode != http.StatusRequestedRangeNotSatisfiable ||
 		res.Header.Get("Content-Range") != "bytes */6" || res.Header.Get("Content-Security-Policy") != contentPolicy {
 		t.Errorf("a range outside = %d %q, CSP %q; want 416 bytes */6, sandboxed", res.StatusCode, res.Header.Get("Content-Range"),
@@ -270,6 +310,17 @@ func TestContentAnswersRangesAndConditionalRequests(t *testing.T) {
 	}
 	if res, body := h.get(t, http.MethodHead, u, ""); res.StatusCode != http.StatusOK || len(body) != 0 || res.Header.Get("Content-Length") != "6" {
 		t.Errorf("HEAD = %d %q, length %q; want 200, no body, 6", res.StatusCode, body, res.Header.Get("Content-Length"))
+	}
+	waitFor(t, func() bool { return h.files.unclosed() == 0 })
+}
+
+// An address that expires after 2038, past a 32-bit time, is read as any.
+func TestContentReadsAnAddressPast2038(t *testing.T) {
+	h := newHarness(t)
+	n, b := h.attach("a.png", "image/png", "abc")
+	h.signedAt = time.Date(2040, 1, 1, 0, 0, 0, 0, time.UTC)
+	if res, body := h.get(t, http.MethodGet, h.address(n, b, false), ""); res.StatusCode != http.StatusOK || string(body) != "abc" {
+		t.Errorf("download = %d %q, want 200 the file", res.StatusCode, body)
 	}
 }
 
@@ -290,7 +341,8 @@ func TestContentHasABucketOfItsOwn(t *testing.T) {
 }
 
 // A download whose content opens once the server began shutting down is
-// server_busy: the server does not start sending it. The stream learns of
+// server_busy, no-store, without the file's headers: the server does not
+// start sending it, nor lets the refusal be cached. The stream learns of
 // the shutdown a moment after the listener closes, on goroutines of its
 // own: the content opens a while after.
 func TestContentAsTheServerShutsDownIsServerBusy(t *testing.T) {
@@ -317,9 +369,9 @@ func TestContentAsTheServerShutsDownIsServerBusy(t *testing.T) {
 	close(h.nodes.gate)
 	select {
 	case res := <-answered:
-		if res.StatusCode != http.StatusServiceUnavailable || res.Header.Get("Retry-After") != "5" || !isSandboxed(res) {
-			t.Errorf("download = %d, Retry-After %q, CSP %q; want 503 after 5 s, sandboxed", res.StatusCode, res.Header.Get("Retry-After"),
-				res.Header.Get("Content-Security-Policy"))
+		if res.StatusCode != http.StatusServiceUnavailable || res.Header.Get("Retry-After") != "5" || !isSandboxed(res) ||
+			res.Header.Get("Cache-Control") != "no-store" || res.Header.Get("ETag") != "" || res.Header.Get("Content-Disposition") != "" {
+			t.Errorf("download = %d, headers %v; want 503 after 5 s, sandboxed, no-store, none of the file's", res.StatusCode, res.Header)
 		}
 	case <-time.After(10 * time.Second):
 		t.Fatal("the download did not answer")
