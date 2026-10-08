@@ -151,7 +151,7 @@ uid=$(docker top "$app" -o pid,uid | awk 'NR > 1 { print $2 }')
 
 # 附件（M0/P6 的移交第 3 项）：管理员建工作区与笔记本，上传一个 2×3 的 PNG
 token=$(get -H 'Content-Type: application/json' -d '{"email":"admin@example.com","password":"correct horse battery"}' \
-  "$base/api/v0/auth/login" | jq -r .access_token)
+  "$base/api/v0/auth/login" | jq -er .access_token) || fail "管理员登录失败，拿不到访问令牌"
 auth=(-H "Authorization: Bearer $token")
 get "${auth[@]}" -H 'Content-Type: application/json' -d '{"name":"Smoke","slug":"smoke"}' "$base/api/v0/workspaces" >/dev/null ||
   fail "建工作区失败"
@@ -163,8 +163,10 @@ uploaded=$(curl -sS --max-time 5 "${auth[@]}" -F "file=@$files/smoke.png;type=im
 jq -e '.name == "smoke.png" and .mime == "image/png" and .width == 2 and .height == 3' <<<"$uploaded" >/dev/null ||
   fail "上传的答复与预期不符：$uploaded"
 asset=$(jq -r .id <<<"$uploaded")
+address=$(jq -r .content_url <<<"$uploaded")
 
-# SIGTERM 之后优雅停机，退出码 0；重启之后附件还在：元数据读得出，签名的地址读回同样的字节（文件在卷上）
+# SIGTERM 之后优雅停机，退出码 0；重启之后附件还在：元数据读得出，重启之前签出的地址读回同样的字节（文件在卷上，
+# 签名的密钥由 JWT 的私钥导出、不随重启变）
 stop_app() {
   docker stop -t 40 "$app" >/dev/null
   exit_code=$(docker container inspect -f '{{.State.ExitCode}}' "$app")
@@ -174,8 +176,9 @@ stop_app
 docker start "$app" >/dev/null
 base="http://$(docker port "$app" 8080/tcp | head -n 1)"
 wait_for get "$base/readyz" || fail "重启之后 /readyz 在 ${timeout_s} 秒内没有答 200"
-read=$(get "${auth[@]}" "$base/api/v0/assets/$asset") || fail "重启之后读不出附件的元数据"
-get -o "$files/back.png" "$base$(jq -r .content_url <<<"$read")" || fail "重启之后按签名的地址下载失败"
+meta=$(get "${auth[@]}" "$base/api/v0/assets/$asset") || fail "重启之后读不出附件的元数据"
+jq -e --arg id "$asset" '.id == $id and .byte_size > 0' <<<"$meta" >/dev/null || fail "重启之后读出的元数据与预期不符：$meta"
+get -o "$files/back.png" "$base$address" || fail "重启之后按重启之前签出的地址下载失败"
 cmp -s "$files/smoke.png" "$files/back.png" || fail "重启之后下载的字节与上传的不同"
 stop_app
 

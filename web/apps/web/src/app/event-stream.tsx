@@ -25,10 +25,11 @@ const refreshedOnConnect = [
  * goes to the app's handler of its type (events/handlers.ts), which has
  * SWR read again what it changed; on each connection all of what is shown
  * is read again, the workspaces and notebooks with it. The reading views
- * are read through the refresher, at most once in its interval, and once
- * visible again when the tab is hidden. It sits with the providers,
- * mounted anew with each generation, whose hub stops with it: a refresh
- * still going on then reads no more, its cache gone with the generation.
+ * and the trees are read through the refresher, at most once in the key's
+ * interval, and once visible again when the tab is hidden. It sits with
+ * the providers, mounted anew with each generation, whose hub stops with
+ * it: a refresh still going on then reads no more, its cache gone with the
+ * generation.
  */
 export function EventStream() {
   const store = useStore();

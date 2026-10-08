@@ -140,9 +140,9 @@ make run      # 以 dev 配置启动 nervewiki serve，监听 127.0.0.1:8080；C
 ### 附件
 
 - 附件是笔记本树里的节点（`kind: "asset"`），在一页下或根下，与页面同一套改名、移动、删除（`/api/v0/nodes/{node_id}`）。它不算树的一层；名称与兄弟页面同一规则、同一唯一性，不能以 `.md` 结尾。`GET /api/v0/notebooks/{notebook_id}/nodes` 列出它们，网页的左栏只显示页面。
-- **上传**：`POST /api/v0/notebooks/{notebook_id}/assets`，`multipart/form-data`，部分依次是 `parent_id`、`name`（都可省，省了名称取文件名）、`file`；笔记本的编辑者与管理员能传。单个附件至多 `asset.max_bytes`（默认 50 MiB，即 `GET /api/v0/instance` 的 `asset_max_bytes`），超过答 413；存储没有余量答 507 `storage_full`。文件边收边写；读文件之前先核对笔记本、权限、名称与父页，没有发完文件的客户端也收得到这些答复。类型按扩展名与文件头测定，PNG、JPEG、GIF 读出宽高。
+- **上传**：`POST /api/v0/notebooks/{notebook_id}/assets`，`multipart/form-data`，部分依次是 `parent_id`、`name`（都可省，省了名称取文件名）、`file`；笔记本的编辑者与管理员能传。单个附件至多 `asset.max_bytes`（默认 50 MiB，即 `GET /api/v0/instance` 的 `asset_max_bytes`），超过答 413；存储没有余量答 507 `storage_full`。文件边收边写；读文件之前先核对笔记本、权限、名称、父页与存储的余量，不通过就立即答复、不读文件，答复之后关闭连接（仍在发送文件的客户端可能只看到连接被重置，而收不到这个答复）。类型按扩展名与文件头测定，PNG、JPEG、GIF 读出宽高。
 - **读**：`GET /api/v0/assets/{node_id}` 读一个，`GET /api/v0/notebooks/{notebook_id}/assets`（`parent_id` 可选）按名称分页列出一页下或根下的附件，能读这本笔记本的人都可以。答复的 `content_url` 与 `download_url` 是签名的地址，不带令牌也能打开，1 到 2 小时内有效（`expires_at`，同一小时签出的地址相同）；改动任何参数、过期、附件已删除都答 404。
-- **内容**：图片、音频、视频与 PDF 在浏览器里显示（`inline`），其余（包括 HTML）一律以 `application/octet-stream` 下载，`download_url` 总是下载。每个答复都带 `Content-Security-Policy: sandbox; …`：SVG 里的脚本不执行，也不向别的站请求；私有缓存到地址过期，`ETag` 是 SHA-256，支持 `Range` 与条件请求。PDF 在 Chromium 的内置阅读器里照常显示（Firefox 未实测；显示不了的浏览器会提示下载）。下载按客户端 IP 限速（`ratelimit.asset_content`），不占匿名请求的桶。
+- **内容**：图片、音频、视频与 PDF 在浏览器里显示（`inline`），其余（包括 HTML）一律以 `application/octet-stream` 下载，`download_url` 总是下载。每个答复都带 `Content-Security-Policy: sandbox; …`：SVG 里的脚本不执行，也不向别的站请求；私有缓存到地址过期，`ETag` 是 SHA-256，支持 `Range` 与条件请求。PDF 在 Chromium 的内置阅读器里照常显示（其他浏览器未实测；显示不了时用 `download_url` 下载）。下载按客户端 IP 限速（`ratelimit.asset_content`），不占匿名请求的桶。
 - 删除附件、它的上级页或笔记本时，它的行一起软删除；保留期过后清理任务先删文件、再删行。没有行的文件（例如上传中途失败留下的）一天之后由每天的清扫删掉。笔记本的活动（无主笔记本列表的大小与最后活动）算上附件。
 
 ### 链接索引

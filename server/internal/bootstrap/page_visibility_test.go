@@ -16,14 +16,14 @@ import (
 // The tree and the reads agree (M4/P1 design 3.12): on the matrix's data,
 // each column's trees of lab's notebooks hold exactly the pages and the
 // attachments it reads one by one (M7/P2), by the same name under the same
-// parent, and each page read's ancestors are its chain up the tree. A page's reading view answers as
-// its read does (M4/P3 design 3.9). The tree is read by the notebook,
-// the page by its node, each decided on by the access module: a read that
-// drifts from the tree fails here. On this copy alone, team's page has a
-// child and priv a deleted page, which neither shows; the copy keeps the
-// pages' invariant. Then, through the API, team's default editor deletes
-// its page with the child and its attachment (M4/P2 design 3.7): none is
-// in a tree or read by any column.
+// parent, and each page read's ancestors are its chain up the tree. A
+// page's reading view answers as its read does (M4/P3 design 3.9). The
+// tree is read by the notebook, the page by its node, each decided on by
+// the access module: a read that drifts from the tree fails here. On this
+// copy alone, team's page has a child and priv a deleted page, which
+// neither shows; the copy keeps the pages' invariant. Then, through the
+// API, team's default editor deletes its page with the child and its
+// attachment (M4/P2 design 3.7): none is in a tree or read by any column.
 func TestTheTreeIsWhatEachReadAllows(t *testing.T) {
 	d := prepareMatrix(t)
 	contract := apitest.Load(t)

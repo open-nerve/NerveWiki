@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"io/fs"
+	"maps"
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
 	"net/url"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -93,7 +95,9 @@ func (tm acmeTeam) download(t *testing.T, address string) (int, string) {
 // checkAssets fails t when the attachments break an invariant (M7/P2
 // design 3.12): an attachment's node not deleted without exactly one row
 // not deleted; a deleted one with a row not deleted; a row of a page's
-// node; a row whose file is not in the store at dir.
+// node; a row whose file is not in the store at dir; a file there that no
+// row holds, which an upload a unit refused deletes, and only the sweep's
+// test seeds.
 func checkAssets(t *testing.T, pool *pgxpool.Pool, dir string) {
 	t.Helper()
 	for what, query := range map[string]string{
@@ -112,6 +116,10 @@ func checkAssets(t *testing.T, pool *pgxpool.Pool, dir string) {
 		if _, ok := files[id]; !ok {
 			t.Errorf("the file of the row %s is not in the store", id)
 		}
+		delete(files, id)
+	}
+	if len(files) != 0 {
+		t.Errorf("the files %q in the store, no row holding them; want none", slices.Sorted(maps.Keys(files)))
 	}
 }
 

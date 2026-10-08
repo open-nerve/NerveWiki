@@ -1,10 +1,11 @@
 // Re-reading a page's content as events come (M5 design 4.11): while
 // someone edits, every autosave is an event, and a tab that re-read at once
 // would have the server parse the page every two seconds for each reader.
-// A visible tab reads a key at most once in INTERVAL_MS, the last request
-// of the interval; a hidden tab reads once it is visible again.
+// A visible tab reads a key at most once in its interval, INTERVAL_MS
+// unless the request names a shorter one (a notebook's tree), the last
+// request of the interval; a hidden tab reads once it is visible again.
 
-/** How often a visible tab reads the same key at most. */
+/** How often a visible tab reads the same key at most, unless its request says otherwise. */
 export const INTERVAL_MS = 5_000;
 
 /** Whether the page is visible, and its changes. */
@@ -15,6 +16,7 @@ export type Visibility = {
 
 export class Refresher {
   readonly #last = new Map<string, number>();
+  readonly #intervals = new Map<string, number>();
   readonly #due = new Map<string, () => void>();
   readonly #timers = new Map<string, ReturnType<typeof setTimeout>>();
   readonly #unsubscribe: () => void;
@@ -34,8 +36,9 @@ export class Refresher {
   }
 
   /** request asks for read of key: now, at the end of the key's interval, or once the page is visible. */
-  request(key: string, read: () => void): void {
+  request(key: string, read: () => void, interval = INTERVAL_MS): void {
     this.#due.set(key, read);
+    this.#intervals.set(key, interval);
     if (this.page.visible()) {
       this.#schedule(key);
     }
@@ -55,7 +58,7 @@ export class Refresher {
     if (this.#timers.has(key)) {
       return;
     }
-    const wait = (this.#last.get(key) ?? -Infinity) + INTERVAL_MS - this.now();
+    const wait = (this.#last.get(key) ?? -Infinity) + (this.#intervals.get(key) ?? INTERVAL_MS) - this.now();
     if (wait <= 0) {
       this.#read(key);
       return;

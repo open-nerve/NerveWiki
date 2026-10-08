@@ -28,32 +28,13 @@ import (
 // deletion passes it by. Each ends by checking the pages' invariant and
 // the attachments'.
 
-// strays are the files in the store at dir no row holds, which the upload
-// a unit refused deleted (M7/P2 design 3.4).
-func (tm acmeTeam) strays(t *testing.T) []string {
-	t.Helper()
-	files := storedBlobs(t, tm.storage)
-	for _, id := range queryStrings(t, tm.pool, "SELECT id::text FROM asset_blobs") {
-		delete(files, id)
-	}
-	return slices.Sorted(func(yield func(string) bool) {
-		for id := range files {
-			if !yield(id) {
-				return
-			}
-		}
-	})
-}
-
 // checkRefused fails t when what an upload refused under its unit left: a
-// node of its name, a stray file.
+// node of its name, or a file no row holds (checkAssets), which the
+// refusal deletes (M7/P2 design 3.4).
 func (tm acmeTeam) checkRefused(t *testing.T, name string) {
 	t.Helper()
 	if n := count(t, tm.pool, "SELECT count(*) FROM nodes WHERE name = $1", name); n != 0 {
 		t.Errorf("%d nodes named %s, want none", n, name)
-	}
-	if got := tm.strays(t); len(got) != 0 {
-		t.Errorf("the files of %q in the store, no row holding them; want them deleted", got)
 	}
 	checkPages(t, tm.pool)
 	checkAssets(t, tm.pool, tm.storage)
@@ -160,6 +141,44 @@ func TestUploadingAndRemovingTheWriterFromTheWorkspace(t *testing.T) {
 		}
 		checkPages(t, tm.pool)
 		checkAssets(t, tm.pool, tm.storage)
+	})
+}
+
+// bob, who writes only by the workspace's default role, uploads while
+// alice makes the workspace's role viewer; both wait for the notebook's
+// row. The change first: the upload's unit decides under the row that he
+// writes no more, 403 forbidden; the file is deleted. The upload first:
+// the attachment stays, and he still reads it.
+func TestUploadingAndDemotingTheWriter(t *testing.T) {
+	demotion := func(nb string) step {
+		return request("alice", http.MethodPatch, "/api/v0/notebooks/"+nb, `{"workspace_access":"viewer"}`)
+	}
+	t.Run("the change first", func(t *testing.T) {
+		tm := newAcmeTeam(t, "member", "")
+		nb := tm.openNotebook(t, "alice", "Eng")
+		changed, uploaded := tm.interleaveOn(t, notebookRow(nb), demotion(nb), assetUpload(t, "bob", nb, "", "late.txt", "late"))
+		if !changed.is(http.StatusOK, "") || !uploaded.is(http.StatusForbidden, "forbidden") {
+			t.Errorf("the change = %d %s, then bob's upload = %d %s; want 200, then 403 forbidden", changed.status, changed.code,
+				uploaded.status, uploaded.code)
+		}
+		tm.checkRefused(t, "late.txt")
+		checkNotebooks(t, tm.pool)
+	})
+	t.Run("the upload first", func(t *testing.T) {
+		tm := newAcmeTeam(t, "member", "")
+		nb := tm.openNotebook(t, "alice", "Eng")
+		uploaded, changed := tm.interleaveOn(t, notebookRow(nb), assetUpload(t, "bob", nb, "", "late.txt", "late"), demotion(nb))
+		if !uploaded.is(http.StatusCreated, "") || !changed.is(http.StatusOK, "") {
+			t.Errorf("bob's upload = %d %s, then the change = %d %s; want 201, then 200", uploaded.status, uploaded.code, changed.status,
+				changed.code)
+		}
+		a := tm.asset(t, uploaded.body)
+		if status, answer := ask(t, tm.contract, http.MethodGet, tm.base+"/api/v0/assets/"+a.ID, tm.tokens["bob"], ""); status != http.StatusOK {
+			t.Errorf("bob reads his attachment after the change = %d %s, want 200", status, answer)
+		}
+		checkPages(t, tm.pool)
+		checkAssets(t, tm.pool, tm.storage)
+		checkNotebooks(t, tm.pool)
 	})
 }
 

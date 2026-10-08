@@ -413,13 +413,13 @@ paths:
         page.title_taken. An attachment's name does not end with ".md", in
         any case, and keeps an extension when it had one (the extension may
         change): either is not_allowed on name. The node's own name writes
-        nothing; one that differs from it in case alone is written. The links that led to the page, or under it, by a path
-        that changes, and those the new name would lead elsewhere, are
-        written again in the pages they are in, so that each leads where it
-        did; when one of these pages is being edited, its own included, the
-        rename is refused as a whole, linking.pages_locked naming each of
-        them and its editor, and when their parse finds the server busy it
-        is server_busy.
+        nothing; one that differs from it in case alone is written. The
+        links that led to the page, or under it, by a path that changes, and
+        those the new name would lead elsewhere, are written again in the
+        pages they are in, so that each leads where it did; when one of
+        these pages is being edited, its own included, the rename is refused
+        as a whole, linking.pages_locked naming each of them and its editor,
+        and when their parse finds the server busy it is server_busy.
       security: [{ bearer: [] }]
       x-problem-codes:
         [page.not_found, forbidden, validation_failed, page.title_taken, linking.pages_locked, server_busy]

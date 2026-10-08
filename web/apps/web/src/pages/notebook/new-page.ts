@@ -16,12 +16,12 @@ const attempts = 3;
 /**
  * useNewPage creates pages in notebook (M4/P5 design 3.7): each is titled
  * its siblings' first free Untitled, Untitled 2, …, the attachments beside
- * it among them (M7/P2 design 3.10); a title taken in the
- * meantime (409 page.title_taken: another tab, or a title the client
- * compares otherwise than the server) has it try the next, three titles at
- * most. Once created, the tab goes to the page, arrived at, unless the user
- * left the place it was asked from: the component that asked is gone, or
- * the address changed (v0.1 design 13.2, item 16). create answers why it
+ * it among them (M7/P2 design 3.10); a title taken in the meantime (409
+ * page.title_taken: another tab, or a title the client compares otherwise
+ * than the server) has it try the next, three titles at most. Once
+ * created, the tab goes to the page, arrived at, unless the user left the
+ * place it was asked from: the component that asked is gone, or the
+ * address changed (v0.1 design 13.2, item 16). create answers why it
  * failed, for the caller to show, or undefined.
  */
 export function useNewPage(notebook: Notebook) {

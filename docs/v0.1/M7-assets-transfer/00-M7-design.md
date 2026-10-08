@@ -175,7 +175,7 @@
   - 每个附件的答复都带 `Content-Security-Policy: sandbox; default-src 'none'; img-src 'self' data:; media-src 'self'; style-src 'unsafe-inline'`：直接打开的 svg 不运行脚本、源是不透明的，也不能向外站请求图片、字体与样式（否则外站拿到读者的 IP，违反总体设计 4.6 的"`img-src` 只许本站"）。
   - `d=1` 时一律 `attachment`。文件名按 RFC 6266 写 `filename*=UTF-8''…`，另带一个 ASCII 的 `filename` 兜底。
   - 签名核对通过之后才设 `Cache-Control: private, max-age=<到期前的秒数>, immutable`（覆盖 `/api/` 默认的 `no-store`）、`ETag`（SHA-256）、`Cross-Origin-Resource-Policy: same-origin`。
-  - 用 `http.ServeContent` 下发：支持 `Range`（视频拖动）与条件请求；Go 在 412、416 时去掉 `Cache-Control`，照它。
+  - 用 `http.ServeContent` 下发：支持 `Range`（视频拖动）与对客户端所持副本的条件请求（`If-None-Match`、`If-Modified-Since`、`If-Range`）；Go 在 416 时去掉 `Cache-Control`，照它。一个地址所下发的内容从不改变，对改动的条件（`If-Match`、`If-Unmodified-Since`）没有要守的，下发之前去掉，不答 412（412 会带上文件的类型与缓存头，P2 审查 B3）。
 - **停机**：停机开始之后 `Sending` 答 `httpserver.ErrShuttingDown`，下载不再开始，答 503（码由 P2 定）。
 - **元数据**：`GET /api/v0/assets/{node_id}` 答附件的元数据：节点的字段，加 MIME、字节数、SHA-256、宽高、内联与下载的两个签名地址（`d` 在签名里，所以是两个），P3 起加 `link`（4.7）。
 

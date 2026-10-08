@@ -94,7 +94,8 @@ export async function expectUploaded(
 export async function expectAssetsDeletedWithNodes(db: Database, ids: readonly string[]): Promise<void> {
   const rows = await db.query<{ node_id: string }>(
     `SELECT b.node_id FROM asset_blobs b JOIN nodes n ON n.id = b.node_id
-      WHERE b.node_id = ANY($1::uuid[]) AND n.deleted_at IS NOT NULL AND b.deleted_at = n.deleted_at ORDER BY b.node_id`,
+      WHERE b.node_id = ANY($1::uuid[]) AND n.deleted_at IS NOT NULL AND b.deleted_at = n.deleted_at
+      ORDER BY b.node_id`,
     [ids]
   );
   expect(rows.map((row) => row.node_id)).toEqual(ids.toSorted());
