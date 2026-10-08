@@ -379,7 +379,12 @@ test("a reader's section and reading view take no files", async () => {
   fireEvent.dragOver(section, { dataTransfer: transfer });
   expect(transfer.dropEffect).toBe("none");
   fireEvent.drop(section, { dataTransfer: dropped([new File(["a"], "a.png")]) });
+  fireEvent.drop(await screen.findByRole("article", { name: "Guide" }), {
+    dataTransfer: dropped([new File(["b"], "b.png")]),
+  });
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
 
+  expect(within(section).queryByRole("list", { name: "Uploads" })).toBeNull();
   expect(server.sent.filter((line) => line.startsWith("UPLOAD"))).toEqual([]);
 });
 
@@ -422,7 +427,8 @@ test("the list is read again a minute before the first of its addresses expires"
   await act(() => vi.advanceTimersByTimeAsync(58 * 60_000));
   expect(server.sent.filter((line) => line === "GET assets Guide")).toHaveLength(1);
   server.assetsExpireAt = "2026-10-09T10:00:00Z";
-  await act(() => vi.advanceTimersByTimeAsync(2 * 60_000));
+  // A minute before 9:00, and a little: the addresses have yet a minute to go.
+  await act(() => vi.advanceTimersByTimeAsync(60_000 + 5_000));
 
   expect(server.sent.filter((line) => line === "GET assets Guide")).toHaveLength(2);
 });

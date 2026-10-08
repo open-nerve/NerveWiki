@@ -388,7 +388,7 @@ test("a lock event reads the tree first: a page deleted while edited leaves befo
   expect(lockReads).toEqual([]);
 });
 
-test("each connection reads again the workspaces, the tree, the reading view and the lock", async () => {
+test("each connection reads again the workspaces, the tree, the reading view, the lock and the attachments", async () => {
   const { server, events, workspaces } = await open();
   server.nodes = [{ ...guide, name: "Handbook" }, install, linux, notes];
   server.views.set(guide.id, { html: "<p>Guide, again</p>", revision: 2, assets_expire_at: null });
@@ -402,6 +402,7 @@ test("each connection reads again the workspaces, the tree, the reading view and
   await waitFor(() => expect(screen.getByRole("article", { name: "Handbook" }).innerHTML).toBe("<p>Guide, again</p>"));
   expect((await screen.findByRole("status")).textContent).toContain("Bob is editing this page.");
   expect(workspaces).toEqual(["GET workspaces"]);
+  await waitFor(() => expect(server.sent).toContain("GET assets Handbook"));
 });
 
 test("each connection reads again the pages of a tag shown, with the tree", async () => {

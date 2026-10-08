@@ -171,6 +171,25 @@ test("a read that a write's answer overlaps keeps the tree read after the write"
   expect(pages.byId(notes.id)).toBeUndefined();
 });
 
+test("a first read out as an upload answers (wrote) is not kept, though it answers first: the tree read after it is (M7/P4 design 3.3)", async () => {
+  const { pages, state } = store();
+  const stale = held<TreeNode[]>();
+  state.writes.set("list", () => stale.promise);
+  const reading = pages.load();
+  const fresh = held<TreeNode[]>();
+  state.writes.set("list", () => fresh.promise);
+  const upload = assetNode(20, "a.png", guide);
+
+  const wrote = pages.wrote();
+  stale.resolve([guide, install, linux, notes]);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(pages.nodes).toBeUndefined();
+  fresh.resolve([guide, install, linux, notes, upload]);
+  await Promise.all([reading, wrote]);
+
+  expect(pages.siblingsOf(guide.id).map((node) => node.name)).toEqual(["Install", "a.png"]);
+});
+
 test("a read that a rename's answer overlaps keeps the tree read after the rename, the new title", async () => {
   const { pages, state } = store();
   await pages.load();

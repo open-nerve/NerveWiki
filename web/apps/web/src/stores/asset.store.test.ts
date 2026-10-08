@@ -170,6 +170,30 @@ describe("AssetStore's uploads", () => {
     expect(store.uploads).toEqual([]);
   });
 
+  test("a sent upload stays among the uploads until its list read again has it", async () => {
+    const { store, sent, service, add } = setUp();
+    await store.load(guide.id);
+    let answer: (() => void) | undefined;
+    const first = service.list.getMockImplementation();
+    service.list.mockImplementationOnce(async (...args) => {
+      await new Promise<void>((resolve) => (answer = resolve));
+      return first!(...args);
+    });
+
+    store.upload(guide.id, [file("a.png")], "Untitled", limits);
+    await settle();
+    add(guide.id, "a.png");
+    sent[0]?.resolve(assetJSON(assetNode(90, "a.png")));
+    await settle();
+    expect(store.uploads.map((upload) => upload.name)).toEqual(["a.png"]);
+    expect(store.listOf(guide.id)?.assets).toEqual([]);
+    answer?.();
+    await settle();
+
+    expect(store.uploads).toEqual([]);
+    expect(store.listOf(guide.id)?.assets.map((asset) => asset.name)).toEqual(["a.png"]);
+  });
+
   test("a list asked for and not read yet is read again too, after its first read", async () => {
     const { store, sent, service, add } = setUp();
     let answer: (() => void) | undefined;
