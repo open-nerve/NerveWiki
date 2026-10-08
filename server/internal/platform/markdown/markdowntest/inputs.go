@@ -315,6 +315,15 @@ func Amplifying() []Input {
 		{"an image of a short address referred to often, unspaced", func(n int) string {
 			return "[x]: p\n\n" + strings.Repeat("![x]", n/4)
 		}},
+		// Each row of a wide table filled to the header's width, its cells
+		// as many as its bytes: the most the links' markup is padded with
+		// (M7/P3 review B1).
+		{"a wide table of rows of images referred to often", func(n int) string {
+			return "[\"]: p\n\n" + wideRows(n, `!["]`)
+		}},
+		{"a wide table of rows of titled links referred to often", func(n int) string {
+			return "[\"]: p '\"\"\"'\n\n" + wideRows(n, `["]`)
+		}},
 		// An embed of a page is a link to it, which repeats nothing of the
 		// page; an attachment's is its markup and address (M7/P3 design
 		// 5.5).
@@ -338,6 +347,13 @@ func Amplifying() []Input {
 			return "---\n? " + strings.Repeat("k", n/2) + "\n: [" + strings.Repeat("a,", n/4) + "]\n---\nbody\n"
 		}},
 	}
+}
+
+// wideRows is a table 161 cells wide whose rows are each of 40 of the
+// cell written, some n bytes of it.
+func wideRows(n int, cell string) string {
+	row := strings.Repeat(cell, 40) + "\n"
+	return strings.Repeat("|a", 161) + "\n" + strings.Repeat("|-", 161) + "\n" + strings.Repeat(row, n/len(row))
 }
 
 // pathsInput is the Amplifying input whose frontmatter's paths are most of

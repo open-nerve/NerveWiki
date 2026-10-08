@@ -89,13 +89,17 @@ func TestALinksAttributesAreEscaped(t *testing.T) {
 }
 
 // An attribute an extension gives is written only when its name is lower
-// case letters, digits and '-', and an address only through SafeURL (P3B
-// review L2).
+// case letters, digits and '-', an address only through SafeURL (P3B
+// review L2), and a src only when it is a path of this site from its root
+// (M7/P3 review B2).
 func TestALinksAttributesAreCheckedAsWritten(t *testing.T) {
 	ext := Extension{Name: "q", Links: func(any) func(int) ([]Attr, bool) {
 		return func(start int) ([]Attr, bool) {
 			if start == 4 {
-				return []Attr{{Name: "href", Value: "/ok?a=1&b"}, {Name: "src", Value: "//evil.example"}}, true
+				return []Attr{
+					{Name: "href", Value: "/ok?a=1&b"}, {Name: "src", Value: "//evil.example"}, {Name: "src", Value: "https://x.example/i.png"},
+					{Name: "src", Value: "i.png"}, {Name: "src", Value: "?i"}, {Name: "src", Value: "/i.png?a&b"},
+				}, true
 			}
 			return []Attr{
 				{Name: "href", Value: "javascript:alert(1)"}, {Name: `onclick="x" data-a`, Value: "v"},
@@ -103,9 +107,27 @@ func TestALinksAttributesAreCheckedAsWritten(t *testing.T) {
 			}, true
 		}
 	}}
-	want := `<p><a href="/ok?a=1&amp;b">a</a> <span class="nw-image">i <a data-b2="v">y</a></span></p>` + "\n"
+	want := `<p><a href="/ok?a=1&amp;b" src="/i.png?a&amp;b">a</a> <span class="nw-image">i <a data-b2="v">y</a></span></p>` + "\n"
 	if got := renderWith(t, Page{}, "[a](x) ![i](y)", ext); got != want {
 		t.Errorf("got  %q\nwant %q", got, want)
+	}
+}
+
+// What an extension's Links gives a link is asked once, as it opens, an
+// image's in a link too: the extension may count what it writes (M7/P3
+// review B1).
+func TestALinksAttributesAreAskedOnce(t *testing.T) {
+	asked := map[int]int{}
+	ext := Extension{Name: "q", Links: func(any) func(int) ([]Attr, bool) {
+		return func(start int) ([]Attr, bool) {
+			asked[start]++
+			return []Attr{{Name: "href", Value: "/" + strconv.Itoa(start)}}, start != 24
+		}
+	}}
+	got := renderWith(t, Page{}, "[a](x) [![i](y)](z) [b](w)", ext)
+	want := `<p><a href="/4">a</a> <a href="/17"><span class="nw-image">i</span></a> <a href="w">b</a></p>` + "\n"
+	if got != want || len(asked) != 3 || asked[4] != 1 || asked[17] != 1 || asked[24] != 1 {
+		t.Errorf("got  %q\nwant %q, asked %v", got, want, asked)
 	}
 }
 
@@ -219,7 +241,8 @@ func TestTheImagesAnExtensionKnowsAreWrittenByIt(t *testing.T) {
 }
 
 // A view expires at the earliest of its extensions' Expires, none of them
-// zero: never (M7/P3 design 5.2).
+// zero: never (M7/P3 design 5.2). Each is asked once the view is written,
+// so that it may tell of what it wrote alone (M7/P3 review A1).
 func TestAViewExpiresAtItsExtensionsEarliest(t *testing.T) {
 	at := time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)
 	tests := []struct {
@@ -232,11 +255,13 @@ func TestAViewExpiresAtItsExtensionsEarliest(t *testing.T) {
 		{"one", []Extension{images("a", at)}, at},
 		{"the earliest", []Extension{images("a", at.Add(time.Hour)), images("b", at), images("c", at.Add(2*time.Hour))}, at},
 		{"never and one", []Extension{images("a", time.Time{}), images("b", at), images("c", time.Time{})}, at},
+		{"of what it wrote", []Extension{writtenExpires("a", at, 7), writtenExpires("b", at.Add(-time.Hour), 99)}, at},
+		{"nothing written", []Extension{writtenExpires("a", at, 99)}, time.Time{}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			m := newMarkdown(t, tt.exts...)
-			view, err := m.Render(context.Background(), m.Parse([]byte("a")), Page{})
+			view, err := m.Render(context.Background(), m.Parse([]byte("a ![i](x.png)")), Page{})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -245,4 +270,33 @@ func TestAViewExpiresAtItsExtensionsEarliest(t *testing.T) {
 			}
 		})
 	}
+}
+
+// writtenExpires is an extension's test double whose Images writes the
+// image whose destination starts at start, and whose Expires is expires
+// once it has written it, else never.
+func writtenExpires(name string, expires time.Time, start int) Extension {
+	ext := images(name, time.Time{}, start)
+	ext.Fetch = func(context.Context, Page, any) (any, error) { return new(bool), nil }
+	written := ext.Images
+	ext.Images = func(data any) func(int) (Image, bool) {
+		known := written(name)
+		return func(at int) (Image, bool) {
+			img, ok := known(at)
+			if !ok {
+				return nil, false
+			}
+			return func(w Writer, shown string, inLink bool) {
+				*data.(*bool) = true
+				img(w, shown, inLink)
+			}, true
+		}
+	}
+	ext.Expires = func(data any) time.Time {
+		if *data.(*bool) {
+			return expires
+		}
+		return time.Time{}
+	}
+	return ext
 }

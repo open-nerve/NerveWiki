@@ -28,7 +28,7 @@ func (m *Markdown) Render(ctx context.Context, d *Document, page Page) (View, er
 	links := &marks{destinations: d.destinations, footnoteLink: footnotes[east.KindFootnoteLink]}
 	fm := d.facts.frontmatter
 	props := table{scalars: fm.Scalars}
-	var expires time.Time
+	var expiring []func() time.Time
 	nodes := []util.PrioritizedValue{
 		// goldmark's renderer stays safe: a node that reached it unexpected
 		// would be an omitted comment or a dropped address. A line break in a
@@ -59,9 +59,7 @@ func (m *Markdown) Render(ctx context.Context, d *Document, page Page) (View, er
 			links.images = append(links.images, e.Images(data))
 		}
 		if e.Expires != nil {
-			if t := e.Expires(data); !t.IsZero() && (expires.IsZero() || t.Before(expires)) {
-				expires = t
-			}
+			expiring = append(expiring, func() time.Time { return e.Expires(data) })
 		}
 		if e.Properties != nil {
 			props.links = append(props.links, e.Properties(data))
@@ -77,6 +75,13 @@ func (m *Markdown) Render(ctx context.Context, d *Document, page Page) (View, er
 	}
 	if err := renderer.NewRenderer(renderer.WithNodeRenderers(nodes...)).Render(&out, d.source, d.root); err != nil {
 		return View{}, err
+	}
+	// What the extensions wrote expires as they tell once it is written.
+	var expires time.Time
+	for _, f := range expiring {
+		if t := f(); !t.IsZero() && (expires.IsZero() || t.Before(expires)) {
+			expires = t
+		}
 	}
 	return View{HTML: out.String(), Expires: expires}, nil
 }

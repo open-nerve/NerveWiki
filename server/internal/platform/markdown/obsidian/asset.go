@@ -15,15 +15,43 @@ import (
 // they load lazily.
 const MaxMedia = 20
 
-// assetLink is the attributes of a link to the attachment id (M7/P3 design
-// 5.5): its content's address, whose path names it, and its size in bytes,
-// which the front end shows in the reader's language; none for one Assets
-// did not answer.
-func (v view) assetLink(id uuid.UUID) []markdown.Attr {
+// MaxShown is how many addresses of attachments a reading view writes, in
+// the content's order, an image's, an audio's, a video's or a link's; one
+// past them is text (M7/P3 review B1; v0.1 design 13.1, item 31). Each
+// costs a few hundred bytes of HTML, however few bytes write it, in a
+// table's cell too: bounded as a whole, they stay within CheckSize's
+// headroom, and so do the images a reader's tab loads.
+const MaxShown = 2000
+
+// address is what the view writes of the attachment id, counting it and
+// the expiry of its address: false for one Assets did not answer, and
+// past MaxShown.
+func (v view) address(id uuid.UUID) (Asset, bool) {
 	a, ok := v.assets[id]
+	if !ok || v.shown == nil || v.shown.addresses >= MaxShown {
+		return Asset{}, false
+	}
+	v.shown.addresses++
+	if !a.Expires.IsZero() && (v.shown.expires.IsZero() || a.Expires.Before(v.shown.expires)) {
+		v.shown.expires = a.Expires
+	}
+	return a, true
+}
+
+// assetLink is the attributes of a link to the attachment id (M7/P3 design
+// 5.5), which the view writes: its content's address, whose path names it,
+// and its size in bytes, which the front end shows in the reader's
+// language; none for one the view writes no address of.
+func (v view) assetLink(id uuid.UUID) []markdown.Attr {
+	a, ok := v.address(id)
 	if !ok {
 		return nil
 	}
+	return linkAttrs(a)
+}
+
+// linkAttrs is the attributes of a link to a, which the view writes.
+func linkAttrs(a Asset) []markdown.Attr {
 	return []markdown.Attr{{Name: "href", Value: a.URL}, {Name: "data-nw-size", Value: strconv.FormatInt(a.Bytes, 10)}}
 }
 
@@ -64,36 +92,36 @@ func targetShown(target, anchor string) string {
 // an audio or a video as its element while the view has written fewer
 // than MaxMedia; any other, and one past them, as a link to it. In a link,
 // which may hold neither a link nor a control, an image is its <img> and
-// any other its text; so is one Assets did not answer anywhere. Its
+// any other its text; so is one the view writes no address of. Its
 // classes are class and nw-asset, an element's nw-asset alone.
 func (v view) embed(w markdown.Writer, id uuid.UUID, class []string, text string, sz size, inLink bool) {
-	a, ok := v.assets[id]
-	kind, _, _ := strings.Cut(a.MIME, "/")
+	kind, _, _ := strings.Cut(v.assets[id].MIME, "/")
+	a, ok := Asset{}, false
+	if !inLink || kind == "image" {
+		a, ok = v.address(id)
+	}
+	cls := strings.Join(slices.Concat(class, []string{"nw-asset"}), " ")
 	switch {
-	case ok && kind == "image":
+	case !ok:
+		_, _ = w.WriteString(`<span class="` + cls + `">`)
+		escaped(w, []byte(text))
+		_, _ = w.WriteString("</span>")
+	case kind == "image":
 		v.element(w, "img", a, []markdown.Attr{{Name: "alt", Value: text}}, imageSize(sz, a), "")
-		return
-	case ok && !inLink && (kind == "audio" || kind == "video") && v.play():
+	case (kind == "audio" || kind == "video") && v.play():
 		var dims []markdown.Attr
 		if kind == "video" {
 			dims = sz.attrs()
 		}
 		v.element(w, kind, a, []markdown.Attr{{Name: "controls", Value: ""}, {Name: "preload", Value: "none"},
 			{Name: "aria-label", Value: text}}, dims, "</"+kind+">")
-		return
-	}
-	cls := strings.Join(slices.Concat(class, []string{"nw-asset"}), " ")
-	if !ok || inLink {
-		_, _ = w.WriteString(`<span class="` + cls + `">`)
+	default:
+		_, _ = w.WriteString(`<a class="` + cls + `"`)
+		markdown.WriteAttrs(w, linkAttrs(a))
+		_ = w.WriteByte('>')
 		escaped(w, []byte(text))
-		_, _ = w.WriteString("</span>")
-		return
+		_, _ = w.WriteString("</a>")
 	}
-	_, _ = w.WriteString(`<a class="` + cls + `"`)
-	markdown.WriteAttrs(w, v.assetLink(id))
-	_ = w.WriteByte('>')
-	escaped(w, []byte(text))
-	_, _ = w.WriteString("</a>")
 }
 
 // element writes the element of an attachment's image, audio or video, its
@@ -113,10 +141,10 @@ func (v view) element(w markdown.Writer, element string, a Asset, attrs, dims []
 // play tells whether the view may write one more audio or video element,
 // counting it if so.
 func (v view) play() bool {
-	if v.played == nil || *v.played >= MaxMedia {
+	if v.shown == nil || v.shown.played >= MaxMedia {
 		return false
 	}
-	*v.played++
+	v.shown.played++
 	return true
 }
 

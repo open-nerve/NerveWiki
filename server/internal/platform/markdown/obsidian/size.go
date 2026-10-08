@@ -23,9 +23,9 @@ type size struct {
 // Obsidian 1.12.7 does (M7/P3 design 5.5): when what follows its last '|',
 // or the whole of it, has a size's shape, that is the size and what comes
 // before the '|' its caption; else it is all caption ("300x" and "x200"
-// are captions). A number outside 1–10,000 is not given, though the shape
-// is still a size's (nerve-defined: Obsidian writes 0 and 20000 as they
-// are).
+// are captions). The caption is without the spaces and tabs around it. A
+// number outside 1–10,000 is not given, though the shape is still a
+// size's (nerve-defined: Obsidian writes 0 and 20000 as they are).
 func sized(s string) (string, size) {
 	caption, last := "", s
 	if k := strings.LastIndexByte(s, '|'); k >= 0 {
@@ -33,7 +33,7 @@ func sized(s string) (string, size) {
 	}
 	m := sizeShape.FindStringSubmatch(strings.Trim(last, " \t"))
 	if m == nil {
-		return s, size{}
+		return strings.Trim(s, " \t"), size{}
 	}
 	return strings.Trim(caption, " \t"), size{width: side(m[1]), height: side(m[2])}
 }

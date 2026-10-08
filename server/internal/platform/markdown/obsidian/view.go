@@ -16,15 +16,21 @@ import (
 // view is where the links of a page lead, as Fetch found for its reading
 // view (M6/P3 design 6.4): by where each link's target starts, the link,
 // and the node it resolves to; what the attachments among them show
-// (M7/P3 design 5.3), and when the earliest of their addresses expires;
-// and how many audio and video elements the view has written, which its
-// copies share.
+// (M7/P3 design 5.3); and what its rendering has written of them, which
+// its copies share.
 type view struct {
-	links   map[int]Link
-	to      map[int]Target
-	assets  map[uuid.UUID]Asset
-	expires time.Time
-	played  *int
+	links  map[int]Link
+	to     map[int]Target
+	assets map[uuid.UUID]Asset
+	shown  *shown
+}
+
+// shown is what a rendering has written of the attachments: how many
+// addresses, how many audio and video elements, and when the earliest of
+// the addresses written expires, zero for none.
+type shown struct {
+	addresses, played int
+	expires           time.Time
 }
 
 // fetch is the view of the page's links, the extracted ones, from Resolve,
@@ -33,7 +39,7 @@ type view struct {
 // for one whose links lead to none, or without Assets.
 func (o Options) fetch(ctx context.Context, page markdown.Page, extracted any) (any, error) {
 	ex, _ := extracted.(Extracted)
-	v := view{links: make(map[int]Link, len(ex.Links)), played: new(int)}
+	v := view{links: make(map[int]Link, len(ex.Links)), shown: &shown{}}
 	for _, l := range ex.Links {
 		v.links[l.Range.Start] = l
 	}
@@ -59,11 +65,6 @@ func (o Options) fetch(ctx context.Context, page markdown.Page, extracted any) (
 	if v.assets, err = o.Assets(ctx, page.NotebookID, ids); err != nil {
 		return nil, err
 	}
-	for _, a := range v.assets {
-		if v.expires.IsZero() || a.Expires.Before(v.expires) {
-			v.expires = a.Expires
-		}
-	}
 	return v, nil
 }
 
@@ -77,10 +78,10 @@ func (v view) target(start int) (Target, bool) {
 // lead is the attributes of a link to target#anchor whose target starts at
 // start, and the class that tells where it leads (M6/P3 design 6.2; M7/P3
 // design 5.5): to a page, the page and the heading its anchor leads to,
-// and none; to an attachment, its content's address, its id and its size,
-// and nw-asset, the class alone for one Assets did not answer, which is
-// text; to none, its target, and nw-unresolved. An attachment is never a
-// page's data-nw-node.
+// and none; to an attachment, its content's address and its size, and
+// nw-asset, the class alone for one the view writes no address of, which
+// is text; to none, its target, and nw-unresolved. An attachment is never
+// a page's data-nw-node. Each call writes what it answers.
 func (v view) lead(start int, target, anchor string) ([]markdown.Attr, string) {
 	t, ok := v.target(start)
 	switch {

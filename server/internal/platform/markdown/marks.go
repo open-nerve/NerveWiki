@@ -5,6 +5,7 @@ import (
 	"io"
 	"regexp"
 	"strconv"
+	"strings"
 
 	"github.com/yuin/goldmark/ast"
 	east "github.com/yuin/goldmark/extension/ast"
@@ -31,6 +32,11 @@ var (
 // has its own.
 type marks struct {
 	links int // the links being rendered around the node
+	// opened tells, of each Markdown link being rendered around the node,
+	// innermost last, whether it was written as an <a>: what an
+	// extension's Links gives it is asked once, as it may count what it
+	// writes.
+	opened []bool
 	// destinations is where the parse found the destinations written,
 	// written the extensions' Links and images their Images, in their
 	// order.
@@ -69,14 +75,16 @@ type Writer interface {
 
 // WriteAttrs writes attrs as an extension's renderer writes the attributes
 // it gives an element: each value escaped, an address (href, src) through
-// SafeURL, and left out when it is not let through, as is a name that is
-// not lower-case letters, digits and '-' (P3B review L2).
+// SafeURL, a src a path of this site from its root, which loads nothing
+// from elsewhere (SafeURL lets no //host through; M7/P3 review B2), and
+// left out when it is not let through, as is a name that is not
+// lower-case letters, digits and '-' (P3B review L2).
 func WriteAttrs(w Writer, attrs []Attr) {
 	for _, a := range attrs {
 		value := a.Value
 		if a.Name == "href" || a.Name == "src" {
 			var ok bool
-			if value, ok = SafeURL(value); !ok {
+			if value, ok = SafeURL(value); !ok || a.Name == "src" && !strings.HasPrefix(value, "/") {
 				continue
 			}
 		}
@@ -109,22 +117,24 @@ func (m *marks) RegisterFuncs(reg renderer.NodeRendererFuncRegisterer) {
 // check).
 func (m *marks) link(w util.BufWriter, _ []byte, node ast.Node, entering bool) (ast.WalkStatus, error) {
 	n := node.(*ast.Link)
-	if entering {
-		m.links++
-	} else {
+	if !entering {
 		m.links--
+		last := len(m.opened) - 1
+		if m.opened[last] {
+			_, _ = w.WriteString("</a>")
+		}
+		m.opened = m.opened[:last]
+		return ast.WalkContinue, nil
 	}
+	m.links++
 	attrs, known := m.known(n)
 	href, ok := "", false
 	if !known {
 		href, ok = address(n.Destination)
 	}
+	m.opened = append(m.opened, known || ok)
 	if !known && !ok {
 		return ast.WalkContinue, nil // the text alone
-	}
-	if !entering {
-		_, _ = w.WriteString("</a>")
-		return ast.WalkContinue, nil
 	}
 	if known {
 		_, _ = w.WriteString("<a")

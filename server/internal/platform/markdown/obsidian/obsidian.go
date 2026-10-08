@@ -80,8 +80,10 @@ func Extension(o Options) markdown.Extension {
 			return v.image
 		},
 		Expires: func(data any) time.Time {
-			v, _ := data.(view)
-			return v.expires
+			if v, ok := data.(view); ok && v.shown != nil {
+				return v.shown.expires
+			}
+			return time.Time{}
 		},
 		Renderer: func(data any) []util.PrioritizedValue {
 			v, _ := data.(view)

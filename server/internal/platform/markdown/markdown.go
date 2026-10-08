@@ -52,7 +52,8 @@ type Extension struct {
 	Fetch func(ctx context.Context, page Page, extracted any) (any, error)
 	// Links is, given what Fetch got, how the Markdown links and images
 	// the extension knows are written (M6: a link to a page of the
-	// notebook, whose address the front end gives): by where a link's or
+	// notebook, whose address the front end gives; M7: a link to an
+	// attachment, at its signed address): by where a link's or
 	// an image's destination starts in the content (Tree.Destination), the
 	// attributes its <a> carries in place of its address, an image's inner
 	// one too, and true; false leaves the address. Of the extensions that
@@ -67,8 +68,8 @@ type Extension struct {
 	// taken. It may be nil.
 	Images func(data any) func(start int) (Image, bool)
 	// Expires is, given what Fetch got, when what the extension wrote
-	// stops being valid (M7: the attachments' signed addresses); zero for
-	// never. It may be nil.
+	// stops being valid (M7: the attachments' signed addresses), asked once
+	// the view is written; zero for never. It may be nil.
 	Expires func(data any) time.Time
 	// Renderer is goldmark's node renderers of the extension, given what
 	// Fetch got. Its addresses must go through SafeURL (WriteAttrs), and a

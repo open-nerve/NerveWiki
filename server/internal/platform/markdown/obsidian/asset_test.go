@@ -3,6 +3,7 @@ package obsidian_test
 import (
 	"context"
 	"errors"
+	"path"
 	"slices"
 	"strconv"
 	"strings"
@@ -27,7 +28,7 @@ type attachment struct {
 var expiry = time.Date(2026, 10, 9, 14, 0, 0, 0, time.UTC) //nolint:gochecknoglobals // read only
 
 // attachments are the attachments the tests know, by name: a link whose
-// target is one of the names resolves to it.
+// target is one of the names, in any folder, resolves to it.
 //
 //nolint:gochecknoglobals // read only
 var attachments = map[string]attachment{
@@ -46,11 +47,11 @@ func contentURL(id uuid.UUID) string {
 }
 
 // resolveAttachments resolves the links to the pages known has and to the
-// attachments attachments has.
+// attachments attachments has, in any folder.
 func resolveAttachments(ctx context.Context, p markdown.Page, links []obsidian.Link) (map[int]obsidian.Target, error) {
 	to, _ := resolveKnown(ctx, p, links)
 	for _, l := range links {
-		if a, ok := attachments[l.Target]; ok {
+		if a, ok := attachments[path.Base(l.Target)]; ok && l.Target != "" {
 			to[l.Range.Start] = obsidian.Target{Node: a.id, Asset: true}
 		}
 	}
@@ -120,6 +121,13 @@ func TestAnAttachmentIsItsImageAudioVideoOrALink(t *testing.T) {
 		{"a width and a height", "![[x.png|300x200]]", p(img("x.png", "x.png", ` width="300" height="200"`))},
 		{"a caption", "![[x.png|说明]]", p(img("x.png", "说明", ""))},
 		{"a caption and a width", "![[x.png|说明|300]]", p(img("x.png", "说明", ` width="300"`))},
+		{
+			"captions without the spaces around them", "![[x.png| 说明 | 300]] ![[x.png|\t说明 ]] ![ 说明 ](x.png) ![ 说明 |300](x.png)",
+			p(img("x.png", "说明", ` width="300"`) + " " + img("x.png", "说明", "") + " " + img("x.png", "说明", "") + " " +
+				img("x.png", "说明", ` width="300"`)),
+		},
+		{"a blank caption, the target", "![[x.png| ]] ![ ](a.mp3) ![ |300](x.png)", p(img("x.png", "x.png", "") + " " + audio("a.mp3", "a.mp3") + " " + img("x.png", "x.png", ` width="300"`))},
+		{"in a folder", "![[A/x.png]] ![](A/x.png)", p(img("x.png", "A/x.png", "") + " " + img("x.png", "A/x.png", ""))},
 		{"captions of '|' and a size", "![[x.png|a|b | 300x200 ]]", p(img("x.png", "a|b", ` width="300" height="200"`))},
 		{"half a size, a caption", "![[x.png|300x]] ![[x.png|x200]]", p(img("x.png", "300x", "") + " " + img("x.png", "x200", ""))},
 		{
@@ -199,7 +207,18 @@ func TestAViewPlaysAtMostMaxMedia(t *testing.T) {
 	if played != obsidian.MaxMedia || links != 2 || strings.Count(view.HTML, "<img ") != obsidian.MaxMedia/2+1 {
 		t.Errorf("%d played, %d links, %d images:\n%s", played, links, strings.Count(view.HTML, "<img "), view.HTML)
 	}
-	// The second rendering of a parse counts afresh.
+	// The last are the links.
+	if first := strings.Index(view.HTML, ` href="`); strings.LastIndex(view.HTML, "<audio ") > first || strings.LastIndex(view.HTML, "<video ") > first {
+		t.Errorf("an element after a link:\n%s", view.HTML)
+	}
+	// In a link, an audio or a video is text, not counted (M7/P3 review T1).
+	inLinks := "[" + strings.Repeat("![[a.mp3]] ![](v.webm) ", obsidian.MaxMedia) + "](https://x.example) ![[a.mp3]] ![](v.webm)"
+	linked, err := m.Render(context.Background(), m.Parse([]byte(inLinks)), markdown.Page{})
+	if err != nil || !strings.HasSuffix(linked.HTML, "</a> "+audio("a.mp3", "a.mp3")+" "+video("v.webm", "v.webm", "")+"</p>\n") ||
+		strings.Count(linked.HTML, "<audio ")+strings.Count(linked.HTML, "<video ") != 2 || strings.Count(linked.HTML, "nw-asset") != 2*obsidian.MaxMedia+2 {
+		t.Errorf("media in a link: %v\n%s", err, linked.HTML)
+	}
+	// Another rendering counts afresh.
 	again, err := m.Render(context.Background(), m.Parse([]byte(src.String())), markdown.Page{})
 	if err != nil || again.HTML != view.HTML {
 		t.Errorf("rendered again: %v\n%s", err, again.HTML)
@@ -209,7 +228,8 @@ func TestAViewPlaysAtMostMaxMedia(t *testing.T) {
 // Fetch asks Assets once, for the page's notebook, of the attachments the
 // links lead to, each once, in the content's order, and of none for a page
 // whose links lead to none; Assets' error is Render's. The view expires at
-// the earliest of the answered addresses.
+// the earliest of the addresses it writes: one it does not write, of an
+// attachment in a link or a comment, does not count (M7/P3 review A1).
 func TestFetchAsksAssetsOfTheAttachmentsTheLinksLeadTo(t *testing.T) {
 	var asked [][]uuid.UUID
 	var notebooks []uuid.UUID
@@ -239,9 +259,17 @@ func TestFetchAsksAssetsOfTheAttachmentsTheLinksLeadTo(t *testing.T) {
 	if !view.Expires.Equal(early) {
 		t.Errorf("Expires = %v, want %v", view.Expires, early)
 	}
-	asked = nil
-	if view, err := m.Render(context.Background(), m.Parse([]byte("[[Page]] [[none]]")), page); err != nil || asked != nil || !view.Expires.IsZero() {
-		t.Errorf("no attachments: asked %v, %v, expires %v", asked, err, view.Expires)
+	for src, want := range map[string]time.Time{
+		"[![](a.mp3)](https://x.example) ![[x.png]]": expiry,
+		"[![](a.mp3)](https://x.example)":            {},
+		"%%![[a.mp3]]%% ![[x.png]]":                  expiry,
+		"[[Page]] [[none]]":                          {},
+	} {
+		asked = nil
+		view, err := m.Render(context.Background(), m.Parse([]byte(src)), page)
+		if err != nil || (asked == nil) != strings.HasPrefix(src, "[[Page") || !view.Expires.Equal(want) {
+			t.Errorf("%s: asked %v, %v, expires %v, want %v", src, asked, err, view.Expires, want)
+		}
 	}
 	fail = true
 	if _, err := m.Render(context.Background(), m.Parse([]byte("![[x.png]]")), page); !errors.Is(err, down) {
@@ -268,5 +296,23 @@ func TestWithoutAssetsAnAttachmentIsText(t *testing.T) {
 	}
 	if err := markdowntest.CheckHTML(view.HTML, tasks.Extension(), obsidian.Extension(obsidian.Options{})); err != nil {
 		t.Error(err)
+	}
+}
+
+// A view writes at most MaxShown addresses of attachments, in the
+// content's order, images', audios', videos' and links' alike, a link's
+// once; one past them is text (M7/P3 review B1), and the view expires as
+// those written do.
+func TestAViewWritesAtMostMaxShownAddresses(t *testing.T) {
+	m := withAttachments(t)
+	src := strings.Repeat("![[x.png]] ", obsidian.MaxShown-3) + "[t](doc.pdf) [[doc.pdf]] ![](a.mp3) ![[x.png|i]] [u](doc.pdf) ![](v.webm)"
+	view, err := m.Render(context.Background(), m.Parse([]byte(src)), markdown.Page{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `<a class="nw-asset" ` + assetLink("doc.pdf") + `>t</a> <a class="nw-wikilink nw-asset" ` + assetLink("doc.pdf") + `>doc.pdf</a> ` +
+		audio("a.mp3", "a.mp3") + ` <span class="nw-wikilink nw-embed nw-asset">i</span> <a class="nw-asset">u</a> <span class="nw-asset">v.webm</span></p>` + "\n"
+	if !strings.HasSuffix(view.HTML, want) || strings.Count(view.HTML, "/api/v0/assets/") != obsidian.MaxShown || !view.Expires.Equal(expiry) {
+		t.Errorf("%d addresses, expires %v, ends %q", strings.Count(view.HTML, "/api/v0/assets/"), view.Expires, view.HTML[len(view.HTML)-600:])
 	}
 }

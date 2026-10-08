@@ -57,7 +57,8 @@ var void = []string{"area", "base", "br", "col", "embed", "hr", "img", "input", 
 // (overall design 4.3); every id starts with "nw-"; every class is the renderers' or the
 // extensions'; each end tag closes the innermost element open, and none is
 // left open, so a user's HTML stays inside where it was written; and no
-// link is in a link, which a browser would take apart. It reads
+// link or control (audio, video) is in a link, which a browser would take
+// apart or the link would take the clicks of. It reads
 // tokens, not a tree: the tree builder refuses more than 512 elements open,
 // which a user's nested tags reach, and a check of the tags needs no tree.
 func CheckHTML(s string, exts ...markdown.Extension) error {
@@ -99,6 +100,9 @@ func CheckHTML(s string, exts ...markdown.Extension) error {
 			}
 			if tt == html.StartTagToken && t.Data == "a" && slices.Contains(open, "a") {
 				errs = append(errs, errors.New("a link in a link"))
+			}
+			if tt == html.StartTagToken && (t.Data == "audio" || t.Data == "video") && slices.Contains(open, "a") {
+				errs = append(errs, fmt.Errorf("a control <%s> in a link", t.Data))
 			}
 			var err error
 			if open, err = nest(open, tt, t.Data); err != nil {
@@ -189,6 +193,10 @@ func aPathHere(addr string) bool {
 // each '&' as five bytes, so references up to 10 times internal/harden's
 // MinExpansion; the aliases' scalars up to 5 times their budget, and
 // 10 000 nodes of about 40 bytes of table each. Headroom keeps twice that.
+// An attachment's markup and signed address, up to some 67 times their
+// bytes in a wide table, are written at most obsidian.MaxShown times, some
+// 390 KB more than their text, which a quarter of Headroom keeps (M7/P3
+// review B1).
 const (
 	Amplification = 64
 	Headroom      = 4 << 20
