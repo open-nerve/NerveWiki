@@ -180,6 +180,8 @@ func TestContentReadsItsAddressStrictly(t *testing.T) {
 		{"in another order", "", "e=" + q["e"] + "&b=" + q["b"] + "&s=" + q["s"]},
 		{"other keys, the values in place", "", "x=" + q["b"] + "&y=" + q["e"] + "&z=" + q["s"]},
 		{"the keys swapped, the values in place", "", "e=" + q["b"] + "&b=" + q["e"] + "&s=" + q["s"]},
+		{"d twice", "", downloadQuery + "&d=1"},
+		{"a member after d", "", downloadQuery + "&x=1"},
 		{"another key for d", "", "b=" + q["b"] + "&e=" + q["e"] + "&s=" + ds + "&x=1"},
 		{"d before s", "", "b=" + q["b"] + "&e=" + q["e"] + "&d=1&s=" + ds},
 		{"the path's id in upper case", strings.ToUpper(n.ID.String()), query},
