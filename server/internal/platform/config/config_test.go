@@ -58,6 +58,8 @@ func TestLogValueMasksDatabaseURL(t *testing.T) {
 		"config.jobs.shutdown_timeout=10s",
 		"config.jobs.purge_interval=1h0m0s",
 		"config.jobs.purge_retention=1440h0m0s",
+		"config.storage.dir=data",
+		"config.storage.min_free_bytes=1073741824",
 		"config.log.level=info",
 		"config.log.format=json",
 	} {

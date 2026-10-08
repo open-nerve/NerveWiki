@@ -49,8 +49,8 @@
 
 总体设计 12.5 的通用标准之外：
 
-1. **存储端口**：本地实现过端口的契约测试（写入的原子性、半途失败不留可见的文件、按键读、`ReaderAt`、删除不存在的键算成功、按前缀与时间列出）；附件目录不可写时 `serve` 拒绝启动，错误里写明 uid 与目录。
-2. **流式路由**：慢而达到最低速率的上传能完成，停住的连接在 `server.read_timeout` 之内断开，限速下的大文件下载能写完，停机开始时取消；中间件的次序与按路由的桶各有测试，反过来的次序有测试失败；签名的下载不消耗匿名请求的桶。
+1. **存储端口**：本地实现过端口的契约测试（写入的原子性、半途失败不留可见的文件、按键读、`ReaderAt`、删除不存在的键算成功、按区与时间列出）；附件目录不可写时 `serve` 拒绝启动，错误里写明 uid 与目录。
+2. **流式路由**：慢而达到最低速率的上传能完成，停住的连接在 `server.read_timeout` 加已读字节按最低速率应得的时间之内断开，限速下的大文件下载能写完，停机开始时取消；中间件的次序与按路由的桶各有测试，反过来的次序有测试失败；签名的下载不消耗匿名请求的桶。
 3. **上传与下载**：
    - 上传流式写入、边写边算 SHA-256，超过上限即中止并答 413；预检的每个码在读文件之前答出（handler 测试）；
    - 签名地址的伪造、过期、改动任何一个参数、多出或重复的参数都答 404；同一小时里签出的地址相同；密钥由已知答案的测试钉住；
@@ -97,7 +97,7 @@
       Create(ctx context.Context, key string) (Writer, error) // 写到临时文件；Commit 才可见
       Open(ctx context.Context, key string) (File, error)     // io.ReadSeekCloser、io.ReaderAt、Size、ModTime
       Delete(ctx context.Context, key string) error           // 不存在算成功
-      List(ctx context.Context, prefix string, before time.Time, each func(key string) error) error
+      List(ctx context.Context, area string, before time.Time, each func(key string) error) error
       Free(ctx context.Context) (int64, error)                // 剩余的字节数
   }
   type Writer interface { io.Writer; Commit() error; Abort() error }
@@ -105,7 +105,7 @@
 
   - 键由调用方给：`blobs/<blob id>`、`exports/<job id>.zip`、`imports/<job id>.zip`。本地实现按名的哈希散开目录（`blobs/3f/a2/<id>`；UUIDv7 的前段是时间，按它散开，一段时间的文件都在一个目录里）。
   - 写入：在这个区自己的 `.tmp/` 里建临时文件，`Commit` 时 `fsync`、`rename` 到位、`fsync` 目录（新建的分片目录同样）；`Abort` 删掉临时文件。读者只看得到完整的文件；`rename` 总在一个区之内，不会跨文件系统。
-  - 启动检查：根目录不存在就建；写一个探测文件再删掉，不可写时返回带 uid 的错误，`serve` 拒绝启动（M0/P6 的移交）；然后删掉各区残留的临时文件（只有进程中途被杀才会留下）。
+  - 启动检查：根目录不存在就建；写一个探测文件再删掉，不可写时返回带 uid 的错误，`serve` 拒绝启动（M0/P6 的移交）；已有的区先删掉残留的临时文件（只有进程中途被杀才会留下），再同样探测（在它的 `.tmp/` 里）；根下残留的探测文件也删掉。磁盘写满不算不可写：照常启动，写入答 507（P1 修复核对第二轮 L1）。
   - 磁盘余量：写入之前看 `Free`，低于 `storage.min_free_bytes`（默认 1 GiB）时答 507 `storage_full`（新的平台码，6.1）；写到一半写满同样。
   - 契约测试放在 `platform/storage/storagetest`（加进 archtest 的 `testHelpersOnlyInTests`），本地实现与以后的实现都跑它。
 
@@ -128,11 +128,11 @@
 
 - **`API.Stream(h, StreamPolicy)`**（照 `API.LongLived`，模块不重写这些部件）：
   - 次序：请求信息 → 在 `request_timeout` 之内的失败闸门与认证（公开的操作不认证）→ 路由的限流桶 → 请求体上限 → 处理器。
-  - `StreamPolicy`：`MaxBytes`（请求体上限）、`MinRate`（最低速率）、`Bucket`（这条路由用的桶，取代 `anonymous` 或 `authenticated`）、`Public`。
-  - 读：连接的读截止时间每读 64 KiB 重设为"开始时刻 + `read_timeout` + 已读字节 / `MinRate`"：平均速率达不到最低速率就断开，不发正文的连接在原来的 `read_timeout` 断开。
-  - 写：上传的写截止时间放宽到读完之后再加 `request_timeout`；下载的写截止时间由处理器经平台设为"现在 + `read_timeout` + 字节数 / `MinRate`"。
+  - `StreamPolicy`：`MaxBytes`（请求体上限）、`MinRate`（最低速率）、`Bucket`（这条路由用的桶，取代 `anonymous` 或 `authenticated`）与它在日志里的名字 `BucketName`；公开与否照模块的 `PublicOperations()`。
+  - 读：连接的读截止时间每读 64 KiB（`MinRate` 低到 64 KiB 要超过半个 `read_timeout` 时取更小的一步）重设为"开始时刻 + `read_timeout` + 已读字节 / `MinRate`"：平均速率达不到最低速率就断开，不发正文的连接在原来的 `read_timeout` 断开。没有请求体的请求（下载）不设读截止时间：net/http 从一开始就在后台读连接，截止时间一到会取消处理器的上下文（P1 审查 A-H1）。
+  - 写：写截止时间是"读截止时间 + (`write_timeout` − `read_timeout`)"，跟着读截止时间放宽：上传读完之后还有 `request_timeout` 写入、答复；下载的写截止时间由处理器经平台设为"现在 + `read_timeout` + 字节数 / `MinRate`"（`Sending`）。
   - 期限：读完请求体之后的一步（写入单元）在一个新的 `request_timeout` 期限里运行。
-  - 停机：开始停机时取消处理器的上下文（同 `LongLived`），上传中止、临时文件删掉，下载断开。
+  - 停机：开始停机时切断还在传字节的流（请求体没读完的上传、已经 `Sending` 的下载）：截止时间立刻到期、处理器的上下文取消，上传中止、临时文件删掉，下载断开。读完请求体之后的一步照普通请求在 `shutdown_timeout` 之内做完并答复，不在 `COMMIT` 上被取消（P1 审查 A-M2）；这时的 `Sending` 答错误。
 - **按路由的桶**：签名的下载用 `ratelimit.asset_content`（按 IP），不消耗 `anonymous`（登录、续期、注册共用它，一页几百张图会让同一出口的同事续期失败、被登出）。上传用 `authenticated`。
 - **契约**：这些操作照样写在接口描述里（`/api/` 下的路由都必须是描述里的操作，`TestAPIRoutesAreTheContractsOperations`），标 `x-raw: true`；代码生成按操作排除它们（oapi-codegen 的 `exclude-operation-ids`，由脚本从 `x-raw` 取出，有测试）；契约测试按描述核对它们的状态、头与媒体类型（下载写 `*/*` 与 206、304、416）。TS 的客户端照常生成，前端经同一个客户端调用（4.8）。
 - **交叉规则**（`validate`）：`asset.upload_min_rate > 0`，`asset.max_bytes / asset.upload_min_rate` 有上限（默认约 13 分钟）。
@@ -141,7 +141,7 @@
 ### 4.4 上传
 
 - 接口：`POST /api/v0/notebooks/{notebook_id}/assets`，`multipart/form-data`。字段依次是 `parent_id`（可选，没有就挂在根下）、`name`（可选，没有就用文件部分的文件名）、`file`（最后一个）。未知或重复的字段、多个文件部分、文件之后还有部分答 400；文件之前的部分（含部分的头）不超过 4 KiB。答 201 和附件（4.6 的元数据）。
-- **流式**：用 `mime/multipart.Reader` 逐部分读，不用 `ParseMultipartForm`（它会把大文件落到系统临时目录）。
+- **流式**：用 `mime/multipart.Reader` 逐部分读，不用 `ParseMultipartForm`（它会把大文件落到系统临时目录）。最后一部分之后把请求体读到结尾（`io.Copy(io.Discard, r.Body)`，结束边界之后至多几个字节）：读到结尾之前读截止时间不解除，停机时这个请求也算"还在传"（P1 审查 A 的疑问）。导入同此（4.11）。
 - **次序**：
   1. 认证之后、读文件之前，不加锁的预检（`TreeWrites.Check`，同一判定与守卫的不加锁预检）：笔记本可写、父节点是这个笔记本里活着的页面、名称合法且此刻没被占用、磁盘余量。不通过就答 403、404、409、422、507。注意：处理器不读完请求体就答复时，net/http 至多再读约 256 KB 就关连接，浏览器与反向代理后面的客户端常常只看到连接被重置；所以网页在发送之前自己先查（4.8），这些码的测试在 handler 层。
   2. 把文件流进 `Store.Create("blobs/<新 blob id>")`：边写边算 SHA-256，记下前 512 字节测定类型；超过 `asset.max_bytes`（默认 50 MiB）即中止，答 413 `payload_too_large`（平台码，不另设 `asset.too_large`）。
@@ -176,6 +176,7 @@
   - `d=1` 时一律 `attachment`。文件名按 RFC 6266 写 `filename*=UTF-8''…`，另带一个 ASCII 的 `filename` 兜底。
   - 签名核对通过之后才设 `Cache-Control: private, max-age=<到期前的秒数>, immutable`（覆盖 `/api/` 默认的 `no-store`）、`ETag`（SHA-256）、`Cross-Origin-Resource-Policy: same-origin`。
   - 用 `http.ServeContent` 下发：支持 `Range`（视频拖动）与条件请求；Go 在 412、416 时去掉 `Cache-Control`，照它。
+- **停机**：停机开始之后 `Sending` 答 `httpserver.ErrShuttingDown`，下载不再开始，答 503（码由 P2 定）。
 - **元数据**：`GET /api/v0/assets/{node_id}` 答附件的元数据：节点的字段，加 MIME、字节数、SHA-256、宽高、内联与下载的两个签名地址（`d` 在签名里，所以是两个），P3 起加 `link`（4.7）。
 
 ### 4.6 删除、清理与孤儿文件
@@ -371,7 +372,7 @@ Nerve 的文件里程碑还没开始，只有计划与平台的做法（只读�
 | P | 名称 | 交付 | 验证 |
 |---|---|---|---|
 | P1 | 平台：存储与流式路由 | `platform/storage`（端口、本地实现、契约测试、启动检查、磁盘余量）；`API.Stream`（次序、按速率的截止时间、`Bounded`、停机时取消、路由的桶）；配置 `storage.*`；镜像的 `/data` 卷、`.gitignore`、README 的挂载与反向代理；e2e 的存储目录 | 存储的契约测试与原子性；流式路由的测试（第 3 节第 2 条）与次序的反向对照；`image-smoke` 的不可写检查 |
-| P2 | 附件（服务端） | `x-raw` 的契约规则与代码生成的排除；平台码 `storage_full`；page：`TreeWrites`（`CreateAsset`、预检）、读端口、深度只数页面、附件的名称规则、`NodeKind`；asset 模块：`asset_blobs`、上传、类型测定与宽高、下载与响应头（含 PDF 的实测）、元数据与列表、观察者与笔记本删除、清理器、孤儿清扫、活动；`InstanceInfo` 的上限；前端：页面树只列页面、树的重读经合并；e2e 的 `deletedDaysAgo` 先挪 `asset_blobs`；`image-smoke` 的附件一步 | handler 的表格测试；签名与响应头的表格；整个程序上的删除（三条路径）、清理（含文件已删、结果不明）、活动，组合根交空时失败；交错与权限矩阵；e2e：AS1 的接口版本、AS4、AS5 |
+| P2 | 附件（服务端） | `x-raw` 的契约规则与代码生成的排除；平台码 `storage_full`；asset 的配置与 `ratelimit.asset_content`（test 配置调到用不完）；page：`TreeWrites`（`CreateAsset`、预检）、读端口、深度只数页面、附件的名称规则、`NodeKind`；asset 模块：`asset_blobs`、上传、类型测定与宽高、下载与响应头（含 PDF 的实测）、元数据与列表、观察者与笔记本删除、清理器、孤儿清扫、活动；`InstanceInfo` 的上限；前端：页面树只列页面、树的重读经合并；e2e 的 `deletedDaysAgo` 先挪 `asset_blobs`；`image-smoke` 的附件一步 | 契约测试认 `x-raw`；handler 的表格测试；签名与响应头的表格；整个程序上的删除（三条路径）、清理（含文件已删、结果不明）、活动，组合根交空时失败；交错与权限矩阵；e2e：AS1 的接口版本、AS4、AS5 |
 | P3 | 附件与链接（服务端） | 附件进解析；附件的标记与核心的图片钩子；属性链接；改名、移动的改写；落点、补全；附件的 `link`；`PageView.assets_expire_at`；`checkLinks` | `resolve/`、`rename/` 的附件样例与 Obsidian 1.12.7 核对（真的二进制文件，打开"检测所有类型的文件"）；渲染样例加图片与媒体；索引的性质测试与改写的随机测试加附件；`CheckHTML` 的第三种模式；整个程序上的最后一跳 |
 | P4 | 附件（前端） | 附件面板（页面与笔记本首页）；上传的服务；编辑器的粘贴、拖入上传；文档的拖放保护；阅读视图的 `assets` 增强（新标签页、到期重读、保留媒体）；输入法清单的粘贴一步 | vitest：面板、上传、扩展经组合根到达编辑器、增强；e2e：AS1 的页面版本、AS2、AS3 |
 | P5 | 导出 | `platform/jobs` 的队列与超时、只投递的客户端；`shared.Actor` 的 `JobID`；transfer 模块：`transfer_jobs`、任务的身份、心跳与收拾、数量、文件的清扫；导出（快照、映射、`meta.json`、空页的规则）、导出贡献者、签名的下载、到期清理；前端：导出的对话框、笔记本设置里的任务列表、"导出此页" | 映射的逐项测试；导出的库在 Obsidian 里逐条解析；贡献者的示例测试；收拾与超时；e2e：TR1 |
@@ -408,8 +409,8 @@ Nerve 的文件里程碑还没开始，只有计划与平台的做法（只读�
 
 | Phase | 总体设计的条目 |
 |---|---|
-| P1 | 13.1 第 15 条（存储的配置与交叉规则）、第 20 条（路由自己的桶） |
-| P2 | 13.1 第 1 条（树写入端口）、第 5 条（`asset_blobs` 在 `nodes` 之后）、第 6 条（清理器要存储、先删文件）、第 8 条（名称的字段错误）、第 10 条（asset 的日志）、第 21 条（注册者）、第 25 条（签名地址的密钥）、第 28 条（附件的文件名同样经标题键）；13.4 第 4 条（附件的交错）、第 6 条（权限矩阵的新行） |
+| P1 | 13.1 第 15 条（存储的配置）、第 20 条（路由自己的桶） |
+| P2 | 13.1 第 1 条（树写入端口）、第 15 条（asset 的配置与交叉规则）、第 5 条（`asset_blobs` 在 `nodes` 之后）、第 6 条（清理器要存储、先删文件）、第 8 条（名称的字段错误）、第 10 条（asset 的日志）、第 21 条（注册者）、第 25 条（签名地址的密钥）、第 28 条（附件的文件名同样经标题键）；13.4 第 4 条（附件的交错）、第 6 条（权限矩阵的新行） |
 | P3 | 13.1 第 31 条（一个视图内联的媒体数）；13.3 第 2 条（样例集的附件）、第 4 条（附件的标记）、第 6 条（附件的地址由服务端写） |
 | P4 | 13.2 第 1 条（上传不经 `oneAtATime`）、第 6 条（上传经会话的客户端）、第 23 条（`uploadAsset`、`whenComposed`、`assets` 增强）、第 25 条（媒体与面板的上限） |
 | P5 | 13.1 第 10 条（transfer 的日志）、第 23 条（队列、超时、只投递的客户端、心跳）、第 25 条（导出下载的密钥）；`shared.Actor` 的 `JobID`（13.1 第 2、17 条） |
@@ -447,7 +448,7 @@ Nerve 的文件里程碑还没开始，只有计划与平台的做法（只读�
 ## 9. 测试策略
 
 - **存储**：契约测试（`storagetest`）；本地实现另测原子性（`Commit` 之前不可见、`Abort` 不留文件、进程中途退出不留半个文件）、启动检查（不可写、残留的临时文件）与余量。
-- **流式路由**：慢而达到速率的上传完成、停住的在 `read_timeout` 之内断开、限速下的大文件下载写完、读完之后的期限、停机时取消；次序的反向对照（认证与桶对调等）；签名的下载不消耗 `anonymous`。
+- **流式路由**：慢而达到速率的上传完成、停住的在 `read_timeout` 加已读字节应得的时间之内断开、限速下的大文件下载写完、读完之后的期限、停机时取消；次序的反向对照（认证与桶对调等）；签名的下载不消耗 `anonymous`。
 - **上传与下载**：handler 层的表格测试（字段次序、未知与重复的字段、缺字段、上限、类型测定的容器表、预检的每个码）；签名的伪造、过期、改每一个参数、多出与重复的参数；已知答案的密钥；响应头的表格；`Range` 与条件请求；提交结果不明时文件留着。
 - **整个程序**（总体设计 13.1 第 21 条，组合根交空时失败）：删除子树与笔记本删除的三条路径之后行被软删除；清理先删文件；活动；附件标记的最后一跳；导入经观察者进索引；导出贡献者到达导出。
 - **并发与权限**：4.14 的交错，结束时核对不变式；权限矩阵的新格；运行时角色的测试跑一次导入（`MAINTAIN`）。

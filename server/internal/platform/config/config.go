@@ -28,6 +28,7 @@ type Config struct {
 	Page      PageConfig      `koanf:"page"`
 	Events    EventsConfig    `koanf:"events"`
 	Jobs      JobsConfig      `koanf:"jobs"`
+	Storage   StorageConfig   `koanf:"storage"`
 	Log       LogConfig       `koanf:"log"`
 }
 
@@ -183,6 +184,16 @@ type JobsConfig struct {
 	PurgeRetention time.Duration `koanf:"purge_retention"`
 }
 
+// StorageConfig configures the store of files: the attachments and the
+// import and export archives (M7/P1 design 3.5).
+type StorageConfig struct {
+	// Dir is the store's directory, made when missing; serve refuses to
+	// start when it cannot write there. One nervewiki process uses it.
+	Dir string `koanf:"dir"`
+	// MinFreeBytes is the free space below which writes are refused.
+	MinFreeBytes int64 `koanf:"min_free_bytes"`
+}
+
 // LogConfig configures the process logger.
 type LogConfig struct {
 	Level  string `koanf:"level"`  // debug, info, warn or error
@@ -254,6 +265,10 @@ func (c Config) LogValue() slog.Value {
 			duration("shutdown_timeout", c.Jobs.ShutdownTimeout),
 			duration("purge_interval", c.Jobs.PurgeInterval),
 			duration("purge_retention", c.Jobs.PurgeRetention),
+		),
+		slog.Group("storage",
+			slog.String("dir", c.Storage.Dir),
+			slog.Int64("min_free_bytes", c.Storage.MinFreeBytes),
 		),
 		slog.Group("log",
 			slog.String("level", c.Log.Level),

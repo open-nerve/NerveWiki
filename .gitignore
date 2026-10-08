@@ -28,3 +28,7 @@ e2e/playwright-report/
 e2e/test-results/
 *.test
 *.out
+
+# make run 的附件目录（storage.dir 的默认值，在 server/ 下）
+/server/data/
+/server/_data/

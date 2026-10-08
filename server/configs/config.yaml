@@ -4,7 +4,8 @@
 server:
   addr: ":8080"
   # 连接上的读写都有上限：读请求头、读整个请求（含请求体）、写响应。
-  # 长连接路由（SSE、MCP 流）自己解除写上限，其余路由不要为个别接口调大全局值。
+  # 长连接路由（SSE、MCP 流）自己解除写上限；流式路由（附件与导入导出的上传、下载）的读写上限
+  # 从 read_timeout 起，按已传的字节数以最低速率推后。其余路由不要为个别接口调大全局值。
   # handler 自身的执行时间不受这些上限约束，它里面的阻塞调用要自带期限。
   read_header_timeout: 5s
   read_timeout: 30s
@@ -12,7 +13,7 @@ server:
   # 停机时给正在处理的请求留的时间，到期后强制关闭连接
   shutdown_timeout: 20s
   # 每个接口操作的期限：到期取消请求的 context，数据库调用随之结束。加上 read_timeout 必须短于
-  # write_timeout，期限到了之后还要写出错误响应。长连接路由不受它约束
+  # write_timeout，期限到了之后还要写出错误响应。长连接与流式路由不受它约束（流式路由读写之外的步骤仍受）
   request_timeout: 15s
   # 接口请求体的上限（字节），超出时 413 payload_too_large。页面正文的两个路由（写正文、带正文新建）
   # 另有自己的上限，期限另加 read_timeout，给请求体传完的时间：5 MiB 的正文在 30 秒内传完约需
@@ -101,6 +102,14 @@ jobs:
   purge_interval: 1h
   # 软删除的行保留这么久之后才被物理删除，至少 1 小时。期间运维可以从数据库恢复
   purge_retention: 1440h
+
+storage:
+  # 附件、导入导出的文件所在的目录，不存在就建。不可写时 serve 拒绝启动，错误里写明进程的 uid。
+  # 镜像里是 /data（Dockerfile 的 NWIKI_STORAGE__DIR），挂载为卷；dev 环境是 server/_data（config.dev.yaml）。
+  # 只能由一个 nervewiki 进程使用（v0.1 只支持单实例）
+  dir: data
+  # 剩余空间低于它（字节）时不再接受写入
+  min_free_bytes: 1073741824
 
 log:
   level: info # debug | info | warn | error

@@ -57,10 +57,14 @@ type APIConfig struct {
 	// arrive, server.read_timeout, which the connection's read deadline
 	// enforces: its request deadline is that much longer than
 	// RequestTimeout, so that a slow upload does not eat its handler's time
-	// (M4/P4 review P3).
+	// (M4/P4 review P3). A stream route's deadlines start from it (Stream).
 	BodyReadTimeout time.Duration
-	TrustedProxies  []netip.Prefix // server.trusted_proxies
-	IPv6PrefixLen   int            // ratelimit.ipv6_prefix_len
+	// WriteTimeout is server.write_timeout: a stream route's write deadline
+	// follows its read deadline by WriteTimeout − BodyReadTimeout (Stream).
+	// When set, it must exceed BodyReadTimeout + RequestTimeout.
+	WriteTimeout   time.Duration
+	TrustedProxies []netip.Prefix // server.trusted_proxies
+	IPv6PrefixLen  int            // ratelimit.ipv6_prefix_len
 	// The platform's rate-limit buckets (M1/P2 design 3.2).
 	Anonymous     Limiter // ratelimit.anonymous: public operations, by client IP
 	Authenticated Limiter // ratelimit.authenticated: the rest, by credential
@@ -77,6 +81,7 @@ type API struct {
 	maxBodyBytes    int64
 	bodyLimits      map[string]int64
 	bodyReadTimeout time.Duration
+	writeTimeout    time.Duration
 	requestTimeout  time.Duration
 	timeouts        map[string]time.Duration
 	clients         *clientIPs
@@ -128,6 +133,10 @@ func NewAPI(cfg APIConfig) (*API, error) {
 	if len(cfg.BodyLimits) > 0 && cfg.BodyReadTimeout <= 0 {
 		errs = append(errs, errors.New("BodyReadTimeout must be positive when BodyLimits relaxes a route"))
 	}
+	if cfg.WriteTimeout != 0 && (cfg.BodyReadTimeout <= 0 || cfg.WriteTimeout <= cfg.BodyReadTimeout+cfg.RequestTimeout) {
+		errs = append(errs, fmt.Errorf("WriteTimeout %v must exceed a positive BodyReadTimeout %v and RequestTimeout %v together",
+			cfg.WriteTimeout, cfg.BodyReadTimeout, cfg.RequestTimeout))
+	}
 	if len(errs) > 0 {
 		return nil, fmt.Errorf("httpserver: APIConfig: %w", errors.Join(errs...))
 	}
@@ -143,6 +152,7 @@ func NewAPI(cfg APIConfig) (*API, error) {
 		maxBodyBytes:    cfg.MaxBodyBytes,
 		bodyLimits:      maps.Clone(cfg.BodyLimits),
 		bodyReadTimeout: cfg.BodyReadTimeout,
+		writeTimeout:    cfg.WriteTimeout,
 		requestTimeout:  cfg.RequestTimeout,
 		timeouts:        maps.Clone(cfg.RequestTimeouts),
 		clients:         &clientIPs{logger: cfg.Logger, trusted: cfg.TrustedProxies, v6Prefix: cfg.IPv6PrefixLen},

@@ -189,6 +189,7 @@ func apiConfig(cfg config.Config, logger *slog.Logger, limiter *ratelimit.Limite
 		RequestTimeouts:  timeouts,
 		BodyLimits:       bodies,
 		BodyReadTimeout:  cfg.Server.ReadTimeout,
+		WriteTimeout:     cfg.Server.WriteTimeout,
 		TrustedProxies:   cfg.Server.TrustedProxies,
 		IPv6PrefixLen:    limits.IPv6PrefixLen,
 		Anonymous:        bucket(limiter, "anonymous", limits.Anonymous),

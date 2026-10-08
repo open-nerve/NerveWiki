@@ -31,6 +31,8 @@ ARG VERSION=0.1.0-dev
 RUN CGO_ENABLED=0 go build -trimpath \
     -ldflags "-X github.com/open-nerve/NerveWiki/server/internal/platform/buildinfo.version=${VERSION}" \
     -o /out/nervewiki ./cmd/nervewiki
+# 附件与导入导出的目录（M7/P1 设计 3.5）：distroless 没有 mkdir 与 chown，在这里建好，复制时改属主
+RUN mkdir /out/data
 
 # 运行时：只有二进制（配置、迁移、前端都内嵌在其中）与 CA 证书，没有 shell。
 # 用不带 nonroot 的变体，由这里的 USER 声明非 root 用户：去掉它，image-smoke.sh 就会失败。
@@ -43,6 +45,10 @@ LABEL org.opencontainers.image.title="Nerve Wiki" \
       org.opencontainers.image.source="https://github.com/open-nerve/NerveWiki" \
       org.opencontainers.image.licenses="AGPL-3.0-only"
 COPY --from=server /out/nervewiki /nervewiki
+# 进程要能写的目录，属主是下面的用户。部署时挂载卷或宿主机目录（属主 65532），否则 Docker 建匿名卷，删容器就丢
+COPY --from=server --chown=65532:65532 /out/data /data
+ENV NWIKI_STORAGE__DIR=/data
+VOLUME /data
 USER 65532:65532
 # prod 配置不自动迁移：部署时先 migrate up，再 serve。数据库地址由 NWIKI_DATABASE__URL 提供
 ENV NWIKI_ENV=prod

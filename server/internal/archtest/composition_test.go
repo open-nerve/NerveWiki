@@ -13,10 +13,11 @@ import (
 )
 
 // The command line's compositions, bootstrap.Users, bootstrap.Workspaces,
-// bootstrap.Reindex and those to come, are a pool and the modules'
+// bootstrap.Reindex, the migrations' and those to come, are a pool and the modules'
 // administrator use cases (M1/P4 design 3.8): nothing they call builds a
-// module's HTTP side (a module's New), the HTTP server, a rate limiter or a
-// jobs client. The rule follows the static calls from each; the commands are
+// module's HTTP side (a module's New), the HTTP server, a rate limiter, a
+// jobs client or the store of files, which only serve opens (M7/P1 design
+// 3.5). The rule follows the static calls from each; the commands are
 // func values it calls dynamically, so they are not followed: they only
 // receive the composition. Reaching the module's NewAdmin shows the walk
 // sees the composition at all. The registrants come from one place for serve
@@ -51,6 +52,9 @@ func TestCommandsComposeNoServerAndNoJobs(t *testing.T) {
 		{"Users", append([]string{m("internal/modules/identity") + ".NewAdmin"}, registrants...)},
 		{"Workspaces", []string{m("internal/modules/workspace") + ".NewAdmin", m("internal/bootstrap") + ".workspaceRegistrants"}},
 		{"Reindex", []string{m("internal/modules/linking") + ".NewAdmin", m("internal/bootstrap") + ".markdownExtensions"}},
+		{"MigrateUp", []string{m("internal/platform/postgres") + ".NewMigrator"}},
+		{"MigrateDown", []string{m("internal/platform/postgres") + ".NewMigrator"}},
+		{"MigrateStatus", []string{m("internal/platform/postgres") + ".NewMigrator"}},
 	} {
 		root := bootstrap.Func(c.root)
 		if root == nil {
@@ -72,7 +76,8 @@ func TestCommandsComposeNoServerAndNoJobs(t *testing.T) {
 		t.Fatal("bootstrap.newApp not found")
 	}
 	reached, _ := walkCalls(graph, serve, func(*ssa.Function) bool { return false })
-	assertReaches(t, "bootstrap.newApp", reached, append(registrants, m("internal/bootstrap")+".markdownExtensions")...)
+	assertReaches(t, "bootstrap.newApp", reached,
+		append(registrants, m("internal/bootstrap")+".markdownExtensions", m("internal/platform/storage")+".OpenLocal")...)
 }
 
 // assertReaches fails unless reached holds a chain to each of want. Not
@@ -93,7 +98,8 @@ func assertReaches(t *testing.T, root string, reached [][]*ssa.Function, want ..
 // composesMore reports whether f builds what the command line must not: a
 // module's HTTP side (New in a module's root package: identity.New,
 // instance.New and those to come), the HTTP server (platform/httpserver), a
-// rate limiter or a jobs client (platform/jobs, River).
+// rate limiter, a jobs client (platform/jobs, River) or the file store
+// (platform/storage).
 func composesMore(f *ssa.Function) bool {
 	if f.Pkg == nil {
 		return false
@@ -104,6 +110,7 @@ func composesMore(f *ssa.Function) bool {
 	}
 	return slices.ContainsFunc([]string{
 		m("internal/platform/httpserver"), m("internal/platform/ratelimit"), m("internal/platform/jobs"), "github.com/riverqueue/river",
+		m("internal/platform/storage"),
 	}, func(dir string) bool { return within(path, dir) })
 }
 

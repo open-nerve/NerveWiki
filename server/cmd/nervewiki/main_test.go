@@ -116,6 +116,7 @@ func TestServeUntilCancelled(t *testing.T) {
 		"NWIKI_DATABASE__URL=" + pgtest.NewEmptyDatabase(t),
 		"NWIKI_SERVER__ADDR=127.0.0.1:0",
 		"NWIKI_SERVER__ADDR_FILE=" + addrFile,
+		"NWIKI_STORAGE__DIR=" + t.TempDir(),
 		"NWIKI_LOG__LEVEL=info",
 	}
 	ctx, cancel := context.WithCancel(context.Background())
