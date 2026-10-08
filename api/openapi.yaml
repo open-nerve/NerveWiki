@@ -133,6 +133,10 @@ paths:
     $ref: "modules/events.yaml#/paths/~1api~1v0~1events"
   /api/v0/notebooks/{notebook_id}/assets:
     $ref: "modules/asset.yaml#/paths/~1api~1v0~1notebooks~1{notebook_id}~1assets"
+  /api/v0/assets/{node_id}:
+    $ref: "modules/asset.yaml#/paths/~1api~1v0~1assets~1{node_id}"
+  /api/v0/assets/{node_id}/content:
+    $ref: "modules/asset.yaml#/paths/~1api~1v0~1assets~1{node_id}~1content"
 components:
   # 模块文件的 securitySchemes 在打包时被丢掉，操作引用的 scheme 写在这里
   securitySchemes:

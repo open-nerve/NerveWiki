@@ -1,4 +1,4 @@
-# asset 模块的接口：附件的上传（M7/P2）。上传与下载是原样的操作（x-raw）：处理器是模块手写的，逐字节读写，
+# asset 模块的接口：附件的上传、元数据、列表与下载（M7/P2）。上传与下载是原样的操作（x-raw）：处理器是模块手写的，逐字节读写，
 # 不进代码生成（oapi-codegen.yaml 的 exclude-operation-ids）；其余的生成在
 # server/internal/modules/asset/adapter/http/gen（make gen-go）。
 openapi: 3.1.0
@@ -68,6 +68,154 @@ paths:
                 $ref: "#/components/schemas/Asset"
         default:
           $ref: "#/components/responses/Problem"
+    get:
+      operationId: listAssets
+      tags: [asset]
+      summary: List the attachments under a page
+      description: >-
+        The attachments under a page of the notebook, or at its root without
+        parent_id, by name, compared by its key, then id, a page at a time,
+        each with its addresses signed. Any role in the notebook can list
+        them. A cursor the list cannot read is bad_request, before anything
+        else; a notebook that does not exist, is deleted, or that the caller
+        has no role in is notebook.not_found; a parent_id that is no page of
+        the notebook, or a deleted one, is page.not_found; a limit outside
+        1–100 is validation_failed.
+      security: [{ bearer: [] }]
+      x-problem-codes: [bad_request, notebook.not_found, page.not_found, validation_failed]
+      parameters:
+        - name: parent_id
+          in: query
+          description: The page whose attachments to list; absent for the notebook's root.
+          schema:
+            type: string
+            format: uuid
+        - $ref: "../common.yaml#/components/parameters/Limit"
+        - $ref: "../common.yaml#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: A page of the attachments.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssetPage"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v0/assets/{node_id}:
+    parameters:
+      - $ref: "#/components/parameters/NodeID"
+    get:
+      operationId: getAsset
+      tags: [asset]
+      summary: Read an attachment
+      description: >-
+        The attachment, its addresses signed. Any role in its notebook can
+        read it. A node that does not exist, is deleted, is no attachment, or
+        whose notebook the caller has no role in is asset.not_found.
+      security: [{ bearer: [] }]
+      x-problem-codes: [asset.not_found]
+      responses:
+        "200":
+          description: The attachment.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Asset"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v0/assets/{node_id}/content:
+    parameters:
+      - $ref: "#/components/parameters/NodeID"
+    get:
+      operationId: getAssetContent
+      tags: [asset]
+      summary: Download an attachment's content
+      description: >-
+        The attachment's file, at the address getAsset, listAssets and
+        uploadAsset sign: anyone who has the address can open it, without a
+        token, until it expires. The query is b, e, s and, to download
+        whatever the type, d=1, each once and as the server writes them;
+        anything else, a signature that does not match, an address expired,
+        and an attachment deleted since are not_found, alike. An image, an
+        audio, a video or a PDF is shown, any other file downloaded, under
+        its name; every answer is sandboxed (Content-Security-Policy), and
+        cached privately until the address expires. Ranges and conditional
+        requests are answered (206, 304, 416). The addresses share a bucket
+        of their own, by client IP (rate_limited). A download still sending
+        when the server shuts down is cut off; one asked for then is
+        server_busy.
+      security: []
+      x-raw: true
+      x-problem-codes: [not_found, rate_limited, server_busy]
+      parameters:
+        - name: b
+          in: query
+          required: true
+          description: The file's id, as the signed address has it.
+          schema:
+            type: string
+        - name: e
+          in: query
+          required: true
+          description: When the address expires, in Unix seconds, as the signed address has it.
+          schema:
+            type: string
+        - name: s
+          in: query
+          required: true
+          description: The address's signature.
+          schema:
+            type: string
+        - name: d
+          in: query
+          description: 1 to download the file whatever its type, as the download address has it.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The file.
+          headers:
+            Content-Disposition:
+              $ref: "#/components/headers/ContentDisposition"
+            ETag:
+              $ref: "#/components/headers/ETag"
+          content:
+            "*/*":
+              schema:
+                type: string
+                format: binary
+        "206":
+          description: The range of the file asked for.
+          headers:
+            Content-Disposition:
+              $ref: "#/components/headers/ContentDisposition"
+            ETag:
+              $ref: "#/components/headers/ETag"
+            Content-Range:
+              description: The range sent, and the file's size.
+              schema:
+                type: string
+          content:
+            "*/*":
+              schema:
+                type: string
+                format: binary
+        "304":
+          description: The file has not changed since the copy the request names.
+        "416":
+          description: No range asked for is in the file; Content-Range tells its size.
+          headers:
+            Content-Range:
+              description: The file's size, as bytes */<size>.
+              schema:
+                type: string
+          content:
+            "*/*":
+              schema:
+                type: string
+                format: binary
+        default:
+          $ref: "#/components/responses/Problem"
 components:
   # 与 api/openapi.yaml 的相同：打包时丢掉模块文件的 securitySchemes，oapi-codegen 读这一份
   securitySchemes:
@@ -83,6 +231,25 @@ components:
       schema:
         type: string
         format: uuid
+    NodeID:
+      name: node_id
+      in: path
+      required: true
+      description: The id of a node of a notebook's tree.
+      schema:
+        type: string
+        format: uuid
+  headers:
+    ContentDisposition:
+      description: >-
+        inline for a file shown, attachment for one downloaded, with its
+        name (RFC 6266: filename in ASCII, filename* in UTF-8).
+      schema:
+        type: string
+    ETag:
+      description: The file's SHA-256, in lower-case hexadecimal, quoted.
+      schema:
+        type: string
   responses:
     Problem:
       description: Error (RFC 9457 problem details).
@@ -108,6 +275,17 @@ components:
           schema:
             $ref: "../common.yaml#/components/schemas/Problem"
   schemas:
+    AssetPage:
+      type: object
+      additionalProperties: false
+      required: [data, next_cursor]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Asset"
+        next_cursor:
+          $ref: "../common.yaml#/components/schemas/NextCursor"
     Asset:
       description: >-
         An attachment: its node in the notebook's tree, its file, and the

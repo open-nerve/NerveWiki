@@ -36,8 +36,11 @@ function codesOf(operationId: string): string[] {
   return [...own, ...everywhere, ...(bearer ? ["unauthorized"] : [])];
 }
 
-/** The operations whose errors no page shows: the token manager answers them itself. */
-const unshown = ["refreshTokens", "logout"];
+/**
+ * The operations whose errors no page shows: the token manager answers them itself; an attachment's content is opened
+ * by the browser at its signed address, never fetched by a page.
+ */
+const unshown = ["refreshTokens", "logout", "getAssetContent"];
 
 const operations = [...spec.matchAll(/^\s+operationId: (\S+)$/gm)].map((match) => match[1] ?? "");
 

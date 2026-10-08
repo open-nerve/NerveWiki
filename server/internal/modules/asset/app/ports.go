@@ -65,6 +65,37 @@ type Rows interface {
 	CreateBlob(ctx context.Context, b domain.Blob) error
 	// BlobOfNode is the row not deleted of the node, or ErrNoRow.
 	BlobOfNode(ctx context.Context, nodeID uuid.UUID) (domain.Blob, error)
+	// BlobsOfNodes are the rows not deleted of the nodes, by node; a node
+	// without one is not among them.
+	BlobsOfNodes(ctx context.Context, nodeIDs []uuid.UUID) (map[uuid.UUID]domain.Blob, error)
+}
+
+// Notebooks is what the module reads of notebooks: bootstrap hands it the
+// notebook module's.
+type Notebooks interface {
+	// WorkspaceOf returns the workspace of the notebook not deleted with
+	// id, unlocked, and whether there is one.
+	WorkspaceOf(ctx context.Context, id uuid.UUID) (uuid.UUID, bool, error)
+}
+
+// Nodes is what the module reads of the notebooks' trees: bootstrap
+// adapts page's AssetNodes to it.
+type Nodes interface {
+	// Node is the node id not deleted, of whatever kind; false for none.
+	Node(ctx context.Context, id uuid.UUID) (Node, bool, error)
+	// Parent reports whether parentID is a page not deleted of notebookID.
+	Parent(ctx context.Context, notebookID, parentID uuid.UUID) (bool, error)
+	// Assets is the attachments not deleted under parentID (nil: the root)
+	// of notebookID, by name key and id, after the cursor's when it is set,
+	// at most limit.
+	Assets(ctx context.Context, notebookID uuid.UUID, parentID *uuid.UUID, after *Cursor, limit int) ([]Node, error)
+}
+
+// Cursor is where a list of attachments goes on: after the node of this
+// name key and id. It is the list cursor's payload.
+type Cursor struct {
+	NameKey string    `json:"k"`
+	ID      uuid.UUID `json:"id"`
 }
 
 // ExpiredRows are the rows the purge deletes: adapter/postgres, in the

@@ -56,6 +56,19 @@ func (s *Store) BlobOfNode(ctx context.Context, nodeID uuid.UUID) (domain.Blob, 
 	return blobOf(r), nil
 }
 
+// BlobsOfNodes implements app.Rows.
+func (s *Store) BlobsOfNodes(ctx context.Context, nodeIDs []uuid.UUID) (map[uuid.UUID]domain.Blob, error) {
+	rows, err := s.queries(ctx).BlobsOfNodes(ctx, nodeIDs)
+	if err != nil {
+		return nil, fmt.Errorf("blobs of nodes: %w", err)
+	}
+	out := make(map[uuid.UUID]domain.Blob, len(rows))
+	for _, r := range rows {
+		out[r.NodeID] = blobOf(gen.BlobOfNodeRow(r))
+	}
+	return out, nil
+}
+
 // side is an image's width or height as its column holds it: NULL for 0,
 // unknown.
 func side(n int) *int32 {

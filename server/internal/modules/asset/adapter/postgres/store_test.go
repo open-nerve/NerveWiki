@@ -59,8 +59,8 @@ func (f fixture) blob(node, notebook uuid.UUID, width, height int) domain.Blob {
 		Width: width, Height: height, CreatedBy: f.alice, CreatedAt: time.Date(2026, 10, 8, 10, 0, 0, 123456000, time.UTC)}
 }
 
-// A row reads back as written, its size or none; a node without a row
-// not deleted has none.
+// A row reads back as written, its size or none, alone or among others; a
+// node without a row not deleted has none.
 func TestBlobRowsRoundTrip(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()
@@ -79,6 +79,10 @@ func TestBlobRowsRoundTrip(t *testing.T) {
 			t.Errorf("BlobOfNode() = %+v, %v; want %+v", got, err, want)
 		}
 	}
+	both, err := store.BlobsOfNodes(ctx, []uuid.UUID{f.photo, f.report, uuid.NewV7()})
+	if err != nil || len(both) != 2 || both[f.photo].ID != photo.ID || both[f.photo].Width != 640 || both[f.report].ID != report.ID {
+		t.Errorf("BlobsOfNodes() = %+v, %v; want photo's and report's rows", both, err)
+	}
 	if _, err := f.pool.Exec(ctx, "UPDATE asset_blobs SET deleted_at = now() WHERE node_id = $1", f.photo); err != nil {
 		t.Fatal(err)
 	}
@@ -86,6 +90,9 @@ func TestBlobRowsRoundTrip(t *testing.T) {
 		if _, err := store.BlobOfNode(ctx, id); !errors.Is(err, app.ErrNoRow) {
 			t.Errorf("BlobOfNode(deleted or none) = %v, want ErrNoRow", err)
 		}
+	}
+	if left, err := store.BlobsOfNodes(ctx, []uuid.UUID{f.photo, f.report}); err != nil || len(left) != 1 || left[f.report].ID != report.ID {
+		t.Errorf("BlobsOfNodes() after photo's deletion = %+v, %v; want report's row", left, err)
 	}
 }
 

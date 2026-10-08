@@ -114,7 +114,7 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrati
 		return nil, err
 	}
 	pg := page.New(pageDeps(cfg, pool, logger, authorizer, md, budget))
-	as := asset.New(assetDeps(cfg, pool, logger, store, pg, keys.Derive(asset.ContentKeyInfo)))
+	as := asset.New(assetDeps(cfg, pool, logger, authorizer, store, pg, keys.Derive(asset.ContentKeyInfo), limiter))
 	ln := linking.New(linkingDeps(pool, authorizer))
 	ev, listener := eventsModule(cfg, pool, logger)
 	runner, err := jobs.New(pool, jobs.Config{ShutdownTimeout: cfg.Jobs.ShutdownTimeout, Logger: logger},
@@ -123,7 +123,7 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrati
 		return nil, err
 	}
 	api, err := httpserver.NewAPI(apiConfig(cfg, logger, limiter, ident.Authenticator(),
-		slices.Concat(ident.PublicOperations(), inst.PublicOperations(), ws.PublicOperations()), ident.RequestTimeouts(),
+		slices.Concat(ident.PublicOperations(), inst.PublicOperations(), ws.PublicOperations(), as.PublicOperations()), ident.RequestTimeouts(),
 		pg.BodyLimits()))
 	if err != nil {
 		return nil, err

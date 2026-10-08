@@ -42,6 +42,7 @@ func matrixExempt() matrixExemptions {
 		},
 		public: map[string]string{
 			"previewWorkspaceInvitation": "the link's token decides, for anyone holding it: no column's role does",
+			"getAssetContent":            "the address's signature decides, for anyone holding it: no column's role does",
 		},
 		byCredential: map[string]string{
 			"acceptWorkspaceInvitation": "the caller is no member yet: the link's token and the caller's address decide (M2 design 9)",

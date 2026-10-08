@@ -64,12 +64,12 @@ func (h upload) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.early(w, r, err)
 		return
 	}
-	req, file, err := form.fields(notebookOf(r), client)
+	req, file, err := form.fields(pathID(r, "notebook_id"), client)
 	if err != nil {
 		h.early(w, r, err)
 		return
 	}
-	if err := h.bounded(r, func(r *http.Request) error { return h.uc.Check(r.Context(), req) }); err != nil {
+	if err := bounded(r, func(r *http.Request) error { return h.uc.Check(r.Context(), req) }); err != nil {
 		h.early(w, r, err)
 		return
 	}
@@ -85,7 +85,7 @@ func (h upload) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var asset app.Asset
-	err = h.bounded(r, func(r *http.Request) error {
+	err = bounded(r, func(r *http.Request) error {
 		var err error
 		asset, err = h.uc.Create(r.Context(), req, blob)
 		return err
@@ -95,14 +95,6 @@ func (h upload) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, assetOf(asset))
-}
-
-// bounded runs step, a step of the upload that is not the stream, within
-// the request's timeout (httpserver.Bounded).
-func (h upload) bounded(r *http.Request, step func(r *http.Request) error) error {
-	ctx, cancel := httpserver.Bounded(r.Context())
-	defer cancel()
-	return step(r.WithContext(ctx))
 }
 
 func (h upload) discard(r *http.Request, blob domain.Blob) {

@@ -102,16 +102,18 @@ func (b *Blobs) Attach(ctx context.Context, blob domain.Blob) error {
 	return b.rows.CreateBlob(ctx, blob)
 }
 
-// Open opens the file of the attachment nodeID's row not deleted, and
-// answers the row: domain.ErrNotFound without one, ErrNoFile, with the
-// row, when the file is gone.
-func (b *Blobs) Open(ctx context.Context, nodeID uuid.UUID) (File, domain.Blob, error) {
+// Open opens the file blobID of the attachment nodeID's row not deleted,
+// and answers the row: domain.ErrNotFound without one, or when its file is
+// another; ErrNoFile, with the row, when the file is gone.
+func (b *Blobs) Open(ctx context.Context, nodeID, blobID uuid.UUID) (File, domain.Blob, error) {
 	blob, err := b.rows.BlobOfNode(ctx, nodeID)
 	switch {
 	case errors.Is(err, ErrNoRow):
 		return nil, domain.Blob{}, domain.ErrNotFound
 	case err != nil:
 		return nil, domain.Blob{}, err
+	case blob.ID != blobID:
+		return nil, domain.Blob{}, domain.ErrNotFound
 	}
 	f, err := b.files.Open(ctx, domain.Key(blob.ID))
 	if err != nil {

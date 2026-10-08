@@ -159,6 +159,16 @@ func (r *memRows) BlobOfNode(_ context.Context, nodeID uuid.UUID) (domain.Blob, 
 	return b, nil
 }
 
+func (r *memRows) BlobsOfNodes(_ context.Context, nodeIDs []uuid.UUID) (map[uuid.UUID]domain.Blob, error) {
+	out := map[uuid.UUID]domain.Blob{}
+	for _, id := range nodeIDs {
+		if b, ok := r.rows[id]; ok {
+			out[id] = b
+		}
+	}
+	return out, nil
+}
+
 // failingReader brings data, then fails with err.
 type failingReader struct {
 	data []byte

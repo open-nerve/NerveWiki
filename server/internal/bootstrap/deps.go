@@ -155,15 +155,18 @@ func pageDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, author
 	}
 }
 
-// assetDeps are the asset module's: the store of files, the page
-// module's writes of the attachments' nodes, the contents' key, the
-// asset settings and the storage's free space kept.
-func assetDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, store storage.Store, pg *page.Module,
-	contentKey []byte,
+// assetDeps are the asset module's: the store of files, the notebook
+// module's reads, the page module's writes and reads of the attachments'
+// nodes, the contents' key and bucket, the asset settings and the
+// storage's free space kept.
+func assetDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, authorizer shared.Authorizer, store storage.Store,
+	pg *page.Module, contentKey []byte, limiter *ratelimit.Limiter,
 ) asset.Deps {
 	return asset.Deps{
-		Pool: pool, Store: store, Clock: clock.System{}, Logger: logger, Tree: assetTree{pg.TreeWrites()}, ContentKey: contentKey,
+		Pool: pool, Store: store, Clock: clock.System{}, Logger: logger, Authorizer: authorizer, Notebooks: notebook.NewNotebooks(pool),
+		Tree: assetTree{pg.TreeWrites()}, Nodes: assetNodes{page.NewAssetNodes(pool)}, ContentKey: contentKey,
 		MaxBytes: cfg.Asset.MaxBytes, MinRate: cfg.Asset.UploadMinRate, MinFreeBytes: cfg.Storage.MinFreeBytes,
+		ContentBucket: bucket(limiter, "asset_content", cfg.RateLimit.AssetContent),
 	}
 }
 

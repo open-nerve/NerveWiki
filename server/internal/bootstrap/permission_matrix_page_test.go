@@ -398,12 +398,30 @@ func pageOf(c caller) string {
 	return "priv-child"
 }
 
-// treeOf is a notebook's seeded pages, each parent before its children.
+// pagesOf is a notebook's seeded pages, each parent before its children.
+func pagesOf(notebook string) []string {
+	var out []string
+	for _, p := range matrixPages() {
+		if p.notebook == notebook {
+			out = append(out, p.name)
+		}
+	}
+	return out
+}
+
+// treeOf is a notebook's seeded nodes, each parent before its children: a
+// page, then its attachments, last among its children, before the pages
+// after it, which are none of its children.
 func treeOf(notebook string) []string {
 	var out []string
 	for _, p := range matrixPages() {
 		if p.notebook == notebook {
 			out = append(out, p.name)
+			for _, a := range matrixAssets() {
+				if a.parent == p.name {
+					out = append(out, a.name)
+				}
+			}
 		}
 	}
 	return out

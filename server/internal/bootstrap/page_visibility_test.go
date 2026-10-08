@@ -14,16 +14,16 @@ import (
 )
 
 // The tree and the reads agree (M4/P1 design 3.12): on the matrix's data,
-// each column's trees of lab's notebooks hold exactly the pages it reads
-// one by one, by the same name under the same parent, and each read's
-// ancestors are its chain up the tree. A page's reading view answers as
+// each column's trees of lab's notebooks hold exactly the pages and the
+// attachments it reads one by one (M7/P2), by the same name under the same
+// parent, and each page read's ancestors are its chain up the tree. A page's reading view answers as
 // its read does (M4/P3 design 3.9). The tree is read by the notebook,
 // the page by its node, each decided on by the access module: a read that
 // drifts from the tree fails here. On this copy alone, team's page has a
 // child and priv a deleted page, which neither shows; the copy keeps the
 // pages' invariant. Then, through the API, team's default editor deletes
-// its page with the child (M4/P2 design 3.7): neither is in a tree or read
-// by any column.
+// its page with the child and its attachment (M4/P2 design 3.7): none is
+// in a tree or read by any column.
 func TestTheTreeIsWhatEachReadAllows(t *testing.T) {
 	d := prepareMatrix(t)
 	contract := apitest.Load(t)
@@ -61,7 +61,7 @@ func TestTheTreeIsWhatEachReadAllows(t *testing.T) {
 		t.Fatalf("DELETE team's page = %d %s, want 204", status, answer)
 	}
 	checkPages(t, pool)
-	gone := []string{teamPage.String(), extras["team-child"].String()}
+	gone := []string{teamPage.String(), extras["team-child"].String(), s.asset("team-page.png").String()}
 	type place struct{ name, parent string }
 	for _, c := range allColumns() {
 		tree := map[string]place{} // by id, of the trees c reads
@@ -120,6 +120,22 @@ func TestTheTreeIsWhatEachReadAllows(t *testing.T) {
 			case http.StatusNotFound:
 			default:
 				t.Fatalf("%s: GET a page = %d %s", c, status, answer)
+			}
+		}
+		for _, id := range s.assets {
+			status, answer := ask(t, contract, http.MethodGet, base+"/api/v0/assets/"+id.String(), d.tokens[c], "")
+			switch status {
+			case http.StatusOK:
+				var a struct {
+					ID       string  `json:"id"`
+					Name     string  `json:"name"`
+					ParentID *string `json:"parent_id"`
+				}
+				decodeAnswer(t, answer, &a)
+				read[a.ID] = place{a.Name, deref(a.ParentID)}
+			case http.StatusNotFound:
+			default:
+				t.Fatalf("%s: GET an attachment = %d %s", c, status, answer)
 			}
 		}
 		for _, id := range gone {

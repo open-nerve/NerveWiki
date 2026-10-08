@@ -2,9 +2,10 @@
 // design): an attachment is a node of a notebook's tree, which the page
 // module keeps, and a file, which this module keeps in the store with its
 // row. Its root is what bootstrap sees: New for the HTTP side, which
-// creates the attachments' nodes through the page module's TreeWrites;
-// Purgers for the purge; ContentKeyInfo, the derivation of the key that
-// signs the contents' addresses; Actions for the composition's checks.
+// creates the attachments' nodes through the page module's TreeWrites and
+// reads them through its AssetNodes; Purgers for the purge;
+// ContentKeyInfo, the derivation of the key that signs the contents'
+// addresses; Actions for the composition's checks.
 package asset
 
 import (
@@ -34,6 +35,14 @@ type (
 	// Tree creates the attachments' nodes: bootstrap adapts page's
 	// TreeWrites to it.
 	Tree = app.Tree
+	// Nodes reads the notebooks' trees: bootstrap adapts page's AssetNodes
+	// to it.
+	Nodes = app.Nodes
+	// Cursor is where a list of attachments goes on.
+	Cursor = app.Cursor
+	// Notebooks reads the notebooks: bootstrap hands it the notebook
+	// module's.
+	Notebooks = app.Notebooks
 	// NewNode is an attachment's node to create.
 	NewNode = app.NewNode
 	// FileMeta is what the page module's guards see of its file.
@@ -46,11 +55,14 @@ type (
 
 // Deps are what bootstrap gives the module.
 type Deps struct {
-	Pool   *pgxpool.Pool
-	Store  storage.Store
-	Clock  Clock
-	Logger *slog.Logger
-	Tree   Tree
+	Pool       *pgxpool.Pool
+	Store      storage.Store
+	Clock      Clock
+	Logger     *slog.Logger
+	Authorizer shared.Authorizer
+	Notebooks  Notebooks
+	Tree       Tree
+	Nodes      Nodes
 	// ContentKey signs the contents' addresses: the signing keys'
 	// derivation for ContentKeyInfo.
 	ContentKey []byte
@@ -59,6 +71,8 @@ type Deps struct {
 	MaxBytes     int64
 	MinRate      int64
 	MinFreeBytes int64
+	// ContentBucket is ratelimit.asset_content, the downloads' bucket.
+	ContentBucket httpserver.Limiter
 }
 
 // Module is the wired asset module.
@@ -70,15 +84,18 @@ type Module struct {
 
 // New wires the module: its files in the store, its rows on the pool.
 func New(d Deps) *Module {
-	files := filesadapter.New(d.Store)
-	blobs := app.NewBlobs(files, postgresadapter.New(d.Pool), sniff.Sniffer{})
+	files, rows := filesadapter.New(d.Store), postgresadapter.New(d.Pool)
+	blobs := app.NewBlobs(files, rows, sniff.Sniffer{})
 	signer := app.NewSigner(d.ContentKey, d.Clock)
 	return &Module{
 		uc: httpadapter.UseCases{
 			Upload: app.NewUpload(app.UploadDeps{Tree: d.Tree, Blobs: blobs, Files: files, Signer: signer, Logger: d.Logger,
 				MaxBytes: d.MaxBytes, MinFree: d.MinFreeBytes}),
+			Reads: app.NewReads(app.ReadsDeps{Authorizer: d.Authorizer, Notebooks: d.Notebooks, Nodes: d.Nodes, Rows: rows, Signer: signer,
+				Logger: d.Logger}),
+			Content: app.NewContent(d.Nodes, blobs, signer, d.Clock, d.Logger),
 		},
-		limits: httpadapter.Limits{MaxBytes: d.MaxBytes, MinRate: d.MinRate},
+		limits: httpadapter.Limits{MaxBytes: d.MaxBytes, MinRate: d.MinRate, ContentBucket: d.ContentBucket},
 		logger: d.Logger,
 	}
 }
@@ -87,6 +104,12 @@ func New(d Deps) *Module {
 // httpserver.NewRouter, behind api's per-route middlewares.
 func (m *Module) Register(router *httpserver.Router, api *httpserver.API) {
 	httpadapter.Register(router, api, m.uc, m.limits, m.logger)
+}
+
+// PublicOperations are the module's routes that need no token: the
+// download.
+func (m *Module) PublicOperations() []string {
+	return httpadapter.PublicOperations()
 }
 
 // Actions are the module's actions: bootstrap checks they are the access

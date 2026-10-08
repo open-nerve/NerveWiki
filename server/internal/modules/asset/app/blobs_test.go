@@ -127,9 +127,9 @@ func TestPutLeavesNoFileWhenItFails(t *testing.T) {
 	}
 }
 
-// Open answers the row of a node with its file; no row is
-// asset.not_found; a row whose file is gone, ErrNoFile with the row.
-// Drop deletes a blob's file.
+// Open answers the row of a node with its file; no row, or a row of
+// another file, is asset.not_found; a row whose file is gone, ErrNoFile
+// with the row. Drop deletes a blob's file.
 func TestOpenAndDrop(t *testing.T) {
 	ctx := context.Background()
 	files, rows := newFiles(), newRows()
@@ -142,20 +142,23 @@ func TestOpenAndDrop(t *testing.T) {
 	if err := blobs.Attach(ctx, b); err != nil {
 		t.Fatal(err)
 	}
-	f, got, err := blobs.Open(ctx, b.NodeID)
+	f, got, err := blobs.Open(ctx, b.NodeID, b.ID)
 	if err != nil || got.ID != b.ID {
 		t.Fatalf("Open() = %+v, %v; want the row", got, err)
 	}
 	if content, _ := io.ReadAll(f); string(content) != "abc" {
 		t.Errorf("the file holds %q, want abc", content)
 	}
-	if _, _, err := blobs.Open(ctx, uuid.NewV7()); !errors.Is(err, domain.ErrNotFound) {
+	if _, _, err := blobs.Open(ctx, uuid.NewV7(), b.ID); !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("Open(no row) = %v, want asset.not_found", err)
+	}
+	if _, _, err := blobs.Open(ctx, b.NodeID, uuid.NewV7()); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("Open(another file) = %v, want asset.not_found", err)
 	}
 	if err := blobs.Drop(ctx, b); err != nil || len(files.keys()) != 0 {
 		t.Errorf("Drop() = %v, files %q; want the file deleted", err, files.keys())
 	}
-	if _, got, err := blobs.Open(ctx, b.NodeID); !errors.Is(err, app.ErrNoFile) || got.ID != b.ID {
+	if _, got, err := blobs.Open(ctx, b.NodeID, b.ID); !errors.Is(err, app.ErrNoFile) || got.ID != b.ID {
 		t.Errorf("Open(a row without its file) = %+v, %v; want the row and ErrNoFile", got, err)
 	}
 }

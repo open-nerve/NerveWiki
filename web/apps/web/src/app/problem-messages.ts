@@ -39,6 +39,7 @@ export const problemMessages = {
   "notebook.own_membership": "problem.notebook.own_membership",
   "notebook.sole_admin": "problem.notebook.sole_admin",
   "page.not_found": "problem.page.not_found",
+  "asset.not_found": "problem.asset.not_found",
   "page.cycle": "problem.page.cycle",
   "page.title_taken": "problem.page.title_taken",
   "page.too_deep": "problem.page.too_deep",

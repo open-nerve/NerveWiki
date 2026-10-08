@@ -449,6 +449,7 @@ export const zhCN: Messages = {
   "problem.notebook.own_membership": "不能修改或移出自己的成员身份。",
   "problem.notebook.sole_admin": "你是笔记本唯一的管理员。请先在笔记本设置里让另一位成员成为管理员，或者删除笔记本。",
   "problem.page.not_found": "这个页面不存在，或者你无权访问它。",
+  "problem.asset.not_found": "这个附件不存在，或者你无权访问它。",
   "problem.page.cycle": "页面不能移到它自己或它的子页面下。",
   "problem.page.title_taken": "同一父页面下已有同名的页面（只差大小写也算同名）。",
   "problem.page.too_deep": "页面最多嵌套 10 层。",

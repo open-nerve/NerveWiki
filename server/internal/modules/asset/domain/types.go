@@ -80,7 +80,10 @@ func shownType(mime string) bool {
 }
 
 // Inline reports whether a file of type mime is shown in the browser: a
-// type of the table, unless the download was asked for (d=1).
+// type of the table, unless the download was asked for (d=1). A shown
+// file is safe only sandboxed: every content's answer carries the CSP
+// sandbox (M7 design 4.5), so an SVG shown runs no script, on an opaque
+// origin, and asks nothing of another server.
 func Inline(mime string, download bool) bool {
 	return !download && mime != Octet
 }

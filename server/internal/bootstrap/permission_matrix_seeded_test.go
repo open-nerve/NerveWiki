@@ -243,6 +243,7 @@ type seeded struct {
 	notebooks       map[string]uuid.UUID // by name
 	notebookMembers map[string]uuid.UUID // by notebook/caller
 	pages           map[string]uuid.UUID // by title
+	assets          map[string]uuid.UUID // by name
 	sessions        map[string]uuid.UUID // by page/owner
 	// accounts are the columns' account ids, which registering them through
 	// the API gives: prepareMatrix fills the map, so they are known to the
@@ -253,9 +254,12 @@ type seeded struct {
 func newSeeded() seeded {
 	s := seeded{workspaces: map[string]uuid.UUID{}, memberships: map[string]uuid.UUID{}, invitations: map[string]uuid.UUID{},
 		notebooks: map[string]uuid.UUID{}, notebookMembers: map[string]uuid.UUID{}, pages: map[string]uuid.UUID{},
-		sessions: map[string]uuid.UUID{}, accounts: map[caller]uuid.UUID{}}
+		assets: map[string]uuid.UUID{}, sessions: map[string]uuid.UUID{}, accounts: map[caller]uuid.UUID{}}
 	for _, p := range matrixPages() {
 		s.pages[p.name] = uuid.NewV7()
+	}
+	for _, a := range matrixAssets() {
+		s.assets[a.name] = uuid.NewV7()
 	}
 	for _, n := range matrixNotebooks() {
 		s.notebooks[n.name] = uuid.NewV7()
@@ -347,6 +351,16 @@ func (s seeded) page(name string) uuid.UUID {
 	return id
 }
 
+// asset is the id of the attachment name's node.
+func (s seeded) asset(name string) uuid.UUID {
+	id, ok := s.assets[name]
+	if !ok {
+		s.t.Helper()
+		s.t.Fatalf("no attachment %s is seeded", name)
+	}
+	return id
+}
+
 // session is the id of owner's edit session of the page name.
 func (s seeded) session(name string, owner caller) uuid.UUID {
 	id, ok := s.sessions[name+"/"+string(owner)]
@@ -364,8 +378,8 @@ func (s seeded) workspaceOfRow(id uuid.UUID) (string, bool) {
 			return n.slug, true
 		}
 	}
-	for _, p := range matrixPages() {
-		if s.pages[p.name] == id {
+	for _, p := range slices.Concat(matrixPages(), matrixAssets()) {
+		if s.pages[p.name] == id || s.assets[p.name] == id {
 			return s.workspaceOfRow(s.notebooks[p.notebook])
 		}
 	}
@@ -445,7 +459,8 @@ const seededPageHistory = `WITH n AS (SELECT * FROM nodes WHERE id = $1), c AS (
 // invitation would get theirs from the server, M2/P3 design 3.10); then,
 // through the API, acme's admin removes the ended member, and gone's admin
 // deletes it. Everything that connected to
-// the database is closed when it returns, so that it can be copied. A -run
+// the database is closed when it returns, so that it can be copied. The
+// attachments' rows are seeded through SQL too, without their files. A -run
 // that leaves out prepare fails here, not with a 401 in every cell.
 func prepareMatrix(t *testing.T) matrixData {
 	t.Helper()
@@ -519,6 +534,15 @@ func prepareMatrix(t *testing.T) matrixData {
 				d.seeded.pages[p.name], now, content)
 			exec(seededPageHistory, d.seeded.pages[p.name])
 		}
+		for i, a := range matrixAssets() {
+			exec("INSERT INTO nodes (id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id, "+
+				"created_at, updated_at) SELECT $1, n.id, $3, 'asset', $4, $4, $6, n.created_by_id, n.created_by_id, $5, $5 "+
+				"FROM notebooks n WHERE n.id = $2", d.seeded.assets[a.name], d.seeded.notebooks[a.notebook], d.seeded.pages[a.parent], a.name,
+				now, len(matrixPages())+i)
+			exec("INSERT INTO asset_blobs (id, node_id, notebook_id, mime, byte_size, sha256, created_by_id, created_at) "+
+				"SELECT gen_random_uuid(), id, notebook_id, 'image/png', 3, sha256('abc'), created_by_id, $2 FROM nodes WHERE id = $1",
+				d.seeded.assets[a.name], now)
+		}
 		for _, e := range matrixSessions() {
 			exec("INSERT INTO edit_sessions (id, node_id, notebook_id, user_id, client, created_at, expires_at) "+
 				"SELECT $1, n.id, n.notebook_id, "+account+", 'web', $4, $5 FROM nodes n WHERE n.id = $3",
@@ -534,6 +558,7 @@ func prepareMatrix(t *testing.T) matrixData {
 						d.seeded.notebooks[n.name], now)
 				}
 				exec("UPDATE changesets SET deleted_at = $2 WHERE notebook_id = $1", d.seeded.notebooks[n.name], now)
+				exec("UPDATE asset_blobs SET deleted_at = $2 WHERE notebook_id = $1", d.seeded.notebooks[n.name], now)
 				exec("DELETE FROM edit_sessions WHERE notebook_id = $1", d.seeded.notebooks[n.name])
 				exec("DELETE FROM indexed_pages WHERE notebook_id = $1", d.seeded.notebooks[n.name])
 			}

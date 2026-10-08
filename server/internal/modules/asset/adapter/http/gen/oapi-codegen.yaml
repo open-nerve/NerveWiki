@@ -13,9 +13,7 @@ compatibility:
   always-prefix-enum-values: true
 output-options:
   # 原样的操作（x-raw）由模块手写处理器，不生成（apitest 的 TestRawOperationsAreNotGenerated 核对）
-  exclude-operation-ids: [uploadAsset]
-  # 上传的答复 Asset 还没有生成的操作引用它（M7/P2/S4 的 getAsset 之前）：不剪掉没被引用的组件
-  skip-prune: true
+  exclude-operation-ids: [uploadAsset, getAssetContent]
   name-normalizer: ToCamelCaseWithInitialisms
   # 可为空又可省略的字段生成 nullable.Nullable[T]：PATCH 能区分"没传"和"传 null"
   nullable-type: true

@@ -50,6 +50,57 @@ func (q *Queries) BlobOfNode(ctx context.Context, nodeID uuid.UUID) (BlobOfNodeR
 	return i, err
 }
 
+const blobsOfNodes = `-- name: BlobsOfNodes :many
+SELECT id, node_id, notebook_id, mime, byte_size, sha256, width, height, created_by_id, created_at
+FROM asset_blobs
+WHERE node_id = ANY($1::uuid[]) AND deleted_at IS NULL
+`
+
+type BlobsOfNodesRow struct {
+	ID          uuid.UUID
+	NodeID      uuid.UUID
+	NotebookID  uuid.UUID
+	Mime        string
+	ByteSize    int64
+	Sha256      []byte
+	Width       *int32
+	Height      *int32
+	CreatedByID uuid.UUID
+	CreatedAt   time.Time
+}
+
+// The rows not deleted of the attachments' nodes.
+func (q *Queries) BlobsOfNodes(ctx context.Context, nodeIds []uuid.UUID) ([]BlobsOfNodesRow, error) {
+	rows, err := q.db.Query(ctx, blobsOfNodes, nodeIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []BlobsOfNodesRow
+	for rows.Next() {
+		var i BlobsOfNodesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.NodeID,
+			&i.NotebookID,
+			&i.Mime,
+			&i.ByteSize,
+			&i.Sha256,
+			&i.Width,
+			&i.Height,
+			&i.CreatedByID,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const createBlob = `-- name: CreateBlob :exec
 INSERT INTO asset_blobs (id, node_id, notebook_id, mime, byte_size, sha256, width, height, created_by_id, created_at)
 VALUES ($1, $2, $3, $4, $5, $6,

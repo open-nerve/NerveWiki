@@ -7,8 +7,8 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"net/http/httptest"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -53,9 +53,10 @@ func (fixedClock) Now() time.Time { return now() }
 
 // tree stands in for the page module's writes: it records the nodes it
 // is given and answers checkErr and createErr; created, it runs after
-// with a node of its own.
+// with a node of its own, which nodes then hold.
 type tree struct {
 	mu        sync.Mutex
+	nodes     *memNodes
 	checked   []app.NewNode
 	created   []app.NewNode
 	checkErr  error
@@ -82,7 +83,102 @@ func (t *tree) CreateAsset(ctx context.Context, n app.NewNode, after func(contex
 	if err := after(ctx, node); err != nil {
 		return app.Node{}, err
 	}
+	t.nodes.add(node)
 	return node, nil
+}
+
+// memNodes stands in for the page module's reads of the trees: the nodes
+// not deleted. A gate, when set, holds each Node until it is closed, its
+// call told on asked.
+type memNodes struct {
+	mu    sync.Mutex
+	nodes map[uuid.UUID]app.Node
+	gate  chan struct{}
+	asked chan struct{}
+}
+
+func (m *memNodes) add(n app.Node) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.nodes[n.ID] = n
+}
+
+func (m *memNodes) Node(_ context.Context, id uuid.UUID) (app.Node, bool, error) {
+	if m.gate != nil {
+		m.asked <- struct{}{}
+		<-m.gate
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	n, ok := m.nodes[id]
+	return n, ok, nil
+}
+
+func (m *memNodes) Parent(_ context.Context, notebookID, parentID uuid.UUID) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	n, ok := m.nodes[parentID]
+	return ok && !n.Asset && n.NotebookID == notebookID, nil
+}
+
+func (m *memNodes) Assets(_ context.Context, notebookID uuid.UUID, parentID *uuid.UUID, after *app.Cursor, limit int) ([]app.Node, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []app.Node
+	for _, n := range m.nodes {
+		under := parentID == nil && n.ParentID == nil || parentID != nil && n.ParentID != nil && *parentID == *n.ParentID
+		if n.Asset && n.NotebookID == notebookID && under &&
+			(after == nil || n.NameKey > after.NameKey || n.NameKey == after.NameKey && n.ID.Compare(after.ID) > 0) {
+			out = append(out, n)
+		}
+	}
+	slices.SortFunc(out, func(a, b app.Node) int {
+		if c := strings.Compare(a.NameKey, b.NameKey); c != 0 {
+			return c
+		}
+		return a.ID.Compare(b.ID)
+	})
+	return out[:min(limit, len(out))], nil
+}
+
+// sees lets every caller read in notebookID() alone; it hides the rest.
+type sees struct{}
+
+func (sees) Authorize(_ context.Context, _ shared.Actor, _ shared.Action, t shared.Target) (shared.Grant, error) {
+	if t.NotebookID != notebookID() {
+		return shared.Grant{}, shared.ErrNotVisible
+	}
+	return shared.Grant{NotebookRole: shared.NotebookReader}, nil
+}
+
+// books has every notebook in one workspace.
+type books struct{}
+
+func (books) WorkspaceOf(context.Context, uuid.UUID) (uuid.UUID, bool, error) {
+	return uuid.MustParse("0199a2b4-0000-7000-8000-000000000002"), true, nil
+}
+
+// bucket lets left requests through, then refuses each, a minute to wait.
+type bucket struct {
+	mu   sync.Mutex
+	left int
+	keys []string
+}
+
+func (b *bucket) Allow(key string) (time.Duration, bool) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.keys = append(b.keys, key)
+	if b.left == 0 {
+		return time.Minute, false
+	}
+	b.left--
+	return 0, true
+}
+
+func (b *bucket) Reserve(key string) (func(), time.Duration, bool) {
+	retry, ok := b.Allow(key)
+	return func() {}, retry, ok
 }
 
 // memFiles is the store in memory. full refuses a Create; fullAfter fails
@@ -204,6 +300,18 @@ func (r *memRows) BlobOfNode(_ context.Context, nodeID uuid.UUID) (domain.Blob, 
 	return b, nil
 }
 
+func (r *memRows) BlobsOfNodes(_ context.Context, nodeIDs []uuid.UUID) (map[uuid.UUID]domain.Blob, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := map[uuid.UUID]domain.Blob{}
+	for _, id := range nodeIDs {
+		if b, ok := r.rows[id]; ok {
+			out[id] = b
+		}
+	}
+	return out, nil
+}
+
 // syncBuffer is a log the server's goroutines write to.
 type syncBuffer struct {
 	mu  sync.Mutex
@@ -222,41 +330,50 @@ func (b *syncBuffer) String() string {
 	return b.buf.String()
 }
 
-// harness is the module's routes on a real server, which a stream route
-// needs for its deadlines, over the fakes; the largest file is maxBytes.
+// harness is the module's routes on the platform's server, which a stream
+// route needs for its deadlines and which sets the fixed headers, over the
+// fakes; the largest file is maxBytes.
+// The downloads' bucket lets downloads requests through.
 type harness struct {
-	tree     *tree
-	files    *memFiles
-	rows     *memRows
-	logs     *syncBuffer
-	contract *apitest.Contract
-	router   *httpserver.Router
-	base     string
-	client   *http.Client
+	tree      *tree
+	nodes     *memNodes
+	files     *memFiles
+	rows      *memRows
+	signer    app.Signer
+	logs      *syncBuffer
+	contract  *apitest.Contract
+	router    *httpserver.Router
+	base      string
+	client    *http.Client
+	downloads *bucket
 }
 
 const maxBytes = 1 << 10
 
 func newHarness(t *testing.T) *harness {
 	t.Helper()
-	h := &harness{tree: &tree{}, files: newFiles(), rows: &memRows{rows: map[uuid.UUID]domain.Blob{}}, logs: &syncBuffer{},
-		contract: apitest.Load(t), client: &http.Client{Timeout: 10 * time.Second}}
+	h := &harness{nodes: &memNodes{nodes: map[uuid.UUID]app.Node{}}, files: newFiles(), rows: &memRows{rows: map[uuid.UUID]domain.Blob{}},
+		signer: app.NewSigner([]byte("key"), fixedClock{}), logs: &syncBuffer{}, contract: apitest.Load(t),
+		client: &http.Client{Timeout: 10 * time.Second}, downloads: &bucket{left: 1000}}
+	h.tree = &tree{nodes: h.nodes}
 	logger := slog.New(slog.NewTextHandler(h.logs, nil))
-	upload := app.NewUpload(app.UploadDeps{
-		Tree: h.tree, Blobs: app.NewBlobs(h.files, h.rows, sniffer{}), Files: h.files, Signer: app.NewSigner([]byte("key"), fixedClock{}),
-		Logger: logger, MaxBytes: maxBytes, MinFree: 100,
-	})
+	blobs := app.NewBlobs(h.files, h.rows, sniffer{})
+	uc := httpadapter.UseCases{
+		Upload: app.NewUpload(app.UploadDeps{Tree: h.tree, Blobs: blobs, Files: h.files, Signer: h.signer, Logger: logger,
+			MaxBytes: maxBytes, MinFree: 100}),
+		Reads: app.NewReads(app.ReadsDeps{Authorizer: sees{}, Notebooks: books{}, Nodes: h.nodes, Rows: h.rows, Signer: h.signer,
+			Logger: logger}),
+		Content: app.NewContent(h.nodes, blobs, h.signer, fixedClock{}, logger),
+	}
 	h.router = httpserver.NewRouter(slog.New(slog.DiscardHandler))
-	httpadapter.Register(h.router, httpservertest.NewAPI(t, httpservertest.APIOptions{Authenticator: fakeAuth{}}),
-		httpadapter.UseCases{Upload: upload}, httpadapter.Limits{MaxBytes: maxBytes, MinRate: 64 << 10}, logger)
-	srv := httptest.NewServer(h.router)
-	t.Cleanup(srv.Close)
-	h.base = srv.URL
+	api := httpservertest.NewAPI(t, httpservertest.APIOptions{Authenticator: fakeAuth{}, PublicOperations: httpadapter.PublicOperations()})
+	httpadapter.Register(h.router, api, uc, httpadapter.Limits{MaxBytes: maxBytes, MinRate: 64 << 10, ContentBucket: h.downloads}, logger)
+	h.serve(t)
 	return h
 }
 
-// serve runs the routes on the platform's server, which tells a stream
-// that shutdown began, until stop: it answers stop and the server's end.
+// serve runs the routes on a server of the platform's of their own, until
+// stop or the test's end: it answers stop and the server's end.
 func (h *harness) serve(t *testing.T) (stop func(), done chan error) {
 	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
