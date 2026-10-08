@@ -3,7 +3,7 @@
 | 项 | 内容 |
 |---|---|
 | Phase | M7/P1 平台：存储与流式路由 |
-| 状态 | 进行中 |
+| 状态 | 已完成（合并 `d7af7cf`） |
 | 基线 | `022da5b`（M7 总设计与它的审查之后的 main）；本文提交之后开分支 `m7-p1` |
 | 上级文档 | [M7 总设计](00-M7-design.md) 4.1、4.3、4.13、第 7 节；[M0/P6 镜像里的附件目录](handoffs/M0-P6-image-volumes.md)第 1、2 项；总体设计 11、13.1 第 14、15、20 条 |
 
@@ -191,4 +191,19 @@ func Sending(r *http.Request, n int64) error
 
 ## 7. 结果
 
-（完成后补写。）
+- 提交：S1 `e33dacf`（存储），S2 `09c962e`（流式路由），S3 `f7ecf6a`（配置、组合根、镜像、e2e），负对照补的测试 `bac9a66`；审查的修复 `13f5ab9`；CI 的 Linux 上下载测试的改写 `bf9f54e`；五轮修复核对的修复 `d671e17`、`02ab8c7`、`7dd7f76`、`e2ecdc9`、`cd3fa37`。合并 `d7af7cf`。
+- 审查：两位审查者（Opus）。A（存储与流式路由，对照 `net/http` 源码与真实服务器的探针）：High 1（没有请求体的流式请求在 `read_timeout` 时被取消上下文：net/http 在调用处理器之前就后台读连接），Medium 2（契约不钉修改时刻；停机取消读完请求体之后的一步），Low 10。B（配置、部署与文档）：Medium 2（`image-smoke` 的拒绝一步可能卡住；总设计的遗漏），Low 8，Nit 9。修复核对五轮，第五轮没有行为上的发现。逐条见[审查记录](reviews/P1-storage-stream-review.md)。
+- 审查之后改了的设计（3.3、3.4 已改写）：
+  - 停机只切断还在传字节的流（请求体没读到结尾、或已 `Sending`），之间的一步照普通请求在 `shutdown_timeout` 之内做完；之后 `Sending` 与被切断的读答 `httpserver.ErrShuttingDown`（P2 的下载据此答 503，上传不记 ERROR）。
+  - 没有请求体的请求（`r.ContentLength == 0`）不设读截止时间；低速率时一步小于 64 KiB，达到速率的请求体总有半个 `read_timeout` 的余地。
+  - 启动先删掉全部残留、再探测根与各区；磁盘或配额写满照常启动、写入答 `ErrFull`，`FullAtOpen` 与余量一起决定启动的 WARN；断链的区拒绝启动。Linux 的余量按 `Frsize`。
+- CI 的 Linux 上"经 `Sending` 的大答复"一测失败两次：发送或接收缓冲小于回环的 64 KiB 段时，每次发送都等内核的计时器，吞吐约 3 MB/s（在 Linux 容器里限 2 核、`-race` 复现）。改为服务端的发送缓冲 256 KiB、客户端停读 1.5 秒再读完 16 MiB。
+- 反向对照：55 个（存储 26、流式路由与 `API` 26、配置 2、组合根 1）都被测试抓到；去掉 `defer s.finish()` 的一个存活，接受（竞态没有确定的测试）。
+- CI 与发布：分支 `cd3fa37` 的 CI 全部通过（server、web、image、e2e）。合并之后 `make image-smoke` 通过（`d7af7cf`）。
+- 交给 P2 的：
+  1. multipart 的上传、导入在最后一部分之后把请求体读到结尾（总设计 4.4），否则读截止时间不解除、停机时算"还在传"。
+  2. 读请求体的错误先判断 `httpserver.ErrShuttingDown`（它同时满足超时与 `*http.MaxBytesError` 的判断）；`APIErrors.Write` 没有它的分支（会记 ERROR、答 500），上传不要原样交给它。经 `arm` 切断时答的是不包原错误的 `ErrShuttingDown`。
+  3. 停机开始之后的下载答 503（码由 P2 定，总设计 4.5）。
+  4. 每条连接都能占满 `read_timeout + MaxBytes/MinRate`，同时的上传数只由桶限制：P2 考虑按凭证限制同时的上传。
+  5. `Commit` 失败时文件可能已在键上：上传按孤儿处理（孤儿清扫收拾），不在 `Commit` 失败后再删。
+- 负责人可以改判的取舍：停机不取消读完请求体之后的一步（A-M2）；不加文件锁，单实例只写在文档里（A-L9、B-Q2）；磁盘写满照常启动（第二轮 L1）。
