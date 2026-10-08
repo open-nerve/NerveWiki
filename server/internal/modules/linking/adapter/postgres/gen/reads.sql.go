@@ -166,7 +166,11 @@ SELECT ip.frontmatter_valid,
     ARRAY(
         SELECT coalesce(l.resolved_id, '00000000-0000-0000-0000-000000000000'::uuid) FROM page_links l
         WHERE l.source_id = ip.node_id AND l.property_key IS NOT NULL ORDER BY l.range_start
-    )::uuid[] AS link_ids
+    )::uuid[] AS link_ids,
+    ARRAY(
+        SELECT l.resolved_asset FROM page_links l
+        WHERE l.source_id = ip.node_id AND l.property_key IS NOT NULL ORDER BY l.range_start
+    )::boolean[] AS link_assets
 FROM indexed_pages ip
 WHERE ip.node_id = $1
 `
@@ -177,11 +181,12 @@ type PagePropertiesRow struct {
 	PropertyValues   [][]byte
 	LinkKeys         []string
 	LinkIds          []uuid.UUID
+	LinkAssets       []bool
 }
 
 // A page's properties for its right panel (M6/P5 design 4): whether its frontmatter is valid; its properties' keys
-// and values, in the order written; and its property links' paths and where each resolves, the zero id for none, by
-// where they start. One statement, so one snapshot; none for a page the index does not have.
+// and values, in the order written; and its property links' paths and where each resolves, the zero id for none, and
+// whether to an attachment (M7/P3 design 4.6), by where they start. One statement, so one snapshot; none for a page the index does not have.
 func (q *Queries) PageProperties(ctx context.Context, nodeID uuid.UUID) (PagePropertiesRow, error) {
 	row := q.db.QueryRow(ctx, pageProperties, nodeID)
 	var i PagePropertiesRow
@@ -191,6 +196,7 @@ func (q *Queries) PageProperties(ctx context.Context, nodeID uuid.UUID) (PagePro
 		&i.PropertyValues,
 		&i.LinkKeys,
 		&i.LinkIds,
+		&i.LinkAssets,
 	)
 	return i, err
 }

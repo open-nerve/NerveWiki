@@ -28,7 +28,7 @@ DELETE FROM page_links WHERE notebook_id = ANY(sqlc.arg(ids)::uuid[]);
 -- name: LinksReached :many
 -- The links of a notebook whose target's keys meet keys, that resolve to one of targets, or that are written in
 -- one of sources (M6/P3 design 3.4, step 6), each with whether it is a value of its page's aliases (M6/P4 design 2).
-SELECT l.source_id, l.range_start, l.target, l.resolved_id, l.ambiguous, l.aliases
+SELECT l.source_id, l.range_start, l.target, l.resolved_id, l.ambiguous, l.resolved_asset, l.aliases
 FROM page_links l
 WHERE l.notebook_id = sqlc.arg(notebook_id) AND (
     l.target_key = ANY(sqlc.arg(keys)::text[]) OR l.target_alt_key = ANY(sqlc.arg(keys)::text[])
@@ -37,12 +37,14 @@ WHERE l.notebook_id = sqlc.arg(notebook_id) AND (
 ORDER BY l.source_id, l.range_start;
 
 -- name: SetResolutions :execrows
--- Each link, by its page and start, resolves to the page given, the zero id none.
+-- Each link, by its page and start, resolves to the page or the attachment given, the zero id none.
 UPDATE page_links l
-SET resolved_id = NULLIF(u.resolved_id, '00000000-0000-0000-0000-000000000000'::uuid), ambiguous = u.ambiguous
+SET resolved_id = NULLIF(u.resolved_id, '00000000-0000-0000-0000-000000000000'::uuid), ambiguous = u.ambiguous,
+    resolved_asset = u.resolved_asset
 FROM (
     SELECT unnest(sqlc.arg(source_ids)::uuid[]) AS source_id, unnest(sqlc.arg(range_starts)::integer[]) AS range_start,
-        unnest(sqlc.arg(resolved_ids)::uuid[]) AS resolved_id, unnest(sqlc.arg(ambiguous)::boolean[]) AS ambiguous
+        unnest(sqlc.arg(resolved_ids)::uuid[]) AS resolved_id, unnest(sqlc.arg(ambiguous)::boolean[]) AS ambiguous,
+        unnest(sqlc.arg(resolved_assets)::boolean[]) AS resolved_asset
 ) AS u
 WHERE l.source_id = u.source_id AND l.range_start = u.range_start;
 
@@ -50,6 +52,6 @@ WHERE l.source_id = u.source_id AND l.range_start = u.range_start;
 -- A page's index for its reading view (M6/P3 design 6.5): the revision and the extractor its rows are of, with where
 -- each of its links resolves to; one row without a link for a page without links, none for a page the index does not
 -- have. Both tables are read by their primary keys.
-SELECT ip.revision, ip.extractor, l.range_start, l.resolved_id, l.ambiguous
+SELECT ip.revision, ip.extractor, l.range_start, l.resolved_id, l.ambiguous, l.resolved_asset
 FROM indexed_pages ip LEFT JOIN page_links l ON l.source_id = ip.node_id
 WHERE ip.node_id = sqlc.arg(node_id);

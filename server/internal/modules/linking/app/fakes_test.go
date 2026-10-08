@@ -3,6 +3,7 @@ package app_test
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -14,17 +15,23 @@ import (
 )
 
 // tree is a notebook's tree, as the fake Pages reads it, and how many
-// reads of candidates and paths it answered.
+// reads of candidates and paths it answered; the read numbered failAt, from
+// 1, fails with errRead.
 type tree struct {
-	nodes map[uuid.UUID]*node
-	names map[string]uuid.UUID
-	reads int
+	nodes  map[uuid.UUID]*node
+	names  map[string]uuid.UUID
+	reads  int
+	failAt int
 }
+
+// errRead is a read of the tree that failed.
+var errRead = errors.New("the tree's read failed")
 
 type node struct {
 	parent *uuid.UUID
 	name   string
 	gone   bool
+	asset  bool
 }
 
 func newTree() *tree {
@@ -33,8 +40,17 @@ func newTree() *tree {
 
 // add adds the page at path, "A/B" under A, with an id after every other.
 func (t *tree) add(path string) uuid.UUID {
+	return t.addNode(path, false)
+}
+
+// addAsset adds the attachment at path, as add adds a page.
+func (t *tree) addAsset(path string) uuid.UUID {
+	return t.addNode(path, true)
+}
+
+func (t *tree) addNode(path string, asset bool) uuid.UUID {
 	id := uuid.NewV7()
-	n := &node{name: path[strings.LastIndex(path, "/")+1:]}
+	n := &node{name: path[strings.LastIndex(path, "/")+1:], asset: asset}
 	if i := strings.LastIndex(path, "/"); i >= 0 {
 		parent := t.names[path[:i]]
 		n.parent = &parent
@@ -55,10 +71,13 @@ func (t *tree) path(id uuid.UUID) []domain.Step {
 
 func (t *tree) ByKeys(_ context.Context, _ uuid.UUID, keys []string) ([]domain.Node, error) {
 	t.reads++
+	if t.reads == t.failAt {
+		return nil, errRead
+	}
 	var out []domain.Node
 	for id, n := range t.nodes {
 		if !n.gone && slices.Contains(keys, shared.TitleKey(n.name)) {
-			out = append(out, domain.Node{ID: id, Path: t.path(id)})
+			out = append(out, domain.Node{ID: id, Path: t.path(id), Asset: n.asset})
 		}
 	}
 	return out, nil
@@ -66,10 +85,13 @@ func (t *tree) ByKeys(_ context.Context, _ uuid.UUID, keys []string) ([]domain.N
 
 func (t *tree) Paths(_ context.Context, _ uuid.UUID, ids []uuid.UUID) ([]domain.Node, error) {
 	t.reads++
+	if t.reads == t.failAt {
+		return nil, errRead
+	}
 	var out []domain.Node
 	for _, id := range ids {
 		if n, ok := t.nodes[id]; ok && !n.gone {
-			out = append(out, domain.Node{ID: id, Path: t.path(id)})
+			out = append(out, domain.Node{ID: id, Path: t.path(id), Asset: n.asset})
 		}
 	}
 	return out, nil

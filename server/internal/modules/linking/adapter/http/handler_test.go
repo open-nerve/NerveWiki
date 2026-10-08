@@ -74,8 +74,9 @@ func (f fakeProperties) Execute(_ context.Context, pageID uuid.UUID) (app.Proper
 			{Key: "up", Value: json.RawMessage(`"[[Parent]]"`)},
 			{Key: "big", Value: json.RawMessage(`1000000000000000000000`)},
 			{Key: "sources", Value: json.RawMessage(`["[[A]]", "[[B]]"]`)},
+			{Key: "cover", Value: json.RawMessage(`"[[x.png]]"`)},
 		},
-		Links: []app.PropertyLink{{Key: "up", NodeID: id(11)}, {Key: "sources.0"}},
+		Links: []app.PropertyLink{{Key: "up", NodeID: id(11)}, {Key: "sources.0"}, {Key: "cover", NodeID: id(15), Asset: true}},
 	}, f.err
 }
 
@@ -94,6 +95,7 @@ func (f fakeTargets) Execute(_ context.Context, notebookID uuid.UUID) ([]app.Lin
 	return []app.LinkTarget{
 		{ID: id(11), Name: "Parent", Link: "Parent", Aliases: []string{}},
 		{ID: id(12), Name: "Notes", Link: "Parent/Notes", Aliases: []string{"N"}},
+		{ID: id(15), Asset: true, Name: "x.png", Link: "Parent/x.png", Aliases: []string{}},
 	}, f.err
 }
 
@@ -153,11 +155,13 @@ func TestTheOperationsAnswerTheUseCases(t *testing.T) {
 			`{"data":[{"contexts":["see [[Notes]]","…[[Notes]]…"],"count":2,"id":"0199a2b4-0000-7000-8000-000000000013"},` +
 				`{"contexts":[],"count":1,"id":"0199a2b4-0000-7000-8000-000000000014"}],"next_cursor":"def"}`,
 			[]any{id(12), &ten, &cursor}},
-		// A value is written as the index has it: a large number keeps its digits.
+		// A value is written as the index has it: a large number keeps its
+		// digits. A link's kind is its node's, none for none.
 		{"a page's properties", propertiesPath, "",
-			`{"links":[{"key":"up","node_id":"0199a2b4-0000-7000-8000-000000000011"},{"key":"sources.0","node_id":null}],` +
+			`{"links":[{"key":"up","kind":"page","node_id":"0199a2b4-0000-7000-8000-000000000011"},{"key":"sources.0","kind":null,"node_id":null},` +
+				`{"key":"cover","kind":"asset","node_id":"0199a2b4-0000-7000-8000-000000000015"}],` +
 				`"properties":[{"key":"up","value":"[[Parent]]"},{"key":"big","value":1000000000000000000000},` +
-				`{"key":"sources","value":["[[A]]","[[B]]"]}],"valid":true}`,
+				`{"key":"sources","value":["[[A]]","[[B]]"]},{"key":"cover","value":"[[x.png]]"}],"valid":true}`,
 			[]any{id(12)}},
 		{"a notebook's tags", tagsPath, "", `{"data":[{"count":1,"tag":"a/b"},{"count":3,"tag":"Project"}]}`, []any{id(10)}},
 		{"a nested tag's pages", tagsPath + "/a%2Fb", "",
@@ -168,7 +172,8 @@ func TestTheOperationsAnswerTheUseCases(t *testing.T) {
 			[]any{id(10), "#a b"}},
 		{"a notebook's link targets", targetsPath, "",
 			`{"data":[{"aliases":[],"id":"0199a2b4-0000-7000-8000-000000000011","kind":"page","link":"Parent","name":"Parent"},` +
-				`{"aliases":["N"],"id":"0199a2b4-0000-7000-8000-000000000012","kind":"page","link":"Parent/Notes","name":"Notes"}]}`,
+				`{"aliases":["N"],"id":"0199a2b4-0000-7000-8000-000000000012","kind":"page","link":"Parent/Notes","name":"Notes"},` +
+				`{"aliases":[],"id":"0199a2b4-0000-7000-8000-000000000015","kind":"asset","link":"Parent/x.png","name":"x.png"}]}`,
 			[]any{id(10)}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -203,6 +208,8 @@ func TestTheLandingAnswersOneOfItsFields(t *testing.T) {
 			`{"landing":{"parent_id":null,"title":"x"},"node_id":null,"reason":null}`, []any{id(12), new("")}},
 		{"no landing", landingPath, domain.Landing{Reason: domain.TooDeep},
 			`{"landing":null,"node_id":null,"reason":"too_deep"}`, []any{id(12), (*string)(nil)}},
+		{"a target read as an attachment's", landingPath + "?target=x.png", domain.Landing{Reason: domain.TargetIsAsset},
+			`{"landing":null,"node_id":null,"reason":"target_is_asset"}`, []any{id(12), new("x.png")}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			f := &fakes{landing: tt.landing}

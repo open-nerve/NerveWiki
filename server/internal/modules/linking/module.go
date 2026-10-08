@@ -178,6 +178,16 @@ func PageFacts(facts any) (Facts, error) {
 	return markdownadapter.PageFacts(facts)
 }
 
+// AssetLinks writes how a wikilink is written to lead to attachments alone
+// (M7/P3 design 4.6): the asset module's links, which bootstrap wires.
+type AssetLinks = app.AssetLinks
+
+// NewAssetLinks returns AssetLinks over the page module's reads, in the
+// caller's transaction or on the pool.
+func NewAssetLinks(pages Pages) AssetLinks {
+	return app.AssetLinks{Pages: pages}
+}
+
 // ResolveLinks is where a page's links lead for its reading view, the
 // obsidian extension's Resolve: from the index when it is of the content
 // rendered, else anew, over the pool and the page module's reads (M6/P3

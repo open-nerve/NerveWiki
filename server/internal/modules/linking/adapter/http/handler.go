@@ -112,9 +112,10 @@ func (h handler) GetPageProperties(ctx context.Context, req gen.GetPagePropertie
 		out.Properties[i] = gen.PageProperty{Key: prop.Key, Value: prop.Value}
 	}
 	for i, l := range p.Links {
-		out.Links[i] = gen.PropertyLink{Key: l.Key, NodeID: nullable.NewNullNullable[uuid.UUID]()}
+		out.Links[i] = gen.PropertyLink{Key: l.Key, NodeID: nullable.NewNullNullable[uuid.UUID](), Kind: nullable.NewNullNullable[gen.LinkTargetKind]()}
 		if l.NodeID != (uuid.UUID{}) {
 			out.Links[i].NodeID = nullable.NewNullableWithValue(l.NodeID)
+			out.Links[i].Kind = nullable.NewNullableWithValue(kind(l.Asset))
 		}
 	}
 	return out, nil
@@ -154,9 +155,17 @@ func (h handler) ListLinkTargets(ctx context.Context, req gen.ListLinkTargetsReq
 	}
 	out := gen.ListLinkTargets200JSONResponse{Data: make([]gen.LinkTarget, len(targets))}
 	for i, t := range targets {
-		out.Data[i] = gen.LinkTarget{ID: t.ID, Kind: gen.LinkTargetKindPage, Name: t.Name, Link: t.Link, Aliases: t.Aliases}
+		out.Data[i] = gen.LinkTarget{ID: t.ID, Kind: kind(t.Asset), Name: t.Name, Link: t.Link, Aliases: t.Aliases}
 	}
 	return out, nil
+}
+
+// kind is a link target's kind: an attachment's if asset, else a page's.
+func kind(asset bool) gen.LinkTargetKind {
+	if asset {
+		return gen.LinkTargetKindAsset
+	}
+	return gen.LinkTargetKindPage
 }
 
 // GetLinkLanding serves GET /api/v0/pages/{page_id}/link-landing: one of

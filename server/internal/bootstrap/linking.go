@@ -134,7 +134,7 @@ func (l linkTargets) Rekey(ctx context.Context, notebookID uuid.UUID) ([]linking
 func linkNodes(nodes []page.LinkNode) []linking.Node {
 	out := make([]linking.Node, len(nodes))
 	for i, n := range nodes {
-		out[i] = linking.Node{ID: n.ID, Path: linkSteps(n.Path)}
+		out[i] = linking.Node{ID: n.ID, Path: linkSteps(n.Path), Asset: n.Asset}
 	}
 	return out
 }

@@ -104,8 +104,8 @@ func spread(ctx context.Context, store Store, pages Pages, notebookID uuid.UUID,
 
 // publish publishes the links event of the unit e, which wrote the content
 // of written, dropped links to dropped and resolved changed, of links,
-// otherwise: the pages whose links resolve to another page, but for
-// written, which the pages event tells; and the pages whose backlinks
+// otherwise: the pages whose links resolve to another node, but for
+// written, which the pages event tells; and the nodes whose backlinks
 // changed, those the links resolved to before or now, and those that
 // written's links resolved to before. A link whose tie alone changed
 // changes neither. Nothing changed publishes nothing.

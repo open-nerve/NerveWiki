@@ -129,10 +129,11 @@ paths:
       tags: [linking]
       summary: List what a notebook's links may lead to
       description: >-
-        The notebook's pages, for the editor's completion, by id: each with
-        its title, how a wikilink is written to lead to it alone from
-        anywhere in the notebook, as a rename writes it again, and its
-        aliases. Any role in the notebook can list them. A notebook that
+        The notebook's pages and attachments, for the editor's completion,
+        by id: each with its kind, its title or name, how a wikilink is
+        written to lead to it alone from anywhere in the notebook, as a
+        rename writes it again, and a page's aliases. Any role in the
+        notebook can list them. A notebook that
         does not exist, is deleted, or that the caller has no role in is
         notebook.not_found. The list is not paged.
       security: [{ bearer: [] }]
@@ -161,12 +162,15 @@ paths:
         page already answers that page instead; one with no such place
         answers why: target_invalid, it has an empty segment, a "." or ".."
         past its head, a NUL, or bytes that are not UTF-8; title_invalid,
-        its last segment is no title; parent_missing, no page is where its
-        other segments lead, read from this page's folder for "./" and
-        "../", from the root for "/", else as links resolve but not by
-        aliases; too_deep, the page made would be deeper than pages nest;
-        not_resolvable, the target would not lead to the page made, or not
-        to it alone. The notebook's admins and editors can read it. A page
+        its last segment is no title; target_is_asset, it is read as an
+        attachment's, its last segment the name of an attachment of the
+        notebook and not written with ".md", which it leads to or not, or
+        an attachment where the page would go has its title;
+        parent_missing, no page is where its other segments lead, read from
+        this page's folder for "./" and "../", from the root for "/", else
+        as links resolve but not by aliases; too_deep, the page made would
+        be deeper than pages nest; not_resolvable, the target would not
+        lead to the page made, or not to it alone. The notebook's admins and editors can read it. A page
         that does not exist, is deleted, or whose notebook the caller has no
         role in is page.not_found; then a role that does not write is
         forbidden; then a target absent or longer than 4096 bytes is
@@ -322,15 +326,20 @@ components:
       description: A property whose value, or an item of whose list, is a link.
       type: object
       additionalProperties: false
-      required: [key, node_id]
+      required: [key, node_id, kind]
       properties:
         key:
           description: The property's path, a list's item after a dot (sources.0).
           type: string
         node_id:
-          description: The page the link resolves to; null for none.
+          description: The page or the attachment the link resolves to; null for none.
           type: [string, "null"]
           format: uuid
+        kind:
+          description: What node_id is; null when it is null.
+          anyOf:
+            - $ref: "#/components/schemas/LinkTargetKind"
+            - type: "null"
     TagList:
       type: object
       additionalProperties: false
@@ -370,9 +379,9 @@ components:
           type: string
           format: uuid
     LinkTargetKind:
-      description: What a link target is. Attachments come later.
+      description: What a link target is, a page or an attachment.
       type: string
-      enum: [page]
+      enum: [page, asset]
     LinkTargetList:
       type: object
       additionalProperties: false
@@ -393,20 +402,22 @@ components:
         kind:
           $ref: "#/components/schemas/LinkTargetKind"
         name:
-          description: The page's title.
+          description: The page's title; the attachment's name, with its extension.
           type: string
         link:
           description: >-
-            How a wikilink is written to lead to the page alone, from anywhere
-            in the notebook: its title, or its path from the root where
-            another page has its title; with ".md" after the path where a
-            title ending with ".md" would be read as another page's without
-            it.
+            How a wikilink is written to lead to the node alone, from
+            anywhere in the notebook: its title or name, or its path from the
+            root where another node of its kind has its title; with ".md"
+            after the path where it would be read otherwise, a page's whose
+            title ends with ".md" as another page's without it, a page's
+            whose title an attachment has as the attachment's. An attachment
+            without an extension, which no link leads to, has its path.
           type: string
         aliases:
           description: >-
             The page's aliases, its first 1000, in the order of their
-            case-folded keys.
+            case-folded keys; none for an attachment.
           type: array
           maxItems: 1000
           items:
@@ -447,4 +458,4 @@ components:
     LandingReason:
       description: Why a link's target has no landing; the operation says each.
       type: string
-      enum: [target_invalid, title_invalid, parent_missing, too_deep, not_resolvable]
+      enum: [target_invalid, title_invalid, target_is_asset, parent_missing, too_deep, not_resolvable]

@@ -182,9 +182,9 @@ components:
         pages:
           description: >-
             The pages of the link index whose links resolve to other pages
-            now, but for those whose content was written: empty for none,
-            null for more than
-            20 or for all of them (a rebuilt index).
+            or attachments now, but for those whose content was written:
+            empty for none, null for more than 20 or for all of them (a
+            rebuilt index).
           type: [array, "null"]
           maxItems: 20
           items:
@@ -192,8 +192,9 @@ components:
             format: uuid
         targets:
           description: >-
-            The pages whose backlinks changed: empty for none, null for more
-            than 20 or for all of them (a rebuilt index).
+            The pages and attachments whose backlinks changed: empty for
+            none, null for more than 20 or for all of them (a rebuilt
+            index).
           type: [array, "null"]
           maxItems: 20
           items:

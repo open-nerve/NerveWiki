@@ -94,6 +94,22 @@ func TestAViewTheIndexIsNotOfResolvesAnew(t *testing.T) {
 	}
 }
 
+// A view tells the links that resolve to an attachment, from the index and
+// anew (M7/P3 design 4.3).
+func TestAViewTellsTheAttachments(t *testing.T) {
+	w := newWorld(t, "A", "src")
+	x := w.tree.addAsset("A/x.png")
+	c := w.write("src", []string{"x.png", "A"})
+	w.run(c)
+	want := map[int]domain.Resolution{0: {ID: x, Asset: true}, 10: {ID: w.id("A")}}
+	if got := w.view("src", c.Revision, "x.png", "A"); !reflect.DeepEqual(got, want) {
+		t.Errorf("the index's: got %v, want %v", got, want)
+	}
+	if got := w.view("src", c.Revision+1, "x.png", "A"); !reflect.DeepEqual(got, want) {
+		t.Errorf("anew: got %v, want %v", got, want)
+	}
+}
+
 // A view's link the index does not have at its start resolves anew, the
 // others as the index has them.
 func TestAViewsLinkTheIndexHasNotResolvesAnew(t *testing.T) {
