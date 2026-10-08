@@ -2,5 +2,5 @@
 
 package markdowntest
 
-// raceEnabled tells CheckCosts that the race detector is on; see race.go.
-const raceEnabled = false
+// Race tells that the race detector is on; see race.go.
+const Race = false

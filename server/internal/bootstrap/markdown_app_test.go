@@ -145,6 +145,9 @@ func checkAttachments(html string) error {
 // none, or to an attachment, shown as each kind is or not shown (M4/P3
 // design 3.10, M6/P3 design 6.8, M7/P3 design 5.9).
 func TestTheAppsMarkdownRendersCheckedHTML(t *testing.T) {
+	if markdowntest.Race {
+		t.Skip("rendered in every mode without the race detector (make test-go runs it)")
+	}
 	inputs := map[string]string{"ordinary": markdowntest.Normal(64 << 10)}
 	for _, f := range markdowntest.Fixtures(t) {
 		inputs[f.Name] = string(f.Content)
@@ -188,6 +191,9 @@ func TestTheAppsMarkdownRendersCheckedHTML(t *testing.T) {
 // its markup and signed address, each time it is written or a reference
 // used.
 func TestTheAppsLinksAreWithinTheirBound(t *testing.T) {
+	if markdowntest.Race {
+		t.Skip("measured without the race detector (make test-go runs it)")
+	}
 	const n = 512 << 10
 	inputs := map[string]string{
 		"images of a short address":           "[x]: p#&\n\n" + strings.Repeat("![x] ", n/5),

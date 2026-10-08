@@ -126,7 +126,7 @@ func logKept(t *testing.T, m *markdown.Markdown, name string, content []byte) {
 // check is skipped, and make test-go runs it in a build without.
 func CheckCosts(t *testing.T, m *markdown.Markdown) {
 	t.Helper()
-	if raceEnabled {
+	if Race {
 		t.Skip("costs are checked without the race detector (make test-go runs it)")
 	}
 	paths := false
