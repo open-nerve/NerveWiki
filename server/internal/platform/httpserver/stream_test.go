@@ -448,8 +448,8 @@ func TestTheTimeAtARateSaturates(t *testing.T) {
 
 // streamServer serves api's stream route h on a server whose read timeout
 // is 300ms and write timeout 1s, as server.read_timeout and write_timeout,
-// on connections with small socket buffers, so that a slow reader holds
-// the writer back.
+// on connections with a bounded send buffer, so that a client that stops
+// reading holds the writer back.
 func streamServer(t *testing.T, h http.Handler) (string, context.CancelFunc, <-chan error) {
 	t.Helper()
 	router := NewRouter(slog.New(slog.DiscardHandler))
@@ -474,13 +474,16 @@ func streamServer(t *testing.T, h http.Handler) (string, context.CancelFunc, <-c
 	return "http://" + ln.Addr().String(), cancel, done
 }
 
-// smallBuffers gives each connection a 16 KiB send buffer.
+// smallBuffers gives each connection a 256 KiB send buffer: with the
+// client's receive buffer, about 650 KB wait unread on Linux and macOS. A
+// buffer below loopback's 64 KiB segment would stall every send on the
+// kernel's timers on Linux, to about 3 MB/s.
 type smallBuffers struct{ net.Listener }
 
 func (l smallBuffers) Accept() (net.Conn, error) {
 	c, err := l.Listener.Accept()
 	if tc, ok := c.(*net.TCPConn); ok {
-		_ = tc.SetWriteBuffer(16 << 10)
+		_ = tc.SetWriteBuffer(256 << 10)
 	}
 	return c, err
 }
@@ -600,7 +603,7 @@ func TestAStreamWithoutABodyOutlivesTheReadTimeout(t *testing.T) {
 		_, _ = io.WriteString(w, "alive")
 	}), StreamPolicy{MinRate: 1 << 20}))
 
-	got, err := readSlowly(url)
+	got, err := readAfter(url, 0)
 	if err := <-alive; err != nil {
 		t.Errorf("past the read timeout the handler's context ended with %v", err)
 	}
@@ -660,51 +663,31 @@ func TestAStalledStreamIsCutOff(t *testing.T) {
 	}
 }
 
-// readSlowly reads the response through a 16 KiB receive buffer at about
-// 1 MiB/s, pacing by the bytes read, however few each read gets, and
-// answers how much it read.
-func readSlowly(url string) (int64, error) {
-	const rate = 1 << 20
-	dialer := &net.Dialer{}
-	transport := &http.Transport{DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-		c, err := dialer.DialContext(ctx, network, addr)
-		if tc, ok := c.(*net.TCPConn); ok {
-			_ = tc.SetReadBuffer(16 << 10)
-		}
-		return c, err
-	}}
+// readAfter fetches the download route and reads its answer after pause,
+// as a client that falls behind, and answers how much it read. Its socket
+// buffers are the system's, which hold little before it reads: the kernel
+// grows a receive buffer as its reader takes the bytes.
+func readAfter(url string, pause time.Duration) (int64, error) {
 	req, err := http.NewRequest(http.MethodGet, url+"/api/v0/downloads", nil)
 	if err != nil {
 		return 0, err
 	}
 	req.Header.Set("Authorization", "Bearer tok")
-	resp, err := (&http.Client{Transport: transport, Timeout: 20 * time.Second}).Do(req)
+	resp, err := (&http.Client{Timeout: 20 * time.Second}).Do(req)
 	if err != nil {
 		return 0, err
 	}
 	defer func() { _ = resp.Body.Close() }()
-	start := time.Now()
-	var total int64
-	buf := make([]byte, 16<<10)
-	for {
-		n, err := resp.Body.Read(buf)
-		total += int64(n)
-		if errors.Is(err, io.EOF) {
-			return total, nil
-		}
-		if err != nil {
-			return total, err
-		}
-		time.Sleep(time.Until(start.Add(time.Duration(total) * time.Second / rate)))
-	}
+	time.Sleep(pause)
+	return io.Copy(io.Discard, resp.Body)
 }
 
-// A 4 MiB answer to a client reading about 1 MiB/s takes about 4s, past
-// the 1s write timeout, and far more than the socket buffers hold:
-// announced with Sending at 512 KiB/s, its deadline some 8.3s away, it
-// goes out whole; not announced, the write deadline cuts it.
+// A 16 MiB answer, far more than the socket buffers hold, to a client that
+// reads nothing for 1.5s, past the 1s write timeout: announced with Sending
+// at 4 MiB/s, its deadline some 4.3s away, it goes out whole; not
+// announced, the write deadline cuts it.
 func TestAnAnswerAnnouncedWithSendingOutlastsTheWriteTimeout(t *testing.T) {
-	const size = 4 << 20
+	const size = 16 << 20
 	for _, announce := range []bool{true, false} {
 		t.Run(fmt.Sprintf("announced %v", announce), func(t *testing.T) {
 			api := streamTestAPI(t)
@@ -719,9 +702,9 @@ func TestAnAnswerAnnouncedWithSendingOutlastsTheWriteTimeout(t *testing.T) {
 				w.Header().Set("Content-Length", strconv.Itoa(size))
 				_, err := w.Write(bytes.Repeat([]byte("x"), size))
 				wrote <- err
-			}), StreamPolicy{MinRate: 512 << 10}))
+			}), StreamPolicy{MinRate: 4 << 20}))
 
-			got, err := readSlowly(url)
+			got, err := readAfter(url, 1500*time.Millisecond)
 			werr := <-wrote
 			if announce && (err != nil || got != size || werr != nil) {
 				t.Errorf("read %d bytes (%v), the write %v; want all %d", got, err, werr, size)

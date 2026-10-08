@@ -163,7 +163,7 @@ func Sending(r *http.Request, n int64) error
 - **流式路由**（`stream_test.go`；截止时间用一个记下截止时间的假 writer 断言，再用真的服务器跑一遍）：
   - 次序：未认证答 401、桶空答 429，都在处理器之前、读请求体之前；公开的操作不认证；有 `Bucket` 时不消耗 `anonymous`、`authenticated`，没有时照平台的；
   - 读截止时间：开始时是 `read_timeout`，每 64 KiB 按速率推后，写截止时间跟着；一步的大小（低速率时取半个 `read_timeout` 的字节数）有表格测试；
-  - 真的服务器（`read_timeout`、`write_timeout` 都很短）：比 `read_timeout` 久、但达到速率的上传读完，处理器之后的写完成，64 KiB 要超过 `read_timeout` 的低速率也一样；停住的上传在 `read_timeout` 加已读字节应得的时间之内断开；`Sending` 之后的大答复在慢读的客户端上写完（两端的套接字缓冲设小，客户端按字节限速），不经 `Sending` 的同一个答复在 `write_timeout` 失败；没有请求体的请求活过 `read_timeout`，上下文不被取消；
+  - 真的服务器（`read_timeout`、`write_timeout` 都很短）：比 `read_timeout` 久、但达到速率的上传读完，处理器之后的写完成，64 KiB 要超过 `read_timeout` 的低速率也一样；停住的上传在 `read_timeout` 加已读字节应得的时间之内断开；`Sending` 之后的大答复（16 MiB，远多于套接字缓冲装得下的约 650 KB）在停读 1.5 秒的客户端上写完，不经 `Sending` 的同一个答复在 `write_timeout` 失败（服务端的发送缓冲 256 KiB：比回环的 64 KiB 段小的缓冲在 Linux 上让每次发送都等内核的计时器，吞吐只剩约 3 MB/s，CI 上失败过两次）；没有请求体的请求活过 `read_timeout`，上下文不被取消；
   - 请求体超过 `MaxBytes` 答 `*http.MaxBytesError`；
   - `Bounded` 在 `request_timeout` 之后到期；处理器的上下文没有期限；
   - 停机：上传读到一半时开始停机（客户端还在发、或已经停住），读立即失败、上下文取消，`Shutdown` 不等它；按阶段的表格（假 writer）：读请求体之前与 `Sending` 之后切断并取消，读完之后、没有请求体的不切断、不取消，`Sending` 都答错误，处理器返回之后不切断；真的服务器上读完请求体的上传在停机中做完它的一步并答 200；
