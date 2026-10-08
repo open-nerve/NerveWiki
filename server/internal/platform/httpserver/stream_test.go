@@ -586,44 +586,64 @@ func TestAnAnswerAnnouncedWithSendingOutlastsTheWriteTimeout(t *testing.T) {
 
 // When the server starts shutting down, a stream still reading its body
 // fails its read at once and its context is cancelled, so Serve returns
-// long before shutdown_timeout.
+// long before shutdown_timeout: whether its client keeps sending, the next
+// chunk finding the stream stopped, or has gone quiet with its deadline a
+// minute away at a rate of 1 KiB/s, the deadline shutdown moves to now.
 func TestShutdownEndsAStreamAtOnce(t *testing.T) {
-	api := streamTestAPI(t)
-	reading := make(chan struct{})
-	ended := make(chan error, 1)
-	cancelled := make(chan error, 1)
-	url, cancel, done := streamServer(t, api.Stream(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
-		buf := make([]byte, 1024)
-		if _, err := io.ReadFull(r.Body, buf); err != nil {
-			ended <- err
-			return
-		}
-		close(reading)
-		_, err := io.Copy(io.Discard, r.Body)
-		ended <- err
-		<-r.Context().Done()
-		cancelled <- r.Context().Err()
-	}), StreamPolicy{MinRate: 256 << 10, MaxBytes: 64 << 20}))
-	stall := make(chan struct{})
-	t.Cleanup(func() { close(stall) })
-	// Fast enough to keep the deadline moving for seconds.
-	go func() {
-		_, _, _ = upload(url, &pacedBody{chunks: 200, size: 64 << 10, pause: 50 * time.Millisecond, stall: stall}, 64<<20)
-	}()
-	<-reading
+	for _, tt := range []struct {
+		name string
+		rate int64
+		body func(stall chan struct{}) *pacedBody
+	}{
+		{"a client sending", 256 << 10, func(stall chan struct{}) *pacedBody {
+			return &pacedBody{chunks: 200, size: 64 << 10, pause: 50 * time.Millisecond, stall: stall}
+		}},
+		{"a quiet client", 1 << 10, func(stall chan struct{}) *pacedBody {
+			return &pacedBody{chunks: 2, size: 64 << 10, stall: stall}
+		}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			api := streamTestAPI(t)
+			reading := make(chan struct{})
+			ended := make(chan error, 1)
+			cancelled := make(chan error, 1)
+			url, cancel, done := streamServer(t, api.Stream(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+				buf := make([]byte, 1024)
+				if _, err := io.ReadFull(r.Body, buf); err != nil {
+					ended <- err
+					return
+				}
+				close(reading)
+				_, err := io.Copy(io.Discard, r.Body)
+				ended <- err
+				<-r.Context().Done()
+				cancelled <- r.Context().Err()
+			}), StreamPolicy{MinRate: tt.rate, MaxBytes: 64 << 20}))
+			stall := make(chan struct{})
+			t.Cleanup(func() { close(stall) })
+			go func() { _, _, _ = upload(url, tt.body(stall), 64<<20) }()
+			<-reading
+			time.Sleep(100 * time.Millisecond) // the quiet client's bytes are in
 
-	begin := time.Now()
-	cancel()
-	if err := <-ended; err == nil {
-		t.Error("the body read finished, want it failed by the shutdown")
-	}
-	if err := <-cancelled; !errors.Is(err, context.Canceled) {
-		t.Errorf("the handler's context ended with %v, want context.Canceled", err)
-	}
-	if err := wait(t, done); err != nil {
-		t.Errorf("Serve() = %v", err)
-	}
-	if elapsed := time.Since(begin); elapsed > 2*time.Second {
-		t.Errorf("shutdown took %v, want far less than the 5s shutdown_timeout", elapsed)
+			begin := time.Now()
+			cancel()
+			select {
+			case err := <-ended:
+				if err == nil {
+					t.Error("the body read finished, want it failed by the shutdown")
+				}
+			case <-time.After(3 * time.Second):
+				t.Fatal("the body read still waits 3s after the shutdown began")
+			}
+			if err := <-cancelled; !errors.Is(err, context.Canceled) {
+				t.Errorf("the handler's context ended with %v, want context.Canceled", err)
+			}
+			if err := wait(t, done); err != nil {
+				t.Errorf("Serve() = %v", err)
+			}
+			if elapsed := time.Since(begin); elapsed > 2*time.Second {
+				t.Errorf("shutdown took %v, want far less than the 5s shutdown_timeout", elapsed)
+			}
+		})
 	}
 }
