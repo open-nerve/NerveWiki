@@ -20,8 +20,9 @@ paths:
         whose parts are parent_id, name and file, in that order, the first
         two optional: an unknown part, one twice, one out of order, a part
         after the file, a parent_id that is no id, a name of more than 1 KiB
-        or not UTF-8, more than 4 KiB before the file's bytes, no file, and
-        a body that goes on after the form past the limit are bad_request.
+        or not UTF-8, more than 4 KiB read before the file's bytes, no file,
+        and a body that goes on after the form past the limit are
+        bad_request.
         Each part is read as sent: a Content-Transfer-Encoding is not
         decoded. Without a name, or with one empty or of blanks, the file
         part's file name is taken.
@@ -210,8 +211,9 @@ paths:
             Cross-Origin-Resource-Policy:
               $ref: "#/components/headers/CrossOriginResourcePolicy"
             Content-Range:
-              description: The range sent, and the file's size.
-              required: true
+              description: >-
+                The range sent, and the file's size; for several ranges, sent
+                as multipart/byteranges, each part has its own instead.
               schema:
                 type: string
           content:

@@ -35,7 +35,9 @@ type content struct {
 
 func (h content) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	a, ok := addressOf(pathID(r, "node_id"), r.PathValue("node_id"), r.URL.RawQuery)
-	if !ok {
+	if !ok || r.URL.RawPath != "" {
+		// RawPath is set when the path was sent escaped: the router has
+		// unescaped what addressOf reads.
 		h.errors.Write(w, r, domain.ErrContentNotFound)
 		return
 	}
@@ -76,6 +78,10 @@ func sandboxed(next http.Handler) http.Handler {
 	})
 }
 
+// addressKeys are the address's query keys, one letter each, in their
+// order.
+const addressKeys = "besd"
+
 // addressOf reads an address as the server writes it, node's id spelled
 // path: the id in lower case with hyphens; the query b, e, s, and d=1 or
 // nothing, in that order; b an id spelled so, e a decimal without sign or
@@ -89,7 +95,7 @@ func addressOf(node uuid.UUID, path, query string) (app.Address, bool) {
 	values := make([]string, len(parts))
 	for i, part := range parts {
 		key, value, ok := strings.Cut(part, "=")
-		if !ok || key != []string{"b", "e", "s", "d"}[i] {
+		if !ok || key != addressKeys[i:i+1] {
 			return app.Address{}, false
 		}
 		values[i] = value

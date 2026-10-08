@@ -14,10 +14,10 @@ const maxTitleBytes = 255
 // CheckTitle checks a title: a notebook's name (M3/P1 design 3.2), and from
 // M4 a page's title, which an export writes as the name of a file or a
 // folder (v0.1 design 3.5). It returns s without its surrounding white
-// space, in NFC, when s is UTF-8 and that is 1–255 bytes, holds none of / \ : * ? " < > |
-// # ^ [ ] nor a character unshowable in a name (see unshowable), neither
-// starts nor ends with a dot, and is no name Windows reserves; otherwise a
-// problem on field. The bytes are counted in NFC, as they are stored.
+// space, in NFC, when s is UTF-8 and that is 1–255 bytes, holds none of
+// / \ : * ? " < > | # ^ [ ] nor a character unshowable in a name (see
+// unshowable), neither starts nor ends with a dot, and is no name Windows
+// reserves; otherwise a problem on field. The bytes are counted in NFC, as they are stored.
 func CheckTitle(field, s string) (string, *FieldError) {
 	if !utf8.ValidString(s) {
 		// A JSON string is UTF-8 once decoded; a file name of a form's

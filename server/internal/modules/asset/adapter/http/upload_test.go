@@ -6,14 +6,17 @@ import (
 	"errors"
 	"io"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"net/textproto"
+	"os"
 	"regexp"
 	"strings"
 	"testing"
 	"time"
 
 	httpadapter "github.com/open-nerve/NerveWiki/server/internal/modules/asset/adapter/http"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver/httpservertest"
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
@@ -198,6 +201,89 @@ func TestUploadRefusesAPrefaceCutInALine(t *testing.T) {
 	}
 	if logs := h.logs.String(); strings.Contains(logs, "QQQQ") {
 		t.Errorf("logs %q, want no line of the client's", logs)
+	}
+}
+
+// A header line within the 4 KiB before the file that is not a header is
+// a body not received, 400, logged by its cause: the line the client sent
+// is not logged.
+func TestUploadLogsAMalformedHeaderByItsCause(t *testing.T) {
+	h := newHarness(t)
+	body := "--b\r\nContent-Disposition: form-data; name=\"name\"\r\nQQQQ-no-colon\r\n\r\na.png\r\n" +
+		"--b\r\nContent-Disposition: form-data; name=\"file\"; filename=\"a.png\"\r\n\r\nx\r\n--b--\r\n"
+	res, answer := h.post(t, uploadPath(), "session", "multipart/form-data; boundary=b", strings.NewReader(body))
+	if res.StatusCode != http.StatusBadRequest || !strings.Contains(string(answer), "not read whole") {
+		t.Errorf("upload = %d %s, want 400 for a body not received", res.StatusCode, answer)
+	}
+	waitFor(t, func() bool { return strings.Contains(h.logs.String(), "upload not received") })
+	if logs := h.logs.String(); !strings.Contains(logs, "cause=malformed") || strings.Contains(logs, "QQQQ") {
+		t.Errorf("logs %q, want the cause, malformed, and no line of the client's", logs)
+	}
+}
+
+// How a body failed to arrive is named by its error: too slow, ended
+// early, the connection failing, or malformed.
+func TestReadCause(t *testing.T) {
+	for _, tt := range []struct {
+		err  error
+		want string
+	}{
+		{&net.OpError{Op: "read", Err: os.ErrDeadlineExceeded}, "too slow"},
+		{io.ErrUnexpectedEOF, "ended early"},
+		{&net.OpError{Op: "read", Err: errors.New("connection reset by peer")}, "connection failed"},
+		{errors.New("malformed MIME header line: x"), "malformed"},
+	} {
+		if got := httpadapter.ReadCause(tt.err); got != tt.want {
+			t.Errorf("ReadCause(%v) = %q, want %q", tt.err, got, tt.want)
+		}
+	}
+}
+
+// A part after the file is 400 as soon as its header is read: its bytes,
+// which the client may never end, are not waited for.
+func TestUploadRefusesAPartAfterTheFileAtOnce(t *testing.T) {
+	h := newHarness(t)
+	ct, body := form(t, file("a.png", "x"), part{name: "name", value: "NEVER ENDS"})
+	head := body[:bytes.Index(body, []byte("NEVER ENDS"))]
+	r, w := io.Pipe()
+	go func() { _, _ = w.Write(head) }() // the rest never comes
+	t.Cleanup(func() { _ = w.Close() })
+	start := time.Now()
+	res, answer := h.post(t, uploadPath(), "session", ct, r)
+	if res.StatusCode != http.StatusBadRequest || !strings.Contains(string(answer), "a part after the file") ||
+		time.Since(start) > 3*time.Second {
+		t.Errorf("upload = %d %s after %v, want 400 at once", res.StatusCode, answer, time.Since(start))
+	}
+}
+
+// A step past the request's deadline, the checks or the unit, is answered
+// 500 and logged as a request that ran out of time, a warning; the unit's
+// leaves the file for the sweep, its outcome unknown.
+func TestUploadPastItsDeadlineIsLoggedAsAWarning(t *testing.T) {
+	for _, tt := range []struct {
+		name  string
+		stall func(*tree)
+		kept  bool
+	}{
+		{"the checks", func(tr *tree) { tr.stallCheck = true }, false},
+		{"the unit", func(tr *tree) { tr.stallCreate = true }, true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			h := newHarnessWith(t, httpservertest.APIOptions{RequestTimeout: 100 * time.Millisecond})
+			tt.stall(h.tree)
+			ct, body := form(t, file("a.png", "x"))
+			res, answer := h.post(t, uploadPath(), "session", ct, bytes.NewReader(body))
+			if res.StatusCode != http.StatusInternalServerError || !strings.Contains(string(answer), "internal_error") {
+				t.Errorf("upload = %d %s, want 500 internal_error", res.StatusCode, answer)
+			}
+			if logs := h.logs.String(); !strings.Contains(logs, `level=WARN msg="API request deadline exceeded"`) ||
+				strings.Contains(logs, "level=ERROR") {
+				t.Errorf("logs %q, want the deadline as a warning, no error", logs)
+			}
+			if keys, _, _ := h.files.state(); (len(keys) == 1) != tt.kept {
+				t.Errorf("files %q, want kept %v", keys, tt.kept)
+			}
+		})
 	}
 }
 

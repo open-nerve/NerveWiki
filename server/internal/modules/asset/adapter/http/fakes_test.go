@@ -53,29 +53,41 @@ type fixedClock struct{}
 func (fixedClock) Now() time.Time { return now() }
 
 // tree stands in for the page module's writes: it records the nodes it
-// is given and answers checkErr and createErr; created, it runs after
-// with a node of its own, which nodes then hold.
+// is given and answers checkErr and createErr, or waits for the end of
+// its context when stalled; created, it runs after with a node of its
+// own, which nodes then hold.
 type tree struct {
-	mu        sync.Mutex
-	nodes     *memNodes
-	checked   []app.NewNode
-	created   []app.NewNode
-	checkErr  error
-	createErr error
+	mu          sync.Mutex
+	nodes       *memNodes
+	checked     []app.NewNode
+	created     []app.NewNode
+	checkErr    error
+	createErr   error
+	stallCheck  bool
+	stallCreate bool
 }
 
-func (t *tree) Check(_ context.Context, n app.NewNode) error {
+func (t *tree) Check(ctx context.Context, n app.NewNode) error {
 	t.mu.Lock()
-	defer t.mu.Unlock()
 	t.checked = append(t.checked, n)
-	return t.checkErr
+	err, stall := t.checkErr, t.stallCheck
+	t.mu.Unlock()
+	if stall {
+		<-ctx.Done()
+		return ctx.Err()
+	}
+	return err
 }
 
 func (t *tree) CreateAsset(ctx context.Context, n app.NewNode, after func(context.Context, app.Node) error) (app.Node, error) {
 	t.mu.Lock()
 	t.created = append(t.created, n)
-	err := t.createErr
+	err, stall := t.createErr, t.stallCreate
 	t.mu.Unlock()
+	if stall {
+		<-ctx.Done()
+		return app.Node{}, ctx.Err()
+	}
 	if err != nil {
 		return app.Node{}, err
 	}

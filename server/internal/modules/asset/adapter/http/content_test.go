@@ -184,6 +184,7 @@ func TestContentReadsItsAddressStrictly(t *testing.T) {
 		{"d before s", "", "b=" + q["b"] + "&e=" + q["e"] + "&d=1&s=" + ds},
 		{"the path's id in upper case", strings.ToUpper(n.ID.String()), query},
 		{"the path's id without hyphens", strings.ReplaceAll(n.ID.String(), "-", ""), query},
+		{"the path's id escaped", "%" + fmt.Sprintf("%02X", n.ID.String()[0]) + n.ID.String()[1:], query},
 		{"another node", other.ID.String(), query},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -235,9 +236,10 @@ func TestContentOfAnAddressExpiredIsNotFound(t *testing.T) {
 	}
 }
 
-// A range is 206, a copy the ETag names 304, a range outside the file 416,
-// sandboxed still; a condition on a change is passed by, the file
-// served; HEAD answers the headers alone.
+// A range is 206, several ranges too, as multipart/byteranges; a copy the
+// ETag names 304, a range outside the file 416, sandboxed still; a
+// condition on a change is passed by, the file served; HEAD answers the
+// headers alone.
 func TestContentAnswersRangesAndConditionalRequests(t *testing.T) {
 	h := newHarness(t)
 	n, b := h.attach("a.png", "image/png", "abcdef")
@@ -246,6 +248,10 @@ func TestContentAnswersRangesAndConditionalRequests(t *testing.T) {
 	if res, body := h.get(t, http.MethodGet, u, "", "Range", "bytes=1-2"); res.StatusCode != http.StatusPartialContent ||
 		string(body) != "bc" || res.Header.Get("Content-Range") != "bytes 1-2/6" {
 		t.Errorf("a range = %d %q %q, want 206 bc bytes 1-2/6", res.StatusCode, body, res.Header.Get("Content-Range"))
+	}
+	if res, _ := h.get(t, http.MethodGet, u, "", "Range", "bytes=0-1,3-4"); res.StatusCode != http.StatusPartialContent ||
+		!strings.HasPrefix(res.Header.Get("Content-Type"), "multipart/byteranges; boundary=") {
+		t.Errorf("two ranges = %d %q, want 206 multipart/byteranges", res.StatusCode, res.Header.Get("Content-Type"))
 	}
 	if res, body := h.get(t, http.MethodGet, u, "", "If-None-Match", etag); res.StatusCode != http.StatusNotModified || len(body) != 0 {
 		t.Errorf("a copy the ETag names = %d %q, want 304", res.StatusCode, body)

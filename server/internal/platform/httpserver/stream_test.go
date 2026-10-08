@@ -361,7 +361,8 @@ func TestTheStepOfAStream(t *testing.T) {
 
 // When shutdown begins, a stream moving its bytes, a body not read to its
 // end or an answer announced with Sending, is cut off: both deadlines pass
-// and its context is cancelled. One between the two is left to finish, but
+// and its context is cancelled, and the answer's next step fails rather
+// than move its deadline on. One between the two is left to finish, but
 // can no longer announce an answer; nor is one whose handler has returned
 // cut off. A request without a body, even behind a wrapper, has no read
 // deadline unless a shutdown cuts it off.
@@ -383,12 +384,12 @@ func TestAShutdownCutsAStreamOnlyWhileItMovesBytes(t *testing.T) {
 			stopping, shutdown := context.WithCancel(context.Background())
 			defer shutdown()
 			var (
-				ctxErr, sendErr error
-				reads           int
-				cutAt           []time.Time // deadlines set once shutdown began
+				ctxErr, sendErr, writeErr error
+				reads                     int
+				cutAt                     []time.Time // deadlines set once shutdown began
 			)
 			w := &deadlineWriter{ResponseRecorder: httptest.NewRecorder()}
-			h := newTestAPI(t).Stream(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+			h := newTestAPI(t).Stream(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
 				if tt.read {
 					_, _ = io.ReadAll(r.Body)
 				}
@@ -411,6 +412,10 @@ func TestAShutdownCutsAStreamOnlyWhileItMovesBytes(t *testing.T) {
 				case <-time.After(200 * time.Millisecond):
 				}
 				ctxErr, sendErr = r.Context().Err(), Sending(r)
+				if tt.send {
+					// Two steps: the second would move the deadline on.
+					_, writeErr = rw.Write(make([]byte, 2*streamChunk))
+				}
 				w.mu.Lock()
 				cutAt = append(slices.Clone(w.reads[reads:]), w.writes[writes:]...)
 				w.mu.Unlock()
@@ -439,6 +444,9 @@ func TestAShutdownCutsAStreamOnlyWhileItMovesBytes(t *testing.T) {
 			}
 			if !errors.Is(sendErr, ErrShuttingDown) {
 				t.Errorf("Sending once shutdown began = %v, want ErrShuttingDown", sendErr)
+			}
+			if tt.send && !errors.Is(writeErr, ErrShuttingDown) {
+				t.Errorf("the answer's write once shutdown began = %v, want ErrShuttingDown", writeErr)
 			}
 		})
 	}

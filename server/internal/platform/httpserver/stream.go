@@ -27,8 +27,8 @@ type StreamPolicy struct {
 	BucketName string
 }
 
-// streamChunk is how many body bytes move the read deadline on once, at
-// most: see streamStep.
+// streamChunk is how many bytes move a deadline on once, at most, of the
+// body read or of an answer announced with Sending: see streamStep.
 const streamChunk = 64 << 10
 
 // maxWait caps the time a stream's bytes may take at its rate, so that the
@@ -106,9 +106,10 @@ func closingEarly(next http.Handler) http.Handler {
 	})
 }
 
-// streamStep is how many body bytes move the deadlines on once: 64 KiB, or
-// the bytes half the read timeout takes at rate when fewer, so that a body
-// arriving at the rate always has half the read timeout to spare.
+// streamStep is how many bytes move the deadlines on once: 64 KiB, or the
+// bytes half the read timeout takes at rate when fewer, so that a body
+// arriving, or an answer leaving, at the rate always has half the read
+// timeout to spare.
 func streamStep(rate int64, readTimeout time.Duration) int64 {
 	if atRate(streamChunk, rate) <= readTimeout/2 {
 		return streamChunk
@@ -199,12 +200,13 @@ func Bounded(ctx context.Context) (context.Context, context.CancelFunc) {
 	return context.WithTimeout(ctx, s.requestTimeout)
 }
 
-// Sending announces the answer a stream handler is about to write, once:
-// its write deadline is read_timeout from now, and moves on with its bytes
-// at the route's MinRate (streamWriter). From then on the stream moves
-// bytes until the handler returns: a shutdown cuts it off. It fails
-// outside API.Stream, and with ErrShuttingDown once the server is shutting
-// down.
+// Sending announces the answer a stream handler is about to write, once,
+// with the body read: its write deadline is read_timeout from now, and
+// moves on with its bytes at the route's MinRate (streamWriter); a body
+// read after would move it back with the read deadline. From then on the
+// stream moves bytes until the handler returns: a shutdown cuts it off. It
+// fails outside API.Stream, and with ErrShuttingDown once the server is
+// shutting down.
 func Sending(r *http.Request) error {
 	s, ok := r.Context().Value(streamKey{}).(*stream)
 	if !ok {

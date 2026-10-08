@@ -25,10 +25,9 @@ type APIOptions struct {
 }
 
 // NewAPI returns the per-route middlewares a module's HTTP tests mount the
-// module behind (M1 handoff to M2, item 7): logs discarded, a request
+// module behind (M1 handoff to M2, item 7): logs discarded and a request
 // deadline of 5 s, unless o says otherwise, and platform buckets that
-// never run out. Rate limiting
-// is tested apart, with small buckets.
+// never run out. Rate limiting is tested apart, with small buckets.
 func NewAPI(t testing.TB, o APIOptions) *httpserver.API {
 	t.Helper()
 	if o.MaxBodyBytes == 0 {

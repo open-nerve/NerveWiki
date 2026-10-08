@@ -19,8 +19,11 @@ const SweepKind = "asset.sweep_orphan_files"
 const SweepInterval = 24 * time.Hour
 
 // SweepTimeout bounds a run: River's minute would cut a walk of a large
-// store short, and the next run walks it from the start again.
-const SweepTimeout = time.Hour
+// store short, and the next run walks it from the start again. It stays
+// under the hour after which River takes a job still running for stuck
+// and runs it again (RescueStuckJobsAfter, which platform/jobs leaves at
+// its default).
+const SweepTimeout = 50 * time.Minute
 
 // SweepUseCase is the use case the job runs: app.Sweep.
 type SweepUseCase interface {

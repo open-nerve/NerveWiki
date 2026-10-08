@@ -103,7 +103,9 @@ func pathID(r *http.Request, param string) uuid.UUID {
 // bounded runs step, a step of a stream that is not its bytes, within the
 // request's timeout (httpserver.Bounded). It answers the request step ran
 // with: written with it, an error tells a deadline that passed from any
-// other failure (APIErrors.Write), as a generated route's does.
+// other failure (APIErrors.Write), as a generated route's does. Its context
+// is cancelled once bounded returns: APIErrors.Write then takes any error
+// that wraps context.Canceled for a client gone, as it would on r.
 func bounded(r *http.Request, step func(r *http.Request) error) (*http.Request, error) {
 	ctx, cancel := httpserver.Bounded(r.Context())
 	defer cancel()

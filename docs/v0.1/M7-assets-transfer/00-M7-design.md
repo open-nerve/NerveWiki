@@ -140,7 +140,7 @@
 
 ### 4.4 上传
 
-- 接口：`POST /api/v0/notebooks/{notebook_id}/assets`，`multipart/form-data`。字段依次是 `parent_id`（可选，没有就挂在根下）、`name`（可选，没有就用文件部分的文件名）、`file`（最后一个）。未知或重复的字段、多个文件部分、文件之后还有部分答 400；文件之前的部分（含部分的头）不超过 4 KiB。答 201 和附件（4.6 的元数据）。
+- 接口：`POST /api/v0/notebooks/{notebook_id}/assets`，`multipart/form-data`。字段依次是 `parent_id`（可选，没有就挂在根下）、`name`（可选，没有或为空白就用文件部分的文件名）、`file`（最后一个）。未知或重复的字段、多个文件部分、文件之后还有部分答 400；文件之前的部分（含部分的头）不超过 4 KiB。答 201 和附件（4.6 的元数据）。
 - **流式**：用 `mime/multipart.Reader` 逐部分读，不用 `ParseMultipartForm`（它会把大文件落到系统临时目录）。最后一部分之后把请求体读到结尾（`io.Copy(io.Discard, r.Body)`，结束边界之后至多几个字节）：读到结尾之前读截止时间不解除，停机时这个请求也算"还在传"（P1 审查 A 的疑问）。导入同此（4.11）。
 - **次序**：
   1. 认证之后、读文件之前，不加锁的预检（`TreeWrites.Check`，同一判定与守卫的不加锁预检）：笔记本可写、父节点是这个笔记本里活着的页面、名称合法且此刻没被占用、磁盘余量。不通过就答 403、404、409、422、507。注意：处理器不读完请求体就答复时，net/http 至多再读约 256 KB 就关连接，浏览器与反向代理后面的客户端常常只看到连接被重置；所以网页在发送之前自己先查（4.8），这些码的测试在 handler 层。
@@ -174,7 +174,7 @@
 
   - 每个附件的答复都带 `Content-Security-Policy: sandbox; default-src 'none'; img-src 'self' data:; media-src 'self'; style-src 'unsafe-inline'`：直接打开的 svg 不运行脚本、源是不透明的，也不能向外站请求图片、字体与样式（否则外站拿到读者的 IP，违反总体设计 4.6 的"`img-src` 只许本站"）。
   - `d=1` 时一律 `attachment`。文件名按 RFC 6266 写 `filename*=UTF-8''…`，另带一个 ASCII 的 `filename` 兜底。
-  - 签名核对通过之后才设 `Cache-Control: private, max-age=<到期前的秒数>, immutable`（覆盖 `/api/` 默认的 `no-store`）、`ETag`（SHA-256）、`Cross-Origin-Resource-Policy: same-origin`。
+  - 签名核对通过之后才设 `Cache-Control: private, max-age=<到期前的秒数>, immutable`（覆盖 `/api/` 默认的 `no-store`）、`ETag`（SHA-256）。`Content-Security-Policy` 与 `Cross-Origin-Resource-Policy: same-origin` 在每个答复上，拒绝（400、404、429、503）也带（P2 审查 B5）。
   - 用 `http.ServeContent` 下发：支持 `Range`（视频拖动）与对客户端所持副本的条件请求（`If-None-Match`、`If-Modified-Since`、`If-Range`）；Go 在 416 时去掉 `Cache-Control`，照它。一个地址所下发的内容从不改变，对改动的条件（`If-Match`、`If-Unmodified-Since`）没有要守的，下发之前去掉，不答 412（412 会带上文件的类型与缓存头，P2 审查 B3）。
 - **停机**：停机开始之后 `Sending` 答 `httpserver.ErrShuttingDown`，下载不再开始，答 503（码由 P2 定）。
 - **元数据**：`GET /api/v0/assets/{node_id}` 答附件的元数据：节点的字段，加 MIME、字节数、SHA-256、宽高、内联与下载的两个签名地址（`d` 在签名里，所以是两个），P3 起加 `link`（4.7）。
@@ -188,7 +188,7 @@
   - 两者只凭连接池构造：命令行的组合（停用经 `notebookRegistrants`）也到达它们，它们不要存储与密钥。
 - **清理器**：`asset.Purgers(pool, store)`（要存储，13.1 第 6 条的"登记"随之改写，组合根的 `purgers(pool)` 改为 `purgers(pool, store)`），排在 page 的清理器之前。一批在一个事务里：`FOR UPDATE SKIP LOCKED` 锁住到期的行 → 删文件（不存在算成功）→ 删行 → 提交。删文件不能回滚：提交失败时下一次运行再删一次文件（已不存在，算成功）、删掉行（M2/P4 的移交）。M8 的恢复锁同样的行，与清理串行。删不掉的文件让这一批失败、清理停下（"失败即停"，记日志带 blob id）。
 - **孤儿清扫**（asset 的定时任务，每天）：`blobs/` 下修改时刻早于一天、而 `asset_blobs` 里（含软删除的）没有它的文件，删掉。上传在 `Commit` 之后、单元提交之前失败，提交结果不明，删除文件失败，留下的就是这些。临时文件由存储在启动时删掉（4.1）。transfer 的 `imports/`、`exports/` 由它自己的清扫收拾（4.9）。
-- **笔记本的活动**：字节数是未删除的附件的大小之和，最后写入是它们最晚的 `created_at`（M3 的移交）。
+- **笔记本的活动**：字节数是未删除的附件的大小之和（M3 的移交）。上传是树的一个单元，它的变更集已算作页面一侧的写，附件不再另报最晚的上传时刻（P2 审查 C3）。
 
 ### 4.7 附件进链接
 

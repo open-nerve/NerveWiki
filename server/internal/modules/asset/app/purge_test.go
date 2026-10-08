@@ -27,12 +27,14 @@ func (t *oneTx) WithinTx(ctx context.Context, fn func(ctx context.Context) error
 }
 
 // expiredRows holds the ids of the rows past the retention; DeleteBlobs
-// keeps what it was given, and the files deleted by then.
+// keeps what it was given, and the files deleted by then, and counts its
+// calls.
 type expiredRows struct {
 	ids     []uuid.UUID
 	before  time.Time
 	batch   int
 	deleted []uuid.UUID
+	deletes int
 	files   *memFiles
 	gone    int
 	err     error
@@ -44,6 +46,7 @@ func (r *expiredRows) ExpiredBlobs(_ context.Context, before time.Time, batch in
 }
 
 func (r *expiredRows) DeleteBlobs(_ context.Context, ids []uuid.UUID) (int, error) {
+	r.deletes++
 	r.deleted = slices.Clone(ids)
 	if r.files != nil {
 		r.gone = len(r.files.deleted)
@@ -69,6 +72,15 @@ func TestPurgeDeletesTheFilesThenTheRows(t *testing.T) {
 	}
 	if want := []string{domain.Key(a), domain.Key(b)}; !slices.Equal(files.deleted, want) || len(files.keys()) != 0 {
 		t.Errorf("files deleted %q, left %q; want %q, none", files.deleted, files.keys(), want)
+	}
+}
+
+// A batch with no row past the retention deletes nothing, rows included.
+func TestPurgeOfNoRowsDeletesNothing(t *testing.T) {
+	rows := &expiredRows{}
+	if n, err := app.NewPurge(&oneTx{}, rows, newFiles(), slog.New(slog.DiscardHandler)).Batch(context.Background(), now(), 10); err != nil ||
+		n != 0 || rows.deletes != 0 {
+		t.Errorf("Batch() = %d, %v after %d deletions of rows; want 0, none", n, err, rows.deletes)
 	}
 }
 
