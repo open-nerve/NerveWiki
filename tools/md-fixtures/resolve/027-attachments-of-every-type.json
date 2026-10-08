@@ -1,0 +1,38 @@
+{
+  "description": "每种类型的附件都解析，Obsidian 打开\"检测所有类型的文件\"时没见过的扩展名也是；Markdown 链接先解码",
+  "source": "obsidian-verified",
+  "pages": ["docs", "media", "src"],
+  "assets": ["docs/report.pdf", "media/a.mp3", "media/v.webm", "media/my pic.png", "z.unknownext"],
+  "links": [
+    {
+      "from": "src",
+      "link": "[[report.pdf]]",
+      "to": "docs/report.pdf"
+    },
+    {
+      "from": "src",
+      "link": "![[a.mp3]]",
+      "to": "media/a.mp3"
+    },
+    {
+      "from": "src",
+      "link": "![](v.webm)",
+      "to": "media/v.webm"
+    },
+    {
+      "from": "src",
+      "link": "![](my%20pic.png)",
+      "to": "media/my pic.png"
+    },
+    {
+      "from": "src",
+      "link": "[t](<my pic.png>)",
+      "to": "media/my pic.png"
+    },
+    {
+      "from": "src",
+      "link": "[[z.unknownext]]",
+      "to": "z.unknownext"
+    }
+  ]
+}

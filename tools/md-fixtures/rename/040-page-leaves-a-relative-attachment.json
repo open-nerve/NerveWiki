@@ -1,0 +1,18 @@
+{
+  "description": "被移动的页里指向附件的 ./ 开头的 Markdown 链接，从新的出发文件夹重新算相对路径",
+  "source": "nerve-defined",
+  "pages": [
+    "A",
+    "A/B",
+    "Q",
+    "A/src"
+  ],
+  "assets": [
+    "A/B/x.png",
+    "Q/x.png"
+  ],
+  "page": "A/src",
+  "from": "A/src",
+  "to": "src",
+  "note": "Obsidian 不改写：相对路径找不到时它按算出的路径（B/x.png）找后缀，仍解析到 A/B/x.png（resolve/015）。这里相对路径找不到就解析不到，所以改写；理由同 011。"
+}

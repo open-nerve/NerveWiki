@@ -1,0 +1,14 @@
+{
+  "description": "指向附件的 ./ 与 / 开头的 Markdown 链接，保持相对与从根起",
+  "source": "nerve-defined",
+  "pages": [
+    "A",
+    "src"
+  ],
+  "assets": [
+    "A/x.png"
+  ],
+  "from": "A/x.png",
+  "to": "A/y.png",
+  "note": "Obsidian 改用它的链接格式设置，默认（最短）两条都写成 [t](y.png)。理由同 008：相对与从根起的地址在别的 Markdown 查看器里也能用。"
+}

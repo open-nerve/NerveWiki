@@ -1,0 +1,68 @@
+{
+  "description": "目标的最后一段是笔记本里某个附件的名称时只读作附件（M7/P3 设计 4.2）：同一文件夹里、别处的同名页面都不是候选，读作附件解析不到的（[[B/x.png]]、相对、从根起）就解析不到；以 .md 结尾的写法只读作页面",
+  "source": "obsidian-verified",
+  "pages": ["A", "B", "B/x.png", "src", "B/src"],
+  "assets": ["A/x.png"],
+  "links": [
+    {
+      "from": "B/src",
+      "link": "[[x.png]]",
+      "to": "A/x.png"
+    },
+    {
+      "from": "src",
+      "link": "[[B/x.png]]",
+      "to": null
+    },
+    {
+      "from": "src",
+      "link": "[[x.png.md]]",
+      "to": "B/x.png"
+    },
+    {
+      "from": "src",
+      "link": "[[B/x.png.md]]",
+      "to": "B/x.png"
+    },
+    {
+      "from": "B/src",
+      "link": "[t](x.png)",
+      "to": "A/x.png"
+    },
+    {
+      "from": "B/src",
+      "link": "[t](x.png.md)",
+      "to": "B/x.png"
+    },
+    {
+      "from": "B/src",
+      "link": "![[x.png]]",
+      "to": "A/x.png"
+    },
+    {
+      "from": "B/src",
+      "link": "![](x.png)",
+      "to": "A/x.png"
+    },
+    {
+      "from": "B/src",
+      "link": "[t](./x.png)",
+      "to": null
+    },
+    {
+      "from": "src",
+      "link": "[[/B/x.png]]",
+      "to": null
+    },
+    {
+      "from": "src",
+      "link": "[[A/x.png]]",
+      "to": "A/x.png"
+    },
+    {
+      "from": "src",
+      "link": "[[X.PNG]]",
+      "to": "A/x.png"
+    }
+  ]
+}

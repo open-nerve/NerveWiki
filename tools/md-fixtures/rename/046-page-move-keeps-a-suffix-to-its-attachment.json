@@ -1,0 +1,17 @@
+{
+  "description": "移动一页时它下面的附件随之移动，按路径后缀仍解析到它的链接不改",
+  "source": "nerve-defined",
+  "pages": [
+    "A",
+    "B",
+    "ZZ",
+    "src"
+  ],
+  "assets": [
+    "A/x.png",
+    "ZZ/x.png"
+  ],
+  "from": "A",
+  "to": "B/A",
+  "note": "Obsidian 在候选的路径变了时也改写，写成 [[B/A/x.png]] 与 [t](B/A/x.png)；这里之后仍解析到同一个附件的不改（理由同 024：只改必须改的字节）。"
+}

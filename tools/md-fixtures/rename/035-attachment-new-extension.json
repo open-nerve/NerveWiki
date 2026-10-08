@@ -1,0 +1,13 @@
+{
+  "description": "附件换扩展名同样改写",
+  "source": "obsidian-verified",
+  "pages": [
+    "A",
+    "src"
+  ],
+  "assets": [
+    "A/x.png"
+  ],
+  "from": "A/x.png",
+  "to": "A/x.jpg"
+}

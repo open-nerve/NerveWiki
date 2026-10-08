@@ -1,0 +1,18 @@
+{
+  "description": "根下的附件是从根起的完整路径，从哪里出发都是它；读作附件时，页面 A/x.png 不是 [[A/x.png]] 的候选",
+  "source": "obsidian-verified",
+  "pages": ["A", "A/x.png", "A/src"],
+  "assets": ["x.png"],
+  "links": [
+    {
+      "from": "A/src",
+      "link": "[[x.png]]",
+      "to": "x.png"
+    },
+    {
+      "from": "A/src",
+      "link": "[[A/x.png]]",
+      "to": null
+    }
+  ]
+}

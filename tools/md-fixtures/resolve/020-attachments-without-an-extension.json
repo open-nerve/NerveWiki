@@ -1,0 +1,38 @@
+{
+  "description": "没有扩展名的附件不是候选：不带点的目标只读作页面",
+  "source": "obsidian-verified",
+  "pages": ["A", "src", "data"],
+  "assets": ["A/noext", "A/data"],
+  "links": [
+    {
+      "from": "src",
+      "link": "[[noext]]",
+      "to": null
+    },
+    {
+      "from": "src",
+      "link": "[[data]]",
+      "to": "data"
+    },
+    {
+      "from": "src",
+      "link": "[[A/noext]]",
+      "to": null
+    },
+    {
+      "from": "src",
+      "link": "[t](A/noext)",
+      "to": null
+    },
+    {
+      "from": "src",
+      "link": "![[noext]]",
+      "to": null
+    },
+    {
+      "from": "src",
+      "link": "[[A/data]]",
+      "to": null
+    }
+  ]
+}

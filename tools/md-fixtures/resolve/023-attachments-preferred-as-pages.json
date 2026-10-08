@@ -1,0 +1,29 @@
+{
+  "description": "多个同名的附件照页面的偏好：出发文件夹的子树里的先，再路径短的，再按 id；路径后缀按整段",
+  "source": "obsidian-verified",
+  "pages": ["A", "A/B", "A/B/src", "A/src", "C", "src"],
+  "assets": ["A/x.png", "A/B/x.png", "C/x.png"],
+  "links": [
+    {
+      "from": "A/B/src",
+      "link": "[[x.png]]",
+      "to": "A/B/x.png"
+    },
+    {
+      "from": "A/src",
+      "link": "[[x.png]]",
+      "to": "A/x.png"
+    },
+    {
+      "from": "src",
+      "link": "[[B/x.png]]",
+      "to": "A/B/x.png"
+    },
+    {
+      "from": "src",
+      "link": "[[x.png]]",
+      "to": "A/x.png",
+      "ambiguous": true
+    }
+  ]
+}

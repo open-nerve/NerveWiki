@@ -1,7 +1,7 @@
 // Checks that every fixture is well-formed and self-consistent:
 // each range points at the bytes where its target is written,
 // each task's offset at the character between its brackets,
-// each resolution case's links go from and to its pages,
+// each resolution case's links go from its pages to its pages or attachments,
 // each render case's reading view is text of blocks and line breaks.
 // Usage: node tools/md-fixtures/check.mjs
 import { readFileSync, readdirSync, existsSync } from "node:fs";
@@ -152,11 +152,26 @@ function titleError(s) {
 const titleOf = (page) => page.slice(page.lastIndexOf("/") + 1);
 const siblingKey = (page) => `${parentOf(page)}/${titleKey(titleOf(page))}`;
 
+// assetError is why the server refuses s as an attachment's name (page/domain's CheckAssetName),
+// or "".
+function assetError(s) {
+  return titleError(s) || (/\.md$/i.test(s) ? 'ending with ".md"' : "");
+}
+
+// hasExtension tells whether an attachment's name has an extension: a dot that does not start
+// or end it (page/domain's hasExtension).
+function hasExtension(s) {
+  const i = s.lastIndexOf(".");
+  return i > 0 && i < s.length - 1;
+}
+
 // checkTree checks a case's pages, a tree of titles the server takes (each page's parent listed
-// before it, no siblings that would share a title key), and its aliases, of listed pages; it
-// returns the pages.
-function checkTree(name, list, aliasesOf) {
+// before it, no siblings that would share a title key), its aliases, of listed pages, and its
+// attachments, each under a listed page or at the root, named as the server takes, sharing the
+// pages' title keys among siblings (M7/P3 design 4.8); it returns the pages and the attachments.
+function checkTree(name, list, aliasesOf, assetList = []) {
   const pages = new Set();
+  const assets = new Set();
   const keys = new Set();
   for (const p of list) {
     const why =
@@ -174,19 +189,36 @@ function checkTree(name, list, aliasesOf) {
     pages.add(p);
     keys.add(key);
   }
+  if (!Array.isArray(assetList)) {
+    fail(name, "assets must be an array");
+    assetList = [];
+  }
+  for (const a of assetList) {
+    const segments = typeof a === "string" ? a.split("/") : null;
+    const why =
+      segments === null
+        ? "not a string"
+        : [...segments.slice(0, -1).map(titleError), assetError(segments.at(-1))].find((e) => e !== "");
+    if (why !== undefined) fail(name, `attachment ${JSON.stringify(a)}: a segment is ${why}`);
+    else if (keys.has(siblingKey(a))) fail(name, `attachment ${a}: a sibling has its title key`);
+    else if (parentOf(a) !== null && !pages.has(parentOf(a))) fail(name, `attachment ${a}: its parent must be a page`);
+    assets.add(a);
+    keys.add(typeof a === "string" ? siblingKey(a) : "");
+  }
   for (const [p, aliases] of Object.entries(aliasesOf ?? {})) {
     if (!pages.has(p)) fail(name, `aliases of ${p}, which is not a page`);
     if (!Array.isArray(aliases) || aliases.length === 0 || aliases.some((a) => typeof a !== "string" || a === ""))
       fail(name, `aliases of ${p} must be non-empty strings`);
   }
-  return pages;
+  return { pages, assets };
 }
 
-// A rename case: its keys those the README lists; its pages a tree as a resolution case's (none
-// listed: from and page, at the root); from and page among them; to either a rename (the same
-// parent, another title) or a move (the same title, a parent that is a page or the root, out of
-// from's subtree), with no sibling there that has its title key; a nerve-defined case says in
-// its note what Obsidian does.
+// A rename case: its keys those the README lists; its pages and attachments a tree as a
+// resolution case's (no pages listed: from, unless it is an attachment, and page, at the root);
+// from a page or an attachment, page a page; to either a rename (the same parent, another title,
+// an attachment's keeping its extension) or a move (the same title, a parent that is a page or
+// the root, out of from's subtree), with no sibling there that has its title key; a
+// nerve-defined case says in its note what Obsidian does.
 function checkRename(dir, base) {
   const name = `rename/${base}`;
   for (const ext of [".md", ".out.md"]) if (!existsSync(join(dir, base + ext))) fail(name, `missing ${ext}`);
@@ -196,8 +228,8 @@ function checkRename(dir, base) {
   } catch (e) {
     return fail(name, `bad JSON: ${e.message}`);
   }
-  if (!sameKeys(c, ["description", "source", "pages", "aliases", "page", "from", "to", "note"]))
-    fail(name, "fields are description, source, from, to, and pages, aliases, page and note when set");
+  if (!sameKeys(c, ["description", "source", "pages", "aliases", "assets", "page", "from", "to", "note"]))
+    fail(name, "fields are description, source, from, to, and pages, aliases, assets, page and note when set");
   if (typeof c.description !== "string" || c.description === "") fail(name, "description must be non-empty");
   if (!SOURCES.has(c.source)) fail(name, `source ${c.source}`);
   if ((c.source === "nerve-defined") !== (typeof c.note === "string" && c.note !== ""))
@@ -205,11 +237,15 @@ function checkRename(dir, base) {
   if (typeof c.from !== "string" || typeof c.to !== "string") return fail(name, "from and to must be paths");
   const page = c.page ?? "src";
   if (c.pages === undefined && c.aliases !== undefined) fail(name, "aliases need pages");
-  const pages = checkTree(name, c.pages ?? [c.from, page], c.aliases);
-  if (!pages.has(c.from)) return fail(name, `from ${c.from} is not a page`);
+  const asset = Array.isArray(c.assets) && c.assets.includes(c.from);
+  const { pages, assets } = checkTree(name, c.pages ?? (asset ? [page] : [c.from, page]), c.aliases, c.assets);
+  if (!pages.has(c.from) && !assets.has(c.from))
+    return fail(name, `from ${c.from} is neither a page nor an attachment`);
   if (!pages.has(page)) fail(name, `page ${page} is not a page`);
-  const why = titleError(titleOf(c.to));
+  const why = (asset ? assetError : titleError)(titleOf(c.to));
   if (why !== "") return fail(name, `to ${JSON.stringify(c.to)}: its title is ${why}`);
+  if (asset && hasExtension(titleOf(c.from)) && !hasExtension(titleOf(c.to)))
+    fail(name, `to ${c.to}: an attachment's new name keeps an extension`);
   const parent = parentOf(c.to);
   if (parent === parentOf(c.from)) {
     if (titleOf(c.to) === titleOf(c.from)) fail(name, "to is from: nothing is renamed");
@@ -218,14 +254,15 @@ function checkRename(dir, base) {
   } else if (parent !== null && (!pages.has(parent) || parent === c.from || parent.startsWith(`${c.from}/`))) {
     fail(name, `to's parent ${parent} must be a page out of from's subtree`);
   }
-  if ([...pages].some((p) => p !== c.from && siblingKey(p) === siblingKey(c.to)))
+  if ([...pages, ...assets].some((p) => p !== c.from && siblingKey(p) === siblingKey(c.to)))
     fail(name, `to ${c.to}: a sibling there has its title key`);
 }
 
 // A resolution case: its keys those the README lists; its pages a tree of titles the server
 // takes (each page's parent listed before it, no siblings that would share a title key), its
-// aliases of listed pages, each link from a listed page to a listed page or none; a case or a
-// link that is nerve-defined says why in the case's note.
+// aliases of listed pages, its attachments under listed pages, each link from a listed page to
+// a listed page or attachment, or none; a case or a link that is nerve-defined says why in the
+// case's note.
 function checkResolveCase(dir, base) {
   const name = `resolve/${base}`;
   let c;
@@ -234,12 +271,12 @@ function checkResolveCase(dir, base) {
   } catch (e) {
     return fail(name, `bad JSON: ${e.message}`);
   }
-  if (!sameKeys(c, ["description", "source", "pages", "aliases", "links", "note"]))
-    fail(name, "fields are description, source, pages, links, and aliases and note when set");
+  if (!sameKeys(c, ["description", "source", "pages", "aliases", "assets", "links", "note"]))
+    fail(name, "fields are description, source, pages, links, and aliases, assets and note when set");
   if (typeof c.description !== "string" || c.description === "") fail(name, "description must be non-empty");
   if (!SOURCES.has(c.source)) fail(name, `source ${c.source}`);
   if (!Array.isArray(c.pages) || c.pages.length === 0) return fail(name, "pages must be a non-empty array");
-  const pages = checkTree(name, c.pages, c.aliases);
+  const { pages, assets } = checkTree(name, c.pages, c.aliases, c.assets);
   if (!Array.isArray(c.links) || c.links.length === 0) return fail(name, "links must be a non-empty array");
   let nerveDefined = c.source === "nerve-defined";
   c.links.forEach((l, i) => {
@@ -248,7 +285,8 @@ function checkResolveCase(dir, base) {
       fail(name, `${at}: fields are from, link, to, and ambiguous and source when set`);
     if (!pages.has(l.from)) fail(name, `${at}.from ${l.from} is not a page`);
     if (typeof l.link !== "string" || l.link === "") fail(name, `${at}.link must be non-empty`);
-    if (l.to !== null && !pages.has(l.to)) fail(name, `${at}.to ${l.to} is neither null nor a page`);
+    if (l.to !== null && !pages.has(l.to) && !assets.has(l.to))
+      fail(name, `${at}.to ${l.to} is neither null, a page nor an attachment`);
     if (l.ambiguous !== undefined && (l.ambiguous !== true || l.to === null))
       fail(name, `${at}.ambiguous is true or absent, and true only for a link that resolves`);
     if (l.source !== undefined && !SOURCES.has(l.source)) fail(name, `${at}.source ${l.source}`);

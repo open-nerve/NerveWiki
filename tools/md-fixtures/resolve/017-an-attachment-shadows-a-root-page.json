@@ -1,0 +1,23 @@
+{
+  "description": "根下有标题为 x.png 的页时，[[x.png]] 仍是别处的附件 x.png：读法先于从根起的完整路径",
+  "source": "obsidian-verified",
+  "pages": ["x.png", "A", "src"],
+  "assets": ["A/x.png"],
+  "links": [
+    {
+      "from": "src",
+      "link": "[[x.png]]",
+      "to": "A/x.png"
+    },
+    {
+      "from": "src",
+      "link": "[[x.png.md]]",
+      "to": "x.png"
+    },
+    {
+      "from": "src",
+      "link": "[t](x.png)",
+      "to": "A/x.png"
+    }
+  ]
+}
