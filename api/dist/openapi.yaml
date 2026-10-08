@@ -1594,7 +1594,7 @@ paths:
                   type: string
                   format: uuid
                 name:
-                  description: The attachment's name; none takes the file part's file name.
+                  description: The attachment's name; none, or one empty or of blanks, takes the file part's file name.
                   type: string
                 file:
                   description: The file, the last part.

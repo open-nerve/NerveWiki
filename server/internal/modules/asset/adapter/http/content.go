@@ -89,7 +89,7 @@ const addressKeys = "besd"
 // escaped spelling is another address. Anything else is no address.
 func addressOf(node uuid.UUID, path, query string) (app.Address, bool) {
 	parts := strings.Split(query, "&")
-	if node.String() != path || len(parts) < 3 || len(parts) > 4 {
+	if node.String() != path || len(parts) < 3 || len(parts) > len(addressKeys) {
 		return app.Address{}, false
 	}
 	values := make([]string, len(parts))

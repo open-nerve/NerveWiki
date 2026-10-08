@@ -78,9 +78,12 @@ describe("Refresher", () => {
     expect(reads).toEqual(["t1"]);
     p.show(false);
     refresher.request("t", () => reads.push("t2"), 500);
-    await vi.advanceTimersByTimeAsync(600);
-    expect(reads).toEqual(["t1"]);
+    await vi.advanceTimersByTimeAsync(300);
     p.show(true);
+    expect(reads).toEqual(["t1"]);
+    await vi.advanceTimersByTimeAsync(199);
+    expect(reads).toEqual(["t1"]);
+    await vi.advanceTimersByTimeAsync(1);
     expect(reads).toEqual(["t1", "t2"]);
   });
 

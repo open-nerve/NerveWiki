@@ -230,6 +230,7 @@ func TestReadCause(t *testing.T) {
 	}{
 		{&net.OpError{Op: "read", Err: os.ErrDeadlineExceeded}, "too slow"},
 		{io.ErrUnexpectedEOF, "ended early"},
+		{io.EOF, "ended early"},
 		{&net.OpError{Op: "read", Err: errors.New("connection reset by peer")}, "connection failed"},
 		{errors.New("malformed MIME header line: x"), "malformed"},
 	} {

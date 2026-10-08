@@ -17,7 +17,8 @@ const maxTitleBytes = 255
 // space, in NFC, when s is UTF-8 and that is 1–255 bytes, holds none of
 // / \ : * ? " < > | # ^ [ ] nor a character unshowable in a name (see
 // unshowable), neither starts nor ends with a dot, and is no name Windows
-// reserves; otherwise a problem on field. The bytes are counted in NFC, as they are stored.
+// reserves; otherwise a problem on field. The bytes are counted in NFC,
+// as they are stored.
 func CheckTitle(field, s string) (string, *FieldError) {
 	if !utf8.ValidString(s) {
 		// A JSON string is UTF-8 once decoded; a file name of a form's

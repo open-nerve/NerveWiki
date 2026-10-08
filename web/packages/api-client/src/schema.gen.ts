@@ -3824,7 +3824,7 @@ export interface operations {
                      * @description The page to put the attachment under; none puts it at the notebook's root.
                      */
                     parent_id?: string;
-                    /** @description The attachment's name; none takes the file part's file name. */
+                    /** @description The attachment's name; none, or one empty or of blanks, takes the file part's file name. */
                     name?: string;
                     /**
                      * Format: binary

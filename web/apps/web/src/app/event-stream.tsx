@@ -27,8 +27,8 @@ const refreshedOnConnect = [
  * is read again, the workspaces and notebooks with it. The re-reads a run
  * of events would repeat, the reading views, the trees and what follows
  * the pages' writes, go through the refresher, at most once in the key's
- * interval, and once visible again when the tab is hidden; a lock is read
- * at once. It sits with the providers, mounted anew with each generation,
+ * interval, and once visible again when the tab is hidden; a lock, and
+ * its tree, are read at once. It sits with the providers, mounted anew with each generation,
  * whose hub stops with it: a refresh still going on then reads no more,
  * its cache gone with the generation.
  */
