@@ -10,7 +10,8 @@ import (
 // Each extension of the table, with the bytes of its container or bytes
 // that tell nothing, is its type; with another container's, Octet. An
 // extension the table lacks takes a sniffed type the table has. HTML is
-// never shown.
+// never shown. The extension follows the name's last dot, the first
+// character included.
 func TestTypeOf(t *testing.T) {
 	const (
 		octet = "application/octet-stream"
@@ -27,11 +28,13 @@ func TestTypeOf(t *testing.T) {
 		{"a.webp", "image/webp", "image/webp"},
 		{"a.bmp", "image/bmp", "image/bmp"},
 		{"a.avif", octet, "image/avif"},
+		{"a.avif", "image/avif", "image/avif"},
 		{"a.svg", "text/xml; charset=utf-8", "image/svg+xml"},
 		{"a.svg", plain, "image/svg+xml"},
 		{"a.mp3", "audio/mpeg", "audio/mpeg"},
 		{"a.wav", "audio/wave", "audio/wave"},
 		{"a.flac", octet, "audio/flac"},
+		{"a.flac", "audio/flac", "audio/flac"},
 		{"a.ogg", "application/ogg", "audio/ogg"},
 		{"a.oga", "application/ogg", "audio/ogg"},
 		{"a.m4a", "video/mp4", "audio/mp4"},
@@ -58,6 +61,9 @@ func TestTypeOf(t *testing.T) {
 		{"README", "text/xml; charset=utf-8", octet},
 		{"README", octet, octet},
 		{"a.tar.gz", "application/x-gzip", octet},
+		{"chart.v2.svg", "text/xml; charset=utf-8", "image/svg+xml"},
+		{"my.photo.avif", octet, "image/avif"},
+		{".png", octet, "image/png"},
 	} {
 		if got := domain.TypeOf(tt.name, tt.sniffed); got != tt.want {
 			t.Errorf("TypeOf(%q, %q) = %q, want %q", tt.name, tt.sniffed, got, tt.want)

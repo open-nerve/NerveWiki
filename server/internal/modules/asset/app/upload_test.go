@@ -18,7 +18,7 @@ import (
 
 // tree stands in for the page module's writes: it records the nodes it
 // is given, answers checkErr and createErr, and runs after with a node of
-// its own unless createErr is set.
+// its own, in its unit's context, unless createErr is set.
 type tree struct {
 	checked, created []app.NewNode
 	checkErr         error
@@ -39,7 +39,7 @@ func (t *tree) CreateAsset(ctx context.Context, n app.NewNode, after func(contex
 	}
 	t.node = app.Node{ID: uuid.NewV7(), NotebookID: n.NotebookID, ParentID: n.ParentID, Asset: true, Name: n.Name,
 		CreatedBy: uuid.NewV7(), CreatedAt: now()}
-	if t.afterErr = after(ctx, t.node); t.afterErr != nil {
+	if t.afterErr = after(context.WithValue(ctx, unitKey{}, true), t.node); t.afterErr != nil {
 		return app.Node{}, t.afterErr
 	}
 	return t.node, nil
@@ -68,7 +68,7 @@ func notebookID() uuid.UUID { return uuid.MustParse("0192b7c4-0000-7000-8000-000
 
 // Check asks the page module about the node it would create, decided on
 // asset.upload, then the store's free space: less than it keeps is
-// storage_full; as much passes.
+// storage_full; as much passes; a failure to tell it is itself.
 func TestCheckDecidesTheNodeThenTheFreeSpace(t *testing.T) {
 	u := newUploader()
 	parent := uuid.NewV7()
@@ -86,6 +86,11 @@ func TestCheckDecidesTheNodeThenTheFreeSpace(t *testing.T) {
 	if err := u.uc.Check(context.Background(), req); !errors.Is(err, domain.ErrStorageFull) {
 		t.Errorf("Check() = %v with less free space than is kept, want storage_full", err)
 	}
+	u.files.free, u.files.freeErr = 1<<40, errPort
+	if err := u.uc.Check(context.Background(), req); !errors.Is(err, errPort) || errors.Is(err, domain.ErrStorageFull) {
+		t.Errorf("Check() = %v when the free space is not told, want that failure", err)
+	}
+	u.files.freeErr = nil
 	u.tree.checkErr = shared.Forbidden()
 	u.files.free = 0
 	if err := u.uc.Check(context.Background(), req); !errors.Is(err, shared.Forbidden()) {
@@ -118,8 +123,9 @@ func TestStoreTellsTheTypeByTheNameAsKept(t *testing.T) {
 }
 
 // Create writes the row in the node's unit, with the node's id, notebook,
-// uploader and time, and answers the attachment signed; its log names the
-// ids, the type and the size, never the name.
+// uploader and time, and answers the attachment signed; its log, at INFO,
+// names the ids, the type and the size, each under its key, never the
+// name.
 func TestCreateAttachesTheRowInTheUnit(t *testing.T) {
 	u := newUploader()
 	req := app.Request{NotebookID: notebookID(), Name: "secret plan.png", Client: "web"}
@@ -133,8 +139,9 @@ func TestCreateAttachesTheRowInTheUnit(t *testing.T) {
 	}
 	n := u.tree.node
 	row := u.rows.rows[n.ID]
-	if row.ID != blob.ID || row.NotebookID != notebookID() || row.CreatedBy != n.CreatedBy || !row.CreatedAt.Equal(now()) || row.MIME != "image/png" {
-		t.Errorf("row = %+v, want the blob of node %+v", row, n)
+	if row.ID != blob.ID || row.NotebookID != notebookID() || row.CreatedBy != n.CreatedBy || !row.CreatedAt.Equal(now()) || row.MIME != "image/png" ||
+		!u.rows.inUnit {
+		t.Errorf("row = %+v, in the unit %v; want the blob of node %+v, in its unit", row, u.rows.inUnit, n)
 	}
 	created := u.tree.created[0]
 	if created.Meta.MIME != "image/png" || created.Meta.Bytes != 3 || !bytes.Equal(created.Meta.SHA256, blob.SHA256) ||
@@ -146,8 +153,8 @@ func TestCreateAttachesTheRowInTheUnit(t *testing.T) {
 		t.Errorf("answer = %+v, want the node, its blob and their address signed", a)
 	}
 	logs := u.logs.String()
-	for _, want := range []string{"asset uploaded", n.ID.String(), notebookID().String(), blob.ID.String(), n.CreatedBy.String(),
-		"mime=image/png", "bytes=3", "client=web"} {
+	for _, want := range []string{"level=INFO", "asset uploaded", "node_id=" + n.ID.String(), "notebook_id=" + notebookID().String(),
+		"blob_id=" + blob.ID.String(), "user_id=" + n.CreatedBy.String(), "mime=image/png", "bytes=3", "client=web"} {
 		if !strings.Contains(logs, want) {
 			t.Errorf("log %q lacks %q", logs, want)
 		}
@@ -191,6 +198,26 @@ func TestCreateDeletesTheFileOnARefusalOnly(t *testing.T) {
 				t.Errorf("a failed upload logged %q", u.logs)
 			}
 		})
+	}
+}
+
+// A file a refusal leaves, which the store cannot delete, is logged as an
+// error with its blob: the orphan sweep deletes it.
+func TestCreateLogsAFileItCannotDelete(t *testing.T) {
+	u := newUploader()
+	u.tree.createErr = shared.NewError(shared.KindConflict, "page.title_taken", "Taken.")
+	req := app.Request{NotebookID: notebookID(), Name: "a.png", Client: "web"}
+	blob, err := u.uc.Store(context.Background(), req, strings.NewReader("abc"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	u.files.undeletable = domain.Key(blob.ID)
+	if _, err := u.uc.Create(context.Background(), req, blob); !errors.Is(err, u.tree.createErr) {
+		t.Errorf("Create() = %v, want the refusal", err)
+	}
+	if l := u.logs.String(); !strings.Contains(l, "level=ERROR") || !strings.Contains(l, "blob_id="+blob.ID.String()) ||
+		!strings.Contains(l, errDenied.Error()) {
+		t.Errorf("logs %q, want the file not deleted as an error, with its blob and the failure", l)
 	}
 }
 

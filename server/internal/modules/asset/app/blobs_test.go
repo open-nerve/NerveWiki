@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"testing/iotest"
 	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/asset/app"
@@ -29,7 +30,8 @@ func (s *headSniffer) Sniff(head []byte) string {
 
 // Put commits the file at its key as the bytes pass, a read at a time, its
 // SHA-256 and size counted; the type comes from the name and the first
-// 512 bytes, and an image's size from the committed file.
+// 512 bytes, however short the reads, and an image's size from the
+// committed file, closed once read.
 func TestPutWritesTheFileAndTellsWhatItIs(t *testing.T) {
 	files, rows := newFiles(), newRows()
 	s := &headSniffer{sniffer: &sniffer{sniffed: "image/png", width: 640, height: 480}}
@@ -44,34 +46,43 @@ func TestPutWritesTheFileAndTellsWhatItIs(t *testing.T) {
 		b.Width != 640 || b.Height != 480 {
 		t.Errorf("Put() = %+v, want a PNG of %d bytes, its SHA-256, 640×480", b, len(data))
 	}
-	if got := files.files[domain.Key(b.ID)]; !bytes.Equal(got, data) || files.writing != 0 {
-		t.Errorf("the file holds %d bytes, %d writers open; want the data, none", len(got), files.writing)
+	if got := files.files[domain.Key(b.ID)]; !bytes.Equal(got, data) || files.writing != 0 || s.reads != 1 || files.reading != 0 {
+		t.Errorf("the file holds %d bytes, %d writers open, read %d times for its size, %d left open; want the data, none, once, none",
+			len(got), files.writing, s.reads, files.reading)
 	}
 	if !bytes.Equal(s.head, data[:512]) {
 		t.Errorf("sniffed %d bytes, want the first 512", len(s.head))
+	}
+	if _, err := blobs.Put(context.Background(), "photo.png", iotest.OneByteReader(bytes.NewReader(data[:1<<10])), 1<<10); err != nil ||
+		!bytes.Equal(s.head, data[:512]) {
+		t.Errorf("Put(a byte a read) = %v, sniffing %d bytes; want the first 512", err, len(s.head))
 	}
 }
 
 // The type is the domain's of the name and the sniffed bytes; a file
 // shorter than 512 bytes is sniffed whole. Only PNG, JPEG and GIF are
-// read for their size, and a size past 65535 or none is not kept.
+// read for their size, and a size past 65535, of a side of 0, or none is
+// not kept.
 func TestPutTellsTheTypeAndTheSize(t *testing.T) {
 	for _, tt := range []struct {
 		name, file, sniffed string
 		width, height       int
+		unsized             bool
 		mime                string
 		wantW, wantH, reads int
 	}{
-		{"an image", "a.gif", "image/gif", 3, 4, "image/gif", 3, 4, 1},
-		{"HTML named as an image", "a.png", "text/html; charset=utf-8", 3, 4, "application/octet-stream", 0, 0, 0},
-		{"a PDF", "a.pdf", "application/pdf", 3, 4, "application/pdf", 0, 0, 0},
-		{"an image too wide", "a.png", "image/png", domain.MaxSide + 1, 4, "image/png", 0, 0, 1},
-		{"an image too high", "a.jpg", "image/jpeg", 4, domain.MaxSide + 1, "image/jpeg", 0, 0, 1},
-		{"an image of the largest size", "a.jpg", "image/jpeg", domain.MaxSide, domain.MaxSide, "image/jpeg", domain.MaxSide, domain.MaxSide, 1},
-		{"an image whose size is not read", "a.png", "image/png", 0, 0, "image/png", 0, 0, 1},
+		{"an image", "a.gif", "image/gif", 3, 4, false, "image/gif", 3, 4, 1},
+		{"HTML named as an image", "a.png", "text/html; charset=utf-8", 3, 4, false, "application/octet-stream", 0, 0, 0},
+		{"a PDF", "a.pdf", "application/pdf", 3, 4, false, "application/pdf", 0, 0, 0},
+		{"an image too wide", "a.png", "image/png", 65536, 4, false, "image/png", 0, 0, 1},
+		{"an image too high", "a.jpg", "image/jpeg", 4, 65536, false, "image/jpeg", 0, 0, 1},
+		{"an image of the largest size", "a.jpg", "image/jpeg", 65535, 65535, false, "image/jpeg", 65535, 65535, 1},
+		{"an image of no width", "a.gif", "image/gif", 0, 4, false, "image/gif", 0, 0, 1},
+		{"an image of no height", "a.gif", "image/gif", 4, 0, false, "image/gif", 0, 0, 1},
+		{"an image whose size is not read", "a.png", "image/png", 3, 4, true, "image/png", 0, 0, 1},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			s := &headSniffer{sniffer: &sniffer{sniffed: tt.sniffed, width: tt.width, height: tt.height}}
+			s := &headSniffer{sniffer: &sniffer{sniffed: tt.sniffed, width: tt.width, height: tt.height, unsized: tt.unsized}}
 			blobs := app.NewBlobs(newFiles(), newRows(), s, slog.New(slog.DiscardHandler))
 			b, err := blobs.Put(context.Background(), tt.file, bytes.NewReader([]byte("abc")), 3)
 			if err != nil {
@@ -111,6 +122,10 @@ func TestPutLeavesNoFileWhenItFails(t *testing.T) {
 			f.fullAfter = 33 << 10
 			return bytes.NewReader(data), 1 << 20
 		}, func(err error) bool { return errors.Is(err, domain.ErrStorageFull) }},
+		{"a commit that runs out of room", func(f *memFiles) (io.Reader, int64) {
+			f.commitErr = domain.ErrStorageFull
+			return bytes.NewReader(data), 1 << 20
+		}, func(err error) bool { return errors.Is(err, domain.ErrStorageFull) }},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			files := newFiles()
@@ -144,7 +159,8 @@ func TestPutLogsAnAbortThatFails(t *testing.T) {
 	if !errors.Is(err, domain.ErrTooLarge) {
 		t.Errorf("Put() = %v, want too large", err)
 	}
-	if l := logs.String(); !strings.Contains(l, "level=WARN") || !strings.Contains(l, "blob_id=") ||
+	id, _ := domain.IDOf(files.created[0])
+	if l := logs.String(); !strings.Contains(l, "level=WARN") || !strings.Contains(l, "blob_id="+id.String()) ||
 		!strings.Contains(l, "permission denied") {
 		t.Errorf("logs %q, want the abort's failure as a warning, with the blob's id", l)
 	}

@@ -26,11 +26,15 @@ func signUntil() time.Time { return time.Date(2026, 10, 8, 12, 0, 0, 0, time.UTC
 // The signature is HMAC-SHA256's first 16 bytes over "asset-content", the
 // node, the blob, e and d, in base64url without padding: a known answer,
 // computed apart from this code (M7/P2 design 3.6; v0.1 design 13.1, item
-// 25). e is the end of the hour after the signing's.
+// 25). e is the end of the hour after the signing's, in UTC whatever the
+// zone of the time signed at.
 func TestSignIsTheKnownAnswer(t *testing.T) {
-	s := macadapter.New(signKey()).Sign(signTime(), signNode(), signBlob())
-	if !s.Expires.Equal(signUntil()) || s.Inline != "gXD47aEsSDTtgsNi8TjgwA" || s.Download != "dYc8qvppWC6RLPXNbH8z-Q" {
-		t.Errorf("Sign() = %+v, want until %v, gXD47aEsSDTtgsNi8TjgwA and dYc8qvppWC6RLPXNbH8z-Q", s, signUntil())
+	for _, at := range []time.Time{signTime(), signTime().In(time.FixedZone("CST", 8*3600))} {
+		s := macadapter.New(signKey()).Sign(at, signNode(), signBlob())
+		if !s.Expires.Equal(signUntil()) || s.Expires.Location() != time.UTC || s.Inline != "gXD47aEsSDTtgsNi8TjgwA" ||
+			s.Download != "dYc8qvppWC6RLPXNbH8z-Q" {
+			t.Errorf("Sign(%v) = %+v, want until %v in UTC, gXD47aEsSDTtgsNi8TjgwA and dYc8qvppWC6RLPXNbH8z-Q", at, s, signUntil())
+		}
 	}
 }
 

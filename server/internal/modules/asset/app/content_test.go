@@ -22,6 +22,7 @@ type server struct {
 	nodes   *treeNodes
 	rows    *memRows
 	files   *memFiles
+	clock   *clock
 	logs    *bytes.Buffer
 	content *app.Content
 	photo   app.Node
@@ -30,7 +31,7 @@ type server struct {
 }
 
 func newServer() *server {
-	s := &server{rows: newRows(), files: newFiles(), logs: &bytes.Buffer{}}
+	s := &server{rows: newRows(), files: newFiles(), clock: &clock{}, logs: &bytes.Buffer{}}
 	s.photo = app.Node{ID: uuid.NewV7(), NotebookID: uuid.NewV7(), Asset: true, Name: "photo.png"}
 	s.nodes = &treeNodes{nodes: map[uuid.UUID]app.Node{s.photo.ID: s.photo}}
 	s.blob = domain.Blob{ID: uuid.NewV7(), NodeID: s.photo.ID, MIME: "image/png", Bytes: 3}
@@ -39,7 +40,7 @@ func newServer() *server {
 	signer := macadapter.New(signKey())
 	s.signed = signer.Sign(now(), s.photo.ID, s.blob.ID)
 	logger := slog.New(slog.NewTextHandler(s.logs, nil))
-	s.content = app.NewContent(s.nodes, app.NewBlobs(s.files, s.rows, &sniffer{}, logger), signer, fixedClock{now()}, logger)
+	s.content = app.NewContent(s.nodes, app.NewBlobs(s.files, s.rows, &sniffer{}, logger), signer, s.clock, logger)
 	return s
 }
 
@@ -53,18 +54,30 @@ func (s *server) address(download bool) app.Address {
 }
 
 // A signed address opens its file, with its row, the attachment's name,
-// and the time it has left; shown or downloaded.
+// and the time it has left, of one read of the clock; shown or
+// downloaded.
 func TestContentOpensTheFileOfItsAddress(t *testing.T) {
-	s := newServer()
 	for _, download := range []bool{false, true} {
+		s := newServer()
+		s.clock.step = time.Hour
 		o, err := s.content.Open(context.Background(), s.address(download))
 		if err != nil {
 			t.Fatal(err)
 		}
 		got, _ := io.ReadAll(o.File)
-		if string(got) != "abc" || o.Blob.ID != s.blob.ID || o.Name != "photo.png" || o.Left != 90*time.Minute {
-			t.Errorf("Open(download %v) = %q, %+v, %q, %v left; want abc, its row, photo.png, 90 min", download, got, o.Blob, o.Name, o.Left)
+		if string(got) != "abc" || o.Blob.ID != s.blob.ID || o.Name != "photo.png" || o.Left != 90*time.Minute || s.clock.reads != 1 {
+			t.Errorf("Open(download %v) = %q, %+v, %q, %v left after %d reads of the clock; want abc, its row, photo.png, 90 min, one",
+				download, got, o.Blob, o.Name, o.Left, s.clock.reads)
 		}
+	}
+}
+
+// A read of the row that fails is the download's failure, not not_found.
+func TestContentAnswersAReadThatFails(t *testing.T) {
+	s := newServer()
+	s.rows.readErr = errPort
+	if _, err := s.content.Open(context.Background(), s.address(false)); !errors.Is(err, errPort) {
+		t.Errorf("Open() = %v, want the rows' failure", err)
 	}
 }
 
@@ -110,8 +123,10 @@ func TestContentAnswersNotFound(t *testing.T) {
 			if read := s.nodes.reads > 0; read != tt.read {
 				t.Errorf("the node read: %v, want %v", read, tt.read)
 			}
-			if warned := strings.Contains(s.logs.String(), "level=WARN") && strings.Contains(s.logs.String(), s.blob.ID.String()); warned != tt.warned {
-				t.Errorf("logs %q, want a warning naming the file: %v", s.logs, tt.warned)
+			l := s.logs.String()
+			if warned := strings.Contains(l, "level=WARN") && strings.Contains(l, "blob_id="+s.blob.ID.String()) &&
+				strings.Contains(l, "node_id="+s.photo.ID.String()); warned != tt.warned {
+				t.Errorf("logs %q, want a warning naming the file and its node: %v", l, tt.warned)
 			}
 		})
 	}

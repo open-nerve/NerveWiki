@@ -9,17 +9,26 @@ import (
 
 	postgresadapter "github.com/open-nerve/NerveWiki/server/internal/modules/asset/adapter/postgres"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/asset/domain"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres"
 )
 
 // The expired rows are those deleted before the time, the oldest deletions
 // first, up to the batch, but those another transaction holds, which it
-// does not wait for: a wait fails at the deadline. DeleteBlobs deletes the
+// does not wait for: a wait fails at the deadline. They are read in a
+// transaction only, which their locks last for. DeleteBlobs deletes the
 // rows it is given.
 func TestExpiredBlobsAndTheirDeletion(t *testing.T) {
 	f := newFixture(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	store := postgresadapter.New(f.pool)
+	expired := func(before time.Time, batch int) (ids []uuid.UUID, err error) {
+		err = postgres.NewTxManager(f.pool, time.Second).WithinTx(ctx, func(ctx context.Context) error {
+			ids, err = store.ExpiredBlobs(ctx, before, batch)
+			return err
+		})
+		return ids, err
+	}
 	photo, report := f.blob(f.photo, f.eng, 0, 0), f.blob(f.report, f.ops, 0, 0)
 	for _, b := range []struct {
 		blob domain.Blob
@@ -44,9 +53,12 @@ func TestExpiredBlobsAndTheirDeletion(t *testing.T) {
 		{"one old enough", day(2.5), 10, []uuid.UUID{photo.ID}},
 		{"none old enough", day(4), 10, nil},
 	} {
-		if got, err := store.ExpiredBlobs(ctx, tt.before, tt.batch); err != nil || !slices.Equal(got, tt.want) {
+		if got, err := expired(tt.before, tt.batch); err != nil || !slices.Equal(got, tt.want) {
 			t.Errorf("%s: ExpiredBlobs() = %v, %v; want %v", tt.name, got, err, tt.want)
 		}
+	}
+	if got, err := store.ExpiredBlobs(ctx, day(1), 10); err == nil {
+		t.Errorf("ExpiredBlobs() outside a transaction = %v, want a fault", got)
 	}
 
 	held, err := f.pool.Begin(ctx)
@@ -57,7 +69,7 @@ func TestExpiredBlobsAndTheirDeletion(t *testing.T) {
 	if _, err := held.Exec(ctx, "SELECT 1 FROM asset_blobs WHERE id = $1 FOR UPDATE", photo.ID); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := store.ExpiredBlobs(ctx, day(1), 10); err != nil || !slices.Equal(got, []uuid.UUID{report.ID}) {
+	if got, err := expired(day(1), 10); err != nil || !slices.Equal(got, []uuid.UUID{report.ID}) {
 		t.Errorf("ExpiredBlobs() with photo's row held = %v, %v; want report's only", got, err)
 	}
 	_ = held.Rollback(ctx)

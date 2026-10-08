@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 	"uuid"
 
 	macadapter "github.com/open-nerve/NerveWiki/server/internal/modules/asset/adapter/mac"
@@ -17,39 +18,54 @@ import (
 )
 
 // authorizer shows the notebooks it sees to every caller, and hides the
-// rest; it keeps what it was asked.
+// rest; it keeps what it was asked, and fails with err when set.
 type authorizer struct {
 	sees   map[uuid.UUID]bool
 	asked  []shared.Action
 	target []shared.Target
+	err    error
 }
 
 func (a *authorizer) Authorize(_ context.Context, _ shared.Actor, action shared.Action, t shared.Target) (shared.Grant, error) {
 	a.asked, a.target = append(a.asked, action), append(a.target, t)
+	if a.err != nil {
+		return shared.Grant{}, a.err
+	}
 	if !a.sees[t.NotebookID] {
 		return shared.Grant{}, shared.ErrNotVisible
 	}
 	return shared.Grant{NotebookRole: shared.NotebookReader}, nil
 }
 
-// notebooks maps each notebook not deleted to its workspace.
-type notebooks map[uuid.UUID]uuid.UUID
+// notebooks maps each notebook not deleted to its workspace; it fails
+// with err when set.
+type notebooks struct {
+	of  map[uuid.UUID]uuid.UUID
+	err error
+}
 
-func (n notebooks) WorkspaceOf(_ context.Context, id uuid.UUID) (uuid.UUID, bool, error) {
-	w, ok := n[id]
-	return w, ok, nil
+func (n *notebooks) WorkspaceOf(_ context.Context, id uuid.UUID) (uuid.UUID, bool, error) {
+	w, ok := n.of[id]
+	return w, ok, n.err
 }
 
 // treeNodes are the nodes not deleted, the pages among them; the node
-// vanishing is deleted once read.
+// vanishing is deleted once read. Node fails past failsAfter reads when
+// it is set; Parent and Assets with parentErr and assetsErr.
 type treeNodes struct {
-	nodes     map[uuid.UUID]app.Node
-	vanishing uuid.UUID
-	reads     int
+	nodes      map[uuid.UUID]app.Node
+	vanishing  uuid.UUID
+	reads      int
+	failsAfter int
+	parentErr  error
+	assetsErr  error
 }
 
 func (t *treeNodes) Node(_ context.Context, id uuid.UUID) (app.Node, bool, error) {
 	t.reads++
+	if t.failsAfter > 0 && t.reads > t.failsAfter {
+		return app.Node{}, false, errPort
+	}
 	n, ok := t.nodes[id]
 	if id == t.vanishing {
 		delete(t.nodes, id)
@@ -59,10 +75,13 @@ func (t *treeNodes) Node(_ context.Context, id uuid.UUID) (app.Node, bool, error
 
 func (t *treeNodes) Parent(_ context.Context, notebookID, parentID uuid.UUID) (bool, error) {
 	n, ok := t.nodes[parentID]
-	return ok && !n.Asset && n.NotebookID == notebookID, nil
+	return ok && !n.Asset && n.NotebookID == notebookID, t.parentErr
 }
 
 func (t *treeNodes) Assets(_ context.Context, notebookID uuid.UUID, parentID *uuid.UUID, after *app.Cursor, limit int) ([]app.Node, error) {
+	if t.assetsErr != nil {
+		return nil, t.assetsErr
+	}
 	var out []app.Node
 	for _, n := range t.nodes {
 		if n.Asset && n.NotebookID == notebookID && (parentID == nil) == (n.ParentID == nil) &&
@@ -84,9 +103,10 @@ func (t *treeNodes) Assets(_ context.Context, notebookID uuid.UUID, parentID *uu
 // holds a page, intro, with attachments.
 type reader struct {
 	auth  *authorizer
-	books notebooks
+	books *notebooks
 	nodes *treeNodes
 	rows  *memRows
+	clock *clock
 	logs  *bytes.Buffer
 	reads *app.Reads
 	eng   uuid.UUID
@@ -96,11 +116,11 @@ type reader struct {
 }
 
 func newReader() *reader {
-	r := &reader{eng: uuid.NewV7(), acme: uuid.NewV7(), intro: uuid.NewV7(), rows: newRows(), logs: &bytes.Buffer{}}
-	r.auth, r.books = &authorizer{sees: map[uuid.UUID]bool{r.eng: true}}, notebooks{r.eng: r.acme}
+	r := &reader{eng: uuid.NewV7(), acme: uuid.NewV7(), intro: uuid.NewV7(), rows: newRows(), clock: &clock{}, logs: &bytes.Buffer{}}
+	r.auth, r.books = &authorizer{sees: map[uuid.UUID]bool{r.eng: true}}, &notebooks{of: map[uuid.UUID]uuid.UUID{r.eng: r.acme}}
 	r.nodes = &treeNodes{nodes: map[uuid.UUID]app.Node{r.intro: {ID: r.intro, NotebookID: r.eng, Name: "Intro", NameKey: "intro"}}}
 	r.reads = app.NewReads(app.ReadsDeps{Authorizer: r.auth, Notebooks: r.books, Nodes: r.nodes, Rows: r.rows,
-		Signer: macadapter.New(signKey()), Clock: fixedClock{now()}, Logger: slog.New(slog.NewTextHandler(r.logs, nil))})
+		Signer: macadapter.New(signKey()), Clock: r.clock, Logger: slog.New(slog.NewTextHandler(r.logs, nil))})
 	r.ctx = shared.WithActor(context.Background(), shared.Actor{UserID: uuid.NewV7(), SessionID: uuid.NewV7()})
 	return r
 }
@@ -108,7 +128,7 @@ func newReader() *reader {
 // hidden is a notebook of acme that alice cannot see.
 func (r *reader) hidden() uuid.UUID {
 	id := uuid.NewV7()
-	r.books[id] = r.acme
+	r.books.of[id] = r.acme
 	return id
 }
 
@@ -142,33 +162,97 @@ func TestGetReadsTheAttachmentSigned(t *testing.T) {
 }
 
 // A node that is none, a page, of a notebook gone or hidden, or without
-// its row is asset.not_found; a node without its row is logged as an
-// error, unless it was deleted, with its row, since it was read.
+// its row is asset.not_found, decided on only for an attachment of a
+// notebook; a node without its row is logged as an error, with its ids,
+// unless it was deleted, with its row, since it was read: a read again
+// that fails logs it.
 func TestGetAnswersNotFound(t *testing.T) {
 	for _, tt := range []struct {
-		name   string
-		id     func(r *reader) uuid.UUID
-		logged bool
+		name            string
+		id              func(r *reader) uuid.UUID
+		decided, logged bool
 	}{
-		{"no node", func(*reader) uuid.UUID { return uuid.NewV7() }, false},
-		{"a page", func(r *reader) uuid.UUID { return r.intro }, false},
-		{"a notebook gone", func(r *reader) uuid.UUID { return r.attach(uuid.NewV7(), nil, "a.png", false).ID }, false},
-		{"a notebook hidden", func(r *reader) uuid.UUID { return r.attach(r.hidden(), nil, "a.png", false).ID }, false},
-		{"a node without its row", func(r *reader) uuid.UUID { return r.attach(r.eng, nil, "a.png", true).ID }, true},
+		{"no node", func(*reader) uuid.UUID { return uuid.NewV7() }, false, false},
+		{"a page", func(r *reader) uuid.UUID { return r.intro }, false, false},
+		{"a notebook gone", func(r *reader) uuid.UUID { return r.attach(uuid.NewV7(), nil, "a.png", false).ID }, false, false},
+		{"a notebook hidden", func(r *reader) uuid.UUID { return r.attach(r.hidden(), nil, "a.png", false).ID }, true, false},
+		{"a node without its row", func(r *reader) uuid.UUID { return r.attach(r.eng, nil, "a.png", true).ID }, true, true},
 		{"a node deleted since it was read", func(r *reader) uuid.UUID {
 			r.nodes.vanishing = r.attach(r.eng, nil, "a.png", true).ID
 			return r.nodes.vanishing
-		}, false},
+		}, true, false},
+		{"a node without its row, not read again", func(r *reader) uuid.UUID {
+			r.nodes.failsAfter = 1
+			return r.attach(r.eng, nil, "a.png", true).ID
+		}, true, true},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			r := newReader()
-			if _, err := r.reads.Get(r.ctx, tt.id(r)); !errors.Is(err, domain.ErrNotFound) {
+			id := tt.id(r)
+			if _, err := r.reads.Get(r.ctx, id); !errors.Is(err, domain.ErrNotFound) {
 				t.Errorf("Get() = %v, want asset.not_found", err)
 			}
-			if logged := strings.Contains(r.logs.String(), "level=ERROR"); logged != tt.logged {
-				t.Errorf("logs %q, want an error logged: %v", r.logs, tt.logged)
+			if decided := len(r.auth.asked) > 0; decided != tt.decided {
+				t.Errorf("decided: %v, want %v", decided, tt.decided)
+			}
+			l := r.logs.String()
+			if logged := strings.Contains(l, "level=ERROR"); logged != tt.logged ||
+				logged && (!strings.Contains(l, "node_id="+id.String()) || !strings.Contains(l, "notebook_id="+r.eng.String())) {
+				t.Errorf("logs %q, want an error logged with its ids: %v", l, tt.logged)
 			}
 		})
+	}
+}
+
+// A read without an actor is unauthenticated.
+func TestReadsRequireAnActor(t *testing.T) {
+	r := newReader()
+	n := r.attach(r.eng, nil, "a.png", false)
+	var se *shared.Error
+	if _, err := r.reads.Get(context.Background(), n.ID); !errors.As(err, &se) || se.Kind != shared.KindUnauthenticated {
+		t.Errorf("Get(no actor) = %v, want unauthenticated", err)
+	}
+	if _, err := r.reads.List(context.Background(), r.eng, nil, nil, nil); !errors.As(err, &se) || se.Kind != shared.KindUnauthenticated {
+		t.Errorf("List(no actor) = %v, want unauthenticated", err)
+	}
+}
+
+// Each port's failure is the read's, not a not_found nor an empty page.
+func TestReadsAnswerEachPortsFailure(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		fail func(r *reader)
+		get  bool
+	}{
+		{"the notebook's read", func(r *reader) { r.books.err = errPort }, true},
+		{"the decision", func(r *reader) { r.auth.err = errPort }, true},
+		{"the rows' read", func(r *reader) { r.rows.readErr = errPort }, true},
+		{"the parent's read", func(r *reader) { r.nodes.parentErr = errPort }, false},
+		{"the attachments' read", func(r *reader) { r.nodes.assetsErr = errPort }, false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			r := newReader()
+			n := r.attach(r.eng, &r.intro, "a.png", false)
+			tt.fail(r)
+			if _, err := r.reads.Get(r.ctx, n.ID); tt.get && !errors.Is(err, errPort) {
+				t.Errorf("Get() = %v, want the port's failure", err)
+			}
+			if page, err := r.reads.List(r.ctx, r.eng, &r.intro, nil, nil); !errors.Is(err, errPort) {
+				t.Errorf("List() = %v, %v; want the port's failure", names(page), err)
+			}
+		})
+	}
+}
+
+// A list reads the clock once: each attachment is signed as of that time.
+func TestListSignsAsOfOneTime(t *testing.T) {
+	r := newReader()
+	r.attach(r.eng, &r.intro, "a.png", false)
+	r.attach(r.eng, &r.intro, "b.png", false)
+	r.clock.step = time.Hour
+	page, err := r.reads.List(r.ctx, r.eng, &r.intro, nil, nil)
+	if err != nil || len(page.Assets) != 2 || r.clock.reads != 1 || !page.Assets[0].Signed.Expires.Equal(page.Assets[1].Signed.Expires) {
+		t.Errorf("List() = %+v, %v after %d reads of the clock; want both signed as of one read", page.Assets, err, r.clock.reads)
 	}
 }
 

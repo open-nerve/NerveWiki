@@ -41,7 +41,7 @@ func NewNotebookDeletion(pool *pgxpool.Pool) NotebookDeletion {
 }
 
 // Activity is the attachments' part in a notebook's activity: the bytes
-// of its attachments not deleted, and their latest upload.
+// of its attachments not deleted.
 type Activity = app.Activity
 
 // Activities reads it: bootstrap converts it into the notebook module's
