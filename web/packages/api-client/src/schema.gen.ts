@@ -1981,9 +1981,9 @@ export interface components {
             workspace_id: string;
             /** Format: uuid */
             notebook_id: string;
-            /** @description The pages of the link index whose links resolve to other pages now, but for those whose content was written: empty for none, null for more than 20 or for all of them (a rebuilt index). */
+            /** @description The pages of the link index whose links resolve to other pages or attachments now, but for those whose content was written: empty for none, null for more than 20 or for all of them (a rebuilt index). */
             pages: string[] | null;
-            /** @description The pages whose backlinks changed: empty for none, null for more than 20 or for all of them (a rebuilt index). */
+            /** @description The pages and attachments whose backlinks changed: empty for none, null for more than 20 or for all of them (a rebuilt index). */
             targets: string[] | null;
         };
         /** @description The data of reset, the last frame. */

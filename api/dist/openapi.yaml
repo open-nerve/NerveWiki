@@ -3250,7 +3250,7 @@ components:
           type: string
           format: uuid
         pages:
-          description: 'The pages of the link index whose links resolve to other pages now, but for those whose content was written: empty for none, null for more than 20 or for all of them (a rebuilt index).'
+          description: 'The pages of the link index whose links resolve to other pages or attachments now, but for those whose content was written: empty for none, null for more than 20 or for all of them (a rebuilt index).'
           type:
             - array
             - 'null'
@@ -3259,7 +3259,7 @@ components:
             type: string
             format: uuid
         targets:
-          description: 'The pages whose backlinks changed: empty for none, null for more than 20 or for all of them (a rebuilt index).'
+          description: 'The pages and attachments whose backlinks changed: empty for none, null for more than 20 or for all of them (a rebuilt index).'
           type:
             - array
             - 'null'
