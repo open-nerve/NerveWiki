@@ -38,6 +38,10 @@ func TestRowsFollowTheirNodesAndNotebooks(t *testing.T) {
 	if err := store.DeleteBlobsOfNotebooks(ctx, []uuid.UUID{f.eng, f.ops}, first.Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
+	// A deletion that reaches a row deleted already passes it by.
+	if err := store.DeleteBlobsOfNodes(ctx, []uuid.UUID{f.photo}, first.Add(2*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
 	deletedAt := func(id uuid.UUID) time.Time {
 		var at time.Time
 		if err := f.pool.QueryRow(ctx, "SELECT deleted_at FROM asset_blobs WHERE id = $1", id).Scan(&at); err != nil {
@@ -46,7 +50,7 @@ func TestRowsFollowTheirNodesAndNotebooks(t *testing.T) {
 		return at
 	}
 	if !deletedAt(photo.ID).Equal(first) || !deletedAt(report.ID).Equal(first.Add(time.Hour)) {
-		t.Errorf("deleted at %v and %v, want photo's by its node's at 11:00, report's by its notebook's at 12:00",
+		t.Errorf("deleted at %v and %v, want photo's by its node's at 11:00 alone, report's by its notebook's at 12:00",
 			deletedAt(photo.ID), deletedAt(report.ID))
 	}
 	if activity, err := store.NotebookActivities(ctx, []uuid.UUID{f.eng, f.ops}); err != nil || len(activity) != 0 {

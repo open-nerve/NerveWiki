@@ -12,11 +12,13 @@ import (
 )
 
 // The expired rows are those deleted before the time, the oldest deletions
-// first, up to the batch, but those another transaction holds; DeleteBlobs
-// deletes the rows it is given.
+// first, up to the batch, but those another transaction holds, which it
+// does not wait for: a wait fails at the deadline. DeleteBlobs deletes the
+// rows it is given.
 func TestExpiredBlobsAndTheirDeletion(t *testing.T) {
 	f := newFixture(t)
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 	store := postgresadapter.New(f.pool)
 	photo, report := f.blob(f.photo, f.eng, 0, 0), f.blob(f.report, f.ops, 0, 0)
 	for _, b := range []struct {
