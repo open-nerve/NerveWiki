@@ -142,7 +142,7 @@ export function pageServer({
     /** withTasks gives the page pageId the content of task items and its view, at revision. */
     withTasks(pageId: string, content: string, revision = 1): void {
       server.contents.set(pageId, { content, revision });
-      server.views.set(pageId, { html: tasksView(content), revision });
+      server.views.set(pageId, { html: tasksView(content), revision, assets_expire_at: null });
     },
     /** lockOf is the page's edit lock, as GET edit-lock answers it. */
     lockOf(pageId: string): EditLock {
@@ -170,7 +170,7 @@ export function pageServer({
       }
       return page === undefined
         ? problem(404, "page.not_found")
-        : json(server.views.get(id) ?? { html: `<p>${page.name}</p>`, revision: 1 });
+        : json(server.views.get(id) ?? { html: `<p>${page.name}</p>`, revision: 1, assets_expire_at: null });
     },
     "GET /api/v0/pages/*/edit-lock": (request) => json(server.lockOf(idOf(request))),
     "GET /api/v0/pages/*/link-landing": (request) => {
@@ -515,7 +515,7 @@ function taskRoutes(server: ContentState & { views: Map<string, PageView> }): Re
         const content = new TextDecoder().decode(bytes);
         revision += 1;
         server.contents.set(node.id, { content, revision });
-        server.views.set(node.id, { html: tasksView(content), revision });
+        server.views.set(node.id, { html: tasksView(content), revision, assets_expire_at: null });
       }
       return json({
         ...node,

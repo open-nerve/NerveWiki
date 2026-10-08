@@ -125,8 +125,9 @@ func TestARewriteOfAnAttachmentsLinksInAPageBeingEditedIsRefused(t *testing.T) {
 // its title, an attachment without an extension's beside it too. The
 // completion lists the attachment, of its kind, with its link and no
 // aliases, but not one without an extension, which no link leads to; a
-// property link to it is of its kind; and the reading view, until part B,
-// shows the links to it as leading nowhere.
+// property link to it is of its kind; and the reading view shows the
+// links to it at its content's address, none as leading to a page or
+// nowhere (M7/P3 design 5.5).
 func TestAnAttachmentsNameThroughServe(t *testing.T) {
 	tm := newAcmeTeam(t, "member", "")
 	nb := tm.openNotebook(t, "alice", "Eng")
@@ -192,8 +193,9 @@ func TestAnAttachmentsNameThroughServe(t *testing.T) {
 		HTML string `json:"html"`
 	}
 	decodeAnswer(t, body, &v)
-	if strings.Contains(v.HTML, x.ID) || strings.Count(v.HTML, `data-nw-target="x.png"`) != 3 {
-		t.Errorf("the reading view %q leads to the attachment, or does not show its three links as leading nowhere", v.HTML)
+	if strings.Count(v.HTML, "/api/v0/assets/"+x.ID+"/content?") != 3 || strings.Contains(v.HTML, "data-nw-target") ||
+		strings.Contains(v.HTML, "data-nw-node") {
+		t.Errorf("the reading view %q does not show its three links to the attachment at its address", v.HTML)
 	}
 	checkLinks(t, tm.pool)
 	checkPages(t, tm.pool)

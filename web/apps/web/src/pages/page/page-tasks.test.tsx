@@ -93,6 +93,7 @@ function folded(revision: number, text = "a") {
   return {
     html: `<details class="nw-callout"><summary>Later ${revision.toString()}</summary><ul>\n<li><input disabled="" type="checkbox" data-task="3"> ${text}</li>\n</ul></details>\n<details class="nw-callout"><summary>Other</summary><p>x</p></details>\n`,
     revision,
+    assets_expire_at: null,
   };
 }
 

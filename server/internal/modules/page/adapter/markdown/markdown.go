@@ -28,9 +28,10 @@ func (m *Markdown) Facts(content string) app.Facts {
 }
 
 // Render implements app.Markdown.
-func (m *Markdown) Render(ctx context.Context, content string, page app.PageRef) (string, error) {
-	return m.md.Render(ctx, m.md.Parse([]byte(content)),
+func (m *Markdown) Render(ctx context.Context, content string, page app.PageRef) (app.Rendered, error) {
+	v, err := m.md.Render(ctx, m.md.Parse([]byte(content)),
 		markdown.Page{NotebookID: page.NotebookID, PageID: page.PageID, Revision: page.Revision})
+	return app.Rendered{HTML: v.HTML, Expires: v.Expires}, err
 }
 
 // Tasks implements app.Markdown: what the tasks extension took. A Markdown

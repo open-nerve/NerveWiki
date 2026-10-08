@@ -305,12 +305,19 @@ type Markdown interface {
 	// Facts parses content and keeps what the parse found, not its tree
 	// (M6 design 4.7).
 	Facts(content string) Facts
-	// Render is the HTML of content's reading view for page: it parses the
-	// content, and the tree lives within the call.
-	Render(ctx context.Context, content string, page PageRef) (string, error)
+	// Render is content's reading view for page: it parses the content,
+	// and the tree lives within the call.
+	Render(ctx context.Context, content string, page PageRef) (Rendered, error)
 	// Tasks are the content's task items in order (M5/P6 design 3.3); facts
 	// is what Facts returned.
 	Tasks(facts Facts) []Task
+}
+
+// Rendered is a reading view: its HTML, and when the attachments'
+// addresses in it start expiring, zero for none (M7/P3 design 5.7).
+type Rendered struct {
+	HTML    string
+	Expires time.Time
 }
 
 // Facts is what a parse of a page's content found, without its tree. The

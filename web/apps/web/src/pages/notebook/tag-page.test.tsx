@@ -15,7 +15,11 @@ test("a tag of a reading view leads to its pages, in the tree's order, each name
   // A second Install, at the root: the tree tells the two apart.
   const other = pageNode(5, "Install");
   const server = pageServer({ nodes: [guide, install, linux, notes, other] });
-  server.views.set(guide.id, { html: '<p><a class="nw-tag" data-nw-tag="Proj/a">#Proj/a</a></p>', revision: 1 });
+  server.views.set(guide.id, {
+    html: '<p><a class="nw-tag" data-nw-tag="Proj/a">#Proj/a</a></p>',
+    revision: 1,
+    assets_expire_at: null,
+  });
   server.tags.set("Proj/a", [other.id, notes.id, linux.id, install.id]);
   const { router } = renderApp(pagePath(guide.id), server.app, { enhancements: [appLinks] });
 
@@ -36,7 +40,11 @@ test("a tag of a reading view leads to its pages, in the tree's order, each name
 
 test("a tag the page writes ending with '/' keeps it, its name one segment of the address", async () => {
   const server = pageServer();
-  server.views.set(guide.id, { html: '<p><a class="nw-tag" data-nw-tag="a/">#a//</a></p>', revision: 1 });
+  server.views.set(guide.id, {
+    html: '<p><a class="nw-tag" data-nw-tag="a/">#a//</a></p>',
+    revision: 1,
+    assets_expire_at: null,
+  });
   server.tags.set("a/", [notes.id]);
   const { router } = renderApp(pagePath(guide.id), server.app, { enhancements: [appLinks] });
 

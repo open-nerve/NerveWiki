@@ -1,7 +1,8 @@
 /* The reading view (M4/P5 design 3.8): the server's HTML, whose elements
    Tailwind's preflight leaves unstyled, set as a page to read, with the
    renderer's marks (.nw-props, .nw-image, footnotes, task items, links to
-   pages not there, tags, callouts, highlights, embeds: M6/P6 design 12),
+   pages not there, tags, callouts, highlights, embeds: M6/P6 design 12;
+   attachments: M7/P3 design 5.5),
    what scrolls sideways in its own region, and the code highlighting's
    colours, light and, under .dark, dark. */
 
@@ -363,6 +364,27 @@
   .nw-reading .nw-callout:is([data-callout="quote"], [data-callout="cite"]) {
     --nw-callout: 158 158 158;
     --nw-callout-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M16 3a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2 1 1 0 0 1 1 1v1a2 2 0 0 1-2 2 1 1 0 0 0-1 1v2a1 1 0 0 0 1 1 6 6 0 0 0 6-6V5a2 2 0 0 0-2-2z'/%3E%3Cpath d='M5 3a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2 1 1 0 0 1 1 1v1a2 2 0 0 1-2 2 1 1 0 0 0-1 1v2a1 1 0 0 0 1 1 6 6 0 0 0 6-6V5a2 2 0 0 0-2-2z'/%3E%3C/svg%3E");
+  }
+
+  /* An attachment's image, audio or video, in the line as Obsidian shows
+     it, where the preflight would start a block (M7/P3 design 5.5; review
+     C9). */
+  .nw-reading :is(img, audio, video).nw-asset {
+    display: inline-block;
+    vertical-align: middle;
+  }
+
+  /* An attachment's image or video, no wider than the view, its height
+     kept to its width. */
+  .nw-reading :is(img, video).nw-asset {
+    max-width: 100%;
+    height: auto;
+  }
+
+  /* An attachment shown as text: it has no address, and is no link. */
+  .nw-reading :is(span, a:not([href])).nw-asset {
+    color: var(--muted-foreground);
+    text-decoration: none;
   }
 
   /* An image, shown as its text and its address, which is a link. */

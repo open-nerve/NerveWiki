@@ -1,0 +1,9 @@
+{
+  "description": "1–10000 之外的尺寸",
+  "source": "nerve-defined",
+  "rendered": "⟨img x.png⟩ ⟨img x.png⟩",
+  "note": "Obsidian 照写：\"⟨img x.png 0⟩ ⟨img x.png 20000⟩\"。我们照尺寸的形状认出它，但不写进标记：0 宽的图片看不见，上万的宽高多是笔误（图片自身的宽高照写，版面另把宽度限在一栏之内）",
+  "assets": [
+    "x.png"
+  ]
+}

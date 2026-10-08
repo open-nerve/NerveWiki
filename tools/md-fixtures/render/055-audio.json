@@ -1,0 +1,8 @@
+{
+  "description": "音频的嵌入与 Markdown 图片",
+  "source": "obsidian-verified",
+  "rendered": "⟨audio a.mp3⟩ ⟨audio 说明⟩ ⟨audio 说明⟩",
+  "assets": [
+    "a.mp3"
+  ]
+}

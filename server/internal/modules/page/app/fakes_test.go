@@ -241,6 +241,8 @@ type fakeMarkdown struct {
 	*recorder
 	pages []app.PageRef
 	err   error
+	// expires is when the views it renders expire.
+	expires time.Time
 	// panics has Facts panic.
 	panics bool
 	// tasksRead, when set, runs once after Tasks: someone's write while
@@ -319,10 +321,10 @@ func (h *fakeHold) Release() {
 	h.budget.released++
 }
 
-func (f *fakeMarkdown) Render(ctx context.Context, content string, page app.PageRef) (string, error) {
+func (f *fakeMarkdown) Render(ctx context.Context, content string, page app.PageRef) (app.Rendered, error) {
 	f.record(ctx, "Render")
 	f.pages = append(f.pages, page)
-	return "<p>" + content + "</p>", f.err
+	return app.Rendered{HTML: "<p>" + content + "</p>", Expires: f.expires}, f.err
 }
 
 func (f *fakeStore) CreateNode(ctx context.Context, n domain.Node) error {

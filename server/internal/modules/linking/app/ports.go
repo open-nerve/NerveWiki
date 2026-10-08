@@ -146,11 +146,23 @@ type Property struct {
 
 // PropertyLink is a property link of a page: its property's path and the
 // page or the attachment it resolves to, the zero id for none, Asset
-// telling an attachment (M7/P3 design 4.6).
+// telling an attachment (M7/P3 design 4.6), and an attachment's content's
+// address, signed, "" for none (M7/P3 design 5.6).
 type PropertyLink struct {
 	Key    string
 	NodeID uuid.UUID
 	Asset  bool
+	URL    string
+}
+
+// AttachmentURLs is the addresses of the attachments' contents: the asset
+// module's, which bootstrap wires (M7/P3 design 5.6).
+type AttachmentURLs interface {
+	// URLs is the inline address, signed, of each of ids that is an
+	// attachment of notebookID not deleted, by id; one it is not is left
+	// out. It decides no access: ids are a page's links', for a reader of
+	// the page.
+	URLs(ctx context.Context, notebookID uuid.UUID, ids []uuid.UUID) (map[uuid.UUID]string, error)
 }
 
 // Tag is a tag of a notebook as most of its pages write it, and how many

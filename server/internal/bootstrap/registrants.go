@@ -272,10 +272,11 @@ func pageParticipants(pool *pgxpool.Pool, md *markdown.Markdown, budget *markdow
 
 // markdownExtensions are the extensions of the one Markdown: M5's task
 // items, with their byte positions; M6's dialect, with its links and tags,
-// a reading view's links leading where resolve tells (M6/P3 design 6.6);
-// M7's attachments will take their inline rendering.
-func markdownExtensions(resolve obsidian.Resolve) []markdown.Extension {
-	return []markdown.Extension{tasks.Extension(), obsidian.Extension(obsidian.Options{Resolve: resolve})}
+// a reading view's links leading where resolve tells (M6/P3 design 6.6),
+// and from M7 the attachments they lead to shown as assets tells (M7/P3
+// design 5.10).
+func markdownExtensions(resolve obsidian.Resolve, assets obsidian.Assets) []markdown.Extension {
+	return []markdown.Extension{tasks.Extension(), obsidian.Extension(obsidian.Options{Resolve: resolve, Assets: assets})}
 }
 
 // purgers are the modules' purgers of the soft-deleted rows, leaf to root

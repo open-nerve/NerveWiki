@@ -1,0 +1,8 @@
+{
+  "description": "视频的嵌入、说明与尺寸",
+  "source": "obsidian-verified",
+  "rendered": "⟨video v.webm⟩ ⟨video 说明⟩ ⟨video v.webm 300⟩ ⟨video 说明 300×200⟩",
+  "assets": [
+    "v.webm"
+  ]
+}

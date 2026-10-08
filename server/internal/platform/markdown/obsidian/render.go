@@ -1,6 +1,8 @@
 package obsidian
 
 import (
+	"strings"
+
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/renderer"
 	"github.com/yuin/goldmark/util"
@@ -28,7 +30,7 @@ func (r nodeRenderer) RegisterFuncs(reg renderer.NodeRendererFuncRegisterer) {
 }
 
 // escaped writes b, HTML's special characters escaped.
-func escaped(w util.BufWriter, b []byte) { _, _ = w.Write(util.EscapeHTML(b)) }
+func escaped(w markdown.Writer, b []byte) { _, _ = w.Write(util.EscapeHTML(b)) }
 
 // element writes open before a node's children and closeTag after them.
 func element(open, closeTag string) renderer.NodeRendererFunc {
@@ -52,19 +54,27 @@ func nothing(util.BufWriter, []byte, ast.Node, bool) (ast.WalkStatus, error) {
 // its child (M6/P3 design 6.2): a link to the page it resolves to, with
 // the heading its anchor leads to; one unresolved, with its target; one
 // to its own page's heading, to the heading's id. One in a Markdown
-// link's text, or to its own page's block, is a span.
+// link's text, or to its own page's block, is a span. One to an
+// attachment is a link to it, a span for one Assets did not answer; an
+// embed of one is written whole, as embed writes it, its display text read
+// as its caption and size (M7/P3 design 5.5).
 func (r nodeRenderer) renderWikilink(w util.BufWriter, _ []byte, node ast.Node, entering bool) (ast.WalkStatus, error) {
 	n := node.(*wikilink)
-	heading, own := n.ownHeading()
-	link := n.RendersLink()
 	if !entering {
-		if link {
-			_, _ = w.WriteString("</a>")
-		} else {
-			_, _ = w.WriteString("</span>")
-		}
+		_, _ = w.WriteString(n.closing)
 		return ast.WalkContinue, nil
 	}
+	if t, ok := r.view.target(n.at.Start); ok && t.Asset && n.target != "" && n.embed {
+		caption, sz := sized(n.display)
+		if strings.TrimSpace(caption) == "" {
+			caption = targetShown(n.target, n.anchor)
+		}
+		r.view.embed(w, t.Node, []string{"nw-wikilink", "nw-embed"}, caption, sz, n.inLink)
+		n.closing = ""
+		return ast.WalkSkipChildren, nil
+	}
+	heading, own := n.ownHeading()
+	link := n.RendersLink()
 	class := "nw-wikilink"
 	if n.embed {
 		class += " nw-embed"
@@ -75,16 +85,19 @@ func (r nodeRenderer) renderWikilink(w util.BufWriter, _ []byte, node ast.Node, 
 	case own:
 		attrs = []markdown.Attr{{Name: "href", Value: "#" + heading}}
 	default:
-		var resolved bool
-		attrs, resolved = r.view.lead(n.at.Start, n.target, n.anchor)
-		if !resolved {
-			class += " nw-unresolved"
+		var leads string
+		attrs, leads = r.view.lead(n.at.Start, n.target, n.anchor)
+		if leads != "" {
+			class += " " + leads
 		}
+		link = leads != "nw-asset" || attrs != nil
 	}
 	if link {
 		_, _ = w.WriteString(`<a class="`)
+		n.closing = "</a>"
 	} else {
 		_, _ = w.WriteString(`<span class="`)
+		n.closing = "</span>"
 	}
 	_, _ = w.WriteString(class)
 	_ = w.WriteByte('"')

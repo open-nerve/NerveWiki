@@ -226,6 +226,11 @@ func Pathological() []Input {
 		{"embed openers ![[a", repeat("![[a ")},
 		{"a wikilink open to the line's end", func(n int) string { return "[[" + repeat("a")(n) }},
 		{"wikilinks and their display texts", repeat("[[a#b|c]] ")},
+		// An attachment's embed and image read a caption and a size from
+		// their text (M7/P3 design 5.5).
+		{"embeds of captions and sizes", repeat("![[a.png|c|d|1x2]] ")},
+		{"images of captions and sizes", repeat("![c|d|1x2](a.png) ")},
+		{"embed captions of '|'", func(n int) string { return "![[a.png|" + repeat("|")(n) + "]]" }},
 		{"a '$' a line", repeat("$a\n")},
 		{"formula openers $a", repeat("$a ")},
 		{"a block formula left open", func(n int) string { return "$$\n" + repeat("a [[b]] #c\n")(n) }},
@@ -301,11 +306,30 @@ func Amplifying() []Input {
 		}},
 		// A link to a page carries its state, and an image its address as
 		// well, each time a reference is used: an image of a short address
-		// is the most per byte (M6/P3B review L3).
+		// is the most per byte (M6/P3B review L3), and an attachment's,
+		// its markup and its signed address, the most of all (M7/P3 design
+		// 5.9).
 		{"an image of a short address referred to often", func(n int) string {
 			return "[x]: p#&\n\n" + strings.Repeat("![x] ", n/5)
 		}},
-		// v0.1 shows an embed as a link (M6 design 4.1): it repeats nothing.
+		{"an image of a short address referred to often, unspaced", func(n int) string {
+			return "[x]: p\n\n" + strings.Repeat("![x]", n/4)
+		}},
+		// Each row of a wide table filled to the header's width, its cells
+		// as many as its bytes: the most the links' markup is padded with
+		// (M7/P3 review B1), and a footnote's.
+		{"a wide table of rows of images referred to often", func(n int) string {
+			return "[\"]: p\n\n" + wideRows(n, `!["]`)
+		}},
+		{"a wide table of rows of titled links referred to often", func(n int) string {
+			return "[\"]: p '\"\"\"'\n\n" + wideRows(n, `["] `)
+		}},
+		{"a wide table of rows of footnote references", func(n int) string {
+			return wideRows(n, "[^1]") + "\n[^1]: a\n"
+		}},
+		// An embed of a page is a link to it, which repeats nothing of the
+		// page; an attachment's is its markup and address (M7/P3 design
+		// 5.5).
 		{"a long page embedded often", func(n int) string {
 			return "[[" + strings.Repeat("a", n/2) + "]]\n\n" + strings.Repeat("![[p]]", n/12)
 		}},
@@ -326,6 +350,14 @@ func Amplifying() []Input {
 			return "---\n? " + strings.Repeat("k", n/2) + "\n: [" + strings.Repeat("a,", n/4) + "]\n---\nbody\n"
 		}},
 	}
+}
+
+// wideRows is a table 161 cells wide whose rows are each one cell of the
+// cell written over as many bytes, some n bytes of them: no fewer, or
+// internal/harden would not take it as a table.
+func wideRows(n int, cell string) string {
+	row := strings.Repeat(cell, (160+len(cell)-1)/len(cell)) + "\n"
+	return strings.Repeat("|a", 161) + "\n" + strings.Repeat("|-", 161) + "\n" + strings.Repeat(row, n/len(row))
 }
 
 // pathsInput is the Amplifying input whose frontmatter's paths are most of

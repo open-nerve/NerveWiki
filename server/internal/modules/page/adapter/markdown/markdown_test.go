@@ -4,6 +4,8 @@ import (
 	"context"
 	"slices"
 	"testing"
+	"time"
+	"uuid"
 
 	markdownadapter "github.com/open-nerve/NerveWiki/server/internal/modules/page/adapter/markdown"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/app"
@@ -20,11 +22,32 @@ func newAdapter(t *testing.T) *markdownadapter.Markdown {
 	return markdownadapter.New(md)
 }
 
+// The adapter renders a content for the page, and its view expires when
+// the Markdown's does (M7/P3 design 5.7).
 func TestTheAdapterRendersAContent(t *testing.T) {
 	m := newAdapter(t)
 	got, err := m.Render(context.Background(), "# Hello *world*", app.PageRef{})
-	if want := "<h1 id=\"nw-hello-world\">Hello <em>world</em></h1>\n"; err != nil || got != want {
-		t.Errorf("Render = %q, %v; want %q", got, err, want)
+	if want := (app.Rendered{HTML: "<h1 id=\"nw-hello-world\">Hello <em>world</em></h1>\n"}); err != nil || got != want {
+		t.Errorf("Render = %+v, %v; want %+v", got, err, want)
+	}
+	at := time.Date(2026, 10, 9, 14, 0, 0, 0, time.UTC)
+	page := app.PageRef{NotebookID: uuid.NewV7(), PageID: uuid.NewV7(), Revision: 3}
+	var fetched markdown.Page
+	md, err := markdown.New([]markdown.Extension{{
+		Name: "expiring",
+		Fetch: func(_ context.Context, p markdown.Page, _ any) (any, error) {
+			fetched = p
+			return nil, nil
+		},
+		Expires: func(any) time.Time { return at },
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err = markdownadapter.New(md).Render(context.Background(), "a", page)
+	want := markdown.Page{NotebookID: page.NotebookID, PageID: page.PageID, Revision: 3}
+	if err != nil || got.HTML != "<p>a</p>\n" || !got.Expires.Equal(at) || fetched != want {
+		t.Errorf("Render = %+v, %v, for %+v", got, err, fetched)
 	}
 }
 

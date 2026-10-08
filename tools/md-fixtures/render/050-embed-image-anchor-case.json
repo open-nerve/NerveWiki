@@ -1,0 +1,8 @@
+{
+  "description": "嵌入的锚点进说明文字；大小写照写下的",
+  "source": "obsidian-verified",
+  "rendered": "⟨img x.png > a⟩ ⟨img X.PNG⟩",
+  "assets": [
+    "x.png"
+  ]
+}

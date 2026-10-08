@@ -1201,7 +1201,7 @@ paths:
       tags:
         - page
       summary: Read a page
-      description: 'The page''s reading view: its content rendered to HTML, its frontmatter''s properties as a table first, and the revision it was rendered from. The HTML holds only what the renderer writes and a typographic allowlist of the content''s own HTML, every address on this site, http(s) or mailto, and no image loaded. In the content, a wikilink, an embed (nw-embed), and a Markdown link or image whose address is a path, from the root too, link to pages of the notebook and have no address, which the app gives: each carries the page it leads to as it reads now (data-nw-node) and its anchor''s heading id (data-nw-anchor), or nw-unresolved and its target (data-nw-target). A tag (nw-tag) of a name tag lists count links to its pages and has no address either: it carries the tag as this page writes it, but for its ''#'' and a last ''/'', which getTag takes (data-nw-tag); a tag the index does not keep of the page, its key longer than 1024 bytes or past the page''s first 1000 tags, links still, though getTag does not list the page for it. A tag of a name the lists do not count (#1/) is a span, as are the tag "/" (#//), which getTag''s path cannot name, and a tag in a link''s text. A wikilink in a link''s text is a span, as is one written with a block''s anchor alone ([[#^b]]); one written with a heading''s anchor alone ([[#h]]) has the heading''s id as its address, as has a Markdown link to an anchor alone (#h), which is its text alone for a block''s anchor or an empty one; an image in a link''s text has no link of its own. A table, the properties'' table and a block formula are each in a div of class nw-scroll, a region of their own that may scroll sideways. In the properties'' table, a string written on one line that is one link to a page and nothing else, a wikilink with a target (not an anchor alone) or a Markdown link whose address is a path, is a link as in the content, without a title, showing the text the link shows; a value a YAML alias repeats, and every other value, is text. Once the page is in the link index (nervewiki reindex after an upgrade), a links event tells when where its links lead changes. A page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found alike. When the server parses as much content as it can at once, the page waits a moment, then is server_busy.'
+      description: 'The page''s reading view: its content rendered to HTML, its frontmatter''s properties as a table first, and the revision it was rendered from. The HTML holds only what the renderer writes and a typographic allowlist of the content''s own HTML, every address on this site, http(s) or mailto, and nothing loaded but an attachment''s image, audio or video at a path of this site. In the content, a wikilink, an embed (nw-embed), and a Markdown link or image whose address is a path, from the root too, link to pages of the notebook and have no address, which the app gives: each carries the page it leads to as it reads now (data-nw-node) and its anchor''s heading id (data-nw-anchor), or nw-unresolved and its target (data-nw-target). One that leads to an attachment (nw-asset) has its content''s address, signed, which expires at assets_expire_at the earliest: an embed or an image of an image is its img, of the caption and the size written (|300, |300x200), or else of the image''s own size; of an audio or a video, its element, the content''s first 20 of them; any other is a link, data-nw-size its size in bytes. Past the content''s first 2000 addresses of attachments, in a link''s text but for an image, and for an attachment deleted, it is text. A tag (nw-tag) of a name tag lists count links to its pages and has no address either: it carries the tag as this page writes it, but for its ''#'' and a last ''/'', which getTag takes (data-nw-tag); a tag the index does not keep of the page, its key longer than 1024 bytes or past the page''s first 1000 tags, links still, though getTag does not list the page for it. A tag of a name the lists do not count (#1/) is a span, as are the tag "/" (#//), which getTag''s path cannot name, and a tag in a link''s text. A wikilink in a link''s text is a span, as is one written with a block''s anchor alone ([[#^b]]); one written with a heading''s anchor alone ([[#h]]) has the heading''s id as its address, as has a Markdown link to an anchor alone (#h), which is its text alone for a block''s anchor or an empty one; an image of a page in a link''s text has no link of its own. A table, the properties'' table and a block formula are each in a div of class nw-scroll, a region of their own that may scroll sideways. In the properties'' table, a string written on one line that is one link to a page or an attachment and nothing else, a wikilink with a target (not an anchor alone) or a Markdown link whose address is a path, is a link as in the content, without a title, showing the text the link shows; a value a YAML alias repeats, and every other value, is text. Once the page is in the link index (nervewiki reindex after an upgrade), a links event tells when where its links lead changes. A page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found alike. When the server parses as much content as it can at once, the page waits a moment, then is server_busy.'
       security:
         - bearer: []
       x-problem-codes:
@@ -1670,7 +1670,7 @@ paths:
       tags:
         - asset
       summary: Download an attachment's content
-      description: 'The attachment''s file, at the address getAsset, listAssets and uploadAsset sign: anyone who has the address can open it, without a token, until it expires. The address is read as the server writes it: the path''s id, then the query b, e, s and, to download whatever the type, d=1, in this order, each once, nothing escaped; anything else, a signature that does not match, an address expired, and an attachment deleted since are not_found, alike. An image, an audio, a video or a PDF is shown, any other file downloaded, under its name; every answer is sandboxed (Content-Security-Policy) and readable by no other site, and a file''s is cached privately until the address expires. Ranges and the conditions on a copy the client holds are answered (206, 304, 416); what an address serves never changes, so a condition on a change (If-Match, If-Unmodified-Since) is passed by. The addresses share a bucket of their own, by client IP (rate_limited). A download still sending when the server shuts down is cut off; one asked for then is server_busy.'
+      description: 'The attachment''s file, at the address getAsset, listAssets, uploadAsset, getPageView (in its HTML) and getPageProperties (a link''s url) sign: anyone who has the address can open it, without a token, until it expires. The address is read as the server writes it: the path''s id, then the query b, e, s and, to download whatever the type, d=1, in this order, each once, nothing escaped; anything else, a signature that does not match, an address expired, and an attachment deleted since are not_found, alike. An image, an audio, a video or a PDF is shown, any other file downloaded, under its name; every answer is sandboxed (Content-Security-Policy) and readable by no other site, and a file''s is cached privately until the address expires. Ranges and the conditions on a copy the client holds are answered (206, 304, 416); what an address serves never changes, so a condition on a change (If-Match, If-Unmodified-Since) is passed by. The addresses share a bucket of their own, by client IP (rate_limited). A download still sending when the server shuts down is cut off; one asked for then is server_busy.'
       security: []
       x-raw: true
       x-problem-codes:
@@ -2876,13 +2876,20 @@ components:
       required:
         - html
         - revision
+        - assets_expire_at
       properties:
         html:
-          description: The content rendered to HTML.
+          description: 'The content rendered to HTML. The attachments its links lead to are shown at their contents'' addresses, signed, each a path of this site, as getPageView tells: an image, an audio or a video embedded, a link to any other; text past the first addresses, and in a link''s text but for an image.'
           type: string
         revision:
           description: The content's version the HTML was rendered from.
           type: integer
+        assets_expire_at:
+          description: When the earliest of the attachments' addresses in the HTML expires, after which the view is to be read again; null for a view with none.
+          type:
+            - string
+            - 'null'
+          format: date-time
     TaskToggle:
       description: A tick or a clear of a task item.
       type: object
@@ -2990,6 +2997,7 @@ components:
         - key
         - node_id
         - kind
+        - url
       properties:
         key:
           description: The property's path, a list's item after a dot (sources.0).
@@ -3005,6 +3013,11 @@ components:
           anyOf:
             - $ref: '#/components/schemas/LinkTargetKind'
             - type: 'null'
+        url:
+          description: 'The address of an attachment''s content, signed, a path of this site, as the attachment''s content_url is: it expires as that does, and a read of the properties signs it anew. Null for a page, for none, and for an attachment deleted since the link was indexed.'
+          type:
+            - string
+            - 'null'
     PageProperties:
       type: object
       additionalProperties: false

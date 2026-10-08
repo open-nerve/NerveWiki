@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"time"
 	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
@@ -18,11 +19,13 @@ type GetPageView struct {
 	budget    ParseBudget
 }
 
-// ReadingView is a page's content rendered, and the version it was
-// rendered from.
+// ReadingView is a page's content rendered, the version it was rendered
+// from, and when the earliest of the attachments' addresses in it expires,
+// zero for none (M7/P3 design 5.7).
 type ReadingView struct {
 	HTML     string
 	Revision int
+	Expires  time.Time
 }
 
 // NewGetPageView returns the use case.
@@ -49,9 +52,9 @@ func (g *GetPageView) Execute(ctx context.Context, id uuid.UUID) (ReadingView, e
 		return ReadingView{}, err
 	}
 	defer hold.Release()
-	html, err := g.markdown.Render(ctx, c.Content, PageRef{NotebookID: n.NotebookID, PageID: n.ID, Revision: c.Revision})
+	r, err := g.markdown.Render(ctx, c.Content, PageRef{NotebookID: n.NotebookID, PageID: n.ID, Revision: c.Revision})
 	if err != nil {
 		return ReadingView{}, err
 	}
-	return ReadingView{HTML: html, Revision: c.Revision}, nil
+	return ReadingView{HTML: r.HTML, Revision: c.Revision, Expires: r.Expires}, nil
 }

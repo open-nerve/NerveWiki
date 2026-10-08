@@ -53,10 +53,11 @@ func FuzzRender(f *testing.F) {
 	seeds(f)
 	m := newMarkdown(f)
 	f.Fuzz(func(t *testing.T, content []byte) {
-		out, err := m.Render(context.Background(), m.Parse(content), markdown.Page{})
+		view, err := m.Render(context.Background(), m.Parse(content), markdown.Page{})
 		if err != nil {
 			t.Fatal(err)
 		}
+		out := view.HTML
 		if err := markdowntest.CheckHTML(out); err != nil {
 			t.Errorf("%q\nrenders to\n%q:\n%v", content, out, err)
 		}

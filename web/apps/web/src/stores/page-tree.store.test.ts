@@ -37,7 +37,11 @@ function store(nodes: TreeNode[] = [guide, install, linux, notes]) {
       const custom = state.writes.get("list");
       return custom === undefined ? state.nodes : ((await custom()) as TreeNode[]);
     },
-    getPageView: async (id: string): Promise<PageView> => ({ html: `<p>${id}</p>`, revision: 1 }),
+    getPageView: async (id: string): Promise<PageView> => ({
+      html: `<p>${id}</p>`,
+      revision: 1,
+      assets_expire_at: null,
+    }),
     createPage: (notebookId: string, parent: string | null, title: string) =>
       answer(`create ${title}`, () => ({
         ...pageNode(9, title),

@@ -17,12 +17,10 @@ type Views interface {
 
 // Resolve is the obsidian extension's Resolve over views (M6/P3 design
 // 6.5): a page's links, their targets written as PageFacts writes them,
-// so that what resolves anew resolves as the index has it. A link that
-// resolves to an attachment is left out, as one that resolves to none:
-// the extension would write it as a page's (M7/P3 design 4.6), until it
-// takes an attachment's.
+// so that what resolves anew resolves as the index has it; each to the
+// page or the attachment it resolves to (M7/P3 design 5.3).
 func Resolve(views Views) obsidian.Resolve {
-	return func(ctx context.Context, page markdown.Page, links []obsidian.Link) (map[int]uuid.UUID, error) {
+	return func(ctx context.Context, page markdown.Page, links []obsidian.Link) (map[int]obsidian.Target, error) {
 		asked := make([]app.Link, len(links))
 		for i, l := range links {
 			asked[i] = app.Link{SourceID: page.PageID, Start: l.Range.Start, Target: text(l.Target)}
@@ -32,10 +30,10 @@ func Resolve(views Views) obsidian.Resolve {
 		if err != nil {
 			return nil, err
 		}
-		to := make(map[int]uuid.UUID, len(rs))
+		to := make(map[int]obsidian.Target, len(rs))
 		for start, r := range rs {
-			if r.ID != uuid.Nil() && !r.Asset {
-				to[start] = r.ID
+			if r.ID != uuid.Nil() {
+				to[start] = obsidian.Target{Node: r.ID, Asset: r.Asset}
 			}
 		}
 		return to, nil

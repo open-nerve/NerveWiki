@@ -4,6 +4,7 @@ import (
 	"errors"
 	"slices"
 	"testing"
+	"time"
 	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/app"
@@ -115,13 +116,13 @@ func TestGetPageViewRendersThePagesContent(t *testing.T) {
 	c := f.store.contents[n.ID]
 	c.Content, c.Revision = "# Hello", 3
 	f.store.contents[n.ID] = c
-	md := &fakeMarkdown{recorder: f.rec}
+	md := &fakeMarkdown{recorder: f.rec, expires: time.Date(2026, 10, 9, 14, 0, 0, 0, time.UTC)}
 	v, err := app.NewGetPageView(f.notebooks, f.store, f.auth, md, f.budget).Execute(f.asAlice(), n.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v != (app.ReadingView{HTML: "<p># Hello</p>", Revision: 3}) {
-		t.Errorf("view = %+v, want the content rendered at revision 3", v)
+	if v != (app.ReadingView{HTML: "<p># Hello</p>", Revision: 3, Expires: md.expires}) {
+		t.Errorf("view = %+v, want the content rendered at revision 3, expiring when its rendering does", v)
 	}
 	if !slices.Equal(f.rec.calls, []string{"FindNode", "WorkspaceOf", "Authorize page.read", "PageContent", "Take 7", "Render",
 		"Release 7"}) {

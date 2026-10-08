@@ -43,6 +43,26 @@ func TestCheckHTMLReportsALinkInALink(t *testing.T) {
 	}
 }
 
+// A control, an audio or a video, in a link, which would take its clicks,
+// is reported (M7/P3 review T2); an image is not.
+func TestCheckHTMLReportsAControlInALink(t *testing.T) {
+	media := markdown.Extension{Name: "m", Markup: markdown.Markup{
+		Elements: map[string][]string{"audio": {"src", "controls"}, "video": {"src", "controls"}, "img": {"src"}},
+		URLs:     []string{"src"},
+	}}
+	for _, s := range []string{
+		`<p><a href="/x"><audio src="/a" controls=""></audio></a></p>`,
+		`<p><a href="/x"><em><video src="/v" controls=""></video></em></a></p>`,
+	} {
+		if err := markdowntest.CheckHTML(s, media); err == nil || !strings.Contains(err.Error(), "in a link") {
+			t.Errorf("%s: %v", s, err)
+		}
+	}
+	if err := markdowntest.CheckHTML(`<p><a href="/x"><img src="/i"></a> <audio src="/a" controls=""></audio></p>`, media); err != nil {
+		t.Errorf("an image in a link, an audio after it: %v", err)
+	}
+}
+
 func TestCheckHTMLReportsWhatNoRendererWrites(t *testing.T) {
 	for name, s := range map[string]string{
 		"an event attribute":           `<p onclick="x()">a</p>`,
@@ -100,6 +120,37 @@ func TestCheckHTMLTakesAnExtensionsMarkup(t *testing.T) {
 		if err := markdowntest.CheckHTML(s, ext); err == nil {
 			t.Errorf("%s passed", s)
 		}
+	}
+}
+
+// A src, which loads what it names, is a path of this site from its root,
+// on an element whose extension writes it (M7/P3 design 5.9): what another
+// address may name, a link to it, is not loaded.
+func TestCheckHTMLTakesASrcOfAPathHereAlone(t *testing.T) {
+	img := markdown.Extension{Name: "i", Markup: markdown.Markup{Elements: map[string][]string{"img": {"src"}}, URLs: []string{"src"}}}
+	for _, s := range []string{`<img src="/i.png">`, `<img src="/api/v0/assets/a/content?b=c&amp;e=1&amp;s=d">`} {
+		if err := markdowntest.CheckHTML(s, img); err != nil {
+			t.Errorf("%s: %v", s, err)
+		}
+	}
+	for _, s := range []string{
+		`<img src="https://example.com/i.png">`,
+		`<img src="//example.com/i.png">`,
+		`<img src="/\example.com/i.png">`,
+		`<img src="i.png">`,
+		`<img src="?x">`,
+		`<img src="#x">`,
+		`<img src="mailto:a@example.com">`,
+		`<img src="data:image/png;base64,AA">`,
+		`<img src="java&#9;script:x">`,
+	} {
+		if err := markdowntest.CheckHTML(s, img); err == nil {
+			t.Errorf("%s passed", s)
+		}
+	}
+	link := markdown.Extension{Name: "l", Markup: markdown.Markup{Elements: map[string][]string{"a": {"src"}}}}
+	if err := markdowntest.CheckHTML(`<a src="https://example.com/x">a</a>`, link); err == nil {
+		t.Error("a src of another site on an element of no address passed")
 	}
 }
 

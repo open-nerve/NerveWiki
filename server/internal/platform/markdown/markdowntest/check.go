@@ -52,10 +52,13 @@ var void = []string{"area", "base", "br", "col", "embed", "hr", "img", "input", 
 // design 3.10): read back by x/net/html's tokenizer, it holds only the
 // elements and attributes above and the extensions' Markup, no comment or
 // doctype; every address is on this site, http or https with a host, or
-// mailto; every id starts with "nw-"; every class is the renderers' or the
+// mailto, and every src, which only an extension's elements carry, a path
+// of this site (M7/P3 design 5.9), so that nothing loads from elsewhere
+// (overall design 4.3); every id starts with "nw-"; every class is the renderers' or the
 // extensions'; each end tag closes the innermost element open, and none is
 // left open, so a user's HTML stays inside where it was written; and no
-// link is in a link, which a browser would take apart. It reads
+// link or control (audio, video) is in a link, which a browser would take
+// apart or the link would take the clicks of. It reads
 // tokens, not a tree: the tree builder refuses more than 512 elements open,
 // which a user's nested tags reach, and a check of the tags needs no tree.
 func CheckHTML(s string, exts ...markdown.Extension) error {
@@ -98,6 +101,9 @@ func CheckHTML(s string, exts ...markdown.Extension) error {
 			if tt == html.StartTagToken && t.Data == "a" && slices.Contains(open, "a") {
 				errs = append(errs, errors.New("a link in a link"))
 			}
+			if tt == html.StartTagToken && (t.Data == "audio" || t.Data == "video") && slices.Contains(open, "a") {
+				errs = append(errs, fmt.Errorf("a control <%s> in a link", t.Data))
+			}
 			var err error
 			if open, err = nest(open, tt, t.Data); err != nil {
 				errs = append(errs, err)
@@ -130,6 +136,8 @@ func checkAttr(element string, a html.Attribute, attrs, urls, known []string) er
 		return fmt.Errorf("attribute %s of <%s>", a.Key, element)
 	case slices.Contains(urls, a.Key) && !onThisSiteOrAllowed(a.Val):
 		return fmt.Errorf("address %q of <%s>", a.Val, element)
+	case a.Key == "src" && !aPathHere(a.Val):
+		return fmt.Errorf("src %q of <%s>, not a path of this site", a.Val, element)
 	case a.Key == "id" && !strings.HasPrefix(a.Val, "nw-"):
 		return fmt.Errorf("id %q of <%s>", a.Val, element)
 	case a.Key == "class":
@@ -166,14 +174,31 @@ func onThisSiteOrAllowed(addr string) bool {
 	return false
 }
 
+// aPathHere tells whether an address is a path of this site from its root,
+// as a browser reads it: what it loads comes from here.
+func aPathHere(addr string) bool {
+	if !onThisSiteOrAllowed(addr) {
+		return false
+	}
+	addr = strings.ReplaceAll(strings.Trim(addr, " "), `\`, "/")
+	u, err := url.Parse(addr)
+	return err == nil && u.Scheme == "" && u.Host == "" && strings.HasPrefix(addr, "/") && !strings.HasPrefix(addr, "//")
+}
+
 // The HTML of a reading view is at most Amplification times its content's
 // size plus Headroom (M4/P3 design 3.10). A footnote's reference and its
-// back link, the most per byte, are about 48 times theirs. Below their
+// back link, the most per byte, are about 48 times theirs, and 58 in a
+// wide table's rows, which goldmark pads to the header's width with up to
+// some 10 bytes a byte of them (M7/P3 fix check 1). Below their
 // budgets reference links and a frontmatter's aliases repeat up to about
 // 2 MB however short the content: an image writes its address twice and
 // each '&' as five bytes, so references up to 10 times internal/harden's
 // MinExpansion; the aliases' scalars up to 5 times their budget, and
 // 10 000 nodes of about 40 bytes of table each. Headroom keeps twice that.
+// An attachment's markup and signed address, up to some 67 times their
+// bytes in a wide table, are written at most obsidian.MaxShown times, some
+// 390 KB more than their text, which a quarter of Headroom keeps (M7/P3
+// review B1).
 const (
 	Amplification = 64
 	Headroom      = 4 << 20

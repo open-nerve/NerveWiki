@@ -17,10 +17,11 @@ import (
 
 func renderString(t *testing.T, m *Markdown, src string) string {
 	t.Helper()
-	out, err := m.Render(context.Background(), m.Parse([]byte(src)), Page{})
+	view, err := m.Render(context.Background(), m.Parse([]byte(src)), Page{})
 	if err != nil {
 		t.Fatal(err)
 	}
+	out := view.HTML
 	return out
 }
 
@@ -233,10 +234,11 @@ func fetchFor(_ context.Context, page Page, extracted any) (any, error) {
 func TestAnExtensionRendersWhatItFetchedForThePage(t *testing.T) {
 	m := newMarkdown(t, wordsRendered(fetchFor))
 	page := Page{NotebookID: uuid.New(), PageID: uuid.New()}
-	got, err := m.Render(context.Background(), m.Parse([]byte("say @@hello@@ and @@world@@\n")), page)
+	view, err := m.Render(context.Background(), m.Parse([]byte("say @@hello@@ and @@world@@\n")), page)
 	if err != nil {
 		t.Fatal(err)
 	}
+	got := view.HTML
 	fetched := page.PageID.String() + ":hello,world"
 	want := `<p>say <mark class="nw-word" data-fetched="` + fetched + `">hello</mark> and ` +
 		`<mark class="nw-word" data-fetched="` + fetched + `">world</mark></p>` + "\n"

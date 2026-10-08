@@ -3,6 +3,7 @@ package obsidian
 import (
 	"context"
 	"strings"
+	"time"
 	"uuid"
 
 	"github.com/yuin/goldmark/ast"
@@ -14,17 +15,31 @@ import (
 
 // view is where the links of a page lead, as Fetch found for its reading
 // view (M6/P3 design 6.4): by where each link's target starts, the link,
-// and the page it resolves to.
+// and the node it resolves to; what the attachments among them show
+// (M7/P3 design 5.3); and what its rendering has written of them, which
+// its copies share.
 type view struct {
-	links map[int]Link
-	to    map[int]uuid.UUID
+	links  map[int]Link
+	to     map[int]Target
+	assets map[uuid.UUID]Asset
+	shown  *shown
 }
 
-// fetch is the view of the page's links, the extracted ones, from Resolve:
-// none is read for a page without links, or without Resolve.
+// shown is what a rendering has written of the attachments: how many
+// addresses, how many audio and video elements, and when the earliest of
+// the addresses written expires, zero for none.
+type shown struct {
+	addresses, played int
+	expires           time.Time
+}
+
+// fetch is the view of the page's links, the extracted ones, from Resolve,
+// and of the attachments they lead to, each once, from Assets: none is
+// read for a page without links, or without Resolve, nor are attachments
+// for one whose links lead to none, or without Assets.
 func (o Options) fetch(ctx context.Context, page markdown.Page, extracted any) (any, error) {
 	ex, _ := extracted.(Extracted)
-	v := view{links: make(map[int]Link, len(ex.Links))}
+	v := view{links: make(map[int]Link, len(ex.Links)), shown: &shown{}}
 	for _, l := range ex.Links {
 		v.links[l.Range.Start] = l
 	}
@@ -36,35 +51,63 @@ func (o Options) fetch(ctx context.Context, page markdown.Page, extracted any) (
 		return nil, err
 	}
 	v.to = to
+	var ids []uuid.UUID
+	seen := map[uuid.UUID]bool{}
+	for _, l := range ex.Links {
+		if t, ok := v.target(l.Range.Start); ok && t.Asset && !seen[t.Node] {
+			seen[t.Node] = true
+			ids = append(ids, t.Node)
+		}
+	}
+	if o.Assets == nil || len(ids) == 0 {
+		return v, nil
+	}
+	if v.assets, err = o.Assets(ctx, page.NotebookID, ids); err != nil {
+		return nil, err
+	}
 	return v, nil
 }
 
+// target is the node the link whose target starts at start leads to, if
+// it leads to one.
+func (v view) target(start int) (Target, bool) {
+	t, ok := v.to[start]
+	return t, ok && t.Node != uuid.Nil()
+}
+
 // lead is the attributes of a link to target#anchor whose target starts at
-// start (M6/P3 design 6.2): the page it resolves to and the heading its
-// anchor leads to, and true; or its target, and false for none.
-func (v view) lead(start int, target, anchor string) ([]markdown.Attr, bool) {
-	id, ok := v.to[start]
-	if !ok || id == uuid.Nil() {
-		return []markdown.Attr{{Name: "data-nw-target", Value: target}}, false
+// start, and the class that tells where it leads (M6/P3 design 6.2; M7/P3
+// design 5.5): to a page, the page and the heading its anchor leads to,
+// and none; to an attachment, its content's address and its size, and
+// nw-asset, the class alone for one the view writes no address of, which
+// is text; to none, its target, and nw-unresolved. An attachment is never
+// a page's data-nw-node. Each call writes what it answers.
+func (v view) lead(start int, target, anchor string) ([]markdown.Attr, string) {
+	t, ok := v.target(start)
+	switch {
+	case !ok:
+		return []markdown.Attr{{Name: "data-nw-target", Value: target}}, "nw-unresolved"
+	case t.Asset:
+		return v.assetLink(t.Node), "nw-asset"
 	}
-	attrs := []markdown.Attr{{Name: "data-nw-node", Value: id.String()}}
+	attrs := []markdown.Attr{{Name: "data-nw-node", Value: t.Node.String()}}
 	if heading, ok := markdown.AnchorID(anchor); ok {
 		attrs = append(attrs, markdown.Attr{Name: "data-nw-anchor", Value: heading})
 	}
-	return attrs, true
+	return attrs, ""
 }
 
 // markdownAttrs is how the Markdown link or image whose destination starts
 // at start is written, if it is one of the page's links: its state in place
-// of its address, which the front end gives.
+// of its address, which the front end gives, or an attachment's.
 func (v view) markdownAttrs(start int) ([]markdown.Attr, bool) {
 	l, ok := v.links[start]
 	if !ok {
 		return nil, false
 	}
-	attrs, resolved := v.lead(start, l.Target, l.Anchor)
-	if !resolved {
-		attrs = append([]markdown.Attr{{Name: "class", Value: "nw-unresolved"}}, attrs...)
+	attrs, class := v.lead(start, l.Target, l.Anchor)
+	if class != "" {
+		attrs = append([]markdown.Attr{{Name: "class", Value: class}}, attrs...)
 	}
 	return attrs, true
 }
@@ -72,20 +115,21 @@ func (v view) markdownAttrs(start int) ([]markdown.Attr, bool) {
 // property is how the property table writes the frontmatter's string s
 // (M6/P6 design 4): the property link it is, if it is one, as the body
 // writes its kind, a wikilink or a Markdown link, showing what the link
-// shows; values parses s as the extraction did.
+// shows; values parses s as the extraction did. One to an attachment is a
+// link to it, whatever its type (M7/P3 design 5.6).
 func (v view) property(values parser.Parser) func(s markdown.Scalar) ([]markdown.Attr, string, bool) {
 	return func(s markdown.Scalar) ([]markdown.Attr, string, bool) {
 		p, ok := property(values, s)
 		if !ok {
 			return nil, "", false
 		}
-		attrs, resolved := v.lead(p.Range.Start, p.Target, p.Anchor)
+		attrs, leads := v.lead(p.Range.Start, p.Target, p.Anchor)
 		var class []string
 		if p.Kind == KindWikilink {
 			class = append(class, "nw-wikilink")
 		}
-		if !resolved {
-			class = append(class, "nw-unresolved")
+		if leads != "" {
+			class = append(class, leads)
 		}
 		if len(class) > 0 {
 			attrs = append([]markdown.Attr{{Name: "class", Value: strings.Join(class, " ")}}, attrs...)

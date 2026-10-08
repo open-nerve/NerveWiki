@@ -1,0 +1,8 @@
+{
+  "description": "Markdown 图片的说明与尺寸：只有尺寸时说明是写下的地址",
+  "source": "obsidian-verified",
+  "rendered": "⟨img 说明⟩ ⟨img 说明 300⟩ ⟨img 说明 300×200⟩ ⟨img x.png 300⟩",
+  "assets": [
+    "x.png"
+  ]
+}

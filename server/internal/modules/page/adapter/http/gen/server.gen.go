@@ -169,7 +169,10 @@ type PageCreate struct {
 
 // PageView A page's reading view.
 type PageView struct {
-	// HTML The content rendered to HTML.
+	// AssetsExpireAt When the earliest of the attachments' addresses in the HTML expires, after which the view is to be read again; null for a view with none.
+	AssetsExpireAt nullable.Nullable[time.Time] `json:"assets_expire_at"`
+
+	// HTML The content rendered to HTML. The attachments its links lead to are shown at their contents' addresses, signed, each a path of this site, as getPageView tells: an image, an audio or a video embedded, a link to any other; text past the first addresses, and in a link's text but for an image.
 	HTML string `json:"html"`
 
 	// Revision The content's version the HTML was rendered from.

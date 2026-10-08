@@ -21,7 +21,7 @@ const linkTo = (target: string, text = target, kind = "nw-wikilink nw-unresolved
 /** open shows Guide, whose view is html, to role, and answers its server. */
 async function open(html: string, role: "admin" | "editor" | "reader" = "editor", answers = {}) {
   const server = pageServer({ role, answers });
-  server.views.set(guide.id, { html: `<p>${html}</p>`, revision: 1 });
+  server.views.set(guide.id, { html: `<p>${html}</p>`, revision: 1, assets_expire_at: null });
   const view = renderApp(pagePath(guide.id), server.app, { enhancements });
   await screen.findByRole("article", { name: "Guide" });
   return { ...view, server };
@@ -290,7 +290,7 @@ test("Enter opens the dialog; with the view read again meanwhile, the focus goes
   vi.useFakeTimers({ shouldAdvanceTime: true });
   const { server } = await open(`${linkTo("T", "first")} ${linkTo("T", "second")}`);
   const readAgain = async (html: string, revision: number) => {
-    server.views.set(guide.id, { html, revision });
+    server.views.set(guide.id, { html, revision, assets_expire_at: null });
     await act(() => vi.advanceTimersByTimeAsync(6_000));
     act(() => void window.dispatchEvent(new Event("focus")));
     const text = Object.assign(document.createElement("template"), { innerHTML: html }).content.textContent;

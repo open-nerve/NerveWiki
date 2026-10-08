@@ -76,7 +76,10 @@ func (f fakeProperties) Execute(_ context.Context, pageID uuid.UUID) (app.Proper
 			{Key: "sources", Value: json.RawMessage(`["[[A]]", "[[B]]"]`)},
 			{Key: "cover", Value: json.RawMessage(`"[[x.png]]"`)},
 		},
-		Links: []app.PropertyLink{{Key: "up", NodeID: id(11)}, {Key: "sources.0"}, {Key: "cover", NodeID: id(15), Asset: true}},
+		Links: []app.PropertyLink{
+			{Key: "up", NodeID: id(11)}, {Key: "sources.0"}, {Key: "cover", NodeID: id(15), Asset: true, URL: "/x?a=1&b=2"},
+			{Key: "gone", NodeID: id(16), Asset: true},
+		},
 	}, f.err
 }
 
@@ -156,10 +159,14 @@ func TestTheOperationsAnswerTheUseCases(t *testing.T) {
 				`{"contexts":[],"count":1,"id":"0199a2b4-0000-7000-8000-000000000014"}],"next_cursor":"def"}`,
 			[]any{id(12), &ten, &cursor}},
 		// A value is written as the index has it: a large number keeps its
-		// digits. A link's kind is its node's, none for none.
+		// digits. A link's kind is its node's, none for none; an
+		// attachment's has its address, if it is given one (M7/P3 design
+		// 5.6).
 		{"a page's properties", propertiesPath, "",
-			`{"links":[{"key":"up","kind":"page","node_id":"0199a2b4-0000-7000-8000-000000000011"},{"key":"sources.0","kind":null,"node_id":null},` +
-				`{"key":"cover","kind":"asset","node_id":"0199a2b4-0000-7000-8000-000000000015"}],` +
+			`{"links":[{"key":"up","kind":"page","node_id":"0199a2b4-0000-7000-8000-000000000011","url":null},` +
+				`{"key":"sources.0","kind":null,"node_id":null,"url":null},` +
+				`{"key":"cover","kind":"asset","node_id":"0199a2b4-0000-7000-8000-000000000015","url":"/x?a=1\u0026b=2"},` +
+				`{"key":"gone","kind":"asset","node_id":"0199a2b4-0000-7000-8000-000000000016","url":null}],` +
 				`"properties":[{"key":"up","value":"[[Parent]]"},{"key":"big","value":1000000000000000000000},` +
 				`{"key":"sources","value":["[[A]]","[[B]]"]},{"key":"cover","value":"[[x.png]]"}],"valid":true}`,
 			[]any{id(12)}},

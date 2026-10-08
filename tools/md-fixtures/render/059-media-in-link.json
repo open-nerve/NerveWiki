@@ -1,0 +1,9 @@
+{
+  "description": "链接里的音频",
+  "source": "nerve-defined",
+  "rendered": "a.mp3",
+  "note": "Obsidian 把音频控件写在链接里：\"⟨audio a.mp3⟩\"。链接里不能有交互的元素，我们写成文字",
+  "assets": [
+    "a.mp3"
+  ]
+}

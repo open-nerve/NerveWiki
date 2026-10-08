@@ -55,7 +55,8 @@ async function open(page = new FakePage(), answers: Record<string, Answer> = {},
       "GET /api/v0/pages/*/view": async (request) => {
         const node = server.nodes.find((each) => each.id === idOf(request));
         server.sent.push(`GET view ${node?.name}`);
-        const view = node && (server.views.get(node.id) ?? { html: `<p>${node.name}</p>`, revision: 1 });
+        const view =
+          node && (server.views.get(node.id) ?? { html: `<p>${node.name}</p>`, revision: 1, assets_expire_at: null });
         const hold = holds.get(idOf(request));
         holds.delete(idOf(request));
         await hold;
@@ -119,7 +120,7 @@ test("an event whose tree changed reads the tree again, not the reading views", 
 
 test("a page's reading view is read again when its revision is newer than the one shown, not when it is the same", async () => {
   const { server, events } = await open();
-  server.views.set(guide.id, { html: "<p>Guide, again</p>", revision: 2 });
+  server.views.set(guide.id, { html: "<p>Guide, again</p>", revision: 2, assets_expire_at: null });
 
   events.last().send("pages", pagesEvent(false, [{ id: guide.id, revision: 1 }]));
   await settle();
@@ -132,7 +133,7 @@ test("a page's reading view is read again when its revision is newer than the on
 
 test("a page's reading view is not read again for an older revision than the one a connection read", async () => {
   const { server, events } = await open();
-  server.views.set(guide.id, { html: "<p>Guide, again</p>", revision: 2 });
+  server.views.set(guide.id, { html: "<p>Guide, again</p>", revision: 2, assets_expire_at: null });
   events.last().send("reset", { reason: "expired" });
   await waitFor(() => expect(events.streams).toHaveLength(2));
   events.last().hello();
@@ -150,7 +151,7 @@ test("an event that comes while a reading view's first read is out reads it agai
   const release = holdView(install.id);
   await act(() => router.navigate(pagePath(install.id)));
   await waitFor(() => expect(server.sent).toContain("GET view Install"));
-  server.views.set(install.id, { html: "<p>Install, again</p>", revision: 2 });
+  server.views.set(install.id, { html: "<p>Install, again</p>", revision: 2, assets_expire_at: null });
 
   events.last().send("pages", pagesEvent(false, [{ id: install.id, revision: 2 }]));
   await settle();
@@ -162,7 +163,7 @@ test("an event that comes while a reading view's first read is out reads it agai
 
 test("an event of too many pages to name reads the notebook's reading views again, once in the refresher's interval", async () => {
   const { server, events } = await open();
-  server.views.set(guide.id, { html: "<p>Guide, again</p>", revision: 2 });
+  server.views.set(guide.id, { html: "<p>Guide, again</p>", revision: 2, assets_expire_at: null });
 
   events.last().send("pages", { ...pagesEvent(false, null), notebook_id: "0199a2b4-0000-7000-8000-0000000000b2" });
   await settle();
@@ -179,7 +180,7 @@ test("an event of too many pages to name reads the notebook's reading views agai
 test("a hidden tab reads the reading view once it is shown again", async () => {
   const page = new FakePage();
   const { server, events } = await open(page);
-  server.views.set(guide.id, { html: "<p>Guide, again</p>", revision: 2 });
+  server.views.set(guide.id, { html: "<p>Guide, again</p>", revision: 2, assets_expire_at: null });
 
   page.shown = false;
   events.last().send("pages", pagesEvent(false, [{ id: guide.id, revision: 2 }]));
@@ -215,7 +216,7 @@ const linksEvent = (pages: string[] | null, notebook = notebookJSON.id) => ({
 
 test("a links event reads again the reading view of a page it names, at the revision shown, not those of pages not shown", async () => {
   const { server, events } = await open();
-  server.views.set(guide.id, { html: "<p>Guide, its links again</p>", revision: 1 });
+  server.views.set(guide.id, { html: "<p>Guide, its links again</p>", revision: 1, assets_expire_at: null });
 
   events.last().send("links", linksEvent([install.id]));
   await settle();
@@ -230,7 +231,7 @@ test("a links event reads again the reading view of a page it names, at the revi
 
 test("a links event of too many pages to name reads the notebook's reading views again, not another notebook's", async () => {
   const { server, events } = await open();
-  server.views.set(guide.id, { html: "<p>Guide, its links again</p>", revision: 1 });
+  server.views.set(guide.id, { html: "<p>Guide, its links again</p>", revision: 1, assets_expire_at: null });
 
   events.last().send("links", linksEvent(null, "0199a2b4-0000-7000-8000-0000000000b2"));
   await settle();
@@ -390,7 +391,7 @@ test("a lock event reads the tree first: a page deleted while edited leaves befo
 test("each connection reads again the workspaces, the tree, the reading view and the lock", async () => {
   const { server, events, workspaces } = await open();
   server.nodes = [{ ...guide, name: "Handbook" }, install, linux, notes];
-  server.views.set(guide.id, { html: "<p>Guide, again</p>", revision: 2 });
+  server.views.set(guide.id, { html: "<p>Guide, again</p>", revision: 2, assets_expire_at: null });
   server.hold(guide.id, bob, 60);
 
   events.last().send("reset", { reason: "expired" });

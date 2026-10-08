@@ -15,10 +15,10 @@ type Shown = string | { text: string; lead: Lead };
 
 /**
  * What a property link leads to: a page, by its id; none (null); or an
- * attachment, by its id, shown as its text until the server gives its
- * address (M7/P3 design 4.7).
+ * attachment, at its content's address, which the server signs, null for
+ * none: one deleted since its link was indexed (M7/P3 design 5.6).
  */
-type Lead = string | null | { asset: string };
+type Lead = string | null | { asset: string | null };
 
 /**
  * How long a property link's path may be, in UTF-16 code units, to be
@@ -41,9 +41,9 @@ type Take = (value: string, path: string) => Lead | undefined;
  * them (M6/P7 design 10), in the order written: each its key and its
  * value. A property link, a value or a list's item that is one link, shows
  * the link's text, leading to the page it resolves to, or, resolving to
- * none, styled as a link to no page is; one to an attachment shows its text
- * alone. A frontmatter that is not valid
- * says so, as does one without properties.
+ * none, styled as a link to no page is; one to an attachment leads to its
+ * content (M7/P3 design 5.6). A frontmatter that is not valid says so, as
+ * does one without properties.
  */
 export function PageProperties({
   notebook,
@@ -118,11 +118,11 @@ function rowsOf(data: Properties): Row[] {
  */
 function taking({ properties, links }: Properties): Take {
   const byPath = new Map<string, Lead[]>();
-  for (const { key, node_id: node, kind } of links) {
+  for (const { key, node_id: node, kind, url } of links) {
     if (key.length > pathsUpTo) {
       continue;
     }
-    const lead = kind === "asset" && node !== null ? { asset: node } : (node ?? null);
+    const lead = kind === "asset" ? { asset: url } : (node ?? null);
     const queue = byPath.get(key);
     if (queue === undefined) {
       byPath.set(key, [lead]);
@@ -229,13 +229,22 @@ function linkLike(value: string): boolean {
 const markdownLink =
   /^\[(?:[^[\]\\]|\\.)*\]\([ \t\n]*(?:<((?:[^<>\n\\]|\\.)*)>|(?!<)((?:[^ \t\n()\\]|\\.|\([^ \t\n()]*\))+))(?:[ \t\n]+(?:"[^"]*"|'[^']*'|\([^()]*\)))?[ \t\n]*\)$/s;
 
-/** show is a value shown: its text, or its link, leading to its page or styled as one to none, or an attachment's text. */
+/**
+ * show is a value shown: its text, or its link, leading to its page or styled as one to none, or to an attachment's
+ * content, in a tab of its own, which leaves the page open; its text alone when the attachment has no address.
+ */
 function show(shown: Shown, href: (id: string) => string): ReactNode {
   if (typeof shown === "string") {
     return shown;
   }
   if (typeof shown.lead === "object" && shown.lead !== null) {
-    return shown.text;
+    return shown.lead.asset === null ? (
+      shown.text
+    ) : (
+      <a href={shown.lead.asset} target="_blank" rel="noopener noreferrer" className="underline underline-offset-4">
+        {shown.text}
+      </a>
+    );
   }
   return shown.lead === null ? (
     <span className="text-muted-foreground underline decoration-dashed underline-offset-4">{shown.text}</span>

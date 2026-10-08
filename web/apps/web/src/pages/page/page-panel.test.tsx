@@ -21,7 +21,7 @@ function outlined(): string[][] {
     .map((item) => [item.textContent ?? "", item.style.paddingLeft]);
 }
 
-test("the outline lists the page's headings with an id, but the footnotes', by their text without a footnote's number or an image's address, indented by their level from the page's highest", async () => {
+test("the outline lists the page's headings with an id, but the footnotes', by their text without a footnote's number or an image's address, an attachment's image by its text, indented by their level from the page's highest", async () => {
   const server = pageServer();
   server.views.set(install.id, {
     html: [
@@ -32,9 +32,13 @@ test("the outline lists the page's headings with an id, but the footnotes', by t
       '<h3 id="nw-intro-1">Intro</h3>',
       '<h2 id="nw-notes">Notes<sup id="nw-fnref:1"><a href="#nw-fn:1" class="footnote-ref">1</a></sup></h2>',
       '<h3 id="nw-has-image">Has <span class="nw-image">alt <a href="https://x.test/i.png">https://x.test/i.png</a></span> image</h3>',
+      '<h3 id="nw-diagram"><img class="nw-asset" src="/api/v0/assets/a/content" alt="架构图" loading="lazy"></h3>',
+      '<h3 id="nw-talk"><audio class="nw-asset" src="/api/v0/assets/b/content" controls="" preload="none" aria-label="讲解"></audio></h3>',
+      '<h3 id="nw-demo"><video class="nw-asset" src="/api/v0/assets/c/content" controls="" preload="none" aria-label="演示"></video></h3>',
       '<div class="footnotes"><ol><li id="nw-fn:1"><h4 id="nw-in-a-note">In a note</h4></li></ol></div>',
     ].join(""),
     revision: 1,
+    assets_expire_at: null,
   });
   renderApp(pagePath(install.id), server.app);
 
@@ -46,6 +50,9 @@ test("the outline lists the page's headings with an id, but the footnotes', by t
     ["Intro", "0.75rem"],
     ["Notes", "0rem"],
     ["Has alt image", "0.75rem"],
+    ["架构图", "0.75rem"],
+    ["讲解", "0.75rem"],
+    ["演示", "0.75rem"],
   ]);
 });
 
@@ -56,27 +63,30 @@ function h3s(count: number): string {
 
 test("the outline lists the first 1,000 headings, indented from the highest of them, and says how many more the page has, after its list", async () => {
   const server = pageServer();
-  // 1,000 h3, then an h1, an h2 and one whose text is a footnote's number alone not listed, counted; one without
-  // text and one of the footnotes, not.
+  // 1,000 h3, then an h1, an h2, one whose text is a footnote's number alone and those of an attachment's image or
+  // video alone not listed, counted; one without text and one of the footnotes, not.
   server.views.set(install.id, {
     html: [
       h3s(1_000),
       '<h1 id="nw-top">Top</h1><h2 id="nw-blank"> </h2><h2 id="nw-next">Next</h2>',
       '<h2 id="nw-ref"><sup id="nw-fnref:1"><a href="#nw-fn:1">1</a></sup></h2>',
+      '<h2 id="nw-pic"><img class="nw-asset" src="/api/v0/assets/a/content" alt="p" loading="lazy"></h2>',
+      '<h2 id="nw-clip"><video class="nw-asset" src="/api/v0/assets/c/content" controls="" preload="none" aria-label="c"></video></h2>',
       '<div class="footnotes"><ol><li id="nw-fn:1"><h4 id="nw-in-a-note">In a note</h4></li></ol></div>',
     ].join(""),
     revision: 1,
+    assets_expire_at: null,
   });
   const { unmount } = renderApp(pagePath(install.id), server.app);
 
   const outline = await screen.findByRole("navigation", { name: "Outline" });
   const items = within(outline).getAllByRole("listitem");
   expect([items.length, items.at(-1)?.textContent, items[0]?.style.paddingLeft]).toEqual([1_000, "H999", "0rem"]);
-  expect(within(outline).getByText("…and 3 more").closest("li")).toBeNull();
+  expect(within(outline).getByText("…and 5 more").closest("li")).toBeNull();
   unmount();
 
   // As many as listed: none more.
-  server.views.set(install.id, { html: h3s(1_000), revision: 2 });
+  server.views.set(install.id, { html: h3s(1_000), revision: 2, assets_expire_at: null });
   renderApp(pagePath(install.id), server.app);
   const all = await screen.findByRole("navigation", { name: "Outline" });
   expect(within(all).getAllByRole("listitem")).toHaveLength(1_000);
@@ -85,7 +95,11 @@ test("the outline lists the first 1,000 headings, indented from the highest of t
 
 test("the outline indents from the page's highest heading, whichever it is", async () => {
   const server = pageServer();
-  server.views.set(install.id, { html: '<h4 id="nw-a">A</h4><h3 id="nw-b">B</h3><h4 id="nw-c">C</h4>', revision: 1 });
+  server.views.set(install.id, {
+    html: '<h4 id="nw-a">A</h4><h3 id="nw-b">B</h3><h4 id="nw-c">C</h4>',
+    revision: 1,
+    assets_expire_at: null,
+  });
   renderApp(pagePath(install.id), server.app);
 
   await screen.findByRole("navigation", { name: "Outline" });
@@ -100,7 +114,11 @@ test("a heading of the outline goes to its heading through the router, which sho
   const scrolled = scrolls();
   const user = userEvent.setup();
   const server = pageServer();
-  server.views.set(install.id, { html: '<p>intro</p><h2 id="nw-安装">安装</h2><h2 id="nw-b">B</h2>', revision: 1 });
+  server.views.set(install.id, {
+    html: '<p>intro</p><h2 id="nw-安装">安装</h2><h2 id="nw-b">B</h2>',
+    revision: 1,
+    assets_expire_at: null,
+  });
   const { router } = renderApp(pagePath(install.id), server.app);
   const outline = await screen.findByRole("navigation", { name: "Outline" });
 
@@ -119,7 +137,7 @@ test("a heading of the outline goes to its heading through the router, which sho
 
 test("the outline follows the view read again, its reads the view's; a page without headings has none", async () => {
   const server = pageServer();
-  server.views.set(install.id, { html: '<h2 id="nw-a">A</h2>', revision: 1 });
+  server.views.set(install.id, { html: '<h2 id="nw-a">A</h2>', revision: 1, assets_expire_at: null });
   const reloads: (() => void)[] = [];
   renderApp(pagePath(install.id), server.app, {
     enhancements: [
@@ -132,7 +150,11 @@ test("the outline follows the view read again, its reads the view's; a page with
   await screen.findByRole("navigation", { name: "Outline" });
   expect(outlined()).toEqual([["A", "0rem"]]);
 
-  server.views.set(install.id, { html: '<h1 id="nw-a">A</h1><h3 id="nw-c">C</h3>', revision: 2 });
+  server.views.set(install.id, {
+    html: '<h1 id="nw-a">A</h1><h3 id="nw-c">C</h3>',
+    revision: 2,
+    assets_expire_at: null,
+  });
   act(() => reloads.at(-1)?.());
   await waitFor(() =>
     expect(outlined()).toEqual([
@@ -141,7 +163,7 @@ test("the outline follows the view read again, its reads the view's; a page with
     ])
   );
 
-  server.views.set(install.id, { html: "<p>No headings</p>", revision: 3 });
+  server.views.set(install.id, { html: "<p>No headings</p>", revision: 3, assets_expire_at: null });
   act(() => reloads.at(-1)?.());
   await waitFor(() => expect(screen.getByRole("article").textContent).toBe("No headings"));
   expect(within(panel()).queryByRole("navigation")).toBeNull();
@@ -163,7 +185,7 @@ test("the right column comes after the page's content and its subpages", async (
 
 test("while the page is edited the outline is not shown; back to reading, it is", async () => {
   const server = pageServer({ role: "editor" });
-  server.views.set(install.id, { html: '<h2 id="nw-a">A</h2>', revision: 1 });
+  server.views.set(install.id, { html: '<h2 id="nw-a">A</h2>', revision: 1, assets_expire_at: null });
   renderApp(pagePath(install.id), server.app);
   await screen.findByRole("navigation", { name: "Outline" });
 

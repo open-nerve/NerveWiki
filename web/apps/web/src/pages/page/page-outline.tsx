@@ -61,11 +61,16 @@ function sameView(before: { notebook: Notebook; page: string }, after: { noteboo
   return before.notebook.id === after.notebook.id && before.page === after.page;
 }
 
+/** attachmentElements are an attachment's elements, whose text is an attribute. */
+const attachmentElements = "img.nw-asset, audio.nw-asset, video.nw-asset";
+
 /**
  * headingsOf is the headings of a page's HTML that an anchor leads to: those
  * with an id the server gave (nw-), in their order, but those of the
  * footnotes, with their text: a formula's is its TeX, as the server writes
- * it; a footnote's number and an image's address are not. One without
+ * it, an attachment's image, audio or video its text (alt, aria-label); a
+ * footnote's number and an
+ * image's address are not. One without
  * text is left out, as it would be a link to nothing one could read. The
  * first listedUpTo are listed; the rest only counted, as they are (one
  * whose text is a footnote's number or an image's address alone counts),
@@ -84,7 +89,7 @@ function headingsOf(html: string): { listed: Heading[]; more: number } {
       continue;
     }
     if (listed.length === listedUpTo) {
-      if ((heading.textContent ?? "").trim() !== "") {
+      if ((heading.textContent ?? "").trim() !== "" || heading.querySelector(attachmentElements) !== null) {
         more++;
       }
       continue;
@@ -92,6 +97,9 @@ function headingsOf(html: string): { listed: Heading[]; more: number } {
     const copy = heading.cloneNode(true) as HTMLElement;
     for (const left of copy.querySelectorAll("sup[id^='nw-fnref'], .nw-image > a")) {
       left.remove();
+    }
+    for (const element of copy.querySelectorAll(attachmentElements)) {
+      element.replaceWith((element.getAttribute(element.tagName === "IMG" ? "alt" : "aria-label") ?? "").trim());
     }
     const text = (copy.textContent ?? "").replace(/\s+/g, " ").trim();
     if (text !== "") {

@@ -25,6 +25,8 @@ func seeds(f *testing.F) {
 	f.Add([]byte(markdowntest.Normal(4 << 10)))
 	// Tags as links (M6/P6 design 3): in a link's text, in a user's link.
 	f.Add([]byte("[see #t and [[P]]](https://x.example) <a href=\"/x\">#u *#v*</a> #a/ #1/ #/\n"))
+	// Attachments (M7/P3 design 5.5): embedded, in a link, in a table.
+	f.Add([]byte("![[x|说明|300]] ![](a) [![[v]] ![](x)](https://x.example)\n\n|a|\n|-|\n|![[d\\|t\\|1x2]]|\n"))
 }
 
 // Any bytes parse, and each link's and tag's range is in the content: a
@@ -58,16 +60,19 @@ func FuzzParse(f *testing.F) {
 }
 
 // Any bytes render to HTML that passes the checks with the extensions'
-// markup, every link resolved or none.
+// markup, every link resolved to a page, to an attachment of the tests'
+// (M7/P3 review T3) or none.
 func FuzzRender(f *testing.F) {
 	seeds(f)
 	all, none := newMarkdownWith(f, obsidian.Options{Resolve: resolveAll}), newMarkdownWith(f, obsidian.Options{})
+	attached := newMarkdownWith(f, obsidian.Options{Resolve: resolveMixed, Assets: shownAssets})
 	f.Fuzz(func(t *testing.T, content []byte) {
-		for _, m := range []*markdown.Markdown{all, none} {
-			out, err := m.Render(context.Background(), m.Parse(content), markdown.Page{})
+		for _, m := range []*markdown.Markdown{all, none, attached} {
+			view, err := m.Render(context.Background(), m.Parse(content), markdown.Page{})
 			if err != nil {
 				t.Fatal(err)
 			}
+			out := view.HTML
 			if err := markdowntest.CheckHTML(out, tasks.Extension(), obsidian.Extension(obsidian.Options{})); err != nil {
 				t.Errorf("%q\nrenders to\n%q:\n%v", content, out, err)
 			}
@@ -76,4 +81,16 @@ func FuzzRender(f *testing.F) {
 			}
 		}
 	})
+}
+
+// resolveMixed resolves each link to one of the tests' attachments, by
+// where its target starts: an image, an audio, a video, a PDF, or one
+// Assets does not answer.
+func resolveMixed(_ context.Context, _ markdown.Page, links []obsidian.Link) (map[int]obsidian.Target, error) {
+	names := []string{"dims.png", "a.mp3", "v.webm", "doc.pdf", "gone.png"}
+	to := map[int]obsidian.Target{}
+	for _, l := range links {
+		to[l.Range.Start] = obsidian.Target{Node: attachments[names[l.Range.Start%len(names)]].id, Asset: true}
+	}
+	return to, nil
 }

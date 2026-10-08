@@ -1,0 +1,9 @@
+{
+  "description": "没有说明的 Markdown 图片",
+  "source": "nerve-defined",
+  "rendered": "⟨img x.png⟩",
+  "note": "Obsidian 不写替代文字：\"⟨img⟩\"。我们照只有尺寸时的写法给写下的地址，读屏能读出它是什么",
+  "assets": [
+    "x.png"
+  ]
+}

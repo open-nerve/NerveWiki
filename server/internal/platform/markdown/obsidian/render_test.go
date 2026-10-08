@@ -16,13 +16,20 @@ type renderCase struct{ name, src, want string }
 // reading view's HTML with the extensions' markup.
 func checkRenders(t *testing.T, tests []renderCase) {
 	t.Helper()
-	m := newMarkdown(t)
+	checkRendersWith(t, newMarkdown(t), tests)
+}
+
+// checkRendersWith checks each case's HTML as m renders it, and that it
+// passes the check of a reading view's HTML with the extensions' markup.
+func checkRendersWith(t *testing.T, m *markdown.Markdown, tests []renderCase) {
+	t.Helper()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := m.Render(context.Background(), m.Parse([]byte(tt.src)), markdown.Page{})
+			view, err := m.Render(context.Background(), m.Parse([]byte(tt.src)), markdown.Page{})
 			if err != nil {
 				t.Fatal(err)
 			}
+			got := view.HTML
 			if got != tt.want {
 				t.Errorf("render %q\n got %q\nwant %q", tt.src, got, tt.want)
 			}

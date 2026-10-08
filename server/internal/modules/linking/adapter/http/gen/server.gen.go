@@ -165,6 +165,9 @@ type PropertyLink struct {
 
 	// NodeID The page or the attachment the link resolves to; null for none.
 	NodeID nullable.Nullable[uuid.UUID] `json:"node_id"`
+
+	// URL The address of an attachment's content, signed, a path of this site, as the attachment's content_url is: it expires as that does, and a read of the properties signs it anew. Null for a page, for none, and for an attachment deleted since the link was indexed.
+	URL nullable.Nullable[string] `json:"url"`
 }
 
 // TagCount defines model for TagCount.

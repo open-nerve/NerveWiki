@@ -135,8 +135,9 @@ paths:
       tags: [asset]
       summary: Download an attachment's content
       description: >-
-        The attachment's file, at the address getAsset, listAssets and
-        uploadAsset sign: anyone who has the address can open it, without a
+        The attachment's file, at the address getAsset, listAssets,
+        uploadAsset, getPageView (in its HTML) and getPageProperties (a
+        link's url) sign: anyone who has the address can open it, without a
         token, until it expires. The address is read as the server writes
         it: the path's id, then the query b, e, s and, to download whatever
         the type, d=1, in this order, each once, nothing escaped; anything

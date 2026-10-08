@@ -24,6 +24,7 @@ type wikilink struct {
 	inLink  bool // in a Markdown link's text
 	inTable bool // in a table's cell, where a display text follows "\|"
 	parts
+	closing string // what its rendering writes after its child
 }
 
 // Kind implements ast.Node.

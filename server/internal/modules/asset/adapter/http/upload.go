@@ -329,14 +329,15 @@ func assetOf(a app.Asset) gen.Asset {
 	return gen.Asset{
 		ID: n.ID, NotebookID: n.NotebookID, ParentID: nullableOf(n.ParentID), Name: n.Name, Link: linkOf(a.Link), Mime: b.MIME, ByteSize: b.Bytes,
 		Sha256: hex.EncodeToString(b.SHA256), Width: sideOf(b.Width), Height: sideOf(b.Height), CreatedBy: b.CreatedBy,
-		CreatedAt: b.CreatedAt, ContentURL: contentURL(n.ID, b.ID, s, false), DownloadURL: contentURL(n.ID, b.ID, s, true),
+		CreatedAt: b.CreatedAt, ContentURL: ContentURL(n.ID, b.ID, s, false), DownloadURL: ContentURL(n.ID, b.ID, s, true),
 		ExpiresAt: s.Expires,
 	}
 }
 
-// contentURL is the signed address of the content of node's file blob,
-// shown or downloaded.
-func contentURL(node, blob uuid.UUID, s app.Signed, download bool) string {
+// ContentURL is the signed address of the content of node's file blob,
+// shown or downloaded: the content route's path and query, a path of this
+// site.
+func ContentURL(node, blob uuid.UUID, s app.Signed, download bool) string {
 	u := "/api/v0/assets/" + node.String() + "/content?b=" + blob.String() + "&e=" + strconv.FormatInt(s.Expires.Unix(), 10)
 	if download {
 		return u + "&s=" + s.Download + "&d=1"

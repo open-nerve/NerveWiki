@@ -327,7 +327,7 @@ components:
       description: A property whose value, or an item of whose list, is a link.
       type: object
       additionalProperties: false
-      required: [key, node_id, kind]
+      required: [key, node_id, kind, url]
       properties:
         key:
           description: The property's path, a list's item after a dot (sources.0).
@@ -341,6 +341,12 @@ components:
           anyOf:
             - $ref: "#/components/schemas/LinkTargetKind"
             - type: "null"
+        url:
+          description: >-
+            The address of an attachment's content, signed, a path of this site, as the attachment's content_url is:
+            it expires as that does, and a read of the properties signs it anew. Null for a page, for none, and
+            for an attachment deleted since the link was indexed.
+          type: [string, "null"]
     TagList:
       type: object
       additionalProperties: false

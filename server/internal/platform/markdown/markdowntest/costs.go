@@ -70,12 +70,12 @@ func allocated(t *testing.T, m *markdown.Markdown, content []byte) (uint64, stri
 	t.Helper()
 	var before, after runtime.MemStats
 	runtime.ReadMemStats(&before)
-	out, err := m.Render(context.Background(), m.Parse(content), markdown.Page{})
+	view, err := m.Render(context.Background(), m.Parse(content), markdown.Page{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	runtime.ReadMemStats(&after)
-	return after.TotalAlloc - before.TotalAlloc, out
+	return after.TotalAlloc - before.TotalAlloc, view.HTML
 }
 
 // checkKept checks that the facts of content keep at most their Limit, and
@@ -126,7 +126,7 @@ func logKept(t *testing.T, m *markdown.Markdown, name string, content []byte) {
 // check is skipped, and make test-go runs it in a build without.
 func CheckCosts(t *testing.T, m *markdown.Markdown) {
 	t.Helper()
-	if raceEnabled {
+	if Race {
 		t.Skip("costs are checked without the race detector (make test-go runs it)")
 	}
 	paths := false

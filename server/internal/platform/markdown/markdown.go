@@ -14,6 +14,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 	"uuid"
 
 	"github.com/yuin/goldmark/ast"
@@ -51,13 +52,25 @@ type Extension struct {
 	Fetch func(ctx context.Context, page Page, extracted any) (any, error)
 	// Links is, given what Fetch got, how the Markdown links and images
 	// the extension knows are written (M6: a link to a page of the
-	// notebook, whose address the front end gives): by where a link's or
+	// notebook, whose address the front end gives; M7: a link to an
+	// attachment, at its signed address): by where a link's or
 	// an image's destination starts in the content (Tree.Destination), the
 	// attributes its <a> carries in place of its address, an image's inner
 	// one too, and true; false leaves the address. Of the extensions that
 	// answer true, the first registered is taken. They are written as
 	// WriteAttrs writes them; Markup has the names. It may be nil.
 	Links func(data any) func(start int) ([]Attr, bool)
+	// Images is, given what Fetch got, how the Markdown images the
+	// extension knows are written (M7: an attachment's): by where an
+	// image's destination starts in the content, the Image that writes it,
+	// and true; false leaves it to Links and the core, which write it as
+	// a link. Of the extensions that answer true, the first registered is
+	// taken. It may be nil.
+	Images func(data any) func(start int) (Image, bool)
+	// Expires is, given what Fetch got, when what the extension wrote
+	// stops being valid (M7: the attachments' signed addresses), asked once
+	// the view is written; zero for never. It may be nil.
+	Expires func(data any) time.Time
 	// Renderer is goldmark's node renderers of the extension, given what
 	// Fetch got. Its addresses must go through SafeURL (WriteAttrs), and a
 	// node it renders as a link is a Linker. It must render every kind of
@@ -80,6 +93,19 @@ type Extension struct {
 // renderer escapes.
 type Attr struct {
 	Name, Value string
+}
+
+// Image writes a Markdown image an extension knows, the whole of it (M7/P3
+// design 5.2): given the text it shows (ShownText) and whether it is in a
+// link, which it must not write a link or a control in. What it writes is
+// in its extension's Markup, its attributes written by WriteAttrs.
+type Image func(w Writer, shown string, inLink bool)
+
+// View is a page's reading view: its HTML, and when it stops being valid,
+// the earliest of the extensions' Expires; zero for never.
+type View struct {
+	HTML    string
+	Expires time.Time
 }
 
 // Hider is a node of an extension that hides what it holds from the
