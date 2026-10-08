@@ -31,3 +31,4 @@ e2e/test-results/
 
 # make run 的附件目录（storage.dir 的默认值，在 server/ 下）
 /server/data/
+/server/_data/

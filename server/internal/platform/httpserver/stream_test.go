@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -21,12 +22,6 @@ import (
 )
 
 const uploadRoute = "POST /api/v0/uploads"
-
-// streamAPI is the test API with a write timeout, as bootstrap builds it.
-func streamAPI(t *testing.T, cfg APIConfig) *API {
-	t.Helper()
-	return buildAPI(t, cfg)
-}
 
 func TestNewAPIChecksTheWriteTimeout(t *testing.T) {
 	for _, tt := range []struct {
@@ -109,7 +104,7 @@ func TestAStreamRouteAuthenticatesAndLimitsBeforeItsHandler(t *testing.T) {
 				platform = newFakeLimiter(0)
 			}
 			cfg.Authenticated, cfg.Anonymous = platform, platform
-			api := streamAPI(t, cfg)
+			api := buildAPI(t, cfg)
 			policy := StreamPolicy{MinRate: 1 << 20}
 			routeBucket := newFakeLimiter(100)
 			if tt.routeEmpty {
@@ -196,14 +191,15 @@ func (b *chunkedBody) Read(p []byte) (int, error) {
 func (*chunkedBody) Close() error { return nil }
 
 // The read deadline starts at read_timeout and moves on by the time each
-// 64 KiB take at the rate, the write deadline write_timeout − read_timeout
+// 64 KiB take at the rate, a rate at which they take far less than the
+// read timeout, the write deadline write_timeout − read_timeout
 // after it; the read that ends the body moves neither. The handler has no
 // request deadline; Bounded gives a step request_timeout; Sending moves the
 // write deadline for its bytes.
 func TestAStreamMovesItsDeadlinesWithItsBytes(t *testing.T) {
 	cfg := testAPIConfig(&fakeAuth{}, slog.New(slog.DiscardHandler))
 	cfg.BodyReadTimeout, cfg.WriteTimeout, cfg.RequestTimeout = 3*time.Second, 10*time.Second, 2*time.Second
-	api := streamAPI(t, cfg)
+	api := buildAPI(t, cfg)
 	const rate = 1 << 16 // a 64 KiB chunk a second
 	var (
 		ctxDeadline     bool
@@ -289,7 +285,7 @@ func TestBoundedAndSendingNeedAStream(t *testing.T) {
 // fault instead of running the handler without them.
 func TestAStreamRefusesAWriterWithoutDeadlines(t *testing.T) {
 	logger, logs := captureLogs(t)
-	api := streamAPI(t, testAPIConfig(&fakeAuth{}, logger))
+	api := buildAPI(t, testAPIConfig(&fakeAuth{}, logger))
 	ran := false
 	h := api.Stream(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { ran = true }), StreamPolicy{MinRate: 1})
 
@@ -313,6 +309,122 @@ func TestATooLargeStreamBodyFailsItsRead(t *testing.T) {
 	if _, ok := errors.AsType[*http.MaxBytesError](readErr); !ok {
 		t.Errorf("read = %v, want *http.MaxBytesError", readErr)
 	}
+}
+
+// A step is 64 KiB, or the bytes half the read timeout takes at the rate
+// when fewer.
+func TestTheStepOfAStream(t *testing.T) {
+	for _, tt := range []struct {
+		rate        int64
+		readTimeout time.Duration
+		want        int64
+	}{
+		{64 << 10, 30 * time.Second, 64 << 10},
+		{4 << 10, 32 * time.Second, 64 << 10},
+		{4 << 10, 30 * time.Second, 60 << 10},
+		{1 << 10, 30 * time.Second, 15 << 10},
+		{256 << 10, 300 * time.Millisecond, 39321},
+		{1, time.Millisecond, 1},
+		{math.MaxInt64, time.Millisecond, 64 << 10},
+	} {
+		if got := streamStep(tt.rate, tt.readTimeout); got != tt.want {
+			t.Errorf("streamStep(%d, %v) = %d, want %d", tt.rate, tt.readTimeout, got, tt.want)
+		}
+	}
+}
+
+// When shutdown begins, a stream moving its bytes, a body not read to its
+// end or an answer announced with Sending, is cut off: both deadlines pass
+// and its context is cancelled. One between the two is left to finish, but
+// can no longer announce an answer; nor is one whose handler has returned
+// cut off. A request without a body never has a read deadline.
+func TestAShutdownCutsAStreamOnlyWhileItMovesBytes(t *testing.T) {
+	for _, tt := range []struct {
+		name             string
+		body, read, send bool
+		cut              bool
+	}{
+		{"before its body", true, false, false, true},
+		{"after its body", true, true, false, false},
+		{"without a body", false, false, false, false},
+		{"sending its answer", false, false, true, true},
+		{"sending after its body", true, true, true, true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			stopping, shutdown := context.WithCancel(context.Background())
+			defer shutdown()
+			var (
+				ctxErr, sendErr error
+				reads           int
+				cutAt           []time.Time // deadlines set once shutdown began
+			)
+			w := &deadlineWriter{ResponseRecorder: httptest.NewRecorder()}
+			h := newTestAPI(t).Stream(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+				if tt.read {
+					_, _ = io.ReadAll(r.Body)
+				}
+				if tt.send {
+					if err := Sending(r, 10); err != nil {
+						t.Error(err)
+					}
+				}
+				w.mu.Lock()
+				reads = len(w.reads)
+				writes := len(w.writes)
+				w.mu.Unlock()
+				shutdown()
+				s := r.Context().Value(streamKey{}).(*stream)
+				for stopped, give := false, time.Now().Add(2*time.Second); !stopped; {
+					if time.Now().After(give) {
+						t.Error("the stream did not learn of the shutdown in 2s")
+						return
+					}
+					time.Sleep(time.Millisecond)
+					s.mu.Lock()
+					stopped = s.stopped
+					s.mu.Unlock()
+				}
+				select {
+				case <-r.Context().Done():
+				case <-time.After(200 * time.Millisecond):
+				}
+				ctxErr, sendErr = r.Context().Err(), Sending(r, 10)
+				w.mu.Lock()
+				cutAt = append(slices.Clone(w.reads[reads:]), w.writes[writes:]...)
+				w.mu.Unlock()
+			}), StreamPolicy{MinRate: 1 << 20})
+			r := post("/api/v0/uploads", "some bytes")
+			if !tt.body {
+				r = httptest.NewRequest(http.MethodGet, "/api/v0/downloads", nil)
+				r.Header.Set("Authorization", "Bearer tok")
+			}
+			h.ServeHTTP(w, r.WithContext(withStopping(r.Context(), stopping)))
+
+			if !tt.body && reads != 0 {
+				t.Errorf("a request without a body had %d read deadlines, want none", reads)
+			}
+			if cut := errors.Is(ctxErr, context.Canceled); cut != tt.cut {
+				t.Errorf("the context ended with %v, want it cancelled %v", ctxErr, tt.cut)
+			}
+			if tt.cut && (len(cutAt) != 2 || cutAt[0].After(time.Now()) || cutAt[1].After(time.Now())) {
+				t.Errorf("deadlines set once shutdown began %v, want both past", cutAt)
+			}
+			if !tt.cut && len(cutAt) != 0 {
+				t.Errorf("deadlines set once shutdown began %v, want none", cutAt)
+			}
+			if !errors.Is(sendErr, errStreamStopped) {
+				t.Errorf("Sending once shutdown began = %v, want errStreamStopped", sendErr)
+			}
+		})
+	}
+	t.Run("its handler returned", func(t *testing.T) {
+		w := &deadlineWriter{ResponseRecorder: httptest.NewRecorder()}
+		s := &stream{rc: http.NewResponseController(w), sent: true}
+		s.finish()
+		if s.stop() || len(w.reads)+len(w.writes) != 0 {
+			t.Errorf("stop cut a stream whose handler returned: deadlines %v, %v", w.reads, w.writes)
+		}
+	})
 }
 
 func TestTheTimeAtARateSaturates(t *testing.T) {
@@ -379,7 +491,7 @@ func streamTestAPI(t *testing.T) *API {
 	t.Helper()
 	cfg := testAPIConfig(&fakeAuth{}, slog.New(slog.DiscardHandler))
 	cfg.BodyReadTimeout, cfg.RequestTimeout, cfg.WriteTimeout = 300*time.Millisecond, 500*time.Millisecond, time.Second
-	return streamAPI(t, cfg)
+	return buildAPI(t, cfg)
 }
 
 // pacedBody sends its chunks one every pause, then stops for stall when
@@ -447,19 +559,53 @@ func countingHandler(pause time.Duration, ended chan<- error) http.Handler {
 }
 
 // A body that takes 750ms, past the 300ms read timeout, at twice the
-// minimum rate is read whole; the step after it, past the 1s write
-// timeout, still answers.
+// minimum rate is read whole, also at a rate at which 64 KiB take longer
+// than the read timeout; the step after it, past the 1s write timeout,
+// still answers.
 func TestASlowStreamAboveItsRateIsReadAndAnswered(t *testing.T) {
-	api := streamTestAPI(t)
-	url, _, _ := streamServer(t, api.Stream(countingHandler(400*time.Millisecond, nil), StreamPolicy{MinRate: 256 << 10, MaxBytes: 1 << 20}))
+	for _, tt := range []struct {
+		rate  int64
+		chunk int
+	}{
+		{256 << 10, 32 << 10},
+		{64 << 10, 8 << 10},
+	} {
+		t.Run(fmt.Sprintf("at %d B/s", tt.rate), func(t *testing.T) {
+			api := streamTestAPI(t)
+			url, _, _ := streamServer(t, api.Stream(countingHandler(400*time.Millisecond, nil), StreamPolicy{MinRate: tt.rate, MaxBytes: 1 << 20}))
 
-	start := time.Now()
-	status, body, err := upload(url, &pacedBody{chunks: 12, size: 32 << 10, pause: 62 * time.Millisecond}, 12*32<<10)
-	if err != nil || status != http.StatusOK || body != strconv.Itoa(12*32<<10) {
-		t.Fatalf("upload = %d %q, %v; want 200 and every byte", status, body, err)
+			start := time.Now()
+			status, body, err := upload(url, &pacedBody{chunks: 12, size: tt.chunk, pause: 62 * time.Millisecond}, int64(12*tt.chunk))
+			if err != nil || status != http.StatusOK || body != strconv.Itoa(12*tt.chunk) {
+				t.Fatalf("upload = %d %q, %v; want 200 and every byte", status, body, err)
+			}
+			if elapsed := time.Since(start); elapsed < time.Second {
+				t.Errorf("the upload took %v, want past the write timeout for the test to mean anything", elapsed)
+			}
+		})
 	}
-	if elapsed := time.Since(start); elapsed < time.Second {
-		t.Errorf("the upload took %v, want past the write timeout for the test to mean anything", elapsed)
+}
+
+// A request without a body has no read deadline: its handler outlives the
+// 300ms read timeout, its context not cancelled, and answers.
+func TestAStreamWithoutABodyOutlivesTheReadTimeout(t *testing.T) {
+	api := streamTestAPI(t)
+	alive := make(chan error, 1)
+	url, _, _ := streamServer(t, api.Stream(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-time.After(600 * time.Millisecond):
+		case <-r.Context().Done():
+		}
+		alive <- r.Context().Err()
+		_, _ = io.WriteString(w, "alive")
+	}), StreamPolicy{MinRate: 1 << 20}))
+
+	got, err := readSlowly(url)
+	if err := <-alive; err != nil {
+		t.Errorf("past the read timeout the handler's context ended with %v", err)
+	}
+	if err != nil || got != int64(len("alive")) {
+		t.Errorf("read %d bytes, %v; want the answer", got, err)
 	}
 }
 
@@ -503,21 +649,22 @@ func TestAStalledStreamIsCutOff(t *testing.T) {
 		if ne, ok := errors.AsType[net.Error](err); !ok || !ne.Timeout() {
 			t.Errorf("the read ended with %v, want a timeout", err)
 		}
-		// 300ms and the 250ms the first 64 KiB take at 256 KiB/s; the
-		// deadline moves on only once a whole 64 KiB more is read, which the
-		// rest of the 128 KiB is not, the first chunk's crossing having
-		// moved it a little past 64 KiB.
-		if elapsed := time.Since(start); elapsed < 500*time.Millisecond || elapsed > 3*time.Second {
-			t.Errorf("cut off after %v, want about 550ms", elapsed)
+		// 300ms and the time the bytes read when the deadline last moved
+		// take at 256 KiB/s: it moves with every 38.4 KiB, half the read
+		// timeout at the rate, so last with at least 89.6 KiB of the 128.
+		if elapsed := time.Since(start); elapsed < 600*time.Millisecond || elapsed > 3*time.Second {
+			t.Errorf("cut off after %v, want 650 to 800ms", elapsed)
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("a stalled body was still being read after 5s")
 	}
 }
 
-// readSlowly reads the response 16 KiB every 40ms through a 16 KiB receive
-// buffer, about 400 KiB/s, and answers how much it read.
+// readSlowly reads the response through a 16 KiB receive buffer at about
+// 1 MiB/s, pacing by the bytes read, however few each read gets, and
+// answers how much it read.
 func readSlowly(url string) (int64, error) {
+	const rate = 1 << 20
 	dialer := &net.Dialer{}
 	transport := &http.Transport{DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 		c, err := dialer.DialContext(ctx, network, addr)
@@ -536,6 +683,7 @@ func readSlowly(url string) (int64, error) {
 		return 0, err
 	}
 	defer func() { _ = resp.Body.Close() }()
+	start := time.Now()
 	var total int64
 	buf := make([]byte, 16<<10)
 	for {
@@ -547,15 +695,16 @@ func readSlowly(url string) (int64, error) {
 		if err != nil {
 			return total, err
 		}
-		time.Sleep(40 * time.Millisecond)
+		time.Sleep(time.Until(start.Add(time.Duration(total) * time.Second / rate)))
 	}
 }
 
-// A 1 MiB answer to a client reading about 400 KiB/s takes past the 1s
-// write timeout: announced with Sending it goes out whole; not announced,
-// the write deadline cuts it.
+// A 4 MiB answer to a client reading about 1 MiB/s takes about 4s, past
+// the 1s write timeout, and far more than the socket buffers hold:
+// announced with Sending at 512 KiB/s, its deadline some 8.3s away, it
+// goes out whole; not announced, the write deadline cuts it.
 func TestAnAnswerAnnouncedWithSendingOutlastsTheWriteTimeout(t *testing.T) {
-	const size = 1 << 20
+	const size = 4 << 20
 	for _, announce := range []bool{true, false} {
 		t.Run(fmt.Sprintf("announced %v", announce), func(t *testing.T) {
 			api := streamTestAPI(t)
@@ -570,7 +719,7 @@ func TestAnAnswerAnnouncedWithSendingOutlastsTheWriteTimeout(t *testing.T) {
 				w.Header().Set("Content-Length", strconv.Itoa(size))
 				_, err := w.Write(bytes.Repeat([]byte("x"), size))
 				wrote <- err
-			}), StreamPolicy{MinRate: 256 << 10}))
+			}), StreamPolicy{MinRate: 512 << 10}))
 
 			got, err := readSlowly(url)
 			werr := <-wrote
@@ -645,5 +794,57 @@ func TestShutdownEndsAStreamAtOnce(t *testing.T) {
 				t.Errorf("shutdown took %v, want far less than the 5s shutdown_timeout", elapsed)
 			}
 		})
+	}
+}
+
+// A stream whose body is in when the server starts shutting down finishes
+// its step after it, such as writing what the body brought, and answers,
+// as any request does; it can no longer announce a long answer.
+func TestShutdownLetsAStreamFinishTheStepAfterItsBody(t *testing.T) {
+	api := streamTestAPI(t)
+	read := make(chan struct{})
+	proceed := make(chan struct{})
+	after := make(chan error, 2)
+	url, cancel, done := streamServer(t, api.Stream(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n, err := io.Copy(io.Discard, r.Body)
+		if err != nil {
+			after <- err
+			after <- err
+			return
+		}
+		close(read)
+		<-proceed
+		ctx, cancelStep := Bounded(r.Context())
+		defer cancelStep()
+		select {
+		case <-time.After(200 * time.Millisecond): // the step
+		case <-ctx.Done():
+		}
+		after <- ctx.Err()
+		after <- Sending(r, 1<<20)
+		_, _ = io.WriteString(w, strconv.FormatInt(n, 10))
+	}), StreamPolicy{MinRate: 256 << 10, MaxBytes: 1 << 20}))
+
+	answered := make(chan string, 1)
+	go func() {
+		status, body, err := upload(url, &pacedBody{chunks: 2, size: 32 << 10}, 64<<10)
+		answered <- fmt.Sprintf("%d %s %v", status, body, err)
+	}()
+	<-read
+	cancel()
+	time.Sleep(100 * time.Millisecond) // the shutdown reaches the stream
+	close(proceed)
+
+	if err := <-after; err != nil {
+		t.Errorf("the step after the body ended with %v, want it finished", err)
+	}
+	if err := <-after; !errors.Is(err, errStreamStopped) {
+		t.Errorf("Sending during shutdown = %v, want errStreamStopped", err)
+	}
+	if got, want := <-answered, fmt.Sprintf("200 %d <nil>", 64<<10); got != want {
+		t.Errorf("the client got %q, want %q", got, want)
+	}
+	if err := wait(t, done); err != nil {
+		t.Errorf("Serve() = %v", err)
 	}
 }

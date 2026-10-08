@@ -22,6 +22,7 @@ name=nervewiki-smoke-$$
 db=$name-db
 migrate=$name-migrate
 app=$name-app
+refused=$name-refused
 # 服务的附件目录：具名卷，结束时删掉（不挂载时 Docker 会留下匿名卷）
 volume=$name-data
 # 本机临时的账号密码，不是机密
@@ -43,7 +44,7 @@ cleanup() {
     docker logs "$app" >&2 || true
   fi
   # -v：PostgreSQL 镜像声明了数据卷，不带 -v 每次都会留下一个匿名卷
-  docker rm -fv "$app" "$migrate" "$db" >/dev/null 2>&1 || true
+  docker rm -fv "$app" "$migrate" "$db" "$refused" >/dev/null 2>&1 || true
   docker volume rm "$volume" >/dev/null 2>&1 || true
   docker network rm "$name" >/dev/null 2>&1 || true
   rm -rf "$keydir"
@@ -90,12 +91,23 @@ chmod 644 "$keydir/jwt.pem"
 # 部署的顺序：prod 配置不自动迁移，先 migrate up，再 serve
 docker run --name "$migrate" --network "$name" -e NWIKI_DATABASE__URL="$database_url" "${key[@]}" "$image" migrate up
 
-# 附件目录不可写（属主是 root 的 tmpfs）时 serve 拒绝启动，写明目录与 uid
-if refused=$(docker run --rm --network "$name" -e NWIKI_DATABASE__URL="$database_url" "${key[@]}" \
-  --tmpfs /data:uid=0,gid=0,mode=0755 "$image" serve 2>&1); then
-  fail "附件目录不可写时 serve 照样启动了"
-fi
-grep -q "cannot write in /data as uid 65532" <<<"$refused" || fail "附件目录不可写时的错误没有写明目录与 uid：$refused"
+# 镜像声明附件目录的卷，并把 storage.dir 指向它
+volumes=$(docker image inspect -f '{{json .Config.Volumes}}' "$image")
+jq -e 'has("/data")' <<<"$volumes" >/dev/null || fail "镜像没有声明 /data 卷：$volumes"
+docker image inspect -f '{{json .Config.Env}}' "$image" | jq -e 'index("NWIKI_STORAGE__DIR=/data")' >/dev/null ||
+  fail "镜像的环境变量里没有 NWIKI_STORAGE__DIR=/data"
+
+# 附件目录不可写（属主是 root 的 tmpfs）时 serve 拒绝启动，写明目录与 uid。后台运行、限时等它退出：
+# 回退之后它会一直运行，前台运行就会卡住
+docker run -d --name "$refused" --network "$name" -e NWIKI_DATABASE__URL="$database_url" "${key[@]}" \
+  --tmpfs /data:uid=0,gid=0,mode=0755 "$image" serve >/dev/null
+stopped() {
+  [[ $(docker container inspect -f '{{.State.Running}}' "$refused") == false ]]
+}
+wait_for stopped || fail "附件目录不可写时 serve 照样启动了（${timeout_s} 秒后仍在运行）"
+[[ $(docker container inspect -f '{{.State.ExitCode}}' "$refused") != 0 ]] || fail "附件目录不可写时 serve 以 0 退出"
+docker logs "$refused" 2>&1 | grep -q "cannot write in /data as uid 65532" ||
+  fail "附件目录不可写时的错误没有写明目录与 uid：$(docker logs "$refused" 2>&1)"
 
 docker run -d --name "$app" --network "$name" -e NWIKI_DATABASE__URL="$database_url" "${key[@]}" -v "$volume:/data" \
   -p 127.0.0.1::8080 "$image" >/dev/null

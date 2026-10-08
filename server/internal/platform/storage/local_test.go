@@ -115,9 +115,16 @@ func TestOpeningDropsWhatAStoppedProcessLeftHalfWritten(t *testing.T) {
 	if err := os.WriteFile(stray, []byte("not the store's"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	probe := filepath.Join(dir, ".probe-123")
+	if err := os.WriteFile(probe, []byte{0}, 0o600); err != nil {
+		t.Fatal(err)
+	}
 
 	if _, err := storage.OpenLocal(dir, 0); err != nil {
 		t.Fatal(err)
+	}
+	if _, err := os.Stat(probe); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("a probe left by a stopped process: %v, want it gone", err)
 	}
 	for _, area := range []string{"blobs", "imports"} {
 		if _, err := os.Stat(filepath.Join(dir, area, ".tmp")); !errors.Is(err, fs.ErrNotExist) {
@@ -142,23 +149,36 @@ func TestOpeningMakesAMissingDirectory(t *testing.T) {
 	}
 }
 
+// A store whose directory, or an area in it, the process cannot write, as
+// one restored as another user, does not open, and says why.
 func TestOpeningADirectoryItCannotWriteNamesItAndTheUID(t *testing.T) {
 	if os.Getuid() == 0 {
 		t.Skip("root writes in any directory")
 	}
-	dir := t.TempDir()
-	if err := os.Chmod(dir, 0o500); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
-	_, err := storage.OpenLocal(dir, 0)
-	if err == nil {
-		t.Fatal("opened a directory it cannot write")
-	}
-	for _, want := range []string{dir, fmt.Sprintf("uid %d", os.Getuid()), fmt.Sprintf("gid %d", os.Getgid())} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("error %q does not name %q", err, want)
-		}
+	for name, area := range map[string]string{"the directory": "", "an area": "blobs"} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			if _, err := storage.OpenLocal(dir, 0); err != nil {
+				t.Fatal(err)
+			}
+			locked := filepath.Join(dir, area)
+			if err := os.MkdirAll(locked, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chmod(locked, 0o500); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = os.Chmod(locked, 0o700) })
+			_, err := storage.OpenLocal(dir, 0)
+			if err == nil {
+				t.Fatal("opened a directory it cannot write")
+			}
+			for _, want := range []string{locked, fmt.Sprintf("uid %d", os.Getuid()), fmt.Sprintf("gid %d", os.Getgid())} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error %q does not name %q", err, want)
+				}
+			}
+		})
 	}
 }
 

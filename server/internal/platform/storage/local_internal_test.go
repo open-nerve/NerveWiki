@@ -10,15 +10,19 @@ import (
 )
 
 // fullDisk is a temporary file on a disk that has run out of space: its
-// writes, or only its sync, fail with ENOSPC.
+// writes, or only its sync, fail with ENOSPC, or with errno when set.
 type fullDisk struct {
 	name     string
 	syncOnly bool
+	errno    syscall.Errno
 }
 
 func (f fullDisk) Write(p []byte) (int, error) {
 	if f.syncOnly {
 		return len(p), nil
+	}
+	if f.errno != 0 {
+		return 0, &fs.PathError{Op: "write", Path: f.name, Err: f.errno}
 	}
 	return 0, &fs.PathError{Op: "write", Path: f.name, Err: syscall.ENOSPC}
 }
@@ -43,6 +47,10 @@ func TestRunningOutOfSpaceIsFullAndLeavesNothing(t *testing.T) {
 	w := &localWriter{l: l, area: "blobs", name: "a", file: fullDisk{name: tmp}}
 	if _, err := w.Write([]byte("more")); !errors.Is(err, ErrFull) || !errors.Is(err, syscall.ENOSPC) {
 		t.Errorf("Write = %v, want ErrFull keeping ENOSPC", err)
+	}
+	w = &localWriter{l: l, area: "blobs", name: "a", file: fullDisk{name: tmp, errno: syscall.EDQUOT}}
+	if _, err := w.Write([]byte("more")); !errors.Is(err, ErrFull) || !errors.Is(err, syscall.EDQUOT) {
+		t.Errorf("Write over the quota = %v, want ErrFull keeping EDQUOT", err)
 	}
 
 	w = &localWriter{l: l, area: "blobs", name: "a", file: fullDisk{name: tmp, syncOnly: true}}

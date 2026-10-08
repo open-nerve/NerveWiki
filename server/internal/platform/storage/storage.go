@@ -38,7 +38,8 @@ type Store interface {
 }
 
 // Writer writes a file that becomes visible when it commits. Exactly one
-// of Commit and Abort takes effect; any call after it is an error.
+// of Commit and Abort takes effect; any call after it is an error. A Writer
+// is for one goroutine at a time.
 type Writer interface {
 	io.Writer
 	// Commit makes the file durable and visible at its key.

@@ -42,7 +42,7 @@ make run      # 以 dev 配置启动 nervewiki serve，监听 127.0.0.1:8080；C
 
 `make build` 构建前端并把它内嵌进 `bin/nervewiki`（版本号取 `VERSION`，默认 `0.1.0-dev`）。`make run` 启动的服务提供上一次 `make build` 复制进去的前端，从未构建时页面路径答 404 并提示；开发前端用 `make web-dev` 或 `make dev`，见下文"前端"。
 
-`serve` 启动时要连上数据库（最多等 10 秒，连不上就退出），按配置执行迁移（dev、test 默认执行，prod 默认不执行），然后自检数据库的编码与 locale，不满足就拒绝启动并给出建库命令。它还打开附件目录（`storage.dir`，`make run` 时是 `server/data/`，不进仓库），不可写就拒绝启动，见下文"部署"的附件目录；其他命令不碰它。`GET /healthz` 表示进程存活；`GET /readyz` 在数据库可用、迁移已是最新时返回 200，否则 503。`GET /api/v0/instance` 返回产品名、版本、提交与接口版本，以及是否开放注册（`signup_enabled`）、是否开放创建工作区（`workspace_creation_enabled`）；`/api/` 下没有的路径返回 404 problem+json。
+`serve` 启动时要连上数据库（最多等 10 秒，连不上就退出），按配置执行迁移（dev、test 默认执行，prod 默认不执行），然后自检数据库的编码与 locale，不满足就拒绝启动并给出建库命令。它还打开附件目录（`storage.dir`，`make run` 时是 `server/_data/`，不进仓库），不可写就拒绝启动，见下文"部署"的附件目录；其他命令不碰它。`GET /healthz` 表示进程存活；`GET /readyz` 在数据库可用、迁移已是最新时返回 200，否则 503。`GET /api/v0/instance` 返回产品名、版本、提交与接口版本，以及是否开放注册（`signup_enabled`）、是否开放创建工作区（`workspace_creation_enabled`）；`/api/` 下没有的路径返回 404 problem+json。
 
 其他命令在 `server/` 下用 `go run ./cmd/nervewiki <命令>` 执行：
 
@@ -261,12 +261,12 @@ make image-smoke VERSION=0.1.0   # 在镜像上跑 S1、S3：迁移、探针、�
   docker run -d -p 8080:8080 -v nervewiki-data:/data -e NWIKI_DATABASE__URL=… "${key[@]}" nervewiki:0.1.0
   ```
 
-- **附件目录**（M7）：附件与导入导出的文件在 `/data`（`storage.dir`，镜像以 `NWIKI_STORAGE__DIR=/data` 设定），它是镜像声明的卷。
-  - 要挂载具名卷（如上例的 `-v nervewiki-data:/data`）或宿主机目录。不挂载时 Docker 建一个匿名卷，删掉容器之后就找不回来了。
-  - 进程以 uid 65532 运行：宿主机目录的属主要是它（`sudo chown -R 65532:65532 /srv/nervewiki/data`）。不可写时 `serve` 拒绝启动，错误写明目录与 uid（`storage: cannot write in /data as uid 65532, gid 65532: …`）。
-  - 一个目录只给一个 `serve` 进程用（v0.1 只支持单实例）：启动时它删掉上次中途退出留下的半截文件。
-  - 剩余空间低于 `storage.min_free_bytes`（默认 1 GiB）时不再接受写入。监控这块磁盘。
-  - 备份：先 `pg_dump`，再复制 `/data/blobs`（附件写入后不变，物理清除要等 60 天，按这个次序得到的备份里数据库引用的附件都在；其余子目录是过程中的文件）。恢复时先恢复数据库，再放回目录。
+- **附件目录**（M7）：附件与导入导出的文件在 `/data`（`storage.dir`，镜像以 `NWIKI_STORAGE__DIR=/data` 设定），它是镜像声明的卷。环境变量优先于配置文件：挂载了配置目录也要改目录时，改 `NWIKI_STORAGE__DIR`。
+  - 要挂载具名卷（如上例的 `-v nervewiki-data:/data`）或宿主机目录（`-v /srv/nervewiki/data:/data`）。不挂载时 Docker 建一个匿名卷，删掉容器之后就找不回来了。
+  - 进程以 uid 65532 运行：宿主机目录的属主要是它（`sudo chown -R 65532:65532 /srv/nervewiki/data`；Kubernetes 里设 `securityContext.fsGroup: 65532`）。目录或其中的子目录不可写时 `serve` 拒绝启动，错误写明目录与 uid（`storage: cannot write in /data as uid 65532, gid 65532: …`）。
+  - 一个目录只给一个 `serve` 进程用（v0.1 只支持单实例）：启动时它删掉上次中途退出留下的半截文件。升级时先停旧的再起新的（Kubernetes 的 `strategy: Recreate`），不要让两个进程同时挂着它。
+  - 剩余空间低于 `storage.min_free_bytes`（默认 1 GiB）时不再接受写入，启动时也记一条 WARN。监控这块磁盘。
+  - 备份：先 `pg_dump`，再复制 `/data/blobs`（附件写入后不变，物理清除要等 60 天，按这个次序得到的备份里数据库引用的附件都在；其余子目录是过程中的文件）。恢复时用同一次备份的两份，先恢复数据库，再放回目录；目录里多出的文件（数据库里没有的）由每天的清扫删掉。
 
 - 升级到带链接索引的版本（M6）时，`migrate up` 之后、启动服务之前执行一次 `nervewiki reindex`（见上文"链接索引"），已有页面的链接才进入索引；之后的写入自己维护索引。用两个数据库角色时，先执行授权文件（见下）：
 
@@ -304,7 +304,7 @@ make image-smoke VERSION=0.1.0   # 在镜像上跑 S1、S3：迁移、探针、�
     ```
 - 反向代理与上传（M7 起）：附件的上传与导入的 zip 走流式的路由，服务端按字节放宽它们的读写期限（不低于每秒 64 KiB）。
   - 反向代理不要缓冲上传的请求体：nginx 的 `proxy_request_buffering off`，否则整个文件传到代理之后服务端才开始读，提前的拒绝（无权、重名、超过上限）也要等传完。
-  - `client_max_body_size`（nginx 默认只有 1 MB）不小于导入包的上限，读写超时容得下最慢的上传与下载（50 MiB 的附件在每秒 64 KiB 下约 13 分钟）。
+  - `client_max_body_size`（nginx 默认只有 1 MB）不小于导入包的上限。nginx 的 `client_body_timeout`、`proxy_send_timeout`、`proxy_read_timeout` 是两次读写之间的间隔，不是整个传输的时长，默认的 60 秒就够；按整个请求计时的代理或负载均衡，要容得下最慢的传输（50 MiB 的附件在每秒 64 KiB 下约 13 分钟）。
 - 内存：页面正文的解析预算（`page.parse_budget_bytes`，默认 8 MiB）最坏时约占 2.4 GB，见上文"页面"的"解析预算"。内存小的机器调小预算（至少 5 MiB，最坏约 1.5 GB），并用 `GOMEMLIMIT` 给运行时一个略低于容器上限的目标。
 
 - 数据库必须以 builtin provider 的 `C.UTF-8` 初始化，否则服务拒绝启动，见[总体设计](docs/v0.1/v0.1-design.md) 7.1。

@@ -109,6 +109,7 @@ func later() time.Time { return time.Now().Add(24 * time.Hour) }
 
 func committedIsVisible(t *testing.T, s storage.Store) {
 	ctx := context.Background()
+	begin := time.Now()
 	w, err := s.Create(ctx, "blobs/a")
 	if err != nil {
 		t.Fatal(err)
@@ -133,11 +134,16 @@ func committedIsVisible(t *testing.T, s storage.Store) {
 		t.Fatal(err)
 	}
 	defer closeFile(t, f)
-	if f.ModTime().IsZero() || f.ModTime().After(time.Now().Add(time.Minute)) {
-		t.Errorf("ModTime() = %v", f.ModTime())
+	// The time it was written, to a file system's coarsest granularity: the
+	// orphan sweep lists files written before a time and deletes them.
+	if mod := f.ModTime(); mod.Before(begin.Add(-2*time.Second)) || mod.After(time.Now().Add(2*time.Second)) {
+		t.Errorf("ModTime() = %v, want it written about %v", mod, begin)
 	}
 	if keys := listed(t, s, "blobs", later()); !slices.Equal(keys, []string{"blobs/a"}) {
 		t.Errorf("List = %q, want [blobs/a]", keys)
+	}
+	if keys := listed(t, s, "blobs", begin.Add(-time.Hour)); len(keys) != 0 {
+		t.Errorf("List before an hour ago = %q, want none", keys)
 	}
 }
 
@@ -221,6 +227,22 @@ func readsAtOffsets(t *testing.T, s storage.Store) {
 
 func commitReplaces(t *testing.T, s storage.Store) {
 	put(t, s, "exports/a.zip", []byte("old"))
+	w, err := s.Create(context.Background(), "exports/a.zip")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.Write([]byte("dropped")); err != nil {
+		t.Fatal(err)
+	}
+	if got := read(t, s, "exports/a.zip"); string(got) != "old" {
+		t.Errorf("while another is written read %q, want old", got)
+	}
+	if err := w.Abort(); err != nil {
+		t.Fatal(err)
+	}
+	if got := read(t, s, "exports/a.zip"); string(got) != "old" {
+		t.Errorf("after the other's Abort read %q, want old", got)
+	}
 	put(t, s, "exports/a.zip", []byte("new"))
 	if got := read(t, s, "exports/a.zip"); string(got) != "new" {
 		t.Errorf("read %q, want new", got)

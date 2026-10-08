@@ -9,6 +9,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -18,6 +20,10 @@ import (
 // its own file system still commits by rename.
 const tmpDir = ".tmp"
 
+// probePrefix starts the name of the file OpenLocal writes to learn that it
+// can.
+const probePrefix = ".probe-"
+
 // Local is the store on the local disk (M7/P1 design 3.3): the file at
 // "<area>/<name>" is <dir>/<area>/<s1>/<s2>/<name>, s1 and s2 the first two
 // bytes of the name's SHA-256 in hex, so no directory holds more than a
@@ -26,15 +32,17 @@ const tmpDir = ".tmp"
 type Local struct {
 	dir     string
 	minFree int64
+	mkdir   sync.Mutex // one goroutine at a time makes and syncs directories
 }
 
 var _ Store = (*Local)(nil)
 
 // OpenLocal opens the store in dir, making dir when it is missing. It
 // fails, naming the directory and the process's uid and gid, when it cannot
-// write there: serve refuses to start (M0/P6 handoff, item 2). It then
-// deletes what earlier processes left half written. Writes that would leave
-// less than minFree bytes free answer ErrFull.
+// write there or in an area already in it: serve refuses to start (M0/P6
+// handoff, item 2). It then deletes what earlier processes left half
+// written. Writes that would leave less than minFree bytes free answer
+// ErrFull.
 func OpenLocal(dir string, minFree int64) (*Local, error) {
 	if dir == "" {
 		return nil, errors.New("storage: no directory")
@@ -47,7 +55,7 @@ func OpenLocal(dir string, minFree int64) (*Local, error) {
 		return nil, fmt.Errorf("storage: %s: %w", dir, err)
 	}
 	if err := probe(abs); err != nil {
-		return nil, fmt.Errorf("storage: cannot write in %s as uid %d, gid %d: %w", abs, os.Getuid(), os.Getgid(), err)
+		return nil, cannotWrite(abs, err)
 	}
 	l := &Local{dir: abs, minFree: minFree}
 	if err := l.dropTemporaries(); err != nil {
@@ -56,13 +64,17 @@ func OpenLocal(dir string, minFree int64) (*Local, error) {
 	return l, nil
 }
 
+func cannotWrite(dir string, err error) error {
+	return fmt.Errorf("storage: cannot write in %s as uid %d, gid %d: %w", dir, os.Getuid(), os.Getgid(), err)
+}
+
 // probe makes dir when it is missing and writes, syncs and deletes a file
 // in it.
 func probe(dir string) error {
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return err
 	}
-	f, err := os.CreateTemp(dir, ".probe-*")
+	f, err := os.CreateTemp(dir, probePrefix+"*")
 	if err != nil {
 		return err
 	}
@@ -73,23 +85,37 @@ func probe(dir string) error {
 	return errors.Join(werr, serr, cerr, rerr)
 }
 
-// dropTemporaries deletes every area's files being written: with one
-// process to a directory, they are what a process stopped midway left.
+// dropTemporaries probes every area and deletes its files being written,
+// and the probes left in the store's directory: with one process to a
+// directory, they are what a process stopped midway left.
 func (l *Local) dropTemporaries() error {
 	entries, err := os.ReadDir(l.dir)
 	if err != nil {
 		return fmt.Errorf("storage: %w", err)
 	}
 	for _, e := range entries {
+		path := filepath.Join(l.dir, e.Name())
+		if strings.HasPrefix(e.Name(), probePrefix) {
+			if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+				return cannotWrite(l.dir, err)
+			}
+			continue
+		}
 		if !e.IsDir() || CheckArea(e.Name()) != nil {
 			continue
 		}
-		if err := os.RemoveAll(filepath.Join(l.dir, e.Name(), tmpDir)); err != nil {
-			return fmt.Errorf("storage: %w", err)
+		if err := probe(path); err != nil {
+			return cannotWrite(path, err)
+		}
+		if err := os.RemoveAll(filepath.Join(path, tmpDir)); err != nil {
+			return cannotWrite(path, err)
 		}
 	}
 	return nil
 }
+
+// Dir is the store's directory, absolute.
+func (l *Local) Dir() string { return l.dir }
 
 // Create starts the file at key in the area's temporary directory. It
 // answers ErrFull when fewer than the store's minimum of bytes are free.
@@ -106,7 +132,7 @@ func (l *Local) Create(ctx context.Context, key string) (Writer, error) {
 	}
 	area, name := split(key)
 	tmp := filepath.Join(l.dir, area, tmpDir)
-	if err := os.MkdirAll(tmp, 0o750); err != nil {
+	if err := l.ensureDir(tmp); err != nil {
 		return nil, fmt.Errorf("storage: %w", noSpace(err))
 	}
 	f, err := os.CreateTemp(tmp, name+".*")
@@ -169,6 +195,9 @@ func (l *Local) List(ctx context.Context, area string, before time.Time, each fu
 			}
 			dir := filepath.Join(root, s1, s2)
 			files, err := os.ReadDir(dir)
+			if errors.Is(err, fs.ErrNotExist) {
+				continue // deleted since its shard was read
+			}
 			if err != nil {
 				return fmt.Errorf("storage: %w", err)
 			}
@@ -257,8 +286,15 @@ func (l *Local) path(area, name string) string {
 
 // ensureDir makes dir and the missing directories above it, up to the
 // store's directory, and syncs the directory each was made in, so a commit
-// that renames into it survives a crash.
+// that renames into it survives a crash. It does so one goroutine at a
+// time: another finding dir made has it synced.
 func (l *Local) ensureDir(dir string) error {
+	l.mkdir.Lock()
+	defer l.mkdir.Unlock()
+	return l.makeDir(dir)
+}
+
+func (l *Local) makeDir(dir string) error {
 	if _, err := os.Stat(dir); err == nil {
 		return nil
 	} else if !errors.Is(err, fs.ErrNotExist) {
@@ -266,7 +302,7 @@ func (l *Local) ensureDir(dir string) error {
 	}
 	parent := filepath.Dir(dir)
 	if parent != l.dir {
-		if err := l.ensureDir(parent); err != nil {
+		if err := l.makeDir(parent); err != nil {
 			return err
 		}
 	}
@@ -285,9 +321,10 @@ func syncDir(dir string) error {
 	return errors.Join(serr, d.Close())
 }
 
-// noSpace makes a write that ran out of space ErrFull, keeping err.
+// noSpace makes a write that ran out of space or of quota ErrFull, keeping
+// err.
 func noSpace(err error) error {
-	if errors.Is(err, syscall.ENOSPC) {
+	if errors.Is(err, syscall.ENOSPC) || errors.Is(err, syscall.EDQUOT) {
 		return fmt.Errorf("%w: %w", ErrFull, err)
 	}
 	return err
@@ -325,7 +362,8 @@ func (w *localWriter) Write(p []byte) (int, error) {
 
 // Commit syncs the file, renames it into its shard and syncs the shard, so
 // a crash leaves either no file or the whole file. On failure the file is
-// gone.
+// gone, unless only the last sync failed: then it is at key already and may
+// not outlive a crash; the caller treats it as an orphan.
 func (w *localWriter) Commit() error {
 	if w.done {
 		return errDone

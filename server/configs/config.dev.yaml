@@ -11,6 +11,10 @@ database:
 auth:
   signup_enabled: true
 
+storage:
+  # make run 在 server/ 下运行，即 server/_data：下划线开头的目录，go 的 ./... 不进去。
+  dir: _data
+
 log:
   level: debug
   format: text

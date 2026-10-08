@@ -24,12 +24,13 @@ func TestBuiltInProfiles(t *testing.T) {
 		keyFile     string
 		cleanup     time.Duration
 		purge       time.Duration // expected jobs.purge_interval
+		storageDir  string
 		level       string
 		format      string
 	}{
-		{env: "dev", addr: "127.0.0.1:8080", url: devURL, autoMigrate: true, signup: true, argon2: owasp(), limits: defaultLimits(), cleanup: time.Hour, purge: time.Hour, level: "debug", format: "text"},
-		{env: "test", addr: ":8080", url: "postgres://from-env", autoMigrate: true, signup: true, argon2: cheap(), limits: unlimited(), cleanup: 2 * time.Second, purge: 2 * time.Second, level: "warn", format: "text"},
-		{env: "prod", addr: ":8080", url: "postgres://from-env", autoMigrate: false, signup: false, argon2: owasp(), limits: defaultLimits(), keyFile: "/run/secrets/jwt.pem", cleanup: time.Hour, purge: time.Hour, level: "info", format: "json"},
+		{env: "dev", addr: "127.0.0.1:8080", url: devURL, autoMigrate: true, signup: true, argon2: owasp(), limits: defaultLimits(), cleanup: time.Hour, purge: time.Hour, storageDir: "_data", level: "debug", format: "text"},
+		{env: "test", addr: ":8080", url: "postgres://from-env", autoMigrate: true, signup: true, argon2: cheap(), limits: unlimited(), cleanup: 2 * time.Second, purge: 2 * time.Second, storageDir: "data", level: "warn", format: "text"},
+		{env: "prod", addr: ":8080", url: "postgres://from-env", autoMigrate: false, signup: false, argon2: owasp(), limits: defaultLimits(), keyFile: "/run/secrets/jwt.pem", cleanup: time.Hour, purge: time.Hour, storageDir: "data", level: "info", format: "json"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.env, func(t *testing.T) {
@@ -71,7 +72,7 @@ func TestBuiltInProfiles(t *testing.T) {
 				Page:      config.PageConfig{EditSessionCleanupInterval: 10 * time.Minute, ParseBudgetBytes: 8 << 20, ParseMaxWait: 2 * time.Second},
 				Events:    config.EventsConfig{HeartbeatInterval: 20 * time.Second},
 				Jobs:      config.JobsConfig{ShutdownTimeout: 10 * time.Second, PurgeInterval: tt.purge, PurgeRetention: 60 * 24 * time.Hour},
-				Storage:   config.StorageConfig{Dir: "data", MinFreeBytes: 1 << 30},
+				Storage:   config.StorageConfig{Dir: tt.storageDir, MinFreeBytes: 1 << 30},
 				Log:       config.LogConfig{Level: tt.level, Format: tt.format},
 			}
 			if !reflect.DeepEqual(cfg, want) {

@@ -27,7 +27,8 @@ type StreamPolicy struct {
 	BucketName string
 }
 
-// streamChunk is how many body bytes move the read deadline on once.
+// streamChunk is how many body bytes move the read deadline on once, at
+// most: see streamStep.
 const streamChunk = 64 << 10
 
 // maxWait caps the time a stream's bytes may take at its rate, so that the
@@ -49,15 +50,24 @@ var (
 // Its opening, up to the handler, is bounded as any request is. The handler
 // has no request deadline: the connection's deadlines bound it instead,
 // moving with the bytes. The read deadline starts at read_timeout from the
-// start and moves on by the time each 64 KiB of body may take at MinRate,
-// so a body whose average rate falls below it is cut off, and one that
-// never comes is cut off at read_timeout; the write deadline follows it at
-// write_timeout − read_timeout, the time to finish and answer once the body
-// is in. Sending moves the write deadline for an answer of so many bytes.
-// The handler's steps that are not the stream run under Bounded. When the
-// server starts shutting down, the deadlines pass at once and h's context is
-// cancelled. A writer that cannot set deadlines is a wiring fault: Stream
-// logs it and answers 500, after any 401 or 429.
+// handler's start and moves on with every 64 KiB of body (fewer at a low
+// rate: streamStep) by the time they may take at MinRate, so a body whose
+// average rate falls below it is cut off, and one that never comes is cut
+// off at read_timeout; the write deadline follows it at write_timeout −
+// read_timeout, the time to finish and answer once the body is in. A
+// request without a body has no read deadline: net/http watches the
+// connection from the start. Sending sets the write deadline for an answer
+// of so many bytes. The handler's steps that are not the stream run under
+// Bounded.
+//
+// When the server starts shutting down, a stream still moving its bytes, a
+// body not yet read to its end or an answer announced with Sending, is cut
+// off: the deadlines pass at once and h's context is cancelled. A step
+// between the two, such as writing what the body brought, finishes as any
+// request does, within shutdown_timeout; a Sending then fails.
+//
+// A writer that cannot set deadlines is a wiring fault: Stream logs it and
+// answers 500, after any 401 or 429.
 //
 // Stream panics on a policy without a rate, with a bucket but no name, or
 // on an API without the read and write timeouts it needs: a wiring fault.
@@ -73,6 +83,16 @@ func (a *API) Stream(h http.Handler, p StreamPolicy) http.Handler {
 		panic("httpserver: API.Stream needs BodyReadTimeout and a WriteTimeout above it and RequestTimeout")
 	}
 	return a.requestMeta(a.opening(a.authenticate(a.routeLimit(p, a.opened(a.streaming(p, h))))))
+}
+
+// streamStep is how many body bytes move the deadlines on once: 64 KiB, or
+// the bytes half the read timeout takes at rate when fewer, so that a body
+// arriving at the rate always has half the read timeout to spare.
+func streamStep(rate int64, readTimeout time.Duration) int64 {
+	if atRate(streamChunk, rate) <= readTimeout/2 {
+		return streamChunk
+	}
+	return max(1, int64(float64(rate)*(readTimeout/2).Seconds()))
 }
 
 // routeLimit takes one unit of the route's bucket, or of the platform's
@@ -103,6 +123,7 @@ func (a *API) streaming(p StreamPolicy, h http.Handler) http.Handler {
 	if limit == 0 {
 		limit = a.maxBodyBytes
 	}
+	step := streamStep(p.MinRate, a.bodyReadTimeout)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		s := &stream{
 			rc:             http.NewResponseController(w),
@@ -111,6 +132,8 @@ func (a *API) streaming(p StreamPolicy, h http.Handler) http.Handler {
 			writeSlack:     a.writeTimeout - a.bodyReadTimeout,
 			requestTimeout: a.requestTimeout,
 			minRate:        p.MinRate,
+			step:           step,
+			drained:        r.Body == nil || r.Body == http.NoBody,
 		}
 		if err := s.arm(0); err != nil {
 			a.logger.ErrorContext(r.Context(), "cannot set the deadlines of a stream",
@@ -129,11 +152,15 @@ func (a *API) streaming(p StreamPolicy, h http.Handler) http.Handler {
 		defer cancel()
 		if stopping, ok := ctx.Value(stoppingKey{}).(context.Context); ok {
 			defer context.AfterFunc(stopping, func() {
-				s.stop()
-				cancel()
+				if s.stop() {
+					cancel()
+				}
 			})()
 		}
-		r.Body = &rateBody{s: s, body: http.MaxBytesReader(w, r.Body, limit)}
+		defer s.finish()
+		if !s.drained {
+			r.Body = &rateBody{s: s, body: http.MaxBytesReader(w, r.Body, limit)}
+		}
 		h.ServeHTTP(w, r.WithContext(context.WithValue(ctx, streamKey{}, s)))
 	})
 }
@@ -150,7 +177,7 @@ func Bounded(ctx context.Context) (context.Context, context.CancelFunc) {
 	return context.WithTimeout(ctx, s.requestTimeout)
 }
 
-// Sending moves the write deadline to read_timeout from now plus the time n
+// Sending sets the write deadline to read_timeout from now plus the time n
 // bytes take at the route's MinRate: a stream handler calls it before it
 // writes an answer of n bytes. It fails outside API.Stream and once the
 // server is shutting down.
@@ -167,16 +194,20 @@ type stream struct {
 	rc                                      *http.ResponseController
 	start                                   time.Time
 	readTimeout, writeSlack, requestTimeout time.Duration
-	minRate                                 int64
+	minRate, step                           int64
 
-	mu      sync.Mutex
-	read    int64 // body bytes read
-	armed   int64 // read when the deadlines last moved
-	stopped bool
+	mu       sync.Mutex
+	read     int64 // body bytes read
+	armed    int64 // read when the deadlines last moved
+	drained  bool  // the body was read to its end, or there is none
+	sent     bool  // Sending was called
+	stopped  bool  // the server is shutting down
+	finished bool  // the handler returned
 }
 
-// arm moves the read deadline to read_timeout after the start plus the
-// time n body bytes take at the rate, and the write deadline after it.
+// arm moves the read deadline, while there is body left, to read_timeout
+// after the start plus the time n body bytes take at the rate, and the
+// write deadline after where it would be.
 func (s *stream) arm(n int64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -185,8 +216,10 @@ func (s *stream) arm(n int64) error {
 	}
 	s.armed = n
 	read := s.start.Add(s.readTimeout + atRate(n, s.minRate))
-	if err := s.rc.SetReadDeadline(read); err != nil {
-		return err
+	if !s.drained {
+		if err := s.rc.SetReadDeadline(read); err != nil {
+			return err
+		}
 	}
 	return s.rc.SetWriteDeadline(read.Add(s.writeSlack))
 }
@@ -197,17 +230,32 @@ func (s *stream) sending(n int64) error {
 	if s.stopped {
 		return errStreamStopped
 	}
+	s.sent = true
 	return s.rc.SetWriteDeadline(time.Now().Add(s.readTimeout + atRate(n, s.minRate)))
 }
 
-// stop makes both deadlines pass at once and keeps them there.
-func (s *stream) stop() {
+// stop marks the server shutting down and, while the stream moves bytes,
+// makes both deadlines pass at once and keeps them there; it tells whether
+// it did.
+func (s *stream) stop() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.stopped = true
+	if s.finished || (s.drained && !s.sent) {
+		return false
+	}
 	now := time.Now()
 	_ = s.rc.SetReadDeadline(now)
 	_ = s.rc.SetWriteDeadline(now)
+	return true
+}
+
+// finish marks the handler returned: a shutdown beginning now leaves the
+// deadlines to net/http's last flush of the answer.
+func (s *stream) finish() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.finished = true
 }
 
 // atRate is the time n bytes take at rate bytes a second, at most maxWait.
@@ -223,10 +271,11 @@ func atRate(n, rate int64) time.Duration {
 	return time.Duration(secs)*time.Second + frac
 }
 
-// rateBody is a stream's request body: every streamChunk bytes read move
-// the deadlines on. A read that ends the body does not: once the body is
-// read, net/http watches the connection with no read deadline, and one set
-// then would end the request's context when it passed.
+// rateBody is a stream's request body: every step of bytes read moves the
+// deadlines on. A read that ends the body does not: once the body is read,
+// net/http watches the connection with no read deadline, and one set then
+// would end the request's context when it passed. For that reason a
+// request without a body has none from the start.
 type rateBody struct {
 	s    *stream
 	body io.ReadCloser
@@ -234,10 +283,15 @@ type rateBody struct {
 
 func (b *rateBody) Read(p []byte) (int, error) {
 	n, err := b.body.Read(p)
+	if errors.Is(err, io.EOF) {
+		b.s.mu.Lock()
+		b.s.drained = true
+		b.s.mu.Unlock()
+	}
 	if n > 0 && err == nil {
 		b.s.mu.Lock()
 		b.s.read += int64(n)
-		due := b.s.read-b.s.armed >= streamChunk
+		due := b.s.read-b.s.armed >= b.s.step
 		read := b.s.read
 		b.s.mu.Unlock()
 		if due {
