@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # 在镜像上跑 S1、S3（docs/v0.1/M0-foundation/06-P6-e2e-delivery.md 3.5）：在临时的 Docker 网络里启动
 # PostgreSQL，用镜像执行 migrate up、启动 serve，核对探针、内嵌的前端、实例信息、提交信息、管理员建的账户
-# 与进程的用户，最后停止服务并核对它正常退出。无论成败都清理容器与网络；失败时打印服务的日志。
+# 与进程的用户，最后停止服务并核对它正常退出；另核对附件目录不可写时 serve 拒绝启动（M7/P1 设计 3.5）。
+# 无论成败都清理容器、卷与网络；失败时打印服务的日志。
 # 镜像要由当前工作区构建：提交信息与本地的 git 核对（make image-smoke 先执行 make image）。
 # 需要 Docker、curl、jq、openssl。
 set -euo pipefail
@@ -21,6 +22,8 @@ name=nervewiki-smoke-$$
 db=$name-db
 migrate=$name-migrate
 app=$name-app
+# 服务的附件目录：具名卷，结束时删掉（不挂载时 Docker 会留下匿名卷）
+volume=$name-data
 # 本机临时的账号密码，不是机密
 database_url="postgres://nervewiki:nervewiki@$db:5432/nervewiki?sslmode=disable"
 timeout_s=60
@@ -41,6 +44,7 @@ cleanup() {
   fi
   # -v：PostgreSQL 镜像声明了数据卷，不带 -v 每次都会留下一个匿名卷
   docker rm -fv "$app" "$migrate" "$db" >/dev/null 2>&1 || true
+  docker volume rm "$volume" >/dev/null 2>&1 || true
   docker network rm "$name" >/dev/null 2>&1 || true
   rm -rf "$keydir"
   # 否则脚本的退出码是上一行的，set -u 之类的失败会被当成通过
@@ -85,7 +89,16 @@ chmod 644 "$keydir/jwt.pem"
 
 # 部署的顺序：prod 配置不自动迁移，先 migrate up，再 serve
 docker run --name "$migrate" --network "$name" -e NWIKI_DATABASE__URL="$database_url" "${key[@]}" "$image" migrate up
-docker run -d --name "$app" --network "$name" -e NWIKI_DATABASE__URL="$database_url" "${key[@]}" -p 127.0.0.1::8080 "$image" >/dev/null
+
+# 附件目录不可写（属主是 root 的 tmpfs）时 serve 拒绝启动，写明目录与 uid
+if refused=$(docker run --rm --network "$name" -e NWIKI_DATABASE__URL="$database_url" "${key[@]}" \
+  --tmpfs /data:uid=0,gid=0,mode=0755 "$image" serve 2>&1); then
+  fail "附件目录不可写时 serve 照样启动了"
+fi
+grep -q "cannot write in /data as uid 65532" <<<"$refused" || fail "附件目录不可写时的错误没有写明目录与 uid：$refused"
+
+docker run -d --name "$app" --network "$name" -e NWIKI_DATABASE__URL="$database_url" "${key[@]}" -v "$volume:/data" \
+  -p 127.0.0.1::8080 "$image" >/dev/null
 base="http://$(docker port "$app" 8080/tcp | head -n 1)"
 wait_for get "$base/readyz" || fail "/readyz 在 ${timeout_s} 秒内没有答 200"
 

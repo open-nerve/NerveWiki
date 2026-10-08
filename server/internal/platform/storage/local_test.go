@@ -63,6 +63,7 @@ func TestAFileLiesInItsShard(t *testing.T) {
 	}
 }
 
+// A file being written lies in its area's .tmp, which Abort leaves empty.
 func TestAFileBeingWrittenLiesInItsAreasTemporaryDirectory(t *testing.T) {
 	dir := t.TempDir()
 	l, err := storage.OpenLocal(dir, 0)
@@ -73,14 +74,16 @@ func TestAFileBeingWrittenLiesInItsAreasTemporaryDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() {
-		if err := w.Abort(); err != nil {
-			t.Error(err)
-		}
-	}()
-	entries, err := os.ReadDir(filepath.Join(dir, "imports", ".tmp"))
+	tmp := filepath.Join(dir, "imports", ".tmp")
+	entries, err := os.ReadDir(tmp)
 	if err != nil || len(entries) != 1 {
 		t.Fatalf("imports/.tmp holds %v, %v; want the one file", entries, err)
+	}
+	if err := w.Abort(); err != nil {
+		t.Fatal(err)
+	}
+	if entries, err := os.ReadDir(tmp); err != nil || len(entries) != 0 {
+		t.Errorf("imports/.tmp after Abort holds %v, %v; want nothing", entries, err)
 	}
 }
 

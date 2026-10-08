@@ -50,6 +50,7 @@ func validConfig() Config {
 		Page:      PageConfig{EditSessionCleanupInterval: 10 * time.Minute, ParseBudgetBytes: 8 << 20, ParseMaxWait: 2 * time.Second},
 		Events:    EventsConfig{HeartbeatInterval: 20 * time.Second},
 		Jobs:      JobsConfig{ShutdownTimeout: 10 * time.Second, PurgeInterval: time.Hour, PurgeRetention: 1440 * time.Hour},
+		Storage:   StorageConfig{Dir: "data", MinFreeBytes: 1 << 30},
 		Log:       LogConfig{Level: "info", Format: "json"},
 	}
 }
@@ -65,6 +66,7 @@ func TestValidateReportsEveryInvalidKey(t *testing.T) {
 		Env:      EnvProd,
 		Server:   ServerConfig{Addr: "8080", ReadHeaderTimeout: 0, ReadTimeout: 0, WriteTimeout: -time.Second, ShutdownTimeout: -time.Second},
 		Database: DatabaseConfig{URL: "", MaxConns: 0},
+		Storage:  StorageConfig{MinFreeBytes: -1},
 		Log:      LogConfig{Level: "verbose", Format: "xml"},
 	}
 	err := cfg.validate()
@@ -114,6 +116,8 @@ func TestValidateReportsEveryInvalidKey(t *testing.T) {
 		"jobs.shutdown_timeout: must be positive, got 0s",
 		"jobs.purge_interval: must be at least 1s, got 0s",
 		"jobs.purge_retention: must be at least 1h, got 0s",
+		"storage.dir: is required",
+		"storage.min_free_bytes: must not be negative, got -1",
 		`log.level: must be one of debug, info, warn, error, got "verbose"`,
 		`log.format: must be text or json, got "xml"`,
 	}

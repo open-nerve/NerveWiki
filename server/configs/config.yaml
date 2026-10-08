@@ -102,6 +102,14 @@ jobs:
   # 软删除的行保留这么久之后才被物理删除，至少 1 小时。期间运维可以从数据库恢复
   purge_retention: 1440h
 
+storage:
+  # 附件、导入导出的文件所在的目录，不存在就建。不可写时 serve 拒绝启动，错误里写明进程的 uid。
+  # 镜像里是 /data（Dockerfile 的 NWIKI_STORAGE__DIR），挂载为卷；make run 在 server/ 下运行，即 server/data。
+  # 只能由一个 nervewiki 进程使用（v0.1 只支持单实例）
+  dir: data
+  # 剩余空间低于它（字节）时不再接受写入
+  min_free_bytes: 1073741824
+
 log:
   level: info # debug | info | warn | error
   format: json # text | json

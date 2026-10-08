@@ -83,8 +83,9 @@ func testConfig(t *testing.T, dbURL string, autoMigrate bool) config.Config {
 		Page:   config.PageConfig{EditSessionCleanupInterval: time.Hour, ParseBudgetBytes: 8 << 20, ParseMaxWait: 2 * time.Second},
 		Events: config.EventsConfig{HeartbeatInterval: 20 * time.Second},
 		// The purge's first run starts with the jobs too.
-		Jobs: config.JobsConfig{ShutdownTimeout: 5 * time.Second, PurgeInterval: time.Hour, PurgeRetention: 1440 * time.Hour},
-		Log:  config.LogConfig{Level: "error", Format: "text"},
+		Jobs:    config.JobsConfig{ShutdownTimeout: 5 * time.Second, PurgeInterval: time.Hour, PurgeRetention: 1440 * time.Hour},
+		Storage: config.StorageConfig{Dir: t.TempDir()},
+		Log:     config.LogConfig{Level: "error", Format: "text"},
 	}
 }
 

@@ -236,9 +236,10 @@ func TestAStreamMovesItsDeadlinesWithItsBytes(t *testing.T) {
 		rw.WriteHeader(http.StatusOK)
 	}), StreamPolicy{MinRate: rate, MaxBytes: 1 << 20})
 
-	// 200 KiB in 16 KiB reads, the last with io.EOF: three chunks pass.
+	// 256 KiB in 16 KiB reads, the last with io.EOF: three chunks pass
+	// before it, and the fourth, which it ends, moves nothing.
 	r := post("/api/v0/uploads", "")
-	r.Body = &chunkedBody{content: bytes.Repeat([]byte("x"), 200<<10), size: 16 << 10}
+	r.Body = &chunkedBody{content: bytes.Repeat([]byte("x"), 256<<10), size: 16 << 10}
 	start := time.Now()
 	h.ServeHTTP(w, r)
 

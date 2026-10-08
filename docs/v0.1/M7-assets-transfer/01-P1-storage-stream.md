@@ -104,7 +104,7 @@ func (a *API) Stream(h http.Handler, p StreamPolicy) http.Handler
 // before the body, the write after it) by server.request_timeout from now.
 func Bounded(ctx context.Context) (context.Context, context.CancelFunc)
 // Sending extends the write deadline for n more bytes at the route's MinRate.
-func Sending(w http.ResponseWriter, r *http.Request, n int64) error
+func Sending(r *http.Request, n int64) error
 ```
 
 - **次序**：请求信息 → 在 `request_timeout` 之内的失败闸门与认证（公开的操作不认证，照 `PublicOperations`）→ 路由的桶（没有 `Bucket` 时照 `rateLimit`）→ 请求体上限（`MaxBytesReader`）→ 处理器。认证与限流的期限照 `API.LongLived` 的 `opening`、`opened`。

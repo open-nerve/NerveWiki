@@ -122,6 +122,12 @@ func (c Config) validate() error {
 	if c.Jobs.PurgeRetention < time.Hour {
 		fail("jobs.purge_retention", "must be at least 1h, got %s", c.Jobs.PurgeRetention)
 	}
+	if c.Storage.Dir == "" {
+		fail("storage.dir", "is required")
+	}
+	if c.Storage.MinFreeBytes < 0 {
+		fail("storage.min_free_bytes", "must not be negative, got %d", c.Storage.MinFreeBytes)
+	}
 	var level slog.Level
 	if err := level.UnmarshalText([]byte(c.Log.Level)); err != nil {
 		fail("log.level", "must be one of debug, info, warn, error, got %q", c.Log.Level)

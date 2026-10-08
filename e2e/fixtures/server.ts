@@ -81,7 +81,9 @@ export async function runNervewiki(
  * Starts nervewiki serve with the test configuration on the database at
  * databaseUrl and waits until it is ready (or live, see StartOptions).
  * nervewiki listens on a port the system picks and writes its address to
- * server.addr_file, next to logFile, which gets its output.
+ * server.addr_file, next to logFile, which gets its output; its storage
+ * directory is next to it too, emptied first: every server has its own
+ * (M7/P1 design 3.5).
  */
 export async function startNervewiki(
   databaseUrl: string,
@@ -91,12 +93,15 @@ export async function startNervewiki(
   mkdirSync(path.dirname(logFile), { recursive: true });
   const addrFile = logFile.replace(/\.log$/, "") + ".addr";
   rmSync(addrFile, { force: true });
+  const storageDir = logFile.replace(/\.log$/, "") + ".data";
+  rmSync(storageDir, { recursive: true, force: true });
   const log = openSync(logFile, "w");
   const child = spawn(binary, ["serve"], {
     env: {
       ...nervewikiEnv(databaseUrl),
       NWIKI_SERVER__ADDR: "127.0.0.1:0",
       NWIKI_SERVER__ADDR_FILE: addrFile,
+      NWIKI_STORAGE__DIR: storageDir,
       ...env,
     },
     stdio: ["ignore", log, log],

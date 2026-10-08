@@ -22,6 +22,7 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/platform/jobs"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/ratelimit"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/storage"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/webui"
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
@@ -45,6 +46,18 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrati
 	if err != nil {
 		return nil, err
 	}
+	// serve refuses to start on a storage directory it cannot write, naming
+	// the directory and the uid (M7/P1 design 3.5). The command line does
+	// not open it.
+	store, err := storage.OpenLocal(cfg.Storage.Dir, cfg.Storage.MinFreeBytes)
+	if err != nil {
+		return nil, err
+	}
+	free, err := store.Free(ctx)
+	if err != nil {
+		return nil, err
+	}
+	logger.InfoContext(ctx, "storage opened", slog.String("dir", cfg.Storage.Dir), slog.Int64("free_bytes", free))
 	pool, err := postgres.NewPool(ctx, cfg.Database)
 	if err != nil {
 		return nil, err

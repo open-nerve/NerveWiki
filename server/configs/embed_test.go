@@ -71,6 +71,7 @@ func TestBuiltInProfiles(t *testing.T) {
 				Page:      config.PageConfig{EditSessionCleanupInterval: 10 * time.Minute, ParseBudgetBytes: 8 << 20, ParseMaxWait: 2 * time.Second},
 				Events:    config.EventsConfig{HeartbeatInterval: 20 * time.Second},
 				Jobs:      config.JobsConfig{ShutdownTimeout: 10 * time.Second, PurgeInterval: tt.purge, PurgeRetention: 60 * 24 * time.Hour},
+				Storage:   config.StorageConfig{Dir: "data", MinFreeBytes: 1 << 30},
 				Log:       config.LogConfig{Level: tt.level, Format: tt.format},
 			}
 			if !reflect.DeepEqual(cfg, want) {
