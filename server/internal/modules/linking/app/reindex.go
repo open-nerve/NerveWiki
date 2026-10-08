@@ -53,8 +53,8 @@ type Parser interface {
 var ErrNoNotebook = errors.New("linking: no such notebook")
 
 // Rebuilt is a notebook's rebuild: its pages, their links and those that
-// resolve to no page; or, when it rebuilt nothing, the siblings whose title
-// keys would clash.
+// resolve to no page or attachment; or, when it rebuilt nothing, the
+// siblings whose title keys would clash.
 type Rebuilt struct {
 	Pages      int
 	Links      int

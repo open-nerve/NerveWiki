@@ -44,8 +44,8 @@ type Asset struct {
 	// ID The attachment's node.
 	ID uuid.UUID `json:"id"`
 
-	// Link How a wikilink, ![[link]] to embed it, is written to lead to the attachment alone from anywhere in the notebook, as the link targets write it: its name, or its path from the root where another attachment has its name; as of this answer, which another attachment of its name, made since, does not change. An attachment without an extension, which no link leads to, has its path.
-	Link string `json:"link"`
+	// Link How a wikilink, ![[link]] to embed it, is written to lead to the attachment alone from anywhere in the notebook, as the link targets write it: its name, or its path from the root where another attachment has its name's title key. It is as of the answer: another attachment given that title key later may make the name lead elsewhere. Null for an attachment without an extension, which no link leads to.
+	Link nullable.Nullable[string] `json:"link"`
 
 	// Mime The type the server told from the name's extension and the file's first bytes, which it serves the content as: an image, an audio, a video or a PDF it shows; application/octet-stream for any other file, which is downloaded.
 	Mime string `json:"mime"`

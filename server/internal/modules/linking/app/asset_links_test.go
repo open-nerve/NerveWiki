@@ -12,17 +12,17 @@ import (
 
 // An attachment's link is its name when no other attachment of the
 // notebook has its title key, a page's no matter; its path from the root
-// otherwise, and for one without an extension, which nothing leads to. A
+// otherwise; empty for one without an extension, which no link leads to. A
 // page, or a node gone, has none (M7/P3 design 4.6).
 func TestAnAttachmentsLinkIsItsNameOrItsPath(t *testing.T) {
 	w := newWorld(t, "A", "B", "C", "D", "D/y.png")
 	a, b := w.tree.addAsset("A/x.png"), w.tree.addAsset("B/X.PNG")
 	y, data := w.tree.addAsset("C/y.png"), w.tree.addAsset("C/data")
-	gone := w.tree.addAsset("C/gone.png")
+	gone, alone := w.tree.addAsset("C/gone.png"), w.tree.addAsset("D/gone.PNG")
 	w.tree.nodes[gone].gone = true
-	links := app.AssetLinks{Pages: w.tree}
-	got, err := links.Of(context.Background(), w.notebook, []uuid.UUID{y, a, b, data, gone, w.id("D/y.png"), a})
-	want := map[uuid.UUID]string{a: "A/x.png", b: "B/X.PNG", y: "y.png", data: "C/data"}
+	links := app.AssetLinks{Attachments: w.tree}
+	got, err := links.Of(context.Background(), w.notebook, []uuid.UUID{y, a, b, data, gone, alone, w.id("D/y.png"), a})
+	want := map[uuid.UUID]string{a: "A/x.png", b: "B/X.PNG", y: "y.png", data: "", alone: "gone.PNG"}
 	if err != nil || !reflect.DeepEqual(got, want) {
 		t.Errorf("Of = %v, %v; want %v", got, err, want)
 	}
@@ -35,10 +35,8 @@ func TestAnAttachmentsLinkIsItsNameOrItsPath(t *testing.T) {
 func TestAnAttachmentsLinkAnswersItsReadsFailure(t *testing.T) {
 	w := newWorld(t, "A")
 	a := w.tree.addAsset("A/x.png")
-	for _, fails := range []int{1, 2} {
-		w.tree.failAt, w.tree.reads = fails, 0
-		if _, err := (app.AssetLinks{Pages: w.tree}).Of(context.Background(), w.notebook, []uuid.UUID{a}); !errors.Is(err, errRead) {
-			t.Errorf("read %d failing: %v, want the read's failure", fails, err)
-		}
+	w.tree.failAt, w.tree.reads = 1, 0
+	if _, err := (app.AssetLinks{Attachments: w.tree}).Of(context.Background(), w.notebook, []uuid.UUID{a}); !errors.Is(err, errRead) {
+		t.Errorf("the read failing: %v, want the read's failure", err)
 	}
 }

@@ -40,9 +40,9 @@ type Edit struct {
 }
 
 // Rewriting is how Rewrite writes a page's content again: the edits, which
-// do not overlap; the pages the links it writes again lead to, by where
+// do not overlap; the nodes the links it writes again lead to, by where
 // each link's target starts; and the links no writing leads back (none
-// should: a page's path from the root always does).
+// should: a node's path from the root always does).
 type Rewriting struct {
 	Edits []Edit
 	Leads map[int]Node
@@ -50,7 +50,7 @@ type Rewriting struct {
 }
 
 // Rewrites tells whether a rename or move writes l again (M6/P4 design 2):
-// l, no value of the aliases, resolved to a page before it, and resolves
+// l, no value of the aliases, resolved to a node before it, and resolves
 // after it to another, to none, or ambiguously where it did not; or l
 // resolved to recased, the page a rename changed the case of the title of
 // only, and names it by its title not as now written, with ".md" or
@@ -182,7 +182,7 @@ func (w Rewriting) inBody(was []Link) (map[int]Node, Unwritten) {
 // kept tells whether now, the facts of a writing of content with some of
 // a rewriting's edits, read back, keep was, content's: its links in their
 // places, as many, each of the same kind, property and anchor; each that
-// leads has written again leading, from from, to its page alone; each
+// leads has written again leading, from from, to its node alone; each
 // other as it was written, with its display. And its aliases, which a
 // rewrite leaves (M6/P4 design 2): a link in a key's value that the
 // aliases repeat with a YAML alias (aliases: *x) is not flagged as theirs
@@ -256,6 +256,22 @@ func Linktext(n Node, from []Step, tree Tree) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// AssetLinktext is the attachment n's Linktext from anywhere (M7/P3 design
+// 4.6), from alike, the number of its notebook's attachments with its title
+// key, n among them: its name when n is the only one, which reads as an
+// attachment's and leads to it alone; its path from the root otherwise,
+// which leads to it exactly. ok is false for an attachment without an
+// extension, which no link leads to.
+func AssetLinktext(n Node, alike int) (string, bool) {
+	switch {
+	case !n.Linkable():
+		return "", false
+	case alike == 1:
+		return n.name(), true
+	}
+	return n.path(), true
 }
 
 // Linktexts is the linktext of each of nodes, all of a notebook's pages and

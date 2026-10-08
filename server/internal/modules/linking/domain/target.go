@@ -1,6 +1,6 @@
 // Package domain holds the linking module's rules (v0.1 design 4.4; M6
-// design 4.4; M6/P3 design 2): how a link's target is cut, and which page
-// it resolves to.
+// design 4.4; M6/P3 design 2; M7/P3 design 4.2): how a link's target is
+// cut, and which page or attachment it resolves to.
 package domain
 
 import (
@@ -83,8 +83,8 @@ func (t Target) ByAlias() bool {
 	return len(t.Keys) == 1 && !t.Relative && !t.Rooted
 }
 
-// LastKeys are the keys a page must have to be the target: the last
-// segment's, in the forms it may be written in.
+// LastKeys are the keys a page or an attachment must have to be the
+// target: the last segment's, in the forms it may be written in.
 func (t Target) LastKeys() []string {
 	if t.AltLast == "" {
 		return []string{t.Keys[len(t.Keys)-1]}
@@ -108,7 +108,7 @@ func (t Target) Reach(from []Step) int {
 // without the ".md" when the notebook has a page of that name anywhere, and
 // with it otherwise; else an attachment's when the notebook has an
 // attachment of its last segment's name anywhere, which only a name with
-// an extension may be (Node.candidate); else a page's.
+// an extension may be (Node.Linkable); else a page's.
 func (t Target) form(candidates candidateSet) ([]string, bool) {
 	stem := t.Keys[len(t.Keys)-1]
 	switch {

@@ -20,14 +20,15 @@ import (
 // case, with ".md", with what a Markdown link escapes or decodes, and with
 // what the Markdown around a link may pair, so that names repeat.
 func randomTitle(r *rand.Rand) string {
-	titles := []string{"a", "A", "b", "x", "X", "y", "Plan", "a b", "é", "x.md", "Close) 50%", "x%41", "a$b", "Don`t", "a %% b", "x.png"}
+	titles := []string{"a", "A", "b", "x", "X", "y", "Plan", "a b", "é", "x.md", "Close) 50%", "x%41", "a$b", "Don`t", "a %% b", "x.png",
+		"v1.2", "a.tar", "X.PNG.md"}
 	return titles[r.IntN(len(titles))]
 }
 
 // randomAssetName is an attachment's name: most with an extension, some a
 // page's title too, one without an extension, which nothing leads to.
 func randomAssetName(r *rand.Rand) string {
-	names := []string{"x.png", "X.PNG", "a.png", "b", "x.pdf", "Plan.png", "a b.mp3", "é.png", "v1.2"}
+	names := []string{"x.png", "X.PNG", "a.png", "b", "x.pdf", "Plan.png", "a b.mp3", "é.png", "v1.2", "a.tar.gz", "a.tar"}
 	return names[r.IntN(len(names))]
 }
 

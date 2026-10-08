@@ -28,9 +28,10 @@ type Index struct {
 // it has the rows of the pages whose content e wrote hold their facts and
 // drops those of the pages it deleted, resolves anew the links e reaches,
 // sets those that resolve otherwise, and publishes the links event of
-// what changed. It reaches what domain.Affected does, the pages under the
-// nodes it renamed, the keys of every alias of those pages and of those it
-// deleted, and the keys of the aliases a content it wrote drops or adds.
+// what changed. It reaches what domain.Affected does, the pages and
+// attachments under the nodes it renamed, the keys of every alias of those
+// pages and of those it deleted, and the keys of the aliases a content it
+// wrote drops or adds.
 func (x Index) PagesChanged(ctx context.Context, e PagesChanged) error {
 	reach, renamed, ok := domain.Affected(e.Changes)
 	if !ok {
@@ -79,10 +80,10 @@ func (x Index) PagesChanged(ctx context.Context, e PagesChanged) error {
 	return x.publish(ctx, e, links, changed, written, dropped)
 }
 
-// spread has reach, a unit's, reach the pages under the nodes renamed,
-// their links and those to them, and the keys of every alias of the pages
-// it reaches: a page's path decides between the pages with an alias as
-// between those with a name.
+// spread has reach, a unit's, reach the pages and attachments under the
+// nodes renamed, their links and those to them, and the keys of every
+// alias of the pages it reaches: a page's path decides between the pages
+// with an alias as between those with a name.
 func spread(ctx context.Context, store Store, pages Pages, notebookID uuid.UUID, reach domain.Reach, renamed []uuid.UUID) (
 	domain.Reach, error,
 ) {

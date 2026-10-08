@@ -120,7 +120,7 @@ type LinkTarget struct {
 	// Kind What a link target is, a page or an attachment.
 	Kind LinkTargetKind `json:"kind"`
 
-	// Link How a wikilink is written to lead to the node alone, from anywhere in the notebook: its title or name, or its path from the root where another node of its kind has its title; with ".md" after the path where it would be read otherwise, a page's whose title ends with ".md" as another page's without it, a page's whose title an attachment has as the attachment's. An attachment without an extension, which no link leads to, has its path.
+	// Link How a wikilink is written to lead to the node alone, from anywhere in the notebook: its title or name, or its path from the root where another node of its kind has its title; with ".md" after the path where it would be read otherwise, a page's whose title ends with ".md" as another page's without it, a page's whose title an attachment has as the attachment's.
 	Link string `json:"link"`
 
 	// Name The page's title; the attachment's name, with its extension.

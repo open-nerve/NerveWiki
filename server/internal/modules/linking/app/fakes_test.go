@@ -97,6 +97,30 @@ func (t *tree) Paths(_ context.Context, _ uuid.UUID, ids []uuid.UUID) ([]domain.
 	return out, nil
 }
 
+// Attachments is the attachments among ids, as the page module's reads
+// them: each with how many attachments not gone have its title key.
+func (t *tree) Attachments(_ context.Context, _ uuid.UUID, ids []uuid.UUID) ([]app.Attachment, error) {
+	t.reads++
+	if t.reads == t.failAt {
+		return nil, errRead
+	}
+	var out []app.Attachment
+	for _, id := range ids {
+		n, ok := t.nodes[id]
+		if !ok || n.gone || !n.asset {
+			continue
+		}
+		alike := 0
+		for _, o := range t.nodes {
+			if o.asset && !o.gone && shared.TitleKey(o.name) == shared.TitleKey(n.name) {
+				alike++
+			}
+		}
+		out = append(out, app.Attachment{Node: domain.Node{ID: id, Path: t.path(id), Asset: true}, Alike: alike})
+	}
+	return out, nil
+}
+
 func (t *tree) Subtree(_ context.Context, _ uuid.UUID, id uuid.UUID) ([]domain.Step, error) {
 	if n, ok := t.nodes[id]; !ok || n.gone {
 		return nil, fmt.Errorf("no page %s", id)

@@ -47,8 +47,8 @@ test("L6 (API): a page's properties carry where their links lead; its backlinks 
       { key: "see", value: "[[Nowhere]]" },
     ],
     links: [
-      { key: "up", node_id: hub.id },
-      { key: "see", node_id: null },
+      { key: "up", node_id: hub.id, kind: "page" },
+      { key: "see", node_id: null, kind: null },
     ],
   });
   expect((await listBacklinks(api, pat, hub.id)).data).toEqual({

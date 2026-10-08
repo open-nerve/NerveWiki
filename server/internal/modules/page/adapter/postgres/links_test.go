@@ -3,6 +3,7 @@ package postgresadapter_test
 import (
 	"context"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 	"uuid"
@@ -66,6 +67,48 @@ func TestLinkTargetsAreTheNotebooksNodesWithTheirPaths(t *testing.T) {
 	}
 	if got, err := f.s.LinkTargetsByIDs(ctx, f.eng, nil); err != nil || got != nil {
 		t.Errorf("by no ids = %+v, %v", got, err)
+	}
+}
+
+// An attachment's link reads the attachments among ids, each with its path
+// and how many of the notebook's attachments not deleted have its title
+// key, itself among them: not a page of the key, not a deleted one, not
+// another notebook's (M7/P3 design 4.6).
+func TestAttachmentsAreReadWithHowManyHaveTheirTitleKey(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	a := f.page(t, f.eng, nil, "A", 0)
+	b := f.page(t, f.eng, nil, "B", 1)
+	f.page(t, f.eng, nil, "x.png", 2)
+	asset := func(notebook uuid.UUID, parent *uuid.UUID, name string, order float64) domain.Node {
+		t.Helper()
+		n := domain.Node{ID: uuid.NewV7(), NotebookID: notebook, ParentID: parent, Kind: domain.KindAsset, Name: name,
+			NameKey: strings.ToLower(name), SortOrder: order, CreatedBy: f.alice, UpdatedBy: f.alice, CreatedAt: now(), UpdatedAt: now()}
+		if err := f.s.CreateNode(ctx, n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	x, other := asset(f.eng, &a.ID, "x.png", 0), asset(f.eng, &b.ID, "X.PNG", 0)
+	y, gone := asset(f.eng, &a.ID, "y.png", 1), asset(f.eng, &b.ID, "y.png", 1)
+	asset(f.ops, nil, "x.png", 0)
+	if err := f.s.DeleteNodes(ctx, []uuid.UUID{gone.ID}, f.alice, now().Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := f.s.AttachmentsByIDs(ctx, f.eng, []uuid.UUID{y.ID, a.ID, gone.ID, x.ID})
+	want := []postgresadapter.AttachmentPath{{LinkPath: pathOf(a, x), Alike: 2}, {LinkPath: pathOf(a, y), Alike: 1}}
+	if x.ID.Compare(y.ID) > 0 {
+		want[0], want[1] = want[1], want[0]
+	}
+	if err != nil || !reflect.DeepEqual(got, want) {
+		t.Errorf("attachments = %+v, %v\nwant %+v", got, err, want)
+	}
+	if got, err := f.s.AttachmentsByIDs(ctx, f.eng, []uuid.UUID{other.ID}); err != nil || len(got) != 1 || got[0].Alike != 2 {
+		t.Errorf("the other x.png = %+v, %v; want it with two alike", got, err)
+	}
+	if got, err := f.s.AttachmentsByIDs(ctx, f.eng, nil); err != nil || len(got) != 0 {
+		t.Errorf("no attachments = %+v, %v", got, err)
 	}
 }
 

@@ -53,8 +53,9 @@ type AssetPage struct {
 // Get reads the attachment id: asset.not_found for a node that is none,
 // is deleted, or whose notebook the caller cannot read in (asset.read).
 // A node without its row, which each attachment's node has, is not found,
-// logged as an error unless the node was deleted since it was read; so is
-// one deleted before its link is read (M7/P3 design 4.6).
+// logged as an error unless the node was deleted since it was read; one
+// deleted before its link is read is not found, not logged (M7/P3 design
+// 4.6).
 func (r *Reads) Get(ctx context.Context, id uuid.UUID) (Asset, error) {
 	actor, err := shared.RequireActor(ctx)
 	if err != nil {
@@ -96,9 +97,9 @@ func (r *Reads) Get(ctx context.Context, id uuid.UUID) (Asset, error) {
 // notebook.not_found); then the parent, page.not_found unless a page of
 // the notebook; then the limit, 422 outside 1–100. One node more than
 // limit is read to tell whether another page follows. A node without its
-// row is left out, logged as Get logs it; so is one deleted before the
-// links are read, in one read of the page (M7/P3 design 4.6). The
-// addresses are signed as of one time.
+// row is left out, logged as Get logs it; one deleted before the links are
+// read, in one read of the page, is left out, not logged (M7/P3 design
+// 4.6). The addresses are signed as of one time.
 func (r *Reads) List(ctx context.Context, notebookID uuid.UUID, parentID *uuid.UUID, limit *int, cursor *string) (AssetPage, error) {
 	actor, err := shared.RequireActor(ctx)
 	if err != nil {

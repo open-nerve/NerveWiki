@@ -14,7 +14,7 @@ export type EditorContext = {
   notebook: string;
   page: string;
   role: NotebookRole;
-  /** linkTargets reads what the notebook's links may lead to: its pages, each with its link and aliases (M6/P7 design 3). */
+  /** linkTargets reads what the notebook's links may lead to: its pages and attachments, each with its link and aliases (M6/P7 design 3). */
   linkTargets(): Promise<readonly LinkTarget[]>;
   /** tags reads the notebook's tags, each with how many pages have it. */
   tags(): Promise<readonly TagCount[]>;

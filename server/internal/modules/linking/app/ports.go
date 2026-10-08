@@ -22,8 +22,8 @@ type Page struct {
 }
 
 // Dropped is what a page's rows held that the index's maintenance still
-// reads once they go: the pages its links resolved to, and its aliases'
-// keys, each once.
+// reads once they go: the pages and attachments its links resolved to, and
+// its aliases' keys, each once.
 type Dropped struct {
 	Targets   []uuid.UUID
 	AliasKeys []string
@@ -179,8 +179,7 @@ type Pages interface {
 // LinksChanged is the links event of a unit (M6 design 4.8): the pages
 // whose links resolve otherwise, but for those whose content it wrote, and
 // the pages and attachments whose backlinks changed (M7/P3 design 4.3).
-// Each is empty for none, and nil for
-// more than MaxEventPages.
+// Each is empty for none, and nil for more than MaxEventPages.
 type LinksChanged struct {
 	WorkspaceID uuid.UUID
 	NotebookID  uuid.UUID

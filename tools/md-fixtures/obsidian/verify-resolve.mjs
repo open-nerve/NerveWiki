@@ -24,7 +24,7 @@ const cases = readdirSync(dir)
   .map((f) => Object.assign(JSON.parse(readFileSync(join(dir, f), "utf8")), { name: f.slice(0, -5) }));
 // A 7×5 PNG, for the attachments that are images; any other's bytes are a few of text.
 const png = Buffer.from(
-  "iVBORw0KGgoAAAANSUhEUgAAAAcAAAAFCAYAAACJmvbYAAAAEklEQVR42mNk+M9QzwAEjDAGACCDAv8cI7IoAAAAAElFTkSuQmCC",
+  "iVBORw0KGgoAAAANSUhEUgAAAAcAAAAFCAYAAACJmvbYAAAAEklEQVR42mM4YWPzHxdmGABJADoKTp7oONgaAAAAAElFTkSuQmCC",
   "base64"
 );
 const fileOf = (name) => (/\.(png|jpe?g|gif|webp|bmp|avif)$/i.test(name) ? png : Buffer.from("not really\n"));

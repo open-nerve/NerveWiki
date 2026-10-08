@@ -22,7 +22,7 @@ if (!["prepare", "check"].includes(cmd) || !workArg) {
 }
 const work = resolve(workArg);
 // A 7×5 PNG, base64, for the attachments that are images; any other's bytes are a few of text.
-const png = "iVBORw0KGgoAAAANSUhEUgAAAAcAAAAFCAYAAACJmvbYAAAAEklEQVR42mNk+M9QzwAEjDAGACCDAv8cI7IoAAAAAElFTkSuQmCC";
+const png = "iVBORw0KGgoAAAANSUhEUgAAAAcAAAAFCAYAAACJmvbYAAAAEklEQVR42mM4YWPzHxdmGABJADoKTp7oONgaAAAAAElFTkSuQmCC";
 const isImage = (name) => /\.(png|jpe?g|gif|webp|bmp|avif)$/i.test(name);
 
 if (cmd === "prepare") {

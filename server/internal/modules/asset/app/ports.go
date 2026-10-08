@@ -97,7 +97,8 @@ type Nodes interface {
 // pool outside one.
 type Links interface {
 	// Of is the link of each of ids that is an attachment of notebookID not
-	// deleted, by id.
+	// deleted, by id: empty for one without an extension, which no link
+	// leads to.
 	Of(ctx context.Context, notebookID uuid.UUID, ids []uuid.UUID) (map[uuid.UUID]string, error)
 }
 

@@ -28,9 +28,9 @@ type ListLinkTargets struct {
 	Reads  Reads
 }
 
-// Execute returns the pages and attachments of the notebook id, by id,
-// after the decision: the tree and the aliases in two statements, which the
-// events have read again.
+// Execute returns the pages and the attachments with an extension of the
+// notebook id, by id, after the decision: the tree and the aliases in two
+// statements, which the events have read again.
 func (l ListLinkTargets) Execute(ctx context.Context, id uuid.UUID) ([]LinkTarget, error) {
 	actor, err := shared.RequireActor(ctx)
 	if err != nil {
@@ -48,12 +48,18 @@ func (l ListLinkTargets) Execute(ctx context.Context, id uuid.UUID) ([]LinkTarge
 		return nil, err
 	}
 	links := domain.Linktexts(nodes)
-	out := make([]LinkTarget, len(nodes))
+	out := make([]LinkTarget, 0, len(nodes))
 	for i, n := range nodes {
-		out[i] = LinkTarget{ID: n.ID, Asset: n.Asset, Name: n.Path[len(n.Path)-1].Name, Link: links[i], Aliases: aliases[n.ID]}
-		if out[i].Aliases == nil {
-			out[i].Aliases = []string{}
+		// An attachment without an extension is no link's target (M7/P3
+		// design 4.5): its path may lead to a page of that path.
+		if !n.Linkable() {
+			continue
 		}
+		t := LinkTarget{ID: n.ID, Asset: n.Asset, Name: n.Path[len(n.Path)-1].Name, Link: links[i], Aliases: aliases[n.ID]}
+		if t.Aliases == nil {
+			t.Aliases = []string{}
+		}
+		out = append(out, t)
 	}
 	return out, nil
 }

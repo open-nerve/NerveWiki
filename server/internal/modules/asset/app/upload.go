@@ -135,7 +135,8 @@ func (u *Upload) Discard(ctx context.Context, blob domain.Blob) {
 }
 
 // Asset is an attachment as the API answers it: its node, its file, its
-// address signed, and how a wikilink leads to it alone.
+// address signed, and how a wikilink leads to it alone, empty for one
+// without an extension.
 type Asset struct {
 	Node   Node
 	Blob   domain.Blob

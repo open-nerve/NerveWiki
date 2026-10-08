@@ -41,6 +41,30 @@ WITH RECURSIVE chain AS (
 )
 SELECT page_id, id, parent_id, name, name_key, kind, up::integer AS up FROM chain ORDER BY page_id, up DESC;
 
+-- name: AttachmentsByIDs :many
+-- The attachments not deleted of a notebook among ids, each with its path from the root, as LinkTargetsByIDs gives
+-- them, and on its own step the number of the notebook's attachments not deleted with its title key, itself among
+-- them (M7/P3 design 4.6): one statement, so one snapshot, which an attachment's link is written from.
+WITH RECURSIVE chain AS (
+    SELECT n.id AS page_id, n.id, n.parent_id, n.name, n.name_key, n.kind, 0 AS up,
+        (SELECT count(*) FROM nodes o
+         WHERE o.notebook_id = n.notebook_id AND o.name_key = n.name_key AND o.kind = 'asset' AND o.deleted_at IS NULL)
+        AS alike
+    FROM nodes n
+    WHERE n.notebook_id = sqlc.arg(notebook_id) AND n.id = ANY(sqlc.arg(ids)::uuid[]) AND n.kind = 'asset'
+        AND n.deleted_at IS NULL
+    UNION ALL
+    SELECT c.page_id, p.id, p.parent_id, p.name, p.name_key, p.kind, c.up + 1, 0::bigint
+    FROM chain c CROSS JOIN LATERAL (
+        SELECT p.id, p.parent_id, p.name, p.name_key, p.kind, p.notebook_id, p.deleted_at FROM nodes p
+        WHERE p.id = c.parent_id
+        LIMIT 1
+    ) p
+    WHERE c.up < 64 AND p.notebook_id = sqlc.arg(notebook_id) AND p.deleted_at IS NULL
+)
+SELECT page_id, id, parent_id, name, name_key, kind, up::integer AS up, alike::integer AS alike FROM chain
+ORDER BY page_id, up DESC;
+
 -- name: UnsetNameKeys :execrows
 -- Each node's title key, before nervewiki reindex sets it anew (M6/P3 design 3.6), a value of its own that no
 -- name's key is (a title has no control character): one statement sets every key, and the unique index of the

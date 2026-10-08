@@ -29,6 +29,11 @@ type LinkTargets interface {
 	// Paths is the pages and attachments not deleted of notebookID among
 	// ids, each with its path from the root.
 	Paths(ctx context.Context, notebookID uuid.UUID, ids []uuid.UUID) ([]LinkNode, error)
+	// Attachments is the attachments not deleted of notebookID among ids,
+	// each with its path from the root and the number of notebookID's
+	// attachments not deleted with its title key, itself among them, read
+	// at once (M7/P3 design 4.6: an attachment's link).
+	Attachments(ctx context.Context, notebookID uuid.UUID, ids []uuid.UUID) ([]LinkAttachment, error)
 	// Subtree is the node id of notebookID and the pages and attachments not
 	// deleted under it, each its id, title key and name.
 	Subtree(ctx context.Context, notebookID, id uuid.UUID) ([]LinkStep, error)
@@ -57,6 +62,14 @@ type LinkNode struct {
 	ID    uuid.UUID
 	Path  []LinkStep
 	Asset bool
+}
+
+// LinkAttachment is an attachment with its path from the root, and Alike
+// the number of its notebook's attachments with its title key, itself
+// among them.
+type LinkAttachment struct {
+	LinkNode
+	Alike int
 }
 
 // LinkStep is a node on a path, a page but for an attachment's last: its
@@ -94,6 +107,18 @@ func (l linkTargets) Paths(ctx context.Context, notebookID uuid.UUID, ids []uuid
 		return nil, fmt.Errorf("page: link targets of %s: %w", notebookID, err)
 	}
 	return linkNodes(paths), nil
+}
+
+func (l linkTargets) Attachments(ctx context.Context, notebookID uuid.UUID, ids []uuid.UUID) ([]LinkAttachment, error) {
+	paths, err := l.store.AttachmentsByIDs(ctx, notebookID, ids)
+	if err != nil {
+		return nil, fmt.Errorf("page: the attachments of %s: %w", notebookID, err)
+	}
+	out := make([]LinkAttachment, len(paths))
+	for i, p := range paths {
+		out[i] = LinkAttachment{LinkNode: linkNodes([]postgresadapter.LinkPath{p.LinkPath})[0], Alike: p.Alike}
+	}
+	return out, nil
 }
 
 func (l linkTargets) Subtree(ctx context.Context, notebookID, id uuid.UUID) ([]LinkStep, error) {

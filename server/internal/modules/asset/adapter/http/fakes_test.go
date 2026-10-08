@@ -113,7 +113,8 @@ type memNodes struct {
 }
 
 // nodeLinks writes each attachment's link as its name with "linked ":
-// enough to tell the answer carries the links' own.
+// enough to tell the answer carries the links' own; none for a name
+// without a dot, as one without an extension has none.
 type nodeLinks struct{ nodes *memNodes }
 
 func (l nodeLinks) Of(_ context.Context, _ uuid.UUID, ids []uuid.UUID) (map[uuid.UUID]string, error) {
@@ -121,8 +122,10 @@ func (l nodeLinks) Of(_ context.Context, _ uuid.UUID, ids []uuid.UUID) (map[uuid
 	defer l.nodes.mu.Unlock()
 	out := make(map[uuid.UUID]string, len(ids))
 	for _, id := range ids {
-		if n, ok := l.nodes.nodes[id]; ok {
+		if n, ok := l.nodes.nodes[id]; ok && strings.Contains(n.Name, ".") {
 			out[id] = "linked " + n.Name
+		} else if ok {
+			out[id] = ""
 		}
 	}
 	return out, nil

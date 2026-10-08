@@ -28,10 +28,10 @@ func (n Node) key() string {
 	return n.Path[len(n.Path)-1].Key
 }
 
-// candidate tells whether a link may resolve to n: a page, or an attachment
+// Linkable tells whether a link may resolve to n: a page, or an attachment
 // whose name has an extension, which Obsidian reads a target without one
 // as a page's file, adding ".md" (M7/P3 design 2).
-func (n Node) candidate() bool {
+func (n Node) Linkable() bool {
 	return !n.Asset || hasExtension(n.Path[len(n.Path)-1].Name)
 }
 
@@ -90,11 +90,11 @@ type Resolution struct {
 // reads t in one form, a page's or an attachment's (Target.form), among
 // the nodes of that kind alone, and the first step that finds one decides:
 //
-//  1. a relative target: the page whose path is the source folder's, up
+//  1. a relative target: the node whose path is the source folder's, up
 //     t.Up (no further than the root), then t's segments; or none;
-//  2. a target from the root, or one that is exactly a page's path from the
+//  2. a target from the root, or one that is exactly a node's path from the
 //     root, a name alone too;
-//  3. a page whose path ends with t's segments, whole: those in the source
+//  3. a node whose path ends with t's segments, whole: those in the source
 //     folder's subtree, its own page included, first, then the shortest
 //     path (Node.length), then the least id;
 //  4. for a name alone read as a page's, a page with it as an alias,
@@ -151,7 +151,7 @@ func resolve(t Target, from []Step, candidates candidateSet, aliased map[string]
 // A candidateSet is the pages and attachments a target may resolve to, as
 // Resolve reads them, each kind apart (asset tells the attachments): a
 // list, or a list read once into Suffixes. An attachment without an
-// extension is none of them (Node.candidate).
+// extension is none of them (Node.Linkable).
 type candidateSet interface {
 	// has tells whether a node of the kind has the title key key.
 	has(key string, asset bool) bool
@@ -168,7 +168,7 @@ type nodeList []Node
 
 // of tells whether c is a candidate of the kind.
 func of(c Node, asset bool) bool {
-	return c.Asset == asset && c.candidate()
+	return c.Asset == asset && c.Linkable()
 }
 
 func (ns nodeList) has(key string, asset bool) bool {
@@ -222,13 +222,13 @@ type suffix struct {
 // as deep as the targets of a read that end with each title key reach
 // (Target.Reach), by the key: a node is in as many suffixes as its path
 // has steps, its key's reach at most, and in none if no target ends with
-// its key, nor if it is no candidate (Node.candidate). Each page's every
+// its key, nor if it is no candidate (Node.Linkable). Each page's every
 // step cost 441 MiB a read of 100,000 pages 10 steps deep, 2.2 GB 64 deep
 // (M6 closeout FA2-M1, FA3-N2).
 func NewSuffixes(candidates []Node, reach map[string]int) Suffixes {
 	s := Suffixes{pages: &suffix{}, assets: &suffix{}}
 	for _, c := range candidates {
-		if !c.candidate() {
+		if !c.Linkable() {
 			continue
 		}
 		at := s.root(c.Asset)

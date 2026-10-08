@@ -146,6 +146,17 @@ func TestUploadCreatesTheAttachment(t *testing.T) {
 	}
 }
 
+// An attachment without an extension, which no link leads to, is
+// answered with a null link (M7/P3 design 4.6).
+func TestUploadAnswersANullLinkWithoutAnExtension(t *testing.T) {
+	h := newHarness(t)
+	ct, body := form(t, part{name: "name", value: "data"}, file("data", "plain"))
+	res, answer := h.post(t, uploadPath(), "pat", ct, bytes.NewReader(body))
+	if res.StatusCode != http.StatusCreated || !bytes.Contains(answer, []byte(`"link":null`)) {
+		t.Errorf("upload = %d %s, want 201 with a null link", res.StatusCode, answer)
+	}
+}
+
 // Without a name part, or with one empty or of blanks, the file part's
 // file name is the name, its directory dropped; a session's upload is the
 // web's.

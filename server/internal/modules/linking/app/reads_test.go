@@ -403,8 +403,9 @@ func TestATagsPagesAreReadByItsKey(t *testing.T) {
 // The link targets are the notebook's pages and attachments, by id, each
 // with its kind, its title, its writing, the path where another node of its
 // kind shares its title, with ".md" for a page an attachment shares it
-// with, and its aliases, none as an empty list (M6/P5 design 6; M7/P3
-// design 4.5).
+// with, and its aliases, none as an empty list; an attachment without an
+// extension, which no link leads to, is none (M6/P5 design 6; M7/P3 design
+// 4.5).
 func TestTheLinkTargetsAreThePagesWithTheirWritings(t *testing.T) {
 	l := newLibrary()
 	var ids [8]uuid.UUID
@@ -435,7 +436,6 @@ func TestTheLinkTargetsAreThePagesWithTheirWritings(t *testing.T) {
 		{ID: ids[4], Name: "Solo", Link: "Solo", Aliases: []string{"Alone", "S"}},
 		{ID: ids[5], Asset: true, Name: "x.png", Link: "x.png", Aliases: []string{}},
 		{ID: ids[6], Name: "x.png", Link: "B/x.png.md", Aliases: []string{}},
-		{ID: ids[7], Asset: true, Name: "data", Link: "A/data", Aliases: []string{}},
 	}
 	if err != nil || !reflect.DeepEqual(got, want) {
 		t.Errorf("link targets: %+v, %v\nwant %+v", got, err, want)

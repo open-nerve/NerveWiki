@@ -77,8 +77,9 @@ type Place = { table: boolean; frontmatter: boolean };
 
 /**
  * linkCompletion completes a link's target after [[ with the notebook's
- * pages and their aliases, and a tag after # with its tags (M6/P7 design
- * 4, 5), from the data the editor's context reads, once for each [[ or #.
+ * pages, their aliases and its attachments, and a tag after # with its tags
+ * (M6/P7 design 4, 5; M7/P3 design 4.5), from the data the editor's context
+ * reads, once for each [[ or #.
  * Not in code or raw HTML, nor in a content that cannot be changed, nor
  * while an input method composes (design 6): its completion is closed as
  * one starts, and started again by CodeMirror as it ends having changed
@@ -230,7 +231,7 @@ function lineBefore({ state, pos }: CompletionContext): string {
   return state.sliceDoc(state.doc.lineAt(pos).from, pos);
 }
 
-/** pages completes a link's target with the pages, by their link (a title, or its path), and their aliases. */
+/** pages completes a link's target with the pages and attachments, by their link (a title or name, or its path), and the pages' aliases. */
 function pages(context: EditorContext): CompletionSource {
   const reading = remembered(() => context.linkTargets());
   return async (completion): Promise<CompletionResult | null> => {

@@ -17,7 +17,8 @@ type LinkPath struct {
 	Asset bool
 }
 
-// LinkStep is a page on a path: its id, title key and name.
+// LinkStep is a node on a path, a page but for an attachment's last: its
+// id, title key and name.
 type LinkStep struct {
 	ID   uuid.UUID
 	Key  string
@@ -35,9 +36,9 @@ func (s *Store) LinkTargetsByKeys(ctx context.Context, notebookID uuid.UUID, key
 }
 
 // LinkTargetsByIDs is the pages and attachments not deleted of notebookID
-// among ids, with their paths, read planned with ids: without statistics, a plan for any
-// compared each node with them one by one, 10,000 of 55,500 nodes 0.7 s
-// where theirs took 40 ms (M6 closeout FA5-Q1).
+// among ids, with their paths, read planned with ids: without statistics,
+// a plan for any compared each node with them one by one, 10,000 of 55,500
+// nodes 0.7 s where theirs took 40 ms (M6 closeout FA5-Q1).
 func (s *Store) LinkTargetsByIDs(ctx context.Context, notebookID uuid.UUID, ids []uuid.UUID) ([]LinkPath, error) {
 	rows, err := s.planned(ctx).LinkTargetsByIDs(ctx, gen.LinkTargetsByIDsParams{NotebookID: notebookID, Ids: ids})
 	if err != nil {
@@ -50,6 +51,41 @@ func (s *Store) LinkTargetsByIDs(ctx context.Context, notebookID uuid.UUID, ids 
 	return linkPaths(same)
 }
 
+// AttachmentPath is an attachment with its path, and the number of its
+// notebook's attachments with its title key, itself among them.
+type AttachmentPath struct {
+	LinkPath
+	Alike int
+}
+
+// AttachmentsByIDs is the attachments not deleted of notebookID among ids,
+// with their paths and how many attachments have each's title key, in one
+// statement (M7/P3 design 4.6), planned with ids as LinkTargetsByIDs is.
+func (s *Store) AttachmentsByIDs(ctx context.Context, notebookID uuid.UUID, ids []uuid.UUID) ([]AttachmentPath, error) {
+	rows, err := s.planned(ctx).AttachmentsByIDs(ctx, gen.AttachmentsByIDsParams{NotebookID: notebookID, Ids: ids})
+	if err != nil {
+		return nil, fmt.Errorf("attachments by ids: %w", err)
+	}
+	same := make([]gen.LinkTargetsByKeysRow, len(rows))
+	alike := make(map[uuid.UUID]int, len(ids))
+	for i, r := range rows {
+		same[i] = gen.LinkTargetsByKeysRow{PageID: r.PageID, ID: r.ID, ParentID: r.ParentID, Name: r.Name, NameKey: r.NameKey,
+			Kind: r.Kind, Up: r.Up}
+		if r.Up == 0 {
+			alike[r.ID] = int(r.Alike)
+		}
+	}
+	paths, err := linkPaths(same)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]AttachmentPath, len(paths))
+	for i, p := range paths {
+		out[i] = AttachmentPath{LinkPath: p, Alike: alike[p.ID]}
+	}
+	return out, nil
+}
+
 // linkPaths groups rows, each a step of a node's path, the root's first,
 // into the nodes' paths, each node's kind its own step's, the last. A path
 // that does not reach a root is a defect: it meets a deleted node, or the
@@ -59,7 +95,7 @@ func linkPaths(rows []gen.LinkTargetsByKeysRow) ([]LinkPath, error) {
 	for _, r := range rows {
 		if len(out) == 0 || out[len(out)-1].ID != r.PageID {
 			if r.ParentID != nil {
-				return nil, fmt.Errorf("the path of page %s does not reach a root", r.PageID)
+				return nil, fmt.Errorf("the path of node %s does not reach a root", r.PageID)
 			}
 			out = append(out, LinkPath{ID: r.PageID})
 		}

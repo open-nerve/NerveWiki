@@ -60,7 +60,8 @@ ORDER BY s.source_id, f.range_start;
 -- name: PageProperties :one
 -- A page's properties for its right panel (M6/P5 design 4): whether its frontmatter is valid; its properties' keys
 -- and values, in the order written; and its property links' paths and where each resolves, the zero id for none, and
--- whether to an attachment (M7/P3 design 4.6), by where they start. One statement, so one snapshot; none for a page the index does not have.
+-- whether to an attachment (M7/P3 design 4.6), by where they start. One statement, so one snapshot; none for a page
+-- the index does not have.
 SELECT ip.frontmatter_valid,
     ARRAY(
         SELECT p.key FROM page_properties p WHERE p.source_id = ip.node_id ORDER BY p.position

@@ -186,11 +186,11 @@ func TestATargetReadAsAnAttachmentsHasNoLanding(t *testing.T) {
 // nor the root, when no page is there, the target would not lead to it or
 // it is read as an attachment's, would a page of its title made there be
 // the one it then resolves to alone; one read as a page's and still
-// target_is_asset has an attachment of its title, where the page would go
-// (the table's test tells where) (M6/P6 design 2; M7/P3 design 4.5).
+// target_is_asset has an attachment of its title where the page would go,
+// without the attachments of that title (M6/P6 design 2; M7/P3 design 4.5).
 func TestALandingLeadsTheTargetToThePageMade(t *testing.T) {
-	landed, assets := 0, 0
-	for seed := range uint64(4000) {
+	landed, assets, beside := 0, 0, 0
+	for seed := range uint64(20000) {
 		r := rand.New(rand.NewPCG(seed, 9))
 		c := randomCase(r)
 		aliases := map[string][]string{}
@@ -227,9 +227,18 @@ func TestALandingLeadsTheTargetToThePageMade(t *testing.T) {
 		case got.Reason == "":
 			t.Fatalf("seed %d: %s from %s: no node, landing nor reason", seed, written, from)
 		case got.Reason == domain.TargetIsAsset && !target.ReadsAsAsset(tree.nodes(target.LastKeys())):
+			beside++
 			key := shared.TitleKey(target.Name)
-			if !slices.ContainsFunc(c.assets, func(a string) bool { return shared.TitleKey(lastOf(a)) == key }) {
-				t.Fatalf("seed %d: %s from %s, read as a page's: target_is_asset, with no attachment of its title", seed, written, from)
+			others := slices.DeleteFunc(slices.Clone(c.assets), func(a string) bool { return shared.TitleKey(lastOf(a)) == key })
+			alone := treeOf(t, c.pages, aliases, others...).land(target, from, 10)
+			made := alone.Title
+			if parent := tree.pathOf(alone.Parent); parent != "" {
+				made = parent + "/" + alone.Title
+			}
+			if alone.Title == "" && alone.Reason != domain.NotResolvable ||
+				alone.Title != "" && !slices.ContainsFunc(c.assets, func(a string) bool { return siblings(a, made) }) {
+				t.Fatalf("seed %d: %s from %s, read as a page's: target_is_asset, no attachment of its title where it lands without them: %+v",
+					seed, written, from, alone)
 			}
 		case got.Reason == domain.ParentMissing || got.Reason == domain.NotResolvable || got.Reason == domain.TargetIsAsset:
 			if got.Reason == domain.TargetIsAsset {
@@ -240,8 +249,8 @@ func TestALandingLeadsTheTargetToThePageMade(t *testing.T) {
 			}
 		}
 	}
-	if landed < 1000 || assets < 100 {
-		t.Errorf("%d targets landed, %d read as attachments': the targets are not random enough", landed, assets)
+	if landed < 1000 || assets < 300 || beside < 20 {
+		t.Errorf("%d targets landed, %d read as attachments', %d beside one: the targets are not random enough", landed, assets, beside)
 	}
 }
 

@@ -130,7 +130,10 @@ func (r *randomUnits) unit(most int) string {
 			if n.asset {
 				name = assetName
 			}
-			if n.name == name || !r.free(n.parent, name, id) {
+			// An attachment's name keeps its extension, as the server keeps it
+			// (CheckAssetRename).
+			keeps := !n.asset || !strings.Contains(n.name, ".") || strings.Contains(name, ".")
+			if n.name == name || !keeps || !r.free(n.parent, name, id) {
 				continue
 			}
 			before := w.place(id)

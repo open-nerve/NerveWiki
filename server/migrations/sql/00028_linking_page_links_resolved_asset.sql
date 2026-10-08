@@ -7,4 +7,6 @@ ALTER TABLE page_links ADD COLUMN resolved_asset boolean NOT NULL DEFAULT false,
     ADD CONSTRAINT page_links_resolved_asset_check CHECK (NOT resolved_asset OR resolved_id IS NOT NULL);
 
 -- +goose Down
+-- A program before it reads every resolved link as a page's: the links to attachments resolve to none, as they did.
+UPDATE page_links SET resolved_id = NULL, ambiguous = false WHERE resolved_asset;
 ALTER TABLE page_links DROP COLUMN resolved_asset;

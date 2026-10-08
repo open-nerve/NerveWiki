@@ -2,6 +2,7 @@ package postgresadapter_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"slices"
@@ -11,6 +12,7 @@ import (
 	"time"
 	"uuid"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	postgresadapter "github.com/open-nerve/NerveWiki/server/internal/modules/linking/adapter/postgres"
@@ -385,10 +387,11 @@ func TestSettingResolutions(t *testing.T) {
 	if got := f.rows(t, `SELECT resolved_id::text, ambiguous::text, resolved_asset::text FROM page_links WHERE range_start = 40`); !reflect.DeepEqual(got, [][]string{{"NULL", "false", "false"}}) {
 		t.Errorf("a link resolved to none is %v", got)
 	}
-	if _, err := f.pool.Exec(ctx, `UPDATE page_links SET resolved_asset = true WHERE range_start = 40`); err == nil {
-		t.Error("an attachment without a node was stored")
+	_, err := f.pool.Exec(ctx, `UPDATE page_links SET resolved_asset = true WHERE range_start = 40`)
+	if pgErr := (*pgconn.PgError)(nil); !errors.As(err, &pgErr) || pgErr.Code != "23514" || pgErr.ConstraintName != "page_links_resolved_asset_check" {
+		t.Errorf("an attachment without a node: %v, want the check's violation", err)
 	}
-	err := set(app.Link{SourceID: p, Start: 12, Resolution: domain.Resolution{ID: x}}, app.Link{SourceID: p, Start: 13, Resolution: domain.Resolution{ID: x}})
+	err = set(app.Link{SourceID: p, Start: 12, Resolution: domain.Resolution{ID: x}}, app.Link{SourceID: p, Start: 13, Resolution: domain.Resolution{ID: x}})
 	if err == nil {
 		t.Error("setting a link that is not there succeeded")
 	}

@@ -53,8 +53,7 @@ type Landing struct {
 // (M6/P6 design 2; M7/P3 design 4.5):
 //
 //   - none, TargetIsAsset, if t is read as an attachment's, which it leads
-//     to or not, or if an attachment where the page would go has its title
-//     (written with ".md", t is read as a page's);
+//     to or not;
 //   - the page t resolves to, if it resolves;
 //   - else its title, the last segment as written without its ".md", as
 //     titles are checked;
@@ -63,6 +62,8 @@ type Landing struct {
 //     t.Up for a relative target and from the root for a rooted one, and
 //     else by the resolution's first three steps, not by aliases, which
 //     lead from a name alone only;
+//   - none, TargetIsAsset, if an attachment there has its title (written
+//     with ".md", or without an extension, t is read as a page's);
 //   - and only if t would then resolve to the page made, and to it alone.
 func Land(t Target, from []Step, candidates, parents []Node, aliased map[string][]Node, maxDepth int) Landing {
 	if t.ReadsAsAsset(candidates) {
@@ -82,7 +83,7 @@ func Land(t Target, from []Step, candidates, parents []Node, aliased map[string]
 	if len(parent)+1 > maxDepth {
 		return Landing{Reason: TooDeep}
 	}
-	if key := shared.TitleKey(title); slices.ContainsFunc(candidates, func(n Node) bool { return n.Asset && n.key() == key && n.under(parent) }) {
+	if key := shared.TitleKey(title); slices.ContainsFunc(candidates, func(n Node) bool { return n.Asset && n.key() == key && n.childOf(parent) }) {
 		return Landing{Reason: TargetIsAsset}
 	}
 	// The page made loses a tie, the least id winning one: resolving to it,
@@ -99,8 +100,8 @@ func Land(t Target, from []Step, candidates, parents []Node, aliased map[string]
 	return Landing{Parent: id, Title: title}
 }
 
-// under tells whether n's parent is the last of path, the root for none.
-func (n Node) under(path []Step) bool {
+// childOf tells whether n's parent is the last of path, the root for none.
+func (n Node) childOf(path []Step) bool {
 	if len(n.Path) != len(path)+1 {
 		return false
 	}

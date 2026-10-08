@@ -129,12 +129,13 @@ paths:
       tags: [linking]
       summary: List what a notebook's links may lead to
       description: >-
-        The notebook's pages and attachments, for the editor's completion,
-        by id: each with its kind, its title or name, how a wikilink is
-        written to lead to it alone from anywhere in the notebook, as a
-        rename writes it again, and a page's aliases. Any role in the
-        notebook can list them. A notebook that
-        does not exist, is deleted, or that the caller has no role in is
+        The notebook's pages and attachments with an extension, for the
+        editor's completion, by id: each with its kind, its title or name,
+        how a wikilink is written to lead to it alone from anywhere in the
+        notebook, as a rename writes it again, and a page's aliases. An
+        attachment without an extension, which no link leads to, is not
+        listed. Any role in the notebook can list them. A notebook that does
+        not exist, is deleted, or that the caller has no role in is
         notebook.not_found. The list is not paged.
       security: [{ bearer: [] }]
       x-problem-codes: [notebook.not_found]
@@ -163,18 +164,18 @@ paths:
         answers why: target_invalid, it has an empty segment, a "." or ".."
         past its head, a NUL, or bytes that are not UTF-8; title_invalid,
         its last segment is no title; target_is_asset, it is read as an
-        attachment's, its last segment the name of an attachment of the
-        notebook and not written with ".md", which it leads to or not, or
-        an attachment where the page would go has its title;
-        parent_missing, no page is where its other segments lead, read from
-        this page's folder for "./" and "../", from the root for "/", else
-        as links resolve but not by aliases; too_deep, the page made would
-        be deeper than pages nest; not_resolvable, the target would not
-        lead to the page made, or not to it alone. The notebook's admins and editors can read it. A page
-        that does not exist, is deleted, or whose notebook the caller has no
-        role in is page.not_found; then a role that does not write is
-        forbidden; then a target absent or longer than 4096 bytes is
-        validation_failed.
+        attachment's, its last segment, not written with ".md", the title
+        key of an attachment of the notebook with an extension, which it
+        leads to or not, or an attachment where the page would go has its
+        title; parent_missing, no page is where its other segments lead,
+        read from this page's folder for "./" and "../", from the root for
+        "/", else as links resolve but not by aliases; too_deep, the page
+        made would be deeper than pages nest; not_resolvable, the target
+        would not lead to the page made, or not to it alone. The notebook's
+        admins and editors can read it. A page that does not exist, is
+        deleted, or whose notebook the caller has no role in is
+        page.not_found; then a role that does not write is forbidden; then
+        a target absent or longer than 4096 bytes is validation_failed.
       security: [{ bearer: [] }]
       x-problem-codes: [page.not_found, forbidden, validation_failed]
       parameters:
@@ -411,8 +412,7 @@ components:
             root where another node of its kind has its title; with ".md"
             after the path where it would be read otherwise, a page's whose
             title ends with ".md" as another page's without it, a page's
-            whose title an attachment has as the attachment's. An attachment
-            without an extension, which no link leads to, has its path.
+            whose title an attachment has as the attachment's.
           type: string
         aliases:
           description: >-
