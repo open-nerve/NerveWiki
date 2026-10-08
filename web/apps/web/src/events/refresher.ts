@@ -1,9 +1,11 @@
 // Re-reading a page's content as events come (M5 design 4.11): while
 // someone edits, every autosave is an event, and a tab that re-read at once
 // would have the server parse the page every two seconds for each reader.
-// A visible tab reads a key at most once in its interval, INTERVAL_MS
-// unless the request names a shorter one (a notebook's tree), the last
-// request of the interval; a hidden tab reads once it is visible again.
+// A visible tab reads a key at most once in its interval, the last request
+// of the interval; a hidden tab reads once it is visible again. A key's
+// interval is the one its last request named, INTERVAL_MS unless it named
+// another (a notebook's tree): a read already scheduled keeps its time, so
+// each key is asked for at one interval.
 
 /** How often a visible tab reads the same key at most, unless its request says otherwise. */
 export const INTERVAL_MS = 5_000;

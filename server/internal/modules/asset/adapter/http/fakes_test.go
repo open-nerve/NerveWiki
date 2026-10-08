@@ -375,8 +375,8 @@ func newHarnessWith(t *testing.T, o httpservertest.APIOptions) *harness {
 	uc := httpadapter.UseCases{
 		Upload: app.NewUpload(app.UploadDeps{Tree: h.tree, Blobs: blobs, Files: h.files, Signer: h.signer, Logger: logger,
 			MaxBytes: maxBytes, MinFree: 100}),
-		Reads: app.NewReads(app.ReadsDeps{Authorizer: sees{}, Notebooks: books{}, Nodes: h.nodes, Rows: h.rows, Signer: h.signer, Clock: fixedClock{},
-			Logger: logger}),
+		Reads: app.NewReads(app.ReadsDeps{Authorizer: sees{}, Notebooks: books{}, Nodes: h.nodes, Rows: h.rows, Signer: h.signer,
+			Clock: fixedClock{}, Logger: logger}),
 		Content: app.NewContent(h.nodes, blobs, h.signer, fixedClock{}, logger),
 	}
 	h.router = httpserver.NewRouter(slog.New(slog.DiscardHandler))

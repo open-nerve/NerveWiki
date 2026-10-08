@@ -56,9 +56,10 @@ type uploader struct {
 
 func newUploader() *uploader {
 	u := &uploader{tree: &tree{}, files: newFiles(), rows: newRows(), logs: &bytes.Buffer{}}
+	logger := slog.New(slog.NewTextHandler(u.logs, nil))
 	u.uc = app.NewUpload(app.UploadDeps{
-		Tree: u.tree, Blobs: app.NewBlobs(u.files, u.rows, &sniffer{sniffed: "image/png"}, slog.New(slog.NewTextHandler(u.logs, nil))), Files: u.files,
-		Signer: macadapter.New(signKey()), Logger: slog.New(slog.NewTextHandler(u.logs, nil)), MaxBytes: 8, MinFree: 100,
+		Tree: u.tree, Blobs: app.NewBlobs(u.files, u.rows, &sniffer{sniffed: "image/png"}, logger), Files: u.files,
+		Signer: macadapter.New(signKey()), Logger: logger, MaxBytes: 8, MinFree: 100,
 	})
 	return u
 }

@@ -34,7 +34,8 @@ func TestPutWritesTheFileAndTellsWhatItIs(t *testing.T) {
 	files, rows := newFiles(), newRows()
 	s := &headSniffer{sniffer: &sniffer{sniffed: "image/png", width: 640, height: 480}}
 	data := bytes.Repeat([]byte("0123456789abcdef"), 6<<10) // 96 KiB, three reads and more
-	b, err := app.NewBlobs(files, rows, s, slog.New(slog.DiscardHandler)).Put(context.Background(), "photo.png", bytes.NewReader(data), int64(len(data)))
+	blobs := app.NewBlobs(files, rows, s, slog.New(slog.DiscardHandler))
+	b, err := blobs.Put(context.Background(), "photo.png", bytes.NewReader(data), int64(len(data)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +72,8 @@ func TestPutTellsTheTypeAndTheSize(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			s := &headSniffer{sniffer: &sniffer{sniffed: tt.sniffed, width: tt.width, height: tt.height}}
-			b, err := app.NewBlobs(newFiles(), newRows(), s, slog.New(slog.DiscardHandler)).Put(context.Background(), tt.file, bytes.NewReader([]byte("abc")), 3)
+			blobs := app.NewBlobs(newFiles(), newRows(), s, slog.New(slog.DiscardHandler))
+			b, err := blobs.Put(context.Background(), tt.file, bytes.NewReader([]byte("abc")), 3)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -142,7 +144,8 @@ func TestPutLogsAnAbortThatFails(t *testing.T) {
 	if !errors.Is(err, domain.ErrTooLarge) {
 		t.Errorf("Put() = %v, want too large", err)
 	}
-	if l := logs.String(); !strings.Contains(l, "level=WARN") || !strings.Contains(l, "blob_id=") || !strings.Contains(l, "permission denied") {
+	if l := logs.String(); !strings.Contains(l, "level=WARN") || !strings.Contains(l, "blob_id=") ||
+		!strings.Contains(l, "permission denied") {
 		t.Errorf("logs %q, want the abort's failure as a warning, with the blob's id", l)
 	}
 }

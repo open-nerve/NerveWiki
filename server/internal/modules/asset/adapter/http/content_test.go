@@ -178,6 +178,9 @@ func TestContentReadsItsAddressStrictly(t *testing.T) {
 		{"a member without a value", "", query + "&d"},
 		{"a later e", "", "b=" + q["b"] + "&e=" + q["e"] + "0&s=" + q["s"]},
 		{"in another order", "", "e=" + q["e"] + "&b=" + q["b"] + "&s=" + q["s"]},
+		{"other keys, the values in place", "", "x=" + q["b"] + "&y=" + q["e"] + "&z=" + q["s"]},
+		{"the keys swapped, the values in place", "", "e=" + q["b"] + "&b=" + q["e"] + "&s=" + q["s"]},
+		{"another key for d", "", "b=" + q["b"] + "&e=" + q["e"] + "&s=" + ds + "&x=1"},
 		{"d before s", "", "b=" + q["b"] + "&e=" + q["e"] + "&d=1&s=" + ds},
 		{"the path's id in upper case", strings.ToUpper(n.ID.String()), query},
 		{"the path's id without hyphens", strings.ReplaceAll(n.ID.String(), "-", ""), query},
@@ -272,7 +275,8 @@ func TestContentHasABucketOfItsOwn(t *testing.T) {
 		t.Fatalf("the first download = %d, want 200", res.StatusCode)
 	}
 	res, body := h.get(t, http.MethodGet, h.address(n, b, false), "")
-	if res.StatusCode != http.StatusTooManyRequests || code(body) != "rate_limited" || h.downloads.keys[0] != "127.0.0.1" || !isSandboxed(res) {
+	if res.StatusCode != http.StatusTooManyRequests || code(body) != "rate_limited" || h.downloads.keys[0] != "127.0.0.1" ||
+		!isSandboxed(res) {
 		t.Errorf("the second = %d %s by %q, want 429 rate_limited by the client's IP", res.StatusCode, body, h.downloads.keys)
 	}
 }
@@ -326,7 +330,8 @@ func TestContentPastItsDeadlineIsLoggedAsAWarning(t *testing.T) {
 	if res.StatusCode != http.StatusInternalServerError || code(body) != "internal_error" {
 		t.Errorf("download = %d %s, want 500 internal_error", res.StatusCode, body)
 	}
-	if logs := h.logs.String(); !strings.Contains(logs, "level=WARN msg=\"API request deadline exceeded\"") || strings.Contains(logs, "level=ERROR") {
+	if logs := h.logs.String(); !strings.Contains(logs, `level=WARN msg="API request deadline exceeded"`) ||
+		strings.Contains(logs, "level=ERROR") {
 		t.Errorf("logs %q, want the deadline as a warning, no error", logs)
 	}
 }

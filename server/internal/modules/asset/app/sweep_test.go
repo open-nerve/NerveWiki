@@ -116,7 +116,8 @@ func TestSweepGoesOnPastAFileItCannotDelete(t *testing.T) {
 		!slices.Equal(files.deleted, []string{keys[0], keys[2]}) {
 		t.Errorf("Run() = %d, %v, deleted %q; want the other two, then the failure", n, err, files.deleted)
 	}
-	if l := logs.String(); !strings.Contains(l, "level=WARN") || !strings.Contains(l, "blob_id="+strings.TrimPrefix(keys[1], domain.Area+"/")) {
+	if l := logs.String(); !strings.Contains(l, "level=WARN") ||
+		!strings.Contains(l, "blob_id="+strings.TrimPrefix(keys[1], domain.Area+"/")) {
 		t.Errorf("logs %q, want the failure as a warning, with the blob's id", l)
 	}
 }

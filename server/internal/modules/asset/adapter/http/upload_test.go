@@ -165,7 +165,8 @@ func TestUploadNamesTheFileByItsFileName(t *testing.T) {
 // decoded.
 func TestUploadStoresTheFileAsSent(t *testing.T) {
 	h := newHarness(t)
-	qp := part{name: "file", filename: "a.txt", value: "a=3Db", header: textproto.MIMEHeader{"Content-Transfer-Encoding": {"quoted-printable"}}}
+	qp := part{name: "file", filename: "a.txt", value: "a=3Db",
+		header: textproto.MIMEHeader{"Content-Transfer-Encoding": {"quoted-printable"}}}
 	ct, body := form(t, qp)
 	if res, answer := h.post(t, uploadPath(), "session", ct, bytes.NewReader(body)); res.StatusCode != http.StatusCreated {
 		t.Fatalf("upload = %d %s, want 201", res.StatusCode, answer)

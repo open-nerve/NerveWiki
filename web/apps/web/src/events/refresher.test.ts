@@ -68,6 +68,22 @@ describe("Refresher", () => {
     expect(reads).toEqual(["t1", "a1", "t2", "a2"]);
   });
 
+  test("a key asked for while the page is hidden is read at its own interval once it is visible", async () => {
+    const reads: string[] = [];
+    const p = page(false);
+    const refresher = new Refresher(p, () => Date.now());
+
+    refresher.request("t", () => reads.push("t1"), 500);
+    p.show(true);
+    expect(reads).toEqual(["t1"]);
+    p.show(false);
+    refresher.request("t", () => reads.push("t2"), 500);
+    await vi.advanceTimersByTimeAsync(600);
+    expect(reads).toEqual(["t1"]);
+    p.show(true);
+    expect(reads).toEqual(["t1", "t2"]);
+  });
+
   test("a hidden page reads once it is visible again, at most once an interval", async () => {
     const reads: string[] = [];
     const p = page(false);

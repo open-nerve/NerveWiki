@@ -177,7 +177,9 @@ docker start "$app" >/dev/null
 base="http://$(docker port "$app" 8080/tcp | head -n 1)"
 wait_for get "$base/readyz" || fail "重启之后 /readyz 在 ${timeout_s} 秒内没有答 200"
 meta=$(get "${auth[@]}" "$base/api/v0/assets/$asset") || fail "重启之后读不出附件的元数据"
-jq -e --arg id "$asset" '.id == $id and .byte_size > 0' <<<"$meta" >/dev/null || fail "重启之后读出的元数据与预期不符：$meta"
+size=$(wc -c <"$files/smoke.png" | tr -d ' ')
+jq -e --arg id "$asset" --argjson size "$size" '.id == $id and .byte_size == $size' <<<"$meta" >/dev/null ||
+  fail "重启之后读出的元数据与预期不符：$meta"
 get -o "$files/back.png" "$base$address" || fail "重启之后按重启之前签出的地址下载失败"
 cmp -s "$files/smoke.png" "$files/back.png" || fail "重启之后下载的字节与上传的不同"
 stop_app
