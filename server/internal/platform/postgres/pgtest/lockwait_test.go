@@ -31,7 +31,9 @@ func TestWaitForLockWaitsCountsItsOwnDatabase(t *testing.T) {
 }
 
 // A probe whose pool has no connection free fails at its deadline, as a
-// wait that never came, rather than wait for a connection without end.
+// wait that never came, rather than wait for a connection without end; a
+// probe that first looks its table up too, its lookup failing at the
+// deadline.
 func TestWaitForLockWaitsFailsAtItsDeadlineOnAnExhaustedPool(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -51,17 +53,34 @@ func TestWaitForLockWaitsFailsAtItsDeadlineOnAnExhaustedPool(t *testing.T) {
 	}
 	t.Cleanup(held.Release) // runs before pool.Close
 
-	failed := make(chan string, 1)
-	go func() {
-		failed <- fatalOf(func(tb testing.TB) { pgtest.WaitForLockWaits(tb, pool, 1, 300*time.Millisecond) })
-	}()
-	select {
-	case got := <-failed:
-		if got != "0 statement(s) waited for a lock within 300ms, want at least 1" {
-			t.Errorf("WaitForLockWaits failed with %q, want it to fail at its deadline", got)
-		}
-	case <-time.After(10 * time.Second):
-		t.Fatal("WaitForLockWaits still waits for a connection after 10s, want it failed at its 300ms deadline")
+	const limit = 300 * time.Millisecond
+	tests := []struct {
+		name string
+		wait func(testing.TB)
+		want string
+	}{
+		{"WaitForLockWaits", func(tb testing.TB) { pgtest.WaitForLockWaits(tb, pool, 1, limit) },
+			"0 statement(s) waited for a lock within 300ms, want at least 1"},
+		{"WaitForLockWaitsOn", func(tb testing.TB) { pgtest.WaitForLockWaitsOn(tb, pool, "users", 1, limit) },
+			"0 statement(s) waited for a row lock of users within 300ms, want at least 1"},
+		{"WaitForKeyWaitOn", func(tb testing.TB) { pgtest.WaitForKeyWaitOn(tb, pool, "users", 1, limit) },
+			"0 statement(s) waited for a key of users within 300ms, want at least 1"},
+		{"WaitForAdvisoryLockWaits", func(tb testing.TB) { pgtest.WaitForAdvisoryLockWaits(tb, pool, 7, 8, 1, limit) },
+			"0 statement(s) waited for the advisory lock 7, 8 within 300ms, want at least 1"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			failed := make(chan string, 1)
+			go func() { failed <- fatalOf(tt.wait) }()
+			select {
+			case got := <-failed:
+				if got != tt.want {
+					t.Errorf("%s failed with %q, want it to fail at its deadline: %q", tt.name, got, tt.want)
+				}
+			case <-time.After(10 * time.Second):
+				t.Fatalf("%s still waits for a connection after 10s, want it failed at its 300ms deadline", tt.name)
+			}
+		})
 	}
 }
 

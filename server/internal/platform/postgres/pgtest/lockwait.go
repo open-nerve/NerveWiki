@@ -97,10 +97,16 @@ func WaitForAdvisoryLockWaits(t testing.TB, pool *pgxpool.Pool, space, key int32
 
 // relation is the OID of table in pool's database. A database without the
 // table fails the test at once: a misspelled name can never be waited on.
+// A lookup that fails at the deadline, the pool's connection slow to come
+// or none free, leaves the failure to waitForCount, whose first poll fails
+// at once with no wait seen.
 func relation(ctx context.Context, t testing.TB, pool *pgxpool.Pool, table string) uint32 {
 	t.Helper()
 	var oid *uint32
 	if err := pool.QueryRow(ctx, "SELECT to_regclass($1)::oid", table).Scan(&oid); err != nil {
+		if ctx.Err() != nil {
+			return 0
+		}
 		t.Fatal(err)
 	}
 	if oid == nil {
