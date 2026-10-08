@@ -339,7 +339,7 @@ func TestTheStepOfAStream(t *testing.T) {
 // and its context is cancelled. One between the two is left to finish, but
 // can no longer announce an answer; nor is one whose handler has returned
 // cut off. A request without a body, even behind a wrapper, has no read
-// deadline until a shutdown cuts it off.
+// deadline unless a shutdown cuts it off.
 func TestAShutdownCutsAStreamOnlyWhileItMovesBytes(t *testing.T) {
 	for _, tt := range []struct {
 		name             string
@@ -782,8 +782,8 @@ func TestShutdownEndsAStreamAtOnce(t *testing.T) {
 			cancel()
 			select {
 			case err := <-ended:
-				if err == nil {
-					t.Error("the body read finished, want it failed by the shutdown")
+				if !errors.Is(err, ErrShuttingDown) {
+					t.Errorf("the body read ended with %v, want ErrShuttingDown", err)
 				}
 			case <-time.After(3 * time.Second):
 				t.Fatal("the body read still waits 3s after the shutdown began")

@@ -34,6 +34,8 @@ type Local struct {
 	minFree int64
 	create  createTemp
 	mkdir   sync.Mutex // one goroutine at a time makes and syncs directories
+	// fullAtOpen is the out-of-space error opening's probe met.
+	fullAtOpen error
 }
 
 // createTemp makes a new file in dir, its name pattern's "*" made unique:
@@ -86,14 +88,24 @@ func cannotWrite(dir string, err error) error {
 }
 
 // probe makes dir when it is missing and writes, syncs and deletes a file
-// in it. Running out of space passes: the process may write there, and
-// Create answers ErrFull until there is space again.
+// in it. Running out of space passes, and is kept for FullAtOpen: the
+// process may write there, and Create answers ErrFull until there is space
+// again.
 func (l *Local) probe(dir string) error {
-	if err := l.write(dir); err != nil && !isFull(err) {
-		return err
+	err := l.write(dir)
+	if isFull(err) {
+		if l.fullAtOpen == nil {
+			l.fullAtOpen = err
+		}
+		return nil
 	}
-	return nil
+	return err
 }
+
+// FullAtOpen is the error of running out of space, on the disk or under a
+// quota, that OpenLocal met, nil when it met none. The store opened all
+// the same; its writes answer ErrFull until there is space again.
+func (l *Local) FullAtOpen() error { return l.fullAtOpen }
 
 func (l *Local) write(dir string) error {
 	if err := os.MkdirAll(dir, 0o750); err != nil {
@@ -118,7 +130,7 @@ func (l *Local) write(dir string) error {
 func (l *Local) dropTemporaries() error {
 	entries, err := os.ReadDir(l.dir)
 	if err != nil {
-		return fmt.Errorf("storage: %w", err)
+		return cannotWrite(l.dir, err)
 	}
 	for _, e := range entries {
 		path := filepath.Join(l.dir, e.Name())
@@ -131,7 +143,11 @@ func (l *Local) dropTemporaries() error {
 		if CheckArea(e.Name()) != nil {
 			continue
 		}
-		if info, err := os.Stat(path); err != nil || !info.IsDir() {
+		info, err := os.Stat(path)
+		if err != nil {
+			return cannotWrite(path, err) // a link to nothing, or out of reach
+		}
+		if !info.IsDir() {
 			continue // not an area: a mounted area is a directory or a link to one
 		}
 		tmp := filepath.Join(path, tmpDir)
@@ -167,11 +183,11 @@ func (l *Local) Create(ctx context.Context, key string) (Writer, error) {
 	area, name := split(key)
 	tmp := filepath.Join(l.dir, area, tmpDir)
 	if err := l.ensureDir(tmp); err != nil {
-		return nil, fmt.Errorf("storage: %w", noSpace(err))
+		return nil, failed(err)
 	}
 	f, err := l.create(tmp, name+".*")
 	if err != nil {
-		return nil, fmt.Errorf("storage: %w", noSpace(err))
+		return nil, failed(err)
 	}
 	return &localWriter{l: l, area: area, name: name, file: f}, nil
 }
@@ -355,13 +371,17 @@ func syncDir(dir string) error {
 	return errors.Join(serr, d.Close())
 }
 
-// noSpace makes a write that ran out of space or of quota ErrFull, keeping
-// err.
-func noSpace(err error) error {
-	if isFull(err) {
+// failed is a file operation's error, err kept: ErrFull when it ran out of
+// space or of quota; nil when err is.
+func failed(err error) error {
+	switch {
+	case err == nil:
+		return nil
+	case isFull(err):
 		return fmt.Errorf("%w: %w", ErrFull, err)
+	default:
+		return fmt.Errorf("storage: %w", err)
 	}
-	return err
 }
 
 // tempFile is what a localWriter writes to: an *os.File.
@@ -389,7 +409,7 @@ func (w *localWriter) Write(p []byte) (int, error) {
 	}
 	n, err := w.file.Write(p)
 	if err != nil {
-		return n, fmt.Errorf("storage: %w", noSpace(err))
+		return n, failed(err)
 	}
 	return n, nil
 }
@@ -414,10 +434,10 @@ func (w *localWriter) Commit() error {
 		err = os.Rename(tmp, filepath.Join(dir, w.name))
 	}
 	if err == nil {
-		return noSpaceErr(syncDir(dir))
+		return failed(syncDir(dir))
 	}
 	_ = os.Remove(tmp)
-	return noSpaceErr(err)
+	return failed(err)
 }
 
 // Abort closes and deletes the file.
@@ -440,13 +460,6 @@ func (w *localWriter) Abort() error {
 // isFull tells whether err is a write's that ran out of space or of quota.
 func isFull(err error) bool {
 	return errors.Is(err, syscall.ENOSPC) || errors.Is(err, syscall.EDQUOT)
-}
-
-func noSpaceErr(err error) error {
-	if err == nil {
-		return nil
-	}
-	return fmt.Errorf("storage: %w", noSpace(err))
 }
 
 // localFile is an open committed file with its size and modification time.

@@ -286,10 +286,18 @@ type rateBody struct {
 
 func (b *rateBody) Read(p []byte) (int, error) {
 	n, err := b.body.Read(p)
-	if errors.Is(err, io.EOF) {
+	switch {
+	case errors.Is(err, io.EOF):
 		b.s.mu.Lock()
 		b.s.drained = true
 		b.s.mu.Unlock()
+	case err != nil:
+		b.s.mu.Lock()
+		stopped := b.s.stopped
+		b.s.mu.Unlock()
+		if stopped {
+			return n, fmt.Errorf("%w: %w", ErrShuttingDown, err)
+		}
 	}
 	if n > 0 && err == nil {
 		b.s.mu.Lock()

@@ -58,9 +58,11 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrati
 		return nil, err
 	}
 	logger.InfoContext(ctx, "storage opened", slog.String("dir", store.Dir()), slog.Int64("free_bytes", free))
-	if free < cfg.Storage.MinFreeBytes {
-		logger.WarnContext(ctx, "storage has less free space than it keeps: writes are refused",
-			slog.String("dir", store.Dir()), slog.Int64("free_bytes", free), slog.Int64("min_free_bytes", cfg.Storage.MinFreeBytes))
+	// Out of quota or of inodes, a disk may be full with free bytes left.
+	if full := store.FullAtOpen(); full != nil || free < cfg.Storage.MinFreeBytes {
+		logger.WarnContext(ctx, "storage is full: writes are refused",
+			slog.String("dir", store.Dir()), slog.Int64("free_bytes", free), slog.Int64("min_free_bytes", cfg.Storage.MinFreeBytes),
+			slog.Any("error", full))
 	}
 	pool, err := postgres.NewPool(ctx, cfg.Database)
 	if err != nil {

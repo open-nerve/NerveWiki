@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"testing"
 )
@@ -94,6 +95,9 @@ func TestAFullDiskOpensAndDropsWhatWasLeft(t *testing.T) {
 	if err != nil {
 		t.Fatalf("openLocal on a full disk: %v", err)
 	}
+	if full := l.FullAtOpen(); !errors.Is(full, syscall.ENOSPC) {
+		t.Errorf("FullAtOpen() = %v, want the probe's ENOSPC", full)
+	}
 	if _, err := os.Stat(filepath.Dir(left)); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("imports/.tmp after opening: %v, want it gone", err)
 	}
@@ -104,8 +108,8 @@ func TestAFullDiskOpensAndDropsWhatWasLeft(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := w.Write([]byte("x")); !errors.Is(err, ErrFull) {
-		t.Errorf("Write = %v, want ErrFull", err)
+	if _, err := w.Write([]byte("x")); !errors.Is(err, ErrFull) || strings.Count(err.Error(), "storage:") != 1 {
+		t.Errorf("Write = %v, want ErrFull, said once to be the store's", err)
 	}
 	if err := w.Abort(); err != nil {
 		t.Error(err)

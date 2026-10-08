@@ -159,11 +159,28 @@ func TestOpeningDropsWhatAStoppedProcessLeftHalfWritten(t *testing.T) {
 
 func TestOpeningMakesAMissingDirectory(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "a", "b")
-	if _, err := storage.OpenLocal(dir, 0); err != nil {
+	l, err := storage.OpenLocal(dir, 0)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
 		t.Errorf("the directory: %v, %v", info, err)
+	}
+	if full := l.FullAtOpen(); full != nil {
+		t.Errorf("FullAtOpen() = %v on a disk with room", full)
+	}
+}
+
+// An area that links to nothing, a mount gone, does not open, and says
+// which.
+func TestOpeningAnAreaLinkedToNothingFails(t *testing.T) {
+	dir := t.TempDir()
+	area := filepath.Join(dir, "blobs")
+	if err := os.Symlink(filepath.Join(t.TempDir(), "gone"), area); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := storage.OpenLocal(dir, 0); err == nil || !strings.Contains(err.Error(), area) {
+		t.Errorf("OpenLocal = %v, want an error naming %s", err, area)
 	}
 }
 
