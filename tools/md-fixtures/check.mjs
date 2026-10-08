@@ -2,7 +2,7 @@
 // each range points at the bytes where its target is written,
 // each task's offset at the character between its brackets,
 // each resolution case's links go from its pages to its pages or attachments,
-// each render case's reading view is text of blocks and line breaks.
+// each render case's reading view is text of blocks and line breaks, and of its attachments' elements.
 // Usage: node tools/md-fixtures/check.mjs
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
@@ -300,9 +300,10 @@ function checkResolveCase(dir, base) {
 // blocks and "⏎" a line break, the one at a block's end left out (so "⏎¶"
 // and a "⏎" at the end are a block's two), runs of ASCII white space one
 // space, none next to a "¶" or "⏎" or at the ends; an attachment's image,
-// audio or video as "⟨img text size⟩", "⟨audio text⟩", "⟨video text size⟩"
-// (M7/P3 design 5.8). Its attachments, when it has some, are the names of
-// files at the vault's root, each with an extension.
+// audio or video as "⟨img text size⟩", "⟨audio text⟩", "⟨video text size⟩",
+// the size "w", "w×h" or "×h" (M7/P3 design 5.8), in a case of attachments
+// alone. Its attachments, when it has some, are the names of files at the
+// vault's root, each with an extension.
 function checkRender(dir, base) {
   const name = `render/${base}`;
   if (!existsSync(join(dir, `${base}.json`))) return fail(name, "missing .json");
@@ -330,7 +331,19 @@ function checkRender(dir, base) {
       name,
       "rendered must be text, its blocks one ¶ apart, its white space one space, none at its ends or by a ¶ or ⏎"
     );
+  for (const [element] of typeof c.rendered === "string" ? c.rendered.matchAll(/⟨[^⟩]*⟩?/g) : []) {
+    if (c.assets === undefined || !ELEMENT.test(element))
+      fail(
+        name,
+        `${element} is not an element of the case's attachments: ⟨img|audio|video text size⟩, the size w, w×h or ×h`
+      );
+  }
 }
+
+// ELEMENT is an attachment's element as a render case writes it: an image's
+// or a video's text and size, an audio's text; a size of an ASCII "x" is a
+// typo of "×", as it would be read as a size, not a text.
+const ELEMENT = /^⟨(?:(?:img|video)(?: [^⟨⟩]+?)??(?: (?:\d+|\d+×\d+|×\d+))?|audio(?: [^⟨⟩]+)?)⟩$(?<! \d+x\d+⟩)/u;
 
 // guarded runs a case's check, a malformed case's crash one more problem.
 const guarded = (check, dir, prefix) => (base) => {

@@ -260,12 +260,21 @@ paths:
         frontmatter's properties as a table first, and the revision it was
         rendered from. The HTML holds only what the renderer writes and a
         typographic allowlist of the content's own HTML, every address on
-        this site, http(s) or mailto, and no image loaded. In the content, a
+        this site, http(s) or mailto, and nothing loaded but an attachment's
+        image, audio or video at a path of this site. In the content, a
         wikilink, an embed (nw-embed), and a Markdown link or image whose
         address is a path, from the root too, link to pages of the notebook
         and have no address, which the app gives: each carries the page it
         leads to as it reads now (data-nw-node) and its anchor's heading id
         (data-nw-anchor), or nw-unresolved and its target (data-nw-target).
+        One that leads to an attachment (nw-asset) has its content's
+        address, signed, which expires at assets_expire_at the earliest: an
+        embed or an image of an image is its img, of the caption and the
+        size written (|300, |300x200), or else of the image's own size; of
+        an audio or a video, its element, the content's first 20 of them;
+        any other is a link, data-nw-size its size in bytes. Past the
+        content's first 2000 addresses of attachments, in a link's text but
+        for an image, and for an attachment deleted, it is text.
         A tag (nw-tag) of a name tag lists count links to its pages and has
         no address either: it carries the tag as this page writes it, but for
         its '#' and a last '/', which getTag takes (data-nw-tag); a tag the
@@ -278,11 +287,12 @@ paths:
         block's anchor alone ([[#^b]]); one written with a heading's anchor
         alone ([[#h]]) has the heading's id as its address, as has a
         Markdown link to an anchor alone (#h), which is its text alone for a
-        block's anchor or an empty one; an image in a link's text has no
-        link of its own. A table, the properties' table and a block formula
+        block's anchor or an empty one; an image of a page in a link's text
+        has no link of its own. A table, the properties' table and a block formula
         are each in a div of class nw-scroll, a region of their own that
         may scroll sideways. In the properties' table, a string written on
-        one line that is one link to a page and nothing else, a wikilink
+        one line that is one link to a page or an attachment and nothing
+        else, a wikilink
         with a target (not an anchor alone) or a Markdown link whose address
         is a path, is a link as in the
         content, without a title, showing the text the link shows; a value
@@ -705,7 +715,8 @@ components:
         html:
           description: >-
             The content rendered to HTML. The attachments its links lead to are shown at their contents' addresses,
-            signed (an image, an audio or a video embedded, a link to any other), each a path of this site.
+            signed, each a path of this site, as getPageView tells: an image, an audio or a video embedded, a link to
+            any other; text past the first addresses and in a link's text.
           type: string
         revision:
           description: The content's version the HTML was rendered from.

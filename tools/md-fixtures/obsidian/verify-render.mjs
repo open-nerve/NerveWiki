@@ -6,9 +6,9 @@
 // A fixture's "rendered" is its reading view as text: "¶" between blocks, "⏎" a line break, the one line break at a
 // block's end left out (it shows none), runs of ASCII white space one space; an attachment's embedded image, audio or
 // video as "⟨img text size⟩", "⟨audio text⟩", "⟨video text size⟩", its text and size those it is written with (the
-// embed's alt, width and height), the size "w", "w×h" or "×h" (M7/P3 design 5.8). A fixture's "assets" are files at
-// the vault's root, which "prepare" writes: a real image for a PNG. Obsidian-verified fixtures must match;
-// nerve-defined ones only report how they differ.
+// embed's alt, width and height), the size "w", "w×h" or "×h", an audio's none, as it shows none (M7/P3 design 5.8).
+// A fixture's "assets" are files at the vault's root, which "prepare" writes: a real image for a PNG.
+// Obsidian-verified fixtures must match; nerve-defined ones only report how they differ.
 import { existsSync, readFileSync, readdirSync, writeFileSync, mkdirSync, rmSync, copyFileSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -95,10 +95,11 @@ const DUMP = `(async () => {
   const BLOCK = new Set(["P", "DIV", "LI", "UL", "OL", "BLOCKQUOTE", "H1", "H2", "H3", "H4", "H5", "H6", "PRE", "TABLE", "THEAD", "TBODY", "TR", "TD", "TH", "HR", "DETAILS", "SUMMARY", "SECTION"]);
   const SKIP = ["mod-header", "mod-footer", "markdown-preview-pusher", "inline-title", "metadata-container", "mod-frontmatter", "embedded-backlinks", "math"];
   const MEDIA = { "image-embed": "img", "audio-embed": "audio", "video-embed": "video" };
-  // An embed as its kind, its text and the size it is written with: its alt, width and height.
+  // An embed as its kind, its text and the size it is written with: its alt, width and height; an audio's size, which
+  // shows nothing, left out.
   const embed = (kind, n) => {
     const w = n.getAttribute("width") ?? "", h = n.getAttribute("height") ?? "";
-    const size = w + (h === "" ? "" : "×" + h);
+    const size = kind === "audio" ? "" : w + (h === "" ? "" : "×" + h);
     return "⟨" + [kind, n.getAttribute("alt") ?? "", size].filter((p) => p !== "").join(" ") + "⟩";
   };
   const flatten = (roots) => {

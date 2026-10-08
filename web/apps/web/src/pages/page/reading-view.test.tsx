@@ -241,13 +241,13 @@ function heldServer(htmls: string[]) {
     answers: {
       "GET /api/v0/pages/*/view": async (request) => {
         if (!request.url.includes(install.id)) {
-          return json({ html: "<p>Guide</p>", revision: 1 });
+          return json({ html: "<p>Guide</p>", revision: 1, assets_expire_at: null });
         }
         const read = ++reads;
         if (read === 2) {
           await held;
         }
-        return json({ html: htmls[Math.min(read, htmls.length) - 1], revision: read });
+        return json({ html: htmls[Math.min(read, htmls.length) - 1], revision: read, assets_expire_at: null });
       },
     },
   });

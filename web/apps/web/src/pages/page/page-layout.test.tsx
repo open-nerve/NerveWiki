@@ -88,7 +88,7 @@ test("a busy server's reading view is read again after its Retry-After", async (
       [`GET /api/v0/pages/${install.id}/view`]: () =>
         busy
           ? problem(503, "server_busy", {}, { "Retry-After": "1" })
-          : json({ html: "<p>Read at last</p>", revision: 1 }),
+          : json({ html: "<p>Read at last</p>", revision: 1, assets_expire_at: null }),
     },
   });
   renderApp(pagePath(install.id), server.app);

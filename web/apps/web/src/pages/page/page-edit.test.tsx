@@ -83,7 +83,9 @@ test("Done reads the reading view again before it goes back: the view shows with
   const server = pageServer({
     answers: {
       "GET /api/v0/pages/*/view": () =>
-        hold ? new Promise<Response>((resolve) => (answer = resolve)) : json({ html: "<p>Guide</p>", revision: 1 }),
+        hold
+          ? new Promise<Response>((resolve) => (answer = resolve))
+          : json({ html: "<p>Guide</p>", revision: 1, assets_expire_at: null }),
     },
   });
   const { user, type } = await editing(server);
@@ -93,7 +95,7 @@ test("Done reads the reading view again before it goes back: the view shows with
   await user.click(screen.getByRole("button", { name: "Done" }));
   await waitFor(() => expect(answer).toBeDefined());
   expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
-  answer?.(json({ html: "<p>Guide, more</p>", revision: 2 }));
+  answer?.(json({ html: "<p>Guide, more</p>", revision: 2, assets_expire_at: null }));
 
   await screen.findByRole("button", { name: "Edit" });
   expect(screen.getByRole("article").innerHTML).toBe("<p>Guide, more</p>");

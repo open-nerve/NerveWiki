@@ -55,7 +55,8 @@ async function open(page = new FakePage(), answers: Record<string, Answer> = {},
       "GET /api/v0/pages/*/view": async (request) => {
         const node = server.nodes.find((each) => each.id === idOf(request));
         server.sent.push(`GET view ${node?.name}`);
-        const view = node && (server.views.get(node.id) ?? { html: `<p>${node.name}</p>`, revision: 1 });
+        const view =
+          node && (server.views.get(node.id) ?? { html: `<p>${node.name}</p>`, revision: 1, assets_expire_at: null });
         const hold = holds.get(idOf(request));
         holds.delete(idOf(request));
         await hold;

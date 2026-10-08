@@ -1,0 +1,9 @@
+{
+  "description": "引用式的 Markdown 图片的尺寸",
+  "source": "nerve-defined",
+  "rendered": "⟨img 说明 300⟩",
+  "note": "Obsidian 把引用式的图片写成一个 <img>，不读尺寸：\"⟨img 说明|300⟩\"。我们照内联的图片读（051），同一种写法一个意思",
+  "assets": [
+    "x.png"
+  ]
+}

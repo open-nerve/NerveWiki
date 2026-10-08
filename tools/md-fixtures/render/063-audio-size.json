@@ -1,0 +1,8 @@
+{
+  "description": "带尺寸的音频：尺寸不写",
+  "source": "obsidian-verified",
+  "rendered": "⟨audio a.mp3⟩ ⟨audio 说明⟩",
+  "assets": [
+    "a.mp3"
+  ]
+}

@@ -170,7 +170,7 @@ export function pageServer({
       }
       return page === undefined
         ? problem(404, "page.not_found")
-        : json(server.views.get(id) ?? { html: `<p>${page.name}</p>`, revision: 1 });
+        : json(server.views.get(id) ?? { html: `<p>${page.name}</p>`, revision: 1, assets_expire_at: null });
     },
     "GET /api/v0/pages/*/edit-lock": (request) => json(server.lockOf(idOf(request))),
     "GET /api/v0/pages/*/link-landing": (request) => {

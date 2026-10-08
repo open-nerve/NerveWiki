@@ -1,0 +1,8 @@
+{
+  "description": "表格里用 \\| 写说明与尺寸的嵌入",
+  "source": "obsidian-verified",
+  "rendered": "a¶⟨img 说明\\ 300⟩",
+  "assets": [
+    "x.png"
+  ]
+}
