@@ -34,6 +34,9 @@ func TestALinktextIsTheNameThePathOrThePathWithMd(t *testing.T) {
 		{"an attachment of its own name", []string{"a", "b", "b/x.png"}, "a/x.png", "x.png", []string{"a/x.png"}},
 		{"an attachment of a name in two folders", []string{"a", "b"}, "a/x.png", "a/x.png", []string{"a/x.png", "b/X.PNG"}},
 		{"an attachment without an extension", []string{"a"}, "a/x", "", []string{"a/x"}},
+		// Written with ".md", read as a page's: x.png.md, no page x.png being
+		// there, is the page titled so, which the attachment x.png is not.
+		{"x.png.md beside an attachment x.png", []string{"a", "x.png.md"}, "x.png.md", "x.png.md", []string{"a/x.png"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

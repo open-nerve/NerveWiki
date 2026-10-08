@@ -160,6 +160,9 @@ func TestATargetReadAsAnAttachmentsHasNoLanding(t *testing.T) {
 		// would be beside the attachment v1.2 (the random test's seed 148).
 		{"v1.2.md", want{reason: domain.TargetIsAsset}},
 		{"A/v1.2.md", want{parent: "A", title: "v1.2"}},
+		// An attachment of the title as deep, under another page, is not where
+		// the page would go.
+		{"B/y.png.md", want{parent: "B", title: "y.png"}},
 	} {
 		target, ok := domain.ParseTarget(tt.target)
 		if !ok {
