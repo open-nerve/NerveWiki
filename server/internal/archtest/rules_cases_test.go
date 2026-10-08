@@ -23,7 +23,7 @@ func TestRules(t *testing.T) {
 		adapters = "a module's adapters do not import each other"
 		gen      = "generated code is imported only by its own adapter"
 		platform = "platform packages do not import each other, except config"
-		testOnly = "test helpers (pgtest, apitest, httpservertest, clocktest, markdowntest) are imported only by tests"
+		testOnly = "test helpers (pgtest, apitest, httpservertest, clocktest, markdowntest, storagetest) are imported only by tests"
 		river    = "River is imported only by platform/jobs and a module's adapter/river"
 		md       = "goldmark, golang.org/x/net/html and go.yaml.in/yaml are imported only by platform/markdown"
 	)
@@ -131,6 +131,9 @@ func TestRules(t *testing.T) {
 		{m("internal/platform/markdown"), m("internal/platform/markdown/markdowntest"), []string{testOnly}},
 		{m("internal/modules/page/adapter/markdown"), m("internal/platform/markdown/markdowntest"), []string{testOnly}},
 		{m("internal/platform/markdown/markdowntest"), m("internal/platform/markdown"), nil},
+		{m("internal/platform/storage"), m("internal/platform/storage/storagetest"), []string{testOnly}},
+		{m("internal/modules/asset/adapter/storage"), m("internal/platform/storage/storagetest"), []string{testOnly}},
+		{m("internal/platform/storage/storagetest"), m("internal/platform/storage"), nil},
 
 		// The Markdown libraries.
 		{m("internal/platform/markdown"), "github.com/yuin/goldmark/parser", nil},
