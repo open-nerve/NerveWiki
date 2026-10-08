@@ -16,3 +16,4 @@ M0/P6 的镜像（`deploy/Dockerfile`）只有 `/nervewiki` 一个程序：运�
 ## 处理进展
 
 - M7/P1（2026-10-08，合并 `d7af7cf`）：第 1 项完成（构建阶段建 `/out/data`，`COPY --chown=65532:65532` 进运行时阶段的 `/data`，`VOLUME /data`，`NWIKI_STORAGE__DIR=/data`）；第 2 项完成（`storage.OpenLocal` 探测根与各区，不可写时 `serve` 拒绝启动、写明目录与 uid、gid；README 的附件目录一节；`image-smoke` 在属主为 root 的 tmpfs 上核对拒绝启动）。第 3 项（上传、重启、读出）留给 P2（[P1 文档](../01-P1-storage-stream.md)第 7 节）。
+- M7/P2（2026-10-09，合并 `48c62c0`）：第 3 项完成（`image-smoke` 上传一个小 PNG，重启容器，用重启之前签的地址下载，字节与大小相同；[P2 文档](../02-P2-assets-server.md) 3.13）。三项都已落实，M7 收尾时关闭。

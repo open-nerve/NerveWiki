@@ -513,7 +513,7 @@ M7 开工时负责人确认进入 M7（2026-10-08："可以了"）。下面是�
 | P | 名称 | 状态 | Phase 文档 | 审查 |
 |---|---|---|---|---|
 | P1 | 平台：存储与流式路由 | 已完成 | [01-P1-storage-stream.md](01-P1-storage-stream.md) | [P1 审查](reviews/P1-storage-stream-review.md) |
-| P2 | 附件（服务端） | 进行中 | [02-P2-assets-server.md](02-P2-assets-server.md) | — |
+| P2 | 附件（服务端） | 已完成 | [02-P2-assets-server.md](02-P2-assets-server.md) | [P2 审查](reviews/P2-assets-server-review.md) |
 | P3 | 附件与链接（服务端） | 未开始 | — | — |
 | P4 | 附件（前端） | 未开始 | — | — |
 | P5 | 导出 | 未开始 | — | — |
@@ -527,3 +527,4 @@ M7 开工时负责人确认进入 M7（2026-10-08："可以了"）。下面是�
 | 2026-10-08 | 按设计审查修订：树写入端口（接好线的 page 模块给出）、平台的流式路由、提交结果不明时不删文件、任务的表与生命周期、心跳与超时、数量与磁盘余量、EOCD、附件答复的 CSP；附件的一种标记与核心的图片钩子、解析的写法规则、根下的附件与面板的位置、上传经会话的客户端、到期与媒体的保留；12.1 第 6 条的例外逐项列出；拆成六个 Phase | [设计审查记录](reviews/M7-design-review.md) |
 | 2026-10-08 | P1 完成：4.1 的启动检查（先删掉全部残留、再探测根与各区；写满照常启动、写入答 507；断链的区拒绝启动）；4.3 的流式路由（低速率时更小的一步、没有请求体不设读截止时间、停机只切断还在传字节的流、`ErrShuttingDown`）；4.4 的 multipart 读到结尾；4.5 停机之后的下载答 503；第 7 节 P2 的交付与验证补项、修订表补 P1 的配置 | P1 的实施、审查与五轮修复核对：[01-P1-storage-stream.md](01-P1-storage-stream.md)、[P1 审查](reviews/P1-storage-stream-review.md) |
 | 2026-10-08 | P2 开工：第 7 节 P2 的 `InstanceInfo` 只加 `asset_max_bytes`，`import_max_bytes` 随 P6 | [02-P2-assets-server.md](02-P2-assets-server.md) 第 2 节 |
+| 2026-10-09 | P2 完成：4.3 处理器之前的答复对有请求体的请求关闭连接，宣告的答复按步写出、写截止时间随写出的字节前移（`Sending(r)`）；4.4 上传的 `name` 为空取文件名；4.5 严格的读法（规范的路径，参数依次、键名对位），CSP 与 CORP 在每个答复上，去掉对改动的条件；4.6 活动只报字节数；4.8 树的重读至多每 500 毫秒一次 | P2 的实施、审查与九轮修复核对：[02-P2-assets-server.md](02-P2-assets-server.md)、[P2 审查](reviews/P2-assets-server-review.md) |

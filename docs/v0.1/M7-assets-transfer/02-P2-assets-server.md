@@ -3,7 +3,7 @@
 | 项 | 内容 |
 |---|---|
 | Phase | M7/P2 附件（服务端） |
-| 状态 | 进行中 |
+| 状态 | 完成 |
 | 基线 | `5a94218`（P1 合并、文档补完之后的 main）；本文提交之后开分支 `m7-p2` |
 | 上级文档 | [M7 总设计](00-M7-design.md) 4.1、4.2、4.4–4.6、4.13、4.14、第 5、7–9 节；[P1 文档](01-P1-storage-stream.md)第 7 节（交给 P2 的五项）；移交：[M2/P4 附件的清理](handoffs/M2-P4-attachment-purge.md)、[M3 笔记本活动](handoffs/M3-notebook-activity.md)、[M4 附件的扩展](handoffs/M4-extensions.md)第 4 项的活动、[M0/P6 镜像里的附件目录](handoffs/M0-P6-image-volumes.md)第 3 项；总体设计 13.1 第 1、5、6、8、10、15、21、25、28 条，13.4 第 4、5、6 条 |
 
@@ -46,17 +46,17 @@
 | `api/modules/page.yaml` | `NodeKind` 加 `asset`；`TreeNode`、改名的说明；改名的 `name: not_allowed` |
 | `api/modules/instance.yaml` | `InstanceInfo.asset_max_bytes` |
 | `api/common.yaml` | 平台码 `storage_full`；`Problem.code` 的说明 |
-| `server/internal/platform/httpserver/apitest/` | `x-raw`：`Operation.Raw`，规则（3.2），整个程序的测试跳过原样操作的 JSON 用例 |
-| `server/internal/platform/httpserver/` | 507 的映射（`errors.go`） |
-| `server/internal/shared/error.go` | `KindStorageFull`、`CodeStorageFull`、`StorageFull()` |
+| `server/internal/platform/httpserver/apitest/` | `x-raw` 的规则（3.2）与 `TestRawOperationsAreNotGenerated`；描述了正文的答复都要带 `Content-Type`（没有它的答复原先被当作 `*/*` 放过）。没有 `Operation.Raw`：multipart 的请求体本来就不进 `BodyCases` |
+| `server/internal/platform/httpserver/` | `API.Stream`：`Sending(r)` 与按步写出的答复，处理器之前的答复关闭连接（3.6）；`httpservertest.APIOptions` 可传平台的桶 |
+| `server/internal/shared/error.go` | `KindStorageFull`、`CodeStorageFull`、`StorageFull()`：507 由 `Kind` 的状态码表给出，httpserver 不改 |
 | `server/internal/platform/config/` | `AssetConfig{MaxBytes, UploadMinRate}`、`RateLimitConfig.AssetContent`、校验、`LogValue` |
 | `server/configs/config.yaml`、`config.test.yaml` | `asset` 一节、`ratelimit.asset_content` |
 | `server/internal/modules/access/domain/rules.go` | `asset.upload`（写者）、`asset.read`（读者） |
 | `server/internal/modules/page/` | `tree_writes.go`（新：`TreeWrites`、`NewAsset`）、`asset_nodes.go`（新：读端口）；`app/unit_create_asset.go`（新）、`unit_rename.go`、`domain/name.go`（新：附件的名称规则）、`domain/tree.go`（`Height` 只数页面）；`adapter/postgres/queries`（附件节点的分页） |
-| `server/internal/modules/asset/`（新） | `module.go`（`New`、`Register`、`Jobs`、`ContentKeyInfo`）、`blobs.go`（`NewBlobs`）、`observer.go`、`deletion.go`、`purgers.go`、`activity.go`；`domain/`（`Blob`、`Meta`、类型表、签名的字段、名称）；`app/`（上传、元数据、列表、下载的用例，签名，清扫）；`adapter/http/`（生成的两个操作 + 手写的上传与下载）、`adapter/postgres/`（sqlc）、`adapter/sniff/`（类型测定与宽高，`net/http`、`image` 在这里） |
+| `server/internal/modules/asset/`（新） | `module.go`（`New`、`Register`、`Jobs`、`ContentKeyInfo`）、`lifecycle.go`（页面观察者、笔记本删除、活动）、`purgers.go`；`domain/`（`Blob`、类型表、动作、错误）；`app/`（上传、元数据与列表、下载的用例，`Blobs`，签名的端口，清理，清扫）；`adapter/http/`（生成的两个操作 + 手写的上传与下载）、`adapter/postgres/`（sqlc）、`adapter/files/`（存储的端口）、`adapter/mac/`（签名）、`adapter/sniff/`（类型测定与宽高，`net/http`、`image` 在这里）、`adapter/river/`（清扫的定时任务） |
 | `server/migrations/sql/00027_asset_asset_blobs.sql`（新）、`deploy/runtime-grants.sql` | `asset_blobs` |
 | `server/internal/bootstrap/` | 组合：page → asset；`purgers(pool, store)`；观察者、笔记本删除、活动的登记；`instanceDeps`；整个程序的测试（`assets_*_test.go`）、交错（`interleavings_assets_test.go`）、权限矩阵（`permission_matrix_asset_test.go`）；`checkPages` |
-| `server/internal/archtest/` | 命令行的组合到不了 `asset.New`；asset 的 app 与 domain 不引 `net/http`、`image` |
+| `server/internal/archtest/` | 命令行的组合到不了 `asset.New`；asset 的 app 与 domain 照已有的分层规则只引标准库（`net/http`、`database/sql` 除外） |
 | `web/apps/web/src/stores/page-tree.store.ts`、`events/handlers.ts` | 树只列页面；`pages` 的整树重读经 `refresher` |
 | `e2e/fixtures/purge.ts`、`fixtures/assert/asset.ts`（新）、`stories/asset/`（新：AS1、AS4、AS5） | 3.12 |
 | `deploy/image-smoke.sh`、`README.md` | 上传、重启、读出；附件的接口与 PDF 的说明 |
@@ -74,14 +74,16 @@
 
 | 操作 | 说明 | 码 |
 |---|---|---|
-| `uploadAsset` `POST /api/v0/notebooks/{notebook_id}/assets`（`x-raw`） | multipart：`parent_id`（可选）、`name`（可选）、`file`（最后）；201 `Asset` | `bad_request`、`notebook.not_found`、`forbidden`、`page.not_found`（父节点）、`validation_failed`（名称：`name` 的规则、`not_allowed`）、`page.title_taken`、`payload_too_large`、`storage_full`、`server_busy`（停机） |
-| `listAssets` `GET /api/v0/notebooks/{notebook_id}/assets?parent_id=&cursor=&limit=` | 一个父节点（没有：根）下的附件，按名称键、id，游标分页（`limit` 1–100，默认 50） | `notebook.not_found`、`page.not_found`、`bad_request`（游标） |
+| `uploadAsset` `POST /api/v0/notebooks/{notebook_id}/assets`（`x-raw`） | multipart：`parent_id`（可选）、`name`（可选）、`file`（最后）；201 `Asset` | `bad_request`、`notebook.not_found`、`forbidden`、`validation_failed`（父节点不是这本笔记本里活着的页面，页模块 `Check` 的既有答法；名称的规则、`not_allowed`）、`page.title_taken`、`payload_too_large`、`storage_full`。没有 `server_busy`：停机切断读到一半的上传（3.5） |
+| `listAssets` `GET /api/v0/notebooks/{notebook_id}/assets?parent_id=&cursor=&limit=` | 一个父节点（没有：根）下的附件，按名称键、id，游标分页（`limit` 1–100，默认 50） | `notebook.not_found`、`page.not_found`、`bad_request`（游标、绑定不了的参数）、`validation_failed`（`limit` 越界） |
 | `getAsset` `GET /api/v0/assets/{node_id}` | 附件的元数据与签名地址 | `asset.not_found` |
-| `getAssetContent` `GET /api/v0/assets/{node_id}/content?b=&e=&s=[&d=1]`（`x-raw`、公开） | 下载；200、206、304、416，`*/*` | `not_found`、`rate_limited`、`server_busy` |
+| `getAssetContent` `GET /api/v0/assets/{node_id}/content?b=&e=&s=[&d=1]`（`x-raw`、公开） | 下载；200、206、304、416，`*/*` | `bad_request`（`node_id` 不是 UUID，同所有操作的路径参数）、`not_found`、`server_busy`；`rate_limited` 只写在顶层的 `x-problem-codes`（13.1 第 20 条） |
 
 `Asset`：`id`（节点）、`notebook_id`、`parent_id`、`name`、`mime`、`byte_size`、`sha256`（十六进制）、`width`、`height`（可空）、`created_by`、`created_at`、`content_url`（内联）、`download_url`（`d=1`）、`expires_at`。地址是相对的（`/api/v0/assets/...`）。
 
-**`storage_full`**：`shared.KindStorageFull` → 507，`Retry-After` 不带；平台码表、`common.yaml` 的说明、`errors.go` 的映射与它的表格测试。存储的 `ErrFull` 由 asset 的适配器译成它。
+下载的查询参数 `b`、`e`、`s`、`d` 在契约里是字符串（`e` 若是整数，整个程序的参数用例要它答 400，而下载要 404）；下载答复的 `Cache-Control`、`Content-Security-Policy`、`Cross-Origin-Resource-Policy` 写在契约的头里（components）。
+
+**`storage_full`**：`shared.KindStorageFull` → 507，`Retry-After` 不带；平台码表、`common.yaml` 的说明、`shared.Kind` 的状态码与它的表格测试（`shared/error_test.go`）。存储的 `ErrFull` 由 asset 的 `adapter/files` 译成 `domain.ErrStorageFull`，答它。
 
 ### 3.3 page：树写入端口、名称、深度、读端口
 
@@ -148,42 +150,45 @@ type AssetNodes interface {
 CREATE TABLE asset_blobs (
     id            uuid PRIMARY KEY,               -- blob id (UUIDv7); the store's key is blobs/<id>
     node_id       uuid NOT NULL UNIQUE,
-    notebook_id   uuid NOT NULL REFERENCES notebooks(id) ON DELETE RESTRICT,
-    mime          text NOT NULL,
+    notebook_id   uuid NOT NULL,
+    mime          text NOT NULL CHECK (mime <> ''),
     byte_size     bigint NOT NULL CHECK (byte_size >= 0),
     sha256        bytea NOT NULL CHECK (octet_length(sha256) = 32),
     width         integer CHECK (width > 0),
     height        integer CHECK (height > 0),
-    created_by_id uuid NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    created_by_id uuid NOT NULL REFERENCES users,
     created_at    timestamptz NOT NULL,
     deleted_at    timestamptz,
     FOREIGN KEY (notebook_id, node_id) REFERENCES nodes(notebook_id, id) ON DELETE RESTRICT,
     CHECK ((width IS NULL) = (height IS NULL))
 );
-CREATE INDEX asset_blobs_activity ON asset_blobs (notebook_id) WHERE deleted_at IS NULL;
-CREATE INDEX asset_blobs_purge ON asset_blobs (deleted_at) WHERE deleted_at IS NOT NULL;
+CREATE INDEX asset_blobs_notebook_id_idx ON asset_blobs (notebook_id) WHERE deleted_at IS NULL;
+CREATE INDEX asset_blobs_deleted_at_idx ON asset_blobs (deleted_at) WHERE deleted_at IS NOT NULL;
 ```
 
-（复合外键引用 `nodes` 已有的 `nodes_notebook_id_id_key`；`runtime-grants.sql` 给 `SELECT, INSERT, UPDATE, DELETE`。）
+（复合外键引用 `nodes` 已有的 `nodes_notebook_id_id_key`，它也定了行的笔记本，不再单列到 `notebooks` 的外键；约束与索引照命名表起名（`asset_blobs_notebook_id_node_id_fkey`、`asset_blobs_deleted_at_idx`……）；`runtime-grants.sql` 给 `SELECT, INSERT, UPDATE, DELETE`。）
 
-**`asset.NewBlobs(pool, store)`**（transfer 的导入与导出也用，P5、P6）：
+**`app.Blobs`**（`app.NewBlobs(files, rows, sniffer, logger)`，模块内部；transfer 的导入与导出用到时由模块根导出，P5、P6）：
 
-- `Put(ctx, name string, r io.Reader, max int64) (Blob, error)`：`Create("blobs/<新 id>")`，边写边算 SHA-256，记下前 512 字节；超过 `max` 字节 `Abort`、答 `ErrTooLarge`；读出错 `Abort`、答它；`Commit` 之后按名称的扩展名与前 512 字节测定类型（3.5），图片再 `Open` 读宽高。`ErrFull` 原样带出。
-- `Attach(ctx, node uuid.UUID, notebook uuid.UUID, by uuid.UUID, at time.Time, b Blob) error`：在调用方的事务里写行（`postgres.DB(ctx, pool)`）。
-- `Open(ctx, nodeID) (storage.File, Blob, error)`：按节点读活着的行与文件。
-- `Drop(ctx, b Blob) error`：删文件（单元以领域错误回滚时）。
+- `Put(ctx, name, r, maxBytes) (Blob, error)`：`Create("blobs/<新 id>")`，边写边算 SHA-256，记下前 512 字节；超过 `maxBytes` 字节 `Abort`、答 `ErrTooLarge`；读出错 `Abort`、答 `*ReadError`；`Abort` 失败记 WARN（`blob_id`）；`Commit` 之后按名称的扩展名与前 512 字节测定类型（3.5），图片再 `Open` 读宽高。存储写满答 `domain.ErrStorageFull`。上传交给它的名称是 `CheckTitle` 规范化之后的（`"x.svg "` 按 svg 测定）。
+- `Attach(ctx, blob)`：在调用方的事务里写行。
+- `Open(ctx, nodeID, blobID) (File, Blob, error)`：按节点读活着的行；行的文件不是地址里的那个也算不存在；文件不在答 `ErrNoFile`（带着行）。
+- `Drop(ctx, blob)`：删文件（单元以领域错误回滚时）。
+- 端口（`app/ports.go`）：存储经 `adapter/files`（只有它引 `platform/storage`），行经 `adapter/postgres`，签名经 `adapter/mac`（3.6），类型与宽高经 `adapter/sniff`。
 
 ### 3.5 上传
 
-处理器（`adapter/http/upload.go`）经 `API.Stream`：`MaxBytes = asset.max_bytes + 64 KiB`（multipart 的外包装），`MinRate = asset.upload_min_rate`，桶照用 `authenticated`。
+处理器（`adapter/http/upload.go`）经 `API.Stream`：`MaxBytes = asset.max_bytes + Envelope`（64 KiB，multipart 的外包装），`MinRate = asset.upload_min_rate`，桶照用平台的（失败的门按 IP，`authenticated` 按凭据）。
 
-1. `notebook_id` 绑定失败 400；`Content-Type` 不是带 boundary 的 `multipart/form-data` 答 400。
-2. 逐部分读（`r.MultipartReader()`）：只认 `parent_id`、`name`、`file`，次序如此，前两者可以没有；未知、重复、次序不对、`file` 之后还有部分都是 400；`parent_id` 是 UUID，`name` 至多 1 KiB；`file` 之前读过的字节（含部分的头）超过 4 KiB 答 400。名称：`name`，没有就用 `file` 部分的文件名（`filepath.Base` 之后），都没有 422。
-3. **预检**（`Bounded` 之内，读文件之前）：`TreeWrites.Check` 与存储的余量（`Free` 低于下限：507）。不通过就答，不读文件（net/http 至多再读约 256 KB 就关连接，客户端可能只看到重置：网页在发送之前先查，P4）。
-4. `Blobs.Put(name, file, asset.max_bytes)`：超过上限 413；`ErrFull` 507；读请求体失败：先判断 `httpserver.ErrShuttingDown`（不记 ERROR，尽力答 503），超时与客户端断开记 INFO，不再答复。
-5. `file` 之后 `NextPart` 必须是 `io.EOF`（否则 400，删文件），然后把请求体读到结尾（`io.Copy(io.Discard, r.Body)`，P1 第 7 节第 1 项）。
-6. **单元**（`Bounded` 之内）：`TreeWrites.CreateAsset(…, after = Blobs.Attach)`。单元返回领域错误（`*shared.Error`：权限、父节点、重名，必然已回滚）时删文件（`Blobs.Drop`）、答它；其余错误（基础设施、`COMMIT` 结果不明）不删，留给孤儿清扫，答 500（`COMMIT` 结果不明时行可能已提交，删了就是永远打不开的附件，总设计 4.4）。
+1. `notebook_id` 在鉴权之前绑定（`bindID` 包在 `API.Stream` 外面，同生成的操作，M1/P1 3.9）：不是 UUID 答 400 `invalid_format`。`Content-Type` 不是带 boundary 的 `multipart/form-data` 答 400。
+2. 逐部分读（`NextRawPart`：不解码 quoted-printable，文件的字节原样）：只认 `parent_id`、`name`、`file`，次序如此，前两者可以没有；未知、重复、次序不对是 400；`parent_id` 是 `uuid.Parse` 认的写法（大写、没有连字符也行，括号与 URN 不行），否则 400 `invalid_format`；`name` 至多 1 KiB。文件的字节之前（各部分的头与值、解析器的预读）至多 4 KiB，超过答 400；文件一开始这个限额就放开。名称：`name`，空或只有空白就用 `file` 部分的文件名（`filepath.Base` 之后），都没有 422；名称不是合法 UTF-8 的 422（`CheckTitle` 先查，表单的文件名可以这样写）。
+3. **预检**（`Bounded` 之内，读文件之前）：`Tree.Check`（父节点不是这本笔记本里活着的页面答 422 `validation_failed`）与存储的余量（`Free` 低于 `storage.min_free_bytes`：507；对同时的上传是软的）。
+4. `Store`（`Blobs.Put`）：超过上限 413；写满 507。读请求体失败：停机切断的（`httpserver.ErrShuttingDown`）中止连接（`http.ErrAbortHandler`），记 INFO——截止时间已切到当下，答复送不出去；其余（太慢、提前结束、连接断开、格式不对）记 INFO `upload not received`，只带原因的分类（`cause`），不带解析器引用的原文，连接还在就答 400。
+5. **结尾**（`end`）：`file` 之后 `NextRawPart` 必须是 `io.EOF`；还有部分答 400 "a part after the file"，读到它的头就答，头超过路由的上限、多于解析器的 10000 行也是；之后把请求体读到结尾（P1 第 7 节第 1 项），超过路由的上限答 400。都删文件、不建节点。
+6. **单元**（`Bounded` 之内）：`Tree.CreateAsset(…, after = Blobs.Attach)`。单元返回领域错误（`*shared.Error`：权限、父节点、重名，必然已回滚）时删文件（`Blobs.Drop`，删不掉记 ERROR）、答它；其余错误（基础设施、`COMMIT` 结果不明）不删，留给孤儿清扫，答 500（`COMMIT` 结果不明时行可能已提交，删了就是永远打不开的附件，总设计 4.4）。`Bounded` 的一步过了请求的期限答 500，记 WARN（`APIErrors.Write`）。
 7. 答 201 `Asset`（签好的地址）；日志 `asset uploaded`（`notebook_id`、`node_id`、`blob_id`、`user_id`、`mime`、`bytes`、`client`）。
+
+文件之前的答复（参数、表单、预检、`Store`、结尾）都带 `Connection: close`：net/http 答复之前会先读至多 256 KiB 没读的请求体，等着听答复的客户端要等到读截止时间；浏览器还在发送时可能只看到连接被重置（网页在发送之前先查，P4）。读完请求体之后的答复（单元的失败）保留连接。停机：读到一半的上传被切断；文件已写完、单元还没做的，删文件。
 
 **类型的测定**（`adapter/sniff`，总设计 4.4）：
 
@@ -202,17 +207,18 @@ CREATE INDEX asset_blobs_purge ON asset_blobs (deleted_at) WHERE deleted_at IS N
 
 ### 3.6 签名与下载
 
-**签名**（`app/sign.go`，总设计 4.5）：
+**签名**（`adapter/mac`，`app.Signer` 端口；总设计 4.5）：
 
-- 键：`SigningKeys.Derive(asset.ContentKeyInfo)`，`ContentKeyInfo = "nervewiki asset-content mac v1"`，由模块根导出；已知答案的测试钉住（13.1 第 25 条）。
+- 键：`SigningKeys.Derive(asset.ContentKeyInfo)`，`ContentKeyInfo = "nervewiki asset-content mac v1"`，由模块根导出，组合根经 `Deps.ContentKey` 交给 `adapter/mac`，派生的键不进 app 层；已知答案的测试钉住（13.1 第 25 条）。
+- 按调用方给的时刻签与核对：一次操作只读一次时钟（13.1 第 9 条；列表的各项用同一时刻）。
 - `s = base64url_nopad(HMAC-SHA256(key, "asset-content" ‖ node 16 字节 ‖ blob 16 字节 ‖ e 8 字节大端 ‖ d 1 字节)[:16])`，22 个字符。
 - `e = (⌊now / 1h⌋ + 2) × 1h`（Unix 秒）：同一个小时签出的地址相同，有效 1–2 小时。
 - 只有核对过读权限的读取签：元数据、列表、上传的答复（P3 起加阅读视图）。
 
 **下载**（`adapter/http/content.go`）经 `API.Stream`：公开、桶 `ratelimit.asset_content`（按 IP，`BucketName: "asset_content"`），`MinRate = asset.upload_min_rate`，没有请求体。
 
-1. **严格的读法**（任何查询之前）：查询串只有 `b`、`e`、`s`、`d`，各至多一次，`b`、`e`、`s` 必有；`b` 是规范写法的 UUID（小写、带连字符）；`e` 是规范的十进制（没有前导零、符号）；`s` 恰好 22 个 base64url 字符；`d` 没有或是 `1`；签名对；`e` 晚于现在。任何一项不对都答 404 `not_found`（`no-store`，与"不存在"不分）。
-2. 读行：节点与 blob 对得上、没有软删除；否则 404。文件不在：404，记 WARN（`asset file missing`，`blob_id`）。
+1. **严格的读法**（任何查询之前）：路径的 `node_id` 不是 UUID 答 400（同所有操作的路径参数），不是规范写法（小写、带连字符）或经过转义（`RawPath` 不空）答 404；查询串依次是 `b`、`e`、`s`，可以再有 `d=1`，键名逐个对位，至多四段；`b` 是规范写法的 UUID；`e` 是规范的十进制（没有前导零、符号）；`s` 恰好 22 个 base64url 字符；签名对；`e` 晚于现在。任何一项不对都答 404 `not_found`（`no-store`，与"不存在"不分）。
+2. 先读节点（活着、是附件），再读行（blob 对得上、没有软删除），名称取自节点；否则 404。文件不在：404，记 WARN（`asset file missing`，`blob_id`）。
 3. 响应头（签名核对通过之后才设，覆盖 `/api/` 默认的 `no-store`）：
 
    | 测定的类型 | `Content-Type` | `Content-Disposition` |
@@ -223,25 +229,26 @@ CREATE INDEX asset_blobs_purge ON asset_blobs (deleted_at) WHERE deleted_at IS N
    | 其余 | `application/octet-stream` | `attachment` |
 
    - `d=1` 一律 `attachment`；文件名按 RFC 6266：`filename*=UTF-8''<百分号编码>`，另带 ASCII 的 `filename`（非 ASCII 与引号、反斜杠换成 `_`）。
-   - 每个答复：`Content-Security-Policy: sandbox; default-src 'none'; img-src 'self' data:; media-src 'self'; style-src 'unsafe-inline'`；`Cache-Control: private, max-age=<e − now>, immutable`；`ETag: "<sha256 十六进制>"`；`Cross-Origin-Resource-Policy: same-origin`。全局的 `nosniff`、`X-Frame-Options: DENY`、`Referrer-Policy: same-origin` 照旧。
-4. `Sending(r, byte_size)`：答 `ErrShuttingDown` 时 503 `server_busy`（`Retry-After`）。
-5. `http.ServeContent`（`Range`、条件请求；`HEAD` 由同一路由答）。日志：下载不逐个记（访问日志已有）。
+   - 每个答复（含 400、404、429、503，内容路由的最外层 `sandboxed` 设）：`Content-Security-Policy: sandbox; default-src 'none'; img-src 'self' data:; media-src 'self'; style-src 'unsafe-inline'`、`Cross-Origin-Resource-Policy: same-origin`。签名核对通过之后：`Cache-Control: private, max-age=<e − now>, immutable`；`ETag: "<sha256 十六进制>"`；`Last-Modified`。全局的 `nosniff`、`X-Frame-Options: DENY`、`Referrer-Policy: same-origin` 照旧。
+   - 内联与否按表判断（`domain.Served`、`domain.Inline`）：表外的类型一律 `application/octet-stream` 与 `attachment`。
+4. `Sending(r)`（平台改为不带字节数）：答复按步写出，每步之前把写截止时间设为"宣告时刻 + `read_timeout` + 已写字节 / `MinRate`"，停读的客户端在 `read_timeout` 加缓冲住的字节应得的时间之后断开（暂停的媒体元素靠浏览器的 `Range` 重新请求）。答 `ErrShuttingDown` 时 503 `server_busy`（`Retry-After: 5`，`no-store`，不带文件的头）。
+5. 去掉 `If-Match`、`If-Unmodified-Since`（地址所下发的内容从不改变，没有要守的；留着它们 `ServeContent` 会答 412，带着文件的头），再 `http.ServeContent`（`Range`、`If-None-Match`、`If-Modified-Since`；`HEAD` 由路由在 GET 上答，契约不单列）。`Bounded` 的一步过了请求的期限答 500，记 WARN。日志：下载不逐个记（访问日志已有）。
 
-**PDF 的实测**（总设计 4.5 要求写进本文）：实现之后用 Playwright 的 Chromium 与 Firefox 各打开一个签名的 PDF 地址（带上面的 CSP），看内置阅读器能否显示。不能显示的那一种照常 `inline` 也无妨（浏览器提示下载）；两种都不能，就改为按附件下载、文档与契约随之改。结果写进第 7 节。
+**PDF 的实测**（总设计 4.5 要求写进本文）：Playwright 的 Chromium 带完整的 CSP（含 `sandbox`）能显示，保持 `inline`；本机没有 Playwright 的 Firefox，没测。README 写"其他浏览器未实测；显示不了时用 `download_url` 下载"。结果见第 7 节。
 
 ### 3.7 元数据与列表
 
 - `getAsset`：读节点（`AssetNodes.Node`，不是附件也算不存在）→ 判定 `asset.read`（看不到笔记本、没有角色都答 `asset.not_found`）→ 读行 → 答 `Asset`。
-- `listAssets`：判定 `asset.read`（笔记本不存在或看不到：`notebook.not_found`）→ 父节点（给了就要是这本笔记本里活着的页面，否则 `page.not_found`）→ `AssetNodes.Assets` 一页 → 按节点 id 读行，拼成 `Asset`（节点有、行没有：不列，记 ERROR：违反"每个活着的附件节点恰好一行"）。游标经 `shared.EncodeCursor`，内容是最后一项的名称键与 id。
+- `listAssets`：判定 `asset.read`（笔记本不存在或看不到：`notebook.not_found`）→ 父节点（给了就要是这本笔记本里活着的页面，否则 `page.not_found`）→ `AssetNodes.Assets` 一页 → 按节点 id 读行，拼成 `Asset`（节点有、行没有：不列；再读一次节点，还活着才记 ERROR，违反"每个活着的附件节点恰好一行"，两次读之间被删的不算。`getAsset` 同）。游标经 `shared.EncodeCursor`，内容是最后一项的名称键与 id。
 
 ### 3.8 生命周期
 
 - **页面观察者**（`asset.NewPageObserver(pool)`，登记在 `pageRegistrants` 的观察者末尾）：事件里 `After == nil` 的节点，`UPDATE asset_blobs SET deleted_at = 事件的时刻 WHERE node_id = ANY($1) AND deleted_at IS NULL`。删除子树时事件带每个后代，附件也在其中。
 - **笔记本删除的订阅者**（`asset.NewNotebookDeletion(pool)`，登记在 `notebookRegistrants` 的删除订阅者里、页面之后）：`UPDATE … WHERE notebook_id = ANY($1) AND deleted_at IS NULL`。三条路径（删除笔记本、删除无主笔记本、删除工作区）都经它。
-- 两者只凭连接池：命令行的组合（停用、删除工作区）也到达它们（`archtest` 允许）。
-- **清理器**（`asset.Purgers(pool, store)`，`purgers(pool, store)` 里排在 page 之前）：一批在一个事务里——`SELECT id FROM asset_blobs WHERE deleted_at < $before ORDER BY deleted_at LIMIT $batch FOR UPDATE SKIP LOCKED` → 逐个 `store.Delete("blobs/<id>")`（不存在算成功）→ `DELETE` 这些行 → 提交。删不掉的文件让这一批失败（记 ERROR，带 `blob_id`），清理停在这里；提交失败时下一次运行再删一次文件（已不存在）、删掉行（M2/P4 的移交第 2 项）。
-- **孤儿清扫**（asset 的 River 定时任务，每 24 小时；`asset.Module.Jobs()`）：`store.List("blobs", now − 24h)`，每 500 个键一批 `SELECT id FROM asset_blobs WHERE id = ANY($1)`（含软删除的），删掉没有行的文件；记 INFO（删了几个）。一天远长于文件提交到行提交的时间，不会删掉正在上传的。
-- **笔记本的活动**（`asset.NewNotebookActivity(pool)`，登记在 `notebookRegistrants` 的活动里）：未删除的行的 `byte_size` 之和、最晚的 `created_at`（M3 的移交第 1 项）。
+- 两者只凭连接池，命令行的组合也建得到（`archtest` 允许）；命令行没有删除笔记本或工作区的命令，经它们的是 serve 的三条路径。
+- **清理器**（`asset.Purgers(pool, tx, store, logger)`，`purgers(pool, tx, store, logger)` 里排在 page 之前：一批一个事务要 `TxManager`，删不掉的文件记 ERROR 要 logger）：一批在一个事务里——`SELECT id FROM asset_blobs WHERE deleted_at < $before ORDER BY deleted_at LIMIT $batch FOR UPDATE SKIP LOCKED` → 逐个删文件（不存在算成功）→ `DELETE` 这些行 → 提交；空批不 `DELETE`。删不掉的文件让这一批失败（记 ERROR，带 `blob_id`），清理停在这里；提交失败时下一次运行再删一次文件（已不存在）、删掉行（M2/P4 的移交第 2 项）。
+- **孤儿清扫**（asset 的 River 定时任务，每 24 小时；`asset.Module.Jobs()`，`adapter/river`）：存储里 24 小时之前的 `blobs` 的文件，每 500 个键一批 `SELECT id FROM asset_blobs WHERE id = ANY($1)`（含软删除的），删掉没有行的文件；删了的记 INFO（几个）。删不掉的记 WARN（`blob_id`），接着删其余，最后答错误；区里不是 blob 的文件记 WARN、留下。一次运行的时限 `SweepTimeout` 50 分钟（River 默认的 1 分钟扫不完大的存储；低于 River 默认 1 小时的 `RescueStuckJobsAfter`，免得还在跑就被当作卡住的任务重跑）。一天远长于文件提交到行提交的时间，不会删掉正在上传的。
+- **笔记本的活动**（`asset.NewNotebookActivity(pool)`，登记在 `notebookRegistrants` 的活动里）：未删除的行的 `byte_size` 之和（M3 的移交第 1 项）。不报最晚的上传：每次上传是树的单元，页面的来源已按它的变更集算作同一时刻的写（审查 C3）。
 - **加锁**（总设计 4.14）：上传的单元照页面一支（工作区行 `FOR SHARE` → 笔记本行 `FOR NO KEY UPDATE` → `nodes` → `asset_blobs`）；观察者与订阅者在已持的锁下写；清理器 `SKIP LOCKED`。13.1 第 5 条写明 `asset_blobs` 在 `nodes` 之后。
 
 ### 3.9 配置与实例信息
@@ -263,14 +270,15 @@ ratelimit:
 ### 3.10 前端
 
 - `PageTreeStore`：`nodes` 照旧是全部节点；`tree`（索引、子节点、祖先、拖动的深度）只取 `kind === "page"`；"未命名 N"取全部子节点的名称（附件也占名字）。附件出现在 `nodes` 里不让树重画（`sameTree` 只比页面）。
-- `events/handlers.ts`：`pages` 带 `tree` 时的整树重读经 `refresher.request`（合并：一次上传一个事件，连传多个只重读一次）。
+- `events/handlers.ts`：`pages` 带 `tree` 时的整树重读经 `refresher.request`，间隔 500 毫秒（`TREE_INTERVAL_MS`；`refresher` 按键取间隔）：一连串的单元合成每秒至多两次读，别人连续改树时至多晚半秒显示（审查 C1，原定的 5 秒太迟）。
+- `nodes` 每次读都换；树取自带相等比较的计算值（只比页面），附件变了树不重画；新页的"未命名 N"看页面与附件。
 - vitest：附件不进树、不进祖先、"未命名 N"跳过附件的名字、重读经 `refresher`。
 
 ### 3.11 组合根与架构测试
 
 - `newApp`：`pg := page.New(…)` 之后 `as := asset.New(asset.Deps{Pool, Tx, Clock, Logger, Authorizer, Store: store, Tree: pg.TreeWrites(), Nodes: page.NewAssetNodes(pool), Key: keys.Derive(asset.ContentKeyInfo), MaxBytes, MinRate, ContentBucket})`；`as.Register(router, api)`；`as.Jobs()` 进 River；`purgeJob(cfg, pool, store, logger)`。
 - `pageRegistrants` 的观察者加 `asset.NewPageObserver(pool)`；`notebookRegistrants` 的删除订阅者加 `asset.NewNotebookDeletion(pool)`、活动加 `asset.NewNotebookActivity(pool)`（同 `pageActivity` 的转换）。
-- `archtest`：命令行的组合到不了 `asset.New`、`storage`（`composesMore` 已禁模块根的 `New` 与 `platform/storage`）；asset 的 `app`、`domain` 不引 `net/http`、`image`、`platform/storage` 之外的平台包（照已有的分层规则）。
+- `archtest`：命令行的组合到不了 `asset.New`、`storage`（`composesMore` 已禁模块根的 `New` 与 `platform/storage`）；asset 的 `app`、`domain` 照已有的分层规则只引标准库（`net/http`、`database/sql` 除外）。`image` 是标准库、不禁，实际只在 `adapter/sniff` 里用。
 
 ### 3.12 权限、交错、日志
 
@@ -283,8 +291,8 @@ ratelimit:
 - **`deletedDaysAgo`**：先挪 `asset_blobs`（`node_id IN (…)`），否则 `RESTRICT` 让已有的清理故事停住。
 - **AS1（接口版本）**：上传（multipart 的 `fetch`）、列出、元数据、按签名地址下载出同样的字节；`fixtures/assert/asset.ts` 核对行与存储里的文件（按名称的 SHA-256 前两字节算分片）。
 - **AS4**：删除子树、删除笔记本之后行被软删除；挪后清理之后行与文件都不在；笔记本的活动算上附件的字节。
-- **AS5**：接口版本核对各类型的响应头；浏览器里直接打开 svg 的签名地址：`sandbox` 拦下脚本（控制台的 "Blocked script execution"），不向外站请求；html 附件触发下载（`waitForEvent("download")`）。
-- **`image-smoke`**：管理员登录、建工作区与笔记本，上传一个小 PNG，重启容器，读元数据、按签名地址下载，字节相同（M0/P6 的移交第 3 项）。
+- **AS5**：接口版本核对各类型的响应头；浏览器里直接打开 svg 的签名地址：`sandbox` 拦下脚本（控制台的 "Blocked script execution"，按条声明）；SVG 里外站的图片与 `@import` 都被 CSP 拦下（Chromium 报为失败的请求，原因 `csp`）、没有答复；html 附件触发下载（`waitForEvent("download")`）。
+- **`image-smoke`**：管理员登录、建工作区与笔记本，上传一个小 PNG，重启容器，用重启之前签的地址下载（密钥由 JWT 的私钥导出，不随重启变），字节与大小相同（M0/P6 的移交第 3 项）。
 - **README**：附件的接口一句（上传的上限、签名地址 1–2 小时）；PDF 的结论。
 
 **取舍**（负责人可以推翻）：一个凭证同时的上传不另设上限（第 2 节）；单元的非领域错误一律不删文件、留给孤儿清扫（不区分"结果不明"与别的基础设施错误：比区分更不会丢文件）；附件放在兄弟的最后（上传不带位置，面板按名称排）。
@@ -329,4 +337,28 @@ ratelimit:
 
 ## 7. 结果
 
-（完成后补写。）
+- 提交：
+  - 实施：pgtest 的修正 `613a7fa`（main 上 `5a94218` 的 CI 偶发：查表的 OID 在截止之前没拿到连接，答原样的 "context deadline exceeded"；改为截止之后交给第一次轮询报统一的消息），S1 `7d44789`、S2 `d64fa80`、S3 `3720da9`、S4 `943f410`、S5 `87f8621`、S6 `b8415f6`、S7 `01603e6`，负对照的修补 `53facf6`。
+  - 审查的修复：`9b3fc00`、`fd371d5`、`ad071d0`、`39d0d44`。
+  - 九轮修复核对的修复：`dda31f0`、`8fe29c4`、`e804286`、`302df06`、`a838cd0`、`10318f2`、`c4b364e`、`550c8dd`、`a2a5658`、`1e2090d`。
+  - 合并 `48c62c0`。
+- 审查：三位审查者（Opus）。
+  - A（服务端的正确性与并发）：Medium-low 2（读与删并发时误报 ERROR；清扫在 River 默认 1 分钟的时限下扫不完、一个删不掉的文件停下整轮），Low 6，需核实 1。
+  - B（接口的边缘与文件的提供）：Medium 1（不是合法 UTF-8 的文件名绕过名称校验），Medium-low 2（下载的写截止时间一次设定，停读的客户端占住连接；`If-Match` 让 `ServeContent` 答 412），Low 10。
+  - C（测试、前端、e2e、部署与文档）：Medium 1（树的重读最多晚 5 秒），Medium-low 3，Low 7。
+  - 修复核对九轮：第一到三轮核对修复本身；第四到八轮用变异扫描把 P2 的服务端代码逐层扫过（asset 的 http、app、domain 与各适配器，page 为附件做的改动，平台 `API.Stream` 与契约规则的改动），找到的都是测试抓不住的改变行为的回退，每一处都补了测试，只有一处契约不符（第五轮：文件之后的部分的头超过路由上限时答 413）；第九轮没有行为问题。逐条见[审查记录](reviews/P2-assets-server-review.md)。
+- 审查之后改了的设计（第 3 节已改写）：
+  - 签名挪进 `adapter/mac`，按调用方给的时刻签与核对，一次操作只读一次时钟；派生的键不进 app 层。
+  - 下载：路径与查询按服务端的写法严格地读（转义过的路径、别的次序、别的键名都答 404）；CSP 与 CORP 在内容路由的最外层，每个答复都带；`If-Match`、`If-Unmodified-Since` 先去掉；`Sending(r)` 不再带字节数，答复按步写出（平台，总设计 4.3）。
+  - 上传：`NextRawPart`（不解码 quoted-printable）；文件之前至多 4 KiB，文件一开始放开；空的 `name` 取文件名，不是 UTF-8 的名字 422；文件之后的部分读到头就答 400（头超过路由上限或解析器的 10000 行也是），请求体超过路由上限 400；处理器之前的答复带 `Connection: close`（平台）；停机切断读到一半的上传。
+  - 生命周期：清扫的时限 50 分钟、删不掉的文件记 WARN 接着删；`ExpiredBlobs` 在事务之外拒绝；活动只报字节数。
+  - 前端：树的重读 500 毫秒（`refresher` 按键取间隔）。
+- PDF：Chromium 带完整的 CSP 能显示；本机没有 Playwright 的 Firefox，没测，README 写"其他浏览器未实测，显示不了时用 `download_url`"。留给负责人的人工清单顺带看一眼。
+- 反向对照：实施时 25 个（服务端 20、前端 4、浏览器 1），修复与核对约 245 个，都被测试抓到。
+- CI 与发布：分支的 CI 在每个修复提交上全部通过（server、web、image、e2e；`image` 一步跑 `make image-smoke`）。审查修复之后在本机跑过 `make image-smoke`（`dda31f0`）；合并时本机的 Docker Desktop 起不来，合并之后的 `image-smoke` 由 main 的 CI 跑。
+- 交给后面的：
+  1. P3：附件进解析、链接与渲染；指向附件的写法现在是未解析的链接（有测试钉住）。
+  2. P4：附件的面板与上传；上传前先查 `InstanceInfo.asset_max_bytes`，浏览器还在发送时被拒，可能只看到连接被重置（3.5）；PDF 的 Firefox。
+  3. P5、P6：导入与导出用 `app.Blobs`，届时由模块根导出；`InstanceInfo.import_max_bytes` 随 P6。
+  4. 观察到一次 M6 的偶发（`TestAHeartbeatAfterTheRenamesPrecheckRefusesTheRename` 答 200，单独跑 35 次全过），CI 再出现就查。
+- 负责人可以改判的取舍：`storage.min_free_bytes` 对同时的上传是软的（B10）；停读的媒体元素在 `read_timeout` 加缓冲的字节应得的时间之后断开，靠浏览器的 `Range` 重新请求（B2）；`SweepTimeout` 50 分钟（低于 River 的 1 小时）；缺结尾 `--` 的请求体被接受（文件完整）；`parent_id` 认大写与没有连字符的 UUID，不认括号与 URN；一个凭证同时的上传不另设上限；单元的非领域错误一律不删文件、留给孤儿清扫。
