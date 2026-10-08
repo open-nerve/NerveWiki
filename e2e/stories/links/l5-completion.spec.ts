@@ -233,9 +233,9 @@ test("L5 (page, frontmatter): a page and an alias picked in a property's quotes 
       { key: "win", value: String.raw`[[Bob's|C:\x]]` },
     ],
     links: [
-      { key: "ref", node_id: target.id, kind: "page" },
-      { key: "alt", node_id: target.id, kind: "page" },
-      { key: "win", node_id: target.id, kind: "page" },
+      { key: "ref", node_id: target.id, kind: "page", url: null },
+      { key: "alt", node_id: target.id, kind: "page", url: null },
+      { key: "win", node_id: target.id, kind: "page", url: null },
     ],
   });
   await expectIndexedLinks(

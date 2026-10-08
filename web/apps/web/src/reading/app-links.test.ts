@@ -14,9 +14,13 @@ const browser = (event: Event) => event.preventDefault();
 
 const site = window.location.origin;
 
+/** asset is the address of an attachment's content, as the server signs it. */
+const asset = "/api/v0/assets/a1/content?b=b2&e=3&s=s4";
+
 /**
  * setUp puts a view with links to pages, one to none, tags, a property's link, full addresses of this site and of
- * another, and a footnote's, and a context that records where it goes.
+ * another, a footnote's, and links to attachments, the server's address of one and the text of one it has none of
+ * (M7/P3 design 5.5), and a context that records where it goes.
  */
 function setUp() {
   const container = document.createElement("article");
@@ -28,7 +32,8 @@ function setUp() {
     '<a href="#nw-fn:1">1</a> <a class="nw-wikilink" data-nw-node="a1"><em>emphasis</em></a> ' +
     '<a class="nw-tag" data-nw-tag="Proj">#Proj</a> <a class="nw-tag" data-nw-tag="a/b">#a/b</a> ' +
     '<a class="nw-tag" data-nw-tag="a/">#a//</a> <a class="nw-tag" data-nw-tag="中文">#中文</a> ' +
-    `<a href="${site}/lab/notebooks/n/pages/d4?x=1#nw-h">here</a> <a href="${site}/api/v0/instance">api</a></p>`;
+    `<a href="${site}/lab/notebooks/n/pages/d4?x=1#nw-h">here</a> <a href="${site}/api/v0/instance">api</a> ` +
+    `<a class="nw-wikilink nw-asset" href="${asset}" data-nw-size="8">x.png</a> <a class="nw-asset">t</a></p>`;
   document.body.append(container);
   const went: string[] = [];
   const context: ReadingContext = {
@@ -107,6 +112,15 @@ test("a plain click goes through the router, to a page, a tag, or the app's page
   ]);
 });
 
+test("a link to an attachment keeps the server's address, or has none, untouched when undone", () => {
+  const { container, context, link } = setUp();
+  const undo = appLinks(container, context);
+  expect(link("x.png").getAttribute("href")).toBe(asset);
+  expect(link("t").hasAttribute("href")).toBe(false);
+  undo?.();
+  expect(link("x.png").getAttribute("href")).toBe(asset);
+});
+
 test("a click with a modifier, of another button, or that another handled, and one on another link, is the browser's", () => {
   const { container, context, went, link } = setUp();
   appLinks(container, context);
@@ -123,6 +137,8 @@ test("a click with a modifier, of another button, or that another handled, and o
     [link("x"), {}],
     [link("1"), {}],
     [link("api"), {}],
+    [link("x.png"), {}],
+    [link("t"), {}],
   ];
   for (const [target, init] of clicks) {
     target.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, ...init }));

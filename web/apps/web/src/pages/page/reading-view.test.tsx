@@ -38,7 +38,7 @@ test("the enhancements run on the HTML in their order, undone in the reverse bef
   await waitFor(() => expect(log).toHaveLength(2));
   expect(log).toEqual(["a on <p>Install</p>: lab Install 1 editor", "b on <p>Install</p>: lab Install 1 editor"]);
 
-  server.views.set(install.id, { html: "<p>Install, changed</p>", revision: 2 });
+  server.views.set(install.id, { html: "<p>Install, changed</p>", revision: 2, assets_expire_at: null });
   await act(() => vi.advanceTimersByTimeAsync(6_000));
   act(() => void window.dispatchEvent(new Event("focus")));
   await waitFor(() => expect(log).toHaveLength(6));
@@ -79,7 +79,7 @@ test("an enhancement reads the view again through its context", async () => {
     ],
   });
   await waitFor(() => expect(reloads).toHaveLength(1));
-  server.views.set(install.id, { html: "<p>Install, again</p>", revision: 2 });
+  server.views.set(install.id, { html: "<p>Install, again</p>", revision: 2, assets_expire_at: null });
 
   act(() => reloads[0]?.());
 
@@ -128,7 +128,11 @@ function scrolls(): Element[] {
 test("an address's anchor has the view go to its element once the HTML is in, which takes the focus; read again, the view stays", async () => {
   const scrolled = scrolls();
   const server = pageServer();
-  server.views.set(install.id, { html: '<p>intro</p><h2 id="nw-part-two">Part Two</h2>', revision: 1 });
+  server.views.set(install.id, {
+    html: '<p>intro</p><h2 id="nw-part-two">Part Two</h2>',
+    revision: 1,
+    assets_expire_at: null,
+  });
   const reloads: (() => void)[] = [];
   const { router } = renderApp(`${pagePath(install.id)}#nw-part-two`, server.app, {
     enhancements: [
@@ -144,7 +148,11 @@ test("an address's anchor has the view go to its element once the HTML is in, wh
   expect(document.activeElement).toBe(heading);
   expect(heading.getAttribute("tabindex")).toBe("-1");
 
-  server.views.set(install.id, { html: '<p>intro, again</p><h2 id="nw-part-two">Part Two</h2>', revision: 2 });
+  server.views.set(install.id, {
+    html: '<p>intro, again</p><h2 id="nw-part-two">Part Two</h2>',
+    revision: 2,
+    assets_expire_at: null,
+  });
   act(() => reloads.at(-1)?.());
   await waitFor(() => expect(screen.getByRole("article").textContent).toContain("intro, again"));
   expect(scrolled).toHaveLength(1);
@@ -159,6 +167,7 @@ test("an anchor's element in a folded callout opens it to show, then takes the f
   server.views.set(install.id, {
     html: '<details class="nw-callout"><summary>Folded</summary><div><details><summary>In</summary><h2 id="nw-deep">Deep</h2></details></div></details>',
     revision: 1,
+    assets_expire_at: null,
   });
   renderApp(`${pagePath(install.id)}#nw-deep`, server.app);
 
@@ -171,7 +180,7 @@ test("an anchor's element in a folded callout opens it to show, then takes the f
 test("an anchor written escaped names the element of its id", async () => {
   const scrolled = scrolls();
   const server = pageServer();
-  server.views.set(install.id, { html: '<h2 id="nw-über">Über</h2>', revision: 1 });
+  server.views.set(install.id, { html: '<h2 id="nw-über">Über</h2>', revision: 1, assets_expire_at: null });
   renderApp(`${pagePath(install.id)}#nw-%C3%BCber`, server.app);
 
   const heading = await screen.findByRole("heading", { level: 2, name: "Über" });
@@ -204,7 +213,8 @@ test("a view from the cache is read again, once, for an anchor of no element, th
   // Each read another HTML, none with the element.
   const read = server.views.get.bind(server.views);
   let reads = 0;
-  server.views.get = (id) => (id === install.id ? { html: `<p>read ${++reads}</p>`, revision: reads } : read(id));
+  server.views.get = (id) =>
+    id === install.id ? { html: `<p>read ${++reads}</p>`, revision: reads, assets_expire_at: null } : read(id);
   const { router } = renderApp(pagePath(install.id), server.app);
   expect((await screen.findByRole("article")).innerHTML).toBe("<p>read 1</p>");
   await act(() => router.navigate(pagePath(guide.id)));
@@ -424,7 +434,11 @@ test("the element the view read again brings takes the focus only if the reader 
 test("an anchor the address changes to has the view go there, though the history's key is the same (an address typed in)", async () => {
   const scrolled = scrolls();
   const server = pageServer();
-  server.views.set(install.id, { html: '<h2 id="nw-a">A</h2><h2 id="nw-b">B</h2>', revision: 1 });
+  server.views.set(install.id, {
+    html: '<h2 id="nw-a">A</h2><h2 id="nw-b">B</h2>',
+    revision: 1,
+    assets_expire_at: null,
+  });
   const { router } = renderApp(
     [
       { pathname: pagePath(install.id), hash: "#nw-b", key: "typed" },
@@ -449,7 +463,7 @@ test("an element with an id that had the focus has it back in the view read agai
   });
   onTestFinished(() => laidOut.mockRestore());
   const server = pageServer();
-  server.views.set(install.id, { html: '<h2 id="nw-a" data-at="10">A</h2>', revision: 1 });
+  server.views.set(install.id, { html: '<h2 id="nw-a" data-at="10">A</h2>', revision: 1, assets_expire_at: null });
   const reloads: (() => void)[] = [];
   renderApp(`${pagePath(install.id)}#nw-a`, server.app, {
     enhancements: [
@@ -462,7 +476,7 @@ test("an element with an id that had the focus has it back in the view read agai
   /** readAgain has the view read again, its HTML html, what scrolled before forgotten. */
   const readAgain = async (html: string, revision: number) => {
     scroll.mockClear();
-    server.views.set(install.id, { html, revision });
+    server.views.set(install.id, { html, revision, assets_expire_at: null });
     act(() => reloads.at(-1)?.());
     await waitFor(() => expect(screen.getByRole("article").textContent).toBe(html.replace(/<[^>]*>/g, "")));
   };
@@ -493,7 +507,11 @@ test("an element with an id that had the focus has it back in the view read agai
 test("an anchor of no element that a link of the page goes to leaves the focus where it is, the view not read again", async () => {
   const scrolled = scrolls();
   const server = pageServer();
-  server.views.set(install.id, { html: '<p><a href="#nw-gone">gone</a> <a href="#nw-none">none</a></p>', revision: 1 });
+  server.views.set(install.id, {
+    html: '<p><a href="#nw-gone">gone</a> <a href="#nw-none">none</a></p>',
+    revision: 1,
+    assets_expire_at: null,
+  });
   const { router } = renderApp(pagePath(install.id), server.app);
   await screen.findByRole("article");
   // Opened again, its view from the cache.
@@ -535,7 +553,7 @@ test("an anchor that only the view read again has, the one shown from the cache,
   await act(() => router.navigate(pagePath(guide.id)));
   await screen.findByRole("heading", { level: 1, name: "Guide" });
   // Within SWR's deduplication: the view, shown from its cache, is read again for the anchor.
-  server.views.set(install.id, { html: '<h2 id="nw-x">X</h2>', revision: 2 });
+  server.views.set(install.id, { html: '<h2 id="nw-x">X</h2>', revision: 2, assets_expire_at: null });
 
   await act(() => router.navigate(`${pagePath(install.id)}#nw-x`));
   const x = await screen.findByRole("heading", { level: 2, name: "X" });
@@ -546,7 +564,7 @@ test("an anchor that only the view read again has, the one shown from the cache,
 test("going back to an address with an anchor goes to it again, after an address of the page without one", async () => {
   const scrolled = scrolls();
   const server = pageServer();
-  server.views.set(install.id, { html: '<h2 id="nw-a">A</h2>', revision: 1 });
+  server.views.set(install.id, { html: '<h2 id="nw-a">A</h2>', revision: 1, assets_expire_at: null });
   const { router } = renderApp(`${pagePath(install.id)}#nw-a`, server.app);
   const a = await screen.findByRole("heading", { level: 2, name: "A" });
 
@@ -559,7 +577,7 @@ test("going back to an address with an anchor goes to it again, after an address
 test("coming back from editing goes to no anchor: the navigation was taken in", async () => {
   const scrolled = scrolls();
   const server = pageServer();
-  server.views.set(guide.id, { html: '<h2 id="nw-a">A</h2>', revision: 1 });
+  server.views.set(guide.id, { html: '<h2 id="nw-a">A</h2>', revision: 1, assets_expire_at: null });
   renderApp(`${pagePath(guide.id)}#nw-a`, server.app);
   const a = await screen.findByRole("heading", { level: 2, name: "A" });
   expect(scrolled).toEqual([a]);
@@ -588,6 +606,7 @@ test("a link to a page goes there through the router, with the app's enhancement
   server.views.set(install.id, {
     html: `<p><a data-nw-node="${guide.id}" data-nw-anchor="nw-x">at x</a> <a data-nw-node="${guide.id}">Guide</a></p>`,
     revision: 1,
+    assets_expire_at: null,
   });
   const { router } = renderApp(pagePath(install.id), server.app, { enhancements: readingEnhancements });
 

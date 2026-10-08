@@ -35,6 +35,7 @@ test("the outline lists the page's headings with an id, but the footnotes', by t
       '<div class="footnotes"><ol><li id="nw-fn:1"><h4 id="nw-in-a-note">In a note</h4></li></ol></div>',
     ].join(""),
     revision: 1,
+    assets_expire_at: null,
   });
   renderApp(pagePath(install.id), server.app);
 
@@ -66,6 +67,7 @@ test("the outline lists the first 1,000 headings, indented from the highest of t
       '<div class="footnotes"><ol><li id="nw-fn:1"><h4 id="nw-in-a-note">In a note</h4></li></ol></div>',
     ].join(""),
     revision: 1,
+    assets_expire_at: null,
   });
   const { unmount } = renderApp(pagePath(install.id), server.app);
 
@@ -76,7 +78,7 @@ test("the outline lists the first 1,000 headings, indented from the highest of t
   unmount();
 
   // As many as listed: none more.
-  server.views.set(install.id, { html: h3s(1_000), revision: 2 });
+  server.views.set(install.id, { html: h3s(1_000), revision: 2, assets_expire_at: null });
   renderApp(pagePath(install.id), server.app);
   const all = await screen.findByRole("navigation", { name: "Outline" });
   expect(within(all).getAllByRole("listitem")).toHaveLength(1_000);
@@ -85,7 +87,11 @@ test("the outline lists the first 1,000 headings, indented from the highest of t
 
 test("the outline indents from the page's highest heading, whichever it is", async () => {
   const server = pageServer();
-  server.views.set(install.id, { html: '<h4 id="nw-a">A</h4><h3 id="nw-b">B</h3><h4 id="nw-c">C</h4>', revision: 1 });
+  server.views.set(install.id, {
+    html: '<h4 id="nw-a">A</h4><h3 id="nw-b">B</h3><h4 id="nw-c">C</h4>',
+    revision: 1,
+    assets_expire_at: null,
+  });
   renderApp(pagePath(install.id), server.app);
 
   await screen.findByRole("navigation", { name: "Outline" });
@@ -100,7 +106,11 @@ test("a heading of the outline goes to its heading through the router, which sho
   const scrolled = scrolls();
   const user = userEvent.setup();
   const server = pageServer();
-  server.views.set(install.id, { html: '<p>intro</p><h2 id="nw-安装">安装</h2><h2 id="nw-b">B</h2>', revision: 1 });
+  server.views.set(install.id, {
+    html: '<p>intro</p><h2 id="nw-安装">安装</h2><h2 id="nw-b">B</h2>',
+    revision: 1,
+    assets_expire_at: null,
+  });
   const { router } = renderApp(pagePath(install.id), server.app);
   const outline = await screen.findByRole("navigation", { name: "Outline" });
 
@@ -119,7 +129,7 @@ test("a heading of the outline goes to its heading through the router, which sho
 
 test("the outline follows the view read again, its reads the view's; a page without headings has none", async () => {
   const server = pageServer();
-  server.views.set(install.id, { html: '<h2 id="nw-a">A</h2>', revision: 1 });
+  server.views.set(install.id, { html: '<h2 id="nw-a">A</h2>', revision: 1, assets_expire_at: null });
   const reloads: (() => void)[] = [];
   renderApp(pagePath(install.id), server.app, {
     enhancements: [
@@ -132,7 +142,11 @@ test("the outline follows the view read again, its reads the view's; a page with
   await screen.findByRole("navigation", { name: "Outline" });
   expect(outlined()).toEqual([["A", "0rem"]]);
 
-  server.views.set(install.id, { html: '<h1 id="nw-a">A</h1><h3 id="nw-c">C</h3>', revision: 2 });
+  server.views.set(install.id, {
+    html: '<h1 id="nw-a">A</h1><h3 id="nw-c">C</h3>',
+    revision: 2,
+    assets_expire_at: null,
+  });
   act(() => reloads.at(-1)?.());
   await waitFor(() =>
     expect(outlined()).toEqual([
@@ -141,7 +155,7 @@ test("the outline follows the view read again, its reads the view's; a page with
     ])
   );
 
-  server.views.set(install.id, { html: "<p>No headings</p>", revision: 3 });
+  server.views.set(install.id, { html: "<p>No headings</p>", revision: 3, assets_expire_at: null });
   act(() => reloads.at(-1)?.());
   await waitFor(() => expect(screen.getByRole("article").textContent).toBe("No headings"));
   expect(within(panel()).queryByRole("navigation")).toBeNull();
@@ -163,7 +177,7 @@ test("the right column comes after the page's content and its subpages", async (
 
 test("while the page is edited the outline is not shown; back to reading, it is", async () => {
   const server = pageServer({ role: "editor" });
-  server.views.set(install.id, { html: '<h2 id="nw-a">A</h2>', revision: 1 });
+  server.views.set(install.id, { html: '<h2 id="nw-a">A</h2>', revision: 1, assets_expire_at: null });
   renderApp(pagePath(install.id), server.app);
   await screen.findByRole("navigation", { name: "Outline" });
 

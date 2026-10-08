@@ -377,7 +377,7 @@ test("a page saved and left for another shows its reading view read again when i
   type("edited");
   ctrl("s");
   await waitFor(() => expect(status().textContent).toBe("Saved."));
-  server.views.set(guide.id, { html: "<p>Guide edited</p>", revision: 2 });
+  server.views.set(guide.id, { html: "<p>Guide edited</p>", revision: 2, assets_expire_at: null });
 
   await user.click(within(tree()).getByRole("link", { name: "Notes" }));
   await screen.findByRole("heading", { level: 1, name: "Notes" });

@@ -39,13 +39,13 @@ test("the properties show each key and its value; a property link its text, lead
       { key: "titled", value: '[Linux](Linux "a](b")' },
     ],
     links: [
-      { key: "up", node_id: guide.id, kind: "page" },
-      { key: "related.0", node_id: notes.id, kind: "page" },
-      { key: "related.1", node_id: linux.id, kind: "page" },
-      { key: "related.2", node_id: null, kind: null },
-      { key: "related.3", node_id: guide.id, kind: "page" },
-      { key: "escaped", node_id: guide.id, kind: "page" },
-      { key: "titled", node_id: linux.id, kind: "page" },
+      { key: "up", node_id: guide.id, kind: "page", url: null },
+      { key: "related.0", node_id: notes.id, kind: "page", url: null },
+      { key: "related.1", node_id: linux.id, kind: "page", url: null },
+      { key: "related.2", node_id: null, kind: null, url: null },
+      { key: "related.3", node_id: guide.id, kind: "page", url: null },
+      { key: "escaped", node_id: guide.id, kind: "page", url: null },
+      { key: "titled", node_id: linux.id, kind: "page", url: null },
     ],
   });
   const { router } = renderApp(pagePath(install.id), server.app);
@@ -79,32 +79,40 @@ test("the properties show each key and its value; a property link its text, lead
   await waitFor(() => expect(document.activeElement).toBe(heading));
 });
 
-test("a property link to an attachment shows its text alone: no link, nor one to no page", async () => {
+test("a property link to an attachment leads to its content, in a tab of its own; one without an address shows its text alone", async () => {
   const server = pageServer();
+  const address = "/api/v0/assets/x/content?b=y&e=1&s=z";
   server.properties.set(install.id, {
     valid: true,
     properties: [
       { key: "cover", value: "[[x.png|the cover]]" },
+      { key: "gone", value: "[t](y.png)" },
       { key: "up", value: "[[Guide]]" },
     ],
     links: [
-      { key: "cover", node_id: notes.id, kind: "asset" },
-      { key: "up", node_id: guide.id, kind: "page" },
+      { key: "cover", node_id: notes.id, kind: "asset", url: address },
+      { key: "gone", node_id: linux.id, kind: "asset", url: null },
+      { key: "up", node_id: guide.id, kind: "page", url: null },
     ],
   });
-  renderApp(pagePath(install.id), server.app);
+  const { router } = renderApp(pagePath(install.id), server.app);
 
   await within(await shownPanel()).findByRole("link", { name: "Guide" });
   expect(properties()).toEqual([
     ["cover", "the cover"],
+    ["gone", "t"],
     ["up", "Guide"],
   ]);
-  expect(
-    within(section("Properties"))
-      .getAllByRole("link")
-      .map((link) => link.textContent)
-  ).toEqual(["Guide"]);
-  expect(within(section("Properties")).getByText("the cover").className).not.toContain("decoration-dashed");
+  const links = within(section("Properties")).getAllByRole("link");
+  expect(links.map((link) => [link.textContent, link.getAttribute("href")])).toEqual([
+    ["the cover", address],
+    ["Guide", pagePath(guide.id)],
+  ]);
+  expect(links[0]?.getAttribute("target")).toBe("_blank");
+  expect(links[0]?.getAttribute("rel")).toBe("noopener noreferrer");
+  expect(within(section("Properties")).getByText("t").className).not.toContain("decoration-dashed");
+  await userEvent.click(links[0] as HTMLElement);
+  expect(router.state.location.pathname).toBe(pagePath(install.id));
 });
 
 test("properties that could not be read say why, and are read again on Try again", async () => {
@@ -141,7 +149,7 @@ test("properties read again show what was written meanwhile, elsewhere", async (
       { key: "status", value: "done" },
       { key: "up", value: "[[Guide]]" },
     ],
-    links: [{ key: "up", node_id: guide.id, kind: "page" }],
+    links: [{ key: "up", node_id: guide.id, kind: "page", url: null }],
   });
   await readAgain();
   await waitFor(() =>
@@ -194,11 +202,11 @@ test("property links at a path two values share are theirs in turn, in the order
       { key: "x", value: ["[[Guide]]"] },
     ],
     links: [
-      { key: "rel.0", node_id: guide.id, kind: "page" },
-      { key: "rel.0", node_id: notes.id, kind: "page" },
-      { key: "a.b", node_id: null, kind: null },
-      { key: "a.b", node_id: linux.id, kind: "page" },
-      { key: "x.0", node_id: guide.id, kind: "page" },
+      { key: "rel.0", node_id: guide.id, kind: "page", url: null },
+      { key: "rel.0", node_id: notes.id, kind: "page", url: null },
+      { key: "a.b", node_id: null, kind: null, url: null },
+      { key: "a.b", node_id: linux.id, kind: "page", url: null },
+      { key: "x.0", node_id: guide.id, kind: "page", url: null },
     ],
   });
   renderApp(pagePath(install.id), server.app);
@@ -238,12 +246,12 @@ test("a value that is no link takes none of its path's: an anchor alone, a brack
       { key: "e.0.0", value: "[[Linux]]" },
     ],
     links: [
-      { key: "a.0", node_id: guide.id, kind: "page" },
-      { key: "b.0", node_id: notes.id, kind: "page" },
-      { key: "c.0", node_id: linux.id, kind: "page" },
-      { key: "d.0", node_id: notes.id, kind: "page" },
-      { key: "e.0.0", node_id: guide.id, kind: "page" },
-      { key: "e.0.0", node_id: linux.id, kind: "page" },
+      { key: "a.0", node_id: guide.id, kind: "page", url: null },
+      { key: "b.0", node_id: notes.id, kind: "page", url: null },
+      { key: "c.0", node_id: linux.id, kind: "page", url: null },
+      { key: "d.0", node_id: notes.id, kind: "page", url: null },
+      { key: "e.0.0", node_id: guide.id, kind: "page", url: null },
+      { key: "e.0.0", node_id: linux.id, kind: "page", url: null },
     ],
   });
   renderApp(pagePath(install.id), server.app);
@@ -302,10 +310,10 @@ test("which values take their path's link is the server's shape of one: a target
       ]),
     ],
     links: [
-      ...notLinks.map((_, at) => ({ key: `n${at.toString()}.0`, node_id: guide.id, kind: "page" as const })),
+      ...notLinks.map((_, at) => ({ key: `n${at.toString()}.0`, node_id: guide.id, kind: "page" as const, url: null })),
       ...links.flatMap((_, at) => [
-        { key: `l${at.toString()}.0`, node_id: linux.id, kind: "page" as const },
-        { key: `l${at.toString()}.0`, node_id: notes.id, kind: "page" as const },
+        { key: `l${at.toString()}.0`, node_id: linux.id, kind: "page" as const, url: null },
+        { key: `l${at.toString()}.0`, node_id: notes.id, kind: "page" as const, url: null },
       ]),
     ],
   });
@@ -344,9 +352,9 @@ test("a value at a path of its own has the path's link, whatever its shape: the 
       { key: "plain", value: "[WIP]" },
     ],
     links: [
-      { key: "spec", node_id: guide.id, kind: "page" },
-      { key: "code", node_id: notes.id, kind: "page" },
-      { key: "titled", node_id: linux.id, kind: "page" },
+      { key: "spec", node_id: guide.id, kind: "page", url: null },
+      { key: "code", node_id: notes.id, kind: "page", url: null },
+      { key: "titled", node_id: linux.id, kind: "page", url: null },
     ],
   });
   renderApp(pagePath(install.id), server.app);
@@ -375,8 +383,8 @@ test("a property costs a time as long as it: a long value that is no link at a p
       { key: "k".repeat(17_000), value: [many] },
     ],
     links: [
-      { key: "a.0", node_id: guide.id, kind: "page" },
-      { key: "b", node_id: notes.id, kind: "page" },
+      { key: "a.0", node_id: guide.id, kind: "page", url: null },
+      { key: "b", node_id: notes.id, kind: "page", url: null },
     ],
   });
   const started = performance.now();
@@ -402,10 +410,10 @@ test("a path's strings are counted alone, in objects and lists' lists too, numbe
       { key: "t", value: "[[\tGuide\t]]" },
     ],
     links: [
-      { key: "a.0", node_id: guide.id, kind: "page" },
-      { key: "m.x", node_id: notes.id, kind: "page" },
-      { key: "e.0.0", node_id: linux.id, kind: "page" },
-      { key: "t", node_id: guide.id, kind: "page" },
+      { key: "a.0", node_id: guide.id, kind: "page", url: null },
+      { key: "m.x", node_id: notes.id, kind: "page", url: null },
+      { key: "e.0.0", node_id: linux.id, kind: "page", url: null },
+      { key: "t", node_id: guide.id, kind: "page", url: null },
     ],
   });
   renderApp(pagePath(install.id), server.app);
@@ -439,8 +447,8 @@ test("a property link at a path longer than 1,024 characters shows as its text; 
       { key: longer, value: "[[Guide]]" },
     ],
     links: [
-      { key: longest, node_id: notes.id, kind: "page" },
-      { key: longer, node_id: guide.id, kind: "page" },
+      { key: longest, node_id: notes.id, kind: "page", url: null },
+      { key: longer, node_id: guide.id, kind: "page", url: null },
     ],
   });
   renderApp(pagePath(install.id), server.app);
@@ -482,8 +490,8 @@ test("no path past 1,024 is a map's or a set's key: a browser costs the square o
       { key: "short", value: "[[Notes]]" },
     ],
     links: [
-      { key: `${long}.0`, node_id: guide.id, kind: "page" },
-      { key: "short", node_id: notes.id, kind: "page" },
+      { key: `${long}.0`, node_id: guide.id, kind: "page", url: null },
+      { key: "short", node_id: notes.id, kind: "page", url: null },
     ],
   });
   const keyed = [

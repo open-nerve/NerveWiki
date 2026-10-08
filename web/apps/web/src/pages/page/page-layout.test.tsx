@@ -106,7 +106,7 @@ test("the reading view read again shows another's write", async () => {
   renderApp(pagePath(install.id), server.app);
   expect((await screen.findByRole("article")).innerHTML).toBe("<p>Install</p>");
 
-  server.views.set(install.id, { html: "<p>Install, changed</p>", revision: 2 });
+  server.views.set(install.id, { html: "<p>Install, changed</p>", revision: 2, assets_expire_at: null });
   await act(() => vi.advanceTimersByTimeAsync(6_000));
   act(() => void window.dispatchEvent(new Event("focus")));
 
