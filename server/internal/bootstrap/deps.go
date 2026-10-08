@@ -18,6 +18,7 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/jobs"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown/obsidian"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/ratelimit"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/storage"
@@ -115,12 +116,13 @@ func notebookDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, au
 // parsing is the server's one parse and rendering of Markdown, with the
 // registered extensions: the page module's reading view and, from M6, the
 // links (M4 design 8), a reading view's links resolved by the linking
-// module on pool; and its one budget of the content parsed at once, of the
-// configuration's size and wait (page.parse_budget_bytes,
-// page.parse_max_wait), which every module that parses shares (M6 design
-// 4.7).
-func parsing(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) (*markdown.Markdown, *markdown.Budget, error) {
-	md, err := markdown.New(markdownExtensions(linking.ResolveLinks(pool, linkTargets{page.NewLinkTargets(pool)})))
+// module on pool, from M7 the attachments they lead to shown as assets
+// tells, nil for a composition that only parses (nervewiki reindex); and
+// its one budget of the content parsed at once, of the configuration's
+// size and wait (page.parse_budget_bytes, page.parse_max_wait), which
+// every module that parses shares (M6 design 4.7).
+func parsing(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool, assets obsidian.Assets) (*markdown.Markdown, *markdown.Budget, error) {
+	md, err := markdown.New(markdownExtensions(linking.ResolveLinks(pool, linkTargets{page.NewLinkTargets(pool)}), assets))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -173,8 +175,9 @@ func assetDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, autho
 
 // linkingDeps are the linking module's HTTP side's, the index's reads
 // (M6/P5) and a link's landing (M6/P6): the notebook module's notebooks
-// and the page module's tree, contents and depth.
-func linkingDeps(pool *pgxpool.Pool, authorizer shared.Authorizer) linking.Deps {
+// and the page module's tree, contents and depth; and the attachments'
+// addresses of the property links to them (M7/P3).
+func linkingDeps(pool *pgxpool.Pool, authorizer shared.Authorizer, assets linking.AttachmentURLs) linking.Deps {
 	targets := page.NewLinkTargets(pool)
 	return linking.Deps{
 		Pool:       pool,
@@ -183,6 +186,7 @@ func linkingDeps(pool *pgxpool.Pool, authorizer shared.Authorizer) linking.Deps 
 		Pages:      linkTargets{targets},
 		Contents:   targets,
 		MaxDepth:   page.MaxDepth,
+		Assets:     assets,
 	}
 }
 

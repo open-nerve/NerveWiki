@@ -18,6 +18,7 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/modules/notebook"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/workspace"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/clock"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/jobs"
@@ -109,13 +110,18 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrati
 	})
 	ws := workspace.New(workspaceDeps(cfg, pool, logger, authorizer, invitationKey))
 	nb := notebook.New(notebookDeps(cfg, pool, logger, authorizer))
-	md, budget, err := parsing(cfg, logger, pool)
+	// A reading view shows the attachments its links lead to, at their
+	// contents' addresses (M7/P3 design 5.10): the Markdown comes before
+	// the modules, so Embeds needs the pool and the content key alone.
+	contentKey := keys.Derive(asset.ContentKeyInfo)
+	embeds := assetEmbeds{asset.NewEmbeds(pool, contentKey, clock.System{})}
+	md, budget, err := parsing(cfg, logger, pool, embeds.assets)
 	if err != nil {
 		return nil, err
 	}
 	pg := page.New(pageDeps(cfg, pool, logger, authorizer, md, budget))
-	as := asset.New(assetDeps(cfg, pool, logger, authorizer, store, pg, keys.Derive(asset.ContentKeyInfo), limiter))
-	ln := linking.New(linkingDeps(pool, authorizer))
+	as := asset.New(assetDeps(cfg, pool, logger, authorizer, store, pg, contentKey, limiter))
+	ln := linking.New(linkingDeps(pool, authorizer, embeds))
 	ev, listener := eventsModule(cfg, pool, logger)
 	runner, err := jobs.New(pool, jobs.Config{ShutdownTimeout: cfg.Jobs.ShutdownTimeout, Logger: logger},
 		slices.Concat(ident.Jobs(), pg.Jobs(), as.Jobs(), []jobs.Job{purgeJob(cfg, pool, store, logger)}))

@@ -136,7 +136,9 @@ func workspaceSlug(ctx context.Context, pool *pgxpool.Pool, nb uuid.UUID) (strin
 // reindexAdmin is the linking module's rebuild on pool: the Markdown and
 // its budget are serve's (parsing), its links events go to the stream.
 func reindexAdmin(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger) (linking.Admin, error) {
-	md, budget, err := parsing(cfg, logger, pool)
+	// It only parses: no reading view shows an attachment (M7/P3 design
+	// 5.10).
+	md, budget, err := parsing(cfg, logger, pool, nil)
 	if err != nil {
 		return linking.Admin{}, err
 	}

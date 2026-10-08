@@ -7,6 +7,7 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/modules/asset"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/notebook"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown/obsidian"
 )
 
 // The attachments' parts (M7/P2 design 3.3, 3.8): the asset module creates
@@ -121,4 +122,36 @@ func assetNode(n page.NodeInfo) asset.Node {
 		ID: n.ID, NotebookID: n.NotebookID, ParentID: n.ParentID, Asset: n.Asset, Name: n.Name, NameKey: n.NameKey,
 		CreatedBy: n.CreatedBy, CreatedAt: n.CreatedAt, UpdatedAt: n.UpdatedAt,
 	}
+}
+
+// assetEmbeds is what the attachments show where links lead to them
+// (M7/P3 design 5.4, 5.6): the asset module's Embeds, as the obsidian
+// extension's Assets and as linking's AttachmentURLs.
+type assetEmbeds struct {
+	embeds asset.Embeds
+}
+
+// assets is the obsidian extension's Assets.
+func (a assetEmbeds) assets(ctx context.Context, notebookID uuid.UUID, ids []uuid.UUID) (map[uuid.UUID]obsidian.Asset, error) {
+	embeds, err := a.embeds.Of(ctx, notebookID, ids)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[uuid.UUID]obsidian.Asset, len(embeds))
+	for id, e := range embeds {
+		out[id] = obsidian.Asset(e)
+	}
+	return out, nil
+}
+
+func (a assetEmbeds) URLs(ctx context.Context, notebookID uuid.UUID, ids []uuid.UUID) (map[uuid.UUID]string, error) {
+	embeds, err := a.embeds.Of(ctx, notebookID, ids)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[uuid.UUID]string, len(embeds))
+	for id, e := range embeds {
+		out[id] = e.URL
+	}
+	return out, nil
 }
