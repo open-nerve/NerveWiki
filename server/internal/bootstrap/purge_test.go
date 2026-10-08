@@ -23,7 +23,7 @@ import (
 // purgedTables are the tables of the registry, in its order.
 func purgedTables(pool *pgxpool.Pool) []string {
 	var tables []string
-	for _, p := range purgers(pool) {
+	for _, p := range purgers(pool, nil, nil, nil) {
 		tables = append(tables, p.Table)
 	}
 	return tables

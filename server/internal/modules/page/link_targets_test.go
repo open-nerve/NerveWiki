@@ -20,6 +20,7 @@ import (
 type linkTree struct {
 	pool                 *pgxpool.Pool
 	notebook, a, b, c, x uuid.UUID
+	alice, acme          uuid.UUID
 }
 
 func newLinkTree(t *testing.T) linkTree {
@@ -32,6 +33,7 @@ func newLinkTree(t *testing.T) linkTree {
 	t.Cleanup(pool.Close)
 	l := linkTree{pool: pool, notebook: uuid.NewV7(), a: uuid.NewV7(), b: uuid.NewV7(), c: uuid.NewV7(), x: uuid.NewV7()}
 	alice, acme := uuid.NewV7(), uuid.NewV7()
+	l.alice, l.acme = alice, acme
 	for _, stmt := range []struct {
 		sql  string
 		args []any

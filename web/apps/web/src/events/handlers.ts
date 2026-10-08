@@ -28,17 +28,30 @@ export function typeOf(event: StreamEvent): string {
 }
 
 /**
- * pagesChanged reads again a tree that changed and a page's reading view
- * whose cached revision is older than the one written (or not read yet),
- * through the refresher; the pages of the notebook's tags, which a page
- * written or deleted may join or leave (M6 design 4.8); and the properties
- * of the pages written, through the refresher (M6/P7 design 11).
+ * TREE_INTERVAL_MS is how often a tab reads a notebook's tree at most: a
+ * run of uploads, a unit each, reads it a few times, and another's change
+ * shows within half a second (M7/P2 review C1).
+ */
+export const TREE_INTERVAL_MS = 500;
+
+/**
+ * pagesChanged reads again a tree that changed, through the refresher, at
+ * most once in TREE_INTERVAL_MS: an upload is a unit of its own (M7/P2
+ * design 3.10); a page's reading view whose cached revision is
+ * older than the one written (or not read yet), through the refresher
+ * too; the pages of the notebook's tags, which a page written or deleted
+ * may join or leave (M6 design 4.8); and the properties of the pages
+ * written, through the refresher (M6/P7 design 11).
  */
 const pagesChanged: EventHandler = (data, context) => {
   const { cache, mutate, refresher } = context;
   const { notebook_id: notebook, tree, pages } = data as EventPages;
   if (tree) {
-    void mutate(["pages", notebook]);
+    refresher.request(
+      unstable_serialize(["pages", notebook]),
+      () => void mutate(["pages", notebook]),
+      TREE_INTERVAL_MS
+    );
   }
   if (tree || pages === null || pages.length > 0) {
     readTagPages(notebook, context);

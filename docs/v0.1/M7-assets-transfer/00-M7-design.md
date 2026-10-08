@@ -127,10 +127,10 @@
 上传与下载要逐字节地读写，时间按字节数放宽，生成代码的处理器与逐路由的中间件都做不到：中间件的请求期限（`request_timeout` 加 `read_timeout`，15–45 秒）会取消处理器的上下文，`server.write_timeout`（60 秒）会让长的写失败，而 strict 的处理器拿不到 `ResponseWriter`，不能放宽截止时间，也不能 `ServeContent`。
 
 - **`API.Stream(h, StreamPolicy)`**（照 `API.LongLived`，模块不重写这些部件）：
-  - 次序：请求信息 → 在 `request_timeout` 之内的失败闸门与认证（公开的操作不认证）→ 路由的限流桶 → 请求体上限 → 处理器。
+  - 次序：请求信息 → 在 `request_timeout` 之内的失败闸门与认证（公开的操作不认证）→ 路由的限流桶 → 请求体上限 → 处理器。处理器之前的答复（401、429）对有请求体的请求带 `Connection: close`：请求体没读，net/http 本会先再读至多 256 KiB，或等一个听到答复才发的客户端（P2 审查 B9）；处理器自己决定它的答复。
   - `StreamPolicy`：`MaxBytes`（请求体上限）、`MinRate`（最低速率）、`Bucket`（这条路由用的桶，取代 `anonymous` 或 `authenticated`）与它在日志里的名字 `BucketName`；公开与否照模块的 `PublicOperations()`。
   - 读：连接的读截止时间每读 64 KiB（`MinRate` 低到 64 KiB 要超过半个 `read_timeout` 时取更小的一步）重设为"开始时刻 + `read_timeout` + 已读字节 / `MinRate`"：平均速率达不到最低速率就断开，不发正文的连接在原来的 `read_timeout` 断开。没有请求体的请求（下载）不设读截止时间：net/http 从一开始就在后台读连接，截止时间一到会取消处理器的上下文（P1 审查 A-H1）。
-  - 写：写截止时间是"读截止时间 + (`write_timeout` − `read_timeout`)"，跟着读截止时间放宽：上传读完之后还有 `request_timeout` 写入、答复；下载的写截止时间由处理器经平台设为"现在 + `read_timeout` + 字节数 / `MinRate`"（`Sending`）。
+  - 写：写截止时间是"读截止时间 + (`write_timeout` − `read_timeout`)"，跟着读截止时间放宽：上传读完之后还有 `request_timeout` 写入、答复。下载由处理器经平台宣告（`Sending`）：写截止时间从"此刻 + `read_timeout`"起，每写一步（同读的一步）重设为"宣告时刻 + `read_timeout` + 已写字节 / `MinRate`"，一次长的写按步写出；照最低速率读的客户端拿到整个答复，停读的客户端在 `read_timeout` 加缓冲装下的字节应得的时间之后断开，而不是占住连接到"字节数 / `MinRate`"（P2 审查 B2，原先由 `Sending(n)` 一次设定）。
   - 期限：读完请求体之后的一步（写入单元）在一个新的 `request_timeout` 期限里运行。
   - 停机：开始停机时切断还在传字节的流（请求体没读完的上传、已经 `Sending` 的下载）：截止时间立刻到期、处理器的上下文取消，上传中止、临时文件删掉，下载断开。读完请求体之后的一步照普通请求在 `shutdown_timeout` 之内做完并答复，不在 `COMMIT` 上被取消（P1 审查 A-M2）；这时的 `Sending` 答错误。
 - **按路由的桶**：签名的下载用 `ratelimit.asset_content`（按 IP），不消耗 `anonymous`（登录、续期、注册共用它，一页几百张图会让同一出口的同事续期失败、被登出）。上传用 `authenticated`。
@@ -140,7 +140,7 @@
 
 ### 4.4 上传
 
-- 接口：`POST /api/v0/notebooks/{notebook_id}/assets`，`multipart/form-data`。字段依次是 `parent_id`（可选，没有就挂在根下）、`name`（可选，没有就用文件部分的文件名）、`file`（最后一个）。未知或重复的字段、多个文件部分、文件之后还有部分答 400；文件之前的部分（含部分的头）不超过 4 KiB。答 201 和附件（4.6 的元数据）。
+- 接口：`POST /api/v0/notebooks/{notebook_id}/assets`，`multipart/form-data`。字段依次是 `parent_id`（可选，没有就挂在根下）、`name`（可选，没有或为空白就用文件部分的文件名）、`file`（最后一个）。未知或重复的字段、多个文件部分、文件之后还有部分答 400；文件之前的部分（含部分的头）不超过 4 KiB。答 201 和附件（4.6 的元数据）。
 - **流式**：用 `mime/multipart.Reader` 逐部分读，不用 `ParseMultipartForm`（它会把大文件落到系统临时目录）。最后一部分之后把请求体读到结尾（`io.Copy(io.Discard, r.Body)`，结束边界之后至多几个字节）：读到结尾之前读截止时间不解除，停机时这个请求也算"还在传"（P1 审查 A 的疑问）。导入同此（4.11）。
 - **次序**：
   1. 认证之后、读文件之前，不加锁的预检（`TreeWrites.Check`，同一判定与守卫的不加锁预检）：笔记本可写、父节点是这个笔记本里活着的页面、名称合法且此刻没被占用、磁盘余量。不通过就答 403、404、409、422、507。注意：处理器不读完请求体就答复时，net/http 至多再读约 256 KB 就关连接，浏览器与反向代理后面的客户端常常只看到连接被重置；所以网页在发送之前自己先查（4.8），这些码的测试在 handler 层。
@@ -159,7 +159,7 @@
 
 - **地址**：`GET /api/v0/assets/{node_id}/content?b=<blob id>&e=<到期的 Unix 秒>&s=<签名>`，加 `&d=1` 时按附件下载。公开的操作（`security: []`），签名就是凭据。
 - **签名**：`HMAC-SHA256(key, "asset-content" ‖ node id 的 16 字节 ‖ blob id 的 16 字节 ‖ e 的 8 字节大端 ‖ d 的 1 字节)` 截成 16 字节，无填充的 base64url。密钥由组合根派生：`SigningKeys.Derive("nervewiki asset-content mac v1")`，info 由 asset 的模块根导出，由已知答案的测试钉住（总体设计 13.1 第 25 条）。
-- **严格的读法**：每个参数恰好一次；`s` 是恰好那么长的无填充 base64url；`e` 是规范的十进制；`d` 没有或是 `1`；有别的参数答 404。在任何查询之前核对签名。
+- **严格的读法**：地址照服务端的写法读：路径的 id 是规范写法（小写、带连字符、不转义，转义过的路径答 404；不是 id 的答 400，与任何操作的路径参数相同）；参数依次是 `b`、`e`、`s`、`d`，`b`、`e`、`s` 各恰好一次，`d` 至多一次，都不反转义；`b` 是规范写法的 id；`s` 是恰好那么长的无填充 base64url；`e` 是规范的十进制；`d` 没有或是 `1`；有别的参数答 404。在任何查询之前核对签名。
 - **到期**：签名时取 `e = (⌊now / 1 小时⌋ + 2) × 1 小时`：地址在 1 到 2 小时之间有效，同一个小时里签出的地址相同，浏览器的缓存因此有用（总体设计 6.4）；跨过整点的地址变了，图片要重新下载一次（第 10 节）。
 - **校验**：签名对、未到期、行存在且没有软删除、节点与 blob 对得上，才下发；任何一项不对都答 404（不区分"过期"与"不存在"），答复照旧 `no-store`。
 - **谁签**：只有已经核对过读权限的读取会签：阅读视图的渲染、附件的列表与元数据、上传的答复。失去访问的账户手里已签出的地址在到期之前仍能读（至多 2 小时，第 10 节）。
@@ -174,8 +174,8 @@
 
   - 每个附件的答复都带 `Content-Security-Policy: sandbox; default-src 'none'; img-src 'self' data:; media-src 'self'; style-src 'unsafe-inline'`：直接打开的 svg 不运行脚本、源是不透明的，也不能向外站请求图片、字体与样式（否则外站拿到读者的 IP，违反总体设计 4.6 的"`img-src` 只许本站"）。
   - `d=1` 时一律 `attachment`。文件名按 RFC 6266 写 `filename*=UTF-8''…`，另带一个 ASCII 的 `filename` 兜底。
-  - 签名核对通过之后才设 `Cache-Control: private, max-age=<到期前的秒数>, immutable`（覆盖 `/api/` 默认的 `no-store`）、`ETag`（SHA-256）、`Cross-Origin-Resource-Policy: same-origin`。
-  - 用 `http.ServeContent` 下发：支持 `Range`（视频拖动）与条件请求；Go 在 412、416 时去掉 `Cache-Control`，照它。
+  - 签名核对通过之后才设 `Cache-Control: private, max-age=<到期前的秒数>, immutable`（覆盖 `/api/` 默认的 `no-store`）、`ETag`（SHA-256）。`Content-Security-Policy` 与 `Cross-Origin-Resource-Policy: same-origin` 在每个答复上，拒绝（400、404、429、503）也带（P2 审查 B5）。
+  - 用 `http.ServeContent` 下发：支持 `Range`（视频拖动）与对客户端所持副本的条件请求（`If-None-Match`、`If-Modified-Since`、`If-Range`）；Go 在 416 时去掉 `Cache-Control`，照它。一个地址所下发的内容从不改变，对改动的条件（`If-Match`、`If-Unmodified-Since`）没有要守的，下发之前去掉，不答 412（412 会带上文件的类型与缓存头，P2 审查 B3）。
 - **停机**：停机开始之后 `Sending` 答 `httpserver.ErrShuttingDown`，下载不再开始，答 503（码由 P2 定）。
 - **元数据**：`GET /api/v0/assets/{node_id}` 答附件的元数据：节点的字段，加 MIME、字节数、SHA-256、宽高、内联与下载的两个签名地址（`d` 在签名里，所以是两个），P3 起加 `link`（4.7）。
 
@@ -188,7 +188,7 @@
   - 两者只凭连接池构造：命令行的组合（停用经 `notebookRegistrants`）也到达它们，它们不要存储与密钥。
 - **清理器**：`asset.Purgers(pool, store)`（要存储，13.1 第 6 条的"登记"随之改写，组合根的 `purgers(pool)` 改为 `purgers(pool, store)`），排在 page 的清理器之前。一批在一个事务里：`FOR UPDATE SKIP LOCKED` 锁住到期的行 → 删文件（不存在算成功）→ 删行 → 提交。删文件不能回滚：提交失败时下一次运行再删一次文件（已不存在，算成功）、删掉行（M2/P4 的移交）。M8 的恢复锁同样的行，与清理串行。删不掉的文件让这一批失败、清理停下（"失败即停"，记日志带 blob id）。
 - **孤儿清扫**（asset 的定时任务，每天）：`blobs/` 下修改时刻早于一天、而 `asset_blobs` 里（含软删除的）没有它的文件，删掉。上传在 `Commit` 之后、单元提交之前失败，提交结果不明，删除文件失败，留下的就是这些。临时文件由存储在启动时删掉（4.1）。transfer 的 `imports/`、`exports/` 由它自己的清扫收拾（4.9）。
-- **笔记本的活动**：字节数是未删除的附件的大小之和，最后写入是它们最晚的 `created_at`（M3 的移交）。
+- **笔记本的活动**：字节数是未删除的附件的大小之和（M3 的移交）。上传是树的一个单元，它的变更集已算作页面一侧的写，附件不再另报最晚的上传时刻（P2 审查 C3）。
 
 ### 4.7 附件进链接
 
@@ -222,7 +222,7 @@
 ### 4.8 前端
 
 - **页面树只列页面**：`stores/page-tree.ts` 分出页面的索引（侧栏、子页列表、面包屑、快速切换、移动对话框的上级列表、`findPages`、`canHold`、`heightOf`）与全部子节点（"未命名 N"的 `freeTitle` 看全部：共用命名空间）。节点树的事件不改：`tree: true` 已让看着的人重读。P2 先做这一步，免得附件在 P4 之前显示成页面。
-- **树的重读经合并**：`pages` 事件里的整树重读改经 `refresher`（第一次立即，之后至多每 5 秒一次）：一次导入几百个单元，每个都让每个打开的标签页读一次整树。
+- **树的重读经合并**：`pages` 事件里的整树重读改经 `refresher`（第一次立即，之后至多每 500 毫秒一次，`events/handlers.ts` 的 `TREE_INTERVAL_MS`）：一次导入几百个单元，每个都让每个打开的标签页读一次整树。原定的 5 秒让别人连续改树时最多晚 5 秒才显示（P2 审查 C1）；500 毫秒仍把一连串的单元合成每秒至多两次读。
 - **附件面板**：照总体设计 9.2 放在中栏、子页面列表之下；笔记本首页（`notebook-home.tsx`）显示根下的附件（Obsidian 默认把附件放在库的根下，导入的库会有很多）。
   - 列出附件（名称、大小、类型的图标），游标分页，一页 100 项，"加载更多"；上传按钮与拖到这一节上传（带进度、可取消）；每一项的菜单：打开（内联类型在新标签页）、下载、复制嵌入（`![[link]]`）、改名（只改主名，保留扩展名）、移动到…（上级只列页面）、删除。行可以拖进编辑器（`text/plain` 是 `![[link]]`，CodeMirror 自己的拖放就插在落点）。
   - SWR 键 `["assets", 笔记本 id, 父节点 id 或 "root"]`；`pages` 事件的 `tree: true` 与连上时的整体刷新重读它；读不到经 `NotLoaded`（13.2 第 7 条）；一个笔记本每代一个 store（13.2 第 15 条）。

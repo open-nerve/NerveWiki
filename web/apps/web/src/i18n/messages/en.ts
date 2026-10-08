@@ -436,6 +436,7 @@ export const en = {
   "problem.validation_failed": "Some values are not valid.",
   "problem.server_busy": "The server is busy. Try again in a moment.",
   "problem.not_ready": "The server is not ready yet. Try again in a moment.",
+  "problem.storage_full": "The server has no room for more files. Ask its administrator.",
   "problem.identity.signup_disabled": "Sign-up is disabled on this server.",
   "problem.identity.email_taken": "An account with this e-mail address already exists.",
   "problem.identity.invalid_credentials": "The e-mail address or the password is incorrect.",
@@ -462,6 +463,7 @@ export const en = {
   "problem.notebook.sole_admin":
     "You are the only admin of one or more notebooks. In each one's settings, make another member an admin first, or delete it.",
   "problem.page.not_found": "This page does not exist, or you have no access to it.",
+  "problem.asset.not_found": "This attachment does not exist, or you have no access to it.",
   "problem.page.cycle": "A page cannot move under itself or one of its subpages.",
   "problem.page.title_taken": "A page under the same parent already has this title (titles differ in more than case).",
   "problem.page.too_deep": "Pages nest at most 10 levels deep.",

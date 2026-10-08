@@ -12,13 +12,14 @@ type fixedSource domain.Build
 func (s fixedSource) Build() domain.Build { return domain.Build(s) }
 
 func TestGetInfoDescribesTheBuild(t *testing.T) {
-	for _, settings := range []app.Settings{{SignupEnabled: true}, {WorkspaceCreationEnabled: true}} {
+	for _, settings := range []app.Settings{{SignupEnabled: true, AssetMaxBytes: 1 << 10}, {WorkspaceCreationEnabled: true, AssetMaxBytes: 50 << 20}} {
 		uc := app.NewGetInfo(fixedSource{Version: "1.2.3", Commit: "4f2a9c1"}, settings)
 
 		got := uc.Execute()
 
 		want := domain.Info{Product: "Nerve Wiki", Version: "1.2.3", Commit: "4f2a9c1", APIVersion: "v0",
-			SignupEnabled: settings.SignupEnabled, WorkspaceCreationEnabled: settings.WorkspaceCreationEnabled}
+			SignupEnabled: settings.SignupEnabled, WorkspaceCreationEnabled: settings.WorkspaceCreationEnabled,
+			AssetMaxBytes: settings.AssetMaxBytes}
 		if got != want {
 			t.Errorf("Execute() = %+v, want %+v", got, want)
 		}

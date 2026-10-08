@@ -41,11 +41,8 @@ func (u *Unit) lineOf(ctx context.Context, parentID *uuid.UUID) ([]domain.Ancest
 	if parentID == nil {
 		return nil, nil
 	}
-	parent, err := u.w.d.Nodes.FindNodeIn(ctx, u.write.NotebookID, *parentID)
-	switch {
-	case errors.Is(err, ErrNotFound) || err == nil && parent.Kind != domain.KindPage:
-		return nil, domain.NotAllowed("parent_id", "The parent is no page of this notebook.")
-	case err != nil:
+	parent, err := parentPage(ctx, u.w.d.Nodes, u.write.NotebookID, *parentID)
+	if err != nil {
 		return nil, err
 	}
 	ancestors, err := u.w.d.Nodes.Ancestors(ctx, parent.ID)
@@ -53,6 +50,19 @@ func (u *Unit) lineOf(ctx context.Context, parentID *uuid.UUID) ([]domain.Ancest
 		return nil, err
 	}
 	return append(ancestors, domain.Ancestor{ID: parent.ID, Name: parent.Name}), nil
+}
+
+// parentPage is the page id of the notebook, a parent: 422 on parent_id
+// when it is no page of the notebook.
+func parentPage(ctx context.Context, nodes Nodes, notebookID, id uuid.UUID) (domain.Node, error) {
+	parent, err := nodes.FindNodeIn(ctx, notebookID, id)
+	switch {
+	case errors.Is(err, ErrNotFound) || err == nil && parent.Kind != domain.KindPage:
+		return domain.Node{}, domain.NotAllowed("parent_id", "The parent is no page of this notebook.")
+	case err != nil:
+		return domain.Node{}, err
+	}
+	return parent, nil
 }
 
 // slotOf is the index among siblings of the one p puts a node after: -1

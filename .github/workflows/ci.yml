@@ -19,7 +19,8 @@ jobs:
     # 同仓库分支的 PR 已由 push 事件在同一个提交上跑过；pull_request 事件只为 fork 的 PR 运行
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    # 测试一步在 M7/P2 时约 14 分钟（竞态检测下的整个程序测试占大半），留出余量
+    timeout-minutes: 25
     steps:
       # 按完整的提交 SHA 引用 actions（tag 可以被改指），注释中写明对应的版本
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

@@ -21,6 +21,8 @@ tags:
     description: The link index's reads, backlinks, properties, tags and link targets.
   - name: events
     description: The stream of the events of what the caller sees.
+  - name: asset
+    description: The attachments of a notebook's pages and their files.
 paths:
   /api/v0/auth/register:
     post:
@@ -307,7 +309,7 @@ paths:
       tags:
         - instance
       summary: Describe this instance
-      description: 'Reports the product, the build and the API version this instance runs, whether it is open for sign-up, and whether accounts may create workspaces. Public: needs no authentication.'
+      description: 'Reports the product, the build and the API version this instance runs, whether it is open for sign-up, whether accounts may create workspaces, and the largest attachment it takes. Public: needs no authentication.'
       security: []
       x-problem-codes: []
       responses:
@@ -999,7 +1001,7 @@ paths:
       tags:
         - page
       summary: List a notebook's tree
-      description: The notebook's pages, each parent before its children, siblings in their order; any role in the notebook can list them. A notebook that does not exist, is deleted, or that the caller has no role in is notebook.not_found. The list is not paged.
+      description: The notebook's nodes, its pages and their attachments, each parent before its children, siblings in their order; any role in the notebook can list them. A notebook that does not exist, is deleted, or that the caller has no role in is notebook.not_found. The list is not paged.
       security:
         - bearer: []
       x-problem-codes:
@@ -1297,8 +1299,8 @@ paths:
       operationId: renameNode
       tags:
         - page
-      summary: Rename a page
-      description: 'Renames the page; its notebook''s editors and admins can, a reader cannot (forbidden). A page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found; the name is checked after both: its rules are validation_failed, a name a sibling has, compared by its key, is page.title_taken. The page''s own name writes nothing; one that differs from it in case alone is written. The links that led to the page, or under it, by a path that changes, and those the new name would lead elsewhere, are written again in the pages they are in, so that each leads where it did; when one of these pages is being edited, its own included, the rename is refused as a whole, linking.pages_locked naming each of them and its editor, and when their parse finds the server busy it is server_busy.'
+      summary: Rename a page or an attachment
+      description: 'Renames the node, a page or an attachment; its notebook''s editors and admins can, a reader cannot (forbidden). A node that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found; the name is checked after both: its rules are validation_failed, a name a sibling has, compared by its key, is page.title_taken. An attachment''s name does not end with ".md", in any case, and keeps an extension when it had one (the extension may change): either is not_allowed on name. The node''s own name writes nothing; one that differs from it in case alone is written. The links that led to the page, or under it, by a path that changes, and those the new name would lead elsewhere, are written again in the pages they are in, so that each leads where it did; when one of these pages is being edited, its own included, the rename is refused as a whole, linking.pages_locked naming each of them and its editor, and when their parse finds the server busy it is server_busy.'
       security:
         - bearer: []
       x-problem-codes:
@@ -1316,7 +1318,7 @@ paths:
               $ref: '#/components/schemas/NodeRename'
       responses:
         '200':
-          description: The page, renamed.
+          description: The node, renamed.
           content:
             application/json:
               schema:
@@ -1327,8 +1329,8 @@ paths:
       operationId: deleteNode
       tags:
         - page
-      summary: Delete a page
-      description: 'Deletes the page with every page under it, at one time: they go to the trash together. Its notebook''s editors and admins can, a reader cannot (forbidden). A page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found. While another account''s edit session holds the lock of the page or of one under it, the deletion is page.locked, naming the first such page, level by level, and its holder in lock; the caller''s own sessions end with their pages.'
+      summary: Delete a page or an attachment
+      description: 'Deletes the node: a page with every node under it, its attachments among them, or an attachment, at one time: they go to the trash together. Its notebook''s editors and admins can, a reader cannot (forbidden). A node that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found. While another account''s edit session holds the lock of the page or of one under it, the deletion is page.locked, naming the first such page, level by level, and its holder in lock; the caller''s own sessions end with their pages.'
       security:
         - bearer: []
       x-problem-codes:
@@ -1337,7 +1339,7 @@ paths:
         - page.locked
       responses:
         '204':
-          description: The page and the pages under it are deleted.
+          description: The node and the nodes under it are deleted.
         default:
           $ref: '#/components/responses/Problem'
   /api/v0/nodes/{node_id}/move:
@@ -1347,8 +1349,8 @@ paths:
       operationId: moveNode
       tags:
         - page
-      summary: Move a page
-      description: 'Moves the page with every page under it: under another parent, to the notebook''s root, or among its siblings. Its notebook''s editors and admins can, a reader cannot (forbidden). A page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found; the destination is checked after both: a parent that is no page of the notebook and a page to follow that is no other child of the parent are validation_failed; then a parent that is the page itself or under it is page.cycle, a title a new sibling has, compared by its key, page.title_taken, and a page under it that would be deeper than ten levels page.too_deep. A move to where the page is writes nothing. The links that led to the page or under it by a path that changes, those from these pages that the move would lead elsewhere, and those the moved pages would take from other pages, are written again in the pages they are in, so that each leads where it did; when one of these pages is being edited, one of the moved included, the move is refused as a whole, linking.pages_locked naming each of them and its editor, and when their parse finds the server busy it is server_busy.'
+      summary: Move a page or an attachment
+      description: 'Moves the node, a page with every node under it or an attachment: under another parent page, to the notebook''s root, or among its siblings. Its notebook''s editors and admins can, a reader cannot (forbidden). A node that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found; the destination is checked after both: a parent that is no page of the notebook and a node to follow that is no other child of the parent are validation_failed; then a parent that is the node itself or under it is page.cycle, a title a new sibling has, compared by its key, page.title_taken, and a page under it that would be deeper than ten levels page.too_deep: an attachment is no level, and a page of the tenth holds them. A move to where the node is writes nothing. The links that led to the page or under it by a path that changes, those from these pages that the move would lead elsewhere, and those the moved pages would take from other pages, are written again in the pages they are in, so that each leads where it did; when one of these pages is being edited, one of the moved included, the move is refused as a whole, linking.pages_locked naming each of them and its editor, and when their parse finds the server busy it is server_busy.'
       security:
         - bearer: []
       x-problem-codes:
@@ -1368,7 +1370,7 @@ paths:
               $ref: '#/components/schemas/NodeMove'
       responses:
         '200':
-          description: The page, moved.
+          description: The node, moved.
           content:
             application/json:
               schema:
@@ -1559,6 +1561,211 @@ paths:
                   - $ref: '#/components/schemas/EventReset'
         default:
           $ref: '#/components/responses/Problem'
+  /api/v0/notebooks/{notebook_id}/assets:
+    parameters:
+      - $ref: '#/components/parameters/NotebookID'
+    post:
+      operationId: uploadAsset
+      tags:
+        - asset
+      summary: Upload an attachment
+      description: 'Uploads a file as an attachment of the notebook, under a page or at its root, last among its siblings; its notebook''s editors and admins can, a reader cannot (forbidden). The body is multipart/form-data whose parts are parent_id, name and file, in that order, the first two optional: an unknown part, one twice, one out of order, a part after the file, a parent_id that is no id, a name of more than 1 KiB or not UTF-8, more than 4 KiB read before the file''s bytes, no file, and a body that goes on after the form past the limit are bad_request. Each part is read as sent: a Content-Transfer-Encoding is not decoded. Without a name, or with one empty or of blanks, the file part''s file name is taken. Before the file is read, a notebook that does not exist, is deleted, or that the caller has no role in is notebook.not_found; the name follows a page''s title''s rules and does not end with ".md", in any case, and the parent is a page of the notebook (validation_failed); a name a sibling has, compared by its key, is page.title_taken; and a server whose storage keeps no more room is storage_full: a client answered before it sent its file may see the connection reset, and checks these first. A file larger than the instance''s asset_max_bytes is payload_too_large; one that does not arrive at the instance''s lowest rate is cut off, as is one still arriving when the server shuts down. A file the storage runs out of room for is storage_full. The checks are made again as the attachment is created. The server tells the file''s type from its name''s extension and its first bytes, and reads an image''s size.'
+      security:
+        - bearer: []
+      x-raw: true
+      x-problem-codes:
+        - notebook.not_found
+        - forbidden
+        - validation_failed
+        - page.title_taken
+        - storage_full
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - file
+              properties:
+                parent_id:
+                  description: The page to put the attachment under; none puts it at the notebook's root.
+                  type: string
+                  format: uuid
+                name:
+                  description: The attachment's name; none, or one empty or of blanks, takes the file part's file name.
+                  type: string
+                file:
+                  description: The file, the last part.
+                  type: string
+                  format: binary
+      responses:
+        '201':
+          description: The attachment, uploaded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Asset'
+        default:
+          $ref: '#/components/responses/Problem'
+    get:
+      operationId: listAssets
+      tags:
+        - asset
+      summary: List the attachments under a page
+      description: The attachments under a page of the notebook, or at its root without parent_id, by name, compared by its key, then id, a page at a time, each with its addresses signed. Any role in the notebook can list them. A cursor the list cannot read is bad_request, before anything else; a notebook that does not exist, is deleted, or that the caller has no role in is notebook.not_found; a parent_id that is no page of the notebook, or a deleted one, is page.not_found; a limit outside 1–100 is validation_failed.
+      security:
+        - bearer: []
+      x-problem-codes:
+        - bad_request
+        - notebook.not_found
+        - page.not_found
+        - validation_failed
+      parameters:
+        - name: parent_id
+          in: query
+          description: The page whose attachments to list; absent for the notebook's root.
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: A page of the attachments.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssetPage'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v0/assets/{node_id}:
+    parameters:
+      - $ref: '#/components/parameters/NodeID'
+    get:
+      operationId: getAsset
+      tags:
+        - asset
+      summary: Read an attachment
+      description: The attachment, its addresses signed. Any role in its notebook can read it. A node that does not exist, is deleted, is no attachment, or whose notebook the caller has no role in is asset.not_found.
+      security:
+        - bearer: []
+      x-problem-codes:
+        - asset.not_found
+      responses:
+        '200':
+          description: The attachment.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Asset'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v0/assets/{node_id}/content:
+    parameters:
+      - $ref: '#/components/parameters/NodeID'
+    get:
+      operationId: getAssetContent
+      tags:
+        - asset
+      summary: Download an attachment's content
+      description: 'The attachment''s file, at the address getAsset, listAssets and uploadAsset sign: anyone who has the address can open it, without a token, until it expires. The address is read as the server writes it: the path''s id, then the query b, e, s and, to download whatever the type, d=1, in this order, each once, nothing escaped; anything else, a signature that does not match, an address expired, and an attachment deleted since are not_found, alike. An image, an audio, a video or a PDF is shown, any other file downloaded, under its name; every answer is sandboxed (Content-Security-Policy) and readable by no other site, and a file''s is cached privately until the address expires. Ranges and the conditions on a copy the client holds are answered (206, 304, 416); what an address serves never changes, so a condition on a change (If-Match, If-Unmodified-Since) is passed by. The addresses share a bucket of their own, by client IP (rate_limited). A download still sending when the server shuts down is cut off; one asked for then is server_busy.'
+      security: []
+      x-raw: true
+      x-problem-codes:
+        - not_found
+        - server_busy
+      parameters:
+        - name: b
+          in: query
+          required: true
+          description: The file's id, as the signed address has it.
+          schema:
+            type: string
+        - name: e
+          in: query
+          required: true
+          description: When the address expires, in Unix seconds, as the signed address has it.
+          schema:
+            type: string
+        - name: s
+          in: query
+          required: true
+          description: The address's signature.
+          schema:
+            type: string
+        - name: d
+          in: query
+          description: 1 to download the file whatever its type, as the download address has it.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The file.
+          headers:
+            Content-Disposition:
+              $ref: '#/components/headers/ContentDisposition'
+            ETag:
+              $ref: '#/components/headers/ETag'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            Content-Security-Policy:
+              $ref: '#/components/headers/ContentSecurityPolicy'
+            Cross-Origin-Resource-Policy:
+              $ref: '#/components/headers/CrossOriginResourcePolicy'
+          content:
+            '*/*':
+              schema:
+                type: string
+                format: binary
+        '206':
+          description: The range of the file asked for.
+          headers:
+            Content-Disposition:
+              $ref: '#/components/headers/ContentDisposition'
+            ETag:
+              $ref: '#/components/headers/ETag'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            Content-Security-Policy:
+              $ref: '#/components/headers/ContentSecurityPolicy'
+            Cross-Origin-Resource-Policy:
+              $ref: '#/components/headers/CrossOriginResourcePolicy'
+            Content-Range:
+              description: The range sent, and the file's size; for several ranges, sent as multipart/byteranges, each part has its own instead.
+              schema:
+                type: string
+          content:
+            '*/*':
+              schema:
+                type: string
+                format: binary
+        '304':
+          description: The file has not changed since the copy the request names.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            Content-Security-Policy:
+              $ref: '#/components/headers/ContentSecurityPolicy'
+        '416':
+          description: No range asked for is in the file; Content-Range tells its size.
+          headers:
+            Content-Security-Policy:
+              $ref: '#/components/headers/ContentSecurityPolicy'
+            Content-Range:
+              description: The file's size, as bytes */<size>.
+              schema:
+                type: string
+          content:
+            '*/*':
+              schema:
+                type: string
+                format: binary
+        default:
+          $ref: '#/components/responses/Problem'
 components:
   securitySchemes:
     bearer:
@@ -1633,7 +1840,7 @@ components:
           description: HTTP status code.
           type: integer
         code:
-          description: Stable error code. Platform codes have no prefix (bad_request, unauthorized, forbidden, not_found, payload_too_large, validation_failed, rate_limited, server_busy, internal_error, not_ready); module codes are prefixed with the module that refuses, e.g. page.locked. Each operation lists the codes it can answer in x-problem-codes.
+          description: Stable error code. Platform codes have no prefix (bad_request, unauthorized, forbidden, not_found, payload_too_large, validation_failed, rate_limited, server_busy, internal_error, not_ready, storage_full); module codes are prefixed with the module that refuses, e.g. page.locked. Each operation lists the codes it can answer in x-problem-codes.
           type: string
         title:
           description: HTTP status phrase, e.g. "Not Found".
@@ -1904,6 +2111,7 @@ components:
         - api_version
         - signup_enabled
         - workspace_creation_enabled
+        - asset_max_bytes
       properties:
         product:
           description: Product name.
@@ -1929,6 +2137,11 @@ components:
         workspace_creation_enabled:
           description: Whether accounts may create workspaces (workspace.creation_enabled); when off, the server's administrator creates them.
           type: boolean
+        asset_max_bytes:
+          description: The largest attachment an upload may send, in bytes (asset.max_bytes); a larger one is payload_too_large.
+          type: integer
+          format: int64
+          minimum: 1024
     WorkspaceRole:
       description: 'A member''s role: admin manages the workspace and its members, member and guest take part. Rules compare roles by set, never by order.'
       type: string
@@ -2405,12 +2618,13 @@ components:
         next_cursor:
           $ref: '#/components/schemas/NextCursor'
     NodeKind:
-      description: What a node of the tree is. Attachments come later.
+      description: 'What a node of the tree is: a page, or an attachment, a file at the root or under a page, which no node is under.'
       type: string
       enum:
         - page
+        - asset
     TreeNode:
-      description: A node of a notebook's tree.
+      description: A node of a notebook's tree, a page or an attachment.
       type: object
       additionalProperties: false
       required:
@@ -2437,7 +2651,7 @@ components:
         kind:
           $ref: '#/components/schemas/NodeKind'
         name:
-          description: The page's title.
+          description: The page's title, or the attachment's file name.
           type: string
         created_at:
           type: string
@@ -3061,6 +3275,92 @@ components:
             - unauthenticated
             - reconnected
             - overflow
+    Asset:
+      description: 'An attachment: its node in the notebook''s tree, its file, and the addresses of its content, signed for anyone who has them.'
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - notebook_id
+        - parent_id
+        - name
+        - mime
+        - byte_size
+        - sha256
+        - width
+        - height
+        - created_by
+        - created_at
+        - content_url
+        - download_url
+        - expires_at
+      properties:
+        id:
+          description: The attachment's node.
+          type: string
+          format: uuid
+        notebook_id:
+          type: string
+          format: uuid
+        parent_id:
+          description: The page it is under; null at the notebook's root.
+          type:
+            - string
+            - 'null'
+          format: uuid
+        name:
+          description: The attachment's file name.
+          type: string
+        mime:
+          description: 'The type the server told from the name''s extension and the file''s first bytes, which it serves the content as: an image, an audio, a video or a PDF it shows; application/octet-stream for any other file, which is downloaded.'
+          type: string
+        byte_size:
+          description: The file's size in bytes.
+          type: integer
+          format: int64
+        sha256:
+          description: The file's SHA-256, in lower-case hexadecimal.
+          type: string
+        width:
+          description: An image's width in pixels (PNG, JPEG, GIF), when the server read it; null otherwise.
+          type:
+            - integer
+            - 'null'
+        height:
+          description: An image's height in pixels, as width.
+          type:
+            - integer
+            - 'null'
+        created_by:
+          description: Who uploaded it.
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        content_url:
+          description: 'The address of the content, on this server, which a browser opens without a token until expires_at: an image, an audio, a video or a PDF is shown, any other file downloaded.'
+          type: string
+        download_url:
+          description: The address of the content to download, whatever its type, until expires_at.
+          type: string
+        expires_at:
+          description: When the addresses stop working, one to two hours after they were signed; reading the attachment again signs new ones.
+          type: string
+          format: date-time
+    AssetPage:
+      type: object
+      additionalProperties: false
+      required:
+        - data
+        - next_cursor
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Asset'
+        next_cursor:
+          $ref: '#/components/schemas/NextCursor'
   responses:
     Problem:
       description: Error (RFC 9457 problem details).
@@ -3159,6 +3459,32 @@ components:
       in: path
       required: true
       description: 'A tag''s name, without its ''#'', as listTags writes it and a reading view''s tag link carries it; a nested tag''s ''/'' is written %2F (a%2Fb). The tag "/" alone cannot be named: the path reads its %2F as a trailing slash, a path no operation has (404 not_found).'
+      schema:
+        type: string
+  headers:
+    ContentDisposition:
+      description: 'inline for a file shown, attachment for one downloaded, with its name (RFC 6266: filename in ASCII, filename* in UTF-8).'
+      required: true
+      schema:
+        type: string
+    ETag:
+      description: The file's SHA-256, in lower-case hexadecimal, quoted.
+      required: true
+      schema:
+        type: string
+    CacheControl:
+      description: private, max-age of the seconds the address has left, immutable.
+      required: true
+      schema:
+        type: string
+    ContentSecurityPolicy:
+      description: 'The sandbox every answer of a content runs in: no script, an opaque origin, nothing asked of another server, images and media of this one alone.'
+      required: true
+      schema:
+        type: string
+    CrossOriginResourcePolicy:
+      description: same-origin, that no other site reads the content.
+      required: true
       schema:
         type: string
 x-problem-codes:

@@ -30,6 +30,7 @@ func TestKindStatus(t *testing.T) {
 		{shared.KindConflict, 409},
 		{shared.KindRateLimited, 429},
 		{shared.KindUnavailable, 503},
+		{shared.KindStorageFull, 507},
 		{shared.Kind(0), 500},
 		{shared.Kind(99), 500},
 	}
@@ -54,6 +55,7 @@ func TestConstructors(t *testing.T) {
 		{"RateLimited", shared.RateLimited(1500 * time.Millisecond), 429, "rate_limited", 1500 * time.Millisecond},
 		{"ServerBusy", shared.ServerBusy(time.Second), 503, "server_busy", time.Second},
 		{"NotReady", shared.NotReady(time.Second), 503, "not_ready", time.Second},
+		{"StorageFull", shared.StorageFull(), 507, "storage_full", 0},
 		{"NewError", shared.NewError(shared.KindConflict, "page.locked", "taken"), 409, "page.locked", 0},
 	}
 	for _, tt := range tests {

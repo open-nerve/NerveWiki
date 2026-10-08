@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # 在镜像上跑 S1、S3（docs/v0.1/M0-foundation/06-P6-e2e-delivery.md 3.5）：在临时的 Docker 网络里启动
 # PostgreSQL，用镜像执行 migrate up、启动 serve，核对探针、内嵌的前端、实例信息、提交信息、管理员建的账户
-# 与进程的用户，最后停止服务并核对它正常退出；另核对附件目录不可写时 serve 拒绝启动（M7/P1 设计 3.5）。
+# 与进程的用户，上传一个附件、重启之后按签名的地址读回同样的字节（M7/P2 设计 3.13），最后停止服务并核对它
+# 正常退出；另核对附件目录不可写时 serve 拒绝启动（M7/P1 设计 3.5）。
 # 无论成败都清理容器、卷与网络；失败时打印服务的日志。
 # 镜像要由当前工作区构建：提交信息与本地的 git 核对（make image-smoke 先执行 make image）。
 # 需要 Docker、curl、jq、openssl。
@@ -31,6 +32,8 @@ timeout_s=60
 # prod 必须有签名私钥：临时生成一个（见下文），只读挂载进容器
 keydir=$(mktemp -d)
 key=(-v "$keydir/jwt.pem:/run/secrets/jwt.pem:ro" -e NWIKI_AUTH__JWT__PRIVATE_KEY_FILE=/run/secrets/jwt.pem)
+# 上传的附件与读回的字节
+files=$(mktemp -d)
 
 fail() {
   echo "image-smoke: $*" >&2
@@ -47,7 +50,7 @@ cleanup() {
   docker rm -fv "$app" "$migrate" "$db" "$refused" >/dev/null 2>&1 || true
   docker volume rm "$volume" >/dev/null 2>&1 || true
   docker network rm "$name" >/dev/null 2>&1 || true
-  rm -rf "$keydir"
+  rm -rf "$keydir" "$files"
   # 否则脚本的退出码是上一行的，set -u 之类的失败会被当成通过
   exit "$status"
 }
@@ -128,7 +131,7 @@ grep -q '<div id="root"></div>' <<<"$page" || fail "/ 不是前端的 index.html
 instance=$(get "$base/api/v0/instance")
 jq -e --arg version "$version" --arg commit "$commit" \
   '. == {product: "Nerve Wiki", version: $version, commit: $commit, api_version: "v0", signup_enabled: false,
-      workspace_creation_enabled: true}' \
+      workspace_creation_enabled: true, asset_max_bytes: 52428800}' \
   <<<"$instance" >/dev/null || fail "/api/v0/instance 与预期不符：$instance"
 signup=$(curl -sS --max-time 5 -H 'Content-Type: application/json' -d '{"email":"a@example.com","password":"correct horse battery"}' \
   "$base/api/v0/auth/register")
@@ -146,9 +149,39 @@ login=$(curl -sS --max-time 5 -o /dev/null -w '%{http_code}' -H 'Content-Type: a
 uid=$(docker top "$app" -o pid,uid | awk 'NR > 1 { print $2 }')
 [[ $uid == 65532 ]] || fail "进程的 uid 是 ${uid:-空}，应为 65532（nonroot）"
 
-# SIGTERM 之后优雅停机，退出码 0
-docker stop -t 40 "$app" >/dev/null
-exit_code=$(docker container inspect -f '{{.State.ExitCode}}' "$app")
-[[ $exit_code == 0 ]] || fail "停止后的退出码是 $exit_code，应为 0"
+# 附件（M0/P6 的移交第 3 项）：管理员建工作区与笔记本，上传一个 2×3 的 PNG
+token=$(get -H 'Content-Type: application/json' -d '{"email":"admin@example.com","password":"correct horse battery"}' \
+  "$base/api/v0/auth/login" | jq -er .access_token) || fail "管理员登录失败，拿不到访问令牌"
+auth=(-H "Authorization: Bearer $token")
+get "${auth[@]}" -H 'Content-Type: application/json' -d '{"name":"Smoke","slug":"smoke"}' "$base/api/v0/workspaces" >/dev/null ||
+  fail "建工作区失败"
+notebook=$(get "${auth[@]}" -H 'Content-Type: application/json' -d '{"name":"Smoke"}' "$base/api/v0/workspaces/smoke/notebooks" |
+  jq -r .id) || fail "建笔记本失败"
+openssl base64 -d -A -out "$files/smoke.png" \
+  <<<'iVBORw0KGgoAAAANSUhEUgAAAAIAAAADCAIAAAA2iEnWAAAAEElEQVR4nGP4z8AARAwoFABE0AX7pM/egAAAAABJRU5ErkJggg=='
+uploaded=$(curl -sS --max-time 5 "${auth[@]}" -F "file=@$files/smoke.png;type=image/png" "$base/api/v0/notebooks/$notebook/assets")
+jq -e '.name == "smoke.png" and .mime == "image/png" and .width == 2 and .height == 3' <<<"$uploaded" >/dev/null ||
+  fail "上传的答复与预期不符：$uploaded"
+asset=$(jq -r .id <<<"$uploaded")
+address=$(jq -r .content_url <<<"$uploaded")
+
+# SIGTERM 之后优雅停机，退出码 0；重启之后附件还在：元数据读得出，重启之前签出的地址读回同样的字节（文件在卷上，
+# 签名的密钥由 JWT 的私钥导出、不随重启变）
+stop_app() {
+  docker stop -t 40 "$app" >/dev/null
+  exit_code=$(docker container inspect -f '{{.State.ExitCode}}' "$app")
+  [[ $exit_code == 0 ]] || fail "停止后的退出码是 $exit_code，应为 0"
+}
+stop_app
+docker start "$app" >/dev/null
+base="http://$(docker port "$app" 8080/tcp | head -n 1)"
+wait_for get "$base/readyz" || fail "重启之后 /readyz 在 ${timeout_s} 秒内没有答 200"
+meta=$(get "${auth[@]}" "$base/api/v0/assets/$asset") || fail "重启之后读不出附件的元数据"
+size=$(wc -c <"$files/smoke.png" | tr -d ' ')
+jq -e --arg id "$asset" --argjson size "$size" '.id == $id and .byte_size == $size' <<<"$meta" >/dev/null ||
+  fail "重启之后读出的元数据与预期不符：$meta"
+get -o "$files/back.png" "$base$address" || fail "重启之后按重启之前签出的地址下载失败"
+cmp -s "$files/smoke.png" "$files/back.png" || fail "重启之后下载的字节与上传的不同"
+stop_app
 
 echo "image-smoke: ${image} 通过（版本 ${version}，提交 ${commit}，modified=${modified}）"

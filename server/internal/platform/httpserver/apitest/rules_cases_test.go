@@ -93,9 +93,7 @@ func TestAuthoringRulesReportViolations(t *testing.T) {
 		open      = ": object schema does not set additionalProperties: false"
 		thing     = "    Thing:\n      type: object\n      additionalProperties: false\n"
 	)
-	tests := []struct {
-		name, old, new, want string
-	}{
+	tests := []ruleCase{
 		{"path outside /api/v0/", "  /api/v0/things:", "  /things:", "/things: does not start with /api/v0/"},
 		{"path ending with /", "  /api/v0/things:", "  /api/v0/things/:", "/api/v0/things/: ends with /"},
 		{"operationId not lower camelCase", "operationId: listThings", "operationId: ListThings",
@@ -167,15 +165,136 @@ func TestAuthoringRulesReportViolations(t *testing.T) {
 		{"unprefixed code that is not the platform's", "x-problem-codes: [not_found]", "x-problem-codes: [taken]",
 			`GET /api/v0/things: problem code "taken" has no module prefix and is not a platform code`},
 	}
+	reportsEach(t, ruleCasesBase, tests)
+}
+
+// ruleCase replaces the first old of a base document with new, which breaks
+// one rule: want is the one violation.
+type ruleCase struct {
+	name, old, new, want string
+}
+
+// reportsEach runs each case on base.
+func reportsEach(t *testing.T, base string, tests []ruleCase) {
+	t.Helper()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if !strings.Contains(ruleCasesBase, tt.old) {
+			if !strings.Contains(base, tt.old) {
 				t.Fatalf("the base document has no %q", tt.old)
 			}
-			doc := parse(t, strings.Replace(ruleCasesBase, tt.old, tt.new, 1))
+			doc := parse(t, strings.Replace(base, tt.old, tt.new, 1))
 			if got := authoringViolations(doc, ruleCasesModules()); !slices.Equal(got, []string{tt.want}) {
 				t.Errorf("violations = %q, want %q", got, tt.want)
 			}
 		})
 	}
+}
+
+// rawCasesPath is a raw path for ruleCasesBase: a download with the
+// statuses of ranges and conditional requests, and an upload in parts.
+const rawCasesPath = `  /api/v0/things/{thing_id}/content:
+    parameters:
+      - {name: thing_id, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: getThingContent
+      tags: [things]
+      security: []
+      x-raw: true
+      x-problem-codes: [not_found]
+      responses:
+        '200':
+          description: The bytes.
+          content:
+            '*/*':
+              schema: {type: string, format: binary}
+        '206':
+          description: A range of the bytes.
+          content:
+            '*/*':
+              schema: {type: string, format: binary}
+        '304': {description: Not modified.}
+        '416': {description: No such range.}
+        default:
+          $ref: '#/components/responses/Problem'
+    put:
+      operationId: putThingContent
+      tags: [things]
+      security: [{bearer: []}]
+      x-raw: true
+      x-problem-codes: [not_found]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                label: {type: string}
+                file: {type: string, format: binary}
+      responses:
+        '204': {description: Stored.}
+        default:
+          $ref: '#/components/responses/Problem'
+`
+
+// A raw operation (x-raw: true) may take multipart/form-data, answer */*
+// and the statuses of ranges and conditional requests; no other operation
+// may, through a component either, and the parts and the bytes have the
+// shapes the handlers read and write: a closed object of strings, binary
+// bytes, never null. A response's headers are schemas the rules see; a
+// referenced response is checked once, where it is defined.
+func TestRawOperationRulesReportViolations(t *testing.T) {
+	base := strings.Replace(ruleCasesBase, "\ncomponents:\n", "\n"+rawCasesPath+"components:\n", 1)
+	if got := authoringViolations(parse(t, base), ruleCasesModules()); len(got) != 0 || !strings.Contains(base, "x-raw") {
+		t.Fatalf("the base document with the raw path breaks rules, or lacks it: %q", got)
+	}
+	reportsEach(t, base, []ruleCase{
+		{"*/* in an operation that is not raw", "            application/json:\n              schema: {$ref: '#/components/schemas/Thing'}",
+			"            '*/*':\n              schema: {type: string, format: binary}",
+			"GET /api/v0/things responses/200 */*: only a raw operation (x-raw: true) answers */*"},
+		{"206 in an operation that is not raw", "        default:\n", "        '206': {description: part}\n        default:\n",
+			"GET /api/v0/things responses/206: only a raw operation (x-raw: true) answers 206"},
+		{"304 in an operation that is not raw", "        default:\n", "        '304': {description: same}\n        default:\n",
+			"GET /api/v0/things responses/304: only a raw operation (x-raw: true) answers 304"},
+		{"416 in an operation that is not raw", "        default:\n", "        '416': {description: none}\n        default:\n",
+			"GET /api/v0/things responses/416: only a raw operation (x-raw: true) answers 416"},
+		{"x-raw that is not true", "      x-raw: true\n      x-problem-codes: [not_found]\n      requestBody:",
+			"      x-raw: 'true'\n      x-problem-codes: [not_found]\n      requestBody:",
+			"PUT /api/v0/things/{thing_id}/content requestBody multipart/form-data: only a raw operation (x-raw: true) takes multipart/form-data"},
+		{"*/* that is not binary", "schema: {type: string, format: binary}", "schema: {type: string}",
+			"GET /api/v0/things/{thing_id}/content responses/200 */*: schema is not type: string, format: binary"},
+		{"multipart in an operation that is not raw", "      parameters:\n",
+			"      requestBody:\n        content:\n          multipart/form-data:\n            schema: {type: object, additionalProperties: false, properties: {a: {type: string}}}\n      parameters:\n",
+			"GET /api/v0/things requestBody multipart/form-data: only a raw operation (x-raw: true) takes multipart/form-data"},
+		{"another media type", "          multipart/form-data:\n", "          text/plain:\n",
+			"PUT /api/v0/things/{thing_id}/content requestBody text/plain: a request body is application/json, or multipart/form-data in a raw operation"},
+		{"part that is not a string", "label: {type: string}", "label: {type: integer}",
+			"PUT /api/v0/things/{thing_id}/content requestBody multipart/form-data/properties/label: is not a string; a part is text or, with format: binary, a file"},
+		{"parts that are not an object", "            schema:\n              type: object\n              additionalProperties: false\n              properties:\n                label: {type: string}\n                file: {type: string, format: binary}\n",
+			"            schema: {type: string}\n",
+			"PUT /api/v0/things/{thing_id}/content requestBody multipart/form-data: schema is not an object"},
+		{"*/* in a response component", "  responses:\n    Problem:\n",
+			"  responses:\n    Download:\n      description: The bytes.\n      content:\n        '*/*':\n          schema: {type: string, format: binary}\n    Problem:\n",
+			"components/responses/Download */*: only a raw operation (x-raw: true) answers */*"},
+		{"multipart in a request body component", "  schemas:\n    Problem:",
+			"  requestBodies:\n    Upload:\n      content:\n        multipart/form-data:\n          schema: {type: object, additionalProperties: false, properties: {a: {type: string}}}\n  schemas:\n    Problem:",
+			"components/requestBodies/Upload multipart/form-data: only a raw operation (x-raw: true) takes multipart/form-data"},
+		{"*/* that may be null", "schema: {type: string, format: binary}", "schema: {type: [string, 'null'], format: binary}",
+			"GET /api/v0/things/{thing_id}/content responses/200 */*: schema is not type: string, format: binary"},
+		{"*/* without a schema", "            '*/*':\n              schema: {type: string, format: binary}\n        '206':",
+			"            '*/*': {}\n        '206':",
+			"GET /api/v0/things/{thing_id}/content responses/200 */*: schema is not type: string, format: binary"},
+		{"part that may be null", "label: {type: string}", "label: {type: [string, 'null']}",
+			"PUT /api/v0/things/{thing_id}/content requestBody multipart/form-data/properties/label: is not a string; a part is text or, with format: binary, a file"},
+		{"parts without a schema", "            schema:\n              type: object\n              additionalProperties: false\n              properties:\n                label: {type: string}\n                file: {type: string, format: binary}\n",
+			"            {}\n",
+			"PUT /api/v0/things/{thing_id}/content requestBody multipart/form-data: schema is not an object"},
+		{"open parts", "              additionalProperties: false\n              properties:\n                label:",
+			"              properties:\n                label:",
+			"PUT /api/v0/things/{thing_id}/content requestBody multipart/form-data: object schema does not set additionalProperties: false"},
+		{"a referenced response's header", "    Problem:\n      description: Error.\n",
+			"    Problem:\n      description: Error.\n      headers:\n        Retry-After: {schema: {type: integer, nullable: true}}\n",
+			"components/responses/Problem headers/Retry-After: uses nullable, the OpenAPI 3.0 keyword; write type: [T, 'null']"},
+	})
 }

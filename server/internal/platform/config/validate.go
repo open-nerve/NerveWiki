@@ -128,6 +128,7 @@ func (c Config) validate() error {
 	if c.Storage.MinFreeBytes < 0 {
 		fail("storage.min_free_bytes", "must not be negative, got %d", c.Storage.MinFreeBytes)
 	}
+	c.Asset.validate(fail)
 	var level slog.Level
 	if err := level.UnmarshalText([]byte(c.Log.Level)); err != nil {
 		fail("log.level", "must be one of debug, info, warn, error, got %q", c.Log.Level)
@@ -192,6 +193,7 @@ func (r RateLimitConfig) validate(fail func(key, format string, args ...any)) {
 		{"login_ip_email", r.LoginIPEmail},
 		{"register_ip", r.RegisterIP},
 		{"password_user", r.PasswordUser},
+		{"asset_content", r.AssetContent},
 	} {
 		if b.bucket.PerMinute < 1 {
 			fail("ratelimit."+b.name+".per_minute", "must be at least 1, got %d", b.bucket.PerMinute)
@@ -199,5 +201,21 @@ func (r RateLimitConfig) validate(fail func(key, format string, args ...any)) {
 		if b.bucket.Burst < 1 {
 			fail("ratelimit."+b.name+".burst", "must be at least 1, got %d", b.bucket.Burst)
 		}
+	}
+}
+
+func (a AssetConfig) validate(fail func(key, format string, args ...any)) {
+	maxOK := a.MaxBytes >= MinAssetBytes && a.MaxBytes <= MaxAssetBytes
+	if !maxOK {
+		fail("asset.max_bytes", "must be from %d (1 KiB) to %d (4 GiB), got %d", MinAssetBytes, MaxAssetBytes, a.MaxBytes)
+	}
+	switch {
+	case a.UploadMinRate < 1:
+		fail("asset.upload_min_rate", "must be at least 1, got %d", a.UploadMinRate)
+	case maxOK && float64(a.MaxBytes)/float64(a.UploadMinRate) > MaxAssetTransfer.Seconds():
+		// Each upload may hold its connection that long: the bound keeps a
+		// slow client from holding one for days.
+		fail("asset.upload_min_rate", "must let asset.max_bytes (%d) arrive within %s, at least %d, got %d",
+			a.MaxBytes, MaxAssetTransfer, (a.MaxBytes+int64(MaxAssetTransfer.Seconds())-1)/int64(MaxAssetTransfer.Seconds()), a.UploadMinRate)
 	}
 }

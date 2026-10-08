@@ -45,12 +45,14 @@ func validConfig() Config {
 			LoginIPEmail:  BucketConfig{PerMinute: 10, Burst: 5},
 			RegisterIP:    BucketConfig{PerMinute: 10, Burst: 5},
 			PasswordUser:  BucketConfig{PerMinute: 5, Burst: 5},
+			AssetContent:  BucketConfig{PerMinute: 6000, Burst: 1000},
 		},
 		Workspace: WorkspaceConfig{CreationEnabled: true},
 		Page:      PageConfig{EditSessionCleanupInterval: 10 * time.Minute, ParseBudgetBytes: 8 << 20, ParseMaxWait: 2 * time.Second},
 		Events:    EventsConfig{HeartbeatInterval: 20 * time.Second},
 		Jobs:      JobsConfig{ShutdownTimeout: 10 * time.Second, PurgeInterval: time.Hour, PurgeRetention: 1440 * time.Hour},
 		Storage:   StorageConfig{Dir: "data", MinFreeBytes: 1 << 30},
+		Asset:     AssetConfig{MaxBytes: 50 << 20, UploadMinRate: 64 << 10},
 		Log:       LogConfig{Level: "info", Format: "json"},
 	}
 }
@@ -109,6 +111,8 @@ func TestValidateReportsEveryInvalidKey(t *testing.T) {
 		"ratelimit.register_ip.burst: must be at least 1, got 0",
 		"ratelimit.password_user.per_minute: must be at least 1, got 0",
 		"ratelimit.password_user.burst: must be at least 1, got 0",
+		"ratelimit.asset_content.per_minute: must be at least 1, got 0",
+		"ratelimit.asset_content.burst: must be at least 1, got 0",
 		"page.edit_session_cleanup_interval: must be at least 1s, got 0s",
 		"page.parse_budget_bytes: must be at least 5242880, a page's largest content, got 0",
 		"page.parse_max_wait: must be positive, got 0s",
@@ -118,6 +122,8 @@ func TestValidateReportsEveryInvalidKey(t *testing.T) {
 		"jobs.purge_retention: must be at least 1h, got 0s",
 		"storage.dir: is required",
 		"storage.min_free_bytes: must not be negative, got -1",
+		"asset.max_bytes: must be from 1024 (1 KiB) to 4294967296 (4 GiB), got 0",
+		"asset.upload_min_rate: must be at least 1, got 0",
 		`log.level: must be one of debug, info, warn, error, got "verbose"`,
 		`log.format: must be text or json, got "xml"`,
 	}
@@ -282,6 +288,33 @@ func TestValidateCrossKeyRules(t *testing.T) {
 			name:   "a parse budget smaller than the largest content",
 			mutate: func(c *Config) { c.Page.ParseBudgetBytes = 5<<20 - 1 },
 			want:   "page.parse_budget_bytes: must be at least 5242880, a page's largest content, got 5242879",
+		},
+		{
+			name:   "an attachment of 1 KiB",
+			mutate: func(c *Config) { c.Asset.MaxBytes = 1 << 10 },
+		},
+		{
+			name:   "an attachment smaller than 1 KiB",
+			mutate: func(c *Config) { c.Asset.MaxBytes = 1<<10 - 1 },
+			want:   "asset.max_bytes: must be from 1024 (1 KiB) to 4294967296 (4 GiB), got 1023",
+		},
+		{
+			name:   "an attachment of 4 GiB, arriving within the hour",
+			mutate: func(c *Config) { c.Asset.MaxBytes, c.Asset.UploadMinRate = 4<<30, 4<<30/3600+1 },
+		},
+		{
+			name:   "an attachment larger than 4 GiB",
+			mutate: func(c *Config) { c.Asset.MaxBytes, c.Asset.UploadMinRate = 4<<30+1, 4<<30 },
+			want:   "asset.max_bytes: must be from 1024 (1 KiB) to 4294967296 (4 GiB), got 4294967297",
+		},
+		{
+			name:   "an upload of the largest attachment in an hour",
+			mutate: func(c *Config) { c.Asset.MaxBytes, c.Asset.UploadMinRate = 3600<<10, 1<<10 },
+		},
+		{
+			name:   "an upload of the largest attachment in more than an hour",
+			mutate: func(c *Config) { c.Asset.MaxBytes, c.Asset.UploadMinRate = 3600<<10+1, 1<<10 },
+			want:   "asset.upload_min_rate: must let asset.max_bytes (3686401) arrive within 1h0m0s, at least 1025, got 1024",
 		},
 	}
 	for _, tt := range tests {

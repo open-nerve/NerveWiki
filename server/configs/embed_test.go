@@ -73,6 +73,7 @@ func TestBuiltInProfiles(t *testing.T) {
 				Events:    config.EventsConfig{HeartbeatInterval: 20 * time.Second},
 				Jobs:      config.JobsConfig{ShutdownTimeout: 10 * time.Second, PurgeInterval: tt.purge, PurgeRetention: 60 * 24 * time.Hour},
 				Storage:   config.StorageConfig{Dir: tt.storageDir, MinFreeBytes: 1 << 30},
+				Asset:     config.AssetConfig{MaxBytes: 50 << 20, UploadMinRate: 64 << 10},
 				Log:       config.LogConfig{Level: tt.level, Format: tt.format},
 			}
 			if !reflect.DeepEqual(cfg, want) {
@@ -105,6 +106,7 @@ func defaultLimits() config.RateLimitConfig {
 		LoginIPEmail:  config.BucketConfig{PerMinute: 10, Burst: 5},
 		RegisterIP:    config.BucketConfig{PerMinute: 10, Burst: 5},
 		PasswordUser:  config.BucketConfig{PerMinute: 5, Burst: 5},
+		AssetContent:  config.BucketConfig{PerMinute: 6000, Burst: 1000},
 	}
 }
 
@@ -113,7 +115,7 @@ func unlimited() config.RateLimitConfig {
 	huge := config.BucketConfig{PerMinute: 600000, Burst: 100000}
 	return config.RateLimitConfig{
 		IPv6PrefixLen: 64, Anonymous: huge, AuthFailure: huge, Authenticated: huge,
-		LoginIP: huge, LoginIPEmail: huge, RegisterIP: huge, PasswordUser: huge,
+		LoginIP: huge, LoginIPEmail: huge, RegisterIP: huge, PasswordUser: huge, AssetContent: huge,
 	}
 }
 

@@ -129,3 +129,24 @@ sql:
           - db_type: timestamptz
             nullable: true
             go_type: { import: time, type: Time, pointer: true }
+  - engine: postgresql
+    schema:
+      - migrations/sql/00027_asset_asset_blobs.sql
+    queries: internal/modules/asset/adapter/postgres/queries
+    gen:
+      go:
+        package: gen
+        out: internal/modules/asset/adapter/postgres/gen
+        sql_package: pgx/v5
+        emit_pointers_for_null_types: true
+        overrides:
+          - db_type: uuid
+            go_type: { import: uuid, type: UUID }
+          - db_type: uuid
+            nullable: true
+            go_type: { import: uuid, type: UUID, pointer: true }
+          - db_type: timestamptz
+            go_type: { import: time, type: Time }
+          - db_type: timestamptz
+            nullable: true
+            go_type: { import: time, type: Time, pointer: true }

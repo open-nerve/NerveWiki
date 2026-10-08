@@ -75,6 +75,8 @@ ratelimit:
   register_ip: { per_minute: 10, burst: 5 }
   # 校验当前密码的已认证操作（改密码、创建 PAT）：按账户
   password_user: { per_minute: 5, burst: 5 }
+  # 附件的签名下载（公开，不消耗 anonymous），按客户端 IP：打开一页时它的图片一起来
+  asset_content: { per_minute: 6000, burst: 1000 }
 
 workspace:
   # 每个账户都能创建工作区。关闭之后，工作区由服务器管理员用 nervewiki workspaces create 创建
@@ -110,6 +112,13 @@ storage:
   dir: data
   # 剩余空间低于它（字节）时不再接受写入
   min_free_bytes: 1073741824
+
+asset:
+  # 单个附件的上限（字节），1 KiB 到 4 GiB；超过答 413 payload_too_large
+  max_bytes: 52428800
+  # 上传与下载的最低平均速率（字节/秒）：流式路由的读写截止时间按它随字节放宽。max_bytes 按这个速率传完
+  # 不能超过 1 小时，这也是一个上传占住连接的上界（默认约 13 分钟）
+  upload_min_rate: 65536
 
 log:
   level: info # debug | info | warn | error

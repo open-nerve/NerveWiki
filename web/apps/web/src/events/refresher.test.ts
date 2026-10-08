@@ -51,6 +51,42 @@ describe("Refresher", () => {
     expect(reads).toEqual(["a1", "b1", "a3", "a4"]);
   });
 
+  test("a key read at an interval of its own", async () => {
+    const reads: string[] = [];
+    const refresher = new Refresher(page(), () => Date.now());
+
+    refresher.request("t", () => reads.push("t1"), 500);
+    refresher.request("t", () => reads.push("t2"), 500);
+    refresher.request("a", () => reads.push("a1"));
+    refresher.request("a", () => reads.push("a2"));
+    expect(reads).toEqual(["t1", "a1"]);
+    await vi.advanceTimersByTimeAsync(499);
+    expect(reads).toEqual(["t1", "a1"]);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(reads).toEqual(["t1", "a1", "t2"]);
+    await vi.advanceTimersByTimeAsync(INTERVAL_MS);
+    expect(reads).toEqual(["t1", "a1", "t2", "a2"]);
+  });
+
+  test("a key asked for while the page is hidden is read at its own interval once it is visible", async () => {
+    const reads: string[] = [];
+    const p = page(false);
+    const refresher = new Refresher(p, () => Date.now());
+
+    refresher.request("t", () => reads.push("t1"), 500);
+    p.show(true);
+    expect(reads).toEqual(["t1"]);
+    p.show(false);
+    refresher.request("t", () => reads.push("t2"), 500);
+    await vi.advanceTimersByTimeAsync(300);
+    p.show(true);
+    expect(reads).toEqual(["t1"]);
+    await vi.advanceTimersByTimeAsync(199);
+    expect(reads).toEqual(["t1"]);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(reads).toEqual(["t1", "t2"]);
+  });
+
   test("a hidden page reads once it is visible again, at most once an interval", async () => {
     const reads: string[] = [];
     const p = page(false);

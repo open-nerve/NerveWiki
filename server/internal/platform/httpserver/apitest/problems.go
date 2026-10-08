@@ -54,6 +54,19 @@ func longLived(op *openapi3.Operation) bool {
 	return v
 }
 
+// rawKey marks an operation whose body or answer is bytes that a module's
+// own handler reads or writes as they stream, such as an attachment's
+// upload and download (M7 design 4.3): it alone may take
+// multipart/form-data and answer */*, and it is not generated
+// (TestRawOperationsAreNotGenerated).
+const rawKey = "x-raw"
+
+// raw reports whether op is marked x-raw: true.
+func raw(op *openapi3.Operation) bool {
+	v, _ := op.Extensions[rawKey].(bool)
+	return v
+}
+
 // needsToken reports whether op declares a bearer requirement; such an
 // operation can also answer unauthorized.
 func needsToken(op *openapi3.Operation) bool {

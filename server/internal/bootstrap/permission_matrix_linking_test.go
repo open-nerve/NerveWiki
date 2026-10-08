@@ -95,7 +95,7 @@ func linkingMatrixRows() []matrixRow {
 						t.Errorf("%s is written %q, not by its title, its own in the notebook", n.Name, n.Link)
 					}
 				}
-				want := treeOf(notebookOf(c))
+				want := pagesOf(notebookOf(c))
 				slices.Sort(names)
 				slices.Sort(want)
 				if !slices.Equal(names, want) {

@@ -12,38 +12,57 @@ import (
 
 // APIOptions are what a module's tests choose of the per-route middlewares:
 // the module's authenticator, public operations, shorter deadlines and
-// larger bodies. MaxBodyBytes is 1 MiB when zero.
+// larger bodies, a logger to read, and buckets to watch. MaxBodyBytes is
+// 1 MiB when zero, RequestTimeout 5 s; the logs are discarded without a
+// Logger; a bucket not set never runs out.
 type APIOptions struct {
 	Authenticator    httpserver.Authenticator
 	PublicOperations []string
 	RequestTimeouts  map[string]time.Duration
 	BodyLimits       map[string]int64
 	MaxBodyBytes     int64
+	RequestTimeout   time.Duration
+	Logger           *slog.Logger
+	Anonymous        httpserver.Limiter
+	Authenticated    httpserver.Limiter
+	AuthFailure      httpserver.Limiter
 }
 
 // NewAPI returns the per-route middlewares a module's HTTP tests mount the
-// module behind (M1 handoff to M2, item 7): logs discarded, a request
-// deadline of 5 s, and platform buckets that never run out. Rate limiting
-// is tested apart, with small buckets.
+// module behind (M1 handoff to M2, item 7): logs discarded and a request
+// deadline of 5 s, unless o says otherwise, and platform buckets that
+// never run out, unless o sets them. Rate limiting is tested apart, with
+// small buckets.
 func NewAPI(t testing.TB, o APIOptions) *httpserver.API {
 	t.Helper()
 	if o.MaxBodyBytes == 0 {
 		o.MaxBodyBytes = 1 << 20
 	}
+	if o.RequestTimeout == 0 {
+		o.RequestTimeout = 5 * time.Second
+	}
+	if o.Logger == nil {
+		o.Logger = slog.New(slog.DiscardHandler)
+	}
+	for _, b := range []*httpserver.Limiter{&o.Anonymous, &o.Authenticated, &o.AuthFailure} {
+		if *b == nil {
+			*b = unlimited{}
+		}
+	}
 	api, err := httpserver.NewAPI(httpserver.APIConfig{
-		Logger:           slog.New(slog.DiscardHandler),
+		Logger:           o.Logger,
 		Authenticator:    o.Authenticator,
 		PublicOperations: o.PublicOperations,
 		MaxBodyBytes:     o.MaxBodyBytes,
-		RequestTimeout:   5 * time.Second,
+		RequestTimeout:   o.RequestTimeout,
 		RequestTimeouts:  o.RequestTimeouts,
 		BodyLimits:       o.BodyLimits,
 		BodyReadTimeout:  5 * time.Second,
 		WriteTimeout:     15 * time.Second,
 		IPv6PrefixLen:    64,
-		Anonymous:        unlimited{},
-		Authenticated:    unlimited{},
-		AuthFailure:      unlimited{},
+		Anonymous:        o.Anonymous,
+		Authenticated:    o.Authenticated,
+		AuthFailure:      o.AuthFailure,
 	})
 	if err != nil {
 		t.Fatal(err)

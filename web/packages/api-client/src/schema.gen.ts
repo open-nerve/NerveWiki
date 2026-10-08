@@ -220,7 +220,7 @@ export interface paths {
         };
         /**
          * Describe this instance
-         * @description Reports the product, the build and the API version this instance runs, whether it is open for sign-up, and whether accounts may create workspaces. Public: needs no authentication.
+         * @description Reports the product, the build and the API version this instance runs, whether it is open for sign-up, whether accounts may create workspaces, and the largest attachment it takes. Public: needs no authentication.
          */
         get: operations["getInstance"];
         put?: never;
@@ -717,7 +717,7 @@ export interface paths {
         };
         /**
          * List a notebook's tree
-         * @description The notebook's pages, each parent before its children, siblings in their order; any role in the notebook can list them. A notebook that does not exist, is deleted, or that the caller has no role in is notebook.not_found. The list is not paged.
+         * @description The notebook's nodes, its pages and their attachments, each parent before its children, siblings in their order; any role in the notebook can list them. A notebook that does not exist, is deleted, or that the caller has no role in is notebook.not_found. The list is not paged.
          */
         get: operations["listNodes"];
         put?: never;
@@ -957,15 +957,15 @@ export interface paths {
         put?: never;
         post?: never;
         /**
-         * Delete a page
-         * @description Deletes the page with every page under it, at one time: they go to the trash together. Its notebook's editors and admins can, a reader cannot (forbidden). A page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found. While another account's edit session holds the lock of the page or of one under it, the deletion is page.locked, naming the first such page, level by level, and its holder in lock; the caller's own sessions end with their pages.
+         * Delete a page or an attachment
+         * @description Deletes the node: a page with every node under it, its attachments among them, or an attachment, at one time: they go to the trash together. Its notebook's editors and admins can, a reader cannot (forbidden). A node that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found. While another account's edit session holds the lock of the page or of one under it, the deletion is page.locked, naming the first such page, level by level, and its holder in lock; the caller's own sessions end with their pages.
          */
         delete: operations["deleteNode"];
         options?: never;
         head?: never;
         /**
-         * Rename a page
-         * @description Renames the page; its notebook's editors and admins can, a reader cannot (forbidden). A page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found; the name is checked after both: its rules are validation_failed, a name a sibling has, compared by its key, is page.title_taken. The page's own name writes nothing; one that differs from it in case alone is written. The links that led to the page, or under it, by a path that changes, and those the new name would lead elsewhere, are written again in the pages they are in, so that each leads where it did; when one of these pages is being edited, its own included, the rename is refused as a whole, linking.pages_locked naming each of them and its editor, and when their parse finds the server busy it is server_busy.
+         * Rename a page or an attachment
+         * @description Renames the node, a page or an attachment; its notebook's editors and admins can, a reader cannot (forbidden). A node that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found; the name is checked after both: its rules are validation_failed, a name a sibling has, compared by its key, is page.title_taken. An attachment's name does not end with ".md", in any case, and keeps an extension when it had one (the extension may change): either is not_allowed on name. The node's own name writes nothing; one that differs from it in case alone is written. The links that led to the page, or under it, by a path that changes, and those the new name would lead elsewhere, are written again in the pages they are in, so that each leads where it did; when one of these pages is being edited, its own included, the rename is refused as a whole, linking.pages_locked naming each of them and its editor, and when their parse finds the server busy it is server_busy.
          */
         patch: operations["renameNode"];
         trace?: never;
@@ -983,8 +983,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Move a page
-         * @description Moves the page with every page under it: under another parent, to the notebook's root, or among its siblings. Its notebook's editors and admins can, a reader cannot (forbidden). A page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found; the destination is checked after both: a parent that is no page of the notebook and a page to follow that is no other child of the parent are validation_failed; then a parent that is the page itself or under it is page.cycle, a title a new sibling has, compared by its key, page.title_taken, and a page under it that would be deeper than ten levels page.too_deep. A move to where the page is writes nothing. The links that led to the page or under it by a path that changes, those from these pages that the move would lead elsewhere, and those the moved pages would take from other pages, are written again in the pages they are in, so that each leads where it did; when one of these pages is being edited, one of the moved included, the move is refused as a whole, linking.pages_locked naming each of them and its editor, and when their parse finds the server busy it is server_busy.
+         * Move a page or an attachment
+         * @description Moves the node, a page with every node under it or an attachment: under another parent page, to the notebook's root, or among its siblings. Its notebook's editors and admins can, a reader cannot (forbidden). A node that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found; the destination is checked after both: a parent that is no page of the notebook and a node to follow that is no other child of the parent are validation_failed; then a parent that is the node itself or under it is page.cycle, a title a new sibling has, compared by its key, page.title_taken, and a page under it that would be deeper than ten levels page.too_deep: an attachment is no level, and a page of the tenth holds them. A move to where the node is writes nothing. The links that led to the page or under it by a path that changes, those from these pages that the move would lead elsewhere, and those the moved pages would take from other pages, are written again in the pages they are in, so that each leads where it did; when one of these pages is being edited, one of the moved included, the move is refused as a whole, linking.pages_locked naming each of them and its editor, and when their parse finds the server busy it is server_busy.
          */
         post: operations["moveNode"];
         delete?: never;
@@ -1163,6 +1163,79 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v0/notebooks/{notebook_id}/assets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List the attachments under a page
+         * @description The attachments under a page of the notebook, or at its root without parent_id, by name, compared by its key, then id, a page at a time, each with its addresses signed. Any role in the notebook can list them. A cursor the list cannot read is bad_request, before anything else; a notebook that does not exist, is deleted, or that the caller has no role in is notebook.not_found; a parent_id that is no page of the notebook, or a deleted one, is page.not_found; a limit outside 1–100 is validation_failed.
+         */
+        get: operations["listAssets"];
+        put?: never;
+        /**
+         * Upload an attachment
+         * @description Uploads a file as an attachment of the notebook, under a page or at its root, last among its siblings; its notebook's editors and admins can, a reader cannot (forbidden). The body is multipart/form-data whose parts are parent_id, name and file, in that order, the first two optional: an unknown part, one twice, one out of order, a part after the file, a parent_id that is no id, a name of more than 1 KiB or not UTF-8, more than 4 KiB read before the file's bytes, no file, and a body that goes on after the form past the limit are bad_request. Each part is read as sent: a Content-Transfer-Encoding is not decoded. Without a name, or with one empty or of blanks, the file part's file name is taken. Before the file is read, a notebook that does not exist, is deleted, or that the caller has no role in is notebook.not_found; the name follows a page's title's rules and does not end with ".md", in any case, and the parent is a page of the notebook (validation_failed); a name a sibling has, compared by its key, is page.title_taken; and a server whose storage keeps no more room is storage_full: a client answered before it sent its file may see the connection reset, and checks these first. A file larger than the instance's asset_max_bytes is payload_too_large; one that does not arrive at the instance's lowest rate is cut off, as is one still arriving when the server shuts down. A file the storage runs out of room for is storage_full. The checks are made again as the attachment is created. The server tells the file's type from its name's extension and its first bytes, and reads an image's size.
+         */
+        post: operations["uploadAsset"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v0/assets/{node_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The id of a node of a notebook's tree. */
+                node_id: components["parameters"]["NodeID"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Read an attachment
+         * @description The attachment, its addresses signed. Any role in its notebook can read it. A node that does not exist, is deleted, is no attachment, or whose notebook the caller has no role in is asset.not_found.
+         */
+        get: operations["getAsset"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v0/assets/{node_id}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The id of a node of a notebook's tree. */
+                node_id: components["parameters"]["NodeID"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Download an attachment's content
+         * @description The attachment's file, at the address getAsset, listAssets and uploadAsset sign: anyone who has the address can open it, without a token, until it expires. The address is read as the server writes it: the path's id, then the query b, e, s and, to download whatever the type, d=1, in this order, each once, nothing escaped; anything else, a signature that does not match, an address expired, and an attachment deleted since are not_found, alike. An image, an audio, a video or a PDF is shown, any other file downloaded, under its name; every answer is sandboxed (Content-Security-Policy) and readable by no other site, and a file's is cached privately until the address expires. Ranges and the conditions on a copy the client holds are answered (206, 304, 416); what an address serves never changes, so a condition on a change (If-Match, If-Unmodified-Since) is passed by. The addresses share a bucket of their own, by client IP (rate_limited). A download still sending when the server shuts down is cut off; one asked for then is server_busy.
+         */
+        get: operations["getAssetContent"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1197,7 +1270,7 @@ export interface components {
         Problem: {
             /** @description HTTP status code. */
             status: number;
-            /** @description Stable error code. Platform codes have no prefix (bad_request, unauthorized, forbidden, not_found, payload_too_large, validation_failed, rate_limited, server_busy, internal_error, not_ready); module codes are prefixed with the module that refuses, e.g. page.locked. Each operation lists the codes it can answer in x-problem-codes. */
+            /** @description Stable error code. Platform codes have no prefix (bad_request, unauthorized, forbidden, not_found, payload_too_large, validation_failed, rate_limited, server_busy, internal_error, not_ready, storage_full); module codes are prefixed with the module that refuses, e.g. page.locked. Each operation lists the codes it can answer in x-problem-codes. */
             code: string;
             /** @description HTTP status phrase, e.g. "Not Found". */
             title: string;
@@ -1351,6 +1424,11 @@ export interface components {
             signup_enabled: boolean;
             /** @description Whether accounts may create workspaces (workspace.creation_enabled); when off, the server's administrator creates them. */
             workspace_creation_enabled: boolean;
+            /**
+             * Format: int64
+             * @description The largest attachment an upload may send, in bytes (asset.max_bytes); a larger one is payload_too_large.
+             */
+            asset_max_bytes: number;
         };
         /**
          * @description A member's role: admin manages the workspace and its members, member and guest take part. Rules compare roles by set, never by order.
@@ -1585,11 +1663,11 @@ export interface components {
             next_cursor: components["schemas"]["NextCursor"];
         };
         /**
-         * @description What a node of the tree is. Attachments come later.
+         * @description What a node of the tree is: a page, or an attachment, a file at the root or under a page, which no node is under.
          * @enum {string}
          */
-        NodeKind: "page";
-        /** @description A node of a notebook's tree. */
+        NodeKind: "page" | "asset";
+        /** @description A node of a notebook's tree, a page or an attachment. */
         TreeNode: {
             /** Format: uuid */
             id: string;
@@ -1601,7 +1679,7 @@ export interface components {
              */
             parent_id: string | null;
             kind: components["schemas"]["NodeKind"];
-            /** @description The page's title. */
+            /** @description The page's title, or the attachment's file name. */
             name: string;
             /** Format: date-time */
             created_at: string;
@@ -1911,6 +1989,56 @@ export interface components {
             /** @enum {string} */
             reason: "access" | "notebooks_deleted" | "expired" | "unauthenticated" | "reconnected" | "overflow";
         };
+        /** @description An attachment: its node in the notebook's tree, its file, and the addresses of its content, signed for anyone who has them. */
+        Asset: {
+            /**
+             * Format: uuid
+             * @description The attachment's node.
+             */
+            id: string;
+            /** Format: uuid */
+            notebook_id: string;
+            /**
+             * Format: uuid
+             * @description The page it is under; null at the notebook's root.
+             */
+            parent_id: string | null;
+            /** @description The attachment's file name. */
+            name: string;
+            /** @description The type the server told from the name's extension and the file's first bytes, which it serves the content as: an image, an audio, a video or a PDF it shows; application/octet-stream for any other file, which is downloaded. */
+            mime: string;
+            /**
+             * Format: int64
+             * @description The file's size in bytes.
+             */
+            byte_size: number;
+            /** @description The file's SHA-256, in lower-case hexadecimal. */
+            sha256: string;
+            /** @description An image's width in pixels (PNG, JPEG, GIF), when the server read it; null otherwise. */
+            width: number | null;
+            /** @description An image's height in pixels, as width. */
+            height: number | null;
+            /**
+             * Format: uuid
+             * @description Who uploaded it.
+             */
+            created_by: string;
+            /** Format: date-time */
+            created_at: string;
+            /** @description The address of the content, on this server, which a browser opens without a token until expires_at: an image, an audio, a video or a PDF is shown, any other file downloaded. */
+            content_url: string;
+            /** @description The address of the content to download, whatever its type, until expires_at. */
+            download_url: string;
+            /**
+             * Format: date-time
+             * @description When the addresses stop working, one to two hours after they were signed; reading the attachment again signs new ones.
+             */
+            expires_at: string;
+        };
+        AssetPage: {
+            data: components["schemas"]["Asset"][];
+            next_cursor: components["schemas"]["NextCursor"];
+        };
     };
     responses: {
         /** @description Error (RFC 9457 problem details). */
@@ -1952,7 +2080,18 @@ export interface components {
         Tag: string;
     };
     requestBodies: never;
-    headers: never;
+    headers: {
+        /** @description inline for a file shown, attachment for one downloaded, with its name (RFC 6266: filename in ASCII, filename* in UTF-8). */
+        ContentDisposition: string;
+        /** @description The file's SHA-256, in lower-case hexadecimal, quoted. */
+        ETag: string;
+        /** @description private, max-age of the seconds the address has left, immutable. */
+        CacheControl: string;
+        /** @description The sandbox every answer of a content runs in: no script, an opaque origin, nothing asked of another server, images and media of this one alone. */
+        ContentSecurityPolicy: string;
+        /** @description same-origin, that no other site reads the content. */
+        CrossOriginResourcePolicy: string;
+    };
     pathItems: never;
 }
 export type SignupInvitation = components['schemas']['SignupInvitation'];
@@ -2044,6 +2183,8 @@ export type EventPages = components['schemas']['EventPages'];
 export type EventLock = components['schemas']['EventLock'];
 export type EventLinks = components['schemas']['EventLinks'];
 export type EventReset = components['schemas']['EventReset'];
+export type Asset = components['schemas']['Asset'];
+export type AssetPage = components['schemas']['AssetPage'];
 export type ResponseProblem = components['responses']['Problem'];
 export type ParameterSlug = components['parameters']['Slug'];
 export type ParameterWorkspaceMemberId = components['parameters']['WorkspaceMemberID'];
@@ -2056,6 +2197,11 @@ export type ParameterPageId = components['parameters']['PageID'];
 export type ParameterEditSessionId = components['parameters']['EditSessionID'];
 export type ParameterNodeId = components['parameters']['NodeID'];
 export type ParameterTag = components['parameters']['Tag'];
+export type HeaderContentDisposition = components['headers']['ContentDisposition'];
+export type HeaderETag = components['headers']['ETag'];
+export type HeaderCacheControl = components['headers']['CacheControl'];
+export type HeaderContentSecurityPolicy = components['headers']['ContentSecurityPolicy'];
+export type HeaderCrossOriginResourcePolicy = components['headers']['CrossOriginResourcePolicy'];
 export type $defs = Record<string, never>;
 export interface operations {
     register: {
@@ -3388,7 +3534,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description The page and the pages under it are deleted. */
+            /** @description The node and the nodes under it are deleted. */
             204: {
                 headers: {
                     [name: string]: unknown;
@@ -3414,7 +3560,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description The page, renamed. */
+            /** @description The node, renamed. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -3442,7 +3588,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description The page, moved. */
+            /** @description The node, moved. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -3624,6 +3770,178 @@ export interface operations {
                 };
                 content: {
                     "text/event-stream": components["schemas"]["EventHello"] | components["schemas"]["EventPages"] | components["schemas"]["EventLock"] | components["schemas"]["EventLinks"] | components["schemas"]["EventReset"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    listAssets: {
+        parameters: {
+            query?: {
+                /** @description The page whose attachments to list; absent for the notebook's root. */
+                parent_id?: string;
+                /** @description The page size, 1–100; 50 when absent. Outside that range the answer is 422 validation_failed on limit. */
+                limit?: components["parameters"]["Limit"];
+                /** @description The next_cursor of the page before; absent for the first page. A cursor that does not decode, has an unknown version or a payload of another shape than this list's, or is not spelled as the server writes it is 400 bad_request on cursor. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of the attachments. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssetPage"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    uploadAsset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /**
+                     * Format: uuid
+                     * @description The page to put the attachment under; none puts it at the notebook's root.
+                     */
+                    parent_id?: string;
+                    /** @description The attachment's name; none, or one empty or of blanks, takes the file part's file name. */
+                    name?: string;
+                    /**
+                     * Format: binary
+                     * @description The file, the last part.
+                     */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The attachment, uploaded. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Asset"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    getAsset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The id of a node of a notebook's tree. */
+                node_id: components["parameters"]["NodeID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The attachment. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Asset"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    getAssetContent: {
+        parameters: {
+            query: {
+                /** @description The file's id, as the signed address has it. */
+                b: string;
+                /** @description When the address expires, in Unix seconds, as the signed address has it. */
+                e: string;
+                /** @description The address's signature. */
+                s: string;
+                /** @description 1 to download the file whatever its type, as the download address has it. */
+                d?: string;
+            };
+            header?: never;
+            path: {
+                /** @description The id of a node of a notebook's tree. */
+                node_id: components["parameters"]["NodeID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The file. */
+            200: {
+                headers: {
+                    "Content-Disposition": components["headers"]["ContentDisposition"];
+                    ETag: components["headers"]["ETag"];
+                    "Cache-Control": components["headers"]["CacheControl"];
+                    "Content-Security-Policy": components["headers"]["ContentSecurityPolicy"];
+                    "Cross-Origin-Resource-Policy": components["headers"]["CrossOriginResourcePolicy"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": string;
+                };
+            };
+            /** @description The range of the file asked for. */
+            206: {
+                headers: {
+                    "Content-Disposition": components["headers"]["ContentDisposition"];
+                    ETag: components["headers"]["ETag"];
+                    "Cache-Control": components["headers"]["CacheControl"];
+                    "Content-Security-Policy": components["headers"]["ContentSecurityPolicy"];
+                    "Cross-Origin-Resource-Policy": components["headers"]["CrossOriginResourcePolicy"];
+                    /** @description The range sent, and the file's size; for several ranges, sent as multipart/byteranges, each part has its own instead. */
+                    "Content-Range"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": string;
+                };
+            };
+            /** @description The file has not changed since the copy the request names. */
+            304: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    "Cache-Control": components["headers"]["CacheControl"];
+                    "Content-Security-Policy": components["headers"]["ContentSecurityPolicy"];
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No range asked for is in the file; Content-Range tells its size. */
+            416: {
+                headers: {
+                    "Content-Security-Policy": components["headers"]["ContentSecurityPolicy"];
+                    /** @description The file's size, as bytes *\/<size>. */
+                    "Content-Range"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": string;
                 };
             };
             default: components["responses"]["Problem"];

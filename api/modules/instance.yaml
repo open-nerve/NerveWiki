@@ -12,8 +12,9 @@ paths:
       summary: Describe this instance
       description: >-
         Reports the product, the build and the API version this instance
-        runs, whether it is open for sign-up, and whether accounts may
-        create workspaces. Public: needs no authentication.
+        runs, whether it is open for sign-up, whether accounts may create
+        workspaces, and the largest attachment it takes. Public: needs no
+        authentication.
       security: []
       x-problem-codes: []
       responses:
@@ -54,7 +55,7 @@ components:
     InstanceInfo:
       type: object
       additionalProperties: false
-      required: [product, version, commit, api_version, signup_enabled, workspace_creation_enabled]
+      required: [product, version, commit, api_version, signup_enabled, workspace_creation_enabled, asset_max_bytes]
       properties:
         product:
           description: Product name.
@@ -82,3 +83,10 @@ components:
             (workspace.creation_enabled); when off, the server's administrator
             creates them.
           type: boolean
+        asset_max_bytes:
+          description: >-
+            The largest attachment an upload may send, in bytes
+            (asset.max_bytes); a larger one is payload_too_large.
+          type: integer
+          format: int64
+          minimum: 1024

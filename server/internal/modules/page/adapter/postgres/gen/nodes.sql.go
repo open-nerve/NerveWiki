@@ -59,6 +59,81 @@ func (q *Queries) Ancestors(ctx context.Context, id uuid.UUID) ([]AncestorsRow, 
 	return items, nil
 }
 
+const assetsUnder = `-- name: AssetsUnder :many
+SELECT id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id, created_at,
+    updated_at
+FROM nodes
+WHERE notebook_id = $1 AND parent_id IS NOT DISTINCT FROM $2
+    AND kind = 'asset' AND deleted_at IS NULL
+    AND ($3::text IS NULL OR (name_key, id) > ($3::text, $4::uuid))
+ORDER BY name_key, id
+LIMIT $5
+`
+
+type AssetsUnderParams struct {
+	NotebookID uuid.UUID
+	ParentID   *uuid.UUID
+	AfterKey   *string
+	AfterID    *uuid.UUID
+	MaxRows    int32
+}
+
+type AssetsUnderRow struct {
+	ID          uuid.UUID
+	NotebookID  uuid.UUID
+	ParentID    *uuid.UUID
+	Kind        string
+	Name        string
+	NameKey     string
+	SortOrder   float64
+	CreatedByID uuid.UUID
+	UpdatedByID uuid.UUID
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+// A parent's attachments not deleted (the root's when parent_id is NULL), by title key and id, after the cursor's key
+// and id when it has one, at most max_rows: a page of the attachments' list (M7/P2 design 3.3). As Children, it
+// reaches the notebook's nodes through the siblings' index and filters the parent, which IS NOT DISTINCT FROM does
+// not narrow in an index.
+func (q *Queries) AssetsUnder(ctx context.Context, arg AssetsUnderParams) ([]AssetsUnderRow, error) {
+	rows, err := q.db.Query(ctx, assetsUnder,
+		arg.NotebookID,
+		arg.ParentID,
+		arg.AfterKey,
+		arg.AfterID,
+		arg.MaxRows,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AssetsUnderRow
+	for rows.Next() {
+		var i AssetsUnderRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.NotebookID,
+			&i.ParentID,
+			&i.Kind,
+			&i.Name,
+			&i.NameKey,
+			&i.SortOrder,
+			&i.CreatedByID,
+			&i.UpdatedByID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const children = `-- name: Children :many
 SELECT id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id, created_at,
     updated_at

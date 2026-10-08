@@ -53,15 +53,19 @@ func TestDepth(t *testing.T) {
 	}
 }
 
-// A subtree's height is its deepest level; it holds its node and every
-// descendant, and nothing else: not a parent, a sibling or an uncle.
+// A subtree's height is its deepest level of pages: an attachment is no
+// level. It holds its node and every descendant, and nothing else: not a
+// parent, a sibling or an uncle.
 func TestSubtree(t *testing.T) {
 	ids := make([]uuid.UUID, 4)
 	for i := range ids {
 		ids[i] = uuid.NewV7()
 	}
 	at := func(i, level int) domain.SubtreeNode {
-		return domain.SubtreeNode{Node: domain.Node{ID: ids[i]}, Level: level}
+		return domain.SubtreeNode{Node: domain.Node{ID: ids[i], Kind: domain.KindPage}, Level: level}
+	}
+	asset := func(i, level int) domain.SubtreeNode {
+		return domain.SubtreeNode{Node: domain.Node{ID: ids[i], Kind: domain.KindAsset}, Level: level}
 	}
 	for _, tt := range []struct {
 		name    string
@@ -71,6 +75,9 @@ func TestSubtree(t *testing.T) {
 		{"a lone node", domain.Subtree{at(0, 1)}, 1},
 		{"a child", domain.Subtree{at(0, 1), at(1, 2)}, 2},
 		{"three levels, the deep branch last", domain.Subtree{at(0, 1), at(1, 2), at(2, 2), at(3, 3)}, 3},
+		{"a lone attachment", domain.Subtree{asset(0, 1)}, 0},
+		{"a page with an attachment", domain.Subtree{at(0, 1), asset(1, 2)}, 1},
+		{"an attachment below the deepest page", domain.Subtree{at(0, 1), at(1, 2), asset(2, 2), asset(3, 3)}, 2},
 	} {
 		if got := tt.subtree.Height(); got != tt.height {
 			t.Errorf("%s: Height() = %d, want %d", tt.name, got, tt.height)

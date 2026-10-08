@@ -25,4 +25,7 @@ type Info struct {
 	// WorkspaceCreationEnabled is workspace.creation_enabled: whether
 	// accounts may create workspaces.
 	WorkspaceCreationEnabled bool
+	// AssetMaxBytes is asset.max_bytes: the largest attachment an upload
+	// may send, which a client checks before it sends one.
+	AssetMaxBytes int64
 }

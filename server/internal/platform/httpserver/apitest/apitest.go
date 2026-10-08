@@ -48,7 +48,10 @@ func Load(t testing.TB) *Contract {
 // problem, a code the operation may answer (x-problem-codes, v0.1 design
 // 6.1). The code is recorded for Main. res.Body stays readable for the
 // caller. The 200 of a long-lived operation (x-long-lived) never ends: its
-// status and Content-Type alone are checked, and its body is not read.
+// status and Content-Type alone are checked, and its body is not read. A
+// raw operation's (x-raw) bytes, documented as */* with a binary string,
+// are taken as they come; an answer without a Content-Type fails wherever
+// its response documents a body, though kin-openapi reads it as */*.
 func (c *Contract) CheckResponse(t testing.TB, req *http.Request, res *http.Response) {
 	t.Helper()
 	if route, _, err := c.findRoute(req); err == nil && longLived(route.Operation) && res.StatusCode == http.StatusOK {
@@ -179,6 +182,9 @@ func (c *Contract) validateResponse(req *http.Request, status int, header http.H
 		Header:                 header,
 		Options:                &openapi3filter.Options{IncludeResponseStatus: true, MultiError: true},
 	}
+	if header.Get("Content-Type") == "" && documentsBody(route.Operation, status) {
+		return errors.New("no Content-Type, where the response documents a body")
+	}
 	in.SetBodyBytes(body)
 	if err := openapi3filter.ValidateResponse(context.Background(), in); err != nil {
 		return err
@@ -242,6 +248,16 @@ func (c *Contract) enum(name, property string) ([]string, error) {
 		values[i] = s
 	}
 	return values, nil
+}
+
+// documentsBody reports whether op's response for status, or its default,
+// documents a body.
+func documentsBody(op *openapi3.Operation, status int) bool {
+	res := op.Responses.Status(status)
+	if res == nil {
+		res = op.Responses.Default()
+	}
+	return res != nil && res.Value != nil && len(res.Value.Content) > 0
 }
 
 // streamHead checks the head of a long-lived operation's 200: a

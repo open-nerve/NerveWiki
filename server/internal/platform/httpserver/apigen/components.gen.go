@@ -59,7 +59,7 @@ type NextCursor = string
 
 // Problem RFC 9457 problem details. `title` is the HTTP status phrase, `detail` explains this occurrence, and clients branch on `code`. Must match httpserver.Problem; the platform's contract test checks it.
 type Problem struct {
-	// Code Stable error code. Platform codes have no prefix (bad_request, unauthorized, forbidden, not_found, payload_too_large, validation_failed, rate_limited, server_busy, internal_error, not_ready); module codes are prefixed with the module that refuses, e.g. page.locked. Each operation lists the codes it can answer in x-problem-codes.
+	// Code Stable error code. Platform codes have no prefix (bad_request, unauthorized, forbidden, not_found, payload_too_large, validation_failed, rate_limited, server_busy, internal_error, not_ready, storage_full); module codes are prefixed with the module that refuses, e.g. page.locked. Each operation lists the codes it can answer in x-problem-codes.
 	Code string `json:"code"`
 
 	// Detail What went wrong in this occurrence.

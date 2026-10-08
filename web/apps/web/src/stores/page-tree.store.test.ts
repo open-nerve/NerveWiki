@@ -1,8 +1,9 @@
+import { reaction } from "mobx";
 import { expect, test, vi } from "vitest";
 
 import { ApiError } from "../services/api";
 import type { NodeMove, PageView, TreeNode } from "../services/page.service";
-import { guide, install, linux, notes, pageNode } from "../test/page-server";
+import { assetNode, guide, install, linux, notes, pageNode } from "../test/page-server";
 import { PageTreeStore, toggleLimit } from "./page-tree.store";
 
 /** A promise the test settles. */
@@ -298,6 +299,46 @@ test("a tree read the same as before is kept as it was; one changed replaces it"
   await pages.load();
   expect(pages.nodes).not.toBe(before);
   expect(pages.byId(notes.id)?.name).toBe("Notes 2");
+});
+
+test("attachments are nodes but no level of the tree: no page, child or ancestor of it; a new page's siblings have them", async () => {
+  const picture = assetNode(30, "untitled.png", install);
+  const sheet = assetNode(31, "sheet.csv");
+  const { pages } = store([guide, install, picture, linux, notes, sheet]);
+  await pages.load();
+
+  expect(pages.nodes).toHaveLength(6);
+  expect(pages.byId(picture.id)).toBeUndefined();
+  expect(pages.childrenOf(null)).toEqual([guide, notes]);
+  expect(pages.childrenOf(install.id)).toEqual([linux]);
+  expect(pages.ancestorsOf(linux.id)).toEqual([guide, install]);
+  expect(pages.siblingsOf(install.id)).toEqual([picture, linux]);
+  expect(pages.siblingsOf(null)).toEqual([guide, notes, sheet]);
+});
+
+test("a read that changes attachments alone keeps the tree, rendering nothing again; one that changes a page replaces it", async () => {
+  const { pages, state } = store();
+  await pages.load();
+  let renders = 0;
+  const stop = reaction(
+    () => pages.tree,
+    () => (renders += 1)
+  );
+  const before = pages.tree;
+
+  state.nodes = [guide, install, linux, notes, assetNode(30, "a.png", guide)];
+  await pages.load();
+  state.nodes = [guide, install, linux, notes, assetNode(30, "b.png", guide)];
+  await pages.load();
+  expect(renders).toBe(0);
+  expect(pages.tree).toBe(before);
+  expect(pages.siblingsOf(guide.id).map((node) => node.name)).toEqual(["Install", "b.png"]);
+
+  state.nodes = [guide, install, linux, { ...notes, name: "Notes 2" }, assetNode(30, "b.png", guide)];
+  await pages.load();
+  expect(renders).toBe(1);
+  expect(pages.byId(notes.id)?.name).toBe("Notes 2");
+  stop();
 });
 
 test("one toggle of a task item is out per page at a time, the view read after it included; another page's runs beside it", async () => {

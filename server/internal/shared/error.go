@@ -25,6 +25,7 @@ const (
 	KindConflict                        // 409
 	KindRateLimited                     // 429, with Retry-After
 	KindUnavailable                     // 503, with Retry-After
+	KindStorageFull                     // 507: the server's storage is full
 )
 
 // Codes of the platform problems that domain errors carry. Module codes are
@@ -37,6 +38,7 @@ const (
 	CodeRateLimited      = "rate_limited"
 	CodeServerBusy       = "server_busy"
 	CodeNotReady         = "not_ready"
+	CodeStorageFull      = "storage_full"
 )
 
 // Field codes: the closed set of FieldError.Code values that clients
@@ -83,6 +85,8 @@ func (k Kind) status() int {
 		return 429
 	case KindUnavailable:
 		return 503
+	case KindStorageFull:
+		return 507
 	}
 	return 500
 }
@@ -175,6 +179,13 @@ func ServerBusy(retry time.Duration) *Error {
 // code the readiness probe answers too.
 func NotReady(retry time.Duration) *Error {
 	return &Error{Kind: KindUnavailable, Code: CodeNotReady, Detail: "The server is not ready; retry shortly.", RetryDelay: retry}
+}
+
+// StorageFull reports that the server's storage has no room for a write,
+// whoever the caller is: 507 storage_full, without Retry-After, since room
+// comes back only when an operator makes it (M7 design 4.1).
+func StorageFull() *Error {
+	return &Error{Kind: KindStorageFull, Code: CodeStorageFull, Detail: "The server's storage is full."}
 }
 
 func (e *Error) Error() string { return e.Detail }

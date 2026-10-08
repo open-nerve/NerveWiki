@@ -27,6 +27,8 @@ export const nervewikiFixtureTimeoutMs = startTimeoutMs + stopTimeoutMs + 10_000
 /** A nervewiki serve process of this run. */
 export interface Nervewiki {
   readonly baseURL: string;
+  /** Its storage directory (storage.dir), the attachments' files under blobs/ (M7/P2). */
+  readonly storageDir: string;
   /** Sends SIGTERM and waits for nervewiki to exit with code 0. */
   stop(): Promise<void>;
 }
@@ -122,7 +124,7 @@ export async function startNervewiki(
       // first stream would wait out (README, the event stream).
       await waitForLog(logFile, listening, child, deadline);
     }
-    return { baseURL, stop: () => stop(child, logFile) };
+    return { baseURL, storageDir, stop: () => stop(child, logFile) };
   } catch (err) {
     await kill(child);
     throw new Error(`nervewiki was not ${until} (log: ${logFile})`, { cause: err });

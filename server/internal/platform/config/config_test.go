@@ -50,6 +50,7 @@ func TestLogValueMasksDatabaseURL(t *testing.T) {
 		"config.ratelimit.login_ip_email.burst=5",
 		"config.ratelimit.register_ip.per_minute=10",
 		"config.ratelimit.password_user.burst=5",
+		"config.ratelimit.asset_content.per_minute=6000",
 		"config.workspace.creation_enabled=true",
 		"config.page.edit_session_cleanup_interval=10m0s",
 		"config.page.parse_budget_bytes=8388608",
@@ -60,6 +61,8 @@ func TestLogValueMasksDatabaseURL(t *testing.T) {
 		"config.jobs.purge_retention=1440h0m0s",
 		"config.storage.dir=data",
 		"config.storage.min_free_bytes=1073741824",
+		"config.asset.max_bytes=52428800",
+		"config.asset.upload_min_rate=65536",
 		"config.log.level=info",
 		"config.log.format=json",
 	} {
