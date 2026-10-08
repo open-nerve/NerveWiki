@@ -514,7 +514,7 @@ M7 开工时负责人确认进入 M7（2026-10-08："可以了"）。下面是�
 |---|---|---|---|---|
 | P1 | 平台：存储与流式路由 | 已完成 | [01-P1-storage-stream.md](01-P1-storage-stream.md) | [P1 审查](reviews/P1-storage-stream-review.md) |
 | P2 | 附件（服务端） | 已完成 | [02-P2-assets-server.md](02-P2-assets-server.md) | [P2 审查](reviews/P2-assets-server-review.md) |
-| P3 | 附件与链接（服务端） | 未开始 | — | — |
+| P3 | 附件与链接（服务端） | 进行中（分 A、B 两部分合并） | [03-P3-assets-links.md](03-P3-assets-links.md) | — |
 | P4 | 附件（前端） | 未开始 | — | — |
 | P5 | 导出 | 未开始 | — | — |
 | P6 | 导入 | 未开始 | — | — |
@@ -528,3 +528,4 @@ M7 开工时负责人确认进入 M7（2026-10-08："可以了"）。下面是�
 | 2026-10-08 | P1 完成：4.1 的启动检查（先删掉全部残留、再探测根与各区；写满照常启动、写入答 507；断链的区拒绝启动）；4.3 的流式路由（低速率时更小的一步、没有请求体不设读截止时间、停机只切断还在传字节的流、`ErrShuttingDown`）；4.4 的 multipart 读到结尾；4.5 停机之后的下载答 503；第 7 节 P2 的交付与验证补项、修订表补 P1 的配置 | P1 的实施、审查与五轮修复核对：[01-P1-storage-stream.md](01-P1-storage-stream.md)、[P1 审查](reviews/P1-storage-stream-review.md) |
 | 2026-10-08 | P2 开工：第 7 节 P2 的 `InstanceInfo` 只加 `asset_max_bytes`，`import_max_bytes` 随 P6 | [02-P2-assets-server.md](02-P2-assets-server.md) 第 2 节 |
 | 2026-10-09 | P2 完成：4.3 处理器之前的答复对有请求体的请求关闭连接，宣告的答复按步写出、写截止时间随写出的字节前移（`Sending(r)`）；4.4 上传的 `name` 为空取文件名；4.5 严格的读法（规范的路径，参数依次、键名对位），CSP 与 CORP 在每个答复上，去掉对改动的条件；4.6 活动只报字节数；4.8 树的重读至多每 500 毫秒一次 | P2 的实施、审查与九轮修复核对：[02-P2-assets-server.md](02-P2-assets-server.md)、[P2 审查](reviews/P2-assets-server-review.md) |
+| 2026-10-09 | P3 开工：分 A（解析、索引与改写）、B（渲染）两部分合并；与 Obsidian 1.12.7 实测之后定下附件的三种读法（带扩展名、笔记本里有这个名称的附件时只读作附件），被同名附件遮住的页、被抢走的页的 wikilink 写 `.md` 的写法（Obsidian 写出解析不到的，`nerve-defined`），附件的显示文字按去掉扩展名的名称跟着改；索引记下解析到的是附件（`page_links.resolved_asset`）；4.7 的 `Assets` 由 asset 只凭连接池给出（`asset.NewEmbeds`）；平台的 `Render` 答 `View`（带到期） | [03-P3-assets-links.md](03-P3-assets-links.md) 第 2、4、5 节 |

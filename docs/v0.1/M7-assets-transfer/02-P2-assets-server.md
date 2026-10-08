@@ -355,7 +355,7 @@ ratelimit:
   - 前端：树的重读 500 毫秒（`refresher` 按键取间隔）。
 - PDF：Chromium 带完整的 CSP 能显示；本机没有 Playwright 的 Firefox，没测，README 写"其他浏览器未实测，显示不了时用 `download_url`"。留给负责人的人工清单顺带看一眼。
 - 反向对照：实施时 25 个（服务端 20、前端 4、浏览器 1），修复与核对约 245 个，都被测试抓到。
-- CI 与发布：分支的 CI 在每个修复提交上全部通过（server、web、image、e2e；`image` 一步跑 `make image-smoke`）。审查修复之后在本机跑过 `make image-smoke`（`dda31f0`）；合并时本机的 Docker Desktop 起不来，合并之后的 `image-smoke` 由 main 的 CI 跑。
+- CI 与发布：分支的 CI 在每个修复提交上全部通过（server、web、image、e2e；`image` 一步跑 `make image-smoke`）。审查修复之后在本机跑过 `make image-smoke`（`dda31f0`）；合并时本机的 Docker Desktop 起不来，合并之后的 `image-smoke` 由 main 的 CI 跑：文档提交 `4926432` 的 CI（run 37811108041）全部通过，含 `image-smoke`。
 - 交给后面的：
   1. P3：附件进解析、链接与渲染；指向附件的写法现在是未解析的链接（有测试钉住）。
   2. P4：附件的面板与上传；上传前先查 `InstanceInfo.asset_max_bytes`，浏览器还在发送时被拒，可能只看到连接被重置（3.5）；PDF 的 Firefox。
