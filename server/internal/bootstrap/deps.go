@@ -6,6 +6,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/open-nerve/NerveWiki/server/internal/modules/asset"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/identity"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/instance"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/linking"
@@ -19,6 +20,7 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/ratelimit"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/storage"
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
@@ -153,6 +155,18 @@ func pageDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, author
 	}
 }
 
+// assetDeps are the asset module's: the store of files, the page
+// module's writes of the attachments' nodes, the contents' key, the
+// asset settings and the storage's free space kept.
+func assetDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, store storage.Store, pg *page.Module,
+	contentKey []byte,
+) asset.Deps {
+	return asset.Deps{
+		Pool: pool, Store: store, Clock: clock.System{}, Logger: logger, Tree: assetTree{pg.TreeWrites()}, ContentKey: contentKey,
+		MaxBytes: cfg.Asset.MaxBytes, MinRate: cfg.Asset.UploadMinRate, MinFreeBytes: cfg.Storage.MinFreeBytes,
+	}
+}
+
 // linkingDeps are the linking module's HTTP side's, the index's reads
 // (M6/P5) and a link's landing (M6/P6): the notebook module's notebooks
 // and the page module's tree, contents and depth.
@@ -170,8 +184,9 @@ func linkingDeps(pool *pgxpool.Pool, authorizer shared.Authorizer) linking.Deps 
 
 // purgeJob is the purge of the modules' soft-deleted rows, on
 // jobs.purge_interval and jobs.purge_retention.
-func purgeJob(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger) jobs.Job {
-	return jobs.PurgeJob(purgers(pool), jobs.PurgeConfig{Interval: cfg.Jobs.PurgeInterval, Retention: cfg.Jobs.PurgeRetention, Logger: logger})
+func purgeJob(cfg config.Config, pool *pgxpool.Pool, store storage.Store, logger *slog.Logger) jobs.Job {
+	tx := postgres.NewTxManager(pool, cfg.Database.CommitTimeout)
+	return jobs.PurgeJob(purgers(pool, tx, store, logger), jobs.PurgeConfig{Interval: cfg.Jobs.PurgeInterval, Retention: cfg.Jobs.PurgeRetention, Logger: logger})
 }
 
 // apiConfig is the per-route middlewares' configuration: the modules'

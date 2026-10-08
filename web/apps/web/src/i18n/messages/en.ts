@@ -436,6 +436,7 @@ export const en = {
   "problem.validation_failed": "Some values are not valid.",
   "problem.server_busy": "The server is busy. Try again in a moment.",
   "problem.not_ready": "The server is not ready yet. Try again in a moment.",
+  "problem.storage_full": "The server has no room for more files. Ask its administrator.",
   "problem.identity.signup_disabled": "Sign-up is disabled on this server.",
   "problem.identity.email_taken": "An account with this e-mail address already exists.",
   "problem.identity.invalid_credentials": "The e-mail address or the password is incorrect.",

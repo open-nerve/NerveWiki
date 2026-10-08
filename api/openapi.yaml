@@ -30,6 +30,8 @@ tags:
     description: The link index's reads, backlinks, properties, tags and link targets.
   - name: events
     description: The stream of the events of what the caller sees.
+  - name: asset
+    description: The attachments of a notebook's pages and their files.
 paths:
   /api/v0/auth/register:
     $ref: "modules/identity.yaml#/paths/~1api~1v0~1auth~1register"
@@ -129,6 +131,8 @@ paths:
     $ref: "modules/linking.yaml#/paths/~1api~1v0~1notebooks~1{notebook_id}~1link-targets"
   /api/v0/events:
     $ref: "modules/events.yaml#/paths/~1api~1v0~1events"
+  /api/v0/notebooks/{notebook_id}/assets:
+    $ref: "modules/asset.yaml#/paths/~1api~1v0~1notebooks~1{notebook_id}~1assets"
 components:
   # 模块文件的 securitySchemes 在打包时被丢掉，操作引用的 scheme 写在这里
   securitySchemes:

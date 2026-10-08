@@ -143,6 +143,20 @@ func TestConstraintAndIndexNames(t *testing.T) {
 		"api_tokens_token_hash_key u",
 		"api_tokens_user_id_created_at_idx iw",
 		"api_tokens_user_id_fkey f c",
+		"asset_blobs_byte_size_check c",
+		"asset_blobs_created_by_id_fkey f a",
+		"asset_blobs_deleted_at_idx iw",
+		"asset_blobs_height_check c",
+		"asset_blobs_mime_check c",
+		"asset_blobs_node_id_key iu",
+		"asset_blobs_node_id_key u",
+		"asset_blobs_notebook_id_idx iw",
+		"asset_blobs_notebook_id_node_id_fkey f r",
+		"asset_blobs_pkey iu",
+		"asset_blobs_pkey p",
+		"asset_blobs_sha256_check c",
+		"asset_blobs_size_check c",
+		"asset_blobs_width_check c",
 		"auth_sessions_expires_at_idx i",
 		"auth_sessions_generation_check c",
 		"auth_sessions_pkey iu",
@@ -353,6 +367,13 @@ func TestChecksRejectCounterexamples(t *testing.T) {
 			user + ", " + user + ", now(), now()), " +
 			"('0199a2b4-0000-7000-8000-000000000011', '0199a2b4-0000-7000-8000-000000000008', '0199a2b4-0000-7000-8000-000000000010', 'page', 'b', 'b', 1, " +
 			user + ", " + user + ", now(), now())",
+		// An attachment under the root, and its file.
+		"INSERT INTO nodes (id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id, created_at, updated_at) VALUES " +
+			"('0199a2b4-0000-7000-8000-000000000016', '0199a2b4-0000-7000-8000-000000000008', '0199a2b4-0000-7000-8000-000000000010', 'asset', 'a.png', 'a.png', 2, " +
+			user + ", " + user + ", now(), now())",
+		"INSERT INTO asset_blobs (id, node_id, notebook_id, mime, byte_size, sha256, width, height, created_by_id, created_at) VALUES " +
+			"('0199a2b4-0000-7000-8000-000000000017', '0199a2b4-0000-7000-8000-000000000016', '0199a2b4-0000-7000-8000-000000000008', 'image/png', 3, " +
+			"sha256('abc'), 1, 1, " + user + ", now())",
 		"INSERT INTO page_contents (node_id, content, revision, content_hash, byte_size, updated_by_id, updated_at) VALUES " +
 			"('0199a2b4-0000-7000-8000-000000000010', 'x', 1, sha256('x'), 1, " + user + ", now())",
 		"INSERT INTO changesets (id, notebook_id, kind, client, created_by_id, created_at, updated_at) VALUES " +
@@ -487,6 +508,13 @@ func TestChecksRejectCounterexamples(t *testing.T) {
 		{"a property before the first", "UPDATE page_properties SET position = -1", "page_properties_position_check"},
 		{"an empty alias key", "UPDATE page_aliases SET alias_key = ''", "page_aliases_alias_key_check"},
 		{"an empty alias", "UPDATE page_aliases SET alias = ''", "page_aliases_alias_check"},
+		{"a file of no type", "UPDATE asset_blobs SET mime = ''", "asset_blobs_mime_check"},
+		{"a file of -1 bytes", "UPDATE asset_blobs SET byte_size = -1", "asset_blobs_byte_size_check"},
+		{"a file's hash of 31 bytes", "UPDATE asset_blobs SET sha256 = substring(sha256 from 2)", "asset_blobs_sha256_check"},
+		{"a width of 0", "UPDATE asset_blobs SET width = 0", "asset_blobs_width_check"},
+		{"a height of 0", "UPDATE asset_blobs SET height = 0", "asset_blobs_height_check"},
+		{"a width without its height", "UPDATE asset_blobs SET height = NULL", "asset_blobs_size_check"},
+		{"a height without its width", "UPDATE asset_blobs SET width = NULL", "asset_blobs_size_check"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -1163,6 +1163,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v0/notebooks/{notebook_id}/assets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload an attachment
+         * @description Uploads a file as an attachment of the notebook, under a page or at its root, last among its siblings; its notebook's editors and admins can, a reader cannot (forbidden). The body is multipart/form-data whose parts are parent_id, name and file, in that order, the first two optional: an unknown part, one twice, one out of order, a part after the file, a parent_id that is no id, a name of more than 1 KiB or not UTF-8, more than 4 KiB before the file's bytes, and no file are bad_request. Without a name, the file part's file name is taken. Before the file is read, a notebook that does not exist, is deleted, or that the caller has no role in is notebook.not_found; the name follows a page's title's rules and does not end with ".md", in any case, and the parent is a page of the notebook (validation_failed); a name a sibling has, compared by its key, is page.title_taken; and a server whose storage keeps no more room is storage_full: a client answered before it sent its file may see the connection reset, and checks these first. A file larger than the instance's asset_max_bytes is payload_too_large; one that does not arrive at the instance's lowest rate is cut off, as is one still arriving when the server shuts down. A file the storage runs out of room for is storage_full. The checks are made again as the attachment is created. The server tells the file's type from its name's extension and its first bytes, and reads an image's size.
+         */
+        post: operations["uploadAsset"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1916,6 +1939,52 @@ export interface components {
             /** @enum {string} */
             reason: "access" | "notebooks_deleted" | "expired" | "unauthenticated" | "reconnected" | "overflow";
         };
+        /** @description An attachment: its node in the notebook's tree, its file, and the addresses of its content, signed for anyone who has them. */
+        Asset: {
+            /**
+             * Format: uuid
+             * @description The attachment's node.
+             */
+            id: string;
+            /** Format: uuid */
+            notebook_id: string;
+            /**
+             * Format: uuid
+             * @description The page it is under; null at the notebook's root.
+             */
+            parent_id: string | null;
+            /** @description The attachment's file name. */
+            name: string;
+            /** @description The type the server told from the name's extension and the file's first bytes, which it serves the content as: an image, an audio, a video or a PDF it shows; application/octet-stream for any other file, which is downloaded. */
+            mime: string;
+            /**
+             * Format: int64
+             * @description The file's size in bytes.
+             */
+            byte_size: number;
+            /** @description The file's SHA-256, in lower-case hexadecimal. */
+            sha256: string;
+            /** @description An image's width in pixels (PNG, JPEG, GIF), when the server read it; null otherwise. */
+            width: number | null;
+            /** @description An image's height in pixels, as width. */
+            height: number | null;
+            /**
+             * Format: uuid
+             * @description Who uploaded it.
+             */
+            created_by: string;
+            /** Format: date-time */
+            created_at: string;
+            /** @description The address of the content, on this server, which a browser opens without a token until expires_at: an image, an audio, a video or a PDF is shown, any other file downloaded. */
+            content_url: string;
+            /** @description The address of the content to download, whatever its type, until expires_at. */
+            download_url: string;
+            /**
+             * Format: date-time
+             * @description When the addresses stop working, one to two hours after they were signed; reading the attachment again signs new ones.
+             */
+            expires_at: string;
+        };
     };
     responses: {
         /** @description Error (RFC 9457 problem details). */
@@ -2049,6 +2118,7 @@ export type EventPages = components['schemas']['EventPages'];
 export type EventLock = components['schemas']['EventLock'];
 export type EventLinks = components['schemas']['EventLinks'];
 export type EventReset = components['schemas']['EventReset'];
+export type Asset = components['schemas']['Asset'];
 export type ResponseProblem = components['responses']['Problem'];
 export type ParameterSlug = components['parameters']['Slug'];
 export type ParameterWorkspaceMemberId = components['parameters']['WorkspaceMemberID'];
@@ -3629,6 +3699,47 @@ export interface operations {
                 };
                 content: {
                     "text/event-stream": components["schemas"]["EventHello"] | components["schemas"]["EventPages"] | components["schemas"]["EventLock"] | components["schemas"]["EventLinks"] | components["schemas"]["EventReset"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    uploadAsset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /**
+                     * Format: uuid
+                     * @description The page to put the attachment under; none puts it at the notebook's root.
+                     */
+                    parent_id?: string;
+                    /** @description The attachment's name; none takes the file part's file name. */
+                    name?: string;
+                    /**
+                     * Format: binary
+                     * @description The file, the last part.
+                     */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The attachment, uploaded. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Asset"];
                 };
             };
             default: components["responses"]["Problem"];

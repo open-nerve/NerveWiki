@@ -8,6 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/open-nerve/NerveWiki/server/internal/modules/asset"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/events"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/identity"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/linking"
@@ -18,6 +19,8 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown/obsidian"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown/tasks"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/storage"
+	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
 // deactivationRegistrants are the modules that take part in an account's
@@ -272,9 +275,11 @@ func markdownExtensions(resolve obsidian.Resolve) []markdown.Extension {
 
 // purgers are the modules' purgers of the soft-deleted rows, leaf to root
 // (M2 design 8, M2/P4 design 3.4): a module whose tables reference
-// another's comes before it, the pages before the notebooks before the
-// workspaces. The database test of the purge checks the order against the
-// foreign keys, and that every table with deleted_at has its purger.
-func purgers(pool *pgxpool.Pool) []jobs.Purger {
-	return slices.Concat(page.Purgers(pool), notebook.Purgers(pool), workspace.Purgers(pool))
+// another's comes before it, the attachments before the pages before the
+// notebooks before the workspaces. The attachments' purger deletes their
+// files in store, in transactions of tx, its failures logged to logger. The
+// database test of the purge checks the order against the foreign keys,
+// and that every table with deleted_at has its purger.
+func purgers(pool *pgxpool.Pool, tx shared.TxManager, store storage.Store, logger *slog.Logger) []jobs.Purger {
+	return slices.Concat(asset.Purgers(pool, tx, store, logger), page.Purgers(pool), notebook.Purgers(pool), workspace.Purgers(pool))
 }

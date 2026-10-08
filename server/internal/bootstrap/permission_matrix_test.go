@@ -161,7 +161,9 @@ type matrixRow struct {
 	write   bool // each cell on a copy of its own
 	config  func(*config.Config)
 	request func(c caller, s seeded) (method, path, body string)
-	cells   map[caller]cell
+	// contentType is the body's type: JSON when empty.
+	contentType string
+	cells       map[caller]cell
 	// check, when set, runs on each answer that is not a problem: what the
 	// answer holds for that caller.
 	check func(t *testing.T, c caller, s seeded, answer string)
@@ -207,7 +209,7 @@ func decodeAnswer(t *testing.T, answer string, v any) {
 // matrixRows are the rows, each module's from its file.
 func matrixRows() []matrixRow {
 	return slices.Concat(workspaceMatrixRows(), memberMatrixRows(), invitationMatrixRows(), notebookMatrixRows(),
-		notebookMemberMatrixRows(), ownerlessMatrixRows(), pageMatrixRows(), linkingMatrixRows())
+		notebookMemberMatrixRows(), ownerlessMatrixRows(), pageMatrixRows(), linkingMatrixRows(), assetMatrixRows())
 }
 
 // matrixApps is how many cells may run an app of their own at once: each
@@ -254,7 +256,7 @@ func TestPermissionMatrix(t *testing.T) {
 					base = startApp(t, d.config(t, pgtest.NewDatabaseFrom(t, d.url), r.config), migrations.FS())
 				}
 				method, path, body := r.request(c, d.seeded.in(t))
-				status, answer := ask(t, contract, method, base+path, d.tokens[c], body)
+				status, answer := askTyped(t, contract, method, base+path, d.tokens[c], r.contentType, body)
 				got := cell{status: status}
 				if status >= http.StatusBadRequest {
 					got.code = problemCode(t, answer)
@@ -272,15 +274,24 @@ func TestPermissionMatrix(t *testing.T) {
 	}
 }
 
-// ask sends method url with token and body, checks the answer against the
-// contract, and returns its status and body.
+// ask sends method url with token and a JSON body, checks the answer
+// against the contract, and returns its status and body.
 func ask(t *testing.T, contract *apitest.Contract, method, url, token, body string) (int, string) {
+	t.Helper()
+	return askTyped(t, contract, method, url, token, "", body)
+}
+
+// askTyped is ask with a body of contentType, JSON when it is empty.
+func askTyped(t *testing.T, contract *apitest.Contract, method, url, token, contentType, body string) (int, string) {
 	t.Helper()
 	var payload []byte
 	if body != "" {
 		payload = []byte(body)
 	}
 	req := newRequest(t, method, url, token, payload)
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
+	}
 	res, answer := sendRequest(t, req)
 	contract.CheckResponse(t, req, res)
 	return res.StatusCode, string(answer)

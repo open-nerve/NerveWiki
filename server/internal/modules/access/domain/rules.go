@@ -111,6 +111,12 @@ func rules() map[shared.Action]Rule {
 		// Where a page made for a link would go (M6/P6 design 2): the half
 		// of a write, its writers'.
 		"link_landing.read": {Level: LevelNotebook, Notebook: writers()},
+
+		// A notebook's attachments (M7/P2 design 3.5–3.7): its writers
+		// upload them, any role reads them; a rename, a move and a deletion
+		// are the node's.
+		"asset.upload": {Level: LevelNotebook, Notebook: writers()},
+		"asset.read":   {Level: LevelNotebook, Notebook: readers()},
 	}
 }
 

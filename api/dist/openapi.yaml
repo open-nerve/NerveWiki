@@ -21,6 +21,8 @@ tags:
     description: The link index's reads, backlinks, properties, tags and link targets.
   - name: events
     description: The stream of the events of what the caller sees.
+  - name: asset
+    description: The attachments of a notebook's pages and their files.
 paths:
   /api/v0/auth/register:
     post:
@@ -1559,6 +1561,54 @@ paths:
                   - $ref: '#/components/schemas/EventReset'
         default:
           $ref: '#/components/responses/Problem'
+  /api/v0/notebooks/{notebook_id}/assets:
+    parameters:
+      - $ref: '#/components/parameters/NotebookID'
+    post:
+      operationId: uploadAsset
+      tags:
+        - asset
+      summary: Upload an attachment
+      description: 'Uploads a file as an attachment of the notebook, under a page or at its root, last among its siblings; its notebook''s editors and admins can, a reader cannot (forbidden). The body is multipart/form-data whose parts are parent_id, name and file, in that order, the first two optional: an unknown part, one twice, one out of order, a part after the file, a parent_id that is no id, a name of more than 1 KiB or not UTF-8, more than 4 KiB before the file''s bytes, and no file are bad_request. Without a name, the file part''s file name is taken. Before the file is read, a notebook that does not exist, is deleted, or that the caller has no role in is notebook.not_found; the name follows a page''s title''s rules and does not end with ".md", in any case, and the parent is a page of the notebook (validation_failed); a name a sibling has, compared by its key, is page.title_taken; and a server whose storage keeps no more room is storage_full: a client answered before it sent its file may see the connection reset, and checks these first. A file larger than the instance''s asset_max_bytes is payload_too_large; one that does not arrive at the instance''s lowest rate is cut off, as is one still arriving when the server shuts down. A file the storage runs out of room for is storage_full. The checks are made again as the attachment is created. The server tells the file''s type from its name''s extension and its first bytes, and reads an image''s size.'
+      security:
+        - bearer: []
+      x-raw: true
+      x-problem-codes:
+        - notebook.not_found
+        - forbidden
+        - validation_failed
+        - page.title_taken
+        - storage_full
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - file
+              properties:
+                parent_id:
+                  description: The page to put the attachment under; none puts it at the notebook's root.
+                  type: string
+                  format: uuid
+                name:
+                  description: The attachment's name; none takes the file part's file name.
+                  type: string
+                file:
+                  description: The file, the last part.
+                  type: string
+                  format: binary
+      responses:
+        '201':
+          description: The attachment, uploaded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Asset'
+        default:
+          $ref: '#/components/responses/Problem'
 components:
   securitySchemes:
     bearer:
@@ -3068,6 +3118,79 @@ components:
             - unauthenticated
             - reconnected
             - overflow
+    Asset:
+      description: 'An attachment: its node in the notebook''s tree, its file, and the addresses of its content, signed for anyone who has them.'
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - notebook_id
+        - parent_id
+        - name
+        - mime
+        - byte_size
+        - sha256
+        - width
+        - height
+        - created_by
+        - created_at
+        - content_url
+        - download_url
+        - expires_at
+      properties:
+        id:
+          description: The attachment's node.
+          type: string
+          format: uuid
+        notebook_id:
+          type: string
+          format: uuid
+        parent_id:
+          description: The page it is under; null at the notebook's root.
+          type:
+            - string
+            - 'null'
+          format: uuid
+        name:
+          description: The attachment's file name.
+          type: string
+        mime:
+          description: 'The type the server told from the name''s extension and the file''s first bytes, which it serves the content as: an image, an audio, a video or a PDF it shows; application/octet-stream for any other file, which is downloaded.'
+          type: string
+        byte_size:
+          description: The file's size in bytes.
+          type: integer
+          format: int64
+        sha256:
+          description: The file's SHA-256, in lower-case hexadecimal.
+          type: string
+        width:
+          description: An image's width in pixels (PNG, JPEG, GIF), when the server read it; null otherwise.
+          type:
+            - integer
+            - 'null'
+        height:
+          description: An image's height in pixels, as width.
+          type:
+            - integer
+            - 'null'
+        created_by:
+          description: Who uploaded it.
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        content_url:
+          description: 'The address of the content, on this server, which a browser opens without a token until expires_at: an image, an audio, a video or a PDF is shown, any other file downloaded.'
+          type: string
+        download_url:
+          description: The address of the content to download, whatever its type, until expires_at.
+          type: string
+        expires_at:
+          description: When the addresses stop working, one to two hours after they were signed; reading the attachment again signs new ones.
+          type: string
+          format: date-time
   responses:
     Problem:
       description: Error (RFC 9457 problem details).
