@@ -31,8 +31,8 @@ type LinkTargets interface {
 	Paths(ctx context.Context, notebookID uuid.UUID, ids []uuid.UUID) ([]LinkNode, error)
 	// Attachments is the attachments not deleted of notebookID among ids,
 	// each with its path from the root and the number of notebookID's
-	// attachments not deleted with its title key, itself among them, read
-	// at once (M7/P3 design 4.6: an attachment's link).
+	// attachments not deleted with its title key, itself among them,
+	// counted to 2, read at once (M7/P3 design 4.6: an attachment's link).
 	Attachments(ctx context.Context, notebookID uuid.UUID, ids []uuid.UUID) ([]LinkAttachment, error)
 	// Subtree is the node id of notebookID and the pages and attachments not
 	// deleted under it, each its id, title key and name.
@@ -66,7 +66,7 @@ type LinkNode struct {
 
 // LinkAttachment is an attachment with its path from the root, and Alike
 // the number of its notebook's attachments with its title key, itself
-// among them.
+// among them, to 2.
 type LinkAttachment struct {
 	LinkNode
 	Alike int

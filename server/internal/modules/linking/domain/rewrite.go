@@ -260,10 +260,10 @@ func Linktext(n Node, from []Step, tree Tree) (string, bool) {
 
 // AssetLinktext is the attachment n's Linktext from anywhere (M7/P3 design
 // 4.6), from alike, the number of its notebook's attachments with its title
-// key, n among them: its name when n is the only one, which reads as an
-// attachment's and leads to it alone; its path from the root otherwise,
-// which leads to it exactly. ok is false for an attachment without an
-// extension, which no link leads to.
+// key, n among them, or 2 for more: its name when n is the only one, which
+// reads as an attachment's and leads to it alone; its path from the root
+// otherwise, which leads to it exactly. ok is false for an attachment
+// without an extension, which no link leads to.
 func AssetLinktext(n Node, alike int) (string, bool) {
 	switch {
 	case !n.Linkable():
@@ -276,18 +276,29 @@ func AssetLinktext(n Node, alike int) (string, bool) {
 
 // Linktexts is the linktext of each of nodes, all of a notebook's pages and
 // attachments, written from its root (M6/P5 design 6; M7/P3 design 4.5), in
-// their order. Siblings' distinct title keys leave none without one but an
-// attachment without an extension, which nothing leads to: its path from
-// the root.
+// their order: an attachment's AssetLinktext's, from how many attachments
+// have its title key, which is Linktext's in a time linear in them.
+// Siblings' distinct title keys leave none without one but an attachment
+// without an extension, which nothing leads to: its path from the root.
 func Linktexts(nodes []Node) []string {
 	named := map[string][]Node{}
+	alike := map[string]int{}
 	for _, n := range nodes {
 		named[n.key()] = append(named[n.key()], n)
+		if n.Asset {
+			alike[n.key()]++
+		}
 	}
 	tree := Tree{Named: named}
 	out := make([]string, len(nodes))
 	for i, n := range nodes {
-		text, ok := Linktext(n, nil, tree)
+		var text string
+		var ok bool
+		if n.Asset {
+			text, ok = AssetLinktext(n, alike[n.key()])
+		} else {
+			text, ok = Linktext(n, nil, tree)
+		}
 		if !ok {
 			text = n.path()
 		}

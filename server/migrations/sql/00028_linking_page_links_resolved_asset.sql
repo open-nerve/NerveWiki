@@ -7,6 +7,7 @@ ALTER TABLE page_links ADD COLUMN resolved_asset boolean NOT NULL DEFAULT false,
     ADD CONSTRAINT page_links_resolved_asset_check CHECK (NOT resolved_asset OR resolved_id IS NOT NULL);
 
 -- +goose Down
--- A program before it reads every resolved link as a page's: the links to attachments resolve to none, as they did.
+-- A program before it does not know attachments as targets: the links to them are set to resolve to none, so that none
+-- reads an attachment's id as a page's. Its own rules resolve them after nervewiki reindex.
 UPDATE page_links SET resolved_id = NULL, ambiguous = false WHERE resolved_asset;
 ALTER TABLE page_links DROP COLUMN resolved_asset;

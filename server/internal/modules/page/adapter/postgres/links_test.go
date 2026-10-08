@@ -72,8 +72,8 @@ func TestLinkTargetsAreTheNotebooksNodesWithTheirPaths(t *testing.T) {
 
 // An attachment's link reads the attachments among ids, each with its path
 // and how many of the notebook's attachments not deleted have its title
-// key, itself among them: not a page of the key, not a deleted one, not
-// another notebook's (M7/P3 design 4.6).
+// key, itself among them, counted to 2: not a page of the key, not a
+// deleted one, not another notebook's (M7/P3 design 4.6).
 func TestAttachmentsAreReadWithHowManyHaveTheirTitleKey(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()
@@ -89,7 +89,9 @@ func TestAttachmentsAreReadWithHowManyHaveTheirTitleKey(t *testing.T) {
 		}
 		return n
 	}
+	c := f.page(t, f.eng, nil, "C", 3)
 	x, other := asset(f.eng, &a.ID, "x.png", 0), asset(f.eng, &b.ID, "X.PNG", 0)
+	asset(f.eng, &c.ID, "x.png", 0)
 	y, gone := asset(f.eng, &a.ID, "y.png", 1), asset(f.eng, &b.ID, "y.png", 1)
 	asset(f.ops, nil, "x.png", 0)
 	if err := f.s.DeleteNodes(ctx, []uuid.UUID{gone.ID}, f.alice, now().Add(time.Second)); err != nil {

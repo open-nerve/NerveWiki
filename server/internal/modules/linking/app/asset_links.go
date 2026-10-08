@@ -13,13 +13,13 @@ import (
 type Attachments interface {
 	// Attachments is the attachments not deleted of notebookID among ids,
 	// each with its path from the root and the number of notebookID's
-	// attachments not deleted with its title key, itself among them, read
-	// at once.
+	// attachments not deleted with its title key, itself among them, or 2
+	// for more, read at once.
 	Attachments(ctx context.Context, notebookID uuid.UUID, ids []uuid.UUID) ([]Attachment, error)
 }
 
 // Attachment is an attachment, and Alike the number of its notebook's
-// attachments with its title key, itself among them.
+// attachments with its title key, itself among them, or 2 for more.
 type Attachment struct {
 	Node  domain.Node
 	Alike int

@@ -69,7 +69,8 @@ func TestLinktextsAreEachNodesFromTheRoot(t *testing.T) {
 // page's and every attachment's with an extension linktext, written from the
 // root as the link targets are, leads to it alone from every page (M6/P5
 // design 6; M7/P3 design 4.5); an attachment's is AssetLinktext's, from the
-// number of attachments with its title key alone.
+// number of attachments with its title key alone; and Linktexts writes
+// each so, an attachment without an extension's its path.
 func TestALinktextLeadsToItsPageFromEveryPage(t *testing.T) {
 	for seed := range uint64(2000) {
 		r := rand.New(rand.NewPCG(seed, 6))
@@ -105,9 +106,17 @@ func TestALinktextLeadsToItsPageFromEveryPage(t *testing.T) {
 			}
 		}
 		p := pagesOf(t, paths, aliases, asset...)
+		nodes := make([]domain.Node, len(paths))
+		for i, path := range paths {
+			nodes[i] = p.byID[p.ids[path]]
+		}
+		texts := domain.Linktexts(nodes)
 		for i, path := range paths {
 			n := p.byID[p.ids[path]]
 			text, ok := domain.Linktext(n, nil, domain.Tree{Named: p.named})
+			if want := text; texts[i] != want && (ok || texts[i] != path) {
+				t.Fatalf("seed %d: Linktexts writes %q as %q, Linktext %q, %t, in %q", seed, path, texts[i], text, ok, paths)
+			}
 			if asset[i] {
 				key, alike := n.Path[len(n.Path)-1].Key, 0
 				for _, o := range p.named[key] {

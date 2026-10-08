@@ -31,6 +31,9 @@ import (
 // to a node leads to it still, the links its rewrite wrote among them (M6/P4
 // design 8).
 func TestTheIndexIsItsRebuild(t *testing.T) {
+	if testing.Short() {
+		t.Skip("runs of writes through serve against a database")
+	}
 	rewritten, flagged := 0, 0        // flagged: the runs where a link was a value of the aliases after some step
 	toAssets, assetsRewritten := 0, 0 // toAssets: the steps after which a link resolved to an attachment
 	defer func() {

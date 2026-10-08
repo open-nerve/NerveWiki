@@ -52,7 +52,7 @@ func (s *Store) LinkTargetsByIDs(ctx context.Context, notebookID uuid.UUID, ids 
 }
 
 // AttachmentPath is an attachment with its path, and the number of its
-// notebook's attachments with its title key, itself among them.
+// notebook's attachments with its title key, itself among them, to 2.
 type AttachmentPath struct {
 	LinkPath
 	Alike int

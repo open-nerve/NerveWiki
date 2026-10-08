@@ -44,12 +44,15 @@ SELECT page_id, id, parent_id, name, name_key, kind, up::integer AS up FROM chai
 -- name: AttachmentsByIDs :many
 -- The attachments not deleted of a notebook among ids, each with its path from the root, as LinkTargetsByIDs gives
 -- them, and on its own step the number of the notebook's attachments not deleted with its title key, itself among
--- them (M7/P3 design 4.6): one statement, so one snapshot, which an attachment's link is written from.
+-- them, counted to 2: whether another has it (M7/P3 design 4.6). One statement, so one snapshot, which an
+-- attachment's link is written from.
 WITH RECURSIVE chain AS (
     SELECT n.id AS page_id, n.id, n.parent_id, n.name, n.name_key, n.kind, 0 AS up,
-        (SELECT count(*) FROM nodes o
-         WHERE o.notebook_id = n.notebook_id AND o.name_key = n.name_key AND o.kind = 'asset' AND o.deleted_at IS NULL)
-        AS alike
+        (SELECT count(*) FROM (
+            SELECT 1 FROM nodes o
+            WHERE o.notebook_id = n.notebook_id AND o.name_key = n.name_key AND o.kind = 'asset' AND o.deleted_at IS NULL
+            LIMIT 2
+        ) o) AS alike
     FROM nodes n
     WHERE n.notebook_id = sqlc.arg(notebook_id) AND n.id = ANY(sqlc.arg(ids)::uuid[]) AND n.kind = 'asset'
         AND n.deleted_at IS NULL
