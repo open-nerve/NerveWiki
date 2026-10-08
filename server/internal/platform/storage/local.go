@@ -34,7 +34,7 @@ type Local struct {
 	minFree int64
 	create  createTemp
 	mkdir   sync.Mutex // one goroutine at a time makes and syncs directories
-	// fullAtOpen is the out-of-space error opening's probe met.
+	// fullAtOpen is the first out-of-space error opening's probes met.
 	fullAtOpen error
 }
 
@@ -139,8 +139,8 @@ func (l *Local) write(dir string) error {
 // dropTemporaries deletes every area's directory of files being written
 // and the probes left in the store's directory, and answers the areas'
 // directories, which opening then probes in their directory of files being
-// written: with one process to a directory, these are what a process
-// stopped midway left. Deleting before probing frees the space a
+// written. With one process to a directory, what it deletes is what a
+// process stopped midway left. Deleting before probing frees the space a
 // half-written file took, likely what filled the disk, and a file in the
 // directory's place.
 func (l *Local) dropTemporaries() ([]string, error) {

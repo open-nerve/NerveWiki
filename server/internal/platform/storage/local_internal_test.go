@@ -29,6 +29,9 @@ func (f fullDisk) Write(p []byte) (int, error) {
 }
 
 func (f fullDisk) Sync() error {
+	if f.errno != 0 {
+		return &fs.PathError{Op: "sync", Path: f.name, Err: f.errno}
+	}
 	return &fs.PathError{Op: "sync", Path: f.name, Err: syscall.ENOSPC}
 }
 
@@ -116,10 +119,14 @@ func TestAFullDiskOpensAndDropsWhatWasLeft(t *testing.T) {
 	}
 }
 
-// The full disk is the one opening finds after its deletions: a
-// half-written file that filled it, once deleted, leaves no warning.
+// The full disk is the one opening finds after all its deletions: a
+// half-written file that filled it, once deleted, leaves no warning, nor
+// does an area probed before it, as blobs comes before imports.
 func TestFullAtOpenIsAfterTheDeletions(t *testing.T) {
 	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "blobs"), 0o750); err != nil {
+		t.Fatal(err)
+	}
 	left := filepath.Join(dir, "imports", tmpDir, "a.zip.123")
 	if err := os.MkdirAll(filepath.Dir(left), 0o750); err != nil {
 		t.Fatal(err)
