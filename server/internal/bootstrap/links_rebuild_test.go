@@ -136,7 +136,7 @@ func (tm acmeTeam) indexOf(ctx context.Context, t *testing.T, nb string) []strin
 		SELECT format('page %s %s %s %s', node_id, revision, extractor, frontmatter_valid) FROM indexed_pages WHERE notebook_id = $1
 		UNION ALL SELECT format('link %s %s-%s %s %s %L %s %s %s %s %s %s asset=%s', source_id, range_start, range_end, kind,
 			coalesce(property_key, '-'), target, coalesce(anchor, '-'), coalesce(display, '-'), coalesce(target_key, '-'),
-			coalesce(target_alt_key, '-'), coalesce(resolved_id::text, '-'), ambiguous, resolved_asset) || ' aliases=' || aliases::text
+			coalesce(target_alt_key, '-'), coalesce(resolved_id::text, '-'), ambiguous, resolved_asset::text) || ' aliases=' || aliases::text
 		FROM page_links WHERE notebook_id = $1
 		UNION ALL SELECT format('tag %s %s %s %s', source_id, tag_key, tag, count) FROM page_tags WHERE notebook_id = $1
 		UNION ALL SELECT format('property %s %s %s %s', source_id, position, key, value) FROM page_properties WHERE notebook_id = $1

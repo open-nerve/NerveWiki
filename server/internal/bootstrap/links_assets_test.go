@@ -157,8 +157,8 @@ func TestAnAttachmentsNameThroughServe(t *testing.T) {
 }
 
 // An attachment's link is how a wikilink leads to it alone (M7/P3 design
-// 4.6), in the upload's answer, its metadata and its notebook's list: its
-// name while no other attachment has it, its path from the root since.
+// 4.6), in the upload's answer, its metadata and the list of its parent's:
+// its name while no other attachment has it, its path from the root since.
 func TestAnAttachmentsLinkThroughServe(t *testing.T) {
 	tm := newAcmeTeam(t, "member", "")
 	nb := tm.openNotebook(t, "alice", "Eng")
@@ -182,15 +182,23 @@ func TestAnAttachmentsLinkThroughServe(t *testing.T) {
 	if got.Link != "A/x.png" {
 		t.Errorf("the first x.png's link is %q since the second, want A/x.png", got.Link)
 	}
-	var list struct {
-		Data []uploadedAsset `json:"data"`
-	}
-	tm.get(t, "bob", "/api/v0/notebooks/"+nb+"/assets", &list)
-	links := map[string]string{}
-	for _, l := range list.Data {
-		links[l.ID] = l.Link
-	}
-	if want := map[string]string{first.ID: "A/x.png", second.ID: "B/X.PNG", data.ID: "data"}; !maps.Equal(links, want) {
-		t.Errorf("the list's links %q, want %q", links, want)
+	for parent, want := range map[string]map[string]string{
+		"": {data.ID: "data"}, a: {first.ID: "A/x.png"}, b: {second.ID: "B/X.PNG"},
+	} {
+		var list struct {
+			Data []uploadedAsset `json:"data"`
+		}
+		path := "/api/v0/notebooks/" + nb + "/assets"
+		if parent != "" {
+			path += "?parent_id=" + parent
+		}
+		tm.get(t, "bob", path, &list)
+		links := map[string]string{}
+		for _, l := range list.Data {
+			links[l.ID] = l.Link
+		}
+		if !maps.Equal(links, want) {
+			t.Errorf("the list of %q's links %q, want %q", parent, links, want)
+		}
 	}
 }

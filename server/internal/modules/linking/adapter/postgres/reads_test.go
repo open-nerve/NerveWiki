@@ -499,10 +499,12 @@ func TestTheReadsUseTheirIndexes(t *testing.T) {
 			return err
 		}), 4, "Index Only Scan using page_links_resolved_id_source_id_idx", "((resolved_id = (InitPlan ",
 			"Index Scan using indexed_pages_pkey on indexed_pages ip"},
+		// The property links' keys, where each resolves, and whether to an
+		// attachment (M7/P3 design 4.6): a scan each of the page's range.
 		{"PageProperties: the property links", statementOf(t, func(q *gen.Queries) error {
 			_, err := q.PageProperties(ctx, id)
 			return err
-		}), 2, "Index Scan using page_links_source_id_range_start_idx", "(source_id = ", ""},
+		}), 3, "Index Scan using page_links_source_id_range_start_idx", "(source_id = ", ""},
 		// LinksReached's part by the pages its links resolve to: the whole
 		// statement, of four parts, is planned on another index while the
 		// tables are empty.
