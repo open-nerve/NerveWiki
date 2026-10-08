@@ -7,6 +7,7 @@ package httpadapter
 import (
 	"context"
 	"encoding/hex"
+	"time"
 	"uuid"
 
 	"github.com/oapi-codegen/nullable"
@@ -209,7 +210,11 @@ func (h handler) GetPageView(ctx context.Context, req gen.GetPageViewRequestObje
 	if err != nil {
 		return nil, err
 	}
-	return gen.GetPageView200JSONResponse{HTML: v.HTML, Revision: v.Revision}, nil
+	expires := nullable.NewNullNullable[time.Time]()
+	if !v.Expires.IsZero() {
+		expires = nullable.NewNullableWithValue(v.Expires)
+	}
+	return gen.GetPageView200JSONResponse{HTML: v.HTML, Revision: v.Revision, AssetsExpireAt: expires}, nil
 }
 
 // RenameNode serves PATCH /api/v0/nodes/{node_id}.

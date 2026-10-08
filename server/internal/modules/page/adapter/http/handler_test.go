@@ -124,9 +124,15 @@ func (f fakeWrite) Execute(_ context.Context, pageID uuid.UUID, p app.ContentPut
 	return notesView(), f.err
 }
 
+// Execute answers a view without attachments, but for the page id(13),
+// whose has some that expire.
 func (f fakeView) Execute(_ context.Context, pageID uuid.UUID) (app.ReadingView, error) {
 	f.got = []any{pageID}
-	return app.ReadingView{HTML: "<h1 id=\"nw-notes\">Notes</h1>\n", Revision: 3}, f.err
+	v := app.ReadingView{HTML: "<h1 id=\"nw-notes\">Notes</h1>\n", Revision: 3}
+	if pageID == id(13) {
+		v.Expires = time.Date(2026, 10, 9, 14, 0, 0, 0, time.UTC)
+	}
+	return v, f.err
 }
 
 func (f fakeRename) Execute(_ context.Context, nodeID uuid.UUID, name string, client domain.Client) (domain.Node, error) {
@@ -262,7 +268,10 @@ func TestTheOperationsAnswerTheUseCases(t *testing.T) {
 		{"a content written by the API", "pat", http.MethodPut, contentPath, `{"content":"","base_revision":2}`, http.StatusOK, pageJSON,
 			[]any{id(12), app.ContentPut{Base: 2}, domain.ClientAPI}},
 		{"a page's reading view", "session", http.MethodGet, viewPath, "", http.StatusOK,
-			`{"html":"\u003ch1 id=\"nw-notes\"\u003eNotes\u003c/h1\u003e\n","revision":3}`, []any{id(12)}},
+			`{"assets_expire_at":null,"html":"\u003ch1 id=\"nw-notes\"\u003eNotes\u003c/h1\u003e\n","revision":3}`, []any{id(12)}},
+		{"a page's reading view with attachments", "session", http.MethodGet, "/api/v0/pages/" + id(13).String() + "/view", "",
+			http.StatusOK, `{"assets_expire_at":"2026-10-09T14:00:00Z","html":"\u003ch1 id=\"nw-notes\"\u003eNotes\u003c/h1\u003e\n","revision":3}`,
+			[]any{id(13)}},
 		{"a rename by the web", "session", http.MethodPatch, nodePath, `{"name":"Notes"}`, http.StatusOK, treeNodeJSON,
 			[]any{id(12), "Notes", domain.ClientWeb}},
 		{"a rename by the API", "pat", http.MethodPatch, nodePath, `{"name":"Notes"}`, http.StatusOK, treeNodeJSON,
