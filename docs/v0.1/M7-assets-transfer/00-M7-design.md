@@ -199,19 +199,20 @@
   - 去掉 `.md` 的判断（"笔记本里有没有去掉 `.md` 的那个名称"）与 `.md` 的写法只数页面：`[[x.png.md]]` 只指向页面 `x.png`，永远不是附件 `x.png`（Obsidian 里 `x.png` 与 `x.png.md` 是两个文件）；
   - 没有扩展名的附件不是候选（Obsidian 给这样的目标加 `.md`）。
   - 要核对的形状写成 `resolve/` 样例：A 里的附件 `x.png` 与 B 里的页面 `x.png`、从 B 里链接；`[[B/x.png]]` 而 `x.png` 只在 A；`[[x.png.md]]` 时两者都在；没有扩展名的附件；大小写与 Unicode 的折叠；与附件同名的别名。
-- **一种标记**：解析到附件的每一种写法（`![[…]]`、`[[…]]`、`[t](x.pdf)`、`![t](x.png)`、frontmatter 的属性链接）都写附件的标记：`data-nw-asset=<id>`，地址是签名的 `src` 或 `href`，**从不**写 `data-nw-node`（`appLinks` 会把它当作页面，去 `/…/pages/<id>`，那是 404）。
-  - 嵌入与 Markdown 图片：图片 → `<img class="nw-asset" src=… alt=… width=… height=… loading="lazy" decoding="async">`；音频 → `<audio controls preload="none">`；视频 → `<video controls preload="none">`；其余（含 pdf）→ 附件的链接。Obsidian 对指向音频、视频的 Markdown 图片同样内联。
+- **一种标记**：解析到附件的每一种写法（`![[…]]`、`[[…]]`、`[t](x.pdf)`、`![t](x.png)`、frontmatter 的属性链接）都写附件的标记（class `nw-asset`），地址是签名的 `src` 或 `href`，路径里有附件的 id（P3 起不另写 `data-nw-asset`：它与路径重复，多出的字节让 `CheckSize` 的放大超过 64 倍），**从不**写 `data-nw-node`（`appLinks` 会把它当作页面，去 `/…/pages/<id>`，那是 404）。
+  - 嵌入与 Markdown 图片：图片 → `<img class="nw-asset" src=… alt=… width=… height=… loading="lazy">`；音频 → `<audio controls preload="none">`；视频 → `<video controls preload="none">`；其余（含 pdf）→ 附件的链接。Obsidian 对指向音频、视频的 Markdown 图片同样内联。
   - 尺寸照 Obsidian：`![[x.png|300]]`、`|300x200`，Markdown 的 `![说明|300](x.png)`；`|` 后面不是尺寸的是说明。数值限在 1–10,000。
   - 一个视图至多内联 20 个音频、视频（第 21 个起是附件的链接，有上限处的测试）：每个播放器占资源，Chromium 对一帧的播放器数有上限，超出的报错。
+  - 一个视图至多写 2000 个附件的地址（图片、音视频、链接一样算，按文档的次序，之后是文字）：几个字节的写法就写出两百字节上下的标记，表格的行还会补齐，按字节算会超过 `CheckSize` 的 64 倍；有了上限是一个总量（约 0.4 MB，P3B 审查 B1）。
   - 链接里的图片（`[![](x.png)](url)`，README 里常见）：`<img>` 在 `<a>` 里不是链接套链接，照 Obsidian 渲染，不再只写说明。
-  - 文件名与大小不写成界面的文字：服务端写 `data-nw-size`，前端按界面语言格式化（`formatBytes`）。`alt` 默认是名称，音视频的 `aria-label` 取说明或名称。
+  - 文件名与大小不写成界面的文字：服务端写 `data-nw-size`，前端按界面语言格式化（`formatBytes`）。`alt` 默认是写下的目标（照 Obsidian：`A/x.png`、`x.png > a`），音视频的 `aria-label` 取说明或写下的目标。
   - 标记写进 `Markup`，`CheckHTML`、`CheckSize` 随之更新；`CheckHTML` 只许 `img`、`audio`、`video` 的地址是附件内容的路径；`CheckSize` 的放大输入（`Amplifying()`）加上附件的嵌入：几个字节的 `![[x]]` 写出带签名地址的整个标记。
 - **扩展点**（M7 建立并注册）：
-  - `obsidian.Options` 的 `Resolve` 答出目标的节点与是否附件（`map[int]Target`，原来是 `map[int]uuid.UUID`）；另加 `Assets(ctx, ids)`：组合根经 asset 模块给出每个附件的类型、名称、大小、宽高与签名地址。
+  - `obsidian.Options` 的 `Resolve` 答出目标的节点与是否附件（`map[int]Target`，原来是 `map[int]uuid.UUID`）；另加 `Assets(ctx, notebookID, ids)`：组合根经 asset 模块给出每个附件的类型、大小、宽高与签名地址（没有名称：文字照写法）。
   - 核心的 Markdown 图片由 `platform/markdown` 渲染，扩展原来只能换它的 `<a>` 的属性（`Extension.Links`）。核心加一个钩子：图片按目标的起点问扩展，扩展答一个写自己登记的标记的函数，或不管（照旧 `<span class="nw-image">`）。嵌入与 Markdown 图片因此走同一段代码。
   - `Assets` 交空、或没有某个附件时，解析到附件的写法渲染为不带地址的文字，不写成页面的链接；整个程序的最后一跳测试在组合根交空时失败。
   - 渲染用的 `Assets` 只在 serve 的组合里给；reindex 的组合交空（它只提取），有测试证明提取不受它影响（`markdownExtensions(resolve, assets)`）。
-- **属性链接**：`PropertyLink` 加 `kind`，附件的带签名地址；右栏的属性对附件给地址，不经 `href(lead)`。
+- **属性链接**：`PropertyLink` 加 `kind` 与 `url`（附件的签名地址）；右栏的属性对附件给地址，不经 `href(lead)`。
 - **改名、移动**：附件改名、移动时，解析到它的链接照页面的规则改写（M6 的改写参与者；Obsidian 打开"始终更新内部链接"时同样改写附件的嵌入）；移动、改名一页时，它子树里的附件同样进候选。`Linktexts` 给被同名附件遮住的页写 `x.png.md`。与 Obsidian 核对（`rename/`）。
 - **落点**：落点的 `node_id` 从不是附件；读作附件的目标答新的原因 `target_is_asset`，读作页面、落点旁边却有同名附件的也这样答，`parents` 只有页面；前端照"没有落点"说明并重读视图（解决 M6 的移交第 3 项的循环）。
 - **补全**：`LinkTarget` 带类型，补全列出附件并标出类型（`![[` 之后附件排前），没有扩展名的附件不列（任何写法都读不到它）；`link` 与名称的说明随之改（`linking.yaml`）。
@@ -240,7 +241,7 @@
 - **阅读视图**（阅读视图的交互增强 `assets`，12.4 这一行加上 M7）：
   - 指向附件的链接：内联类型在新标签页打开（`rel=noopener`，带看不见的"在新标签页打开"提示），`attachment` 类型直接下载、不开新标签页（Firefox 会留下空白的标签页）。点图片不做什么（与 Obsidian 的默认相同）。
   - 地址到期：缓存里的视图过了 `assets_expire_at` 当作没有加载；到期之前安排重读。加载失败（捕获阶段的 `error`，它不冒泡）时，若视图的到期时刻已过，合并成一次重读，同一个到期时刻至多重读一次：文件不在（404）、限流（429）、解不开的图片在同一小时里重读也一样失败，不能循环。
-  - 已开始播放的音频、视频在 HTML 换掉时保留（按附件 id 与出现的次序配对，同 M6 保留焦点的做法）：HTML 每小时因签名而变，别人的编辑、`links` 事件也让它变，`innerHTML` 会毁掉正在播放的媒体；暂停超过地址的期限之后，下一次 `Range` 失败时经 `GET /assets/{id}` 重签，保留播放的位置。
+  - 已开始播放的音频、视频在 HTML 换掉时保留（按附件 id（地址的路径里）与出现的次序配对，同 M6 保留焦点的做法）：HTML 每小时因签名而变，别人的编辑、`links` 事件也让它变，`innerHTML` 会毁掉正在播放的媒体；暂停超过地址的期限之后，下一次 `Range` 失败时经 `GET /assets/{id}` 重签，保留播放的位置。
 - **导入与导出的界面**：笔记本设置加"导入与导出"一节，列出最近的任务（状态、进度、报告、下载、已过期），关掉对话框、重新加载页面之后仍找得到；运行中的任务以 SWR 的 `refreshInterval` 每秒读一次；报告的原因是码（前端按码给文案），不是服务端的文字。页面标题旁的菜单加"导出此页"（读者也有：树的操作菜单只给写者）。导入时选位置的对话框说明深度的限制。
 
 ### 4.9 后台任务
@@ -354,7 +355,7 @@
 | `POST /api/v0/transfer-jobs/{job_id}/cancel` | 取消 |
 | `GET /api/v0/transfer-jobs/{job_id}/download` | 下载导出的 zip（`x-raw`，公开，靠签名） |
 
-改动：`NodeKind`、`LinkTargetKind` 加 `asset`；`PropertyLink` 加 `kind`；`PageView` 加 `assets_expire_at`；落点的原因加 `target_is_asset`；`InstanceInfo` 加 `asset_max_bytes`、`import_max_bytes`。错误码：平台码 `storage_full`（507）；名称的规则是字段错误 `name: not_allowed`；`transfer.not_found`、`transfer.busy`、`transfer.not_cancellable` 等，写进 P2、P5、P6 的文档。413 用平台的 `payload_too_large`。
+改动：`NodeKind`、`LinkTargetKind` 加 `asset`；`PropertyLink` 加 `kind`、`url`；`PageView` 加 `assets_expire_at`；落点的原因加 `target_is_asset`；`InstanceInfo` 加 `asset_max_bytes`、`import_max_bytes`。错误码：平台码 `storage_full`（507）；名称的规则是字段错误 `name: not_allowed`；`transfer.not_found`、`transfer.busy`、`transfer.not_cancellable` 等，写进 P2、P5、P6 的文档。413 用平台的 `payload_too_large`。
 
 ## 6. 从 Nerve 借鉴
 
@@ -443,7 +444,7 @@ Nerve 的文件里程碑还没开始，只有计划与平台的做法（只读�
 - `platform/markdown`：核心的图片钩子（M4 的 `Extension` 加字段）；`obsidian.Resolve` 的签名（答类型）与 `Options.Assets`；`CheckHTML` 认附件的标记。
 - linking：`LinkTargetKind`、`PropertyLink.kind`、落点的 `target_is_asset`、`Linktexts` 的 `.md` 写法、补全数据带类型；`markdownExtensions(resolve, assets)`。
 - 组合根：`purgers(pool)` 改为 `purgers(pool, store)`；模块的构建次序 page → asset → transfer。
-- 前端：`EditorContext.uploadAsset`、`EditorControls.whenComposed`；`PageView.assets_expire_at` 与阅读视图对缓存的视图的处理；M5 的 `pages` 处理的整树重读改经 `refresher`；`appLinks` 不碰 `data-nw-asset`；`InstanceInfo`；`PageTreeStore` 分出页面的索引；附件的上传不经 `oneAtATime`（13.2 第 1 条的例外）；右栏的属性对附件给地址。
+- 前端：`EditorContext.uploadAsset`、`EditorControls.whenComposed`；`PageView.assets_expire_at` 与阅读视图对缓存的视图的处理；M5 的 `pages` 处理的整树重读改经 `refresher`；`appLinks` 不碰附件的链接（`nw-asset`）；`InstanceInfo`；`PageTreeStore` 分出页面的索引；附件的上传不经 `oneAtATime`（13.2 第 1 条的例外）；右栏的属性对附件给地址。
 
 ## 9. 测试策略
 
@@ -514,7 +515,7 @@ M7 开工时负责人确认进入 M7（2026-10-08："可以了"）。下面是�
 |---|---|---|---|---|
 | P1 | 平台：存储与流式路由 | 已完成 | [01-P1-storage-stream.md](01-P1-storage-stream.md) | [P1 审查](reviews/P1-storage-stream-review.md) |
 | P2 | 附件（服务端） | 已完成 | [02-P2-assets-server.md](02-P2-assets-server.md) | [P2 审查](reviews/P2-assets-server-review.md) |
-| P3 | 附件与链接（服务端） | 进行中（A 已合并 `5138ad6`，B 待做） | [03-P3-assets-links.md](03-P3-assets-links.md) | [P3A 审查](reviews/P3A-assets-links-review.md) |
+| P3 | 附件与链接（服务端） | 已完成（A 合并 `5138ad6`，B 合并 `f3bf03c`） | [03-P3-assets-links.md](03-P3-assets-links.md) | [P3A 审查](reviews/P3A-assets-links-review.md)、[P3B 审查](reviews/P3B-render-review.md) |
 | P4 | 附件（前端） | 未开始 | — | — |
 | P5 | 导出 | 未开始 | — | — |
 | P6 | 导入 | 未开始 | — | — |
@@ -530,3 +531,4 @@ M7 开工时负责人确认进入 M7（2026-10-08："可以了"）。下面是�
 | 2026-10-09 | P2 完成：4.3 处理器之前的答复对有请求体的请求关闭连接，宣告的答复按步写出、写截止时间随写出的字节前移（`Sending(r)`）；4.4 上传的 `name` 为空取文件名；4.5 严格的读法（规范的路径，参数依次、键名对位），CSP 与 CORP 在每个答复上，去掉对改动的条件；4.6 活动只报字节数；4.8 树的重读至多每 500 毫秒一次 | P2 的实施、审查与九轮修复核对：[02-P2-assets-server.md](02-P2-assets-server.md)、[P2 审查](reviews/P2-assets-server-review.md) |
 | 2026-10-09 | P3 开工：分 A（解析、索引与改写）、B（渲染）两部分合并；与 Obsidian 1.12.7 实测之后定下附件的三种读法（带扩展名、笔记本里有这个名称的附件时只读作附件），被同名附件遮住的页、被抢走的页的 wikilink 写 `.md` 的写法（Obsidian 写出解析不到的，`nerve-defined`），附件的显示文字按去掉扩展名的名称跟着改；索引记下解析到的是附件（`page_links.resolved_asset`）；4.7 的 `Assets` 由 asset 只凭连接池给出（`asset.NewEmbeds`）；平台的 `Render` 答 `View`（带到期） | [03-P3-assets-links.md](03-P3-assets-links.md) 第 2、4、5 节 |
 | 2026-10-09 | P3A 完成：没有扩展名的附件 `link` 为 null、补全不列它；附件的 `link` 由 page 的一条语句读出路径与同名附件的个数（`AssetLinktext`）；落点在同名附件旁边也答 `target_is_asset`；down 迁移先把指向附件的链接置为解析不到；契约写明附件的改名、移动会改写、会被编辑锁拒绝 | P3A 的实施、审查与两轮修复核对：[03-P3-assets-links.md](03-P3-assets-links.md) 第 4、9 节、[P3A 审查](reviews/P3A-assets-links-review.md) |
+| 2026-10-09 | P3B 完成：附件的标记不写 `data-nw-asset`（id 在地址的路径里），`alt` 与 `aria-label` 默认是写下的目标，`Assets` 不给名称；一个视图至多写 2000 个附件的地址（`MaxShown`），附件的标记有了总量的上界；视图的到期是写出的地址里最早的；`PropertyLink` 另加 `url` | P3B 的实施、审查与两轮修复核对：[03-P3-assets-links.md](03-P3-assets-links.md) 第 5、9 节、[P3B 审查](reviews/P3B-render-review.md) |

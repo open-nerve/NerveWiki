@@ -35,7 +35,7 @@ M4/P3 交付了唯一的 Markdown 解析与渲染 `platform/markdown`（[P3 文�
 1. 方言是 `platform/markdown/obsidian` 的 `obsidian.Extension(obsidian.Options{Resolve})`，组合根的 `markdownExtensions(resolve)`（`bootstrap/registrants.go`）在任务项之后登记它。`Extract` 的签名改为 `Extract(Tree)`（frontmatter 随树给出，M6 总设计第 8 节）。
 2. `==` 照 `harden` 的游程与按作用域的配对加进去，`%%` 是隐藏的变换（[P1 文档](../01-P1-dialect.md)），都线性。
 3. 链接里的 wikilink 经方言自己的 `inLinks` 变换（`obsidian/view.go`，不导出）与 `platform/markdown` 导出的 `Linker` 接口识别（[P3 文档](../03-P3-index.md) B 部分），`CheckHTML` 拒绝 `<a>` 套 `<a>`；与原版逐字节对照的测试照旧。
-4. 病态与放大输入加进 `markdowntest` 的 `Pathological()`、`Amplifying()`，`TestTheAppsMarkdownCostsAboutItsSize` 在应用的实例上跑。嵌入不把目标的内容写一遍（照链接渲染），不需要展开的预算。
+4. 病态与放大输入加进 `markdowntest` 的 `Pathological()`、`Amplifying()`，`TestTheAppsMarkdownCostsAboutItsSize` 在应用的实例上跑。嵌入不把目标的内容写一遍（照链接渲染），不需要展开的预算。（M7/P3B：附件的嵌入写出它的标记与签名地址，每用一次一份，不写目标的内容；一个视图至多 2000 个附件的地址，见 [M7/P3](../../M7-assets-transfer/03-P3-assets-links.md) 5.5、5.9。）
 5. 每种节点都有渲染函数；元素、属性与 class 登记在 `Markup`，地址经 `SafeURL`，`TestTheAppsMarkdownRendersCheckedHTML` 跑 `CheckHTML` 与 `CheckSize`（全解析与全不解析两种）。
 6. 方言在 `platform/markdown` 之内，`markdownLibrariesStayInMarkdown` 不必改（总体设计 13.3 第 5 条）。
 7. 现状照旧：任务项是 M5 的扩展；图片的内联与附件归 M7（[M7 的移交](../../M7-assets-transfer/handoffs/M6-links.md)）。

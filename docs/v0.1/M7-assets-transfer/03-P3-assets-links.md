@@ -3,7 +3,7 @@
 | 项 | 内容 |
 |---|---|
 | Phase | M7/P3 附件与链接（服务端） |
-| 状态 | 进行中 |
+| 状态 | 已完成（A 合并 `5138ad6`，B 合并 `f3bf03c`） |
 | 基线 | `4926432`（P2 合并、文档补完之后的 main）；本文提交之后开分支 `m7-p3a`，A 部分合并之后开 `m7-p3b` |
 | 上级文档 | [M7 总设计](00-M7-design.md) 4.7、第 5、7–9 节；移交：[M6 链接与附件](handoffs/M6-links.md)第 1–3、6 项，[M4 附件的扩展](handoffs/M4-extensions.md)第 1、3 项，[M4/P3 Markdown 的扩展](../M6-links/handoffs/M4-P3-markdown-extensions.md)第 1–8 项（已关闭，抄送 M7）；总体设计 13.1 第 31 条，13.3 第 2、4、6 条；样例集 [README](../../../tools/md-fixtures/README.md) |
 
@@ -186,24 +186,27 @@ P3 改的面很宽：解析规则、索引、改写、落点、补全、渲染�
 
 | 文件 | 内容 |
 |---|---|
-| `server/internal/platform/markdown/`：`markdown.go`、`render.go`、`marks.go` | `Extension.Images`、`Extension.Expires`、`View`（5.2） |
-| `server/internal/platform/markdown/markdowntest/`：`check.go`、`inputs.go` | `src` 的规则；放大与病态输入加附件的嵌入（5.9） |
-| `server/internal/platform/markdown/obsidian/`：`obsidian.go`、`view.go`、`render.go`、`asset.go`（新）、`size.go`（新） | `Target`、`Assets`、附件的标记、尺寸与说明、媒体的上限（5.3–5.5） |
-| `server/internal/modules/asset/`：`embeds.go`（新，模块根）、`app/embeds.go`（新） | `NewEmbeds`：只凭连接池与密钥，答附件的类型、名称、大小、宽高与签名地址（5.4） |
-| `server/internal/modules/linking/`：`adapter/markdown/views.go`、`app/properties.go`、`module.go`、`adapter/http` | `ResolveLinks` 带类型；属性链接的地址（5.6） |
+| `server/internal/platform/markdown/`：`markdown.go`、`render.go`、`marks.go` | `Extension.Images`、`Extension.Expires`、`View`；`WriteAttrs` 的 `src`；Markdown 链接的属性只问一次（5.2） |
+| `server/internal/platform/markdown/markdowntest/`：`check.go`、`inputs.go`、`costs.go`、`race.go`、`norace.go`（新） | `src` 的规则、链接里的控件；放大与病态输入加附件的嵌入与宽表；`Race`（5.9） |
+| `server/internal/platform/markdown/obsidian/`：`obsidian.go`、`view.go`、`render.go`、`wikilink.go`、`asset.go`（新）、`size.go`（新） | `Target`、`Assets`、附件的标记、尺寸与说明、媒体与地址的上限（5.3–5.5） |
+| `server/internal/modules/asset/`：`embeds.go`（新，模块根）、`app/embeds.go`（新）、`adapter/http/upload.go`（`ContentURL` 公开） | `NewEmbeds`：只凭连接池与密钥，答附件的类型、大小、宽高与签名地址（5.4） |
+| `server/internal/modules/linking/`：`adapter/markdown/views.go`、`app/ports.go`、`app/properties.go`、`module.go`、`adapter/http` | `Resolve` 带类型；属性链接的地址（5.6） |
 | `server/internal/modules/page/`：`app/get_page_view.go`、`app/ports.go`、`adapter/markdown`、`adapter/http` | `PageView.assets_expire_at`（5.7） |
-| `api/modules/page.yaml`、`linking.yaml` | `PageView.assets_expire_at`、`PropertyLink.url` |
-| `server/internal/bootstrap/`：`registrants.go`、`deps.go`、`reindex.go`、`markdown_app_test.go`、`links_view_test.go`、`assets_view_test.go`（新） | `markdownExtensions(resolve, assets)`；最后一跳（5.10） |
-| `tools/md-fixtures/render/`、`obsidian/verify-render.mjs`、`server/internal/platform/markdown/obsidian/render_fixtures_test.go` | 媒体的记法（5.8） |
-| `web/apps/web/src/pages/page/page-properties.tsx`、`reading/app-links.test.ts` | 属性里附件的地址；`appLinks` 不碰附件的链接（有测试） |
+| `api/modules/page.yaml`、`linking.yaml`、`asset.yaml` | `PageView.assets_expire_at`、`PropertyLink.url`；`getPageView`、`getAssetContent` 的说明 |
+| `server/internal/bootstrap/`：`assets.go`、`deps.go`、`wire.go`、`registrants.go`、`reindex.go`、`markdown_app_test.go`、`assets_view_test.go`（新）、`links_assets_test.go` | `assetEmbeds`、`markdownExtensions(resolve, assets)`；最后一跳（5.10） |
+| `tools/md-fixtures/`：`render/047`–`065`、`check.mjs`、`README.md`、`obsidian/verify-render.mjs`；`server/internal/platform/markdown/obsidian/render_fixtures_test.go` | 媒体的记法（5.8） |
+| `web/apps/web/src/pages/page/`：`page-properties.tsx`、`page-outline.tsx`；`reading/reading.css`、`reading/app-links.test.ts`；测试的视图与属性（`assets_expire_at`、`url`） | 属性里附件的地址；大纲认附件的图片；附件在行内（`appLinks` 不碰附件的链接，有测试） |
+| `e2e/stories/links/l5-completion.spec.ts`、`l6-panel.spec.ts` | 属性链接的 `url` |
+| `Makefile` | 应用的 HTML 检查在不带竞态检测的一遍里跑；竞态检测的一遍每个包 30 分钟 |
 
 ### 5.2 平台：图片钩子与到期
 
 - **`Extension.Images`**：`func(data any) func(start int) (Image, bool)`。核心渲染 Markdown 图片时按目标在正文里的起点（`Tree.Destination`）问扩展，第一个答 `true` 的写它：`Image` 是一个函数，拿到图片的说明文字（`ShownText`）与是否在链接里，写出整个元素。没有扩展认领的图片照旧是 `<span class="nw-image">`。
-  - 写出的地址照旧经 `WriteAttrs`（`href`、`src` 过 `SafeURL`）；元素与属性登记在 `Markup`。
+  - 写出的地址照旧经 `WriteAttrs`（`href`、`src` 过 `SafeURL`）；`src` 另外只收本站从根开始的路径，写别处的地址时不写（审查 B2；`SafeURL` 已经拒绝 `//host`、`/\host`）。元素与属性登记在 `Markup`。
   - 链接里的图片：钩子拿到"在链接里"，写 `<img>` 不写链接；不是图片的（音视频、附件的链接）在链接里写成不带地址的文字（链接里不能有交互的元素）。
-- **`Extension.Expires`**：`func(data any) time.Time`，扩展的数据在什么时刻之后不再有效（零值为一直有效）。
-- **`Render` 答 `View{HTML string; Expires time.Time}`**：`Expires` 是各扩展的最早者。调用方（page 的适配器、测试）改读 `.HTML`。
+- **Markdown 链接的属性只问一次**：`Links` 在进入链接时问，离开时照记下的写不写 `</a>`（原来进出各问一次）。扩展可能数它写出的东西（5.5 的地址上限），问两次就数两次（审查 B1）。
+- **`Extension.Expires`**：`func(data any) time.Time`，扩展写出的东西在什么时刻之后不再有效（零值为一直有效）。在视图写完之后问，所以扩展只报它真正写出的（审查 A1）。
+- **`Render` 答 `View{HTML string; Expires time.Time}`**：`Expires` 是各扩展不为零的最早者。调用方（page 的适配器、测试）改读 `.HTML`。
 - 13.3 第 6 条的钩子表随之加 `Images`、`Expires`（12.1 第 6 条的例外，逐项写明）。
 
 ### 5.3 obsidian 扩展的参数
@@ -218,11 +221,10 @@ type Resolve func(ctx context.Context, page markdown.Page, links []Link) (map[in
 
 // Asset is what a reading view shows of an attachment.
 type Asset struct {
-    Name          string
     MIME          string
     Bytes         int64
     Width, Height int       // 0: unknown
-    URL           string    // the content's address, signed, relative
+    URL           string    // the content's address, signed, a path of this site
     Expires       time.Time
 }
 type Assets func(ctx context.Context, notebookID uuid.UUID, ids []uuid.UUID) (map[uuid.UUID]Asset, error)
@@ -233,15 +235,16 @@ type Options struct {
 }
 ```
 
-- `Fetch`：先 `Resolve`，再把解析到附件的 id（去重）交给 `Assets`，一次。`Assets` 只答这本笔记本里活着、有行的附件；没答的、`Assets` 为空的，渲染为不带地址的文字（5.5）。`Expires` 是答出的附件里最早的到期。
+- `Asset` 没有名称（原定有）：`alt`、`aria-label` 与链接的文字照写法，与 Obsidian 相同（5.5）。
+- `Fetch`：先 `Resolve`，再把解析到附件的 id 按正文的次序去重，带页面的笔记本交给 `Assets`，一次。`Assets` 只答这本笔记本里活着、有行的附件；没答的、`Assets` 为空的，渲染为不带地址的文字（5.5）。视图的到期是**写出的**地址里最早的（原定"答出的附件里最早的"）：注释里的、链接文字里写成文字的、超出上限的不写地址，也不算（审查 A1、B4）。
 - 页面的目标照 M6 写 `data-nw-node`；解析到附件的**从不**写 `data-nw-node`。
 
 ### 5.4 asset 给渲染的端口
 
-- `asset.NewEmbeds(pool, nodes, contentKey, clock)`：只凭连接池、page 的读端口（`page.NewAssetNodes`）与派生的密钥构造，因为 Markdown 在 page 与 asset 的模块之前建（`parsing()`）；13.1 第 11 条的常规（端口只凭连接池），不是例外。
-- `Embeds(ctx, notebookID, ids)`：读节点（类型是附件、在这本笔记本、没删）与行，读一次时钟签出全部地址（内联的地址，`d` 不设），答名称、类型、字节数、宽高。读不到的不答，不报错；数据库的错误照常返回，阅读视图答 500。
-- 不再核对读权限：渲染的是读者能读的页，链接只解析到同一本笔记本里的节点，附件的 `asset.read` 与页面的读同为读者（P2 的规则表）。`Embeds` 的注释写明它只给阅读视图与属性用，ids 必须来自这本笔记本的解析。
-- 组合根把它适配成 `obsidian.Assets`，并交给 linking 的属性读取（5.6）。
+- `asset.NewEmbeds(pool, contentKey, clock)`：只凭连接池与派生的密钥构造，因为 Markdown 在 page 与 asset 的模块之前建（`parsing()`）；13.1 第 11 条的常规（端口只凭连接池），不是例外。原定另带 page 的读端口：用不着。它只读 `asset_blobs`（`BlobsOfNodes`，按笔记本过滤），P2 的不变式保证活着的行恰好对应活着的附件节点。
+- `Of(ctx, notebookID, ids)`（`app.Embeds`）：读一次时钟签出全部地址（内联的地址，`d` 不设，经 `httpadapter.ContentURL`，与内容路由同一个写法），答类型、字节数、宽高。读不到的不答，不报错；数据库的错误照常返回，阅读视图答 500。
+- 不再核对读权限：渲染的是读者能读的页，链接只解析到同一本笔记本里的节点，附件的 `asset.read` 与页面的读同为读者（P2 的规则表）。注释写明它只给阅读视图与属性用，ids 必须来自这本笔记本的解析。
+- 组合根（`bootstrap/assets.go` 的 `assetEmbeds`）把它适配成 `obsidian.Assets` 与 linking 的 `AttachmentURLs`（5.6）。
 
 ### 5.5 附件的标记
 
@@ -252,45 +255,51 @@ type Options struct {
 | `![[…]]`、`![…](…)` | `<img>` | `<audio>` | `<video>` | 附件的链接 |
 | `[[…]]`、`[…](…)`、属性链接 | 附件的链接 | 附件的链接 | 附件的链接 | 附件的链接 |
 
-- `<img class="nw-asset" src=… alt=… data-nw-asset=… [width] [height] loading="lazy">`：`alt` 是说明，没有时是名称（`![](x.png)` 在 Obsidian 里没有 `alt`，这里给名称，`nerve-defined`，可访问性更好）；`width`、`height` 是写下的尺寸，没写尺寸时是附件的宽高（知道时），让排版不跳。
-- `<audio class="nw-asset" controls preload="none" src=… data-nw-asset=… aria-label=…>`、`<video …同上… [width] [height]>`：`aria-label` 是说明或名称。
-- 附件的链接：`<a class="nw-asset" href=… data-nw-asset=… data-nw-size=…>`（wikilink 另有 `nw-wikilink`），文字照写法（wikilink 的显示、Markdown 链接的文字；嵌入与 Markdown 图片是说明或名称）。文件名与大小不写成界面的文字，前端按语言格式化 `data-nw-size`（P4）。新标签页由 P4 的增强给。
-- **不带地址的文字**（`Assets` 为空、没答这个附件）：`<span class="nw-asset">`，文字同上，不写成页面的链接。
-- **尺寸与说明**（`size.go`）：嵌入的显示（第一个 `|` 之后）与 Markdown 图片的说明，最后一个 `|` 之后是 `宽` 或 `宽x高`（十进制数字）时是尺寸，其余是说明；`300x`、`x200` 是说明。数值在 1–10,000 之外的照尺寸的形状认，但不写（`nerve-defined`：Obsidian 照写 `0`、`20000`）。Wikilink（不是嵌入）的显示是文字，不读尺寸。
-- **媒体的上限**：一个视图里按文档的次序至多 20 个 `<audio>`、`<video>`，第 21 个起写附件的链接（总体设计 13.1 第 31 条加一项）。图片不限（`loading="lazy"`）。
+- `<img class="nw-asset" src=… alt=… [width] [height] loading="lazy">`：`alt` 是说明，没有时是写下的目标（`A/x.png`、带锚点的 `x.png > a`，照 Obsidian；`![](x.png)` 在 Obsidian 里没有 `alt`，这里给目标，`nerve-defined`，可访问性更好）；`width`、`height` 是写下的尺寸，没写尺寸时是附件的宽高（知道时），让排版不跳。
+- `<audio class="nw-asset" src=… controls preload="none" aria-label=…>`、`<video …同上… [width] [height]>`：`aria-label` 是说明或写下的目标。
+- 附件的链接：`<a class="nw-asset" href=… data-nw-size=…>`（wikilink 另有 `nw-wikilink`，嵌入另有 `nw-embed`），文字照写法（wikilink 的显示、Markdown 链接的文字；嵌入与 Markdown 图片是说明或目标）。文件名与大小不写成界面的文字，前端按语言格式化 `data-nw-size`（P4）。新标签页由 P4 的增强给。
+- **不写 `data-nw-asset`**（原定写）：它重复地址的路径里已有的 id，每个附件多二十几个字节，`CheckSize` 的放大从 66–70 倍降到 56 倍以下；前端要 id 时从路径读（P4）。
+- **不带地址的文字**（`Assets` 为空、没答这个附件、超出 `MaxShown`、在链接文字里而不是图片）：wikilink 与嵌入是 `<span class="nw-wikilink [nw-embed] nw-asset">`，Markdown 链接与属性链接是不带 `href` 的 `<a class="nw-asset">`（核心写这个 `<a>`），Markdown 图片是 `<span class="nw-asset">`；文字同上，不写成页面的链接。
+- **尺寸与说明**（`size.go`）：嵌入的显示（第一个 `|` 之后）与 Markdown 图片的说明，最后一个 `|` 之后是 `宽` 或 `宽x高`（十进制数字）时是尺寸，其余是说明；`300x`、`x200` 是说明。每一边各自在 1–10,000 之内才写（`|0x200` 只写高 200；`nerve-defined`：Obsidian 照写 `0`、`20000`）。说明去掉两端的 ASCII 空白（照 Obsidian；`&#10;` 写出的换行也去），空的用目标。表格里用 `\|` 写的说明保留反斜杠（`![[x.png\|说明\|300]]` 的 `alt` 是 `说明\`，与 Obsidian 相同，样例 062）。引用式的 Markdown 图片同样读尺寸（Obsidian 不读，`nerve-defined`，样例 064）。Wikilink（不是嵌入）的显示是文字，不读尺寸；音频不写尺寸。
+- **媒体的上限**：一个视图里按文档的次序至多 20 个 `<audio>`、`<video>`（`MaxMedia`），第 21 个起写附件的链接；链接文字里写成文字的不算。图片不限个数（`loading="lazy"`）。
+- **地址的上限**（审查 B1，原定没有）：一个视图至多写 2000 个附件的地址（`MaxShown`，图片、音视频、链接一样算，按文档的次序），之后的写成不带地址的文字。附件的标记每个地址两百字节上下，几个字节的写法就写出一个，表格的行还会补齐到表头的宽度：按字节算最多约 67 倍，超过 `CheckSize` 的 64 倍。有了上限，它们是一个总量（约 0.4 MB），在 `CheckSize` 的余量之内；读者的标签页加载的图片数也因此有界。
 - **锚点**：`![[x.png#a]]` 的锚点不影响附件的标记（Obsidian 只把它写进 `alt`）。
-- `Markup` 登记：`img`（`class`、`src`、`alt`、`width`、`height`、`loading`、`data-nw-asset`），`audio`（`class`、`controls`、`preload`、`src`、`aria-label`、`data-nw-asset`），`video`（再加 `width`、`height`），`a` 加 `data-nw-asset`、`data-nw-size`，`span` 不加属性（不带地址的文字只有 class）；class `nw-asset`；`URLs` 加 `src`。`img` 是空元素，`audio`、`video` 有结束标签。
+- **链接里的媒体**：音视频与其余类型在链接里是文字（`nerve-defined`：Obsidian 把音频的控件写进 `<a>`）；`CheckHTML` 报链接里的 `audio`、`video`。
+- `Markup` 登记：`img`（`class`、`src`、`alt`、`width`、`height`、`loading`），`audio`（`class`、`controls`、`preload`、`src`、`aria-label`），`video`（再加 `width`、`height`），`a` 加 `data-nw-size`；class `nw-asset`；`URLs` 加 `src`。`img` 是空元素，`audio`、`video` 有结束标签。
 
 ### 5.6 属性链接
 
 - 正文的属性表（服务端的 HTML）：属性链接经 `view.property` → `lead`，解析到附件的写附件的链接（同 5.5），不读尺寸。
-- 右栏（`GET …/properties`）：`PropertyLink` 加 `url`：附件的内容地址（签名的），页面与解析不到的为 `null`。linking 的 `GetPageProperties` 收附件的 id，一次调用组合根给的 `Embeds`（同 5.4）；前端对 `kind = asset` 的写成指向 `url` 的链接，不经 `href(lead)`。
+- 右栏（`GET …/properties`）：`PropertyLink` 加 `url`（必有，可空）：附件的内容地址（签名的），页面、解析不到的、索引之后删掉的附件为 `null`。linking 的 `GetPageProperties` 收端口 `Assets`（`AttachmentURLs`，组合根经 `assetEmbeds` 给出），附件的 id 去重之后一次调用；为空时没有地址。前端对 `kind = asset`、带 `url` 的写成在新标签页打开的链接（`rel="noopener noreferrer"`），不经 `href(lead)`；没有 `url` 的是文字。
 
 ### 5.7 `PageView.assets_expire_at`
 
-- page 的 `Markdown` 端口的 `Render` 答 HTML 与 `Expires`，`GetPageView` 把它交给接口：`assets_expire_at`（`date-time`，视图里没有附件时为 `null`）。签名的地址按小时取整、有效一到两小时（P2），一个视图里的附件同时签出，到期相同。
+- page 的 `Markdown` 端口的 `Render` 答 `app.Rendered{HTML, Expires}`，`GetPageView` 把它交给接口：`assets_expire_at`（`date-time`，必有，视图里没有写出附件的地址时为 `null`）。签名的地址按小时取整、有效一到两小时（P2），一个视图里的附件同时签出，到期相同。
 - 前端在 P4 据它重读；B 里只加进契约与类型。
 
 ### 5.8 渲染样例的媒体记法
 
 - `render/` 的 JSON 加可选的 `assets`（库根下的附件名称）；`verify-render.mjs` 把它们建进库（图片是真的 PNG）。
-- 记法：读 DOM 时，图片写 `⟨img alt w×h⟩`（没有的部分省去，`w×h` 只写写下的尺寸），音频 `⟨audio 说明⟩`，视频 `⟨video 说明 w×h⟩`；Obsidian 一侧读嵌入外层的 `span.internal-embed` 的 `alt`、`width`、`height`，服务端一侧读 `img` 的 `alt`、写下的尺寸（样例的 `Assets` 不给宽高）与 `aria-label`。附件的链接照文字读。PDF 与没见过的类型不进样例（Obsidian 是阅读器与文件框，这里是链接，`nerve-defined`）。
-- 新样例：嵌入与 Markdown 图片的尺寸与说明（第 2 节阅读视图的 1）、音视频、链接里的图片、行内的图片不另起一块。
-- `render_fixtures_test.go`：`Resolve` 按名称在 `assets` 里找，`Assets` 按扩展名给类型。
+- 记法：图片写 `⟨img 文字 尺寸⟩`，音频 `⟨audio 文字⟩`，视频 `⟨video 文字 尺寸⟩`，没有的部分省去；文字是写下的说明（没有时是写下的目标），尺寸是写下的 `宽`、`宽×高`、`×高`。Obsidian 一侧读嵌入外层的 `span.internal-embed` 的 `alt`、`width`、`height`（引用式的 Markdown 图片是一个 `<img>`，读它的；音频的尺寸 Obsidian 写在外层上、不起作用，两边都不读），服务端一侧读 `img` 的 `alt`、`aria-label` 与写下的尺寸（样例的 `Assets` 不给宽高）。附件的链接照文字读。PDF 与没见过的类型不进样例（Obsidian 是阅读器与文件框，这里是链接，`nerve-defined`）。`check.mjs` 只在有 `assets` 的样例里收这种写法，并核对它的形状。
+- 样例 047–065（19 个）：`obsidian-verified` 14 个，`nerve-defined` 5 个（053 没有说明的图片、054 范围之外的尺寸、056 没有说明的音频、059 链接里的媒体、064 引用式图片的尺寸）。
+- `render_fixtures_test.go`：`Resolve` 按名称（不分大小写）在 `assets` 里找，`Assets` 按扩展名给类型。
 
 ### 5.9 检查
 
-- **`CheckHTML`**：`src` 只许出现在扩展登记了它的元素上，值必须是本站的路径（不带协议与主机）；外站的图片照旧不加载（总体设计 4.3）。
-- **应用的测试**（`TestTheAppsMarkdownRendersCheckedHTML`）加"全部解析到附件"的模式：图片、音频、视频、pdf 各一轮，`Assets` 用 asset 的真的签名（`NewEmbeds` 的签名部分，一把固定的密钥），并另核每个 `src`、附件链接的 `href` 都是附件内容的签名路径（`/api/v0/assets/<id>/content?e=…&s=…`）；从不出现指向附件的 `data-nw-node`。
-- **`CheckSize`**：`Amplifying()` 加附件的嵌入（几个字节的 `![[x]]`、引用式的 `![x]` 写出带签名地址的整个标记）、病态输入加很多的嵌入；`TestTheAppsLinksAreWithinTheirBound` 加"全部解析到附件"。现在的 64 倍若不够，先缩短标记（例如去掉可以省的属性），再按实测提高倍数，写进第 9 节与 13.3 第 4 条。
+- **`CheckHTML`**：`src` 只许出现在扩展登记了它的元素上，值必须是本站从根开始的路径（不带协议与主机）；外站的图片照旧不加载（总体设计 4.3）。链接里的 `audio`、`video` 报错。
+- **应用的测试**（`TestTheAppsMarkdownRendersCheckedHTML`）的模式：解析到页面、到无，以及全部解析到图片、音频、视频、pdf、不答的附件；每个模式先核对一个嵌入的标记，证明它是这个模式。附件的地址是内容路由的签名路径的形状（`/api/v0/assets/<id>/content?b=…&e=…&s=…`，整个程序的测试下载真的地址），从不出现指向附件的 `data-nw-node`（`checkAttachments`）。`FuzzRender` 与"渲染出的链接就是提取的链接"的测试也有附件的模式（审查 T3、C4）。
+- **`CheckSize`**：`Amplifying()` 加附件的引用式图片与宽表的行（审查 B1），病态输入加带说明与尺寸的嵌入与图片；`TestTheAppsLinksAreWithinTheirBound` 在每个模式里、不带余量地核对 64 倍（512 KiB 时 4 MiB 的余量会盖住 66–70 倍），宽表的输入核对确实渲染成表格。实测最高 58.3 倍：宽表里的脚注引用（核心的，与附件无关）；附件超出 `MaxShown` 之后是文字。附件的地址另由 `TestTheAppsAttachmentsAreWithinAQuarterOfHeadroom` 核对总量：比同样的附件写成文字至多多出 `Headroom` 的四分之一，实测约 390 KB。`Amplification` 仍是 64。
+- 这些检查在竞态检测下慢数倍，跳过（`markdowntest.Race`），由 `make test-go` 不带竞态检测的一遍跑；`CheckCosts` 另在图片的模式里跑。
 
 ### 5.10 组合根与最后一跳
 
-- `markdownExtensions(resolve, assets)`；serve 的 `parsing()` 给 `asset.NewEmbeds`；`nervewiki reindex` 给 `nil`（它只提取），有测试证明提取不受它影响（同一正文在两种组合下的 `Facts` 相同）。
-- 整个程序的测试（组合根交空时失败）：
-  - 上传一张图片、一段音频与一个 pdf，正文里嵌入与链接它们，经 `GET …/view` 读到附件的标记，地址能下载到同样的字节；`assets_expire_at` 是签名的到期。
-  - 删掉附件之后同一视图是未解析的链接；`Assets` 交空的组合里是不带地址的文字。
+- `markdownExtensions(resolve, assets)`；serve 的 `parsing(cfg, logger, pool, assets)` 给 `assetEmbeds`（`wire.go` 派生内容的密钥一次，`asset.NewEmbeds(pool, contentKey, clock)`）；`nervewiki reindex` 给 `nil`（它只提取），`TestTheReindexsFactsAreTheServers` 证明同一正文在两种组合下的 `Facts` 相同。
+- 整个程序的测试（`bootstrap/assets_view_test.go`，组合根交空时失败）：
+  - 上传一张真的 7×5 的 PNG、一段音频与一个 pdf，正文里嵌入与链接它们，经 `GET …/view` 读到附件的标记（图片两张：写下的说明与尺寸、自己的宽高；音频；pdf 的嵌入；Markdown 链接；属性链接），地址能下载到同样的字节、不带 `d`，`e` 等于 `assets_expire_at`，在一到两小时之后。
+  - 链接只在注释里与链接文字里的一页，`assets_expire_at` 为 `null`。
+  - 删掉附件之后同一视图是未解析的链接，别的附件照旧。
   - 属性链接指向附件时，右栏答 `kind = asset` 与能下载的 `url`。
+- `TestAnAttachmentsNameThroughServe`（A）的阅读视图断言改成附件的三个签名地址。
 
 ## 6. 实施步骤
 
@@ -352,6 +361,26 @@ type Options struct {
   3. 补全里很多同名的页仍是平方的代价，见 [M12 的性能移交](../M12-release/handoffs/M4-performance.md)第 8 项；附件已是线性。
 - 负责人可以改判的取舍：没有扩展名的附件 `link` 为 null、补全不列（也可以照完整路径给出并在契约里写明可能引向同路径的页）；改名、移动附件时引用它的页正在编辑就整个拒绝（与页面相同）；links 事件的 `targets` 含附件的 id；A 期间指向附件的链接在阅读视图里是未解析的，未解析对话框对它说"这个名称是附件"并重读视图。
 
-### 9.2 B：渲染
+### 9.2 B：渲染（2026-10-09，合并 `f3bf03c`）
 
-（合并之后填写。）
+- 提交：
+  - 实施：平台的图片钩子与到期 `ea03f81`、obsidian 的附件标记 `83775dd`、asset 与 linking 的端口 `f8425f9`、page 的到期 `f2ba60f`、契约 `0f04675`、组合根与最后一跳 `34765a8`、前端与 e2e `200091d`、渲染样例 `9f07cee`。
+  - 负对照的补测 `68ff7a1`；CI 首轮的修补 `9709e72`（应用的 HTML 检查在竞态检测下让 bootstrap 包超过 10 分钟，改在 `make test-go` 不带竞态检测的一遍里跑）。
+  - 审查的修复 `e21f33b`、`8ee5f98`、`635dae6`；两轮修复核对的修复 `9879f25`、`e551e3e`。合并 `f3bf03c`。
+- 审查：三位审查者（Opus）。
+  - A（服务端的正确性）：低 4（到期取了没写出的附件、表格里的 `\|`、空白的说明、到期依赖 map 的次序），测试 6，文档 3。
+  - B（渲染的安全与代价）：中 1（B1：附件的标记在宽表补齐的行里超过 64 倍），低 5，测试 3（中低），文档 2。
+  - C（测试、样例、前端与文档）：中低 2（图片与媒体被 preflight 显示成块；`getPageView` 的说明过时），低 20。
+  - 修复核对两轮，都没有行为问题；第一轮之后另修了 P3B 引入的大纲回退（只有附件图片的标题不进大纲），第二轮之后补上音视频。逐条见[审查记录](reviews/P3B-render-review.md)。
+- 审查之后改了的设计（第 5 节已改写）：一个视图至多写 2000 个附件的地址（`MaxShown`），附件的标记从按字节的放大变成一个总量；视图的到期是写出的地址里最早的，`Expires` 在视图写完之后问；`WriteAttrs` 的 `src` 只收本站从根开始的路径；Markdown 链接的属性只问一次；说明去掉两端的空白；`CheckHTML` 报链接里的控件。实施时已改的（同在第 5 节）：`Asset` 没有名称，文字照写法；不写 `data-nw-asset`；`NewEmbeds` 只读 `asset_blobs`、不带 page 的读端口；不带地址的文字按写法是 `span` 或不带 `href` 的 `a`；尺寸的两边各自判断。
+- 界限：严格的界限测试（512 KiB、不带余量）实测最高 58.3 倍（宽表里的脚注引用，核心的）；附件的地址至多比写成文字多出约 390 KB，在 `Headroom` 的四分之一之内；`Amplification` 仍是 64、`Headroom` 仍是 4 MiB。
+- 与 Obsidian 1.12.7 的核对：实施时探了一次（说明、尺寸、链接里的媒体、引用式图片），`verify-render` 61 例；审查之后又探一次（表格里的 `\|`、音频的尺寸、引用式图片的尺寸、空白的说明），加样例 062–065 之后 65 例，`obsidian-verified` 全部一致，差异是 M6 的 8 处与附件的 `nerve-defined` 5 处（053、054、056、059、064）。都在隔离的数据目录里，用完按 PID 关掉。
+- 样例集：`78 cases, 46 rename cases, 27 resolution cases, 65 render cases`。
+- 反向对照：本机 79 个（实施 50，其中 2 个最初存活由 `68ff7a1` 补测抓到、1 个等价；审查的修复 21，其中 1 个等价、代码随之简化；两轮核对之后 8），都被抓到或说明；数据库上 9 个，由临时分支在 CI 上跑（组合根不给 `Assets`、图片自己的宽高、组合根与模块不给属性的 `Assets`、下载的地址带 `d`、错的密钥、属性的地址为空、没有附件的视图也到期、到期取答出的全部附件；七条分支，其中一条因 lint 先失败、没跑到测试，重做），都在预期的断言上失败，分支已删。
+- CI 与发布：分支的 CI 在 `9709e72`、`635dae6`、`9879f25`、`e551e3e` 上全部通过（server、web、image、e2e；`image` 一步跑 `make image-smoke`）。本机的 Docker Desktop 起不来，数据库的测试、e2e 与合并之后的 `image-smoke` 都由 CI 跑。
+- 交给 P4 的：
+  1. 阅读视图的附件链接：内联类型在新标签页打开、带看不见的提示，`attachment` 类型下载（M7 总设计 4.8）；附件的 id 从地址的路径读（没有 `data-nw-asset`）；`data-nw-size` 按语言格式化。
+  2. 到期：缓存里的视图过了 `assets_expire_at` 当作没有加载，到期之前重读；右栏属性的 `url` 同样会到期，`PageProperties` 没有到期的字段，P4 要么加上、要么随视图一起重读（审查 C13）。右栏的附件链接现在一律在新标签页打开、没有提示（审查 C12），随第 1 项。
+  3. 粘贴插入用 `Asset.link`，为 null 时不插入嵌入；补全里附件的标记与排序（P3A 交来的）。
+- 交给 M12 的：写下的高度、折叠的 callout 标题里的控件记进[打磨的移交](../M12-release/handoffs/M5-polish.md)第 15 项；图片的像素预算记进[性能的移交](../M12-release/handoffs/M4-performance.md)第 11 项。
+- 负责人可以改判的取舍：一个视图至多 2000 个附件的地址、20 个音视频（之后是文字或链接）；链接文字里的音视频写成文字（Obsidian 写控件）；没有说明的图片与音频用写下的目标作文字（Obsidian 不写）；超出 1–10,000 的尺寸不写（Obsidian 照写）；引用式图片同样读尺寸（Obsidian 不读）；附件的图片与媒体在行内显示、宽度限在一栏之内。
