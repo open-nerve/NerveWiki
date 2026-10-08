@@ -45,7 +45,8 @@ type Asked = { n: number; link: UnresolvedLink; at: number } & ({ landing: Landi
  * whose confirm creates the page there and goes to it, arrived at, the
  * view read again for when the reader comes back. A title taken in the
  * meantime asks again where the page would go: a page the link leads to by
- * then is gone to; else the dialog says why. No landing, an embed's link,
+ * then is gone to; else the dialog says why. No landing, an attachment's
+ * name among them, whose view is read again, an embed's link,
  * an image's, and any link to a reader, say why it is not there, without a
  * question to the server for those. What the server refuses otherwise
  * goes to the page (report), as a refusal of Edit does, and the next
@@ -113,6 +114,10 @@ export function useUnresolvedLinks({
         await go(answer.node_id);
       } else if (answer.landing === null) {
         show({ why: answer.reason ?? "target_invalid" });
+        // An attachment's name: the view, read before it was there maybe, is read again (M7/P3 design 4.7).
+        if (answer.reason === "target_is_asset") {
+          reload();
+        }
       } else {
         show({ landing: answer.landing });
       }
@@ -264,5 +269,7 @@ function whyText(why: Why, t: Translate): string {
       return t("unresolved.notResolvable");
     case "target_invalid":
       return t("unresolved.targetInvalid");
+    case "target_is_asset":
+      return t("unresolved.targetIsAsset");
   }
 }

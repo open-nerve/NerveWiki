@@ -95,6 +95,7 @@ export const zhCN: Messages = {
   "unresolved.parentMissing": "路径里有一个页面不存在。",
   "unresolved.tooDeep": "它的页面会超过 10 层。",
   "unresolved.notResolvable": "为它新建的页面不会是它指向的那一页：另有页面答应这个名称，或名称的写法不同。",
+  "unresolved.targetIsAsset": "这个名称是附件，不是页面，不为它新建页面。",
   "unresolved.ok": "好",
   "reading.table": "表格",
   "reading.properties": "属性",
