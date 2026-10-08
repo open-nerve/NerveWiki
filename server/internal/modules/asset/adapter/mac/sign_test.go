@@ -1,10 +1,11 @@
-package app_test
+package macadapter_test
 
 import (
 	"testing"
 	"time"
 	"uuid"
 
+	macadapter "github.com/open-nerve/NerveWiki/server/internal/modules/asset/adapter/mac"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/asset/app"
 )
 
@@ -27,7 +28,7 @@ func signUntil() time.Time { return time.Date(2026, 10, 8, 12, 0, 0, 0, time.UTC
 // computed apart from this code (M7/P2 design 3.6; v0.1 design 13.1, item
 // 25). e is the end of the hour after the signing's.
 func TestSignIsTheKnownAnswer(t *testing.T) {
-	s := app.NewSigner(signKey(), fixedClock{signTime()}).Sign(signNode(), signBlob())
+	s := macadapter.New(signKey()).Sign(signTime(), signNode(), signBlob())
 	if !s.Expires.Equal(signUntil()) || s.Inline != "gXD47aEsSDTtgsNi8TjgwA" || s.Download != "dYc8qvppWC6RLPXNbH8z-Q" {
 		t.Errorf("Sign() = %+v, want until %v, gXD47aEsSDTtgsNi8TjgwA and dYc8qvppWC6RLPXNbH8z-Q", s, signUntil())
 	}
@@ -36,7 +37,7 @@ func TestSignIsTheKnownAnswer(t *testing.T) {
 // An hour's addresses are the same; the next hour's expire an hour later.
 func TestSignIsTheSameWithinTheHour(t *testing.T) {
 	sign := func(at time.Time) app.Signed {
-		return app.NewSigner(signKey(), fixedClock{at}).Sign(signNode(), signBlob())
+		return macadapter.New(signKey()).Sign(at, signNode(), signBlob())
 	}
 	first, last := sign(time.Date(2026, 10, 8, 10, 0, 0, 0, time.UTC)), sign(time.Date(2026, 10, 8, 10, 59, 59, 0, time.UTC))
 	next := sign(time.Date(2026, 10, 8, 11, 0, 0, 0, time.UTC))
@@ -48,7 +49,7 @@ func TestSignIsTheSameWithinTheHour(t *testing.T) {
 // Valid takes the signature of each value it was made of, and before e
 // only; a change of any value, of the key, or a time at e is invalid.
 func TestValidChecksEveryValueAndTheExpiry(t *testing.T) {
-	s := app.NewSigner(signKey(), fixedClock{signTime()}).Sign(signNode(), signBlob())
+	s := macadapter.New(signKey()).Sign(signTime(), signNode(), signBlob())
 	e := s.Expires.Unix()
 	otherKey := append([]byte{}, signKey()...)
 	otherKey[0] ^= 1
@@ -75,7 +76,7 @@ func TestValidChecksEveryValueAndTheExpiry(t *testing.T) {
 		{"a signature cut short", signKey(), signTime(), signNode(), signBlob(), e, false, s.Inline[:21], false},
 		{"no signature", signKey(), signTime(), signNode(), signBlob(), e, false, "", false},
 	} {
-		if got := app.NewSigner(tt.key, fixedClock{tt.at}).Valid(tt.node, tt.blob, tt.e, tt.download, tt.sig); got != tt.want {
+		if got := macadapter.New(tt.key).Valid(tt.at, tt.node, tt.blob, tt.e, tt.download, tt.sig); got != tt.want {
 			t.Errorf("%s: Valid() = %v, want %v", tt.name, got, tt.want)
 		}
 	}

@@ -11,6 +11,7 @@ import (
 	"time"
 	"uuid"
 
+	macadapter "github.com/open-nerve/NerveWiki/server/internal/modules/asset/adapter/mac"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/asset/app"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/asset/domain"
 )
@@ -35,10 +36,10 @@ func newServer() *server {
 	s.blob = domain.Blob{ID: uuid.NewV7(), NodeID: s.photo.ID, MIME: "image/png", Bytes: 3}
 	s.rows.rows[s.photo.ID] = s.blob
 	s.files.files[domain.Key(s.blob.ID)] = []byte("abc")
-	signer := app.NewSigner(signKey(), fixedClock{now()})
-	s.signed = signer.Sign(s.photo.ID, s.blob.ID)
-	s.content = app.NewContent(s.nodes, app.NewBlobs(s.files, s.rows, &sniffer{}), signer, fixedClock{now()},
-		slog.New(slog.NewTextHandler(s.logs, nil)))
+	signer := macadapter.New(signKey())
+	s.signed = signer.Sign(now(), s.photo.ID, s.blob.ID)
+	logger := slog.New(slog.NewTextHandler(s.logs, nil))
+	s.content = app.NewContent(s.nodes, app.NewBlobs(s.files, s.rows, &sniffer{}, logger), signer, fixedClock{now()}, logger)
 	return s
 }
 
@@ -82,8 +83,9 @@ func TestContentAnswersNotFound(t *testing.T) {
 		{"a later expiry", func(_ *server, a *app.Address) { a.Expires += 3600 }, false, false},
 		{"another file", func(_ *server, a *app.Address) { a.Blob = uuid.NewV7() }, false, false},
 		{"an address expired", func(s *server, a *app.Address) {
-			s.content = app.NewContent(s.nodes, app.NewBlobs(s.files, s.rows, &sniffer{}), app.NewSigner(signKey(), fixedClock{s.signed.Expires}),
-				fixedClock{s.signed.Expires}, slog.New(slog.NewTextHandler(s.logs, nil)))
+			logger := slog.New(slog.NewTextHandler(s.logs, nil))
+			s.content = app.NewContent(s.nodes, app.NewBlobs(s.files, s.rows, &sniffer{}, logger), macadapter.New(signKey()),
+				fixedClock{s.signed.Expires}, logger)
 		}, false, false},
 		{"a node deleted", func(s *server, _ *app.Address) { delete(s.nodes.nodes, s.photo.ID) }, true, false},
 		{"a page's node", func(s *server, _ *app.Address) {
@@ -94,7 +96,7 @@ func TestContentAnswersNotFound(t *testing.T) {
 		{"a row deleted", func(s *server, _ *app.Address) { delete(s.rows.rows, s.photo.ID) }, true, false},
 		{"a row of another file, signed", func(s *server, a *app.Address) {
 			a.Blob = uuid.NewV7()
-			a.Signature = app.NewSigner(signKey(), fixedClock{now()}).Sign(s.photo.ID, a.Blob).Inline
+			a.Signature = macadapter.New(signKey()).Sign(now(), s.photo.ID, a.Blob).Inline
 		}, true, false},
 		{"a file gone", func(s *server, _ *app.Address) { delete(s.files.files, domain.Key(s.blob.ID)) }, true, true},
 	} {

@@ -5,9 +5,11 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"testing"
@@ -16,6 +18,7 @@ import (
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/asset/app"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/asset/domain"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver/httpservertest"
 )
 
 // contentPolicy is every content's Content-Security-Policy.
@@ -37,7 +40,7 @@ func (h *harness) attach(name, mime, content string) (app.Node, domain.Blob) {
 
 // address is the signed address of b's content, shown or downloaded.
 func (h *harness) address(n app.Node, b domain.Blob, download bool) string {
-	s := h.signer.Sign(n.ID, b.ID)
+	s := h.signer.Sign(h.signedAt, n.ID, b.ID)
 	u := "/api/v0/assets/" + n.ID.String() + "/content?b=" + b.ID.String() + "&e=" + strconv.FormatInt(s.Expires.Unix(), 10)
 	if download {
 		return u + "&s=" + s.Download + "&d=1"
@@ -132,8 +135,9 @@ func TestContentNamesTheFileForEveryBrowser(t *testing.T) {
 }
 
 // Any query but the one signed, as the server writes it, is not_found,
-// no-store, alike; so is an address of another node or one expired. A
-// node id that is no id is 400, as any operation's parameter.
+// no-store, alike, sandboxed as any answer; so is a path whose id is
+// spelled otherwise, and an address of another node or one expired. A node
+// id that is no id is 400, as any operation's parameter.
 func TestContentReadsItsAddressStrictly(t *testing.T) {
 	h := newHarness(t)
 	n, b := h.attach("a.png", "image/png", "abc")
@@ -145,48 +149,69 @@ func TestContentReadsItsAddressStrictly(t *testing.T) {
 		q[k] = v
 	}
 	other, _ := h.attach("b.png", "image/png", "abc")
-	for _, tt := range []struct{ name, query string }{
-		{"no b", "e=" + q["e"] + "&s=" + q["s"]},
-		{"no e", "b=" + q["b"] + "&s=" + q["s"]},
-		{"no s", "b=" + q["b"] + "&e=" + q["e"]},
-		{"nothing", ""},
-		{"b in upper case", "b=" + strings.ToUpper(q["b"]) + "&e=" + q["e"] + "&s=" + q["s"]},
-		{"b without hyphens", "b=" + strings.ReplaceAll(q["b"], "-", "") + "&e=" + q["e"] + "&s=" + q["s"]},
-		{"b escaped", "b=%3" + q["b"][1:] + "&e=" + q["e"] + "&s=" + q["s"]},
-		{"e with a leading zero", "b=" + q["b"] + "&e=0" + q["e"] + "&s=" + q["s"]},
-		{"e with a sign", "b=" + q["b"] + "&e=%2B" + q["e"] + "&s=" + q["s"]},
-		{"s cut short", "b=" + q["b"] + "&e=" + q["e"] + "&s=" + q["s"][1:]},
-		{"s one longer", "b=" + q["b"] + "&e=" + q["e"] + "&s=" + q["s"] + "A"},
-		{"s padded", "b=" + q["b"] + "&e=" + q["e"] + "&s=" + q["s"][:21] + "="},
-		{"s of another address", "b=" + q["b"] + "&e=" + q["e"] + "&s=" + strings.Repeat("A", 22)},
-		{"d=0", query + "&d=0"},
-		{"d=1 on the shown signature", query + "&d=1"},
-		{"b twice", query + "&b=" + q["b"]},
-		{"another member", query + "&x=1"},
-		{"an empty member", query + "&"},
-		{"a member without a value", query + "&d"},
-		{"a later e", "b=" + q["b"] + "&e=" + q["e"] + "0&s=" + q["s"]},
-		{"another node", "b=" + q["b"] + "&e=" + q["e"] + "&s=" + q["s"]},
+	escaped := "%" + fmt.Sprintf("%02X", q["b"][0]) + q["b"][1:]
+	if u, err := url.QueryUnescape(escaped); err != nil || u != q["b"] {
+		t.Fatalf("b escaped = %q, which unescapes to %q, %v; want b", escaped, u, err)
+	}
+	download := h.address(n, b, true)
+	_, downloadQuery, _ := strings.Cut(download, "?")
+	ds := strings.TrimSuffix(downloadQuery[strings.Index(downloadQuery, "&s=")+3:], "&d=1")
+	for _, tt := range []struct{ name, path, query string }{
+		{"no b", "", "e=" + q["e"] + "&s=" + q["s"]},
+		{"no e", "", "b=" + q["b"] + "&s=" + q["s"]},
+		{"no s", "", "b=" + q["b"] + "&e=" + q["e"]},
+		{"nothing", "", ""},
+		{"b in upper case", "", "b=" + strings.ToUpper(q["b"]) + "&e=" + q["e"] + "&s=" + q["s"]},
+		{"b without hyphens", "", "b=" + strings.ReplaceAll(q["b"], "-", "") + "&e=" + q["e"] + "&s=" + q["s"]},
+		{"b escaped", "", "b=" + escaped + "&e=" + q["e"] + "&s=" + q["s"]},
+		{"e with a leading zero", "", "b=" + q["b"] + "&e=0" + q["e"] + "&s=" + q["s"]},
+		{"e with a sign", "", "b=" + q["b"] + "&e=%2B" + q["e"] + "&s=" + q["s"]},
+		{"s cut short", "", "b=" + q["b"] + "&e=" + q["e"] + "&s=" + q["s"][1:]},
+		{"s one longer", "", "b=" + q["b"] + "&e=" + q["e"] + "&s=" + q["s"] + "A"},
+		{"s padded", "", "b=" + q["b"] + "&e=" + q["e"] + "&s=" + q["s"][:21] + "="},
+		{"s of another address", "", "b=" + q["b"] + "&e=" + q["e"] + "&s=" + strings.Repeat("A", 22)},
+		{"d=0", "", query + "&d=0"},
+		{"d=1 on the shown signature", "", query + "&d=1"},
+		{"b twice", "", query + "&b=" + q["b"]},
+		{"another member", "", query + "&x=1"},
+		{"an empty member", "", query + "&"},
+		{"a member without a value", "", query + "&d"},
+		{"a later e", "", "b=" + q["b"] + "&e=" + q["e"] + "0&s=" + q["s"]},
+		{"in another order", "", "e=" + q["e"] + "&b=" + q["b"] + "&s=" + q["s"]},
+		{"d before s", "", "b=" + q["b"] + "&e=" + q["e"] + "&d=1&s=" + ds},
+		{"the path's id in upper case", strings.ToUpper(n.ID.String()), query},
+		{"the path's id without hyphens", strings.ReplaceAll(n.ID.String(), "-", ""), query},
+		{"another node", other.ID.String(), query},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			p := path
-			if tt.name == "another node" {
-				p = "/api/v0/assets/" + other.ID.String() + "/content"
+			if tt.path != "" {
+				p = "/api/v0/assets/" + tt.path + "/content"
 			}
 			res, body := h.get(t, http.MethodGet, p+"?"+tt.query, "")
 			if res.StatusCode != http.StatusNotFound || code(body) != "not_found" || res.Header.Get("Cache-Control") != "no-store" ||
-				res.Header.Get("Content-Disposition") != "" {
-				t.Errorf("download = %d %s, Cache-Control %q; want 404 not_found, no-store", res.StatusCode, body, res.Header.Get("Cache-Control"))
+				res.Header.Get("Content-Disposition") != "" || !isSandboxed(res) {
+				t.Errorf("download = %d %s, Cache-Control %q, CSP %q; want 404 not_found, no-store, sandboxed", res.StatusCode, body,
+					res.Header.Get("Cache-Control"), res.Header.Get("Content-Security-Policy"))
 			}
 		})
 	}
-	if res, _ := h.get(t, http.MethodGet, good, ""); res.StatusCode != http.StatusOK {
-		t.Errorf("the address signed = %d, want 200", res.StatusCode)
+	for _, u := range []string{good, download} {
+		if res, _ := h.get(t, http.MethodGet, u, ""); res.StatusCode != http.StatusOK {
+			t.Errorf("the address signed %s = %d, want 200", u, res.StatusCode)
+		}
 	}
 	res, body := h.get(t, http.MethodGet, "/api/v0/assets/nope/content?"+query, "")
-	if res.StatusCode != http.StatusBadRequest || !strings.Contains(string(body), `"field":"node_id"`) {
-		t.Errorf("a node id that is no id = %d %s, want 400 on node_id", res.StatusCode, body)
+	if res.StatusCode != http.StatusBadRequest || !strings.Contains(string(body), `"field":"node_id"`) || !isSandboxed(res) {
+		t.Errorf("a node id that is no id = %d %s, CSP %q; want 400 on node_id, sandboxed", res.StatusCode, body,
+			res.Header.Get("Content-Security-Policy"))
 	}
+}
+
+// isSandboxed reports whether res carries the contents' policy and their
+// resource policy.
+func isSandboxed(res *http.Response) bool {
+	return res.Header.Get("Content-Security-Policy") == contentPolicy && res.Header.Get("Cross-Origin-Resource-Policy") == "same-origin"
 }
 
 // code is a problem's code.
@@ -200,21 +225,16 @@ func code(body []byte) string {
 func TestContentOfAnAddressExpiredIsNotFound(t *testing.T) {
 	h := newHarness(t)
 	n, b := h.attach("a.png", "image/png", "abc")
-	h.signer = app.NewSigner([]byte("key"), pastClock{})
+	h.signedAt = now().Add(-2 * time.Hour) // what is signed then expires by now
 	res, body := h.get(t, http.MethodGet, h.address(n, b, false), "")
 	if res.StatusCode != http.StatusNotFound || code(body) != "not_found" {
 		t.Errorf("download = %d %s, want 404 not_found", res.StatusCode, body)
 	}
 }
 
-// pastClock is two hours before the fixed clock: what it signs expires by
-// then.
-type pastClock struct{}
-
-func (pastClock) Now() time.Time { return now().Add(-2 * time.Hour) }
-
 // A range is 206, a copy the ETag names 304, a range outside the file 416,
-// sandboxed still; HEAD answers the headers alone.
+// sandboxed still; a condition on a change is passed by, the file
+// served; HEAD answers the headers alone.
 func TestContentAnswersRangesAndConditionalRequests(t *testing.T) {
 	h := newHarness(t)
 	n, b := h.attach("a.png", "image/png", "abcdef")
@@ -232,6 +252,11 @@ func TestContentAnswersRangesAndConditionalRequests(t *testing.T) {
 		t.Errorf("a range outside = %d %q, CSP %q; want 416 bytes */6, sandboxed", res.StatusCode, res.Header.Get("Content-Range"),
 			res.Header.Get("Content-Security-Policy"))
 	}
+	for _, c := range [][2]string{{"If-Match", `"other"`}, {"If-Unmodified-Since", "Mon, 01 Jan 2001 00:00:00 GMT"}} {
+		if res, body := h.get(t, http.MethodGet, u, "", c[0], c[1]); res.StatusCode != http.StatusOK || string(body) != "abcdef" {
+			t.Errorf("%s %s = %d %q, want 200 the file", c[0], c[1], res.StatusCode, body)
+		}
+	}
 	if res, body := h.get(t, http.MethodHead, u, ""); res.StatusCode != http.StatusOK || len(body) != 0 || res.Header.Get("Content-Length") != "6" {
 		t.Errorf("HEAD = %d %q, length %q; want 200, no body, 6", res.StatusCode, body, res.Header.Get("Content-Length"))
 	}
@@ -247,7 +272,7 @@ func TestContentHasABucketOfItsOwn(t *testing.T) {
 		t.Fatalf("the first download = %d, want 200", res.StatusCode)
 	}
 	res, body := h.get(t, http.MethodGet, h.address(n, b, false), "")
-	if res.StatusCode != http.StatusTooManyRequests || code(body) != "rate_limited" || h.downloads.keys[0] != "127.0.0.1" {
+	if res.StatusCode != http.StatusTooManyRequests || code(body) != "rate_limited" || h.downloads.keys[0] != "127.0.0.1" || !isSandboxed(res) {
 		t.Errorf("the second = %d %s by %q, want 429 rate_limited by the client's IP", res.StatusCode, body, h.downloads.keys)
 	}
 }
@@ -280,13 +305,30 @@ func TestContentAsTheServerShutsDownIsServerBusy(t *testing.T) {
 	close(h.nodes.gate)
 	select {
 	case res := <-answered:
-		if res.StatusCode != http.StatusServiceUnavailable || res.Header.Get("Retry-After") != "5" {
-			t.Errorf("download = %d, Retry-After %q; want 503 after 5 s", res.StatusCode, res.Header.Get("Retry-After"))
+		if res.StatusCode != http.StatusServiceUnavailable || res.Header.Get("Retry-After") != "5" || !isSandboxed(res) {
+			t.Errorf("download = %d, Retry-After %q, CSP %q; want 503 after 5 s, sandboxed", res.StatusCode, res.Header.Get("Retry-After"),
+				res.Header.Get("Content-Security-Policy"))
 		}
 	case <-time.After(10 * time.Second):
 		t.Fatal("the download did not answer")
 	}
 	<-done
+}
+
+// A step past the request's deadline is answered 500 and logged as a
+// request that ran out of time, a warning, not as a fault.
+func TestContentPastItsDeadlineIsLoggedAsAWarning(t *testing.T) {
+	h := newHarnessWith(t, httpservertest.APIOptions{RequestTimeout: 100 * time.Millisecond})
+	n, b := h.attach("a.png", "image/png", "abc")
+	h.nodes.gate, h.nodes.asked = make(chan struct{}), make(chan struct{}, 1)
+	defer close(h.nodes.gate)
+	res, body := h.get(t, http.MethodGet, h.address(n, b, false), "")
+	if res.StatusCode != http.StatusInternalServerError || code(body) != "internal_error" {
+		t.Errorf("download = %d %s, want 500 internal_error", res.StatusCode, body)
+	}
+	if logs := h.logs.String(); !strings.Contains(logs, "level=WARN msg=\"API request deadline exceeded\"") || strings.Contains(logs, "level=ERROR") {
+		t.Errorf("logs %q, want the deadline as a warning, no error", logs)
+	}
 }
 
 // An upload's address downloads the file as it was sent.

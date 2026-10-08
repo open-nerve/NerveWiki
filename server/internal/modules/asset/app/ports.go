@@ -119,10 +119,11 @@ type Deletions interface {
 }
 
 // Activity is the attachments' part in a notebook's activity (M3 handoff
-// 1): the bytes of its attachments not deleted, and their latest upload.
+// 1): the bytes of its attachments not deleted. Their latest upload is no
+// part of it: each is a unit of the tree, whose changeset the pages' part
+// already counts as a write at the same time.
 type Activity struct {
-	Bytes        int64
-	LastUploadAt time.Time
+	Bytes int64
 }
 
 // Activities reads the attachments' part in notebooks' activity:
@@ -144,6 +145,17 @@ type StoredFiles interface {
 type KnownRows interface {
 	// KnownBlobs are the ids among ids with a row, deleted or not.
 	KnownBlobs(ctx context.Context, ids []uuid.UUID) ([]uuid.UUID, error)
+}
+
+// Signer signs and checks the addresses of the contents: adapter/mac, with
+// the content key, which this layer never holds (v0.1 design 13.1, item
+// 25). The time is the caller's, read once for the operation.
+type Signer interface {
+	// Sign signs the address of node's file blob as of now.
+	Sign(now time.Time, node, blob uuid.UUID) Signed
+	// Valid reports whether sig signs node's file blob, expiring at e,
+	// shown or downloaded, and e is later than now.
+	Valid(now time.Time, node, blob uuid.UUID, e int64, download bool, sig string) bool
 }
 
 // ErrNoRow is a node without a row not deleted.

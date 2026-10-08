@@ -89,8 +89,8 @@ func (d assetNotebookDeletion) NotebookDeleted(ctx context.Context, x notebook.N
 }
 
 // assetActivity is the attachments' part in notebooks' activity as the
-// notebook module reads it: a notebook in the asset module's answer has
-// its latest upload as a write.
+// notebook module reads it: their bytes; their uploads are writes of the
+// tree, which pageActivity tells.
 type assetActivity struct {
 	asset asset.Activities
 }
@@ -102,7 +102,7 @@ func (a assetActivity) NotebookActivities(ctx context.Context, ids []uuid.UUID) 
 	}
 	out := make(map[uuid.UUID]notebook.NotebookActivity, len(got))
 	for id, x := range got {
-		out[id] = notebook.NotebookActivity{Bytes: x.Bytes, LastWriteAt: &x.LastUploadAt}
+		out[id] = notebook.NotebookActivity{Bytes: x.Bytes}
 	}
 	return out, nil
 }

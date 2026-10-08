@@ -35,7 +35,7 @@ func (p *Purge) Batch(ctx context.Context, before time.Time, batch int) (int, er
 	deleted := 0
 	err := p.tx.WithinTx(ctx, func(ctx context.Context) error {
 		ids, err := p.rows.ExpiredBlobs(ctx, before, batch)
-		if err != nil {
+		if err != nil || len(ids) == 0 {
 			return err
 		}
 		for _, id := range ids {

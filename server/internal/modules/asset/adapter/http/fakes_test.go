@@ -15,6 +15,7 @@ import (
 	"uuid"
 
 	httpadapter "github.com/open-nerve/NerveWiki/server/internal/modules/asset/adapter/http"
+	macadapter "github.com/open-nerve/NerveWiki/server/internal/modules/asset/adapter/mac"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/asset/app"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/asset/domain"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
@@ -103,10 +104,14 @@ func (m *memNodes) add(n app.Node) {
 	m.nodes[n.ID] = n
 }
 
-func (m *memNodes) Node(_ context.Context, id uuid.UUID) (app.Node, bool, error) {
+func (m *memNodes) Node(ctx context.Context, id uuid.UUID) (app.Node, bool, error) {
 	if m.gate != nil {
 		m.asked <- struct{}{}
-		<-m.gate
+		select {
+		case <-m.gate:
+		case <-ctx.Done():
+			return app.Node{}, false, ctx.Err()
+		}
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -339,7 +344,8 @@ type harness struct {
 	nodes     *memNodes
 	files     *memFiles
 	rows      *memRows
-	signer    app.Signer
+	signer    macadapter.Signer
+	signedAt  time.Time // the time the tests sign addresses at
 	logs      *syncBuffer
 	contract  *apitest.Contract
 	router    *httpserver.Router
@@ -352,21 +358,30 @@ const maxBytes = 1 << 10
 
 func newHarness(t *testing.T) *harness {
 	t.Helper()
+	return newHarnessWith(t, httpservertest.APIOptions{})
+}
+
+// newHarnessWith is newHarness with the per-route middlewares of o, its
+// authenticator and public operations the module's, its logger the
+// harness's.
+func newHarnessWith(t *testing.T, o httpservertest.APIOptions) *harness {
+	t.Helper()
 	h := &harness{nodes: &memNodes{nodes: map[uuid.UUID]app.Node{}}, files: newFiles(), rows: &memRows{rows: map[uuid.UUID]domain.Blob{}},
-		signer: app.NewSigner([]byte("key"), fixedClock{}), logs: &syncBuffer{}, contract: apitest.Load(t),
+		signer: macadapter.New([]byte("key")), signedAt: now(), logs: &syncBuffer{}, contract: apitest.Load(t),
 		client: &http.Client{Timeout: 10 * time.Second}, downloads: &bucket{left: 1000}}
 	h.tree = &tree{nodes: h.nodes}
 	logger := slog.New(slog.NewTextHandler(h.logs, nil))
-	blobs := app.NewBlobs(h.files, h.rows, sniffer{})
+	blobs := app.NewBlobs(h.files, h.rows, sniffer{}, logger)
 	uc := httpadapter.UseCases{
 		Upload: app.NewUpload(app.UploadDeps{Tree: h.tree, Blobs: blobs, Files: h.files, Signer: h.signer, Logger: logger,
 			MaxBytes: maxBytes, MinFree: 100}),
-		Reads: app.NewReads(app.ReadsDeps{Authorizer: sees{}, Notebooks: books{}, Nodes: h.nodes, Rows: h.rows, Signer: h.signer,
+		Reads: app.NewReads(app.ReadsDeps{Authorizer: sees{}, Notebooks: books{}, Nodes: h.nodes, Rows: h.rows, Signer: h.signer, Clock: fixedClock{},
 			Logger: logger}),
 		Content: app.NewContent(h.nodes, blobs, h.signer, fixedClock{}, logger),
 	}
 	h.router = httpserver.NewRouter(slog.New(slog.DiscardHandler))
-	api := httpservertest.NewAPI(t, httpservertest.APIOptions{Authenticator: fakeAuth{}, PublicOperations: httpadapter.PublicOperations()})
+	o.Authenticator, o.PublicOperations, o.Logger = fakeAuth{}, httpadapter.PublicOperations(), logger
+	api := httpservertest.NewAPI(t, o)
 	httpadapter.Register(h.router, api, uc, httpadapter.Limits{MaxBytes: maxBytes, MinRate: 64 << 10, ContentBucket: h.downloads}, logger)
 	h.serve(t)
 	return h

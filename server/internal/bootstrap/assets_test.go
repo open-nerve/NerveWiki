@@ -7,8 +7,10 @@ import (
 	"io/fs"
 	"mime/multipart"
 	"net/http"
+	"net/textproto"
 	"net/url"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -137,4 +139,32 @@ func storedBlobs(t *testing.T, dir string) map[string]string {
 		t.Fatal(err)
 	}
 	return files
+}
+
+// A file name that is not UTF-8, as filename* may spell one, is 422 on
+// the name before the file is read: no node, no row, no file.
+func TestAnUploadNamedOutsideUTF8IsRefused(t *testing.T) {
+	tm := newAcmeTeam(t, "member", "")
+	nb := tm.openNotebook(t, "alice", "Eng")
+	var body bytes.Buffer
+	w := multipart.NewWriter(&body)
+	part, err := w.CreatePart(textproto.MIMEHeader{"Content-Disposition": {`form-data; name="file"; filename*=UTF-8''%FF.png`}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := part.Write([]byte(pngFile)); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	status, answer := askTyped(t, tm.contract, http.MethodPost, tm.base+"/api/v0/notebooks/"+nb+"/assets", tm.tokens["alice"],
+		w.FormDataContentType(), body.String())
+	if status != http.StatusUnprocessableEntity || problemCode(t, answer) != "validation_failed" || !strings.Contains(answer, `"field":"name"`) {
+		t.Errorf("upload = %d %s, want 422 validation_failed on the name", status, answer)
+	}
+	if n := count(t, tm.pool, "SELECT count(*) FROM nodes WHERE kind = 'asset'"); n != 0 || len(storedBlobs(t, tm.storage)) != 0 {
+		t.Errorf("%d attachments' nodes, files %v; want none", n, storedBlobs(t, tm.storage))
+	}
+	checkAssets(t, tm.pool, tm.storage)
 }

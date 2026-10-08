@@ -1,7 +1,9 @@
 package app
 
 import (
+	"cmp"
 	"context"
+	"fmt"
 	"log/slog"
 	"time"
 	"uuid"
@@ -36,9 +38,12 @@ func NewSweep(files StoredFiles, rows KnownRows, clock Clock, logger *slog.Logge
 // Run deletes the attachments' files older than SweepAge that no row
 // holds, sweepBatch files a read of the rows, and tells how many, logged
 // when some were. A file of the area that is no blob's is left, logged as
-// a warning. The first error stops it, the files deleted before gone.
+// a warning; so is one it cannot delete, the run going on to the rest and
+// failing at its end. Any other error stops it, the files deleted before
+// gone.
 func (s *Sweep) Run(ctx context.Context) (int, error) {
-	deleted := 0
+	deleted, failed := 0, 0
+	var first error
 	var batch []uuid.UUID
 	flush := func() error {
 		known, err := s.rows.KnownBlobs(ctx, batch)
@@ -54,7 +59,10 @@ func (s *Sweep) Run(ctx context.Context) (int, error) {
 				continue
 			}
 			if err := s.files.Delete(ctx, domain.Key(id)); err != nil {
-				return err
+				s.logger.WarnContext(ctx, "orphan attachment file not deleted", slog.String("blob_id", id.String()), slog.Any("error", err))
+				failed++
+				first = cmp.Or(first, err)
+				continue
 			}
 			deleted++
 		}
@@ -77,6 +85,9 @@ func (s *Sweep) Run(ctx context.Context) (int, error) {
 	}
 	if deleted > 0 {
 		s.logger.InfoContext(ctx, "orphan attachment files deleted", slog.Int("files", deleted))
+	}
+	if err == nil && failed > 0 {
+		err = fmt.Errorf("%d orphan attachment files not deleted, the first: %w", failed, first)
 	}
 	return deleted, err
 }

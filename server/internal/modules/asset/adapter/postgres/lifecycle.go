@@ -34,7 +34,7 @@ func (s *Store) NotebookActivities(ctx context.Context, ids []uuid.UUID) (map[uu
 	}
 	out := make(map[uuid.UUID]app.Activity, len(rows))
 	for _, r := range rows {
-		out[r.NotebookID] = app.Activity{Bytes: r.Bytes, LastUploadAt: r.LastUploadAt}
+		out[r.NotebookID] = app.Activity{Bytes: r.Bytes}
 	}
 	return out, nil
 }

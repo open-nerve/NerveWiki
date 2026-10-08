@@ -10,9 +10,9 @@ UPDATE asset_blobs SET deleted_at = sqlc.arg(at)::timestamptz
 WHERE notebook_id = ANY(sqlc.arg(notebook_ids)::uuid[]) AND deleted_at IS NULL;
 
 -- name: NotebookActivities :many
--- The attachments' part in notebooks' activity (M3 handoff 1): the bytes of the rows not deleted, and the latest
--- upload.
-SELECT notebook_id, sum(byte_size)::bigint AS bytes, max(created_at)::timestamptz AS last_upload_at
+-- The attachments' part in notebooks' activity (M3 handoff 1): the bytes of the rows not deleted. Their uploads'
+-- times are their units' changesets', which the pages' part reads.
+SELECT notebook_id, sum(byte_size)::bigint AS bytes
 FROM asset_blobs
 WHERE notebook_id = ANY(sqlc.arg(notebook_ids)::uuid[]) AND deleted_at IS NULL
 GROUP BY notebook_id;

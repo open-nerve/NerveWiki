@@ -10,6 +10,7 @@ import (
 	"time"
 	"uuid"
 
+	macadapter "github.com/open-nerve/NerveWiki/server/internal/modules/asset/adapter/mac"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/asset/app"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/asset/domain"
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
@@ -56,8 +57,8 @@ type uploader struct {
 func newUploader() *uploader {
 	u := &uploader{tree: &tree{}, files: newFiles(), rows: newRows(), logs: &bytes.Buffer{}}
 	u.uc = app.NewUpload(app.UploadDeps{
-		Tree: u.tree, Blobs: app.NewBlobs(u.files, u.rows, &sniffer{sniffed: "image/png"}), Files: u.files,
-		Signer: app.NewSigner(signKey(), fixedClock{now()}), Logger: slog.New(slog.NewTextHandler(u.logs, nil)), MaxBytes: 8, MinFree: 100,
+		Tree: u.tree, Blobs: app.NewBlobs(u.files, u.rows, &sniffer{sniffed: "image/png"}, slog.New(slog.NewTextHandler(u.logs, nil))), Files: u.files,
+		Signer: macadapter.New(signKey()), Logger: slog.New(slog.NewTextHandler(u.logs, nil)), MaxBytes: 8, MinFree: 100,
 	})
 	return u
 }
@@ -103,6 +104,18 @@ func TestStoreBoundsTheFile(t *testing.T) {
 	}
 }
 
+// Store tells the file's type by the name as the node keeps it: a blank
+// after the extension, trimmed, is no part of it.
+func TestStoreTellsTheTypeByTheNameAsKept(t *testing.T) {
+	files := newFiles()
+	uc := app.NewUpload(app.UploadDeps{Blobs: app.NewBlobs(files, newRows(), &sniffer{sniffed: domain.Octet}, slog.New(slog.DiscardHandler)),
+		Files: files, MaxBytes: 8})
+	blob, err := uc.Store(context.Background(), app.Request{NotebookID: notebookID(), Name: " report.pdf "}, strings.NewReader("%PDF"))
+	if err != nil || blob.MIME != "application/pdf" {
+		t.Errorf("Store( report.pdf ) = %q, %v; want application/pdf", blob.MIME, err)
+	}
+}
+
 // Create writes the row in the node's unit, with the node's id, notebook,
 // uploader and time, and answers the attachment signed; its log names the
 // ids, the type and the size, never the name.
@@ -128,7 +141,7 @@ func TestCreateAttachesTheRowInTheUnit(t *testing.T) {
 		t.Errorf("created %+v, want the file's type, size and SHA-256 for the guards", created)
 	}
 	if a.Node != n || a.Blob.ID != blob.ID || a.Blob.NodeID != n.ID ||
-		a.Signed != app.NewSigner(signKey(), fixedClock{now()}).Sign(n.ID, blob.ID) {
+		a.Signed != macadapter.New(signKey()).Sign(n.CreatedAt, n.ID, blob.ID) {
 		t.Errorf("answer = %+v, want the node, its blob and their address signed", a)
 	}
 	logs := u.logs.String()

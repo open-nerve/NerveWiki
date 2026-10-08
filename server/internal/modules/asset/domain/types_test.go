@@ -77,9 +77,22 @@ func TestInline(t *testing.T) {
 		{"image/png", true, false},
 		{"application/octet-stream", false, false},
 		{"application/octet-stream", true, false},
+		// A type out of the table, which TypeOf never tells but a row may
+		// hold: downloaded, as Octet.
+		{"text/html", false, false},
 	} {
 		if got := domain.Inline(tt.mime, tt.download); got != tt.want {
 			t.Errorf("Inline(%q, %v) = %v, want %v", tt.mime, tt.download, got, tt.want)
+		}
+	}
+}
+
+// A type of the table is served as itself; any other as Octet.
+func TestServed(t *testing.T) {
+	for mime, want := range map[string]string{"image/png": "image/png", "image/svg+xml": "image/svg+xml", "application/pdf": "application/pdf",
+		"application/octet-stream": domain.Octet, "text/html": domain.Octet, "text/plain": domain.Octet} {
+		if got := domain.Served(mime); got != want {
+			t.Errorf("Served(%q) = %q, want %q", mime, got, want)
 		}
 	}
 }

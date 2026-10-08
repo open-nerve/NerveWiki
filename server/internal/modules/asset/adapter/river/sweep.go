@@ -18,6 +18,10 @@ const SweepKind = "asset.sweep_orphan_files"
 // SweepInterval is how often the sweep runs.
 const SweepInterval = 24 * time.Hour
 
+// SweepTimeout bounds a run: River's minute would cut a walk of a large
+// store short, and the next run walks it from the start again.
+const SweepTimeout = time.Hour
+
 // SweepUseCase is the use case the job runs: app.Sweep.
 type SweepUseCase interface {
 	Run(ctx context.Context) (int, error)
@@ -39,6 +43,9 @@ type SweepWorker struct {
 func NewSweepWorker(uc SweepUseCase) *SweepWorker {
 	return &SweepWorker{uc: uc}
 }
+
+// Timeout is SweepTimeout.
+func (*SweepWorker) Timeout(*river.Job[SweepArgs]) time.Duration { return SweepTimeout }
 
 // Work deletes the files no row holds. A failure makes River retry the
 // job.

@@ -15,7 +15,7 @@ export interface UploadFile {
 }
 
 /** credential's upload of file into the notebook notebookId, under parentId or at its root, as the API answers it. */
-export async function postAsset(
+async function postAsset(
   api: ApiClient,
   credential: string,
   notebookId: string,

@@ -10,6 +10,7 @@ import (
 	"testing"
 	"uuid"
 
+	macadapter "github.com/open-nerve/NerveWiki/server/internal/modules/asset/adapter/mac"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/asset/app"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/asset/domain"
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
@@ -39,15 +40,20 @@ func (n notebooks) WorkspaceOf(_ context.Context, id uuid.UUID) (uuid.UUID, bool
 	return w, ok, nil
 }
 
-// treeNodes are the nodes not deleted, the pages among them.
+// treeNodes are the nodes not deleted, the pages among them; the node
+// vanishing is deleted once read.
 type treeNodes struct {
-	nodes map[uuid.UUID]app.Node
-	reads int
+	nodes     map[uuid.UUID]app.Node
+	vanishing uuid.UUID
+	reads     int
 }
 
 func (t *treeNodes) Node(_ context.Context, id uuid.UUID) (app.Node, bool, error) {
 	t.reads++
 	n, ok := t.nodes[id]
+	if id == t.vanishing {
+		delete(t.nodes, id)
+	}
 	return n, ok, nil
 }
 
@@ -94,7 +100,7 @@ func newReader() *reader {
 	r.auth, r.books = &authorizer{sees: map[uuid.UUID]bool{r.eng: true}}, notebooks{r.eng: r.acme}
 	r.nodes = &treeNodes{nodes: map[uuid.UUID]app.Node{r.intro: {ID: r.intro, NotebookID: r.eng, Name: "Intro", NameKey: "intro"}}}
 	r.reads = app.NewReads(app.ReadsDeps{Authorizer: r.auth, Notebooks: r.books, Nodes: r.nodes, Rows: r.rows,
-		Signer: app.NewSigner(signKey(), fixedClock{now()}), Logger: slog.New(slog.NewTextHandler(r.logs, nil))})
+		Signer: macadapter.New(signKey()), Clock: fixedClock{now()}, Logger: slog.New(slog.NewTextHandler(r.logs, nil))})
 	r.ctx = shared.WithActor(context.Background(), shared.Actor{UserID: uuid.NewV7(), SessionID: uuid.NewV7()})
 	return r
 }
@@ -127,7 +133,7 @@ func TestGetReadsTheAttachmentSigned(t *testing.T) {
 		t.Fatal(err)
 	}
 	b := r.rows.rows[n.ID]
-	if a.Node != n || a.Blob.ID != b.ID || a.Signed != app.NewSigner(signKey(), fixedClock{now()}).Sign(n.ID, b.ID) {
+	if a.Node != n || a.Blob.ID != b.ID || a.Signed != macadapter.New(signKey()).Sign(now(), n.ID, b.ID) {
 		t.Errorf("Get() = %+v, want the node, its row, their address signed", a)
 	}
 	if !slices.Equal(r.auth.asked, []shared.Action{domain.ActionRead}) || r.auth.target[0] != (shared.Target{WorkspaceID: r.acme, NotebookID: r.eng}) {
@@ -137,7 +143,7 @@ func TestGetReadsTheAttachmentSigned(t *testing.T) {
 
 // A node that is none, a page, of a notebook gone or hidden, or without
 // its row is asset.not_found; a node without its row is logged as an
-// error.
+// error, unless it was deleted, with its row, since it was read.
 func TestGetAnswersNotFound(t *testing.T) {
 	for _, tt := range []struct {
 		name   string
@@ -149,6 +155,10 @@ func TestGetAnswersNotFound(t *testing.T) {
 		{"a notebook gone", func(r *reader) uuid.UUID { return r.attach(uuid.NewV7(), nil, "a.png", false).ID }, false},
 		{"a notebook hidden", func(r *reader) uuid.UUID { return r.attach(r.hidden(), nil, "a.png", false).ID }, false},
 		{"a node without its row", func(r *reader) uuid.UUID { return r.attach(r.eng, nil, "a.png", true).ID }, true},
+		{"a node deleted since it was read", func(r *reader) uuid.UUID {
+			r.nodes.vanishing = r.attach(r.eng, nil, "a.png", true).ID
+			return r.nodes.vanishing
+		}, false},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			r := newReader()
@@ -180,7 +190,7 @@ func TestListPagesTheAttachments(t *testing.T) {
 	if err != nil || second.NextCursor != "" || !slices.Equal(names(second), []string{"C.png", "d.png"}) {
 		t.Errorf("List(the cursor) = %v, %q, %v; want C.png, d.png, the last page", names(second), second.NextCursor, err)
 	}
-	if s := second.Assets[0]; s.Node != c || s.Signed != app.NewSigner(signKey(), fixedClock{now()}).Sign(c.ID, r.rows.rows[c.ID].ID) {
+	if s := second.Assets[0]; s.Node != c || s.Signed != macadapter.New(signKey()).Sign(now(), c.ID, r.rows.rows[c.ID].ID) {
 		t.Errorf("listed %+v, want C.png signed", s)
 	}
 	if l := r.logs.String(); !strings.Contains(l, "level=ERROR") || !strings.Contains(l, b.ID.String()) {

@@ -48,7 +48,8 @@ func PublicOperations() []string {
 // middlewares; the upload through api.Stream, its body the largest file
 // and the parts around it, at the lowest rate, under the platform's
 // buckets; the download through api.Stream too, at the lowest rate, under
-// its own bucket. The raw routes bind their path's id first.
+// its own bucket, every answer sandboxed. The raw routes bind their path's
+// id first.
 func Register(router *httpserver.Router, api *httpserver.API, uc UseCases, limits Limits, logger *slog.Logger) {
 	strict := gen.NewStrictHandlerWithOptions(server{uc: uc}, nil, gen.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc:  api.Errors.BodyError,
@@ -66,9 +67,9 @@ func Register(router *httpserver.Router, api *httpserver.API, uc UseCases, limit
 	router.Handle(uploadRoute, bindID("notebook_id", api.Errors, api.Stream(
 		upload{uc: uc.Upload, errors: api.Errors, logger: logger, maxBytes: limits.MaxBytes},
 		httpserver.StreamPolicy{MaxBytes: limits.MaxBytes + Envelope, MinRate: limits.MinRate})))
-	router.Handle(contentRoute, bindID("node_id", api.Errors, api.Stream(
+	router.Handle(contentRoute, sandboxed(bindID("node_id", api.Errors, api.Stream(
 		content{uc: uc.Content, errors: api.Errors},
-		httpserver.StreamPolicy{MinRate: limits.MinRate, Bucket: limits.ContentBucket, BucketName: "asset_content"})))
+		httpserver.StreamPolicy{MinRate: limits.MinRate, Bucket: limits.ContentBucket, BucketName: "asset_content"}))))
 }
 
 type pathIDKey struct{ param string }
@@ -100,9 +101,12 @@ func pathID(r *http.Request, param string) uuid.UUID {
 }
 
 // bounded runs step, a step of a stream that is not its bytes, within the
-// request's timeout (httpserver.Bounded).
-func bounded(r *http.Request, step func(r *http.Request) error) error {
+// request's timeout (httpserver.Bounded). It answers the request step ran
+// with: written with it, an error tells a deadline that passed from any
+// other failure (APIErrors.Write), as a generated route's does.
+func bounded(r *http.Request, step func(r *http.Request) error) (*http.Request, error) {
 	ctx, cancel := httpserver.Bounded(r.Context())
 	defer cancel()
-	return step(r.WithContext(ctx))
+	br := r.WithContext(ctx)
+	return br, step(br)
 }

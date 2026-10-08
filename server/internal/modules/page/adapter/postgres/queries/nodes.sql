@@ -37,8 +37,9 @@ ORDER BY sort_order, id;
 
 -- name: AssetsUnder :many
 -- A parent's attachments not deleted (the root's when parent_id is NULL), by title key and id, after the cursor's key
--- and id when it has one, at most max_rows: a page of the attachments' list (M7/P2 design 3.3). The siblings' unique
--- index on their title keys serves it.
+-- and id when it has one, at most max_rows: a page of the attachments' list (M7/P2 design 3.3). As Children, it
+-- reaches the notebook's nodes through the siblings' index and filters the parent, which IS NOT DISTINCT FROM does
+-- not narrow in an index.
 SELECT id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id, created_at,
     updated_at
 FROM nodes

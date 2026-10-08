@@ -52,7 +52,8 @@ type Opened struct {
 // alike; so is a file gone from the store, logged as a warning. The
 // signature is checked before anything is read.
 func (c *Content) Open(ctx context.Context, a Address) (Opened, error) {
-	if !c.signer.Valid(a.Node, a.Blob, a.Expires, a.Download, a.Signature) {
+	now := c.clock.Now()
+	if !c.signer.Valid(now, a.Node, a.Blob, a.Expires, a.Download, a.Signature) {
 		return Opened{}, domain.ErrContentNotFound
 	}
 	n, ok, err := c.nodes.Node(ctx, a.Node)
@@ -72,5 +73,5 @@ func (c *Content) Open(ctx context.Context, a Address) (Opened, error) {
 	case err != nil:
 		return Opened{}, err
 	}
-	return Opened{File: f, Blob: b, Name: n.Name, Left: time.Unix(a.Expires, 0).Sub(c.clock.Now())}, nil
+	return Opened{File: f, Blob: b, Name: n.Name, Left: time.Unix(a.Expires, 0).Sub(now)}, nil
 }

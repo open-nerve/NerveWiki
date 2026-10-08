@@ -6,7 +6,9 @@ import (
 	"crypto/sha256"
 	"errors"
 	"io"
+	"log/slog"
 	"slices"
+	"strings"
 	"testing"
 	"uuid"
 
@@ -32,7 +34,7 @@ func TestPutWritesTheFileAndTellsWhatItIs(t *testing.T) {
 	files, rows := newFiles(), newRows()
 	s := &headSniffer{sniffer: &sniffer{sniffed: "image/png", width: 640, height: 480}}
 	data := bytes.Repeat([]byte("0123456789abcdef"), 6<<10) // 96 KiB, three reads and more
-	b, err := app.NewBlobs(files, rows, s).Put(context.Background(), "photo.png", bytes.NewReader(data), int64(len(data)))
+	b, err := app.NewBlobs(files, rows, s, slog.New(slog.DiscardHandler)).Put(context.Background(), "photo.png", bytes.NewReader(data), int64(len(data)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,7 +71,7 @@ func TestPutTellsTheTypeAndTheSize(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			s := &headSniffer{sniffer: &sniffer{sniffed: tt.sniffed, width: tt.width, height: tt.height}}
-			b, err := app.NewBlobs(newFiles(), newRows(), s).Put(context.Background(), tt.file, bytes.NewReader([]byte("abc")), 3)
+			b, err := app.NewBlobs(newFiles(), newRows(), s, slog.New(slog.DiscardHandler)).Put(context.Background(), tt.file, bytes.NewReader([]byte("abc")), 3)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -111,7 +113,7 @@ func TestPutLeavesNoFileWhenItFails(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			files := newFiles()
 			r, maxBytes := tt.setup(files)
-			_, err := app.NewBlobs(files, newRows(), &sniffer{}).Put(context.Background(), "a.bin", r, maxBytes)
+			_, err := app.NewBlobs(files, newRows(), &sniffer{}, slog.New(slog.DiscardHandler)).Put(context.Background(), "a.bin", r, maxBytes)
 			if !tt.check(err) {
 				t.Errorf("Put() = %v, want the failure", err)
 			}
@@ -121,9 +123,27 @@ func TestPutLeavesNoFileWhenItFails(t *testing.T) {
 		})
 	}
 	files := newFiles()
-	if _, err := app.NewBlobs(files, newRows(), &sniffer{}).Put(context.Background(), "a.bin", bytes.NewReader(data), int64(len(data))); err != nil ||
+	blobs := app.NewBlobs(files, newRows(), &sniffer{}, slog.New(slog.DiscardHandler))
+	if _, err := blobs.Put(context.Background(), "a.bin", bytes.NewReader(data), int64(len(data))); err != nil ||
 		len(files.keys()) != 1 {
 		t.Errorf("Put(the largest) = %v, files %q; want it kept", err, files.keys())
+	}
+}
+
+// An abort that fails is logged as a warning, with the blob's id; Put
+// answers the failure that stopped the write.
+func TestPutLogsAnAbortThatFails(t *testing.T) {
+	files := newFiles()
+	files.abortErr = errors.New("remove .tmp/x: permission denied")
+	var logs bytes.Buffer
+	data := bytes.Repeat([]byte("x"), 40<<10)
+	_, err := app.NewBlobs(files, newRows(), &sniffer{}, slog.New(slog.NewTextHandler(&logs, nil))).Put(context.Background(), "a.bin",
+		bytes.NewReader(data), 1<<10)
+	if !errors.Is(err, domain.ErrTooLarge) {
+		t.Errorf("Put() = %v, want too large", err)
+	}
+	if l := logs.String(); !strings.Contains(l, "level=WARN") || !strings.Contains(l, "blob_id=") || !strings.Contains(l, "permission denied") {
+		t.Errorf("logs %q, want the abort's failure as a warning, with the blob's id", l)
 	}
 }
 
@@ -133,7 +153,7 @@ func TestPutLeavesNoFileWhenItFails(t *testing.T) {
 func TestOpenAndDrop(t *testing.T) {
 	ctx := context.Background()
 	files, rows := newFiles(), newRows()
-	blobs := app.NewBlobs(files, rows, &sniffer{})
+	blobs := app.NewBlobs(files, rows, &sniffer{}, slog.New(slog.DiscardHandler))
 	b, err := blobs.Put(ctx, "a.txt", bytes.NewReader([]byte("abc")), 3)
 	if err != nil {
 		t.Fatal(err)

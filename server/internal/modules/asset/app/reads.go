@@ -20,6 +20,7 @@ type Reads struct {
 	nodes     Nodes
 	rows      Rows
 	signer    Signer
+	clock     Clock
 	logger    *slog.Logger
 }
 
@@ -30,12 +31,13 @@ type ReadsDeps struct {
 	Nodes      Nodes
 	Rows       Rows
 	Signer     Signer
+	Clock      Clock
 	Logger     *slog.Logger
 }
 
 // NewReads returns the use cases.
 func NewReads(d ReadsDeps) *Reads {
-	return &Reads{auth: d.Authorizer, notebooks: d.Notebooks, nodes: d.Nodes, rows: d.Rows, signer: d.Signer, logger: d.Logger}
+	return &Reads{auth: d.Authorizer, notebooks: d.Notebooks, nodes: d.Nodes, rows: d.Rows, signer: d.Signer, clock: d.Clock, logger: d.Logger}
 }
 
 // AssetPage is a page of a list of attachments, and the cursor of the
@@ -47,8 +49,8 @@ type AssetPage struct {
 
 // Get reads the attachment id: asset.not_found for a node that is none,
 // is deleted, or whose notebook the caller cannot read in (asset.read).
-// A node without its row, which each attachment's node has, is logged as
-// an error and not found.
+// A node without its row, which each attachment's node has, is not found,
+// logged as an error unless the node was deleted since it was read.
 func (r *Reads) Get(ctx context.Context, id uuid.UUID) (Asset, error) {
 	actor, err := shared.RequireActor(ctx)
 	if err != nil {
@@ -72,7 +74,7 @@ func (r *Reads) Get(ctx context.Context, id uuid.UUID) (Asset, error) {
 	case err != nil:
 		return Asset{}, err
 	}
-	return Asset{Node: n, Blob: b, Signed: r.signer.Sign(n.ID, b.ID)}, nil
+	return Asset{Node: n, Blob: b, Signed: r.signer.Sign(r.clock.Now(), n.ID, b.ID)}, nil
 }
 
 // List lists the attachments under parentID (nil: the root) of the
@@ -82,7 +84,8 @@ func (r *Reads) Get(ctx context.Context, id uuid.UUID) (Asset, error) {
 // notebook.not_found); then the parent, page.not_found unless a page of
 // the notebook; then the limit, 422 outside 1–100. One node more than
 // limit is read to tell whether another page follows. A node without its
-// row is logged as an error and left out.
+// row is left out, logged as Get logs it. The addresses are signed as of
+// one time.
 func (r *Reads) List(ctx context.Context, notebookID uuid.UUID, parentID *uuid.UUID, limit *int, cursor *string) (AssetPage, error) {
 	actor, err := shared.RequireActor(ctx)
 	if err != nil {
@@ -131,13 +134,14 @@ func (r *Reads) List(ctx context.Context, notebookID uuid.UUID, parentID *uuid.U
 		return AssetPage{}, err
 	}
 	out.Assets = make([]Asset, 0, len(nodes))
+	now := r.clock.Now()
 	for _, n := range nodes {
 		b, ok := blobs[n.ID]
 		if !ok {
 			r.rowless(ctx, n)
 			continue
 		}
-		out.Assets = append(out.Assets, Asset{Node: n, Blob: b, Signed: r.signer.Sign(n.ID, b.ID)})
+		out.Assets = append(out.Assets, Asset{Node: n, Blob: b, Signed: r.signer.Sign(now, n.ID, b.ID)})
 	}
 	return out, nil
 }
@@ -160,9 +164,14 @@ func (r *Reads) decide(ctx context.Context, actor shared.Actor, notebookID uuid.
 	return err
 }
 
-// rowless logs an attachment's node without its row: each has one, written
-// in the node's unit (M7/P2 design 3.7).
+// rowless logs an attachment's node without its row, which each has,
+// written in the node's unit (M7/P2 design 3.7), as an error: unless the
+// node, read again, is gone, deleted with its row between the two reads,
+// which are no snapshot.
 func (r *Reads) rowless(ctx context.Context, n Node) {
+	if again, ok, err := r.nodes.Node(ctx, n.ID); err == nil && (!ok || !again.Asset) {
+		return
+	}
 	r.logger.ErrorContext(ctx, "attachment node without its row", slog.String("node_id", n.ID.String()),
 		slog.String("notebook_id", n.NotebookID.String()))
 }

@@ -44,6 +44,7 @@ func TestCheckTitle(t *testing.T) {
 		{"a#b", shared.FieldInvalidFormat}, {"a^b", shared.FieldInvalidFormat}, {"a[b", shared.FieldInvalidFormat},
 		{"a]b", shared.FieldInvalidFormat},
 		{"a\x00b", shared.FieldInvalidFormat}, {"a\tb", shared.FieldInvalidFormat}, {"a\u007fb", shared.FieldInvalidFormat},
+		{"a\xff.png", shared.FieldInvalidFormat}, {"\xe5\x9b.png", shared.FieldInvalidFormat},
 		{"a\u2028b", shared.FieldInvalidFormat}, {"a\u2029b", shared.FieldInvalidFormat},
 		{"report\u202egpj.exe", shared.FieldInvalidFormat}, {"a\u2066b", shared.FieldInvalidFormat},
 		{".hidden", shared.FieldInvalidFormat}, {"trailing.", shared.FieldInvalidFormat}, {"...", shared.FieldInvalidFormat},

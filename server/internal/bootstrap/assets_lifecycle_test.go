@@ -107,7 +107,7 @@ func TestDeletingANotebookDeletesItsAttachmentsRows(t *testing.T) {
 // The attachments' activity reaches the ownerless list through serve (M3
 // handoff to M7, item 2): a notebook's size counts its attachments' bytes
 // beside its pages', one deleted not, and its last activity is its latest
-// upload, after its pages' last write.
+// upload, a change of its tree as a page's write is.
 func TestTheOwnerlessListShowsTheAttachmentsActivity(t *testing.T) {
 	tm := newAcmeTeam(t, "admin", "member")
 	nb := tm.createNotebook(t, "carol", "Plans")

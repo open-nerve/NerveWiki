@@ -34,19 +34,19 @@ type content struct {
 }
 
 func (h content) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	a, ok := addressOf(pathID(r, "node_id"), r.URL.RawQuery)
+	a, ok := addressOf(pathID(r, "node_id"), r.PathValue("node_id"), r.URL.RawQuery)
 	if !ok {
 		h.errors.Write(w, r, domain.ErrContentNotFound)
 		return
 	}
 	var o app.Opened
-	err := bounded(r, func(r *http.Request) error {
+	br, err := bounded(r, func(r *http.Request) error {
 		var err error
 		o, err = h.uc.Open(r.Context(), a)
 		return err
 	})
 	if err != nil {
-		h.errors.Write(w, r, err)
+		h.errors.Write(w, br, err)
 		return
 	}
 	defer func() { _ = o.File.Close() }()
@@ -58,46 +58,54 @@ func (h content) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	setContentHeaders(w.Header(), o, a.Download)
+	// What an address serves never changes: a precondition on a change
+	// (If-Match, If-Unmodified-Since) has nothing to guard, and its 412
+	// would carry the file's headers.
+	r.Header.Del("If-Match")
+	r.Header.Del("If-Unmodified-Since")
 	http.ServeContent(w, r, "", o.File.ModTime(), o.File)
 }
 
-// addressOf reads an address's query as the server writes it: b, e, s and
-// d, each at most once, d=1 or absent, the rest present; b an id in
-// lower-case with hyphens, e a decimal without sign or leading zeros, s 22
-// base64url characters. Nothing is unescaped: an escaped spelling is
-// another address. Anything else is no address.
-func addressOf(node uuid.UUID, query string) (app.Address, bool) {
-	values := map[string]string{}
-	for part := range strings.SplitSeq(query, "&") {
+// sandboxed sets the content's policy and its resource policy on every
+// answer of the download, a refusal too (M7 design 4.5).
+func sandboxed(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Security-Policy", contentPolicy)
+		w.Header().Set("Cross-Origin-Resource-Policy", "same-origin")
+		next.ServeHTTP(w, r)
+	})
+}
+
+// addressOf reads an address as the server writes it, node's id spelled
+// path: the id in lower case with hyphens; the query b, e, s, and d=1 or
+// nothing, in that order; b an id spelled so, e a decimal without sign or
+// leading zeros, s 22 base64url characters. Nothing is unescaped: an
+// escaped spelling is another address. Anything else is no address.
+func addressOf(node uuid.UUID, path, query string) (app.Address, bool) {
+	parts := strings.Split(query, "&")
+	if node.String() != path || len(parts) < 3 || len(parts) > 4 {
+		return app.Address{}, false
+	}
+	values := make([]string, len(parts))
+	for i, part := range parts {
 		key, value, ok := strings.Cut(part, "=")
-		if _, seen := values[key]; !ok || seen {
+		if !ok || key != []string{"b", "e", "s", "d"}[i] {
 			return app.Address{}, false
 		}
-		values[key] = value
+		values[i] = value
 	}
-	a := app.Address{Node: node, Signature: values["s"]}
-	blob, err := uuid.Parse(values["b"])
-	if err != nil || blob.String() != values["b"] {
+	a := app.Address{Node: node, Signature: values[2], Download: len(values) == 4}
+	blob, err := uuid.Parse(values[0])
+	if err != nil || blob.String() != values[0] {
 		return app.Address{}, false
 	}
 	a.Blob = blob
-	a.Expires, err = strconv.ParseInt(values["e"], 10, 64)
-	if err != nil || a.Expires <= 0 || strconv.FormatInt(a.Expires, 10) != values["e"] {
+	a.Expires, err = strconv.ParseInt(values[1], 10, 64)
+	if err != nil || a.Expires <= 0 || strconv.FormatInt(a.Expires, 10) != values[1] {
 		return app.Address{}, false
 	}
-	if !signature(a.Signature) {
+	if !signature(a.Signature) || a.Download && values[3] != "1" {
 		return app.Address{}, false
-	}
-	switch d, ok := values["d"]; {
-	case ok && d != "1":
-		return app.Address{}, false
-	case ok:
-		a.Download = true
-	}
-	for key := range values {
-		if key != "b" && key != "e" && key != "s" && key != "d" {
-			return app.Address{}, false
-		}
 	}
 	return a, true
 }
@@ -123,15 +131,13 @@ func alnum(c byte) bool {
 
 // setContentHeaders sets the headers of o's answer, which replace the
 // API's no-store (M7/P2 design 3.6): its type, shown or downloaded under
-// its name, the sandbox, private caching until the address expires, its
-// SHA-256 as its ETag, and no reading by another site.
+// its name, private caching until the address expires, and its SHA-256 as
+// its ETag; the sandbox is every answer's (sandboxed).
 func setContentHeaders(h http.Header, o app.Opened, download bool) {
-	h.Set("Content-Type", o.Blob.MIME)
+	h.Set("Content-Type", domain.Served(o.Blob.MIME))
 	h.Set("Content-Disposition", disposition(domain.Inline(o.Blob.MIME, download), o.Name))
-	h.Set("Content-Security-Policy", contentPolicy)
 	h.Set("Cache-Control", "private, max-age="+strconv.FormatInt(max(0, int64(o.Left/time.Second)), 10)+", immutable")
 	h.Set("ETag", `"`+hex.EncodeToString(o.Blob.SHA256)+`"`)
-	h.Set("Cross-Origin-Resource-Policy", "same-origin")
 }
 
 // disposition is the Content-Disposition of a file named name (RFC 6266):

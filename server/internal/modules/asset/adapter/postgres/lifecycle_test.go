@@ -27,9 +27,8 @@ func TestRowsFollowTheirNodesAndNotebooks(t *testing.T) {
 		}
 	}
 	activity, err := store.NotebookActivities(ctx, []uuid.UUID{f.eng, f.ops, uuid.NewV7()})
-	if err != nil || len(activity) != 2 || activity[f.eng].Bytes != 3 || activity[f.ops].Bytes != 40 ||
-		!activity[f.ops].LastUploadAt.Equal(report.CreatedAt) {
-		t.Errorf("NotebookActivities() = %+v, %v; want eng's 3 bytes and ops' 40, at their upload", activity, err)
+	if err != nil || len(activity) != 2 || activity[f.eng].Bytes != 3 || activity[f.ops].Bytes != 40 {
+		t.Errorf("NotebookActivities() = %+v, %v; want eng's 3 bytes and ops' 40", activity, err)
 	}
 	first := time.Date(2026, 10, 8, 11, 0, 0, 0, time.UTC)
 	if err := store.DeleteBlobsOfNodes(ctx, []uuid.UUID{f.photo, uuid.NewV7()}, first); err != nil {

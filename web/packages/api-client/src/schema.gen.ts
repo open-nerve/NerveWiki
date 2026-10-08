@@ -1225,7 +1225,7 @@ export interface paths {
         };
         /**
          * Download an attachment's content
-         * @description The attachment's file, at the address getAsset, listAssets and uploadAsset sign: anyone who has the address can open it, without a token, until it expires. The query is b, e, s and, to download whatever the type, d=1, each once and as the server writes them; anything else, a signature that does not match, an address expired, and an attachment deleted since are not_found, alike. An image, an audio, a video or a PDF is shown, any other file downloaded, under its name; every answer is sandboxed (Content-Security-Policy), and cached privately until the address expires. Ranges and conditional requests are answered (206, 304, 416). The addresses share a bucket of their own, by client IP (rate_limited). A download still sending when the server shuts down is cut off; one asked for then is server_busy.
+         * @description The attachment's file, at the address getAsset, listAssets and uploadAsset sign: anyone who has the address can open it, without a token, until it expires. The address is read as the server writes it: the path's id, then the query b, e, s and, to download whatever the type, d=1, in this order, each once, nothing escaped; anything else, a signature that does not match, an address expired, and an attachment deleted since are not_found, alike. An image, an audio, a video or a PDF is shown, any other file downloaded, under its name; every answer is sandboxed (Content-Security-Policy) and readable by no other site, and a file's is cached privately until the address expires. Ranges and the conditions on a copy the client holds are answered (206, 304, 416); what an address serves never changes, so a condition on a change (If-Match, If-Unmodified-Since) is passed by. The addresses share a bucket of their own, by client IP (rate_limited). A download still sending when the server shuts down is cut off; one asked for then is server_busy.
          */
         get: operations["getAssetContent"];
         put?: never;
@@ -2085,6 +2085,12 @@ export interface components {
         ContentDisposition: string;
         /** @description The file's SHA-256, in lower-case hexadecimal, quoted. */
         ETag: string;
+        /** @description private, max-age of the seconds the address has left, immutable. */
+        CacheControl: string;
+        /** @description The sandbox every answer of a content runs in: no script, an opaque origin, nothing asked of another server, images and media of this one alone. */
+        ContentSecurityPolicy: string;
+        /** @description same-origin, that no other site reads the content. */
+        CrossOriginResourcePolicy: string;
     };
     pathItems: never;
 }
@@ -2193,6 +2199,9 @@ export type ParameterNodeId = components['parameters']['NodeID'];
 export type ParameterTag = components['parameters']['Tag'];
 export type HeaderContentDisposition = components['headers']['ContentDisposition'];
 export type HeaderETag = components['headers']['ETag'];
+export type HeaderCacheControl = components['headers']['CacheControl'];
+export type HeaderContentSecurityPolicy = components['headers']['ContentSecurityPolicy'];
+export type HeaderCrossOriginResourcePolicy = components['headers']['CrossOriginResourcePolicy'];
 export type $defs = Record<string, never>;
 export interface operations {
     register: {
@@ -3888,6 +3897,9 @@ export interface operations {
                 headers: {
                     "Content-Disposition": components["headers"]["ContentDisposition"];
                     ETag: components["headers"]["ETag"];
+                    "Cache-Control": components["headers"]["CacheControl"];
+                    "Content-Security-Policy": components["headers"]["ContentSecurityPolicy"];
+                    "Cross-Origin-Resource-Policy": components["headers"]["CrossOriginResourcePolicy"];
                     [name: string]: unknown;
                 };
                 content: {
@@ -3899,8 +3911,11 @@ export interface operations {
                 headers: {
                     "Content-Disposition": components["headers"]["ContentDisposition"];
                     ETag: components["headers"]["ETag"];
+                    "Cache-Control": components["headers"]["CacheControl"];
+                    "Content-Security-Policy": components["headers"]["ContentSecurityPolicy"];
+                    "Cross-Origin-Resource-Policy": components["headers"]["CrossOriginResourcePolicy"];
                     /** @description The range sent, and the file's size. */
-                    "Content-Range"?: string;
+                    "Content-Range": string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -3910,6 +3925,9 @@ export interface operations {
             /** @description The file has not changed since the copy the request names. */
             304: {
                 headers: {
+                    ETag: components["headers"]["ETag"];
+                    "Cache-Control": components["headers"]["CacheControl"];
+                    "Content-Security-Policy": components["headers"]["ContentSecurityPolicy"];
                     [name: string]: unknown;
                 };
                 content?: never;
@@ -3917,6 +3935,7 @@ export interface operations {
             /** @description No range asked for is in the file; Content-Range tells its size. */
             416: {
                 headers: {
+                    "Content-Security-Policy": components["headers"]["ContentSecurityPolicy"];
                     /** @description The file's size, as bytes *\/<size>. */
                     "Content-Range"?: string;
                     [name: string]: unknown;

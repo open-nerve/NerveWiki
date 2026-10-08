@@ -133,20 +133,23 @@ paths:
       description: >-
         The attachment's file, at the address getAsset, listAssets and
         uploadAsset sign: anyone who has the address can open it, without a
-        token, until it expires. The query is b, e, s and, to download
-        whatever the type, d=1, each once and as the server writes them;
-        anything else, a signature that does not match, an address expired,
-        and an attachment deleted since are not_found, alike. An image, an
-        audio, a video or a PDF is shown, any other file downloaded, under
-        its name; every answer is sandboxed (Content-Security-Policy), and
-        cached privately until the address expires. Ranges and conditional
-        requests are answered (206, 304, 416). The addresses share a bucket
-        of their own, by client IP (rate_limited). A download still sending
-        when the server shuts down is cut off; one asked for then is
-        server_busy.
+        token, until it expires. The address is read as the server writes
+        it: the path's id, then the query b, e, s and, to download whatever
+        the type, d=1, in this order, each once, nothing escaped; anything
+        else, a signature that does not match, an address expired, and an
+        attachment deleted since are not_found, alike. An image, an audio, a
+        video or a PDF is shown, any other file downloaded, under its name;
+        every answer is sandboxed (Content-Security-Policy) and readable by
+        no other site, and a file's is cached privately until the address
+        expires. Ranges and the conditions on a copy the client holds are
+        answered (206, 304, 416); what an address serves never changes, so a
+        condition on a change (If-Match, If-Unmodified-Since) is passed by.
+        The addresses share a bucket of their own, by client IP
+        (rate_limited). A download still sending when the server shuts down
+        is cut off; one asked for then is server_busy.
       security: []
       x-raw: true
-      x-problem-codes: [not_found, rate_limited, server_busy]
+      x-problem-codes: [not_found, server_busy]
       parameters:
         - name: b
           in: query
@@ -179,6 +182,12 @@ paths:
               $ref: "#/components/headers/ContentDisposition"
             ETag:
               $ref: "#/components/headers/ETag"
+            Cache-Control:
+              $ref: "#/components/headers/CacheControl"
+            Content-Security-Policy:
+              $ref: "#/components/headers/ContentSecurityPolicy"
+            Cross-Origin-Resource-Policy:
+              $ref: "#/components/headers/CrossOriginResourcePolicy"
           content:
             "*/*":
               schema:
@@ -191,8 +200,15 @@ paths:
               $ref: "#/components/headers/ContentDisposition"
             ETag:
               $ref: "#/components/headers/ETag"
+            Cache-Control:
+              $ref: "#/components/headers/CacheControl"
+            Content-Security-Policy:
+              $ref: "#/components/headers/ContentSecurityPolicy"
+            Cross-Origin-Resource-Policy:
+              $ref: "#/components/headers/CrossOriginResourcePolicy"
             Content-Range:
               description: The range sent, and the file's size.
+              required: true
               schema:
                 type: string
           content:
@@ -202,9 +218,18 @@ paths:
                 format: binary
         "304":
           description: The file has not changed since the copy the request names.
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
+            Cache-Control:
+              $ref: "#/components/headers/CacheControl"
+            Content-Security-Policy:
+              $ref: "#/components/headers/ContentSecurityPolicy"
         "416":
           description: No range asked for is in the file; Content-Range tells its size.
           headers:
+            Content-Security-Policy:
+              $ref: "#/components/headers/ContentSecurityPolicy"
             Content-Range:
               description: The file's size, as bytes */<size>.
               schema:
@@ -244,10 +269,30 @@ components:
       description: >-
         inline for a file shown, attachment for one downloaded, with its
         name (RFC 6266: filename in ASCII, filename* in UTF-8).
+      required: true
       schema:
         type: string
     ETag:
       description: The file's SHA-256, in lower-case hexadecimal, quoted.
+      required: true
+      schema:
+        type: string
+    CacheControl:
+      description: private, max-age of the seconds the address has left, immutable.
+      required: true
+      schema:
+        type: string
+    ContentSecurityPolicy:
+      description: >-
+        The sandbox every answer of a content runs in: no script, an opaque
+        origin, nothing asked of another server, images and media of this
+        one alone.
+      required: true
+      schema:
+        type: string
+    CrossOriginResourcePolicy:
+      description: same-origin, that no other site reads the content.
+      required: true
       schema:
         type: string
   responses:

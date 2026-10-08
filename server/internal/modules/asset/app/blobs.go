@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"io"
+	"log/slog"
 	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/asset/domain"
@@ -16,11 +17,12 @@ type Blobs struct {
 	files   Files
 	rows    Rows
 	sniffer Sniffer
+	logger  *slog.Logger
 }
 
 // NewBlobs returns them.
-func NewBlobs(files Files, rows Rows, sniffer Sniffer) *Blobs {
-	return &Blobs{files: files, rows: rows, sniffer: sniffer}
+func NewBlobs(files Files, rows Rows, sniffer Sniffer, logger *slog.Logger) *Blobs {
+	return &Blobs{files: files, rows: rows, sniffer: sniffer, logger: logger}
 }
 
 // headBytes is how much of a file's start sniffing reads.
@@ -38,9 +40,11 @@ func (e *ReadError) Unwrap() error { return e.Err }
 // Put writes the file r brings, named name, as a new blob, computing its
 // SHA-256 as the bytes pass: domain.ErrTooLarge past max bytes, the
 // store's domain.ErrStorageFull, a *ReadError when r fails, each leaving
-// no file. Once committed, its type is told by name's extension and its
-// first bytes, and an image's size is read from the file. A failed Commit
-// may leave the file at its key: the orphan sweep deletes it.
+// no file: a write that cannot be aborted is logged, its bytes left in the
+// store's files being written until the next start. Once committed, its
+// type is told by name's extension and its first bytes, and an image's
+// size is read from the file. A failed Commit may leave the file at its
+// key: the orphan sweep deletes it.
 func (b *Blobs) Put(ctx context.Context, name string, r io.Reader, maxBytes int64) (domain.Blob, error) {
 	id := uuid.NewV7()
 	w, err := b.files.Create(ctx, domain.Key(id))
@@ -55,20 +59,20 @@ func (b *Blobs) Put(ctx context.Context, name string, r io.Reader, maxBytes int6
 		k, rerr := r.Read(buf)
 		if k > 0 {
 			if n += int64(k); n > maxBytes {
-				return domain.Blob{}, errors.Join(domain.ErrTooLarge, w.Abort())
+				return domain.Blob{}, b.abort(ctx, id, w, domain.ErrTooLarge)
 			}
 			chunk := buf[:k]
 			sum.Write(chunk)
 			head = append(head, chunk[:min(len(chunk), headBytes-len(head))]...)
 			if _, err := w.Write(chunk); err != nil {
-				return domain.Blob{}, errors.Join(err, w.Abort())
+				return domain.Blob{}, b.abort(ctx, id, w, err)
 			}
 		}
 		if errors.Is(rerr, io.EOF) {
 			break
 		}
 		if rerr != nil {
-			return domain.Blob{}, errors.Join(&ReadError{Err: rerr}, w.Abort())
+			return domain.Blob{}, b.abort(ctx, id, w, &ReadError{Err: rerr})
 		}
 	}
 	if err := w.Commit(); err != nil {
@@ -79,6 +83,15 @@ func (b *Blobs) Put(ctx context.Context, name string, r io.Reader, maxBytes int6
 		blob.Width, blob.Height = b.size(ctx, id)
 	}
 	return blob, nil
+}
+
+// abort aborts the write w of the blob id, which failed with err, and
+// answers err; an abort that fails is logged, as no answer tells it.
+func (b *Blobs) abort(ctx context.Context, id uuid.UUID, w FileWriter, err error) error {
+	if aerr := w.Abort(); aerr != nil {
+		b.logger.WarnContext(ctx, "an upload's partial file is not deleted", slog.String("blob_id", id.String()), slog.Any("error", aerr))
+	}
+	return err
 }
 
 // size is the width and height of the image blob id, 0 and 0 when they

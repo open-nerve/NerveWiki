@@ -13,8 +13,9 @@ import (
 
 // The attachments' parts in the other modules' events (M7/P2 design 3.8),
 // built from the pool alone (v0.1 design 13.1, item 21): the command
-// line's compositions reach them through a workspace's deletion. Each
-// runs in its caller's transaction, which the store finds in the context.
+// line's compositions build them, as they build every registrant, though
+// no command deletes a node or a notebook. Each runs in its caller's
+// transaction, which the store finds in the context.
 
 // PageObserver follows the page module's units: bootstrap hands it the
 // nodes a unit deleted, whose attachments' rows it deletes at the unit's

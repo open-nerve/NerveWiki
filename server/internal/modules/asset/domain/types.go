@@ -79,13 +79,22 @@ func shownType(mime string) bool {
 	return false
 }
 
+// Served is the type a file of type mime is served as: its own when the
+// table has it, application/octet-stream otherwise, whatever wrote it.
+func Served(mime string) string {
+	if shownType(mime) {
+		return mime
+	}
+	return Octet
+}
+
 // Inline reports whether a file of type mime is shown in the browser: a
 // type of the table, unless the download was asked for (d=1). A shown
 // file is safe only sandboxed: every content's answer carries the CSP
 // sandbox (M7 design 4.5), so an SVG shown runs no script, on an opaque
 // origin, and asks nothing of another server.
 func Inline(mime string, download bool) bool {
-	return !download && mime != Octet
+	return !download && shownType(mime)
 }
 
 // HasSize reports whether the server reads the size in pixels of a file

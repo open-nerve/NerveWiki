@@ -16,12 +16,13 @@ import (
 )
 
 // storedFiles are files by key with their times, listed in the order
-// they were added; the reads of the rows are counted.
+// they were added; undeletable's Delete fails.
 type storedFiles struct {
-	keys    []string
-	at      map[string]time.Time
-	deleted []string
-	before  time.Time
+	keys        []string
+	at          map[string]time.Time
+	deleted     []string
+	undeletable string
+	before      time.Time
 }
 
 func (s *storedFiles) add(key string, at time.Time) {
@@ -42,6 +43,9 @@ func (s *storedFiles) List(_ context.Context, area string, before time.Time, eac
 }
 
 func (s *storedFiles) Delete(_ context.Context, key string) error {
+	if key == s.undeletable {
+		return errors.New("remove " + key + ": permission denied")
+	}
 	s.deleted = append(s.deleted, key)
 	return nil
 }
@@ -93,6 +97,27 @@ func TestSweepDeletesTheOldFilesNoRowHolds(t *testing.T) {
 	}
 	if l := logs.String(); !strings.Contains(l, "files=500") || !strings.Contains(l, "level=WARN") || !strings.Contains(l, "notes.txt") {
 		t.Errorf("logs %q, want the count and a warning of notes.txt", l)
+	}
+}
+
+// A file the sweep cannot delete is logged as a warning, with its blob's
+// id; the sweep deletes the rest, then fails, counting it.
+func TestSweepGoesOnPastAFileItCannotDelete(t *testing.T) {
+	files := &storedFiles{at: map[string]time.Time{}}
+	var keys []string
+	for range 3 {
+		keys = append(keys, domain.Key(uuid.NewV7()))
+		files.add(keys[len(keys)-1], now().Add(-48*time.Hour))
+	}
+	files.undeletable = keys[1]
+	var logs bytes.Buffer
+	n, err := app.NewSweep(files, &knownRows{}, fixedClock{now()}, slog.New(slog.NewTextHandler(&logs, nil))).Run(context.Background())
+	if n != 2 || err == nil || !strings.Contains(err.Error(), "1 orphan attachment files not deleted") ||
+		!slices.Equal(files.deleted, []string{keys[0], keys[2]}) {
+		t.Errorf("Run() = %d, %v, deleted %q; want the other two, then the failure", n, err, files.deleted)
+	}
+	if l := logs.String(); !strings.Contains(l, "level=WARN") || !strings.Contains(l, "blob_id="+strings.TrimPrefix(keys[1], domain.Area+"/")) {
+		t.Errorf("logs %q, want the failure as a warning, with the blob's id", l)
 	}
 }
 

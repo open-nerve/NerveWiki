@@ -16,6 +16,7 @@ import (
 
 	filesadapter "github.com/open-nerve/NerveWiki/server/internal/modules/asset/adapter/files"
 	httpadapter "github.com/open-nerve/NerveWiki/server/internal/modules/asset/adapter/http"
+	macadapter "github.com/open-nerve/NerveWiki/server/internal/modules/asset/adapter/mac"
 	postgresadapter "github.com/open-nerve/NerveWiki/server/internal/modules/asset/adapter/postgres"
 	riveradapter "github.com/open-nerve/NerveWiki/server/internal/modules/asset/adapter/river"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/asset/adapter/sniff"
@@ -89,14 +90,14 @@ type Module struct {
 // New wires the module: its files in the store, its rows on the pool.
 func New(d Deps) *Module {
 	files, rows := filesadapter.New(d.Store), postgresadapter.New(d.Pool)
-	blobs := app.NewBlobs(files, rows, sniff.Sniffer{})
-	signer := app.NewSigner(d.ContentKey, d.Clock)
+	blobs := app.NewBlobs(files, rows, sniff.Sniffer{}, d.Logger)
+	signer := macadapter.New(d.ContentKey)
 	return &Module{
 		uc: httpadapter.UseCases{
 			Upload: app.NewUpload(app.UploadDeps{Tree: d.Tree, Blobs: blobs, Files: files, Signer: signer, Logger: d.Logger,
 				MaxBytes: d.MaxBytes, MinFree: d.MinFreeBytes}),
 			Reads: app.NewReads(app.ReadsDeps{Authorizer: d.Authorizer, Notebooks: d.Notebooks, Nodes: d.Nodes, Rows: rows, Signer: signer,
-				Logger: d.Logger}),
+				Clock: d.Clock, Logger: d.Logger}),
 			Content: app.NewContent(d.Nodes, blobs, signer, d.Clock, d.Logger),
 		},
 		limits: httpadapter.Limits{MaxBytes: d.MaxBytes, MinRate: d.MinRate, ContentBucket: d.ContentBucket},

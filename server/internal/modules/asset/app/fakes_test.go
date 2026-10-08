@@ -17,13 +17,23 @@ import (
 // now is the fixed clock's time.
 func now() time.Time { return time.Date(2026, 10, 8, 10, 30, 0, 0, time.UTC) }
 
+// signKey is the bytes 0 to 31.
+func signKey() []byte {
+	b := make([]byte, 32)
+	for i := range b {
+		b[i] = byte(i)
+	}
+	return b
+}
+
 type fixedClock struct{ t time.Time }
 
 func (c fixedClock) Now() time.Time { return c.t }
 
 // memFiles is the store in memory: committed files by key. full refuses
-// a Create; fullAfter fails a write once so many bytes are written; the
-// keys deleted are kept, but undeletable's, whose Delete fails.
+// a Create; fullAfter fails a write once so many bytes are written; an
+// Abort fails with abortErr; the keys deleted are kept, but undeletable's,
+// whose Delete fails.
 type memFiles struct {
 	mu          sync.Mutex
 	files       map[string][]byte
@@ -31,6 +41,7 @@ type memFiles struct {
 	deleted     []string
 	full        bool
 	fullAfter   int
+	abortErr    error
 	free        int64
 	undeletable string
 }
@@ -110,7 +121,7 @@ func (w *memWriter) Abort() error {
 	defer w.f.mu.Unlock()
 	w.done = true
 	w.f.writing--
-	return nil
+	return w.f.abortErr
 }
 
 type memFile struct{ *bytes.Reader }

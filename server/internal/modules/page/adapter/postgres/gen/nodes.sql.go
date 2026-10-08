@@ -93,8 +93,9 @@ type AssetsUnderRow struct {
 }
 
 // A parent's attachments not deleted (the root's when parent_id is NULL), by title key and id, after the cursor's key
-// and id when it has one, at most max_rows: a page of the attachments' list (M7/P2 design 3.3). The siblings' unique
-// index on their title keys serves it.
+// and id when it has one, at most max_rows: a page of the attachments' list (M7/P2 design 3.3). As Children, it
+// reaches the notebook's nodes through the siblings' index and filters the parent, which IS NOT DISTINCT FROM does
+// not narrow in an index.
 func (q *Queries) AssetsUnder(ctx context.Context, arg AssetsUnderParams) ([]AssetsUnderRow, error) {
 	rows, err := q.db.Query(ctx, assetsUnder,
 		arg.NotebookID,

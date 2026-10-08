@@ -71,20 +71,19 @@ func (q *Queries) KnownBlobs(ctx context.Context, ids []uuid.UUID) ([]uuid.UUID,
 }
 
 const notebookActivities = `-- name: NotebookActivities :many
-SELECT notebook_id, sum(byte_size)::bigint AS bytes, max(created_at)::timestamptz AS last_upload_at
+SELECT notebook_id, sum(byte_size)::bigint AS bytes
 FROM asset_blobs
 WHERE notebook_id = ANY($1::uuid[]) AND deleted_at IS NULL
 GROUP BY notebook_id
 `
 
 type NotebookActivitiesRow struct {
-	NotebookID   uuid.UUID
-	Bytes        int64
-	LastUploadAt time.Time
+	NotebookID uuid.UUID
+	Bytes      int64
 }
 
-// The attachments' part in notebooks' activity (M3 handoff 1): the bytes of the rows not deleted, and the latest
-// upload.
+// The attachments' part in notebooks' activity (M3 handoff 1): the bytes of the rows not deleted. Their uploads'
+// times are their units' changesets', which the pages' part reads.
 func (q *Queries) NotebookActivities(ctx context.Context, notebookIds []uuid.UUID) ([]NotebookActivitiesRow, error) {
 	rows, err := q.db.Query(ctx, notebookActivities, notebookIds)
 	if err != nil {
@@ -94,7 +93,7 @@ func (q *Queries) NotebookActivities(ctx context.Context, notebookIds []uuid.UUI
 	var items []NotebookActivitiesRow
 	for rows.Next() {
 		var i NotebookActivitiesRow
-		if err := rows.Scan(&i.NotebookID, &i.Bytes, &i.LastUploadAt); err != nil {
+		if err := rows.Scan(&i.NotebookID, &i.Bytes); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

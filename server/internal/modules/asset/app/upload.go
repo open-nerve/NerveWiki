@@ -74,16 +74,23 @@ func (u *Upload) Check(ctx context.Context, req Request) error {
 }
 
 // Store writes the file r brings (Blobs.Put): domain.ErrTooLarge past
-// asset.max_bytes, domain.ErrStorageFull, *ReadError.
+// asset.max_bytes, domain.ErrStorageFull, *ReadError. Its type is told by
+// the name as the node keeps it, a title's form (shared.CheckTitle), which
+// Check has passed.
 func (u *Upload) Store(ctx context.Context, req Request, r io.Reader) (domain.Blob, error) {
-	return u.blobs.Put(ctx, req.Name, r, u.maxBytes)
+	name := req.Name
+	if title, f := shared.CheckTitle("name", name); f == nil {
+		name = title
+	}
+	return u.blobs.Put(ctx, name, r, u.maxBytes)
 }
 
 // Create creates req's node, last among its siblings, with the row of
-// blob in the node's unit, and answers the attachment, its address
-// signed. A refusal of the unit, a *shared.Error, rolled the row back:
-// the file is deleted. Any other error leaves it, for the orphan sweep: a
-// COMMIT whose outcome is unknown may have kept the row (M7 design 4.4).
+// blob in the node's unit, and answers the attachment, its address signed
+// as of the unit's time. A refusal of the unit, a *shared.Error, rolled
+// the row back: the file is deleted. Any other error leaves it, for the
+// orphan sweep: a COMMIT whose outcome is unknown may have kept the row
+// (M7 design 4.4).
 func (u *Upload) Create(ctx context.Context, req Request, blob domain.Blob) (Asset, error) {
 	meta := FileMeta{MIME: blob.MIME, Bytes: blob.Bytes, SHA256: blob.SHA256}
 	n, err := u.tree.CreateAsset(ctx, u.node(req, meta), func(ctx context.Context, n Node) error {
@@ -100,7 +107,7 @@ func (u *Upload) Create(ctx context.Context, req Request, blob domain.Blob) (Ass
 	u.logger.InfoContext(ctx, "asset uploaded", slog.String("notebook_id", n.NotebookID.String()), slog.String("node_id", n.ID.String()),
 		slog.String("blob_id", blob.ID.String()), slog.String("user_id", n.CreatedBy.String()), slog.String("mime", blob.MIME),
 		slog.Int64("bytes", blob.Bytes), slog.String("client", req.Client))
-	return Asset{Node: n, Blob: blob, Signed: u.signer.Sign(n.ID, blob.ID)}, nil
+	return Asset{Node: n, Blob: blob, Signed: u.signer.Sign(n.CreatedAt, n.ID, blob.ID)}, nil
 }
 
 // Discard deletes the file of blob, which no row holds, logging a

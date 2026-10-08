@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	httpadapter "github.com/open-nerve/NerveWiki/server/internal/modules/asset/adapter/http"
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
@@ -140,16 +141,77 @@ func TestUploadCreatesTheAttachment(t *testing.T) {
 	}
 }
 
-// Without a name part, the file part's file name is the name, its
-// directory dropped; a session's upload is the web's.
+// Without a name part, or with one empty or of blanks, the file part's
+// file name is the name, its directory dropped; a session's upload is the
+// web's.
 func TestUploadNamesTheFileByItsFileName(t *testing.T) {
+	for _, name := range []*part{nil, {name: "name"}, {name: "name", value: " \t "}} {
+		h := newHarness(t)
+		parts := []part{file(`photos/beach.jpg`, "x")}
+		if name != nil {
+			parts = append([]part{*name}, parts...)
+		}
+		ct, body := form(t, parts...)
+		if res, answer := h.post(t, uploadPath(), "session", ct, bytes.NewReader(body)); res.StatusCode != http.StatusCreated {
+			t.Fatalf("upload with the name part %+v = %d %s, want 201", name, res.StatusCode, answer)
+		}
+		if n := h.tree.created[0]; n.Name != "beach.jpg" || n.ParentID != nil || n.Client != "web" {
+			t.Errorf("with the name part %+v, created %+v; want beach.jpg at the root from the web", name, n)
+		}
+	}
+}
+
+// A part is stored as it was sent: a Content-Transfer-Encoding is not
+// decoded.
+func TestUploadStoresTheFileAsSent(t *testing.T) {
 	h := newHarness(t)
-	ct, body := form(t, file(`photos/beach.jpg`, "x"))
+	qp := part{name: "file", filename: "a.txt", value: "a=3Db", header: textproto.MIMEHeader{"Content-Transfer-Encoding": {"quoted-printable"}}}
+	ct, body := form(t, qp)
 	if res, answer := h.post(t, uploadPath(), "session", ct, bytes.NewReader(body)); res.StatusCode != http.StatusCreated {
 		t.Fatalf("upload = %d %s, want 201", res.StatusCode, answer)
 	}
-	if n := h.tree.created[0]; n.Name != "beach.jpg" || n.ParentID != nil || n.Client != "web" {
-		t.Errorf("created %+v, want beach.jpg at the root from the web", n)
+	keys, _, _ := h.files.state()
+	if len(keys) != 1 {
+		t.Fatalf("files %q, want one", keys)
+	}
+	f, err := h.files.Open(t.Context(), keys[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := io.ReadAll(f); err != nil || string(got) != "a=3Db" {
+		t.Errorf("the file holds %q, %v; want a=3Db", got, err)
+	}
+}
+
+// A header line cut by the 4 KiB before the file is 400 as any preface
+// past them, the parser's words unread: the line the client sent is not
+// logged.
+func TestUploadRefusesAPrefaceCutInALine(t *testing.T) {
+	h := newHarness(t)
+	key := "X-" + strings.Repeat("Q", 5<<10)
+	ct, body := form(t, part{name: "name", value: "a.png", header: textproto.MIMEHeader{key: {"v"}}}, file("a.png", "x"))
+	res, answer := h.post(t, uploadPath(), "session", ct, bytes.NewReader(body))
+	if res.StatusCode != http.StatusBadRequest || !strings.Contains(string(answer), "4 KiB before the file") ||
+		strings.Contains(string(answer), "QQQQ") {
+		t.Errorf("upload = %d %s, want 400 for the 4 KiB before the file", res.StatusCode, answer)
+	}
+	if logs := h.logs.String(); strings.Contains(logs, "QQQQ") {
+		t.Errorf("logs %q, want no line of the client's", logs)
+	}
+}
+
+// A body that goes on after the form's end, past the route's limit, is
+// 400: the file stored is deleted.
+func TestUploadRefusesABodyAfterTheForm(t *testing.T) {
+	h := newHarness(t)
+	ct, body := form(t, file("a.png", "x"))
+	body = append(body, strings.Repeat("z", maxBytes+httpadapter.Envelope)...)
+	res, answer := h.post(t, uploadPath(), "session", ct, bytes.NewReader(body))
+	if res.StatusCode != http.StatusBadRequest || !strings.Contains(string(answer), "after the form's end") {
+		t.Errorf("upload = %d %s, want 400 for the body after the form", res.StatusCode, answer)
+	}
+	if keys, deleted, open := h.files.state(); len(keys) != 0 || len(deleted) != 1 || open != 0 || len(h.tree.created) != 0 {
+		t.Errorf("files %q, deleted %q, %d open, created %+v; want the file deleted, nothing created", keys, deleted, open, h.tree.created)
 	}
 }
 
