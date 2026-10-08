@@ -116,6 +116,8 @@ type fakeStore struct {
 	// holds.
 	sessions map[uuid.UUID]app.EditSession
 	held     map[uuid.UUID]bool
+	// errs fails the reads named, FindNodeIn and Children.
+	errs map[string]error
 }
 
 func (f *fakeStore) FindNode(ctx context.Context, id uuid.UUID) (domain.Node, error) {
@@ -129,6 +131,9 @@ func (f *fakeStore) FindNode(ctx context.Context, id uuid.UUID) (domain.Node, er
 
 func (f *fakeStore) FindNodeIn(ctx context.Context, notebookID, id uuid.UUID) (domain.Node, error) {
 	f.record(ctx, "FindNodeIn")
+	if err := f.errs["FindNodeIn"]; err != nil {
+		return domain.Node{}, err
+	}
 	n, ok := f.nodes[id]
 	if !ok || n.NotebookID != notebookID {
 		return domain.Node{}, app.ErrNotFound
@@ -149,6 +154,9 @@ func (f *fakeStore) ListNodes(ctx context.Context, notebookID uuid.UUID) ([]doma
 
 func (f *fakeStore) Children(ctx context.Context, notebookID uuid.UUID, parentID *uuid.UUID) ([]domain.Node, error) {
 	f.record(ctx, "Children")
+	if err := f.errs["Children"]; err != nil {
+		return nil, err
+	}
 	var out []domain.Node
 	for _, n := range f.nodes {
 		if n.NotebookID == notebookID && sameParent(n.ParentID, parentID) {

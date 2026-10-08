@@ -86,7 +86,7 @@ func TestCheckDecidesTheNodeThenTheFreeSpace(t *testing.T) {
 	if err := u.uc.Check(context.Background(), req); !errors.Is(err, domain.ErrStorageFull) {
 		t.Errorf("Check() = %v with less free space than is kept, want storage_full", err)
 	}
-	u.files.free, u.files.freeErr = 1<<40, errPort
+	u.files.free, u.files.freeErr = 0, errPort // what a store answers when it cannot tell
 	if err := u.uc.Check(context.Background(), req); !errors.Is(err, errPort) || errors.Is(err, domain.ErrStorageFull) {
 		t.Errorf("Check() = %v when the free space is not told, want that failure", err)
 	}

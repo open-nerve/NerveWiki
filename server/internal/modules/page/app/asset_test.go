@@ -49,7 +49,8 @@ func (f *fixture) asset(name string, parent *uuid.UUID, order float64) domain.No
 
 // An attachment's unit locks, decides on the action it is given, checks
 // the name, the parent and the siblings, has the guard see the file, then
-// writes the node, its item and runs the participants; after follows, in
+// writes the node, its name trimmed and its key folded, its item in a
+// changeset of the client's, and runs the participants; after follows, in
 // the transaction, then the observers.
 func TestCreateAssetRunsInAUnitThatChangesTheTree(t *testing.T) {
 	f := newFixture()
@@ -57,7 +58,8 @@ func TestCreateAssetRunsInAUnitThatChangesTheTree(t *testing.T) {
 	g, p, o := &guard{recorder: f.rec}, &participant{recorder: f.rec}, &observer{recorder: f.rec}
 	f.guards, f.partakers, f.observers = []app.WriteGuard{g}, []app.Participant{p}, []app.PageObserver{o}
 	parent := f.page("Parent", nil, 0)
-	a := f.newAsset("photo.png", &parent.ID)
+	a := f.newAsset(" Photo.PNG ", &parent.ID)
+	a.Client = domain.ClientAPI
 	n, err := f.createAsset(a, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -73,25 +75,29 @@ func TestCreateAssetRunsInAUnitThatChangesTheTree(t *testing.T) {
 		t.Errorf("the guard saw %+v, want the attachment's file", g.steps)
 	}
 	if len(o.events) != 1 || len(o.events[0].Changes) != 1 || o.events[0].Changes[0].Revision != 0 || o.events[0].Changes[0].Facts != nil ||
-		o.events[0].Changes[0].Before != nil || o.events[0].Changes[0].After.Name != "photo.png" {
+		o.events[0].Changes[0].Before != nil || o.events[0].Changes[0].After.Name != "Photo.PNG" {
 		t.Errorf("the observer saw %+v, want the attachment created without a revision or facts", o.events)
 	}
-	if n.Kind != domain.KindAsset || n.Name != "photo.png" || n.NameKey != shared.TitleKey("photo.png") || *n.ParentID != parent.ID ||
-		n.CreatedBy != f.alice || !n.CreatedAt.Equal(now()) || f.store.nodes[n.ID] != n {
-		t.Errorf("node = %+v, want photo.png, an attachment under Parent by alice at %v", n, now())
+	if n.Kind != domain.KindAsset || n.Name != "Photo.PNG" || n.NameKey != shared.TitleKey("Photo.PNG") || n.NotebookID != f.eng ||
+		*n.ParentID != parent.ID || n.CreatedBy != f.alice || !n.CreatedAt.Equal(now()) || n.UpdatedBy != f.alice ||
+		!n.UpdatedAt.Equal(now()) || f.store.nodes[n.ID] != n {
+		t.Errorf("node = %+v, want Photo.PNG, keyed photo.png, an attachment of eng under Parent by alice at %v", n, now())
 	}
 	if _, ok := f.store.contents[n.ID]; ok || len(f.store.revisions) != 0 {
 		t.Errorf("content %+v, versions %+v; want none for an attachment", f.store.contents[n.ID], f.store.revisions)
 	}
-	if item := f.store.items[n.ID]; item.ChangesetID != f.store.changesets[0].ID || item.Change.After == nil {
-		t.Errorf("item = %+v, want the creation in the unit's changeset", item)
+	if item := f.store.items[n.ID]; len(f.store.changesets) != 1 || f.store.changesets[0].Client != domain.ClientAPI ||
+		item.ChangesetID != f.store.changesets[0].ID || item.Change.After == nil {
+		t.Errorf("item = %+v of %+v, want the creation in the unit's changeset, of the api", item, f.store.changesets)
 	}
 	if f.auth.targets[0] != (shared.Target{WorkspaceID: f.acme, NotebookID: f.eng}) {
 		t.Errorf("decided on %+v, want acme's eng", f.auth.targets[0])
 	}
 }
 
-// An attachment goes after every sibling, a page's and an attachment's.
+// An attachment goes after every sibling, a page's and an attachment's;
+// after a last sibling with no room after it, the siblings are numbered
+// again.
 func TestCreateAssetPlacesItLast(t *testing.T) {
 	f := newFixture()
 	f.grant(upload)
@@ -103,6 +109,37 @@ func TestCreateAssetPlacesItLast(t *testing.T) {
 	}
 	if n.SortOrder <= 7 {
 		t.Errorf("order = %v, want it after 7, the last sibling's", n.SortOrder)
+	}
+
+	f = newFixture()
+	f.grant(upload)
+	f.page("B", nil, 1<<53)
+	if _, err := f.createAsset(f.newAsset("c.png", nil), nil); err != nil {
+		t.Fatal(err)
+	}
+	if got := orderedNames(t, f); !slices.Equal(got, []string{"B", "c.png"}) || !f.called("SetSortOrder in tx") {
+		t.Errorf("roots = %v, renumbered %v; want B, c.png, renumbered", got, f.called("SetSortOrder in tx"))
+	}
+}
+
+// A read of the parent or of the siblings that fails is Check's and
+// CreateAsset's failure, not a refusal nor a pass.
+func TestCreateAssetAnswersAReadThatFails(t *testing.T) {
+	failure := errors.New("connection reset")
+	for _, read := range []string{"FindNodeIn", "Children"} {
+		t.Run(read, func(t *testing.T) {
+			f := newFixture()
+			f.grant(upload)
+			parent := f.page("Parent", nil, 0)
+			f.store.errs = map[string]error{read: failure}
+			a := f.newAsset("a.png", &parent.ID)
+			if err := f.checkAsset(a); !errors.Is(err, failure) {
+				t.Errorf("Check() = %v, want the read's failure", err)
+			}
+			if _, err := f.createAsset(a, nil); !errors.Is(err, failure) {
+				t.Errorf("CreateAsset() = %v, want the read's failure", err)
+			}
+		})
 	}
 }
 

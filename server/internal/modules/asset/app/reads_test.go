@@ -38,15 +38,18 @@ func (a *authorizer) Authorize(_ context.Context, _ shared.Actor, action shared.
 }
 
 // notebooks maps each notebook not deleted to its workspace; it fails
-// with err when set.
+// with err when set, answering nothing as the notebook module does.
 type notebooks struct {
 	of  map[uuid.UUID]uuid.UUID
 	err error
 }
 
 func (n *notebooks) WorkspaceOf(_ context.Context, id uuid.UUID) (uuid.UUID, bool, error) {
+	if n.err != nil {
+		return uuid.UUID{}, false, n.err
+	}
 	w, ok := n.of[id]
-	return w, ok, n.err
+	return w, ok, nil
 }
 
 // treeNodes are the nodes not deleted, the pages among them; the node
@@ -74,8 +77,11 @@ func (t *treeNodes) Node(_ context.Context, id uuid.UUID) (app.Node, bool, error
 }
 
 func (t *treeNodes) Parent(_ context.Context, notebookID, parentID uuid.UUID) (bool, error) {
+	if t.parentErr != nil {
+		return false, t.parentErr
+	}
 	n, ok := t.nodes[parentID]
-	return ok && !n.Asset && n.NotebookID == notebookID, t.parentErr
+	return ok && !n.Asset && n.NotebookID == notebookID, nil
 }
 
 func (t *treeNodes) Assets(_ context.Context, notebookID uuid.UUID, parentID *uuid.UUID, after *app.Cursor, limit int) ([]app.Node, error) {

@@ -16,6 +16,8 @@ func TestCheckAssetName(t *testing.T) {
 		{"notes.md.png", "notes.md.png"},
 		{"README", "README"},
 		{"amd", "amd"},
+		{"ab", "ab"},
+		{"a", "a"},
 		{"notes.md", "validation_failed name not_allowed"},
 		{"notes.MD", "validation_failed name not_allowed"},
 		{"notes.mD ", "validation_failed name not_allowed"},
@@ -35,6 +37,11 @@ func TestCheckAssetRename(t *testing.T) {
 		old, name, want string // want: the name, or the problem
 	}{
 		{"photo.png", "cover.png", "cover.png"},
+		{"photo.png", " cover.png ", "cover.png"},
+		{"photo.png", "b.c", "b.c"},
+		{"photo.png", "photo.x", "photo.x"},
+		{"a.png", "a", "validation_failed name not_allowed"},
+		{"photo.x", "photo", "validation_failed name not_allowed"},
 		{"photo.png", "photo.jpeg", "photo.jpeg"},
 		{"photo.png", "photo.tar.gz", "photo.tar.gz"},
 		{"photo.png", "photo", "validation_failed name not_allowed"},

@@ -368,7 +368,6 @@ type streamWriter struct {
 	http.ResponseWriter
 	s       *stream
 	written int64 // bytes written since Sending
-	armed   int64 // written when the deadline last moved
 }
 
 func (w *streamWriter) Write(p []byte) (int, error) {
@@ -377,11 +376,10 @@ func (w *streamWriter) Write(p []byte) (int, error) {
 	}
 	n := 0
 	for len(p) > 0 {
-		if w.written > w.armed {
+		if w.written > 0 { // the first step goes under Sending's deadline
 			if err := w.s.armSent(w.written); err != nil {
 				return n, err
 			}
-			w.armed = w.written
 		}
 		k, err := w.ResponseWriter.Write(p[:min(int64(len(p)), w.s.step)])
 		n += k

@@ -1,6 +1,7 @@
 package httpserver
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"errors"
@@ -79,16 +80,20 @@ func (*recordingBody) Close() error { return nil }
 // A stream route answers 401 and 429 before its handler and before reading
 // the body: no token, a failing one, an empty platform bucket, an empty
 // route bucket. A route bucket takes the place of the platform's: by
-// credential, or by IP on a public route.
+// credential, or by IP on a public route. Such an answer closes the
+// connection, whether the body's length is told or it is chunked; the
+// handler finds no Connection header.
 func TestAStreamRouteAuthenticatesAndLimitsBeforeItsHandler(t *testing.T) {
-	for _, tt := range []struct {
+	type row struct {
 		name, route, token string
 		platformEmpty      bool
 		routeBucket        bool
 		routeEmpty         bool
 		status             int
 		routeKey           string // the key the route bucket took a unit of
-	}{
+	}
+	var rows []row
+	for _, tt := range []row{
 		{"no token", uploadRoute, "", false, false, false, http.StatusUnauthorized, ""},
 		{"a failing token", uploadRoute, "bad", false, false, false, http.StatusUnauthorized, ""},
 		{"an empty platform bucket", uploadRoute, "tok", true, false, false, http.StatusTooManyRequests, ""},
@@ -97,6 +102,11 @@ func TestAStreamRouteAuthenticatesAndLimitsBeforeItsHandler(t *testing.T) {
 		{"the route bucket by IP on a public route", openRoute, "", true, true, false, http.StatusNoContent, "203.0.113.7"},
 		{"the platform bucket", uploadRoute, "tok", false, false, false, http.StatusNoContent, ""},
 	} {
+		chunked := tt
+		chunked.name += ", chunked"
+		rows = append(rows, tt, chunked)
+	}
+	for _, tt := range rows {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := testAPIConfig(&fakeAuth{}, slog.New(slog.DiscardHandler))
 			platform := newFakeLimiter(100)
@@ -114,9 +124,10 @@ func TestAStreamRouteAuthenticatesAndLimitsBeforeItsHandler(t *testing.T) {
 				policy.Bucket, policy.BucketName = routeBucket, "uploads"
 			}
 			reached := false
+			var connection []string
 			router := NewRouter(slog.New(slog.DiscardHandler))
 			h := api.Stream(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-				reached = true
+				reached, connection = true, w.Header().Values("Connection")
 				w.WriteHeader(http.StatusNoContent)
 			}), policy)
 			router.Handle(uploadRoute, h)
@@ -124,6 +135,10 @@ func TestAStreamRouteAuthenticatesAndLimitsBeforeItsHandler(t *testing.T) {
 
 			body := &recordingBody{Reader: strings.NewReader("bytes")}
 			r := httptest.NewRequest(http.MethodPost, strings.TrimPrefix(tt.route, "POST "), body)
+			r.ContentLength = int64(len("bytes"))
+			if strings.HasSuffix(tt.name, "chunked") {
+				r.ContentLength = -1
+			}
 			r.RemoteAddr = "203.0.113.7:5555"
 			if tt.token != "" {
 				r.Header.Set("Authorization", "Bearer "+tt.token)
@@ -137,9 +152,9 @@ func TestAStreamRouteAuthenticatesAndLimitsBeforeItsHandler(t *testing.T) {
 			if !reached && body.read {
 				t.Error("the body was read before the request was turned away")
 			}
-			if closing := w.Header().Get("Connection") == "close"; closing == reached {
-				t.Errorf("Connection: %q with the handler reached %v; want close before the handler alone", w.Header().Get("Connection"),
-					reached)
+			if closing := w.Header().Get("Connection") == "close"; closing == reached || len(connection) != 0 {
+				t.Errorf("Connection: %q, %q in the handler, with the handler reached %v; want close before the handler alone",
+					w.Header().Get("Connection"), connection, reached)
 			}
 			if tt.routeKey != "" {
 				if routeBucket.taken[0] != tt.routeKey || len(platform.taken) != 0 {
@@ -295,6 +310,135 @@ func TestAStreamMovesItsDeadlinesWithItsBytes(t *testing.T) {
 	}
 }
 
+// Sending's write deadline, and each step's after it, count from the
+// announcement, however long the stream ran before it.
+func TestSendingCountsFromItsAnnouncement(t *testing.T) {
+	w := &deadlineWriter{ResponseRecorder: httptest.NewRecorder()}
+	s := &stream{rc: http.NewResponseController(w), start: time.Now().Add(-time.Hour), readTimeout: 3 * time.Second,
+		minRate: 1 << 16, step: 1 << 16, drained: true}
+	before := time.Now()
+	if err := s.sending(); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := (&streamWriter{ResponseWriter: w, s: s}).Write(make([]byte, 2<<16)); n != 2<<16 || err != nil {
+		t.Fatalf("Write = %d, %v", n, err)
+	}
+	if len(w.writes) != 2 {
+		t.Fatalf("write deadlines %v, want Sending's and one step's", w.writes)
+	}
+	if d := w.writes[0].Sub(before); d < 3*time.Second || d > 4*time.Second {
+		t.Errorf("Sending's deadline is %v after it, want read_timeout", d)
+	}
+	if d := w.writes[1].Sub(w.writes[0]); d != time.Second {
+		t.Errorf("the step moved the deadline %v, want the second 64 KiB take", d)
+	}
+}
+
+// At a rate at which 64 KiB take more than half the read timeout, an
+// announced answer moves its deadline by the smaller step, as the body
+// does: 1 KiB/s and a read timeout of 3s make a step of 1.5 KiB, 1.5s.
+func TestALowRateAnswerMovesItsDeadlineByTheStep(t *testing.T) {
+	cfg := testAPIConfig(&fakeAuth{}, slog.New(slog.DiscardHandler))
+	cfg.BodyReadTimeout, cfg.WriteTimeout, cfg.RequestTimeout = 3*time.Second, 10*time.Second, 2*time.Second
+	api := buildAPI(t, cfg)
+	const rate, step = 1 << 10, 1536
+	w := &deadlineWriter{ResponseRecorder: httptest.NewRecorder()}
+	var before int
+	h := api.Stream(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		w.mu.Lock()
+		before = len(w.writes)
+		w.mu.Unlock()
+		if err := Sending(r); err != nil {
+			t.Error(err)
+		}
+		_, _ = rw.Write(make([]byte, 3*step))
+	}), StreamPolicy{MinRate: rate})
+	r := httptest.NewRequest(http.MethodGet, "/api/v0/downloads", nil)
+	r.Header.Set("Authorization", "Bearer tok")
+	h.ServeHTTP(w, r)
+	if len(w.writes) != before+3 {
+		t.Fatalf("write deadlines %v, want Sending's and two steps'", w.writes[before:])
+	}
+	for i := before + 1; i < len(w.writes); i++ {
+		if d := w.writes[i].Sub(w.writes[i-1]); d != 1500*time.Millisecond {
+			t.Errorf("write deadline %d moved %v, want 1.5s", i, d)
+		}
+	}
+}
+
+// An answer reports every byte it wrote. Not announced, it is the
+// writer's: no deadline moves with its bytes. Announced, it still reaches
+// the connection's writer through http.ResponseController.
+func TestAStreamsAnswerIsWrittenWhole(t *testing.T) {
+	for _, announced := range []bool{false, true} {
+		var (
+			n            int
+			err, flushed error
+			before       int
+		)
+		w := &deadlineWriter{ResponseRecorder: httptest.NewRecorder()}
+		h := newTestAPI(t).Stream(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+			w.mu.Lock()
+			before = len(w.writes)
+			w.mu.Unlock()
+			if announced {
+				if serr := Sending(r); serr != nil {
+					t.Error(serr)
+				}
+			}
+			n, err = rw.Write(make([]byte, 3*streamChunk+5))
+			flushed = http.NewResponseController(rw).Flush()
+		}), StreamPolicy{MinRate: 1 << 20})
+		r := httptest.NewRequest(http.MethodGet, "/api/v0/downloads", nil)
+		r.Header.Set("Authorization", "Bearer tok")
+		h.ServeHTTP(w, r)
+		moved := len(w.writes) - before
+		if n != 3*streamChunk+5 || err != nil || flushed != nil || !w.Flushed || announced && moved != 4 || !announced && moved != 0 {
+			t.Errorf("announced %v: Write = %d, %v; Flush = %v; %d write deadlines; want every byte, flushed, and %d deadlines",
+				announced, n, err, flushed, moved, map[bool]int{true: 4, false: 0}[announced])
+		}
+	}
+}
+
+// failingWriter fails its first write, writing nothing, and takes every
+// write after it.
+type failingWriter struct {
+	*deadlineWriter
+	calls int
+}
+
+var errWriteFailed = errors.New("the connection failed")
+
+func (f *failingWriter) Write(p []byte) (int, error) {
+	f.calls++
+	if f.calls == 1 {
+		return 0, errWriteFailed
+	}
+	return f.deadlineWriter.Write(p)
+}
+
+// An announced answer's step that fails ends the write with its failure:
+// the bytes after it are not written.
+func TestAFailedStepEndsTheWrite(t *testing.T) {
+	var (
+		n   int
+		err error
+	)
+	h := newTestAPI(t).Stream(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		if serr := Sending(r); serr != nil {
+			t.Error(serr)
+		}
+		n, err = rw.Write(make([]byte, 3*streamChunk))
+	}), StreamPolicy{MinRate: 1 << 20})
+	r := httptest.NewRequest(http.MethodGet, "/api/v0/downloads", nil)
+	r.Header.Set("Authorization", "Bearer tok")
+	w := &failingWriter{deadlineWriter: &deadlineWriter{ResponseRecorder: httptest.NewRecorder()}}
+	h.ServeHTTP(w, r)
+	if n != 0 || !errors.Is(err, errWriteFailed) || w.calls != 1 {
+		t.Errorf("Write = %d, %v after %d writes; want 0 and the failure, after one", n, err, w.calls)
+	}
+}
+
 func TestBoundedAndSendingNeedAStream(t *testing.T) {
 	if err := Sending(post("/api/v0/uploads", "")); !errors.Is(err, errNotStream) {
 		t.Errorf("Sending outside a stream = %v", err)
@@ -317,8 +461,9 @@ func TestAStreamRefusesAWriterWithoutDeadlines(t *testing.T) {
 
 	rec := serve(h, post("/api/v0/uploads", "body"))
 
-	if ran || rec.Code != http.StatusInternalServerError {
-		t.Errorf("handler ran = %t, status %d; want not run and 500", ran, rec.Code)
+	if ran || rec.Code != http.StatusInternalServerError || rec.Header().Get("Connection") != "close" {
+		t.Errorf("handler ran = %t, status %d, Connection %q; want not run and 500, before the handler: close", ran, rec.Code,
+			rec.Header().Get("Connection"))
 	}
 	if entry := findLog(logs(), "cannot set the deadlines of a stream"); entry == nil || entry["level"] != "ERROR" {
 		t.Errorf("log = %v", entry)
@@ -792,6 +937,34 @@ func TestAnAnswerAnnouncedWithSendingLeavesAtItsRate(t *testing.T) {
 				t.Errorf("the write succeeded (read %d bytes), want it cut off", got)
 			}
 		})
+	}
+}
+
+// A client that declares 100 KiB of body and holds it back until it hears
+// gets its 401 at once, not at the 300ms read timeout, the connection
+// closed after it: the server reads none of the body first.
+func TestAStreamRouteAnswersAClientHoldingItsBodyBack(t *testing.T) {
+	api := streamTestAPI(t)
+	url, _, _ := streamServer(t, api.Stream(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}),
+		StreamPolicy{MinRate: 1 << 20, MaxBytes: 1 << 20}))
+	conn, err := net.Dial("tcp", strings.TrimPrefix(url, "http://"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+	start := time.Now()
+	if _, err := io.WriteString(conn, "POST /api/v0/uploads HTTP/1.1\r\nHost: x\r\nContent-Length: 102400\r\n\r\n"); err != nil {
+		t.Fatal(err)
+	}
+	_ = conn.SetReadDeadline(time.Now().Add(3 * time.Second))
+	res, err := http.ReadResponse(bufio.NewReader(conn), nil)
+	elapsed := time.Since(start)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = res.Body.Close()
+	if res.StatusCode != http.StatusUnauthorized || !res.Close || elapsed > 200*time.Millisecond {
+		t.Errorf("%d, closing %v, after %v; want 401, closing, at once", res.StatusCode, res.Close, elapsed)
 	}
 }
 

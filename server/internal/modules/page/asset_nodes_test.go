@@ -81,8 +81,8 @@ func TestTheAssetModuleReadsTheTree(t *testing.T) {
 		return out
 	}
 	page1, err := nodes.Assets(ctx, l.notebook, &l.a, nil, 2)
-	if err != nil || !slices.Equal(ids(page1), []uuid.UUID{first, second}) {
-		t.Errorf("Assets(A, 2) = %v, %v; want A.png, b.jpg", ids(page1), err)
+	if err != nil || !slices.Equal(ids(page1), []uuid.UUID{first, second}) || page1[0].NameKey != "a.png" {
+		t.Errorf("Assets(A, 2) = %+v, %v; want A.png, keyed a.png, and b.jpg", page1, err)
 	}
 	after := &page.AssetCursor{NameKey: page1[1].NameKey, ID: page1[1].ID}
 	page2, err := nodes.Assets(ctx, l.notebook, &l.a, after, 2)
