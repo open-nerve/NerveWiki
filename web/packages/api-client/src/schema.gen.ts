@@ -1809,10 +1809,15 @@ export interface components {
         };
         /** @description A page's reading view. */
         PageView: {
-            /** @description The content rendered to HTML. */
+            /** @description The content rendered to HTML. The attachments its links lead to are shown at their contents' addresses, signed (an image, an audio or a video embedded, a link to any other), each a path of this site. */
             html: string;
             /** @description The content's version the HTML was rendered from. */
             revision: number;
+            /**
+             * Format: date-time
+             * @description When the earliest of the attachments' addresses in the HTML expires, after which the view is to be read again; null for a view with none.
+             */
+            assets_expire_at: string | null;
         };
         /** @description A tick or a clear of a task item. */
         TaskToggle: {
@@ -1876,6 +1881,8 @@ export interface components {
             node_id: string | null;
             /** @description What node_id is; null when it is null. */
             kind: components["schemas"]["LinkTargetKind"] | null;
+            /** @description The address of an attachment's content, signed, a path of this site, as the attachment's content_url is: it expires as that does, and a read of the properties signs it anew. Null for a page, for none, and for an attachment deleted since the link was indexed. */
+            url: string | null;
         };
         PageProperties: {
             /** @description Whether the page's frontmatter is valid; a page without one is. An invalid one has no properties. */

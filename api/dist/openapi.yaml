@@ -2876,13 +2876,20 @@ components:
       required:
         - html
         - revision
+        - assets_expire_at
       properties:
         html:
-          description: The content rendered to HTML.
+          description: The content rendered to HTML. The attachments its links lead to are shown at their contents' addresses, signed (an image, an audio or a video embedded, a link to any other), each a path of this site.
           type: string
         revision:
           description: The content's version the HTML was rendered from.
           type: integer
+        assets_expire_at:
+          description: When the earliest of the attachments' addresses in the HTML expires, after which the view is to be read again; null for a view with none.
+          type:
+            - string
+            - 'null'
+          format: date-time
     TaskToggle:
       description: A tick or a clear of a task item.
       type: object
@@ -2990,6 +2997,7 @@ components:
         - key
         - node_id
         - kind
+        - url
       properties:
         key:
           description: The property's path, a list's item after a dot (sources.0).
@@ -3005,6 +3013,11 @@ components:
           anyOf:
             - $ref: '#/components/schemas/LinkTargetKind'
             - type: 'null'
+        url:
+          description: 'The address of an attachment''s content, signed, a path of this site, as the attachment''s content_url is: it expires as that does, and a read of the properties signs it anew. Null for a page, for none, and for an attachment deleted since the link was indexed.'
+          type:
+            - string
+            - 'null'
     PageProperties:
       type: object
       additionalProperties: false
