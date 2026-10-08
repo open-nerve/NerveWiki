@@ -205,6 +205,12 @@ func (f fixture) request(router http.Handler, kind, method, path, body string) *
 func (f fixture) router(t *testing.T, guards []page.WriteGuard, participants []page.Participant, observers []page.PageObserver) http.Handler {
 	t.Helper()
 	router := httpserver.NewRouter(slog.New(slog.DiscardHandler))
+	f.module(guards, participants, observers).Register(router, httpservertest.NewAPI(t, httpservertest.APIOptions{Authenticator: tokenAuth{}}))
+	return router
+}
+
+// module is the module wired with the registrants.
+func (f fixture) module(guards []page.WriteGuard, participants []page.Participant, observers []page.PageObserver) *page.Module {
 	var clock page.Clock = fixedClock{}
 	if f.clock != nil {
 		clock = f.clock
@@ -213,13 +219,12 @@ func (f fixture) router(t *testing.T, guards []page.WriteGuard, participants []p
 	if budget == nil {
 		budget = markdown.NewBudget(8<<20, time.Second, slog.New(slog.DiscardHandler))
 	}
-	page.New(page.Deps{
+	return page.New(page.Deps{
 		Pool: f.pool, Tx: postgres.NewTxManager(f.pool, 5*time.Second), Clock: clock, Logger: slog.New(slog.DiscardHandler),
 		Authorizer: aliceWrites{f.alice}, Workspaces: sqlWorkspaces{f.pool}, Notebooks: sqlNotebooks{f.pool}, Names: sqlNames{f.pool},
 		Markdown: f.md, Budget: budget, Guards: guards, Participants: participants, Observers: observers,
 		EditSessionVetoers: f.vetoers, EditSessionSubscribers: f.subscribers, EditSessionCleanupInterval: time.Hour,
-	}).Register(router, httpservertest.NewAPI(t, httpservertest.APIOptions{Authenticator: tokenAuth{}}))
-	return router
+	})
 }
 
 func (f fixture) createPath() string { return "/api/v0/notebooks/" + f.eng.String() + "/pages" }

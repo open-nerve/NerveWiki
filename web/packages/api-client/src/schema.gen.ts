@@ -717,7 +717,7 @@ export interface paths {
         };
         /**
          * List a notebook's tree
-         * @description The notebook's pages, each parent before its children, siblings in their order; any role in the notebook can list them. A notebook that does not exist, is deleted, or that the caller has no role in is notebook.not_found. The list is not paged.
+         * @description The notebook's nodes, its pages and their attachments, each parent before its children, siblings in their order; any role in the notebook can list them. A notebook that does not exist, is deleted, or that the caller has no role in is notebook.not_found. The list is not paged.
          */
         get: operations["listNodes"];
         put?: never;
@@ -957,15 +957,15 @@ export interface paths {
         put?: never;
         post?: never;
         /**
-         * Delete a page
-         * @description Deletes the page with every page under it, at one time: they go to the trash together. Its notebook's editors and admins can, a reader cannot (forbidden). A page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found. While another account's edit session holds the lock of the page or of one under it, the deletion is page.locked, naming the first such page, level by level, and its holder in lock; the caller's own sessions end with their pages.
+         * Delete a page or an attachment
+         * @description Deletes the node: a page with every node under it, its attachments among them, or an attachment, at one time: they go to the trash together. Its notebook's editors and admins can, a reader cannot (forbidden). A node that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found. While another account's edit session holds the lock of the page or of one under it, the deletion is page.locked, naming the first such page, level by level, and its holder in lock; the caller's own sessions end with their pages.
          */
         delete: operations["deleteNode"];
         options?: never;
         head?: never;
         /**
-         * Rename a page
-         * @description Renames the page; its notebook's editors and admins can, a reader cannot (forbidden). A page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found; the name is checked after both: its rules are validation_failed, a name a sibling has, compared by its key, is page.title_taken. The page's own name writes nothing; one that differs from it in case alone is written. The links that led to the page, or under it, by a path that changes, and those the new name would lead elsewhere, are written again in the pages they are in, so that each leads where it did; when one of these pages is being edited, its own included, the rename is refused as a whole, linking.pages_locked naming each of them and its editor, and when their parse finds the server busy it is server_busy.
+         * Rename a page or an attachment
+         * @description Renames the node, a page or an attachment; its notebook's editors and admins can, a reader cannot (forbidden). A node that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found; the name is checked after both: its rules are validation_failed, a name a sibling has, compared by its key, is page.title_taken. An attachment's name does not end with ".md", in any case, and keeps an extension when it had one (the extension may change): either is not_allowed on name. The node's own name writes nothing; one that differs from it in case alone is written. The links that led to the page, or under it, by a path that changes, and those the new name would lead elsewhere, are written again in the pages they are in, so that each leads where it did; when one of these pages is being edited, its own included, the rename is refused as a whole, linking.pages_locked naming each of them and its editor, and when their parse finds the server busy it is server_busy.
          */
         patch: operations["renameNode"];
         trace?: never;
@@ -983,8 +983,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Move a page
-         * @description Moves the page with every page under it: under another parent, to the notebook's root, or among its siblings. Its notebook's editors and admins can, a reader cannot (forbidden). A page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found; the destination is checked after both: a parent that is no page of the notebook and a page to follow that is no other child of the parent are validation_failed; then a parent that is the page itself or under it is page.cycle, a title a new sibling has, compared by its key, page.title_taken, and a page under it that would be deeper than ten levels page.too_deep. A move to where the page is writes nothing. The links that led to the page or under it by a path that changes, those from these pages that the move would lead elsewhere, and those the moved pages would take from other pages, are written again in the pages they are in, so that each leads where it did; when one of these pages is being edited, one of the moved included, the move is refused as a whole, linking.pages_locked naming each of them and its editor, and when their parse finds the server busy it is server_busy.
+         * Move a page or an attachment
+         * @description Moves the node, a page with every node under it or an attachment: under another parent page, to the notebook's root, or among its siblings. Its notebook's editors and admins can, a reader cannot (forbidden). A node that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found; the destination is checked after both: a parent that is no page of the notebook and a node to follow that is no other child of the parent are validation_failed; then a parent that is the node itself or under it is page.cycle, a title a new sibling has, compared by its key, page.title_taken, and a page under it that would be deeper than ten levels page.too_deep: an attachment is no level, and a page of the tenth holds them. A move to where the node is writes nothing. The links that led to the page or under it by a path that changes, those from these pages that the move would lead elsewhere, and those the moved pages would take from other pages, are written again in the pages they are in, so that each leads where it did; when one of these pages is being edited, one of the moved included, the move is refused as a whole, linking.pages_locked naming each of them and its editor, and when their parse finds the server busy it is server_busy.
          */
         post: operations["moveNode"];
         delete?: never;
@@ -1590,11 +1590,11 @@ export interface components {
             next_cursor: components["schemas"]["NextCursor"];
         };
         /**
-         * @description What a node of the tree is. Attachments come later.
+         * @description What a node of the tree is: a page, or an attachment, a file at the root or under a page, which no node is under.
          * @enum {string}
          */
-        NodeKind: "page";
-        /** @description A node of a notebook's tree. */
+        NodeKind: "page" | "asset";
+        /** @description A node of a notebook's tree, a page or an attachment. */
         TreeNode: {
             /** Format: uuid */
             id: string;
@@ -1606,7 +1606,7 @@ export interface components {
              */
             parent_id: string | null;
             kind: components["schemas"]["NodeKind"];
-            /** @description The page's title. */
+            /** @description The page's title, or the attachment's file name. */
             name: string;
             /** Format: date-time */
             created_at: string;
@@ -3393,7 +3393,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description The page and the pages under it are deleted. */
+            /** @description The node and the nodes under it are deleted. */
             204: {
                 headers: {
                     [name: string]: unknown;
@@ -3419,7 +3419,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description The page, renamed. */
+            /** @description The node, renamed. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -3447,7 +3447,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description The page, moved. */
+            /** @description The node, moved. */
             200: {
                 headers: {
                     [name: string]: unknown;

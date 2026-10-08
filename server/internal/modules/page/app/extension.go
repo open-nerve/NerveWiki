@@ -41,6 +41,18 @@ type Step struct {
 	// EditSessionID is the edit session a content write is made in (M5:
 	// the edit lock is the session's); zero for any other write.
 	EditSessionID uuid.UUID
+	// Asset is the file of the attachment a creation makes (M7/P2 design
+	// 3.3), for the guards (M10: a schema's rules of a notebook's files);
+	// nil for any other operation.
+	Asset *AssetMeta
+}
+
+// AssetMeta is what an attachment's file is: its type, as the server
+// determined it, its size and its SHA-256.
+type AssetMeta struct {
+	MIME   string
+	Bytes  int64
+	SHA256 []byte
 }
 
 // WriteGuard may refuse an operation (M5: the edit lock; M10: a schema's

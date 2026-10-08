@@ -10,8 +10,9 @@ import (
 // Renaming a node in a unit (M4/P1 design 3.6).
 
 // Rename renames the node id: 404 for one that is not in the notebook,
-// 422 for a name that breaks the rules, 409 for a name a sibling holds. A
-// name the node has already writes nothing; one that differs from it in
+// 422 for a name that breaks the rules, a page's title's or an
+// attachment's (domain.CheckAssetRename), 409 for a name a sibling holds.
+// A name the node has already writes nothing; one that differs from it in
 // case alone is written.
 func (u *Unit) Rename(ctx context.Context, id uuid.UUID, name string) (domain.Node, error) {
 	return u.rename(ctx, id, name, true)
@@ -22,7 +23,7 @@ func (u *Unit) rename(ctx context.Context, id uuid.UUID, name string, participat
 	if err != nil {
 		return domain.Node{}, found(err, domain.ErrNotFound)
 	}
-	title, err := domain.CheckTitle("name", name)
+	title, err := nameOf(n, name)
 	switch {
 	case err != nil:
 		return domain.Node{}, err
@@ -46,4 +47,12 @@ func (u *Unit) rename(ctx context.Context, id uuid.UUID, name string, participat
 		return u.w.d.NodeWriter.RenameNode(ctx, renamed)
 	})
 	return renamed, err
+}
+
+// nameOf checks name as n's new name, by n's kind.
+func nameOf(n domain.Node, name string) (domain.Title, error) {
+	if n.Kind == domain.KindAsset {
+		return domain.CheckAssetRename("name", n.Name, name)
+	}
+	return domain.CheckTitle("name", name)
 }

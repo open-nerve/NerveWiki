@@ -18,11 +18,12 @@ import (
 // Each ends by checking the pages' invariant and the notebooks'.
 
 // checkPages fails t when the pages break an invariant (M4 design 4): a
-// page not deleted under a deleted parent; two siblings not deleted with
-// one title key, which the unique index refuses too, checked in case it
-// changes; a page not deleted without exactly one content not deleted, or
-// whose content's revision is not its latest version's; a page deeper than
-// ten levels, or on a chain that loops; a deleted page with a content, a
+// node not deleted under a deleted parent, or under an attachment (M7/P2
+// design 3.3); two siblings not deleted with one title key, which the
+// unique index refuses too, checked in case it changes; a page not deleted
+// without exactly one content not deleted, or whose content's revision is
+// not its latest version's; a page deeper than ten levels of pages (an
+// attachment is no level), or on a chain that loops; a deleted page with a content, a
 // version or an item not deleted, which would keep the purge from it; an
 // edit session of a page that is not one not deleted of its notebook
 // (M4/P4 design 3.2); two sessions of a page alive at the database's time,
@@ -32,6 +33,8 @@ func checkPages(t *testing.T, pool *pgxpool.Pool) {
 	for what, query := range map[string]string{
 		"under a deleted parent": `SELECT count(*) FROM nodes c JOIN nodes p ON p.id = c.parent_id
 			WHERE c.deleted_at IS NULL AND p.deleted_at IS NOT NULL`,
+		"under an attachment": `SELECT count(*) FROM nodes c JOIN nodes p ON p.id = c.parent_id
+			WHERE c.deleted_at IS NULL AND p.kind = 'asset'`,
 		"with a sibling's title key": `SELECT count(*) FROM (SELECT 1 FROM nodes WHERE deleted_at IS NULL
 			GROUP BY notebook_id, parent_id, name_key HAVING count(*) > 1) twins`,
 		"without exactly one content": `SELECT count(*) FROM nodes n WHERE n.deleted_at IS NULL AND n.kind = 'page'
@@ -42,8 +45,8 @@ func checkPages(t *testing.T, pool *pgxpool.Pool) {
 			EXISTS (SELECT 1 FROM page_contents c WHERE c.node_id = n.id AND c.deleted_at IS NULL)
 			OR EXISTS (SELECT 1 FROM page_revisions r WHERE r.node_id = n.id AND r.deleted_at IS NULL)
 			OR EXISTS (SELECT 1 FROM changeset_items i WHERE i.node_id = n.id AND i.deleted_at IS NULL))`,
-		"deeper than ten levels, or in a loop": `WITH RECURSIVE up AS (
-				SELECT id AS start, parent_id, 1 AS depth FROM nodes WHERE deleted_at IS NULL
+		"deeper than ten levels of pages, or in a loop": `WITH RECURSIVE up AS (
+				SELECT id AS start, parent_id, 1 AS depth FROM nodes WHERE deleted_at IS NULL AND kind = 'page'
 				UNION ALL
 				SELECT u.start, p.parent_id, u.depth + 1 FROM up u JOIN nodes p ON p.id = u.parent_id WHERE u.depth < 11
 			) SELECT count(DISTINCT start) FROM up WHERE parent_id IS NOT NULL AND depth >= 10`,

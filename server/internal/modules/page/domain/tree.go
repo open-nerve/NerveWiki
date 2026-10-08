@@ -50,11 +50,15 @@ type SubtreeNode struct {
 	Level int
 }
 
-// Height is how many levels the subtree spans: a lone node's is 1.
+// Height is how many levels of pages the subtree spans: a lone page's is
+// 1, a lone attachment's 0. An attachment is no level (M7/P2 design 3.3):
+// a page as deep as pages go holds attachments, and moves with them.
 func (s Subtree) Height() int {
 	h := 0
 	for _, n := range s {
-		h = max(h, n.Level)
+		if n.Node.Kind == KindPage {
+			h = max(h, n.Level)
+		}
 	}
 	return h
 }

@@ -114,6 +114,34 @@ func (s *Store) Children(ctx context.Context, notebookID uuid.UUID, parentID *uu
 	return out, nil
 }
 
+// NameCursor is where a list by title key and id goes on: after the node
+// of this key and id.
+type NameCursor struct {
+	Key string
+	ID  uuid.UUID
+}
+
+// AssetsUnder is the attachments not deleted under parentID (nil: the
+// root) of notebookID, by title key and id, after after when it is set, at
+// most limit.
+func (s *Store) AssetsUnder(ctx context.Context, notebookID uuid.UUID, parentID *uuid.UUID, after *NameCursor, limit int) (
+	[]domain.Node, error,
+) {
+	params := gen.AssetsUnderParams{NotebookID: notebookID, ParentID: parentID, MaxRows: int32(limit)}
+	if after != nil {
+		params.AfterKey, params.AfterID = &after.Key, &after.ID
+	}
+	rows, err := s.queries(ctx).AssetsUnder(ctx, params)
+	if err != nil {
+		return nil, fmt.Errorf("list attachments: %w", err)
+	}
+	out := make([]domain.Node, len(rows))
+	for i, r := range rows {
+		out[i] = nodeOf(gen.FindNodeRow(r))
+	}
+	return out, nil
+}
+
 // Ancestors implements app.Nodes. A chain that does not reach a root is an
 // error: only a defect makes one.
 func (s *Store) Ancestors(ctx context.Context, id uuid.UUID) ([]domain.Ancestor, error) {

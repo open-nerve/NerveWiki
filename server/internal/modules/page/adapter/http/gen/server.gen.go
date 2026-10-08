@@ -23,12 +23,15 @@ import (
 
 // Defines values for NodeKind.
 const (
-	NodeKindPage NodeKind = "page"
+	NodeKindAsset NodeKind = "asset"
+	NodeKindPage  NodeKind = "page"
 )
 
 // Valid indicates whether the value is a known member of the NodeKind enum.
 func (e NodeKind) Valid() bool {
 	switch e {
+	case NodeKindAsset:
+		return true
 	case NodeKindPage:
 		return true
 	default:
@@ -74,7 +77,7 @@ type EditSessionOpening struct {
 	TakeOver *bool `json:"take_over,omitempty"`
 }
 
-// NodeKind What a node of the tree is. Attachments come later.
+// NodeKind What a node of the tree is: a page, or an attachment, a file at the root or under a page, which no node is under.
 type NodeKind string
 
 // NodeMove Where a page goes.
@@ -108,7 +111,7 @@ type Page struct {
 	CreatedAt        time.Time `json:"created_at"`
 	ID               uuid.UUID `json:"id"`
 
-	// Kind What a node of the tree is. Attachments come later.
+	// Kind What a node of the tree is: a page, or an attachment, a file at the root or under a page, which no node is under.
 	Kind NodeKind `json:"kind"`
 
 	// Name The page's title.
@@ -188,15 +191,15 @@ type TaskToggle struct {
 // Title 1–255 bytes after the surrounding blanks are trimmed and the text is in NFC; none of / \ : * ? " < > | # ^ [ ] nor control characters; not starting or ending with a dot; no name Windows reserves (CON, COM1, …). It is the file's name when the notebook is exported. Siblings' titles differ in more than case: they compare by Unicode case folding.
 type Title = string
 
-// TreeNode A node of a notebook's tree.
+// TreeNode A node of a notebook's tree, a page or an attachment.
 type TreeNode struct {
 	CreatedAt time.Time `json:"created_at"`
 	ID        uuid.UUID `json:"id"`
 
-	// Kind What a node of the tree is. Attachments come later.
+	// Kind What a node of the tree is: a page, or an attachment, a file at the root or under a page, which no node is under.
 	Kind NodeKind `json:"kind"`
 
-	// Name The page's title.
+	// Name The page's title, or the attachment's file name.
 	Name       string    `json:"name"`
 	NotebookID uuid.UUID `json:"notebook_id"`
 
@@ -253,13 +256,13 @@ type ServerInterface interface {
 	// HeartbeatEditSession Keep an edit session alive
 	// (POST /api/v0/edit-sessions/{edit_session_id}/heartbeat)
 	HeartbeatEditSession(w http.ResponseWriter, r *http.Request, editSessionID EditSessionID)
-	// DeleteNode Delete a page
+	// DeleteNode Delete a page or an attachment
 	// (DELETE /api/v0/nodes/{node_id})
 	DeleteNode(w http.ResponseWriter, r *http.Request, nodeID NodeID)
-	// RenameNode Rename a page
+	// RenameNode Rename a page or an attachment
 	// (PATCH /api/v0/nodes/{node_id})
 	RenameNode(w http.ResponseWriter, r *http.Request, nodeID NodeID)
-	// MoveNode Move a page
+	// MoveNode Move a page or an attachment
 	// (POST /api/v0/nodes/{node_id}/move)
 	MoveNode(w http.ResponseWriter, r *http.Request, nodeID NodeID)
 	// ListNodes List a notebook's tree
@@ -1528,13 +1531,13 @@ type StrictServerInterface interface {
 	// HeartbeatEditSession Keep an edit session alive
 	// (POST /api/v0/edit-sessions/{edit_session_id}/heartbeat)
 	HeartbeatEditSession(ctx context.Context, request HeartbeatEditSessionRequestObject) (HeartbeatEditSessionResponseObject, error)
-	// DeleteNode Delete a page
+	// DeleteNode Delete a page or an attachment
 	// (DELETE /api/v0/nodes/{node_id})
 	DeleteNode(ctx context.Context, request DeleteNodeRequestObject) (DeleteNodeResponseObject, error)
-	// RenameNode Rename a page
+	// RenameNode Rename a page or an attachment
 	// (PATCH /api/v0/nodes/{node_id})
 	RenameNode(ctx context.Context, request RenameNodeRequestObject) (RenameNodeResponseObject, error)
-	// MoveNode Move a page
+	// MoveNode Move a page or an attachment
 	// (POST /api/v0/nodes/{node_id}/move)
 	MoveNode(ctx context.Context, request MoveNodeRequestObject) (MoveNodeResponseObject, error)
 	// ListNodes List a notebook's tree
