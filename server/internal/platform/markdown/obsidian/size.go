@@ -23,7 +23,8 @@ type size struct {
 // Obsidian 1.12.7 does (M7/P3 design 5.5): when what follows its last '|',
 // or the whole of it, has a size's shape, that is the size and what comes
 // before the '|' its caption; else it is all caption ("300x" and "x200"
-// are captions). The caption is without the spaces and tabs around it. A
+// are captions). The caption is without the white space around it (an
+// image's caption may be written of a line break, &#10;). A
 // number outside 1–10,000 is not given, though the shape is still a
 // size's (nerve-defined: Obsidian writes 0 and 20000 as they are).
 func sized(s string) (string, size) {
@@ -33,10 +34,13 @@ func sized(s string) (string, size) {
 	}
 	m := sizeShape.FindStringSubmatch(strings.Trim(last, " \t"))
 	if m == nil {
-		return strings.Trim(s, " \t"), size{}
+		return strings.Trim(s, blank), size{}
 	}
-	return strings.Trim(caption, " \t"), size{width: side(m[1]), height: side(m[2])}
+	return strings.Trim(caption, blank), size{width: side(m[1]), height: side(m[2])}
 }
+
+// blank is the white space around a caption: ASCII's, which HTML's is.
+const blank = " \t\n\f\r"
 
 // side is a width's or a height's digits as a number of pixels, 0 for
 // none or one outside 1–10,000.

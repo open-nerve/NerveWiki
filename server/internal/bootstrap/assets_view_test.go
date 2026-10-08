@@ -82,7 +82,7 @@ func assetElements(html string) []element {
 // image linked as links to them, and a property link to one as a link,
 // each at its content's address, which downloads its bytes; the view
 // expires when the addresses do, as the content route signs them, and a
-// view without attachments never. Deleted, an attachment's links lead
+// view that shows none never, though its links lead to some. Deleted, an attachment's links lead
 // nowhere and the others stay. The properties answer a property link to
 // one with its kind and its address. Each address is the content's shown,
 // not downloaded. Its Assets nil, the composition root fails it: the links
@@ -137,8 +137,10 @@ func TestAReadingViewShowsTheAttachmentsThroughServe(t *testing.T) {
 	if expires != nil && (expires.Before(before.Add(time.Hour)) || expires.After(time.Now().Add(2*time.Hour))) {
 		t.Errorf("the view expires at %v, not one to two hours from now", expires)
 	}
-	if _, expires := tm.readingView(t, "bob", a); expires != nil {
-		t.Errorf("a view without attachments expires at %v, want never", expires)
+	// Its links to attachments in a comment and in a link's text show none.
+	hidden := tm.createPageWith(t, "alice", nb, "", "Hidden", "%%![[x.png]]%% [![[a.mp3]] [[doc.pdf]]](https://x.example)\n")
+	if html, expires := tm.readingView(t, "bob", hidden); expires != nil || strings.Contains(html, "/api/v0/assets/") {
+		t.Errorf("a view without attachments shown expires at %v, want never:\n%s", expires, html)
 	}
 
 	var props struct {

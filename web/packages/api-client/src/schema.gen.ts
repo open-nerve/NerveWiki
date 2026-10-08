@@ -1809,7 +1809,7 @@ export interface components {
         };
         /** @description A page's reading view. */
         PageView: {
-            /** @description The content rendered to HTML. The attachments its links lead to are shown at their contents' addresses, signed, each a path of this site, as getPageView tells: an image, an audio or a video embedded, a link to any other; text past the first addresses and in a link's text. */
+            /** @description The content rendered to HTML. The attachments its links lead to are shown at their contents' addresses, signed, each a path of this site, as getPageView tells: an image, an audio or a video embedded, a link to any other; text past the first addresses, and in a link's text but for an image. */
             html: string;
             /** @description The content's version the HTML was rendered from. */
             revision: number;

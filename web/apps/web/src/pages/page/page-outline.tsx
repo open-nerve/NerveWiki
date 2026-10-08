@@ -65,7 +65,8 @@ function sameView(before: { notebook: Notebook; page: string }, after: { noteboo
  * headingsOf is the headings of a page's HTML that an anchor leads to: those
  * with an id the server gave (nw-), in their order, but those of the
  * footnotes, with their text: a formula's is its TeX, as the server writes
- * it; a footnote's number and an image's address are not. One without
+ * it, an attachment's image its text (alt); a footnote's number and an
+ * image's address are not. One without
  * text is left out, as it would be a link to nothing one could read. The
  * first listedUpTo are listed; the rest only counted, as they are (one
  * whose text is a footnote's number or an image's address alone counts),
@@ -84,7 +85,7 @@ function headingsOf(html: string): { listed: Heading[]; more: number } {
       continue;
     }
     if (listed.length === listedUpTo) {
-      if ((heading.textContent ?? "").trim() !== "") {
+      if ((heading.textContent ?? "").trim() !== "" || heading.querySelector("img.nw-asset") !== null) {
         more++;
       }
       continue;
@@ -92,6 +93,9 @@ function headingsOf(html: string): { listed: Heading[]; more: number } {
     const copy = heading.cloneNode(true) as HTMLElement;
     for (const left of copy.querySelectorAll("sup[id^='nw-fnref'], .nw-image > a")) {
       left.remove();
+    }
+    for (const image of copy.querySelectorAll<HTMLImageElement>("img.nw-asset")) {
+      image.replaceWith(image.alt);
     }
     const text = (copy.textContent ?? "").replace(/\s+/g, " ").trim();
     if (text !== "") {

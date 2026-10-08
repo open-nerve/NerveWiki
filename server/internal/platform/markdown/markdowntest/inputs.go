@@ -317,12 +317,15 @@ func Amplifying() []Input {
 		}},
 		// Each row of a wide table filled to the header's width, its cells
 		// as many as its bytes: the most the links' markup is padded with
-		// (M7/P3 review B1).
+		// (M7/P3 review B1), and a footnote's.
 		{"a wide table of rows of images referred to often", func(n int) string {
 			return "[\"]: p\n\n" + wideRows(n, `!["]`)
 		}},
 		{"a wide table of rows of titled links referred to often", func(n int) string {
-			return "[\"]: p '\"\"\"'\n\n" + wideRows(n, `["]`)
+			return "[\"]: p '\"\"\"'\n\n" + wideRows(n, `["] `)
+		}},
+		{"a wide table of rows of footnote references", func(n int) string {
+			return wideRows(n, "[^1]") + "\n[^1]: a\n"
 		}},
 		// An embed of a page is a link to it, which repeats nothing of the
 		// page; an attachment's is its markup and address (M7/P3 design
@@ -349,10 +352,11 @@ func Amplifying() []Input {
 	}
 }
 
-// wideRows is a table 161 cells wide whose rows are each of 40 of the
-// cell written, some n bytes of it.
+// wideRows is a table 161 cells wide whose rows are each one cell of the
+// cell written over as many bytes, some n bytes of them: no fewer, or
+// internal/harden would not take it as a table.
 func wideRows(n int, cell string) string {
-	row := strings.Repeat(cell, 40) + "\n"
+	row := strings.Repeat(cell, (160+len(cell)-1)/len(cell)) + "\n"
 	return strings.Repeat("|a", 161) + "\n" + strings.Repeat("|-", 161) + "\n" + strings.Repeat(row, n/len(row))
 }
 

@@ -209,13 +209,15 @@ func TestTheAppsLinksAreWithinTheirBound(t *testing.T) {
 		"wikilinks":                           strings.Repeat("[[p]]", n/5),
 		"images of a size":                    "[x]: p\n\n" + strings.Repeat("![|1x1][x]", n/10),
 		// A wide table's rows padded to its width (M7/P3 review B1).
-		"a wide table of images":        wideTable(n, "[\"]: p", `!["]`),
-		"a wide table of titled links":  wideTable(n, "[\"]: p '\"\"\"'", `["]`),
-		"a wide table of short links":   wideTable(n, "[\"]: p", `["]`),
-		"a wide table of wikilinks":     wideTable(n, "", "[[p]]"),
-		"a wide table of embeds":        wideTable(n, "", "![[p]]"),
-		"titled links of a short title": "[\"]: p '\"\"\"'\n\n" + strings.Repeat("[\"]\n", n/4),
-		"wikilinks of a long anchor":    strings.Repeat("[[a#"+strings.Repeat("Ⱥ", 64)+"]]", n/134),
+		"a wide table of images":                      wideTable(n, "[\"]: p", `!["]`),
+		"a wide table of images of an address of '&'": wideTable(n, "[x]: &&&&", `![x]`),
+		"a wide table of titled links":                wideTable(n, "[\"]: p '\"\"\"'", `["] `),
+		"a wide table of short links":                 wideTable(n, "[\"]: p", `["] `),
+		"a wide table of wikilinks":                   wideTable(n, "", "[[p]]"),
+		"a wide table of embeds":                      wideTable(n, "", "![[p]]"),
+		"a wide table of footnote references":         wideTable(n, "", "[^1]") + "\n[^1]: a\n",
+		"titled links of a short title":               "[\"]: p '\"\"\"'\n\n" + strings.Repeat("[\"]\n", n/4),
+		"wikilinks of a long anchor":                  strings.Repeat("[[a#"+strings.Repeat("Ⱥ", 64)+"]]", n/134),
 		// In the property table, below the YAML's limit of values (M6/P6 design 4).
 		"property links of a display of '&'": "---\na: [" + strings.Repeat("'[[&|"+strings.Repeat("&", n/9000-12)+"]]',", 9000) + "]\n---\n",
 		"property links":                     "---\na: [" + strings.Repeat("'[["+strings.Repeat("a", n/9000-8)+"]]',", 9000) + "]\n---\n",
@@ -229,6 +231,9 @@ func TestTheAppsLinksAreWithinTheirBound(t *testing.T) {
 				t.Fatalf("%s, %s: %v", m.name, name, err)
 			}
 			t.Logf("%s, %s: %.1f times", m.name, name, float64(len(view.HTML))/float64(len(content)))
+			if strings.HasPrefix(name, "a wide table") && !strings.Contains(view.HTML, "<table>") {
+				t.Errorf("%s, %s: not a table", m.name, name)
+			}
 			if len(view.HTML) > markdowntest.Amplification*len(content) {
 				t.Errorf("%s, %s: %d bytes of HTML for %d of content, more than %d times", m.name, name, len(view.HTML), len(content),
 					markdowntest.Amplification)
@@ -247,7 +252,7 @@ func TestTheAppsAttachmentsAreWithinAQuarterOfHeadroom(t *testing.T) {
 	n := 8 * obsidian.MaxShown
 	inputs := map[string]string{
 		"a wide table of images":           wideTable(n, "[\"]: p", `!["]`),
-		"a wide table of titled links":     wideTable(n, "[\"]: p '\"\"\"'", `["]`),
+		"a wide table of titled links":     wideTable(n, "[\"]: p '\"\"\"'", `["] `),
 		"a wide table of embeds of a size": wideTable(3*n, "", `![[p\|1x1]]`),
 		"images of an address of '&'":      "[x]: &&&&\n\n" + strings.Repeat("![x]", n/4),
 	}
@@ -354,9 +359,11 @@ func TestTheAppsMarkdownCostsAboutItsSize(t *testing.T) {
 	}
 }
 
-// wideTable is a table 161 cells wide whose rows are each of 40 of the
-// cell written, some n bytes of it, after the definition def.
+// wideTable is a table 161 cells wide whose rows are each one cell of the
+// cell written over as many bytes, some n bytes of them, after the
+// definition def: no fewer, or internal/harden would not take it as a
+// table.
 func wideTable(n int, def, cell string) string {
-	row := strings.Repeat(cell, 40) + "\n"
+	row := strings.Repeat(cell, (160+len(cell)-1)/len(cell)) + "\n"
 	return def + "\n\n" + strings.Repeat("|a", 161) + "\n" + strings.Repeat("|-", 161) + "\n" + strings.Repeat(row, n/len(row))
 }

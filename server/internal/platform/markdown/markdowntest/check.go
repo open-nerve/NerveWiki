@@ -187,7 +187,9 @@ func aPathHere(addr string) bool {
 
 // The HTML of a reading view is at most Amplification times its content's
 // size plus Headroom (M4/P3 design 3.10). A footnote's reference and its
-// back link, the most per byte, are about 48 times theirs. Below their
+// back link, the most per byte, are about 48 times theirs, and 58 in a
+// wide table's rows, which goldmark pads to the header's width with up to
+// some 10 bytes a byte of them (M7/P3 fix check 1). Below their
 // budgets reference links and a frontmatter's aliases repeat up to about
 // 2 MB however short the content: an image writes its address twice and
 // each '&' as five bytes, so references up to 10 times internal/harden's
