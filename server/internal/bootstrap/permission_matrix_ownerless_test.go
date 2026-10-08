@@ -48,8 +48,9 @@ func ownerlessMatrixRows() []matrixRow {
 			},
 			cells: labAdminsOnly(cellOK()),
 			// orphan alone, private as it is, with its editor left and its
-			// former owner; its size its pages' contents: its page of task
-			// items (tasksIn), every other seeded page empty.
+			// former owner; its size its pages' contents, its page of task
+			// items (tasksIn), every other seeded page empty, and its
+			// attachment's bytes (M7/P2).
 			check: func(t *testing.T, _ caller, s seeded, answer string) {
 				t.Helper()
 				var list struct {
@@ -68,8 +69,9 @@ func ownerlessMatrixRows() []matrixRow {
 				}
 				o := list.Data[0]
 				if o.ID != s.notebook(orphan).String() || o.Name != orphan || o.WorkspaceAccess != "none" || o.MemberCount != 1 ||
-					o.FormerOwner != profileOf(formerOwner, s) || o.SizeBytes != int64(len(matrixTasks)) {
-					t.Errorf("listed %+v, want orphan, private, its editor left, ownerless of %s, %d bytes", o, formerOwner, len(matrixTasks))
+					o.FormerOwner != profileOf(formerOwner, s) || o.SizeBytes != int64(len(matrixTasks)+matrixAssetBytes) {
+					t.Errorf("listed %+v, want orphan, private, its editor left, ownerless of %s, %d bytes", o, formerOwner,
+						len(matrixTasks)+matrixAssetBytes)
 				}
 			},
 		},

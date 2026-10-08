@@ -14,7 +14,8 @@ import (
 // notebook.
 
 // matrixAssets are the seeded attachments: one under each notebook
-// column's page, named after it, of three bytes, its file not written.
+// column's page, named after it, of matrixAssetBytes, its file not
+// written.
 func matrixAssets() []matrixPage {
 	var out []matrixPage
 	for _, c := range notebookColumns() {
@@ -25,6 +26,9 @@ func matrixAssets() []matrixPage {
 	}
 	return out
 }
+
+// matrixAssetBytes is the size of each seeded attachment.
+const matrixAssetBytes = 3
 
 // assetOf is the attachment under a notebook column's page.
 func assetOf(c caller) string {

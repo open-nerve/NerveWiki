@@ -5,6 +5,7 @@ package files
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/asset/app"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/asset/domain"
@@ -40,6 +41,11 @@ func (f Files) Open(ctx context.Context, key string) (app.File, error) {
 		return nil, err
 	}
 	return file, nil
+}
+
+// List implements app.StoredFiles.
+func (f Files) List(ctx context.Context, area string, before time.Time, each func(key string) error) error {
+	return f.store.List(ctx, area, before, each)
 }
 
 // Delete implements app.Files.

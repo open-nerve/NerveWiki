@@ -540,8 +540,8 @@ func prepareMatrix(t *testing.T) matrixData {
 				"FROM notebooks n WHERE n.id = $2", d.seeded.assets[a.name], d.seeded.notebooks[a.notebook], d.seeded.pages[a.parent], a.name,
 				now, len(matrixPages())+i)
 			exec("INSERT INTO asset_blobs (id, node_id, notebook_id, mime, byte_size, sha256, created_by_id, created_at) "+
-				"SELECT gen_random_uuid(), id, notebook_id, 'image/png', 3, sha256('abc'), created_by_id, $2 FROM nodes WHERE id = $1",
-				d.seeded.assets[a.name], now)
+				"SELECT gen_random_uuid(), id, notebook_id, 'image/png', $3, sha256('abc'), created_by_id, $2 FROM nodes WHERE id = $1",
+				d.seeded.assets[a.name], now, matrixAssetBytes)
 		}
 		for _, e := range matrixSessions() {
 			exec("INSERT INTO edit_sessions (id, node_id, notebook_id, user_id, client, created_at, expires_at) "+

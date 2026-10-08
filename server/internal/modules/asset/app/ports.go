@@ -108,6 +108,44 @@ type ExpiredRows interface {
 	DeleteBlobs(ctx context.Context, ids []uuid.UUID) (int, error)
 }
 
+// Deletions delete the attachments' rows with their nodes and notebooks:
+// adapter/postgres, in the caller's transaction.
+type Deletions interface {
+	// DeleteBlobsOfNodes deletes at at the rows not deleted of the nodes.
+	DeleteBlobsOfNodes(ctx context.Context, nodeIDs []uuid.UUID, at time.Time) error
+	// DeleteBlobsOfNotebooks deletes at at the rows not deleted of the
+	// notebooks.
+	DeleteBlobsOfNotebooks(ctx context.Context, notebookIDs []uuid.UUID, at time.Time) error
+}
+
+// Activity is the attachments' part in a notebook's activity (M3 handoff
+// 1): the bytes of its attachments not deleted, and their latest upload.
+type Activity struct {
+	Bytes        int64
+	LastUploadAt time.Time
+}
+
+// Activities reads the attachments' part in notebooks' activity:
+// adapter/postgres, in its caller's read, unlocked. A notebook without an
+// attachment is not in its answer.
+type Activities interface {
+	NotebookActivities(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]Activity, error)
+}
+
+// StoredFiles is what the orphan sweep needs of the store: adapter/files.
+type StoredFiles interface {
+	// List calls each with the key of every file of area last modified
+	// before before; each's error stops it.
+	List(ctx context.Context, area string, before time.Time, each func(key string) error) error
+	Delete(ctx context.Context, key string) error
+}
+
+// KnownRows tells which blobs have a row: adapter/postgres.
+type KnownRows interface {
+	// KnownBlobs are the ids among ids with a row, deleted or not.
+	KnownBlobs(ctx context.Context, ids []uuid.UUID) ([]uuid.UUID, error)
+}
+
 // ErrNoRow is a node without a row not deleted.
 var ErrNoRow = errors.New("asset: no row of the node")
 

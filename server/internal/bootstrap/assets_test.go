@@ -1,0 +1,140 @@
+package bootstrap
+
+import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"io/fs"
+	"mime/multipart"
+	"net/http"
+	"net/url"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+)
+
+// The attachments through serve (M7/P2 design 5): uploaded through the
+// API, their rows and files checked against the database and the store.
+
+// assetUpload is by's upload of a file named name holding content into the
+// notebook nb, under the page parent, at the root when it is "".
+func assetUpload(t *testing.T, by, nb, parent, name, content string) step {
+	t.Helper()
+	var body bytes.Buffer
+	w := multipart.NewWriter(&body)
+	if parent != "" {
+		if err := w.WriteField("parent_id", parent); err != nil {
+			t.Fatal(err)
+		}
+	}
+	part, err := w.CreateFormFile("file", name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := part.Write([]byte(content)); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return step{by: by, method: http.MethodPost, path: "/api/v0/notebooks/" + nb + "/assets", body: body.String(),
+		contentType: w.FormDataContentType()}
+}
+
+// uploadedAsset is an upload's answer, as much as the tests read: the
+// node, its file's id, its addresses and its time.
+type uploadedAsset struct {
+	ID          string    `json:"id"`
+	Name        string    `json:"name"`
+	ContentURL  string    `json:"content_url"`
+	DownloadURL string    `json:"download_url"`
+	CreatedAt   time.Time `json:"created_at"`
+	Blob        string    `json:"-"`
+}
+
+// upload uploads as assetUpload does, checks the invariants and answers
+// the attachment.
+func (tm acmeTeam) upload(t *testing.T, by, nb, parent, name, content string) uploadedAsset {
+	t.Helper()
+	c := assetUpload(t, by, nb, parent, name, content)
+	status, answer := askTyped(t, tm.contract, c.method, tm.base+c.path, tm.tokens[by], c.contentType, c.body)
+	if status != http.StatusCreated {
+		t.Fatalf("upload %s as %s = %d %s", name, by, status, answer)
+	}
+	return tm.asset(t, answer)
+}
+
+// asset reads an Asset answer, its file's id from its address.
+func (tm acmeTeam) asset(t *testing.T, answer string) uploadedAsset {
+	t.Helper()
+	var a uploadedAsset
+	if err := json.Unmarshal([]byte(answer), &a); err != nil {
+		t.Fatal(err)
+	}
+	u, err := url.Parse(a.ContentURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.Blob = u.Query().Get("b")
+	checkAssets(t, tm.pool, tm.storage)
+	return a
+}
+
+// download gets the content at an attachment's address, with no token.
+func (tm acmeTeam) download(t *testing.T, address string) (int, string) {
+	t.Helper()
+	return ask(t, tm.contract, http.MethodGet, tm.base+address, "", "")
+}
+
+// checkAssets fails t when the attachments break an invariant (M7/P2
+// design 3.12): an attachment's node not deleted without exactly one row
+// not deleted; a deleted one with a row not deleted; a row of a page's
+// node; a row whose file is not in the store at dir.
+func checkAssets(t *testing.T, pool *pgxpool.Pool, dir string) {
+	t.Helper()
+	for what, query := range map[string]string{
+		"not deleted without exactly one row not deleted": `SELECT count(*) FROM nodes n WHERE n.kind = 'asset' AND n.deleted_at IS NULL
+			AND (SELECT count(*) FROM asset_blobs b WHERE b.node_id = n.id AND b.deleted_at IS NULL) <> 1`,
+		"deleted with a row not deleted": `SELECT count(*) FROM nodes n WHERE n.kind = 'asset' AND n.deleted_at IS NOT NULL
+			AND EXISTS (SELECT 1 FROM asset_blobs b WHERE b.node_id = n.id AND b.deleted_at IS NULL)`,
+		"that are pages, with a row": `SELECT count(*) FROM asset_blobs b JOIN nodes n ON n.id = b.node_id WHERE n.kind <> 'asset'`,
+	} {
+		if n := count(t, pool, query); n != 0 {
+			t.Errorf("%d attachments' nodes %s, want none", n, what)
+		}
+	}
+	files := storedBlobs(t, dir)
+	for _, id := range queryStrings(t, pool, "SELECT id::text FROM asset_blobs ORDER BY id") {
+		if _, ok := files[id]; !ok {
+			t.Errorf("the file of the row %s is not in the store", id)
+		}
+	}
+}
+
+// storedBlobs maps the name of each file committed to the blobs area of
+// the store at dir, its blob's id, to its path. It walks the directory
+// rather than open a store there, which would delete the running app's
+// files being written.
+func storedBlobs(t *testing.T, dir string) map[string]string {
+	t.Helper()
+	files := map[string]string{}
+	err := filepath.WalkDir(filepath.Join(dir, "blobs"), func(path string, d fs.DirEntry, err error) error {
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
+			return nil
+		case err != nil:
+			return err
+		case d.IsDir() && d.Name() == ".tmp":
+			return fs.SkipDir
+		case d.Type().IsRegular():
+			files[d.Name()] = path
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return files
+}

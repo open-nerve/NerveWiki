@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"testing"
+	"time"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/asset/adapter/files"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/asset/app"
@@ -43,6 +44,13 @@ func TestFilesSpeakTheModulesTerms(t *testing.T) {
 	}
 	if _, err := f.Open(ctx, "blobs/b"); !errors.Is(err, app.ErrNoFile) {
 		t.Errorf("Open(missing) = %v, want ErrNoFile", err)
+	}
+	var listed []string
+	if err := f.List(ctx, "blobs", time.Now().Add(time.Minute), func(key string) error {
+		listed = append(listed, key)
+		return nil
+	}); err != nil || len(listed) != 1 || listed[0] != "blobs/a" {
+		t.Errorf("List() = %q, %v; want blobs/a", listed, err)
 	}
 	if err := f.Delete(ctx, "blobs/a"); err != nil {
 		t.Fatal(err)

@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"strings"
 	"time"
 	"uuid"
 )
@@ -27,4 +28,18 @@ const Area = "blobs"
 // Key is the store's key of the file of the blob id.
 func Key(id uuid.UUID) string {
 	return Area + "/" + id.String()
+}
+
+// IDOf is the blob whose file is at key, as Key writes it; false for a
+// key Key does not write.
+func IDOf(key string) (uuid.UUID, bool) {
+	name, ok := strings.CutPrefix(key, Area+"/")
+	if !ok {
+		return uuid.UUID{}, false
+	}
+	id, err := uuid.Parse(name)
+	if err != nil || id.String() != name {
+		return uuid.UUID{}, false
+	}
+	return id, true
 }

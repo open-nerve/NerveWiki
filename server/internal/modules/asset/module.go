@@ -3,7 +3,8 @@
 // module keeps, and a file, which this module keeps in the store with its
 // row. Its root is what bootstrap sees: New for the HTTP side, which
 // creates the attachments' nodes through the page module's TreeWrites and
-// reads them through its AssetNodes; Purgers for the purge;
+// reads them through its AssetNodes, and Jobs, the orphan sweep; the
+// parts in the other modules' events (lifecycle.go); Purgers for the purge;
 // ContentKeyInfo, the derivation of the key that signs the contents'
 // addresses; Actions for the composition's checks.
 package asset
@@ -16,10 +17,12 @@ import (
 	filesadapter "github.com/open-nerve/NerveWiki/server/internal/modules/asset/adapter/files"
 	httpadapter "github.com/open-nerve/NerveWiki/server/internal/modules/asset/adapter/http"
 	postgresadapter "github.com/open-nerve/NerveWiki/server/internal/modules/asset/adapter/postgres"
+	riveradapter "github.com/open-nerve/NerveWiki/server/internal/modules/asset/adapter/river"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/asset/adapter/sniff"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/asset/app"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/asset/domain"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/jobs"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/storage"
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
@@ -80,6 +83,7 @@ type Module struct {
 	uc     httpadapter.UseCases
 	limits httpadapter.Limits
 	logger *slog.Logger
+	jobs   []jobs.Job
 }
 
 // New wires the module: its files in the store, its rows on the pool.
@@ -97,6 +101,7 @@ func New(d Deps) *Module {
 		},
 		limits: httpadapter.Limits{MaxBytes: d.MaxBytes, MinRate: d.MinRate, ContentBucket: d.ContentBucket},
 		logger: d.Logger,
+		jobs:   []jobs.Job{riveradapter.SweepJob(app.NewSweep(files, rows, d.Clock, d.Logger))},
 	}
 }
 
@@ -104,6 +109,12 @@ func New(d Deps) *Module {
 // httpserver.NewRouter, behind api's per-route middlewares.
 func (m *Module) Register(router *httpserver.Router, api *httpserver.API) {
 	httpadapter.Register(router, api, m.uc, m.limits, m.logger)
+}
+
+// Jobs are the module's background jobs, for the server's jobs runner: the
+// sweep of the files no row holds.
+func (m *Module) Jobs() []jobs.Job {
+	return m.jobs
 }
 
 // PublicOperations are the module's routes that need no token: the

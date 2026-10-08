@@ -5,13 +5,15 @@ import (
 	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/asset"
+	"github.com/open-nerve/NerveWiki/server/internal/modules/notebook"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page"
 )
 
-// The attachments' parts (M7/P2 design 3.3): the asset module creates the
-// nodes through the page module's TreeWrites and reads them through its
-// AssetNodes, and the two do not import each other, so their values meet
-// here.
+// The attachments' parts (M7/P2 design 3.3, 3.8): the asset module creates
+// the nodes through the page module's TreeWrites and reads them through
+// its AssetNodes; it follows the page module's units and the notebook
+// module's deletions, and tells the notebooks' activity. The modules do
+// not import each other, so their values meet here.
 
 // assetTree is the page module's writes of attachments' nodes, as the
 // asset module calls them.
@@ -58,6 +60,51 @@ func (a assetNodes) Assets(ctx context.Context, notebookID uuid.UUID, parentID *
 		out[i] = assetNode(n)
 	}
 	return out, err
+}
+
+// assetObserver is the attachments' observer of the page module's units:
+// the nodes a unit deleted, of whatever kind, a subtree's each node.
+type assetObserver struct {
+	asset asset.PageObserver
+}
+
+func (o assetObserver) PagesChanged(ctx context.Context, e page.Event) error {
+	var deleted []uuid.UUID
+	for _, c := range e.Changes {
+		if c.After == nil {
+			deleted = append(deleted, c.NodeID)
+		}
+	}
+	return o.asset.NodesDeleted(ctx, deleted, e.At)
+}
+
+// assetNotebookDeletion is the attachments' part in a notebook's deletion
+// as the notebook module calls it.
+type assetNotebookDeletion struct {
+	asset asset.NotebookDeletion
+}
+
+func (d assetNotebookDeletion) NotebookDeleted(ctx context.Context, x notebook.NotebookDeletion) error {
+	return d.asset.NotebooksDeleted(ctx, x.NotebookIDs, x.At)
+}
+
+// assetActivity is the attachments' part in notebooks' activity as the
+// notebook module reads it: a notebook in the asset module's answer has
+// its latest upload as a write.
+type assetActivity struct {
+	asset asset.Activities
+}
+
+func (a assetActivity) NotebookActivities(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]notebook.NotebookActivity, error) {
+	got, err := a.asset.NotebookActivities(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[uuid.UUID]notebook.NotebookActivity, len(got))
+	for id, x := range got {
+		out[id] = notebook.NotebookActivity{Bytes: x.Bytes, LastWriteAt: &x.LastUploadAt}
+	}
+	return out, nil
 }
 
 // pageAsset is the asset module's new node as the page module takes it.

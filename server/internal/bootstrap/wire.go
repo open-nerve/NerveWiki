@@ -118,7 +118,7 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrati
 	ln := linking.New(linkingDeps(pool, authorizer))
 	ev, listener := eventsModule(cfg, pool, logger)
 	runner, err := jobs.New(pool, jobs.Config{ShutdownTimeout: cfg.Jobs.ShutdownTimeout, Logger: logger},
-		slices.Concat(ident.Jobs(), pg.Jobs(), []jobs.Job{purgeJob(cfg, pool, store, logger)}))
+		slices.Concat(ident.Jobs(), pg.Jobs(), as.Jobs(), []jobs.Job{purgeJob(cfg, pool, store, logger)}))
 	if err != nil {
 		return nil, err
 	}

@@ -93,9 +93,19 @@ func TestHasSize(t *testing.T) {
 	}
 }
 
+// IDOf reads back the keys Key writes, and no other.
 func TestKey(t *testing.T) {
 	id := uuid.MustParse("0192b7c4-5e7a-7d2f-9b1e-3c4d5e6f7a8b")
 	if got := domain.Key(id); got != "blobs/0192b7c4-5e7a-7d2f-9b1e-3c4d5e6f7a8b" {
 		t.Errorf("Key() = %q", got)
+	}
+	if got, ok := domain.IDOf(domain.Key(id)); !ok || got != id {
+		t.Errorf("IDOf(Key()) = %v, %v; want the id", got, ok)
+	}
+	for _, key := range []string{"blobs/0192B7C4-5E7A-7D2F-9B1E-3C4D5E6F7A8B", "blobs/0192b7c45e7a7d2f9b1e3c4d5e6f7a8b", "other/" + id.String(),
+		id.String(), "blobs/notes.txt", "blobs/"} {
+		if got, ok := domain.IDOf(key); ok {
+			t.Errorf("IDOf(%q) = %v, want none", key, got)
+		}
 	}
 }

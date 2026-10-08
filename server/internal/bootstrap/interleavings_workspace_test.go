@@ -37,6 +37,7 @@ const interleavingWait = 10 * time.Second
 type acmeTeam struct {
 	url      string
 	base     string
+	storage  string // the app's storage directory
 	pool     *pgxpool.Pool
 	contract *apitest.Contract
 	tokens   map[string]string    // by name
@@ -59,7 +60,7 @@ func newAcmeTeamWith(t *testing.T, bobRole, carolRole string, change func(*confi
 		change(&cfg)
 	}
 	tm := acmeTeam{
-		url: url, base: startApp(t, cfg, migrations.FS()), pool: connect(t, url), contract: apitest.Load(t),
+		url: url, base: startApp(t, cfg, migrations.FS()), storage: cfg.Storage.Dir, pool: connect(t, url), contract: apitest.Load(t),
 		tokens: map[string]string{}, members: map[string]uuid.UUID{},
 	}
 	for _, name := range []string{"alice", "bob", "carol", "dana"} {
@@ -94,10 +95,12 @@ func (tm acmeTeam) join(t *testing.T, name, role string) {
 	tm.members[name] = id
 }
 
-// step is a request of an interleaving: who sends what; or, when command
-// is set, a command run in process.
+// step is a request of an interleaving: who sends what, its body JSON
+// unless contentType says otherwise; or, when command is set, a command
+// run in process.
 type step struct {
 	by, method, path, body string
+	contentType            string
 	command                func() error
 }
 
@@ -208,7 +211,7 @@ func (tm acmeTeam) removal(by, name string) step {
 // answers want.
 func (tm acmeTeam) send(t *testing.T, c step, want int) {
 	t.Helper()
-	if status, answer := ask(t, tm.contract, c.method, tm.base+c.path, tm.tokens[c.by], c.body); status != want {
+	if status, answer := askTyped(t, tm.contract, c.method, tm.base+c.path, tm.tokens[c.by], c.contentType, c.body); status != want {
 		t.Fatalf("%s as %s = %d %s, want %d", c.name(), c.by, status, answer, want)
 	}
 }
@@ -233,6 +236,9 @@ func (tm acmeTeam) sender(t *testing.T, c step) func() answer {
 		body = []byte(c.body)
 	}
 	req := newRequest(t, c.method, tm.base+c.path, tm.tokens[c.by], body)
+	if c.contentType != "" {
+		req.Header.Set("Content-Type", c.contentType)
+	}
 	return func() answer {
 		res, err := client().Do(req)
 		got := answer{req: req, res: res, err: err}
