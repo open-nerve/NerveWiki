@@ -327,7 +327,7 @@ func clientOf(r *http.Request) (string, error) {
 func assetOf(a app.Asset) gen.Asset {
 	n, b, s := a.Node, a.Blob, a.Signed
 	return gen.Asset{
-		ID: n.ID, NotebookID: n.NotebookID, ParentID: nullableOf(n.ParentID), Name: n.Name, Mime: b.MIME, ByteSize: b.Bytes,
+		ID: n.ID, NotebookID: n.NotebookID, ParentID: nullableOf(n.ParentID), Name: n.Name, Link: a.Link, Mime: b.MIME, ByteSize: b.Bytes,
 		Sha256: hex.EncodeToString(b.SHA256), Width: sideOf(b.Width), Height: sideOf(b.Height), CreatedBy: b.CreatedBy,
 		CreatedAt: b.CreatedAt, ContentURL: contentURL(n.ID, b.ID, s, false), DownloadURL: contentURL(n.ID, b.ID, s, true),
 		ExpiresAt: s.Expires,

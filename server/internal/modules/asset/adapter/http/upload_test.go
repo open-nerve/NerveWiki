@@ -108,16 +108,17 @@ func TestUploadCreatesTheAttachment(t *testing.T) {
 		t.Fatalf("upload = %d %s, want 201", res.StatusCode, answer)
 	}
 	var a struct {
-		ID, NotebookID, Name, Mime, Sha256, ContentURL, DownloadURL string
-		ParentID                                                    *string
-		ByteSize                                                    int64
-		Width                                                       *int
-		ExpiresAt                                                   time.Time
+		ID, NotebookID, Name, Link, Mime, Sha256, ContentURL, DownloadURL string
+		ParentID                                                          *string
+		ByteSize                                                          int64
+		Width                                                             *int
+		ExpiresAt                                                         time.Time
 	}
 	if err := json.Unmarshal(answer, &struct {
 		ID          *string    `json:"id"`
 		NotebookID  *string    `json:"notebook_id"`
 		Name        *string    `json:"name"`
+		Link        *string    `json:"link"`
 		Mime        *string    `json:"mime"`
 		Sha256      *string    `json:"sha256"`
 		ContentURL  *string    `json:"content_url"`
@@ -126,11 +127,12 @@ func TestUploadCreatesTheAttachment(t *testing.T) {
 		ByteSize    *int64     `json:"byte_size"`
 		Width       **int      `json:"width"`
 		ExpiresAt   *time.Time `json:"expires_at"`
-	}{&a.ID, &a.NotebookID, &a.Name, &a.Mime, &a.Sha256, &a.ContentURL, &a.DownloadURL, &a.ParentID, &a.ByteSize, &a.Width, &a.ExpiresAt}); err != nil {
+	}{&a.ID, &a.NotebookID, &a.Name, &a.Link, &a.Mime, &a.Sha256, &a.ContentURL, &a.DownloadURL, &a.ParentID, &a.ByteSize, &a.Width,
+		&a.ExpiresAt}); err != nil {
 		t.Fatal(err)
 	}
 	address := regexp.MustCompile(`^/api/v0/assets/` + a.ID + `/content\?b=[0-9a-f-]{36}&e=1791460800&s=[A-Za-z0-9_-]{22}$`)
-	if a.Name != "cover.png" || a.Mime != "image/png" || a.ByteSize != 12 || len(a.Sha256) != 64 || a.ParentID == nil ||
+	if a.Name != "cover.png" || a.Link != "linked cover.png" || a.Mime != "image/png" || a.ByteSize != 12 || len(a.Sha256) != 64 || a.ParentID == nil ||
 		*a.ParentID != parentID().String() || a.Width != nil || !address.MatchString(a.ContentURL) ||
 		!regexp.MustCompile(`&d=1$`).MatchString(a.DownloadURL) || !a.ExpiresAt.Equal(time.Date(2026, 10, 8, 12, 0, 0, 0, time.UTC)) {
 		t.Errorf("answer = %s", answer)

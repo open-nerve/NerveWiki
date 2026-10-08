@@ -42,6 +42,9 @@ type (
 	// Nodes reads the notebooks' trees: bootstrap adapts page's AssetNodes
 	// to it.
 	Nodes = app.Nodes
+	// Links writes how a wikilink leads to attachments alone: bootstrap
+	// hands linking's AssetLinks to it.
+	Links = app.Links
 	// Cursor is where a list of attachments goes on.
 	Cursor = app.Cursor
 	// Notebooks reads the notebooks: bootstrap hands it the notebook
@@ -67,6 +70,7 @@ type Deps struct {
 	Notebooks  Notebooks
 	Tree       Tree
 	Nodes      Nodes
+	Links      Links
 	// ContentKey signs the contents' addresses: the signing keys'
 	// derivation for ContentKeyInfo.
 	ContentKey []byte
@@ -94,9 +98,9 @@ func New(d Deps) *Module {
 	signer := macadapter.New(d.ContentKey)
 	return &Module{
 		uc: httpadapter.UseCases{
-			Upload: app.NewUpload(app.UploadDeps{Tree: d.Tree, Blobs: blobs, Files: files, Signer: signer, Logger: d.Logger,
+			Upload: app.NewUpload(app.UploadDeps{Tree: d.Tree, Blobs: blobs, Files: files, Signer: signer, Links: d.Links, Logger: d.Logger,
 				MaxBytes: d.MaxBytes, MinFree: d.MinFreeBytes}),
-			Reads: app.NewReads(app.ReadsDeps{Authorizer: d.Authorizer, Notebooks: d.Notebooks, Nodes: d.Nodes, Rows: rows, Signer: signer,
+			Reads: app.NewReads(app.ReadsDeps{Authorizer: d.Authorizer, Notebooks: d.Notebooks, Nodes: d.Nodes, Rows: rows, Signer: signer, Links: d.Links,
 				Clock: d.Clock, Logger: d.Logger}),
 			Content: app.NewContent(d.Nodes, blobs, signer, d.Clock, d.Logger),
 		},

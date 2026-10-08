@@ -348,6 +348,7 @@ components:
           notebook_id,
           parent_id,
           name,
+          link,
           mime,
           byte_size,
           sha256,
@@ -373,6 +374,16 @@ components:
           format: uuid
         name:
           description: The attachment's file name.
+          type: string
+        link:
+          description: >-
+            How a wikilink, ![[link]] to embed it, is written to lead to the
+            attachment alone from anywhere in the notebook, as the link
+            targets write it: its name, or its path from the root where
+            another attachment has its name; as of this answer, which
+            another attachment of its name, made since, does not change. An
+            attachment without an extension, which no link leads to, has its
+            path.
           type: string
         mime:
           description: >-

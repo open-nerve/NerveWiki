@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"uuid"
@@ -20,6 +21,7 @@ type Upload struct {
 	blobs  *Blobs
 	files  Files
 	signer Signer
+	links  Links
 	logger *slog.Logger
 	// maxBytes is asset.max_bytes, minFree storage.min_free_bytes.
 	maxBytes, minFree int64
@@ -31,6 +33,7 @@ type UploadDeps struct {
 	Blobs    *Blobs
 	Files    Files
 	Signer   Signer
+	Links    Links
 	Logger   *slog.Logger
 	MaxBytes int64
 	MinFree  int64
@@ -38,7 +41,8 @@ type UploadDeps struct {
 
 // NewUpload returns the use case.
 func NewUpload(d UploadDeps) *Upload {
-	return &Upload{tree: d.Tree, blobs: d.Blobs, files: d.Files, signer: d.Signer, logger: d.Logger, maxBytes: d.MaxBytes, minFree: d.MinFree}
+	return &Upload{tree: d.Tree, blobs: d.Blobs, files: d.Files, signer: d.Signer, links: d.Links, logger: d.Logger, maxBytes: d.MaxBytes,
+		minFree: d.MinFree}
 }
 
 // Request is an upload into NotebookID, under ParentID (nil: the root),
@@ -87,15 +91,27 @@ func (u *Upload) Store(ctx context.Context, req Request, r io.Reader) (domain.Bl
 
 // Create creates req's node, last among its siblings, with the row of
 // blob in the node's unit, and answers the attachment, its address signed
-// as of the unit's time. A refusal of the unit, a *shared.Error, rolled
-// the row back: the file is deleted. Any other error leaves it, for the
-// orphan sweep: a COMMIT whose outcome is unknown may have kept the row
-// (M7 design 4.4).
+// as of the unit's time, its link as the unit's tree has it (M7/P3 design
+// 4.6). A refusal of the unit, a *shared.Error, rolled the row back: the
+// file is deleted. Any other error leaves it, for the orphan sweep: a
+// COMMIT whose outcome is unknown may have kept the row (M7 design 4.4).
 func (u *Upload) Create(ctx context.Context, req Request, blob domain.Blob) (Asset, error) {
 	meta := FileMeta{MIME: blob.MIME, Bytes: blob.Bytes, SHA256: blob.SHA256}
+	var link string
 	n, err := u.tree.CreateAsset(ctx, u.node(req, meta), func(ctx context.Context, n Node) error {
 		blob.NodeID, blob.NotebookID, blob.CreatedBy, blob.CreatedAt = n.ID, n.NotebookID, n.CreatedBy, n.CreatedAt
-		return u.blobs.Attach(ctx, blob)
+		if err := u.blobs.Attach(ctx, blob); err != nil {
+			return err
+		}
+		links, err := u.links.Of(ctx, n.NotebookID, []uuid.UUID{n.ID})
+		if err != nil {
+			return err
+		}
+		var ok bool
+		if link, ok = links[n.ID]; !ok {
+			return fmt.Errorf("%w %s", ErrNoLink, n.ID)
+		}
+		return nil
 	})
 	if err != nil {
 		var refused *shared.Error
@@ -107,7 +123,7 @@ func (u *Upload) Create(ctx context.Context, req Request, blob domain.Blob) (Ass
 	u.logger.InfoContext(ctx, "asset uploaded", slog.String("notebook_id", n.NotebookID.String()), slog.String("node_id", n.ID.String()),
 		slog.String("blob_id", blob.ID.String()), slog.String("user_id", n.CreatedBy.String()), slog.String("mime", blob.MIME),
 		slog.Int64("bytes", blob.Bytes), slog.String("client", req.Client))
-	return Asset{Node: n, Blob: blob, Signed: u.signer.Sign(n.CreatedAt, n.ID, blob.ID)}, nil
+	return Asset{Node: n, Blob: blob, Signed: u.signer.Sign(n.CreatedAt, n.ID, blob.ID), Link: link}, nil
 }
 
 // Discard deletes the file of blob, which no row holds, logging a
@@ -118,10 +134,11 @@ func (u *Upload) Discard(ctx context.Context, blob domain.Blob) {
 	}
 }
 
-// Asset is an attachment as the API answers it: its node, its file, and
-// its address signed.
+// Asset is an attachment as the API answers it: its node, its file, its
+// address signed, and how a wikilink leads to it alone.
 type Asset struct {
 	Node   Node
 	Blob   domain.Blob
 	Signed Signed
+	Link   string
 }

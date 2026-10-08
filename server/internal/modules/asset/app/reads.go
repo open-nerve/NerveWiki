@@ -20,6 +20,7 @@ type Reads struct {
 	nodes     Nodes
 	rows      Rows
 	signer    Signer
+	links     Links
 	clock     Clock
 	logger    *slog.Logger
 }
@@ -31,13 +32,15 @@ type ReadsDeps struct {
 	Nodes      Nodes
 	Rows       Rows
 	Signer     Signer
+	Links      Links
 	Clock      Clock
 	Logger     *slog.Logger
 }
 
 // NewReads returns the use cases.
 func NewReads(d ReadsDeps) *Reads {
-	return &Reads{auth: d.Authorizer, notebooks: d.Notebooks, nodes: d.Nodes, rows: d.Rows, signer: d.Signer, clock: d.Clock, logger: d.Logger}
+	return &Reads{auth: d.Authorizer, notebooks: d.Notebooks, nodes: d.Nodes, rows: d.Rows, signer: d.Signer, links: d.Links, clock: d.Clock,
+		logger: d.Logger}
 }
 
 // AssetPage is a page of a list of attachments, and the cursor of the
@@ -50,7 +53,8 @@ type AssetPage struct {
 // Get reads the attachment id: asset.not_found for a node that is none,
 // is deleted, or whose notebook the caller cannot read in (asset.read).
 // A node without its row, which each attachment's node has, is not found,
-// logged as an error unless the node was deleted since it was read.
+// logged as an error unless the node was deleted since it was read; so is
+// one deleted before its link is read (M7/P3 design 4.6).
 func (r *Reads) Get(ctx context.Context, id uuid.UUID) (Asset, error) {
 	actor, err := shared.RequireActor(ctx)
 	if err != nil {
@@ -74,7 +78,15 @@ func (r *Reads) Get(ctx context.Context, id uuid.UUID) (Asset, error) {
 	case err != nil:
 		return Asset{}, err
 	}
-	return Asset{Node: n, Blob: b, Signed: r.signer.Sign(r.clock.Now(), n.ID, b.ID)}, nil
+	links, err := r.links.Of(ctx, n.NotebookID, []uuid.UUID{n.ID})
+	if err != nil {
+		return Asset{}, err
+	}
+	link, ok := links[n.ID]
+	if !ok {
+		return Asset{}, domain.ErrNotFound
+	}
+	return Asset{Node: n, Blob: b, Signed: r.signer.Sign(r.clock.Now(), n.ID, b.ID), Link: link}, nil
 }
 
 // List lists the attachments under parentID (nil: the root) of the
@@ -84,8 +96,9 @@ func (r *Reads) Get(ctx context.Context, id uuid.UUID) (Asset, error) {
 // notebook.not_found); then the parent, page.not_found unless a page of
 // the notebook; then the limit, 422 outside 1–100. One node more than
 // limit is read to tell whether another page follows. A node without its
-// row is left out, logged as Get logs it. The addresses are signed as of
-// one time.
+// row is left out, logged as Get logs it; so is one deleted before the
+// links are read, in one read of the page (M7/P3 design 4.6). The
+// addresses are signed as of one time.
 func (r *Reads) List(ctx context.Context, notebookID uuid.UUID, parentID *uuid.UUID, limit *int, cursor *string) (AssetPage, error) {
 	actor, err := shared.RequireActor(ctx)
 	if err != nil {
@@ -133,6 +146,10 @@ func (r *Reads) List(ctx context.Context, notebookID uuid.UUID, parentID *uuid.U
 	if err != nil {
 		return AssetPage{}, err
 	}
+	links, err := r.links.Of(ctx, notebookID, ids)
+	if err != nil {
+		return AssetPage{}, err
+	}
 	out.Assets = make([]Asset, 0, len(nodes))
 	now := r.clock.Now()
 	for _, n := range nodes {
@@ -141,7 +158,11 @@ func (r *Reads) List(ctx context.Context, notebookID uuid.UUID, parentID *uuid.U
 			r.rowless(ctx, n)
 			continue
 		}
-		out.Assets = append(out.Assets, Asset{Node: n, Blob: b, Signed: r.signer.Sign(now, n.ID, b.ID)})
+		link, ok := links[n.ID]
+		if !ok {
+			continue
+		}
+		out.Assets = append(out.Assets, Asset{Node: n, Blob: b, Signed: r.signer.Sign(now, n.ID, b.ID), Link: link})
 	}
 	return out, nil
 }

@@ -112,6 +112,7 @@ type reader struct {
 	books *notebooks
 	nodes *treeNodes
 	rows  *memRows
+	links *links
 	clock *clock
 	logs  *bytes.Buffer
 	reads *app.Reads
@@ -122,11 +123,12 @@ type reader struct {
 }
 
 func newReader() *reader {
-	r := &reader{eng: uuid.NewV7(), acme: uuid.NewV7(), intro: uuid.NewV7(), rows: newRows(), clock: &clock{}, logs: &bytes.Buffer{}}
+	r := &reader{eng: uuid.NewV7(), acme: uuid.NewV7(), intro: uuid.NewV7(), rows: newRows(), links: &links{}, clock: &clock{},
+		logs: &bytes.Buffer{}}
 	r.auth, r.books = &authorizer{sees: map[uuid.UUID]bool{r.eng: true}}, &notebooks{of: map[uuid.UUID]uuid.UUID{r.eng: r.acme}}
 	r.nodes = &treeNodes{nodes: map[uuid.UUID]app.Node{r.intro: {ID: r.intro, NotebookID: r.eng, Name: "Intro", NameKey: "intro"}}}
 	r.reads = app.NewReads(app.ReadsDeps{Authorizer: r.auth, Notebooks: r.books, Nodes: r.nodes, Rows: r.rows,
-		Signer: macadapter.New(signKey()), Clock: r.clock, Logger: slog.New(slog.NewTextHandler(r.logs, nil))})
+		Signer: macadapter.New(signKey()), Links: r.links, Clock: r.clock, Logger: slog.New(slog.NewTextHandler(r.logs, nil))})
 	r.ctx = shared.WithActor(context.Background(), shared.Actor{UserID: uuid.NewV7(), SessionID: uuid.NewV7()})
 	return r
 }
@@ -149,8 +151,8 @@ func (r *reader) attach(notebook uuid.UUID, parent *uuid.UUID, name string, rowl
 	return n
 }
 
-// Get answers the attachment and its row, signed, decided on asset.read
-// in its notebook's workspace.
+// Get answers the attachment and its row, signed, with its link, decided
+// on asset.read in its notebook's workspace.
 func TestGetReadsTheAttachmentSigned(t *testing.T) {
 	r := newReader()
 	n := r.attach(r.eng, &r.intro, "a.png", false)
@@ -159,8 +161,11 @@ func TestGetReadsTheAttachmentSigned(t *testing.T) {
 		t.Fatal(err)
 	}
 	b := r.rows.rows[n.ID]
-	if a.Node != n || a.Blob.ID != b.ID || a.Signed != macadapter.New(signKey()).Sign(now(), n.ID, b.ID) {
-		t.Errorf("Get() = %+v, want the node, its row, their address signed", a)
+	if a.Node != n || a.Blob.ID != b.ID || a.Signed != macadapter.New(signKey()).Sign(now(), n.ID, b.ID) || a.Link != linkOf(n.ID) {
+		t.Errorf("Get() = %+v, want the node, its row, their address signed, its link", a)
+	}
+	if len(r.links.asked) != 1 || !slices.Equal(r.links.asked[0], []uuid.UUID{n.ID}) || r.links.notebooks[0] != r.eng {
+		t.Errorf("links asked %v of %v, want the node's of eng", r.links.asked, r.links.notebooks)
 	}
 	if !slices.Equal(r.auth.asked, []shared.Action{domain.ActionRead}) || r.auth.target[0] != (shared.Target{WorkspaceID: r.acme, NotebookID: r.eng}) {
 		t.Errorf("asked %v on %v, want asset.read on eng of acme", r.auth.asked, r.auth.target)
@@ -191,6 +196,11 @@ func TestGetAnswersNotFound(t *testing.T) {
 			r.nodes.failsAfter = 1
 			return r.attach(r.eng, nil, "a.png", true).ID
 		}, true, true},
+		{"a node deleted before its link is read", func(r *reader) uuid.UUID {
+			id := r.attach(r.eng, nil, "a.png", false).ID
+			r.links.missing = map[uuid.UUID]bool{id: true}
+			return id
+		}, true, false},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			r := newReader()
@@ -235,6 +245,7 @@ func TestReadsAnswerEachPortsFailure(t *testing.T) {
 		{"the rows' read", func(r *reader) { r.rows.readErr = errPort }, true},
 		{"the parent's read", func(r *reader) { r.nodes.parentErr = errPort }, false},
 		{"the attachments' read", func(r *reader) { r.nodes.assetsErr = errPort }, false},
+		{"the links' read", func(r *reader) { r.links.err = errPort }, true},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			r := newReader()
@@ -263,25 +274,37 @@ func TestListSignsAsOfOneTime(t *testing.T) {
 }
 
 // List answers the attachments under a parent, by name key and id, a page
-// at a time; a node without its row is left out and logged.
+// at a time, each with its link, read once a page; a node without its row
+// is left out and logged, one deleted before the links were read is left
+// out.
 func TestListPagesTheAttachments(t *testing.T) {
 	r := newReader()
 	c := r.attach(r.eng, &r.intro, "C.png", false)
 	r.attach(r.eng, &r.intro, "a.png", false)
 	b := r.attach(r.eng, &r.intro, "b.png", true)
-	r.attach(r.eng, &r.intro, "d.png", false)
+	d := r.attach(r.eng, &r.intro, "d.png", false)
+	gone := r.attach(r.eng, &r.intro, "e.png", false)
 	r.attach(r.eng, nil, "root.png", false)
+	r.links.missing = map[uuid.UUID]bool{gone.ID: true}
 	two := 2
 	first, err := r.reads.List(r.ctx, r.eng, &r.intro, &two, nil)
 	if err != nil || first.NextCursor == "" || !slices.Equal(names(first), []string{"a.png"}) {
 		t.Fatalf("List() = %v, %q, %v; want a.png, b.png left out, and a cursor", names(first), first.NextCursor, err)
 	}
 	second, err := r.reads.List(r.ctx, r.eng, &r.intro, &two, &first.NextCursor)
-	if err != nil || second.NextCursor != "" || !slices.Equal(names(second), []string{"C.png", "d.png"}) {
-		t.Errorf("List(the cursor) = %v, %q, %v; want C.png, d.png, the last page", names(second), second.NextCursor, err)
+	if err != nil || second.NextCursor == "" || !slices.Equal(names(second), []string{"C.png", "d.png"}) {
+		t.Fatalf("List(the cursor) = %v, %q, %v; want C.png, d.png, and a cursor", names(second), second.NextCursor, err)
 	}
-	if s := second.Assets[0]; s.Node != c || s.Signed != macadapter.New(signKey()).Sign(now(), c.ID, r.rows.rows[c.ID].ID) {
-		t.Errorf("listed %+v, want C.png signed", s)
+	if s := second.Assets[0]; s.Node != c || s.Signed != macadapter.New(signKey()).Sign(now(), c.ID, r.rows.rows[c.ID].ID) ||
+		s.Link != linkOf(c.ID) {
+		t.Errorf("listed %+v, want C.png signed, with its link", s)
+	}
+	if asked := r.links.asked[len(r.links.asked)-1]; !slices.Equal(asked, []uuid.UUID{c.ID, d.ID}) || r.links.notebooks[0] != r.eng {
+		t.Errorf("links asked %v of %v, want C.png's and d.png's of eng, at once", asked, r.links.notebooks)
+	}
+	third, err := r.reads.List(r.ctx, r.eng, &r.intro, &two, &second.NextCursor)
+	if err != nil || third.NextCursor != "" || len(third.Assets) != 0 {
+		t.Errorf("List(the second cursor) = %v, %q, %v; want e.png, deleted since, left out", names(third), third.NextCursor, err)
 	}
 	if l := r.logs.String(); !strings.Contains(l, "level=ERROR") || !strings.Contains(l, b.ID.String()) {
 		t.Errorf("logs %q, want b.png's node logged as an error", l)

@@ -1051,7 +1051,7 @@ export interface paths {
         };
         /**
          * Read where a page made for a link would go
-         * @description Where a page made for a link's target, written in this page, would go so that the link then leads to it: under which page, null for the notebook's root, and titled what, the target's last segment as written without ".md". createPage makes it. A target that leads to a page already answers that page instead; one with no such place answers why: target_invalid, it has an empty segment, a "." or ".." past its head, a NUL, or bytes that are not UTF-8; title_invalid, its last segment is no title; parent_missing, no page is where its other segments lead, read from this page's folder for "./" and "../", from the root for "/", else as links resolve but not by aliases; too_deep, the page made would be deeper than pages nest; not_resolvable, the target would not lead to the page made, or not to it alone. The notebook's admins and editors can read it. A page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found; then a role that does not write is forbidden; then a target absent or longer than 4096 bytes is validation_failed.
+         * @description Where a page made for a link's target, written in this page, would go so that the link then leads to it: under which page, null for the notebook's root, and titled what, the target's last segment as written without ".md". createPage makes it. A target that leads to a page already answers that page instead; one with no such place answers why: target_invalid, it has an empty segment, a "." or ".." past its head, a NUL, or bytes that are not UTF-8; title_invalid, its last segment is no title; target_is_asset, it is read as an attachment's, its last segment the name of an attachment of the notebook and not written with ".md", which it leads to or not, or an attachment where the page would go has its title; parent_missing, no page is where its other segments lead, read from this page's folder for "./" and "../", from the root for "/", else as links resolve but not by aliases; too_deep, the page made would be deeper than pages nest; not_resolvable, the target would not lead to the page made, or not to it alone. The notebook's admins and editors can read it. A page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found; then a role that does not write is forbidden; then a target absent or longer than 4096 bytes is validation_failed.
          */
         get: operations["getLinkLanding"];
         put?: never;
@@ -1122,7 +1122,7 @@ export interface paths {
         };
         /**
          * List what a notebook's links may lead to
-         * @description The notebook's pages, for the editor's completion, by id: each with its title, how a wikilink is written to lead to it alone from anywhere in the notebook, as a rename writes it again, and its aliases. Any role in the notebook can list them. A notebook that does not exist, is deleted, or that the caller has no role in is notebook.not_found. The list is not paged.
+         * @description The notebook's pages and attachments, for the editor's completion, by id: each with its kind, its title or name, how a wikilink is written to lead to it alone from anywhere in the notebook, as a rename writes it again, and a page's aliases. Any role in the notebook can list them. A notebook that does not exist, is deleted, or that the caller has no role in is notebook.not_found. The list is not paged.
          */
         get: operations["listLinkTargets"];
         put?: never;
@@ -1860,15 +1860,22 @@ export interface components {
             /** @description The property's value as JSON; an object's keys are not in the order written. */
             value: unknown;
         };
+        /**
+         * @description What a link target is, a page or an attachment.
+         * @enum {string}
+         */
+        LinkTargetKind: "page" | "asset";
         /** @description A property whose value, or an item of whose list, is a link. */
         PropertyLink: {
             /** @description The property's path, a list's item after a dot (sources.0). */
             key: string;
             /**
              * Format: uuid
-             * @description The page the link resolves to; null for none.
+             * @description The page or the attachment the link resolves to; null for none.
              */
             node_id: string | null;
+            /** @description What node_id is; null when it is null. */
+            kind: components["schemas"]["LinkTargetKind"] | null;
         };
         PageProperties: {
             /** @description Whether the page's frontmatter is valid; a page without one is. An invalid one has no properties. */
@@ -1892,7 +1899,7 @@ export interface components {
          * @description Why a link's target has no landing; the operation says each.
          * @enum {string}
          */
-        LandingReason: "target_invalid" | "title_invalid" | "parent_missing" | "too_deep" | "not_resolvable";
+        LandingReason: "target_invalid" | "title_invalid" | "target_is_asset" | "parent_missing" | "too_deep" | "not_resolvable";
         /** @description Exactly one of node_id, landing and reason is not null. */
         LinkLanding: {
             /**
@@ -1921,20 +1928,15 @@ export interface components {
         TagPageList: {
             data: components["schemas"]["TagPage"][];
         };
-        /**
-         * @description What a link target is. Attachments come later.
-         * @enum {string}
-         */
-        LinkTargetKind: "page";
         LinkTarget: {
             /** Format: uuid */
             id: string;
             kind: components["schemas"]["LinkTargetKind"];
-            /** @description The page's title. */
+            /** @description The page's title; the attachment's name, with its extension. */
             name: string;
-            /** @description How a wikilink is written to lead to the page alone, from anywhere in the notebook: its title, or its path from the root where another page has its title; with ".md" after the path where a title ending with ".md" would be read as another page's without it. */
+            /** @description How a wikilink is written to lead to the node alone, from anywhere in the notebook: its title or name, or its path from the root where another node of its kind has its title; with ".md" after the path where it would be read otherwise, a page's whose title ends with ".md" as another page's without it, a page's whose title an attachment has as the attachment's. An attachment without an extension, which no link leads to, has its path. */
             link: string;
-            /** @description The page's aliases, its first 1000, in the order of their case-folded keys. */
+            /** @description The page's aliases, its first 1000, in the order of their case-folded keys; none for an attachment. */
             aliases: string[];
         };
         LinkTargetList: {
@@ -2005,6 +2007,8 @@ export interface components {
             parent_id: string | null;
             /** @description The attachment's file name. */
             name: string;
+            /** @description How a wikilink, ![[link]] to embed it, is written to lead to the attachment alone from anywhere in the notebook, as the link targets write it: its name, or its path from the root where another attachment has its name; as of this answer, which another attachment of its name, made since, does not change. An attachment without an extension, which no link leads to, has its path. */
+            link: string;
             /** @description The type the server told from the name's extension and the file's first bytes, which it serves the content as: an image, an audio, a video or a PDF it shows; application/octet-stream for any other file, which is downloaded. */
             mime: string;
             /**
@@ -2165,6 +2169,7 @@ export type NodeMove = components['schemas']['NodeMove'];
 export type Backlink = components['schemas']['Backlink'];
 export type BacklinkPage = components['schemas']['BacklinkPage'];
 export type PageProperty = components['schemas']['PageProperty'];
+export type LinkTargetKind = components['schemas']['LinkTargetKind'];
 export type PropertyLink = components['schemas']['PropertyLink'];
 export type PageProperties = components['schemas']['PageProperties'];
 export type Landing = components['schemas']['Landing'];
@@ -2174,7 +2179,6 @@ export type TagCount = components['schemas']['TagCount'];
 export type TagList = components['schemas']['TagList'];
 export type TagPage = components['schemas']['TagPage'];
 export type TagPageList = components['schemas']['TagPageList'];
-export type LinkTargetKind = components['schemas']['LinkTargetKind'];
 export type LinkTarget = components['schemas']['LinkTarget'];
 export type LinkTargetList = components['schemas']['LinkTargetList'];
 export type EventHello = components['schemas']['EventHello'];
