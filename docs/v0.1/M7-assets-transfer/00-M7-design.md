@@ -516,7 +516,7 @@ M7 开工时负责人确认进入 M7（2026-10-08："可以了"）。下面是�
 | P1 | 平台：存储与流式路由 | 已完成 | [01-P1-storage-stream.md](01-P1-storage-stream.md) | [P1 审查](reviews/P1-storage-stream-review.md) |
 | P2 | 附件（服务端） | 已完成 | [02-P2-assets-server.md](02-P2-assets-server.md) | [P2 审查](reviews/P2-assets-server-review.md) |
 | P3 | 附件与链接（服务端） | 已完成（A 合并 `5138ad6`，B 合并 `f3bf03c`） | [03-P3-assets-links.md](03-P3-assets-links.md) | [P3A 审查](reviews/P3A-assets-links-review.md)、[P3B 审查](reviews/P3B-render-review.md) |
-| P4 | 附件（前端） | 未开始 | — | — |
+| P4 | 附件（前端） | 进行中 | [04-P4-assets-web.md](04-P4-assets-web.md) | — |
 | P5 | 导出 | 未开始 | — | — |
 | P6 | 导入 | 未开始 | — | — |
 
@@ -532,3 +532,4 @@ M7 开工时负责人确认进入 M7（2026-10-08："可以了"）。下面是�
 | 2026-10-09 | P3 开工：分 A（解析、索引与改写）、B（渲染）两部分合并；与 Obsidian 1.12.7 实测之后定下附件的三种读法（带扩展名、笔记本里有这个名称的附件时只读作附件），被同名附件遮住的页、被抢走的页的 wikilink 写 `.md` 的写法（Obsidian 写出解析不到的，`nerve-defined`），附件的显示文字按去掉扩展名的名称跟着改；索引记下解析到的是附件（`page_links.resolved_asset`）；4.7 的 `Assets` 由 asset 只凭连接池给出（`asset.NewEmbeds`）；平台的 `Render` 答 `View`（带到期） | [03-P3-assets-links.md](03-P3-assets-links.md) 第 2、4、5 节 |
 | 2026-10-09 | P3A 完成：没有扩展名的附件 `link` 为 null、补全不列它；附件的 `link` 由 page 的一条语句读出路径与同名附件的个数（`AssetLinktext`）；落点在同名附件旁边也答 `target_is_asset`；down 迁移先把指向附件的链接置为解析不到；契约写明附件的改名、移动会改写、会被编辑锁拒绝 | P3A 的实施、审查与两轮修复核对：[03-P3-assets-links.md](03-P3-assets-links.md) 第 4、9 节、[P3A 审查](reviews/P3A-assets-links-review.md) |
 | 2026-10-09 | P3B 完成：附件的标记不写 `data-nw-asset`（id 在地址的路径里），`alt` 与 `aria-label` 默认是写下的目标，`Assets` 不给名称；一个视图至多写 2000 个附件的地址（`MaxShown`），附件的标记有了总量的上界；视图的到期是写出的地址里最早的；`PropertyLink` 另加 `url` | P3B 的实施、审查与两轮修复核对：[03-P3-assets-links.md](03-P3-assets-links.md) 第 5、9 节、[P3B 审查](reviews/P3B-render-review.md) |
+| 2026-10-09 | P4 开工：分 A（面板与上传）、B（阅读视图里的附件）、C（编辑器的粘贴与拖入）三部分合并；B 里服务端给不内联的附件的链接写 `download`，`PropertyLink` 加 `inline`、`PageProperties` 加 `assets_expire_at`（右栏的附件链接分开打开与下载、到期重读，P3B 审查 C12、C13）；面板不加载缩略图 | [04-P4-assets-web.md](04-P4-assets-web.md) 第 0、2、4 节 |
