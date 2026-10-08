@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"slices"
 	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/linking/domain"
@@ -38,8 +37,10 @@ func (g GetPageProperties) Execute(ctx context.Context, id uuid.UUID) (Propertie
 		return Properties{Valid: true}, err
 	}
 	var ids []uuid.UUID
+	seen := map[uuid.UUID]bool{}
 	for _, l := range p.Links {
-		if l.Asset && !slices.Contains(ids, l.NodeID) {
+		if l.Asset && !seen[l.NodeID] {
+			seen[l.NodeID] = true
 			ids = append(ids, l.NodeID)
 		}
 	}

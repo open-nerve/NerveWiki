@@ -409,7 +409,8 @@ func (u *urls) URLs(_ context.Context, notebookID uuid.UUID, ids []uuid.UUID) (m
 func TestAPropertyLinkToAnAttachmentHasItsAddress(t *testing.T) {
 	l := newLibrary()
 	x, gone, page := uuid.NewV7(), uuid.NewV7(), uuid.NewV7()
-	u := &urls{of: map[uuid.UUID]string{x: "/x"}}
+	// It would answer the page too: a page's link is not asked of it.
+	u := &urls{of: map[uuid.UUID]string{x: "/x", page: "/page"}}
 	get := app.GetPageProperties{Access: l.access(), Reads: l.library, Assets: u}
 	l.properties = &app.Properties{Valid: true, Links: []app.PropertyLink{
 		{Key: "a", NodeID: x, Asset: true}, {Key: "b", NodeID: page}, {Key: "c"}, {Key: "d", NodeID: gone, Asset: true},

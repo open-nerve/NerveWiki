@@ -63,8 +63,10 @@ func modes() []mode {
 	}
 }
 
-// maxSide is the widest an image's own width and height are written.
-const maxSide = 10_000
+// maxSide is the widest an image's own width and height are kept (the
+// asset module's domain.MaxSide) and written, wider than a size a link
+// gives (M7/P3 review D2).
+const maxSide = 65_535
 
 // everyLink resolves every link, to one page: the largest markup of a
 // reading view's links but for the targets of those that resolve to none.
@@ -187,9 +189,10 @@ func TestTheAppsMarkdownRendersCheckedHTML(t *testing.T) {
 // The links, every one resolved to a page, to none or to an attachment of
 // each kind, are within the bound of CheckSize without its headroom, which
 // a page's largest content would not have (M6/P3B review L3; M7/P3 design
-// 5.9): the state each carries, an image its address, and an attachment's
-// its markup and signed address, each time it is written or a reference
-// used.
+// 5.9): the state each carries and an image its address, each time it is
+// written or a reference used; an attachment's markup and signed address
+// up to MaxShown of them (TestTheAppsAttachmentsAreWithinAQuarterOfHeadroom),
+// and its text past them.
 func TestTheAppsLinksAreWithinTheirBound(t *testing.T) {
 	if markdowntest.Race {
 		t.Skip("measured without the race detector (make test-go runs it)")
@@ -205,7 +208,14 @@ func TestTheAppsLinksAreWithinTheirBound(t *testing.T) {
 		"embeds of a size":                    strings.Repeat("![[p|1x1]]", n/10),
 		"wikilinks":                           strings.Repeat("[[p]]", n/5),
 		"images of a size":                    "[x]: p\n\n" + strings.Repeat("![|1x1][x]", n/10),
-		"wikilinks of a long anchor":          strings.Repeat("[[a#"+strings.Repeat("Ⱥ", 64)+"]]", n/134),
+		// A wide table's rows padded to its width (M7/P3 review B1).
+		"a wide table of images":        wideTable(n, "[\"]: p", `!["]`),
+		"a wide table of titled links":  wideTable(n, "[\"]: p '\"\"\"'", `["]`),
+		"a wide table of short links":   wideTable(n, "[\"]: p", `["]`),
+		"a wide table of wikilinks":     wideTable(n, "", "[[p]]"),
+		"a wide table of embeds":        wideTable(n, "", "![[p]]"),
+		"titled links of a short title": "[\"]: p '\"\"\"'\n\n" + strings.Repeat("[\"]\n", n/4),
+		"wikilinks of a long anchor":    strings.Repeat("[[a#"+strings.Repeat("Ⱥ", 64)+"]]", n/134),
 		// In the property table, below the YAML's limit of values (M6/P6 design 4).
 		"property links of a display of '&'": "---\na: [" + strings.Repeat("'[[&|"+strings.Repeat("&", n/9000-12)+"]]',", 9000) + "]\n---\n",
 		"property links":                     "---\na: [" + strings.Repeat("'[["+strings.Repeat("a", n/9000-8)+"]]',", 9000) + "]\n---\n",
@@ -222,6 +232,48 @@ func TestTheAppsLinksAreWithinTheirBound(t *testing.T) {
 			if len(view.HTML) > markdowntest.Amplification*len(content) {
 				t.Errorf("%s, %s: %d bytes of HTML for %d of content, more than %d times", m.name, name, len(view.HTML), len(content),
 					markdowntest.Amplification)
+			}
+		}
+	}
+}
+
+// The addresses of attachments a reading view writes, at most MaxShown,
+// and their markup take at most a quarter of CheckSize's headroom more
+// than the attachments' text, of which the references and aliases
+// repeated below their budgets take half (M7/P3 review B1): bounded as a
+// whole, in a wide table's rows too, they cost what they do per byte only
+// within it. The densest of them are some 390 KB.
+func TestTheAppsAttachmentsAreWithinAQuarterOfHeadroom(t *testing.T) {
+	n := 8 * obsidian.MaxShown
+	inputs := map[string]string{
+		"a wide table of images":           wideTable(n, "[\"]: p", `!["]`),
+		"a wide table of titled links":     wideTable(n, "[\"]: p '\"\"\"'", `["]`),
+		"a wide table of embeds of a size": wideTable(3*n, "", `![[p\|1x1]]`),
+		"images of an address of '&'":      "[x]: &&&&\n\n" + strings.Repeat("![x]", n/4),
+	}
+	page := markdown.Page{NotebookID: uuid.NewV7(), PageID: uuid.NewV7()}
+	rendered := map[string]map[string]string{}
+	for _, m := range modes() {
+		if m.toAssets {
+			md, _ := appMarkdown(t, m)
+			rendered[m.name] = map[string]string{}
+			for name, content := range inputs {
+				view, err := md.Render(context.Background(), md.Parse([]byte(content)), page)
+				if err != nil {
+					t.Fatalf("%s, %s: %v", m.name, name, err)
+				}
+				rendered[m.name][name] = view.HTML
+			}
+		}
+	}
+	text := rendered["to an attachment not shown"]
+	for mode, views := range rendered {
+		for name, html := range views {
+			addresses := strings.Count(html, "/api/v0/assets/")
+			t.Logf("%s, %s: %d bytes of HTML more than the text's, %d addresses", mode, name, len(html)-len(text[name]), addresses)
+			if len(html)-len(text[name]) > markdowntest.Headroom/4 || mode != "to an attachment not shown" && addresses != obsidian.MaxShown {
+				t.Errorf("%s, %s: %d bytes of HTML more than the text's, more than %d, or %d addresses, not MaxShown", mode, name,
+					len(html)-len(text[name]), markdowntest.Headroom/4, addresses)
 			}
 		}
 	}
@@ -300,4 +352,11 @@ func TestTheAppsMarkdownCostsAboutItsSize(t *testing.T) {
 			markdowntest.CheckCosts(t, md)
 		})
 	}
+}
+
+// wideTable is a table 161 cells wide whose rows are each of 40 of the
+// cell written, some n bytes of it, after the definition def.
+func wideTable(n int, def, cell string) string {
+	row := strings.Repeat(cell, 40) + "\n"
+	return def + "\n\n" + strings.Repeat("|a", 161) + "\n" + strings.Repeat("|-", 161) + "\n" + strings.Repeat(row, n/len(row))
 }

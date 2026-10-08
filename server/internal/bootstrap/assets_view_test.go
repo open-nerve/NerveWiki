@@ -78,14 +78,15 @@ func assetElements(html string) []element {
 
 // A reading view shows the attachments its links lead to (M7/P3 design
 // 5.5, 5.10): an image embedded as its <img>, of its caption and the size
-// written, else of its own, an audio as its <audio>, a PDF embedded and an image linked as links to
-// them, and a property link to one as a link, each at its content's
-// address, which downloads its bytes; the view expires when the addresses
-// do, as the content route signs them. Deleted, an attachment's links
-// lead nowhere and the others stay. The properties answer a property link
-// to one with its kind and its address. Each address is the content's
-// shown, not downloaded. Its Assets nil, the composition
-// root fails it: the links would be text.
+// written, else of its own, an audio as its <audio>, a PDF embedded and an
+// image linked as links to them, and a property link to one as a link,
+// each at its content's address, which downloads its bytes; the view
+// expires when the addresses do, as the content route signs them, and a
+// view without attachments never. Deleted, an attachment's links lead
+// nowhere and the others stay. The properties answer a property link to
+// one with its kind and its address. Each address is the content's shown,
+// not downloaded. Its Assets nil, the composition root fails it: the links
+// would be text.
 func TestAReadingViewShowsTheAttachmentsThroughServe(t *testing.T) {
 	tm := newAcmeTeam(t, "member", "")
 	nb := tm.openNotebook(t, "alice", "Eng")
@@ -135,6 +136,9 @@ func TestAReadingViewShowsTheAttachmentsThroughServe(t *testing.T) {
 	}
 	if expires != nil && (expires.Before(before.Add(time.Hour)) || expires.After(time.Now().Add(2*time.Hour))) {
 		t.Errorf("the view expires at %v, not one to two hours from now", expires)
+	}
+	if _, expires := tm.readingView(t, "bob", a); expires != nil {
+		t.Errorf("a view without attachments expires at %v, want never", expires)
 	}
 
 	var props struct {
