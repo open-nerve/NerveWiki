@@ -58,15 +58,23 @@ var ErrShuttingDown = errors.New("httpserver: the server is shutting down")
 // off at read_timeout; the write deadline follows it at write_timeout −
 // read_timeout, the time to finish and answer once the body is in. A
 // request without a body has no read deadline: net/http watches the
-// connection from the start. Sending sets the write deadline for an answer
-// of so many bytes. The handler's steps that are not the stream run under
-// Bounded.
+// connection from the start. Once Sending announces an answer, its write
+// deadline starts at read_timeout from then and moves on with every step
+// of bytes written by the time they may take at MinRate, as the read
+// deadline does: an answer leaves at the rate, or is cut off, a client
+// that stops reading at read_timeout past what the connection buffered.
+// The handler's steps that are not the stream run under Bounded.
 //
 // When the server starts shutting down, a stream still moving its bytes, a
 // body not yet read to its end or an answer announced with Sending, is cut
 // off: the deadlines pass at once and h's context is cancelled. A step
 // between the two, such as writing what the body brought, finishes as any
 // request does, within shutdown_timeout; a Sending then fails.
+//
+// An answer before the handler, a 401 or a 429, to a request with a body
+// closes the connection after it: the body is unread, and net/http would
+// read up to 256 KiB more of it first, or wait for a client that holds it
+// back until it hears. The handler decides for itself.
 //
 // A writer that cannot set deadlines is a wiring fault: Stream logs it and
 // answers 500, after any 401 or 429.
@@ -84,7 +92,18 @@ func (a *API) Stream(h http.Handler, p StreamPolicy) http.Handler {
 	case a.bodyReadTimeout <= 0 || a.writeTimeout <= a.bodyReadTimeout+a.requestTimeout:
 		panic("httpserver: API.Stream needs BodyReadTimeout and a WriteTimeout above it and RequestTimeout")
 	}
-	return a.requestMeta(a.opening(a.authenticate(a.routeLimit(p, a.opened(a.streaming(p, h))))))
+	return a.requestMeta(closingEarly(a.opening(a.authenticate(a.routeLimit(p, a.opened(a.streaming(p, h)))))))
+}
+
+// closingEarly sets Connection: close on the answers to a request with a
+// body until the handler is reached, which streaming takes back.
+func closingEarly(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.ContentLength != 0 {
+			w.Header().Set("Connection", "close")
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // streamStep is how many body bytes move the deadlines on once: 64 KiB, or
@@ -118,8 +137,8 @@ func (a *API) routeLimit(p StreamPolicy, next http.Handler) http.Handler {
 
 type streamKey struct{}
 
-// streaming sets the connection's deadlines, wraps the body and runs h with
-// the stream in its context.
+// streaming sets the connection's deadlines, wraps the body and the
+// answer, and runs h with the stream in its context.
 func (a *API) streaming(p StreamPolicy, h http.Handler) http.Handler {
 	limit := p.MaxBytes
 	if limit == 0 {
@@ -150,6 +169,7 @@ func (a *API) streaming(p StreamPolicy, h http.Handler) http.Handler {
 			})
 			return
 		}
+		w.Header().Del("Connection")
 		ctx, cancel := context.WithCancel(r.Context())
 		defer cancel()
 		if stopping, ok := ctx.Value(stoppingKey{}).(context.Context); ok {
@@ -163,7 +183,7 @@ func (a *API) streaming(p StreamPolicy, h http.Handler) http.Handler {
 		if !s.drained {
 			r.Body = &rateBody{s: s, body: http.MaxBytesReader(w, r.Body, limit)}
 		}
-		h.ServeHTTP(w, r.WithContext(context.WithValue(ctx, streamKey{}, s)))
+		h.ServeHTTP(&streamWriter{ResponseWriter: w, s: s}, r.WithContext(context.WithValue(ctx, streamKey{}, s)))
 	})
 }
 
@@ -179,17 +199,18 @@ func Bounded(ctx context.Context) (context.Context, context.CancelFunc) {
 	return context.WithTimeout(ctx, s.requestTimeout)
 }
 
-// Sending sets the write deadline to read_timeout from now plus the time n
-// bytes take at the route's MinRate: a stream handler calls it before it
-// writes an answer of n bytes. From then on the stream moves bytes until
-// the handler returns: a shutdown cuts it off. It fails outside API.Stream,
-// and with ErrShuttingDown once the server is shutting down.
-func Sending(r *http.Request, n int64) error {
+// Sending announces the answer a stream handler is about to write, once:
+// its write deadline is read_timeout from now, and moves on with its bytes
+// at the route's MinRate (streamWriter). From then on the stream moves
+// bytes until the handler returns: a shutdown cuts it off. It fails
+// outside API.Stream, and with ErrShuttingDown once the server is shutting
+// down.
+func Sending(r *http.Request) error {
 	s, ok := r.Context().Value(streamKey{}).(*stream)
 	if !ok {
 		return errNotStream
 	}
-	return s.sending(n)
+	return s.sending()
 }
 
 // stream is one stream request's deadlines.
@@ -200,12 +221,13 @@ type stream struct {
 	minRate, step                           int64
 
 	mu       sync.Mutex
-	read     int64 // body bytes read
-	armed    int64 // read when the deadlines last moved
-	drained  bool  // the body was read to its end, or there is none
-	sent     bool  // Sending was called
-	stopped  bool  // the server is shutting down
-	finished bool  // the handler returned
+	read     int64     // body bytes read
+	armed    int64     // read when the deadlines last moved
+	drained  bool      // the body was read to its end, or there is none
+	sent     bool      // Sending was called
+	sentAt   time.Time // when
+	stopped  bool      // the server is shutting down
+	finished bool      // the handler returned
 }
 
 // arm moves the read deadline, while there is body left, to read_timeout
@@ -227,14 +249,32 @@ func (s *stream) arm(n int64) error {
 	return s.rc.SetWriteDeadline(read.Add(s.writeSlack))
 }
 
-func (s *stream) sending(n int64) error {
+func (s *stream) sending() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.stopped {
 		return ErrShuttingDown
 	}
-	s.sent = true
-	return s.rc.SetWriteDeadline(time.Now().Add(s.readTimeout + atRate(n, s.minRate)))
+	s.sent, s.sentAt = true, time.Now()
+	return s.rc.SetWriteDeadline(s.sentAt.Add(s.readTimeout))
+}
+
+// isSending reports whether Sending announced the answer.
+func (s *stream) isSending() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.sent
+}
+
+// armSent moves the write deadline of the answer Sending announced to
+// read_timeout after Sending plus the time n bytes of it take at the rate.
+func (s *stream) armSent(n int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.stopped {
+		return ErrShuttingDown
+	}
+	return s.rc.SetWriteDeadline(s.sentAt.Add(s.readTimeout + atRate(n, s.minRate)))
 }
 
 // stop marks the server shutting down and, while the stream moves bytes,
@@ -315,3 +355,44 @@ func (b *rateBody) Read(p []byte) (int, error) {
 }
 
 func (b *rateBody) Close() error { return b.body.Close() }
+
+// streamWriter is a stream's answer. Once Sending announced it, a write
+// goes out a step of bytes at a time, each moving the write deadline on by
+// the bytes before it (armSent): a step takes at most half the read
+// timeout at the rate, so an answer leaving at the rate always has half
+// of it to spare, and a client reading below the rate is cut off. Before,
+// a write is the writer's.
+type streamWriter struct {
+	http.ResponseWriter
+	s       *stream
+	written int64 // bytes written since Sending
+	armed   int64 // written when the deadline last moved
+}
+
+func (w *streamWriter) Write(p []byte) (int, error) {
+	if !w.s.isSending() {
+		return w.ResponseWriter.Write(p)
+	}
+	n := 0
+	for len(p) > 0 {
+		if w.written > w.armed {
+			if err := w.s.armSent(w.written); err != nil {
+				return n, err
+			}
+			w.armed = w.written
+		}
+		k, err := w.ResponseWriter.Write(p[:min(int64(len(p)), w.s.step)])
+		n += k
+		w.written += int64(k)
+		p = p[k:]
+		if err != nil {
+			return n, err
+		}
+	}
+	return n, nil
+}
+
+// Unwrap lets http.ResponseController reach the underlying writer.
+func (w *streamWriter) Unwrap() http.ResponseWriter {
+	return w.ResponseWriter
+}

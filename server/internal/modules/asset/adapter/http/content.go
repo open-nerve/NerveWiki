@@ -50,7 +50,7 @@ func (h content) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer func() { _ = o.File.Close() }()
-	if err := httpserver.Sending(r, o.Blob.Bytes); err != nil {
+	if err := httpserver.Sending(r); err != nil {
 		if errors.Is(err, httpserver.ErrShuttingDown) {
 			err = shared.ServerBusy(busyRetry)
 		}

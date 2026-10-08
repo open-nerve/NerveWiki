@@ -127,10 +127,10 @@
 上传与下载要逐字节地读写，时间按字节数放宽，生成代码的处理器与逐路由的中间件都做不到：中间件的请求期限（`request_timeout` 加 `read_timeout`，15–45 秒）会取消处理器的上下文，`server.write_timeout`（60 秒）会让长的写失败，而 strict 的处理器拿不到 `ResponseWriter`，不能放宽截止时间，也不能 `ServeContent`。
 
 - **`API.Stream(h, StreamPolicy)`**（照 `API.LongLived`，模块不重写这些部件）：
-  - 次序：请求信息 → 在 `request_timeout` 之内的失败闸门与认证（公开的操作不认证）→ 路由的限流桶 → 请求体上限 → 处理器。
+  - 次序：请求信息 → 在 `request_timeout` 之内的失败闸门与认证（公开的操作不认证）→ 路由的限流桶 → 请求体上限 → 处理器。处理器之前的答复（401、429）对有请求体的请求带 `Connection: close`：请求体没读，net/http 本会先再读至多 256 KiB，或等一个听到答复才发的客户端（P2 审查 B9）；处理器自己决定它的答复。
   - `StreamPolicy`：`MaxBytes`（请求体上限）、`MinRate`（最低速率）、`Bucket`（这条路由用的桶，取代 `anonymous` 或 `authenticated`）与它在日志里的名字 `BucketName`；公开与否照模块的 `PublicOperations()`。
   - 读：连接的读截止时间每读 64 KiB（`MinRate` 低到 64 KiB 要超过半个 `read_timeout` 时取更小的一步）重设为"开始时刻 + `read_timeout` + 已读字节 / `MinRate`"：平均速率达不到最低速率就断开，不发正文的连接在原来的 `read_timeout` 断开。没有请求体的请求（下载）不设读截止时间：net/http 从一开始就在后台读连接，截止时间一到会取消处理器的上下文（P1 审查 A-H1）。
-  - 写：写截止时间是"读截止时间 + (`write_timeout` − `read_timeout`)"，跟着读截止时间放宽：上传读完之后还有 `request_timeout` 写入、答复；下载的写截止时间由处理器经平台设为"现在 + `read_timeout` + 字节数 / `MinRate`"（`Sending`）。
+  - 写：写截止时间是"读截止时间 + (`write_timeout` − `read_timeout`)"，跟着读截止时间放宽：上传读完之后还有 `request_timeout` 写入、答复。下载由处理器经平台宣告（`Sending`）：写截止时间从"此刻 + `read_timeout`"起，每写一步（同读的一步）重设为"宣告时刻 + `read_timeout` + 已写字节 / `MinRate`"，一次长的写按步写出；照最低速率读的客户端拿到整个答复，停读的客户端在 `read_timeout` 加缓冲装下的字节应得的时间之后断开，而不是占住连接到"字节数 / `MinRate`"（P2 审查 B2，原先由 `Sending(n)` 一次设定）。
   - 期限：读完请求体之后的一步（写入单元）在一个新的 `request_timeout` 期限里运行。
   - 停机：开始停机时切断还在传字节的流（请求体没读完的上传、已经 `Sending` 的下载）：截止时间立刻到期、处理器的上下文取消，上传中止、临时文件删掉，下载断开。读完请求体之后的一步照普通请求在 `shutdown_timeout` 之内做完并答复，不在 `COMMIT` 上被取消（P1 审查 A-M2）；这时的 `Sending` 答错误。
 - **按路由的桶**：签名的下载用 `ratelimit.asset_content`（按 IP），不消耗 `anonymous`（登录、续期、注册共用它，一页几百张图会让同一出口的同事续期失败、被登出）。上传用 `authenticated`。
