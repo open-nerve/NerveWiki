@@ -15,13 +15,7 @@ export interface UploadFile {
 }
 
 /** credential's upload of file into the notebook notebookId, under parentId or at its root, as the API answers it. */
-async function postAsset(
-  api: ApiClient,
-  credential: string,
-  notebookId: string,
-  file: UploadFile,
-  parentId?: string
-) {
+async function postAsset(api: ApiClient, credential: string, notebookId: string, file: UploadFile, parentId?: string) {
   const form = new FormData();
   if (parentId !== undefined) {
     form.append("parent_id", parentId);
