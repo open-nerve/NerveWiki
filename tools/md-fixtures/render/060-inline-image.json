@@ -1,0 +1,8 @@
+{
+  "description": "行内的图片不另起一块",
+  "source": "obsidian-verified",
+  "rendered": "前 ⟨img x.png⟩ 后",
+  "assets": [
+    "x.png"
+  ]
+}

@@ -241,8 +241,9 @@ node tools/md-fixtures/obsidian/verify-resolve.mjs check /tmp/nwiki-resolve
 - 两边都不读属性区（服务端的属性表；Obsidian 的属性区与隐藏的 frontmatter）与公式（服务端交给前端的 KaTeX，Obsidian 用 MathJax，排出的文字不同）。
 - 只有一个换行的块（例如只有两行注释的一段）读作多出的 `¶`（`¶¶`，或两端的 `¶`），`check.mjs` 不收这样的页，它不作样例。
 - `nerve-defined` 的样例在 `note` 里写明 Obsidian 的显示与理由。
+- 附件（M7/P3 设计 5.8）：可选的 `assets` 是库根下的附件名称（带扩展名，不是 `.md`），`prepare` 把它们建进库（PNG 是真的图片，其余的内容无关：Obsidian 按扩展名显示）。嵌入的图片、音频、视频写成 `⟨img 文字 尺寸⟩`、`⟨audio 文字⟩`、`⟨video 文字 尺寸⟩`，没有的部分省去；文字是写下的说明（没有时是写下的目标），尺寸是写下的 `宽`、`宽×高`。Obsidian 一侧读嵌入外层的 `span.internal-embed` 的 `alt`、`width`、`height`（引用式的 Markdown 图片是一个 `<img>`，读它的），服务端一侧读 `img` 的 `alt`、`audio` 与 `video` 的 `aria-label` 和两者写下的尺寸（样例的附件不给宽高）。附件的链接照文字读。PDF 与没见过的类型不进样例：Obsidian 是阅读器与文件框，这里是链接（`nerve-defined`）。
 
-服务端的测试（`server/internal/platform/markdown/obsidian/render_fixtures_test.go`）把阅读视图的 HTML 按同样的规则读成文字，与 `rendered` 比较。
+服务端的测试（`server/internal/platform/markdown/obsidian/render_fixtures_test.go`）把阅读视图的 HTML 按同样的规则读成文字，与 `rendered` 比较；链接按名称（不分大小写）解析到样例的附件，类型按扩展名。
 
 核对：
 

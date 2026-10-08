@@ -1,0 +1,8 @@
+{
+  "description": "嵌入的说明：最后一个 | 之后是尺寸时，之前是说明；300x、x200 是说明",
+  "source": "obsidian-verified",
+  "rendered": "⟨img 说明⟩ ⟨img 说明 300⟩ ⟨img 300x⟩ ⟨img x200⟩",
+  "assets": [
+    "x.png"
+  ]
+}

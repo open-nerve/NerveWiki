@@ -1,0 +1,9 @@
+{
+  "description": "没有说明的音频",
+  "source": "nerve-defined",
+  "rendered": "⟨audio a.mp3⟩",
+  "note": "Obsidian 不写说明：\"⟨audio⟩\"。我们给写下的地址，作控件的无障碍名称（同 053）",
+  "assets": [
+    "a.mp3"
+  ]
+}

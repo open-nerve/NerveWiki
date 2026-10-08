@@ -299,7 +299,10 @@ function checkResolveCase(dir, base) {
 // A render case (M6/P8 design 4): its reading view as text, "¶" between
 // blocks and "⏎" a line break, the one at a block's end left out (so "⏎¶"
 // and a "⏎" at the end are a block's two), runs of ASCII white space one
-// space, none next to a "¶" or "⏎" or at the ends.
+// space, none next to a "¶" or "⏎" or at the ends; an attachment's image,
+// audio or video as "⟨img text size⟩", "⟨audio text⟩", "⟨video text size⟩"
+// (M7/P3 design 5.8). Its attachments, when it has some, are the names of
+// files at the vault's root, each with an extension.
 function checkRender(dir, base) {
   const name = `render/${base}`;
   if (!existsSync(join(dir, `${base}.json`))) return fail(name, "missing .json");
@@ -309,8 +312,15 @@ function checkRender(dir, base) {
   } catch (e) {
     return fail(name, `bad JSON: ${e.message}`);
   }
-  if (!sameKeys(c, ["description", "source", "rendered", "note"]))
-    fail(name, "fields are description, source, rendered, and note when set");
+  if (!sameKeys(c, ["description", "source", "rendered", "note", "assets"]))
+    fail(name, "fields are description, source, rendered, and note and assets when set");
+  if (
+    c.assets !== undefined &&
+    (!Array.isArray(c.assets) ||
+      c.assets.length === 0 ||
+      !c.assets.every((a) => typeof a === "string" && /^[^/\\]+\.[^./\\]+$/.test(a) && !a.endsWith(".md")))
+  )
+    fail(name, "assets must be names of files at the root, each with an extension, not .md");
   if (typeof c.description !== "string" || c.description === "") fail(name, "description must be non-empty");
   if (!SOURCES.has(c.source)) fail(name, `source ${c.source}`);
   if ((c.source === "nerve-defined") !== (typeof c.note === "string" && c.note !== ""))

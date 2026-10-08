@@ -1,0 +1,8 @@
+{
+  "description": "附件图片的嵌入：说明文字是写下的目标",
+  "source": "obsidian-verified",
+  "rendered": "⟨img x.png⟩",
+  "assets": [
+    "x.png"
+  ]
+}

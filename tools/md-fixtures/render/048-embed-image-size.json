@@ -1,0 +1,8 @@
+{
+  "description": "嵌入的尺寸：宽，宽和高",
+  "source": "obsidian-verified",
+  "rendered": "⟨img x.png 300⟩ ⟨img x.png 300×200⟩",
+  "assets": [
+    "x.png"
+  ]
+}
