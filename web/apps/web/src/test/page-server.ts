@@ -16,6 +16,11 @@ export function pageNode(n: number, name: string, parent?: TreeNode): TreeNode {
   };
 }
 
+/** assetNode is an attachment named name, under the page parent, at the root without one (M7/P2). */
+export function assetNode(n: number, name: string, parent?: TreeNode): TreeNode {
+  return { ...pageNode(n, name, parent), kind: "asset" };
+}
+
 export const guide = pageNode(1, "Guide");
 export const install = pageNode(2, "Install", guide);
 export const linux = pageNode(3, "Linux", install);

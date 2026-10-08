@@ -146,7 +146,8 @@ function titleKey(title: string): string {
 
 /**
  * freeTitle is the first of titles (Untitled, Untitled 2, …), counting from
- * 1, that no sibling and none of taken has (M4 design 4).
+ * 1, that no sibling, a page or an attachment (M7/P2 design 3.10), and
+ * none of taken has (M4 design 4).
  */
 export function freeTitle(
   siblings: readonly TreeNode[],

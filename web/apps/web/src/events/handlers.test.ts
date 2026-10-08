@@ -43,6 +43,19 @@ test("a links event asks the refresher for what of the pages it names was read, 
   );
 });
 
+test("a pages event that changed the tree asks the refresher for the tree, which a run of uploads reads once (M7/P2 design 3.10); one that did not, not", () => {
+  const { requested, context: handled } = context([]);
+  const event = { workspace_id: "w1", notebook_id: "n1", pages: [] };
+  eventHandlers.get("pages")?.({ ...event, tree: false }, handled);
+  expect(requested.filter((key) => key === unstable_serialize(["pages", "n1"]))).toEqual([]);
+
+  eventHandlers.get("pages")?.({ ...event, tree: true }, handled);
+  expect(requested.filter((key) => key === unstable_serialize(["pages", "n1"]))).toEqual([
+    unstable_serialize(["pages", "n1"]),
+  ]);
+  expect(handled.mutate).not.toHaveBeenCalled();
+});
+
 test("a pages event asks the refresher for the properties of the pages written that were read", () => {
   const { requested, context: handled } = context([["page-properties", "n1", "a"]]);
   eventHandlers.get("pages")?.(

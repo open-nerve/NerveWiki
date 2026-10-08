@@ -1,4 +1,4 @@
-import { makeAutoObservable, observableRef, runInAction } from "mobx";
+import { computed, makeAutoObservable, observableRef, runInAction } from "mobx";
 
 import { oneAtATime } from "../lib/one-at-a-time";
 import { ApiError } from "../services/api";
@@ -20,7 +20,11 @@ export const toggleLimit = 60_000;
  * PageTreeStore holds one notebook's page tree for one generation (M4/P5
  * design 3.4): the left column shows it, and a page's shell finds its page,
  * ancestors and children in it, so that the tree read again refreshes them
- * all. It also keeps which pages the left column shows open.
+ * all. It also keeps which pages the left column shows open. The tree is
+ * the pages': the notebook's attachments are nodes too, beside the pages
+ * (M7/P2 design 3.10), but no level of the tree, and a read that changes
+ * them alone does not render the tree again; only a new page's title
+ * looks at them, as their names are taken.
  *
  * Its writes go out one at a time, in the order made, whichever page each
  * is of: one write moves its siblings, which the next may name (M4 design
@@ -34,7 +38,7 @@ export const toggleLimit = 60_000;
  * and where a page made for a link would go, read anew each time.
  */
 export class PageTreeStore {
-  /** The tree as read, replaced whole by each read: its nodes are not observed one by one. */
+  /** The nodes as read, pages and attachments, replaced whole by each read: they are not observed one by one. */
   nodes: TreeNode[] | undefined = undefined;
   /** The pages whose children the left column shows. */
   private readonly open = new Set<string>();
@@ -77,6 +81,7 @@ export class PageTreeStore {
       linking: false,
       notebookId: false,
       nodes: observableRef,
+      pageNodes: computed({ equals: sameNodes }),
       changesAnswered: false,
       readsStarted: false,
       readKept: false,
@@ -85,10 +90,24 @@ export class PageTreeStore {
     });
   }
 
+  /** pageNodes are the pages of the nodes read: the same while a read changes attachments alone. */
+  get pageNodes(): TreeNode[] | undefined {
+    return this.nodes?.filter((node) => node.kind === "page");
+  }
+
   /** tree is the tree looked up, once read, without the pages this generation deleted. */
   get tree(): TreeIndex | undefined {
-    const nodes = this.nodes;
+    const nodes = this.pageNodes;
     return nodes && indexTree(this.removed.size === 0 ? nodes : nodes.filter((node) => !this.removed.has(node.id)));
+  }
+
+  /**
+   * siblingsOf are the nodes right under parent (null: the root), pages
+   * and attachments, whose names a new page's title is not; none before
+   * the tree is read.
+   */
+  siblingsOf(parent: string | null): readonly TreeNode[] {
+    return this.nodes?.filter((node) => node.parent_id === parent && !this.removed.has(node.id)) ?? [];
   }
 
   /** byId is the page id in the tree, if the tree has it. */
@@ -134,7 +153,7 @@ export class PageTreeStore {
       return this.nodes ?? nodes;
     }
     this.readKept = read;
-    if (!sameTree(this.nodes, nodes)) {
+    if (!sameNodes(this.nodes, nodes)) {
       runInAction(() => {
         this.nodes = nodes;
       });
@@ -292,11 +311,13 @@ export class PageTreeStore {
   }
 }
 
-/** sameTree tells whether a read lists the nodes the tree has, in the same order, each as it was. */
-function sameTree(tree: readonly TreeNode[] | undefined, read: readonly TreeNode[]): boolean {
+/** sameNodes tells whether two reads list the same nodes, in the same order, each as it was; none read is none. */
+function sameNodes(kept: readonly TreeNode[] | undefined, read: readonly TreeNode[] | undefined): boolean {
   return (
-    tree !== undefined &&
-    tree.length === read.length &&
-    tree.every((node, i) => JSON.stringify(node) === JSON.stringify(read[i]))
+    kept === read ||
+    (kept !== undefined &&
+      read !== undefined &&
+      kept.length === read.length &&
+      kept.every((node, i) => JSON.stringify(node) === JSON.stringify(read[i])))
   );
 }

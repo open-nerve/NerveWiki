@@ -3,7 +3,18 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 
 import { json, notebookJSON, problem } from "../../test/fakes";
-import { ada, bob, guide, install, linux, notes, pageNode, pagePath, pageServer } from "../../test/page-server";
+import {
+  ada,
+  assetNode,
+  bob,
+  guide,
+  install,
+  linux,
+  notes,
+  pageNode,
+  pagePath,
+  pageServer,
+} from "../../test/page-server";
 import { renderApp } from "../../test/render";
 
 // The tree's writes: new pages, renaming, moving, deleting (M4/P5 design
@@ -93,6 +104,18 @@ test("a title taken among the siblings, or answered taken, has the creation try 
 
   expect(await screen.findByRole("heading", { level: 1, name: "Untitled 3" })).toBeTruthy();
   expect(racing.sent.filter((line) => line.startsWith("POST"))).toEqual(["POST Untitled 2", "POST Untitled 3"]);
+});
+
+test("an attachment beside the new page is not in the tree, and its name is taken: the creation skips it (M7/P2 design 3.10)", async () => {
+  const user = userEvent.setup();
+  const server = pageServer({ nodes: [guide, notes, assetNode(30, "UNTITLED")] });
+  renderApp(home, server.app);
+
+  await user.click(await within(await tree()).findByRole("button", { name: "New page" }));
+
+  expect(await screen.findByRole("heading", { level: 1, name: "Untitled 2" })).toBeTruthy();
+  expect(server.sent.filter((line) => line.startsWith("POST"))).toEqual(["POST Untitled 2 under root"]);
+  expect(titles(await tree())).toEqual(["Guide", "Notes", "Untitled 2"]);
 });
 
 test("a creation gives up after three titles taken, and says why", async () => {

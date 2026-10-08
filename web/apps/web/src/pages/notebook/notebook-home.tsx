@@ -56,7 +56,7 @@ export const NotebookHomePage = observer(function NotebookHomePage() {
         )}
       </div>
       {failure !== undefined && <Alert>{errorText(failure, t)}</Alert>}
-      {pages.nodes === undefined ? (
+      {pages.tree === undefined ? (
         <NotLoaded error={error} retry={() => void mutate()} />
       ) : roots.length === 0 ? (
         <p className="text-muted-foreground">{t("notebook.homeEmpty")}</p>

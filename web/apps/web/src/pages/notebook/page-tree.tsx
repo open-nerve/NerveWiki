@@ -47,7 +47,7 @@ export const PageTree = observer(function PageTree({ notebook }: { notebook: Not
   const [failure, setFailure] = useState<unknown>();
   const [focusing, setFocusing] = useState<string>();
   const { error, mutate } = useSWR(["pages", notebook.id], () => pages.load());
-  const read = pages.nodes !== undefined;
+  const read = pages.tree !== undefined;
   const writer = writesPages(notebook.role);
   useEffect(() => {
     if (pageId !== undefined && read) {

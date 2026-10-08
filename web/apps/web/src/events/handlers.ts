@@ -28,17 +28,19 @@ export function typeOf(event: StreamEvent): string {
 }
 
 /**
- * pagesChanged reads again a tree that changed and a page's reading view
- * whose cached revision is older than the one written (or not read yet),
- * through the refresher; the pages of the notebook's tags, which a page
- * written or deleted may join or leave (M6 design 4.8); and the properties
- * of the pages written, through the refresher (M6/P7 design 11).
+ * pagesChanged reads again a tree that changed, through the refresher: an
+ * upload is a unit of its own, and a run of them reads the tree once
+ * (M7/P2 design 3.10); a page's reading view whose cached revision is
+ * older than the one written (or not read yet), through the refresher
+ * too; the pages of the notebook's tags, which a page written or deleted
+ * may join or leave (M6 design 4.8); and the properties of the pages
+ * written, through the refresher (M6/P7 design 11).
  */
 const pagesChanged: EventHandler = (data, context) => {
   const { cache, mutate, refresher } = context;
   const { notebook_id: notebook, tree, pages } = data as EventPages;
   if (tree) {
-    void mutate(["pages", notebook]);
+    refresher.request(unstable_serialize(["pages", notebook]), () => void mutate(["pages", notebook]));
   }
   if (tree || pages === null || pages.length > 0) {
     readTagPages(notebook, context);

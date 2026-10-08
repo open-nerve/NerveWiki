@@ -49,11 +49,11 @@ export const PageLayout = observer(function PageLayout() {
   const { pageId = "" } = useParams();
   const { error, mutate } = useSWR(["pages", notebook.id], () => pages.load());
   const [last, setLast] = useState<TreeNode | undefined>(undefined);
-  const found = pages.nodes === undefined ? undefined : pages.byId(pageId);
+  const found = pages.tree === undefined ? undefined : pages.byId(pageId);
   if (found !== undefined && found !== last) {
     setLast(found);
   }
-  if (pages.nodes === undefined) {
+  if (pages.tree === undefined) {
     return <NotLoaded error={error} retry={() => void mutate()} />;
   }
   const page = found ?? (last?.id === pageId && store.unsavedEdit({ pageId }) ? last : undefined);
