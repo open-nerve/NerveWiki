@@ -24,15 +24,22 @@ import (
 // reasoned, not proved (design 3.4), so this checks it. Runs of random
 // writes through serve, in a tree whose titles repeat and clash, with
 // links of every form, relative and from the root, in the body and in
-// properties, and aliases: after each, in a transaction that rolls back,
-// the notebook's index before its rebuild is the index after. After a
-// rename or a move, each link that led to a page leads to it still, the
-// links its rewrite wrote among them (M6/P4 design 8).
+// properties, and aliases, and attachments uploaded, renamed, moved and
+// deleted among the pages, links to them too (M7/P3 design 4.9): after
+// each, in a transaction that rolls back, the notebook's index before its
+// rebuild is the index after. After a rename or a move, each link that led
+// to a node leads to it still, the links its rewrite wrote among them (M6/P4
+// design 8).
 func TestTheIndexIsItsRebuild(t *testing.T) {
-	rewritten, flagged := 0, 0 // flagged: the runs where a link was a value of the aliases after some step
+	rewritten, flagged := 0, 0        // flagged: the runs where a link was a value of the aliases after some step
+	toAssets, assetsRewritten := 0, 0 // toAssets: the steps after which a link resolved to an attachment
 	defer func() {
 		if !t.Failed() && rewritten < 20 {
 			t.Errorf("the renames and moves wrote %d pages again, want more: the runs test little of the rewrite", rewritten)
+		}
+		if !t.Failed() && (toAssets < 20 || assetsRewritten < 2) {
+			t.Errorf("%d steps had a link to an attachment, and its renames and moves wrote %d pages again, want more: "+
+				"the runs test little of the attachments", toAssets, assetsRewritten)
 		}
 		// Counted over the runs, not each: a run may well have none (M6 closeout A-N6).
 		if !t.Failed() && flagged == 0 {
@@ -59,6 +66,9 @@ func TestTheIndexIsItsRebuild(t *testing.T) {
 					t.Fatalf("after step %d, %s, the index is not its rebuild:\n%s", step, what, diff(before, after))
 				}
 				aliased = aliased || slices.ContainsFunc(after, func(row string) bool { return strings.HasSuffix(row, " aliases=true") })
+				if slices.ContainsFunc(after, func(row string) bool { return strings.Contains(row, " asset=true ") }) {
+					toAssets++
+				}
 				if now := tm.ledTo(t, w.nb); ok && relocates && !leadStill(led, now) {
 					t.Fatalf("after step %d, %s, a link leads elsewhere:\n%v\nwas\n%v", step, what, now, led)
 				}
@@ -69,10 +79,14 @@ func TestTheIndexIsItsRebuild(t *testing.T) {
 			rewritten += count(t, tm.pool, `SELECT count(*) FROM page_revisions r WHERE EXISTS (SELECT 1 FROM changeset_items i
 				WHERE i.changeset_id = r.changeset_id AND i.node_id <> r.node_id AND i.before_name IS NOT NULL
 				AND i.after_name IS NOT NULL)`)
+			assetsRewritten += count(t, tm.pool, `SELECT count(*) FROM page_revisions r WHERE EXISTS (SELECT 1 FROM changeset_items i
+				JOIN nodes n ON n.id = i.node_id AND n.kind = 'asset'
+				WHERE i.changeset_id = r.changeset_id AND i.before_name IS NOT NULL AND i.after_name IS NOT NULL)`)
 			if aliased {
 				flagged++
 			}
 			checkPages(t, tm.pool)
+			checkAssets(t, tm.pool, tm.storage)
 		})
 	}
 }
@@ -120,9 +134,9 @@ func (tm acmeTeam) indexOf(ctx context.Context, t *testing.T, nb string) []strin
 	t.Helper()
 	rows, err := postgres.DB(ctx, tm.pool).Query(ctx, `
 		SELECT format('page %s %s %s %s', node_id, revision, extractor, frontmatter_valid) FROM indexed_pages WHERE notebook_id = $1
-		UNION ALL SELECT format('link %s %s-%s %s %s %L %s %s %s %s %s %s', source_id, range_start, range_end, kind,
+		UNION ALL SELECT format('link %s %s-%s %s %s %L %s %s %s %s %s %s asset=%s', source_id, range_start, range_end, kind,
 			coalesce(property_key, '-'), target, coalesce(anchor, '-'), coalesce(display, '-'), coalesce(target_key, '-'),
-			coalesce(target_alt_key, '-'), coalesce(resolved_id::text, '-'), ambiguous) || ' aliases=' || aliases::text
+			coalesce(target_alt_key, '-'), coalesce(resolved_id::text, '-'), ambiguous, resolved_asset) || ' aliases=' || aliases::text
 		FROM page_links WHERE notebook_id = $1
 		UNION ALL SELECT format('tag %s %s %s %s', source_id, tag_key, tag, count) FROM page_tags WHERE notebook_id = $1
 		UNION ALL SELECT format('property %s %s %s %s', source_id, position, key, value) FROM page_properties WHERE notebook_id = $1
@@ -213,17 +227,25 @@ type writer struct {
 	rnd *rand.Rand
 }
 
-// The titles, targets and aliases the writes draw from: titles that repeat
-// and differ only by case, by "ß" or by length, a title with ".md", targets
-// of every form the resolution takes, and aliases that are titles too.
+// The titles, names, targets and aliases the writes draw from: titles that
+// repeat and differ only by case, by "ß" or by length, a title with ".md",
+// one an attachment has too; attachments' names that repeat, differ by
+// case, have no extension or a dot within; targets of every form the
+// resolution takes, to pages and to attachments, and aliases that are
+// titles too.
 
 func (w writer) title() string {
-	return pickOf(w.rnd, "A", "B", "AB", "note", "Note.md", "dup", "Straße", "STRASSE")
+	return pickOf(w.rnd, "A", "B", "AB", "note", "Note.md", "dup", "Straße", "STRASSE", "x.png")
+}
+
+func (w writer) assetName() string {
+	return pickOf(w.rnd, "x.png", "X.PNG", "note.png", "dup.pdf", "v1.2", "data", "Straße.png")
 }
 
 func (w writer) target() string {
 	return pickOf(w.rnd, "A", "B", "note", "dup", "A/dup", "B/note", "AB/dup", "A/B/dup", "../dup", "./note", "../../A", "/A",
-		"/B/dup", "Note.md", "note.MD", "A/Note.md", "nick", "Nick", "Straße", "strasse", "missing", "A//B")
+		"/B/dup", "Note.md", "note.MD", "A/Note.md", "nick", "Nick", "Straße", "strasse", "missing", "A//B",
+		"x.png", "A/x.png", "./x.png", "x.png.md", "note.png", "dup.pdf", "v1.2", "data", "strasse.png", "B/X.png")
 }
 
 func (w writer) aliases() []string {
@@ -247,6 +269,13 @@ func pickOf(rnd *rand.Rand, from ...string) string {
 type livePage struct {
 	id       string
 	revision int
+}
+
+// assets are the ids of the notebook's attachments not deleted.
+func (w writer) assets() []string {
+	w.t.Helper()
+	return queryStrings(w.t, w.tm.pool, `SELECT id::text FROM nodes WHERE notebook_id = $1 AND kind = 'asset'
+		AND deleted_at IS NULL ORDER BY id`, w.nb)
 }
 
 func (w writer) pages() []livePage {
@@ -274,10 +303,12 @@ func (w writer) pages() []livePage {
 
 // random makes one random write, and tells what it was, whether serve took
 // it, and whether it was a rename or a move: one it refuses (a title
-// taken, a cycle, a tree too deep) changes nothing.
+// taken, a cycle, a tree too deep, an attachment's extension dropped)
+// changes nothing. A rename, a move and a deletion are of a page or an
+// attachment.
 func (w writer) random() (string, bool, bool) {
 	w.t.Helper()
-	pages := w.pages()
+	pages, assets := w.pages(), w.assets()
 	pick := func() livePage { return pages[w.rnd.IntN(len(pages))] }
 	parent := func() string {
 		if len(pages) == 0 || w.rnd.IntN(2) == 0 {
@@ -286,9 +317,16 @@ func (w writer) random() (string, bool, bool) {
 		return pick().id
 	}
 	title := w.title()
+	// node is a page or an attachment, by its id, and its new name.
+	node := func() (string, string) {
+		if n := w.rnd.IntN(len(pages) + len(assets)); n >= len(pages) {
+			return assets[n-len(pages)], w.assetName()
+		}
+		return pick().id, title
+	}
 	var c step
 	relocates := false
-	switch op := w.rnd.IntN(10); {
+	switch op := w.rnd.IntN(12); {
 	case len(pages) < 4 || op < 3:
 		body := map[string]any{"parent_id": nil, "title": title, "content": w.content()}
 		if p := parent(); p != "" {
@@ -297,16 +335,21 @@ func (w writer) random() (string, bool, bool) {
 		b, _ := json.Marshal(body)
 		c = request("alice", http.MethodPost, "/api/v0/notebooks/"+w.nb+"/pages", string(b))
 	case op < 5:
-		c, relocates = nodeRename("alice", pick().id, title), true
+		c = assetUpload(w.t, "alice", w.nb, parent(), w.assetName(), pngFile)
 	case op < 7:
-		c, relocates = nodeMove("alice", pick().id, parent()), true
-	case op < 8:
-		c = nodeDeletion("alice", pick().id)
+		id, name := node()
+		c, relocates = nodeRename("alice", id, name), true
+	case op < 9:
+		id, _ := node()
+		c, relocates = nodeMove("alice", id, parent()), true
+	case op < 10:
+		id, _ := node()
+		c = nodeDeletion("alice", id)
 	default:
 		p := pick()
 		c = contentWrite("alice", p.id, w.content(), p.revision, "")
 	}
-	status, answer := ask(w.t, w.tm.contract, c.method, w.tm.base+c.path, w.tm.tokens["alice"], c.body)
+	status, answer := askTyped(w.t, w.tm.contract, c.method, w.tm.base+c.path, w.tm.tokens["alice"], c.contentType, c.body)
 	if status >= http.StatusInternalServerError {
 		w.t.Fatalf("%s %s %s = %d %s", c.method, c.path, c.body, status, answer)
 	}

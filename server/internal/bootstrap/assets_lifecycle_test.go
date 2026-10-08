@@ -138,29 +138,6 @@ func TestTheOwnerlessListShowsTheAttachmentsActivity(t *testing.T) {
 	checkAssets(t, tm.pool, tm.storage)
 }
 
-// An attachment is no link target (M7/P2 design 3.3): a page's [[x.png]]
-// stays unresolved with x.png beside it, and renaming the attachment
-// writes no page again.
-func TestAnAttachmentIsNoLinkTarget(t *testing.T) {
-	tm := newAcmeTeam(t, "member", "")
-	nb := tm.openNotebook(t, "alice", "Eng")
-	page := tm.createPageWith(t, "alice", nb, "", "Notes", "[[x.png]]\n")
-	x := tm.upload(t, "alice", nb, "", "x.png", pngFile)
-	resolved := "SELECT coalesce(resolved_id::text, 'none') FROM page_links WHERE source_id = $1"
-	if got := queryStrings(t, tm.pool, resolved, page); len(got) != 1 || got[0] != "none" {
-		t.Errorf("[[x.png]] resolves to %v, want nothing", got)
-	}
-	tm.send(t, nodeRename("alice", x.ID, "y.png"), http.StatusOK)
-	if n := count(t, tm.pool, "SELECT revision FROM page_contents WHERE node_id = $1", page); n != 1 {
-		t.Errorf("Notes is at revision %d after the attachment's rename, want 1", n)
-	}
-	if got := queryStrings(t, tm.pool, resolved, page); len(got) != 1 || got[0] != "none" {
-		t.Errorf("[[x.png]] resolves to %v after the rename, want nothing", got)
-	}
-	checkPages(t, tm.pool)
-	checkAssets(t, tm.pool, tm.storage)
-}
-
 // The downloads take from their own bucket (M7/P2 design 3.6): with the
 // anonymous one empty, an address still downloads, until the downloads'
 // own bucket runs out.
