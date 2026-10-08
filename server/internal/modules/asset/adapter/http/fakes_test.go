@@ -295,13 +295,17 @@ func (w *memWriter) close(keep bool) error {
 
 type memFile struct {
 	*bytes.Reader
-	f *memFiles
+	f      *memFiles
+	closed bool
 }
 
 func (m *memFile) Close() error {
 	m.f.mu.Lock()
 	defer m.f.mu.Unlock()
-	m.f.reading--
+	if !m.closed {
+		m.closed = true
+		m.f.reading--
+	}
 	return nil
 }
 

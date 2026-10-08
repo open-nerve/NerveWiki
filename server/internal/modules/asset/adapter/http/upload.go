@@ -118,19 +118,19 @@ func (h upload) early(w http.ResponseWriter, r *http.Request, err error) {
 
 // readFailed answers an upload whose body failed. The server's shutdown
 // cut it off, its deadlines passed: the connection is aborted, logged as
-// no error. A file over the largest is 413; a body that did not arrive
-// whole, the client gone or too slow, is logged and answered 400 if the
-// connection still takes it, its cause named but not the parser's words,
-// which quote the client's lines. Any other error is the platform's to
-// answer: a ProblemError as itself, the rest 500.
+// no error. A file over the largest is 413 (the route's limit, the largest
+// and the Envelope, is reached after the form only, which end answers); a
+// body that did not arrive whole, the client gone or too slow, is logged
+// and answered 400 if the connection still takes it, its cause named but
+// not the parser's words, which quote the client's lines. Any other error
+// is the platform's to answer: a ProblemError as itself, the rest 500.
 func (h upload) readFailed(w http.ResponseWriter, r *http.Request, err error) {
-	var tooLarge *http.MaxBytesError
 	var read *app.ReadError
 	switch {
 	case errors.Is(err, httpserver.ErrShuttingDown):
 		h.logger.InfoContext(r.Context(), "upload cut off by the shutdown", slog.String("request_id", httpserver.RequestID(r.Context())))
 		panic(http.ErrAbortHandler)
-	case errors.Is(err, domain.ErrTooLarge) || errors.As(err, &tooLarge):
+	case errors.Is(err, domain.ErrTooLarge):
 		h.errors.Write(w, r, &http.MaxBytesError{Limit: h.maxBytes})
 	case errors.As(err, &read):
 		h.logger.InfoContext(r.Context(), "upload not received", slog.String("request_id", httpserver.RequestID(r.Context())),
@@ -261,17 +261,18 @@ func readCause(err error) string {
 
 // end reads what follows the file: its closing boundary and nothing else,
 // then the body to its end, so that the stream's read deadline goes (M7/P1
-// design 7). A part after the file is 400, answered before it is read, and
-// so is a body that goes on past the route's limit after the form.
+// design 7). A part after the file is 400, answered before it is read,
+// one whose header runs past the route's limit too, and so is a body that
+// goes on past the limit after the form.
 func (f *form) end(r *http.Request) error {
+	var tooLarge *http.MaxBytesError
 	_, err := f.reader.NextRawPart()
 	switch {
-	case err == nil:
+	case err == nil || errors.As(err, &tooLarge):
 		return badRequest("The form has a part after the file.")
 	case !errors.Is(err, io.EOF):
 		return f.readError(err)
 	}
-	var tooLarge *http.MaxBytesError
 	switch _, err := io.Copy(io.Discard, r.Body); {
 	case errors.As(err, &tooLarge):
 		return badRequest("The body goes on after the form's end.")

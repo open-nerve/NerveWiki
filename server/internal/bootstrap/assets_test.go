@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"io"
 	"io/fs"
 	"maps"
 	"mime/multipart"
@@ -175,4 +176,33 @@ func TestAnUploadNamedOutsideUTF8IsRefused(t *testing.T) {
 		t.Errorf("%d attachments' nodes, files %v; want none", n, storedBlobs(t, tm.storage))
 	}
 	checkAssets(t, tm.pool, tm.storage)
+}
+
+// A file far larger than what the upload reads before it, and than the
+// parser's buffers, goes up and comes back whole, a range of it too.
+func TestALargeFileUploadsAndDownloadsWhole(t *testing.T) {
+	tm := newAcmeTeam(t, "member", "")
+	nb := tm.openNotebook(t, "alice", "Eng")
+	content := make([]byte, 3<<20+7)
+	for i := range content {
+		content[i] = byte(i*31 + i>>8)
+	}
+	a := tm.upload(t, "alice", nb, "", "big.bin", string(content))
+	if status, body := tm.download(t, a.ContentURL); status != http.StatusOK || body != string(content) {
+		t.Errorf("download = %d, %d bytes; want 200, the %d bytes uploaded", status, len(body), len(content))
+	}
+	req, err := http.NewRequest(http.MethodGet, tm.base+a.ContentURL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Range", "bytes=2000000-2000009")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = res.Body.Close() }()
+	got, err := io.ReadAll(res.Body)
+	if err != nil || res.StatusCode != http.StatusPartialContent || !bytes.Equal(got, content[2000000:2000010]) {
+		t.Errorf("a range = %d %v, %v; want 206, those 10 bytes", res.StatusCode, got, err)
+	}
 }

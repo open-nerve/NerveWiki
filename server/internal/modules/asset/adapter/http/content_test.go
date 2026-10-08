@@ -250,6 +250,11 @@ func TestSignatureIsSpelledInBase64URL(t *testing.T) {
 			t.Errorf("Signature(%q) = %v, want %v", tt.s, got, tt.want)
 		}
 	}
+	for _, c := range "@[`{/:" { // beside the ranges
+		if s := "AZaz09-_AZaz09-_AZaz0" + string(c); httpadapter.Signature(s) {
+			t.Errorf("Signature(%q) = true, want false", s)
+		}
+	}
 }
 
 // code is a problem's code.

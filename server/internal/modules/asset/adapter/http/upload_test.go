@@ -294,7 +294,7 @@ func TestUploadPastItsDeadlineIsLoggedAsAWarning(t *testing.T) {
 func TestUploadRefusesABodyAfterTheForm(t *testing.T) {
 	h := newHarness(t)
 	ct, body := form(t, file("a.png", "x"))
-	body = append(body, strings.Repeat("z", maxBytes+httpadapter.Envelope)...)
+	body = append(body, strings.Repeat("z", maxBytes+64<<10)...) // the route's limit, the file's and the envelope's
 	res, answer := h.post(t, uploadPath(), "session", ct, bytes.NewReader(body))
 	if res.StatusCode != http.StatusBadRequest || !strings.Contains(string(answer), "after the form's end") {
 		t.Errorf("upload = %d %s, want 400 for the body after the form", res.StatusCode, answer)
