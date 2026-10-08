@@ -5,7 +5,8 @@
 //   node verify-rename.mjs check <workdir> [port]   rename in Obsidian case by case, and compare (default port 9333)
 //
 // A page A is A.md, its children are in A/: renaming or moving a page with children is two renames in Obsidian, of
-// A.md and then of A/. Obsidian rewrites links only through app.fileManager.renameFile, and without asking only with
+// A.md and then of A/. An attachment is a file of its name, an image a real one, and renaming or moving it is one
+// rename (M7/P3 design 4.8); the vault shows every type of file. Obsidian rewrites links only through app.fileManager.renameFile, and without asking only with
 // "Automatically update internal links" on; the check turns it on, with the default (shortest) link format. Each case
 // empties the vault and builds its pages in it again. Obsidian-verified cases must match; nerve-defined ones only
 // report how they differ.
@@ -20,6 +21,9 @@ if (!["prepare", "check"].includes(cmd) || !workArg) {
   process.exit(2);
 }
 const work = resolve(workArg);
+// A 7×5 PNG, base64, for the attachments that are images; any other's bytes are a few of text.
+const png = "iVBORw0KGgoAAAANSUhEUgAAAAcAAAAFCAYAAACJmvbYAAAAEklEQVR42mM4YWPzHxdmGABJADoKTp7oONgaAAAAAElFTkSuQmCC";
+const isImage = (name) => /\.(png|jpe?g|gif|webp|bmp|avif)$/i.test(name);
 
 if (cmd === "prepare") {
   // It empties work: only a directory it made before, or none.
@@ -46,10 +50,12 @@ const cases = readdirSync(dir)
     const c = JSON.parse(readFileSync(join(dir, f), "utf8"));
     const base = f.slice(0, -5);
     const page = c.page ?? "src";
+    const assets = c.assets ?? [];
     return Object.assign(c, {
       name: base,
       page,
-      pages: c.pages ?? [c.from, page],
+      assets,
+      pages: c.pages ?? (assets.includes(c.from) ? [page] : [c.from, page]),
       md: readFileSync(join(dir, `${base}.md`), "utf8"),
       out: readFileSync(join(dir, `${base}.out.md`), "utf8"),
     });
@@ -82,8 +88,11 @@ function caseExpression(c) {
       return [`${p}.md`, body];
     })
   );
-  const withChildren = c.pages.some((p) => p.startsWith(`${c.from}/`));
-  const renames = [[`${c.from}.md`, `${c.to}.md`], ...(withChildren ? [[c.from, c.to]] : [])];
+  const withChildren = [...c.pages, ...c.assets].some((p) => p.startsWith(`${c.from}/`));
+  const renames = c.assets.includes(c.from)
+    ? [[c.from, c.to]]
+    : [[`${c.from}.md`, `${c.to}.md`], ...(withChildren ? [[c.from, c.to]] : [])];
+  const binaries = Object.fromEntries(c.assets.map((a) => [a, isImage(a) ? png : btoa("not really\n")]));
   const moved = c.page === c.from || c.page.startsWith(`${c.from}/`);
   const after = `${moved ? c.to + c.page.slice(c.from.length) : c.page}.md`;
   return `(async () => {
@@ -111,6 +120,11 @@ function caseExpression(c) {
     app.vault.setConfig("alwaysUpdateLinks", true);
     app.vault.setConfig("newLinkFormat", "shortest");
     app.vault.setConfig("useMarkdownLinks", false);
+    app.vault.setConfig("showUnsupportedFiles", true);
+    for (const [path, b64] of Object.entries(${JSON.stringify(binaries)})) {
+      await folder(path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "");
+      await app.vault.createBinary(path, Uint8Array.from(atob(b64), (ch) => ch.charCodeAt(0)).buffer);
+    }
     for (const [path, body] of Object.entries(${JSON.stringify(files)})) {
       await folder(path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "");
       await app.vault.create(path, body);

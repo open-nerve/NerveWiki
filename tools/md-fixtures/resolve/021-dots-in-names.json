@@ -1,0 +1,23 @@
+{
+  "description": "名称里有不在首尾的点就有扩展名（最后一个点之后的部分）：附件 v1.2 存在时 [[v1.2]] 是它，不是根下的页面 v1.2；[[v1.2.md]] 是页面",
+  "source": "obsidian-verified",
+  "pages": ["v1.2", "notes.v2", "A", "src"],
+  "assets": ["A/v1.2"],
+  "links": [
+    {
+      "from": "src",
+      "link": "[[v1.2]]",
+      "to": "A/v1.2"
+    },
+    {
+      "from": "src",
+      "link": "[[notes.v2]]",
+      "to": "notes.v2"
+    },
+    {
+      "from": "src",
+      "link": "[[v1.2.md]]",
+      "to": "v1.2"
+    }
+  ]
+}

@@ -3,6 +3,7 @@ package postgresadapter_test
 import (
 	"context"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 	"uuid"
@@ -11,19 +12,21 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
 )
 
-// pathOf is the path the link index reads of nodes, from the root down.
+// pathOf is the path the link index reads of nodes, from the root down, the
+// last's kind its own.
 func pathOf(nodes ...domain.Node) postgresadapter.LinkPath {
-	p := postgresadapter.LinkPath{ID: nodes[len(nodes)-1].ID}
+	p := postgresadapter.LinkPath{ID: nodes[len(nodes)-1].ID, Asset: nodes[len(nodes)-1].Kind == domain.KindAsset}
 	for _, n := range nodes {
 		p.Steps = append(p.Steps, postgresadapter.LinkStep{ID: n.ID, Key: n.NameKey, Name: n.Name})
 	}
 	return p
 }
 
-// The link index's candidates are the pages of the notebook whose title key
-// it names, each with its path from the root: not another notebook's, not an
-// attachment, not a deleted page; and the pages of the notebook among ids.
-func TestLinkTargetsAreTheNotebooksPagesWithTheirPaths(t *testing.T) {
+// The link index's candidates are the pages and attachments of the notebook
+// whose title key it names, each with its path from the root and its kind:
+// not another notebook's, not a deleted one; and the pages and attachments
+// of the notebook among ids (M7/P3 design 4.3).
+func TestLinkTargetsAreTheNotebooksNodesWithTheirPaths(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()
 	note := f.page(t, f.eng, nil, "Note", 0)
@@ -47,7 +50,7 @@ func TestLinkTargetsAreTheNotebooksPagesWithTheirPaths(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []postgresadapter.LinkPath{pathOf(note), pathOf(a, aNote), pathOf(a, b), pathOf(a, b, bNote)}
+	want := []postgresadapter.LinkPath{pathOf(note), pathOf(a, aNote), pathOf(a, b), pathOf(a, b, bNote), pathOf(c, asset)}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("by keys = %+v\nwant %+v", got, want)
 	}
@@ -59,11 +62,57 @@ func TestLinkTargetsAreTheNotebooksPagesWithTheirPaths(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := []postgresadapter.LinkPath{pathOf(a), pathOf(a, b, bNote)}; !reflect.DeepEqual(got, want) {
+	if want := []postgresadapter.LinkPath{pathOf(a), pathOf(a, b, bNote), pathOf(c, asset)}; !reflect.DeepEqual(got, want) {
 		t.Errorf("by ids = %+v\nwant %+v", got, want)
 	}
 	if got, err := f.s.LinkTargetsByIDs(ctx, f.eng, nil); err != nil || got != nil {
 		t.Errorf("by no ids = %+v, %v", got, err)
+	}
+}
+
+// An attachment's link reads the attachments among ids, each with its path
+// and how many of the notebook's attachments not deleted have its title
+// key, itself among them, counted to 2: not a page of the key, not a
+// deleted one, not another notebook's (M7/P3 design 4.6).
+func TestAttachmentsAreReadWithHowManyHaveTheirTitleKey(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	a := f.page(t, f.eng, nil, "A", 0)
+	b := f.page(t, f.eng, nil, "B", 1)
+	f.page(t, f.eng, nil, "x.png", 2)
+	asset := func(notebook uuid.UUID, parent *uuid.UUID, name string, order float64) domain.Node {
+		t.Helper()
+		n := domain.Node{ID: uuid.NewV7(), NotebookID: notebook, ParentID: parent, Kind: domain.KindAsset, Name: name,
+			NameKey: strings.ToLower(name), SortOrder: order, CreatedBy: f.alice, UpdatedBy: f.alice, CreatedAt: now(), UpdatedAt: now()}
+		if err := f.s.CreateNode(ctx, n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	c := f.page(t, f.eng, nil, "C", 3)
+	x, other := asset(f.eng, &a.ID, "x.png", 0), asset(f.eng, &b.ID, "X.PNG", 0)
+	asset(f.eng, &c.ID, "x.png", 0)
+	f.page(t, f.eng, nil, "y.png", 4)
+	y, gone := asset(f.eng, &a.ID, "y.png", 1), asset(f.eng, &b.ID, "y.png", 1)
+	asset(f.ops, nil, "x.png", 0)
+	asset(f.ops, nil, "y.png", 1)
+	if err := f.s.DeleteNodes(ctx, []uuid.UUID{gone.ID}, f.alice, now().Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := f.s.AttachmentsByIDs(ctx, f.eng, []uuid.UUID{y.ID, a.ID, gone.ID, x.ID})
+	want := []postgresadapter.AttachmentPath{{LinkPath: pathOf(a, x), Alike: 2}, {LinkPath: pathOf(a, y), Alike: 1}}
+	if x.ID.Compare(y.ID) > 0 {
+		want[0], want[1] = want[1], want[0]
+	}
+	if err != nil || !reflect.DeepEqual(got, want) {
+		t.Errorf("attachments = %+v, %v\nwant %+v", got, err, want)
+	}
+	if got, err := f.s.AttachmentsByIDs(ctx, f.eng, []uuid.UUID{other.ID}); err != nil || len(got) != 1 || got[0].Alike != 2 {
+		t.Errorf("the other x.png = %+v, %v; want it with two alike", got, err)
+	}
+	if got, err := f.s.AttachmentsByIDs(ctx, f.eng, nil); err != nil || len(got) != 0 {
+		t.Errorf("no attachments = %+v, %v", got, err)
 	}
 }
 

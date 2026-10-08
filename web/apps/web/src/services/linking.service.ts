@@ -35,7 +35,7 @@ export class LinkingService {
     );
   }
 
-  /** linkTargets answers what the notebook's links may lead to: its pages, each with its link and aliases, by id. */
+  /** linkTargets answers what the notebook's links may lead to: its pages and attachments, each with its kind, link and aliases, by id. */
   async linkTargets(notebookId: string): Promise<LinkTarget[]> {
     const { data } = await unwrap(
       await this.api.GET("/api/v0/notebooks/{notebook_id}/link-targets", {

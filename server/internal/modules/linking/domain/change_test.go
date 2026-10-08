@@ -119,8 +119,8 @@ func TestRelocationIsWhatARewriteFollows(t *testing.T) {
 // A page's path before a rename or a move: the name before on the path of
 // every page under the node renamed, its own too; the former parent's path
 // before those under the node moved, the root's none; a page off them as
-// it is. The former parents are those of the nodes moved under another
-// parent, each once.
+// it is; an attachment's the same, of its kind. The former parents are
+// those of the nodes moved under another parent, each once.
 func TestAPathBeforeARenameOrAMove(t *testing.T) {
 	a, b, x, y, z := uuid.NewV7(), uuid.NewV7(), uuid.NewV7(), uuid.NewV7(), uuid.NewV7()
 	step := func(id uuid.UUID, name string) domain.Step {
@@ -128,6 +128,11 @@ func TestAPathBeforeARenameOrAMove(t *testing.T) {
 	}
 	at := func(parent *uuid.UUID, name string) *domain.Place { return &domain.Place{ParentID: parent, Name: name} }
 	node := func(steps ...domain.Step) domain.Node { return domain.Node{ID: steps[len(steps)-1].ID, Path: steps} }
+	asset := func(steps ...domain.Step) domain.Node {
+		n := node(steps...)
+		n.Asset = true
+		return n
+	}
 	renamed := []domain.Change{{NodeID: x, Before: at(&a, "Old"), After: at(&a, "New")}}
 	moved := []domain.Change{
 		{NodeID: x, Before: at(&a, "X"), After: at(&b, "X")},
@@ -149,6 +154,9 @@ func TestAPathBeforeARenameOrAMove(t *testing.T) {
 		{"a page under it", node(step(b, "B"), step(x, "X"), step(y, "Y")), moved, node(step(a, "A"), step(x, "X"), step(y, "Y"))},
 		{"a page moved to the root", node(step(x, "X")), toRoot, node(step(a, "A"), step(x, "X"))},
 		{"a page moved from the root", node(step(b, "B"), step(x, "X")), fromRoot, node(step(x, "X"))},
+		{"an attachment under it", asset(step(a, "A"), step(x, "New"), step(z, "z.png")), renamed,
+			asset(step(a, "A"), step(x, "Old"), step(z, "z.png"))},
+		{"an attachment moved", asset(step(b, "B"), step(x, "X")), moved, asset(step(a, "A"), step(x, "X"))},
 	} {
 		if got := domain.PathBefore(tt.n, tt.changes, parents); !reflect.DeepEqual(got, tt.want) {
 			t.Errorf("%s: %+v, want %+v", tt.name, got, tt.want)

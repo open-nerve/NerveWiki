@@ -113,6 +113,24 @@ test("a link with no landing says why; OK gives the focus back to the link", asy
   }
 });
 
+test("a link to an attachment's name says so, and its view is read again: it was read before the attachment was there maybe", async () => {
+  const { server } = await open(linkTo("x.png"));
+  server.landings.set("x.png", { node_id: null, landing: null, reason: "target_is_asset" });
+
+  await userEvent.click(await button("x.png"));
+  const dialog = await screen.findByRole("alertdialog", { name: "“x.png” does not exist" });
+  expect(
+    within(dialog).getByText("This name is an attachment's, not a page's; no page is created for it.")
+  ).toBeTruthy();
+  await waitFor(() => {
+    const sent = server.sent.filter((each) => !each.startsWith("GET nodes") && !each.startsWith("GET backlinks"));
+    expect(sent.slice(sent.indexOf("GET landing x.png"))).toEqual(["GET landing x.png", "GET view Guide"]);
+  });
+  await userEvent.click(within(dialog).getByRole("button", { name: "OK" }));
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "x.png" })));
+  expect(server.sent.filter((each) => each.startsWith("POST"))).toEqual([]);
+});
+
 test("to a reader, a link says its page is not there; to anyone, an embed and an image do: no question goes out", async () => {
   const html = `${linkTo("x")} ${linkTo("E", "E", "nw-wikilink nw-embed nw-unresolved")} <span class="nw-image">pic ${linkTo("p.png", "p.png", "nw-unresolved")}</span>`;
   const texts = {

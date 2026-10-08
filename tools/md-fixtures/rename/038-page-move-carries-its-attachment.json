@@ -1,0 +1,16 @@
+{
+  "description": "移动一页时它下面的附件随之移动，指向附件、移动之后引向别处的链接改写",
+  "source": "obsidian-verified",
+  "pages": [
+    "A",
+    "B",
+    "ZZ",
+    "src"
+  ],
+  "assets": [
+    "A/x.png",
+    "ZZ/x.png"
+  ],
+  "from": "A",
+  "to": "B/A"
+}

@@ -1,0 +1,17 @@
+{
+  "description": "一页移出附件所在的子树时，它里面指向附件、移动之后引向别处的链接改写",
+  "source": "obsidian-verified",
+  "pages": [
+    "A",
+    "A/B",
+    "Q",
+    "A/src"
+  ],
+  "assets": [
+    "A/B/x.png",
+    "Q/x.png"
+  ],
+  "page": "A/src",
+  "from": "A/src",
+  "to": "src"
+}

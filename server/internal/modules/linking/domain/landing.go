@@ -10,7 +10,7 @@ import (
 // Reason is why a link's target has no landing.
 type Reason string
 
-// The reasons a target has no landing (M6/P6 design 2).
+// The reasons a target has no landing (M6/P6 design 2; M7/P3 design 4.5).
 const (
 	// TargetInvalid: the target cuts into no segments a page could have.
 	TargetInvalid Reason = "target_invalid"
@@ -23,6 +23,11 @@ const (
 	// NotResolvable: the target would not lead to the page made, or not to
 	// it alone.
 	NotResolvable Reason = "not_resolvable"
+	// TargetIsAsset: the target is read as an attachment's, which it leads
+	// to or not, so that a page made for it would not be its target; or the
+	// page made would have the title of an attachment beside it, which
+	// shares the pages' names.
+	TargetIsAsset Reason = "target_is_asset"
 )
 
 // MaxLandingTarget is the longest target, in bytes, whose landing is read
@@ -31,8 +36,9 @@ const MaxLandingTarget = 4096
 
 // Landing is where a page made for a link's target would go, so that the
 // link leads to it (M6/P6 design 2): under Parent, the zero id for the
-// root, titled Title. Node is the page the target leads to already; Reason
-// why there is none. Exactly one of Node, Title and Reason is set.
+// root, titled Title. Node is the page the target leads to already, never
+// an attachment; Reason why there is none. Exactly one of Node, Title and
+// Reason is set.
 type Landing struct {
 	Node   uuid.UUID
 	Parent uuid.UUID
@@ -42,9 +48,12 @@ type Landing struct {
 
 // Land is the landing of t, written in the page at from (itself last),
 // among candidates and aliased, as Resolve reads them, and parents, the
-// pages whose title key is that of t's segment before its last, if it has
-// one; a page is at most maxDepth deep (M6/P6 design 2):
+// nodes whose title key is that of t's segment before its last, if it has
+// one, of which the pages alone are; a page is at most maxDepth deep
+// (M6/P6 design 2; M7/P3 design 4.5):
 //
+//   - none, TargetIsAsset, if t is read as an attachment's, which it leads
+//     to or not;
 //   - the page t resolves to, if it resolves;
 //   - else its title, the last segment as written without its ".md", as
 //     titles are checked;
@@ -53,8 +62,13 @@ type Landing struct {
 //     t.Up for a relative target and from the root for a rooted one, and
 //     else by the resolution's first three steps, not by aliases, which
 //     lead from a name alone only;
+//   - none, TargetIsAsset, if an attachment there has its title (written
+//     with ".md", or without an extension, t is read as a page's);
 //   - and only if t would then resolve to the page made, and to it alone.
 func Land(t Target, from []Step, candidates, parents []Node, aliased map[string][]Node, maxDepth int) Landing {
+	if t.ReadsAsAsset(candidates) {
+		return Landing{Reason: TargetIsAsset}
+	}
 	if r := Resolve(t, from, candidates, aliased); r.ID != (uuid.UUID{}) {
 		return Landing{Node: r.ID}
 	}
@@ -62,12 +76,15 @@ func Land(t Target, from []Step, candidates, parents []Node, aliased map[string]
 	if problem != nil {
 		return Landing{Reason: TitleInvalid}
 	}
-	parent, ok := t.parent(from, parents)
+	parent, ok := t.parent(from, slices.DeleteFunc(slices.Clone(parents), func(n Node) bool { return n.Asset }))
 	if !ok {
 		return Landing{Reason: ParentMissing}
 	}
 	if len(parent)+1 > maxDepth {
 		return Landing{Reason: TooDeep}
+	}
+	if key := shared.TitleKey(title); slices.ContainsFunc(candidates, func(n Node) bool { return n.Asset && n.key() == key && n.childOf(parent) }) {
+		return Landing{Reason: TargetIsAsset}
 	}
 	// The page made loses a tie, the least id winning one: resolving to it,
 	// t resolves to it alone, and Ambiguous only guards a rule that would
@@ -81,6 +98,14 @@ func Land(t Target, from []Step, candidates, parents []Node, aliased map[string]
 		id = parent[len(parent)-1].ID
 	}
 	return Landing{Parent: id, Title: title}
+}
+
+// childOf tells whether n's parent is the last of path, the root for none.
+func (n Node) childOf(path []Step) bool {
+	if len(n.Path) != len(path)+1 {
+		return false
+	}
+	return len(path) == 0 || n.Path[len(path)-1].ID == path[len(path)-1].ID
 }
 
 // parent is the path from the root of the page a page made for t, written
@@ -111,7 +136,7 @@ func exactPath(base []Step, keys []string, parents []Node) ([]Step, bool) {
 	if len(keys) == 0 {
 		return base, true
 	}
-	id, ok := nodeList(parents).exactly(base, keys)
+	id, ok := nodeList(parents).exactly(base, keys, false)
 	if !ok {
 		return nil, false
 	}

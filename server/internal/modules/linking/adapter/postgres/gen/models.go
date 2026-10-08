@@ -24,20 +24,21 @@ type PageAlias struct {
 }
 
 type PageLink struct {
-	SourceID     uuid.UUID
-	RangeStart   int32
-	RangeEnd     int32
-	NotebookID   uuid.UUID
-	Kind         string
-	PropertyKey  *string
-	Target       string
-	Anchor       *string
-	Display      *string
-	TargetKey    *string
-	TargetAltKey *string
-	ResolvedID   *uuid.UUID
-	Ambiguous    bool
-	Aliases      bool
+	SourceID      uuid.UUID
+	RangeStart    int32
+	RangeEnd      int32
+	NotebookID    uuid.UUID
+	Kind          string
+	PropertyKey   *string
+	Target        string
+	Anchor        *string
+	Display       *string
+	TargetKey     *string
+	TargetAltKey  *string
+	ResolvedID    *uuid.UUID
+	Ambiguous     bool
+	Aliases       bool
+	ResolvedAsset bool
 }
 
 type PageProperty struct {

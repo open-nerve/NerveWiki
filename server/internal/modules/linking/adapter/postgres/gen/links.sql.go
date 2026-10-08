@@ -100,7 +100,7 @@ func (q *Queries) InsertLinks(ctx context.Context, arg InsertLinksParams) error 
 }
 
 const linksReached = `-- name: LinksReached :many
-SELECT l.source_id, l.range_start, l.target, l.resolved_id, l.ambiguous, l.aliases
+SELECT l.source_id, l.range_start, l.target, l.resolved_id, l.ambiguous, l.resolved_asset, l.aliases
 FROM page_links l
 WHERE l.notebook_id = $1 AND (
     l.target_key = ANY($2::text[]) OR l.target_alt_key = ANY($2::text[])
@@ -117,12 +117,13 @@ type LinksReachedParams struct {
 }
 
 type LinksReachedRow struct {
-	SourceID   uuid.UUID
-	RangeStart int32
-	Target     string
-	ResolvedID *uuid.UUID
-	Ambiguous  bool
-	Aliases    bool
+	SourceID      uuid.UUID
+	RangeStart    int32
+	Target        string
+	ResolvedID    *uuid.UUID
+	Ambiguous     bool
+	ResolvedAsset bool
+	Aliases       bool
 }
 
 // The links of a notebook whose target's keys meet keys, that resolve to one of targets, or that are written in
@@ -147,6 +148,7 @@ func (q *Queries) LinksReached(ctx context.Context, arg LinksReachedParams) ([]L
 			&i.Target,
 			&i.ResolvedID,
 			&i.Ambiguous,
+			&i.ResolvedAsset,
 			&i.Aliases,
 		); err != nil {
 			return nil, err
@@ -160,17 +162,18 @@ func (q *Queries) LinksReached(ctx context.Context, arg LinksReachedParams) ([]L
 }
 
 const pageView = `-- name: PageView :many
-SELECT ip.revision, ip.extractor, l.range_start, l.resolved_id, l.ambiguous
+SELECT ip.revision, ip.extractor, l.range_start, l.resolved_id, l.ambiguous, l.resolved_asset
 FROM indexed_pages ip LEFT JOIN page_links l ON l.source_id = ip.node_id
 WHERE ip.node_id = $1
 `
 
 type PageViewRow struct {
-	Revision   int32
-	Extractor  int32
-	RangeStart *int32
-	ResolvedID *uuid.UUID
-	Ambiguous  *bool
+	Revision      int32
+	Extractor     int32
+	RangeStart    *int32
+	ResolvedID    *uuid.UUID
+	Ambiguous     *bool
+	ResolvedAsset *bool
 }
 
 // A page's index for its reading view (M6/P3 design 6.5): the revision and the extractor its rows are of, with where
@@ -191,6 +194,7 @@ func (q *Queries) PageView(ctx context.Context, nodeID uuid.UUID) ([]PageViewRow
 			&i.RangeStart,
 			&i.ResolvedID,
 			&i.Ambiguous,
+			&i.ResolvedAsset,
 		); err != nil {
 			return nil, err
 		}
@@ -204,28 +208,32 @@ func (q *Queries) PageView(ctx context.Context, nodeID uuid.UUID) ([]PageViewRow
 
 const setResolutions = `-- name: SetResolutions :execrows
 UPDATE page_links l
-SET resolved_id = NULLIF(u.resolved_id, '00000000-0000-0000-0000-000000000000'::uuid), ambiguous = u.ambiguous
+SET resolved_id = NULLIF(u.resolved_id, '00000000-0000-0000-0000-000000000000'::uuid), ambiguous = u.ambiguous,
+    resolved_asset = u.resolved_asset
 FROM (
     SELECT unnest($1::uuid[]) AS source_id, unnest($2::integer[]) AS range_start,
-        unnest($3::uuid[]) AS resolved_id, unnest($4::boolean[]) AS ambiguous
+        unnest($3::uuid[]) AS resolved_id, unnest($4::boolean[]) AS ambiguous,
+        unnest($5::boolean[]) AS resolved_asset
 ) AS u
 WHERE l.source_id = u.source_id AND l.range_start = u.range_start
 `
 
 type SetResolutionsParams struct {
-	SourceIds   []uuid.UUID
-	RangeStarts []int32
-	ResolvedIds []uuid.UUID
-	Ambiguous   []bool
+	SourceIds      []uuid.UUID
+	RangeStarts    []int32
+	ResolvedIds    []uuid.UUID
+	Ambiguous      []bool
+	ResolvedAssets []bool
 }
 
-// Each link, by its page and start, resolves to the page given, the zero id none.
+// Each link, by its page and start, resolves to the page or the attachment given, the zero id none.
 func (q *Queries) SetResolutions(ctx context.Context, arg SetResolutionsParams) (int64, error) {
 	result, err := q.db.Exec(ctx, setResolutions,
 		arg.SourceIds,
 		arg.RangeStarts,
 		arg.ResolvedIds,
 		arg.Ambiguous,
+		arg.ResolvedAssets,
 	)
 	if err != nil {
 		return 0, err

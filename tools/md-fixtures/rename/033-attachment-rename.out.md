@@ -1,0 +1,10 @@
+![[y.png]]
+[[y.png]]
+[t](y.png)
+![alt](y.png)
+![[y.png|300]]
+[[y.png]]
+![](y.png)
+[t](<y.png>)
+[[y.png|caption]]
+[[y.png#page=2]]

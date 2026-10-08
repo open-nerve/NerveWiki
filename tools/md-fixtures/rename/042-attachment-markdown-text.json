@@ -1,0 +1,13 @@
+{
+  "description": "Markdown 链接与图片的文字等于附件原来的名称（带扩展名）或完整路径的，换成新名称",
+  "source": "obsidian-verified",
+  "pages": [
+    "A",
+    "src"
+  ],
+  "assets": [
+    "A/x.png"
+  ],
+  "from": "A/x.png",
+  "to": "A/y.png"
+}

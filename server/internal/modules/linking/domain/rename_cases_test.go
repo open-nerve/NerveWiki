@@ -2,6 +2,7 @@ package domain_test
 
 import (
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 	"uuid"
@@ -19,6 +20,7 @@ import (
 type renameCase struct {
 	Pages   []string            `json:"pages"`
 	Aliases map[string][]string `json:"aliases"`
+	Assets  []string            `json:"assets"`
 	Page    string              `json:"page"`
 	From    string              `json:"from"`
 	To      string              `json:"to"`
@@ -26,9 +28,9 @@ type renameCase struct {
 
 // Every rename case's page is written as the case has it after the rename
 // or move: its links resolved in the case's tree before and after it, and
-// written again by Rewrite (M6/P4 design 2, 3), as extracted by the
-// application's extensions. The ids go in the pages' order, as in the
-// resolution cases.
+// written again by Rewrite (M6/P4 design 2, 3; M7/P3 design 4.4), as
+// extracted by the application's extensions. The ids go in the pages'
+// order, then the attachments', as in the resolution cases.
 func TestTheRenameCasesAreWrittenAsTheCasesHaveThem(t *testing.T) {
 	m, err := markdown.New([]markdown.Extension{tasks.Extension(), obsidian.Extension(obsidian.Options{})})
 	if err != nil {
@@ -57,6 +59,9 @@ func rewrite(t *testing.T, m *markdown.Markdown, c renameCase, content string) (
 	}
 	if c.Pages == nil {
 		c.Pages = []string{c.From, c.Page}
+		if slices.Contains(c.Assets, c.From) {
+			c.Pages = []string{c.Page}
+		}
 	}
 	moved := func(p string) string {
 		if p == c.From || strings.HasPrefix(p, c.From+"/") {
@@ -64,12 +69,14 @@ func rewrite(t *testing.T, m *markdown.Markdown, c renameCase, content string) (
 		}
 		return p
 	}
-	after := make([]string, len(c.Pages))
-	aliases := make([][]string, len(c.Pages))
-	for i, p := range c.Pages {
-		after[i], aliases[i] = moved(p), c.Aliases[p]
+	nodes := slices.Concat(c.Pages, c.Assets)
+	after := make([]string, len(nodes))
+	aliases := make([][]string, len(nodes))
+	asset := make([]bool, len(nodes))
+	for i, p := range nodes {
+		after[i], aliases[i], asset[i] = moved(p), c.Aliases[p], i >= len(c.Pages)
 	}
-	was, now := pagesOf(t, c.Pages, aliases), pagesOf(t, after, aliases)
+	was, now := pagesOf(t, nodes, aliases, asset...), pagesOf(t, after, aliases, asset...)
 	facts, err := markdownadapter.PageFacts(m.Parse([]byte(content)).Facts())
 	if err != nil {
 		t.Fatal(err)
@@ -96,8 +103,8 @@ func rewrite(t *testing.T, m *markdown.Markdown, c renameCase, content string) (
 	return written, append(w.Left, left.Links...)
 }
 
-// pages is a tree of pages at their paths, by path, by id, by title key
-// and by alias key, as the index would hand them to Resolve.
+// pages is a tree of pages and attachments at their paths, by path, by id,
+// by title key and by alias key, as the index would hand them to Resolve.
 type pages struct {
 	ids     map[string]uuid.UUID
 	paths   map[string][]domain.Step
@@ -106,9 +113,10 @@ type pages struct {
 	aliased map[string][]domain.Node
 }
 
-// pagesOf is the tree of paths, the page at paths[i] with the id i+1 and
-// the aliases aliases[i]; a page's parent is among them, in any order.
-func pagesOf(t *testing.T, paths []string, aliases [][]string) pages {
+// pagesOf is the tree of paths, the node at paths[i] with the id i+1, the
+// aliases aliases[i], an attachment if asset[i], a page past asset; a
+// node's parent is among them, in any order.
+func pagesOf(t *testing.T, paths []string, aliases [][]string, asset ...bool) pages {
 	t.Helper()
 	p := pages{
 		ids: map[string]uuid.UUID{}, paths: map[string][]domain.Step{}, byID: map[uuid.UUID]domain.Node{},
@@ -129,7 +137,7 @@ func pagesOf(t *testing.T, paths []string, aliases [][]string) pages {
 			}
 			steps = append(steps, domain.Step{ID: id, Key: shared.TitleKey(name), Name: name})
 		}
-		node := domain.Node{ID: p.ids[path], Path: steps}
+		node := domain.Node{ID: p.ids[path], Path: steps, Asset: i < len(asset) && asset[i]}
 		p.paths[path], p.byID[node.ID] = steps, node
 		key := steps[len(steps)-1].Key
 		p.named[key] = append(p.named[key], node)

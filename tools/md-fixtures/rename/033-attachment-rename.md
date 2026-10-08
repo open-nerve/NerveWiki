@@ -1,0 +1,10 @@
+![[x.png]]
+[[x.png]]
+[t](x.png)
+![alt](x.png)
+![[x.png|300]]
+[[A/x.png]]
+![](A/x.png)
+[t](<x.png>)
+[[x.png|caption]]
+[[x.png#page=2]]

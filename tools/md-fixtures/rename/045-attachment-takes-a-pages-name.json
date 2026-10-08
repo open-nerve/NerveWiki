@@ -1,0 +1,16 @@
+{
+  "description": "附件改名成某页的标题时，原来指向那页的链接改写成仍指向它：wikilink 写完整路径加 .md，Markdown 链接写名称加 .md",
+  "source": "nerve-defined",
+  "pages": [
+    "A",
+    "P",
+    "P/note.png",
+    "src"
+  ],
+  "assets": [
+    "A/x.png"
+  ],
+  "from": "A/x.png",
+  "to": "A/note.png",
+  "note": "Obsidian 把 [[note.png]] 写成 [[P/note.png]]，它读作附件、解析不到；Markdown 链接与这里相同。理由同 044。"
+}

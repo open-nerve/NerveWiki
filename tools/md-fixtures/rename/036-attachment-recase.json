@@ -1,0 +1,13 @@
+{
+  "description": "附件只改大小写时，按名称指向它、写法与新名称不逐字相同的都改写",
+  "source": "obsidian-verified",
+  "pages": [
+    "A",
+    "src"
+  ],
+  "assets": [
+    "A/x.png"
+  ],
+  "from": "A/x.png",
+  "to": "A/X.PNG"
+}

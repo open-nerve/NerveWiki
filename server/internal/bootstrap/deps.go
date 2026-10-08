@@ -164,7 +164,8 @@ func assetDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, autho
 ) asset.Deps {
 	return asset.Deps{
 		Pool: pool, Store: store, Clock: clock.System{}, Logger: logger, Authorizer: authorizer, Notebooks: notebook.NewNotebooks(pool),
-		Tree: assetTree{pg.TreeWrites()}, Nodes: assetNodes{page.NewAssetNodes(pool)}, ContentKey: contentKey,
+		Tree: assetTree{pg.TreeWrites()}, Nodes: assetNodes{page.NewAssetNodes(pool)},
+		Links: linking.NewAssetLinks(linkTargets{page.NewLinkTargets(pool)}), ContentKey: contentKey,
 		MaxBytes: cfg.Asset.MaxBytes, MinRate: cfg.Asset.UploadMinRate, MinFreeBytes: cfg.Storage.MinFreeBytes,
 		ContentBucket: bucket(limiter, "asset_content", cfg.RateLimit.AssetContent),
 	}

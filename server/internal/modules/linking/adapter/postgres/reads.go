@@ -44,7 +44,7 @@ func (s *Store) Properties(ctx context.Context, id uuid.UUID) (app.Properties, b
 	case err != nil:
 		return app.Properties{}, false, fmt.Errorf("the properties of %s: %w", id, err)
 	}
-	if len(row.PropertyValues) != len(row.Keys) || len(row.LinkIds) != len(row.LinkKeys) {
+	if len(row.PropertyValues) != len(row.Keys) || len(row.LinkIds) != len(row.LinkKeys) || len(row.LinkAssets) != len(row.LinkKeys) {
 		return app.Properties{}, false, fmt.Errorf("the properties of %s: keys and values differ in number", id)
 	}
 	out := app.Properties{Valid: row.FrontmatterValid}
@@ -52,7 +52,7 @@ func (s *Store) Properties(ctx context.Context, id uuid.UUID) (app.Properties, b
 		out.Properties = append(out.Properties, app.Property{Key: key, Value: json.RawMessage(row.PropertyValues[i])})
 	}
 	for i, key := range row.LinkKeys {
-		out.Links = append(out.Links, app.PropertyLink{Key: key, NodeID: row.LinkIds[i]})
+		out.Links = append(out.Links, app.PropertyLink{Key: key, NodeID: row.LinkIds[i], Asset: row.LinkAssets[i]})
 	}
 	return out, true, nil
 }

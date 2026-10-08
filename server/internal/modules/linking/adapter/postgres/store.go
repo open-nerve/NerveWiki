@@ -200,7 +200,7 @@ func (s *Store) Links(ctx context.Context, notebookID uuid.UUID, r domain.Reach)
 	for i, row := range rows {
 		out[i] = app.Link{SourceID: row.SourceID, Start: int(row.RangeStart), Target: row.Target, Aliases: row.Aliases}
 		if row.ResolvedID != nil {
-			out[i].Resolution = domain.Resolution{ID: *row.ResolvedID, Ambiguous: row.Ambiguous}
+			out[i].Resolution = domain.Resolution{ID: *row.ResolvedID, Ambiguous: row.Ambiguous, Asset: row.ResolvedAsset}
 		}
 	}
 	return out, nil
@@ -225,7 +225,7 @@ func (s *Store) View(ctx context.Context, id uuid.UUID) (app.Indexed, bool, erro
 		}
 		var r domain.Resolution
 		if row.ResolvedID != nil {
-			r = domain.Resolution{ID: *row.ResolvedID, Ambiguous: *row.Ambiguous}
+			r = domain.Resolution{ID: *row.ResolvedID, Ambiguous: *row.Ambiguous, Asset: *row.ResolvedAsset}
 		}
 		out.Resolutions[int(*row.RangeStart)] = r
 	}
@@ -277,6 +277,7 @@ func (s *Store) SetResolutions(ctx context.Context, links []app.Link) error {
 		p.RangeStarts = append(p.RangeStarts, int32(l.Start))
 		p.ResolvedIds = append(p.ResolvedIds, l.Resolution.ID)
 		p.Ambiguous = append(p.Ambiguous, l.Resolution.Ambiguous)
+		p.ResolvedAssets = append(p.ResolvedAssets, l.Resolution.Asset)
 	}
 	n, err := s.queries(ctx).SetResolutions(ctx, p)
 	if err != nil {

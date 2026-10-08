@@ -91,6 +91,21 @@ type Nodes interface {
 	Assets(ctx context.Context, notebookID uuid.UUID, parentID *uuid.UUID, after *Cursor, limit int) ([]Node, error)
 }
 
+// Links writes how a wikilink is written to lead to attachments alone from
+// anywhere in their notebook (M7/P3 design 4.6): the linking module's,
+// which bootstrap wires. It reads in the transaction ctx carries, or on the
+// pool outside one.
+type Links interface {
+	// Of is the link of each of ids that is an attachment of notebookID not
+	// deleted, by id: empty for one without an extension, which no link
+	// leads to.
+	Of(ctx context.Context, notebookID uuid.UUID, ids []uuid.UUID) (map[uuid.UUID]string, error)
+}
+
+// ErrNoLink is an attachment's node the links do not find, in the unit
+// that wrote it: a defect.
+var ErrNoLink = errors.New("asset: no link of the attachment")
+
 // Cursor is where a list of attachments goes on: after the node of this
 // name key and id. It is the list cursor's payload.
 type Cursor struct {

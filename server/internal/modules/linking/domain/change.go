@@ -110,13 +110,13 @@ func PathBefore(n Node, changes []Change, parents map[uuid.UUID][]Step) Node {
 		path := slices.Clone(n.Path[at:])
 		path[0] = Step{ID: c.NodeID, Key: shared.TitleKey(c.Before.Name), Name: c.Before.Name}
 		if sameParent(c.Before.ParentID, c.After.ParentID) {
-			return Node{ID: n.ID, Path: append(slices.Clone(n.Path[:at]), path...)}
+			return Node{ID: n.ID, Path: append(slices.Clone(n.Path[:at]), path...), Asset: n.Asset}
 		}
 		var parent []Step
 		if c.Before.ParentID != nil {
 			parent = parents[*c.Before.ParentID]
 		}
-		return Node{ID: n.ID, Path: append(slices.Clone(parent), path...)}
+		return Node{ID: n.ID, Path: append(slices.Clone(parent), path...), Asset: n.Asset}
 	}
 	return n
 }
@@ -150,26 +150,27 @@ func (r *Reach) Compact() {
 	}
 }
 
-// Affected is what a unit's changes reach, but for the pages under the
-// nodes they rename, which the caller reads and adds, and the aliases'
-// keys, which the caller adds too. A unit that relocates a node reaches
-// every node changed, by its keys before and after and by its id: a move
-// lists the nodes under the one it moves, and a deletion those it deletes.
-// One that relocates none reaches the pages whose content it writes, by
-// their ids, as sources alone. It is false for a unit the index has
-// nothing to do for: one that writes no content of a page it leaves, and
-// relocates no node.
+// Affected is what a unit's changes reach, but for the pages and
+// attachments under the nodes they rename, which the caller reads and adds,
+// and the aliases' keys, which the caller adds too. A unit that relocates a
+// node reaches every node changed, by its keys before and after and by its
+// id: a move lists the nodes under the one it moves, and a deletion those
+// it deletes. One that relocates none reaches the pages whose content it
+// writes, by their ids, as sources alone. It is false for a unit the index
+// has nothing to do for: one that writes no content of a page it leaves,
+// and relocates no node.
 //
 // The links a unit may resolve anew are those its changes may resolve
-// otherwise (M6/P3 design 3.4): where a link resolves depends on the pages
-// whose key is its target's last, their paths, its page's place and the
-// aliases with their pages' paths. A page appearing, going or renamed has
-// its keys; a path changes only for a node renamed or moved, with the nodes
-// under it, whose links to them and keys are reached, and the keys of
-// their aliases, which the caller adds; a page's place changes only when it
-// moves, and its links are reached; aliases change only with a content,
-// whose aliases' keys, those it drops and those it adds, the caller adds.
-// A content written changes none of these but its own links and aliases.
+// otherwise (M6/P3 design 3.4; M7/P3 design 4.3): where a link resolves
+// depends on the pages and attachments whose key is its target's last,
+// their paths, its page's place and the aliases with their pages' paths. A
+// node appearing, going or renamed has its keys; a path changes only for a
+// node renamed or moved, with the nodes under it, whose links to them and
+// keys are reached, and the keys of their aliases, which the caller adds; a
+// page's place changes only when it moves, and its links are reached;
+// aliases change only with a content, whose aliases' keys, those it drops
+// and those it adds, the caller adds. A content written changes none of
+// these but its own links and aliases.
 func Affected(changes []Change) (r Reach, renamed []uuid.UUID, ok bool) {
 	moves := slices.ContainsFunc(changes, Change.relocates)
 	for _, c := range changes {

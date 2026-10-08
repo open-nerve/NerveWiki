@@ -93,10 +93,12 @@ func (t *tree) CreateAsset(ctx context.Context, n app.NewNode, after func(contex
 	}
 	node := app.Node{ID: uuid.MustParse("0199a2b4-0000-7000-8000-000000000020"), NotebookID: n.NotebookID, ParentID: n.ParentID,
 		Asset: true, Name: n.Name, CreatedBy: alice(), CreatedAt: now()}
+	// The unit sees its node; rolled back, it is gone.
+	t.nodes.add(node)
 	if err := after(ctx, node); err != nil {
+		t.nodes.remove(node.ID)
 		return app.Node{}, err
 	}
-	t.nodes.add(node)
 	return node, nil
 }
 
@@ -110,10 +112,35 @@ type memNodes struct {
 	asked chan struct{}
 }
 
+// nodeLinks writes each attachment's link as its name with "linked ":
+// enough to tell the answer carries the links' own; none for a name
+// without a dot, as one without an extension has none.
+type nodeLinks struct{ nodes *memNodes }
+
+func (l nodeLinks) Of(_ context.Context, _ uuid.UUID, ids []uuid.UUID) (map[uuid.UUID]string, error) {
+	l.nodes.mu.Lock()
+	defer l.nodes.mu.Unlock()
+	out := make(map[uuid.UUID]string, len(ids))
+	for _, id := range ids {
+		if n, ok := l.nodes.nodes[id]; ok && strings.Contains(n.Name, ".") {
+			out[id] = "linked " + n.Name
+		} else if ok {
+			out[id] = ""
+		}
+	}
+	return out, nil
+}
+
 func (m *memNodes) add(n app.Node) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.nodes[n.ID] = n
+}
+
+func (m *memNodes) remove(id uuid.UUID) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.nodes, id)
 }
 
 func (m *memNodes) Node(ctx context.Context, id uuid.UUID) (app.Node, bool, error) {
@@ -408,9 +435,9 @@ func newHarnessWith(t *testing.T, o httpservertest.APIOptions) *harness {
 	logger := slog.New(slog.NewTextHandler(h.logs, nil))
 	blobs := app.NewBlobs(h.files, h.rows, sniffer{}, logger)
 	uc := httpadapter.UseCases{
-		Upload: app.NewUpload(app.UploadDeps{Tree: h.tree, Blobs: blobs, Files: h.files, Signer: h.signer, Logger: logger,
+		Upload: app.NewUpload(app.UploadDeps{Tree: h.tree, Blobs: blobs, Files: h.files, Signer: h.signer, Links: nodeLinks{h.nodes}, Logger: logger,
 			MaxBytes: maxBytes, MinFree: 100}),
-		Reads: app.NewReads(app.ReadsDeps{Authorizer: sees{}, Notebooks: books{}, Nodes: h.nodes, Rows: h.rows, Signer: h.signer,
+		Reads: app.NewReads(app.ReadsDeps{Authorizer: sees{}, Notebooks: books{}, Nodes: h.nodes, Rows: h.rows, Signer: h.signer, Links: nodeLinks{h.nodes},
 			Clock: fixedClock{}, Logger: logger}),
 		Content: app.NewContent(h.nodes, blobs, h.signer, fixedClock{}, logger),
 	}

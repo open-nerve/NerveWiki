@@ -29,14 +29,16 @@ func (v *views) Resolve(_ context.Context, p app.Page, links []app.Link) (map[in
 
 // The extension's Resolve asks the views of the page and its links, each
 // target written as the index writes it, and leads each link to the page
-// it resolves to, none to none.
+// it resolves to, none to none; one to an attachment to none, until the
+// extension writes an attachment's (M7/P3 design 4.6).
 func TestResolveAsksTheViewsAsTheIndexWritesTargets(t *testing.T) {
 	a := uuid.NewV7()
-	v := &views{rs: map[int]domain.Resolution{2: {ID: a, Ambiguous: true}, 12: {}}}
+	v := &views{rs: map[int]domain.Resolution{2: {ID: a, Ambiguous: true}, 12: {}, 22: {ID: uuid.NewV7(), Asset: true}}}
 	page := markdown.Page{NotebookID: uuid.NewV7(), PageID: uuid.NewV7(), Revision: 4}
 	links := []obsidian.Link{
 		{Kind: obsidian.KindWikilink, Target: "A", Anchor: "h", Range: markdown.Span{Start: 2, Stop: 3}},
 		{Kind: obsidian.KindLink, Target: "b\x00c.md", Range: markdown.Span{Start: 12, Stop: 18}},
+		{Kind: obsidian.KindEmbed, Target: "x.png", Range: markdown.Span{Start: 22, Stop: 27}},
 	}
 	got, err := markdownadapter.Resolve(v)(context.Background(), page, links)
 	if err != nil || !reflect.DeepEqual(got, map[int]uuid.UUID{2: a}) {
@@ -45,6 +47,7 @@ func TestResolveAsksTheViewsAsTheIndexWritesTargets(t *testing.T) {
 	wantLinks := []app.Link{
 		{SourceID: page.PageID, Start: 2, Target: "A"},
 		{SourceID: page.PageID, Start: 12, Target: "b\xef\xbf\xbdc.md"},
+		{SourceID: page.PageID, Start: 22, Target: "x.png"},
 	}
 	if want := (app.Page{ID: page.PageID, NotebookID: page.NotebookID, Revision: 4}); v.page != want || !reflect.DeepEqual(v.links, wantLinks) {
 		t.Errorf("asked of %+v for %+v", v.page, v.links)

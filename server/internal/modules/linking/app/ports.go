@@ -22,8 +22,8 @@ type Page struct {
 }
 
 // Dropped is what a page's rows held that the index's maintenance still
-// reads once they go: the pages its links resolved to, and its aliases'
-// keys, each once.
+// reads once they go: the pages and attachments its links resolved to, and
+// its aliases' keys, each once.
 type Dropped struct {
 	Targets   []uuid.UUID
 	AliasKeys []string
@@ -145,10 +145,12 @@ type Property struct {
 }
 
 // PropertyLink is a property link of a page: its property's path and the
-// page it resolves to, the zero id for none.
+// page or the attachment it resolves to, the zero id for none, Asset
+// telling an attachment (M7/P3 design 4.6).
 type PropertyLink struct {
 	Key    string
 	NodeID uuid.UUID
+	Asset  bool
 }
 
 // Tag is a tag of a notebook as most of its pages write it, and how many
@@ -158,25 +160,26 @@ type Tag struct {
 	Pages int
 }
 
-// Pages is what the index reads of a notebook's pages, in the transaction
-// ctx carries or on the pool outside one: the page module's, which
-// bootstrap wires to it (M6/P3 design 3.3). Attachments and deleted pages
-// are never among them.
+// Pages is what the index reads of a notebook's pages and attachments, the
+// nodes a link may lead to, in the transaction ctx carries or on the pool
+// outside one: the page module's, which bootstrap wires to it (M6/P3 design
+// 3.3; M7/P3 design 4.3). Deleted nodes are never among them.
 type Pages interface {
-	// ByKeys is the pages of notebookID whose title key is one of keys,
-	// each with its path from the root.
+	// ByKeys is the pages and attachments of notebookID whose title key is
+	// one of keys, each with its path from the root and its kind.
 	ByKeys(ctx context.Context, notebookID uuid.UUID, keys []string) ([]domain.Node, error)
-	// Paths is the pages of notebookID among ids, each with its path from
-	// the root.
+	// Paths is the pages and attachments of notebookID among ids, each with
+	// its path from the root and its kind.
 	Paths(ctx context.Context, notebookID uuid.UUID, ids []uuid.UUID) ([]domain.Node, error)
-	// Subtree is the page id of notebookID and the pages under it.
+	// Subtree is the node id of notebookID and the pages and attachments
+	// under it.
 	Subtree(ctx context.Context, notebookID, id uuid.UUID) ([]domain.Step, error)
 }
 
 // LinksChanged is the links event of a unit (M6 design 4.8): the pages
 // whose links resolve otherwise, but for those whose content it wrote, and
-// the pages whose backlinks changed. Each is empty for none, and nil for
-// more than MaxEventPages.
+// the pages and attachments whose backlinks changed (M7/P3 design 4.3).
+// Each is empty for none, and nil for more than MaxEventPages.
 type LinksChanged struct {
 	WorkspaceID uuid.UUID
 	NotebookID  uuid.UUID

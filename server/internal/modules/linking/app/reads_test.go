@@ -400,12 +400,15 @@ func TestATagsPagesAreReadByItsKey(t *testing.T) {
 	}
 }
 
-// The link targets are the notebook's pages, by id, each with its title,
-// its writing, the path where another page shares its title, and its
-// aliases, none as an empty list (M6/P5 design 6).
+// The link targets are the notebook's pages and attachments, by id, each
+// with its kind, its title, its writing, the path where another node of its
+// kind shares its title, with ".md" for a page an attachment shares it
+// with, and its aliases, none as an empty list; an attachment without an
+// extension, which no link leads to, is none (M6/P5 design 6; M7/P3 design
+// 4.5).
 func TestTheLinkTargetsAreThePagesWithTheirWritings(t *testing.T) {
 	l := newLibrary()
-	var ids [5]uuid.UUID
+	var ids [8]uuid.UUID
 	for i := range ids {
 		ids[i] = uuid.NewV7()
 	}
@@ -419,6 +422,9 @@ func TestTheLinkTargetsAreThePagesWithTheirWritings(t *testing.T) {
 		{ID: ids[2], Path: []domain.Step{a, step(2, "Note")}},
 		{ID: ids[3], Path: []domain.Step{b, step(3, "note")}},
 		{ID: ids[4], Path: []domain.Step{b, step(4, "Solo")}},
+		{ID: ids[5], Path: []domain.Step{a, step(5, "x.png")}, Asset: true},
+		{ID: ids[6], Path: []domain.Step{b, step(6, "x.png")}},
+		{ID: ids[7], Path: []domain.Step{a, step(7, "data")}, Asset: true},
 	}
 	l.aliases = map[uuid.UUID][]string{ids[4]: {"Alone", "S"}}
 	got, err := (app.ListLinkTargets{Access: l.access(), Reads: l.library}).Execute(reader(), l.nb)
@@ -428,6 +434,8 @@ func TestTheLinkTargetsAreThePagesWithTheirWritings(t *testing.T) {
 		{ID: ids[2], Name: "Note", Link: "A/Note", Aliases: []string{}},
 		{ID: ids[3], Name: "note", Link: "B/note", Aliases: []string{}},
 		{ID: ids[4], Name: "Solo", Link: "Solo", Aliases: []string{"Alone", "S"}},
+		{ID: ids[5], Asset: true, Name: "x.png", Link: "x.png", Aliases: []string{}},
+		{ID: ids[6], Name: "x.png", Link: "B/x.png.md", Aliases: []string{}},
 	}
 	if err != nil || !reflect.DeepEqual(got, want) {
 		t.Errorf("link targets: %+v, %v\nwant %+v", got, err, want)

@@ -24,7 +24,7 @@ type contents struct {
 func (c *contents) PageIDs(context.Context, uuid.UUID) ([]uuid.UUID, error) {
 	var out []uuid.UUID
 	for id, n := range c.w.tree.nodes {
-		if !n.gone {
+		if !n.gone && !n.asset {
 			out = append(out, id)
 		}
 	}

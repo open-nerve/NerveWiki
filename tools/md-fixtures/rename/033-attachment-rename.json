@@ -1,0 +1,13 @@
+{
+  "description": "附件改名时，指向它的每种写法都改写：名称唯一时写名称，原来写的完整路径也换成名称；Markdown 链接不加 .md；尖括号、锚点、显示文字保留",
+  "source": "obsidian-verified",
+  "pages": [
+    "A",
+    "src"
+  ],
+  "assets": [
+    "A/x.png"
+  ],
+  "from": "A/x.png",
+  "to": "A/y.png"
+}

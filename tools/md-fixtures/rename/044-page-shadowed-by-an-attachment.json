@@ -1,0 +1,16 @@
+{
+  "description": "一页改名成与附件同名时，指向它的 wikilink 写成完整路径加 .md，Markdown 链接写名称加 .md：不带 .md 的写法读作附件",
+  "source": "nerve-defined",
+  "pages": [
+    "A",
+    "B",
+    "B/old",
+    "src"
+  ],
+  "assets": [
+    "A/x.png"
+  ],
+  "from": "B/old",
+  "to": "B/x.png",
+  "note": "Obsidian 把两条 wikilink 写成 [[B/x.png]] 与 ![[B/x.png]]，它们读作附件、解析不到；Markdown 链接与这里相同。这里写能解析到那一页的写法（M7/P3 设计 4.4）。"
+}

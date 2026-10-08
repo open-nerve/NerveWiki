@@ -14,6 +14,7 @@ import (
 type assetAnswer struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`
+	Link        string `json:"link"`
 	ContentURL  string `json:"content_url"`
 	DownloadURL string `json:"download_url"`
 }
@@ -26,7 +27,7 @@ func TestGetAssetAnswersTheAttachment(t *testing.T) {
 	res, body := h.get(t, http.MethodGet, "/api/v0/assets/"+n.ID.String(), "session")
 	var a assetAnswer
 	_ = json.Unmarshal(body, &a)
-	if res.StatusCode != http.StatusOK || a.ID != n.ID.String() || a.Name != "a.png" || a.ContentURL != h.address(n, b, false) ||
+	if res.StatusCode != http.StatusOK || a.ID != n.ID.String() || a.Name != "a.png" || a.Link != "linked a.png" || a.ContentURL != h.address(n, b, false) ||
 		a.DownloadURL != h.address(n, b, true) {
 		t.Errorf("getAsset = %d %s, want a.png and its addresses", res.StatusCode, body)
 	}

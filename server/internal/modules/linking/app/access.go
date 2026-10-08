@@ -19,19 +19,20 @@ type NotebookWorkspaces interface {
 
 // PageTree is what the reads of the index read of a notebook's tree, on
 // the pool: the page module's, which bootstrap wires (M6/P5 design 7; the
-// landing's, M6/P6 design 2). Attachments and deleted pages are never
-// among them.
+// landing's, M6/P6 design 2). Its nodes are the pages and the attachments
+// (M7/P3 design 4.3); deleted ones are never among them.
 type PageTree interface {
-	// NotebookOf is the notebook of the page id; false for no such page.
+	// NotebookOf is the notebook of the page id; false for no such page,
+	// an attachment's id among them.
 	NotebookOf(ctx context.Context, id uuid.UUID) (uuid.UUID, bool, error)
-	// All is the pages of notebookID, by id, each with its path from the
-	// root.
+	// All is the pages and attachments of notebookID, by id, each with its
+	// path from the root and its kind.
 	All(ctx context.Context, notebookID uuid.UUID) ([]domain.Node, error)
-	// ByKeys is the pages of notebookID whose title key is one of keys,
-	// each with its path from the root.
+	// ByKeys is the pages and attachments of notebookID whose title key is
+	// one of keys, each with its path from the root and its kind.
 	ByKeys(ctx context.Context, notebookID uuid.UUID, keys []string) ([]domain.Node, error)
-	// Paths is the pages of notebookID among ids, each with its path from
-	// the root.
+	// Paths is the pages and attachments of notebookID among ids, each with
+	// its path from the root and its kind.
 	Paths(ctx context.Context, notebookID uuid.UUID, ids []uuid.UUID) ([]domain.Node, error)
 }
 

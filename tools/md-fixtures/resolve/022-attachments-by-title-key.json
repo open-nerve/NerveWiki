@@ -1,0 +1,28 @@
+{
+  "description": "附件同样按标题键比较：不分大小写，不分 Unicode 的规范化形式",
+  "source": "obsidian-verified",
+  "pages": ["A", "src"],
+  "assets": ["A/X.PNG", "A/Café.png", "A/Café 2.png"],
+  "links": [
+    {
+      "from": "src",
+      "link": "[[x.png]]",
+      "to": "A/X.PNG"
+    },
+    {
+      "from": "src",
+      "link": "[[café.png]]",
+      "to": "A/Café.png"
+    },
+    {
+      "from": "src",
+      "link": "[[CAFÉ.PNG]]",
+      "to": "A/Café.png"
+    },
+    {
+      "from": "src",
+      "link": "[[Café 2.png]]",
+      "to": "A/Café 2.png"
+    }
+  ]
+}

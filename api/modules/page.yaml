@@ -414,12 +414,13 @@ paths:
         any case, and keeps an extension when it had one (the extension may
         change): either is not_allowed on name. The node's own name writes
         nothing; one that differs from it in case alone is written. The
-        links that led to the page, or under it, by a path that changes, and
-        those the new name would lead elsewhere, are written again in the
-        pages they are in, so that each leads where it did; when one of
-        these pages is being edited, its own included, the rename is refused
-        as a whole, linking.pages_locked naming each of them and its editor,
-        and when their parse finds the server busy it is server_busy.
+        links that led to the node, the attachment or the page and those
+        under it, by a path that changes, and those the new name would lead
+        elsewhere, are written again in the pages they are in, so that each
+        leads where it did; when one of these pages is being edited, its own
+        included, the rename is refused as a whole, linking.pages_locked
+        naming each of them and its editor, and when their parse finds the
+        server busy it is server_busy.
       security: [{ bearer: [] }]
       x-problem-codes:
         [page.not_found, forbidden, validation_failed, page.title_taken, linking.pages_locked, server_busy]
@@ -479,14 +480,15 @@ paths:
         has, compared by its key, page.title_taken, and a page under it
         that would be deeper than ten levels page.too_deep: an attachment
         is no level, and a page of the tenth holds them. A move to where
-        the node is writes nothing. The links that led to the page or under
-        it by a path that changes, those from these pages that the move
-        would lead elsewhere, and those the moved pages would take from
-        other pages, are written again in the pages they are in, so that
-        each leads where it did; when one of these pages is being edited,
-        one of the moved included, the move is refused as a whole,
-        linking.pages_locked naming each of them and its editor, and when
-        their parse finds the server busy it is server_busy.
+        the node is writes nothing. The links that led to the node, the
+        attachment or the page and those under it, by a path that changes,
+        the links in the moved pages that the move would lead elsewhere, and
+        the links the moved nodes would take from other nodes, are written
+        again in the pages they are in, so that each leads where it did;
+        when one of these pages is being edited, one of the moved included,
+        the move is refused as a whole, linking.pages_locked naming each of
+        them and its editor, and when their parse finds the server busy it
+        is server_busy.
       security: [{ bearer: [] }]
       x-problem-codes:
         [

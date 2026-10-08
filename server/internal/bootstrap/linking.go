@@ -84,8 +84,9 @@ func (a linkAppender) Defer(f func()) {
 	a.unit.Defer(f)
 }
 
-// linkTargets is what linking reads of the pages, page's LinkTargets: the
-// observer's reads, and the rebuild's.
+// linkTargets is what linking reads of the pages and attachments, page's
+// LinkTargets: the observer's reads, the rebuild's, and the attachments'
+// links'.
 type linkTargets struct {
 	page page.LinkTargets
 }
@@ -98,6 +99,15 @@ func (l linkTargets) ByKeys(ctx context.Context, notebookID uuid.UUID, keys []st
 func (l linkTargets) Paths(ctx context.Context, notebookID uuid.UUID, ids []uuid.UUID) ([]linking.Node, error) {
 	nodes, err := l.page.Paths(ctx, notebookID, ids)
 	return linkNodes(nodes), err
+}
+
+func (l linkTargets) Attachments(ctx context.Context, notebookID uuid.UUID, ids []uuid.UUID) ([]linking.Attachment, error) {
+	attachments, err := l.page.Attachments(ctx, notebookID, ids)
+	out := make([]linking.Attachment, len(attachments))
+	for i, a := range attachments {
+		out[i] = linking.Attachment{Node: linkNodes([]page.LinkNode{a.LinkNode})[0], Alike: a.Alike}
+	}
+	return out, err
 }
 
 func (l linkTargets) Subtree(ctx context.Context, notebookID, id uuid.UUID) ([]linking.Step, error) {
@@ -134,7 +144,7 @@ func (l linkTargets) Rekey(ctx context.Context, notebookID uuid.UUID) ([]linking
 func linkNodes(nodes []page.LinkNode) []linking.Node {
 	out := make([]linking.Node, len(nodes))
 	for i, n := range nodes {
-		out[i] = linking.Node{ID: n.ID, Path: linkSteps(n.Path)}
+		out[i] = linking.Node{ID: n.ID, Path: linkSteps(n.Path), Asset: n.Asset}
 	}
 	return out
 }

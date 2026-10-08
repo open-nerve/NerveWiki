@@ -68,6 +68,7 @@ func TestALandingReadsThePagesItsTargetNames(t *testing.T) {
 	for _, p := range []string{"A", "A/src", "A/B", "Q", "P"} {
 		l.notebooks[l.tree.add(p)] = l.nb
 	}
+	l.tree.addAsset("Q/x.png")
 	id := func(p string) uuid.UUID { return l.tree.names[p] }
 	l.aliasRows = []app.Alias{{PageID: id("P"), Key: "al"}, {PageID: uuid.NewV7(), Key: "ghost"}}
 	tests := []struct {
@@ -87,6 +88,10 @@ func TestALandingReadsThePagesItsTargetNames(t *testing.T) {
 		{"ghost", 10, domain.Landing{Parent: id("A"), Title: "ghost"}, nil},
 		{"B/x", 2, domain.Landing{Reason: domain.TooDeep}, nil},
 		{"Z/x", 10, domain.Landing{Reason: domain.ParentMissing}, nil},
+		// Read as an attachment's (M7/P3 design 4.5).
+		{"x.png", 10, domain.Landing{Reason: domain.TargetIsAsset}, nil},
+		{"B/x.png", 10, domain.Landing{Reason: domain.TargetIsAsset}, nil},
+		{"x.png.md", 10, domain.Landing{Parent: id("A"), Title: "x.png"}, nil},
 	}
 	for _, tt := range tests {
 		l.calls = nil

@@ -19,26 +19,28 @@ import (
 // checkLinks fails t unless the index is its pages' (M6/P3 design 5): each
 // page not deleted is indexed at its content's revision, by the current
 // extractor, in its notebook; no row is of another page or notebook; and a
-// link resolves only to a page not deleted of its notebook.
+// link resolves only to a node not deleted of its notebook, an attachment
+// when it says so and a page when not (M7/P3 design 4.3).
 func checkLinks(t *testing.T, pool *pgxpool.Pool) {
 	t.Helper()
 	for what, query := range map[string]string{
-		"not indexed at its content's revision": fmt.Sprintf(`SELECT count(*) FROM nodes n JOIN page_contents c ON c.node_id = n.id
+		"pages not indexed at their content's revision": fmt.Sprintf(`SELECT count(*) FROM nodes n JOIN page_contents c ON c.node_id = n.id
 			WHERE n.deleted_at IS NULL AND n.kind = 'page' AND c.deleted_at IS NULL AND NOT EXISTS (
 				SELECT 1 FROM indexed_pages i WHERE i.node_id = n.id AND i.notebook_id = n.notebook_id AND i.revision = c.revision
 					AND i.extractor = %d)`, linking.Extractor),
-		"indexed, not a page or deleted": `SELECT count(*) FROM (
+		"rows of no page, or of a deleted one": `SELECT count(*) FROM (
 				SELECT node_id AS id, notebook_id FROM indexed_pages UNION ALL SELECT source_id, notebook_id FROM page_links
 				UNION ALL SELECT source_id, notebook_id FROM page_tags UNION ALL SELECT source_id, notebook_id FROM page_properties
 				UNION ALL SELECT source_id, notebook_id FROM page_aliases
 			) r WHERE NOT EXISTS (SELECT 1 FROM nodes n WHERE n.id = r.id AND n.notebook_id = r.notebook_id
 				AND n.kind = 'page' AND n.deleted_at IS NULL)`,
-		"with a link to a page deleted or elsewhere": `SELECT count(*) FROM page_links l WHERE l.resolved_id IS NOT NULL
-			AND NOT EXISTS (SELECT 1 FROM nodes n WHERE n.id = l.resolved_id AND n.notebook_id = l.notebook_id
-				AND n.kind = 'page' AND n.deleted_at IS NULL)`,
+		"links to a node deleted, elsewhere or of another kind": `SELECT count(*) FROM page_links l
+			WHERE l.resolved_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM nodes n WHERE n.id = l.resolved_id
+				AND n.notebook_id = l.notebook_id AND n.deleted_at IS NULL
+				AND n.kind = CASE WHEN l.resolved_asset THEN 'asset' ELSE 'page' END)`,
 	} {
 		if n := count(t, pool, query); n != 0 {
-			t.Errorf("%d pages %s, want none", n, what)
+			t.Errorf("%d %s, want none", n, what)
 		}
 	}
 }

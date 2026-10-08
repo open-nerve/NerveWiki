@@ -1,0 +1,23 @@
+{
+  "description": "别名只引向页面，在读作附件时不起作用：有附件 x.png 时，以 x.png 为别名的页不是 [[x.png]]；没有附件 y.png 时，[[y.png]] 按别名解析到页面",
+  "source": "obsidian-verified",
+  "note": "别名的解析是总体设计 4.4 有意与 Obsidian 不同的（resolve/012）；Obsidian 里 [[y.png]] 解析不到。",
+  "pages": ["P", "A", "src"],
+  "aliases": {
+    "P": ["y.png", "x.png"]
+  },
+  "assets": ["A/x.png"],
+  "links": [
+    {
+      "from": "src",
+      "link": "[[x.png]]",
+      "to": "A/x.png"
+    },
+    {
+      "from": "src",
+      "link": "[[y.png]]",
+      "to": "P",
+      "source": "nerve-defined"
+    }
+  ]
+}

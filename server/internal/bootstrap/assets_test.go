@@ -48,10 +48,11 @@ func assetUpload(t *testing.T, by, nb, parent, name, content string) step {
 }
 
 // uploadedAsset is an upload's answer, as much as the tests read: the
-// node, its file's id, its addresses and its time.
+// node, its link, its file's id, its addresses and its time.
 type uploadedAsset struct {
 	ID          string    `json:"id"`
 	Name        string    `json:"name"`
+	Link        string    `json:"link"`
 	ContentURL  string    `json:"content_url"`
 	DownloadURL string    `json:"download_url"`
 	CreatedAt   time.Time `json:"created_at"`

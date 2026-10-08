@@ -254,3 +254,33 @@ var (
 	errDenied = errors.New("permission denied")
 	errPort   = errors.New("connection reset")
 )
+
+// links writes each attachment's link as "linked " and its id, but for
+// those in missing, deleted since, and for any when none; or fails with
+// err. It records the notebooks and ids asked, and whether in the tree's
+// unit.
+type links struct {
+	missing   map[uuid.UUID]bool
+	none      bool
+	err       error
+	notebooks []uuid.UUID
+	asked     [][]uuid.UUID
+	inUnit    bool
+}
+
+func linkOf(id uuid.UUID) string { return "linked " + id.String() }
+
+func (l *links) Of(ctx context.Context, notebookID uuid.UUID, ids []uuid.UUID) (map[uuid.UUID]string, error) {
+	l.notebooks, l.asked = append(l.notebooks, notebookID), append(l.asked, ids)
+	l.inUnit = ctx.Value(unitKey{}) != nil
+	if l.err != nil {
+		return nil, l.err
+	}
+	out := make(map[uuid.UUID]string, len(ids))
+	for _, id := range ids {
+		if !l.missing[id] && !l.none {
+			out[id] = linkOf(id)
+		}
+	}
+	return out, nil
+}

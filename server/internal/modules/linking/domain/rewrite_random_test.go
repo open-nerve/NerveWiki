@@ -20,8 +20,16 @@ import (
 // case, with ".md", with what a Markdown link escapes or decodes, and with
 // what the Markdown around a link may pair, so that names repeat.
 func randomTitle(r *rand.Rand) string {
-	titles := []string{"a", "A", "b", "x", "X", "y", "Plan", "a b", "é", "x.md", "Close) 50%", "x%41", "a$b", "Don`t", "a %% b"}
+	titles := []string{"a", "A", "b", "x", "X", "y", "Plan", "a b", "é", "x.md", "Close) 50%", "x%41", "a$b", "Don`t", "a %% b", "x.png",
+		"v1.2", "a.tar", "X.PNG.md"}
 	return titles[r.IntN(len(titles))]
+}
+
+// randomAssetName is an attachment's name: most with an extension, some a
+// page's title too, one without an extension, which nothing leads to.
+func randomAssetName(r *rand.Rand) string {
+	names := []string{"x.png", "X.PNG", "a.png", "b", "x.pdf", "Plan.png", "a b.mp3", "é.png", "v1.2", "a.tar.gz", "a.tar"}
+	return names[r.IntN(len(names))]
 }
 
 // After a random rename or move in a random tree, every link of a random
@@ -46,7 +54,7 @@ func TestARewriteKeepsWhereEveryLinkLeads(t *testing.T) {
 	for seed := range uint64(4000) {
 		r := rand.New(rand.NewPCG(seed, 7))
 		c := randomCase(r)
-		before, after := pagesOf(t, c.pages, c.aliases), pagesOf(t, c.moved, c.aliases)
+		before, after := pagesOf(t, c.nodes(), c.aliases, c.kinds()...), pagesOf(t, c.moved, c.aliases, c.kinds()...)
 		facts, err := markdownadapter.PageFacts(m.Parse([]byte(c.content)).Facts())
 		if err != nil {
 			t.Fatal(err)
@@ -67,6 +75,9 @@ func TestARewriteKeepsWhereEveryLinkLeads(t *testing.T) {
 		for _, l := range links {
 			if l.Before.ID != (uuid.UUID{}) && (l.After.ID != l.Before.ID || l.After.Ambiguous && !l.Before.Ambiguous) {
 				moved[l.Link.Kind+map[bool]string{true: " property"}[l.Link.Property != ""]]++
+				if l.Before.Asset {
+					moved["to an attachment"]++
+				}
 			}
 		}
 		fail := func(format string, args ...any) {
@@ -122,7 +133,7 @@ func TestARewriteKeepsWhereEveryLinkLeads(t *testing.T) {
 		}
 	}
 	// Cases that rewrote nothing would prove nothing; few are left.
-	if rewritten < 1000 || slices.ContainsFunc([]string{"wikilink", "embed", "link", "wikilink property"}, func(k string) bool { return moved[k] < 100 }) {
+	if rewritten < 1000 || slices.ContainsFunc([]string{"wikilink", "embed", "link", "wikilink property", "to an attachment"}, func(k string) bool { return moved[k] < 100 }) {
 		t.Errorf("edits in %d cases, the links that moved %v: too few", rewritten, moved)
 	}
 	if pairing < 100 || unwritten > rewritten/10 {
@@ -159,14 +170,30 @@ func withinLink(content string, l domain.Link, e domain.Edit) bool {
 	return start >= 0 && end >= 0 && start <= e.Start && e.End <= l.End+end
 }
 
-// randomCase is a tree, a page of it whose content has links of every kind
-// to its pages and to none, and a rename or a move of one of its pages.
+// randomCase is a tree of pages and attachments, a page of it whose content
+// has links of every kind to its nodes and to none, and a rename or a move
+// of one of its nodes.
 type randomCaseOf struct {
-	pages, moved    []string
+	pages, assets   []string
+	moved           []string // the pages', then the attachments' paths after the change
 	aliases         [][]string
 	page, pageAfter string
 	content         string
 	recased         domain.Recased
+}
+
+// nodes are c's pages, then its attachments.
+func (c randomCaseOf) nodes() []string {
+	return slices.Concat(c.pages, c.assets)
+}
+
+// kinds tells which of c's nodes are attachments, in nodes' order.
+func (c randomCaseOf) kinds() []bool {
+	out := make([]bool, len(c.pages)+len(c.assets))
+	for i := range c.assets {
+		out[len(c.pages)+i] = true
+	}
+	return out
 }
 
 func randomCase(r *rand.Rand) randomCaseOf {
@@ -181,41 +208,51 @@ func randomCase(r *rand.Rand) randomCaseOf {
 			c.pages = append(c.pages, path)
 		}
 	}
-	c.aliases = make([][]string, len(c.pages))
+	for range r.IntN(4) {
+		parent := ""
+		if r.IntN(3) > 0 {
+			parent = c.pages[r.IntN(len(c.pages))] + "/"
+		}
+		path := parent + randomAssetName(r)
+		if !slices.ContainsFunc(c.nodes(), func(p string) bool { return siblings(p, path) }) {
+			c.assets = append(c.assets, path)
+		}
+	}
+	c.aliases = make([][]string, len(c.pages)+len(c.assets))
 	for i := range c.pages {
 		if r.IntN(5) == 0 {
 			c.aliases[i] = []string{randomTitle(r)}
 		}
 	}
 	c.page = c.pages[r.IntN(len(c.pages))]
-	from, to := randomChange(r, c.pages)
+	from, to := randomChange(r, c.pages, c.assets)
 	moved := func(p string) string {
 		if p == from || strings.HasPrefix(p, from+"/") {
 			return to + p[len(from):]
 		}
 		return p
 	}
-	for _, p := range c.pages {
+	for _, p := range c.nodes() {
 		c.moved = append(c.moved, moved(p))
 	}
 	c.pageAfter = moved(c.page)
 	if parentOf(from) == parentOf(to) && shared.TitleKey(lastOf(from)) == shared.TitleKey(lastOf(to)) {
 		var id uuid.UUID
-		id[15] = byte(slices.Index(c.pages, from) + 1)
+		id[15] = byte(slices.Index(c.nodes(), from) + 1)
 		c.recased = domain.Recased{ID: id, Name: lastOf(to)}
 	}
 	var body, properties []string
 	for range 1 + r.IntN(8) {
-		body = append(body, randomLink(r, c.pages, c.page))
+		body = append(body, randomLink(r, c.nodes(), c.page))
 		if r.IntN(3) == 0 {
 			body = append(body, []string{"**b**", "_i_", "~~s~~", "==h==", "%% c %%", "%%", "`code`"}[r.IntN(7)])
 		}
 	}
 	if r.IntN(3) == 0 {
-		body = append(body, "\n\n| h |\n| --- |\n| "+strings.ReplaceAll(randomWikilink(r, c.pages, c.page), "|", `\|`)+" |\n")
+		body = append(body, "\n\n| h |\n| --- |\n| "+strings.ReplaceAll(randomWikilink(r, c.nodes(), c.page), "|", `\|`)+" |\n")
 	}
 	for i := range r.IntN(3) {
-		value := randomWikilink(r, c.pages, c.page)
+		value := randomWikilink(r, c.nodes(), c.page)
 		key := []string{"related", "aliases", "up"}[i]
 		if r.IntN(2) == 0 && !strings.Contains(value, "'") {
 			properties = append(properties, fmt.Sprintf("%s: '%s'", key, value))
@@ -230,19 +267,26 @@ func randomCase(r *rand.Rand) randomCaseOf {
 	return c
 }
 
-// randomChange is a rename of one of pages, to a title no sibling has, or a
-// move of one to the root or a page out of its subtree with no child of its
-// title: as from and to.
-func randomChange(r *rand.Rand, pages []string) (string, string) {
+// randomChange is a rename of one of pages or of assets, to a title no
+// sibling has, an attachment's keeping an extension, or a move of one to
+// the root or a page out of its subtree with no child of its title: as
+// from and to.
+func randomChange(r *rand.Rand, pages, assets []string) (string, string) {
+	nodes := slices.Concat(pages, assets)
 	for {
-		from := pages[r.IntN(len(pages))]
+		at := r.IntN(len(nodes))
+		from := nodes[at]
 		var to string
 		if r.IntN(2) == 0 {
 			to = parentOf(from)
 			if to != "" {
 				to += "/"
 			}
-			to += randomTitle(r)
+			if at < len(pages) {
+				to += randomTitle(r)
+			} else if to += randomAssetName(r); strings.Contains(lastOf(from), ".") && !strings.Contains(lastOf(to), ".") {
+				continue
+			}
 		} else {
 			parent := pages[r.IntN(len(pages))] + "/"
 			if r.IntN(3) == 0 {
@@ -251,7 +295,7 @@ func randomChange(r *rand.Rand, pages []string) (string, string) {
 			to = parent + lastOf(from)
 		}
 		inside := to == from || strings.HasPrefix(to, from+"/")
-		if !inside && !slices.ContainsFunc(pages, func(p string) bool { return p != from && siblings(p, to) }) {
+		if !inside && !slices.ContainsFunc(nodes, func(p string) bool { return p != from && siblings(p, to) }) {
 			return from, to
 		}
 	}
@@ -262,19 +306,21 @@ func siblings(a, b string) bool {
 	return parentOf(a) == parentOf(b) && shared.TitleKey(lastOf(a)) == shared.TitleKey(lastOf(b))
 }
 
-// randomLink is a wikilink, an embed or a Markdown link, to one of pages
-// or to none, written from the page at from in one of the ways a page is.
-func randomLink(r *rand.Rand, pages []string, from string) string {
+// randomLink is a wikilink, an embed or a Markdown link, to one of nodes
+// or to none, written from the page at from in one of the ways a node is:
+// a Markdown link with ".md", but at times without it where the target's
+// name has an extension, as an attachment's is written.
+func randomLink(r *rand.Rand, nodes []string, from string) string {
 	if r.IntN(3) > 0 {
-		link := randomWikilink(r, pages, from)
+		link := randomWikilink(r, nodes, from)
 		if r.IntN(4) == 0 {
 			link = "!" + link
 		}
 		return link
 	}
-	target := randomTarget(r, pages, from)
+	target := randomTarget(r, nodes, from)
 	name := lastOf(strings.TrimSuffix(target, ".md"))
-	if !strings.HasSuffix(target, ".md") {
+	if !strings.HasSuffix(target, ".md") && (!strings.Contains(name, ".") || r.IntN(3) == 0) {
 		target += ".md"
 	}
 	text := []string{"t", name, strings.TrimPrefix(target, "/")}[r.IntN(3)]
@@ -284,17 +330,24 @@ func randomLink(r *rand.Rand, pages []string, from string) string {
 	return fmt.Sprintf("[%s](%s)", text, strings.NewReplacer("%", "%25", " ", "%20", "(", "%28", ")", "%29").Replace(target))
 }
 
-// randomWikilink is a wikilink to one of pages or to none, with an anchor
-// or a display text, the last name of its target among them, at times.
-func randomWikilink(r *rand.Rand, pages []string, from string) string {
-	target := randomTarget(r, pages, from)
-	switch r.IntN(4) {
+// randomWikilink is a wikilink to one of nodes or to none, with an anchor
+// or a display text, the last name of its target among them, or that name
+// without what follows its last dot, at times.
+func randomWikilink(r *rand.Rand, nodes []string, from string) string {
+	target := randomTarget(r, nodes, from)
+	switch r.IntN(5) {
 	case 0:
 		target += "#h"
 	case 1:
 		target += "|" + lastOf(strings.TrimSuffix(target, ".md"))
 	case 2:
 		target += "|t"
+	case 3:
+		name := lastOf(strings.TrimSuffix(target, ".md"))
+		if i := strings.LastIndexByte(name, '.'); i > 0 {
+			name = name[:i]
+		}
+		target += "|" + name
 	}
 	return "[[" + target + "]]"
 }

@@ -19,6 +19,7 @@ import (
 type resolveCase struct {
 	Pages   []string            `json:"pages"`
 	Aliases map[string][]string `json:"aliases"`
+	Assets  []string            `json:"assets"`
 	Links   []struct {
 		From      string  `json:"from"`
 		Link      string  `json:"link"`
@@ -27,10 +28,10 @@ type resolveCase struct {
 	} `json:"links"`
 }
 
-// Every link of the fixture set's resolution cases resolves to its page, as
-// extracted by the application's extensions (bootstrap's
-// markdownExtensions): the cases' ids go in the pages' order, as they would
-// were the pages made in it.
+// Every link of the fixture set's resolution cases resolves to its page or
+// attachment, as extracted by the application's extensions (bootstrap's
+// markdownExtensions): the cases' ids go in the pages' order, then the
+// attachments', as they would were the nodes made in it.
 func TestTheResolutionCasesResolveAsWritten(t *testing.T) {
 	m, err := markdown.New([]markdown.Extension{tasks.Extension(), obsidian.Extension(obsidian.Options{})})
 	if err != nil {
@@ -42,7 +43,7 @@ func TestTheResolutionCasesResolveAsWritten(t *testing.T) {
 			if err := json.Unmarshal(f.JSON, &c); err != nil {
 				t.Fatal(err)
 			}
-			tree := treeOf(t, c.Pages, c.Aliases)
+			tree := treeOf(t, c.Pages, c.Aliases, c.Assets...)
 			for _, l := range c.Links {
 				links := m.Parse([]byte(l.Link)).Facts().Extracted(obsidian.Name).(obsidian.Extracted).Links
 				if len(links) != 1 {
@@ -55,8 +56,9 @@ func TestTheResolutionCasesResolveAsWritten(t *testing.T) {
 				want := domain.Resolution{Ambiguous: l.Ambiguous}
 				if l.To != nil {
 					if want.ID = tree.ids[*l.To]; want.ID == (uuid.UUID{}) {
-						t.Fatalf("%s: to %q, not a page of the case", l.Link, *l.To)
+						t.Fatalf("%s: to %q, not a page or an attachment of the case", l.Link, *l.To)
 					}
+					want.Asset = tree.assets[*l.To]
 				}
 				if got != want {
 					t.Errorf("%s from %s: %s, want %s", l.Link, l.From, tree.name(got), tree.name(want))
@@ -66,18 +68,25 @@ func TestTheResolutionCasesResolveAsWritten(t *testing.T) {
 	}
 }
 
-// caseTree is a case's pages, as the index would hand them to Resolve.
+// caseTree is a case's pages and attachments, as the index would hand them
+// to Resolve.
 type caseTree struct {
 	ids     map[string]uuid.UUID
 	paths   map[string][]domain.Step
 	aliases map[string][]string // a page's alias keys
+	assets  map[string]bool
 }
 
-// treeOf is the tree of pages, each after its parent, with aliases.
-func treeOf(t *testing.T, pages []string, aliases map[string][]string) caseTree {
+// treeOf is the tree of pages, each after its parent, with aliases, and of
+// the attachments under them.
+func treeOf(t *testing.T, pages []string, aliases map[string][]string, assets ...string) caseTree {
 	t.Helper()
-	tree := caseTree{ids: map[string]uuid.UUID{}, paths: map[string][]domain.Step{}, aliases: map[string][]string{}}
-	for i, p := range pages {
+	tree := caseTree{ids: map[string]uuid.UUID{}, paths: map[string][]domain.Step{}, aliases: map[string][]string{},
+		assets: map[string]bool{}}
+	for _, a := range assets {
+		tree.assets[a] = true
+	}
+	for i, p := range slices.Concat(pages, assets) {
 		var id uuid.UUID
 		id[15] = byte(i + 1)
 		tree.ids[p] = id
@@ -103,7 +112,7 @@ func (c caseTree) resolve(target domain.Target, from string) domain.Resolution {
 	var candidates []domain.Node
 	aliased := map[string][]domain.Node{}
 	for p, path := range c.paths {
-		node := domain.Node{ID: c.ids[p], Path: path}
+		node := domain.Node{ID: c.ids[p], Path: path, Asset: c.assets[p]}
 		if slices.Contains(target.LastKeys(), path[len(path)-1].Key) {
 			candidates = append(candidates, node)
 		}

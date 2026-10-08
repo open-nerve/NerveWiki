@@ -10,8 +10,15 @@ import type { Notebook } from "../../services/notebook.service";
 import { usePageTree } from "../../stores/context";
 import { PanelSection } from "./panel-section";
 
-/** A value as the properties show it: text, or a property link's text and the page it leads to (null: none). */
-type Shown = string | { text: string; lead: string | null };
+/** A value as the properties show it: text, or a property link's text and what it leads to. */
+type Shown = string | { text: string; lead: Lead };
+
+/**
+ * What a property link leads to: a page, by its id; none (null); or an
+ * attachment, by its id, shown as its text until the server gives its
+ * address (M7/P3 design 4.7).
+ */
+type Lead = string | null | { asset: string };
 
 /**
  * How long a property link's path may be, in UTF-16 code units, to be
@@ -26,15 +33,16 @@ const pathsUpTo = 1024;
 /** A property as shown: its key, and its value, or its list's items, as shown. */
 type Row = { key: string; shown: Shown | Shown[] };
 
-/** Take answers where the property link a string at path is leads (null: no page), undefined when it is none. */
-type Take = (value: string, path: string) => string | null | undefined;
+/** Take answers where the property link a string at path is leads, undefined when it is none. */
+type Take = (value: string, path: string) => Lead | undefined;
 
 /**
  * PageProperties is the page's frontmatter properties as the link index has
  * them (M6/P7 design 10), in the order written: each its key and its
  * value. A property link, a value or a list's item that is one link, shows
  * the link's text, leading to the page it resolves to, or, resolving to
- * none, styled as a link to no page is. A frontmatter that is not valid
+ * none, styled as a link to no page is; one to an attachment shows its text
+ * alone. A frontmatter that is not valid
  * says so, as does one without properties.
  */
 export function PageProperties({
@@ -109,16 +117,17 @@ function rowsOf(data: Properties): Row[] {
  * link's shape. A path longer than pathsUpTo is not looked up.
  */
 function taking({ properties, links }: Properties): Take {
-  const byPath = new Map<string, (string | null)[]>();
-  for (const { key, node_id: node } of links) {
+  const byPath = new Map<string, Lead[]>();
+  for (const { key, node_id: node, kind } of links) {
     if (key.length > pathsUpTo) {
       continue;
     }
+    const lead = kind === "asset" && node !== null ? { asset: node } : (node ?? null);
     const queue = byPath.get(key);
     if (queue === undefined) {
-      byPath.set(key, [node ?? null]);
+      byPath.set(key, [lead]);
     } else {
-      queue.push(node ?? null);
+      queue.push(lead);
     }
   }
   const shared = sharedPaths(properties, byPath);
@@ -220,10 +229,13 @@ function linkLike(value: string): boolean {
 const markdownLink =
   /^\[(?:[^[\]\\]|\\.)*\]\([ \t\n]*(?:<((?:[^<>\n\\]|\\.)*)>|(?!<)((?:[^ \t\n()\\]|\\.|\([^ \t\n()]*\))+))(?:[ \t\n]+(?:"[^"]*"|'[^']*'|\([^()]*\)))?[ \t\n]*\)$/s;
 
-/** show is a value shown: its text, or its link, leading to its page or styled as one to none. */
+/** show is a value shown: its text, or its link, leading to its page or styled as one to none, or an attachment's text. */
 function show(shown: Shown, href: (id: string) => string): ReactNode {
   if (typeof shown === "string") {
     return shown;
+  }
+  if (typeof shown.lead === "object" && shown.lead !== null) {
+    return shown.text;
   }
   return shown.lead === null ? (
     <span className="text-muted-foreground underline decoration-dashed underline-offset-4">{shown.text}</span>

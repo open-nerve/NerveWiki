@@ -369,23 +369,26 @@ func sourcesOf(backlinks []app.Backlink) []uuid.UUID {
 
 // A page's properties are its properties' keys and values in the order
 // written, and its property links' paths, each with where it resolves, the
-// zero id for none, by start; whether its frontmatter is valid. A page the
+// zero id for none, and whether to an attachment, by start; whether its
+// frontmatter is valid. A page the
 // index does not have has none (M6/P5 design 4).
 func TestAPagesProperties(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()
-	p, invalid, x := uuid.NewV7(), uuid.NewV7(), uuid.NewV7()
+	p, invalid, x, y := uuid.NewV7(), uuid.NewV7(), uuid.NewV7(), uuid.NewV7()
 	facts := facts()
-	facts.Links = append(facts.Links, domain.Link{Kind: "wikilink", Property: "up", Target: "Up", Start: 4, End: 6})
+	facts.Links = append(facts.Links, domain.Link{Kind: "wikilink", Property: "up", Target: "Up", Start: 4, End: 6},
+		domain.Link{Kind: "wikilink", Property: "cover", Target: "x.png", Start: 6, End: 8})
 	f.replace(t, app.Page{ID: p, NotebookID: f.eng, Revision: 2}, facts)
 	f.resolve(t, p, domain.Resolution{ID: x}, 12)
+	f.resolve(t, p, domain.Resolution{ID: y, Asset: true}, 6)
 	f.replace(t, app.Page{ID: invalid, NotebookID: f.eng, Revision: 1}, domain.Facts{})
 
 	got, ok, err := f.s.Properties(ctx, p)
 	want := app.Properties{
 		Valid:      true,
 		Properties: []app.Property{{Key: "sources", Value: json.RawMessage(`["[[Other]]"]`)}, {Key: "n", Value: json.RawMessage(`{"a": 1}`)}},
-		Links:      []app.PropertyLink{{Key: "up"}, {Key: "sources.0", NodeID: x}},
+		Links:      []app.PropertyLink{{Key: "up"}, {Key: "cover", NodeID: y, Asset: true}, {Key: "sources.0", NodeID: x}},
 	}
 	if err != nil || !ok || !reflect.DeepEqual(got, want) {
 		t.Errorf("Properties = %+v, %v, %v\nwant %+v", got, ok, err, want)
@@ -496,10 +499,12 @@ func TestTheReadsUseTheirIndexes(t *testing.T) {
 			return err
 		}), 4, "Index Only Scan using page_links_resolved_id_source_id_idx", "((resolved_id = (InitPlan ",
 			"Index Scan using indexed_pages_pkey on indexed_pages ip"},
+		// The property links' keys, where each resolves, and whether to an
+		// attachment (M7/P3 design 4.6): a scan each of the page's range.
 		{"PageProperties: the property links", statementOf(t, func(q *gen.Queries) error {
 			_, err := q.PageProperties(ctx, id)
 			return err
-		}), 2, "Index Scan using page_links_source_id_range_start_idx", "(source_id = ", ""},
+		}), 3, "Index Scan using page_links_source_id_range_start_idx", "(source_id = ", ""},
 		// LinksReached's part by the pages its links resolve to: the whole
 		// statement, of four parts, is planned on another index while the
 		// tables are empty.

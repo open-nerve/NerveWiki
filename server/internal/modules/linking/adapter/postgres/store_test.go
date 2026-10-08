@@ -2,6 +2,7 @@ package postgresadapter_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"slices"
@@ -11,6 +12,7 @@ import (
 	"time"
 	"uuid"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	postgresadapter "github.com/open-nerve/NerveWiki/server/internal/modules/linking/adapter/postgres"
@@ -232,7 +234,7 @@ func TestDeletingNotebooksDropsTheirRows(t *testing.T) {
 // The links a change reaches are its notebook's whose target's key, with
 // ".md" or without, is among the keys; those resolved to one of the
 // targets; and those written in one of the sources: with where each
-// resolves.
+// resolves, a page or an attachment.
 func TestTheLinksAChangeReaches(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()
@@ -240,14 +242,17 @@ func TestTheLinksAChangeReaches(t *testing.T) {
 	if p.Compare(q) > 0 {
 		p, q = q, p // the links come in the order of their pages' ids
 	}
-	x := uuid.NewV7()
+	x, y := uuid.NewV7(), uuid.NewV7()
 	f.replace(t, app.Page{ID: p, NotebookID: f.eng, Revision: 1}, facts())
 	f.replace(t, app.Page{ID: q, NotebookID: f.eng, Revision: 1}, domain.Facts{Links: []domain.Link{
 		{Kind: "wikilink", Target: "B/Note.md", Start: 0, End: 9},
 		{Kind: "wikilink", Target: "Else", Start: 20, End: 24},
 	}})
 	f.replace(t, app.Page{ID: uuid.NewV7(), NotebookID: f.ops, Revision: 1}, facts())
-	if err := f.s.SetResolutions(ctx, []app.Link{{SourceID: q, Start: 20, Resolution: domain.Resolution{ID: x, Ambiguous: true}}}); err != nil {
+	if err := f.s.SetResolutions(ctx, []app.Link{
+		{SourceID: q, Start: 20, Resolution: domain.Resolution{ID: x, Ambiguous: true}},
+		{SourceID: q, Start: 0, Resolution: domain.Resolution{ID: y, Asset: true}},
+	}); err != nil {
 		t.Fatal(err)
 	}
 	link := func(source uuid.UUID, start int, target string) app.Link {
@@ -256,7 +261,7 @@ func TestTheLinksAChangeReaches(t *testing.T) {
 	pOther, pNote, pStrasse := link(p, 12, "Other"), link(p, 40, "A/Note"), link(p, 60, "Straße.md")
 	pNone := link(p, 80, "A//B")
 	qNote, qElse := link(q, 0, "B/Note.md"), link(q, 20, "Else")
-	qElse.Resolution = domain.Resolution{ID: x, Ambiguous: true}
+	qNote.Resolution, qElse.Resolution = domain.Resolution{ID: y, Asset: true}, domain.Resolution{ID: x, Ambiguous: true}
 	tests := []struct {
 		name  string
 		reach domain.Reach
@@ -266,6 +271,7 @@ func TestTheLinksAChangeReaches(t *testing.T) {
 		{"by key", domain.Reach{Keys: []string{"note", "other"}}, []app.Link{pOther, pNote, qNote}},
 		{"by key with .md", domain.Reach{Keys: []string{"note.md", "strasse.md"}}, []app.Link{pStrasse, qNote}},
 		{"by target", domain.Reach{Targets: []uuid.UUID{x}}, []app.Link{qElse}},
+		{"by an attachment target", domain.Reach{Targets: []uuid.UUID{y}}, []app.Link{qNote}},
 		{"by source", domain.Reach{Sources: []uuid.UUID{p}}, []app.Link{pOther, pNote, pStrasse, pNone}},
 		{"each once", domain.Reach{Keys: []string{"else"}, Targets: []uuid.UUID{x}, Sources: []uuid.UUID{q}}, []app.Link{qNote, qElse}},
 	}
@@ -357,8 +363,9 @@ func TestThePagesWithAnAlias(t *testing.T) {
 	}
 }
 
-// A resolution to none clears the page and the tie; setting a link that is
-// not there is a defect, and sets nothing.
+// A resolution to none clears the page, the tie and the attachment; setting
+// a link that is not there is a defect, and sets nothing; an attachment
+// without a node is refused (M7/P3 design 4.3).
 func TestSettingResolutions(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()
@@ -368,16 +375,23 @@ func TestSettingResolutions(t *testing.T) {
 	set := func(links ...app.Link) error {
 		return f.tx.WithinTx(ctx, func(ctx context.Context) error { return f.s.SetResolutions(ctx, links) })
 	}
-	if err := set(app.Link{SourceID: p, Start: 40, Resolution: domain.Resolution{ID: x, Ambiguous: true}}); err != nil {
+	if err := set(app.Link{SourceID: p, Start: 40, Resolution: domain.Resolution{ID: x, Ambiguous: true, Asset: true}}); err != nil {
 		t.Fatal(err)
+	}
+	if got := f.rows(t, `SELECT resolved_id::text, ambiguous::text, resolved_asset::text FROM page_links WHERE range_start = 40`); !reflect.DeepEqual(got, [][]string{{x.String(), "true", "true"}}) {
+		t.Errorf("a link resolved to an attachment is %v", got)
 	}
 	if err := set(app.Link{SourceID: p, Start: 40}); err != nil {
 		t.Fatal(err)
 	}
-	if got := f.rows(t, `SELECT resolved_id::text, ambiguous::text FROM page_links WHERE range_start = 40`); !reflect.DeepEqual(got, [][]string{{"NULL", "false"}}) {
+	if got := f.rows(t, `SELECT resolved_id::text, ambiguous::text, resolved_asset::text FROM page_links WHERE range_start = 40`); !reflect.DeepEqual(got, [][]string{{"NULL", "false", "false"}}) {
 		t.Errorf("a link resolved to none is %v", got)
 	}
-	err := set(app.Link{SourceID: p, Start: 12, Resolution: domain.Resolution{ID: x}}, app.Link{SourceID: p, Start: 13, Resolution: domain.Resolution{ID: x}})
+	_, err := f.pool.Exec(ctx, `UPDATE page_links SET resolved_asset = true WHERE range_start = 40`)
+	if pgErr := (*pgconn.PgError)(nil); !errors.As(err, &pgErr) || pgErr.Code != "23514" || pgErr.ConstraintName != "page_links_resolved_asset_check" {
+		t.Errorf("an attachment without a node: %v, want the check's violation", err)
+	}
+	err = set(app.Link{SourceID: p, Start: 12, Resolution: domain.Resolution{ID: x}}, app.Link{SourceID: p, Start: 13, Resolution: domain.Resolution{ID: x}})
 	if err == nil {
 		t.Error("setting a link that is not there succeeded")
 	}
@@ -399,16 +413,19 @@ func TestAPagesView(t *testing.T) {
 	f.replace(t, app.Page{ID: p, NotebookID: f.eng, Revision: 7}, facts())
 	f.replace(t, app.Page{ID: empty, NotebookID: f.eng, Revision: 2}, domain.Facts{FrontmatterValid: true})
 	f.replace(t, app.Page{ID: uuid.NewV7(), NotebookID: f.eng, Revision: 1}, facts())
-	x := uuid.NewV7()
+	x, y := uuid.NewV7(), uuid.NewV7()
 	err := f.tx.WithinTx(ctx, func(ctx context.Context) error {
-		return f.s.SetResolutions(ctx, []app.Link{{SourceID: p, Start: 40, Resolution: domain.Resolution{ID: x, Ambiguous: true}}})
+		return f.s.SetResolutions(ctx, []app.Link{
+			{SourceID: p, Start: 40, Resolution: domain.Resolution{ID: x, Ambiguous: true}},
+			{SourceID: p, Start: 60, Resolution: domain.Resolution{ID: y, Asset: true}},
+		})
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	got, ok, err := f.s.View(ctx, p)
 	want := app.Indexed{Revision: 7, Extractor: domain.Extractor, Resolutions: map[int]domain.Resolution{
-		40: {ID: x, Ambiguous: true}, 60: {}, 12: {}, 80: {},
+		40: {ID: x, Ambiguous: true}, 60: {ID: y, Asset: true}, 12: {}, 80: {},
 	}}
 	if err != nil || !ok || !reflect.DeepEqual(got, want) {
 		t.Errorf("View = %+v, %v, %v; want %+v", got, ok, err, want)

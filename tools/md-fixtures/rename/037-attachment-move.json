@@ -1,0 +1,17 @@
+{
+  "description": "附件移动之后名称不再引向它：写从根起的完整路径",
+  "source": "obsidian-verified",
+  "pages": [
+    "A",
+    "DD",
+    "B",
+    "B/C",
+    "src"
+  ],
+  "assets": [
+    "A/x.png",
+    "DD/x.png"
+  ],
+  "from": "A/x.png",
+  "to": "B/C/x.png"
+}

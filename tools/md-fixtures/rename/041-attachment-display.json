@@ -1,0 +1,15 @@
+{
+  "description": "wikilink 的显示文字等于附件名称去掉扩展名的，跟着改成新名称去掉扩展名；等于带扩展名的名称的、嵌入的、别的显示文字不改",
+  "source": "obsidian-verified",
+  "pages": [
+    "A",
+    "C",
+    "src"
+  ],
+  "assets": [
+    "A/x.png",
+    "C/x.png"
+  ],
+  "from": "A/x.png",
+  "to": "A/y.png"
+}

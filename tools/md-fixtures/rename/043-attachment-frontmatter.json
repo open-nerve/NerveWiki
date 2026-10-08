@@ -1,0 +1,13 @@
+{
+  "description": "frontmatter 里指向附件的属性链接同样改写，正文的嵌入也是",
+  "source": "obsidian-verified",
+  "pages": [
+    "A",
+    "src"
+  ],
+  "assets": [
+    "A/x.png"
+  ],
+  "from": "A/x.png",
+  "to": "A/y.png"
+}

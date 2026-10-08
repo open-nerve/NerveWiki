@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -50,16 +51,17 @@ type uploader struct {
 	tree  *tree
 	files *memFiles
 	rows  *memRows
+	links *links
 	logs  *bytes.Buffer
 	uc    *app.Upload
 }
 
 func newUploader() *uploader {
-	u := &uploader{tree: &tree{}, files: newFiles(), rows: newRows(), logs: &bytes.Buffer{}}
+	u := &uploader{tree: &tree{}, files: newFiles(), rows: newRows(), links: &links{}, logs: &bytes.Buffer{}}
 	logger := slog.New(slog.NewTextHandler(u.logs, nil))
 	u.uc = app.NewUpload(app.UploadDeps{
 		Tree: u.tree, Blobs: app.NewBlobs(u.files, u.rows, &sniffer{sniffed: "image/png"}, logger), Files: u.files,
-		Signer: macadapter.New(signKey()), Logger: logger, MaxBytes: 8, MinFree: 100,
+		Signer: macadapter.New(signKey()), Links: u.links, Logger: logger, MaxBytes: 8, MinFree: 100,
 	})
 	return u
 }
@@ -149,8 +151,13 @@ func TestCreateAttachesTheRowInTheUnit(t *testing.T) {
 		t.Errorf("created %+v, want the file's type, size and SHA-256 for the guards", created)
 	}
 	if a.Node != n || a.Blob.ID != blob.ID || a.Blob.NodeID != n.ID ||
-		a.Signed != macadapter.New(signKey()).Sign(n.CreatedAt, n.ID, blob.ID) {
-		t.Errorf("answer = %+v, want the node, its blob and their address signed", a)
+		a.Signed != macadapter.New(signKey()).Sign(n.CreatedAt, n.ID, blob.ID) || a.Link != linkOf(n.ID) {
+		t.Errorf("answer = %+v, want the node, its blob, their address signed and its link", a)
+	}
+	if !u.links.inUnit || len(u.links.asked) != 1 || !slices.Equal(u.links.asked[0], []uuid.UUID{n.ID}) ||
+		u.links.notebooks[0] != notebookID() {
+		t.Errorf("links asked %v of %v, in the unit %v; want the node's of its notebook, in the unit", u.links.asked, u.links.notebooks,
+			u.links.inUnit)
 	}
 	logs := u.logs.String()
 	for _, want := range []string{"level=INFO", "asset uploaded", "node_id=" + n.ID.String(), "notebook_id=" + notebookID().String(),
@@ -165,24 +172,37 @@ func TestCreateAttachesTheRowInTheUnit(t *testing.T) {
 }
 
 // A unit that refuses the attachment, a *shared.Error, rolled its row
-// back: the file is deleted. Any other failure, the row's or the commit's,
-// may have kept the row: the file stays, for the orphan sweep.
+// back: the file is deleted. Any other failure, the row's, the link's or
+// the commit's, may have kept the row: the file stays, for the orphan
+// sweep. A failure in the unit, after the row, is the unit's (the link's
+// read, or no link of the node, a defect: M7/P3 design 4.6).
 func TestCreateDeletesTheFileOnARefusalOnly(t *testing.T) {
 	for _, tt := range []struct {
 		name      string
 		createErr error
 		rowErr    error
+		linkErr   error
+		noLink    bool
 		deleted   bool
 	}{
-		{"a name taken since the check", shared.NewError(shared.KindConflict, "page.title_taken", "Taken."), nil, true},
-		{"the guard's refusal", shared.NewError(shared.KindConflict, "page.locked", "Locked."), nil, true},
-		{"a commit whose outcome is unknown", errors.New("commit: connection reset"), nil, false},
-		{"a row that failed", nil, errors.New("insert: connection reset"), false},
-		{"a deadline", context.DeadlineExceeded, nil, false},
+		{"a name taken since the check", shared.NewError(shared.KindConflict, "page.title_taken", "Taken."), nil, nil, false, true},
+		{"the guard's refusal", shared.NewError(shared.KindConflict, "page.locked", "Locked."), nil, nil, false, true},
+		{"a commit whose outcome is unknown", errors.New("commit: connection reset"), nil, nil, false, false},
+		{"a row that failed", nil, errors.New("insert: connection reset"), nil, false, false},
+		{"a deadline", context.DeadlineExceeded, nil, nil, false, false},
+		{"the link's read that failed", nil, nil, errPort, false, false},
+		{"no link of the node", nil, nil, nil, true, false},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			u := newUploader()
-			u.tree.createErr, u.rows.err = tt.createErr, tt.rowErr
+			u.tree.createErr, u.rows.err, u.links.err, u.links.none = tt.createErr, tt.rowErr, tt.linkErr, tt.noLink
+			if tt.linkErr != nil || tt.noLink {
+				defer func() {
+					if want := map[bool]error{true: app.ErrNoLink, false: tt.linkErr}[tt.noLink]; !errors.Is(u.tree.afterErr, want) {
+						t.Errorf("the unit's after = %v, want %v", u.tree.afterErr, want)
+					}
+				}()
+			}
 			req := app.Request{NotebookID: notebookID(), Name: "a.png", Client: "web"}
 			blob, err := u.uc.Store(context.Background(), req, strings.NewReader("abc"))
 			if err != nil {

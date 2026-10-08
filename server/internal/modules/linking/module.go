@@ -85,9 +85,11 @@ type (
 	// Pages is what the index reads of a notebook's pages: bootstrap hands
 	// page.NewLinkTargets to it.
 	Pages = app.Pages
-	// Node is a page with its path from the root, itself last.
+	// Node is a page or an attachment with its path from the root, itself
+	// last.
 	Node = domain.Node
-	// Step is a page on a path: its id, title key and name.
+	// Step is a node on a path, a page but for an attachment's last: its
+	// id, title key and name.
 	Step = domain.Step
 	// PagesChanged is a page write unit's changes.
 	PagesChanged = app.PagesChanged
@@ -176,6 +178,22 @@ const Extractor = domain.Extractor
 // of another kind, or without the obsidian extension's, are an error.
 func PageFacts(facts any) (Facts, error) {
 	return markdownadapter.PageFacts(facts)
+}
+
+// AssetLinks writes how a wikilink is written to lead to attachments alone
+// (M7/P3 design 4.6): the asset module's links, which bootstrap wires.
+type AssetLinks = app.AssetLinks
+
+// Attachments is what AssetLinks reads of the nodes, the page module's.
+type Attachments = app.Attachments
+
+// Attachment is an attachment as Attachments reads it.
+type Attachment = app.Attachment
+
+// NewAssetLinks returns AssetLinks over the page module's reads, in the
+// caller's transaction or on the pool.
+func NewAssetLinks(attachments Attachments) AssetLinks {
+	return app.AssetLinks{Attachments: attachments}
 }
 
 // ResolveLinks is where a page's links lead for its reading view, the

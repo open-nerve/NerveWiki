@@ -83,6 +83,7 @@ func linkingMatrixRows() []matrixRow {
 				t.Helper()
 				var list struct {
 					Data []struct {
+						Kind string `json:"kind"`
 						Name string `json:"name"`
 						Link string `json:"link"`
 					}
@@ -90,16 +91,24 @@ func linkingMatrixRows() []matrixRow {
 				decodeAnswer(t, answer, &list)
 				var names []string
 				for _, n := range list.Data {
-					names = append(names, n.Name)
+					names = append(names, n.Kind+" "+n.Name)
 					if n.Link != n.Name {
 						t.Errorf("%s is written %q, not by its title, its own in the notebook", n.Name, n.Link)
 					}
 				}
-				want := pagesOf(notebookOf(c))
+				var want []string
+				for _, p := range pagesOf(notebookOf(c)) {
+					want = append(want, "page "+p)
+				}
+				for _, a := range matrixAssets() {
+					if a.notebook == notebookOf(c) {
+						want = append(want, "asset "+a.name)
+					}
+				}
 				slices.Sort(names)
 				slices.Sort(want)
 				if !slices.Equal(names, want) {
-					t.Errorf("link targets %q, want the notebook's pages %q", names, want)
+					t.Errorf("link targets %q, want the notebook's pages and attachments %q", names, want)
 				}
 			},
 		},

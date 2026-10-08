@@ -1,0 +1,32 @@
+{
+  "description": "笔记本里没有这个名称的附件时，带扩展名的目标读作页面：每种写法都解析到标题为 x.png 的页",
+  "source": "obsidian-verified",
+  "pages": ["P", "P/x.png", "src"],
+  "links": [
+    {
+      "from": "src",
+      "link": "[[x.png]]",
+      "to": "P/x.png"
+    },
+    {
+      "from": "src",
+      "link": "[t](x.png)",
+      "to": "P/x.png"
+    },
+    {
+      "from": "src",
+      "link": "![](x.png)",
+      "to": "P/x.png"
+    },
+    {
+      "from": "src",
+      "link": "![[x.png]]",
+      "to": "P/x.png"
+    },
+    {
+      "from": "src",
+      "link": "[[y.png]]",
+      "to": null
+    }
+  ]
+}

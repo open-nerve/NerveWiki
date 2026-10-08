@@ -3,8 +3,10 @@
 //   node verify-resolve.mjs prepare <workdir>        one scratch vault per case, an isolated user-data dir
 //   node verify-resolve.mjs check <workdir> [port]   read Obsidian's resolved links and compare (default port 9333)
 //
-// A page A is A.md, its children are in A/. Each link is a file of its own, holding only the link, in the folder of
-// the page it is written in. Obsidian-verified cases must match; nerve-defined ones only report how they differ.
+// A page A is A.md, its children are in A/; an attachment is a file of its name, an image a real one (M7/P3 design
+// 4.8), and the vault shows every type of file ("Detect all file extensions"). Each link is a file of its own, holding
+// only the link, in the folder of the page it is written in. Obsidian-verified cases must match; nerve-defined ones only
+// report how they differ.
 import { existsSync, readFileSync, readdirSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -20,6 +22,14 @@ const cases = readdirSync(dir)
   .filter((f) => f.endsWith(".json"))
   .toSorted()
   .map((f) => Object.assign(JSON.parse(readFileSync(join(dir, f), "utf8")), { name: f.slice(0, -5) }));
+// A 7×5 PNG, for the attachments that are images; any other's bytes are a few of text.
+const png = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAcAAAAFCAYAAACJmvbYAAAAEklEQVR42mM4YWPzHxdmGABJADoKTp7oONgaAAAAAElFTkSuQmCC",
+  "base64"
+);
+const fileOf = (name) => (/\.(png|jpe?g|gif|webp|bmp|avif)$/i.test(name) ? png : Buffer.from("not really\n"));
+// pathOf is the file a case's page or attachment is in the vault.
+const pathOf = (c, to) => (c.assets?.includes(to) ? to : `${to}.md`);
 const folderOf = (page) => (page.includes("/") ? page.slice(0, page.lastIndexOf("/")) : "");
 const query = (c, i) => join(folderOf(c.links[i].from), `q${String(i).padStart(3, "0")}.md`);
 
@@ -42,6 +52,8 @@ if (cmd === "prepare") {
       const aliases = c.aliases?.[p];
       write(`${p}.md`, aliases ? `---\naliases: ${JSON.stringify(aliases)}\n---\n` : "");
     }
+    for (const a of c.assets ?? []) write(a, fileOf(a));
+    write(".obsidian/app.json", JSON.stringify({ showUnsupportedFiles: true }));
     c.links.forEach((l, i) => write(query(c, i), `${l.link}\n`));
     vaults[
       c.name
@@ -123,14 +135,14 @@ for (const c of cases) {
       failed++;
       return;
     }
-    const gotPage = got.length === 1 ? got[0].replace(/\.md$/, "") : null;
+    const gotPath = got.length === 1 ? got[0] : null;
     const source = l.source ?? c.source;
-    if (gotPage === l.to) {
+    if (gotPath === (l.to === null ? null : pathOf(c, l.to))) {
       if (source === "nerve-defined")
         console.log(`same ${c.name} ${l.from} ${l.link}: Obsidian agrees, reconsider nerve-defined`);
       return;
     }
-    const line = `${c.name} ${l.from} ${l.link}: Obsidian ${gotPage}, the case ${l.to}`;
+    const line = `${c.name} ${l.from} ${l.link}: Obsidian ${gotPath}, the case ${l.to === null ? null : pathOf(c, l.to)}`;
     if (source === "obsidian-verified") {
       console.log(`FAIL ${line}`);
       failed++;

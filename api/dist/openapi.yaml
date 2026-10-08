@@ -1300,7 +1300,7 @@ paths:
       tags:
         - page
       summary: Rename a page or an attachment
-      description: 'Renames the node, a page or an attachment; its notebook''s editors and admins can, a reader cannot (forbidden). A node that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found; the name is checked after both: its rules are validation_failed, a name a sibling has, compared by its key, is page.title_taken. An attachment''s name does not end with ".md", in any case, and keeps an extension when it had one (the extension may change): either is not_allowed on name. The node''s own name writes nothing; one that differs from it in case alone is written. The links that led to the page, or under it, by a path that changes, and those the new name would lead elsewhere, are written again in the pages they are in, so that each leads where it did; when one of these pages is being edited, its own included, the rename is refused as a whole, linking.pages_locked naming each of them and its editor, and when their parse finds the server busy it is server_busy.'
+      description: 'Renames the node, a page or an attachment; its notebook''s editors and admins can, a reader cannot (forbidden). A node that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found; the name is checked after both: its rules are validation_failed, a name a sibling has, compared by its key, is page.title_taken. An attachment''s name does not end with ".md", in any case, and keeps an extension when it had one (the extension may change): either is not_allowed on name. The node''s own name writes nothing; one that differs from it in case alone is written. The links that led to the node, the attachment or the page and those under it, by a path that changes, and those the new name would lead elsewhere, are written again in the pages they are in, so that each leads where it did; when one of these pages is being edited, its own included, the rename is refused as a whole, linking.pages_locked naming each of them and its editor, and when their parse finds the server busy it is server_busy.'
       security:
         - bearer: []
       x-problem-codes:
@@ -1350,7 +1350,7 @@ paths:
       tags:
         - page
       summary: Move a page or an attachment
-      description: 'Moves the node, a page with every node under it or an attachment: under another parent page, to the notebook''s root, or among its siblings. Its notebook''s editors and admins can, a reader cannot (forbidden). A node that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found; the destination is checked after both: a parent that is no page of the notebook and a node to follow that is no other child of the parent are validation_failed; then a parent that is the node itself or under it is page.cycle, a title a new sibling has, compared by its key, page.title_taken, and a page under it that would be deeper than ten levels page.too_deep: an attachment is no level, and a page of the tenth holds them. A move to where the node is writes nothing. The links that led to the page or under it by a path that changes, those from these pages that the move would lead elsewhere, and those the moved pages would take from other pages, are written again in the pages they are in, so that each leads where it did; when one of these pages is being edited, one of the moved included, the move is refused as a whole, linking.pages_locked naming each of them and its editor, and when their parse finds the server busy it is server_busy.'
+      description: 'Moves the node, a page with every node under it or an attachment: under another parent page, to the notebook''s root, or among its siblings. Its notebook''s editors and admins can, a reader cannot (forbidden). A node that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found; the destination is checked after both: a parent that is no page of the notebook and a node to follow that is no other child of the parent are validation_failed; then a parent that is the node itself or under it is page.cycle, a title a new sibling has, compared by its key, page.title_taken, and a page under it that would be deeper than ten levels page.too_deep: an attachment is no level, and a page of the tenth holds them. A move to where the node is writes nothing. The links that led to the node, the attachment or the page and those under it, by a path that changes, the links in the moved pages that the move would lead elsewhere, and the links the moved nodes would take from other nodes, are written again in the pages they are in, so that each leads where it did; when one of these pages is being edited, one of the moved included, the move is refused as a whole, linking.pages_locked naming each of them and its editor, and when their parse finds the server busy it is server_busy.'
       security:
         - bearer: []
       x-problem-codes:
@@ -1434,7 +1434,7 @@ paths:
       tags:
         - linking
       summary: Read where a page made for a link would go
-      description: 'Where a page made for a link''s target, written in this page, would go so that the link then leads to it: under which page, null for the notebook''s root, and titled what, the target''s last segment as written without ".md". createPage makes it. A target that leads to a page already answers that page instead; one with no such place answers why: target_invalid, it has an empty segment, a "." or ".." past its head, a NUL, or bytes that are not UTF-8; title_invalid, its last segment is no title; parent_missing, no page is where its other segments lead, read from this page''s folder for "./" and "../", from the root for "/", else as links resolve but not by aliases; too_deep, the page made would be deeper than pages nest; not_resolvable, the target would not lead to the page made, or not to it alone. The notebook''s admins and editors can read it. A page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found; then a role that does not write is forbidden; then a target absent or longer than 4096 bytes is validation_failed.'
+      description: 'Where a page made for a link''s target, written in this page, would go so that the link then leads to it: under which page, null for the notebook''s root, and titled what, the target''s last segment as written without ".md". createPage makes it. A target that leads to a page already answers that page instead; one with no such place answers why: target_invalid, it has an empty segment, a "." or ".." past its head, a NUL, or bytes that are not UTF-8; title_invalid, its last segment is no title; target_is_asset, it is read as an attachment''s, its last segment, not written with ".md", the title key of an attachment of the notebook with an extension, which it leads to or not, or an attachment where the page would go has its title; parent_missing, no page is where its other segments lead, read from this page''s folder for "./" and "../", from the root for "/", else as links resolve but not by aliases; too_deep, the page made would be deeper than pages nest; not_resolvable, the target would not lead to the page made, or not to it alone. The notebook''s admins and editors can read it. A page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found; then a role that does not write is forbidden; then a target absent or longer than 4096 bytes is validation_failed.'
       security:
         - bearer: []
       x-problem-codes:
@@ -1509,7 +1509,7 @@ paths:
       tags:
         - linking
       summary: List what a notebook's links may lead to
-      description: 'The notebook''s pages, for the editor''s completion, by id: each with its title, how a wikilink is written to lead to it alone from anywhere in the notebook, as a rename writes it again, and its aliases. Any role in the notebook can list them. A notebook that does not exist, is deleted, or that the caller has no role in is notebook.not_found. The list is not paged.'
+      description: 'The notebook''s pages and attachments with an extension, for the editor''s completion, by id: each with its kind, its title or name, how a wikilink is written to lead to it alone from anywhere in the notebook, as a rename writes it again, and a page''s aliases. An attachment without an extension, which no link leads to, is not listed. Any role in the notebook can list them. A notebook that does not exist, is deleted, or that the caller has no role in is notebook.not_found. The list is not paged.'
       security:
         - bearer: []
       x-problem-codes:
@@ -2976,6 +2976,12 @@ components:
           type: string
         value:
           description: The property's value as JSON; an object's keys are not in the order written.
+    LinkTargetKind:
+      description: What a link target is, a page or an attachment.
+      type: string
+      enum:
+        - page
+        - asset
     PropertyLink:
       description: A property whose value, or an item of whose list, is a link.
       type: object
@@ -2983,16 +2989,22 @@ components:
       required:
         - key
         - node_id
+        - kind
       properties:
         key:
           description: The property's path, a list's item after a dot (sources.0).
           type: string
         node_id:
-          description: The page the link resolves to; null for none.
+          description: The page or the attachment the link resolves to; null for none.
           type:
             - string
             - 'null'
           format: uuid
+        kind:
+          description: What node_id is; null when it is null.
+          anyOf:
+            - $ref: '#/components/schemas/LinkTargetKind'
+            - type: 'null'
     PageProperties:
       type: object
       additionalProperties: false
@@ -3037,6 +3049,7 @@ components:
       enum:
         - target_invalid
         - title_invalid
+        - target_is_asset
         - parent_missing
         - too_deep
         - not_resolvable
@@ -3108,11 +3121,6 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/TagPage'
-    LinkTargetKind:
-      description: What a link target is. Attachments come later.
-      type: string
-      enum:
-        - page
     LinkTarget:
       type: object
       additionalProperties: false
@@ -3129,13 +3137,13 @@ components:
         kind:
           $ref: '#/components/schemas/LinkTargetKind'
         name:
-          description: The page's title.
+          description: The page's title; the attachment's name, with its extension.
           type: string
         link:
-          description: 'How a wikilink is written to lead to the page alone, from anywhere in the notebook: its title, or its path from the root where another page has its title; with ".md" after the path where a title ending with ".md" would be read as another page''s without it.'
+          description: 'How a wikilink is written to lead to the node alone, from anywhere in the notebook: its title or name, or its path from the root where another node of its kind has its title; with ".md" after the path where it would be read otherwise, a page''s whose title ends with ".md" as another page''s without it, a page''s whose title an attachment has as the attachment''s.'
           type: string
         aliases:
-          description: The page's aliases, its first 1000, in the order of their case-folded keys.
+          description: The page's aliases, its first 1000, in the order of their case-folded keys; none for an attachment.
           type: array
           maxItems: 1000
           items:
@@ -3242,7 +3250,7 @@ components:
           type: string
           format: uuid
         pages:
-          description: 'The pages of the link index whose links resolve to other pages now, but for those whose content was written: empty for none, null for more than 20 or for all of them (a rebuilt index).'
+          description: 'The pages of the link index whose links resolve to other pages or attachments now, but for those whose content was written: empty for none, null for more than 20 or for all of them (a rebuilt index).'
           type:
             - array
             - 'null'
@@ -3251,7 +3259,7 @@ components:
             type: string
             format: uuid
         targets:
-          description: 'The pages whose backlinks changed: empty for none, null for more than 20 or for all of them (a rebuilt index).'
+          description: 'The pages and attachments whose backlinks changed: empty for none, null for more than 20 or for all of them (a rebuilt index).'
           type:
             - array
             - 'null'
@@ -3284,6 +3292,7 @@ components:
         - notebook_id
         - parent_id
         - name
+        - link
         - mime
         - byte_size
         - sha256
@@ -3311,6 +3320,11 @@ components:
         name:
           description: The attachment's file name.
           type: string
+        link:
+          description: 'How a wikilink, ![[link]] to embed it, is written to lead to the attachment alone from anywhere in the notebook, as the link targets write it: its name, or its path from the root where another attachment has its name''s title key. It is as of the answer: another attachment given that title key later may make the name lead elsewhere. Null for an attachment without an extension, which no link leads to.'
+          type:
+            - string
+            - 'null'
         mime:
           description: 'The type the server told from the name''s extension and the file''s first bytes, which it serves the content as: an image, an audio, a video or a PDF it shows; application/octet-stream for any other file, which is downloaded.'
           type: string

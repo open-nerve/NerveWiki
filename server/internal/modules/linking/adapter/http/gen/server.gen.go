@@ -24,6 +24,7 @@ const (
 	LandingReasonNotResolvable LandingReason = "not_resolvable"
 	LandingReasonParentMissing LandingReason = "parent_missing"
 	LandingReasonTargetInvalid LandingReason = "target_invalid"
+	LandingReasonTargetIsAsset LandingReason = "target_is_asset"
 	LandingReasonTitleInvalid  LandingReason = "title_invalid"
 	LandingReasonTooDeep       LandingReason = "too_deep"
 )
@@ -37,6 +38,8 @@ func (e LandingReason) Valid() bool {
 		return true
 	case LandingReasonTargetInvalid:
 		return true
+	case LandingReasonTargetIsAsset:
+		return true
 	case LandingReasonTitleInvalid:
 		return true
 	case LandingReasonTooDeep:
@@ -48,12 +51,15 @@ func (e LandingReason) Valid() bool {
 
 // Defines values for LinkTargetKind.
 const (
-	LinkTargetKindPage LinkTargetKind = "page"
+	LinkTargetKindAsset LinkTargetKind = "asset"
+	LinkTargetKindPage  LinkTargetKind = "page"
 )
 
 // Valid indicates whether the value is a known member of the LinkTargetKind enum.
 func (e LinkTargetKind) Valid() bool {
 	switch e {
+	case LinkTargetKindAsset:
+		return true
 	case LinkTargetKindPage:
 		return true
 	default:
@@ -107,21 +113,21 @@ type LinkLanding struct {
 
 // LinkTarget defines model for LinkTarget.
 type LinkTarget struct {
-	// Aliases The page's aliases, its first 1000, in the order of their case-folded keys.
+	// Aliases The page's aliases, its first 1000, in the order of their case-folded keys; none for an attachment.
 	Aliases []string  `json:"aliases"`
 	ID      uuid.UUID `json:"id"`
 
-	// Kind What a link target is. Attachments come later.
+	// Kind What a link target is, a page or an attachment.
 	Kind LinkTargetKind `json:"kind"`
 
-	// Link How a wikilink is written to lead to the page alone, from anywhere in the notebook: its title, or its path from the root where another page has its title; with ".md" after the path where a title ending with ".md" would be read as another page's without it.
+	// Link How a wikilink is written to lead to the node alone, from anywhere in the notebook: its title or name, or its path from the root where another node of its kind has its title; with ".md" after the path where it would be read otherwise, a page's whose title ends with ".md" as another page's without it, a page's whose title an attachment has as the attachment's.
 	Link string `json:"link"`
 
-	// Name The page's title.
+	// Name The page's title; the attachment's name, with its extension.
 	Name string `json:"name"`
 }
 
-// LinkTargetKind What a link target is. Attachments come later.
+// LinkTargetKind What a link target is, a page or an attachment.
 type LinkTargetKind string
 
 // LinkTargetList defines model for LinkTargetList.
@@ -154,7 +160,10 @@ type PropertyLink struct {
 	// Key The property's path, a list's item after a dot (sources.0).
 	Key string `json:"key"`
 
-	// NodeID The page the link resolves to; null for none.
+	// Kind What node_id is; null when it is null.
+	Kind nullable.Nullable[LinkTargetKind] `json:"kind"`
+
+	// NodeID The page or the attachment the link resolves to; null for none.
 	NodeID nullable.Nullable[uuid.UUID] `json:"node_id"`
 }
 

@@ -18,24 +18,30 @@ import (
 // no deeper (M6/P6 design 2).
 const MaxDepth = domain.MaxDepth
 
-// LinkTargets is what the link index reads of a notebook's pages (M6/P3
-// design 3.3), in the caller's transaction: bootstrap wires it to the
-// linking module.
+// LinkTargets is what the link index reads of a notebook's pages and
+// attachments, the nodes a link may lead to (M6/P3 design 3.3; M7/P3 design
+// 4.3), in the caller's transaction: bootstrap wires it to the linking
+// module.
 type LinkTargets interface {
-	// ByKeys is the pages not deleted of notebookID whose title key is one
-	// of keys, each with its path from the root.
+	// ByKeys is the pages and attachments not deleted of notebookID whose
+	// title key is one of keys, each with its path from the root.
 	ByKeys(ctx context.Context, notebookID uuid.UUID, keys []string) ([]LinkNode, error)
-	// Paths is the pages not deleted of notebookID among ids, each with its
-	// path from the root.
+	// Paths is the pages and attachments not deleted of notebookID among
+	// ids, each with its path from the root.
 	Paths(ctx context.Context, notebookID uuid.UUID, ids []uuid.UUID) ([]LinkNode, error)
-	// Subtree is the page id of notebookID and the pages not deleted under
-	// it, each its id, title key and name.
+	// Attachments is the attachments not deleted of notebookID among ids,
+	// each with its path from the root and the number of notebookID's
+	// attachments not deleted with its title key, itself among them,
+	// counted to 2, read at once (M7/P3 design 4.6: an attachment's link).
+	Attachments(ctx context.Context, notebookID uuid.UUID, ids []uuid.UUID) ([]LinkAttachment, error)
+	// Subtree is the node id of notebookID and the pages and attachments not
+	// deleted under it, each its id, title key and name.
 	Subtree(ctx context.Context, notebookID, id uuid.UUID) ([]LinkStep, error)
 	// PageIDs is the pages not deleted of notebookID, by id (nervewiki
 	// reindex).
 	PageIDs(ctx context.Context, notebookID uuid.UUID) ([]uuid.UUID, error)
-	// All is the pages not deleted of notebookID, by id, each with its path
-	// from the root (M6/P5 design 7: the link targets).
+	// All is the pages and attachments not deleted of notebookID, by id,
+	// each with its path from the root (M6/P5 design 7: the link targets).
 	All(ctx context.Context, notebookID uuid.UUID) ([]LinkNode, error)
 	// NotebookOf is the notebook of the page not deleted id; false for no
 	// such page (M6/P5 design 7: the reads by page).
@@ -50,13 +56,24 @@ type LinkTargets interface {
 	Rekey(ctx context.Context, notebookID uuid.UUID) ([][]uuid.UUID, error)
 }
 
-// LinkNode is a page with its path from the root, itself last.
+// LinkNode is a page or an attachment with its path from the root, itself
+// last; Asset tells an attachment.
 type LinkNode struct {
-	ID   uuid.UUID
-	Path []LinkStep
+	ID    uuid.UUID
+	Path  []LinkStep
+	Asset bool
 }
 
-// LinkStep is a page on a path: its id, title key and name.
+// LinkAttachment is an attachment with its path from the root, and Alike
+// the number of its notebook's attachments with its title key, itself
+// among them, to 2.
+type LinkAttachment struct {
+	LinkNode
+	Alike int
+}
+
+// LinkStep is a node on a path, a page but for an attachment's last: its
+// id, title key and name.
 type LinkStep struct {
 	ID   uuid.UUID
 	Key  string
@@ -92,16 +109,26 @@ func (l linkTargets) Paths(ctx context.Context, notebookID uuid.UUID, ids []uuid
 	return linkNodes(paths), nil
 }
 
+func (l linkTargets) Attachments(ctx context.Context, notebookID uuid.UUID, ids []uuid.UUID) ([]LinkAttachment, error) {
+	paths, err := l.store.AttachmentsByIDs(ctx, notebookID, ids)
+	if err != nil {
+		return nil, fmt.Errorf("page: the attachments of %s: %w", notebookID, err)
+	}
+	out := make([]LinkAttachment, len(paths))
+	for i, p := range paths {
+		out[i] = LinkAttachment{LinkNode: linkNodes([]postgresadapter.LinkPath{p.LinkPath})[0], Alike: p.Alike}
+	}
+	return out, nil
+}
+
 func (l linkTargets) Subtree(ctx context.Context, notebookID, id uuid.UUID) ([]LinkStep, error) {
 	sub, err := l.store.Subtree(ctx, notebookID, id)
 	if err != nil {
 		return nil, fmt.Errorf("page: the subtree of %s: %w", id, err)
 	}
-	var out []LinkStep
-	for _, n := range sub {
-		if n.Node.Kind == domain.KindPage {
-			out = append(out, LinkStep{ID: n.Node.ID, Key: n.Node.NameKey, Name: n.Node.Name})
-		}
+	out := make([]LinkStep, len(sub))
+	for i, n := range sub {
+		out[i] = LinkStep{ID: n.Node.ID, Key: n.Node.NameKey, Name: n.Node.Name}
 	}
 	return out, nil
 }
@@ -113,7 +140,7 @@ func linkNodes(paths []postgresadapter.LinkPath) []LinkNode {
 		for j, s := range p.Steps {
 			steps[j] = LinkStep(s)
 		}
-		out[i] = LinkNode{ID: p.ID, Path: steps}
+		out[i] = LinkNode{ID: p.ID, Path: steps, Asset: p.Asset}
 	}
 	return out
 }
@@ -142,22 +169,26 @@ func (l linkTargets) All(ctx context.Context, notebookID uuid.UUID) ([]LinkNode,
 	for _, n := range nodes {
 		byID[n.ID] = n
 	}
-	var out []LinkNode
+	out := make([]LinkNode, 0, len(nodes))
 	for _, n := range nodes {
-		if n.Kind != domain.KindPage {
-			continue
+		asset := n.Kind == domain.KindAsset
+		// An attachment is no level (M7 decision 1): under a page as deep as
+		// pages nest, its path is a step longer.
+		most := domain.MaxDepth
+		if asset {
+			most++
 		}
 		path := []LinkStep{{ID: n.ID, Key: n.NameKey, Name: n.Name}}
 		for at := n; at.ParentID != nil; {
 			parent, ok := byID[*at.ParentID]
-			if !ok || len(path) == domain.MaxDepth {
+			if !ok || len(path) == most {
 				return nil, fmt.Errorf("page: the path of %s in %s has no root within a page's depth", n.ID, notebookID)
 			}
 			path = append(path, LinkStep{ID: parent.ID, Key: parent.NameKey, Name: parent.Name})
 			at = parent
 		}
 		slices.Reverse(path)
-		out = append(out, LinkNode{ID: n.ID, Path: path})
+		out = append(out, LinkNode{ID: n.ID, Path: path, Asset: asset})
 	}
 	slices.SortFunc(out, func(a, b LinkNode) int { return a.ID.Compare(b.ID) })
 	return out, nil
