@@ -114,7 +114,11 @@ func TestALinktextLeadsToItsPageFromEveryPage(t *testing.T) {
 		for i, path := range paths {
 			n := p.byID[p.ids[path]]
 			text, ok := domain.Linktext(n, nil, domain.Tree{Named: p.named})
-			if want := text; texts[i] != want && (ok || texts[i] != path) {
+			want := text
+			if !ok {
+				want = path
+			}
+			if texts[i] != want {
 				t.Fatalf("seed %d: Linktexts writes %q as %q, Linktext %q, %t, in %q", seed, path, texts[i], text, ok, paths)
 			}
 			if asset[i] {

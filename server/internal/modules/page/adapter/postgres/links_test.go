@@ -92,8 +92,10 @@ func TestAttachmentsAreReadWithHowManyHaveTheirTitleKey(t *testing.T) {
 	c := f.page(t, f.eng, nil, "C", 3)
 	x, other := asset(f.eng, &a.ID, "x.png", 0), asset(f.eng, &b.ID, "X.PNG", 0)
 	asset(f.eng, &c.ID, "x.png", 0)
+	f.page(t, f.eng, nil, "y.png", 4)
 	y, gone := asset(f.eng, &a.ID, "y.png", 1), asset(f.eng, &b.ID, "y.png", 1)
 	asset(f.ops, nil, "x.png", 0)
+	asset(f.ops, nil, "y.png", 1)
 	if err := f.s.DeleteNodes(ctx, []uuid.UUID{gone.ID}, f.alice, now().Add(time.Second)); err != nil {
 		t.Fatal(err)
 	}

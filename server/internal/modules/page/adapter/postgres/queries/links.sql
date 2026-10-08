@@ -52,7 +52,7 @@ WITH RECURSIVE chain AS (
             SELECT 1 FROM nodes o
             WHERE o.notebook_id = n.notebook_id AND o.name_key = n.name_key AND o.kind = 'asset' AND o.deleted_at IS NULL
             LIMIT 2
-        ) o) AS alike
+        ) two) AS alike
     FROM nodes n
     WHERE n.notebook_id = sqlc.arg(notebook_id) AND n.id = ANY(sqlc.arg(ids)::uuid[]) AND n.kind = 'asset'
         AND n.deleted_at IS NULL

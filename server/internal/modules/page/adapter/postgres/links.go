@@ -59,8 +59,9 @@ type AttachmentPath struct {
 }
 
 // AttachmentsByIDs is the attachments not deleted of notebookID among ids,
-// with their paths and how many attachments have each's title key, in one
-// statement (M7/P3 design 4.6), planned with ids as LinkTargetsByIDs is.
+// with their paths and how many attachments have each's title key, counted
+// to 2, in one statement (M7/P3 design 4.6), planned with ids as
+// LinkTargetsByIDs is.
 func (s *Store) AttachmentsByIDs(ctx context.Context, notebookID uuid.UUID, ids []uuid.UUID) ([]AttachmentPath, error) {
 	rows, err := s.planned(ctx).AttachmentsByIDs(ctx, gen.AttachmentsByIDsParams{NotebookID: notebookID, Ids: ids})
 	if err != nil {

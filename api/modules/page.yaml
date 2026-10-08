@@ -484,11 +484,11 @@ paths:
         attachment or the page and those under it, by a path that changes,
         the links in the moved pages that the move would lead elsewhere, and
         the links the moved nodes would take from other nodes, are written
-        again in the pages they are in, so that each leads where it did; when one of
-        these pages is being edited, one of the moved included, the move is
-        refused as a whole, linking.pages_locked naming each of them and its
-        editor, and when their parse finds the server busy it is
-        server_busy.
+        again in the pages they are in, so that each leads where it did;
+        when one of these pages is being edited, one of the moved included,
+        the move is refused as a whole, linking.pages_locked naming each of
+        them and its editor, and when their parse finds the server busy it
+        is server_busy.
       security: [{ bearer: [] }]
       x-problem-codes:
         [
