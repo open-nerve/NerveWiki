@@ -108,14 +108,14 @@ async function settle(): Promise<void> {
   await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
 }
 
-test("an event whose tree changed reads the tree again, not the reading views", async () => {
+test("an event whose tree changed reads the tree again, then the attachments shown, not the reading views", async () => {
   const { server, events } = await open();
   server.nodes = [{ ...guide, name: "Handbook" }, install, linux, notes];
 
   events.last().send("pages", pagesEvent(true, []));
 
   expect(await screen.findByRole("heading", { level: 1, name: "Handbook" })).toBeTruthy();
-  expect(server.sent).toEqual(["GET nodes"]);
+  await waitFor(() => expect(server.sent).toEqual(["GET nodes", "GET assets Handbook"]));
 });
 
 test("a page's reading view is read again when its revision is newer than the one shown, not when it is the same", async () => {

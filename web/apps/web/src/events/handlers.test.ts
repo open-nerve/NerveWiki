@@ -87,3 +87,46 @@ test("a pages event asks the refresher for the properties of the pages written t
     unstable_serialize(["page-properties", "n1", "a"]),
   ]);
 });
+
+test("a pages event that changed the tree reads, the tree once read and shown, the notebook's attachments' lists again (M7/P4 design 3.3)", async () => {
+  const reads = new Map<string, () => void>();
+  const mutate = vi.fn(async (_key: unknown): Promise<unknown[]> => []);
+  const handled = {
+    ...context([]).context,
+    mutate,
+    refresher: {
+      request: (key: string, read: () => void) => reads.set(key, read),
+    } as unknown as Refresher,
+  };
+
+  eventHandlers.get("pages")?.({ workspace_id: "w1", notebook_id: "n1", tree: true, pages: [] }, handled);
+  reads.get(unstable_serialize(["pages", "n1"]))?.();
+  expect(mutate.mock.calls).toEqual([[["pages", "n1"]]]);
+  await vi.waitFor(() => expect(mutate).toHaveBeenCalledTimes(2));
+
+  const matches = (mutate.mock.calls[1] as unknown[])[0] as (key: unknown) => boolean;
+  expect(
+    [["assets", "n1", "root"], ["assets", "n1", "p1"], ["assets", "n2", "root"], ["pages", "n1"], "assets"].map(matches)
+  ).toEqual([true, true, false, false, false]);
+});
+
+test("a stream stopped as the tree is read reads no attachments' lists", async () => {
+  const reads = new Map<string, () => void>();
+  const mutate = vi.fn(async (_key: unknown): Promise<unknown[]> => []);
+  const stop = new AbortController();
+  const handled = {
+    ...context([]).context,
+    mutate,
+    stopped: stop.signal,
+    refresher: {
+      request: (key: string, read: () => void) => reads.set(key, read),
+    } as unknown as Refresher,
+  };
+
+  eventHandlers.get("pages")?.({ workspace_id: "w1", notebook_id: "n1", tree: true, pages: [] }, handled);
+  reads.get(unstable_serialize(["pages", "n1"]))?.();
+  stop.abort();
+  await new Promise((resolve) => setTimeout(resolve, 10));
+
+  expect(mutate).toHaveBeenCalledTimes(1);
+});

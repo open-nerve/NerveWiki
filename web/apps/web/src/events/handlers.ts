@@ -37,19 +37,28 @@ export const TREE_INTERVAL_MS = 500;
 /**
  * pagesChanged reads again a tree that changed, through the refresher, at
  * most once in TREE_INTERVAL_MS: an upload is a unit of its own (M7/P2
- * design 3.10); a page's reading view whose cached revision is
+ * design 3.10); then the lists of the notebook's attachments shown, which
+ * change only as it does (M7/P4 design 3.3), once a page deleted has left
+ * with its list; a page's reading view whose cached revision is
  * older than the one written (or not read yet), through the refresher
  * too; the pages of the notebook's tags, which a page written or deleted
  * may join or leave (M6 design 4.8); and the properties of the pages
  * written, through the refresher (M6/P7 design 11).
  */
 const pagesChanged: EventHandler = (data, context) => {
-  const { cache, mutate, refresher } = context;
+  const { cache, mutate, refresher, stopped } = context;
   const { notebook_id: notebook, tree, pages } = data as EventPages;
   if (tree) {
     refresher.request(
       unstable_serialize(["pages", notebook]),
-      () => void mutate(["pages", notebook]),
+      () =>
+        void (async () => {
+          await mutate(["pages", notebook]);
+          await shown();
+          if (!stopped.aborted) {
+            await mutate((key) => Array.isArray(key) && key[0] === "assets" && key[1] === notebook);
+          }
+        })(),
       TREE_INTERVAL_MS
     );
   }

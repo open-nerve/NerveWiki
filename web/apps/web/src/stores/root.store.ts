@@ -5,8 +5,11 @@ import { browserPageLifecycle, type EventDeps } from "../events/deps";
 import { EventHub, type PageLifecycle } from "../events/hub";
 import { leaseLeadership, webLockLeadership } from "../events/leadership";
 import { Refresher } from "../events/refresher";
+import { UnloadWarning } from "../lib/unload-warning";
 import { AccountService } from "../services/account.service";
 import { ApiTokenService } from "../services/api-token.service";
+import { AssetService } from "../services/asset.service";
+import type { Transfer } from "../services/upload-fetch";
 import { AuthService } from "../services/auth.service";
 import { EventService } from "../services/event.service";
 import { InstanceService } from "../services/instance.service";
@@ -21,6 +24,7 @@ import { WorkspaceService, type Workspace } from "../services/workspace.service"
 import type { Session } from "../session/session";
 import { AccountStore } from "./account.store";
 import { ApiTokenStore } from "./api-token.store";
+import { AssetStore } from "./asset.store";
 import { AuditStore } from "./audit.store";
 import { AuthStore } from "./auth.store";
 import { answerClosings, closeOtherTabs } from "./edit-closing";
@@ -39,8 +43,9 @@ import { WorkspaceStore } from "./workspace.store";
 /**
  * AppStores are what the page keeps for as long as it lives, whoever is
  * signed in: the device's preferences, what the instance runs, the
- * session, and what the event stream needs of the browser (none in tests
- * that do not open it).
+ * session, what the event stream needs of the browser (none in tests
+ * that do not open it), and what uploads go out on (the browser's
+ * XMLHttpRequest unless a test's).
  */
 export class AppStores {
   readonly instance: InstanceStore;
@@ -48,7 +53,8 @@ export class AppStores {
   constructor(
     readonly preferences: PreferencesStore,
     readonly session: Session,
-    readonly events?: EventDeps
+    readonly events?: EventDeps,
+    readonly transfer?: () => Transfer
   ) {
     this.instance = new InstanceStore(new InstanceService(session.public));
   }
@@ -82,6 +88,7 @@ export class RootStore {
   private readonly ownerless: OwnerlessService | undefined;
   private readonly pages: PageService | undefined;
   private readonly linking: LinkingService | undefined;
+  private readonly assets: AssetService | undefined;
   private readonly hub: EventHub | undefined;
   private readonly eventDeps: EventDeps | undefined;
   private readonly page: PageLifecycle;
@@ -101,6 +108,10 @@ export class RootStore {
   /** The notebook member lists and page trees this generation holds, by notebook id. */
   private readonly notebookMemberLists = new Map<string, NotebookMemberStore>();
   private readonly pageTrees = new Map<string, PageTreeStore>();
+  private readonly assetLists = new Map<string, AssetStore>();
+  /** Aborts as the tab's session leaves this generation's login: its uploads stop. */
+  private readonly generation = new AbortController();
+  private unloadWarning: UnloadWarning | undefined;
 
   constructor(
     app: AppStores,
@@ -121,6 +132,7 @@ export class RootStore {
     this.ownerless = client && new OwnerlessService(client);
     this.pages = client && new PageService(client);
     this.linking = client && new LinkingService(client);
+    this.assets = client && new AssetService(client, app.transfer);
     this.hub =
       client && app.events && loginId !== undefined
         ? eventHub(new EventService(client), app.events, loginId)
@@ -137,6 +149,13 @@ export class RootStore {
       };
       const deps = app.events;
       this.closing = deps && { loginId, tabId: deps.tabId, port: () => deps.channel("nwiki.edits") };
+      const { tokens } = app.session;
+      const unsubscribe = tokens.subscribe(() => {
+        if (tokens.state.loginId !== loginId) {
+          unsubscribe();
+          this.generation.abort();
+        }
+      });
     }
   }
 
@@ -285,6 +304,25 @@ export class RootStore {
     const { pages: service, linking } = this;
     return (
       service && linking && once(this.pageTrees, notebook.id, () => new PageTreeStore(service, notebook.id, linking))
+    );
+  }
+
+  /**
+   * assetsOf is the attachments of notebook, the same store for as long as
+   * this generation lives (M7/P4 design 3.3), whose uploads stop as it
+   * ends; undefined while the tab is signed out.
+   */
+  assetsOf(notebook: Notebook): AssetStore | undefined {
+    const { assets: service, generation } = this;
+    const pages = this.pagesOf(notebook);
+    return (
+      service &&
+      pages &&
+      once(this.assetLists, notebook.id, () => {
+        this.unloadWarning ??= new UnloadWarning();
+        const warning = this.unloadWarning;
+        return new AssetStore(service, notebook.id, pages, generation.signal, (on) => warning.set(notebook.id, on));
+      })
     );
   }
 

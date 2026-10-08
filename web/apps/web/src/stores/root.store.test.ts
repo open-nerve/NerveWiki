@@ -8,6 +8,7 @@ import { SharedStorage } from "../session/testing/fake-browser";
 import { SessionChangedError } from "../session/token-manager";
 import { withEvents } from "../test/event-server";
 import { json, notebookJSON, storedSession, testApp, tokensJSON, workspaceJSON } from "../test/fakes";
+import type { transferTo } from "../test/transfer";
 import { AppStores, RootStore } from "./root.store";
 
 const tokens = (n: number) => ({
@@ -51,6 +52,39 @@ test("a generation of the session before sends nothing once the tab has signed i
   expect(after.workspaces?.list).toBeUndefined();
   expect(after.preferences).toBe(before.preferences);
   expect(after.instance).toBe(before.instance);
+});
+
+/** leaving is whether the page, left now, would ask first: its beforeunload's default prevented. */
+function leaving(): boolean {
+  const event = new Event("beforeunload", { cancelable: true });
+  window.dispatchEvent(event);
+  return event.defaultPrevented;
+}
+
+// A generation's uploads stop as the tab leaves its login (M7/P4 design 3.3): the page no longer warns before it is
+// left for them, and the next generation has none.
+test("a generation's uploads stop once the tab has signed in again", async () => {
+  let issued = 0;
+  const app = testApp((request) => {
+    const { pathname } = new URL(request.url);
+    if (pathname === "/api/v0/me") return json(me);
+    if (pathname.endsWith("/assets")) return new Promise<Response>(() => undefined);
+    if (pathname.endsWith("/nodes")) return json({ data: [] });
+    return json(tokens(++issued));
+  }, storedSession("login-0"));
+  await app.session.start();
+  const before = new RootStore(app, "login-0");
+  const assets = before.assetsOf(notebookJSON);
+
+  const [upload] = assets?.upload(null, [new File(["x"], "a.png")], "Untitled", { maxBytes: undefined }) ?? [];
+  await vi.waitFor(() => expect((app.transfer as ReturnType<typeof transferTo>).made).toHaveLength(1));
+  expect(leaving()).toBe(true);
+  await before.auth.signIn("bob@example.com", "correct horse battery");
+
+  expect(upload?.signal.aborted).toBe(true);
+  await vi.waitFor(() => expect(assets?.uploads).toEqual([]));
+  expect(leaving()).toBe(false);
+  expect(new RootStore(app, app.session.tokens.state.loginId).assetsOf(notebookJSON)?.uploads).toEqual([]);
 });
 
 test("a signed-out generation has no account, nor its workspaces", () => {

@@ -15,9 +15,7 @@ import type { NodeMove, TreeNode } from "../../services/page.service";
 import { usePageTree, useStore } from "../../stores/context";
 import { canHold, childrenOf } from "../../stores/page-tree";
 import { distinctName } from "./distinct-name";
-
-/** The root's value in the parent's select. */
-const root = "";
+import { ParentOptions, Problem, rootOption as root } from "./parent-options";
 
 /**
  * MovePageDialog moves page, with the pages under it, by two selects
@@ -137,12 +135,7 @@ const MoveForm = observer(function MoveForm({ notebook, page, onSend, cancel, mo
           aria-describedby={problems.parent === undefined ? undefined : `${ids.parent}-note`}
           onChange={(event) => choose(event.target.value)}
         >
-          <option value={root}>{t("page.moveRoot")}</option>
-          {parents.map((each) => (
-            <option key={each.id} value={each.id}>
-              {[...pages.ancestorsOf(each.id), each].map((step) => step.name).join(" / ")}
-            </option>
-          ))}
+          <ParentOptions pages={pages} parents={parents} />
         </NativeSelect>
         <Problem id={`${ids.parent}-note`} text={problems.parent} />
       </div>
@@ -176,15 +169,6 @@ const MoveForm = observer(function MoveForm({ notebook, page, onSend, cancel, mo
     </form>
   );
 });
-
-/** Problem is a select's problem under it, which the select names as its description. */
-function Problem({ id, text }: { id: string; text: string | undefined }) {
-  return text === undefined ? null : (
-    <p id={id} className="text-sm text-destructive">
-      {text}
-    </p>
-  );
-}
 
 /** placeOf is where the page id is among its siblings, as the position's select says it: after the one before, or first. */
 function placeOf(siblings: readonly TreeNode[], id: string): string {

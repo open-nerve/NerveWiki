@@ -1,7 +1,9 @@
+import type { Asset } from "../services/asset.service";
 import type { BacklinkPage, LinkLanding, PageProperties } from "../services/linking.service";
 import type { NotebookRole } from "../services/notebook.service";
 import type { EditLock, NodeMove, PageContent, PageView, TaskToggle, TreeNode } from "../services/page.service";
-import { json, notebookJSON, problem, signedInApp, userJSON, type Answer } from "./fakes";
+import { instanceJSON, json, notebookJSON, problem, signedInApp, userJSON, type Answer } from "./fakes";
+import { formOf } from "./transfer";
 
 /** pageNode is the page n of Plans, titled name, under parent (none: at the root). */
 export function pageNode(n: number, name: string, parent?: TreeNode): TreeNode {
@@ -98,6 +100,13 @@ type PageServerOptions = {
  * tags' names with their pages counted. A page's backlinks are what
  * backlinks has for it, a page of them each; its properties, what
  * properties has, by default none (M6/P7).
+ *
+ * The notebook's attachments are its nodes of kind asset (M7/P4): listed
+ * by parent, assetPage of them a page; uploaded as the server takes them,
+ * a reader refused (403 forbidden), a name ending with .md refused (422 on
+ * name), a file over the instance's asset_max_bytes refused (413
+ * payload_too_large), a name a sibling has 409 page.title_taken. While
+ * uploadsHeld is set, an upload is answered once released.
  */
 export function pageServer({
   role = "admin",
@@ -124,6 +133,21 @@ export function pageServer({
     backlinks: new Map<string, BacklinkPage[]>(),
     /** Each page's properties, by its id. */
     properties: new Map<string, PageProperties>(),
+    /** How many attachments a page of their list has. */
+    assetPage: 100,
+    /** When the addresses of the attachments listed expire. */
+    assetsExpireAt: "2100-01-01T00:00:00Z",
+    /** Whether uploads wait to be released. */
+    uploadsHeld: false,
+    held: [] as (() => void)[],
+    /** release answers the uploads held. */
+    release(): void {
+      const held = server.held;
+      server.held = [];
+      for (const answer of held) {
+        answer();
+      }
+    },
     /** hold opens holder's session of the page pageId, its lease expiresIn seconds; it answers its id. */
     hold(pageId: string, holder: Person = bob, expiresIn = 120): string {
       const id = `held-${(++held).toString()}`;
@@ -222,6 +246,7 @@ export function pageServer({
       return new Response(null, { status: 204 });
     },
     ...writeRoutes(server),
+    ...assetRoutes(server, role),
     ...contentRoutes(server),
     ...taskRoutes(server),
     ...answers,
@@ -353,6 +378,91 @@ function writeRoutes(server: {
         }
       }
       return new Response(null, { status: 204 });
+    },
+  };
+}
+
+/** assetJSON is the attachment node as the server answers it, of size bytes, its addresses expiring at expires. */
+export function assetJSON(node: TreeNode, size = 1024, expires = "2100-01-01T00:00:00Z"): Asset {
+  const extension = /\.([^.]+)$/.exec(node.name)?.[1]?.toLowerCase();
+  const mimes: Record<string, string> = {
+    png: "image/png",
+    mp3: "audio/mpeg",
+    mp4: "video/mp4",
+    pdf: "application/pdf",
+  };
+  return {
+    id: node.id,
+    notebook_id: node.notebook_id,
+    parent_id: node.parent_id,
+    name: node.name,
+    link: extension === undefined ? null : node.name,
+    mime: (extension && mimes[extension]) ?? "application/octet-stream",
+    byte_size: size,
+    sha256: "0".repeat(64),
+    width: null,
+    height: null,
+    created_by: userJSON.id,
+    created_at: node.created_at,
+    content_url: `/api/v0/assets/${node.id}/content?sig=1`,
+    download_url: `/api/v0/assets/${node.id}/content?sig=1&download=1`,
+    expires_at: expires,
+  };
+}
+
+type AssetState = {
+  sent: string[];
+  nodes: TreeNode[];
+  assetPage: number;
+  assetsExpireAt: string;
+  uploadsHeld: boolean;
+  held: (() => void)[];
+};
+
+/** The answers to the attachments of server: their lists and uploads, which change it. */
+function assetRoutes(server: AssetState, role: NotebookRole): Record<string, Answer> {
+  const sizes = new Map<string, number>();
+  const nameOf = (id: string | null) =>
+    id === null ? "root" : (server.nodes.find((node) => node.id === id)?.name ?? id);
+  return {
+    [`GET /api/v0/notebooks/${notebookJSON.id}/assets`]: (request) => {
+      const query = new URL(request.url).searchParams;
+      const parent = query.get("parent_id");
+      const at = Number(query.get("cursor") ?? "0");
+      server.sent.push(`GET assets ${nameOf(parent)}${at === 0 ? "" : ` from ${at.toString()}`}`);
+      const all = server.nodes.filter((node) => node.kind === "asset" && node.parent_id === parent);
+      const next = at + server.assetPage;
+      return json({
+        data: all.slice(at, next).map((node) => assetJSON(node, sizes.get(node.id), server.assetsExpireAt)),
+        next_cursor: next < all.length ? next.toString() : null,
+      });
+    },
+    [`POST /api/v0/notebooks/${notebookJSON.id}/assets`]: async (request) => {
+      const form = formOf(request);
+      const parent = (form?.get("parent_id") as string | null) ?? null;
+      const name = String(form?.get("name") ?? "");
+      const file = form?.get("file");
+      server.sent.push(`UPLOAD ${name} under ${nameOf(parent)}`);
+      if (server.uploadsHeld) {
+        await new Promise<void>((resolve) => server.held.push(resolve));
+      }
+      if (role === "reader") {
+        return problem(403, "forbidden");
+      }
+      if (name.toLowerCase().endsWith(".md")) {
+        return problem(422, "validation_failed", { errors: [{ field: "name", code: "not_allowed", message: ".md" }] });
+      }
+      if (file instanceof Blob && file.size > instanceJSON.asset_max_bytes) {
+        return problem(413, "payload_too_large");
+      }
+      const key = name.normalize("NFC").toLowerCase();
+      if (server.nodes.some((node) => node.parent_id === parent && node.name.normalize("NFC").toLowerCase() === key)) {
+        return problem(409, "page.title_taken");
+      }
+      const node: TreeNode = { ...assetNode(created++, name), parent_id: parent };
+      server.nodes = [...server.nodes, node];
+      sizes.set(node.id, file instanceof Blob ? file.size : 0);
+      return json(assetJSON(node, sizes.get(node.id), server.assetsExpireAt), 201);
     },
   };
 }

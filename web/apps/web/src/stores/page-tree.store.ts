@@ -217,6 +217,17 @@ export class PageTreeStore {
     });
   }
 
+  /**
+   * wrote has the tree read again after a change of its nodes answered that
+   * was not one of its writes, an upload of an attachment (M7/P4 design
+   * 3.3), which goes out beside them: a read out meanwhile may have read
+   * the tree before it.
+   */
+  async wrote(): Promise<void> {
+    this.changesAnswered += 1;
+    await this.load().catch(() => undefined);
+  }
+
   /** view reads the page id's reading view, which the store does not keep: SWR does, by page. */
   view(id: string): Promise<PageView> {
     return this.service.getPageView(id);

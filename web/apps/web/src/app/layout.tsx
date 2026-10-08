@@ -1,6 +1,7 @@
 import { createContext, useContext, useState } from "react";
 import { Link, Outlet } from "react-router";
 
+import { FileDropGuard } from "./file-drop";
 import { LanguageMenu } from "./language-menu";
 import { ThemeMenu } from "./theme-menu";
 import { UserMenu } from "./user-menu";
@@ -23,12 +24,14 @@ export function useShellColumn(): HTMLElement | null {
  * signed in) and the page below it, the one main, which holds whatever the
  * routes render: a page, its error, its 404. A shell of a page's own (a
  * workspace's) puts its left column beside the main, by useShellColumn;
- * the column's place renders no box of its own.
+ * the column's place renders no box of its own. A file dropped where no
+ * part of the page takes it stays out of the tab (FileDropGuard).
  */
 export function Layout() {
   const [column, setColumn] = useState<HTMLElement | null>(null);
   return (
     <div className="flex min-h-svh flex-col">
+      <FileDropGuard />
       <header className="flex h-14 items-center justify-between border-b px-4">
         <Link to="/" className="font-semibold">
           Nerve Wiki
