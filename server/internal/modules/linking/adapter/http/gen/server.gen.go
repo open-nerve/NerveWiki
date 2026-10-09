@@ -161,7 +161,7 @@ type PageProperty struct {
 
 // PropertyLink A property whose value, or an item of whose list, is a link.
 type PropertyLink struct {
-	// Inline Whether the browser shows the content at url itself (an image, an audio, a video or a PDF), which opens in a tab of its own, or downloads it. Null where url is.
+	// Inline Whether the browser shows the content at url itself, which opens in a tab of its own, or downloads it: as the attachment's mime says (an image, an audio, a video or a PDF the server shows). Null when url is null.
 	Inline nullable.Nullable[bool] `json:"inline"`
 
 	// Key The property's path, a list's item after a dot (sources.0).

@@ -36,6 +36,24 @@ func (tm acmeTeam) readingView(t *testing.T, by, id string) (string, *time.Time)
 	return v.HTML, v.Expires
 }
 
+// disposition is the Content-Disposition the content route answers
+// address with: whether the browser shows the content (inline) or
+// downloads it (attachment).
+func (tm acmeTeam) disposition(t *testing.T, address string) string {
+	t.Helper()
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, tm.base+address, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = res.Body.Close()
+	kind, _, _ := strings.Cut(res.Header.Get("Content-Disposition"), ";")
+	return kind
+}
+
 // element is an element of a reading view: its name, its attributes and
 // the text it holds.
 type element struct {
@@ -131,8 +149,10 @@ func TestAReadingViewShowsTheAttachmentsThroughServe(t *testing.T) {
 		if e.name == "a" && e.attrs["data-nw-size"] != strconv.Itoa(len(bytes[want[i].asset])) {
 			t.Errorf("%s is of %s bytes, want %d", address, e.attrs["data-nw-size"], len(bytes[want[i].asset]))
 		}
-		if _, download := e.attrs["download"]; download != (want[i].asset == notes.ID) {
-			t.Errorf("%s downloads: %v", address, download)
+		// The view downloads what the content route would: the same blob, the same type.
+		if _, download := e.attrs["download"]; download != (want[i].asset == notes.ID) ||
+			e.name == "a" && download != (tm.disposition(t, address) == "attachment") {
+			t.Errorf("%s downloads: %v, the route answers %s", address, download, tm.disposition(t, address))
 		}
 	}
 	if img := got[2].attrs; img["alt"] != "说明" || img["width"] != "300" || img["height"] != "" || img["loading"] != "lazy" {
@@ -169,6 +189,9 @@ func TestAReadingViewShowsTheAttachmentsThroughServe(t *testing.T) {
 		}
 		if status, body := tm.download(t, *l.URL); status != http.StatusOK || body != bytes[[]string{doc.ID, notes.ID}[i]] {
 			t.Errorf("the property link %d's address = %d %q, want the attachment's bytes", i, status, body)
+		}
+		if kind := tm.disposition(t, *l.URL); *l.Inline != (kind == "inline") {
+			t.Errorf("the property link %d is inline %v, the route answers %s", i, *l.Inline, kind)
 		}
 		u, _ := url.Parse(*l.URL)
 		if props.Expires == nil || u.Query().Get("e") != strconv.FormatInt(props.Expires.Unix(), 10) {

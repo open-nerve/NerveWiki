@@ -44,6 +44,7 @@ function setUp(html: string, { page = "p", expires = expired as string | null } 
     revision: 1,
     role: "reader",
     t: translator("en"),
+    locale: "en",
     theme: () => "light",
     onThemeChange: () => () => undefined,
     reload: () => reloads.push(at),
@@ -62,15 +63,41 @@ function setUp(html: string, { page = "p", expires = expired as string | null } 
   return { container, context, reloads, signed, enhancement: assets() };
 }
 
-/** play has element be as one started: playing (or paused) at time, playing again as asked. */
+/**
+ * play has element be as one started, playing (or paused) at time, as a
+ * browser has it: a new address loads it anew, paused, at the start, at
+ * the default rate, without its error; play plays it.
+ */
 function play(element: Element | null | undefined, time: number, paused = false) {
   if (!(element instanceof HTMLMediaElement)) {
     throw new Error("no media");
   }
-  Object.defineProperty(element, "paused", { value: paused, configurable: true });
-  Object.defineProperty(element, "currentTime", { value: time, writable: true, configurable: true });
-  element.play = vi.fn(async () => undefined);
+  const state: Record<string, unknown> = { paused, currentTime: time, playbackRate: 1, error: null };
+  for (const name of Object.keys(state)) {
+    Object.defineProperty(element, name, {
+      get: () => state[name],
+      set: (value: unknown) => {
+        state[name] = value;
+      },
+      configurable: true,
+    });
+  }
+  const setAttribute = element.setAttribute.bind(element);
+  element.setAttribute = (name: string, value: string) => {
+    if (name === "src") {
+      Object.assign(state, { paused: true, currentTime: 0, playbackRate: 1, error: null });
+    }
+    setAttribute(name, value);
+  };
+  element.play = vi.fn(async () => {
+    state.paused = false;
+  });
   return element;
+}
+
+/** broken has element, as play has it, fail for good: its error set, as a browser's after a failed load. */
+function broken(element: HTMLMediaElement | undefined) {
+  Object.assign(element ?? {}, { error: { code: 2 } });
 }
 
 /** fail has element fail to load, as the browser tells it: an error event, which does not bubble. */
@@ -103,14 +130,19 @@ test("a link to an attachment the browser shows opens in a tab of its own, as it
     expect(link?.hasAttribute("target")).toBe(false);
     expect(link?.querySelector("span")).toBeNull();
   }
+  // Each says its size after it, one without an address none.
+  expect(container.textContent).toBe("doc.pdf (opens in a new tab) (8 B) a.zip (9 B) gone.png x");
+  expect([...container.querySelectorAll(".nw-size")].map((size) => size.previousElementSibling)).toEqual([pdf, zip]);
   undo?.();
   expect(container.innerHTML).toBe(before);
 });
 
-test("the hint is in the reader's language", () => {
-  const { container, context, enhancement } = setUp(`<a class="nw-asset" href="${address("a1")}">x.png</a>`);
-  enhancement(container, { ...context(), t: translator("zh-CN") });
-  expect(container.querySelector("a")?.textContent).toBe("x.png （在新标签页打开）");
+test("the hint and the size are in the reader's language", () => {
+  const { container, context, enhancement } = setUp(
+    `<a class="nw-asset" href="${address("a1")}" data-nw-size="1536">x.png</a>`
+  );
+  enhancement(container, { ...context(), t: translator("zh-CN"), locale: "zh-CN" });
+  expect(container.textContent).toBe("x.png （在新标签页打开）（1.5 KB）");
 });
 
 test("an attachment that fails to load once the addresses expired reads the view again, once for the page's expiry", () => {
@@ -228,10 +260,13 @@ test("one kept that fails has its address signed anew and goes on where it was, 
   undo?.();
   container.innerHTML = html;
   undo = enhancement(container, context());
+  sound.playbackRate = 1.5;
   fail(sound);
   await settle();
   expect(signed).toEqual(["a1"]);
+  // Loaded anew, it goes on where it was, at its rate, playing.
   expect(sound.getAttribute("src")).toBe("/api/v0/assets/a1/content?anew=1");
+  expect([sound.currentTime, sound.playbackRate, sound.paused, sound.preload]).toEqual([30, 1.5, false, "none"]);
   expect(sound.play).toHaveBeenCalledTimes(1);
   // Not again for this HTML: its failure is the view's, read again once.
   fail(sound);
@@ -260,16 +295,38 @@ test("one kept goes on from where it failed, playing; one gone from the page mea
   fail(second);
   fail(paused);
   second?.remove();
-  if (first !== undefined) {
-    first.currentTime = 0;
-  }
   await settle();
   expect(first?.currentTime).toBe(30);
   expect(first?.play).toHaveBeenCalledTimes(1);
   expect(second?.getAttribute("src")).toContain("e=1");
   expect(second?.play).not.toHaveBeenCalled();
-  // Paused, it is signed anew and stays paused.
+  // Paused, it is signed anew where it was, its frame loaded, and stays paused.
   expect(paused.getAttribute("src")).toBe("/api/v0/assets/a3/content?anew=1");
+  expect([paused.currentTime, paused.preload, paused.paused]).toEqual([12, "metadata", true]);
   expect(paused.play).not.toHaveBeenCalled();
+  // An engine that took no position before the metadata takes it then.
+  paused.currentTime = 0;
+  paused.dispatchEvent(new Event("loadedmetadata"));
+  expect(paused.currentTime).toBe(12);
+  undo?.();
+});
+
+test("one kept that had the focus has it back; one that failed is not kept, the new one starting where it was", () => {
+  const focusable = (id: string) => audio(id).replace("<audio ", '<audio tabindex="0" ');
+  const html = `<p>${focusable("a1")} ${focusable("a2")} ${audio("a3")}</p>`;
+  const { container, context, enhancement } = setUp(html, { expires: later });
+  let undo = enhancement(container, context());
+  const [first, second, third] = [...container.querySelectorAll("audio")].map((element) => play(element, 20));
+  second?.focus();
+  expect(document.activeElement).toBe(second);
+  broken(third);
+  undo?.();
+  container.innerHTML = html;
+  undo = enhancement(container, context());
+  const shown = [...container.querySelectorAll("audio")];
+  expect(shown.slice(0, 2)).toEqual([first, second]);
+  expect(document.activeElement).toBe(second);
+  expect(shown[2]).not.toBe(third);
+  expect(shown[2]?.currentTime).toBe(20);
   undo?.();
 });

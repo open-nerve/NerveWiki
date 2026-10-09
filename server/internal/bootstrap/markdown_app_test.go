@@ -48,9 +48,9 @@ type mode struct {
 
 // modes are every link resolved to one page, to none, and to one
 // attachment of each kind of markup (M7/P3 design 5.9): an image, of its
-// own size, an audio, a video and a PDF, each as large as its markup
-// gets, its address as the content route's is (signedPath), and one
-// Assets does not answer.
+// own size, an audio, a video and a file the browser downloads (M7/P4
+// design 4.2), each as large as its markup gets, its address as the
+// content route's is (signedPath), and one Assets does not answer.
 func modes() []mode {
 	return []mode{
 		{"to a page", everyLink, nil, false, `<a class="nw-wikilink nw-embed" data-nw-node=`},

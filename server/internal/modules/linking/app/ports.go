@@ -170,7 +170,8 @@ type AttachmentAddress struct {
 }
 
 // AttachmentAddresses is the addresses of the attachments' contents: the
-// asset module's, which bootstrap wires (M7/P3 design 5.6).
+// asset module's, which bootstrap wires (M7/P3 design 5.6; M7/P4 design
+// 4.3).
 type AttachmentAddresses interface {
 	// Addresses is the address, signed, of each of ids that is an
 	// attachment of notebookID not deleted, by id; one it is not is left

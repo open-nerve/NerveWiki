@@ -176,7 +176,8 @@ func assetDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, autho
 // linkingDeps are the linking module's HTTP side's, the index's reads
 // (M6/P5) and a link's landing (M6/P6): the notebook module's notebooks
 // and the page module's tree, contents and depth; and the attachments'
-// addresses of the property links to them (M7/P3).
+// addresses of the property links to them (M7/P3), whether the browser
+// shows each and when it expires (M7/P4).
 func linkingDeps(pool *pgxpool.Pool, authorizer shared.Authorizer, assets linking.AttachmentAddresses) linking.Deps {
 	targets := page.NewLinkTargets(pool)
 	return linking.Deps{

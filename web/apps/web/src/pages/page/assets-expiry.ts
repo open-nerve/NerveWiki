@@ -21,36 +21,51 @@ export function rereadIn(expires: number, read: number): number {
 /** An answer that holds attachments' addresses: when the first of them expires, null for none. */
 type Expiring = { assets_expire_at: string | null };
 
-/** firstSeen is when each answer was first seen: as it was read, near enough. */
-const firstSeen = new WeakMap<Expiring, number>();
+/** readAt is when each answer was read: as it came (stamped), or else as it was first seen. */
+const readAt = new WeakMap<Expiring, number>();
 
 /** readAgain are the answers read again as they were due: once each, whichever of their readers' timers is first. */
 const readAgain = new WeakSet<Expiring>();
 
-/** dueOf is when answer is to be read again, from when it was first seen; undefined, holding no address. */
+/** stamped is the answer read answers, with when it came: its addresses expire from then, whether shown or not. */
+export async function stamped<T extends Expiring>(read: Promise<T>): Promise<T> {
+  const answer = await read;
+  readAt.set(answer, Date.now());
+  return answer;
+}
+
+/**
+ * eachRead is SWR's options for an answer that holds attachments'
+ * addresses: each read is its own answer, read again on its own time,
+ * though it says what the one before it said (the server signs the same
+ * addresses for an hour).
+ */
+export const eachRead = { compare: Object.is };
+
+/** dueOf is when answer is to be read again, from when it was read; undefined, holding no address. */
 function dueOf(answer: Expiring): number | undefined {
-  if (answer.assets_expire_at === null) {
+  const expires = answer.assets_expire_at === null ? Number.NaN : Date.parse(answer.assets_expire_at);
+  if (!Number.isFinite(expires)) {
     return undefined;
   }
-  const expires = Date.parse(answer.assets_expire_at);
-  let seen = firstSeen.get(answer);
-  if (seen === undefined) {
-    seen = Date.now();
-    firstSeen.set(answer, seen);
+  let read = readAt.get(answer);
+  if (read === undefined) {
+    read = Date.now();
+    readAt.set(answer, read);
   }
-  return seen + rereadIn(expires, seen);
+  return read + rereadIn(expires, read);
 }
 
 /**
  * useAssetsExpiry is data, an answer that holds attachments' addresses,
- * read again (reread) as it is due (rereadIn after it was first seen),
- * once, by the first of the hooks that have it; or nothing, when it had
- * expired as the hook had it (M7/P4 design 4.5): the cache's, left since,
- * read again at once. One shown stays as it expires: a tab asleep
- * reads it again as it wakes, its timers late, and its images that fail
- * to load meanwhile read it again (reading/assets.ts). An answer read
- * again the same is kept, not read again (SWR keeps the one it had): a
- * clock far ahead of the server's reads each at most once.
+ * read (stamped, eachRead) with SWR: read again (reread) as it is due,
+ * rereadIn after it was read, once, by the first of the hooks that have
+ * it; or nothing, when it had expired as the hook had it (M7/P4 design
+ * 4.5): the cache's, left since, which SWR reads again as the hook mounts.
+ * One shown stays as it expires: SWR reads it again as the tab is shown
+ * or online again, and its images that fail to load meanwhile read it
+ * again (reading/assets.ts). A clock far ahead of the server's has it
+ * read again each expiryFloor, as the attachments' lists are.
  */
 export function useAssetsExpiry<T extends Expiring>(data: T | undefined, reread: () => void): T | undefined {
   const latest = useRef(reread);
@@ -64,10 +79,9 @@ export function useAssetsExpiry<T extends Expiring>(data: T | undefined, reread:
   }, [data]);
   useEffect(() => {
     const due = data === undefined ? undefined : dueOf(data);
-    if (data === undefined || due === undefined) {
+    if (data === undefined || due === undefined || expired) {
       return undefined;
     }
-    // Past it, at once: SWR's own read of what it had in its cache is the same read.
     const timer = setTimeout(
       () => {
         if (!readAgain.has(data)) {
@@ -78,6 +92,6 @@ export function useAssetsExpiry<T extends Expiring>(data: T | undefined, reread:
       Math.max(due - Date.now(), 0)
     );
     return () => clearTimeout(timer);
-  }, [data]);
+  }, [data, expired]);
   return expired ? undefined : data;
 }

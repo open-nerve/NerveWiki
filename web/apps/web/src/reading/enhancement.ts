@@ -1,6 +1,7 @@
 import { createContext } from "react";
 
 import type { Translate } from "../i18n/i18n";
+import type { Locale } from "../i18n/locale";
 import type { NotebookRole } from "../services/notebook.service";
 import { appLinks } from "./app-links";
 import { assets } from "./assets";
@@ -36,6 +37,8 @@ export type ReadingContext = {
   role: NotebookRole;
   /** t is the app's text of a key in the reader's language: an enhancement's names and labels. */
   t: Translate;
+  /** locale is the reader's language, which numbers are written in. */
+  locale: Locale;
   /** theme is the app's, as shown now: a diagram is drawn in it. */
   theme: () => "light" | "dark";
   /**

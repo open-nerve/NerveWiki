@@ -63,6 +63,12 @@ import { useUnresolvedLinks } from "./unresolved-link";
  * A link to a page that is not there, acted on, opens the view's dialog
  * (unresolved-link.tsx): a writer may create the page, where the server
  * says it would go (M6/P6 design 7).
+ *
+ * The attachments' addresses in the HTML expire: the view is read again
+ * before they do (page-view.ts), and its enhancement keeps the media
+ * playing as the HTML is replaced and signs a kept one's address anew
+ * through the attachments' store (reading/assets.ts; M7/P4 design 4.5,
+ * 4.6).
  */
 export const ReadingView = observer(function ReadingView({
   notebook,
@@ -135,6 +141,7 @@ export const ReadingView = observer(function ReadingView({
       revision,
       role,
       t,
+      locale: preferences.locale,
       theme: () => preferences.resolvedTheme,
       onThemeChange: (listener) => reaction(() => preferences.resolvedTheme, listener),
       reload: () => void mutate(),

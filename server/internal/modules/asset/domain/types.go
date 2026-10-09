@@ -69,14 +69,21 @@ func TypeOf(name, sniffed string) string {
 	return Octet
 }
 
+// shownTypes are the types the table names, made once: a reading view
+// asks of each attachment it shows (M7/P4 design 4.2).
+//
+//nolint:gochecknoglobals // read only
+var shownTypes = func() map[string]bool {
+	out := map[string]bool{}
+	for _, s := range byExtension() {
+		out[s.mime] = true
+	}
+	return out
+}()
+
 // shownType reports whether the table has the type mime.
 func shownType(mime string) bool {
-	for _, s := range byExtension() {
-		if s.mime == mime {
-			return true
-		}
-	}
-	return false
+	return shownTypes[mime]
 }
 
 // Served is the type a file of type mime is served as: its own when the

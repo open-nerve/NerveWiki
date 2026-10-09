@@ -145,6 +145,8 @@ func (a assetEmbeds) assets(ctx context.Context, notebookID uuid.UUID, ids []uui
 	return out, nil
 }
 
+// Addresses is linking's AttachmentAddresses: each attachment's content's
+// address, whether the browser shows it, and when the address expires.
 func (a assetEmbeds) Addresses(ctx context.Context, notebookID uuid.UUID, ids []uuid.UUID) (
 	map[uuid.UUID]linking.AttachmentAddress, error,
 ) {

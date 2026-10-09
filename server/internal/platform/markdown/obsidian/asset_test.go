@@ -183,9 +183,10 @@ func TestAnAttachmentIsItsImageAudioVideoOrALink(t *testing.T) {
 			p(`<a href="https://x.example">` + img("x.png", "x.png", "") + " " + img("dims.png", "dims.png", ` width="9"`) + `</a>`),
 		},
 		{
-			"in a link, the rest text", "[![](a.mp3) ![[v.webm]] ![[doc.pdf|d]] [[x.png]]](https://x.example)",
+			"in a link, the rest text", "[![](a.mp3) ![[v.webm]] ![[doc.pdf|d]] [[x.png]] ![[a.zip]]](https://x.example)",
 			p(`<a href="https://x.example"><span class="nw-asset">a.mp3</span> <span class="nw-wikilink nw-embed nw-asset">v.webm</span> ` +
-				`<span class="nw-wikilink nw-embed nw-asset">d</span> <span class="nw-wikilink">x.png</span></a>`),
+				`<span class="nw-wikilink nw-embed nw-asset">d</span> <span class="nw-wikilink">x.png</span> ` +
+				`<span class="nw-wikilink nw-embed nw-asset">a.zip</span></a>`),
 		},
 		{
 			"one Assets does not answer, text", "![[gone.png|g]] ![](gone.png) [[gone.png]] [t](gone.png)",
@@ -327,7 +328,7 @@ func TestWithoutAssetsAnAttachmentIsText(t *testing.T) {
 // those written do.
 func TestAViewWritesAtMostMaxShownAddresses(t *testing.T) {
 	m := withAttachments(t)
-	src := strings.Repeat("![[x.png]] ", obsidian.MaxShown-3) + "[t](doc.pdf) [[doc.pdf]] ![](a.mp3) ![[x.png|i]] [u](doc.pdf) ![](v.webm)"
+	src := strings.Repeat("![[x.png]] ", obsidian.MaxShown-3) + "[t](doc.pdf) [[doc.pdf]] ![](a.mp3) ![[x.png|i]] [u](a.zip) ![](v.webm)"
 	view, err := m.Render(context.Background(), m.Parse([]byte(src)), markdown.Page{})
 	if err != nil {
 		t.Fatal(err)

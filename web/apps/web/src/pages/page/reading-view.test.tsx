@@ -679,6 +679,70 @@ test("a view from the cache whose attachments' addresses had expired is not show
   await waitFor(() => expect(screen.getByRole("article").innerHTML).toBe("<p>Signed anew</p>"));
 });
 
+test("an answer read again the same is read again before its addresses expire: the server signs them for the hour", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const server = pageServer();
+  // Read half a minute into the server's hour: the same addresses until the next hour's end.
+  server.views.set(install.id, { html: "<p>Signed</p>", revision: 1, assets_expire_at: inMinutes(119.5) });
+  renderApp(pagePath(install.id), server.app);
+  await waitFor(() => expect(screen.getByRole("article").innerHTML).toBe("<p>Signed</p>"));
+  const reads = () => server.sent.filter((line) => line === "GET view Install").length;
+  await act(() => vi.advanceTimersByTimeAsync(59.2 * 60_000));
+  expect(reads()).toBe(2);
+  server.views.set(install.id, { html: "<p>Signed anew</p>", revision: 1, assets_expire_at: inMinutes(120) });
+  await act(() => vi.advanceTimersByTimeAsync(59 * 60_000));
+  expect(reads()).toBe(3);
+  await waitFor(() => expect(screen.getByRole("article").innerHTML).toBe("<p>Signed anew</p>"));
+});
+
+test("an expiry the view cannot read is none: the view is read once", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const server = pageServer();
+  server.views.set(install.id, { html: "<p>Signed</p>", revision: 1, assets_expire_at: "soon" });
+  renderApp(pagePath(install.id), server.app);
+  await waitFor(() => expect(screen.getByRole("article").innerHTML).toBe("<p>Signed</p>"));
+  await act(() => vi.advanceTimersByTimeAsync(5 * 60_000));
+  expect(server.sent.filter((line) => line === "GET view Install")).toHaveLength(1);
+});
+
+test("a clock far ahead of the server's: the view shows, is read again each half minute, and shows as the page is come back to", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const server = pageServer();
+  // By this clock, the addresses expired two hours ago.
+  server.views.set(install.id, { html: "<p>Signed</p>", revision: 1, assets_expire_at: inMinutes(-120) });
+  const { router } = renderApp(pagePath(install.id), server.app);
+  await waitFor(() => expect(screen.getByRole("article").innerHTML).toBe("<p>Signed</p>"));
+  const reads = () => server.sent.filter((line) => line === "GET view Install").length;
+  await act(() => vi.advanceTimersByTimeAsync(31_000));
+  expect(reads()).toBe(2);
+  await act(() => vi.advanceTimersByTimeAsync(31_000));
+  expect(reads()).toBe(3);
+
+  await act(() => router.navigate(pagePath(guide.id)));
+  await waitFor(() => expect(screen.getByRole("article").innerHTML).toBe("<p>Guide</p>"));
+  await act(() => vi.advanceTimersByTimeAsync(60_000));
+  await act(() => router.navigate(pagePath(install.id)));
+  await waitFor(() => expect(screen.getByRole("article").innerHTML).toBe("<p>Signed</p>"));
+});
+
+test("a view that came as no reader had it, its addresses expired since, is not shown: it is read again", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const server = pageServer();
+  server.views.set(install.id, { html: "<p>Signed</p>", revision: 1, assets_expire_at: inMinutes(10) });
+  server.viewsHeld = true;
+  const { router } = renderApp(pagePath(install.id), server.app);
+  await waitFor(() => expect(server.sent).toContain("GET view Install"));
+  server.viewsHeld = false;
+  await act(() => router.navigate(pagePath(guide.id)));
+  act(() => server.release());
+  await waitFor(() => expect(screen.getByRole("article").innerHTML).toBe("<p>Guide</p>"));
+  await act(() => vi.advanceTimersByTimeAsync(15 * 60_000));
+  server.views.set(install.id, { html: "<p>Signed anew</p>", revision: 1, assets_expire_at: inMinutes(70) });
+  await act(() => router.navigate(pagePath(install.id)));
+  expect(screen.queryByText("Signed")).toBeNull();
+  await waitFor(() => expect(screen.getByRole("article").innerHTML).toBe("<p>Signed anew</p>"));
+});
+
 test("an enhancement has the view's expiry, and an attachment's address signed anew; one gone, it rejects", async () => {
   const server = pageServer();
   const sound = { ...assetNode(90, "a.mp3"), parent_id: install.id };

@@ -12,6 +12,8 @@ func TestAUsersHTMLKeepsTheTypographicAllowlist(t *testing.T) {
 		{"another host, backslashed", "<a href=\"/\\evil.example\">a</a>", "<p><a>a</a></p>\n"},
 		{"a script address in entities", "<a href=\"&#106;ava&#x09;script&colon;x\">a</a>", "<p><a>a</a></p>\n"},
 		{"an address kept", "<a href=\"/p?a=1&amp;b=2\" title=\"t\">a</a>", "<p><a href=\"/p?a=1&amp;b=2\" title=\"t\">a</a></p>\n"},
+		// An attachment's download is the view's to write (M7/P4 design 4.2).
+		{"a download and an attachment's class", "<a href=\"/x\" download class=\"nw-asset\">t</a>", "<p><a href=\"/x\">t</a></p>\n"},
 		{"a repeated attribute", "<a href=\"/a\" href=\"javascript:x\">a</a>", "<p><a href=\"/a\">a</a></p>\n"},
 		{"a repeated attribute, the first not allowed", "<a href=\"javascript:x\" HREF=\"/a\">a</a>", "<p><a>a</a></p>\n"},
 		{

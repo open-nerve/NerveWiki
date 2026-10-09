@@ -8,7 +8,7 @@ import { useT } from "../../i18n/i18n";
 import type { PageProperties as Properties } from "../../services/linking.service";
 import type { Notebook } from "../../services/notebook.service";
 import { usePageTree } from "../../stores/context";
-import { useAssetsExpiry } from "./assets-expiry";
+import { eachRead, stamped, useAssetsExpiry } from "./assets-expiry";
 import { PanelSection } from "./panel-section";
 
 /** A value as the properties show it: text, or a property link's text and what it leads to. */
@@ -16,11 +16,11 @@ type Shown = string | { text: string; lead: Lead };
 
 /**
  * What a property link leads to: a page, by its id; none (null); or an
- * attachment, at its content's address, which the server signs, null for
- * none: one deleted since its link was indexed (M7/P3 design 5.6); and
- * whether the browser shows it there (M7/P4 design 4.3).
+ * attachment, at its content's address, which the server signs, and
+ * whether the browser shows it there (M7/P4 design 4.3); null for none:
+ * one deleted since its link was indexed (M7/P3 design 5.6).
  */
-type Lead = string | null | { asset: string | null; inline: boolean };
+type Lead = string | null | { asset: null } | { asset: string; inline: boolean };
 
 /**
  * How long a property link's path may be, in UTF-16 code units, to be
@@ -60,7 +60,7 @@ export function PageProperties({
 }) {
   const t = useT();
   const pages = usePageTree(notebook);
-  const answer = useSWR(["page-properties", notebook.id, page], () => pages.properties(page));
+  const answer = useSWR(["page-properties", notebook.id, page], () => stamped(pages.properties(page)), eachRead);
   const { error, mutate } = answer;
   const data = useAssetsExpiry(answer.data, () => void mutate());
   // Once for each answer, not at each render: the edit entered or left, the tree read again render the column.
@@ -128,7 +128,10 @@ function taking({ properties, links }: Properties): Take {
     if (key.length > pathsUpTo) {
       continue;
     }
-    const lead = kind === "asset" ? { asset: url, inline: inline === true } : (node ?? null);
+    let lead: Lead = node ?? null;
+    if (kind === "asset") {
+      lead = url === null ? { asset: null } : { asset: url, inline: inline === true };
+    }
     const queue = byPath.get(key);
     if (queue === undefined) {
       byPath.set(key, [lead]);
@@ -245,10 +248,10 @@ function show(shown: Shown, href: (id: string) => string, newTab: string): React
     return shown;
   }
   if (typeof shown.lead === "object" && shown.lead !== null) {
-    const { asset, inline } = shown.lead;
-    if (asset === null) {
+    if (shown.lead.asset === null) {
       return shown.text;
     }
+    const { asset, inline } = shown.lead;
     return inline ? (
       <a href={asset} target="_blank" rel="noopener noreferrer" className="underline underline-offset-4">
         {shown.text} <span className="sr-only">{newTab}</span>

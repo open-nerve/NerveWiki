@@ -440,6 +440,11 @@ func TestAPropertyLinkToAnAttachmentHasItsAddress(t *testing.T) {
 	if got, err := get.Execute(reader(), l.p); err != nil || !got.AssetsExpire.Equal(at.Add(30*time.Minute)) {
 		t.Errorf("the last earliest: %v, %v", got.AssetsExpire, err)
 	}
+	l.properties = &app.Properties{Valid: true, Links: []app.PropertyLink{{Key: "g", NodeID: z, Asset: true}}}
+	u.of[z] = app.AttachmentAddress{URL: "/z"}
+	if got, err := get.Execute(reader(), l.p); err != nil || !got.AssetsExpire.IsZero() || got.Links[0].URL != "/z" {
+		t.Errorf("none expiring: %+v, %v", got, err)
+	}
 	u.asked = nil
 	l.properties = &app.Properties{Valid: true, Links: []app.PropertyLink{{Key: "b", NodeID: page}}}
 	if got, err := get.Execute(reader(), l.p); err != nil || u.asked != nil || !got.AssetsExpire.IsZero() {

@@ -93,7 +93,7 @@ export function utf8(text: string): Uint8Array<ArrayBuffer> {
 }
 
 /**
- * The bytes of an Ogg Opus file of seconds of silence, mono (RFC 7845):
+ * The bytes of an Ogg Opus file of seconds (whole) of silence, mono (RFC 7845):
  * its two header pages, then its frames of 20 ms, each the silent CELT
  * frame, 250 to a page. Playwright's Chromium plays Opus, not AAC.
  */

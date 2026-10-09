@@ -21,6 +21,7 @@ function themed(initial: "light" | "dark" = "light") {
     revision: 1,
     role: "reader",
     t: translator("en"),
+    locale: "en",
     theme: () => theme,
     onThemeChange: (listener) => {
       following.add(listener);

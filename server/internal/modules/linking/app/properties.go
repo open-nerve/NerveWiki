@@ -54,7 +54,7 @@ func (g GetPageProperties) Execute(ctx context.Context, id uuid.UUID) (Propertie
 	}
 	for i, l := range p.Links {
 		a, ok := addresses[l.NodeID]
-		if !ok {
+		if !l.Asset || !ok {
 			continue
 		}
 		p.Links[i].URL, p.Links[i].Inline = a.URL, a.Inline

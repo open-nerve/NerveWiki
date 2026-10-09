@@ -1,3 +1,4 @@
+import { formatBytes } from "../i18n/format";
 import type { Enhancement, ReadingContext } from "./enhancement";
 
 /** How many audios and videos a view keeps playing as its HTML is replaced: as many as it writes (obsidian's MaxMedia). */
@@ -11,9 +12,9 @@ const media = "audio.nw-asset, video.nw-asset";
  * whose HTML has them at their contents' addresses, signed for an hour or
  * more:
  *
- * - A link to one the browser shows opens it in a tab of its own, as it
- *   says unseen; one to any other downloads it (the server writes
- *   download), and stays as it is.
+ * - A link to one says its size after it, in the reader's language. One
+ *   the browser shows opens in a tab of its own, as it says unseen; one to
+ *   any other downloads it (the server writes download).
  * - An image, an audio or a video that fails to load, once the view's
  *   addresses have expired, reads the view again: once for each expiry of
  *   the page's, as one that fails for another reason would fail as much
@@ -22,20 +23,23 @@ const media = "audio.nw-asset, video.nw-asset";
  *   the HTML is replaced, which the signatures do each hour and others'
  *   writes at any time: the next HTML of the page has it in place of its
  *   own of the same attachment, the same of them in order, its attributes
- *   but its address; one it does not have goes. Its address stays the
- *   one it had: as that fails, once it has expired, the view has the
- *   attachment's signed anew (assetAddress), and the media goes on where
- *   it was; once for each HTML, none for an attachment gone.
+ *   but its address, the focus if it had it; one it does not have goes.
+ *   One that failed is not kept: it would not load again, and its place
+ *   goes to the new one. One kept has the address it had: as it fails
+ *   (its address expired, as a rule), the view has the attachment's
+ *   signed anew (assetAddress), and the media goes on where it was; once
+ *   for each HTML, none for an attachment gone.
  */
 export function assets(): Enhancement {
-  // What the view had started as its HTML was replaced: its page, and its audios and videos by key.
-  let kept: { page: string; media: Map<string, HTMLMediaElement> } | undefined;
+  // What the view had started as its HTML was replaced: its page, its audios and videos by key, and the focused one.
+  let kept: Kept | undefined;
   // The expiry each page's view was read again for, as its attachments failed to load.
   const reloadedFor = new Map<string, string>();
   return (container, context) => {
-    const adopted = adopt(container, kept?.page === context.page ? kept.media : undefined);
+    const adopted = adopt(container, kept?.page === context.page ? kept : undefined);
     kept = undefined;
-    const added = newTab(container, context.t("asset.newTab"));
+    const links = newTab(container, context.t("asset.newTab"));
+    const added = [...links.flatMap(({ hint }) => hint), ...sizes(container, context)];
     const onError = (event: Event) => {
       const element = event.target;
       if (!(element instanceof HTMLElement) || !element.matches(`img.nw-asset, ${media}`)) {
@@ -55,17 +59,26 @@ export function assets(): Enhancement {
     container.addEventListener("error", onError, true);
     return () => {
       container.removeEventListener("error", onError, true);
-      for (const { link, hint } of added) {
+      for (const { link } of links) {
         link.removeAttribute("target");
         link.removeAttribute("rel");
-        for (const node of hint) {
-          node.remove();
-        }
       }
-      kept = { page: context.page, media: started(container) };
+      for (const node of added) {
+        node.remove();
+      }
+      const playing = started(container);
+      const active = document.activeElement;
+      kept = {
+        page: context.page,
+        media: playing,
+        focused: [...playing.values()].find((element) => element === active),
+      };
     };
   };
 }
+
+/** Kept is what a view had started as its HTML was replaced: its page, its audios and videos by key, the focused one. */
+type Kept = { page: string; media: Map<string, HTMLMediaElement>; focused: HTMLMediaElement | undefined };
 
 /**
  * newTab has the links of container to attachments the browser shows open in a tab of their own, saying so unseen:
@@ -87,32 +100,57 @@ function newTab(container: HTMLElement, text: string): { link: HTMLAnchorElement
 }
 
 /**
+ * sizes says, after each link of container to an attachment, its size in the reader's language: data-nw-size, which
+ * the server writes in bytes with the link's address.
+ */
+function sizes(container: HTMLElement, { t, locale }: ReadingContext): HTMLElement[] {
+  const added: HTMLElement[] = [];
+  for (const link of container.querySelectorAll<HTMLAnchorElement>("a.nw-asset[data-nw-size]")) {
+    const size = document.createElement("span");
+    size.className = "nw-size";
+    size.textContent = t("asset.sizeAfter", { size: formatBytes(Number(link.dataset.nwSize), locale) });
+    link.after(size);
+    added.push(size);
+  }
+  return added;
+}
+
+/**
  * adopt puts each of kept, by key, in place of the element of container
  * of the same key (an attachment's type is its own: the same element),
- * its attributes but its address taken; those put are the adopted.
+ * its attributes but its address taken, the focus given back if it had
+ * it; those put are the adopted. One that failed is not put: the new one
+ * starts where it was.
  */
-function adopt(container: HTMLElement, kept: Map<string, HTMLMediaElement> | undefined): Set<HTMLMediaElement> {
+function adopt(container: HTMLElement, kept: Kept | undefined): Set<HTMLMediaElement> {
   const adopted = new Set<HTMLMediaElement>();
   if (kept === undefined) {
     return adopted;
   }
   for (const [key, element] of keyed(container)) {
-    const old = kept.get(key);
+    const old = kept.media.get(key);
     if (old === undefined) {
       continue;
     }
+    if (old.error !== null) {
+      element.currentTime = old.currentTime;
+      continue;
+    }
     for (const name of old.getAttributeNames()) {
-      if (name !== "src") {
+      if (name !== "src" && !element.hasAttribute(name)) {
         old.removeAttribute(name);
       }
     }
     for (const { name, value } of element.attributes) {
-      if (name !== "src") {
+      if (name !== "src" && old.getAttribute(name) !== value) {
         old.setAttribute(name, value);
       }
     }
     element.replaceWith(old);
     adopted.add(old);
+    if (old === kept.focused) {
+      old.focus({ preventScroll: true });
+    }
   }
   return adopted;
 }
@@ -149,16 +187,19 @@ function assetOf(address: string | null): string | undefined {
 }
 
 /**
- * signAnew gives element the address of its attachment signed anew, and has it go on where it was, playing if it
- * was; nothing when the address is not given (the attachment gone) or the element is no longer in the page.
+ * signAnew gives element the address of its attachment signed anew, and has it go on where it was, at its rate,
+ * playing if it was, its frame shown if not; nothing when the address is not given (the attachment gone) or the
+ * element is no longer in the page.
  */
 async function signAnew(element: HTMLMediaElement, { assetAddress }: ReadingContext): Promise<void> {
   const id = assetOf(element.getAttribute("src"));
   if (id === undefined) {
     return;
   }
+  // As it failed: the new address's load has it paused, at the start, at the default rate.
   const at = element.currentTime;
   const playing = !element.paused;
+  const rate = element.playbackRate;
   let address: string;
   try {
     address = await assetAddress(id);
@@ -168,9 +209,25 @@ async function signAnew(element: HTMLMediaElement, { assetAddress }: ReadingCont
   if (!element.isConnected) {
     return;
   }
-  element.setAttribute("src", address);
-  element.currentTime = at;
-  if (playing) {
-    await element.play().catch(() => undefined);
+  try {
+    if (!playing) {
+      element.preload = "metadata";
+    }
+    element.setAttribute("src", address);
+    element.playbackRate = rate;
+    element.currentTime = at;
+    // An engine that takes no position before the metadata takes it then.
+    element.addEventListener(
+      "loadedmetadata",
+      () => {
+        element.currentTime = at;
+      },
+      { once: true }
+    );
+    if (playing) {
+      await element.play();
+    }
+  } catch {
+    // Refused, the media stays as it is: the reader plays it again.
   }
 }

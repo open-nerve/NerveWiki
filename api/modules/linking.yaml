@@ -355,8 +355,9 @@ components:
           type: [string, "null"]
         inline:
           description: >-
-            Whether the browser shows the content at url itself (an image, an audio, a video or a PDF), which opens in
-            a tab of its own, or downloads it. Null where url is.
+            Whether the browser shows the content at url itself, which opens in a tab of its own, or downloads it:
+            as the attachment's mime says (an image, an audio, a video or a PDF the server shows). Null when url is
+            null.
           type: [boolean, "null"]
     TagList:
       type: object

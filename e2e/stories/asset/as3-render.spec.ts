@@ -3,9 +3,9 @@ import { readFileSync } from "node:fs";
 import type { ApiClient } from "@nervewiki/api-client";
 import type { Locator, Page } from "@playwright/test";
 
-import { bearer } from "../../fixtures/auth";
 import { expectIndexedLinks } from "../../fixtures/assert/links";
 import { download, oggOpus, pngBytes, uploadAsset, utf8 } from "../../fixtures/assets";
+import { getPageProperties } from "../../fixtures/links";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, getView, readContent, renameNode } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
@@ -92,10 +92,13 @@ test("AS3 (API): the view has an attachment's image, audio and video at their si
     [path(data.id), true],
   ]);
   expect(html).toContain('data-nw-target="missing.png"');
-  expect(view?.assets_expire_at).not.toBeNull();
+  // The view expires as its addresses do.
+  const expiry = new URL(img?.src ?? "", nervewiki.baseURL).searchParams.get("e");
+  expect(view?.assets_expire_at && Date.parse(view.assets_expire_at) / 1000).toBe(Number(expiry));
+  const archive = attrsOf(html, "a").find((a) => "download" in a && a.href?.startsWith(path(data.id)));
   for (const [address, bytes] of [
     [img?.src, pngBytes],
-    [attrsOf(html, "a")[1]?.href, zipBytes],
+    [archive?.href, zipBytes],
   ] as const) {
     // oxlint-disable-next-line no-await-in-loop -- one download at a time, each checked
     const answer = await download(nervewiki.baseURL, address ?? "");
@@ -104,15 +107,13 @@ test("AS3 (API): the view has an attachment's image, audio and video at their si
   }
 
   // The properties' links say whether the browser shows what they lead to, and when their addresses expire.
-  const properties = await api.GET("/api/v0/pages/{page_id}/properties", {
-    params: { path: { page_id: guide.id } },
-    headers: bearer(pat),
-  });
+  const properties = await getPageProperties(api, pat, guide.id);
+  expect(properties.response.status).toBe(200);
   expect(properties.data?.links.map((l) => [l.key, l.node_id, l.inline])).toEqual([
     ["cover", cover.id, true],
     ["file", data.id, false],
   ]);
-  expect(properties.data?.assets_expire_at).not.toBeNull();
+  expect(properties.data?.assets_expire_at).toEqual(expect.any(String));
 
   await expectIndexedLinks(db, guide.id, [
     { kind: "wikilink", property: "cover", target: "cover.png", resolved: cover.id },
@@ -186,15 +187,16 @@ function loaded(media: Locator): Promise<boolean> {
   );
 }
 
-test("AS3 (page): the image, the audio and the video load from their addresses; a PDF opens in a tab of its own, an archive downloads; an embed of none is unresolved; an audio playing goes on as a rename reads the view again", async ({
+test("AS3 (page): the image, the audio and the video load from their addresses; a PDF opens in a tab of its own, an archive downloads, each with its size, the properties' too; an embed of none is unresolved; an audio playing goes on as a rename reads the view again", async ({
   api,
+  db,
   signedInPage,
 }, testInfo) => {
   const { tokens, pat, workspace } = await newOnboardedTeam(api, testInfo);
   const page = await signedInPage(tokens);
   const notebook = await createNotebook(api, pat, workspace.slug, "Plans");
   await page.goto(`/${workspace.slug}/notebooks/${notebook.id}`);
-  const { cover, sound, doc } = await upload(api, pat, notebook.id, await recordWebm(page));
+  const { cover, sound, clip, doc, data } = await upload(api, pat, notebook.id, await recordWebm(page));
   const guide = await createPage(api, pat, notebook.id, "Guide", null, content);
   await page.goto(wikiPagePath(workspace.slug, notebook.id, guide.id));
   await expect(pageHeading(page, "Guide")).toBeVisible();
@@ -232,6 +234,21 @@ test("AS3 (page): the image, the audio and the video load from their addresses; 
   expect(Buffer.compare(readFileSync(await downloaded.path()), Buffer.from(zipBytes))).toBe(0);
   await expect(view.getByText("missing.png")).toHaveClass(/nw-unresolved/);
   expect(page.url()).toContain(guide.id);
+  // Each link says its size, in the reader's language.
+  await expect(view.locator("p").filter({ hasText: "doc.pdf" })).toContainText(
+    `doc.pdf (opens in a new tab) (${pdfBytes.length.toString()} B) the data (${zipBytes.length.toString()} B) missing.png`
+  );
+
+  // The properties' links: the image opens in a tab of its own, the archive downloads.
+  const properties = page.getByRole("complementary", { name: "About this page" });
+  const coverLink = properties.getByRole("link", { name: "cover.png (opens in a new tab)" });
+  await expect(coverLink).toHaveAttribute("target", "_blank");
+  await expect(coverLink).toHaveAttribute("href", new RegExp(`^/api/v0/assets/${cover.id}/content\\?`));
+  const fileLink = properties.getByRole("link", { name: "data.zip", exact: true });
+  await expect(fileLink).toHaveAttribute("download");
+  const fetching = page.waitForEvent("download");
+  await fileLink.click();
+  expect(Buffer.compare(readFileSync(await (await fetching).path()), Buffer.from(zipBytes))).toBe(0);
 
   // Playing, the audio goes on as the view is read again: the rename writes the page's embeds again.
   await audio.evaluate((element) => {
@@ -262,4 +279,14 @@ test("AS3 (page): the image, the audio and the video load from their addresses; 
     "src",
     new RegExp(`^/api/v0/assets/${cover.id}/content\\?`)
   );
+  await expectIndexedLinks(db, guide.id, [
+    { kind: "wikilink", property: "cover", target: "front.png", resolved: cover.id },
+    { kind: "wikilink", property: "file", target: "data.zip", resolved: data.id },
+    { kind: "embed", property: null, target: "front.png", resolved: cover.id },
+    { kind: "embed", property: null, target: "sound.ogg", resolved: sound.id },
+    { kind: "embed", property: null, target: "clip.webm", resolved: clip.id },
+    { kind: "embed", property: null, target: "doc.pdf", resolved: doc.id },
+    { kind: "wikilink", property: null, target: "data.zip", resolved: data.id },
+    { kind: "embed", property: null, target: "missing.png", resolved: null },
+  ]);
 });

@@ -43,6 +43,7 @@ function setUp() {
     revision: 1,
     role: "reader",
     t: translator("en"),
+    locale: "en",
     theme: () => "light",
     onThemeChange: () => () => undefined,
     reload: () => undefined,

@@ -32,6 +32,7 @@ function setUp() {
     revision: 1,
     role: "editor",
     t: translator("en"),
+    locale: "en",
     theme: () => "light",
     onThemeChange: () => () => undefined,
     reload: () => undefined,

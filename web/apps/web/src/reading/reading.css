@@ -381,6 +381,11 @@
     height: auto;
   }
 
+  /* An attachment's size, after its link (reading/assets.ts). */
+  .nw-reading .nw-size {
+    color: var(--muted-foreground);
+  }
+
   /* An attachment shown as text: it has no address, and is no link. */
   .nw-reading :is(span, a:not([href])).nw-asset {
     color: var(--muted-foreground);

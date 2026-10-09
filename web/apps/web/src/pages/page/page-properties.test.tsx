@@ -602,3 +602,18 @@ test("properties are read again a minute before their attachments' addresses exp
   await act(() => vi.advanceTimersByTimeAsync(3 * 60 * 60_000));
   expect(reads()).toBe(3);
 });
+
+test("properties by a clock far ahead of the server's show, and show as the page is come back to", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  onTestFinished(() => void vi.useRealTimers());
+  const server = pageServer();
+  server.properties.set(install.id, expiring("draft", inMinutes(-120)));
+  const { router } = renderApp(pagePath(install.id), server.app);
+  await within(await shownPanel()).findByText("draft");
+  await act(() => vi.advanceTimersByTimeAsync(40_000));
+  await act(() => router.navigate(pagePath(guide.id)));
+  await within(section("Properties")).findByText("No properties.");
+  await act(() => vi.advanceTimersByTimeAsync(60_000));
+  await act(() => router.navigate(pagePath(install.id)));
+  await within(section("Properties")).findByText("draft");
+});
