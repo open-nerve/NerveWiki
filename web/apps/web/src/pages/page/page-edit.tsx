@@ -42,11 +42,11 @@ function composed(editor: SourceEditorHandle | null, act: () => void, drop?: () 
 }
 
 /**
- * Left is how an edit ended: idle, left for a long time without input; told, what the editor said as the edit waited
- * to be left for its uploads (files not inserted), which the reading view says; elsewhere, whether the user took the
- * focus elsewhere meanwhile, where it stays.
+ * Left is how an edit ended: idle, left for a long time without input; waited, whether it waited for its uploads
+ * first, the user free to go elsewhere meanwhile; told, what the editor said as it waited (files not inserted), which
+ * the reading view says.
  */
-export type Left = { idle: boolean; told?: string; elsewhere?: boolean };
+export type Left = { idle: boolean; waited?: boolean; told?: string };
 
 type PageEditProps = {
   notebook: Notebook;
@@ -79,9 +79,10 @@ type PageEditProps = {
  * the editor told meanwhile goes with it to the reading view. An edit
  * lost meanwhile, or that runs into a conflict, stays, its banner or the
  * conflict's panel deciding; one with a conflict open waits for nothing.
- * Its save once they are in, and the edit left, move no focus if the user
- * went elsewhere meanwhile. The idle exit, which waits for no upload,
- * tries again later.
+ * Its save once they are in moves no focus if the user went elsewhere
+ * meanwhile, and the reading view takes the focus only from the edit gone
+ * (Left.waited). The idle exit, which waits for no upload, tries again
+ * later.
  *
  * An edit whose session is lost (M5/P4 design 3.8) saves no more: the
  * editor is read-only, through the registered extension the controls tell,
@@ -276,7 +277,7 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
       }
       return;
     }
-    await finish({ ...left, told: toldWaiting.current, elsewhere: waited && !stayed() });
+    await finish({ ...left, waited, told: toldWaiting.current });
   }
 
   /**

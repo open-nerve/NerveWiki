@@ -121,7 +121,9 @@ const PageShell = observer(function PageShell({
   // The last navigation the reading view took in, which outlives it while the page is edited.
   const anchored = useRef<string | undefined>(undefined);
   const lockNote = useRef<HTMLDivElement>(null);
-  const back = useRef(false);
+  // Back from the edit, the focus goes to Edit; from one that waited for its uploads ("fallen"), only if it fell with the
+  // edit gone, the user free to go elsewhere meanwhile.
+  const back = useRef<boolean | "fallen">(false);
   // The edit whose session is opening: one that opens once the shell is gone ends.
   const opening = useRef<PageEditing | undefined>(undefined);
   const mounted = useMounted();
@@ -199,9 +201,12 @@ const PageShell = observer(function PageShell({
     if (!writer || !reading) {
       return undefined;
     }
-    if (back.current) {
+    if (back.current !== false) {
+      const focused = document.activeElement;
+      if (back.current === true || focused === null || focused === document.body) {
+        edit.current?.focus();
+      }
       back.current = false;
-      edit.current?.focus();
     }
     const mac = onMac();
     const onKeyDown = (event: KeyboardEvent) => {
@@ -272,8 +277,7 @@ const PageShell = observer(function PageShell({
               page={page}
               editing={editing}
               done={(left) => {
-                // Left where the user went as it waited for its uploads, the focus stays there.
-                back.current = left.elsewhere !== true;
+                back.current = left.waited === true ? "fallen" : true;
                 setIdleLeft(left.idle);
                 setToldLeft(left.told ?? "");
                 // A toggle's refusal that came while it edited is no longer news.

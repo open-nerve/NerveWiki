@@ -489,3 +489,33 @@ test("a conflict the leave's save runs into, the focus fallen to the page meanwh
   const region = await screen.findByRole("region", { name: "This page changed while you edited it" });
   await waitFor(() => expect(document.activeElement).toBe(within(region).getByRole("heading")));
 });
+
+test("an edit left once an upload cancelled from its row is gone gives the focus back to Edit: it fell with the edit", async () => {
+  const server = pageServer({ nodes });
+  server.uploadsHeld = true;
+  const { user, view, content } = await editing(server);
+  paste(view, [new File(["png"], "chart.png", { type: "image/png" })]);
+  await waitFor(() => expect(uploadsBy(content)).toBeDefined());
+  await user.click(screen.getByRole("button", { name: "Done" }));
+  await screen.findByText("Leaving once the uploads finish…");
+
+  await user.click(screen.getByRole("button", { name: "Cancel the upload of chart.png" }));
+  const edit = await screen.findByRole("button", { name: "Edit" });
+  await waitFor(() => expect(document.activeElement).toBe(edit));
+});
+
+test("an edit left with Mod+E, then Done pressed as it waits for its uploads, gives the focus back to Edit", async () => {
+  const server = pageServer({ nodes });
+  server.uploadsHeld = true;
+  const { user, view, content } = await editing(server);
+  paste(view, [new File(["png"], "chart.png", { type: "image/png" })]);
+  await waitFor(() => expect(uploadsBy(content)).toBeDefined());
+  content.focus();
+  fireEvent.keyDown(content, { key: "e", ctrlKey: true });
+  await screen.findByText("Leaving once the uploads finish…");
+
+  await user.click(screen.getByRole("button", { name: "Done" }));
+  act(() => server.release());
+  const edit = await screen.findByRole("button", { name: "Edit" });
+  await waitFor(() => expect(document.activeElement).toBe(edit));
+});
