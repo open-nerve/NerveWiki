@@ -3,7 +3,7 @@
 | 项 | 内容 |
 |---|---|
 | Phase | M7/P4 附件（前端） |
-| 状态 | 进行中（A 已合并 `e44b417`） |
+| 状态 | 进行中（A 已合并 `e44b417`，B 已合并 `32e175c`） |
 | 基线 | `31f894a`（P3 合并、文档补完之后的 main）；本文提交之后开分支 `m7-p4a`，A 合并之后开 `m7-p4b`，B 合并之后开 `m7-p4c` |
 | 上级文档 | [M7 总设计](00-M7-design.md) 4.7、4.8、第 5、7–9 节；[P3 文档](03-P3-assets-links.md)第 9.2 节（交给 P4 的三项）；移交：[M4 附件的扩展](handoffs/M4-extensions.md)第 2、3 项（编辑器的一跳）；总体设计 13.2 第 1、6、23、25、26 条 |
 
@@ -117,44 +117,61 @@ P4 把附件交到读者与写者手里：面板与上传、阅读视图里的�
 
 ## 4. B：阅读视图里的附件
 
+实现、审查与修复核对之后照实际改写（第 9.2 节）。
+
 ### 4.1 文件
 
 | 文件 | 内容 |
 |---|---|
 | `server/internal/platform/markdown/obsidian/`：`asset.go`、`obsidian.go` | `Asset.Inline`；不内联的附件的链接写 `download`（4.2） |
-| `server/internal/modules/asset/app/embeds.go`、`bootstrap/assets.go` | 答出是否内联与到期 |
-| `server/internal/modules/linking/app/`：`ports.go`、`properties.go`；`adapter/http` | `PropertyLink.inline`、`PageProperties.assets_expire_at`（4.3） |
-| `api/modules/linking.yaml` | 同上 |
-| `web/apps/web/src/reading/assets.ts`（新）、`reading/enhancement.ts` | 增强 `assets`（4.4–4.6） |
-| `web/apps/web/src/pages/page/page-view.ts`、`reading-view.tsx`、`page-properties.tsx` | 到期重读；右栏的附件链接 |
-| `tools/md-fixtures/`、`server/internal/platform/markdown/obsidian/*_test.go`、`bootstrap/assets_view_test.go` | 标记与最后一跳随之改 |
-| `e2e/stories/asset/as3-render.spec.ts`（新） | AS3 |
+| `server/internal/modules/asset/`：`embeds.go`、`domain/types.go` | 嵌入答出是否内联（`domain.Inline(mime, false)`；显示的类型表只建一次） |
+| `server/internal/modules/linking/`：`app/ports.go`、`app/properties.go`、`module.go`、`adapter/http/handler.go`；`bootstrap/assets.go`、`deps.go` | `AttachmentAddresses`；`PropertyLink.inline`、`PageProperties.assets_expire_at`（4.3） |
+| `api/modules/linking.yaml`、`page.yaml` | 同上；`PageView.assets_expire_at` 的说明 |
+| `web/apps/web/src/reading/assets.ts`（新）、`reading/unfold.ts`（新，从 `reading-view.tsx` 移出）、`reading/enhancement.ts`、`reading/reading.css` | 增强 `assets`（4.4–4.6）；`ReadingContext` 加 `locale`、`assetsExpire`、`assetAddress` |
+| `web/apps/web/src/pages/page/assets-expiry.ts`（新）、`page-view.ts`、`page-edit.tsx`、`page-properties.tsx`、`reading-view.tsx`、`attachments-section.tsx` | 到期重读（4.5）；右栏的附件链接（4.3） |
+| `web/apps/web/src/stores/asset.store.ts` | `address(id)`：重签的地址 |
+| `web/apps/web/src/i18n/`：`format.ts`、`messages/*` | `asset.sizeAfter`；`formatBytes` 留下数字的格式 |
+| `server/.../obsidian/*_test.go`、`markdowntest/check.go`、`platform/markdown/sanitize_test.go`、`bootstrap/assets_view_test.go`、`markdown_app_test.go`、`permission_matrix_linking_test.go` | 标记与最后一跳随之改 |
+| `e2e/stories/asset/as3-render.spec.ts`（新）、`e2e/fixtures/assets.ts`；`links/l5-completion.spec.ts`、`l6-panel.spec.ts` | AS3；`oggOpus`；属性的新字段 |
 
 ### 4.2 不内联的附件的链接
 
-- 内容地址对图片、音视频与 PDF 内联，其余按附件下载。前端要分开它们：内联的在新标签页打开，下载的不开新标签页（Firefox 会留下空白的标签页）。HTML 里没有类型（P3B 去掉了 `data-nw-asset`，也不写 MIME），所以服务端给不内联的附件的链接写 `download` 属性（同源的地址，浏览器照它下载，不跳转；没有增强时也对）。
-- `obsidian.Asset` 加 `Inline bool`（组合根按 asset 的 `domain.Inline(mime, false)` 给出）；`Markup` 的 `a` 加 `download`。每个链接多 9 个字节，在 `MaxShown` 的总量之内（`TestTheAppsAttachmentsAreWithinAQuarterOfHeadroom` 照旧核对）。
+- 内容地址对图片、音视频与 PDF 内联，其余按附件下载。前端要分开它们：内联的在新标签页打开，下载的不开新标签页（Firefox 会留下空白的标签页）。HTML 里没有类型（P3B 去掉了 `data-nw-asset`，也不写 MIME），所以服务端给不内联的附件的链接写 `download=""`（同源的地址，浏览器照它下载，不跳转；没有增强时也对）。
+- `obsidian.Asset` 加 `Inline bool`（`asset.Embed` 有同样的字段、同样的次序，组合根按 `domain.Inline(mime, false)` 给出）；`Markup` 的 `a` 加 `download`，用户手写的 `download` 照旧被净化器去掉。每个下载链接多 12 个字节；`MaxShown` 个链接的页面实测约 400 KB，仍在 `TestTheAppsAttachmentsAreWithinAQuarterOfHeadroom` 的余量之内。
 
 ### 4.3 属性的内联与到期
 
-- `PropertyLink` 加 `inline`（必有，可空：附件以外为 null）；`PageProperties` 加 `assets_expire_at`（必有，可空：没有附件的地址时为 null）。linking 的 `AttachmentURLs` 答出每个地址、是否内联与到期。
-- 右栏：内联的在新标签页打开、带看不见的提示，其余照 `download` 下载（审查 C12）；`assets_expire_at` 之前重读属性（审查 C13，同 4.5）。
+- `PropertyLink` 加 `inline`（必有，可空：没有 `url` 时为 null）；`PageProperties` 加 `assets_expire_at`（必有，可空：没有附件的地址时为 null，否则是最早的到期）。linking 的 `AttachmentAddresses.Addresses` 按 id 答出地址、是否内联与到期；只有附件的链接取地址（`!l.Asset` 的守卫：存储多答了也不用）。
+- 右栏：内联的链接在新标签页打开，带看不见的"（在新标签页打开）"（空格在提示之外、链接之内，与附件一节的行相同）；其余的带 `download`。属性与视图走同一个到期重读（4.5）。右栏不显示大小（`PropertyLink` 没有字节数；阅读视图的属性表显示，见 4.4），记在 M12 的打磨移交。
 
 ### 4.4 增强 `assets`：附件的链接
 
-- `a.nw-asset[href]`：没有 `download` 的加 `target="_blank"`、`rel="noopener noreferrer"` 与看不见的"（在新标签页打开）"（文字随界面语言，增强的 `t`）；有 `download` 的不动。不改 HTML 的结构之外的东西：提示是加进链接里的一个 `span`，增强清理时移除（13.2 第 23 条）。
+- `a.nw-asset[href]:not([download])`：加 `target="_blank"`、`rel="noopener noreferrer"` 与看不见的提示（`asset.newTab`，文字随界面语言）；提示是链接里的一个空格与一个 `span.sr-only`。有 `download` 的不动。
+- `a.nw-asset[data-nw-size]`：链接之后加 `span.nw-size`，按界面语言写大小（`asset.sizeAfter`：英文" (8 B)"、中文"（8 B）"；`formatBytes` 按 `ReadingContext.locale`），颜色取 `--muted-foreground`，不折行。没有地址的附件（文字）没有大小。
+- 增强清理时移除加进来的提示与大小、去掉 `target` 与 `rel`，HTML 回到服务端的原样；增强在 `readingEnhancements` 的最后（13.2 第 23 条记下它加的标记：提示、大小与保留的媒体）。
 - 点图片不做什么。
 
 ### 4.5 到期与加载失败
 
-- **到期重读**：`usePageView` 的视图过了 `assets_expire_at` 当作没有加载（不显示缓存里已过期的 HTML，重读）；还没过的，在它之前一分钟安排一次重读（`mutate`）。没有附件的地址（`null`）的视图不安排。属性同样（4.3）。
-- **加载失败**：增强在容器上以捕获阶段听 `error`（它不冒泡）：图片、音视频加载失败，而视图的到期时刻已过时，经 `context.reload()` 合并成一次重读；同一个页面、同一个到期时刻至多重读一次（增强的闭包按页面记下已为哪个到期时刻重读过）：文件不在（404）、限流（429）、解不开的图片，在同一个小时里重读也一样失败，不能循环。
+- **到期重读**（`pages/page/assets-expiry.ts`，视图与属性共用）：
+  - SWR 的读经 `stamped` 记下读到的时刻（一个 `WeakMap`；没经 `stamped` 的答复按第一次见到的时刻），`eachRead`（`compare: Object.is`）让每次读都是新的答复：服务端一个小时之内签出同样的地址，内容相同的答复也要各自安排下一次重读。
+  - `rereadIn(expires, read)`：到期前一分钟，至少读到之后 30 秒，至多 59 分钟（地址至少签一个小时，不论时钟怎样）。附件一节的列表用同一个函数。比服务端快一个小时以上的时钟因此每 30 秒读一次。
+  - `useAssetsExpiry`：答复按时重读一次，视图与大纲两个读者只读一次（`readAgain`）；隐藏的标签页里到时不读，显示时由 SWR 的 focus 重读。缓存里的答复在第一次见到时已过期一分钟以上就不显示（返回 undefined），由 SWR 挂载时的读取代；那一读失败时显示"重试"。显示着的答复到期后照旧显示：标签页显示、恢复连线时 SWR 重读，其间加载失败的由增强重读。
+  - `assets_expire_at` 解析不出时当作没有地址；`page-edit.tsx` 写入的视图也经 `stamped`（`readView`）。
+- **加载失败**：增强在容器上以捕获阶段听 `error`（它不冒泡）：图片、音视频加载失败，而视图的到期时刻已过时，经 `context.reload()` 重读；同一个页面、同一个到期时刻至多一次（增强的闭包按页面记下）：文件不在、限流、解不开的图片，在同一个小时里重读也一样失败，不能循环。
 
 ### 4.6 保留正在播放的音视频
 
-- HTML 每小时因签名而变，别人的编辑、`links` 事件也让它变，`innerHTML` 会毁掉正在播放的媒体。增强清理时，把正在播放、或已开始又暂停在中间的 `audio.nw-asset`、`video.nw-asset` 从旧的 HTML 里取下来，按附件 id（地址的路径里）与它在这个 id 里的次序记下；下一次运行时，新 HTML 里同一个 id、同一个次序的元素换成取下来的那个（保留播放的位置与状态），对不上的丢掉。上限：至多保留 20 个（`MaxMedia`）。
-- 取下来的元素的地址仍是旧的签名：暂停超过它的期限之后，下一次按 `Range` 读失败（`error`）时，经 `ReadingContext.assetAddress(id)`（`GET /assets/{id}`）重签，换上新地址，回到原来的位置；附件已删除时（404）不再重试。
-- `ReadingContext` 加 `assetAddress(id: string): Promise<string>`（只读，任何角色都有）。
+- HTML 每小时因签名而变，别人的编辑、`links` 事件也让它变，`innerHTML` 会毁掉正在播放的媒体。增强清理时记下开始了（在播放，或暂停在中间）且没有播完的 `audio.nw-asset`、`video.nw-asset`，键是附件 id（地址的路径里）与它在这个 id 里的次序，至多 20 个（`MaxMedia`），以及有焦点的那个；同一页面的下一次运行里，新 HTML 里同键的元素换成记下的那个：属性取新 HTML 的（只改不同的），地址保留它自己的；有焦点的交还焦点，不滚动，它所在的折叠 callout 先展开（`reading/unfold.ts`）。对不上的丢掉；别的页面的不保留。
+- **重签**：开始了的音视频（在播放、暂停在中间，或按了播放还没加载出来；接回的与这份 HTML 自己的一样）加载失败时（通常是地址过期：很长的录音、隐藏的标签页里不重读、读者离开了一阵），经 `ReadingContext.assetAddress(id)`（`AssetStore.address` → `GET /assets/{id}` 的 `content_url`）就地重签，同一个元素：换上新地址，接着失败时的位置与速率、读者其间留下的播放与否、音量与静音，原来在播放的接着播放（同一个元素，浏览器给它的播放许可还在），暂停的设 `preload="metadata"` 显示那一帧。
+  - 重签途中不再签：它的旧地址其间再失败（Chromium 的控件在出错时按播放先重新加载）不理会。重签途中记下失败时的位置与速率；其间重新加载过的（`error` 已清，或又因失败设上）丢了它们，取记下的，否则取现在的（读者其间改的速率）。
+  - 重签成功之后一分钟之内（`signedAgainAfter`）再失败，是文件的问题，不再签，按 4.5 交给视图的重读；之后的失败可以再签（隐藏的标签页里一段很长的录音跨过每一次到期）。
+  - 地址没给（附件已删除、断网、限流），元素仍在页面里时按 4.5 重读视图；下一次失败可以再签。元素已不在页面里时不做什么。
+  - 没开始的媒体失败（服务端写 `preload="none"`，只有按了播放才加载），按 4.5 交给视图的重读。
+- **出错的不保留**（`error` 不为 null）：它重签过也失败，或签不了，不会再加载。新元素放在它的位置、速率、音量与静音上，有焦点的把焦点交给新元素（同样先展开），不预载、不播放，等读者；只有重签途中、在播放的，新元素（地址已是新签的）接着播放，位置同样取重签记下的。
+- 放到位置上（`putAt`）：先挂 `loadedmetadata`（那时位置差 0.25 秒以上才再设一次），再设位置（不收的引擎抛错时由 `loadedmetadata` 补上）；`play()` 被拒就停在那里，读者再按播放。
+- 已知的限制：替换时原生全屏退出（Fullscreen 规范的 removing steps）。
+- `ReadingContext` 加 `assetAddress(id: string): Promise<string>`（只读，任何角色都有）、`assetsExpire`、`locale`。
 
 ## 5. C：编辑器的粘贴与拖入
 
@@ -246,3 +263,27 @@ P4 把附件交到读者与写者手里：面板与上传、阅读视图里的�
   3. B：阅读视图里的附件链接的增强与附件一节的行用同一个 `lib/asset-kind.ts`（`opensInline`、`embedOf`）；不内联的附件在列表里的"下载"提示随 B 一起看（记在 M12 的打磨移交第 16 项）。
 - 待人工确认（真实的浏览器，审查记录"接受与推后的"）：从访达拖文件到附件一节与阅读视图（Chromium、Safari、Firefox）；页内拖一张图片按 Esc 取消，再从访达拖文件进来；Firefox 里用键盘打开"打开"；不经 HTTPS 的部署里用读屏复制嵌入。
 - 负责人可以改判的取舍：上传落在已读的页之后时读到它所在的页（也可以只读到一定页数，说"在后面的页里"）；早答被重置时显示"上传失败"、不重试（也可以按 `TypeError` 重读列表，看是否已到达）；"正在完成…"之后不能取消（服务端已收下全部字节）；页内开始的拖动的文件不上传（Chromium 拖图片时带着文件）；中文的列表名"上传队列"。
+
+### 9.2 B：阅读视图里的附件（2026-10-09，合并 `32e175c`）
+
+- 提交：
+  - 实施：服务端 `ca78118`、增强与到期 `1616af4`、e2e AS3 `de0875e`、L5 与 L6 的新字段 `e83e3d7`；负对照的补测 `c792089`。
+  - 审查的修复 `4e690b3`；修复核对的修复 `df560c3`、`e7a2766`、`8096579`、`ff985f4`、`c0898be`。合并 `32e175c`。
+- 审查：三位审查者（Opus）。服务端与契约没有行为缺陷；前端中 3 条（出错的音视频被保留、不再重签；内容相同的答复让到期重读停下；快一小时以上的时钟下回到页面一直"加载中"）、中低 4 条（保留的媒体丢焦点、每小时整篇替换、jsdom 不模拟加载算法、大小的显示在交接中掉了），都已处理。修复核对五轮：第二轮中 1 条（后台播放跨过过期时换成新元素，音量丢失）、中低 1 条，第三、四轮各有低的行为问题，都在重签的时序上；第五轮只剩 1 条此前就有的低，推后。逐条见[审查记录](reviews/P4B-assets-web-review.md)。
+- 审查之后改了的设计（第 4 节已改写）：
+  - 到期：SWR 的每次读都是新答复（`eachRead`），到期从读到的时刻算（`stamped`）：服务端一个小时之内签出同样的地址，原来的"每个答复安排一次"会停下。快一小时以上的时钟每 30 秒读一次，视图照常显示（取代原来的"至多一次"）；隐藏的标签页到时不读，显示时由 SWR 读；解析不出的到期当作没有。
+  - 大小：链接之后按界面语言写大小（`data-nw-size`；M7 总设计 4.8 与 P3 的移交第 1 项承诺过，第 4.4 节原来漏了），不折行。
+  - 音视频：开始了的（不只是接回的）加载失败时就地重签，同一个元素，接着位置、速率、音量与静音；重签途中的失败不理会，一分钟之内不再签，地址没给时按视图的过期重读。出错的不保留，新元素放到位置上、等读者（重签途中在播放的除外）。有焦点的交还，它所在的折叠 callout 先展开（`reading/unfold.ts`，与 `reading-view.tsx` 共用）。接回时属性只改不同的。
+  - 服务端：`download=""` 每个链接 12 字节（原写 9），`MaxShown` 个链接的页面实测约 400 KB；显示的类型表只建一次；属性的 `!l.Asset` 守卫保留。
+- 反向对照：本机实施之后 56 个、审查的修复之后 18 个、五轮修复核对之后 17、15、15、11（另回跑 19）、3 个，存活的都由补测抓到或判为等价；e2e 1 个（不保留媒体），AS3 的页面版失败。细节见审查记录。
+- CI：`c792089` 上 server 一步的一个计时用例（与 P4B 无关）失败一次，本机连跑五次通过；其余每次提交 server、web、image、e2e 全部通过。本机的 Docker 这一部分可用，数据库的测试与 AS3 本机也跑过；本机负载很高时（别的会话），全量 vitest 并行会让各文件第一条用例超时，以较少的 worker 跑全部通过。
+- 交给 C 与 P5、P6 的：
+  1. P5、P6：附件一节按 MIME 前缀判断是否内联（`lib/asset-kind.ts` 的 `opensInline`），阅读视图与右栏以服务端为准（`download`、`PropertyLink.inline`）。P4A 交给 B 的第 3 项原意是两者共用 `lib/asset-kind.ts`；HTML 里没有 MIME，B 改成以服务端为准。今天两者等价（`TypeOf` 存下的 MIME 只会是显示的类型或 `application/octet-stream`，契约的 `Asset.mime` 写明）；导入写附件时同样要经 `TypeOf`，否则 `Asset` 加 `inline`，附件一节改用它。
+  2. C：编辑器插入的嵌入在阅读视图里由 `assets` 增强处理（新标签页、大小、到期、保留与重签），C 不另做；编辑器里的附件预览不在 v0.1。
+- 待人工确认（真实的浏览器，见审查记录"接受与推后的"）：Firefox 与 Safari 在 CSP `sandbox` 下显示 PDF；Safari 在元数据之前设位置；出错之后的 `paused` 与 `currentTime`；移出又放回时的暂停、全屏与焦点；折叠 callout 里先展开再给焦点；Safari 同一元素换地址之后在后台的 `play()`；Chromium 的控件在出错时按播放先重新加载；Firefox、Safari 的控件出错时能否重试。
+- 负责人可以改判的取舍：
+  - 每小时整篇替换文章推后到 M12（只有地址不同时就地更新地址），也可以改为 v0.1 内做；
+  - 快一小时以上的时钟每 30 秒读一次视图、属性与附件列表；
+  - 隐藏的标签页到时不重读，显示时读；
+  - 出错的音视频换新时不自动播放；
+  - 提示前可见的空格、复制带上提示、右栏不显示大小、被拒之后的恢复，推后到 M12 的打磨。
