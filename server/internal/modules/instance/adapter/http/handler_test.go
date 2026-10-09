@@ -50,13 +50,21 @@ func get(t *testing.T, uc httpadapter.UseCases, path string) (*http.Response, st
 }
 
 func TestGetInstanceMatchesTheContract(t *testing.T) {
-	for _, settings := range []app.Settings{{SignupEnabled: true, AssetMaxBytes: 1 << 10, ExportTTL: 10 * time.Minute}, {WorkspaceCreationEnabled: true, AssetMaxBytes: 50 << 20, ExportTTL: 24 * time.Hour}} {
+	// The TTL in whole seconds, a part of one dropped.
+	for _, c := range []struct {
+		settings app.Settings
+		ttl      int64
+	}{
+		{app.Settings{SignupEnabled: true, AssetMaxBytes: 1 << 10, ExportTTL: 10*time.Minute + 999*time.Millisecond}, 600},
+		{app.Settings{WorkspaceCreationEnabled: true, AssetMaxBytes: 50 << 20, ExportTTL: 24 * time.Hour}, 86400},
+	} {
+		settings := c.settings
 		getInfo := app.NewGetInfo(fixedSource{Version: "1.2.3", Commit: "4f2a9c1"}, settings)
 
 		res, body := get(t, httpadapter.UseCases{GetInfo: getInfo}, "/api/v0/instance")
 
 		want := fmt.Sprintf(`{"api_version":"v0","asset_max_bytes":%d,"commit":"4f2a9c1","export_ttl_seconds":%d,"product":"Nerve Wiki",`+
-			`"signup_enabled":%t,"version":"1.2.3","workspace_creation_enabled":%t}`, settings.AssetMaxBytes, int64(settings.ExportTTL/time.Second),
+			`"signup_enabled":%t,"version":"1.2.3","workspace_creation_enabled":%t}`, settings.AssetMaxBytes, c.ttl,
 			settings.SignupEnabled, settings.WorkspaceCreationEnabled) + "\n"
 		if res.StatusCode != http.StatusOK || body != want {
 			t.Errorf("GET /api/v0/instance = %d %s, want 200 %s", res.StatusCode, body, want)

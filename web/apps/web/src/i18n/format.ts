@@ -38,10 +38,11 @@ export function formatBytes(bytes: number, locale: Locale): string {
 
 /**
  * formatDuration writes a span of seconds in whole hours when it is some,
- * otherwise in whole minutes, such as "24 hours": how long a succeeded
- * export is kept (transfer.export_ttl, at least ten minutes).
+ * otherwise in the whole minutes it holds, such as "24 hours" or "1,530
+ * minutes": how long a succeeded export is kept (transfer.export_ttl, at
+ * least ten minutes), never said longer than it is.
  */
 export function formatDuration(seconds: number, locale: Locale): string {
-  const [value, unit] = seconds % 3600 === 0 ? [seconds / 3600, "hour"] : [Math.round(seconds / 60), "minute"];
+  const [value, unit] = seconds % 3600 === 0 ? [seconds / 3600, "hour"] : [Math.floor(seconds / 60), "minute"];
   return new Intl.NumberFormat(locale, { style: "unit", unit, unitDisplay: "long" }).format(value);
 }

@@ -6,7 +6,7 @@ import { createPage, moveNode } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
 import { archiveAt, downloadArchive, endedJob, listJobs, startExport } from "../../fixtures/transfer";
 import { pageHeading, wikiPagePath } from "../../fixtures/wiki-pages";
-import { confirmExport, downloadFrom, jobRow } from "../../fixtures/wiki-transfer";
+import { downloadFrom, exportWith, jobRow } from "../../fixtures/wiki-transfer";
 import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 import type { ZipEntry } from "../../fixtures/zip";
 
@@ -190,8 +190,9 @@ test("TR1 (page): the notebook exports from its settings and downloads as its va
   const page = await signedInPage(tokens);
   const handbook = await createNotebook(api, pat, workspace.slug, "Handbook");
   const guide = await createPage(api, pat, handbook.id, "Guide", null, "# Guide\n");
-  const chapters = await createPage(api, pat, handbook.id, "Chapters");
-  const one = await createPage(api, pat, handbook.id, "One", chapters.id, "one\n");
+  // Named beyond ASCII: the browser takes the archive's name from the answer's filename*.
+  const cafe = await createPage(api, pat, handbook.id, "Café");
+  const one = await createPage(api, pat, handbook.id, "One", cafe.id, "one\n");
   const diagram = await uploadAsset(api, pat, handbook.id, { name: "diagram.png", bytes: pngBytes }, guide.id);
 
   // From the notebook's settings, the third section.
@@ -206,7 +207,7 @@ test("TR1 (page): the notebook exports from its settings and downloads as its va
   await expect(
     page.getByRole("alertdialog", { name: "Export Handbook?" }).getByText(/can be downloaded for 24 hours;/)
   ).toBeVisible();
-  const whole = await confirmExport(page, "Export Handbook?");
+  const whole = await exportWith(page, handbook.id, "Export Handbook?");
   const wholeRow = jobRow(page, "Export of the whole notebook");
   await expect(wholeRow).toBeFocused();
 
@@ -214,8 +215,8 @@ test("TR1 (page): the notebook exports from its settings and downloads as its va
   expect(archive.name).toBe("Handbook.zip");
   expect(archive.entries.map((e) => e.name)).toEqual([
     "Handbook/Guide.md",
-    "Handbook/Chapters/",
-    "Handbook/Chapters/One.md",
+    "Handbook/Café/",
+    "Handbook/Café/One.md",
     "Handbook/Guide/diagram.png",
     "Handbook/.nerve/meta.json",
   ]);
@@ -226,8 +227,8 @@ test("TR1 (page): the notebook exports from its settings and downloads as its va
   expect(meta.nodes.map((n) => [n.path, n.id])).toEqual([
     ["Guide.md", guide.id],
     ["Guide/diagram.png", diagram.id],
-    ["Chapters/", chapters.id],
-    ["Chapters/One.md", one.id],
+    ["Café/", cafe.id],
+    ["Café/One.md", one.id],
   ]);
   await expectExported(db, nervewiki.storageDir, whole.id, {
     creatorId: adminId,
@@ -239,24 +240,24 @@ test("TR1 (page): the notebook exports from its settings and downloads as its va
   });
 
   // From a page's menu: the page and its subtree; the jobs show, the new one's row focused.
-  await page.goto(wikiPagePath(workspace.slug, handbook.id, chapters.id));
-  await expect(pageHeading(page, "Chapters")).toBeVisible();
+  await page.goto(wikiPagePath(workspace.slug, handbook.id, cafe.id));
+  await expect(pageHeading(page, "Café")).toBeVisible();
   await page.getByRole("button", { name: "Page actions" }).click();
   await page.getByRole("menuitem", { name: "Export this page" }).click();
-  const sub = await confirmExport(page, "Export the page Chapters and its subpages?");
+  const sub = await exportWith(page, handbook.id, "Export the page Café and its subpages?");
   await expect(page).toHaveURL(notebookPath(workspace.slug, handbook.id, "transfer"));
-  const subRow = jobRow(page, "Export of the page Chapters");
+  const subRow = jobRow(page, "Export of the page Café");
   await expect(subRow).toBeFocused();
 
   const subtree = await downloadFrom(page, subRow);
   expect([subtree.name, subtree.entries.map((e) => e.name)]).toEqual([
-    "Chapters.zip",
-    ["Chapters/Chapters/", "Chapters/Chapters/One.md", "Chapters/.nerve/meta.json"],
+    "Café.zip",
+    ["Café/Café/", "Café/Café/One.md", "Café/.nerve/meta.json"],
   ]);
   await expectExported(db, nervewiki.storageDir, sub.id, {
     creatorId: adminId,
     client: "web",
-    root: chapters.id,
+    root: cafe.id,
     nodes: 2,
     counts: { pages: 2, attachments: 0, renamed: 0, missing: 0 },
     bytes: subtree.bytes,
@@ -264,6 +265,6 @@ test("TR1 (page): the notebook exports from its settings and downloads as its va
 
   // The later export expired the earlier: its row says so, with nothing to download.
   await expect(wholeRow.getByText("Expired", { exact: true })).toBeVisible();
-  await expect(wholeRow.getByRole("link", { name: "Download" })).toHaveCount(0);
+  await expect(wholeRow.getByRole("link", { name: /^Download / })).toHaveCount(0);
   await expectExpired(db, nervewiki.storageDir, whole.id);
 });

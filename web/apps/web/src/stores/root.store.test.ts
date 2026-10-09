@@ -131,7 +131,19 @@ test("a signed-out generation has no account, nor its workspaces", () => {
     store.ownerlessOf(workspaceJSON),
     store.auditOf(workspaceJSON),
     store.assetsOf(notebookJSON),
-  ]).toEqual([undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined]);
+    store.transfersOf(notebookJSON),
+  ]).toEqual([
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+  ]);
 });
 
 test("a workspace's member list is the same for the generation; another workspace's, or another generation's, is another", async () => {
@@ -194,6 +206,20 @@ test("a notebook's page tree is the same for the generation; another's, or anoth
   expect(store.pagesOf({ ...notebookJSON, id: "0199a2b4-0000-7000-8000-0000000000b2" })).not.toBe(pages);
   expect(new RootStore(app, "login-0").pagesOf(notebookJSON)).not.toBe(pages);
   expect(new RootStore(app, undefined).pagesOf(notebookJSON)).toBeUndefined();
+});
+
+// A notebook's imports and exports go by the notebook's id (M7/P5 design 4.2).
+test("a notebook's jobs are the same for the generation; another's, or another generation's, are other", async () => {
+  const app = testApp(() => json(tokensJSON), storedSession("login-0"));
+  await app.session.start();
+  const store = new RootStore(app, "login-0");
+
+  const jobs = store.transfersOf(notebookJSON);
+
+  expect(jobs).toBeDefined();
+  expect(store.transfersOf({ ...notebookJSON, name: "Renamed" })).toBe(jobs);
+  expect(store.transfersOf({ ...notebookJSON, id: "0199a2b4-0000-7000-8000-0000000000b2" })).not.toBe(jobs);
+  expect(new RootStore(app, "login-0").transfersOf(notebookJSON)).not.toBe(jobs);
 });
 
 // The ownerless notebooks and the audit events go by the workspace's id (M3/P5 design 3.2).

@@ -1,3 +1,4 @@
+import { useId } from "react";
 import useSWR from "swr";
 
 import { NotLoaded } from "../../app/not-loaded";
@@ -23,11 +24,16 @@ export function failureText(failure: string, t: Translate): string {
   return t(key ?? "transfer.failure.unknown");
 }
 
-/** problemText says what befell a node of the vault, by its code. */
+/** The text of each problem's code (M7/P5 design 4.4). */
+const problems: Record<TransferProblem["code"], (problem: TransferProblem, t: Translate) => string> = {
+  renamed: (problem, t) => t("transfer.problem.renamed", { path: problem.path, to: problem.to ?? "" }),
+  file_missing: (problem, t) => t("transfer.problem.file_missing", { path: problem.path }),
+};
+
+/** problemText says what befell a node of the vault, by its code: one the page does not know differs all the same. */
 function problemText(problem: TransferProblem, t: Translate): string {
-  return problem.code === "renamed"
-    ? t("transfer.problem.renamed", { path: problem.path, to: problem.to ?? "" })
-    : t("transfer.problem.file_missing", { path: problem.path });
+  const text = (problems as Partial<Record<string, (problem: TransferProblem, t: Translate) => string>>)[problem.code];
+  return text === undefined ? t("transfer.problem.other", { path: problem.path }) : text(problem, t);
 }
 
 /**
@@ -38,6 +44,7 @@ function problemText(problem: TransferProblem, t: Translate): string {
 export function TransferReport({ notebook, job, id }: { notebook: Notebook; job: TransferJob; id: string }) {
   const transfers = useTransfers(notebook);
   const t = useT();
+  const titleId = useId();
   const { data, error, mutate } = useSWR(["transfer-job", job.id], () => transfers.detail(job.id));
   const counts = job.report?.counts;
   return (
@@ -64,8 +71,10 @@ export function TransferReport({ notebook, job, id }: { notebook: Notebook; job:
       ) : (
         data.problems.length > 0 && (
           <section className="space-y-1">
-            <h3 className="font-medium">{t("transfer.problemsTitle")}</h3>
-            <ul className="list-disc space-y-1 pl-5 break-words">
+            <h3 id={titleId} className="font-medium">
+              {t("transfer.problemsTitle")}
+            </h3>
+            <ul aria-labelledby={titleId} className="list-disc space-y-1 pl-5 break-words">
               {data.problems.map((problem, at) => (
                 <li key={`${problem.path} ${at.toString()}`}>{problemText(problem, t)}</li>
               ))}

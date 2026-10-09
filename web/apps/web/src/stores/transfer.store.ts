@@ -1,38 +1,52 @@
 import { makeAutoObservable, runInAction } from "mobx";
 
-import type { TransferJob, TransferJobDetail, TransferJobPage, TransferService } from "../services/transfer.service";
+import { oneAtATime, oneAtATimeById } from "../lib/one-at-a-time";
+import type { TransferJob, TransferJobDetail, TransferService } from "../services/transfer.service";
 
 /**
  * TransferStore holds the jobs of a notebook that the account sees, the
- * newest first, a page at a time (M7/P5 design 4.2), as AuditStore holds
- * its events: the first page, which a read again puts in place, and the
- * pages after it that more adds. An export started, or a job cancelled,
- * here is put in place at once.
+ * newest first, a page at a time (M7/P5 design 4.2). A read again reads
+ * back as many pages as are held, as the backlinks are read (v0.1 design
+ * 13.2, item 19): a job under way, or an address that expires, on a page
+ * that more added is read again too. An export started, or a job
+ * cancelled, here is put in place at once; it may come before the list.
  */
 export class TransferStore {
   jobs: TransferJob[] | undefined = undefined;
   /** The cursor of the page after the jobs held; null on the last page, or before the first. */
   nextCursor: string | null = null;
-  /**
-   * How many first pages have been asked for, and jobs put in place: a
-   * first page answered for an earlier ask, which may not have them yet,
-   * is dropped.
-   */
+  /** Whether a list was read: before, the jobs held are those started here, if any. */
+  loaded = false;
+  /** How many pages the jobs held came in: the first, and each that more added. */
+  private pages = 0;
+  /** How many reads of the list have been asked for: one answered for an earlier ask is dropped, the later wins. */
   private reads = 0;
+  /** How many writes have put a job in place: a read out before one, which may not have it, is dropped. */
+  private writes = 0;
   /** The page on its way, if one is, with its cursor. */
   private next: { cursor: string; added: Promise<TransferJob[]> } | undefined = undefined;
+  /** The exports' starts go one at a time; each job's cancels, too (v0.1 design 13.2, item 1). */
+  private readonly starts = oneAtATime();
+  private readonly cancels = oneAtATimeById();
 
   constructor(
     private readonly service: Pick<TransferService, "list" | "startExport" | "cancel" | "get">,
     /** The notebook whose jobs these are. */
     private readonly notebookId: string
   ) {
-    makeAutoObservable<this, "service" | "notebookId" | "reads" | "next">(this, {
-      service: false,
-      notebookId: false,
-      reads: false,
-      next: false,
-    });
+    makeAutoObservable<this, "service" | "notebookId" | "pages" | "reads" | "writes" | "next" | "starts" | "cancels">(
+      this,
+      {
+        service: false,
+        notebookId: false,
+        pages: false,
+        reads: false,
+        writes: false,
+        next: false,
+        starts: false,
+        cancels: false,
+      }
+    );
   }
 
   /** active tells whether a job held is queued or running: its list is read again every second meanwhile. */
@@ -40,32 +54,47 @@ export class TransferStore {
     return this.jobs?.some((job) => job.state === "queued" || job.state === "running") ?? false;
   }
 
-  /** load reads the first page and puts it in place (see receiveFirst); SWR calls it. A later first read wins. */
+  /**
+   * load reads the list from its first page, as many pages as are held
+   * (at least one; one more added meanwhile is read on to), and puts it in
+   * place of the jobs held; SWR calls it. A later read wins; a write
+   * answered meanwhile drops it, and before the list is held, reads it
+   * again.
+   */
   async load(): Promise<TransferJob[]> {
     const read = ++this.reads;
-    const page = await this.service.list(this.notebookId);
-    if (read === this.reads) {
-      this.receiveFirst(page);
-    }
-    return this.jobs ?? page.data;
-  }
-
-  /**
-   * receiveFirst puts the first page in place of the jobs held, as
-   * AuditStore does its events: the jobs it has replace those held, and
-   * the ones held after its last stay, their cursor with them, once more
-   * has added pages; otherwise the first page replaces them.
-   */
-  private receiveFirst(page: TransferJobPage): void {
-    const last = page.data.at(-1);
-    const held = this.jobs ?? [];
-    const at = page.next_cursor === null || last === undefined ? -1 : held.findIndex((job) => job.id === last.id);
-    if (at === -1) {
-      this.jobs = page.data;
-      this.nextCursor = page.next_cursor;
-    } else {
-      this.jobs = [...page.data, ...held.slice(at + 1)];
-    }
+    const wrote = this.writes;
+    const jobs: TransferJob[] = [];
+    const ids = new Set<string>();
+    let cursor: string | undefined;
+    let next: string | null;
+    let pages = 0;
+    do {
+      // oxlint-disable-next-line no-await-in-loop -- each page's cursor is the one before's
+      const page = await this.service.list(this.notebookId, cursor);
+      if (read !== this.reads) {
+        return this.jobs ?? [];
+      }
+      if (wrote !== this.writes) {
+        return this.loaded ? (this.jobs ?? []) : this.load();
+      }
+      pages += 1;
+      for (const job of page.data) {
+        if (!ids.has(job.id)) {
+          ids.add(job.id);
+          jobs.push(job);
+        }
+      }
+      next = page.next_cursor;
+      cursor = next ?? undefined;
+    } while (next !== null && pages < this.pages);
+    runInAction(() => {
+      this.jobs = jobs;
+      this.nextCursor = next;
+      this.pages = pages;
+      this.loaded = true;
+    });
+    return jobs;
   }
 
   /**
@@ -92,8 +121,7 @@ export class TransferStore {
 
   /**
    * addPage adds the jobs of the page cursor names, unless the jobs held no
-   * longer end where it begins: a first page read again replaced them
-   * meanwhile.
+   * longer end where it begins: a read again replaced them meanwhile.
    */
   private async addPage(cursor: string): Promise<TransferJob[]> {
     const page = await this.service.list(this.notebookId, cursor);
@@ -106,22 +134,26 @@ export class TransferStore {
       const added = page.data.filter((job) => !known.has(job.id));
       this.jobs = [...held, ...added];
       this.nextCursor = page.next_cursor;
+      this.pages += 1;
       return added;
     });
   }
 
   /**
    * start starts the export of the notebook, or of the page rootId and its
-   * subtree, and answers its job, which goes first in the jobs held; a
-   * first page on its way, which may not have it, is dropped.
+   * subtree, and answers its job, which goes first in the jobs held, once
+   * (a read may have it already); a read on its way, which may not have
+   * it, is dropped.
    */
-  async start(rootId: string | null): Promise<TransferJob> {
-    const job = await this.service.startExport(this.notebookId, rootId);
-    runInAction(() => {
-      this.reads += 1;
-      this.jobs = [job, ...(this.jobs ?? []).filter((held) => held.id !== job.id)];
+  start(rootId: string | null): Promise<TransferJob> {
+    return this.starts(async () => {
+      const job = await this.service.startExport(this.notebookId, rootId);
+      runInAction(() => {
+        this.writes += 1;
+        this.jobs = [job, ...(this.jobs ?? []).filter((held) => held.id !== job.id)];
+      });
+      return job;
     });
-    return job;
   }
 
   /** detail reads the job id with its report's problems, which the store does not hold: a report shown reads it. */
@@ -129,13 +161,15 @@ export class TransferStore {
     return this.service.get(id);
   }
 
-  /** cancel cancels the job id, which the job answered replaces; a first page on its way is dropped. */
-  async cancel(id: string): Promise<TransferJob> {
-    const job = await this.service.cancel(id);
-    runInAction(() => {
-      this.reads += 1;
-      this.jobs = this.jobs?.map((held) => (held.id === job.id ? job : held));
+  /** cancel cancels the job id, which the job answered replaces; a read on its way is dropped. */
+  cancel(id: string): Promise<TransferJob> {
+    return this.cancels(id, async () => {
+      const job = await this.service.cancel(id);
+      runInAction(() => {
+        this.writes += 1;
+        this.jobs = this.jobs?.map((held) => (held.id === job.id ? job : held));
+      });
+      return job;
     });
-    return job;
   }
 }

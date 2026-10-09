@@ -22,7 +22,7 @@ function serviceOf(answer: (request: Request) => Response = () => json(job)) {
 }
 
 test("startExport posts the root, null for the whole notebook, and answers the job", async () => {
-  const { service, asked } = serviceOf(() => json(job, 201));
+  const { service, asked } = serviceOf(() => json(job, 202));
 
   await expect(service.startExport("n1", "p1")).resolves.toMatchObject({ id: job.id });
   await service.startExport("n1", null);

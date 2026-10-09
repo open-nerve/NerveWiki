@@ -33,6 +33,9 @@ test.each([
   [3_600, "en", "1 hour"],
   [600, "en", "10 minutes"],
   [5_400, "en", "90 minutes"],
+  // Never longer than it is: the minutes it holds.
+  [659, "en", "10 minutes"],
+  [91_800, "en", "1,530 minutes"],
   [86_400, "zh-CN", "24小时"],
   [600, "zh-CN", "10分钟"],
 ] as const)("%d seconds in %s: %s", (seconds, locale, want) => {

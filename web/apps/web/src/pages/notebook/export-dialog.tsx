@@ -1,6 +1,6 @@
 import { observer } from "mobx-react-lite";
 import type { ReactElement } from "react";
-import { useSWRConfig } from "swr";
+import useSWR from "swr";
 
 import { ConfirmDialog } from "../../app/confirm-dialog";
 import type { HeldDialog } from "../../app/held-dialog";
@@ -31,11 +31,11 @@ type ExportDialogProps = Opening & {
 /**
  * ExportDialog asks to export the notebook, or a page with its subtree
  * (M7/P5 design 4.5): it says what the zip holds and how long a succeeded
- * export is kept, the instance's export TTL. Confirmed, it starts the
- * export, whose job goes first in the notebook's jobs, read again then:
- * they are read every second while it runs. A refusal stays in the
- * dialog: an export of the account's under way, a queue full, the storage
- * full, the page gone.
+ * export is kept, the instance's export TTL, which it reads. Confirmed,
+ * it starts the export, whose job goes first in the notebook's jobs: they
+ * are read every second while it runs. A refusal stays in the dialog: an
+ * export of the account's under way, a queue full, the storage full, the
+ * notebook or the page gone.
  */
 export const ExportDialog = observer(function ExportDialog({
   notebook,
@@ -46,7 +46,7 @@ export const ExportDialog = observer(function ExportDialog({
   const transfers = useTransfers(notebook);
   const { instance, preferences } = useStore();
   const t = useT();
-  const { mutate } = useSWRConfig();
+  useSWR("instance", () => instance.load());
   const ttl = instance.info?.export_ttl_seconds;
   return (
     <ConfirmDialog
@@ -63,12 +63,10 @@ export const ExportDialog = observer(function ExportDialog({
       }
       confirmLabel={t("transfer.exportConfirm")}
       sendingLabel={t("transfer.exporting")}
-      cancelLabel={t("notebookSettings.cancel")}
+      cancelLabel={t("transfer.dialogCancel")}
       tone="default"
       confirm={async () => {
-        const job = await transfers.start(page?.id ?? null);
-        void mutate(["transfer-jobs", notebook.id]);
-        onStarted(job);
+        onStarted(await transfers.start(page?.id ?? null));
       }}
       texts={{ server_busy: "transfer.queueFull", "page.not_found": "transfer.pageGone" }}
     />
