@@ -75,7 +75,7 @@ func readEnd(r io.ReaderAt, size int64) (directory, error) {
 		}
 		if ok {
 			at = p
-			if d, offset, err = read64End(r, p); err != nil {
+			if d, offset, err = read64End(r, size, p); err != nil {
 				return directory{}, err
 			}
 		}
@@ -127,12 +127,17 @@ func find64End(r io.ReaderAt, at int64) (int64, bool, error) {
 		binary.LittleEndian.Uint32(buf[16:]) != 1 {
 		return 0, false, nil
 	}
-	return int64(binary.LittleEndian.Uint64(buf[8:])), true, nil //nolint:gosec // archive/zip takes it so; readEnd checks what follows
+	p := int64(binary.LittleEndian.Uint64(buf[8:])) //nolint:gosec // archive/zip takes it so
+	// archive/zip ignores a locator that points before the file's start.
+	return p, p >= 0, nil
 }
 
-// read64End reads the zip64 end at p: the directory's records and size,
-// and its offset.
-func read64End(r io.ReaderAt, p int64) (directory, uint64, error) {
+// read64End reads the zip64 end at p in r of size bytes: the directory's
+// records and size, and its offset; errNotZip for an end outside it.
+func read64End(r io.ReaderAt, size, p int64) (directory, uint64, error) {
+	if p > size-directory64EndLen {
+		return directory{}, 0, errNotZip
+	}
 	buf := make([]byte, directory64EndLen)
 	if _, err := r.ReadAt(buf, p); err != nil {
 		return directory{}, 0, err

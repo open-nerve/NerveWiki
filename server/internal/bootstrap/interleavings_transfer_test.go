@@ -68,7 +68,7 @@ func (tm acmeTeam) holdAssetBlobs(t *testing.T) (release func()) {
 // River's every export and import has completed; an archive in the store
 // that no export that succeeded keeps, live or deleted with its notebook
 // (the sweep's, a day later); an import's that no import queued or running
-// keeps.
+// keeps, not deleted.
 func checkTransfers(t *testing.T, tm acmeTeam) {
 	t.Helper()
 	if n := count(t, tm.pool, "SELECT count(*) FROM river_job WHERE kind IN ('transfer.export', 'transfer.import') AND state <> 'completed'"); n != 0 {
@@ -87,7 +87,7 @@ func checkTransfers(t *testing.T, tm acmeTeam) {
 		}
 	}
 	importing := map[string]bool{}
-	for _, id := range queryStrings(t, tm.pool, "SELECT id::text FROM transfer_jobs WHERE kind = 'import' AND state IN ('queued', 'running')") {
+	for _, id := range queryStrings(t, tm.pool, "SELECT id::text FROM transfer_jobs WHERE kind = 'import' AND state IN ('queued', 'running') AND deleted_at IS NULL") {
 		importing[id] = true
 	}
 	for _, path := range storedImports(t, tm.storage) {

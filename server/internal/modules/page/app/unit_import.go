@@ -30,10 +30,19 @@ type ImportUnit struct {
 }
 
 // children are a parent's children as the unit knows them, in order, and
-// the keys of their names.
+// the keys of their names; next the number after the last a name took,
+// by the name and whether it is an attachment's: the numbers before it
+// are held.
 type children struct {
 	nodes []domain.Node
 	keys  map[string]bool
+	next  map[numbering]int
+}
+
+// numbering is a name numbered, a page's or an attachment's.
+type numbering struct {
+	name  string
+	asset bool
 }
 
 // ImportedPage is an import's page: under ParentID (nil: the notebook's
@@ -43,6 +52,10 @@ type ImportedPage struct {
 	Name     string
 	Content  string
 	Parsed   Parsed
+	// Reserved tells whether a later node of the import, a sibling, is
+	// named with the key: a name numbered because its own is held takes
+	// none of those, which keep theirs (nil: none).
+	Reserved func(key string) bool
 }
 
 // ImportedAsset is an import's attachment: under ParentID (nil: the
@@ -51,6 +64,10 @@ type ImportedAsset struct {
 	ParentID *uuid.UUID
 	Name     string
 	Meta     AssetMeta
+	// Reserved tells whether a later node of the import, a sibling, is
+	// named with the key: a name numbered because its own is held takes
+	// none of those, which keep theirs (nil: none).
+	Reserved func(key string) bool
 }
 
 // CreatePage creates the page p, last among its siblings, at revision 1
@@ -70,7 +87,7 @@ func (iu *ImportUnit) CreatePage(ctx context.Context, p ImportedPage) (domain.No
 	if err != nil {
 		return domain.Node{}, err
 	}
-	title, err := kids.free(p.Name, false)
+	title, err := kids.free(p.Name, false, p.Reserved)
 	if err != nil {
 		return domain.Node{}, err
 	}
@@ -98,7 +115,7 @@ func (iu *ImportUnit) CreateAsset(ctx context.Context, a ImportedAsset, after fu
 	if err != nil {
 		return domain.Node{}, err
 	}
-	title, err := kids.free(a.Name, true)
+	title, err := kids.free(a.Name, true, a.Reserved)
 	if err != nil {
 		return domain.Node{}, err
 	}
@@ -142,7 +159,7 @@ func (iu *ImportUnit) children(ctx context.Context, parentID *uuid.UUID) (*child
 	if err != nil {
 		return nil, err
 	}
-	kids := &children{nodes: nodes, keys: make(map[string]bool, len(nodes))}
+	kids := &children{nodes: nodes, keys: make(map[string]bool, len(nodes)), next: map[numbering]int{}}
 	for _, n := range nodes {
 		kids.keys[n.NameKey] = true
 	}
@@ -150,18 +167,30 @@ func (iu *ImportUnit) children(ctx context.Context, parentID *uuid.UUID) (*child
 	return kids, nil
 }
 
-// free is name checked, a page's title or an attachment's name, numbered
-// "name 2", "name 3"… until none of the children holds its key.
-func (c *children) free(name string, asset bool) (domain.Title, error) {
+// free is name checked, a page's title or an attachment's name; when one
+// of the children holds its key, numbered "name 2", "name 3"… until none
+// does nor is it reserved, from the number after the last the name took
+// in the unit.
+func (c *children) free(name string, asset bool, reserved func(key string) bool) (domain.Title, error) {
 	check := domain.CheckTitle
 	if asset {
 		check = domain.CheckAssetName
 	}
 	title, err := check("name", name)
-	for n := 2; err == nil && c.keys[title.Key]; n++ {
-		title, err = check("name", domain.Numbered(name, n, asset))
+	if err != nil || !c.keys[title.Key] {
+		return title, err
 	}
-	return title, err
+	at := numbering{name: name, asset: asset}
+	for n := max(2, c.next[at]); ; n++ {
+		title, err = check("name", domain.Numbered(name, n, asset))
+		if err != nil {
+			return title, err
+		}
+		if !c.keys[title.Key] && (reserved == nil || !reserved(title.Key)) {
+			c.next[at] = n + 1
+			return title, nil
+		}
+	}
 }
 
 // add adds n, created last among the children, whose orders are

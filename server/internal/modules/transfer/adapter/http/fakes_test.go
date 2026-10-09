@@ -242,7 +242,7 @@ func (r *rows) StartJob(context.Context, uuid.UUID, time.Time) (domain.Job, erro
 	panic("rows: no job runs here")
 }
 
-func (r *rows) BeatJob(context.Context, uuid.UUID, time.Time, domain.Progress) (app.Beat, error) {
+func (r *rows) BeatJob(context.Context, uuid.UUID, time.Time, domain.Progress, *domain.Report) (app.Beat, error) {
 	panic("rows: no job runs here")
 }
 
@@ -280,15 +280,18 @@ func (r *rows) RequestCancel(_ context.Context, id uuid.UUID, at time.Time) (boo
 
 // archives keeps the exports' archives in memory: free is the store's
 // room; each opened is counted until it closes. imports are the imports'
-// archives, uploads those written, deleted those deleted.
+// archives, uploads those written, signalled on creating, aborted those
+// dropped unfinished, deleted those deleted.
 type archives struct {
-	mu      sync.Mutex
-	files   map[uuid.UUID][]byte
-	free    int64
-	open    int
-	imports map[uuid.UUID][]byte
-	uploads []uuid.UUID
-	deleted []uuid.UUID
+	mu       sync.Mutex
+	files    map[uuid.UUID][]byte
+	free     int64
+	open     int
+	imports  map[uuid.UUID][]byte
+	uploads  []uuid.UUID
+	creating chan struct{}
+	aborted  []uuid.UUID
+	deleted  []uuid.UUID
 }
 
 func (a *archives) Create(context.Context, uuid.UUID) (app.Archive, error) {
@@ -324,6 +327,10 @@ func (a *archives) Upload(_ context.Context, id uuid.UUID) (app.Upload, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.uploads = append(a.uploads, id)
+	select {
+	case a.creating <- struct{}{}:
+	default:
+	}
 	return &upload{a: a, id: id}, nil
 }
 
@@ -357,7 +364,19 @@ func (u *upload) Commit() error {
 	return nil
 }
 
-func (u *upload) Abort() error { return nil }
+func (u *upload) Abort() error {
+	u.a.mu.Lock()
+	defer u.a.mu.Unlock()
+	u.a.aborted = append(u.a.aborted, u.id)
+	return nil
+}
+
+// dropped are the uploads aborted.
+func (a *archives) dropped() []uuid.UUID {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return slices.Clone(a.aborted)
+}
 
 func (a *archives) OpenImport(context.Context, uuid.UUID, int) (app.ImportArchive, error) {
 	return nil, errors.New("no import's archive in the exports' tests")
@@ -487,7 +506,7 @@ func newHarness(t *testing.T) *harness {
 // harness's, its anonymous bucket the harness's unless o sets one.
 func newHarnessWith(t *testing.T, o httpservertest.APIOptions) *harness {
 	t.Helper()
-	h := &harness{rows: &rows{jobs: map[uuid.UUID]*domain.Job{}}, archives: &archives{files: map[uuid.UUID][]byte{}, free: 1 << 30},
+	h := &harness{rows: &rows{jobs: map[uuid.UUID]*domain.Job{}}, archives: &archives{files: map[uuid.UUID][]byte{}, free: 1 << 30, creating: make(chan struct{}, 8)},
 		queue: &queue{}, signer: macadapter.New([]byte("key")), signedAt: now(), logs: &syncBuffer{}, contract: apitest.Load(t),
 		client: &http.Client{Timeout: 10 * time.Second}, anonymous: &bucket{left: 1000}}
 	logger := slog.New(slog.NewTextHandler(h.logs, nil))

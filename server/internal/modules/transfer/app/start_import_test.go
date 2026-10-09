@@ -124,6 +124,69 @@ func TestAnImportIsRefused(t *testing.T) {
 	}
 }
 
+// An import being uploaded holds its notebook from Check until Release:
+// another is transfer.busy until then, and a refused Check holds nothing;
+// each counts toward MaxQueued; the bytes its body declares must leave
+// MinFree in the store, or it is 507.
+func TestAnImportsUploadHoldsItsNotebook(t *testing.T) {
+	w := newWorld()
+	ops := uuid.NewV7()
+	w.auth.roles[ops] = map[uuid.UUID]shared.NotebookRole{w.bob: shared.NotebookAdmin}
+	w.notebooks.names[ops] = "Ops"
+	s := w.startImport(&queue{}, 2)
+	eng := app.ImportRequest{NotebookID: w.eng, FileName: "v.zip", Client: domain.ClientWeb, Size: -1}
+	other := eng
+	other.NotebookID = ops
+	check := func(req app.ImportRequest, want error) {
+		t.Helper()
+		if err := s.Check(as(w.bob), req); want == nil && err != nil || want != nil && !errors.Is(err, want) {
+			t.Errorf("Check(%s) = %v, want %v", w.notebooks.names[req.NotebookID], err, want)
+		}
+	}
+	check(eng, nil)
+	check(eng, domain.ErrImportBusy)
+	w.rows.add(domain.Job{ID: uuid.NewV7(), NotebookID: uuid.NewV7(), Kind: domain.KindExport, State: domain.StateRunning, CreatedBy: w.bob})
+	check(other, domain.ErrQueueFull)
+	s.Release(eng)
+	check(other, nil)
+	s.Release(other)
+	w.archives.free = 149
+	eng.Size = 50
+	check(eng, domain.ErrStorageFull)
+	w.archives.free = 150
+	check(eng, nil)
+}
+
+// Create counts the uploads into other notebooks in the queue again: one
+// whose upload ended as the queue filled is refused, server_busy.
+func TestAnImportsCreateCountsTheOtherUploads(t *testing.T) {
+	w := newWorld()
+	ops := uuid.NewV7()
+	w.auth.roles[ops] = map[uuid.UUID]shared.NotebookRole{w.bob: shared.NotebookAdmin}
+	w.notebooks.names[ops] = "Ops"
+	s := w.startImport(&queue{}, 2)
+	eng := app.ImportRequest{NotebookID: w.eng, FileName: "v.zip", Client: domain.ClientWeb, Size: -1}
+	other := eng
+	other.NotebookID = ops
+	for _, req := range []app.ImportRequest{eng, other} {
+		if err := s.Check(as(w.bob), req); err != nil {
+			t.Fatal(err)
+		}
+	}
+	stored, err := s.Store(as(w.bob), strings.NewReader("zip"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.rows.add(domain.Job{ID: uuid.NewV7(), NotebookID: uuid.NewV7(), Kind: domain.KindExport, State: domain.StateRunning, CreatedBy: w.bob})
+	if _, err := s.Create(as(w.bob), eng, stored); !errors.Is(err, domain.ErrQueueFull) {
+		t.Errorf("Create() with another upload under way and a job running = %v, want ErrQueueFull", err)
+	}
+	s.Release(other)
+	if _, err := s.Create(as(w.bob), eng, stored); err != nil {
+		t.Errorf("Create() once the other upload ended = %v", err)
+	}
+}
+
 // A commit whose answer was lost leaves the archive, which the sweep
 // deletes when no job keeps it.
 func TestAnImportWhoseCommitFailsKeepsItsArchive(t *testing.T) {

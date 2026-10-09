@@ -191,7 +191,7 @@ type ExportStart struct {
 // TransferClient Where the job was started from, which its writes are of.
 type TransferClient string
 
-// TransferCounts What the job did before it ended, as it wrote its end. A job that could not write its end, which the server fails later as interrupted (it restarted, the job stopped beating, the job queue dropped it), counts nothing: its progress tells how far it went.
+// TransferCounts What the job did before it ended, as it wrote its end. An export that could not write its end, which the server fails later as interrupted (it restarted, the job stopped beating, the job queue dropped it), counts nothing: its progress tells how far it went. An import writes its counts and problems as it goes, with its heartbeat: one interrupted keeps those of the batches it had written by its last heartbeat.
 type TransferCounts struct {
 	// Attachments The attachments whose files were written; an import's, created.
 	Attachments int64 `json:"attachments"`
@@ -332,7 +332,7 @@ type TransferProgress struct {
 
 // TransferReport defines model for TransferReport.
 type TransferReport struct {
-	// Counts What the job did before it ended, as it wrote its end. A job that could not write its end, which the server fails later as interrupted (it restarted, the job stopped beating, the job queue dropped it), counts nothing: its progress tells how far it went.
+	// Counts What the job did before it ended, as it wrote its end. An export that could not write its end, which the server fails later as interrupted (it restarted, the job stopped beating, the job queue dropped it), counts nothing: its progress tells how far it went. An import writes its counts and problems as it goes, with its heartbeat: one interrupted keeps those of the batches it had written by its last heartbeat.
 	Counts TransferCounts `json:"counts"`
 
 	// Failure Why the job failed; null when it did not.

@@ -175,10 +175,12 @@ func pathOf(name string) ([]string, bool) {
 	return path, true
 }
 
-// drive reports whether name starts with a Windows drive: a letter and a
-// colon.
+// drive reports whether name, "\" turned to "/", starts with a Windows
+// drive: a letter and a colon, alone or before a "/". A name such as
+// "a:b.md", which macOS and Linux write, is a name to mend.
 func drive(name string) bool {
-	return len(name) >= 2 && name[1] == ':' && (name[0] >= 'a' && name[0] <= 'z' || name[0] >= 'A' && name[0] <= 'Z')
+	return len(name) >= 2 && name[1] == ':' && (name[0] >= 'a' && name[0] <= 'z' || name[0] >= 'A' && name[0] <= 'Z') &&
+		(len(name) == 2 || name[2] == '/')
 }
 
 // ignored reports whether an entry under a folder, or a file, named name

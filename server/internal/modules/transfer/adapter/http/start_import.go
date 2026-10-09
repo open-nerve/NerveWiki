@@ -41,6 +41,11 @@ func (h startImport) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.early(w, r, err)
 		return
 	}
+	// A body that says it is larger than the route takes is 413 at once.
+	if r.ContentLength > h.maxBytes+Envelope {
+		h.early(w, r, app.ErrTooLarge)
+		return
+	}
 	form, err := httpserver.NewForm(r, []string{"parent_id"}, "file", maxPreface)
 	if err != nil {
 		h.early(w, r, err)
@@ -51,10 +56,12 @@ func (h startImport) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.early(w, r, err)
 		return
 	}
+	req.Size = r.ContentLength
 	if br, err := bounded(r, func(r *http.Request) error { return h.uc.Check(r.Context(), req) }); err != nil {
 		h.early(w, br, err)
 		return
 	}
+	defer h.uc.Release(req)
 	form.Open()
 	stored, err := h.uc.Store(r.Context(), file)
 	if err != nil {

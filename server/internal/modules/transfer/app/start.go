@@ -150,7 +150,7 @@ func (s *StartExport) admit(ctx context.Context, notebookID, userID uuid.UUID) e
 	if err := s.d.Rows.LockQueue(ctx); err != nil {
 		return err
 	}
-	if err := s.d.room(ctx); err != nil {
+	if err := s.d.room(ctx, 0); err != nil {
 		return err
 	}
 	busy, err := s.d.Rows.Exporting(ctx, notebookID, userID)
@@ -160,28 +160,30 @@ func (s *StartExport) admit(ctx context.Context, notebookID, userID uuid.UUID) e
 	if busy {
 		return domain.ErrBusy
 	}
-	return s.d.free(ctx)
+	return s.d.free(ctx, 0)
 }
 
-// room is 503 server_busy when MaxQueued jobs wait or run.
-func (d StartDeps) room(ctx context.Context) error {
+// room is 503 server_busy when MaxQueued jobs wait or run, more besides,
+// imports whose archives are being uploaded.
+func (d StartDeps) room(ctx context.Context, more int) error {
 	active, err := d.Rows.CountActive(ctx)
 	if err != nil {
 		return err
 	}
-	if active >= d.MaxQueued {
+	if active+more >= d.MaxQueued {
 		return domain.ErrQueueFull
 	}
 	return nil
 }
 
-// free is 507 storage_full when the store's disk keeps less than MinFree.
-func (d StartDeps) free(ctx context.Context) error {
+// free is 507 storage_full when the store's disk keeps less than MinFree,
+// need bytes written.
+func (d StartDeps) free(ctx context.Context, need int64) error {
 	free, err := d.Archives.Free(ctx)
 	if err != nil {
 		return err
 	}
-	if free < d.MinFree {
+	if free-need < d.MinFree {
 		return domain.ErrStorageFull
 	}
 	return nil

@@ -81,6 +81,10 @@ type ImportedPage struct {
 	Name     string
 	Content  string
 	Parsed   Parsed
+	// Reserved tells whether a later node of the import, a sibling, is
+	// named with the key: a name numbered because its own is held takes
+	// none of those, which keep theirs (nil: none).
+	Reserved func(key string) bool
 }
 
 // ImportedAsset is an import's attachment: under ParentID (nil: the
@@ -89,6 +93,10 @@ type ImportedAsset struct {
 	ParentID *uuid.UUID
 	Name     string
 	Meta     AssetMeta
+	// Reserved tells whether a later node of the import, a sibling, is
+	// named with the key: a name numbered because its own is held takes
+	// none of those, which keep theirs (nil: none).
+	Reserved func(key string) bool
 }
 
 // NodeInfo is a node of a notebook's tree, as the asset module reads it.

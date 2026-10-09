@@ -254,7 +254,8 @@ type TransferConfig struct {
 	// within MaxImportTransfer at asset.upload_min_rate.
 	ImportMaxBytes int64 `koanf:"import_max_bytes"`
 	// ImportMaxEntries is the most entries an import's archive holds, from
-	// 1 to MaxImportEntries.
+	// 1 to MaxImportEntries: the central directory the import reads is
+	// at most 64 MiB, which so many entries of long names fill.
 	ImportMaxEntries int `koanf:"import_max_entries"`
 	// ImportMaxUnpackedBytes is the most bytes an import's entries unpack
 	// to, at least ImportMaxBytes.
@@ -268,7 +269,7 @@ const (
 	MaxJobTimeout               = 7 * 24 * time.Hour
 	MinTransferHeartbeatTimeout = time.Minute
 	MinImportBytes              = 1 << 20
-	MaxImportEntries            = 1000000
+	MaxImportEntries            = 100000
 	// MaxImportTransfer is the longest an import's upload of the largest
 	// archive may take at the slowest rate: an upload holds its
 	// connection that long.

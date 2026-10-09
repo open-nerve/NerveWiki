@@ -65,9 +65,10 @@ RETURNING id, notebook_id, root_id, kind, state, name, created_by_id, client, pr
     cancel_requested_at, heartbeat_at, started_at, finished_at, report, result_bytes, created_at;
 
 -- name: BeatJob :one
--- A running job's heartbeat and progress; it reads back whether a cancel was asked and whether the job was deleted
--- (its notebook's deletion). None when the job no longer runs.
-UPDATE transfer_jobs SET heartbeat_at = sqlc.arg(at), progress_done = sqlc.arg(done), progress_total = sqlc.arg(total)
+-- A running job's heartbeat and progress, and its report as it goes when it is set; it reads back whether a cancel
+-- was asked and whether the job was deleted (its notebook's deletion). None when the job no longer runs.
+UPDATE transfer_jobs SET heartbeat_at = sqlc.arg(at), progress_done = sqlc.arg(done), progress_total = sqlc.arg(total),
+    report = coalesce(sqlc.narg(report)::jsonb, report)
 WHERE id = sqlc.arg(id) AND state = 'running'
 RETURNING (cancel_requested_at IS NOT NULL)::boolean AS cancel_requested, (deleted_at IS NOT NULL)::boolean AS deleted;
 
@@ -110,9 +111,10 @@ RETURNING id;
 
 -- name: InterruptJobs :many
 -- The running jobs, failed with report: all of them, or those whose heartbeat is older than beat_before when it is
--- set. Their progress stays as it was. The rows another transaction holds are skipped: a notebook's deletion that
--- holds some waits for none of these.
-UPDATE transfer_jobs SET state = 'failed', finished_at = sqlc.arg(at), report = sqlc.arg(report)
+-- set. Their progress stays as it was, and the report a heartbeat wrote, its failure report's. The rows another
+-- transaction holds are skipped: a notebook's deletion that holds some waits for none of these.
+UPDATE transfer_jobs SET state = 'failed', finished_at = sqlc.arg(at),
+    report = coalesce(report || jsonb_build_object('failure', sqlc.arg(report)::jsonb -> 'failure'), sqlc.arg(report)::jsonb)
 WHERE state = 'running' AND id IN (
     SELECT id FROM transfer_jobs
     WHERE state = 'running' AND deleted_at IS NULL

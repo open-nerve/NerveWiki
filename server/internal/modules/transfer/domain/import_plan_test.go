@@ -48,6 +48,8 @@ func planned(p domain.ImportPlan) []string {
 }
 
 func TestNewImportPlan(t *testing.T) {
+	// An attachment's name whose cut ends with ".md".
+	longCut := strings.Repeat("x", 252) + ".md." + strings.Repeat("y", 300)
 	for _, tt := range []struct {
 		name  string
 		paths []string
@@ -88,6 +90,10 @@ func TestNewImportPlan(t *testing.T) {
 				"1 - page " + domain.Untitled + " <-  / ( )",
 				"2 " + domain.Untitled + " page a <-  /a.md #5",
 			}},
+		// Its extension too long to keep, the name is cut where ".md" ends it.
+		{"an attachment's name cut to end with .md", []string{longCut}, domain.ImportMeta{}, 0, []string{
+			"1 - asset " + strings.Repeat("x", 251) + ".md_ <- " + longCut + " #0 (" + longCut + ")",
+		}},
 		{"the order of meta, then by name", []string{"b.md", "a.md", "c/", "c/z.md", "d.png", "e.md"},
 			domain.ImportMeta{Order: map[string]float64{"e.md": 1, "c/": 2, "b.md": 3}}, 0, []string{
 				"1 - page e <- e.md #5",

@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io/fs"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/transfer/app"
@@ -95,6 +97,26 @@ func TestAnImportGoesUnderAPage(t *testing.T) {
 	}
 	if x := w.tree.named(t, "x.png"); x.parent == nil || *x.parent != w.tree.named(t, "Folder 2").id {
 		t.Errorf("x.png's parent %v, want Folder 2", x.parent)
+	}
+}
+
+// A name numbered because a sibling holds it takes none a later sibling of
+// the archive holds as its own, which keeps it: the vault's links to it
+// still reach it.
+func TestAnImportNumbersNoNameALaterSiblingHolds(t *testing.T) {
+	w := newImportWorld()
+	w.tree.children[uuid.UUID{}] = []string{"Untitled"}
+	got := w.run(t, w.queuedImport(nil, zipOf(t, files("Untitled.md", "u", "Untitled 1.md", "u1", "Untitled 2.md", "u2",
+		"a.md", "a", "A.md", "A", "a 2.md", "a2")...)))
+
+	if got.State != domain.StateSucceeded || !sameProblems(problems(got.Report), []string{"renamed: Untitled.md -> Untitled 3",
+		"renamed: a.md -> a 3"}) {
+		t.Errorf("job %s, report %+v", got.State, got.Report)
+	}
+	for name, content := range map[string]string{"Untitled 3": "u", "Untitled 1": "u1", "Untitled 2": "u2", "A": "A", "a 3": "a", "a 2": "a2"} {
+		if m := w.tree.named(t, name); m.content != content {
+			t.Errorf("%s holds %q, want %q", name, m.content, content)
+		}
 	}
 }
 
@@ -323,6 +345,134 @@ func TestACancelledImportStopsBetweenTwoUnits(t *testing.T) {
 	if got.State != domain.StateCancelled || got.Report.Counts.Pages != 200 || got.Progress != (domain.Progress{Done: 200, Total: 250}) ||
 		len(w.tree.made) != 200 || w.archives.imported(j.ID) || len(w.tree.units) != 2 {
 		t.Errorf("job %+v, report %+v, made %d, units %d; want cancelled after two units", got, got.Report, len(w.tree.made), len(w.tree.units))
+	}
+}
+
+// A cancel stops an import between two units though the next would read
+// nothing of the archive: its pages are folders.
+func TestACancelledImportOfFoldersStops(t *testing.T) {
+	w := newImportWorld()
+	var entries []zipEntry
+	for i := range 250 {
+		entries = append(entries, zipEntry{name: fmt.Sprintf("f%03d/", i)})
+	}
+	j := w.queuedImport(nil, zipOf(t, entries...))
+	stopAt(w, j, 2, func() {
+		if _, err := w.rows.RequestCancel(context.Background(), j.ID, now()); err != nil {
+			t.Error(err)
+		}
+	}, func(r *row) bool { return r.job.CancelRequested != nil })
+
+	got := w.run(t, j)
+
+	if got.State != domain.StateCancelled || len(w.tree.made) != 200 || len(w.tree.units) != 2 {
+		t.Errorf("job %s, made %d, units %d; want cancelled after two units", got.State, len(w.tree.made), len(w.tree.units))
+	}
+}
+
+// The heartbeat writes the report as the import goes, each time it
+// changed: the plan's skipped entries before the first unit, then the
+// counts and problems of the units written, what the rescue keeps of an
+// import interrupted. A write that failed is tried again; one that
+// succeeded is not, the beats after it writing none until the next.
+func TestAnImportsHeartbeatWritesItsReport(t *testing.T) {
+	w := newImportWorld()
+	entries := []zipEntry{{name: "../out.md", data: "out"}}
+	for i := range 150 {
+		entries = append(entries, zipEntry{name: fmt.Sprintf("p%03d.md", i), data: "x"})
+	}
+	j := w.queuedImport(nil, zipOf(t, entries...))
+	// Each unit waits for the report before it to be written; the second,
+	// for two beats after it too.
+	before := map[int]chan struct{}{1: make(chan struct{}), 2: make(chan struct{})}
+	written := func(at int) {
+		select {
+		case <-before[at]:
+		default:
+			close(before[at])
+		}
+	}
+	after := -1
+	w.rows.onBeat = func() {
+		w.rows.mu.Lock()
+		defer w.rows.mu.Unlock()
+		n := len(w.rows.reported)
+		if n == 0 {
+			return
+		}
+		switch last := w.rows.reported[n-1]; {
+		case last.Counts == domain.Counts{Skipped: 1} && len(last.Problems) == 1 && last.Problems[0].Code == domain.ProblemUnsafePath:
+			written(1)
+		case last.Counts.Pages == 100:
+			if after++; after == 2 {
+				written(2)
+			}
+		}
+	}
+	w.tree.onUnit = func(at int) {
+		select {
+		case <-before[at]:
+		case <-time.After(5 * time.Second):
+			t.Errorf("the report before unit %d not written", at)
+		}
+		if at == 1 {
+			// The first unit's report fails to be written once.
+			w.rows.mu.Lock()
+			w.rows.failReports = 1
+			w.rows.mu.Unlock()
+		}
+	}
+
+	if got := w.run(t, j); got.State != domain.StateSucceeded {
+		t.Fatalf("job %s", got.State)
+	}
+	w.rows.mu.Lock()
+	defer w.rows.mu.Unlock()
+	for i, r := range w.rows.reported {
+		if r.Failure != "" || i > 0 && reflect.DeepEqual(r, w.rows.reported[i-1]) {
+			t.Errorf("report %d written %+v, after %+v; want each a change, without a failure", i, r, w.rows.reported[max(i-1, 0)])
+		}
+	}
+}
+
+// River's context ends an import between units or in one: its timeout
+// fails it so, the server's stop as interrupted; the units committed kept
+// and counted, the archive deleted, the statistics not refreshed.
+func TestRiversContextEndsAnImport(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		ctx  func() (context.Context, context.CancelFunc)
+		want domain.Failure
+	}{
+		{"timeout", func() (context.Context, context.CancelFunc) {
+			return context.WithTimeout(context.Background(), 50*time.Millisecond)
+		}, domain.FailureTimeout},
+		{"stop", func() (context.Context, context.CancelFunc) {
+			ctx, cancel := context.WithCancel(context.Background())
+			time.AfterFunc(50*time.Millisecond, cancel)
+			return ctx, cancel
+		}, domain.FailureInterrupted},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			w := newImportWorld()
+			j := w.queuedImport(nil, stopping(t))
+			ctx, cancel := tt.ctx()
+			defer cancel()
+			w.tree.onUnit = func(at int) {
+				if at == 2 {
+					<-ctx.Done()
+				}
+			}
+			if err := w.importer().Run(ctx, j.ID); err != nil {
+				t.Fatal(err)
+			}
+			got := w.rows.get(j.ID)
+			if got.State != domain.StateFailed || got.Report == nil || got.Report.Failure != tt.want || got.Report.Counts.Pages != 100 ||
+				len(w.tree.made) != 100 || w.archives.imported(j.ID) || w.stats.count() != 0 {
+				t.Errorf("job %s, report %+v, made %d, statistics %d; want failed %s after a unit", got.State, got.Report, len(w.tree.made),
+					w.stats.count(), tt.want)
+			}
+		})
 	}
 }
 

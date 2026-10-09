@@ -196,9 +196,17 @@ func (t *tree) Import(ctx context.Context, spec app.ImportSpec, do func(ctx cont
 		return uuid.UUID{}, err
 	}
 	t.mu.Unlock()
+	// A context that ended fails the transaction as pgx does: its begin,
+	// or its commit, whose outcome the caller cannot tell.
+	if ctx.Err() != nil {
+		return uuid.UUID{}, context.Cause(ctx)
+	}
 	u := &unit{t: t}
 	if err := do(ctx, u); err != nil {
 		return uuid.UUID{}, err
+	}
+	if ctx.Err() != nil {
+		return uuid.UUID{}, context.Cause(ctx)
 	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -238,14 +246,17 @@ func (u *unit) CreatePage(_ context.Context, p app.ImportedPage) (app.CreatedNod
 	if depth+1 > domain.MaxDepth {
 		return app.CreatedNode{}, app.ErrTooDeep
 	}
-	return u.add(made{parent: p.ParentID, name: p.Name, content: p.Content}), nil
+	return u.add(made{parent: p.ParentID, name: p.Name, content: p.Content}, p.Reserved)
 }
 
 func (u *unit) CreateAsset(ctx context.Context, a app.ImportedAsset, after func(ctx context.Context, n app.CreatedNode) error) (app.CreatedNode, error) {
 	if _, err := u.depth(a.ParentID); err != nil {
 		return app.CreatedNode{}, err
 	}
-	n := u.add(made{parent: a.ParentID, asset: true, name: a.Name, file: a.File})
+	n, err := u.add(made{parent: a.ParentID, asset: true, name: a.Name, file: a.File}, a.Reserved)
+	if err != nil {
+		return app.CreatedNode{}, err
+	}
 	if err := after(ctx, n); err != nil {
 		return app.CreatedNode{}, err
 	}
@@ -282,21 +293,27 @@ func under(parent *uuid.UUID) uuid.UUID {
 	return *parent
 }
 
-// add makes m, numbered when a sibling's name has its key.
-func (u *unit) add(m made) app.CreatedNode {
+// add makes m, numbered as the page module numbers it when a sibling's
+// name, there before or made by the import, has its key, or reserved
+// tells a later one has; a name that is no title, or an attachment's
+// ending in ".md", is refused as the page module refuses it.
+func (u *unit) add(m made, reserved func(key string) bool) (app.CreatedNode, error) {
+	if _, err := shared.CheckTitle("name", m.name); err != nil || m.asset && strings.HasSuffix(strings.ToLower(m.name), ".md") {
+		return app.CreatedNode{}, &shared.Error{Kind: shared.KindInvalid, Code: "validation_failed", Detail: "no name: " + m.name}
+	}
 	u.t.mu.Lock()
 	defer u.t.mu.Unlock()
 	taken := map[string]bool{}
 	for _, name := range u.t.children[under(m.parent)] {
-		taken[strings.ToLower(name)] = true
+		taken[shared.TitleKey(name)] = true
 	}
-	for _, x := range u.made {
+	for _, x := range slices.Concat(u.t.made, u.made) {
 		if under(x.parent) == under(m.parent) {
-			taken[strings.ToLower(x.name)] = true
+			taken[shared.TitleKey(x.name)] = true
 		}
 	}
 	name := m.name
-	for n := 2; taken[strings.ToLower(name)]; n++ {
+	for n := 2; taken[shared.TitleKey(name)] || n > 2 && reserved != nil && reserved(shared.TitleKey(name)); n++ {
 		if ext := path.Ext(m.name); m.asset && ext != "" {
 			name = strings.TrimSuffix(m.name, ext) + " " + strconv.Itoa(n) + ext
 		} else {
@@ -305,7 +322,7 @@ func (u *unit) add(m made) app.CreatedNode {
 	}
 	m.id, m.name = uuid.NewV7(), name
 	u.made = append(u.made, m)
-	return app.CreatedNode{ID: m.id, Name: m.name, CreatedAt: now()}
+	return app.CreatedNode{ID: m.id, Name: m.name, CreatedAt: now()}, nil
 }
 
 // named is the node made named name; it fails the test when there is

@@ -108,6 +108,9 @@ type importRun struct {
 	ids     []uuid.UUID
 	names   []string
 	dropped []bool
+	// last is, by the plan's index of a parent (-1: the place imported
+	// into), the last of its children named with each key.
+	last map[int]map[string]int
 	// changeset is the first unit's, which the later ones merge into.
 	changeset uuid.UUID
 	// unanalyzed is how many nodes were written since the statistics
@@ -150,7 +153,15 @@ func (r *importRun) run(ctx, running context.Context) error {
 	for _, p := range r.plan.Skipped {
 		r.skip(p)
 	}
+	r.last = map[int]map[string]int{}
+	for i, n := range r.plan.Nodes {
+		if r.last[n.Parent] == nil {
+			r.last[n.Parent] = map[string]int{}
+		}
+		r.last[n.Parent][shared.TitleKey(n.Name)] = i
+	}
 	r.all.Store(int64(len(r.plan.Nodes)))
+	r.publish()
 	return r.write(ctx, running)
 }
 

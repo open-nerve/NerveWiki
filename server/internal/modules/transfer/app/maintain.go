@@ -3,6 +3,7 @@ package app
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -177,24 +178,26 @@ func NewSweep(rows MaintainedRows, archives Archives, clock Clock, logger *slog.
 
 // Run deletes them, older than SweepAge, the exports' then the imports',
 // sweepBatch a read of the rows, and tells how many. One it cannot delete
-// is logged, the run going on to the rest and failing at its end.
+// is logged, the run going on to the rest and failing at its end; so a
+// kind whose files or rows it cannot read, the run going on to the other.
 func (s *Sweep) Run(ctx context.Context) (int, error) {
 	deleted, failed := 0, 0
-	var first error
+	var errs []error
 	for _, kind := range []domain.Kind{domain.KindExport, domain.KindImport} {
 		d, f, err := s.sweep(ctx, kind)
-		deleted, failed, first = deleted+d, failed+f, cmp.Or(first, err)
-		if err != nil && f == 0 {
-			return deleted, err
+		deleted, failed = deleted+d, failed+f
+		if err != nil {
+			errs = append(errs, fmt.Errorf("%s archives: %w", kind, err))
 		}
 	}
 	if deleted > 0 {
 		s.logger.InfoContext(ctx, "orphan archives deleted", slog.Int("files", deleted))
 	}
+	err := errors.Join(errs...)
 	if failed > 0 {
-		return deleted, fmt.Errorf("%d orphan archives not deleted, the first: %w", failed, first)
+		return deleted, fmt.Errorf("%d orphan archives not deleted: %w", failed, err)
 	}
-	return deleted, nil
+	return deleted, err
 }
 
 // sweep deletes kind's archives no job keeps: how many, how many it could

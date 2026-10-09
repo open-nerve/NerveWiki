@@ -303,7 +303,8 @@ type entry struct {
 // Add of that path; commitErr fails a Commit; onAdd runs as a file is
 // added, onCommit as one commits, onOpen as one opens. imports are the
 // imports' archives, by job; uploadFull fails an upload's writes as a
-// store out of room, openErr its opening.
+// store out of room, openErr its opening. listed are the archives a List
+// of the kind gives, listErr fails it after them.
 type archives struct {
 	rec        *recorder
 	mu         sync.Mutex
@@ -317,6 +318,7 @@ type archives struct {
 	free       int64
 	deleteErr  error
 	listed     map[domain.Kind][]uuid.UUID
+	listErr    map[domain.Kind]error
 	onAdd      func(path string)
 	onCommit   func()
 	onOpen     func(id uuid.UUID)
@@ -369,7 +371,7 @@ func (a *archives) List(_ context.Context, kind domain.Kind, _ time.Time, each f
 			return err
 		}
 	}
-	return nil
+	return a.listErr[kind]
 }
 
 func (a *archives) Upload(_ context.Context, id uuid.UUID) (app.Upload, error) {
@@ -583,21 +585,25 @@ type row struct {
 }
 
 // rows keeps the jobs in memory, moving them as the statements do. beats
-// counts the heartbeats, with the progress each wrote; failBeats fails as
-// many heartbeats first; finishErr fails a FinishJob, and finishLeft is the
-// time its context left it; onBeat runs at each heartbeat written.
+// counts the heartbeats, with the progress each wrote, and reported the
+// reports they wrote; failBeats fails as
+// many heartbeats first, failReports as many of those that carry a
+// report; finishErr fails a FinishJob, and finishLeft is the time its
+// context left it; onBeat runs at each heartbeat written.
 type rows struct {
-	rec        *recorder
-	mu         sync.Mutex
-	jobs       map[uuid.UUID]*row
-	order      []uuid.UUID
-	beats      []domain.Progress
-	failBeats  int
-	finishErr  error
-	finishLeft time.Duration
-	onBeat     func()
-	finds      int
-	locks      int
+	rec         *recorder
+	mu          sync.Mutex
+	jobs        map[uuid.UUID]*row
+	order       []uuid.UUID
+	beats       []domain.Progress
+	reported    []domain.Report
+	failBeats   int
+	failReports int
+	finishErr   error
+	finishLeft  time.Duration
+	onBeat      func()
+	finds       int
+	locks       int
 }
 
 func newRows() *rows { return &rows{jobs: map[uuid.UUID]*row{}} }
@@ -716,10 +722,14 @@ func (r *rows) StartJob(_ context.Context, id uuid.UUID, at time.Time) (domain.J
 	return x.job, nil
 }
 
-func (r *rows) BeatJob(_ context.Context, id uuid.UUID, at time.Time, p domain.Progress) (app.Beat, error) {
+func (r *rows) BeatJob(_ context.Context, id uuid.UUID, at time.Time, p domain.Progress, report *domain.Report) (app.Beat, error) {
 	r.mu.Lock()
-	if r.failBeats > 0 {
-		r.failBeats--
+	if r.failBeats > 0 || report != nil && r.failReports > 0 {
+		if report != nil && r.failReports > 0 {
+			r.failReports--
+		} else {
+			r.failBeats--
+		}
 		r.mu.Unlock()
 		return app.Beat{}, errors.New("the database is gone")
 	}
@@ -730,6 +740,9 @@ func (r *rows) BeatJob(_ context.Context, id uuid.UUID, at time.Time, p domain.P
 	}
 	x.job.Heartbeat, x.job.Progress = &at, p
 	r.beats = append(r.beats, p)
+	if report != nil {
+		r.reported = append(r.reported, *report)
+	}
 	b := app.Beat{CancelRequested: x.job.CancelRequested != nil, Deleted: x.deleted}
 	onBeat := r.onBeat
 	r.mu.Unlock()

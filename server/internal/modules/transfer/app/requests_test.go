@@ -376,7 +376,8 @@ func TestTheRescue(t *testing.T) {
 }
 
 // The sweep deletes the old archives no job keeps, the exports' then the
-// imports', each kind's asked of its rows.
+// imports', each kind's asked of its rows; a kind it cannot list keeps it
+// from none of the other's.
 func TestTheSweepDeletesOrphanArchives(t *testing.T) {
 	kept, orphan, importing, uploaded := uuid.NewV7(), uuid.NewV7(), uuid.NewV7(), uuid.NewV7()
 	m := &maintained{live: map[domain.Kind][]uuid.UUID{domain.KindExport: {kept, uploaded}, domain.KindImport: {importing, orphan}}}
@@ -389,6 +390,15 @@ func TestTheSweepDeletesOrphanArchives(t *testing.T) {
 	a.deleteErr = errors.New("denied")
 	if _, err := app.NewSweep(m, a, fixedClock{now()}, quiet()).Run(context.Background()); err == nil {
 		t.Error("Run() with a file not deleted = nil error")
+	}
+
+	a = newArchives()
+	a.listed = map[domain.Kind][]uuid.UUID{domain.KindImport: {importing, uploaded}}
+	unlisted := errors.New("the store is gone")
+	a.listErr = map[domain.Kind]error{domain.KindExport: unlisted}
+	n, err = app.NewSweep(m, a, fixedClock{now()}, quiet()).Run(context.Background())
+	if !errors.Is(err, unlisted) || n != 1 || !slices.Equal(a.deleted, []uuid.UUID{uploaded}) {
+		t.Errorf("Run() with the exports not listed = %d, %v, deleted %v; want the imports' orphan, the error", n, err, a.deleted)
 	}
 }
 

@@ -13,16 +13,18 @@ import (
 )
 
 const beatJob = `-- name: BeatJob :one
-UPDATE transfer_jobs SET heartbeat_at = $1, progress_done = $2, progress_total = $3
-WHERE id = $4 AND state = 'running'
+UPDATE transfer_jobs SET heartbeat_at = $1, progress_done = $2, progress_total = $3,
+    report = coalesce($4::jsonb, report)
+WHERE id = $5 AND state = 'running'
 RETURNING (cancel_requested_at IS NOT NULL)::boolean AS cancel_requested, (deleted_at IS NOT NULL)::boolean AS deleted
 `
 
 type BeatJobParams struct {
-	At    *time.Time
-	Done  int64
-	Total int64
-	ID    uuid.UUID
+	At     *time.Time
+	Done   int64
+	Total  int64
+	Report []byte
+	ID     uuid.UUID
 }
 
 type BeatJobRow struct {
@@ -30,13 +32,14 @@ type BeatJobRow struct {
 	Deleted         bool
 }
 
-// A running job's heartbeat and progress; it reads back whether a cancel was asked and whether the job was deleted
-// (its notebook's deletion). None when the job no longer runs.
+// A running job's heartbeat and progress, and its report as it goes when it is set; it reads back whether a cancel
+// was asked and whether the job was deleted (its notebook's deletion). None when the job no longer runs.
 func (q *Queries) BeatJob(ctx context.Context, arg BeatJobParams) (BeatJobRow, error) {
 	row := q.db.QueryRow(ctx, beatJob,
 		arg.At,
 		arg.Done,
 		arg.Total,
+		arg.Report,
 		arg.ID,
 	)
 	var i BeatJobRow
@@ -426,7 +429,8 @@ func (q *Queries) Importing(ctx context.Context, notebookID uuid.UUID) (bool, er
 }
 
 const interruptJobs = `-- name: InterruptJobs :many
-UPDATE transfer_jobs SET state = 'failed', finished_at = $1, report = $2
+UPDATE transfer_jobs SET state = 'failed', finished_at = $1,
+    report = coalesce(report || jsonb_build_object('failure', $2::jsonb -> 'failure'), $2::jsonb)
 WHERE state = 'running' AND id IN (
     SELECT id FROM transfer_jobs
     WHERE state = 'running' AND deleted_at IS NULL
@@ -450,8 +454,8 @@ type InterruptJobsRow struct {
 }
 
 // The running jobs, failed with report: all of them, or those whose heartbeat is older than beat_before when it is
-// set. Their progress stays as it was. The rows another transaction holds are skipped: a notebook's deletion that
-// holds some waits for none of these.
+// set. Their progress stays as it was, and the report a heartbeat wrote, its failure report's. The rows another
+// transaction holds are skipped: a notebook's deletion that holds some waits for none of these.
 func (q *Queries) InterruptJobs(ctx context.Context, arg InterruptJobsParams) ([]InterruptJobsRow, error) {
 	rows, err := q.db.Query(ctx, interruptJobs, arg.At, arg.Report, arg.BeatBefore)
 	if err != nil {

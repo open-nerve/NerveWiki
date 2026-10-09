@@ -3,6 +3,7 @@ package postgresadapter_test
 import (
 	"context"
 	"errors"
+	"reflect"
 	"slices"
 	"testing"
 	"time"
@@ -140,7 +141,7 @@ func TestAJobMovesThroughItsStates(t *testing.T) {
 		!got.CreatedAt.Equal(at(0)) || got.Started != nil || got.Report != nil {
 		t.Fatalf("FindJob() = %+v, %v", got, err)
 	}
-	if _, err := f.store.BeatJob(ctx, j.ID, at(0), domain.Progress{}); !errors.Is(err, app.ErrNoRow) {
+	if _, err := f.store.BeatJob(ctx, j.ID, at(0), domain.Progress{}, nil); !errors.Is(err, app.ErrNoRow) {
 		t.Errorf("BeatJob() of a queued job = %v, want ErrNoRow", err)
 	}
 
@@ -151,7 +152,7 @@ func TestAJobMovesThroughItsStates(t *testing.T) {
 	if _, err := f.store.StartJob(ctx, j.ID, at(0)); !errors.Is(err, app.ErrNoRow) {
 		t.Errorf("StartJob() twice = %v, want ErrNoRow", err)
 	}
-	beat, err := f.store.BeatJob(ctx, j.ID, at(2*time.Second), domain.Progress{Done: 1, Total: 3})
+	beat, err := f.store.BeatJob(ctx, j.ID, at(2*time.Second), domain.Progress{Done: 1, Total: 3}, nil)
 	if err != nil || beat != (app.Beat{}) {
 		t.Errorf("BeatJob() = %+v, %v", beat, err)
 	}
@@ -161,7 +162,7 @@ func TestAJobMovesThroughItsStates(t *testing.T) {
 	if ok, err := f.store.RequestCancel(ctx, j.ID, at(4*time.Second)); !ok || err != nil {
 		t.Fatalf("RequestCancel() again = %v, %v", ok, err)
 	}
-	beat, err = f.store.BeatJob(ctx, j.ID, at(5*time.Second), domain.Progress{Done: 2, Total: 3})
+	beat, err = f.store.BeatJob(ctx, j.ID, at(5*time.Second), domain.Progress{Done: 2, Total: 3}, nil)
 	if err != nil || !beat.CancelRequested || beat.Deleted {
 		t.Errorf("BeatJob() after the cancel = %+v, %v; want the cancel read", beat, err)
 	}
@@ -397,7 +398,7 @@ func TestADeletedJobStops(t *testing.T) {
 	if err := f.store.DeleteJobsOfNotebooks(ctx, []uuid.UUID{f.eng}, at(0)); err != nil {
 		t.Fatal(err)
 	}
-	beat, err := f.store.BeatJob(ctx, running.ID, at(0), domain.Progress{})
+	beat, err := f.store.BeatJob(ctx, running.ID, at(0), domain.Progress{}, nil)
 	if err != nil || !beat.Deleted {
 		t.Errorf("BeatJob() = %+v, %v; want the deletion read", beat, err)
 	}
@@ -491,6 +492,36 @@ func TestTheRescueFailsTheRunningJobs(t *testing.T) {
 	}
 	if j, err := f.store.FindJob(ctx, queued.ID); err != nil || j.State != domain.StateQueued {
 		t.Errorf("the queued job = %+v, %v; want it left", j, err)
+	}
+}
+
+// A heartbeat writes the report as it goes, when it is given, which a job
+// shows only once it ended: the rescue keeps it, its failure the
+// rescue's.
+func TestARunningJobsReportIsKeptByTheRescue(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	j := f.export(t, f.eng, f.alice, at(0))
+	f.start(t, j.ID, at(0))
+	going := domain.Report{Counts: domain.Counts{Pages: 3, Renamed: 1}, Problems: []domain.Problem{{Path: "a:b.md", Code: domain.ProblemRenamed, To: "a_b"}}}
+	if _, err := f.store.BeatJob(ctx, j.ID, at(time.Second), domain.Progress{Done: 3, Total: 9}, &going); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.store.BeatJob(ctx, j.ID, at(2*time.Second), domain.Progress{Done: 4, Total: 9}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if running, err := f.store.FindJob(ctx, j.ID); err != nil || running.Report != nil {
+		t.Errorf("FindJob() of the running job = %+v, %v; want no report", running, err)
+	}
+	if _, err := f.store.InterruptJobs(ctx, nil, at(time.Hour), domain.Report{Failure: domain.FailureInterrupted}); err != nil {
+		t.Fatal(err)
+	}
+	failed, err := f.store.FindJob(ctx, j.ID)
+	want := going
+	want.Failure = domain.FailureInterrupted
+	if err != nil || failed.State != domain.StateFailed || failed.Report == nil || !reflect.DeepEqual(*failed.Report, want) ||
+		failed.Progress != (domain.Progress{Done: 4, Total: 9}) {
+		t.Errorf("FindJob() of the job rescued = %+v, report %+v, %v; want %+v", failed, failed.Report, err, want)
 	}
 }
 

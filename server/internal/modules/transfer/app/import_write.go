@@ -323,14 +323,19 @@ func (r *importRun) create(ctx context.Context, u ImportUnit, items []item, done
 		}
 		var c CreatedNode
 		var err error
+		// The names of the later siblings are theirs: a number given this
+		// one takes none of them.
+		i := it.index
+		reserved := func(key string) bool { return r.last[node.Parent][key] > i }
 		if node.Asset {
 			file := *it.file
-			c, err = u.CreateAsset(ctx, ImportedAsset{ParentID: parent, Name: node.Name, File: file}, func(ctx context.Context, n CreatedNode) error {
-				return r.i.d.Attachments.Attach(ctx, file, Owner{NodeID: n.ID, NotebookID: r.job.NotebookID, CreatedBy: r.job.CreatedBy,
-					CreatedAt: n.CreatedAt})
-			})
+			c, err = u.CreateAsset(ctx, ImportedAsset{ParentID: parent, Name: node.Name, File: file, Reserved: reserved},
+				func(ctx context.Context, n CreatedNode) error {
+					return r.i.d.Attachments.Attach(ctx, file, Owner{NodeID: n.ID, NotebookID: r.job.NotebookID, CreatedBy: r.job.CreatedBy,
+						CreatedAt: n.CreatedAt})
+				})
 		} else {
-			c, err = u.CreatePage(ctx, ImportedPage{ParentID: parent, Name: node.Name, Content: it.content, Parsed: it.parsed})
+			c, err = u.CreatePage(ctx, ImportedPage{ParentID: parent, Name: node.Name, Content: it.content, Parsed: it.parsed, Reserved: reserved})
 		}
 		switch {
 		case errors.Is(err, ErrTooDeep):
@@ -382,6 +387,7 @@ func (r *importRun) tell(ctx context.Context, items []item, done []created) {
 		r.done.Add(1)
 		r.unanalyzed++
 	}
+	r.publish()
 	r.dropFiles(ctx, unattached)
 	if r.unanalyzed >= analyzeEvery {
 		r.analyze(ctx)

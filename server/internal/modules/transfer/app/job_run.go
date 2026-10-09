@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"sync/atomic"
 	"time"
 
@@ -86,7 +87,11 @@ type jobRun struct {
 	// report and name are the job's as it goes: its counts and problems,
 	// and its name, which an export's snapshot may change.
 	report domain.Report
-	name   string
+	// reported is the report as the run last published it, which the
+	// heartbeat writes when it changed: what the rescue keeps of a job
+	// interrupted.
+	reported atomic.Pointer[domain.Report]
+	name     string
 }
 
 // newJobRun returns job's run, writing its rows, its heartbeat every
@@ -100,9 +105,16 @@ func (r *jobRun) progress() domain.Progress {
 	return domain.Progress{Done: r.done.Load(), Total: r.all.Load()}
 }
 
+// publish publishes the report as it is, for the heartbeat to write.
+func (r *jobRun) publish() {
+	report := r.report
+	report.Problems = slices.Clone(report.Problems)
+	r.reported.Store(&report)
+}
+
 // beat writes the job's heartbeat and progress every beat until ctx ends,
-// and stops the run when the job's cancel was asked, or it was deleted or
-// no longer runs. A write that fails is tried again at the next beat: a
+// with the report published since the last it wrote, and stops the run
+// when the job's cancel was asked, or it was deleted or no longer runs. A write that fails is tried again at the next beat: a
 // job whose heartbeat stays old is failed by the rescue. The first failure
 // of a run of them is logged, and the write that ends it. The channel
 // closes as it returns.
@@ -113,13 +125,22 @@ func (r *jobRun) beat(ctx context.Context, stop context.CancelCauseFunc) <-chan 
 		ticker := time.NewTicker(r.every)
 		defer ticker.Stop()
 		failing := false
+		var written *domain.Report
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
 			}
-			b, err := r.rows.BeatJob(ctx, r.job.ID, r.clock.Now(), r.progress())
+			report := r.reported.Load()
+			send := report
+			if report == written {
+				send = nil
+			}
+			b, err := r.rows.BeatJob(ctx, r.job.ID, r.clock.Now(), r.progress(), send)
+			if err == nil {
+				written = report
+			}
 			if err != nil && !errors.Is(err, ErrNoRow) {
 				if !failing && ctx.Err() == nil {
 					r.logger.WarnContext(ctx, string(r.job.Kind)+" heartbeat not written", slog.String("job_id", r.job.ID.String()),

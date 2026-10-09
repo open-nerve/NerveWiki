@@ -121,7 +121,8 @@ asset:
   # 单个附件的上限（字节），1 KiB 到 4 GiB；超过答 413 payload_too_large
   max_bytes: 52428800
   # 上传与下载的最低平均速率（字节/秒）：流式路由的读写截止时间按它随字节放宽。max_bytes 按这个速率传完
-  # 不能超过 1 小时，这也是一个上传占住连接的上界（默认约 13 分钟）
+  # 不能超过 1 小时，这也是一个附件上传占住连接的上界（默认约 13 分钟）；导入包按它传完不超过 3 小时
+  # （transfer.import_max_bytes，默认约 2 小时 17 分钟）
   upload_min_rate: 65536
 
 transfer:
@@ -136,7 +137,7 @@ transfer:
   # 导入上传的 zip 的上限（字节），至少 1 MiB，不小于 asset.max_bytes；超过答 413 payload_too_large。
   # 按 asset.upload_min_rate 传完不能超过 3 小时。反向代理要放过这么大的请求体（nginx 的 client_max_body_size）
   import_max_bytes: 536870912
-  # 导入的 zip 至多有多少个条目，1 到 1,000,000；更多时整包失败
+  # 导入的 zip 至多有多少个条目，1 到 100,000（中央目录至多读 64 MiB）；更多时整包失败
   import_max_entries: 50000
   # 导入的 zip 解压后的总字节数上限，不小于 import_max_bytes；超过时整包失败
   import_max_unpacked_bytes: 4294967296

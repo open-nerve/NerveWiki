@@ -5,7 +5,9 @@ import (
 	"log/slog"
 	"maps"
 	"os"
+	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 	"uuid"
@@ -13,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/transfer"
+	"github.com/open-nerve/NerveWiki/server/internal/modules/transfer/domain"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/jobs"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres/pgtest"
@@ -25,18 +28,27 @@ import (
 // the archives no export keeps, and the purge. Each test seeds its jobs
 // through SQL and their archives in the store before serve starts.
 
-// seededJob is an export the tests seed, of a notebook of its own named
-// after it: in state, created, started and ended ago, its archive in the
-// store, as old as archiveAgo, when archived. A job of no state has no row:
-// its archive is an orphan's.
+// seededJob is an export the tests seed, or an import when imported, of a
+// notebook of its own named after it: in state, created, started and
+// ended ago, its archive in the store, as old as archiveAgo, when
+// archived. A job of no state has no row: its archive is an orphan's.
 type seededJob struct {
 	name       string
 	id         uuid.UUID
+	imported   bool
 	state      string
 	ago        time.Duration
 	deleted    bool // with its notebook, at the job's time
 	archived   bool
 	archiveAgo time.Duration
+}
+
+// kind is the job's kind.
+func (j seededJob) kind() domain.Kind {
+	if j.imported {
+		return domain.KindImport
+	}
+	return domain.KindExport
 }
 
 // seedJobs writes alice, acme, the jobs and their notebooks into the
@@ -71,17 +83,17 @@ func seedJobs(t *testing.T, pool *pgxpool.Pool, dir string, seeded []seededJob) 
 			exec(notebook, nb, workspace, j.name, user, deletedAt)
 			exec(`INSERT INTO transfer_jobs (id, notebook_id, kind, state, name, created_by_id, client, started_at, heartbeat_at, finished_at,
 				report, result_bytes, created_at, deleted_at)
-				SELECT $1, $2, 'export', $3::text, $4, $5, 'web', CASE WHEN $3 <> 'queued' THEN $6::timestamptz END,
+				SELECT $1, $2, $8, $3::text, $4, $5, 'web', CASE WHEN $3 <> 'queued' THEN $6::timestamptz END,
 					CASE WHEN $3 <> 'queued' THEN $6::timestamptz END, CASE WHEN $3 NOT IN ('queued', 'running') THEN $6::timestamptz END,
 					CASE WHEN $3 NOT IN ('queued', 'running') THEN '{"failure": null, "counts": {"pages": 1, "attachments": 0, "renamed": 0,
 						"missing": 0, "skipped": 0}, "problems": [], "problems_truncated": false}'::jsonb END,
 					CASE WHEN $3 IN ('succeeded', 'expired') THEN 3 END, $6, $7`,
-				j.id, nb, j.state, j.name, user, at, deletedAt)
+				j.id, nb, j.state, j.name, user, at, deletedAt, j.kind())
 		}
 		if !j.archived {
 			continue
 		}
-		w, err := store.Create(ctx, "exports/"+j.id.String()+".zip")
+		w, err := store.Create(ctx, domain.Archive(j.kind(), j.id))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -93,21 +105,32 @@ func seedJobs(t *testing.T, pool *pgxpool.Pool, dir string, seeded []seededJob) 
 		}
 		if j.archiveAgo != 0 {
 			old := time.Now().Add(-j.archiveAgo)
-			if err := os.Chtimes(storedArchives(t, dir)[j.id.String()], old, old); err != nil {
+			if err := os.Chtimes(archivesOf(t, dir)[j.kind()][j.id.String()], old, old); err != nil {
 				t.Fatal(err)
 			}
 		}
 	}
 }
 
+// archivesOf are the archives in the store at dir, each kind's paths by
+// job.
+func archivesOf(t *testing.T, dir string) map[domain.Kind]map[string]string {
+	t.Helper()
+	imports := map[string]string{}
+	for _, path := range storedImports(t, dir) {
+		imports[strings.TrimSuffix(filepath.Base(path), ".zip")] = path
+	}
+	return map[domain.Kind]map[string]string{domain.KindExport: storedArchives(t, dir), domain.KindImport: imports}
+}
+
 // archivedJobs are the names of the seeded jobs whose archive is in the
 // store at dir.
 func archivedJobs(t *testing.T, dir string, seeded []seededJob) []string {
 	t.Helper()
-	files := storedArchives(t, dir)
+	files := archivesOf(t, dir)
 	var out []string
 	for _, j := range seeded {
-		if _, ok := files[j.id.String()]; ok {
+		if _, ok := files[j.kind()][j.id.String()]; ok {
 			out = append(out, j.name)
 		}
 	}
@@ -173,8 +196,10 @@ func TestTheExpiryExpiresTheOldExports(t *testing.T) {
 // The sweep deletes the archives older than a day that no export that
 // succeeded keeps: an orphan's, an expired one's. It leaves a newer
 // orphan, which an export may still be about to succeed with, and a live
-// export's, however old its file.
-func TestTheSweepDeletesTheArchivesNoExportKeeps(t *testing.T) {
+// export's, however old its file. So the imports': it deletes an old
+// archive no import's row has, or whose import ended, and leaves a newer
+// one, and a queued import's, which keeps no export's archive of its id.
+func TestTheSweepDeletesTheArchivesNoJobKeeps(t *testing.T) {
 	url := pgtest.NewDatabase(t)
 	pool := connect(t, url)
 	cfg := testConfig(t, url, false)
@@ -183,14 +208,21 @@ func TestTheSweepDeletesTheArchivesNoExportKeeps(t *testing.T) {
 		{name: "new orphan", id: uuid.NewV7(), archived: true, archiveAgo: time.Hour},
 		{name: "expired", id: uuid.NewV7(), state: "expired", ago: 48 * time.Hour, archived: true, archiveAgo: 48 * time.Hour},
 		{name: "live", id: uuid.NewV7(), state: "succeeded", ago: time.Hour, archived: true, archiveAgo: 48 * time.Hour},
+		{name: "upload", id: uuid.NewV7(), imported: true, archived: true, archiveAgo: 48 * time.Hour},
+		{name: "new upload", id: uuid.NewV7(), imported: true, archived: true, archiveAgo: time.Hour},
+		{name: "imported", id: uuid.NewV7(), imported: true, state: "failed", ago: 48 * time.Hour, archived: true, archiveAgo: 48 * time.Hour},
+		{name: "importing", id: uuid.NewV7(), imported: true, state: "queued", archived: true, archiveAgo: 48 * time.Hour},
 	}
+	// An export's archive of the queued import's id, no export's row: the
+	// import keeps none of it.
+	seeded = append(seeded, seededJob{name: "importing's export", id: seeded[len(seeded)-1].id, archived: true, archiveAgo: 48 * time.Hour})
 	seedJobs(t, pool, cfg.Storage.Dir, seeded)
 
 	startApp(t, cfg, migrations.FS())
 	awaitJob(t, pool, "transfer.sweep_orphan_archives")
 
-	if got := archivedJobs(t, cfg.Storage.Dir, seeded); !slices.Equal(got, []string{"new orphan", "live"}) {
-		t.Errorf("archives of %q, want the new orphan's and the live export's", got)
+	if got := archivedJobs(t, cfg.Storage.Dir, seeded); !slices.Equal(got, []string{"new orphan", "live", "new upload", "importing"}) {
+		t.Errorf("archives of %q, want the new orphans', the live export's and the queued import's", got)
 	}
 }
 

@@ -255,9 +255,10 @@ type Rows interface {
 	// StartJob moves the queued job id to running at at; ErrNoRow when it
 	// is not queued, or deleted.
 	StartJob(ctx context.Context, id uuid.UUID, at time.Time) (domain.Job, error)
-	// BeatJob writes the running job's heartbeat and progress; ErrNoRow
-	// when it no longer runs.
-	BeatJob(ctx context.Context, id uuid.UUID, at time.Time, p domain.Progress) (Beat, error)
+	// BeatJob writes the running job's heartbeat and progress, and its
+	// report as it goes when r is set, which a job's view shows once it
+	// ended; ErrNoRow when it no longer runs.
+	BeatJob(ctx context.Context, id uuid.UUID, at time.Time, p domain.Progress, r *domain.Report) (Beat, error)
 	// FinishJob ends the running job id; false when it does not run, or
 	// is deleted.
 	FinishJob(ctx context.Context, id uuid.UUID, e Ended) (bool, error)
@@ -281,7 +282,8 @@ type MaintainedRows interface {
 	// before, skipping those locked, and tells which.
 	ExpireExports(ctx context.Context, before time.Time, batch int) ([]uuid.UUID, error)
 	// InterruptJobs fails the running jobs whose heartbeat is older than
-	// beatBefore, or all of them when it is nil, with r; those another
+	// beatBefore, or all of them when it is nil, with r's failure, the
+	// report a heartbeat wrote kept, or r when none did; those another
 	// transaction holds are skipped.
 	InterruptJobs(ctx context.Context, beatBefore *time.Time, at time.Time, r domain.Report) ([]Interrupted, error)
 	// QueuedJobs is the ids of the queued jobs of kind.

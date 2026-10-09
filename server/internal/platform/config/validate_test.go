@@ -133,7 +133,7 @@ func TestValidateReportsEveryInvalidKey(t *testing.T) {
 		"transfer.heartbeat_timeout: must be at least 1m0s, got 0s",
 		"transfer.max_queued: must be at least 1, got 0",
 		"transfer.import_max_bytes: must be at least 1048576 (1 MiB), got 0",
-		"transfer.import_max_entries: must be from 1 to 1000000, got 0",
+		"transfer.import_max_entries: must be from 1 to 100000, got 0",
 		`log.level: must be one of debug, info, warn, error, got "verbose"`,
 		`log.format: must be text or json, got "xml"`,
 	}
@@ -378,13 +378,13 @@ func TestValidateCrossKeyRules(t *testing.T) {
 			want:   "transfer.import_max_bytes: must arrive within 3h0m0s at asset.upload_min_rate (65536), at most 707788800, got 707788801",
 		},
 		{
-			name:   "a million entries",
-			mutate: func(c *Config) { c.Transfer.ImportMaxEntries = 1000000 },
+			name:   "a hundred thousand entries",
+			mutate: func(c *Config) { c.Transfer.ImportMaxEntries = 100000 },
 		},
 		{
-			name:   "more than a million entries",
-			mutate: func(c *Config) { c.Transfer.ImportMaxEntries = 1000001 },
-			want:   "transfer.import_max_entries: must be from 1 to 1000000, got 1000001",
+			name:   "more than a hundred thousand entries",
+			mutate: func(c *Config) { c.Transfer.ImportMaxEntries = 100001 },
+			want:   "transfer.import_max_entries: must be from 1 to 100000, got 100001",
 		},
 		{
 			name:   "an import unpacking to less than it packs",

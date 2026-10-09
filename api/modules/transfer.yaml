@@ -81,15 +81,18 @@ paths:
         Before the file is read, a notebook that does not exist, is deleted,
         or that the caller has no role in is notebook.not_found; a parent_id
         that is no page of the notebook, or a deleted one, is
-        page.not_found; an import of the notebook queued or running,
-        anyone's, is transfer.busy; as many jobs queued or running as the
-        instance takes is server_busy; a server whose storage keeps no more
-        room is storage_full: a client answered before it sent its file may
-        see the connection reset, and checks these first. A file larger
-        than the instance's import_max_bytes is payload_too_large; one that
-        does not arrive at the instance's lowest rate is cut off, as is one
-        still arriving when the server shuts down. A file the storage runs
-        out of room for is storage_full. The checks are made again as the
+        page.not_found; an import of the notebook queued, running or
+        uploading, anyone's, is transfer.busy; as many jobs queued or
+        running, with the imports uploading, as the instance takes is
+        server_busy; a server whose storage would keep too little room once
+        the body's declared length is stored is storage_full; a body whose
+        declared length is past the limit is payload_too_large: a client
+        answered before it sent its file may see the connection reset, and
+        checks these first. A file larger than the instance's
+        import_max_bytes is payload_too_large; one that does not arrive at
+        the instance's lowest rate is cut off, as is one still arriving when
+        the server shuts down. A file the storage runs out of room for is
+        storage_full. The checks but the storage's are made again as the
         job is created. The job is named after the file, its root_id is the
         parent; it runs in the background: read it with getTransferJob
         until it ends.
@@ -635,10 +638,13 @@ components:
         ]
     TransferCounts:
       description: >-
-        What the job did before it ended, as it wrote its end. A job that
-        could not write its end, which the server fails later as
+        What the job did before it ended, as it wrote its end. An export
+        that could not write its end, which the server fails later as
         interrupted (it restarted, the job stopped beating, the job queue
-        dropped it), counts nothing: its progress tells how far it went.
+        dropped it), counts nothing: its progress tells how far it went. An
+        import writes its counts and problems as it goes, with its
+        heartbeat: one interrupted keeps those of the batches it had
+        written by its last heartbeat.
       type: object
       additionalProperties: false
       required: [pages, attachments, renamed, missing, skipped]

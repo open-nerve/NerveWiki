@@ -554,7 +554,8 @@ func TestChecksRejectCounterexamples(t *testing.T) {
 		{"a cancel asked of a job that never started", "UPDATE transfer_jobs SET state = 'queued', started_at = NULL, heartbeat_at = NULL, " +
 			"cancel_requested_at = now()", "transfer_jobs_started_check"},
 		{"a running job that ended", "UPDATE transfer_jobs SET finished_at = now()", "transfer_jobs_finished_check"},
-		{"a running job's report", "UPDATE transfer_jobs SET report = '{}'", "transfer_jobs_finished_check"},
+		{"a queued job's report", "UPDATE transfer_jobs SET state = 'queued', started_at = NULL, heartbeat_at = NULL, report = '{}'",
+			"transfer_jobs_finished_check"},
 		{"an ended job without its report", "UPDATE transfer_jobs SET state = 'failed', finished_at = now()", "transfer_jobs_finished_check"},
 		{"an ended job without its time", "UPDATE transfer_jobs SET state = 'failed', report = '{}'", "transfer_jobs_finished_check"},
 		{"an import expired", "UPDATE transfer_jobs SET kind = 'import', state = 'expired', finished_at = now(), report = '{}'",

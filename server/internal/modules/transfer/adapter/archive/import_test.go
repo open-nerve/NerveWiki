@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 	"uuid"
 
 	archiveadapter "github.com/open-nerve/NerveWiki/server/internal/modules/transfer/adapter/archive"
@@ -126,6 +127,53 @@ func TestAnImportsArchiveIsUploaded(t *testing.T) {
 	}
 }
 
+// An import's archive is listed and deleted as the imports' area's: the
+// exports' list has none of it, nor the imports' an export's; one newer
+// than asked is left out.
+func TestAnImportsArchiveIsListedAndDeletedAsAnImports(t *testing.T) {
+	a, store := newArchives(t)
+	ctx := context.Background()
+	id, export := uuid.NewV7(), uuid.NewV7()
+	stored(t, store, id, zipped(t, "", [2]string{"a.md", "# A"}))
+	w, err := store.Create(ctx, domain.Archive(domain.KindExport, export))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	listed := func(kind domain.Kind, before time.Time) []uuid.UUID {
+		var ids []uuid.UUID
+		if err := a.List(ctx, kind, before, func(id uuid.UUID) error {
+			ids = append(ids, id)
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+		return ids
+	}
+	later := time.Now().Add(time.Hour)
+	if imports, exports := listed(domain.KindImport, later), listed(domain.KindExport, later); !slices.Equal(imports, []uuid.UUID{id}) ||
+		!slices.Equal(exports, []uuid.UUID{export}) {
+		t.Errorf("listed imports %v, exports %v; want each kind's", imports, exports)
+	}
+	if old := listed(domain.KindImport, time.Now().Add(-time.Hour)); len(old) != 0 {
+		t.Errorf("listed before an hour ago %v, want none", old)
+	}
+	if err := a.Delete(ctx, domain.KindExport, id); err != nil {
+		t.Fatal(err)
+	}
+	if imports := listed(domain.KindImport, later); !slices.Equal(imports, []uuid.UUID{id}) {
+		t.Errorf("an export's delete of the id took the import's archive: listed %v", imports)
+	}
+	if err := a.Delete(ctx, domain.KindImport, id); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.OpenImport(ctx, id, 10); !errors.Is(err, app.ErrFileMissing) || len(listed(domain.KindImport, later)) != 0 {
+		t.Errorf("OpenImport() of a deleted archive = %v, listed %v; want ErrFileMissing, none", err, listed(domain.KindImport, later))
+	}
+}
+
 // The entries as the directory lists them: names as they are, folders by
 // a name ending in "/" or "\" or by their mode, a symbolic link special,
 // the first flag encrypted, the method (archive/zip stores a folder);
@@ -183,6 +231,8 @@ func TestAnImportsArchiveIsFoundAsArchiveZipFindsIt(t *testing.T) {
 		// After the directory, the end and its comment: no record, though
 		// their bytes, zeros, hold none to skip.
 		{"a comment of zeros", zipped(t, strings.Repeat("\x00", 100), [2]string{"a.md", "x"}), 1},
+		// Its end is past the last 1 KiB: found in the last 65 KiB.
+		{"a comment of 2 KiB", zipped(t, strings.Repeat("c", 2048), [2]string{"a.md", "x"}), 1},
 		{"zip64, more records than 65535", zipped(t, "", many...), 70000},
 		{"prepended", append(bytes.Repeat([]byte{'#'}, 4096), zipped(t, "", [2]string{"a.md", "x"}, [2]string{"b.md", "y"})...), 2},
 		{"empty", zipped(t, ""), 0},
@@ -207,6 +257,29 @@ func shortEnd(t *testing.T) []byte {
 	data := zipped(t, "", [2]string{"a.md", "x"}, [2]string{"b.md", "y"})
 	end := endOf(data)
 	binary.LittleEndian.PutUint32(data[end+12:], binary.LittleEndian.Uint32(data[end+12:])-10)
+	return data
+}
+
+// with64Locator is data with a zip64 locator before its end, pointing at
+// offset, and the end saying a zip64 end holds its counts.
+func with64Locator(t *testing.T, data []byte, offset uint64) []byte {
+	t.Helper()
+	end := endOf(data)
+	loc := make([]byte, 20)
+	binary.LittleEndian.PutUint32(loc, 0x07064b50)
+	binary.LittleEndian.PutUint64(loc[8:], offset)
+	binary.LittleEndian.PutUint32(loc[16:], 1)
+	out := slices.Concat(data[:end], loc, data[end:])
+	binary.LittleEndian.PutUint16(out[end+20+8:], 0xffff)
+	binary.LittleEndian.PutUint16(out[end+20+10:], 0xffff)
+	return out
+}
+
+// understated is data whose end says its directory is 100 bytes: the
+// directory is read from where its records start, and counted.
+func understated(t *testing.T, data []byte) []byte {
+	t.Helper()
+	binary.LittleEndian.PutUint32(data[endOf(data)+12:], 100)
 	return data
 }
 
@@ -267,8 +340,14 @@ func TestAnImportsArchiveRefusesItsDirectory(t *testing.T) {
 		{"as many as read", zipped(t, "", files...), 20, archiveadapter.MaxDirectory, nil},
 		{"an end that says fewer", lying, 10, archiveadapter.MaxDirectory, app.ErrTooManyEntries},
 		{"a directory larger than read", zipped(t, "", files...), 100, 500, app.ErrTooManyEntries},
+		{"a directory larger than read, its end saying less", understated(t, zipped(t, "", files...)), 100, 500, app.ErrTooManyEntries},
 		{"no zip", []byte("PK but no archive at all, whatever its length"), 10, archiveadapter.MaxDirectory, app.ErrNotZip},
 		{"an end pointing outside", outside, 10, archiveadapter.MaxDirectory, app.ErrNotZip},
+		{"a zip64 end past the archive", with64Locator(t, zipped(t, "", [2]string{"a.md", "x"}), 1<<40), 100000, archiveadapter.MaxDirectory,
+			app.ErrNotZip},
+		// archive/zip ignores the locator; the end's 65,535 records are not there.
+		{"a zip64 end before the archive", with64Locator(t, zipped(t, "", [2]string{"a.md", "x"}), 1<<63), 100000, archiveadapter.MaxDirectory,
+			app.ErrNotZip},
 		{"records fewer than the end says", short, 10, archiveadapter.MaxDirectory, app.ErrNotZip},
 	} {
 		t.Run(tt.name, func(t *testing.T) {

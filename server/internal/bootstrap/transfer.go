@@ -122,7 +122,8 @@ func (i importUnit) CreatePage(ctx context.Context, p transfer.ImportedPage) (tr
 	if !ok {
 		return transfer.CreatedNode{}, errors.New("an import's page not parsed by the page module")
 	}
-	n, err := i.u.CreatePage(ctx, page.ImportedPage{ParentID: p.ParentID, Name: p.Name, Content: p.Content, Parsed: parsed.p})
+	n, err := i.u.CreatePage(ctx, page.ImportedPage{ParentID: p.ParentID, Name: p.Name, Content: p.Content, Parsed: parsed.p,
+		Reserved: p.Reserved})
 	return createdNode(n), treeError(err)
 }
 
@@ -130,7 +131,7 @@ func (i importUnit) CreateAsset(ctx context.Context, a transfer.ImportedAsset,
 	after func(ctx context.Context, n transfer.CreatedNode) error,
 ) (transfer.CreatedNode, error) {
 	n, err := i.u.CreateAsset(ctx, page.ImportedAsset{ParentID: a.ParentID, Name: a.Name,
-		Meta: page.AssetMeta{MIME: a.File.MIME, Bytes: a.File.Bytes, SHA256: a.File.SHA256}},
+		Meta: page.AssetMeta{MIME: a.File.MIME, Bytes: a.File.Bytes, SHA256: a.File.SHA256}, Reserved: a.Reserved},
 		func(ctx context.Context, n page.NodeInfo) error { return after(ctx, createdNode(n)) })
 	return createdNode(n), treeError(err)
 }

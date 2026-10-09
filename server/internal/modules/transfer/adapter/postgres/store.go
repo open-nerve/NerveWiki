@@ -153,8 +153,15 @@ func (s *Store) StartJob(ctx context.Context, id uuid.UUID, at time.Time) (domai
 }
 
 // BeatJob implements app.Rows.
-func (s *Store) BeatJob(ctx context.Context, id uuid.UUID, at time.Time, p domain.Progress) (app.Beat, error) {
-	r, err := s.queries(ctx).BeatJob(ctx, gen.BeatJobParams{ID: id, At: &at, Done: p.Done, Total: p.Total})
+func (s *Store) BeatJob(ctx context.Context, id uuid.UUID, at time.Time, p domain.Progress, report *domain.Report) (app.Beat, error) {
+	var b []byte
+	if report != nil {
+		var err error
+		if b, err = encodeReport(*report); err != nil {
+			return app.Beat{}, err
+		}
+	}
+	r, err := s.queries(ctx).BeatJob(ctx, gen.BeatJobParams{ID: id, At: &at, Done: p.Done, Total: p.Total, Report: b})
 	if err != nil {
 		return app.Beat{}, noRow("beat job", err)
 	}
@@ -322,7 +329,8 @@ func jobOf(r gen.FindJobRow) (domain.Job, error) {
 		CancelRequested: r.CancelRequestedAt, Heartbeat: r.HeartbeatAt, Started: r.StartedAt, Finished: r.FinishedAt,
 		ResultBytes: r.ResultBytes, CreatedAt: r.CreatedAt,
 	}
-	if r.Report != nil {
+	// A running job's report is the heartbeat's, which only its end shows.
+	if r.Report != nil && j.State.Ended() {
 		report, err := decodeReport(r.Report)
 		if err != nil {
 			return domain.Job{}, fmt.Errorf("the report of job %s: %w", r.ID, err)

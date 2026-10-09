@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"sync"
 	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/transfer/domain"
@@ -17,22 +18,61 @@ import (
 // request's body ended, which writes the job's row, queued, and enqueues
 // its River job in one transaction.
 type StartImport struct {
-	d StartDeps
+	d       StartDeps
+	uploads *uploads
 }
 
 // NewStartImport returns the use case.
 func NewStartImport(d StartDeps) *StartImport {
-	return &StartImport{d: d}
+	return &StartImport{d: d, uploads: &uploads{notebooks: map[uuid.UUID]bool{}}}
+}
+
+// uploads are the notebooks an import's archive is being uploaded into,
+// from Check to Release, in this process: v0.1 runs one. A notebook takes
+// one at a time, and each counts as a job in the queue, so that uploads
+// that will be refused are refused before they are sent.
+type uploads struct {
+	mu        sync.Mutex
+	notebooks map[uuid.UUID]bool
+}
+
+// claim claims the notebook id: false when an upload holds it.
+func (u *uploads) claim(id uuid.UUID) bool {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	if u.notebooks[id] {
+		return false
+	}
+	u.notebooks[id] = true
+	return true
+}
+
+func (u *uploads) release(id uuid.UUID) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	delete(u.notebooks, id)
+}
+
+// others is how many uploads are under way into notebooks but id.
+func (u *uploads) others(id uuid.UUID) int {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	if u.notebooks[id] {
+		return len(u.notebooks) - 1
+	}
+	return len(u.notebooks)
 }
 
 // ImportRequest is what an import is started with: the notebook, the page
-// it goes under (nil: the notebook's root), the uploaded file's name, and
-// where the request came from.
+// it goes under (nil: the notebook's root), the uploaded file's name,
+// where the request came from, and the bytes of its body as it declares
+// them (-1: unknown).
 type ImportRequest struct {
 	NotebookID uuid.UUID
 	ParentID   *uuid.UUID
 	FileName   string
 	Client     domain.Client
+	Size       int64
 }
 
 // Stored is an import's archive Store wrote: its job's id, taken then, and
@@ -54,9 +94,11 @@ func (e *ReadError) Unwrap() error { return e.Err }
 // Check decides, before the file is read and unlocked, what Create
 // decides again: a notebook the caller cannot see is notebook.not_found;
 // a reader is forbidden; a parent that is no page of the notebook not
-// deleted is page.not_found; an import of the notebook queued or running,
-// anyone's, is transfer.busy; MaxQueued jobs waiting or running are 503
-// server_busy; a store keeping less than MinFree is 507 storage_full.
+// deleted is page.not_found; an import of the notebook being uploaded,
+// queued or running, anyone's, is transfer.busy; MaxQueued jobs waiting,
+// running or being uploaded are 503 server_busy; a store that would keep
+// less than MinFree once the body is written is 507 storage_full. Once it
+// passes, the notebook is claimed for the upload until Release.
 func (s *StartImport) Check(ctx context.Context, req ImportRequest) error {
 	actor, err := shared.RequireActor(ctx)
 	if err != nil {
@@ -72,13 +114,32 @@ func (s *StartImport) Check(ctx context.Context, req ImportRequest) error {
 	if err := s.place(ctx, req); err != nil {
 		return err
 	}
+	if !s.uploads.claim(req.NotebookID) {
+		return domain.ErrImportBusy
+	}
+	if err := s.admit(ctx, req); err != nil {
+		s.uploads.release(req.NotebookID)
+		return err
+	}
+	return nil
+}
+
+// admit is Check's last: no import of the notebook, room in the queue and
+// in the store for the body.
+func (s *StartImport) admit(ctx context.Context, req ImportRequest) error {
 	if err := s.busy(ctx, req.NotebookID); err != nil {
 		return err
 	}
-	if err := s.d.room(ctx); err != nil {
+	if err := s.d.room(ctx, s.uploads.others(req.NotebookID)); err != nil {
 		return err
 	}
-	return s.d.free(ctx)
+	return s.d.free(ctx, max(req.Size, 0))
+}
+
+// Release releases the notebook Check claimed for req's upload: its
+// request ended.
+func (s *StartImport) Release(req ImportRequest) {
+	s.uploads.release(req.NotebookID)
 }
 
 // workspaceOf is the notebook's workspace: notebook.not_found for none.
@@ -213,7 +274,7 @@ func (s *StartImport) write(ctx context.Context, req ImportRequest, stored Store
 		if err := s.d.Rows.LockQueue(ctx); err != nil {
 			return err
 		}
-		if err := s.d.room(ctx); err != nil {
+		if err := s.d.room(ctx, s.uploads.others(req.NotebookID)); err != nil {
 			return err
 		}
 		if err := s.busy(ctx, req.NotebookID); err != nil {
