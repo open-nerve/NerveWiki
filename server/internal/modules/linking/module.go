@@ -34,9 +34,11 @@ type (
 	// PageTree reads a notebook's tree, whole or by keys and ids, and a
 	// page's notebook: bootstrap hands page.NewLinkTargets to it.
 	PageTree = app.PageTree
-	// AttachmentURLs gives the attachments' contents' addresses: bootstrap
-	// adapts the asset module's Embeds to it.
-	AttachmentURLs = app.AttachmentURLs
+	// AttachmentAddresses gives the attachments' contents' addresses:
+	// bootstrap adapts the asset module's Embeds to it.
+	AttachmentAddresses = app.AttachmentAddresses
+	// AttachmentAddress is an attachment's content's address.
+	AttachmentAddress = app.AttachmentAddress
 )
 
 // Deps are what the HTTP side, the index's reads, needs.
@@ -49,7 +51,7 @@ type Deps struct {
 	// MaxDepth is how deep pages nest: bootstrap hands page.MaxDepth to it.
 	MaxDepth int
 	// Assets gives a property link to an attachment its content's address.
-	Assets AttachmentURLs
+	Assets AttachmentAddresses
 }
 
 // Module is the wired linking module's HTTP side.

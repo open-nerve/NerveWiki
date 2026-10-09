@@ -52,7 +52,7 @@ func linkingMatrixRows() []matrixRow {
 				return http.MethodGet, pagePath(c, s) + "/properties", ""
 			},
 			cells: readers(pageNotFound),
-			check: answers(`{"links":[],"properties":[],"valid":true}`),
+			check: answers(`{"assets_expire_at":null,"links":[],"properties":[],"valid":true}`),
 		},
 		{
 			op:      "listTags",

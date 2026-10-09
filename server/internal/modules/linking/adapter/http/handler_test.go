@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 	"uuid"
 
 	httpadapter "github.com/open-nerve/NerveWiki/server/internal/modules/linking/adapter/http"
@@ -38,11 +39,12 @@ func id(n int) uuid.UUID {
 
 // fakes are the use cases: each records what it got and answers err, or
 // the fixtures' answer; next is the backlinks' next cursor, landing the
-// landing's answer.
+// landing's answer, expires when the properties' addresses expire.
 type fakes struct {
 	err     error
 	next    string
 	landing domain.Landing
+	expires time.Time
 	got     []any
 }
 
@@ -77,9 +79,11 @@ func (f fakeProperties) Execute(_ context.Context, pageID uuid.UUID) (app.Proper
 			{Key: "cover", Value: json.RawMessage(`"[[x.png]]"`)},
 		},
 		Links: []app.PropertyLink{
-			{Key: "up", NodeID: id(11)}, {Key: "sources.0"}, {Key: "cover", NodeID: id(15), Asset: true, URL: "/x?a=1&b=2"},
-			{Key: "gone", NodeID: id(16), Asset: true},
+			{Key: "up", NodeID: id(11)}, {Key: "sources.0"},
+			{Key: "cover", NodeID: id(15), Asset: true, URL: "/x?a=1&b=2", Inline: true},
+			{Key: "gone", NodeID: id(16), Asset: true}, {Key: "file", NodeID: id(17), Asset: true, URL: "/y"},
 		},
+		AssetsExpire: f.expires,
 	}, f.err
 }
 
@@ -161,12 +165,14 @@ func TestTheOperationsAnswerTheUseCases(t *testing.T) {
 		// A value is written as the index has it: a large number keeps its
 		// digits. A link's kind is its node's, none for none; an
 		// attachment's has its address, if it is given one (M7/P3 design
-		// 5.6).
+		// 5.6), and whether the browser shows it (M7/P4 design 4.3).
 		{"a page's properties", propertiesPath, "",
-			`{"links":[{"key":"up","kind":"page","node_id":"0199a2b4-0000-7000-8000-000000000011","url":null},` +
-				`{"key":"sources.0","kind":null,"node_id":null,"url":null},` +
-				`{"key":"cover","kind":"asset","node_id":"0199a2b4-0000-7000-8000-000000000015","url":"/x?a=1\u0026b=2"},` +
-				`{"key":"gone","kind":"asset","node_id":"0199a2b4-0000-7000-8000-000000000016","url":null}],` +
+			`{"assets_expire_at":null,` +
+				`"links":[{"inline":null,"key":"up","kind":"page","node_id":"0199a2b4-0000-7000-8000-000000000011","url":null},` +
+				`{"inline":null,"key":"sources.0","kind":null,"node_id":null,"url":null},` +
+				`{"inline":true,"key":"cover","kind":"asset","node_id":"0199a2b4-0000-7000-8000-000000000015","url":"/x?a=1\u0026b=2"},` +
+				`{"inline":null,"key":"gone","kind":"asset","node_id":"0199a2b4-0000-7000-8000-000000000016","url":null},` +
+				`{"inline":false,"key":"file","kind":"asset","node_id":"0199a2b4-0000-7000-8000-000000000017","url":"/y"}],` +
 				`"properties":[{"key":"up","value":"[[Parent]]"},{"key":"big","value":1000000000000000000000},` +
 				`{"key":"sources","value":["[[A]]","[[B]]"]},{"key":"cover","value":"[[x.png]]"}],"valid":true}`,
 			[]any{id(12)}},
@@ -193,6 +199,16 @@ func TestTheOperationsAnswerTheUseCases(t *testing.T) {
 				t.Errorf("the use case got %#v, want %#v", f.got, tt.got)
 			}
 		})
+	}
+}
+
+// A page's properties expire when the earliest of their attachments'
+// addresses does (M7/P4 design 4.3).
+func TestThePropertiesExpireWithTheirAddresses(t *testing.T) {
+	f := &fakes{expires: time.Date(2026, 10, 9, 13, 0, 0, 0, time.UTC)}
+	status, body := call(t, f.serve(t), propertiesPath)
+	if status != http.StatusOK || !strings.HasPrefix(body, `{"assets_expire_at":"2026-10-09T13:00:00Z","links":`) {
+		t.Errorf("got %d %s", status, body)
 	}
 }
 

@@ -295,7 +295,7 @@ components:
     PageProperties:
       type: object
       additionalProperties: false
-      required: [valid, properties, links]
+      required: [valid, properties, links, assets_expire_at]
       properties:
         valid:
           description: >-
@@ -312,6 +312,12 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/PropertyLink"
+        assets_expire_at:
+          description: >-
+            When the earliest of the links' attachments' addresses expires, after which the properties are to be read
+            again; null for none.
+          type: [string, "null"]
+          format: date-time
     PageProperty:
       type: object
       additionalProperties: false
@@ -327,7 +333,7 @@ components:
       description: A property whose value, or an item of whose list, is a link.
       type: object
       additionalProperties: false
-      required: [key, node_id, kind, url]
+      required: [key, node_id, kind, url, inline]
       properties:
         key:
           description: The property's path, a list's item after a dot (sources.0).
@@ -347,6 +353,11 @@ components:
             it expires as that does, and a read of the properties signs it anew. Null for a page, for none, and
             for an attachment deleted since the link was indexed.
           type: [string, "null"]
+        inline:
+          description: >-
+            Whether the browser shows the content at url itself (an image, an audio, a video or a PDF), which opens in
+            a tab of its own, or downloads it. Null where url is.
+          type: [boolean, "null"]
     TagList:
       type: object
       additionalProperties: false

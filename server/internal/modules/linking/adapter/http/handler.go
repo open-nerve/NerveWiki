@@ -6,6 +6,7 @@ package httpadapter
 
 import (
 	"context"
+	"time"
 	"uuid"
 
 	"github.com/oapi-codegen/nullable"
@@ -107,6 +108,7 @@ func (h handler) GetPageProperties(ctx context.Context, req gen.GetPagePropertie
 	}
 	out := gen.GetPageProperties200JSONResponse{
 		Valid: p.Valid, Properties: make([]gen.PageProperty, len(p.Properties)), Links: make([]gen.PropertyLink, len(p.Links)),
+		AssetsExpireAt: nullable.NewNullNullable[time.Time](),
 	}
 	for i, prop := range p.Properties {
 		out.Properties[i] = gen.PageProperty{Key: prop.Key, Value: prop.Value}
@@ -114,7 +116,7 @@ func (h handler) GetPageProperties(ctx context.Context, req gen.GetPagePropertie
 	for i, l := range p.Links {
 		out.Links[i] = gen.PropertyLink{
 			Key: l.Key, NodeID: nullable.NewNullNullable[uuid.UUID](), Kind: nullable.NewNullNullable[gen.LinkTargetKind](),
-			URL: nullable.NewNullNullable[string](),
+			URL: nullable.NewNullNullable[string](), Inline: nullable.NewNullNullable[bool](),
 		}
 		if l.NodeID != (uuid.UUID{}) {
 			out.Links[i].NodeID = nullable.NewNullableWithValue(l.NodeID)
@@ -122,7 +124,11 @@ func (h handler) GetPageProperties(ctx context.Context, req gen.GetPagePropertie
 		}
 		if l.URL != "" {
 			out.Links[i].URL = nullable.NewNullableWithValue(l.URL)
+			out.Links[i].Inline = nullable.NewNullableWithValue(l.Inline)
 		}
+	}
+	if !p.AssetsExpire.IsZero() {
+		out.AssetsExpireAt = nullable.NewNullableWithValue(p.AssetsExpire)
 	}
 	return out, nil
 }

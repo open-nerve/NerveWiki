@@ -10,12 +10,13 @@ import (
 
 // GetPageProperties reads a page's properties and their links from the
 // index: GET /api/v0/pages/{page_id}/properties (M6/P5 design 4), a link
-// to an attachment with its content's address (M7/P3 design 5.6).
+// to an attachment with its content's address (M7/P3 design 5.6) and when
+// the earliest of them expires (M7/P4 design 4.3).
 type GetPageProperties struct {
 	Access Access
 	Reads  Reads
 	// Assets gives the attachments' addresses; nil, none has one.
-	Assets AttachmentURLs
+	Assets AttachmentAddresses
 }
 
 // Execute returns the properties of the page id: the page and the decision
@@ -47,13 +48,18 @@ func (g GetPageProperties) Execute(ctx context.Context, id uuid.UUID) (Propertie
 	if g.Assets == nil || len(ids) == 0 {
 		return p, nil
 	}
-	urls, err := g.Assets.URLs(ctx, notebookID, ids)
+	addresses, err := g.Assets.Addresses(ctx, notebookID, ids)
 	if err != nil {
 		return Properties{}, err
 	}
 	for i, l := range p.Links {
-		if l.Asset {
-			p.Links[i].URL = urls[l.NodeID]
+		a, ok := addresses[l.NodeID]
+		if !ok {
+			continue
+		}
+		p.Links[i].URL, p.Links[i].Inline = a.URL, a.Inline
+		if !a.Expires.IsZero() && (p.AssetsExpire.IsZero() || a.Expires.Before(p.AssetsExpire)) {
+			p.AssetsExpire = a.Expires
 		}
 	}
 	return p, nil

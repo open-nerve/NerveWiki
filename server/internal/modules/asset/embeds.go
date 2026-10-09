@@ -11,6 +11,7 @@ import (
 	macadapter "github.com/open-nerve/NerveWiki/server/internal/modules/asset/adapter/mac"
 	postgresadapter "github.com/open-nerve/NerveWiki/server/internal/modules/asset/adapter/postgres"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/asset/app"
+	"github.com/open-nerve/NerveWiki/server/internal/modules/asset/domain"
 )
 
 // Embeds is what a reading view and a page's properties show of the
@@ -23,12 +24,14 @@ type Embeds struct {
 
 // Embed is what a reading view shows of an attachment: its type and size,
 // an image's width and height in pixels (0 when not known), its content's
-// address, signed, shown inline, and when that expires.
+// address, signed, whether the browser shows the content there (inline) or
+// downloads it, and when the address expires.
 type Embed struct {
 	MIME          string
 	Bytes         int64
 	Width, Height int
 	URL           string
+	Inline        bool
 	Expires       time.Time
 }
 
@@ -51,7 +54,8 @@ func (e Embeds) Of(ctx context.Context, notebookID uuid.UUID, ids []uuid.UUID) (
 		b := x.Blob
 		out[id] = Embed{
 			MIME: b.MIME, Bytes: b.Bytes, Width: b.Width, Height: b.Height,
-			URL: httpadapter.ContentURL(id, b.ID, x.Signed, false), Expires: x.Signed.Expires,
+			URL: httpadapter.ContentURL(id, b.ID, x.Signed, false), Inline: domain.Inline(b.MIME, false),
+			Expires: x.Signed.Expires,
 		}
 	}
 	return out, nil

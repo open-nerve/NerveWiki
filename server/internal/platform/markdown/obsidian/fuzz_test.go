@@ -84,10 +84,10 @@ func FuzzRender(f *testing.F) {
 }
 
 // resolveMixed resolves each link to one of the tests' attachments, by
-// where its target starts: an image, an audio, a video, a PDF, or one
-// Assets does not answer.
+// where its target starts: an image, an audio, a video, a PDF, a download,
+// or one Assets does not answer.
 func resolveMixed(_ context.Context, _ markdown.Page, links []obsidian.Link) (map[int]obsidian.Target, error) {
-	names := []string{"dims.png", "a.mp3", "v.webm", "doc.pdf", "gone.png"}
+	names := []string{"dims.png", "a.mp3", "v.webm", "doc.pdf", "a.zip", "gone.png"}
 	to := map[int]obsidian.Target{}
 	for _, l := range links {
 		to[l.Range.Start] = obsidian.Target{Node: attachments[names[l.Range.Start%len(names)]].id, Asset: true}

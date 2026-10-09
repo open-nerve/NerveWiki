@@ -197,7 +197,7 @@ func aPathHere(addr string) bool {
 // 10 000 nodes of about 40 bytes of table each. Headroom keeps twice that.
 // An attachment's markup and signed address, up to some 67 times their
 // bytes in a wide table, are written at most obsidian.MaxShown times, some
-// 390 KB more than their text, which a quarter of Headroom keeps (M7/P3
+// 400 KB more than their text, which a quarter of Headroom keeps (M7/P3
 // review B1).
 const (
 	Amplification = 64

@@ -50,9 +50,15 @@ func (v view) assetLink(id uuid.UUID) []markdown.Attr {
 	return linkAttrs(a)
 }
 
-// linkAttrs is the attributes of a link to a, which the view writes.
+// linkAttrs is the attributes of a link to a, which the view writes: one
+// to an attachment the browser does not show downloads it (M7/P4 design
+// 4.2), its address being of this site, with or without the app.
 func linkAttrs(a Asset) []markdown.Attr {
-	return []markdown.Attr{{Name: "href", Value: a.URL}, {Name: "data-nw-size", Value: strconv.FormatInt(a.Bytes, 10)}}
+	attrs := []markdown.Attr{{Name: "href", Value: a.URL}, {Name: "data-nw-size", Value: strconv.FormatInt(a.Bytes, 10)}}
+	if !a.Inline {
+		attrs = append(attrs, markdown.Attr{Name: "download", Value: ""})
+	}
+	return attrs
 }
 
 // image is how the Markdown image whose destination starts at start is
