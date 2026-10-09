@@ -55,7 +55,8 @@ type ImportPlan struct {
 // whose name has its key, before either is mended, or a page without
 // content when there is none; any other file is an attachment of the page
 // whose folder holds it. Names are mended (shared.FixTitle), an empty one
-// Untitled. Siblings come by meta's order, then by name; a page deeper
+// Untitled. Siblings come by meta's order, then by name, one named as in
+// the archive before one whose name was mended to its key; a page deeper
 // than MaxDepth from depth is skipped, and everything under it. meta's
 // contributed files are left out.
 func NewImportPlan(entries []ImportEntry, meta ImportMeta, depth int) ImportPlan {
@@ -149,6 +150,16 @@ type child struct {
 	folder *folder
 }
 
+// mended is 1 when c's name was mended, 0 when it is the archive's: of
+// siblings whose names clash, the one named as in the archive comes first
+// and keeps its name, the links to it still reaching it.
+func (c child) mended() int {
+	if c.node.Name == c.node.Original {
+		return 0
+	}
+	return 1
+}
+
 // children are f's nodes in their order: its pages' files, each holding
 // the first folder of its key not yet held; the folders no file holds, as
 // pages without content; its attachments.
@@ -188,8 +199,8 @@ func (f *folder) children(meta ImportMeta) []child {
 			}
 			return 1
 		}
-		return cmp.Or(strings.Compare(shared.TitleKey(a.node.Name), shared.TitleKey(b.node.Name)), strings.Compare(a.node.Name, b.node.Name),
-			strings.Compare(a.node.Path, b.node.Path))
+		return cmp.Or(strings.Compare(shared.TitleKey(a.node.Name), shared.TitleKey(b.node.Name)), cmp.Compare(a.mended(), b.mended()),
+			strings.Compare(a.node.Name, b.node.Name), strings.Compare(a.node.Path, b.node.Path))
 	})
 	return out
 }

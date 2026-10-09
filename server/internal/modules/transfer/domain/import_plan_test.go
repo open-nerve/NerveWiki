@@ -72,7 +72,10 @@ func TestNewImportPlan(t *testing.T) {
 		{"the first page of the key holds the folder", []string{"N.md", "n/c.md", "n.md"}, domain.ImportMeta{}, 0,
 			[]string{"1 - page N <- N.md #0", "1 - page n <- n.md #2", "2 N page c <- n/c.md #1"}},
 		{"keys before the names are mended", []string{"a:b.md", "a_b/c.md"}, domain.ImportMeta{}, 0,
-			[]string{"1 - page a_b <- a:b.md #0 (a:b)", "1 - page a_b <- a_b/", "2 a_b page c <- a_b/c.md #1"}},
+			[]string{"1 - page a_b <- a_b/", "1 - page a_b <- a:b.md #0 (a:b)", "2 a_b page c <- a_b/c.md #1"}},
+		{"a name as in the archive before one mended to it", []string{"What? Why.md", "What_ Why.md", "x|y.png", "X_Y.png"},
+			domain.ImportMeta{}, 0, []string{"1 - page What_ Why <- What_ Why.md #1", "1 - page What_ Why <- What? Why.md #0 (What? Why)",
+				"1 - asset X_Y.png <- X_Y.png #3", "1 - asset x_y.png <- x|y.png #2 (x|y.png)"}},
 		{"names mended", []string{"a#b.md", "con.md", "photo.MD", "x.md.png", "notes.md. ", " /a.md", "nul.txt", "b|c.png"},
 			domain.ImportMeta{}, 0, []string{
 				"1 - page a_b <- a#b.md #0 (a#b)",
