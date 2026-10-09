@@ -292,6 +292,24 @@ func TestConstraintAndIndexNames(t *testing.T) {
 		"page_tags_pkey p",
 		"page_tags_tag_check c",
 		"page_tags_tag_key_check c",
+		"transfer_jobs_client_check c",
+		"transfer_jobs_created_by_id_fkey f a",
+		"transfer_jobs_deleted_at_idx iw",
+		"transfer_jobs_expired_check c",
+		"transfer_jobs_exporting_key iuw",
+		"transfer_jobs_finished_at_idx iw",
+		"transfer_jobs_finished_check c",
+		"transfer_jobs_kind_check c",
+		"transfer_jobs_name_check c",
+		"transfer_jobs_notebook_id_created_at_idx iw",
+		"transfer_jobs_notebook_id_fkey f r",
+		"transfer_jobs_pkey iu",
+		"transfer_jobs_pkey p",
+		"transfer_jobs_progress_check c",
+		"transfer_jobs_result_bytes_check c",
+		"transfer_jobs_started_check c",
+		"transfer_jobs_state_check c",
+		"transfer_jobs_state_idx iw",
 		"users_display_name_check c",
 		"users_email_check c",
 		"users_email_key iu",
@@ -398,6 +416,10 @@ func TestChecksRejectCounterexamples(t *testing.T) {
 			"('0199a2b4-0000-7000-8000-000000000010', 0, '0199a2b4-0000-7000-8000-000000000008', 'sources', '[\"[[b]]\"]')",
 		"INSERT INTO page_aliases (source_id, alias_key, notebook_id, alias) VALUES " +
 			"('0199a2b4-0000-7000-8000-000000000010', 'al', '0199a2b4-0000-7000-8000-000000000008', 'Al')",
+		// An export of the notebook, running.
+		"INSERT INTO transfer_jobs (id, notebook_id, kind, state, name, created_by_id, client, progress_done, progress_total, " +
+			"started_at, heartbeat_at, created_at) VALUES ('0199a2b4-0000-7000-8000-000000000018', '0199a2b4-0000-7000-8000-000000000008', " +
+			"'export', 'running', 'n', " + user + ", 'web', 1, 2, now(), now(), now())",
 	} {
 		if _, err := pool.Exec(ctx, stmt); err != nil {
 			t.Fatalf("%s: %v", stmt, err)
@@ -518,6 +540,31 @@ func TestChecksRejectCounterexamples(t *testing.T) {
 		{"a height of 0", "UPDATE asset_blobs SET height = 0", "asset_blobs_height_check"},
 		{"a width without its height", "UPDATE asset_blobs SET height = NULL", "asset_blobs_size_check"},
 		{"a height without its width", "UPDATE asset_blobs SET width = NULL", "asset_blobs_size_check"},
+		{"a sixth state of a job", "UPDATE transfer_jobs SET state = 'paused', finished_at = now(), report = '{}'", "transfer_jobs_state_check"},
+		{"a third kind of job", "UPDATE transfer_jobs SET kind = 'copy'", "transfer_jobs_kind_check"},
+		{"a job of no name", "UPDATE transfer_jobs SET name = ''", "transfer_jobs_name_check"},
+		{"a job's name of 256 bytes", "UPDATE transfer_jobs SET name = repeat('a', 256)", "transfer_jobs_name_check"},
+		{"a job of the command line", "UPDATE transfer_jobs SET client = 'cli'", "transfer_jobs_client_check"},
+		{"more done than all", "UPDATE transfer_jobs SET progress_done = 3", "transfer_jobs_progress_check"},
+		{"less than nothing done", "UPDATE transfer_jobs SET progress_done = -1", "transfer_jobs_progress_check"},
+		{"a running job that did not start", "UPDATE transfer_jobs SET started_at = NULL", "transfer_jobs_started_check"},
+		{"a running job that never beat", "UPDATE transfer_jobs SET heartbeat_at = NULL", "transfer_jobs_started_check"},
+		{"a queued job that started", "UPDATE transfer_jobs SET state = 'queued'", "transfer_jobs_started_check"},
+		{"a cancel asked of a job that never started", "UPDATE transfer_jobs SET state = 'queued', started_at = NULL, heartbeat_at = NULL, " +
+			"cancel_requested_at = now()", "transfer_jobs_started_check"},
+		{"a running job that ended", "UPDATE transfer_jobs SET finished_at = now()", "transfer_jobs_finished_check"},
+		{"a running job's report", "UPDATE transfer_jobs SET report = '{}'", "transfer_jobs_finished_check"},
+		{"an ended job without its report", "UPDATE transfer_jobs SET state = 'failed', finished_at = now()", "transfer_jobs_finished_check"},
+		{"an ended job without its time", "UPDATE transfer_jobs SET state = 'failed', report = '{}'", "transfer_jobs_finished_check"},
+		{"an import expired", "UPDATE transfer_jobs SET kind = 'import', state = 'expired', finished_at = now(), report = '{}'",
+			"transfer_jobs_expired_check"},
+		{"an export succeeded without its bytes", "UPDATE transfer_jobs SET state = 'succeeded', finished_at = now(), report = '{}'",
+			"transfer_jobs_result_bytes_check"},
+		{"an export failed with bytes", "UPDATE transfer_jobs SET state = 'failed', finished_at = now(), report = '{}', result_bytes = 1",
+			"transfer_jobs_result_bytes_check"},
+		{"a running export's bytes", "UPDATE transfer_jobs SET result_bytes = 1", "transfer_jobs_result_bytes_check"},
+		{"an archive of -1 bytes", "UPDATE transfer_jobs SET state = 'succeeded', finished_at = now(), report = '{}', result_bytes = -1",
+			"transfer_jobs_result_bytes_check"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
