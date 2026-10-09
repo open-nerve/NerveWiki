@@ -1,15 +1,12 @@
-import type { Asset } from "@nervewiki/api-client";
 import type { Locator } from "@playwright/test";
 
-import { expectUploaded } from "../../fixtures/assert/asset";
-import { expectIndexedLinks } from "../../fixtures/assert/links";
+import { expectEmbedded } from "../../fixtures/assert/asset";
 import { listAssets, pngBytes, uploadAsset } from "../../fixtures/assets";
 import { countAnswers } from "../../fixtures/browser";
-import type { Database } from "../../fixtures/db";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, getView, readContent, writeContent } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
-import { pageHeading, saveEdit, startEditing, wikiPagePath } from "../../fixtures/wiki-pages";
+import { contentWrites, pageHeading, saveEdit, startEditing, wikiPagePath } from "../../fixtures/wiki-pages";
 import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 
 // AS2, files pasted into the editor or dropped on it (M7 design 9; M7/P4 design 5): each uploads as the page's
@@ -18,30 +15,6 @@ import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 
 /** The page's content before the files: its text, the cursor going after it. */
 const before = "Notes of the day.\n";
-
-/**
- * expectEmbedded is the database after the attachments were uploaded under page by creatorId through client, and
- * embedded in its content in order: each stored as uploaded, and the index leading each embed to its attachment.
- */
-async function expectEmbedded(
-  db: Database,
-  storageDir: string,
-  page: string,
-  attachments: readonly Asset[],
-  creatorId: string,
-  client: string
-): Promise<void> {
-  for (const asset of attachments) {
-    // oxlint-disable-next-line no-await-in-loop -- one at a time
-    await expectUploaded(db, storageDir, asset, pngBytes, creatorId, client);
-    expect(asset.parent_id).toBe(page);
-  }
-  await expectIndexedLinks(
-    db,
-    page,
-    attachments.map((asset) => ({ kind: "embed", property: null, target: asset.link ?? "", resolved: asset.id }))
-  );
-}
 
 /** shown waits for each image of article, the attachments' own, to load: their sources. */
 async function shown(article: Locator, count: number): Promise<string[]> {
@@ -76,16 +49,21 @@ test("AS2 (API): images uploaded under a page, and the page written with their e
     guide.id
   );
 
-  await writeContent(api, pat, guide.id, {
-    content: `${before}![[${pasted.link}]]![[${dropped.link}]]`,
-    base_revision: 1,
-  });
+  const content = `Notes of![[${dropped.link}]] the day.\n![[${pasted.link}]] and a chart:`;
+  const written = await writeContent(api, pat, guide.id, { content, base_revision: 1 });
 
-  await expectEmbedded(db, nervewiki.storageDir, guide.id, [pasted, dropped], adminId, "api");
+  await expectEmbedded(
+    db,
+    nervewiki.storageDir,
+    { written, content, attachments: [dropped, pasted] },
+    pngBytes,
+    adminId,
+    "api"
+  );
   const html = (await getView(api, pat, guide.id)).data?.html ?? "";
   expect([...html.matchAll(/<img class="nw-asset" src="([^"?]*)/g)].map(([, src]) => src)).toEqual([
-    `/api/v0/assets/${pasted.id}/content`,
     `/api/v0/assets/${dropped.id}/content`,
+    `/api/v0/assets/${pasted.id}/content`,
   ]);
 });
 
@@ -100,6 +78,7 @@ test("AS2 (page): an image pasted into the editor and one dropped on it upload a
   const notebook = await createNotebook(api, pat, workspace.slug, "Plans");
   const guide = await createPage(api, pat, notebook.id, "Guide", null, before);
   const uploads = countAnswers(page, "POST", `/api/v0/notebooks/${notebook.id}/assets`);
+  const writes = contentWrites(page, guide.id);
   await page.goto(wikiPagePath(workspace.slug, notebook.id, guide.id));
   await expect(pageHeading(page, "Guide")).toBeVisible();
   const content = await startEditing(page);
@@ -116,8 +95,20 @@ test("AS2 (page): an image pasted into the editor and one dropped on it upload a
   );
   await expect.poll(uploads).toBe(1);
   await expect(content).toContainText(/!\[\[Pasted image \d{14}\.png\]\]/);
+  // The cursor went after the embed, as after a paste: what is typed next follows it.
+  await page.keyboard.type(" and a chart:");
+  await expect(content).toContainText(/!\[\[Pasted image \d{14}\.png\]\] and a chart:$/);
 
-  // A file dragged from outside may drop on the text, at the end of its last line.
+  // Short as the text is, the content fills the editor: a file may drop below it too.
+  const below = await content.evaluate((element) => {
+    const editor = element.closest(".cm-editor");
+    editor?.scrollIntoView({ block: "end" });
+    const box = editor?.getBoundingClientRect();
+    return element.contains(document.elementFromPoint((box?.right ?? 0) - 24, (box?.bottom ?? 0) - 24));
+  });
+  expect(below).toBe(true);
+
+  // A file dragged from outside drops where it is let go: in the first line, after "Notes of".
   const over = await content.evaluate(
     (element, bytes) => {
       const data = new DataTransfer();
@@ -130,17 +121,23 @@ test("AS2 (page): an image pasted into the editor and one dropped on it upload a
           effect = value;
         },
       });
-      const last = [...element.querySelectorAll(".cm-line")].at(-1)?.getBoundingClientRect();
-      const at = { clientX: (last?.right ?? 0) + 2, clientY: ((last?.top ?? 0) + (last?.bottom ?? 0)) / 2 };
+      const text = element.querySelector(".cm-line")?.firstChild ?? element;
+      const letter = document.createRange();
+      letter.setStart(text, "Notes o".length);
+      letter.setEnd(text, "Notes of".length);
+      const box = letter.getBoundingClientRect();
+      const at = { clientX: box.right - 1, clientY: (box.top + box.bottom) / 2 };
+      // What is there, as the browser would send the drag's events to it.
+      const target = document.elementFromPoint(at.clientX, at.clientY) ?? document.body;
       const dragover = new DragEvent("dragover", { bubbles: true, cancelable: true, dataTransfer: data, ...at });
-      element.dispatchEvent(dragover);
-      const accepted = { prevented: dragover.defaultPrevented, effect };
-      element.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: data, ...at }));
+      target.dispatchEvent(dragover);
+      const accepted = { content: element.contains(target), prevented: dragover.defaultPrevented, effect };
+      target.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: data, ...at }));
       return accepted;
     },
     [...pngBytes]
   );
-  expect(over).toEqual({ prevented: true, effect: "copy" });
+  expect(over).toEqual({ content: true, prevented: true, effect: "copy" });
   await expect.poll(uploads).toBe(2);
   await expect(content).toContainText("![[chart.png]]");
 
@@ -148,13 +145,17 @@ test("AS2 (page): an image pasted into the editor and one dropped on it upload a
   const listed = await listAssets(api, pat, notebook.id, guide.id);
   const pasted = listed.find((asset) => asset.name.startsWith("Pasted image "));
   const dropped = listed.find((asset) => asset.name === "chart.png");
-  expect(pasted?.name).toMatch(/^Pasted image \d{14}\.png$/);
-  expect((await readContent(api, pat, guide.id)).content).toBe(`${before}![[${pasted?.link}]]![[chart.png]]`);
+  if (pasted === undefined || dropped === undefined) {
+    throw new Error(`the attachments listed are ${JSON.stringify(listed.map((asset) => asset.name))}`);
+  }
+  expect(pasted.name).toMatch(/^Pasted image \d{14}\.png$/);
+  const text = `Notes of![[chart.png]] the day.\n![[${pasted.link}]] and a chart:`;
+  expect((await readContent(api, pat, guide.id)).content).toBe(text);
   await expectEmbedded(
     db,
     nervewiki.storageDir,
-    guide.id,
-    [pasted, dropped].filter((asset) => asset !== undefined),
+    { written: await writes.saved(), content: text, attachments: [dropped, pasted] },
+    pngBytes,
     adminId,
     "web"
   );
@@ -162,7 +163,7 @@ test("AS2 (page): an image pasted into the editor and one dropped on it upload a
   await page.getByRole("main").getByRole("button", { name: "Done", exact: true }).click();
   const article = page.getByRole("article", { name: "Guide" });
   expect(await shown(article, 2)).toEqual([
-    `/api/v0/assets/${pasted?.id}/content`,
-    `/api/v0/assets/${dropped?.id}/content`,
+    `/api/v0/assets/${dropped.id}/content`,
+    `/api/v0/assets/${pasted.id}/content`,
   ]);
 });
