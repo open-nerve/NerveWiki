@@ -760,7 +760,9 @@ test("a view from the cache whose addresses had expired, read again in vain, say
   expect(screen.queryByText("Signed")).toBeNull();
   server.viewsDown = false;
   server.views.set(install.id, { html: "<p>Signed anew</p>", revision: 1, assets_expire_at: inMinutes(70) });
+  const before = server.sent.filter((line) => line === "GET view Install").length;
   await user.click(again as HTMLElement);
+  expect(server.sent.filter((line) => line === "GET view Install")).toHaveLength(before + 1);
   await waitFor(() => expect(screen.getByRole("article").innerHTML).toBe("<p>Signed anew</p>"));
 });
 
@@ -798,7 +800,7 @@ test("a view read again that says the same runs no enhancement again", async () 
   const log: string[] = [];
   renderApp(pagePath(install.id), server.app, { enhancements: [recording(log, "a")] });
   await waitFor(() => expect(log).toHaveLength(1));
-  // Read again as the window has the focus back, past SWR's deduping.
+  // Read again as the window has the focus back, past SWR's throttle of those reads.
   await act(() => vi.advanceTimersByTimeAsync(10_000));
   server.viewsHeld = true;
   act(() => window.dispatchEvent(new Event("focus")));

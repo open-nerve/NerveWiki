@@ -19,21 +19,23 @@ const nearEnough = 0.25;
  * - A link to one says its size after it, in the reader's language. One
  *   the browser shows opens in a tab of its own, as it says unseen; one to
  *   any other downloads it (the server writes download).
- * - An image, an audio or a video that fails to load, once the view's
- *   addresses have expired, reads the view again: once for each expiry of
- *   the page's, as one that fails for another reason would fail as much
- *   in the view read again.
- * - An audio or a video started (playing, or paused partway) is kept as
- *   the HTML is replaced, which the signatures do each hour and others'
- *   writes at any time: the next HTML of the page has it in place of its
- *   own of the same attachment, the same of them in order, its attributes
- *   but its address, the focus if it had it (a folded callout it is in
- *   opening); one it does not have goes. One that failed is not kept: it
- *   would not load again, and the new one goes on where it was, the focus
- *   given it if it had it. One kept has the address it had: as it fails
- *   (its address expired, as a rule), the view has the attachment's
- *   signed anew (assetAddress), and the media goes on where it was; once
- *   for each HTML, none for an attachment gone.
+ * - An audio or a video started (playing, or paused partway) that fails
+ *   (its address expired, as a rule: a long one, a tab hidden, a reader
+ *   away) has the attachment's address signed anew (assetAddress), and
+ *   goes on where it was, the same element; once for each HTML, none for
+ *   an attachment gone.
+ * - An image, or an audio or a video not started or failed again, that
+ *   fails to load once the view's addresses have expired reads the view
+ *   again: once for each expiry of the page's, as one that fails for
+ *   another reason would fail as much in the view read again.
+ * - An audio or a video started is kept as the HTML is replaced, which
+ *   the signatures do each hour and others' writes at any time: the next
+ *   HTML of the page has it in place of its own of the same attachment,
+ *   the same of them in order, its attributes but its address, the focus
+ *   if it had it (a folded callout it is in opening); one it does not
+ *   have goes. One that failed is not kept: it would not load again, and
+ *   the new one is put where it was (its position, rate and volume, the
+ *   focus), not played: it failed signed anew too, or could not be.
  */
 export function assets(): Enhancement {
   // What the view had started as its HTML was replaced: its page, its audios and videos by key, and the focused one.
@@ -41,8 +43,10 @@ export function assets(): Enhancement {
   // The expiry each page's view was read again for, as its attachments failed to load.
   const reloadedFor = new Map<string, string>();
   return (container, context) => {
-    const adopted = adopt(container, kept?.page === context.page ? kept : undefined);
+    adopt(container, kept?.page === context.page ? kept : undefined);
     kept = undefined;
+    // The audios and videos this HTML has had signed anew.
+    const signed = new Set<HTMLMediaElement>();
     const links = newTab(container, context.t("asset.newTab"));
     const added = [...links.flatMap(({ hint }) => hint), ...sizes(container, context)];
     const onError = (event: Event) => {
@@ -50,7 +54,8 @@ export function assets(): Enhancement {
       if (!(element instanceof HTMLElement) || !element.matches(`img.nw-asset, ${media}`)) {
         return;
       }
-      if (element instanceof HTMLMediaElement && adopted.delete(element)) {
+      if (element instanceof HTMLMediaElement && begun(element) && !signed.has(element)) {
+        signed.add(element);
         void signAnew(element, context);
         return;
       }
@@ -124,13 +129,12 @@ function sizes(container: HTMLElement, { t, locale }: ReadingContext): HTMLEleme
  * adopt puts each of kept, by key, in place of the element of container
  * of the same key (an attachment's type is its own: the same element),
  * its attributes but its address taken, the focus given back if it had
- * it; those put are the adopted. One that failed is not put: the new one
- * goes on where it was, the focus given it if it had it.
+ * it. One that failed is not put: the new one is put where it was, the
+ * focus given it if it had it.
  */
-function adopt(container: HTMLElement, kept: Kept | undefined): Set<HTMLMediaElement> {
-  const adopted = new Set<HTMLMediaElement>();
+function adopt(container: HTMLElement, kept: Kept | undefined) {
   if (kept === undefined) {
-    return adopted;
+    return;
   }
   for (const [key, element] of keyed(container)) {
     const old = kept.media.get(key);
@@ -138,7 +142,7 @@ function adopt(container: HTMLElement, kept: Kept | undefined): Set<HTMLMediaEle
       continue;
     }
     if (old.error !== null) {
-      void goOn(element, placeOf(old));
+      putAt(element, placeOf(old));
       if (old === kept.focused) {
         focus(element);
       }
@@ -155,12 +159,10 @@ function adopt(container: HTMLElement, kept: Kept | undefined): Set<HTMLMediaEle
       }
     }
     element.replaceWith(old);
-    adopted.add(old);
     if (old === kept.focused) {
       focus(old);
     }
   }
-  return adopted;
 }
 
 /** focus gives element the focus, without a scroll; a folded callout it is in opens first, as it takes none closed. */
@@ -173,11 +175,16 @@ function focus(element: HTMLMediaElement) {
 function started(container: HTMLElement): Map<string, HTMLMediaElement> {
   const out = new Map<string, HTMLMediaElement>();
   for (const [key, element] of keyed(container)) {
-    if (out.size < maxKept && (!element.paused || element.currentTime > 0) && !element.ended) {
+    if (out.size < maxKept && begun(element)) {
       out.set(key, element);
     }
   }
   return out;
+}
+
+/** begun tells whether element was started, playing or paused partway, and has not ended. */
+function begun(element: HTMLMediaElement): boolean {
+  return (!element.paused || element.currentTime > 0) && !element.ended;
 }
 
 /** keyed is each audio and video of container by its key: its attachment's id and its place among those of it. */
@@ -201,16 +208,15 @@ function assetOf(address: string | null): string | undefined {
 }
 
 /**
- * signAnew gives element the address of its attachment signed anew, and has it go on where it was as it failed;
- * nothing when the address is not given (the attachment gone) or the element is no longer in the page.
+ * signAnew gives element the address of its attachment signed anew, and has it go on where it is (as it failed, or as
+ * the reader had it since); nothing when the address is not given (the attachment gone) or the element is no longer in
+ * the page.
  */
 async function signAnew(element: HTMLMediaElement, { assetAddress }: ReadingContext): Promise<void> {
   const id = assetOf(element.getAttribute("src"));
   if (id === undefined) {
     return;
   }
-  // As it failed: the new address's load has it paused, at the start, at the default rate.
-  const place = placeOf(element);
   let address: string;
   try {
     address = await assetAddress(id);
@@ -220,28 +226,39 @@ async function signAnew(element: HTMLMediaElement, { assetAddress }: ReadingCont
   if (!element.isConnected) {
     return;
   }
+  // Before the new address's load has it paused, at the start, at the default rate.
+  const place = placeOf(element);
   element.setAttribute("src", address);
-  await goOn(element, place);
+  if (!place.playing) {
+    element.preload = "metadata";
+  }
+  putAt(element, place);
+  if (place.playing) {
+    try {
+      await element.play();
+    } catch {
+      // Refused: it stays where it is, which the reader plays again.
+    }
+  }
 }
 
-/** Place is where an audio or a video was: its position, its rate, and whether it played. */
-type Place = { at: number; rate: number; playing: boolean };
+/** Place is where an audio or a video was: its position, its rate, its volume, whether muted, and whether it played. */
+type Place = { at: number; rate: number; volume: number; muted: boolean; playing: boolean };
 
 /** placeOf is where element is. */
 function placeOf(element: HTMLMediaElement): Place {
-  return { at: element.currentTime, rate: element.playbackRate, playing: !element.paused };
+  const { currentTime: at, playbackRate: rate, volume, muted, paused } = element;
+  return { at, rate, volume, muted, playing: !paused };
 }
 
 /**
- * goOn has element, loading its address, go on from place: at its position, at its rate, playing if it was, its frame
- * shown if not. An engine takes the position before the metadata, or else as they come, and one that throws takes it
- * then too; a play refused leaves it paused there, which the reader plays again.
+ * putAt has element, loading its address, at place: its position, its rate, its volume. An engine takes the position
+ * before the metadata, or else as they come, and one that throws takes it then too.
  */
-async function goOn(element: HTMLMediaElement, { at, rate, playing }: Place): Promise<void> {
-  if (!playing) {
-    element.preload = "metadata";
-  }
+function putAt(element: HTMLMediaElement, { at, rate, volume, muted }: Place) {
   element.playbackRate = rate;
+  element.volume = volume;
+  element.muted = muted;
   element.addEventListener(
     "loadedmetadata",
     () => {
@@ -255,12 +272,5 @@ async function goOn(element: HTMLMediaElement, { at, rate, playing }: Place): Pr
     element.currentTime = at;
   } catch {
     // Taken as the metadata come.
-  }
-  if (playing) {
-    try {
-      await element.play();
-    } catch {
-      // Refused: it stays where it is.
-    }
   }
 }

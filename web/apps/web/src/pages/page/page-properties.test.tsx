@@ -603,6 +603,30 @@ test("properties are read again a minute before their attachments' addresses exp
   expect(reads()).toBe(3);
 });
 
+test("a hidden tab's properties are not read again as they are due, but as the tab is shown", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  onTestFinished(() => void vi.useRealTimers());
+  const server = pageServer();
+  server.properties.set(install.id, expiring("draft", inMinutes(10)));
+  renderApp(pagePath(install.id), server.app);
+  await within(await shownPanel()).findByText("draft");
+  const reads = () => server.sent.filter((line) => line === `GET properties ${install.id}`).length;
+  let hidden = true;
+  const spies = [
+    vi.spyOn(document, "hidden", "get").mockImplementation(() => hidden),
+    vi.spyOn(document, "visibilityState", "get").mockImplementation(() => (hidden ? "hidden" : "visible")),
+  ];
+  onTestFinished(() => spies.forEach((spy) => spy.mockRestore()));
+  await act(() => vi.advanceTimersByTimeAsync(30 * 60_000));
+  expect(reads()).toBe(1);
+
+  server.properties.set(install.id, expiring("done", inMinutes(70)));
+  hidden = false;
+  act(() => document.dispatchEvent(new Event("visibilitychange")));
+  await within(section("Properties")).findByText("done");
+  expect(reads()).toBe(2);
+});
+
 test("properties by a clock far ahead of the server's show, and show as the page is come back to", async () => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
   onTestFinished(() => void vi.useRealTimers());

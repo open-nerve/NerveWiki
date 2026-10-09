@@ -375,7 +375,7 @@ test("one kept that had the focus has it back, a folded callout it is in opening
   undo?.();
 });
 
-test("one that failed is not kept: the new one goes on where it was, at its rate, playing if it was, the focus given it", async () => {
+test("one that failed is not kept: the new one is put where it was, at its rate and volume, the focus given it; not played", async () => {
   const played = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
   onTestFinished(() => played.mockRestore());
   const html = `<p>${focusable("a1")}</p><details><summary>More</summary><p>${focusable("a2")}</p></details>`;
@@ -383,6 +383,7 @@ test("one that failed is not kept: the new one goes on where it was, at its rate
   let undo = enhancement(container, context());
   const [sounding, still] = container.querySelectorAll("audio");
   play(sounding, 20).playbackRate = 1.5;
+  Object.assign(sounding ?? {}, { volume: 0.4, muted: true });
   play(still, 7, true);
   container.querySelector("details")?.setAttribute("open", "");
   still?.focus();
@@ -393,12 +394,65 @@ test("one that failed is not kept: the new one goes on where it was, at its rate
   undo = enhancement(container, context());
   const [first, second] = container.querySelectorAll("audio");
   expect([first === sounding, second === still]).toEqual([false, false]);
-  expect([first?.currentTime, first?.playbackRate, first?.preload]).toEqual([20, 1.5, "none"]);
-  expect([second?.currentTime, second?.preload]).toEqual([7, "metadata"]);
+  expect([first?.currentTime, first?.playbackRate, first?.volume, first?.muted]).toEqual([20, 1.5, 0.4, true]);
+  expect([second?.currentTime, second?.volume, second?.muted]).toEqual([7, 1, false]);
+  // Nothing loads it but the reader: it failed signed anew too, or could not be.
+  expect([first?.preload, second?.preload]).toEqual(["none", "none"]);
   expect(document.activeElement).toBe(second);
   expect(container.querySelector("details")?.open).toBe(true);
   await settle();
-  expect(played.mock.contexts).toEqual([first]);
+  expect(played).not.toHaveBeenCalled();
+  undo?.();
+});
+
+test("one started in the view that fails is signed anew in place, once; one not started reads the view again", async () => {
+  const html = `<p>${audio("a1")} ${audio("a2")}</p>`;
+  const { container, context, signed, reloads, enhancement } = setUp(html);
+  const undo = enhancement(container, context());
+  const [sounding, still] = container.querySelectorAll("audio");
+  play(sounding, 3000);
+  Object.assign(sounding ?? {}, { volume: 0.4 });
+  fail(sounding);
+  await settle();
+  expect(signed).toEqual(["a1"]);
+  expect(container.querySelector("audio")).toBe(sounding);
+  expect(sounding?.getAttribute("src")).toBe("/api/v0/assets/a1/content?anew=1");
+  expect([sounding?.currentTime, sounding?.volume, sounding?.paused]).toEqual([3000, 0.4, false]);
+  expect(reloads).toEqual([]);
+  // Failed again, it is the view's.
+  fail(sounding);
+  fail(still);
+  await settle();
+  expect(signed).toEqual(["a1"]);
+  expect(reloads).toEqual(["p"]);
+  undo?.();
+});
+
+test("one signed anew that the reader paused meanwhile stays paused; a play refused leaves it where it is", async () => {
+  const html = `<p>${audio("a1")} ${audio("a2")}</p>`;
+  const { container, context, enhancement } = setUp(html, { expires: later });
+  // The addresses signed anew, answered as the test says.
+  const answers: ((signed: string) => void)[] = [];
+  const undo = enhancement(container, {
+    ...context(),
+    assetAddress: () => new Promise((resolve) => answers.push(resolve)),
+  });
+  const shown = container.querySelectorAll("audio");
+  const paused = play(shown[0], 30);
+  const refused = play(shown[1], 30);
+  fail(paused);
+  Object.assign(paused, { paused: true });
+  answers.shift()?.("/api/v0/assets/a1/content?anew=1");
+  await settle();
+  expect([paused.currentTime, paused.paused, paused.preload]).toEqual([30, true, "metadata"]);
+  expect(paused.play).not.toHaveBeenCalled();
+
+  refused.play = vi.fn(() => Promise.reject(new DOMException("no gesture", "NotAllowedError")));
+  fail(refused);
+  answers.shift()?.("/api/v0/assets/a2/content?anew=1");
+  await settle();
+  expect(refused.play).toHaveBeenCalledTimes(1);
+  expect([refused.currentTime, refused.paused]).toEqual([30, true]);
   undo?.();
 });
 
@@ -414,7 +468,7 @@ test("one that failed, its new one's position refused before the metadata, has i
   undo?.();
   container.innerHTML = html;
   undo = enhancement(container, context());
-  // The enhancement goes on: the link's hint and size are there.
+  // The enhancement goes on past it: the link's hint and size are there.
   expect(container.textContent).toBe(" doc.pdf (opens in a new tab) (8 B)");
   refused.mockRestore();
   const fresh = container.querySelector("audio");
