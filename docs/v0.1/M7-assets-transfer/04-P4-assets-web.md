@@ -3,7 +3,7 @@
 | 项 | 内容 |
 |---|---|
 | Phase | M7/P4 附件（前端） |
-| 状态 | 进行中 |
+| 状态 | 进行中（A 已合并 `e44b417`） |
 | 基线 | `31f894a`（P3 合并、文档补完之后的 main）；本文提交之后开分支 `m7-p4a`，A 合并之后开 `m7-p4b`，B 合并之后开 `m7-p4c` |
 | 上级文档 | [M7 总设计](00-M7-design.md) 4.7、4.8、第 5、7–9 节；[P3 文档](03-P3-assets-links.md)第 9.2 节（交给 P4 的三项）；移交：[M4 附件的扩展](handoffs/M4-extensions.md)第 2、3 项（编辑器的一跳）；总体设计 13.2 第 1、6、23、25、26 条 |
 
@@ -37,65 +37,83 @@ P4 把附件交到读者与写者手里：面板与上传、阅读视图里的�
 
 ## 3. A：面板与上传
 
+实现、审查与修复核对之后照实际改写（第 9.1 节）。
+
 ### 3.1 文件
 
 | 文件 | 内容 |
 |---|---|
-| `web/apps/web/src/services/asset.service.ts`（新）、`services/upload-fetch.ts`（新） | `AssetService`：列出、读一个、上传；上传经 `XMLHttpRequest` 实现的 `fetch`（3.2） |
-| `web/apps/web/src/stores/asset.store.ts`（新）、`stores/root.store.ts`、`stores/context.tsx` | `AssetStore`：一个笔记本每代一个；在途的上传、名称、上传之后的重读、换代时中止（3.3） |
-| `web/apps/web/src/lib/upload-name.ts`（新） | 上传的名称：照导入的规则修正，在兄弟与在途的上传之间取空着的（3.4） |
-| `web/apps/web/src/pages/page/attachments-section.tsx`（新）及其对话框（改名、移动） | 附件一节（3.5） |
-| `web/apps/web/src/pages/page/page-layout.tsx`、`pages/notebook/notebook-home.tsx` | 页面的中栏、笔记本首页放附件一节 |
+| `web/apps/web/src/services/asset.service.ts`（新）、`services/upload-fetch.ts`（新） | `AssetService`：列出（一页 100）、读一个、上传；上传经 `XMLHttpRequest` 实现的 `fetch`（3.2） |
+| `web/apps/web/src/stores/asset.store.ts`（新）、`stores/root.store.ts`、`stores/context.tsx`（`useAssets`） | `AssetStore`：一个笔记本每代一个；列表的读、在途的上传、名称、上传之后的重读、换代时中止（3.3） |
+| `web/apps/web/src/stores/page-tree.store.ts` | `wrote()`：上传答复之后的树读；被答复重叠的读交回最近发出的那次（3.3） |
+| `web/apps/web/src/lib/upload-name.ts`（新）、`lib/title-key.ts`（新） | 上传的名称：照导入的规则修正，在兄弟与在途的上传之间取空着的；标题键，树与上传共用（3.4） |
+| `web/apps/web/src/lib/unload-warning.ts`（新）、`lib/asset-kind.ts`（新） | 关闭页面的提醒（每个笔记本一项）；附件的类型、是否内联、嵌入的写法 |
+| `web/apps/web/src/pages/page/attachments-section.tsx`（新）、`attachment-row.tsx`（新）、`upload-rows.tsx`（新）、`asset-dialogs.tsx`（新） | 附件一节、它的行与菜单、在途的上传、改名与移动的对话框（3.5）；阅读视图的拖放区 `AttachmentDrop`（3.6） |
+| `web/apps/web/src/pages/notebook/parent-options.tsx`（新） | 上级的选项，移动页面与移动附件共用 |
+| `web/apps/web/src/pages/page/page-layout.tsx`、`pages/notebook/notebook-home.tsx` | 页面的中栏、笔记本首页放附件一节；阅读视图包在 `AttachmentDrop` 里；页面已不在树里、只因未保存的编辑仍显示时（`gone`）两者都不放 |
 | `web/apps/web/src/pages/notebook/page-tree-item.tsx` | 删除页面的确认数上子树里的附件（3.7） |
-| `web/apps/web/src/app/file-drop.tsx`（新）、`pages/page/reading-view.tsx` | 文档的拖放保护；拖到阅读视图上上传到这一页（3.6） |
-| `web/apps/web/src/events/handlers.ts` | `pages` 带 `tree` 时一并重读这本笔记本挂着的附件列表 |
+| `web/apps/web/src/app/file-drop.tsx`（新）、`app/layout.tsx` | 文档的拖放保护（外壳里挂一次）；拖放区的 `useFileDrop`（3.6） |
+| `web/apps/web/src/components/form-field.tsx`、`app/rename-form.tsx` | 输入框之后的后缀（扩展名），后缀的说明与错误并存 |
+| `web/apps/web/src/events/handlers.ts`、`app/event-stream.tsx` | `pages` 带 `tree` 时，树读完、显示之后再重读这本笔记本挂着的附件列表；连上时附件与阅读视图、右栏同在最后一层 |
 | `web/apps/web/src/i18n/messages/en.ts`、`zh-CN.ts` | 文案 |
-| `web/apps/web/src/test/page-server.ts` | 假服务端加附件的操作（照真实服务端的规则：名称、`.md`、大小、角色、`title_taken`） |
-| `e2e/stories/asset/as1-upload.spec.ts`、`e2e/fixtures/` | AS1 的页面版本 |
+| `web/apps/web/src/test/transfer.ts`（新）、`test/attachments.ts`（新）、`test/page-server.ts`、`test/fakes.ts` | 假的传输（逐步的进度、答复、错误、中止）；附件一节的测试工具；假服务端的附件操作（照真实服务端的规则：每页的 `limit`、按标题键与 id 排序、`link`、名称、`.md`、大小、角色、父节点、`title_taken`，中止的上传不建） |
+| `e2e/stories/asset/as1-upload.spec.ts`、`e2e/stories/collab/c4-guard.spec.ts` | AS1 的页面版本；C4 删除笔记本时附件列表的 404 |
 
 ### 3.2 上传的服务
 
-- `AssetService(api)`：`list(notebookId, parent, cursor)`、`get(id)`、`upload(notebookId, { parent, name, file }, { progress, signal })`。只有 `services/` 导入客户端（13.2 第 6 条）。
-- **经会话的客户端**：上传是 `api.POST("/api/v0/notebooks/{notebook_id}/assets", { bodySerializer, fetch })`，openapi-fetch 按请求换 `fetch`：`uploadFetch(form, progress, signal)` 以 `XMLHttpRequest` 实现（`fetch` 没有上传进度），发闭包里的 `FormData`，用中间件交来的 `Request` 的头（令牌），**不用** 它的 `Content-Type`（`Request` 序列化同一个表单时用的是另一个边界，由 XHR 自己写）。中间件 401 之后续期重发（`options.fetch(copy)`）时照样带新令牌重传整个表单；换代之后中间件在发送之前就以 `SessionChangedError` 拒绝（13.2 第 1 条），不另做核对。
-- 答复照 `fetch` 的样子交回（`new Response(body, { status, headers })`），`unwrap` 照常；`signal` 中止时 `xhr.abort()`，以 `AbortError` 拒绝；网络错误以 `TypeError` 拒绝，同 `fetch`。进度按 XHR 上传的 `progress` 事件（已发与总字节）。
+- `AssetService(api, transfer)`：`list(notebookId, parent, cursor)`（`limit` 100）、`get(id)`、`upload(notebookId, { parent, name, file }, { progress, signal })`。只有 `services/` 导入客户端（13.2 第 6 条）。
+- **经会话的客户端**：上传是 `api.POST("/api/v0/notebooks/{notebook_id}/assets", { bodySerializer: () => undefined, fetch })`，openapi-fetch 按请求换 `fetch`：`uploadFetch(form, options, transfer)` 以 `XMLHttpRequest` 实现（`fetch` 没有上传进度）。交给中间件的请求不带正文，传输发闭包里的 `FormData`，`Content-Type` 由 XHR 自己写（带它的边界）；请求的其余头（令牌）照抄。中间件 401 之后续期重发（`options.fetch(copy)`）时照样带新令牌重传整个表单；换代之后中间件在发送之前就以 `SessionChangedError` 拒绝（13.2 第 1 条）。
+- 传输由 `AppStores` 的第四个参数注入（`() => Transfer`，默认是 `XMLHttpRequest`），测试交 `test/transfer.ts` 的假传输。
+- 答复照 `fetch` 的样子交回（`new Response(body, { status, headers })`，204、205、304 没有正文），`unwrap` 照常；`Response` 不收的答复（状态在 200–599 之外）以 `TypeError` 拒绝，不会一直挂着。`signal` 中止时 `xhr.abort()`，以 `AbortError` 拒绝，答复之后的中止不再起作用；网络错误、超时以 `TypeError` 拒绝，同 `fetch`。进度按 XHR 上传的 `progress` 事件（已发与总字节）。
 - 字段依次 `parent_id`（根下不加）、`name`、`file`（契约的次序）。
-- vitest 注入假的 XHR（`test/` 里的可控传输：逐步的进度、答复、错误、中止），测中间件的续期重发、换代、中止。
+- **已知的限制**：服务端在读完正文之前就答复（例如 413、409）并关闭连接时，浏览器可能报网络错误，上传以 `TypeError` 失败，显示"上传失败"，不换名重试（`TypeError` 时重试可能重复上传）。
 
 ### 3.3 附件的 store
 
-- `AssetStore`：一个笔记本每代一个（13.2 第 15 条，`RootStore` 按笔记本 id 缓存，换代时随之丢弃并中止在途的上传）。
-- **列出**：SWR 键 `["assets", 笔记本 id, 父节点 id 或 "root"]` 读第一页，"加载更多"接着读下一页（游标），页数由组件的状态记，重读时回到第一页；读不到经 `NotLoaded`（13.2 第 7 条）。`pages` 事件带 `tree` 时，与树一起（经 `refresher`、同样的间隔）重读这本笔记本挂着的附件列表；连上时的整体刷新同样（`refreshedOnConnect`）。
-- **上传**：`upload(parent, files)` 逐个文件开始（并行，不经 `PageTreeStore` 的 `oneAtATime` 队列：50 MB 的上传会挡住每个树的写，13.2 第 1 条的例外）。每个上传是可观察的一项：名称、父节点、已发与总字节、状态（发送中、失败及原因）、`cancel()`。答复之后（拒绝也算）重读树与这个父节点的列表；在途的上传占着名字（3.4）。`409 page.title_taken`（别的标签页、或客户端与服务端比法不同的名字）换下一个空着的名字再传，至多三个名字（同新建页面）。
-- **关闭页面的提醒**：有在途的上传时挂上 `beforeunload`（13.2 第 21 条），没有了就摘掉。
-- **改名、移动、删除**：经 `PageTreeStore` 的 `rename`、`move`、`remove`（同一个 `oneAtATime` 队列：它们改兄弟的名字与位置，与页面的写同一个次序），答复之后照样重读树；附件一节另重读它的列表。删除答 `page.not_found` 当作已完成（13.2 第 1 条）。
+- `AssetStore`：一个笔记本每代一个（13.2 第 15 条，`RootStore.assetsOf` 按笔记本 id 缓存）。这一代结束（标签页的会话离开这个登录）时中止在途的上传；`RootStore` 在第一次 `assetsOf` 时才订阅令牌，订阅时会话已换就立即中止。
+- **列出**：SWR 键 `["assets", 笔记本 id, 父节点 id 或 "root"]`，fetcher 是 `load(parent)`：读它已有的页数（第一次一页），一页 100 项；"加载更多"是 `more(parent)`，读下一页、答出它加进来的项。同一父节点的读一个接一个（`oneAtATimeById`），排着的 `load` 被再次要求时就是那一次；接页时按 id 去重，以后读到的为准。读不到经 `NotLoaded`（13.2 第 7 条）。`pages` 事件带 `tree` 时，树经 `refresher` 读完、React 显示之后（`shown()`，已不在的页随之卸载、不读它的列表），再重读这本笔记本挂着的附件列表；连上时的整体刷新里，附件与阅读视图、右栏同在最后一层。
+- **上传**：`upload(parent, files)` 逐个文件开始（并行，不经 `PageTreeStore` 的 `oneAtATime` 队列：50 MB 的上传会挡住树的每个写，13.2 第 1 条的例外）。每个上传是可观察的一项：名称、父节点、已发与总字节、是否已答复、失败的原因、上传成的附件、`cancel()`。
+  - 在途的上传占着名字，只在同一父节点下；失败、被拒的不占。
+  - 答复之后（拒绝也算）重读树（`PageTreeStore.wrote()`）与这个父节点的列表。`wrote()` 同时只有一次读在途，其间答复的合成下一次；每个上传在它答复之后开始的第一次树读完成时结算。树的读出去之后有答复的会被丢弃，被丢弃的读交回最近发出的那次读（那次也失败时再读）：写的读不会因为上传的答复交回旧树。
+  - 成功的上传留在列表里直到列表有了它的附件：附件排在已读的页之后的，接着读后面的页，直到读到它（之后重读也读这么多页）；整个列表读完都没有它的，是其间被删除或移走了，不显示。
+  - `409 page.title_taken`（别的标签页、或客户端与服务端比法不同的名字）换下一个空着的名字再传，至多三个名字（同新建页面）。
+  - 取消：中止请求、立即移出；请求可能已到达，照样重读。失败之后的重读期间取消的，同样移出、不显示失败。
+- **关闭页面的提醒**：有在途的上传时挂上 `beforeunload`（13.2 第 21 条），没有了就摘掉（`lib/unload-warning.ts`，各笔记本各算）。
+- **改名、移动、删除**：经 `PageTreeStore` 的 `rename`、`move`、`remove`（同一个 `oneAtATime` 队列：它们改兄弟的名字与位置，与页面的写同一个次序），答复之后照样重读树，再重读改到的列表（拒绝也重读）。删除答 `page.not_found` 当作已完成（13.2 第 1 条）。
 
 ### 3.4 名称
 
 - **发送之前先查**（总设计 4.8）：角色（只给能写页面的人上传按钮与拖放区）、大小（`InstanceInfo.asset_max_bytes`，超过的不发，说明上限）、不是 `.md`（说明用导入）。
-- **修正**（照导入的规则，总设计 4.11）：NFC；`/ \ : * ? " < > | # ^ [ ]` 与控制字符换成 `_`；去掉首尾的空白与 `.`；Windows 保留的名字（`CON`、`com1.txt` 等）在主名后加 `_`；超过 255 字节的在字符边界截短、保留扩展名；空的叫"未命名"（随界面语言：这是用户给的名字的代替）。
-- **空着的名字**：在父节点的全部兄弟（页面与附件，`siblingsOf`）与在途的上传之间按标题键（NFC、小写）比较，撞上的在扩展名之前加序号：`a.png`、`a 2.png`、`a 3.png`（与导入相同）。
-- 修正与取名是纯函数（`lib/upload-name.ts`），表格测试；服务端的拒绝（422 的字段、`page.title_taken` 三次之后）照常显示。
+- **修正**（照导入的规则，总设计 4.11）：NFC；`/ \ : * ? " < > | # ^ [ ]`、控制字符、行与段的分隔符、双向控制符换成 `_`；去掉首尾的空白与 `.`；Windows 保留的名字（`CON`、`com1.txt` 等）在主名后加 `_`；超过 255 字节的在字符边界截短、保留扩展名（扩展名本身太长时也截，留下主名的第一个字），截短只去掉末尾的空白与 `.`；空的叫"未命名"（随界面语言）。
+- **空着的名字**：在父节点的全部兄弟（页面与附件，`siblingsOf`）与同一父节点下在途的上传之间按标题键比较，撞上的在扩展名之前加序号：`a.png`、`a 2.png`、`a 3.png`（与导入相同）；重试时从修正后的名字算起。
+- **标题键**（`lib/title-key.ts` 的 `titleKey`，树的同名判断与上传共用）：NFC、先大写再小写、词尾的 ς 换成 σ、ß 换成 ss、NFC，接近服务端的完整大小写折叠。仍有的差别都让客户端更粗（无点的 ı 当作 i、服务端的表还没有的几个字母），只会多加一个序号；更细的地方服务端答 409，由上一节的重试兜住。
+- 修正与取名是纯函数，表格测试；服务端的拒绝（422 的字段、`page.title_taken` 三次之后）照常显示。
 
 ### 3.5 附件一节
 
 - **位置**：页面的中栏、子页面列表之下（总体设计 9.2）；笔记本首页列根下的附件。没有附件时，读者看不到这一节，写者看到它的标题、上传按钮与"拖到这里上传"的说明。
-- **列表**：名称、大小（`formatBytes`，界面语言）、类型的图标（图片、音频、视频、PDF、其余）；一页 100 项，"加载更多"。
+- **列表**：名称、大小（`formatBytes`，界面语言）、类型的图标（图片、音频、视频、PDF、其余）；一页 100 项，"加载更多"。读完最后一页时焦点落在它加进来的第一项，没有新项时落在最后一项，列表空了落在标题；读者其间动过、或焦点已不在"加载更多"上就不移（13.2 第 26 条）。"加载更多"带着焦点消失时（它自己或上传读到了最后一页），离开文档之前把焦点交给这一节的标题。
 - **每一项的菜单**（写者全部、读者前三项）：打开（内联类型在新标签页，带看不见的"在新标签页打开"；其余是下载地址）、下载（`download_url`）、复制嵌入（`![[link]]`，`link` 为 null 时不给）、改名、移动到…、删除。名称本身是"打开"的链接。
-- **签名地址的到期**：列表里每一项的地址一到两小时有效；一节在最早的 `expires_at` 之前重读它挂着的页（不在点击之后再去签：新标签页要在用户的点击里打开，等一次请求之后浏览器会当作弹窗拦下）。
-- **改名**：对话框只改主名，扩展名照旧显示在输入框之后、不可改（附件改名不能去掉扩展名，总设计 4.2）；没有扩展名的附件改整个名字。拒绝（422、409、引用它的页正在编辑时的 `linking.pages_locked`）留在对话框里，同改名页面。
-- **移动到…**：上级只列页面与根（可以放附件的地方），放在末尾；拒绝同移动页面。复用 `MovePageDialog` 的上级选择，不给位置。
-- **删除**：确认对话框；删除之后焦点到这一节的标题（`focusAfter`），读者其间动过就不移（13.2 第 26 条）。
-- **上传**：上传按钮（`<input type="file" multiple>`）与拖到这一节上传；在途的上传列在这一节的顶上，带进度条（`progress`，有可读的百分比）与取消；失败的显示原因、可以关掉。
+- **复制嵌入**：复制成功显示并播报"已复制嵌入"。没有剪贴板（不经 HTTPS 的部署）或复制被拒时，在这一节里显示一个只读的字段，标签带附件名、说明怎么手动复制，取得焦点并选中：菜单关闭时由这一节把焦点交给它（`onCloseAutoFocus`），关闭之后才失败的，字段出现时自己取焦点。
+- **签名地址的到期**：列表里每一项的地址一到两小时有效；一节在最早的 `expires_at` 之前一分钟重读它挂着的页（不在点击之后再去签：新标签页要在用户的点击里打开，等一次请求之后浏览器会当作弹窗拦下）。每次读到列表都重新安排：至少隔 30 秒（时钟与服务端差得远时不会一直重读），至多读后 59 分钟（地址至少签一小时）。
+- **改名**：对话框只改主名，扩展名照旧显示在输入框之后、不可改（附件改名不能去掉扩展名，总设计 4.2）；说明"扩展名保持不变"与错误同时给出（两个 `aria-describedby`）。没有扩展名的附件改整个名字。拒绝（422、409、引用它的页正在编辑时的 `linking.pages_locked`）留在对话框里，同改名页面。
+- **移动到…**：上级的选项与移动页面共用（`parent-options.tsx`：根与全部页面），放在末尾，不给位置，没有说明文字；选它现在的上级时关闭、不发。拒绝同移动页面。
+- **删除**：确认对话框；对话框是模态的，读者不能在其间做别的，关闭之后焦点回到这一行的菜单按钮，行已不在时到这一节的标题。改名、移动的对话框同样，对话框由这一节持有，行被重读拿走时不随之消失。
+- **上传**：上传按钮（`<input type="file" multiple>`）与拖到这一节上传；在途的上传列在这一节的顶上（列表名"上传队列"），带进度条（`progress`，有可读的百分比）。行上只有一个按钮：发送中是"取消"，全部字节发出或已答复之后是不可用的"正在完成…"（名称带文件名），失败时是"移除"，焦点留在这个按钮上；有焦点的行离开时焦点到上传按钮。失败的显示原因（`role="alert"`）。
+- **播报**：一个看不见的 `aria-live="polite"` 区域说"正在上传 N 个文件"（这一节或阅读视图上开始的，被拒的不算）、"已上传：…"与"已复制嵌入"。同一轮（任务）里开始或离开的合成一句（两样都有时两句一起说），这一轮过后再说，名称按界面语言连接（`Intl.ListFormat`）：每个上传离开是一次单独的 action，React 只显示一轮里最后设的那句。同一句再说时末尾交替加一个不换行空格，区域照样变化，读屏会再读。
 - **行可以拖进编辑器**：`dataTransfer` 的 `text/plain` 是 `![[link]]`（`link` 为 null 的不可拖），CodeMirror 自己的拖放就插在落点。
 
 ### 3.6 拖放的保护
 
-- 文件拖到拖放区之外时浏览器会打开它、离开应用：文档上对带文件的 `dragover`、`drop` 一律 `preventDefault`，`dropEffect` 为 `none`（`app/file-drop.tsx`，在应用的外壳里挂一次）。拖放区（附件一节、阅读视图、C 部分的编辑器）自己接住，`dropEffect` 为 `copy`。
-- 拖到阅读视图上（写者，不在编辑时）上传到这一页，同附件一节的上传；文件夹不接（`webkitGetAsEntry` 是目录的），说明用导入。
+- 文件拖到拖放区之外时浏览器会打开它、离开应用：文档上对带文件的 `dragover`、`drop` 一律 `preventDefault`，`dropEffect` 为 `none`（`app/file-drop.tsx` 的 `FileDropGuard`，在应用的外壳里挂一次），页面里或别的标签页开始的也一样。拖放区（附件一节、阅读视图）自己接住外来的文件，`dropEffect` 为 `copy`。
+- 保护不管编辑器（`contenteditable` 里的，目标是文字节点时看它的父元素）：CodeMirror 自己处理拖进来的东西，C 部分再接文件。
+- 页面里开始的拖动（Chromium 拖阅读视图里的图片时带着文件）不当作外来的文件：文档的 `dragstart` 记下一次页内拖动，`dragend`、`drop` 结束它；拖动源在拖动中被移出文档时 `dragend` 到不了文档，取消时也没有 `drop`，指针下一次按下、或不按键的移动就结束它（拖动中没有这样的指针事件；Firefox 在拖动开始时还会派发按着键的 `pointermove`）。不往拖动里写自己的数据：WebKit 里页面写过的拖动不再带浏览器默认的数据，写进去的类型还会带到别的标签页。
+- 拖放区不接经 portal 冒泡上来的事件（对话框、菜单）：它们交给文档的保护。
+- 拖到阅读视图上（写者，不在编辑时，页面还在树里）上传到这一页，同附件一节的上传：`page-layout.tsx` 把阅读视图包在 `AttachmentDrop` 里；文件夹不接（`webkitGetAsEntry` 是目录的），说明用导入。
 
 ### 3.7 删除页面的确认
 
-- 确认对话框数上子树里的附件（`PageTreeStore.nodes` 里父节点在子树里的附件）："它下面的 3 个页面与 5 个附件会一起删除"。
+- 确认对话框数上子树里的附件（`PageTreeStore.nodes` 里父节点在子树里的附件），只在对话框打开时数（`attachmentsUnder`）："它下面的 3 个页面与 5 个附件会一起删除"；两句之间按语言连接（`page.sentences`：英文一个空格，中文没有）。
 
 ## 4. B：阅读视图里的附件
 
@@ -208,4 +226,23 @@ P4 把附件交到读者与写者手里：面板与上传、阅读视图里的�
 
 ## 9. 结果
 
-（各部分合并之后填写。）
+### 9.1 A：面板与上传（2026-10-09，合并 `e44b417`）
+
+- 提交：
+  - 实施：附件一节、上传与它们的 store `1b7c62d`、e2e AS1 的页面版本 `f97f78b`；负对照的补测 `494534e`。
+  - 审查的修复 `39133aa`、`3d2168c`；修复核对的修复 `11c701e`、`e3e0556`、`5b4d31f`、`6c14045`、`5235800`。合并 `e44b417`。
+- 审查：三位审查者（Opus），没有高；中低到低的行为缺陷十余条，测试缺口二十余条，都已处理。修复核对四轮：第一轮行为问题 7 条（低到中），第二轮 3 条（低），第三轮 1 条（低）与一处 Firefox 的风险，第四轮没有。逐条见[审查记录](reviews/P4A-assets-web-review.md)。
+- 审查之后改了的设计（第 3 节已改写）：
+  - 上传的请求不带正文，表单由注入的传输发出；`Response` 不收的答复以 `TypeError` 拒绝；早答被重置作为已知限制，不重试。
+  - 树：上传答复之后的读经 `wrote()` 合并，每个上传在它之后开始的第一次读完成时结算；被重叠而丢弃的读交回最近发出的那次。列表：重读读已有的页数，同一父节点一次一个，排着的被再次要求时就是那一次，接页按 id 去重；成功的上传读到它所在的页才离开；附件在树读完、显示之后再读，连上时与阅读视图、右栏同一层。
+  - 名称：`titleKey`（先大写再小写、ς、ß），树与上传共用；只有同一父节点下在途的上传占名字。
+  - 附件一节：行上一个按钮（取消、正在完成、移除）与焦点的交接；播报的区域；没有剪贴板时的复制字段；到期重读的下限与上限；"加载更多"的落点；移动对话框不另加说明；页面已不在树里时没有这一节与拖放。
+  - 拖放：保护不管编辑器，挡一切带文件的拖动；拖放区不接 portal 里的、页内开始的拖动（标志由指针的下一次按下或没有按键的移动结束）；拖放在 `page-layout.tsx` 里包住阅读视图。
+- 反向对照：本机 54、81、92、106、9、1 个（实施之后、审查的修复之后、四轮修复核对之后），存活的都由补测抓到；细节见审查记录。
+- CI 与发布：分支的 CI 在 `f97f78b`（C4 多一次 404）、`3d2168c`（AS1 的 `dropEffect`、C4 的计数）上失败，各由下一次修复修好；`e3e0556`、`5b4d31f`、`5235800` 上 server、web、image、e2e 全部通过（`image` 一步跑 `make image-smoke`）。本机的 Docker Desktop 起不来，数据库的测试、e2e 与合并之后的 `image-smoke` 都由 CI 跑。
+- 交给 B 与 C 的：
+  1. C：编辑器的扩展接文件时，`dragover` 要对一切带文件的拖动 `preventDefault`（文档的保护不管 `contenteditable` 里的，不接就由 CodeMirror 自己处理，它会把文件当文本读进来）；同时带文字与文件的拖放不交给 CodeMirror。页内开始的拖动（`app/file-drop.tsx` 的标志）同样不是外来的文件，扩展要用同一个判断（届时从 `file-drop.tsx` 导出）。
+  2. C：上传经 `AssetStore.upload`（并行、占名、重试、换代中止、关闭页面的提醒），编辑器只管插入。附件一节播报这个父节点下的全部上传，编辑器开始的也在内：编辑栏若另说进度，由 C 决定怎样不重复。
+  3. B：阅读视图里的附件链接的增强与附件一节的行用同一个 `lib/asset-kind.ts`（`opensInline`、`embedOf`）；不内联的附件在列表里的"下载"提示随 B 一起看（记在 M12 的打磨移交第 16 项）。
+- 待人工确认（真实的浏览器，审查记录"接受与推后的"）：从访达拖文件到附件一节与阅读视图（Chromium、Safari、Firefox）；页内拖一张图片按 Esc 取消，再从访达拖文件进来；Firefox 里用键盘打开"打开"；不经 HTTPS 的部署里用读屏复制嵌入。
+- 负责人可以改判的取舍：上传落在已读的页之后时读到它所在的页（也可以只读到一定页数，说"在后面的页里"）；早答被重置时显示"上传失败"、不重试（也可以按 `TypeError` 重读列表，看是否已到达）；"正在完成…"之后不能取消（服务端已收下全部字节）；页内开始的拖动的文件不上传（Chromium 拖图片时带着文件）；中文的列表名"上传队列"。

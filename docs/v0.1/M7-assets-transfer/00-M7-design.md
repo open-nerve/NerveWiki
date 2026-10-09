@@ -226,18 +226,18 @@
 - **树的重读经合并**：`pages` 事件里的整树重读改经 `refresher`（第一次立即，之后至多每 500 毫秒一次，`events/handlers.ts` 的 `TREE_INTERVAL_MS`）：一次导入几百个单元，每个都让每个打开的标签页读一次整树。原定的 5 秒让别人连续改树时最多晚 5 秒才显示（P2 审查 C1）；500 毫秒仍把一连串的单元合成每秒至多两次读。
 - **附件面板**：照总体设计 9.2 放在中栏、子页面列表之下；笔记本首页（`notebook-home.tsx`）显示根下的附件（Obsidian 默认把附件放在库的根下，导入的库会有很多）。
   - 列出附件（名称、大小、类型的图标），游标分页，一页 100 项，"加载更多"；上传按钮与拖到这一节上传（带进度、可取消）；每一项的菜单：打开（内联类型在新标签页）、下载、复制嵌入（`![[link]]`）、改名（只改主名，保留扩展名）、移动到…（上级只列页面）、删除。行可以拖进编辑器（`text/plain` 是 `![[link]]`，CodeMirror 自己的拖放就插在落点）。
-  - SWR 键 `["assets", 笔记本 id, 父节点 id 或 "root"]`；`pages` 事件的 `tree: true` 与连上时的整体刷新重读它；读不到经 `NotLoaded`（13.2 第 7 条）；一个笔记本每代一个 store（13.2 第 15 条）。
-  - 上传不经 `PageTreeStore` 的 `oneAtATime` 队列（50 MB 的上传会挡住每个树的写），是 13.2 第 1 条的例外；每个答复之后重读树与这一节。删除之后焦点到这一节的标题（`focusAfter`）；读者在上传期间动过就不移焦点（13.2 第 26 条）。
+  - SWR 键 `["assets", 笔记本 id, 父节点 id 或 "root"]`，重读读已有的页数，同一父节点一次一个；`pages` 事件的 `tree: true`（树读完、显示之后，已不在的页不读）与连上时的整体刷新（与阅读视图、右栏同一层）重读它；读不到经 `NotLoaded`（13.2 第 7 条）；一个笔记本每代一个 store（13.2 第 15 条）。
+  - 上传不经 `PageTreeStore` 的 `oneAtATime` 队列（50 MB 的上传会挡住每个树的写），是 13.2 第 1 条的例外；每个答复之后重读树（`wrote()`：一个在途，其间答复的合成下一次）与这一节，成功的上传读到它所在的页才离开。对话框关闭之后焦点回到这一行的菜单按钮，行已不在时到这一节的标题；"加载更多"读完最后一页时焦点到它加进来的第一项，读者其间动过就不移（13.2 第 26 条）。细节在 [P4 文档](04-P4-assets-web.md)第 3 节。
   - 删除页面的确认对话框把子树里的附件一起数上。
-- **上传的服务**（13.2 第 1、6 条）：经会话的客户端调用，不另起一条路：openapi-fetch 支持按请求换 `fetch` 与 `bodySerializer`，上传的 service 交一个由 `XMLHttpRequest` 实现的 `fetch`（`fetch` 没有上传进度），它发闭包里的 `FormData`、用中间件交来的 `Request` 的头；中间件 401 之后续期重发（`options.fetch(copy)`）时照样带新令牌重传，换代的核对不变。换代时 store 中止在途的上传。vitest 注入假的传输。导入的 zip 用同一个。字段按 `parent_id`、`name`、`file` 的次序加进 `FormData`。
-- **发送之前先查**：`InstanceInfo` 加 `asset_max_bytes`、`import_max_bytes`（13.1 第 15 条："服务端可配的量经接口告诉前端"）。网页在发送之前查角色、大小、名称合法、不是 `.md`、在已加载的子节点里取空着的名字（在途的上传也占名字），并照导入的规则替换名称里禁止的字符（`#[]|^:` 等换成 `_`，NFC）；上传途中的传输错误显示通用的"上传失败"。有在途的上传时挂上 `beforeunload`（13.2 第 21 条）。
+- **上传的服务**（13.2 第 1、6 条）：经会话的客户端调用，不另起一条路：openapi-fetch 支持按请求换 `fetch` 与 `bodySerializer`，上传的 service 交一个由 `XMLHttpRequest` 实现的 `fetch`（`fetch` 没有上传进度）：交给中间件的请求不带正文，传输发闭包里的 `FormData`、用中间件交来的 `Request` 的头，传输经 `AppStores` 注入；中间件 401 之后续期重发（`options.fetch(copy)`）时照样带新令牌重传，换代的核对不变。换代时 store 中止在途的上传。vitest 注入假的传输。导入的 zip 用同一个。字段按 `parent_id`、`name`、`file` 的次序加进 `FormData`。
+- **发送之前先查**：`InstanceInfo` 加 `asset_max_bytes`、`import_max_bytes`（13.1 第 15 条："服务端可配的量经接口告诉前端"）。网页在发送之前查角色、大小、名称合法、不是 `.md`、按标题键（`lib/title-key.ts`，近似服务端的大小写折叠）在树的兄弟与同一父节点下在途的上传之间取空着的名字，并照导入的规则替换名称里禁止的字符（`#[]|^:` 等换成 `_`，NFC）；上传途中的传输错误显示通用的"上传失败"。有在途的上传时挂上 `beforeunload`（13.2 第 21 条）。
 - **粘贴、拖入上传**（编辑器扩展，`load` 的扩展，模块在 `editor/loaded/`，13.2 第 23 条）：
   - `EditorContext` 加 `uploadAsset(file, name, parent)`，`EditorControls` 加 `whenComposed`（原来只在 `SourceEditorHandle` 上）。
   - 扩展先于 CodeMirror 自己的拖放接住带文件的拖入（它会把文件当文本读进来）：拖入插在落点（`posAtCoords`），粘贴插在选区；上传完成后在原位置（随之后的输入映射）插入 `![[link]]`，输入法组合中等 `whenComposed`。
   - 剪贴板里同时有文字与图片的（Excel、Word、Numbers 复制的单元格）粘贴文字；只有文件、没有 `text/plain` 时才上传。剪贴板里没有文件名的图片取名为 "Pasted image 20261008123045.png"（照 Obsidian 的写法，不随界面语言：它是存下来的内容）。
   - 状态栏显示进度与取消，文档里不加任何东西；上传完成时编辑器已换了正文、已关闭或已只读（失锁）的，不插入，提示一句，附件留在面板里。上传失败时提示，不插入任何东西。
   - 拖入的 `.md` 交给 CodeMirror（插入它的文字）；文件夹不接，提示用导入。
-- **页面之外的拖入**：文件拖到拖放区之外时浏览器会打开它、离开应用，所以文档上对文件的 `dragover`、`drop` 一律 `preventDefault`；拖到阅读视图上上传到这一页。
+- **页面之外的拖入**：文件拖到拖放区之外时浏览器会打开它、离开应用，所以文档上对文件的 `dragover`、`drop` 一律 `preventDefault`（编辑器里的除外）；拖到阅读视图上上传到这一页；页内开始的拖动（Chromium 拖图片时带着文件）不上传。
 - **阅读视图**（阅读视图的交互增强 `assets`，12.4 这一行加上 M7）：
   - 指向附件的链接：内联类型在新标签页打开（`rel=noopener`，带看不见的"在新标签页打开"提示），`attachment` 类型直接下载、不开新标签页（Firefox 会留下空白的标签页）。点图片不做什么（与 Obsidian 的默认相同）。
   - 地址到期：缓存里的视图过了 `assets_expire_at` 当作没有加载；到期之前安排重读。加载失败（捕获阶段的 `error`，它不冒泡）时，若视图的到期时刻已过，合并成一次重读，同一个到期时刻至多重读一次：文件不在（404）、限流（429）、解不开的图片在同一小时里重读也一样失败，不能循环。
@@ -516,7 +516,7 @@ M7 开工时负责人确认进入 M7（2026-10-08："可以了"）。下面是�
 | P1 | 平台：存储与流式路由 | 已完成 | [01-P1-storage-stream.md](01-P1-storage-stream.md) | [P1 审查](reviews/P1-storage-stream-review.md) |
 | P2 | 附件（服务端） | 已完成 | [02-P2-assets-server.md](02-P2-assets-server.md) | [P2 审查](reviews/P2-assets-server-review.md) |
 | P3 | 附件与链接（服务端） | 已完成（A 合并 `5138ad6`，B 合并 `f3bf03c`） | [03-P3-assets-links.md](03-P3-assets-links.md) | [P3A 审查](reviews/P3A-assets-links-review.md)、[P3B 审查](reviews/P3B-render-review.md) |
-| P4 | 附件（前端） | 进行中 | [04-P4-assets-web.md](04-P4-assets-web.md) | — |
+| P4 | 附件（前端） | 进行中（A 合并 `e44b417`） | [04-P4-assets-web.md](04-P4-assets-web.md) | [P4A 审查](reviews/P4A-assets-web-review.md) |
 | P5 | 导出 | 未开始 | — | — |
 | P6 | 导入 | 未开始 | — | — |
 
@@ -533,3 +533,4 @@ M7 开工时负责人确认进入 M7（2026-10-08："可以了"）。下面是�
 | 2026-10-09 | P3A 完成：没有扩展名的附件 `link` 为 null、补全不列它；附件的 `link` 由 page 的一条语句读出路径与同名附件的个数（`AssetLinktext`）；落点在同名附件旁边也答 `target_is_asset`；down 迁移先把指向附件的链接置为解析不到；契约写明附件的改名、移动会改写、会被编辑锁拒绝 | P3A 的实施、审查与两轮修复核对：[03-P3-assets-links.md](03-P3-assets-links.md) 第 4、9 节、[P3A 审查](reviews/P3A-assets-links-review.md) |
 | 2026-10-09 | P3B 完成：附件的标记不写 `data-nw-asset`（id 在地址的路径里），`alt` 与 `aria-label` 默认是写下的目标，`Assets` 不给名称；一个视图至多写 2000 个附件的地址（`MaxShown`），附件的标记有了总量的上界；视图的到期是写出的地址里最早的；`PropertyLink` 另加 `url` | P3B 的实施、审查与两轮修复核对：[03-P3-assets-links.md](03-P3-assets-links.md) 第 5、9 节、[P3B 审查](reviews/P3B-render-review.md) |
 | 2026-10-09 | P4 开工：分 A（面板与上传）、B（阅读视图里的附件）、C（编辑器的粘贴与拖入）三部分合并；B 里服务端给不内联的附件的链接写 `download`，`PropertyLink` 加 `inline`、`PageProperties` 加 `assets_expire_at`（右栏的附件链接分开打开与下载、到期重读，P3B 审查 C12、C13）；面板不加载缩略图 | [04-P4-assets-web.md](04-P4-assets-web.md) 第 0、2、4 节 |
+| 2026-10-09 | P4A 完成：上传的请求不带正文、表单由注入的传输发出；上传答复之后的树读合并（`wrote()`），被重叠的读交回最近发出的那次；列表重读读已有的页数、接页按 id 去重，成功的上传读到它所在的页；附件在树读完、显示之后再读；名称按 `titleKey` 比较；拖放保护不管编辑器，页内开始的拖动不上传；附件一节的播报、复制的退路与焦点的交接 | P4A 的实施、审查与四轮修复核对：[04-P4-assets-web.md](04-P4-assets-web.md) 第 3、9 节、[P4A 审查](reviews/P4A-assets-web-review.md) |
