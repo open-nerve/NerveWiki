@@ -345,6 +345,22 @@ func TestWithinSnapshotRefusesToNest(t *testing.T) {
 	}
 }
 
+// A snapshot holds no transaction of WithinTx's: its writes would fail in
+// the read-only one, its reads be mistaken for a transaction's own.
+func TestWithinTxRefusesASnapshot(t *testing.T) {
+	pool := newNotes(t, 4)
+	tm := postgres.NewTxManager(pool, commitTimeout)
+	ran := false
+
+	err := tm.WithinSnapshot(context.Background(), func(ctx context.Context) error {
+		return tm.WithinTx(ctx, func(context.Context) error { ran = true; return nil })
+	})
+
+	if !errors.Is(err, postgres.ErrTxInSnapshot) || ran {
+		t.Errorf("WithinTx() within WithinSnapshot = %v, ran %v; want ErrTxInSnapshot, not run", err, ran)
+	}
+}
+
 // TxFrom is the transaction the statements of DB run in, and none outside.
 func TestTxFromIsTheTransaction(t *testing.T) {
 	pool := newNotes(t, 4)

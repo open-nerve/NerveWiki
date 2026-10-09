@@ -350,7 +350,7 @@ func TestValidateCrossKeyRules(t *testing.T) {
 			want:   "transfer.export_ttl: must be at least 10m0s, got 9m59s",
 		},
 		{
-			name:   "a job of a minute, with a heartbeat timeout below it",
+			name:   "a job of two minutes, with the shortest heartbeat timeout below it",
 			mutate: func(c *Config) { c.Transfer.JobTimeout, c.Transfer.HeartbeatTimeout = 2*time.Minute, time.Minute },
 		},
 		{

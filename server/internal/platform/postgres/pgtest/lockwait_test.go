@@ -113,10 +113,12 @@ func TestWaitForTableLockWaitsCountsItsTablesLock(t *testing.T) {
 	url := pgtest.NewDatabase(t)
 	pool := newPool(t, url)
 	holdRowAndWait(t, url)
-	rows := fatalOf(func(tb testing.TB) { pgtest.WaitForTableLockWaits(tb, pool, "users", 1, 300*time.Millisecond) })
+	pgtest.WaitForLockWaitsOn(t, pool, "users", 1, 10*time.Second)
 	holdAndWaitIn(t, url, "LOCK TABLE auth_sessions IN ACCESS EXCLUSIVE MODE", "SELECT 1 FROM auth_sessions", 2)
 
 	pgtest.WaitForTableLockWaits(t, pool, "auth_sessions", 2, 10*time.Second)
+	// Waits for a row of users, and for auth_sessions' lock, are there.
+	rows := fatalOf(func(tb testing.TB) { pgtest.WaitForTableLockWaits(tb, pool, "users", 1, 300*time.Millisecond) })
 	three := fatalOf(func(tb testing.TB) { pgtest.WaitForTableLockWaits(tb, pool, "auth_sessions", 3, 300*time.Millisecond) })
 	missing := fatalOf(func(tb testing.TB) { pgtest.WaitForTableLockWaits(tb, pool, "nope", 1, 300*time.Millisecond) })
 	if rows != "0 statement(s) waited for the lock of the table users within 300ms, want at least 1" ||

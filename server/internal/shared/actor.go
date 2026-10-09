@@ -7,8 +7,8 @@ import (
 
 // Actor is the account a request acts as. Authentication puts it in the
 // request context; handlers of every module read it with RequireActor. A
-// background job acting for the account that started it puts one in its
-// own context (M7/P5 design 3.4). It tells which credential the account
+// background job acting for the account that started it acts as one, its
+// JobID set (M7/P5 design 3.4). It tells which credential the account
 // acts with, never what the account may do: that is each module's to
 // decide (v0.1 design 6.2), on the account's roles as they are when it
 // acts.

@@ -22,6 +22,9 @@ type Querier interface {
 
 type txKey struct{}
 
+// snapshotKey marks a context whose transaction WithinSnapshot opened.
+type snapshotKey struct{}
+
 // DB returns the transaction that TxManager.WithinTx put in ctx, or pool
 // when ctx carries none.
 func DB(ctx context.Context, pool *pgxpool.Pool) Querier {
@@ -51,6 +54,11 @@ func TxFrom(ctx context.Context) (pgx.Tx, bool) {
 // ErrNestedSnapshot is WithinSnapshot's error when ctx already carries a
 // transaction: what it would read would not be one moment of the database.
 var ErrNestedSnapshot = errors.New("postgres: a snapshot within a transaction")
+
+// ErrTxInSnapshot is WithinTx's error when ctx carries a snapshot: fn's
+// writes would fail in its read-only transaction, or, read alone, be
+// mistaken for a transaction of their own.
+var ErrTxInSnapshot = errors.New("postgres: a transaction within a snapshot")
 
 // TxManager runs functions in transactions on one pool. It satisfies
 // shared.TxManager by structure; the platform does not import shared.
@@ -89,8 +97,12 @@ func (m *TxManager) InTx(ctx context.Context) bool {
 
 // WithinTx runs fn in a transaction and commits it when fn returns nil. The
 // context fn receives carries the transaction; a nested WithinTx on it runs
-// fn in the same transaction. fn's error, or a panic, rolls it back.
+// fn in the same transaction. fn's error, or a panic, rolls it back. On a
+// ctx that carries a snapshot it returns ErrTxInSnapshot.
 func (m *TxManager) WithinTx(ctx context.Context, fn func(ctx context.Context) error) error {
+	if ctx.Value(snapshotKey{}) != nil {
+		return ErrTxInSnapshot
+	}
 	if InTx(ctx) {
 		return fn(ctx)
 	}
@@ -100,14 +112,16 @@ func (m *TxManager) WithinTx(ctx context.Context, fn func(ctx context.Context) e
 // WithinSnapshot runs fn in a read-only transaction at REPEATABLE READ: its
 // statements see the database as of its first, whatever commits meanwhile
 // (M7/P5 design 3.3). The context fn receives carries it, as WithinTx's
-// does; a write in it fails. It ends as WithinTx's does. It must be the
-// outermost transaction: on a ctx that carries one it returns
-// ErrNestedSnapshot.
+// does; a write in it fails, and a WithinTx in it is refused. It ends as
+// WithinTx's does. It must be the outermost transaction: on a ctx that
+// carries one it returns ErrNestedSnapshot.
 func (m *TxManager) WithinSnapshot(ctx context.Context, fn func(ctx context.Context) error) error {
 	if InTx(ctx) {
 		return ErrNestedSnapshot
 	}
-	return m.run(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly}, fn)
+	return m.run(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly}, func(ctx context.Context) error {
+		return fn(context.WithValue(ctx, snapshotKey{}, true))
+	})
 }
 
 // run runs fn in a new transaction of opts, as WithinTx describes.

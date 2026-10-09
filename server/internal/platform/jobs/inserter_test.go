@@ -2,8 +2,10 @@ package jobs
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -56,13 +58,14 @@ func TestTheInserterEnqueuesInTheTransaction(t *testing.T) {
 	}
 	enqueue(1, false)
 	enqueue(2, true)
+	var n, attempts int
 	var queue string
-	var attempts int
-	if err := pool.QueryRow(ctx, `SELECT queue, max_attempts FROM river_job WHERE kind = 'jobs_test.long'`).Scan(&queue, &attempts); err != nil {
-		t.Fatalf("the committed job: %v (and none rolled back)", err)
+	err = pool.QueryRow(ctx, `SELECT count(*), min(queue), min(max_attempts) FROM river_job WHERE kind = 'jobs_test.long'`).Scan(&n, &queue, &attempts)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if queue != "jobs_test_long" || attempts != 1 {
-		t.Errorf("the job is in %q with %d attempts, want jobs_test_long and 1", queue, attempts)
+	if n != 1 || queue != "jobs_test_long" || attempts != 1 {
+		t.Errorf("%d jobs, in %q with %d attempts; want the committed one alone, in jobs_test_long, 1", n, queue, attempts)
 	}
 
 	worker := &longWorker{ran: make(chan int, 2)}
@@ -103,5 +106,55 @@ func TestRescueAfterReachesRiver(t *testing.T) {
 		Config{ShutdownTimeout: time.Second, RescueAfter: 30 * time.Second, Logger: slog.New(slog.DiscardHandler)}, nil)
 	if err == nil || !strings.Contains(err.Error(), "RescueStuckJobsAfter") {
 		t.Errorf("New() = %v, want River's refusal of a rescue before the timeout", err)
+	}
+}
+
+// The jobs of a kind that River has not finished, a page at a time: those
+// to work and those it works, not those it completed or discarded, nor
+// another kind's.
+func TestUnfinishedAreTheJobsRiverHolds(t *testing.T) {
+	t.Parallel()
+	pool := newPool(t, pgtest.NewDatabase(t))
+	ctx := context.Background()
+	inserter, err := NewInserter(pool, slog.New(slog.DiscardHandler))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = pgx.BeginFunc(ctx, pool, func(tx pgx.Tx) error {
+		for n := 1; n <= 5; n++ {
+			if err := inserter.InsertTx(ctx, tx, longArgs{N: n}, &river.InsertOpts{Queue: "jobs_test_long"}); err != nil {
+				return err
+			}
+		}
+		return inserter.InsertTx(ctx, tx, probeArgs{}, nil)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, sql := range []string{
+		`UPDATE river_job SET state = 'running', attempt = 1, attempted_at = now() WHERE args->>'N' = '2'`,
+		`UPDATE river_job SET state = 'completed', attempt = 1, attempted_at = now(), finalized_at = now() WHERE args->>'N' = '3'`,
+		`UPDATE river_job SET state = 'discarded', attempt = 1, attempted_at = now(), finalized_at = now() WHERE args->>'N' = '4'`,
+	} {
+		if _, err := pool.Exec(ctx, sql); err != nil {
+			t.Fatalf("%s: %v", sql, err)
+		}
+	}
+
+	got, err := inserter.unfinished(ctx, longArgs{}.Kind(), 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ns []int
+	for _, args := range got {
+		var a longArgs
+		if err := json.Unmarshal(args, &a); err != nil {
+			t.Fatal(err)
+		}
+		ns = append(ns, a.N)
+	}
+	slices.Sort(ns)
+	if !slices.Equal(ns, []int{1, 2, 5}) {
+		t.Errorf("Unfinished() = jobs %v, want 1, 2 and 5", ns)
 	}
 }

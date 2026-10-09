@@ -24,6 +24,12 @@ const tmpDir = ".tmp"
 // can.
 const probePrefix = ".probe-"
 
+// freeCheck is how many bytes a file's writes go between two reads of the
+// free space: a file far larger than an attachment, an export's archive,
+// stops once fewer than the store's minimum of bytes are free, and an
+// attachment's upload reads it at most once.
+const freeCheck = 64 << 20
+
 // Local is the store on the local disk (M7/P1 design 3.3): the file at
 // "<area>/<name>" is <dir>/<area>/<s1>/<s2>/<name>, s1 and s2 the first two
 // bytes of the name's SHA-256 in hex, so no directory holds more than a
@@ -33,7 +39,12 @@ type Local struct {
 	dir     string
 	minFree int64
 	create  createTemp
-	mkdir   sync.Mutex // one goroutine at a time makes and syncs directories
+	// free reads the free bytes of a path's file system, and freeCheck is
+	// how many bytes a file's writes go between two reads: freeBytes and
+	// the constant, and in tests a disk that fills.
+	free      func(path string) (int64, error)
+	freeCheck int64
+	mkdir     sync.Mutex // one goroutine at a time makes and syncs directories
 	// fullAtOpen is the first out-of-space error opening's probes met.
 	fullAtOpen error
 }
@@ -56,8 +67,8 @@ var _ Store = (*Local)(nil)
 // deletes what earlier processes left half written, and fails, naming the
 // directory and the process's uid and gid, when it cannot write there or
 // in an area already in it: serve refuses to start (M0/P6 handoff, item 2).
-// A disk out of space is no failure: writes that would leave less than
-// minFree bytes free answer ErrFull.
+// A disk out of space is no failure: Create, and a file's writes as they
+// go, answer ErrFull once fewer than minFree bytes are free.
 func OpenLocal(dir string, minFree int64) (*Local, error) {
 	return openLocal(dir, minFree, osCreateTemp)
 }
@@ -73,7 +84,7 @@ func openLocal(dir string, minFree int64, create createTemp) (*Local, error) {
 	if err != nil {
 		return nil, fmt.Errorf("storage: %s: %w", dir, err)
 	}
-	l := &Local{dir: abs, minFree: minFree, create: create}
+	l := &Local{dir: abs, minFree: minFree, create: create, free: freeBytes, freeCheck: freeCheck}
 	if err := os.MkdirAll(abs, 0o750); err != nil {
 		return nil, cannotWrite(abs, err)
 	}
@@ -179,17 +190,14 @@ func (l *Local) dropTemporaries() ([]string, error) {
 func (l *Local) Dir() string { return l.dir }
 
 // Create starts the file at key in the area's temporary directory. It
-// answers ErrFull when fewer than the store's minimum of bytes are free.
+// answers ErrFull when fewer than the store's minimum of bytes are free;
+// so do the file's writes, every freeCheck bytes.
 func (l *Local) Create(ctx context.Context, key string) (Writer, error) {
 	if err := CheckKey(key); err != nil {
 		return nil, err
 	}
-	free, err := l.Free(ctx)
-	if err != nil {
+	if err := l.room(ctx); err != nil {
 		return nil, err
-	}
-	if free < l.minFree {
-		return nil, fmt.Errorf("%w: %d bytes free, %d kept", ErrFull, free, l.minFree)
 	}
 	area, name := split(key)
 	tmp := filepath.Join(l.dir, area, tmpDir)
@@ -317,11 +325,24 @@ func isShard(s string) bool {
 
 // Free tells how many bytes are left to write in the store's directory.
 func (l *Local) Free(context.Context) (int64, error) {
-	n, err := freeBytes(l.dir)
+	n, err := l.free(l.dir)
 	if err != nil {
 		return 0, fmt.Errorf("storage: free space of %s: %w", l.dir, err)
 	}
 	return n, nil
+}
+
+// room answers ErrFull when fewer than the store's minimum of bytes are
+// free.
+func (l *Local) room(ctx context.Context) error {
+	free, err := l.Free(ctx)
+	if err != nil {
+		return err
+	}
+	if free < l.minFree {
+		return fmt.Errorf("%w: %d bytes free, %d kept", ErrFull, free, l.minFree)
+	}
+	return nil
 }
 
 // split cuts a checked key into its area and name.
@@ -410,15 +431,28 @@ type localWriter struct {
 	area, name string
 	file       tempFile
 	done       bool
+	// unchecked is how many bytes were written since the free space was
+	// last read.
+	unchecked int64
 }
 
 var errDone = errors.New("storage: the file was already committed or aborted")
 
+// Write writes p; once freeCheck bytes went since the free space was last
+// read, it reads it first, and answers ErrFull when fewer than the store's
+// minimum of bytes are free.
 func (w *localWriter) Write(p []byte) (int, error) {
 	if w.done {
 		return 0, errDone
 	}
+	if w.unchecked >= w.l.freeCheck {
+		if err := w.l.room(context.Background()); err != nil {
+			return 0, err
+		}
+		w.unchecked = 0
+	}
 	n, err := w.file.Write(p)
+	w.unchecked += int64(n)
 	if err != nil {
 		return n, failed(err)
 	}
