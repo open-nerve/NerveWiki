@@ -230,7 +230,7 @@
   - 上传不经 `PageTreeStore` 的 `oneAtATime` 队列（50 MB 的上传会挡住每个树的写），是 13.2 第 1 条的例外；每个答复之后重读树（`wrote()`：一个在途，其间答复的合成下一次）与这一节，成功的上传读到它所在的页才离开。对话框关闭之后焦点回到这一行的菜单按钮，行已不在时到这一节的标题；"加载更多"读完最后一页时焦点到它加进来的第一项，读者其间动过就不移（13.2 第 26 条）。细节在 [P4 文档](04-P4-assets-web.md)第 3 节。
   - 删除页面的确认对话框把子树里的附件一起数上。
 - **上传的服务**（13.2 第 1、6 条）：经会话的客户端调用，不另起一条路：openapi-fetch 支持按请求换 `fetch` 与 `bodySerializer`，上传的 service 交一个由 `XMLHttpRequest` 实现的 `fetch`（`fetch` 没有上传进度）：交给中间件的请求不带正文，传输发闭包里的 `FormData`、用中间件交来的 `Request` 的头，传输经 `AppStores` 注入；中间件 401 之后续期重发（`options.fetch(copy)`）时照样带新令牌重传，换代的核对不变。换代时 store 中止在途的上传。vitest 注入假的传输。导入的 zip 用同一个。字段按 `parent_id`、`name`、`file` 的次序加进 `FormData`。
-- **发送之前先查**：`InstanceInfo` 加 `asset_max_bytes`、`import_max_bytes`（13.1 第 15 条："服务端可配的量经接口告诉前端"）。网页在发送之前查角色、大小、名称合法、不是 `.md`、按标题键（`lib/title-key.ts`，近似服务端的大小写折叠）在树的兄弟与同一父节点下在途的上传之间取空着的名字，并照导入的规则替换名称里禁止的字符（`#[]|^:` 等换成 `_`，NFC）；上传途中的传输错误显示通用的"上传失败"。有在途的上传时挂上 `beforeunload`（13.2 第 21 条）。
+- **发送之前先查**：`InstanceInfo` 加 `asset_max_bytes`、`import_max_bytes`（导出的确认对话框另用 P5B 的 `export_ttl_seconds`；13.1 第 15 条："服务端可配的量经接口告诉前端"）。网页在发送之前查角色、大小、名称合法、不是 `.md`、按标题键（`lib/title-key.ts`，近似服务端的大小写折叠）在树的兄弟与同一父节点下在途的上传之间取空着的名字，并照导入的规则替换名称里禁止的字符（`#[]|^:` 等换成 `_`，NFC）；上传途中的传输错误显示通用的"上传失败"。有在途的上传时挂上 `beforeunload`（13.2 第 21 条）。
 - **粘贴、拖入上传**（编辑器扩展 `assetUpload`，`load` 的扩展，模块在 `editor/loaded/`，13.2 第 23 条；细节在 [P4 文档](04-P4-assets-web.md)第 5 节）：
   - `EditorContext` 加 `uploadAsset(file)`（经 `AssetStore` 上传到这一页，答出附件）；`EditorControls` 加 `whenComposed`（原来只在 `SourceEditorHandle` 上）、`tell`（编辑器说一句，显示并播报）、`going`（离开编辑要等的工作）。
   - 扩展先于 CodeMirror 自己的拖放接住带文件的拖入（它会把文件当文本读进来）：拖入插在落点（`posAtCoords`，能改的正文有落点的光标），粘贴插在选区；上传完成后在原位置（随之后的输入映射）插入 `![[link]]`，输入法组合中等 `whenComposed`；光标正好在那里时移到嵌入之后，同一位置后粘贴的在后面。
@@ -242,7 +242,7 @@
   - 指向附件的链接：内联类型在新标签页打开（`rel=noopener`，带看不见的"在新标签页打开"提示），其余由服务端写 `download`，直接下载、不开新标签页（Firefox 会留下空白的标签页）；链接之后按界面语言写大小。点图片不做什么（与 Obsidian 的默认相同）。
   - 地址到期：视图与属性从读到的时刻起，在最早的到期前一分钟重读（至少 30 秒、至多 59 分钟；隐藏的标签页显示时再读），缓存里第一次见到时已过期的不显示。加载失败（捕获阶段的 `error`，它不冒泡）时，若视图的到期时刻已过，合并成一次重读，同一个到期时刻至多重读一次：文件不在（404）、限流（429）、解不开的图片在同一小时里重读也一样失败，不能循环。
   - 已开始播放的音频、视频在 HTML 换掉时保留（按附件 id（地址的路径里）与出现的次序配对，同 M6 保留焦点的做法）：HTML 每小时因签名而变，别人的编辑、`links` 事件也让它变，`innerHTML` 会毁掉正在播放的媒体。开始了的加载失败时（通常是地址过期）经 `GET /assets/{id}` 就地重签，接着播放的位置、速率与音量；出错的不保留。
-- **导入与导出的界面**：笔记本设置加"导入与导出"一节，列出最近的任务（状态、进度、报告、下载、已过期），关掉对话框、重新加载页面之后仍找得到；运行中的任务以 SWR 的 `refreshInterval` 每秒读一次；报告的原因是码（前端按码给文案），不是服务端的文字。页面标题旁的菜单加"导出此页"（读者也有：树的操作菜单只给写者）。导入时选位置的对话框说明深度的限制。
+- **导入与导出的界面**：笔记本设置加"导入与导出"一节，列出最近的任务（状态、进度、报告、下载、已过期），关掉对话框、重新加载页面之后仍找得到；有运行中的任务时以 SWR 的 `refreshInterval` 每秒读一次，否则在最早的下载地址到期之前一分钟再读（P5B，[P5 文档](05-P5-export.md) 4.2）；报告的原因是码（前端按码给文案），不是服务端的文字。页面标题旁的菜单加"导出此页"（读者也有：树的操作菜单只给写者）。导入时选位置的对话框说明深度的限制。
 
 ### 4.9 后台任务
 
@@ -355,7 +355,7 @@
 | `POST /api/v0/transfer-jobs/{job_id}/cancel` | 取消 |
 | `GET /api/v0/transfer-jobs/{job_id}/download` | 下载导出的 zip（`x-raw`，公开，靠签名） |
 
-改动：`NodeKind`、`LinkTargetKind` 加 `asset`；`PropertyLink` 加 `kind`、`url`；`PageView` 加 `assets_expire_at`；落点的原因加 `target_is_asset`；`InstanceInfo` 加 `asset_max_bytes`、`import_max_bytes`。错误码：平台码 `storage_full`（507）；名称的规则是字段错误 `name: not_allowed`；`transfer.not_found`、`transfer.busy`、`transfer.not_cancellable` 等，写进 P2、P5、P6 的文档。413 用平台的 `payload_too_large`。
+改动：`NodeKind`、`LinkTargetKind` 加 `asset`；`PropertyLink` 加 `kind`、`url`；`PageView` 加 `assets_expire_at`；落点的原因加 `target_is_asset`；`InstanceInfo` 加 `asset_max_bytes`、`export_ttl_seconds`、`import_max_bytes`。错误码：平台码 `storage_full`（507）；名称的规则是字段错误 `name: not_allowed`；`transfer.not_found`、`transfer.busy`、`transfer.not_cancellable` 等，写进 P2、P5、P6 的文档。413 用平台的 `payload_too_large`。
 
 ## 6. 从 Nerve 借鉴
 
@@ -517,7 +517,7 @@ M7 开工时负责人确认进入 M7（2026-10-08："可以了"）。下面是�
 | P2 | 附件（服务端） | 已完成 | [02-P2-assets-server.md](02-P2-assets-server.md) | [P2 审查](reviews/P2-assets-server-review.md) |
 | P3 | 附件与链接（服务端） | 已完成（A 合并 `5138ad6`，B 合并 `f3bf03c`） | [03-P3-assets-links.md](03-P3-assets-links.md) | [P3A 审查](reviews/P3A-assets-links-review.md)、[P3B 审查](reviews/P3B-render-review.md) |
 | P4 | 附件（前端） | 已完成（A 合并 `e44b417`，B 合并 `32e175c`，C 合并 `008f81f`） | [04-P4-assets-web.md](04-P4-assets-web.md) | [P4A 审查](reviews/P4A-assets-web-review.md)、[P4B 审查](reviews/P4B-assets-web-review.md)、[P4C 审查](reviews/P4C-paste-upload-review.md) |
-| P5 | 导出 | 进行中（A 合并 `e8f02d5`；B：前端） | [05-P5-export.md](05-P5-export.md) | [P5A 审查](reviews/P5A-export-review.md) |
+| P5 | 导出 | 完成（A 合并 `e8f02d5`，B 合并 `ab4562a`） | [05-P5-export.md](05-P5-export.md) | [P5A 审查](reviews/P5A-export-review.md)、[P5B 审查](reviews/P5B-export-web-review.md) |
 | P6 | 导入 | 未开始 | — | — |
 
 ## 13. 变更记录
@@ -539,3 +539,4 @@ M7 开工时负责人确认进入 M7（2026-10-08："可以了"）。下面是�
 | 2026-10-09 | P5 开工：分 A（服务端）、B（前端）两部分合并；子树的导出里那一页是库的根下的一页（`<页>/<页>.md`）；`meta.json` 里只有目录的页的路径以 `/` 结尾；冲突时有目录的那一页改名（`N.md 2`）；任务表加 `name`（导出的根名：任务列表与下载的文件名）；`jobs.Job.Start` 承担启动时的收拾；心跳每秒一次、同一条语句读回取消；列表不带报告的问题 | [05-P5-export.md](05-P5-export.md) 第 0、3 节 |
 | 2026-10-09 | P5A 完成：导出的服务端照实际改写（[05-P5-export.md](05-P5-export.md) 第 3 节）：River 在开始之前丢掉的排队导出由收拾记成失败（只投递的客户端读 River 还没结束的任务），收拾的报告计数为 0；成功的事务先锁笔记本行；正文按 200 页或 16 MiB 一批，本地存储的写入每 64 MiB 看一次余量；下载与视图按 TTL，地址的期限不晚于导出的到期；结束限时停机 900 毫秒、其余 30 秒；`jobs.export_workers` 至多 `database.max_conns` 的一半；4.9 的心跳与收拾、4.10 的地址随之改 | P5A 的实施、审查与两轮修复核对：[05-P5-export.md](05-P5-export.md) 第 3、9 节、[P5A 审查](reviews/P5A-export-review.md) |
 | 2026-10-09 | P5B 开工：实例信息加 `export_ttl_seconds`（确认对话框说成功的导出保留多久）；任务列表在有进行中的任务时每秒读，否则在最早的下载地址到期之前一分钟再读；页面标题旁的菜单（读者也有）只有"导出此页"，开始之后到设置、焦点在新任务那一行 | [05-P5-export.md](05-P5-export.md) 第 4 节 |
+| 2026-10-10 | P5B 完成：导出的前端照实际改写（[05-P5-export.md](05-P5-export.md) 第 4 节）：任务列表的重读照反链读回已加载的页数，读到之前与读不到时说明；行与控件以做什么、发起人与开始的时刻命名；控件带着焦点离开时交给行；轮询至多一小时；`ConfirmDialog` 按触发按钮打开时成功之后复位；实例信息的 `export_ttl_seconds` 进镜像的冒烟 | P5B 的实施、审查与两轮修复核对：[05-P5-export.md](05-P5-export.md) 第 4、9 节、[P5B 审查](reviews/P5B-export-web-review.md) |
