@@ -113,7 +113,11 @@ export function jobsServer({ jobs = [], pageSize = 50, answers = {}, ...options 
         return Promise.reject(new TypeError("offline"));
       }
       const at = cursor === null ? 0 : server.jobs.findIndex((job) => job.id === cursor) + 1;
-      const data = at === 0 && cursor !== null ? [] : server.jobs.slice(at, at + pageSize);
+      if (at === 0 && cursor !== null) {
+        // The server reads on from a job gone (its cursor is a key of time and id): a test that needs it says so.
+        throw new Error(`no job ${cursor} to read on from`);
+      }
+      const data = server.jobs.slice(at, at + pageSize);
       const last = data.at(-1);
       return json({
         data,

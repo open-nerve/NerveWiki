@@ -8,13 +8,9 @@ import { useT } from "../../i18n/i18n";
 import type { Notebook } from "../../services/notebook.service";
 import type { TransferJob } from "../../services/transfer.service";
 import { useAccount, useStore, useTransfers } from "../../stores/context";
+import { under } from "../../stores/transfer.store";
 import { jobTitle } from "./transfer-names";
 import { failureText, TransferReport } from "./transfer-report";
-
-/** under tells whether a job is under way: queued or running. */
-function under(job: TransferJob): boolean {
-  return job.state === "queued" || job.state === "running";
-}
 
 /**
  * TransferJobRow is a job of the notebook (M7/P5 design 4.3): what it

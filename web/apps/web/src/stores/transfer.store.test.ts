@@ -183,6 +183,32 @@ test("an export started before the list is read: the read out meanwhile is read 
   expect([ids(store), store.loaded]).toEqual([[9, 1], true]);
 });
 
+test("an export started before the list is read: the read again that fails fails, the list still not held", async () => {
+  const { store, lists, starts } = storeOf();
+  const load = store.load();
+  const begun = store.start(null);
+  await settled();
+  await answer(starts, 0, underWay(job(9), 0, 0), begun);
+
+  await answer(lists, 0, page([job(1)]));
+  await settled();
+  lists[1]?.fail(new TypeError("offline"));
+
+  await expect(load).rejects.toThrow("offline");
+  expect([ids(store), store.loaded]).toEqual([[9], false]);
+});
+
+test("a running job's cancel answered replaces it at once: its cancel asked", async () => {
+  const { store, lists, cancels } = storeOf();
+  await answer(lists, 0, page([underWay(job(2), 1, 4)]), store.load());
+
+  const cancel = store.cancel(job(2).id);
+  await settled();
+  await answer(cancels, 0, { ...underWay(job(2), 1, 4), cancel_requested_at: "2026-10-05T09:11:00Z" }, cancel);
+
+  expect(store.jobs?.[0]?.cancel_requested_at).toBe("2026-10-05T09:11:00Z");
+});
+
 test("a job cancelled is replaced by the job answered, the read on its way dropped", async () => {
   const { store, lists, cancels } = storeOf();
   await answer(lists, 0, page([underWay(job(2), 0, 0), job(1)]), store.load());

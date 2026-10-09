@@ -4,7 +4,7 @@ import { oneAtATime, oneAtATimeById } from "../lib/one-at-a-time";
 import type { TransferJob, TransferJobDetail, TransferJobPage, TransferService } from "../services/transfer.service";
 
 /** under tells whether a job is under way: queued or running. */
-function under(job: TransferJob): boolean {
+export function under(job: TransferJob): boolean {
   return job.state === "queued" || job.state === "running";
 }
 
