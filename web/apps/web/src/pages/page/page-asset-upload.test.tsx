@@ -61,7 +61,10 @@ test("a file without an extension uploads, and is not inserted: the editor says 
   paste(view, [new File(["text"], "LICENSE")]);
 
   const said = "LICENSE is in the page's attachments, not inserted: a name without an extension cannot be embedded.";
-  expect(await screen.findByText(said)).toBeTruthy();
+  // Shown by the editor, and announced in its own region.
+  await waitFor(() =>
+    expect(screen.getAllByText(said).filter((element) => element.closest(".cm-editor") === null)).toHaveLength(1)
+  );
   expect(content.closest(".cm-editor")?.querySelector(".cm-announced")?.textContent).toBe(said);
   expect(view.state.doc.toString()).toBe(before);
 });

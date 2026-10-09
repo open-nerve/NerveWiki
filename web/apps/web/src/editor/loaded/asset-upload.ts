@@ -84,7 +84,8 @@ export function pastedName(file: File, now: Date): string {
  * assetUpload uploads the files pasted into the editor or dropped on it
  * as attachments of the page, and inserts each one's embed, ![[link]],
  * where it went (M7/P4 design 5.2): it takes them before CodeMirror,
- * which would read a file in as text.
+ * which would read a file in as text (an event taken, CodeMirror
+ * prevents its default).
  *
  * - A paste of files only, no text (cells copied from a spreadsheet hold
  *   both: their text is pasted), goes where the selection is, which it
@@ -120,7 +121,6 @@ export const assetUpload: Build = (context, controls) => {
           if (files.length === 0) {
             return false;
           }
-          event.preventDefault();
           const now = new Date();
           const named = files.map((file) => new File([file], pastedName(file, now), { type: file.type }));
           const { from, to } = view.state.selection.main;
@@ -134,7 +134,6 @@ export const assetUpload: Build = (context, controls) => {
           if (!carriesFiles(event.dataTransfer) || view.state.readOnly) {
             return false;
           }
-          event.preventDefault();
           if (event.dataTransfer !== null) {
             event.dataTransfer.dropEffect = "copy";
           }
@@ -149,7 +148,6 @@ export const assetUpload: Build = (context, controls) => {
           if (files.length > 0 && files.every((file) => isPageName(file.name))) {
             return false;
           }
-          event.preventDefault();
           if (folders) {
             controls.tell(view.state.phrase("Folders are not uploaded: import a folder of notes instead."));
           }

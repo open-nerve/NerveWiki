@@ -137,7 +137,13 @@ test("a paste with text, or without files, is CodeMirror's; so is one into a rea
   const photo = new File(["png"], "cells.png", { type: "image/png" });
   paste(view, clipboard([photo], "a\tb"));
   expect(text()).toBe("xa\tb");
-  paste(view, clipboard([]));
+  // A link copied, as its address only: CodeMirror pastes it.
+  paste(view, {
+    types: ["text/uri-list"],
+    items: [],
+    getData: (type: string) => (type === "text/uri-list" ? " u" : ""),
+  });
+  expect(text()).toBe("xa\tb u");
   paste(view, null);
   view.dispatch({ effects: readOnly.reconfigure(readOnlyAs(true)) });
   paste(view, clipboard([photo]));
@@ -237,6 +243,12 @@ test("a drag started in the page, which may carry a file (Chromium's image), is 
   expect(drag(view, "dragover", transferOf(dropped([new File(["a"], "a.png")])))).toBe(false);
   drag(view, "drop", transferOf(dropped([new File(["a"], "a.png")])));
   expect(going).toEqual([]);
+});
+
+test("a drop of pages' files with others is the editor's: each goes up, a page's file refused on its row", () => {
+  const { view, going } = editing("x");
+  expect(drag(view, "drop", transferOf(dropped([new File(["# a"], "a.md"), new File(["b"], "b.png")])))).toBe(true);
+  expect(going.map(({ file }) => file.name)).toEqual(["a.md", "b.png"]);
 });
 
 test("a drop of folders only uploads nothing", () => {
