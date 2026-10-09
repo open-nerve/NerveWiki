@@ -304,8 +304,8 @@ type entry struct {
 // added, onCommit as one commits, onOpen as one opens. imports are the
 // imports' archives, by job; uploadFull fails an upload's writes as a
 // store out of room, openErr its opening. listed are the archives a List
-// of the kind gives, listErr fails it after them. freePanics makes Free
-// panic.
+// of the kind gives, listErr fails it after them. onFree runs as Free
+// is asked.
 type archives struct {
 	rec        *recorder
 	mu         sync.Mutex
@@ -317,7 +317,7 @@ type archives struct {
 	fullAt     string
 	commitErr  error
 	free       int64
-	freePanics bool
+	onFree     func()
 	deleteErr  error
 	listed     map[domain.Kind][]uuid.UUID
 	listErr    map[domain.Kind]error
@@ -460,8 +460,11 @@ func (a zipArchive) Close() error                      { return nil }
 
 func (a *archives) Free(context.Context) (int64, error) {
 	a.rec.add("Free")
-	if a.freePanics {
-		panic("archives: the store's disk cannot be read")
+	a.mu.Lock()
+	onFree := a.onFree
+	a.mu.Unlock()
+	if onFree != nil {
+		onFree()
 	}
 	return a.free, nil
 }

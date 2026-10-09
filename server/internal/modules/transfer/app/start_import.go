@@ -59,9 +59,10 @@ func (e *ReadError) Unwrap() error { return e.Err }
 // deleted is page.not_found; an import of the notebook being uploaded,
 // queued or running, anyone's, is transfer.busy; MaxQueued jobs waiting,
 // running or being uploaded are 503 server_busy; a store that would keep
-// less than MinFree once the body, and the other uploads', are written is
-// 507 storage_full. Once it passes, the notebook is claimed for the upload
-// until Release; a failure, or a panic, releases it.
+// less than MinFree once the body, and what the other uploads have still
+// to store, are written is 507 storage_full. Once it passes, the notebook
+// is claimed for the upload until Release; a failure, or a panic,
+// releases it. The Checks decide one at a time.
 func (s *StartImport) Check(ctx context.Context, req ImportRequest) error {
 	actor, err := shared.RequireActor(ctx)
 	if err != nil {
@@ -77,6 +78,8 @@ func (s *StartImport) Check(ctx context.Context, req ImportRequest) error {
 	if err := s.place(ctx, req); err != nil {
 		return err
 	}
+	s.d.Uploads.checking.Lock()
+	defer s.d.Uploads.checking.Unlock()
 	if !s.d.Uploads.claim(req.NotebookID, max(req.Size, 0)) {
 		return domain.ErrImportBusy
 	}
@@ -89,6 +92,7 @@ func (s *StartImport) Check(ctx context.Context, req ImportRequest) error {
 	if err := s.admit(ctx, req); err != nil {
 		return err
 	}
+	s.d.Uploads.admit(req.NotebookID)
 	admitted = true
 	return nil
 }
@@ -143,17 +147,18 @@ func (s *StartImport) busy(ctx context.Context, notebookID uuid.UUID) error {
 	return err
 }
 
-// Store writes the file r brings as an import's archive, its job's id
-// taken now: ErrTooLarge past ImportMaxBytes, domain.ErrStorageFull, a
-// *ReadError when r fails; none leaves a file. A commit that fails may
-// leave it all the same, which the sweep deletes.
-func (s *StartImport) Store(ctx context.Context, r io.Reader) (Stored, error) {
+// Store writes the file r brings as req's archive, its job's id taken
+// now, the bytes stored told to its upload as they are: ErrTooLarge past
+// ImportMaxBytes, domain.ErrStorageFull, a *ReadError when r fails; none
+// leaves a file. A commit that fails may leave it all the same, which the
+// sweep deletes.
+func (s *StartImport) Store(ctx context.Context, req ImportRequest, r io.Reader) (Stored, error) {
 	id := uuid.NewV7()
 	up, err := s.d.Archives.Upload(ctx, id)
 	if err != nil {
 		return Stored{}, err
 	}
-	n, err := copyAtMost(up, r, s.d.ImportMaxBytes)
+	n, err := copyAtMost(storing{w: up, uploads: s.d.Uploads, notebookID: req.NotebookID}, r, s.d.ImportMaxBytes)
 	if err != nil {
 		if abortErr := up.Abort(); abortErr != nil {
 			s.d.Logger.WarnContext(ctx, "import archive not dropped", slog.String("job_id", id.String()), slog.Any("error", abortErr))
@@ -164,6 +169,20 @@ func (s *StartImport) Store(ctx context.Context, r io.Reader) (Stored, error) {
 		return Stored{}, err
 	}
 	return Stored{ID: id, Bytes: n}, nil
+}
+
+// storing is an upload's archive as Store writes it: each write's bytes
+// are told to the notebook's upload.
+type storing struct {
+	w          io.Writer
+	uploads    *Uploads
+	notebookID uuid.UUID
+}
+
+func (s storing) Write(p []byte) (int, error) {
+	n, err := s.w.Write(p)
+	s.uploads.store(s.notebookID, int64(n))
+	return n, err
 }
 
 // copyAtMost copies r to w: ErrTooLarge past most bytes, a *ReadError when
@@ -213,8 +232,6 @@ func (s *StartImport) Create(ctx context.Context, req ImportRequest, stored Stor
 		}
 		return JobView{}, err
 	}
-	// The row counts for the upload from now on.
-	s.d.Uploads.rowWritten(req.NotebookID)
 	s.d.Logger.InfoContext(ctx, "import queued", slog.String("job_id", job.ID.String()), slog.String("notebook_id", job.NotebookID.String()),
 		slog.String("user_id", job.CreatedBy.String()), slog.String("client", string(job.Client)), slog.Int64("bytes", stored.Bytes))
 	got, err := views{names: s.d.Names, signer: s.d.Signer, clock: s.d.Clock}.of(ctx, []domain.Job{job})
@@ -259,6 +276,10 @@ func (s *StartImport) write(ctx context.Context, req ImportRequest, stored Store
 		if err := s.d.Queue.Import(ctx, job.ID); err != nil {
 			return err
 		}
+		// The row counts for the upload from its commit, which lets the
+		// next creation count the queue: one whose commit fails counts
+		// for none until its request ends.
+		s.d.Uploads.rowWritten(req.NotebookID)
 		written = true
 		return nil
 	})

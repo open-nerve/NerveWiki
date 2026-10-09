@@ -246,8 +246,9 @@ type TransferConfig struct {
 	// rescue fails it, interrupted: at least MinTransferHeartbeatTimeout,
 	// far longer than its beat of a second, and less than JobTimeout.
 	HeartbeatTimeout time.Duration `koanf:"heartbeat_timeout"`
-	// MaxQueued is how many jobs may be queued or running at once, at
-	// least 1: past it a job is refused, 503 server_busy.
+	// MaxQueued is how many jobs may be queued or running at once, the
+	// imports being uploaded counted, at least 1: past it a job is
+	// refused, 503 server_busy.
 	MaxQueued int `koanf:"max_queued"`
 	// ImportMaxBytes is the largest archive an import uploads (M7/P6
 	// design 3.15): at least MinImportBytes and asset.max_bytes, arriving

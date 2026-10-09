@@ -331,7 +331,7 @@ func stopping(t *testing.T) []byte {
 
 // stopAt makes the import's unit n stop it with stop, waiting there until
 // a heartbeat reads it, the unit then ending: the next batch's attachment
-// waits for the run to stop.
+// and parse wait for the run to stop, which its own checks then see.
 func stopAt(w *importWorld, j domain.Job, n int, stop func(), stopped func(r *row) bool) {
 	read := make(chan struct{})
 	w.rows.onBeat = func() {

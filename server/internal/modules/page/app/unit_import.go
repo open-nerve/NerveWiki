@@ -32,8 +32,9 @@ type ImportUnit struct {
 // children are a parent's children as the unit knows them, in order, and
 // the keys of their names; next the number after the last a name took,
 // by its key and whether it is an attachment's: the numbers before it are
-// held, but where a cut long name numbers otherwise in another spelling,
-// which may then pass over a number free.
+// held, or were tried. A number may then be passed over that is free: a
+// cut long name numbers otherwise in another spelling, and a name
+// reserved for a page the import drops too deep is not held.
 type children struct {
 	nodes []domain.Node
 	keys  map[string]bool

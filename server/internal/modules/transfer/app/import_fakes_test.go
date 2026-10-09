@@ -108,7 +108,7 @@ type made struct {
 // before its do, uncertain after it, writing nothing; gone are parents
 // gone; deeper is how much deeper the pages are than they were; onUnit
 // runs as each unit starts, its number from 1; waitParse makes a parse
-// wait for its context's end.
+// wait for its context's end, then parse.
 type tree struct {
 	mu         sync.Mutex
 	pages      map[uuid.UUID]int
@@ -145,9 +145,11 @@ func (t *tree) CheckContent(content string) error {
 func (t *tree) Parse(ctx context.Context, content string) (app.Parsed, error) {
 	t.mu.Lock()
 	if t.waitParse {
+		// As the parse of a folder's empty content, it does not fail on
+		// its context's end: the run's own checks stop it.
 		t.mu.Unlock()
 		<-ctx.Done()
-		return nil, context.Cause(ctx)
+		t.mu.Lock()
 	}
 	defer t.mu.Unlock()
 	t.calls++

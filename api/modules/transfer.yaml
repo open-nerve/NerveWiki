@@ -86,8 +86,8 @@ paths:
         uploading, anyone's, is transfer.busy; as many jobs queued or
         running, with the imports uploading, as the instance takes is
         server_busy; a server whose storage would keep too little room once
-        the body's declared length, and the other uploads', is stored is
-        storage_full; a body whose
+        the body's declared length, and what the other uploads have yet to
+        store, is stored is storage_full; a body whose
         declared length is past the limit is payload_too_large: a client
         answered before it sent its file may see the connection reset, and
         checks these first. A file larger than the instance's

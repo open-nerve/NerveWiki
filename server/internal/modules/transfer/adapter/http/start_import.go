@@ -63,7 +63,7 @@ func (h startImport) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	defer h.uc.Release(req)
 	form.Open()
-	stored, err := h.uc.Store(r.Context(), file)
+	stored, err := h.uc.Store(r.Context(), req, file)
 	if err != nil {
 		h.early(w, r, err)
 		return

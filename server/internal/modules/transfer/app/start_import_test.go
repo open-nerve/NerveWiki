@@ -6,8 +6,10 @@ import (
 	"errors"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"testing/iotest"
+	"time"
 	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/transfer/app"
@@ -41,7 +43,7 @@ func TestAnImportStarts(t *testing.T) {
 	if want := []string{"Notebooks.WorkspaceOf", "Authorize", "Importing", "CountActive", "Free"}; !slices.Equal(w.rec.calls, want) {
 		t.Errorf("Check's calls = %v, want %v", w.rec.calls, want)
 	}
-	stored, err := s.Store(as(w.bob), strings.NewReader("PK zip"))
+	stored, err := s.Store(as(w.bob), app.ImportRequest{NotebookID: w.eng}, strings.NewReader("PK zip"))
 	if err != nil || stored.Bytes != 6 || string(w.archives.imports[stored.ID]) != "PK zip" {
 		t.Fatalf("Store() = %+v, %v; archive %q", stored, err, w.archives.imports[stored.ID])
 	}
@@ -104,7 +106,7 @@ func TestAnImportIsRefused(t *testing.T) {
 			w := newWorld()
 			q := &queue{}
 			req := app.ImportRequest{NotebookID: w.eng, ParentID: &w.spec, FileName: "v.zip", Client: domain.ClientWeb}
-			stored, err := w.startImport(q, 2).Store(as(w.bob), strings.NewReader("zip"))
+			stored, err := w.startImport(q, 2).Store(as(w.bob), app.ImportRequest{NotebookID: w.eng}, strings.NewReader("zip"))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -186,7 +188,7 @@ func TestTheUploadsUnderWayCountForEveryStart(t *testing.T) {
 	}
 	// Each upload's row, once written, counts in its stead.
 	for _, req := range []app.ImportRequest{eng, other} {
-		stored, err := s.Store(as(w.bob), strings.NewReader("zip"))
+		stored, err := s.Store(as(w.bob), req, strings.NewReader("zip"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -199,16 +201,78 @@ func TestTheUploadsUnderWayCountForEveryStart(t *testing.T) {
 
 	w.rows = newRows()
 	s = w.startImport(&queue{}, 3)
-	w.archives.freePanics = true
+	w.archives.onFree = func() { panic("archives: the store's disk cannot be read") }
 	func() {
 		defer func() { _ = recover() }()
 		_ = s.Check(as(w.bob), eng)
 		t.Error("Check() did not panic")
 	}()
-	w.archives.freePanics = false
+	w.archives.onFree = nil
 	if err := s.Check(as(w.bob), eng); err != nil {
 		t.Errorf("Check() after one that panicked = %v, want the claim released", err)
 	}
+}
+
+// An upload counts in the store the bytes it declared and has not stored
+// yet: those it stored are the store's own. A Check under way counts for
+// no other start until it admits its upload, and the next Check waits for
+// it.
+func TestAnUploadCountsWhatItHasStillToStore(t *testing.T) {
+	w := newWorld()
+	ops, dev := uuid.NewV7(), uuid.NewV7()
+	for _, nb := range []uuid.UUID{ops, dev} {
+		w.auth.roles[nb] = map[uuid.UUID]shared.NotebookRole{w.bob: shared.NotebookAdmin}
+		w.notebooks.names[nb] = "Ops"
+	}
+	s := w.startImport(&queue{}, 2)
+	w.archives.free = 200
+	eng := app.ImportRequest{NotebookID: w.eng, FileName: "v.zip", Client: domain.ClientWeb, Size: 60}
+	other := eng
+	other.NotebookID, other.Size = ops, 40
+	if err := s.Check(as(w.bob), eng); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := s.Store(as(w.bob), eng, strings.NewReader(strings.Repeat("z", 50)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.archives.free = 150 // the 50 bytes stored
+	if err := s.Check(as(w.bob), other); err != nil {
+		t.Errorf("Check() of 40 bytes, 150 free, 10 bytes of another upload still to store = %v", err)
+	}
+	s.Release(other)
+
+	// other's Check stops in its decision, past the queue's.
+	reached, resume := make(chan struct{}), make(chan struct{})
+	var first atomic.Bool
+	w.archives.onFree = func() {
+		if first.CompareAndSwap(false, true) {
+			close(reached)
+			<-resume
+		}
+	}
+	checked := make(chan error, 1)
+	go func() { checked <- s.Check(as(w.bob), other) }()
+	<-reached
+	third := make(chan error, 1)
+	go func() {
+		third <- s.Check(as(w.bob), app.ImportRequest{NotebookID: dev, FileName: "v.zip", Client: domain.ClientWeb})
+	}()
+	w.rows.add(domain.Job{ID: uuid.NewV7(), NotebookID: uuid.NewV7(), Kind: domain.KindExport, State: domain.StateRunning, CreatedBy: w.bob})
+	if _, err := s.Create(as(w.bob), eng, stored); err != nil {
+		t.Errorf("Create() beside a Check under way, the queue one short = %v", err)
+	}
+	select {
+	case err := <-third:
+		t.Errorf("a Check beside one under way = %v, want it to wait", err)
+		third <- err
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(resume)
+	if err := <-checked; !errors.Is(err, domain.ErrQueueFull) && err != nil {
+		t.Errorf("the Check under way = %v", err)
+	}
+	<-third
 }
 
 // Create counts the uploads into other notebooks in the queue again: one
@@ -227,7 +291,7 @@ func TestAnImportsCreateCountsTheOtherUploads(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	stored, err := s.Store(as(w.bob), strings.NewReader("zip"))
+	stored, err := s.Store(as(w.bob), app.ImportRequest{NotebookID: w.eng}, strings.NewReader("zip"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -246,7 +310,7 @@ func TestAnImportsCreateCountsTheOtherUploads(t *testing.T) {
 func TestAnImportWhoseCommitFailsKeepsItsArchive(t *testing.T) {
 	w := newWorld()
 	s := w.startImport(&queue{}, 20)
-	stored, err := s.Store(as(w.bob), strings.NewReader("zip"))
+	stored, err := s.Store(as(w.bob), app.ImportRequest{NotebookID: w.eng}, strings.NewReader("zip"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -281,7 +345,7 @@ func TestStoringAnImportsArchive(t *testing.T) {
 			if tt.setUp != nil {
 				tt.setUp(w.archives)
 			}
-			stored, err := w.startImport(&queue{}, 20).Store(as(w.bob), bytes.NewReader(tt.body()))
+			stored, err := w.startImport(&queue{}, 20).Store(as(w.bob), app.ImportRequest{NotebookID: w.eng}, bytes.NewReader(tt.body()))
 			if !tt.check(err) {
 				t.Errorf("Store() = %+v, %v", stored, err)
 			}
@@ -291,7 +355,7 @@ func TestStoringAnImportsArchive(t *testing.T) {
 		})
 	}
 	w := newWorld()
-	_, err := w.startImport(&queue{}, 20).Store(as(w.bob), iotest.ErrReader(readErr))
+	_, err := w.startImport(&queue{}, 20).Store(as(w.bob), app.ImportRequest{NotebookID: w.eng}, iotest.ErrReader(readErr))
 	var read *app.ReadError
 	if !errors.As(err, &read) || !errors.Is(err, readErr) || len(w.archives.aborted) != 1 || len(w.archives.imports) != 0 {
 		t.Errorf("Store() of a body failing = %v, aborted %v", err, w.archives.aborted)
@@ -304,7 +368,7 @@ func TestDiscardingAnImportsArchive(t *testing.T) {
 	var l logs
 	w.logger = l.logger()
 	s := w.startImport(&queue{}, 20)
-	stored, err := s.Store(context.Background(), strings.NewReader("zip"))
+	stored, err := s.Store(context.Background(), app.ImportRequest{NotebookID: w.eng}, strings.NewReader("zip"))
 	if err != nil {
 		t.Fatal(err)
 	}
