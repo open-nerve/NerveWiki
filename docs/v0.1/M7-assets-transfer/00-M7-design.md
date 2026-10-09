@@ -517,7 +517,7 @@ M7 开工时负责人确认进入 M7（2026-10-08："可以了"）。下面是�
 | P2 | 附件（服务端） | 已完成 | [02-P2-assets-server.md](02-P2-assets-server.md) | [P2 审查](reviews/P2-assets-server-review.md) |
 | P3 | 附件与链接（服务端） | 已完成（A 合并 `5138ad6`，B 合并 `f3bf03c`） | [03-P3-assets-links.md](03-P3-assets-links.md) | [P3A 审查](reviews/P3A-assets-links-review.md)、[P3B 审查](reviews/P3B-render-review.md) |
 | P4 | 附件（前端） | 已完成（A 合并 `e44b417`，B 合并 `32e175c`，C 合并 `008f81f`） | [04-P4-assets-web.md](04-P4-assets-web.md) | [P4A 审查](reviews/P4A-assets-web-review.md)、[P4B 审查](reviews/P4B-assets-web-review.md)、[P4C 审查](reviews/P4C-paste-upload-review.md) |
-| P5 | 导出 | 未开始 | — | — |
+| P5 | 导出 | 进行中（A：服务端） | [05-P5-export.md](05-P5-export.md) | — |
 | P6 | 导入 | 未开始 | — | — |
 
 ## 13. 变更记录
@@ -536,3 +536,4 @@ M7 开工时负责人确认进入 M7（2026-10-08："可以了"）。下面是�
 | 2026-10-09 | P4A 完成：上传的请求不带正文、表单由注入的传输发出；上传答复之后的树读合并（`wrote()`），被重叠的读交回最近发出的那次；列表重读读已有的页数、接页按 id 去重，成功的上传读到它所在的页；附件在树读完、显示之后再读；名称按 `titleKey` 比较；拖放保护不管编辑器，页内开始的拖动不上传；附件一节的播报、复制的退路与焦点的交接 | P4A 的实施、审查与四轮修复核对：[04-P4-assets-web.md](04-P4-assets-web.md) 第 3、9 节、[P4A 审查](reviews/P4A-assets-web-review.md) |
 | 2026-10-09 | P4B 完成：不内联的附件的链接写 `download`（12 字节）；`PropertyLink.inline`、`PageProperties.assets_expire_at`；阅读视图的增强 `assets`：新标签页与提示、链接之后按语言写大小、加载失败的重读、保留音视频与就地重签（开始了的都签，重签途中的失败不理会，一分钟之内不再签，地址没给时按视图的过期重读；出错的不保留）；到期重读从读到的时刻算（`stamped`、`eachRead`），快一小时以上的时钟每 30 秒，隐藏的标签页显示时读；4.8 的阅读视图随之改写 | P4B 的实施、审查与五轮修复核对：[04-P4-assets-web.md](04-P4-assets-web.md) 第 4、9 节、[P4B 审查](reviews/P4B-assets-web-review.md) |
 | 2026-10-09 | P4C 完成，P4 完成：编辑器的扩展 `assetUpload`（粘贴、拖入的文件上传，插入 `![[link]]`；光标移到嵌入之后，同一位置后粘贴的在后面；每个上传一创建就接住拒绝；没插入的一批答完说一次）；`EditorContext.uploadAsset`、`EditorControls.whenComposed`、`tell`、`going`，`SourceEditorHandle.working`、`settled`；Done、Mod+E 先等编辑器的上传与其后的组合，等待中失锁或撞上冲突就不走，等待期间说的带到阅读视图，离开之后的焦点按“编辑之内与之外”；上传行按来源分开（`Upload.fromEditor`）；正文至少 20rem 高；能改的正文有落点的光标；4.8 的粘贴、拖入随之改写 | P4C 的实施、审查与七轮修复核对：[04-P4-assets-web.md](04-P4-assets-web.md) 第 5、9 节、[P4C 审查](reviews/P4C-paste-upload-review.md) |
+| 2026-10-09 | P5 开工：分 A（服务端）、B（前端）两部分合并；子树的导出里那一页是库的根下的一页（`<页>/<页>.md`）；`meta.json` 里只有目录的页的路径以 `/` 结尾；冲突时有目录的那一页改名（`N.md 2`）；任务表加 `name`（导出的根名：任务列表与下载的文件名）；`jobs.Job.Start` 承担启动时的收拾；心跳每秒一次、同一条语句读回取消；列表不带报告的问题 | [05-P5-export.md](05-P5-export.md) 第 0、3 节 |
