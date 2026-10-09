@@ -82,7 +82,13 @@ async function open(page = new FakePage(), answers: Record<string, Answer> = {},
   events.last().hello();
   await waitFor(() =>
     expect(server.sent.slice(before)).toEqual(
-      expect.arrayContaining(["GET nodes", "GET view Guide", `GET backlinks ${guide.id}`, `GET properties ${guide.id}`])
+      expect.arrayContaining([
+        "GET nodes",
+        "GET view Guide",
+        `GET backlinks ${guide.id}`,
+        `GET properties ${guide.id}`,
+        "GET assets Guide",
+      ])
     )
   );
   server.sent.length = 0;
@@ -434,6 +440,17 @@ test("a connection reads from the outside in: a notebook no longer seen leaves t
   expect(await screen.findByRole("heading", { level: 1, name: "Page not found" })).toBeTruthy();
   await settle();
   expect(server.sent).toEqual([]);
+});
+
+test("an event whose tree lost the page shown reads none of its attachments: the page leaves first", async () => {
+  const { server, events } = await open();
+  server.nodes = [notes];
+
+  events.last().send("pages", pagesEvent(true, []));
+
+  expect(await screen.findByRole("heading", { level: 1, name: "Page not found" })).toBeTruthy();
+  await settle();
+  expect(server.sent).toEqual(["GET nodes"]);
 });
 
 test("a connection reads the right column after the tree: a page deleted meanwhile leaves before its backlinks and properties would be read", async () => {

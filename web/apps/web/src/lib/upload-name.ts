@@ -1,3 +1,5 @@
+import { titleKey } from "./title-key";
+
 /**
  * The name an upload goes out with (M7/P4 design 3.4): a file's name fixed
  * by the rules an import fixes it by (M7 design 4.11), then one no sibling
@@ -44,17 +46,17 @@ export function fixedName(raw: string, untitled: string): string {
 
 /**
  * freeName is name, or the first of "stem 2.ext", "stem 3.ext", … that none
- * of taken has, compared by their keys (NFC, lower case), as a title is
- * among its siblings (M7 design 4.11).
+ * of taken has, compared by their title keys, as a title is among its
+ * siblings (M7 design 4.11).
  */
 export function freeName(name: string, taken: Iterable<string>): string {
-  const used = new Set(Array.from(taken, nameKey));
-  if (!used.has(nameKey(name))) {
+  const used = new Set(Array.from(taken, titleKey));
+  if (!used.has(titleKey(name))) {
     return name;
   }
   for (let n = 2; ; n++) {
     const numbered = fitted(name, ` ${n.toString()}`);
-    if (!used.has(nameKey(numbered))) {
+    if (!used.has(titleKey(numbered))) {
       return numbered;
     }
   }
@@ -63,11 +65,6 @@ export function freeName(name: string, taken: Iterable<string>): string {
 /** isPageName tells whether name ends with ".md", in any case: a page's file, which an upload may not be. */
 export function isPageName(name: string): boolean {
   return name.toLowerCase().endsWith(".md");
-}
-
-/** nameKey is how a name compares to its siblings': NFC, then lower case. */
-export function nameKey(name: string): string {
-  return name.normalize("NFC").toLowerCase();
 }
 
 /** extensionOf is name's extension, its last dot on, or "" for a name without one (a dot that starts it is none). */
@@ -79,13 +76,15 @@ export function extensionOf(name: string): string {
 /**
  * fitted is name with suffix after its stem, its stem cut at a character
  * so that the whole is at most maxNameBytes in UTF-8, its extension kept;
- * an extension longer than that is cut as well.
+ * an extension longer than that is cut as well, after the stem's first
+ * character: a name does not start with its extension's dot.
  */
 function fitted(name: string, suffix: string): string {
   let extension = extensionOf(name);
   let stem = name.slice(0, name.length - extension.length);
-  if (bytes(extension) + bytes(suffix) >= maxNameBytes) {
-    extension = cut(extension, maxNameBytes - bytes(suffix) - 1);
+  const first = bytes(Array.from(stem)[0] ?? "");
+  if (first + bytes(extension) + bytes(suffix) > maxNameBytes) {
+    extension = cut(extension, maxNameBytes - bytes(suffix) - first);
   }
   stem = cut(stem, maxNameBytes - bytes(suffix) - bytes(extension));
   return stem + suffix + extension;

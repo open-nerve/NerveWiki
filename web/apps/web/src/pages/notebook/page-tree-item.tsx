@@ -231,10 +231,8 @@ const PageMenu = observer(function PageMenu({
   const deepest = tree !== undefined && depthOf(tree, node.id) >= maxDepth;
   const shown = subtree.some((page) => page.id === pageId);
   const count = subtree.length - 1;
-  const inSubtree = new Set(subtree.map((page) => page.id));
-  const attachments =
-    pages.nodes?.filter((each) => each.kind === "asset" && each.parent_id !== null && inSubtree.has(each.parent_id))
-      .length ?? 0;
+  // Counted as the deletion is asked: the rows do not watch the attachments, which a read may change alone.
+  const attachments = dialog === "delete" ? attachmentsUnder(pages, subtree) : 0;
   return (
     <>
       <DropdownMenu>
@@ -282,10 +280,9 @@ const PageMenu = observer(function PageMenu({
         }}
         title={t("page.deleteTitle", { name })}
         description={[
-          t("page.deleteBody"),
           ...(count === 0 ? [] : [t("page.deleteSubpages", { count })]),
           ...(attachments === 0 ? [] : [t("page.deleteAttachments", { count: attachments })]),
-        ].join(" ")}
+        ].reduce((first, second) => t("page.sentences", { first, second }), t("page.deleteBody"))}
         confirmLabel={t("page.delete")}
         sendingLabel={t("page.deleting")}
         cancelLabel={t("page.cancel")}
@@ -299,3 +296,12 @@ const PageMenu = observer(function PageMenu({
     </>
   );
 });
+
+/** attachmentsUnder is how many attachments the pages of subtree hold. */
+function attachmentsUnder(pages: PageTreeStore, subtree: readonly TreeNode[]): number {
+  const ids = new Set(subtree.map((page) => page.id));
+  return (
+    pages.nodes?.filter((node) => node.kind === "asset" && node.parent_id !== null && ids.has(node.parent_id)).length ??
+    0
+  );
+}

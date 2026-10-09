@@ -317,6 +317,113 @@ describe("AssetStore's uploads", () => {
   });
 });
 
+describe("AssetStore's uploads, as they fail and go on", () => {
+  test("one failed, or refused, holds no name: the next sends it", async () => {
+    const { store, sent } = setUp();
+
+    store.upload(null, [file("a.png", 101), file("b.png")], "Untitled", limits);
+    await settle();
+    sent[0]?.reject(refusal(507, "storage_full"));
+    await settle();
+    store.upload(null, [file("a.png"), file("b.png")], "Untitled", limits);
+    await settle();
+
+    expect(sent.map((each) => each.name)).toEqual(["b.png", "a.png", "b.png"]);
+  });
+
+  test("names are taken under one parent: an upload under another page takes its own", async () => {
+    const { store, sent, pages } = setUp();
+    pages.siblingsOf.mockImplementation((parent) =>
+      parent === guide.id ? [{ ...assetNode(80, "a.png"), parent_id: guide.id }] : []
+    );
+
+    store.upload(guide.id, [file("a.png")], "Untitled", limits);
+    store.upload(null, [file("a.png")], "Untitled", limits);
+    await settle();
+
+    expect(sent.map((each) => [each.parent, each.name])).toEqual([
+      [guide.id, "a 2.png"],
+      [null, "a.png"],
+    ]);
+  });
+
+  test("cancelled as the tree is read after its failure, it leaves the uploads, no failure shown", async () => {
+    const { store, sent, pages } = setUp();
+    let answer: (() => void) | undefined;
+    pages.wrote.mockImplementationOnce(() => new Promise<undefined>((resolve) => (answer = () => resolve(undefined))));
+
+    const [upload] = store.upload(null, [file("a.png")], "Untitled", limits);
+    await settle();
+    sent[0]?.reject(refusal(507, "storage_full"));
+    await settle();
+    upload?.cancel();
+    answer?.();
+    await settle();
+
+    expect(store.uploads).toEqual([]);
+    expect(upload?.failure).toBeUndefined();
+  });
+
+  test("answered, it is no longer to be cancelled; its attachment is in its list though on a page not read", async () => {
+    const { store, sent, add } = setUp();
+    add(guide.id, "a.png", "b.png", "c.png");
+    await store.load(guide.id);
+
+    const [upload] = store.upload(guide.id, [file("z.png")], "Untitled", limits);
+    await settle();
+    const made = assetJSON({ ...assetNode(91, "z.png"), parent_id: guide.id });
+    add(guide.id, "z.png");
+    sent[0]?.resolve(made);
+    await Promise.resolve();
+    expect(upload?.answered).toBe(true);
+    await settle();
+
+    expect(store.listOf(guide.id)?.assets.map((asset) => asset.name)).toEqual(["a.png", "b.png", "z.png"]);
+    expect(upload?.uploaded).toEqual(made);
+  });
+});
+
+describe("AssetStore's lists, as they change", () => {
+  test("pages read after a change list each attachment once, where the later read has it", async () => {
+    const { store, add, service } = setUp();
+    add(guide.id, "a.png", "b.png", "c.png");
+    await store.load(guide.id);
+    // a.png renamed past the cursor by another tab: the next page has it again.
+    const first = service.list.getMockImplementation();
+    service.list.mockImplementationOnce(async (...args) => {
+      const page = await first!(...args);
+      const renamed = store.listOf(guide.id)?.assets[0];
+      return { ...page, data: [...page.data, ...(renamed === undefined ? [] : [{ ...renamed, name: "z.png" }])] };
+    });
+
+    const added = await store.more(guide.id);
+
+    expect(store.listOf(guide.id)?.assets.map((asset) => asset.name)).toEqual(["b.png", "c.png", "z.png"]);
+    expect(added.map((asset) => asset.name)).toEqual(["c.png"]);
+  });
+
+  test("a read asked for while another waits its turn is that one", async () => {
+    const { store, add, service } = setUp();
+    add(guide.id, "a.png");
+    let answer: (() => void) | undefined;
+    const first = service.list.getMockImplementation();
+    service.list.mockImplementationOnce(async (...args) => {
+      await new Promise<void>((resolve) => (answer = resolve));
+      return first!(...args);
+    });
+
+    const out = store.load(guide.id);
+    await settle();
+    const waiting = store.load(guide.id);
+    const again = store.load(guide.id);
+    answer?.();
+    await Promise.all([out, waiting, again]);
+
+    expect(waiting).toBe(again);
+    expect(service.list).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe("AssetStore's changes", () => {
   test("a rename, a move and a deletion are the tree's writes, and the lists they change are read again", async () => {
     const { store, pages, asked } = setUp();

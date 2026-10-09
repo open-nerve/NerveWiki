@@ -84,7 +84,19 @@ test("a generation's uploads stop once the tab has signed in again", async () =>
   expect(upload?.signal.aborted).toBe(true);
   await vi.waitFor(() => expect(assets?.uploads).toEqual([]));
   expect(leaving()).toBe(false);
-  expect(new RootStore(app, app.session.tokens.state.loginId).assetsOf(notebookJSON)?.uploads).toEqual([]);
+});
+
+test("a generation made and dropped, its attachments never asked for, does not watch the session", async () => {
+  const app = testApp(() => json(tokens(1)), storedSession("login-0"));
+  await app.session.start();
+  const watching = vi.spyOn(app.session.tokens, "subscribe");
+
+  const dropped = new RootStore(app, "login-0");
+  expect(watching).not.toHaveBeenCalled();
+  dropped.assetsOf(notebookJSON);
+  dropped.assetsOf({ ...notebookJSON, id: "other" });
+
+  expect(watching).toHaveBeenCalledTimes(1);
 });
 
 test("a signed-out generation has no account, nor its workspaces", () => {

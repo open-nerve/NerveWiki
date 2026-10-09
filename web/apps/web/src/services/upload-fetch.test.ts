@@ -83,6 +83,18 @@ describe("uploadFetch", () => {
     ]);
   });
 
+  test("an answer no Response takes, a status out of 200–599, rejects with a TypeError: it does not hang", async () => {
+    const { answer, sent } = sending(new FormData());
+
+    await sent().answer(new Response("{}", { status: 200 }));
+    const odd = sending(new FormData());
+    Object.defineProperty(odd.sent(), "status", { value: 999 });
+    odd.sent().dispatchEvent(new Event("load"));
+
+    expect((await answer).status).toBe(200);
+    await expect(odd.answer).rejects.toBeInstanceOf(TypeError);
+  });
+
   test("a network failure, or a timeout, rejects with a TypeError, as fetch's", async () => {
     const failed = sending(new FormData());
     failed.sent().fail();

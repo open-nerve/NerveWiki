@@ -24,7 +24,7 @@ export type UploadOptions = {
 };
 
 /** Statuses whose answer has no body: a Response with one throws. */
-const bodiless = new Set([101, 204, 205, 304]);
+const bodiless = new Set([204, 205, 304]);
 
 /**
  * uploadFetch is a fetch, as openapi-fetch calls it, that sends form on a
@@ -63,7 +63,12 @@ export function uploadFetch(
       xhr.addEventListener("load", () => {
         settle();
         const body = bodiless.has(xhr.status) ? null : xhr.responseText;
-        resolve(new Response(body, { status: xhr.status, statusText: xhr.statusText, headers: headersOf(xhr) }));
+        try {
+          resolve(new Response(body, { status: xhr.status, statusText: xhr.statusText, headers: headersOf(xhr) }));
+        } catch {
+          // A status out of 200–599, or a header's name no Headers takes: no answer fetch would give.
+          reject(new TypeError("the upload failed: an answer fetch does not take"));
+        }
       });
       const failed = () => {
         settle();

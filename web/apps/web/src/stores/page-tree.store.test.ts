@@ -253,6 +253,46 @@ test("a page created is in the tree once create answers its id", async () => {
   expect(pages.childrenOf(guide.id).map((n) => n.name)).toEqual(["Install", "Untitled"]);
 });
 
+test("a page created is in the tree once create answers, an upload's answer overlapping the read after it (M7/P4A review A1)", async () => {
+  const { pages, state } = store();
+  await pages.load();
+  const created = { ...pageNode(9, "Untitled"), parent_id: guide.id };
+  const before = held<TreeNode[]>();
+  state.writes.set("list", () => before.promise);
+
+  const creating = pages.create(guide.id, "Untitled");
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  // The upload answers as the creation's read is out: the read after it has the page.
+  state.nodes = [guide, install, linux, created, notes];
+  state.writes.delete("list");
+  const wrote = pages.wrote();
+  before.resolve([guide, install, linux, notes]);
+  const id = await creating;
+
+  expect(id).toBe(created.id);
+  expect(pages.byId(created.id)).toBeDefined();
+  await wrote;
+});
+
+test("uploads answered as a read after one is out have one more read after it, not one each", async () => {
+  const { pages, sent, state } = store();
+  await pages.load();
+  const out = held<TreeNode[]>();
+  state.writes.set("list", () => out.promise);
+  sent.length = 0;
+
+  const first = pages.wrote();
+  const second = pages.wrote();
+  const third = pages.wrote();
+  state.writes.delete("list");
+  state.nodes = [guide, install, linux, notes, assetNode(20, "a.png", guide)];
+  out.resolve([guide, install, linux, notes]);
+  await Promise.all([first, second, third]);
+
+  expect(sent).toEqual(["list plans", "list plans"]);
+  expect(pages.siblingsOf(guide.id).map((node) => node.name)).toEqual(["Install", "a.png"]);
+});
+
 test("a page deleted, or deleted already, sends its subtree's shells to its parent", async () => {
   const { pages, state } = store();
   await pages.load();

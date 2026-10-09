@@ -109,9 +109,13 @@ export class RootStore {
   private readonly notebookMemberLists = new Map<string, NotebookMemberStore>();
   private readonly pageTrees = new Map<string, PageTreeStore>();
   private readonly assetLists = new Map<string, AssetStore>();
-  /** Aborts as the tab's session leaves this generation's login: its uploads stop. */
-  private readonly generation = new AbortController();
+  /**
+   * Aborts as the tab's session leaves this generation's login, once its
+   * first attachments' store watches for that: its uploads stop.
+   */
+  private generation: AbortController | undefined;
   private unloadWarning: UnloadWarning | undefined;
+  private readonly tokens: Session["tokens"];
 
   constructor(
     app: AppStores,
@@ -119,6 +123,7 @@ export class RootStore {
   ) {
     this.preferences = app.preferences;
     this.instance = app.instance;
+    this.tokens = app.session.tokens;
     this.auth = new AuthStore(new AuthService(app.session.public), app.session.tokens, loginId, () => this.endEdits());
     this.invitationPreviews = new InvitationPreviewStore(new InvitationPreviewService(app.session.public));
     const client = loginId === undefined ? undefined : app.session.clientFor(loginId);
@@ -149,13 +154,6 @@ export class RootStore {
       };
       const deps = app.events;
       this.closing = deps && { loginId, tabId: deps.tabId, port: () => deps.channel("nwiki.edits") };
-      const { tokens } = app.session;
-      const unsubscribe = tokens.subscribe(() => {
-        if (tokens.state.loginId !== loginId) {
-          unsubscribe();
-          this.generation.abort();
-        }
-      });
     }
   }
 
@@ -310,10 +308,12 @@ export class RootStore {
   /**
    * assetsOf is the attachments of notebook, the same store for as long as
    * this generation lives (M7/P4 design 3.3), whose uploads stop as it
-   * ends; undefined while the tab is signed out.
+   * ends; undefined while the tab is signed out. The first watches the
+   * session for the generation's end: a generation made and dropped as it
+   * renders watches nothing.
    */
   assetsOf(notebook: Notebook): AssetStore | undefined {
-    const { assets: service, generation } = this;
+    const { assets: service } = this;
     const pages = this.pagesOf(notebook);
     return (
       service &&
@@ -321,9 +321,29 @@ export class RootStore {
       once(this.assetLists, notebook.id, () => {
         this.unloadWarning ??= new UnloadWarning();
         const warning = this.unloadWarning;
-        return new AssetStore(service, notebook.id, pages, generation.signal, (on) => warning.set(notebook.id, on));
+        return new AssetStore(service, notebook.id, pages, this.ending(), (on) => warning.set(notebook.id, on));
       })
     );
+  }
+
+  /** ending is the signal of this generation's end, which aborts as the tab's session leaves its login. */
+  private ending(): AbortSignal {
+    if (this.generation === undefined) {
+      const generation = new AbortController();
+      this.generation = generation;
+      const { tokens, loginId } = this;
+      const unsubscribe = tokens.subscribe(() => {
+        if (tokens.state.loginId !== loginId) {
+          unsubscribe();
+          generation.abort();
+        }
+      });
+      if (tokens.state.loginId !== loginId) {
+        unsubscribe();
+        generation.abort();
+      }
+    }
+    return this.generation.signal;
   }
 
   /**

@@ -25,12 +25,15 @@ export function FormField({ label, error, hint, suffix, type, ...props }: FormFi
   const t = useT();
   const [shown, setShown] = useState(false);
   const note = error ?? hint;
+  // A suffix's hint stays with a problem: the suffix shows, unread, what it says.
+  const kept = suffix !== undefined && error !== undefined ? hint : undefined;
+  const described = [note === undefined ? "" : `${id}-note`, kept === undefined ? "" : `${id}-hint`].join(" ").trim();
   const input = (
     <Input
       id={id}
       type={type === "password" && shown ? "text" : type}
       aria-invalid={error !== undefined || undefined}
-      aria-describedby={note === undefined ? undefined : `${id}-note`}
+      aria-describedby={described === "" ? undefined : described}
       {...props}
     />
   );
@@ -66,6 +69,11 @@ export function FormField({ label, error, hint, suffix, type, ...props }: FormFi
           className={error === undefined ? "text-sm text-muted-foreground" : "text-sm text-destructive"}
         >
           {note}
+        </p>
+      )}
+      {kept !== undefined && (
+        <p id={`${id}-hint`} className="text-sm text-muted-foreground">
+          {kept}
         </p>
       )}
     </div>

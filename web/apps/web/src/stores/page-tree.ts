@@ -1,3 +1,4 @@
+import { titleKey } from "../lib/title-key";
 import type { TreeNode } from "../services/page.service";
 
 /**
@@ -133,15 +134,6 @@ export function canHold(tree: TreeIndex, parent: string | null, id: string): boo
     return false;
   }
   return depthOf(tree, parent) + heightOf(tree, id) <= maxDepth;
-}
-
-/**
- * titleKey is how titles compare among siblings, near the server's
- * shared.TitleKey: NFC, then lower case. Where the two differ the server
- * answers 409 page.title_taken.
- */
-function titleKey(title: string): string {
-  return title.normalize("NFC").toLowerCase();
 }
 
 /**

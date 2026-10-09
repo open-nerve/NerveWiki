@@ -47,6 +47,10 @@ export class PageTreeStore {
   /** How many reads have started, and which of them the tree is: an earlier one answered late does not replace it. */
   private readsStarted = 0;
   private readKept = 0;
+  /** The read started last, which a read that a change's answer overlapped answers instead of itself. */
+  private latest: { read: number; nodes: Promise<TreeNode[]> } | undefined = undefined;
+  /** The reads after uploads' answers (wrote): one at a time, and one more for those answered as it is out. */
+  private rereading: { again: boolean; done: Promise<void> } | undefined = undefined;
   /** The pages this generation deleted, each with where its shell goes: the deleted subtree's parent (null: home). */
   private readonly removed = new Map<string, string | null>();
   private readonly inTurn = oneAtATime();
@@ -75,7 +79,15 @@ export class PageTreeStore {
   ) {
     makeAutoObservable<
       this,
-      "service" | "linking" | "changesAnswered" | "readsStarted" | "readKept" | "inTurn" | "togglesOut"
+      | "service"
+      | "linking"
+      | "changesAnswered"
+      | "readsStarted"
+      | "readKept"
+      | "latest"
+      | "rereading"
+      | "inTurn"
+      | "togglesOut"
     >(this, {
       service: false,
       linking: false,
@@ -85,6 +97,8 @@ export class PageTreeStore {
       changesAnswered: false,
       readsStarted: false,
       readKept: false,
+      latest: false,
+      rereading: false,
       inTurn: false,
       togglesOut: false,
     });
@@ -137,17 +151,28 @@ export class PageTreeStore {
   /**
    * load reads the tree; SWR calls it, each write's answer, and the events
    * of other tabs' writes. A write answered while the read was out is newer
-   * than what it read: the tree kept is the one read after it. Reads that
-   * overlap take effect in the order they started (M5/P3 design 3.9): one
-   * answered after a later one is dropped. A tree read the same as before
-   * is kept as it was, so that what shows it does not render again.
+   * than what it read: the tree kept is the one read after it, which that
+   * read answers too (the answer is followed by a read at once), so that a
+   * write that awaits its read settles with the tree as it left it, an
+   * upload's answer overlapping it or not. Reads that overlap take effect
+   * in the order they started (M5/P3 design 3.9): one answered after a
+   * later one is dropped. A tree read the same as before is kept as it was,
+   * so that what shows it does not render again.
    */
-  async load(): Promise<TreeNode[]> {
-    const answeredBefore = this.changesAnswered;
+  load(): Promise<TreeNode[]> {
     const read = ++this.readsStarted;
+    const nodes = this.read(read);
+    this.latest = { read, nodes };
+    return nodes;
+  }
+
+  private async read(read: number): Promise<TreeNode[]> {
+    const answeredBefore = this.changesAnswered;
     const nodes = await this.service.listNodes(this.notebookId);
     if (this.changesAnswered !== answeredBefore) {
-      return this.nodes ?? this.load();
+      const latest = this.latest;
+      // That read failing, the tree is read again.
+      return latest !== undefined && latest.read > read ? latest.nodes.catch(() => this.load()) : this.load();
     }
     if (read < this.readKept) {
       return this.nodes ?? nodes;
@@ -221,11 +246,27 @@ export class PageTreeStore {
    * wrote has the tree read again after a change of its nodes answered that
    * was not one of its writes, an upload of an attachment (M7/P4 design
    * 3.3), which goes out beside them: a read out meanwhile may have read
-   * the tree before it.
+   * the tree before it. Uploads answered as one such read is out have one
+   * more read after it, not one each; each settles once the tree read
+   * after its answer is.
    */
-  async wrote(): Promise<void> {
-    this.changesAnswered += 1;
-    await this.load().catch(() => undefined);
+  wrote(): Promise<void> {
+    if (this.rereading !== undefined) {
+      this.rereading.again = true;
+      return this.rereading.done;
+    }
+    const rereading = { again: true, done: Promise.resolve() };
+    this.rereading = rereading;
+    rereading.done = (async () => {
+      while (rereading.again) {
+        rereading.again = false;
+        this.changesAnswered += 1;
+        // oxlint-disable-next-line no-await-in-loop -- one read at a time
+        await this.load().catch(() => undefined);
+      }
+      this.rereading = undefined;
+    })();
+    return rereading.done;
   }
 
   /** view reads the page id's reading view, which the store does not keep: SWR does, by page. */

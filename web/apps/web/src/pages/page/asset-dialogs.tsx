@@ -8,7 +8,7 @@ import { pagesLocked } from "../../app/pages-locked";
 import { RenameForm } from "../../app/rename-form";
 import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from "../../components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle } from "../../components/ui/dialog";
 import { Label } from "../../components/ui/label";
 import { NativeSelect } from "../../components/ui/native-select";
 import { useT } from "../../i18n/i18n";
@@ -75,8 +75,8 @@ export function RenameAssetDialog({ notebook, asset, held }: AssetDialogProps) {
 
 /**
  * MoveAssetDialog moves an attachment under another page, or to the
- * notebook's top level, last among the attachments there (M7/P4 design
- * 3.5): the parents' select is a page's move's, of every page, as any
+ * notebook's top level (M7/P4 design 3.5), where the list has it by its
+ * name: the parents' select is a page's move's, of every page, as any
  * page holds attachments, with no position. Its own parent sends nothing.
  * A refusal stays in the dialog, as a page's move's does; once moved, the
  * dialog closes.
@@ -88,6 +88,7 @@ export function MoveAssetDialog({ notebook, asset, held }: AssetDialogProps) {
     <Dialog open={held.open} onOpenChange={held.onOpenChange}>
       {held.open && (
         <DialogContent
+          aria-describedby={undefined}
           onCloseAutoFocus={(event) => {
             event.preventDefault();
             held.onClosed(done.current);
@@ -95,7 +96,6 @@ export function MoveAssetDialog({ notebook, asset, held }: AssetDialogProps) {
           }}
         >
           <DialogTitle>{t("asset.moveTitle", { name: asset.name })}</DialogTitle>
-          <DialogDescription>{t("asset.moveBody")}</DialogDescription>
           <MoveAssetForm
             notebook={notebook}
             asset={asset}

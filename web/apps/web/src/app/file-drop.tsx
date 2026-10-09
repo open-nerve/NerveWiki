@@ -1,8 +1,20 @@
 import { useEffect, useState, type DragEvent } from "react";
 
+/**
+ * pageDrag is whether a drag started in the page is going: an image of the
+ * reading view dragged carries a file in Chromium, which is no file from
+ * outside. FileDropGuard keeps it.
+ */
+const pageDrag = { on: false };
+
 /** carriesFiles tells whether a drag carries files from outside the page, which the browser would open. */
 function carriesFiles(transfer: DataTransfer | null): boolean {
-  return transfer?.types.includes("Files") === true;
+  return !pageDrag.on && transfer?.types.includes("Files") === true;
+}
+
+/** editable tells whether target is in an editor, which takes what is dropped on it as it does (M7/P4C). */
+function editable(target: EventTarget | null): boolean {
+  return target instanceof Element && target.closest("[contenteditable=true]") !== null;
 }
 
 /**
@@ -33,13 +45,20 @@ function filesDropped(transfer: DataTransfer): { files: File[]; folders: boolean
  * FileDropGuard keeps a file dropped outside where the app takes files from
  * leaving the app (M7/P4 design 3.6): the browser would open it in the tab.
  * Over the document, a drag of files may not drop; where one may drop, its
- * handler said so first (its dragover's default prevented). The shell
- * mounts it once.
+ * handler said so first (its dragover's default prevented), and an editor
+ * takes them as it does. A drag started in the page is no drag of files.
+ * The shell mounts it once.
  */
 export function FileDropGuard() {
   useEffect(() => {
+    const onDragStart = () => {
+      pageDrag.on = true;
+    };
+    const onDragEnd = () => {
+      pageDrag.on = false;
+    };
     const onDragOver = (event: globalThis.DragEvent) => {
-      if (carriesFiles(event.dataTransfer) && !event.defaultPrevented) {
+      if (carriesFiles(event.dataTransfer) && !event.defaultPrevented && !editable(event.target)) {
         event.preventDefault();
         if (event.dataTransfer !== null) {
           event.dataTransfer.dropEffect = "none";
@@ -47,24 +66,37 @@ export function FileDropGuard() {
       }
     };
     const onDrop = (event: globalThis.DragEvent) => {
-      if (carriesFiles(event.dataTransfer)) {
+      if (carriesFiles(event.dataTransfer) && !editable(event.target)) {
         event.preventDefault();
       }
+      pageDrag.on = false;
     };
+    document.addEventListener("dragstart", onDragStart);
+    document.addEventListener("dragend", onDragEnd);
     document.addEventListener("dragover", onDragOver);
     document.addEventListener("drop", onDrop);
     return () => {
+      document.removeEventListener("dragstart", onDragStart);
+      document.removeEventListener("dragend", onDragEnd);
       document.removeEventListener("dragover", onDragOver);
       document.removeEventListener("drop", onDrop);
+      pageDrag.on = false;
     };
   }, []);
   return null;
 }
 
+/** within tells whether a drag event is over the element of the handler it reached: one in a portal, a dialog, is not. */
+function within(event: DragEvent): boolean {
+  return event.target instanceof Node && event.currentTarget.contains(event.target);
+}
+
 /**
  * useFileDrop makes an element where files dropped go to take, while
  * enabled: a drag of files over it may drop (copy) and shows (over); the
- * drop gives drop its files, and whether it held a folder.
+ * drop gives drop its files, and whether it held a folder. A drag over a
+ * dialog it renders, which React's events reach through the portal, is
+ * not over it.
  */
 export function useFileDrop(
   enabled: boolean,
@@ -85,7 +117,7 @@ export function useFileDrop(
     over,
     handlers: {
       onDragOver: (event) => {
-        if (!enabled || !carriesFiles(event.dataTransfer)) {
+        if (!enabled || !carriesFiles(event.dataTransfer) || !within(event)) {
           return;
         }
         event.preventDefault();
@@ -99,7 +131,7 @@ export function useFileDrop(
         }
       },
       onDrop: (event) => {
-        if (!enabled || !carriesFiles(event.dataTransfer)) {
+        if (!enabled || !carriesFiles(event.dataTransfer) || !within(event)) {
           return;
         }
         event.preventDefault();

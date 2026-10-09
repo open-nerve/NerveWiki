@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { extensionOf, fixedName, freeName, isPageName, nameKey } from "./upload-name";
+import { extensionOf, fixedName, freeName, isPageName } from "./upload-name";
 
 const bytes = (s: string) => new TextEncoder().encode(s).length;
 
@@ -44,11 +44,19 @@ describe("fixedName", () => {
     expect(fixed).toBe(`${"a".repeat(248)}.png`);
   });
 
-  test("an extension longer than a name is cut as well", () => {
+  test("an extension longer than a name is cut as well, the stem's first character kept", () => {
     const fixed = fixedName(`a.${"b".repeat(300)}`, "Untitled");
-
     expect(bytes(fixed)).toBeLessThanOrEqual(255);
     expect(fixed.startsWith("a.")).toBe(true);
+
+    for (const stem of ["\u4E2D", "\u{1F600}"]) {
+      const wide = fixedName(`${stem}.${"b".repeat(300)}`, "Untitled");
+      expect(bytes(wide)).toBeLessThanOrEqual(255);
+      expect(wide.startsWith(`${stem}.`)).toBe(true);
+      const numbered = freeName(wide, [wide]);
+      expect(bytes(numbered)).toBeLessThanOrEqual(255);
+      expect(numbered.startsWith(`${stem} 2.`)).toBe(true);
+    }
   });
 
   test("a long run of blanks and dots takes no time to the square of its length", () => {
@@ -67,6 +75,7 @@ describe("freeName", () => {
     ["a.png", ["a.png"], "a 2.png"],
     ["a.png", ["A.PNG", "a 2.png"], "a 3.png"],
     ["caf\u00E9.png", ["cafe\u0301.png"], "caf\u00E9 2.png"],
+    ["STRASSE.png", ["Stra\u00DFe.png"], "STRASSE 2.png"],
     ["README", ["readme"], "README 2"],
     [".env", [".env"], ".env 2"],
     ["a.tar.gz", ["a.tar.gz"], "a.tar 2.gz"],
@@ -88,10 +97,6 @@ describe("the names' helpers", () => {
   test("isPageName: a name ending with .md, in any case, is a page's file", () => {
     expect(["a.md", "A.MD", "b.Md"].map(isPageName)).toEqual([true, true, true]);
     expect(["a.mdx", "md", "a.md.png"].map(isPageName)).toEqual([false, false, false]);
-  });
-
-  test("nameKey compares by NFC, then lower case", () => {
-    expect(nameKey("Cafe\u0301.PNG")).toBe("caf\u00E9.png");
   });
 
   test("extensionOf is from the last dot, none for a dot that starts the name", () => {

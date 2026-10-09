@@ -2,6 +2,7 @@ import type { Asset } from "../services/asset.service";
 import type { BacklinkPage, LinkLanding, PageProperties } from "../services/linking.service";
 import type { NotebookRole } from "../services/notebook.service";
 import type { EditLock, NodeMove, PageContent, PageView, TaskToggle, TreeNode } from "../services/page.service";
+import { titleKey } from "../lib/title-key";
 import { instanceJSON, json, notebookJSON, problem, signedInApp, userJSON, type Answer } from "./fakes";
 import { formOf } from "./transfer";
 
@@ -102,8 +103,12 @@ type PageServerOptions = {
  * properties has, by default none (M6/P7).
  *
  * The notebook's attachments are its nodes of kind asset (M7/P4): listed
- * by parent, assetPage of them a page; uploaded as the server takes them,
- * a reader refused (403 forbidden), a name ending with .md refused (422 on
+ * by parent as the server lists them, by title key then id, limit of them
+ * a page (50 without one; 422 outside 1–100), a parent that is no page 404
+ * page.not_found; each linked by its name, or its path where another
+ * attachment of the notebook has its title key; uploaded as the server
+ * takes them, a reader refused (403 forbidden), a parent that is no page
+ * refused (422 on parent_id), a name ending with .md refused (422 on
  * name), a file over the instance's asset_max_bytes refused (413
  * payload_too_large), a name a sibling has 409 page.title_taken. While
  * uploadsHeld is set, an upload is answered once released.
@@ -133,8 +138,6 @@ export function pageServer({
     backlinks: new Map<string, BacklinkPage[]>(),
     /** Each page's properties, by its id. */
     properties: new Map<string, PageProperties>(),
-    /** How many attachments a page of their list has. */
-    assetPage: 100,
     /** When the addresses of the attachments listed expire. */
     assetsExpireAt: "2100-01-01T00:00:00Z",
     /** Whether uploads wait to be released. */
@@ -290,7 +293,7 @@ function writeRoutes(server: {
 }): Record<string, Answer> {
   const taken = (parent: string | null, title: string, except?: string) =>
     server.nodes.some(
-      (node) => node.parent_id === parent && node.id !== except && node.name.toLowerCase() === title.toLowerCase()
+      (node) => node.parent_id === parent && node.id !== except && titleKey(node.name) === titleKey(title)
     );
   /**
    * place puts node right after after among its siblings (null: first;
@@ -382,8 +385,16 @@ function writeRoutes(server: {
   };
 }
 
-/** assetJSON is the attachment node as the server answers it, of size bytes, its addresses expiring at expires. */
-export function assetJSON(node: TreeNode, size = 1024, expires = "2100-01-01T00:00:00Z"): Asset {
+/**
+ * assetJSON is the attachment node as the server answers it, of size bytes, its addresses expiring at expires,
+ * linked by link (its name by default; none without an extension).
+ */
+export function assetJSON(
+  node: TreeNode,
+  size = 1024,
+  expires = "2100-01-01T00:00:00Z",
+  link: string = node.name
+): Asset {
   const extension = /\.([^.]+)$/.exec(node.name)?.[1]?.toLowerCase();
   const mimes: Record<string, string> = {
     png: "image/png",
@@ -396,7 +407,7 @@ export function assetJSON(node: TreeNode, size = 1024, expires = "2100-01-01T00:
     notebook_id: node.notebook_id,
     parent_id: node.parent_id,
     name: node.name,
-    link: extension === undefined ? null : node.name,
+    link: extension === undefined ? null : link,
     mime: (extension && mimes[extension]) ?? "application/octet-stream",
     byte_size: size,
     sha256: "0".repeat(64),
@@ -413,7 +424,6 @@ export function assetJSON(node: TreeNode, size = 1024, expires = "2100-01-01T00:
 type AssetState = {
   sent: string[];
   nodes: TreeNode[];
-  assetPage: number;
   assetsExpireAt: string;
   uploadsHeld: boolean;
   held: (() => void)[];
@@ -424,18 +434,41 @@ function assetRoutes(server: AssetState, role: NotebookRole): Record<string, Ans
   const sizes = new Map<string, number>();
   const nameOf = (id: string | null) =>
     id === null ? "root" : (server.nodes.find((node) => node.id === id)?.name ?? id);
+  const isPage = (id: string | null) =>
+    id === null || server.nodes.some((node) => node.id === id && node.kind === "page");
+  // Its name where no other attachment of the notebook has its title key, its path from the root otherwise.
+  const linkOf = (node: TreeNode) => {
+    const alike = server.nodes.filter((each) => each.kind === "asset" && titleKey(each.name) === titleKey(node.name));
+    if (alike.length === 1) {
+      return node.name;
+    }
+    const path = [node.name];
+    for (let parent = node.parent_id; parent !== null;) {
+      const page = server.nodes.find((each) => each.id === parent);
+      path.unshift(page?.name ?? "");
+      parent = page?.parent_id ?? null;
+    }
+    return path.join("/");
+  };
+  const answered = (node: TreeNode) => assetJSON(node, sizes.get(node.id), server.assetsExpireAt, linkOf(node));
   return {
     [`GET /api/v0/notebooks/${notebookJSON.id}/assets`]: (request) => {
       const query = new URL(request.url).searchParams;
       const parent = query.get("parent_id");
       const at = Number(query.get("cursor") ?? "0");
+      const limit = Number(query.get("limit") ?? "50");
       server.sent.push(`GET assets ${nameOf(parent)}${at === 0 ? "" : ` from ${at.toString()}`}`);
-      const all = server.nodes.filter((node) => node.kind === "asset" && node.parent_id === parent);
-      const next = at + server.assetPage;
-      return json({
-        data: all.slice(at, next).map((node) => assetJSON(node, sizes.get(node.id), server.assetsExpireAt)),
-        next_cursor: next < all.length ? next.toString() : null,
-      });
+      if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+        return problem(422, "validation_failed", { errors: [{ field: "limit", code: "out_of_range", message: "" }] });
+      }
+      if (!isPage(parent)) {
+        return problem(404, "page.not_found");
+      }
+      const all = server.nodes
+        .filter((node) => node.kind === "asset" && node.parent_id === parent)
+        .toSorted((a, b) => compare(titleKey(a.name), titleKey(b.name)) || compare(a.id, b.id));
+      const next = at + limit;
+      return json({ data: all.slice(at, next).map(answered), next_cursor: next < all.length ? next.toString() : null });
     },
     [`POST /api/v0/notebooks/${notebookJSON.id}/assets`]: async (request) => {
       const form = formOf(request);
@@ -449,22 +482,31 @@ function assetRoutes(server: AssetState, role: NotebookRole): Record<string, Ans
       if (role === "reader") {
         return problem(403, "forbidden");
       }
+      if (!isPage(parent)) {
+        return problem(422, "validation_failed", {
+          errors: [{ field: "parent_id", code: "not_allowed", message: "no page" }],
+        });
+      }
       if (name.toLowerCase().endsWith(".md")) {
         return problem(422, "validation_failed", { errors: [{ field: "name", code: "not_allowed", message: ".md" }] });
       }
       if (file instanceof Blob && file.size > instanceJSON.asset_max_bytes) {
         return problem(413, "payload_too_large");
       }
-      const key = name.normalize("NFC").toLowerCase();
-      if (server.nodes.some((node) => node.parent_id === parent && node.name.normalize("NFC").toLowerCase() === key)) {
+      if (server.nodes.some((node) => node.parent_id === parent && titleKey(node.name) === titleKey(name))) {
         return problem(409, "page.title_taken");
       }
       const node: TreeNode = { ...assetNode(created++, name), parent_id: parent };
       server.nodes = [...server.nodes, node];
       sizes.set(node.id, file instanceof Blob ? file.size : 0);
-      return json(assetJSON(node, sizes.get(node.id), server.assetsExpireAt), 201);
+      return json(answered(node), 201);
     },
   };
+}
+
+/** compare orders two strings as the server's keys are: by their code units. */
+function compare(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
 }
 
 type ContentState = {

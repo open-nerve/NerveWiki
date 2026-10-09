@@ -9,6 +9,9 @@ export type { UploadOptions };
 /** AssetUpload is a file to upload as an attachment: under parent (null: the notebook's root), named name. */
 export type AssetUpload = { parent: string | null; name: string; file: Blob };
 
+/** How many attachments a page of a list has: the most the server gives (M7/P4 design 3.5). */
+const assetPage = 100;
+
 /**
  * AssetService reads a notebook's attachments and uploads them (M7/P4
  * design 3.2). An attachment is renamed, moved and deleted as a node is,
@@ -21,13 +24,17 @@ export class AssetService {
     private readonly transfer?: () => Transfer
   ) {}
 
-  /** list answers a page of the attachments under parent (null: the root), by name, after cursor. */
+  /** list answers a page of the attachments under parent (null: the root), assetPage of them by name, after cursor. */
   async list(notebookId: string, parent: string | null, cursor?: string): Promise<AssetPage> {
     return unwrap(
       await this.api.GET("/api/v0/notebooks/{notebook_id}/assets", {
         params: {
           path: { notebook_id: notebookId },
-          query: { ...(parent === null ? {} : { parent_id: parent }), ...(cursor === undefined ? {} : { cursor }) },
+          query: {
+            ...(parent === null ? {} : { parent_id: parent }),
+            limit: assetPage,
+            ...(cursor === undefined ? {} : { cursor }),
+          },
         },
       })
     );

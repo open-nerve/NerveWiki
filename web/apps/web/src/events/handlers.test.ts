@@ -1,5 +1,5 @@
 import { unstable_serialize, type Cache } from "swr";
-import { expect, test, vi } from "vitest";
+import { expect, onTestFinished, test, vi } from "vitest";
 
 import { eventHandlers, TREE_INTERVAL_MS } from "./handlers";
 import type { Refresher } from "./refresher";
@@ -123,10 +123,12 @@ test("a stream stopped as the tree is read reads no attachments' lists", async (
     } as unknown as Refresher,
   };
 
+  vi.useFakeTimers();
+  onTestFinished(() => void vi.useRealTimers());
   eventHandlers.get("pages")?.({ workspace_id: "w1", notebook_id: "n1", tree: true, pages: [] }, handled);
   reads.get(unstable_serialize(["pages", "n1"]))?.();
   stop.abort();
-  await new Promise((resolve) => setTimeout(resolve, 10));
+  await vi.runAllTimersAsync();
 
   expect(mutate).toHaveBeenCalledTimes(1);
 });

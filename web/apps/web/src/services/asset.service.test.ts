@@ -9,7 +9,7 @@ import { AssetService } from "./asset.service";
 const picture = assetNode(70, "a.png");
 
 describe("AssetService.list", () => {
-  test("reads the attachments under a page, after a cursor; at the root, with neither", async () => {
+  test("reads a hundred attachments under a page, after a cursor; at the root, with neither", async () => {
     const asked: string[] = [];
     const service = new AssetService(
       fakeApi((request) => {
@@ -22,7 +22,10 @@ describe("AssetService.list", () => {
     await service.list("n1", "p1", "c1");
     const page = await service.list("n1", null);
 
-    expect(asked).toEqual(["/api/v0/notebooks/n1/assets?parent_id=p1&cursor=c1", "/api/v0/notebooks/n1/assets"]);
+    expect(asked).toEqual([
+      "/api/v0/notebooks/n1/assets?parent_id=p1&limit=100&cursor=c1",
+      "/api/v0/notebooks/n1/assets?limit=100",
+    ]);
     expect(page.data.map((asset) => asset.name)).toEqual(["a.png"]);
   });
 });
