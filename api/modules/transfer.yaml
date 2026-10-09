@@ -138,8 +138,9 @@ paths:
         it: the path's id, then the query e and s, in this order, each
         once, nothing escaped; anything else, a signature that does not
         match, an address expired, and a job deleted or expired since are
-        not_found, alike. Ranges are answered (206, 416), and a copy as new
-        as the archive is not sent again (304, If-Modified-Since);
+        not_found, alike. Ranges are answered (206, 416; If-Range by
+        date), and a copy as new as the archive is not sent again (304:
+        If-Modified-Since, or If-None-Match as *, there being no ETag);
         If-Match and If-Unmodified-Since are ignored, as an address's
         archive never changes. The downloads count against the instance's
         limit of requests without a token, by client address. A download
@@ -193,7 +194,7 @@ paths:
                 type: string
                 format: binary
         "304":
-          description: The archive has not changed since the copy the request names (If-Modified-Since).
+          description: The archive has not changed since the copy the request names (If-Modified-Since), or If-None-Match is *.
           headers:
             Content-Security-Policy:
               $ref: "#/components/headers/ArchivePolicy"
@@ -299,7 +300,8 @@ components:
         background: queued, then running, then succeeded, failed or
         cancelled. An export's archive expires a while after it succeeded,
         the instance's export TTL, or at once when its starter's next export
-        of the notebook succeeds: each keeps the latest alone.
+        of the notebook succeeds: a starter keeps only their latest export
+        of a notebook.
       type: object
       additionalProperties: false
       required:
@@ -353,8 +355,9 @@ components:
           format: date-time
         cancel_requested_at:
           description: >-
-            When a cancel of the job was asked as it ran: it stops within
-            about a second; null when none was.
+            When a cancel of the job was asked as it ran: it stops at its
+            next heartbeat, within about a second, unless it ends first;
+            null when none was.
           type: [string, "null"]
           format: date-time
         finished_at:
@@ -435,8 +438,9 @@ components:
           format: date-time
         cancel_requested_at:
           description: >-
-            When a cancel of the job was asked as it ran: it stops within
-            about a second; null when none was.
+            When a cancel of the job was asked as it ran: it stops at its
+            next heartbeat, within about a second, unless it ends first;
+            null when none was.
           type: [string, "null"]
           format: date-time
         finished_at:
@@ -513,7 +517,8 @@ components:
           $ref: "#/components/schemas/TransferCounts"
     TransferFailure:
       description: >-
-        Why a job failed: interrupted (the server stopped or restarted),
+        Why a job failed: interrupted (the server stopped or restarted, the
+        job stopped beating, or the job queue dropped it before it began),
         timeout (it ran past the instance's limit), forbidden (its starter
         could no longer read the notebook as it ran), root_not_found (the
         page exported was gone as it ran), storage_full,
@@ -523,9 +528,10 @@ components:
       enum: [interrupted, timeout, forbidden, root_not_found, storage_full, contributor_conflict, internal]
     TransferCounts:
       description: >-
-        What the job did before it ended. A job the server's stop or
-        restart interrupted counts nothing: its progress tells how far it
-        went.
+        What the job did before it ended, as it wrote its end. A job that
+        could not write its end, which the server fails later as
+        interrupted (it restarted, the job stopped beating, the job queue
+        dropped it), counts nothing: its progress tells how far it went.
       type: object
       additionalProperties: false
       required: [pages, attachments, renamed, missing, skipped]

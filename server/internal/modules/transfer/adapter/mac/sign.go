@@ -29,9 +29,10 @@ func New(key []byte) Signer {
 
 // Sign signs the address of the job id's archive as of now: it expires at
 // the end of the hour after now's, so an hour's addresses are the same and
-// each lasts one to two hours.
-func (s Signer) Sign(now time.Time, id uuid.UUID) app.Signed {
-	e := (now.Unix()/3600 + 2) * 3600
+// each lasts one to two hours, or at until, in whole seconds, when that
+// comes first. The signature signs the expiry the address carries.
+func (s Signer) Sign(now time.Time, id uuid.UUID, until time.Time) app.Signed {
+	e := min((now.Unix()/3600+2)*3600, until.Unix())
 	return app.Signed{Expires: time.Unix(e, 0).UTC(), Signature: s.mac(id, e)}
 }
 

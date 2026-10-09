@@ -148,7 +148,7 @@ func TestGetTransferJob(t *testing.T) {
 	res, body := h.send(t, http.MethodGet, "/api/v0/transfer-jobs/"+own.ID.String(), "session", "")
 	var j jobAnswer
 	decode(t, body, &j)
-	signed := h.signer.Sign(now(), own.ID)
+	signed := h.signer.Sign(now(), own.ID, own.Finished.Add(exportTTL))
 	wantURL := "/api/v0/transfer-jobs/" + own.ID.String() + "/download?e=" + strconv.FormatInt(signed.Expires.Unix(), 10) + "&s=" + signed.Signature
 	if res.StatusCode != http.StatusOK || j.State != "succeeded" || j.Download == nil || j.Download.URL != wantURL ||
 		!j.Download.ExpiresAt.Equal(signed.Expires) || len(j.Problems) != 1 || j.Problems[0].Code != "renamed" || j.Problems[0].To == nil ||

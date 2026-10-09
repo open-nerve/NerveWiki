@@ -639,13 +639,13 @@ func (q *Queries) LockQueue(ctx context.Context) error {
 	return err
 }
 
-const queuedJobs = `-- name: QueuedJobs :many
-SELECT id FROM transfer_jobs WHERE state = 'queued' AND deleted_at IS NULL
+const queuedExports = `-- name: QueuedExports :many
+SELECT id FROM transfer_jobs WHERE kind = 'export' AND state = 'queued' AND deleted_at IS NULL
 `
 
-// The queued jobs not deleted.
-func (q *Queries) QueuedJobs(ctx context.Context) ([]uuid.UUID, error) {
-	rows, err := q.db.Query(ctx, queuedJobs)
+// The queued exports not deleted: River holds them, or dropped them.
+func (q *Queries) QueuedExports(ctx context.Context) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, queuedExports)
 	if err != nil {
 		return nil, err
 	}

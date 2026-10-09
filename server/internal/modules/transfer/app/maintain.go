@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"slices"
 	"time"
 	"uuid"
 
@@ -93,9 +92,10 @@ func (r *Rescue) AtStart(ctx context.Context) error {
 }
 
 // Run fails the running jobs whose heartbeat is older than the timeout,
-// then the queued jobs River no longer holds: it dropped them, its one
-// attempt spent before they started, their start's write failed or the
-// process stopped as River took them.
+// then the queued exports River no longer holds: it dropped them, its one
+// attempt spent before they started, as their start's write failed. One
+// whose process stopped as River took it River holds, running, until its
+// rescue: the job timeout and an hour (M7/P5 design 3.12).
 func (r *Rescue) Run(ctx context.Context) error {
 	before := r.clock.Now().Add(-r.timeout)
 	jobs, err := r.rows.InterruptJobs(ctx, &before, r.clock.Now(), domain.Report{Failure: domain.FailureInterrupted})
@@ -106,21 +106,25 @@ func (r *Rescue) Run(ctx context.Context) error {
 	return r.lost(ctx)
 }
 
-// lost fails the queued jobs River no longer holds. It reads the rows
+// lost fails the queued exports River no longer holds. It reads the rows
 // before River: a job queued then was enqueued with its row, so River
 // holds it still, or started it, the row no longer queued, or dropped it.
 func (r *Rescue) lost(ctx context.Context) error {
-	queued, err := r.rows.QueuedJobs(ctx)
+	queued, err := r.rows.QueuedExports(ctx)
 	if err != nil || len(queued) == 0 {
 		return err
 	}
-	held, err := r.held.Held(ctx)
+	ids, err := r.held.Held(ctx)
 	if err != nil {
 		return fmt.Errorf("the jobs River holds: %w", err)
 	}
+	held := make(map[uuid.UUID]bool, len(ids))
+	for _, id := range ids {
+		held[id] = true
+	}
 	var lost []uuid.UUID
 	for _, id := range queued {
-		if !slices.Contains(held, id) {
+		if !held[id] {
 			lost = append(lost, id)
 		}
 	}

@@ -220,11 +220,11 @@ func (s *Store) InterruptJobs(ctx context.Context, beatBefore *time.Time, at tim
 	return out, nil
 }
 
-// QueuedJobs implements app.MaintainedRows.
-func (s *Store) QueuedJobs(ctx context.Context) ([]uuid.UUID, error) {
-	ids, err := s.queries(ctx).QueuedJobs(ctx)
+// QueuedExports implements app.MaintainedRows.
+func (s *Store) QueuedExports(ctx context.Context) ([]uuid.UUID, error) {
+	ids, err := s.queries(ctx).QueuedExports(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("queued jobs: %w", err)
+		return nil, fmt.Errorf("queued exports: %w", err)
 	}
 	return ids, nil
 }

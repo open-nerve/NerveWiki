@@ -24,9 +24,37 @@ func (h *harness) fetch(t *testing.T, method, path, token string, headers ...str
 	return h.send(t, method, path, token, "", headers...)
 }
 
-// address is the signed address of job's archive, as the reads write it.
+// address is the signed address of job's archive, as the reads write it:
+// expiring with it, the TTL after it ended.
 func (h *harness) address(j domain.Job) string {
-	return httpadapter.DownloadURL(j.ID, h.signer.Sign(h.signedAt, j.ID))
+	until := h.signedAt.Add(exportTTL)
+	if j.Finished != nil {
+		until = j.Finished.Add(exportTTL)
+	}
+	return httpadapter.DownloadURL(j.ID, h.signer.Sign(h.signedAt, j.ID, until))
+}
+
+// Every address the reads give downloads, in an export's last hour too:
+// the address expires with the export, its signature signing the expiry it
+// carries.
+func TestTheReadsAddressesDownload(t *testing.T) {
+	h := newHarness(t)
+	fresh := h.job(alice(), domain.StateSucceeded, now().Add(-time.Hour), "fresh")
+	ending := h.job(alice(), domain.StateSucceeded, now().Add(-exportTTL+29*time.Minute), "ending")
+	for name, j := range map[string]domain.Job{"fresh": fresh, "ending": ending} {
+		_, body := h.send(t, http.MethodGet, "/api/v0/transfer-jobs/"+j.ID.String(), "session", "")
+		var a jobAnswer
+		decode(t, body, &a)
+		if a.Download == nil {
+			t.Errorf("%s: getTransferJob = %s, want its address", name, body)
+			continue
+		}
+		res, got := h.fetch(t, http.MethodGet, a.Download.URL, "")
+		if res.StatusCode != http.StatusOK || string(got) != name {
+			t.Errorf("%s: download = %d %q, want 200 its archive", name, res.StatusCode, got)
+		}
+	}
+	waitFor(t, func() bool { return h.archives.unclosed() == 0 })
 }
 
 // An export's archive downloads without a token as a zip, an attachment

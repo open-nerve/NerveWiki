@@ -95,6 +95,14 @@ func (f fixture) hold(t *testing.T, id uuid.UUID) func() {
 	return release
 }
 
+// skipping is the context of a statement that skips the rows held: one
+// that waits for them fails within seconds, not at the tests' timeout.
+func skipping(t *testing.T) context.Context {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	t.Cleanup(cancel)
+	return ctx
+}
+
 func (f fixture) succeed(t *testing.T, id uuid.UUID, at time.Time) {
 	t.Helper()
 	bytes := int64(42)
@@ -176,6 +184,9 @@ func TestAQueuedJobIsCancelledAtOnce(t *testing.T) {
 	}
 	if ok, err := f.store.CancelQueued(ctx, j.ID, at(0), domain.Report{}); !ok || err != nil {
 		t.Fatalf("CancelQueued() = %v, %v", ok, err)
+	}
+	if got, err := f.store.FindJob(ctx, j.ID); err != nil || got.State != domain.StateCancelled || got.CancelRequested != nil {
+		t.Errorf("FindJob() = %+v, %v; want cancelled, no cancel asked of it running", got, err)
 	}
 	if _, err := f.store.StartJob(ctx, j.ID, at(0)); !errors.Is(err, app.ErrNoRow) {
 		t.Errorf("StartJob() of a cancelled job = %v, want ErrNoRow", err)
@@ -339,7 +350,7 @@ func TestExportsExpire(t *testing.T) {
 		t.Errorf("LiveArchives() = %v, %v; want %v", live, err, want)
 	}
 	release := f.hold(t, ops.ID)
-	first, err := f.store.ExpireExports(ctx, at(time.Minute), 10)
+	first, err := f.store.ExpireExports(skipping(t), at(time.Minute), 10)
 	if err != nil || !slices.Equal(first, []uuid.UUID{bobs.ID}) {
 		t.Fatalf("ExpireExports() = %v, %v; want bob's, ops' held", first, err)
 	}
@@ -372,7 +383,7 @@ func TestTheRescueFailsTheRunningJobs(t *testing.T) {
 	f.start(t, fresh.ID, at(time.Minute))
 	report := domain.Report{Failure: domain.FailureInterrupted}
 	release := f.hold(t, stale.ID)
-	if got, err := f.store.InterruptJobs(ctx, nil, at(time.Hour), report); err != nil || len(got) != 1 || got[0].ID != fresh.ID {
+	if got, err := f.store.InterruptJobs(skipping(t), nil, at(time.Hour), report); err != nil || len(got) != 1 || got[0].ID != fresh.ID {
 		t.Errorf("InterruptJobs() with the stale one held = %+v, %v; want the fresh one alone", got, err)
 	}
 	release()
@@ -398,22 +409,27 @@ func TestTheRescueFailsTheRunningJobs(t *testing.T) {
 	}
 }
 
-// The rescue reads the queued jobs, and fails those of them it is given
-// that are still queued, skipping the rows another transaction holds; a
-// deleted job is neither read nor failed.
-func TestTheRescueFailsTheQueuedJobsRiverDropped(t *testing.T) {
+// The rescue reads the queued exports, not an import, and fails those of
+// them it is given that are still queued, skipping the rows another
+// transaction holds; a deleted job is neither read nor failed.
+func TestTheRescueFailsTheQueuedExportsRiverDropped(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()
 	dropped, held, running := f.export(t, f.eng, f.alice, at(0)), f.export(t, f.ops, f.alice, at(0)), f.export(t, f.eng, f.bob, at(0))
 	f.start(t, running.ID, at(0))
+	imported := domain.Job{ID: uuid.NewV7(), NotebookID: f.eng, Kind: domain.KindImport, State: domain.StateQueued, Name: "Eng", CreatedBy: f.alice,
+		Client: domain.ClientWeb, CreatedAt: at(0)}
+	if err := f.store.CreateJob(ctx, imported); err != nil {
+		t.Fatal(err)
+	}
 	report := domain.Report{Failure: domain.FailureInterrupted}
 
-	queued, err := f.store.QueuedJobs(ctx)
+	queued, err := f.store.QueuedExports(ctx)
 	if err != nil || !sameSet(queued, []uuid.UUID{dropped.ID, held.ID}) {
-		t.Errorf("QueuedJobs() = %v, %v; want the two queued", queued, err)
+		t.Errorf("QueuedExports() = %v, %v; want the two queued exports", queued, err)
 	}
 	release := f.hold(t, held.ID)
-	got, err := f.store.FailQueued(ctx, []uuid.UUID{dropped.ID, held.ID, running.ID}, at(time.Hour), report)
+	got, err := f.store.FailQueued(skipping(t), []uuid.UUID{dropped.ID, held.ID, running.ID}, at(time.Hour), report)
 	if err != nil || len(got) != 1 || got[0].ID != dropped.ID || got[0].NotebookID != f.eng || got[0].CreatedBy != f.alice || got[0].Client != domain.ClientWeb {
 		t.Errorf("FailQueued() = %+v, %v; want the dropped one, the held one skipped, the running one left", got, err)
 	}
@@ -429,8 +445,8 @@ func TestTheRescueFailsTheQueuedJobsRiverDropped(t *testing.T) {
 	if err := f.store.DeleteJobsOfNotebooks(ctx, []uuid.UUID{f.ops}, at(0)); err != nil {
 		t.Fatal(err)
 	}
-	if queued, err := f.store.QueuedJobs(ctx); err != nil || len(queued) != 0 {
-		t.Errorf("QueuedJobs() = %v, %v; want none, the deleted one left", queued, err)
+	if queued, err := f.store.QueuedExports(ctx); err != nil || len(queued) != 0 {
+		t.Errorf("QueuedExports() = %v, %v; want none, the deleted one left", queued, err)
 	}
 	if got, err := f.store.FailQueued(ctx, []uuid.UUID{held.ID}, at(time.Hour), report); err != nil || len(got) != 0 {
 		t.Errorf("FailQueued() of a deleted job = %+v, %v; want none", got, err)

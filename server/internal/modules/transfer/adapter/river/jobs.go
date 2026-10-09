@@ -135,7 +135,7 @@ func (w *rescueWorker) Work(ctx context.Context, _ *river.Job[rescueArgs]) error
 
 // RescueJob fails the interrupted jobs: every running one as the server
 // starts, before River works any job; then every RescueInterval those
-// whose heartbeat is old.
+// whose heartbeat is old, and the queued exports River dropped.
 func RescueJob(uc RescueUseCase) jobs.Job {
 	return jobs.Job{
 		Add: func(w *river.Workers) error { return river.AddWorkerSafely(w, &rescueWorker{uc: uc}) },

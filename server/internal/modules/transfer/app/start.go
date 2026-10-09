@@ -86,6 +86,7 @@ func (s *StartExport) Run(ctx context.Context, notebookID uuid.UUID, root *uuid.
 	}
 	s.d.Logger.InfoContext(ctx, "export queued", slog.String("job_id", job.ID.String()), slog.String("notebook_id", notebookID.String()),
 		slog.String("user_id", actor.UserID.String()), slog.String("client", string(client)))
+	// A queued job's view has no address: no TTL is needed.
 	got, err := views{names: s.d.Names, signer: s.d.Signer, clock: s.d.Clock}.of(ctx, []domain.Job{job})
 	if err != nil {
 		return JobView{}, err

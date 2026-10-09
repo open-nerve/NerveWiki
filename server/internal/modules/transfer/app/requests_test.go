@@ -126,24 +126,43 @@ func (w *world) job(by uuid.UUID, at time.Time, state domain.State) domain.Job {
 	return j
 }
 
-// A succeeded export's address expires with its signature, or with the
-// export, the TTL after it ended, whichever comes first; one past the TTL
-// is expired, its row expired by the next expiry.
+// A succeeded export's address expires at the end of the hour after, or
+// with the export, the TTL after it ended, whichever comes first, its
+// signature signing the expiry it carries: each address the reads give
+// downloads. One past the TTL, or in its last second, is expired, its row
+// expired by the next expiry.
 func TestAnAddressExpiresWithItsExport(t *testing.T) {
 	w := newWorld()
 	fresh := w.job(w.alice, now(), domain.StateSucceeded)
 	ending := w.job(w.alice, now().Add(-ttl+30*time.Minute), domain.StateSucceeded)
+	last := w.job(w.alice, now().Add(-ttl+time.Second/2), domain.StateSucceeded)
 	past := w.job(w.alice, now().Add(-ttl), domain.StateSucceeded)
+	w.archives.committed[fresh.ID], w.archives.committed[ending.ID] = nil, nil
 	r := w.reads()
+	d := app.NewDownload(w.rows, w.archives, signer{}, fixedClock{now()}, w.logger, ttl)
 
-	if got, err := r.Get(as(w.alice), fresh.ID); err != nil || got.Download == nil || !got.Download.Expires.Equal(signer{}.Sign(now(), fresh.ID).Expires) {
-		t.Errorf("Get(fresh) = %+v, %v; want the signature's expiry", got.Download, err)
+	for _, tt := range []struct {
+		name    string
+		job     domain.Job
+		expires time.Time
+	}{
+		{"fresh", fresh, now().Truncate(time.Hour).Add(2 * time.Hour)},
+		{"ending", ending, now().Add(30 * time.Minute)},
+	} {
+		got, err := r.Get(as(w.alice), tt.job.ID)
+		if err != nil || got.Download == nil || !got.Download.Expires.Equal(tt.expires) {
+			t.Errorf("Get(%s) = %+v, %v; want its address expiring at %v", tt.name, got.Download, err, tt.expires)
+			continue
+		}
+		a := app.Address{JobID: tt.job.ID, Expires: got.Download.Expires.Unix(), Signature: got.Download.Signature}
+		if _, err := d.Open(context.Background(), a); err != nil {
+			t.Errorf("Open(%s's address) = %v, want its archive", tt.name, err)
+		}
 	}
-	if got, err := r.Get(as(w.alice), ending.ID); err != nil || got.Download == nil || !got.Download.Expires.Equal(now().Add(30*time.Minute)) {
-		t.Errorf("Get(ending) = %+v, %v; want the export's expiry", got.Download, err)
-	}
-	if got, err := r.Get(as(w.alice), past.ID); err != nil || got.Download != nil || got.Job.State != domain.StateExpired {
-		t.Errorf("Get(past) = %+v, %v; want expired, no address", got, err)
+	for name, j := range map[string]domain.Job{"past the TTL": past, "in its last second": last} {
+		if got, err := r.Get(as(w.alice), j.ID); err != nil || got.Download != nil || got.Job.State != domain.StateExpired {
+			t.Errorf("Get(%s) = %+v, %v; want expired, no address", name, got, err)
+		}
 	}
 }
 
@@ -157,7 +176,7 @@ func TestReadingAJob(t *testing.T) {
 	r := w.reads()
 
 	got, err := r.Get(as(w.alice), alices.ID)
-	if err != nil || got.CreatedByName != "Alice" || got.Download == nil || got.Download.Signature != "sig-"+alices.ID.String() {
+	if err != nil || got.CreatedByName != "Alice" || got.Download == nil || got.Download.Signature != signature(alices.ID, got.Download.Expires.Unix()) {
 		t.Errorf("Get(her own) = %+v, %v", got, err)
 	}
 	if got, err := r.Get(as(w.bob), alices.ID); err != nil || got.Job.ID != alices.ID {
@@ -270,7 +289,7 @@ func TestDownloadingAnArchive(t *testing.T) {
 	var l logs
 	d := app.NewDownload(w.rows, w.archives, signer{}, fixedClock{now()}, l.logger(), ttl)
 	address := func(id uuid.UUID) app.Address {
-		s := signer{}.Sign(now(), id)
+		s := signer{}.Sign(now(), id, now().Add(ttl))
 		return app.Address{JobID: id, Expires: s.Expires.Unix(), Signature: s.Signature}
 	}
 
@@ -280,7 +299,7 @@ func TestDownloadingAnArchive(t *testing.T) {
 	}
 	finds := w.rows.finds
 	forged := address(ok.ID)
-	forged.Signature = "sig-" + running.ID.String()
+	forged.Signature = signature(running.ID, forged.Expires)
 	if _, err := d.Open(context.Background(), forged); !errors.Is(err, domain.ErrDownloadNotFound) || w.rows.finds != finds {
 		t.Errorf("Open(forged) = %v after %d reads, want not_found before any", err, w.rows.finds-finds)
 	}
@@ -334,7 +353,7 @@ func TestTheRescue(t *testing.T) {
 	if len(m.beatBefore) != 2 || !m.beatBefore[1].Equal(now().Add(-5*time.Minute)) {
 		t.Errorf("asked %v, want all, then before five minutes ago", m.beatBefore)
 	}
-	if !slices.Equal(m.failed, []uuid.UUID{dropped}) || !slices.Equal(rec.calls, []string{"QueuedJobs", "Held"}) {
+	if !slices.Equal(m.failed, []uuid.UUID{dropped}) || !slices.Equal(rec.calls, []string{"QueuedExports", "Held"}) {
 		t.Errorf("failed %v, calls %v; want the job River dropped, the rows read first", m.failed, rec.calls)
 	}
 	text := l.String()

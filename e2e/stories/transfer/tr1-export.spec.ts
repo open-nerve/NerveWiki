@@ -1,7 +1,7 @@
 import { expectExpired, expectExported } from "../../fixtures/assert/transfer";
 import { pngBytes, uploadAsset, utf8 } from "../../fixtures/assets";
 import { createNotebook } from "../../fixtures/notebooks";
-import { createPage } from "../../fixtures/pages";
+import { createPage, moveNode } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
 import { archiveAt, downloadArchive, endedJob, listJobs, startExport } from "../../fixtures/transfer";
 import { newTeam } from "../../fixtures/workspaces";
@@ -50,6 +50,8 @@ test("TR1 (API): a notebook and a subtree export as vaults, their pages, folders
   const planFolder = await createPage(api, pat, handbook.id, "Plan.md");
   const step = await createPage(api, pat, handbook.id, "Step", planFolder.id, "step\n");
   const cafe = await createPage(api, pat, handbook.id, "Café", null, "café\n");
+  // Moved between two pages, its order is no sibling's index.
+  await moveNode(api, pat, cafe.id, { parent_id: null, after_id: guide.id });
   const notesBytes = utf8("Notes at the root.\n");
   const diagram = await uploadAsset(api, pat, handbook.id, { name: "diagram.png", bytes: pngBytes }, guide.id);
   const notes = await uploadAsset(api, pat, handbook.id, { name: "notes.txt", bytes: notesBytes });
@@ -68,6 +70,7 @@ test("TR1 (API): a notebook and a subtree export as vaults, their pages, folders
   // The pages, in the vault's order; then the attachments' files; then meta.json.
   expect(entries.map((e) => e.name)).toEqual([
     "Handbook/Guide.md",
+    "Handbook/Café.md",
     "Handbook/Chapters/",
     "Handbook/Chapters/One.md",
     "Handbook/Linked.md",
@@ -75,7 +78,6 @@ test("TR1 (API): a notebook and a subtree export as vaults, their pages, folders
     "Handbook/Plan.md",
     "Handbook/Plan.md 2/",
     "Handbook/Plan.md 2/Step.md",
-    "Handbook/Café.md",
     "Handbook/Guide/diagram.png",
     "Handbook/notes.txt",
     "Handbook/.nerve/meta.json",
@@ -101,6 +103,7 @@ test("TR1 (API): a notebook and a subtree export as vaults, their pages, folders
   expect(meta.nodes.map((n) => [n.path, n.kind, n.id])).toEqual([
     ["Guide.md", "page", guide.id],
     ["Guide/diagram.png", "asset", diagram.id],
+    ["Café.md", "page", cafe.id],
     ["Chapters/", "page", chapters.id],
     ["Chapters/One.md", "page", one.id],
     ["Linked.md", "page", linked.id],
@@ -108,7 +111,6 @@ test("TR1 (API): a notebook and a subtree export as vaults, their pages, folders
     ["Plan.md", "page", plan.id],
     ["Plan.md 2/", "page", planFolder.id],
     ["Plan.md 2/Step.md", "page", step.id],
-    ["Café.md", "page", cafe.id],
     ["notes.txt", "asset", notes.id],
   ]);
   // Each node's order among its siblings, as the tree keeps it.

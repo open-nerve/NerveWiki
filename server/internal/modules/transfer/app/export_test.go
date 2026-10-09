@@ -203,6 +203,32 @@ func TestASuccessKeepsTheLatestExportAlone(t *testing.T) {
 	}
 }
 
+// A job no longer running as it succeeds, the rescue having failed it,
+// writes nothing: the starter's earlier export stays, its archive too; the
+// job's archive is dropped, its stop logged.
+func TestAJobRescuedAsItSucceedsDropsItsArchive(t *testing.T) {
+	w := newWorld()
+	ctx := context.Background()
+	first := w.queued(nil)
+	if err := w.export().Run(ctx, first.ID); err != nil {
+		t.Fatal(err)
+	}
+	var l logs
+	w.logger = l.logger()
+	second := w.queued(nil)
+	w.archives.onCommit = func() { w.rows.set(second.ID, func(r *row) { r.job.State = domain.StateFailed }) }
+
+	if err := w.export().Run(ctx, second.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	if w.rows.get(first.ID).State != domain.StateSucceeded || w.rows.get(second.ID).State != domain.StateFailed ||
+		!slices.Equal(w.archives.deleted, []uuid.UUID{second.ID}) || !strings.Contains(l.String(), "export stopped") {
+		t.Errorf("first %s, second %s, deleted %v, logs %q; want the first kept, the second's archive dropped, its stop logged",
+			w.rows.get(first.ID).State, w.rows.get(second.ID).State, w.archives.deleted, l.String())
+	}
+}
+
 // A job no longer queued, cancelled or deleted before it ran, is left.
 func TestAJobNoLongerQueuedIsLeft(t *testing.T) {
 	w := newWorld()
@@ -273,7 +299,7 @@ func TestARunningJobStops(t *testing.T) {
 
 // River's context ends the job: its timeout fails it so, the end written
 // in its own time; the server's stop as interrupted, the end written
-// within River's grace.
+// within River's grace. Either end counts what the job wrote.
 func TestRiversContextEndsTheJob(t *testing.T) {
 	for _, tt := range []struct {
 		name string
@@ -302,13 +328,39 @@ func TestRiversContextEndsTheJob(t *testing.T) {
 			}
 
 			got := w.rows.get(j.ID)
-			if got.State != domain.StateFailed || got.Report == nil || got.Report.Failure != tt.want || len(w.archives.aborted) != 1 {
-				t.Errorf("job %s, report %+v, aborted %v; want failed %s, dropped", got.State, got.Report, w.archives.aborted, tt.want)
+			if got.State != domain.StateFailed || got.Report == nil || got.Report.Failure != tt.want || got.Report.Counts.Pages != 5 ||
+				len(w.archives.aborted) != 1 {
+				t.Errorf("job %s, report %+v, aborted %v; want failed %s, the five pages counted, dropped", got.State, got.Report, w.archives.aborted, tt.want)
 			}
 			if left := w.rows.finishLeft; tt.left(left) {
 				t.Errorf("the end written with %v left", left)
 			}
 		})
+	}
+}
+
+// A stop that comes as the archive's last file is written ends the job
+// before its commit: it fails, its archive dropped, never committed.
+func TestAStopAsTheArchiveEndsDropsIt(t *testing.T) {
+	w := newWorld()
+	j := w.queued(nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	w.archives.onAdd = func(path string) {
+		if strings.HasSuffix(path, "/"+domain.MetaPath) {
+			cancel()
+		}
+	}
+
+	if err := w.export().Run(ctx, j.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	got := w.rows.get(j.ID)
+	if got.State != domain.StateFailed || got.Report == nil || got.Report.Failure != domain.FailureInterrupted || len(w.archives.committed) != 0 ||
+		!slices.Equal(w.archives.aborted, []uuid.UUID{j.ID}) {
+		t.Errorf("job %s, report %+v, committed %v, aborted %v; want failed interrupted, the archive dropped before its commit",
+			got.State, got.Report, w.archives.committed, w.archives.aborted)
 	}
 }
 
@@ -434,10 +486,21 @@ func TestARunningJobBeats(t *testing.T) {
 	w := newWorld()
 	j := w.queued(nil)
 	beaten := beats(w)
+	pages := domain.Progress{Done: 5, Total: 7}
 	w.blobs.open = func(context.Context) io.Reader {
-		<-beaten
-		<-beaten
-		return nil
+		for limit := time.After(10 * time.Second); ; {
+			select {
+			case <-beaten:
+			case <-limit:
+				return nil
+			}
+			w.rows.mu.Lock()
+			written := slices.Contains(w.rows.beats, pages)
+			w.rows.mu.Unlock()
+			if written {
+				return nil
+			}
+		}
 	}
 	if err := w.export().Run(context.Background(), j.ID); err != nil {
 		t.Fatal(err)
@@ -445,7 +508,7 @@ func TestARunningJobBeats(t *testing.T) {
 	w.rows.mu.Lock()
 	written := slices.Clone(w.rows.beats)
 	w.rows.mu.Unlock()
-	if !slices.Contains(written, domain.Progress{Done: 5, Total: 7}) {
+	if !slices.Contains(written, pages) {
 		t.Errorf("beats %+v, want the progress of the five pages", written)
 	}
 }
@@ -499,6 +562,35 @@ func TestAHeartbeatNotWrittenIsLoggedOnce(t *testing.T) {
 	}
 }
 
+// A heartbeat that, after failing, finds its job no longer running stops
+// the job as gone: no write is logged as written again.
+func TestAHeartbeatThatFindsItsJobGoneIsNoWrite(t *testing.T) {
+	w := newWorld()
+	var l logs
+	w.logger = l.logger()
+	j := w.queued(nil)
+	w.rows.failBeats = 1 << 30
+	w.blobs.open = func(ctx context.Context) io.Reader {
+		for limit := time.Now().Add(10 * time.Second); !strings.Contains(l.String(), "export heartbeat not written") && time.Now().Before(limit); {
+			time.Sleep(time.Millisecond)
+		}
+		w.rows.set(j.ID, func(r *row) { r.job.State = domain.StateFailed })
+		w.rows.mu.Lock()
+		w.rows.failBeats = 0
+		w.rows.mu.Unlock()
+		<-ctx.Done()
+		return nil
+	}
+	if err := w.export().Run(context.Background(), j.ID); err != nil {
+		t.Fatal(err)
+	}
+	text := l.String()
+	if strings.Count(text, "export heartbeat not written") != 1 || strings.Contains(text, "export heartbeat written again") ||
+		!strings.Contains(text, "export stopped") || w.rows.get(j.ID).State != domain.StateFailed {
+		t.Errorf("logs %q, the job %s; want the failure once, no write again, the stop", text, w.rows.get(j.ID).State)
+	}
+}
+
 // The pages' contents are read 200 pages or 16 MiB at a time, whichever
 // comes first, a larger page alone; each page as written.
 func TestThePagesAreReadInBatches(t *testing.T) {
@@ -513,6 +605,7 @@ func TestThePagesAreReadInBatches(t *testing.T) {
 		{"16 MiB", []int64{8 << 20, 8 << 20}, 1},
 		{"past 16 MiB", []int64{8 << 20, 8 << 20, 1}, 2},
 		{"a page past it alone", []int64{1, 20 << 20, 1}, 3},
+		{"one page past it", []int64{20 << 20}, 1},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			w := newWorld()

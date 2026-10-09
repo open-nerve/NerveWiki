@@ -154,10 +154,10 @@ func (r *run) beat(ctx context.Context, stop context.CancelCauseFunc) <-chan str
 				failing = true
 				continue
 			}
-			if failing {
+			if failing && err == nil {
 				r.e.d.Logger.InfoContext(ctx, "export heartbeat written again", slog.String("job_id", r.job.ID.String()))
-				failing = false
 			}
+			failing = false
 			switch {
 			case errors.Is(err, ErrNoRow) || b.Deleted:
 				stop(errGone)
@@ -170,11 +170,12 @@ func (r *run) beat(ctx context.Context, stop context.CancelCauseFunc) <-chan str
 }
 
 // write writes the archive and commits it: the snapshot's pages and the
-// contributors' files, then the attachments' files, then meta.json. It
-// answers the archive's bytes, or the error that stopped it, the archive
-// then dropped: one that fails to commit may be at its key all the same,
-// and is deleted. A file still being written that Abort cannot delete is
-// left to the store's opening.
+// contributors' files, then the attachments' files, then meta.json. A stop
+// that came as the last of them were written stops it before the commit.
+// It answers the archive's bytes, or the error that stopped it, the
+// archive then dropped: one that fails to commit may be at its key all the
+// same, and is deleted. A file still being written that Abort cannot
+// delete is left to the store's opening.
 func (r *run) write(ctx context.Context) (int64, error) {
 	if err := r.authorize(ctx); err != nil {
 		return 0, err
@@ -183,7 +184,11 @@ func (r *run) write(ctx context.Context) (int64, error) {
 	if err != nil {
 		return 0, storageFull(err)
 	}
-	if err := r.fill(ctx, archive); err != nil {
+	err = r.fill(ctx, archive)
+	if err == nil && ctx.Err() != nil {
+		err = context.Cause(ctx)
+	}
+	if err != nil {
 		if abortErr := archive.Abort(); abortErr != nil {
 			r.e.d.Logger.WarnContext(ctx, "export archive not dropped", slog.String("job_id", r.job.ID.String()), slog.Any("error", abortErr))
 		}

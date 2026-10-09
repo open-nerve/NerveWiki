@@ -140,8 +140,9 @@ type Held interface {
 
 // Signer signs the addresses of the exports' archives: adapter/mac.
 type Signer interface {
-	// Sign signs the archive of the export id as of now.
-	Sign(now time.Time, id uuid.UUID) Signed
+	// Sign signs the archive of the export id as of now, its address
+	// expiring no later than until.
+	Sign(now time.Time, id uuid.UUID, until time.Time) Signed
 	// Valid reports whether sig signs the archive of the export id,
 	// expiring at e, and e is later than now.
 	Valid(now time.Time, id uuid.UUID, e int64, sig string) bool
@@ -235,8 +236,8 @@ type MaintainedRows interface {
 	// beatBefore, or all of them when it is nil, with r; those another
 	// transaction holds are skipped.
 	InterruptJobs(ctx context.Context, beatBefore *time.Time, at time.Time, r domain.Report) ([]Interrupted, error)
-	// QueuedJobs is the ids of the queued jobs.
-	QueuedJobs(ctx context.Context) ([]uuid.UUID, error)
+	// QueuedExports is the ids of the queued exports.
+	QueuedExports(ctx context.Context) ([]uuid.UUID, error)
 	// FailQueued fails those of ids still queued with r; those another
 	// transaction holds are skipped.
 	FailQueued(ctx context.Context, ids []uuid.UUID, at time.Time, r domain.Report) ([]Interrupted, error)

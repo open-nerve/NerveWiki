@@ -146,7 +146,7 @@ type ExportStart struct {
 // TransferClient Where the job was started from, which its writes are of.
 type TransferClient string
 
-// TransferCounts What the job did before it ended. A job the server's stop or restart interrupted counts nothing: its progress tells how far it went.
+// TransferCounts What the job did before it ended, as it wrote its end. A job that could not write its end, which the server fails later as interrupted (it restarted, the job stopped beating, the job queue dropped it), counts nothing: its progress tells how far it went.
 type TransferCounts struct {
 	// Attachments The attachments whose files were written.
 	Attachments int64 `json:"attachments"`
@@ -173,12 +173,12 @@ type TransferDownload struct {
 	URL string `json:"url"`
 }
 
-// TransferFailure Why a job failed: interrupted (the server stopped or restarted), timeout (it ran past the instance's limit), forbidden (its starter could no longer read the notebook as it ran), root_not_found (the page exported was gone as it ran), storage_full, contributor_conflict (a file the server adds was where a node is), internal.
+// TransferFailure Why a job failed: interrupted (the server stopped or restarted, the job stopped beating, or the job queue dropped it before it began), timeout (it ran past the instance's limit), forbidden (its starter could no longer read the notebook as it ran), root_not_found (the page exported was gone as it ran), storage_full, contributor_conflict (a file the server adds was where a node is), internal.
 type TransferFailure string
 
-// TransferJob An import or an export of a notebook, a job that runs in the background: queued, then running, then succeeded, failed or cancelled. An export's archive expires a while after it succeeded, the instance's export TTL, or at once when its starter's next export of the notebook succeeds: each keeps the latest alone.
+// TransferJob An import or an export of a notebook, a job that runs in the background: queued, then running, then succeeded, failed or cancelled. An export's archive expires a while after it succeeded, the instance's export TTL, or at once when its starter's next export of the notebook succeeds: a starter keeps only their latest export of a notebook.
 type TransferJob struct {
-	// CancelRequestedAt When a cancel of the job was asked as it ran: it stops within about a second; null when none was.
+	// CancelRequestedAt When a cancel of the job was asked as it ran: it stops at its next heartbeat, within about a second, unless it ends first; null when none was.
 	CancelRequestedAt nullable.Nullable[time.Time] `json:"cancel_requested_at"`
 
 	// Client Where the job was started from, which its writes are of.
@@ -215,7 +215,7 @@ type TransferJob struct {
 
 // TransferJobDetail A job, as TransferJob, and its report's problems once it ended.
 type TransferJobDetail struct {
-	// CancelRequestedAt When a cancel of the job was asked as it ran: it stops within about a second; null when none was.
+	// CancelRequestedAt When a cancel of the job was asked as it ran: it stops at its next heartbeat, within about a second, unless it ends first; null when none was.
 	CancelRequestedAt nullable.Nullable[time.Time] `json:"cancel_requested_at"`
 
 	// Client Where the job was started from, which its writes are of.
@@ -287,7 +287,7 @@ type TransferProgress struct {
 
 // TransferReport defines model for TransferReport.
 type TransferReport struct {
-	// Counts What the job did before it ended. A job the server's stop or restart interrupted counts nothing: its progress tells how far it went.
+	// Counts What the job did before it ended, as it wrote its end. A job that could not write its end, which the server fails later as interrupted (it restarted, the job stopped beating, the job queue dropped it), counts nothing: its progress tells how far it went.
 	Counts TransferCounts `json:"counts"`
 
 	// Failure Why the job failed; null when it did not.

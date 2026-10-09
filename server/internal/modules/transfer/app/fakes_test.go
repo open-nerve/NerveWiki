@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"slices"
@@ -276,8 +277,8 @@ type entry struct {
 
 // archives keeps the archives in memory: committed by job, the jobs
 // created, aborted and deleted. full refuses a Create; fullAt fails the
-// Add of that path; commitErr fails a Commit; onCommit runs as one
-// commits, onOpen as one opens.
+// Add of that path; commitErr fails a Commit; onAdd runs as a file is
+// added, onCommit as one commits, onOpen as one opens.
 type archives struct {
 	rec       *recorder
 	mu        sync.Mutex
@@ -291,6 +292,7 @@ type archives struct {
 	free      int64
 	deleteErr error
 	listed    []uuid.UUID
+	onAdd     func(path string)
 	onCommit  func()
 	onOpen    func(id uuid.UUID)
 }
@@ -384,6 +386,9 @@ func (x *archive) Add(path string, modified time.Time, stored bool, r io.Reader)
 		e.data = string(data)
 	}
 	x.entries = append(x.entries, e)
+	if x.a.onAdd != nil {
+		x.a.onAdd(path)
+	}
 	return nil
 }
 
@@ -431,14 +436,23 @@ func (q *queue) Export(_ context.Context, id uuid.UUID) error {
 }
 
 // signer signs an address as its job's id and the hour.
+// signer signs as adapter/mac does, an address's expiry part of its
+// signature: the end of the hour after, or until when that comes first.
 type signer struct{}
 
-func (signer) Sign(now time.Time, id uuid.UUID) app.Signed {
-	return app.Signed{Expires: now.Truncate(time.Hour).Add(2 * time.Hour), Signature: "sig-" + id.String()}
+func (signer) Sign(now time.Time, id uuid.UUID, until time.Time) app.Signed {
+	e := min(now.Truncate(time.Hour).Add(2*time.Hour).Unix(), until.Unix())
+	return app.Signed{Expires: time.Unix(e, 0).UTC(), Signature: signature(id, e)}
 }
 
 func (signer) Valid(now time.Time, id uuid.UUID, e int64, sig string) bool {
-	return e > now.Unix() && sig == "sig-"+id.String()
+	return e > now.Unix() && sig == signature(id, e)
+}
+
+// signature is the fake signer's signature of the job id's address,
+// expiring at e.
+func signature(id uuid.UUID, e int64) string {
+	return fmt.Sprintf("sig-%s-%d", id, e)
 }
 
 // row is a job's row, deleted or not.
@@ -692,8 +706,8 @@ func (m *maintained) InterruptJobs(_ context.Context, beatBefore *time.Time, _ t
 	return m.interrupted, nil
 }
 
-func (m *maintained) QueuedJobs(context.Context) ([]uuid.UUID, error) {
-	m.rec.add("QueuedJobs")
+func (m *maintained) QueuedExports(context.Context) ([]uuid.UUID, error) {
+	m.rec.add("QueuedExports")
 	return m.queued, nil
 }
 

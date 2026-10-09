@@ -30,9 +30,9 @@ type views struct {
 }
 
 // of are jobs' views, their addresses signed as of one time. An address
-// expires with its signature, or with its export, ttl after it ended,
-// whichever comes first; an export past it is expired already, its row
-// expired by the next expiry.
+// expires at the end of the hour after, or with its export, ttl after it
+// ended, whichever comes first; an export whose address would not outlast
+// this second is expired already, its row expired by the next expiry.
 func (v views) of(ctx context.Context, jobs []domain.Job) ([]JobView, error) {
 	ids := make([]uuid.UUID, 0, len(jobs))
 	for _, j := range jobs {
@@ -49,14 +49,10 @@ func (v views) of(ctx context.Context, jobs []domain.Job) ([]JobView, error) {
 		if j.Kind != domain.KindExport || j.State != domain.StateSucceeded || j.Finished == nil {
 			continue
 		}
-		until := j.Finished.Add(v.ttl)
-		if !now.Before(until) {
+		signed := v.signer.Sign(now, j.ID, j.Finished.Add(v.ttl))
+		if !signed.Expires.After(now) {
 			out[i].Job.State = domain.StateExpired
 			continue
-		}
-		signed := v.signer.Sign(now, j.ID)
-		if until.Before(signed.Expires) {
-			signed.Expires = until
 		}
 		out[i].Download = &signed
 	}

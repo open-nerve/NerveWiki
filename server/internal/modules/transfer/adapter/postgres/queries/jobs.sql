@@ -114,9 +114,9 @@ WHERE state = 'running' AND id IN (
 )
 RETURNING id, notebook_id, created_by_id, client;
 
--- name: QueuedJobs :many
--- The queued jobs not deleted.
-SELECT id FROM transfer_jobs WHERE state = 'queued' AND deleted_at IS NULL;
+-- name: QueuedExports :many
+-- The queued exports not deleted: River holds them, or dropped them.
+SELECT id FROM transfer_jobs WHERE kind = 'export' AND state = 'queued' AND deleted_at IS NULL;
 
 -- name: FailQueued :many
 -- Of ids, the queued jobs not deleted, failed with report: River dropped them (M7/P5 design 3.12). The rows another

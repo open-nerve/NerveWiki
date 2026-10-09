@@ -70,10 +70,10 @@ func newRoot(t *testing.T) root {
 	return r
 }
 
-// export runs alice's export of Eng through the module's jobs, contributors
-// and timeout given, and answers its row's state and failure once it
-// ended, and its archive's entries by name when it succeeded.
-func (r root) export(t *testing.T, contributors []transfer.ExportContributor, timeout time.Duration) (string, string, map[string]string) {
+// start wires the module on the root's database with the contributors,
+// job timeout and heartbeat timeout given, and starts its jobs on River:
+// stop stops them.
+func (r root) start(t *testing.T, contributors []transfer.ExportContributor, timeout, heartbeat time.Duration) (inserter *jobs.Inserter, stop func()) {
 	t.Helper()
 	ctx := context.Background()
 	logger := slog.New(slog.DiscardHandler)
@@ -85,7 +85,7 @@ func (r root) export(t *testing.T, contributors []transfer.ExportContributor, ti
 	m := transfer.New(transfer.Deps{Pool: r.pool, Tx: tx, Snapshots: tx, Store: r.store, Inserter: inserter, Clock: clock{}, Logger: logger,
 		Authorizer: readers{}, Workspaces: workspaces{}, Notebooks: notebooks{eng: r.eng}, Names: names{}, Nodes: nodes{readme: r.readme},
 		Linked: linked{}, Blobs: blobs{}, Contributors: contributors, DownloadKey: bytes.Repeat([]byte{1}, 32), ExportTTL: 24 * time.Hour,
-		JobTimeout: timeout, HeartbeatTimeout: 5 * time.Minute, MaxQueued: 20, MinRate: 1})
+		JobTimeout: timeout, HeartbeatTimeout: heartbeat, MaxQueued: 20, MinRate: 1})
 	runner, err := jobs.New(r.pool, jobs.Config{ShutdownTimeout: 5 * time.Second, Queues: map[string]int{transfer.QueueExport: 1},
 		RescueAfter: time.Hour, Logger: logger}, m.Jobs())
 	if err != nil {
@@ -94,14 +94,25 @@ func (r root) export(t *testing.T, contributors []transfer.ExportContributor, ti
 	if err := runner.Start(ctx); err != nil {
 		t.Fatal(err)
 	}
-	defer func() {
+	return inserter, func() {
 		if err := runner.Stop(ctx); err != nil {
 			t.Error(err)
 		}
-	}()
+	}
+}
 
+// export runs alice's export of Eng through the module's jobs, contributors
+// and timeout given, and answers its row's state and failure once it
+// ended, and its archive's entries by name when it succeeded.
+func (r root) export(t *testing.T, contributors []transfer.ExportContributor, timeout time.Duration) (string, string, map[string]string) {
+	t.Helper()
+	ctx := context.Background()
+	inserter, stop := r.start(t, contributors, timeout, 5*time.Minute)
+	defer stop()
+
+	tx := postgres.NewTxManager(r.pool, 5*time.Second)
 	id := uuid.NewV7()
-	err = tx.WithinTx(ctx, func(ctx context.Context) error {
+	err := tx.WithinTx(ctx, func(ctx context.Context) error {
 		if _, err := postgres.DB(ctx, r.pool).Exec(ctx, `INSERT INTO transfer_jobs (id, notebook_id, kind, state, name, created_by_id, client, created_at)
 			VALUES ($1, $2, 'export', 'queued', 'Eng', $3, 'api', now())`, id, r.eng, r.alice); err != nil {
 			return err
