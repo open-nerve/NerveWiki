@@ -15,3 +15,7 @@ M7 加导入导出的任务时：
 2. **停机顺序**已经让 HTTP 先于后台任务停（同一文档 3.4）：正在处理的请求投递任务时，任务一侧还没停。
 3. **组合检查**（`archtest/composition_test.go`）：命令行的组合不构建 `platform/jobs` 与 River。命令行若要投递任务（例如管理员触发的导出），要么经接口，要么修订这条规则，并在 M7 设计里写明。
 4. **权限**：`deploy/runtime-grants.sql` 已给 River 的表读写；只投递的客户端不需要别的权限。
+
+## 处理进展
+
+- M7/P5A（2026-10-09，合并 `e8f02d5`）：四项都已落实。第 1 项：`jobs.NewInserter(pool, logger)`，不配队列、不启动，`InsertTx` 与 `transfer_jobs` 的行同一个事务投递（事务经 `postgres.TxFrom` 交进来），另有 `Unfinished` 给收拾核对排队的行；第 2 项：停机顺序不变，HTTP 先停；第 3 项：组合规则把 `jobs.NewInserter` 与 `transfer.New` 加进命令行的禁止集，命令行不投递任务；第 4 项：运行时角色的测试跑一次导出（River 的表与 `transfer_jobs` 的授权）。见 [P5 文档](../05-P5-export.md) 3.2、9.1。M7 收尾时关闭。

@@ -248,8 +248,8 @@
 
 - **只投递的客户端**（M2/P4 的移交）：`platform/jobs` 加一个不配队列的 River 客户端，在请求的事务里 `InsertTx`，与 `transfer_jobs` 的行同一个提交，回滚时任务也不存在。事务由 `transfer/adapter/river` 经 `postgres.TxFrom(ctx)` 取出（`platform/jobs` 不导入 `platform/postgres`）。命令行不投递任务：组合规则（`archtest/composition_test.go`）不改。
 - **队列与超时**（`platform/jobs` 改为可配）：导入、导出各一个队列（`transfer_import`、`transfer_export`，各 1 个 worker，`jobs.import_workers`、`jobs.export_workers`），不占定时任务的默认队列，几个小时的导入也不挡住导出。River 默认的任务超时是 1 分钟，worker 的 `Timeout()` 设为 `transfer.job_timeout`（默认 6 小时）；River 的 `RescueStuckJobsAfter`（默认 1 小时，`MaxAttempts` 为 1 时它会丢弃仍在运行的长任务）设为长于它。
-- **不自动重试**：`MaxAttempts` 是 1。任务失败、被取消、超时时，任务自己经 `context.WithoutCancel`（限时在停机的宽限之内）把 `transfer_jobs` 记成失败或已取消并写报告。
-- **心跳与收拾**：运行中的任务每一批、至少每 30 秒写一次 `heartbeat_at`。transfer 不读 River 的表（sqlc 的范围），所以靠心跳收拾：serve 启动时（单实例），把还记着"运行中"的任务都记成失败（"服务重启，任务中断"；排队中的照常由 River 运行）；之后每 5 分钟，心跳早于 `transfer.heartbeat_timeout`（默认 5 分钟）的同样。
+- **不自动重试**：`MaxAttempts` 是 1。任务失败、被取消、超时时，任务自己经 `context.WithoutCancel`（停机时限时在 River 的宽限之内，其余 30 秒）把 `transfer_jobs` 记成失败或已取消并写报告。
+- **心跳与收拾**：运行中的任务每秒写一次 `heartbeat_at` 与进度，同一条语句读回取消与删除。transfer 的 SQL 不读 River 的表（sqlc 的范围），靠心跳收拾：serve 启动时（单实例），把还记着"运行中"的任务都记成失败（"服务重启，任务中断"）；之后每 5 分钟，心跳早于 `transfer.heartbeat_timeout`（默认 5 分钟）的同样，再把排队而 River 已不持有的导出（River 在开始之前丢掉了它）记成失败，River 持有哪些经只投递客户端的 `Unfinished` 读（P5A，[P5 文档](05-P5-export.md) 3.12）。
 - **任务的身份**：`transfer_jobs` 记下发起的账户与客户端（`web`、`api`）。`shared.Actor` 加第三种凭据 `JobID`（后台任务代账户执行时是任务的 id；三者恰好一个），worker 以 `Actor{UserID, JobID}` 与记下的客户端调用写入单元，每个单元照常授权：中途失去写权限或账户被停用时那个单元被拒绝，任务失败并写明。凭据之后失效（退出登录、撤销 PAT）不打断已开始的任务。日志带 `job_id`。
 - **数量**：每本笔记本同时至多一个排队或运行中的导入（409 `transfer.busy`）；每人每本笔记本同时至多一个导出（同样 409），成功的导出只留最新的一份（新的成功时删掉旧的文件，记成已过期）；全部排队的任务至多 `transfer.max_queued`（默认 20），超出答 503 `server_busy`。开始之前看磁盘余量（507）。
 
@@ -271,7 +271,7 @@
 
   导入时据它恢复兄弟的次序；`id` 只作参考，导入不复用它；`contributed` 列出贡献者加的文件。
 - **导出贡献者**（M7 建立的扩展点，M10 注册虚拟的 `index`、`log`）：`transfer.ExportContributor`：`Contribute(ctx, scope, sink) error`，在快照里运行，往 zip 里加自己的文件（路径不能与节点的冲突，冲突时导出失败），加的文件记进 `contributed`。按登记的次序调用，第一个错误即停。M7 组合交空，模块根有示例的测试（次序、第一个错误、冲突）。
-- **结果**：写到 `exports/<job id>.zip`，任务成功。下载经签名地址 `GET /api/v0/transfer-jobs/{job_id}/download?e=…&s=…`（`x-raw`、公开；签名照 4.5 的写法，密钥的 info 是 `nervewiki export-download mac v1`，地址 1–2 小时有效，每次读任务时重签：读任务要读权限）；`attachment`，文件名是笔记本或页的名称加 `.zip`。`transfer.export_ttl`（默认 24 小时）之后定时任务删掉文件，任务记成"已过期"。笔记本删除之后任务随之软删除，下载答 404。
+- **结果**：写到 `exports/<job id>.zip`，任务成功。下载经签名地址 `GET /api/v0/transfer-jobs/{job_id}/download?e=…&s=…`（`x-raw`、公开；签名照 4.5 的写法，密钥的 info 是 `nervewiki export-download mac v1`，地址 1–2 小时有效、不晚于导出的到期，每次读任务时重签：读任务要读权限）；`attachment`，文件名是笔记本或页的名称加 `.zip`。`transfer.export_ttl`（默认 24 小时）之后定时任务删掉文件，任务记成"已过期"。笔记本删除之后任务随之软删除，下载答 404。
 - **进度**：写入的节点数 / 总数。
 
 ### 4.11 导入
@@ -386,12 +386,12 @@ Nerve 的文件里程碑还没开始，只有计划与平台的做法（只读�
 | 移交 | 项 | 落实 |
 |---|---|---|
 | [M0/P6 镜像里的附件目录](handoffs/M0-P6-image-volumes.md) | 1 目录与卷、2 可写检查、3 `image-smoke` | 1、2：P1（4.1、4.13）；3：P1 的不可写检查、P2 的附件一步 |
-| [M2/P4 只投递的 River 客户端](handoffs/M2-P4-insert-only-client.md) | 1 客户端、2 停机顺序、3 命令行、4 权限 | P5（4.9）：命令行不投递 |
+| [M2/P4 只投递的 River 客户端](handoffs/M2-P4-insert-only-client.md) | 1 客户端、2 停机顺序、3 命令行、4 权限 | P5A（4.9）：已落实，命令行不投递 |
 | [M2/P4 附件的清理](handoffs/M2-P4-attachment-purge.md) | 1 先删文件、`RESTRICT`、排在父表之前；2 事务边界与"文件删了、行没删"的测试；3 清理器的其余约束 | P2（4.6） |
 | [M3 笔记本活动](handoffs/M3-notebook-activity.md) | 1 字节数与最后写入、2 整个程序的测试 | P2（4.6） |
 | [M4 附件的扩展与粘贴上传](handoffs/M4-extensions.md) | 1 附件内联（以 M6 的移交第 1 项为准）、2 粘贴上传与 `whenComposed`、3 最后一跳的两个测试、4 先建后删与活动 | 1：P3；2：P4；3：P3（服务端）、P4（编辑器）；4：先建后删见下一行，活动 P2 |
 | [M4/P2 一个单元里先建后删](handoffs/M4-P2-unit-merge.md) | — | 不适用：导入只建不删（4.2），由 M9 定下；本次提交以"不适用"关闭，指向 M9 的那份 |
-| [M6 链接与附件、导入、导出](handoffs/M6-links.md) | 1 嵌入的渲染由 M7 建立；2 附件进解析；3 落点；4 导入是多操作的单元；5 导出没有正文的页；6 最后一跳 | 1–3、6：P3；4：P6；5：P5 |
+| [M6 链接与附件、导入、导出](handoffs/M6-links.md) | 1 嵌入的渲染由 M7 建立；2 附件进解析；3 落点；4 导入是多操作的单元；5 导出没有正文的页；6 最后一跳 | 1–3、6：P3；4：P6；5：P5A |
 | [M4/P3 Markdown 的扩展](../M6-links/handoffs/M4-P3-markdown-extensions.md)（已关闭，抄送 M7） | 第 1–7 项的注册约束 | P3 照做 |
 | [M4/P6 编辑器](../M5-collab-editing/handoffs/M4-P6-editor.md)（已关闭，抄送 M7） | 第 5 项：上传的手段、最后一跳 | P4 |
 
@@ -402,7 +402,7 @@ Nerve 的文件里程碑还没开始，只有计划与平台的做法（只读�
 - **M8**：恢复时恢复附件的行（同一个观察者）；清理与恢复的先后（清理器锁行）；导入的整组撤销（一次导入一个变更集，可能很大）；搜索是否列出附件（`nodes.name` 的三元组索引包括它们）。
 - **M9**：MCP 的 `read` 读附件；MCP 的客户端要绝对地址，签名地址是相对的，要一个对外的基地址；附件的路径写法。
 - **M10**：来源区按 SHA-256 去重；贡献者加的文件记在 `meta.json` 的 `contributed`；来源区页面完整列出附件（总体设计 3.7 的例外）。
-- **M12**：负载（一页很多图片、每小时换地址的重新下载）；长时间的导出与导入；慢上传与反向代理；磁盘的监控；名称不是 UTF-8 的 zip（按 GBK、CP437 解读）；总量配额；从解析不到的附件链接直接上传；附件很多时节点树的大小。
+- **M12**：负载（一页很多图片、每小时换地址的重新下载）；长时间的导出与导入（导出部分与结束的任务行：[M12 的移交](../M12-release/handoffs/M7-transfer.md)）；慢上传与反向代理；磁盘的监控；名称不是 UTF-8 的 zip（按 GBK、CP437 解读）；总量配额；从解析不到的附件链接直接上传；附件很多时节点树的大小。
 
 ### 总体设计的修订
 
@@ -414,7 +414,7 @@ Nerve 的文件里程碑还没开始，只有计划与平台的做法（只读�
 | P2 | 13.1 第 1 条（树写入端口）、第 15 条（asset 的配置与交叉规则）、第 5 条（`asset_blobs` 在 `nodes` 之后）、第 6 条（清理器要存储、先删文件）、第 8 条（名称的字段错误）、第 10 条（asset 的日志）、第 21 条（注册者）、第 25 条（签名地址的密钥）、第 28 条（附件的文件名同样经标题键）；13.4 第 4 条（附件的交错）、第 6 条（权限矩阵的新行） |
 | P3 | 13.1 第 31 条（一个视图内联的媒体数）；13.3 第 2 条（样例集的附件）、第 4 条（附件的标记）、第 6 条（附件的地址由服务端写） |
 | P4 | 13.2 第 1 条（上传不经 `oneAtATime`）、第 6 条（上传经会话的客户端）、第 23 条（`uploadAsset`、`whenComposed`、`assets` 增强）、第 25 条（媒体与面板的上限） |
-| P5 | 13.1 第 10 条（transfer 的日志）、第 23 条（队列、超时、只投递的客户端、心跳）、第 25 条（导出下载的密钥）；`shared.Actor` 的 `JobID`（13.1 第 2、17 条） |
+| P5 | 13.1 第 2 条（任务的客户端与 `Actor.JobID`）、第 5 条（导出的加锁次序）、第 6 条（任务行的清理器）、第 10 条（transfer 的日志）、第 11 条（模块入口）、第 15 条（transfer 的配置）、第 17 条（签名地址的公开读）、第 21 条（注册者）、第 23 条（队列、超时、只投递的客户端、心跳）、第 25 条（导出下载的密钥）；13.4 第 4 条（导出的交错）、第 6 条（权限矩阵的新行）；6.4（导出的下载） |
 | P6 | 13.1 第 1、2 条（导入的单元、并入变更集）、第 5 条（任务的创建）、第 16 条（`MAINTAIN`）、第 19 条（单元之前解析）、第 31 条（单元的上限）；13.4 第 4 条（导入的交错） |
 
 ## 8. 本 M 建立与注册的扩展点
@@ -433,14 +433,14 @@ Nerve 的文件里程碑还没开始，只有计划与平台的做法（只读�
 建立：
 
 - **附件嵌入的渲染**（`obsidian.Options` 的 `Assets` 与 `Resolve` 带类型，核心的图片钩子）：建立并注册，P3；整个程序上的最后一跳，组合根交空时解析到附件的写法渲染为文字、测试失败。
-- **导出贡献者**：建立（M10 注册），P5；组合交空，模块根的示例测试。
+- **导出贡献者**：建立（M10 注册），P5A；组合交空，模块根的示例测试在真库与 River 上（次序、第一个错误、冲突、超时）。
 
 改前面 M 的扩展点与代码（12.1 第 6 条的例外，逐项写明）：
 
 - page：`(*page.Module).TreeWrites()`（接好线的模块给别的模块的端口，13.1 第 11 条的例外）；`UnitSpec.Kind`、`UnitSpec.Changeset` 与并入的核对；`changesets.kind` 加 `import`；深度只数页面（`Subtree.Height`、`checkPages`、前端的拖动）；附件的名称规则；`NodeKind`；读端口。
 - `shared.Actor` 加 `JobID`（第三种凭据）。
 - `platform/httpserver`：`API.Stream` 与按路由的桶（`APIConfig` 加字段）；平台码 `storage_full`。
-- `platform/jobs`：队列与超时可配、只投递的客户端；`platform/postgres`：`TxFrom`、`WithinSnapshot`。
+- `platform/jobs`：队列与超时可配、`Job.Start`、只投递的客户端（含 `Unfinished`）；`platform/postgres`：`TxFrom`、`WithinSnapshot`（快照里拒绝 `WithinTx`）；`platform/storage`：写入途中每 64 MiB 看一次余量。
 - `platform/markdown`：核心的图片钩子（M4 的 `Extension` 加字段）；`obsidian.Resolve` 的签名（答类型）与 `Options.Assets`；`CheckHTML` 认附件的标记。
 - linking：`LinkTargetKind`、`PropertyLink.kind`、落点的 `target_is_asset`、`Linktexts` 的 `.md` 写法、补全数据带类型；`markdownExtensions(resolve, assets)`。
 - 组合根：`purgers(pool)` 改为 `purgers(pool, store)`；模块的构建次序 page → asset → transfer。
@@ -517,7 +517,7 @@ M7 开工时负责人确认进入 M7（2026-10-08："可以了"）。下面是�
 | P2 | 附件（服务端） | 已完成 | [02-P2-assets-server.md](02-P2-assets-server.md) | [P2 审查](reviews/P2-assets-server-review.md) |
 | P3 | 附件与链接（服务端） | 已完成（A 合并 `5138ad6`，B 合并 `f3bf03c`） | [03-P3-assets-links.md](03-P3-assets-links.md) | [P3A 审查](reviews/P3A-assets-links-review.md)、[P3B 审查](reviews/P3B-render-review.md) |
 | P4 | 附件（前端） | 已完成（A 合并 `e44b417`，B 合并 `32e175c`，C 合并 `008f81f`） | [04-P4-assets-web.md](04-P4-assets-web.md) | [P4A 审查](reviews/P4A-assets-web-review.md)、[P4B 审查](reviews/P4B-assets-web-review.md)、[P4C 审查](reviews/P4C-paste-upload-review.md) |
-| P5 | 导出 | 进行中（A：服务端） | [05-P5-export.md](05-P5-export.md) | — |
+| P5 | 导出 | 进行中（A 合并 `e8f02d5`；B：前端） | [05-P5-export.md](05-P5-export.md) | [P5A 审查](reviews/P5A-export-review.md) |
 | P6 | 导入 | 未开始 | — | — |
 
 ## 13. 变更记录
@@ -537,3 +537,4 @@ M7 开工时负责人确认进入 M7（2026-10-08："可以了"）。下面是�
 | 2026-10-09 | P4B 完成：不内联的附件的链接写 `download`（12 字节）；`PropertyLink.inline`、`PageProperties.assets_expire_at`；阅读视图的增强 `assets`：新标签页与提示、链接之后按语言写大小、加载失败的重读、保留音视频与就地重签（开始了的都签，重签途中的失败不理会，一分钟之内不再签，地址没给时按视图的过期重读；出错的不保留）；到期重读从读到的时刻算（`stamped`、`eachRead`），快一小时以上的时钟每 30 秒，隐藏的标签页显示时读；4.8 的阅读视图随之改写 | P4B 的实施、审查与五轮修复核对：[04-P4-assets-web.md](04-P4-assets-web.md) 第 4、9 节、[P4B 审查](reviews/P4B-assets-web-review.md) |
 | 2026-10-09 | P4C 完成，P4 完成：编辑器的扩展 `assetUpload`（粘贴、拖入的文件上传，插入 `![[link]]`；光标移到嵌入之后，同一位置后粘贴的在后面；每个上传一创建就接住拒绝；没插入的一批答完说一次）；`EditorContext.uploadAsset`、`EditorControls.whenComposed`、`tell`、`going`，`SourceEditorHandle.working`、`settled`；Done、Mod+E 先等编辑器的上传与其后的组合，等待中失锁或撞上冲突就不走，等待期间说的带到阅读视图，离开之后的焦点按“编辑之内与之外”；上传行按来源分开（`Upload.fromEditor`）；正文至少 20rem 高；能改的正文有落点的光标；4.8 的粘贴、拖入随之改写 | P4C 的实施、审查与七轮修复核对：[04-P4-assets-web.md](04-P4-assets-web.md) 第 5、9 节、[P4C 审查](reviews/P4C-paste-upload-review.md) |
 | 2026-10-09 | P5 开工：分 A（服务端）、B（前端）两部分合并；子树的导出里那一页是库的根下的一页（`<页>/<页>.md`）；`meta.json` 里只有目录的页的路径以 `/` 结尾；冲突时有目录的那一页改名（`N.md 2`）；任务表加 `name`（导出的根名：任务列表与下载的文件名）；`jobs.Job.Start` 承担启动时的收拾；心跳每秒一次、同一条语句读回取消；列表不带报告的问题 | [05-P5-export.md](05-P5-export.md) 第 0、3 节 |
+| 2026-10-09 | P5A 完成：导出的服务端照实际改写（[05-P5-export.md](05-P5-export.md) 第 3 节）：River 在开始之前丢掉的排队导出由收拾记成失败（只投递的客户端读 River 还没结束的任务），收拾的报告计数为 0；成功的事务先锁笔记本行；正文按 200 页或 16 MiB 一批，本地存储的写入每 64 MiB 看一次余量；下载与视图按 TTL，地址的期限不晚于导出的到期；结束限时停机 900 毫秒、其余 30 秒；`jobs.export_workers` 至多 `database.max_conns` 的一半；4.9 的心跳与收拾、4.10 的地址随之改 | P5A 的实施、审查与两轮修复核对：[05-P5-export.md](05-P5-export.md) 第 3、9 节、[P5A 审查](reviews/P5A-export-review.md) |
