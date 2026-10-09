@@ -236,9 +236,9 @@ function assetOf(address: string | null): string | undefined {
 }
 
 /**
- * signAnew gives element the address of its attachment signed anew, and has it go on where it is: its position and
- * rate as it failed (a reload of it meanwhile, as Chromium's controls do as one plays it, loses them), playing and as
- * loud as the reader left it. Nothing when the element is no longer in the page; refused, as the address is not given
+ * signAnew gives element the address of its attachment signed anew, and has it go on where it is, as the reader left
+ * it; or, when a load of it meanwhile (Chromium's controls, as one plays it) lost them, at the position and rate it
+ * failed at. Nothing when the element is no longer in the page; refused, as the address is not given
  * (the attachment gone, or the network).
  */
 async function signAnew(

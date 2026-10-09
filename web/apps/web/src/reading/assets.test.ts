@@ -524,7 +524,7 @@ test("one whose address is not given reads the view again, once its addresses ex
   undo?.();
 });
 
-test("one being signed anew goes on where it failed, loaded again meanwhile or not; replaced meanwhile, its new one too", async () => {
+test("one being signed anew goes on where it failed if loaded again meanwhile, else as it is; replaced meanwhile, its new one too", async () => {
   // A new one's play refused: it stays where it was put.
   const played = vi
     .spyOn(HTMLMediaElement.prototype, "play")
@@ -549,9 +549,12 @@ test("one being signed anew goes on where it failed, loaded again meanwhile or n
   // Its old address fails again before the new one comes.
   loadAgain(reloaded);
   fail(reloaded);
+  // Paused by the reader then, and quieter: as the reader left it.
+  Object.assign(reloaded ?? {}, { paused: true, volume: 0.3 });
   loadAgain(replaced);
   fail(replaced);
-  Object.assign(pausing ?? {}, { paused: true });
+  // Not loaded again: as the reader left it.
+  Object.assign(pausing ?? {}, { paused: true, playbackRate: 2 });
   // Not loaded again: the rate the reader chose meanwhile.
   if (faster !== undefined) {
     faster.playbackRate = 2;
@@ -563,18 +566,23 @@ test("one being signed anew goes on where it failed, loaded again meanwhile or n
   await settle();
   expect([loading, reloaded].map((element) => [element?.currentTime, element?.playbackRate, element?.paused])).toEqual([
     [30, 1.5, false],
-    [31, 1.5, false],
+    [31, 1.5, true],
   ]);
+  expect([reloaded?.volume, reloaded?.preload]).toEqual([0.3, "metadata"]);
+  expect(reloaded?.play).not.toHaveBeenCalled();
   expect([faster?.currentTime, faster?.playbackRate]).toEqual([34, 2]);
 
   undo?.();
   container.innerHTML = html;
   undo = enhancement(container, signing());
   const fresh = [...container.querySelectorAll("audio")];
-  expect([...fresh.slice(0, 2), fresh[4]]).toEqual([loading, reloaded, faster]);
+  expect([fresh[0] === loading, fresh[1] === reloaded, fresh[4] === faster]).toEqual([true, true, true]);
   expect([fresh[2] === replaced, fresh[3] === pausing]).toEqual([false, false]);
-  expect([fresh[2]?.currentTime, fresh[2]?.playbackRate, fresh[3]?.currentTime]).toEqual([32, 1.5, 33]);
+  expect([fresh[2]?.currentTime, fresh[2]?.playbackRate, fresh[3]?.currentTime, fresh[3]?.playbackRate]).toEqual([
+    32, 1.5, 33, 2,
+  ]);
   await settle();
+  expect(fresh[2]?.currentTime).toBe(32);
   // Playing as it was being signed, the new one plays on; paused meanwhile, it does not.
   expect(played.mock.contexts).toEqual([fresh[2]]);
   answer(2);
