@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"slices"
 	"time"
 	"uuid"
 
@@ -61,43 +62,84 @@ func (e *Expire) Run(ctx context.Context) (int, error) {
 	return expired, nil
 }
 
-// Rescue fails the jobs that no longer run though their rows say so: the
-// server's own, as it starts, which the last process left; then those
-// whose heartbeat is older than the timeout. A job does not run again.
+// Rescue fails the jobs that no longer run, or will not, though their rows
+// say so: the server's own running ones, as it starts, which the last
+// process left; then those whose heartbeat is older than the timeout, and
+// the queued ones River no longer holds. A job does not run again. Its
+// report tells the failure alone; its progress, how far it went.
 type Rescue struct {
 	rows    MaintainedRows
+	held    Held
 	clock   Clock
 	logger  *slog.Logger
 	timeout time.Duration
 }
 
 // NewRescue returns the use case, timeout transfer.heartbeat_timeout.
-func NewRescue(rows MaintainedRows, clock Clock, logger *slog.Logger, timeout time.Duration) *Rescue {
-	return &Rescue{rows: rows, clock: clock, logger: logger, timeout: timeout}
+func NewRescue(rows MaintainedRows, held Held, clock Clock, logger *slog.Logger, timeout time.Duration) *Rescue {
+	return &Rescue{rows: rows, held: held, clock: clock, logger: logger, timeout: timeout}
 }
 
 // AtStart fails every running job: as the server starts, before it runs
-// any, they were all interrupted (one server).
+// any, they were all interrupted (one server). One a request holds is
+// left to Run, its heartbeat old by then.
 func (r *Rescue) AtStart(ctx context.Context) error {
-	return r.interrupt(ctx, nil)
-}
-
-// Run fails the running jobs whose heartbeat is older than the timeout.
-func (r *Rescue) Run(ctx context.Context) error {
-	before := r.clock.Now().Add(-r.timeout)
-	return r.interrupt(ctx, &before)
-}
-
-func (r *Rescue) interrupt(ctx context.Context, before *time.Time) error {
-	jobs, err := r.rows.InterruptJobs(ctx, before, r.clock.Now(), domain.Report{Failure: domain.FailureInterrupted})
+	jobs, err := r.rows.InterruptJobs(ctx, nil, r.clock.Now(), domain.Report{Failure: domain.FailureInterrupted})
 	if err != nil {
 		return fmt.Errorf("rescue the interrupted jobs: %w", err)
 	}
+	r.log(ctx, "job interrupted", jobs)
+	return nil
+}
+
+// Run fails the running jobs whose heartbeat is older than the timeout,
+// then the queued jobs River no longer holds: it dropped them, its one
+// attempt spent before they started, their start's write failed or the
+// process stopped as River took them.
+func (r *Rescue) Run(ctx context.Context) error {
+	before := r.clock.Now().Add(-r.timeout)
+	jobs, err := r.rows.InterruptJobs(ctx, &before, r.clock.Now(), domain.Report{Failure: domain.FailureInterrupted})
+	if err != nil {
+		return fmt.Errorf("rescue the interrupted jobs: %w", err)
+	}
+	r.log(ctx, "job interrupted", jobs)
+	return r.lost(ctx)
+}
+
+// lost fails the queued jobs River no longer holds. It reads the rows
+// before River: a job queued then was enqueued with its row, so River
+// holds it still, or started it, the row no longer queued, or dropped it.
+func (r *Rescue) lost(ctx context.Context) error {
+	queued, err := r.rows.QueuedJobs(ctx)
+	if err != nil || len(queued) == 0 {
+		return err
+	}
+	held, err := r.held.Held(ctx)
+	if err != nil {
+		return fmt.Errorf("the jobs River holds: %w", err)
+	}
+	var lost []uuid.UUID
+	for _, id := range queued {
+		if !slices.Contains(held, id) {
+			lost = append(lost, id)
+		}
+	}
+	if len(lost) == 0 {
+		return nil
+	}
+	jobs, err := r.rows.FailQueued(ctx, lost, r.clock.Now(), domain.Report{Failure: domain.FailureInterrupted})
+	if err != nil {
+		return fmt.Errorf("rescue the jobs River dropped: %w", err)
+	}
+	r.log(ctx, "queued job dropped by River", jobs)
+	return nil
+}
+
+func (r *Rescue) log(ctx context.Context, msg string, jobs []Interrupted) {
 	for _, j := range jobs {
-		r.logger.WarnContext(ctx, "job interrupted", slog.String("job_id", j.ID.String()), slog.String("notebook_id", j.NotebookID.String()),
+		r.logger.WarnContext(ctx, msg, slog.String("job_id", j.ID.String()), slog.String("notebook_id", j.NotebookID.String()),
 			slog.String("user_id", j.CreatedBy.String()), slog.String("client", string(j.Client)), slog.String("failure", string(domain.FailureInterrupted)))
 	}
-	return nil
 }
 
 // SweepAge is how old an archive no job keeps is when the sweep deletes

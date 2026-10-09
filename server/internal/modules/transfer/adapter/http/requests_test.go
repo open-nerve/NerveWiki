@@ -29,12 +29,13 @@ func code(body []byte) string {
 // jobAnswer is a TransferJob or TransferJobDetail answer, as much as the
 // tests read.
 type jobAnswer struct {
-	ID        string  `json:"id"`
-	RootID    *string `json:"root_id"`
-	Name      string  `json:"name"`
-	State     string  `json:"state"`
-	Client    string  `json:"client"`
-	CreatedBy struct {
+	ID              string     `json:"id"`
+	RootID          *string    `json:"root_id"`
+	Name            string     `json:"name"`
+	State           string     `json:"state"`
+	Client          string     `json:"client"`
+	CancelRequested *time.Time `json:"cancel_requested_at"`
+	CreatedBy       struct {
 		UserID      string `json:"user_id"`
 		DisplayName string `json:"display_name"`
 	} `json:"created_by"`
@@ -90,9 +91,9 @@ func TestStartExportQueuesTheJob(t *testing.T) {
 	}
 }
 
-// Each refusal of a start answers its code: a notebook the caller does not
-// see, a root that is no page of it, an export of the caller's under way,
-// the queue full (after 5 minutes), the store full.
+// Each refusal of a start answers its code: a notebook that is not, a root
+// that is no page of it, an export of the caller's under way, the queue
+// full (after 5 minutes), the store full.
 func TestStartExportRefusals(t *testing.T) {
 	for _, tt := range []struct {
 		name    string
@@ -103,7 +104,7 @@ func TestStartExportRefusals(t *testing.T) {
 		status  int
 		code    string
 	}{
-		{"a notebook not seen", nil, "/api/v0/notebooks/" + pageID().String() + "/exports", "session", `{}`,
+		{"a notebook that is not", nil, "/api/v0/notebooks/" + pageID().String() + "/exports", "session", `{}`,
 			http.StatusNotFound, "notebook.not_found"},
 		{"a root that is no page", nil, exportsPath(), "session", `{"root_id": "` + notebookID().String() + `"}`,
 			http.StatusNotFound, "page.not_found"},
@@ -142,7 +143,8 @@ func TestStartExportRefusals(t *testing.T) {
 func TestGetTransferJob(t *testing.T) {
 	h := newHarness(t)
 	own := h.job(alice(), domain.StateSucceeded, now().Add(-time.Hour), "zip")
-	others := h.job(bob(), domain.StateFailed, now().Add(-time.Hour), "")
+	failed := h.job(alice(), domain.StateFailed, now().Add(-time.Hour), "")
+	bobs := h.job(bob(), domain.StateFailed, now().Add(-time.Hour), "")
 	res, body := h.send(t, http.MethodGet, "/api/v0/transfer-jobs/"+own.ID.String(), "session", "")
 	var j jobAnswer
 	decode(t, body, &j)
@@ -157,8 +159,8 @@ func TestGetTransferJob(t *testing.T) {
 		name, id, token string
 		status          int
 	}{
-		{"another's to the admin", others.ID.String(), "bob", http.StatusOK},
-		{"another's to a reader", others.ID.String(), "session", http.StatusNotFound},
+		{"another's to the admin", failed.ID.String(), "bob", http.StatusOK},
+		{"another's to a reader", bobs.ID.String(), "session", http.StatusNotFound},
 		{"a job that is not", pageID().String(), "session", http.StatusNotFound},
 	} {
 		res, body := h.send(t, http.MethodGet, "/api/v0/transfer-jobs/"+tt.id, tt.token, "")
@@ -167,7 +169,7 @@ func TestGetTransferJob(t *testing.T) {
 		}
 		if tt.status == http.StatusOK {
 			decode(t, body, &j)
-			if j.Download != nil || len(j.Problems) != 0 {
+			if j.ID != tt.id || j.Download != nil || len(j.Problems) != 0 {
 				t.Errorf("%s: a failed job's address %+v, problems %+v; want none", tt.name, j.Download, j.Problems)
 			}
 		}
@@ -232,21 +234,22 @@ func TestListTransferJobs(t *testing.T) {
 	}
 }
 
-// A cancel ends a queued job at once, asks a running one to stop, and is
-// transfer.not_cancellable once the job ended; another's job is its
-// notebook's admin's alone, transfer.not_found to the rest.
+// A cancel ends a queued job at once, asks a running one to stop, the time
+// answered, and is transfer.not_cancellable once the job ended; another's
+// job is its notebook's admin's alone, transfer.not_found to the rest.
 func TestCancelTransferJob(t *testing.T) {
 	h := newHarness(t)
 	queued := h.job(alice(), domain.StateQueued, now(), "")
-	running := h.job(bob(), domain.StateRunning, now(), "")
+	running := h.job(alice(), domain.StateRunning, now(), "")
 	ended := h.job(alice(), domain.StateSucceeded, now(), "zip")
+	bobs := h.job(bob(), domain.StateRunning, now(), "")
 	for _, tt := range []struct {
 		name, id, token string
 		status          int
 		code, state     string
 	}{
 		{"its own, queued", queued.ID.String(), "session", http.StatusOK, "", "cancelled"},
-		{"another's, to a reader", running.ID.String(), "session", http.StatusNotFound, "transfer.not_found", ""},
+		{"another's, to a reader", bobs.ID.String(), "session", http.StatusNotFound, "transfer.not_found", ""},
 		{"another's, running, to the admin", running.ID.String(), "bob", http.StatusOK, "", "running"},
 		{"its own, ended", ended.ID.String(), "session", http.StatusConflict, "transfer.not_cancellable", ""},
 		{"a job that is not", pageID().String(), "session", http.StatusNotFound, "transfer.not_found", ""},
@@ -257,9 +260,12 @@ func TestCancelTransferJob(t *testing.T) {
 		if res.StatusCode != tt.status || code(body) != tt.code || j.State != tt.state {
 			t.Errorf("%s: cancelTransferJob = %d %s, want %d %s %s", tt.name, res.StatusCode, body, tt.status, tt.code, tt.state)
 		}
+		if asked := j.CancelRequested != nil && j.CancelRequested.Equal(now()); tt.state != "" && asked != (tt.state == "running") {
+			t.Errorf("%s: cancel_requested_at %v", tt.name, j.CancelRequested)
+		}
 	}
-	if h.rows.get(running.ID).CancelRequested == nil {
-		t.Error("the running job's cancel was not asked")
+	if h.rows.get(running.ID).CancelRequested == nil || h.rows.get(bobs.ID).CancelRequested != nil {
+		t.Error("the running job's cancel was not asked, or bob's was by a reader")
 	}
 }
 
@@ -267,16 +273,22 @@ func TestCancelTransferJob(t *testing.T) {
 // route that takes one, the download's sandboxed.
 func TestRoutesBindTheJobID(t *testing.T) {
 	h := newHarness(t)
-	for _, tt := range []struct{ method, path, token string }{
-		{http.MethodGet, "/api/v0/transfer-jobs/nope", "session"},
-		{http.MethodPost, "/api/v0/transfer-jobs/nope/cancel", "session"},
-		{http.MethodGet, "/api/v0/transfer-jobs/nope/download?e=1&s=" + strings.Repeat("A", 22), ""},
+	for _, tt := range []struct {
+		method, path, token string
+		sandboxed           bool
+	}{
+		{http.MethodGet, "/api/v0/transfer-jobs/nope", "session", false},
+		{http.MethodPost, "/api/v0/transfer-jobs/nope/cancel", "session", false},
+		{http.MethodGet, "/api/v0/transfer-jobs/nope/download?e=1&s=" + strings.Repeat("A", 22), "", true},
 	} {
 		res, body := h.send(t, tt.method, tt.path, tt.token, "")
 		var p problem
 		_ = json.Unmarshal(body, &p)
 		if res.StatusCode != http.StatusBadRequest || len(p.Errors) != 1 || p.Errors[0].Field != "job_id" || p.Errors[0].Code != "invalid_format" {
 			t.Errorf("%s %s = %d %s, want 400, invalid_format on job_id", tt.method, tt.path, res.StatusCode, body)
+		}
+		if csp := res.Header.Get("Content-Security-Policy"); tt.sandboxed && !strings.HasPrefix(csp, "sandbox") {
+			t.Errorf("%s %s: Content-Security-Policy %q, want it sandboxed", tt.method, tt.path, csp)
 		}
 	}
 }

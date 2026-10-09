@@ -272,6 +272,56 @@ func (q *Queries) Exporting(ctx context.Context, arg ExportingParams) (bool, err
 	return exists, err
 }
 
+const failQueued = `-- name: FailQueued :many
+UPDATE transfer_jobs SET state = 'failed', finished_at = $1, report = $2
+WHERE state = 'queued' AND id IN (
+    SELECT id FROM transfer_jobs
+    WHERE id = ANY($3::uuid[]) AND state = 'queued' AND deleted_at IS NULL
+    FOR UPDATE SKIP LOCKED
+)
+RETURNING id, notebook_id, created_by_id, client
+`
+
+type FailQueuedParams struct {
+	At     *time.Time
+	Report []byte
+	Ids    []uuid.UUID
+}
+
+type FailQueuedRow struct {
+	ID          uuid.UUID
+	NotebookID  uuid.UUID
+	CreatedByID uuid.UUID
+	Client      string
+}
+
+// Of ids, the queued jobs not deleted, failed with report: River dropped them (M7/P5 design 3.12). The rows another
+// transaction holds are skipped.
+func (q *Queries) FailQueued(ctx context.Context, arg FailQueuedParams) ([]FailQueuedRow, error) {
+	rows, err := q.db.Query(ctx, failQueued, arg.At, arg.Report, arg.Ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []FailQueuedRow
+	for rows.Next() {
+		var i FailQueuedRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.NotebookID,
+			&i.CreatedByID,
+			&i.Client,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const findJob = `-- name: FindJob :one
 SELECT id, notebook_id, root_id, kind, state, name, created_by_id, client, progress_done, progress_total,
     cancel_requested_at, heartbeat_at, started_at, finished_at, report, result_bytes, created_at
@@ -362,8 +412,12 @@ func (q *Queries) FinishJob(ctx context.Context, arg FinishJobParams) (int64, er
 
 const interruptJobs = `-- name: InterruptJobs :many
 UPDATE transfer_jobs SET state = 'failed', finished_at = $1, report = $2
-WHERE state = 'running' AND deleted_at IS NULL
-    AND ($3::timestamptz IS NULL OR heartbeat_at < $3::timestamptz)
+WHERE state = 'running' AND id IN (
+    SELECT id FROM transfer_jobs
+    WHERE state = 'running' AND deleted_at IS NULL
+        AND ($3::timestamptz IS NULL OR heartbeat_at < $3::timestamptz)
+    FOR UPDATE SKIP LOCKED
+)
 RETURNING id, notebook_id, created_by_id, client
 `
 
@@ -381,7 +435,8 @@ type InterruptJobsRow struct {
 }
 
 // The running jobs, failed with report: all of them, or those whose heartbeat is older than beat_before when it is
-// set. Their progress stays as it was.
+// set. Their progress stays as it was. The rows another transaction holds are skipped: a notebook's deletion that
+// holds some waits for none of these.
 func (q *Queries) InterruptJobs(ctx context.Context, arg InterruptJobsParams) ([]InterruptJobsRow, error) {
 	rows, err := q.db.Query(ctx, interruptJobs, arg.At, arg.Report, arg.BeatBefore)
 	if err != nil {
@@ -409,7 +464,7 @@ func (q *Queries) InterruptJobs(ctx context.Context, arg InterruptJobsParams) ([
 
 const listJobs = `-- name: ListJobs :many
 SELECT id, notebook_id, root_id, kind, state, name, created_by_id, client, progress_done, progress_total,
-    cancel_requested_at, heartbeat_at, started_at, finished_at, report, result_bytes, created_at
+    cancel_requested_at, heartbeat_at, started_at, finished_at, (report - 'problems')::jsonb AS report, result_bytes, created_at
 FROM transfer_jobs
 WHERE notebook_id = $1 AND deleted_at IS NULL
     AND ($2::uuid IS NULL OR created_by_id = $2)
@@ -447,7 +502,8 @@ type ListJobsRow struct {
 	CreatedAt         time.Time
 }
 
-// A notebook's jobs, the newest first, the account's alone when created_by_id is set, after the cursor's.
+// A notebook's jobs, the newest first, the account's alone when created_by_id is set, after the cursor's. A report
+// comes without its problems, up to 1,000 a job, which the list does not show.
 func (q *Queries) ListJobs(ctx context.Context, arg ListJobsParams) ([]ListJobsRow, error) {
 	rows, err := q.db.Query(ctx, listJobs,
 		arg.NotebookID,
@@ -581,6 +637,31 @@ SELECT pg_advisory_xact_lock(7366512418245025792)
 func (q *Queries) LockQueue(ctx context.Context) error {
 	_, err := q.db.Exec(ctx, lockQueue)
 	return err
+}
+
+const queuedJobs = `-- name: QueuedJobs :many
+SELECT id FROM transfer_jobs WHERE state = 'queued' AND deleted_at IS NULL
+`
+
+// The queued jobs not deleted.
+func (q *Queries) QueuedJobs(ctx context.Context) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, queuedJobs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const requestCancel = `-- name: RequestCancel :execrows

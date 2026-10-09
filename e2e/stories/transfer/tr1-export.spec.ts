@@ -49,6 +49,7 @@ test("TR1 (API): a notebook and a subtree export as vaults, their pages, folders
   const plan = await createPage(api, pat, handbook.id, "Plan", null, "plan\n");
   const planFolder = await createPage(api, pat, handbook.id, "Plan.md");
   const step = await createPage(api, pat, handbook.id, "Step", planFolder.id, "step\n");
+  const cafe = await createPage(api, pat, handbook.id, "Café", null, "café\n");
   const notesBytes = utf8("Notes at the root.\n");
   const diagram = await uploadAsset(api, pat, handbook.id, { name: "diagram.png", bytes: pngBytes }, guide.id);
   const notes = await uploadAsset(api, pat, handbook.id, { name: "notes.txt", bytes: notesBytes });
@@ -57,7 +58,7 @@ test("TR1 (API): a notebook and a subtree export as vaults, their pages, folders
   expect([whole.state, whole.name, whole.root_id, whole.client]).toEqual(["succeeded", "Handbook", null, "api"]);
   expect(whole.report).toEqual({
     failure: null,
-    counts: { pages: 8, attachments: 2, renamed: 1, missing: 0, skipped: 0 },
+    counts: { pages: 9, attachments: 2, renamed: 1, missing: 0, skipped: 0 },
   });
   expect(whole.problems).toEqual([{ path: "Plan.md/", code: "renamed", to: "Plan.md 2/" }]);
   if (!whole.download || whole.result_bytes === null) {
@@ -74,6 +75,7 @@ test("TR1 (API): a notebook and a subtree export as vaults, their pages, folders
     "Handbook/Plan.md",
     "Handbook/Plan.md 2/",
     "Handbook/Plan.md 2/Step.md",
+    "Handbook/Café.md",
     "Handbook/Guide/diagram.png",
     "Handbook/notes.txt",
     "Handbook/.nerve/meta.json",
@@ -86,6 +88,7 @@ test("TR1 (API): a notebook and a subtree export as vaults, their pages, folders
     ["Handbook/Linked/Two.md", "two\n"],
     ["Handbook/Plan.md", "plan\n"],
     ["Handbook/Plan.md 2/Step.md", "step\n"],
+    ["Handbook/Café.md", "café\n"],
     ["Handbook/notes.txt", "Notes at the root.\n"],
   ] as const) {
     expect(entry(entries, name).data.toString("utf8"), name).toBe(content);
@@ -105,15 +108,26 @@ test("TR1 (API): a notebook and a subtree export as vaults, their pages, folders
     ["Plan.md", "page", plan.id],
     ["Plan.md 2/", "page", planFolder.id],
     ["Plan.md 2/Step.md", "page", step.id],
+    ["Café.md", "page", cafe.id],
     ["notes.txt", "asset", notes.id],
   ]);
+  // Each node's order among its siblings, as the tree keeps it.
+  const orders = new Map(
+    (
+      await db.query<{ id: string; sort_order: number }>(
+        "SELECT id::text, sort_order FROM nodes WHERE notebook_id = $1",
+        [handbook.id]
+      )
+    ).map((r) => [r.id, Number(r.sort_order)])
+  );
+  expect(meta.nodes.map((n) => n.sort_order)).toEqual(meta.nodes.map((n) => orders.get(n.id)));
   expect(whole.result_bytes).toBe(bytes);
   await expectExported(db, nervewiki.storageDir, whole.id, {
     creatorId: adminId,
     client: "api",
     root: null,
-    nodes: 10,
-    counts: { pages: 8, attachments: 2, renamed: 1, missing: 0 },
+    nodes: 11,
+    counts: { pages: 9, attachments: 2, renamed: 1, missing: 0 },
     bytes,
   });
 

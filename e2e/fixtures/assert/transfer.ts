@@ -76,10 +76,15 @@ export async function expectExported(
   expect(statSync(file).size).toBe(expected.bytes);
 }
 
-/** transfer_jobs and the store at storageDir: the export id has expired, and its archive is no longer in the store. */
+/**
+ * transfer_jobs and the store at storageDir: the export id has expired, and its archive is no longer in the store,
+ * deleted a moment after the expiry commits.
+ */
 export async function expectExpired(db: Database, storageDir: string, id: string): Promise<void> {
   expect(
     await db.query("SELECT state, result_bytes IS NOT NULL AS bytes FROM transfer_jobs WHERE id = $1", [id])
   ).toEqual([{ state: "expired", bytes: true }]);
-  expect(existsSync(archivePath(storageDir, id)), `the archive of ${id} in the store`).toBe(false);
+  await expect
+    .poll(() => existsSync(archivePath(storageDir, id)), { message: `the archive of ${id} in the store` })
+    .toBe(false);
 }

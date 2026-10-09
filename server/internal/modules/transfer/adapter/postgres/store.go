@@ -109,7 +109,7 @@ func (s *Store) LockJob(ctx context.Context, id uuid.UUID) (domain.Job, error) {
 	return jobOf(gen.FindJobRow(r))
 }
 
-// ListJobs implements app.Rows.
+// ListJobs implements app.Rows: the reports come without their problems.
 func (s *Store) ListJobs(ctx context.Context, notebookID uuid.UUID, by *uuid.UUID, after *app.Cursor, limit int) ([]domain.Job, error) {
 	p := gen.ListJobsParams{NotebookID: notebookID, CreatedByID: by, RowLimit: int32(limit)} //nolint:gosec // a page's size
 	if after != nil {
@@ -212,6 +212,32 @@ func (s *Store) InterruptJobs(ctx context.Context, beatBefore *time.Time, at tim
 	rows, err := s.queries(ctx).InterruptJobs(ctx, gen.InterruptJobsParams{At: &at, Report: report, BeatBefore: beatBefore})
 	if err != nil {
 		return nil, fmt.Errorf("interrupt jobs: %w", err)
+	}
+	out := make([]app.Interrupted, len(rows))
+	for i, x := range rows {
+		out[i] = app.Interrupted{ID: x.ID, NotebookID: x.NotebookID, CreatedBy: x.CreatedByID, Client: domain.Client(x.Client)}
+	}
+	return out, nil
+}
+
+// QueuedJobs implements app.MaintainedRows.
+func (s *Store) QueuedJobs(ctx context.Context) ([]uuid.UUID, error) {
+	ids, err := s.queries(ctx).QueuedJobs(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("queued jobs: %w", err)
+	}
+	return ids, nil
+}
+
+// FailQueued implements app.MaintainedRows.
+func (s *Store) FailQueued(ctx context.Context, ids []uuid.UUID, at time.Time, r domain.Report) ([]app.Interrupted, error) {
+	report, err := encodeReport(r)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.queries(ctx).FailQueued(ctx, gen.FailQueuedParams{At: &at, Report: report, Ids: ids})
+	if err != nil {
+		return nil, fmt.Errorf("fail the queued jobs: %w", err)
 	}
 	out := make([]app.Interrupted, len(rows))
 	for i, x := range rows {

@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"time"
 	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/transfer/domain"
@@ -24,9 +25,14 @@ type views struct {
 	names     Names
 	signer    Signer
 	clock     Clock
+	// ttl is transfer.export_ttl.
+	ttl time.Duration
 }
 
-// of are jobs' views, their addresses signed as of one time.
+// of are jobs' views, their addresses signed as of one time. An address
+// expires with its signature, or with its export, ttl after it ended,
+// whichever comes first; an export past it is expired already, its row
+// expired by the next expiry.
 func (v views) of(ctx context.Context, jobs []domain.Job) ([]JobView, error) {
 	ids := make([]uuid.UUID, 0, len(jobs))
 	for _, j := range jobs {
@@ -40,10 +46,19 @@ func (v views) of(ctx context.Context, jobs []domain.Job) ([]JobView, error) {
 	out := make([]JobView, len(jobs))
 	for i, j := range jobs {
 		out[i] = JobView{Job: j, CreatedByName: names[j.CreatedBy]}
-		if j.Kind == domain.KindExport && j.State == domain.StateSucceeded {
-			signed := v.signer.Sign(now, j.ID)
-			out[i].Download = &signed
+		if j.Kind != domain.KindExport || j.State != domain.StateSucceeded || j.Finished == nil {
+			continue
 		}
+		until := j.Finished.Add(v.ttl)
+		if !now.Before(until) {
+			out[i].Job.State = domain.StateExpired
+			continue
+		}
+		signed := v.signer.Sign(now, j.ID)
+		if until.Before(signed.Expires) {
+			signed.Expires = until
+		}
+		out[i].Download = &signed
 	}
 	return out, nil
 }

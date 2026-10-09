@@ -78,6 +78,23 @@ func (f fixture) start(t *testing.T, id uuid.UUID, at time.Time) {
 	}
 }
 
+// hold locks the job id's row FOR UPDATE in a transaction of its own, until
+// the function it answers ends it.
+func (f fixture) hold(t *testing.T, id uuid.UUID) func() {
+	t.Helper()
+	ctx := context.Background()
+	tx, err := f.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(ctx, "SELECT 1 FROM transfer_jobs WHERE id = $1 FOR UPDATE", id); err != nil {
+		t.Fatal(err)
+	}
+	release := func() { _ = tx.Rollback(ctx) }
+	t.Cleanup(release)
+	return release
+}
+
 func (f fixture) succeed(t *testing.T, id uuid.UUID, at time.Time) {
 	t.Helper()
 	bytes := int64(42)
@@ -215,20 +232,32 @@ func ids(jobs []domain.Job) []uuid.UUID {
 	return out
 }
 
-// A notebook's jobs come newest first, a page at a time, the account's
-// alone when asked; a deleted job, and another notebook's, are in no list.
+// A notebook's jobs come newest first, those of one time by id, a page at
+// a time, the account's alone when asked, their reports without their
+// problems; a deleted job, and another notebook's, are in no list.
 func TestTheJobsList(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()
 	a1 := f.done(t, f.eng, f.alice, at(0))
 	b1 := f.done(t, f.eng, f.bob, at(time.Minute))
-	a2 := f.done(t, f.eng, f.alice, at(2*time.Minute))
+	a2 := f.export(t, f.eng, f.alice, at(2*time.Minute))
+	f.start(t, a2.ID, at(2*time.Minute))
+	report := domain.Report{Counts: domain.Counts{Pages: 1, Renamed: 1}, Problems: []domain.Problem{{Path: "a/", Code: domain.ProblemRenamed, To: "a 2/"}}}
+	if ok, err := f.store.FinishJob(ctx, a2.ID, app.Ended{State: domain.StateCancelled, At: at(2 * time.Minute), Name: "Eng", Report: report}); !ok || err != nil {
+		t.Fatalf("FinishJob() = %v, %v", ok, err)
+	}
 	b2 := f.export(t, f.eng, f.bob, at(2*time.Minute)) // the same time: by id
 	f.done(t, f.ops, f.alice, at(3*time.Minute))
 
 	all, err := f.store.ListJobs(ctx, f.eng, nil, nil, 10)
 	if want := []uuid.UUID{b2.ID, a2.ID, b1.ID, a1.ID}; err != nil || !slices.Equal(ids(all), want) {
-		t.Errorf("ListJobs() = %v, %v; want %v", ids(all), err, want)
+		t.Fatalf("ListJobs() = %v, %v; want %v", ids(all), err, want)
+	}
+	if r := all[1].Report; r == nil || r.Counts != report.Counts || r.Problems != nil {
+		t.Errorf("the listed report = %+v, want its counts without its problems", r)
+	}
+	if got, err := f.store.FindJob(ctx, a2.ID); err != nil || got.Report == nil || !slices.Equal(got.Report.Problems, report.Problems) {
+		t.Errorf("FindJob() = %+v, %v; want the report's problems", got.Report, err)
 	}
 	page, err := f.store.ListJobs(ctx, f.eng, nil, nil, 2)
 	if err != nil || len(page) != 2 {
@@ -238,6 +267,10 @@ func TestTheJobsList(t *testing.T) {
 	rest, err := f.store.ListJobs(ctx, f.eng, nil, &app.Cursor{CreatedAt: last.CreatedAt, ID: last.ID}, 2)
 	if want := []uuid.UUID{b1.ID, a1.ID}; err != nil || !slices.Equal(ids(rest), want) {
 		t.Errorf("the next page = %v, %v; want %v", ids(rest), err, want)
+	}
+	tie, err := f.store.ListJobs(ctx, f.eng, nil, &app.Cursor{CreatedAt: b2.CreatedAt, ID: b2.ID}, 1)
+	if want := []uuid.UUID{a2.ID}; err != nil || !slices.Equal(ids(tie), want) {
+		t.Errorf("the page after b2 = %v, %v; want a2, of its time", ids(tie), err)
 	}
 	alices, err := f.store.ListJobs(ctx, f.eng, &f.alice, nil, 10)
 	if want := []uuid.UUID{a2.ID, a1.ID}; err != nil || !slices.Equal(ids(alices), want) {
@@ -285,7 +318,8 @@ func TestADeletedJobStops(t *testing.T) {
 
 // A success expires the account's earlier successes in the notebook, no
 // other's; the expiry takes the exports that succeeded before a time, a
-// batch at a time; the archives kept are the successes'.
+// batch at a time, skipping the rows another transaction holds; the
+// archives kept are the successes'.
 func TestExportsExpire(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()
@@ -304,13 +338,15 @@ func TestExportsExpire(t *testing.T) {
 	if want := []uuid.UUID{bobs.ID, ops.ID, latest.ID}; err != nil || !sameSet(live, want) {
 		t.Errorf("LiveArchives() = %v, %v; want %v", live, err, want)
 	}
-	first, err := f.store.ExpireExports(ctx, at(time.Minute), 1)
-	if err != nil || len(first) != 1 {
-		t.Fatalf("ExpireExports() = %v, %v; want one of a batch of one", first, err)
+	release := f.hold(t, ops.ID)
+	first, err := f.store.ExpireExports(ctx, at(time.Minute), 10)
+	if err != nil || !slices.Equal(first, []uuid.UUID{bobs.ID}) {
+		t.Fatalf("ExpireExports() = %v, %v; want bob's, ops' held", first, err)
 	}
-	second, err := f.store.ExpireExports(ctx, at(time.Minute), 10)
-	if err != nil || !sameSet(append(first, second...), []uuid.UUID{bobs.ID, ops.ID}) {
-		t.Errorf("ExpireExports() = %v then %v, %v; want bob's and ops'", first, second, err)
+	release()
+	second, err := f.store.ExpireExports(ctx, at(time.Minute), 1)
+	if err != nil || !slices.Equal(second, []uuid.UUID{ops.ID}) {
+		t.Errorf("ExpireExports() = %v, %v; want ops' of a batch of one", second, err)
 	}
 	got, err := f.store.FindJob(ctx, bobs.ID)
 	if err != nil || got.State != domain.StateExpired || got.ResultBytes == nil {
@@ -326,7 +362,8 @@ func sameSet(a, b []uuid.UUID) bool {
 }
 
 // The rescue fails every running job at the start, and those whose
-// heartbeat is old after; queued jobs and ended ones are left.
+// heartbeat is old after, skipping the rows another transaction holds;
+// queued jobs and ended ones are left.
 func TestTheRescueFailsTheRunningJobs(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()
@@ -334,6 +371,14 @@ func TestTheRescueFailsTheRunningJobs(t *testing.T) {
 	f.start(t, stale.ID, at(0))
 	f.start(t, fresh.ID, at(time.Minute))
 	report := domain.Report{Failure: domain.FailureInterrupted}
+	release := f.hold(t, stale.ID)
+	if got, err := f.store.InterruptJobs(ctx, nil, at(time.Hour), report); err != nil || len(got) != 1 || got[0].ID != fresh.ID {
+		t.Errorf("InterruptJobs() with the stale one held = %+v, %v; want the fresh one alone", got, err)
+	}
+	release()
+	if _, err := f.pool.Exec(ctx, "UPDATE transfer_jobs SET state = 'running', finished_at = NULL, report = NULL WHERE id = $1", fresh.ID); err != nil {
+		t.Fatal(err)
+	}
 
 	before := at(30 * time.Second)
 	got, err := f.store.InterruptJobs(ctx, &before, at(time.Hour), report)
@@ -350,6 +395,45 @@ func TestTheRescueFailsTheRunningJobs(t *testing.T) {
 	}
 	if j, err := f.store.FindJob(ctx, queued.ID); err != nil || j.State != domain.StateQueued {
 		t.Errorf("the queued job = %+v, %v; want it left", j, err)
+	}
+}
+
+// The rescue reads the queued jobs, and fails those of them it is given
+// that are still queued, skipping the rows another transaction holds; a
+// deleted job is neither read nor failed.
+func TestTheRescueFailsTheQueuedJobsRiverDropped(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	dropped, held, running := f.export(t, f.eng, f.alice, at(0)), f.export(t, f.ops, f.alice, at(0)), f.export(t, f.eng, f.bob, at(0))
+	f.start(t, running.ID, at(0))
+	report := domain.Report{Failure: domain.FailureInterrupted}
+
+	queued, err := f.store.QueuedJobs(ctx)
+	if err != nil || !sameSet(queued, []uuid.UUID{dropped.ID, held.ID}) {
+		t.Errorf("QueuedJobs() = %v, %v; want the two queued", queued, err)
+	}
+	release := f.hold(t, held.ID)
+	got, err := f.store.FailQueued(ctx, []uuid.UUID{dropped.ID, held.ID, running.ID}, at(time.Hour), report)
+	if err != nil || len(got) != 1 || got[0].ID != dropped.ID || got[0].NotebookID != f.eng || got[0].CreatedBy != f.alice || got[0].Client != domain.ClientWeb {
+		t.Errorf("FailQueued() = %+v, %v; want the dropped one, the held one skipped, the running one left", got, err)
+	}
+	release()
+	failed, err := f.store.FindJob(ctx, dropped.ID)
+	if err != nil || failed.State != domain.StateFailed || failed.Report == nil || failed.Report.Failure != domain.FailureInterrupted ||
+		!failed.Finished.Equal(at(time.Hour)) || failed.Started != nil {
+		t.Errorf("FindJob() = %+v, %v; want failed, never started", failed, err)
+	}
+	if j, err := f.store.FindJob(ctx, running.ID); err != nil || j.State != domain.StateRunning {
+		t.Errorf("the running job = %+v, %v; want it left", j, err)
+	}
+	if err := f.store.DeleteJobsOfNotebooks(ctx, []uuid.UUID{f.ops}, at(0)); err != nil {
+		t.Fatal(err)
+	}
+	if queued, err := f.store.QueuedJobs(ctx); err != nil || len(queued) != 0 {
+		t.Errorf("QueuedJobs() = %v, %v; want none, the deleted one left", queued, err)
+	}
+	if got, err := f.store.FailQueued(ctx, []uuid.UUID{held.ID}, at(time.Hour), report); err != nil || len(got) != 0 {
+		t.Errorf("FailQueued() of a deleted job = %+v, %v; want none", got, err)
 	}
 }
 
@@ -390,8 +474,9 @@ func TestThePurgeTakesTheDeletedJobs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if left, err := f.store.ExpiredJobs(context.Background(), at(0), 10); err == nil || left != nil {
-		t.Errorf("ExpiredJobs() on the pool = %v, %v", left, err)
+	var left int
+	if err := f.pool.QueryRow(ctx, "SELECT count(*) FROM transfer_jobs").Scan(&left); err != nil || left != 1 {
+		t.Errorf("%d jobs left, %v; want ops' alone", left, err)
 	}
 }
 
@@ -420,10 +505,11 @@ func TestTheQueueLockSerializesCreations(t *testing.T) {
 	go func() {
 		locked <- f.tx.WithinTx(ctx, func(ctx context.Context) error { return f.store.LockQueue(ctx) })
 	}()
+	pgtest.WaitForLockWaits(t, f.pool, 1, 10*time.Second)
 	select {
 	case err := <-locked:
 		t.Fatalf("a second LockQueue() returned %v while the first held it", err)
-	case <-time.After(300 * time.Millisecond):
+	default:
 	}
 	close(release)
 	if err := <-done; err != nil {

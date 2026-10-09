@@ -25,15 +25,69 @@ func (c fixedClock) Now() time.Time { return c.t }
 
 func quiet() *slog.Logger { return slog.New(slog.DiscardHandler) }
 
+// logs keeps a logger's text.
+type logs struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (l *logs) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.buf.Write(p)
+}
+
+func (l *logs) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.buf.String()
+}
+
+func (l *logs) logger() *slog.Logger { return slog.New(slog.NewTextHandler(l, nil)) }
+
+// recorder records the calls of the fakes that share it, in their order;
+// a nil one records nothing.
+type recorder struct {
+	mu    sync.Mutex
+	calls []string
+}
+
+func (r *recorder) add(call string) {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.calls = append(r.calls, call)
+}
+
+// of is the calls among names, in their order.
+func (r *recorder) of(names ...string) []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var out []string
+	for _, c := range r.calls {
+		if slices.Contains(names, c) {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
 // direct runs fn in no transaction: the fakes keep no state a rollback
 // would undo.
-type direct struct{ snapshots int }
+type direct struct {
+	snapshots int
+	rec       *recorder
+}
 
 func (d *direct) WithinTx(ctx context.Context, fn func(ctx context.Context) error) error {
+	d.rec.add("WithinTx")
 	return fn(ctx)
 }
 
 func (d *direct) WithinSnapshot(ctx context.Context, fn func(ctx context.Context) error) error {
+	d.rec.add("WithinSnapshot")
 	d.snapshots++
 	return fn(ctx)
 }
@@ -43,9 +97,11 @@ type auth struct {
 	mu    sync.Mutex
 	roles map[uuid.UUID]map[uuid.UUID]shared.NotebookRole
 	asked []shared.Actor
+	rec   *recorder
 }
 
 func (a *auth) Authorize(_ context.Context, actor shared.Actor, _ shared.Action, t shared.Target) (shared.Grant, error) {
+	a.rec.add("Authorize")
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.asked = append(a.asked, actor)
@@ -57,28 +113,39 @@ func (a *auth) Authorize(_ context.Context, actor shared.Actor, _ shared.Action,
 }
 
 // workspaces lock every workspace but gone.
-type workspaces struct{ gone bool }
+type workspaces struct {
+	gone bool
+	rec  *recorder
+}
 
-func (w workspaces) ShareByID(context.Context, uuid.UUID) (bool, error) { return !w.gone, nil }
+func (w workspaces) ShareByID(context.Context, uuid.UUID) (bool, error) {
+	w.rec.add("Workspaces.ShareByID")
+	return !w.gone, nil
+}
 
-// notebooks are the notebooks by id: each its workspace and name.
+// notebooks are the notebooks by id: each its workspace and name. One
+// unshared is deleted as it locks.
 type notebooks struct {
 	names     map[uuid.UUID]string
 	workspace uuid.UUID
 	unshared  bool
+	rec       *recorder
 }
 
 func (n notebooks) WorkspaceOf(_ context.Context, id uuid.UUID) (uuid.UUID, bool, error) {
+	n.rec.add("Notebooks.WorkspaceOf")
 	_, ok := n.names[id]
 	return n.workspace, ok, nil
 }
 
 func (n notebooks) ShareByID(_ context.Context, id uuid.UUID) (bool, error) {
+	n.rec.add("Notebooks.ShareByID")
 	_, ok := n.names[id]
 	return ok && !n.unshared, nil
 }
 
 func (n notebooks) NameOf(_ context.Context, id uuid.UUID) (string, bool, error) {
+	n.rec.add("Notebooks.NameOf")
 	name, ok := n.names[id]
 	return name, ok, nil
 }
@@ -164,19 +231,22 @@ func (l *linked) Linked(_ context.Context, _, targets []uuid.UUID) ([]uuid.UUID,
 	return out, nil
 }
 
-// blobs are the attachments' blobs and the blobs' files: open, when set,
-// is called as a file opens, before its reader.
+// blobWritten is when the blobs were written.
+func blobWritten() time.Time { return time.Date(2026, 9, 1, 8, 0, 0, 0, time.UTC) }
+
+// blobs are the attachments' blobs, written at blobWritten, and the blobs'
+// files: open, when set, is called as a file opens, before its reader.
 type blobs struct {
 	of    map[uuid.UUID]uuid.UUID
 	files map[uuid.UUID][]byte
 	open  func(ctx context.Context) io.Reader
 }
 
-func (b *blobs) Of(_ context.Context, _ uuid.UUID, ids []uuid.UUID) (map[uuid.UUID]uuid.UUID, error) {
-	out := map[uuid.UUID]uuid.UUID{}
+func (b *blobs) Of(_ context.Context, _ uuid.UUID, ids []uuid.UUID) (map[uuid.UUID]app.Blob, error) {
+	out := map[uuid.UUID]app.Blob{}
 	for _, id := range ids {
 		if blob, ok := b.of[id]; ok {
-			out[id] = blob
+			out[id] = app.Blob{ID: blob, Created: blobWritten()}
 		}
 	}
 	return out, nil
@@ -206,8 +276,10 @@ type entry struct {
 
 // archives keeps the archives in memory: committed by job, the jobs
 // created, aborted and deleted. full refuses a Create; fullAt fails the
-// Add of that path; commitErr fails a Commit.
+// Add of that path; commitErr fails a Commit; onCommit runs as one
+// commits, onOpen as one opens.
 type archives struct {
+	rec       *recorder
 	mu        sync.Mutex
 	committed map[uuid.UUID][]entry
 	created   []uuid.UUID
@@ -219,6 +291,8 @@ type archives struct {
 	free      int64
 	deleteErr error
 	listed    []uuid.UUID
+	onCommit  func()
+	onOpen    func(id uuid.UUID)
 }
 
 func newArchives() *archives { return &archives{committed: map[uuid.UUID][]entry{}, free: 1 << 40} }
@@ -234,6 +308,9 @@ func (a *archives) Create(_ context.Context, id uuid.UUID) (app.Archive, error) 
 }
 
 func (a *archives) Open(_ context.Context, id uuid.UUID) (app.ArchiveFile, error) {
+	if a.onOpen != nil {
+		a.onOpen(id)
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if _, ok := a.committed[id]; !ok {
@@ -262,7 +339,10 @@ func (a *archives) List(_ context.Context, _ domain.Kind, _ time.Time, each func
 	return nil
 }
 
-func (a *archives) Free(context.Context) (int64, error) { return a.free, nil }
+func (a *archives) Free(context.Context) (int64, error) {
+	a.rec.add("Free")
+	return a.free, nil
+}
 
 // entries are the committed archive of job id, by path.
 func (a *archives) entries(id uuid.UUID) map[string]entry {
@@ -308,6 +388,9 @@ func (x *archive) Add(path string, modified time.Time, stored bool, r io.Reader)
 }
 
 func (x *archive) Commit() (int64, error) {
+	if x.a.onCommit != nil {
+		x.a.onCommit()
+	}
 	if x.a.commitErr != nil {
 		return 0, x.a.commitErr
 	}
@@ -335,9 +418,11 @@ func (f file) Seek(o int64, w int) (int64, error) { return f.Reader.Seek(o, w) }
 type queue struct {
 	enqueued []uuid.UUID
 	err      error
+	rec      *recorder
 }
 
 func (q *queue) Export(_ context.Context, id uuid.UUID) error {
+	q.rec.add("Queue.Export")
 	if q.err != nil {
 		return q.err
 	}
@@ -363,17 +448,21 @@ type row struct {
 }
 
 // rows keeps the jobs in memory, moving them as the statements do. beats
-// counts the heartbeats, with the progress each wrote; finishErr fails a
-// FinishJob; onBeat runs at each beat.
+// counts the heartbeats, with the progress each wrote; failBeats fails as
+// many heartbeats first; finishErr fails a FinishJob, and finishLeft is the
+// time its context left it; onBeat runs at each heartbeat written.
 type rows struct {
-	mu        sync.Mutex
-	jobs      map[uuid.UUID]*row
-	order     []uuid.UUID
-	beats     []domain.Progress
-	finishErr error
-	onBeat    func()
-	finds     int
-	locks     int
+	rec        *recorder
+	mu         sync.Mutex
+	jobs       map[uuid.UUID]*row
+	order      []uuid.UUID
+	beats      []domain.Progress
+	failBeats  int
+	finishErr  error
+	finishLeft time.Duration
+	onBeat     func()
+	finds      int
+	locks      int
 }
 
 func newRows() *rows { return &rows{jobs: map[uuid.UUID]*row{}} }
@@ -398,13 +487,19 @@ func (r *rows) set(id uuid.UUID, f func(*row)) {
 }
 
 func (r *rows) CreateJob(_ context.Context, j domain.Job) error {
+	r.rec.add("CreateJob")
 	r.add(j)
 	return nil
 }
 
-func (r *rows) LockQueue(context.Context) error { r.locks++; return nil }
+func (r *rows) LockQueue(context.Context) error {
+	r.rec.add("LockQueue")
+	r.locks++
+	return nil
+}
 
 func (r *rows) CountActive(context.Context) (int, error) {
+	r.rec.add("CountActive")
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	n := 0
@@ -417,6 +512,7 @@ func (r *rows) CountActive(context.Context) (int, error) {
 }
 
 func (r *rows) Exporting(_ context.Context, notebookID, userID uuid.UUID) (bool, error) {
+	r.rec.add("Exporting")
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for _, x := range r.jobs {
@@ -475,6 +571,11 @@ func (r *rows) StartJob(_ context.Context, id uuid.UUID, at time.Time) (domain.J
 
 func (r *rows) BeatJob(_ context.Context, id uuid.UUID, at time.Time, p domain.Progress) (app.Beat, error) {
 	r.mu.Lock()
+	if r.failBeats > 0 {
+		r.failBeats--
+		r.mu.Unlock()
+		return app.Beat{}, errors.New("the database is gone")
+	}
 	x := r.jobs[id]
 	if x.job.State != domain.StateRunning {
 		r.mu.Unlock()
@@ -491,12 +592,16 @@ func (r *rows) BeatJob(_ context.Context, id uuid.UUID, at time.Time, p domain.P
 	return b, nil
 }
 
-func (r *rows) FinishJob(_ context.Context, id uuid.UUID, e app.Ended) (bool, error) {
+func (r *rows) FinishJob(ctx context.Context, id uuid.UUID, e app.Ended) (bool, error) {
+	r.rec.add("FinishJob")
 	if r.finishErr != nil {
 		return false, r.finishErr
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if d, ok := ctx.Deadline(); ok {
+		r.finishLeft = time.Until(d)
+	}
 	x := r.jobs[id]
 	if x.deleted || x.job.State != domain.StateRunning {
 		return false, nil
@@ -507,6 +612,7 @@ func (r *rows) FinishJob(_ context.Context, id uuid.UUID, e app.Ended) (bool, er
 }
 
 func (r *rows) ExpireOthers(_ context.Context, notebookID, userID, id uuid.UUID) ([]uuid.UUID, error) {
+	r.rec.add("ExpireOthers")
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	var out []uuid.UUID
@@ -547,11 +653,14 @@ func (r *rows) RequestCancel(_ context.Context, id uuid.UUID, at time.Time) (boo
 
 // maintained are the maintained rows: what each was asked, and answers.
 type maintained struct {
+	rec         *recorder
 	mu          sync.Mutex
 	expire      [][]uuid.UUID
 	expiredAt   []time.Time
 	interrupted []app.Interrupted
 	beatBefore  []*time.Time
+	queued      []uuid.UUID
+	failed      []uuid.UUID
 	live        []uuid.UUID
 	deletedOf   []uuid.UUID
 	expiredJobs map[uuid.UUID]domain.Kind
@@ -581,6 +690,35 @@ func (m *maintained) InterruptJobs(_ context.Context, beatBefore *time.Time, _ t
 	}
 	m.beatBefore = append(m.beatBefore, beatBefore)
 	return m.interrupted, nil
+}
+
+func (m *maintained) QueuedJobs(context.Context) ([]uuid.UUID, error) {
+	m.rec.add("QueuedJobs")
+	return m.queued, nil
+}
+
+func (m *maintained) FailQueued(_ context.Context, ids []uuid.UUID, _ time.Time, r domain.Report) ([]app.Interrupted, error) {
+	if r.Failure != domain.FailureInterrupted {
+		return nil, errors.New("the report is not an interruption's")
+	}
+	m.failed = append(m.failed, ids...)
+	out := make([]app.Interrupted, len(ids))
+	for i, id := range ids {
+		out[i] = app.Interrupted{ID: id}
+	}
+	return out, nil
+}
+
+// held are the jobs River holds, or err.
+type held struct {
+	ids []uuid.UUID
+	err error
+	rec *recorder
+}
+
+func (h held) Held(context.Context) ([]uuid.UUID, error) {
+	h.rec.add("Held")
+	return h.ids, h.err
 }
 
 func (m *maintained) LiveArchives(_ context.Context, ids []uuid.UUID) ([]uuid.UUID, error) {

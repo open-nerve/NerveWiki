@@ -1340,7 +1340,7 @@ export interface paths {
         };
         /**
          * Download an export's archive
-         * @description The export's zip archive, at the address getTransferJob and listTransferJobs sign: anyone who has the address can download it, without a token, until it expires. The address is read as the server writes it: the path's id, then the query e and s, in this order, each once, nothing escaped; anything else, a signature that does not match, an address expired, and a job deleted or expired since are not_found, alike. Ranges are answered (206, 416), and a copy as new as the archive is not sent again (304). A download still sending when the server shuts down is cut off; one asked for then is server_busy.
+         * @description The export's zip archive, at the address getTransferJob and listTransferJobs sign: anyone who has the address can download it, without a token, until it expires. A path whose id is no uuid is bad_request; otherwise the address is read as the server writes it: the path's id, then the query e and s, in this order, each once, nothing escaped; anything else, a signature that does not match, an address expired, and a job deleted or expired since are not_found, alike. Ranges are answered (206, 416), and a copy as new as the archive is not sent again (304, If-Modified-Since); If-Match and If-Unmodified-Since are ignored, as an address's archive never changes. The downloads count against the instance's limit of requests without a token, by client address. A download still sending when the server shuts down is cut off; one asked for then is server_busy.
          */
         get: operations["downloadExport"];
         put?: never;
@@ -2206,6 +2206,7 @@ export interface components {
          * @enum {string}
          */
         TransferFailure: "interrupted" | "timeout" | "forbidden" | "root_not_found" | "storage_full" | "contributor_conflict" | "internal";
+        /** @description What the job did before it ended. A job the server's stop or restart interrupted counts nothing: its progress tells how far it went. */
         TransferCounts: {
             /**
              * Format: int64
@@ -2219,7 +2220,7 @@ export interface components {
             attachments: number;
             /**
              * Format: int64
-             * @description The nodes written under another name.
+             * @description The nodes the export's vault names otherwise, as the export laid the vault out before it wrote.
              */
             renamed: number;
             /**
@@ -2243,11 +2244,11 @@ export interface components {
             url: string;
             /**
              * Format: date-time
-             * @description When the address stops working, one to two hours after it was signed; reading the job again signs a new one.
+             * @description When the address stops working: one to two hours after it was signed, or as the export expires, whichever comes first; reading the job again signs a new one. The starter's next export of the notebook, once it succeeds, expires this one at once.
              */
             expires_at: string;
         };
-        /** @description An import or an export of a notebook, a job that runs in the background: queued, then running, then succeeded, failed or cancelled; an export's archive expires a while after it succeeded. */
+        /** @description An import or an export of a notebook, a job that runs in the background: queued, then running, then succeeded, failed or cancelled. An export's archive expires a while after it succeeded, the instance's export TTL, or at once when its starter's next export of the notebook succeeds: each keeps the latest alone. */
         TransferJob: {
             /** Format: uuid */
             id: string;
@@ -2268,12 +2269,17 @@ export interface components {
             created_at: string;
             /** Format: date-time */
             started_at: string | null;
+            /**
+             * Format: date-time
+             * @description When a cancel of the job was asked as it ran: it stops within about a second; null when none was.
+             */
+            cancel_requested_at: string | null;
             /** Format: date-time */
             finished_at: string | null;
             progress: components["schemas"]["TransferProgress"];
             /**
              * Format: int64
-             * @description The bytes of an export's archive, once it succeeded; null otherwise.
+             * @description The bytes of an export's archive, once it succeeded, and after it expired; null otherwise.
              */
             result_bytes: number | null;
             /** @description What the job did and why it failed, once it ended; null before. */
@@ -2314,12 +2320,17 @@ export interface components {
             created_at: string;
             /** Format: date-time */
             started_at: string | null;
+            /**
+             * Format: date-time
+             * @description When a cancel of the job was asked as it ran: it stops within about a second; null when none was.
+             */
+            cancel_requested_at: string | null;
             /** Format: date-time */
             finished_at: string | null;
             progress: components["schemas"]["TransferProgress"];
             /**
              * Format: int64
-             * @description The bytes of an export's archive, once it succeeded; null otherwise.
+             * @description The bytes of an export's archive, once it succeeded, and after it expired; null otherwise.
              */
             result_bytes: number | null;
             /** @description What the job did and why it failed, once it ended; null before. */

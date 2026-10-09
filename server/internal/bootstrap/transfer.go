@@ -43,6 +43,19 @@ type transferBlobs struct {
 	asset.Blobs
 }
 
+// Of is the blob of each attachment of nodeIDs, and when it was written.
+func (b transferBlobs) Of(ctx context.Context, notebookID uuid.UUID, nodeIDs []uuid.UUID) (map[uuid.UUID]transfer.Blob, error) {
+	got, err := b.Blobs.Of(ctx, notebookID, nodeIDs)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[uuid.UUID]transfer.Blob, len(got))
+	for node, x := range got {
+		out[node] = transfer.Blob(x)
+	}
+	return out, nil
+}
+
 // Open opens a blob's file; a file not in the store is transfer's
 // ErrFileMissing, which the export reports and goes on.
 func (b transferBlobs) Open(ctx context.Context, blob uuid.UUID) (io.ReadCloser, error) {

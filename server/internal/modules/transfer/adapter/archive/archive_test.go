@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"strings"
@@ -146,5 +147,59 @@ func TestTheListLeavesOtherFiles(t *testing.T) {
 	})
 	if err != nil {
 		t.Error(err)
+	}
+}
+
+// fullStore is a store out of room: its Create refuses when refuse is set;
+// otherwise its file's writes run out when writes is set, its commit
+// always.
+type fullStore struct {
+	storage.Store
+	refuse, writes bool
+}
+
+func (s fullStore) Create(context.Context, string) (storage.Writer, error) {
+	if s.refuse {
+		return nil, fmt.Errorf("%w: at the create", storage.ErrFull)
+	}
+	return fullWriter(s), nil
+}
+
+type fullWriter fullStore
+
+func (w fullWriter) Write(p []byte) (int, error) {
+	if w.writes {
+		return 0, fmt.Errorf("%w: at a write", storage.ErrFull)
+	}
+	return len(p), nil
+}
+
+func (fullWriter) Commit() error { return fmt.Errorf("%w: at the commit", storage.ErrFull) }
+func (fullWriter) Abort() error  { return nil }
+
+// A store out of room is the module's domain.ErrStorageFull: at the
+// archive's creation, at a file's write, at the commit.
+func TestAStoreOutOfRoomIsStorageFull(t *testing.T) {
+	ctx := context.Background()
+	logger := slog.New(slog.DiscardHandler)
+	if _, err := archiveadapter.New(fullStore{refuse: true}, logger).Create(ctx, uuid.NewV7()); !errors.Is(err, domain.ErrStorageFull) {
+		t.Errorf("Create() = %v, want ErrStorageFull", err)
+	}
+	a, err := archiveadapter.New(fullStore{writes: true}, logger).Create(ctx, uuid.NewV7())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Add("a.png", time.Now(), true, bytes.NewReader(make([]byte, 64<<10))); !errors.Is(err, domain.ErrStorageFull) {
+		t.Errorf("Add() = %v, want ErrStorageFull", err)
+	}
+	a, err = archiveadapter.New(fullStore{}, logger).Create(ctx, uuid.NewV7())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Add("a.md", time.Now(), false, strings.NewReader("a")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.Commit(); !errors.Is(err, domain.ErrStorageFull) {
+		t.Errorf("Commit() = %v, want ErrStorageFull", err)
 	}
 }

@@ -19,7 +19,7 @@ func TestMetaJSON(t *testing.T) {
 	x := uuid.MustParse("0199a2b4-0000-7000-8000-000000000004")
 	y := uuid.MustParse("0199a2b4-0000-7000-8000-000000000005")
 	nodes := []domain.Node{
-		{ID: a, Name: "项目A", SortOrder: 1.5, Empty: true},
+		{ID: a, Name: "项目A", SortOrder: 1.5},
 		{ID: b, ParentID: &a, Name: "需求", SortOrder: 3},
 		{ID: x, ParentID: &a, Asset: true, Name: "图.png", SortOrder: 4},
 		{ID: y, ParentID: &a, Asset: true, Name: "缺.pdf", SortOrder: 5},

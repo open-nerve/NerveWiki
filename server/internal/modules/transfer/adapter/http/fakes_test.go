@@ -52,6 +52,9 @@ func pageID() uuid.UUID      { return uuid.MustParse("0199a2b4-0000-7000-8000-00
 
 func now() time.Time { return time.Date(2026, 10, 9, 10, 30, 0, 0, time.UTC) }
 
+// exportTTL is transfer.export_ttl in the tests.
+const exportTTL = 24 * time.Hour
+
 type fixedClock struct{}
 
 func (fixedClock) Now() time.Time { return now() }
@@ -410,10 +413,10 @@ func newHarnessWith(t *testing.T, o httpservertest.APIOptions) *harness {
 			Rows: h.rows, Archives: h.archives, Queue: h.queue, Names: names{}, Signer: h.signer, Clock: fixedClock{}, Logger: logger,
 			MaxQueued: maxQueued, MinFree: minFree}),
 		Reads: app.NewReads(app.ReadsDeps{Authorizer: roles{}, Notebooks: notebooks{}, Names: names{}, Signer: h.signer, Clock: fixedClock{},
-			Rows: h.rows}),
+			Rows: h.rows, ExportTTL: exportTTL}),
 		Cancel: app.NewCancel(app.CancelDeps{Tx: direct{}, Rows: h.rows, Authorizer: roles{}, Notebooks: notebooks{}, Names: names{},
-			Signer: h.signer, Clock: fixedClock{}}),
-		Download: app.NewDownload(h.rows, h.archives, h.signer, fixedClock{}, logger),
+			Signer: h.signer, Clock: fixedClock{}, Logger: logger, ExportTTL: exportTTL}),
+		Download: app.NewDownload(h.rows, h.archives, h.signer, fixedClock{}, logger, exportTTL),
 	}
 	h.router = httpserver.NewRouter(slog.New(slog.DiscardHandler))
 	o.Authenticator, o.PublicOperations, o.Logger = fakeAuth{}, httpadapter.PublicOperations(), logger

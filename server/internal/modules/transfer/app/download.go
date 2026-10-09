@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"time"
 	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/transfer/domain"
@@ -18,11 +19,12 @@ type Download struct {
 	signer   Signer
 	clock    Clock
 	logger   *slog.Logger
+	ttl      time.Duration
 }
 
-// NewDownload returns the use case.
-func NewDownload(rows Rows, archives Archives, signer Signer, clock Clock, logger *slog.Logger) *Download {
-	return &Download{rows: rows, archives: archives, signer: signer, clock: clock, logger: logger}
+// NewDownload returns the use case, ttl transfer.export_ttl.
+func NewDownload(rows Rows, archives Archives, signer Signer, clock Clock, logger *slog.Logger, ttl time.Duration) *Download {
+	return &Download{rows: rows, archives: archives, signer: signer, clock: clock, logger: logger, ttl: ttl}
 }
 
 // Address is a download's address as it was read: the job, the time it
@@ -40,11 +42,13 @@ type Opened struct {
 }
 
 // Open opens the archive a's signature signs, unexpired, of an export not
-// deleted that succeeded, its file in the store; anything else is the
-// platform's not_found, alike for each. The signature is checked before
-// any read. A file missing is logged.
+// deleted that succeeded less than the TTL ago, its file in the store;
+// anything else is the platform's not_found, alike for each. The signature
+// is checked before any read. A file missing is logged, unless the export
+// expired meanwhile, which deleted it.
 func (d *Download) Open(ctx context.Context, a Address) (Opened, error) {
-	if !d.signer.Valid(d.clock.Now(), a.JobID, a.Expires, a.Signature) {
+	now := d.clock.Now()
+	if !d.signer.Valid(now, a.JobID, a.Expires, a.Signature) {
 		return Opened{}, domain.ErrDownloadNotFound
 	}
 	j, err := d.rows.FindJob(ctx, a.JobID)
@@ -54,16 +58,24 @@ func (d *Download) Open(ctx context.Context, a Address) (Opened, error) {
 	if err != nil {
 		return Opened{}, err
 	}
-	if j.Kind != domain.KindExport || j.State != domain.StateSucceeded {
+	if !d.live(now, j) {
 		return Opened{}, domain.ErrDownloadNotFound
 	}
 	f, err := d.archives.Open(ctx, j.ID)
 	if errors.Is(err, ErrFileMissing) {
-		d.logger.WarnContext(ctx, "export archive missing", slog.String("job_id", j.ID.String()), slog.String("notebook_id", j.NotebookID.String()))
+		if again, err := d.rows.FindJob(ctx, j.ID); err == nil && d.live(now, again) {
+			d.logger.WarnContext(ctx, "export archive missing", slog.String("job_id", j.ID.String()), slog.String("notebook_id", j.NotebookID.String()))
+		}
 		return Opened{}, domain.ErrDownloadNotFound
 	}
 	if err != nil {
 		return Opened{}, err
 	}
 	return Opened{File: f, Name: j.Name + ".zip"}, nil
+}
+
+// live tells an export that succeeded less than the TTL ago: its archive
+// is kept.
+func (d *Download) live(now time.Time, j domain.Job) bool {
+	return j.Kind == domain.KindExport && j.State == domain.StateSucceeded && j.Finished != nil && now.Before(j.Finished.Add(d.ttl))
 }

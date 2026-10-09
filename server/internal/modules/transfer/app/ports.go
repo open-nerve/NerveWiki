@@ -70,9 +70,16 @@ type Linked interface {
 type Blobs interface {
 	// Of is the blob of each attachment of nodeIDs not deleted, of
 	// notebookID, by node, in the caller's snapshot.
-	Of(ctx context.Context, notebookID uuid.UUID, nodeIDs []uuid.UUID) (map[uuid.UUID]uuid.UUID, error)
+	Of(ctx context.Context, notebookID uuid.UUID, nodeIDs []uuid.UUID) (map[uuid.UUID]Blob, error)
 	// Open opens the blob's file, or answers ErrFileMissing.
 	Open(ctx context.Context, blobID uuid.UUID) (io.ReadCloser, error)
+}
+
+// Blob is an attachment's file: its id, and when it was written, its
+// entry's time in the archive.
+type Blob struct {
+	ID      uuid.UUID
+	Created time.Time
 }
 
 // ErrFileMissing is a file that is not in the store.
@@ -122,6 +129,13 @@ type ArchiveFile interface {
 // Queue enqueues the jobs in the caller's transaction: adapter/river.
 type Queue interface {
 	Export(ctx context.Context, id uuid.UUID) error
+}
+
+// Held tells which jobs River still holds: adapter/river.
+type Held interface {
+	// Held is the ids of the exports River has not finished: to work,
+	// working, or to try again.
+	Held(ctx context.Context) ([]uuid.UUID, error)
 }
 
 // Signer signs the addresses of the exports' archives: adapter/mac.
@@ -218,8 +232,14 @@ type MaintainedRows interface {
 	// before, skipping those locked, and tells which.
 	ExpireExports(ctx context.Context, before time.Time, batch int) ([]uuid.UUID, error)
 	// InterruptJobs fails the running jobs whose heartbeat is older than
-	// beatBefore, or all of them when it is nil, with r.
+	// beatBefore, or all of them when it is nil, with r; those another
+	// transaction holds are skipped.
 	InterruptJobs(ctx context.Context, beatBefore *time.Time, at time.Time, r domain.Report) ([]Interrupted, error)
+	// QueuedJobs is the ids of the queued jobs.
+	QueuedJobs(ctx context.Context) ([]uuid.UUID, error)
+	// FailQueued fails those of ids still queued with r; those another
+	// transaction holds are skipped.
+	FailQueued(ctx context.Context, ids []uuid.UUID, at time.Time, r domain.Report) ([]Interrupted, error)
 	// LiveArchives is those of ids whose archives are kept.
 	LiveArchives(ctx context.Context, ids []uuid.UUID) ([]uuid.UUID, error)
 	// DeleteJobsOfNotebooks deletes the notebooks' jobs at at.

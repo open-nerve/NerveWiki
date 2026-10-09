@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"time"
 	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/transfer/domain"
@@ -24,11 +25,14 @@ type ReadsDeps struct {
 	Signer     Signer
 	Clock      Clock
 	Rows       Rows
+	// ExportTTL is transfer.export_ttl.
+	ExportTTL time.Duration
 }
 
 // NewReads returns the reads.
 func NewReads(d ReadsDeps) *Reads {
-	return &Reads{views: views{auth: d.Authorizer, notebooks: d.Notebooks, names: d.Names, signer: d.Signer, clock: d.Clock}, rows: d.Rows}
+	return &Reads{views: views{auth: d.Authorizer, notebooks: d.Notebooks, names: d.Names, signer: d.Signer, clock: d.Clock, ttl: d.ExportTTL},
+		rows: d.Rows}
 }
 
 // JobPage is a page of a notebook's jobs, and the cursor of the next when

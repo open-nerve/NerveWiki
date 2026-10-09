@@ -29,16 +29,17 @@ type ExportNodes interface {
 	Contents(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]string, error)
 }
 
-// ExportNode is a node of an export's scope. Empty tells a page without
-// content; Modified is when the node was last written: its name, its
-// place, or a page's content.
+// ExportNode is a node of an export's scope. Bytes is a page's content's
+// size, 0 for a page without content and for an attachment; Modified is
+// when the node was last written: its name, its place, or a page's
+// content.
 type ExportNode struct {
 	ID        uuid.UUID
 	ParentID  *uuid.UUID
 	Asset     bool
 	Name      string
 	SortOrder float64
-	Empty     bool
+	Bytes     int64
 	Modified  time.Time
 }
 
@@ -110,10 +111,8 @@ func (e exportNodes) Scope(ctx context.Context, notebookID uuid.UUID, root *uuid
 		x := ExportNode{ID: n.ID, ParentID: n.ParentID, Asset: n.Kind == domain.KindAsset, Name: n.Name, SortOrder: n.SortOrder,
 			Modified: n.UpdatedAt}
 		if s, ok := sizes[n.ID]; ok && !x.Asset {
-			x.Empty = s.Bytes == 0
+			x.Bytes = int64(s.Bytes)
 			x.Modified = later(n.UpdatedAt, s.UpdatedAt)
-		} else if !x.Asset {
-			x.Empty = true
 		}
 		out[i] = x
 	}

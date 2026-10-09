@@ -180,7 +180,8 @@ type notebookExtensions struct {
 // follows a deletion (M4/P1), with its edit sessions' subscribers, and
 // tells its pages' activity (M4/P4); M7's attachments do both, after the
 // pages (M7/P2); M6's link index drops the notebooks' rows after them
-// (M6/P3); M5's event streams follow a deletion, after those, and a
+// (M6/P3); M7's imports and exports delete the notebooks' jobs after
+// those (M7/P5); M5's event streams follow a deletion, last, and a
 // visibility change (M5/P2). The module's use cases and its parts in the
 // workspace module's events all take them from here.
 func notebookRegistrants(pool *pgxpool.Pool) notebookExtensions {
@@ -283,9 +284,10 @@ func markdownExtensions(resolve obsidian.Resolve, assets obsidian.Assets) []mark
 
 // purgers are the modules' purgers of the soft-deleted rows, leaf to root
 // (M2 design 8, M2/P4 design 3.4): a module whose tables reference
-// another's comes before it, the attachments before the pages before the
-// notebooks before the workspaces. The attachments' purger deletes their
-// files in store, in transactions of tx, its failures logged to logger. The
+// another's comes before it, the attachments and the imports' and
+// exports' jobs before the pages before the notebooks before the
+// workspaces. The attachments' and the jobs' purgers delete their files in
+// store first, in transactions of tx, their failures logged to logger. The
 // database test of the purge checks the order against the foreign keys,
 // and that every table with deleted_at has its purger.
 func purgers(pool *pgxpool.Pool, tx shared.TxManager, store storage.Store, logger *slog.Logger) []jobs.Purger {

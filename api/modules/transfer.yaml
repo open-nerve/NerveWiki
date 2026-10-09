@@ -133,14 +133,18 @@ paths:
       description: >-
         The export's zip archive, at the address getTransferJob and
         listTransferJobs sign: anyone who has the address can download it,
-        without a token, until it expires. The address is read as the
-        server writes it: the path's id, then the query e and s, in this
-        order, each once, nothing escaped; anything else, a signature that
-        does not match, an address expired, and a job deleted or expired
-        since are not_found, alike. Ranges are answered (206, 416), and a
-        copy as new as the archive is not sent again (304). A
-        download still sending when the server shuts down is cut off; one
-        asked for then is server_busy.
+        without a token, until it expires. A path whose id is no uuid is
+        bad_request; otherwise the address is read as the server writes
+        it: the path's id, then the query e and s, in this order, each
+        once, nothing escaped; anything else, a signature that does not
+        match, an address expired, and a job deleted or expired since are
+        not_found, alike. Ranges are answered (206, 416), and a copy as new
+        as the archive is not sent again (304, If-Modified-Since);
+        If-Match and If-Unmodified-Since are ignored, as an address's
+        archive never changes. The downloads count against the instance's
+        limit of requests without a token, by client address. A download
+        still sending when the server shuts down is cut off; one asked for
+        then is server_busy.
       security: []
       x-raw: true
       x-problem-codes: [not_found, server_busy]
@@ -293,7 +297,9 @@ components:
       description: >-
         An import or an export of a notebook, a job that runs in the
         background: queued, then running, then succeeded, failed or
-        cancelled; an export's archive expires a while after it succeeded.
+        cancelled. An export's archive expires a while after it succeeded,
+        the instance's export TTL, or at once when its starter's next export
+        of the notebook succeeds: each keeps the latest alone.
       type: object
       additionalProperties: false
       required:
@@ -308,6 +314,7 @@ components:
           created_by,
           created_at,
           started_at,
+          cancel_requested_at,
           finished_at,
           progress,
           result_bytes,
@@ -344,13 +351,19 @@ components:
         started_at:
           type: [string, "null"]
           format: date-time
+        cancel_requested_at:
+          description: >-
+            When a cancel of the job was asked as it ran: it stops within
+            about a second; null when none was.
+          type: [string, "null"]
+          format: date-time
         finished_at:
           type: [string, "null"]
           format: date-time
         progress:
           $ref: "#/components/schemas/TransferProgress"
         result_bytes:
-          description: The bytes of an export's archive, once it succeeded; null otherwise.
+          description: The bytes of an export's archive, once it succeeded, and after it expired; null otherwise.
           type: [integer, "null"]
           format: int64
         report:
@@ -381,6 +394,7 @@ components:
           created_by,
           created_at,
           started_at,
+          cancel_requested_at,
           finished_at,
           progress,
           result_bytes,
@@ -419,13 +433,19 @@ components:
         started_at:
           type: [string, "null"]
           format: date-time
+        cancel_requested_at:
+          description: >-
+            When a cancel of the job was asked as it ran: it stops within
+            about a second; null when none was.
+          type: [string, "null"]
+          format: date-time
         finished_at:
           type: [string, "null"]
           format: date-time
         progress:
           $ref: "#/components/schemas/TransferProgress"
         result_bytes:
-          description: The bytes of an export's archive, once it succeeded; null otherwise.
+          description: The bytes of an export's archive, once it succeeded, and after it expired; null otherwise.
           type: [integer, "null"]
           format: int64
         report:
@@ -502,6 +522,10 @@ components:
       type: string
       enum: [interrupted, timeout, forbidden, root_not_found, storage_full, contributor_conflict, internal]
     TransferCounts:
+      description: >-
+        What the job did before it ended. A job the server's stop or
+        restart interrupted counts nothing: its progress tells how far it
+        went.
       type: object
       additionalProperties: false
       required: [pages, attachments, renamed, missing, skipped]
@@ -515,7 +539,7 @@ components:
           type: integer
           format: int64
         renamed:
-          description: The nodes written under another name.
+          description: The nodes the export's vault names otherwise, as the export laid the vault out before it wrote.
           type: integer
           format: int64
         missing:
@@ -556,7 +580,9 @@ components:
           type: string
         expires_at:
           description: >-
-            When the address stops working, one to two hours after it was
-            signed; reading the job again signs a new one.
+            When the address stops working: one to two hours after it was
+            signed, or as the export expires, whichever comes first; reading
+            the job again signs a new one. The starter's next export of the
+            notebook, once it succeeds, expires this one at once.
           type: string
           format: date-time

@@ -21,8 +21,9 @@ func (l linkTree) content(t *testing.T, id uuid.UUID, content string, at time.Ti
 }
 
 // An export reads its scope's nodes not deleted, the whole notebook's or a
-// page's subtree: a page without content, or without a content's row, is
-// empty; a page's last write is its node's or its content's, the later.
+// page's subtree: a page's content's bytes, none for a page without
+// content or without a content's row; a page's last write is its node's or
+// its content's, the later.
 // A subtree of what is no page not deleted of the notebook is empty.
 func TestAnExportReadsItsScope(t *testing.T) {
 	l := newLinkTree(t)
@@ -45,8 +46,8 @@ func TestAnExportReadsItsScope(t *testing.T) {
 	}
 	got := byID(all)
 	a, b, x := got[l.a], got[l.b], got[l.x]
-	if len(all) != 3 || a.Name != "A" || a.ParentID != nil || a.Asset || a.Empty || !a.Modified.Equal(later) ||
-		b.Name != "B" || *b.ParentID != l.a || !b.Empty || b.Modified.Equal(time.Unix(0, 0)) || !x.Asset || x.Name != "b.png" {
+	if len(all) != 3 || a.Name != "A" || a.ParentID != nil || a.Asset || a.Bytes != 5 || !a.Modified.Equal(later) ||
+		b.Name != "B" || *b.ParentID != l.a || b.Bytes != 0 || b.Modified.Equal(time.Unix(0, 0)) || !x.Asset || x.Name != "b.png" {
 		t.Errorf("Scope(the notebook) = %+v", all)
 	}
 	for _, tt := range []struct {

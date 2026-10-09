@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"time"
 	"uuid"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -24,6 +25,13 @@ type Blobs struct {
 	files filesadapter.Files
 }
 
+// Blob is an attachment's file as Blobs.Of reads it: its id, and when it
+// was written.
+type Blob struct {
+	ID      uuid.UUID
+	Created time.Time
+}
+
 // ErrNoFile is a blob whose file is not in the store.
 var ErrNoFile = errors.New("asset: the attachment's file is not in the store")
 
@@ -38,8 +46,8 @@ const blobsBatch = 10000
 // Of is the blob of each attachment of nodeIDs not deleted, of notebookID,
 // by node, read in the caller's transaction; a node of none is not among
 // them.
-func (b Blobs) Of(ctx context.Context, notebookID uuid.UUID, nodeIDs []uuid.UUID) (map[uuid.UUID]uuid.UUID, error) {
-	out := make(map[uuid.UUID]uuid.UUID, len(nodeIDs))
+func (b Blobs) Of(ctx context.Context, notebookID uuid.UUID, nodeIDs []uuid.UUID) (map[uuid.UUID]Blob, error) {
+	out := make(map[uuid.UUID]Blob, len(nodeIDs))
 	for start := 0; start < len(nodeIDs); start += blobsBatch {
 		got, err := b.rows.BlobsOfNodes(ctx, nodeIDs[start:min(start+blobsBatch, len(nodeIDs))])
 		if err != nil {
@@ -47,7 +55,7 @@ func (b Blobs) Of(ctx context.Context, notebookID uuid.UUID, nodeIDs []uuid.UUID
 		}
 		for node, blob := range got {
 			if blob.NotebookID == notebookID {
-				out[node] = blob.ID
+				out[node] = Blob{ID: blob.ID, Created: blob.CreatedAt}
 			}
 		}
 	}

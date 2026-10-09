@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"log/slog"
 	"slices"
 	"strings"
 	"testing"
@@ -31,6 +33,7 @@ type world struct {
 	gone                                  uuid.UUID
 	tx                                    *direct
 	auth                                  *auth
+	workspaces                            workspaces
 	notebooks                             notebooks
 	nodes                                 *nodes
 	linked                                *linked
@@ -38,16 +41,24 @@ type world struct {
 	archives                              *archives
 	rows                                  *rows
 	contributors                          []app.Contributor
+	rec                                   *recorder
+	logger                                *slog.Logger
 }
 
 func newWorld() *world {
+	rec := &recorder{}
 	w := &world{eng: uuid.NewV7(), alice: uuid.NewV7(), bob: uuid.NewV7(), spec: uuid.NewV7(), folder: uuid.NewV7(), deep: uuid.NewV7(),
-		linkd: uuid.NewV7(), child: uuid.NewV7(), png: uuid.NewV7(), gone: uuid.NewV7(), tx: &direct{}}
-	w.auth = &auth{roles: map[uuid.UUID]map[uuid.UUID]shared.NotebookRole{w.eng: {w.alice: shared.NotebookReader, w.bob: shared.NotebookAdmin}}}
-	w.notebooks = notebooks{names: map[uuid.UUID]string{w.eng: "Eng"}, workspace: uuid.NewV7()}
+		linkd: uuid.NewV7(), child: uuid.NewV7(), png: uuid.NewV7(), gone: uuid.NewV7(), tx: &direct{rec: rec}, rec: rec, logger: quiet()}
+	w.auth = &auth{roles: map[uuid.UUID]map[uuid.UUID]shared.NotebookRole{w.eng: {w.alice: shared.NotebookReader, w.bob: shared.NotebookAdmin}}, rec: rec}
+	w.workspaces = workspaces{rec: rec}
+	w.notebooks = notebooks{names: map[uuid.UUID]string{w.eng: "Eng"}, workspace: uuid.NewV7(), rec: rec}
 	modified := time.Date(2026, 10, 1, 9, 0, 0, 0, time.UTC)
 	node := func(id uuid.UUID, parent *uuid.UUID, asset bool, name string, order float64, empty bool) domain.Node {
-		return domain.Node{ID: id, ParentID: parent, Asset: asset, Name: name, SortOrder: order, Empty: empty, Modified: modified}
+		n := domain.Node{ID: id, ParentID: parent, Asset: asset, Name: name, SortOrder: order, Modified: modified}
+		if !asset && !empty {
+			n.Bytes = 4
+		}
+		return n
 	}
 	w.nodes = &nodes{
 		all: []domain.Node{
@@ -65,13 +76,15 @@ func newWorld() *world {
 	pngBlob, goneBlob := uuid.NewV7(), uuid.NewV7()
 	w.blobs = &blobs{of: map[uuid.UUID]uuid.UUID{w.png: pngBlob, w.gone: goneBlob}, files: map[uuid.UUID][]byte{pngBlob: []byte("PNG")}}
 	w.archives = newArchives()
+	w.archives.rec = rec
 	w.rows = newRows()
+	w.rows.rec = rec
 	return w
 }
 
 func (w *world) export() *app.Export {
 	return app.NewExport(app.ExportDeps{Tx: w.tx, Snapshots: w.tx, Authorizer: w.auth, Notebooks: w.notebooks, Nodes: w.nodes, Linked: w.linked,
-		Blobs: w.blobs, Archives: w.archives, Rows: w.rows, Contributors: w.contributors, Clock: fixedClock{now()}, Logger: quiet(),
+		Blobs: w.blobs, Archives: w.archives, Rows: w.rows, Contributors: w.contributors, Clock: fixedClock{now()}, Logger: w.logger,
 		Beat: 5 * time.Millisecond})
 }
 
@@ -114,8 +127,8 @@ func TestAnExportWritesTheNotebooksArchive(t *testing.T) {
 	if e := entries["Eng/Spec.md"]; e.data != "# Spec\n[[Linked]]" || e.stored || !e.modified.Equal(time.Date(2026, 10, 1, 9, 0, 0, 0, time.UTC)) {
 		t.Errorf("Spec.md = %+v", e)
 	}
-	if e := entries["Eng/Spec/x.png"]; e.data != "PNG" || !e.stored {
-		t.Errorf("x.png = %+v, want its file stored", e)
+	if e := entries["Eng/Spec/x.png"]; e.data != "PNG" || !e.stored || !e.modified.Equal(blobWritten()) {
+		t.Errorf("x.png = %+v, want its file stored, modified as its blob was written", e)
 	}
 	if e := entries["Eng/Spec/Folder/"]; !e.folder {
 		t.Errorf("Folder/ = %+v, want a folder's entry", e)
@@ -258,22 +271,24 @@ func TestARunningJobStops(t *testing.T) {
 	}
 }
 
-// River's context ends the job: its timeout fails it so, the server's
-// stop as interrupted.
+// River's context ends the job: its timeout fails it so, the end written
+// in its own time; the server's stop as interrupted, the end written
+// within River's grace.
 func TestRiversContextEndsTheJob(t *testing.T) {
 	for _, tt := range []struct {
 		name string
 		ctx  func() (context.Context, context.CancelFunc)
 		want domain.Failure
+		left func(time.Duration) bool
 	}{
 		{"timeout", func() (context.Context, context.CancelFunc) {
 			return context.WithTimeout(context.Background(), 50*time.Millisecond)
-		}, domain.FailureTimeout},
+		}, domain.FailureTimeout, func(d time.Duration) bool { return d < 10*time.Second }},
 		{"stop", func() (context.Context, context.CancelFunc) {
 			ctx, cancel := context.WithCancel(context.Background())
 			time.AfterFunc(50*time.Millisecond, cancel)
 			return ctx, cancel
-		}, domain.FailureInterrupted},
+		}, domain.FailureInterrupted, func(d time.Duration) bool { return d > time.Second }},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			w := newWorld()
@@ -289,6 +304,9 @@ func TestRiversContextEndsTheJob(t *testing.T) {
 			got := w.rows.get(j.ID)
 			if got.State != domain.StateFailed || got.Report == nil || got.Report.Failure != tt.want || len(w.archives.aborted) != 1 {
 				t.Errorf("job %s, report %+v, aborted %v; want failed %s, dropped", got.State, got.Report, w.archives.aborted, tt.want)
+			}
+			if left := w.rows.finishLeft; tt.left(left) {
+				t.Errorf("the end written with %v left", left)
 			}
 		})
 	}
@@ -398,11 +416,9 @@ func TestTheContributorsAddTheirFiles(t *testing.T) {
 	}
 }
 
-// A running job writes its heartbeat with its progress.
-func TestARunningJobBeats(t *testing.T) {
-	w := newWorld()
-	j := w.queued(nil)
-	release := make(chan struct{})
+// beats calls onBeat at each heartbeat written, and answers a channel
+// that tells them, the latest kept.
+func beats(w *world) <-chan struct{} {
 	beaten := make(chan struct{}, 1)
 	w.rows.onBeat = func() {
 		select {
@@ -410,21 +426,162 @@ func TestARunningJobBeats(t *testing.T) {
 		default:
 		}
 	}
+	return beaten
+}
+
+// A running job writes its heartbeat with its progress.
+func TestARunningJobBeats(t *testing.T) {
+	w := newWorld()
+	j := w.queued(nil)
+	beaten := beats(w)
 	w.blobs.open = func(context.Context) io.Reader {
 		<-beaten
 		<-beaten
-		close(release)
 		return nil
 	}
 	if err := w.export().Run(context.Background(), j.ID); err != nil {
 		t.Fatal(err)
 	}
-	<-release
 	w.rows.mu.Lock()
-	beats := slices.Clone(w.rows.beats)
+	written := slices.Clone(w.rows.beats)
 	w.rows.mu.Unlock()
-	if len(beats) < 2 || beats[len(beats)-1] != (domain.Progress{Done: 5, Total: 7}) {
-		t.Errorf("beats %+v, want the progress of the five pages", beats)
+	if !slices.Contains(written, domain.Progress{Done: 5, Total: 7}) {
+		t.Errorf("beats %+v, want the progress of the five pages", written)
+	}
+}
+
+// The heartbeat goes on until the archive is committed: a long commit
+// leaves no heartbeat old.
+func TestTheHeartbeatLastsThroughTheCommit(t *testing.T) {
+	w := newWorld()
+	j := w.queued(nil)
+	beaten := beats(w)
+	beat := false
+	w.archives.onCommit = func() {
+		select {
+		case <-beaten:
+		default:
+		}
+		select {
+		case <-beaten:
+			beat = true
+		case <-time.After(5 * time.Second):
+		}
+	}
+	if err := w.export().Run(context.Background(), j.ID); err != nil {
+		t.Fatal(err)
+	}
+	if !beat || w.rows.get(j.ID).State != domain.StateSucceeded {
+		t.Errorf("a heartbeat during the commit %v, the job %s; want one, succeeded", beat, w.rows.get(j.ID).State)
+	}
+}
+
+// A heartbeat that fails is tried again at the next: the first failure of
+// a run of them is logged, and the write that ends it.
+func TestAHeartbeatNotWrittenIsLoggedOnce(t *testing.T) {
+	w := newWorld()
+	var l logs
+	w.logger = l.logger()
+	j := w.queued(nil)
+	w.rows.failBeats = 3
+	beaten := beats(w)
+	w.blobs.open = func(context.Context) io.Reader {
+		<-beaten
+		return nil
+	}
+	if err := w.export().Run(context.Background(), j.ID); err != nil {
+		t.Fatal(err)
+	}
+	text := l.String()
+	if strings.Count(text, "export heartbeat not written") != 1 || strings.Count(text, "export heartbeat written again") != 1 ||
+		w.rows.get(j.ID).State != domain.StateSucceeded {
+		t.Errorf("logs %q, the job %s; want the failures once, the write again once, succeeded", text, w.rows.get(j.ID).State)
+	}
+}
+
+// The pages' contents are read 200 pages or 16 MiB at a time, whichever
+// comes first, a larger page alone; each page as written.
+func TestThePagesAreReadInBatches(t *testing.T) {
+	ones := func(n int) []int64 { return slices.Repeat([]int64{1}, n) }
+	for _, tt := range []struct {
+		name  string
+		bytes []int64
+		reads int
+	}{
+		{"200 pages", ones(200), 1},
+		{"201 pages", ones(201), 2},
+		{"16 MiB", []int64{8 << 20, 8 << 20}, 1},
+		{"past 16 MiB", []int64{8 << 20, 8 << 20, 1}, 2},
+		{"a page past it alone", []int64{1, 20 << 20, 1}, 3},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			w := newWorld()
+			w.nodes.all, w.nodes.contents = nil, map[uuid.UUID]string{}
+			for i, b := range tt.bytes {
+				id := uuid.NewV7()
+				w.nodes.all = append(w.nodes.all, domain.Node{ID: id, Name: fmt.Sprintf("p%03d", i), SortOrder: float64(i), Bytes: b})
+				w.nodes.contents[id] = fmt.Sprintf("page %d", i)
+			}
+			j := w.queued(nil)
+			if err := w.export().Run(context.Background(), j.ID); err != nil {
+				t.Fatal(err)
+			}
+			got := w.rows.get(j.ID)
+			if w.nodes.reads != tt.reads || got.Report == nil || got.Report.Counts.Pages != int64(len(tt.bytes)) {
+				t.Errorf("%d reads, report %+v; want %d, every page", w.nodes.reads, got.Report, tt.reads)
+			}
+			entries := w.archives.entries(j.ID)
+			for i := range tt.bytes {
+				if e := entries[fmt.Sprintf("Eng/p%03d.md", i)]; e.data != fmt.Sprintf("page %d", i) {
+					t.Errorf("p%03d.md = %+v", i, e)
+				}
+			}
+		})
+	}
+}
+
+// A report counts what was written: an export that fails midway counts
+// the pages before, as its progress does.
+func TestAReportCountsWhatWasWritten(t *testing.T) {
+	w := newWorld()
+	j := w.queued(nil)
+	w.archives.fullAt = "Eng/Spec/Linked.md"
+	if err := w.export().Run(context.Background(), j.ID); err != nil {
+		t.Fatal(err)
+	}
+	got := w.rows.get(j.ID)
+	if got.Report == nil || got.Report.Counts != (domain.Counts{Pages: 3}) || got.Progress.Done != 3 {
+		t.Errorf("report %+v, progress %+v; want the three pages before Linked.md", got.Report, got.Progress)
+	}
+}
+
+// A success locks the notebook's row before the job's, as a deletion of
+// the notebook does: neither waits for a row the other holds. A notebook
+// deleted meanwhile took the job's row with it: nothing is written, the
+// archive is dropped.
+func TestASuccessLocksTheNotebookFirst(t *testing.T) {
+	w := newWorld()
+	j := w.queued(nil)
+	if err := w.export().Run(context.Background(), j.ID); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"WithinTx", "Notebooks.ShareByID", "FinishJob", "ExpireOthers"}
+	if got := w.rec.of(want...); !slices.Equal(got, want) {
+		t.Errorf("calls = %v, want %v", got, want)
+	}
+
+	w = newWorld()
+	var l logs
+	w.logger = l.logger()
+	j = w.queued(nil)
+	w.notebooks.unshared = true
+	if err := w.export().Run(context.Background(), j.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got := w.rows.get(j.ID); got.State != domain.StateRunning || slices.Contains(w.rec.calls, "FinishJob") || len(w.archives.committed) != 0 ||
+		!slices.Equal(w.archives.deleted, []uuid.UUID{j.ID}) || !strings.Contains(l.String(), "export stopped") {
+		t.Errorf("job %s, calls %v, deleted %v, logs %q; want nothing written, the archive dropped, the stop logged", got.State, w.rec.calls,
+			w.archives.deleted, l.String())
 	}
 }
 
@@ -435,5 +592,73 @@ func TestAnEndNotWrittenFails(t *testing.T) {
 	w.rows.finishErr = errors.New("the database is gone")
 	if err := w.export().Run(context.Background(), j.ID); err == nil || !strings.Contains(err.Error(), "the database is gone") {
 		t.Errorf("Run() = %v, want the write's failure", err)
+	}
+}
+
+// The jobs' logs tell ids, the client, numbers and codes; never a
+// notebook's, a page's or a file's name, a path of the vault, nor a
+// signature (v0.1 design 13.1, item 10).
+func TestTheJobsLogTheIDsNotTheNames(t *testing.T) {
+	w := newWorld()
+	var l logs
+	w.logger = l.logger()
+	ctx := context.Background()
+	v, err := w.start(&queue{}, 20).Run(as(w.alice), w.eng, &w.spec, domain.ClientAPI)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := w.export().Run(ctx, v.Job.ID); err != nil {
+		t.Fatal(err)
+	}
+	refused := w.queued(nil)
+	delete(w.auth.roles[w.eng], w.bob)
+	w.rows.set(refused.ID, func(r *row) { r.job.CreatedBy = w.bob })
+	if err := w.export().Run(ctx, refused.ID); err != nil {
+		t.Fatal(err)
+	}
+	running := w.job(w.alice, now(), domain.StateRunning)
+	if _, err := w.cancel().Run(as(w.alice), running.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	text := l.String()
+	for _, want := range []string{"export queued", "export started", "export ended", "job cancel asked", v.Job.ID.String(), refused.ID.String(),
+		running.ID.String(), w.eng.String(), w.alice.String(), w.bob.String(), "client=api", "state=succeeded", "failure=forbidden"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the logs lack %q:\n%s", want, text)
+		}
+	}
+	for _, never := range []string{"Eng", "Spec", "Folder", "Linked", "x.png", "gone.pdf", "sig-"} {
+		if strings.Contains(text, never) {
+			t.Errorf("the logs tell %q:\n%s", never, text)
+		}
+	}
+}
+
+// contributorFunc is a contributor of a function.
+type contributorFunc func(ctx context.Context, scope app.Scope, sink app.Sink) error
+
+func (f contributorFunc) Contribute(ctx context.Context, scope app.Scope, sink app.Sink) error {
+	return f(ctx, scope, sink)
+}
+
+// A job deleted as it fails has no end written: its stop is logged, no
+// end. Its heartbeats fail, so that none reads the deletion first.
+func TestAJobDeletedAsItFailsLogsItsStop(t *testing.T) {
+	w := newWorld()
+	var l logs
+	w.logger = l.logger()
+	j := w.queued(nil)
+	w.rows.failBeats = 1 << 30
+	w.contributors = []app.Contributor{contributorFunc(func(context.Context, app.Scope, app.Sink) error {
+		w.rows.set(j.ID, func(r *row) { r.deleted = true })
+		return errors.New("the contributor failed")
+	})}
+	if err := w.export().Run(context.Background(), j.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got, text := w.rows.get(j.ID), l.String(); got.State != domain.StateRunning || !strings.Contains(text, "export stopped") ||
+		strings.Contains(text, "export ended") {
+		t.Errorf("job %s, logs %q; want no end written, the stop logged", got.State, text)
 	}
 }

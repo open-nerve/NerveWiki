@@ -228,13 +228,14 @@ node tools/md-fixtures/obsidian/verify-resolve.mjs check /tmp/nwiki-resolve
 导出的库（M7/P5 设计 3.15）另行核对：服务端的测试把每个样例建成一本笔记本、经接口导出，写出 zip 与"每条链接在本系统里解析到库里的哪个文件"，再在 Obsidian 里打开解开的库比较：
 
 ```sh
-NWIKI_EXPORT_VAULTS=/tmp/nwiki-vaults go test ./internal/bootstrap -run TestEveryResolutionCaseExportsAsAVault  # 在 server/ 下，目录要先建好
+# 在 server/ 下，目录要先建好；测试经 testcontainers 起 PostgreSQL，要有 Docker；-count=1 免得命中 go test 的缓存、什么都不写
+NWIKI_EXPORT_VAULTS=/tmp/nwiki-vaults go test -count=1 ./internal/bootstrap -run TestEveryResolutionCaseExportsAsAVault
 node tools/md-fixtures/obsidian/verify-export.mjs prepare /tmp/nwiki-export /tmp/nwiki-vaults
 # 按提示用独立的数据目录启动 Obsidian
 node tools/md-fixtures/obsidian/verify-export.mjs check /tmp/nwiki-export
 ```
 
-库是导出原样（只有目录的页没有 `.md`，除非有链接指向它），去掉根目录；`obsidian-verified` 必须一致，`nerve-defined` 只报告差异。
+库是导出原样（只有目录的页没有 `.md`，除非有链接指向它），去掉唯一的根目录（zip 里另有根目录或根目录旁的文件时 `prepare` 报错）；`obsidian-verified` 必须一致，`nerve-defined` 只报告差异。
 
 ## 渲染样例
 

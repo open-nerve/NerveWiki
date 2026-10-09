@@ -3,19 +3,28 @@ package bootstrap
 import (
 	"archive/zip"
 	"bytes"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"io"
 	"io/fs"
+	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 	"uuid"
 
+	"github.com/open-nerve/NerveWiki/server/internal/modules/identity"
+	"github.com/open-nerve/NerveWiki/server/internal/modules/transfer"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
 )
 
@@ -26,10 +35,13 @@ import (
 
 // transferJob is a TransferJobDetail answer, as much as the tests read.
 type transferJob struct {
-	ID       string  `json:"id"`
-	State    string  `json:"state"`
-	Name     string  `json:"name"`
-	RootID   *string `json:"root_id"`
+	ID        string  `json:"id"`
+	State     string  `json:"state"`
+	Name      string  `json:"name"`
+	RootID    *string `json:"root_id"`
+	CreatedBy struct {
+		DisplayName string `json:"display_name"`
+	} `json:"created_by"`
 	Progress struct {
 		Done  int `json:"done"`
 		Total int `json:"total"`
@@ -210,6 +222,10 @@ func TestAnExportRunsThroughServe(t *testing.T) {
 		whole.Download == nil || len(whole.Problems) != 0 {
 		t.Fatalf("the notebook's export = %+v, want succeeded, 6 pages and an attachment", whole)
 	}
+	// Its starter by name, through identity's directory.
+	if want := queryStrings(t, tm.pool, "SELECT display_name FROM users WHERE email = 'alice@example.com'"); whole.CreatedBy.DisplayName != want[0] {
+		t.Errorf("the export's starter = %q, want %q", whole.CreatedBy.DisplayName, want[0])
+	}
 	// River completes its job once the use case has returned, a moment
 	// after the row ended.
 	awaitJob(t, tm.pool, "transfer.export")
@@ -263,34 +279,121 @@ func TestAnExportRunsThroughServe(t *testing.T) {
 	if status, _ := tm.download(t, whole.Download.URL); status != http.StatusNotFound {
 		t.Errorf("the expired archive's address = %d, want 404", status)
 	}
+	// The expired archive is deleted once the success commits, before
+	// River completes the job.
+	awaitExports(t, tm)
 	if got := storedArchives(t, tm.storage); len(got) != 1 || got[sub.ID] == "" {
 		t.Errorf("archives stored %v, want the subtree's alone", got)
 	}
 }
 
 // A notebook's deletion deletes its jobs at its time (the transfer
-// module's subscriber, through the composition root): they read and
-// download as not found.
+// module's subscriber, through the composition root), on each of the
+// deletion's three paths through serve: they read and download as not
+// found.
 func TestANotebooksDeletionDeletesItsJobs(t *testing.T) {
-	tm := newAcmeTeam(t, "", "")
+	for _, tt := range []struct {
+		name     string
+		setup    func(t *testing.T) (tm acmeTeam, nb, starter string)
+		before   func(t *testing.T, tm acmeTeam)
+		deletion func(nb string) step
+	}{
+		{
+			name: "by its admin",
+			setup: func(t *testing.T) (acmeTeam, string, string) {
+				tm := newAcmeTeam(t, "", "")
+				return tm, tm.openNotebook(t, "alice", "Eng"), "alice"
+			},
+			deletion: func(nb string) step { return request("alice", http.MethodDelete, "/api/v0/notebooks/"+nb, "") },
+		},
+		{
+			name: "with its workspace",
+			setup: func(t *testing.T) (acmeTeam, string, string) {
+				tm := newAcmeTeam(t, "member", "")
+				return tm, tm.createNotebook(t, "bob", "Eng"), "bob"
+			},
+			deletion: func(string) step { return request("alice", http.MethodDelete, "/api/v0/workspaces/acme", "") },
+		},
+		{
+			name: "ownerless, by the workspace's admin",
+			setup: func(t *testing.T) (acmeTeam, string, string) {
+				tm := newAcmeTeam(t, "admin", "member")
+				return tm, tm.createNotebook(t, "carol", "Plans"), "carol"
+			},
+			before:   func(t *testing.T, tm acmeTeam) { tm.send(t, tm.removal("alice", "carol"), http.StatusNoContent) },
+			deletion: func(nb string) step { return ownerlessDeletion("alice", nb) },
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			tm, nb, starter := tt.setup(t)
+			tm.createPageWith(t, starter, nb, "", "Spec", "spec")
+			j := tm.endedJob(t, starter, tm.startExport(t, starter, nb, "").ID)
+			if j.Download == nil {
+				t.Fatalf("export = %+v, want succeeded", j)
+			}
+			if tt.before != nil {
+				tt.before(t, tm)
+			}
+			tm.send(t, tt.deletion(nb), http.StatusNoContent)
+			if n := count(t, tm.pool, `SELECT count(*) FROM transfer_jobs j JOIN notebooks n ON n.id = j.notebook_id
+				WHERE j.id = $1 AND j.deleted_at = n.deleted_at`, j.ID); n != 1 {
+				t.Errorf("the job deleted at the notebook's time: %d rows, want 1", n)
+			}
+			if status, _ := tm.transferJobOf(t, starter, j.ID); status != http.StatusNotFound {
+				t.Errorf("read the job = %d, want 404", status)
+			}
+			if status, _ := tm.download(t, j.Download.URL); status != http.StatusNotFound {
+				t.Errorf("download = %d, want 404", status)
+			}
+		})
+	}
+}
+
+// The download's addresses are signed with the signing key's derivation
+// for transfer.DownloadKeyInfo, through the composition root: another
+// key, or none, would sign addresses that anyone could forge.
+func TestTheDownloadsAreSignedWithTheDerivedKey(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "signing.pem")
+	if err := os.WriteFile(path, []byte(openSSLKey), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	tm := newAcmeTeamWith(t, "", "", func(c *config.Config) { c.Auth.JWT.PrivateKeyFile = path })
 	nb := tm.openNotebook(t, "alice", "Eng")
 	tm.createPageWith(t, "alice", nb, "", "Spec", "spec")
 	j := tm.endedJob(t, "alice", tm.startExport(t, "alice", nb, "").ID)
 	if j.Download == nil {
 		t.Fatalf("export = %+v, want succeeded", j)
 	}
-	if status, answer := ask(t, tm.contract, http.MethodDelete, tm.base+"/api/v0/notebooks/"+nb, tm.tokens["alice"], ""); status != http.StatusNoContent {
-		t.Fatalf("delete the notebook = %d %s", status, answer)
+	u, err := url.Parse(j.Download.URL)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if n := count(t, tm.pool, `SELECT count(*) FROM transfer_jobs j JOIN notebooks n ON n.id = j.notebook_id
-		WHERE j.id = $1 AND j.deleted_at = n.deleted_at`, j.ID); n != 1 {
-		t.Errorf("the job deleted at the notebook's time: %d rows, want 1", n)
+	e, err := strconv.ParseInt(u.Query().Get("e"), 10, 64)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if status, _ := tm.transferJobOf(t, "alice", j.ID); status != http.StatusNotFound {
-		t.Errorf("read the job = %d, want 404", status)
+	keys, err := identity.LoadSigningKeys([]byte(openSSLKey), slog.New(slog.DiscardHandler))
+	if err != nil {
+		t.Fatal(err)
 	}
-	if status, _ := tm.download(t, j.Download.URL); status != http.StatusNotFound {
-		t.Errorf("download = %d, want 404", status)
+	id := uuid.MustParse(j.ID)
+	mac := hmac.New(sha256.New, keys.Derive(transfer.DownloadKeyInfo))
+	mac.Write([]byte("export-download"))
+	mac.Write(id[:])
+	mac.Write(binary.BigEndian.AppendUint64(nil, uint64(e))) //nolint:gosec // a time after 1970
+	if want := base64.RawURLEncoding.EncodeToString(mac.Sum(nil)[:16]); u.Query().Get("s") != want {
+		t.Errorf("the address's signature = %q, want %q, the derived key's", u.Query().Get("s"), want)
+	}
+}
+
+// storage.min_free_bytes reaches the exports: a store that keeps no more
+// room refuses one, storage_full.
+func TestTheStoresMinimumIsTheConfigured(t *testing.T) {
+	tm := newAcmeTeamWith(t, "", "", func(c *config.Config) { c.Storage.MinFreeBytes = 1 << 60 })
+	nb := tm.openNotebook(t, "alice", "Eng")
+	status, answer := ask(t, tm.contract, http.MethodPost, tm.base+"/api/v0/notebooks/"+nb+"/exports", tm.tokens["alice"], `{}`)
+	if status != http.StatusInsufficientStorage || problemCode(t, answer) != "storage_full" {
+		t.Errorf("export = %d %s, want 507 storage_full", status, answer)
 	}
 }
 

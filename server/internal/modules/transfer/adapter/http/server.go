@@ -97,7 +97,7 @@ func jobOf(v app.JobView) gen.TransferJob {
 	return gen.TransferJob{
 		ID: j.ID, NotebookID: j.NotebookID, RootID: maybe(j.RootID), Name: j.Name, Kind: gen.TransferKind(j.Kind), State: gen.TransferState(j.State),
 		Client: gen.TransferClient(j.Client), CreatedBy: gen.TransferStarter{UserID: j.CreatedBy, DisplayName: v.CreatedByName},
-		CreatedAt: j.CreatedAt, StartedAt: maybe(j.Started), FinishedAt: maybe(j.Finished),
+		CreatedAt: j.CreatedAt, StartedAt: maybe(j.Started), CancelRequestedAt: maybe(j.CancelRequested), FinishedAt: maybe(j.Finished),
 		Progress: gen.TransferProgress{Done: j.Progress.Done, Total: j.Progress.Total}, ResultBytes: maybe(j.ResultBytes),
 		Report: reportOf(j.Report), Download: downloadOf(j.ID, v.Download),
 	}
@@ -108,8 +108,8 @@ func detailOf(v app.JobView) gen.TransferJobDetail {
 	j := jobOf(v)
 	out := gen.TransferJobDetail{
 		ID: j.ID, NotebookID: j.NotebookID, RootID: j.RootID, Name: j.Name, Kind: j.Kind, State: j.State, Client: j.Client,
-		CreatedBy: j.CreatedBy, CreatedAt: j.CreatedAt, StartedAt: j.StartedAt, FinishedAt: j.FinishedAt, Progress: j.Progress,
-		ResultBytes: j.ResultBytes, Report: j.Report, Download: j.Download, Problems: []gen.TransferProblem{},
+		CreatedBy: j.CreatedBy, CreatedAt: j.CreatedAt, StartedAt: j.StartedAt, CancelRequestedAt: j.CancelRequestedAt, FinishedAt: j.FinishedAt,
+		Progress: j.Progress, ResultBytes: j.ResultBytes, Report: j.Report, Download: j.Download, Problems: []gen.TransferProblem{},
 	}
 	if r := v.Job.Report; r != nil {
 		out.ProblemsTruncated = r.Truncated

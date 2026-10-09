@@ -3,6 +3,8 @@ package app
 import (
 	"context"
 	"errors"
+	"log/slog"
+	"time"
 	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/transfer/domain"
@@ -13,10 +15,11 @@ import (
 // running one at its next heartbeat. It writes the job's row alone, never
 // the notebook's: a running job's steps and a cancel make no cycle.
 type Cancel struct {
-	tx    shared.TxManager
-	rows  Rows
-	views views
-	clock Clock
+	tx     shared.TxManager
+	rows   Rows
+	views  views
+	clock  Clock
+	logger *slog.Logger
 }
 
 // CancelDeps are what Cancel needs.
@@ -28,12 +31,15 @@ type CancelDeps struct {
 	Names      Names
 	Signer     Signer
 	Clock      Clock
+	Logger     *slog.Logger
+	// ExportTTL is transfer.export_ttl.
+	ExportTTL time.Duration
 }
 
 // NewCancel returns the use case.
 func NewCancel(d CancelDeps) *Cancel {
-	return &Cancel{tx: d.Tx, rows: d.Rows, clock: d.Clock,
-		views: views{auth: d.Authorizer, notebooks: d.Notebooks, names: d.Names, signer: d.Signer, clock: d.Clock}}
+	return &Cancel{tx: d.Tx, rows: d.Rows, clock: d.Clock, logger: d.Logger,
+		views: views{auth: d.Authorizer, notebooks: d.Notebooks, names: d.Names, signer: d.Signer, clock: d.Clock, ttl: d.ExportTTL}}
 }
 
 // Run cancels the job id for its starter or the notebook's admin
@@ -76,6 +82,8 @@ func (c *Cancel) Run(ctx context.Context, id uuid.UUID) (JobView, error) {
 	if err != nil {
 		return JobView{}, err
 	}
+	c.logger.InfoContext(ctx, "job cancel asked", slog.String("job_id", j.ID.String()), slog.String("notebook_id", j.NotebookID.String()),
+		slog.String("user_id", actor.UserID.String()), slog.String("state", string(j.State)))
 	got, err := c.views.of(ctx, []domain.Job{j})
 	if err != nil {
 		return JobView{}, err

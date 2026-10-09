@@ -5,10 +5,10 @@
 //   node verify-export.mjs check <workdir> [port]       read Obsidian's resolved links and compare (default port 9333)
 //
 // <vaults> is where the server's test wrote each case's archive and its links, as this system resolves them, by
-// their paths in the vault: NWIKI_EXPORT_VAULTS=<vaults> go test ./internal/bootstrap -run
-// TestEveryResolutionCaseExportsAsAVault. Each archive is unpacked as a vault, its root folder left out, the vault
-// showing every type of file ("Detect all file extensions"). Obsidian-verified cases must match; nerve-defined ones
-// only report how they differ.
+// their paths in the vault: NWIKI_EXPORT_VAULTS=<vaults> go test -count=1 ./internal/bootstrap -run
+// TestEveryResolutionCaseExportsAsAVault (it needs Docker, for its database). Each archive is unpacked as a vault, its
+// one root folder left out, the vault showing every type of file ("Detect all file extensions"). Obsidian-verified
+// cases must match; nerve-defined ones only report how they differ.
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { inflateRawSync } from "node:zlib";
@@ -66,11 +66,17 @@ if (cmd === "prepare") {
   const opened = {};
   for (const name of names) {
     const vault = join(work, name);
+    let root;
     for (const { name: entry, data } of unzip(readFileSync(join(vaults, `${name}.zip`)))) {
       const segments = entry.split("/");
       if (data === null) segments.pop(); // a folder's name ends in "/"
       if (segments.some((s) => s === "" || s === "." || s === "..")) throw new Error(`${name}: the entry ${entry}`);
-      if (segments.length < 2) continue; // the root folder itself
+      root ??= segments[0];
+      if (segments[0] !== root) throw new Error(`${name}: the entry ${entry} is outside the root folder ${root}/`);
+      if (segments.length < 2) {
+        if (data !== null) throw new Error(`${name}: the file ${entry} beside the root folder`);
+        continue; // the root folder itself
+      }
       // The archive's root folder is the notebook's: the vault is what it holds.
       const path = join(vault, ...segments.slice(1));
       if (data === null) {

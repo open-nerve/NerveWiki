@@ -28,7 +28,10 @@ func newTree(lines ...string) *tree {
 		id := uuid.NewV7()
 		t.ids[path] = id
 		n := domain.Node{ID: id, Asset: kind == "asset", Name: path[strings.LastIndex(path, "/")+1:], SortOrder: float64(i),
-			Empty: len(fields) > 2 && fields[2] == "empty", Modified: time.Unix(0, 0)}
+			Modified: time.Unix(0, 0)}
+		if !n.Asset && (len(fields) < 3 || fields[2] != "empty") {
+			n.Bytes = 1
+		}
 		if i := strings.LastIndex(path, "/"); i >= 0 {
 			parent := t.ids[path[:i]]
 			n.ParentID = &parent
@@ -128,9 +131,11 @@ func TestThePlanMapsTheTree(t *testing.T) {
 }
 
 // A renamed node is reported with where it would have been and where it
-// is: a page's file, or its folder when it has none.
+// is: a page's file, or its folder when it has none; in a renamed folder,
+// where it would have been had none been renamed. A folder's renames come
+// before its subfolders'.
 func TestThePlanReportsTheRenamed(t *testing.T) {
-	tr := newTree("N page", "N.md page empty", "N.md/c page", "M page", "M.md page", "M.md/c page")
+	tr := newTree("N page", "N.md page empty", "N.md/c page", "N.md/c.md page empty", "N.md/c.md/d page", "M page", "M.md page", "M.md/c page")
 	p, err := domain.NewPlan(notebook(), nil, tr.nodes, nothingLinked)
 	if err != nil {
 		t.Fatal(err)
@@ -138,6 +143,7 @@ func TestThePlanReportsTheRenamed(t *testing.T) {
 	want := []domain.Problem{
 		{Path: "N.md/", Code: domain.ProblemRenamed, To: "N.md 2/"},
 		{Path: "M.md.md", Code: domain.ProblemRenamed, To: "M.md 2.md"},
+		{Path: "N.md/c.md/", Code: domain.ProblemRenamed, To: "N.md 2/c.md 2/"},
 	}
 	if !slices.Equal(p.Renamed, want) {
 		t.Errorf("renamed = %+v, want %+v", p.Renamed, want)
@@ -193,13 +199,15 @@ func TestThePlanOrdersSiblings(t *testing.T) {
 func TestThePlanOfASubtree(t *testing.T) {
 	tr := newTree("A page", "A/B page", "A/B/x.png asset", "A/B/C page empty", "D page")
 	root := domain.Named{ID: tr.ids["A/B"], Name: "B"}
-	p, err := domain.NewPlan(notebook(), &root, tr.nodes[1:4], nothingLinked)
-	if err != nil {
-		t.Fatal(err)
-	}
 	want := []string{"B.md B.md", "B/x.png B/x.png", "B/C.md B/C.md"}
-	if got := entries(p); p.Root != "B" || !slices.Equal(got, want) {
-		t.Errorf("root %q, entries %q; want B, %q", p.Root, got, want)
+	for name, nodes := range map[string][]domain.Node{"its nodes": tr.nodes[1:4], "every node": tr.nodes} {
+		p, err := domain.NewPlan(notebook(), &root, nodes, nothingLinked)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := entries(p); p.Root != "B" || !slices.Equal(got, want) {
+			t.Errorf("%s: root %q, entries %q; want B, %q", name, p.Root, got, want)
+		}
 	}
 	if _, err := domain.NewPlan(notebook(), &root, tr.nodes[2:4], nothingLinked); err == nil {
 		t.Error("NewPlan() without its root = nil error")

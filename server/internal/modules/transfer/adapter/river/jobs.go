@@ -6,7 +6,9 @@ package riveradapter
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 	"uuid"
 
@@ -74,7 +76,7 @@ func ExportJob(uc ExportUseCase, timeout time.Duration) jobs.Job {
 }
 
 // Queue enqueues the exports in the caller's transaction, with the
-// insert-only client.
+// insert-only client, and tells which River still holds.
 type Queue struct {
 	inserter *jobs.Inserter
 }
@@ -93,6 +95,23 @@ func (q Queue) Export(ctx context.Context, id uuid.UUID) error {
 		return errors.New("enqueue an export: not in a transaction")
 	}
 	return q.inserter.InsertTx(ctx, tx, ExportArgs{JobID: id}, &river.InsertOpts{Queue: QueueExport, MaxAttempts: 1})
+}
+
+// Held is the ids of the exports River has not finished.
+func (q Queue) Held(ctx context.Context) ([]uuid.UUID, error) {
+	args, err := q.inserter.Unfinished(ctx, ExportKind)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]uuid.UUID, 0, len(args))
+	for _, a := range args {
+		var x ExportArgs
+		if err := json.Unmarshal(a, &x); err != nil {
+			return nil, fmt.Errorf("an export's River job: %w", err)
+		}
+		ids = append(ids, x.JobID)
+	}
+	return ids, nil
 }
 
 // RescueUseCase is the rescue's use case: app.Rescue.

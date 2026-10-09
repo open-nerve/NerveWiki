@@ -38,9 +38,10 @@ WHERE id = sqlc.arg(id) AND deleted_at IS NULL
 FOR UPDATE;
 
 -- name: ListJobs :many
--- A notebook's jobs, the newest first, the account's alone when created_by_id is set, after the cursor's.
+-- A notebook's jobs, the newest first, the account's alone when created_by_id is set, after the cursor's. A report
+-- comes without its problems, up to 1,000 a job, which the list does not show.
 SELECT id, notebook_id, root_id, kind, state, name, created_by_id, client, progress_done, progress_total,
-    cancel_requested_at, heartbeat_at, started_at, finished_at, report, result_bytes, created_at
+    cancel_requested_at, heartbeat_at, started_at, finished_at, (report - 'problems')::jsonb AS report, result_bytes, created_at
 FROM transfer_jobs
 WHERE notebook_id = sqlc.arg(notebook_id) AND deleted_at IS NULL
     AND (sqlc.narg(created_by_id)::uuid IS NULL OR created_by_id = sqlc.narg(created_by_id))
@@ -102,10 +103,30 @@ RETURNING id;
 
 -- name: InterruptJobs :many
 -- The running jobs, failed with report: all of them, or those whose heartbeat is older than beat_before when it is
--- set. Their progress stays as it was.
+-- set. Their progress stays as it was. The rows another transaction holds are skipped: a notebook's deletion that
+-- holds some waits for none of these.
 UPDATE transfer_jobs SET state = 'failed', finished_at = sqlc.arg(at), report = sqlc.arg(report)
-WHERE state = 'running' AND deleted_at IS NULL
-    AND (sqlc.narg(beat_before)::timestamptz IS NULL OR heartbeat_at < sqlc.narg(beat_before)::timestamptz)
+WHERE state = 'running' AND id IN (
+    SELECT id FROM transfer_jobs
+    WHERE state = 'running' AND deleted_at IS NULL
+        AND (sqlc.narg(beat_before)::timestamptz IS NULL OR heartbeat_at < sqlc.narg(beat_before)::timestamptz)
+    FOR UPDATE SKIP LOCKED
+)
+RETURNING id, notebook_id, created_by_id, client;
+
+-- name: QueuedJobs :many
+-- The queued jobs not deleted.
+SELECT id FROM transfer_jobs WHERE state = 'queued' AND deleted_at IS NULL;
+
+-- name: FailQueued :many
+-- Of ids, the queued jobs not deleted, failed with report: River dropped them (M7/P5 design 3.12). The rows another
+-- transaction holds are skipped.
+UPDATE transfer_jobs SET state = 'failed', finished_at = sqlc.arg(at), report = sqlc.arg(report)
+WHERE state = 'queued' AND id IN (
+    SELECT id FROM transfer_jobs
+    WHERE id = ANY(sqlc.arg(ids)::uuid[]) AND state = 'queued' AND deleted_at IS NULL
+    FOR UPDATE SKIP LOCKED
+)
 RETURNING id, notebook_id, created_by_id, client;
 
 -- name: DeleteJobsOfNotebooks :exec

@@ -57,6 +57,8 @@ type (
 	// Blobs reads the attachments' files: bootstrap adapts the asset
 	// module's Blobs to it.
 	Blobs = app.Blobs
+	// Blob is an attachment's file, and when it was written.
+	Blob = app.Blob
 	// Clock tells the time.
 	Clock = app.Clock
 )
@@ -110,23 +112,24 @@ type Module struct {
 // its exports enqueued with the insert-only client.
 func New(d Deps) *Module {
 	rows, archives, signer := postgresadapter.New(d.Pool), archiveadapter.New(d.Store, d.Logger), macadapter.New(d.DownloadKey)
+	queue := riveradapter.NewQueue(d.Inserter)
 	export := app.NewExport(app.ExportDeps{Tx: d.Tx, Snapshots: d.Snapshots, Authorizer: d.Authorizer, Notebooks: d.Notebooks, Nodes: d.Nodes,
 		Linked: d.Linked, Blobs: d.Blobs, Archives: archives, Rows: rows, Contributors: d.Contributors, Clock: d.Clock, Logger: d.Logger, Beat: beat})
 	return &Module{
 		uc: httpadapter.UseCases{
 			Start: app.NewStartExport(app.StartDeps{Tx: d.Tx, Authorizer: d.Authorizer, Workspaces: d.Workspaces, Notebooks: d.Notebooks, Nodes: d.Nodes,
-				Rows: rows, Archives: archives, Queue: riveradapter.NewQueue(d.Inserter), Names: d.Names, Signer: signer, Clock: d.Clock, Logger: d.Logger,
+				Rows: rows, Archives: archives, Queue: queue, Names: d.Names, Signer: signer, Clock: d.Clock, Logger: d.Logger,
 				MaxQueued: d.MaxQueued, MinFree: d.MinFreeBytes}),
 			Reads: app.NewReads(app.ReadsDeps{Authorizer: d.Authorizer, Notebooks: d.Notebooks, Names: d.Names, Signer: signer, Clock: d.Clock,
-				Rows: rows}),
+				Rows: rows, ExportTTL: d.ExportTTL}),
 			Cancel: app.NewCancel(app.CancelDeps{Tx: d.Tx, Rows: rows, Authorizer: d.Authorizer, Notebooks: d.Notebooks, Names: d.Names,
-				Signer: signer, Clock: d.Clock}),
-			Download: app.NewDownload(rows, archives, signer, d.Clock, d.Logger),
+				Signer: signer, Clock: d.Clock, Logger: d.Logger, ExportTTL: d.ExportTTL}),
+			Download: app.NewDownload(rows, archives, signer, d.Clock, d.Logger, d.ExportTTL),
 		},
 		minRate: d.MinRate,
 		jobs: []jobs.Job{
 			riveradapter.ExportJob(export, d.JobTimeout),
-			riveradapter.RescueJob(app.NewRescue(rows, d.Clock, d.Logger, d.HeartbeatTimeout)),
+			riveradapter.RescueJob(app.NewRescue(rows, queue, d.Clock, d.Logger, d.HeartbeatTimeout)),
 			riveradapter.ExpireJob(app.NewExpire(rows, archives, d.Clock, d.Logger, d.ExportTTL)),
 			riveradapter.SweepJob(app.NewSweep(rows, archives, d.Clock, d.Logger)),
 		},

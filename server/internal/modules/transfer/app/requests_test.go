@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 	"uuid"
@@ -18,20 +19,27 @@ func as(user uuid.UUID) context.Context {
 }
 
 func (w *world) start(q *queue, maxQueued int) *app.StartExport {
-	return app.NewStartExport(app.StartDeps{Tx: w.tx, Authorizer: w.auth, Workspaces: workspaces{}, Notebooks: w.notebooks, Nodes: w.nodes,
-		Rows: w.rows, Archives: w.archives, Queue: q, Names: names{w.alice: "Alice"}, Signer: signer{}, Clock: fixedClock{now()}, Logger: quiet(),
+	q.rec = w.rec
+	return app.NewStartExport(app.StartDeps{Tx: w.tx, Authorizer: w.auth, Workspaces: w.workspaces, Notebooks: w.notebooks, Nodes: w.nodes,
+		Rows: w.rows, Archives: w.archives, Queue: q, Names: names{w.alice: "Alice"}, Signer: signer{}, Clock: fixedClock{now()}, Logger: w.logger,
 		MaxQueued: maxQueued, MinFree: 100})
 }
 
 // An export starts queued, named after what it exports, from the client,
-// enqueued; under the notebook's lock, after the decision, the queue
-// counted one at a time.
+// enqueued; under the workspace's lock and the notebook's, after the
+// decision, the queue counted one at a time, the row written and enqueued
+// last.
 func TestAnExportStarts(t *testing.T) {
 	w := newWorld()
 	q := &queue{}
 	v, err := w.start(q, 20).Run(as(w.alice), w.eng, nil, domain.ClientAPI)
 	if err != nil {
 		t.Fatal(err)
+	}
+	want := []string{"Notebooks.WorkspaceOf", "WithinTx", "Workspaces.ShareByID", "Notebooks.ShareByID", "Authorize", "Notebooks.NameOf",
+		"LockQueue", "CountActive", "Exporting", "Free", "CreateJob", "Queue.Export"}
+	if !slices.Equal(w.rec.calls, want) {
+		t.Errorf("calls = %v, want %v", w.rec.calls, want)
 	}
 	j := v.Job
 	if v.CreatedByName != "Alice" || v.Download != nil {
@@ -58,6 +66,10 @@ func TestAnExportIsRefused(t *testing.T) {
 		{"no such notebook", func(*world, *queue) (uuid.UUID, *uuid.UUID) { return uuid.NewV7(), nil }, domain.ErrNotebookNotFound},
 		{"a notebook not seen", func(w *world, _ *queue) (uuid.UUID, *uuid.UUID) {
 			delete(w.auth.roles[w.eng], w.alice)
+			return w.eng, nil
+		}, domain.ErrNotebookNotFound},
+		{"a workspace deleted as it locks", func(w *world, _ *queue) (uuid.UUID, *uuid.UUID) {
+			w.workspaces.gone = true
 			return w.eng, nil
 		}, domain.ErrNotebookNotFound},
 		{"a notebook deleted as it locks", func(w *world, _ *queue) (uuid.UUID, *uuid.UUID) {
@@ -96,16 +108,43 @@ func TestAnExportIsRefused(t *testing.T) {
 	}
 }
 
+// ttl is the exports' transfer.export_ttl in the tests.
+const ttl = 24 * time.Hour
+
 func (w *world) reads() *app.Reads {
 	return app.NewReads(app.ReadsDeps{Authorizer: w.auth, Notebooks: w.notebooks, Names: names{w.alice: "Alice", w.bob: "Bob"}, Signer: signer{},
-		Clock: fixedClock{now()}, Rows: w.rows})
+		Clock: fixedClock{now()}, Rows: w.rows, ExportTTL: ttl})
 }
 
-// job adds a job of eng by by, made at, in state.
+// job adds a job of eng by by, made at, in state: one ended ended then.
 func (w *world) job(by uuid.UUID, at time.Time, state domain.State) domain.Job {
 	j := domain.Job{ID: uuid.NewV7(), NotebookID: w.eng, Kind: domain.KindExport, State: state, Name: "Eng", CreatedBy: by, CreatedAt: at}
+	if state.Ended() {
+		j.Finished = &at
+	}
 	w.rows.add(j)
 	return j
+}
+
+// A succeeded export's address expires with its signature, or with the
+// export, the TTL after it ended, whichever comes first; one past the TTL
+// is expired, its row expired by the next expiry.
+func TestAnAddressExpiresWithItsExport(t *testing.T) {
+	w := newWorld()
+	fresh := w.job(w.alice, now(), domain.StateSucceeded)
+	ending := w.job(w.alice, now().Add(-ttl+30*time.Minute), domain.StateSucceeded)
+	past := w.job(w.alice, now().Add(-ttl), domain.StateSucceeded)
+	r := w.reads()
+
+	if got, err := r.Get(as(w.alice), fresh.ID); err != nil || got.Download == nil || !got.Download.Expires.Equal(signer{}.Sign(now(), fresh.ID).Expires) {
+		t.Errorf("Get(fresh) = %+v, %v; want the signature's expiry", got.Download, err)
+	}
+	if got, err := r.Get(as(w.alice), ending.ID); err != nil || got.Download == nil || !got.Download.Expires.Equal(now().Add(30*time.Minute)) {
+		t.Errorf("Get(ending) = %+v, %v; want the export's expiry", got.Download, err)
+	}
+	if got, err := r.Get(as(w.alice), past.ID); err != nil || got.Download != nil || got.Job.State != domain.StateExpired {
+		t.Errorf("Get(past) = %+v, %v; want expired, no address", got, err)
+	}
 }
 
 // A job is its starter's to read, or the notebook's admin's; a reader of
@@ -186,7 +225,7 @@ func TestListingTheJobs(t *testing.T) {
 
 func (w *world) cancel() *app.Cancel {
 	return app.NewCancel(app.CancelDeps{Tx: w.tx, Rows: w.rows, Authorizer: w.auth, Notebooks: w.notebooks, Names: names{}, Signer: signer{},
-		Clock: fixedClock{now()}})
+		Clock: fixedClock{now()}, Logger: w.logger, ExportTTL: ttl})
 }
 
 // A queued job is cancelled at once; a running one is asked to stop, once;
@@ -213,13 +252,23 @@ func TestCancellingAJob(t *testing.T) {
 }
 
 // A download opens the archive its signature signs, of an export that
-// succeeded; anything else is not found, the signature checked first.
+// succeeded less than the TTL ago; anything else is not found, the
+// signature checked first. A file missing is logged, unless its export
+// expired meanwhile.
 func TestDownloadingAnArchive(t *testing.T) {
 	w := newWorld()
 	ok, running, missing := w.job(w.alice, now(), domain.StateSucceeded), w.job(w.alice, now(), domain.StateRunning), w.job(w.alice, now(), domain.StateSucceeded)
-	w.archives.committed[ok.ID] = nil
-	w.archives.committed[running.ID] = nil
-	d := app.NewDownload(w.rows, w.archives, signer{}, fixedClock{now()}, quiet())
+	past, expiring := w.job(w.alice, now().Add(-ttl), domain.StateSucceeded), w.job(w.alice, now(), domain.StateSucceeded)
+	for _, id := range []uuid.UUID{ok.ID, running.ID, past.ID} {
+		w.archives.committed[id] = nil
+	}
+	w.archives.onOpen = func(id uuid.UUID) {
+		if id == expiring.ID {
+			w.rows.set(id, func(r *row) { r.job.State = domain.StateExpired })
+		}
+	}
+	var l logs
+	d := app.NewDownload(w.rows, w.archives, signer{}, fixedClock{now()}, l.logger(), ttl)
 	address := func(id uuid.UUID) app.Address {
 		s := signer{}.Sign(now(), id)
 		return app.Address{JobID: id, Expires: s.Expires.Unix(), Signature: s.Signature}
@@ -235,10 +284,14 @@ func TestDownloadingAnArchive(t *testing.T) {
 	if _, err := d.Open(context.Background(), forged); !errors.Is(err, domain.ErrDownloadNotFound) || w.rows.finds != finds {
 		t.Errorf("Open(forged) = %v after %d reads, want not_found before any", err, w.rows.finds-finds)
 	}
-	for name, id := range map[string]uuid.UUID{"running": running.ID, "file missing": missing.ID, "no job": uuid.NewV7()} {
+	for name, id := range map[string]uuid.UUID{"running": running.ID, "file missing": missing.ID, "no job": uuid.NewV7(), "past the TTL": past.ID,
+		"expired as it opens": expiring.ID} {
 		if _, err := d.Open(context.Background(), address(id)); !errors.Is(err, domain.ErrDownloadNotFound) {
 			t.Errorf("Open(%s) = %v, want not_found", name, err)
 		}
+	}
+	if text := l.String(); strings.Count(text, "export archive missing") != 1 || !strings.Contains(text, missing.ID.String()) {
+		t.Errorf("logs %q, want the missing file alone", text)
 	}
 	expired := address(ok.ID)
 	expired.Expires = now().Unix()
@@ -261,18 +314,41 @@ func TestExportsExpireTheirArchives(t *testing.T) {
 }
 
 // The rescue fails every running job as the server starts, then those
-// whose heartbeat is older than the timeout.
+// whose heartbeat is older than the timeout, and the queued jobs River no
+// longer holds, the rows read before River; each logged.
 func TestTheRescue(t *testing.T) {
-	m := &maintained{interrupted: []app.Interrupted{{ID: uuid.NewV7()}}}
-	r := app.NewRescue(m, fixedClock{now()}, quiet(), 5*time.Minute)
+	running, kept, dropped := uuid.NewV7(), uuid.NewV7(), uuid.NewV7()
+	rec := &recorder{}
+	var l logs
+	m := &maintained{interrupted: []app.Interrupted{{ID: running}}, queued: []uuid.UUID{kept, dropped}, rec: rec}
+	r := app.NewRescue(m, held{ids: []uuid.UUID{kept}, rec: rec}, fixedClock{now()}, l.logger(), 5*time.Minute)
 	if err := r.AtStart(context.Background()); err != nil {
 		t.Fatal(err)
+	}
+	if len(m.beatBefore) != 1 || m.beatBefore[0] != nil || len(rec.calls) != 0 {
+		t.Errorf("asked %v and %v at the start, want all the running jobs alone", m.beatBefore, rec.calls)
 	}
 	if err := r.Run(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if len(m.beatBefore) != 2 || m.beatBefore[0] != nil || !m.beatBefore[1].Equal(now().Add(-5*time.Minute)) {
+	if len(m.beatBefore) != 2 || !m.beatBefore[1].Equal(now().Add(-5*time.Minute)) {
 		t.Errorf("asked %v, want all, then before five minutes ago", m.beatBefore)
+	}
+	if !slices.Equal(m.failed, []uuid.UUID{dropped}) || !slices.Equal(rec.calls, []string{"QueuedJobs", "Held"}) {
+		t.Errorf("failed %v, calls %v; want the job River dropped, the rows read first", m.failed, rec.calls)
+	}
+	text := l.String()
+	if strings.Count(text, "job interrupted") != 2 || !strings.Contains(text, "queued job dropped by River") || !strings.Contains(text, dropped.String()) {
+		t.Errorf("logs %q", text)
+	}
+
+	m = &maintained{rec: &recorder{}}
+	if err := app.NewRescue(m, held{err: errors.New("River is gone")}, fixedClock{now()}, quiet(), time.Minute).Run(context.Background()); err != nil {
+		t.Errorf("Run() with nothing queued = %v, want River not asked", err)
+	}
+	m.queued = []uuid.UUID{kept}
+	if err := app.NewRescue(m, held{err: errors.New("River is gone")}, fixedClock{now()}, quiet(), time.Minute).Run(context.Background()); err == nil {
+		t.Error("Run() with River's read failing = nil error")
 	}
 }
 

@@ -62,7 +62,7 @@ ratelimit:
   # IPv6 的客户端按这个长度的前缀计数：一台主机通常拿到整个 /64
   ipv6_prefix_len: 64
   # 每个桶最多存 burst 个单位，每分钟补充 per_minute 个；取不到时 429 rate_limited 与 Retry-After
-  # 公开操作（注册、登录、续期、退出、实例信息），按客户端 IP
+  # 公开操作（注册、登录、续期、退出、实例信息、导出的签名下载），按客户端 IP
   anonymous: { per_minute: 600, burst: 100 }
   # 认证之前的失败闸门：带了令牌、认证却失败的请求，按客户端 IP
   auth_failure: { per_minute: 60, burst: 60 }

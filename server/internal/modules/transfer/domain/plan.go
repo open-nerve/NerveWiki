@@ -22,8 +22,9 @@ type Node struct {
 	Asset     bool
 	Name      string
 	SortOrder float64
-	// Empty tells a page without content.
-	Empty bool
+	// Bytes is a page's content's size: 0 for a page without content, and
+	// for an attachment.
+	Bytes int64
 	// Modified is when it was last written: its entry's time in the
 	// archive.
 	Modified time.Time
@@ -114,7 +115,7 @@ func NewPlan(notebook Named, root *Named, nodes []Node, linked func(id uuid.UUID
 		slices.SortFunc(kids, bySiblingOrder)
 	}
 	slices.SortFunc(tops, bySiblingOrder)
-	if err := p.place("", tops, children, linked); err != nil {
+	if err := p.place("", "", tops, children, linked); err != nil {
 		return nil, err
 	}
 	return p, nil
@@ -150,9 +151,11 @@ func (x placed) path(folder string) string {
 }
 
 // place adds the entries of siblings, in folder ("" or ending in "/"), and
-// of their subtrees. Siblings share a namespace: two of one title key
-// break the tree's rule, and the export with it.
-func (p *Plan) place(folder string, siblings []Node, children map[uuid.UUID][]Node, linked func(uuid.UUID) bool) error {
+// of their subtrees; orig is the folder as the nodes' names make it, no
+// folder renamed, where a renamed node would have been. Siblings share a
+// namespace: two of one title key break the tree's rule, and the export
+// with it.
+func (p *Plan) place(folder, orig string, siblings []Node, children map[uuid.UUID][]Node, linked func(uuid.UUID) bool) error {
 	names := map[string]bool{}
 	xs := make([]placed, len(siblings))
 	for i, s := range siblings {
@@ -162,7 +165,7 @@ func (p *Plan) place(folder string, siblings []Node, children map[uuid.UUID][]No
 		}
 		names[k] = true
 		kids := len(children[s.ID]) > 0
-		xs[i] = placed{node: s, name: s.Name, folder: !s.Asset && kids, file: s.Asset || !s.Empty || !kids || linked(s.ID)}
+		xs[i] = placed{node: s, name: s.Name, folder: !s.Asset && kids, file: s.Asset || s.Bytes > 0 || !kids || linked(s.ID)}
 	}
 	files, folders := map[string]bool{}, map[string]bool{}
 	for _, x := range xs {
@@ -179,7 +182,7 @@ func (p *Plan) place(folder string, siblings []Node, children map[uuid.UUID][]No
 		if !long && !clash {
 			continue
 		}
-		from := x.path(folder)
+		from := x.path(orig)
 		if x.file {
 			delete(files, shared.TitleKey(x.fileName()))
 		}
@@ -207,7 +210,7 @@ func (p *Plan) place(folder string, siblings []Node, children map[uuid.UUID][]No
 		if x.folder {
 			sub := folder + x.name + "/"
 			p.folders[pathKey(strings.TrimSuffix(sub, "/"))] = true
-			if err := p.place(sub, children[x.node.ID], children, linked); err != nil {
+			if err := p.place(sub, orig+x.node.Name+"/", children[x.node.ID], children, linked); err != nil {
 				return err
 			}
 		}
