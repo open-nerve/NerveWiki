@@ -4,7 +4,7 @@ import { afterEach, expect, test, vi } from "vitest";
 
 import type { TransferFailure, TransferJob } from "../../services/transfer.service";
 import { instanceJSON, json, notebookJSON, problem } from "../../test/fakes";
-import { addressOf, jobJSON, jobsServer, underWay } from "../../test/jobs-server";
+import { addressOf, cancelled, jobJSON, jobsServer, underWay } from "../../test/jobs-server";
 import { bob, guide } from "../../test/page-server";
 import { renderApp } from "../../test/render";
 import { pollInterval } from "./transfer-page";
@@ -156,15 +156,20 @@ test("each row, and each of its controls, is named by what the job does, who sta
     jobJSON(1),
     jobJSON(2, { root_id: guide.id, name: "Guide", created_by: bob, created_at: "2026-10-05T07:00:00Z" }),
     underWay(jobJSON(3), 0, 0),
+    // Not twins: the same starter at another time; the same time by another starter.
+    jobJSON(4, { created_at: "2026-10-05T09:00:00Z" }),
+    jobJSON(5, { created_by: bob }),
   ];
   renderApp(transfer, jobsServer({ jobs }).app);
 
   const [mine, bobs, twin] = (await rowsAt(0, 1, 2)) as [HTMLElement, HTMLElement, HTMLElement];
   const at = "Oct 5, 2026, 8:00 AM";
-  expect([mine, bobs, twin].map((item) => item.getAttribute("aria-label"))).toEqual([
+  expect((await items()).map((item) => item.getAttribute("aria-label"))).toEqual([
     `Export of the whole notebook, ${at} (ID 000701)`,
     "Export of the page Guide, Bob, Oct 5, 2026, 7:00 AM",
     `Export of the whole notebook, ${at} (ID 000703)`,
+    "Export of the whole notebook, Oct 5, 2026, 9:00 AM",
+    `Export of the whole notebook, Bob, ${at}`,
   ]);
   expect([
     control(mine, "link", "Download")?.getAttribute("aria-label"),
@@ -201,13 +206,51 @@ test("a queued job cancels at once, a running one says it is cancelling; Cancel 
   expect([control(queued, "button", "Cancel"), control(running, "button", "Cancel")]).toEqual([null, null]);
 });
 
+test("Cancel, pressed again while it sends, sends once: busy, and still focusable", async () => {
+  const user = userEvent.setup();
+  let answer: (() => void) | undefined;
+  const job = underWay(jobJSON(1), 0, 0);
+  const server = jobsServer({
+    jobs: [job],
+    answers: {
+      "POST /api/v0/transfer-jobs/*/cancel": () => {
+        server.asked.push("CANCEL");
+        return new Promise<Response>((resolve) => {
+          answer = () => {
+            server.jobs = [cancelled(job)];
+            resolve(json(cancelled(job)));
+          };
+        });
+      },
+    },
+  });
+  renderApp(transfer, server.app);
+  const row1 = await row("Export of the whole notebook");
+  const cancel = control(row1, "button", "Cancel") as HTMLElement;
+
+  await user.click(cancel);
+  await user.click(cancel);
+
+  expect([
+    cancel.getAttribute("aria-disabled"),
+    cancel.getAttribute("aria-busy"),
+    cancel.hasAttribute("disabled"),
+  ]).toEqual(["true", "true", false]);
+  expect(document.activeElement).toBe(cancel);
+  act(() => answer?.());
+  await waitFor(async () => expect((await rows()).map(([, state]) => state)).toEqual(["Cancelled"]));
+  expect(server.asked.filter((ask) => ask === "CANCEL")).toHaveLength(1);
+  expect(within(row1).queryByRole("alert")).toBeNull();
+});
+
 test("a cancel refused says why in the row, and the jobs are read again at once: the job ended meanwhile", async () => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
   const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
   const server = jobsServer({ jobs: [underWay(jobJSON(1), 1, 4)] });
   renderApp(transfer, server.app);
   const job = await row("Export of the whole notebook");
-  // Read again as a second goes, the next read is a second away: one before it is the refusal's.
+  // Read again as a second goes, the next read is a second away: one before it is the refusal's, while the click and
+  // the refusal take less than that second of the test's time, as they do by tens of milliseconds.
   await act(() => vi.advanceTimersByTimeAsync(1_000));
   const before = listReads(server);
 
@@ -357,19 +400,29 @@ test("Load more adds the next page's jobs; with the last read, the focus goes to
   await waitFor(async () => expect(document.activeElement).toBe((await items())[4]));
   expect(server.asked.filter((ask) => ask.startsWith("GET jobs"))).toEqual([
     "GET jobs 50",
-    "GET jobs 50 after 2",
-    "GET jobs 50 after 4",
+    `GET jobs 50 after ${jobJSON(5).id}`,
+    `GET jobs 50 after ${jobJSON(3).id}`,
   ]);
 });
 
 test("Load more, the last page adding none of its jobs, gives the focus to the list's last", async () => {
   const user = userEvent.setup();
-  const server = jobsServer({ jobs: [jobJSON(3), jobJSON(2), jobJSON(1)], pageSize: 2 });
+  let admin = true;
+  const server = jobsServer({
+    answers: {
+      // An admin no more, Ada sees her jobs alone: the page after the two held has none of them.
+      [jobsPath]: (request) =>
+        json(
+          new URL(request.url).searchParams.has("cursor") && !admin
+            ? { data: [], next_cursor: null }
+            : { data: [jobJSON(3), jobJSON(2)], next_cursor: jobJSON(2).id }
+        ),
+    },
+  });
   renderApp(transfer, server.app);
   expect(await rows()).toHaveLength(2);
 
-  // A job started elsewhere: the page after the two held now begins with the second of them.
-  server.jobs = [jobJSON(4), ...server.jobs.slice(0, 2)];
+  admin = false;
   await user.click(screen.getByRole("button", { name: "Load more" }));
 
   await waitFor(() => expect(screen.queryByRole("button", { name: "Load more" })).toBeNull());
@@ -397,8 +450,15 @@ test("Load more, the reader moving meanwhile, leaves the focus on the section's 
   renderApp(transfer, server.app);
   await rows();
 
-  await user.click(screen.getByRole("button", { name: "Load more" }));
+  const more = screen.getByRole("button", { name: "Load more" });
+  await user.click(more);
   await waitFor(() => expect(answer).toBeDefined());
+  // Busy, it stays focusable.
+  expect([more.getAttribute("aria-disabled"), more.getAttribute("aria-busy"), more.hasAttribute("disabled")]).toEqual([
+    "true",
+    "true",
+    false,
+  ]);
   fireEvent.wheel(document.body);
   act(() => answer?.());
 
@@ -534,10 +594,23 @@ test("the whole notebook exports, and again: each job goes first in the list, it
     expect((await rows())[0]).toEqual(["Export of the whole notebook", "Queued", "Started Oct 6, 2026, 8:00 AM"]);
     expect(server.asked.filter((ask) => ask === "POST export notebook")).toHaveLength(time);
     // The job ends before the next export.
-    for (const job of server.jobs.filter((held) => held.state === "queued")) {
-      job.state = "cancelled";
-    }
+    server.jobs = server.jobs.map((job) => (job.state === "queued" ? cancelled(job) : job));
   }
+});
+
+test("the jobs whose read failed are read again as an export starts: no waiting for Try again", async () => {
+  const user = userEvent.setup();
+  const server = jobsServer({ jobs: [jobJSON(1)] });
+  server.listDown = true;
+  renderApp(transfer, server.app);
+  await screen.findByRole("alert");
+  server.listDown = false;
+
+  await user.click(screen.getByRole("button", { name: "Export the whole notebook" }));
+  await user.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Export" }));
+
+  await waitFor(async () => expect((await rows()).map(([, state]) => state)).toEqual(["Queued", "Done"]));
+  expect(screen.queryByRole("alert")).toBeNull();
 });
 
 test("exported while the jobs cannot be read, the focus goes to their title", async () => {
@@ -575,18 +648,22 @@ test.each([
 test.each([
   [
     "an export of hers under way",
-    problem(409, "transfer.busy"),
+    () => problem(409, "transfer.busy"),
     "You already have an export of this notebook under way. Wait for it to end, or cancel it.",
   ],
   [
     "the queue full",
-    problem(503, "server_busy"),
+    () => problem(503, "server_busy"),
     "Too many jobs are waiting on the server. Try again in a few minutes.",
   ],
-  ["the storage full", problem(507, "storage_full"), "The server has no room for more files. Ask its administrator."],
+  [
+    "the storage full",
+    () => problem(507, "storage_full"),
+    "The server has no room for more files. Ask its administrator.",
+  ],
   [
     "the notebook gone",
-    problem(404, "notebook.not_found"),
+    () => problem(404, "notebook.not_found"),
     "This notebook does not exist, or you have no access to it.",
   ],
 ])("an export refused stays in the dialog and says why: %s", async (_, refusal, said) => {
@@ -596,7 +673,7 @@ test.each([
     answers: {
       [`POST /api/v0/notebooks/${notebookJSON.id}/exports`]: () =>
         new Promise<Response>((resolve) => {
-          refuse = () => resolve(refusal);
+          refuse = () => resolve(refusal());
         }),
     },
   });

@@ -10,7 +10,7 @@ const page = (jobs: TransferJob[], next: string | null = null): TransferJobPage 
 type Service = Pick<TransferService, "list" | "startExport" | "cancel" | "get">;
 
 /** A request of the store's service held until the test answers it. */
-type Held<A, T> = { ask: A; answer: (answered: T) => void };
+type Held<A, T> = { ask: A; answer: (answered: T) => void; fail: (error: unknown) => void };
 
 /**
  * A store of n1's jobs over a service whose every list, start and cancel
@@ -23,9 +23,11 @@ function storeOf(more: Partial<Service> = {}) {
   const cancels: Held<string, TransferJob>[] = [];
   const store = new TransferStore(
     {
-      list: (_notebook, cursor) => new Promise((resolve) => lists.push({ ask: cursor, answer: resolve })),
-      startExport: (_notebook, rootId) => new Promise((resolve) => starts.push({ ask: rootId, answer: resolve })),
-      cancel: (id) => new Promise((resolve) => cancels.push({ ask: id, answer: resolve })),
+      list: (_notebook, cursor) =>
+        new Promise((resolve, reject) => lists.push({ ask: cursor, answer: resolve, fail: reject })),
+      startExport: (_notebook, rootId) =>
+        new Promise((resolve, reject) => starts.push({ ask: rootId, answer: resolve, fail: reject })),
+      cancel: (id) => new Promise((resolve, reject) => cancels.push({ ask: id, answer: resolve, fail: reject })),
       get: () => Promise.reject(new Error("not read")),
       ...more,
     },
@@ -70,7 +72,8 @@ test("a read again reads back as many pages as are held, each job as it is now",
   expect([ids(store), store.nextCursor, store.jobs?.at(-1)?.state]).toEqual([[4, 3, 2], "c3", "expired"]);
 });
 
-test("a read again whose pages moved, a job started elsewhere, reads them from where they are now, each job once", async () => {
+// The server's pages do not overlap (its cursor is a key of time and id); a job twice is kept once all the same.
+test("a read again whose pages moved, a job started elsewhere, reads them from where they are now; a job twice, once", async () => {
   const { store, lists } = await holding();
 
   const load = store.load();
@@ -131,7 +134,7 @@ test.each([
   expect(store.active).toBe(active);
 });
 
-test("more adds the next page's jobs, each once, answers them, and nothing on the last page", async () => {
+test("more adds the next page's jobs, a job twice once, answers them, and nothing on the last page", async () => {
   const { store, lists } = storeOf();
   await answer(lists, 0, page([job(4), job(3)], "c1"), store.load());
 
@@ -218,6 +221,34 @@ test("exports start one at a time; a job's cancels go one at a time, another job
   await answer(starts, 1, underWay(job(9), 0, 0), second);
   await answer(cancels, 1, job(3), cancel3);
   await answer(cancels, 2, job(2), cancels2[1]);
+});
+
+test("a read that a later one replaced fails quietly: the later one tells", async () => {
+  const { store, lists } = storeOf();
+  const older = store.load();
+  const newer = store.load();
+
+  await answer(lists, 1, page([job(2)]), newer);
+  lists[0]?.fail(new TypeError("offline"));
+
+  await expect(older).resolves.toEqual(store.jobs);
+  expect(ids(store)).toEqual([2]);
+  // The later one's failure is the read's.
+  const failing = store.load();
+  lists[2]?.fail(new TypeError("offline"));
+  await expect(failing).rejects.toThrow("offline");
+});
+
+test("a cancel answered once a read found the job ended does not bring it back under way", async () => {
+  const { store, lists, cancels } = storeOf();
+  await answer(lists, 0, page([underWay(job(2), 1, 4)]), store.load());
+  const cancel = store.cancel(job(2).id);
+  await settled();
+
+  await answer(lists, 1, page([job(2, { state: "cancelled", download: null })]), store.load());
+  await answer(cancels, 0, { ...underWay(job(2), 2, 4), cancel_requested_at: "2026-10-05T09:11:00Z" }, cancel);
+
+  expect([store.jobs?.[0]?.state, store.active]).toEqual(["cancelled", false]);
 });
 
 test("of two reads that overlap, the later one asked wins, even answered first", async () => {

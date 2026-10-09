@@ -1,7 +1,12 @@
 import { makeAutoObservable, runInAction } from "mobx";
 
 import { oneAtATime, oneAtATimeById } from "../lib/one-at-a-time";
-import type { TransferJob, TransferJobDetail, TransferService } from "../services/transfer.service";
+import type { TransferJob, TransferJobDetail, TransferJobPage, TransferService } from "../services/transfer.service";
+
+/** under tells whether a job is under way: queued or running. */
+function under(job: TransferJob): boolean {
+  return job.state === "queued" || job.state === "running";
+}
 
 /**
  * TransferStore holds the jobs of a notebook that the account sees, the
@@ -51,15 +56,15 @@ export class TransferStore {
 
   /** active tells whether a job held is queued or running: its list is read again every second meanwhile. */
   get active(): boolean {
-    return this.jobs?.some((job) => job.state === "queued" || job.state === "running") ?? false;
+    return this.jobs?.some(under) ?? false;
   }
 
   /**
    * load reads the list from its first page, as many pages as are held
    * (at least one; one more added meanwhile is read on to), and puts it in
-   * place of the jobs held; SWR calls it. A later read wins; a write
-   * answered meanwhile drops it, and before the list is held, reads it
-   * again.
+   * place of the jobs held; SWR calls it. A later read wins: one it
+   * replaced that fails fails quietly, the later tells. A write answered
+   * meanwhile drops it, and before the list is held, reads it again.
    */
   async load(): Promise<TransferJob[]> {
     const read = ++this.reads;
@@ -70,8 +75,16 @@ export class TransferStore {
     let next: string | null;
     let pages = 0;
     do {
-      // oxlint-disable-next-line no-await-in-loop -- each page's cursor is the one before's
-      const page = await this.service.list(this.notebookId, cursor);
+      let page: TransferJobPage;
+      try {
+        // oxlint-disable-next-line no-await-in-loop -- each page's cursor is the one before's
+        page = await this.service.list(this.notebookId, cursor);
+      } catch (error) {
+        if (read !== this.reads) {
+          return this.jobs ?? [];
+        }
+        throw error;
+      }
       if (read !== this.reads) {
         return this.jobs ?? [];
       }
@@ -161,13 +174,17 @@ export class TransferStore {
     return this.service.get(id);
   }
 
-  /** cancel cancels the job id, which the job answered replaces; a read on its way is dropped. */
+  /**
+   * cancel cancels the job id, which the job answered replaces, unless a
+   * read found it ended meanwhile: the answer, older, does not bring it
+   * back under way. A read on its way is dropped.
+   */
   cancel(id: string): Promise<TransferJob> {
     return this.cancels(id, async () => {
       const job = await this.service.cancel(id);
       runInAction(() => {
         this.writes += 1;
-        this.jobs = this.jobs?.map((held) => (held.id === job.id ? job : held));
+        this.jobs = this.jobs?.map((held) => (held.id === job.id && (under(held) || !under(job)) ? job : held));
       });
       return job;
     });

@@ -133,6 +133,7 @@ const JobsSection = observer(function JobsSection({
   const reread = useCallback(() => void mutate(), [mutate]);
   const rowRef = useRowRefs(rows);
   const names = jobs === undefined ? undefined : jobNames(jobs, t, preferences.locale, me.id);
+  const moreFailed = more.failure === undefined ? undefined : errorText(more.failure, t);
 
   return (
     <section className="space-y-4">
@@ -168,9 +169,9 @@ const JobsSection = observer(function JobsSection({
       {jobs !== undefined && transfers.nextCursor !== null && (
         <div className="flex flex-wrap items-center gap-3">
           <MoreButton more={more} />
-          {more.failure !== undefined && (
+          {moreFailed !== undefined && (
             <p role="alert" className="text-sm text-destructive">
-              {errorText(more.failure, t)}
+              {moreFailed}
             </p>
           )}
         </div>

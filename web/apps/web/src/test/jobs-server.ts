@@ -57,6 +57,12 @@ export function underWay(job: TransferJob, done: number, total: number): Transfe
   };
 }
 
+/** cancelled is job, queued, as its cancel leaves it: cancelled at once, its report counting nothing. */
+export function cancelled(job: TransferJob): TransferJob {
+  const counts = { pages: 0, attachments: 0, renamed: 0, missing: 0, skipped: 0 };
+  return { ...job, state: "cancelled", finished_at: "2026-10-06T08:00:02Z", report: { failure: null, counts } };
+}
+
 type JobsServerOptions = NonNullable<Parameters<typeof pageServer>[0]> & {
   /** Plans' jobs that Ada sees, the newest first. */
   jobs?: TransferJob[];
@@ -67,9 +73,10 @@ type JobsServerOptions = NonNullable<Parameters<typeof pageServer>[0]> & {
 /**
  * jobsServer is pageServer with Plans' imports and exports as Ada sees
  * them (M7/P5 design 4.2): its jobs listed the newest first, pageSize of
- * them a page whatever limit asks (the store asks 50), the cursor the
- * index of the page's first, not the server's key of the last job before
- * it: a job started before the cursor shifts the pages; an export started
+ * them a page whatever limit asks (the store asks 50), the cursor the id
+ * of the page's last job: the next page is the jobs after it in the list
+ * as it is now, so that a job started since, which goes first, moves no
+ * page, as the server's keys of time and id have it; an export started
  * is queued, first, named after the page exported or the notebook; a
  * queued job cancelled is cancelled, a running one has its cancel asked,
  * an ended one is 409 transfer.not_cancellable; a job read is its detail,
@@ -105,11 +112,12 @@ export function jobsServer({ jobs = [], pageSize = 50, answers = {}, ...options 
       if (server.listDown) {
         return Promise.reject(new TypeError("offline"));
       }
-      const at = cursor === null ? 0 : Number(cursor);
-      const next = at + pageSize;
+      const at = cursor === null ? 0 : server.jobs.findIndex((job) => job.id === cursor) + 1;
+      const data = at === 0 && cursor !== null ? [] : server.jobs.slice(at, at + pageSize);
+      const last = data.at(-1);
       return json({
-        data: server.jobs.slice(at, next),
-        next_cursor: next < server.jobs.length ? next.toString() : null,
+        data,
+        next_cursor: last !== undefined && at + pageSize < server.jobs.length ? last.id : null,
       });
     },
     [`POST ${plans}/exports`]: async (request) => {
@@ -142,15 +150,7 @@ export function jobsServer({ jobs = [], pageSize = 50, answers = {}, ...options 
         return problem(404, "transfer.not_found");
       }
       if (job.state === "queued") {
-        const counts = { pages: 0, attachments: 0, renamed: 0, missing: 0, skipped: 0 };
-        return json(
-          replace({
-            ...job,
-            state: "cancelled",
-            finished_at: "2026-10-06T08:00:02Z",
-            report: { failure: null, counts },
-          })
-        );
+        return json(replace(cancelled(job)));
       }
       return job.state === "running"
         ? json(replace({ ...job, cancel_requested_at: job.cancel_requested_at ?? "2026-10-06T08:00:02Z" }))
