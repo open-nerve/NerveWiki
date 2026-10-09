@@ -14,11 +14,12 @@ import type { SourceEditorHandle } from "../../editor/source-editor";
 import { useT } from "../../i18n/i18n";
 import type { Notebook } from "../../services/notebook.service";
 import type { TreeNode } from "../../services/page.service";
-import { usePageTree } from "../../stores/context";
+import { useAssets, usePageTree, useStore } from "../../stores/context";
 import type { PageEditing } from "../../stores/page-editing";
 import { useWorkspace } from "../workspace/workspace-layout";
 import { ConflictPanel } from "./conflict-panel";
 import { EditLostBanner } from "./edit-lost-banner";
+import { EditorUploads } from "./editor-uploads";
 import { PageEditingBar } from "./page-editing-bar";
 import { readView } from "./page-view";
 import { UnsavedGuard } from "./unsaved-guard";
@@ -67,6 +68,10 @@ type PageEditProps = {
  * through leaves the reading view in SWR's cache to be read again. A
  * content that cannot be read offers to try again, or Done to go back.
  *
+ * Files pasted into the editor, or dropped on it, upload as the page's
+ * attachments (M7/P4 design 5.2, 5.3): the page's uploads show by the
+ * editor while it edits, with what it told.
+ *
  * An edit whose session is lost (M5/P4 design 3.8) saves no more: the
  * editor is read-only, through the registered extension the controls tell,
  * and a banner says why in place of the bar; Mod+S does nothing, and
@@ -77,6 +82,8 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
   const t = useT();
   const { mutate } = useSWRConfig();
   const pages = usePageTree(notebook);
+  const assets = useAssets(notebook);
+  const { instance } = useStore();
   const editor = useRef<SourceEditorHandle>(null);
   const conflictHeading = useRef<HTMLHeadingElement>(null);
   const banner = useRef<HTMLDivElement>(null);
@@ -87,6 +94,8 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
   // How many saves the user asked for are out: a quiet save sent meanwhile does not speak for them.
   const askedOut = useRef(0);
   const [asking, setAsking] = useState(false);
+  // What the editor last told, shown by it: the editor says it unseen.
+  const [told, setTold] = useState("");
   const mounted = useMounted();
   const { conflict } = editing;
   const { lost } = editing.session;
@@ -324,6 +333,7 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
       ) : (
         <EditLostBanner ref={banner} lost={lost} unsaved={editing.unsaved} back={backToReading} />
       )}
+      <EditorUploads notebook={notebook} page={page.id} told={told} left={() => editor.current?.focus()} />
       <ConfirmDialog
         // Stayed, the focus goes back to the banner, which Back to reading is in.
         held={{ open: asking, onOpenChange: setAsking, onClosed: (left) => void (left || banner.current?.focus()) }}
@@ -355,6 +365,12 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
             role: notebook.role,
             linkTargets: () => pages.linkTargets(),
             tags: () => pages.tags(),
+            uploadAsset: (file) => {
+              const [upload] = assets.upload(page.id, [file], t("asset.untitled"), {
+                maxBytes: instance.info?.asset_max_bytes,
+              });
+              return upload === undefined ? Promise.reject(new Error("no upload")) : assets.uploaded(upload);
+            },
           }}
           controls={{
             // Autosave's: quiet, a conflict open is its panel's, one run into moves no focus.
@@ -367,6 +383,7 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
                 () => listener()
               ),
             leave: leaveIdle,
+            tell: setTold,
           }}
           onChange={editing.changed}
         />

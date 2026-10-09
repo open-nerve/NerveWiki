@@ -1,4 +1,4 @@
-import { makeAutoObservable, observable, reaction, runInAction } from "mobx";
+import { makeAutoObservable, observable, observableRef, reaction, runInAction, when } from "mobx";
 
 import { oneAtATimeById } from "../lib/one-at-a-time";
 import { fixedName, freeName, isPageName } from "../lib/upload-name";
@@ -56,6 +56,9 @@ export class Upload {
       fixed: false,
       file: false,
       controller: false,
+      // As answered: the server's attachment, or why it failed, each whole.
+      failure: observableRef,
+      uploaded: observableRef,
     });
   }
 
@@ -212,6 +215,26 @@ export class AssetStore {
         void this.send(upload, []);
       }
       return upload;
+    });
+  }
+
+  /**
+   * uploaded settles as upload does: with its attachment once the server
+   * answers; rejecting with why it failed, or as it is cancelled (it
+   * leaves the uploads then).
+   */
+  uploaded(upload: Upload): Promise<Asset> {
+    return new Promise((resolve, reject) => {
+      when(
+        () => upload.uploaded !== undefined || upload.failure !== undefined || !this.uploads.includes(upload),
+        () => {
+          if (upload.uploaded !== undefined) {
+            resolve(upload.uploaded);
+          } else {
+            reject(upload.failure ?? new DOMException("The upload was cancelled", "AbortError"));
+          }
+        }
+      );
     });
   }
 

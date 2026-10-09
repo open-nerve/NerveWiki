@@ -256,6 +256,10 @@ export const en = {
   "editor.phrase.completions": "Completions",
   "editor.phrase.page": "$ page",
   "editor.phrase.pages": "$ pages",
+  "editor.phrase.uploadNotInserted":
+    "$ is in the page's attachments, not inserted: the text was replaced or can no longer be changed.",
+  "editor.phrase.uploadNoLink":
+    "$ is in the page's attachments, not inserted: a name without an extension cannot be embedded.",
   "notebookSettings.title": "Notebook settings",
   "notebookSettings.heading": "{name} settings",
   "notebookSettings.general": "General",

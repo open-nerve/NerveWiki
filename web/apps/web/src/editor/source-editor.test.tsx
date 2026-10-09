@@ -24,6 +24,7 @@ const context: EditorContext = {
   role: "editor",
   linkTargets: () => Promise.resolve([]),
   tags: () => Promise.resolve([]),
+  uploadAsset: () => Promise.reject(new Error("no uploads")),
 };
 
 /** The edit's session as the controls tell it, which the test loses; following counts its listeners. */
@@ -67,6 +68,7 @@ function editor(content: string, extensions: readonly EditorExtension[] = [], wr
               session: session.session,
               onSessionChange: session.onSessionChange,
               leave,
+              tell: () => undefined,
             }}
             onChange={onChange}
           />
@@ -183,7 +185,13 @@ test("an extension that loads what builds it is waited for, the editor suspended
             <SourceEditor
               content="text"
               context={context}
-              controls={{ save, saving: () => false, ...session, leave: () => Promise.resolve() }}
+              controls={{
+                save,
+                saving: () => false,
+                ...session,
+                leave: () => Promise.resolve(),
+                tell: () => undefined,
+              }}
               onChange={() => undefined}
             />
           </Suspense>
@@ -220,6 +228,7 @@ test("an extension whose load fails is left out; as the page around renders agai
               saving: () => false,
               ...session,
               leave: () => Promise.resolve(),
+              tell: () => undefined,
             }}
             onChange={() => undefined}
           />

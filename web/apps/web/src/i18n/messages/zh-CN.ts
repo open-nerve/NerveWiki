@@ -254,6 +254,8 @@ export const zhCN: Messages = {
   "editor.phrase.completions": "补全",
   "editor.phrase.page": "$ 页",
   "editor.phrase.pages": "$ 页",
+  "editor.phrase.uploadNotInserted": "$ 已在这一页的附件里，没有插入：正文已换掉，或不能再改。",
+  "editor.phrase.uploadNoLink": "$ 已在这一页的附件里，没有插入：没有扩展名的名称不能嵌入。",
   "notebookSettings.title": "笔记本设置",
   "notebookSettings.heading": "{name} 的设置",
   "notebookSettings.general": "常规",

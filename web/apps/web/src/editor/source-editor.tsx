@@ -43,8 +43,8 @@ type SourceEditorProps = {
   /** Whether the editor takes the focus as it is made: the user asked to edit. */
   focusOnOpen?: boolean;
   context: EditorContext;
-  /** The edit's controls; the editor adds its own: setReadOnly, onChange and onClose. */
-  controls: Omit<EditorControls, "setReadOnly" | "onChange" | "onClose">;
+  /** The edit's controls; the editor adds its own: setReadOnly, onChange, onClose and whenComposed. */
+  controls: Omit<EditorControls, "setReadOnly" | "onChange" | "onClose" | "whenComposed">;
   /** onChange is told the content's version after each change. */
   onChange(version: number): void;
   ref?: Ref<SourceEditorHandle>;
@@ -84,6 +84,7 @@ class EditorHost {
   private readonly changed = new Set<() => void>();
   /** What goes with the state shown: its extensions' subscriptions ended, their onClose called. */
   private closing: (() => void)[] = [];
+  private destroyed = false;
 
   constructor(
     parent: HTMLElement,
@@ -110,6 +111,14 @@ class EditorHost {
     this.runWaiting();
   }
 
+  /** tell says text unseen, as CodeMirror announces, while the editor is there, and has the edit show it. */
+  tell(text: string): void {
+    if (!this.destroyed) {
+      this.view.dispatch({ effects: EditorView.announce.of(text) });
+    }
+    this.live.current.controls.tell(text);
+  }
+
   setWording(t: Translate): void {
     this.view.dispatch({ effects: wording.reconfigure(this.wordingOf(t)) });
   }
@@ -123,6 +132,7 @@ class EditorHost {
   }
 
   destroy(): void {
+    this.destroyed = true;
     clearTimeout(this.settling);
     for (const { drop } of this.waiting.splice(0)) {
       drop();
@@ -183,6 +193,8 @@ class EditorHost {
       },
       onClose: (listener) => void this.closing.push(listener),
       leave: (reason) => this.live.current.controls.leave(reason),
+      whenComposed: (act, drop) => this.whenComposed(act, drop),
+      tell: (text) => this.tell(text),
     };
     const composed = composeExtensions(registered, context, controls);
     return EditorState.create({

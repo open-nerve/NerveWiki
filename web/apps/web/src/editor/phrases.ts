@@ -5,8 +5,9 @@ import type { MessageKey } from "../i18n/messages/en";
 
 /**
  * The phrases CodeMirror shows or announces in the editor (M4/P6 design
- * 3.5): its search panel, go to line, what the merge view says, and the
- * completion's (M6/P7 design 4, 5), by
+ * 3.5): its search panel, go to line, what the merge view says, the
+ * completion's (M6/P7 design 4, 5), and what the upload of files says
+ * (M7/P4 design 5.2), by
  * their English text, each with the app's message. $ stands for the
  * number CodeMirror puts in.
  */
@@ -34,6 +35,11 @@ export const phraseKeys = {
   Completions: "editor.phrase.completions",
   "$ page": "editor.phrase.page",
   "$ pages": "editor.phrase.pages",
+  "$ is in the page's attachments, not inserted: the text was replaced or can no longer be changed.":
+    "editor.phrase.uploadNotInserted",
+  "$ is in the page's attachments, not inserted: a name without an extension cannot be embedded.":
+    "editor.phrase.uploadNoLink",
+  "Folders are not uploaded: import a folder of notes instead.": "asset.folders",
 } as const satisfies Record<string, MessageKey>;
 
 /** editorPhrases is CodeMirror's phrases in the language of t. */

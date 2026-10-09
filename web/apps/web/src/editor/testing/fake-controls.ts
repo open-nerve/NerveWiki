@@ -23,6 +23,8 @@ export function fakeControls() {
     },
     onClose: (listener) => void closing.push(listener),
     leave: vi.fn((_reason: "idle") => Promise.resolve()),
+    whenComposed: (act: () => void) => act(),
+    tell: vi.fn((_text: string) => undefined),
   } satisfies EditorControls;
   return {
     controls,
