@@ -92,6 +92,7 @@ test("Done as a file pasted uploads waits for its embed, the bar saying so; then
   expect(screen.getByRole("textbox", { name: "Page content" })).toBeTruthy();
   expect(puts(server)).toEqual([]);
   expect(screen.getByRole("button", { name: "Done" }).getAttribute("aria-busy")).toBe("true");
+  expect(screen.getByRole("button", { name: "Done" }).getAttribute("aria-disabled")).toBe("true");
   act(() => server.release());
   expect(await screen.findByRole("button", { name: "Edit" })).toBeTruthy();
   expect(puts(server)).toEqual([expect.stringMatching(/^PUT Guide ".*!\[\[chart\.png\]\]" on 1 in session-1$/)]);
@@ -170,7 +171,72 @@ test("Done with a conflict open waits for no upload: the focus goes to the confl
 
   await user.click(screen.getByRole("button", { name: "Done" }));
   await waitFor(() => expect(document.activeElement).toBe(within(region).getByRole("heading")));
-  expect(screen.queryByText("Leaving once the uploads finish…")).toBeNull();
+  await act(async () => {});
+  expect(screen.getByRole("button", { name: "Done" }).getAttribute("aria-busy")).toBeNull();
+});
+
+test("a conflict met as Done waits keeps the edit, the conflict's panel deciding: mine kept, the uploads in, it is not left", async () => {
+  const server = pageServer({ nodes });
+  server.uploadsHeld = true;
+  const { user, view, content, type } = await editing(server);
+  paste(view, [new File(["png"], "chart.png", { type: "image/png" })]);
+  await waitFor(() => expect(uploadsBy(content)).toBeDefined());
+  await user.click(screen.getByRole("button", { name: "Done" }));
+  await screen.findByText("Leaving once the uploads finish…");
+
+  server.contents.set(guide.id, { content: "Guide\ntheirs\n", revision: 2 });
+  type(" mine");
+  await user.click(screen.getByRole("button", { name: "Save" }));
+  const region = await screen.findByRole("region", { name: "This page changed while you edited it" });
+  await user.click(within(region).getByRole("button", { name: "Keep mine" }));
+  await waitFor(() =>
+    expect(screen.queryByRole("region", { name: "This page changed while you edited it" })).toBeNull()
+  );
+  act(() => server.release());
+  await waitFor(() => expect(view.state.doc.toString()).toContain("![[chart.png]]"));
+  await act(() => new Promise((resolve) => void setTimeout(resolve, 100)));
+  expect(screen.getByRole("textbox", { name: "Page content" })).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
+});
+
+test("a conflict the leave's save runs into once the uploads are in leaves the focus where the user went meanwhile", async () => {
+  const server = pageServer({ nodes });
+  server.uploadsHeld = true;
+  const { user, view, content, type } = await editing(server);
+  type(" one");
+  paste(view, [new File(["png"], "chart.png", { type: "image/png" })]);
+  await waitFor(() => expect(uploadsBy(content)).toBeDefined());
+  await user.click(screen.getByRole("button", { name: "Done" }));
+  await screen.findByText("Leaving once the uploads finish…");
+
+  server.contents.set(guide.id, { content: "Guide\ntheirs\n", revision: 2 });
+  const heading = screen.getByRole("heading", { level: 1, name: "Guide" });
+  act(() => heading.focus());
+  act(() => server.release());
+  await screen.findByRole("region", { name: "This page changed while you edited it" });
+  await act(() => new Promise((resolve) => void setTimeout(resolve, 100)));
+  expect(document.activeElement).toBe(heading);
+  expect(screen.getByRole("textbox", { name: "Page content" })).toBeTruthy();
+});
+
+test("a save the user asks for as Done waits that fails says so", async () => {
+  const server = pageServer({ nodes });
+  server.uploadsHeld = true;
+  const { user, view, content, type } = await editing(server);
+  paste(view, [new File(["png"], "chart.png", { type: "image/png" })]);
+  await waitFor(() => expect(uploadsBy(content)).toBeDefined());
+  await user.click(screen.getByRole("button", { name: "Done" }));
+  const status = await screen.findByText("Leaving once the uploads finish…");
+
+  server.writesDown = true;
+  type(" one");
+  await user.click(screen.getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(status.className).toContain("text-destructive"));
+  expect(status.textContent).not.toBe("Leaving once the uploads finish…");
+  server.writesDown = false;
+  act(() => server.release());
+  expect(await screen.findByRole("button", { name: "Edit" })).toBeTruthy();
+  expect(puts(server).at(-1)).toMatch(/one.*!\[\[chart\.png\]\]|!\[\[chart\.png\]\].*one/);
 });
 
 test("as Done waits, the bar says so over a save that failed; the leave that fails then leaves the focus where the user went", async () => {
@@ -295,4 +361,74 @@ test("an upload by the editor cancelled from its row inserts nothing; the focus 
   act(() => server.release());
   await act(async () => {});
   expect(view.state.doc.toString()).toBe(before);
+});
+
+test("Done waits again for an upload begun as the composition it waited for ends", async () => {
+  const server = pageServer({ nodes });
+  server.uploadsHeld = true;
+  const { user, view, content } = await editing(server);
+  paste(view, [new File(["png"], "chart.png", { type: "image/png" })]);
+  await waitFor(() => expect(uploadsBy(content)).toBeDefined());
+  await user.click(screen.getByRole("button", { name: "Done" }));
+  await screen.findByText("Leaving once the uploads finish…");
+
+  const composing = vi.spyOn(EditorView.prototype, "composing", "get").mockReturnValue(true);
+  onTestFinished(() => composing.mockRestore());
+  await user.click(screen.getByRole("button", { name: "Cancel the upload of chart.png" }));
+  await waitFor(() => expect(uploadsBy(content)).toBeUndefined());
+  // Pasted as the composition ends: its end waits a moment for its text.
+  composing.mockReturnValue(false);
+  act(() => void view.contentDOM.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true })));
+  paste(view, [new File(["png"], "plan.png", { type: "image/png" })]);
+  await act(() => new Promise((resolve) => void setTimeout(resolve, 100)));
+  expect(screen.getByRole("textbox", { name: "Page content" })).toBeTruthy();
+  expect(puts(server)).toEqual([]);
+
+  act(() => server.release());
+  expect(await screen.findByRole("button", { name: "Edit" })).toBeTruthy();
+  expect(puts(server)).toEqual([expect.stringMatching(/^PUT Guide ".*!\[\[plan\.png\]\].*" on 1 in session-1$/)]);
+});
+
+test("what the editor told before Done is not said on the reading view", async () => {
+  const server = pageServer({ nodes });
+  const { user, view } = await editing(server);
+  paste(view, [new File(["text"], "NOTICE")]);
+  await screen.findAllByText("NOTICE uploaded, not inserted: a name without an extension cannot be embedded.");
+  await user.click(screen.getByRole("button", { name: "Done" }));
+  expect((await screen.findByRole("button", { name: "Edit" })).getAttribute("aria-describedby")).toBeNull();
+});
+
+test("what the editor told as a leave that failed waited is not said once a later Done leaves", async () => {
+  const server = pageServer({ nodes });
+  server.uploadsHeld = true;
+  server.writesDown = true;
+  const { user, view, content } = await editing(server);
+  paste(view, [new File(["text"], "LICENSE"), new File(["png"], "chart.png", { type: "image/png" })]);
+  await waitFor(() => expect(uploadsBy(content)).toBeDefined());
+  await user.click(screen.getByRole("button", { name: "Done" }));
+  await screen.findByText("Leaving once the uploads finish…");
+  act(() => server.release());
+  await waitFor(() => expect(puts(server)).toHaveLength(1));
+  await waitFor(() => expect(screen.queryByText("Leaving once the uploads finish…")).toBeNull());
+  expect(screen.getByRole("textbox", { name: "Page content" })).toBeTruthy();
+
+  server.writesDown = false;
+  await user.click(screen.getByRole("button", { name: "Done" }));
+  expect((await screen.findByRole("button", { name: "Edit" })).getAttribute("aria-describedby")).toBeNull();
+});
+
+test("as Done waits, the bar says so over a save asked for meanwhile", async () => {
+  const server = pageServer({
+    nodes,
+    answers: { "PUT /api/v0/pages/*/content": () => new Promise<Response>(() => undefined) },
+  });
+  server.uploadsHeld = true;
+  const { user, view, content, type } = await editing(server);
+  paste(view, [new File(["png"], "chart.png", { type: "image/png" })]);
+  await waitFor(() => expect(uploadsBy(content)).toBeDefined());
+  await user.click(screen.getByRole("button", { name: "Done" }));
+  const status = await screen.findByText("Leaving once the uploads finish…");
+  type(" one");
+  await user.click(screen.getByRole("button", { name: "Save" }));
+  expect(status.textContent).toBe("Leaving once the uploads finish…");
 });

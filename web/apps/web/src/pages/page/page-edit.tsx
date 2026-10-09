@@ -76,9 +76,10 @@ type PageEditProps = {
  * with what it told. The edit is left once their embeds are in, and a
  * composition begun meanwhile has ended, the bar saying it waits; what
  * the editor told meanwhile goes with it to the reading view. An edit
- * lost meanwhile stays, its banner deciding; one with a conflict open
- * waits for nothing, the conflict's panel deciding. The idle exit, which
- * waits for no upload, tries again later.
+ * lost meanwhile, or that runs into a conflict, stays, its banner or the
+ * conflict's panel deciding; one with a conflict open waits for nothing.
+ * Its save once they are in moves no focus if the user went elsewhere
+ * meanwhile. The idle exit, which waits for no upload, tries again later.
  *
  * An edit whose session is lost (M5/P4 design 3.8) saves no more: the
  * editor is read-only, through the registered extension the controls tell,
@@ -104,8 +105,9 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
   const [asking, setAsking] = useState(false);
   // What the editor last told, shown by it: the editor says it unseen.
   const [told, setTold] = useState("");
-  // Whether the edit is left once the editor's uploads are in.
-  const [waiting, setWaiting] = useState(false);
+  // Whether the edit is left once the editor's uploads are in: with the failure shown as it began to wait, which the
+  // leave's own save tries again.
+  const [waiting, setWaiting] = useState<{ failure: unknown } | undefined>(undefined);
   // What the editor told as the edit waited to be left; undefined while it does not wait.
   const toldWaiting = useRef<string | undefined>(undefined);
   const mounted = useMounted();
@@ -203,12 +205,13 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
   /**
    * uploadsIn waits for the editor's work going, the embeds of its uploads,
    * then for a composition begun meanwhile to end, again while work began
-   * meanwhile: whether all of it went in before the edit's session was lost.
+   * meanwhile: whether all of it went in before the edit's session was lost
+   * or a conflict came, which the edit stays for.
    */
   function uploadsIn(current: SourceEditorHandle): Promise<boolean> {
     return new Promise((resolve) => {
       const stop = when(
-        () => editing.session.lost !== undefined,
+        () => editing.session.lost !== undefined || editing.conflict !== undefined,
         () => resolve(false)
       );
       void (async () => {
@@ -236,17 +239,18 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
       return;
     }
     leaving.current = true;
-    // Where the focus was: a leave that fails gives it back only from there, not from where the user went meanwhile.
+    // Where the focus was: the leave moves it only from there, not from where the user went meanwhile.
     const from = document.activeElement;
+    const stayed = () => document.activeElement === from || document.activeElement === document.body;
     // The embeds of the files pasted or dropped go in first, to be saved with the rest.
     if (current?.working() === true) {
       toldWaiting.current = "";
-      setWaiting(true);
+      setWaiting({ failure: editing.failure });
       const inserted = await uploadsIn(current);
       if (!mounted()) {
         return;
       }
-      setWaiting(false);
+      setWaiting(undefined);
       if (!inserted) {
         leaving.current = false;
         toldWaiting.current = undefined;
@@ -255,7 +259,7 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
     }
     // What is typed while the edit is left would not be saved: the content is held as it is.
     current?.hold(true);
-    const saved = !editing.unsaved || (await save(left.idle));
+    const saved = !editing.unsaved || (await save(left.idle || !stayed()));
     if (!mounted()) {
       return;
     }
@@ -264,8 +268,7 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
       toldWaiting.current = undefined;
       current?.hold(false);
       // Left by the user, the focus goes back where the edit is; the idle exit moves none.
-      const focused = document.activeElement;
-      if (!left.idle && editing.conflict === undefined && (focused === from || focused === document.body)) {
+      if (!left.idle && editing.conflict === undefined && stayed()) {
         back();
       }
       return;

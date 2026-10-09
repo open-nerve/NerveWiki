@@ -468,6 +468,25 @@ test("a drop of folders only uploads nothing; one of folders and pages' files is
   expect(going).toEqual([]);
 });
 
+test("a drop of pages' files only, no folder, says nothing", async () => {
+  const { view, controls, text } = editing("x");
+  drag(view, "drop", transferOf(dropped([new File(["# a"], "a.md")])));
+  await vi.waitFor(() => expect(text()).toContain("# a"));
+  expect(controls.tell).not.toHaveBeenCalled();
+});
+
+test("what a drop with folders says of files not inserted keeps its folders' line", async () => {
+  const { view, going, controls } = editing("");
+  drag(view, "drop", dropped([new File(["a"], "a.png")], ["notes"]));
+  view.dispatch({ effects: readOnly.reconfigure(readOnlyAs(true)) });
+  going[0]?.answer(attachment("a.png"));
+  await settle();
+  expect(told(controls).at(-1)).toBe(
+    "Folders are not uploaded: import a folder of notes instead.\n" +
+      "a.png uploaded, not inserted: the text was replaced or can no longer be changed."
+  );
+});
+
 test("an embed inserted away from an open completion leaves it open", async () => {
   const { view, going, text } = editing("top\n\nSee [[Pl", {
     anchor: 0,

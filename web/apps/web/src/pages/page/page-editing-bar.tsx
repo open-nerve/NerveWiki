@@ -7,8 +7,12 @@ import type { PageEditing } from "../../stores/page-editing";
 
 type PageEditingBarProps = {
   editing: PageEditing;
-  /** Whether the edit is left once the editor's uploads are in (M7/P4 design 5.2). */
-  waiting?: boolean;
+  /**
+   * Whether the edit is left once the editor's uploads are in (M7/P4 design
+   * 5.2): with the failure shown as it began to wait, which the leave's own
+   * save tries again.
+   */
+  waiting?: { failure: unknown };
   save(): void;
   leave(): void;
 };
@@ -21,16 +25,11 @@ type PageEditingBarProps = {
  * moves no focus: M5/P5 design 3.6); Save and Done. A content refused says which of
  * its rules it breaks.
  */
-export const PageEditingBar = observer(function PageEditingBar({
-  editing,
-  waiting = false,
-  save,
-  leave,
-}: PageEditingBarProps) {
+export const PageEditingBar = observer(function PageEditingBar({ editing, waiting, save, leave }: PageEditingBarProps) {
   const t = useT();
-  // Waiting to leave, a failure is tried again by the leave's own save.
+  // Waiting to leave, the failure shown before is tried again by the leave's own save; one after it shows.
   const failed =
-    editing.failure === undefined || waiting
+    editing.failure === undefined || editing.failure === waiting?.failure
       ? undefined
       : (fieldErrors(editing.failure, t).content ??
         errorText(editing.failure, t, { bad_request: "editor.tooSlow", forbidden: "editor.lostAccess" }));
@@ -39,7 +38,7 @@ export const PageEditingBar = observer(function PageEditingBar({
       ? failed
       : editing.conflict !== undefined
         ? t("editor.conflicted")
-        : waiting
+        : waiting !== undefined
           ? t("editor.waiting")
           : editing.busy
             ? t("editor.busy")
@@ -59,7 +58,11 @@ export const PageEditingBar = observer(function PageEditingBar({
         <Button variant="outline" onClick={save}>
           {t("page.save")}
         </Button>
-        <Button aria-busy={waiting || undefined} aria-disabled={waiting || undefined} onClick={leave}>
+        <Button
+          aria-busy={waiting !== undefined || undefined}
+          aria-disabled={waiting !== undefined || undefined}
+          onClick={leave}
+        >
           {t("editor.done")}
         </Button>
       </div>
