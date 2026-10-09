@@ -136,6 +136,9 @@ type Properties struct {
 	Valid      bool
 	Properties []Property
 	Links      []PropertyLink
+	// AssetsExpire is when the earliest of the links' addresses expires,
+	// zero for none (M7/P4 design 4.3).
+	AssetsExpire time.Time
 }
 
 // Property is a property of a page: its key and its value's JSON.
@@ -147,22 +150,34 @@ type Property struct {
 // PropertyLink is a property link of a page: its property's path and the
 // page or the attachment it resolves to, the zero id for none, Asset
 // telling an attachment (M7/P3 design 4.6), and an attachment's content's
-// address, signed, "" for none (M7/P3 design 5.6).
+// address, signed, "" for none (M7/P3 design 5.6), and whether the browser
+// shows the content there (M7/P4 design 4.3).
 type PropertyLink struct {
 	Key    string
 	NodeID uuid.UUID
 	Asset  bool
 	URL    string
+	Inline bool
 }
 
-// AttachmentURLs is the addresses of the attachments' contents: the asset
-// module's, which bootstrap wires (M7/P3 design 5.6).
-type AttachmentURLs interface {
-	// URLs is the inline address, signed, of each of ids that is an
+// AttachmentAddress is an attachment's content's address, signed, whether
+// the browser shows the content there or downloads it, and when the
+// address expires.
+type AttachmentAddress struct {
+	URL     string
+	Inline  bool
+	Expires time.Time
+}
+
+// AttachmentAddresses is the addresses of the attachments' contents: the
+// asset module's, which bootstrap wires (M7/P3 design 5.6; M7/P4 design
+// 4.3).
+type AttachmentAddresses interface {
+	// Addresses is the address, signed, of each of ids that is an
 	// attachment of notebookID not deleted, by id; one it is not is left
 	// out. It decides no access: ids are a page's links', for a reader of
 	// the page.
-	URLs(ctx context.Context, notebookID uuid.UUID, ids []uuid.UUID) (map[uuid.UUID]string, error)
+	Addresses(ctx context.Context, notebookID uuid.UUID, ids []uuid.UUID) (map[uuid.UUID]AttachmentAddress, error)
 }
 
 // Tag is a tag of a notebook as most of its pages write it, and how many

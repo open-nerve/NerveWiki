@@ -21,19 +21,13 @@ import type { Notebook } from "../../services/notebook.service";
 import type { AssetList, AssetStore } from "../../stores/asset.store";
 import { useAssets, useStore } from "../../stores/context";
 import { MoveAssetDialog, RenameAssetDialog } from "./asset-dialogs";
+import { rereadIn } from "./assets-expiry";
 import { AttachmentRow, type AssetAction } from "./attachment-row";
 import { watchReader } from "./readers-input";
 import { UploadRows } from "./upload-rows";
 
 /** The dialogs of the section's rows. */
 type Dialog = Exclude<AssetAction, "copy">;
-
-/** How long before the first of its addresses expires a list is read again: they are signed anew. */
-const expiryMargin = 60_000;
-/** How soon at the earliest: a clock far from the server's would read the list again and again. */
-const expiryFloor = 30_000;
-/** How long an address is good for at the least, from as it is read: the server signs it for an hour or more. */
-const signedFor = 60 * 60_000;
 
 /**
  * AttachmentsSection is the attachments under a page, in its middle column
@@ -393,10 +387,8 @@ function saying(text: string) {
 }
 
 /**
- * useExpiry reads the list again expiryMargin before the first of its
- * addresses expires, each time it is read: expiryFloor at the soonest, and
- * at the latest before an hour from the read is over, which an address is
- * good for whatever the clocks say.
+ * useExpiry reads the list again before the first of its addresses expires, each time it is read (rereadIn); a hidden
+ * tab's as it is shown, which SWR reads it again on.
  */
 function useExpiry(list: AssetList | undefined, reread: () => void): void {
   const latest = useRef(reread);
@@ -414,8 +406,14 @@ function useExpiry(list: AssetList | undefined, reread: () => void): void {
     if (!Number.isFinite(earliest)) {
       return undefined;
     }
-    const wait = Math.min(Math.max(earliest - Date.now() - expiryMargin, expiryFloor), signedFor - expiryMargin);
-    const timer = setTimeout(() => latest.current(), wait);
+    const timer = setTimeout(
+      () => {
+        if (!document.hidden) {
+          latest.current();
+        }
+      },
+      rereadIn(earliest, Date.now())
+    );
     return () => clearTimeout(timer);
   }, [list]);
 }

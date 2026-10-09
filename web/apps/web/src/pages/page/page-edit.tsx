@@ -20,6 +20,7 @@ import { useWorkspace } from "../workspace/workspace-layout";
 import { ConflictPanel } from "./conflict-panel";
 import { EditLostBanner } from "./edit-lost-banner";
 import { PageEditingBar } from "./page-editing-bar";
+import { readView } from "./page-view";
 import { UnsavedGuard } from "./unsaved-guard";
 
 // The editor's chunk: loaded when a page is first edited (M4/P6 design 3.2).
@@ -207,7 +208,7 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
     await mutate(["edit-lock", page.id], undefined, { revalidate: false });
     const reason = editing.session.lost?.reason;
     if (reason !== "gone" && reason !== "no_access" && pages.byId(page.id) !== undefined) {
-      await mutate(["page-view", notebook.id, page.id], pages.view(page.id), { revalidate: false }).catch(
+      await mutate(["page-view", notebook.id, page.id], readView(pages, page.id), { revalidate: false }).catch(
         () => undefined
       );
     }

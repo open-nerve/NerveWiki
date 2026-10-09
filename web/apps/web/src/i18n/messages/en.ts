@@ -187,6 +187,7 @@ export const en = {
   "asset.nameTaken": "Another page or attachment here has this name, and the names tried after it too.",
   "asset.actions": "Actions for {name}",
   "asset.newTab": "(opens in a new tab)",
+  "asset.sizeAfter": " ({size})",
   "asset.open": "Open",
   "asset.download": "Download",
   "asset.copyEmbed": "Copy embed",

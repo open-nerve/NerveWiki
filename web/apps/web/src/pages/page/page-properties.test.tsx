@@ -23,6 +23,7 @@ test("the properties show each key and its value; a property link its text, lead
   const server = pageServer();
   server.properties.set(install.id, {
     valid: true,
+    assets_expire_at: null,
     properties: [
       { key: "status", value: "draft" },
       { key: "count", value: 3 },
@@ -39,13 +40,13 @@ test("the properties show each key and its value; a property link its text, lead
       { key: "titled", value: '[Linux](Linux "a](b")' },
     ],
     links: [
-      { key: "up", node_id: guide.id, kind: "page", url: null },
-      { key: "related.0", node_id: notes.id, kind: "page", url: null },
-      { key: "related.1", node_id: linux.id, kind: "page", url: null },
-      { key: "related.2", node_id: null, kind: null, url: null },
-      { key: "related.3", node_id: guide.id, kind: "page", url: null },
-      { key: "escaped", node_id: guide.id, kind: "page", url: null },
-      { key: "titled", node_id: linux.id, kind: "page", url: null },
+      { key: "up", node_id: guide.id, kind: "page", url: null, inline: null },
+      { key: "related.0", node_id: notes.id, kind: "page", url: null, inline: null },
+      { key: "related.1", node_id: linux.id, kind: "page", url: null, inline: null },
+      { key: "related.2", node_id: null, kind: null, url: null, inline: null },
+      { key: "related.3", node_id: guide.id, kind: "page", url: null, inline: null },
+      { key: "escaped", node_id: guide.id, kind: "page", url: null, inline: null },
+      { key: "titled", node_id: linux.id, kind: "page", url: null, inline: null },
     ],
   });
   const { router } = renderApp(pagePath(install.id), server.app);
@@ -79,37 +80,48 @@ test("the properties show each key and its value; a property link its text, lead
   await waitFor(() => expect(document.activeElement).toBe(heading));
 });
 
-test("a property link to an attachment leads to its content, in a tab of its own; one without an address shows its text alone", async () => {
+test("a property link to an attachment the browser shows opens it in a tab of its own, as it says unseen; any other downloads it; one without an address shows its text alone", async () => {
   const server = pageServer();
   const address = "/api/v0/assets/x/content?b=y&e=1&s=z";
+  const archive = "/api/v0/assets/z/content?b=y&e=1&s=z";
   server.properties.set(install.id, {
     valid: true,
+    assets_expire_at: null,
     properties: [
       { key: "cover", value: "[[x.png|the cover]]" },
+      { key: "file", value: "[[a.zip]]" },
       { key: "gone", value: "[t](y.png)" },
       { key: "up", value: "[[Guide]]" },
     ],
     links: [
-      { key: "cover", node_id: notes.id, kind: "asset", url: address },
-      { key: "gone", node_id: linux.id, kind: "asset", url: null },
-      { key: "up", node_id: guide.id, kind: "page", url: null },
+      { key: "cover", node_id: notes.id, kind: "asset", url: address, inline: true },
+      { key: "file", node_id: install.id, kind: "asset", url: archive, inline: false },
+      { key: "gone", node_id: linux.id, kind: "asset", url: null, inline: null },
+      { key: "up", node_id: guide.id, kind: "page", url: null, inline: null },
     ],
   });
   const { router } = renderApp(pagePath(install.id), server.app);
 
   await within(await shownPanel()).findByRole("link", { name: "Guide" });
   expect(properties()).toEqual([
-    ["cover", "the cover"],
+    ["cover", "the cover (opens in a new tab)"],
+    ["file", "a.zip"],
     ["gone", "t"],
     ["up", "Guide"],
   ]);
   const links = within(section("Properties")).getAllByRole("link");
   expect(links.map((link) => [link.textContent, link.getAttribute("href")])).toEqual([
-    ["the cover", address],
+    ["the cover (opens in a new tab)", address],
+    ["a.zip", archive],
     ["Guide", pagePath(guide.id)],
   ]);
+  expect(within(section("Properties")).getByRole("link", { name: "the cover (opens in a new tab)" })).toBe(links[0]);
+  expect(links[0]?.querySelector(".sr-only")?.textContent).toBe("(opens in a new tab)");
   expect(links[0]?.getAttribute("target")).toBe("_blank");
   expect(links[0]?.getAttribute("rel")).toBe("noopener noreferrer");
+  expect(links[0]?.hasAttribute("download")).toBe(false);
+  expect(links[1]?.getAttribute("download")).toBe("");
+  expect(links[1]?.hasAttribute("target")).toBe(false);
   const text = within(section("Properties")).getByText("t");
   expect(text.closest("a")).toBeNull();
   expect(text.className).not.toContain("decoration-dashed");
@@ -124,7 +136,7 @@ test("properties that could not be read say why, and are read again on Try again
       "GET /api/v0/pages/*/properties": () =>
         fail
           ? problem(500, "internal")
-          : json({ valid: true, properties: [{ key: "status", value: "draft" }], links: [] }),
+          : json({ valid: true, properties: [{ key: "status", value: "draft" }], links: [], assets_expire_at: null }),
     },
   });
   renderApp(pagePath(install.id), server.app);
@@ -141,17 +153,23 @@ test("properties read again show what was written meanwhile, elsewhere", async (
   vi.useFakeTimers({ shouldAdvanceTime: true });
   onTestFinished(() => void vi.useRealTimers());
   const server = pageServer();
-  server.properties.set(install.id, { valid: true, properties: [{ key: "status", value: "draft" }], links: [] });
+  server.properties.set(install.id, {
+    valid: true,
+    properties: [{ key: "status", value: "draft" }],
+    links: [],
+    assets_expire_at: null,
+  });
   renderApp(pagePath(install.id), server.app);
   await within(await shownPanel()).findByText("draft");
 
   server.properties.set(install.id, {
     valid: true,
+    assets_expire_at: null,
     properties: [
       { key: "status", value: "done" },
       { key: "up", value: "[[Guide]]" },
     ],
-    links: [{ key: "up", node_id: guide.id, kind: "page", url: null }],
+    links: [{ key: "up", node_id: guide.id, kind: "page", url: null, inline: null }],
   });
   await readAgain();
   await waitFor(() =>
@@ -167,7 +185,7 @@ test("properties read again show what was written meanwhile, elsewhere", async (
 
 test("a frontmatter that is not valid says so, as one without properties does", async () => {
   const server = pageServer();
-  server.properties.set(install.id, { valid: false, properties: [], links: [] });
+  server.properties.set(install.id, { valid: false, properties: [], links: [], assets_expire_at: null });
   renderApp(pagePath(install.id), server.app);
   expect(
     await within(await shownPanel()).findByText("The page's frontmatter is not valid: it has no properties.")
@@ -180,7 +198,12 @@ test("a frontmatter that is not valid says so, as one without properties does", 
 test("while the page is edited its backlinks and properties are shown", async () => {
   const server = pageServer({ role: "editor" });
   server.backlinks.set(install.id, [{ data: [{ id: guide.id, count: 1, contexts: [] }], next_cursor: null }]);
-  server.properties.set(install.id, { valid: true, properties: [{ key: "status", value: "draft" }], links: [] });
+  server.properties.set(install.id, {
+    valid: true,
+    properties: [{ key: "status", value: "draft" }],
+    links: [],
+    assets_expire_at: null,
+  });
   renderApp(pagePath(install.id), server.app);
   await within(await shownPanel()).findByRole("link", { name: "Guide" });
 
@@ -194,6 +217,7 @@ test("property links at a path two values share are theirs in turn, in the order
   const server = pageServer();
   server.properties.set(install.id, {
     valid: true,
+    assets_expire_at: null,
     properties: [
       { key: "rel.0", value: "[[Guide]]" },
       { key: "rel", value: ["[[Notes]]", "[draft]"] },
@@ -204,11 +228,11 @@ test("property links at a path two values share are theirs in turn, in the order
       { key: "x", value: ["[[Guide]]"] },
     ],
     links: [
-      { key: "rel.0", node_id: guide.id, kind: "page", url: null },
-      { key: "rel.0", node_id: notes.id, kind: "page", url: null },
-      { key: "a.b", node_id: null, kind: null, url: null },
-      { key: "a.b", node_id: linux.id, kind: "page", url: null },
-      { key: "x.0", node_id: guide.id, kind: "page", url: null },
+      { key: "rel.0", node_id: guide.id, kind: "page", url: null, inline: null },
+      { key: "rel.0", node_id: notes.id, kind: "page", url: null, inline: null },
+      { key: "a.b", node_id: null, kind: null, url: null, inline: null },
+      { key: "a.b", node_id: linux.id, kind: "page", url: null, inline: null },
+      { key: "x.0", node_id: guide.id, kind: "page", url: null, inline: null },
     ],
   });
   renderApp(pagePath(install.id), server.app);
@@ -235,6 +259,7 @@ test("a value that is no link takes none of its path's: an anchor alone, a brack
   const server = pageServer();
   server.properties.set(install.id, {
     valid: true,
+    assets_expire_at: null,
     properties: [
       { key: "a.0", value: "[[#Top]]" },
       { key: "a", value: ["[[Guide]]"] },
@@ -248,12 +273,12 @@ test("a value that is no link takes none of its path's: an anchor alone, a brack
       { key: "e.0.0", value: "[[Linux]]" },
     ],
     links: [
-      { key: "a.0", node_id: guide.id, kind: "page", url: null },
-      { key: "b.0", node_id: notes.id, kind: "page", url: null },
-      { key: "c.0", node_id: linux.id, kind: "page", url: null },
-      { key: "d.0", node_id: notes.id, kind: "page", url: null },
-      { key: "e.0.0", node_id: guide.id, kind: "page", url: null },
-      { key: "e.0.0", node_id: linux.id, kind: "page", url: null },
+      { key: "a.0", node_id: guide.id, kind: "page", url: null, inline: null },
+      { key: "b.0", node_id: notes.id, kind: "page", url: null, inline: null },
+      { key: "c.0", node_id: linux.id, kind: "page", url: null, inline: null },
+      { key: "d.0", node_id: notes.id, kind: "page", url: null, inline: null },
+      { key: "e.0.0", node_id: guide.id, kind: "page", url: null, inline: null },
+      { key: "e.0.0", node_id: linux.id, kind: "page", url: null, inline: null },
     ],
   });
   renderApp(pagePath(install.id), server.app);
@@ -301,6 +326,7 @@ test("which values take their path's link is the server's shape of one: a target
   // Each value at a path a list's first item shares: a value that is no link leaves the item its link.
   server.properties.set(install.id, {
     valid: true,
+    assets_expire_at: null,
     properties: [
       ...notLinks.flatMap((value, at) => [
         { key: `n${at.toString()}.0`, value },
@@ -312,10 +338,16 @@ test("which values take their path's link is the server's shape of one: a target
       ]),
     ],
     links: [
-      ...notLinks.map((_, at) => ({ key: `n${at.toString()}.0`, node_id: guide.id, kind: "page" as const, url: null })),
+      ...notLinks.map((_, at) => ({
+        key: `n${at.toString()}.0`,
+        node_id: guide.id,
+        kind: "page" as const,
+        url: null,
+        inline: null,
+      })),
       ...links.flatMap((_, at) => [
-        { key: `l${at.toString()}.0`, node_id: linux.id, kind: "page" as const, url: null },
-        { key: `l${at.toString()}.0`, node_id: notes.id, kind: "page" as const, url: null },
+        { key: `l${at.toString()}.0`, node_id: linux.id, kind: "page" as const, url: null, inline: null },
+        { key: `l${at.toString()}.0`, node_id: notes.id, kind: "page" as const, url: null, inline: null },
       ]),
     ],
   });
@@ -347,6 +379,7 @@ test("a value at a path of its own has the path's link, whatever its shape: the 
   const server = pageServer();
   server.properties.set(install.id, {
     valid: true,
+    assets_expire_at: null,
     properties: [
       { key: "spec", value: "[Spec [v2]](Guide)" },
       { key: "code", value: "[`a[0]`](Notes)" },
@@ -354,9 +387,9 @@ test("a value at a path of its own has the path's link, whatever its shape: the 
       { key: "plain", value: "[WIP]" },
     ],
     links: [
-      { key: "spec", node_id: guide.id, kind: "page", url: null },
-      { key: "code", node_id: notes.id, kind: "page", url: null },
-      { key: "titled", node_id: linux.id, kind: "page", url: null },
+      { key: "spec", node_id: guide.id, kind: "page", url: null, inline: null },
+      { key: "code", node_id: notes.id, kind: "page", url: null, inline: null },
+      { key: "titled", node_id: linux.id, kind: "page", url: null, inline: null },
     ],
   });
   renderApp(pagePath(install.id), server.app);
@@ -378,6 +411,7 @@ test("a property costs a time as long as it: a long value that is no link at a p
   const server = pageServer();
   server.properties.set(install.id, {
     valid: true,
+    assets_expire_at: null,
     properties: [
       { key: "a.0", value: `[a](${spaces}x y)` },
       { key: "a", value: ["[[Guide]]"] },
@@ -385,8 +419,8 @@ test("a property costs a time as long as it: a long value that is no link at a p
       { key: "k".repeat(17_000), value: [many] },
     ],
     links: [
-      { key: "a.0", node_id: guide.id, kind: "page", url: null },
-      { key: "b", node_id: notes.id, kind: "page", url: null },
+      { key: "a.0", node_id: guide.id, kind: "page", url: null, inline: null },
+      { key: "b", node_id: notes.id, kind: "page", url: null, inline: null },
     ],
   });
   const started = performance.now();
@@ -400,6 +434,7 @@ test("a path's strings are counted alone, in objects and lists' lists too, numbe
   const server = pageServer();
   server.properties.set(install.id, {
     valid: true,
+    assets_expire_at: null,
     properties: [
       // A number at the path of a list's item: the item is the only string there, whatever its shape.
       { key: "a.0", value: 5 },
@@ -412,10 +447,10 @@ test("a path's strings are counted alone, in objects and lists' lists too, numbe
       { key: "t", value: "[[\tGuide\t]]" },
     ],
     links: [
-      { key: "a.0", node_id: guide.id, kind: "page", url: null },
-      { key: "m.x", node_id: notes.id, kind: "page", url: null },
-      { key: "e.0.0", node_id: linux.id, kind: "page", url: null },
-      { key: "t", node_id: guide.id, kind: "page", url: null },
+      { key: "a.0", node_id: guide.id, kind: "page", url: null, inline: null },
+      { key: "m.x", node_id: notes.id, kind: "page", url: null, inline: null },
+      { key: "e.0.0", node_id: linux.id, kind: "page", url: null, inline: null },
+      { key: "t", node_id: guide.id, kind: "page", url: null, inline: null },
     ],
   });
   renderApp(pagePath(install.id), server.app);
@@ -444,13 +479,14 @@ test("a property link at a path longer than 1,024 characters shows as its text; 
   const [longest, longer] = ["q".repeat(1_024), "p".repeat(1_025)];
   server.properties.set(install.id, {
     valid: true,
+    assets_expire_at: null,
     properties: [
       { key: longest, value: "[[Notes]]" },
       { key: longer, value: "[[Guide]]" },
     ],
     links: [
-      { key: longest, node_id: notes.id, kind: "page", url: null },
-      { key: longer, node_id: guide.id, kind: "page", url: null },
+      { key: longest, node_id: notes.id, kind: "page", url: null, inline: null },
+      { key: longer, node_id: guide.id, kind: "page", url: null, inline: null },
     ],
   });
   renderApp(pagePath(install.id), server.app);
@@ -464,7 +500,12 @@ test("a property link at a path longer than 1,024 characters shows as its text; 
 
 test("the properties are worked out once for each answer, not as the column renders again: the edit entered (keys typed in it render none)", async () => {
   const server = pageServer({ role: "editor" });
-  server.properties.set(install.id, { valid: true, properties: [{ key: "o", value: { "nw-once": 1 } }], links: [] });
+  server.properties.set(install.id, {
+    valid: true,
+    properties: [{ key: "o", value: { "nw-once": 1 } }],
+    links: [],
+    assets_expire_at: null,
+  });
   renderApp(pagePath(install.id), server.app);
   await within(await shownPanel()).findByText('{"nw-once":1}');
   const stringify = vi.spyOn(JSON, "stringify");
@@ -487,13 +528,14 @@ test("no path past 1,024 is a map's or a set's key: a browser costs the square o
   const server = pageServer();
   server.properties.set(install.id, {
     valid: true,
+    assets_expire_at: null,
     properties: [
       { key: long, value: ["[[Guide]]", "x"] },
       { key: "short", value: "[[Notes]]" },
     ],
     links: [
-      { key: `${long}.0`, node_id: guide.id, kind: "page", url: null },
-      { key: "short", node_id: notes.id, kind: "page", url: null },
+      { key: `${long}.0`, node_id: guide.id, kind: "page", url: null, inline: null },
+      { key: "short", node_id: notes.id, kind: "page", url: null, inline: null },
     ],
   });
   const keyed = [
@@ -513,4 +555,89 @@ test("no path past 1,024 is a map's or a set's key: a browser costs the square o
     [long, "[[Guide]]x"],
     ["short", "Notes"],
   ]);
+});
+
+/** expiring is a page's properties whose status is status, with a link to an attachment whose address expires at expires. */
+function expiring(status: string, expires: string | null) {
+  return {
+    valid: true,
+    assets_expire_at: expires,
+    properties: [
+      { key: "cover", value: "[[x.png]]" },
+      { key: "status", value: status },
+    ],
+    links: [
+      { key: "cover", node_id: notes.id, kind: "asset" as const, url: "/api/v0/assets/x/content?e=1", inline: true },
+    ],
+  };
+}
+
+/** inMinutes is the time minutes from now, as the server writes it. */
+const inMinutes = (minutes: number) => new Date(Date.now() + minutes * 60_000).toISOString();
+
+test("properties are read again a minute before their attachments' addresses expire; the cache's, expired, are none until read again", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  onTestFinished(() => void vi.useRealTimers());
+  const server = pageServer();
+  server.properties.set(install.id, expiring("draft", inMinutes(10)));
+  const { router } = renderApp(pagePath(install.id), server.app);
+  await within(await shownPanel()).findByText("draft");
+  const reads = () => server.sent.filter((line) => line === `GET properties ${install.id}`).length;
+  expect(reads()).toBe(1);
+
+  server.properties.set(install.id, expiring("done", inMinutes(70)));
+  await act(() => vi.advanceTimersByTimeAsync(8.9 * 60_000));
+  expect(reads()).toBe(1);
+  await act(() => vi.advanceTimersByTimeAsync(0.2 * 60_000));
+  await within(section("Properties")).findByText("done");
+  expect(reads()).toBe(2);
+
+  await act(() => router.navigate(pagePath(guide.id)));
+  await within(section("Properties")).findByText("No properties.");
+  await act(() => vi.advanceTimersByTimeAsync(80 * 60_000));
+  server.properties.set(install.id, expiring("final", null));
+  await act(() => router.navigate(pagePath(install.id)));
+  expect(within(section("Properties")).queryByText("done")).toBeNull();
+  await within(section("Properties")).findByText("final");
+  await act(() => vi.advanceTimersByTimeAsync(3 * 60 * 60_000));
+  expect(reads()).toBe(3);
+});
+
+test("a hidden tab's properties are not read again as they are due, but as the tab is shown", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  onTestFinished(() => void vi.useRealTimers());
+  const server = pageServer();
+  server.properties.set(install.id, expiring("draft", inMinutes(10)));
+  renderApp(pagePath(install.id), server.app);
+  await within(await shownPanel()).findByText("draft");
+  const reads = () => server.sent.filter((line) => line === `GET properties ${install.id}`).length;
+  let hidden = true;
+  const spies = [
+    vi.spyOn(document, "hidden", "get").mockImplementation(() => hidden),
+    vi.spyOn(document, "visibilityState", "get").mockImplementation(() => (hidden ? "hidden" : "visible")),
+  ];
+  onTestFinished(() => spies.forEach((spy) => spy.mockRestore()));
+  await act(() => vi.advanceTimersByTimeAsync(30 * 60_000));
+  expect(reads()).toBe(1);
+
+  server.properties.set(install.id, expiring("done", inMinutes(70)));
+  hidden = false;
+  act(() => document.dispatchEvent(new Event("visibilitychange")));
+  await within(section("Properties")).findByText("done");
+  expect(reads()).toBe(2);
+});
+
+test("properties by a clock far ahead of the server's show, and show as the page is come back to", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  onTestFinished(() => void vi.useRealTimers());
+  const server = pageServer();
+  server.properties.set(install.id, expiring("draft", inMinutes(-120)));
+  const { router } = renderApp(pagePath(install.id), server.app);
+  await within(await shownPanel()).findByText("draft");
+  await act(() => vi.advanceTimersByTimeAsync(40_000));
+  await act(() => router.navigate(pagePath(guide.id)));
+  await within(section("Properties")).findByText("No properties.");
+  await act(() => vi.advanceTimersByTimeAsync(60_000));
+  await act(() => router.navigate(pagePath(install.id)));
+  await within(section("Properties")).findByText("draft");
 });

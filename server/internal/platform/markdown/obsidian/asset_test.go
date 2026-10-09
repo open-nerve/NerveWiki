@@ -28,16 +28,21 @@ type attachment struct {
 var expiry = time.Date(2026, 10, 9, 14, 0, 0, 0, time.UTC) //nolint:gochecknoglobals // read only
 
 // attachments are the attachments the tests know, by name: a link whose
-// target is one of the names, in any folder, resolves to it.
+// target is one of the names, in any folder, resolves to it. The browser
+// shows all but a.zip.
 //
 //nolint:gochecknoglobals // read only
 var attachments = map[string]attachment{
-	"x.png":    {uuid.MustParse("00000000-0000-4000-8000-0000000000a1"), obsidian.Asset{MIME: "image/png", Bytes: 70}},
-	"dims.png": {uuid.MustParse("00000000-0000-4000-8000-0000000000a2"), obsidian.Asset{MIME: "image/png", Bytes: 71, Width: 7, Height: 5}},
-	"a.mp3":    {uuid.MustParse("00000000-0000-4000-8000-0000000000a3"), obsidian.Asset{MIME: "audio/mpeg", Bytes: 72}},
-	"v.webm":   {uuid.MustParse("00000000-0000-4000-8000-0000000000a4"), obsidian.Asset{MIME: "video/webm", Bytes: 73}},
-	"doc.pdf":  {uuid.MustParse("00000000-0000-4000-8000-0000000000a5"), obsidian.Asset{MIME: "application/pdf", Bytes: 74}},
+	"x.png": {uuid.MustParse("00000000-0000-4000-8000-0000000000a1"), obsidian.Asset{MIME: "image/png", Bytes: 70, Inline: true}},
+	"dims.png": {
+		uuid.MustParse("00000000-0000-4000-8000-0000000000a2"),
+		obsidian.Asset{MIME: "image/png", Bytes: 71, Width: 7, Height: 5, Inline: true},
+	},
+	"a.mp3":    {uuid.MustParse("00000000-0000-4000-8000-0000000000a3"), obsidian.Asset{MIME: "audio/mpeg", Bytes: 72, Inline: true}},
+	"v.webm":   {uuid.MustParse("00000000-0000-4000-8000-0000000000a4"), obsidian.Asset{MIME: "video/webm", Bytes: 73, Inline: true}},
+	"doc.pdf":  {uuid.MustParse("00000000-0000-4000-8000-0000000000a5"), obsidian.Asset{MIME: "application/pdf", Bytes: 74, Inline: true}},
 	"gone.png": {uuid.MustParse("00000000-0000-4000-8000-0000000000a6"), obsidian.Asset{}},
+	"a.zip":    {uuid.MustParse("00000000-0000-4000-8000-0000000000a7"), obsidian.Asset{MIME: "application/zip", Bytes: 75}},
 }
 
 // contentURL is the address the tests' Assets gives the attachment id's
@@ -80,14 +85,19 @@ func withAttachments(t testing.TB) *markdown.Markdown {
 }
 
 // The markup of the attachment named name: its address, its id, and the
-// attributes of a link to it.
+// attributes of a link to it, which downloads one the browser does not
+// show.
 func src(name string) string {
 	return `src="` + strings.ReplaceAll(contentURL(attachments[name].id), "&", "&amp;") + `"`
 }
 
 func assetLink(name string) string {
-	return `href="` + strings.ReplaceAll(contentURL(attachments[name].id), "&", "&amp;") + `" data-nw-size="` +
+	attrs := `href="` + strings.ReplaceAll(contentURL(attachments[name].id), "&", "&amp;") + `" data-nw-size="` +
 		strconv.FormatInt(attachments[name].asset.Bytes, 10) + `"`
+	if !attachments[name].asset.Inline {
+		attrs += ` download=""`
+	}
+	return attrs
 }
 
 // img, audio and video are the elements of the attachment named name,
@@ -106,7 +116,8 @@ func video(name, label, dims string) string {
 
 // An embed and a Markdown image of an attachment are its image, audio or
 // video, any other type a link to it; a wikilink, a Markdown link and a
-// property link to one are a link to it. An image's text is its caption,
+// property link to one are a link to it, which downloads one the browser
+// does not show (M7/P4 design 4.2). An image's text is its caption,
 // else its target as written (Obsidian 1.12.7; the empty caption's
 // nerve-defined); the last '|' of an embed's display text or an image's
 // caption may give its width, or width and height, which an image without
@@ -156,6 +167,12 @@ func TestAnAttachmentIsItsImageAudioVideoOrALink(t *testing.T) {
 				`<a class="nw-asset" ` + assetLink("doc.pdf") + `>doc.pdf</a>`),
 		},
 		{
+			"one the browser does not show, a download", "![[a.zip]] ![z](a.zip) [[a.zip|z]] [z](a.zip)",
+			p(`<a class="nw-wikilink nw-embed nw-asset" ` + assetLink("a.zip") + `>a.zip</a> ` +
+				`<a class="nw-asset" ` + assetLink("a.zip") + `>z</a> <a class="nw-wikilink nw-asset" ` + assetLink("a.zip") + `>z</a> ` +
+				`<a class="nw-asset" ` + assetLink("a.zip") + `>z</a>`),
+		},
+		{
 			"a wikilink and a Markdown link", "[[x.png]] [[a.mp3|听]] [t](doc.pdf \"T\")",
 			p(`<a class="nw-wikilink nw-asset" ` + assetLink("x.png") + `>x.png</a> ` +
 				`<a class="nw-wikilink nw-asset" ` + assetLink("a.mp3") + `>听</a> ` +
@@ -166,9 +183,10 @@ func TestAnAttachmentIsItsImageAudioVideoOrALink(t *testing.T) {
 			p(`<a href="https://x.example">` + img("x.png", "x.png", "") + " " + img("dims.png", "dims.png", ` width="9"`) + `</a>`),
 		},
 		{
-			"in a link, the rest text", "[![](a.mp3) ![[v.webm]] ![[doc.pdf|d]] [[x.png]]](https://x.example)",
+			"in a link, the rest text", "[![](a.mp3) ![[v.webm]] ![[doc.pdf|d]] [[x.png]] ![[a.zip]]](https://x.example)",
 			p(`<a href="https://x.example"><span class="nw-asset">a.mp3</span> <span class="nw-wikilink nw-embed nw-asset">v.webm</span> ` +
-				`<span class="nw-wikilink nw-embed nw-asset">d</span> <span class="nw-wikilink">x.png</span></a>`),
+				`<span class="nw-wikilink nw-embed nw-asset">d</span> <span class="nw-wikilink">x.png</span> ` +
+				`<span class="nw-wikilink nw-embed nw-asset">a.zip</span></a>`),
 		},
 		{
 			"one Assets does not answer, text", "![[gone.png|g]] ![](gone.png) [[gone.png]] [t](gone.png)",
@@ -180,10 +198,11 @@ func TestAnAttachmentIsItsImageAudioVideoOrALink(t *testing.T) {
 			p(`<a class="nw-wikilink nw-embed" ` + page + `>Page</a> <span class="nw-image">i <a ` + page + `>Page</a></span>`),
 		},
 		{
-			"a property link", "---\na: \"[[x.png|see]]\"\nb: \"[t](doc.pdf)\"\nc: \"[[gone.png]]\"\n---\n",
+			"a property link", "---\na: \"[[x.png|see]]\"\nb: \"[t](doc.pdf)\"\nc: \"[[gone.png]]\"\nd: \"[[a.zip]]\"\n---\n",
 			`<div class="nw-scroll"><table class="nw-props"><tr><th>a</th><td><a class="nw-wikilink nw-asset" ` + assetLink("x.png") +
 				`>see</a></td></tr><tr><th>b</th><td><a class="nw-asset" ` + assetLink("doc.pdf") + `>t</a></td></tr>` +
-				`<tr><th>c</th><td><a class="nw-wikilink nw-asset">gone.png</a></td></tr></table></div>` + "\n",
+				`<tr><th>c</th><td><a class="nw-wikilink nw-asset">gone.png</a></td></tr>` +
+				`<tr><th>d</th><td><a class="nw-wikilink nw-asset" ` + assetLink("a.zip") + `>a.zip</a></td></tr></table></div>` + "\n",
 		},
 	})
 }
@@ -309,7 +328,7 @@ func TestWithoutAssetsAnAttachmentIsText(t *testing.T) {
 // those written do.
 func TestAViewWritesAtMostMaxShownAddresses(t *testing.T) {
 	m := withAttachments(t)
-	src := strings.Repeat("![[x.png]] ", obsidian.MaxShown-3) + "[t](doc.pdf) [[doc.pdf]] ![](a.mp3) ![[x.png|i]] [u](doc.pdf) ![](v.webm)"
+	src := strings.Repeat("![[x.png]] ", obsidian.MaxShown-3) + "[t](doc.pdf) [[doc.pdf]] ![](a.mp3) ![[x.png|i]] [u](a.zip) ![](v.webm)"
 	view, err := m.Render(context.Background(), m.Parse([]byte(src)), markdown.Page{})
 	if err != nil {
 		t.Fatal(err)

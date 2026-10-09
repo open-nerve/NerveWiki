@@ -8,6 +8,7 @@ import { useT } from "../../i18n/i18n";
 import type { PageProperties as Properties } from "../../services/linking.service";
 import type { Notebook } from "../../services/notebook.service";
 import { usePageTree } from "../../stores/context";
+import { eachRead, stamped, useAssetsExpiry } from "./assets-expiry";
 import { PanelSection } from "./panel-section";
 
 /** A value as the properties show it: text, or a property link's text and what it leads to. */
@@ -15,10 +16,11 @@ type Shown = string | { text: string; lead: Lead };
 
 /**
  * What a property link leads to: a page, by its id; none (null); or an
- * attachment, at its content's address, which the server signs, null for
- * none: one deleted since its link was indexed (M7/P3 design 5.6).
+ * attachment, at its content's address, which the server signs, and
+ * whether the browser shows it there (M7/P4 design 4.3); null for none:
+ * one deleted since its link was indexed (M7/P3 design 5.6).
  */
-type Lead = string | null | { asset: string | null };
+type Lead = string | null | { asset: null } | { asset: string; inline: boolean };
 
 /**
  * How long a property link's path may be, in UTF-16 code units, to be
@@ -43,7 +45,9 @@ type Take = (value: string, path: string) => Lead | undefined;
  * the link's text, leading to the page it resolves to, or, resolving to
  * none, styled as a link to no page is; one to an attachment leads to its
  * content (M7/P3 design 5.6). A frontmatter that is not valid says so, as
- * does one without properties.
+ * does one without properties. Their attachments' addresses expiring, the
+ * properties are read again before they do; the cache's, expired, are none
+ * until they are (M7/P4 design 4.3).
  */
 export function PageProperties({
   notebook,
@@ -56,7 +60,9 @@ export function PageProperties({
 }) {
   const t = useT();
   const pages = usePageTree(notebook);
-  const { data, error, mutate } = useSWR(["page-properties", notebook.id, page], () => pages.properties(page));
+  const answer = useSWR(["page-properties", notebook.id, page], () => stamped(pages.properties(page)), eachRead);
+  const { error, mutate } = answer;
+  const data = useAssetsExpiry(answer.data, () => void mutate());
   // Once for each answer, not at each render: the edit entered or left, the tree read again render the column.
   const rows = useMemo(() => (data?.valid === true ? rowsOf(data) : []), [data]);
   let shown: ReactNode;
@@ -81,11 +87,11 @@ export function PageProperties({
                 <ul>
                   {value.map((item, at) => (
                     // oxlint-disable-next-line react/no-array-index-key -- a list's items may repeat: by where they are
-                    <li key={at}>{show(item, href)}</li>
+                    <li key={at}>{show(item, href, t("asset.newTab"))}</li>
                   ))}
                 </ul>
               ) : (
-                show(value, href)
+                show(value, href, t("asset.newTab"))
               )}
             </dd>
           </div>
@@ -118,11 +124,14 @@ function rowsOf(data: Properties): Row[] {
  */
 function taking({ properties, links }: Properties): Take {
   const byPath = new Map<string, Lead[]>();
-  for (const { key, node_id: node, kind, url } of links) {
+  for (const { key, node_id: node, kind, url, inline } of links) {
     if (key.length > pathsUpTo) {
       continue;
     }
-    const lead = kind === "asset" ? { asset: url } : (node ?? null);
+    let lead: Lead = node ?? null;
+    if (kind === "asset") {
+      lead = url === null ? { asset: null } : { asset: url, inline: inline === true };
+    }
     const queue = byPath.get(key);
     if (queue === undefined) {
       byPath.set(key, [lead]);
@@ -231,17 +240,24 @@ const markdownLink =
 
 /**
  * show is a value shown: its text, or its link, leading to its page or styled as one to none, or to an attachment's
- * content, in a tab of its own, which leaves the page open; its text alone when the attachment has no address.
+ * content: one the browser shows in a tab of its own, which leaves the page open, as it says unseen; any other
+ * downloaded; its text alone when the attachment has no address.
  */
-function show(shown: Shown, href: (id: string) => string): ReactNode {
+function show(shown: Shown, href: (id: string) => string, newTab: string): ReactNode {
   if (typeof shown === "string") {
     return shown;
   }
   if (typeof shown.lead === "object" && shown.lead !== null) {
-    return shown.lead.asset === null ? (
-      shown.text
+    if (shown.lead.asset === null) {
+      return shown.text;
+    }
+    const { asset, inline } = shown.lead;
+    return inline ? (
+      <a href={asset} target="_blank" rel="noopener noreferrer" className="underline underline-offset-4">
+        {shown.text} <span className="sr-only">{newTab}</span>
+      </a>
     ) : (
-      <a href={shown.lead.asset} target="_blank" rel="noopener noreferrer" className="underline underline-offset-4">
+      <a href={asset} download className="underline underline-offset-4">
         {shown.text}
       </a>
     );

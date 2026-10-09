@@ -36,6 +36,27 @@ func (tm acmeTeam) readingView(t *testing.T, by, id string) (string, *time.Time)
 	return v.HTML, v.Expires
 }
 
+// disposition is the Content-Disposition the content route answers
+// address with: whether the browser shows the content (inline) or
+// downloads it (attachment).
+func (tm acmeTeam) disposition(t *testing.T, address string) string {
+	t.Helper()
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, tm.base+address, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("%s = %d", address, res.StatusCode)
+	}
+	kind, _, _ := strings.Cut(res.Header.Get("Content-Disposition"), ";")
+	return kind
+}
+
 // element is an element of a reading view: its name, its attributes and
 // the text it holds.
 type element struct {
@@ -80,13 +101,15 @@ func assetElements(html string) []element {
 // 5.5, 5.10): an image embedded as its <img>, of its caption and the size
 // written, else of its own, an audio as its <audio>, a PDF embedded and an
 // image linked as links to them, and a property link to one as a link,
-// each at its content's address, which downloads its bytes; the view
-// expires when the addresses do, as the content route signs them, and a
-// view that shows none never, though its links lead to some. Deleted, an attachment's links lead
-// nowhere and the others stay. The properties answer a property link to
-// one with its kind and its address. Each address is the content's shown,
-// not downloaded. Its Assets nil, the composition root fails it: the links
-// would be text.
+// each at its content's address, which downloads its bytes; a link to one
+// the browser does not show, a text, downloads it (M7/P4 design 4.2). The
+// view expires when the addresses do, as the content route signs them,
+// and a view that shows none never, though its links lead to some.
+// Deleted, an attachment's links lead nowhere and the others stay. The
+// properties answer a property link to one with its kind, its address and
+// whether the browser shows it, and expire with the addresses. Each
+// address is the content's shown, not downloaded. Its Assets nil, the
+// composition root fails it: the links would be text.
 func TestAReadingViewShowsTheAttachmentsThroughServe(t *testing.T) {
 	tm := newAcmeTeam(t, "member", "")
 	nb := tm.openNotebook(t, "alice", "Eng")
@@ -94,22 +117,24 @@ func TestAReadingViewShowsTheAttachmentsThroughServe(t *testing.T) {
 	x := tm.upload(t, "alice", nb, a, "x.png", sevenByFive)
 	sound := tm.upload(t, "alice", nb, a, "a.mp3", "ID3 a sound")
 	doc := tm.upload(t, "alice", nb, "", "doc.pdf", "%PDF-1.4 a document")
+	notes := tm.upload(t, "alice", nb, "", "notes.txt", "a plain text")
 	src := tm.createPageWith(t, "alice", nb, "", "Src",
-		"---\ncover: \"[[doc.pdf]]\"\n---\n![[x.png|说明|300]] ![[x.png]] ![[a.mp3]] ![[doc.pdf]] [t](A/x.png)\n")
+		"---\ncover: \"[[doc.pdf]]\"\nfile: \"[[notes.txt]]\"\n---\n![[x.png|说明|300]] ![[x.png]] ![[a.mp3]] ![[doc.pdf]] [t](A/x.png) ![[notes.txt]]\n")
 
 	before := time.Now()
 	html, expires := tm.readingView(t, "bob", src)
 	got := assetElements(html)
 	type shown struct{ name, class, text, asset string }
 	want := []shown{
-		{"a", "nw-wikilink nw-asset", "doc.pdf", doc.ID}, {"img", "nw-asset", "", x.ID}, {"img", "nw-asset", "", x.ID},
-		{"audio", "nw-asset", "", sound.ID},
+		{"a", "nw-wikilink nw-asset", "doc.pdf", doc.ID}, {"a", "nw-wikilink nw-asset", "notes.txt", notes.ID},
+		{"img", "nw-asset", "", x.ID}, {"img", "nw-asset", "", x.ID}, {"audio", "nw-asset", "", sound.ID},
 		{"a", "nw-wikilink nw-embed nw-asset", "doc.pdf", doc.ID}, {"a", "nw-asset", "t", x.ID},
+		{"a", "nw-wikilink nw-embed nw-asset", "notes.txt", notes.ID},
 	}
 	if len(got) != len(want) || strings.Contains(html, "data-nw-node") {
 		t.Fatalf("the reading view shows %+v, want %+v, and no page:\n%s", got, want, html)
 	}
-	bytes := map[string]string{x.ID: sevenByFive, sound.ID: "ID3 a sound", doc.ID: "%PDF-1.4 a document"}
+	bytes := map[string]string{x.ID: sevenByFive, sound.ID: "ID3 a sound", doc.ID: "%PDF-1.4 a document", notes.ID: "a plain text"}
 	for i, e := range got {
 		address := e.attrs["src"] + e.attrs["href"]
 		u, err := url.Parse(address)
@@ -127,11 +152,16 @@ func TestAReadingViewShowsTheAttachmentsThroughServe(t *testing.T) {
 		if e.name == "a" && e.attrs["data-nw-size"] != strconv.Itoa(len(bytes[want[i].asset])) {
 			t.Errorf("%s is of %s bytes, want %d", address, e.attrs["data-nw-size"], len(bytes[want[i].asset]))
 		}
+		// The view downloads what the content route would: the same blob, the same type.
+		if _, download := e.attrs["download"]; download != (want[i].asset == notes.ID) ||
+			e.name == "a" && download != (tm.disposition(t, address) == "attachment") {
+			t.Errorf("%s downloads: %v, the route answers %s", address, download, tm.disposition(t, address))
+		}
 	}
-	if img := got[1].attrs; img["alt"] != "说明" || img["width"] != "300" || img["height"] != "" || img["loading"] != "lazy" {
+	if img := got[2].attrs; img["alt"] != "说明" || img["width"] != "300" || img["height"] != "" || img["loading"] != "lazy" {
 		t.Errorf("the image's attributes are %v, want its caption and width", img)
 	}
-	if img := got[2].attrs; img["alt"] != "x.png" || img["width"] != "7" || img["height"] != "5" {
+	if img := got[3].attrs; img["alt"] != "x.png" || img["width"] != "7" || img["height"] != "5" {
 		t.Errorf("the image's attributes are %v, want its target and its own size", img)
 	}
 	if expires != nil && (expires.Before(before.Add(time.Hour)) || expires.After(time.Now().Add(2*time.Hour))) {
@@ -145,16 +175,34 @@ func TestAReadingViewShowsTheAttachmentsThroughServe(t *testing.T) {
 
 	var props struct {
 		Links []struct {
-			Kind *string `json:"kind"`
-			URL  *string `json:"url"`
+			Kind   *string `json:"kind"`
+			URL    *string `json:"url"`
+			Inline *bool   `json:"inline"`
 		} `json:"links"`
+		Expires *time.Time `json:"assets_expire_at"`
 	}
+	before = time.Now()
 	tm.get(t, "bob", "/api/v0/pages/"+src+"/properties", &props)
-	if len(props.Links) != 1 || props.Links[0].Kind == nil || *props.Links[0].Kind != "asset" || props.Links[0].URL == nil {
-		t.Fatalf("the property links %+v, want one to an attachment with its address", props.Links)
+	if len(props.Links) != 2 {
+		t.Fatalf("the property links %+v, want two to attachments", props.Links)
 	}
-	if status, body := tm.download(t, *props.Links[0].URL); status != http.StatusOK || body != bytes[doc.ID] {
-		t.Errorf("the property link's address = %d %q, want the document's bytes", status, body)
+	for i, l := range props.Links {
+		if l.Kind == nil || *l.Kind != "asset" || l.URL == nil || l.Inline == nil || *l.Inline != (i == 0) {
+			t.Fatalf("the property link %d %+v, want one to an attachment with its address, shown or not", i, l)
+		}
+		if status, body := tm.download(t, *l.URL); status != http.StatusOK || body != bytes[[]string{doc.ID, notes.ID}[i]] {
+			t.Errorf("the property link %d's address = %d %q, want the attachment's bytes", i, status, body)
+		}
+		if kind := tm.disposition(t, *l.URL); *l.Inline != (kind == "inline") {
+			t.Errorf("the property link %d is inline %v, the route answers %s", i, *l.Inline, kind)
+		}
+		u, _ := url.Parse(*l.URL)
+		if props.Expires == nil || u.Query().Get("e") != strconv.FormatInt(props.Expires.Unix(), 10) {
+			t.Errorf("the property link %d's address expires at %s, the properties at %v", i, u.Query().Get("e"), props.Expires)
+		}
+	}
+	if props.Expires != nil && (props.Expires.Before(before.Add(time.Hour)) || props.Expires.After(time.Now().Add(2*time.Hour))) {
+		t.Errorf("the properties expire at %v, not one to two hours from now", props.Expires)
 	}
 
 	tm.send(t, nodeDeletion("alice", x.ID), http.StatusNoContent)

@@ -42,13 +42,14 @@ test("L6 (API): a page's properties carry where their links lead; its backlinks 
 
   expect((await getPageProperties(api, pat, doc.id)).data).toEqual({
     valid: true,
+    assets_expire_at: null,
     properties: [
       { key: "up", value: "[[Hub]]" },
       { key: "see", value: "[[Nowhere]]" },
     ],
     links: [
-      { key: "up", node_id: hub.id, kind: "page", url: null },
-      { key: "see", node_id: null, kind: null, url: null },
+      { key: "up", node_id: hub.id, kind: "page", url: null, inline: null },
+      { key: "see", node_id: null, kind: null, url: null, inline: null },
     ],
   });
   expect((await listBacklinks(api, pat, hub.id)).data).toEqual({

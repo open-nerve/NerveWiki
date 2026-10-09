@@ -17,13 +17,20 @@ type Sent = AssetUpload & {
  * setUp is an AssetStore of a notebook whose attachments under each parent
  * are in lists, two a page, siblings beside them in the tree; uploads wait
  * for the test to answer them (sent), and an abort rejects them as the
- * transfer does.
+ * transfer does. An attachment read alone is the lists', signed anew.
  */
 function setUp(siblings: TreeNode[] = []) {
   const lists = new Map<string, Asset[]>();
   const sent: Sent[] = [];
   const asked: string[] = [];
   const service = {
+    get: vi.fn(async (id: string) => {
+      const asset = [...lists.values()].flat().find((each) => each.id === id);
+      if (asset === undefined) {
+        throw new ApiError(404, { status: 404, code: "asset.not_found", title: "" });
+      }
+      return { ...asset, content_url: `${asset.content_url}&anew=1` };
+    }),
     list: vi.fn(async (_notebook: string, parent: string | null, cursor?: string) => {
       asked.push(`${parent ?? "root"}${cursor === undefined ? "" : ` from ${cursor}`}`);
       const all = lists.get(parent ?? "") ?? [];
@@ -119,6 +126,16 @@ describe("AssetStore's lists", () => {
     await Promise.all([reading, more]);
 
     expect(store.listOf(guide.id)?.assets.map((asset) => asset.name)).toEqual(["a.png", "b.png", "c.png"]);
+  });
+});
+
+describe("AssetStore's addresses", () => {
+  test("address reads the attachment's content's address, signed anew; one gone, it rejects", async () => {
+    const { store, service, add } = setUp();
+    const [asset] = add(guide.id, "a.mp3");
+    await expect(store.address(asset?.id ?? "")).resolves.toBe(`${asset?.content_url ?? ""}&anew=1`);
+    expect(service.get).toHaveBeenCalledWith(asset?.id);
+    await expect(store.address("gone")).rejects.toMatchObject({ status: 404 });
   });
 });
 

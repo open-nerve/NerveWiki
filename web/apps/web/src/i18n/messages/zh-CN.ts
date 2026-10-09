@@ -185,6 +185,7 @@ export const zhCN: Messages = {
   "asset.nameTaken": "这里已有同名的页面或附件，之后试过的名称也都有了。",
   "asset.actions": "{name}的操作",
   "asset.newTab": "（在新标签页打开）",
+  "asset.sizeAfter": "（{size}）",
   "asset.open": "打开",
   "asset.download": "下载",
   "asset.copyEmbed": "复制嵌入",

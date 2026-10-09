@@ -48,9 +48,9 @@ type mode struct {
 
 // modes are every link resolved to one page, to none, and to one
 // attachment of each kind of markup (M7/P3 design 5.9): an image, of its
-// own size, an audio, a video and a PDF, each as large as its markup
-// gets, its address as the content route's is (signedPath), and one
-// Assets does not answer.
+// own size, an audio, a video and a file the browser downloads (M7/P4
+// design 4.2), each as large as its markup gets, its address as the
+// content route's is (signedPath), and one Assets does not answer.
 func modes() []mode {
 	return []mode{
 		{"to a page", everyLink, nil, false, `<a class="nw-wikilink nw-embed" data-nw-node=`},
@@ -58,7 +58,7 @@ func modes() []mode {
 		{"to an image", everyAsset, shownAs("image/png", maxSide, maxSide), true, `<img class="nw-asset" src=`},
 		{"to an audio", everyAsset, shownAs("audio/mpeg", 0, 0), true, `<audio class="nw-asset" src=`},
 		{"to a video", everyAsset, shownAs("video/webm", 0, 0), true, `<video class="nw-asset" src=`},
-		{"to a PDF", everyAsset, shownAs("application/pdf", 0, 0), true, `<a class="nw-wikilink nw-embed nw-asset" href=`},
+		{"to a download", everyAsset, shownAs("application/zip", 0, 0), true, `<a class="nw-wikilink nw-embed nw-asset" href=`},
 		{"to an attachment not shown", everyAsset, nil, true, `<span class="nw-wikilink nw-embed nw-asset">`},
 	}
 }
@@ -88,7 +88,8 @@ func everyAsset(_ context.Context, _ markdown.Page, links []obsidian.Link) (map[
 }
 
 // shownAs shows every attachment as one of mime, width and height, of the
-// largest size, at its signedPath.
+// largest size, at its signedPath, a link to it downloading it: the
+// largest markup.
 func shownAs(mime string, width, height int) obsidian.Assets {
 	return func(_ context.Context, _ uuid.UUID, ids []uuid.UUID) (map[uuid.UUID]obsidian.Asset, error) {
 		out := make(map[uuid.UUID]obsidian.Asset, len(ids))
@@ -247,7 +248,7 @@ func TestTheAppsLinksAreWithinTheirBound(t *testing.T) {
 // than the attachments' text, of which the references and aliases
 // repeated below their budgets take half (M7/P3 review B1): bounded as a
 // whole, in a wide table's rows too, they cost what they do per byte only
-// within it. The densest of them are some 390 KB.
+// within it. The densest of them are some 400 KB.
 func TestTheAppsAttachmentsAreWithinAQuarterOfHeadroom(t *testing.T) {
 	n := 8 * obsidian.MaxShown
 	inputs := map[string]string{

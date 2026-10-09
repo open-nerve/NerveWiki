@@ -37,13 +37,15 @@ type Resolve func(ctx context.Context, page markdown.Page, links []Link) (map[in
 
 // Asset is what a reading view shows of an attachment (M7/P3 design 5.3):
 // its type and size, an image's width and height in pixels (0 when not
-// known), its content's address, signed, a path of this site, and when
-// that expires.
+// known), its content's address, signed, a path of this site, whether the
+// browser shows the content there or downloads it (M7/P4 design 4.2), and
+// when the address expires.
 type Asset struct {
 	MIME          string
 	Bytes         int64
 	Width, Height int
 	URL           string
+	Inline        bool
 	Expires       time.Time
 }
 
@@ -95,7 +97,10 @@ func Extension(o Options) markdown.Extension {
 		},
 		Markup: markdown.Markup{
 			Elements: map[string][]string{
-				"a":       {"class", "href", "data-nw-node", "data-nw-anchor", "data-nw-target", "data-nw-tag", "data-nw-size"},
+				"a": {
+					"class", "href", "data-nw-node", "data-nw-anchor", "data-nw-target", "data-nw-tag", "data-nw-size",
+					"download",
+				},
 				"span":    {"class", "data-nw-tag"},
 				"img":     {"class", "src", "alt", "width", "height", "loading"},
 				"audio":   {"class", "controls", "preload", "src", "aria-label"},

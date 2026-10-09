@@ -106,7 +106,7 @@ export class AssetStore {
   private readonly reading = oneAtATimeById();
 
   constructor(
-    private readonly service: Pick<AssetService, "list" | "upload">,
+    private readonly service: Pick<AssetService, "list" | "upload" | "get">,
     /** The notebook whose attachments these are. */
     readonly notebookId: string,
     private readonly pages: Pick<PageTreeStore, "siblingsOf" | "wrote" | "rename" | "move" | "remove">,
@@ -218,6 +218,11 @@ export class AssetStore {
   /** dismiss takes upload off the uploads: a failed one, once read. */
   dismiss(upload: Upload): void {
     this.uploads = this.uploads.filter((other) => other !== upload);
+  }
+
+  /** address is the address of the attachment id's content, signed anew (M7/P4 design 4.6). */
+  async address(id: string): Promise<string> {
+    return (await this.service.get(id)).content_url;
   }
 
   /** rename renames the attachment id under parent, one of the tree's writes, and reads its list again. */

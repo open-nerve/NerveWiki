@@ -21,12 +21,15 @@ function themed(initial: "light" | "dark" = "light") {
     revision: 1,
     role: "reader",
     t: translator("en"),
+    locale: "en",
     theme: () => theme,
     onThemeChange: (listener) => {
       following.add(listener);
       return () => following.delete(listener);
     },
     reload: () => undefined,
+    assetsExpire: null,
+    assetAddress: () => Promise.reject(new Error("no attachments")),
     navigate: () => undefined,
     report: () => undefined,
     unresolved: () => undefined,

@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"reflect"
 	"runtime"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 	"unsafe"
 	"uuid"
 	"weak"
@@ -382,53 +384,84 @@ func TestAPagesPropertiesAreTheIndexs(t *testing.T) {
 	}
 }
 
-// urls is the attachments' addresses as the asset module gives them: of
-// those it has, the notebook and ids it was asked of.
-type urls struct {
-	of    map[uuid.UUID]string
+// addresses is the attachments' addresses as the asset module gives them:
+// of those it has, the notebook and ids it was asked of; all it has, asked
+// or not, when it says more than it was asked.
+type addresses struct {
+	of    map[uuid.UUID]app.AttachmentAddress
 	asked [][]uuid.UUID
 	nbs   []uuid.UUID
 	err   error
+	more  bool
 }
 
-func (u *urls) URLs(_ context.Context, notebookID uuid.UUID, ids []uuid.UUID) (map[uuid.UUID]string, error) {
+func (u *addresses) Addresses(_ context.Context, notebookID uuid.UUID, ids []uuid.UUID) (
+	map[uuid.UUID]app.AttachmentAddress, error,
+) {
 	u.asked, u.nbs = append(u.asked, ids), append(u.nbs, notebookID)
-	out := map[uuid.UUID]string{}
+	out := map[uuid.UUID]app.AttachmentAddress{}
 	for _, id := range ids {
-		if s, ok := u.of[id]; ok {
-			out[id] = s
+		if a, ok := u.of[id]; ok {
+			out[id] = a
 		}
+	}
+	if u.more {
+		maps.Copy(out, u.of)
 	}
 	return out, u.err
 }
 
-// A property link to an attachment carries its content's address, which
-// the asset module gives of the page's notebook, asked once of each
-// attachment; one it does not give, a page's and none's have none; a page
-// without links to attachments asks nothing (M7/P3 design 5.6).
+// A property link to an attachment carries its content's address and
+// whether the browser shows it, which the asset module gives of the page's
+// notebook, asked once of each attachment; one it does not give, a page's
+// and none's have none; a page without links to attachments asks nothing
+// (M7/P3 design 5.6). The properties expire with the earliest of the
+// addresses, which one without an expiry does not move (M7/P4 design 4.3).
 func TestAPropertyLinkToAnAttachmentHasItsAddress(t *testing.T) {
 	l := newLibrary()
-	x, gone, page := uuid.NewV7(), uuid.NewV7(), uuid.NewV7()
-	// It would answer the page too: a page's link is not asked of it.
-	u := &urls{of: map[uuid.UUID]string{x: "/x", page: "/page"}}
+	x, y, z, gone, page := uuid.NewV7(), uuid.NewV7(), uuid.NewV7(), uuid.NewV7(), uuid.NewV7()
+	at := time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)
+	// It would answer the page too, earliest: a page's link is not asked of
+	// it.
+	u := &addresses{of: map[uuid.UUID]app.AttachmentAddress{
+		x: {URL: "/x", Inline: true, Expires: at.Add(2 * time.Hour)}, y: {URL: "/y", Expires: at.Add(time.Hour)},
+		z: {URL: "/z", Inline: true}, page: {URL: "/page", Expires: at},
+	}}
 	get := app.GetPageProperties{Access: l.access(), Reads: l.library, Assets: u}
 	l.properties = &app.Properties{Valid: true, Links: []app.PropertyLink{
 		{Key: "a", NodeID: x, Asset: true}, {Key: "b", NodeID: page}, {Key: "c"}, {Key: "d", NodeID: gone, Asset: true},
-		{Key: "e", NodeID: x, Asset: true},
+		{Key: "e", NodeID: x, Asset: true}, {Key: "f", NodeID: y, Asset: true}, {Key: "g", NodeID: z, Asset: true},
 	}}
 	got, err := get.Execute(reader(), l.p)
 	want := []app.PropertyLink{
-		{Key: "a", NodeID: x, Asset: true, URL: "/x"}, {Key: "b", NodeID: page}, {Key: "c"}, {Key: "d", NodeID: gone, Asset: true},
-		{Key: "e", NodeID: x, Asset: true, URL: "/x"},
+		{Key: "a", NodeID: x, Asset: true, URL: "/x", Inline: true}, {Key: "b", NodeID: page}, {Key: "c"},
+		{Key: "d", NodeID: gone, Asset: true}, {Key: "e", NodeID: x, Asset: true, URL: "/x", Inline: true},
+		{Key: "f", NodeID: y, Asset: true, URL: "/y"}, {Key: "g", NodeID: z, Asset: true, URL: "/z", Inline: true},
 	}
-	if err != nil || !reflect.DeepEqual(got.Links, want) || !reflect.DeepEqual(u.asked, [][]uuid.UUID{{x, gone}}) ||
-		!reflect.DeepEqual(u.nbs, []uuid.UUID{l.nb}) {
-		t.Errorf("got %+v, %v; asked %v of %v", got.Links, err, u.asked, u.nbs)
+	if err != nil || !reflect.DeepEqual(got.Links, want) || !got.AssetsExpire.Equal(at.Add(time.Hour)) ||
+		!reflect.DeepEqual(u.asked, [][]uuid.UUID{{x, gone, y, z}}) || !reflect.DeepEqual(u.nbs, []uuid.UUID{l.nb}) {
+		t.Errorf("got %+v expiring %v, %v; asked %v of %v", got.Links, got.AssetsExpire, err, u.asked, u.nbs)
+	}
+	u.of[z] = app.AttachmentAddress{URL: "/z", Expires: at.Add(30 * time.Minute)}
+	if got, err := get.Execute(reader(), l.p); err != nil || !got.AssetsExpire.Equal(at.Add(30*time.Minute)) {
+		t.Errorf("the last earliest: %v, %v", got.AssetsExpire, err)
+	}
+	// One that says more than it was asked gives a page's link nothing.
+	u.more = true
+	l.properties = &app.Properties{Valid: true, Links: []app.PropertyLink{{Key: "a", NodeID: x, Asset: true}, {Key: "b", NodeID: page}}}
+	if got, err := get.Execute(reader(), l.p); err != nil || got.Links[1].URL != "" || !got.AssetsExpire.Equal(at.Add(2*time.Hour)) {
+		t.Errorf("more than asked: %+v, %v", got, err)
+	}
+	u.more = false
+	l.properties = &app.Properties{Valid: true, Links: []app.PropertyLink{{Key: "g", NodeID: z, Asset: true}}}
+	u.of[z] = app.AttachmentAddress{URL: "/z"}
+	if got, err := get.Execute(reader(), l.p); err != nil || !got.AssetsExpire.IsZero() || got.Links[0].URL != "/z" {
+		t.Errorf("none expiring: %+v, %v", got, err)
 	}
 	u.asked = nil
 	l.properties = &app.Properties{Valid: true, Links: []app.PropertyLink{{Key: "b", NodeID: page}}}
-	if _, err := get.Execute(reader(), l.p); err != nil || u.asked != nil {
-		t.Errorf("no attachments: asked %v, %v", u.asked, err)
+	if got, err := get.Execute(reader(), l.p); err != nil || u.asked != nil || !got.AssetsExpire.IsZero() {
+		t.Errorf("no attachments: asked %v, %v, expiring %v", u.asked, err, got.AssetsExpire)
 	}
 	l.properties = &app.Properties{Valid: true, Links: []app.PropertyLink{{Key: "a", NodeID: x, Asset: true}}}
 	u.err = errors.New("down")

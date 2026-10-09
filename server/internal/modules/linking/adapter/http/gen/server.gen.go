@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"time"
 	"uuid"
 
 	"github.com/oapi-codegen/nullable"
@@ -137,6 +138,9 @@ type LinkTargetList struct {
 
 // PageProperties defines model for PageProperties.
 type PageProperties struct {
+	// AssetsExpireAt When the earliest of the links' attachments' addresses expires, after which the properties are to be read again; null for none.
+	AssetsExpireAt nullable.Nullable[time.Time] `json:"assets_expire_at"`
+
 	// Links The property links, by where they are written.
 	Links []PropertyLink `json:"links"`
 
@@ -157,6 +161,9 @@ type PageProperty struct {
 
 // PropertyLink A property whose value, or an item of whose list, is a link.
 type PropertyLink struct {
+	// Inline Whether the browser shows the content at url itself, which opens in a tab of its own, or downloads it: as the attachment's mime says (an image, an audio, a video or a PDF the server shows). Null when url is null.
+	Inline nullable.Nullable[bool] `json:"inline"`
+
 	// Key The property's path, a list's item after a dot (sources.0).
 	Key string `json:"key"`
 

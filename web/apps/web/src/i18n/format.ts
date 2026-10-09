@@ -15,6 +15,9 @@ export function formatDateTime(iso: string, locale: Locale, timeZone?: string): 
 
 const byteUnits = ["B", "KB", "MB", "GB", "TB"] as const;
 
+/** byteFormats are the numbers' formats of formatBytes by language and digits: a view writes a size for each link. */
+const byteFormats = new Map<string, Intl.NumberFormat>();
+
 /** formatBytes writes a size in bytes in the largest unit it fills, by 1024, such as "1.5 MB". */
 export function formatBytes(bytes: number, locale: Locale): string {
   let value = bytes;
@@ -23,6 +26,12 @@ export function formatBytes(bytes: number, locale: Locale): string {
     value /= 1024;
     unit += 1;
   }
-  const number = new Intl.NumberFormat(locale, { maximumFractionDigits: unit === 0 ? 0 : 1 }).format(value);
-  return `${number} ${byteUnits[unit]}`;
+  const digits = unit === 0 ? 0 : 1;
+  const key = `${locale} ${digits.toString()}`;
+  let format = byteFormats.get(key);
+  if (format === undefined) {
+    format = new Intl.NumberFormat(locale, { maximumFractionDigits: digits });
+    byteFormats.set(key, format);
+  }
+  return `${format.format(value)} ${byteUnits[unit]}`;
 }

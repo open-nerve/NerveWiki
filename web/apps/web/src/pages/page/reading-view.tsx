@@ -8,11 +8,12 @@ import { writesPages } from "../../app/effective-role";
 import { NotLoaded } from "../../app/not-loaded";
 import { enhance, Enhancements } from "../../reading/enhancement";
 import { taskText } from "../../reading/task-toggle";
+import { unfold } from "../../reading/unfold";
 import { ApiError } from "../../services/api";
 import type { Notebook } from "../../services/notebook.service";
 import type { TreeNode } from "../../services/page.service";
 import { useT } from "../../i18n/i18n";
-import { usePageTree, useStore } from "../../stores/context";
+import { useAssets, usePageTree, useStore } from "../../stores/context";
 import { useWorkspace } from "../workspace/workspace-layout";
 import { usePageView } from "./page-view";
 import { watchReader } from "./readers-input";
@@ -63,6 +64,12 @@ import { useUnresolvedLinks } from "./unresolved-link";
  * A link to a page that is not there, acted on, opens the view's dialog
  * (unresolved-link.tsx): a writer may create the page, where the server
  * says it would go (M6/P6 design 7).
+ *
+ * The attachments' addresses in the HTML expire: the view is read again
+ * before they do (page-view.ts), and its enhancement keeps the media
+ * playing as the HTML is replaced and signs a started one's address anew
+ * as it fails, through the attachments' store (reading/assets.ts; M7/P4
+ * design 4.5, 4.6).
  */
 export const ReadingView = observer(function ReadingView({
   notebook,
@@ -81,6 +88,7 @@ export const ReadingView = observer(function ReadingView({
 }) {
   const { slug } = useWorkspace();
   const pages = usePageTree(notebook);
+  const assets = useAssets(notebook);
   const enhancements = useContext(Enhancements);
   const t = useT();
   const { preferences } = useStore();
@@ -119,6 +127,7 @@ export const ReadingView = observer(function ReadingView({
   });
   const html = data?.html;
   const revision = data?.revision;
+  const assetsExpire = data?.assets_expire_at ?? null;
   const { id: notebookId, role } = notebook;
   useLayoutEffect(() => {
     const container = article.current;
@@ -133,6 +142,7 @@ export const ReadingView = observer(function ReadingView({
       revision,
       role,
       t,
+      locale: preferences.locale,
       theme: () => preferences.resolvedTheme,
       onThemeChange: (listener) => reaction(() => preferences.resolvedTheme, listener),
       reload: () => void mutate(),
@@ -158,6 +168,8 @@ export const ReadingView = observer(function ReadingView({
         : undefined,
       report: (failure) => latestRefused.current(failure),
       unresolved: (link) => void latestUnresolved.current(link),
+      assetsExpire,
+      assetAddress: (id) => assets.address(id),
     });
     const focused = focusedTask.current;
     const asked = toggled.current;
@@ -198,7 +210,22 @@ export const ReadingView = observer(function ReadingView({
           : undefined;
       undo();
     };
-  }, [html, revision, enhancements, slug, notebookId, role, t, preferences, page.id, mutate, pages, navigate]);
+  }, [
+    html,
+    revision,
+    assetsExpire,
+    enhancements,
+    slug,
+    notebookId,
+    role,
+    t,
+    preferences,
+    page.id,
+    mutate,
+    pages,
+    assets,
+    navigate,
+  ]);
   useLayoutEffect(() => {
     const container = article.current;
     if (container === null || html === undefined) {
@@ -291,13 +318,4 @@ function focusOn(element: HTMLElement, show: ScrollIntoViewOptions | undefined) 
     element.scrollIntoView(show);
   }
   element.focus({ preventScroll: true });
-}
-
-/** unfold opens the folded callouts (closed details) element is in, which could show nothing of it otherwise. */
-function unfold(element: HTMLElement) {
-  for (let parent = element.parentElement; parent !== null; parent = parent.parentElement) {
-    if (parent instanceof HTMLDetailsElement && !parent.open) {
-      parent.open = true;
-    }
-  }
 }
