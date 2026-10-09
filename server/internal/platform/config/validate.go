@@ -122,6 +122,15 @@ func (c Config) validate() error {
 	if c.Jobs.PurgeRetention < time.Hour {
 		fail("jobs.purge_retention", "must be at least 1h, got %s", c.Jobs.PurgeRetention)
 	}
+	switch n := c.Jobs.ExportWorkers; {
+	case n < 1 || n > MaxTransferWorkers:
+		fail("jobs.export_workers", "must be from 1 to %d, got %d", MaxTransferWorkers, n)
+	case c.Database.MaxConns >= 1 && 2*n > int(c.Database.MaxConns):
+		// Each export holds a connection through its snapshot: half the
+		// pool stays the requests' and River's.
+		fail("jobs.export_workers", "must leave half of database.max_conns (%d) to the requests, at most %d, got %d",
+			c.Database.MaxConns, c.Database.MaxConns/2, n)
+	}
 	if c.Storage.Dir == "" {
 		fail("storage.dir", "is required")
 	}
@@ -129,6 +138,7 @@ func (c Config) validate() error {
 		fail("storage.min_free_bytes", "must not be negative, got %d", c.Storage.MinFreeBytes)
 	}
 	c.Asset.validate(fail)
+	c.Transfer.validate(fail)
 	var level slog.Level
 	if err := level.UnmarshalText([]byte(c.Log.Level)); err != nil {
 		fail("log.level", "must be one of debug, info, warn, error, got %q", c.Log.Level)
@@ -217,5 +227,26 @@ func (a AssetConfig) validate(fail func(key, format string, args ...any)) {
 		// slow client from holding one for days.
 		fail("asset.upload_min_rate", "must let asset.max_bytes (%d) arrive within %s, at least %d, got %d",
 			a.MaxBytes, MaxAssetTransfer, (a.MaxBytes+int64(MaxAssetTransfer.Seconds())-1)/int64(MaxAssetTransfer.Seconds()), a.UploadMinRate)
+	}
+}
+
+func (t TransferConfig) validate(fail func(key, format string, args ...any)) {
+	if t.ExportTTL < MinExportTTL {
+		fail("transfer.export_ttl", "must be at least %s, got %s", MinExportTTL, t.ExportTTL)
+	}
+	jobOK := t.JobTimeout >= MinJobTimeout && t.JobTimeout <= MaxJobTimeout
+	if !jobOK {
+		fail("transfer.job_timeout", "must be from %s to %s, got %s", MinJobTimeout, MaxJobTimeout, t.JobTimeout)
+	}
+	switch {
+	case t.HeartbeatTimeout < MinTransferHeartbeatTimeout:
+		fail("transfer.heartbeat_timeout", "must be at least %s, got %s", MinTransferHeartbeatTimeout, t.HeartbeatTimeout)
+	case jobOK && t.HeartbeatTimeout >= t.JobTimeout:
+		// A job beats every second: a timeout that long would leave an
+		// interrupted job running in its row past its own end.
+		fail("transfer.heartbeat_timeout", "must be less than transfer.job_timeout (%s), got %s", t.JobTimeout, t.HeartbeatTimeout)
+	}
+	if t.MaxQueued < 1 {
+		fail("transfer.max_queued", "must be at least 1, got %d", t.MaxQueued)
 	}
 }

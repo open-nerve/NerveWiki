@@ -17,8 +17,8 @@ GRANT USAGE ON SCHEMA public TO nervewiki_runtime;
 -- The modules' tables.
 GRANT SELECT, INSERT, UPDATE, DELETE ON users, auth_sessions, api_tokens, workspaces, workspace_members, workspace_invitations,
     notebooks, notebook_members, notebook_audit_events, nodes, page_contents, changesets, changeset_items,
-    page_revisions, edit_sessions, indexed_pages, page_links, page_tags, page_properties, page_aliases, asset_blobs
-    TO nervewiki_runtime;
+    page_revisions, edit_sessions, indexed_pages, page_links, page_tags, page_properties, page_aliases, asset_blobs,
+    transfer_jobs TO nervewiki_runtime;
 
 -- River's tables and the sequences of their ids. River rebuilds the indexes of river_job every day with
 -- REINDEX INDEX CONCURRENTLY, which takes MAINTAIN on the table (PostgreSQL 17 and later).

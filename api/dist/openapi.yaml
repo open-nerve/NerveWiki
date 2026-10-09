@@ -23,6 +23,8 @@ tags:
     description: The stream of the events of what the caller sees.
   - name: asset
     description: The attachments of a notebook's pages and their files.
+  - name: transfer
+    description: The imports and exports of notebooks, jobs that run in the background.
 paths:
   /api/v0/auth/register:
     post:
@@ -1766,6 +1768,187 @@ paths:
                 format: binary
         default:
           $ref: '#/components/responses/Problem'
+  /api/v0/notebooks/{notebook_id}/exports:
+    parameters:
+      - $ref: '#/components/parameters/NotebookID'
+    post:
+      operationId: startExport
+      tags:
+        - transfer
+      summary: Export a notebook, or a page and its subtree
+      description: 'Starts a job that writes the notebook, or the page root_id and its subtree, as a zip archive laid out as an Obsidian vault: a root folder named after the notebook or the page, a page as its file <title>.md and its children in the folder <title>/, an attachment as its file in its page''s folder, and .nerve/meta.json with the siblings'' order. Any role in the notebook can export it. The job is queued, and runs in the background: read it with getTransferJob until it ends. A notebook that does not exist, is deleted, or that the caller has no role in is notebook.not_found; a root_id that is no page of the notebook, or a deleted one, is page.not_found; an export of the caller''s queued or running in the notebook is transfer.busy; as many jobs queued or running as the instance takes is server_busy; a server whose storage keeps no more room is storage_full.'
+      security:
+        - bearer: []
+      x-problem-codes:
+        - notebook.not_found
+        - page.not_found
+        - transfer.busy
+        - server_busy
+        - storage_full
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExportStart'
+      responses:
+        '202':
+          description: The export's job, queued.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransferJob'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v0/notebooks/{notebook_id}/transfer-jobs:
+    parameters:
+      - $ref: '#/components/parameters/NotebookID'
+    get:
+      operationId: listTransferJobs
+      tags:
+        - transfer
+      summary: List a notebook's jobs
+      description: 'The notebook''s imports and exports, the newest first, a page at a time: the caller''s own, or every one for the notebook''s admins. Any role in the notebook can list them. A cursor the list cannot read is bad_request, before anything else; a notebook that does not exist, is deleted, or that the caller has no role in is notebook.not_found; a limit outside 1–100 is validation_failed.'
+      security:
+        - bearer: []
+      x-problem-codes:
+        - bad_request
+        - notebook.not_found
+        - validation_failed
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: A page of the jobs.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransferJobPage'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v0/transfer-jobs/{job_id}:
+    parameters:
+      - $ref: '#/components/parameters/JobID'
+    get:
+      operationId: getTransferJob
+      tags:
+        - transfer
+      summary: Read a job
+      description: The job, its progress, its report's problems once it ended, and an export's archive's address once it succeeded. Its starter and the notebook's admins can read it. A job that does not exist, is deleted with its notebook, is of a notebook the caller has no role in, or is another's to one who is not the notebook's admin is transfer.not_found.
+      security:
+        - bearer: []
+      x-problem-codes:
+        - transfer.not_found
+      responses:
+        '200':
+          description: The job.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransferJobDetail'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v0/transfer-jobs/{job_id}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/JobID'
+    post:
+      operationId: cancelTransferJob
+      tags:
+        - transfer
+      summary: Cancel a job
+      description: 'Cancels the job: a queued one at once, a running one at its next heartbeat, within about a second, its state then cancelled, its report telling what it did, an export''s archive not kept; a running job that ends first ends as it would have. Its starter and the notebook''s admins can cancel it; one not found is transfer.not_found as getTransferJob''s; a job that has ended is transfer.not_cancellable. A running job''s cancel asked again is the first''s.'
+      security:
+        - bearer: []
+      x-problem-codes:
+        - transfer.not_found
+        - transfer.not_cancellable
+      responses:
+        '200':
+          description: The job, as the cancel left it.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransferJob'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v0/transfer-jobs/{job_id}/download:
+    parameters:
+      - $ref: '#/components/parameters/JobID'
+    get:
+      operationId: downloadExport
+      tags:
+        - transfer
+      summary: Download an export's archive
+      description: 'The export''s zip archive, at the address getTransferJob and listTransferJobs sign: anyone who has the address can download it, without a token, until it expires. A path whose id is no uuid is bad_request; otherwise the address is read as the server writes it: the path''s id, then the query e and s, in this order, each once, nothing escaped; anything else, a signature that does not match, an address expired, and a job deleted or expired since are not_found, alike. Ranges are answered (206, 416; If-Range by date), and a copy as new as the archive is not sent again (304: If-Modified-Since when no If-None-Match is sent, or If-None-Match as *, there being no ETag); If-Match and If-Unmodified-Since are ignored, as an address''s archive never changes. The downloads count against the instance''s limit of requests without a token, by client address. A download still sending when the server shuts down is cut off; one asked for then is server_busy.'
+      security: []
+      x-raw: true
+      x-problem-codes:
+        - not_found
+        - server_busy
+      parameters:
+        - name: e
+          in: query
+          required: true
+          description: When the address expires, in Unix seconds, as the signed address has it.
+          schema:
+            type: string
+        - name: s
+          in: query
+          required: true
+          description: The address's signature.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The archive.
+          headers:
+            Content-Disposition:
+              $ref: '#/components/headers/ArchiveDisposition'
+            Content-Security-Policy:
+              $ref: '#/components/headers/ArchivePolicy'
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+        '206':
+          description: The range of the archive asked for.
+          headers:
+            Content-Disposition:
+              $ref: '#/components/headers/ArchiveDisposition'
+            Content-Security-Policy:
+              $ref: '#/components/headers/ArchivePolicy'
+            Content-Range:
+              description: The range sent, and the archive's size; for several ranges, sent as multipart/byteranges, each part has its own instead.
+              schema:
+                type: string
+          content:
+            '*/*':
+              schema:
+                type: string
+                format: binary
+        '304':
+          description: The archive has not changed since the copy the request names (If-Modified-Since), or If-None-Match is *.
+          headers:
+            Content-Security-Policy:
+              $ref: '#/components/headers/ArchivePolicy'
+        '416':
+          description: No range asked for is in the archive; Content-Range tells its size.
+          headers:
+            Content-Security-Policy:
+              $ref: '#/components/headers/ArchivePolicy'
+            Content-Range:
+              description: The archive's size, as bytes */<size>.
+              schema:
+                type: string
+          content:
+            '*/*':
+              schema:
+                type: string
+                format: binary
+        default:
+          $ref: '#/components/responses/Problem'
 components:
   securitySchemes:
     bearer:
@@ -3401,6 +3584,341 @@ components:
             $ref: '#/components/schemas/Asset'
         next_cursor:
           $ref: '#/components/schemas/NextCursor'
+    ExportStart:
+      type: object
+      additionalProperties: false
+      properties:
+        root_id:
+          description: The page to export with its subtree; absent or null for the whole notebook.
+          type:
+            - string
+            - 'null'
+          format: uuid
+    TransferKind:
+      type: string
+      enum:
+        - import
+        - export
+    TransferState:
+      type: string
+      enum:
+        - queued
+        - running
+        - succeeded
+        - failed
+        - cancelled
+        - expired
+    TransferClient:
+      description: Where the job was started from, which its writes are of.
+      type: string
+      enum:
+        - web
+        - api
+    TransferStarter:
+      description: Who started the job.
+      type: object
+      additionalProperties: false
+      required:
+        - user_id
+        - display_name
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        display_name:
+          type: string
+    TransferProgress:
+      description: How many of the job's nodes are done, of all; an export's written.
+      type: object
+      additionalProperties: false
+      required:
+        - done
+        - total
+      properties:
+        done:
+          type: integer
+          format: int64
+        total:
+          type: integer
+          format: int64
+    TransferFailure:
+      description: 'Why a job failed: interrupted (the server stopped or restarted, the job stopped beating, or the job queue dropped it before it began), timeout (it ran past the instance''s limit), forbidden (its starter could no longer read the notebook as it ran), root_not_found (the page exported was gone as it ran), storage_full, contributor_conflict (a file the server adds was where a node is), internal.'
+      type: string
+      enum:
+        - interrupted
+        - timeout
+        - forbidden
+        - root_not_found
+        - storage_full
+        - contributor_conflict
+        - internal
+    TransferCounts:
+      description: 'What the job did before it ended, as it wrote its end. A job that could not write its end, which the server fails later as interrupted (it restarted, the job stopped beating, the job queue dropped it), counts nothing: its progress tells how far it went.'
+      type: object
+      additionalProperties: false
+      required:
+        - pages
+        - attachments
+        - renamed
+        - missing
+        - skipped
+      properties:
+        pages:
+          description: The pages written.
+          type: integer
+          format: int64
+        attachments:
+          description: The attachments whose files were written.
+          type: integer
+          format: int64
+        renamed:
+          description: The nodes the export's vault names otherwise, as the export laid the vault out before it wrote.
+          type: integer
+          format: int64
+        missing:
+          description: The attachments whose files were not in the storage, and not written.
+          type: integer
+          format: int64
+        skipped:
+          description: An import's entries skipped; 0 for an export.
+          type: integer
+          format: int64
+    TransferReport:
+      type: object
+      additionalProperties: false
+      required:
+        - failure
+        - counts
+      properties:
+        failure:
+          description: Why the job failed; null when it did not.
+          anyOf:
+            - $ref: '#/components/schemas/TransferFailure'
+            - type: 'null'
+        counts:
+          $ref: '#/components/schemas/TransferCounts'
+    TransferDownload:
+      type: object
+      additionalProperties: false
+      required:
+        - url
+        - expires_at
+      properties:
+        url:
+          description: The archive's address on this server, which a browser downloads without a token until expires_at.
+          type: string
+        expires_at:
+          description: 'When the address stops working: one to two hours after it was signed, or as the export expires, whichever comes first; reading the job again signs a new one. The starter''s next export of the notebook, once it succeeds, expires this one at once.'
+          type: string
+          format: date-time
+    TransferJob:
+      description: 'An import or an export of a notebook, a job that runs in the background: queued, then running, then succeeded, failed or cancelled. An export''s archive expires a while after it succeeded, the instance''s export TTL, or at once when its starter''s next export of the notebook succeeds: a starter keeps only their latest export of a notebook.'
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - notebook_id
+        - root_id
+        - name
+        - kind
+        - state
+        - client
+        - created_by
+        - created_at
+        - started_at
+        - cancel_requested_at
+        - finished_at
+        - progress
+        - result_bytes
+        - report
+        - download
+      properties:
+        id:
+          type: string
+          format: uuid
+        notebook_id:
+          type: string
+          format: uuid
+        root_id:
+          description: The page exported with its subtree; null for the whole notebook.
+          type:
+            - string
+            - 'null'
+          format: uuid
+        name:
+          description: What is exported, by name, the notebook's or the page's; the archive is named after it.
+          type: string
+        kind:
+          $ref: '#/components/schemas/TransferKind'
+        state:
+          $ref: '#/components/schemas/TransferState'
+        client:
+          $ref: '#/components/schemas/TransferClient'
+        created_by:
+          $ref: '#/components/schemas/TransferStarter'
+        created_at:
+          type: string
+          format: date-time
+        started_at:
+          type:
+            - string
+            - 'null'
+          format: date-time
+        cancel_requested_at:
+          description: 'When a cancel of the job was asked as it ran: it stops at its next heartbeat, within about a second, unless it ends first; null when none was.'
+          type:
+            - string
+            - 'null'
+          format: date-time
+        finished_at:
+          type:
+            - string
+            - 'null'
+          format: date-time
+        progress:
+          $ref: '#/components/schemas/TransferProgress'
+        result_bytes:
+          description: The bytes of an export's archive, once it succeeded, and after it expired; null otherwise.
+          type:
+            - integer
+            - 'null'
+          format: int64
+        report:
+          description: What the job did and why it failed, once it ended; null before.
+          oneOf:
+            - $ref: '#/components/schemas/TransferReport'
+            - type: 'null'
+        download:
+          description: The address of an export's archive, once it succeeded and until it expires; null otherwise.
+          oneOf:
+            - $ref: '#/components/schemas/TransferDownload'
+            - type: 'null'
+    TransferJobPage:
+      type: object
+      additionalProperties: false
+      required:
+        - data
+        - next_cursor
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/TransferJob'
+        next_cursor:
+          $ref: '#/components/schemas/NextCursor'
+    TransferProblem:
+      description: 'What befell a node, at its path in the archive''s vault (at most 1,024 bytes): renamed, written at to instead, so links to its old name do not reach it there; file_missing, an attachment whose file was not in the storage.'
+      type: object
+      additionalProperties: false
+      required:
+        - path
+        - code
+        - to
+      properties:
+        path:
+          type: string
+        code:
+          type: string
+          enum:
+            - renamed
+            - file_missing
+        to:
+          description: Where a renamed node is written; null for any other problem.
+          type:
+            - string
+            - 'null'
+    TransferJobDetail:
+      description: A job, as TransferJob, and its report's problems once it ended.
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - notebook_id
+        - root_id
+        - name
+        - kind
+        - state
+        - client
+        - created_by
+        - created_at
+        - started_at
+        - cancel_requested_at
+        - finished_at
+        - progress
+        - result_bytes
+        - report
+        - download
+        - problems
+        - problems_truncated
+      properties:
+        id:
+          type: string
+          format: uuid
+        notebook_id:
+          type: string
+          format: uuid
+        root_id:
+          description: The page exported with its subtree; null for the whole notebook.
+          type:
+            - string
+            - 'null'
+          format: uuid
+        name:
+          description: What is exported, by name, the notebook's or the page's; the archive is named after it.
+          type: string
+        kind:
+          $ref: '#/components/schemas/TransferKind'
+        state:
+          $ref: '#/components/schemas/TransferState'
+        client:
+          $ref: '#/components/schemas/TransferClient'
+        created_by:
+          $ref: '#/components/schemas/TransferStarter'
+        created_at:
+          type: string
+          format: date-time
+        started_at:
+          type:
+            - string
+            - 'null'
+          format: date-time
+        cancel_requested_at:
+          description: 'When a cancel of the job was asked as it ran: it stops at its next heartbeat, within about a second, unless it ends first; null when none was.'
+          type:
+            - string
+            - 'null'
+          format: date-time
+        finished_at:
+          type:
+            - string
+            - 'null'
+          format: date-time
+        progress:
+          $ref: '#/components/schemas/TransferProgress'
+        result_bytes:
+          description: The bytes of an export's archive, once it succeeded, and after it expired; null otherwise.
+          type:
+            - integer
+            - 'null'
+          format: int64
+        report:
+          description: What the job did and why it failed, once it ended; null before.
+          oneOf:
+            - $ref: '#/components/schemas/TransferReport'
+            - type: 'null'
+        download:
+          description: The address of an export's archive, once it succeeded and until it expires; null otherwise.
+          oneOf:
+            - $ref: '#/components/schemas/TransferDownload'
+            - type: 'null'
+        problems:
+          description: The first 1,000 problems of the report, in the order met; empty before the job ends.
+          type: array
+          items:
+            $ref: '#/components/schemas/TransferProblem'
+        problems_truncated:
+          description: Whether problems were left out past the first 1,000.
+          type: boolean
   responses:
     Problem:
       description: Error (RFC 9457 problem details).
@@ -3501,6 +4019,14 @@ components:
       description: 'A tag''s name, without its ''#'', as listTags writes it and a reading view''s tag link carries it; a nested tag''s ''/'' is written %2F (a%2Fb). The tag "/" alone cannot be named: the path reads its %2F as a trailing slash, a path no operation has (404 not_found).'
       schema:
         type: string
+    JobID:
+      name: job_id
+      in: path
+      required: true
+      description: The job's id.
+      schema:
+        type: string
+        format: uuid
   headers:
     ContentDisposition:
       description: 'inline for a file shown, attachment for one downloaded, with its name (RFC 6266: filename in ASCII, filename* in UTF-8).'
@@ -3524,6 +4050,16 @@ components:
         type: string
     CrossOriginResourcePolicy:
       description: same-origin, that no other site reads the content.
+      required: true
+      schema:
+        type: string
+    ArchiveDisposition:
+      description: 'attachment, with the archive''s name: the notebook''s or the page''s, and .zip (RFC 6266: filename in ASCII, filename* in UTF-8).'
+      required: true
+      schema:
+        type: string
+    ArchivePolicy:
+      description: The sandbox every answer of the download runs in.
       required: true
       schema:
         type: string

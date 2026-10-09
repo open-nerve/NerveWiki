@@ -1236,6 +1236,121 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v0/notebooks/{notebook_id}/exports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Export a notebook, or a page and its subtree
+         * @description Starts a job that writes the notebook, or the page root_id and its subtree, as a zip archive laid out as an Obsidian vault: a root folder named after the notebook or the page, a page as its file <title>.md and its children in the folder <title>/, an attachment as its file in its page's folder, and .nerve/meta.json with the siblings' order. Any role in the notebook can export it. The job is queued, and runs in the background: read it with getTransferJob until it ends. A notebook that does not exist, is deleted, or that the caller has no role in is notebook.not_found; a root_id that is no page of the notebook, or a deleted one, is page.not_found; an export of the caller's queued or running in the notebook is transfer.busy; as many jobs queued or running as the instance takes is server_busy; a server whose storage keeps no more room is storage_full.
+         */
+        post: operations["startExport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v0/notebooks/{notebook_id}/transfer-jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List a notebook's jobs
+         * @description The notebook's imports and exports, the newest first, a page at a time: the caller's own, or every one for the notebook's admins. Any role in the notebook can list them. A cursor the list cannot read is bad_request, before anything else; a notebook that does not exist, is deleted, or that the caller has no role in is notebook.not_found; a limit outside 1–100 is validation_failed.
+         */
+        get: operations["listTransferJobs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v0/transfer-jobs/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The job's id. */
+                job_id: components["parameters"]["JobID"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Read a job
+         * @description The job, its progress, its report's problems once it ended, and an export's archive's address once it succeeded. Its starter and the notebook's admins can read it. A job that does not exist, is deleted with its notebook, is of a notebook the caller has no role in, or is another's to one who is not the notebook's admin is transfer.not_found.
+         */
+        get: operations["getTransferJob"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v0/transfer-jobs/{job_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The job's id. */
+                job_id: components["parameters"]["JobID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel a job
+         * @description Cancels the job: a queued one at once, a running one at its next heartbeat, within about a second, its state then cancelled, its report telling what it did, an export's archive not kept; a running job that ends first ends as it would have. Its starter and the notebook's admins can cancel it; one not found is transfer.not_found as getTransferJob's; a job that has ended is transfer.not_cancellable. A running job's cancel asked again is the first's.
+         */
+        post: operations["cancelTransferJob"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v0/transfer-jobs/{job_id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The job's id. */
+                job_id: components["parameters"]["JobID"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Download an export's archive
+         * @description The export's zip archive, at the address getTransferJob and listTransferJobs sign: anyone who has the address can download it, without a token, until it expires. A path whose id is no uuid is bad_request; otherwise the address is read as the server writes it: the path's id, then the query e and s, in this order, each once, nothing escaped; anything else, a signature that does not match, an address expired, and a job deleted or expired since are not_found, alike. Ranges are answered (206, 416; If-Range by date), and a copy as new as the archive is not sent again (304: If-Modified-Since when no If-None-Match is sent, or If-None-Match as *, there being no ETag); If-Match and If-Unmodified-Since are ignored, as an address's archive never changes. The downloads count against the instance's limit of requests without a token, by client address. A download still sending when the server shuts down is cut off; one asked for then is server_busy.
+         */
+        get: operations["downloadExport"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2057,6 +2172,176 @@ export interface components {
             data: components["schemas"]["Asset"][];
             next_cursor: components["schemas"]["NextCursor"];
         };
+        ExportStart: {
+            /**
+             * Format: uuid
+             * @description The page to export with its subtree; absent or null for the whole notebook.
+             */
+            root_id?: string | null;
+        };
+        /** @enum {string} */
+        TransferKind: "import" | "export";
+        /** @enum {string} */
+        TransferState: "queued" | "running" | "succeeded" | "failed" | "cancelled" | "expired";
+        /**
+         * @description Where the job was started from, which its writes are of.
+         * @enum {string}
+         */
+        TransferClient: "web" | "api";
+        /** @description Who started the job. */
+        TransferStarter: {
+            /** Format: uuid */
+            user_id: string;
+            display_name: string;
+        };
+        /** @description How many of the job's nodes are done, of all; an export's written. */
+        TransferProgress: {
+            /** Format: int64 */
+            done: number;
+            /** Format: int64 */
+            total: number;
+        };
+        /**
+         * @description Why a job failed: interrupted (the server stopped or restarted, the job stopped beating, or the job queue dropped it before it began), timeout (it ran past the instance's limit), forbidden (its starter could no longer read the notebook as it ran), root_not_found (the page exported was gone as it ran), storage_full, contributor_conflict (a file the server adds was where a node is), internal.
+         * @enum {string}
+         */
+        TransferFailure: "interrupted" | "timeout" | "forbidden" | "root_not_found" | "storage_full" | "contributor_conflict" | "internal";
+        /** @description What the job did before it ended, as it wrote its end. A job that could not write its end, which the server fails later as interrupted (it restarted, the job stopped beating, the job queue dropped it), counts nothing: its progress tells how far it went. */
+        TransferCounts: {
+            /**
+             * Format: int64
+             * @description The pages written.
+             */
+            pages: number;
+            /**
+             * Format: int64
+             * @description The attachments whose files were written.
+             */
+            attachments: number;
+            /**
+             * Format: int64
+             * @description The nodes the export's vault names otherwise, as the export laid the vault out before it wrote.
+             */
+            renamed: number;
+            /**
+             * Format: int64
+             * @description The attachments whose files were not in the storage, and not written.
+             */
+            missing: number;
+            /**
+             * Format: int64
+             * @description An import's entries skipped; 0 for an export.
+             */
+            skipped: number;
+        };
+        TransferReport: {
+            /** @description Why the job failed; null when it did not. */
+            failure: components["schemas"]["TransferFailure"] | null;
+            counts: components["schemas"]["TransferCounts"];
+        };
+        TransferDownload: {
+            /** @description The archive's address on this server, which a browser downloads without a token until expires_at. */
+            url: string;
+            /**
+             * Format: date-time
+             * @description When the address stops working: one to two hours after it was signed, or as the export expires, whichever comes first; reading the job again signs a new one. The starter's next export of the notebook, once it succeeds, expires this one at once.
+             */
+            expires_at: string;
+        };
+        /** @description An import or an export of a notebook, a job that runs in the background: queued, then running, then succeeded, failed or cancelled. An export's archive expires a while after it succeeded, the instance's export TTL, or at once when its starter's next export of the notebook succeeds: a starter keeps only their latest export of a notebook. */
+        TransferJob: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            notebook_id: string;
+            /**
+             * Format: uuid
+             * @description The page exported with its subtree; null for the whole notebook.
+             */
+            root_id: string | null;
+            /** @description What is exported, by name, the notebook's or the page's; the archive is named after it. */
+            name: string;
+            kind: components["schemas"]["TransferKind"];
+            state: components["schemas"]["TransferState"];
+            client: components["schemas"]["TransferClient"];
+            created_by: components["schemas"]["TransferStarter"];
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            started_at: string | null;
+            /**
+             * Format: date-time
+             * @description When a cancel of the job was asked as it ran: it stops at its next heartbeat, within about a second, unless it ends first; null when none was.
+             */
+            cancel_requested_at: string | null;
+            /** Format: date-time */
+            finished_at: string | null;
+            progress: components["schemas"]["TransferProgress"];
+            /**
+             * Format: int64
+             * @description The bytes of an export's archive, once it succeeded, and after it expired; null otherwise.
+             */
+            result_bytes: number | null;
+            /** @description What the job did and why it failed, once it ended; null before. */
+            report: components["schemas"]["TransferReport"] | null;
+            /** @description The address of an export's archive, once it succeeded and until it expires; null otherwise. */
+            download: components["schemas"]["TransferDownload"] | null;
+        };
+        TransferJobPage: {
+            data: components["schemas"]["TransferJob"][];
+            next_cursor: components["schemas"]["NextCursor"];
+        };
+        /** @description What befell a node, at its path in the archive's vault (at most 1,024 bytes): renamed, written at to instead, so links to its old name do not reach it there; file_missing, an attachment whose file was not in the storage. */
+        TransferProblem: {
+            path: string;
+            /** @enum {string} */
+            code: "renamed" | "file_missing";
+            /** @description Where a renamed node is written; null for any other problem. */
+            to: string | null;
+        };
+        /** @description A job, as TransferJob, and its report's problems once it ended. */
+        TransferJobDetail: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            notebook_id: string;
+            /**
+             * Format: uuid
+             * @description The page exported with its subtree; null for the whole notebook.
+             */
+            root_id: string | null;
+            /** @description What is exported, by name, the notebook's or the page's; the archive is named after it. */
+            name: string;
+            kind: components["schemas"]["TransferKind"];
+            state: components["schemas"]["TransferState"];
+            client: components["schemas"]["TransferClient"];
+            created_by: components["schemas"]["TransferStarter"];
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            started_at: string | null;
+            /**
+             * Format: date-time
+             * @description When a cancel of the job was asked as it ran: it stops at its next heartbeat, within about a second, unless it ends first; null when none was.
+             */
+            cancel_requested_at: string | null;
+            /** Format: date-time */
+            finished_at: string | null;
+            progress: components["schemas"]["TransferProgress"];
+            /**
+             * Format: int64
+             * @description The bytes of an export's archive, once it succeeded, and after it expired; null otherwise.
+             */
+            result_bytes: number | null;
+            /** @description What the job did and why it failed, once it ended; null before. */
+            report: components["schemas"]["TransferReport"] | null;
+            /** @description The address of an export's archive, once it succeeded and until it expires; null otherwise. */
+            download: components["schemas"]["TransferDownload"] | null;
+            /** @description The first 1,000 problems of the report, in the order met; empty before the job ends. */
+            problems: components["schemas"]["TransferProblem"][];
+            /** @description Whether problems were left out past the first 1,000. */
+            problems_truncated: boolean;
+        };
     };
     responses: {
         /** @description Error (RFC 9457 problem details). */
@@ -2096,6 +2381,8 @@ export interface components {
         NodeID: string;
         /** @description A tag's name, without its '#', as listTags writes it and a reading view's tag link carries it; a nested tag's '/' is written %2F (a%2Fb). The tag "/" alone cannot be named: the path reads its %2F as a trailing slash, a path no operation has (404 not_found). */
         Tag: string;
+        /** @description The job's id. */
+        JobID: string;
     };
     requestBodies: never;
     headers: {
@@ -2109,6 +2396,10 @@ export interface components {
         ContentSecurityPolicy: string;
         /** @description same-origin, that no other site reads the content. */
         CrossOriginResourcePolicy: string;
+        /** @description attachment, with the archive's name: the notebook's or the page's, and .zip (RFC 6266: filename in ASCII, filename* in UTF-8). */
+        ArchiveDisposition: string;
+        /** @description The sandbox every answer of the download runs in. */
+        ArchivePolicy: string;
     };
     pathItems: never;
 }
@@ -2203,6 +2494,20 @@ export type EventLinks = components['schemas']['EventLinks'];
 export type EventReset = components['schemas']['EventReset'];
 export type Asset = components['schemas']['Asset'];
 export type AssetPage = components['schemas']['AssetPage'];
+export type ExportStart = components['schemas']['ExportStart'];
+export type TransferKind = components['schemas']['TransferKind'];
+export type TransferState = components['schemas']['TransferState'];
+export type TransferClient = components['schemas']['TransferClient'];
+export type TransferStarter = components['schemas']['TransferStarter'];
+export type TransferProgress = components['schemas']['TransferProgress'];
+export type TransferFailure = components['schemas']['TransferFailure'];
+export type TransferCounts = components['schemas']['TransferCounts'];
+export type TransferReport = components['schemas']['TransferReport'];
+export type TransferDownload = components['schemas']['TransferDownload'];
+export type TransferJob = components['schemas']['TransferJob'];
+export type TransferJobPage = components['schemas']['TransferJobPage'];
+export type TransferProblem = components['schemas']['TransferProblem'];
+export type TransferJobDetail = components['schemas']['TransferJobDetail'];
 export type ResponseProblem = components['responses']['Problem'];
 export type ParameterSlug = components['parameters']['Slug'];
 export type ParameterWorkspaceMemberId = components['parameters']['WorkspaceMemberID'];
@@ -2215,11 +2520,14 @@ export type ParameterPageId = components['parameters']['PageID'];
 export type ParameterEditSessionId = components['parameters']['EditSessionID'];
 export type ParameterNodeId = components['parameters']['NodeID'];
 export type ParameterTag = components['parameters']['Tag'];
+export type ParameterJobId = components['parameters']['JobID'];
 export type HeaderContentDisposition = components['headers']['ContentDisposition'];
 export type HeaderETag = components['headers']['ETag'];
 export type HeaderCacheControl = components['headers']['CacheControl'];
 export type HeaderContentSecurityPolicy = components['headers']['ContentSecurityPolicy'];
 export type HeaderCrossOriginResourcePolicy = components['headers']['CrossOriginResourcePolicy'];
+export type HeaderArchiveDisposition = components['headers']['ArchiveDisposition'];
+export type HeaderArchivePolicy = components['headers']['ArchivePolicy'];
 export type $defs = Record<string, never>;
 export interface operations {
     register: {
@@ -3955,6 +4263,175 @@ export interface operations {
                 headers: {
                     "Content-Security-Policy": components["headers"]["ContentSecurityPolicy"];
                     /** @description The file's size, as bytes *\/<size>. */
+                    "Content-Range"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": string;
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    startExport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExportStart"];
+            };
+        };
+        responses: {
+            /** @description The export's job, queued. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TransferJob"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    listTransferJobs: {
+        parameters: {
+            query?: {
+                /** @description The page size, 1–100; 50 when absent. Outside that range the answer is 422 validation_failed on limit. */
+                limit?: components["parameters"]["Limit"];
+                /** @description The next_cursor of the page before; absent for the first page. A cursor that does not decode, has an unknown version or a payload of another shape than this list's, or is not spelled as the server writes it is 400 bad_request on cursor. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of the jobs. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TransferJobPage"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    getTransferJob: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The job's id. */
+                job_id: components["parameters"]["JobID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The job. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TransferJobDetail"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    cancelTransferJob: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The job's id. */
+                job_id: components["parameters"]["JobID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The job, as the cancel left it. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TransferJob"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    downloadExport: {
+        parameters: {
+            query: {
+                /** @description When the address expires, in Unix seconds, as the signed address has it. */
+                e: string;
+                /** @description The address's signature. */
+                s: string;
+            };
+            header?: never;
+            path: {
+                /** @description The job's id. */
+                job_id: components["parameters"]["JobID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The archive. */
+            200: {
+                headers: {
+                    "Content-Disposition": components["headers"]["ArchiveDisposition"];
+                    "Content-Security-Policy": components["headers"]["ArchivePolicy"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/zip": string;
+                };
+            };
+            /** @description The range of the archive asked for. */
+            206: {
+                headers: {
+                    "Content-Disposition": components["headers"]["ArchiveDisposition"];
+                    "Content-Security-Policy": components["headers"]["ArchivePolicy"];
+                    /** @description The range sent, and the archive's size; for several ranges, sent as multipart/byteranges, each part has its own instead. */
+                    "Content-Range"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": string;
+                };
+            };
+            /** @description The archive has not changed since the copy the request names (If-Modified-Since), or If-None-Match is *. */
+            304: {
+                headers: {
+                    "Content-Security-Policy": components["headers"]["ArchivePolicy"];
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No range asked for is in the archive; Content-Range tells its size. */
+            416: {
+                headers: {
+                    "Content-Security-Policy": components["headers"]["ArchivePolicy"];
+                    /** @description The archive's size, as bytes *\/<size>. */
                     "Content-Range"?: string;
                     [name: string]: unknown;
                 };

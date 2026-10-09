@@ -40,7 +40,7 @@ func TestSweepWorkerRunsTheUseCase(t *testing.T) {
 // A run has SweepTimeout, longer than River's minute and shorter than the
 // hour after which River runs a job still running again.
 func TestSweepWorkerHasItsTimeout(t *testing.T) {
-	const rescueAfter = time.Hour // River's RescueStuckJobsAfter by default
+	const rescueAfter = time.Hour // the least RescueStuckJobsAfter serve sets
 	got := riveradapter.NewSweepWorker(&fakeSweep{}).Timeout(&river.Job[riveradapter.SweepArgs]{})
 	if got != riveradapter.SweepTimeout || got <= time.Minute || got >= rescueAfter {
 		t.Errorf("Timeout() = %v, want SweepTimeout, between a minute and an hour", got)

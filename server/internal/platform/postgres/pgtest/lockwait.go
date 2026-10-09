@@ -95,6 +95,22 @@ func WaitForAdvisoryLockWaits(t testing.TB, pool *pgxpool.Pool, space, key int32
 		int64(uint32(space)), int64(uint32(key)))
 }
 
+// WaitForTableLockWaits returns once at least n backends wait for a lock
+// of table itself, as LOCK TABLE takes one, and fails the test when fewer
+// have within limit. A wait for a row of the table, or for another table,
+// does not count: a test that holds a table's lock stops whatever reads it,
+// such as a background job that holds no row, at its read. A database
+// without the table fails the test at once.
+func WaitForTableLockWaits(t testing.TB, pool *pgxpool.Pool, table string, n int, limit time.Duration) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), limit)
+	defer cancel()
+	waitForCount(ctx, t, pool, n, limit, "the lock of the table "+table, `
+		SELECT count(DISTINCT l.pid) FROM pg_locks l JOIN pg_database d ON d.oid = l.database
+		WHERE d.datname = current_database() AND l.locktype = 'relation' AND NOT l.granted AND l.relation = $1`,
+		relation(ctx, t, pool, table))
+}
+
 // relation is the OID of table in pool's database. A database without the
 // table fails the test at once: a misspelled name can never be waited on.
 // A lookup that fails at the deadline, the pool's connection slow to come

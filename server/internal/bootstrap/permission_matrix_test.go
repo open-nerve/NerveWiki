@@ -43,6 +43,7 @@ func matrixExempt() matrixExemptions {
 		public: map[string]string{
 			"previewWorkspaceInvitation": "the link's token decides, for anyone holding it: no column's role does",
 			"getAssetContent":            "the address's signature decides, for anyone holding it: no column's role does",
+			"downloadExport":             "the address's signature decides, for anyone holding it: no column's role does",
 		},
 		byCredential: map[string]string{
 			"acceptWorkspaceInvitation": "the caller is no member yet: the link's token and the caller's address decide (M2 design 9)",
@@ -210,7 +211,8 @@ func decodeAnswer(t *testing.T, answer string, v any) {
 // matrixRows are the rows, each module's from its file.
 func matrixRows() []matrixRow {
 	return slices.Concat(workspaceMatrixRows(), memberMatrixRows(), invitationMatrixRows(), notebookMatrixRows(),
-		notebookMemberMatrixRows(), ownerlessMatrixRows(), pageMatrixRows(), linkingMatrixRows(), assetMatrixRows())
+		notebookMemberMatrixRows(), ownerlessMatrixRows(), pageMatrixRows(), linkingMatrixRows(), assetMatrixRows(),
+		transferMatrixRows())
 }
 
 // matrixApps is how many cells may run an app of their own at once: each

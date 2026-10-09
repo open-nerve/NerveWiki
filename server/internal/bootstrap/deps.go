@@ -12,6 +12,7 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/modules/linking"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/notebook"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page"
+	"github.com/open-nerve/NerveWiki/server/internal/modules/transfer"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/workspace"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/clock"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
@@ -144,7 +145,7 @@ func pageDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, author
 		Authorizer:   authorizer,
 		Workspaces:   workspace.NewWorkspaces(pool),
 		Notebooks:    notebook.NewNotebooks(pool),
-		Names:        pageNames{identity.NewDirectory(pool)},
+		Names:        displayNames{identity.NewDirectory(pool)},
 		Markdown:     md,
 		Guards:       ext.guards,
 		Participants: pageParticipants(pool, md, budget, logger),
@@ -188,6 +189,39 @@ func linkingDeps(pool *pgxpool.Pool, authorizer shared.Authorizer, assets linkin
 		Contents:   targets,
 		MaxDepth:   page.MaxDepth,
 		Assets:     assets,
+	}
+}
+
+// transferDeps are the transfer module's: the store of files; the
+// workspace and notebook modules' locks and reads, identity's directory,
+// the page module's trees, the linking module's links and the asset
+// module's files; the jobs' insert-only client, the archives' key, the
+// transfer settings, the storage's free space kept and the slowest
+// download, an upload's.
+func transferDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, authorizer shared.Authorizer, store storage.Store,
+	inserter *jobs.Inserter, downloadKey []byte,
+) transfer.Deps {
+	tx := postgres.NewTxManager(pool, cfg.Database.CommitTimeout)
+	t := cfg.Transfer
+	return transfer.Deps{
+		Pool: pool, Tx: tx, Snapshots: tx, Store: store, Inserter: inserter, Clock: clock.System{}, Logger: logger, Authorizer: authorizer,
+		Workspaces: workspace.NewWorkspaces(pool), Notebooks: notebook.NewNotebooks(pool), Names: displayNames{identity.NewDirectory(pool)},
+		Nodes: transferNodes{page.NewExportNodes(pool)}, Linked: linking.NewLinkedPages(pool), Blobs: transferBlobs{asset.NewBlobs(pool, store)},
+		DownloadKey: downloadKey, ExportTTL: t.ExportTTL, JobTimeout: t.JobTimeout, HeartbeatTimeout: t.HeartbeatTimeout, MaxQueued: t.MaxQueued,
+		MinFreeBytes: cfg.Storage.MinFreeBytes, MinRate: cfg.Asset.UploadMinRate,
+	}
+}
+
+// jobsConfig is the runner's: the exports in a queue of their own, of
+// jobs.export_workers, and River's rescue of the jobs it takes for stuck
+// past the longest a job runs, an export's transfer.job_timeout, by an
+// hour: a job still running is never taken for stuck.
+func jobsConfig(cfg config.Config, logger *slog.Logger) jobs.Config {
+	return jobs.Config{
+		ShutdownTimeout: cfg.Jobs.ShutdownTimeout,
+		Queues:          map[string]int{transfer.QueueExport: cfg.Jobs.ExportWorkers},
+		RescueAfter:     cfg.Transfer.JobTimeout + time.Hour,
+		Logger:          logger,
 	}
 }
 

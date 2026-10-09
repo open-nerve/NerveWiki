@@ -173,3 +173,47 @@ func TestFullAtOpenFindsAnAreaFullOnItsOwn(t *testing.T) {
 		t.Errorf("FullAtOpen() = %v, want the area's EDQUOT", full)
 	}
 }
+
+// A file's writes read the free space every freeCheck bytes, and stop at
+// the store's minimum as Create does: a file far larger than an
+// attachment does not fill the disk. A read that fails skips its check.
+func TestWritesStopAtTheMinimumOfFreeSpace(t *testing.T) {
+	l, err := OpenLocal(t.TempDir(), 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	free, reads := int64(1000), 0
+	l.free = func(string) (int64, error) { reads++; return free, nil }
+	l.freeCheck = 4
+
+	w, err := l.Create(t.Context(), "exports/a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{"ab", "cd", "ef", "gh"} {
+		if _, err := w.Write([]byte(p)); err != nil {
+			t.Fatalf("Write(%q) = %v", p, err)
+		}
+	}
+	if reads != 2 {
+		t.Errorf("the free space read %d times, want 2: at Create and once 4 bytes went", reads)
+	}
+	l.free = func(string) (int64, error) { reads++; return 0, errors.New("the file system did not answer") }
+	if _, err := w.Write([]byte("ij")); err != nil || reads != 3 {
+		t.Errorf("Write as the free space is not read = %v after %d reads, want it written after 3", err, reads)
+	}
+	l.free = func(string) (int64, error) { reads++; return free, nil }
+	free = 99
+	if _, err := w.Write([]byte("kl")); err != nil {
+		t.Errorf("Write(%q) = %v, want it written unchecked", "kl", err)
+	}
+	if _, err := w.Write([]byte("mn")); !errors.Is(err, ErrFull) {
+		t.Errorf("Write past the minimum = %v, want ErrFull", err)
+	}
+	if err := w.Abort(); err != nil {
+		t.Error(err)
+	}
+	if _, err := l.Create(t.Context(), "exports/b"); !errors.Is(err, ErrFull) {
+		t.Errorf("Create past the minimum = %v, want ErrFull", err)
+	}
+}

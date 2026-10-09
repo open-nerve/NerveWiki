@@ -2,10 +2,14 @@ package jobs
 
 import (
 	"context"
+	"errors"
 	"log/slog"
+	"slices"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/riverqueue/river"
 )
 
 // fakeClient records the contexts that Start and Stop get, and whether the
@@ -89,5 +93,79 @@ func TestAStartUnderWayEndsWithItsContext(t *testing.T) {
 	}
 	if err := r.Stop(context.Background()); err != nil || fake.stops != 0 {
 		t.Errorf("Stop() = %v after %d client stops, want nil and none", err, fake.stops)
+	}
+}
+
+// startRecorder records the order in which the jobs' Start and the client's
+// Start run.
+type startRecorder struct {
+	fakeClient
+	order *[]string
+}
+
+func (s *startRecorder) Start(ctx context.Context) error {
+	*s.order = append(*s.order, "client")
+	return s.fakeClient.Start(ctx)
+}
+
+// The jobs' Start run in their order before River's, which fetches the
+// jobs: a module recovers what the last process left before any job runs.
+// The first failure fails the start, River not started.
+func TestTheJobsStartBeforeTheClient(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		fail bool
+		want []string
+	}{
+		{"both", false, []string{"first", "second", "client"}},
+		{"the first fails", true, []string{"first"}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			var order []string
+			fake := &startRecorder{order: &order}
+			r := newRunner(fake, quiet())
+			r.starts = []func(context.Context) error{
+				func(context.Context) error {
+					order = append(order, "first")
+					if c.fail {
+						return errors.New("the recovery failed")
+					}
+					return nil
+				},
+				func(context.Context) error { order = append(order, "second"); return nil },
+			}
+
+			err := r.Start(context.Background())
+
+			if (err != nil) != c.fail || !slices.Equal(order, c.want) {
+				t.Errorf("Start() = %v, ran %v; want failed %v, %v", err, order, c.fail, c.want)
+			}
+			if err := r.Stop(context.Background()); err != nil || fake.stops != 0 && c.fail {
+				t.Errorf("Stop() = %v after %d client stops", err, fake.stops)
+			}
+		})
+	}
+}
+
+// New collects the jobs' Start, in the jobs' order, for the runner's.
+func TestNewCollectsTheJobsStarts(t *testing.T) {
+	var order []string
+	start := func(name string) func(context.Context) error {
+		return func(context.Context) error { order = append(order, name); return nil }
+	}
+	probe := probeJob(time.Hour, func(context.Context) error { return nil })
+	none := func(*river.Workers) error { return nil }
+	r, err := New(newPool(t, "postgres://nobody@127.0.0.1:1/nowhere"), quiet(),
+		[]Job{{Add: probe.Add, Start: start("first")}, {Add: none}, {Add: none, Start: start("second")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range r.starts {
+		if err := s(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !slices.Equal(order, []string{"first", "second"}) {
+		t.Errorf("the starts ran %v, want first, second", order)
 	}
 }

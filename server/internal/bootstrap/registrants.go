@@ -14,6 +14,7 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/modules/linking"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/notebook"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page"
+	"github.com/open-nerve/NerveWiki/server/internal/modules/transfer"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/workspace"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/jobs"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown"
@@ -179,7 +180,8 @@ type notebookExtensions struct {
 // follows a deletion (M4/P1), with its edit sessions' subscribers, and
 // tells its pages' activity (M4/P4); M7's attachments do both, after the
 // pages (M7/P2); M6's link index drops the notebooks' rows after them
-// (M6/P3); M5's event streams follow a deletion, after those, and a
+// (M6/P3); M7's imports and exports delete the notebooks' jobs after
+// those (M7/P5); M5's event streams follow a deletion, last, and a
 // visibility change (M5/P2). The module's use cases and its parts in the
 // workspace module's events all take them from here.
 func notebookRegistrants(pool *pgxpool.Pool) notebookExtensions {
@@ -188,7 +190,8 @@ func notebookRegistrants(pool *pgxpool.Pool) notebookExtensions {
 	streams := notebookEvents{events.NewPublisher()}
 	return notebookExtensions{
 		deletionSubscribers: []notebook.NotebookDeletionSubscriber{
-			pageNotebookDeletion{pages}, assetNotebookDeletion{asset.NewNotebookDeletion(pool)}, links, streams,
+			pageNotebookDeletion{pages}, assetNotebookDeletion{asset.NewNotebookDeletion(pool)}, links,
+			transferNotebookDeletion{transfer.NewNotebookDeletion(pool)}, streams,
 		},
 		visibilitySubscribers: []notebook.VisibilitySubscriber{streams},
 		activitySources: []notebook.NotebookActivitySource{
@@ -248,7 +251,7 @@ type pageExtensions struct {
 // serve, the notebook module's deletion and this package's tests take them
 // from here; the page module's own tests build the lock themselves.
 func pageRegistrants(pool *pgxpool.Pool) pageExtensions {
-	lock := page.NewEditLock(pool, pageNames{identity.NewDirectory(pool)})
+	lock := page.NewEditLock(pool, displayNames{identity.NewDirectory(pool)})
 	streams := pageEvents{events.NewPublisher()}
 	links := linkIndex{linking.NewIndex(pool, linkTargets{page.NewLinkTargets(pool)}, linkEvents{events.NewPublisher()})}
 	return pageExtensions{
@@ -265,7 +268,7 @@ func pageRegistrants(pool *pgxpool.Pool) pageExtensions {
 // the guard does.
 func pageParticipants(pool *pgxpool.Pool, md *markdown.Markdown, budget *markdown.Budget, logger *slog.Logger) []page.Participant {
 	targets := page.NewLinkTargets(pool)
-	locks := page.NewLockHolders(pool, pageNames{identity.NewDirectory(pool)})
+	locks := page.NewLockHolders(pool, displayNames{identity.NewDirectory(pool)})
 	rewrite := linking.NewRewrite(pool, linkTargets{targets}, targets, locks, page.MaxContentBytes, md, budget, logger)
 	return []page.Participant{linkRewrite{rewrite}}
 }
@@ -281,11 +284,13 @@ func markdownExtensions(resolve obsidian.Resolve, assets obsidian.Assets) []mark
 
 // purgers are the modules' purgers of the soft-deleted rows, leaf to root
 // (M2 design 8, M2/P4 design 3.4): a module whose tables reference
-// another's comes before it, the attachments before the pages before the
-// notebooks before the workspaces. The attachments' purger deletes their
-// files in store, in transactions of tx, its failures logged to logger. The
+// another's comes before it, the attachments and the imports' and
+// exports' jobs before the pages before the notebooks before the
+// workspaces. The attachments' and the jobs' purgers delete their files in
+// store first, in transactions of tx, their failures logged to logger. The
 // database test of the purge checks the order against the foreign keys,
 // and that every table with deleted_at has its purger.
 func purgers(pool *pgxpool.Pool, tx shared.TxManager, store storage.Store, logger *slog.Logger) []jobs.Purger {
-	return slices.Concat(asset.Purgers(pool, tx, store, logger), page.Purgers(pool), notebook.Purgers(pool), workspace.Purgers(pool))
+	return slices.Concat(asset.Purgers(pool, tx, store, logger), transfer.Purgers(pool, tx, store, logger), page.Purgers(pool),
+		notebook.Purgers(pool), workspace.Purgers(pool))
 }

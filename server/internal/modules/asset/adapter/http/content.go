@@ -141,38 +141,7 @@ func alnum(c byte) bool {
 // its ETag; the sandbox is every answer's (sandboxed).
 func setContentHeaders(h http.Header, o app.Opened, download bool) {
 	h.Set("Content-Type", domain.Served(o.Blob.MIME))
-	h.Set("Content-Disposition", disposition(domain.Inline(o.Blob.MIME, download), o.Name))
+	h.Set("Content-Disposition", httpserver.Disposition(domain.Inline(o.Blob.MIME, download), o.Name))
 	h.Set("Cache-Control", "private, max-age="+strconv.FormatInt(max(0, int64(o.Left/time.Second)), 10)+", immutable")
 	h.Set("ETag", `"`+hex.EncodeToString(o.Blob.SHA256)+`"`)
-}
-
-// disposition is the Content-Disposition of a file named name (RFC 6266):
-// inline or attachment, its name in ASCII, every other character, a quote
-// and a backslash an underscore, and in UTF-8 (RFC 8187).
-func disposition(inline bool, name string) string {
-	kind := "attachment"
-	if inline {
-		kind = "inline"
-	}
-	var ascii, utf strings.Builder
-	for _, r := range name {
-		if r < 0x20 || r >= 0x7f || r == '"' || r == '\\' {
-			ascii.WriteByte('_')
-		} else {
-			ascii.WriteRune(r)
-		}
-	}
-	for _, c := range []byte(name) {
-		if attrChar(c) {
-			utf.WriteByte(c)
-		} else {
-			utf.WriteString("%" + strings.ToUpper(hex.EncodeToString([]byte{c})))
-		}
-	}
-	return kind + `; filename="` + ascii.String() + `"; filename*=UTF-8''` + utf.String()
-}
-
-// attrChar reports whether c is written as itself in an RFC 8187 value.
-func attrChar(c byte) bool {
-	return alnum(c) || strings.IndexByte("!#$&+-.^_`|~", c) >= 0
 }

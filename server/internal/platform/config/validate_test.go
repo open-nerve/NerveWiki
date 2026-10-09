@@ -50,9 +50,10 @@ func validConfig() Config {
 		Workspace: WorkspaceConfig{CreationEnabled: true},
 		Page:      PageConfig{EditSessionCleanupInterval: 10 * time.Minute, ParseBudgetBytes: 8 << 20, ParseMaxWait: 2 * time.Second},
 		Events:    EventsConfig{HeartbeatInterval: 20 * time.Second},
-		Jobs:      JobsConfig{ShutdownTimeout: 10 * time.Second, PurgeInterval: time.Hour, PurgeRetention: 1440 * time.Hour},
+		Jobs:      JobsConfig{ShutdownTimeout: 10 * time.Second, PurgeInterval: time.Hour, PurgeRetention: 1440 * time.Hour, ExportWorkers: 1},
 		Storage:   StorageConfig{Dir: "data", MinFreeBytes: 1 << 30},
 		Asset:     AssetConfig{MaxBytes: 50 << 20, UploadMinRate: 64 << 10},
+		Transfer:  TransferConfig{ExportTTL: 24 * time.Hour, JobTimeout: 6 * time.Hour, HeartbeatTimeout: 5 * time.Minute, MaxQueued: 20},
 		Log:       LogConfig{Level: "info", Format: "json"},
 	}
 }
@@ -120,10 +121,15 @@ func TestValidateReportsEveryInvalidKey(t *testing.T) {
 		"jobs.shutdown_timeout: must be positive, got 0s",
 		"jobs.purge_interval: must be at least 1s, got 0s",
 		"jobs.purge_retention: must be at least 1h, got 0s",
+		"jobs.export_workers: must be from 1 to 8, got 0",
 		"storage.dir: is required",
 		"storage.min_free_bytes: must not be negative, got -1",
 		"asset.max_bytes: must be from 1024 (1 KiB) to 4294967296 (4 GiB), got 0",
 		"asset.upload_min_rate: must be at least 1, got 0",
+		"transfer.export_ttl: must be at least 10m0s, got 0s",
+		"transfer.job_timeout: must be from 1m0s to 168h0m0s, got 0s",
+		"transfer.heartbeat_timeout: must be at least 1m0s, got 0s",
+		"transfer.max_queued: must be at least 1, got 0",
 		`log.level: must be one of debug, info, warn, error, got "verbose"`,
 		`log.format: must be text or json, got "xml"`,
 	}
@@ -315,6 +321,60 @@ func TestValidateCrossKeyRules(t *testing.T) {
 			name:   "an upload of the largest attachment in more than an hour",
 			mutate: func(c *Config) { c.Asset.MaxBytes, c.Asset.UploadMinRate = 3600<<10+1, 1<<10 },
 			want:   "asset.upload_min_rate: must let asset.max_bytes (3686401) arrive within 1h0m0s, at least 1025, got 1024",
+		},
+		{
+			name:   "eight exports at once",
+			mutate: func(c *Config) { c.Jobs.ExportWorkers, c.Database.MaxConns = 8, 16 },
+		},
+		{
+			name:   "exports holding half the pool",
+			mutate: func(c *Config) { c.Jobs.ExportWorkers, c.Database.MaxConns = 3, 6 },
+		},
+		{
+			name:   "exports holding more than half the pool",
+			mutate: func(c *Config) { c.Jobs.ExportWorkers, c.Database.MaxConns = 3, 5 },
+			want:   "jobs.export_workers: must leave half of database.max_conns (5) to the requests, at most 2, got 3",
+		},
+		{
+			name:   "more than eight exports at once",
+			mutate: func(c *Config) { c.Jobs.ExportWorkers = 9 },
+			want:   "jobs.export_workers: must be from 1 to 8, got 9",
+		},
+		{
+			name:   "an export kept ten minutes",
+			mutate: func(c *Config) { c.Transfer.ExportTTL = 10 * time.Minute },
+		},
+		{
+			name:   "an export kept less than ten minutes",
+			mutate: func(c *Config) { c.Transfer.ExportTTL = 10*time.Minute - time.Second },
+			want:   "transfer.export_ttl: must be at least 10m0s, got 9m59s",
+		},
+		{
+			name:   "a job of two minutes, with the shortest heartbeat timeout below it",
+			mutate: func(c *Config) { c.Transfer.JobTimeout, c.Transfer.HeartbeatTimeout = 2*time.Minute, time.Minute },
+		},
+		{
+			name:   "a job of a week",
+			mutate: func(c *Config) { c.Transfer.JobTimeout = 7 * 24 * time.Hour },
+		},
+		{
+			name:   "a job of more than a week",
+			mutate: func(c *Config) { c.Transfer.JobTimeout = 7*24*time.Hour + time.Second },
+			want:   "transfer.job_timeout: must be from 1m0s to 168h0m0s, got 168h0m1s",
+		},
+		{
+			name:   "a heartbeat timeout below a minute",
+			mutate: func(c *Config) { c.Transfer.HeartbeatTimeout = time.Minute - time.Second },
+			want:   "transfer.heartbeat_timeout: must be at least 1m0s, got 59s",
+		},
+		{
+			name:   "a heartbeat timeout as long as the job",
+			mutate: func(c *Config) { c.Transfer.HeartbeatTimeout = c.Transfer.JobTimeout },
+			want:   "transfer.heartbeat_timeout: must be less than transfer.job_timeout (6h0m0s), got 6h0m0s",
+		},
+		{
+			name:   "a single job queued",
+			mutate: func(c *Config) { c.Transfer.MaxQueued = 1 },
 		},
 	}
 	for _, tt := range tests {

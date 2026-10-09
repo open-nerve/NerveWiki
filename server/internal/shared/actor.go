@@ -6,15 +6,20 @@ import (
 )
 
 // Actor is the account a request acts as. Authentication puts it in the
-// request context; handlers of every module read it with RequireActor. It
-// tells which credential authenticated the request, never what the account
-// may do: that is each module's to decide (v0.1 design 6.2).
+// request context; handlers of every module read it with RequireActor. A
+// background job acting for the account that started it acts as one, its
+// JobID set (M7/P5 design 3.4). It tells which credential the account
+// acts with, never what the account may do: that is each module's to
+// decide (v0.1 design 6.2), on the account's roles as they are when it
+// acts.
 type Actor struct {
 	UserID uuid.UUID
-	// The credential: the sign-in session of an access token, or a personal
-	// access token. Exactly one of them is set.
+	// The credential: the sign-in session of an access token, a personal
+	// access token, or the background job that acts for the account. Exactly
+	// one of them is set.
 	SessionID  uuid.UUID
 	APITokenID uuid.UUID
+	JobID      uuid.UUID
 }
 
 type actorKey struct{}

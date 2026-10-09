@@ -30,3 +30,14 @@ UPDATE page_contents
 SET content = sqlc.arg(content), revision = sqlc.arg(revision), content_hash = sqlc.arg(content_hash),
     byte_size = sqlc.arg(byte_size), updated_by_id = sqlc.arg(by), updated_at = sqlc.arg(now)
 WHERE node_id = sqlc.arg(node_id) AND deleted_at IS NULL;
+
+-- name: ContentSizes :many
+-- The size and the time of the last write of each content not deleted of the pages: an export tells the pages
+-- without content (M7/P5 design 3.8). The array grows with the notebook: the store plans it with its arguments.
+SELECT node_id, byte_size, updated_at FROM page_contents
+WHERE node_id = ANY(sqlc.arg(node_ids)::uuid[]) AND deleted_at IS NULL;
+
+-- name: Contents :many
+-- The contents not deleted of the pages: an export's batch.
+SELECT node_id, content FROM page_contents
+WHERE node_id = ANY(sqlc.arg(node_ids)::uuid[]) AND deleted_at IS NULL;

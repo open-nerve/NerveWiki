@@ -32,6 +32,8 @@ tags:
     description: The stream of the events of what the caller sees.
   - name: asset
     description: The attachments of a notebook's pages and their files.
+  - name: transfer
+    description: The imports and exports of notebooks, jobs that run in the background.
 paths:
   /api/v0/auth/register:
     $ref: "modules/identity.yaml#/paths/~1api~1v0~1auth~1register"
@@ -137,6 +139,16 @@ paths:
     $ref: "modules/asset.yaml#/paths/~1api~1v0~1assets~1{node_id}"
   /api/v0/assets/{node_id}/content:
     $ref: "modules/asset.yaml#/paths/~1api~1v0~1assets~1{node_id}~1content"
+  /api/v0/notebooks/{notebook_id}/exports:
+    $ref: "modules/transfer.yaml#/paths/~1api~1v0~1notebooks~1{notebook_id}~1exports"
+  /api/v0/notebooks/{notebook_id}/transfer-jobs:
+    $ref: "modules/transfer.yaml#/paths/~1api~1v0~1notebooks~1{notebook_id}~1transfer-jobs"
+  /api/v0/transfer-jobs/{job_id}:
+    $ref: "modules/transfer.yaml#/paths/~1api~1v0~1transfer-jobs~1{job_id}"
+  /api/v0/transfer-jobs/{job_id}/cancel:
+    $ref: "modules/transfer.yaml#/paths/~1api~1v0~1transfer-jobs~1{job_id}~1cancel"
+  /api/v0/transfer-jobs/{job_id}/download:
+    $ref: "modules/transfer.yaml#/paths/~1api~1v0~1transfer-jobs~1{job_id}~1download"
 components:
   # 模块文件的 securitySchemes 在打包时被丢掉，操作引用的 scheme 写在这里
   securitySchemes:

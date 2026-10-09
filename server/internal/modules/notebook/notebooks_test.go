@@ -31,6 +31,21 @@ func TestNotebooksFindAndLock(t *testing.T) {
 		}
 	})
 
+	t.Run("NameOf", func(t *testing.T) {
+		var want string
+		if err := f.pool.QueryRow(ctx, "SELECT name FROM notebooks WHERE id = $1", f.eng).Scan(&want); err != nil {
+			t.Fatal(err)
+		}
+		if got, ok, err := nbs.NameOf(ctx, f.eng); err != nil || !ok || got != want {
+			t.Errorf("NameOf(eng) = %q, %v, %v; want %q", got, ok, err, want)
+		}
+		for _, id := range []uuid.UUID{f.ops, uuid.NewV7()} {
+			if got, ok, err := nbs.NameOf(ctx, id); err != nil || ok || got != "" {
+				t.Errorf("NameOf(%s) = %q, %v, %v; want none", id, got, ok, err)
+			}
+		}
+	})
+
 	for name, lock := range locks {
 		t.Run(name, func(t *testing.T) {
 			if _, err := lock(ctx, f.eng); err == nil {

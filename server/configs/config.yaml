@@ -62,7 +62,7 @@ ratelimit:
   # IPv6 的客户端按这个长度的前缀计数：一台主机通常拿到整个 /64
   ipv6_prefix_len: 64
   # 每个桶最多存 burst 个单位，每分钟补充 per_minute 个；取不到时 429 rate_limited 与 Retry-After
-  # 公开操作（注册、登录、续期、退出、实例信息），按客户端 IP
+  # 公开操作（注册、登录、续期、退出、实例信息、导出的签名下载），按客户端 IP
   anonymous: { per_minute: 600, burst: 100 }
   # 认证之前的失败闸门：带了令牌、认证却失败的请求，按客户端 IP
   auth_failure: { per_minute: 60, burst: 60 }
@@ -104,6 +104,8 @@ jobs:
   purge_interval: 1h
   # 软删除的行保留这么久之后才被物理删除，至少 1 小时。期间运维可以从数据库恢复
   purge_retention: 1440h
+  # 同时运行的导出数（各在自己的队列里，不占定时任务），1 到 8，且至多 database.max_conns 的一半：每个导出在快照里占一个数据库连接、写一个文件
+  export_workers: 1
 
 storage:
   # 附件、导入导出的文件所在的目录，不存在就建。不可写时 serve 拒绝启动，错误里写明进程的 uid。
@@ -119,6 +121,16 @@ asset:
   # 上传与下载的最低平均速率（字节/秒）：流式路由的读写截止时间按它随字节放宽。max_bytes 按这个速率传完
   # 不能超过 1 小时，这也是一个上传占住连接的上界（默认约 13 分钟）
   upload_min_rate: 65536
+
+transfer:
+  # 成功的导出保留多久，之后 zip 被删掉、任务记成已过期；至少 10 分钟。每人每本笔记本只留最新的一份
+  export_ttl: 24h
+  # 一个导入导出任务最长运行多久，1 分钟到 7 天；到时间任务被取消，记成失败（超时）
+  job_timeout: 6h
+  # 运行中的任务每秒写一次心跳；心跳早于它的任务被记成失败（中断），至少 1 分钟，短于 job_timeout
+  heartbeat_timeout: 5m
+  # 全部排队与运行中的任务的上限，至少 1；超出时开始任务答 503 server_busy
+  max_queued: 20
 
 log:
   level: info # debug | info | warn | error
