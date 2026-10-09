@@ -18,6 +18,12 @@ const MaxDepth = 10
 // 4.11): stored, so not in the reader's language.
 const Untitled = "未命名"
 
+// ImportName is an import's job's name: the uploaded file's, mended as an
+// attachment's name is, keeping its extension; Untitled for none.
+func ImportName(file string) string {
+	return cmp.Or(shared.FixTitle(file, true), Untitled)
+}
+
 // ImportNode is a node an import creates (M7/P6 design 3.12): its parent
 // among the plan's nodes, -1 for where the import goes; an attachment or
 // a page; its name mended, and as the archive gives it (a page's file's

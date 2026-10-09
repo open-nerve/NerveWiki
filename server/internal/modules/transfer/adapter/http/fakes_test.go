@@ -115,6 +115,10 @@ func (nodes) Page(_ context.Context, notebook, id uuid.UUID) (string, bool, erro
 	return "Spec", notebook == notebookID() && id == pageID(), nil
 }
 
+func (nodes) Depth(_ context.Context, notebook, id uuid.UUID) (int, bool, error) {
+	return 1, notebook == notebookID() && id == pageID(), nil
+}
+
 func (nodes) Scope(context.Context, uuid.UUID, *uuid.UUID) ([]domain.Node, error) { return nil, nil }
 
 func (nodes) Contents(context.Context, []uuid.UUID) (map[uuid.UUID]string, error) { return nil, nil }
@@ -167,6 +171,17 @@ func (r *rows) CountActive(context.Context) (int, error) {
 		}
 	}
 	return n, nil
+}
+
+func (r *rows) Importing(_ context.Context, notebook uuid.UUID) (bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, j := range r.jobs {
+		if j.NotebookID == notebook && j.Kind == domain.KindImport && !j.State.Ended() {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (r *rows) Exporting(_ context.Context, notebook, user uuid.UUID) (bool, error) {
@@ -334,6 +349,13 @@ func (q *queue) enqueued() []uuid.UUID {
 }
 
 func (q *queue) Export(_ context.Context, id uuid.UUID) error {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.ids = append(q.ids, id)
+	return nil
+}
+
+func (q *queue) Import(_ context.Context, id uuid.UUID) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	q.ids = append(q.ids, id)

@@ -89,3 +89,38 @@ func TestClassify(t *testing.T) {
 		})
 	}
 }
+
+// A page's file ends with ".md", in any case, past the white space and
+// dots at its ends; a folder is none.
+func TestImportEntryPage(t *testing.T) {
+	for path, want := range map[string]bool{
+		"a.md": true, "A/b.MD": true, "a.md. ": true, " a.Md": true, ".md": false, "a.md/": false, "a.mdx": false, "a.png": false, "md": false,
+	} {
+		e := importEntries(path)[0]
+		if got := e.Page(); got != want {
+			t.Errorf("Page() of %q = %v, want %v", path, got, want)
+		}
+	}
+}
+
+// An entry is too compressed past its first MiB, unpacking to more than
+// 200 times its packed bytes.
+func TestTooCompressed(t *testing.T) {
+	for _, tt := range []struct {
+		unpacked, packed int64
+		want             bool
+	}{
+		{domain.RatioFloor, 0, false},
+		{domain.RatioFloor + 1, 0, true},
+		{domain.RatioFloor + 1, domain.RatioFloor, false},
+		{200 * 10000, 10000, false},
+		{200*10000 + 1, 10000, true},
+		{1 << 62, 1 << 62, false},
+		{1<<63 - 1, 1 << 56, false},
+		{1<<63 - 1, 1 << 55, true},
+	} {
+		if got := domain.TooCompressed(tt.unpacked, tt.packed); got != tt.want {
+			t.Errorf("TooCompressed(%d, %d) = %v, want %v", tt.unpacked, tt.packed, got, tt.want)
+		}
+	}
+}

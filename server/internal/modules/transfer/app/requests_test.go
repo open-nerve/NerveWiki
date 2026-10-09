@@ -333,14 +333,17 @@ func TestExportsExpireTheirArchives(t *testing.T) {
 }
 
 // The rescue fails every running job as the server starts, then those
-// whose heartbeat is older than the timeout, and the queued jobs River no
-// longer holds, the rows read before River; each logged.
+// whose heartbeat is older than the timeout, and the queued jobs of each
+// kind River no longer holds, the rows read before River; each logged.
 func TestTheRescue(t *testing.T) {
-	running, kept, dropped := uuid.NewV7(), uuid.NewV7(), uuid.NewV7()
+	running, kept, dropped, imported, lost := uuid.NewV7(), uuid.NewV7(), uuid.NewV7(), uuid.NewV7(), uuid.NewV7()
 	rec := &recorder{}
 	var l logs
-	m := &maintained{interrupted: []app.Interrupted{{ID: running}}, queued: []uuid.UUID{kept, dropped}, rec: rec}
-	r := app.NewRescue(m, held{ids: []uuid.UUID{kept}, rec: rec}, fixedClock{now()}, l.logger(), 5*time.Minute)
+	m := &maintained{interrupted: []app.Interrupted{{ID: running}}, rec: rec, queued: map[domain.Kind][]uuid.UUID{
+		domain.KindExport: {kept, dropped}, domain.KindImport: {imported, lost},
+	}}
+	h := held{ids: map[domain.Kind][]uuid.UUID{domain.KindExport: {kept, lost}, domain.KindImport: {imported, dropped}}, rec: rec}
+	r := app.NewRescue(m, h, fixedClock{now()}, l.logger(), 5*time.Minute)
 	if err := r.AtStart(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -353,11 +356,12 @@ func TestTheRescue(t *testing.T) {
 	if len(m.beatBefore) != 2 || !m.beatBefore[1].Equal(now().Add(-5*time.Minute)) {
 		t.Errorf("asked %v, want all, then before five minutes ago", m.beatBefore)
 	}
-	if !slices.Equal(m.failed, []uuid.UUID{dropped}) || !slices.Equal(rec.calls, []string{"QueuedExports", "Held"}) {
-		t.Errorf("failed %v, calls %v; want the job River dropped, the rows read first", m.failed, rec.calls)
+	calls := []string{"QueuedJobs export", "Held export", "QueuedJobs import", "Held import"}
+	if !slices.Equal(m.failed, []uuid.UUID{dropped, lost}) || !slices.Equal(rec.calls, calls) {
+		t.Errorf("failed %v, calls %v; want the jobs River dropped of each kind, the rows read first", m.failed, rec.calls)
 	}
 	text := l.String()
-	if strings.Count(text, "job interrupted") != 2 || !strings.Contains(text, "queued job dropped by River") || !strings.Contains(text, dropped.String()) {
+	if strings.Count(text, "job interrupted") != 2 || strings.Count(text, "queued job dropped by River") != 2 || !strings.Contains(text, lost.String()) {
 		t.Errorf("logs %q", text)
 	}
 
@@ -365,21 +369,22 @@ func TestTheRescue(t *testing.T) {
 	if err := app.NewRescue(m, held{err: errors.New("River is gone")}, fixedClock{now()}, quiet(), time.Minute).Run(context.Background()); err != nil {
 		t.Errorf("Run() with nothing queued = %v, want River not asked", err)
 	}
-	m.queued = []uuid.UUID{kept}
+	m.queued = map[domain.Kind][]uuid.UUID{domain.KindImport: {kept}}
 	if err := app.NewRescue(m, held{err: errors.New("River is gone")}, fixedClock{now()}, quiet(), time.Minute).Run(context.Background()); err == nil {
 		t.Error("Run() with River's read failing = nil error")
 	}
 }
 
-// The sweep deletes the old archives no job keeps.
+// The sweep deletes the old archives no job keeps, the exports' then the
+// imports', each kind's asked of its rows.
 func TestTheSweepDeletesOrphanArchives(t *testing.T) {
-	kept, orphan := uuid.NewV7(), uuid.NewV7()
-	m := &maintained{live: []uuid.UUID{kept}}
+	kept, orphan, importing, uploaded := uuid.NewV7(), uuid.NewV7(), uuid.NewV7(), uuid.NewV7()
+	m := &maintained{live: map[domain.Kind][]uuid.UUID{domain.KindExport: {kept, uploaded}, domain.KindImport: {importing, orphan}}}
 	a := newArchives()
-	a.listed = []uuid.UUID{kept, orphan}
+	a.listed = map[domain.Kind][]uuid.UUID{domain.KindExport: {kept, orphan}, domain.KindImport: {importing, uploaded}}
 	n, err := app.NewSweep(m, a, fixedClock{now()}, quiet()).Run(context.Background())
-	if err != nil || n != 1 || !slices.Equal(a.deleted, []uuid.UUID{orphan}) {
-		t.Errorf("Run() = %d, %v, deleted %v; want the orphan", n, err, a.deleted)
+	if err != nil || n != 2 || !slices.Equal(a.deleted, []uuid.UUID{orphan, uploaded}) {
+		t.Errorf("Run() = %d, %v, deleted %v; want the orphans", n, err, a.deleted)
 	}
 	a.deleteErr = errors.New("denied")
 	if _, err := app.NewSweep(m, a, fixedClock{now()}, quiet()).Run(context.Background()); err == nil {

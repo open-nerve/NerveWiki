@@ -31,9 +31,11 @@ type StartDeps struct {
 	Signer     Signer
 	Clock      Clock
 	Logger     *slog.Logger
-	// MaxQueued is transfer.max_queued, MinFree storage.min_free_bytes.
-	MaxQueued int
-	MinFree   int64
+	// MaxQueued is transfer.max_queued, MinFree storage.min_free_bytes,
+	// ImportMaxBytes transfer.import_max_bytes.
+	MaxQueued      int
+	MinFree        int64
+	ImportMaxBytes int64
 }
 
 // NewStartExport returns the use case.
@@ -64,7 +66,7 @@ func (s *StartExport) Run(ctx context.Context, notebookID uuid.UUID, root *uuid.
 	}
 	var job domain.Job
 	err = s.d.Tx.WithinTx(ctx, func(ctx context.Context) error {
-		if err := s.lock(ctx, actor, workspaceID, notebookID); err != nil {
+		if err := s.d.lock(ctx, actor, workspaceID, notebookID, domain.ActionExport); err != nil {
 			return err
 		}
 		name, err := s.nameOf(ctx, notebookID, root)
@@ -95,15 +97,21 @@ func (s *StartExport) Run(ctx context.Context, notebookID uuid.UUID, root *uuid.
 }
 
 // lock locks the workspace's row and the notebook's FOR SHARE, then
-// decides transfer.export: a deletion committed meanwhile leaves none.
-func (s *StartExport) lock(ctx context.Context, actor shared.Actor, workspaceID, notebookID uuid.UUID) error {
-	if ok, err := s.d.Workspaces.ShareByID(ctx, workspaceID); err != nil || !ok {
+// decides action: a deletion committed meanwhile leaves none.
+func (d StartDeps) lock(ctx context.Context, actor shared.Actor, workspaceID, notebookID uuid.UUID, action shared.Action) error {
+	if ok, err := d.Workspaces.ShareByID(ctx, workspaceID); err != nil || !ok {
 		return orNotFound(err)
 	}
-	if ok, err := s.d.Notebooks.ShareByID(ctx, notebookID); err != nil || !ok {
+	if ok, err := d.Notebooks.ShareByID(ctx, notebookID); err != nil || !ok {
 		return orNotFound(err)
 	}
-	_, err := s.d.Authorizer.Authorize(ctx, actor, domain.ActionExport, shared.Target{WorkspaceID: workspaceID, NotebookID: notebookID})
+	return d.authorize(ctx, actor, workspaceID, notebookID, action)
+}
+
+// authorize decides action on the notebook: notebook.not_found for a
+// caller who cannot see it.
+func (d StartDeps) authorize(ctx context.Context, actor shared.Actor, workspaceID, notebookID uuid.UUID, action shared.Action) error {
+	_, err := d.Authorizer.Authorize(ctx, actor, action, shared.Target{WorkspaceID: workspaceID, NotebookID: notebookID})
 	if errors.Is(err, shared.ErrNotVisible) {
 		return domain.ErrNotebookNotFound
 	}
@@ -142,12 +150,8 @@ func (s *StartExport) admit(ctx context.Context, notebookID, userID uuid.UUID) e
 	if err := s.d.Rows.LockQueue(ctx); err != nil {
 		return err
 	}
-	active, err := s.d.Rows.CountActive(ctx)
-	if err != nil {
+	if err := s.d.room(ctx); err != nil {
 		return err
-	}
-	if active >= s.d.MaxQueued {
-		return domain.ErrQueueFull
 	}
 	busy, err := s.d.Rows.Exporting(ctx, notebookID, userID)
 	if err != nil {
@@ -156,11 +160,28 @@ func (s *StartExport) admit(ctx context.Context, notebookID, userID uuid.UUID) e
 	if busy {
 		return domain.ErrBusy
 	}
-	free, err := s.d.Archives.Free(ctx)
+	return s.d.free(ctx)
+}
+
+// room is 503 server_busy when MaxQueued jobs wait or run.
+func (d StartDeps) room(ctx context.Context) error {
+	active, err := d.Rows.CountActive(ctx)
 	if err != nil {
 		return err
 	}
-	if free < s.d.MinFree {
+	if active >= d.MaxQueued {
+		return domain.ErrQueueFull
+	}
+	return nil
+}
+
+// free is 507 storage_full when the store's disk keeps less than MinFree.
+func (d StartDeps) free(ctx context.Context) error {
+	free, err := d.Archives.Free(ctx)
+	if err != nil {
+		return err
+	}
+	if free < d.MinFree {
 		return domain.ErrStorageFull
 	}
 	return nil

@@ -311,6 +311,10 @@ func (n nodes) Page(_ context.Context, _, id uuid.UUID) (string, bool, error) {
 	return "Readme", id == n.readme, nil
 }
 
+func (n nodes) Depth(_ context.Context, _, id uuid.UUID) (int, bool, error) {
+	return 1, id == n.readme, nil
+}
+
 func (n nodes) Scope(context.Context, uuid.UUID, *uuid.UUID) ([]transfer.Node, error) {
 	return []transfer.Node{{ID: n.readme, Name: "Readme", Bytes: int64(len("hello")), Modified: time.Now()}}, nil
 }

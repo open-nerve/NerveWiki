@@ -136,3 +136,15 @@ func TestReadMeta(t *testing.T) {
 		}
 	}
 }
+
+// An import's job is named as its file, mended as an attachment's name
+// is; Untitled for none.
+func TestImportName(t *testing.T) {
+	for file, want := range map[string]string{
+		"vault.zip": "vault.zip", "a:b.zip": "a_b.zip", "  ": domain.Untitled, "": domain.Untitled, "con.zip": "con_.zip", "x/y.zip": "x_y.zip",
+	} {
+		if got := domain.ImportName(file); got != want {
+			t.Errorf("ImportName(%q) = %q, want %q", file, got, want)
+		}
+	}
+}

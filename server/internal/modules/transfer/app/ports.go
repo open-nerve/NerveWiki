@@ -44,12 +44,15 @@ type Names interface {
 	DisplayNames(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]string, error)
 }
 
-// Nodes reads an export's scope, in the caller's snapshot: bootstrap
-// adapts the page module's ExportNodes.
+// Nodes reads an export's scope, in the caller's snapshot, and where an
+// import goes: bootstrap adapts the page module's ExportNodes.
 type Nodes interface {
 	// Page is the name of the page not deleted id of notebookID; false for
 	// none, or for an attachment.
 	Page(ctx context.Context, notebookID, id uuid.UUID) (string, bool, error)
+	// Depth is the depth of the page not deleted id of notebookID, a page
+	// at its root's 1; false for none, or for an attachment.
+	Depth(ctx context.Context, notebookID, id uuid.UUID) (int, bool, error)
 	// Scope is the nodes not deleted of notebookID, or of the page root and
 	// its subtree when root is set.
 	Scope(ctx context.Context, notebookID uuid.UUID, root *uuid.UUID) ([]domain.Node, error)
@@ -170,13 +173,14 @@ type ArchiveFile interface {
 // Queue enqueues the jobs in the caller's transaction: adapter/river.
 type Queue interface {
 	Export(ctx context.Context, id uuid.UUID) error
+	Import(ctx context.Context, id uuid.UUID) error
 }
 
 // Held tells which jobs River still holds: adapter/river.
 type Held interface {
-	// Held is the ids of the exports River has not finished: to work,
-	// working, or to try again.
-	Held(ctx context.Context) ([]uuid.UUID, error)
+	// Held is the ids of the jobs of kind River has not finished: to
+	// work, working, or to try again.
+	Held(ctx context.Context, kind domain.Kind) ([]uuid.UUID, error)
 }
 
 // Signer signs the addresses of the exports' archives: adapter/mac.
@@ -239,6 +243,9 @@ type Rows interface {
 	// Exporting reports whether userID has an export queued or running in
 	// notebookID.
 	Exporting(ctx context.Context, notebookID, userID uuid.UUID) (bool, error)
+	// Importing reports whether notebookID has an import queued or
+	// running.
+	Importing(ctx context.Context, notebookID uuid.UUID) (bool, error)
 	FindJob(ctx context.Context, id uuid.UUID) (domain.Job, error)
 	// LockJob is FindJob locked until the transaction ends.
 	LockJob(ctx context.Context, id uuid.UUID) (domain.Job, error)
@@ -277,13 +284,14 @@ type MaintainedRows interface {
 	// beatBefore, or all of them when it is nil, with r; those another
 	// transaction holds are skipped.
 	InterruptJobs(ctx context.Context, beatBefore *time.Time, at time.Time, r domain.Report) ([]Interrupted, error)
-	// QueuedExports is the ids of the queued exports.
-	QueuedExports(ctx context.Context) ([]uuid.UUID, error)
+	// QueuedJobs is the ids of the queued jobs of kind.
+	QueuedJobs(ctx context.Context, kind domain.Kind) ([]uuid.UUID, error)
 	// FailQueued fails those of ids still queued with r; those another
 	// transaction holds are skipped.
 	FailQueued(ctx context.Context, ids []uuid.UUID, at time.Time, r domain.Report) ([]Interrupted, error)
-	// LiveArchives is those of ids whose archives are kept.
-	LiveArchives(ctx context.Context, ids []uuid.UUID) ([]uuid.UUID, error)
+	// LiveArchives is those of ids, jobs of kind, whose archives are kept:
+	// an export's that succeeded, an import's queued or running.
+	LiveArchives(ctx context.Context, kind domain.Kind, ids []uuid.UUID) ([]uuid.UUID, error)
 	// DeleteJobsOfNotebooks deletes the notebooks' jobs at at.
 	DeleteJobsOfNotebooks(ctx context.Context, notebookIDs []uuid.UUID, at time.Time) error
 	// ExpiredJobs is up to batch jobs deleted before before, locked until

@@ -18,6 +18,21 @@ const (
 	MethodDeflate uint16 = 8
 )
 
+// An entry that unpacks to more than MaxRatio times its packed bytes,
+// past its first RatioFloor bytes, is skipped (M7 design 4.11): a small
+// file packs far beyond it.
+const (
+	MaxRatio   = 200
+	RatioFloor = 1 << 20
+)
+
+// TooCompressed reports whether an entry of packed bytes is too
+// compressed, unpacked of its bytes read: more than RatioFloor, and more
+// than MaxRatio times packed.
+func TooCompressed(unpacked, packed int64) bool {
+	return unpacked > RatioFloor && (unpacked-1)/MaxRatio >= packed
+}
+
 // RawEntry is an entry as the archive's directory lists it: its index
 // there, its name's bytes, whether it is a folder, a symbolic link or
 // another file that is no regular one, encrypted, and its method.
@@ -44,6 +59,13 @@ type ImportEntry struct {
 // Joined is the entry's path in the vault, its names joined by "/".
 func (e ImportEntry) Joined() string {
 	return strings.Join(e.Path, "/")
+}
+
+// Page reports whether the entry is a page's file: a file whose name ends
+// with ".md", in any case, past the white space and dots at its ends.
+func (e ImportEntry) Page() bool {
+	_, ok := pageStem(e.Path[len(e.Path)-1])
+	return !e.Folder && ok
 }
 
 // Sorted is an archive's entries sorted: those the import reads, in the

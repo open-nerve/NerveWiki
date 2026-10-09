@@ -92,7 +92,7 @@ func (r *Rescue) AtStart(ctx context.Context) error {
 }
 
 // Run fails the running jobs whose heartbeat is older than the timeout,
-// then the queued exports River no longer holds: it dropped them, its one
+// then the queued jobs River no longer holds: it dropped them, its one
 // attempt spent before they started, as their start's write failed. One
 // whose process stopped as River took it River holds, running, until its
 // rescue: the job timeout and an hour (M7/P5 design 3.12).
@@ -103,18 +103,23 @@ func (r *Rescue) Run(ctx context.Context) error {
 		return fmt.Errorf("rescue the interrupted jobs: %w", err)
 	}
 	r.log(ctx, "job interrupted", jobs)
-	return r.lost(ctx)
+	for _, kind := range []domain.Kind{domain.KindExport, domain.KindImport} {
+		if err := r.lost(ctx, kind); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
-// lost fails the queued exports River no longer holds. It reads the rows
-// before River: a job queued then was enqueued with its row, so River
+// lost fails the queued jobs of kind River no longer holds. It reads the
+// rows before River: a job queued then was enqueued with its row, so River
 // holds it still, or started it, the row no longer queued, or dropped it.
-func (r *Rescue) lost(ctx context.Context) error {
-	queued, err := r.rows.QueuedExports(ctx)
+func (r *Rescue) lost(ctx context.Context, kind domain.Kind) error {
+	queued, err := r.rows.QueuedJobs(ctx, kind)
 	if err != nil || len(queued) == 0 {
 		return err
 	}
-	ids, err := r.held.Held(ctx)
+	ids, err := r.held.Held(ctx, kind)
 	if err != nil {
 		return fmt.Errorf("the jobs River holds: %w", err)
 	}
@@ -148,15 +153,16 @@ func (r *Rescue) log(ctx context.Context, msg string, jobs []Interrupted) {
 
 // SweepAge is how old an archive no job keeps is when the sweep deletes
 // it: a day, longer than an export's archive waits between its commit and
-// its job's success.
+// its job's success, and an import's between its upload and its row.
 const SweepAge = 24 * time.Hour
 
 // sweepBatch is how many archives one read of the rows asks about.
 const sweepBatch = 500
 
-// Sweep deletes the exports' archives no job keeps: those whose job ended
+// Sweep deletes the archives no job keeps: an export's whose job ended
 // otherwise than in success after the file committed, expired ones whose
-// delete failed, a deleted notebook's.
+// delete failed; an import's whose job ended, or whose row was never
+// written; a deleted notebook's.
 type Sweep struct {
 	rows     MaintainedRows
 	archives Archives
@@ -169,15 +175,36 @@ func NewSweep(rows MaintainedRows, archives Archives, clock Clock, logger *slog.
 	return &Sweep{rows: rows, archives: archives, clock: clock, logger: logger}
 }
 
-// Run deletes them, older than SweepAge, sweepBatch a read of the rows,
-// and tells how many. One it cannot delete is logged, the run going on to
-// the rest and failing at its end.
+// Run deletes them, older than SweepAge, the exports' then the imports',
+// sweepBatch a read of the rows, and tells how many. One it cannot delete
+// is logged, the run going on to the rest and failing at its end.
 func (s *Sweep) Run(ctx context.Context) (int, error) {
+	deleted, failed := 0, 0
+	var first error
+	for _, kind := range []domain.Kind{domain.KindExport, domain.KindImport} {
+		d, f, err := s.sweep(ctx, kind)
+		deleted, failed, first = deleted+d, failed+f, cmp.Or(first, err)
+		if err != nil && f == 0 {
+			return deleted, err
+		}
+	}
+	if deleted > 0 {
+		s.logger.InfoContext(ctx, "orphan archives deleted", slog.Int("files", deleted))
+	}
+	if failed > 0 {
+		return deleted, fmt.Errorf("%d orphan archives not deleted, the first: %w", failed, first)
+	}
+	return deleted, nil
+}
+
+// sweep deletes kind's archives no job keeps: how many, how many it could
+// not, and the first error.
+func (s *Sweep) sweep(ctx context.Context, kind domain.Kind) (int, int, error) {
 	deleted, failed := 0, 0
 	var first error
 	var batch []uuid.UUID
 	flush := func() error {
-		live, err := s.rows.LiveArchives(ctx, batch)
+		live, err := s.rows.LiveArchives(ctx, kind, batch)
 		if err != nil {
 			return err
 		}
@@ -189,8 +216,9 @@ func (s *Sweep) Run(ctx context.Context) (int, error) {
 			if kept[id] {
 				continue
 			}
-			if err := s.archives.Delete(ctx, domain.KindExport, id); err != nil {
-				s.logger.WarnContext(ctx, "orphan export archive not deleted", slog.String("job_id", id.String()), slog.Any("error", err))
+			if err := s.archives.Delete(ctx, kind, id); err != nil {
+				s.logger.WarnContext(ctx, "orphan archive not deleted", slog.String("kind", string(kind)), slog.String("job_id", id.String()),
+					slog.Any("error", err))
 				failed++
 				first = cmp.Or(first, err)
 				continue
@@ -200,7 +228,7 @@ func (s *Sweep) Run(ctx context.Context) (int, error) {
 		batch = batch[:0]
 		return nil
 	}
-	err := s.archives.List(ctx, domain.KindExport, s.clock.Now().Add(-SweepAge), func(id uuid.UUID) error {
+	err := s.archives.List(ctx, kind, s.clock.Now().Add(-SweepAge), func(id uuid.UUID) error {
 		if batch = append(batch, id); len(batch) == sweepBatch {
 			return flush()
 		}
@@ -209,13 +237,7 @@ func (s *Sweep) Run(ctx context.Context) (int, error) {
 	if err == nil && len(batch) > 0 {
 		err = flush()
 	}
-	if deleted > 0 {
-		s.logger.InfoContext(ctx, "orphan export archives deleted", slog.Int("files", deleted))
-	}
-	if err == nil && failed > 0 {
-		err = fmt.Errorf("%d orphan export archives not deleted, the first: %w", failed, first)
-	}
-	return deleted, err
+	return deleted, failed, cmp.Or(err, first)
 }
 
 // Follow deletes the deleted notebooks' jobs, in the deletion's

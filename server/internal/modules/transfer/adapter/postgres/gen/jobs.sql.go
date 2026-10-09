@@ -410,6 +410,21 @@ func (q *Queries) FinishJob(ctx context.Context, arg FinishJobParams) (int64, er
 	return result.RowsAffected(), nil
 }
 
+const importing = `-- name: Importing :one
+SELECT EXISTS (
+    SELECT 1 FROM transfer_jobs
+    WHERE notebook_id = $1 AND kind = 'import' AND state IN ('queued', 'running') AND deleted_at IS NULL
+)
+`
+
+// Whether the notebook has an import queued or running, anyone's.
+func (q *Queries) Importing(ctx context.Context, notebookID uuid.UUID) (bool, error) {
+	row := q.db.QueryRow(ctx, importing, notebookID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const interruptJobs = `-- name: InterruptJobs :many
 UPDATE transfer_jobs SET state = 'failed', finished_at = $1, report = $2
 WHERE state = 'running' AND id IN (
@@ -550,12 +565,19 @@ func (q *Queries) ListJobs(ctx context.Context, arg ListJobsParams) ([]ListJobsR
 
 const liveArchives = `-- name: LiveArchives :many
 SELECT id FROM transfer_jobs
-WHERE id = ANY($1::uuid[]) AND deleted_at IS NULL AND kind = 'export' AND state = 'succeeded'
+WHERE id = ANY($1::uuid[]) AND deleted_at IS NULL AND kind = $2
+    AND state = ANY(CASE WHEN $2 = 'export' THEN ARRAY['succeeded'] ELSE ARRAY['queued', 'running'] END)
 `
 
-// Of ids, the jobs whose archives are kept: the exports that succeeded, not deleted.
-func (q *Queries) LiveArchives(ctx context.Context, ids []uuid.UUID) ([]uuid.UUID, error) {
-	rows, err := q.db.Query(ctx, liveArchives, ids)
+type LiveArchivesParams struct {
+	Ids  []uuid.UUID
+	Kind string
+}
+
+// Of ids, the jobs of a kind whose archives are kept: the exports that succeeded, the imports queued or running; none
+// deleted.
+func (q *Queries) LiveArchives(ctx context.Context, arg LiveArchivesParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, liveArchives, arg.Ids, arg.Kind)
 	if err != nil {
 		return nil, err
 	}
@@ -639,13 +661,13 @@ func (q *Queries) LockQueue(ctx context.Context) error {
 	return err
 }
 
-const queuedExports = `-- name: QueuedExports :many
-SELECT id FROM transfer_jobs WHERE kind = 'export' AND state = 'queued' AND deleted_at IS NULL
+const queuedJobs = `-- name: QueuedJobs :many
+SELECT id FROM transfer_jobs WHERE kind = $1 AND state = 'queued' AND deleted_at IS NULL
 `
 
-// The queued exports not deleted: River holds them, or dropped them.
-func (q *Queries) QueuedExports(ctx context.Context) ([]uuid.UUID, error) {
-	rows, err := q.db.Query(ctx, queuedExports)
+// The queued jobs of a kind not deleted: River holds them, or dropped them.
+func (q *Queries) QueuedJobs(ctx context.Context, kind string) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, queuedJobs, kind)
 	if err != nil {
 		return nil, err
 	}
