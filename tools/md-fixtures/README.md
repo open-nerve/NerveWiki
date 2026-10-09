@@ -24,6 +24,7 @@ obsidian/verify.mjs    提取结果与真实的 Obsidian 核对
 obsidian/verify-resolve.mjs  解析与真实的 Obsidian 核对
 obsidian/verify-rename.mjs   改名、移动时的改写与真实的 Obsidian 核对
 obsidian/verify-render.mjs   阅读视图的显示与真实的 Obsidian 核对
+obsidian/verify-export.mjs   解析样例经导出的库与真实的 Obsidian 核对
 ```
 
 ## 来源
@@ -223,6 +224,17 @@ node tools/md-fixtures/obsidian/verify-resolve.mjs check /tmp/nwiki-resolve
 ```
 
 附件是以名称为名的文件（图片是真的 PNG，其余写几个字节），库打开"检测所有类型的文件"。每条链接单独放在出发页所在的文件夹里的一个文件中，读 Obsidian 的 `resolvedLinks` 与 `unresolvedLinks`（等每个文件都有了它们）；每个文件要恰好一条链接。`obsidian-verified` 必须一致；`nerve-defined` 只报告差异。`prepare` 会清空工作目录，所以只接受它自己准备过的目录或空目录。
+
+导出的库（M7/P5 设计 3.15）另行核对：服务端的测试把每个样例建成一本笔记本、经接口导出，写出 zip 与"每条链接在本系统里解析到库里的哪个文件"，再在 Obsidian 里打开解开的库比较：
+
+```sh
+NWIKI_EXPORT_VAULTS=/tmp/nwiki-vaults go test ./internal/bootstrap -run TestEveryResolutionCaseExportsAsAVault  # 在 server/ 下，目录要先建好
+node tools/md-fixtures/obsidian/verify-export.mjs prepare /tmp/nwiki-export /tmp/nwiki-vaults
+# 按提示用独立的数据目录启动 Obsidian
+node tools/md-fixtures/obsidian/verify-export.mjs check /tmp/nwiki-export
+```
+
+库是导出原样（只有目录的页没有 `.md`，除非有链接指向它），去掉根目录；`obsidian-verified` 必须一致，`nerve-defined` 只报告差异。
 
 ## 渲染样例
 

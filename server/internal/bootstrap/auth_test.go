@@ -12,6 +12,7 @@ import (
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/asset"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/identity"
+	"github.com/open-nerve/NerveWiki/server/internal/modules/transfer"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/workspace"
 )
 
@@ -81,6 +82,20 @@ func TestTheContentKeyIsPinned(t *testing.T) {
 	const want = "f4e21001e2dc0386e88c29492da621d700995d9a7da656798f795ab84ae44864"
 	if got := hex.EncodeToString(keys.Derive(asset.ContentKeyInfo)); got != want {
 		t.Errorf("the contents' key = %s, want %s", got, want)
+	}
+}
+
+// The exports' archives' addresses are signed with the key a signing key
+// derives for them (M7/P5 design 3.11): pinned as the contents' is, since
+// changing DownloadKeyInfo would end every address signed.
+func TestTheDownloadKeyIsPinned(t *testing.T) {
+	keys, err := identity.LoadSigningKeys([]byte(openSSLKey), slog.New(slog.DiscardHandler))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const want = "01eae5c473388e60bd513994b60c26445ab9f31888e3eb64e660c0ceba0c69ce"
+	if got := hex.EncodeToString(keys.Derive(transfer.DownloadKeyInfo)); got != want {
+		t.Errorf("the downloads' key = %s, want %s", got, want)
 	}
 }
 
