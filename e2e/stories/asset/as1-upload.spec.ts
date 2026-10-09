@@ -1,7 +1,10 @@
+import { readFileSync } from "node:fs";
+
 import type { Page } from "@playwright/test";
 
-import { expectUploaded } from "../../fixtures/assert/asset";
+import { expectAssetsDeletedWithNodes, expectUploaded } from "../../fixtures/assert/asset";
 import { download, getAsset, listAssets, pngBytes, uploadAsset, utf8 } from "../../fixtures/assets";
+import { countAnswers } from "../../fixtures/browser";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
@@ -68,11 +71,10 @@ test("AS1 (API): files uploaded under a page and at the root are listed, read an
 /** attachments is the section of the attachments shown. */
 const attachments = (page: Page) => page.getByRole("region", { name: "Attachments" });
 
-/** isUpload tells whether a response answers an upload into the notebook notebookId. */
-const isUpload = (notebookId: string) => (response: { url(): string; request(): { method(): string } }) =>
-  response.request().method() === "POST" && response.url().endsWith(`/api/v0/notebooks/${notebookId}/assets`);
+/** uploadsPath is the path an upload into the notebook notebookId goes to. */
+const uploadsPath = (notebookId: string) => `/api/v0/notebooks/${notebookId}/assets`;
 
-test("AS1 (page): files chosen, or dropped on the reading view, upload to the page, and at the root on the notebook's home; each is listed by name and size, and opens or downloads as the same bytes", async ({
+test("AS1 (page): files chosen, or dropped on the reading view, upload to the page, and at the root on the notebook's home; each is listed by name and size, opens or downloads as the same bytes, and is renamed and deleted from its menu", async ({
   api,
   db,
   nervewiki,
@@ -83,39 +85,43 @@ test("AS1 (page): files chosen, or dropped on the reading view, upload to the pa
   const notebook = await createNotebook(api, pat, workspace.slug, "Plans");
   const guide = await createPage(api, pat, notebook.id, "Guide");
   const notesBytes = utf8("Notes beside the guide.\n");
+  const uploads = countAnswers(page, "POST", uploadsPath(notebook.id));
   await page.goto(wikiPagePath(workspace.slug, notebook.id, guide.id));
   await expect(pageHeading(page, "Guide")).toBeVisible();
   const section = attachments(page);
   await expect(section.getByText("Drop files here to upload them.")).toBeVisible();
 
-  const chosen = Promise.all([
-    page.waitForResponse((response) => isUpload(notebook.id)(response) && response.status() === 201),
-    page.waitForResponse((response) => isUpload(notebook.id)(response) && response.status() === 201),
-  ]);
-  await section.locator("input[type=file]").setInputFiles([
+  // Upload opens the browser's picker, of several files.
+  const choosing = page.waitForEvent("filechooser");
+  await section.getByRole("button", { name: "Upload" }).click();
+  const chooser = await choosing;
+  expect(chooser.isMultiple()).toBe(true);
+  await chooser.setFiles([
     { name: "diagram.png", mimeType: "image/png", buffer: Buffer.from(pngBytes) },
     { name: "notes.txt", mimeType: "text/plain", buffer: Buffer.from(notesBytes) },
   ]);
-  await chosen;
+  await expect.poll(uploads).toBe(2);
   await expect(section.getByRole("list", { name: "Uploads" })).toBeHidden();
   await expect(section.getByRole("link", { name: "diagram.png (opens in a new tab)" })).toBeVisible();
   await expect(section.getByRole("link", { name: "notes.txt", exact: true })).toBeVisible();
   await expect(section.getByText("24 B")).toBeVisible();
 
-  // One dropped on the reading view, its name taken: it goes as the next free one.
-  const dropped = page.waitForResponse((response) => isUpload(notebook.id)(response) && response.status() === 201);
-  const transfer = await page.evaluateHandle(
-    (bytes) => {
+  // One dragged over the reading view may drop there; dropped, its name taken, it goes as the next free one.
+  const view = page.getByRole("article", { name: "Guide" });
+  const over = await view.evaluate(
+    (article, bytes) => {
       const data = new DataTransfer();
       data.items.add(new File([new Uint8Array(bytes)], "notes.txt", { type: "text/plain" }));
-      return data;
+      const dragover = new DragEvent("dragover", { bubbles: true, cancelable: true, dataTransfer: data });
+      article.dispatchEvent(dragover);
+      const accepted = { prevented: dragover.defaultPrevented, effect: data.dropEffect };
+      article.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: data }));
+      return accepted;
     },
     [...notesBytes]
   );
-  const view = page.getByRole("article", { name: "Guide" });
-  await view.dispatchEvent("dragover", { dataTransfer: transfer });
-  await view.dispatchEvent("drop", { dataTransfer: transfer });
-  await dropped;
+  expect(over).toEqual({ prevented: true, effect: "copy" });
+  await expect.poll(uploads).toBe(3);
   await expect(section.getByRole("link", { name: "notes 2.txt", exact: true })).toBeVisible();
 
   const listed = await listAssets(api, pat, notebook.id, guide.id);
@@ -133,33 +139,52 @@ test("AS1 (page): files chosen, or dropped on the reading view, upload to the pa
   }
 
   // The name opens what the browser shows, the menu's Download downloads: the same bytes at each address.
-  const opened = await section.getByRole("link", { name: "diagram.png (opens in a new tab)" }).getAttribute("href");
-  expect(await section.getByRole("link", { name: "diagram.png (opens in a new tab)" }).getAttribute("target")).toBe(
-    "_blank"
-  );
-  const fetched = await download(nervewiki.baseURL, opened ?? "");
+  const name = section.getByRole("link", { name: "diagram.png (opens in a new tab)" });
+  expect(await name.getAttribute("target")).toBe("_blank");
+  const fetched = await download(nervewiki.baseURL, (await name.getAttribute("href")) ?? "");
   expect(Buffer.compare(Buffer.from(await fetched.arrayBuffer()), Buffer.from(pngBytes))).toBe(0);
   await section.getByRole("button", { name: "Actions for notes.txt" }).click();
   const downloading = page.waitForEvent("download");
   await page.getByRole("menuitem", { name: "Download" }).click();
-  const file = await (await downloading).path();
-  expect(file).not.toBeNull();
+  const downloaded = await downloading;
+  expect(downloaded.suggestedFilename()).toBe("notes.txt");
+  expect(Buffer.compare(readFileSync(await downloaded.path()), Buffer.from(notesBytes))).toBe(0);
+
+  // Renamed by its stem, the extension staying; deleted once confirmed.
+  const notes2 = listed.find((asset) => asset.name === "notes 2.txt");
+  await section.getByRole("button", { name: "Actions for notes 2.txt" }).click();
+  await page.getByRole("menuitem", { name: "Rename" }).click();
+  const rename = page.getByRole("dialog", { name: "Rename notes 2.txt" });
+  await rename.getByRole("textbox", { name: "Name" }).fill("draft");
+  await rename.getByRole("button", { name: "Save" }).click();
+  await expect(rename).toBeHidden();
+  await expect(section.getByRole("link", { name: "draft.txt", exact: true })).toBeVisible();
+  await expect(section.getByRole("button", { name: "Actions for draft.txt" })).toBeFocused();
+  await section.getByRole("button", { name: "Actions for draft.txt" }).click();
+  await page.getByRole("menuitem", { name: "Delete" }).click();
+  await page.getByRole("alertdialog", { name: "Delete draft.txt?" }).getByRole("button", { name: "Delete" }).click();
+  await expect(section.getByRole("link", { name: "draft.txt", exact: true })).toBeHidden();
+  await expect(section.getByRole("heading", { name: "Attachments" })).toBeFocused();
+  expect((await listAssets(api, pat, notebook.id, guide.id)).map((asset) => asset.name)).toEqual([
+    "diagram.png",
+    "notes.txt",
+  ]);
+  await expectAssetsDeletedWithNodes(db, [notes2?.id ?? ""]);
 
   // On the notebook's home, the root's.
   await page.goto(`/${workspace.slug}/notebooks/${notebook.id}`);
   const root = attachments(page);
-  const atRoot = page.waitForResponse((response) => isUpload(notebook.id)(response) && response.status() === 201);
+  await expect(root.getByRole("button", { name: "Upload" })).toBeVisible();
   await root
     .locator("input[type=file]")
     .setInputFiles([{ name: "logo.png", mimeType: "image/png", buffer: Buffer.from(pngBytes) }]);
-  await atRoot;
   await expect(root.getByRole("link", { name: "logo.png (opens in a new tab)" })).toBeVisible();
   expect((await listAssets(api, pat, notebook.id)).map((asset) => [asset.name, asset.parent_id])).toEqual([
     ["logo.png", null],
   ]);
 });
 
-test("AS1 (page): a Markdown file, or one larger than the server takes, is not sent: the section says why", async ({
+test("AS1 (page): a Markdown file is not sent: the section says to import it, until dismissed", async ({
   api,
   signedInPage,
 }, testInfo) => {
@@ -169,7 +194,7 @@ test("AS1 (page): a Markdown file, or one larger than the server takes, is not s
   const guide = await createPage(api, pat, notebook.id, "Guide");
   let sent = 0;
   page.on("request", (request) => {
-    if (request.method() === "POST" && request.url().endsWith(`/api/v0/notebooks/${notebook.id}/assets`)) {
+    if (request.method() === "POST" && new URL(request.url()).pathname === uploadsPath(notebook.id)) {
       sent += 1;
     }
   });
