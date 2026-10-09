@@ -27,6 +27,8 @@ type StartDeps struct {
 	Rows       Rows
 	Archives   Archives
 	Queue      Queue
+	Names      Names
+	Signer     Signer
 	Clock      Clock
 	Logger     *slog.Logger
 	// MaxQueued is transfer.max_queued, MinFree storage.min_free_bytes.
@@ -40,24 +42,25 @@ func NewStartExport(d StartDeps) *StartExport {
 }
 
 // Run starts the export of the notebook notebookID, or of the page root
-// and its subtree when root is set, for the caller from client. Under the
+// and its subtree when root is set, for the caller from client, and
+// answers its job. Under the
 // workspace's row and the notebook's, FOR SHARE, it decides
 // transfer.export (notebook.not_found); root is a page of the notebook not
 // deleted (page.not_found); then, the jobs' creations one at a time, the
 // jobs queued or running are fewer than MaxQueued (503 server_busy), the
 // caller has no export queued or running in the notebook (transfer.busy),
 // and the store has room (507 storage_full).
-func (s *StartExport) Run(ctx context.Context, notebookID uuid.UUID, root *uuid.UUID, client domain.Client) (domain.Job, error) {
+func (s *StartExport) Run(ctx context.Context, notebookID uuid.UUID, root *uuid.UUID, client domain.Client) (JobView, error) {
 	actor, err := shared.RequireActor(ctx)
 	if err != nil {
-		return domain.Job{}, err
+		return JobView{}, err
 	}
 	workspaceID, ok, err := s.d.Notebooks.WorkspaceOf(ctx, notebookID)
 	switch {
 	case err != nil:
-		return domain.Job{}, err
+		return JobView{}, err
 	case !ok:
-		return domain.Job{}, domain.ErrNotebookNotFound
+		return JobView{}, domain.ErrNotebookNotFound
 	}
 	var job domain.Job
 	err = s.d.Tx.WithinTx(ctx, func(ctx context.Context) error {
@@ -79,11 +82,15 @@ func (s *StartExport) Run(ctx context.Context, notebookID uuid.UUID, root *uuid.
 		return s.d.Queue.Export(ctx, job.ID)
 	})
 	if err != nil {
-		return domain.Job{}, err
+		return JobView{}, err
 	}
 	s.d.Logger.InfoContext(ctx, "export queued", slog.String("job_id", job.ID.String()), slog.String("notebook_id", notebookID.String()),
 		slog.String("user_id", actor.UserID.String()), slog.String("client", string(client)))
-	return job, nil
+	got, err := views{names: s.d.Names, signer: s.d.Signer, clock: s.d.Clock}.of(ctx, []domain.Job{job})
+	if err != nil {
+		return JobView{}, err
+	}
+	return got[0], nil
 }
 
 // lock locks the workspace's row and the notebook's FOR SHARE, then

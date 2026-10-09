@@ -14,6 +14,7 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/modules/linking"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/notebook"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page"
+	"github.com/open-nerve/NerveWiki/server/internal/modules/transfer"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/workspace"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/jobs"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown"
@@ -188,7 +189,8 @@ func notebookRegistrants(pool *pgxpool.Pool) notebookExtensions {
 	streams := notebookEvents{events.NewPublisher()}
 	return notebookExtensions{
 		deletionSubscribers: []notebook.NotebookDeletionSubscriber{
-			pageNotebookDeletion{pages}, assetNotebookDeletion{asset.NewNotebookDeletion(pool)}, links, streams,
+			pageNotebookDeletion{pages}, assetNotebookDeletion{asset.NewNotebookDeletion(pool)}, links,
+			transferNotebookDeletion{transfer.NewNotebookDeletion(pool)}, streams,
 		},
 		visibilitySubscribers: []notebook.VisibilitySubscriber{streams},
 		activitySources: []notebook.NotebookActivitySource{
@@ -248,7 +250,7 @@ type pageExtensions struct {
 // serve, the notebook module's deletion and this package's tests take them
 // from here; the page module's own tests build the lock themselves.
 func pageRegistrants(pool *pgxpool.Pool) pageExtensions {
-	lock := page.NewEditLock(pool, pageNames{identity.NewDirectory(pool)})
+	lock := page.NewEditLock(pool, displayNames{identity.NewDirectory(pool)})
 	streams := pageEvents{events.NewPublisher()}
 	links := linkIndex{linking.NewIndex(pool, linkTargets{page.NewLinkTargets(pool)}, linkEvents{events.NewPublisher()})}
 	return pageExtensions{
@@ -265,7 +267,7 @@ func pageRegistrants(pool *pgxpool.Pool) pageExtensions {
 // the guard does.
 func pageParticipants(pool *pgxpool.Pool, md *markdown.Markdown, budget *markdown.Budget, logger *slog.Logger) []page.Participant {
 	targets := page.NewLinkTargets(pool)
-	locks := page.NewLockHolders(pool, pageNames{identity.NewDirectory(pool)})
+	locks := page.NewLockHolders(pool, displayNames{identity.NewDirectory(pool)})
 	rewrite := linking.NewRewrite(pool, linkTargets{targets}, targets, locks, page.MaxContentBytes, md, budget, logger)
 	return []page.Participant{linkRewrite{rewrite}}
 }
@@ -287,5 +289,6 @@ func markdownExtensions(resolve obsidian.Resolve, assets obsidian.Assets) []mark
 // database test of the purge checks the order against the foreign keys,
 // and that every table with deleted_at has its purger.
 func purgers(pool *pgxpool.Pool, tx shared.TxManager, store storage.Store, logger *slog.Logger) []jobs.Purger {
-	return slices.Concat(asset.Purgers(pool, tx, store, logger), page.Purgers(pool), notebook.Purgers(pool), workspace.Purgers(pool))
+	return slices.Concat(asset.Purgers(pool, tx, store, logger), transfer.Purgers(pool, tx, store, logger), page.Purgers(pool),
+		notebook.Purgers(pool), workspace.Purgers(pool))
 }

@@ -245,6 +245,7 @@ type seeded struct {
 	pages           map[string]uuid.UUID // by title
 	assets          map[string]uuid.UUID // by name
 	sessions        map[string]uuid.UUID // by page/owner
+	jobs            map[string]uuid.UUID // by notebook/owner
 	// accounts are the columns' account ids, which registering them through
 	// the API gives: prepareMatrix fills the map, so they are known to the
 	// rows' requests, not to the coverage test, which reads the paths alone.
@@ -254,7 +255,7 @@ type seeded struct {
 func newSeeded() seeded {
 	s := seeded{workspaces: map[string]uuid.UUID{}, memberships: map[string]uuid.UUID{}, invitations: map[string]uuid.UUID{},
 		notebooks: map[string]uuid.UUID{}, notebookMembers: map[string]uuid.UUID{}, pages: map[string]uuid.UUID{},
-		assets: map[string]uuid.UUID{}, sessions: map[string]uuid.UUID{}, accounts: map[caller]uuid.UUID{}}
+		assets: map[string]uuid.UUID{}, sessions: map[string]uuid.UUID{}, jobs: map[string]uuid.UUID{}, accounts: map[caller]uuid.UUID{}}
 	for _, p := range matrixPages() {
 		s.pages[p.name] = uuid.NewV7()
 	}
@@ -266,6 +267,9 @@ func newSeeded() seeded {
 	}
 	for _, e := range matrixSessions() {
 		s.sessions[e.page+"/"+string(e.owner)] = uuid.NewV7()
+	}
+	for _, j := range matrixJobs() {
+		s.jobs[j.notebook+"/"+string(j.owner)] = uuid.NewV7()
 	}
 	for _, m := range matrixNotebookMembers() {
 		s.notebookMembers[m.notebook+"/"+string(m.c)] = uuid.NewV7()
@@ -371,6 +375,16 @@ func (s seeded) session(name string, owner caller) uuid.UUID {
 	return id
 }
 
+// job is the id of owner's export seeded in the notebook name.
+func (s seeded) job(name string, owner caller) uuid.UUID {
+	id, ok := s.jobs[name+"/"+string(owner)]
+	if !ok {
+		s.t.Helper()
+		s.t.Fatalf("no export of %s by %s is seeded", name, owner)
+	}
+	return id
+}
+
 // workspaceOfRow is the slug of the workspace a seeded row's id is in.
 func (s seeded) workspaceOfRow(id uuid.UUID) (string, bool) {
 	for _, n := range matrixNotebooks() {
@@ -387,6 +401,12 @@ func (s seeded) workspaceOfRow(id uuid.UUID) (string, bool) {
 		if seededID == id {
 			name, _, _ := strings.Cut(key, "/")
 			return s.workspaceOfRow(s.pages[name])
+		}
+	}
+	for key, seededID := range s.jobs {
+		if seededID == id {
+			name, _, _ := strings.Cut(key, "/")
+			return s.workspaceOfRow(s.notebooks[name])
 		}
 	}
 	for key, seededID := range s.notebookMembers {
@@ -460,7 +480,8 @@ const seededPageHistory = `WITH n AS (SELECT * FROM nodes WHERE id = $1), c AS (
 // through the API, acme's admin removes the ended member, and gone's admin
 // deletes it. Everything that connected to
 // the database is closed when it returns, so that it can be copied. The
-// attachments' rows are seeded through SQL too, without their files. A -run
+// attachments' rows are seeded through SQL too, without their files, and
+// the exports', without their archives. A -run
 // that leaves out prepare fails here, not with a 401 in every cell.
 func prepareMatrix(t *testing.T) matrixData {
 	t.Helper()
@@ -543,6 +564,17 @@ func prepareMatrix(t *testing.T) matrixData {
 				"SELECT gen_random_uuid(), id, notebook_id, 'image/png', $3, sha256('abc'), created_by_id, $2 FROM nodes WHERE id = $1",
 				d.seeded.assets[a.name], now, matrixAssetBytes)
 		}
+		for _, j := range matrixJobs() {
+			// A succeeded export's archive of 22 bytes, an empty zip's, is
+			// not written: its address is all the rows read.
+			exec("INSERT INTO transfer_jobs (id, notebook_id, kind, state, name, created_by_id, client, started_at, finished_at, report, "+
+				"result_bytes, created_at) SELECT $1, n.id, 'export', $4, n.name, "+account+", 'web', "+
+				"CASE WHEN $4 = 'succeeded' THEN $5::timestamptz END, CASE WHEN $4 = 'succeeded' THEN $5::timestamptz END, "+
+				"CASE WHEN $4 = 'succeeded' THEN '{\"failure\": null, \"counts\": {\"pages\": 0, \"attachments\": 0, \"renamed\": 0, "+
+				"\"missing\": 0, \"skipped\": 0}, \"problems\": [], \"problems_truncated\": false}'::jsonb END, "+
+				"CASE WHEN $4 = 'succeeded' THEN 22 END, $5 FROM notebooks n WHERE n.id = $3",
+				d.seeded.jobs[j.notebook+"/"+string(j.owner)], emailOf(j.owner), d.seeded.notebooks[j.notebook], j.state, now)
+		}
 		for _, e := range matrixSessions() {
 			exec("INSERT INTO edit_sessions (id, node_id, notebook_id, user_id, client, created_at, expires_at) "+
 				"SELECT $1, n.id, n.notebook_id, "+account+", 'web', $4, $5 FROM nodes n WHERE n.id = $3",
@@ -559,6 +591,7 @@ func prepareMatrix(t *testing.T) matrixData {
 				}
 				exec("UPDATE changesets SET deleted_at = $2 WHERE notebook_id = $1", d.seeded.notebooks[n.name], now)
 				exec("UPDATE asset_blobs SET deleted_at = $2 WHERE notebook_id = $1", d.seeded.notebooks[n.name], now)
+				exec("UPDATE transfer_jobs SET deleted_at = $2 WHERE notebook_id = $1", d.seeded.notebooks[n.name], now)
 				exec("DELETE FROM edit_sessions WHERE notebook_id = $1", d.seeded.notebooks[n.name])
 				exec("DELETE FROM indexed_pages WHERE notebook_id = $1", d.seeded.notebooks[n.name])
 			}

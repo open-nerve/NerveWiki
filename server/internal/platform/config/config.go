@@ -30,6 +30,7 @@ type Config struct {
 	Jobs      JobsConfig      `koanf:"jobs"`
 	Storage   StorageConfig   `koanf:"storage"`
 	Asset     AssetConfig     `koanf:"asset"`
+	Transfer  TransferConfig  `koanf:"transfer"`
 	Log       LogConfig       `koanf:"log"`
 }
 
@@ -187,7 +188,16 @@ type JobsConfig struct {
 	// PurgeRetention is how long a soft-deleted row is kept before the
 	// purge deletes it (v0.1 design 7.1).
 	PurgeRetention time.Duration `koanf:"purge_retention"`
+	// ExportWorkers is how many exports run at once, in their queue (M7/P5
+	// design 3.2): from 1 to MaxTransferWorkers, and at most half of
+	// database.max_conns, each export holding a connection through its
+	// snapshot.
+	ExportWorkers int `koanf:"export_workers"`
 }
+
+// MaxTransferWorkers bounds jobs.export_workers: each export holds a
+// connection in its snapshot and writes a file of the store.
+const MaxTransferWorkers = 8
 
 // StorageConfig configures the store of files: the attachments and the
 // import and export archives (M7/P1 design 3.5).
@@ -217,6 +227,32 @@ const (
 	MinAssetBytes    = 1 << 10
 	MaxAssetBytes    = 4 << 30
 	MaxAssetTransfer = time.Hour
+)
+
+// TransferConfig configures the imports and exports of notebooks (M7/P5
+// design 3.13).
+type TransferConfig struct {
+	// ExportTTL is how long an export's archive is kept after it succeeded:
+	// at least MinExportTTL.
+	ExportTTL time.Duration `koanf:"export_ttl"`
+	// JobTimeout is the longest a job runs, from MinJobTimeout to
+	// MaxJobTimeout: River cancels it then, and it fails.
+	JobTimeout time.Duration `koanf:"job_timeout"`
+	// HeartbeatTimeout is how old a running job's heartbeat is when the
+	// rescue fails it, interrupted: at least MinTransferHeartbeatTimeout,
+	// far longer than its beat of a second, and less than JobTimeout.
+	HeartbeatTimeout time.Duration `koanf:"heartbeat_timeout"`
+	// MaxQueued is how many jobs may be queued or running at once, at
+	// least 1: past it a job is refused, 503 server_busy.
+	MaxQueued int `koanf:"max_queued"`
+}
+
+// The bounds of the transfer settings.
+const (
+	MinExportTTL                = 10 * time.Minute
+	MinJobTimeout               = time.Minute
+	MaxJobTimeout               = 7 * 24 * time.Hour
+	MinTransferHeartbeatTimeout = time.Minute
 )
 
 // LogConfig configures the process logger.
@@ -291,6 +327,7 @@ func (c Config) LogValue() slog.Value {
 			duration("shutdown_timeout", c.Jobs.ShutdownTimeout),
 			duration("purge_interval", c.Jobs.PurgeInterval),
 			duration("purge_retention", c.Jobs.PurgeRetention),
+			slog.Int("export_workers", c.Jobs.ExportWorkers),
 		),
 		slog.Group("storage",
 			slog.String("dir", c.Storage.Dir),
@@ -299,6 +336,12 @@ func (c Config) LogValue() slog.Value {
 		slog.Group("asset",
 			slog.Int64("max_bytes", c.Asset.MaxBytes),
 			slog.Int64("upload_min_rate", c.Asset.UploadMinRate),
+		),
+		slog.Group("transfer",
+			duration("export_ttl", c.Transfer.ExportTTL),
+			duration("job_timeout", c.Transfer.JobTimeout),
+			duration("heartbeat_timeout", c.Transfer.HeartbeatTimeout),
+			slog.Int("max_queued", c.Transfer.MaxQueued),
 		),
 		slog.Group("log",
 			slog.String("level", c.Log.Level),

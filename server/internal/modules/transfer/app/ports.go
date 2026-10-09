@@ -60,9 +60,9 @@ type Nodes interface {
 // Linked tells which pages links lead to, in the caller's snapshot:
 // bootstrap hands it the linking module's.
 type Linked interface {
-	// Linked is those of targets, pages of notebookID, that a link of a
-	// page of sources resolves to.
-	Linked(ctx context.Context, notebookID uuid.UUID, sources, targets []uuid.UUID) ([]uuid.UUID, error)
+	// Linked is those of targets that a link of a page of sources resolves
+	// to: pages of one notebook, the export's.
+	Linked(ctx context.Context, sources, targets []uuid.UUID) ([]uuid.UUID, error)
 }
 
 // Blobs reads the attachments' files: bootstrap hands it the asset

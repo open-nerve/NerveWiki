@@ -106,6 +106,26 @@ func TestWaitForLockWaitsOnCountsTheRowsOfItsTable(t *testing.T) {
 	}
 }
 
+// WaitForTableLockWaits counts the waits for its table's own lock only: not
+// a wait for a row of it, nor for another table's lock.
+func TestWaitForTableLockWaitsCountsItsTablesLock(t *testing.T) {
+	t.Parallel()
+	url := pgtest.NewDatabase(t)
+	pool := newPool(t, url)
+	holdRowAndWait(t, url)
+	rows := fatalOf(func(tb testing.TB) { pgtest.WaitForTableLockWaits(tb, pool, "users", 1, 300*time.Millisecond) })
+	holdAndWaitIn(t, url, "LOCK TABLE auth_sessions IN ACCESS EXCLUSIVE MODE", "SELECT 1 FROM auth_sessions", 2)
+
+	pgtest.WaitForTableLockWaits(t, pool, "auth_sessions", 2, 10*time.Second)
+	three := fatalOf(func(tb testing.TB) { pgtest.WaitForTableLockWaits(tb, pool, "auth_sessions", 3, 300*time.Millisecond) })
+	missing := fatalOf(func(tb testing.TB) { pgtest.WaitForTableLockWaits(tb, pool, "nope", 1, 300*time.Millisecond) })
+	if rows != "0 statement(s) waited for the lock of the table users within 300ms, want at least 1" ||
+		three != "2 statement(s) waited for the lock of the table auth_sessions within 300ms, want at least 3" ||
+		missing != `pgtest: no table "nope"` {
+		t.Errorf("a row's wait failed with %q, 3 waits with %q, no table with %q; want each to fail", rows, three, missing)
+	}
+}
+
 // WaitForAdvisoryLockWaits counts the waits for its key pair only, a
 // negative key too: not those for another pair, nor for a row.
 func TestWaitForAdvisoryLockWaitsCountsItsKeys(t *testing.T) {

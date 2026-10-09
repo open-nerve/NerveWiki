@@ -20,9 +20,9 @@ const SweepInterval = 24 * time.Hour
 
 // SweepTimeout bounds a run: River's minute would cut a walk of a large
 // store short, and the next run walks it from the start again. It stays
-// under the hour after which River takes a job still running for stuck
-// and runs it again (RescueStuckJobsAfter, which platform/jobs leaves at
-// its default).
+// under the hour after which River would take a job still running for
+// stuck and run it again (RescueStuckJobsAfter: serve sets it to
+// transfer.job_timeout and an hour, never less than an hour).
 const SweepTimeout = 50 * time.Minute
 
 // SweepUseCase is the use case the job runs: app.Sweep.

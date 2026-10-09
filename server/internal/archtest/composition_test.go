@@ -25,7 +25,9 @@ import (
 // and Users reach the deactivation's, and through them the workspace
 // module's (M2/P2 review, Q2); Workspaces reaches the workspace module's.
 // serve reaches the Markdown's extensions too (M4/P3 design 3.11), and so
-// does Reindex, whose parse must be serve's (M6/P3 design 3.6).
+// does Reindex, whose parse must be serve's (M6/P3 design 3.6); and the
+// jobs' insert-only client, with the transfer module that enqueues with
+// it (M7/P5 design 3.14), which no command reaches.
 func TestCommandsComposeNoServerAndNoJobs(t *testing.T) {
 	registerSources(t)
 	cfg := &packages.Config{
@@ -77,7 +79,8 @@ func TestCommandsComposeNoServerAndNoJobs(t *testing.T) {
 	}
 	reached, _ := walkCalls(graph, serve, func(*ssa.Function) bool { return false })
 	assertReaches(t, "bootstrap.newApp", reached,
-		append(registrants, m("internal/bootstrap")+".markdownExtensions", m("internal/platform/storage")+".OpenLocal")...)
+		append(registrants, m("internal/bootstrap")+".markdownExtensions", m("internal/platform/storage")+".OpenLocal",
+			m("internal/platform/jobs")+".NewInserter", m("internal/modules/transfer")+".New")...)
 }
 
 // assertReaches fails unless reached holds a chain to each of want. Not

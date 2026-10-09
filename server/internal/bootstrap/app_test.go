@@ -83,10 +83,13 @@ func testConfig(t *testing.T, dbURL string, autoMigrate bool) config.Config {
 		Page:   config.PageConfig{EditSessionCleanupInterval: time.Hour, ParseBudgetBytes: 8 << 20, ParseMaxWait: 2 * time.Second},
 		Events: config.EventsConfig{HeartbeatInterval: 20 * time.Second},
 		// The purge's first run starts with the jobs too.
-		Jobs:    config.JobsConfig{ShutdownTimeout: 5 * time.Second, PurgeInterval: time.Hour, PurgeRetention: 1440 * time.Hour},
+		Jobs:    config.JobsConfig{ShutdownTimeout: 5 * time.Second, PurgeInterval: time.Hour, PurgeRetention: 1440 * time.Hour, ExportWorkers: 1},
 		Storage: config.StorageConfig{Dir: t.TempDir()},
 		Asset:   config.AssetConfig{MaxBytes: 50 << 20, UploadMinRate: 64 << 10},
-		Log:     config.LogConfig{Level: "error", Format: "text"},
+		// The exports' expiry and sweep start with the jobs, the rescue
+		// before them.
+		Transfer: config.TransferConfig{ExportTTL: 24 * time.Hour, JobTimeout: 6 * time.Hour, HeartbeatTimeout: 5 * time.Minute, MaxQueued: 20},
+		Log:      config.LogConfig{Level: "error", Format: "text"},
 	}
 }
 

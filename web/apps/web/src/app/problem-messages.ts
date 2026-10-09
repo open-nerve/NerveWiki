@@ -50,6 +50,9 @@ export const problemMessages = {
   "page.edit_session_unlocked": "problem.page.edit_session_unlocked",
   "page.locked": "problem.page.locked",
   "linking.pages_locked": "problem.linking.pages_locked",
+  "transfer.not_found": "problem.transfer.not_found",
+  "transfer.busy": "problem.transfer.busy",
+  "transfer.not_cancellable": "problem.transfer.not_cancellable",
 } as const satisfies Record<string, MessageKey>;
 
 /** The message of each field code; `field.<field>.<code>` says it better for one field. */

@@ -37,10 +37,10 @@ function codesOf(operationId: string): string[] {
 }
 
 /**
- * The operations whose errors no page shows: the token manager answers them itself; an attachment's content is opened
- * by the browser at its signed address, never fetched by a page.
+ * The operations whose errors no page shows: the token manager answers them itself; an attachment's content and an
+ * export's archive are opened by the browser at their signed addresses, never fetched by a page.
  */
-const unshown = ["refreshTokens", "logout", "getAssetContent"];
+const unshown = ["refreshTokens", "logout", "getAssetContent", "downloadExport"];
 
 const operations = [...spec.matchAll(/^\s+operationId: (\S+)$/gm)].map((match) => match[1] ?? "");
 

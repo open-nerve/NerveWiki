@@ -119,9 +119,10 @@ func call(t *testing.T, method, url, token, body string, want int) []byte {
 // ready; the sessions' and the edit sessions' cleanups and the purge run
 // as the jobs start; every statement of the account's API and of the
 // commands goes through, nervewiki reindex's too, which rekeys the nodes
-// and rebuilds the link index; River's daily reindex goes through, as River
-// runs it, index by index. Nothing logs a permission denied, the shutdown
-// included.
+// and rebuilds the link index; an export runs, enqueued with its job's row
+// and read in its snapshot, and its archive downloads; River's daily
+// reindex goes through, as River runs it, index by index. Nothing logs a
+// permission denied, the shutdown included.
 func TestTheRuntimeRoleServesWithTheGrantsFile(t *testing.T) {
 	roles := newSplitRoles(t)
 	ctx := context.Background()
@@ -220,8 +221,8 @@ func TestTheRuntimeRoleServesWithTheGrantsFile(t *testing.T) {
 		}
 	}
 	if _, err := roles.owner.Exec(ctx, `WITH n AS (
-			INSERT INTO notebooks (id, workspace_id, name, created_by_id, updated_by_id, created_at, updated_at)
-			SELECT gen_random_uuid(), w.id, 'Notes', w.created_by_id, w.created_by_id, now(), now() FROM workspaces w WHERE w.slug = 'acme'
+			INSERT INTO notebooks (id, workspace_id, name, workspace_access, created_by_id, updated_by_id, created_at, updated_at)
+			SELECT gen_random_uuid(), w.id, 'Notes', 'editor', w.created_by_id, w.created_by_id, now(), now() FROM workspaces w WHERE w.slug = 'acme'
 			RETURNING id, created_by_id
 		), p AS (
 			INSERT INTO nodes (id, notebook_id, kind, name, name_key, sort_order, created_by_id, updated_by_id, created_at, updated_at)
@@ -239,6 +240,33 @@ func TestTheRuntimeRoleServesWithTheGrantsFile(t *testing.T) {
 			+ (SELECT count(*) FROM page_tags) + (SELECT count(*) FROM page_properties)`) != 5 {
 		t.Errorf("reindex as %s = %q, %v: %s", roles.serverName, stdout.String(), err, stderr.String())
 	}
+
+	var admin authTokens
+	if err := json.Unmarshal(call(t, http.MethodPost, base+"/api/v0/auth/login", "",
+		`{"email":"admin@example.com","password":"Tr0ub4dor&3"}`, http.StatusOK), &admin); err != nil {
+		t.Fatal(err)
+	}
+	var notes string
+	if err := roles.owner.QueryRow(ctx, "SELECT id::text FROM notebooks WHERE name = 'Notes'").Scan(&notes); err != nil {
+		t.Fatal(err)
+	}
+	var export transferJob
+	if err := json.Unmarshal(call(t, http.MethodPost, base+"/api/v0/notebooks/"+notes+"/exports", admin.AccessToken, `{}`, http.StatusAccepted),
+		&export); err != nil {
+		t.Fatal(err)
+	}
+	for deadline := time.Now().Add(15 * time.Second); export.State == "queued" || export.State == "running"; time.Sleep(50 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatalf("the export is still %s as %s; logs:\n%s", export.State, roles.serverName, logs.String())
+		}
+		if err := json.Unmarshal(call(t, http.MethodGet, base+"/api/v0/transfer-jobs/"+export.ID, admin.AccessToken, "", http.StatusOK), &export); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if export.State != "succeeded" || export.Download == nil {
+		t.Fatalf("the export as %s = %+v, want succeeded; logs:\n%s", roles.serverName, export, logs.String())
+	}
+	call(t, http.MethodGet, base+export.Download.URL, "", "", http.StatusOK)
 
 	for _, index := range river.ReindexerIndexNamesDefault() {
 		if _, err := roles.server.Exec(ctx, "REINDEX INDEX CONCURRENTLY "+pgx.Identifier{index}.Sanitize()); err != nil {

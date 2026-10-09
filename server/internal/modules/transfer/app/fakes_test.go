@@ -153,7 +153,7 @@ type linked struct {
 	targets []uuid.UUID
 }
 
-func (l *linked) Linked(_ context.Context, _ uuid.UUID, _, targets []uuid.UUID) ([]uuid.UUID, error) {
+func (l *linked) Linked(_ context.Context, _, targets []uuid.UUID) ([]uuid.UUID, error) {
 	l.targets = targets
 	var out []uuid.UUID
 	for _, t := range targets {

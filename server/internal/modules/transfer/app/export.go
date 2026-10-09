@@ -302,7 +302,7 @@ func (r *run) plan(ctx context.Context, notebook domain.Named, root *domain.Name
 	}
 	linked := map[uuid.UUID]bool{}
 	if len(targets) > 0 {
-		ids, err := r.e.d.Linked.Linked(ctx, r.job.NotebookID, sources, targets)
+		ids, err := r.e.d.Linked.Linked(ctx, sources, targets)
 		if err != nil {
 			return nil, err
 		}

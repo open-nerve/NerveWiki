@@ -19,7 +19,8 @@ func as(user uuid.UUID) context.Context {
 
 func (w *world) start(q *queue, maxQueued int) *app.StartExport {
 	return app.NewStartExport(app.StartDeps{Tx: w.tx, Authorizer: w.auth, Workspaces: workspaces{}, Notebooks: w.notebooks, Nodes: w.nodes,
-		Rows: w.rows, Archives: w.archives, Queue: q, Clock: fixedClock{now()}, Logger: quiet(), MaxQueued: maxQueued, MinFree: 100})
+		Rows: w.rows, Archives: w.archives, Queue: q, Names: names{w.alice: "Alice"}, Signer: signer{}, Clock: fixedClock{now()}, Logger: quiet(),
+		MaxQueued: maxQueued, MinFree: 100})
 }
 
 // An export starts queued, named after what it exports, from the client,
@@ -28,16 +29,20 @@ func (w *world) start(q *queue, maxQueued int) *app.StartExport {
 func TestAnExportStarts(t *testing.T) {
 	w := newWorld()
 	q := &queue{}
-	j, err := w.start(q, 20).Run(as(w.alice), w.eng, nil, domain.ClientAPI)
+	v, err := w.start(q, 20).Run(as(w.alice), w.eng, nil, domain.ClientAPI)
 	if err != nil {
 		t.Fatal(err)
+	}
+	j := v.Job
+	if v.CreatedByName != "Alice" || v.Download != nil {
+		t.Errorf("Run() = %+v, want alice's name and no address", v)
 	}
 	if j.State != domain.StateQueued || j.Name != "Eng" || j.CreatedBy != w.alice || j.Client != domain.ClientAPI || j.RootID != nil ||
 		!j.CreatedAt.Equal(now()) || !slices.Equal(q.enqueued, []uuid.UUID{j.ID}) || w.rows.get(j.ID).ID != j.ID || w.rows.locks != 1 {
 		t.Errorf("Run() = %+v, enqueued %v, %d locks", j, q.enqueued, w.rows.locks)
 	}
 	sub, err := w.start(&queue{}, 20).Run(as(w.bob), w.eng, &w.folder, domain.ClientWeb)
-	if err != nil || sub.Name != "Folder" || *sub.RootID != w.folder {
+	if err != nil || sub.Job.Name != "Folder" || *sub.Job.RootID != w.folder {
 		t.Errorf("Run(Folder) = %+v, %v", sub, err)
 	}
 }
