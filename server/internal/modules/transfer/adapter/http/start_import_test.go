@@ -203,6 +203,22 @@ func TestStartImportReadsItsForm(t *testing.T) {
 	}
 }
 
+// The route's limit bounds the whole body, not the file only: one that
+// goes on after the form past it is 400, its archive deleted, nothing
+// enqueued.
+func TestStartImportBoundsTheWholeBody(t *testing.T) {
+	h := newHarness(t)
+	contentType, body := form(t, archive("v.zip", "PK"))
+	body = append(body, bytes.Repeat([]byte("z"), importMaxBytes+64<<10)...)
+	res, answer := h.post(t, importsPath(), "bob", contentType, bytes.NewReader(body))
+	if res.StatusCode != http.StatusBadRequest || code(answer) != "bad_request" {
+		t.Errorf("startImport = %d %s, want 400", res.StatusCode, answer)
+	}
+	if len(h.archives.stored()) != 0 || len(h.archives.deleted) != 1 || len(h.queue.enqueued()) != 0 {
+		t.Errorf("stored %v, deleted %v, enqueued %v; want the archive deleted", h.archives.stored(), h.archives.deleted, h.queue.enqueued())
+	}
+}
+
 // The route binds the notebook's id first: one that is no id is 400
 // before the credential is asked.
 func TestStartImportBindsTheNotebookIDFirst(t *testing.T) {

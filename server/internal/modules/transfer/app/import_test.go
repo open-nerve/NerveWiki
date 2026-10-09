@@ -18,12 +18,14 @@ import (
 
 // vault is an Obsidian vault in its folder: its settings, meta.json
 // ordering B before a, a page with children and an attachment, a page
-// that is only a folder, a name to mend, macOS's litter.
+// that is only a folder, a name to mend, macOS's litter; and a file meta
+// says the server added, which the import does not read: its content is
+// none a page holds.
 func vault(t *testing.T) []byte {
 	meta := `{"format": 1, "nodes": [{"path": "B.md", "sort_order": 1}, {"path": "a.md", "sort_order": 2}], "contributed": ["gen.md"]}`
 	return zipOf(t, append([]zipEntry{{name: "V/"}, {name: "V/.obsidian/app.json", data: "{}"}, {name: "V/.nerve/meta.json", data: meta},
 		{name: "__MACOSX/V/._a.md", data: "x"}, {name: "V/B/"}},
-		files("V/a.md", "# A\n[[B]] [[c]]", "V/B.md", "b", "V/B/c.md", "c", "V/B/x.png", "PNG", "V/D/e.md", "e", "V/n:m.md", "", "V/gen.md", "g")...)...)
+		files("V/a.md", "# A\n[[B]] [[c]]", "V/B.md", "b", "V/B/c.md", "c", "V/B/x.png", "PNG", "V/D/e.md", "e", "V/n:m.md", "", "V/gen.md", "g\x00")...)...)
 }
 
 // An import creates the vault's nodes where it goes: each page with its
@@ -75,16 +77,17 @@ func TestAnImportWritesTheVault(t *testing.T) {
 
 // An import goes under a page: its nodes are the page's children after
 // those it has, a name a child holds numbered and reported renamed, its
-// path from the page.
+// path from the page, under its parents as they were named.
 func TestAnImportGoesUnderAPage(t *testing.T) {
 	w := newImportWorld()
 	w.tree.children[w.spec] = []string{"Folder", "x.png"}
-	j := w.queuedImport(&w.spec, zipOf(t, files("Folder.md", "f", "Folder/x.png", "1", "x.png", "2")...))
+	j := w.queuedImport(&w.spec, zipOf(t, files("Folder.md", "f", "Folder/x.png", "1", "x.png", "2", "Folder/a:b.md", "n")...))
 
 	got := w.run(t, j)
 
-	if got.State != domain.StateSucceeded || got.Report.Counts != (domain.Counts{Pages: 1, Attachments: 2, Renamed: 2}) ||
-		!slices.Equal(problems(got.Report), []string{"renamed: Folder.md -> Folder 2", "renamed: x.png -> x 2.png"}) {
+	if got.State != domain.StateSucceeded || got.Report.Counts != (domain.Counts{Pages: 2, Attachments: 2, Renamed: 3}) ||
+		!slices.Equal(problems(got.Report), []string{"renamed: Folder.md -> Folder 2", "renamed: x.png -> x 2.png",
+			"renamed: Folder/a:b.md -> Folder 2/a_b"}) {
 		t.Errorf("job %+v, report %+v", got, got.Report)
 	}
 	if f := w.tree.named(t, "Folder 2"); f.parent == nil || *f.parent != w.spec {
@@ -193,6 +196,12 @@ func TestAnImportSkipsWhatIsTooDeep(t *testing.T) {
 	}
 	if lines := w.tree.lines(); !slices.Equal(lines, []string{"-/a", "a/y.png"}) {
 		t.Errorf("made %q", lines)
+	}
+	// The plan leaves them out: never parsed, their files never put, not
+	// counted.
+	if got.Progress != (domain.Progress{Done: 2, Total: 2}) || w.tree.parses != 1 || len(w.files.dropped) != 0 {
+		t.Errorf("progress %+v, parses %d, files dropped %v; want the two nodes, a parsed, no file put", got.Progress, w.tree.parses,
+			w.files.dropped)
 	}
 
 	w = newImportWorld()
@@ -401,8 +410,9 @@ func TestAnImportWaitsForABusyServer(t *testing.T) {
 }
 
 // A store out of room fails the import storage_full, the batch's files
-// deleted; a unit refused fails it so, its files deleted; one whose
-// commit's answer was lost fails it internal, its files left to the sweep.
+// put before deleted; a unit refused fails it so, its files deleted; one
+// whose commit's answer was lost fails it internal, its files left to the
+// sweep.
 func TestAnImportsUnitFails(t *testing.T) {
 	for _, tt := range []struct {
 		name    string
@@ -411,6 +421,7 @@ func TestAnImportsUnitFails(t *testing.T) {
 		dropped bool
 	}{
 		{"store full", func(w *importWorld) { w.files.full = true }, domain.FailureStorageFull, true},
+		{"store full after a file", func(w *importWorld) { w.files.full, w.files.room = true, 1 }, domain.FailureStorageFull, true},
 		{"refused", func(w *importWorld) { w.tree.refuse = shared.Forbidden() }, domain.FailureForbidden, true},
 		{"notebook not visible", func(w *importWorld) { w.tree.refuse = domain.ErrNotebookNotFound }, domain.FailureForbidden, true},
 		{"invalid", func(w *importWorld) { w.tree.refuse = &shared.Error{Kind: shared.KindInvalid} }, domain.FailureInternal, true},
@@ -419,7 +430,9 @@ func TestAnImportsUnitFails(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			w := newImportWorld()
 			tt.setup(w)
-			got := w.run(t, w.queuedImport(nil, vault(t)))
+			// Two attachments, in one batch.
+			archive := zipOf(t, append(files("V/a.png", "A", "V/b.png", "B"), zipEntry{name: "V/.obsidian/app.json", data: "{}"})...)
+			got := w.run(t, w.queuedImport(nil, archive))
 			if got.State != domain.StateFailed || got.Report.Failure != tt.want || len(w.tree.made) != 0 {
 				t.Errorf("job %s, report %+v; want failed %s", got.State, got.Report, tt.want)
 			}

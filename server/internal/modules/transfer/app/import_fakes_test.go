@@ -350,8 +350,11 @@ type attachments struct {
 	files    map[uuid.UUID][]byte
 	attached map[uuid.UUID]app.Owner
 	dropped  []uuid.UUID
-	full     bool
-	wait     bool
+	// full is a store out of room once it holds room files; wait a store
+	// that takes no file until the run's context ends.
+	full bool
+	room int
+	wait bool
 }
 
 func newAttachments() *attachments {
@@ -366,7 +369,10 @@ func (a *attachments) Put(ctx context.Context, _ string, r io.Reader, maxBytes i
 		<-ctx.Done()
 		return app.File{}, context.Cause(ctx)
 	}
-	if a.full {
+	a.mu.Lock()
+	full := a.full && len(a.files)+len(a.dropped) >= a.room
+	a.mu.Unlock()
+	if full {
 		return app.File{}, domain.ErrStorageFull
 	}
 	data, err := io.ReadAll(io.LimitReader(r, maxBytes+1))

@@ -10,6 +10,7 @@ import (
 	"io"
 	"io/fs"
 	"slices"
+	"strings"
 	"testing"
 	"uuid"
 
@@ -179,6 +180,9 @@ func TestAnImportsArchiveIsFoundAsArchiveZipFindsIt(t *testing.T) {
 		count int
 	}{
 		{"a comment", zipped(t, "a comment of the archive", [2]string{"a.md", "x"}), 1},
+		// After the directory, the end and its comment: no record, though
+		// their bytes, zeros, hold none to skip.
+		{"a comment of zeros", zipped(t, strings.Repeat("\x00", 100), [2]string{"a.md", "x"}), 1},
 		{"zip64, more records than 65535", zipped(t, "", many...), 70000},
 		{"prepended", append(bytes.Repeat([]byte{'#'}, 4096), zipped(t, "", [2]string{"a.md", "x"}, [2]string{"b.md", "y"})...), 2},
 		{"empty", zipped(t, ""), 0},
@@ -209,6 +213,28 @@ func shortEnd(t *testing.T) []byte {
 // endOf is where data's directory end is.
 func endOf(data []byte) int {
 	return bytes.LastIndex(data, []byte{0x50, 0x4b, 0x05, 0x06})
+}
+
+// The directory an import reads is at most MaxDirectory, 64 MiB: one of
+// records of a name of 8 bytes and a comment of 65,535 each, 65,589 bytes,
+// is within it at 1,023 of them and past it at 1,024, which is
+// ErrTooManyEntries before archive/zip reads it.
+func TestAnImportsDirectoryIsAtMost64MiB(t *testing.T) {
+	a, store := newArchives(t)
+	comment := strings.Repeat(" ", 65535)
+	directory := func(n int) []byte {
+		files := make([]any, n)
+		for i := range files {
+			files[i] = &zip.FileHeader{Name: fmt.Sprintf("c%04d.md", i), Method: zip.Store, Comment: comment}
+		}
+		return zipped(t, "", files...)
+	}
+	if _, err := opened(t, a, store, directory(1023), 2000); err != nil {
+		t.Errorf("OpenImport() of a directory of 1,023 records = %v, want it read", err)
+	}
+	if _, err := opened(t, a, store, directory(1024), 2000); !errors.Is(err, app.ErrTooManyEntries) {
+		t.Errorf("OpenImport() of a directory of 1,024 records = %v, want ErrTooManyEntries", err)
+	}
 }
 
 // An archive of more entries than read, or a larger directory, is
