@@ -253,7 +253,12 @@ test("a links event of too many pages to name reads the notebook's reading views
 test("a links event reads again the backlinks of the pages whose backlinks changed, and the properties of the pages it names, of those shown", async () => {
   const { server, events } = await open();
   server.backlinks.set(guide.id, [{ data: [{ id: notes.id, count: 1, contexts: ["[[Guide]]"] }], next_cursor: null }]);
-  server.properties.set(guide.id, { valid: true, properties: [{ key: "status", value: "draft" }], links: [] });
+  server.properties.set(guide.id, {
+    valid: true,
+    properties: [{ key: "status", value: "draft" }],
+    links: [],
+    assets_expire_at: null,
+  });
 
   events.last().send("links", { ...linksEvent([install.id]), targets: [install.id] });
   await settle();
@@ -274,7 +279,12 @@ test("a links event reads again the backlinks of the pages whose backlinks chang
 test("a links event of too many pages to name reads again every backlinks and properties shown of the notebook, not another notebook's", async () => {
   const { server, events } = await open();
   server.backlinks.set(guide.id, [{ data: [{ id: notes.id, count: 1, contexts: [] }], next_cursor: null }]);
-  server.properties.set(guide.id, { valid: true, properties: [{ key: "status", value: "draft" }], links: [] });
+  server.properties.set(guide.id, {
+    valid: true,
+    properties: [{ key: "status", value: "draft" }],
+    links: [],
+    assets_expire_at: null,
+  });
 
   events.last().send("links", { ...linksEvent(null, "0199a2b4-0000-7000-8000-0000000000b2"), targets: null });
   await settle();
@@ -295,7 +305,12 @@ test("a links event of too many pages to name reads again every backlinks and pr
 test("a pages event reads again the properties of the pages written that are shown, of every one for too many to name", async () => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
   const { server, events } = await open();
-  server.properties.set(guide.id, { valid: true, properties: [{ key: "status", value: "draft" }], links: [] });
+  server.properties.set(guide.id, {
+    valid: true,
+    properties: [{ key: "status", value: "draft" }],
+    links: [],
+    assets_expire_at: null,
+  });
 
   events.last().send("pages", pagesEvent(false, [{ id: install.id, revision: 2 }]));
   await settle();
@@ -306,7 +321,12 @@ test("a pages event reads again the properties of the pages written that are sho
   expect(await within(panel).findByText("draft")).toBeTruthy();
   expect(server.sent).toEqual([`GET properties ${guide.id}`]);
 
-  server.properties.set(guide.id, { valid: true, properties: [{ key: "status", value: "done" }], links: [] });
+  server.properties.set(guide.id, {
+    valid: true,
+    properties: [{ key: "status", value: "done" }],
+    links: [],
+    assets_expire_at: null,
+  });
   events.last().send("pages", pagesEvent(false, null));
   await act(() => vi.advanceTimersByTimeAsync(6_000));
   expect(await within(panel).findByText("done")).toBeTruthy();

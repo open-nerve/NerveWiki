@@ -33,6 +33,8 @@ function setUp(role: NotebookRole = "editor") {
     theme: () => "light",
     onThemeChange: () => () => undefined,
     reload: () => undefined,
+    assetsExpire: null,
+    assetAddress: () => Promise.reject(new Error("no attachments")),
     navigate: () => undefined,
     toggleTask:
       role === "reader"

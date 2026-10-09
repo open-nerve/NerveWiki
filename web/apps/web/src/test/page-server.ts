@@ -237,7 +237,9 @@ export function pageServer({
     },
     "GET /api/v0/pages/*/properties": (request) => {
       server.sent.push(`GET properties ${idOf(request)}`);
-      return json(server.properties.get(idOf(request)) ?? { valid: true, properties: [], links: [] });
+      return json(
+        server.properties.get(idOf(request)) ?? { valid: true, properties: [], links: [], assets_expire_at: null }
+      );
     },
     [`GET /api/v0/notebooks/${notebookJSON.id}/tags/*`]: (request) => {
       const tag = decodeURIComponent(new URL(request.url).pathname.split("/")[6] ?? "");
@@ -512,6 +514,11 @@ function assetRoutes(server: AssetState, role: NotebookRole): Record<string, Ans
       server.nodes = [...server.nodes, node];
       sizes.set(node.id, file instanceof Blob ? file.size : 0);
       return json(answered(node), 201);
+    },
+    "GET /api/v0/assets/*": (request) => {
+      const node = server.nodes.find((each) => each.id === idOf(request) && each.kind === "asset");
+      server.sent.push(`GET asset ${node?.name ?? idOf(request)}`);
+      return node === undefined ? problem(404, "asset.not_found") : json(answered(node));
     },
   };
 }

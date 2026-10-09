@@ -27,6 +27,8 @@ function themed(initial: "light" | "dark" = "light") {
       return () => following.delete(listener);
     },
     reload: () => undefined,
+    assetsExpire: null,
+    assetAddress: () => Promise.reject(new Error("no attachments")),
     navigate: () => undefined,
     report: () => undefined,
     unresolved: () => undefined,

@@ -1,0 +1,264 @@
+import { afterEach, expect, test, vi } from "vitest";
+
+import { translator } from "../i18n/i18n";
+import { assets } from "./assets";
+import type { ReadingContext } from "./enhancement";
+
+// The attachments of the reading view (M7/P4 design 4.4–4.6).
+
+afterEach(() => {
+  vi.useRealTimers();
+  document.body.replaceChildren();
+});
+
+/** address is the address of the attachment id's content as signed at sig. */
+const address = (id: string, sig = "1") => `/api/v0/assets/${id}/content?b=b1&amp;e=${sig}&amp;s=s`;
+
+const audio = (id: string, label = id) =>
+  `<audio class="nw-asset" src="${address(id)}" controls="" preload="none" aria-label="${label}"></audio>`;
+const video = (id: string, label = id, width = "300") =>
+  `<video class="nw-asset" src="${address(id)}" controls="" preload="none" aria-label="${label}" width="${width}"></video>`;
+
+/** expired and later are when a view's addresses expire: gone by, and to come. */
+const expired = "2026-10-09T10:00:00Z";
+const later = "2026-10-09T13:00:00Z";
+const now = new Date("2026-10-09T12:00:00Z");
+
+/**
+ * setUp is a view of html, an enhancement's own (each keeps what it kept),
+ * and a context of page whose addresses expire at expires, that records
+ * its reloads and signs an attachment's address anew (signed) unless it
+ * is gone.
+ */
+function setUp(html: string, { page = "p", expires = expired as string | null } = {}) {
+  vi.useFakeTimers({ now, toFake: ["Date"] });
+  const container = document.createElement("article");
+  container.innerHTML = html;
+  document.body.append(container);
+  const reloads: string[] = [];
+  const signed: string[] = [];
+  const context = (at = page, expiring = expires): ReadingContext => ({
+    workspace: "lab",
+    notebook: "n",
+    page: at,
+    revision: 1,
+    role: "reader",
+    t: translator("en"),
+    theme: () => "light",
+    onThemeChange: () => () => undefined,
+    reload: () => reloads.push(at),
+    navigate: () => undefined,
+    report: () => undefined,
+    unresolved: () => undefined,
+    assetsExpire: expiring,
+    assetAddress: async (id) => {
+      signed.push(id);
+      if (id === "gone") {
+        throw new Error("404");
+      }
+      return `/api/v0/assets/${id}/content?anew=1`;
+    },
+  });
+  return { container, context, reloads, signed, enhancement: assets() };
+}
+
+/** play has element be as one started: playing (or paused) at time, playing again as asked. */
+function play(element: Element | null | undefined, time: number, paused = false) {
+  if (!(element instanceof HTMLMediaElement)) {
+    throw new Error("no media");
+  }
+  Object.defineProperty(element, "paused", { value: paused, configurable: true });
+  Object.defineProperty(element, "currentTime", { value: time, writable: true, configurable: true });
+  element.play = vi.fn(async () => undefined);
+  return element;
+}
+
+/** fail has element fail to load, as the browser tells it: an error event, which does not bubble. */
+function fail(element: Element | null | undefined) {
+  element?.dispatchEvent(new Event("error"));
+}
+
+/** settle lets the promises out settle. */
+async function settle() {
+  for (let i = 0; i < 5; i++) {
+    // oxlint-disable-next-line no-await-in-loop -- a turn at a time
+    await Promise.resolve();
+  }
+}
+
+test("a link to an attachment the browser shows opens in a tab of its own, as it says unseen; a download is as it was", () => {
+  const html =
+    `<p><a class="nw-wikilink nw-asset" href="${address("a1")}" data-nw-size="8">doc.pdf</a> ` +
+    `<a class="nw-asset" href="${address("a2")}" data-nw-size="9" download="">a.zip</a> ` +
+    `<a class="nw-asset">gone.png</a> <a href="https://x.example/">x</a></p>`;
+  const { container, context, enhancement } = setUp(html);
+  const before = container.innerHTML;
+  const undo = enhancement(container, context());
+  const [pdf, zip, gone, other] = container.querySelectorAll("a");
+  expect(pdf?.getAttribute("target")).toBe("_blank");
+  expect(pdf?.getAttribute("rel")).toBe("noopener noreferrer");
+  expect(pdf?.querySelector("span.sr-only")?.textContent).toBe("(opens in a new tab)");
+  expect(pdf?.textContent).toBe("doc.pdf (opens in a new tab)");
+  for (const link of [zip, gone, other]) {
+    expect(link?.hasAttribute("target")).toBe(false);
+    expect(link?.querySelector("span")).toBeNull();
+  }
+  undo?.();
+  expect(container.innerHTML).toBe(before);
+});
+
+test("the hint is in the reader's language", () => {
+  const { container, context, enhancement } = setUp(`<a class="nw-asset" href="${address("a1")}">x.png</a>`);
+  enhancement(container, { ...context(), t: translator("zh-CN") });
+  expect(container.querySelector("a")?.textContent).toBe("x.png （在新标签页打开）");
+});
+
+test("an attachment that fails to load once the addresses expired reads the view again, once for the page's expiry", () => {
+  const html =
+    `<p><img class="nw-asset" src="${address("a1")}" alt="x"> <img class="nw-asset" src="${address("a2")}" alt="y"> ` +
+    `${audio("a3")} <img src="https://x.example/y.png" alt="z"></p>`;
+  const { container, context, reloads, enhancement } = setUp(html);
+  let undo = enhancement(container, context());
+  const [x, y] = container.querySelectorAll("img.nw-asset");
+  // Another site's image is not the view's to read again.
+  fail(container.querySelector("img:not(.nw-asset)"));
+  expect(reloads).toEqual([]);
+  fail(x);
+  fail(y);
+  fail(container.querySelector("audio"));
+  expect(reloads).toEqual(["p"]);
+  // The view read again of the same expiry: its failures are not the addresses'.
+  undo?.();
+  container.innerHTML = html;
+  undo = enhancement(container, context());
+  fail(container.querySelector("img.nw-asset"));
+  expect(reloads).toEqual(["p"]);
+  // Another page's, and one of a later expiry, once each.
+  undo?.();
+  container.innerHTML = html;
+  undo = enhancement(container, context("q"));
+  fail(container.querySelector("img.nw-asset"));
+  undo?.();
+  container.innerHTML = html;
+  undo = enhancement(container, context("p", "2026-10-09T11:00:00Z"));
+  fail(container.querySelector("img.nw-asset"));
+  fail(container.querySelector("img.nw-asset"));
+  expect(reloads).toEqual(["p", "q", "p"]);
+  undo?.();
+  fail(x);
+  expect(reloads).toEqual(["p", "q", "p"]);
+});
+
+test("one that fails before the addresses expire, or in a view without them, reads nothing", () => {
+  const html = `<p><img class="nw-asset" src="${address("a1")}" alt="x"> ${video("a2")}</p>`;
+  const { container, context, reloads, enhancement } = setUp(html, { expires: later });
+  enhancement(container, context());
+  fail(container.querySelector("img"));
+  fail(container.querySelector("video"));
+  enhancement(container, context("q", null));
+  fail(container.querySelector("img"));
+  expect(reloads).toEqual([]);
+});
+
+test("an audio or a video started is kept as the HTML is replaced, in place of the same of its attachment's", () => {
+  const html = `<p>${audio("a1", "first")} ${audio("a1", "second")} ${video("a2")} ${audio("a3")} ${audio("a4")}</p>`;
+  const { container, context, enhancement } = setUp(html, { expires: later });
+  let undo = enhancement(container, context());
+  const [first, second, , third, fourth] = container.querySelectorAll<HTMLMediaElement>("audio, video");
+  play(second, 12);
+  const clip = play(container.querySelector("video"), 40, true);
+  play(third, 0, true);
+  // Ended, it is not kept: what replaces it starts again.
+  play(fourth, 9);
+  Object.defineProperty(fourth, "ended", { value: true });
+  undo?.();
+  // Signed anew, the second of a1 captioned anew; a2 now first of two, a3 there, a4 a link.
+  const next =
+    `<p>${audio("a1", "first").replace("e=1", "e=2")} ${audio("a1", "again").replace("e=1", "e=2")} ` +
+    `${video("a2", "a2", "200").replace("e=1", "e=2")} ${video("a2")} ${audio("a3")} <a class="nw-asset" href="x">a4</a></p>`;
+  container.innerHTML = next;
+  undo = enhancement(container, context());
+  const shown = [...container.querySelectorAll<HTMLMediaElement>("audio, video")];
+  expect(shown[0]).not.toBe(first);
+  expect(shown[0]?.getAttribute("src")).toContain("e=2");
+  expect(shown[1]).toBe(second);
+  expect(second?.currentTime).toBe(12);
+  // Its attributes the new HTML's, its address its own.
+  expect(second?.getAttribute("aria-label")).toBe("again");
+  expect(second?.getAttribute("src")).toContain("e=1");
+  expect(shown[2]).toBe(clip);
+  expect(clip.getAttribute("width")).toBe("200");
+  expect(shown[3]).not.toBe(clip);
+  expect(shown[4]).not.toBe(third);
+  expect(shown).not.toContain(fourth);
+  undo?.();
+});
+
+test("another page's view keeps none; at most twenty are kept", () => {
+  const ids = Array.from({ length: 21 }, (_, at) => `m${at.toString()}`);
+  const html = `<p>${ids.map((id) => audio(id)).join(" ")}</p>`;
+  const { container, context, enhancement } = setUp(html, { expires: later });
+  let undo = enhancement(container, context());
+  const started = new Set([...container.querySelectorAll("audio")].map((element) => play(element, 1)));
+  undo?.();
+  container.innerHTML = html;
+  undo = enhancement(container, context("q"));
+  expect([...container.querySelectorAll("audio")].filter((element) => started.has(element))).toEqual([]);
+  const again = new Set([...container.querySelectorAll("audio")].map((element) => play(element, 1)));
+  undo?.();
+  container.innerHTML = html;
+  undo = enhancement(container, context("q"));
+  const kept = [...container.querySelectorAll("audio")].map((element) => again.has(element));
+  expect(kept).toEqual([...Array.from({ length: 20 }, () => true), false]);
+  undo?.();
+});
+
+test("one kept that fails has its address signed anew and goes on where it was, once for the HTML", async () => {
+  const html = `<p>${audio("a1")} ${video("gone")}</p>`;
+  const { container, context, signed, reloads, enhancement } = setUp(html);
+  let undo = enhancement(container, context());
+  const sound = play(container.querySelector("audio"), 30);
+  const clip = play(container.querySelector("video"), 5, true);
+  undo?.();
+  container.innerHTML = html;
+  undo = enhancement(container, context());
+  fail(sound);
+  await settle();
+  expect(signed).toEqual(["a1"]);
+  expect(sound.getAttribute("src")).toBe("/api/v0/assets/a1/content?anew=1");
+  expect(sound.play).toHaveBeenCalledTimes(1);
+  // Not again for this HTML: its failure is the view's, read again once.
+  fail(sound);
+  await settle();
+  expect(signed).toEqual(["a1"]);
+  expect(reloads).toEqual(["p"]);
+  // Gone, it stays as it is; paused, it does not play.
+  fail(clip);
+  await settle();
+  expect(signed).toEqual(["a1", "gone"]);
+  expect(clip.getAttribute("src")).toContain("/gone/");
+  expect(clip.play).not.toHaveBeenCalled();
+  undo?.();
+});
+
+test("one kept goes on from where it failed, playing; one gone from the page meanwhile is left be", async () => {
+  const html = `<p>${audio("a1")} ${audio("a2")}</p>`;
+  const { container, context, enhancement } = setUp(html, { expires: later });
+  let undo = enhancement(container, context());
+  const [first, second] = [...container.querySelectorAll("audio")].map((element) => play(element, 30));
+  undo?.();
+  container.innerHTML = html;
+  undo = enhancement(container, context());
+  fail(first);
+  fail(second);
+  second?.remove();
+  if (first !== undefined) {
+    first.currentTime = 0;
+  }
+  await settle();
+  expect(first?.currentTime).toBe(30);
+  expect(first?.play).toHaveBeenCalledTimes(1);
+  expect(second?.getAttribute("src")).toContain("e=1");
+  expect(second?.play).not.toHaveBeenCalled();
+  undo?.();
+});

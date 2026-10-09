@@ -48,6 +48,8 @@ const context: ReadingContext = {
   theme: () => "light",
   onThemeChange: () => () => undefined,
   reload: () => {},
+  assetsExpire: null,
+  assetAddress: () => Promise.reject(new Error("no attachments")),
   navigate: () => {},
   report: () => {},
   unresolved: () => {},

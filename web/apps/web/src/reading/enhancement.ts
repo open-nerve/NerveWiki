@@ -3,6 +3,7 @@ import { createContext } from "react";
 import type { Translate } from "../i18n/i18n";
 import type { NotebookRole } from "../services/notebook.service";
 import { appLinks } from "./app-links";
+import { assets } from "./assets";
 import { diagrams, loadMermaid } from "./diagrams";
 import { codeHighlight, highlightWorker } from "./highlight";
 import { loadKatex, math } from "./math";
@@ -57,6 +58,14 @@ export type ReadingContext = {
   toggleTask?: (offset: number, checked: boolean) => Promise<void>;
   /** report hands error to the page, which says it as it says a refusal of Edit. */
   report: (error: unknown) => void;
+  /** assetsExpire is when the first of the view's attachments' addresses expires, null for none (M7/P4 design 4.5). */
+  assetsExpire: string | null;
+  /**
+   * assetAddress is the address of the attachment id's content, signed
+   * anew: an audio's or a video's kept as the HTML was replaced, which has
+   * expired (M7/P4 design 4.6). It rejects for an attachment gone.
+   */
+  assetAddress: (id: string) => Promise<string>;
   /**
    * unresolved has the view answer link, acted on: its dialog creates the
    * page for a writer, where the server says it would go, or says why it
@@ -78,8 +87,8 @@ export type Enhancement = (container: HTMLElement, context: ReadingContext) => (
  * readingEnhancements are the app's enhancements, in the order they run
  * (M4 design 8): M4 has code highlighting, and the keyboard's way to what
  * scrolls sideways (scrollRegions since M6); M5 the task items' ticks; M6 the links into the app,
- * and those to pages not there, the formulas and the diagrams; M7
- * adds its own here. The app's composition root (main.tsx) gives them to
+ * and those to pages not there, the formulas and the diagrams; M7 the
+ * attachments. The app's composition root (main.tsx) gives them to
  * the reading views through Enhancements; without it they have none.
  */
 export const readingEnhancements: readonly Enhancement[] = [
@@ -90,6 +99,7 @@ export const readingEnhancements: readonly Enhancement[] = [
   taskToggle,
   appLinks,
   unresolvedLinks,
+  assets(),
 ];
 
 export const Enhancements = createContext<readonly Enhancement[]>([]);

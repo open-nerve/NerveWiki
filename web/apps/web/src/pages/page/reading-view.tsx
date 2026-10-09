@@ -12,7 +12,7 @@ import { ApiError } from "../../services/api";
 import type { Notebook } from "../../services/notebook.service";
 import type { TreeNode } from "../../services/page.service";
 import { useT } from "../../i18n/i18n";
-import { usePageTree, useStore } from "../../stores/context";
+import { useAssets, usePageTree, useStore } from "../../stores/context";
 import { useWorkspace } from "../workspace/workspace-layout";
 import { usePageView } from "./page-view";
 import { watchReader } from "./readers-input";
@@ -81,6 +81,7 @@ export const ReadingView = observer(function ReadingView({
 }) {
   const { slug } = useWorkspace();
   const pages = usePageTree(notebook);
+  const assets = useAssets(notebook);
   const enhancements = useContext(Enhancements);
   const t = useT();
   const { preferences } = useStore();
@@ -119,6 +120,7 @@ export const ReadingView = observer(function ReadingView({
   });
   const html = data?.html;
   const revision = data?.revision;
+  const assetsExpire = data?.assets_expire_at ?? null;
   const { id: notebookId, role } = notebook;
   useLayoutEffect(() => {
     const container = article.current;
@@ -158,6 +160,8 @@ export const ReadingView = observer(function ReadingView({
         : undefined,
       report: (failure) => latestRefused.current(failure),
       unresolved: (link) => void latestUnresolved.current(link),
+      assetsExpire,
+      assetAddress: (id) => assets.address(id),
     });
     const focused = focusedTask.current;
     const asked = toggled.current;
@@ -198,7 +202,22 @@ export const ReadingView = observer(function ReadingView({
           : undefined;
       undo();
     };
-  }, [html, revision, enhancements, slug, notebookId, role, t, preferences, page.id, mutate, pages, navigate]);
+  }, [
+    html,
+    revision,
+    assetsExpire,
+    enhancements,
+    slug,
+    notebookId,
+    role,
+    t,
+    preferences,
+    page.id,
+    mutate,
+    pages,
+    assets,
+    navigate,
+  ]);
   useLayoutEffect(() => {
     const container = article.current;
     if (container === null || html === undefined) {

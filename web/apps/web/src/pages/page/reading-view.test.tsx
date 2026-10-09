@@ -2,10 +2,10 @@ import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, onTestFinished, test, vi } from "vitest";
 
-import { readingEnhancements, type Enhancement } from "../../reading/enhancement";
+import { readingEnhancements, type Enhancement, type ReadingContext } from "../../reading/enhancement";
 import { json, notebookJSON } from "../../test/fakes";
 import { pageEditor } from "../../test/page-editor";
-import { guide, install, pagePath, pageServer } from "../../test/page-server";
+import { assetNode, guide, install, pagePath, pageServer } from "../../test/page-server";
 import { renderApp } from "../../test/render";
 
 // The reading view's enhancements (M4/P5 design 3.8).
@@ -619,4 +619,99 @@ test("a link to a page goes there through the router, with the app's enhancement
   await user.click(within(await screen.findByRole("article", { name: "Install" })).getByRole("link", { name: "at x" }));
   await waitFor(() => expect(router.state.location.hash).toBe("#nw-x"));
   expect([router.state.location.pathname, router.state.location.state]).toEqual([pagePath(guide.id), null]);
+});
+
+/** inMinutes is the time minutes from now, as the server writes it. */
+const inMinutes = (minutes: number) => new Date(Date.now() + minutes * 60_000).toISOString();
+
+test("a view is read again a minute before its attachments' addresses expire, once for its readers; one without them is not", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const server = pageServer();
+  server.views.set(install.id, { html: '<h2 id="nw-a">A</h2>', revision: 1, assets_expire_at: inMinutes(10) });
+  renderApp(pagePath(install.id), server.app);
+  const reads = () => server.sent.filter((line) => line === "GET view Install").length;
+  // The outline reads it too.
+  expect(await screen.findByRole("link", { name: "A" })).toBeTruthy();
+  expect(reads()).toBe(1);
+
+  server.views.set(install.id, { html: '<h2 id="nw-a">A, again</h2>', revision: 1, assets_expire_at: null });
+  await act(() => vi.advanceTimersByTimeAsync(8.9 * 60_000));
+  expect(reads()).toBe(1);
+  await act(() => vi.advanceTimersByTimeAsync(0.2 * 60_000));
+  await waitFor(() => expect(screen.getByRole("article").innerHTML).toBe('<h2 id="nw-a">A, again</h2>'));
+  expect(reads()).toBe(2);
+  await act(() => vi.advanceTimersByTimeAsync(3 * 60 * 60_000));
+  expect(reads()).toBe(2);
+});
+
+test("a view from the cache whose attachments' addresses had expired is not shown: it is read again", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const server = pageServer();
+  server.views.set(install.id, { html: "<p>Signed</p>", revision: 1, assets_expire_at: inMinutes(10) });
+  const { router } = renderApp(pagePath(install.id), server.app);
+  await waitFor(() => expect(screen.getByRole("article").innerHTML).toBe("<p>Signed</p>"));
+
+  // Before they expire, the cache's shows at once.
+  await act(() => router.navigate(pagePath(guide.id)));
+  await waitFor(() => expect(screen.getByRole("article").innerHTML).toBe("<p>Guide</p>"));
+  await act(() => vi.advanceTimersByTimeAsync(5 * 60_000));
+  await act(() => router.navigate(pagePath(install.id)));
+  expect(screen.getByRole("article").innerHTML).toBe("<p>Signed</p>");
+
+  await act(() => router.navigate(pagePath(guide.id)));
+  await waitFor(() => expect(screen.getByRole("article").innerHTML).toBe("<p>Guide</p>"));
+  await act(() => vi.advanceTimersByTimeAsync(6 * 60_000));
+  server.views.set(install.id, { html: "<p>Signed anew</p>", revision: 1, assets_expire_at: inMinutes(70) });
+  await act(() => router.navigate(pagePath(install.id)));
+  expect(screen.queryByText("Signed")).toBeNull();
+  await waitFor(() => expect(screen.getByRole("article").innerHTML).toBe("<p>Signed anew</p>"));
+});
+
+test("an enhancement has the view's expiry, and an attachment's address signed anew; one gone, it rejects", async () => {
+  const server = pageServer();
+  const sound = { ...assetNode(90, "a.mp3"), parent_id: install.id };
+  server.nodes = [...server.nodes, sound];
+  server.views.set(install.id, { html: "<p>Install</p>", revision: 1, assets_expire_at: "2100-01-01T00:00:00Z" });
+  const contexts: ReadingContext[] = [];
+  renderApp(pagePath(install.id), server.app, {
+    enhancements: [
+      (_container, context) => {
+        contexts.push(context);
+        return undefined;
+      },
+    ],
+  });
+  await waitFor(() => expect(contexts).toHaveLength(1));
+
+  expect(contexts[0]?.assetsExpire).toBe("2100-01-01T00:00:00Z");
+  await expect(contexts[0]?.assetAddress(sound.id)).resolves.toBe(`/api/v0/assets/${sound.id}/content?sig=1`);
+  await expect(contexts[0]?.assetAddress(guide.id)).rejects.toMatchObject({ status: 404 });
+  expect(server.sent.filter((line) => line.startsWith("GET asset "))).toEqual([
+    "GET asset a.mp3",
+    `GET asset ${guide.id}`,
+  ]);
+});
+
+test("with the app's enhancements, a link to an attachment the browser shows opens in a tab of its own; a download does not", async () => {
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      disconnect() {}
+    }
+  );
+  const server = pageServer();
+  server.views.set(install.id, {
+    html:
+      '<p><a class="nw-asset" href="/api/v0/assets/x/content?b=1" data-nw-size="3">x.pdf</a> ' +
+      '<a class="nw-asset" href="/api/v0/assets/y/content?b=1" data-nw-size="3" download="">y.zip</a></p>',
+    revision: 1,
+    assets_expire_at: null,
+  });
+  renderApp(pagePath(install.id), server.app, { enhancements: readingEnhancements });
+
+  const article = await screen.findByRole("article");
+  const shown = await within(article).findByRole("link", { name: "x.pdf (opens in a new tab)" });
+  expect(shown.getAttribute("target")).toBe("_blank");
+  expect(within(article).getByRole("link", { name: "y.zip" }).hasAttribute("target")).toBe(false);
 });

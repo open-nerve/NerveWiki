@@ -46,6 +46,8 @@ function setUp() {
     theme: () => "light",
     onThemeChange: () => () => undefined,
     reload: () => undefined,
+    assetsExpire: null,
+    assetAddress: () => Promise.reject(new Error("no attachments")),
     navigate: (to) => went.push(to),
     report: () => undefined,
     unresolved: () => undefined,

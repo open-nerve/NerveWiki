@@ -91,7 +91,7 @@ function store(nodes: TreeNode[] = [guide, install, linux, notes]) {
     },
     properties: async (id: string) => {
       sent.push(`properties ${id}`);
-      return { valid: true, properties: [], links: [] };
+      return { valid: true, properties: [], links: [], assets_expire_at: null };
     },
   };
   return { pages: new PageTreeStore(service, "plans", linking), sent, state };
