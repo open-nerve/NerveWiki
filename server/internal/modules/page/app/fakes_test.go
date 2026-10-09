@@ -258,6 +258,12 @@ func (f *fakeMarkdown) Facts(content string) app.Facts {
 	return content
 }
 
+// Links counts the content's "[[".
+func (f *fakeMarkdown) Links(facts app.Facts) int {
+	f.record(context.Background(), "Links")
+	return strings.Count(facts.(string), "[[")
+}
+
 // Tasks finds a task item at the start of a line, "- [ ]", "- [\t]",
 // "- [x]" or "- [X]", but for a "- [x]: " line, which a link reference definition
 // is: ticking "- [ ]: /u" makes one, as in the tasks extension.
@@ -378,6 +384,16 @@ func (f *fakeStore) CreateChangeset(ctx context.Context, c app.Changeset) error 
 	f.record(ctx, "CreateChangeset")
 	f.changesets = append(f.changesets, c)
 	return nil
+}
+
+func (f *fakeStore) LockChangeset(ctx context.Context, id uuid.UUID) (app.Changeset, error) {
+	f.record(ctx, "LockChangeset")
+	for _, c := range f.changesets {
+		if c.ID == id {
+			return c, nil
+		}
+	}
+	return app.Changeset{}, app.ErrNotFound
 }
 
 func (f *fakeStore) TouchChangeset(ctx context.Context, id uuid.UUID, at time.Time) error {

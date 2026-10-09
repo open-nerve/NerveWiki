@@ -22,6 +22,18 @@ type Actor struct {
 	JobID      uuid.UUID
 }
 
+// Valid reports whether a is an account acting with exactly one
+// credential, as authentication and the jobs make it.
+func (a Actor) Valid() bool {
+	held := 0
+	for _, id := range []uuid.UUID{a.SessionID, a.APITokenID, a.JobID} {
+		if id != (uuid.UUID{}) {
+			held++
+		}
+	}
+	return a.UserID != (uuid.UUID{}) && held == 1
+}
+
 type actorKey struct{}
 
 // WithActor returns ctx carrying a.

@@ -8,6 +8,7 @@ import (
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/app"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown/obsidian"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown/tasks"
 )
 
@@ -32,6 +33,19 @@ func (m *Markdown) Render(ctx context.Context, content string, page app.PageRef)
 	v, err := m.md.Render(ctx, m.md.Parse([]byte(content)),
 		markdown.Page{NotebookID: page.NotebookID, PageID: page.PageID, Revision: page.Revision})
 	return app.Rendered{HTML: v.HTML, Expires: v.Expires}, err
+}
+
+// Links implements app.Markdown: the links the obsidian extension took,
+// the content's; those of its frontmatter's properties, which the YAML's
+// limits bound, are not counted. A Markdown without the extension, or
+// facts that Facts did not return, have none.
+func (m *Markdown) Links(facts app.Facts) int {
+	f, ok := facts.(markdown.Facts)
+	if !ok {
+		return 0
+	}
+	x, _ := f.Extracted(obsidian.Name).(obsidian.Extracted)
+	return len(x.Links)
 }
 
 // Tasks implements app.Markdown: what the tasks extension took. A Markdown

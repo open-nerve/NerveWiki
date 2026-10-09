@@ -30,3 +30,11 @@ VALUES (sqlc.arg(id), sqlc.arg(changeset_id), sqlc.arg(node_id), sqlc.narg(base_
 ON CONFLICT (changeset_id, node_id) DO UPDATE
 SET revision = excluded.revision, content = excluded.content, content_hash = excluded.content_hash,
     byte_size = excluded.byte_size, updated_at = excluded.updated_at;
+
+-- name: LockChangeset :one
+-- A changeset a unit merges into (M7/P6 design 3.2), locked until the unit ends: an import's later units write in
+-- its first's.
+SELECT id, notebook_id, kind, client, created_by_id
+FROM changesets
+WHERE id = sqlc.arg(id) AND deleted_at IS NULL
+FOR NO KEY UPDATE;

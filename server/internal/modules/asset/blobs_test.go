@@ -1,10 +1,16 @@
 package asset_test
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
 	"errors"
+	"image"
+	pngenc "image/png"
 	"io"
+	"log/slog"
 	"testing"
+	"testing/iotest"
 	"time"
 	"uuid"
 
@@ -63,7 +69,7 @@ func TestAnExportReadsTheAttachmentsFiles(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	b := asset.NewBlobs(pool, store)
+	b := asset.NewBlobs(pool, store, slog.New(slog.DiscardHandler))
 
 	got, err := b.Of(ctx, eng, []uuid.UUID{kept, gone, elsewhere, missing, uuid.NewV7()})
 	if err != nil || len(got) != 2 || got[kept].ID != blobs[kept] || got[missing].ID != blobs[missing] ||
@@ -81,5 +87,90 @@ func TestAnExportReadsTheAttachmentsFiles(t *testing.T) {
 	}
 	if _, err := b.Open(ctx, got[missing].ID); !errors.Is(err, asset.ErrNoFile) {
 		t.Errorf("Open() of a file not in the store = %v, want ErrNoFile", err)
+	}
+}
+
+// An import writes each attachment's file, its type and an image's size
+// told by the server, then its row in its unit's transaction; a file past
+// its largest leaves nothing, a reader's error comes back as it is, and a
+// file whose unit was refused is dropped.
+func TestAnImportWritesTheAttachmentsFiles(t *testing.T) {
+	ctx := context.Background()
+	pool, err := postgres.NewPool(ctx, config.DatabaseConfig{URL: pgtest.NewDatabase(t), MaxConns: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pool.Close)
+	store, err := storage.OpenLocal(t.TempDir(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	alice, acme, eng, node := uuid.NewV7(), uuid.NewV7(), uuid.NewV7(), uuid.NewV7()
+	for _, q := range []struct {
+		sql  string
+		args []any
+	}{
+		{"INSERT INTO users (id, email, password, display_name, created_at, updated_at) VALUES ($1, 'alice@corp.com', 'x', 'x', now(), now())", []any{alice}},
+		{"INSERT INTO workspaces (id, slug, name, created_by_id, updated_by_id, created_at, updated_at) VALUES ($1, 'acme', 'Acme', $2, $2, now(), now())", []any{acme, alice}},
+		{"INSERT INTO notebooks (id, workspace_id, name, created_by_id, updated_by_id, created_at, updated_at) VALUES ($1, $2, 'Eng', $3, $3, now(), now())", []any{eng, acme, alice}},
+		{`INSERT INTO nodes (id, notebook_id, kind, name, name_key, sort_order, created_by_id, updated_by_id, created_at, updated_at)
+			VALUES ($1, $2, 'asset', 'dot.png', 'dot.png', 0, $3, $3, now(), now())`, []any{node, eng, alice}},
+	} {
+		if _, err := pool.Exec(ctx, q.sql, q.args...); err != nil {
+			t.Fatalf("%s: %v", q.sql, err)
+		}
+	}
+	b := asset.NewBlobs(pool, store, slog.New(slog.DiscardHandler))
+	var png bytes.Buffer
+	if err := pngenc.Encode(&png, image.NewGray(image.Rect(0, 0, 3, 2))); err != nil {
+		t.Fatal(err)
+	}
+	f, err := b.Put(ctx, "dot.png", bytes.NewReader(png.Bytes()), 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(png.Bytes())
+	if f.MIME != "image/png" || f.Bytes != int64(png.Len()) || !bytes.Equal(f.SHA256, sum[:]) || f.Width != 3 || f.Height != 2 {
+		t.Errorf("Put() = %+v, want a 3×2 PNG of %d bytes", f, png.Len())
+	}
+	at := time.Date(2026, 10, 10, 8, 0, 0, 0, time.UTC)
+	err = postgres.NewTxManager(pool, time.Second).WithinTx(ctx, func(ctx context.Context) error {
+		return b.Attach(ctx, f, asset.Owner{NodeID: node, NotebookID: eng, CreatedBy: alice, CreatedAt: at})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := b.Of(ctx, eng, []uuid.UUID{node})
+	if err != nil || got[node].ID != f.ID || !got[node].Created.Equal(at) {
+		t.Errorf("Of() = %v, %v; want the file attached at %v", got, err, at)
+	}
+	var width int
+	if err := pool.QueryRow(ctx, "SELECT width FROM asset_blobs WHERE id = $1 AND mime = 'image/png' AND byte_size = $2", f.ID, png.Len()).Scan(&width); err != nil || width != 3 {
+		t.Errorf("the row's width = %d, %v; want 3", width, err)
+	}
+
+	if _, err := b.Put(ctx, "big.bin", bytes.NewReader(make([]byte, 11)), 10); !errors.Is(err, asset.ErrTooLarge) {
+		t.Errorf("Put() past the largest = %v, want ErrTooLarge", err)
+	}
+	failed := errors.New("the zip's entry failed")
+	if _, err := b.Put(ctx, "broken.bin", io.MultiReader(bytes.NewReader([]byte("abc")), iotest.ErrReader(failed)), 10); !errors.Is(err, failed) {
+		t.Errorf("Put() of a reader failing = %v, want its error", err)
+	}
+	dropped, err := b.Put(ctx, "refused.bin", bytes.NewReader([]byte("abc")), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Drop(ctx, dropped); err != nil {
+		t.Fatal(err)
+	}
+	var left []string
+	if err := store.List(ctx, "blobs", time.Now().Add(time.Hour), func(key string) error {
+		left = append(left, key)
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(left) != 1 || left[0] != "blobs/"+f.ID.String() {
+		t.Errorf("the store holds %v, want the attached file alone", left)
 	}
 }

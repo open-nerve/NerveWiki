@@ -492,7 +492,7 @@ func TestChecksRejectCounterexamples(t *testing.T) {
 		{"a hash of 31 bytes", "UPDATE page_contents SET content_hash = substring(content_hash from 2)", "page_contents_content_hash_check"},
 		{"a size other than the content's", "UPDATE page_contents SET byte_size = 2", "page_contents_byte_size_check"},
 		{"content over 5 MB", "UPDATE page_contents SET content = repeat('a', 5242881), byte_size = 5242881", "page_contents_byte_size_check"},
-		{"a second kind of changeset", "UPDATE changesets SET kind = 'import'", "changesets_kind_check"},
+		{"a kind of changeset neither an edit nor an import", "UPDATE changesets SET kind = 'restore'", "changesets_kind_check"},
 		{"an unknown client", "UPDATE changesets SET client = 'mobile'", "changesets_client_check"},
 		{"an MCP client without a name", "UPDATE changesets SET client = 'mcp:'", "changesets_client_check"},
 		{"an MCP client's name with a newline", `UPDATE changesets SET client = E'mcp:a\nb'`, "changesets_client_check"},

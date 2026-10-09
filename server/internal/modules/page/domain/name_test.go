@@ -2,6 +2,7 @@ package domain_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
@@ -73,4 +74,34 @@ func problemOf(err error) string {
 		return err.Error()
 	}
 	return e.Code + " " + e.Fields[0].Field + " " + e.Fields[0].Code
+}
+
+func TestNumbered(t *testing.T) {
+	long := strings.Repeat("a", 260)
+	for _, tt := range []struct {
+		name  string
+		n     int
+		asset bool
+		want  string
+	}{
+		{"Notes", 2, false, "Notes 2"},
+		{"v1.2 notes", 3, false, "v1.2 notes 3"},
+		{"photo.png", 2, true, "photo 2.png"},
+		{"archive.tar.gz", 10, true, "archive.tar 10.gz"},
+		{"README", 2, true, "README 2"},
+		{"photo.png", 2, false, "photo.png 2"},
+		{long[:255], 2, false, long[:253] + " 2"},
+		{long[:251] + ".png", 12, true, long[:248] + " 12.png"},
+		{strings.Repeat("名", 85), 2, false, strings.Repeat("名", 84) + " 2"},
+		// An extension that leaves no room: numbered as a page's name.
+		{"a." + long[:253], 2, true, ("a." + long[:253])[:253] + " 2"},
+	} {
+		got := domain.Numbered(tt.name, tt.n, tt.asset)
+		if got != tt.want {
+			t.Errorf("Numbered(%q, %d, %t) = %q, want %q", tt.name, tt.n, tt.asset, got, tt.want)
+		}
+		if _, f := shared.CheckTitle("name", got); f != nil {
+			t.Errorf("Numbered(%q, %d, %t) = %q, not a title: %+v", tt.name, tt.n, tt.asset, got, f)
+		}
+	}
 }

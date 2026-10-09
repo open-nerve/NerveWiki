@@ -28,7 +28,15 @@ func (u *Unit) CreateAsset(ctx context.Context, d AssetDraft) (domain.Node, erro
 	if err != nil {
 		return domain.Node{}, err
 	}
-	order, renumber := u.placeAmong(siblings, len(siblings)-1)
+	n, _, err := u.insertAsset(ctx, d, title, siblings)
+	return n, err
+}
+
+// insertAsset writes the attachment d, named title, last among siblings:
+// its checks passed. It answers the attachment, and the siblings' orders
+// when it renumbered them (nil when it did not).
+func (u *Unit) insertAsset(ctx context.Context, d AssetDraft, title domain.Title, siblings []domain.Node) (domain.Node, []float64, error) {
+	order, renumbered, renumber := u.placeAmong(siblings, len(siblings)-1)
 	n := domain.Node{
 		ID: uuid.NewV7(), NotebookID: u.write.NotebookID, ParentID: d.ParentID, Kind: domain.KindAsset, Name: title.Name,
 		NameKey: title.Key, SortOrder: order, CreatedBy: u.write.By, UpdatedBy: u.write.By, CreatedAt: u.write.At, UpdatedAt: u.write.At,
@@ -37,13 +45,13 @@ func (u *Unit) CreateAsset(ctx context.Context, d AssetDraft) (domain.Node, erro
 	step := u.step(domain.OpCreate, domain.Change{NodeID: n.ID, After: &state})
 	meta := d.Meta
 	step.Asset = &meta
-	err = u.apply(ctx, step, true, func(ctx context.Context) error {
+	err := u.apply(ctx, step, true, func(ctx context.Context) error {
 		if err := renumber(ctx); err != nil {
 			return err
 		}
 		return u.w.d.NodeWriter.CreateNode(ctx, n)
 	})
-	return n, err
+	return n, renumbered, err
 }
 
 // assetPlace checks an attachment named name under parentID of the

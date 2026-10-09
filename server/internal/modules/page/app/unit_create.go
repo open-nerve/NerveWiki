@@ -48,7 +48,17 @@ func (u *Unit) CreatePage(ctx context.Context, d PageDraft) (domain.Node, error)
 	if domain.Depth(ancestors) > domain.MaxDepth {
 		return domain.Node{}, domain.ErrTooDeep
 	}
-	order, renumber := u.placeAmong(siblings, after)
+	n, _, err := u.insertPage(ctx, d, title, siblings, after)
+	return n, err
+}
+
+// insertPage writes the page d, titled title, among siblings, right after
+// the one at index after: its checks passed. It answers the page, and the
+// siblings' orders when it renumbered them (nil when it did not).
+func (u *Unit) insertPage(ctx context.Context, d PageDraft, title domain.Title, siblings []domain.Node, after int) (
+	domain.Node, []float64, error,
+) {
+	order, renumbered, renumber := u.placeAmong(siblings, after)
 	n := domain.Node{
 		ID: uuid.NewV7(), NotebookID: u.write.NotebookID, ParentID: d.ParentID, Kind: domain.KindPage, Name: title.Name,
 		NameKey: title.Key, SortOrder: order, CreatedBy: u.write.By, UpdatedBy: u.write.By, CreatedAt: u.write.At, UpdatedAt: u.write.At,
@@ -56,7 +66,7 @@ func (u *Unit) CreatePage(ctx context.Context, d PageDraft) (domain.Node, error)
 	state := n.State()
 	content := u.content(n.ID, d.Content, 1)
 	step := u.step(domain.OpCreate, domain.Change{NodeID: n.ID, After: &state, Revision: content.Revision, Facts: d.Facts})
-	err = u.apply(ctx, step, true, func(ctx context.Context) error {
+	err := u.apply(ctx, step, true, func(ctx context.Context) error {
 		if err := renumber(ctx); err != nil {
 			return err
 		}
@@ -68,5 +78,5 @@ func (u *Unit) CreatePage(ctx context.Context, d PageDraft) (domain.Node, error)
 		}
 		return u.recordRevision(ctx, content, nil)
 	})
-	return n, err
+	return n, renumbered, err
 }

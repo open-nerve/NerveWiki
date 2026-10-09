@@ -305,3 +305,12 @@ func (s *Store) DeleteNotebooksPages(ctx context.Context, ids []uuid.UUID, by uu
 	}
 	return nil
 }
+
+// Analyze updates the statistics of the module's tables an import writes
+// (M7/P6 design 3.6).
+func (s *Store) Analyze(ctx context.Context) error {
+	if err := s.queries(ctx).Analyze(ctx); err != nil {
+		return fmt.Errorf("analyze: %w", err)
+	}
+	return nil
+}

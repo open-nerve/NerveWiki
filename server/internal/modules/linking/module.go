@@ -5,8 +5,10 @@
 // NewIndex, the page module's observer; NewRewrite, its participant;
 // NewNotebookDeletion, its part in the notebook module's deletion;
 // PageFacts, which reads a page's facts from the Markdown's; ResolveLinks,
-// where a reading view's links lead; NewAdmin, the rebuild of the indexes
-// (nervewiki reindex); Actions for the composition's checks.
+// where a reading view's links lead; NewLinkedPages, which pages an
+// export's links lead to; NewStatistics, the statistics an import updates;
+// NewAdmin, the rebuild of the indexes (nervewiki reindex); Actions for
+// the composition's checks.
 package linking
 
 import (

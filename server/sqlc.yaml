@@ -84,6 +84,7 @@ sql:
       - migrations/sql/00017_page_edit_sessions.sql
       - migrations/sql/00018_page_edit_session_ends.sql
       - migrations/sql/00019_page_nodes_name_key.sql
+      - migrations/sql/00030_page_changesets_import.sql
     queries: internal/modules/page/adapter/postgres/queries
     gen:
       go:

@@ -16,11 +16,14 @@ import (
 
 // ExportNodes is what the transfer module reads of a notebook's tree for an
 // export (M7/P5 design 3.8), in the caller's transaction: the export's
-// snapshot.
+// snapshot; and for an import, where it goes (M7/P6 design 3.3).
 type ExportNodes interface {
 	// Page is the name of the page not deleted id of notebookID; false for
 	// none, or for an attachment.
 	Page(ctx context.Context, notebookID, id uuid.UUID) (string, bool, error)
+	// Depth is the depth of the page not deleted id of notebookID, a page
+	// at its root's 1; false for none, or for an attachment.
+	Depth(ctx context.Context, notebookID, id uuid.UUID) (int, bool, error)
 	// Scope is the nodes not deleted of notebookID, or of the page root and
 	// its subtree when root is set: none when root is no page not deleted
 	// of the notebook.
@@ -65,6 +68,23 @@ func (e exportNodes) Page(ctx context.Context, notebookID, id uuid.UUID) (string
 		return "", false, err
 	}
 	return n.Name, n.Kind == domain.KindPage, nil
+}
+
+func (e exportNodes) Depth(ctx context.Context, notebookID, id uuid.UUID) (int, bool, error) {
+	n, err := e.store.FindNodeIn(ctx, notebookID, id)
+	switch {
+	case errors.Is(err, app.ErrNotFound):
+		return 0, false, nil
+	case err != nil:
+		return 0, false, err
+	case n.Kind != domain.KindPage:
+		return 0, false, nil
+	}
+	ancestors, err := e.store.Ancestors(ctx, id)
+	if err != nil {
+		return 0, false, err
+	}
+	return domain.Depth(ancestors), true, nil
 }
 
 func (e exportNodes) Scope(ctx context.Context, notebookID uuid.UUID, root *uuid.UUID) ([]ExportNode, error) {

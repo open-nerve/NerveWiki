@@ -1,6 +1,12 @@
 package domain
 
-import "strings"
+import (
+	"strconv"
+	"strings"
+	"unicode/utf8"
+
+	"github.com/open-nerve/NerveWiki/server/internal/shared"
+)
 
 // An attachment's name (M7/P2 design 3.3): a title, which an export writes
 // as the file's name, that never reads as a page's file, nor loses the
@@ -39,4 +45,30 @@ func CheckAssetRename(field, old, s string) (Title, error) {
 func hasExtension(name string) bool {
 	i := strings.LastIndexByte(name, '.')
 	return i > 0 && i < len(name)-1
+}
+
+// Numbered is name with the number n, as an import names a node whose
+// name a sibling holds (M7/P6 design 3.4): "name n" for a page, and for an
+// attachment with an extension the number before it, "stem n.ext"; the
+// name, or its stem, cut at a character so that the whole fits a title's
+// bytes. An extension too long to leave room for a character of the stem
+// is numbered as a page's name is.
+func Numbered(name string, n int, asset bool) string {
+	stem, ext := name, ""
+	if asset && hasExtension(name) {
+		i := strings.LastIndexByte(name, '.')
+		stem, ext = name[:i], name[i:]
+	}
+	suffix := " " + strconv.Itoa(n) + ext
+	if len(suffix) >= shared.MaxTitleBytes {
+		stem, suffix = name, " "+strconv.Itoa(n)
+	}
+	room := shared.MaxTitleBytes - len(suffix)
+	if len(stem) > room {
+		for room > 0 && !utf8.RuneStart(stem[room]) {
+			room--
+		}
+		stem = stem[:room]
+	}
+	return stem + suffix
 }

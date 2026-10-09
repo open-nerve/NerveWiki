@@ -8,16 +8,27 @@ import (
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/adapter/postgres/gen"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/app"
+	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
 )
 
 // CreateChangeset implements app.ChangesetWriter.
 func (s *Store) CreateChangeset(ctx context.Context, c app.Changeset) error {
 	if err := s.queries(ctx).CreateChangeset(ctx, gen.CreateChangesetParams{
-		ID: c.ID, NotebookID: c.NotebookID, Kind: c.Kind, Client: string(c.Client), Message: c.Message, By: c.By, Now: c.At,
+		ID: c.ID, NotebookID: c.NotebookID, Kind: string(c.Kind), Client: string(c.Client), Message: c.Message, By: c.By, Now: c.At,
 	}); err != nil {
 		return fmt.Errorf("create changeset: %w", err)
 	}
 	return nil
+}
+
+// LockChangeset implements app.ChangesetWriter.
+func (s *Store) LockChangeset(ctx context.Context, id uuid.UUID) (app.Changeset, error) {
+	r, err := s.queries(ctx).LockChangeset(ctx, id)
+	if err != nil {
+		return app.Changeset{}, notFound("lock changeset", err)
+	}
+	return app.Changeset{ID: r.ID, NotebookID: r.NotebookID, Kind: domain.ChangesetKind(r.Kind), Client: domain.Client(r.Client),
+		By: r.CreatedByID}, nil
 }
 
 // TouchChangeset implements app.ChangesetWriter.

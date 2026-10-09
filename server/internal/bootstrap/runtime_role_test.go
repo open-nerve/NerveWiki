@@ -283,6 +283,15 @@ func TestTheRuntimeRoleServesWithTheGrantsFile(t *testing.T) {
 // tables it writes; it may reindex River's jobs; it runs the functions,
 // River's river_job_state_in_bitmask among them, which it may through
 // PUBLIC's default EXECUTE. Types are left to PUBLIC's default USAGE.
+// importAnalyzes are the tables an import analyzes, each module its own
+// (M7/P6 design 3.6), which take MAINTAIN.
+func importAnalyzes() []string {
+	return []string{
+		"nodes", "page_contents", "page_revisions", "changesets", "changeset_items",
+		"indexed_pages", "page_links", "page_tags", "page_properties", "page_aliases", "asset_blobs",
+	}
+}
+
 func TestTheGrantsFileCoversEveryRelationAndFunction(t *testing.T) {
 	roles := newSplitRoles(t)
 	rows, err := roles.owner.Query(context.Background(), `
@@ -308,6 +317,11 @@ func TestTheGrantsFileCoversEveryRelationAndFunction(t *testing.T) {
 		"f": {"EXECUTE"},
 	}
 	tablePrivileges := []string{"SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER", "MAINTAIN"}
+	// The tables an import analyzes (M7/P6 design 3.6).
+	analyzed := map[string]bool{}
+	for _, table := range importAnalyzes() {
+		analyzed[table] = true
+	}
 	dml := []string{"SELECT", "INSERT", "UPDATE", "DELETE"}
 	seen := map[string]int{}
 	for rows.Next() {
@@ -335,7 +349,7 @@ func TestTheGrantsFileCoversEveryRelationAndFunction(t *testing.T) {
 			want = []string{"EXECUTE"}
 		case kind == "v", kind == "m", name == "goose_db_version":
 			want = []string{"SELECT"}
-		case name == "river_job":
+		case name == "river_job" || analyzed[name]:
 			want = append(slices.Clone(dml), "MAINTAIN")
 		default:
 			want = dml

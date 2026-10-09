@@ -2,10 +2,12 @@
 // their content, the changesets and versions of their writes, the edit
 // sessions and their lock (v0.1 design 3.5, 3.6, 3.8, 3.9; M4 design; M5
 // design). Its root is what bootstrap sees: New for the HTTP side and the
-// jobs, and TreeWrites, the attachments' nodes the asset module creates;
-// NewNotebookDeletion and NewNotebookActivity, its parts in the notebook
-// module's deletion and activity; NewEditLock, its registrant of its own
-// extension points; NewAssetNodes, the asset module's reads of the tree;
+// jobs, and TreeWrites, the attachments' nodes the asset module creates
+// and the imports the transfer module writes; NewNotebookDeletion and
+// NewNotebookActivity, its parts in the notebook module's deletion and
+// activity; NewEditLock, its registrant of its own extension points;
+// NewAssetNodes, the asset module's reads of the tree; NewExportNodes, the
+// transfer module's; NewStatistics, the statistics an import updates;
 // Purgers for the purge; Actions for the composition's checks.
 package page
 
@@ -97,9 +99,10 @@ type Deps struct {
 
 // Module is the wired page module.
 type Module struct {
-	uc     httpadapter.UseCases
-	jobs   []jobs.Job
-	assets *app.AssetWrites
+	uc      httpadapter.UseCases
+	jobs    []jobs.Job
+	assets  *app.AssetWrites
+	imports *app.ImportWrites
 }
 
 // New wires the module: every write runs in the one writer's units.
@@ -132,7 +135,7 @@ func New(d Deps) *Module {
 		ToggleTask:      app.NewToggleTask(writer, store, parser, md, d.Logger),
 	}, jobs: []jobs.Job{
 		riveradapter.CleanupJob(app.NewCleanupEditSessions(store, d.Clock, d.Logger), d.EditSessionCleanupInterval),
-	}, assets: app.NewAssetWrites(writer, store)}
+	}, assets: app.NewAssetWrites(writer, store), imports: app.NewImportWrites(writer, parser, md)}
 }
 
 // Jobs are the module's background jobs, for the server's jobs runner: the
