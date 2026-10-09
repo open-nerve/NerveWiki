@@ -395,6 +395,53 @@ describe("AssetStore's uploads, as they fail and go on", () => {
     expect(names()).toEqual(["a.png", "b.png", "c.png", "d.png", "e.png", "z.png"]);
   });
 
+  test("the pages after are read as far as the one that has it, not further", async () => {
+    const { store, sent, add, asked } = setUp();
+    add(guide.id, "a.png", "b.png", "c.png", "d.png");
+    await store.load(guide.id);
+
+    store.upload(guide.id, [file("e.png")], "Untitled", limits);
+    await settle();
+    const [made] = add(guide.id, "e.png", "f.png", "g.png");
+    asked.length = 0;
+    sent[0]?.resolve(made as Asset);
+    await settle();
+
+    expect(store.listOf(guide.id)?.assets.map((asset) => asset.name)).toEqual([
+      "a.png",
+      "b.png",
+      "c.png",
+      "d.png",
+      "e.png",
+      "f.png",
+    ]);
+    expect(asked).toEqual([guide.id, `${guide.id} from 2`, `${guide.id} from 4`]);
+    expect(store.uploads).toEqual([]);
+  });
+
+  test("a page after that cannot be read stops the reading: the upload leaves all the same", async () => {
+    const { store, sent, add, service, asked } = setUp();
+    add(guide.id, "a.png", "b.png", "c.png");
+    await store.load(guide.id);
+    const listing = service.list.getMockImplementation();
+    service.list.mockImplementation(async (notebook, parent, cursor) => {
+      if (cursor !== undefined) {
+        throw new TypeError("offline");
+      }
+      return (await listing?.(notebook, parent, cursor)) ?? { data: [], next_cursor: null };
+    });
+
+    store.upload(guide.id, [file("z.png")], "Untitled", limits);
+    await settle();
+    const [made] = add(guide.id, "z.png");
+    asked.length = 0;
+    sent[0]?.resolve(made as Asset);
+    await settle();
+
+    expect(store.uploads).toEqual([]);
+    expect(asked).toEqual([guide.id]);
+  });
+
   test("an attachment its list, read whole, does not have was lost meanwhile: it does not show", async () => {
     const { store, sent, add } = setUp();
     add(guide.id, "a.png", "b.png", "c.png");

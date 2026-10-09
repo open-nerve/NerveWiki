@@ -1,7 +1,7 @@
 import { reaction } from "mobx";
 import { Upload as UploadIcon } from "lucide-react";
 import { observer } from "mobx-react-lite";
-import { useEffect, useId, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import useSWR from "swr";
 
 import { ConfirmDialog } from "../../app/confirm-dialog";
@@ -223,17 +223,7 @@ export const AttachmentsSection = observer(function AttachmentsSection({
         )
       )}
       {more.failure !== undefined && <Alert>{errorText(more.failure, t)}</Alert>}
-      {list?.next != null && (
-        <Button
-          ref={more.button}
-          variant="outline"
-          aria-busy={more.reading || undefined}
-          aria-disabled={more.reading || undefined}
-          onClick={() => void more.read()}
-        >
-          {t("asset.more")}
-        </Button>
-      )}
+      {list?.next != null && <MoreButton more={more} />}
       {shown !== undefined && writer && (
         <>
           <RenameAssetDialog notebook={notebook} asset={shown} held={held("rename", shown)} />
@@ -252,6 +242,40 @@ export const AttachmentsSection = observer(function AttachmentsSection({
     </section>
   );
 });
+
+/**
+ * MoreButton is More. Gone with the focus, the last page read (by its own
+ * read, or an upload's that read on to its attachment), it gives the focus
+ * to the section's title before it leaves the document: not to the page's
+ * start.
+ */
+function MoreButton({ more }: { more: ReturnType<typeof useMore> }) {
+  const t = useT();
+  const leaving = useRef(more.left);
+  useEffect(() => {
+    leaving.current = more.left;
+  });
+  const { button } = more;
+  useLayoutEffect(() => {
+    const element = button.current;
+    return () => {
+      if (element?.contains(document.activeElement)) {
+        leaving.current();
+      }
+    };
+  }, [button]);
+  return (
+    <Button
+      ref={button}
+      variant="outline"
+      aria-busy={more.reading || undefined}
+      aria-disabled={more.reading || undefined}
+      onClick={() => void more.read()}
+    >
+      {t("asset.more")}
+    </Button>
+  );
+}
 
 /**
  * CopyField is an embed the page could not copy, the clipboard out of its
@@ -312,31 +336,53 @@ export function AttachmentDrop({
 /**
  * useNotice is what the section says unseen: say has it say text; the
  * uploads under parent that begin, here or dropped elsewhere, are said,
- * and those that leave uploaded, those that leave together in one. The
- * same text said again changes the region all the same, a space after it,
- * or it would not be read again.
+ * and those that leave uploaded, those that leave in one turn together in
+ * one sentence: each leaves by an action of its own, and React would show
+ * only the last of several said in a turn. The same text said again
+ * changes the region all the same, a space after it, or it would not be
+ * read again.
  */
 function useNotice(assets: AssetStore, parent: string | null) {
   const t = useT();
   const { preferences } = useStore();
   const [said, setSaid] = useState({ text: "", again: false });
-  useEffect(
-    () =>
-      reaction(
-        () => assets.uploads.filter((upload) => upload.parent === parent),
-        (now, before) => {
-          const uploaded = before.filter((upload) => !now.includes(upload) && upload.uploaded !== undefined);
-          const begun = now.filter((upload) => !before.includes(upload) && upload.failure === undefined);
-          if (uploaded.length > 0) {
-            const names = new Intl.ListFormat(preferences.locale, { type: "conjunction" });
-            setSaid(saying(t("asset.uploaded", { names: names.format(uploaded.map((upload) => upload.name)) })));
-          } else if (begun.length > 0) {
-            setSaid(saying(t("asset.uploading", { count: begun.length })));
+  useEffect(() => {
+    const names = new Intl.ListFormat(preferences.locale, { type: "conjunction" });
+    // What the turn says, as it is so far: those left uploaded, else how many began.
+    let left: string[] = [];
+    let begun = 0;
+    let text: string | undefined;
+    let turn: ReturnType<typeof setTimeout> | undefined;
+    const stop = reaction(
+      () => assets.uploads.filter((upload) => upload.parent === parent),
+      (now, before) => {
+        for (const upload of before) {
+          if (!now.includes(upload) && upload.uploaded !== undefined) {
+            left.push(upload.name);
           }
         }
-      ),
-    [assets, parent, t, preferences.locale]
-  );
+        begun += now.filter((upload) => !before.includes(upload) && upload.failure === undefined).length;
+        if (left.length > 0) {
+          text = t("asset.uploaded", { names: names.format(left) });
+        } else if (begun > 0) {
+          text = t("asset.uploading", { count: begun });
+        }
+        turn ??= setTimeout(() => {
+          if (text !== undefined) {
+            setSaid(saying(text));
+          }
+          left = [];
+          begun = 0;
+          text = undefined;
+          turn = undefined;
+        }, 0);
+      }
+    );
+    return () => {
+      stop();
+      clearTimeout(turn);
+    };
+  }, [assets, parent, t, preferences.locale]);
   return { text: said.text + (said.again ? "\u00A0" : ""), say: (text: string) => setSaid(saying(text)) };
 }
 
@@ -378,7 +424,8 @@ function useExpiry(list: AssetList | undefined, reread: () => void): void {
  * last is read, More goes: the focus falls to the first attachment it
  * added, or the list's last, or the section's title, unless the reader did
  * something meanwhile or the focus is elsewhere than where More was (v0.1
- * design 13.2, item 26).
+ * design 13.2, item 26); More gone with the focus gave it to the title
+ * (left), which is where More was.
  */
 function useMore(assets: AssetStore, parent: string | null, heading: RefObject<HTMLHeadingElement | null>) {
   const mounted = useMounted();
@@ -389,15 +436,22 @@ function useMore(assets: AssetStore, parent: string | null, heading: RefObject<H
   const busy = useRef(false);
   const button = useRef<HTMLButtonElement>(null);
   const focused = useRef<HTMLAnchorElement>(null);
+  // The title, once More gone with the focus gave it there.
+  const gaveTo = useRef<Element | null>(null);
   useEffect(() => {
     if (focusing === undefined) {
       return;
     }
     const at = document.activeElement;
-    if (at === null || at === document.body) {
+    if (at === null || at === document.body || at === gaveTo.current) {
       (focusing === null ? heading.current : focused.current)?.focus({ preventScroll: true });
     }
   }, [focusing, heading]);
+
+  function left(): void {
+    gaveTo.current = heading.current;
+    heading.current?.focus({ preventScroll: true });
+  }
 
   async function read(): Promise<void> {
     if (busy.current) {
@@ -407,12 +461,14 @@ function useMore(assets: AssetStore, parent: string | null, heading: RefObject<H
     setReading(true);
     setFailure(undefined);
     setFocusing(undefined);
+    gaveTo.current = null;
     const reader = watchReader({ on: button.current });
     try {
       const added = await assets.more(parent);
       const list = assets.listOf(parent);
       const at = document.activeElement;
-      const held = !reader.acted() && (at === button.current || at === null || at === document.body);
+      const held =
+        !reader.acted() && (at === button.current || at === null || at === document.body || at === gaveTo.current);
       if (mounted() && held && list !== undefined && list.next === null) {
         setFocusing(added[0]?.id ?? list.assets.at(-1)?.id ?? null);
       }
@@ -429,5 +485,5 @@ function useMore(assets: AssetStore, parent: string | null, heading: RefObject<H
     }
   }
 
-  return { reading, failure, focusing, focused, button, read };
+  return { reading, failure, focusing, focused, button, read, left };
 }

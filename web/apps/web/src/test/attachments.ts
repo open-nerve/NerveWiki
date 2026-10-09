@@ -38,17 +38,11 @@ export function picker(section: HTMLElement): HTMLInputElement {
 /**
  * dropped is a drag's transfer of files, and of folders, which only say
  * what they are; its drop effect, the browser's own, until a handler sets
- * it; a type set as it starts is among its types.
+ * it.
  */
 export function dropped(files: File[], folders: string[] = []) {
-  const types = ["Files"];
   return {
-    types,
-    setData: (type: string) => {
-      if (!types.includes(type)) {
-        types.push(type);
-      }
-    },
+    types: ["Files"],
     files,
     items: [
       ...files.map((file) => ({

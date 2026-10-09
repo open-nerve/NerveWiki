@@ -316,6 +316,21 @@ test("each upload's answer settles once the first tree read begun after it has: 
   expect(settled).toEqual(["first", "second"]);
 });
 
+test("an upload's answer settles though the tree read after it fails; the next is read all the same", async () => {
+  const { pages, sent, state } = store();
+  await pages.load();
+  state.writes.set("list", () => Promise.reject(new TypeError("offline")));
+  sent.length = 0;
+
+  await pages.wrote();
+  state.writes.delete("list");
+  state.nodes = [guide, install, linux, notes, assetNode(20, "a.png", guide)];
+  await pages.wrote();
+
+  expect(sent).toEqual(["list plans", "list plans"]);
+  expect(pages.siblingsOf(guide.id).map((node) => node.name)).toEqual(["Install", "a.png"]);
+});
+
 test("a page deleted, or deleted already, sends its subtree's shells to its parent", async () => {
   const { pages, state } = store();
   await pages.load();

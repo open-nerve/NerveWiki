@@ -58,16 +58,49 @@ test("each file chosen goes up with its progress, said as it begins and as it is
     ).toEqual(["Upload of photo 2.png", "Upload of notes.txt"])
   );
   expect(uploads.textContent).toContain("0%");
-  expect(said()).toBe("Uploading files: 2.");
+  // Said in the turn they begin in.
+  await waitFor(() => expect(said()).toBe("Uploading files: 2."));
   expect(uploaded(server.sent)).toEqual(["UPLOAD photo 2.png under Guide", "UPLOAD notes.txt under Guide"]);
   act(() => server.release());
 
   await waitFor(() => expect(within(section).queryByRole("list", { name: "Uploads" })).toBeNull());
   expect(rows(section)).toEqual(expect.arrayContaining(["photo 2.png (opens in a new tab)", "notes.txt"]));
-  expect(said()).toMatch(
-    /^Uploaded: (photo 2\.png and notes\.txt|notes\.txt and photo 2\.png|notes\.txt|photo 2\.png)\.$/
+  await waitFor(() =>
+    expect(said()).toMatch(
+      /^Uploaded: (photo 2\.png and notes\.txt|notes\.txt and photo 2\.png|notes\.txt|photo 2\.png)\.$/
+    )
   );
 });
+
+test.each<[string, "en" | "zh-CN", RegExp, RegExp]>([
+  ["English", "en", /^Uploaded: (.+)\.$/, /, and | and |, /],
+  ["Chinese", "zh-CN", /^已上传：(.+)。$/, /、|和/],
+])(
+  "uploads that leave together are said in one sentence, their names joined as the language does (%s)",
+  async (_, locale, sentence, joins) => {
+    const server = pageServer({ nodes });
+    server.uploadsHeld = true;
+    renderApp(pagePath(guide.id), server.app);
+    const section = await attachments();
+    act(() => server.app.preferences.setLocale(locale));
+    const region = section.querySelector("[aria-live=polite]") as HTMLElement;
+    const said: string[] = [];
+    const watching = new MutationObserver(() => said.push((region.textContent ?? "").trim()));
+    watching.observe(region, { characterData: true, childList: true, subtree: true });
+    onTestFinished(() => watching.disconnect());
+
+    choose(section, [new File(["a"], "a.png"), new File(["b"], "b.png"), new File(["c"], "c.png")]);
+    const uploads = locale === "en" ? "Uploads" : "上传队列";
+    await within(section).findByRole("list", { name: uploads });
+    act(() => server.release());
+    await waitFor(() => expect(within(section).queryByRole("list", { name: uploads })).toBeNull());
+    await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+
+    const lists = said.flatMap((text) => sentence.exec(text)?.[1] ?? []);
+    expect(lists.flatMap((names) => names.split(joins)).toSorted()).toEqual(["a.png", "b.png", "c.png"]);
+    expect(lists.some((names) => joins.test(names))).toBe(true);
+  }
+);
 
 test("Cancel stops the upload: its request is aborted, nothing is made, nothing said uploaded, the focus goes back to Upload", async () => {
   const user = userEvent.setup();
@@ -197,6 +230,7 @@ test("a page's file, or a file larger than the server takes, is not sent: it say
   choose(section, [new File(["# a"], "notes.md"), big]);
 
   const uploads = await within(section).findByRole("list", { name: "Uploads" });
+  await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
   // Nothing goes: nothing is said to.
   expect(notice(section)).toBe("");
   await within(uploads).findByText("A Markdown file is a page: import it instead.");
@@ -270,6 +304,10 @@ test("a section shows the uploads under its own page, not another's", async () =
 
   expect(within(section).queryByRole("list", { name: "Uploads" })).toBeNull();
   act(() => server.release());
+  await waitFor(() => expect(server.nodes.some((node) => node.name === "a.png")).toBe(true));
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  // Guide's upload is not Notes' to say.
+  expect(notice(section)).toBe("");
 });
 
 test("a drag of files over the section, or the reading view, may drop there; dropped, they upload to the page, said; a folder does not", async () => {
@@ -286,7 +324,7 @@ test("a drag of files over the section, or the reading view, may drop there; dro
   }
   fireEvent.drop(section, { dataTransfer: dropped([new File(["a"], "a.png")], ["photos"]) });
   await within(section).findByText("Folders are not uploaded: import a folder of notes instead.");
-  expect(notice(section)).toBe("Uploading files: 1.");
+  await waitFor(() => expect(notice(section)).toBe("Uploading files: 1."));
   fireEvent.drop(view, { dataTransfer: dropped([new File(["b"], "b.png"), new File(["c"], "c.png")]) });
 
   await waitFor(() =>
@@ -297,7 +335,7 @@ test("a drag of files over the section, or the reading view, may drop there; dro
     ])
   );
   // The section says what the reading view took.
-  expect(notice(section)).toBe("Uploading files: 2.");
+  await waitFor(() => expect(notice(section)).toBe("Uploading files: 2."));
   act(() => server.release());
 });
 
@@ -350,7 +388,7 @@ test("files dropped on a dialog the section holds are not uploaded: a dialog is 
   expect(uploaded(server.sent)).toEqual([]);
 });
 
-test("a drag that started in the page, an image of it, is no file to upload, though its source goes meanwhile", async () => {
+test("a drag that started in the page, an image of it, is no file to upload; one ended unseen ends as the pointer next moves", async () => {
   const server = pageServer({ nodes });
   renderApp(pagePath(guide.id), server.app);
   const section = await attachments();
@@ -358,16 +396,24 @@ test("a drag that started in the page, an image of it, is no file to upload, tho
   // The tree's drag and drop says jsdom's drags are none of a browser's.
   vi.mocked(console.warn).mockImplementation(() => undefined);
 
-  // The image's drag carries its file, as Chromium's does.
+  // The image's drag carries its file, as Chromium's does: not the section's; the page keeps it out of the tab.
   const drag = dropped([new File(["a"], "image.png")]);
   fireEvent.dragStart(view, { dataTransfer: drag });
-  expect(fireEvent.dragOver(section, { dataTransfer: drag })).toBe(true);
-  expect(fireEvent.drop(section, { dataTransfer: drag })).toBe(true);
+  fireEvent.dragOver(section, { dataTransfer: drag });
+  expect(drag.dropEffect).toBe("none");
+  expect(fireEvent.drop(section, { dataTransfer: drag })).toBe(false);
   await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
-
   expect(uploaded(server.sent)).toEqual([]);
-  // Its end never reached the document (its source gone meanwhile): a drag from outside is one all the same.
-  expect(fireEvent.dragOver(section, { dataTransfer: dropped([]) })).toBe(false);
+
+  // Another, cancelled as its source left the document: neither its end nor a drop reaches the document.
+  fireEvent.dragStart(view, { dataTransfer: dropped([]) });
+  const still = dropped([]);
+  fireEvent.dragOver(section, { dataTransfer: still });
+  expect(still.dropEffect).toBe("none");
+  fireEvent.pointerMove(document.body);
+  const outside = dropped([]);
+  expect(fireEvent.dragOver(section, { dataTransfer: outside })).toBe(false);
+  expect(outside.dropEffect).toBe("copy");
 });
 
 test("a file dropped where nothing takes it stays out of the tab; in an editor, the editor takes it", async () => {

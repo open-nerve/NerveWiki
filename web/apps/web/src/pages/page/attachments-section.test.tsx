@@ -200,6 +200,13 @@ test.each(["mouse", "keyboard"])(
     // Where the focus is once the menu has closed and given it.
     await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
     expect(document.activeElement).toBe(field);
+
+    // Another menu closed, the field shown still, gives the focus back to its own button.
+    const another = await actionsOf(section, "photo.png");
+    await user.click(another);
+    await user.keyboard("{Escape}");
+    await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+    expect(document.activeElement).toBe(another);
   }
 );
 
@@ -217,6 +224,11 @@ test("an embed copied again is said again", async () => {
 
   // The region changes, or a screen reader would not read it again.
   await waitFor(() => expect(said()).not.toBe("Embed copied: paste it into a page."));
+  expect(said()?.trim()).toBe("Embed copied: paste it into a page.");
+  const second = said();
+  await user.click(await actionsOf(section, "photo.png"));
+  await user.click(screen.getByRole("menuitem", { name: "Copy embed" }));
+  await waitFor(() => expect(said()).not.toBe(second));
   expect(said()?.trim()).toBe("Embed copied: paste it into a page.");
 });
 
@@ -369,7 +381,7 @@ test("a move sent takes it out of the list, the focus to the section's title", a
   expect(document.activeElement).toBe(within(section).getByRole("heading", { name: "Attachments" }));
 });
 
-test("a move to the notebook's top level puts it at the root, on the notebook's home", async () => {
+test("a move to the notebook's top level puts it at the root", async () => {
   const user = userEvent.setup();
   const server = pageServer({ nodes });
   renderApp(pagePath(guide.id), server.app);
@@ -422,6 +434,22 @@ test("More attachments reads the next hundred; the last read, the focus goes to 
   expect(server.sent).toContain("GET assets Guide from 100");
 });
 
+test("an upload that reads on to its attachment, the last page with it, takes More from the focus to the section's title", async () => {
+  const server = pageServer({ nodes: [guide, ...many] });
+  renderApp(pagePath(guide.id), server.app);
+  const section = await attachments();
+  await waitFor(() => expect(rows(section)).toHaveLength(100));
+  within(section).getByRole("button", { name: "More attachments" }).focus();
+
+  fireEvent.change(section.querySelector("input[type=file]") as HTMLInputElement, {
+    target: { files: [new File(["z"], "zzz.bin")] },
+  });
+
+  await waitFor(() => expect(rows(section)).toHaveLength(103));
+  expect(within(section).queryByRole("button", { name: "More attachments" })).toBeNull();
+  expect(document.activeElement).toBe(within(section).getByRole("heading", { name: "Attachments" }));
+});
+
 test.each(["moves the focus", "reads on by the keyboard, the focus on More"])(
   "More read as the reader does something else (%s) leaves the focus where they put it",
   async (doing) => {
@@ -458,8 +486,11 @@ test.each(["moves the focus", "reads on by the keyboard, the focus on More"])(
     act(() => release?.());
 
     await waitFor(() => expect(rows(section)).toHaveLength(102));
-    // More gone with the last page read: the focus is not taken to what it added.
-    expect(document.activeElement).toBe(doing === "moves the focus" ? heading : document.body);
+    // More gone with the last page read, the focus is not taken to what it added: it stays, or More gives it to the
+    // section's title as it goes.
+    expect(document.activeElement).toBe(
+      doing === "moves the focus" ? heading : within(section).getByRole("heading", { name: "Attachments" })
+    );
   }
 );
 

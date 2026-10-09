@@ -1,16 +1,24 @@
 import { useEffect, useState, type DragEvent } from "react";
 
 /**
- * pageDrag is the type a drag started in the page carries, which
- * FileDropGuard gives it: an image of the reading view dragged carries a
- * file in Chromium, which is no file from outside. The drag carries it to
- * its end, wherever its source has gone meanwhile.
+ * pageDrag is whether a drag started in the page is going: an image of the
+ * reading view dragged carries a file in Chromium, which is no file from
+ * outside. FileDropGuard keeps it. A drag's end does not reach the
+ * document where its source left it meanwhile, nor a drop where it was
+ * cancelled; the pointer's next move or press, which no drag has, ends it
+ * then. The page's data on the drag stays the browser's own: written to,
+ * it would not be (WebKit), and it would go along to other tabs.
  */
-const pageDrag = "application/x-nervewiki-page-drag";
+const pageDrag = { on: false };
 
-/** carriesFiles tells whether a drag carries files from outside the page, which the browser would open. */
+/** hasFiles tells whether a drag carries files, which the browser would open where nothing takes them. */
+function hasFiles(transfer: DataTransfer | null): boolean {
+  return transfer?.types.includes("Files") === true;
+}
+
+/** carriesFiles tells whether a drag carries files from outside the page, which a drop zone uploads. */
 function carriesFiles(transfer: DataTransfer | null): boolean {
-  return transfer !== null && transfer.types.includes("Files") && !transfer.types.includes(pageDrag);
+  return !pageDrag.on && hasFiles(transfer);
 }
 
 /** editable tells whether target is in an editor, which takes what is dropped on it as it does (M7/P4C). */
@@ -46,18 +54,21 @@ function filesDropped(transfer: DataTransfer): { files: File[]; folders: boolean
 /**
  * FileDropGuard keeps a file dropped outside where the app takes files from
  * leaving the app (M7/P4 design 3.6): the browser would open it in the tab.
- * Over the document, a drag of files may not drop; where one may drop, its
- * handler said so first (its dragover's default prevented), and an editor
- * takes them as it does. A drag started in the page is no drag of files.
- * The shell mounts it once.
+ * Over the document, a drag of files may not drop, one started in the page
+ * (an image of it) or in another tab too; where one may drop, its handler
+ * said so first (its dragover's default prevented), and an editor takes
+ * them as it does. The shell mounts it once.
  */
 export function FileDropGuard() {
   useEffect(() => {
-    const onDragStart = (event: globalThis.DragEvent) => {
-      event.dataTransfer?.setData(pageDrag, "");
+    const onDragStart = () => {
+      pageDrag.on = true;
+    };
+    const ended = () => {
+      pageDrag.on = false;
     };
     const onDragOver = (event: globalThis.DragEvent) => {
-      if (carriesFiles(event.dataTransfer) && !event.defaultPrevented && !editable(event.target)) {
+      if (hasFiles(event.dataTransfer) && !event.defaultPrevented && !editable(event.target)) {
         event.preventDefault();
         if (event.dataTransfer !== null) {
           event.dataTransfer.dropEffect = "none";
@@ -65,17 +76,26 @@ export function FileDropGuard() {
       }
     };
     const onDrop = (event: globalThis.DragEvent) => {
-      if (carriesFiles(event.dataTransfer) && !editable(event.target)) {
+      if (hasFiles(event.dataTransfer) && !editable(event.target)) {
         event.preventDefault();
       }
+      ended();
     };
+    const ends = ["dragend", "pointermove", "pointerdown"] as const;
     document.addEventListener("dragstart", onDragStart);
     document.addEventListener("dragover", onDragOver);
     document.addEventListener("drop", onDrop);
+    for (const type of ends) {
+      document.addEventListener(type, ended, { capture: true, passive: true });
+    }
     return () => {
       document.removeEventListener("dragstart", onDragStart);
       document.removeEventListener("dragover", onDragOver);
       document.removeEventListener("drop", onDrop);
+      for (const type of ends) {
+        document.removeEventListener(type, ended, true);
+      }
+      ended();
     };
   }, []);
   return null;

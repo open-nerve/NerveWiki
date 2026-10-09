@@ -7,6 +7,7 @@ test.each([
   ["Straße", "strasse"],
   ["STRASSE", "strasse"],
   ["FUẞ", "fuss"],
+  ["GROẞE MAẞE", "grosse masse"],
   ["Σοφίας", "σοφίασ"],
   ["5µm", "5μm"],
   ["ﬁle", "file"],
