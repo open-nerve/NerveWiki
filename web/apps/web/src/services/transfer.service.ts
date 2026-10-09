@@ -1,0 +1,56 @@
+import type {
+  ApiClient,
+  TransferFailure,
+  TransferJob,
+  TransferJobDetail,
+  TransferJobPage,
+  TransferProblem,
+} from "@nervewiki/api-client";
+
+import { unwrap } from "./api";
+
+export type { TransferFailure, TransferJob, TransferJobDetail, TransferJobPage, TransferProblem };
+
+/** How many jobs a page of a list has (M7/P5 design 4.2). */
+const jobPage = 50;
+
+/**
+ * TransferService starts a notebook's exports and reads, lists and cancels
+ * its jobs (M7/P5 design 4.2). An export's archive downloads at the address
+ * the server signed, without the client: a link does.
+ */
+export class TransferService {
+  constructor(private readonly api: ApiClient) {}
+
+  /** startExport starts the export of the notebook, or of the page rootId and its subtree, and answers its job. */
+  async startExport(notebookId: string, rootId: string | null): Promise<TransferJob> {
+    return unwrap(
+      await this.api.POST("/api/v0/notebooks/{notebook_id}/exports", {
+        params: { path: { notebook_id: notebookId } },
+        body: { root_id: rootId },
+      })
+    );
+  }
+
+  /** list answers a page of the notebook's jobs the caller sees, the newest first, jobPage of them, after cursor. */
+  async list(notebookId: string, cursor?: string): Promise<TransferJobPage> {
+    return unwrap(
+      await this.api.GET("/api/v0/notebooks/{notebook_id}/transfer-jobs", {
+        params: {
+          path: { notebook_id: notebookId },
+          query: { limit: jobPage, ...(cursor === undefined ? {} : { cursor }) },
+        },
+      })
+    );
+  }
+
+  /** get answers the job id with its report's problems, its address signed anew. */
+  async get(id: string): Promise<TransferJobDetail> {
+    return unwrap(await this.api.GET("/api/v0/transfer-jobs/{job_id}", { params: { path: { job_id: id } } }));
+  }
+
+  /** cancel cancels the job id and answers it: a queued one cancelled, a running one with its cancel asked. */
+  async cancel(id: string): Promise<TransferJob> {
+    return unwrap(await this.api.POST("/api/v0/transfer-jobs/{job_id}/cancel", { params: { path: { job_id: id } } }));
+  }
+}

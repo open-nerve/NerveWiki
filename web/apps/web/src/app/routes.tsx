@@ -187,6 +187,13 @@ export const routes: RouteObject[] = [
                                   return { Component: NotebookMembersPage };
                                 },
                               },
+                              {
+                                path: "transfer",
+                                lazy: async () => {
+                                  const { NotebookTransferPage } = await import("../pages/notebook/transfer-page");
+                                  return { Component: NotebookTransferPage };
+                                },
+                              },
                             ],
                           },
                         ],

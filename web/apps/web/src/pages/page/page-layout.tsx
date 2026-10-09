@@ -26,6 +26,7 @@ import { AttachmentDrop, AttachmentsSection } from "./attachments-section";
 import { Breadcrumbs } from "./breadcrumbs";
 import { EditLockNote } from "./edit-lock-note";
 import { PageEdit } from "./page-edit";
+import { PageMenu } from "./page-menu";
 import { PagePanel } from "./page-panel";
 import { ReadingView } from "./reading-view";
 import { SubpageList } from "./subpage-list";
@@ -229,17 +230,22 @@ const PageShell = observer(function PageShell({
           <h1 ref={heading} tabIndex={-1} className="text-3xl font-semibold break-words outline-none">
             {page.name}
           </h1>
-          {writer && reading && (
-            <Button
-              ref={edit}
-              variant="outline"
-              aria-busy={entering || undefined}
-              aria-describedby={idleLeft || toldLeft !== "" ? idleNote : undefined}
-              aria-disabled={entering || undefined}
-              onClick={() => void enter(false)}
-            >
-              {t("page.edit")}
-            </Button>
+          {reading && (
+            <div className="flex shrink-0 gap-2">
+              {!gone && <PageMenu notebook={notebook} page={page} href={`${home}/settings/transfer`} />}
+              {writer && (
+                <Button
+                  ref={edit}
+                  variant="outline"
+                  aria-busy={entering || undefined}
+                  aria-describedby={idleLeft || toldLeft !== "" ? idleNote : undefined}
+                  aria-disabled={entering || undefined}
+                  onClick={() => void enter(false)}
+                >
+                  {t("page.edit")}
+                </Button>
+              )}
+            </div>
           )}
         </div>
       </div>

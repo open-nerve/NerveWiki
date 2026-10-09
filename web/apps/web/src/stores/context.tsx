@@ -14,6 +14,7 @@ import type { NotebookStore } from "./notebook.store";
 import type { OwnerlessStore } from "./ownerless.store";
 import type { PageTreeStore } from "./page-tree.store";
 import type { RootStore } from "./root.store";
+import type { TransferStore } from "./transfer.store";
 import type { WorkspaceStore } from "./workspace.store";
 
 const StoreContext = createContext<RootStore | null>(null);
@@ -106,6 +107,15 @@ export function useAssets(notebook: Notebook): AssetStore {
     throw new Error("useAssets is used outside SignedIn");
   }
   return assets;
+}
+
+/** useTransfers is the jobs of notebook: only for the pages the SignedIn guard shows. */
+export function useTransfers(notebook: Notebook): TransferStore {
+  const transfers = useStore().transfersOf(notebook);
+  if (transfers === undefined) {
+    throw new Error("useTransfers is used outside SignedIn");
+  }
+  return transfers;
 }
 
 /** useOwnerless is the ownerless notebooks of workspace: only for the pages the SignedIn guard shows. */
