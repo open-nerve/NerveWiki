@@ -143,6 +143,24 @@ test("an upload that leaves as others begin, in one turn, is said with them", as
   act(() => server.release());
 });
 
+test("uploads that begin as one leaves, in one turn, are said with it, the one that began before too", async () => {
+  const server = pageServer({ nodes });
+  server.uploadsHeld = true;
+  renderApp(pagePath(guide.id), server.app);
+  const section = await attachments();
+
+  choose(section, [new File(["a"], "a.png")]);
+  await waitFor(() => expect(server.held).toHaveLength(1));
+  await waitFor(() => expect(notice(section)).toBe("Uploading files: 1."));
+  act(() => {
+    server.release();
+    choose(section, [new File(["b"], "b.png"), new File(["c"], "c.png")]);
+  });
+
+  await waitFor(() => expect(notice(section)).toBe("Uploaded: a.png. Uploading files: 2."));
+  act(() => server.release());
+});
+
 test("Cancel stops the upload: its request is aborted, nothing is made, nothing said uploaded, the focus goes back to Upload", async () => {
   const user = userEvent.setup();
   const server = pageServer({ nodes });
@@ -429,7 +447,7 @@ test("files dropped on a dialog the section holds are not uploaded: a dialog is 
   expect(uploaded(server.sent)).toEqual([]);
 });
 
-test("a drag that started in the page, an image of it, is no file to upload; one ended unseen ends as the pointer next moves", async () => {
+test("a drag that started in the page, an image of it, is no file to upload; its end, a drop, a press or the pointer moved with no button down ends it", async () => {
   const server = pageServer({ nodes });
   renderApp(pagePath(guide.id), server.app);
   const section = await attachments();

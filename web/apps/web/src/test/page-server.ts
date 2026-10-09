@@ -258,7 +258,9 @@ export function pageServer({
   return Object.assign(server, { app });
 }
 
-let created = 50;
+// The nodes made: numbered past those the tests make (under 600), as a file's tests go on; an id's number stays three
+// digits after 100 for 299 of them.
+let created = 600;
 let held = 0;
 
 /** aliveOf is the page's alive session: the one holding its lock. */
