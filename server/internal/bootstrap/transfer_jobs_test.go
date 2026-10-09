@@ -222,16 +222,16 @@ func TestThePurgeDeletesTheJobsBeforeTheirNotebooks(t *testing.T) {
 	}
 }
 
-// The runner's settings: the exports in their queue, of
-// jobs.export_workers, and River's rescue past their timeout by an hour
-// (M7/P5 design 3.2), so that a running export is never taken for stuck
-// and discarded.
-func TestTheExportsHaveTheirQueueAndOutlastRiversRescue(t *testing.T) {
-	cfg := config.Config{Jobs: config.JobsConfig{ShutdownTimeout: time.Second, ExportWorkers: 3},
+// The runner's settings: the exports and the imports in their queues, of
+// jobs.export_workers and jobs.import_workers, and River's rescue past
+// their timeout by an hour (M7/P5 design 3.2), so that a running job is
+// never taken for stuck and discarded.
+func TestTheJobsHaveTheirQueuesAndOutlastRiversRescue(t *testing.T) {
+	cfg := config.Config{Jobs: config.JobsConfig{ShutdownTimeout: time.Second, ExportWorkers: 3, ImportWorkers: 2},
 		Transfer: config.TransferConfig{JobTimeout: 6 * time.Hour}}
 	got := jobsConfig(cfg, slog.New(slog.DiscardHandler))
-	if !maps.Equal(got.Queues, map[string]int{transfer.QueueExport: 3}) || got.RescueAfter != 7*time.Hour ||
+	if !maps.Equal(got.Queues, map[string]int{transfer.QueueExport: 3, transfer.QueueImport: 2}) || got.RescueAfter != 7*time.Hour ||
 		got.ShutdownTimeout != time.Second || got.Logger == nil {
-		t.Errorf("jobs.Config = %+v, want transfer_export of 3 workers, the rescue after 7h", got)
+		t.Errorf("jobs.Config = %+v, want transfer_export of 3 workers, transfer_import of 2, the rescue after 7h", got)
 	}
 }

@@ -44,9 +44,13 @@ const (
 	TransferFailureForbidden           TransferFailure = "forbidden"
 	TransferFailureInternal            TransferFailure = "internal"
 	TransferFailureInterrupted         TransferFailure = "interrupted"
+	TransferFailureNotZip              TransferFailure = "not_zip"
 	TransferFailureRootNotFound        TransferFailure = "root_not_found"
 	TransferFailureStorageFull         TransferFailure = "storage_full"
 	TransferFailureTimeout             TransferFailure = "timeout"
+	TransferFailureTooManyEntries      TransferFailure = "too_many_entries"
+	TransferFailureTreeChanged         TransferFailure = "tree_changed"
+	TransferFailureUnpackedTooLarge    TransferFailure = "unpacked_too_large"
 )
 
 // Valid indicates whether the value is a known member of the TransferFailure enum.
@@ -60,11 +64,19 @@ func (e TransferFailure) Valid() bool {
 		return true
 	case TransferFailureInterrupted:
 		return true
+	case TransferFailureNotZip:
+		return true
 	case TransferFailureRootNotFound:
 		return true
 	case TransferFailureStorageFull:
 		return true
 	case TransferFailureTimeout:
+		return true
+	case TransferFailureTooManyEntries:
+		return true
+	case TransferFailureTreeChanged:
+		return true
+	case TransferFailureUnpackedTooLarge:
 		return true
 	default:
 		return false
@@ -91,16 +103,49 @@ func (e TransferKind) Valid() bool {
 
 // Defines values for TransferProblemCode.
 const (
-	TransferProblemCodeFileMissing TransferProblemCode = "file_missing"
-	TransferProblemCodeRenamed     TransferProblemCode = "renamed"
+	TransferProblemCodeDuplicate         TransferProblemCode = "duplicate"
+	TransferProblemCodeEncrypted         TransferProblemCode = "encrypted"
+	TransferProblemCodeFileMissing       TransferProblemCode = "file_missing"
+	TransferProblemCodeInvalidContent    TransferProblemCode = "invalid_content"
+	TransferProblemCodeNameNotUTF8       TransferProblemCode = "name_not_utf8"
+	TransferProblemCodeRenamed           TransferProblemCode = "renamed"
+	TransferProblemCodeSpecialFile       TransferProblemCode = "special_file"
+	TransferProblemCodeTooCompressed     TransferProblemCode = "too_compressed"
+	TransferProblemCodeTooDeep           TransferProblemCode = "too_deep"
+	TransferProblemCodeTooLarge          TransferProblemCode = "too_large"
+	TransferProblemCodeUnreadable        TransferProblemCode = "unreadable"
+	TransferProblemCodeUnsafePath        TransferProblemCode = "unsafe_path"
+	TransferProblemCodeUnsupportedMethod TransferProblemCode = "unsupported_method"
 )
 
 // Valid indicates whether the value is a known member of the TransferProblemCode enum.
 func (e TransferProblemCode) Valid() bool {
 	switch e {
+	case TransferProblemCodeDuplicate:
+		return true
+	case TransferProblemCodeEncrypted:
+		return true
 	case TransferProblemCodeFileMissing:
 		return true
+	case TransferProblemCodeInvalidContent:
+		return true
+	case TransferProblemCodeNameNotUTF8:
+		return true
 	case TransferProblemCodeRenamed:
+		return true
+	case TransferProblemCodeSpecialFile:
+		return true
+	case TransferProblemCodeTooCompressed:
+		return true
+	case TransferProblemCodeTooDeep:
+		return true
+	case TransferProblemCodeTooLarge:
+		return true
+	case TransferProblemCodeUnreadable:
+		return true
+	case TransferProblemCodeUnsafePath:
+		return true
+	case TransferProblemCodeUnsupportedMethod:
 		return true
 	default:
 		return false
@@ -148,16 +193,16 @@ type TransferClient string
 
 // TransferCounts What the job did before it ended, as it wrote its end. A job that could not write its end, which the server fails later as interrupted (it restarted, the job stopped beating, the job queue dropped it), counts nothing: its progress tells how far it went.
 type TransferCounts struct {
-	// Attachments The attachments whose files were written.
+	// Attachments The attachments whose files were written; an import's, created.
 	Attachments int64 `json:"attachments"`
 
-	// Missing The attachments whose files were not in the storage, and not written.
+	// Missing The attachments whose files were not in the storage, and not written; 0 for an import.
 	Missing int64 `json:"missing"`
 
-	// Pages The pages written.
+	// Pages The pages written; an import's, created.
 	Pages int64 `json:"pages"`
 
-	// Renamed The nodes the export's vault names otherwise, as the export laid the vault out before it wrote.
+	// Renamed The nodes the export's vault names otherwise, as the export laid the vault out before it wrote; the nodes an import named otherwise than the archive.
 	Renamed int64 `json:"renamed"`
 
 	// Skipped An import's entries skipped; 0 for an export.
@@ -173,7 +218,7 @@ type TransferDownload struct {
 	URL string `json:"url"`
 }
 
-// TransferFailure Why a job failed: interrupted (the server stopped or restarted, the job stopped beating, or the job queue dropped it before it began), timeout (it ran past the instance's limit), forbidden (its starter could no longer read the notebook as it ran), root_not_found (the page exported was gone as it ran), storage_full, contributor_conflict (a file the server adds was where a node is), internal.
+// TransferFailure Why a job failed: interrupted (the server stopped or restarted, the job stopped beating, or the job queue dropped it before it began), timeout (it ran past the instance's limit), forbidden (its starter could no longer read the notebook as it ran, or write in it as an import ran), root_not_found (the page exported, or imported under, was gone as it ran), storage_full, contributor_conflict (a file the server adds was where a node is), internal; for an import's archive as a whole, nothing written: not_zip (no zip, or its directory is broken), too_many_entries (more entries than the instance takes, or a directory larger than 64 MiB), unpacked_too_large (its entries unpack to more than the instance takes); tree_changed (a page the import created was deleted or moved away as it ran, its later nodes not written).
 type TransferFailure string
 
 // TransferJob An import or an export of a notebook, a job that runs in the background: queued, then running, then succeeded, failed or cancelled. An export's archive expires a while after it succeeded, the instance's export TTL, or at once when its starter's next export of the notebook succeeds: a starter keeps only their latest export of a notebook.
@@ -194,11 +239,11 @@ type TransferJob struct {
 	ID         uuid.UUID                           `json:"id"`
 	Kind       TransferKind                        `json:"kind"`
 
-	// Name What is exported, by name, the notebook's or the page's; the archive is named after it.
+	// Name What is exported, by name, the notebook's or the page's, which the archive is named after; for an import, the archive's file name.
 	Name       string    `json:"name"`
 	NotebookID uuid.UUID `json:"notebook_id"`
 
-	// Progress How many of the job's nodes are done, of all; an export's written.
+	// Progress How many of the job's nodes are done, of all: an export's written; an import's created or skipped, of those to create, 0 of 0 until its archive is read.
 	Progress TransferProgress `json:"progress"`
 
 	// Report What the job did and why it failed, once it ended; null before.
@@ -207,7 +252,7 @@ type TransferJob struct {
 	// ResultBytes The bytes of an export's archive, once it succeeded, and after it expired; null otherwise.
 	ResultBytes nullable.Nullable[int64] `json:"result_bytes"`
 
-	// RootID The page exported with its subtree; null for the whole notebook.
+	// RootID The page exported with its subtree, or imported under; null for the whole notebook, or its root.
 	RootID    nullable.Nullable[uuid.UUID] `json:"root_id"`
 	StartedAt nullable.Nullable[time.Time] `json:"started_at"`
 	State     TransferState                `json:"state"`
@@ -231,7 +276,7 @@ type TransferJobDetail struct {
 	ID         uuid.UUID                           `json:"id"`
 	Kind       TransferKind                        `json:"kind"`
 
-	// Name What is exported, by name, the notebook's or the page's; the archive is named after it.
+	// Name What is exported, by name, the notebook's or the page's, which the archive is named after; for an import, the archive's file name.
 	Name       string    `json:"name"`
 	NotebookID uuid.UUID `json:"notebook_id"`
 
@@ -241,7 +286,7 @@ type TransferJobDetail struct {
 	// ProblemsTruncated Whether problems were left out past the first 1,000.
 	ProblemsTruncated bool `json:"problems_truncated"`
 
-	// Progress How many of the job's nodes are done, of all; an export's written.
+	// Progress How many of the job's nodes are done, of all: an export's written; an import's created or skipped, of those to create, 0 of 0 until its archive is read.
 	Progress TransferProgress `json:"progress"`
 
 	// Report What the job did and why it failed, once it ended; null before.
@@ -250,7 +295,7 @@ type TransferJobDetail struct {
 	// ResultBytes The bytes of an export's archive, once it succeeded, and after it expired; null otherwise.
 	ResultBytes nullable.Nullable[int64] `json:"result_bytes"`
 
-	// RootID The page exported with its subtree; null for the whole notebook.
+	// RootID The page exported with its subtree, or imported under; null for the whole notebook, or its root.
 	RootID    nullable.Nullable[uuid.UUID] `json:"root_id"`
 	StartedAt nullable.Nullable[time.Time] `json:"started_at"`
 	State     TransferState                `json:"state"`
@@ -267,19 +312,19 @@ type TransferJobPage struct {
 // TransferKind defines model for TransferKind.
 type TransferKind string
 
-// TransferProblem What befell a node, at its path in the archive's vault (at most 1,024 bytes): renamed, written at to instead, so links to its old name do not reach it there; file_missing, an attachment whose file was not in the storage.
+// TransferProblem What befell a node, at its path in the archive's vault (at most 1,024 bytes): renamed, written at to instead, so links to its old name do not reach it there; file_missing, an attachment whose file was not in the storage. An import's entry skipped, at its name in the archive: unsafe_path (it leaves the archive's root: "..", an absolute path, a drive), special_file (a symbolic link, or another file that is no regular one), encrypted, unsupported_method (compressed otherwise than stored or deflated), too_compressed (it unpacks to more than 200 times its packed size), name_not_utf8, invalid_content (a page's file not UTF-8, or holding NUL), too_large (a page's file past 5 MiB, an attachment past the instance's asset_max_bytes), duplicate (a path an earlier entry has), unreadable (its data broken, its checksum or size not its header's); an import's node, at its path in the vault: too_deep (deeper than pages go from where the import goes, with everything under it), renamed (created under the name at the end of to, its path from where the import goes).
 type TransferProblem struct {
 	Code TransferProblemCode `json:"code"`
 	Path string              `json:"path"`
 
-	// To Where a renamed node is written; null for any other problem.
+	// To Where a renamed node is written, or created; null for any other problem.
 	To nullable.Nullable[string] `json:"to"`
 }
 
 // TransferProblemCode defines model for TransferProblem.Code.
 type TransferProblemCode string
 
-// TransferProgress How many of the job's nodes are done, of all; an export's written.
+// TransferProgress How many of the job's nodes are done, of all: an export's written; an import's created or skipped, of those to create, 0 of 0 until its archive is read.
 type TransferProgress struct {
 	Done  int64 `json:"done"`
 	Total int64 `json:"total"`

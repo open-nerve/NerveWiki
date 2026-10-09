@@ -11,6 +11,7 @@ type Settings struct {
 	SignupEnabled            bool          // auth.signup_enabled
 	WorkspaceCreationEnabled bool          // workspace.creation_enabled
 	AssetMaxBytes            int64         // asset.max_bytes
+	ImportMaxBytes           int64         // transfer.import_max_bytes
 	ExportTTL                time.Duration // transfer.export_ttl
 }
 
@@ -37,6 +38,7 @@ func (uc *GetInfo) Execute() domain.Info {
 		SignupEnabled:            uc.settings.SignupEnabled,
 		WorkspaceCreationEnabled: uc.settings.WorkspaceCreationEnabled,
 		AssetMaxBytes:            uc.settings.AssetMaxBytes,
+		ImportMaxBytes:           uc.settings.ImportMaxBytes,
 		ExportTTL:                uc.settings.ExportTTL,
 	}
 }

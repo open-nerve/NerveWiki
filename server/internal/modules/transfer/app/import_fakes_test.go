@@ -114,6 +114,7 @@ type tree struct {
 	children   map[uuid.UUID][]string
 	made       []made
 	units      []app.ImportSpec
+	actors     []shared.Actor
 	committed  []int
 	busyParses int
 	busyCalls  map[int]bool
@@ -170,8 +171,13 @@ func (p *parsed) Release() {
 }
 
 func (t *tree) Import(ctx context.Context, spec app.ImportSpec, do func(ctx context.Context, u app.ImportUnit) error) (uuid.UUID, error) {
+	actor, err := shared.RequireActor(ctx)
+	if err != nil {
+		return uuid.UUID{}, err
+	}
 	t.mu.Lock()
 	t.units = append(t.units, spec)
+	t.actors = append(t.actors, actor)
 	n, onUnit := len(t.units), t.onUnit
 	t.mu.Unlock()
 	if onUnit != nil {

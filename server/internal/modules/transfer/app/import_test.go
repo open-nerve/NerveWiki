@@ -63,8 +63,9 @@ func TestAnImportWritesTheVault(t *testing.T) {
 	if len(w.tree.units) != 1 || w.tree.units[0] != (app.ImportSpec{NotebookID: w.eng, Action: domain.ActionImport, Client: domain.ClientAPI}) {
 		t.Errorf("units %+v, want one of the job's", w.tree.units)
 	}
-	if !slices.Equal(w.auth.asked, []shared.Actor{{UserID: w.bob, JobID: j.ID}}) {
-		t.Errorf("asked %+v, want bob through the job", w.auth.asked)
+	if job := (shared.Actor{UserID: w.bob, JobID: j.ID}); !slices.Equal(w.auth.asked, []shared.Actor{job}) ||
+		!slices.Equal(w.tree.actors, []shared.Actor{job}) {
+		t.Errorf("asked %+v, units of %+v; want bob through the job", w.auth.asked, w.tree.actors)
 	}
 	if w.stats.count() != 1 || w.tree.parses != 6 || w.tree.released != 6 || w.archives.imported(j.ID) {
 		t.Errorf("statistics %d, parses %d, released %d, archive kept %v", w.stats.count(), w.tree.parses, w.tree.released,

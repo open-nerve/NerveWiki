@@ -71,11 +71,13 @@ func TestBuiltInProfiles(t *testing.T) {
 				Workspace: config.WorkspaceConfig{CreationEnabled: true},
 				Page:      config.PageConfig{EditSessionCleanupInterval: 10 * time.Minute, ParseBudgetBytes: 8 << 20, ParseMaxWait: 2 * time.Second},
 				Events:    config.EventsConfig{HeartbeatInterval: 20 * time.Second},
-				Jobs:      config.JobsConfig{ShutdownTimeout: 10 * time.Second, PurgeInterval: tt.purge, PurgeRetention: 60 * 24 * time.Hour, ExportWorkers: 1},
-				Storage:   config.StorageConfig{Dir: tt.storageDir, MinFreeBytes: 1 << 30},
-				Asset:     config.AssetConfig{MaxBytes: 50 << 20, UploadMinRate: 64 << 10},
-				Transfer:  config.TransferConfig{ExportTTL: 24 * time.Hour, JobTimeout: 6 * time.Hour, HeartbeatTimeout: 5 * time.Minute, MaxQueued: 20},
-				Log:       config.LogConfig{Level: tt.level, Format: tt.format},
+				Jobs: config.JobsConfig{ShutdownTimeout: 10 * time.Second, PurgeInterval: tt.purge, PurgeRetention: 60 * 24 * time.Hour, ExportWorkers: 1,
+					ImportWorkers: 1},
+				Storage: config.StorageConfig{Dir: tt.storageDir, MinFreeBytes: 1 << 30},
+				Asset:   config.AssetConfig{MaxBytes: 50 << 20, UploadMinRate: 64 << 10},
+				Transfer: config.TransferConfig{ExportTTL: 24 * time.Hour, JobTimeout: 6 * time.Hour, HeartbeatTimeout: 5 * time.Minute, MaxQueued: 20,
+					ImportMaxBytes: 512 << 20, ImportMaxEntries: 50000, ImportMaxUnpackedBytes: 4 << 30},
+				Log: config.LogConfig{Level: tt.level, Format: tt.format},
 			}
 			if !reflect.DeepEqual(cfg, want) {
 				t.Errorf("Load() =\n%+v\nwant\n%+v", cfg, want)

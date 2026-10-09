@@ -32,7 +32,7 @@ type download struct {
 }
 
 func (h download) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	a, ok := addressOf(pathID(r), r.PathValue("job_id"), r.URL.RawQuery)
+	a, ok := addressOf(pathID(r, "job_id"), r.PathValue("job_id"), r.URL.RawQuery)
 	if !ok || r.URL.RawPath != "" {
 		// RawPath is set when the path was sent escaped: the router has
 		// unescaped what addressOf reads.

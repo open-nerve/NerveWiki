@@ -193,10 +193,14 @@ type JobsConfig struct {
 	// database.max_conns, each export holding a connection through its
 	// snapshot.
 	ExportWorkers int `koanf:"export_workers"`
+	// ImportWorkers is how many imports run at once, in their queue (M7/P6
+	// design 3.15): from 1 to MaxTransferWorkers, and with ExportWorkers at
+	// most half of database.max_conns.
+	ImportWorkers int `koanf:"import_workers"`
 }
 
-// MaxTransferWorkers bounds jobs.export_workers: each export holds a
-// connection in its snapshot and writes a file of the store.
+// MaxTransferWorkers bounds jobs.export_workers and jobs.import_workers:
+// each job holds a connection as it writes, and a file of the store.
 const MaxTransferWorkers = 8
 
 // StorageConfig configures the store of files: the attachments and the
@@ -245,6 +249,16 @@ type TransferConfig struct {
 	// MaxQueued is how many jobs may be queued or running at once, at
 	// least 1: past it a job is refused, 503 server_busy.
 	MaxQueued int `koanf:"max_queued"`
+	// ImportMaxBytes is the largest archive an import uploads (M7/P6
+	// design 3.15): at least MinImportBytes and asset.max_bytes, arriving
+	// within MaxImportTransfer at asset.upload_min_rate.
+	ImportMaxBytes int64 `koanf:"import_max_bytes"`
+	// ImportMaxEntries is the most entries an import's archive holds, from
+	// 1 to MaxImportEntries.
+	ImportMaxEntries int `koanf:"import_max_entries"`
+	// ImportMaxUnpackedBytes is the most bytes an import's entries unpack
+	// to, at least ImportMaxBytes.
+	ImportMaxUnpackedBytes int64 `koanf:"import_max_unpacked_bytes"`
 }
 
 // The bounds of the transfer settings.
@@ -253,6 +267,12 @@ const (
 	MinJobTimeout               = time.Minute
 	MaxJobTimeout               = 7 * 24 * time.Hour
 	MinTransferHeartbeatTimeout = time.Minute
+	MinImportBytes              = 1 << 20
+	MaxImportEntries            = 1000000
+	// MaxImportTransfer is the longest an import's upload of the largest
+	// archive may take at the slowest rate: an upload holds its
+	// connection that long.
+	MaxImportTransfer = 3 * time.Hour
 )
 
 // LogConfig configures the process logger.
@@ -328,6 +348,7 @@ func (c Config) LogValue() slog.Value {
 			duration("purge_interval", c.Jobs.PurgeInterval),
 			duration("purge_retention", c.Jobs.PurgeRetention),
 			slog.Int("export_workers", c.Jobs.ExportWorkers),
+			slog.Int("import_workers", c.Jobs.ImportWorkers),
 		),
 		slog.Group("storage",
 			slog.String("dir", c.Storage.Dir),
@@ -342,6 +363,9 @@ func (c Config) LogValue() slog.Value {
 			duration("job_timeout", c.Transfer.JobTimeout),
 			duration("heartbeat_timeout", c.Transfer.HeartbeatTimeout),
 			slog.Int("max_queued", c.Transfer.MaxQueued),
+			slog.Int64("import_max_bytes", c.Transfer.ImportMaxBytes),
+			slog.Int("import_max_entries", c.Transfer.ImportMaxEntries),
+			slog.Int64("import_max_unpacked_bytes", c.Transfer.ImportMaxUnpackedBytes),
 		),
 		slog.Group("log",
 			slog.String("level", c.Log.Level),

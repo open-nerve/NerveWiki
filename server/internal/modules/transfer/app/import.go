@@ -54,12 +54,13 @@ func NewImport(d ImportDeps) *Import {
 	return &Import{d: d}
 }
 
-// Run runs the import id. A job no longer queued, cancelled or deleted
-// meanwhile, is left as it is. A running one writes its heartbeat every
-// Beat, which stops it between two units when its cancel was asked or it
-// was deleted; it ends succeeded, cancelled or failed with its report,
-// what it wrote kept. Its archive is deleted at every end. Run fails only
-// when the job's end cannot be written: the rescue fails it later.
+// Run runs the import id, its starter acting through it. A job no longer
+// queued, cancelled or deleted meanwhile, is left as it is. A running one
+// writes its heartbeat every Beat, which stops it between two units when
+// its cancel was asked or it was deleted; it ends succeeded, cancelled or
+// failed with its report, what it wrote kept. Its archive is deleted at
+// every end. Run fails only when the job's end cannot be written: the
+// rescue fails it later.
 func (i *Import) Run(ctx context.Context, id uuid.UUID) error {
 	job, err := i.d.Rows.StartJob(ctx, id, i.d.Clock.Now())
 	if errors.Is(err, ErrNoRow) {
@@ -71,6 +72,7 @@ func (i *Import) Run(ctx context.Context, id uuid.UUID) error {
 	}
 	attrs := jobAttrs(job)
 	i.d.Logger.InfoContext(ctx, "import started", attrs...)
+	ctx = shared.WithActor(ctx, shared.Actor{UserID: job.CreatedBy, JobID: job.ID})
 	r := &importRun{jobRun: newJobRun(job, i.d.Rows, i.d.Clock, i.d.Logger, i.d.Beat), i: i}
 	running, stop := context.WithCancelCause(ctx)
 	beating := r.beat(running, stop)

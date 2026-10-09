@@ -13,7 +13,7 @@ compatibility:
   always-prefix-enum-values: true
 output-options:
   # 原样的操作（x-raw）由模块手写处理器，不生成（apitest 的 TestRawOperationsAreNotGenerated 核对）
-  exclude-operation-ids: [downloadExport]
+  exclude-operation-ids: [startImport, downloadExport]
   name-normalizer: ToCamelCaseWithInitialisms
   # 可为空又可省略的字段生成 nullable.Nullable[T]：PATCH 能区分"没传"和"传 null"
   nullable-type: true

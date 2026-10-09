@@ -30,6 +30,9 @@ type Info struct {
 	// AssetMaxBytes is asset.max_bytes: the largest attachment an upload
 	// may send, which a client checks before it sends one.
 	AssetMaxBytes int64
+	// ImportMaxBytes is transfer.import_max_bytes: the largest archive an
+	// import may send, which a client checks before it sends one.
+	ImportMaxBytes int64
 	// ExportTTL is transfer.export_ttl: how long an export's archive is
 	// kept once it succeeded, which a client tells before it starts one.
 	ExportTTL time.Duration

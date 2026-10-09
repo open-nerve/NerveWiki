@@ -4,6 +4,8 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 	"uuid"
@@ -62,14 +64,15 @@ func (tm acmeTeam) holdAssetBlobs(t *testing.T) (release func()) {
 }
 
 // checkTransfers fails t when the jobs break an invariant (M7/P5 design
-// 3.14): a job not deleted still queued or running once River's every
-// export has completed; an archive in the store that no export that
-// succeeded keeps, live or deleted with its notebook (the sweep's, a day
-// later).
+// 3.14; M7/P6 design 3.16): a job not deleted still queued or running once
+// River's every export and import has completed; an archive in the store
+// that no export that succeeded keeps, live or deleted with its notebook
+// (the sweep's, a day later); an import's that no import queued or running
+// keeps.
 func checkTransfers(t *testing.T, tm acmeTeam) {
 	t.Helper()
-	if n := count(t, tm.pool, "SELECT count(*) FROM river_job WHERE kind = 'transfer.export' AND state <> 'completed'"); n != 0 {
-		t.Errorf("%d exports not completed by River", n)
+	if n := count(t, tm.pool, "SELECT count(*) FROM river_job WHERE kind IN ('transfer.export', 'transfer.import') AND state <> 'completed'"); n != 0 {
+		t.Errorf("%d jobs not completed by River", n)
 	}
 	if n := count(t, tm.pool, "SELECT count(*) FROM transfer_jobs WHERE state IN ('queued', 'running') AND deleted_at IS NULL"); n != 0 {
 		t.Errorf("%d jobs left queued or running", n)
@@ -81,6 +84,15 @@ func checkTransfers(t *testing.T, tm acmeTeam) {
 	for id := range storedArchives(t, tm.storage) {
 		if !live[id] {
 			t.Errorf("the archive of %s, which no live export keeps", id)
+		}
+	}
+	importing := map[string]bool{}
+	for _, id := range queryStrings(t, tm.pool, "SELECT id::text FROM transfer_jobs WHERE kind = 'import' AND state IN ('queued', 'running')") {
+		importing[id] = true
+	}
+	for _, path := range storedImports(t, tm.storage) {
+		if id := strings.TrimSuffix(filepath.Base(path), ".zip"); !importing[id] {
+			t.Errorf("the archive of %s, which no import queued or running keeps", id)
 		}
 	}
 }

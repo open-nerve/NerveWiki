@@ -122,15 +122,7 @@ func (c Config) validate() error {
 	if c.Jobs.PurgeRetention < time.Hour {
 		fail("jobs.purge_retention", "must be at least 1h, got %s", c.Jobs.PurgeRetention)
 	}
-	switch n := c.Jobs.ExportWorkers; {
-	case n < 1 || n > MaxTransferWorkers:
-		fail("jobs.export_workers", "must be from 1 to %d, got %d", MaxTransferWorkers, n)
-	case c.Database.MaxConns >= 1 && 2*n > int(c.Database.MaxConns):
-		// Each export holds a connection through its snapshot: half the
-		// pool stays the requests' and River's.
-		fail("jobs.export_workers", "must leave half of database.max_conns (%d) to the requests, at most %d, got %d",
-			c.Database.MaxConns, c.Database.MaxConns/2, n)
-	}
+	c.Jobs.validate(c.Database.MaxConns, fail)
 	if c.Storage.Dir == "" {
 		fail("storage.dir", "is required")
 	}
@@ -139,6 +131,7 @@ func (c Config) validate() error {
 	}
 	c.Asset.validate(fail)
 	c.Transfer.validate(fail)
+	c.Transfer.validateImport(c.Asset, fail)
 	var level slog.Level
 	if err := level.UnmarshalText([]byte(c.Log.Level)); err != nil {
 		fail("log.level", "must be one of debug, info, warn, error, got %q", c.Log.Level)
@@ -227,6 +220,51 @@ func (a AssetConfig) validate(fail func(key, format string, args ...any)) {
 		// slow client from holding one for days.
 		fail("asset.upload_min_rate", "must let asset.max_bytes (%d) arrive within %s, at least %d, got %d",
 			a.MaxBytes, MaxAssetTransfer, (a.MaxBytes+int64(MaxAssetTransfer.Seconds())-1)/int64(MaxAssetTransfer.Seconds()), a.UploadMinRate)
+	}
+}
+
+// validate checks the workers of the exports' and imports' queues: each
+// export holds a connection through its snapshot, an import as it writes
+// a batch; half the pool stays the requests' and River's.
+func (j JobsConfig) validate(maxConns int32, fail func(key, format string, args ...any)) {
+	exportsOK := false
+	switch n := j.ExportWorkers; {
+	case n < 1 || n > MaxTransferWorkers:
+		fail("jobs.export_workers", "must be from 1 to %d, got %d", MaxTransferWorkers, n)
+	case maxConns >= 1 && 2*n > int(maxConns):
+		fail("jobs.export_workers", "must leave half of database.max_conns (%d) to the requests, at most %d, got %d", maxConns, maxConns/2, n)
+	default:
+		exportsOK = true
+	}
+	switch n := j.ImportWorkers; {
+	case n < 1 || n > MaxTransferWorkers:
+		fail("jobs.import_workers", "must be from 1 to %d, got %d", MaxTransferWorkers, n)
+	case exportsOK && maxConns >= 1 && 2*(j.ExportWorkers+n) > int(maxConns):
+		fail("jobs.import_workers", "must leave, with jobs.export_workers (%d), half of database.max_conns (%d) to the requests, at most %d, got %d",
+			j.ExportWorkers, maxConns, int(maxConns)/2-j.ExportWorkers, n)
+	}
+}
+
+// validateImport checks the imports' bounds against each other and the
+// attachments': asset.max_bytes <= import_max_bytes <=
+// import_max_unpacked_bytes (M7/P6 design 3.15).
+func (t TransferConfig) validateImport(a AssetConfig, fail func(key, format string, args ...any)) {
+	switch {
+	case t.ImportMaxBytes < MinImportBytes:
+		fail("transfer.import_max_bytes", "must be at least %d (1 MiB), got %d", MinImportBytes, t.ImportMaxBytes)
+	case t.ImportMaxBytes < a.MaxBytes:
+		fail("transfer.import_max_bytes", "must be at least asset.max_bytes (%d), got %d", a.MaxBytes, t.ImportMaxBytes)
+	case a.UploadMinRate >= 1 && float64(t.ImportMaxBytes)/float64(a.UploadMinRate) > MaxImportTransfer.Seconds():
+		// Each import's upload may hold its connection that long.
+		fail("transfer.import_max_bytes", "must arrive within %s at asset.upload_min_rate (%d), at most %d, got %d",
+			MaxImportTransfer, a.UploadMinRate, a.UploadMinRate*int64(MaxImportTransfer.Seconds()), t.ImportMaxBytes)
+	}
+	if n := t.ImportMaxEntries; n < 1 || n > MaxImportEntries {
+		fail("transfer.import_max_entries", "must be from 1 to %d, got %d", MaxImportEntries, n)
+	}
+	if t.ImportMaxUnpackedBytes < t.ImportMaxBytes {
+		fail("transfer.import_max_unpacked_bytes", "must be at least transfer.import_max_bytes (%d), got %d", t.ImportMaxBytes,
+			t.ImportMaxUnpackedBytes)
 	}
 }
 

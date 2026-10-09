@@ -124,13 +124,13 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrati
 	pg := page.New(pageDeps(cfg, pool, logger, authorizer, md, budget))
 	as := asset.New(assetDeps(cfg, pool, logger, authorizer, store, pg, contentKey, limiter))
 	ln := linking.New(linkingDeps(pool, authorizer, embeds))
-	// An export is enqueued in the transaction that writes its job's row,
-	// by a client that only inserts: the runner's works the queue.
+	// A job is enqueued in the transaction that writes its row, by a
+	// client that only inserts: the runner's works the queues.
 	inserter, err := jobs.NewInserter(pool, logger)
 	if err != nil {
 		return nil, err
 	}
-	tr := transfer.New(transferDeps(cfg, pool, logger, authorizer, store, inserter, keys.Derive(transfer.DownloadKeyInfo)))
+	tr := transfer.New(transferDeps(cfg, pool, logger, authorizer, store, inserter, pg.TreeWrites(), keys.Derive(transfer.DownloadKeyInfo)))
 	ev, listener := eventsModule(cfg, pool, logger)
 	runner, err := jobs.New(pool, jobsConfig(cfg, logger),
 		slices.Concat(ident.Jobs(), pg.Jobs(), as.Jobs(), tr.Jobs(), []jobs.Job{purgeJob(cfg, pool, store, logger)}))

@@ -64,7 +64,7 @@ func identityDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, li
 // configuration.
 func instanceDeps(cfg config.Config) instance.Deps {
 	return instance.Deps{SignupEnabled: cfg.Auth.SignupEnabled, WorkspaceCreationEnabled: cfg.Workspace.CreationEnabled,
-		AssetMaxBytes: cfg.Asset.MaxBytes, ExportTTL: cfg.Transfer.ExportTTL}
+		AssetMaxBytes: cfg.Asset.MaxBytes, ImportMaxBytes: cfg.Transfer.ImportMaxBytes, ExportTTL: cfg.Transfer.ExportTTL}
 }
 
 // workspaceDeps are workspace's: the decisions of the access module;
@@ -194,32 +194,39 @@ func linkingDeps(pool *pgxpool.Pool, authorizer shared.Authorizer, assets linkin
 
 // transferDeps are the transfer module's: the store of files; the
 // workspace and notebook modules' locks and reads, identity's directory,
-// the page module's trees, the linking module's links and the asset
-// module's files; the jobs' insert-only client, the archives' key, the
-// transfer settings, the storage's free space kept and the slowest
-// download, an upload's.
+// the page module's trees and its writes of an import, the linking
+// module's links, the asset module's files, the statistics of the page,
+// linking and asset modules' tables; the jobs' insert-only client, the
+// archives' key, the transfer settings, the storage's free space kept, the
+// slowest upload or download, the largest attachment and page's content.
 func transferDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, authorizer shared.Authorizer, store storage.Store,
-	inserter *jobs.Inserter, downloadKey []byte,
+	inserter *jobs.Inserter, tree page.TreeWrites, downloadKey []byte,
 ) transfer.Deps {
 	tx := postgres.NewTxManager(pool, cfg.Database.CommitTimeout)
 	t := cfg.Transfer
+	blobs := asset.NewBlobs(pool, store, logger)
 	return transfer.Deps{
 		Pool: pool, Tx: tx, Snapshots: tx, Store: store, Inserter: inserter, Clock: clock.System{}, Logger: logger, Authorizer: authorizer,
 		Workspaces: workspace.NewWorkspaces(pool), Notebooks: notebook.NewNotebooks(pool), Names: displayNames{identity.NewDirectory(pool)},
-		Nodes: transferNodes{page.NewExportNodes(pool)}, Linked: linking.NewLinkedPages(pool), Blobs: transferBlobs{asset.NewBlobs(pool, store, logger)},
+		Nodes: transferNodes{page.NewExportNodes(pool)}, Linked: linking.NewLinkedPages(pool), Blobs: transferBlobs{blobs},
+		Tree: transferTree{tree}, Attachments: transferAttachments{blobs},
+		Statistics:  []transfer.Analyzer{page.NewStatistics(pool), linking.NewStatistics(pool), asset.NewStatistics(pool)},
 		DownloadKey: downloadKey, ExportTTL: t.ExportTTL, JobTimeout: t.JobTimeout, HeartbeatTimeout: t.HeartbeatTimeout, MaxQueued: t.MaxQueued,
-		MinFreeBytes: cfg.Storage.MinFreeBytes, MinRate: cfg.Asset.UploadMinRate,
+		ImportMaxBytes: t.ImportMaxBytes, ImportMaxEntries: t.ImportMaxEntries, ImportMaxUnpackedBytes: t.ImportMaxUnpackedBytes,
+		MinFreeBytes: cfg.Storage.MinFreeBytes, MinRate: cfg.Asset.UploadMinRate, AssetMaxBytes: cfg.Asset.MaxBytes,
+		MaxContentBytes: page.MaxContentBytes,
 	}
 }
 
-// jobsConfig is the runner's: the exports in a queue of their own, of
-// jobs.export_workers, and River's rescue of the jobs it takes for stuck
-// past the longest a job runs, an export's transfer.job_timeout, by an
-// hour: a job still running is never taken for stuck.
+// jobsConfig is the runner's: the exports and the imports each in a queue
+// of their own, of jobs.export_workers and jobs.import_workers, and
+// River's rescue of the jobs it takes for stuck past the longest a job
+// runs, transfer.job_timeout, by an hour: a job still running is never
+// taken for stuck.
 func jobsConfig(cfg config.Config, logger *slog.Logger) jobs.Config {
 	return jobs.Config{
 		ShutdownTimeout: cfg.Jobs.ShutdownTimeout,
-		Queues:          map[string]int{transfer.QueueExport: cfg.Jobs.ExportWorkers},
+		Queues:          map[string]int{transfer.QueueExport: cfg.Jobs.ExportWorkers, transfer.QueueImport: cfg.Jobs.ImportWorkers},
 		RescueAfter:     cfg.Transfer.JobTimeout + time.Hour,
 		Logger:          logger,
 	}

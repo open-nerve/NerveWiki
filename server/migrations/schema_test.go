@@ -299,6 +299,7 @@ func TestConstraintAndIndexNames(t *testing.T) {
 		"transfer_jobs_exporting_key iuw",
 		"transfer_jobs_finished_at_idx iw",
 		"transfer_jobs_finished_check c",
+		"transfer_jobs_importing_key iuw",
 		"transfer_jobs_kind_check c",
 		"transfer_jobs_name_check c",
 		"transfer_jobs_notebook_id_created_at_idx iw",

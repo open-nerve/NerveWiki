@@ -63,6 +63,7 @@ jobs:
   purge_interval: 1h
   purge_retention: 1440h
   export_workers: 1
+  import_workers: 1
 storage:
   dir: data
   min_free_bytes: 1073741824
@@ -74,6 +75,9 @@ transfer:
   job_timeout: 6h
   heartbeat_timeout: 5m
   max_queued: 20
+  import_max_bytes: 536870912
+  import_max_entries: 50000
+  import_max_unpacked_bytes: 4294967296
 log:
   level: info
   format: json
@@ -158,13 +162,14 @@ func TestLoadAppliesLayersInOrder(t *testing.T) {
 			PasswordUser:  BucketConfig{PerMinute: 5, Burst: 5},
 			AssetContent:  BucketConfig{PerMinute: 6000, Burst: 1000},
 		},
-		Page:     PageConfig{EditSessionCleanupInterval: 10 * time.Minute, ParseBudgetBytes: 8 << 20, ParseMaxWait: 2 * time.Second},
-		Events:   EventsConfig{HeartbeatInterval: 20 * time.Second},
-		Jobs:     JobsConfig{ShutdownTimeout: 10 * time.Second, PurgeInterval: time.Hour, PurgeRetention: 1440 * time.Hour, ExportWorkers: 1},
-		Storage:  StorageConfig{Dir: "data", MinFreeBytes: 1 << 30},
-		Asset:    AssetConfig{MaxBytes: 50 << 20, UploadMinRate: 64 << 10},
-		Transfer: TransferConfig{ExportTTL: 24 * time.Hour, JobTimeout: 6 * time.Hour, HeartbeatTimeout: 5 * time.Minute, MaxQueued: 20},
-		Log:      LogConfig{Level: "debug", Format: "text"},
+		Page:    PageConfig{EditSessionCleanupInterval: 10 * time.Minute, ParseBudgetBytes: 8 << 20, ParseMaxWait: 2 * time.Second},
+		Events:  EventsConfig{HeartbeatInterval: 20 * time.Second},
+		Jobs:    JobsConfig{ShutdownTimeout: 10 * time.Second, PurgeInterval: time.Hour, PurgeRetention: 1440 * time.Hour, ExportWorkers: 1, ImportWorkers: 1},
+		Storage: StorageConfig{Dir: "data", MinFreeBytes: 1 << 30},
+		Asset:   AssetConfig{MaxBytes: 50 << 20, UploadMinRate: 64 << 10},
+		Transfer: TransferConfig{ExportTTL: 24 * time.Hour, JobTimeout: 6 * time.Hour, HeartbeatTimeout: 5 * time.Minute, MaxQueued: 20,
+			ImportMaxBytes: 512 << 20, ImportMaxEntries: 50000, ImportMaxUnpackedBytes: 4 << 30},
+		Log: LogConfig{Level: "debug", Format: "text"},
 	}
 	if !reflect.DeepEqual(cfg, want) {
 		t.Errorf("Load() =\n%+v\nwant\n%+v", cfg, want)

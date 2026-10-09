@@ -44,6 +44,9 @@ type InstanceInfo struct {
 	// ExportTTLSeconds How long an export's archive is kept once the export succeeded, in seconds (transfer.export_ttl); then it expires.
 	ExportTTLSeconds int64 `json:"export_ttl_seconds"`
 
+	// ImportMaxBytes The largest archive an import may send, in bytes (transfer.import_max_bytes); a larger one is payload_too_large.
+	ImportMaxBytes int64 `json:"import_max_bytes"`
+
 	// Product Product name.
 	//
 	// Examples: Nerve Wiki

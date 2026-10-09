@@ -23,6 +23,7 @@ type Deps struct {
 	SignupEnabled            bool          // auth.signup_enabled
 	WorkspaceCreationEnabled bool          // workspace.creation_enabled
 	AssetMaxBytes            int64         // asset.max_bytes
+	ImportMaxBytes           int64         // transfer.import_max_bytes
 	ExportTTL                time.Duration // transfer.export_ttl
 }
 
@@ -31,7 +32,7 @@ func New(d Deps) *Module {
 	return &Module{uc: httpadapter.UseCases{
 		GetInfo: app.NewGetInfo(buildinfo.Source{}, app.Settings{
 			SignupEnabled: d.SignupEnabled, WorkspaceCreationEnabled: d.WorkspaceCreationEnabled, AssetMaxBytes: d.AssetMaxBytes,
-			ExportTTL: d.ExportTTL,
+			ImportMaxBytes: d.ImportMaxBytes, ExportTTL: d.ExportTTL,
 		}),
 	}}
 }
