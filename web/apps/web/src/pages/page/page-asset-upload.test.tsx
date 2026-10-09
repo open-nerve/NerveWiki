@@ -540,3 +540,22 @@ test("a conflict the leave's save runs into, the focus moved within the edit mea
   const region = await screen.findByRole("region", { name: "This page changed while you edited it" });
   await waitFor(() => expect(document.activeElement).toBe(within(region).getByRole("heading")));
 });
+
+test("a leave that fails once the uploads are in, Done pressed as it waited after Mod+E, gives the focus back to the editor", async () => {
+  const server = pageServer({ nodes });
+  server.uploadsHeld = true;
+  const { user, view, content } = await editing(server);
+  paste(view, [new File(["png"], "chart.png", { type: "image/png" })]);
+  await waitFor(() => expect(uploadsBy(content)).toBeDefined());
+  content.focus();
+  fireEvent.keyDown(content, { key: "e", ctrlKey: true });
+  await screen.findByText("Leaving once the uploads finish…");
+
+  await user.click(screen.getByRole("button", { name: "Done" }));
+  server.writesDown = true;
+  const tried = puts(server).length;
+  act(() => server.release());
+  await waitFor(() => expect(puts(server).length).toBeGreaterThan(tried));
+  await waitFor(() => expect(document.activeElement).toBe(content));
+  expect(screen.getByRole("textbox", { name: "Page content" })).toBeTruthy();
+});

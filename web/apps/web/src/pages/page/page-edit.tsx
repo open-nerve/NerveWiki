@@ -277,7 +277,8 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
       leaving.current = false;
       toldWaiting.current = undefined;
       current?.hold(false);
-      // Left by the user, the focus goes back where the edit is; the idle exit moves none.
+      // Left by the user, the focus goes back where the edit is, from where it was or anywhere within the edit; the idle
+      // exit moves none.
       if (!left.idle && editing.conflict === undefined && stayed()) {
         back();
       }
