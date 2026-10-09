@@ -143,7 +143,10 @@ func analyzed(t *testing.T, pool *pgxpool.Pool, tables []string) []string {
 // A vault imports through serve, in the imports' queue, one attempt: each
 // page with its content, a folder without its page as a page without
 // content, an attachment with its file and its row, a name mended and
-// reported; the links resolve both ways, those of the pages there before
+// reported, a page's name the notebook has, and an attachment's a sibling
+// before has, numbered past the one a later sibling of the vault keeps
+// (the reserved names, through the composition root);
+// the links resolve both ways, those of the pages there before
 // to the pages imported (the linking module's observers, through the
 // composition root). One changeset of the import's kind holds it; the
 // archive is deleted, the statistics refreshed.
@@ -151,17 +154,24 @@ func TestAnImportRunsThroughServe(t *testing.T) {
 	tm := newAcmeTeam(t, "", "")
 	nb := tm.openNotebook(t, "alice", "Eng")
 	spec := tm.createPageWith(t, "alice", nb, "", "Spec", "[[Notes]]")
+	tm.createPageWith(t, "alice", nb, "", "Plan", "")
 	tm.resolves(t, spec, "")
 	archive := vaultZip(t, vaultFile{"V/", ""}, vaultFile{"V/.obsidian/app.json", "{}"}, vaultFile{"V/Notes.md", "see [[Spec]] ![[pic.png]]"},
 		vaultFile{"V/Notes/pic.png", pngHead + "pixels"}, vaultFile{"V/Notes/Sub.md", "sub"}, vaultFile{"V/D/e.md", "e"},
-		vaultFile{"V/n:m.md", "x"})
+		vaultFile{"V/n:m.md", "x"}, vaultFile{"V/Plan.md", "p"}, vaultFile{"V/Plan 2.md", "q"}, vaultFile{"V/LICENSE", "MIT"},
+		vaultFile{"V/license", "mit"}, vaultFile{"V/LICENSE 2", "two"})
 
 	j := tm.imported(t, "alice", nb, "", archive)
 
+	var problems []string
+	for _, p := range j.Problems {
+		problems = append(problems, p.Code+" "+p.Path)
+	}
 	if j.State != "succeeded" || j.Name != "vault.zip" || j.RootID != nil || j.Report == nil || j.Report.Failure != nil ||
-		j.Report.Counts["pages"] != 5 || j.Report.Counts["attachments"] != 1 || j.Report.Counts["renamed"] != 1 || j.Progress.Done != 6 ||
-		j.Progress.Total != 6 || len(j.Problems) != 1 || j.Problems[0].Code != "renamed" || j.Problems[0].Path != "n:m.md" {
-		t.Fatalf("the import = %+v, report %+v, want succeeded, 5 pages, an attachment, n:m.md renamed", j, describe(j.Report))
+		j.Report.Counts["pages"] != 7 || j.Report.Counts["attachments"] != 4 || j.Report.Counts["renamed"] != 3 || j.Progress.Done != 11 ||
+		j.Progress.Total != 11 || !slices.Equal(problems, []string{"renamed license", "renamed n:m.md", "renamed Plan.md"}) {
+		t.Fatalf("the import = %+v, report %+v, want succeeded, 7 pages, 4 attachments, license, n:m.md and Plan.md renamed", j,
+			describe(j.Report))
 	}
 	awaitJob(t, tm.pool, "transfer.import")
 	if got := queryStrings(t, tm.pool, "SELECT queue || ' ' || max_attempts FROM river_job WHERE kind = $1",
@@ -171,9 +181,12 @@ func TestAnImportRunsThroughServe(t *testing.T) {
 	tree := queryStrings(t, tm.pool, `SELECT coalesce(p.name, '-') || '/' || n.name || ' ' || n.kind || ' ' || coalesce(c.content, '')
 		FROM nodes n LEFT JOIN nodes p ON p.id = n.parent_id LEFT JOIN page_contents c ON c.node_id = n.id
 		WHERE n.notebook_id = $1 AND n.deleted_at IS NULL ORDER BY n.created_at, n.id`, nb)
-	// By name: D, n_m, then Notes; each level's by its parents' order.
-	want := []string{"-/Spec page [[Notes]]", "-/D page ", "-/n_m page x", "-/Notes page see [[Spec]] ![[pic.png]]", "D/e page e",
-		"Notes/pic.png asset ", "Notes/Sub page sub"}
+	// By name: D, the licenses, n_m, Notes, then Plan, numbered past the
+	// vault's Plan 2, as license past LICENSE 2; each level's by its
+	// parents' order.
+	want := []string{"-/Spec page [[Notes]]", "-/Plan page ", "-/D page ", "-/LICENSE asset ", "-/license 3 asset ", "-/LICENSE 2 asset ",
+		"-/n_m page x", "-/Notes page see [[Spec]] ![[pic.png]]", "-/Plan 3 page p", "-/Plan 2 page q", "D/e page e", "Notes/pic.png asset ",
+		"Notes/Sub page sub"}
 	if !slices.Equal(tree, want) {
 		t.Errorf("the tree = %q, want %q", tree, want)
 	}
@@ -189,8 +202,8 @@ func TestAnImportRunsThroughServe(t *testing.T) {
 		t.Errorf("pic.png's row = %q, want a PNG of its bytes", got)
 	}
 	if got := queryStrings(t, tm.pool, "SELECT kind || ' ' || client FROM changesets WHERE notebook_id = $1 ORDER BY created_at", nb); !slices.Equal(got,
-		[]string{"edit web", "import web"}) {
-		t.Errorf("the changesets = %q, want the page's edit, then the import", got)
+		[]string{"edit web", "edit web", "import web"}) {
+		t.Errorf("the changesets = %q, want the pages' edits, then the import", got)
 	}
 	if files := storedImports(t, tm.storage); len(files) != 0 {
 		t.Errorf("imports stored %q, want the archive deleted", files)

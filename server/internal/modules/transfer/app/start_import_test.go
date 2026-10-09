@@ -20,7 +20,7 @@ func (w *world) startImport(q *queue, maxQueued int) *app.StartImport {
 	w.auth.rules = map[shared.Action][]shared.NotebookRole{domain.ActionImport: {shared.NotebookEditor, shared.NotebookAdmin}}
 	return app.NewStartImport(app.StartDeps{Tx: w.tx, Authorizer: w.auth, Workspaces: w.workspaces, Notebooks: w.notebooks, Nodes: w.nodes,
 		Rows: w.rows, Archives: w.archives, Queue: q, Names: names{w.bob: "Bob"}, Signer: signer{}, Clock: fixedClock{now()}, Logger: w.logger,
-		MaxQueued: maxQueued, MinFree: 100, ImportMaxBytes: 1 << 10})
+		Uploads: w.uploads, MaxQueued: maxQueued, MinFree: 100, ImportMaxBytes: 1 << 10})
 }
 
 // An import starts in three steps: Check decides, unlocked; Store writes
@@ -155,6 +155,60 @@ func TestAnImportsUploadHoldsItsNotebook(t *testing.T) {
 	check(eng, domain.ErrStorageFull)
 	w.archives.free = 150
 	check(eng, nil)
+}
+
+// The uploads under way count for every start, the exports' too, until
+// their jobs' rows are written: each as a job in the queue, its declared
+// bytes as written in the store. A panic in Check releases its claim.
+func TestTheUploadsUnderWayCountForEveryStart(t *testing.T) {
+	w := newWorld()
+	ops := uuid.NewV7()
+	w.auth.roles[ops] = map[uuid.UUID]shared.NotebookRole{w.bob: shared.NotebookAdmin}
+	w.notebooks.names[ops] = "Ops"
+	s, exports := w.startImport(&queue{}, 3), w.start(&queue{}, 3)
+	w.archives.free = 200
+	eng := app.ImportRequest{NotebookID: w.eng, FileName: "v.zip", Client: domain.ClientWeb, Size: 30}
+	other := eng
+	other.NotebookID, other.Size = ops, 71
+	if err := s.Check(as(w.bob), eng); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Check(as(w.bob), other); !errors.Is(err, domain.ErrStorageFull) {
+		t.Errorf("Check() of 71 bytes beside an upload of 30, 200 free = %v, want ErrStorageFull", err)
+	}
+	other.Size = 70
+	if err := s.Check(as(w.bob), other); err != nil {
+		t.Fatalf("Check() of 70 bytes beside an upload of 30, 200 free = %v", err)
+	}
+	w.rows.add(domain.Job{ID: uuid.NewV7(), NotebookID: uuid.NewV7(), Kind: domain.KindExport, State: domain.StateRunning, CreatedBy: w.bob})
+	if _, err := exports.Run(as(w.alice), w.eng, nil, domain.ClientWeb); !errors.Is(err, domain.ErrQueueFull) {
+		t.Errorf("an export with a job running and two uploads, of 3 = %v, want ErrQueueFull", err)
+	}
+	// Each upload's row, once written, counts in its stead.
+	for _, req := range []app.ImportRequest{eng, other} {
+		stored, err := s.Store(as(w.bob), strings.NewReader("zip"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.Create(as(w.bob), req, stored); err != nil {
+			t.Errorf("Create(%s) = %v", w.notebooks.names[req.NotebookID], err)
+		}
+	}
+	s.Release(eng)
+	s.Release(other)
+
+	w.rows = newRows()
+	s = w.startImport(&queue{}, 3)
+	w.archives.freePanics = true
+	func() {
+		defer func() { _ = recover() }()
+		_ = s.Check(as(w.bob), eng)
+		t.Error("Check() did not panic")
+	}()
+	w.archives.freePanics = false
+	if err := s.Check(as(w.bob), eng); err != nil {
+		t.Errorf("Check() after one that panicked = %v, want the claim released", err)
+	}
 }
 
 // Create counts the uploads into other notebooks in the queue again: one

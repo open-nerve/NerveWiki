@@ -168,7 +168,7 @@ func New(d Deps) *Module {
 		Statistics: d.Statistics, Archives: archives, Rows: rows, Clock: d.Clock, Logger: d.Logger, Beat: beat, MaxEntries: d.ImportMaxEntries,
 		MaxUnpacked: d.ImportMaxUnpackedBytes, MaxContent: d.MaxContentBytes, MaxAsset: d.AssetMaxBytes, Backoff: backoff})
 	start := app.StartDeps{Tx: d.Tx, Authorizer: d.Authorizer, Workspaces: d.Workspaces, Notebooks: d.Notebooks, Nodes: d.Nodes,
-		Rows: rows, Archives: archives, Queue: queue, Names: d.Names, Signer: signer, Clock: d.Clock, Logger: d.Logger,
+		Rows: rows, Archives: archives, Queue: queue, Names: d.Names, Signer: signer, Clock: d.Clock, Logger: d.Logger, Uploads: app.NewUploads(),
 		MaxQueued: d.MaxQueued, MinFree: d.MinFreeBytes, ImportMaxBytes: d.ImportMaxBytes}
 	return &Module{
 		uc: httpadapter.UseCases{

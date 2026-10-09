@@ -31,17 +31,19 @@ type ImportUnit struct {
 
 // children are a parent's children as the unit knows them, in order, and
 // the keys of their names; next the number after the last a name took,
-// by the name and whether it is an attachment's: the numbers before it
-// are held.
+// by its key and whether it is an attachment's: the numbers before it are
+// held, but where a cut long name numbers otherwise in another spelling,
+// which may then pass over a number free.
 type children struct {
 	nodes []domain.Node
 	keys  map[string]bool
 	next  map[numbering]int
 }
 
-// numbering is a name numbered, a page's or an attachment's.
+// numbering is a name numbered, a page's or an attachment's, by its key:
+// the spellings of a key number alike.
 type numbering struct {
-	name  string
+	key   string
 	asset bool
 }
 
@@ -169,8 +171,8 @@ func (iu *ImportUnit) children(ctx context.Context, parentID *uuid.UUID) (*child
 
 // free is name checked, a page's title or an attachment's name; when one
 // of the children holds its key, numbered "name 2", "name 3"… until none
-// does nor is it reserved, from the number after the last the name took
-// in the unit.
+// does nor is it reserved, from the number after the last a name of its
+// key took in the unit.
 func (c *children) free(name string, asset bool, reserved func(key string) bool) (domain.Title, error) {
 	check := domain.CheckTitle
 	if asset {
@@ -180,7 +182,7 @@ func (c *children) free(name string, asset bool, reserved func(key string) bool)
 	if err != nil || !c.keys[title.Key] {
 		return title, err
 	}
-	at := numbering{name: name, asset: asset}
+	at := numbering{key: title.Key, asset: asset}
 	for n := max(2, c.next[at]); ; n++ {
 		title, err = check("name", domain.Numbered(name, n, asset))
 		if err != nil {

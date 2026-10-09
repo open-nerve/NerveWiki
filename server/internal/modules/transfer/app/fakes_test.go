@@ -304,7 +304,8 @@ type entry struct {
 // added, onCommit as one commits, onOpen as one opens. imports are the
 // imports' archives, by job; uploadFull fails an upload's writes as a
 // store out of room, openErr its opening. listed are the archives a List
-// of the kind gives, listErr fails it after them.
+// of the kind gives, listErr fails it after them. freePanics makes Free
+// panic.
 type archives struct {
 	rec        *recorder
 	mu         sync.Mutex
@@ -316,6 +317,7 @@ type archives struct {
 	fullAt     string
 	commitErr  error
 	free       int64
+	freePanics bool
 	deleteErr  error
 	listed     map[domain.Kind][]uuid.UUID
 	listErr    map[domain.Kind]error
@@ -458,6 +460,9 @@ func (a zipArchive) Close() error                      { return nil }
 
 func (a *archives) Free(context.Context) (int64, error) {
 	a.rec.add("Free")
+	if a.freePanics {
+		panic("archives: the store's disk cannot be read")
+	}
 	return a.free, nil
 }
 
@@ -586,7 +591,7 @@ type row struct {
 
 // rows keeps the jobs in memory, moving them as the statements do. beats
 // counts the heartbeats, with the progress each wrote, and reported the
-// reports they wrote; failBeats fails as
+// reports they wrote, reportedAt at which; failBeats fails as
 // many heartbeats first, failReports as many of those that carry a
 // report; finishErr fails a FinishJob, and finishLeft is the time its
 // context left it; onBeat runs at each heartbeat written.
@@ -597,6 +602,7 @@ type rows struct {
 	order       []uuid.UUID
 	beats       []domain.Progress
 	reported    []domain.Report
+	reportedAt  []int
 	failBeats   int
 	failReports int
 	finishErr   error
@@ -742,6 +748,7 @@ func (r *rows) BeatJob(_ context.Context, id uuid.UUID, at time.Time, p domain.P
 	r.beats = append(r.beats, p)
 	if report != nil {
 		r.reported = append(r.reported, *report)
+		r.reportedAt = append(r.reportedAt, len(r.beats))
 	}
 	b := app.Beat{CancelRequested: x.job.CancelRequested != nil, Deleted: x.deleted}
 	onBeat := r.onBeat

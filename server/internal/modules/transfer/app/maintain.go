@@ -65,8 +65,9 @@ func (e *Expire) Run(ctx context.Context) (int, error) {
 // Rescue fails the jobs that no longer run, or will not, though their rows
 // say so: the server's own running ones, as it starts, which the last
 // process left; then those whose heartbeat is older than the timeout, and
-// the queued exports River no longer holds. A job does not run again. Its
-// report tells the failure alone; its progress, how far it went.
+// the queued jobs River no longer holds. A job does not run again. Its
+// report tells the failure: an export's alone, an import's with the counts
+// and problems its heartbeat last wrote; its progress, how far it went.
 type Rescue struct {
 	rows    MaintainedRows
 	held    Held

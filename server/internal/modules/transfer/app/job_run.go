@@ -112,12 +112,18 @@ func (r *jobRun) publish() {
 	r.reported.Store(&report)
 }
 
+// reportBeats is how many beats at least the heartbeat writes the report
+// apart: a report of a thousand problems is large, and the rescue keeps
+// one ten seconds old.
+const reportBeats = 10
+
 // beat writes the job's heartbeat and progress every beat until ctx ends,
-// with the report published since the last it wrote, and stops the run
-// when the job's cancel was asked, or it was deleted or no longer runs. A write that fails is tried again at the next beat: a
-// job whose heartbeat stays old is failed by the rescue. The first failure
-// of a run of them is logged, and the write that ends it. The channel
-// closes as it returns.
+// with the report published since the last it wrote, reportBeats after
+// it, and stops the run when the job's cancel was asked, or it was
+// deleted or no longer runs. A write that fails is tried again at the
+// next beat: a job whose heartbeat stays old is failed by the rescue. The
+// first failure of a run of them is logged, and the write that ends it.
+// The channel closes as it returns.
 func (r *jobRun) beat(ctx context.Context, stop context.CancelCauseFunc) <-chan struct{} {
 	done := make(chan struct{})
 	go func() {
@@ -126,20 +132,22 @@ func (r *jobRun) beat(ctx context.Context, stop context.CancelCauseFunc) <-chan 
 		defer ticker.Stop()
 		failing := false
 		var written *domain.Report
+		since := reportBeats // beats since the report was written
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
 			}
+			since++
 			report := r.reported.Load()
-			send := report
-			if report == written {
-				send = nil
+			var send *domain.Report
+			if report != written && since >= reportBeats {
+				send = report
 			}
 			b, err := r.rows.BeatJob(ctx, r.job.ID, r.clock.Now(), r.progress(), send)
-			if err == nil {
-				written = report
+			if err == nil && send != nil {
+				written, since = report, 0
 			}
 			if err != nil && !errors.Is(err, ErrNoRow) {
 				if !failing && ctx.Err() == nil {

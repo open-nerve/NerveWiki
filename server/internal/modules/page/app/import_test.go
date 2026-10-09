@@ -147,16 +147,21 @@ func TestAnImportsUnitNumbersANameTaken(t *testing.T) {
 }
 
 // A name numbered takes none reserved, a later sibling's of the import;
-// its own name it keeps, reserved or not. Each name takes the numbers
-// after its last.
+// its own name it keeps, reserved or not. Each name, in any spelling of
+// its key, takes the numbers after the last one of them took: none is
+// tried twice.
 func TestAnImportsUnitNumbersPastTheReservedNames(t *testing.T) {
 	f := newFixture()
 	f.grant(domain.ActionCreate)
 	f.page("Untitled", nil, 0)
-	reserved := func(key string) bool { return key == "untitled 2" || key == "untitled 3.png" || key == "x" }
+	asked := map[string]int{}
+	reserved := func(key string) bool {
+		asked[key]++
+		return key == "untitled 2" || key == "untitled 3.png" || key == "x"
+	}
 	var got []string
 	_, err := f.importAs(uuid.UUID{}, func(ctx context.Context, u *app.ImportUnit) error {
-		for _, name := range []string{"Untitled", "Untitled", "x", "x"} {
+		for _, name := range []string{"Untitled", "Untitled", "UNTITLED", "x", "x"} {
 			n, err := u.CreatePage(ctx, app.ImportedPage{Name: name, Reserved: reserved})
 			if err != nil {
 				return err
@@ -176,9 +181,14 @@ func TestAnImportsUnitNumbersPastTheReservedNames(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"Untitled 3", "Untitled 4", "x", "x 2", "untitled.png", "untitled 2.png", "untitled 4.png"}
+	want := []string{"Untitled 3", "Untitled 4", "UNTITLED 5", "x", "x 2", "untitled.png", "untitled 2.png", "untitled 4.png"}
 	if !slices.Equal(got, want) {
 		t.Errorf("names = %v, want %v", got, want)
+	}
+	for key, n := range asked {
+		if n > 1 {
+			t.Errorf("%q asked %d times, want each number tried once", key, n)
+		}
 	}
 }
 

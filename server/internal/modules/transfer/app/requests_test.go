@@ -22,7 +22,7 @@ func (w *world) start(q *queue, maxQueued int) *app.StartExport {
 	q.rec = w.rec
 	return app.NewStartExport(app.StartDeps{Tx: w.tx, Authorizer: w.auth, Workspaces: w.workspaces, Notebooks: w.notebooks, Nodes: w.nodes,
 		Rows: w.rows, Archives: w.archives, Queue: q, Names: names{w.alice: "Alice"}, Signer: signer{}, Clock: fixedClock{now()}, Logger: w.logger,
-		MaxQueued: maxQueued, MinFree: 100})
+		Uploads: w.uploads, MaxQueued: maxQueued, MinFree: 100})
 }
 
 // An export starts queued, named after what it exports, from the client,

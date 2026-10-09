@@ -81,8 +81,8 @@ const (
 	// ProblemTooLarge is a page's file past 5 MiB, or an attachment past
 	// asset.max_bytes.
 	ProblemTooLarge ProblemCode = "too_large"
-	// ProblemTooDeep is a node deeper than pages go from where the import
-	// goes.
+	// ProblemTooDeep is a node more than MaxDepth levels deep in the
+	// notebook, given where the import goes.
 	ProblemTooDeep ProblemCode = "too_deep"
 	// ProblemDuplicate is an entry of a path an earlier one has.
 	ProblemDuplicate ProblemCode = "duplicate"

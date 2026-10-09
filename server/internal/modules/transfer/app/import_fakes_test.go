@@ -107,7 +107,8 @@ type made struct {
 // those numbers, from 1; refuse answers the next unit
 // before its do, uncertain after it, writing nothing; gone are parents
 // gone; deeper is how much deeper the pages are than they were; onUnit
-// runs as each unit starts, its number from 1.
+// runs as each unit starts, its number from 1; waitParse makes a parse
+// wait for its context's end.
 type tree struct {
 	mu         sync.Mutex
 	pages      map[uuid.UUID]int
@@ -125,6 +126,7 @@ type tree struct {
 	gone       map[uuid.UUID]bool
 	deeper     int
 	onUnit     func(n int)
+	waitParse  bool
 	parses     int
 	released   int
 }
@@ -140,8 +142,13 @@ func (t *tree) CheckContent(content string) error {
 	return nil
 }
 
-func (t *tree) Parse(_ context.Context, content string) (app.Parsed, error) {
+func (t *tree) Parse(ctx context.Context, content string) (app.Parsed, error) {
 	t.mu.Lock()
+	if t.waitParse {
+		t.mu.Unlock()
+		<-ctx.Done()
+		return nil, context.Cause(ctx)
+	}
 	defer t.mu.Unlock()
 	t.calls++
 	if t.busyParses > 0 || t.busyCalls[t.calls] {

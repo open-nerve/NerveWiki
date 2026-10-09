@@ -17,7 +17,7 @@ type StartExport struct {
 	d StartDeps
 }
 
-// StartDeps are what StartExport needs.
+// StartDeps are what StartExport and StartImport need.
 type StartDeps struct {
 	Tx         shared.TxManager
 	Authorizer shared.Authorizer
@@ -31,6 +31,9 @@ type StartDeps struct {
 	Signer     Signer
 	Clock      Clock
 	Logger     *slog.Logger
+	// Uploads are the imports' uploads under way, the same for the
+	// exports and the imports.
+	Uploads *Uploads
 	// MaxQueued is transfer.max_queued, MinFree storage.min_free_bytes,
 	// ImportMaxBytes transfer.import_max_bytes.
 	MaxQueued      int
@@ -49,9 +52,10 @@ func NewStartExport(d StartDeps) *StartExport {
 // workspace's row and the notebook's, FOR SHARE, it decides
 // transfer.export (notebook.not_found); root is a page of the notebook not
 // deleted (page.not_found); then, the jobs' creations one at a time, the
-// jobs queued or running are fewer than MaxQueued (503 server_busy), the
-// caller has no export queued or running in the notebook (transfer.busy),
-// and the store has room (507 storage_full).
+// jobs queued or running, with the imports' uploads under way, are fewer
+// than MaxQueued (503 server_busy), the caller has no export queued or
+// running in the notebook (transfer.busy), and the store has room, the
+// uploads' declared bytes counted (507 storage_full).
 func (s *StartExport) Run(ctx context.Context, notebookID uuid.UUID, root *uuid.UUID, client domain.Client) (JobView, error) {
 	actor, err := shared.RequireActor(ctx)
 	if err != nil {
@@ -150,7 +154,7 @@ func (s *StartExport) admit(ctx context.Context, notebookID, userID uuid.UUID) e
 	if err := s.d.Rows.LockQueue(ctx); err != nil {
 		return err
 	}
-	if err := s.d.room(ctx, 0); err != nil {
+	if err := s.d.room(ctx, uuid.Nil()); err != nil {
 		return err
 	}
 	busy, err := s.d.Rows.Exporting(ctx, notebookID, userID)
@@ -160,30 +164,31 @@ func (s *StartExport) admit(ctx context.Context, notebookID, userID uuid.UUID) e
 	if busy {
 		return domain.ErrBusy
 	}
-	return s.d.free(ctx, 0)
+	return s.d.free(ctx, 0, uuid.Nil())
 }
 
-// room is 503 server_busy when MaxQueued jobs wait or run, more besides,
-// imports whose archives are being uploaded.
-func (d StartDeps) room(ctx context.Context, more int) error {
+// room is 503 server_busy when the jobs queued or running, and the
+// uploads under way into notebooks but except, are MaxQueued.
+func (d StartDeps) room(ctx context.Context, except uuid.UUID) error {
 	active, err := d.Rows.CountActive(ctx)
 	if err != nil {
 		return err
 	}
-	if active+more >= d.MaxQueued {
+	if uploading, _ := d.Uploads.others(except); active+uploading >= d.MaxQueued {
 		return domain.ErrQueueFull
 	}
 	return nil
 }
 
-// free is 507 storage_full when the store's disk keeps less than MinFree,
-// need bytes written.
-func (d StartDeps) free(ctx context.Context, need int64) error {
+// free is 507 storage_full when the store's disk would keep less than
+// MinFree once need bytes, and those the uploads under way into notebooks
+// but except declare, are written.
+func (d StartDeps) free(ctx context.Context, need int64, except uuid.UUID) error {
 	free, err := d.Archives.Free(ctx)
 	if err != nil {
 		return err
 	}
-	if free-need < d.MinFree {
+	if _, uploading := d.Uploads.others(except); free-need-uploading < d.MinFree {
 		return domain.ErrStorageFull
 	}
 	return nil

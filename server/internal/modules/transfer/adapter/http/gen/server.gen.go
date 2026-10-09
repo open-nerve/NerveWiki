@@ -191,7 +191,7 @@ type ExportStart struct {
 // TransferClient Where the job was started from, which its writes are of.
 type TransferClient string
 
-// TransferCounts What the job did before it ended, as it wrote its end. An export that could not write its end, which the server fails later as interrupted (it restarted, the job stopped beating, the job queue dropped it), counts nothing: its progress tells how far it went. An import writes its counts and problems as it goes, with its heartbeat: one interrupted keeps those of the batches it had written by its last heartbeat.
+// TransferCounts What the job did before it ended, as it wrote its end. An export that could not write its end, which the server fails later as interrupted (it restarted, the job stopped beating, the job queue dropped it), counts nothing: its progress tells how far it went. An import writes its counts and problems as it goes, every ten seconds at most: one interrupted keeps those it last wrote, of the batches written by then.
 type TransferCounts struct {
 	// Attachments The attachments whose files were written; an import's, created.
 	Attachments int64 `json:"attachments"`
@@ -312,7 +312,7 @@ type TransferJobPage struct {
 // TransferKind defines model for TransferKind.
 type TransferKind string
 
-// TransferProblem What befell a node, at its path in the archive's vault (at most 1,024 bytes): renamed, written at to instead, so links to its old name do not reach it there; file_missing, an attachment whose file was not in the storage. An import's entry skipped, at its name in the archive: unsafe_path (it leaves the archive's root: "..", an absolute path, a drive), special_file (a symbolic link, or another file that is no regular one), encrypted, unsupported_method (compressed otherwise than stored or deflated), too_compressed (it unpacks to more than 200 times its packed size), name_not_utf8, invalid_content (a page's file not UTF-8, or holding NUL), too_large (a page's file past 5 MiB, an attachment past the instance's asset_max_bytes), duplicate (a path an earlier entry has), unreadable (its data broken, its checksum or size not its header's); an import's node, at its path in the vault: too_deep (deeper than pages go from where the import goes, with everything under it), renamed (created under the name at the end of to, its path from where the import goes).
+// TransferProblem What befell a node, at its path in the archive's vault (at most 1,024 bytes): renamed, written at to instead, so links to its old name do not reach it there; file_missing, an attachment whose file was not in the storage. An import's entry skipped, at its name in the archive: unsafe_path (it leaves the archive's root: "..", an absolute path, a drive), special_file (a symbolic link, or another file that is no regular one), encrypted, unsupported_method (compressed otherwise than stored or deflated), too_compressed (it unpacks to more than 200 times its packed size), name_not_utf8, invalid_content (a page's file not UTF-8, or holding NUL), too_large (a page's file past 5 MiB, an attachment past the instance's asset_max_bytes), duplicate (a path an earlier entry has), unreadable (its data broken, its checksum or size not its header's); an import's node, at its path in the vault: too_deep (more than 10 levels deep in the notebook where the import goes, with everything under it), renamed (created under the name at the end of to, its path from where the import goes).
 type TransferProblem struct {
 	Code TransferProblemCode `json:"code"`
 	Path string              `json:"path"`
@@ -332,7 +332,7 @@ type TransferProgress struct {
 
 // TransferReport defines model for TransferReport.
 type TransferReport struct {
-	// Counts What the job did before it ended, as it wrote its end. An export that could not write its end, which the server fails later as interrupted (it restarted, the job stopped beating, the job queue dropped it), counts nothing: its progress tells how far it went. An import writes its counts and problems as it goes, with its heartbeat: one interrupted keeps those of the batches it had written by its last heartbeat.
+	// Counts What the job did before it ended, as it wrote its end. An export that could not write its end, which the server fails later as interrupted (it restarted, the job stopped beating, the job queue dropped it), counts nothing: its progress tells how far it went. An import writes its counts and problems as it goes, every ten seconds at most: one interrupted keeps those it last wrote, of the batches written by then.
 	Counts TransferCounts `json:"counts"`
 
 	// Failure Why the job failed; null when it did not.

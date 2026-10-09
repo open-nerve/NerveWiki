@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 	"uuid"
@@ -74,6 +75,33 @@ func TestAnImportWritesTheVault(t *testing.T) {
 	if w.stats.count() != 1 || w.tree.parses != 6 || w.tree.released != 6 || w.archives.imported(j.ID) {
 		t.Errorf("statistics %d, parses %d, released %d, archive kept %v", w.stats.count(), w.tree.parses, w.tree.released,
 			w.archives.imported(j.ID))
+	}
+}
+
+// A meta.json of domain.MaxMeta bytes is read; one larger is not, the
+// order then by name only.
+func TestAnImportReadsAMetaOfAtMostMaxMeta(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		size int
+		want []string
+	}{
+		{"of the most bytes", domain.MaxMeta, []string{"-/b", "-/a"}},
+		{"larger", domain.MaxMeta + 1, []string{"-/a", "-/b"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			meta := `{"format": 1, "nodes": [{"path": "b.md", "sort_order": 1}, {"path": "a.md", "sort_order": 2}]}`
+			meta += strings.Repeat(" ", tt.size-len(meta))
+			w := newImportWorld()
+			j := w.queuedImport(nil, zipOf(t, zipEntry{name: ".nerve/meta.json", data: meta}, zipEntry{name: "a.md", data: "a"},
+				zipEntry{name: "b.md", data: "b"}))
+			if got := w.run(t, j); got.State != domain.StateSucceeded {
+				t.Fatalf("job %s", got.State)
+			}
+			if lines := w.tree.lines(); !slices.Equal(lines, tt.want) {
+				t.Errorf("made %q, want %q", lines, tt.want)
+			}
+		})
 	}
 }
 
@@ -325,6 +353,9 @@ func stopAt(w *importWorld, j domain.Job, n int, stop func(), stopped func(r *ro
 			w.files.mu.Lock()
 			w.files.wait = true
 			w.files.mu.Unlock()
+			w.tree.mu.Lock()
+			w.tree.waitParse = true
+			w.tree.mu.Unlock()
 		}
 	}
 }
@@ -373,8 +404,9 @@ func TestACancelledImportOfFoldersStops(t *testing.T) {
 // The heartbeat writes the report as the import goes, each time it
 // changed: the plan's skipped entries before the first unit, then the
 // counts and problems of the units written, what the rescue keeps of an
-// import interrupted. A write that failed is tried again; one that
-// succeeded is not, the beats after it writing none until the next.
+// import interrupted, ten beats apart at least. A write that failed is
+// tried again; one that succeeded is not, the beats after it writing none
+// until the next.
 func TestAnImportsHeartbeatWritesItsReport(t *testing.T) {
 	w := newImportWorld()
 	entries := []zipEntry{{name: "../out.md", data: "out"}}
@@ -432,8 +464,35 @@ func TestAnImportsHeartbeatWritesItsReport(t *testing.T) {
 		if r.Failure != "" || i > 0 && reflect.DeepEqual(r, w.rows.reported[i-1]) {
 			t.Errorf("report %d written %+v, after %+v; want each a change, without a failure", i, r, w.rows.reported[max(i-1, 0)])
 		}
+		if at := w.rows.reportedAt; i > 0 && at[i]-at[i-1] < 10 {
+			t.Errorf("reports written at beats %v, want ten apart", at)
+		}
 	}
 }
+
+// expiring is a context the test ends as its deadline would.
+type expiring struct {
+	context.Context
+	done chan struct{}
+	once sync.Once
+}
+
+func newExpiring() *expiring {
+	return &expiring{Context: context.Background(), done: make(chan struct{})}
+}
+
+func (e *expiring) Done() <-chan struct{} { return e.done }
+
+func (e *expiring) Err() error {
+	select {
+	case <-e.done:
+		return context.DeadlineExceeded
+	default:
+		return nil
+	}
+}
+
+func (e *expiring) expire() { e.once.Do(func() { close(e.done) }) }
 
 // River's context ends an import between units or in one: its timeout
 // fails it so, the server's stop as interrupted; the units committed kept
@@ -441,25 +500,23 @@ func TestAnImportsHeartbeatWritesItsReport(t *testing.T) {
 func TestRiversContextEndsAnImport(t *testing.T) {
 	for _, tt := range []struct {
 		name string
-		ctx  func() (context.Context, context.CancelFunc)
 		want domain.Failure
-	}{
-		{"timeout", func() (context.Context, context.CancelFunc) {
-			return context.WithTimeout(context.Background(), 50*time.Millisecond)
-		}, domain.FailureTimeout},
-		{"stop", func() (context.Context, context.CancelFunc) {
-			ctx, cancel := context.WithCancel(context.Background())
-			time.AfterFunc(50*time.Millisecond, cancel)
-			return ctx, cancel
-		}, domain.FailureInterrupted},
-	} {
+	}{{"timeout", domain.FailureTimeout}, {"stop", domain.FailureInterrupted}} {
 		t.Run(tt.name, func(t *testing.T) {
 			w := newImportWorld()
 			j := w.queuedImport(nil, stopping(t))
-			ctx, cancel := tt.ctx()
+			// The context ends as the second unit begins: its deadline
+			// passed, or the server stopping.
+			deadline := newExpiring()
+			ctx, cancel := context.WithCancel(deadline)
 			defer cancel()
+			end := cancel
+			if tt.want == domain.FailureTimeout {
+				end = deadline.expire
+			}
 			w.tree.onUnit = func(at int) {
 				if at == 2 {
+					end()
 					<-ctx.Done()
 				}
 			}
@@ -513,18 +570,18 @@ func TestAnImportWhoseParentIsGoneFails(t *testing.T) {
 	for _, tt := range []struct {
 		name    string
 		archive func(t *testing.T) []byte
-		gone    func(w *importWorld) uuid.UUID
+		gone    func(t *testing.T, w *importWorld) uuid.UUID
 		want    domain.Failure
 	}{
 		{"its place", func(t *testing.T) []byte { return many(t, 150, func(int) string { return "x" }) },
-			func(w *importWorld) uuid.UUID { return w.spec }, domain.FailureRootNotFound},
-		{"a page it created", under, func(w *importWorld) uuid.UUID { return w.tree.named(t, "a").id }, domain.FailureTreeChanged},
+			func(_ *testing.T, w *importWorld) uuid.UUID { return w.spec }, domain.FailureRootNotFound},
+		{"a page it created", under, func(t *testing.T, w *importWorld) uuid.UUID { return w.tree.named(t, "a").id }, domain.FailureTreeChanged},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			w := newImportWorld()
 			w.tree.onUnit = func(n int) {
 				if n == 2 {
-					id := tt.gone(w)
+					id := tt.gone(t, w)
 					w.tree.mu.Lock()
 					defer w.tree.mu.Unlock()
 					w.tree.gone[id] = true

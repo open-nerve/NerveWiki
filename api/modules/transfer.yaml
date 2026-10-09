@@ -25,8 +25,9 @@ paths:
         the caller has no role in is notebook.not_found; a root_id that is
         no page of the notebook, or a deleted one, is page.not_found; an
         export of the caller's queued or running in the notebook is
-        transfer.busy; as many jobs queued or running as the instance takes
-        is server_busy; a server whose storage keeps no more room is
+        transfer.busy; as many jobs queued or running, with the imports
+        uploading, as the instance takes is server_busy; a server whose
+        storage keeps no more room, the imports' uploads counted, is
         storage_full.
       security: [{ bearer: [] }]
       x-problem-codes: [notebook.not_found, page.not_found, transfer.busy, server_busy, storage_full]
@@ -85,7 +86,8 @@ paths:
         uploading, anyone's, is transfer.busy; as many jobs queued or
         running, with the imports uploading, as the instance takes is
         server_busy; a server whose storage would keep too little room once
-        the body's declared length is stored is storage_full; a body whose
+        the body's declared length, and the other uploads', is stored is
+        storage_full; a body whose
         declared length is past the limit is payload_too_large: a client
         answered before it sent its file may see the connection reset, and
         checks these first. A file larger than the instance's
@@ -642,9 +644,9 @@ components:
         that could not write its end, which the server fails later as
         interrupted (it restarted, the job stopped beating, the job queue
         dropped it), counts nothing: its progress tells how far it went. An
-        import writes its counts and problems as it goes, with its
-        heartbeat: one interrupted keeps those of the batches it had
-        written by its last heartbeat.
+        import writes its counts and problems as it goes, every ten seconds
+        at most: one interrupted keeps those it last wrote, of the batches
+        written by then.
       type: object
       additionalProperties: false
       required: [pages, attachments, renamed, missing, skipped]
@@ -688,9 +690,9 @@ components:
         instance's asset_max_bytes), duplicate (a path an earlier entry
         has), unreadable (its data broken, its checksum or size not its
         header's); an import's node, at its path in the vault: too_deep
-        (deeper than pages go from where the import goes, with everything
-        under it), renamed (created under the name at the end of to, its
-        path from where the import goes).
+        (more than 10 levels deep in the notebook where the import goes,
+        with everything under it), renamed (created under the name at the
+        end of to, its path from where the import goes).
       type: object
       additionalProperties: false
       required: [path, code, to]

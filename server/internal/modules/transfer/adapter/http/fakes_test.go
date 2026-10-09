@@ -512,7 +512,7 @@ func newHarnessWith(t *testing.T, o httpservertest.APIOptions) *harness {
 	logger := slog.New(slog.NewTextHandler(h.logs, nil))
 	start := app.StartDeps{Tx: direct{}, Authorizer: roles{}, Workspaces: workspaces{}, Notebooks: notebooks{}, Nodes: nodes{},
 		Rows: h.rows, Archives: h.archives, Queue: h.queue, Names: names{}, Signer: h.signer, Clock: fixedClock{}, Logger: logger,
-		MaxQueued: maxQueued, MinFree: minFree, ImportMaxBytes: importMaxBytes}
+		Uploads: app.NewUploads(), MaxQueued: maxQueued, MinFree: minFree, ImportMaxBytes: importMaxBytes}
 	uc := httpadapter.UseCases{
 		Start:  app.NewStartExport(start),
 		Import: app.NewStartImport(start),

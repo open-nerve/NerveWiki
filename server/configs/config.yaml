@@ -132,7 +132,7 @@ transfer:
   job_timeout: 6h
   # 运行中的任务每秒写一次心跳；心跳早于它的任务被记成失败（中断），至少 1 分钟，短于 job_timeout
   heartbeat_timeout: 5m
-  # 全部排队与运行中的任务的上限，至少 1；超出时开始任务答 503 server_busy
+  # 全部排队与运行中的任务的上限，至少 1，正在上传的导入也算在内；超出时开始任务答 503 server_busy
   max_queued: 20
   # 导入上传的 zip 的上限（字节），至少 1 MiB，不小于 asset.max_bytes；超过答 413 payload_too_large。
   # 按 asset.upload_min_rate 传完不能超过 3 小时。反向代理要放过这么大的请求体（nginx 的 client_max_body_size）
