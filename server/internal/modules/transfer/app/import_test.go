@@ -382,22 +382,46 @@ func TestACancelledImportStopsBetweenTwoUnits(t *testing.T) {
 // A cancel stops an import between two units though the next would read
 // nothing of the archive: its pages are folders.
 func TestACancelledImportOfFoldersStops(t *testing.T) {
-	w := newImportWorld()
 	var entries []zipEntry
 	for i := range 250 {
 		entries = append(entries, zipEntry{name: fmt.Sprintf("f%03d/", i)})
 	}
-	j := w.queuedImport(nil, zipOf(t, entries...))
-	stopAt(w, j, 2, func() {
+	cancel := func(t *testing.T, w *importWorld, j domain.Job) {
+		t.Helper()
 		if _, err := w.rows.RequestCancel(context.Background(), j.ID, now()); err != nil {
 			t.Error(err)
 		}
-	}, func(r *row) bool { return r.job.CancelRequested != nil })
+	}
+	for _, tt := range []struct {
+		name  string
+		stop  func(t *testing.T, w *importWorld, j domain.Job)
+		units int
+	}{
+		{"between two units", func(t *testing.T, w *importWorld, j domain.Job) {
+			stopAt(w, j, 2, func() { cancel(t, w, j) }, func(r *row) bool { return r.job.CancelRequested != nil })
+		}, 2},
+		// The stop lands as the third batch is read: only the unit's own
+		// check stops it.
+		{"as a batch is read", func(t *testing.T, w *importWorld, j domain.Job) {
+			w.tree.onParse = func(ctx context.Context, n int) {
+				if n == 201 {
+					cancel(t, w, j)
+					<-ctx.Done()
+				}
+			}
+		}, 2},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			w := newImportWorld()
+			j := w.queuedImport(nil, zipOf(t, entries...))
+			tt.stop(t, w, j)
 
-	got := w.run(t, j)
+			got := w.run(t, j)
 
-	if got.State != domain.StateCancelled || len(w.tree.made) != 200 || len(w.tree.units) != 2 {
-		t.Errorf("job %s, made %d, units %d; want cancelled after two units", got.State, len(w.tree.made), len(w.tree.units))
+			if got.State != domain.StateCancelled || len(w.tree.made) != 100*tt.units || len(w.tree.units) != tt.units {
+				t.Errorf("job %s, made %d, units %d; want cancelled after %d units", got.State, len(w.tree.made), len(w.tree.units), tt.units)
+			}
+		})
 	}
 }
 

@@ -78,10 +78,12 @@ func (r *recorder) of(names ...string) []string {
 }
 
 // direct runs fn in no transaction: the fakes keep no state a rollback
-// would undo. commitErr fails a commit after fn ends well.
+// would undo. commitErr fails a commit after fn ends well; onCommit runs
+// once, at the next commit, its rows already seen by the others.
 type direct struct {
 	snapshots int
 	commitErr error
+	onCommit  func()
 	rec       *recorder
 }
 
@@ -89,6 +91,10 @@ func (d *direct) WithinTx(ctx context.Context, fn func(ctx context.Context) erro
 	d.rec.add("WithinTx")
 	if err := fn(ctx); err != nil {
 		return err
+	}
+	if onCommit := d.onCommit; onCommit != nil {
+		d.onCommit = nil
+		onCommit()
 	}
 	return d.commitErr
 }

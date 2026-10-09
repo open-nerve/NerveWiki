@@ -280,8 +280,8 @@ func (r *rows) RequestCancel(_ context.Context, id uuid.UUID, at time.Time) (boo
 
 // archives keeps the exports' archives in memory: free is the store's
 // room; each opened is counted until it closes. imports are the imports'
-// archives, uploads those written, signalled on creating, aborted those
-// dropped unfinished, deleted those deleted.
+// archives, uploads those written, signalled on creating, with the bytes
+// written, aborted those dropped unfinished, deleted those deleted.
 type archives struct {
 	mu       sync.Mutex
 	files    map[uuid.UUID][]byte
@@ -290,6 +290,7 @@ type archives struct {
 	imports  map[uuid.UUID][]byte
 	uploads  []uuid.UUID
 	creating chan struct{}
+	written  int64
 	aborted  []uuid.UUID
 	deleted  []uuid.UUID
 }
@@ -321,7 +322,25 @@ func (a *archives) List(context.Context, domain.Kind, time.Time, func(uuid.UUID)
 	return nil
 }
 
-func (a *archives) Free(context.Context) (int64, error) { return a.free, nil }
+func (a *archives) Free(context.Context) (int64, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.free, nil
+}
+
+// setFree sets the store's room.
+func (a *archives) setFree(n int64) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.free = n
+}
+
+// uploaded is how many bytes the uploads have written.
+func (a *archives) uploaded() int64 {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.written
+}
 
 func (a *archives) Upload(_ context.Context, id uuid.UUID) (app.Upload, error) {
 	a.mu.Lock()
@@ -352,7 +371,12 @@ type upload struct {
 	buf bytes.Buffer
 }
 
-func (u *upload) Write(p []byte) (int, error) { return u.buf.Write(p) }
+func (u *upload) Write(p []byte) (int, error) {
+	u.a.mu.Lock()
+	u.a.written += int64(len(p))
+	u.a.mu.Unlock()
+	return u.buf.Write(p)
+}
 
 func (u *upload) Commit() error {
 	u.a.mu.Lock()

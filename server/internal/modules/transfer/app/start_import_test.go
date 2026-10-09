@@ -160,8 +160,9 @@ func TestAnImportsUploadHoldsItsNotebook(t *testing.T) {
 }
 
 // The uploads under way count for every start, the exports' too, until
-// their jobs' rows are written: each as a job in the queue, its declared
-// bytes as written in the store. A panic in Check releases its claim.
+// their jobs' rows are written: each as a job in the queue, the bytes it
+// declared and has yet to store as written in the store. A panic in Check
+// releases its claim.
 func TestTheUploadsUnderWayCountForEveryStart(t *testing.T) {
 	w := newWorld()
 	ops := uuid.NewV7()
@@ -253,7 +254,11 @@ func TestAnUploadCountsWhatItHasStillToStore(t *testing.T) {
 	}
 	checked := make(chan error, 1)
 	go func() { checked <- s.Check(as(w.bob), other) }()
-	<-reached
+	select {
+	case <-reached:
+	case err := <-checked:
+		t.Fatalf("the Check ended before its decision = %v", err)
+	}
 	third := make(chan error, 1)
 	go func() {
 		third <- s.Check(as(w.bob), app.ImportRequest{NotebookID: dev, FileName: "v.zip", Client: domain.ClientWeb})
@@ -302,6 +307,53 @@ func TestAnImportsCreateCountsTheOtherUploads(t *testing.T) {
 	s.Release(other)
 	if _, err := s.Create(as(w.bob), eng, stored); err != nil {
 		t.Errorf("Create() once the other upload ended = %v", err)
+	}
+}
+
+// An upload's row counts in its stead from its commit: for a creation
+// that takes the queue's lock as the commit releases it, before the
+// upload is told written; for a Check once it is.
+func TestAnUploadsRowCountsFromItsCommit(t *testing.T) {
+	w := newWorld()
+	ops, dev := uuid.NewV7(), uuid.NewV7()
+	for _, nb := range []uuid.UUID{ops, dev} {
+		w.auth.roles[nb] = map[uuid.UUID]shared.NotebookRole{w.bob: shared.NotebookAdmin}
+		w.notebooks.names[nb] = "Ops"
+	}
+	s := w.startImport(&queue{}, 3)
+	eng := app.ImportRequest{NotebookID: w.eng, FileName: "v.zip", Client: domain.ClientWeb}
+	other := eng
+	other.NotebookID = ops
+	stored := map[uuid.UUID]app.Stored{}
+	for _, req := range []app.ImportRequest{eng, other} {
+		if err := s.Check(as(w.bob), req); err != nil {
+			t.Fatal(err)
+		}
+		st, err := s.Store(as(w.bob), req, strings.NewReader("zip"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		stored[req.NotebookID] = st
+	}
+	w.rows.add(domain.Job{ID: uuid.NewV7(), NotebookID: uuid.NewV7(), Kind: domain.KindExport, State: domain.StateRunning, CreatedBy: w.bob})
+	w.tx.onCommit = func() {
+		if _, err := s.Create(as(w.bob), other, stored[ops]); err != nil {
+			t.Errorf("Create() as another's row commits, the queue one short = %v", err)
+		}
+	}
+	if _, err := s.Create(as(w.bob), eng, stored[w.eng]); err != nil {
+		t.Fatal(err)
+	}
+	s.Release(other)
+	if err := s.Check(as(w.bob), app.ImportRequest{NotebookID: dev, FileName: "v.zip", Client: domain.ClientWeb}); !errors.Is(err, domain.ErrQueueFull) {
+		t.Errorf("Check() with three rows = %v, want ErrQueueFull", err)
+	}
+	w.rows = newRows()
+	s = w.startImport(&queue{}, 2)
+	// eng's upload, written, counts for no Check: one row and one upload.
+	w.rows.add(domain.Job{ID: uuid.NewV7(), NotebookID: w.eng, Kind: domain.KindImport, State: domain.StateQueued, CreatedBy: w.bob})
+	if err := s.Check(as(w.bob), app.ImportRequest{NotebookID: dev, FileName: "v.zip", Client: domain.ClientWeb}); err != nil {
+		t.Errorf("Check() beside a row written and its upload = %v", err)
 	}
 }
 

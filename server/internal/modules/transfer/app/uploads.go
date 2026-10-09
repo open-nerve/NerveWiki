@@ -12,7 +12,10 @@ import (
 // in the queue and the bytes it declared but has not stored yet as
 // written in the store, for the imports and the exports alike, so that an
 // upload that will be refused is refused before it is sent. The Checks
-// decide one at a time, so that two together do not refuse each other.
+// decide one at a time, so that two together do not refuse each other. A
+// start under the queue's lock sees the rows committed before it took the
+// lock, so it counts no upload whose row is being committed; a Check does
+// not take the lock, and counts it until its row is written.
 type Uploads struct {
 	checking  sync.Mutex
 	mu        sync.Mutex
@@ -20,11 +23,12 @@ type Uploads struct {
 }
 
 // upload is an upload under way: its declared bytes and those stored so
-// far, whether its Check admitted it, and whether its job's row was
-// written, which counts for it from then.
+// far, whether its Check admitted it, and whether its job's row is being
+// committed or was, which counts for it from then.
 type upload struct {
 	bytes, stored int64
 	admitted      bool
+	committing    bool
 	written       bool
 }
 
@@ -55,8 +59,14 @@ func (u *Uploads) store(id uuid.UUID, n int64) {
 	u.with(id, func(up *upload) { up.stored += n })
 }
 
-// rowWritten tells that the notebook id's upload has its job's row, which
-// counts for it from then.
+// rowCommitting tells that the notebook id's upload has its job's row,
+// its transaction committing.
+func (u *Uploads) rowCommitting(id uuid.UUID) {
+	u.with(id, func(up *upload) { up.committing = true })
+}
+
+// rowWritten tells that the notebook id's upload has its job's row,
+// committed.
 func (u *Uploads) rowWritten(id uuid.UUID) {
 	u.with(id, func(up *upload) { up.written = true })
 }
@@ -77,14 +87,15 @@ func (u *Uploads) release(id uuid.UUID) {
 	delete(u.notebooks, id)
 }
 
-// others are the uploads that count into notebooks but id: how many, and
-// the bytes they declared and have not stored yet.
-func (u *Uploads) others(id uuid.UUID) (int, int64) {
+// others are the uploads that count into notebooks but id, for a start
+// that holds the queue's lock or not: how many, and the bytes they
+// declared and have not stored yet.
+func (u *Uploads) others(id uuid.UUID, queueLocked bool) (int, int64) {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	n, bytes := 0, int64(0)
 	for notebook, up := range u.notebooks {
-		if notebook != id && up.admitted && !up.written {
+		if notebook != id && up.admitted && !up.written && (!queueLocked || !up.committing) {
 			n, bytes = n+1, bytes+max(up.bytes-up.stored, 0)
 		}
 	}

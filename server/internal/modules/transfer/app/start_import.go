@@ -103,10 +103,10 @@ func (s *StartImport) admit(ctx context.Context, req ImportRequest) error {
 	if err := s.busy(ctx, req.NotebookID); err != nil {
 		return err
 	}
-	if err := s.d.room(ctx, req.NotebookID); err != nil {
+	if err := s.d.room(ctx, req.NotebookID, false); err != nil {
 		return err
 	}
-	return s.d.free(ctx, max(req.Size, 0), req.NotebookID)
+	return s.d.free(ctx, max(req.Size, 0), req.NotebookID, false)
 }
 
 // Release releases the notebook Check claimed for req's upload: its
@@ -262,7 +262,7 @@ func (s *StartImport) write(ctx context.Context, req ImportRequest, stored Store
 		if err := s.d.Rows.LockQueue(ctx); err != nil {
 			return err
 		}
-		if err := s.d.room(ctx, req.NotebookID); err != nil {
+		if err := s.d.room(ctx, req.NotebookID, true); err != nil {
 			return err
 		}
 		if err := s.busy(ctx, req.NotebookID); err != nil {
@@ -278,10 +278,13 @@ func (s *StartImport) write(ctx context.Context, req ImportRequest, stored Store
 		}
 		// The row counts for the upload from its commit, which lets the
 		// next creation count the queue: one whose commit fails counts
-		// for none until its request ends.
-		s.d.Uploads.rowWritten(req.NotebookID)
+		// for no creation until its request ends.
+		s.d.Uploads.rowCommitting(req.NotebookID)
 		written = true
 		return nil
 	})
+	if err == nil {
+		s.d.Uploads.rowWritten(req.NotebookID)
+	}
 	return job, written, err
 }

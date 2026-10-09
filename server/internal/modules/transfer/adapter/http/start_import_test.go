@@ -294,13 +294,17 @@ func TestStartImportRefusesAPrefaceCutInALine(t *testing.T) {
 	}
 }
 
-// upload sends an import of what r brings as bob, in the background: the
-// channel tells when the client is done, whatever it got.
-func (h *harness) upload(t *testing.T, contentType string, r io.Reader) chan struct{} {
+// upload sends an import of what r brings as bob, in the background, of
+// length bytes, unknown when negative: the channel tells when the client
+// is done, whatever it got.
+func (h *harness) upload(t *testing.T, contentType string, r io.Reader, length int64) chan struct{} {
 	t.Helper()
 	req, err := http.NewRequest(http.MethodPost, h.base+importsPath(), r)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if length >= 0 {
+		req.ContentLength = length
 	}
 	req.Header.Set("Authorization", "Bearer bob")
 	req.Header.Set("Content-Type", contentType)
@@ -321,7 +325,7 @@ func TestAnImportCutByItsClientKeepsNothing(t *testing.T) {
 	h := newHarness(t)
 	contentType, body := form(t, archive("v.zip", strings.Repeat("z", 600)))
 	r, w := io.Pipe()
-	sent := h.upload(t, contentType, r)
+	sent := h.upload(t, contentType, r, -1)
 	_, _ = w.Write(body[:len(body)-300])
 	<-h.archives.creating
 	time.Sleep(50 * time.Millisecond)
@@ -348,7 +352,7 @@ func TestShutdownCutsAnImportOff(t *testing.T) {
 	stop, done := h.serve(t)
 	contentType, body := form(t, archive("v.zip", strings.Repeat("z", 600)))
 	r, w := io.Pipe()
-	sent := h.upload(t, contentType, r)
+	sent := h.upload(t, contentType, r, -1)
 	_, _ = w.Write(body[:len(body)-300])
 	<-h.archives.creating
 	stop()
@@ -385,5 +389,29 @@ func TestStartImportRefusesWithoutTheFile(t *testing.T) {
 	}
 	if len(h.archives.uploads) != 0 {
 		t.Errorf("uploads %v, want none", h.archives.uploads)
+	}
+}
+
+// An upload under way counts in the store what it has yet to store, its
+// declared length less the bytes it wrote: an export started meanwhile
+// finds the room the bytes written left.
+func TestAnUploadCountsItsBytesAsItStoresThem(t *testing.T) {
+	h := newHarness(t)
+	contentType, body := form(t, archive("v.zip", strings.Repeat("z", 3000)))
+	r, w := io.Pipe()
+	sent := h.upload(t, contentType, r, int64(len(body)))
+	_, _ = w.Write(body[:len(body)-300])
+	<-h.archives.creating
+	waitFor(t, func() bool { return h.archives.uploaded() >= 2000 })
+	// Without the bytes written, the room is one byte short.
+	h.archives.setFree(minFree + int64(len(body)) - 1)
+	if res, answer := h.send(t, http.MethodPost, exportsPath(), "bob", `{}`); res.StatusCode != http.StatusAccepted {
+		t.Errorf("an export beside the upload = %d %s, want 202", res.StatusCode, answer)
+	}
+	_, _ = w.Write(body[len(body)-300:])
+	_ = w.Close()
+	<-sent
+	if len(h.archives.stored()) != 1 {
+		t.Errorf("stored %v, want the upload's archive", h.archives.stored())
 	}
 }
