@@ -275,9 +275,9 @@ paths:
         any other is a link, data-nw-size its size in bytes, and download
         where the browser downloads the content (any type the server does
         not show: its mime is application/octet-stream), showing the others
-        itself. Past the
-        content's first 2000 addresses of attachments, in a link's text but
-        for an image, and for an attachment deleted, it is text.
+        itself. Past the content's first 2000 addresses of attachments, in
+        a link's text but for an image, and for an attachment deleted, it is
+        text.
         A tag (nw-tag) of a name tag lists count links to its pages and has
         no address either: it carries the tag as this page writes it, but for
         its '#' and a last '/', which getTag takes (data-nw-tag); a tag the

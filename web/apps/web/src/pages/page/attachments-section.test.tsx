@@ -531,6 +531,28 @@ test("addresses that expire far off, by this clock, are read again before an hou
   expect(reads()).toBe(2);
 });
 
+test("a hidden tab's list is not read again as it is due, but as the tab is shown", async () => {
+  vi.useFakeTimers({ now: Date.parse("2026-10-09T08:00:00Z"), shouldAdvanceTime: true });
+  const server = pageServer({ nodes });
+  server.assetsExpireAt = "2026-10-09T09:00:00Z";
+  renderApp(pagePath(guide.id), server.app);
+  await attachments();
+  const reads = () => server.sent.filter((line) => line === "GET assets Guide").length;
+  await waitFor(() => expect(reads()).toBe(1));
+  let hidden = true;
+  const spies = [
+    vi.spyOn(document, "hidden", "get").mockImplementation(() => hidden),
+    vi.spyOn(document, "visibilityState", "get").mockImplementation(() => (hidden ? "hidden" : "visible")),
+  ];
+  onTestFinished(() => spies.forEach((spy) => spy.mockRestore()));
+
+  await act(() => vi.advanceTimersByTimeAsync(90 * 60_000));
+  expect(reads()).toBe(1);
+  hidden = false;
+  act(() => document.dispatchEvent(new Event("visibilitychange")));
+  await waitFor(() => expect(reads()).toBe(2));
+});
+
 test("a page's deletion counts the attachments of its subtree, which go with it", async () => {
   const user = userEvent.setup();
   const others = [assetNode(75, "x.png", linux), assetNode(78, "y.png", notes), assetNode(79, "z.png")];

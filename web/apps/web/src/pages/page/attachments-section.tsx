@@ -386,7 +386,10 @@ function saying(text: string) {
   return (before: { text: string; again: boolean }) => ({ text, again: before.text === text && !before.again });
 }
 
-/** useExpiry reads the list again before the first of its addresses expires, each time it is read (rereadIn). */
+/**
+ * useExpiry reads the list again before the first of its addresses expires, each time it is read (rereadIn); a hidden
+ * tab's as it is shown, which SWR reads it again on.
+ */
 function useExpiry(list: AssetList | undefined, reread: () => void): void {
   const latest = useRef(reread);
   useEffect(() => {
@@ -403,7 +406,14 @@ function useExpiry(list: AssetList | undefined, reread: () => void): void {
     if (!Number.isFinite(earliest)) {
       return undefined;
     }
-    const timer = setTimeout(() => latest.current(), rereadIn(earliest, Date.now()));
+    const timer = setTimeout(
+      () => {
+        if (!document.hidden) {
+          latest.current();
+        }
+      },
+      rereadIn(earliest, Date.now())
+    );
     return () => clearTimeout(timer);
   }, [list]);
 }

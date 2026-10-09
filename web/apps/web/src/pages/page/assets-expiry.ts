@@ -64,7 +64,8 @@ function dueOf(answer: Expiring): number | undefined {
  * 4.5): the cache's, left since, which SWR reads again as the hook mounts.
  * One shown stays as it expires: SWR reads it again as the tab is shown
  * or online again, and its images that fail to load meanwhile read it
- * again (reading/assets.ts). A clock far ahead of the server's has it
+ * again (reading/assets.ts). A hidden tab's is not read as it is due, but
+ * as the tab is shown (SWR). A clock far ahead of the server's has it
  * read again each expiryFloor, as the attachments' lists are.
  */
 export function useAssetsExpiry<T extends Expiring>(data: T | undefined, reread: () => void): T | undefined {
@@ -84,7 +85,7 @@ export function useAssetsExpiry<T extends Expiring>(data: T | undefined, reread:
     }
     const timer = setTimeout(
       () => {
-        if (!readAgain.has(data)) {
+        if (!document.hidden && !readAgain.has(data)) {
           readAgain.add(data);
           latest.current();
         }

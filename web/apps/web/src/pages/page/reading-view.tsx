@@ -8,6 +8,7 @@ import { writesPages } from "../../app/effective-role";
 import { NotLoaded } from "../../app/not-loaded";
 import { enhance, Enhancements } from "../../reading/enhancement";
 import { taskText } from "../../reading/task-toggle";
+import { unfold } from "../../reading/unfold";
 import { ApiError } from "../../services/api";
 import type { Notebook } from "../../services/notebook.service";
 import type { TreeNode } from "../../services/page.service";
@@ -317,13 +318,4 @@ function focusOn(element: HTMLElement, show: ScrollIntoViewOptions | undefined) 
     element.scrollIntoView(show);
   }
   element.focus({ preventScroll: true });
-}
-
-/** unfold opens the folded callouts (closed details) element is in, which could show nothing of it otherwise. */
-function unfold(element: HTMLElement) {
-  for (let parent = element.parentElement; parent !== null; parent = parent.parentElement) {
-    if (parent instanceof HTMLDetailsElement && !parent.open) {
-      parent.open = true;
-    }
-  }
 }

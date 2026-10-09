@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"reflect"
 	"runtime"
 	"slices"
@@ -384,12 +385,14 @@ func TestAPagesPropertiesAreTheIndexs(t *testing.T) {
 }
 
 // addresses is the attachments' addresses as the asset module gives them:
-// of those it has, the notebook and ids it was asked of.
+// of those it has, the notebook and ids it was asked of; all it has, asked
+// or not, when it says more than it was asked.
 type addresses struct {
 	of    map[uuid.UUID]app.AttachmentAddress
 	asked [][]uuid.UUID
 	nbs   []uuid.UUID
 	err   error
+	more  bool
 }
 
 func (u *addresses) Addresses(_ context.Context, notebookID uuid.UUID, ids []uuid.UUID) (
@@ -401,6 +404,9 @@ func (u *addresses) Addresses(_ context.Context, notebookID uuid.UUID, ids []uui
 		if a, ok := u.of[id]; ok {
 			out[id] = a
 		}
+	}
+	if u.more {
+		maps.Copy(out, u.of)
 	}
 	return out, u.err
 }
@@ -440,6 +446,13 @@ func TestAPropertyLinkToAnAttachmentHasItsAddress(t *testing.T) {
 	if got, err := get.Execute(reader(), l.p); err != nil || !got.AssetsExpire.Equal(at.Add(30*time.Minute)) {
 		t.Errorf("the last earliest: %v, %v", got.AssetsExpire, err)
 	}
+	// One that says more than it was asked gives a page's link nothing.
+	u.more = true
+	l.properties = &app.Properties{Valid: true, Links: []app.PropertyLink{{Key: "a", NodeID: x, Asset: true}, {Key: "b", NodeID: page}}}
+	if got, err := get.Execute(reader(), l.p); err != nil || got.Links[1].URL != "" || !got.AssetsExpire.Equal(at.Add(2*time.Hour)) {
+		t.Errorf("more than asked: %+v, %v", got, err)
+	}
+	u.more = false
 	l.properties = &app.Properties{Valid: true, Links: []app.PropertyLink{{Key: "g", NodeID: z, Asset: true}}}
 	u.of[z] = app.AttachmentAddress{URL: "/z"}
 	if got, err := get.Execute(reader(), l.p); err != nil || !got.AssetsExpire.IsZero() || got.Links[0].URL != "/z" {

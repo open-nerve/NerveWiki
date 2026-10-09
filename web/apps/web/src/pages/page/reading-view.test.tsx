@@ -743,6 +743,72 @@ test("a view that came as no reader had it, its addresses expired since, is not 
   await waitFor(() => expect(screen.getByRole("article").innerHTML).toBe("<p>Signed anew</p>"));
 });
 
+test("a view from the cache whose addresses had expired, read again in vain, says so; Try again reads it", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
+  const server = pageServer();
+  server.views.set(install.id, { html: "<p>Signed</p>", revision: 1, assets_expire_at: inMinutes(10) });
+  const { router } = renderApp(pagePath(install.id), server.app);
+  await waitFor(() => expect(screen.getByRole("article").innerHTML).toBe("<p>Signed</p>"));
+  await act(() => router.navigate(pagePath(guide.id)));
+  await waitFor(() => expect(screen.getByRole("article").innerHTML).toBe("<p>Guide</p>"));
+  await act(() => vi.advanceTimersByTimeAsync(11 * 60_000));
+
+  server.viewsDown = true;
+  await act(() => router.navigate(pagePath(install.id)));
+  const [again] = await screen.findAllByRole("button", { name: "Try again" });
+  expect(screen.queryByText("Signed")).toBeNull();
+  server.viewsDown = false;
+  server.views.set(install.id, { html: "<p>Signed anew</p>", revision: 1, assets_expire_at: inMinutes(70) });
+  await user.click(again as HTMLElement);
+  await waitFor(() => expect(screen.getByRole("article").innerHTML).toBe("<p>Signed anew</p>"));
+});
+
+test("a hidden tab's view is not read again as it is due, but as the tab is shown", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const server = pageServer();
+  server.views.set(install.id, { html: "<p>Signed</p>", revision: 1, assets_expire_at: inMinutes(10) });
+  renderApp(pagePath(install.id), server.app);
+  await waitFor(() => expect(screen.getByRole("article").innerHTML).toBe("<p>Signed</p>"));
+  const reads = () => server.sent.filter((line) => line === "GET view Install").length;
+  let hidden = true;
+  const shown = (visible: boolean) => {
+    hidden = !visible;
+    document.dispatchEvent(new Event("visibilitychange"));
+  };
+  const spies = [
+    vi.spyOn(document, "hidden", "get").mockImplementation(() => hidden),
+    vi.spyOn(document, "visibilityState", "get").mockImplementation(() => (hidden ? "hidden" : "visible")),
+  ];
+  onTestFinished(() => spies.forEach((spy) => spy.mockRestore()));
+  act(() => shown(false));
+  await act(() => vi.advanceTimersByTimeAsync(30 * 60_000));
+  expect(reads()).toBe(1);
+
+  server.views.set(install.id, { html: "<p>Signed anew</p>", revision: 1, assets_expire_at: inMinutes(70) });
+  act(() => shown(true));
+  await waitFor(() => expect(screen.getByRole("article").innerHTML).toBe("<p>Signed anew</p>"));
+  expect(reads()).toBe(2);
+});
+
+test("a view read again that says the same runs no enhancement again", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const server = pageServer();
+  server.views.set(install.id, { html: "<p>Signed</p>", revision: 1, assets_expire_at: "2100-01-01T00:00:00Z" });
+  const log: string[] = [];
+  renderApp(pagePath(install.id), server.app, { enhancements: [recording(log, "a")] });
+  await waitFor(() => expect(log).toHaveLength(1));
+  // Read again as the window has the focus back, past SWR's deduping.
+  await act(() => vi.advanceTimersByTimeAsync(10_000));
+  server.viewsHeld = true;
+  act(() => window.dispatchEvent(new Event("focus")));
+  await waitFor(() => expect(server.sent.filter((line) => line === "GET view Install")).toHaveLength(2));
+  server.viewsHeld = false;
+  await act(async () => server.release());
+  await act(() => vi.advanceTimersByTimeAsync(100));
+  expect(log).toHaveLength(1);
+});
+
 test("an enhancement has the view's expiry, and an attachment's address signed anew; one gone, it rejects", async () => {
   const server = pageServer();
   const sound = { ...assetNode(90, "a.mp3"), parent_id: install.id };
@@ -790,4 +856,9 @@ test("with the app's enhancements, a link to an attachment the browser shows ope
   const shown = await within(article).findByRole("link", { name: "x.pdf (opens in a new tab)" });
   expect(shown.getAttribute("target")).toBe("_blank");
   expect(within(article).getByRole("link", { name: "y.zip" }).hasAttribute("target")).toBe(false);
+  expect(article.textContent).toBe("x.pdf (opens in a new tab) (3 B) y.zip (3 B)");
+
+  // In the reader's language, as it changes.
+  act(() => server.app.preferences.setLocale("zh-CN"));
+  await waitFor(() => expect(article.textContent).toBe("x.pdf （在新标签页打开）（3 B） y.zip（3 B）"));
 });

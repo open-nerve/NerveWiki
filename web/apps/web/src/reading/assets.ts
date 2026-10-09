@@ -1,11 +1,15 @@
 import { formatBytes } from "../i18n/format";
 import type { Enhancement, ReadingContext } from "./enhancement";
+import { unfold } from "./unfold";
 
 /** How many audios and videos a view keeps playing as its HTML is replaced: as many as it writes (obsidian's MaxMedia). */
 const maxKept = 20;
 
 /** The attachments' audios and videos a view writes. */
 const media = "audio.nw-asset, video.nw-asset";
+
+/** How far from where it was a media may start, in seconds, without being moved there again. */
+const nearEnough = 0.25;
 
 /**
  * assets is the attachments of the reading view (M7/P4 design 4.4–4.6),
@@ -23,9 +27,10 @@ const media = "audio.nw-asset, video.nw-asset";
  *   the HTML is replaced, which the signatures do each hour and others'
  *   writes at any time: the next HTML of the page has it in place of its
  *   own of the same attachment, the same of them in order, its attributes
- *   but its address, the focus if it had it; one it does not have goes.
- *   One that failed is not kept: it would not load again, and its place
- *   goes to the new one. One kept has the address it had: as it fails
+ *   but its address, the focus if it had it (a folded callout it is in
+ *   opening); one it does not have goes. One that failed is not kept: it
+ *   would not load again, and the new one goes on where it was, the focus
+ *   given it if it had it. One kept has the address it had: as it fails
  *   (its address expired, as a rule), the view has the attachment's
  *   signed anew (assetAddress), and the media goes on where it was; once
  *   for each HTML, none for an attachment gone.
@@ -120,7 +125,7 @@ function sizes(container: HTMLElement, { t, locale }: ReadingContext): HTMLEleme
  * of the same key (an attachment's type is its own: the same element),
  * its attributes but its address taken, the focus given back if it had
  * it; those put are the adopted. One that failed is not put: the new one
- * starts where it was.
+ * goes on where it was, the focus given it if it had it.
  */
 function adopt(container: HTMLElement, kept: Kept | undefined): Set<HTMLMediaElement> {
   const adopted = new Set<HTMLMediaElement>();
@@ -133,7 +138,10 @@ function adopt(container: HTMLElement, kept: Kept | undefined): Set<HTMLMediaEle
       continue;
     }
     if (old.error !== null) {
-      element.currentTime = old.currentTime;
+      void goOn(element, placeOf(old));
+      if (old === kept.focused) {
+        focus(element);
+      }
       continue;
     }
     for (const name of old.getAttributeNames()) {
@@ -149,10 +157,16 @@ function adopt(container: HTMLElement, kept: Kept | undefined): Set<HTMLMediaEle
     element.replaceWith(old);
     adopted.add(old);
     if (old === kept.focused) {
-      old.focus({ preventScroll: true });
+      focus(old);
     }
   }
   return adopted;
+}
+
+/** focus gives element the focus, without a scroll; a folded callout it is in opens first, as it takes none closed. */
+function focus(element: HTMLMediaElement) {
+  unfold(element);
+  element.focus({ preventScroll: true });
 }
 
 /** started are the audios and videos of container started and not ended, by key: the first maxKept of them. */
@@ -187,9 +201,8 @@ function assetOf(address: string | null): string | undefined {
 }
 
 /**
- * signAnew gives element the address of its attachment signed anew, and has it go on where it was, at its rate,
- * playing if it was, its frame shown if not; nothing when the address is not given (the attachment gone) or the
- * element is no longer in the page.
+ * signAnew gives element the address of its attachment signed anew, and has it go on where it was as it failed;
+ * nothing when the address is not given (the attachment gone) or the element is no longer in the page.
  */
 async function signAnew(element: HTMLMediaElement, { assetAddress }: ReadingContext): Promise<void> {
   const id = assetOf(element.getAttribute("src"));
@@ -197,9 +210,7 @@ async function signAnew(element: HTMLMediaElement, { assetAddress }: ReadingCont
     return;
   }
   // As it failed: the new address's load has it paused, at the start, at the default rate.
-  const at = element.currentTime;
-  const playing = !element.paused;
-  const rate = element.playbackRate;
+  const place = placeOf(element);
   let address: string;
   try {
     address = await assetAddress(id);
@@ -209,25 +220,47 @@ async function signAnew(element: HTMLMediaElement, { assetAddress }: ReadingCont
   if (!element.isConnected) {
     return;
   }
-  try {
-    if (!playing) {
-      element.preload = "metadata";
-    }
-    element.setAttribute("src", address);
-    element.playbackRate = rate;
-    element.currentTime = at;
-    // An engine that takes no position before the metadata takes it then.
-    element.addEventListener(
-      "loadedmetadata",
-      () => {
+  element.setAttribute("src", address);
+  await goOn(element, place);
+}
+
+/** Place is where an audio or a video was: its position, its rate, and whether it played. */
+type Place = { at: number; rate: number; playing: boolean };
+
+/** placeOf is where element is. */
+function placeOf(element: HTMLMediaElement): Place {
+  return { at: element.currentTime, rate: element.playbackRate, playing: !element.paused };
+}
+
+/**
+ * goOn has element, loading its address, go on from place: at its position, at its rate, playing if it was, its frame
+ * shown if not. An engine takes the position before the metadata, or else as they come, and one that throws takes it
+ * then too; a play refused leaves it paused there, which the reader plays again.
+ */
+async function goOn(element: HTMLMediaElement, { at, rate, playing }: Place): Promise<void> {
+  if (!playing) {
+    element.preload = "metadata";
+  }
+  element.playbackRate = rate;
+  element.addEventListener(
+    "loadedmetadata",
+    () => {
+      if (Math.abs(element.currentTime - at) > nearEnough) {
         element.currentTime = at;
-      },
-      { once: true }
-    );
-    if (playing) {
-      await element.play();
-    }
+      }
+    },
+    { once: true }
+  );
+  try {
+    element.currentTime = at;
   } catch {
-    // Refused, the media stays as it is: the reader plays it again.
+    // Taken as the metadata come.
+  }
+  if (playing) {
+    try {
+      await element.play();
+    } catch {
+      // Refused: it stays where it is.
+    }
   }
 }

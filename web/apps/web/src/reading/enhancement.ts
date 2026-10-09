@@ -79,10 +79,10 @@ export type ReadingContext = {
 
 /**
  * An Enhancement works on the reading view's HTML once it is in the page,
- * without changing its structure, and answers what undoes it (its
- * listeners, its work under way), or nothing. The HTML is the server's,
- * sanitized: an enhancement adds behaviour, never markup from elsewhere
- * unchecked.
+ * and answers what undoes it (its listeners, what it added, its work
+ * under way), or nothing. The HTML is the server's, sanitized: an
+ * enhancement adds behaviour, and markup of its own (a formula, a
+ * diagram, an attachment's size), never markup from elsewhere unchecked.
  */
 export type Enhancement = (container: HTMLElement, context: ReadingContext) => (() => void) | undefined;
 

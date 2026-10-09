@@ -109,11 +109,15 @@ test("AS3 (API): the view has an attachment's image, audio and video at their si
   // The properties' links say whether the browser shows what they lead to, and when their addresses expire.
   const properties = await getPageProperties(api, pat, guide.id);
   expect(properties.response.status).toBe(200);
-  expect(properties.data?.links.map((l) => [l.key, l.node_id, l.inline])).toEqual([
-    ["cover", cover.id, true],
-    ["file", data.id, false],
+  const links = properties.data?.links ?? [];
+  expect(links.map((l) => [l.key, l.node_id, l.inline, l.url?.split("?")[0]])).toEqual([
+    ["cover", cover.id, true, path(cover.id)],
+    ["file", data.id, false, path(data.id)],
   ]);
-  expect(properties.data?.assets_expire_at).toEqual(expect.any(String));
+  const linkExpiry = new URL(links[0]?.url ?? "", nervewiki.baseURL).searchParams.get("e");
+  expect(properties.data?.assets_expire_at && Date.parse(properties.data.assets_expire_at) / 1000).toBe(
+    Number(linkExpiry)
+  );
 
   await expectIndexedLinks(db, guide.id, [
     { kind: "wikilink", property: "cover", target: "cover.png", resolved: cover.id },

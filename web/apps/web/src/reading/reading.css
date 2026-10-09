@@ -381,9 +381,11 @@
     height: auto;
   }
 
-  /* An attachment's size, after its link (reading/assets.ts). */
+  /* An attachment's size, after its link (reading/assets.ts): on the
+     link's line, its number with its unit. */
   .nw-reading .nw-size {
     color: var(--muted-foreground);
+    white-space: nowrap;
   }
 
   /* An attachment shown as text: it has no address, and is no link. */

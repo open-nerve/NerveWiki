@@ -1,4 +1,4 @@
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, expect, onTestFinished, test, vi } from "vitest";
 
 import { translator } from "../i18n/i18n";
 import { assets } from "./assets";
@@ -16,6 +16,8 @@ const address = (id: string, sig = "1") => `/api/v0/assets/${id}/content?b=b1&am
 
 const audio = (id: string, label = id) =>
   `<audio class="nw-asset" src="${address(id)}" controls="" preload="none" aria-label="${label}"></audio>`;
+/** focusable is audio's, taking the focus. */
+const focusable = (id: string) => audio(id).replace("<audio ", '<audio tabindex="0" ');
 const video = (id: string, label = id, width = "300") =>
   `<video class="nw-asset" src="${address(id)}" controls="" preload="none" aria-label="${label}" width="${width}"></video>`;
 
@@ -304,29 +306,119 @@ test("one kept goes on from where it failed, playing; one gone from the page mea
   expect(paused.getAttribute("src")).toBe("/api/v0/assets/a3/content?anew=1");
   expect([paused.currentTime, paused.preload, paused.paused]).toEqual([12, "metadata", true]);
   expect(paused.play).not.toHaveBeenCalled();
-  // An engine that took no position before the metadata takes it then.
+  // An engine that took no position before the metadata takes it then; one that took it is not moved again.
   paused.currentTime = 0;
   paused.dispatchEvent(new Event("loadedmetadata"));
   expect(paused.currentTime).toBe(12);
+  if (first !== undefined) {
+    first.currentTime = 30.2;
+    first.dispatchEvent(new Event("loadedmetadata"));
+  }
+  expect(first?.currentTime).toBe(30.2);
   undo?.();
 });
 
-test("one kept that had the focus has it back; one that failed is not kept, the new one starting where it was", () => {
-  const focusable = (id: string) => audio(id).replace("<audio ", '<audio tabindex="0" ');
-  const html = `<p>${focusable("a1")} ${focusable("a2")} ${audio("a3")}</p>`;
+test("an engine that takes no position before the metadata, and throws, has it as they come; one playing plays", async () => {
+  const html = `<p>${audio("a1")}</p>`;
   const { container, context, enhancement } = setUp(html, { expires: later });
   let undo = enhancement(container, context());
-  const [first, second, third] = [...container.querySelectorAll("audio")].map((element) => play(element, 20));
-  second?.focus();
-  expect(document.activeElement).toBe(second);
-  broken(third);
+  const sound = play(container.querySelector("audio"), 30);
+  let time = 30;
+  let loaded = true;
+  Object.defineProperty(sound, "currentTime", {
+    get: () => time,
+    set: (value: number) => {
+      if (!loaded) {
+        throw new DOMException("no metadata", "InvalidStateError");
+      }
+      time = value;
+    },
+    configurable: true,
+  });
+  const setAttribute = sound.setAttribute.bind(sound);
+  sound.setAttribute = (name: string, value: string) => {
+    if (name === "src") {
+      [time, loaded] = [0, false];
+    }
+    setAttribute(name, value);
+  };
+  sound.addEventListener("loadedmetadata", () => {
+    loaded = true;
+  });
   undo?.();
   container.innerHTML = html;
   undo = enhancement(container, context());
-  const shown = [...container.querySelectorAll("audio")];
-  expect(shown.slice(0, 2)).toEqual([first, second]);
+  fail(sound);
+  await settle();
+  expect(sound.getAttribute("src")).toBe("/api/v0/assets/a1/content?anew=1");
+  expect(sound.play).toHaveBeenCalledTimes(1);
+  expect(time).toBe(0);
+  sound.dispatchEvent(new Event("loadedmetadata"));
+  expect(time).toBe(30);
+  undo?.();
+});
+
+test("one kept that had the focus has it back, a folded callout it is in opening", () => {
+  const html = `<p>${focusable("a1")}</p><details><summary>More</summary><p>${focusable("a2")}</p></details>`;
+  const { container, context, enhancement } = setUp(html, { expires: later });
+  let undo = enhancement(container, context());
+  const [first, second] = [...container.querySelectorAll("audio")].map((element) => play(element, 20));
+  container.querySelector("details")?.setAttribute("open", "");
+  second?.focus();
   expect(document.activeElement).toBe(second);
-  expect(shown[2]).not.toBe(third);
-  expect(shown[2]?.currentTime).toBe(20);
+  undo?.();
+  container.innerHTML = html;
+  undo = enhancement(container, context());
+  expect([...container.querySelectorAll("audio")]).toEqual([first, second]);
+  expect(document.activeElement).toBe(second);
+  expect(container.querySelector("details")?.open).toBe(true);
+  undo?.();
+});
+
+test("one that failed is not kept: the new one goes on where it was, at its rate, playing if it was, the focus given it", async () => {
+  const played = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
+  onTestFinished(() => played.mockRestore());
+  const html = `<p>${focusable("a1")}</p><details><summary>More</summary><p>${focusable("a2")}</p></details>`;
+  const { container, context, enhancement } = setUp(html, { expires: later });
+  let undo = enhancement(container, context());
+  const [sounding, still] = container.querySelectorAll("audio");
+  play(sounding, 20).playbackRate = 1.5;
+  play(still, 7, true);
+  container.querySelector("details")?.setAttribute("open", "");
+  still?.focus();
+  broken(sounding);
+  broken(still);
+  undo?.();
+  container.innerHTML = html;
+  undo = enhancement(container, context());
+  const [first, second] = container.querySelectorAll("audio");
+  expect([first === sounding, second === still]).toEqual([false, false]);
+  expect([first?.currentTime, first?.playbackRate, first?.preload]).toEqual([20, 1.5, "none"]);
+  expect([second?.currentTime, second?.preload]).toEqual([7, "metadata"]);
+  expect(document.activeElement).toBe(second);
+  expect(container.querySelector("details")?.open).toBe(true);
+  await settle();
+  expect(played.mock.contexts).toEqual([first]);
+  undo?.();
+});
+
+test("one that failed, its new one's position refused before the metadata, has it as they come", () => {
+  const refused = vi.spyOn(HTMLMediaElement.prototype, "currentTime", "set").mockImplementation(() => {
+    throw new DOMException("no metadata", "InvalidStateError");
+  });
+  onTestFinished(() => refused.mockRestore());
+  const html = `<p>${audio("a1")} <a class="nw-asset" href="${address("a2")}" data-nw-size="8">doc.pdf</a></p>`;
+  const { container, context, enhancement } = setUp(html, { expires: later });
+  let undo = enhancement(container, context());
+  broken(play(container.querySelector("audio"), 20, true));
+  undo?.();
+  container.innerHTML = html;
+  undo = enhancement(container, context());
+  // The enhancement goes on: the link's hint and size are there.
+  expect(container.textContent).toBe(" doc.pdf (opens in a new tab) (8 B)");
+  refused.mockRestore();
+  const fresh = container.querySelector("audio");
+  fresh?.dispatchEvent(new Event("loadedmetadata"));
+  expect(fresh?.currentTime).toBe(20);
   undo?.();
 });

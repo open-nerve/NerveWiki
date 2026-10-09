@@ -50,6 +50,9 @@ func (tm acmeTeam) disposition(t *testing.T, address string) string {
 		t.Fatal(err)
 	}
 	_ = res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("%s = %d", address, res.StatusCode)
+	}
 	kind, _, _ := strings.Cut(res.Header.Get("Content-Disposition"), ";")
 	return kind
 }
