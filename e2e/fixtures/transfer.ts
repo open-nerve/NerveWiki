@@ -4,9 +4,11 @@ import { expect } from "@playwright/test";
 import { bearer } from "./auth";
 import { unzip, type ZipEntry } from "./zip";
 
-// The exports of the stories, through the API (M7/P5 design 3.16): a job
-// started, read until it ends, and its archive downloaded at the address
-// the server signed, without a token.
+// The exports and imports of the stories, through the API (M7/P5 design
+// 3.16, P6 design 3.18): a job started, read until it ends; an export's
+// archive downloaded at the address the server signed, without a token;
+// an import's sent as multipart/form-data, which the client sends as a
+// FormData.
 
 /** credential's start of an export of the notebook notebookId, or of its page rootId and its subtree. */
 async function postExport(api: ApiClient, credential: string, notebookId: string, rootId?: string) {
@@ -28,6 +30,44 @@ export async function startExport(
   expect(response.status, `export: ${JSON.stringify(error)}`).toBe(202);
   if (!data) {
     throw new Error("export answered 202 without the job");
+  }
+  return data;
+}
+
+/** credential's import of archive, a zip named name, into the notebook notebookId, under parentId or at its root. */
+export async function postImport(
+  api: ApiClient,
+  credential: string,
+  notebookId: string,
+  archive: Uint8Array,
+  parentId?: string,
+  name = "vault.zip"
+) {
+  const form = new FormData();
+  if (parentId !== undefined) {
+    form.append("parent_id", parentId);
+  }
+  form.append("file", new Blob([Buffer.from(archive)], { type: "application/zip" }), name);
+  return api.POST("/api/v0/notebooks/{notebook_id}/imports", {
+    params: { path: { notebook_id: notebookId } },
+    body: { file: name },
+    bodySerializer: () => form,
+    headers: bearer(credential),
+  });
+}
+
+/** Starts credential's import of archive into the notebook notebookId, under parentId, and returns its job, queued. */
+export async function startImport(
+  api: ApiClient,
+  credential: string,
+  notebookId: string,
+  archive: Uint8Array,
+  parentId?: string
+): Promise<TransferJob> {
+  const { data, error, response } = await postImport(api, credential, notebookId, archive, parentId);
+  expect(response.status, `import: ${JSON.stringify(error)}`).toBe(202);
+  if (!data) {
+    throw new Error("import answered 202 without the job");
   }
   return data;
 }
