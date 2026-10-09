@@ -109,9 +109,9 @@ func TestRescueAfterReachesRiver(t *testing.T) {
 	}
 }
 
-// The jobs of a kind that River has not finished, a page at a time: those
-// to work and those it works, not those it completed or discarded, nor
-// another kind's.
+// The jobs of a kind that River has not finished, a page at a time, past
+// the second: those to work, now or later, those it works and those to
+// try again, not those it completed or discarded, nor another kind's.
 func TestUnfinishedAreTheJobsRiverHolds(t *testing.T) {
 	t.Parallel()
 	pool := newPool(t, pgtest.NewDatabase(t))
@@ -121,7 +121,7 @@ func TestUnfinishedAreTheJobsRiverHolds(t *testing.T) {
 		t.Fatal(err)
 	}
 	err = pgx.BeginFunc(ctx, pool, func(tx pgx.Tx) error {
-		for n := 1; n <= 5; n++ {
+		for n := 1; n <= 8; n++ {
 			if err := inserter.InsertTx(ctx, tx, longArgs{N: n}, &river.InsertOpts{Queue: "jobs_test_long"}); err != nil {
 				return err
 			}
@@ -135,6 +135,9 @@ func TestUnfinishedAreTheJobsRiverHolds(t *testing.T) {
 		`UPDATE river_job SET state = 'running', attempt = 1, attempted_at = now() WHERE args->>'N' = '2'`,
 		`UPDATE river_job SET state = 'completed', attempt = 1, attempted_at = now(), finalized_at = now() WHERE args->>'N' = '3'`,
 		`UPDATE river_job SET state = 'discarded', attempt = 1, attempted_at = now(), finalized_at = now() WHERE args->>'N' = '4'`,
+		`UPDATE river_job SET state = 'retryable', attempt = 1, attempted_at = now(), scheduled_at = now() + interval '1 hour' WHERE args->>'N' = '5'`,
+		`UPDATE river_job SET state = 'scheduled', scheduled_at = now() + interval '1 hour' WHERE args->>'N' = '6'`,
+		`UPDATE river_job SET state = 'pending' WHERE args->>'N' = '7'`,
 	} {
 		if _, err := pool.Exec(ctx, sql); err != nil {
 			t.Fatalf("%s: %v", sql, err)
@@ -154,7 +157,7 @@ func TestUnfinishedAreTheJobsRiverHolds(t *testing.T) {
 		ns = append(ns, a.N)
 	}
 	slices.Sort(ns)
-	if !slices.Equal(ns, []int{1, 2, 5}) {
-		t.Errorf("Unfinished() = jobs %v, want 1, 2 and 5", ns)
+	if !slices.Equal(ns, []int{1, 2, 5, 6, 7, 8}) {
+		t.Errorf("Unfinished() = jobs %v, want 1, 2 and 5 to 8", ns)
 	}
 }

@@ -27,7 +27,7 @@ const probePrefix = ".probe-"
 // freeCheck is how many bytes a file's writes go between two reads of the
 // free space: a file far larger than an attachment, an export's archive,
 // stops once fewer than the store's minimum of bytes are free, and an
-// attachment's upload reads it at most once.
+// attachment of the default largest (asset.max_bytes) is never read again.
 const freeCheck = 64 << 20
 
 // Local is the store on the local disk (M7/P1 design 3.3): the file at
@@ -446,7 +446,9 @@ func (w *localWriter) Write(p []byte) (int, error) {
 		return 0, errDone
 	}
 	if w.unchecked >= w.l.freeCheck {
-		if err := w.l.room(context.Background()); err != nil {
+		// A read of the free space that fails skips this check: the
+		// writes need it no more than they did before it.
+		if err := w.l.room(context.Background()); errors.Is(err, ErrFull) {
 			return 0, err
 		}
 		w.unchecked = 0

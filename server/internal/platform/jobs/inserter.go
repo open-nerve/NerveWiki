@@ -52,10 +52,17 @@ func (i *Inserter) Unfinished(ctx context.Context, kind string) ([][]byte, error
 }
 
 func (i *Inserter) unfinished(ctx context.Context, kind string, page int) ([][]byte, error) {
-	params := river.NewJobListParams().Kinds(kind).First(page).States(rivertype.JobStateAvailable, rivertype.JobStatePending,
-		rivertype.JobStateRetryable, rivertype.JobStateRunning, rivertype.JobStateScheduled)
 	var out [][]byte
+	var after *river.JobListCursor
 	for {
+		// Each page's parameters are new: JobList adds the cursor's
+		// condition to those it is given, which After would copy to the
+		// next page's beside its own.
+		params := river.NewJobListParams().Kinds(kind).First(page).States(rivertype.JobStateAvailable, rivertype.JobStatePending,
+			rivertype.JobStateRetryable, rivertype.JobStateRunning, rivertype.JobStateScheduled)
+		if after != nil {
+			params = params.After(after)
+		}
 		got, err := i.client.JobList(ctx, params)
 		if err != nil {
 			return nil, fmt.Errorf("list the unfinished %s jobs: %w", kind, err)
@@ -66,6 +73,6 @@ func (i *Inserter) unfinished(ctx context.Context, kind string, page int) ([][]b
 		if len(got.Jobs) < page {
 			return out, nil
 		}
-		params = params.After(got.LastCursor)
+		after = got.LastCursor
 	}
 }
