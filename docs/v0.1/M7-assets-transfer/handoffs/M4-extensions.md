@@ -1,5 +1,5 @@
 ```yaml
-status: open
+status: done
 from: M4 收尾
 to: M7
 created: 2026-10-03
@@ -19,3 +19,4 @@ M4 建了两条管线，M7 各注册一个：附件内联是 `platform/markdown`
 - M7/P2（2026-10-09，合并 `48c62c0`）：第 4 项的活动来源落实（见[它的移交](M3-notebook-activity.md)）；附件内联与粘贴上传随 P3、P4。
 - M7/P3A（2026-10-09，合并 `5138ad6`）：附件进链接的解析与改写；第 1 项附件的内联与第 3 项服务端的最后一跳随 P3B，第 2 项与第 3 项编辑器的一跳随 P4。
 - M7/P3B（2026-10-09，合并 `f3bf03c`）：第 1 项落实：附件的内联由方言扩展按 `obsidian.Options` 的 `Assets` 写出（组合根的 `assetEmbeds`），标记写进 `Markup`，`CheckSize` 以一个视图至多 2000 个地址限住附件的总量；第 3 项服务端的一跳是 `bootstrap/assets_view_test.go`（组合根交空时失败）。第 2 项与第 3 项编辑器的一跳随 P4。见 [P3 文档](../03-P3-assets-links.md)第 9.2 节。
+- M7/P4C（2026-10-09，合并 `008f81f`）：第 2 项落实：编辑器的扩展 `assetUpload` 经 `editor/registry.ts` 注册（`load`，最后一个），`EditorContext.uploadAsset` 上传，`EditorControls.whenComposed` 等组合（另加 `tell`、`going`）；第 3 项编辑器的一跳是 `pages/page/page-asset-upload.test.tsx`（经组合根的 `editorExtensions`，组合根交空时失败）。四项都已落实，移交关闭。见 [P4 文档](../04-P4-assets-web.md)第 5、9.3 节。

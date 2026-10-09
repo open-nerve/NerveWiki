@@ -3,7 +3,7 @@
 | 项 | 内容 |
 |---|---|
 | Phase | M7/P4 附件（前端） |
-| 状态 | 进行中（A 已合并 `e44b417`，B 已合并 `32e175c`） |
+| 状态 | 已完成（A 合并 `e44b417`，B 合并 `32e175c`，C 合并 `008f81f`） |
 | 基线 | `31f894a`（P3 合并、文档补完之后的 main）；本文提交之后开分支 `m7-p4a`，A 合并之后开 `m7-p4b`，B 合并之后开 `m7-p4c` |
 | 上级文档 | [M7 总设计](00-M7-design.md) 4.7、4.8、第 5、7–9 节；[P3 文档](03-P3-assets-links.md)第 9.2 节（交给 P4 的三项）；移交：[M4 附件的扩展](handoffs/M4-extensions.md)第 2、3 项（编辑器的一跳）；总体设计 13.2 第 1、6、23、25、26 条 |
 
@@ -175,32 +175,43 @@ P4 把附件交到读者与写者手里：面板与上传、阅读视图里的�
 
 ## 5. C：编辑器的粘贴与拖入
 
+实现、审查与修复核对之后照实际改写（第 9.3 节）。
+
 ### 5.1 文件
 
 | 文件 | 内容 |
 |---|---|
-| `web/apps/web/src/editor/registry.ts`、`editor/source-editor.tsx` | `EditorContext.uploadAsset`、`EditorControls.whenComposed`；注册 `assetUpload` |
-| `web/apps/web/src/editor/loaded/asset-upload.ts`（新） | 扩展：接住粘贴、拖入的文件，上传，插入（5.2） |
-| `web/apps/web/src/pages/page/page-edit.tsx`、`page-editing-bar.tsx` | 上下文的 `uploadAsset`；编辑栏的进度与取消（5.3） |
-| `docs/v0.1/M4-pages/manual/P6-ime-checklist.md` | 输入法清单加一步（5.4） |
-| `e2e/stories/asset/as2-paste.spec.ts`（新） | AS2 |
+| `web/apps/web/src/editor/registry.ts`、`editor/source-editor.tsx` | `EditorContext.uploadAsset`；`EditorControls.whenComposed`、`tell`、`going`；`SourceEditorHandle.working`、`settled`；注册 `assetUpload`（`load`，最后一个） |
+| `web/apps/web/src/editor/loaded/asset-upload.ts`（新） | 扩展：接住粘贴、拖入的文件，上传，插入，说出没插入的（5.2） |
+| `web/apps/web/src/editor/extensions.ts`、`editor/theme.ts` | 能改的正文有落点的光标（`dropCursor`）；正文至少 20rem 高，文字下方的空白也是正文 |
+| `web/apps/web/src/editor/phrases.ts`、`i18n/messages/*` | 三句提示经 CodeMirror 的短语 |
+| `web/apps/web/src/lib/file-transfer.ts`（新） | `pageDrag`、`hasFiles`、`carriesFiles`、`filesDropped`：从 `app/file-drop.tsx` 移来，编辑器不能导入 `app/` |
+| `web/apps/web/src/stores/asset.store.ts` | `uploaded(upload)`；`Upload.fromEditor` |
+| `web/apps/web/src/pages/page/page-edit.tsx`、`page-editing-bar.tsx`、`editor-uploads.tsx`（新）、`attachments-section.tsx`、`page-layout.tsx` | 上下文的 `uploadAsset`；编辑器旁的上传行与告知；离开等上传（5.3） |
+| `docs/v0.1/M4-pages/manual/P6-ime-checklist.md` | 第 19、20 步（5.4） |
+| `e2e/stories/asset/as2-paste.spec.ts`（新）、`e2e/fixtures/assert/asset.ts` | AS2；`expectEmbedded` |
 
 ### 5.2 扩展 `assetUpload`
 
-- `load` 的扩展，模块在 `editor/loaded/`（13.2 第 23 条）。以高优先级的 `domEventHandlers` 先于 CodeMirror 自己的拖放接住带文件的拖入（它会把文件当文本读进来）与粘贴。
-- **粘贴**：剪贴板里只有文件、没有 `text/plain` 时才上传（Excel、Word、Numbers 复制的单元格同时有文字与图片：粘贴文字）；插在选区（替换选中的）。剪贴板里没有文件名的图片取名为 `Pasted image 20261008123045.png`（照 Obsidian：本地时间到秒，扩展名按类型；不随界面语言，它是存下来的内容）。
-- **拖入**：插在落点（`posAtCoords`）；拖入的 `.md` 交给 CodeMirror（插入它的文字）；文件夹不接，提示用导入。
-- **插入**：上传完成后在原位置插入 `![[link]]`：位置随之后的输入映射（`StateField` 里的位置经每次改动的 `mapPos`）；输入法组合中经 `controls.whenComposed` 等组合结束。编辑器已换了正文（`onClose`）、已关闭或已只读（失锁）的，不插入，提示一句，附件留在面板里；`link` 为 null（没有扩展名）的不插入，提示一句；上传失败时提示，不插入任何东西。几个文件一起时依次插入，各占一行。
-- 上传放在页面下（`parent` 是这一页），名称照 3.4。
+- `load` 的扩展，模块在 `editor/loaded/`（13.2 第 23 条）。以 `Prec.highest` 的 `domEventHandlers` 先于 CodeMirror 接住：处理器答 true 时 CodeMirror 自己 `preventDefault`，也不再运行它的处理器（它会把文件当文本读进来）。只读时一概不接。
+- **粘贴**：剪贴板里有文件、没有 `text/plain` 时接（Excel、Word、Numbers 复制的单元格同时有文字：粘贴文字；Chromium"复制图片"是 `text/html` 加文件：上传；只有 `text/uri-list` 的：CodeMirror）。有文件时先删掉选区（`delete.cut`）。没有名字、或叫 `image.png` 之类（浏览器给剪贴板里的图片的名字）的图片取名 `Pasted image 20261008123045.png`（照 Obsidian：本地时间到秒；扩展名按类型，`jpeg` 写 `jpg`、`x-icon` 写 `ico`，其余取子类型；不随界面语言，它是存下来的内容）。
+- **拖入**：只接外来的、带文件的拖动（`carriesFiles`：页内开始的不是）。`dragover` 设 `copy`；能改的正文画出落点（`dropCursor` 在 `readOnlyAs(false)` 里，只读与离开时的锁住都没有）。`drop`：没有读得到的文件、也没有文件夹的，与全是页面文件（`.md`）的，交给 CodeMirror（前者插它的文字，后者读进 `.md` 的文字）；落点 `posAtCoords`，取不到时用光标。
+- **文件夹**：粘贴、拖入的文件夹不上传，编辑器说用导入（拖入的 `.md` 交给 CodeMirror 时也说）。
+- **插入**：每次粘贴或拖入在 `StateField` 里开一个插入点（按编号），随每次改动 `mapPos(at, -1)`（在那里输入的文字在嵌入之后）。各文件经 store 并行上传，每个一创建就接住拒绝；按原次序等答复，各自 `whenComposed` 之后插入：第一个不加换行，其后的各占一行。光标正好在插入点时移到嵌入之后（`selection.map(changes, 1)`，同步的粘贴就是这样；只在它确实要移时才带 `selection`，否则别处打开的补全会被关掉）；同一位置上之后才开的插入点也移到它之后（后粘贴的在后面）。失败、被拒、取消的什么也不插，它的行说原因。
+- **不插入，说一句**：没有扩展名（`link` 为 null）；编辑器换了正文（`onClose`）、已经走了、或只读（失锁）。这一批最后一个答复之后一次说出：每种原因一句，名称按文档的语言列出（`Intl.ListFormat`），这次拖入的文件夹那句并在前面，一句一行；`tell` 取代之前所说，每次粘贴或拖入先清空（`tell("")`，不播报）。同时在途的几批，后完成的那批所说的留下。
+- **在途**：整批是一项 `controls.going` 的工作，离开编辑等它（5.3）。
 
-### 5.3 上下文与编辑栏
+### 5.3 上下文、上传行与离开
 
-- `EditorContext.uploadAsset(file, name)`：经 `AssetStore` 上传到这一页，答出 `Asset`；进度与取消在 store 里，编辑栏（`page-editing-bar.tsx`）显示这一页的在途上传（名称、百分比、取消），文档里不加任何东西。
-- `EditorControls.whenComposed(act, drop)`：同 `SourceEditorHandle` 的，编辑器先关闭时调用 `drop`。
+- `EditorContext.uploadAsset(file)`：`PageEdit` 经 `AssetStore.upload` 上传到这一页（`fromEditor`、实例的上限），交回 `assets.uploaded(upload)`：答复时以附件结算，失败、被拒时以原因拒绝，取消时以 `AbortError` 拒绝；不等列表读到它。
+- **上传行**：编辑器发起的显示在编辑栏（或失锁的横幅）与编辑器之间（`EditorUploads`），附件一节编辑时不显示它们；附件一节自己的上传仍在那里；阅读时附件一节全列（编辑器发起而失败的，留到移除）。行带着焦点离开时交给 `back()`：失锁时给横幅、冲突时给冲突的标题、否则给编辑器（与 `UnsavedGuard` 的"留下"同一个）。编辑器说的显示在行下面，编辑器自己用 `EditorView.announce` 播报。
+- **离开**：Done、Mod+E 先等编辑器在途的工作（`working`、`settled`，等待期间开始的也等），再等之后开始的组合结束，又有工作就再等；编辑栏说"等上传完成后退出编辑…"（等待时它在失败、忙、保存之前，开始等待时已有的失败由离开自己的保存重试，等待中新的失败照常显示），Done `aria-busy`。之后照常锁住、保存、结束；等待期间编辑器说的随 `Left.told` 带到阅读视图，与闲置退出的说明同一处、描述"编辑"。等待中失锁或撞上冲突就不走，交给横幅或冲突的面板（"保留我的"之后不自动离开）；冲突开着时按 Done 不等。焦点：仍在原处、在编辑之内（编辑器、编辑栏、上传行）或无处时，离开的保存照用户要的发出（撞上冲突焦点进它的标题），失败时焦点回到编辑之处（`back()`）；用户其间去了编辑之外（侧栏、页标题）时，保存安静、不移焦点。离开之后阅读视图把焦点给"编辑"（M5/P5 设计 3.7）；等过上传的（`Left.waited`），只在焦点随编辑一起没了时才给。行上可以取消上传。闲置退出遇到在途的上传不走（上传不是闲置），之后再试。站内跳转不等（推后，第 9.3 节）。
+- `EditorControls.whenComposed(act, drop)` 同 `SourceEditorHandle` 的，编辑器已走或先走时调用 `drop`；`tell(text)`；`going(work)`。
 
 ### 5.4 输入法清单
 
-- 加一步（总设计第 9 节）："组合输入时上传完成：嵌入在 `compositionend` 之后插在映射后的位置，组合出的文字完好"。M4–M6 的清单等负责人执行，M7 的这一步随同一份清单。
+- 第 19 步：组合输入时上传完成，嵌入在 `compositionend` 之后插在映射后的位置，组合出的文字完好。
+- 第 20 步：浏览器里"复制图片"、访达（资源管理器）里复制文件与文件夹之后粘贴，拖入之后取消，三种浏览器各一遍（剪贴板里是否带 `text/plain`、落点的竖线是否消失）。
 
 ## 6. 实施步骤
 
@@ -287,3 +298,21 @@ P4 把附件交到读者与写者手里：面板与上传、阅读视图里的�
   - 隐藏的标签页到时不重读，显示时读；
   - 出错的音视频换新时不自动播放；
   - 提示前可见的空格、复制带上提示、右栏不显示大小、被拒之后的恢复，推后到 M12 的打磨。
+
+### 9.3 C：编辑器的粘贴与拖入（2026-10-09，合并 `008f81f`）
+
+- 提交：
+  - 实施：编辑器的扩展与页面的接线 `8516f51`、e2e AS2 `0038cf9`；负对照的补测 `5a30791`。
+  - 审查的修复 `497743f`、`e27c2e0`、`76c1796`；修复核对的修复 `f927a57`、`c2e5482`、`b4a42ba`、`3ea928c`、`709408f`、`4ce3f54`、`9033772`、`dfcf179`。合并 `008f81f`。
+- 审查：三位审查者（Opus）。高 1 条（插入之后光标留在嵌入前面）；中 3 条（上传途中离开编辑，嵌入与告知都丢；后面的先失败时未处理的拒绝；组合的接线没有测试）；中低十余条，都已处理。修复核对七轮：第一轮中低 7 条（等待离开的几条路径、插入关掉补全），第二轮中低 1 条（等待中撞上冲突），第三轮起都在离开之后焦点的去向上（中低 1、低 2、中 1、中低 1、低 1），第七轮只剩一处测试缺口。逐条见[审查记录](reviews/P4C-paste-upload-review.md)。
+- 审查之后改了的设计（第 5 节已改写）：
+  - 插入：光标正好在插入点时移到嵌入之后，只在它确实要移时才带 `selection`；同一位置之后才开的插入点移到嵌入之后；每个上传一创建就接住拒绝。
+  - 告知：一批最后一个答复之后说一次，名称按文档的语言列出，文件夹那句并在前面，一句一行；每次粘贴或拖入先清空。文案"已上传，未插入"。
+  - 离开：Done、Mod+E 先等编辑器在途的上传与其后的组合（`EditorControls.going`、`SourceEditorHandle.working`/`settled`），编辑栏说在等；等待中失锁或撞上冲突就不走；等待期间说的带到阅读视图；闲置退出遇到在途的上传不走。焦点按"编辑之内与之外"决定（第 5.3 节）。
+  - 上传行按来源分开（`Upload.fromEditor`）；正文至少 20rem 高（文字下方的空白也是正文，拖得进）；能改的正文有落点的光标（随只读开关）；文件夹粘贴也说用导入。
+- 反向对照：本机实施之后 33 个、审查的修复之后 28 个（另 e2e 1 个）、七轮修复核对之后 20、12、4、3、4、2、1 个，存活的都由补测抓到或判为等价；细节见审查记录。
+- CI：分支的 `5a30791`、`76c1796`、`c2e5482`、`b4a42ba`、`dfcf179` 上 server、web、image、e2e 全部通过（其间的几次提交被下一次推送取消）。本机的 Docker 可用，e2e 的附件、页面与协作故事每轮本机也跑过；全量 e2e 里 S1 一次因本机测试库连接数满、C4（page）一次多一个 404（既有的竞态），各自重跑通过。
+- 交给 P5、P6 与 M12 的：
+  1. M12：推后的几项记进[打磨移交](../M12-release/handoffs/M5-polish.md)第 18 项（站内跳转时上传在途、同步被拒时选区已删、撤销粒度、失败行重播、几处呈现与播报、离开之后没有"编辑"时的焦点）。
+  2. 负责人：[输入法清单](../M4-pages/manual/P6-ime-checklist.md)第 19、20 步（组合中上传完成；浏览器"复制图片"、访达复制文件与文件夹、拖入之后取消，三种浏览器）。
+- 负责人可以改判的取舍：等待离开时撞上冲突、"保留我的"之后不自动离开；同时在途的几批，后完成的那批所说的留下；站内跳转不等上传；粘贴里有 `text/plain` 就当文字（待第 20 步的结果）。

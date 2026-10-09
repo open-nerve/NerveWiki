@@ -231,12 +231,12 @@
   - 删除页面的确认对话框把子树里的附件一起数上。
 - **上传的服务**（13.2 第 1、6 条）：经会话的客户端调用，不另起一条路：openapi-fetch 支持按请求换 `fetch` 与 `bodySerializer`，上传的 service 交一个由 `XMLHttpRequest` 实现的 `fetch`（`fetch` 没有上传进度）：交给中间件的请求不带正文，传输发闭包里的 `FormData`、用中间件交来的 `Request` 的头，传输经 `AppStores` 注入；中间件 401 之后续期重发（`options.fetch(copy)`）时照样带新令牌重传，换代的核对不变。换代时 store 中止在途的上传。vitest 注入假的传输。导入的 zip 用同一个。字段按 `parent_id`、`name`、`file` 的次序加进 `FormData`。
 - **发送之前先查**：`InstanceInfo` 加 `asset_max_bytes`、`import_max_bytes`（13.1 第 15 条："服务端可配的量经接口告诉前端"）。网页在发送之前查角色、大小、名称合法、不是 `.md`、按标题键（`lib/title-key.ts`，近似服务端的大小写折叠）在树的兄弟与同一父节点下在途的上传之间取空着的名字，并照导入的规则替换名称里禁止的字符（`#[]|^:` 等换成 `_`，NFC）；上传途中的传输错误显示通用的"上传失败"。有在途的上传时挂上 `beforeunload`（13.2 第 21 条）。
-- **粘贴、拖入上传**（编辑器扩展，`load` 的扩展，模块在 `editor/loaded/`，13.2 第 23 条）：
-  - `EditorContext` 加 `uploadAsset(file, name, parent)`，`EditorControls` 加 `whenComposed`（原来只在 `SourceEditorHandle` 上）。
-  - 扩展先于 CodeMirror 自己的拖放接住带文件的拖入（它会把文件当文本读进来）：拖入插在落点（`posAtCoords`），粘贴插在选区；上传完成后在原位置（随之后的输入映射）插入 `![[link]]`，输入法组合中等 `whenComposed`。
-  - 剪贴板里同时有文字与图片的（Excel、Word、Numbers 复制的单元格）粘贴文字；只有文件、没有 `text/plain` 时才上传。剪贴板里没有文件名的图片取名为 "Pasted image 20261008123045.png"（照 Obsidian 的写法，不随界面语言：它是存下来的内容）。
-  - 状态栏显示进度与取消，文档里不加任何东西；上传完成时编辑器已换了正文、已关闭或已只读（失锁）的，不插入，提示一句，附件留在面板里。上传失败时提示，不插入任何东西。
-  - 拖入的 `.md` 交给 CodeMirror（插入它的文字）；文件夹不接，提示用导入。
+- **粘贴、拖入上传**（编辑器扩展 `assetUpload`，`load` 的扩展，模块在 `editor/loaded/`，13.2 第 23 条；细节在 [P4 文档](04-P4-assets-web.md)第 5 节）：
+  - `EditorContext` 加 `uploadAsset(file)`（经 `AssetStore` 上传到这一页，答出附件）；`EditorControls` 加 `whenComposed`（原来只在 `SourceEditorHandle` 上）、`tell`（编辑器说一句，显示并播报）、`going`（离开编辑要等的工作）。
+  - 扩展先于 CodeMirror 自己的拖放接住带文件的拖入（它会把文件当文本读进来）：拖入插在落点（`posAtCoords`，能改的正文有落点的光标），粘贴插在选区；上传完成后在原位置（随之后的输入映射）插入 `![[link]]`，输入法组合中等 `whenComposed`；光标正好在那里时移到嵌入之后，同一位置后粘贴的在后面。
+  - 剪贴板里同时有文字与图片的（Excel、Word、Numbers 复制的单元格）粘贴文字；有文件、没有 `text/plain` 时才上传。剪贴板里没有文件名的图片取名为 "Pasted image 20261008123045.png"（照 Obsidian 的写法，不随界面语言：它是存下来的内容）。
+  - 编辑器发起的上传行显示在编辑器旁（进度与取消），文档里不加任何东西。上传完成时编辑器已换了正文、已关闭或已只读（失锁）的，与没有扩展名的，不插入，这一批答完之后说一句（"已上传，未插入"），附件留在面板里；上传失败时它的行说原因，不插入任何东西。Done、Mod+E 先等编辑器在途的上传落定、嵌入插完再保存离开，等待中失锁或撞上冲突就不走；闲置退出遇到在途的上传不走。
+  - 拖入的 `.md` 交给 CodeMirror（插入它的文字）；文件夹不接，提示用导入（粘贴的也是）。
 - **页面之外的拖入**：文件拖到拖放区之外时浏览器会打开它、离开应用，所以文档上对文件的 `dragover`、`drop` 一律 `preventDefault`（编辑器里的除外）；拖到阅读视图上上传到这一页；页内开始的拖动（Chromium 拖图片时带着文件）不上传。
 - **阅读视图**（阅读视图的交互增强 `assets`，12.4 这一行加上 M7；细节在 [P4 文档](04-P4-assets-web.md)第 4 节）：
   - 指向附件的链接：内联类型在新标签页打开（`rel=noopener`，带看不见的"在新标签页打开"提示），其余由服务端写 `download`，直接下载、不开新标签页（Firefox 会留下空白的标签页）；链接之后按界面语言写大小。点图片不做什么（与 Obsidian 的默认相同）。
@@ -465,7 +465,7 @@ Nerve 的文件里程碑还没开始，只有计划与平台的做法（只读�
   - TR2：导入 zip，进度、报告，导入的页与附件，链接解析。
   - TR3：导出再导入得到同样的树。
   - TR4：恶意的 zip 被拒绝或跳过，报告写明。
-- **人工**：输入法清单加一步（P4）："组合输入时上传完成：嵌入在 `compositionend` 之后插在映射后的位置，组合出的文字完好"。
+- **人工**：输入法清单加两步（P4，第 19、20 步）："组合输入时上传完成：嵌入在 `compositionend` 之后插在映射后的位置，组合出的文字完好"；浏览器"复制图片"、访达复制文件与文件夹之后粘贴，拖入之后取消（三种浏览器）。
 
 ## 10. 风险
 
@@ -516,7 +516,7 @@ M7 开工时负责人确认进入 M7（2026-10-08："可以了"）。下面是�
 | P1 | 平台：存储与流式路由 | 已完成 | [01-P1-storage-stream.md](01-P1-storage-stream.md) | [P1 审查](reviews/P1-storage-stream-review.md) |
 | P2 | 附件（服务端） | 已完成 | [02-P2-assets-server.md](02-P2-assets-server.md) | [P2 审查](reviews/P2-assets-server-review.md) |
 | P3 | 附件与链接（服务端） | 已完成（A 合并 `5138ad6`，B 合并 `f3bf03c`） | [03-P3-assets-links.md](03-P3-assets-links.md) | [P3A 审查](reviews/P3A-assets-links-review.md)、[P3B 审查](reviews/P3B-render-review.md) |
-| P4 | 附件（前端） | 进行中（A 合并 `e44b417`，B 合并 `32e175c`） | [04-P4-assets-web.md](04-P4-assets-web.md) | [P4A 审查](reviews/P4A-assets-web-review.md)、[P4B 审查](reviews/P4B-assets-web-review.md) |
+| P4 | 附件（前端） | 已完成（A 合并 `e44b417`，B 合并 `32e175c`，C 合并 `008f81f`） | [04-P4-assets-web.md](04-P4-assets-web.md) | [P4A 审查](reviews/P4A-assets-web-review.md)、[P4B 审查](reviews/P4B-assets-web-review.md)、[P4C 审查](reviews/P4C-paste-upload-review.md) |
 | P5 | 导出 | 未开始 | — | — |
 | P6 | 导入 | 未开始 | — | — |
 
@@ -535,3 +535,4 @@ M7 开工时负责人确认进入 M7（2026-10-08："可以了"）。下面是�
 | 2026-10-09 | P4 开工：分 A（面板与上传）、B（阅读视图里的附件）、C（编辑器的粘贴与拖入）三部分合并；B 里服务端给不内联的附件的链接写 `download`，`PropertyLink` 加 `inline`、`PageProperties` 加 `assets_expire_at`（右栏的附件链接分开打开与下载、到期重读，P3B 审查 C12、C13）；面板不加载缩略图 | [04-P4-assets-web.md](04-P4-assets-web.md) 第 0、2、4 节 |
 | 2026-10-09 | P4A 完成：上传的请求不带正文、表单由注入的传输发出；上传答复之后的树读合并（`wrote()`），被重叠的读交回最近发出的那次；列表重读读已有的页数、接页按 id 去重，成功的上传读到它所在的页；附件在树读完、显示之后再读；名称按 `titleKey` 比较；拖放保护不管编辑器，页内开始的拖动不上传；附件一节的播报、复制的退路与焦点的交接 | P4A 的实施、审查与四轮修复核对：[04-P4-assets-web.md](04-P4-assets-web.md) 第 3、9 节、[P4A 审查](reviews/P4A-assets-web-review.md) |
 | 2026-10-09 | P4B 完成：不内联的附件的链接写 `download`（12 字节）；`PropertyLink.inline`、`PageProperties.assets_expire_at`；阅读视图的增强 `assets`：新标签页与提示、链接之后按语言写大小、加载失败的重读、保留音视频与就地重签（开始了的都签，重签途中的失败不理会，一分钟之内不再签，地址没给时按视图的过期重读；出错的不保留）；到期重读从读到的时刻算（`stamped`、`eachRead`），快一小时以上的时钟每 30 秒，隐藏的标签页显示时读；4.8 的阅读视图随之改写 | P4B 的实施、审查与五轮修复核对：[04-P4-assets-web.md](04-P4-assets-web.md) 第 4、9 节、[P4B 审查](reviews/P4B-assets-web-review.md) |
+| 2026-10-09 | P4C 完成，P4 完成：编辑器的扩展 `assetUpload`（粘贴、拖入的文件上传，插入 `![[link]]`；光标移到嵌入之后，同一位置后粘贴的在后面；每个上传一创建就接住拒绝；没插入的一批答完说一次）；`EditorContext.uploadAsset`、`EditorControls.whenComposed`、`tell`、`going`，`SourceEditorHandle.working`、`settled`；Done、Mod+E 先等编辑器的上传与其后的组合，等待中失锁或撞上冲突就不走，等待期间说的带到阅读视图，离开之后的焦点按“编辑之内与之外”；上传行按来源分开（`Upload.fromEditor`）；正文至少 20rem 高；能改的正文有落点的光标；4.8 的粘贴、拖入随之改写 | P4C 的实施、审查与七轮修复核对：[04-P4-assets-web.md](04-P4-assets-web.md) 第 5、9 节、[P4C 审查](reviews/P4C-paste-upload-review.md) |
