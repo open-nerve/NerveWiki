@@ -239,7 +239,11 @@ func TestARunningJobStops(t *testing.T) {
 			j := w.queued(nil)
 			blocking(w, func() { w.rows.set(j.ID, tt.stop) })
 
-			if err := w.export().Run(context.Background(), j.ID); err != nil {
+			// The job's context would end it, timed out, were the heartbeat
+			// not to stop it first.
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			if err := w.export().Run(ctx, j.ID); err != nil {
 				t.Fatal(err)
 			}
 

@@ -8,11 +8,13 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 	"time"
+	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
 )
@@ -305,5 +307,30 @@ func TestTheQueuesLimitIsTheConfigured(t *testing.T) {
 	status, answer := ask(t, tm.contract, http.MethodPost, tm.base+"/api/v0/notebooks/"+nb+"/exports", tm.tokens["alice"], `{}`)
 	if status != http.StatusServiceUnavailable || problemCode(t, answer) != "server_busy" {
 		t.Errorf("export = %d %s, want 503 server_busy", status, answer)
+	}
+}
+
+// An attachment whose file is not in the store is reported, file_missing
+// (the asset module's ErrNoFile, through the composition root), the
+// export succeeding without it; meta.json leaves it out.
+func TestAnExportReportsAnAttachmentWithoutItsFile(t *testing.T) {
+	tm := newAcmeTeam(t, "", "")
+	nb := tm.openNotebook(t, "alice", "Eng")
+	tm.upload(t, "alice", nb, "", "kept.txt", "kept")
+	gone := tm.upload(t, "alice", nb, "", "gone.txt", "gone")
+	if err := os.Remove(fileOf(t, tm.storage, uuid.MustParse(gone.Blob))); err != nil {
+		t.Fatal(err)
+	}
+	j := tm.endedJob(t, "alice", tm.startExport(t, "alice", nb, "").ID)
+	if j.State != "succeeded" || j.Report == nil || j.Report.Counts["attachments"] != 1 || j.Report.Counts["missing"] != 1 ||
+		len(j.Problems) != 1 || j.Problems[0].Path != "gone.txt" || j.Problems[0].Code != "file_missing" {
+		t.Fatalf("the export = %+v, want succeeded, gone.txt missing", j)
+	}
+	names, entries, _ := tm.archiveAt(t, j.Download.URL)
+	if !slices.Equal(names, []string{"Eng/kept.txt", "Eng/.nerve/meta.json"}) || entries["Eng/kept.txt"].data != "kept" {
+		t.Errorf("the archive = %q, want kept.txt and meta.json", names)
+	}
+	if paths, _ := metaPaths(t, entries["Eng/.nerve/meta.json"].data); !slices.Equal(paths, []string{"kept.txt"}) {
+		t.Errorf("meta.json lists %q, want kept.txt", paths)
 	}
 }
