@@ -31,7 +31,8 @@ const signedAgainAfter = 60_000;
  * - An image, or an audio or a video not signed anew, that fails to load,
  *   or an address not given, once the view's addresses have expired reads
  *   the view again: once for each expiry of the page's, as one that fails
- *   for another reason would fail as much in the view read again.
+ *   for another reason would fail as much in the view read again. One
+ *   that fails while it is being signed anew is let be.
  * - An audio or a video started is kept as the HTML is replaced, which
  *   the signatures do each hour and others' writes at any time: the next
  *   HTML of the page has it in place of its own of the same attachment,
@@ -47,7 +48,7 @@ export function assets(): Enhancement {
   let kept: Kept | undefined;
   // The expiry each page's view was read again for, as its attachments failed to load.
   const reloadedFor = new Map<string, string>();
-  const signing: Signing = { pending: new WeakSet(), at: new WeakMap() };
+  const signing: Signing = { pending: new WeakMap(), at: new WeakMap() };
   return (container, context) => {
     adopt(container, kept?.page === context.page ? kept : undefined, signing);
     kept = undefined;
@@ -65,8 +66,10 @@ export function assets(): Enhancement {
       if (!(element instanceof HTMLElement) || !element.matches(`img.nw-asset, ${media}`)) {
         return;
       }
-      if (element instanceof HTMLMediaElement && signing.pending.has(element)) {
-        // A load of its old address meanwhile: the new one comes.
+      const failing = element instanceof HTMLMediaElement ? signing.pending.get(element) : undefined;
+      if (failing !== undefined) {
+        // A load of its old address meanwhile, which lost its place: the new one comes.
+        failing.reloaded = true;
         return;
       }
       if (
@@ -104,8 +107,11 @@ export function assets(): Enhancement {
 /** Kept is what a view had started as its HTML was replaced: its page, its audios and videos by key, the focused one. */
 type Kept = { page: string; media: Map<string, HTMLMediaElement>; focused: HTMLMediaElement | undefined };
 
-/** Signing is the audios and videos signed anew: those under way, and when each was last. */
-type Signing = { pending: WeakSet<HTMLMediaElement>; at: WeakMap<HTMLMediaElement, number> };
+/** Signing is the audios and videos signed anew: those under way, as each failed, and when each was last. */
+type Signing = { pending: WeakMap<HTMLMediaElement, Failing>; at: WeakMap<HTMLMediaElement, number> };
+
+/** Failing is where an audio or a video being signed anew failed, and whether it was loaded again since. */
+type Failing = { place: Place; reloaded: boolean };
 
 /**
  * newTab has the links of container to attachments the browser shows open in a tab of their own, saying so unseen:
@@ -160,8 +166,9 @@ function adopt(container: HTMLElement, kept: Kept | undefined, signing: Signing)
       continue;
     }
     if (old.error !== null) {
-      putAt(element, placeOf(old));
-      if (signing.pending.has(old) && !old.paused) {
+      const failing = signing.pending.get(old);
+      putAt(element, goingOn(old, failing));
+      if (failing !== undefined && !old.paused) {
         void playOn(element);
       }
       if (old === kept.focused) {
@@ -244,8 +251,8 @@ async function signAnew(
   if (id === undefined) {
     return;
   }
-  const failed = placeOf(element);
-  signing.pending.add(element);
+  const failing: Failing = { place: placeOf(element), reloaded: false };
+  signing.pending.set(element, failing);
   let address: string;
   try {
     address = await assetAddress(id);
@@ -262,8 +269,7 @@ async function signAnew(
   }
   signing.at.set(element, Date.now());
   // Before the new address's load has it paused, at the start, at the default rate.
-  const now = placeOf(element);
-  const place = element.error === null ? { ...now, at: failed.at, rate: failed.rate } : now;
+  const place = goingOn(element, failing);
   element.setAttribute("src", address);
   if (!place.playing) {
     element.preload = "metadata";
@@ -285,6 +291,17 @@ async function playOn(element: HTMLMediaElement): Promise<void> {
 
 /** Place is where an audio or a video was: its position, its rate, its volume, whether muted, and whether it played. */
 type Place = { at: number; rate: number; volume: number; muted: boolean; playing: boolean };
+
+/**
+ * goingOn is where element goes on from, as it is; but at the position and rate it failed at, being signed anew
+ * (failing), when it was loaded again since, which lost them: its error cleared, or set again by the load's failure.
+ */
+function goingOn(element: HTMLMediaElement, failing: Failing | undefined): Place {
+  const now = placeOf(element);
+  return failing !== undefined && (failing.reloaded || element.error === null)
+    ? { ...now, at: failing.place.at, rate: failing.place.rate }
+    : now;
+}
 
 /** placeOf is where element is. */
 function placeOf(element: HTMLMediaElement): Place {

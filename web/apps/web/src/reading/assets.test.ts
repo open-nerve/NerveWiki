@@ -102,8 +102,22 @@ function broken(element: HTMLMediaElement | undefined) {
   Object.assign(element ?? {}, { error: { code: 2 } });
 }
 
-/** fail has element fail to load, as the browser tells it: an error event, which does not bubble. */
+/**
+ * loadAgain has element, as play has it, loaded again as Chromium's controls do one that failed as it is played: at the
+ * start, at the default rate, playing, without its error.
+ */
+function loadAgain(element: HTMLMediaElement | undefined) {
+  Object.assign(element ?? {}, { error: null, currentTime: 0, playbackRate: 1, paused: false });
+}
+
+/**
+ * fail has element fail to load, as the browser tells it: a media's error set (one play has), then an error event,
+ * which does not bubble.
+ */
 function fail(element: Element | null | undefined) {
+  if (element instanceof HTMLMediaElement && Object.getOwnPropertyDescriptor(element, "error") !== undefined) {
+    broken(element);
+  }
   element?.dispatchEvent(new Event("error"));
 }
 
@@ -465,6 +479,15 @@ test("one is signed anew again a minute after it was, kept or not", async () => 
   undo?.();
 });
 
+test("one whose address is not given before the addresses expire reads nothing", async () => {
+  const { container, context, reloads, enhancement } = setUp(`<p>${audio("a1")}</p>`, { expires: later });
+  const undo = enhancement(container, { ...context(), assetAddress: () => Promise.reject(new Error("503")) });
+  fail(play(container.querySelector("audio"), 30));
+  await settle();
+  expect(reloads).toEqual([]);
+  undo?.();
+});
+
 test("one whose address is not given reads the view again, once its addresses expired, and is signed anew as it fails next", async () => {
   const html = `<p>${audio("a1")} ${audio("a2")}</p>`;
   const { container, context, reloads, enhancement } = setUp(html);
@@ -489,50 +512,75 @@ test("one whose address is not given reads the view again, once its addresses ex
   fail(sound);
   await settle();
   expect([asked, reloads]).toEqual([["a2", "a1"], ["p"]]);
+  // Refused again, for the same expiry: read once.
+  fail(sound);
+  await settle();
+  expect([asked, reloads]).toEqual([["a2", "a1", "a1"], ["p"]]);
   refuse = false;
   fail(sound);
   await settle();
-  expect(asked).toEqual(["a2", "a1", "a1"]);
+  expect(asked).toEqual(["a2", "a1", "a1", "a1"]);
   expect(sound?.getAttribute("src")).toBe("/api/v0/assets/a1/content?anew=1");
   undo?.();
 });
 
-test("one being signed anew: loaded again meanwhile, it keeps where it failed; replaced meanwhile, its new one plays on", async () => {
-  const played = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
+test("one being signed anew goes on where it failed, loaded again meanwhile or not; replaced meanwhile, its new one too", async () => {
+  // A new one's play refused: it stays where it was put.
+  const played = vi
+    .spyOn(HTMLMediaElement.prototype, "play")
+    .mockRejectedValue(new DOMException("no", "NotAllowedError"));
   onTestFinished(() => played.mockRestore());
-  const html = `<p>${audio("a1")} ${audio("a2")}</p>`;
+  const html = `<p>${["a1", "a2", "a3", "a4", "a5"].map((id) => audio(id)).join(" ")}</p>`;
   const { container, context, reloads, enhancement } = setUp(html);
   const answers: ((signed: string) => void)[] = [];
   const signing = () => ({ ...context(), assetAddress: () => new Promise<string>((resolve) => answers.push(resolve)) });
   let undo = enhancement(container, signing());
   const shown = container.querySelectorAll("audio");
-  const reloaded = play(shown[0], 30);
-  reloaded.playbackRate = 1.5;
-  const replaced = play(shown[1], 40);
-  broken(reloaded);
+  const [loading, reloaded, replaced, pausing, faster] = [0, 1, 2, 3, 4].map((at) => play(shown[at], 30 + at));
+  for (const element of [loading, reloaded, replaced, pausing, faster]) {
+    if (element !== undefined) {
+      element.playbackRate = 1.5;
+    }
+    fail(element);
+  }
+  // Each signed anew as the test answers: a1 to a5 in order.
+  const answer = (at: number) => answers[at]?.(`/api/v0/assets/a${(at + 1).toString()}/content?anew=1`);
+  loadAgain(loading);
+  // Its old address fails again before the new one comes.
+  loadAgain(reloaded);
   fail(reloaded);
-  // Chromium's controls, played as it failed, load it again: its old address fails again.
-  Object.assign(reloaded, { error: null, currentTime: 0, playbackRate: 1, paused: false });
-  fail(reloaded);
-  expect(answers).toHaveLength(1);
-  expect(reloads).toEqual([]);
-  answers.shift()?.("/api/v0/assets/a1/content?anew=1");
-  await settle();
-  expect([reloaded.currentTime, reloaded.playbackRate, reloaded.paused]).toEqual([30, 1.5, false]);
-
-  broken(replaced);
+  loadAgain(replaced);
   fail(replaced);
+  Object.assign(pausing ?? {}, { paused: true });
+  // Not loaded again: the rate the reader chose meanwhile.
+  if (faster !== undefined) {
+    faster.playbackRate = 2;
+  }
+  expect([answers.length, reloads]).toEqual([5, []]);
+  for (const at of [0, 1, 4]) {
+    answer(at);
+  }
+  await settle();
+  expect([loading, reloaded].map((element) => [element?.currentTime, element?.playbackRate, element?.paused])).toEqual([
+    [30, 1.5, false],
+    [31, 1.5, false],
+  ]);
+  expect([faster?.currentTime, faster?.playbackRate]).toEqual([34, 2]);
+
   undo?.();
   container.innerHTML = html;
   undo = enhancement(container, signing());
-  const fresh = container.querySelectorAll("audio")[1];
-  expect(fresh).not.toBe(replaced);
-  expect(fresh?.currentTime).toBe(40);
+  const fresh = [...container.querySelectorAll("audio")];
+  expect([...fresh.slice(0, 2), fresh[4]]).toEqual([loading, reloaded, faster]);
+  expect([fresh[2] === replaced, fresh[3] === pausing]).toEqual([false, false]);
+  expect([fresh[2]?.currentTime, fresh[2]?.playbackRate, fresh[3]?.currentTime]).toEqual([32, 1.5, 33]);
   await settle();
-  expect(played.mock.contexts).toEqual([fresh]);
-  answers.shift()?.("/api/v0/assets/a2/content?anew=1");
+  // Playing as it was being signed, the new one plays on; paused meanwhile, it does not.
+  expect(played.mock.contexts).toEqual([fresh[2]]);
+  answer(2);
+  answer(3);
   await settle();
-  expect(replaced.getAttribute("src")).toContain("e=1");
+  expect(replaced?.getAttribute("src")).toContain("e=1");
   undo?.();
 });
 
