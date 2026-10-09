@@ -26,8 +26,9 @@ const probePrefix = ".probe-"
 
 // freeCheck is how many bytes a file's writes go between two reads of the
 // free space: a file far larger than an attachment, an export's archive,
-// stops once fewer than the store's minimum of bytes are free, and an
-// attachment of the default largest (asset.max_bytes) is never read again.
+// stops once fewer than the store's minimum of bytes are free, and the
+// upload of an attachment of the default largest size (asset.max_bytes)
+// never reads it again.
 const freeCheck = 64 << 20
 
 // Local is the store on the local disk (M7/P1 design 3.3): the file at

@@ -32,19 +32,16 @@ func TestTheRescueFailsTheJobsThatNoLongerRun(t *testing.T) {
 	dropped, held := r.job(t, dave, "queued", time.Time{}), r.job(t, r.alice, "queued", time.Time{})
 	r.enqueue(t, inserter, riveradapter.ExportArgs{JobID: held}, &river.InsertOpts{Queue: transfer.QueueExport, MaxAttempts: 1,
 		ScheduledAt: time.Now().Add(time.Hour)})
+	ran := r.rescues(t)
 	r.enqueue(t, inserter, rescueNow{}, nil)
-	ctx := context.Background()
-	for deadline := time.Now().Add(15 * time.Second); ; time.Sleep(20 * time.Millisecond) {
-		var done bool
-		if err := r.pool.QueryRow(ctx, "SELECT EXISTS (SELECT FROM river_job WHERE kind = $1 AND state = 'completed')", riveradapter.RescueKind).
-			Scan(&done); err != nil {
-			t.Fatal(err)
-		}
-		if done {
-			break
-		}
+	for deadline := time.Now().Add(15 * time.Second); r.rescues(t) == ran; time.Sleep(20 * time.Millisecond) {
 		if time.Now().After(deadline) {
-			t.Fatal("the rescue did not run")
+			var states []string
+			if err := r.pool.QueryRow(context.Background(), "SELECT coalesce(array_agg(state || ' ' || errors::text), '{}') FROM river_job WHERE kind = $1",
+				riveradapter.RescueKind).Scan(&states); err != nil {
+				t.Fatal(err)
+			}
+			t.Fatalf("the rescue did not complete: %v", states)
 		}
 	}
 
@@ -68,6 +65,17 @@ func TestTheRescueFailsTheJobsThatNoLongerRun(t *testing.T) {
 type rescueNow struct{}
 
 func (rescueNow) Kind() string { return riveradapter.RescueKind }
+
+// rescues is how many of the rescue's River jobs completed.
+func (r root) rescues(t *testing.T) int {
+	t.Helper()
+	var n int
+	if err := r.pool.QueryRow(context.Background(), "SELECT count(*) FROM river_job WHERE kind = $1 AND state = 'completed'", riveradapter.RescueKind).
+		Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	return n
+}
 
 // user adds the account name.
 func (r root) user(t *testing.T, name string) uuid.UUID {

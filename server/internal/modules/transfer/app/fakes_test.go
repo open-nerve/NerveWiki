@@ -435,7 +435,6 @@ func (q *queue) Export(_ context.Context, id uuid.UUID) error {
 	return nil
 }
 
-// signer signs an address as its job's id and the hour.
 // signer signs as adapter/mac does, an address's expiry part of its
 // signature: the end of the hour after, or until when that comes first.
 type signer struct{}

@@ -80,7 +80,7 @@ func TestSignExpiresNoLaterThanUntil(t *testing.T) {
 	until := time.Date(2026, 10, 8, 11, 15, 30, 700_000_000, time.UTC)
 	signed := s.Sign(signTime(), signJob(), until)
 	e := signed.Expires.Unix()
-	if !signed.Expires.Equal(until.Truncate(time.Second)) || signed == s.Sign(signTime(), signJob(), later()) {
+	if !signed.Expires.Equal(until.Truncate(time.Second)) || signed.Signature == s.Sign(signTime(), signJob(), later()).Signature {
 		t.Fatalf("Sign() = %+v, want expiring at %v, signed so", signed, until.Truncate(time.Second))
 	}
 	if !s.Valid(until.Add(-time.Second), signJob(), e, signed.Signature) || s.Valid(until, signJob(), e, signed.Signature) {

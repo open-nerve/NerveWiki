@@ -185,6 +185,7 @@ func TestAQueuedJobIsCancelledAtOnce(t *testing.T) {
 	if ok, err := f.store.CancelQueued(ctx, j.ID, at(0), domain.Report{}); !ok || err != nil {
 		t.Fatalf("CancelQueued() = %v, %v", ok, err)
 	}
+	// The table's check keeps cancel_requested_at for a job that started.
 	if got, err := f.store.FindJob(ctx, j.ID); err != nil || got.State != domain.StateCancelled || got.CancelRequested != nil {
 		t.Errorf("FindJob() = %+v, %v; want cancelled, no cancel asked of it running", got, err)
 	}
@@ -471,7 +472,7 @@ func TestThePurgeTakesTheDeletedJobs(t *testing.T) {
 		if err != nil || len(got) != 2 || got[a.ID] != domain.KindExport || got[b.ID] != domain.KindExport {
 			t.Errorf("ExpiredJobs() = %v, %v; want eng's two", got, err)
 		}
-		inner := f.tx.WithinTx(context.Background(), func(other context.Context) error {
+		inner := f.tx.WithinTx(skipping(t), func(other context.Context) error {
 			skipped, err := f.store.ExpiredJobs(other, at(time.Second), 10)
 			if err != nil || len(skipped) != 0 {
 				t.Errorf("another purge's ExpiredJobs() = %v, %v; want the locked rows skipped", skipped, err)

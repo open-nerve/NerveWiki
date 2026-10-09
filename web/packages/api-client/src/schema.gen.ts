@@ -1319,7 +1319,7 @@ export interface paths {
         put?: never;
         /**
          * Cancel a job
-         * @description Cancels the job: a queued one at once, a running one within about a second, its state then cancelled, its report telling what it did; an export's archive is not kept. Its starter and the notebook's admins can cancel it; one not found is transfer.not_found as getTransferJob's; a job that has ended is transfer.not_cancellable. A running job's cancel asked again is the first's.
+         * @description Cancels the job: a queued one at once, a running one at its next heartbeat, within about a second, its state then cancelled, its report telling what it did, an export's archive not kept; a running job that ends first ends as it would have. Its starter and the notebook's admins can cancel it; one not found is transfer.not_found as getTransferJob's; a job that has ended is transfer.not_cancellable. A running job's cancel asked again is the first's.
          */
         post: operations["cancelTransferJob"];
         delete?: never;
@@ -1340,7 +1340,7 @@ export interface paths {
         };
         /**
          * Download an export's archive
-         * @description The export's zip archive, at the address getTransferJob and listTransferJobs sign: anyone who has the address can download it, without a token, until it expires. A path whose id is no uuid is bad_request; otherwise the address is read as the server writes it: the path's id, then the query e and s, in this order, each once, nothing escaped; anything else, a signature that does not match, an address expired, and a job deleted or expired since are not_found, alike. Ranges are answered (206, 416; If-Range by date), and a copy as new as the archive is not sent again (304: If-Modified-Since, or If-None-Match as *, there being no ETag); If-Match and If-Unmodified-Since are ignored, as an address's archive never changes. The downloads count against the instance's limit of requests without a token, by client address. A download still sending when the server shuts down is cut off; one asked for then is server_busy.
+         * @description The export's zip archive, at the address getTransferJob and listTransferJobs sign: anyone who has the address can download it, without a token, until it expires. A path whose id is no uuid is bad_request; otherwise the address is read as the server writes it: the path's id, then the query e and s, in this order, each once, nothing escaped; anything else, a signature that does not match, an address expired, and a job deleted or expired since are not_found, alike. Ranges are answered (206, 416; If-Range by date), and a copy as new as the archive is not sent again (304: If-Modified-Since when no If-None-Match is sent, or If-None-Match as *, there being no ETag); If-Match and If-Unmodified-Since are ignored, as an address's archive never changes. The downloads count against the instance's limit of requests without a token, by client address. A download still sending when the server shuts down is cut off; one asked for then is server_busy.
          */
         get: operations["downloadExport"];
         put?: never;

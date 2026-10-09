@@ -21,10 +21,12 @@ import (
 // The exports' interleavings (M7/P5 design 3.14; v0.1 design 13.4, item
 // 4), through serve and River: a job's creation and its notebook's
 // deletion, in both orders; a cancel of a running export; an export's
-// snapshot and a save at once. A job is stopped in its snapshot by a lock
-// of asset_blobs, which it reads there, after the pages and their
-// contents' sizes, and which no page's write touches. Each ends on the
-// invariant: no job left running, no archive but a live export's.
+// snapshot and a save at once; an export's success and its notebook's
+// deletion. A job is stopped in its snapshot by a lock of asset_blobs,
+// which it reads there, after the pages and their contents' sizes, and
+// which no page's write touches. Each ends on the invariant: no live job
+// left queued or running, no archive but a succeeded export's, live or
+// deleted with its notebook and not yet purged.
 
 // transferTeam is acme with Eng, open to its members, and alice's page
 // Spec, its content "before", and an attachment under it, once serve's

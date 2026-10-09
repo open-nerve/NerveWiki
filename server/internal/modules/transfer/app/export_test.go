@@ -570,6 +570,7 @@ func TestAHeartbeatThatFindsItsJobGoneIsNoWrite(t *testing.T) {
 	w.logger = l.logger()
 	j := w.queued(nil)
 	w.rows.failBeats = 1 << 30
+	stopped := false
 	w.blobs.open = func(ctx context.Context) io.Reader {
 		for limit := time.Now().Add(10 * time.Second); !strings.Contains(l.String(), "export heartbeat not written") && time.Now().Before(limit); {
 			time.Sleep(time.Millisecond)
@@ -578,11 +579,18 @@ func TestAHeartbeatThatFindsItsJobGoneIsNoWrite(t *testing.T) {
 		w.rows.mu.Lock()
 		w.rows.failBeats = 0
 		w.rows.mu.Unlock()
-		<-ctx.Done()
+		select {
+		case <-ctx.Done():
+			stopped = true
+		case <-time.After(10 * time.Second):
+		}
 		return nil
 	}
 	if err := w.export().Run(context.Background(), j.ID); err != nil {
 		t.Fatal(err)
+	}
+	if !stopped {
+		t.Fatal("the heartbeat did not stop the job it found no longer running")
 	}
 	text := l.String()
 	if strings.Count(text, "export heartbeat not written") != 1 || strings.Contains(text, "export heartbeat written again") ||

@@ -122,6 +122,7 @@ test("TR1 (API): a notebook and a subtree export as vaults, their pages, folders
       )
     ).map((r) => [r.id, Number(r.sort_order)])
   );
+  expect(orders.get(cafe.id)).toBe(0.5);
   expect(meta.nodes.map((n) => n.sort_order)).toEqual(meta.nodes.map((n) => orders.get(n.id)));
   expect(whole.result_bytes).toBe(bytes);
   await expectExported(db, nervewiki.storageDir, whole.id, {

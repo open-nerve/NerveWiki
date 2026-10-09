@@ -228,6 +228,23 @@ func TestDownloadAnswersRanges(t *testing.T) {
 	if res, body := h.fetch(t, http.MethodGet, u, "", "If-Modified-Since", modified); res.StatusCode != http.StatusNotModified || len(body) != 0 {
 		t.Errorf("a copy as new as the file = %d %q, want 304", res.StatusCode, body)
 	}
+	// No ETag: If-None-Match matches as * alone, and sent, it overrides
+	// If-Modified-Since; If-Range is a time.
+	for _, tt := range []struct {
+		name    string
+		headers []string
+		status  int
+		body    string
+	}{
+		{"If-None-Match *", []string{"If-None-Match", "*"}, http.StatusNotModified, ""},
+		{"If-None-Match a tag", []string{"If-None-Match", `"x"`, "If-Modified-Since", modified}, http.StatusOK, "abcdef"},
+		{"If-Range its time", []string{"If-Range", modified, "Range", "bytes=1-2"}, http.StatusPartialContent, "bc"},
+		{"If-Range a tag", []string{"If-Range", `"x"`, "Range", "bytes=1-2"}, http.StatusOK, "abcdef"},
+	} {
+		if res, body := h.fetch(t, http.MethodGet, u, "", tt.headers...); res.StatusCode != tt.status || string(body) != tt.body {
+			t.Errorf("%s = %d %q, want %d %q", tt.name, res.StatusCode, body, tt.status, tt.body)
+		}
+	}
 	if res, body := h.fetch(t, http.MethodHead, u, ""); res.StatusCode != http.StatusOK || len(body) != 0 || res.Header.Get("Content-Length") != "6" {
 		t.Errorf("HEAD = %d %q, length %q; want 200, no body, 6", res.StatusCode, body, res.Header.Get("Content-Length"))
 	}

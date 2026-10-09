@@ -1,8 +1,9 @@
 // Package macadapter signs and checks the addresses of the exports'
 // archives (M7/P5 design 3.11): a reader who may read the notebook gets
 // the address, which any browser then opens without a token for an hour
-// or two. The key is derived from the instance's signing key; it never
-// leaves this package and is never logged (v0.1 design 13.1, item 25).
+// or two, or until the export expires. The key is derived from the
+// instance's signing key; it never leaves this package and is never
+// logged (v0.1 design 13.1, item 25).
 package macadapter
 
 import (

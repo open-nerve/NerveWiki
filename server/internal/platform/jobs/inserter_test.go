@@ -111,7 +111,8 @@ func TestRescueAfterReachesRiver(t *testing.T) {
 
 // The jobs of a kind that River has not finished, a page at a time, past
 // the second: those to work, now or later, those it works and those to
-// try again, not those it completed or discarded, nor another kind's.
+// try again, not those it completed, discarded or cancelled, nor another
+// kind's.
 func TestUnfinishedAreTheJobsRiverHolds(t *testing.T) {
 	t.Parallel()
 	pool := newPool(t, pgtest.NewDatabase(t))
@@ -121,7 +122,7 @@ func TestUnfinishedAreTheJobsRiverHolds(t *testing.T) {
 		t.Fatal(err)
 	}
 	err = pgx.BeginFunc(ctx, pool, func(tx pgx.Tx) error {
-		for n := 1; n <= 8; n++ {
+		for n := 1; n <= 9; n++ {
 			if err := inserter.InsertTx(ctx, tx, longArgs{N: n}, &river.InsertOpts{Queue: "jobs_test_long"}); err != nil {
 				return err
 			}
@@ -138,6 +139,7 @@ func TestUnfinishedAreTheJobsRiverHolds(t *testing.T) {
 		`UPDATE river_job SET state = 'retryable', attempt = 1, attempted_at = now(), scheduled_at = now() + interval '1 hour' WHERE args->>'N' = '5'`,
 		`UPDATE river_job SET state = 'scheduled', scheduled_at = now() + interval '1 hour' WHERE args->>'N' = '6'`,
 		`UPDATE river_job SET state = 'pending' WHERE args->>'N' = '7'`,
+		`UPDATE river_job SET state = 'cancelled', finalized_at = now() WHERE args->>'N' = '9'`,
 	} {
 		if _, err := pool.Exec(ctx, sql); err != nil {
 			t.Fatalf("%s: %v", sql, err)
