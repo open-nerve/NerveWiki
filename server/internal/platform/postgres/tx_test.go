@@ -281,3 +281,86 @@ func TestWithinTxReportsADeadlineDuringAStatement(t *testing.T) {
 		t.Errorf("notes = %d, want 0: the abandoned transaction is rolled back", n)
 	}
 }
+
+// A snapshot sees the database as of its first statement: a row committed
+// meanwhile on another connection is not in what it reads, though it is
+// there once the snapshot ends.
+func TestWithinSnapshotSeesOneMoment(t *testing.T) {
+	pool := newNotes(t, 4)
+	tm := postgres.NewTxManager(pool, commitTimeout)
+	if err := insertNote(context.Background(), pool, 1); err != nil {
+		t.Fatal(err)
+	}
+
+	var before, after int
+	err := tm.WithinSnapshot(context.Background(), func(ctx context.Context) error {
+		if err := postgres.DB(ctx, pool).QueryRow(ctx, "SELECT count(*) FROM notes").Scan(&before); err != nil {
+			return err
+		}
+		if err := insertNote(context.Background(), pool, 2); err != nil { // the pool's own connection, committed
+			return err
+		}
+		return postgres.DB(ctx, pool).QueryRow(ctx, "SELECT count(*) FROM notes").Scan(&after)
+	})
+
+	if err != nil || before != 1 || after != 1 {
+		t.Errorf("WithinSnapshot() = %v, read %d then %d notes; want 1 and 1", err, before, after)
+	}
+	if n := countNotes(t, pool); n != 2 {
+		t.Errorf("%d notes after the snapshot, want 2", n)
+	}
+}
+
+// A snapshot only reads: a write in it fails, and nothing is written.
+func TestWithinSnapshotIsReadOnly(t *testing.T) {
+	pool := newNotes(t, 4)
+	tm := postgres.NewTxManager(pool, commitTimeout)
+
+	err := tm.WithinSnapshot(context.Background(), func(ctx context.Context) error {
+		return insertNote(ctx, pool, 1)
+	})
+
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) || pgErr.Code != "25006" {
+		t.Errorf("WithinSnapshot() = %v, want read_only_sql_transaction (25006)", err)
+	}
+	if n := countNotes(t, pool); n != 0 {
+		t.Errorf("%d notes, want none", n)
+	}
+}
+
+// A snapshot is the outermost transaction: within another, it would not
+// read one moment.
+func TestWithinSnapshotRefusesToNest(t *testing.T) {
+	pool := newNotes(t, 4)
+	tm := postgres.NewTxManager(pool, commitTimeout)
+	ran := false
+
+	err := tm.WithinTx(context.Background(), func(ctx context.Context) error {
+		return tm.WithinSnapshot(ctx, func(context.Context) error { ran = true; return nil })
+	})
+
+	if !errors.Is(err, postgres.ErrNestedSnapshot) || ran {
+		t.Errorf("WithinSnapshot() within WithinTx = %v, ran %v; want ErrNestedSnapshot, not run", err, ran)
+	}
+}
+
+// TxFrom is the transaction the statements of DB run in, and none outside.
+func TestTxFromIsTheTransaction(t *testing.T) {
+	pool := newNotes(t, 4)
+	tm := postgres.NewTxManager(pool, commitTimeout)
+	if _, ok := postgres.TxFrom(context.Background()); ok {
+		t.Error("TxFrom() outside a transaction found one")
+	}
+
+	err := tm.WithinTx(context.Background(), func(ctx context.Context) error {
+		tx, ok := postgres.TxFrom(ctx)
+		if !ok || tx != postgres.DB(ctx, pool) {
+			return fmt.Errorf("TxFrom() = %v, %v; want DB's transaction", tx, ok)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Error(err)
+	}
+}

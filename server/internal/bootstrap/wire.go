@@ -33,6 +33,7 @@ import (
 // the other.
 var (
 	_ shared.TxManager        = (*postgres.TxManager)(nil)
+	_ shared.Snapshots        = (*postgres.TxManager)(nil)
 	_ httpserver.ProblemError = (*shared.Error)(nil)
 )
 

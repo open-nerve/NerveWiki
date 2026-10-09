@@ -35,9 +35,22 @@ func DB(ctx context.Context, pool *pgxpool.Pool) Querier {
 // opened: a statement whose lock must last until the transaction ends checks
 // it, since on the pool the lock would end with the statement.
 func InTx(ctx context.Context) bool {
-	_, ok := ctx.Value(txKey{}).(pgx.Tx)
+	_, ok := TxFrom(ctx)
 	return ok
 }
+
+// TxFrom returns the transaction that TxManager.WithinTx or WithinSnapshot
+// put in ctx, for an adapter that hands it to another library: the
+// transfer module enqueues a job in the request's transaction (M7/P5
+// design 3.3).
+func TxFrom(ctx context.Context) (pgx.Tx, bool) {
+	tx, ok := ctx.Value(txKey{}).(pgx.Tx)
+	return tx, ok
+}
+
+// ErrNestedSnapshot is WithinSnapshot's error when ctx already carries a
+// transaction: what it would read would not be one moment of the database.
+var ErrNestedSnapshot = errors.New("postgres: a snapshot within a transaction")
 
 // TxManager runs functions in transactions on one pool. It satisfies
 // shared.TxManager by structure; the platform does not import shared.
@@ -78,10 +91,28 @@ func (m *TxManager) InTx(ctx context.Context) bool {
 // context fn receives carries the transaction; a nested WithinTx on it runs
 // fn in the same transaction. fn's error, or a panic, rolls it back.
 func (m *TxManager) WithinTx(ctx context.Context, fn func(ctx context.Context) error) error {
-	if _, ok := ctx.Value(txKey{}).(pgx.Tx); ok {
+	if InTx(ctx) {
 		return fn(ctx)
 	}
-	tx, err := m.pool.Begin(ctx)
+	return m.run(ctx, pgx.TxOptions{}, fn)
+}
+
+// WithinSnapshot runs fn in a read-only transaction at REPEATABLE READ: its
+// statements see the database as of its first, whatever commits meanwhile
+// (M7/P5 design 3.3). The context fn receives carries it, as WithinTx's
+// does; a write in it fails. It ends as WithinTx's does. It must be the
+// outermost transaction: on a ctx that carries one it returns
+// ErrNestedSnapshot.
+func (m *TxManager) WithinSnapshot(ctx context.Context, fn func(ctx context.Context) error) error {
+	if InTx(ctx) {
+		return ErrNestedSnapshot
+	}
+	return m.run(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly}, fn)
+}
+
+// run runs fn in a new transaction of opts, as WithinTx describes.
+func (m *TxManager) run(ctx context.Context, opts pgx.TxOptions, fn func(ctx context.Context) error) error {
+	tx, err := m.pool.BeginTx(ctx, opts)
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}

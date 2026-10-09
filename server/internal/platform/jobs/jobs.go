@@ -1,6 +1,8 @@
 // Package jobs runs the modules' background jobs on River (M1/P4 design
 // 3.3): the server's client, which works the jobs and enqueues the periodic
-// ones. It imports River and pgx, and no other platform package.
+// ones, and the insert-only client, with which a request enqueues a job in
+// its own transaction (M7/P5 design 3.2). It imports River and pgx, and no
+// other platform package.
 package jobs
 
 import (
@@ -23,6 +25,11 @@ type Job struct {
 	// Periodic, when set, enqueues the job on its schedule. River's leader
 	// enqueues it, so one runs per schedule however many servers there are.
 	Periodic *river.PeriodicJob
+	// Start, when set, runs once as the runner starts, before River fetches
+	// any job: a module's recovery of what the last process left behind,
+	// such as jobs it recorded as running when it stopped (M7/P5 design
+	// 3.2). Its failure fails the start.
+	Start func(ctx context.Context) error
 }
 
 // Config is the runner's settings.
@@ -30,13 +37,22 @@ type Config struct {
 	// ShutdownTimeout is how long Stop lets the running jobs finish before
 	// it cancels their contexts: jobs.shutdown_timeout.
 	ShutdownTimeout time.Duration
-	Logger          *slog.Logger
+	// Queues are the queues besides River's default, by name, each with its
+	// number of workers: a module's long jobs in a queue of their own do not
+	// hold the periodic ones, nor each other's.
+	Queues map[string]int
+	// RescueAfter is how long a job may run before River takes it for
+	// stuck (RescueStuckJobsAfter) and, its one attempt spent, discards it:
+	// longer than any worker's Timeout. Zero is River's hour.
+	RescueAfter time.Duration
+	Logger      *slog.Logger
 }
 
 const (
-	// maxWorkers is how many jobs run at once. The jobs are periodic and
-	// short: the sessions' cleanup, the edit sessions' and the purge; one
-	// that finds both taken waits for the next free.
+	// maxWorkers is how many jobs of the default queue run at once. Its jobs
+	// are periodic and short: the sessions' cleanup, the edit sessions', the
+	// purge and the modules' sweeps; one that finds both taken waits for the
+	// next free.
 	maxWorkers = 2
 	// cancelGrace is how long Stop waits, once ShutdownTimeout has passed and
 	// the jobs' contexts are cancelled, for the jobs to return.
@@ -54,6 +70,8 @@ type Runner struct {
 	client          client
 	logger          *slog.Logger
 	shutdownTimeout time.Duration
+	// starts are the jobs' Start, run before the client's.
+	starts []func(ctx context.Context) error
 
 	started bool
 	// release cancels the context River started with, once Stop has
@@ -65,6 +83,7 @@ type Runner struct {
 func New(pool *pgxpool.Pool, cfg Config, jobs []Job) (*Runner, error) {
 	workers := river.NewWorkers()
 	var periodic []*river.PeriodicJob
+	var starts []func(ctx context.Context) error
 	for _, j := range jobs {
 		if err := j.Add(workers); err != nil {
 			return nil, fmt.Errorf("register a job: %w", err)
@@ -72,12 +91,23 @@ func New(pool *pgxpool.Pool, cfg Config, jobs []Job) (*Runner, error) {
 		if j.Periodic != nil {
 			periodic = append(periodic, j.Periodic)
 		}
+		if j.Start != nil {
+			starts = append(starts, j.Start)
+		}
+	}
+	queues := map[string]river.QueueConfig{river.QueueDefault: {MaxWorkers: maxWorkers}}
+	for name, n := range cfg.Queues {
+		if _, ok := queues[name]; ok {
+			return nil, fmt.Errorf("create the jobs client: the queue %q is River's default", name)
+		}
+		queues[name] = river.QueueConfig{MaxWorkers: n}
 	}
 	c, err := river.NewClient(riverpgxv5.New(pool), &river.Config{
-		Logger:       cfg.Logger,
-		Queues:       map[string]river.QueueConfig{river.QueueDefault: {MaxWorkers: maxWorkers}},
-		Workers:      workers,
-		PeriodicJobs: periodic,
+		Logger:               cfg.Logger,
+		Queues:               queues,
+		Workers:              workers,
+		PeriodicJobs:         periodic,
+		RescueStuckJobsAfter: cfg.RescueAfter,
 		// Stopping lets the running jobs finish for this long, then cancels
 		// their contexts.
 		SoftStopTimeout: cfg.ShutdownTimeout,
@@ -85,7 +115,9 @@ func New(pool *pgxpool.Pool, cfg Config, jobs []Job) (*Runner, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create the jobs client: %w", err)
 	}
-	return newRunner(c, cfg), nil
+	r := newRunner(c, cfg)
+	r.starts = starts
+	return r, nil
 }
 
 func newRunner(c client, cfg Config) *Runner {
@@ -102,8 +134,16 @@ func newRunner(c client, cfg Config) *Runner {
 // cancelled just as River's Start returns still cancels the context River
 // runs with: interrupting a start under way cannot avoid that window.
 //
+// The jobs' Start run first, in their order, under ctx: the first failure
+// fails the start, the client not started.
+//
 // Call Start once; call Stop after Start has returned.
 func (r *Runner) Start(ctx context.Context) error {
+	for _, start := range r.starts {
+		if err := start(ctx); err != nil {
+			return fmt.Errorf("start the jobs: %w", err)
+		}
+	}
 	running, release := context.WithCancel(context.WithoutCancel(ctx))
 	unwatch := context.AfterFunc(ctx, release)
 	err := r.client.Start(running)
