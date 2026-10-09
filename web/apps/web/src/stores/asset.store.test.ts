@@ -424,8 +424,10 @@ describe("AssetStore's uploads, as they fail and go on", () => {
     add(guide.id, "a.png", "b.png", "c.png");
     await store.load(guide.id);
     const listing = service.list.getMockImplementation();
+    let failed = 0;
     service.list.mockImplementation(async (notebook, parent, cursor) => {
       if (cursor !== undefined) {
+        failed += 1;
         throw new TypeError("offline");
       }
       return (await listing?.(notebook, parent, cursor)) ?? { data: [], next_cursor: null };
@@ -440,6 +442,7 @@ describe("AssetStore's uploads, as they fail and go on", () => {
 
     expect(store.uploads).toEqual([]);
     expect(asked).toEqual([guide.id]);
+    expect(failed).toBe(1);
   });
 
   test("an attachment its list, read whole, does not have was lost meanwhile: it does not show", async () => {

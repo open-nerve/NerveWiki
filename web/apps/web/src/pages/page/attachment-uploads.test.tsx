@@ -6,6 +6,7 @@ import { attachments, dropped, nodes, picker, rows, transfers } from "../../test
 import { json, notebookJSON, problem } from "../../test/fakes";
 import { assetJSON, assetNode, guide, notes, pagePath, pageServer } from "../../test/page-server";
 import { renderApp } from "../../test/render";
+import { AssetStore } from "../../stores/asset.store";
 import { formOf } from "../../test/transfer";
 
 // The uploads of a page's attachments' section, chosen or dropped, and the drops the page keeps out of the tab
@@ -101,6 +102,46 @@ test.each<[string, "en" | "zh-CN", RegExp, RegExp]>([
     expect(lists.some((names) => joins.test(names))).toBe(true);
   }
 );
+
+test("uploads that leave in turns apart are said apart, each naming its own", async () => {
+  const server = pageServer({ nodes });
+  server.uploadsHeld = true;
+  renderApp(pagePath(guide.id), server.app);
+  const section = await attachments();
+
+  for (const name of ["a.png", "b.png"]) {
+    choose(section, [new File(["x"], name)]);
+    // oxlint-disable-next-line no-await-in-loop -- one upload after the other
+    await within(section).findByRole("list", { name: "Uploads" });
+    act(() => server.release());
+    // oxlint-disable-next-line no-await-in-loop -- one upload after the other
+    await waitFor(() => expect(notice(section)).toBe(`Uploaded: ${name}.`));
+  }
+});
+
+test("an upload that leaves as others begin, in one turn, is said with them", async () => {
+  const server = pageServer({ nodes });
+  server.uploadsHeld = true;
+  // As a.png leaves, b.png and c.png are chosen: in its turn.
+  const dismiss = AssetStore.prototype.dismiss;
+  let section: HTMLElement | undefined;
+  const leaving = vi.spyOn(AssetStore.prototype, "dismiss").mockImplementation(function (this: AssetStore, upload) {
+    dismiss.call(this, upload);
+    if (upload.name === "a.png" && section !== undefined) {
+      choose(section, [new File(["b"], "b.png"), new File(["c"], "c.png")]);
+    }
+  });
+  onTestFinished(() => leaving.mockRestore());
+  renderApp(pagePath(guide.id), server.app);
+  section = await attachments();
+
+  choose(section, [new File(["a"], "a.png")]);
+  await within(section).findByRole("list", { name: "Uploads" });
+  act(() => server.release());
+
+  await waitFor(() => expect(notice(section)).toBe("Uploaded: a.png. Uploading files: 2."));
+  act(() => server.release());
+});
 
 test("Cancel stops the upload: its request is aborted, nothing is made, nothing said uploaded, the focus goes back to Upload", async () => {
   const user = userEvent.setup();
@@ -405,15 +446,30 @@ test("a drag that started in the page, an image of it, is no file to upload; one
   await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
   expect(uploaded(server.sent)).toEqual([]);
 
-  // Another, cancelled as its source left the document: neither its end nor a drop reaches the document.
+  // Another, cancelled as its source left the document: neither its end nor a drop reaches the document. The
+  // pointer moved with its button down (Firefox, as a drag begins) is the drag still; with none, it is over.
   fireEvent.dragStart(view, { dataTransfer: dropped([]) });
+  fireEvent.pointerMove(document.body, { buttons: 1 });
   const still = dropped([]);
   fireEvent.dragOver(section, { dataTransfer: still });
   expect(still.dropEffect).toBe("none");
-  fireEvent.pointerMove(document.body);
+  fireEvent.pointerMove(document.body, { buttons: 0 });
   const outside = dropped([]);
   expect(fireEvent.dragOver(section, { dataTransfer: outside })).toBe(false);
   expect(outside.dropEffect).toBe("copy");
+
+  // Its end, a press, or a drop anywhere end it as well.
+  for (const end of [
+    () => fireEvent.dragEnd(view),
+    () => fireEvent.pointerDown(document.body),
+    () => fireEvent.drop(document.body, { dataTransfer: dropped([]) }),
+  ]) {
+    fireEvent.dragStart(view, { dataTransfer: dropped([]) });
+    end();
+    const next = dropped([]);
+    fireEvent.dragOver(section, { dataTransfer: next });
+    expect(next.dropEffect).toBe("copy");
+  }
 });
 
 test("a file dropped where nothing takes it stays out of the tab; in an editor, the editor takes it", async () => {

@@ -5,8 +5,9 @@ import { useEffect, useState, type DragEvent } from "react";
  * reading view dragged carries a file in Chromium, which is no file from
  * outside. FileDropGuard keeps it. A drag's end does not reach the
  * document where its source left it meanwhile, nor a drop where it was
- * cancelled; the pointer's next move or press, which no drag has, ends it
- * then. The page's data on the drag stays the browser's own: written to,
+ * cancelled; the pointer's next press, or move with no button down, which
+ * no drag has, ends it then (Firefox moves the pointer, its button down,
+ * as a drag begins). The page's data on the drag stays the browser's own: written to,
  * it would not be (WebKit), and it would go along to other tabs.
  */
 const pageDrag = { on: false };
@@ -67,6 +68,11 @@ export function FileDropGuard() {
     const ended = () => {
       pageDrag.on = false;
     };
+    const moved = (event: PointerEvent) => {
+      if (event.buttons === 0) {
+        ended();
+      }
+    };
     const onDragOver = (event: globalThis.DragEvent) => {
       if (hasFiles(event.dataTransfer) && !event.defaultPrevented && !editable(event.target)) {
         event.preventDefault();
@@ -81,13 +87,14 @@ export function FileDropGuard() {
       }
       ended();
     };
-    const ends = ["dragend", "pointermove", "pointerdown"] as const;
+    const ends = ["dragend", "pointerdown"] as const;
     document.addEventListener("dragstart", onDragStart);
     document.addEventListener("dragover", onDragOver);
     document.addEventListener("drop", onDrop);
     for (const type of ends) {
       document.addEventListener(type, ended, { capture: true, passive: true });
     }
+    document.addEventListener("pointermove", moved, { capture: true, passive: true });
     return () => {
       document.removeEventListener("dragstart", onDragStart);
       document.removeEventListener("dragover", onDragOver);
@@ -95,6 +102,7 @@ export function FileDropGuard() {
       for (const type of ends) {
         document.removeEventListener(type, ended, true);
       }
+      document.removeEventListener("pointermove", moved, true);
       ended();
     };
   }, []);

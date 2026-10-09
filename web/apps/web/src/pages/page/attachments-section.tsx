@@ -336,11 +336,11 @@ export function AttachmentDrop({
 /**
  * useNotice is what the section says unseen: say has it say text; the
  * uploads under parent that begin, here or dropped elsewhere, are said,
- * and those that leave uploaded, those that leave in one turn together in
- * one sentence: each leaves by an action of its own, and React would show
- * only the last of several said in a turn. The same text said again
- * changes the region all the same, a space after it, or it would not be
- * read again.
+ * and those that leave uploaded. What leaves and begins in one turn is
+ * said once the turn is over, together: each upload leaves by an action
+ * of its own, and React would show only the last of several said in a
+ * turn. The same text said again changes the region all the same, a space
+ * after it, or it would not be read again.
  */
 function useNotice(assets: AssetStore, parent: string | null) {
   const t = useT();
@@ -348,7 +348,7 @@ function useNotice(assets: AssetStore, parent: string | null) {
   const [said, setSaid] = useState({ text: "", again: false });
   useEffect(() => {
     const names = new Intl.ListFormat(preferences.locale, { type: "conjunction" });
-    // What the turn says, as it is so far: those left uploaded, else how many began.
+    // What the turn says, as it is so far: those left uploaded, and how many began.
     let left: string[] = [];
     let begun = 0;
     let text: string | undefined;
@@ -362,11 +362,12 @@ function useNotice(assets: AssetStore, parent: string | null) {
           }
         }
         begun += now.filter((upload) => !before.includes(upload) && upload.failure === undefined).length;
-        if (left.length > 0) {
-          text = t("asset.uploaded", { names: names.format(left) });
-        } else if (begun > 0) {
-          text = t("asset.uploading", { count: begun });
-        }
+        const uploaded = left.length > 0 ? t("asset.uploaded", { names: names.format(left) }) : undefined;
+        const uploading = begun > 0 ? t("asset.uploading", { count: begun }) : undefined;
+        text =
+          uploaded !== undefined && uploading !== undefined
+            ? t("page.sentences", { first: uploaded, second: uploading })
+            : (uploaded ?? uploading);
         turn ??= setTimeout(() => {
           if (text !== undefined) {
             setSaid(saying(text));
