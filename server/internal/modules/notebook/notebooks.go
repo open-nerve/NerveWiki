@@ -29,6 +29,10 @@ type Notebooks interface {
 	// LockByID is ShareByID FOR NO KEY UPDATE: a write that changes the
 	// notebook's tree of pages.
 	LockByID(ctx context.Context, id uuid.UUID) (bool, error)
+	// NameOf is the name of the notebook not deleted with id, unlocked, in
+	// the caller's transaction when it has one, and whether there is one:
+	// an export names its archive after it (M7/P5 design 3.9).
+	NameOf(ctx context.Context, id uuid.UUID) (string, bool, error)
 }
 
 // NewNotebooks returns Notebooks over pool alone: bootstrap builds it
@@ -47,6 +51,14 @@ func (n notebooks) WorkspaceOf(ctx context.Context, id uuid.UUID) (uuid.UUID, bo
 		return uuid.UUID{}, false, err
 	}
 	return nb.WorkspaceID, true, nil
+}
+
+func (n notebooks) NameOf(ctx context.Context, id uuid.UUID) (string, bool, error) {
+	nb, err := n.store.FindNotebook(ctx, id)
+	if ok, err := found(err); !ok || err != nil {
+		return "", false, err
+	}
+	return nb.Name, true, nil
 }
 
 func (n notebooks) ShareByID(ctx context.Context, id uuid.UUID) (bool, error) {

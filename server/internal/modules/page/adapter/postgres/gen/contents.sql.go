@@ -37,6 +37,70 @@ func (q *Queries) ContentMeta(ctx context.Context, nodeID uuid.UUID) (ContentMet
 	return i, err
 }
 
+const contentSizes = `-- name: ContentSizes :many
+SELECT node_id, byte_size, updated_at FROM page_contents
+WHERE node_id = ANY($1::uuid[]) AND deleted_at IS NULL
+`
+
+type ContentSizesRow struct {
+	NodeID    uuid.UUID
+	ByteSize  int32
+	UpdatedAt time.Time
+}
+
+// The size and the time of the last write of each content not deleted of the pages: an export tells the pages
+// without content (M7/P5 design 3.8). The array grows with the notebook: the store plans it with its arguments.
+func (q *Queries) ContentSizes(ctx context.Context, nodeIds []uuid.UUID) ([]ContentSizesRow, error) {
+	rows, err := q.db.Query(ctx, contentSizes, nodeIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ContentSizesRow
+	for rows.Next() {
+		var i ContentSizesRow
+		if err := rows.Scan(&i.NodeID, &i.ByteSize, &i.UpdatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const contents = `-- name: Contents :many
+SELECT node_id, content FROM page_contents
+WHERE node_id = ANY($1::uuid[]) AND deleted_at IS NULL
+`
+
+type ContentsRow struct {
+	NodeID  uuid.UUID
+	Content string
+}
+
+// The contents not deleted of the pages: an export's batch.
+func (q *Queries) Contents(ctx context.Context, nodeIds []uuid.UUID) ([]ContentsRow, error) {
+	rows, err := q.db.Query(ctx, contents, nodeIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ContentsRow
+	for rows.Next() {
+		var i ContentsRow
+		if err := rows.Scan(&i.NodeID, &i.Content); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const createContent = `-- name: CreateContent :exec
 INSERT INTO page_contents (node_id, content, revision, content_hash, byte_size, updated_by_id, updated_at)
 VALUES ($1, $2, $3, $4, $5,

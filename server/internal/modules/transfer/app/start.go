@@ -1,0 +1,159 @@
+package app
+
+import (
+	"context"
+	"errors"
+	"log/slog"
+	"uuid"
+
+	"github.com/open-nerve/NerveWiki/server/internal/modules/transfer/domain"
+	"github.com/open-nerve/NerveWiki/server/internal/shared"
+)
+
+// StartExport starts the export of a notebook, or of a page and its
+// subtree (M7/P5 design 3.7): it writes the job's row, queued, and
+// enqueues its River job in the same transaction.
+type StartExport struct {
+	d StartDeps
+}
+
+// StartDeps are what StartExport needs.
+type StartDeps struct {
+	Tx         shared.TxManager
+	Authorizer shared.Authorizer
+	Workspaces Workspaces
+	Notebooks  Notebooks
+	Nodes      Nodes
+	Rows       Rows
+	Archives   Archives
+	Queue      Queue
+	Clock      Clock
+	Logger     *slog.Logger
+	// MaxQueued is transfer.max_queued, MinFree storage.min_free_bytes.
+	MaxQueued int
+	MinFree   int64
+}
+
+// NewStartExport returns the use case.
+func NewStartExport(d StartDeps) *StartExport {
+	return &StartExport{d: d}
+}
+
+// Run starts the export of the notebook notebookID, or of the page root
+// and its subtree when root is set, for the caller from client. Under the
+// workspace's row and the notebook's, FOR SHARE, it decides
+// transfer.export (notebook.not_found); root is a page of the notebook not
+// deleted (page.not_found); then, the jobs' creations one at a time, the
+// jobs queued or running are fewer than MaxQueued (503 server_busy), the
+// caller has no export queued or running in the notebook (transfer.busy),
+// and the store has room (507 storage_full).
+func (s *StartExport) Run(ctx context.Context, notebookID uuid.UUID, root *uuid.UUID, client domain.Client) (domain.Job, error) {
+	actor, err := shared.RequireActor(ctx)
+	if err != nil {
+		return domain.Job{}, err
+	}
+	workspaceID, ok, err := s.d.Notebooks.WorkspaceOf(ctx, notebookID)
+	switch {
+	case err != nil:
+		return domain.Job{}, err
+	case !ok:
+		return domain.Job{}, domain.ErrNotebookNotFound
+	}
+	var job domain.Job
+	err = s.d.Tx.WithinTx(ctx, func(ctx context.Context) error {
+		if err := s.lock(ctx, actor, workspaceID, notebookID); err != nil {
+			return err
+		}
+		name, err := s.nameOf(ctx, notebookID, root)
+		if err != nil {
+			return err
+		}
+		if err := s.admit(ctx, notebookID, actor.UserID); err != nil {
+			return err
+		}
+		job = domain.Job{ID: uuid.NewV7(), NotebookID: notebookID, RootID: root, Kind: domain.KindExport, State: domain.StateQueued, Name: name,
+			CreatedBy: actor.UserID, Client: client, CreatedAt: s.d.Clock.Now()}
+		if err := s.d.Rows.CreateJob(ctx, job); err != nil {
+			return err
+		}
+		return s.d.Queue.Export(ctx, job.ID)
+	})
+	if err != nil {
+		return domain.Job{}, err
+	}
+	s.d.Logger.InfoContext(ctx, "export queued", slog.String("job_id", job.ID.String()), slog.String("notebook_id", notebookID.String()),
+		slog.String("user_id", actor.UserID.String()), slog.String("client", string(client)))
+	return job, nil
+}
+
+// lock locks the workspace's row and the notebook's FOR SHARE, then
+// decides transfer.export: a deletion committed meanwhile leaves none.
+func (s *StartExport) lock(ctx context.Context, actor shared.Actor, workspaceID, notebookID uuid.UUID) error {
+	if ok, err := s.d.Workspaces.ShareByID(ctx, workspaceID); err != nil || !ok {
+		return orNotFound(err)
+	}
+	if ok, err := s.d.Notebooks.ShareByID(ctx, notebookID); err != nil || !ok {
+		return orNotFound(err)
+	}
+	_, err := s.d.Authorizer.Authorize(ctx, actor, domain.ActionExport, shared.Target{WorkspaceID: workspaceID, NotebookID: notebookID})
+	if errors.Is(err, shared.ErrNotVisible) {
+		return domain.ErrNotebookNotFound
+	}
+	return err
+}
+
+// orNotFound is err, or notebook.not_found when there is none.
+func orNotFound(err error) error {
+	if err != nil {
+		return err
+	}
+	return domain.ErrNotebookNotFound
+}
+
+// nameOf is the name of what is exported: the page root's, or the
+// notebook's.
+func (s *StartExport) nameOf(ctx context.Context, notebookID uuid.UUID, root *uuid.UUID) (string, error) {
+	if root != nil {
+		name, ok, err := s.d.Nodes.Page(ctx, notebookID, *root)
+		if err == nil && !ok {
+			err = domain.ErrRootNotFound
+		}
+		return name, err
+	}
+	name, ok, err := s.d.Notebooks.NameOf(ctx, notebookID)
+	if err == nil && !ok {
+		err = domain.ErrNotebookNotFound
+	}
+	return name, err
+}
+
+// admit admits one more job, the jobs' creations one at a time: fewer
+// than MaxQueued wait or run, none of the caller's exports of the
+// notebook, and room in the store.
+func (s *StartExport) admit(ctx context.Context, notebookID, userID uuid.UUID) error {
+	if err := s.d.Rows.LockQueue(ctx); err != nil {
+		return err
+	}
+	active, err := s.d.Rows.CountActive(ctx)
+	if err != nil {
+		return err
+	}
+	if active >= s.d.MaxQueued {
+		return domain.ErrQueueFull
+	}
+	busy, err := s.d.Rows.Exporting(ctx, notebookID, userID)
+	if err != nil {
+		return err
+	}
+	if busy {
+		return domain.ErrBusy
+	}
+	free, err := s.d.Archives.Free(ctx)
+	if err != nil {
+		return err
+	}
+	if free < s.d.MinFree {
+		return domain.ErrStorageFull
+	}
+	return nil
+}

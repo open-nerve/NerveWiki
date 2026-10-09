@@ -47,9 +47,9 @@ type Names interface {
 // Nodes reads an export's scope, in the caller's snapshot: bootstrap
 // adapts the page module's ExportNodes.
 type Nodes interface {
-	// Page is the page not deleted id of notebookID; false for none, or
-	// for an attachment.
-	Page(ctx context.Context, notebookID, id uuid.UUID) (domain.Named, bool, error)
+	// Page is the name of the page not deleted id of notebookID; false for
+	// none, or for an attachment.
+	Page(ctx context.Context, notebookID, id uuid.UUID) (string, bool, error)
 	// Scope is the nodes not deleted of notebookID, or of the page root and
 	// its subtree when root is set.
 	Scope(ctx context.Context, notebookID uuid.UUID, root *uuid.UUID) ([]domain.Node, error)
@@ -65,17 +65,12 @@ type Linked interface {
 	Linked(ctx context.Context, notebookID uuid.UUID, sources, targets []uuid.UUID) ([]uuid.UUID, error)
 }
 
-// Blob is an attachment's file as an export reads it.
-type Blob struct {
-	ID uuid.UUID
-}
-
 // Blobs reads the attachments' files: bootstrap hands it the asset
 // module's.
 type Blobs interface {
-	// Of is the file of each attachment of nodeIDs not deleted, of
+	// Of is the blob of each attachment of nodeIDs not deleted, of
 	// notebookID, by node, in the caller's snapshot.
-	Of(ctx context.Context, notebookID uuid.UUID, nodeIDs []uuid.UUID) (map[uuid.UUID]Blob, error)
+	Of(ctx context.Context, notebookID uuid.UUID, nodeIDs []uuid.UUID) (map[uuid.UUID]uuid.UUID, error)
 	// Open opens the blob's file, or answers ErrFileMissing.
 	Open(ctx context.Context, blobID uuid.UUID) (io.ReadCloser, error)
 }
@@ -90,13 +85,13 @@ type Archives interface {
 	Create(ctx context.Context, id uuid.UUID) (Archive, error)
 	// Open opens the export id's archive, or answers ErrFileMissing.
 	Open(ctx context.Context, id uuid.UUID) (ArchiveFile, error)
-	// Delete removes the export id's archive; there being none is
-	// success.
-	Delete(ctx context.Context, id uuid.UUID) error
-	// List calls each with the id of every export's archive last modified
-	// before before; a file of the area that is no archive's is left, and
-	// logged.
-	List(ctx context.Context, before time.Time, each func(id uuid.UUID) error) error
+	// Delete removes the archive of the job id of kind; there being none
+	// is success.
+	Delete(ctx context.Context, kind domain.Kind, id uuid.UUID) error
+	// List calls each with the id of every archive of kind's jobs last
+	// modified before before; a file of the area that is no archive's is
+	// left, and logged.
+	List(ctx context.Context, kind domain.Kind, before time.Time, each func(id uuid.UUID) error) error
 	// Free tells the free bytes of the store's disk.
 	Free(ctx context.Context) (int64, error)
 }
@@ -105,8 +100,9 @@ type Archives interface {
 // once it commits. A write that runs out of room is
 // domain.ErrStorageFull.
 type Archive interface {
-	// Add writes the file at path, under the archive's root folder,
-	// modified then, as it is when stored, deflated otherwise.
+	// Add writes the file at path, modified then, as it is when stored,
+	// deflated otherwise; a folder's entry when r is nil, path ending in
+	// "/".
 	Add(path string, modified time.Time, stored bool, r io.Reader) error
 	// Commit finishes the archive and keeps it, and tells its bytes. On
 	// failure the file may be there all the same: an orphan, which the
