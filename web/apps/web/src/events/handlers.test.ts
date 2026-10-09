@@ -99,10 +99,18 @@ test("a pages event that changed the tree reads, the tree once read and shown, t
     } as unknown as Refresher,
   };
 
+  vi.useFakeTimers();
+  onTestFinished(() => void vi.useRealTimers());
   eventHandlers.get("pages")?.({ workspace_id: "w1", notebook_id: "n1", tree: true, pages: [] }, handled);
   reads.get(unstable_serialize(["pages", "n1"]))?.();
   expect(mutate.mock.calls).toEqual([[["pages", "n1"]]]);
-  await vi.waitFor(() => expect(mutate).toHaveBeenCalledTimes(2));
+  // The tree read, React shows it first: a page gone unmounts with its list, which is not read.
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(mutate).toHaveBeenCalledTimes(1);
+  await vi.advanceTimersByTimeAsync(0);
+  expect(mutate).toHaveBeenCalledTimes(2);
 
   const matches = (mutate.mock.calls[1] as unknown[])[0] as (key: unknown) => boolean;
   expect(

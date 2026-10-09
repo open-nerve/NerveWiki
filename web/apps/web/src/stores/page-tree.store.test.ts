@@ -262,11 +262,13 @@ test("a page created is in the tree once create answers, an upload's answer over
 
   const creating = pages.create(guide.id, "Untitled");
   await new Promise((resolve) => setTimeout(resolve, 0));
-  // The upload answers as the creation's read is out: the read after it has the page.
-  state.nodes = [guide, install, linux, created, notes];
-  state.writes.delete("list");
+  // The upload answers as the creation's read is out; the read after it, which has the page, answers last.
+  const after = held<TreeNode[]>();
+  state.writes.set("list", () => after.promise);
   const wrote = pages.wrote();
   before.resolve([guide, install, linux, notes]);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  after.resolve([guide, install, linux, created, notes]);
   const id = await creating;
 
   expect(id).toBe(created.id);
@@ -291,6 +293,27 @@ test("uploads answered as a read after one is out have one more read after it, n
 
   expect(sent).toEqual(["list plans", "list plans"]);
   expect(pages.siblingsOf(guide.id).map((node) => node.name)).toEqual(["Install", "a.png"]);
+});
+
+test("each upload's answer settles once the first tree read begun after it has: one answered as a read is out waits for the next", async () => {
+  const { pages, state } = store();
+  await pages.load();
+  const one = held<TreeNode[]>();
+  state.writes.set("list", () => one.promise);
+  const settled: string[] = [];
+
+  const first = pages.wrote().then(() => settled.push("first"));
+  const two = held<TreeNode[]>();
+  state.writes.set("list", () => two.promise);
+  const second = pages.wrote().then(() => settled.push("second"));
+  one.resolve([guide, install, linux, notes]);
+  await first;
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  expect(settled).toEqual(["first"]);
+  two.resolve([guide, install, linux, notes]);
+  await second;
+  expect(settled).toEqual(["first", "second"]);
 });
 
 test("a page deleted, or deleted already, sends its subtree's shells to its parent", async () => {

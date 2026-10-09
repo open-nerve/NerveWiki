@@ -91,7 +91,7 @@ const UploadRow = observer(function UploadRow({
           failed
             ? t("asset.dismissUpload", { name: upload.name })
             : finishing
-              ? undefined
+              ? t("asset.finishingUpload", { name: upload.name })
               : t("asset.cancelUpload", { name: upload.name })
         }
         aria-disabled={finishing || undefined}

@@ -148,13 +148,16 @@ test("Copy embed copies the wikilink the server writes for it, its path where an
   await expect(navigator.clipboard.readText()).resolves.toBe("![[Guide/photo.png]]");
 });
 
-test("where the page has no clipboard, Copy embed shows the embed in a field, focused, to copy by hand", async () => {
+test("a copy the clipboard refuses once the menu has closed shows the embed in a field, focused, to copy by hand", async () => {
   const user = userEvent.setup();
   renderApp(pagePath(guide.id), pageServer({ nodes }).app);
   const section = await attachments();
+  // Refused as a browser's prompt answers: after the menu gave the focus back to its button.
   const writing = vi
     .spyOn(navigator.clipboard, "writeText")
-    .mockRejectedValue(new DOMException("denied", "NotAllowedError"));
+    .mockImplementation(
+      () => new Promise((_, reject) => setTimeout(() => reject(new DOMException("denied", "NotAllowedError")), 30))
+    );
   onTestFinished(() => writing.mockRestore());
 
   await user.click(await actionsOf(section, "data.zip"));
@@ -167,15 +170,67 @@ test("where the page has no clipboard, Copy embed shows the embed in a field, fo
   expect(section.textContent).toContain("The embed could not be copied: select it here and copy it yourself.");
 });
 
-test("a row drags as its embed, into the editor; one no link leads to does not drag", async () => {
+test.each(["mouse", "keyboard"])(
+  "where the page has no clipboard at all (served without HTTPS), the field takes the focus from the menu, chosen by the %s",
+  async (by) => {
+    const user = userEvent.setup();
+    renderApp(pagePath(guide.id), pageServer({ nodes }).app);
+    const section = await attachments();
+    const clipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
+    onTestFinished(() => {
+      if (clipboard === undefined) {
+        Reflect.deleteProperty(navigator, "clipboard");
+      } else {
+        Object.defineProperty(navigator, "clipboard", clipboard);
+      }
+    });
+
+    if (by === "mouse") {
+      await user.click(await actionsOf(section, "data.zip"));
+      await user.click(screen.getByRole("menuitem", { name: "Copy embed" }));
+    } else {
+      (await actionsOf(section, "data.zip")).focus();
+      await user.keyboard("{Enter}");
+      screen.getByRole("menuitem", { name: "Copy embed" }).focus();
+      await user.keyboard("{Enter}");
+    }
+
+    const field = await within(section).findByRole("textbox", { name: "Embed of data.zip" });
+    // Where the focus is once the menu has closed and given it.
+    await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+    expect(document.activeElement).toBe(field);
+  }
+);
+
+test("an embed copied again is said again", async () => {
+  const user = userEvent.setup();
   renderApp(pagePath(guide.id), pageServer({ nodes }).app);
   const section = await attachments();
-  const row = (await within(section).findByRole("link", { name: "data.zip" })).closest("li") as HTMLElement;
+  const said = () => section.querySelector("[aria-live=polite]")?.textContent;
+
+  await user.click(await actionsOf(section, "photo.png"));
+  await user.click(screen.getByRole("menuitem", { name: "Copy embed" }));
+  await waitFor(() => expect(said()).toBe("Embed copied: paste it into a page."));
+  await user.click(await actionsOf(section, "data.zip"));
+  await user.click(screen.getByRole("menuitem", { name: "Copy embed" }));
+
+  // The region changes, or a screen reader would not read it again.
+  await waitFor(() => expect(said()).not.toBe("Embed copied: paste it into a page."));
+  expect(said()?.trim()).toBe("Embed copied: paste it into a page.");
+});
+
+test("a row drags as its embed, by the link the server writes, into the editor; one no link leads to does not drag", async () => {
+  renderApp(pagePath(guide.id), pageServer({ nodes: [...nodes, assetNode(77, "Photo.png", notes)] }).app);
+  const section = await attachments();
+  const row = (await within(section).findByRole("link", { name: "photo.png (opens in a new tab)" })).closest(
+    "li"
+  ) as HTMLElement;
   const data = new Map<string, string>();
 
   fireEvent.dragStart(row, { dataTransfer: { setData: (type: string, value: string) => data.set(type, value) } });
 
-  expect(data.get("text/plain")).toBe("![[data.zip]]");
+  expect(data.get("text/plain")).toBe("![[Guide/photo.png]]");
   expect(row.getAttribute("draggable")).toBe("true");
   expect(within(section).getByRole("link", { name: "README" }).closest("li")?.getAttribute("draggable")).toBeNull();
 });
@@ -246,12 +301,13 @@ test("a rename refused stays in the dialog: an empty stem unsent, its extension 
 test("Move to… offers every page and the top level; its own parent sends nothing; a refusal stays in the dialog", async () => {
   const user = userEvent.setup();
   const moves: string[] = [];
+  let refusal = problem(409, "page.title_taken");
   const server = pageServer({
     nodes,
     answers: {
       "POST /api/v0/nodes/*/move": () => {
         moves.push("MOVE");
-        return problem(409, "page.title_taken");
+        return refusal;
       },
     },
   });
@@ -284,6 +340,14 @@ test("Move to… offers every page and the top level; its own parent sends nothi
     "A page under the same parent already has this title (titles differ in more than case)."
   );
   expect(moves).toEqual(["MOVE"]);
+  refusal = problem(409, "linking.pages_locked", {
+    locks: [{ page_id: linux.id, user_id: "u-bob", display_name: "Bob" }],
+  });
+  await user.click(within(dialog).getByRole("button", { name: "Move" }));
+
+  await waitFor(() => expect(dialog.textContent).toContain("Bob"));
+  expect(dialog.textContent).toContain("Linux");
+  expect(moves).toEqual(["MOVE", "MOVE"]);
   expect(screen.getByRole("dialog", { name: "Move photo.png" })).toBe(dialog);
 });
 
@@ -303,6 +367,24 @@ test("a move sent takes it out of the list, the focus to the section's title", a
   expect(server.sent).toContain("MOVE photo.png under Notes, after last");
   await waitFor(() => expect(rows(section)).not.toContain("photo.png (opens in a new tab)"));
   expect(document.activeElement).toBe(within(section).getByRole("heading", { name: "Attachments" }));
+});
+
+test("a move to the notebook's top level puts it at the root, on the notebook's home", async () => {
+  const user = userEvent.setup();
+  const server = pageServer({ nodes });
+  renderApp(pagePath(guide.id), server.app);
+  const section = await attachments();
+
+  await user.click(await actionsOf(section, "photo.png"));
+  await user.click(screen.getByRole("menuitem", { name: "Move to…" }));
+  const dialog = await screen.findByRole("dialog", { name: "Move photo.png" });
+  await user.selectOptions(within(dialog).getByRole("combobox", { name: "Parent page" }), "The notebook's top level");
+  await user.click(within(dialog).getByRole("button", { name: "Move" }));
+
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(server.sent).toContain("MOVE photo.png under root, after last");
+  await waitFor(() => expect(rows(section)).not.toContain("photo.png (opens in a new tab)"));
+  expect(server.nodes.find((node) => node.id === photo.id)?.parent_id).toBeNull();
 });
 
 test("Delete asks first; once deleted, the focus goes to the section's title", async () => {
@@ -340,39 +422,46 @@ test("More attachments reads the next hundred; the last read, the focus goes to 
   expect(server.sent).toContain("GET assets Guide from 100");
 });
 
-test("More read as the reader does something else leaves the focus where they put it", async () => {
-  const user = userEvent.setup();
-  let release: (() => void) | undefined;
-  const server = pageServer({
-    nodes: [guide, ...many],
-    answers: {
-      [assetsPath]: async (request) => {
-        const cursor = new URL(request.url).searchParams.get("cursor");
-        if (cursor !== null) {
-          await new Promise<void>((resolve) => (release = resolve));
-        }
-        const from = Number(cursor ?? "0");
-        return json({
-          data: many.slice(from, from + 100).map((node) => assetJSON(node)),
-          next_cursor: from + 100 < many.length ? String(from + 100) : null,
-        });
+test.each(["moves the focus", "reads on by the keyboard, the focus on More"])(
+  "More read as the reader does something else (%s) leaves the focus where they put it",
+  async (doing) => {
+    const user = userEvent.setup();
+    let release: (() => void) | undefined;
+    const server = pageServer({
+      nodes: [guide, ...many],
+      answers: {
+        [assetsPath]: async (request) => {
+          const cursor = new URL(request.url).searchParams.get("cursor");
+          if (cursor !== null) {
+            await new Promise<void>((resolve) => (release = resolve));
+          }
+          const from = Number(cursor ?? "0");
+          return json({
+            data: many.slice(from, from + 100).map((node) => assetJSON(node)),
+            next_cursor: from + 100 < many.length ? String(from + 100) : null,
+          });
+        },
       },
-    },
-  });
-  renderApp(pagePath(guide.id), server.app);
-  const section = await attachments();
-  await waitFor(() => expect(rows(section)).toHaveLength(100));
+    });
+    renderApp(pagePath(guide.id), server.app);
+    const section = await attachments();
+    await waitFor(() => expect(rows(section)).toHaveLength(100));
 
-  await user.click(within(section).getByRole("button", { name: "More attachments" }));
-  await waitFor(() => expect(release).toBeDefined());
-  await user.click(screen.getByRole("heading", { level: 1, name: "Guide" }));
-  const heading = screen.getByRole("heading", { level: 1, name: "Guide" });
-  heading.focus();
-  act(() => release?.());
+    await user.click(within(section).getByRole("button", { name: "More attachments" }));
+    await waitFor(() => expect(release).toBeDefined());
+    const heading = screen.getByRole("heading", { level: 1, name: "Guide" });
+    if (doing === "moves the focus") {
+      heading.focus();
+    } else {
+      await user.keyboard("{PageDown}");
+    }
+    act(() => release?.());
 
-  await waitFor(() => expect(rows(section)).toHaveLength(102));
-  expect(document.activeElement).toBe(heading);
-});
+    await waitFor(() => expect(rows(section)).toHaveLength(102));
+    // More gone with the last page read: the focus is not taken to what it added.
+    expect(document.activeElement).toBe(doing === "moves the focus" ? heading : document.body);
+  }
+);
 
 test("the list is read again a minute before the first of its addresses expires, half a minute after a read at the soonest", async () => {
   vi.useFakeTimers({ now: Date.parse("2026-10-09T08:00:00Z"), shouldAdvanceTime: true });
@@ -406,7 +495,7 @@ test("addresses that expire far off, by this clock, are read again before an hou
 
   await act(() => vi.advanceTimersByTimeAsync(58 * 60_000));
   expect(reads()).toBe(1);
-  await act(() => vi.advanceTimersByTimeAsync(2 * 60_000));
+  await act(() => vi.advanceTimersByTimeAsync(90_000));
 
   expect(reads()).toBe(2);
 });

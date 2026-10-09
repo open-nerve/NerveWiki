@@ -80,8 +80,8 @@ export class Upload {
  * has; one taken meanwhile (409 page.title_taken: another tab's, or a name
  * the server compares otherwise) tries the next free one, three names at
  * most. Each answer, a refusal too, has the tree and its parent's list
- * read again; a sent upload leaves the uploads once they are, its
- * attachment in the list even where it would be on a page not read yet.
+ * read again; a sent upload leaves the uploads once they are and its list
+ * has its attachment, the pages after those read read as far as it is.
  * While any goes, the page warns before it is left (unload). The
  * generation's end cancels them.
  *
@@ -283,15 +283,29 @@ export class AssetStore {
       upload.uploaded = asset;
     });
     await this.read([upload.parent]);
-    this.shown(asset);
+    await this.reach(asset);
     this.dismiss(upload);
   }
 
-  /** shown puts asset, uploaded, in its list read, where the pages read do not have it: the upload shows where it went. */
-  private shown(asset: Asset): void {
-    const list = this.listOf(asset.parent_id);
-    if (list !== undefined && !list.assets.some((each) => each.id === asset.id)) {
-      this.lists.set(asset.parent_id ?? "", { ...list, assets: [...list.assets, asset] });
+  /**
+   * reach reads the pages after those read under asset's parent, one at a
+   * time, until one has asset, uploaded: the upload shows where it went,
+   * and the list read again has it, as many pages as it has read. A list
+   * read whole without it has lost it meanwhile (deleted, moved); a read
+   * that fails stops.
+   */
+  private async reach(asset: Asset): Promise<void> {
+    for (;;) {
+      const list = this.listOf(asset.parent_id);
+      if (list === undefined || list.next === null || list.assets.some((each) => each.id === asset.id)) {
+        return;
+      }
+      try {
+        // oxlint-disable-next-line no-await-in-loop -- each page after the one before
+        await this.more(asset.parent_id);
+      } catch {
+        return;
+      }
     }
   }
 

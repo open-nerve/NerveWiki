@@ -86,6 +86,26 @@ test("a generation's uploads stop once the tab has signed in again", async () =>
   expect(leaving()).toBe(false);
 });
 
+test("a generation whose login has gone before its attachments are first asked for cancels their uploads at once", async () => {
+  let issued = 0;
+  const app = testApp((request) => {
+    const { pathname } = new URL(request.url);
+    if (pathname === "/api/v0/me") return json(me);
+    if (pathname.endsWith("/nodes")) return json({ data: [] });
+    return json(tokens(++issued));
+  }, storedSession("login-0"));
+  await app.session.start();
+  const before = new RootStore(app, "login-0");
+  await before.auth.signIn("bob@example.com", "correct horse battery");
+
+  const [upload] =
+    before.assetsOf(notebookJSON)?.upload(null, [new File(["x"], "a.png")], "Untitled", { maxBytes: undefined }) ?? [];
+
+  expect(upload?.signal.aborted).toBe(true);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect((app.transfer as ReturnType<typeof transferTo>).made).toEqual([]);
+});
+
 test("a generation made and dropped, its attachments never asked for, does not watch the session", async () => {
   const app = testApp(() => json(tokens(1)), storedSession("login-0"));
   await app.session.start();
@@ -110,7 +130,8 @@ test("a signed-out generation has no account, nor its workspaces", () => {
     store.notebookMembersOf(notebookJSON),
     store.ownerlessOf(workspaceJSON),
     store.auditOf(workspaceJSON),
-  ]).toEqual([undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined]);
+    store.assetsOf(notebookJSON),
+  ]).toEqual([undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined]);
 });
 
 test("a workspace's member list is the same for the generation; another workspace's, or another generation's, is another", async () => {

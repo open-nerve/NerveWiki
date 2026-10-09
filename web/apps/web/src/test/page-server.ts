@@ -3,8 +3,9 @@ import type { BacklinkPage, LinkLanding, PageProperties } from "../services/link
 import type { NotebookRole } from "../services/notebook.service";
 import type { EditLock, NodeMove, PageContent, PageView, TaskToggle, TreeNode } from "../services/page.service";
 import { titleKey } from "../lib/title-key";
+import { extensionOf } from "../lib/upload-name";
 import { instanceJSON, json, notebookJSON, problem, signedInApp, userJSON, type Answer } from "./fakes";
-import { formOf } from "./transfer";
+import { abortedFor, formOf } from "./transfer";
 
 /** pageNode is the page n of Plans, titled name, under parent (none: at the root). */
 export function pageNode(n: number, name: string, parent?: TreeNode): TreeNode {
@@ -355,6 +356,11 @@ function writeRoutes(server: {
       if (node === undefined) {
         return problem(404, "page.not_found");
       }
+      if (move.parent_id !== null && !server.nodes.some((each) => each.id === move.parent_id && each.kind === "page")) {
+        return problem(422, "validation_failed", {
+          errors: [{ field: "parent_id", code: "not_allowed", message: "The parent is no page of this notebook." }],
+        });
+      }
       const moved = { ...node, parent_id: move.parent_id };
       server.nodes = server.nodes.map((each) => (each === node ? moved : each));
       place(moved, move.after_id);
@@ -387,7 +393,7 @@ function writeRoutes(server: {
 
 /**
  * assetJSON is the attachment node as the server answers it, of size bytes, its addresses expiring at expires,
- * linked by link (its name by default; none without an extension).
+ * linked by link (its name by default; none without an extension, as one whose only dot starts it).
  */
 export function assetJSON(
   node: TreeNode,
@@ -395,7 +401,7 @@ export function assetJSON(
   expires = "2100-01-01T00:00:00Z",
   link: string = node.name
 ): Asset {
-  const extension = /\.([^.]+)$/.exec(node.name)?.[1]?.toLowerCase();
+  const extension = extensionOf(node.name).slice(1).toLowerCase();
   const mimes: Record<string, string> = {
     png: "image/png",
     mp3: "audio/mpeg",
@@ -407,8 +413,8 @@ export function assetJSON(
     notebook_id: node.notebook_id,
     parent_id: node.parent_id,
     name: node.name,
-    link: extension === undefined ? null : link,
-    mime: (extension && mimes[extension]) ?? "application/octet-stream",
+    link: extension === "" ? null : link,
+    mime: mimes[extension] ?? "application/octet-stream",
     byte_size: size,
     sha256: "0".repeat(64),
     width: null,
@@ -478,6 +484,10 @@ function assetRoutes(server: AssetState, role: NotebookRole): Record<string, Ans
       server.sent.push(`UPLOAD ${name} under ${nameOf(parent)}`);
       if (server.uploadsHeld) {
         await new Promise<void>((resolve) => server.held.push(resolve));
+      }
+      // One stopped before its body all went makes nothing; its answer is no one's.
+      if (abortedFor(request)) {
+        return problem(400, "aborted");
       }
       if (role === "reader") {
         return problem(403, "forbidden");

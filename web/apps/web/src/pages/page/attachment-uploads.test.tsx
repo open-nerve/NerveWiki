@@ -16,6 +16,9 @@ const uploadsPath = `POST /api/v0/notebooks/${notebookJSON.id}/assets`;
 /** uploaded is what the server was sent to upload. */
 const uploaded = (sent: readonly string[]) => sent.filter((line) => line.startsWith("UPLOAD"));
 
+/** notice is what section says, unseen. */
+const notice = (section: HTMLElement) => section.querySelector("[aria-live=polite]")?.textContent;
+
 /** choose chooses files in section's file input, as its picker would. */
 function choose(section: HTMLElement, files: File[]): void {
   fireEvent.change(picker(section), { target: { files } });
@@ -42,7 +45,7 @@ test("each file chosen goes up with its progress, said as it begins and as it is
   server.uploadsHeld = true;
   renderApp(pagePath(guide.id), server.app);
   const section = await attachments();
-  const said = () => section.querySelector("[aria-live=polite]")?.textContent;
+  const said = () => notice(section);
 
   choose(section, [new File(["abcd"], "photo.png"), new File(["ef"], "notes.txt")]);
 
@@ -61,10 +64,12 @@ test("each file chosen goes up with its progress, said as it begins and as it is
 
   await waitFor(() => expect(within(section).queryByRole("list", { name: "Uploads" })).toBeNull());
   expect(rows(section)).toEqual(expect.arrayContaining(["photo 2.png (opens in a new tab)", "notes.txt"]));
-  expect(said()).toMatch(/^Uploaded: (photo 2\.png, notes\.txt|notes\.txt|photo 2\.png)\.$/);
+  expect(said()).toMatch(
+    /^Uploaded: (photo 2\.png and notes\.txt|notes\.txt and photo 2\.png|notes\.txt|photo 2\.png)\.$/
+  );
 });
 
-test("Cancel stops the upload: its request is aborted, nothing is made, the focus goes back to Upload", async () => {
+test("Cancel stops the upload: its request is aborted, nothing is made, nothing said uploaded, the focus goes back to Upload", async () => {
   const user = userEvent.setup();
   const server = pageServer({ nodes });
   server.uploadsHeld = true;
@@ -79,7 +84,8 @@ test("Cancel stops the upload: its request is aborted, nothing is made, the focu
   expect(document.activeElement).toBe(within(section).getByRole("button", { name: "Upload" }));
   act(() => server.release());
   await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
-  expect(rows(section)).not.toContain("big.png (opens in a new tab)");
+  expect(server.nodes.map((node) => node.name)).not.toContain("big.png");
+  expect(notice(section)).toBe("Uploading files: 1.");
 });
 
 test("an upload answered is finishing as its list is read again: it can no longer be cancelled", async () => {
@@ -109,13 +115,34 @@ test("an upload answered is finishing as its list is read again: it can no longe
 
   choose(section, [new File(["a"], "a.png")]);
 
-  const finishing = await within(section).findByRole("button", { name: "Finishing…" });
+  const finishing = await within(section).findByRole("button", { name: "Finishing the upload of a.png" });
   expect(finishing.getAttribute("aria-disabled")).toBe("true");
   await user.click(finishing);
   expect(transfers(server.app).map((transfer) => transfer.aborted)).toEqual([false]);
   act(() => release?.());
   await waitFor(() => expect(within(section).queryByRole("list", { name: "Uploads" })).toBeNull());
   expect(rows(section)).toContain("a.png (opens in a new tab)");
+});
+
+test("an upload whose bytes have all gone is finishing as the server answers: it can no longer be cancelled", async () => {
+  const user = userEvent.setup();
+  const server = pageServer({ nodes });
+  server.uploadsHeld = true;
+  renderApp(pagePath(guide.id), server.app);
+  const section = await attachments();
+
+  choose(section, [new File(["abcd"], "big.png")]);
+  await within(section).findByRole("button", { name: "Cancel the upload of big.png" });
+  act(() => transfers(server.app)[0]?.progress(4, 4));
+
+  const finishing = await within(section).findByRole("button", { name: "Finishing the upload of big.png" });
+  expect(finishing.getAttribute("aria-disabled")).toBe("true");
+  expect(within(section).getByText("100%")).toBeTruthy();
+  await user.click(finishing);
+  expect(transfers(server.app).map((transfer) => transfer.aborted)).toEqual([false]);
+  act(() => server.release());
+  await waitFor(() => expect(within(section).queryByRole("list", { name: "Uploads" })).toBeNull());
+  expect(rows(section)).toContain("big.png (opens in a new tab)");
 });
 
 test("the focus on a row's button stays as its upload fails: Cancel becomes Dismiss", async () => {
@@ -170,6 +197,8 @@ test("a page's file, or a file larger than the server takes, is not sent: it say
   choose(section, [new File(["# a"], "notes.md"), big]);
 
   const uploads = await within(section).findByRole("list", { name: "Uploads" });
+  // Nothing goes: nothing is said to.
+  expect(notice(section)).toBe("");
   await within(uploads).findByText("A Markdown file is a page: import it instead.");
   await within(uploads).findByText("The file is larger than this server takes: 50 MB at most.");
   expect(uploaded(server.sent)).toEqual([]);
@@ -243,8 +272,9 @@ test("a section shows the uploads under its own page, not another's", async () =
   act(() => server.release());
 });
 
-test("a drag of files over the section, or the reading view, may drop there; dropped, they upload to the page; a folder does not", async () => {
+test("a drag of files over the section, or the reading view, may drop there; dropped, they upload to the page, said; a folder does not", async () => {
   const server = pageServer({ nodes });
+  server.uploadsHeld = true;
   renderApp(pagePath(guide.id), server.app);
   const section = await attachments();
   const view = await screen.findByRole("article", { name: "Guide" });
@@ -256,9 +286,19 @@ test("a drag of files over the section, or the reading view, may drop there; dro
   }
   fireEvent.drop(section, { dataTransfer: dropped([new File(["a"], "a.png")], ["photos"]) });
   await within(section).findByText("Folders are not uploaded: import a folder of notes instead.");
-  fireEvent.drop(view, { dataTransfer: dropped([new File(["b"], "b.png")]) });
+  expect(notice(section)).toBe("Uploading files: 1.");
+  fireEvent.drop(view, { dataTransfer: dropped([new File(["b"], "b.png"), new File(["c"], "c.png")]) });
 
-  await waitFor(() => expect(uploaded(server.sent)).toEqual(["UPLOAD a.png under Guide", "UPLOAD b.png under Guide"]));
+  await waitFor(() =>
+    expect(uploaded(server.sent)).toEqual([
+      "UPLOAD a.png under Guide",
+      "UPLOAD b.png under Guide",
+      "UPLOAD c.png under Guide",
+    ])
+  );
+  // The section says what the reading view took.
+  expect(notice(section)).toBe("Uploading files: 2.");
+  act(() => server.release());
 });
 
 test("a file dropped on the reading view larger than the server takes is not sent", async () => {
@@ -310,7 +350,7 @@ test("files dropped on a dialog the section holds are not uploaded: a dialog is 
   expect(uploaded(server.sent)).toEqual([]);
 });
 
-test("a drag that started in the page, an image of it, is no file to upload", async () => {
+test("a drag that started in the page, an image of it, is no file to upload, though its source goes meanwhile", async () => {
   const server = pageServer({ nodes });
   renderApp(pagePath(guide.id), server.app);
   const section = await attachments();
@@ -318,15 +358,15 @@ test("a drag that started in the page, an image of it, is no file to upload", as
   // The tree's drag and drop says jsdom's drags are none of a browser's.
   vi.mocked(console.warn).mockImplementation(() => undefined);
 
-  fireEvent.dragStart(view);
-  const over = dropped([]);
-  expect(fireEvent.dragOver(section, { dataTransfer: over })).toBe(true);
-  fireEvent.drop(section, { dataTransfer: dropped([new File(["a"], "image.png")]) });
-  fireEvent.dragEnd(view);
+  // The image's drag carries its file, as Chromium's does.
+  const drag = dropped([new File(["a"], "image.png")]);
+  fireEvent.dragStart(view, { dataTransfer: drag });
+  expect(fireEvent.dragOver(section, { dataTransfer: drag })).toBe(true);
+  expect(fireEvent.drop(section, { dataTransfer: drag })).toBe(true);
   await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
 
   expect(uploaded(server.sent)).toEqual([]);
-  // Once it ended, a drag from outside is one again.
+  // Its end never reached the document (its source gone meanwhile): a drag from outside is one all the same.
   expect(fireEvent.dragOver(section, { dataTransfer: dropped([]) })).toBe(false);
 });
 
@@ -347,5 +387,9 @@ test("a file dropped where nothing takes it stays out of the tab; in an editor, 
   const into = dropped([]);
   expect(fireEvent.dragOver(editor, { dataTransfer: into })).toBe(true);
   expect(into.dropEffect).toBe("move");
+  expect(fireEvent.drop(editor, { dataTransfer: into })).toBe(true);
+  // One over its text, a node in it, as some browsers have it.
+  editor.textContent = "words";
+  expect(fireEvent.dragOver(editor.firstChild as Text, { dataTransfer: dropped([]) })).toBe(true);
   editor.remove();
 });

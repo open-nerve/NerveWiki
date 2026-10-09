@@ -53,8 +53,10 @@ function setUp(siblings: TreeNode[] = []) {
   const store = new AssetStore(service, "n1", pages, generation.signal, (on) => unload.push(on));
   const add = (parent: string | null, ...names: string[]) => {
     const list = lists.get(parent ?? "") ?? [];
-    list.push(...names.map((name, i) => assetJSON({ ...assetNode(60 + list.length + i, name), parent_id: parent })));
+    const added = names.map((name, i) => assetJSON({ ...assetNode(60 + list.length + i, name), parent_id: parent }));
+    list.push(...added);
     lists.set(parent ?? "", list);
+    return added;
   };
   return { store, service, pages, sent, asked, generation, unload, add };
 }
@@ -273,8 +275,10 @@ describe("AssetStore's uploads", () => {
     expect(sent.map((each) => each.name)).toEqual(["ok.png"]);
   });
 
-  test("cancelled, it leaves the uploads, and the tree is read again: it may have arrived", async () => {
+  test("cancelled, it leaves the uploads at once, and the tree is read again: it may have arrived", async () => {
     const { store, sent, pages } = setUp();
+    let answer: (() => void) | undefined;
+    pages.wrote.mockImplementationOnce(() => new Promise<undefined>((resolve) => (answer = () => resolve(undefined))));
 
     const [upload] = store.upload(null, [file("a.png")], "Untitled", limits);
     await settle();
@@ -284,6 +288,9 @@ describe("AssetStore's uploads", () => {
     expect(sent[0]?.options.signal?.aborted).toBe(true);
     expect(store.uploads).toEqual([]);
     expect(pages.wrote).toHaveBeenCalledTimes(1);
+    answer?.();
+    await settle();
+    expect(store.uploads).toEqual([]);
   });
 
   test("the generation's end cancels them all; one begun after is cancelled at once", async () => {
@@ -334,16 +341,18 @@ describe("AssetStore's uploads, as they fail and go on", () => {
   test("names are taken under one parent: an upload under another page takes its own", async () => {
     const { store, sent, pages } = setUp();
     pages.siblingsOf.mockImplementation((parent) =>
-      parent === guide.id ? [{ ...assetNode(80, "a.png"), parent_id: guide.id }] : []
+      parent === guide.id ? [{ ...assetNode(80, "b.png"), parent_id: guide.id }] : []
     );
 
-    store.upload(guide.id, [file("a.png")], "Untitled", limits);
-    store.upload(null, [file("a.png")], "Untitled", limits);
+    store.upload(guide.id, [file("a.png"), file("b.png")], "Untitled", limits);
+    store.upload(null, [file("a.png"), file("b.png")], "Untitled", limits);
     await settle();
 
     expect(sent.map((each) => [each.parent, each.name])).toEqual([
-      [guide.id, "a 2.png"],
+      [guide.id, "a.png"],
+      [guide.id, "b 2.png"],
       [null, "a.png"],
+      [null, "b.png"],
     ]);
   });
 
@@ -364,22 +373,41 @@ describe("AssetStore's uploads, as they fail and go on", () => {
     expect(upload?.failure).toBeUndefined();
   });
 
-  test("answered, it is no longer to be cancelled; its attachment is in its list though on a page not read", async () => {
+  test("answered, it is no longer to be cancelled; the pages after those read are read as far as its attachment, which stays", async () => {
     const { store, sent, add } = setUp();
-    add(guide.id, "a.png", "b.png", "c.png");
+    add(guide.id, "a.png", "b.png", "c.png", "d.png", "e.png");
     await store.load(guide.id);
+    const names = () => store.listOf(guide.id)?.assets.map((asset) => asset.name);
 
     const [upload] = store.upload(guide.id, [file("z.png")], "Untitled", limits);
     await settle();
-    const made = assetJSON({ ...assetNode(91, "z.png"), parent_id: guide.id });
-    add(guide.id, "z.png");
-    sent[0]?.resolve(made);
+    const [made] = add(guide.id, "z.png");
+    sent[0]?.resolve(made as Asset);
     await Promise.resolve();
     expect(upload?.answered).toBe(true);
     await settle();
 
-    expect(store.listOf(guide.id)?.assets.map((asset) => asset.name)).toEqual(["a.png", "b.png", "z.png"]);
+    expect(names()).toEqual(["a.png", "b.png", "c.png", "d.png", "e.png", "z.png"]);
+    expect(store.uploads).toEqual([]);
     expect(upload?.uploaded).toEqual(made);
+    // Read again, as many pages as it has read: it is there still.
+    await store.load(guide.id);
+    expect(names()).toEqual(["a.png", "b.png", "c.png", "d.png", "e.png", "z.png"]);
+  });
+
+  test("an attachment its list, read whole, does not have was lost meanwhile: it does not show", async () => {
+    const { store, sent, add } = setUp();
+    add(guide.id, "a.png", "b.png", "c.png");
+    await store.load(guide.id);
+
+    store.upload(guide.id, [file("z.png")], "Untitled", limits);
+    await settle();
+    // Deleted in another tab as it answered.
+    sent[0]?.resolve(assetJSON({ ...assetNode(91, "z.png"), parent_id: guide.id }));
+    await settle();
+
+    expect(store.listOf(guide.id)?.assets.map((asset) => asset.name)).toEqual(["a.png", "b.png", "c.png"]);
+    expect(store.uploads).toEqual([]);
   });
 });
 

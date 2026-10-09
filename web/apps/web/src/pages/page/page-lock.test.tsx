@@ -496,6 +496,7 @@ function deleted(events: ReturnType<typeof eventServer>) {
 test("a page deleted while this tab edits it unsaved stays, saying so, until the edit is left; then it is no page", async () => {
   const { user, server, events, type } = await connected();
   type(" more");
+  expect(await screen.findByRole("region", { name: "Attachments" })).toBeTruthy();
 
   server.nodes = [notes];
   server.sessions.clear();
@@ -503,6 +504,8 @@ test("a page deleted while this tab edits it unsaved stays, saying so, until the
 
   expect((await screen.findByRole("alert")).textContent).toContain("This page no longer exists");
   expect(screen.getByRole("heading", { level: 1, name: "Guide" })).toBeTruthy();
+  // Gone, it has no attachments to list or take (M7/P4 design 3.5).
+  expect(screen.queryByRole("region", { name: "Attachments" })).toBeNull();
   await user.click(screen.getByRole("button", { name: "Back to reading" }));
   await user.click(
     within(await screen.findByRole("alertdialog", { name: "Leave without saving?" })).getByRole("button", {

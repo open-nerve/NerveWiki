@@ -1,20 +1,22 @@
 import { useEffect, useState, type DragEvent } from "react";
 
 /**
- * pageDrag is whether a drag started in the page is going: an image of the
- * reading view dragged carries a file in Chromium, which is no file from
- * outside. FileDropGuard keeps it.
+ * pageDrag is the type a drag started in the page carries, which
+ * FileDropGuard gives it: an image of the reading view dragged carries a
+ * file in Chromium, which is no file from outside. The drag carries it to
+ * its end, wherever its source has gone meanwhile.
  */
-const pageDrag = { on: false };
+const pageDrag = "application/x-nervewiki-page-drag";
 
 /** carriesFiles tells whether a drag carries files from outside the page, which the browser would open. */
 function carriesFiles(transfer: DataTransfer | null): boolean {
-  return !pageDrag.on && transfer?.types.includes("Files") === true;
+  return transfer !== null && transfer.types.includes("Files") && !transfer.types.includes(pageDrag);
 }
 
 /** editable tells whether target is in an editor, which takes what is dropped on it as it does (M7/P4C). */
 function editable(target: EventTarget | null): boolean {
-  return target instanceof Element && target.closest("[contenteditable=true]") !== null;
+  const element = target instanceof Element ? target : target instanceof Node ? target.parentElement : null;
+  return element !== null && element.closest("[contenteditable=true]") !== null;
 }
 
 /**
@@ -51,11 +53,8 @@ function filesDropped(transfer: DataTransfer): { files: File[]; folders: boolean
  */
 export function FileDropGuard() {
   useEffect(() => {
-    const onDragStart = () => {
-      pageDrag.on = true;
-    };
-    const onDragEnd = () => {
-      pageDrag.on = false;
+    const onDragStart = (event: globalThis.DragEvent) => {
+      event.dataTransfer?.setData(pageDrag, "");
     };
     const onDragOver = (event: globalThis.DragEvent) => {
       if (carriesFiles(event.dataTransfer) && !event.defaultPrevented && !editable(event.target)) {
@@ -69,18 +68,14 @@ export function FileDropGuard() {
       if (carriesFiles(event.dataTransfer) && !editable(event.target)) {
         event.preventDefault();
       }
-      pageDrag.on = false;
     };
     document.addEventListener("dragstart", onDragStart);
-    document.addEventListener("dragend", onDragEnd);
     document.addEventListener("dragover", onDragOver);
     document.addEventListener("drop", onDrop);
     return () => {
       document.removeEventListener("dragstart", onDragStart);
-      document.removeEventListener("dragend", onDragEnd);
       document.removeEventListener("dragover", onDragOver);
       document.removeEventListener("drop", onDrop);
-      pageDrag.on = false;
     };
   }, []);
   return null;

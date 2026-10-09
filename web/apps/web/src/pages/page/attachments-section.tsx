@@ -42,11 +42,13 @@ const signedFor = 60 * 60_000;
  * reading the next hundred. A reader sees it only when there are some. A
  * writer uploads files, by Upload or dropped on it (a folder is not: it
  * says to import one), and their uploads show above the list (UploadRows);
- * what began and what was uploaded are said, unseen. The list is read
+ * what began, here or dropped elsewhere, and what was uploaded are said,
+ * unseen. The list is read
  * again before the first of its addresses expires: a link followed must be
  * signed still, and one signed on a click would open a tab the browser
  * takes for a pop-up. Copy embed copies a row's embed; where the page has
- * no clipboard, the embed shows in a field to copy from. The section holds
+ * no clipboard, the embed shows in a field to copy from, which takes the
+ * focus from the menu as it closes, or as it shows. The section holds
  * the dialogs of its rows, which a row read away (the rename done, another
  * tab's) does not take with it; one closed gives the focus back to its
  * row's menu, the section's title when the row is gone.
@@ -75,17 +77,15 @@ export const AttachmentsSection = observer(function AttachmentsSection({
   const picker = useRef<HTMLInputElement>(null);
   const [folders, setFolders] = useState(false);
   const [copied, setCopied] = useState<{ embed: string; name: string; done: boolean } | undefined>(undefined);
+  const copyField = useRef<HTMLInputElement>(null);
+  // Whether the menu closing chose Copy embed: the field of an embed not copied takes the focus then.
+  const copying = useRef(false);
   const notice = useNotice(assets, parent);
   // The attachment of the dialog last opened, which stays as it closes, and which dialog is open.
   const [target, setTarget] = useState<Asset | undefined>(undefined);
   const [dialog, setDialog] = useState<Dialog | undefined>(undefined);
-  const upload = (files: readonly File[]) => {
-    const started = assets.upload(parent, files, t("asset.untitled"), { maxBytes: instance.info?.asset_max_bytes });
-    const going = started.filter((each) => each.failure === undefined).length;
-    if (going > 0) {
-      notice.say(t("asset.uploading", { count: going }));
-    }
-  };
+  const upload = (files: readonly File[]) =>
+    assets.upload(parent, files, t("asset.untitled"), { maxBytes: instance.info?.asset_max_bytes });
   const drop = useFileDrop(writer, (dropped) => {
     setFolders(dropped.folders);
     upload(dropped.files);
@@ -99,6 +99,7 @@ export const AttachmentsSection = observer(function AttachmentsSection({
   function act(action: AssetAction, asset: Asset) {
     setCopied(undefined);
     if (action === "copy") {
+      copying.current = true;
       const link = asset.link;
       if (link !== null) {
         const embed = embedOf(link);
@@ -119,6 +120,20 @@ export const AttachmentsSection = observer(function AttachmentsSection({
     }
     setTarget(asset);
     setDialog(action);
+  }
+
+  /**
+   * menuClosed gives the focus, as a row's menu closes after Copy embed, to
+   * the field of the embed not copied, where it failed already (no
+   * clipboard: at once); the menu gives it back to its button otherwise.
+   */
+  function menuClosed(event: Event) {
+    const field = copyField.current;
+    if (copying.current && field !== null) {
+      event.preventDefault();
+      field.focus();
+    }
+    copying.current = false;
   }
 
   // The attachment as the list has it now: a rename read again renames it.
@@ -184,7 +199,7 @@ export const AttachmentsSection = observer(function AttachmentsSection({
         (copied.done ? (
           <p className="text-sm text-muted-foreground">{t("asset.copied")}</p>
         ) : (
-          <CopyField key={copied.embed} embed={copied.embed} name={copied.name} />
+          <CopyField key={copied.embed} embed={copied.embed} name={copied.name} field={copyField} />
         ))}
       {uploads.length > 0 && (
         <UploadRows assets={assets} uploads={uploads} left={() => (uploadButton.current ?? heading.current)?.focus()} />
@@ -200,6 +215,7 @@ export const AttachmentsSection = observer(function AttachmentsSection({
                 asset={asset}
                 writer={writer}
                 act={act}
+                menuClosed={menuClosed}
                 linkRef={asset.id === more.focusing ? more.focused : undefined}
               />
             ))}
@@ -242,15 +258,12 @@ export const AttachmentsSection = observer(function AttachmentsSection({
  * reach (a page served without HTTPS): in a field, selected as it is
  * focused, which it is as it shows, to copy by hand.
  */
-function CopyField({ embed, name }: { embed: string; name: string }) {
+function CopyField({ embed, name, field }: { embed: string; name: string; field: RefObject<HTMLInputElement | null> }) {
   const t = useT();
-  const field = useRef<HTMLInputElement>(null);
+  // A copy that failed once its menu closed; one that failed at once, the menu takes it back from, and gives it.
   useEffect(() => {
-    // After the menu it was copied from gives the focus back to its button;
-    // each copy that fails shows it anew, the copy before cleared.
-    const timer = setTimeout(() => field.current?.focus(), 0);
-    return () => clearTimeout(timer);
-  }, []);
+    field.current?.focus();
+  }, [field]);
   return (
     <FormField
       ref={field}
@@ -283,6 +296,7 @@ export function AttachmentDrop({
   const assets = useAssets(notebook);
   const { instance } = useStore();
   const [folders, setFolders] = useState(false);
+  // The section of parent says what began.
   const drop = useFileDrop(enabled, (dropped) => {
     setFolders(dropped.folders);
     assets.upload(parent, dropped.files, t("asset.untitled"), { maxBytes: instance.info?.asset_max_bytes });
@@ -297,26 +311,38 @@ export function AttachmentDrop({
 
 /**
  * useNotice is what the section says unseen: say has it say text; the
- * uploads under parent that leave uploaded are said too, those that leave
- * together in one.
+ * uploads under parent that begin, here or dropped elsewhere, are said,
+ * and those that leave uploaded, those that leave together in one. The
+ * same text said again changes the region all the same, a space after it,
+ * or it would not be read again.
  */
 function useNotice(assets: AssetStore, parent: string | null) {
   const t = useT();
-  const [text, setText] = useState("");
+  const { preferences } = useStore();
+  const [said, setSaid] = useState({ text: "", again: false });
   useEffect(
     () =>
       reaction(
         () => assets.uploads.filter((upload) => upload.parent === parent),
         (now, before) => {
           const uploaded = before.filter((upload) => !now.includes(upload) && upload.uploaded !== undefined);
+          const begun = now.filter((upload) => !before.includes(upload) && upload.failure === undefined);
           if (uploaded.length > 0) {
-            setText(t("asset.uploaded", { names: uploaded.map((upload) => upload.name).join(", ") }));
+            const names = new Intl.ListFormat(preferences.locale, { type: "conjunction" });
+            setSaid(saying(t("asset.uploaded", { names: names.format(uploaded.map((upload) => upload.name)) })));
+          } else if (begun.length > 0) {
+            setSaid(saying(t("asset.uploading", { count: begun.length })));
           }
         }
       ),
-    [assets, parent, t]
+    [assets, parent, t, preferences.locale]
   );
-  return { text, say: setText };
+  return { text: said.text + (said.again ? "\u00A0" : ""), say: (text: string) => setSaid(saying(text)) };
+}
+
+/** saying is the notice that says text, after the one before: the same text is said again. */
+function saying(text: string) {
+  return (before: { text: string; again: boolean }) => ({ text, again: before.text === text && !before.again });
 }
 
 /**

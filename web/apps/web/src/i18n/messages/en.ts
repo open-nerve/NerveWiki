@@ -196,6 +196,7 @@ export const en = {
   "asset.uploading": "Uploading files: {count}.",
   "asset.uploaded": "Uploaded: {names}.",
   "asset.finishing": "Finishing…",
+  "asset.finishingUpload": "Finishing the upload of {name}",
   "asset.more": "More attachments",
   "asset.renameTitle": "Rename {name}",
   "asset.name": "Name",

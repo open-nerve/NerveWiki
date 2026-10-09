@@ -49,8 +49,14 @@ export class PageTreeStore {
   private readKept = 0;
   /** The read started last, which a read that a change's answer overlapped answers instead of itself. */
   private latest: { read: number; nodes: Promise<TreeNode[]> } | undefined = undefined;
-  /** The reads after uploads' answers (wrote): one at a time, and one more for those answered as it is out. */
-  private rereading: { again: boolean; done: Promise<void> } | undefined = undefined;
+  /**
+   * The reads after uploads' answers (wrote): whether one is out, and the
+   * next, which those answered as it is out wait for together.
+   */
+  private readonly rereading: { out: boolean; next: { done: Promise<void>; settle: () => void } | undefined } = {
+    out: false,
+    next: undefined,
+  };
   /** The pages this generation deleted, each with where its shell goes: the deleted subtree's parent (null: home). */
   private readonly removed = new Map<string, string | null>();
   private readonly inTurn = oneAtATime();
@@ -247,26 +253,37 @@ export class PageTreeStore {
    * was not one of its writes, an upload of an attachment (M7/P4 design
    * 3.3), which goes out beside them: a read out meanwhile may have read
    * the tree before it. Uploads answered as one such read is out have one
-   * more read after it, not one each; each settles once the tree read
-   * after its answer is.
+   * more read after it, not one each; each settles once the first tree
+   * read begun after its answer is.
    */
   wrote(): Promise<void> {
-    if (this.rereading !== undefined) {
-      this.rereading.again = true;
-      return this.rereading.done;
+    const rereading = this.rereading;
+    if (rereading.next !== undefined) {
+      return rereading.next.done;
     }
-    const rereading = { again: true, done: Promise.resolve() };
-    this.rereading = rereading;
-    rereading.done = (async () => {
-      while (rereading.again) {
-        rereading.again = false;
-        this.changesAnswered += 1;
-        // oxlint-disable-next-line no-await-in-loop -- one read at a time
-        await this.load().catch(() => undefined);
-      }
-      this.rereading = undefined;
-    })();
-    return rereading.done;
+    let settle!: () => void;
+    const done = new Promise<void>((resolve) => {
+      settle = resolve;
+    });
+    rereading.next = { done, settle };
+    if (!rereading.out) {
+      void this.reread();
+    }
+    return done;
+  }
+
+  /** reread reads the tree for the uploads answered, one read at a time, until none waits. */
+  private async reread(): Promise<void> {
+    const rereading = this.rereading;
+    rereading.out = true;
+    for (let next = rereading.next; next !== undefined; next = rereading.next) {
+      rereading.next = undefined;
+      this.changesAnswered += 1;
+      // oxlint-disable-next-line no-await-in-loop -- one read at a time
+      await this.load().catch(() => undefined);
+      next.settle();
+    }
+    rereading.out = false;
   }
 
   /** view reads the page id's reading view, which the store does not keep: SWR does, by page. */

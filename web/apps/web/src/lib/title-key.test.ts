@@ -6,6 +6,7 @@ test.each([
   ["Café.PNG", "café.png"],
   ["Straße", "strasse"],
   ["STRASSE", "strasse"],
+  ["FUẞ", "fuss"],
   ["Σοφίας", "σοφίασ"],
   ["5µm", "5μm"],
   ["ﬁle", "file"],

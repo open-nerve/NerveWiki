@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import { assetJSON, assetNode } from "../test/page-server";
 import { fakeApi, json, problem, signedInApp, tokensJSON } from "../test/fakes";
+import { SessionChangedError } from "../session/token-manager";
 import { FakeTransfer, formOf, transferTo } from "../test/transfer";
 import { ApiError } from "./api";
 import { AssetService } from "./asset.service";
@@ -83,6 +84,17 @@ describe("AssetService.upload", () => {
     });
 
     expect(tokens).toEqual(["Bearer at-1 a.png", "Bearer at-2 a.png"]);
+  });
+
+  test("through a client of a login no longer the tab's, sends nothing (v0.1 design 13.2, item 1)", async () => {
+    const app = signedInApp({});
+    await app.session.start();
+    const service = new AssetService(app.session.clientFor("login-before"), app.transfer);
+
+    await expect(service.upload("n1", { parent: null, name: "a.png", file: new Blob(["x"]) })).rejects.toBeInstanceOf(
+      SessionChangedError
+    );
+    expect((app.transfer as ReturnType<typeof transferTo>).made).toEqual([]);
   });
 
   test("tells its progress, and stops as its signal aborts", async () => {

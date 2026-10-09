@@ -76,6 +76,14 @@ export function formOf(request: Request): FormData | undefined {
   return forms.get(request);
 }
 
+/** The transfer each request of transferTo's went by. */
+const transfersOf = new WeakMap<Request, FakeTransfer>();
+
+/** abortedFor tells whether the transfer of a request of transferTo's was aborted: what it sent did not all go. */
+export function abortedFor(request: Request): boolean {
+  return transfersOf.get(request)?.aborted === true;
+}
+
 /**
  * transferTo is the transfers of a test's app: each sends its request to
  * answer, as the page's other requests go, its form beside it (formOf);
@@ -92,6 +100,7 @@ export function transferTo(answer: Answer): (() => FakeTransfer) & { made: FakeT
       if (sent.body instanceof FormData) {
         forms.set(request, sent.body);
       }
+      transfersOf.set(request, sent);
       void (async () => {
         let response: Response;
         try {
