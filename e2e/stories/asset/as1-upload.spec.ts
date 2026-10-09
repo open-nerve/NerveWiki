@@ -112,9 +112,17 @@ test("AS1 (page): files chosen, or dropped on the reading view, upload to the pa
     (article, bytes) => {
       const data = new DataTransfer();
       data.items.add(new File([new Uint8Array(bytes)], "notes.txt", { type: "text/plain" }));
+      // A transfer made by script is no drag's: the browser keeps no drop effect set on it. What is set is kept here.
+      let effect = "none";
+      Object.defineProperty(data, "dropEffect", {
+        get: () => effect,
+        set: (value: string) => {
+          effect = value;
+        },
+      });
       const dragover = new DragEvent("dragover", { bubbles: true, cancelable: true, dataTransfer: data });
       article.dispatchEvent(dragover);
-      const accepted = { prevented: dragover.defaultPrevented, effect: data.dropEffect };
+      const accepted = { prevented: dragover.defaultPrevented, effect };
       article.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: data }));
       return accepted;
     },
@@ -157,7 +165,8 @@ test("AS1 (page): files chosen, or dropped on the reading view, upload to the pa
   const rename = page.getByRole("dialog", { name: "Rename notes 2.txt" });
   await rename.getByRole("textbox", { name: "Name" }).fill("draft");
   await rename.getByRole("button", { name: "Save" }).click();
-  await expect(rename).toBeHidden();
+  // The dialog's title is the new name as soon as the list has it: the dialog, whatever its title.
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(section.getByRole("link", { name: "draft.txt", exact: true })).toBeVisible();
   await expect(section.getByRole("button", { name: "Actions for draft.txt" })).toBeFocused();
   await section.getByRole("button", { name: "Actions for draft.txt" }).click();
