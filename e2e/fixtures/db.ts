@@ -39,6 +39,9 @@ export interface Database {
 export async function startPostgres(): Promise<{ stop: () => Promise<void> }> {
   const container = await new PostgreSqlContainer(image)
     .withEnvironment({ POSTGRES_INITDB_ARGS: initdbArgs })
+    // Each worker's nervewiki takes up to database.max_conns (10) and its tests' pool up to 10 more, and a story
+    // may start another nervewiki: a worker a core's half takes more than the default 100 on a large machine.
+    .withCommand(["postgres", "-c", "max_connections=300"])
     .withDatabase("postgres")
     .start();
   process.env[serverUrlVariable] = databaseUrl(container.getConnectionUri(), "postgres");

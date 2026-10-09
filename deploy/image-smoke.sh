@@ -131,7 +131,8 @@ grep -q '<div id="root"></div>' <<<"$page" || fail "/ 不是前端的 index.html
 instance=$(get "$base/api/v0/instance")
 jq -e --arg version "$version" --arg commit "$commit" \
   '. == {product: "Nerve Wiki", version: $version, commit: $commit, api_version: "v0", signup_enabled: false,
-      workspace_creation_enabled: true, asset_max_bytes: 52428800, export_ttl_seconds: 86400}' \
+      workspace_creation_enabled: true, asset_max_bytes: 52428800, export_ttl_seconds: 86400,
+      import_max_bytes: 536870912}' \
   <<<"$instance" >/dev/null || fail "/api/v0/instance 与预期不符：$instance"
 signup=$(curl -sS --max-time 5 -H 'Content-Type: application/json' -d '{"email":"a@example.com","password":"correct horse battery"}' \
   "$base/api/v0/auth/register")
