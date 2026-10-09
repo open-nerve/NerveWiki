@@ -1,8 +1,11 @@
 package domain
 
 import (
+	"encoding/json"
 	"time"
 	"uuid"
+
+	"golang.org/x/text/unicode/norm"
 )
 
 // MetaPath is where an export writes its meta.json in the vault (M7 design
@@ -65,4 +68,33 @@ func (p *Plan) Meta(at time.Time, notebook Named, root *Named, written func(Entr
 		m.Nodes = append(m.Nodes, MetaNode{Path: e.Path, Kind: kind, ID: e.Node.ID, SortOrder: e.Node.SortOrder})
 	}
 	return m
+}
+
+// MaxMeta is the most bytes of a vault's meta.json an import reads (M7
+// design 4.11): a larger one is not read.
+const MaxMeta = 16 << 20
+
+// ImportMeta is what an import reads of a vault's meta.json (M7/P6 design
+// 3.11): each node's order among its siblings, by its path in the vault,
+// and the contributors' files, which it leaves out.
+type ImportMeta struct {
+	Order       map[string]float64
+	Contributed map[string]bool
+}
+
+// ReadMeta reads data, a vault's meta.json, its paths in NFC; nothing of
+// one that is not JSON of MetaFormat.
+func ReadMeta(data []byte) ImportMeta {
+	var m Meta
+	if err := json.Unmarshal(data, &m); err != nil || m.Format != MetaFormat {
+		return ImportMeta{}
+	}
+	out := ImportMeta{Order: make(map[string]float64, len(m.Nodes)), Contributed: make(map[string]bool, len(m.Contributed))}
+	for _, n := range m.Nodes {
+		out.Order[norm.NFC.String(n.Path)] = n.SortOrder
+	}
+	for _, path := range m.Contributed {
+		out.Contributed[norm.NFC.String(path)] = true
+	}
+	return out
 }

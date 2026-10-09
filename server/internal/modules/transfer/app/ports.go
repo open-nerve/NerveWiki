@@ -101,7 +101,48 @@ type Archives interface {
 	List(ctx context.Context, kind domain.Kind, before time.Time, each func(id uuid.UUID) error) error
 	// Free tells the free bytes of the store's disk.
 	Free(ctx context.Context) (int64, error)
+	// Upload starts the archive of the import id, which its request's
+	// body writes: domain.ErrStorageFull when the store keeps no room for
+	// it.
+	Upload(ctx context.Context, id uuid.UUID) (Upload, error)
+	// OpenImport opens the import id's archive and reads its directory,
+	// of at most most entries (M7/P6 design 3.10): ErrFileMissing,
+	// ErrNotZip, ErrTooManyEntries.
+	OpenImport(ctx context.Context, id uuid.UUID, most int) (ImportArchive, error)
 }
+
+// Upload is an import's archive as its request's body writes it, visible
+// once committed. A write that runs out of room is domain.ErrStorageFull.
+type Upload interface {
+	io.Writer
+	// Commit keeps it. On failure the file may be there all the same: an
+	// orphan, which the sweep finds.
+	Commit() error
+	// Abort drops it.
+	Abort() error
+}
+
+// ImportArchive is an import's archive open for reading its entries.
+type ImportArchive interface {
+	// Entries are its entries as its directory lists them, in order.
+	Entries() []domain.RawEntry
+	// Packed is the bytes of entry i as packed: what it unpacks from.
+	Packed(i int) int64
+	// Open reads entry i as it unpacks; the read that ends it fails when
+	// its data is broken, or its checksum or size is not its header's.
+	Open(i int) (io.ReadCloser, error)
+	Close() error
+}
+
+// The failures of an import's archive as a whole.
+var (
+	// ErrNotZip is an archive that is no zip, or whose end or directory
+	// is broken.
+	ErrNotZip = errors.New("transfer: the archive is no zip, or its directory is broken")
+	// ErrTooManyEntries is an archive of more entries than the import
+	// reads, or of a larger directory.
+	ErrTooManyEntries = errors.New("transfer: the archive holds too many entries")
+)
 
 // Archive is an export's archive as it is written: a zip file, visible
 // once it commits. A write that runs out of room is

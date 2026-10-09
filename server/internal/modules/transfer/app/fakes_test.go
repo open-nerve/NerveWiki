@@ -341,6 +341,14 @@ func (a *archives) List(_ context.Context, _ domain.Kind, _ time.Time, each func
 	return nil
 }
 
+func (a *archives) Upload(context.Context, uuid.UUID) (app.Upload, error) {
+	return nil, errors.New("no import's upload in the exports' tests")
+}
+
+func (a *archives) OpenImport(context.Context, uuid.UUID, int) (app.ImportArchive, error) {
+	return nil, errors.New("no import's archive in the exports' tests")
+}
+
 func (a *archives) Free(context.Context) (int64, error) {
 	a.rec.add("Free")
 	return a.free, nil

@@ -3,6 +3,7 @@ package httpadapter_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"net"
@@ -287,6 +288,14 @@ func (a *archives) List(context.Context, domain.Kind, time.Time, func(uuid.UUID)
 }
 
 func (a *archives) Free(context.Context) (int64, error) { return a.free, nil }
+
+func (a *archives) Upload(context.Context, uuid.UUID) (app.Upload, error) {
+	return nil, errors.New("no import's upload in the exports' tests")
+}
+
+func (a *archives) OpenImport(context.Context, uuid.UUID, int) (app.ImportArchive, error) {
+	return nil, errors.New("no import's archive in the exports' tests")
+}
 
 func (a *archives) unclosed() int {
 	a.mu.Lock()

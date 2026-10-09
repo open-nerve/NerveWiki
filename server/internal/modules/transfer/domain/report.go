@@ -26,6 +26,24 @@ const (
 	FailureInternal Failure = "internal"
 )
 
+// The failures of an import's archive as a whole (M7/P6 design 3.8): it
+// writes nothing then.
+const (
+	// FailureNotZip is an archive that is no zip, or whose end or
+	// directory is broken.
+	FailureNotZip Failure = "not_zip"
+	// FailureTooManyEntries is an archive of more entries than
+	// transfer.import_max_entries, or with a larger directory than
+	// MaxDirectory.
+	FailureTooManyEntries Failure = "too_many_entries"
+	// FailureUnpackedTooLarge is an archive whose entries unpack to more
+	// than transfer.import_max_unpacked_bytes.
+	FailureUnpackedTooLarge Failure = "unpacked_too_large"
+	// FailureTreeChanged is an import a page of which was deleted, or
+	// moved away, as it ran: a later unit could not write under it.
+	FailureTreeChanged Failure = "tree_changed"
+)
+
 // ProblemCode is what befell a node, a code the web words.
 type ProblemCode string
 
@@ -37,6 +55,42 @@ const (
 	ProblemFileMissing ProblemCode = "file_missing"
 )
 
+// The problems of an import (M7/P6 design 3.8): an entry or a node
+// skipped, and why. ProblemRenamed is an import's node named otherwise in
+// the notebook, To its path there.
+const (
+	// ProblemUnsafePath is an entry whose path leaves the archive's root:
+	// "..", an absolute path, a drive.
+	ProblemUnsafePath ProblemCode = "unsafe_path"
+	// ProblemSpecialFile is a symbolic link, or another file that is no
+	// regular one.
+	ProblemSpecialFile ProblemCode = "special_file"
+	// ProblemEncrypted is an encrypted entry.
+	ProblemEncrypted ProblemCode = "encrypted"
+	// ProblemUnsupportedMethod is an entry compressed otherwise than with
+	// Store or Deflate.
+	ProblemUnsupportedMethod ProblemCode = "unsupported_method"
+	// ProblemTooCompressed is an entry that unpacks to more than
+	// MaxRatio times its packed bytes.
+	ProblemTooCompressed ProblemCode = "too_compressed"
+	// ProblemNameNotUTF8 is an entry whose name is not UTF-8.
+	ProblemNameNotUTF8 ProblemCode = "name_not_utf8"
+	// ProblemInvalidContent is a page's file that is not UTF-8, or holds
+	// NUL.
+	ProblemInvalidContent ProblemCode = "invalid_content"
+	// ProblemTooLarge is a page's file past 5 MiB, or an attachment past
+	// asset.max_bytes.
+	ProblemTooLarge ProblemCode = "too_large"
+	// ProblemTooDeep is a node deeper than pages go from where the import
+	// goes.
+	ProblemTooDeep ProblemCode = "too_deep"
+	// ProblemDuplicate is an entry of a path an earlier one has.
+	ProblemDuplicate ProblemCode = "duplicate"
+	// ProblemUnreadable is an entry that does not unpack: its data broken,
+	// its checksum or its size not its header's.
+	ProblemUnreadable ProblemCode = "unreadable"
+)
+
 // Problem is what befell a node, at its path in the archive's vault.
 type Problem struct {
 	Path string
@@ -46,8 +100,9 @@ type Problem struct {
 }
 
 // Counts are a report's numbers: an export's pages and attachments
-// written, the nodes renamed and the attachments whose files were missing;
-// an import's skipped entries (P6).
+// written, the nodes renamed and the attachments whose files were
+// missing; an import's pages and attachments created, the nodes renamed,
+// and the entries and nodes skipped.
 type Counts struct {
 	Pages, Attachments, Renamed, Missing, Skipped int64
 }
