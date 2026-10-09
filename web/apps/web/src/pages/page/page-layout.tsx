@@ -201,12 +201,7 @@ const PageShell = observer(function PageShell({
     }
     if (back.current) {
       back.current = false;
-      // The edit gone takes the focus in it along; one the user took elsewhere meanwhile (an edit that waited for its
-      // uploads, or idle) stays there.
-      const focused = document.activeElement;
-      if (focused === null || focused === document.body) {
-        edit.current?.focus();
-      }
+      edit.current?.focus();
     }
     const mac = onMac();
     const onKeyDown = (event: KeyboardEvent) => {
@@ -277,7 +272,8 @@ const PageShell = observer(function PageShell({
               page={page}
               editing={editing}
               done={(left) => {
-                back.current = true;
+                // Left where the user went as it waited for its uploads, the focus stays there.
+                back.current = left.elsewhere !== true;
                 setIdleLeft(left.idle);
                 setToldLeft(left.told ?? "");
                 // A toggle's refusal that came while it edited is no longer news.

@@ -43,9 +43,10 @@ function composed(editor: SourceEditorHandle | null, act: () => void, drop?: () 
 
 /**
  * Left is how an edit ended: idle, left for a long time without input; told, what the editor said as the edit waited
- * to be left for its uploads (files not inserted), which the reading view says.
+ * to be left for its uploads (files not inserted), which the reading view says; elsewhere, whether the user took the
+ * focus elsewhere meanwhile, where it stays.
  */
-export type Left = { idle: boolean; told?: string };
+export type Left = { idle: boolean; told?: string; elsewhere?: boolean };
 
 type PageEditProps = {
   notebook: Notebook;
@@ -78,8 +79,9 @@ type PageEditProps = {
  * the editor told meanwhile goes with it to the reading view. An edit
  * lost meanwhile, or that runs into a conflict, stays, its banner or the
  * conflict's panel deciding; one with a conflict open waits for nothing.
- * Its save once they are in moves no focus if the user went elsewhere
- * meanwhile. The idle exit, which waits for no upload, tries again later.
+ * Its save once they are in, and the edit left, move no focus if the user
+ * went elsewhere meanwhile. The idle exit, which waits for no upload,
+ * tries again later.
  *
  * An edit whose session is lost (M5/P4 design 3.8) saves no more: the
  * editor is read-only, through the registered extension the controls tell,
@@ -243,7 +245,8 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
     const from = document.activeElement;
     const stayed = () => document.activeElement === from || document.activeElement === document.body;
     // The embeds of the files pasted or dropped go in first, to be saved with the rest.
-    if (current?.working() === true) {
+    const waited = current?.working() === true;
+    if (waited) {
       toldWaiting.current = "";
       setWaiting({ failure: editing.failure });
       const inserted = await uploadsIn(current);
@@ -273,7 +276,7 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
       }
       return;
     }
-    await finish({ ...left, told: toldWaiting.current });
+    await finish({ ...left, told: toldWaiting.current, elsewhere: waited && !stayed() });
   }
 
   /**
