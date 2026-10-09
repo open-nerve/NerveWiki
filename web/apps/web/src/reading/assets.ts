@@ -11,6 +11,9 @@ const media = "audio.nw-asset, video.nw-asset";
 /** How far from where it was a media may start, in seconds, without being moved there again. */
 const nearEnough = 0.25;
 
+/** How long after a media's address was signed anew a failure of it is its file's, not its address's: it is not signed again. */
+const signedAgainAfter = 60_000;
+
 /**
  * assets is the attachments of the reading view (M7/P4 design 4.4–4.6),
  * whose HTML has them at their contents' addresses, signed for an hour or
@@ -19,15 +22,16 @@ const nearEnough = 0.25;
  * - A link to one says its size after it, in the reader's language. One
  *   the browser shows opens in a tab of its own, as it says unseen; one to
  *   any other downloads it (the server writes download).
- * - An audio or a video started (playing, or paused partway) that fails
- *   (its address expired, as a rule: a long one, a tab hidden, a reader
- *   away) has the attachment's address signed anew (assetAddress), and
- *   goes on where it was, the same element; once for each HTML, none for
- *   an attachment gone.
- * - An image, or an audio or a video not started or failed again, that
- *   fails to load once the view's addresses have expired reads the view
- *   again: once for each expiry of the page's, as one that fails for
- *   another reason would fail as much in the view read again.
+ * - An audio or a video started (playing, paused partway, or played and
+ *   not loaded yet) that fails (its address expired, as a rule: a long
+ *   one, a tab hidden, a reader away) has the attachment's address signed
+ *   anew (assetAddress), and goes on where it was, the same element; not
+ *   while it is being signed anew, nor within signedAgainAfter of it (it
+ *   fails for another reason then).
+ * - An image, or an audio or a video not signed anew, that fails to load,
+ *   or an address not given, once the view's addresses have expired reads
+ *   the view again: once for each expiry of the page's, as one that fails
+ *   for another reason would fail as much in the view read again.
  * - An audio or a video started is kept as the HTML is replaced, which
  *   the signatures do each hour and others' writes at any time: the next
  *   HTML of the page has it in place of its own of the same attachment,
@@ -35,35 +39,45 @@ const nearEnough = 0.25;
  *   if it had it (a folded callout it is in opening); one it does not
  *   have goes. One that failed is not kept: it would not load again, and
  *   the new one is put where it was (its position, rate and volume, the
- *   focus), not played: it failed signed anew too, or could not be.
+ *   focus), not played: it failed signed anew too, or could not be; but
+ *   for one being signed anew as it played, whose new one plays on.
  */
 export function assets(): Enhancement {
   // What the view had started as its HTML was replaced: its page, its audios and videos by key, and the focused one.
   let kept: Kept | undefined;
   // The expiry each page's view was read again for, as its attachments failed to load.
   const reloadedFor = new Map<string, string>();
+  const signing: Signing = { pending: new WeakSet(), at: new WeakMap() };
   return (container, context) => {
-    adopt(container, kept?.page === context.page ? kept : undefined);
+    adopt(container, kept?.page === context.page ? kept : undefined, signing);
     kept = undefined;
-    // The audios and videos this HTML has had signed anew.
-    const signed = new Set<HTMLMediaElement>();
     const links = newTab(container, context.t("asset.newTab"));
     const added = [...links.flatMap(({ hint }) => hint), ...sizes(container, context)];
-    const onError = (event: Event) => {
-      const element = event.target;
-      if (!(element instanceof HTMLElement) || !element.matches(`img.nw-asset, ${media}`)) {
-        return;
-      }
-      if (element instanceof HTMLMediaElement && begun(element) && !signed.has(element)) {
-        signed.add(element);
-        void signAnew(element, context);
-        return;
-      }
+    const readAgain = () => {
       const expires = context.assetsExpire;
       if (expires !== null && Date.now() >= Date.parse(expires) && reloadedFor.get(context.page) !== expires) {
         reloadedFor.set(context.page, expires);
         context.reload();
       }
+    };
+    const onError = (event: Event) => {
+      const element = event.target;
+      if (!(element instanceof HTMLElement) || !element.matches(`img.nw-asset, ${media}`)) {
+        return;
+      }
+      if (element instanceof HTMLMediaElement && signing.pending.has(element)) {
+        // A load of its old address meanwhile: the new one comes.
+        return;
+      }
+      if (
+        element instanceof HTMLMediaElement &&
+        begun(element) &&
+        Date.now() - (signing.at.get(element) ?? Number.NEGATIVE_INFINITY) >= signedAgainAfter
+      ) {
+        void signAnew(element, context, signing, readAgain);
+        return;
+      }
+      readAgain();
     };
     // An element's error goes no further than it: the container hears it on its way down.
     container.addEventListener("error", onError, true);
@@ -89,6 +103,9 @@ export function assets(): Enhancement {
 
 /** Kept is what a view had started as its HTML was replaced: its page, its audios and videos by key, the focused one. */
 type Kept = { page: string; media: Map<string, HTMLMediaElement>; focused: HTMLMediaElement | undefined };
+
+/** Signing is the audios and videos signed anew: those under way, and when each was last. */
+type Signing = { pending: WeakSet<HTMLMediaElement>; at: WeakMap<HTMLMediaElement, number> };
 
 /**
  * newTab has the links of container to attachments the browser shows open in a tab of their own, saying so unseen:
@@ -130,9 +147,10 @@ function sizes(container: HTMLElement, { t, locale }: ReadingContext): HTMLEleme
  * of the same key (an attachment's type is its own: the same element),
  * its attributes but its address taken, the focus given back if it had
  * it. One that failed is not put: the new one is put where it was, the
- * focus given it if it had it.
+ * focus given it if it had it, playing if the one was as it was being
+ * signed anew.
  */
-function adopt(container: HTMLElement, kept: Kept | undefined) {
+function adopt(container: HTMLElement, kept: Kept | undefined, signing: Signing) {
   if (kept === undefined) {
     return;
   }
@@ -143,6 +161,9 @@ function adopt(container: HTMLElement, kept: Kept | undefined) {
     }
     if (old.error !== null) {
       putAt(element, placeOf(old));
+      if (signing.pending.has(old) && !old.paused) {
+        void playOn(element);
+      }
       if (old === kept.focused) {
         focus(element);
       }
@@ -208,37 +229,57 @@ function assetOf(address: string | null): string | undefined {
 }
 
 /**
- * signAnew gives element the address of its attachment signed anew, and has it go on where it is (as it failed, or as
- * the reader had it since); nothing when the address is not given (the attachment gone) or the element is no longer in
- * the page.
+ * signAnew gives element the address of its attachment signed anew, and has it go on where it is: its position and
+ * rate as it failed (a reload of it meanwhile, as Chromium's controls do as one plays it, loses them), playing and as
+ * loud as the reader left it. Nothing when the element is no longer in the page; refused, as the address is not given
+ * (the attachment gone, or the network).
  */
-async function signAnew(element: HTMLMediaElement, { assetAddress }: ReadingContext): Promise<void> {
+async function signAnew(
+  element: HTMLMediaElement,
+  { assetAddress }: ReadingContext,
+  signing: Signing,
+  refused: () => void
+): Promise<void> {
   const id = assetOf(element.getAttribute("src"));
   if (id === undefined) {
     return;
   }
+  const failed = placeOf(element);
+  signing.pending.add(element);
   let address: string;
   try {
     address = await assetAddress(id);
   } catch {
+    if (element.isConnected) {
+      refused();
+    }
     return;
+  } finally {
+    signing.pending.delete(element);
   }
   if (!element.isConnected) {
     return;
   }
+  signing.at.set(element, Date.now());
   // Before the new address's load has it paused, at the start, at the default rate.
-  const place = placeOf(element);
+  const now = placeOf(element);
+  const place = element.error === null ? { ...now, at: failed.at, rate: failed.rate } : now;
   element.setAttribute("src", address);
   if (!place.playing) {
     element.preload = "metadata";
   }
   putAt(element, place);
   if (place.playing) {
-    try {
-      await element.play();
-    } catch {
-      // Refused: it stays where it is, which the reader plays again.
-    }
+    await playOn(element);
+  }
+}
+
+/** playOn plays element; refused, it stays where it is, which the reader plays again. */
+async function playOn(element: HTMLMediaElement): Promise<void> {
+  try {
+    await element.play();
+  } catch {
+    // Refused.
   }
 }
 

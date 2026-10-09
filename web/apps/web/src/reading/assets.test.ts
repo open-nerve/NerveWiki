@@ -253,7 +253,7 @@ test("another page's view keeps none; at most twenty are kept", () => {
   undo?.();
 });
 
-test("one kept that fails has its address signed anew and goes on where it was, once for the HTML", async () => {
+test("one kept that fails has its address signed anew and goes on where it was; failing again at once, it is the view's", async () => {
   const html = `<p>${audio("a1")} ${video("gone")}</p>`;
   const { container, context, signed, reloads, enhancement } = setUp(html);
   let undo = enhancement(container, context());
@@ -270,7 +270,7 @@ test("one kept that fails has its address signed anew and goes on where it was, 
   expect(sound.getAttribute("src")).toBe("/api/v0/assets/a1/content?anew=1");
   expect([sound.currentTime, sound.playbackRate, sound.paused, sound.preload]).toEqual([30, 1.5, false, "none"]);
   expect(sound.play).toHaveBeenCalledTimes(1);
-  // Not again for this HTML: its failure is the view's, read again once.
+  // Not again so soon: its failure is the view's, read again once.
   fail(sound);
   await settle();
   expect(signed).toEqual(["a1"]);
@@ -405,11 +405,11 @@ test("one that failed is not kept: the new one is put where it was, at its rate 
   undo?.();
 });
 
-test("one started in the view that fails is signed anew in place, once; one not started reads the view again", async () => {
-  const html = `<p>${audio("a1")} ${audio("a2")}</p>`;
+test("one started in the view that fails is signed anew in place; one not started reads the view again", async () => {
+  const html = `<p>${audio("a1")} ${audio("a2")} ${audio("a3")}</p>`;
   const { container, context, signed, reloads, enhancement } = setUp(html);
   const undo = enhancement(container, context());
-  const [sounding, still] = container.querySelectorAll("audio");
+  const [sounding, pressed, still] = container.querySelectorAll("audio");
   play(sounding, 3000);
   Object.assign(sounding ?? {}, { volume: 0.4 });
   fail(sounding);
@@ -418,13 +418,121 @@ test("one started in the view that fails is signed anew in place, once; one not 
   expect(container.querySelector("audio")).toBe(sounding);
   expect(sounding?.getAttribute("src")).toBe("/api/v0/assets/a1/content?anew=1");
   expect([sounding?.currentTime, sounding?.volume, sounding?.paused]).toEqual([3000, 0.4, false]);
+  // Played, and failed before it loaded: as a browser has it, not paused.
+  play(pressed, 0);
+  fail(pressed);
+  await settle();
+  expect(signed).toEqual(["a1", "a2"]);
   expect(reloads).toEqual([]);
-  // Failed again, it is the view's.
+  // Failed again at once, it is the view's.
   fail(sounding);
+  await settle();
+  expect(signed).toEqual(["a1", "a2"]);
+  expect(reloads).toEqual(["p"]);
   fail(still);
   await settle();
+  expect(signed).toEqual(["a1", "a2"]);
+  undo?.();
+});
+
+test("one is signed anew again a minute after it was, kept or not", async () => {
+  const html = `<p>${audio("a1")}</p>`;
+  const { container, context, signed, enhancement } = setUp(html, { expires: later });
+  let undo = enhancement(container, context());
+  const sound = play(container.querySelector("audio"), 30);
+  fail(sound);
+  await settle();
+  vi.setSystemTime(now.getTime() + 59_000);
+  fail(sound);
+  await settle();
   expect(signed).toEqual(["a1"]);
-  expect(reloads).toEqual(["p"]);
+  vi.setSystemTime(now.getTime() + 61_000);
+  fail(sound);
+  await settle();
+  expect(signed).toEqual(["a1", "a1"]);
+  // Kept as the HTML is replaced, the same.
+  undo?.();
+  container.innerHTML = html;
+  undo = enhancement(container, context());
+  expect(container.querySelector("audio")).toBe(sound);
+  fail(sound);
+  await settle();
+  expect(signed).toEqual(["a1", "a1"]);
+  vi.setSystemTime(now.getTime() + 2 * 61_000);
+  fail(sound);
+  await settle();
+  expect(signed).toEqual(["a1", "a1", "a1"]);
+  undo?.();
+});
+
+test("one whose address is not given reads the view again, once its addresses expired, and is signed anew as it fails next", async () => {
+  const html = `<p>${audio("a1")} ${audio("a2")}</p>`;
+  const { container, context, reloads, enhancement } = setUp(html);
+  let refuse = true;
+  const asked: string[] = [];
+  const undo = enhancement(container, {
+    ...context(),
+    assetAddress: async (id) => {
+      asked.push(id);
+      if (refuse) {
+        throw new Error("503");
+      }
+      return `/api/v0/assets/${id}/content?anew=1`;
+    },
+  });
+  const [sound, gone] = [...container.querySelectorAll("audio")].map((element) => play(element, 30));
+  // Gone from the page meanwhile: the view was read again already.
+  fail(gone);
+  gone?.remove();
+  await settle();
+  expect([asked, reloads]).toEqual([["a2"], []]);
+  fail(sound);
+  await settle();
+  expect([asked, reloads]).toEqual([["a2", "a1"], ["p"]]);
+  refuse = false;
+  fail(sound);
+  await settle();
+  expect(asked).toEqual(["a2", "a1", "a1"]);
+  expect(sound?.getAttribute("src")).toBe("/api/v0/assets/a1/content?anew=1");
+  undo?.();
+});
+
+test("one being signed anew: loaded again meanwhile, it keeps where it failed; replaced meanwhile, its new one plays on", async () => {
+  const played = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
+  onTestFinished(() => played.mockRestore());
+  const html = `<p>${audio("a1")} ${audio("a2")}</p>`;
+  const { container, context, reloads, enhancement } = setUp(html);
+  const answers: ((signed: string) => void)[] = [];
+  const signing = () => ({ ...context(), assetAddress: () => new Promise<string>((resolve) => answers.push(resolve)) });
+  let undo = enhancement(container, signing());
+  const shown = container.querySelectorAll("audio");
+  const reloaded = play(shown[0], 30);
+  reloaded.playbackRate = 1.5;
+  const replaced = play(shown[1], 40);
+  broken(reloaded);
+  fail(reloaded);
+  // Chromium's controls, played as it failed, load it again: its old address fails again.
+  Object.assign(reloaded, { error: null, currentTime: 0, playbackRate: 1, paused: false });
+  fail(reloaded);
+  expect(answers).toHaveLength(1);
+  expect(reloads).toEqual([]);
+  answers.shift()?.("/api/v0/assets/a1/content?anew=1");
+  await settle();
+  expect([reloaded.currentTime, reloaded.playbackRate, reloaded.paused]).toEqual([30, 1.5, false]);
+
+  broken(replaced);
+  fail(replaced);
+  undo?.();
+  container.innerHTML = html;
+  undo = enhancement(container, signing());
+  const fresh = container.querySelectorAll("audio")[1];
+  expect(fresh).not.toBe(replaced);
+  expect(fresh?.currentTime).toBe(40);
+  await settle();
+  expect(played.mock.contexts).toEqual([fresh]);
+  answers.shift()?.("/api/v0/assets/a2/content?anew=1");
+  await settle();
+  expect(replaced.getAttribute("src")).toContain("e=1");
   undo?.();
 });
 

@@ -67,9 +67,9 @@ import { useUnresolvedLinks } from "./unresolved-link";
  *
  * The attachments' addresses in the HTML expire: the view is read again
  * before they do (page-view.ts), and its enhancement keeps the media
- * playing as the HTML is replaced and signs a kept one's address anew
- * through the attachments' store (reading/assets.ts; M7/P4 design 4.5,
- * 4.6).
+ * playing as the HTML is replaced and signs a started one's address anew
+ * as it fails, through the attachments' store (reading/assets.ts; M7/P4
+ * design 4.5, 4.6).
  */
 export const ReadingView = observer(function ReadingView({
   notebook,

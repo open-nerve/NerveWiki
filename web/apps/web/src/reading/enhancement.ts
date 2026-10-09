@@ -65,8 +65,9 @@ export type ReadingContext = {
   assetsExpire: string | null;
   /**
    * assetAddress is the address of the attachment id's content, signed
-   * anew: an audio's or a video's kept as the HTML was replaced, which has
-   * expired (M7/P4 design 4.6). It rejects for an attachment gone.
+   * anew: an audio's or a video's started, as it fails (its address
+   * expired, as a rule; M7/P4 design 4.6). It rejects for an attachment
+   * gone, or as the server is not reached.
    */
   assetAddress: (id: string) => Promise<string>;
   /**
