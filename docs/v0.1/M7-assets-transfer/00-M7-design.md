@@ -518,7 +518,7 @@ M7 开工时负责人确认进入 M7（2026-10-08："可以了"）。下面是�
 | P3 | 附件与链接（服务端） | 已完成（A 合并 `5138ad6`，B 合并 `f3bf03c`） | [03-P3-assets-links.md](03-P3-assets-links.md) | [P3A 审查](reviews/P3A-assets-links-review.md)、[P3B 审查](reviews/P3B-render-review.md) |
 | P4 | 附件（前端） | 已完成（A 合并 `e44b417`，B 合并 `32e175c`，C 合并 `008f81f`） | [04-P4-assets-web.md](04-P4-assets-web.md) | [P4A 审查](reviews/P4A-assets-web-review.md)、[P4B 审查](reviews/P4B-assets-web-review.md)、[P4C 审查](reviews/P4C-paste-upload-review.md) |
 | P5 | 导出 | 完成（A 合并 `e8f02d5`，B 合并 `ab4562a`） | [05-P5-export.md](05-P5-export.md) | [P5A 审查](reviews/P5A-export-review.md)、[P5B 审查](reviews/P5B-export-web-review.md) |
-| P6 | 导入 | 未开始 | — | — |
+| P6 | 导入 | 进行中（A） | [06-P6-import.md](06-P6-import.md) | — |
 
 ## 13. 变更记录
 
