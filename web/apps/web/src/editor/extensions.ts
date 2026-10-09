@@ -1,5 +1,5 @@
 import { Compartment, EditorState, type Extension, type StateEffect } from "@codemirror/state";
-import { EditorView } from "@codemirror/view";
+import { dropCursor, EditorView } from "@codemirror/view";
 
 import type { EditorContext, EditorControls, EditorExtension, ReadyExtension } from "./registry";
 
@@ -88,12 +88,13 @@ export const readOnly = new Compartment();
 /**
  * readOnlyAs is readOnly's content for on. A content that cannot be
  * changed stays focusable, out of the tab order: the focus in it stays
- * there as it is set read-only.
+ * there as it is set read-only. One that can shows where what is dragged
+ * over it would drop (M7/P4 design 5.2).
  */
 export function readOnlyAs(on: boolean): Extension {
   return [
     EditorState.readOnly.of(on),
     EditorView.editable.of(!on),
-    on ? EditorView.contentAttributes.of({ tabindex: "-1" }) : [],
+    on ? EditorView.contentAttributes.of({ tabindex: "-1" }) : dropCursor(),
   ];
 }

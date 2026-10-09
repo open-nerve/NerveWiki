@@ -84,11 +84,11 @@ export type EditorControls = {
   /**
    * tell says text by the editor, in place of what it said before, and
    * unseen in its own announcements: what an extension could not do (M7/P4
-   * design 5.2). An empty text says nothing more.
+   * design 5.2). An empty text clears what was said, announcing nothing.
    */
   tell(text: string): void;
   /**
-   * going has the edit wait for work before it is left by the user (M7/P4
+   * going has the edit wait for work before Done or Mod+E leaves it (M7/P4
    * design 5.2): uploads whose embeds are to be inserted. While it goes,
    * the edit is not idle.
    */

@@ -28,7 +28,7 @@ export const EditorUploads = observer(function EditorUploads({
   return (
     <div className="space-y-2 empty:hidden">
       {uploads.length > 0 && <UploadRows assets={assets} uploads={uploads} left={left} />}
-      {told !== "" && <p className="text-sm text-muted-foreground">{told}</p>}
+      {told !== "" && <p className="text-sm whitespace-pre-line text-muted-foreground">{told}</p>}
     </div>
   );
 });

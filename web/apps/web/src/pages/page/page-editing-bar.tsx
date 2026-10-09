@@ -16,8 +16,8 @@ type PageEditingBarProps = {
 /**
  * PageEditingBar is the edit's status and buttons (M4/P6 design 3.7): what
  * the last save came to, a conflict, that the edit is left once the
- * editor's uploads are in, or that it is unsaved, in an output that
- * screen readers announce (a conflict autosave runs into
+ * editor's uploads are in (Done busy meanwhile, which saves aside), or
+ * that it is unsaved, in an output that screen readers announce (a conflict autosave runs into
  * moves no focus: M5/P5 design 3.6); Save and Done. A content refused says which of
  * its rules it breaks.
  */
@@ -28,8 +28,9 @@ export const PageEditingBar = observer(function PageEditingBar({
   leave,
 }: PageEditingBarProps) {
   const t = useT();
+  // Waiting to leave, a failure is tried again by the leave's own save.
   const failed =
-    editing.failure === undefined
+    editing.failure === undefined || waiting
       ? undefined
       : (fieldErrors(editing.failure, t).content ??
         errorText(editing.failure, t, { bad_request: "editor.tooSlow", forbidden: "editor.lostAccess" }));
@@ -38,12 +39,12 @@ export const PageEditingBar = observer(function PageEditingBar({
       ? failed
       : editing.conflict !== undefined
         ? t("editor.conflicted")
-        : editing.busy
-          ? t("editor.busy")
-          : editing.saving
-            ? t("editor.saving")
-            : waiting
-              ? t("editor.waiting")
+        : waiting
+          ? t("editor.waiting")
+          : editing.busy
+            ? t("editor.busy")
+            : editing.saving
+              ? t("editor.saving")
               : editing.unsaved
                 ? t("editor.unsaved")
                 : editing.saved
@@ -58,7 +59,9 @@ export const PageEditingBar = observer(function PageEditingBar({
         <Button variant="outline" onClick={save}>
           {t("page.save")}
         </Button>
-        <Button onClick={leave}>{t("editor.done")}</Button>
+        <Button aria-busy={waiting || undefined} aria-disabled={waiting || undefined} onClick={leave}>
+          {t("editor.done")}
+        </Button>
       </div>
     </div>
   );

@@ -19,11 +19,11 @@ export type AssetList = { assets: readonly Asset[]; next: string | null; pages: 
 /** Why an upload was not sent: it is a page's file, or larger than the instance takes. */
 export type UploadRefusal = { refused: "page-file" } | { refused: "too-large"; max: number };
 
-/** UploadLimits are what the page knows of what the server takes: the instance's largest attachment, in bytes. */
-type UploadLimits = { maxBytes: number | undefined };
-
-/** UploadOptions are an upload's limits, and whether the editor began it: its embed is to be inserted (M7/P4 design 5.3). */
-export type UploadOptions = UploadLimits & { fromEditor?: boolean };
+/**
+ * UploadTerms are what an upload begins under: what the page knows of what the server takes, the instance's largest
+ * attachment in bytes; and whether the editor began it, its embed to be inserted (M7/P4 design 5.3).
+ */
+type UploadTerms = { maxBytes: number | undefined; fromEditor?: boolean };
 
 /**
  * Upload is a file going up as an attachment (M7/P4 design 3.3): under its
@@ -205,22 +205,16 @@ export class AssetStore {
    * upload uploads each of files under parent (null: the root), side by
    * side, each by its name fixed (untitled for one of nothing) and free
    * among the siblings and the other uploads going. One that is a page's
-   * file, or larger than options.maxBytes, is not sent: it shows why.
+   * file, or larger than terms.maxBytes, is not sent: it shows why.
    */
-  upload(parent: string | null, files: readonly File[], untitled: string, options: UploadOptions): Upload[] {
+  upload(parent: string | null, files: readonly File[], untitled: string, terms: UploadTerms): Upload[] {
     return files.map((file) => {
-      const upload = new Upload(
-        ++this.uploadsStarted,
-        parent,
-        fixedName(file.name, untitled),
-        file,
-        options.fromEditor
-      );
+      const upload = new Upload(++this.uploadsStarted, parent, fixedName(file.name, untitled), file, terms.fromEditor);
       this.uploads.push(upload);
       if (isPageName(upload.name)) {
         upload.failure = { refused: "page-file" } satisfies UploadRefusal;
-      } else if (options.maxBytes !== undefined && file.size > options.maxBytes) {
-        upload.failure = { refused: "too-large", max: options.maxBytes } satisfies UploadRefusal;
+      } else if (terms.maxBytes !== undefined && file.size > terms.maxBytes) {
+        upload.failure = { refused: "too-large", max: terms.maxBytes } satisfies UploadRefusal;
       } else {
         if (this.generation.aborted) {
           upload.cancel();

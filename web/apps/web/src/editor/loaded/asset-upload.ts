@@ -1,5 +1,5 @@
 import { Prec, StateEffect, StateField, type EditorState } from "@codemirror/state";
-import { dropCursor, EditorView } from "@codemirror/view";
+import { EditorView } from "@codemirror/view";
 
 import { embedOf } from "../../lib/asset-kind";
 import { carriesFiles, filesDropped } from "../../lib/file-transfer";
@@ -95,13 +95,12 @@ export function pastedName(file: File, now: Date): string {
  *   both: their text is pasted), goes where the selection is, which it
  *   replaces; an image without a name of its own is named as Obsidian
  *   names it (pastedName).
- * - A drop of files from outside the page goes where it is dropped, the
- *   drop's cursor showing where as they are dragged; a drag started in
- *   the page (an image dragged carries a file in Chromium), and one of
+ * - A drop of files from outside the page goes where it is dropped (the
+ *   editor shows where as they are dragged); a drag started in the page (an image dragged carries a file in Chromium), and one of
  *   pages' files (.md) only, are CodeMirror's, as is one that holds no
  *   file to read. A read-only editor takes no file.
  * - A folder pasted or dropped is not uploaded: the editor says to import
- *   one.
+ *   one, with a drop's pages' files too.
  * - Each embed is inserted once its upload is answered, where its files
  *   went, as the content changed since, in their order, a line each, the
  *   cursor there going after it as after a paste; once a composition
@@ -121,14 +120,13 @@ export const assetUpload: Build = (context, controls) => {
   const take = (view: EditorView, at: number, files: readonly File[], folders: boolean) => {
     controls.tell(folders ? view.state.phrase(foldersPhrase) : "");
     controls.going(
-      upload(view, at, files, context, controls, () => closed).catch((error: unknown) => {
+      upload(view, at, { files, folders }, context, controls, () => closed).catch((error: unknown) => {
         console.error("The files pasted or dropped could not be inserted", error);
       })
     );
   };
   return [
     places,
-    dropCursor(),
     Prec.highest(
       EditorView.domEventHandlers({
         paste(event, view) {
@@ -164,7 +162,14 @@ export const assetUpload: Build = (context, controls) => {
             return false;
           }
           const { files, folders } = filesDropped(transfer);
-          if ((files.length === 0 && !folders) || (files.length > 0 && files.every((file) => isPageName(file.name)))) {
+          if (files.length === 0 && !folders) {
+            return false;
+          }
+          // Pages' files only: CodeMirror reads their text in.
+          if (files.length > 0 && files.every((file) => isPageName(file.name))) {
+            if (folders) {
+              controls.tell(view.state.phrase(foldersPhrase));
+            }
             return false;
           }
           const at = view.posAtCoords({ x: event.clientX, y: event.clientY }) ?? view.state.selection.main.head;
@@ -201,15 +206,17 @@ function laterAt(state: EditorState, id: number, at: number): number[] {
 }
 
 /**
- * upload uploads files side by side, and inserts each one's embed, in
- * their order, at the place opened at at, while the editor's state is
- * the same (isClosed tells it went) and its content can be changed; then
- * it says what was not inserted.
+ * upload uploads a paste's or a drop's files side by side, and inserts
+ * each one's embed, in their order, at the place opened at at, while the
+ * editor's state is the same (isClosed tells it went) and its content can
+ * be changed; then it says what was not inserted, its folders too (in
+ * place of what it said of them), a line each. Of pastes and drops going together,
+ * what the last answered says stays.
  */
 async function upload(
   view: EditorView,
   at: number,
-  files: readonly File[],
+  { files, folders }: { files: readonly File[]; folders: boolean },
   context: EditorContext,
   controls: EditorControls,
   isClosed: () => boolean
@@ -229,9 +236,9 @@ async function upload(
   const unlinked: string[] = [];
   const left: string[] = [];
   let first = true;
-  for (const going of uploads) {
+  for (const answered of uploads) {
     // oxlint-disable-next-line no-await-in-loop -- each embed after the one before, in their order
-    const asset = await going;
+    const asset = await answered;
     if (asset === undefined) {
       continue;
     }
@@ -251,10 +258,12 @@ async function upload(
     } else {
       const changes = state.changes({ from: place, insert: (first ? "" : "\n") + embedOf(asset.link) });
       const after = changes.mapPos(place, 1);
+      // The cursor where it goes goes after it, as after a paste; non-empty, a selection keeps what it holds. Set only
+      // then: a selection set resets what follows it, an open completion.
+      const moved = state.selection.map(changes, 1);
       view.dispatch({
         changes,
-        // The cursor where it goes goes after it, as after a paste; non-empty, a selection keeps what it holds.
-        selection: state.selection.map(changes, 1),
+        ...(moved.eq(state.selection.map(changes)) ? {} : { selection: moved }),
         effects: [id, ...laterAt(state, id, place)].map((each) => placeAdded.of({ id: each, at: after })),
         userEvent: "input.paste",
       });
@@ -265,10 +274,11 @@ async function upload(
     view.dispatch({ effects: placeDone.of(id) });
   }
   const said = [
+    folders && (unlinked.length > 0 || left.length > 0) ? view.state.phrase(foldersPhrase) : "",
     unlinked.length > 0 ? view.state.phrase(noLink, namesOf(unlinked)) : "",
     left.length > 0 ? view.state.phrase(notInserted, namesOf(left)) : "",
   ].filter((sentence) => sentence !== "");
   if (said.length > 0) {
-    controls.tell(said.join(" "));
+    controls.tell(said.join("\n"));
   }
 }

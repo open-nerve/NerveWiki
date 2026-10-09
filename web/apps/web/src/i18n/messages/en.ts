@@ -208,7 +208,7 @@ export const en = {
   "editor.done": "Done",
   "editor.unsaved": "Unsaved changes",
   "editor.saving": "Saving…",
-  "editor.waiting": "Leaving once the uploads are in…",
+  "editor.waiting": "Leaving once the uploads finish…",
   "editor.busy": "The server is busy: the page is saved again in a moment.",
   "editor.tooSlow": "The network was too slow to send the page in time. Save again.",
   "editor.lostAccess": "You can no longer edit this page.",
