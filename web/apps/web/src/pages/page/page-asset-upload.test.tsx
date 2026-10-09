@@ -188,6 +188,9 @@ test("a conflict met as Done waits keeps the edit, the conflict's panel deciding
   type(" mine");
   await user.click(screen.getByRole("button", { name: "Save" }));
   const region = await screen.findByRole("region", { name: "This page changed while you edited it" });
+  // The edit no longer waits to be left.
+  await act(async () => {});
+  expect(screen.getByRole("button", { name: "Done" }).getAttribute("aria-busy")).toBeNull();
   await user.click(within(region).getByRole("button", { name: "Keep mine" }));
   await waitFor(() =>
     expect(screen.queryByRole("region", { name: "This page changed while you edited it" })).toBeNull()
@@ -431,4 +434,58 @@ test("as Done waits, the bar says so over a save asked for meanwhile", async () 
   type(" one");
   await user.click(screen.getByRole("button", { name: "Save" }));
   expect(status.textContent).toBe("Leaving once the uploads finish…");
+});
+
+test("an edit left once its uploads are in leaves the focus where the user went meanwhile", async () => {
+  const server = pageServer({ nodes });
+  server.uploadsHeld = true;
+  const { user, view, content } = await editing(server);
+  paste(view, [new File(["png"], "chart.png", { type: "image/png" })]);
+  await waitFor(() => expect(uploadsBy(content)).toBeDefined());
+  await user.click(screen.getByRole("button", { name: "Done" }));
+  await screen.findByText("Leaving once the uploads finish…");
+
+  const heading = screen.getByRole("heading", { level: 1, name: "Guide" });
+  act(() => heading.focus());
+  act(() => server.release());
+  expect(await screen.findByRole("button", { name: "Edit" })).toBeTruthy();
+  expect(document.activeElement).toBe(heading);
+});
+
+test("what the editor told as a leave waited that it gave up on is not said once a later Done leaves", async () => {
+  const server = pageServer({ nodes });
+  server.uploadsHeld = true;
+  const { user, view, content, type } = await editing(server);
+  paste(view, [new File(["png"], "chart.png", { type: "image/png" })]);
+  await waitFor(() => expect(uploadsBy(content)).toBeDefined());
+  await user.click(screen.getByRole("button", { name: "Done" }));
+  await screen.findByText("Leaving once the uploads finish…");
+
+  server.contents.set(guide.id, { content: "Guide\ntheirs\n", revision: 2 });
+  type(" mine");
+  await user.click(screen.getByRole("button", { name: "Save" }));
+  const region = await screen.findByRole("region", { name: "This page changed while you edited it" });
+  await user.click(within(region).getByRole("button", { name: "Discard mine" }));
+  act(() => server.release());
+  await screen.findAllByText("chart.png uploaded, not inserted: the text was replaced or can no longer be changed.");
+
+  await user.click(screen.getByRole("button", { name: "Done" }));
+  expect((await screen.findByRole("button", { name: "Edit" })).getAttribute("aria-describedby")).toBeNull();
+});
+
+test("a conflict the leave's save runs into, the focus fallen to the page meanwhile, takes it to the conflict's heading", async () => {
+  const server = pageServer({ nodes });
+  server.uploadsHeld = true;
+  const { user, view, content } = await editing(server);
+  paste(view, [new File(["png"], "chart.png", { type: "image/png" })]);
+  await waitFor(() => expect(uploadsBy(content)).toBeDefined());
+  await user.click(screen.getByRole("button", { name: "Done" }));
+  await screen.findByText("Leaving once the uploads finish…");
+
+  server.contents.set(guide.id, { content: "Guide\ntheirs\n", revision: 2 });
+  act(() => (document.activeElement as HTMLElement | null)?.blur());
+  expect(document.activeElement).toBe(document.body);
+  act(() => server.release());
+  const region = await screen.findByRole("region", { name: "This page changed while you edited it" });
+  await waitFor(() => expect(document.activeElement).toBe(within(region).getByRole("heading")));
 });

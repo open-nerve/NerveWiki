@@ -201,7 +201,12 @@ const PageShell = observer(function PageShell({
     }
     if (back.current) {
       back.current = false;
-      edit.current?.focus();
+      // The edit gone takes the focus in it along; one the user took elsewhere meanwhile (an edit that waited for its
+      // uploads, or idle) stays there.
+      const focused = document.activeElement;
+      if (focused === null || focused === document.body) {
+        edit.current?.focus();
+      }
     }
     const mac = onMac();
     const onKeyDown = (event: KeyboardEvent) => {
