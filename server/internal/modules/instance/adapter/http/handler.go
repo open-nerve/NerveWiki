@@ -5,6 +5,7 @@ package httpadapter
 
 import (
 	"context"
+	"time"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/instance/adapter/http/gen"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/instance/app"
@@ -60,5 +61,6 @@ func (h handler) GetInstance(context.Context, gen.GetInstanceRequestObject) (gen
 		SignupEnabled:            info.SignupEnabled,
 		WorkspaceCreationEnabled: info.WorkspaceCreationEnabled,
 		AssetMaxBytes:            info.AssetMaxBytes,
+		ExportTTLSeconds:         int64(info.ExportTTL / time.Second),
 	}, nil
 }

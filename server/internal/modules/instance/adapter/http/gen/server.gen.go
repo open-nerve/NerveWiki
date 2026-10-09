@@ -41,6 +41,9 @@ type InstanceInfo struct {
 	// Commit Git revision of the running build; "unknown" when the build carries no VCS stamp.
 	Commit string `json:"commit"`
 
+	// ExportTTLSeconds How long an export's archive is kept once the export succeeded, in seconds (transfer.export_ttl); then it expires.
+	ExportTTLSeconds int64 `json:"export_ttl_seconds"`
+
 	// Product Product name.
 	//
 	// Examples: Nerve Wiki

@@ -1,12 +1,17 @@
 package app
 
-import "github.com/open-nerve/NerveWiki/server/internal/modules/instance/domain"
+import (
+	"time"
+
+	"github.com/open-nerve/NerveWiki/server/internal/modules/instance/domain"
+)
 
 // Settings are the parts of the configuration an instance reports.
 type Settings struct {
-	SignupEnabled            bool  // auth.signup_enabled
-	WorkspaceCreationEnabled bool  // workspace.creation_enabled
-	AssetMaxBytes            int64 // asset.max_bytes
+	SignupEnabled            bool          // auth.signup_enabled
+	WorkspaceCreationEnabled bool          // workspace.creation_enabled
+	AssetMaxBytes            int64         // asset.max_bytes
+	ExportTTL                time.Duration // transfer.export_ttl
 }
 
 // GetInfo tells API clients what this instance runs.
@@ -32,5 +37,6 @@ func (uc *GetInfo) Execute() domain.Info {
 		SignupEnabled:            uc.settings.SignupEnabled,
 		WorkspaceCreationEnabled: uc.settings.WorkspaceCreationEnabled,
 		AssetMaxBytes:            uc.settings.AssetMaxBytes,
+		ExportTTL:                uc.settings.ExportTTL,
 	}
 }

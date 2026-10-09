@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/open-nerve/NerveWiki/server/internal/platform/buildinfo"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver"
@@ -37,19 +38,23 @@ func send(t *testing.T, method, url string) (*http.Request, *http.Response, []by
 
 // The instance module answers through the whole chain: the platform
 // middleware (X-Request-Id), then the module's per-route middlewares and
-// handler.
+// handler; the limits it reports are the configuration's.
 func TestServesTheInstanceAPI(t *testing.T) {
 	contract := apitest.Load(t)
-	base := startApp(t, testConfig(t, pgtest.NewDatabase(t), false), migrations.FS())
+	cfg := testConfig(t, pgtest.NewDatabase(t), false)
+	cfg.Asset.MaxBytes, cfg.Transfer.ExportTTL = 3<<20, 90*time.Minute
+	base := startApp(t, cfg, migrations.FS())
 
 	req, res, body := send(t, http.MethodGet, base+"/api/v0/instance")
 
 	contract.CheckResponse(t, req, res)
 	var got struct {
-		Product    string `json:"product"`
-		Version    string `json:"version"`
-		Commit     string `json:"commit"`
-		APIVersion string `json:"api_version"`
+		Product       string `json:"product"`
+		Version       string `json:"version"`
+		Commit        string `json:"commit"`
+		APIVersion    string `json:"api_version"`
+		AssetMaxBytes int64  `json:"asset_max_bytes"`
+		ExportTTL     int64  `json:"export_ttl_seconds"`
 	}
 	if err := json.Unmarshal(body, &got); err != nil {
 		t.Fatalf("decode %s: %v", body, err)
@@ -57,6 +62,9 @@ func TestServesTheInstanceAPI(t *testing.T) {
 	info := buildinfo.Get()
 	if res.StatusCode != http.StatusOK || got.Product != "Nerve Wiki" || got.Version != info.Version || got.Commit != info.Commit || got.APIVersion != "v0" {
 		t.Errorf("GET /api/v0/instance = %d %s, want 200 Nerve Wiki %s %s v0", res.StatusCode, body, info.Version, info.Commit)
+	}
+	if got.AssetMaxBytes != 3<<20 || got.ExportTTL != 5400 {
+		t.Errorf("GET /api/v0/instance = %s, want asset.max_bytes 3 MiB, transfer.export_ttl 5400 s", body)
 	}
 	if res.Header.Get(httpserver.HeaderRequestID) == "" {
 		t.Error("response has no X-Request-Id: the platform middleware did not run")

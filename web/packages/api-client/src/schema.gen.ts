@@ -1544,6 +1544,11 @@ export interface components {
              * @description The largest attachment an upload may send, in bytes (asset.max_bytes); a larger one is payload_too_large.
              */
             asset_max_bytes: number;
+            /**
+             * Format: int64
+             * @description How long an export's archive is kept once the export succeeded, in seconds (transfer.export_ttl); then it expires.
+             */
+            export_ttl_seconds: number;
         };
         /**
          * @description A member's role: admin manages the workspace and its members, member and guest take part. Rules compare roles by set, never by order.

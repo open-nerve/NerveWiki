@@ -2295,6 +2295,7 @@ components:
         - signup_enabled
         - workspace_creation_enabled
         - asset_max_bytes
+        - export_ttl_seconds
       properties:
         product:
           description: Product name.
@@ -2325,6 +2326,11 @@ components:
           type: integer
           format: int64
           minimum: 1024
+        export_ttl_seconds:
+          description: How long an export's archive is kept once the export succeeded, in seconds (transfer.export_ttl); then it expires.
+          type: integer
+          format: int64
+          minimum: 600
     WorkspaceRole:
       description: 'A member''s role: admin manages the workspace and its members, member and guest take part. Rules compare roles by set, never by order.'
       type: string

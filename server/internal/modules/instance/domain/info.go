@@ -1,6 +1,8 @@
 // Package domain holds the instance module's model.
 package domain
 
+import "time"
+
 // Product is the product name every instance reports.
 const Product = "Nerve Wiki"
 
@@ -28,4 +30,7 @@ type Info struct {
 	// AssetMaxBytes is asset.max_bytes: the largest attachment an upload
 	// may send, which a client checks before it sends one.
 	AssetMaxBytes int64
+	// ExportTTL is transfer.export_ttl: how long an export's archive is
+	// kept once it succeeded, which a client tells before it starts one.
+	ExportTTL time.Duration
 }

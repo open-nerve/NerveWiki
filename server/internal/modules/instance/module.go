@@ -4,6 +4,8 @@
 package instance
 
 import (
+	"time"
+
 	"github.com/open-nerve/NerveWiki/server/internal/modules/instance/adapter/buildinfo"
 	httpadapter "github.com/open-nerve/NerveWiki/server/internal/modules/instance/adapter/http"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/instance/app"
@@ -18,9 +20,10 @@ type Module struct {
 // Deps are what bootstrap gives the module: the parts of the
 // configuration GET /api/v0/instance reports.
 type Deps struct {
-	SignupEnabled            bool  // auth.signup_enabled
-	WorkspaceCreationEnabled bool  // workspace.creation_enabled
-	AssetMaxBytes            int64 // asset.max_bytes
+	SignupEnabled            bool          // auth.signup_enabled
+	WorkspaceCreationEnabled bool          // workspace.creation_enabled
+	AssetMaxBytes            int64         // asset.max_bytes
+	ExportTTL                time.Duration // transfer.export_ttl
 }
 
 // New wires the module: GetInfo reads the build of the running binary.
@@ -28,6 +31,7 @@ func New(d Deps) *Module {
 	return &Module{uc: httpadapter.UseCases{
 		GetInfo: app.NewGetInfo(buildinfo.Source{}, app.Settings{
 			SignupEnabled: d.SignupEnabled, WorkspaceCreationEnabled: d.WorkspaceCreationEnabled, AssetMaxBytes: d.AssetMaxBytes,
+			ExportTTL: d.ExportTTL,
 		}),
 	}}
 }
