@@ -99,6 +99,8 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
   const editor = useRef<SourceEditorHandle>(null);
   const conflictHeading = useRef<HTMLHeadingElement>(null);
   const banner = useRef<HTMLDivElement>(null);
+  // The edit's view: the focus moved within it stays the edit's.
+  const view = useRef<HTMLDivElement>(null);
   const leaving = useRef(false);
   // Whether the user asked for the save last sent: a conflict it runs into takes the focus to its heading; one that
   // autosave or the idle exit runs into leaves the focus where it is, the status saying so (M5/P5 design 3.6).
@@ -242,9 +244,13 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
       return;
     }
     leaving.current = true;
-    // Where the focus was: the leave moves it only from there, not from where the user went meanwhile.
+    // Where the focus was: the leave moves it only from there, or from within the edit, not from where the user went
+    // meanwhile.
     const from = document.activeElement;
-    const stayed = () => document.activeElement === from || document.activeElement === document.body;
+    const stayed = () => {
+      const at = document.activeElement;
+      return at === null || at === document.body || at === from || view.current?.contains(at) === true;
+    };
     // The embeds of the files pasted or dropped go in first, to be saved with the rest.
     const waited = current?.working() === true;
     if (waited) {
@@ -401,7 +407,7 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
     );
   }
   return (
-    <div className="space-y-3">
+    <div ref={view} className="space-y-3">
       {lost === undefined ? (
         <PageEditingBar
           editing={editing}
