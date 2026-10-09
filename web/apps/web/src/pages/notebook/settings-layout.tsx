@@ -11,6 +11,7 @@ import { useNotebook } from "./notebook-layout";
 const sections = [
   { path: "general", label: "notebookSettings.general" },
   { path: "members", label: "notebookSettings.members" },
+  { path: "transfer", label: "notebookSettings.transfer" },
 ] as const;
 
 /**

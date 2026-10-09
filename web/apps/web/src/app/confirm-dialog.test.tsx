@@ -50,6 +50,38 @@ test("a held dialog tells its caller whether confirm went through, and opens ane
   await waitFor(() => expect(closed).toEqual([true, false]));
 });
 
+test("a dialog by its trigger, the trigger staying, opens anew after confirm went through", async () => {
+  const user = userEvent.setup();
+  let confirmed = 0;
+  render(
+    <I18nProvider locale="en">
+      <ConfirmDialog
+        trigger={<button type="button">Export</button>}
+        focusAfter={() => {}}
+        title="Export it?"
+        description="It goes in a zip."
+        confirmLabel="Start"
+        sendingLabel="Starting…"
+        cancelLabel="Cancel"
+        confirm={async () => {
+          confirmed += 1;
+        }}
+        tone="default"
+      />
+    </I18nProvider>
+  );
+
+  for (const time of [1, 2]) {
+    // oxlint-disable-next-line no-await-in-loop -- one confirm after the other
+    await user.click(screen.getByRole("button", { name: "Export" }));
+    // oxlint-disable-next-line no-await-in-loop -- its dialog
+    await user.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Start" }));
+    // oxlint-disable-next-line no-await-in-loop -- closed
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    expect(confirmed).toBe(time);
+  }
+});
+
 test("the confirm button is destructive unless the dialog's tone is the default one", async () => {
   const user = userEvent.setup();
   for (const [tone, look] of [

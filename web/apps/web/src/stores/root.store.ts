@@ -20,6 +20,7 @@ import { NotebookMemberService } from "../services/notebook-member.service";
 import { NotebookService, type Notebook } from "../services/notebook.service";
 import { OwnerlessService } from "../services/ownerless.service";
 import { EditLeaveService, PageService } from "../services/page.service";
+import { TransferService } from "../services/transfer.service";
 import { WorkspaceService, type Workspace } from "../services/workspace.service";
 import type { Session } from "../session/session";
 import { AccountStore } from "./account.store";
@@ -38,6 +39,7 @@ import { OwnerlessStore } from "./ownerless.store";
 import { PageEditing } from "./page-editing";
 import { PageTreeStore } from "./page-tree.store";
 import type { PreferencesStore } from "./preferences.store";
+import { TransferStore } from "./transfer.store";
 import { WorkspaceStore } from "./workspace.store";
 
 /**
@@ -89,6 +91,7 @@ export class RootStore {
   private readonly pages: PageService | undefined;
   private readonly linking: LinkingService | undefined;
   private readonly assets: AssetService | undefined;
+  private readonly transfers: TransferService | undefined;
   private readonly hub: EventHub | undefined;
   private readonly eventDeps: EventDeps | undefined;
   private readonly page: PageLifecycle;
@@ -109,6 +112,7 @@ export class RootStore {
   private readonly notebookMemberLists = new Map<string, NotebookMemberStore>();
   private readonly pageTrees = new Map<string, PageTreeStore>();
   private readonly assetLists = new Map<string, AssetStore>();
+  private readonly transferLists = new Map<string, TransferStore>();
   /**
    * Aborts as the tab's session leaves this generation's login, once its
    * first attachments' store watches for that: its uploads stop.
@@ -138,6 +142,7 @@ export class RootStore {
     this.pages = client && new PageService(client);
     this.linking = client && new LinkingService(client);
     this.assets = client && new AssetService(client, app.transfer);
+    this.transfers = client && new TransferService(client);
     this.hub =
       client && app.events && loginId !== undefined
         ? eventHub(new EventService(client), app.events, loginId)
@@ -324,6 +329,12 @@ export class RootStore {
         return new AssetStore(service, notebook.id, pages, this.ending(), (on) => warning.set(notebook.id, on));
       })
     );
+  }
+
+  /** transfersOf is the jobs of notebook, the same store for as long as this generation lives (M7/P5 design 4.2). */
+  transfersOf(notebook: Notebook): TransferStore | undefined {
+    const { transfers: service } = this;
+    return service && once(this.transferLists, notebook.id, () => new TransferStore(service, notebook.id));
   }
 
   /** ending is the signal of this generation's end, which aborts as the tab's session leaves its login. */

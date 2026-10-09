@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 
-import { formatBytes, formatDate, formatDateTime } from "./format";
+import { formatBytes, formatDate, formatDateTime, formatDuration } from "./format";
 
 const iso = "2026-10-01T15:04:00Z";
 
@@ -26,4 +26,18 @@ test.each([
   [1536, "zh-CN", "1.5 KB"],
 ] as const)("%d bytes in %s: %s", (bytes, locale, want) => {
   expect(formatBytes(bytes, locale)).toBe(want);
+});
+
+test.each([
+  [86_400, "en", "24 hours"],
+  [3_600, "en", "1 hour"],
+  [600, "en", "10 minutes"],
+  [5_400, "en", "90 minutes"],
+  // Never longer than it is: the minutes it holds.
+  [659, "en", "10 minutes"],
+  [91_800, "en", "1,530 minutes"],
+  [86_400, "zh-CN", "24小时"],
+  [600, "zh-CN", "10分钟"],
+] as const)("%d seconds in %s: %s", (seconds, locale, want) => {
+  expect(formatDuration(seconds, locale)).toBe(want);
 });

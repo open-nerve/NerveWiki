@@ -96,13 +96,14 @@ export function ConfirmDialog({
     setOpen(false);
   }
 
+  // Sending ends as the dialog closes: a trigger that stays (an export's) opens it anew.
   function setOpen(next: boolean) {
     if (held === undefined) {
       setOwn(next);
     } else {
       held.onOpenChange(next);
-      setSending(false);
     }
+    setSending(false);
   }
 
   return (
