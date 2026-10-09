@@ -236,16 +236,107 @@ River 的救援（`job_timeout + 1 小时`）由组合根算出，不是配置�
 
 ## 4. B：前端
 
-A 合并之后细化，实现、审查与修复核对之后照实际改写（第 9.2 节）。
+A 合并之后细化（下面），实现、审查与修复核对之后照实际改写（第 9.2 节）。
 
-- **服务**：`services/transfer.service.ts`：`startExport`、`listTransferJobs`、`getTransferJob`、`cancelTransferJob`（经会话的客户端）；下载是 `<a href={download.url} download>`，不经客户端。
-- **笔记本设置的"导入与导出"**（`settings/transfer`，看得到笔记本的人都进得来）：
-  - "导出整个笔记本"按钮（确认对话框说明 zip 的结构与 Obsidian 的库一致、成功的导出保留 24 小时、只留最新的一份）；409 `transfer.busy` 说已有进行中的导出。
-  - 任务列表：SWR 键 `["transfer-jobs", 笔记本 id]`，有排队或运行中的任务时 `refreshInterval` 每秒读一次，否则不轮询；游标分页"加载更多"。每一项：名称（整个笔记本或页名）、类型、状态与进度（`<progress>`，读屏读"n / 总数"）、发起人（管理员看到别人的时）、时刻；成功的导出有"下载"，进行中的、本人的或管理员的有"取消"；结束的有"报告"（展开时读 `getTransferJob`：计数、原因、问题，按码给文案）。重新加载页面之后照样找得到。
-- **"导出此页"**：页面标题旁加一个菜单（读者也有），一项"导出此页"：确认之后开始，导航到设置的"导入与导出"、焦点在新任务那一行。
-- **i18n**：中英文的状态、原因与问题的码、按钮与说明。
-- **vitest**：服务；列表（轮询只在进行中、取消、下载的地址、报告按码、加载更多）；导出的对话框（409、503、507 的文案）；页面菜单（读者有、开始之后导航）；经路由到达。
-- **e2e**：TR1 的页面版本：设置里导出整个笔记本、等到成功、点下载（`waitForEvent("download")`）、读 zip 核对结构与 `meta.json`；页面菜单导出此页；同一组数据库断言。
+### 4.1 文件
+
+| 位置 | 内容 |
+|---|---|
+| `server/internal/modules/instance`、`api/modules/instance.yaml` | `InstanceInfo.export_ttl_seconds`（`transfer.export_ttl`）：确认对话框说成功的导出保留多久（13.1 第 15 条："服务端可配的量经接口告诉前端"） |
+| `services/transfer.service.ts` | `TransferService`：`startExport(notebookId, rootId)`、`list(notebookId, cursor)`、`get(id)`、`cancel(id)`，经会话的客户端 |
+| `stores/transfer.store.ts` | `TransferStore`：一本笔记本的任务，新的在前，一页 50 个，"加载更多"；每代一个（13.2 第 15 条），`RootStore.transfersOf`、`useTransfers` |
+| `pages/notebook/transfer-page.tsx`、`transfer-job-row.tsx`、`transfer-report.tsx` | 设置的"导入与导出"：导出、任务列表、一行、报告 |
+| `pages/notebook/export-dialog.tsx` | 导出的确认对话框：整个笔记本与"导出此页"共用 |
+| `pages/page/page-menu.tsx` | 页面标题旁的菜单："导出此页" |
+| `pages/notebook/settings-layout.tsx`、`app/routes.tsx` | 第三节 `transfer` |
+| `i18n/messages/en.ts`、`zh-CN.ts` | 状态、原因与问题的码、按钮与说明 |
+| `e2e/stories/transfer/tr1-export.spec.ts`、`e2e/fixtures/wiki-transfer.ts` | TR1 的页面版本 |
+
+### 4.2 服务与 store
+
+- **服务**：四个操作对应契约的四个；下载是 `<a href={download.url} download>`，不经客户端（地址是签名的、公开的）。
+- **`TransferStore`**：照 `AuditStore`（第一页、"加载更多"的后几页，后读到的第一页赢；重读第一页时保留已经加载的后几页）。另有：
+  - 第一页里有的任务替换已持有的同一任务（状态、进度、报告在第一页里变）；
+  - `active`：持有的任务里有排队或运行中的；
+  - `start(rootId)`：开始导出，答出的任务放到最前面；
+  - `cancel(id)`：答出的任务替换持有的那一个；
+  - 报告不进 store：展开时以 SWR 键 `["transfer-job", id]` 读 `get(id)`。
+- **轮询**：设置页的 SWR 键 `["transfer-jobs", 笔记本 id]`，`refreshInterval` 是一个函数：
+  - 有排队或运行中的任务时 1 秒；
+  - 否则在最早的下载地址到期之前一分钟（至少 30 秒），没有地址时 0（不轮询）。
+  - 隐藏的标签页不轮询（SWR 的默认），显示时照常重读（`revalidateOnFocus`）。
+  - 地址一两个小时就到期：页面开着不动时，列表里的"下载"不会指向已到期的地址。
+
+### 4.3 "导入与导出"
+
+- **入口**：笔记本设置的第三节 `settings/transfer`，看得到笔记本的人都进得来（读者可以导出）。
+- **导出**一节：一句说明与"导出整个笔记本"按钮。按钮打开导出的对话框（4.5）；成功之后对话框关掉，新任务在列表最前面，焦点到它那一行。
+- **任务**一节，标题"最近的任务"，说明"你的导入与导出；笔记本管理员看到所有人的"：
+  - 列表是 `<ol>`，没有任务时说"还没有任务"，读不到经 `NotLoaded`（13.2 第 7 条）。
+  - "加载更多"照附件一节：读完最后一页时焦点到它加进来的第一项，读者其间动过就不移（13.2 第 26 条）。
+- **一行**：
+  - **名称**：整个笔记本的导出写"导出整个笔记本"，子树写"导出页面「名称」"（`name` 是开始时的名称，成功之后是快照里的）。
+  - **状态**：排队中、运行中、已成功、已失败、已取消、已过期。排队与运行中带 `<progress>`：总数为 0 时不定；`aria-label` 是"进度：n / 总数"；有 `cancel_requested_at` 时写"正在取消"。
+  - **发起人**：不是本人的写"由 {名字} 发起"。
+  - **时刻**：开始的时刻（`formatDateTime`）；结束的写结束的时刻。
+  - **大小**：成功、已过期的导出写 `result_bytes`（`formatBytes`）。
+  - **成功的导出**：写保留到哪一刻（`finished_at + export_ttl_seconds`）。
+  - **动作**：
+    - 有 `download` 的有"下载"（链接，`download` 属性）。
+    - 排队、运行中的有"取消"（只有发起人与管理员看得到这些行，不另判断）。取消被拒（`transfer.not_cancellable`：已结束）时在行里说原因，并重读列表。
+    - 结束的有"报告"（`aria-expanded`、`aria-controls`），展开读详情（4.4）。
+- **到达时的焦点**：从"导出此页"来的（路由的 `state.focusJob`），任务出现在列表里时焦点到它那一行，一次。
+
+### 4.4 报告
+
+- **计数**：页、附件、改名、缺文件。
+- **失败的原因**：按码给文案，读屏读出：
+  - `interrupted`：服务停止或重启，任务中断；
+  - `timeout`：超过了实例的时限；
+  - `forbidden`：运行时已不能读这本笔记本；
+  - `root_not_found`：导出的页已不在；
+  - `storage_full`：服务器的存储空间不足；
+  - `contributor_conflict`：服务器加的文件与页面同名；
+  - `internal`：服务器出错。
+  - 不认识的码写通用的"任务失败"。
+- **问题**：路径与码的文案。
+  - `renamed`：改名为 `to`，指向它的链接在 Obsidian 里解析不到。
+  - `file_missing`：附件的文件不在存储里，没有写进 zip。
+  - 截断了的说只列出前 1,000 条。
+- 读不到详情时经 `NotLoaded`。
+
+### 4.5 导出的对话框与"导出此页"
+
+- **对话框**（`ConfirmDialog` 的写法）：
+  - 说明：zip 里是一个以笔记本（或这一页）命名的文件夹，就是一个 Obsidian 的库；成功的导出保留 `export_ttl_seconds`（按小时或分钟写），每人每本笔记本只留最新的一份。
+  - 确认之后发送，按钮写"正在开始"。
+  - 被拒时在对话框里说原因，对话框不关：
+    - `transfer.busy`（已有进行中的导出）；
+    - `server_busy`（排队的任务已满，稍后再试）；
+    - `storage_full`；
+    - `notebook.not_found`、`page.not_found`（这一页已不在）。
+- **"导出此页"**：
+  - 页面标题旁、"编辑"之前加一个菜单按钮（`⋯`，`aria-label`"页面操作"），阅读时显示，读者也有（树的操作菜单只给写者）；页面已从树上消失时不显示。
+  - 一项"导出此页"打开同一个对话框（`root_id` 是这一页）。
+  - 成功之后导航到设置的"导入与导出"，`state.focusJob` 是新任务。
+
+### 4.6 测试
+
+- **vitest**：
+  - 服务（请求的路径、参数与请求体）。
+  - store：第一页的合并、`active`、开始放在最前、取消替换、加载更多。
+  - 设置页：
+    - 轮询只在进行中（假的定时器：进行中每秒读，结束之后不再读，地址到期之前一分钟再读）；
+    - 状态与进度的文案；取消与被拒；下载的地址；
+    - 报告按码；加载更多与焦点；到达时的焦点。
+  - 对话框：保留时长的文案；409、503、507 与已不在的文案；成功之后的焦点。
+  - 页面菜单：读者有；编辑时没有；开始之后导航到设置并带着任务。
+  - 经路由到达：文档标题与导航。
+- **服务端**：实例信息的处理器与契约测试带 `export_ttl_seconds`；整个程序上核对它接的是配置的 `transfer.export_ttl`。
+- **e2e**：TR1 的页面版本（`tr1-export.spec.ts` 里第二个测试）：
+  - 设置里导出整个笔记本，等到这一行"已成功"，点"下载"（`waitForEvent("download")`），读 zip 核对条目与 `meta.json`；
+  - 页面菜单"导出此页"，到设置、焦点在新的一行，等到成功；
+  - 同一组数据库断言（`client` 是 `web`）。
 
 ## 5. 实施步骤
 
@@ -256,8 +347,9 @@ A 合并之后细化，实现、审查与修复核对之后照实际改写（第
 | A3 | 读端口（page、asset、linking）；开始导出、导出的任务、`adapter/archive`、贡献者 | `transfer: exports run as background jobs (M7/P5A)` |
 | A4、A5 | 契约与 HTTP：开始、读、列表、取消；签名的下载；到期、收拾、清扫、生命周期、清理器；配置；组合根；整个程序、交错、权限矩阵、运行时角色（实际合成一个提交） | `transfer, bootstrap: the exports' API, wired into serve (M7/P5A)` |
 | A6 | Obsidian 的核对；e2e TR1 的接口版本；总体设计的修订 | `e2e, tools: exports end to end and in Obsidian (M7/P5A)` |
-| B1 | 服务、设置的"导入与导出"、页面菜单、i18n、vitest | `web: exports from the notebook's settings and a page's menu (M7/P5B)` |
-| B2 | e2e TR1 的页面版本 | `e2e: exports in the browser (M7/P5B)` |
+| B1 | 实例信息的 `export_ttl_seconds`：模块、契约、生成、测试 | `instance: the exports' TTL in the instance's info (M7/P5B)` |
+| B2 | 服务、store、设置的"导入与导出"、报告、导出的对话框、页面菜单、i18n、vitest | `web: exports from the notebook's settings and a page's menu (M7/P5B)` |
+| B3 | e2e TR1 的页面版本 | `e2e: exports in the browser (M7/P5B)` |
 
 ## 6. 测试与验证
 
