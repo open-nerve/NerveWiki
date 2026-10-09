@@ -635,9 +635,14 @@ test("a view is read again a minute before its attachments' addresses expire, on
   expect(reads()).toBe(1);
 
   server.views.set(install.id, { html: '<h2 id="nw-a">A, again</h2>', revision: 1, assets_expire_at: null });
+  // Held: both readers' timers come while the read is out.
+  server.viewsHeld = true;
   await act(() => vi.advanceTimersByTimeAsync(8.9 * 60_000));
   expect(reads()).toBe(1);
   await act(() => vi.advanceTimersByTimeAsync(0.2 * 60_000));
+  expect(reads()).toBe(2);
+  server.viewsHeld = false;
+  act(() => server.release());
   await waitFor(() => expect(screen.getByRole("article").innerHTML).toBe('<h2 id="nw-a">A, again</h2>'));
   expect(reads()).toBe(2);
   await act(() => vi.advanceTimersByTimeAsync(3 * 60 * 60_000));
@@ -662,8 +667,15 @@ test("a view from the cache whose attachments' addresses had expired is not show
   await waitFor(() => expect(screen.getByRole("article").innerHTML).toBe("<p>Guide</p>"));
   await act(() => vi.advanceTimersByTimeAsync(6 * 60_000));
   server.views.set(install.id, { html: "<p>Signed anew</p>", revision: 1, assets_expire_at: inMinutes(70) });
+  const before = server.sent.filter((line) => line === "GET view Install").length;
+  server.viewsHeld = true;
   await act(() => router.navigate(pagePath(install.id)));
   expect(screen.queryByText("Signed")).toBeNull();
+  // Read once, as SWR reads what it has from the cache: the expired one is read no more.
+  await act(() => vi.advanceTimersByTimeAsync(1_000));
+  expect(server.sent.filter((line) => line === "GET view Install").length).toBe(before + 1);
+  server.viewsHeld = false;
+  act(() => server.release());
   await waitFor(() => expect(screen.getByRole("article").innerHTML).toBe("<p>Signed anew</p>"));
 });
 

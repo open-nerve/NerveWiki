@@ -112,7 +112,8 @@ type PageServerOptions = {
  * refused (422 on parent_id), a name ending with .md refused (422 on
  * name), a file over the instance's asset_max_bytes refused (413
  * payload_too_large), a name a sibling has 409 page.title_taken. While
- * uploadsHeld is set, an upload is answered once released.
+ * uploadsHeld is set, an upload is answered once released; while
+ * viewsHeld is, a reading view.
  */
 export function pageServer({
   role = "admin",
@@ -143,8 +144,10 @@ export function pageServer({
     assetsExpireAt: "2100-01-01T00:00:00Z",
     /** Whether uploads wait to be released. */
     uploadsHeld: false,
+    /** Whether reading views wait to be released. */
+    viewsHeld: false,
     held: [] as (() => void)[],
-    /** release answers the uploads held. */
+    /** release answers the uploads and the views held. */
     release(): void {
       const held = server.held;
       server.held = [];
@@ -189,10 +192,13 @@ export function pageServer({
       }
       return server.nodesDown ? Promise.reject(new TypeError("offline")) : json({ data: server.nodes });
     },
-    "GET /api/v0/pages/*/view": (request) => {
+    "GET /api/v0/pages/*/view": async (request) => {
       const id = new URL(request.url).pathname.split("/")[4] ?? "";
       const page = server.nodes.find((node) => node.id === id);
       server.sent.push(`GET view ${page?.name}`);
+      if (server.viewsHeld) {
+        await new Promise<void>((resolve) => server.held.push(resolve));
+      }
       if (server.viewsDown) {
         return Promise.reject(new TypeError("offline"));
       }

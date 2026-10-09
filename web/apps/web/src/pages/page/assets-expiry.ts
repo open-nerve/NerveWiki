@@ -29,10 +29,10 @@ const readAgain = new WeakSet<Expiring>();
 
 /** dueOf is when answer is to be read again, from when it was first seen; undefined, holding no address. */
 function dueOf(answer: Expiring): number | undefined {
-  const expires = answer.assets_expire_at === null ? Number.NaN : Date.parse(answer.assets_expire_at);
-  if (!Number.isFinite(expires)) {
+  if (answer.assets_expire_at === null) {
     return undefined;
   }
+  const expires = Date.parse(answer.assets_expire_at);
   let seen = firstSeen.get(answer);
   if (seen === undefined) {
     seen = Date.now();
@@ -46,7 +46,7 @@ function dueOf(answer: Expiring): number | undefined {
  * read again (reread) as it is due (rereadIn after it was first seen),
  * once, by the first of the hooks that have it; or nothing, when it had
  * expired as the hook had it (M7/P4 design 4.5): the cache's, left since,
- * which mounting reads again. One shown stays as it expires: a tab asleep
+ * read again at once. One shown stays as it expires: a tab asleep
  * reads it again as it wakes, its timers late, and its images that fail
  * to load meanwhile read it again (reading/assets.ts). An answer read
  * again the same is kept, not read again (SWR keeps the one it had): a
@@ -64,9 +64,10 @@ export function useAssetsExpiry<T extends Expiring>(data: T | undefined, reread:
   }, [data]);
   useEffect(() => {
     const due = data === undefined ? undefined : dueOf(data);
-    if (data === undefined || due === undefined || expired) {
+    if (data === undefined || due === undefined) {
       return undefined;
     }
+    // Past it, at once: SWR's own read of what it had in its cache is the same read.
     const timer = setTimeout(
       () => {
         if (!readAgain.has(data)) {
@@ -77,6 +78,6 @@ export function useAssetsExpiry<T extends Expiring>(data: T | undefined, reread:
       Math.max(due - Date.now(), 0)
     );
     return () => clearTimeout(timer);
-  }, [data, expired]);
+  }, [data]);
   return expired ? undefined : data;
 }

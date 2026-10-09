@@ -88,8 +88,8 @@ function newTab(container: HTMLElement, text: string): { link: HTMLAnchorElement
 
 /**
  * adopt puts each of kept, by key, in place of the element of container
- * of the same key and element, its attributes but its address taken;
- * those put are the adopted.
+ * of the same key (an attachment's type is its own: the same element),
+ * its attributes but its address taken; those put are the adopted.
  */
 function adopt(container: HTMLElement, kept: Map<string, HTMLMediaElement> | undefined): Set<HTMLMediaElement> {
   const adopted = new Set<HTMLMediaElement>();
@@ -98,7 +98,7 @@ function adopt(container: HTMLElement, kept: Map<string, HTMLMediaElement> | und
   }
   for (const [key, element] of keyed(container)) {
     const old = kept.get(key);
-    if (old === undefined || old.localName !== element.localName) {
+    if (old === undefined) {
       continue;
     }
     for (const name of old.getAttributeNames()) {

@@ -161,7 +161,11 @@ test("one that fails before the addresses expire, or in a view without them, rea
 });
 
 test("an audio or a video started is kept as the HTML is replaced, in place of the same of its attachment's", () => {
-  const html = `<p>${audio("a1", "first")} ${audio("a1", "second")} ${video("a2")} ${audio("a3")} ${audio("a4")}</p>`;
+  const html =
+    `<p>${audio("a1", "first")} ${audio("a1", "second")} ${video("a2")} ${audio("a3")} ${audio("a4")}</p>`.replace(
+      'aria-label="second"',
+      'aria-label="second" loop=""'
+    );
   const { container, context, enhancement } = setUp(html, { expires: later });
   let undo = enhancement(container, context());
   const [first, second, , third, fourth] = container.querySelectorAll<HTMLMediaElement>("audio, video");
@@ -175,7 +179,7 @@ test("an audio or a video started is kept as the HTML is replaced, in place of t
   // Signed anew, the second of a1 captioned anew; a2 now first of two, a3 there, a4 a link.
   const next =
     `<p>${audio("a1", "first").replace("e=1", "e=2")} ${audio("a1", "again").replace("e=1", "e=2")} ` +
-    `${video("a2", "a2", "200").replace("e=1", "e=2")} ${video("a2")} ${audio("a3")} <a class="nw-asset" href="x">a4</a></p>`;
+    `${video("a2", "a2", "200").replace("e=1", "e=2")} ${video("a2")} ${audio("a3")} ${audio("a4")}</p>`;
   container.innerHTML = next;
   undo = enhancement(container, context());
   const shown = [...container.querySelectorAll<HTMLMediaElement>("audio, video")];
@@ -185,12 +189,14 @@ test("an audio or a video started is kept as the HTML is replaced, in place of t
   expect(second?.currentTime).toBe(12);
   // Its attributes the new HTML's, its address its own.
   expect(second?.getAttribute("aria-label")).toBe("again");
+  expect(second?.hasAttribute("loop")).toBe(false);
   expect(second?.getAttribute("src")).toContain("e=1");
   expect(shown[2]).toBe(clip);
   expect(clip.getAttribute("width")).toBe("200");
   expect(shown[3]).not.toBe(clip);
   expect(shown[4]).not.toBe(third);
-  expect(shown).not.toContain(fourth);
+  expect(shown[5]).not.toBe(fourth);
+  expect(shown[5]?.getAttribute("src")).toContain("a4");
   undo?.();
 });
 
@@ -242,15 +248,17 @@ test("one kept that fails has its address signed anew and goes on where it was, 
 });
 
 test("one kept goes on from where it failed, playing; one gone from the page meanwhile is left be", async () => {
-  const html = `<p>${audio("a1")} ${audio("a2")}</p>`;
+  const html = `<p>${audio("a1")} ${audio("a2")} ${audio("a3")}</p>`;
   const { container, context, enhancement } = setUp(html, { expires: later });
   let undo = enhancement(container, context());
   const [first, second] = [...container.querySelectorAll("audio")].map((element) => play(element, 30));
+  const paused = play(container.querySelectorAll("audio")[2], 12, true);
   undo?.();
   container.innerHTML = html;
   undo = enhancement(container, context());
   fail(first);
   fail(second);
+  fail(paused);
   second?.remove();
   if (first !== undefined) {
     first.currentTime = 0;
@@ -260,5 +268,8 @@ test("one kept goes on from where it failed, playing; one gone from the page mea
   expect(first?.play).toHaveBeenCalledTimes(1);
   expect(second?.getAttribute("src")).toContain("e=1");
   expect(second?.play).not.toHaveBeenCalled();
+  // Paused, it is signed anew and stays paused.
+  expect(paused.getAttribute("src")).toBe("/api/v0/assets/a3/content?anew=1");
+  expect(paused.play).not.toHaveBeenCalled();
   undo?.();
 });
