@@ -20,7 +20,10 @@ export type AssetList = { assets: readonly Asset[]; next: string | null; pages: 
 export type UploadRefusal = { refused: "page-file" } | { refused: "too-large"; max: number };
 
 /** UploadLimits are what the page knows of what the server takes: the instance's largest attachment, in bytes. */
-export type UploadLimits = { maxBytes: number | undefined };
+type UploadLimits = { maxBytes: number | undefined };
+
+/** UploadOptions are an upload's limits, and whether the editor began it: its embed is to be inserted (M7/P4 design 5.3). */
+export type UploadOptions = UploadLimits & { fromEditor?: boolean };
 
 /**
  * Upload is a file going up as an attachment (M7/P4 design 3.3): under its
@@ -28,7 +31,8 @@ export type UploadLimits = { maxBytes: number | undefined };
  * siblings, of the file's name fixed; how much of it has gone, and whether
  * the server has answered it (it is no longer to be cancelled then); why
  * it failed once it has, which shows until it is dismissed; and, once
- * answered, the attachment it made.
+ * answered, the attachment it made. One the editor began shows by it while
+ * the page is edited.
  */
 export class Upload {
   name: string;
@@ -46,7 +50,9 @@ export class Upload {
     readonly parent: string | null,
     /** The file's name fixed, which each name tried is free from. */
     readonly fixed: string,
-    readonly file: Blob
+    readonly file: Blob,
+    /** Whether the editor began it: a file pasted or dropped, its embed to be inserted. */
+    readonly fromEditor = false
   ) {
     this.name = fixed;
     this.total = file.size;
@@ -55,6 +61,7 @@ export class Upload {
       parent: false,
       fixed: false,
       file: false,
+      fromEditor: false,
       controller: false,
       // As answered: the server's attachment, or why it failed, each whole.
       failure: observableRef,
@@ -198,16 +205,22 @@ export class AssetStore {
    * upload uploads each of files under parent (null: the root), side by
    * side, each by its name fixed (untitled for one of nothing) and free
    * among the siblings and the other uploads going. One that is a page's
-   * file, or larger than limits.maxBytes, is not sent: it shows why.
+   * file, or larger than options.maxBytes, is not sent: it shows why.
    */
-  upload(parent: string | null, files: readonly File[], untitled: string, limits: UploadLimits): Upload[] {
+  upload(parent: string | null, files: readonly File[], untitled: string, options: UploadOptions): Upload[] {
     return files.map((file) => {
-      const upload = new Upload(++this.uploadsStarted, parent, fixedName(file.name, untitled), file);
+      const upload = new Upload(
+        ++this.uploadsStarted,
+        parent,
+        fixedName(file.name, untitled),
+        file,
+        options.fromEditor
+      );
       this.uploads.push(upload);
       if (isPageName(upload.name)) {
         upload.failure = { refused: "page-file" } satisfies UploadRefusal;
-      } else if (limits.maxBytes !== undefined && file.size > limits.maxBytes) {
-        upload.failure = { refused: "too-large", max: limits.maxBytes } satisfies UploadRefusal;
+      } else if (options.maxBytes !== undefined && file.size > options.maxBytes) {
+        upload.failure = { refused: "too-large", max: options.maxBytes } satisfies UploadRefusal;
       } else {
         if (this.generation.aborted) {
           upload.cancel();

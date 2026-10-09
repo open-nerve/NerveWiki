@@ -81,6 +81,7 @@ function editing(registered: readonly ReadyExtension[]) {
     leave: () => Promise.resolve(),
     whenComposed: (act) => act(),
     tell: () => undefined,
+    going: () => undefined,
   };
   const composed: Composed = composeExtensions(registered, context, controls);
   const extensions: Extension = [readOnly.of(readOnlyAs(false)), composed.extension];

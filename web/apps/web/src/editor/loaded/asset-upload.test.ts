@@ -1,12 +1,14 @@
-import { EditorState } from "@codemirror/state";
+import { EditorState, type Extension } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-import { afterEach, expect, test } from "vitest";
+import { afterEach, expect, onTestFinished, test, vi } from "vitest";
 
+import { translator } from "../../i18n/i18n";
 import { pageDrag } from "../../lib/file-transfer";
 import type { Asset } from "../../services/asset.service";
 import { dropped } from "../../test/attachments";
 import { assetJSON, assetNode, guide } from "../../test/page-server";
 import { readOnly, readOnlyAs } from "../extensions";
+import { editorPhrases } from "../phrases";
 import type { EditorContext } from "../registry";
 import { fakeControls } from "../testing/fake-controls";
 import { assetUpload, pastedName } from "./asset-upload";
@@ -26,10 +28,13 @@ const attachment = (name: string) => assetJSON(assetNode(80, name, guide));
 
 /**
  * editing is an editor on doc, the selection from anchor to head, with the
- * upload of files; the uploads asked for wait for the test's answer, and
- * what the editor told is kept.
+ * upload of files, and phrases when given; the uploads asked for wait for
+ * the test's answer, and what the editor told is kept.
  */
-function editing(doc: string, { anchor = doc.length, head = anchor }: { anchor?: number; head?: number } = {}) {
+function editing(
+  doc: string,
+  { anchor = doc.length, head = anchor, phrases = [] }: { anchor?: number; head?: number; phrases?: Extension } = {}
+) {
   const going: Going[] = [];
   const context: EditorContext = {
     workspace: "lab",
@@ -51,7 +56,7 @@ function editing(doc: string, { anchor = doc.length, head = anchor }: { anchor?:
     state: EditorState.create({
       doc,
       selection: { anchor, head },
-      extensions: [readOnly.of(readOnlyAs(false)), assetUpload(context, controls)],
+      extensions: [readOnly.of(readOnlyAs(false)), phrases, assetUpload(context, controls)],
     }),
   });
   return { view, going, controls, close, text: () => view.state.doc.toString() };
@@ -80,13 +85,20 @@ function paste(view: EditorView, data: unknown): boolean {
   return event.defaultPrevented;
 }
 
-/** drag sends a drag's event of type over view's content with transfer: whether it was taken (its default prevented). */
-function drag(view: EditorView, type: "dragover" | "drop", transfer: unknown): boolean {
+/** drag sends a drag's event of type over view's content, at at, with transfer: whether it was taken (its default prevented). */
+function drag(view: EditorView, type: "dragover" | "drop", transfer: unknown, at = { x: 1, y: 1 }): boolean {
   const event = new Event(type, { bubbles: true, cancelable: true });
-  Object.assign(event, { clientX: 1, clientY: 1 });
+  Object.assign(event, { clientX: at.x, clientY: at.y });
   Object.defineProperty(event, "dataTransfer", { value: transfer });
   view.contentDOM.dispatchEvent(event);
   return event.defaultPrevented;
+}
+
+/** aTurn lets a turn of the event loop go: a rejection left unhandled is reported then. */
+function aTurn(): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, 0);
+  });
 }
 
 /** settle lets the promises out settle. */
@@ -97,16 +109,35 @@ async function settle() {
   }
 }
 
+/** told is what the editor told, in turn: each paste or drop begins anew (""). */
+function told(controls: ReturnType<typeof fakeControls>["controls"]): string[] {
+  return controls.tell.mock.calls.map(([text]) => text);
+}
+
 test("an image the clipboard holds without a name of its own is named as Obsidian names it; others keep theirs", () => {
   const now = new Date(2026, 9, 8, 12, 30, 45);
   const named = (name: string, type: string) => pastedName(new File(["x"], name, { type }), now);
   expect(named("image.png", "image/png")).toBe("Pasted image 20261008123045.png");
   expect(named("", "image/jpeg")).toBe("Pasted image 20261008123045.jpg");
   expect(named("image.webp", "image/webp")).toBe("Pasted image 20261008123045.webp");
-  expect(named("", "image/x-icon")).toBe("Pasted image 20261008123045.xicon");
+  expect(named("", "image/x-icon")).toBe("Pasted image 20261008123045.ico");
+  expect(named("", "image/heic")).toBe("Pasted image 20261008123045.heic");
   expect(named("photo.png", "image/png")).toBe("photo.png");
   expect(named("image.png", "")).toBe("image.png");
   expect(named("notes.txt", "text/plain")).toBe("notes.txt");
+
+  // Its local time, wherever the clock is.
+  const local = Object.assign(new Date(Date.UTC(2020, 0, 1)), {
+    getFullYear: () => 2026,
+    getMonth: () => 9,
+    getDate: () => 8,
+    getHours: () => 12,
+    getMinutes: () => 30,
+    getSeconds: () => 45,
+  });
+  expect(pastedName(new File(["x"], "image.png", { type: "image/png" }), local)).toBe(
+    "Pasted image 20261008123045.png"
+  );
 });
 
 test("files pasted upload, and their embeds go where the selection was, in their order, a line each", async () => {
@@ -150,6 +181,39 @@ test("a paste with text, or without files, is CodeMirror's; so is one into a rea
   expect(going).toEqual([]);
 });
 
+test("in Chinese the editor says it in Chinese, the names listed as Chinese lists them", async () => {
+  document.documentElement.lang = "zh-CN";
+  onTestFinished(() => {
+    document.documentElement.lang = "en";
+  });
+  const { view, going, controls } = editing("", { phrases: editorPhrases(translator("zh-CN")) });
+  drag(view, "drop", dropped([new File(["r"], "README"), new File(["l"], "LICENSE")], ["notes"]));
+  going[0]?.answer(attachment("README"));
+  going[1]?.answer(attachment("LICENSE"));
+  await settle();
+  expect(told(controls)).toEqual([
+    "文件夹不会上传：笔记文件夹请用导入。",
+    "README和LICENSE 已上传，没有插入：没有扩展名的名称不能嵌入。",
+  ]);
+});
+
+test("an image copied from a page, as Chromium has it, its HTML with it, is uploaded", () => {
+  const { view, going } = editing("x");
+  const copied = clipboard([new File(["png"], "image.png", { type: "image/png" })]);
+  expect(paste(view, { ...copied, types: ["text/html", "Files"] })).toBe(true);
+  expect(going).toHaveLength(1);
+});
+
+test("a folder pasted is not uploaded: the editor says to import it, the selection kept when nothing else is", () => {
+  const { view, going, controls, text } = editing("hello world", { anchor: 6, head: 11 });
+  expect(paste(view, { ...dropped([], ["notes"]), getData: () => "" })).toBe(true);
+  expect(told(controls)).toEqual(["Folders are not uploaded: import a folder of notes instead."]);
+  expect(text()).toBe("hello world");
+  paste(view, { ...dropped([new File(["a"], "a.png")], ["notes"]), getData: () => "" });
+  expect(going.map(({ file }) => file.name)).toEqual(["a.png"]);
+  expect(text()).toBe("hello ");
+});
+
 test("one that fails inserts nothing, its row saying why; the next goes in its place", async () => {
   const { view, going, controls, text } = editing("");
   paste(view, clipboard([new File(["a"], "a.png", { type: "image/png" }), new File(["b"], "b.png")]));
@@ -157,35 +221,133 @@ test("one that fails inserts nothing, its row saying why; the next goes in its p
   going[1]?.answer(attachment("b.png"));
   await settle();
   expect(text()).toBe("![[b.png]]");
-  expect(controls.tell).not.toHaveBeenCalled();
+  expect(told(controls)).toEqual([""]);
 });
 
-test("one uploaded without an extension, or as the content was replaced, or can no longer be changed, is not inserted: the editor says so", async () => {
+test("one that fails while those before it go is left to its row, no rejection unhandled; they go in all the same", async () => {
+  const { view, going, controls, text } = editing("");
+  paste(view, clipboard([new File(["a"], "a.png"), new File(["b"], "b.md"), new File(["c"], "c.png")]));
+  // As a page's file is refused: before the one before it is answered.
+  going[1]?.fail({ refused: "page-file" });
+  going[2]?.fail(new Error("413"));
+  await aTurn();
+  going[0]?.answer(attachment("a.png"));
+  await Promise.all(controls.going.mock.calls.map(([work]) => work));
+  expect(text()).toBe("![[a.png]]");
+});
+
+test("those uploaded without an extension, or as the content was replaced, or can no longer be changed, are not inserted: the editor says so of them all as the last is answered", async () => {
   const first = editing("");
-  paste(first.view, clipboard([new File(["r"], "README"), new File(["a"], "a.png")]));
+  paste(
+    first.view,
+    clipboard([
+      new File(["r"], "README"),
+      new File(["l"], "LICENSE"),
+      new File(["a"], "a.png"),
+      new File(["b"], "b.png"),
+    ])
+  );
   first.going[0]?.answer(attachment("README"));
+  first.going[1]?.answer(attachment("LICENSE"));
   await settle();
-  expect(first.controls.tell).toHaveBeenLastCalledWith(
-    "README is in the page's attachments, not inserted: a name without an extension cannot be embedded."
-  );
+  expect(told(first.controls)).toEqual([""]);
   first.view.dispatch({ effects: readOnly.reconfigure(readOnlyAs(true)) });
-  first.going[1]?.answer(attachment("a.png"));
+  first.going[2]?.answer(attachment("a.png"));
+  first.going[3]?.answer(attachment("b.png"));
   await settle();
-  expect(first.controls.tell).toHaveBeenLastCalledWith(
-    "a.png is in the page's attachments, not inserted: the text was replaced or can no longer be changed."
-  );
+  expect(told(first.controls)).toEqual([
+    "",
+    "README and LICENSE uploaded, not inserted: a name without an extension cannot be embedded. " +
+      "a.png and b.png uploaded, not inserted: the text was replaced or can no longer be changed.",
+  ]);
   expect(first.text()).toBe("");
+
+  // The next paste begins anew: what was said goes.
+  first.view.dispatch({ effects: readOnly.reconfigure(readOnlyAs(false)) });
+  paste(first.view, clipboard([new File(["c"], "c.png")]));
+  expect(told(first.controls).at(-1)).toBe("");
 
   const replaced = editing("x");
   paste(replaced.view, clipboard([new File(["a"], "a.png")]));
   replaced.close();
   replaced.going[0]?.answer(attachment("a.png"));
   await settle();
-  expect(replaced.controls.tell).toHaveBeenCalledOnce();
+  expect(told(replaced.controls)).toEqual([
+    "",
+    "a.png uploaded, not inserted: the text was replaced or can no longer be changed.",
+  ]);
   expect(replaced.text()).toBe("x");
 });
 
-test("an embed waits for the input method's composition to end; one whose editor goes first is not inserted", async () => {
+test("an embed inserted where the cursor is puts the cursor after it, as a paste does: what is typed, and pasted, next goes after", async () => {
+  const { view, going, text } = editing("Notes\n");
+  paste(view, clipboard([new File(["1"], "image.png", { type: "image/png" })]));
+  going[0]?.answer(attachment("first.png"));
+  await settle();
+  expect(view.state.selection.main.head).toBe(text().length);
+  view.dispatch(view.state.replaceSelection("caption"));
+  paste(view, clipboard([new File(["2"], "image.png", { type: "image/png" })]));
+  going[1]?.answer(attachment("second.png"));
+  await settle();
+  expect(text()).toBe("Notes\n![[first.png]]caption![[second.png]]");
+
+  // A selection keeps what it holds.
+  view.dispatch({ selection: { anchor: 0, head: 5 } });
+  drag(view, "drop", dropped([new File(["3"], "third.png")]));
+  going[2]?.answer(attachment("third.png"));
+  await settle();
+  expect(text()).toBe("![[third.png]]Notes\n![[first.png]]caption![[second.png]]");
+  expect(view.state.sliceDoc(view.state.selection.main.from, view.state.selection.main.to)).toBe("Notes");
+});
+
+test("files pasted in two places as others go each go where they were pasted, whichever is answered first", async () => {
+  const { view, going, text } = editing("ab", { anchor: 1 });
+  paste(view, clipboard([new File(["a"], "a.png")]));
+  view.dispatch({ selection: { anchor: 0 } });
+  paste(view, clipboard([new File(["b"], "b.png")]));
+  going[1]?.answer(attachment("b.png"));
+  await settle();
+  going[0]?.answer(attachment("a.png"));
+  await settle();
+  expect(text()).toBe("![[b.png]]a![[a.png]]b");
+});
+
+test("files pasted where others go still go after them, whichever is answered first", async () => {
+  const { view, going, text } = editing("");
+  paste(view, clipboard([new File(["a"], "a.png"), new File(["b"], "b.png")]));
+  paste(view, clipboard([new File(["c"], "c.png")]));
+  paste(view, clipboard([new File(["d"], "d.png")]));
+  going[0]?.answer(attachment("a.png"));
+  await settle();
+  expect(text()).toBe("![[a.png]]");
+  going[3]?.answer(attachment("d.png"));
+  await settle();
+  expect(text()).toBe("![[a.png]]![[d.png]]");
+  going[2]?.answer(attachment("c.png"));
+  await settle();
+  expect(text()).toBe("![[a.png]]![[c.png]]![[d.png]]");
+  going[1]?.answer(attachment("b.png"));
+  await settle();
+  expect(text()).toBe("![[a.png]]\n![[b.png]]![[c.png]]![[d.png]]");
+});
+
+test("the edit waits for the embeds to go in: each paste's or drop's work goes until its last is", async () => {
+  const { view, going, controls, text } = editing("");
+  paste(view, clipboard([new File(["a"], "a.png"), new File(["b"], "b.png")]));
+  const [[work]] = controls.going.mock.calls as [[Promise<void>]];
+  let done = false;
+  void work.finally(() => {
+    done = true;
+  });
+  going[0]?.answer(attachment("a.png"));
+  await settle();
+  expect(done).toBe(false);
+  going[1]?.fail(new Error("413"));
+  await work;
+  expect(text()).toBe("![[a.png]]");
+});
+
+test("an embed waits for the input method's composition to end; one whose editor goes first is not inserted, the editor says", async () => {
   const { view, going, controls, text } = editing("");
   const waiting: { act: () => void; drop: () => void }[] = [];
   controls.whenComposed = (act, drop = () => undefined) => void waiting.push({ act, drop });
@@ -200,41 +362,61 @@ test("an embed waits for the input method's composition to end; one whose editor
   waiting.shift()?.drop();
   await settle();
   expect(text()).toBe("![[a.png]]");
-  expect(controls.tell).toHaveBeenCalledOnce();
+  expect(told(controls)).toEqual([
+    "",
+    "b.png uploaded, not inserted: the text was replaced or can no longer be changed.",
+  ]);
 });
 
-test("files dragged from outside may drop, and upload where they drop; a folder is not uploaded: the editor says to import it", async () => {
+test("files dragged from outside may drop, and upload where they drop, by their own names; a folder is not uploaded: the editor says to import it", async () => {
   const { view, going, controls, text } = editing("ab");
-  const files = dropped([new File(["a"], "a.png")], ["notes"]);
+  const files = dropped([new File(["a"], "image.png")], ["notes"]);
   expect(drag(view, "dragover", files)).toBe(true);
   expect(files.dropEffect).toBe("copy");
 
   // jsdom lays nothing out: where the drop is, the test says.
-  Object.assign(view, { posAtCoords: () => 1 });
-  expect(drag(view, "drop", files)).toBe(true);
-  expect(controls.tell).toHaveBeenCalledWith("Folders are not uploaded: import a folder of notes instead.");
-  expect(going.map(({ file }) => file.name)).toEqual(["a.png"]);
-  going[0]?.answer(attachment("a.png"));
+  const posAtCoords = vi.fn((_at: { x: number; y: number }) => 1 as number | null);
+  Object.assign(view, { posAtCoords });
+  // Where it would drop shows as it is dragged.
+  drag(view, "dragover", files, { x: 30, y: 40 });
+  expect(view.scrollDOM.querySelector(".cm-dropCursor")).not.toBeNull();
+  expect(drag(view, "drop", files, { x: 30, y: 40 })).toBe(true);
+  expect(posAtCoords).toHaveBeenCalledWith({ x: 30, y: 40 });
+  expect(told(controls)).toEqual(["Folders are not uploaded: import a folder of notes instead."]);
+  expect(going.map(({ file }) => file.name)).toEqual(["image.png"]);
+  going[0]?.answer(attachment("image.png"));
   await settle();
-  expect(text()).toBe("a![[a.png]]b");
+  expect(text()).toBe("a![[image.png]]b");
 
   // Off the text, where no position is, it goes where the cursor is.
-  Object.assign(view, { posAtCoords: () => null });
+  posAtCoords.mockReturnValue(null);
   view.dispatch({ selection: { anchor: 0 } });
   drag(view, "drop", dropped([new File(["c"], "c.png")]));
   going[1]?.answer(attachment("c.png"));
   await settle();
-  expect(text()).toBe("![[c.png]]a![[a.png]]b");
+  expect(text()).toBe("![[c.png]]a![[image.png]]b");
+
+  // Dragged from another page, a file goes with its address and its HTML: it is uploaded all the same.
+  drag(view, "drop", {
+    ...dropped([new File(["d"], "d.png")]),
+    types: ["text/plain", "text/uri-list", "text/html", "Files"],
+  });
+  expect(going.map(({ file }) => file.name)).toEqual(["image.png", "c.png", "d.png"]);
 });
 
-test("a drag of no files, of pages' files only, or over a read-only editor, is CodeMirror's", () => {
-  const { view, going } = editing("x");
+test("a drag of no files, of pages' files only, or over a read-only editor, is CodeMirror's", async () => {
+  const { view, going, text } = editing("x");
   expect(drag(view, "dragover", transferOf({ types: ["text/plain"], items: [] }))).toBe(false);
+  // Pages' files: CodeMirror reads their text in.
   drag(view, "drop", transferOf(dropped([new File(["# a"], "a.md"), new File(["# b"], "b.MD")])));
+  await vi.waitFor(() => expect(text()).toContain("# a"));
+  // Files it cannot read, as Firefox's drag of an image from another page may be: CodeMirror's, which takes its text.
+  drag(view, "drop", { types: ["Files", "text/plain"], items: [], getData: () => "TXT" });
   view.dispatch({ effects: readOnly.reconfigure(readOnlyAs(true)) });
   expect(drag(view, "dragover", transferOf(dropped([new File(["a"], "a.png")])))).toBe(false);
   drag(view, "drop", transferOf(dropped([new File(["a"], "a.png")])));
   expect(going).toEqual([]);
+  expect(text()).toMatch(/^TXT/);
 });
 
 test("a drag started in the page, which may carry a file (Chromium's image), is CodeMirror's", () => {

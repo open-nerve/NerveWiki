@@ -6,7 +6,7 @@ import type { EditorControls } from "../registry";
  * fakeControls are an extension's controls with the editor played by the
  * test: change is a change of the content, close the state going, which
  * ends the subscriptions; save and leave are spies that resolve unless the
- * test says otherwise.
+ * test says otherwise; tell and going are spies.
  */
 export function fakeControls() {
   const changed = new Set<() => void>();
@@ -25,6 +25,7 @@ export function fakeControls() {
     leave: vi.fn((_reason: "idle") => Promise.resolve()),
     whenComposed: (act: () => void) => act(),
     tell: vi.fn((_text: string) => undefined),
+    going: vi.fn((_work: Promise<void>) => undefined),
   } satisfies EditorControls;
   return {
     controls,

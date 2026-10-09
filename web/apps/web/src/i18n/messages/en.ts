@@ -208,6 +208,7 @@ export const en = {
   "editor.done": "Done",
   "editor.unsaved": "Unsaved changes",
   "editor.saving": "Saving…",
+  "editor.waiting": "Leaving once the uploads are in…",
   "editor.busy": "The server is busy: the page is saved again in a moment.",
   "editor.tooSlow": "The network was too slow to send the page in time. Save again.",
   "editor.lostAccess": "You can no longer edit this page.",
@@ -256,10 +257,8 @@ export const en = {
   "editor.phrase.completions": "Completions",
   "editor.phrase.page": "$ page",
   "editor.phrase.pages": "$ pages",
-  "editor.phrase.uploadNotInserted":
-    "$ is in the page's attachments, not inserted: the text was replaced or can no longer be changed.",
-  "editor.phrase.uploadNoLink":
-    "$ is in the page's attachments, not inserted: a name without an extension cannot be embedded.",
+  "editor.phrase.uploadNotInserted": "$ uploaded, not inserted: the text was replaced or can no longer be changed.",
+  "editor.phrase.uploadNoLink": "$ uploaded, not inserted: a name without an extension cannot be embedded.",
   "notebookSettings.title": "Notebook settings",
   "notebookSettings.heading": "{name} settings",
   "notebookSettings.general": "General",

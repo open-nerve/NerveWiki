@@ -343,13 +343,18 @@ describe("AssetStore's uploads", () => {
 
 describe("AssetStore's uploads, as one waits for them", () => {
   test("uploaded settles with the attachment once the server answers, before its list has it", async () => {
-    const { store, sent } = setUp();
-    const [upload] = store.upload(guide.id, [file("a.png")], "Untitled", limits);
+    const { store, service, pages, sent } = setUp();
+    const [upload] = store.upload(guide.id, [file("a.png")], "Untitled", { ...limits, fromEditor: true });
+    expect(upload?.fromEditor).toBe(true);
     const settled = upload === undefined ? undefined : store.uploaded(upload);
     await settle();
+    // The tree and the list read after it are not answered.
+    pages.wrote.mockImplementation(() => new Promise(() => undefined));
+    service.list.mockImplementation(() => new Promise(() => undefined));
     const asset = assetJSON(assetNode(90, "a.png", guide));
     sent[0]?.resolve(asset);
     await expect(settled).resolves.toBe(asset);
+    expect(store.uploads).toEqual([upload]);
   });
 
   test("uploaded rejects with why one failed, or was refused, and as one is cancelled", async () => {

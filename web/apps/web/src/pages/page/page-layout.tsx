@@ -283,7 +283,7 @@ const PageShell = observer(function PageShell({
               <SubpageList label={t("page.subpages")} pages={children} href={href} />
             </section>
           )}
-          {!gone && <AttachmentsSection notebook={notebook} parent={page.id} uploadsElsewhere={!reading} />}
+          {!gone && <AttachmentsSection notebook={notebook} parent={page.id} editorsElsewhere={!reading} />}
         </div>
         <PagePanel notebook={notebook} page={page} editing={!reading} href={href} />
       </div>

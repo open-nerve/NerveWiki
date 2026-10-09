@@ -35,6 +35,10 @@ export type SourceEditorHandle = {
   load(raw: string): void;
   /** hold keeps the content from being changed while on, whatever the extensions set: while the edit is left. */
   hold(on: boolean): void;
+  /** working tells whether work of the extensions goes (EditorControls.going). */
+  working(): boolean;
+  /** settled settles once no work of the extensions goes: what begins as it waits is waited for too. */
+  settled(): Promise<void>;
 };
 
 type SourceEditorProps = {
@@ -43,8 +47,8 @@ type SourceEditorProps = {
   /** Whether the editor takes the focus as it is made: the user asked to edit. */
   focusOnOpen?: boolean;
   context: EditorContext;
-  /** The edit's controls; the editor adds its own: setReadOnly, onChange, onClose and whenComposed. */
-  controls: Omit<EditorControls, "setReadOnly" | "onChange" | "onClose" | "whenComposed">;
+  /** The edit's controls; the editor adds its own: setReadOnly, onChange, onClose, whenComposed and going. */
+  controls: Omit<EditorControls, "setReadOnly" | "onChange" | "onClose" | "whenComposed" | "going">;
   /** onChange is told the content's version after each change. */
   onChange(version: number): void;
   ref?: Ref<SourceEditorHandle>;
@@ -71,8 +75,9 @@ type Waiting = { act: () => void; drop: () => void };
 /**
  * EditorHost holds an EditorView, made once, and what goes with it: the
  * changes counted, what waits on a composition, the locks, which a new
- * content keeps. What waits on a composition as the editor goes is
- * dropped: a save of the controls rejects (nt-3).
+ * content keeps, and the extensions' work going, which a new content
+ * keeps too until it is done. What waits on a composition as the editor
+ * goes, or after, is dropped: a save of the controls rejects (nt-3).
  */
 class EditorHost {
   readonly view: EditorView;
@@ -84,6 +89,8 @@ class EditorHost {
   private readonly changed = new Set<() => void>();
   /** What goes with the state shown: its extensions' subscriptions ended, their onClose called. */
   private closing: (() => void)[] = [];
+  /** The extensions' work going (EditorControls.going). */
+  private readonly work = new Set<Promise<void>>();
   private destroyed = false;
 
   constructor(
@@ -107,16 +114,37 @@ class EditorHost {
   }
 
   whenComposed(act: () => void, drop: () => void = () => undefined): void {
+    if (this.destroyed) {
+      drop();
+      return;
+    }
     this.waiting.push({ act, drop });
     this.runWaiting();
   }
 
   /** tell says text unseen, as CodeMirror announces, while the editor is there, and has the edit show it. */
   tell(text: string): void {
-    if (!this.destroyed) {
+    if (!this.destroyed && text !== "") {
       this.view.dispatch({ effects: EditorView.announce.of(text) });
     }
     this.live.current.controls.tell(text);
+  }
+
+  going(work: Promise<void>): void {
+    this.work.add(work);
+    const forget = () => void this.work.delete(work);
+    void work.then(forget, forget);
+  }
+
+  get working(): boolean {
+    return this.work.size > 0;
+  }
+
+  async settled(): Promise<void> {
+    while (this.work.size > 0) {
+      // oxlint-disable-next-line no-await-in-loop -- what began meanwhile, in turn
+      await Promise.allSettled(this.work);
+    }
   }
 
   setWording(t: Translate): void {
@@ -195,6 +223,7 @@ class EditorHost {
       leave: (reason) => this.live.current.controls.leave(reason),
       whenComposed: (act, drop) => this.whenComposed(act, drop),
       tell: (text) => this.tell(text),
+      going: (work) => this.going(work),
     };
     const composed = composeExtensions(registered, context, controls);
     return EditorState.create({
@@ -282,6 +311,8 @@ export function SourceEditor({ content, focusOnOpen = false, context, controls, 
       whenComposed: (act, drop) => (editor.current === null ? act() : editor.current.whenComposed(act, drop)),
       load: (raw) => editor.current?.load(raw),
       hold: (on) => editor.current?.lock("held", on),
+      working: () => editor.current?.working === true,
+      settled: () => editor.current?.settled() ?? Promise.resolve(),
     }),
     []
   );
