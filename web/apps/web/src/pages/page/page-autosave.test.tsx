@@ -215,6 +215,8 @@ test("an edit whose content cannot be read is left all the same after 30 minutes
   await rest(idleLimit);
   expect(await screen.findByText(idleLeft)).toBeTruthy();
   expect(server.sent).toContain("END session-1");
+  // From the page's title, where Edit put it, the focus goes back to Edit, which says why the edit ended.
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "Edit" })));
 });
 
 test.each([

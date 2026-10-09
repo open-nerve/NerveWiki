@@ -2,11 +2,13 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
-import type { Asset } from "@nervewiki/api-client";
+import type { Asset, Page } from "@nervewiki/api-client";
 import { expect } from "@playwright/test";
 
 import { blobOf } from "../assets";
 import type { Database } from "../db";
+import { expectIndexedLinks } from "./links";
+import { expectContentWritten } from "./page";
 
 // Database and store assertions of the attachment stories (M7/P2 design
 // 3.13), by table: the page version and the API version of a story call
@@ -110,4 +112,37 @@ export async function expectAssetsPurged(db: Database, storageDir: string, as: r
     blobs.filter((blob) => existsSync(blobPath(storageDir, blob))),
     "the purged attachments' files"
   ).toEqual([]);
+}
+
+/** Embedded is a page's content written, as the API answered its write, and the attachments it embeds, in order. */
+export interface Embedded {
+  written: Page;
+  content: string;
+  attachments: readonly Asset[];
+}
+
+/**
+ * page_contents, nodes, asset_blobs, page_links and the store at storageDir: embedded's page holds its content,
+ * written by writerId; each of its attachments was uploaded under the page by writerId from client, its file holding
+ * bytes; and the index leads each embed to its attachment (M7 design 9, AS2).
+ */
+export async function expectEmbedded(
+  db: Database,
+  storageDir: string,
+  { written, content, attachments }: Embedded,
+  bytes: Uint8Array,
+  writerId: string,
+  client: string
+): Promise<void> {
+  await expectContentWritten(db, written, content, writerId);
+  for (const asset of attachments) {
+    // oxlint-disable-next-line no-await-in-loop -- one at a time
+    await expectUploaded(db, storageDir, asset, bytes, writerId, client);
+    expect(asset.parent_id).toBe(written.id);
+  }
+  await expectIndexedLinks(
+    db,
+    written.id,
+    attachments.map((asset) => ({ kind: "embed", property: null, target: asset.link ?? "", resolved: asset.id }))
+  );
 }

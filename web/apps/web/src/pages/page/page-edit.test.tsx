@@ -339,6 +339,21 @@ test("Edit takes the focus to the page's title until the editor takes it: there 
   await waitFor(() => expect(server.sent).toContain("END session-1"));
 });
 
+test("an edit whose content cannot be read, left with Ctrl+E from the page's title, gives the focus back to Edit", async () => {
+  const user = userEvent.setup();
+  const server = pageServer({
+    answers: { "GET /api/v0/pages/*/content": () => Promise.reject(new TypeError("offline")) },
+  });
+  renderApp(pagePath(guide.id), server.app);
+  await user.click(await screen.findByRole("button", { name: "Edit" }));
+  await screen.findByRole("button", { name: "Try again" });
+  expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1, name: "Guide" }));
+
+  fireEvent.keyDown(document.activeElement ?? document.body, { key: "e", ctrlKey: true });
+  const edit = await screen.findByRole("button", { name: "Edit" });
+  await waitFor(() => expect(document.activeElement).toBe(edit));
+});
+
 test.each([
   {
     what: "a busy server",

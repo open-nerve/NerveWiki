@@ -66,6 +66,7 @@ function editing(
       reads.tags += 1;
       return Promise.resolve(counted);
     },
+    uploadAsset: () => Promise.reject(new Error("no uploads")),
   };
   const view = new EditorView({
     state: EditorState.create({

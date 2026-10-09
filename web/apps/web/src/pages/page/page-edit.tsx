@@ -1,4 +1,4 @@
-import { reaction } from "mobx";
+import { reaction, when } from "mobx";
 import { observer } from "mobx-react-lite";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useSWRConfig } from "swr";
@@ -14,11 +14,12 @@ import type { SourceEditorHandle } from "../../editor/source-editor";
 import { useT } from "../../i18n/i18n";
 import type { Notebook } from "../../services/notebook.service";
 import type { TreeNode } from "../../services/page.service";
-import { usePageTree } from "../../stores/context";
+import { useAssets, usePageTree, useStore } from "../../stores/context";
 import type { PageEditing } from "../../stores/page-editing";
 import { useWorkspace } from "../workspace/workspace-layout";
 import { ConflictPanel } from "./conflict-panel";
 import { EditLostBanner } from "./edit-lost-banner";
+import { EditorUploads } from "./editor-uploads";
 import { PageEditingBar } from "./page-editing-bar";
 import { readView } from "./page-view";
 import { UnsavedGuard } from "./unsaved-guard";
@@ -40,8 +41,12 @@ function composed(editor: SourceEditorHandle | null, act: () => void, drop?: () 
   }
 }
 
-/** Left is how an edit ended: idle, left for a long time without input. */
-export type Left = { idle: boolean };
+/**
+ * Left is how an edit ended: idle, left for a long time without input; waited, whether it waited for its uploads
+ * first, the user free to go elsewhere meanwhile; told, what the editor said as it waited (files not inserted), which
+ * the reading view says.
+ */
+export type Left = { idle: boolean; waited?: boolean; told?: string };
 
 type PageEditProps = {
   notebook: Notebook;
@@ -67,6 +72,18 @@ type PageEditProps = {
  * through leaves the reading view in SWR's cache to be read again. A
  * content that cannot be read offers to try again, or Done to go back.
  *
+ * Files pasted into the editor, or dropped on it, upload as the page's
+ * attachments (M7/P4 design 5.2, 5.3): their uploads show by the editor,
+ * with what it told. The edit is left once their embeds are in, and a
+ * composition begun meanwhile has ended, the bar saying it waits; what
+ * the editor told meanwhile goes with it to the reading view. An edit
+ * lost meanwhile, or that runs into a conflict, stays, its banner or the
+ * conflict's panel deciding; one with a conflict open waits for nothing.
+ * Its save once they are in moves no focus if the user went elsewhere
+ * meanwhile, and the reading view takes the focus only from the edit gone
+ * (Left.waited). The idle exit, which waits for no upload, tries again
+ * later.
+ *
  * An edit whose session is lost (M5/P4 design 3.8) saves no more: the
  * editor is read-only, through the registered extension the controls tell,
  * and a banner says why in place of the bar; Mod+S does nothing, and
@@ -77,9 +94,13 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
   const t = useT();
   const { mutate } = useSWRConfig();
   const pages = usePageTree(notebook);
+  const assets = useAssets(notebook);
+  const { instance } = useStore();
   const editor = useRef<SourceEditorHandle>(null);
   const conflictHeading = useRef<HTMLHeadingElement>(null);
   const banner = useRef<HTMLDivElement>(null);
+  // The edit's view: the focus moved within it stays the edit's.
+  const view = useRef<HTMLDivElement>(null);
   const leaving = useRef(false);
   // Whether the user asked for the save last sent: a conflict it runs into takes the focus to its heading; one that
   // autosave or the idle exit runs into leaves the focus where it is, the status saying so (M5/P5 design 3.6).
@@ -87,6 +108,13 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
   // How many saves the user asked for are out: a quiet save sent meanwhile does not speak for them.
   const askedOut = useRef(0);
   const [asking, setAsking] = useState(false);
+  // What the editor last told, shown by it: the editor says it unseen.
+  const [told, setTold] = useState("");
+  // Whether the edit is left once the editor's uploads are in: with the failure shown as it began to wait, which the
+  // leave's own save tries again.
+  const [waiting, setWaiting] = useState<{ failure: unknown } | undefined>(undefined);
+  // What the editor told as the edit waited to be left; undefined while it does not wait.
+  const toldWaiting = useRef<string | undefined>(undefined);
   const mounted = useMounted();
   const { conflict } = editing;
   const { lost } = editing.session;
@@ -169,28 +197,94 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
     }
   }
 
+  /** back gives the focus back where the edit is: its banner once lost, a conflict's heading, or the editor. */
+  function back() {
+    (editing.session.lost !== undefined
+      ? banner.current
+      : editing.conflict === undefined
+        ? editor.current
+        : conflictHeading.current
+    )?.focus();
+  }
+
+  /**
+   * uploadsIn waits for the editor's work going, the embeds of its uploads,
+   * then for a composition begun meanwhile to end, again while work began
+   * meanwhile: whether all of it went in before the edit's session was lost
+   * or a conflict came, which the edit stays for.
+   */
+  function uploadsIn(current: SourceEditorHandle): Promise<boolean> {
+    return new Promise((resolve) => {
+      const stop = when(
+        () => editing.session.lost !== undefined || editing.conflict !== undefined,
+        () => resolve(false)
+      );
+      void (async () => {
+        do {
+          // oxlint-disable-next-line no-await-in-loop -- what began meanwhile, in turn
+          await current.settled();
+          // oxlint-disable-next-line no-await-in-loop -- never in half a word
+          await new Promise<void>((ended) => current.whenComposed(ended, ended));
+        } while (current.working());
+        stop();
+        resolve(true);
+      })();
+    });
+  }
+
   async function leave(left: Left = { idle: false }): Promise<void> {
     const current = editor.current;
-    if (leaving.current) {
+    // An edit whose uploads go is not idle.
+    if (leaving.current || (left.idle && current?.working() === true)) {
+      return;
+    }
+    // A conflict open is its panel's: the edit stays, the save asked for taking the focus to its heading.
+    if (editing.conflict !== undefined) {
+      await save(left.idle);
       return;
     }
     leaving.current = true;
+    // Where the focus was: the leave moves it only from there, or from within the edit, not from where the user went
+    // meanwhile.
+    const from = document.activeElement;
+    const stayed = () => {
+      const at = document.activeElement;
+      return at === null || at === document.body || at === from || view.current?.contains(at) === true;
+    };
+    // The embeds of the files pasted or dropped go in first, to be saved with the rest.
+    const waited = current?.working() === true;
+    if (waited) {
+      toldWaiting.current = "";
+      setWaiting({ failure: editing.failure });
+      const inserted = await uploadsIn(current);
+      if (!mounted()) {
+        return;
+      }
+      setWaiting(undefined);
+      if (!inserted) {
+        leaving.current = false;
+        toldWaiting.current = undefined;
+        return;
+      }
+    }
     // What is typed while the edit is left would not be saved: the content is held as it is.
     current?.hold(true);
-    const saved = !editing.unsaved || (await save(left.idle));
+    const saved = !editing.unsaved || (await save(left.idle || !stayed()));
     if (!mounted()) {
       return;
     }
     if (!saved || editing.unsaved) {
       leaving.current = false;
+      toldWaiting.current = undefined;
       current?.hold(false);
-      // Left by the user, the focus goes back to the editor; the idle exit moves none.
-      if (!left.idle && editing.conflict === undefined) {
-        current?.focus();
+      // Left by the user, the focus goes back where the edit is, from where it was or anywhere within the edit; the idle
+      // exit moves none.
+      if (!left.idle && editing.conflict === undefined && stayed()) {
+        back();
       }
       return;
     }
-    await finish(left);
+    await finish({ ...left, waited, told: toldWaiting.current });
   }
 
   /**
@@ -314,16 +408,18 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
     );
   }
   return (
-    <div className="space-y-3">
+    <div ref={view} className="space-y-3">
       {lost === undefined ? (
         <PageEditingBar
           editing={editing}
+          waiting={waiting}
           save={() => composed(editor.current, () => void save())}
           leave={() => composed(editor.current, () => void leave())}
         />
       ) : (
         <EditLostBanner ref={banner} lost={lost} unsaved={editing.unsaved} back={backToReading} />
       )}
+      <EditorUploads notebook={notebook} page={page.id} told={told} left={back} />
       <ConfirmDialog
         // Stayed, the focus goes back to the banner, which Back to reading is in.
         held={{ open: asking, onOpenChange: setAsking, onClosed: (left) => void (left || banner.current?.focus()) }}
@@ -355,6 +451,13 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
             role: notebook.role,
             linkTargets: () => pages.linkTargets(),
             tags: () => pages.tags(),
+            uploadAsset: (file) => {
+              const [upload] = assets.upload(page.id, [file], t("asset.untitled"), {
+                maxBytes: instance.info?.asset_max_bytes,
+                fromEditor: true,
+              });
+              return upload === undefined ? Promise.reject(new Error("no upload")) : assets.uploaded(upload);
+            },
           }}
           controls={{
             // Autosave's: quiet, a conflict open is its panel's, one run into moves no focus.
@@ -367,21 +470,17 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
                 () => listener()
               ),
             leave: leaveIdle,
+            tell: (text) => {
+              setTold(text);
+              if (toldWaiting.current !== undefined) {
+                toldWaiting.current = text;
+              }
+            },
           }}
           onChange={editing.changed}
         />
       </Suspense>
-      <UnsavedGuard
-        unsaved={editing.unsaved}
-        stay={() =>
-          (editing.session.lost !== undefined
-            ? banner.current
-            : editing.conflict === undefined
-              ? editor.current
-              : conflictHeading.current
-          )?.focus()
-        }
-      />
+      <UnsavedGuard unsaved={editing.unsaved} stay={back} />
     </div>
   );
 });

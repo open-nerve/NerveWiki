@@ -1,13 +1,14 @@
 import type { Extension } from "@codemirror/state";
 import { createContext } from "react";
 
+import type { Asset } from "../services/asset.service";
 import type { LinkTarget, TagCount } from "../services/linking.service";
 import type { NotebookRole } from "../services/notebook.service";
 import { autosave } from "./autosave";
 import { idleExit } from "./idle-exit";
 import { lockReadOnly } from "./lock-read-only";
 
-/** EditorContext is the page an editor's extension is built for, and what it may read of its notebook. */
+/** EditorContext is the page an editor's extension is built for, and what it may read of its notebook and add to it. */
 export type EditorContext = {
   /** The workspace's slug. */
   workspace: string;
@@ -18,6 +19,13 @@ export type EditorContext = {
   linkTargets(): Promise<readonly LinkTarget[]>;
   /** tags reads the notebook's tags, each with how many pages have it. */
   tags(): Promise<readonly TagCount[]>;
+  /**
+   * uploadAsset uploads file as an attachment of the page (M7/P4 design
+   * 5.3), by its name made free as the attachments' section's are, its
+   * row showing how it goes: the attachment once the server answers; it
+   * rejects as the upload fails or is cancelled, its row saying why.
+   */
+  uploadAsset(file: File): Promise<Asset>;
 };
 
 /**
@@ -68,6 +76,23 @@ export type EditorControls = {
    * failed, stays; the promise settles all the same.
    */
   leave(reason: "idle"): Promise<void>;
+  /**
+   * whenComposed runs act now, or once the input method's composition
+   * ends: never in half a word; drop instead if the editor goes first.
+   */
+  whenComposed(act: () => void, drop?: () => void): void;
+  /**
+   * tell says text by the editor, in place of what it said before, and
+   * unseen in its own announcements: what an extension could not do (M7/P4
+   * design 5.2). An empty text clears what was said, announcing nothing.
+   */
+  tell(text: string): void;
+  /**
+   * going has the edit wait for work before Done or Mod+E leaves it (M7/P4
+   * design 5.2): uploads whose embeds are to be inserted. While it goes,
+   * the edit is not idle.
+   */
+  going(work: Promise<void>): void;
 };
 
 /** Build builds an editor's extension for its context and controls. */
@@ -78,7 +103,7 @@ export type ReadyExtension = { name: string; extension: Build };
 
 /**
  * An EditorExtension adds to the source editor (M4 design 8; M4/P6 design
- * 3.4): M5 read-only and autosave, M6 completion, M7 pasted uploads. Its
+ * 3.4): M5 read-only and autosave, M6 completion, M7 files pasted or dropped. Its
  * extension is built once per content the editor loads, and goes into a
  * compartment of its own, in the order of the registry, after the
  * editor's own. It builds it itself, holding only types of CodeMirror, or
@@ -92,7 +117,8 @@ export type EditorExtension = ReadyExtension | { name: string; load: () => Promi
  * editorExtensions is the registry: M5's read-only while the edit's
  * session is lost first, then its autosave and idle exit (M5/P5 design
  * 3.4, 3.5), then M6's completion of links and tags, which it loads
- * (M6/P7 design 4, 5). The composition root gives it to the editor
+ * (M6/P7 design 4, 5), and M7's upload of files pasted or dropped, which
+ * it loads too (M7/P4 design 5.2). The composition root gives it to the editor
  * through EditorExtensions. This module, and the extensions it registers,
  * hold only types of CodeMirror, so that the main chunk does not load it.
  */
@@ -101,6 +127,7 @@ export const editorExtensions: readonly EditorExtension[] = [
   autosave,
   idleExit,
   { name: "linkCompletion", load: () => import("./loaded/link-completion").then((module) => module.linkCompletion) },
+  { name: "assetUpload", load: () => import("./loaded/asset-upload").then((module) => module.assetUpload) },
 ];
 
 export const EditorExtensions = createContext<readonly EditorExtension[]>([]);

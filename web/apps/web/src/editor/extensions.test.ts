@@ -17,6 +17,7 @@ const context: EditorContext = {
   role: "editor",
   linkTargets: () => Promise.resolve([]),
   tags: () => Promise.resolve([]),
+  uploadAsset: () => Promise.reject(new Error("no uploads")),
 };
 
 /** M5's lock, as a push would tell it. */
@@ -78,6 +79,9 @@ function editing(registered: readonly ReadyExtension[]) {
     onChange: () => () => undefined,
     onClose: () => undefined,
     leave: () => Promise.resolve(),
+    whenComposed: (act) => act(),
+    tell: () => undefined,
+    going: () => undefined,
   };
   const composed: Composed = composeExtensions(registered, context, controls);
   const extensions: Extension = [readOnly.of(readOnlyAs(false)), composed.extension];

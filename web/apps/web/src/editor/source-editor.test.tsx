@@ -1,7 +1,7 @@
 import { EditorView, keymap } from "@codemirror/view";
 import { act as reactAct, render, screen } from "@testing-library/react";
 import { createRef, StrictMode, Suspense, type ReactNode } from "react";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, expect, onTestFinished, test, vi } from "vitest";
 
 import { I18nProvider } from "../i18n/i18n";
 import type { Locale } from "../i18n/locale";
@@ -24,6 +24,7 @@ const context: EditorContext = {
   role: "editor",
   linkTargets: () => Promise.resolve([]),
   tags: () => Promise.resolve([]),
+  uploadAsset: () => Promise.reject(new Error("no uploads")),
 };
 
 /** The edit's session as the controls tell it, which the test loses; following counts its listeners. */
@@ -46,12 +47,13 @@ function sessionState() {
   };
 }
 
-/** The editor on content, its handle, its session, and what it told onChange, save and leave. */
+/** The editor on content, its handle, its session, and what it told onChange, save, leave and tell. */
 function editor(content: string, extensions: readonly EditorExtension[] = [], wrap = (node: ReactNode) => node) {
   const handle = createRef<SourceEditorHandle>();
   const onChange = vi.fn();
   const save = vi.fn(() => Promise.resolve());
   const leave = vi.fn((_reason: "idle") => Promise.resolve());
+  const tell = vi.fn((_text: string) => undefined);
   const session = sessionState();
   const tree = (locale: Locale) =>
     wrap(
@@ -67,6 +69,7 @@ function editor(content: string, extensions: readonly EditorExtension[] = [], wr
               session: session.session,
               onSessionChange: session.onSessionChange,
               leave,
+              tell,
             }}
             onChange={onChange}
           />
@@ -91,6 +94,7 @@ function editor(content: string, extensions: readonly EditorExtension[] = [], wr
     onChange,
     save,
     leave,
+    tell,
     session,
     unmount,
     speak: (locale: Locale) => rerender(tree(locale)),
@@ -108,6 +112,19 @@ function keeping() {
     },
   };
   return { kept, extension };
+}
+
+/** settling is work the test settles: resolved, or rejected with error. */
+function settling() {
+  const settle: { resolve: () => void; reject: (error: Error) => void } = {
+    resolve: () => undefined,
+    reject: () => undefined,
+  };
+  const promise = new Promise<void>((resolve, reject) => {
+    settle.resolve = resolve;
+    settle.reject = reject;
+  });
+  return { promise, ...settle };
 }
 
 const editable = (view: EditorView) =>
@@ -183,7 +200,13 @@ test("an extension that loads what builds it is waited for, the editor suspended
             <SourceEditor
               content="text"
               context={context}
-              controls={{ save, saving: () => false, ...session, leave: () => Promise.resolve() }}
+              controls={{
+                save,
+                saving: () => false,
+                ...session,
+                leave: () => Promise.resolve(),
+                tell: () => undefined,
+              }}
               onChange={() => undefined}
             />
           </Suspense>
@@ -220,6 +243,7 @@ test("an extension whose load fails is left out; as the page around renders agai
               saving: () => false,
               ...session,
               leave: () => Promise.resolve(),
+              tell: () => undefined,
             }}
             onChange={() => undefined}
           />
@@ -443,6 +467,80 @@ test("what waits on a composition goes with the editor", async () => {
   unmount();
   await vi.advanceTimersByTimeAsync(100);
   expect(act).not.toHaveBeenCalled();
+});
+
+test("what an extension has wait on a composition runs once it ends, or is dropped as the editor goes", () => {
+  const { kept, extension } = keeping();
+  const { view, unmount } = editor("text", [extension]);
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  const composing = vi.spyOn(EditorView.prototype, "composing", "get").mockReturnValue(true);
+  const act = vi.fn();
+  const drop = vi.fn();
+
+  kept.controls?.whenComposed(act, vi.fn());
+  expect(act).not.toHaveBeenCalled();
+  composing.mockReturnValue(false);
+  view().contentDOM.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true }));
+  vi.advanceTimersByTime(100);
+  expect(act).toHaveBeenCalledOnce();
+
+  composing.mockReturnValue(true);
+  kept.controls?.whenComposed(act, drop);
+  unmount();
+  expect(drop).toHaveBeenCalledOnce();
+  expect(act).toHaveBeenCalledOnce();
+});
+
+test("an extension's wait on a composition after the editor went is dropped", () => {
+  const { kept, extension } = keeping();
+  const { unmount } = editor("text", [extension]);
+  const controls = kept.controls;
+  unmount();
+  const act = vi.fn();
+  const drop = vi.fn();
+
+  controls?.whenComposed(act, drop);
+  expect(drop).toHaveBeenCalledOnce();
+  expect(act).not.toHaveBeenCalled();
+});
+
+test("what an extension tells is announced and reaches the edit; nothing told announces nothing, and reaches it to clear what was", () => {
+  const { kept, extension } = keeping();
+  const { tell } = editor("text", [extension]);
+  const announce = vi.spyOn(EditorView.announce, "of");
+  onTestFinished(() => announce.mockRestore());
+
+  kept.controls?.tell("Said.");
+  kept.controls?.tell("");
+  expect(announce.mock.calls).toEqual([["Said."]]);
+  expect(tell.mock.calls).toEqual([["Said."], [""]]);
+});
+
+test("an extension's work keeps the editor working until it settles, failed or not, what begins meanwhile too, a content loaded or not", async () => {
+  const { kept, extension } = keeping();
+  const { handle } = editor("text", [extension]);
+  expect(handle().working()).toBe(false);
+  const first = settling();
+  const second = settling();
+  kept.controls?.going(first.promise);
+  expect(handle().working()).toBe(true);
+  let settled = false;
+  void handle()
+    .settled()
+    .finally(() => {
+      settled = true;
+    });
+
+  reactAct(() => handle().load("other"));
+  kept.controls?.going(second.promise);
+  first.resolve();
+  await new Promise((resolve) => {
+    setTimeout(resolve, 0);
+  });
+  expect(settled).toBe(false);
+  second.reject(new Error("failed"));
+  await vi.waitFor(() => expect(settled).toBe(true));
+  expect(handle().working()).toBe(false);
 });
 
 test("Tab indents; the content refers to the line that says how to move out; its words follow the app's language", () => {

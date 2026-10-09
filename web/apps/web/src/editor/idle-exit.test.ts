@@ -17,6 +17,7 @@ const context: EditorContext = {
   role: "editor",
   linkTargets: () => Promise.resolve([]),
   tags: () => Promise.resolve([]),
+  uploadAsset: () => Promise.reject(new Error("no uploads")),
 };
 
 /** idleExit built over fake controls. */

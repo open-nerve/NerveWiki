@@ -341,6 +341,45 @@ describe("AssetStore's uploads", () => {
   });
 });
 
+describe("AssetStore's uploads, as one waits for them", () => {
+  test("uploaded settles with the attachment once the server answers, before its list has it", async () => {
+    const { store, service, pages, sent } = setUp();
+    const [upload] = store.upload(guide.id, [file("a.png")], "Untitled", { ...limits, fromEditor: true });
+    expect(upload?.fromEditor).toBe(true);
+    const settled = upload === undefined ? undefined : store.uploaded(upload);
+    await settle();
+    // The tree and the list read after it are not answered.
+    pages.wrote.mockImplementation(() => new Promise(() => undefined));
+    service.list.mockImplementation(() => new Promise(() => undefined));
+    const asset = assetJSON(assetNode(90, "a.png", guide));
+    sent[0]?.resolve(asset);
+    await expect(settled).resolves.toBe(asset);
+    expect(store.uploads).toEqual([upload]);
+  });
+
+  test("uploaded rejects with why one failed, or was refused, and as one is cancelled", async () => {
+    const { store, sent } = setUp();
+    const [failing, refused, cancelled] = store.upload(
+      guide.id,
+      [file("a.png"), file("b.md"), file("c.png")],
+      "Untitled",
+      limits
+    );
+    const each = [failing, refused, cancelled].map((upload) =>
+      upload === undefined ? Promise.resolve(undefined) : store.uploaded(upload).catch((error: unknown) => error)
+    );
+    await settle();
+    const failure = refusal(500, "internal");
+    sent[0]?.reject(failure);
+    cancelled?.cancel();
+    const [why, notSent, stopped] = await Promise.all(each);
+    expect(why).toBe(failure);
+    expect(notSent).toEqual({ refused: "page-file" });
+    expect(stopped).toBeInstanceOf(DOMException);
+    expect((stopped as DOMException).name).toBe("AbortError");
+  });
+});
+
 describe("AssetStore's uploads, as they fail and go on", () => {
   test("one failed, or refused, holds no name: the next sends it", async () => {
     const { store, sent } = setUp();

@@ -113,13 +113,17 @@ const PageShell = observer(function PageShell({
   const [entering, setEntering] = useState(false);
   const [refusal, setRefusal] = useState<unknown>(undefined);
   const [idleLeft, setIdleLeft] = useState(false);
-  // The note of an idle exit describes Edit, where the focus lands: it is heard as it comes.
+  // What the editor told as the edit waited to be left for its uploads: files not inserted.
+  const [toldLeft, setToldLeft] = useState("");
+  // The note of an edit's end, idle or told, describes Edit, where the focus lands: it is heard as it comes.
   const idleNote = useId();
   const edit = useRef<HTMLButtonElement>(null);
   // The last navigation the reading view took in, which outlives it while the page is edited.
   const anchored = useRef<string | undefined>(undefined);
   const lockNote = useRef<HTMLDivElement>(null);
-  const back = useRef(false);
+  // Back from the edit, the focus goes to Edit; from one that waited for its uploads ("fallen"), only if it fell with the
+  // edit gone, the user free to go elsewhere meanwhile.
+  const back = useRef<boolean | "fallen">(false);
   // The edit whose session is opening: one that opens once the shell is gone ends.
   const opening = useRef<PageEditing | undefined>(undefined);
   const mounted = useMounted();
@@ -142,6 +146,7 @@ const PageShell = observer(function PageShell({
     setEntering(true);
     setRefusal(undefined);
     setIdleLeft(false);
+    setToldLeft("");
     try {
       const opened = await next.begin(takeOver);
       if (!mounted()) {
@@ -196,9 +201,12 @@ const PageShell = observer(function PageShell({
     if (!writer || !reading) {
       return undefined;
     }
-    if (back.current) {
+    if (back.current !== false) {
+      const focused = document.activeElement;
+      if (back.current === true || focused === null || focused === document.body) {
+        edit.current?.focus();
+      }
       back.current = false;
-      edit.current?.focus();
     }
     const mac = onMac();
     const onKeyDown = (event: KeyboardEvent) => {
@@ -226,7 +234,7 @@ const PageShell = observer(function PageShell({
               ref={edit}
               variant="outline"
               aria-busy={entering || undefined}
-              aria-describedby={idleLeft ? idleNote : undefined}
+              aria-describedby={idleLeft || toldLeft !== "" ? idleNote : undefined}
               aria-disabled={entering || undefined}
               onClick={() => void enter(false)}
             >
@@ -240,9 +248,9 @@ const PageShell = observer(function PageShell({
           {editing === undefined ? (
             <>
               {refusal !== undefined && <Alert>{errorText(refusal, t)}</Alert>}
-              {idleLeft && (
-                <output id={idleNote} className="block text-sm text-muted-foreground">
-                  {t("page.idleLeft")}
+              {(idleLeft || toldLeft !== "") && (
+                <output id={idleNote} className="block text-sm whitespace-pre-line text-muted-foreground">
+                  {[idleLeft ? t("page.idleLeft") : "", toldLeft].filter((said) => said !== "").join("\n")}
                 </output>
               )}
               <div ref={lockNote} tabIndex={-1} className="outline-none">
@@ -269,8 +277,9 @@ const PageShell = observer(function PageShell({
               page={page}
               editing={editing}
               done={(left) => {
-                back.current = true;
+                back.current = left.waited === true ? "fallen" : true;
                 setIdleLeft(left.idle);
+                setToldLeft(left.told ?? "");
                 // A toggle's refusal that came while it edited is no longer news.
                 setRefusal(undefined);
                 setEditing(undefined);
@@ -283,7 +292,7 @@ const PageShell = observer(function PageShell({
               <SubpageList label={t("page.subpages")} pages={children} href={href} />
             </section>
           )}
-          {!gone && <AttachmentsSection notebook={notebook} parent={page.id} />}
+          {!gone && <AttachmentsSection notebook={notebook} parent={page.id} editorsElsewhere={!reading} />}
         </div>
         <PagePanel notebook={notebook} page={page} editing={!reading} href={href} />
       </div>

@@ -50,10 +50,13 @@ type Dialog = Exclude<AssetAction, "copy">;
 export const AttachmentsSection = observer(function AttachmentsSection({
   notebook,
   parent,
+  editorsElsewhere = false,
 }: {
   notebook: Notebook;
   /** The page whose attachments these are; null for the notebook's root. */
   parent: string | null;
+  /** Whether the editor's uploads show elsewhere: by the editor, as the page is edited (M7/P4 design 5.3). */
+  editorsElsewhere?: boolean;
 }) {
   const t = useT();
   const assets = useAssets(notebook);
@@ -63,7 +66,9 @@ export const AttachmentsSection = observer(function AttachmentsSection({
   const list = assets.listOf(parent);
   useExpiry(list, () => void mutate());
   const writer = writesPages(notebook.role);
-  const uploads = assets.uploads.filter((upload) => upload.parent === parent);
+  const uploads = assets.uploads.filter(
+    (upload) => upload.parent === parent && !(editorsElsewhere && upload.fromEditor)
+  );
   const headingId = useId();
   const section = useRef<HTMLElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
