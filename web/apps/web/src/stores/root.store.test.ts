@@ -8,6 +8,7 @@ import { SharedStorage } from "../session/testing/fake-browser";
 import { SessionChangedError } from "../session/token-manager";
 import { withEvents } from "../test/event-server";
 import { json, notebookJSON, storedSession, testApp, tokensJSON, workspaceJSON } from "../test/fakes";
+import type { transferTo } from "../test/transfer";
 import { AppStores, RootStore } from "./root.store";
 
 const tokens = (n: number) => ({
@@ -53,6 +54,71 @@ test("a generation of the session before sends nothing once the tab has signed i
   expect(after.instance).toBe(before.instance);
 });
 
+/** leaving is whether the page, left now, would ask first: its beforeunload's default prevented. */
+function leaving(): boolean {
+  const event = new Event("beforeunload", { cancelable: true });
+  window.dispatchEvent(event);
+  return event.defaultPrevented;
+}
+
+// A generation's uploads stop as the tab leaves its login (M7/P4 design 3.3): the page no longer warns before it is
+// left for them, and the next generation has none.
+test("a generation's uploads stop once the tab has signed in again", async () => {
+  let issued = 0;
+  const app = testApp((request) => {
+    const { pathname } = new URL(request.url);
+    if (pathname === "/api/v0/me") return json(me);
+    if (pathname.endsWith("/assets")) return new Promise<Response>(() => undefined);
+    if (pathname.endsWith("/nodes")) return json({ data: [] });
+    return json(tokens(++issued));
+  }, storedSession("login-0"));
+  await app.session.start();
+  const before = new RootStore(app, "login-0");
+  const assets = before.assetsOf(notebookJSON);
+
+  const [upload] = assets?.upload(null, [new File(["x"], "a.png")], "Untitled", { maxBytes: undefined }) ?? [];
+  await vi.waitFor(() => expect((app.transfer as ReturnType<typeof transferTo>).made).toHaveLength(1));
+  expect(leaving()).toBe(true);
+  await before.auth.signIn("bob@example.com", "correct horse battery");
+
+  expect(upload?.signal.aborted).toBe(true);
+  await vi.waitFor(() => expect(assets?.uploads).toEqual([]));
+  expect(leaving()).toBe(false);
+});
+
+test("a generation whose login has gone before its attachments are first asked for cancels their uploads at once", async () => {
+  let issued = 0;
+  const app = testApp((request) => {
+    const { pathname } = new URL(request.url);
+    if (pathname === "/api/v0/me") return json(me);
+    if (pathname.endsWith("/nodes")) return json({ data: [] });
+    return json(tokens(++issued));
+  }, storedSession("login-0"));
+  await app.session.start();
+  const before = new RootStore(app, "login-0");
+  await before.auth.signIn("bob@example.com", "correct horse battery");
+
+  const [upload] =
+    before.assetsOf(notebookJSON)?.upload(null, [new File(["x"], "a.png")], "Untitled", { maxBytes: undefined }) ?? [];
+
+  expect(upload?.signal.aborted).toBe(true);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect((app.transfer as ReturnType<typeof transferTo>).made).toEqual([]);
+});
+
+test("a generation made and dropped, its attachments never asked for, does not watch the session", async () => {
+  const app = testApp(() => json(tokens(1)), storedSession("login-0"));
+  await app.session.start();
+  const watching = vi.spyOn(app.session.tokens, "subscribe");
+
+  const dropped = new RootStore(app, "login-0");
+  expect(watching).not.toHaveBeenCalled();
+  dropped.assetsOf(notebookJSON);
+  dropped.assetsOf({ ...notebookJSON, id: "other" });
+
+  expect(watching).toHaveBeenCalledTimes(1);
+});
+
 test("a signed-out generation has no account, nor its workspaces", () => {
   const store = new RootStore(testApp(), undefined);
   expect([
@@ -64,7 +130,8 @@ test("a signed-out generation has no account, nor its workspaces", () => {
     store.notebookMembersOf(notebookJSON),
     store.ownerlessOf(workspaceJSON),
     store.auditOf(workspaceJSON),
-  ]).toEqual([undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined]);
+    store.assetsOf(notebookJSON),
+  ]).toEqual([undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined]);
 });
 
 test("a workspace's member list is the same for the generation; another workspace's, or another generation's, is another", async () => {

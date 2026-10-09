@@ -1,5 +1,5 @@
 import { Eye, EyeOff } from "lucide-react";
-import { useEffect, useId, useRef, useState, type ComponentProps, type RefObject } from "react";
+import { useEffect, useId, useRef, useState, type ComponentProps, type ReactNode, type RefObject } from "react";
 
 import { useT } from "../i18n/i18n";
 import { Button } from "./ui/button";
@@ -12,23 +12,28 @@ type FormFieldProps = Omit<ComponentProps<"input">, "id"> & {
   error?: string | undefined;
   /** A hint under the field while it has no problem. */
   hint?: string | undefined;
+  /** What shows after the input, which the hint says too: an attachment's extension, which a rename keeps. */
+  suffix?: ReactNode;
 };
 
 /**
  * FormField is a labelled input with its problem under it. A password field
  * has a button that shows what was typed (M1/P5 design 3.6).
  */
-export function FormField({ label, error, hint, type, ...props }: FormFieldProps) {
+export function FormField({ label, error, hint, suffix, type, ...props }: FormFieldProps) {
   const id = useId();
   const t = useT();
   const [shown, setShown] = useState(false);
   const note = error ?? hint;
+  // A suffix's hint stays with a problem: the suffix shows, unread, what it says.
+  const kept = suffix !== undefined && error !== undefined ? hint : undefined;
+  const described = [note === undefined ? "" : `${id}-note`, kept === undefined ? "" : `${id}-hint`].join(" ").trim();
   const input = (
     <Input
       id={id}
       type={type === "password" && shown ? "text" : type}
       aria-invalid={error !== undefined || undefined}
-      aria-describedby={note === undefined ? undefined : `${id}-note`}
+      aria-describedby={described === "" ? undefined : described}
       {...props}
     />
   );
@@ -48,8 +53,15 @@ export function FormField({ label, error, hint, type, ...props }: FormFieldProps
             {shown ? <EyeOff /> : <Eye />}
           </Button>
         </div>
-      ) : (
+      ) : suffix === undefined ? (
         input
+      ) : (
+        <div className="flex items-center gap-1">
+          {input}
+          <span aria-hidden className="text-sm text-muted-foreground">
+            {suffix}
+          </span>
+        </div>
       )}
       {note !== undefined && (
         <p
@@ -57,6 +69,11 @@ export function FormField({ label, error, hint, type, ...props }: FormFieldProps
           className={error === undefined ? "text-sm text-muted-foreground" : "text-sm text-destructive"}
         >
           {note}
+        </p>
+      )}
+      {kept !== undefined && (
+        <p id={`${id}-hint`} className="text-sm text-muted-foreground">
+          {kept}
         </p>
       )}
     </div>

@@ -13,6 +13,7 @@ import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
 import { useT } from "../../i18n/i18n";
 import { usePageTree } from "../../stores/context";
+import { AttachmentsSection } from "../page/attachments-section";
 import { SubpageList } from "../page/subpage-list";
 import { useWorkspace } from "../workspace/workspace-layout";
 import { useNewPage } from "./new-page";
@@ -21,7 +22,8 @@ import { useNotebook } from "./notebook-layout";
 /**
  * NotebookHomePage is a notebook's first page (M4/P5 design 3.5): its
  * pages at the root, as the left column has them, New page for its
- * editors and admins, and a way to its settings.
+ * editors and admins, the attachments at the root (M7/P4 design 3.5), and
+ * a way to its settings.
  */
 export const NotebookHomePage = observer(function NotebookHomePage() {
   const workspace = useWorkspace();
@@ -63,6 +65,7 @@ export const NotebookHomePage = observer(function NotebookHomePage() {
       ) : (
         <SubpageList label={t("notebook.pages")} pages={roots} href={(id) => `${home}/pages/${id}`} />
       )}
+      <AttachmentsSection notebook={notebook} parent={null} />
       <Link to={`${home}/settings`} className="text-sm underline underline-offset-4">
         {t("notebookSettings.title")}
       </Link>

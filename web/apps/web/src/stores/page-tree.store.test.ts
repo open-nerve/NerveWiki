@@ -171,6 +171,25 @@ test("a read that a write's answer overlaps keeps the tree read after the write"
   expect(pages.byId(notes.id)).toBeUndefined();
 });
 
+test("a first read out as an upload answers (wrote) is not kept, though it answers first: the tree read after it is (M7/P4 design 3.3)", async () => {
+  const { pages, state } = store();
+  const stale = held<TreeNode[]>();
+  state.writes.set("list", () => stale.promise);
+  const reading = pages.load();
+  const fresh = held<TreeNode[]>();
+  state.writes.set("list", () => fresh.promise);
+  const upload = assetNode(20, "a.png", guide);
+
+  const wrote = pages.wrote();
+  stale.resolve([guide, install, linux, notes]);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(pages.nodes).toBeUndefined();
+  fresh.resolve([guide, install, linux, notes, upload]);
+  await Promise.all([reading, wrote]);
+
+  expect(pages.siblingsOf(guide.id).map((node) => node.name)).toEqual(["Install", "a.png"]);
+});
+
 test("a read that a rename's answer overlaps keeps the tree read after the rename, the new title", async () => {
   const { pages, state } = store();
   await pages.load();
@@ -232,6 +251,84 @@ test("a page created is in the tree once create answers its id", async () => {
 
   expect(id).toBe(created.id);
   expect(pages.childrenOf(guide.id).map((n) => n.name)).toEqual(["Install", "Untitled"]);
+});
+
+test("a page created is in the tree once create answers, an upload's answer overlapping the read after it (M7/P4A review A1)", async () => {
+  const { pages, state } = store();
+  await pages.load();
+  const created = { ...pageNode(9, "Untitled"), parent_id: guide.id };
+  const before = held<TreeNode[]>();
+  state.writes.set("list", () => before.promise);
+
+  const creating = pages.create(guide.id, "Untitled");
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  // The upload answers as the creation's read is out; the read after it, which has the page, answers last.
+  const after = held<TreeNode[]>();
+  state.writes.set("list", () => after.promise);
+  const wrote = pages.wrote();
+  before.resolve([guide, install, linux, notes]);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  after.resolve([guide, install, linux, created, notes]);
+  const id = await creating;
+
+  expect(id).toBe(created.id);
+  expect(pages.byId(created.id)).toBeDefined();
+  await wrote;
+});
+
+test("uploads answered as a read after one is out have one more read after it, not one each", async () => {
+  const { pages, sent, state } = store();
+  await pages.load();
+  const out = held<TreeNode[]>();
+  state.writes.set("list", () => out.promise);
+  sent.length = 0;
+
+  const first = pages.wrote();
+  const second = pages.wrote();
+  const third = pages.wrote();
+  state.writes.delete("list");
+  state.nodes = [guide, install, linux, notes, assetNode(20, "a.png", guide)];
+  out.resolve([guide, install, linux, notes]);
+  await Promise.all([first, second, third]);
+
+  expect(sent).toEqual(["list plans", "list plans"]);
+  expect(pages.siblingsOf(guide.id).map((node) => node.name)).toEqual(["Install", "a.png"]);
+});
+
+test("each upload's answer settles once the first tree read begun after it has: one answered as a read is out waits for the next", async () => {
+  const { pages, state } = store();
+  await pages.load();
+  const one = held<TreeNode[]>();
+  state.writes.set("list", () => one.promise);
+  const settled: string[] = [];
+
+  const first = pages.wrote().then(() => settled.push("first"));
+  const two = held<TreeNode[]>();
+  state.writes.set("list", () => two.promise);
+  const second = pages.wrote().then(() => settled.push("second"));
+  one.resolve([guide, install, linux, notes]);
+  await first;
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  expect(settled).toEqual(["first"]);
+  two.resolve([guide, install, linux, notes]);
+  await second;
+  expect(settled).toEqual(["first", "second"]);
+});
+
+test("an upload's answer settles though the tree read after it fails; the next is read all the same", async () => {
+  const { pages, sent, state } = store();
+  await pages.load();
+  state.writes.set("list", () => Promise.reject(new TypeError("offline")));
+  sent.length = 0;
+
+  await pages.wrote();
+  state.writes.delete("list");
+  state.nodes = [guide, install, linux, notes, assetNode(20, "a.png", guide)];
+  await pages.wrote();
+
+  expect(sent).toEqual(["list plans", "list plans"]);
+  expect(pages.siblingsOf(guide.id).map((node) => node.name)).toEqual(["Install", "a.png"]);
 });
 
 test("a page deleted, or deleted already, sends its subtree's shells to its parent", async () => {

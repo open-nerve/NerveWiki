@@ -82,7 +82,13 @@ async function open(page = new FakePage(), answers: Record<string, Answer> = {},
   events.last().hello();
   await waitFor(() =>
     expect(server.sent.slice(before)).toEqual(
-      expect.arrayContaining(["GET nodes", "GET view Guide", `GET backlinks ${guide.id}`, `GET properties ${guide.id}`])
+      expect.arrayContaining([
+        "GET nodes",
+        "GET view Guide",
+        `GET backlinks ${guide.id}`,
+        `GET properties ${guide.id}`,
+        "GET assets Guide",
+      ])
     )
   );
   server.sent.length = 0;
@@ -108,14 +114,14 @@ async function settle(): Promise<void> {
   await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
 }
 
-test("an event whose tree changed reads the tree again, not the reading views", async () => {
+test("an event whose tree changed reads the tree again, then the attachments shown, not the reading views", async () => {
   const { server, events } = await open();
   server.nodes = [{ ...guide, name: "Handbook" }, install, linux, notes];
 
   events.last().send("pages", pagesEvent(true, []));
 
   expect(await screen.findByRole("heading", { level: 1, name: "Handbook" })).toBeTruthy();
-  expect(server.sent).toEqual(["GET nodes"]);
+  await waitFor(() => expect(server.sent).toEqual(["GET nodes", "GET assets Handbook"]));
 });
 
 test("a page's reading view is read again when its revision is newer than the one shown, not when it is the same", async () => {
@@ -388,7 +394,7 @@ test("a lock event reads the tree first: a page deleted while edited leaves befo
   expect(lockReads).toEqual([]);
 });
 
-test("each connection reads again the workspaces, the tree, the reading view and the lock", async () => {
+test("each connection reads again the workspaces, the tree, the reading view, the lock and the attachments", async () => {
   const { server, events, workspaces } = await open();
   server.nodes = [{ ...guide, name: "Handbook" }, install, linux, notes];
   server.views.set(guide.id, { html: "<p>Guide, again</p>", revision: 2, assets_expire_at: null });
@@ -402,6 +408,7 @@ test("each connection reads again the workspaces, the tree, the reading view and
   await waitFor(() => expect(screen.getByRole("article", { name: "Handbook" }).innerHTML).toBe("<p>Guide, again</p>"));
   expect((await screen.findByRole("status")).textContent).toContain("Bob is editing this page.");
   expect(workspaces).toEqual(["GET workspaces"]);
+  await waitFor(() => expect(server.sent).toContain("GET assets Handbook"));
 });
 
 test("each connection reads again the pages of a tag shown, with the tree", async () => {
@@ -433,6 +440,17 @@ test("a connection reads from the outside in: a notebook no longer seen leaves t
   expect(await screen.findByRole("heading", { level: 1, name: "Page not found" })).toBeTruthy();
   await settle();
   expect(server.sent).toEqual([]);
+});
+
+test("an event whose tree lost the page shown reads none of its attachments: the page leaves first", async () => {
+  const { server, events } = await open();
+  server.nodes = [notes];
+
+  events.last().send("pages", pagesEvent(true, []));
+
+  expect(await screen.findByRole("heading", { level: 1, name: "Page not found" })).toBeTruthy();
+  await settle();
+  expect(server.sent).toEqual(["GET nodes"]);
 });
 
 test("a connection reads the right column after the tree: a page deleted meanwhile leaves before its backlinks and properties would be read", async () => {

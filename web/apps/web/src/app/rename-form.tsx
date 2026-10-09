@@ -12,6 +12,8 @@ type RenameFormProps = {
   current: string;
   label: string;
   hint?: string;
+  /** What shows after the field, which the hint says too (FormField). */
+  suffix?: string;
   autoComplete?: string;
   /** The local check of the name typed: its problem, or none. */
   check: (name: string) => FieldMessage | undefined;
@@ -41,6 +43,7 @@ export function RenameForm({
   current,
   label,
   hint,
+  suffix,
   autoComplete,
   check,
   fieldTexts,
@@ -86,6 +89,7 @@ export function RenameForm({
         value={name}
         error={problemOf("name")}
         hint={hint}
+        suffix={suffix}
         onChange={(event) => {
           edits.current++;
           setDraft(event.target.value);

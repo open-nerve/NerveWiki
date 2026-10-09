@@ -9,6 +9,7 @@ import { Session, type SessionDeps } from "../session/session";
 import { AUTH_KEY } from "../session/token-manager";
 import { PreferencesStore, type DarkSchemeQuery } from "../stores/preferences.store";
 import { AppStores } from "../stores/root.store";
+import { transferTo } from "./transfer";
 
 /** memoryStorage is a Storage of this page only, holding values. */
 export function memoryStorage(
@@ -180,7 +181,7 @@ function pattern(key: string): RegExp | undefined {
  * sees no notebook and has none ownerless, every notebook without a page;
  * routes adds to or replaces the answers to the refresh, GET /me, GET
  * /instance, GET /workspaces, every workspace's GET notebooks and
- * ownerless notebooks, and every notebook's GET nodes.
+ * ownerless notebooks, and every notebook's GET nodes and attachments.
  */
 export function signedInApp(routes: Record<string, Answer> = {}): AppStores {
   return testApp(
@@ -192,6 +193,7 @@ export function signedInApp(routes: Record<string, Answer> = {}): AppStores {
       "GET /api/v0/workspaces/*/notebooks": () => json({ data: [] }),
       "GET /api/v0/workspaces/*/ownerless-notebooks": () => json({ data: [] }),
       "GET /api/v0/notebooks/*/nodes": () => json({ data: [] }),
+      "GET /api/v0/notebooks/*/assets": () => json({ data: [], next_cursor: null }),
       ...routes,
     }),
     storedSession("login-0")
@@ -200,7 +202,7 @@ export function signedInApp(routes: Record<string, Answer> = {}): AppStores {
 
 /** testApp is the page's stores over testSession(answer, stored). */
 export function testApp(answer: Answer = () => json(instanceJSON), stored?: Record<string, string>): AppStores {
-  return new AppStores(preferences(), testSession(answer, stored));
+  return new AppStores(preferences(), testSession(answer, stored), undefined, transferTo(answer));
 }
 
 export function json(body: unknown, status = 200, contentType = "application/json"): Response {

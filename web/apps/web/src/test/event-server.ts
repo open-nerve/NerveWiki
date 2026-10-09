@@ -63,5 +63,5 @@ export function withEvents(app: AppStores, page = new FakePage()): AppStores {
     now: () => Date.now(),
     tabId: "tab-0",
   };
-  return new AppStores(app.preferences, app.session, deps);
+  return new AppStores(app.preferences, app.session, deps, app.transfer);
 }

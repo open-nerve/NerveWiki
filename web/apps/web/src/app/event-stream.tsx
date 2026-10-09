@@ -16,7 +16,7 @@ const refreshedOnConnect = [
   ["workspaces"],
   ["notebooks"],
   ["pages", "tag-pages"],
-  ["page-view", "edit-lock", "backlinks", "page-properties"],
+  ["page-view", "edit-lock", "backlinks", "page-properties", "assets"],
 ].map((level) => new Set(level));
 
 /**

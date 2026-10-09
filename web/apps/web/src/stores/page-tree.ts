@@ -1,3 +1,4 @@
+import { titleKey } from "../lib/title-key";
 import type { TreeNode } from "../services/page.service";
 
 /**
@@ -136,15 +137,6 @@ export function canHold(tree: TreeIndex, parent: string | null, id: string): boo
 }
 
 /**
- * titleKey is how titles compare among siblings, near the server's
- * shared.TitleKey: NFC, then lower case. Where the two differ the server
- * answers 409 page.title_taken.
- */
-function titleKey(title: string): string {
-  return title.normalize("NFC").toLowerCase();
-}
-
-/**
  * freeTitle is the first of titles (Untitled, Untitled 2, …), counting from
  * 1, that no sibling, a page or an attachment (M7/P2 design 3.10), and
  * none of taken has (M4 design 4).
@@ -164,7 +156,7 @@ export function freeTitle(
 
 /**
  * findPages are the pages of tree whose title holds query, compared as
- * titles are (NFC, lower case), from the top down as the left column
+ * titles are (titleKey), from the top down as the left column
  * lists them; every page for a query of blanks (M4/P5 design 3.10).
  */
 export function findPages(tree: TreeIndex, query: string): TreeNode[] {

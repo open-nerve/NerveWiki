@@ -6,6 +6,7 @@ import type { Workspace } from "../services/workspace.service";
 import type { AccountStore } from "./account.store";
 import type { AuditStore } from "./audit.store";
 import type { ApiTokenStore } from "./api-token.store";
+import type { AssetStore } from "./asset.store";
 import type { InvitationStore } from "./invitation.store";
 import type { MemberStore } from "./member.store";
 import type { NotebookMemberStore } from "./notebook-member.store";
@@ -96,6 +97,15 @@ export function usePageTree(notebook: Notebook): PageTreeStore {
     throw new Error("usePageTree is used outside SignedIn");
   }
   return pages;
+}
+
+/** useAssets is the attachments of notebook: only for the pages the SignedIn guard shows. */
+export function useAssets(notebook: Notebook): AssetStore {
+  const assets = useStore().assetsOf(notebook);
+  if (assets === undefined) {
+    throw new Error("useAssets is used outside SignedIn");
+  }
+  return assets;
 }
 
 /** useOwnerless is the ownerless notebooks of workspace: only for the pages the SignedIn guard shows. */

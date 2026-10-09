@@ -22,6 +22,7 @@ import type { PageEditing } from "../../stores/page-editing";
 import { useNotebook } from "../notebook/notebook-layout";
 import { NotFoundPage } from "../not-found";
 import { useWorkspace } from "../workspace/workspace-layout";
+import { AttachmentDrop, AttachmentsSection } from "./attachments-section";
 import { Breadcrumbs } from "./breadcrumbs";
 import { EditLockNote } from "./edit-lock-note";
 import { PageEdit } from "./page-edit";
@@ -71,7 +72,7 @@ export const PageLayout = observer(function PageLayout() {
       />
     );
   }
-  return <PageShell key={page.id} notebook={notebook} page={page} />;
+  return <PageShell key={page.id} notebook={notebook} page={page} gone={found === undefined} />;
 });
 
 /**
@@ -85,10 +86,22 @@ export const PageLayout = observer(function PageLayout() {
  * may edit here, taking it over. Back from the edit, the focus is on
  * Edit; an edit left for a long time without input says so above the
  * reading view until the next (M5/P5 design 3.7). The edit is not in the
- * address: a reload shows the reading view. Beside its content, or after
+ * address: a reload shows the reading view. Below its children are its
+ * attachments; files dropped on the reading view upload there (M7/P4
+ * design 3.5, 3.6). A page gone, shown while its edit is unsaved, has none:
+ * its list is not read. Beside its content, or after
  * it on a narrow window, is its right column (M6/P7 design 7).
  */
-const PageShell = observer(function PageShell({ notebook, page }: { notebook: Notebook; page: TreeNode }) {
+const PageShell = observer(function PageShell({
+  notebook,
+  page,
+  gone,
+}: {
+  notebook: Notebook;
+  page: TreeNode;
+  /** Whether the page has gone from the tree, shown still while its edit is unsaved: it has no attachments then. */
+  gone: boolean;
+}) {
   const { slug } = useWorkspace();
   const pages = usePageTree(notebook);
   const store = useStore();
@@ -240,13 +253,15 @@ const PageShell = observer(function PageShell({ notebook, page }: { notebook: No
                   released={() => (edit.current ?? heading.current)?.focus()}
                 />
               </div>
-              <ReadingView
-                notebook={notebook}
-                page={page}
-                refused={(error) => (error === undefined ? setRefusal(undefined) : void toggleRefused(error))}
-                unanchored={() => heading.current?.focus()}
-                anchored={anchored}
-              />
+              <AttachmentDrop notebook={notebook} parent={page.id} enabled={writer && !gone}>
+                <ReadingView
+                  notebook={notebook}
+                  page={page}
+                  refused={(error) => (error === undefined ? setRefusal(undefined) : void toggleRefused(error))}
+                  unanchored={() => heading.current?.focus()}
+                  anchored={anchored}
+                />
+              </AttachmentDrop>
             </>
           ) : (
             <PageEdit
@@ -268,6 +283,7 @@ const PageShell = observer(function PageShell({ notebook, page }: { notebook: No
               <SubpageList label={t("page.subpages")} pages={children} href={href} />
             </section>
           )}
+          {!gone && <AttachmentsSection notebook={notebook} parent={page.id} />}
         </div>
         <PagePanel notebook={notebook} page={page} editing={!reading} href={href} />
       </div>

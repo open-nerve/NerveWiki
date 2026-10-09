@@ -202,7 +202,9 @@ type Dialogs = "rename" | "move" | "delete" | undefined;
  * holds. A dialog closed gives the focus back to the menu's button, the
  * page's wherever it moved; a deletion gives it to the tree's heading,
  * unless the page shown went with it: its shell then goes to the parent,
- * arrived at. A page ten levels down has no New subpage. They name the
+ * arrived at. Its confirmation counts the pages under it and the
+ * attachments of the subtree, which go with it (M7/P4 design 3.7). A page
+ * ten levels down has no New subpage. They name the
  * page by name, which tells it from others of its title.
  */
 const PageMenu = observer(function PageMenu({
@@ -229,6 +231,8 @@ const PageMenu = observer(function PageMenu({
   const deepest = tree !== undefined && depthOf(tree, node.id) >= maxDepth;
   const shown = subtree.some((page) => page.id === pageId);
   const count = subtree.length - 1;
+  // Counted as the deletion is asked: the rows do not watch the attachments, which a read may change alone.
+  const attachments = dialog === "delete" ? attachmentsUnder(pages, subtree) : 0;
   return (
     <>
       <DropdownMenu>
@@ -275,9 +279,10 @@ const PageMenu = observer(function PageMenu({
           },
         }}
         title={t("page.deleteTitle", { name })}
-        description={
-          count === 0 ? t("page.deleteBody") : `${t("page.deleteBody")} ${t("page.deleteSubpages", { count })}`
-        }
+        description={[
+          ...(count === 0 ? [] : [t("page.deleteSubpages", { count })]),
+          ...(attachments === 0 ? [] : [t("page.deleteAttachments", { count: attachments })]),
+        ].reduce((first, second) => t("page.sentences", { first, second }), t("page.deleteBody"))}
         confirmLabel={t("page.delete")}
         sendingLabel={t("page.deleting")}
         cancelLabel={t("page.cancel")}
@@ -291,3 +296,12 @@ const PageMenu = observer(function PageMenu({
     </>
   );
 });
+
+/** attachmentsUnder is how many attachments the pages of subtree hold. */
+function attachmentsUnder(pages: PageTreeStore, subtree: readonly TreeNode[]): number {
+  const ids = new Set(subtree.map((page) => page.id));
+  return (
+    pages.nodes?.filter((node) => node.kind === "asset" && node.parent_id !== null && ids.has(node.parent_id)).length ??
+    0
+  );
+}
