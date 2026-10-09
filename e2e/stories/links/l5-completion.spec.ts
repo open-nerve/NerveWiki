@@ -227,15 +227,16 @@ test("L5 (page, frontmatter): a page and an alias picked in a property's quotes 
   );
   expect((await getPageProperties(api, pat, source.id)).data).toEqual({
     valid: true,
+    assets_expire_at: null,
     properties: [
       { key: "ref", value: "[[Bob's]]" },
       { key: "alt", value: `[[Bob's|He said "Hi"]]` },
       { key: "win", value: String.raw`[[Bob's|C:\x]]` },
     ],
     links: [
-      { key: "ref", node_id: target.id, kind: "page", url: null },
-      { key: "alt", node_id: target.id, kind: "page", url: null },
-      { key: "win", node_id: target.id, kind: "page", url: null },
+      { key: "ref", node_id: target.id, kind: "page", url: null, inline: null },
+      { key: "alt", node_id: target.id, kind: "page", url: null, inline: null },
+      { key: "win", node_id: target.id, kind: "page", url: null, inline: null },
     ],
   });
   await expectIndexedLinks(
