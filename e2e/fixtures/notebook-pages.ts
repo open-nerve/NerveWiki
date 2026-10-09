@@ -53,7 +53,7 @@ export async function createNotebookWith(
 }
 
 /** The address of a page of the notebook id in the workspace of slug: its home, or one of its settings. */
-export function notebookPath(slug: string, id: string, settings?: "general" | "members"): string {
+export function notebookPath(slug: string, id: string, settings?: "general" | "members" | "transfer"): string {
   return `/${slug}/notebooks/${id}${settings === undefined ? "" : `/settings/${settings}`}`;
 }
 

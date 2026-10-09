@@ -1,10 +1,13 @@
 import { expectExpired, expectExported } from "../../fixtures/assert/transfer";
 import { pngBytes, uploadAsset, utf8 } from "../../fixtures/assets";
+import { notebookPath } from "../../fixtures/notebook-pages";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, moveNode } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
 import { archiveAt, downloadArchive, endedJob, listJobs, startExport } from "../../fixtures/transfer";
-import { newTeam } from "../../fixtures/workspaces";
+import { pageHeading, wikiPagePath } from "../../fixtures/wiki-pages";
+import { confirmExport, downloadFrom, jobRow } from "../../fixtures/wiki-transfer";
+import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 import type { ZipEntry } from "../../fixtures/zip";
 
 // TR1, a notebook and a subtree exported as Obsidian vaults (M7 design 9;
@@ -15,7 +18,9 @@ import type { ZipEntry } from "../../fixtures/zip";
 // attachment is its file in its page's folder, stored as it is; a folder
 // that would be a sibling's file is renamed, and the report says so;
 // meta.json holds the order. An export that succeeds expires its
-// starter's earlier one in the notebook.
+// starter's earlier one in the notebook. The page version (M7/P5 design
+// 4.3, 4.5): the notebook's settings and a page's menu, each export's row
+// followed until it succeeds, its archive downloaded by its link.
 
 /** The meta.json of an archive, as much as the story reads. */
 interface Meta {
@@ -173,4 +178,92 @@ test("TR1 (API): a notebook and a subtree export as vaults, their pages, folders
   const url = sub.download.url;
   const tampered = url.slice(0, -1) + (url.endsWith("A") ? "B" : "A");
   expect((await downloadArchive(nervewiki.baseURL, tampered)).status).toBe(404);
+});
+
+test("TR1 (page): the notebook exports from its settings and downloads as its vault; a page exports with its subtree from its menu, its row focused; the later export expires the earlier", async ({
+  api,
+  db,
+  nervewiki,
+  signedInPage,
+}, testInfo) => {
+  const { tokens, adminId, pat, workspace } = await newOnboardedTeam(api, testInfo);
+  const page = await signedInPage(tokens);
+  const handbook = await createNotebook(api, pat, workspace.slug, "Handbook");
+  const guide = await createPage(api, pat, handbook.id, "Guide", null, "# Guide\n");
+  const chapters = await createPage(api, pat, handbook.id, "Chapters");
+  const one = await createPage(api, pat, handbook.id, "One", chapters.id, "one\n");
+  const diagram = await uploadAsset(api, pat, handbook.id, { name: "diagram.png", bytes: pngBytes }, guide.id);
+
+  // From the notebook's settings, the third section.
+  await page.goto(notebookPath(workspace.slug, handbook.id, "general"));
+  await page
+    .getByRole("navigation", { name: "Notebook settings" })
+    .getByRole("link", { name: "Import and export" })
+    .click();
+  await expect(page).toHaveURL(notebookPath(workspace.slug, handbook.id, "transfer"));
+  await expect(page.getByText("No jobs yet.")).toBeVisible();
+  await page.getByRole("button", { name: "Export the whole notebook" }).click();
+  await expect(
+    page.getByRole("alertdialog", { name: "Export Handbook?" }).getByText(/can be downloaded for 24 hours;/)
+  ).toBeVisible();
+  const whole = await confirmExport(page, "Export Handbook?");
+  const wholeRow = jobRow(page, "Export of the whole notebook");
+  await expect(wholeRow).toBeFocused();
+
+  const archive = await downloadFrom(page, wholeRow);
+  expect(archive.name).toBe("Handbook.zip");
+  expect(archive.entries.map((e) => e.name)).toEqual([
+    "Handbook/Guide.md",
+    "Handbook/Chapters/",
+    "Handbook/Chapters/One.md",
+    "Handbook/Guide/diagram.png",
+    "Handbook/.nerve/meta.json",
+  ]);
+  expect(entry(archive.entries, "Handbook/Guide.md").data.toString("utf8")).toBe("# Guide\n");
+  expect(Buffer.compare(entry(archive.entries, "Handbook/Guide/diagram.png").data, Buffer.from(pngBytes))).toBe(0);
+  const meta = JSON.parse(entry(archive.entries, "Handbook/.nerve/meta.json").data.toString("utf8")) as Meta;
+  expect([meta.notebook, meta.root]).toEqual([{ id: handbook.id, name: "Handbook" }, null]);
+  expect(meta.nodes.map((n) => [n.path, n.id])).toEqual([
+    ["Guide.md", guide.id],
+    ["Guide/diagram.png", diagram.id],
+    ["Chapters/", chapters.id],
+    ["Chapters/One.md", one.id],
+  ]);
+  await expectExported(db, nervewiki.storageDir, whole.id, {
+    creatorId: adminId,
+    client: "web",
+    root: null,
+    nodes: 4,
+    counts: { pages: 3, attachments: 1, renamed: 0, missing: 0 },
+    bytes: archive.bytes,
+  });
+
+  // From a page's menu: the page and its subtree; the jobs show, the new one's row focused.
+  await page.goto(wikiPagePath(workspace.slug, handbook.id, chapters.id));
+  await expect(pageHeading(page, "Chapters")).toBeVisible();
+  await page.getByRole("button", { name: "Page actions" }).click();
+  await page.getByRole("menuitem", { name: "Export this page" }).click();
+  const sub = await confirmExport(page, "Export the page Chapters and its subpages?");
+  await expect(page).toHaveURL(notebookPath(workspace.slug, handbook.id, "transfer"));
+  const subRow = jobRow(page, "Export of the page Chapters");
+  await expect(subRow).toBeFocused();
+
+  const subtree = await downloadFrom(page, subRow);
+  expect([subtree.name, subtree.entries.map((e) => e.name)]).toEqual([
+    "Chapters.zip",
+    ["Chapters/Chapters/", "Chapters/Chapters/One.md", "Chapters/.nerve/meta.json"],
+  ]);
+  await expectExported(db, nervewiki.storageDir, sub.id, {
+    creatorId: adminId,
+    client: "web",
+    root: chapters.id,
+    nodes: 2,
+    counts: { pages: 2, attachments: 0, renamed: 0, missing: 0 },
+    bytes: subtree.bytes,
+  });
+
+  // The later export expired the earlier: its row says so, with nothing to download.
+  await expect(wholeRow.getByText("Expired", { exact: true })).toBeVisible();
+  await expect(wholeRow.getByRole("link", { name: "Download" })).toHaveCount(0);
+  await expectExpired(db, nervewiki.storageDir, whole.id);
 });
