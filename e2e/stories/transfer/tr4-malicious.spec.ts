@@ -2,11 +2,13 @@ import { createClient } from "@nervewiki/api-client";
 
 import { expectImported, sha256Of, storedImports, treeOf } from "../../fixtures/assert/transfer";
 import { pngBytes } from "../../fixtures/assets";
+import { notebookPath } from "../../fixtures/notebook-pages";
 import { createNotebook } from "../../fixtures/notebooks";
 import { listNodes } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
 import { endedJob, postImport, startImport } from "../../fixtures/transfer";
-import { newTeam } from "../../fixtures/workspaces";
+import { importWith, jobRow, openReport } from "../../fixtures/wiki-transfer";
+import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 import { zipOf, type ZipFile } from "../../fixtures/zip-write";
 
 // TR4, malicious archives (M7 design 4.11, 9; M7/P6 design 3.18): each
@@ -157,4 +159,62 @@ test("TR4 (API): an archive larger than transfer.import_max_bytes is refused bef
   expect([job.state, job.report?.failure]).toEqual(["failed", "unpacked_too_large"]);
   expect(await listNodes(api, pat, notebook.id)).toEqual([]);
   expect(storedImports(small.storageDir)).toEqual([]);
+});
+
+test("TR4 (page): an archive's entries that cannot be imported safely are listed in its report, the rest imported; a file that is no zip goes, said so, and its job fails, nothing written", async ({
+  api,
+  db,
+  nervewiki,
+  signedInPage,
+}, testInfo) => {
+  const { tokens, adminId, pat, workspace } = await newOnboardedTeam(api, testInfo);
+  const page = await signedInPage(tokens);
+  const notebook = await createNotebook(api, pat, workspace.slug, "Inbox");
+  const archive = zipOf([
+    { name: "ok.md", data: "fine\n" },
+    { name: "../escape.md", data: "out" },
+    { name: "link.md", data: "/etc/passwd", symlink: true },
+    { name: "secret.md", data: "hidden", encrypted: true },
+    { name: "dup.md", data: "first\n" },
+    { name: "dup.md", data: "second\n" },
+  ]);
+  await page.goto(notebookPath(workspace.slug, notebook.id, "transfer"));
+
+  const job = await importWith(page, notebook.id, archive, { name: "inbox.zip" });
+  const row = jobRow(page, "Import of inbox.zip");
+  await expect(row.getByText("Done", { exact: true })).toBeVisible({ timeout: 15_000 });
+  const report = await openReport(row);
+  await expect(report.counts).toHaveText(["2", "0", "0", "4"]);
+  await expect(report.problems).toHaveText([
+    "../escape.md was skipped: its path leads outside the zip.",
+    "link.md was skipped: it is a symbolic link or another special file.",
+    "secret.md was skipped: it is encrypted.",
+    "dup.md was skipped: the zip holds another entry of the same path.",
+  ]);
+  await expectImported(db, nervewiki.storageDir, job.id, {
+    creatorId: adminId,
+    client: "web",
+    root: null,
+    state: "succeeded",
+    failure: null,
+    done: 2,
+    total: 2,
+    counts: { pages: 2, attachments: 0, renamed: 0, skipped: 4 },
+  });
+
+  // A file that is no zip, its name not ending with .zip: the dialog says so and sends it; the server fails it whole.
+  await page.getByRole("button", { name: "Import a zip…" }).click();
+  const dialog = page.getByRole("dialog", { name: "Import into Inbox" });
+  await dialog
+    .getByLabel("Zip archive")
+    .setInputFiles({ name: "notes.txt", mimeType: "text/plain", buffer: Buffer.from("not a zip\n") });
+  await expect(dialog.getByText(/does not end with \.zip/u)).toBeVisible();
+  await dialog.getByRole("button", { name: "Import", exact: true }).click();
+  const failed = jobRow(page, "Import of notes.txt");
+  await expect(failed).toBeFocused();
+  await expect(failed.getByText("Failed · The file is not a zip archive, or the archive is damaged.")).toBeVisible({
+    timeout: 15_000,
+  });
+  expect((await treeOf(db, nervewiki.storageDir, notebook.id)).map((node) => node.path)).toEqual(["dup", "ok"]);
+  expect(storedImports(nervewiki.storageDir)).toEqual([]);
 });
