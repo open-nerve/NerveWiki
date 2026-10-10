@@ -174,7 +174,8 @@ func (s *StartExport) admit(ctx context.Context, notebookID, userID uuid.UUID) e
 // the count. A start under the lock counts the rows first: no row of an
 // upload commits while it holds the lock, and an upload a Check admits
 // meanwhile is counted. A Check and an export that decide at once may
-// still both pass, the upload's Create then refused.
+// still both pass: the queue is then one past its size, and the next
+// start under the lock is refused, an upload's Create among them.
 func (d StartDeps) room(ctx context.Context, except uuid.UUID, queueLocked bool) error {
 	var uploading int
 	if !queueLocked {

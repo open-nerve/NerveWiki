@@ -426,8 +426,8 @@ func TestACheckCountsTheUploadsWhoseRowsItMaySeeNot(t *testing.T) {
 }
 
 // A start under the queue's lock counts an upload a Check admits as it
-// counts the rows; every start counts the bytes an upload stores as it
-// reads the store's room.
+// counts the rows; a Check counts the bytes an upload stores as it reads
+// the store's room.
 func TestTheStartsCountWhatHappensAsTheyCount(t *testing.T) {
 	w := newWorld()
 	dev := uuid.NewV7()
