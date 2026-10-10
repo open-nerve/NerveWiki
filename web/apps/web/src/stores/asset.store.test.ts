@@ -162,14 +162,14 @@ describe("AssetStore's uploads", () => {
     ]);
   });
 
-  test("tells its progress", async () => {
+  test("tells its progress, of the whole request as the browser counts it: the form's bytes beside the file's", async () => {
     const { store, sent } = setUp();
 
     const [upload] = store.upload(null, [file("a.png", 10)], "Untitled", limits);
     await settle();
-    sent[0]?.options.progress?.(4, 10);
+    sent[0]?.options.progress?.(4, 250);
 
-    expect(upload).toMatchObject({ sent: 4, total: 10 });
+    expect(upload).toMatchObject({ sent: 4, total: 250 });
   });
 
   test("answered, it has the tree and its list read again, and leaves the uploads once the list has it", async () => {
@@ -255,6 +255,19 @@ describe("AssetStore's uploads", () => {
     expect(pages.wrote).toHaveBeenCalledTimes(3);
     expect(upload?.failure).toMatchObject({ code: "page.title_taken" });
     expect(store.uploads).toEqual([upload]);
+  });
+
+  test("many files beside many siblings are named in a time as long as they, not its square", () => {
+    const siblings = Array.from({ length: 2000 }, (_, i) => assetNode(1000 + i, `s${i.toString()}.png`));
+    const { store } = setUp(siblings);
+    const files = Array.from({ length: 2000 }, (_, i) => file(`f${i.toString()}.png`));
+
+    const started = performance.now();
+    const uploads = store.upload(null, [...files, file("s0.png"), file("f0.png")], "Untitled", limits);
+    const took = performance.now() - started;
+
+    expect(uploads.slice(-2).map((upload) => upload.name)).toEqual(["s0 2.png", "f0 2.png"]);
+    expect(took).toBeLessThan(500);
   });
 
   test("another refusal shows until dismissed", async () => {

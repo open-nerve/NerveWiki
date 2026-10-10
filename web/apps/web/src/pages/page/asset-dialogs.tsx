@@ -4,6 +4,7 @@ import { useId, useRef, useState, type FormEvent } from "react";
 import { useForm } from "../../app/form";
 import type { HeldDialog } from "../../app/held-dialog";
 import { notebookNameProblem, notebookNameTexts } from "../../app/notebook-name";
+import type { FieldMessage } from "../../app/problem-messages";
 import { pagesLocked } from "../../app/pages-locked";
 import { RenameForm } from "../../app/rename-form";
 import { Alert } from "../../components/ui/alert";
@@ -12,7 +13,7 @@ import { Dialog, DialogContent, DialogTitle } from "../../components/ui/dialog";
 import { Label } from "../../components/ui/label";
 import { NativeSelect } from "../../components/ui/native-select";
 import { useT } from "../../i18n/i18n";
-import { extensionOf } from "../../lib/upload-name";
+import { extensionOf, isPageName } from "../../lib/upload-name";
 import type { Asset } from "../../services/asset.service";
 import type { Notebook } from "../../services/notebook.service";
 import { useAssets, usePageTree, useStore } from "../../stores/context";
@@ -56,7 +57,7 @@ export function RenameAssetDialog({ notebook, asset, held }: AssetDialogProps) {
             hint={extension === "" ? undefined : t("asset.renameKeeps", { extension })}
             suffix={extension === "" ? undefined : extension}
             autoComplete="off"
-            check={(name) => (name.trim() === "" ? "field.required" : notebookNameProblem(name.trim() + extension))}
+            check={(name) => assetNameProblem(name, extension)}
             fieldTexts={notebookNameTexts}
             rename={(name) => assets.rename(asset.id, asset.parent_id, name + extension)}
             explain={(error) => pagesLocked(error, t, me, (id) => distinctName(pages.tree, notebook, id, t))}
@@ -71,6 +72,20 @@ export function RenameAssetDialog({ notebook, asset, held }: AssetDialogProps) {
       )}
     </Dialog>
   );
+}
+
+/**
+ * assetNameProblem is why the attachment's new name, stem with extension
+ * after it, cannot be sent: an empty stem; a name ending with ".md", which
+ * names a page's file (M7/P2 design 3.3), as one without an extension may
+ * be renamed; or a notebook's name's problem.
+ */
+function assetNameProblem(stem: string, extension: string): FieldMessage | undefined {
+  const name = stem.trim() + extension;
+  if (stem.trim() === "") {
+    return "field.required";
+  }
+  return isPageName(name) ? "field.asset_name.page" : notebookNameProblem(name);
 }
 
 /**

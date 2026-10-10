@@ -404,9 +404,13 @@ function useExpiry(list: AssetList | undefined, reread: () => void): void {
     if (list === undefined) {
       return undefined;
     }
+    // An expiry the page cannot read is none: the others still have the list read again.
     let earliest = Number.POSITIVE_INFINITY;
     for (const asset of list.assets) {
-      earliest = Math.min(earliest, Date.parse(asset.expires_at));
+      const expires = Date.parse(asset.expires_at);
+      if (Number.isFinite(expires)) {
+        earliest = Math.min(earliest, expires);
+      }
     }
     if (!Number.isFinite(earliest)) {
       return undefined;

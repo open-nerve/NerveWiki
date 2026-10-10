@@ -251,6 +251,20 @@ test("a notebook's jobs are the same for the generation; another's, or another g
   expect(new RootStore(app, "login-0").transfersOf(notebookJSON)).not.toBe(jobs);
 });
 
+// A notebook's attachments go by the notebook's id (M7/P4 design 3.3).
+test("a notebook's attachments are the same for the generation; another's, or another generation's, are other", async () => {
+  const app = testApp(() => json(tokensJSON), storedSession("login-0"));
+  await app.session.start();
+  const store = new RootStore(app, "login-0");
+
+  const assets = store.assetsOf(notebookJSON);
+
+  expect(assets).toBeDefined();
+  expect(store.assetsOf({ ...notebookJSON, name: "Renamed" })).toBe(assets);
+  expect(store.assetsOf({ ...notebookJSON, id: "0199a2b4-0000-7000-8000-0000000000b2" })).not.toBe(assets);
+  expect(new RootStore(app, "login-0").assetsOf(notebookJSON)).not.toBe(assets);
+});
+
 // The ownerless notebooks and the audit events go by the workspace's id (M3/P5 design 3.2).
 test("a workspace's ownerless notebooks and audit events are the same for the generation; another's are other", async () => {
   const app = testApp(() => json(tokensJSON), storedSession("login-0"));

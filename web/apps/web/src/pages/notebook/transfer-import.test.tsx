@@ -403,9 +403,9 @@ test("an import's failures say what befell the import", async () => {
   ]);
 });
 
-const counts = (pages: number) => ({ pages, attachments: 0, renamed: 0, missing: 0, skipped: 0 });
+const counts = (pages: number, attachments = 0) => ({ pages, attachments, renamed: 0, missing: 0, skipped: 0 });
 
-test("an import that did not succeed says that what it counts stays in the notebook; one that did, or wrote nothing, does not", async () => {
+test("an import that failed or was cancelled says that what it counts stays in the notebook, pages or attachments; one that succeeded, or wrote nothing, does not", async () => {
   const user = userEvent.setup();
   const jobs = [
     jobJSON(1, {
@@ -416,6 +416,13 @@ test("an import that did not succeed says that what it counts stays in the noteb
     }),
     jobJSON(2, { kind: "import", name: "B.zip", report: { failure: null, counts: counts(2) } }),
     jobJSON(3, { kind: "import", name: "C.zip", state: "failed", report: { failure: "not_zip", counts: counts(0) } }),
+    jobJSON(4, { kind: "import", name: "D.zip", state: "cancelled", report: { failure: null, counts: counts(2) } }),
+    jobJSON(5, {
+      kind: "import",
+      name: "E.zip",
+      state: "failed",
+      report: { failure: "storage_full", counts: counts(0, 1) },
+    }),
   ];
   renderApp(transfer, jobsServer({ jobs }).app);
 
@@ -427,7 +434,13 @@ test("an import that did not succeed says that what it counts stays in the noteb
     await user.click(report);
     return said;
   }
-  expect([await keeps("A.zip"), await keeps("B.zip"), await keeps("C.zip")]).toEqual([true, false, false]);
+  expect([
+    await keeps("A.zip"),
+    await keeps("B.zip"),
+    await keeps("C.zip"),
+    await keeps("D.zip"),
+    await keeps("E.zip"),
+  ]).toEqual([true, false, false, true, true]);
 });
 
 test("pages that cannot be read leave the root to import at, and are read again on asking", async () => {

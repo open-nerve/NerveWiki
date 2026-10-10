@@ -1,6 +1,10 @@
 import { describe, expect, test } from "vitest";
 
+import { titleKey } from "./title-key";
 import { extensionOf, fixedName, freeName, isPageName } from "./upload-name";
+
+/** keys are the title keys of names, as freeName takes them. */
+const keys = (...names: string[]) => new Set(names.map(titleKey));
 
 const bytes = (s: string) => new TextEncoder().encode(s).length;
 
@@ -53,7 +57,7 @@ describe("fixedName", () => {
       const wide = fixedName(`${stem}.${"b".repeat(300)}`, "Untitled");
       expect(bytes(wide)).toBeLessThanOrEqual(255);
       expect(wide.startsWith(`${stem}.`)).toBe(true);
-      const numbered = freeName(wide, [wide]);
+      const numbered = freeName(wide, keys(wide));
       expect(bytes(numbered)).toBeLessThanOrEqual(255);
       expect(numbered.startsWith(`${stem} 2.`)).toBe(true);
     }
@@ -80,13 +84,13 @@ describe("freeName", () => {
     [".env", [".env"], ".env 2"],
     ["a.tar.gz", ["a.tar.gz"], "a.tar 2.gz"],
   ])("%j beside %j is %j", (name, taken, free) => {
-    expect(freeName(name, taken)).toBe(free);
+    expect(freeName(name, keys(...taken))).toBe(free);
   });
 
   test("a numbered name of a long one stays within 255 bytes", () => {
     const long = `${"a".repeat(251)}.png`;
 
-    const free = freeName(long, [long]);
+    const free = freeName(long, keys(long));
 
     expect(bytes(free)).toBeLessThanOrEqual(255);
     expect(free).toBe(`${"a".repeat(249)} 2.png`);

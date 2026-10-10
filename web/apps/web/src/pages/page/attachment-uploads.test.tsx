@@ -492,6 +492,34 @@ test("a drag that started in the page, an image of it, is no file to upload; its
   }
 });
 
+test("a file input takes the files dragged over it from outside the page, as the browser does; not a drag of the page's, nor once disabled", async () => {
+  renderApp(pagePath(guide.id), pageServer({ nodes }).app);
+  await attachments();
+  const view = await screen.findByRole("article", { name: "Guide" });
+  const input = document.createElement("input");
+  input.type = "file";
+  document.body.append(input);
+  onTestFinished(() => input.remove());
+
+  const outside = dropped([]);
+  expect(fireEvent.dragOver(input, { dataTransfer: outside })).toBe(true);
+  expect(outside.dropEffect).toBe("move");
+  expect(fireEvent.drop(input, { dataTransfer: dropped([new File(["PK"], "vault.zip")]) })).toBe(true);
+
+  // The tree's drag and drop says jsdom's drags are none of a browser's.
+  vi.mocked(console.warn).mockImplementation(() => undefined);
+  const image = dropped([new File(["a"], "image.png")]);
+  fireEvent.dragStart(view, { dataTransfer: image });
+  expect(fireEvent.dragOver(input, { dataTransfer: image })).toBe(false);
+  expect(image.dropEffect).toBe("none");
+  expect(fireEvent.drop(input, { dataTransfer: image })).toBe(false);
+
+  input.disabled = true;
+  const off = dropped([]);
+  expect(fireEvent.dragOver(input, { dataTransfer: off })).toBe(false);
+  expect(off.dropEffect).toBe("none");
+});
+
 test("a file dropped where nothing takes it stays out of the tab; in an editor, the editor takes it", async () => {
   renderApp(pagePath(guide.id), pageServer({ nodes }).app);
   await attachments();

@@ -667,6 +667,7 @@ export const en = {
   "field.workspace_name.too_long": "At most 80 characters.",
   "field.user_id.not_allowed": "No longer a member of the workspace.",
   "field.user_id.duplicate": "A member of this notebook already.",
+  "field.asset_name.page": "An attachment's name may not end with .md, which names a page's file: choose another.",
   "field.notebook_name.too_long": "At most 255 bytes: 255 Latin letters, or about 85 Chinese characters.",
   "field.notebook_name.invalid_format":
     'Cannot contain / \\ : * ? " < > | # ^ [ ] or control characters, nor start or end with a dot.',

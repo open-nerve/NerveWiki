@@ -60,6 +60,26 @@ test("the notebook's home lists the attachments at its root", async () => {
   expect(server.sent).toContain("GET assets root");
 });
 
+test("from one notebook's home straight to another's, each lists its own attachments", async () => {
+  const atlas = { ...notebookJSON, id: "0199a2b4-0000-7000-8000-0000000000c2", name: "Atlas" };
+  const map = { ...assetNode(75, "map.png"), notebook_id: atlas.id };
+  const server = pageServer({
+    nodes: [...nodes, assetNode(74, "logo.png")],
+    answers: {
+      "GET /api/v0/workspaces/lab/notebooks": () => json({ data: [notebookJSON, atlas] }),
+      [`GET /api/v0/notebooks/${atlas.id}/nodes`]: () => json({ data: [map] }),
+      [`GET /api/v0/notebooks/${atlas.id}/assets`]: () => json({ data: [assetJSON(map)], next_cursor: null }),
+    },
+  });
+  const { router } = renderApp(`/lab/notebooks/${notebookJSON.id}`, server.app);
+  await waitFor(async () => expect(rows(await attachments())).toEqual(["logo.png (opens in a new tab)"]));
+
+  await act(() => router.navigate(`/lab/notebooks/${atlas.id}`));
+
+  await waitFor(async () => expect(rows(await attachments())).toEqual(["map.png (opens in a new tab)"]));
+  expect(screen.getByRole("heading", { level: 1, name: "Atlas" })).toBeTruthy();
+});
+
 test("without attachments, a reader sees no section; a writer sees its title, Upload and where to drop files", async () => {
   const reader = pageServer({ role: "reader" });
   const { unmount } = renderApp(pagePath(guide.id), reader.app);
@@ -310,6 +330,27 @@ test("a rename refused stays in the dialog: an empty stem unsent, its extension 
   expect(screen.getByRole("dialog", { name: "Rename photo.png" })).toBe(dialog);
 });
 
+test("an attachment without an extension renamed to a page's file's name says why, and sends nothing", async () => {
+  const user = userEvent.setup();
+  const server = pageServer({ nodes });
+  renderApp(pagePath(guide.id), server.app);
+  const section = await attachments();
+  await user.click(await actionsOf(section, "README"));
+  await user.click(screen.getByRole("menuitem", { name: "Rename" }));
+  const dialog = await screen.findByRole("dialog", { name: "Rename README" });
+  const field = within(dialog).getByRole("textbox", { name: "Name" });
+
+  await user.clear(field);
+  await user.type(field, "notes.MD{Enter}");
+
+  expect(
+    await within(dialog).findByText(
+      "An attachment's name may not end with .md, which names a page's file: choose another."
+    )
+  ).toBeTruthy();
+  expect(server.sent.filter((sent) => sent.startsWith("PATCH"))).toEqual([]);
+});
+
 test("Move to… offers every page and the top level; its own parent sends nothing; a refusal stays in the dialog", async () => {
   const user = userEvent.setup();
   const moves: string[] = [];
@@ -513,6 +554,32 @@ test("the list is read again a minute before the first of its addresses expires,
   expect(reads()).toBe(2);
   await act(() => vi.advanceTimersByTimeAsync(15_000));
   expect(reads()).toBe(3);
+});
+
+test("an expiry the page cannot read is none: the list is read again as the others are due", async () => {
+  vi.useFakeTimers({ now: Date.parse("2026-10-09T08:00:00Z"), shouldAdvanceTime: true });
+  let reads = 0;
+  const server = pageServer({
+    nodes,
+    answers: {
+      [assetsPath]: () => {
+        reads += 1;
+        return json({
+          data: [assetJSON(archive, 1, "not a time"), assetJSON(photo, 1, "2026-10-09T09:00:00Z")],
+          next_cursor: null,
+        });
+      },
+    },
+  });
+  renderApp(pagePath(guide.id), server.app);
+  await attachments();
+  await waitFor(() => expect(reads).toBe(1));
+
+  await act(() => vi.advanceTimersByTimeAsync(58 * 60_000));
+  expect(reads).toBe(1);
+  await act(() => vi.advanceTimersByTimeAsync(60_000 + 5_000));
+
+  expect(reads).toBe(2);
 });
 
 test("addresses that expire far off, by this clock, are read again before an hour from the read is over", async () => {

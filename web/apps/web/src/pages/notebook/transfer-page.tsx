@@ -45,7 +45,9 @@ export function pollInterval(transfers: Pick<TransferStore, "active" | "jobs">, 
   const expiries = (transfers.jobs ?? [])
     .flatMap((job) => (job.download === null ? [] : [Date.parse(job.download.expires_at)]))
     .filter((expiry) => Number.isFinite(expiry));
-  return expiries.length === 0 ? 0 : Math.min(longestWait, Math.max(30_000, Math.min(...expiries) - 60_000 - now));
+  // Not spread into Math.min: a long list's elements would each be an argument (v0.1 design 13.2, item 25).
+  const first = expiries.reduce((earliest, expiry) => Math.min(earliest, expiry), Number.POSITIVE_INFINITY);
+  return expiries.length === 0 ? 0 : Math.min(longestWait, Math.max(30_000, first - 60_000 - now));
 }
 
 /**

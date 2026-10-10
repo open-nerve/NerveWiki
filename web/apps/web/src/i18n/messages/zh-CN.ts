@@ -646,6 +646,7 @@ export const zhCN: Messages = {
   "field.workspace_name.too_long": "最多 80 个字符。",
   "field.user_id.not_allowed": "已不是工作区的成员。",
   "field.user_id.duplicate": "已经是这个笔记本的成员。",
+  "field.asset_name.page": "附件的名称不能以 .md 结尾（那是页面文件的写法），请换一个。",
   "field.notebook_name.too_long": "最多 255 字节：255 个拉丁字母，或约 85 个汉字。",
   "field.notebook_name.invalid_format": '不能包含 / \\ : * ? " < > | # ^ [ ] 或控制字符，也不能以点开头或结尾。',
   "field.notebook_name.not_allowed": "这是 Windows 保留的名称（如 CON、NUL、COM1），请换一个。",
