@@ -58,23 +58,30 @@ type ImportPlan struct {
 // Untitled. Siblings come by meta's order, then by name, one named as in
 // the archive before one whose name was mended to its key; a page deeper
 // than MaxDepth from depth is skipped, and everything under it. meta's
-// contributed files are left out.
+// contributed files are left out. The paths of the nodes and of their
+// problems are each entry's joined once: a folder's is a part of the first
+// entry under it, and no level of a path copies it (M7 closeout A-I1).
 func NewImportPlan(entries []ImportEntry, meta ImportMeta, depth int) ImportPlan {
 	root := newFolder("", "")
 	for _, e := range entries {
-		if !e.Folder && meta.Contributed[e.Joined()] {
+		joined := e.Joined()
+		if !e.Folder && meta.Contributed[joined] {
 			continue
 		}
 		f := root
 		names := e.Path
+		// Each folder's path is a prefix of src, the "/" after it included.
+		src := joined + "/"
 		if !e.Folder {
-			names = e.Path[:len(e.Path)-1]
+			names, src = e.Path[:len(e.Path)-1], joined
 		}
+		end := -1
 		for _, name := range names {
-			f = f.sub(name)
+			end += 1 + len(name)
+			f = f.sub(name, src[:end+1])
 		}
 		if !e.Folder {
-			f.files = append(f.files, e)
+			f.files = append(f.files, file{entry: e, path: joined})
 		}
 	}
 	var p ImportPlan
@@ -115,29 +122,33 @@ func (p *ImportPlan) skip(c child) {
 	}
 }
 
-// folder is a folder of the vault: its name and path, its folders in the
-// order they first appear, its files in the archive's order.
+// folder is a folder of the vault: its name and its path with the "/"
+// after it, its folders in the order they first appear, its files in the
+// archive's order.
 type folder struct {
-	name, path string
-	folders    []*folder
-	byName     map[string]*folder
-	files      []ImportEntry
+	name, slashed string
+	folders       []*folder
+	byName        map[string]*folder
+	files         []file
 }
 
-func newFolder(name, path string) *folder {
-	return &folder{name: name, path: path, byName: map[string]*folder{}}
+// file is an entry of a file, and its path in the vault.
+type file struct {
+	entry ImportEntry
+	path  string
 }
 
-// sub is f's folder named name, made when it is not yet.
-func (f *folder) sub(name string) *folder {
+func newFolder(name, slashed string) *folder {
+	return &folder{name: name, slashed: slashed, byName: map[string]*folder{}}
+}
+
+// sub is f's folder named name, its path slashed, made when it is not
+// yet.
+func (f *folder) sub(name, slashed string) *folder {
 	if g, ok := f.byName[name]; ok {
 		return g
 	}
-	path := name
-	if f.path != "" {
-		path = f.path + "/" + name
-	}
-	g := newFolder(name, path)
+	g := newFolder(name, slashed)
 	f.byName[name] = g
 	f.folders = append(f.folders, g)
 	return g
@@ -166,9 +177,9 @@ func (c child) mended() int {
 func (f *folder) children(meta ImportMeta) []child {
 	var out []child
 	pages := map[string][]int{}
-	for _, e := range f.files {
-		name := e.Path[len(e.Path)-1]
-		c := child{node: ImportNode{Path: e.Joined(), Entry: e.Index}}
+	for _, x := range f.files {
+		name := x.entry.Path[len(x.entry.Path)-1]
+		c := child{node: ImportNode{Path: x.path, Entry: x.entry.Index}}
 		if stem, ok := pageStem(name); ok {
 			c.node.Original, c.node.Name = stem, mended(stem, false)
 			k := shared.TitleKey(stem)
@@ -185,7 +196,7 @@ func (f *folder) children(meta ImportMeta) []child {
 			pages[k] = held[1:]
 			continue
 		}
-		out = append(out, child{node: ImportNode{Original: g.name, Name: mended(g.name, false), Path: g.path + "/", Entry: -1}, folder: g})
+		out = append(out, child{node: ImportNode{Original: g.name, Name: mended(g.name, false), Path: g.slashed, Entry: -1}, folder: g})
 	}
 	slices.SortStableFunc(out, func(a, b child) int {
 		ao, aok := meta.Order[a.node.Path]

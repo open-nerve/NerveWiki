@@ -123,6 +123,43 @@
       }
     },
     {
+      // lib 是不依赖应用的小工具（名称、类型判断、拖放、卸载提醒等）：编辑器、阅读视图、store 与页面都导入它，
+      // 所以它不导入应用的任何一层（M7 收尾 B-N7）；本条重写了上面对整个 src 的限制，所以连同 api-client 一起写
+      "files": ["web/apps/web/src/lib/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "@nervewiki/api-client",
+                "message": "只有 services 调用接口：组件与 store 经由 service，类型也从 service 导入"
+              }
+            ],
+            "patterns": [
+              { "group": ["**/packages/api-client/**"], "message": "从 @nervewiki/api-client 导入" },
+              {
+                "group": [
+                  "../app/**",
+                  "../stores/**",
+                  "../pages/**",
+                  "../components/**",
+                  "../onboarding/**",
+                  "../session/**",
+                  "../services/**",
+                  "../editor/**",
+                  "../reading/**",
+                  "../events/**",
+                  "../i18n/**"
+                ],
+                "message": "lib 不依赖应用的任何一层：它被编辑器、阅读视图、store 与页面共用"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
       // 编辑器与阅读视图的管线只取 services 的类型与 i18n：页面经上下文把它们需要的交进来
       "files": ["web/apps/web/src/editor/**", "web/apps/web/src/reading/**"],
       "rules": {

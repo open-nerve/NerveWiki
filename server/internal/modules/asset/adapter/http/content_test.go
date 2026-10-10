@@ -278,7 +278,8 @@ func TestContentOfAnAddressExpiredIsNotFound(t *testing.T) {
 	}
 }
 
-// A range is 206, several ranges too, as multipart/byteranges; a copy the
+// A range is 206; several ranges are passed by, the file served whole
+// (M7 closeout A-N1); a copy the
 // ETag names, or one as new as the file's Last-Modified, 304; a range
 // outside the file 416, sandboxed still; a condition on a change is passed
 // by, the file served; HEAD answers the headers alone. Each closes the
@@ -292,9 +293,9 @@ func TestContentAnswersRangesAndConditionalRequests(t *testing.T) {
 		string(body) != "bc" || res.Header.Get("Content-Range") != "bytes 1-2/6" {
 		t.Errorf("a range = %d %q %q, want 206 bc bytes 1-2/6", res.StatusCode, body, res.Header.Get("Content-Range"))
 	}
-	if res, _ := h.get(t, http.MethodGet, u, "", "Range", "bytes=0-1,3-4"); res.StatusCode != http.StatusPartialContent ||
-		!strings.HasPrefix(res.Header.Get("Content-Type"), "multipart/byteranges; boundary=") {
-		t.Errorf("two ranges = %d %q, want 206 multipart/byteranges", res.StatusCode, res.Header.Get("Content-Type"))
+	if res, body := h.get(t, http.MethodGet, u, "", "Range", "bytes=0-1,3-4"); res.StatusCode != http.StatusOK || string(body) != "abcdef" ||
+		res.Header.Get("Content-Type") != "image/png" {
+		t.Errorf("two ranges = %d %q %q, want 200 the file, image/png", res.StatusCode, body, res.Header.Get("Content-Type"))
 	}
 	if res, body := h.get(t, http.MethodGet, u, "", "If-None-Match", etag); res.StatusCode != http.StatusNotModified || len(body) != 0 {
 		t.Errorf("a copy the ETag names = %d %q, want 304", res.StatusCode, body)

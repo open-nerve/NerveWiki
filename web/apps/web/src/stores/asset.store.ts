@@ -1,6 +1,7 @@
 import { makeAutoObservable, observable, observableRef, reaction, runInAction, when } from "mobx";
 
 import { oneAtATimeById } from "../lib/one-at-a-time";
+import { titleKey } from "../lib/title-key";
 import { fixedName, freeName, isPageName } from "../lib/upload-name";
 import { ApiError } from "../services/api";
 import type { Asset, AssetPage, AssetService } from "../services/asset.service";
@@ -208,6 +209,8 @@ export class AssetStore {
    * file, or larger than terms.maxBytes, is not sent: it shows why.
    */
   upload(parent: string | null, files: readonly File[], untitled: string, terms: UploadTerms): Upload[] {
+    // The names taken, once for the files: each sent takes its own as well.
+    const used = this.usedUnder(parent);
     return files.map((file) => {
       const upload = new Upload(++this.uploadsStarted, parent, fixedName(file.name, untitled), file, terms.fromEditor);
       this.uploads.push(upload);
@@ -219,7 +222,7 @@ export class AssetStore {
         if (this.generation.aborted) {
           upload.cancel();
         }
-        void this.send(upload, []);
+        void this.send(upload, used, []);
       }
       return upload;
     });
@@ -270,13 +273,23 @@ export class AssetStore {
     await this.changing([parent], () => this.pages.remove(id));
   }
 
-  /** send sends upload by the first name free beside the siblings, the other uploads going and taken. */
-  private async send(upload: Upload, taken: readonly string[]): Promise<void> {
-    const name = freeName(upload.fixed, [
-      ...this.pages.siblingsOf(upload.parent).map((node) => node.name),
-      ...this.going.filter((other) => other !== upload && other.parent === upload.parent).map((other) => other.name),
-      ...taken,
-    ]);
+  /** usedUnder are the title keys of the names under parent: the siblings', and the uploads' going there but upload's. */
+  private usedUnder(parent: string | null, upload?: Upload): Set<string> {
+    return new Set(
+      [
+        ...this.pages.siblingsOf(parent).map((node) => node.name),
+        ...this.going.filter((other) => other !== upload && other.parent === parent).map((other) => other.name),
+      ].map(titleKey)
+    );
+  }
+
+  /**
+   * send sends upload by the first name free beside used (usedUnder its
+   * parent), which it takes; and taken, the names the server refused it.
+   */
+  private async send(upload: Upload, used: Set<string>, taken: readonly string[]): Promise<void> {
+    const name = freeName(upload.fixed, used);
+    used.add(titleKey(name));
     runInAction(() => {
       upload.name = name;
       upload.sent = 0;
@@ -306,7 +319,12 @@ export class AssetStore {
         return;
       }
       if (error instanceof ApiError && error.code === "page.title_taken" && taken.length + 1 < attempts) {
-        return this.send(upload, [...taken, name]);
+        const again = [...taken, name];
+        const free = this.usedUnder(upload.parent, upload);
+        for (const refused of again) {
+          free.add(titleKey(refused));
+        }
+        return this.send(upload, free, again);
       }
       runInAction(() => {
         upload.failure = error;

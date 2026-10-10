@@ -103,9 +103,11 @@ func (a *API) Stream(h http.Handler, p StreamPolicy) http.Handler
 // Bounded bounds a stream handler's step that is not the stream (a check
 // before the body, the write after it) by server.request_timeout from now.
 func Bounded(ctx context.Context) (context.Context, context.CancelFunc)
-// Sending sets the write deadline for an answer of n bytes at the route's MinRate;
+// Sending announces the answer, once, with the body read: its write deadline
+// moves on with its bytes at the route's MinRate (P2 replaced Sending(r, n):
+// the answer's length is not always known before it is written).
 // ErrShuttingDown once the server is shutting down.
-func Sending(r *http.Request, n int64) error
+func Sending(r *http.Request) error
 ```
 
 - **次序**：请求信息 → 在 `request_timeout` 之内的失败闸门与认证（公开的操作不认证，照 `PublicOperations`）→ 路由的桶（没有 `Bucket` 时照 `rateLimit`）→ 请求体上限（`MaxBytesReader`）→ 处理器。认证与限流的期限照 `API.LongLived` 的 `opening`、`opened`。

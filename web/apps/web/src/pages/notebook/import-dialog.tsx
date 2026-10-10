@@ -13,6 +13,7 @@ import { Label } from "../../components/ui/label";
 import { NativeSelect } from "../../components/ui/native-select";
 import { formatBytes } from "../../i18n/format";
 import { useT } from "../../i18n/i18n";
+import { filesDropped } from "../../lib/file-transfer";
 import type { Notebook } from "../../services/notebook.service";
 import type { TransferJob } from "../../services/transfer.service";
 import { usePageTree, useStore, useTransfers } from "../../stores/context";
@@ -36,7 +37,7 @@ type ImportDialogProps = {
  * and how large one the server takes. Before sending it checks the file's
  * size, and an import of the notebook under way among the jobs held; a
  * file that does not look like a zip goes all the same, the server
- * judging; a page chosen that the tree, read again, no longer has is
+ * judging; a folder dropped on the file is not taken, said so; a page chosen that the tree, read again, no longer has is
  * chosen again. The upload, which may take minutes, tells its progress and
  * stops; the dialog closed, or the page left, meanwhile asks first, and
  * the upload stops as the dialog goes. A refusal stays in the dialog; a
@@ -143,9 +144,9 @@ export const ImportDialog = observer(function ImportDialog({
                   variant="destructive"
                   onClick={() => {
                     upload.current?.abort();
-                    if (leaving) {
-                      blocker.proceed?.();
-                    } else {
+                    // Leaving goes on once the upload has ended (the effect above): proceeding here as well
+                    // would proceed twice, the router's state behind the abort's.
+                    if (!leaving) {
                       close();
                     }
                   }}
@@ -206,6 +207,7 @@ const ImportForm = observer(function ImportForm({
   const read = useSWR(["pages", notebook.id], () => pages.load());
   const ids = { file: useId(), place: useId() };
   const [file, setFile] = useState<File | undefined>(undefined);
+  const [folder, setFolder] = useState(false);
   const [place, setPlace] = useState(root);
   const progress = useRef<((sent: number, total: number) => void) | undefined>(undefined);
   const importButton = useRef<HTMLButtonElement>(null);
@@ -307,15 +309,36 @@ const ImportForm = observer(function ImportForm({
           disabled={sending}
           aria-invalid={fileProblem !== undefined || undefined}
           aria-describedby={
-            [fileProblem === undefined ? "" : `${ids.file}-note`, notZip ? `${ids.file}-zip` : ""].join(" ").trim() ||
-            undefined
+            [
+              fileProblem === undefined ? "" : `${ids.file}-note`,
+              notZip ? `${ids.file}-zip` : "",
+              folder ? `${ids.file}-folder` : "",
+            ]
+              .join(" ")
+              .trim() || undefined
           }
           onChange={(event) => setFile(event.target.files?.[0])}
+          // A folder dropped is not taken: the browser would give the input a file it cannot read, the upload then cut.
+          // The file chosen before stays. The note goes with the next drop, or as the picker opens: choosing the same
+          // file again changes nothing (Chromium).
+          onClick={() => setFolder(false)}
+          onDrop={(event) => {
+            const { folders } = filesDropped(event.dataTransfer);
+            setFolder(folders);
+            if (folders) {
+              event.preventDefault();
+            }
+          }}
         />
         <Problem id={`${ids.file}-note`} text={fileProblem} />
         {notZip && (
           <p id={`${ids.file}-zip`} className="text-sm text-muted-foreground">
             {t("transfer.importNotZip")}
+          </p>
+        )}
+        {folder && (
+          <p id={`${ids.file}-folder`} className="text-sm text-muted-foreground">
+            {t("transfer.importFolder")}
           </p>
         )}
       </div>

@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 
 import type { Request } from "@playwright/test";
 
-import { download, pngBytes, uploadAsset, utf8, type UploadFile } from "../../fixtures/assets";
+import { download, oggOpus, pngBytes, uploadAsset, utf8, webmHead, type UploadFile } from "../../fixtures/assets";
 import { createNotebook } from "../../fixtures/notebooks";
 import { expect, test } from "../../fixtures/test";
 import { newTeam } from "../../fixtures/workspaces";
@@ -54,6 +54,18 @@ const files: { file: UploadFile; mime: string; inline: boolean; filename: string
     mime: "application/pdf",
     inline: true,
     filename: `filename="paper.pdf"; filename*=UTF-8''paper.pdf`,
+  },
+  {
+    file: { name: "sound.ogg", bytes: oggOpus(1) },
+    mime: "audio/ogg",
+    inline: true,
+    filename: `filename="sound.ogg"; filename*=UTF-8''sound.ogg`,
+  },
+  {
+    file: { name: "clip.webm", bytes: webmHead },
+    mime: "video/webm",
+    inline: true,
+    filename: `filename="clip.webm"; filename*=UTF-8''clip.webm`,
   },
   {
     file: { name: "page.html", bytes: htmlBytes, type: "text/html" },
@@ -156,6 +168,9 @@ test("AS5 (page): an SVG opened at its address runs no script and loads nothing 
       elsewhere.set(response.url(), `answered ${response.status()}`);
     }
   });
+  // The other site is never reached: a request the policy let through is aborted here, and so told apart
+  // ("net::ERR_FAILED") from one it blocked, which no route sees.
+  await page.route("https://example.com/**", (route) => route.abort());
 
   const svgURL = new URL(svg.content_url, nervewiki.baseURL).toString();
   await page.goto(svgURL);

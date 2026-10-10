@@ -68,7 +68,7 @@ P5 把一个笔记本或一棵子树导出为 zip。照 P3、P4 的先例分开�
 ### 3.2 平台：任务的队列、超时与只投递的客户端
 
 - **队列**：`jobs.Config.Queues map[string]int`（队列名 → worker 数），与默认队列（2 个，定时任务）一起交给 River；名字是 River 的默认队列时 `New` 失败。组合根（`jobsConfig`）给 `transfer_export: jobs.export_workers`（默认 1）。导出不占定时任务的队列，几个小时的导出也不挡住清理。
-- **超时**：导出的 worker 的 `Timeout()` 是 `transfer.job_timeout`（默认 6 小时）。`jobs.Config.RescueAfter` 是 River 的 `RescueStuckJobsAfter`，组合根给 `transfer.job_timeout + 1 小时`：`MaxAttempts` 为 1 的任务被救援就丢弃，救援要晚于任何 worker 的超时。River 只拿它与自己的默认超时比较，所以这条由组合根算出、由整个程序上的测试钉住（`TestTheExportsHaveTheirQueueAndOutlastRiversRescue`）。附件清扫的 `SweepTimeout` 的注释随之改。
+- **超时**：导出的 worker 的 `Timeout()` 是 `transfer.job_timeout`（默认 6 小时）。`jobs.Config.RescueAfter` 是 River 的 `RescueStuckJobsAfter`，组合根给 `transfer.job_timeout + 1 小时`：`MaxAttempts` 为 1 的任务被救援就丢弃，救援要晚于任何 worker 的超时。River 只拿它与自己的默认超时比较，所以这条由组合根算出、由整个程序上的测试钉住（`TestTheJobsHaveTheirQueuesAndOutlastRiversRescue`（P6A 起的名称））。附件清扫的 `SweepTimeout` 的注释随之改。
 - **启动时的收拾**：`jobs.Job.Start func(ctx) error`，在 `Runner.Start` 里、River 开始取任务之前依次运行；失败时 `Start` 失败（serve 退出，与 River 起不来相同）。`jobs.New` 按任务的次序收集它们。transfer 用它把上一个进程留下的"运行中"的任务记成失败（3.12）。
 - **只投递的客户端**：`jobs.NewInserter(pool, logger)`：不配队列、不启动的 River 客户端。`InsertTx(ctx, tx, args, opts)` 与业务的行同一个事务投递：回滚时任务也不存在；River 在同一个事务里 `NOTIFY`，服务的客户端随即取到。`Unfinished(ctx, kind)` 列出 River 还没结束的这类任务（`available`、`pending`、`retryable`、`running`、`scheduled`，每次 1,000 个、按游标翻页）的参数，给收拾核对排队的行（3.12）。`platform/jobs` 仍只导入 River 与 pgx：事务由调用方经 `postgres.TxFrom` 取出交进来。
 - **组合规则**：`archtest/composition_test.go` 的禁止集加上 `jobs.NewInserter` 与 `transfer.New`（命令行的组合不投递任务，M2/P4 移交第 3 项）；serve 到达它们。
@@ -187,7 +187,7 @@ worker 只调用用例 `Export.Run(ctx, jobID)`：
 - **视图**：成功的导出带 `download`，地址签到整点之后一小时的末尾与 `finished_at + transfer.export_ttl`（取整到秒）里较早的那一刻，`expires_at` 就是它；地址撑不过这一秒的（过了 TTL 而到期还没轮到）显示为 `expired`、不带地址。
 - **取消**：判定 `transfer.cancel`（读者），只许发起人与笔记本管理员（否则 404）；锁任务行：`queued → cancelled`（直接结束，River 之后取到它时什么都不做）；`running` 记下 `cancel_requested_at`（重复取消不改时刻；任务在下一次心跳停下，除非它先结束）；已结束答 409 `transfer.not_cancellable`。只写任务行，不碰笔记本行，与任务的读不成环。日志：`job_id`、`notebook_id`、`user_id`、取消时的状态。
 - **签名**：`HMAC-SHA256(key, "export-download" ‖ job id 的 16 字节 ‖ e 的 8 字节大端)` 截成 16 字节、无填充的 base64url；`e = min((⌊now / 1 小时⌋ + 2) × 1 小时, ⌊导出的到期⌋)`（1–2 小时有效、不晚于导出的到期，同一小时签出的相同；签名签的就是地址里的 `e`）。密钥 `SigningKeys.Derive(transfer.DownloadKeyInfo)`，info `nervewiki export-download mac v1`，已知答案的测试钉住（13.1 第 25 条），整个程序上核对组合根交的是派生的密钥。只有核对过读权限的读（列表、单个）签。
-- **下载**：`GET /api/v0/transfer-jobs/{job_id}/download?e=…&s=…`，照 P2 的严格读法（路径的 id 是规范写法，转义过的答 404；参数依次是 `e`、`s`，各恰好一次，不反转义；`e` 规范的十进制；`s` 22 个 base64url 字符；别的参数答 404），在任何查询之前核对签名；签名对、未到期、任务是活着的、成功的、`finished_at` 在 TTL 之内、文件在，才下发，否则一律 404 `not_found`。签名就是凭据：下载不再判定读权限，只有判定过的读签出地址。文件不在时再读一次行，导出仍活着才记警告（到期刚删掉的不记）。经 `API.Stream`（无请求体，写出按 `asset.upload_min_rate` 放宽截止时间），公开的操作走平台的 `anonymous` 桶；停机开始之后答 503。头：`Content-Type: application/zip`、`Content-Disposition: attachment; filename="<ASCII 兜底>.zip"; filename*=UTF-8''<名称>.zip`、`/api/` 默认的 `no-store`、每个答复（含拒绝）都有 `Content-Security-Policy: sandbox; default-src 'none'`；`http.ServeContent` 支持 `Range`（断点续传），去掉 `If-Match` 与 `If-Unmodified-Since`（一个地址下发的内容不变），其余条件照 `http.ServeContent`（没有 ETag：304 看 `If-Modified-Since`（没有 `If-None-Match` 时）或 `If-None-Match: *`，`If-Range` 按时刻）。
+- **下载**：`GET /api/v0/transfer-jobs/{job_id}/download?e=…&s=…`，照 P2 的严格读法（路径的 id 是规范写法，转义过的答 404；参数依次是 `e`、`s`，各恰好一次，不反转义；`e` 规范的十进制；`s` 22 个 base64url 字符；别的参数答 404），在任何查询之前核对签名；签名对、未到期、任务是活着的、成功的、`finished_at` 在 TTL 之内、文件在，才下发，否则一律 404 `not_found`。签名就是凭据：下载不再判定读权限，只有判定过的读签出地址。文件不在时再读一次行，导出仍活着才记警告（到期刚删掉的不记）。经 `API.Stream`（无请求体，写出按 `asset.upload_min_rate` 放宽截止时间），公开的操作走平台的 `anonymous` 桶；停机开始之后答 503。头：`Content-Type: application/zip`、`Content-Disposition: attachment; filename="<ASCII 兜底>.zip"; filename*=UTF-8''<名称>.zip`、`/api/` 默认的 `no-store`、每个答复（含拒绝）都有 `Content-Security-Policy: sandbox; default-src 'none'`；`http.ServeContent` 支持 `Range`（断点续传；多段的 `Range` 去掉、整份答 200，M7 收尾 A-N1），去掉 `If-Match` 与 `If-Unmodified-Since`（一个地址下发的内容不变），其余条件照 `http.ServeContent`（没有 ETag：304 看 `If-Modified-Since`（没有 `If-None-Match` 时）或 `If-None-Match: *`，`If-Range` 按时刻）。
 
 ### 3.12 到期、收拾、清扫与生命周期
 
@@ -424,7 +424,7 @@ River 的救援（`job_timeout + 1 小时`）由组合根算出，不是配置�
   - 012 别名 3 条：Obsidian 不按别名解析。
   - 015 Obsidian 不同的写法 3 条：重名取最短路径、后缀匹配、`./`。
   - 026 1 条：`[[y.png]]` 本系统解析到别名为它的页。
-  - 009 兄弟按 id 决胜的样例 Obsidian 一致，可以考虑改判为 `obsidian-verified`。
+  - 009 兄弟按 id 决胜的样例 Obsidian 一致，可以考虑改判为 `obsidian-verified`。M7 收尾时在 `38c3337` 上重跑，结果相同（27 个样例、133 条链接、0 失败，差异同上）；009 仍是 `nerve-defined`：样例的说明记着 Obsidian 在这种情形没有稳定的规则（两次运行选得不同），一致是碰巧。
 - 反向对照：
   - 实施之后 38 个：3 个起初没被抓到或要等测试的总超时，补测之后都被抓到（`edf9466`）。
   - 审查的修复之后 45 个；两轮修复核对之后 16、4 个。

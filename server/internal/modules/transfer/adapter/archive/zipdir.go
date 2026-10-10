@@ -5,15 +5,17 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
+	"slices"
 )
 
 // An import's archive's directory, read before archive/zip reads it (M7/P6
 // design 3.10). archive/zip reads the directory's records from its start
-// until one's signature is not a record's, whatever the end says it holds,
-// one *zip.File each: a 512 MiB archive can hold some eleven million. So
-// the end is found as archive/zip finds it (Go 1.27's readDirectoryEnd,
-// whose rules this follows), and the records are counted as it reads
-// them, nothing kept, before it does.
+// until it refuses one (its readDirectoryHeader: a signature not a
+// record's, the file ending within it, a zip64 field too short), whatever
+// the end says it holds, one *zip.File each: a 512 MiB archive can hold
+// some eleven million. So the end is found as archive/zip finds it (Go
+// 1.27's readDirectoryEnd, whose rules this follows), and the records are
+// counted as it reads them, nothing kept, before it does.
 
 // The zip format's signatures and lengths (APPNOTE 4.3).
 const (
@@ -25,6 +27,7 @@ const (
 	directory64LocLen        = 20
 	directory64EndLen        = 56
 	directoryHeaderLen       = 46
+	zip64ExtraID             = 0x0001
 )
 
 // MaxDirectory is the largest directory an import reads (M7/P6 design
@@ -41,6 +44,7 @@ type directory struct {
 	records uint64
 	size    uint64
 	start   int64
+	probed  int64 // what archive/zip reads of a record it tries at the offset from 0, at most
 }
 
 // readEnd finds the directory's end in the last 1 KiB of r, then its last
@@ -89,9 +93,12 @@ func readEnd(r io.ReaderAt, size int64) (directory, error) {
 		return directory{}, errNotZip
 	}
 	// An end that names a base other than 0 though a record starts at its
-	// offset from 0: archive/zip takes 0.
-	if base > 0 && recordAt(r, size, int64(offset)) {
-		base = 0
+	// offset from 0: archive/zip takes 0, having read the record there.
+	if base > 0 {
+		var ok bool
+		if d.probed, ok = recordAt(r, size, int64(offset)); ok {
+			base = 0
+		}
 	}
 	d.start = base + int64(offset)
 	return d, nil
@@ -149,45 +156,105 @@ func read64End(r io.ReaderAt, size, p int64) (directory, uint64, error) {
 		binary.LittleEndian.Uint64(buf[48:]), nil
 }
 
-// recordAt reports whether a directory's record starts at offset.
-func recordAt(r io.ReaderAt, size, offset int64) bool {
+// recordAt reports whether a directory's record that archive/zip reads
+// starts at offset, and what it reads there at most (records.next).
+func recordAt(r io.ReaderAt, size, offset int64) (int64, bool) {
 	if offset < 0 || offset >= size {
-		return false
+		return 0, false
 	}
-	_, ok := nextRecord(bufio.NewReader(io.NewSectionReader(r, offset, size-offset)))
-	return ok
+	return newRecords(r, size, offset).next()
 }
 
 // countRecords counts the directory's records from start as archive/zip
-// reads them, until one's signature is not a record's or the file ends;
-// it stops once more than most are counted, or more than limit bytes
-// read. It answers the records and their bytes.
-func countRecords(r io.ReaderAt, size, start int64, most int, limit int64) (int, int64) {
-	in := bufio.NewReader(io.NewSectionReader(r, start, size-start))
-	n, read := 0, int64(0)
+// reads them, until the first it refuses (records.next); it stops once
+// more than most are counted, or more than limit bytes read. It answers
+// the records and their bytes, and the bytes archive/zip reads of the
+// record it refuses, at most: it reads one whole before refusing it.
+func countRecords(r io.ReaderAt, size, start int64, most int, limit int64) (n int, read, refused int64) {
+	in := newRecords(r, size, start)
 	for n <= most && read <= limit {
-		length, ok := nextRecord(in)
+		length, ok := in.next()
 		if !ok {
-			break
+			return n, read, length
 		}
 		n++
 		read += length
 	}
-	return n, read
+	return n, read, 0
 }
 
-// nextRecord reads a directory's record from in: its header, name, extra
-// field and comment; false when its signature is not a record's or the
-// file ends within it, as archive/zip stops there.
-func nextRecord(in *bufio.Reader) (int64, bool) {
+// records reads a directory's records in turn from where one starts.
+type records struct {
+	in    *bufio.Reader
+	extra []byte // the record's extra field: one buffer for them all
+}
+
+func newRecords(r io.ReaderAt, size, start int64) *records {
+	return &records{in: bufio.NewReader(io.NewSectionReader(r, start, size-start))}
+}
+
+// next reads the next record: its header, name, extra field and comment,
+// and answers its length; false where archive/zip stops, refusing it: its
+// signature is not a record's, the file ends within it, or a zip64 field
+// is too short (zip64Short). Refused, the length is what archive/zip
+// reads of it at most: the header, then the rest it says it has.
+func (rs *records) next() (int64, bool) {
 	var head [directoryHeaderLen]byte
-	if _, err := io.ReadFull(in, head[:]); err != nil || binary.LittleEndian.Uint32(head[:]) != directoryHeaderSignature {
-		return 0, false
+	if _, err := io.ReadFull(rs.in, head[:]); err != nil || binary.LittleEndian.Uint32(head[:]) != directoryHeaderSignature {
+		return directoryHeaderLen, false
 	}
-	rest := int64(binary.LittleEndian.Uint16(head[28:])) + int64(binary.LittleEndian.Uint16(head[30:])) +
-		int64(binary.LittleEndian.Uint16(head[32:]))
-	if n, err := in.Discard(int(rest)); err != nil || int64(n) != rest {
-		return 0, false
+	name, extra, comment := int(binary.LittleEndian.Uint16(head[28:])), int(binary.LittleEndian.Uint16(head[30:])),
+		int(binary.LittleEndian.Uint16(head[32:]))
+	length := int64(directoryHeaderLen + name + extra + comment)
+	rs.extra = slices.Grow(rs.extra[:0], extra)[:extra]
+	if _, err := rs.in.Discard(name); err != nil {
+		return length, false
 	}
-	return directoryHeaderLen + rest, true
+	if _, err := io.ReadFull(rs.in, rs.extra); err != nil {
+		return length, false
+	}
+	if _, err := rs.in.Discard(comment); err != nil || zip64Short(head[:], rs.extra) {
+		return length, false
+	}
+	return length, true
+}
+
+// zip64Short reports whether a record, of the header head, has a zip64
+// field in its extra too short for the values the header writes as
+// 2³²-1, as Go 1.27's readDirectoryHeader reads them: each zip64 field in
+// turn holds 8 bytes for the uncompressed size, then the compressed size,
+// then the local header's offset, each that the header maxes out; the
+// offset a field gives stands for the header's in the fields after it.
+// The fields are read until one runs past the extra.
+func zip64Short(head, extra []byte) bool {
+	const most = 1<<32 - 1
+	sizes := 0
+	for _, at := range []int{24, 20} { // the uncompressed size, the compressed size
+		if binary.LittleEndian.Uint32(head[at:]) == most {
+			sizes++
+		}
+	}
+	offset := uint64(binary.LittleEndian.Uint32(head[42:]))
+	for len(extra) >= 4 {
+		tag, size := binary.LittleEndian.Uint16(extra), int(binary.LittleEndian.Uint16(extra[2:]))
+		if len(extra)-4 < size {
+			return false
+		}
+		field := extra[4 : 4+size]
+		extra = extra[4+size:]
+		if tag != zip64ExtraID {
+			continue
+		}
+		if len(field) < 8*sizes {
+			return true
+		}
+		field = field[8*sizes:]
+		if offset == most {
+			if len(field) < 8 {
+				return true
+			}
+			offset = binary.LittleEndian.Uint64(field)
+		}
+	}
+	return false
 }

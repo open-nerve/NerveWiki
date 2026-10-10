@@ -92,6 +92,9 @@ export function utf8(text: string): Uint8Array<ArrayBuffer> {
   return new TextEncoder().encode(text);
 }
 
+/** WebM's first bytes, which the server sniffs as a video: no video a browser plays (AS3's page version records one). */
+export const webmHead = Uint8Array.from([0x1a, 0x45, 0xdf, 0xa3, 0x9f, 0x42, 0x86, 0x81, 0x01]);
+
 /**
  * The bytes of an Ogg Opus file of seconds (whole) of silence, mono (RFC 7845):
  * its two header pages, then its frames of 20 ms, each the silent CELT

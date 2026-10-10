@@ -1,5 +1,8 @@
+import path from "node:path";
+
 import { createClient } from "@nervewiki/api-client";
 
+import { blobPath, storedBlobs } from "../../fixtures/assert/asset";
 import { expectImported, sha256Of, storedImports, treeOf } from "../../fixtures/assert/transfer";
 import { pngBytes } from "../../fixtures/assets";
 import { notebookPath } from "../../fixtures/notebook-pages";
@@ -47,6 +50,8 @@ test("TR4 (API): the entries that cannot be imported safely are skipped and repo
   const { pat, adminId, workspace } = await newTeam(api, testInfo);
   const notebook = await createNotebook(api, pat, workspace.slug, "Inbox");
   const deep = "a/b/c/d/e/f/g/h/i/j/k.md";
+  // Thousands of folders deep: skipped before the import makes one; its path cut in the report to 1,024 bytes.
+  const farTooDeep = `t/${"d/".repeat(2000)}x.md`;
   const archive = zipOf([
     { name: "ok.md", data: "fine ![[kept.png]]\n" },
     { name: "kept.png", data: pngBytes, method: 0 },
@@ -63,11 +68,13 @@ test("TR4 (API): the entries that cannot be imported safely are skipped and repo
     { name: "nul.md", data: "a\u0000b" },
     { name: "crc.md", data: "checked", badCrc: true },
     { name: deep, data: "too deep" },
+    { name: farTooDeep, data: "far too deep" },
   ]);
+  const blobs = storedBlobs(nervewiki.storageDir);
   const job = await endedJob(api, pat, (await startImport(api, pat, notebook.id, archive)).id);
   expect([job.state, job.report]).toEqual([
     "succeeded",
-    { failure: null, counts: { pages: 12, attachments: 1, renamed: 0, missing: 0, skipped: 12 } },
+    { failure: null, counts: { pages: 12, attachments: 1, renamed: 0, missing: 0, skipped: 13 } },
   ]);
   expect(job.problems.toSorted((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))).toEqual([
     { path: "../escape.md", code: "unsafe_path", to: null },
@@ -82,10 +89,15 @@ test("TR4 (API): the entries that cannot be imported safely are skipped and repo
     { path: "link.md", code: "special_file", to: null },
     { path: "nul.md", code: "invalid_content", to: null },
     { path: "secret.md", code: "encrypted", to: null },
+    { path: farTooDeep.slice(0, 1024), code: "too_deep", to: null },
   ]);
   const folders = ["a", "a/b", "a/b/c", "a/b/c/d", "a/b/c/d/e", "a/b/c/d/e/f", "a/b/c/d/e/f/g", "a/b/c/d/e/f/g/h"];
   expect(await treeOf(db, nervewiki.storageDir, notebook.id)).toEqual([
-    ...[...folders, "a/b/c/d/e/f/g/h/i", "a/b/c/d/e/f/g/h/i/j"].map((path) => ({ path, kind: "page", content: "" })),
+    ...[...folders, "a/b/c/d/e/f/g/h/i", "a/b/c/d/e/f/g/h/i/j"].map((folder) => ({
+      path: folder,
+      kind: "page",
+      content: "",
+    })),
     { path: "dup", kind: "page", content: "first\n" },
     { path: "kept.png", kind: "asset", mime: "image/png", sha256: sha256Of(pngBytes) },
     { path: "ok", kind: "page", content: "fine ![[kept.png]]\n" },
@@ -98,11 +110,20 @@ test("TR4 (API): the entries that cannot be imported safely are skipped and repo
     failure: null,
     done: 13,
     total: 13,
-    counts: { pages: 12, attachments: 1, renamed: 0, skipped: 12 },
+    counts: { pages: 12, attachments: 1, renamed: 0, skipped: 13 },
   });
+
+  // The store's blobs/ has the attachment imported, and nothing of the one skipped (bomb.bin).
+  const [kept] = await db.query<{ id: string }>("SELECT id FROM asset_blobs WHERE notebook_id = $1", [notebook.id]);
+  const keptFile = path.relative(
+    path.join(nervewiki.storageDir, "blobs"),
+    blobPath(nervewiki.storageDir, kept?.id ?? "")
+  );
+  await expect.poll(() => storedBlobs(nervewiki.storageDir)).toEqual([...blobs, keptFile].toSorted());
 
   // Each archive that cannot be read safely fails whole, nothing written.
   const failsWhole = async (what: string, bytes: Buffer, failure: string) => {
+    const before = storedBlobs(nervewiki.storageDir);
     const empty = await createNotebook(api, pat, workspace.slug, what);
     const failed = await endedJob(api, pat, (await startImport(api, pat, empty.id, bytes)).id);
     expect([what, failed.state, failed.report?.failure, failed.problems]).toEqual([what, "failed", failure, []]);
@@ -117,6 +138,7 @@ test("TR4 (API): the entries that cannot be imported safely are skipped and repo
       counts: { pages: 0, attachments: 0, renamed: 0, skipped: 0 },
     });
     expect(await treeOf(db, nervewiki.storageDir, empty.id)).toEqual([]);
+    expect(storedBlobs(nervewiki.storageDir), `${what}: the store's blobs/`).toEqual(before);
   };
   await failsWhole("no zip", Buffer.from("not a zip at all"), "not_zip");
   // Its end record counts its 65,537 entries in 16 bits: 1.

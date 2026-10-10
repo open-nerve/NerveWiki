@@ -1,9 +1,9 @@
-import { inflateRawSync } from "node:zlib";
+import { crc32, inflateRawSync } from "node:zlib";
 
 // The archives of the exports, read back (M7/P5 design 3.16): from the
-// central directory, each entry's name, flags, method and bytes. Only
-// stored and deflated entries of an archive under 4 GiB, which the
-// stories' are.
+// central directory, each entry's name, flags, method and bytes, which
+// must have the size and the CRC-32 the directory gives. Only stored and
+// deflated entries of an archive under 4 GiB, which the stories' are.
 
 /** An entry of an archive: its name, whether it is named in UTF-8, how it is stored (0 stored, 8 deflated), its bytes. */
 export interface ZipEntry {
@@ -30,7 +30,9 @@ export function unzip(buf: Buffer): ZipEntry[] {
     }
     const flags = buf.readUInt16LE(at + 8);
     const method = buf.readUInt16LE(at + 10);
+    const crc = buf.readUInt32LE(at + 16);
     const size = buf.readUInt32LE(at + 20);
+    const unpacked = buf.readUInt32LE(at + 24);
     const nameLength = buf.readUInt16LE(at + 28);
     const local = buf.readUInt32LE(at + 42);
     const name = buf.toString("utf8", at + 46, at + 46 + nameLength);
@@ -42,7 +44,11 @@ export function unzip(buf: Buffer): ZipEntry[] {
     }
     // Bit 11 tells a name in UTF-8; an ASCII name needs none.
     const utf8 = (flags & 0x800) !== 0 || /^[\x20-\x7e]*$/.test(name);
-    entries.push({ name, utf8, method, data: method === 0 ? Buffer.from(raw) : inflateRawSync(raw) });
+    const data = method === 0 ? Buffer.from(raw) : inflateRawSync(raw);
+    if (data.length !== unpacked || crc32(data) !== crc) {
+      throw new Error(`${name}: ${data.length.toString()} bytes, not the ${unpacked.toString()} its CRC-32 is of`);
+    }
+    entries.push({ name, utf8, method, data });
   }
   return entries;
 }

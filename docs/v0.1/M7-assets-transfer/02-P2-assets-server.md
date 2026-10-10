@@ -55,7 +55,7 @@
 | `server/internal/modules/page/` | `tree_writes.go`（新：`TreeWrites`、`NewAsset`）、`asset_nodes.go`（新：读端口）；`app/unit_create_asset.go`（新）、`unit_rename.go`、`domain/name.go`（新：附件的名称规则）、`domain/tree.go`（`Height` 只数页面）；`adapter/postgres/queries`（附件节点的分页） |
 | `server/internal/modules/asset/`（新） | `module.go`（`New`、`Register`、`Jobs`、`ContentKeyInfo`）、`lifecycle.go`（页面观察者、笔记本删除、活动）、`purgers.go`；`domain/`（`Blob`、类型表、动作、错误）；`app/`（上传、元数据与列表、下载的用例，`Blobs`，签名的端口，清理，清扫）；`adapter/http/`（生成的两个操作 + 手写的上传与下载）、`adapter/postgres/`（sqlc）、`adapter/files/`（存储的端口）、`adapter/mac/`（签名）、`adapter/sniff/`（类型测定与宽高，`net/http`、`image` 在这里）、`adapter/river/`（清扫的定时任务） |
 | `server/migrations/sql/00027_asset_asset_blobs.sql`（新）、`deploy/runtime-grants.sql` | `asset_blobs` |
-| `server/internal/bootstrap/` | 组合：page → asset；`purgers(pool, store)`；观察者、笔记本删除、活动的登记；`instanceDeps`；整个程序的测试（`assets_*_test.go`）、交错（`interleavings_assets_test.go`）、权限矩阵（`permission_matrix_asset_test.go`）；`checkPages` |
+| `server/internal/bootstrap/` | 组合：page → asset；`purgers(pool, tx, store, logger)`；观察者、笔记本删除、活动的登记；`instanceDeps`；整个程序的测试（`assets_*_test.go`）、交错（`interleavings_assets_test.go`）、权限矩阵（`permission_matrix_asset_test.go`）；`checkPages` |
 | `server/internal/archtest/` | 命令行的组合到不了 `asset.New`；asset 的 app 与 domain 照已有的分层规则只引标准库（`net/http`、`database/sql` 除外） |
 | `web/apps/web/src/stores/page-tree.store.ts`、`events/handlers.ts` | 树只列页面；`pages` 的整树重读经 `refresher` |
 | `e2e/fixtures/purge.ts`、`fixtures/assert/asset.ts`（新）、`stories/asset/`（新：AS1、AS4、AS5） | 3.12 |
@@ -232,7 +232,7 @@ CREATE INDEX asset_blobs_deleted_at_idx ON asset_blobs (deleted_at) WHERE delete
    - 每个答复（含 400、404、429、503，内容路由的最外层 `sandboxed` 设）：`Content-Security-Policy: sandbox; default-src 'none'; img-src 'self' data:; media-src 'self'; style-src 'unsafe-inline'`、`Cross-Origin-Resource-Policy: same-origin`。签名核对通过之后：`Cache-Control: private, max-age=<e − now>, immutable`；`ETag: "<sha256 十六进制>"`；`Last-Modified`。全局的 `nosniff`、`X-Frame-Options: DENY`、`Referrer-Policy: same-origin` 照旧。
    - 内联与否按表判断（`domain.Served`、`domain.Inline`）：表外的类型一律 `application/octet-stream` 与 `attachment`。
 4. `Sending(r)`（平台改为不带字节数）：答复按步写出，每步之前把写截止时间设为"宣告时刻 + `read_timeout` + 已写字节 / `MinRate`"，停读的客户端在 `read_timeout` 加缓冲住的字节应得的时间之后断开（暂停的媒体元素靠浏览器的 `Range` 重新请求）。答 `ErrShuttingDown` 时 503 `server_busy`（`Retry-After: 5`，`no-store`，不带文件的头）。
-5. 去掉 `If-Match`、`If-Unmodified-Since`（地址所下发的内容从不改变，没有要守的；留着它们 `ServeContent` 会答 412，带着文件的头），再 `http.ServeContent`（`Range`、`If-None-Match`、`If-Modified-Since`；`HEAD` 由路由在 GET 上答，契约不单列）。`Bounded` 的一步过了请求的期限答 500，记 WARN。日志：下载不逐个记（访问日志已有）。
+5. 去掉 `If-Match`、`If-Unmodified-Since`（地址所下发的内容从不改变，没有要守的；留着它们 `ServeContent` 会答 412，带着文件的头），多段的 `Range` 也去掉、整份答 200（M7 收尾 A-N1，平台的 `httpserver.ServeFixed`），再 `http.ServeContent`（`Range`、`If-None-Match`、`If-Modified-Since`；`HEAD` 由路由在 GET 上答，契约不单列）。`Bounded` 的一步过了请求的期限答 500，记 WARN。日志：下载不逐个记（访问日志已有）。
 
 **PDF 的实测**（总设计 4.5 要求写进本文）：Playwright 的 Chromium 带完整的 CSP（含 `sandbox`）能显示，保持 `inline`；本机没有 Playwright 的 Firefox，没测。README 写"其他浏览器未实测；显示不了时用 `download_url` 下载"。结果见第 7 节。
 
@@ -276,7 +276,7 @@ ratelimit:
 
 ### 3.11 组合根与架构测试
 
-- `newApp`：`pg := page.New(…)` 之后 `as := asset.New(asset.Deps{Pool, Tx, Clock, Logger, Authorizer, Store: store, Tree: pg.TreeWrites(), Nodes: page.NewAssetNodes(pool), Key: keys.Derive(asset.ContentKeyInfo), MaxBytes, MinRate, ContentBucket})`；`as.Register(router, api)`；`as.Jobs()` 进 River；`purgeJob(cfg, pool, store, logger)`。
+- `newApp`：`pg := page.New(…)` 之后 `as := asset.New(asset.Deps{Pool, Tx, Clock, Logger, Authorizer, Store: store, Tree: pg.TreeWrites(), Nodes: page.NewAssetNodes(pool), ContentKey: keys.Derive(asset.ContentKeyInfo), MaxBytes, MinRate, ContentBucket})`；`as.Register(router, api)`；`as.Jobs()` 进 River；`purgeJob(cfg, pool, store, logger)`。
 - `pageRegistrants` 的观察者加 `asset.NewPageObserver(pool)`；`notebookRegistrants` 的删除订阅者加 `asset.NewNotebookDeletion(pool)`、活动加 `asset.NewNotebookActivity(pool)`（同 `pageActivity` 的转换）。
 - `archtest`：命令行的组合到不了 `asset.New`、`storage`（`composesMore` 已禁模块根的 `New` 与 `platform/storage`）；asset 的 `app`、`domain` 照已有的分层规则只引标准库（`net/http`、`database/sql` 除外）。`image` 是标准库、不禁，实际只在 `adapter/sniff` 里用。
 

@@ -17,6 +17,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
 )
 
 // The attachments through serve (M7/P2 design 5): uploaded through the
@@ -200,5 +202,31 @@ func TestALargeFileUploadsAndDownloadsWhole(t *testing.T) {
 	tm.contract.CheckResponse(t, req, res)
 	if res.StatusCode != http.StatusPartialContent || !bytes.Equal(got, content[2000000:2000010]) {
 		t.Errorf("a range = %d %v, want 206, those 10 bytes", res.StatusCode, got)
+	}
+}
+
+// asset.max_bytes and storage.min_free_bytes reach the uploads (M7
+// closeout A-M3): a file past the one is 413 payload_too_large; a store
+// that would keep less than the other, 507 storage_full.
+func TestTheUploadsLimitsAreTheConfigured(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		change func(*config.Config)
+		status int
+		code   string
+	}{
+		{"a file past asset.max_bytes", func(c *config.Config) { c.Asset.MaxBytes = 1 << 10 }, http.StatusRequestEntityTooLarge, "payload_too_large"},
+		{"a store past storage.min_free_bytes", func(c *config.Config) { c.Storage.MinFreeBytes = 1 << 60 }, http.StatusInsufficientStorage, "storage_full"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			tm := newAcmeTeamWith(t, "", "", tt.change)
+			nb := tm.openNotebook(t, "alice", "Eng")
+			c := assetUpload(t, "alice", nb, "", "big.bin", strings.Repeat("b", 1<<10+1))
+			status, answer := askTyped(t, tm.contract, c.method, tm.base+c.path, tm.tokens["alice"], c.contentType, c.body)
+			if status != tt.status || problemCode(t, answer) != tt.code {
+				t.Errorf("upload = %d %s, want %d %s", status, answer, tt.status, tt.code)
+			}
+			checkAssets(t, tm.pool, tm.storage)
+		})
 	}
 }

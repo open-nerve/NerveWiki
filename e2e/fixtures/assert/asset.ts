@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 
 import type { Asset, Page } from "@nervewiki/api-client";
@@ -92,6 +92,18 @@ export async function expectUploaded(
   expect(Buffer.compare(readFileSync(blobPath(storageDir, blob)), Buffer.from(bytes)), "the file in the store").toBe(0);
 }
 
+/** The files the store at storageDir keeps under blobs/, those being written (.tmp/) among them, sorted. */
+export function storedBlobs(storageDir: string): string[] {
+  const dir = path.join(storageDir, "blobs");
+  if (!existsSync(dir)) {
+    return [];
+  }
+  return readdirSync(dir, { recursive: true, withFileTypes: true })
+    .filter((e) => e.isFile())
+    .map((e) => path.relative(dir, path.join(e.parentPath, e.name)))
+    .toSorted();
+}
+
 /** asset_blobs: the rows of the attachments ids are deleted at their nodes' time, each node deleted. */
 export async function expectAssetsDeletedWithNodes(db: Database, ids: readonly string[]): Promise<void> {
   const rows = await db.query<{ node_id: string }>(
@@ -99,6 +111,21 @@ export async function expectAssetsDeletedWithNodes(db: Database, ids: readonly s
       WHERE b.node_id = ANY($1::uuid[]) AND n.deleted_at IS NOT NULL AND b.deleted_at = n.deleted_at
       ORDER BY b.node_id`,
     [ids]
+  );
+  expect(rows.map((row) => row.node_id)).toEqual(ids.toSorted());
+}
+
+/** asset_blobs: the rows of the attachments ids are deleted at the time of the notebook notebookId's deletion. */
+export async function expectAssetsDeletedWithNotebook(
+  db: Database,
+  notebookId: string,
+  ids: readonly string[]
+): Promise<void> {
+  const rows = await db.query<{ node_id: string }>(
+    `SELECT b.node_id FROM asset_blobs b JOIN notebooks n ON n.id = b.notebook_id
+      WHERE n.id = $1 AND b.node_id = ANY($2::uuid[]) AND n.deleted_at IS NOT NULL AND b.deleted_at = n.deleted_at
+      ORDER BY b.node_id`,
+    [notebookId, ids]
   );
   expect(rows.map((row) => row.node_id)).toEqual(ids.toSorted());
 }

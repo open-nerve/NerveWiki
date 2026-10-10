@@ -8,11 +8,13 @@ package archiveadapter
 
 import (
 	"archive/zip"
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
+	"slices"
 	"strings"
 	"time"
 	"uuid"
@@ -174,7 +176,9 @@ const directoryEnds = 128 << 10
 
 // OpenImport implements app.Archives: the directory's end read, its
 // records counted (zipdir.go), then archive/zip reads it, bounded to the
-// bytes counted and its end's; once read, the entries' data is not.
+// bytes it reads as counted (the records, the one it stops at, the one it
+// tries at the offset from 0) and its end's; once read, the entries' data
+// is not.
 func (a Archives) OpenImport(ctx context.Context, id uuid.UUID, most int) (app.ImportArchive, error) {
 	f, err := a.store.Open(ctx, domain.Archive(domain.KindImport, id))
 	if errors.Is(err, storage.ErrNotFound) {
@@ -204,11 +208,11 @@ func readImport(f storage.File, most int, largest int64) (*zip.Reader, error) {
 	case d.records > uint64(most) || d.size > uint64(largest): //nolint:gosec // positive settings
 		return nil, app.ErrTooManyEntries
 	}
-	n, read := countRecords(f, size, d.start, most, largest)
+	n, read, refused := countRecords(f, size, d.start, most, largest)
 	if n > most || read > largest {
 		return nil, app.ErrTooManyEntries
 	}
-	b := &bounded{r: f, left: read + directoryEnds}
+	b := &bounded{r: f, left: d.probed + read + refused + directoryEnds}
 	z, err := zip.NewReader(b, size)
 	b.lift()
 	switch {
@@ -217,9 +221,46 @@ func readImport(f storage.File, most int, largest int64) (*zip.Reader, error) {
 	case err != nil && !errors.Is(err, zip.ErrInsecurePath):
 		return nil, fmt.Errorf("%w: %w", app.ErrNotZip, err)
 	case len(z.File) != n:
+		// The pre-read reads the records as archive/zip does: no archive found yet tells them apart.
 		return nil, fmt.Errorf("%w: %d entries read, %d counted", app.ErrNotZip, len(z.File), n)
 	}
+	if err := checkData(z, d.start); err != nil {
+		return nil, fmt.Errorf("%w: %w", app.ErrNotZip, err)
+	}
 	return z, nil
+}
+
+// errOverlap is an archive whose entries' data overlap, or reach into its
+// directory: no archiver writes one.
+var errOverlap = errors.New("zip: the entries' data overlap, or reach into the directory")
+
+// checkData checks that the data of z's entries, each from where it
+// starts as long as the directory says it is packed, lie apart and before
+// the directory, at start (M7 closeout A-M1): each entry's packed bytes
+// are then bytes of the archive of its own, which domain.TooCompressed
+// measures its unpacking by, and no data is read for two entries. An
+// entry whose local header cannot be read is left out: it is unreadable
+// as it is opened.
+func checkData(z *zip.Reader, start int64) error {
+	type span struct{ from, to int64 }
+	spans := make([]span, 0, len(z.File))
+	for _, f := range z.File {
+		from, err := f.DataOffset()
+		if err != nil {
+			continue
+		}
+		if f.CompressedSize64 > uint64(start) || from+int64(f.CompressedSize64) > start { //nolint:gosec // start is positive, the size bounded by it
+			return errOverlap
+		}
+		spans = append(spans, span{from: from, to: from + int64(f.CompressedSize64)}) //nolint:gosec // bounded above
+	}
+	slices.SortFunc(spans, func(a, b span) int { return cmp.Compare(a.from, b.from) })
+	for i := 1; i < len(spans); i++ {
+		if spans[i].from < spans[i-1].to {
+			return errOverlap
+		}
+	}
+	return nil
 }
 
 // errBounded is a read of an archive's directory past what was counted.

@@ -2,6 +2,7 @@ package domain_test
 
 import (
 	"fmt"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -127,6 +128,77 @@ func TestNewImportPlan(t *testing.T) {
 				t.Errorf("NewImportPlan(%q) =\n%s\nwant\n%s", tt.paths, strings.Join(got, "\n"), strings.Join(tt.want, "\n"))
 			}
 		})
+	}
+}
+
+// allocated is the bytes f allocates.
+func allocated(f func()) uint64 {
+	var before, after runtime.MemStats
+	runtime.GC()
+	runtime.ReadMemStats(&before)
+	f()
+	runtime.ReadMemStats(&after)
+	return after.TotalAlloc - before.TotalAlloc
+}
+
+// The plan's paths are each entry's joined once: no level of a deep path
+// copies it (M7 closeout A-I1). A thousand attachments, each under ten
+// folders of its own named with a thousand bytes, hold 10 MB of names;
+// copying each folder's path at each level allocated 160 MB, sixteen times
+// that, and the plan now 45 MB, the names mended taking most.
+func TestThePlanAllocatesASmallMultipleOfItsPaths(t *testing.T) {
+	var paths []string
+	names := 0
+	for i := range 1000 {
+		var b strings.Builder
+		for level := range 10 {
+			fmt.Fprintf(&b, "%04d-%d-%s/", i, level, strings.Repeat("n", 994))
+		}
+		b.WriteString("x.png")
+		paths = append(paths, b.String())
+		names += b.Len()
+	}
+	entries := importEntries(paths...)
+
+	var plan domain.ImportPlan
+	bytes := allocated(func() { plan = domain.NewImportPlan(entries, domain.ImportMeta{}, 0) })
+
+	if len(plan.Nodes) != 11_000 || len(plan.Skipped) != 0 {
+		t.Fatalf("%d nodes, %d skipped; want 11,000 and none", len(plan.Nodes), len(plan.Skipped))
+	}
+	if bytes > uint64(6*names) {
+		t.Errorf("the plan allocated %d bytes for %d bytes of names; want 6 times at most", bytes, names)
+	}
+}
+
+// An entry of tens of thousands of folders is skipped as it is classified,
+// by its count of names, before the plan makes a folder (M7 closeout A-I1):
+// two of 64 KiB took 4.46 GiB of the heap, the plan's folders each holding
+// its whole path; a thousand, Classify keeping each of their names, 2.5
+// GiB (the fix check, FA-I1). Of each entry the first names are kept.
+func TestAnEntryFarTooDeepIsSkippedBeforeItsFolders(t *testing.T) {
+	deep := "t/" + strings.Repeat("d/", 32_760)
+	raw := []domain.RawEntry{{Index: 0, Name: "ok.md", Method: domain.MethodDeflate}}
+	for i := 1; i <= 1000; i++ {
+		raw = append(raw, domain.RawEntry{Index: i, Name: fmt.Sprintf("%sx%04d.md", deep, i), Method: domain.MethodDeflate})
+	}
+
+	var plan domain.ImportPlan
+	var sorted domain.Sorted
+	bytes := allocated(func() {
+		sorted = domain.Classify(raw)
+		plan = domain.NewImportPlan(sorted.Entries, domain.ImportMeta{}, 0)
+	})
+
+	if got := planned(plan); !slices.Equal(got, []string{"1 - page ok <- ok.md #0"}) {
+		t.Errorf("planned %q; want ok.md alone", got)
+	}
+	tooDeep := func(p domain.Problem) bool { return p.Code == domain.ProblemTooDeep }
+	if len(sorted.Skipped) != 1000 || !slices.ContainsFunc(sorted.Skipped, tooDeep) || slices.IndexFunc(sorted.Skipped, func(p domain.Problem) bool { return !tooDeep(p) }) >= 0 {
+		t.Errorf("skipped %d; want the thousand, too deep", len(sorted.Skipped))
+	}
+	if bytes > 8<<20 {
+		t.Errorf("classified and planned in %d bytes; want 8 MiB at most", bytes)
 	}
 }
 

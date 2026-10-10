@@ -9,12 +9,21 @@ function editable(target: EventTarget | null): boolean {
 }
 
 /**
+ * picker tells whether target is a file input that takes files: the browser
+ * sets its files to those dropped on it, opening none (the import's zip).
+ */
+function picker(target: EventTarget | null): boolean {
+  return target instanceof HTMLInputElement && target.type === "file" && !target.disabled;
+}
+
+/**
  * FileDropGuard keeps a file dropped outside where the app takes files from
  * leaving the app (M7/P4 design 3.6): the browser would open it in the tab.
  * Over the document, a drag of files may not drop, one started in the page
  * (an image of it) or in another tab too; where one may drop, its handler
- * said so first (its dragover's default prevented), and an editor takes
- * them as it does. The shell mounts it once.
+ * said so first (its dragover's default prevented), an editor takes them
+ * as it does, and a file input takes those dragged from outside the page
+ * as the browser has it take them. The shell mounts it once.
  */
 export function FileDropGuard() {
   useEffect(() => {
@@ -29,8 +38,9 @@ export function FileDropGuard() {
         ended();
       }
     };
+    const taken = (event: globalThis.DragEvent) => editable(event.target) || (picker(event.target) && !pageDrag.on);
     const onDragOver = (event: globalThis.DragEvent) => {
-      if (hasFiles(event.dataTransfer) && !event.defaultPrevented && !editable(event.target)) {
+      if (hasFiles(event.dataTransfer) && !event.defaultPrevented && !taken(event)) {
         event.preventDefault();
         if (event.dataTransfer !== null) {
           event.dataTransfer.dropEffect = "none";
@@ -38,7 +48,7 @@ export function FileDropGuard() {
       }
     };
     const onDrop = (event: globalThis.DragEvent) => {
-      if (hasFiles(event.dataTransfer) && !editable(event.target)) {
+      if (hasFiles(event.dataTransfer) && !taken(event)) {
         event.preventDefault();
       }
       ended();

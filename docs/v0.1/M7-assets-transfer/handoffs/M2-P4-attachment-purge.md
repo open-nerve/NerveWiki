@@ -1,5 +1,5 @@
 ```yaml
-status: open
+status: done
 from: M2/P4
 to: M7
 created: 2026-10-01
@@ -18,3 +18,4 @@ M7 加附件的清理器时：
 ## 处理进展
 
 - M7/P2（2026-10-09，合并 `48c62c0`）：三项都已落实。附件的行经复合外键 `ON DELETE RESTRICT` 指向节点，`asset.Purgers` 排在 page 之前；一批一个事务，先删文件、再删行，删不掉的文件让这一批失败；"文件已删、行没删"之后的下一次运行由 `TestThePurgeDeletesTheAttachmentsFilesThenRows` 守住；没有行的文件由每天的孤儿清扫删掉（[P2 文档](../02-P2-assets-server.md) 3.8）。M7 收尾时关闭。
+- M7 收尾（2026-10-10）：核对过各项的落实（[M7 收尾审查](../reviews/M7-closeout-review.md) C-I2），关闭。

@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"hash/crc32"
 	"io"
 	"io/fs"
 	"slices"
@@ -233,6 +234,7 @@ func TestAnImportsArchiveIsFoundAsArchiveZipFindsIt(t *testing.T) {
 		{"a comment of zeros", zipped(t, strings.Repeat("\x00", 100), [2]string{"a.md", "x"}), 1},
 		// Its end is past the last 1 KiB: found in the last 65 KiB.
 		{"a comment of 2 KiB", zipped(t, strings.Repeat("c", 2048), [2]string{"a.md", "x"}), 1},
+		{"a comment of 64 KiB, an entry of 80 KB", largeCommented(t), 1},
 		{"zip64, more records than 65535", zipped(t, "", many...), 70000},
 		{"prepended", append(bytes.Repeat([]byte{'#'}, 4096), zipped(t, "", [2]string{"a.md", "x"}, [2]string{"b.md", "y"})...), 2},
 		{"empty", zipped(t, ""), 0},
@@ -248,6 +250,30 @@ func TestAnImportsArchiveIsFoundAsArchiveZipFindsIt(t *testing.T) {
 			}
 		})
 	}
+}
+
+// largeCommented is an archive of one entry of 80 KB, stored, and a
+// comment of 64 KiB: archive/zip reads its last 1 KiB and 65 KiB for its
+// end, and its buffer 4 KiB from the directory's start, besides the
+// directory (M7 closeout F4-N2).
+func largeCommented(t *testing.T) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	w := zip.NewWriter(&buf)
+	fw, err := w.CreateHeader(&zip.FileHeader{Name: "a.md", Method: zip.Store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.WriteString(fw, strings.Repeat("x", 80000)); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.SetComment(strings.Repeat("c", 65000)); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
 }
 
 // shortEnd is an archive of two entries whose end says its directory is
@@ -280,6 +306,78 @@ func with64Locator(t *testing.T, data []byte, offset uint64) []byte {
 func understated(t *testing.T, data []byte) []byte {
 	t.Helper()
 	binary.LittleEndian.PutUint32(data[endOf(data)+12:], 100)
+	return data
+}
+
+// records is where data's directory starts, and its records' offsets.
+func records(data []byte) []int {
+	at := int(binary.LittleEndian.Uint32(data[endOf(data)+16:]))
+	var out []int
+	for binary.LittleEndian.Uint32(data[at:]) == 0x02014b50 {
+		out = append(out, at)
+		at += 46 + int(binary.LittleEndian.Uint16(data[at+28:])) + int(binary.LittleEndian.Uint16(data[at+30:])) +
+			int(binary.LittleEndian.Uint16(data[at+32:]))
+	}
+	return out
+}
+
+// twoRecordsOfOne is an archive whose second record points at the first
+// entry's local header: both read the same data (M7 closeout A-M1).
+func twoRecordsOfOne(t *testing.T) []byte {
+	t.Helper()
+	data := zipped(t, "", [2]string{"a.md", strings.Repeat("a", 1000)}, [2]string{"b.md", strings.Repeat("a", 1000)})
+	binary.LittleEndian.PutUint32(data[records(data)[1]+42:], 0)
+	return data
+}
+
+// packedPast is an archive whose last record says its entry packs to
+// more bytes than lie before the directory, no entry after it: its
+// unpacking would be measured against bytes the archive does not hold
+// for it (M7 closeout A-M1).
+func packedPast(t *testing.T) []byte {
+	t.Helper()
+	data := zipped(t, "", [2]string{"a.md", "x"}, [2]string{"b.md", strings.Repeat("b", 100_000)})
+	binary.LittleEndian.PutUint32(data[records(data)[1]+20:], uint32(len(data))) //nolint:gosec // a small archive
+	return data
+}
+
+// touching is an archive written without data descriptors, as Info-ZIP
+// and Python's zipfile write one: its last entry's data ends where its
+// directory starts (the fix check, FA-M2).
+func touching(t *testing.T) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	w := zip.NewWriter(&buf)
+	var at int
+	for _, name := range []string{"a.md", "b.md"} {
+		body := []byte(strings.Repeat(name[:1], 100))
+		at += 30 + len(name) + len(body) // its local header, then its data
+		fw, err := w.CreateRaw(&zip.FileHeader{Name: name, Method: zip.Store, CRC32: crc32.ChecksumIEEE(body),
+			CompressedSize64: uint64(len(body)), UncompressedSize64: uint64(len(body))})
+		if err == nil {
+			_, err = fw.Write(body)
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	data := buf.Bytes()
+	if records(data)[0] != at {
+		t.Fatalf("the last entry's data ends at %d, the directory starts at %d", at, records(data)[0])
+	}
+	return data
+}
+
+// packedOnePast is touching with its last entry packing to one byte more
+// than lies before the directory: less than the archive's bytes before
+// it, but reaching into it (the fix check, FA-M2).
+func packedOnePast(t *testing.T) []byte {
+	t.Helper()
+	data := touching(t)
+	binary.LittleEndian.PutUint32(data[records(data)[1]+20:], 101)
 	return data
 }
 
@@ -349,6 +447,12 @@ func TestAnImportsArchiveRefusesItsDirectory(t *testing.T) {
 		{"a zip64 end before the archive", with64Locator(t, zipped(t, "", [2]string{"a.md", "x"}), 1<<63), 100000, archiveadapter.MaxDirectory,
 			app.ErrNotZip},
 		{"records fewer than the end says", short, 10, archiveadapter.MaxDirectory, app.ErrNotZip},
+		{"two records of one entry's data", twoRecordsOfOne(t), 10, archiveadapter.MaxDirectory, app.ErrNotZip},
+		{"a packed size past the entry's data", packedPast(t), 10, archiveadapter.MaxDirectory, app.ErrNotZip},
+		{"empty entries side by side", zipped(t, "", [2]string{"a.md", ""}, &zip.FileHeader{Name: "b.png", Method: zip.Store},
+			[2]string{"c.md", "x"}), 10, archiveadapter.MaxDirectory, nil},
+		{"a last entry's data ending where the directory starts", touching(t), 10, archiveadapter.MaxDirectory, nil},
+		{"a packed size one byte into the directory", packedOnePast(t), 10, archiveadapter.MaxDirectory, app.ErrNotZip},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := opened(t, archiveadapter.WithMaxDirectory(a, tt.largest), store, tt.data, tt.most)

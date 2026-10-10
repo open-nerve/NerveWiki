@@ -150,7 +150,7 @@ asset 的上传与导入读同一种表单：几个小的文字部分、一个�
 `adapter/archive` 的 `OpenImport(ctx, id, most)` 打开 `imports/<id>.zip`（`storage.File` 有 `ReaderAt` 与 `Size`），先读目录、再交给 `zip.NewReader`：
 
 - **结尾记录**（`zipdir.go`）：照 Go 的 `readDirectoryEnd` 找结尾记录（最后 1 KiB，再最后 65 KiB），有 zip64 的定位记录时读 zip64 的结尾记录（定位记录的偏移是负的时照 Go 忽略，越过文件的答 `not_zip`），算出中央目录的起点（含 Go 的 `baseOffset` 修正）。找不到、越界：失败 `not_zip`。结尾记录的条目数超过 `most`（`transfer.import_max_entries`）、或中央目录的大小超过 64 MiB：失败 `too_many_entries`。
-- **目录的预读**：从起点照 Go 的读法逐条读目录记录（46 字节的头，跳过名称、扩展字段与注释），直到不是目录记录的签名或读不满为止，只计数、不分配；条数超过上限、或读过的字节超过 64 MiB 就停下，失败 `too_many_entries`。这样 `zip.NewReader` 读到的条数（它的停法相同）有上限，不信结尾记录的条目数（总设计 4.11"中央目录的条目数谎报"）。交给 `zip.NewReader` 的 `ReaderAt` 另有字节的上限（预读的字节加结尾的 128 KiB），作为兜底：它若读得比预读多，答 `too_many_entries` 而不是继续分配。`NewReader` 之后条数与预读的不同：`not_zip`。`zip.ErrInsecurePath` 不算错（路径由 domain 分类）。
+- **目录的预读**：从起点照 Go 的 `readDirectoryHeader` 逐条读目录记录（46 字节的头，跳过名称与注释，读出扩展字段），停在它拒绝的一条（不是目录记录的签名、读不满、zip64 字段短于记录写作 2³²-1 的大小与偏移），只计数、不分配；结尾记录给出的起点大于 0 时，从 0 算的偏移处另找记录也照它判断（M7 收尾 FA2-M1）。条数超过上限、或读过的字节超过 64 MiB 就停下，失败 `too_many_entries`。这样 `zip.NewReader` 读到的条数（它的停法相同）有上限，不信结尾记录的条目数（总设计 4.11"中央目录的条目数谎报"）。交给 `zip.NewReader` 的 `ReaderAt` 另有字节的上限：预读的字节，加它停下的那条记录至多的字节（Go 读完一整条才拒绝它，至多约 192 KiB），加起点修正时它在从 0 算的偏移处读的那条（不论取不取 0；取 0 时之后作为目录的第一条再读一次），加结尾的 128 KiB（M7 收尾 F3-M1）；作为兜底，它若读得比这多，答 `too_many_entries` 而不是继续分配。`NewReader` 之后条数与预读的不同：`not_zip`。`zip.ErrInsecurePath` 不算错（路径由 domain 分类）。
 - **条目**：交给 domain 的是 `RawEntry{Index, Name, Folder, Special, Encrypted, Method}`：名称的原始字节、是否目录（名称以 `/` 或 `\` 结尾，或模式是目录）、是否特殊文件（符号链接与其他不是普通文件的）、加密标志、压缩方法；压缩后的字节数经 `ImportArchive.Packed(i)`，按序号打开读者。条目头写的解压后的大小不交出（3.11 按实际读出的计）。
 
 ### 3.11 校验
@@ -208,7 +208,7 @@ worker 只调用用例 `Import.Run(ctx, jobID)`。导出与导入共用任务的
 
 - **报告随心跳写**：导入的计数与问题在运行中交给心跳（原子的指针），心跳在报告变了、且距上一次写至少 10 拍（10 秒）时随心跳一起写（`BeatJob` 的 `coalesce`），写失败下一拍再试；结束时照常写最终的。迁移 `00032` 允许运行中的行有报告（排队的仍不行）；读接口在任务结束之前不交出它。进程崩溃之后，收拾把失败合并进留着的报告（`InterruptJobs`），报告写明到最后一次心跳为止已导入的部分；导出的报告运行中为空，照旧只有失败。
 - **唯一索引**（迁移 `00031`）：`(notebook_id) WHERE kind = 'import' AND state IN ('queued', 'running') AND deleted_at IS NULL`；撞上答 409 `transfer.busy`。
-- **收拾**：启动时与每 5 分钟的"运行中"照旧（不分种类）；排队的核对改为两种都核对：`QueuedJobs(kind)` 与 River 还没结束的那一种（`Held(kind)`：`transfer.export`、`transfer.import`）。被收拾的导入的 zip 由清扫删掉。
+- **收拾**：启动时与每 5 分钟的"运行中"照旧（不分种类）；排队的核对改为两种都核对：`QueuedJobs(kind)` 与 River 还没结束的那一种（`Held(kind)`：`transfer.export`、`transfer.import`）。被收拾的导入的 zip 由清扫删掉。进程恰在 River 取到导入、开始之前停掉时，照导出（[P5 文档](05-P5-export.md) 3.12）：River 把它记在运行中，直到救援（`job_timeout + 1 小时`）丢掉它，行才被记成失败；其间这本笔记本的导入答 `transfer.busy`，开始它的人与笔记本的管理员可以取消（M7 收尾 A-Q1）。
 - **清扫**：先导出、再导入，`imports/` 下一天以前的文件，没有排队或运行中的导入对应的（`LiveArchives(ctx, kind, ids)`），删掉（结束时删不掉的、写行失败没删掉的、收拾之后的）；一种列不出或删不掉不妨碍另一种，错误合并之后返回。
 - **生命周期**：笔记本删除照旧软删除它的任务（排队的被取到时什么都不做；运行中的下一次心跳看到、在两批之间停下，zip 删掉）；清理器删行之前删 zip（`Archives.Delete` 已按种类）。
 
@@ -245,7 +245,7 @@ worker 只调用用例 `Import.Run(ctx, jobID)`。导出与导入共用任务的
 
 - `e2e/fixtures/zip-write.ts`：写 zip（node 的 `zlib` 的 `deflateRawSync`、`crc32`，不加依赖），能写出恶意的条目（符号链接的模式、谎报的结尾记录、`..`、加密标志、不支持的方法、坏的 CRC、记录的注释）。`e2e/fixtures/transfer.ts` 加 PAT 的导入（multipart）、轮询到结束。数据库断言 `e2e/fixtures/assert/transfer.ts` 加导入的（任务行、计数、`client`；建了的页、附件的行与存储里的文件；一个 `kind = import` 的变更集；`imports/` 里没有文件，`.tmp` 不算），链接经 `assert/links.ts` 的 `expectIndexedLinks`。
 - **TR2**（`stories/transfer/tr2-import.spec.ts`）：一个带 `.obsidian/`、嵌套的页、页下与根下的附件、链接与嵌入、要修正与撞名的名称的库，导入到根下与一页之下；进度、报告（计数、`renamed`）、页与附件、链接解析。
-- **TR3**（`tr3-roundtrip.spec.ts`）：TR1 的那本笔记本导出、导入另一本，树、正文、附件、次序相同。
+- **TR3**（`tr3-roundtrip.spec.ts`）：TR1 的那本笔记本导出、导入另一本，树、正文、附件、次序相同；例外是导出时改了名的文件夹（`Plan.md 2`），导入之后是这个名称的页（M7 收尾审查 B-N2）。
 - **TR4**（`tr4-malicious.spec.ts`）：越出根、符号链接、压缩炸弹（压缩比）、加密、不支持的方法、重复、名称不是 UTF-8 的条目各跳过并进报告，其余照常导入；条目数谎报的、中央目录过大的、不是 zip 的、解压后过大的整包失败，没有建任何节点，存储里不留文件；超过 `import_max_bytes` 的上传答 413（`nervewikiWith` 起一个上限很小的服务）。
 
 ## 4. B：前端

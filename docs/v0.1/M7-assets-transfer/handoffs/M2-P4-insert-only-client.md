@@ -1,5 +1,5 @@
 ```yaml
-status: open
+status: done
 from: M2/P4
 to: M7
 created: 2026-10-01
@@ -19,3 +19,4 @@ M7 加导入导出的任务时：
 ## 处理进展
 
 - M7/P5A（2026-10-09，合并 `e8f02d5`）：四项都已落实。第 1 项：`jobs.NewInserter(pool, logger)`，不配队列、不启动，`InsertTx` 与 `transfer_jobs` 的行同一个事务投递（事务经 `postgres.TxFrom` 交进来），另有 `Unfinished` 给收拾核对排队的行；第 2 项：停机顺序不变，HTTP 先停；第 3 项：组合规则把 `jobs.NewInserter` 与 `transfer.New` 加进命令行的禁止集，命令行不投递任务；第 4 项：运行时角色的测试跑一次导出（River 的表与 `transfer_jobs` 的授权）。见 [P5 文档](../05-P5-export.md) 3.2、9.1。M7 收尾时关闭。
+- M7 收尾（2026-10-10）：核对过各项的落实（[M7 收尾审查](../reviews/M7-closeout-review.md) C-I2），关闭。

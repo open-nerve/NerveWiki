@@ -1,6 +1,7 @@
 import { observer } from "mobx-react-lite";
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useId, useRef, useState, type ReactNode } from "react";
 
+import { useFocusLeaving } from "../../app/focus-leaving";
 import { errorText } from "../../app/problem-messages";
 import { Button } from "../../components/ui/button";
 import { formatBytes, formatDateTime } from "../../i18n/format";
@@ -180,18 +181,7 @@ export const TransferJobRow = observer(function TransferJobRow({
  */
 function Leaving({ left, children }: { left: () => void; children: ReactNode }) {
   const own = useRef<HTMLSpanElement>(null);
-  const leaving = useRef(left);
-  useEffect(() => {
-    leaving.current = left;
-  });
-  useLayoutEffect(() => {
-    const element = own.current;
-    return () => {
-      if (element?.contains(document.activeElement)) {
-        leaving.current();
-      }
-    };
-  }, []);
+  useFocusLeaving(own, left);
   return (
     <span ref={own} className="contents">
       {children}

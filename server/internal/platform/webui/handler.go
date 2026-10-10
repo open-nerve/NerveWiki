@@ -126,6 +126,13 @@ func (h *handler) serveFile(w http.ResponseWriter, r *http.Request, name string)
 	case strings.HasPrefix(name, AssetsDir+"/") && path.Ext(name) == ".js":
 		w.Header().Set("Content-Security-Policy", workerPolicy)
 	}
+	// A Range of several ranges is passed by, the whole file sent, as the
+	// downloads do (httpserver.ServeFixed): each range would be a part of
+	// its own, a header of thousands of them an answer many times the file
+	// (M7 closeout, its fix check FA-M5).
+	if strings.Contains(r.Header.Get("Range"), ",") {
+		r.Header.Del("Range")
+	}
 	// ServeFileFS sets Content-Type from the extension (sniffing the content
 	// otherwise), answers HEAD and Range, and redirects /index.html to ./.
 	http.ServeFileFS(w, r, h.files, name)

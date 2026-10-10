@@ -1,11 +1,11 @@
-import { act, configure, screen, waitFor, within } from "@testing-library/react";
+import { act, configure, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterAll, beforeAll, expect, test } from "vitest";
 
 import { eventHandlers } from "../../events/handlers";
 import { FakePage } from "../../events/testing/fake-page";
 import type { TransferFailure } from "../../services/transfer.service";
-import { transfers } from "../../test/attachments";
+import { dropped, transfers } from "../../test/attachments";
 import { eventServer, withEvents } from "../../test/event-server";
 import { instanceJSON, json, notebookJSON, problem, workspaceJSON } from "../../test/fakes";
 import { jobJSON, jobsServer, underWay } from "../../test/jobs-server";
@@ -150,6 +150,38 @@ test("nothing goes out without a file, or with one larger than the server takes;
   await user.click(within(shown).getByRole("button", { name: "Import" }));
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   expect(server.asked.filter((ask) => ask.startsWith("POST"))).toEqual(["POST import notes.tar under root"]);
+});
+
+test("a folder dropped on the file is not taken, said so: the file chosen before stays, and goes", async () => {
+  const user = userEvent.setup();
+  const server = jobsServer();
+  renderApp(transfer, server.app);
+  const shown = await open(user);
+  const file = within(shown).getByLabelText("Zip archive");
+  await user.upload(file, vault());
+
+  expect(fireEvent.drop(file, { dataTransfer: dropped([], ["Vault"]) })).toBe(false);
+  const note = within(shown).getByText("A folder is not imported as it is: zip it, then choose the zip.");
+  expect(file.getAttribute("aria-describedby")).toBe(note.id);
+  // A file dropped is the browser's to take; the note goes, though the input changes not, the file the same.
+  expect(fireEvent.drop(file, { dataTransfer: dropped([vault()]) })).toBe(true);
+  expect(within(shown).queryByText(/^A folder is not imported/u)).toBeNull();
+  expect(file.getAttribute("aria-describedby")).toBeNull();
+  // It goes as the picker opens too, by the pointer or the keyboard.
+  for (const opening of [() => user.click(file), () => user.keyboard("{Enter}"), () => user.keyboard(" ")]) {
+    fireEvent.drop(file, { dataTransfer: dropped([], ["Vault"]) });
+    expect(within(shown).queryByText(/^A folder is not imported/u)).not.toBeNull();
+    file.focus();
+    // oxlint-disable-next-line no-await-in-loop -- one way at a time
+    await opening();
+    expect(within(shown).queryByText(/^A folder is not imported/u)).toBeNull();
+  }
+
+  fireEvent.drop(file, { dataTransfer: dropped([], ["Vault"]) });
+  await user.click(within(shown).getByRole("button", { name: "Import" }));
+  await waitFor(() =>
+    expect(server.asked.filter((ask) => ask.startsWith("POST"))).toEqual(["POST import Vault.zip under root"])
+  );
 });
 
 test("the instance not read, no size is told, and none is checked", async () => {
@@ -403,9 +435,9 @@ test("an import's failures say what befell the import", async () => {
   ]);
 });
 
-const counts = (pages: number) => ({ pages, attachments: 0, renamed: 0, missing: 0, skipped: 0 });
+const counts = (pages: number, attachments = 0) => ({ pages, attachments, renamed: 0, missing: 0, skipped: 0 });
 
-test("an import that did not succeed says that what it counts stays in the notebook; one that did, or wrote nothing, does not", async () => {
+test("an import that failed or was cancelled says that what it counts stays in the notebook, pages or attachments; one that succeeded, or wrote nothing, does not", async () => {
   const user = userEvent.setup();
   const jobs = [
     jobJSON(1, {
@@ -416,6 +448,13 @@ test("an import that did not succeed says that what it counts stays in the noteb
     }),
     jobJSON(2, { kind: "import", name: "B.zip", report: { failure: null, counts: counts(2) } }),
     jobJSON(3, { kind: "import", name: "C.zip", state: "failed", report: { failure: "not_zip", counts: counts(0) } }),
+    jobJSON(4, { kind: "import", name: "D.zip", state: "cancelled", report: { failure: null, counts: counts(2) } }),
+    jobJSON(5, {
+      kind: "import",
+      name: "E.zip",
+      state: "failed",
+      report: { failure: "storage_full", counts: counts(0, 1) },
+    }),
   ];
   renderApp(transfer, jobsServer({ jobs }).app);
 
@@ -427,7 +466,13 @@ test("an import that did not succeed says that what it counts stays in the noteb
     await user.click(report);
     return said;
   }
-  expect([await keeps("A.zip"), await keeps("B.zip"), await keeps("C.zip")]).toEqual([true, false, false]);
+  expect([
+    await keeps("A.zip"),
+    await keeps("B.zip"),
+    await keeps("C.zip"),
+    await keeps("D.zip"),
+    await keeps("E.zip"),
+  ]).toEqual([true, false, false, true, true]);
 });
 
 test("pages that cannot be read leave the root to import at, and are read again on asking", async () => {

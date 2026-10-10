@@ -45,12 +45,12 @@ export function fixedName(raw: string, untitled: string): string {
 }
 
 /**
- * freeName is name, or the first of "stem 2.ext", "stem 3.ext", … that none
- * of taken has, compared by their title keys, as a title is among its
- * siblings (M7 design 4.11).
+ * freeName is name, or the first of "stem 2.ext", "stem 3.ext", … whose
+ * title key used does not have, as a title is among its siblings (M7
+ * design 4.11): used are the title keys of the names taken, which a batch
+ * of names makes once.
  */
-export function freeName(name: string, taken: Iterable<string>): string {
-  const used = new Set(Array.from(taken, titleKey));
+export function freeName(name: string, used: ReadonlySet<string>): string {
   if (!used.has(titleKey(name))) {
     return name;
   }

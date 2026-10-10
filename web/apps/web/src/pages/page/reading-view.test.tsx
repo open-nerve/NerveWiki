@@ -662,10 +662,16 @@ test("a view from the cache whose attachments' addresses had expired is not show
   await act(() => vi.advanceTimersByTimeAsync(5 * 60_000));
   await act(() => router.navigate(pagePath(install.id)));
   expect(screen.getByRole("article").innerHTML).toBe("<p>Signed</p>");
+  // Due to be read again, a minute before they expire, it still shows at once.
+  await act(() => router.navigate(pagePath(guide.id)));
+  await waitFor(() => expect(screen.getByRole("article").innerHTML).toBe("<p>Guide</p>"));
+  await act(() => vi.advanceTimersByTimeAsync(4.5 * 60_000));
+  await act(() => router.navigate(pagePath(install.id)));
+  expect(screen.getByRole("article").innerHTML).toBe("<p>Signed</p>");
 
   await act(() => router.navigate(pagePath(guide.id)));
   await waitFor(() => expect(screen.getByRole("article").innerHTML).toBe("<p>Guide</p>"));
-  await act(() => vi.advanceTimersByTimeAsync(6 * 60_000));
+  await act(() => vi.advanceTimersByTimeAsync(1.5 * 60_000));
   server.views.set(install.id, { html: "<p>Signed anew</p>", revision: 1, assets_expire_at: inMinutes(70) });
   const before = server.sent.filter((line) => line === "GET view Install").length;
   server.viewsHeld = true;

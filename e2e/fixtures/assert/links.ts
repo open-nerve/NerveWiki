@@ -27,15 +27,24 @@ async function expectIndexedAtItsRevision(db: Database, id: string): Promise<voi
   expect(rows).toEqual([{ current: true, extracted: true }]);
 }
 
-/** indexed_pages, page_links: the page sourceId, indexed at its revision, has links, in the order they are written. */
+/**
+ * indexed_pages, page_links: the page sourceId, indexed at its revision, has links, in the order they are written;
+ * each marked as leading to an attachment (resolved_asset, M7/P3) exactly when the node it leads to is one.
+ */
 export async function expectIndexedLinks(db: Database, sourceId: string, links: IndexedLink[]): Promise<void> {
   await expectIndexedAtItsRevision(db, sourceId);
-  const rows = await db.query(
-    `SELECT kind, property_key AS property, target, resolved_id AS resolved
-       FROM page_links WHERE source_id = $1 ORDER BY range_start`,
+  const rows = await db.query<IndexedLink & { marked: boolean }>(
+    `SELECT l.kind, l.property_key AS property, l.target, l.resolved_id AS resolved,
+            l.resolved_asset = coalesce(n.kind = 'asset', false) AS marked
+       FROM page_links l LEFT JOIN nodes n ON n.id = l.resolved_id
+      WHERE l.source_id = $1 ORDER BY l.range_start`,
     [sourceId]
   );
-  expect(rows).toEqual(links);
+  expect(rows.map(({ marked, ...link }) => link)).toEqual(links);
+  expect(
+    rows.filter((row) => !row.marked).map((row) => row.target),
+    "links whose resolved_asset says otherwise than the node they lead to"
+  ).toEqual([]);
 }
 
 /** indexed_pages, page_tags: the page sourceId, indexed at its revision, has tags, each written count times. */
