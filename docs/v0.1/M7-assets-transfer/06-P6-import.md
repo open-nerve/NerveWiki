@@ -245,7 +245,7 @@ worker 只调用用例 `Import.Run(ctx, jobID)`。导出与导入共用任务的
 
 - `e2e/fixtures/zip-write.ts`：写 zip（node 的 `zlib` 的 `deflateRawSync`、`crc32`，不加依赖），能写出恶意的条目（符号链接的模式、谎报的结尾记录、`..`、加密标志、不支持的方法、坏的 CRC、记录的注释）。`e2e/fixtures/transfer.ts` 加 PAT 的导入（multipart）、轮询到结束。数据库断言 `e2e/fixtures/assert/transfer.ts` 加导入的（任务行、计数、`client`；建了的页、附件的行与存储里的文件；一个 `kind = import` 的变更集；`imports/` 里没有文件，`.tmp` 不算），链接经 `assert/links.ts` 的 `expectIndexedLinks`。
 - **TR2**（`stories/transfer/tr2-import.spec.ts`）：一个带 `.obsidian/`、嵌套的页、页下与根下的附件、链接与嵌入、要修正与撞名的名称的库，导入到根下与一页之下；进度、报告（计数、`renamed`）、页与附件、链接解析。
-- **TR3**（`tr3-roundtrip.spec.ts`）：TR1 的那本笔记本导出、导入另一本，树、正文、附件、次序相同。
+- **TR3**（`tr3-roundtrip.spec.ts`）：TR1 的那本笔记本导出、导入另一本，树、正文、附件、次序相同；例外是导出时改了名的文件夹（`Plan.md 2`），导入之后是这个名称的页（M7 收尾审查 B-N2）。
 - **TR4**（`tr4-malicious.spec.ts`）：越出根、符号链接、压缩炸弹（压缩比）、加密、不支持的方法、重复、名称不是 UTF-8 的条目各跳过并进报告，其余照常导入；条目数谎报的、中央目录过大的、不是 zip 的、解压后过大的整包失败，没有建任何节点，存储里不留文件；超过 `import_max_bytes` 的上传答 413（`nervewikiWith` 起一个上限很小的服务）。
 
 ## 4. B：前端
