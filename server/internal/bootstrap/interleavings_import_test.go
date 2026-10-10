@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"slices"
 	"testing"
 	"time"
 	"uuid"
@@ -301,6 +302,47 @@ func TestAnImportWhosePlaceIsDeleted(t *testing.T) {
 	if n := count(t, tm.pool, `SELECT count(*) FROM nodes n JOIN nodes p ON p.id = $1
 		WHERE n.parent_id = p.id AND n.deleted_at = p.deleted_at`, place); n != 100 {
 		t.Errorf("%d of the first unit's nodes deleted with their place, want 100", n)
+	}
+	checkImports(t, tm)
+}
+
+// The place an import goes moved deeper as it runs (M7 closeout A-M3):
+// the move waits for the first unit, held, then puts the place two levels
+// lower; the units after it find the pages past MaxDepth too deep (the
+// page module's ErrTooDeep, through the composition root), skip them and
+// what is under them, too_deep, and the job succeeds with the rest.
+func TestAnImportWhosePlaceMovesDeeper(t *testing.T) {
+	tm, nb, _ := transferTeam(t)
+	top := tm.createPage(t, "alice", nb, "", "Top")
+	middle := tm.createPage(t, "alice", nb, top, "Middle")
+	place := tm.createPage(t, "alice", nb, "", "Place")
+	// The place at level 1 holds nine levels: d1 to d8, then x.md, at level 10.
+	files := []vaultFile{{"a.png", pngHead}}
+	for i := range 99 {
+		files = append(files, vaultFile{fmt.Sprintf("p%03d.md", i), "page"})
+	}
+	files = append(files, vaultFile{"d1/d2/d3/d4/d5/d6/d7/d8/x.md", "deep"})
+	release := tm.holdAssetBlobs(t)
+	j := tm.started(t, importStep(t, "bob", nb, place, vaultZip(t, files...)))
+	pgtest.WaitForTableLockWaits(t, tm.pool, "asset_blobs", 1, interleavingWait)
+
+	moved := tm.inBackground(t, nodeMove("alice", place, middle))
+	pgtest.WaitForLockWaitsOn(t, tm.pool, "notebooks", 1, interleavingWait)
+	release()
+	if a := moved(); a.status != http.StatusOK {
+		t.Errorf("the place's move = %d %s, want 200", a.status, a.body)
+	}
+	ended := tm.endedJob(t, "bob", j.ID)
+	var problems []string
+	for _, p := range ended.Problems {
+		problems = append(problems, p.Code+" "+p.Path)
+	}
+	slices.Sort(problems)
+	if ended.State != "succeeded" || !slices.Equal(problems, []string{"too_deep d1/d2/d3/d4/d5/d6/d7/d8/", "too_deep d1/d2/d3/d4/d5/d6/d7/d8/x.md"}) {
+		t.Errorf("the import = %+v, problems %q; want succeeded, d8 and x too deep", ended, problems)
+	}
+	if n := count(t, tm.pool, "SELECT count(*) FROM nodes WHERE notebook_id = $1 AND name = 'd7' AND deleted_at IS NULL", nb); n != 1 {
+		t.Errorf("%d pages d7, want the one at the deepest level", n)
 	}
 	checkImports(t, tm)
 }

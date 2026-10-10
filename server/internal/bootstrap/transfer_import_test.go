@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"mime/multipart"
 	"net/http"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/open-nerve/NerveWiki/server/internal/modules/page"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
 )
 
@@ -248,6 +250,120 @@ func TestTheImportsLimitsAreTheConfigured(t *testing.T) {
 	}
 	if files := storedImports(t, tm.storage); len(files) != 0 {
 		t.Errorf("imports stored %q, want each archive deleted", files)
+	}
+}
+
+// transfer.job_timeout reaches the imports' worker, as the exports' (M7
+// closeout A-M3): an import running past it fails, timeout, its first
+// units kept.
+func TestTheJobTimeoutBoundsAnImport(t *testing.T) {
+	tm := newAcmeTeamWith(t, "", "", func(c *config.Config) { c.Transfer.JobTimeout = 300 * time.Millisecond })
+	nb := tm.openNotebook(t, "alice", "Eng")
+	if j := tm.imported(t, "alice", nb, "", manyPages(t, 3000)); j.State != "failed" || j.Report == nil || j.Report.Failure == nil ||
+		*j.Report.Failure != "timeout" {
+		t.Errorf("an import of 3,000 pages within 300 ms = %+v, report %s; want failed timeout", j, describe(j.Report))
+	}
+}
+
+// What a page cannot hold is skipped, the page module's own rules through
+// the composition root (M7 closeout A-M3): a content with a NUL character,
+// invalid_content; one past page.MaxContentBytes, too_large; the rest
+// imported.
+func TestAnImportSkipsWhatAPageCannotHold(t *testing.T) {
+	tm := newAcmeTeam(t, "", "")
+	nb := tm.openNotebook(t, "alice", "Eng")
+	var buf bytes.Buffer
+	w := zip.NewWriter(&buf)
+	for _, f := range []struct {
+		name, data string
+		method     uint16
+	}{
+		{"nul.md", "a\x00b", zip.Deflate},
+		// Stored: its ratio is no reason to skip it.
+		{"big.md", strings.Repeat("a", page.MaxContentBytes+1), zip.Store},
+		{"ok.md", "ok", zip.Deflate},
+	} {
+		fw, err := w.CreateHeader(&zip.FileHeader{Name: f.name, Method: f.method})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := fw.Write([]byte(f.data)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	j := tm.imported(t, "alice", nb, "", buf.Bytes())
+	var problems []string
+	for _, p := range j.Problems {
+		problems = append(problems, p.Code+" "+p.Path)
+	}
+	slices.Sort(problems)
+	if j.State != "succeeded" || j.Report.Counts["pages"] != 1 || !slices.Equal(problems, []string{"invalid_content nul.md", "too_large big.md"}) {
+		t.Errorf("the import = %+v, problems %q; want ok.md imported, nul.md invalid_content, big.md too_large", j, problems)
+	}
+}
+
+// An import's upload under way counts toward transfer.max_queued for every
+// start, an export's of another notebook too (M7 closeout A-M3): the
+// imports' and the exports' starts share the uploads. Once it stops, the
+// export starts.
+func TestAnImportsUploadCountsTowardTheExportsQueue(t *testing.T) {
+	tm := newAcmeTeamWith(t, "", "", func(c *config.Config) { c.Transfer.MaxQueued = 1 })
+	into, other := tm.openNotebook(t, "alice", "Eng"), tm.openNotebook(t, "alice", "Ops")
+	pr, pw := io.Pipe()
+	mw := multipart.NewWriter(pw)
+	// 256 KiB of the file read by the server, more than its buffers hold: it is storing the file, its start admitted.
+	storing := make(chan struct{})
+	go func() {
+		fw, err := mw.CreateFormFile("file", "vault.zip")
+		for i := 0; err == nil && i < 16; i++ {
+			_, err = fw.Write(make([]byte, 16<<10))
+		}
+		if err == nil {
+			close(storing)
+		}
+	}()
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, tm.base+"/api/v0/notebooks/"+into+"/imports", pr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "Bearer "+tm.tokens["alice"])
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	sent := make(chan struct{})
+	go func() {
+		defer close(sent)
+		if resp, err := http.DefaultClient.Do(req); err == nil {
+			_ = resp.Body.Close()
+		}
+	}()
+	t.Cleanup(func() {
+		_ = pw.CloseWithError(errors.New("the test is over"))
+		<-sent
+	})
+
+	export := func() (int, string) {
+		return ask(t, tm.contract, http.MethodPost, tm.base+"/api/v0/notebooks/"+other+"/exports", tm.tokens["alice"], `{}`)
+	}
+	select {
+	case <-storing:
+	case <-time.After(interleavingWait):
+		t.Fatal("the import's upload was not read")
+	}
+	if status, answer := export(); status != http.StatusServiceUnavailable || problemCode(t, answer) != "server_busy" {
+		t.Fatalf("an export as the import uploads = %d %s, want 503 server_busy", status, answer)
+	}
+	_ = pw.CloseWithError(errors.New("stopped"))
+	<-sent
+	for deadline := time.Now().Add(interleavingWait); ; time.Sleep(20 * time.Millisecond) {
+		status, answer := export()
+		if status == http.StatusAccepted {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("an export once the upload stopped = %d %s, want 202", status, answer)
+		}
 	}
 }
 

@@ -23,6 +23,7 @@ import (
 	"time"
 	"uuid"
 
+	"github.com/open-nerve/NerveWiki/server/internal/modules/asset"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/identity"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/transfer"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
@@ -383,6 +384,49 @@ func TestTheDownloadsAreSignedWithTheDerivedKey(t *testing.T) {
 	mac.Write(binary.BigEndian.AppendUint64(nil, uint64(e))) //nolint:gosec // a time after 1970
 	if want := base64.RawURLEncoding.EncodeToString(mac.Sum(nil)[:16]); u.Query().Get("s") != want {
 		t.Errorf("the address's signature = %q, want %q, the derived key's", u.Query().Get("s"), want)
+	}
+}
+
+// The attachments' addresses are signed with the key derived from the
+// signing key for their contents (asset.ContentKeyInfo), the same through
+// serve as the known answer has it (M7 design 4.5; M7 closeout A-M2): the
+// composition root passes that key, not another derivation, nor none.
+func TestTheContentsAreSignedWithTheDerivedKey(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "signing.pem")
+	if err := os.WriteFile(path, []byte(openSSLKey), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	tm := newAcmeTeamWith(t, "", "", func(c *config.Config) { c.Auth.JWT.PrivateKeyFile = path })
+	nb := tm.openNotebook(t, "alice", "Eng")
+	a := tm.upload(t, "alice", nb, "", "notes.txt", "notes")
+	keys, err := identity.LoadSigningKeys([]byte(openSSLKey), slog.New(slog.DiscardHandler))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, address := range []string{a.ContentURL, a.DownloadURL} {
+		u, err := url.Parse(address)
+		if err != nil {
+			t.Fatal(err)
+		}
+		q := u.Query()
+		e, err := strconv.ParseInt(q.Get("e"), 10, 64)
+		if err != nil {
+			t.Fatal(err)
+		}
+		node, blob := uuid.MustParse(a.ID), uuid.MustParse(q.Get("b"))
+		mac := hmac.New(sha256.New, keys.Derive(asset.ContentKeyInfo))
+		mac.Write([]byte("asset-content"))
+		mac.Write(node[:])
+		mac.Write(blob[:])
+		mac.Write(binary.BigEndian.AppendUint64(nil, uint64(e))) //nolint:gosec // a time after 1970
+		download := byte(0)
+		if q.Get("d") == "1" {
+			download = 1
+		}
+		mac.Write([]byte{download})
+		if want := base64.RawURLEncoding.EncodeToString(mac.Sum(nil)[:16]); q.Get("s") != want {
+			t.Errorf("%s: the signature = %q, want %q, the derived key's", address, q.Get("s"), want)
+		}
 	}
 }
 
