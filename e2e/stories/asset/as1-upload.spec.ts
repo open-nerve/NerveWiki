@@ -231,28 +231,31 @@ test("AS1 (page): an upload going shows its progress, of the whole request; canc
   const page = await signedInPage(tokens);
   const notebook = await createNotebook(api, pat, workspace.slug, "Plans");
   const guide = await createPage(api, pat, notebook.id, "Guide");
-  await page.goto(wikiPagePath(workspace.slug, notebook.id, guide.id));
-  const section = attachments(page);
-  await expect(section.getByRole("button", { name: "Upload" })).toBeVisible();
-  const before = storedBlobs(nervewiki.storageDir);
-  // The browser sends a megabyte a second: 8 MiB take seconds.
+  // The browser sends about 100 KB a second, as CDP throttles it from before the page loads (set
+  // after, it holds the progress back but not the body). The socket's buffers let some megabytes
+  // ahead of it: 16 MiB take far longer than the cancel, which comes as the first bytes go.
   const cdp = await page.context().newCDPSession(page);
   await cdp.send("Network.enable");
   await cdp.send("Network.emulateNetworkConditions", {
     offline: false,
     latency: 0,
     downloadThroughput: -1,
-    uploadThroughput: 1_000_000,
+    uploadThroughput: 100_000,
   });
+  await page.goto(wikiPagePath(workspace.slug, notebook.id, guide.id));
+  const section = attachments(page);
+  await expect(section.getByRole("button", { name: "Upload" })).toBeVisible();
+  const before = storedBlobs(nervewiki.storageDir);
+  const size = 16 << 20;
 
   await section
     .locator("input[type=file]")
-    .setInputFiles([{ name: "large.bin", mimeType: "application/octet-stream", buffer: randomBytes(8 << 20) }]);
+    .setInputFiles([{ name: "large.bin", mimeType: "application/octet-stream", buffer: randomBytes(size) }]);
   const progress = section.getByRole("progressbar", { name: "Upload of large.bin" });
-  await expect.poll(async () => Number(await progress.getAttribute("value"))).toBeGreaterThan(0);
+  await expect.poll(async () => Number(await progress.getAttribute("value")), { intervals: [10] }).toBeGreaterThan(0);
   const [sent, total] = await progress.evaluate((bar: HTMLProgressElement) => [bar.value, bar.max]);
   // Of the request as the browser sends it: the form's bytes beside the file's.
-  expect(total).toBeGreaterThan(8 << 20);
+  expect(total).toBeGreaterThan(size);
   expect(sent).toBeLessThan(total);
   await section.getByRole("button", { name: "Cancel the upload of large.bin" }).click();
 
