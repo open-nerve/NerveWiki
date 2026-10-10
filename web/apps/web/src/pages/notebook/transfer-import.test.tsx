@@ -1,6 +1,6 @@
-import { act, screen, waitFor, within } from "@testing-library/react";
+import { act, configure, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { expect, test } from "vitest";
+import { afterAll, beforeAll, expect, test } from "vitest";
 
 import { eventHandlers } from "../../events/handlers";
 import { FakePage } from "../../events/testing/fake-page";
@@ -13,7 +13,10 @@ import { assetNode, guide, pageNode } from "../../test/page-server";
 import type { TreeNode } from "../../services/page.service";
 import { renderApp } from "../../test/render";
 
-// A notebook's imports from its settings (M7/P6 design 4.2).
+// A notebook's imports from its settings (M7/P6 design 4.2), in StrictMode as the app runs.
+
+beforeAll(() => configure({ reactStrictMode: true }));
+afterAll(() => configure({ reactStrictMode: false }));
 
 const transfer = `/lab/notebooks/${notebookJSON.id}/settings/transfer`;
 const imports = `POST /api/v0/notebooks/${notebookJSON.id}/imports`;
@@ -495,10 +498,27 @@ test("signed out elsewhere as the zip uploads, the upload stops with the account
   expect(asksBeforeLeaving()).toBe(false);
 });
 
+type User = ReturnType<typeof userEvent.setup>;
+const held = (): Promise<Response> => new Promise<Response>(() => undefined);
+
 test.each([
-  ["refused", (): Promise<Response> => Promise.resolve(problem(409, "transfer.busy"))],
-  ["stopped", (): Promise<Response> => new Promise<Response>(() => undefined)],
-])("an upload %s reads the jobs again, none under way to be polled", async (how, answer) => {
+  ["refused", (): Promise<Response> => Promise.resolve(problem(409, "transfer.busy")), async () => undefined],
+  [
+    "stopped",
+    held,
+    async (user: User, shown: HTMLElement) => {
+      await user.click(within(shown).getByRole("button", { name: "Stop the upload" }));
+    },
+  ],
+  [
+    "stopped and closed",
+    held,
+    async (user: User, shown: HTMLElement) => {
+      await user.keyboard("{Escape}");
+      await user.click(within(shown).getByRole("button", { name: "Stop and close" }));
+    },
+  ],
+] as const)("an upload %s reads the jobs again, none under way to be polled", async (how, answer, end) => {
   const user = userEvent.setup();
   const server = jobsServer({ answers: { [imports]: answer } });
   renderApp(transfer, server.app);
@@ -510,12 +530,13 @@ test.each([
 
   await user.click(within(shown).getByRole("button", { name: "Import" }));
   await waitFor(() => expect(transfers(server.app).length).toBe(1));
-  if (how === "stopped") {
-    await user.click(within(shown).getByRole("button", { name: "Stop the upload" }));
-  }
+  await end(user, shown);
 
-  await waitFor(() =>
-    expect(within(shown).getByRole("button", { name: "Import" }).hasAttribute("disabled")).toBe(false)
-  );
   await waitFor(() => expect(reads()).toBe(before + 1));
+  if (how === "stopped and closed") {
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  } else {
+    // The dialog kept, the focus goes to Import, to try again: not to Cancel, where Stop the upload was.
+    await waitFor(() => expect(document.activeElement).toBe(within(shown).getByRole("button", { name: "Import" })));
+  }
 });

@@ -4,6 +4,7 @@ import { useBlocker } from "react-router";
 import useSWR, { useSWRConfig } from "swr";
 
 import { useForm, type LocalProblems } from "../../app/form";
+import { useMounted } from "../../app/mounted";
 import { NotLoaded } from "../../app/not-loaded";
 import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
@@ -39,9 +40,10 @@ type ImportDialogProps = {
  * stops; the dialog closed, or the page left, meanwhile asks first, and
  * the upload stops as the dialog goes. A refusal stays in the dialog; a
  * connection cut, which a refusal before the file is read may reach the
- * browser as, says what may have happened, and is not tried again. Each
- * end reads the notebook's jobs again; started, the job goes first in
- * them, and the focus goes to its row.
+ * browser as, says what may have happened, and is not tried again; the
+ * focus then goes to Import. Each end, the page not left, reads the
+ * notebook's jobs again; started, the job goes first in them, and the
+ * focus goes to its row.
  */
 export const ImportDialog = observer(function ImportDialog({
   notebook,
@@ -63,6 +65,8 @@ export const ImportDialog = observer(function ImportDialog({
   const asking = uploading && (stopping || leaving);
   const keepButton = useRef<HTMLButtonElement>(null);
   const stopButton = useRef<HTMLButtonElement>(null);
+  // The dialog's going means the user left, or the generation ended; the form goes as the dialog closes too.
+  const mounted = useMounted();
   // Asked, the focus goes to the answer that loses nothing.
   useEffect(() => {
     if (asking) {
@@ -155,6 +159,7 @@ export const ImportDialog = observer(function ImportDialog({
             notebook={notebook}
             upload={upload}
             stopButton={stopButton}
+            mounted={mounted}
             onUploading={uploadingNow}
             cancel={close}
             imported={(job) => {
@@ -175,6 +180,8 @@ type ImportFormProps = {
   upload: RefObject<AbortController | undefined>;
   /** The button that stops the upload, which the dialog focuses as the upload goes on. */
   stopButton: RefObject<HTMLButtonElement | null>;
+  /** Whether the dialog is still mounted: gone, its page or its generation's SWR cache may be gone too. */
+  mounted: () => boolean;
   /** Told as the upload starts and ends. */
   onUploading: (on: boolean) => void;
   cancel: () => void;
@@ -185,6 +192,7 @@ const ImportForm = observer(function ImportForm({
   notebook,
   upload,
   stopButton,
+  mounted,
   onUploading,
   cancel,
   imported,
@@ -200,8 +208,8 @@ const ImportForm = observer(function ImportForm({
   const [file, setFile] = useState<File | undefined>(undefined);
   const [place, setPlace] = useState(root);
   const progress = useRef<((sent: number, total: number) => void) | undefined>(undefined);
-  /** Whether the form is still shown: one gone, its generation's SWR cache may be gone too. */
-  const shown = useRef(true);
+  const importButton = useRef<HTMLButtonElement>(null);
+  const wasSending = useRef(false);
   const { ref, sending, banner, problemOf, submit } = useForm(["parent_id", "file"], {
     texts: {
       "transfer.busy": "transfer.importBusy",
@@ -213,19 +221,17 @@ const ImportForm = observer(function ImportForm({
     explain: (error) => (error instanceof TypeError ? t("transfer.importCut") : undefined),
   });
   // The upload stops as the dialog goes.
-  useEffect(() => {
-    shown.current = true;
-    return () => {
-      shown.current = false;
-      upload.current?.abort();
-    };
-  }, [upload]);
-  // Sending, the import button is disabled: the focus goes to the button that stops it.
+  useEffect(() => () => upload.current?.abort(), [upload]);
+  // Sending, the import button is disabled: the focus goes to the button that stops it. Sent and not imported, the
+  // focus left on nothing (the stop button gone; no invalid field took it) goes to the import button, to try again.
   useEffect(() => {
     if (sending) {
       stopButton.current?.focus();
+    } else if (wasSending.current && !(ref.current?.contains(document.activeElement) ?? false)) {
+      importButton.current?.focus();
     }
-  }, [sending, stopButton]);
+    wasSending.current = sending;
+  }, [sending, stopButton, ref]);
   const { locale } = preferences;
   const most = instance.info?.import_max_bytes;
   const tree = pages.tree;
@@ -271,9 +277,9 @@ const ImportForm = observer(function ImportForm({
           upload.current = undefined;
           onUploading(false);
         }
-        // The jobs are read again at each end, the form still shown: a refusal may be another's import, and a list whose
-        // read failed is polled no more until it is read.
-        if (shown.current) {
+        // The jobs are read again at each end, the dialog still mounted: a refusal may be another's import, and a list
+        // whose read failed is polled no more until it is read.
+        if (mounted()) {
           void mutate(["transfer-jobs", notebook.id]);
         }
       }
@@ -342,15 +348,15 @@ const ImportForm = observer(function ImportForm({
       )}
       <div className="flex justify-end gap-2">
         {sending ? (
-          <Button ref={stopButton} type="button" variant="outline" onClick={() => upload.current?.abort()}>
+          <Button key="stop" ref={stopButton} type="button" variant="outline" onClick={() => upload.current?.abort()}>
             {t("transfer.importStop")}
           </Button>
         ) : (
-          <Button type="button" variant="outline" onClick={cancel}>
+          <Button key="cancel" type="button" variant="outline" onClick={cancel}>
             {t("transfer.dialogCancel")}
           </Button>
         )}
-        <Button type="submit" disabled={sending || transfers.importing}>
+        <Button ref={importButton} type="submit" disabled={sending || transfers.importing}>
           {sending ? t("transfer.importing") : t("transfer.importConfirm")}
         </Button>
       </div>
