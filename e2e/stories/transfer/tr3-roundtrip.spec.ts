@@ -132,4 +132,8 @@ test("TR3 (page): a notebook exported from its settings, its archive downloaded 
     total: 5,
     counts: { pages: 4, attachments: 1, renamed: 0, skipped: 0 },
   });
+  const ids = await idsOf(db, copy.id);
+  await expectIndexedLinks(db, ids.get("Guide") ?? "", [
+    { kind: "wikilink", property: null, target: "Linked", resolved: ids.get("Linked") ?? "" },
+  ]);
 });

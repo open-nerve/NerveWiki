@@ -143,9 +143,9 @@ export const ImportDialog = observer(function ImportDialog({
                   variant="destructive"
                   onClick={() => {
                     upload.current?.abort();
-                    if (leaving) {
-                      blocker.proceed?.();
-                    } else {
+                    // Leaving goes on once the upload has ended (the effect above): proceeding here as well
+                    // would proceed twice, the router's state behind the abort's.
+                    if (!leaving) {
                       close();
                     }
                   }}
