@@ -44,6 +44,7 @@ type directory struct {
 	records uint64
 	size    uint64
 	start   int64
+	probed  int64 // what archive/zip reads of a record it tries at the offset from 0, at most
 }
 
 // readEnd finds the directory's end in the last 1 KiB of r, then its last
@@ -92,9 +93,12 @@ func readEnd(r io.ReaderAt, size int64) (directory, error) {
 		return directory{}, errNotZip
 	}
 	// An end that names a base other than 0 though a record starts at its
-	// offset from 0: archive/zip takes 0.
-	if base > 0 && recordAt(r, size, int64(offset)) {
-		base = 0
+	// offset from 0: archive/zip takes 0, having read the record there.
+	if base > 0 {
+		var ok bool
+		if d.probed, ok = recordAt(r, size, int64(offset)); ok {
+			base = 0
+		}
 	}
 	d.start = base + int64(offset)
 	return d, nil
@@ -153,13 +157,12 @@ func read64End(r io.ReaderAt, size, p int64) (directory, uint64, error) {
 }
 
 // recordAt reports whether a directory's record that archive/zip reads
-// starts at offset.
-func recordAt(r io.ReaderAt, size, offset int64) bool {
+// starts at offset, and what it reads there at most (records.next).
+func recordAt(r io.ReaderAt, size, offset int64) (int64, bool) {
 	if offset < 0 || offset >= size {
-		return false
+		return 0, false
 	}
-	_, ok := newRecords(r, size, offset).next()
-	return ok
+	return newRecords(r, size, offset).next()
 }
 
 // countRecords counts the directory's records from start as archive/zip

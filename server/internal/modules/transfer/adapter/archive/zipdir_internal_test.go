@@ -164,6 +164,8 @@ func TestZip64ShortReadsTheFieldsAsArchiveZip(t *testing.T) {
 func TestThePreReadTakesTheBaseAsArchiveZip(t *testing.T) {
 	refused := func(name string) []byte { return dirRecord(name, 1<<32-1, 1, 0, zip64Field()) }
 	b1, b2 := dirRecord("b1", 1, 1, 0, nil), dirRecord("b2", 1, 1, 0, nil)
+	other := binary.LittleEndian.AppendUint16([]byte{0x99, 0x99}, 65531)
+	long := dirRecord(string(bytes.Repeat([]byte("n"), 65535)), 1, 1, 0, slices.Concat(other, make([]byte, 65531)))
 	for _, tt := range []struct {
 		name string
 		data []byte
@@ -175,6 +177,9 @@ func TestThePreReadTakesTheBaseAsArchiveZip(t *testing.T) {
 			dirEnd(1, uint32(len(b1)), 0)), 1}, //nolint:gosec // short
 		{"a record read at the offset from 0", slices.Concat(b1, bytes.Repeat([]byte("x"), 9),
 			dirEnd(1, uint32(len(b1)), 0)), 1}, //nolint:gosec // short
+		// archive/zip reads it there whole, then again as the directory's first (M7 closeout F3-M1).
+		{"a record of 128 KiB read at the offset from 0", slices.Concat(long, bytes.Repeat([]byte("x"), 9),
+			dirEnd(1, uint32(len(long)), 0)), 1}, //nolint:gosec // short
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			zr, err := zip.NewReader(bytes.NewReader(tt.data), int64(len(tt.data)))

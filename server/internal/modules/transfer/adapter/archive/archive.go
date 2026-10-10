@@ -210,7 +210,7 @@ func readImport(f storage.File, most int, largest int64) (*zip.Reader, error) {
 	if n > most || read > largest {
 		return nil, app.ErrTooManyEntries
 	}
-	b := &bounded{r: f, left: read + refused + directoryEnds}
+	b := &bounded{r: f, left: d.probed + read + refused + directoryEnds}
 	z, err := zip.NewReader(b, size)
 	b.lift()
 	switch {
